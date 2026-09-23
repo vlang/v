@@ -136,10 +136,15 @@ fn test_receiver_param_method_scan_preserves_suffix_and_tie_breaking() {
 fn test_field_type_cache_preserves_collisions_and_module_context() {
 	mut ast := flat.FlatAst.new()
 	mut tc := types.TypeChecker.new(&ast)
-	tc.structs['one.Box'] = [
+	mut fields := [
 		types.StructField{ name: 'abba', typ: types.Type(types.int_) },
 		types.StructField{ name: 'acca', typ: types.Type(types.string_) },
 	]
+	for i in 0 .. 64 {
+		fields << types.StructField{ name: 'field_${i}', typ: types.Type(types.int_) }
+	}
+	fields << types.StructField{ name: 'abba', typ: types.Type(types.string_) }
+	tc.structs['one.Box'] = fields
 	tc.structs['two.Box'] = [
 		types.StructField{ name: 'abba', typ: types.Type(types.bool_) },
 	]
@@ -153,9 +158,13 @@ fn test_field_type_cache_preserves_collisions_and_module_context() {
 		assert g.struct_field_type('Box'.clone(), 'abba'.clone())? == types.Type(types.int_)
 		assert g.struct_field_type('Box', 'acca')? == types.Type(types.string_)
 		assert g.struct_field_type('Box', 'adda') == none
+		assert g.direct_struct_field_exists('Box', 'acca')
+		assert !g.direct_struct_field_exists('Box', 'adda')
 		tc.cur_module = 'two'
 		assert g.struct_field_type('Box', 'abba')? == types.Type(types.bool_)
 		assert g.struct_field_type('Box', 'acca') == none
+		assert g.direct_struct_field_exists('Box', 'abba')
+		assert !g.direct_struct_field_exists('Box', 'acca')
 	}
 }
 

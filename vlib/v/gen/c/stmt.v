@@ -6367,10 +6367,12 @@ fn (g &FlatGen) type_can_wrap_as_ierror_payload(actual types.Type, expected type
 	return g.type_can_box_as_ierror(concrete)
 }
 
-// types_numeric_compatible supports types numeric compatible handling for FlatGen.
+// types_numeric_compatible compares numeric payloads through their aliases.
 fn (g &FlatGen) types_numeric_compatible(a types.Type, b types.Type) bool {
 	_ = g
-	return (a.is_integer() || a.is_float()) && (b.is_integer() || b.is_float())
+	a0 := cgen_unalias_type(a)
+	b0 := cgen_unalias_type(b)
+	return (a0.is_integer() || a0.is_float()) && (b0.is_integer() || b0.is_float())
 }
 
 // call_constructs_type updates call constructs type state for FlatGen.
@@ -6897,6 +6899,10 @@ fn (mut g FlatGen) gen_decl_assign(node flat.Node) {
 						v_type = ret
 					}
 				}
+			}
+			if rhs.kind in [.call, .ident] {
+				// Unwrapped results are copied from temporaries. Keep their concrete
+				// module identity just as for a direct call's return type.
 				rhs_type := g.usable_expr_type(rhs_id)
 				current_value := default_init_unalias_type(types.unwrap_pointer(v_type))
 				rhs_value := default_init_unalias_type(types.unwrap_pointer(rhs_type))

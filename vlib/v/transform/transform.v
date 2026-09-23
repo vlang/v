@@ -254,7 +254,7 @@ mut:
 	autolock_depth                int
 	alias_cache                   &AliasCache              = unsafe { nil }
 	sum_cache                     &AliasCache              = unsafe { nil }
-	module_type_cache             &AliasCache              = unsafe { nil }
+	module_type_cache             &ModuleTypeCache         = unsafe { nil }
 	struct_guess_cache            &AliasCache              = unsafe { nil }
 	generic_unresolved_cache      &GenericUnresolvedCache  = unsafe { nil }
 	generic_spec_decode_cache     &LookupCache             = unsafe { nil }
@@ -546,6 +546,22 @@ mut:
 	entries            map[string]string
 }
 
+// Field lookups alternate between owner modules within one source file. Keep
+// recent results keyed by both type and module instead of discarding them on
+// every owner change. The source context still invalidates the whole cache.
+struct ModuleTypeCache {
+mut:
+	module             string
+	file               string
+	source_module      string
+	generation         u32 = 1
+	recent_types       [1024]string
+	recent_modules     [1024]string
+	recent_results     [1024]string
+	recent_generations [1024]u32
+	entries            map[string]string
+}
+
 // Sample text bytes so separately allocated copies can hit the same slot.
 // Every lookup still compares the complete spelling to handle collisions.
 @[direct_array_access; inline]
@@ -818,6 +834,36 @@ pub:
 	is_c_anon  bool
 	alignment  string
 	fields     []FieldInfo
+mut:
+	field_indices map[string]int
+}
+
+fn struct_field_indices(fields []FieldInfo) map[string]int {
+	mut indices := map[string]int{}
+	// Linear lookup is cheaper for the usual small structs. Large compiler
+	// contexts otherwise compare hundreds of names for every field access.
+	if fields.len < 16 {
+		return indices
+	}
+	for i, field in fields {
+		if field.name !in indices {
+			indices[field.name] = i
+		}
+	}
+	return indices
+}
+
+fn (info &StructInfo) field(name string) ?FieldInfo {
+	if info.field_indices.len > 0 {
+		idx := info.field_indices[name] or { return none }
+		return info.fields[idx]
+	}
+	for field in info.fields {
+		if field.name == name {
+			return field
+		}
+	}
+	return none
 }
 
 // FieldInfo stores field info metadata used by transform.
@@ -1855,7 +1901,7 @@ fn (mut t Transformer) prepare() {
 	// entries with results computed against a partial view.
 	t.alias_cache = &AliasCache{}
 	t.sum_cache = &AliasCache{}
-	t.module_type_cache = &AliasCache{}
+	t.module_type_cache = &ModuleTypeCache{}
 	t.struct_guess_cache = &AliasCache{}
 	t.var_type_cache = &VarTypeIndexCache{}
 	t.generic_unresolved_cache = &GenericUnresolvedCache{}
@@ -2893,13 +2939,14 @@ fn (mut t Transformer) collect_types() {
 					}
 				}
 				info := StructInfo{
-					name:       node.value
-					module:     cur_mod
-					is_params:  'params' in node.typ.split(',')
-					is_aligned: transform_struct_decl_alignment_is_set(node.typ)
-					is_c_anon:  'c_anon' in node.typ.split(',')
-					alignment:  transform_struct_decl_alignment_value(node.typ)
-					fields:     fields
+					name:          node.value
+					module:        cur_mod
+					is_params:     'params' in node.typ.split(',')
+					is_aligned:    transform_struct_decl_alignment_is_set(node.typ)
+					is_c_anon:     'c_anon' in node.typ.split(',')
+					alignment:     transform_struct_decl_alignment_value(node.typ)
+					fields:        fields
+					field_indices: struct_field_indices(fields)
 				}
 				if cur_mod.len > 0 && cur_mod != 'main' && cur_mod != 'builtin' {
 					qname := '${cur_mod}.${node.value}'
@@ -3875,7 +3922,7 @@ fn (t &Transformer) fork_worker_config(ast &flat.FlatAst, wtc &types.TypeChecker
 	}
 	w.alias_cache = &AliasCache{}
 	w.sum_cache = &AliasCache{}
-	w.module_type_cache = &AliasCache{}
+	w.module_type_cache = &ModuleTypeCache{}
 	w.struct_guess_cache = &AliasCache{}
 	w.var_type_cache = &VarTypeIndexCache{}
 	w.generic_unresolved_cache = &GenericUnresolvedCache{}
@@ -4015,7 +4062,7 @@ fn (t &Transformer) fork_scan_worker(wtc &types.TypeChecker) &Transformer {
 	mut w := t.fork_program_view(t.a, wtc, map[string]bool{}, false)
 	w.alias_cache = &AliasCache{}
 	w.sum_cache = &AliasCache{}
-	w.module_type_cache = &AliasCache{}
+	w.module_type_cache = &ModuleTypeCache{}
 	w.struct_guess_cache = &AliasCache{}
 	w.var_type_cache = &VarTypeIndexCache{}
 	w.generic_unresolved_cache = &GenericUnresolvedCache{}
@@ -4345,13 +4392,14 @@ fn clone_struct_info_owned(info StructInfo) StructInfo {
 		}
 	}
 	return StructInfo{
-		name:       info.name.clone()
-		module:     info.module.clone()
-		is_params:  info.is_params
-		is_aligned: info.is_aligned
-		is_c_anon:  info.is_c_anon
-		alignment:  info.alignment.clone()
-		fields:     fields
+		name:          info.name.clone()
+		module:        info.module.clone()
+		is_params:     info.is_params
+		is_aligned:    info.is_aligned
+		is_c_anon:     info.is_c_anon
+		alignment:     info.alignment.clone()
+		fields:        fields
+		field_indices: struct_field_indices(fields)
 	}
 }
 
@@ -21259,6 +21307,11 @@ fn (mut t Transformer) transform_cast_expr(id flat.NodeId, node flat.Node) flat.
 	// the checker sidecar holds its canonical identity. Normalize that semantic
 	// name so a real qualified alias with the same spelling cannot win first.
 	checker_target := t.raw_checker_node_type(id)
+	// A specialized alias cast can carry explicit main. locks for caller types.
+	// The checker can rebind those types to names in the alias's module.
+	specialized_alias_cast := t.active_specialization_args.len > 0
+		&& strip_main_type_locks(node.value) != node.value
+		&& t.generic_type_text_contains_alias(node.value, t.cur_module)
 	// Expected-type propagation can replace an explicit alias cast's checker type
 	// with the surrounding sum type. Keep the named variant as the cast target;
 	// the caller that requested the sum will wrap the converted alias value.
@@ -21266,7 +21319,8 @@ fn (mut t Transformer) transform_cast_expr(id flat.NodeId, node flat.Node) flat.
 		&& t.is_sum_type_name(checker_target)
 		&& t.sum_target_accepts_variant_type(checker_target, node.value)
 	target_type := t.normalize_type_alias(if node.value in primitive_cast_type_names
-		|| node.value in ['voidptr', 'byteptr', 'charptr'] || checker_target_is_sum_context {
+		|| node.value in ['voidptr', 'byteptr', 'charptr'] || checker_target_is_sum_context
+		|| specialized_alias_cast {
 		node.value
 	} else if checker_target.len > 0 {
 		checker_target

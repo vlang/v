@@ -7324,6 +7324,73 @@ fn v3_select_implicit_c_compiler(c_compiler string, c_compiler_explicit bool, im
 	return c_compiler
 }
 
+// V3CCompilerSelection is the C compiler that receives a compilation's first
+// build attempt, and the name (`tinyc`, `gcc`, `clang`, ...) the generated code
+// and the `// vtest build:` facts describe it by.
+struct V3CCompilerSelection {
+	bundled_tcc_available      bool
+	implicit_tcc               string
+	c_compiler                 string
+	use_implicit_tcc_semantics bool
+	effective_c_compiler       string
+}
+
+// v3_select_c_compiler normalises the requested C compiler (a Windows target
+// built on another host uses the MinGW GCC instead of TCC; `msvc` on Windows is
+// `cl`) and resolves it against the bundled and the system TCC: an implicit TCC
+// takes over from the platform default when the compilation allows it, and an
+// explicit `-cc` is kept as given.
+fn v3_select_c_compiler(vroot string, requested V3BundledTccProbeOptions) V3CCompilerSelection {
+	options := V3BundledTccProbeOptions{
+		...requested
+		c_compiler: v3_c_compiler_command_alias(v3_windows_cross_c_compiler(requested.c_compiler,
+			requested.host_target, requested.target), requested.host_os)
+	}
+	bundled_tcc_available := v3_bundled_tcc_available(options)
+	allow_system_tcc := options.backend == 'c' && !options.c_only && !options.is_prod
+		&& !options.is_c_debug && !options.c_compiler_explicit
+		&& (!options.parallel_cc || options.target.os == 'windows')
+		&& options.target.os == options.host_target.os
+		&& options.target.arch == options.host_target.arch
+		&& v3_system_tcc_runtime_available(vroot, options.target.os)
+	implicit_tcc := v3_default_tcc_compiler(options.bundled_tcc, bundled_tcc_available,
+		allow_system_tcc, options.dump_c_flags, options.host_os)
+	c_compiler := v3_select_implicit_c_compiler(options.c_compiler, options.c_compiler_explicit,
+		implicit_tcc)
+	// Generate for the compiler that receives the first build attempt. If implicit
+	// TCC cannot be used, the caller regenerates before invoking the `cc` fallback.
+	use_implicit_tcc_semantics := options.backend == 'c' && !options.c_compiler_explicit
+		&& implicit_tcc != ''
+	return V3CCompilerSelection{
+		bundled_tcc_available:      bundled_tcc_available
+		implicit_tcc:               implicit_tcc
+		c_compiler:                 c_compiler
+		use_implicit_tcc_semantics: use_implicit_tcc_semantics
+		effective_c_compiler:       v3_effective_c_compiler_for_codegen(options.backend,
+			c_compiler, use_implicit_tcc_semantics, options.target)
+	}
+}
+
+// v3_apply_libc_define records the C library a compilation targets as its
+// `musl`/`glibc` define: the requested one (`-musl`, `-glibc`, a `*musl-gcc`
+// compiler), or, when `infer_host` allows it, the host's own. It returns the
+// libc mode the compilation should use.
+fn v3_apply_libc_define(mut user_defines []string, mut compile_values map[string]string, requested_libc_mode string, c_compiler string, infer_host bool) string {
+	mut libc_mode := requested_libc_mode
+	if v3_c_compiler_implies_musl(c_compiler) {
+		libc_mode = 'musl'
+	}
+	if libc_mode != '' {
+		v3_set_libc_define(mut user_defines, mut compile_values, libc_mode)
+	} else if !v3_has_libc_define(user_defines) && infer_host {
+		host_libc := v3_detect_host_libc()
+		if host_libc != '' {
+			v3_set_libc_define(mut user_defines, mut compile_values, host_libc)
+		}
+	}
+	return libc_mode
+}
+
 fn v3_platform_c_compiler(host_os string) string {
 	return if host_os == 'windows' { 'gcc' } else { 'cc' }
 }
@@ -10060,9 +10127,7 @@ pub fn run(args []string) {
 	bundled_tcc := os.join_path(prefs.vroot, 'thirdparty', 'tcc', 'tcc.exe')
 	host_os := os.user_os()
 	host_target := pref.host_target()
-	c_compiler = v3_windows_cross_c_compiler(c_compiler, host_target, target)
-	c_compiler = v3_c_compiler_command_alias(c_compiler, host_os)
-	bundled_tcc_available := v3_bundled_tcc_available(V3BundledTccProbeOptions{
+	selection := v3_select_c_compiler(prefs.vroot, V3BundledTccProbeOptions{
 		backend:             backend
 		c_only:              c_only
 		is_prod:             is_prod
@@ -10076,31 +10141,16 @@ pub fn run(args []string) {
 		target:              target
 		bundled_tcc:         bundled_tcc
 	})
-	allow_system_tcc := backend == 'c' && !c_only && !is_prod && !is_c_debug && !c_compiler_explicit
-		&& (!parallel_cc || target.os == 'windows') && target.os == host_target.os
-		&& target.arch == host_target.arch
-		&& v3_system_tcc_runtime_available(prefs.vroot, target.os)
-	implicit_tcc := v3_default_tcc_compiler(bundled_tcc, bundled_tcc_available, allow_system_tcc, dump_c_flags.len > 0, host_os)
-	c_compiler = v3_select_implicit_c_compiler(c_compiler, c_compiler_explicit, implicit_tcc)
-	// Generate for the compiler that receives the first build attempt. If implicit
-	// TCC cannot be used, regenerate below before invoking the `cc` fallback.
-	use_implicit_tcc_semantics := backend == 'c' && !c_compiler_explicit && implicit_tcc != ''
-	effective_c_compiler := v3_effective_c_compiler_for_codegen(backend, c_compiler, use_implicit_tcc_semantics, target)
+	bundled_tcc_available := selection.bundled_tcc_available
+	implicit_tcc := selection.implicit_tcc
+	c_compiler = selection.c_compiler
+	use_implicit_tcc_semantics := selection.use_implicit_tcc_semantics
+	effective_c_compiler := selection.effective_c_compiler
 	macos_linux_cross_compile := v3_macos_linux_cross_compile(host_target, target, backend,
 		c_compiler)
-	if v3_c_compiler_implies_musl(c_compiler) {
-		libc_mode = 'musl'
-	}
-	if libc_mode != '' {
-		v3_set_libc_define(mut user_defines, mut compile_values, libc_mode)
-	} else if !v3_has_libc_define(user_defines)
-		&& v3_should_infer_host_libc(c_only, is_o, generate_c_project, output_cross_c, target,
-			host_target) {
-		host_libc := v3_detect_host_libc()
-		if host_libc != '' {
-			v3_set_libc_define(mut user_defines, mut compile_values, host_libc)
-		}
-	}
+	libc_mode = v3_apply_libc_define(mut user_defines, mut compile_values, libc_mode, c_compiler,
+		v3_should_infer_host_libc(c_only, is_o, generate_c_project, output_cross_c, target,
+			host_target))
 	incompatible_direct_test := v3_direct_test_input_is_incompatible(is_test_command, input_file, backend, target, effective_c_compiler, is_prod, user_defines)
 	if incompatible_direct_test {
 		// Directory test discovery already excludes incompatible backend/platform files.
@@ -16411,7 +16461,19 @@ fn set_diagnostic_files(mut tc types.TypeChecker, user_files []string) {
 	}
 	// Imported project modules need the same checks as the entry files.
 	// Resolve ownership once here, rather than for every checked expression.
-	for i, node in tc.a.nodes {
+	file_ids := if tc.a.file_node_ids.len > 0 && !tc.a.file_index_incomplete {
+		tc.a.file_node_ids
+	} else {
+		mut ids := []i32{}
+		for i, node in tc.a.nodes {
+			if node.kind == .file {
+				ids << i
+			}
+		}
+		ids
+	}
+	for i in file_ids {
+		node := tc.a.nodes[i]
 		if i < tc.a.user_code_start || node.kind != .file || node.value.len == 0
 			|| node.value in tc.diagnostic_files {
 			continue

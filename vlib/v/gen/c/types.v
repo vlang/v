@@ -878,7 +878,8 @@ fn (mut g FlatGen) collect_unresolved_call_optional_types() {
 	// not covered by the shared declaration-signature scan.
 	mut seen_type_ids := []bool{len: 65536}
 	mut seen_type_texts := map[string]bool{}
-	for idx, node in g.a.nodes {
+	for idx in g.type_metadata_nodes() {
+		node := g.a.nodes[idx]
 		if node.kind != .call || (idx < g.tc.expr_type_set.len && g.tc.expr_type_set[idx]) {
 			continue
 		}
