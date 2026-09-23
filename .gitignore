@@ -174,3 +174,6 @@ issue*
 .copilot/
 .agents/
 .codex/
+
+# the C build folder a self compile leaves behind (driver.v names it .<binary>.v3cc.<token>)
+.*.v3cc.*
