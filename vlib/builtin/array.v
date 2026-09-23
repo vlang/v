@@ -1137,6 +1137,16 @@ fn (mut a array) set(i int, val voidptr) {
 	unsafe { vmemcpy(&u8(a.data) + u64(a.element_size) * u64(i), val, a.element_size) }
 }
 
+// array_sort_move copies `count` elements of `element_size` bytes from index `si`
+// of `src` to index `di` of `dst`. The compiler's lowered stable sort calls it
+// with indexes it has already bounded, so it skips the per-element range checks
+// of `array.set`.
+@[inline; markused; unsafe]
+fn array_sort_move(dst voidptr, di int, src voidptr, si int, count int, element_size usize) {
+	vmemcpy(&u8(dst) + usize(di) * element_size, &u8(src) + usize(si) * element_size,
+		isize(usize(count) * element_size))
+}
+
 @[markused]
 fn (mut a array) set_i64(i i64, val voidptr) {
 	$if !no_bounds_checking {
