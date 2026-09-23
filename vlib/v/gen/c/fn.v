@@ -2008,6 +2008,24 @@ fn (g &FlatGen) fn_decl_noreturn_prefix(node_id flat.NodeId) string {
 	return ''
 }
 
+// A `@[_naked]` body is the whole function: the compiler must not wrap it in a
+// prologue and epilogue, or the hand-written `ret` returns through a frame it
+// never set up. The attribute has to precede the declarator, so it cannot join
+// the `_constructor`/`_destructor` group in fn_decl_c_attribute. MSVC is left
+// out: its `__declspec(naked)` is x86-only, and it has no inline assembly for
+// the body to begin with.
+fn (g &FlatGen) fn_decl_naked_prefix(node_id flat.NodeId) string {
+	if g.ccompiler == 'msvc' {
+		return ''
+	}
+	for raw_attr in g.fn_decl_attributes(node_id) {
+		if raw_attr.all_before(':').trim_space() == '_naked' {
+			return '__attribute__((naked)) '
+		}
+	}
+	return ''
+}
+
 fn (mut g FlatGen) write_method_c_name(id flat.NodeId, node flat.Node, method_name string) {
 	call_name := g.method_call_name_for_call(id, node, method_name)
 	if node.children_count > 0 {
@@ -4877,6 +4895,7 @@ fn (mut g FlatGen) gen_fn_in_module(node_id flat.NodeId, node flat.Node, module_
 			}
 		}
 		g.write(g.fn_decl_noreturn_prefix(node_id))
+		g.write(g.fn_decl_naked_prefix(node_id))
 		g.write(g.fn_return_type_name(ret_type))
 		g.write(' ')
 		g.write(generated_fn_name)
