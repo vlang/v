@@ -16,3 +16,16 @@ fn test_if_guard_after_none_check_uses_optional_wrapper() {
 	assert checked_title(IfGuardAfterNoneCheck{ title: '  hello  ' })! == 'hello'
 	assert (checked_title(IfGuardAfterNoneCheck{}) or { err.msg() }) == 'title is required'
 }
+
+fn checked_title_expr(req IfGuardAfterNoneCheck) !string {
+	if req.title == none {
+		return error('title is required')
+	}
+	title := if value := req.title { value.trim_space() } else { '' }
+	return title
+}
+
+fn test_if_expr_guard_after_none_check_uses_optional_wrapper() {
+	assert checked_title_expr(IfGuardAfterNoneCheck{ title: '  hello  ' })! == 'hello'
+	assert (checked_title_expr(IfGuardAfterNoneCheck{}) or { err.msg() }) == 'title is required'
+}

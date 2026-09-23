@@ -3,6 +3,14 @@ module transform
 import v.flat
 import v.types
 
+fn (mut t Transformer) if_guard_optional_type_name(rhs_id flat.NodeId) string {
+	mut rhs_type := t.optional_result_expr_type_name(rhs_id)
+	if !t.is_optional_type_name(rhs_type) {
+		rhs_type = t.raw_expr_type_without_smartcast(rhs_id)
+	}
+	return rhs_type
+}
+
 // try_expand_if_guard detects an if-guard pattern where the condition is a
 // decl_assign whose RHS is a call returning an optional (?T) or result (!T).
 // When detected it expands:
@@ -42,10 +50,7 @@ fn (mut t Transformer) try_expand_if_guard(_id flat.NodeId, node flat.Node) ?[]f
 			return t.expand_channel_receive_if_guard(node, lhs.value, info)
 		}
 	}
-	mut rhs_type := t.optional_result_expr_type_name(rhs_id)
-	if !t.is_optional_type_name(rhs_type) {
-		rhs_type = t.raw_expr_type_without_smartcast(rhs_id)
-	}
+	mut rhs_type := t.if_guard_optional_type_name(rhs_id)
 	if !t.is_optional_type_name(rhs_type) {
 		return none
 	}
@@ -505,7 +510,7 @@ fn (mut t Transformer) if_expr_guard_result_type(node flat.Node) ?string {
 	if lhs.kind != .ident || lhs.value.len == 0 {
 		return none
 	}
-	mut rhs_type := t.optional_result_expr_type_name(rhs_id)
+	mut rhs_type := t.if_guard_optional_type_name(rhs_id)
 	if !t.is_optional_type_name(rhs_type) {
 		return none
 	}
@@ -1085,14 +1090,14 @@ fn (mut t Transformer) build_if_value_guard_chain(if_node flat.Node, target_name
 	if info := t.array_index_info(rhs_id) {
 		return t.build_array_index_if_value_guard_chain(if_node, lhs.value, info, target_name, target_type)
 	}
-	mut rhs_type := t.optional_result_expr_type_name(rhs_id)
+	mut rhs_type := t.if_guard_optional_type_name(rhs_id)
 	if !t.is_optional_type_name(rhs_type) {
 		return none
 	}
 	rhs_type = t.qualify_optional_type(rhs_type)
 	value_type := t.optional_base_type(rhs_type)
 	tmp_name := t.new_temp('if_guard')
-	rhs_expr := t.transform_expr(rhs_id)
+	rhs_expr := t.transform_optional_wrapper_expr(rhs_id)
 	mut result := []flat.NodeId{}
 	t.drain_pending(mut result)
 	result << t.make_decl_assign_typed(tmp_name, rhs_expr, rhs_type)
