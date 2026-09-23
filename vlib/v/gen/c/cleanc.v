@@ -14747,6 +14747,16 @@ fn (mut g FlatGen) const_expr_to_string(id flat.NodeId, seen []string) string {
 			child := g.const_expr_to_string(g.a.child(&node, 0), seen)
 			'(${child})'
 		}
+		.postfix {
+			// The `!` of a nested `[...]!` fixed array literal (e.g. a struct field value
+			// in a const fixed array) is V syntax only; the C initializer is the literal.
+			if node.op == .not && node.children_count == 1
+				&& g.a.child_node(&node, 0).kind == .array_literal {
+				g.const_expr_to_string(g.a.child(&node, 0), seen)
+			} else {
+				g.expr_to_string(id)
+			}
+		}
 		.cast_expr {
 			target_type := g.tc.parse_type(node.value)
 			mut ct := if node.value.starts_with('fn_ptr:') {
