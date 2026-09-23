@@ -2,6 +2,8 @@
 // a local initialized from an inferred generic call inside a generic body
 // must keep the specialized type when it is used in a later generic call.
 fn load[T](value &T) T {
+	// Dereferencing a `&T` needs `unsafe`; the pointer parameter mirrors the
+	// issue, where `T` is inferred from `&bar.value`.
 	return unsafe { *value }
 }
 
