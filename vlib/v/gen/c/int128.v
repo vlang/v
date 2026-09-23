@@ -344,6 +344,14 @@ fn (mut g FlatGen) gen_int128_cast(node flat.Node, target_type types.Type, sourc
 				'__v_u128_from_f64((${float_ct})('
 			}
 			open_count = 2
+		} else if g.int128_source_is_plain_literal(source_id) {
+			// A literal carries no sign of its own, so it widens as unsigned. Using
+			// the signed helper sign-extended it, which turned `u128(0x8000000000000000)`
+			// into 2^128 - 2^63 instead of 2^63. A minus prefix keeps the signed
+			// path, because `u128(-1)` is meant to wrap to the maximum.
+			name := if to_signed { '__v_i128_from_u64' } else { '__v_u128_from_u64' }
+			prefix = '${name}((u64)('
+			open_count = 2
 		} else if source_signedness_known(source_type) {
 			from_signed := int128_source_is_signed(source_type)
 			name := if to_signed {
@@ -364,27 +372,43 @@ fn (mut g FlatGen) gen_int128_cast(node flat.Node, target_type types.Type, sourc
 		return true
 	}
 	// A 128-bit source narrowing into a narrower primitive or a float.
-	if target_type is types.Primitive {
-		if target_type.props.has(.float) {
-			g.write(if source? { '__v_i128_to_f64' } else { '__v_u128_to_f64' })
-			g.write('(')
-			g.gen_expr(source_id)
-			g.write(')')
-			return true
-		}
-		if target_type.props.has(.integer) {
-			truncate := if source? { '__v_i128_to_i64' } else { '__v_u128_to_u64' }
-			g.write(if target_type.size == 64 {
-				'${truncate}('
-			} else {
-				'(int)${truncate}('
-			})
-			g.gen_expr(source_id)
-			g.write(')')
-			return true
-		}
+	if target_type is types.Primitive && target_type.props.has(.float) {
+		g.write(if source? { '__v_i128_to_f64' } else { '__v_u128_to_f64' })
+		g.write('(')
+		g.gen_expr(source_id)
+		g.write(')')
+		return true
+	}
+	if narrow := g.int128_narrow_c_type(target_type) {
+		truncate := if source? { '__v_i128_to_i64' } else { '__v_u128_to_u64' }
+		// The cast has to name the target's own C type. `(int)` kept every value
+		// that fits in 32 bits whole, so `u8(u128(300))` was 300 instead of 44.
+		g.write('(${narrow})${truncate}(')
+		g.gen_expr(source_id)
+		g.write(')')
+		return true
 	}
 	return false
+}
+
+// int128_narrow_c_type returns the C type a 128-bit value narrows into, or none
+// when the target is not a narrower integer. `isize`, `usize`, `rune` and `char`
+// are types of their own in V rather than primitives, so they need naming here
+// too, or the cast falls through to a C cast the struct representation rejects.
+fn (mut g FlatGen) int128_narrow_c_type(t types.Type) ?string {
+	clean := cgen_unalias_type(t)
+	match clean {
+		types.Primitive {
+			if clean.props.has(.integer) && clean.size > 0 && clean.size < 128 {
+				return g.value_c_type(t)
+			}
+		}
+		types.ISize, types.USize, types.Rune, types.Char {
+			return g.value_c_type(t)
+		}
+		else {}
+	}
+	return none
 }
 
 // int128_assign_base_op maps a compound assignment operator to the infix
@@ -437,6 +461,23 @@ fn (mut g FlatGen) gen_int128_compound_assign(op flat.Op, lhs_id flat.NodeId, rh
 		g.write('); ')
 		lhs_text = '*${addr_tmp}'
 	}
+	if base_op in [.div, .mod] && g.has_builtins {
+		// `/= 0` and `%= 0` have to panic like every other width. The divisor goes
+		// through a temporary because a divisor expression may have side effects and
+		// must run once, and it is checked before the helper sees it.
+		message := if base_op == .div { 'division by zero' } else { 'modulo by zero' }
+		divisor := g.tmp_name()
+		value_ct := g.value_c_type(lhs_type)
+		g.write('{ ${value_ct} ${divisor} = ')
+		g.gen_int128_operand(rhs_id, rhs_type, signed)
+		g.write('; if (__v_u128_is_zero(${divisor})) v_panic(_S("${message}")); ${lhs_text} = ${helper}(${lhs_text}, ${divisor}); ')
+		if lhs.kind == .ident {
+			g.write('} ')
+		} else {
+			g.write('} } ')
+		}
+		return true
+	}
 	g.write('${lhs_text} = ${helper}(${lhs_text}, ')
 	if base_op in int128_shift_ops {
 		g.gen_int128_shift_count(rhs_id, rhs_type)
@@ -449,6 +490,16 @@ fn (mut g FlatGen) gen_int128_compound_assign(op flat.Op, lhs_id flat.NodeId, rh
 		g.write('); } ')
 	}
 	return true
+}
+
+// int128_source_is_plain_literal reports whether a cast source is an integer
+// literal with no minus sign written in front of it.
+fn (g &FlatGen) int128_source_is_plain_literal(id flat.NodeId) bool {
+	if id < 0 || int(id) >= g.a.nodes.len {
+		return false
+	}
+	node := g.a.nodes[int(id)]
+	return node.kind == .int_literal && !node.value.starts_with('-')
 }
 
 // source_signedness_known reports whether the cast source is an integer whose

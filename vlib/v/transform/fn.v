@@ -4914,7 +4914,46 @@ fn (mut t Transformer) stringify_expr(expr_id flat.NodeId) flat.NodeId {
 			typ = typ[1..]
 		}
 	}
+	// An arithmetic node with a 128-bit operand resolves to the narrower side here,
+	// so the printer chosen for it printed only the low 64 bits. The value itself is
+	// already lowered correctly, so preferring the 128-bit side fixes the output
+	// without touching the arithmetic.
+	if typ in stringify_narrow_integer_types {
+		wide := t.stringify_wide_integer_operand(expr)
+		if wide.len > 0 {
+			typ = wide
+		}
+	}
 	return t.wrap_string_conversion(expr, typ)
+}
+
+const stringify_narrow_integer_types = ['int', 'i8', 'i16', 'i32', 'i64', 'isize', 'u8', 'u16',
+	'u32', 'u64', 'usize', 'rune']
+
+// stringify_wide_integer_operand returns `u128` or `i128` when the expression is
+// an operator node with an operand of that type.
+fn (t &Transformer) stringify_wide_integer_operand(id flat.NodeId) string {
+	if int(id) < 0 || int(id) >= t.a.nodes.len {
+		return ''
+	}
+	node := t.a.nodes[int(id)]
+	match node.kind {
+		.infix, .prefix, .paren {
+			for i in 0 .. node.children_count {
+				child := t.a.child(&node, i)
+				child_type := t.raw_checker_node_type(child)
+				if child_type in ['u128', 'i128'] {
+					return child_type
+				}
+				nested := t.stringify_wide_integer_operand(child)
+				if nested.len > 0 {
+					return nested
+				}
+			}
+		}
+		else {}
+	}
+	return ''
 }
 
 fn (t &Transformer) declared_selector_pointer_alias_type(id flat.NodeId) ?string {

@@ -9376,6 +9376,11 @@ fn call_arg_numeric_promotion_index(name string) int {
 		'u32' { 13 }
 		'u64' { 14 }
 		'usize' { 15 }
+		// 128-bit ranks above the 64-bit types, so a narrower integer widens into
+		// it. Without these rows the index is -1, no widening is offered, and an
+		// expression like `wide + 1` is typed `int` and cut to 64 bits.
+		'i128' { 16 }
+		'u128' { 17 }
 		'rune' { 22 }
 		else { -1 }
 	}
