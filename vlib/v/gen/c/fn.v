@@ -6612,7 +6612,12 @@ fn (mut g FlatGen) gen_call(id flat.NodeId, node flat.Node) {
 	}
 	resolved_target_name := g.tc.resolved_call_name(id) or { '' }
 	callee_is_fn_value := g.fn_value_call_param_types(g.a.child(&node, 0)) != none
-	if fn_node.kind == .ident && !callee_is_fn_value
+	// An unqualified panic() in a module that declares its own panic (such as
+	// a log.panic() Logger) resolves to that function, not to the builtin.
+	calls_module_panic := fn_name == 'panic' && ((resolved_target_name.contains('.')
+		&& resolved_target_name != 'builtin.panic')
+		|| g.tc.module_declares_fn(g.tc.cur_module, fn_name))
+	if fn_node.kind == .ident && !callee_is_fn_value && !calls_module_panic
 		&& (fn_name == 'panic' || target_name == 'builtin.panic'
 			|| resolved_target_name == 'builtin.panic') {
 		g.gen_builtin_panic_call(node)
@@ -7053,10 +7058,10 @@ fn (mut g FlatGen) gen_call(id flat.NodeId, node flat.Node) {
 			return
 		}
 	}
-	dispatch_name := if callee_is_fn_value
+	dispatch_name := if callee_is_fn_value || calls_module_panic
 		|| (fn_name in ['error', 'error_with_code'] && !g.expr_is_error_call(id)) {
 		// User modules can declare ordinary functions with the builtin error
-		// helper names. Only a call resolved to builtin constructs an IError.
+		// and panic names. Only a call resolved to builtin gets builtin lowering.
 		''
 	} else {
 		fn_name

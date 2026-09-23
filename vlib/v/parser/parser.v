@@ -2013,8 +2013,9 @@ fn (mut p Parser) register_pending_noreturn(name string) {
 	if p.cur_module.len > 0 && p.cur_module != 'main' && p.cur_module != 'builtin'
 		&& !name.starts_with('${p.cur_module}.') {
 		p.a.noreturn_fns['${p.cur_module}.${name}'] = true
+	} else {
+		p.a.noreturn_fns[name] = true
 	}
-	p.a.noreturn_fns[name] = true
 	p.pending_noreturn = false
 }
 

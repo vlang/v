@@ -2690,8 +2690,7 @@ fn (mut tc TypeChecker) check_fn_decl_semantics(fn_idx int, node flat.Node, file
 	}
 	if !fast_valid_build {
 		if has_body {
-			qname := checker_qualified_fn_name(module_name, node.value)
-			tc.check_noreturn_fn_semantics(flat.NodeId(fn_idx), node, qname)
+			tc.check_noreturn_fn_semantics(flat.NodeId(fn_idx), node, module_name)
 			tc.check_unreachable_after_noreturn_call(node)
 		}
 		if !is_specialized {

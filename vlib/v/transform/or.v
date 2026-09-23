@@ -2632,8 +2632,11 @@ fn (t &Transformer) is_noreturn_call(id flat.NodeId) bool {
 		if t.tc.resolved_call_never_returns(id) || resolved in t.a.noreturn_fns {
 			return true
 		}
+		resolved_module := resolved.all_before_last('.')
 		for candidate, _ in t.a.noreturn_fns {
-			if candidate.ends_with('.${resolved}') || resolved.ends_with('.${candidate}') {
+			if (candidate.contains('.') && resolved.ends_with('.${candidate}'))
+				|| (!candidate.contains('.') && resolved_module in ['main', 'builtin']
+					&& resolved == '${resolved_module}.${candidate}') {
 				return true
 			}
 		}
@@ -2641,6 +2644,7 @@ fn (t &Transformer) is_noreturn_call(id flat.NodeId) bool {
 	callee := t.a.child_node(&node, 0)
 	if callee.kind == .ident && callee.value in ['panic', 'exit', 'v_panic'] {
 		return t.var_type(callee.value).len == 0
+			&& !t.tc.module_declares_fn(t.cur_module, callee.value)
 	}
 	name := t.resolve_call_name(node)
 	return name in ['panic', 'exit', 'os.exit', 'C.exit', 'builtin.panic']
