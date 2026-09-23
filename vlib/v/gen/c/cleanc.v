@@ -486,6 +486,7 @@ mut:
 	global_linker_sections        map[string]string
 	global_cinit_names            map[string]bool
 	static_c_initializer          bool
+	const_init_depth              int                       // >0 while a const initializer is inlined; see ident_is_local_binding
 	shared_type_names             map[string]SharedTypeInfo // __shared__ wrapper name -> wrapped type metadata
 	shared_alias_pointer_shorts   map[string]string         // alias short name -> shared inner type; '' means ambiguous
 	shared_alias_index_ready      bool
@@ -13762,6 +13763,18 @@ fn (g &FlatGen) cur_scope_has_local_name(name string) bool {
 	return false
 }
 
+// ident_is_local_binding reports whether an unqualified ident names a param or
+// local of the function being generated. Such a binding hides every same-named
+// const, including another module's const that const_ref_name would otherwise
+// resolve through its unique short-name fallback. Idents inside an inlined
+// const initializer (const_init_depth > 0) always refer to consts.
+fn (g &FlatGen) ident_is_local_binding(name string) bool {
+	if g.const_init_depth > 0 {
+		return false
+	}
+	return g.current_param_type(name) != none || g.cur_scope_has_local_name(name)
+}
+
 fn (g &FlatGen) sizeof_global_selector_base(name string) ?string {
 	if name.len == 0 || name.contains('.') {
 		return none
@@ -14685,7 +14698,9 @@ fn (mut g FlatGen) const_expr_to_string(id flat.NodeId, seen []string) string {
 				if file := g.const_files[const_name] {
 					g.tc.cur_file = file
 				}
+				g.const_init_depth++
 				dep_expr := g.const_expr_to_string(g.const_vals[const_name], next_seen)
+				g.const_init_depth--
 				g.tc.cur_file = old_file
 				g.tc.cur_module = old_module
 				if trimmed_space(dep_expr).len > 0 {
@@ -23549,10 +23564,17 @@ fn (mut g FlatGen) write_fixed_array_initializer(mut builder strings.Builder, va
 	}
 	node := g.a.nodes[int(val_id)]
 	if node.kind in [.ident, .selector] {
-		const_name := g.const_ref_name_from_node(node)
+		const_name := if node.kind == .ident && g.ident_is_local_binding(node.value) {
+			''
+		} else {
+			g.const_ref_name_from_node(node)
+		}
 		if const_name.len > 0 {
 			if const_id := g.const_vals[const_name] {
-				return g.write_fixed_array_initializer(mut builder, const_id, fixed)
+				g.const_init_depth++
+				ok := g.write_fixed_array_initializer(mut builder, const_id, fixed)
+				g.const_init_depth--
+				return ok
 			}
 		}
 		if g.write_fixed_array_value_initializer(mut builder, val_id, fixed) {
@@ -23934,7 +23956,10 @@ fn (mut g FlatGen) is_const_expr_inner(id flat.NodeId, mut visiting map[int]bool
 			g.is_const_expr_inner(g.a.child(&node, 0), mut visiting)
 		}
 		.ident {
-			g.const_ref_is_static(node.value, mut visiting)
+			// A param or local is never a compile-time constant, even when a const
+			// with the same name exists in this or another module.
+			!g.ident_is_local_binding(node.value)
+				&& g.const_ref_is_static(node.value, mut visiting)
 		}
 		.selector {
 			const_name := g.const_ref_name_from_node(node)
@@ -23996,7 +24021,9 @@ fn (mut g FlatGen) const_ref_is_static(name string, mut visiting map[int]bool) b
 		return false
 	}
 	visiting[idx] = true
+	g.const_init_depth++
 	is_static := g.is_const_expr_inner(val_id, mut visiting)
+	g.const_init_depth--
 	visiting.delete(idx)
 	return is_static
 }
