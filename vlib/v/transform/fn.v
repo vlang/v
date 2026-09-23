@@ -4920,6 +4920,41 @@ fn (mut t Transformer) stringify_expr(expr_id flat.NodeId) flat.NodeId {
 const stringify_narrow_integer_types = ['int', 'i8', 'i16', 'i32', 'i64', 'isize', 'u8', 'u16',
 	'u32', 'u64', 'usize', 'rune']
 
+// wide_method_receiver_type returns `u128` or `i128` when the expression is an
+// arithmetic node this compiler lowers as a 128-bit value, and an empty string
+// otherwise. It stays shallow on purpose: `rune(nn).str()` is a narrow value even
+// though a 128-bit operand sits under the cast, and the deeper search above would
+// report the operand and print the wrong number.
+fn (t &Transformer) wide_method_receiver_type(id flat.NodeId) string {
+	if int(id) < 0 || int(id) >= t.a.nodes.len {
+		return ''
+	}
+	mut node := t.a.nodes[int(id)]
+	mut depth := 0
+	for node.kind == .paren && node.children_count > 0 && depth < 4 {
+		node = t.a.nodes[int(t.a.child(&node, 0))]
+		depth++
+	}
+	if node.kind == .infix {
+		if node.op in [.eq, .ne, .lt, .gt, .le, .ge, .logical_and, .logical_or] {
+			return ''
+		}
+	} else if node.kind == .prefix {
+		if node.op !in [.minus, .bit_not] {
+			return ''
+		}
+	} else {
+		return ''
+	}
+	for i in 0 .. node.children_count {
+		name := t.raw_checker_node_type(t.a.child(&node, i)).all_after_last('.')
+		if name in ['u128', 'i128'] {
+			return name
+		}
+	}
+	return ''
+}
+
 // stringify_wide_integer_operand returns `u128` or `i128` when the expression is
 // an operator node with an operand of that type.
 fn (t &Transformer) stringify_wide_integer_operand(id flat.NodeId) string {
@@ -10340,7 +10375,12 @@ fn (mut t Transformer) try_lower_array_method_call(call_id flat.NodeId, node fla
 		}
 		if !decoded_value_is_concrete {
 			mut raw_base_types := []string{}
-			for candidate in [t.raw_var_type_for_expr(base_id) or { '' }, t.node_type(base_id),
+			// A method called on an arithmetic expression that has a 128-bit operand
+			// belongs to the wider type: the checker recorded the expression under
+			// the narrower operand's type, so its `.str()` would call the 64-bit
+			// printer on a 128-bit value.
+			for candidate in [t.wide_method_receiver_type(base_id),
+				t.raw_var_type_for_expr(base_id) or { '' }, t.node_type(base_id),
 				t.lvalue_type(base_id)] {
 				clean := candidate.trim_left('&')
 				if clean.len > 0 && clean !in raw_base_types {

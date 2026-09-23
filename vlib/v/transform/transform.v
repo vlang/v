@@ -21953,6 +21953,13 @@ fn (mut t Transformer) transform_typeof_expr_mode(id flat.NodeId, node flat.Node
 		}
 	}
 	if typ.len == 0 {
+		// An arithmetic expression that mixes a 128-bit type with a narrower one is
+		// recorded under the narrower operand's type, so `typeof` would name `u64`
+		// for a value that is 128 bits wide. The promotion goes to the wider operand,
+		// and the operands still carry their own types here.
+		typ = t.wide_method_receiver_type(expr_id)
+	}
+	if typ.len == 0 {
 		typ = t.node_type(expr_id)
 	}
 	if typ.len == 0 {
@@ -22402,6 +22409,13 @@ fn (t &Transformer) typeof_type_name(node flat.Node) string {
 				typ = typ.trim_string_left('&')
 			}
 		}
+	}
+	if typ.len == 0 {
+		// An arithmetic expression that mixes a 128-bit type with a narrower one is
+		// recorded under the narrower operand's type, so `typeof` would name `u64`
+		// for a value that is 128 bits wide. The promotion always goes to the wider
+		// operand, and the operands still carry their own types here.
+		typ = t.stringify_wide_integer_operand(expr_id)
 	}
 	if typ.len == 0 {
 		typ = t.node_type(expr_id)

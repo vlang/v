@@ -713,10 +713,9 @@ fn main() {
 `str_base` covers the bases a specifier cannot spell out: `wide.str_base(2)` writes
 the value in binary, and `char_str` writes the code point in the low bits.
 
-Two things are still missing. `json` and `json2` have no encoder for either type,
-and a method called on a mixed-width expression picks the narrower receiver:
-`(x + u64(1)).str()` prints the low 64 bits, and on the struct representation it
-does not compile at all.
+`typeof` and a method called on a mixed-width expression name the wider operand:
+`typeof(x + u64(1))` is `u128`, and `(x + u64(1)).str()` keeps all of its digits.
+Only `json` and `json2` still have no encoder for either type.
 
 There is an exception to the rule that all operators
 in V must have values of the same type on both sides. A small primitive type
