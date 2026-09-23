@@ -12873,7 +12873,7 @@ fn (mut t Transformer) try_lower_sum_shared_field_assign(node flat.Node) ?[]flat
 		return none
 	}
 	resolved_sum = sum_candidate
-	stmt := t.build_sum_shared_field_assign_chain(base, sum_type, resolved_sum, variants, lhs.value, field_type, rhs, node.op, 0)
+	stmt := t.build_sum_shared_field_assign_chain(base, sum_type, resolved_sum, variants, lhs.value, field_type, rhs, node.op, 0, node.skip_ownership_drops())
 	return t.with_pending_before(stmt)
 }
 
@@ -13154,7 +13154,7 @@ fn (t &Transformer) struct_field_path_for_field_inner(struct_type string, field 
 }
 
 // build_sum_shared_field_assign_chain supports build_sum_shared_field_assign_chain handling.
-fn (mut t Transformer) build_sum_shared_field_assign_chain(base flat.NodeId, sum_type string, resolved_sum string, variants []string, field string, field_type string, rhs flat.NodeId, op flat.Op, idx int) flat.NodeId {
+fn (mut t Transformer) build_sum_shared_field_assign_chain(base flat.NodeId, sum_type string, resolved_sum string, variants []string, field string, field_type string, rhs flat.NodeId, op flat.Op, idx int, skip_ownership_drops bool) flat.NodeId {
 	if idx >= variants.len {
 		return t.make_empty()
 	}
@@ -13178,7 +13178,7 @@ fn (mut t Transformer) build_sum_shared_field_assign_chain(base flat.NodeId, sum
 		nested_sum := t.resolve_sum_name(qv)
 		if nested_variants := t.sum_types[nested_sum] {
 			nested_base_type := if use_ptr { '&${qv}' } else { qv }
-			then_stmt = t.build_sum_shared_field_assign_chain(variant_base, nested_base_type, nested_sum, nested_variants, field, nested_field_type, rhs, op, 0)
+			then_stmt = t.build_sum_shared_field_assign_chain(variant_base, nested_base_type, nested_sum, nested_variants, field, nested_field_type, rhs, op, 0, skip_ownership_drops)
 		}
 	} else {
 		field_lhs := t.struct_field_selector_for_type(variant_base, qv, field, field_type, use_ptr) or {
@@ -13188,10 +13188,14 @@ fn (mut t Transformer) build_sum_shared_field_assign_chain(base flat.NodeId, sum
 				.dot
 			})
 		}
-		then_stmt = t.make_assign_op(field_lhs, rhs, op)
+		then_stmt = if skip_ownership_drops && op == .assign {
+			t.make_assign_without_ownership_drop(field_lhs, rhs)
+		} else {
+			t.make_assign_op(field_lhs, rhs, op)
+		}
 	}
 	then_block := t.make_block([then_stmt])
-	else_stmt := t.build_sum_shared_field_assign_chain(base, sum_type, resolved_sum, variants, field, field_type, rhs, op, idx + 1)
+	else_stmt := t.build_sum_shared_field_assign_chain(base, sum_type, resolved_sum, variants, field, field_type, rhs, op, idx + 1, skip_ownership_drops)
 	return t.make_if(cond, then_block, else_stmt)
 }
 
