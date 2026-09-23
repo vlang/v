@@ -15737,8 +15737,8 @@ pub fn (tc &TypeChecker) resolve_type(id flat.NodeId) Type {
 	return tc.widen_mixed_integer_expr_type(id, typ)
 }
 
-const narrow_integer_type_names = ['int', 'i8', 'i16', 'i32', 'i64', 'isize', 'u8', 'byte',
-	'u16', 'u32', 'u64', 'usize', 'rune', 'char']
+const narrow_integer_type_names = ['int', 'i8', 'i16', 'i32', 'i64', 'isize', 'u8', 'byte', 'u16',
+	'u32', 'u64', 'usize', 'rune', 'char']
 
 // widen_mixed_integer_expr_type gives an arithmetic node the 128-bit type of its
 // widest operand. The type recorded for an infix in argument position is the
