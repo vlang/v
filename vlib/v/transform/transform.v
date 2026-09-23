@@ -21063,6 +21063,12 @@ fn (t &Transformer) raw_expr_type_without_smartcast(id flat.NodeId) string {
 		.selector {
 			return t.raw_selector_type_without_smartcast(id)
 		}
+		.paren {
+			if node.children_count == 1 {
+				return t.raw_expr_type_without_smartcast(t.a.child(&node, 0))
+			}
+			return t.normalize_type_alias(node.typ)
+		}
 		else {
 			return t.normalize_type_alias(node.typ)
 		}

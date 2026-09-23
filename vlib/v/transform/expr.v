@@ -2280,6 +2280,10 @@ fn (mut t Transformer) transform_optional_wrapper_expr(id flat.NodeId) flat.Node
 	mut source_id := id
 	for int(source_id) >= 0 && int(source_id) < t.a.nodes.len {
 		source := t.a.nodes[int(source_id)]
+		if source.kind == .paren && source.children_count == 1 {
+			source_id = t.a.child(&source, 0)
+			continue
+		}
 		if source.kind != .selector || source.value != 'value' || source.children_count == 0 {
 			break
 		}
@@ -2308,7 +2312,7 @@ fn (mut t Transformer) transform_optional_wrapper_expr(id flat.NodeId) flat.Node
 			return t.transform_optional_wrapper_index_expr(source_id, source, raw_type)
 		}
 	}
-	if t.is_optional_type_name(raw_type) && t.a.nodes[int(id)].kind in [.ident, .selector] {
+	if t.is_optional_type_name(raw_type) && t.a.nodes[int(source_id)].kind in [.ident, .selector] {
 		// An optional sum variant gets its wrapper from the active smartcast, not
 		// from the declared expression storage. Select that variant before testing
 		// `.ok`; otherwise this would emit `.ok` on the outer sum struct.

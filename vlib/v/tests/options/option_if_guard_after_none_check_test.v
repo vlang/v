@@ -58,6 +58,30 @@ fn test_return_else_if_guard_after_none_check_uses_optional_wrapper() {
 	assert (checked_title_else_if_return_expr(IfGuardAfterNoneCheck{}, false) or { err.msg() }) == 'title is required'
 }
 
+fn checked_parenthesized_title(req IfGuardAfterNoneCheck) !string {
+	if req.title == none {
+		return error('title is required')
+	}
+	if value := (req.title) {
+		return value.trim_space()
+	}
+	return error('title is required')
+}
+
+fn checked_parenthesized_title_expr(req IfGuardAfterNoneCheck) !string {
+	if req.title == none {
+		return error('title is required')
+	}
+	return if value := (req.title) { value.trim_space() } else { '' }
+}
+
+fn test_parenthesized_if_guards_after_none_check_use_optional_wrapper() {
+	req := IfGuardAfterNoneCheck{ title: '  hello  ' }
+	assert checked_parenthesized_title(req)! == 'hello'
+	assert checked_parenthesized_title_expr(req)! == 'hello'
+	assert (checked_parenthesized_title(IfGuardAfterNoneCheck{}) or { err.msg() }) == 'title is required'
+}
+
 struct PromotedOptionalFieldInner {
 mut:
 	value ?string

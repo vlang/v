@@ -8330,10 +8330,14 @@ fn (mut p Parser) validate_if_guard_rhs(rhs_id flat.NodeId, assign_end int) {
 	if int(rhs_id) < 0 || int(rhs_id) >= p.a.nodes.len {
 		return
 	}
-	rhs := p.a.nodes[int(rhs_id)]
+	mut core_id := rhs_id
+	for p.a.nodes[int(core_id)].kind == .paren && p.a.nodes[int(core_id)].children_count == 1 {
+		core_id = p.a.child(&p.a.nodes[int(core_id)], 0)
+	}
+	rhs := p.a.nodes[int(core_id)]
 	if rhs.kind !in [.call, .index, .prefix, .selector, .ident] {
 		mut start := assign_end
-		mut end := rhs.pos.end
+		mut end := p.a.nodes[int(rhs_id)].pos.end
 		source := p.s.src
 		start = int_max(0, int_min(start, source.len))
 		end = int_max(start, int_min(end, source.len))
