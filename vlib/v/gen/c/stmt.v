@@ -107,6 +107,43 @@ fn (g &FlatGen) is_map_entry_lvalue(id flat.NodeId) bool {
 	return base_type is types.Map
 }
 
+// gen_lowered_map_get_postfix_lvalue restores the writable map slot after an index read was
+// lowered before its enclosing postfix expression. `map__get_or_set` also preserves `m[k]++`
+// semantics for a missing key, instead of incrementing the temporary zero value.
+fn (mut g FlatGen) gen_lowered_map_get_postfix_lvalue(id flat.NodeId) bool {
+	if int(id) < 0 || int(id) >= g.a.nodes.len {
+		return false
+	}
+	deref := g.a.nodes[int(id)]
+	if deref.kind != .prefix || deref.op != .mul || deref.children_count != 1 {
+		return false
+	}
+	cast_id := g.a.child(&deref, 0)
+	cast := g.a.nodes[int(cast_id)]
+	if cast.kind != .cast_expr || cast.children_count != 1 || cast.value.len == 0 {
+		return false
+	}
+	call_id := g.a.child(&cast, 0)
+	call := g.a.nodes[int(call_id)]
+	if call.kind != .call || call.children_count != 4 {
+		return false
+	}
+	callee := g.a.child_node(&call, 0)
+	if callee.kind != .ident || callee.value != 'map__get' {
+		return false
+	}
+	ct := g.cast_c_type(g.tc.parse_type(cast.value))
+	g.write('(*(${ct})map__get_or_set(')
+	for i in 1 .. call.children_count {
+		if i > 1 {
+			g.write(', ')
+		}
+		g.gen_expr(g.a.child(&call, i))
+	}
+	g.write('))')
+	return true
+}
+
 // gen_expr_lvalue emits expr lvalue output for c.
 fn gen_expr_lvalue(mut g FlatGen, id flat.NodeId) {
 	node := g.a.nodes[int(id)]
@@ -3030,15 +3067,24 @@ fn (mut g FlatGen) gen_node(id flat.NodeId) {
 			g.gen_expr(condition_id)
 			g.writeln(')) {')
 			g.indent++
-			g.writeln('v3_eprint_lit("V panic: Assertion failed...\\n");')
-			if detail := g.assert_failure_detail(node, condition_id) {
-				g.writeln('v3_eprint_lit("${c_escape(detail)}\\n");')
-			}
-			g.gen_assert_infix_values(condition_id)
-			if node.children_count > 1 {
-				g.write('v3_eprintln_string(')
-				g.gen_expr(g.a.child(&node, 1))
-				g.writeln(');')
+			if g.test_files.len > 0 && g.is_current_test_fn_or_each_hook() {
+				g.gen_test_assert_failure(node)
+			} else {
+				g.writeln('v3_eprint_lit("V panic: Assertion failed...\\n");')
+				if detail := g.assert_failure_detail(node, condition_id) {
+					g.writeln('v3_eprint_lit("${c_escape(detail)}\\n");')
+				}
+				g.gen_assert_infix_values(condition_id)
+				has_message := if node.value.starts_with(assert_infix_values_marker) {
+					node.children_count >= 4
+				} else {
+					node.children_count > 1
+				}
+				if has_message {
+					g.write('v3_eprintln_string(')
+					g.gen_expr(g.a.child(&node, 1))
+					g.writeln(');')
+				}
 			}
 			if g.test_files.len > 0 {
 				if g.cur_fn_assert_continues {
@@ -3114,6 +3160,207 @@ fn (mut g FlatGen) gen_node(id flat.NodeId) {
 			g.gen_unsupported_node(node)
 		}
 	}
+}
+
+const assert_infix_values_marker = '__v3_assert_infix_values:'
+
+struct AssertSourceDetail {
+	header     string
+	expression string
+}
+
+fn (g &FlatGen) assert_source_detail(node flat.Node) ?AssertSourceDetail {
+	pos := node.pos
+	if !pos.is_valid() {
+		return none
+	}
+	file := g.a.source_files[pos.id] or { return none }
+	source := os.read_file(file.name) or { return none }
+	start := int_max(0, int_min(source.len, pos.offset))
+	end := int_max(start, int_min(source.len, pos.end))
+	if start >= end {
+		return none
+	}
+	line := source[..start].count('\n') + 1
+	mut expression := source[start..end].trim_space()
+	if expression.starts_with('assert ') {
+		expression = expression['assert '.len..]
+	}
+	return AssertSourceDetail{
+		header:     '${file.name}:${line}: fn ${g.cur_fn_name}'
+		expression: format_assert_source_expression(expression)
+	}
+}
+
+fn format_assert_source_expression(source string) string {
+	mut result := strings.new_builder(source.len + 8)
+	mut quote := u8(0)
+	mut escaped := false
+	mut i := 0
+	for i < source.len {
+		ch := source[i]
+		if quote != 0 {
+			result.write_u8(ch)
+			if escaped {
+				escaped = false
+			} else if ch == `\\` {
+				escaped = true
+			} else if ch == quote {
+				quote = 0
+			}
+			i++
+			continue
+		}
+		if ch in [`'`, `"`] || ch == 96 {
+			quote = ch
+			result.write_u8(ch)
+			i++
+			continue
+		}
+		if ch == `.` && i + 1 < source.len && source[i + 1] == `.` {
+			for result.len > 0 && result.last() in [` `, `\t`] {
+				result.go_back(1)
+			}
+			result.write_string(' .. ')
+			i += 2
+			for i < source.len && source[i] in [` `, `\t`] {
+				i++
+			}
+			continue
+		}
+		result.write_u8(ch)
+		i++
+	}
+	return result.str()
+}
+
+fn (mut g FlatGen) gen_assert_value_string(id flat.NodeId) {
+	typ := g.usable_expr_type(id)
+	expr := g.expr_to_string_with_expected_type(id, typ)
+	if !g.assert_value_type_is_compact(typ) {
+		g.write(g.interface_str_lit('<value>'))
+		return
+	}
+	mut stack := []string{}
+	value := g.interface_implicit_str_expr(typ, expr, false, mut stack) or {
+		g.interface_str_lit('<value>')
+	}
+	g.write(value)
+}
+
+fn (g &FlatGen) assert_value_type_is_compact(typ types.Type) bool {
+	mut budget := AssertValueTypeBudget{
+		remaining: 64
+	}
+	return g.consume_assert_value_type_budget(typ, mut budget)
+}
+
+struct AssertValueTypeBudget {
+mut:
+	remaining int
+	stack     []string
+}
+
+fn (g &FlatGen) consume_assert_value_type_budget(typ types.Type, mut budget AssertValueTypeBudget) bool {
+	budget.remaining--
+	if budget.remaining < 0 {
+		return false
+	}
+	clean := g.interface_unaliased_type(typ)
+	match clean {
+		types.Pointer, types.OptionType, types.ResultType {
+			return g.consume_assert_value_type_budget(clean.base_type, mut budget)
+		}
+		types.Array {
+			return g.consume_assert_value_type_budget(clean.elem_type, mut budget)
+		}
+		types.ArrayFixed {
+			return g.consume_assert_value_type_budget(clean.elem_type, mut budget)
+		}
+		types.Map {
+			return g.consume_assert_value_type_budget(clean.key_type, mut budget)
+				&& g.consume_assert_value_type_budget(clean.value_type, mut budget)
+		}
+		types.Struct {
+			key := 'struct:${clean.name}'
+			if key in budget.stack {
+				return true
+			}
+			fields := g.struct_fields_for_type(clean.name) or { return true }
+			budget.remaining -= fields.len
+			if budget.remaining < 0 {
+				return false
+			}
+			budget.stack << key
+			defer {
+				budget.stack.delete_last()
+			}
+			for field in fields {
+				if !g.consume_assert_value_type_budget(field.typ, mut budget) {
+					return false
+				}
+			}
+		}
+		types.SumType {
+			name := g.resolve_sum_name(clean.name)
+			key := 'sum:${name}'
+			if key in budget.stack {
+				return true
+			}
+			variants := g.tc.sum_types[name] or { return true }
+			budget.remaining -= variants.len
+			if budget.remaining < 0 {
+				return false
+			}
+			budget.stack << key
+			defer {
+				budget.stack.delete_last()
+			}
+			for variant in variants {
+				variant_type := g.tc.parse_type(g.resolve_variant(name, variant))
+				if !g.consume_assert_value_type_budget(variant_type, mut budget) {
+					return false
+				}
+			}
+		}
+		else {}
+	}
+	return true
+}
+
+fn (mut g FlatGen) gen_test_assert_failure(node flat.Node) {
+	detail := g.assert_source_detail(node) or {
+		g.writeln('v3_eprint_lit("Assertion failed\\n");')
+		return
+	}
+	g.writeln('v3_eprint_lit("${c_escape(detail.header)}\\n");')
+	has_values := node.value.starts_with(assert_infix_values_marker)
+	if !has_values || node.children_count < 3 {
+		g.writeln('v3_eprint_lit("    assert ${c_escape(detail.expression)}\\n");')
+		return
+	}
+	lhs_id := g.a.child(&node, node.children_count - 2)
+	rhs_id := g.a.child(&node, node.children_count - 1)
+	lhs := g.tmp_name()
+	rhs := g.tmp_name()
+	g.write('string ${lhs} = ')
+	g.gen_assert_value_string(lhs_id)
+	g.writeln(';')
+	g.write('string ${rhs} = ')
+	g.gen_assert_value_string(rhs_id)
+	g.writeln(';')
+	g.writeln('v3_eprint_lit("   > assert ${c_escape(detail.expression)}\\n");')
+	g.writeln('fprintf(stderr, "     Left value (len: %lld): `%.*s`\\n", (long long)${lhs}.len, (int)${lhs}.len, (char*)${lhs}.str);')
+	g.writeln('fprintf(stderr, "    Right value (len: %lld): `%.*s`\\n", (long long)${rhs}.len, (int)${rhs}.len, (char*)${rhs}.str);')
+	has_message := node.children_count >= 4
+	if has_message {
+		message := g.tmp_name()
+		g.write('string ${message} = ')
+		g.gen_expr(g.a.child(&node, 1))
+		g.writeln(';')
+		g.writeln('fprintf(stderr, "        Message: %.*s\\n", (int)${message}.len, (char*)${message}.str);')
+	}
+	g.writeln('v3_eprint_lit("\\n");')
 }
 
 fn (mut g FlatGen) gen_unsupported_node(node flat.Node) {
@@ -4454,6 +4701,18 @@ fn (mut g FlatGen) gen_debugger_stmt(node flat.Node) {
 		mut value_type := v.typ
 		mut display_type := debugger_type_name(v.typ)
 		mut expr := g.debugger_var_expr(v.name)
+		if semantic_type := g.local_indirect_value_type(v.name) {
+			value_type = semantic_type
+			display_type = debugger_type_name(semantic_type)
+			expr = '*(${expr})'
+		} else if g.current_param_is_mut(v.name) {
+			expr = '*(${expr})'
+			if v.typ is types.Pointer && !(g.cur_explicit_mut_pointer_params[v.name] or {
+				false
+			}) {
+				value_type = v.typ.base_type
+			}
+		}
 		if smartcast := smartcast_vars[v.name] {
 			value_type = g.tc.parse_canonical_type(smartcast.value_type)
 			display_type = smartcast.display_type

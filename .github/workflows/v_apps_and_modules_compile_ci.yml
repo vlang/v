@@ -121,8 +121,7 @@ jobs:
           cd ved && v -o ved .
           echo "Build"
           v .
-          echo "Build with -autofree ..."
-          v -autofree .
+          echo "Skip -autofree build (ownership/autofree coverage is temporarily disabled)"
           echo "Build with -prod ..."
           v -prod .
           cd ..

@@ -569,6 +569,7 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 	}
 	if a.nodes.any(it.kind == .debugger_stmt) {
 		enqueue('debug.Debugger.interact', mut used, mut queue)
+		enqueue_debugger_custom_str_methods(tc, mut used, mut queue)
 	}
 	// Trace calls are injected by Cgen after AST reachability has been computed,
 	// so retain their two runtime entry points whenever the debug module exists.
@@ -2553,6 +2554,18 @@ fn enqueue_detected_runtime_helpers(a &flat.FlatAst, tc &types.TypeChecker, mut 
 					}
 				}
 			}
+			.assert_stmt {
+				if node.children_count > 0 {
+					condition := a.child_node(&node, 0)
+					if condition.kind == .infix && condition.children_count >= 2
+						&& condition.op !in [.logical_and, .logical_or] {
+						for operand in 0 .. 2 {
+							enqueue_stringified_custom_str_method(a.child(condition, operand),
+								cur_module, tc, auto_str_skipped_fields, mut used, mut queue)
+						}
+					}
+				}
+			}
 			.in_expr {
 				if node.children_count >= 2 {
 					lhs_id := a.child(&node, 0)
@@ -3130,6 +3143,25 @@ fn markused_type_has_custom_str(name string, cur_module string, tc &types.TypeCh
 		}
 	}
 	return false
+}
+
+// enqueue_debugger_custom_str_methods retains formatters that debugger scope rendering may call.
+// Those calls are synthesized by cgen after ordinary AST reachability has been computed.
+fn enqueue_debugger_custom_str_methods(tc &types.TypeChecker, mut used map[string]bool, mut queue []string) {
+	for method, ret_type in tc.fn_ret_types {
+		if method.all_after_last('.') != 'str' || ret_type.name() != 'string' {
+			continue
+		}
+		params := tc.fn_param_types[method] or { continue }
+		if params.len != 1 {
+			continue
+		}
+		enqueue(method, mut used, mut queue)
+		lowered := markused_c_name(method)
+		if lowered != method {
+			enqueue(lowered, mut used, mut queue)
+		}
+	}
 }
 
 fn markused_struct_fields(name string, tc &types.TypeChecker) []types.StructField {

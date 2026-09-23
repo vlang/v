@@ -348,7 +348,7 @@ fn external_tool_runtime_args(command string, prefix_args []string, command_args
 	// options for the replacement compiler, not just for the launcher helper.
 	// `v test` needs them for each test compilation and its failure reproduction command.
 	// Keep those options visible after the launcher has built the cached executable.
-	if command in ['build-tools', 'self', 'test'] {
+	if command in ['build-examples', 'build-tools', 'self', 'test', 'test-self'] {
 		tool_args << prefix_args
 	}
 	tool_args << command_args

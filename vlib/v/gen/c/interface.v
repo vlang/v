@@ -1769,7 +1769,16 @@ fn (g &FlatGen) should_emit_interface_dispatch(iface_name string, method string)
 		return false
 	}
 	if g.cache_split {
-		return true
+		decl_key := g.interface_method_signature_key(iface_name, method) or { '' }
+		if source_file := g.tc.fn_type_files[decl_key] {
+			// A cached object can call an interface dispatch from a function body that
+			// is absent from its public header. Source declarations still have their
+			// bodies available to markused and should obey the ordinary reachability
+			// filter below.
+			if source_file.ends_with('.vh') {
+				return true
+			}
+		}
 	}
 	if g.interface_name_is_specialized(iface_name) {
 		return true
@@ -2791,6 +2800,14 @@ fn (mut g FlatGen) interface_struct_str_expr(struct_name string, expr string, mu
 
 fn (mut g FlatGen) interface_sum_str_expr(sum_type types.SumType, expr string, mut stack []string) ?string {
 	sum_name := g.resolve_sum_name(sum_type.name)
+	stack_key := 'sum:${sum_name}'
+	if stack_key in stack {
+		return none
+	}
+	stack << stack_key
+	defer {
+		stack.delete_last()
+	}
 	variants := g.tc.sum_types[sum_name] or { return none }
 	ct := g.tc.c_type(sum_type)
 	tmp := g.interface_tmp('iface_str_sum')

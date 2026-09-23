@@ -8542,6 +8542,18 @@ fn (mut tc TypeChecker) resolve_call_info_uncached(id flat.NodeId, node flat.Nod
 					return info
 				}
 			}
+			// Every aggregate has its own implicit string representation. An embedded
+			// field's custom `str()` method must not replace the outer aggregate's
+			// auto-generated method when the outer type has no direct override.
+			if fn_node.value == 'str' && clean is Struct {
+				return CallInfo{
+					name:         '${type_name}.str'
+					params:       tarr1(base_type)
+					return_type:  Type(string_)
+					has_receiver: true
+					params_known: true
+				}
+			}
 			if info := tc.embedded_method_call_info(type_name, fn_node.value) {
 				return info
 			}
@@ -13987,7 +13999,8 @@ fn (mut tc TypeChecker) check_call_arg_types(id flat.NodeId, node flat.Node, inf
 			}
 			continue
 		}
-		if fn_param_is_voidptr_type(expected) && unalias_type(actual) is Struct {
+		if fn_param_is_voidptr_type(expected) && unalias_type(actual) is Struct
+			&& !json_runtime_voidptr_accepts_arg(info.name, param_idx, expected, actual) {
 			tc.record_warning_at(.call_arg_mismatch, 'automatic ${unalias_type(actual).name()} referencing/dereferencing into voidptr is deprecated and will be removed soon; use `foo(&x)` instead of `foo(x)`', arg_id, tc.call_argument_diagnostic_pos(arg_id))
 		}
 		// An untyped nil local retains Nil/voidptr until its call context is known.

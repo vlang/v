@@ -9352,7 +9352,10 @@ fn (mut tc TypeChecker) check_result_propagation(id flat.NodeId, source_id flat.
 	source_type := tc.resolve_type(source_id)
 	clean_source_type := unalias_type(source_type)
 	clean_return_type := unalias_type(tc.fn_context.return_type)
-	if clean_source_type is OptionType {
+	// `array[index]!` handles both a failed bounds check and an optional
+	// element. The index expression is therefore a Result propagation site
+	// even when its resolved element type is an Option.
+	if clean_source_type is OptionType && source.kind != .index {
 		tc.record_error_at(.return_mismatch, 'to propagate a Result, the call must also return a Result type', id, tc.propagation_operator_pos(source_id, id, '!'))
 		return
 	}

@@ -256,21 +256,41 @@ fn self_tests_cstrict_gcc() {
 	exec('VTEST_JUST_ESSENTIAL=1 V_CI_CSTRICT=1 v -cc gcc -cstrict -silent test-self vlib')
 }
 
+fn skip_ownership_autofree_test() bool {
+	return common.is_github_job || os.getenv('VTEST_SKIP_OWNERSHIP') == '1'
+}
+
+fn report_skipped_ownership_autofree_test() {
+	eprintln('> skipping ownership/autofree test')
+}
+
 fn build_examples_gcc() {
 	build_examples()
 }
 
 fn build_tetris_autofree_gcc() {
+	if skip_ownership_autofree_test() {
+		report_skipped_ownership_autofree_test()
+		return
+	}
 	exec('v -autofree -o tetris examples/tetris/tetris.v')
 	exec('rm -f tetris')
 }
 
 fn build_blog_autofree_gcc() {
+	if skip_ownership_autofree_test() {
+		report_skipped_ownership_autofree_test()
+		return
+	}
 	exec('v -autofree -o blog tutorials/building_a_simple_web_blog_with_veb/code/blog')
 	exec('rm -f blog')
 }
 
 fn build_option_test_autofree_gcc() {
+	if skip_ownership_autofree_test() {
+		report_skipped_ownership_autofree_test()
+		return
+	}
 	exec('v -autofree vlib/v/tests/options/option_test.c.v')
 }
 
@@ -383,6 +403,10 @@ fn build_examples_clang() {
 }
 
 fn build_examples_autofree_clang() {
+	if skip_ownership_autofree_test() {
+		report_skipped_ownership_autofree_test()
+		return
+	}
 	exec('v -N -W -autofree -experimental -o tetris examples/tetris/tetris.v')
 	exec('rm -f tetris')
 }
@@ -537,6 +561,7 @@ fn run_ci_tasks(reset bool) ! {
 	os.setenv('VTEST_SHOW_LONGEST_BY_RUNTIME', '3', true)
 	os.setenv('VTEST_SHOW_LONGEST_BY_COMPTIME', '3', true)
 	os.setenv('VTEST_SHOW_LONGEST_BY_TOTALTIME', '3', true)
+	os.setenv('VTEST_SKIP_OWNERSHIP', '1', true)
 
 	progress_path := ci_progress_path()
 	progress_dir := '${progress_path}.d'

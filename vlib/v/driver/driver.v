@@ -122,7 +122,20 @@ const v3_vvmrc_skip_env = 'V_SKIP_VVMRC'
 const v3_vvmrc_stop_paths = ['.git', '.hg', '.svn', '.v.mod.stop']
 const v3_crun_build_identity_env = 'V3_CRUN_BUILD_IDENTITY'
 const v3_internal_restart_env = 'V3_INTERNAL_RESTART'
+const v3_internal_parser_diagnostics_printed_flag = '-v3-internal-parser-diagnostics-printed'
 const v3_embedded_env = 'V_MACOS_V3_EMBEDDED'
+
+fn v3_parser_diagnostics_printed(value bool) bool {
+	// The restart helpers are also called from cache preparation functions, so
+	// retain this process-local bit without threading it through every cache path.
+	unsafe {
+		mut static printed := false
+		if value {
+			printed = true
+		}
+		return printed
+	}
+}
 
 struct V3ModuleCacheState {
 	manager             modulecache.Manager
@@ -239,22 +252,16 @@ fn tcc_atomic_s_arg(prefs &pref.Preferences) string {
 }
 
 // tcc_compiler_identity describes which compiler build a cached object came
-// from. Hashing the whole executable on every link would cost more than the
-// object cache saves, so stat metadata stands in for its contents: inode, size
-// and nanosecond mtime/ctime all move when thirdparty/tcc is rebuilt, pulled or
-// reinstalled. Size with a second-resolution mtime does not - it cannot tell an
-// in-place rebuild to the same size within one second from no change at all, nor
-// an install that preserves mtime - and reusing the object across that would
-// recreate the incompatible-object failure this key exists to prevent.
-// Platforms without that metadata fall back to hashing the executable, which is
-// exact; only they pay for the read.
+// from. Stat metadata scopes the identity to a particular file, while the
+// content signature also separates same-size in-place rebuilds on filesystems
+// whose timestamp clock has not advanced between writes. Reusing the object
+// across those builds would recreate the incompatible-object failure this key
+// exists to prevent.
 fn tcc_compiler_identity(tcc_path string) string {
 	resolved := os.real_path(os.find_abs_path_of_executable(tcc_path) or { tcc_path })
 	metadata := modulecache.file_metadata_signature(resolved)
-	if metadata.len > 0 {
-		return '${resolved}\x00${metadata}'
-	}
-	return '${resolved}\x00${modulecache.file_signature(resolved)}'
+	content := modulecache.file_signature(resolved)
+	return '${resolved}\x00${metadata}\x00${content}'
 }
 
 // tcc_atomic_object_key names the cached atomic.S object. Only the compiler that
@@ -9080,6 +9087,7 @@ pub fn run(args []string) {
 	mut silent := false
 	mut skip_notices := false
 	mut is_repl := false
+	mut parser_diagnostics_already_printed := false
 	mut show_test_stats := v3_environment_show_test_stats()
 	mut warn_impure_v := false
 	mut warn_about_allocs := false
@@ -9476,6 +9484,9 @@ pub fn run(args []string) {
 			// unused-code notices while the snippet is being assembled.
 			is_repl = true
 			i++
+		} else if args[i] == v3_internal_parser_diagnostics_printed_flag {
+			parser_diagnostics_already_printed = true
+			i++
 		} else if args[i] == '-check-overflow' {
 			check_overflow = true
 			i++
@@ -9548,6 +9559,11 @@ pub fn run(args []string) {
 		} else if args[i] == '-W' {
 			warns_are_errors = true
 			i++
+		} else if args[i] == '-w' {
+			// Per-test flags are appended after suite-wide flags, so `-w` must
+			// neutralize an earlier `-W` for tests with known warnings.
+			warns_are_errors = false
+			i++
 		} else if args[i] == '-N' {
 			notes_are_errors = true
 			i++
@@ -9567,7 +9583,7 @@ pub fn run(args []string) {
 		} else if args[i] == '-no-retry-compilation' {
 			retry_compilation = false
 			i++
-		} else if args[i] in ['-show-timings', '-w', '-usecache', '-new-generic-solver', '-progress',
+		} else if args[i] in ['-show-timings', '-usecache', '-new-generic-solver', '-progress',
 			'-use-os-system-to-run'] {
 			// v3 already reports phase metrics, suppresses C warnings, leaves
 			// explicit-output tests unrun, caches modules by default, and uses
@@ -10590,7 +10606,8 @@ pub fn run(args []string) {
 	if ownership_mode && 'ownership' !in builtin_defines {
 		builtin_defines << 'ownership'
 	}
-	mut builtin_files := prefs.without_excluded(pref.get_v_files_from_dir_for_target(builtin_dir, builtin_defines, prefs.target))
+	mut builtin_files := prefs.without_excluded(pref.get_v_files_from_dir_for_target(builtin_dir,
+		builtin_defines, prefs.target))
 	// `map.v` retains the regular-backend layout so the stable V1 fallback can
 	// compile tools against the current tree. V3 selects its pointer-sized map
 	// implementation through the internal backend define above.
@@ -10836,7 +10853,9 @@ pub fn run(args []string) {
 		if parser_has_errors && macos_v3_fallback_suppresses_diagnostics(macos_v3_fallback_file) {
 			exit(1)
 		}
-		if !silent || !only_check_syntax {
+		mut printed_parser_diagnostic := false
+		if (!silent || !only_check_syntax)
+			&& (!parser_diagnostics_already_printed || parser_has_errors) {
 			for diagnostic in p.diagnostics {
 				if skip_notices && diagnostic.severity == 'notice:' {
 					continue
@@ -10851,6 +10870,7 @@ pub fn run(args []string) {
 						'error:'
 					}
 					eprintln(compiler_errors.formatted_parser_diagnostic(severity, diagnostic.message, a, diagnostic.pos))
+					printed_parser_diagnostic = true
 					print_type_diagnostic_details(diagnostic.details)
 					if diagnostic.detail_pos.is_valid() {
 						eprintln('Details: ')
@@ -10869,11 +10889,15 @@ pub fn run(args []string) {
 						'error:'
 					}
 					eprintln('${diagnostic.file}:${diagnostic.line}:${diagnostic.column}: ${severity} ${diagnostic.message}')
+					printed_parser_diagnostic = true
 					if fatal_errors && severity == 'error:' {
 						break
 					}
 				}
 			}
+		}
+		if printed_parser_diagnostic {
+			v3_parser_diagnostics_printed(true)
 		}
 		if parser_has_errors {
 			exit(1)
@@ -11203,8 +11227,9 @@ pub fn run(args []string) {
 		done:          native_inputs_done
 		release:       native_inputs_release
 	}
+	mut native_input_threads := []thread{cap: 1}
 	if native_inputs_overlap {
-		spawn prepare_v3_checker_native_inputs_thread(&native_inputs_args)
+		native_input_threads << spawn prepare_v3_checker_native_inputs_thread(&native_inputs_args)
 	} else if native_inputs_needed {
 		if cache_state.manager.enabled {
 			_ = prepare_v3_cache_external_inputs_scoped(mut cache_state, a, prefs, user_files, cache_c_flags, c_compiler, scope_prealloc_stages)
@@ -11304,6 +11329,7 @@ pub fn run(args []string) {
 			cache_state.external_missing_paths =
 				clone_string_list(cache_state.external_missing_paths)
 			native_inputs_release <- true
+			native_input_threads.wait()
 			if backend == 'c' && cache_state.external_inputs_ready {
 				fallback_report_sources = macos_v3_fallback_report_inputs(fallback_report_sources, &cache_state)
 				_ = stage_macos_v3_fallback_source_digests(macos_v3_c_error_dir, fallback_report_sources)
@@ -13698,7 +13724,8 @@ fn builtin_bundle_source_files(prefs &pref.Preferences, builtin_files []string) 
 		if !os.is_dir(dir) {
 			continue
 		}
-		for file in prefs.without_excluded(pref.get_v_files_from_dir_for_target(dir, prefs.user_defines, prefs.target)) {
+		for file in prefs.without_excluded(pref.get_v_files_from_dir_for_target(dir, prefs.user_defines,
+			prefs.target)) {
 			key := os.real_path(file)
 			if seen[key] {
 				continue
@@ -14675,6 +14702,10 @@ fn restart_v3_without_cache() {
 fn restart_v3_with_args(extra_args []string) {
 	executable := os.executable()
 	mut args := extra_args.clone()
+	if v3_parser_diagnostics_printed(false)
+		&& v3_internal_parser_diagnostics_printed_flag !in os.args {
+		args << v3_internal_parser_diagnostics_printed_flag
+	}
 	args << os.args[1..]
 	os.setenv(v3_internal_restart_env, '1', true)
 	$if js || windows {
@@ -15352,7 +15383,8 @@ fn collect_v3_directory_user_files_rec(module_root string, dir string, prefs &pr
 }
 
 fn append_v3_directory_user_files(dir string, prefs &pref.Preferences, is_test_command bool, mut seen map[string]bool, mut files []string) {
-	for file in prefs.without_excluded(pref.get_v_files_from_dir_for_target(dir, prefs.user_defines, prefs.target)) {
+	for file in prefs.without_excluded(pref.get_v_files_from_dir_for_target(dir, prefs.user_defines,
+		prefs.target)) {
 		append_unique_file(mut files, mut seen, file)
 	}
 	if is_test_command {
@@ -15415,7 +15447,8 @@ fn expand_single_test_file_inputs(user_files []string, prefs &pref.Preferences) 
 
 fn same_dir_module_source_files(test_file string, module_name string, prefs &pref.Preferences) []string {
 	dir := os.dir(test_file)
-	mut all_files := prefs.without_excluded(pref.get_v_files_from_dir_for_target(dir, prefs.user_defines, prefs.target))
+	mut all_files := prefs.without_excluded(pref.get_v_files_from_dir_for_target(dir,
+		prefs.user_defines, prefs.target))
 	// A `subdirs` manifest makes several directories one source module. When a
 	// test file sits beside a source in one of those virtual directories, include
 	// the complete module instead of only its physical-directory siblings.
@@ -17525,7 +17558,8 @@ fn eager_selfhost_resolve_thread(arg voidptr) voidptr {
 	result.dir = resolve_project_or_pref_module_path(prefs, result.path, result.importing_file, result.project_root, mut local_cache)
 	if result.dir.len > 0 && os.is_dir(result.dir) {
 		result.real_dir = os.real_path(result.dir)
-		result.files = prefs.without_excluded(pref.get_v_files_from_dir_for_target(result.dir, prefs.user_defines, prefs.target))
+		result.files = prefs.without_excluded(pref.get_v_files_from_dir_for_target(result.dir,
+			prefs.user_defines, prefs.target))
 		if result.files.len > 0 {
 			result.identity = import_module_identity_with_path_cache(prefs, result.path, result.importing_file, result.project_root, result.dir, mut local_cache)
 		}
@@ -18103,7 +18137,8 @@ fn resolve_imports(mut a flat.FlatAst, mut p parser.Parser, prefs &pref.Preferen
 			}
 			if is_bundle_warmup_import && cache_state.bundle_valid {
 				warmup_dir := prefs.get_vlib_module_path(mod_name)
-				warmup_files := prefs.without_excluded(pref.get_v_files_from_dir_for_target(warmup_dir, prefs.user_defines, prefs.target))
+				warmup_files := prefs.without_excluded(pref.get_v_files_from_dir_for_target(warmup_dir,
+					prefs.user_defines, prefs.target))
 				if cache_state.manager.valid_header(mod_name, warmup_files) == none {
 					// The cached bundle may have been built while a project module
 					// shadowed this optional warmup import. An actual user import was
@@ -18163,7 +18198,8 @@ fn resolve_imports(mut a flat.FlatAst, mut p parser.Parser, prefs &pref.Preferen
 			mod_dir_exists := mod_dir.len > 0 && os.is_dir(mod_dir)
 			mod_files := if mod_dir_exists {
 				v3_directory_user_files(mod_dir, prefs, false, false) or {
-					prefs.without_excluded(pref.get_v_files_from_dir_for_target(mod_dir, prefs.user_defines, prefs.target))
+					prefs.without_excluded(pref.get_v_files_from_dir_for_target(mod_dir,
+						prefs.user_defines, prefs.target))
 				}
 			} else {
 				[]string{}
@@ -18681,7 +18717,8 @@ fn aliased_import_module_identity(prefs &pref.Preferences, import_path string, i
 	if os.real_path(requested_dir) == os.real_path(import_dir) {
 		return none
 	}
-	for file in prefs.without_excluded(pref.get_v_files_from_dir_for_target(import_dir, prefs.user_defines, prefs.target)) {
+	for file in prefs.without_excluded(pref.get_v_files_from_dir_for_target(import_dir,
+		prefs.user_defines, prefs.target)) {
 		module_name := declared_module_in_file(file)
 		if module_name.len > 0 {
 			return module_name
@@ -19057,7 +19094,8 @@ fn module_path_has_v_sources(path string, prefs &pref.Preferences) bool {
 		return false
 	}
 	source_root := v3_directory_source_root(path)
-	if prefs.without_excluded(pref.get_v_files_from_dir_for_target(source_root, prefs.user_defines, prefs.target)).len > 0 {
+	if prefs.without_excluded(pref.get_v_files_from_dir_for_target(source_root, prefs.user_defines,
+		prefs.target)).len > 0 {
 		return true
 	}
 	// A v.mod can expose one logical module from source-only subdirectories. The
@@ -19085,7 +19123,8 @@ fn module_subdir_has_v_sources(module_root string, dir string, prefs &pref.Prefe
 	if real_dir != module_root && os.is_file(os.join_path_single(real_dir, 'v.mod')) {
 		return false
 	}
-	if prefs.without_excluded(pref.get_v_files_from_dir_for_target(real_dir, prefs.user_defines, prefs.target)).len > 0 {
+	if prefs.without_excluded(pref.get_v_files_from_dir_for_target(real_dir, prefs.user_defines,
+		prefs.target)).len > 0 {
 		return true
 	}
 	entries := os.ls(real_dir) or { return false }

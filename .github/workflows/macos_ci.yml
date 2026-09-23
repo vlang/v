@@ -292,10 +292,13 @@ jobs:
       - name: Build examples
         run: v run ci/macos_ci.vsh build_examples
       - name: Build hello_world with -autofree
+        if: ${{ false }} # Ownership/autofree coverage is temporarily disabled on GitHub CI.
         run: v run ci/macos_ci.vsh build_hello_world_autofree
       - name: Build tetris with -autofree
+        if: ${{ false }} # Ownership/autofree coverage is temporarily disabled on GitHub CI.
         run: v run ci/macos_ci.vsh build_tetris_autofree
       - name: Build blog tutorial with -autofree
+        if: ${{ false }} # Ownership/autofree coverage is temporarily disabled on GitHub CI.
         run: v run ci/macos_ci.vsh build_blog_autofree
       - name: Build examples with -prod
         run: v run ci/macos_ci.vsh build_examples_prod

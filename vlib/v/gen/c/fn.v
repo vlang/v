@@ -803,6 +803,47 @@ fn (g &FlatGen) top_level_file_module_name(file_node flat.Node) string {
 	return ''
 }
 
+fn (mut g FlatGen) gen_top_level_asm() {
+	for file_idx in g.top_level_nodes() {
+		file_node := g.a.nodes[file_idx]
+		if file_node.kind != .file {
+			continue
+		}
+		for i in 0 .. file_node.children_count {
+			g.gen_top_level_asm_node(g.a.child(&file_node, i))
+		}
+	}
+}
+
+fn (mut g FlatGen) gen_top_level_asm_node(id flat.NodeId) {
+	if int(id) < 0 || int(id) >= g.a.nodes.len {
+		return
+	}
+	node := g.a.nodes[int(id)]
+	if node.kind == .asm_stmt {
+		g.gen_c_inline_asm_stmt(node)
+		return
+	}
+	if node.kind !in [.block, .comptime_if] {
+		return
+	}
+	if node.kind == .comptime_if && g.output_cross_c {
+		g.writeln('#if ${g.cross_c_condition(node.value)}')
+		if node.children_count > 0 {
+			g.gen_top_level_asm_node(g.a.child(&node, 0))
+		}
+		if node.children_count > 1 {
+			g.writeln('#else')
+			g.gen_top_level_asm_node(g.a.child(&node, 1))
+		}
+		g.writeln('#endif')
+		return
+	}
+	for i in 0 .. node.children_count {
+		g.gen_top_level_asm_node(g.a.child(&node, i))
+	}
+}
+
 fn (g &FlatGen) cgen_is_top_level_stmt(id flat.NodeId) bool {
 	if int(id) < 0 {
 		return false
@@ -1447,6 +1488,10 @@ fn (mut g FlatGen) direct_call_name(name string) string {
 		|| synthetic_name.starts_with('__v3_default_clone_') {
 		return g.cname(synthetic_name)
 	}
+	if name in ['builtin.map__set', 'builtin_map__set', 'builtin__map__set']
+		|| name == fn_decl_module_key('builtin', 'map.set') {
+		return 'map__set'
+	}
 	if abi_name := g.c_decl_abi_names[name] {
 		return abi_name
 	}
@@ -2033,6 +2078,11 @@ fn (g &FlatGen) fn_decl_noreturn_prefix(node_id flat.NodeId) string {
 
 fn (mut g FlatGen) write_method_c_name(id flat.NodeId, node flat.Node, method_name string) {
 	call_name := g.method_call_name_for_call(id, node, method_name)
+	if call_name in ['builtin.map__set', 'builtin_map__set', 'builtin__map__set']
+		|| call_name == fn_decl_module_key('builtin', 'map.set') {
+		g.write('map__set')
+		return
+	}
 	if node.children_count > 0 {
 		fn_node := g.a.child_node(&node, 0)
 		if fn_node.children_count > 0 {
@@ -4793,6 +4843,7 @@ fn (mut g FlatGen) gen_fn_in_module(node_id flat.NodeId, node flat.Node, module_
 	g.local_c_type_by_owner.clear()
 	g.local_pointer_alias_by_owner.clear()
 	g.local_pointer_alias_mut_param.clear()
+	g.local_indirect_value_by_owner.clear()
 	g.local_shared_storage_by_owner.clear()
 	g.shadowed_global_locals.clear()
 	g.local_fn_value_c_name_by_owner.clear()
@@ -5253,6 +5304,8 @@ fn (mut g FlatGen) gen_top_level_main(stmts []TopLevelStmt) {
 	g.local_pointer_storage_by_owner = map[string]bool{}
 	mut old_local_c_type_by_owner := g.local_c_type_by_owner.move()
 	g.local_c_type_by_owner = map[string]string{}
+	mut old_local_indirect_value_by_owner := g.local_indirect_value_by_owner.move()
+	g.local_indirect_value_by_owner = map[string]types.Type{}
 	mut old_local_pointer_alias_by_owner := g.local_pointer_alias_by_owner.move()
 	g.local_pointer_alias_by_owner = map[string]string{}
 	mut old_local_pointer_alias_mut_param := g.local_pointer_alias_mut_param.move()
@@ -5354,6 +5407,7 @@ fn (mut g FlatGen) gen_top_level_main(stmts []TopLevelStmt) {
 	g.ierror_owned_pointer_by_owner = old_ierror_owned_pointer_by_owner.move()
 	g.local_pointer_storage_by_owner = old_local_pointer_storage_by_owner.move()
 	g.local_c_type_by_owner = old_local_c_type_by_owner.move()
+	g.local_indirect_value_by_owner = old_local_indirect_value_by_owner.move()
 	g.local_pointer_alias_by_owner = old_local_pointer_alias_by_owner.move()
 	g.local_pointer_alias_mut_param = old_local_pointer_alias_mut_param.move()
 	g.local_shared_storage_by_owner = old_local_shared_storage_by_owner.move()

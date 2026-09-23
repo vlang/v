@@ -4850,7 +4850,8 @@ fn (mut t Transformer) stringify_expr(expr_id flat.NodeId) flat.NodeId {
 	// while the source binding still has its interface/sum type. Stringify the
 	// narrowed value instead of rebuilding the source container's auto-str.
 	key := t.expr_key(expr_id)
-	mut typ := if key.len > 0 && t.find_smartcast(key) != none {
+	smartcast := if key.len > 0 { t.find_smartcast(key) } else { none }
+	mut typ := if smartcast != none {
 		t.node_type(expr)
 	} else {
 		''
@@ -4915,7 +4916,17 @@ fn (mut t Transformer) stringify_expr(expr_id flat.NodeId) flat.NodeId {
 			typ = typ[1..]
 		}
 	}
-	return t.wrap_string_conversion(expr, typ)
+	converted := t.wrap_string_conversion(expr, typ)
+	if sc := smartcast {
+		// Interface payloads are exposed through their backing address while
+		// smartcasted. Preserve the reference marker used by V stringification,
+		// even when the concrete payload itself is stored in a boxed allocation.
+		if t.is_interface_type_name(sc.sum_type_name)
+			&& !t.smartcast_target_type(sc).trim_space().starts_with('&') {
+			return t.string_plus(t.make_string_literal('&'), converted)
+		}
+	}
+	return converted
 }
 
 fn (t &Transformer) declared_selector_pointer_alias_type(id flat.NodeId) ?string {
@@ -12444,14 +12455,23 @@ fn (mut t Transformer) try_lower_pointer_str_method_call(call_id flat.NodeId, no
 		return none
 	}
 	base_id := t.a.child(&fn_node, 0)
+	// A pointer to an interface keeps its declared pointer type inside a match branch,
+	// but the active smartcast selects the concrete receiver method. Resolve that first;
+	// otherwise the generic pointer stringifier calls the interface extension method
+	// again and boxes the already-narrowed value as an interface.
+	if smartcast_call := t.try_lower_smartcast_target_receiver_method_call(call_id, node) {
+		return smartcast_call
+	}
 	if smartcast_str := t.smartcast_sum_str_call(base_id) {
 		return smartcast_str
 	}
+	mut propagated_pointer_receiver := false
 	if unwrapped_type := t.or_expr_receiver_unwrapped_type(base_id) {
 		if decl_type_is_usable(unwrapped_type) && !t.generic_arg_is_unresolved(unwrapped_type)
 			&& !unwrapped_type.starts_with('&') {
 			return none
 		}
+		propagated_pointer_receiver = unwrapped_type.starts_with('&')
 	}
 	// Mutable for-in bindings and mutable parameters use pointer-backed storage,
 	// but an ordinary receiver expression is the auto-dereferenced value. Do not
@@ -12461,6 +12481,11 @@ fn (mut t Transformer) try_lower_pointer_str_method_call(call_id flat.NodeId, no
 	}
 	base_type := t.pointer_str_receiver_type(base_id) or { return none }
 	raw_alias_type := t.raw_alias_type_for_expr(base_id)
+	if raw_alias_type.len > 0 && !raw_alias_type.starts_with('&') {
+		if direct_alias_call := t.pointer_alias_direct_str_call(base_id, raw_alias_type) {
+			return direct_alias_call
+		}
+	}
 	if raw_alias_type.starts_with('&') {
 		if method_name := t.checker_selected_receiver_method_name(call_id, 'str') {
 			args := t.transform_receiver_method_args(node, base_id, method_name)
@@ -12477,7 +12502,8 @@ fn (mut t Transformer) try_lower_pointer_str_method_call(call_id flat.NodeId, no
 				return none
 			}
 			t.mark_fn_used_name(method_name)
-			return t.lower_ref_str_guarded(t.transform_expr(base_id), aggregate, !t.str_method_has_pointer_receiver(method_name), method_name, '&nil')
+			return t.lower_ref_str_guarded(t.transform_expr(base_id), aggregate, propagated_pointer_receiver
+				|| !t.str_method_has_pointer_receiver(method_name), method_name, '&nil')
 		}
 		return t.lower_ref_str_prefixed(t.transform_expr(base_id), aggregate)
 	}
@@ -12485,6 +12511,60 @@ fn (mut t Transformer) try_lower_pointer_str_method_call(call_id flat.NodeId, no
 		return t.lower_ref_collection_str(t.transform_expr(base_id), clean_type)
 	}
 	return t.wrap_string_conversion(t.transform_expr(base_id), base_type)
+}
+
+fn (mut t Transformer) pointer_alias_direct_str_call(base_id flat.NodeId, alias_name string) ?flat.NodeId {
+	if declaring_alias, str_fn := t.alias_custom_str_method_in_chain(alias_name) {
+		return t.make_pointer_alias_str_call(base_id, declaring_alias, str_fn)
+	}
+	mut current := alias_name.trim_space()
+	mut seen := map[string]bool{}
+	for current.len > 0 && !seen[current] {
+		seen[current] = true
+		_, target := t.lookup_str_alias(current) or { return none }
+		clean_target := target.trim_space()
+		if clean_target.starts_with('&') {
+			pointee := clean_target[1..].trim_space()
+			if declaring_alias, str_fn := t.alias_custom_str_method_in_chain(pointee) {
+				return t.make_pointer_alias_str_call(base_id, declaring_alias, str_fn)
+			}
+			return none
+		}
+		if !t.is_type_alias_name(clean_target) {
+			return none
+		}
+		current = clean_target
+	}
+	return none
+}
+
+fn (mut t Transformer) alias_custom_str_method_in_chain(alias_name string) ?(string, string) {
+	mut current := alias_name.trim_space()
+	mut seen := map[string]bool{}
+	for current.len > 0 && !seen[current] {
+		seen[current] = true
+		if str_fn := t.alias_custom_str_method_name(current) {
+			return current, str_fn
+		}
+		_, target := t.lookup_str_alias(current) or { return none }
+		clean_target := target.trim_space()
+		if clean_target.starts_with('&') || !t.is_type_alias_name(clean_target) {
+			return none
+		}
+		current = clean_target
+	}
+	return none
+}
+
+fn (mut t Transformer) make_pointer_alias_str_call(base_id flat.NodeId, declaring_alias string, str_fn string) flat.NodeId {
+	t.mark_fn_used_name(str_fn)
+	mut receiver := t.transform_expr(base_id)
+	declaring_base := t.alias_str_resolved_base_type(declaring_alias)
+	if !t.str_method_has_pointer_receiver(str_fn) && !declaring_base.starts_with('&') {
+		receiver = t.make_prefix(.mul, receiver)
+		t.set_node_typ(int(receiver), declaring_alias)
+	}
+	return t.make_generic_str_method_call(str_fn, generic_fn_decl_base_value(str_fn), [receiver])
 }
 
 fn (mut t Transformer) or_expr_receiver_unwrapped_type(id flat.NodeId) ?string {

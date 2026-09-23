@@ -323,8 +323,15 @@ fn (mut g FlatGen) precompute_consts_scoped() {
 
 fn parallel_type_decls_thread(arg voidptr) voidptr {
 	mut w := unsafe { &FlatGen(arg) }
+	// Body dispatchers fork from the master's checker while this task resolves
+	// declaration types. Some synchronous checker queries temporarily move
+	// function-local state such as `smartcasts`; use a private checker here so
+	// the snapshot observed by body workers remains immutable.
+	master_tc := w.tc
+	w.tc = w.clone_parallel_type_checker()
 	tdsw := time.new_stopwatch()
 	defer {
+		w.tc = master_tc
 		w.timing_profile('  [ttime]     cg typedecls   ${f64(tdsw.elapsed().microseconds()) / 1000.0:7.2f} ms (task)')
 	}
 	// This task uses the master generator from a pool thread, so memoize into
@@ -2916,6 +2923,7 @@ fn (g &FlatGen) new_parallel_worker_config(worker_id int, result_only bool) &Fla
 		w.local_pointer_storage_by_owner = map[string]bool{}
 		w.local_c_type_by_owner = map[string]string{}
 		w.local_raw_type_by_owner = map[string]string{}
+		w.local_indirect_value_by_owner = map[string]types.Type{}
 		w.local_shared_storage_by_owner = map[string]bool{}
 		w.local_fn_value_c_name_by_owner = map[string]string{}
 		w.default_value_stack = map[string]bool{}

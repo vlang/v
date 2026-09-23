@@ -395,9 +395,9 @@ fn test_blocked_file_response_stays_a_pipeline_boundary() ! {
 	defer {
 		os.rm(tmp) or {}
 	}
-	mut handled := 0
+	mut handled := &WorkerCounter{}
 	file_handler := fn [tmp, file_size, mut handled] (req HttpRequest) !HttpResponse {
-		handled++
+		handled.n++
 		path := req.buffer[req.path.start..req.path.start + req.path.len].bytestr()
 		if path == '/file' {
 			return HttpResponse{
@@ -432,20 +432,20 @@ fn test_blocked_file_response_stays_a_pipeline_boundary() ! {
 	req := 'GET /file HTTP/1.1\r\nHost: x\r\n\r\nGET /next HTTP/1.1\r\nHost: x\r\n\r\n'
 	assert C.send(client_fd, req.str, req.len, C.MSG_NOSIGNAL) == req.len
 	serve_conn(mut w, server_fd, mut cs)
-	assert handled == 1
+	assert handled.n == 1
 	assert cs.file_fd != -1
 	assert cs.read_buf.len > 0
 
 	mut response := ''
 	for _ in 0 .. 64 {
 		response += recv_available(client_fd)
-		if handled == 2 && !has_pending_response(cs) {
+		if handled.n == 2 && !has_pending_response(cs) {
 			break
 		}
 		handle_writable(mut w, server_fd)
 	}
 	response += recv_available(client_fd)
-	assert handled == 2
+	assert handled.n == 2
 	assert response.count('HTTP/1.1 200 OK') == 2, response[..if response.len < 512 {
 		response.len
 	} else {

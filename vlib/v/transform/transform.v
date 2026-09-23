@@ -48,9 +48,11 @@ const prefix_scope_drops_block_value = '__v3_prefix_scope_drops'
 
 const generated_variant_access_marker = '__v3_generated_variant_access'
 const optional_wrapper_access_marker = '__v3_optional_wrapper_access'
+const bound_method_array_index_marker = '__v3_bound_method_array_index'
 const transformed_option_unwrap_access_marker = '__v3_transformed_option_unwrap_access'
 const debugger_smartcast_marker = '__v3_debugger_smartcasts'
 const non_aliasing_allocation_call_marker = '__v3_non_aliasing_allocation_call'
+const assert_infix_values_marker = '__v3_assert_infix_values:'
 const source_deref_marker = '__v3_source_deref'
 const source_mut_pointer_deref_marker = '__v3_source_mut_pointer_deref'
 const stack_value_decl_marker = '__v3_stack_value_decl'
@@ -10100,13 +10102,32 @@ fn (mut t Transformer) transform_dump_expr(node flat.Node) flat.NodeId {
 			path = file.name
 			line = file.position(node.pos).line
 		}
-		expr_text := if node.value.len > 0 { node.value } else { 'dump expression' }
+		expr_text := if node.value.len > 0 {
+			t.dump_expr_display_text(node.value, child_node)
+		} else {
+			'dump expression'
+		}
 		prefix :=
 			t.make_string_literal('[${dump_relative_source_path(path)}:${line}] ${expr_text}: ')
 		message := t.string_plus(prefix, value_text)
 		t.pending_stmts << t.make_expr_stmt(t.make_call('eprintln', [message]))
 	}
 	return t.make_ident(temp_name)
+}
+
+fn (t &Transformer) dump_expr_display_text(source string, child flat.Node) string {
+	if child.kind != .call || child.children_count == 0 {
+		return source
+	}
+	callee := t.a.child_node(&child, 0)
+	if callee.kind != .selector || callee.children_count == 0 {
+		return source
+	}
+	receiver := t.a.child_node(callee, 0)
+	if receiver.kind != .or_expr || receiver.value !in ['?', '!'] {
+		return source
+	}
+	return source.replace_once('${receiver.value}.', '.')
 }
 
 fn (mut t Transformer) transform_nested_string_literal_expr(id flat.NodeId, node flat.Node) flat.NodeId {
@@ -13815,9 +13836,40 @@ fn (mut t Transformer) transform_field_init_for_struct_type(id flat.NodeId, targ
 }
 
 // transform_block_expr_for_type transforms transform block expr for type data for transform.
-fn (mut t Transformer) transform_block_expr_for_type(_id flat.NodeId, node flat.Node, target_type string) ?flat.NodeId {
+fn (mut t Transformer) transform_block_expr_for_type(id flat.NodeId, node flat.Node, target_type string) ?flat.NodeId {
 	if node.kind != .block || node.children_count == 0 || target_type == '' {
 		return none
+	}
+	if !isnil(t.tc) {
+		if target_types := multi_return_types_from_type(t.tc.parse_type(target_type), 0) {
+			if parts := t.tuple_block_parts(id, target_types.len) {
+				mut new_children := t.transform_stmts(parts.prefix)
+				mut tail_values := []flat.NodeId{cap: target_types.len}
+				for i, value_id in parts.values {
+					value_type := t.semantic_type_name(target_types[i])
+					value := t.transform_expr_for_type(value_id, value_type)
+					t.drain_pending(mut new_children)
+					tmp_name := t.new_temp('block_multi')
+					new_children << t.make_decl_assign_typed(tmp_name, value, value_type)
+					tail_values << t.make_ident(tmp_name)
+				}
+				start := t.a.children.len
+				for value in tail_values {
+					t.a.children << value
+				}
+				new_children << t.a.add_node(flat.Node{
+					kind:           .expr_stmt
+					children_start: start
+					children_count: u32(tail_values.len)
+					pos:            node.pos
+					typ:            target_type
+				})
+				new_block := t.make_block(new_children)
+				t.set_node_value(int(new_block), node.value)
+				t.set_node_typ(int(new_block), target_type)
+				return new_block
+			}
+		}
 	}
 	last_id := t.a.child(&node, node.children_count - 1)
 	last := t.a.nodes[int(last_id)]
@@ -17385,6 +17437,11 @@ fn (mut t Transformer) transform_lock_node(id flat.NodeId, node flat.Node) flat.
 	if node.children_count == 0 {
 		return id
 	}
+	lock_target_type := if decl_type_is_usable(node.typ) {
+		node.typ
+	} else {
+		t.checker_expr_type_name(id) or { node.typ }
+	}
 	mut children := []flat.NodeId{cap: int(node.children_count)}
 	for i in 0 .. node.children_count - 1 {
 		lock_id := t.a.child(&node, i)
@@ -17400,21 +17457,21 @@ fn (mut t Transformer) transform_lock_node(id flat.NodeId, node flat.Node) flat.
 	body := t.a.nodes[int(body_id)]
 	t.autolock_depth++
 	new_body := if body.kind == .block {
-		mut new_block := if node.typ.len > 0 && node.typ != 'void' {
-			t.transform_block_expr_for_type(body_id, body, node.typ) or {
+		mut new_block := if lock_target_type.len > 0 && lock_target_type != 'void' {
+			t.transform_block_expr_for_type(body_id, body, lock_target_type) or {
 				t.transform_block_expr(body_id, body)
 			}
 		} else {
 			t.transform_block_expr(body_id, body)
 		}
 		block_typ := t.stmt_value_type(new_block)
-		if node.typ == 'void' || block_typ == 'void' {
+		if lock_target_type == 'void' || block_typ == 'void' {
 			mut block_children := t.a.children_of(&t.a.nodes[int(new_block)]).clone()
 			block_children << t.make_expr_stmt(t.make_int_literal(0))
 			new_block = t.make_block(block_children)
 			t.set_node_typ(int(new_block), 'int')
 		} else {
-			t.set_node_typ(int(new_block), node.typ)
+			t.set_node_typ(int(new_block), lock_target_type)
 		}
 		new_block
 	} else if t.is_stmt_kind_id(int(body.kind)) {
@@ -17424,8 +17481,8 @@ fn (mut t Transformer) transform_lock_node(id flat.NodeId, node flat.Node) flat.
 	}
 	t.autolock_depth--
 	children << new_body
-	lock_typ := if node.typ.len > 0 {
-		node.typ
+	lock_typ := if lock_target_type.len > 0 {
+		lock_target_type
 	} else {
 		body_typ := t.node_type(new_body)
 		if body_typ.len > 0 {
@@ -17868,10 +17925,11 @@ fn (mut t Transformer) transform_assert_stmt(id flat.NodeId, node flat.Node) []f
 	}
 	cond_id := t.a.child(&node, 0)
 	cond := t.a.nodes[int(cond_id)]
-	if cond.kind !in [.if_expr, .match_stmt] {
-		return t.transform_children_stmt(id, node)
+	lowered := if cond.kind in [.if_expr, .match_stmt] {
+		t.transform_expr_for_type(cond_id, 'bool')
+	} else {
+		t.transform_expr(cond_id)
 	}
-	lowered := t.transform_expr_for_type(cond_id, 'bool')
 	mut new_children := []flat.NodeId{cap: int(node.children_count)}
 	new_children << lowered
 	for i in 1 .. node.children_count {
@@ -17885,8 +17943,14 @@ fn (mut t Transformer) transform_assert_stmt(id flat.NodeId, node flat.Node) []f
 			new_children << t.transform_expr(child_id)
 		}
 	}
-	if t.rewrite_children_in_place(id, new_children) {
-		return [id]
+	mut value := node.value
+	if cond.kind == .infix && cond.children_count >= 2
+		&& cond.op !in [.logical_and, .logical_or] {
+		if lhs, rhs := t.assert_lowered_comparison_values(lowered) {
+			new_children << lhs
+			new_children << rhs
+			value = '${assert_infix_values_marker}${cond.op}'
+		}
 	}
 	start := t.a.children.len
 	for nc in new_children {
@@ -17899,10 +17963,30 @@ fn (mut t Transformer) transform_assert_stmt(id flat.NodeId, node flat.Node) []f
 		children_start: start
 		children_count: flat.child_count(count)
 		pos:            node.pos
-		value:          node.value
+		value:          value
 		typ:            node.typ
 	})
 	return [new_id]
+}
+
+fn (t &Transformer) assert_lowered_comparison_values(id flat.NodeId) ?(flat.NodeId, flat.NodeId) {
+	if int(id) < 0 || int(id) >= t.a.nodes.len {
+		return none
+	}
+	node := t.a.nodes[int(id)]
+	if node.kind == .infix && node.children_count >= 2 {
+		return t.a.child(&node, 0), t.a.child(&node, 1)
+	}
+	if node.kind in [.paren, .prefix] && node.children_count == 1 {
+		return t.assert_lowered_comparison_values(t.a.child(&node, 0))
+	}
+	// String, sum-type, and aggregate comparisons lower to a two-argument helper.
+	// Reuse those already-lowered arguments so assertion reporting does not emit the
+	// original source call a second time without its method lowering.
+	if node.kind == .call && node.children_count == 3 {
+		return t.a.child(&node, 1), t.a.child(&node, 2)
+	}
+	return none
 }
 
 // --- expr handlers (skeleton - identity transforms with child recursion) ---
@@ -18624,6 +18708,7 @@ fn (mut t Transformer) try_lower_bound_method_array_call(node flat.Node) ?flat.N
 	info := t.bound_method_arrays[t.bound_method_array_key(base.value)] or { return none }
 	index_id := t.a.child(&callee, 1)
 	encoded := t.make_index(t.transform_expr(base_id), t.transform_expr(index_id), info.fn_type)
+	t.set_node_generic_params(int(encoded), [bound_method_array_index_marker])
 	as_usize := t.make_cast('usize', encoded, 'usize')
 	receiver := t.make_cast(info.receiver_type, as_usize, info.receiver_type)
 	selector := t.make_selector(receiver, info.method, '')

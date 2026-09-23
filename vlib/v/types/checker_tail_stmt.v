@@ -13930,6 +13930,9 @@ pub fn (tc &TypeChecker) parse_canonical_type(typ string) Type {
 	if generic := tc.parse_canonical_generic_type(clean) {
 		return generic
 	}
+	if is_builtin_type_name(clean) {
+		return tc.parse_type(clean)
+	}
 	if known := tc.type_from_known_symbol(clean) {
 		_, result := tc.intern_type(known)
 		return result

@@ -13,6 +13,7 @@ import v.types
 import v.util
 
 const spread_index_expected_type_marker = '__v3_spread_index_expected_type'
+const bound_method_array_index_marker = '__v3_bound_method_array_index'
 const source_mut_pointer_deref_marker = '__v3_source_mut_pointer_deref'
 const manual_c_headers_source = $embed_file('manual_stdlib_c_headers.h').to_string()
 const c_objective_c_bridge_qualifiers = ['__bridge', '__bridge_retained', '__bridge_transfer']
@@ -393,6 +394,7 @@ mut:
 	local_pointer_alias_by_owner   map[string]string            // exact scope binding owner -> stack local whose address is stored
 	local_pointer_alias_mut_param  map[string]bool              // exact scope binding owner -> alias source is a mut parameter
 	local_raw_type_by_owner        map[string]string            // exact scope binding owner -> source-level raw type text
+	local_indirect_value_by_owner  map[string]types.Type        // exact scope binding owner -> semantic value behind indirect C storage
 	local_shared_storage_by_owner  map[string]bool              // exact scope binding owner -> C storage is a shared wrapper pointer
 	local_fn_value_c_name_by_owner map[string]string            // exact scope binding owner -> lifted fn-literal C name
 	sum_name_lookup                map[string]string            // full/short sum type name -> canonical sum type name
@@ -1085,6 +1087,21 @@ fn (g &FlatGen) local_storage_raw_type(name string) ?string {
 	return g.local_raw_type_by_owner[owner.storage_key()] or { none }
 }
 
+fn (mut g FlatGen) declare_local_indirect_value_type(owner types.ScopeBindingOwner, typ types.Type) {
+	key := owner.storage_key()
+	if key.len > 0 {
+		g.local_indirect_value_by_owner[key] = typ
+	}
+}
+
+fn (g &FlatGen) local_indirect_value_type(name string) ?types.Type {
+	if name.len == 0 || g.local_indirect_value_by_owner.len == 0 {
+		return none
+	}
+	owner := g.local_storage_owner(name) or { return none }
+	return g.local_indirect_value_by_owner[owner.storage_key()] or { none }
+}
+
 fn (mut g FlatGen) declare_local_shared_storage(owner types.ScopeBindingOwner, is_shared bool) {
 	key := owner.storage_key()
 	if key.len == 0 {
@@ -1216,6 +1233,7 @@ pub fn FlatGen.new() FlatGen {
 		local_pointer_alias_by_owner:       map[string]string{}
 		local_pointer_alias_mut_param:      map[string]bool{}
 		local_raw_type_by_owner:            map[string]string{}
+		local_indirect_value_by_owner:      map[string]types.Type{}
 		local_shared_storage_by_owner:      map[string]bool{}
 		local_fn_value_c_name_by_owner:     map[string]string{}
 		shadowed_global_locals:             map[string]bool{}
@@ -3352,6 +3370,7 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	g.local_pointer_alias_by_owner.clear()
 	g.local_pointer_alias_mut_param.clear()
 	g.local_raw_type_by_owner.clear()
+	g.local_indirect_value_by_owner.clear()
 	g.local_shared_storage_by_owner.clear()
 	g.local_fn_value_c_name_by_owner.clear()
 	g.shadowed_global_locals.clear()
@@ -3717,6 +3736,7 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 		json_encode_sum_helpers := g.prepare_json_encode_sum_helpers()
 		g.string_literals()
 		g.gen_embed_file_blobs()
+		g.gen_top_level_asm()
 		if g.incremental_fn_names.len > 0 {
 			g.writeln('/* V3CACHE_SUPPORT_BEGIN */')
 			g.fixed_array_early_typedefs()
@@ -3833,6 +3853,7 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	json_encode_sum_helpers := g.prepare_json_encode_sum_helpers()
 	g.string_literals()
 	g.gen_embed_file_blobs()
+	g.gen_top_level_asm()
 	if g.cache_split {
 		g.gen_json_decode_pointer_helper_decls(json_decode_pointer_helpers, false)
 		g.gen_json_encode_pointer_helper_decls(json_encode_pointer_helpers, false)
@@ -4766,7 +4787,15 @@ fn (mut g FlatGen) collect_gen_info(no_parallel bool) {
 					if f.children_count > 0 {
 						mut ft := g.tc.parse_type(f.typ)
 						if ft is types.Void {
-							ft = g.tc.resolve_type(g.a.child(f, 0))
+							if checked := g.tc.c_globals[f.value] {
+								if checked !is types.Void && checked !is types.Unknown {
+									ft = checked
+								} else {
+									ft = g.tc.resolve_type(g.a.child(f, 0))
+								}
+							} else {
+								ft = g.tc.resolve_type(g.a.child(f, 0))
+							}
 						}
 						if 'volatile' in f.generic_params() {
 							g.global_volatile_names[f.value] = true
@@ -4783,11 +4812,19 @@ fn (mut g FlatGen) collect_gen_info(no_parallel bool) {
 					}
 					continue
 				}
+				qname := qualify_name_in_module(cur_module, f.value)
 				mut ft := g.tc.parse_type(f.typ)
 				if ft is types.Void && f.children_count > 0 {
-					ft = g.tc.resolve_type(g.a.child(f, 0))
+					if checked := g.tc.file_scope.lookup(qname) {
+						if checked !is types.Void && checked !is types.Unknown {
+							ft = checked
+						} else {
+							ft = g.tc.resolve_type(g.a.child(f, 0))
+						}
+					} else {
+						ft = g.tc.resolve_type(g.a.child(f, 0))
+					}
 				}
-				qname := qualify_name_in_module(cur_module, f.value)
 				// Keyed by the qualified name only, like every other global
 				// metadata map here. A bare key would let an unrelated
 				// `__global state` in main or builtin -- which deliberately use
@@ -14560,6 +14597,16 @@ fn (mut g FlatGen) gen_const_fixed_storage_len(node flat.Node) bool {
 }
 
 fn (mut g FlatGen) const_value_type(const_name string, val_id flat.NodeId) types.Type {
+	if checked := g.tc.const_types[const_name] {
+		if checked !is types.Unknown && checked !is types.Void {
+			return checked
+		}
+	}
+	if checked := g.tc.expr_type(val_id) {
+		if checked !is types.Unknown && checked !is types.Void {
+			return checked
+		}
+	}
 	old_module := g.tc.cur_module
 	if mod := g.const_modules[const_name] {
 		g.tc.cur_module = mod
@@ -15731,7 +15778,17 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 				}
 			}
 			if node.op == .amp && child.kind == .prefix && child.op == .mul && child.children_count > 0 {
-				g.gen_expr(g.a.child(&child, 0))
+				inner_id := g.a.child(&child, 0)
+				inner := g.a.node(inner_id)
+				if inner.kind == .ident && g.current_param_is_mut_pointer(inner.value) {
+					// Lowering a method receiver on `mut p &T` produces `&(*p)`.
+					// The semantic `&T` value lives in the `T**` parameter slot.
+					g.write('(*')
+					g.gen_mut_pointer_slot_expr(inner_id)
+					g.write(')')
+				} else {
+					g.gen_expr(inner_id)
+				}
 				return
 			}
 			if node.op == .mul && child.kind == .char_literal && child.value.starts_with('c:') {
@@ -15908,11 +15965,21 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 			child_id := g.a.child(node, 0)
 			child := g.a.nodes[int(child_id)]
 			if node.op in [.inc, .dec] {
+				if g.gen_lowered_map_get_postfix_lvalue(child_id) {
+					g.write(g.op_str(node.op))
+					return
+				}
 				if atomic_type := g.atomic_selector_type(child_id) {
 					op := if node.op == .inc { 'add' } else { 'sub' }
 					g.write('atomic_fetch_${op}_${g.atomic_helper_suffix(atomic_type)}(&(')
 					g.gen_expr(child_id)
 					g.write('), 1)')
+					return
+				}
+				if g.is_map_entry_lvalue(child_id) {
+					g.write('(')
+					gen_expr_lvalue(mut g, child_id)
+					g.write(')${g.op_str(node.op)}')
 					return
 				}
 			}
@@ -16435,7 +16502,9 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 						if g.gen_shared_array_index_value_expr(base_id, g.a.child(node, 1)) {
 							return
 						}
-						index_type := if node.typ.starts_with('?') || node.typ.starts_with('!') {
+						index_type := if node.typ.starts_with('?') || node.typ.starts_with('!')
+							|| (node.payload != 0
+								&& bound_method_array_index_marker in node.generic_params()) {
 							g.parse_node_type(node)
 						} else {
 							g.array_index_type_for_expected_arg(arr_type.elem_type, node)
@@ -16524,7 +16593,8 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 			init_type := raw_init_type
 			if init_type is types.ArrayFixed {
 				c_elem, dims := g.fixed_array_decl_parts(init_type)
-				g.write('(${c_elem}${dims}){0}')
+				initializer := g.empty_fixed_array_initializer_string(init_type)
+				g.write('(${c_elem}${dims})${initializer}')
 			} else {
 				g.gen_array_init_value(node, raw_init_type)
 			}
@@ -20968,7 +21038,7 @@ fn (mut g FlatGen) builtin_abi_decls() {
 		g.writeln('\tif (decimal_pos < 0) decimal_pos = digit_count;')
 		g.writeln('\tdecimal_pos += exponent_sign * exponent;')
 		g.writeln('\tint whole_digits = decimal_pos > 0 ? decimal_pos : 1;')
-		g.writeln('\tint negative = signbit(x);')
+		g.writeln('\tint negative = signbit(x) != 0;')
 		g.writeln('\tint out_len = negative + whole_digits + (precision > 0 ? precision + 1 : 0);')
 		g.writeln('\tu8* out = malloc_noscan((ptrdiff_t)out_len + 1);')
 		g.writeln('\tint pos = 0;')
@@ -23199,7 +23269,7 @@ fn (mut g FlatGen) emit_const(name string, val_id flat.NodeId) {
 	mut v_type := if val_node.kind == .offsetof_expr {
 		types.Type(types.usize_)
 	} else {
-		g.const_storage_type_for_value(name, val_id, g.tc.resolve_type(val_id))
+		g.const_storage_type_for_value(name, val_id, g.const_value_type(name, val_id))
 	}
 	// A const initialised by a generic call (e.g. `stdatomic.new_atomic(0)`)
 	// keeps the generic return type `&AtomicVal[T]`. The initializer is already

@@ -46,7 +46,7 @@ fn C.epoll_wait(__epfd i32, __events &C.epoll_event, __maxevents i32, __timeout 
 fn C.sendfile(out_fd i32, in_fd i32, offset voidptr, count usize) i32
 
 @[typedef]
-struct C.sigset_t {}
+pub struct C.sigset_t {}
 
 fn C.sigemptyset(set &C.sigset_t)
 
