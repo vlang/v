@@ -3691,14 +3691,15 @@ fn (mut tc TypeChecker) check_struct_init(id flat.NodeId, node flat.Node) {
 	}
 	if init_struct := struct_type_from_type(init_type) {
 		is_synthetic_embed_file := node.value == 'embed_file.EmbedFileData'
-		// A `struct { ... }` literal is parsed into a name the parser synthesized for it,
-		// which the checker then resolves to whichever anonymous type the context expects.
+		// A `struct { ... }` literal is parsed into a name the parser synthesized for it
+		// (or left as a bare `struct` when its field types cannot be inferred), which the
+		// checker then resolves to whichever anonymous type the context expects.
 		// The literal names nothing of its own, so there is no declaration whose privacy
 		// it could violate - `cli.Command.defaults` is initialized exactly this way from
 		// another module. Naming an anonymous declaration outright is a different thing
 		// and stays subject to the check, as does a type a user happened to call
 		// `AnonStruct_...`: neither is a name the parser made up for a literal.
-		if !tc.a.contextual_anon_struct_types[init_type_text] {
+		if init_type_text != 'struct' && !tc.a.contextual_anon_struct_types[init_type_text] {
 			if _ := tc.private_declaration(init_struct.name) {
 				inside_module := if tc.cur_module.len > 0 { tc.cur_module } else { 'main' }
 				tc.record_error_at(.unknown_type, 'struct `${init_struct.name}` was declared as private to module `${init_struct.name.all_before_last('.')}`, so it can not be used inside module `${inside_module}`', id, node.pos)
@@ -6078,11 +6079,23 @@ fn (mut tc TypeChecker) check_selector(id flat.NodeId, node flat.Node) {
 	if clean_recv is Struct {
 		if !tc.expr_is_rooted_in_c_namespace(base_id) {
 			if visibility := tc.private_declaration(clean_recv.name) {
-				display_name := tc.diagnostic_type_name(Type(clean_recv))
-				decl_module := tc.diagnostic_module_display_name(visibility.module_name)
-				inside_module := if tc.cur_module.len > 0 { tc.cur_module } else { 'main' }
-				tc.record_error_at(.unknown_type, 'struct `${display_name}` was declared as private to module `${decl_module}`, so it can not be used inside module `${inside_module}`', id,
-					tc.node_value_diagnostic_pos(id))
+				if tc.is_synthesized_anon_struct(clean_recv.name) {
+					// An anonymous struct has no name of its own that could be private: another
+					// module can only reach it through a field or value of some other declaration.
+					// What still applies there is the `pub` section of the field used here. The
+					// field is named through the expression, since its struct has no name.
+					if !tc.anonymous_struct_field_is_public(clean_recv.name, node.value,
+						visibility.module_name) {
+						tc.record_error_at(.unknown_field, 'field `${tc.source_text_for_node(base_id)}.${node.value}` is not public', id,
+							tc.node_value_diagnostic_pos(id))
+					}
+				} else {
+					display_name := tc.diagnostic_type_name(Type(clean_recv))
+					decl_module := tc.diagnostic_module_display_name(visibility.module_name)
+					inside_module := if tc.cur_module.len > 0 { tc.cur_module } else { 'main' }
+					tc.record_error_at(.unknown_type, 'struct `${display_name}` was declared as private to module `${decl_module}`, so it can not be used inside module `${inside_module}`', id,
+						tc.node_value_diagnostic_pos(id))
+				}
 			}
 		}
 		if deprecation := tc.deprecated_symbols['${clean_recv.name}.${node.value}'] {

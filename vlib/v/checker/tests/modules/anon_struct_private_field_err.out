@@ -1,0 +1,20 @@
+vlib/v/checker/tests/modules/anon_struct_private_field_err/main.v:8:22: error: field `outer.inner.secret` is not public
+    6 |     mut outer := amod.Outer{}
+    7 |     outer.inner.value = outer.inner.deep.shown
+    8 |     println(outer.inner.secret)
+      |                         ~~~~~~
+    9 |     outer.inner.deep.hidden = 1
+   10 |     deep := outer.inner.deep
+vlib/v/checker/tests/modules/anon_struct_private_field_err/main.v:9:19: error: field `outer.inner.deep.hidden` is not public
+    7 |     outer.inner.value = outer.inner.deep.shown
+    8 |     println(outer.inner.secret)
+    9 |     outer.inner.deep.hidden = 1
+      |                      ~~~~~~
+   10 |     deep := outer.inner.deep
+   11 |     println(deep.hidden)
+vlib/v/checker/tests/modules/anon_struct_private_field_err/main.v:11:15: error: field `deep.hidden` is not public
+    9 |     outer.inner.deep.hidden = 1
+   10 |     deep := outer.inner.deep
+   11 |     println(deep.hidden)
+      |                  ~~~~~~
+   12 | }
