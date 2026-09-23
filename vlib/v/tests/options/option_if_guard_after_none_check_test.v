@@ -42,6 +42,22 @@ fn test_return_if_expr_guard_after_none_check_uses_optional_wrapper() {
 	assert (checked_title_return_expr(IfGuardAfterNoneCheck{}) or { err.msg() }) == 'title is required'
 }
 
+fn checked_title_else_if_return_expr(req IfGuardAfterNoneCheck, flag bool) !string {
+	if req.title == none {
+		return error('title is required')
+	}
+	return if flag {
+		'fixed'
+	} else if value := req.title { value.trim_space() } else { '' }
+}
+
+fn test_return_else_if_guard_after_none_check_uses_optional_wrapper() {
+	req := IfGuardAfterNoneCheck{ title: '  hello  ' }
+	assert checked_title_else_if_return_expr(req, false)! == 'hello'
+	assert checked_title_else_if_return_expr(req, true)! == 'fixed'
+	assert (checked_title_else_if_return_expr(IfGuardAfterNoneCheck{}, false) or { err.msg() }) == 'title is required'
+}
+
 struct PromotedOptionalFieldInner {
 mut:
 	value ?string
