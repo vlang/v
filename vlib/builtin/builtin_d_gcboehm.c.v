@@ -298,6 +298,10 @@ fn C.v_gc_set_warn_proc(cb FnGC_WarnCB)
 
 fn C.GC_register_displacement(offset usize)
 
+// GC_REGISTER_DISPLACEMENT is `GC_debug_register_displacement` when `GC_DEBUG` is set
+// (`-gc boehm_leak`), and `GC_register_displacement` otherwise.
+fn C.GC_REGISTER_DISPLACEMENT(offset usize)
+
 // gc_get_warn_proc returns the current callback fn, that will be used for printing GC warnings.
 pub fn gc_get_warn_proc() FnGC_WarnCB {
 	return C.GC_get_warn_proc()

@@ -26,7 +26,11 @@ fn v3_gcboehm_runtime_init() {
 	C.GC_INIT()
 	// V arrays keep an interior pointer one pointer-width past the allocation
 	// header. Register that displacement so Boehm retains the allocation.
-	C.GC_register_displacement(sizeof(voidptr))
+	// With `-gc boehm_leak` (`GC_DEBUG`), objects also start with Boehm's debug
+	// header, so the macro then registers the offset past that header too.
+	// Without it, a libgc built without `ALL_INTERIOR_POINTERS` (like the bundled
+	// Windows tcc one) treats live array buffers as leaks, and frees them.
+	C.GC_REGISTER_DISPLACEMENT(sizeof(voidptr))
 	gc_restore_roots_after_debugger_init(debugger_workaround)
 	$if gcboehm_incr ? {
 		C.GC_enable_incremental()
