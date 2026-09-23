@@ -1221,6 +1221,10 @@ fn (t &Transformer) call_declared_return_type_text(id flat.NodeId) ?string {
 		return none
 	}
 	name := t.tc.resolved_call_name(id) or { return none }
+	if name == 'json.decode' && int(id) < t.a.nodes.len {
+		// The magic `json.decode(T, s)` returns `!T`, not its `!voidptr` stub declaration.
+		return t.json_decode_or_expr_type(id, t.a.nodes[int(id)])
+	}
 	if ret := t.tc.fn_ret_type_texts[name] {
 		resolved := t.tc.fn_signature_type(name, ret)
 		if resolved !is types.Unknown && resolved !is types.Void {
