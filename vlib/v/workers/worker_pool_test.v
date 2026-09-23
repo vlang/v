@@ -184,5 +184,12 @@ fn test_concurrent_batches_account_only_their_own_tasks() {
 			assert a.value == 1
 		}
 	}
+	// Each batch merges its own counters, so concurrent batches lose no updates:
+	// 20 rounds of 2 batches, each with 1 caller-run and 39 queued tasks.
+	stats := pool.stats()
+	assert stats.tasks_run == 20 * 2 * 40
+	assert stats.async_tasks == 20 * 2 * 39
+	assert stats.forced_sync_tasks == 20 * 2
+	assert pool.tasks_run() == 20 * 2 * 40
 	pool.close()
 }

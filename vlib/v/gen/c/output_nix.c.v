@@ -30,6 +30,10 @@ fn write_c_output_sequential(mut file os.File, prefix []u8, segments []string, t
 // slower: every fresh page faults in first, and faulting it from several threads
 // only contends on the one file.
 fn write_c_output_vectored(path string, prefix []u8, segments []string, tail string, separator string) ! {
+	write_c_output_vectored_batches(path, prefix, segments, tail, separator, c_output_iov_batch)!
+}
+
+fn write_c_output_vectored_batches(path string, prefix []u8, segments []string, tail string, separator string, first_batch int) ! {
 	mut iovs := []C.iovec{cap: segments.len * 2 + 2}
 	if prefix.len > 0 {
 		iovs << C.iovec{
@@ -61,15 +65,24 @@ fn write_c_output_vectored(path string, prefix []u8, segments []string, tail str
 	defer {
 		file.close()
 	}
+	mut batch := if first_batch > 0 { first_batch } else { 1 }
 	mut i := 0
 	for i < iovs.len {
-		count := if iovs.len - i < c_output_iov_batch { iovs.len - i } else { c_output_iov_batch }
+		count := if iovs.len - i < batch { iovs.len - i } else { batch }
 		written := C.writev(file.fd, unsafe { &iovs[i] }, count)
 		if written <= 0 {
-			if written < 0 && C.errno == C.EINTR {
+			errno := C.errno
+			if written < 0 && errno == C.EINTR {
 				continue
 			}
-			return error('failed to write ${path}: ${os.posix_get_error_msg(C.errno)}')
+			if written < 0 && errno == C.EINVAL && count > 1 {
+				// The host caps one call below this batch (IOV_MAX is only 16 on
+				// some systems). Nothing was written, so retry the same pieces in
+				// smaller batches and keep the size that the host accepts.
+				batch = count / 2
+				continue
+			}
+			return error('failed to write ${path}: ${os.posix_get_error_msg(errno)}')
 		}
 		// A short write stops inside some piece: skip the completed pieces and
 		// resume from the unwritten remainder of the partial one.
@@ -87,7 +100,8 @@ fn write_c_output_vectored(path string, prefix []u8, segments []string, tail str
 	}
 }
 
-// Stay well below IOV_MAX (1024 on macOS and Linux).
+// Below IOV_MAX on macOS and Linux (1024). Hosts with a lower limit reject the
+// batch with EINVAL, and write_c_output_vectored_batches halves it.
 const c_output_iov_batch = 512
 
 struct C.iovec {
