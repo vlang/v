@@ -3865,11 +3865,19 @@ fn (mut tc TypeChecker) check_struct_init(id flat.NodeId, node flat.Node) {
 					owner_base := strip_generic_args_name(init_name)
 					decl_mod := tc.struct_modules[owner_base] or { '' }
 					same_main_module := decl_mod in ['', 'main'] && tc.cur_module in ['', 'main']
-					if decl_mod.len > 0 && decl_mod != tc.cur_module && !same_main_module
-						&& !is_anonymous_struct_name(init_name) {
-						is_public := tc.visible_mutation_struct_field_is_public(init_name, field.value, decl_mod) or { true }
-						if !is_public {
-							tc.record_error_at(.unknown_field, 'cannot access private field `${field.value}` on `${init_type_text}`', field_id, tc.struct_init_field_deprecation_pos(field))
+					if decl_mod.len > 0 && decl_mod != tc.cur_module && !same_main_module {
+						// A `struct { ... }` literal that adopted another module's anonymous
+						// struct may only set the fields that struct declares `pub`. Its name
+						// encodes the source path, so the module identifies it instead.
+						if tc.is_synthesized_anon_struct(init_name) {
+							if !tc.anonymous_struct_field_is_public(init_name, field.value, decl_mod) {
+								tc.record_error_at(.unknown_field, 'cannot access private field `${field.value}` of an anonymous struct from module `${tc.diagnostic_module_display_name(decl_mod)}`', field_id, tc.struct_init_field_deprecation_pos(field))
+							}
+						} else if !is_anonymous_struct_name(init_name) {
+							is_public := tc.visible_mutation_struct_field_is_public(init_name, field.value, decl_mod) or { true }
+							if !is_public {
+								tc.record_error_at(.unknown_field, 'cannot access private field `${field.value}` on `${init_type_text}`', field_id, tc.struct_init_field_deprecation_pos(field))
+							}
 						}
 					}
 				}

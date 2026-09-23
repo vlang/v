@@ -32,3 +32,18 @@ vlib/v/checker/tests/modules/anon_struct_private_field_err/main.v:14:14: error: 
    14 |     outer.inner.counter = 2
       |                 ~~~~~~~
    15 | }
+   16 |
+vlib/v/checker/tests/modules/anon_struct_private_field_err/main.v:22:5: error: cannot access private field `secret` of an anonymous struct from module `anon_struct_private_field_err.amod`
+   20 |             inner: struct {
+   21 |                 value:  1
+   22 |                 secret: 2
+      |                 ~~~~~~~~~
+   23 |             }
+   24 |         },
+vlib/v/checker/tests/modules/anon_struct_private_field_err/main.v:27:5: error: cannot access private field `secret` of an anonymous struct from module `anon_struct_private_field_err.amod`
+   25 |         amod.Outer{
+   26 |             inner: struct {
+   27 |                 secret: arg
+      |                 ~~~~~~~~~~~
+   28 |             }
+   29 |         },
