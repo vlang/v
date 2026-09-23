@@ -13485,6 +13485,11 @@ fn (mut g FlatGen) gen_arg_for_expected_type(arg_id flat.NodeId, expected types.
 	if g.gen_mut_sum_lvalue_arg(arg_id, expected) {
 		return
 	}
+	// A `mut e &T` param is `T**` in C. Transformed method calls reach here
+	// instead of gen_call_args, so pass the caller's slot the same way.
+	if g.gen_mut_pointer_slot_arg(arg_id, arg_node, expected) {
+		return
+	}
 	mut needs_addr := false
 	if expected is types.Pointer && !(arg_node.kind == .prefix && arg_node.op == .amp)
 		&& !g.arg_is_null_pointer_literal(arg_id, arg_node) {
