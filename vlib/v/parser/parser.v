@@ -504,7 +504,9 @@ pub fn (mut p Parser) parse_into(path string) {
 				ids << id
 				continue
 			}
-			p.track_script_mode(id, stmt_start, stmt_end, is_malformed_const, mut script_mode)
+			if !p.prefs.is_fmt {
+				p.track_script_mode(id, stmt_start, stmt_end, is_malformed_const, mut script_mode)
+			}
 			ids << id
 		}
 	}
@@ -1534,7 +1536,7 @@ fn (mut p Parser) fn_decl() flat.NodeId {
 		}
 		// Scanning every AST node here made parsing quadratic in program size;
 		// the methods of the current file are tracked as they are declared instead.
-		if name in p.file_method_names {
+		if !p.prefs.is_fmt && name in p.file_method_names {
 			method_name := name.all_after_last('.')
 			p.record_diagnostic_span('duplicate method `${method_name}`', name_pos,
 				name_pos + method_name.len)
@@ -2483,7 +2485,8 @@ fn (mut p Parser) struct_decl() flat.NodeId {
 				}
 				continue
 			}
-			if p.tok == .lsbr && p.tok_pos > p.prev_tok_end && field_name.len > 0
+			if !p.parsing_c_struct_fields && p.tok == .lsbr && p.tok_pos > p.prev_tok_end
+				&& field_name.len > 0
 				&& field_name[0] >= `A` && field_name[0] <= `Z` && p.peek() != .rsbr {
 				attr_start := p.tok_pos
 				mut embed_attrs := pending_attrs.clone()
@@ -2512,7 +2515,8 @@ fn (mut p Parser) struct_decl() flat.NodeId {
 				}
 				continue
 			}
-			if p.tok == .lsbr && field_name.len > 0 && field_name[0] >= `A` && field_name[0] <= `Z` {
+			if !p.parsing_c_struct_fields && p.tok == .lsbr && field_name.len > 0
+				&& field_name[0] >= `A` && field_name[0] <= `Z` {
 				saved_s := p.s
 				saved_tok := p.tok
 				saved_lit := p.lit

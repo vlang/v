@@ -54,14 +54,14 @@ fn invoke_reflected_callbacks[T](mut model T, window &ReflectedCallbackWindow) {
 
 fn test_reflected_method_retains_bound_callback() {
 	mut model := ReflectedCallbackModel{}
-	window := ReflectedCallbackWindow{increment: 3}
+	window := ReflectedCallbackWindow{ increment: 3 }
 	invoke_reflected_callbacks(mut model, &window)
 	assert model.calls == 3
 }
 
 fn test_reflected_method_retains_transitive_bound_callback() {
 	mut model := ChainedReflectedCallbackModel{}
-	window := ReflectedCallbackWindow{increment: 3}
+	window := ReflectedCallbackWindow{ increment: 3 }
 	invoke_reflected_callbacks(mut model, &window)
 	assert model.calls == 4
 }
@@ -120,16 +120,16 @@ fn reflected_interface_callback_increment(value int) int {
 }
 
 fn test_reflected_method_retains_interface_callback_implementations() {
-	window := ReflectedCallbackWindow{increment: 3}
+	window := ReflectedCallbackWindow{ increment: 3 }
 	pollers := [
-		ReflectedCallbackPoller(ReflectedCallbackPollerImpl{offset: 2}),
+		ReflectedCallbackPoller(ReflectedCallbackPollerImpl{ offset: 2 }),
 		ReflectedCallbackPoller(ChainedReflectedCallbackPoller{
-			finisher: ReflectedCallbackFinisherImpl{offset: 5}
+			finisher: ReflectedCallbackFinisherImpl{ offset: 5 }
 		}),
 	]
 	expected := [5, 9]
 	for i, poller in pollers {
-		mut model := ReflectedInterfaceCallbackModel{poller: poller}
+		mut model := ReflectedInterfaceCallbackModel{ poller: poller }
 		invoke_reflected_callbacks(mut model, &window)
 		assert model.calls == expected[i]
 	}

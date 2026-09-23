@@ -9352,7 +9352,10 @@ fn (mut tc TypeChecker) check_result_propagation(id flat.NodeId, source_id flat.
 	source_type := tc.resolve_type(source_id)
 	clean_source_type := unalias_type(source_type)
 	clean_return_type := unalias_type(tc.fn_context.return_type)
-	if clean_source_type is OptionType {
+	// `array[index]!` handles both a failed bounds check and an optional
+	// element. The index expression is therefore a Result propagation site
+	// even when its resolved element type is an Option.
+	if clean_source_type is OptionType && source.kind != .index {
 		tc.record_error_at(.return_mismatch, 'to propagate a Result, the call must also return a Result type', id, tc.propagation_operator_pos(source_id, id, '!'))
 		return
 	}
@@ -9981,6 +9984,20 @@ fn (tc &TypeChecker) direct_parent_id(id flat.NodeId) flat.NodeId {
 		return tc.direct_parent_ids[idx]
 	}
 	return tc.direct_parent_id_untrusted(id, idx)
+}
+
+// note_generated_parent seeds the worker-private parent cache for a freshly
+// generated node whose only parent is `parent`, so parent queries on it skip
+// the arena scan. An edge found by an earlier query is kept.
+pub fn (tc &TypeChecker) note_generated_parent(child flat.NodeId, parent flat.NodeId) {
+	idx := int(child)
+	if isnil(tc.type_cache) || idx < tc.direct_parent_ids.len {
+		return
+	}
+	mut cache := tc.type_cache
+	if idx !in cache.generated_parent_entries {
+		cache.generated_parent_entries[idx] = parent
+	}
 }
 
 fn (tc &TypeChecker) direct_parent_id_untrusted(id flat.NodeId, idx int) flat.NodeId {
@@ -13392,6 +13409,11 @@ fn (mut tc TypeChecker) check_for_in_range_types(low_id flat.NodeId, high_id fla
 }
 
 fn (mut tc TypeChecker) check_for_in_range_high_overflow(low_id flat.NodeId, high_id flat.NodeId) bool {
+	// Explicitly typed high bounds define their own range width. Only an implicit
+	// or explicit `int` high bound can overflow the narrower low-bound type here.
+	if unalias_type(tc.resolve_type(high_id)).name() != Type(int_).name() {
+		return false
+	}
 	range_type := tc.range_loop_var_type(low_id, high_id)
 	type_range := integer_type_range(range_type) or { return false }
 	if type_range.bits <= 0 {

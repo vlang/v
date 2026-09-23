@@ -4717,6 +4717,11 @@ fn (mut tc TypeChecker) record_uninferred_generic_method_type(id flat.NodeId, no
 	if generic_params.len == 0 {
 		return
 	}
+	saved_generic_decl_file := tc.generic_decl_file
+	tc.generic_decl_file = tc.fn_type_files[info.name] or { '' }
+	defer {
+		tc.generic_decl_file = saved_generic_decl_file
+	}
 	mut inferred := map[string]string{}
 	mut inferred_types := map[string]Type{}
 	mut first_param_idx := 0
@@ -4897,6 +4902,11 @@ fn (mut tc TypeChecker) generic_compile_error_instantiation(call flat.Node, info
 	}
 	if generic_params.len == 0 {
 		return none
+	}
+	saved_generic_decl_file := tc.generic_decl_file
+	tc.generic_decl_file = tc.fn_type_files[info.name] or { '' }
+	defer {
+		tc.generic_decl_file = saved_generic_decl_file
 	}
 	mut concrete_args := []string{}
 	callee := tc.a.child_node(&call, 0)
@@ -7059,8 +7069,74 @@ pub fn shadow_roots_own_file(file string, diagnostic_root string, explicit_roots
 	// under the root only by their link paths, so resolving up front would place
 	// the whole project outside itself; resolving is what catches a directory
 	// reached through a symlink.
-	abs_file := os.abs_path(file)
-	real_file := os.real_path(file)
+	return shadow_roots_own_resolved_file(os.abs_path(file), os.real_path(file), diagnostic_root,
+		explicit_roots, dependency_roots)
+}
+
+// ShadowFileResolver resolves many source paths for shadow_roots_own_file with one
+// working-directory lookup and one realpath per directory instead of per file.
+pub struct ShadowFileResolver {
+	wd string
+mut:
+	real_dirs map[string]string
+}
+
+// new_shadow_file_resolver returns a resolver bound to the current working directory.
+pub fn new_shadow_file_resolver() ShadowFileResolver {
+	return ShadowFileResolver{
+		wd: os.getwd()
+	}
+}
+
+// owns_file is shadow_roots_own_file with cached path resolution.
+pub fn (mut r ShadowFileResolver) owns_file(file string, diagnostic_root string, explicit_roots []string, dependency_roots []string) bool {
+	if file == '' {
+		return false
+	}
+	return shadow_roots_own_resolved_file(r.abs_path(file), r.real_path(file), diagnostic_root,
+		explicit_roots, dependency_roots)
+}
+
+// abs_path matches os.abs_path for the working directory captured by the resolver.
+fn (r &ShadowFileResolver) abs_path(path string) string {
+	npath := os.norm_path(path)
+	if npath == '.' {
+		return r.wd
+	}
+	if !os.is_abs_path(npath) {
+		return os.norm_path(r.wd + os.path_separator + npath)
+	}
+	return npath
+}
+
+// real_path matches os.real_path for existing regular entries: resolving the
+// directory once is equivalent when the final component is not a symlink.
+fn (mut r ShadowFileResolver) real_path(file string) string {
+	dir := os.dir(file)
+	base := os.file_name(file)
+	if dir.len == 0 || base in ['', '.', '..'] {
+		return os.real_path(file)
+	}
+	st := os.lstat(file) or { return os.real_path(file) }
+	if st.get_filetype() == .symbolic_link {
+		return os.real_path(file)
+	}
+	real_dir := r.real_dirs[dir] or {
+		resolved := os.real_path(dir)
+		r.real_dirs[dir] = resolved
+		resolved
+	}
+	if real_dir.len == 0 || !os.is_abs_path(real_dir) {
+		return os.real_path(file)
+	}
+	return if real_dir.ends_with(os.path_separator) {
+		real_dir + base
+	} else {
+		real_dir + os.path_separator + base
+	}
+}
+
+fn shadow_roots_own_resolved_file(abs_file string, real_file string, diagnostic_root string, explicit_roots []string, dependency_roots []string) bool {
 	if shadow_root_owns_file(abs_file, real_file, diagnostic_root, dependency_roots) {
 		return true
 	}
@@ -8464,6 +8540,18 @@ fn (mut tc TypeChecker) resolve_call_info_uncached(id flat.NodeId, node flat.Nod
 			if clean is Interface {
 				if info := tc.interface_receiver_method_call_info(clean.name, fn_node.value) {
 					return info
+				}
+			}
+			// Every aggregate has its own implicit string representation. An embedded
+			// field's custom `str()` method must not replace the outer aggregate's
+			// auto-generated method when the outer type has no direct override.
+			if fn_node.value == 'str' && clean is Struct {
+				return CallInfo{
+					name:         '${type_name}.str'
+					params:       tarr1(base_type)
+					return_type:  Type(string_)
+					has_receiver: true
+					params_known: true
 				}
 			}
 			if info := tc.embedded_method_call_info(type_name, fn_node.value) {
@@ -11971,6 +12059,42 @@ fn (tc &TypeChecker) visible_mutation_struct_field_is_public(receiver_type strin
 	return none
 }
 
+// anonymous_struct_field_is_public reports whether field `field_name` of the anonymous
+// struct `struct_name`, declared in module `decl_mod`, may be used from another module.
+// Fields of anonymous structs nested in C structs are always accessible, like the fields
+// of the C structs themselves, and so are those of a type inferred from a `struct { ... }`
+// literal, which has no `pub` section that could make them public.
+fn (tc &TypeChecker) anonymous_struct_field_is_public(struct_name string, field_name string, decl_mod string) bool {
+	short_name := struct_name.all_after_last('.')
+	if tc.a.contextual_anon_struct_types[short_name] {
+		return true
+	}
+	if decl := tc.source_struct_decl_for_name(short_name) {
+		if comma_attr_text_has(decl.typ, 'c_anon') {
+			return true
+		}
+	}
+	if is_public := tc.visible_mutation_struct_field_is_public(struct_name, field_name, decl_mod) {
+		return is_public
+	}
+	// A field promoted from an embedded struct keeps the visibility it has in the
+	// struct that declares it.
+	for owner in tc.embedded_field_candidates(struct_name, field_name) {
+		owner_mod := if visibility := tc.declaration_visibility[owner] {
+			visibility.module_name
+		} else {
+			owner.all_before_last('.')
+		}
+		if owner_mod == tc.cur_module || (owner_mod in ['', 'main'] && tc.cur_module in ['', 'main']) {
+			continue
+		}
+		if !(tc.visible_mutation_struct_field_is_public(owner, field_name, owner_mod) or { true }) {
+			return false
+		}
+	}
+	return true
+}
+
 fn (tc &TypeChecker) receiver_expr_mutation_visibility(expr_id flat.NodeId, root_name string, receiver_type string, decl_mod string) ReceiverMutationVisibility {
 	if int(expr_id) < 0 || int(expr_id) >= tc.a.nodes.len {
 		return .none
@@ -13911,7 +14035,8 @@ fn (mut tc TypeChecker) check_call_arg_types(id flat.NodeId, node flat.Node, inf
 			}
 			continue
 		}
-		if fn_param_is_voidptr_type(expected) && unalias_type(actual) is Struct {
+		if fn_param_is_voidptr_type(expected) && unalias_type(actual) is Struct
+			&& !json_runtime_voidptr_accepts_arg(info.name, param_idx, expected, actual) {
 			tc.record_warning_at(.call_arg_mismatch, 'automatic ${unalias_type(actual).name()} referencing/dereferencing into voidptr is deprecated and will be removed soon; use `foo(&x)` instead of `foo(x)`', arg_id, tc.call_argument_diagnostic_pos(arg_id))
 		}
 		// An untyped nil local retains Nil/voidptr until its call context is known.
@@ -15872,6 +15997,11 @@ fn (mut tc TypeChecker) specialized_plain_generic_call_info(node flat.Node, info
 		|| tc.call_has_explicit_generic_args(node) {
 		return info
 	}
+	saved_generic_decl_file := tc.generic_decl_file
+	tc.generic_decl_file = tc.fn_type_files[info.name] or { '' }
+	defer {
+		tc.generic_decl_file = saved_generic_decl_file
+	}
 	mut inferred := map[string]string{}
 	mut inferred_types := map[string]Type{}
 	mut first_param_idx := 0
@@ -16187,6 +16317,16 @@ pub fn (tc &TypeChecker) fn_signature_type(name string, typ string) Type {
 	return tc.parse_fn_signature_type(name, typ)
 }
 
+// generic_param_type_text resolves an import alias in declared generic parameter
+// text through the imports of the declaring file, which can bind the alias
+// (`import genstream as csv`) differently from the calling file.
+fn (tc &TypeChecker) generic_param_type_text(text string) string {
+	if tc.generic_decl_file.len > 0 && tc.generic_decl_file != tc.cur_file {
+		return tc.resolve_imported_type_text_in_file(text, tc.generic_decl_file)
+	}
+	return tc.resolve_imported_type_text(text)
+}
+
 fn (mut tc TypeChecker) infer_generic_type_text_from_type(param_text string, actual Type, generic_params []string, mut inferred map[string]string) {
 	clean := trimmed_space(param_text)
 	if clean.len == 0 {
@@ -16251,9 +16391,12 @@ fn (mut tc TypeChecker) infer_generic_type_text_from_type(param_text string, act
 		actual_text := tc.generic_infer_type_text(actual)
 		param_base, param_args, _ := generic_type_application_parts(clean)
 		actual_base, actual_args, actual_is_generic := generic_type_application_parts(actual_text)
-		iface_name := tc.interface_metadata_name(param_base)
+		// `param_base` is declared source text, so an import alias (`import io as csv`)
+		// must be resolved before it can be told apart from a same-named loaded type.
+		decl_base := tc.generic_param_type_text(param_base)
+		iface_name := tc.interface_metadata_name(decl_base)
 		if iface_name in tc.interface_names {
-			if actual_is_generic && tc.generic_type_base_matches(param_base, actual_base)
+			if actual_is_generic && tc.generic_type_base_matches(decl_base, actual_base)
 				&& param_args.len == actual_args.len {
 				for i in 0 .. param_args.len {
 					tc.infer_generic_type_text_from_text(param_args[i], actual_args[i], generic_params, mut inferred)
@@ -16336,9 +16479,10 @@ fn (mut tc TypeChecker) infer_generic_type_value_from_type(param_text string, ac
 		param_base, param_args, _ := generic_type_application_parts(clean)
 		actual_text := tc.generic_infer_type_text(actual)
 		actual_base, actual_args, actual_is_generic := generic_type_application_parts(actual_text)
-		iface_name := tc.interface_metadata_name(param_base)
+		decl_base := tc.generic_param_type_text(param_base)
+		iface_name := tc.interface_metadata_name(decl_base)
 		if iface_name in tc.interface_names {
-			if actual_is_generic && tc.generic_type_base_matches(param_base, actual_base)
+			if actual_is_generic && tc.generic_type_base_matches(decl_base, actual_base)
 				&& param_args.len == actual_args.len {
 				for i in 0 .. param_args.len {
 					tc.infer_generic_type_value_from_type(param_args[i], tc.parse_type(actual_args[i]), generic_params, mut inferred)
@@ -16376,6 +16520,13 @@ fn (mut tc TypeChecker) generic_interface_implementation_type_args(iface_name st
 	actual_name := method_type_name(unwrap_pointer(actual))
 	if actual_name.len == 0 {
 		return none
+	}
+	// The interface's own signature texts are not declared in the file of the
+	// generic call that is being inferred.
+	saved_generic_decl_file := tc.generic_decl_file
+	tc.generic_decl_file = ''
+	defer {
+		tc.generic_decl_file = saved_generic_decl_file
 	}
 	mut inferred_text := map[string]string{}
 	mut inferred_types := map[string]Type{}

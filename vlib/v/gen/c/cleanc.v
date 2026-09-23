@@ -13,6 +13,7 @@ import v.types
 import v.util
 
 const spread_index_expected_type_marker = '__v3_spread_index_expected_type'
+const bound_method_array_index_marker = '__v3_bound_method_array_index'
 const source_mut_pointer_deref_marker = '__v3_source_mut_pointer_deref'
 const manual_c_headers_source = $embed_file('manual_stdlib_c_headers.h').to_string()
 const c_objective_c_bridge_qualifiers = ['__bridge', '__bridge_retained', '__bridge_transfer']
@@ -348,10 +349,11 @@ mut:
 	str_lit_ids                    map[string]int
 	str_lits_shared                bool
 	// Worker snapshots inherit this immutable prefix from their parent generator.
-	str_lits_base_len     int
-	json_decode_err_flag  string
-	json_decode_err_value string
-	global_types          map[string]types.Type
+	str_lits_base_len         int
+	json_encode_pointer_types map[string]string
+	json_decode_err_flag      string
+	json_decode_err_value     string
+	global_types              map[string]types.Type
 	// Globals declared `volatile`. A kernel writes these where the hardware or
 	// the bootloader can see them, so the qualifier has to survive into the C.
 	global_volatile_names          map[string]bool
@@ -392,6 +394,7 @@ mut:
 	local_pointer_alias_by_owner   map[string]string            // exact scope binding owner -> stack local whose address is stored
 	local_pointer_alias_mut_param  map[string]bool              // exact scope binding owner -> alias source is a mut parameter
 	local_raw_type_by_owner        map[string]string            // exact scope binding owner -> source-level raw type text
+	local_indirect_value_by_owner  map[string]types.Type        // exact scope binding owner -> semantic value behind indirect C storage
 	local_shared_storage_by_owner  map[string]bool              // exact scope binding owner -> C storage is a shared wrapper pointer
 	local_fn_value_c_name_by_owner map[string]string            // exact scope binding owner -> lifted fn-literal C name
 	sum_name_lookup                map[string]string            // full/short sum type name -> canonical sum type name
@@ -1084,6 +1087,21 @@ fn (g &FlatGen) local_storage_raw_type(name string) ?string {
 	return g.local_raw_type_by_owner[owner.storage_key()] or { none }
 }
 
+fn (mut g FlatGen) declare_local_indirect_value_type(owner types.ScopeBindingOwner, typ types.Type) {
+	key := owner.storage_key()
+	if key.len > 0 {
+		g.local_indirect_value_by_owner[key] = typ
+	}
+}
+
+fn (g &FlatGen) local_indirect_value_type(name string) ?types.Type {
+	if name.len == 0 || g.local_indirect_value_by_owner.len == 0 {
+		return none
+	}
+	owner := g.local_storage_owner(name) or { return none }
+	return g.local_indirect_value_by_owner[owner.storage_key()] or { none }
+}
+
 fn (mut g FlatGen) declare_local_shared_storage(owner types.ScopeBindingOwner, is_shared bool) {
 	key := owner.storage_key()
 	if key.len == 0 {
@@ -1183,6 +1201,7 @@ pub fn FlatGen.new() FlatGen {
 		cache_program_files:                map[string]bool{}
 		incremental_fn_names:               map[string]bool{}
 		str_lit_ids:                        map[string]int{}
+		json_encode_pointer_types:          map[string]string{}
 		global_types:                       map[string]types.Type{}
 		global_volatile_names:              map[string]bool{}
 		global_raw_type_texts:              map[string]string{}
@@ -1214,6 +1233,7 @@ pub fn FlatGen.new() FlatGen {
 		local_pointer_alias_by_owner:       map[string]string{}
 		local_pointer_alias_mut_param:      map[string]bool{}
 		local_raw_type_by_owner:            map[string]string{}
+		local_indirect_value_by_owner:      map[string]types.Type{}
 		local_shared_storage_by_owner:      map[string]bool{}
 		local_fn_value_c_name_by_owner:     map[string]string{}
 		shadowed_global_locals:             map[string]bool{}
@@ -3350,6 +3370,7 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	g.local_pointer_alias_by_owner.clear()
 	g.local_pointer_alias_mut_param.clear()
 	g.local_raw_type_by_owner.clear()
+	g.local_indirect_value_by_owner.clear()
 	g.local_shared_storage_by_owner.clear()
 	g.local_fn_value_c_name_by_owner.clear()
 	g.shadowed_global_locals.clear()
@@ -3715,6 +3736,7 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 		json_encode_sum_helpers := g.prepare_json_encode_sum_helpers()
 		g.string_literals()
 		g.gen_embed_file_blobs()
+		g.gen_top_level_asm()
 		if g.incremental_fn_names.len > 0 {
 			g.writeln('/* V3CACHE_SUPPORT_BEGIN */')
 			g.fixed_array_early_typedefs()
@@ -3831,6 +3853,7 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	json_encode_sum_helpers := g.prepare_json_encode_sum_helpers()
 	g.string_literals()
 	g.gen_embed_file_blobs()
+	g.gen_top_level_asm()
 	if g.cache_split {
 		g.gen_json_decode_pointer_helper_decls(json_decode_pointer_helpers, false)
 		g.gen_json_encode_pointer_helper_decls(json_encode_pointer_helpers, false)
@@ -3903,8 +3926,8 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 		}
 		mut prefix := unsafe { g.sb.reuse_as_plain_u8_array() }
 		$if !windows {
-			if os.getenv('V3_NO_MMAP_CGEN_OUTPUT') == '' {
-				write_c_output_mapped(g.output_path, prefix, g.fn_segs, tail, separator) or {
+			if os.getenv('V3_NO_WRITEV_CGEN_OUTPUT') == '' {
+				write_c_output_vectored(g.output_path, prefix, g.fn_segs, tail, separator) or {
 					g.output_error = err.msg()
 				}
 				unsafe { prefix.free() }
@@ -4428,6 +4451,10 @@ mut:
 	return_type        types.Type = types.Type(types.void_)
 	decl_is_variadic   bool
 	first_param_is_mut bool
+	// registration is precomputed by the parallel prep when signature
+	// registration is deferred (has_registration).
+	has_registration bool
+	registration     FnSignatureRegistration
 }
 
 struct FnSignatureRegistration {
@@ -4594,8 +4621,13 @@ fn (mut g FlatGen) collect_gen_info(no_parallel bool) {
 	if g.output_cross_c {
 		g.index_cross_directive_guards()
 	}
-	fn_preps := g.collect_gen_info_fn_preps(top_level_nodes, no_parallel)
+	mut cisub_sw := time.new_stopwatch()
+	fn_preps := g.collect_gen_info_fn_preps(top_level_nodes, no_parallel, defer_fn_signature_registrations)
 	has_parallel_fn_preps := fn_preps.len == top_level_nodes.len
+	if profile {
+		g.timing_profile('  [ttime]   ci fn preps      ${f64(cisub_sw.elapsed().microseconds()) / 1000.0:7.2f} ms')
+		cisub_sw.restart()
+	}
 	for top_level_pos, node_idx in top_level_nodes {
 		node := g.a.nodes[node_idx]
 		node_ref := g.a.node(flat.NodeId(node_idx))
@@ -4685,7 +4717,14 @@ fn (mut g FlatGen) collect_gen_info(no_parallel bool) {
 				ci_ret_ns += time.sys_mono_now() - ci_r0
 			}
 			if defer_fn_signature_registrations {
-				fn_signature_registrations << g.prepare_fn_signature_registration(node.value, full_name, ptypes, shared_params, decl_is_variadic, first_param_is_mut, return_type)
+				if prep.has_registration {
+					if shared_params.any(it) {
+						g.has_shared_params = true
+					}
+					fn_signature_registrations << prep.registration
+				} else {
+					fn_signature_registrations << g.prepare_fn_signature_registration(node.value, full_name, ptypes, shared_params, decl_is_variadic, first_param_is_mut, return_type)
+				}
 			} else {
 				g.register_fn_decl_signature_type(node.value, full_name, ptypes, shared_params, decl_is_variadic, first_param_is_mut, return_type)
 			}
@@ -4748,7 +4787,15 @@ fn (mut g FlatGen) collect_gen_info(no_parallel bool) {
 					if f.children_count > 0 {
 						mut ft := g.tc.parse_type(f.typ)
 						if ft is types.Void {
-							ft = g.tc.resolve_type(g.a.child(f, 0))
+							if checked := g.tc.c_globals[f.value] {
+								if checked !is types.Void && checked !is types.Unknown {
+									ft = checked
+								} else {
+									ft = g.tc.resolve_type(g.a.child(f, 0))
+								}
+							} else {
+								ft = g.tc.resolve_type(g.a.child(f, 0))
+							}
 						}
 						if 'volatile' in f.generic_params() {
 							g.global_volatile_names[f.value] = true
@@ -4765,11 +4812,19 @@ fn (mut g FlatGen) collect_gen_info(no_parallel bool) {
 					}
 					continue
 				}
+				qname := qualify_name_in_module(cur_module, f.value)
 				mut ft := g.tc.parse_type(f.typ)
 				if ft is types.Void && f.children_count > 0 {
-					ft = g.tc.resolve_type(g.a.child(f, 0))
+					if checked := g.tc.file_scope.lookup(qname) {
+						if checked !is types.Void && checked !is types.Unknown {
+							ft = checked
+						} else {
+							ft = g.tc.resolve_type(g.a.child(f, 0))
+						}
+					} else {
+						ft = g.tc.resolve_type(g.a.child(f, 0))
+					}
 				}
-				qname := qualify_name_in_module(cur_module, f.value)
 				// Keyed by the qualified name only, like every other global
 				// metadata map here. A bare key would let an unrelated
 				// `__global state` in main or builtin -- which deliberately use
@@ -4882,9 +4937,17 @@ fn (mut g FlatGen) collect_gen_info(no_parallel bool) {
 			continue
 		}
 	}
+	if profile {
+		g.timing_profile('  [ttime]   ci decl loop     ${f64(cisub_sw.elapsed().microseconds()) / 1000.0:7.2f} ms')
+		cisub_sw.restart()
+	}
 	if defer_fn_signature_registrations {
 		g.reserve_fn_signature_registrations(fn_signature_registrations)
 		g.apply_fn_signature_registrations(fn_signature_registrations)
+	}
+	if profile {
+		g.timing_profile('  [ttime]   ci apply sigs    ${f64(cisub_sw.elapsed().microseconds()) / 1000.0:7.2f} ms')
+		cisub_sw.restart()
 	}
 	if g.has_shared_params {
 		for full_name, flags in preferred_shared_fn_params {
@@ -5404,7 +5467,21 @@ fn (mut g FlatGen) c_include_directive_text(node_idx int, prefix_condition strin
 	// Preserve already-absolute spellings, including symlink aliases such as macOS `/tmp`.
 	if clean_include_arg.starts_with('"') && (g.output_cross_c || !quoted_absolute_path) {
 		include_dirs := c_flag_include_dirs(g.c_flags)
-		for path in c_include_file_paths(include_arg, g.compiler_vroot, source_file, include_dirs) {
+		mut paths := []string{}
+		if g.output_cross_c {
+			paths = c_include_file_paths(include_arg, g.compiler_vroot, source_file,
+				include_dirs)
+		} else {
+			// A header supplied through an explicit -I directory already resolves from
+			// the generated C compiler command. Keep its original portable spelling;
+			// only source-local headers need an absolute path after C output moves away
+			// from the V source directory.
+			path := c_include_file_path(include_arg, g.compiler_vroot, source_file)
+			if path.len > 0 {
+				paths << path
+			}
+		}
+		for path in paths {
 			if !os.is_file(path) {
 				continue
 			}
@@ -11044,6 +11121,14 @@ fn (mut g FlatGen) prepare_fn_signature_registration(name string, full_name stri
 			break
 		}
 	}
+	return g.fn_signature_registration_in_module(g.tc.cur_module, name, full_name, ptypes,
+		shared_params, is_variadic, is_mut, rt)
+}
+
+// fn_signature_registration_in_module computes the spellings a declaration in
+// `module_name` registers. It only reads generator state (the C-name cache just
+// memoizes), so the parallel collect prep can build it on a worker view.
+fn (g &FlatGen) fn_signature_registration_in_module(module_name string, name string, full_name string, ptypes []types.Type, shared_params []bool, is_variadic bool, is_mut bool, rt types.Type) FnSignatureRegistration {
 	mut aliases := [6]string{}
 	mut alias_count := 0
 	if !g.dedup_fn_decl_aliases {
@@ -11052,8 +11137,8 @@ fn (mut g FlatGen) prepare_fn_signature_registration(name string, full_name stri
 		cname := g.cname(name)
 		aliases[alias_count] = cname
 		alias_count++
-		if g.tc.cur_module.len > 0 && g.tc.cur_module != 'main' && g.tc.cur_module != 'builtin' {
-			dotted_name := '${g.tc.cur_module}.${name}'
+		if module_name.len > 0 && module_name != 'main' && module_name != 'builtin' {
+			dotted_name := '${module_name}.${name}'
 			aliases[alias_count] = dotted_name
 			alias_count++
 			cdotted_name := g.cname(dotted_name)
@@ -11075,8 +11160,8 @@ fn (mut g FlatGen) prepare_fn_signature_registration(name string, full_name stri
 		}
 		mut dotted_name := ''
 		mut cdotted_name := ''
-		if g.tc.cur_module.len > 0 && g.tc.cur_module != 'main' && g.tc.cur_module != 'builtin' {
-			dotted_name = '${g.tc.cur_module}.${name}'
+		if module_name.len > 0 && module_name != 'main' && module_name != 'builtin' {
+			dotted_name = '${module_name}.${name}'
 			if dotted_name != name && dotted_name != cname {
 				aliases[alias_count] = dotted_name
 				alias_count++
@@ -11098,7 +11183,7 @@ fn (mut g FlatGen) prepare_fn_signature_registration(name string, full_name stri
 		}
 	}
 	return FnSignatureRegistration{
-		module_key:    fn_decl_module_key(g.tc.cur_module, name)
+		module_key:    fn_decl_module_key(module_name, name)
 		short_name:    c_short_name_view(name)
 		aliases:       aliases
 		alias_count:   u8(alias_count)
@@ -14512,6 +14597,16 @@ fn (mut g FlatGen) gen_const_fixed_storage_len(node flat.Node) bool {
 }
 
 fn (mut g FlatGen) const_value_type(const_name string, val_id flat.NodeId) types.Type {
+	if checked := g.tc.const_types[const_name] {
+		if checked !is types.Unknown && checked !is types.Void {
+			return checked
+		}
+	}
+	if checked := g.tc.expr_type(val_id) {
+		if checked !is types.Unknown && checked !is types.Void {
+			return checked
+		}
+	}
 	old_module := g.tc.cur_module
 	if mod := g.const_modules[const_name] {
 		g.tc.cur_module = mod
@@ -15683,7 +15778,17 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 				}
 			}
 			if node.op == .amp && child.kind == .prefix && child.op == .mul && child.children_count > 0 {
-				g.gen_expr(g.a.child(&child, 0))
+				inner_id := g.a.child(&child, 0)
+				inner := g.a.node(inner_id)
+				if inner.kind == .ident && g.current_param_is_mut_pointer(inner.value) {
+					// Lowering a method receiver on `mut p &T` produces `&(*p)`.
+					// The semantic `&T` value lives in the `T**` parameter slot.
+					g.write('(*')
+					g.gen_mut_pointer_slot_expr(inner_id)
+					g.write(')')
+				} else {
+					g.gen_expr(inner_id)
+				}
 				return
 			}
 			if node.op == .mul && child.kind == .char_literal && child.value.starts_with('c:') {
@@ -15860,11 +15965,21 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 			child_id := g.a.child(node, 0)
 			child := g.a.nodes[int(child_id)]
 			if node.op in [.inc, .dec] {
+				if g.gen_lowered_map_get_postfix_lvalue(child_id) {
+					g.write(g.op_str(node.op))
+					return
+				}
 				if atomic_type := g.atomic_selector_type(child_id) {
 					op := if node.op == .inc { 'add' } else { 'sub' }
 					g.write('atomic_fetch_${op}_${g.atomic_helper_suffix(atomic_type)}(&(')
 					g.gen_expr(child_id)
 					g.write('), 1)')
+					return
+				}
+				if g.is_map_entry_lvalue(child_id) {
+					g.write('(')
+					gen_expr_lvalue(mut g, child_id)
+					g.write(')${g.op_str(node.op)}')
 					return
 				}
 			}
@@ -16387,7 +16502,9 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 						if g.gen_shared_array_index_value_expr(base_id, g.a.child(node, 1)) {
 							return
 						}
-						index_type := if node.typ.starts_with('?') || node.typ.starts_with('!') {
+						index_type := if node.typ.starts_with('?') || node.typ.starts_with('!')
+							|| (node.payload != 0
+								&& bound_method_array_index_marker in node.generic_params()) {
 							g.parse_node_type(node)
 						} else {
 							g.array_index_type_for_expected_arg(arr_type.elem_type, node)
@@ -16476,7 +16593,8 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 			init_type := raw_init_type
 			if init_type is types.ArrayFixed {
 				c_elem, dims := g.fixed_array_decl_parts(init_type)
-				g.write('(${c_elem}${dims}){0}')
+				initializer := g.empty_fixed_array_initializer_string(init_type)
+				g.write('(${c_elem}${dims})${initializer}')
 			} else {
 				g.gen_array_init_value(node, raw_init_type)
 			}
@@ -20920,7 +21038,7 @@ fn (mut g FlatGen) builtin_abi_decls() {
 		g.writeln('\tif (decimal_pos < 0) decimal_pos = digit_count;')
 		g.writeln('\tdecimal_pos += exponent_sign * exponent;')
 		g.writeln('\tint whole_digits = decimal_pos > 0 ? decimal_pos : 1;')
-		g.writeln('\tint negative = signbit(x);')
+		g.writeln('\tint negative = signbit(x) != 0;')
 		g.writeln('\tint out_len = negative + whole_digits + (precision > 0 ? precision + 1 : 0);')
 		g.writeln('\tu8* out = malloc_noscan((ptrdiff_t)out_len + 1);')
 		g.writeln('\tint pos = 0;')
@@ -23151,7 +23269,7 @@ fn (mut g FlatGen) emit_const(name string, val_id flat.NodeId) {
 	mut v_type := if val_node.kind == .offsetof_expr {
 		types.Type(types.usize_)
 	} else {
-		g.const_storage_type_for_value(name, val_id, g.tc.resolve_type(val_id))
+		g.const_storage_type_for_value(name, val_id, g.const_value_type(name, val_id))
 	}
 	// A const initialised by a generic call (e.g. `stdatomic.new_atomic(0)`)
 	// keeps the generic return type `&AtomicVal[T]`. The initializer is already

@@ -685,6 +685,12 @@ fn (mut g FlatGen) gen_struct_init(id flat.NodeId) {
 	}
 	init_semantic_type := g.tc.parse_type(init_value)
 	effective_type := default_init_unalias_type(types.unwrap_pointer(init_semantic_type))
+	if effective_type is types.ArrayFixed && node.children_count == 0 {
+		name := g.struct_init_c_type_name(init_value)
+		initializer := g.empty_fixed_array_initializer_string(effective_type)
+		g.write('(${name})${initializer}')
+		return
+	}
 	if init_semantic_type !is types.OptionType && init_semantic_type !is types.ResultType
 		&& (effective_type !is types.Struct || g.struct_init_is_lowered_sum_literal(node))
 		&& g.gen_lowered_sum_init(node) {
@@ -1792,6 +1798,11 @@ fn (mut g FlatGen) gen_heap_struct_init(node flat.Node) {
 	} else {
 		g.struct_init_c_type_name(node.value)
 	}
+	if clean_init_type is types.ArrayFixed && node.children_count == 0 {
+		initializer := g.empty_fixed_array_initializer_string(clean_init_type)
+		g.write('(${name}*)memdup(&(${name})${initializer}, sizeof(${name}))')
+		return
+	}
 	// A bare generic heap literal (`&Vec4{..}`) carries no type args; when the
 	// surrounding expected type fixes them (e.g. a `&Vec4[f32]` return), emit the
 	// concrete instance name so the materialized struct matches the value path.
@@ -2683,7 +2694,7 @@ fn (mut g FlatGen) has_zero_sized_leading_init_slot_inner(typ types.Type, mut vi
 					g.tc.cur_module = info.module
 					first := g.struct_field_at(info.full_name, 0) or {
 						g.tc.cur_module = old_module
-						return false
+						return true
 					}
 					has := g.has_zero_sized_leading_init_slot_inner(first.typ, mut visited)
 					g.tc.cur_module = old_module
@@ -2694,7 +2705,7 @@ fn (mut g FlatGen) has_zero_sized_leading_init_slot_inner(typ types.Type, mut vi
 					false
 				} else {
 					visited[typ.name] = true
-					first := g.struct_field_at(typ.name, 0) or { return false }
+					first := g.struct_field_at(typ.name, 0) or { return true }
 					g.has_zero_sized_leading_init_slot_inner(first.typ, mut visited)
 				}
 			}

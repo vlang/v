@@ -54,6 +54,8 @@ struct CollectGenInfoFnPrepArgs {
 	end          int
 	file         string
 	module_name  string
+	// registrations also builds each signature's alias registration.
+	registrations bool
 }
 
 struct CollectGenInfoScanArgs {
@@ -133,8 +135,16 @@ fn collect_gen_info_fn_prep_thread(arg voidptr) voidptr {
 			cur_module = node.value
 		} else if node.kind == .fn_decl && (!view.has_used_fn_filter()
 			|| view.used_fn_contains_in_module(node.value, cur_module)) {
+			mut prep := view.compute_collect_gen_fn_prep(node, cur_module, cur_file)
+			if a.registrations {
+				full_name := qualify_name_in_module(cur_module, node.value)
+				prep.registration = view.fn_signature_registration_in_module(cur_module, node.value,
+					full_name, prep.ptypes, prep.shared_params, prep.decl_is_variadic, prep.first_param_is_mut,
+					prep.return_type)
+				prep.has_registration = true
+			}
 			unsafe {
-				preps[pos] = view.compute_collect_gen_fn_prep(node, cur_module, cur_file)
+				preps[pos] = prep
 			}
 		}
 	}
@@ -313,8 +323,15 @@ fn (mut g FlatGen) precompute_consts_scoped() {
 
 fn parallel_type_decls_thread(arg voidptr) voidptr {
 	mut w := unsafe { &FlatGen(arg) }
+	// Body dispatchers fork from the master's checker while this task resolves
+	// declaration types. Some synchronous checker queries temporarily move
+	// function-local state such as `smartcasts`; use a private checker here so
+	// the snapshot observed by body workers remains immutable.
+	master_tc := w.tc
+	w.tc = w.clone_parallel_type_checker()
 	tdsw := time.new_stopwatch()
 	defer {
+		w.tc = master_tc
 		w.timing_profile('  [ttime]     cg typedecls   ${f64(tdsw.elapsed().microseconds()) / 1000.0:7.2f} ms (task)')
 	}
 	// This task uses the master generator from a pool thread, so memoize into
@@ -785,7 +802,7 @@ fn (mut g FlatGen) prepare_shared_sum_and_fixed_array_ret_wrappers(parallel bool
 // collect_gen_info_fn_preps resolves used function signatures on the persistent
 // worker pool. Registration stays serial in collect_gen_info, preserving all
 // source-order and duplicate-declaration semantics.
-fn (mut g FlatGen) collect_gen_info_fn_preps(node_ids []i32, no_parallel bool) []CollectGenFnPrep {
+fn (mut g FlatGen) collect_gen_info_fn_preps(node_ids []i32, no_parallel bool, with_registrations bool) []CollectGenFnPrep {
 	if no_parallel || isnil(g.a.worker_pool) || g.a.worker_pool.size() == 0
 		|| node_ids.len < 2048 || os.getenv('V3_NO_PAR_CGEN_INFO_FNS') != '' {
 		return []CollectGenFnPrep{}
@@ -823,13 +840,14 @@ fn (mut g FlatGen) collect_gen_info_fn_preps(node_ids []i32, no_parallel bool) [
 	mut tasks := []workers.Task{cap: n_jobs}
 	for job in 0 .. n_jobs {
 		args << CollectGenInfoFnPrepArgs{
-			g:            voidptr(g)
-			node_ids_ptr: unsafe { voidptr(&node_ids) }
-			preps_ptr:    unsafe { voidptr(&preps) }
-			start:        node_ids.len * job / n_jobs
-			end:          node_ids.len * (job + 1) / n_jobs
-			file:         context_files[job]
-			module_name:  context_modules[job]
+			g:             voidptr(g)
+			node_ids_ptr:  unsafe { voidptr(&node_ids) }
+			preps_ptr:     unsafe { voidptr(&preps) }
+			start:         node_ids.len * job / n_jobs
+			end:           node_ids.len * (job + 1) / n_jobs
+			file:          context_files[job]
+			module_name:   context_modules[job]
+			registrations: with_registrations
 		}
 	}
 	for job in 0 .. n_jobs {
@@ -1275,6 +1293,9 @@ fn (mut g FlatGen) absorb_scoped_cgen_batch(batch &FlatGen, output_streamed bool
 		if opt_name !in g.needed_optional_types {
 			g.needed_optional_types[opt_name.clone()] = val_type.clone()
 		}
+	}
+	for pointer_ct, pointer_type in batch.json_encode_pointer_types {
+		g.json_encode_pointer_types[pointer_ct.clone()] = pointer_type.clone()
 	}
 	for encoded, name in batch.fn_ptr_types {
 		if encoded !in g.fn_ptr_types {
@@ -2657,6 +2678,7 @@ fn (g &FlatGen) new_parallel_worker_config(worker_id int, result_only bool) &Fla
 		}
 		str_lits_shared:                    g.scope_parallel_workers && (!result_only || g.str_lits_shared)
 		str_lits_base_len:                  g.str_lits.len
+		json_encode_pointer_types:          map[string]string{}
 		global_types:                       g.global_types
 		global_raw_type_texts:              g.global_raw_type_texts
 		enum_vals:                          g.enum_vals
@@ -2901,6 +2923,7 @@ fn (g &FlatGen) new_parallel_worker_config(worker_id int, result_only bool) &Fla
 		w.local_pointer_storage_by_owner = map[string]bool{}
 		w.local_c_type_by_owner = map[string]string{}
 		w.local_raw_type_by_owner = map[string]string{}
+		w.local_indirect_value_by_owner = map[string]types.Type{}
 		w.local_shared_storage_by_owner = map[string]bool{}
 		w.local_fn_value_c_name_by_owner = map[string]string{}
 		w.default_value_stack = map[string]bool{}
@@ -3187,6 +3210,9 @@ fn (mut g FlatGen) merge_parallel_worker_into(w &FlatGen, mut ordered []string, 
 	}
 	for opt_name, val_type in w.needed_optional_types {
 		g.needed_optional_types[opt_name.clone()] = val_type.clone()
+	}
+	for pointer_ct, pointer_type in w.json_encode_pointer_types {
+		g.json_encode_pointer_types[pointer_ct.clone()] = pointer_type.clone()
 	}
 	for encoded, name in w.fn_ptr_types {
 		if encoded !in g.fn_ptr_types {

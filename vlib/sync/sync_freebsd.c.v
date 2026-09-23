@@ -82,7 +82,7 @@ pub fn new_mutex() &Mutex {
 // since it creates the associated resources needed for the mutex to work properly.
 @[inline]
 pub fn (mut m Mutex) init() {
-	C.pthread_mutex_init(&m.mutex, C.NULL)
+	C.pthread_mutex_init(&m.mutex, unsafe { nil })
 }
 
 // new_rwmutex creates a new read/write mutex instance on the heap, and returns a pointer to it.

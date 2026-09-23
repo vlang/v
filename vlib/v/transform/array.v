@@ -2152,6 +2152,12 @@ fn (t &Transformer) array_append_rhs_is_push_many(lhs_id flat.NodeId, rhs_id fla
 		return t.array_append_elem_types_match(clean_rhs_type[3..], elem_type)
 	}
 	if t.array_append_rhs_is_sum_array_variant(clean_rhs_type, elem_type) {
+		// An exact array result remains the bulk-append form. An array variable or
+		// literal can explicitly denote the recursive array variant instead.
+		if clean_rhs_type.starts_with('[]')
+			&& t.array_append_elem_types_match(clean_rhs_type[2..], elem_type) {
+			return !t.array_append_rhs_is_sum_variant_value(rhs_id, rhs_type, elem_type)
+		}
 		return false
 	}
 	if clean_rhs_type.starts_with('[]') {
@@ -2211,13 +2217,6 @@ fn (t &Transformer) array_append_rhs_is_sum_variant_value(rhs_id flat.NodeId, rh
 		return false
 	}
 	if t.array_append_rhs_builtin_map_elem_matches(rhs_id, elem_type) {
-		return false
-	}
-	mut clean_rhs := rhs_type.trim_space()
-	if clean_rhs.starts_with('!') || clean_rhs.starts_with('?') {
-		clean_rhs = clean_rhs[1..].trim_space()
-	}
-	if clean_rhs.starts_with('[]') && t.array_append_elem_types_match(clean_rhs[2..], elem_type) {
 		return false
 	}
 	if t.array_append_literal_is_sum_array_variant(rhs_id, elem_type) {
@@ -2313,7 +2312,7 @@ fn (t &Transformer) array_append_rhs_variant_candidate(rhs_id flat.NodeId, rhs_t
 		return ''
 	}
 	node := t.a.nodes[int(rhs_id)]
-	if node.kind in [.paren, .expr_stmt] && node.children_count > 0 {
+	if node.kind in [.paren, .expr_stmt, .or_expr] && node.children_count > 0 {
 		return t.array_append_rhs_variant_candidate(t.a.child(&node, 0), rhs_type)
 	}
 	if node.kind in [.cast_expr, .struct_init, .as_expr, .assoc] && node.value.len > 0 {
@@ -5861,6 +5860,7 @@ fn (mut t Transformer) substitute_ident(id flat.NodeId, name string, replacement
 	if node.children_count == 0 {
 		return id
 	}
+	fresh_start := t.a.nodes.len
 	mut new_children := []flat.NodeId{cap: int(node.children_count)}
 	for i in 0 .. node.children_count {
 		new_children << t.substitute_ident(t.a.child(&node, i), name, replacement)
@@ -5869,7 +5869,7 @@ fn (mut t Transformer) substitute_ident(id flat.NodeId, name string, replacement
 	for child in new_children {
 		t.a.children << child
 	}
-	return t.a.add_node(flat.Node{
+	copy_id := t.a.add_node(flat.Node{
 		kind:           node.kind
 		op:             node.op
 		children_start: start
@@ -5879,6 +5879,22 @@ fn (mut t Transformer) substitute_ident(id flat.NodeId, name string, replacement
 		typ:            node.typ
 		payload:        flat.node_payload(node.generic_params().clone())
 	})
+	t.note_fresh_child_parents(copy_id, new_children, fresh_start)
+	return copy_id
+}
+
+// note_fresh_child_parents records the copied parent of children created by the
+// current substitution. Those copies have no other parent yet, so the checker's
+// parent queries can use the edge instead of scanning the whole node arena.
+fn (mut t Transformer) note_fresh_child_parents(parent flat.NodeId, children []flat.NodeId, fresh_start int) {
+	if isnil(t.tc) {
+		return
+	}
+	for child in children {
+		if int(child) >= fresh_start {
+			t.tc.note_generated_parent(child, parent)
+		}
+	}
 }
 
 fn (mut t Transformer) substitute_ident_expr(id flat.NodeId, name string, replacement flat.NodeId) flat.NodeId {
@@ -5898,6 +5914,7 @@ fn (mut t Transformer) substitute_ident_expr(id flat.NodeId, name string, replac
 	if node.children_count == 0 {
 		return id
 	}
+	fresh_start := t.a.nodes.len
 	mut new_children := []flat.NodeId{cap: int(node.children_count)}
 	for i in 0 .. node.children_count {
 		child_id := t.a.child(&node, i)
@@ -5913,7 +5930,7 @@ fn (mut t Transformer) substitute_ident_expr(id flat.NodeId, name string, replac
 	for child in new_children {
 		t.a.children << child
 	}
-	return t.a.add_node(flat.Node{
+	copy_id := t.a.add_node(flat.Node{
 		kind:           node.kind
 		op:             node.op
 		children_start: start
@@ -5923,6 +5940,8 @@ fn (mut t Transformer) substitute_ident_expr(id flat.NodeId, name string, replac
 		typ:            node.typ
 		payload:        flat.node_payload(node.generic_params().clone())
 	})
+	t.note_fresh_child_parents(copy_id, new_children, fresh_start)
+	return copy_id
 }
 
 fn (mut t Transformer) infer_map_init_entry_type(node flat.Node) string {

@@ -3691,14 +3691,15 @@ fn (mut tc TypeChecker) check_struct_init(id flat.NodeId, node flat.Node) {
 	}
 	if init_struct := struct_type_from_type(init_type) {
 		is_synthetic_embed_file := node.value == 'embed_file.EmbedFileData'
-		// A `struct { ... }` literal is parsed into a name the parser synthesized for it,
-		// which the checker then resolves to whichever anonymous type the context expects.
+		// A `struct { ... }` literal is parsed into a name the parser synthesized for it
+		// (or left as a bare `struct` when its field types cannot be inferred), which the
+		// checker then resolves to whichever anonymous type the context expects.
 		// The literal names nothing of its own, so there is no declaration whose privacy
 		// it could violate - `cli.Command.defaults` is initialized exactly this way from
 		// another module. Naming an anonymous declaration outright is a different thing
 		// and stays subject to the check, as does a type a user happened to call
 		// `AnonStruct_...`: neither is a name the parser made up for a literal.
-		if !tc.a.contextual_anon_struct_types[init_type_text] {
+		if init_type_text != 'struct' && !tc.a.contextual_anon_struct_types[init_type_text] {
 			if _ := tc.private_declaration(init_struct.name) {
 				inside_module := if tc.cur_module.len > 0 { tc.cur_module } else { 'main' }
 				tc.record_error_at(.unknown_type, 'struct `${init_struct.name}` was declared as private to module `${init_struct.name.all_before_last('.')}`, so it can not be used inside module `${inside_module}`', id, node.pos)
@@ -3864,11 +3865,19 @@ fn (mut tc TypeChecker) check_struct_init(id flat.NodeId, node flat.Node) {
 					owner_base := strip_generic_args_name(init_name)
 					decl_mod := tc.struct_modules[owner_base] or { '' }
 					same_main_module := decl_mod in ['', 'main'] && tc.cur_module in ['', 'main']
-					if decl_mod.len > 0 && decl_mod != tc.cur_module && !same_main_module
-						&& !is_anonymous_struct_name(init_name) {
-						is_public := tc.visible_mutation_struct_field_is_public(init_name, field.value, decl_mod) or { true }
-						if !is_public {
-							tc.record_error_at(.unknown_field, 'cannot access private field `${field.value}` on `${init_type_text}`', field_id, tc.struct_init_field_deprecation_pos(field))
+					if decl_mod.len > 0 && decl_mod != tc.cur_module && !same_main_module {
+						// A `struct { ... }` literal that adopted another module's anonymous
+						// struct may only set the fields that struct declares `pub`. Its name
+						// encodes the source path, so the module identifies it instead.
+						if tc.is_synthesized_anon_struct(init_name) {
+							if !tc.anonymous_struct_field_is_public(init_name, field.value, decl_mod) {
+								tc.record_error_at(.unknown_field, 'cannot access private field `${field.value}` of an anonymous struct from module `${tc.diagnostic_module_display_name(decl_mod)}`', field_id, tc.struct_init_field_deprecation_pos(field))
+							}
+						} else if !is_anonymous_struct_name(init_name) {
+							is_public := tc.visible_mutation_struct_field_is_public(init_name, field.value, decl_mod) or { true }
+							if !is_public {
+								tc.record_error_at(.unknown_field, 'cannot access private field `${field.value}` on `${init_type_text}`', field_id, tc.struct_init_field_deprecation_pos(field))
+							}
 						}
 					}
 				}
@@ -5881,13 +5890,13 @@ fn (mut tc TypeChecker) check_selector(id flat.NodeId, node flat.Node) {
 			}
 			if node.value.len > 0 && node.value[0].is_capital()
 				&& !tc.static_assoc_type_known(qname) {
-				tc.register_synth_type(id, Type(int_))
+				tc.register_synth_type(id, tc.c_integer_constant_context_type(id))
 				return
 			}
 			// C preprocessor constants do not have V declarations. Like V1, infer
 			// conventional all-uppercase macro names as integers.
 			if node.value.len > 0 && !ascii_name_has_lower(node.value) {
-				tc.register_synth_type(id, Type(int_))
+				tc.register_synth_type(id, tc.c_integer_constant_context_type(id))
 				return
 			}
 		}
@@ -6078,11 +6087,23 @@ fn (mut tc TypeChecker) check_selector(id flat.NodeId, node flat.Node) {
 	if clean_recv is Struct {
 		if !tc.expr_is_rooted_in_c_namespace(base_id) {
 			if visibility := tc.private_declaration(clean_recv.name) {
-				display_name := tc.diagnostic_type_name(Type(clean_recv))
-				decl_module := tc.diagnostic_module_display_name(visibility.module_name)
-				inside_module := if tc.cur_module.len > 0 { tc.cur_module } else { 'main' }
-				tc.record_error_at(.unknown_type, 'struct `${display_name}` was declared as private to module `${decl_module}`, so it can not be used inside module `${inside_module}`', id,
-					tc.node_value_diagnostic_pos(id))
+				if tc.is_synthesized_anon_struct(clean_recv.name) {
+					// An anonymous struct has no name of its own that could be private: another
+					// module can only reach it through a field or value of some other declaration.
+					// What still applies there is the `pub` section of the field used here. The
+					// field is named through the expression, since its struct has no name.
+					if !tc.anonymous_struct_field_is_public(clean_recv.name, node.value,
+						visibility.module_name) {
+						tc.record_error_at(.unknown_field, 'field `${tc.source_text_for_node(base_id)}.${node.value}` is not public', id,
+							tc.node_value_diagnostic_pos(id))
+					}
+				} else {
+					display_name := tc.diagnostic_type_name(Type(clean_recv))
+					decl_module := tc.diagnostic_module_display_name(visibility.module_name)
+					inside_module := if tc.cur_module.len > 0 { tc.cur_module } else { 'main' }
+					tc.record_error_at(.unknown_type, 'struct `${display_name}` was declared as private to module `${decl_module}`, so it can not be used inside module `${inside_module}`', id,
+						tc.node_value_diagnostic_pos(id))
+				}
 			}
 		}
 		if deprecation := tc.deprecated_symbols['${clean_recv.name}.${node.value}'] {
@@ -7280,7 +7301,7 @@ fn (mut tc TypeChecker) check_valid_selector(id flat.NodeId, node flat.Node) {
 			tc.register_synth_type(id, if c_upper_constant_is_pointer('C.${node.value}') {
 				Type(voidptr_)
 			} else {
-				Type(int_)
+				tc.c_integer_constant_context_type(id)
 			})
 		}
 		_ = module_name
@@ -8460,6 +8481,15 @@ fn (tc &TypeChecker) fn_value_signature_compatible(actual Type, expected Type) b
 		}
 	}
 	return tc.fn_return_compatible(actual_fn.return_type, expected_fn.return_type)
+}
+
+fn (tc &TypeChecker) c_integer_constant_context_type(id flat.NodeId) Type {
+	if expected := tc.expected_context_for_expr(id) {
+		if unalias_type(expected).is_integer() {
+			return expected
+		}
+	}
+	return Type(int_)
 }
 
 fn c_upper_constant_is_pointer(qname string) bool {
@@ -9802,7 +9832,8 @@ fn (tc &TypeChecker) const_int_expr(id flat.NodeId, module_name string, seen []s
 			return tc.const_int_enum_selector_value(node.value)
 		}
 		.selector {
-			return tc.const_int_enum_selector_value(tc.source_text_for_node(id))
+			return tc.const_int_value_in_module(tc.source_text_for_node(id), module_name,
+				seen)
 		}
 		.sizeof_expr {
 			return tc.const_sizeof_type_value(node.value)
@@ -10002,6 +10033,15 @@ pub fn (tc &TypeChecker) interface_metadata_name(name string) string {
 			|| qname in tc.interface_embeds || qname in tc.interface_fields {
 			return qname
 		}
+		if qname != lookup && tc.non_interface_type_known(qname) {
+			return lookup
+		}
+	}
+	// A struct, enum or sum type never names an interface. Without this guard the
+	// short-name match below maps e.g. `csv.Reader` onto `io.Reader`, making the
+	// struct an implementer of that interface and its methods interface methods.
+	if tc.non_interface_type_known(lookup) {
+		return lookup
 	}
 	short := lookup.all_after_last('.')
 	mut match_name := ''
@@ -10018,6 +10058,10 @@ pub fn (tc &TypeChecker) interface_metadata_name(name string) string {
 		return match_name
 	}
 	return lookup
+}
+
+fn (tc &TypeChecker) non_interface_type_known(name string) bool {
+	return name in tc.structs || name in tc.enum_names || name in tc.sum_types
 }
 
 // named_type_implements_interface
@@ -11117,55 +11161,53 @@ fn (tc &TypeChecker) collect_source_error_embed_entries() map[string]int {
 	}
 	mut cur_file := ''
 	mut cur_module := ''
-	if tc.top_level_idx.len > 0 && tc.a.nodes.len == tc.top_level_idx_nodes_len {
-		// struct_decl nodes only occur at the top level, and the AST has not
-		// grown since collect built the index.
+	mut tail_start := 0
+	if tc.top_level_idx.len > 0 && tc.a.nodes.len >= tc.top_level_idx_nodes_len {
+		// struct_decl nodes only occur at the top level, and the index visits the
+		// file and module nodes exactly as a full scan would. Only nodes appended
+		// after collect built the index (by transform) still need scanning.
 		for i in tc.top_level_idx {
 			node := tc.a.nodes[i]
-			match node.kind {
-				.file {
-					cur_file = node.value
-					cur_module = ''
-				}
-				.module_decl {
-					cur_module = node.value
-				}
-				.struct_decl {
-					if !tc.source_struct_decl_has_non_builtin_error_embed(node, cur_file, cur_module) {
-						continue
-					}
-					target := node.value.all_after_last('.')
-					module_key := source_error_embed_module_key(cur_module)
-					entries[source_error_embed_entry_key(target, '', module_key)] = 1
-					entries[source_error_embed_entry_key(target, cur_file, module_key)] = 1
-				}
-				else {}
-			}
+			cur_file, cur_module = tc.note_source_error_embed(node, cur_file, cur_module, mut
+				entries)
 		}
-		return entries
+		tail_start = tc.top_level_idx_nodes_len
 	}
-	for node in tc.a.nodes {
-		match node.kind {
-			.file {
-				cur_file = node.value
-				cur_module = ''
-			}
-			.module_decl {
-				cur_module = node.value
-			}
-			.struct_decl {
-				if !tc.source_struct_decl_has_non_builtin_error_embed(node, cur_file, cur_module) {
-					continue
-				}
+	tail_ids, use_ids := tc.tail_decl_ids_for(tail_start, tc.a.nodes.len)
+	tail_count := if use_ids { tail_ids.len } else { tc.a.nodes.len - tail_start }
+	for k in 0 .. tail_count {
+		i := if use_ids { int(tail_ids[k]) } else { tail_start + k }
+		kind := tc.a.nodes[i].kind
+		if kind != .file && kind != .module_decl && kind != .struct_decl {
+			continue
+		}
+		cur_file, cur_module = tc.note_source_error_embed(tc.a.nodes[i], cur_file, cur_module, mut
+			entries)
+	}
+	return entries
+}
+
+// note_source_error_embed tracks the file/module context of a declaration scan
+// and records struct declarations that embed a non-builtin Error.
+fn (tc &TypeChecker) note_source_error_embed(node flat.Node, cur_file string, cur_module string, mut entries map[string]int) (string, string) {
+	match node.kind {
+		.file {
+			return node.value, ''
+		}
+		.module_decl {
+			return cur_file, node.value
+		}
+		.struct_decl {
+			if tc.source_struct_decl_has_non_builtin_error_embed(node, cur_file, cur_module) {
 				target := node.value.all_after_last('.')
 				module_key := source_error_embed_module_key(cur_module)
 				entries[source_error_embed_entry_key(target, '', module_key)] = 1
 				entries[source_error_embed_entry_key(target, cur_file, module_key)] = 1
 			}
-			else {}
 		}
+		else {}
 	}
-	return entries
+	return cur_file, cur_module
 }
 
 fn (tc &TypeChecker) source_struct_decl_has_non_builtin_error_embed(node flat.Node, cur_file string, cur_module string) bool {
@@ -13909,6 +13951,9 @@ pub fn (tc &TypeChecker) parse_canonical_type(typ string) Type {
 	if generic := tc.parse_canonical_generic_type(clean) {
 		return generic
 	}
+	if is_builtin_type_name(clean) {
+		return tc.parse_type(clean)
+	}
 	if known := tc.type_from_known_symbol(clean) {
 		_, result := tc.intern_type(known)
 		return result
@@ -16371,6 +16416,9 @@ fn (tc &TypeChecker) resolve_type_uncached(id flat.NodeId) Type {
 					return Type(u32_)
 				}
 				return unsigned_shift_result_type(lt)
+			}
+			if node.op in [.left_shift, .right_shift] {
+				return lt_raw
 			}
 			if node.op == .plus {
 				if lt is String && optional_payload_is_string(rt) {

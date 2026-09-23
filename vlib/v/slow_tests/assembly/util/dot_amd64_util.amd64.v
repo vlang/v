@@ -1,7 +1,8 @@
 module util
 
-pub fn add(a ...int) int {
-	mut res := 0
+// add sums the supplied 32-bit integers with inline assembly.
+pub fn add(a ...i32) i32 {
+	mut res := i32(0)
 	asm amd64 {
 		1:
 		addq rax, [in_data + rcx * 4 + 0]

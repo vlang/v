@@ -1278,6 +1278,11 @@ pub fn get_file_options(file string) FileOptions {
 const github_job = os.getenv('GITHUB_JOB')
 
 fn should_skip(relpath string) bool {
+	test_path := os.join_path(vroot, relpath)
+	if vtest.skip_ownership_autofree_tests() && vtest.is_ownership_autofree_test(test_path) {
+		eprintln('> skipping ${relpath} (ownership/autofree tests disabled)')
+		return true
+	}
 	if github_job.contains('musl') && relpath.ends_with('autofree_sql_or_block.vv') {
 		eprintln('> skipping ${relpath} on ${github_job}, since it uses db.sqlite, and its headers are not available to the C compiler in that environment')
 		return true
@@ -1361,7 +1366,6 @@ fn should_skip(relpath string) bool {
 		}
 	}
 	if gcc_path == '' {
-		test_path := os.join_path(vroot, relpath)
 		file_options := get_file_options(test_path)
 		if file_options.vflags.contains('-cc gcc') {
 			eprintln('> skipping ${relpath} since its vflags require gcc, which is not detected')
@@ -1369,7 +1373,6 @@ fn should_skip(relpath string) bool {
 		}
 	}
 	if github_job in ['tcc-windows', 'msvc-windows'] {
-		test_path := os.join_path(vroot, relpath)
 		file_options := get_file_options(test_path)
 		if file_options.vflags.contains('-cc clang') {
 			// The Windows runner's clang toolchain produces V binaries that

@@ -405,11 +405,11 @@ fn test_sum_type_index_emission_override_is_limited_to_flatgen() {
 	assert g.should_emit_fn_node_in_module_known(flat.Node{
 		kind:  .fn_decl
 		value: 'FlatGen.sum_type_index'
-	}, 'c', 'interface.v', 'c__FlatGen__sum_type_index', false)
+	}, -1, 'c', 'interface.v', 'c__FlatGen__sum_type_index', false)
 	assert !g.should_emit_fn_node_in_module_known(flat.Node{
 		kind:  .fn_decl
 		value: 'Transformer.sum_type_index'
-	}, 'transform', 'sum.v', 'transform__Transformer__sum_type_index', false)
+	}, -1, 'transform', 'sum.v', 'transform__Transformer__sum_type_index', false)
 }
 
 fn test_typeof_type_index_fallback_uses_matching_sum_variant() {

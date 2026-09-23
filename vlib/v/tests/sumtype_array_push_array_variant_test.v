@@ -30,6 +30,19 @@ fn test_push_array_variable_to_sumtype_array() {
 	assert inner.len == 2
 }
 
+fn prim_array_result() ![]Prim {
+	return [Prim(1), Prim(2)]
+}
+
+fn test_append_array_result_to_sumtype_array() ! {
+	mut args := []Prim{}
+	// A function result with the destination array type keeps the bulk-append form.
+	args << prim_array_result()!
+	assert args.len == 2
+	assert (args[0] as int) == 1
+	assert (args[1] as int) == 2
+}
+
 fn test_push_single_elements_still_works() {
 	mut args := []Prim{}
 	// Push single elements (not arrays)

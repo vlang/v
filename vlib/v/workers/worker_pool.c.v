@@ -2,6 +2,7 @@
 module workers
 
 import os
+import sync
 import time
 
 // Parser, checker, transform, mark-used, and C generation have deep recursive
@@ -53,6 +54,10 @@ pub:
 	stop       bool
 mut:
 	queued_at_ns u64
+	// done receives the completion of a queued task. Each Pool.run batch has its
+	// own channel, so a batch never counts another batch's completions, even
+	// when it runs one of their queued tasks itself.
+	done chan Completion
 }
 
 // Stats is a cumulative snapshot of persistent worker-pool activity.
@@ -66,12 +71,38 @@ pub:
 	launch_failures   u64
 	queue_wait_ns     u64
 	worker_run_ns     u64
-	utilization_ppm   u64
+	// caller_run_ns is queued work that a waiting Pool.run caller ran itself. It
+	// is excluded from utilization_ppm, which measures the persistent workers.
+	caller_run_ns   u64
+	utilization_ppm u64
 }
 
 struct Completion {
 	queue_wait_ns u64
-	worker_run_ns u64
+	run_ns        u64
+	on_worker     bool // run by a persistent worker rather than the waiting caller
+}
+
+// BatchStats accumulates one Pool.run batch's counters without touching the
+// shared pool, which concurrent batches would otherwise update racily.
+struct BatchStats {
+mut:
+	tasks             u64
+	async_tasks       u64
+	forced_sync_tasks u64
+	fallback_tasks    u64
+	queue_wait_ns     u64
+	worker_run_ns     u64
+	caller_run_ns     u64
+}
+
+fn (mut s BatchStats) record_completion(completion Completion) {
+	s.queue_wait_ns += completion.queue_wait_ns
+	if completion.on_worker {
+		s.worker_run_ns += completion.run_ns
+	} else {
+		s.caller_run_ns += completion.run_ns
+	}
 }
 
 // Pool owns a bounded set of persistent compiler workers. Phase payloads stay
@@ -81,9 +112,11 @@ struct Completion {
 @[heap]
 pub struct Pool {
 mut:
-	jobs                   chan Task
-	done                   chan Completion
-	threads                []WorkerThread
+	jobs    chan Task
+	threads []WorkerThread
+	// stats_lock guards the cumulative task and timing counters below; each
+	// batch merges its own totals once, since batches may run concurrently.
+	stats_lock             &sync.Mutex = sync.new_mutex()
 	is_closed              bool
 	task_count             u64
 	async_task_count       u64
@@ -92,8 +125,10 @@ mut:
 	launch_attempt_count   u64
 	launch_failure_count   u64
 	launched_thread_count  u64
+	caller_steals          bool
 	queue_wait_ns          u64
 	worker_run_ns          u64
+	caller_run_ns          u64
 	started_at_ns          u64
 }
 
@@ -104,17 +139,7 @@ fn pool_worker(arg voidptr) voidptr {
 		if task.stop {
 			break
 		}
-		started_at := time.sys_mono_now()
-		task.run(task.arg)
-		finished_at := time.sys_mono_now()
-		pool.done <- Completion{
-			queue_wait_ns: if started_at >= task.queued_at_ns {
-				started_at - task.queued_at_ns
-			} else {
-				0
-			}
-			worker_run_ns: if finished_at >= started_at { finished_at - started_at } else { 0 }
-		}
+		run_queued_task(task, true)
 	}
 	$if prealloc {
 		unsafe {
@@ -122,6 +147,24 @@ fn pool_worker(arg voidptr) voidptr {
 		}
 	}
 	return unsafe { nil }
+}
+
+// run_queued_task runs a queued task and reports its queue wait and run time on
+// the task's batch channel, noting whether a persistent worker or a draining
+// caller picked it up.
+fn run_queued_task(task Task, on_worker bool) {
+	started_at := time.sys_mono_now()
+	task.run(task.arg)
+	finished_at := time.sys_mono_now()
+	task.done <- Completion{
+		queue_wait_ns: if started_at >= task.queued_at_ns {
+			started_at - task.queued_at_ns
+		} else {
+			0
+		}
+		run_ns:        if finished_at >= started_at { finished_at - started_at } else { 0 }
+		on_worker:     on_worker
+	}
 }
 
 // new creates up to size persistent workers. Failed launches simply reduce
@@ -138,9 +181,9 @@ pub fn new(size int) &Pool {
 	queue_cap := if wanted > 0 { wanted * 16 } else { 1 }
 	mut pool := &Pool{
 		jobs:                 chan Task{cap: queue_cap}
-		done:                 chan Completion{cap: queue_cap}
 		launch_attempt_count: u64(wanted)
 		started_at_ns:        time.sys_mono_now()
+		caller_steals:        os.getenv('V3_NO_POOL_STEAL') == ''
 	}
 	fail := os.getenv('V3_TEST_PTHREAD_CREATE_FAIL')
 	stack_size := worker_stack_size()
@@ -165,9 +208,33 @@ pub fn (p &Pool) size() int {
 	return p.threads.len
 }
 
-fn (mut p Pool) record_completion(completion Completion) {
-	p.queue_wait_ns += completion.queue_wait_ns
-	p.worker_run_ns += completion.worker_run_ns
+fn (mut p Pool) merge_batch_stats(s BatchStats) {
+	p.stats_lock.lock()
+	p.task_count += s.tasks
+	p.async_task_count += s.async_tasks
+	p.forced_sync_task_count += s.forced_sync_tasks
+	p.fallback_task_count += s.fallback_tasks
+	p.queue_wait_ns += s.queue_wait_ns
+	p.worker_run_ns += s.worker_run_ns
+	p.caller_run_ns += s.caller_run_ns
+	p.stats_lock.unlock()
+}
+
+// stats_snapshot copies the cumulative counters under the stats lock.
+fn (p &Pool) stats_snapshot() BatchStats {
+	mut stats_lock := unsafe { p.stats_lock }
+	stats_lock.lock()
+	snapshot := BatchStats{
+		tasks:             p.task_count
+		async_tasks:       p.async_task_count
+		forced_sync_tasks: p.forced_sync_task_count
+		fallback_tasks:    p.fallback_task_count
+		queue_wait_ns:     p.queue_wait_ns
+		worker_run_ns:     p.worker_run_ns
+		caller_run_ns:     p.caller_run_ns
+	}
+	stats_lock.unlock()
+	return snapshot
 }
 
 // run executes one compiler phase batch and waits for every callback. Tasks
@@ -176,18 +243,29 @@ pub fn (mut p Pool) run(tasks []Task) bool {
 	if tasks.len == 0 {
 		return false
 	}
+	mut batch := BatchStats{
+		tasks: u64(tasks.len)
+	}
 	if p.is_closed || p.threads.len == 0 {
 		for task in tasks {
 			task.run(task.arg)
 			if task.force_sync {
-				p.forced_sync_task_count++
+				batch.forced_sync_tasks++
 			} else {
-				p.fallback_task_count++
+				batch.fallback_tasks++
 			}
 		}
-		p.task_count += u64(tasks.len)
+		p.merge_batch_stats(batch)
 		return false
 	}
+	mut async_count := 0
+	for task in tasks {
+		if !task.force_sync {
+			async_count++
+		}
+	}
+	// Buffered for the whole batch, so a worker never blocks on reporting.
+	done := chan Completion{cap: if async_count > 0 { async_count } else { 1 }}
 	mut submitted := 0
 	mut completed := 0
 	for task in tasks {
@@ -196,6 +274,7 @@ pub fn (mut p Pool) run(tasks []Task) bool {
 				run:          task.run
 				arg:          task.arg
 				queued_at_ns: time.sys_mono_now()
+				done:         done
 			}
 			mut is_submitted := false
 			for !is_submitted {
@@ -204,8 +283,8 @@ pub fn (mut p Pool) run(tasks []Task) bool {
 						submitted++
 						is_submitted = true
 					}
-					completion := <-p.done {
-						p.record_completion(completion)
+					completion := <-done {
+						batch.record_completion(completion)
 						completed++
 					}
 				}
@@ -215,43 +294,66 @@ pub fn (mut p Pool) run(tasks []Task) bool {
 	for task in tasks {
 		if task.force_sync {
 			task.run(task.arg)
-			p.forced_sync_task_count++
+			batch.forced_sync_tasks++
 		}
 	}
-	for completed < submitted {
-		completion := <-p.done
-		p.record_completion(completion)
+	// Help drain the queue instead of idling: when a worker is descheduled (a
+	// loaded host) or the caller's own share finished early, the caller runs
+	// queued tasks itself. A task is completed on its own batch's channel, so
+	// running one queued by a concurrent batch is still accounted correctly.
+	for completed < submitted && !p.caller_steals {
+		completion := <-done
+		batch.record_completion(completion)
 		completed++
 	}
-	p.async_task_count += u64(submitted)
-	p.task_count += u64(tasks.len)
+	for completed < submitted {
+		select {
+			completion := <-done {
+				batch.record_completion(completion)
+				completed++
+			}
+			task := <-p.jobs {
+				if task.stop {
+					// Only close() queues stop requests; leave them to the workers.
+					p.jobs <- task
+					continue
+				}
+				run_queued_task(task, false)
+			}
+		}
+	}
+	done.close()
+	batch.async_tasks = u64(submitted)
+	p.merge_batch_stats(batch)
 	return submitted > 0
 }
 
 // tasks_run reports the number of phase callbacks completed through this pool.
 pub fn (p &Pool) tasks_run() u64 {
-	return p.task_count
+	return p.stats_snapshot().tasks
 }
 
 // stats returns cumulative scheduling and utilization counters.
 pub fn (p &Pool) stats() Stats {
+	counters := p.stats_snapshot()
 	now := time.sys_mono_now()
 	elapsed_ns := if now >= p.started_at_ns { now - p.started_at_ns } else { 0 }
 	capacity_ns := elapsed_ns * p.launched_thread_count
 	utilization_ppm := if capacity_ns > 0 {
-		p.worker_run_ns * 1_000_000 / capacity_ns
+		counters.worker_run_ns * 1_000_000 / capacity_ns
 	} else {
 		0
 	}
 	return Stats{
-		tasks_run:         p.task_count
-		async_tasks:       p.async_task_count
-		forced_sync_tasks: p.forced_sync_task_count
-		fallback_tasks:    p.fallback_task_count
+		tasks_run:         counters.tasks
+		async_tasks:       counters.async_tasks
+		forced_sync_tasks: counters.forced_sync_tasks
+		fallback_tasks:    counters.fallback_tasks
 		launch_attempts:   p.launch_attempt_count
 		launch_failures:   p.launch_failure_count
-		queue_wait_ns:     p.queue_wait_ns
-		worker_run_ns:     p.worker_run_ns
+		queue_wait_ns:     counters.queue_wait_ns
+		worker_run_ns:     counters.worker_run_ns
+		caller_run_ns:     counters.caller_run_ns
 		utilization_ppm:   utilization_ppm
 	}
 }

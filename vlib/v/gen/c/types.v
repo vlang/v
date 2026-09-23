@@ -874,18 +874,28 @@ fn (mut g FlatGen) collect_optional_typedefs() {
 }
 
 fn (mut g FlatGen) collect_unresolved_call_optional_types() {
-	// Calls without a resolved expression type are the only optional-type source
-	// not covered by the shared declaration-signature scan.
+	// Calls without a resolved expression type are normally the only optional-type
+	// source not covered by the shared declaration-signature scan. Legacy
+	// `json.decode(T, ...)` is also handled here because its declaration keeps an
+	// erased `!voidptr` return while cgen materializes a concrete `!T` wrapper.
 	mut seen_type_ids := []bool{len: 65536}
 	mut seen_type_texts := map[string]bool{}
 	for idx in g.type_metadata_nodes() {
 		node := g.a.nodes[idx]
-		if node.kind != .call || (idx < g.tc.expr_type_set.len && g.tc.expr_type_set[idx]) {
+		if node.kind != .call {
+			continue
+		}
+		if json_type := g.json_decode_call_expr_result_type(flat.NodeId(idx)) {
+			g.collect_optional_typedef_type(json_type)
+		}
+		if idx < g.tc.expr_type_set.len && g.tc.expr_type_set[idx] {
 			continue
 		}
 		if idx < g.tc.resolved_call_set.len && g.tc.resolved_call_set[idx] {
 			name := g.tc.resolved_call_names[idx].value
-			if name in g.tc.fn_ret_types {
+			// The compiler-magic `json.decode(T, s)` is declared as a `!voidptr`
+			// stub; its real `!T` return type only exists in the node spelling.
+			if name in g.tc.fn_ret_types && name != 'json.decode' {
 				// collect_declaration_signature_types() already processed this exact
 				// return entry; only calls without checker return metadata need their
 				// transformed node spelling inspected below.
@@ -1758,7 +1768,10 @@ fn (mut g FlatGen) enum_str_defs() {
 }
 
 fn (g &FlatGen) enum_autostr_is_used(cname string) bool {
-	return !g.has_used_fn_filter() || g.used_fn_contains('${cname}__autostr')
+	// Test assertion diagnostics stringify enum operands even when source code does
+	// not call `.str()`, so their synthesized helpers are outside markused's call graph.
+	return g.test_files.len > 0 || !g.has_used_fn_filter()
+		|| g.used_fn_contains('${cname}__autostr')
 }
 
 fn (g &FlatGen) enum_decl_type_name(node flat.Node, module_name string) string {

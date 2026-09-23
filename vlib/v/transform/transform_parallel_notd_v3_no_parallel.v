@@ -299,6 +299,52 @@ fn shared_chunk_thread(arg voidptr) voidptr {
 	return unsafe { nil }
 }
 
+struct CallCanonArgs {
+	master voidptr // &Transformer, whose checker symbol table is only read
+	worker voidptr // &Transformer
+}
+
+// lookup_worker_call_names resolves the canonical spelling of every call name the
+// workers recorded, on the pool. Nothing interns while it runs, so the lookups
+// read the symbol table without its lock; merge_worker then interns only the
+// names that were still missing, in the same order as before.
+fn (mut t Transformer) lookup_worker_call_names(worker_ptrs []voidptr) {
+	if isnil(t.tc) || worker_ptrs.len == 0 || isnil(t.a.worker_pool) {
+		return
+	}
+	mut args := []CallCanonArgs{cap: worker_ptrs.len}
+	for w in worker_ptrs {
+		args << CallCanonArgs{
+			master: voidptr(t)
+			worker: w
+		}
+	}
+	mut tasks := []workers.Task{cap: args.len}
+	for i in 0 .. args.len {
+		tasks << workers.Task{
+			run:        worker_call_canon_thread
+			arg:        unsafe { voidptr(&args[i]) }
+			force_sync: i == 0
+		}
+	}
+	t.a.worker_pool.run(tasks)
+}
+
+fn worker_call_canon_thread(arg voidptr) voidptr {
+	a := unsafe { &CallCanonArgs(arg) }
+	master := unsafe { &Transformer(a.master) }
+	mut w := unsafe { &Transformer(a.worker) }
+	if isnil(w.tc) || isnil(w.tc.fork_overlay) {
+		return unsafe { nil }
+	}
+	mut canon := []string{cap: w.tc.fork_overlay.resolved_call_names.len}
+	for _, name in w.tc.fork_overlay.resolved_call_names {
+		canon << master.tc.lookup_canonical_symbol_unlocked(name) or { '' }
+	}
+	w.merge_call_canon = canon
+	return unsafe { nil }
+}
+
 // SharedChunkArgs is the payload handed to each shared-base worker thread.
 struct SharedChunkArgs {
 	worker    voidptr // &Transformer
@@ -2755,6 +2801,9 @@ fn (mut t Transformer) run_parallel_transform_shared(items []FnWorkItem, base_no
 	if thread_count > 0 && (t.retain_worker_results || t.stage_scope != unsafe { nil })
 		&& os.getenv('V3_NO_MERGE_RELOC').len == 0 {
 		t.relocate_worker_regions(args[1..].map(it.worker), node_starts[1..chunk_count], child_starts[1..chunk_count])
+	}
+	if thread_count > 0 {
+		t.lookup_worker_call_names(args[1..].map(it.worker))
 	}
 	// Compact each worker region in fixed order (deterministic
 	// node numbering). merge_worker treats the region start exactly like a
