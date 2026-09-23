@@ -911,6 +911,8 @@ pub mut:
 	reject_unsupported_generics   bool
 	checker_fixture_mode          bool
 	is_test                       bool
+	check_concrete_generic_bodies bool // `-check` checks the concrete clones of the program's generics for fields and methods their types lack
+	concrete_parents_indexed      int  // nodes the parent index covered when the last concrete clone was checked
 	module_diagnostic_root        string
 	autofree_mode                 bool
 	no_main                       bool
@@ -1354,6 +1356,7 @@ fn (tc &TypeChecker) fork_program_view(ast &flat.FlatAst, direct_dependencies_by
 		reject_unsupported_generics:           tc.reject_unsupported_generics
 		checker_fixture_mode:                  tc.checker_fixture_mode
 		is_test:                               tc.is_test
+		check_concrete_generic_bodies:         tc.check_concrete_generic_bodies
 		module_diagnostic_root:                tc.module_diagnostic_root
 		autofree_mode:                         tc.autofree_mode
 		no_main:                               tc.no_main
@@ -2057,6 +2060,27 @@ pub fn (mut tc TypeChecker) refresh_rewritten_parent_index(a &flat.FlatAst) {
 	}
 	// Keep validation enabled because transformed trees may intentionally share
 	// a node or rewrite an edge after this index is built.
+	tc.direct_parent_index_trusted = false
+}
+
+// index_rewritten_parents_after adds to that index the nodes appended from
+// `start` on. A clone of a generic function is a new subtree, so its edges are
+// all among those nodes.
+pub fn (mut tc TypeChecker) index_rewritten_parents_after(start int) {
+	n := tc.a.nodes.len
+	for tc.rewritten_parent_ids.len < n {
+		tc.rewritten_parent_ids << flat.empty_node
+	}
+	for parent_idx in start .. n {
+		node := tc.a.nodes[parent_idx]
+		for child_idx in 0 .. node.children_count {
+			idx := int(tc.a.child(&node, child_idx))
+			if idx >= tc.direct_parent_ids.len && idx < n
+				&& tc.rewritten_parent_ids[idx] == flat.empty_node {
+				tc.rewritten_parent_ids[idx] = flat.NodeId(parent_idx)
+			}
+		}
+	}
 	tc.direct_parent_index_trusted = false
 }
 
@@ -7646,6 +7670,62 @@ fn (mut tc TypeChecker) named_private_fns() (map[string]bool, bool) {
 		used[cand.qname] = true
 	}
 	return used, all_named
+}
+
+// diagnosed_files_declare_generics reports whether a file whose diagnostics are
+// reported declares a generic function or method: only then can a concrete
+// instance of the program's own code fail where the generic one did not.
+pub fn (mut tc TypeChecker) diagnosed_files_declare_generics() bool {
+	saved_file := tc.cur_file
+	saved_module := tc.cur_module
+	mut found := false
+	for idx in tc.top_level_idx {
+		node := tc.a.nodes[idx]
+		if node.kind == .file {
+			tc.enter_file(node.value)
+			continue
+		}
+		if node.kind == .fn_decl && tc.cur_file in tc.diagnostic_files
+			&& tc.infer_decl_generic_param_names(node).len > 0 {
+			found = true
+			break
+		}
+	}
+	tc.cur_file = saved_file
+	tc.cur_module = saved_module
+	return found
+}
+
+// diagnosed_fn_keys returns every name that a function of a diagnosed file goes
+// by in a set of used functions. A check monomorphizes from them alone: walking
+// the rest of the program to find what is reachable would check the library
+// bodies that the diagnostics server leaves out.
+pub fn (mut tc TypeChecker) diagnosed_fn_keys() map[string]bool {
+	saved_file := tc.cur_file
+	saved_module := tc.cur_module
+	mut keys := map[string]bool{}
+	mut module_name := ''
+	for idx in tc.top_level_idx {
+		node := tc.a.nodes[idx]
+		if node.kind == .file {
+			tc.enter_file(node.value)
+			continue
+		}
+		if node.kind == .module_decl {
+			module_name = node.value
+			continue
+		}
+		if node.kind != .fn_decl || tc.cur_file !in tc.diagnostic_files {
+			continue
+		}
+		qname := checker_qualified_fn_name(module_name, node.value)
+		keys[node.value] = true
+		keys[qname] = true
+		keys[tc.cached_c_name(qname)] = true
+	}
+	tc.cur_file = saved_file
+	tc.cur_module = saved_module
+	return keys
 }
 
 // unused_private_declarations returns the private functions that are not in

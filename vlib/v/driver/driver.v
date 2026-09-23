@@ -11667,7 +11667,9 @@ pub fn run(args []string) {
 			// Before the monomorphization below rewrites the tree, as in a build.
 			report_unused_declarations_of_check(a, mut pre_tc, no_skip_unused, test_files,
 				input_file.ends_with('.vsh') || is_checker_fixture)
-			if pre_tc.global_names.len > 0 && os.getenv('V_CHECK_SELECTED_FILES_ONLY') == '' {
+			monomorphized := check_concrete_generic_bodies_of_check(mut a, mut pre_tc)
+			if !monomorphized && pre_tc.global_names.len > 0
+				&& os.getenv('V_CHECK_SELECTED_FILES_ONLY') == '' {
 				check_used_fns, check_uses_generics := markused.mark_used_with_generic_usage(a, &pre_tc)
 				if check_uses_generics {
 					_, _ = transform.monomorphize_with_used_checked_config(mut a, &pre_tc, check_used_fns, false)
@@ -16822,6 +16824,25 @@ fn report_unused_declarations_of_check(a &flat.FlatAst, mut tc types.TypeChecker
 		check_markused(a, mut tc, no_skip_unused, test_files, full_runtime)
 	}
 	tc.diagnose_unused_private_declarations(used_fns)
+}
+
+// check_concrete_generic_bodies_of_check checks each concrete instance of the
+// program's generic functions, as the monomorphization of a fixture does:
+// `show(1)` has to fail where `show` reads `x.name`, not in the C compiler. It
+// runs only when a diagnosed file declares a generic function, and reports
+// whether it monomorphized the tree.
+fn check_concrete_generic_bodies_of_check(mut a flat.FlatAst, mut tc types.TypeChecker) bool {
+	if tc.errors.len > 0 || tc.checker_fixture_mode || !tc.diagnosed_files_declare_generics() {
+		return false
+	}
+	// The program's own functions are the roots, reachable or not, as V1 checked
+	// every instance a call asks for.
+	used_fns := tc.diagnosed_fn_keys()
+	tc.refresh_direct_parent_index(a)
+	tc.check_concrete_generic_bodies = true
+	_, _ = transform.monomorphize_with_used_checked_config(mut a, tc, used_fns, false)
+	tc.check_concrete_generic_bodies = false
+	return true
 }
 
 // check_markused returns what markused finds used, asked for the way a build

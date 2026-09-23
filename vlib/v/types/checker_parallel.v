@@ -2638,6 +2638,47 @@ pub fn (mut tc TypeChecker) check_concrete_fn_semantics(fn_idx int, file string,
 	tc.check_fn_decl_semantics(fn_idx, node, file, module_name)
 }
 
+// check_concrete_instance_members checks a concrete clone of one of the
+// program's generic functions for what only its concrete types decide: a field
+// or a method that such a type lacks, as when `show(1)` reads `x.name`. Every
+// other error and warning of the clone is dropped: checked before the clone is
+// lowered, only these are reliable outside checker fixtures, where many valid
+// generic programs would fail.
+pub fn (mut tc TypeChecker) check_concrete_instance_members(fn_idx int, file string, module_name string) {
+	errors_start := tc.errors.len
+	notices_start := tc.notices.len
+	// The clone was appended after the parent index was built; without its edges
+	// every parent query of the check scans the whole tree.
+	if tc.concrete_parents_indexed == 0 {
+		tc.refresh_rewritten_parent_index(tc.a)
+	} else {
+		tc.index_rewritten_parents_after(tc.concrete_parents_indexed)
+	}
+	tc.concrete_parents_indexed = tc.a.nodes.len
+	tc.check_concrete_fn_semantics(fn_idx, file, module_name)
+	mut kept := []TypeError{}
+	for err in tc.errors[errors_start..] {
+		if is_concrete_member_error(err.msg) {
+			kept << err
+		}
+	}
+	tc.errors.trim(errors_start)
+	tc.errors << kept
+	tc.notices.trim(notices_start)
+}
+
+// is_concrete_member_error reports whether `msg` says that a concrete type
+// lacks a field or a method. A `voidptr` receiver is a type the clone did not
+// resolve, not one the program uses.
+fn is_concrete_member_error(msg string) bool {
+	if msg.starts_with('`voidptr`') || msg.contains('`voidptr.') {
+		return false
+	}
+	return msg.contains(' has no property `') || msg.contains(' has no field named `')
+		|| msg.contains(' has no field or method `')
+		|| msg.starts_with('unknown method or field: `')
+}
+
 fn (mut tc TypeChecker) check_fn_decl_semantics(fn_idx int, node flat.Node, file string, module_name string) {
 	fast_valid_build := tc.building_v_fast
 	saved_fn_context := tc.fn_context
