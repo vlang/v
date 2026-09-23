@@ -10002,6 +10002,15 @@ pub fn (tc &TypeChecker) interface_metadata_name(name string) string {
 			|| qname in tc.interface_embeds || qname in tc.interface_fields {
 			return qname
 		}
+		if qname != lookup && tc.non_interface_type_known(qname) {
+			return lookup
+		}
+	}
+	// A struct, enum or sum type never names an interface. Without this guard the
+	// short-name match below maps e.g. `csv.Reader` onto `io.Reader`, making the
+	// struct an implementer of that interface and its methods interface methods.
+	if tc.non_interface_type_known(lookup) {
+		return lookup
 	}
 	short := lookup.all_after_last('.')
 	mut match_name := ''
@@ -10018,6 +10027,10 @@ pub fn (tc &TypeChecker) interface_metadata_name(name string) string {
 		return match_name
 	}
 	return lookup
+}
+
+fn (tc &TypeChecker) non_interface_type_known(name string) bool {
+	return name in tc.structs || name in tc.enum_names || name in tc.sum_types
 }
 
 // named_type_implements_interface
