@@ -21058,6 +21058,17 @@ fn (t &Transformer) raw_expr_type_without_smartcast(id flat.NodeId) string {
 			if typ.len > 0 {
 				return typ
 			}
+			if global_type := t.current_module_global_type(node.value) {
+				return t.normalize_type_alias(global_type)
+			}
+			if global_name := t.imported_global_name(node.value) {
+				return t.normalize_type_alias(t.globals[global_name])
+			}
+			if const_key := t.const_type_key_in_context(node.value, t.cur_module, t.cur_file) {
+				if const_type := t.const_type_name(const_key) {
+					return t.normalize_type_alias(const_type)
+				}
+			}
 			return t.normalize_type_alias(node.typ)
 		}
 		.selector {
