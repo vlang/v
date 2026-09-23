@@ -492,6 +492,48 @@ fn (mut g FlatGen) gen_int128_compound_assign(op flat.Op, lhs_id flat.NodeId, rh
 	return true
 }
 
+// gen_int128_inc_dec lowers `x++` and `x--` on a 128-bit value. C has no operator
+// for the portable struct representation, and a plain `++` only compiles where the
+// compiler has __int128.
+fn (mut g FlatGen) gen_int128_inc_dec(op flat.Op, target_id flat.NodeId, typ types.Type) bool {
+	signed := int128_signedness(typ) or { return false }
+	name := if op == .inc { 'add' } else { 'sub' }
+	helper := int128_helper(signed, name)
+	one := if signed { '__v_i128_from_i64((i64)(1))' } else { '__v_u128_from_u64((u64)(1))' }
+	target := g.a.nodes[int(target_id)]
+	if target.kind == .ident && !g.current_param_is_mut(target.value) {
+		// A plain assignment keeps this usable in the post slot of a C for loop,
+		// where a block is not allowed. Reading an ident twice costs nothing.
+		g.gen_expr(target_id)
+		g.write(' = ${helper}(')
+		g.gen_expr(target_id)
+		g.write(', ${one})')
+		return true
+	}
+	if target.kind == .ident && g.current_param_is_mut(target.value) {
+		g.write('(*')
+		if g.current_param_is_mut_pointer(target.value) {
+			g.gen_mut_pointer_slot_expr(target_id)
+		} else {
+			g.gen_expr(target_id)
+		}
+		g.write(') = ${helper}((*')
+		if g.current_param_is_mut_pointer(target.value) {
+			g.gen_mut_pointer_slot_expr(target_id)
+		} else {
+			g.gen_expr(target_id)
+		}
+		g.write('), ${one})')
+		return true
+	}
+	// The address of the target is taken once, so a target that costs something to
+	// evaluate (an index, say) is evaluated a single time.
+	g.write('{ ${g.value_c_type(typ)}* _p = &(')
+	g.gen_expr(target_id)
+	g.write('); *_p = ${helper}(*_p, ${one}); }')
+	return true
+}
+
 // int128_source_is_plain_literal reports whether a cast source is an integer
 // literal with no minus sign written in front of it.
 fn (g &FlatGen) int128_source_is_plain_literal(id flat.NodeId) bool {

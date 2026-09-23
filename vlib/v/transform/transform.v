@@ -24523,7 +24523,7 @@ fn is_numeric_type_name(name string) bool {
 fn is_integer_type_name(name string) bool {
 	return name == 'int' || name == 'i8' || name == 'i16' || name == 'i64' || name == 'u8'
 		|| name == 'byte' || name == 'u16' || name == 'u32' || name == 'u64' || name == 'isize'
-		|| name == 'usize' || name == 'rune'
+		|| name == 'usize' || name == 'rune' || name == 'i128' || name == 'u128'
 }
 
 fn is_float_type_name(name string) bool {

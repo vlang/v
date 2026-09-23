@@ -1830,6 +1830,25 @@ fn (mut g FlatGen) gen_index_assign(node flat.Node) {
 				}
 			}
 			g.write('; array__set(_a${tmp}, _i${tmp}, &(${c_elem}[]){')
+			if base_op := int128_assign_base_op(node.op) {
+				if signed := int128_signedness(arr_type.elem_type) {
+					if helper := int128_infix_helper(base_op, signed) {
+						// A 128-bit element has no C operator for a compound assignment,
+						// so the element is combined through the helpers a plain infix
+						// uses. The element address is read through the array either way.
+						lhs_text := '*(${c_elem}*)array_get(*_a${tmp}, _i${tmp})'
+						g.write('${helper}(${lhs_text}, ')
+						if base_op in int128_shift_ops {
+							g.gen_int128_shift_count(g.a.child(&node, 1), arr_type.elem_type)
+						} else {
+							g.gen_int128_operand(g.a.child(&node, 1), arr_type.elem_type, signed)
+						}
+						g.write(')')
+						g.writeln('}); }')
+						return
+					}
+				}
+			}
 			if node.op == .power_assign {
 				lhs_text := '*(${c_elem}*)array_get(*_a${tmp}, _i${tmp})'
 				if method_name := g.assign_struct_operator_method(arr_type.elem_type, node.op) {

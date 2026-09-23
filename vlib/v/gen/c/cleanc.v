@@ -14608,6 +14608,12 @@ fn (mut g FlatGen) const_expr_to_string(id flat.NodeId, seen []string) string {
 		return '0'
 	}
 	node := g.a.nodes[int(id)]
+	if _ := int128_signedness(g.usable_expr_type(id)) {
+		// A 128-bit constant has to reach C as an expression built from the helpers.
+		// A cast to the struct representation plus a plain `<<` does not compile on
+		// the portable path, and it silently truncates on the native one.
+		return g.expr_to_string(id)
+	}
 	return match node.kind {
 		.ident, .selector {
 			const_name := g.const_ref_name_from_node(node)
@@ -15912,6 +15918,9 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 					g.write('), 1)')
 					return
 				}
+			}
+			if g.gen_int128_inc_dec(node.op, child_id, g.usable_expr_type(child_id)) {
+				return
 			}
 			if child.kind == .ident && g.current_param_is_mut(child.value) {
 				g.write('(*')

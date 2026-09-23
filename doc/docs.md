@@ -686,6 +686,22 @@ for its own type gets the narrower operand's answer, so `(wide + u64(1)).str()`
 prints a truncated value and `typeof` names the narrower type. Assign it to a
 variable first, or write the smaller operand as `u128(...)`.
 
+The usual conversions are there, so text, hex and binary work on a 128-bit value:
+
+```v
+fn main() {
+	wide := u128(1) << 100
+	assert '12345'.u128() == u128(12345)
+	assert wide.hex() == '10000000000000000000000000'
+	assert wide.bin().len == 101
+}
+```
+
+Three gaps remain. Printing a map whose values are 128-bit shows `<map value>`,
+an interpolated format specifier such as `'${wide:08x}'` accepts the specifier and
+then prints the plain decimal value, and `json` and `json2` have no encoder for
+either type.
+
 There is an exception to the rule that all operators
 in V must have values of the same type on both sides. A small primitive type
 on one side can be automatically promoted if it fits
