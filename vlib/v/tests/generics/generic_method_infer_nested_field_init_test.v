@@ -31,3 +31,28 @@ fn test_generic_method_infers_from_nested_call_field_init_literals() {
 	assert ctx.json(json_success(data: 'hello')) == 'ok'
 	assert ctx.json(json_success(data: 1.5)) == 'ok'
 }
+
+fn take_ptr[T](input &ApiSuccessResponse[T]) &ApiSuccessResponse[T] {
+	return input
+}
+
+fn test_generic_method_infers_from_nested_call_field_init_pointer_param() {
+	ctx := FieldInitContext{}
+	assert ctx.json(take_ptr(data: 42)) == 'ok'
+}
+
+struct WrappedResponse[T] {
+	inner ApiSuccessResponse[T]
+}
+
+fn wrap_response[T](input WrappedResponse[T]) WrappedResponse[T] {
+	return input
+}
+
+fn test_generic_method_infers_from_nested_call_nested_generic_field() {
+	ctx := FieldInitContext{}
+	inner := ApiSuccessResponse[int]{
+		data: 7
+	}
+	assert ctx.json(wrap_response(inner: inner)) == 'ok'
+}
