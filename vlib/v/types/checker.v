@@ -7702,8 +7702,10 @@ fn (mut tc TypeChecker) annotate_node(id flat.NodeId) {
 					for i in 0 .. node.children_count {
 						tc.annotate_node(tc.a.child(&node, i))
 					}
-					tc.annotate_call_expected_exprs(current_id, node)
-					if info := tc.resolve_call_info(current_id, node) {
+					// Keep the return type specialized from the call's own arguments;
+					// the open signature (`fn load[T](value &T) T`) would leave a local
+					// such as `value := load(&x)` unknown for later calls in the body.
+					if info := tc.annotate_call_expected_exprs(current_id, node) {
 						tc.remember_expr_type(current_id, info.return_type)
 					}
 					if dsl_name.len > 0 {
@@ -7711,7 +7713,7 @@ fn (mut tc TypeChecker) annotate_node(id flat.NodeId) {
 					}
 					continue
 				}
-				tc.annotate_call_expected_exprs(current_id, node)
+				tc.annotate_call_expected_exprs(current_id, node) or {}
 				// The call annotation above records a more precise return type for
 				// contextual builtins such as `map.move()`. Avoid replacing it with
 				// the parser's broad `map`/`array` placeholder below.
@@ -8060,8 +8062,10 @@ fn (mut tc TypeChecker) annotate_struct_init_expected_exprs(node flat.Node) {
 	}
 }
 
-fn (mut tc TypeChecker) annotate_call_expected_exprs(id flat.NodeId, node flat.Node) {
-	info0 := tc.resolve_call_info(id, node) or { return }
+// annotate_call_expected_exprs records expected types for the call arguments and
+// returns the call info specialized from those arguments.
+fn (mut tc TypeChecker) annotate_call_expected_exprs(id flat.NodeId, node flat.Node) ?CallInfo {
+	info0 := tc.resolve_call_info(id, node) or { return none }
 	info := tc.specialized_plain_generic_call_info(node, info0)
 	if info.name.len > 0 && !is_array_dsl_call_name(info.name) {
 		tc.remember_resolved_call(id, info.name)
@@ -8070,7 +8074,7 @@ fn (mut tc TypeChecker) annotate_call_expected_exprs(id flat.NodeId, node flat.N
 		tc.check_call_arg_types(id, node, info)
 	}
 	if !info.params_known || info.params.len == 0 {
-		return
+		return info
 	}
 	mut field_init_args := 0
 	for i in 1 .. node.children_count {
@@ -8134,6 +8138,7 @@ fn (mut tc TypeChecker) annotate_call_expected_exprs(id flat.NodeId, node flat.N
 			tc.pop_scope()
 		}
 	}
+	return info
 }
 
 fn (tc &TypeChecker) call_arg_expected_type(info CallInfo, param_idx int) Type {
