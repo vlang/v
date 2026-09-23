@@ -4914,16 +4914,6 @@ fn (mut t Transformer) stringify_expr(expr_id flat.NodeId) flat.NodeId {
 			typ = typ[1..]
 		}
 	}
-	// An arithmetic node with a 128-bit operand resolves to the narrower side here,
-	// so the printer chosen for it printed only the low 64 bits. The value itself is
-	// already lowered correctly, so preferring the 128-bit side fixes the output
-	// without touching the arithmetic.
-	if typ in stringify_narrow_integer_types {
-		wide := t.stringify_wide_integer_operand(expr)
-		if wide.len > 0 {
-			typ = wide
-		}
-	}
 	return t.wrap_string_conversion(expr, typ)
 }
 
@@ -4933,25 +4923,24 @@ const stringify_narrow_integer_types = ['int', 'i8', 'i16', 'i32', 'i64', 'isize
 // stringify_wide_integer_operand returns `u128` or `i128` when the expression is
 // an operator node with an operand of that type.
 fn (t &Transformer) stringify_wide_integer_operand(id flat.NodeId) string {
-	if int(id) < 0 || int(id) >= t.a.nodes.len {
+	return t.stringify_wide_integer_operand_depth(id, 0)
+}
+
+fn (t &Transformer) stringify_wide_integer_operand_depth(id flat.NodeId, depth int) string {
+	if depth > 4 || int(id) < 0 || int(id) >= t.a.nodes.len {
 		return ''
 	}
 	node := t.a.nodes[int(id)]
-	match node.kind {
-		.infix, .prefix, .paren {
-			for i in 0 .. node.children_count {
-				child := t.a.child(&node, i)
-				child_type := t.raw_checker_node_type(child)
-				if child_type in ['u128', 'i128'] {
-					return child_type
-				}
-				nested := t.stringify_wide_integer_operand(child)
-				if nested.len > 0 {
-					return nested
-				}
-			}
+	for i in 0 .. node.children_count {
+		child := t.a.child(&node, i)
+		child_name := t.raw_checker_node_type(child).all_after_last('.')
+		if child_name in ['u128', 'i128'] {
+			return child_name
 		}
-		else {}
+		nested := t.stringify_wide_integer_operand_depth(child, depth + 1)
+		if nested.len > 0 {
+			return nested
+		}
 	}
 	return ''
 }
@@ -5360,6 +5349,15 @@ fn (mut t Transformer) wrap_string_conversion(expr flat.NodeId, typ string) flat
 	}
 	if clean_typ.starts_with('builtin.') {
 		clean_typ = clean_typ['builtin.'.len..]
+	}
+	if clean_typ in stringify_narrow_integer_types {
+		// An arithmetic node with a 128-bit operand resolves to the narrower side
+		// here, so the printer picked for it showed the low 64 bits only. The value
+		// itself is lowered correctly, so preferring the 128-bit side is enough.
+		wide := t.stringify_wide_integer_operand(expr)
+		if wide.len > 0 {
+			clean_typ = wide
+		}
 	}
 	if map_typ := generic_map_type_arg_from_suffix(clean_typ) {
 		return t.wrap_string_conversion(expr, if is_ref { '&${map_typ}' } else { map_typ })

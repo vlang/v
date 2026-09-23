@@ -681,10 +681,10 @@ A bare literal still follows the rule that applies to every other integer in V, 
 it wants an explicit cast.
 
 The promotion ladder has a row for both new types, so `wide + u64(1)` is a `u128`
-and keeps all 128 bits. One case is still wrong: when an expression that mixes the
-two widths is asked for its own type, the narrower side answers, so
-`'${wide + u64(1)}'` and `(wide + u64(1)).str()` print a truncated value. Assign it
-to a variable first, or write the smaller operand as `u128(...)`.
+and keeps all 128 bits. One case is still wrong: a mixed expression that is asked
+for its own type gets the narrower operand's answer, so `(wide + u64(1)).str()`
+prints a truncated value and `typeof` names the narrower type. Assign it to a
+variable first, or write the smaller operand as `u128(...)`.
 
 There is an exception to the rule that all operators
 in V must have values of the same type on both sides. A small primitive type

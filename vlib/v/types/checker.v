@@ -2303,6 +2303,7 @@ pub fn (mut tc TypeChecker) materialize_sparse_transform_node_caches(n int, capa
 	if !tc.parallel_check_sparse {
 		tc.reserve_transform_node_caches(capacity)
 		tc.extend_node_caches(n)
+		tc.widen_mixed_integer_expr_types()
 		return
 	}
 	target_cap := if capacity > n { capacity } else { n }
@@ -2330,6 +2331,28 @@ pub fn (mut tc TypeChecker) materialize_sparse_transform_node_caches(n int, capa
 	tc.sparse_statement_nodes = map[int]bool{}
 	tc.sparse_expr_type_values = map[int]Type{}
 	tc.sparse_checking_nodes = map[int]bool{}
+	tc.widen_mixed_integer_expr_types()
+}
+
+// widen_mixed_integer_expr_types fixes the recorded type of every arithmetic node
+// that mixes a 128-bit type with a narrower one. During checking a worker could not
+// resolve operands outside its own range, so those nodes were recorded with the
+// narrower operand's type and every reader of the record then cut the value to 64
+// bits. Checking has finished by the time this runs, so the operand types are final.
+fn (mut tc TypeChecker) widen_mixed_integer_expr_types() {
+	for idx in 0 .. tc.expr_type_set.len {
+		if !tc.expr_type_set[idx] || idx >= tc.a.nodes.len {
+			continue
+		}
+		if tc.a.nodes[idx].kind != .infix {
+			continue
+		}
+		typ := tc.expr_type_values[idx]
+		widened := tc.widen_mixed_integer_expr_type(flat.NodeId(idx), typ)
+		if widened.name() != typ.name() {
+			tc.expr_type_values[idx] = widened
+		}
+	}
 }
 
 // reserve_scoped_transform_metadata keeps tables that receive escaping
@@ -9298,22 +9321,27 @@ fn (mut tc TypeChecker) remember_expr_type(id flat.NodeId, typ Type) {
 		return
 	}
 	kind := if int(id) < tc.a.nodes.len { tc.a.nodes[int(id)].kind } else { flat.NodeKind.empty }
-	if should_cache_expr_type(kind, typ) {
+	// An arithmetic node that mixes a 128-bit type with a narrower one arrives here
+	// with the narrower operand's type. Every reader of the recorded type (printing,
+	// `typeof`, a method receiver) then cut the value to 64 bits, so the 128-bit side
+	// is what gets cached.
+	cached_typ := if kind == .infix { tc.widen_mixed_integer_expr_type(id, typ) } else { typ }
+	if should_cache_expr_type(kind, cached_typ) {
 		idx := int(id)
 		if tc.parallel_check_sparse {
 			if tc.in_check_range(idx) && idx < tc.expr_type_values.len {
-				tc.expr_type_values[idx] = typ
+				tc.expr_type_values[idx] = cached_typ
 				tc.expr_type_set[idx] = true
 				return
 			}
-			tc.sparse_expr_type_values[idx] = typ
+			tc.sparse_expr_type_values[idx] = cached_typ
 			return
 		}
 		if idx >= tc.expr_type_values.len {
 			tc.extend_node_caches(tc.a.nodes.len)
 		}
 		if idx < tc.expr_type_values.len {
-			tc.expr_type_values[idx] = typ
+			tc.expr_type_values[idx] = cached_typ
 			tc.expr_type_set[idx] = true
 		}
 	}
