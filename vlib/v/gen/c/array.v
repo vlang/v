@@ -586,7 +586,8 @@ fn (mut g FlatGen) gen_slice_expr(node flat.Node, base_id flat.NodeId, base_type
 		mut data_str := if fixed_is_ptr { '(*${base_str})' } else { base_str }
 		base_node := g.a.nodes[int(base_id)]
 		local_fixed_array := base_node.kind == .ident
-			&& g.const_ref_name_from_node(base_node).len == 0
+			&& (g.ident_is_local_binding(base_node.value)
+				|| g.const_ref_name_from_node(base_node).len == 0)
 		literal := if local_fixed_array {
 			''
 		} else {
