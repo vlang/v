@@ -182,6 +182,13 @@ fn (mut s Scanner) move() {
 	s.move_pos(true, true)
 }
 
+// move to the next nth position.
+fn (mut s Scanner) move_n(n u8) {
+	for _ in 0 .. n {
+		s.move()
+	}
+}
+
 // move_pos_with_newlines is the same as move_pos but only enables newline checking.
 fn (mut s Scanner) move_pos_with_newlines() {
 	s.move_pos(false, true)
@@ -389,10 +396,7 @@ fn (mut s Scanner) scan() Token {
 			unsafe { ident.free() }
 			val := s.text[s.pos..s.pos + 4]
 			tok := s.tokenize(val, kind)
-			s.move() // n / t
-			s.move() // u / r
-			s.move() // l / u
-			s.move() // l / e
+			s.move_n(4) // null / true
 			return tok
 		}
 		unsafe { ident.free() }
@@ -403,11 +407,7 @@ fn (mut s Scanner) scan() Token {
 			unsafe { ident.free() }
 			val := s.text[s.pos..s.pos + 5]
 			tok := s.tokenize(val, .bool)
-			s.move() // f
-			s.move() // a
-			s.move() // l
-			s.move() // s
-			s.move() // e
+			s.move_n(5) // false
 			return tok
 		}
 		unsafe { ident.free() }
