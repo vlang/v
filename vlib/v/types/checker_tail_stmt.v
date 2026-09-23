@@ -1050,7 +1050,10 @@ fn (mut tc TypeChecker) check_if_guard(id flat.NodeId, node flat.Node) []LocalBi
 		return tc.if_guard_unknown_bindings(lhs_ids, node.is_mut)
 	}
 	mut rhs_type := tc.resolve_type(rhs_id)
-	rhs_node := tc.a.node(rhs_id)
+	mut rhs_node := tc.a.node(rhs_id)
+	for rhs_node.kind == .paren && rhs_node.children_count == 1 {
+		rhs_node = tc.a.child_node(rhs_node, 0)
+	}
 	if rhs_node.kind == .prefix && rhs_node.op == .amp && rhs_node.children_count > 0 {
 		mut address_child := tc.a.child_node(rhs_node, 0)
 		if address_child.kind == .paren && address_child.children_count > 0 {
