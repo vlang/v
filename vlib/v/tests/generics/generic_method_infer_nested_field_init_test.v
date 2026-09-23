@@ -24,3 +24,10 @@ fn test_generic_method_infers_from_nested_call_field_init_variable() {
 	response := json_success(data: result)
 	assert ctx.json(response) == 'ok'
 }
+
+fn test_generic_method_infers_from_nested_call_field_init_literals() {
+	ctx := FieldInitContext{}
+	assert ctx.json(json_success(data: 42)) == 'ok'
+	assert ctx.json(json_success(data: 'hello')) == 'ok'
+	assert ctx.json(json_success(data: 1.5)) == 'ok'
+}

@@ -15862,6 +15862,34 @@ fn (tc &TypeChecker) variadic_any_arg_is_scalar(id flat.NodeId) bool {
 	return true
 }
 
+// field_init_struct_param_name returns the struct name of the parameter that a
+// shorthand field-init argument initializes. The resolved parameter type is
+// preferred over the declaration text, so pointer, option, result and alias
+// wrappers around the struct do not hide the initialized struct.
+fn field_init_struct_param_name(info CallInfo, param_idx int) ?string {
+	if param_idx < 0 || param_idx >= info.params.len {
+		return none
+	}
+	mut typ := info.params[param_idx]
+	for _ in 0 .. 8 {
+		if typ is Pointer {
+			typ = typ.base_type
+		} else if typ is OptionType {
+			typ = typ.base_type
+		} else if typ is ResultType {
+			typ = typ.base_type
+		} else if typ is Alias {
+			typ = typ.base_type
+		} else {
+			break
+		}
+	}
+	if typ is Struct && typ.name.len > 0 {
+		return typ.name
+	}
+	return none
+}
+
 fn (mut tc TypeChecker) specialized_plain_generic_call_info(node flat.Node, info CallInfo) CallInfo {
 	if tc.call_has_explicit_generic_type_args(node) {
 		return info
@@ -15930,14 +15958,29 @@ fn (mut tc TypeChecker) specialized_plain_generic_call_info(node flat.Node, info
 			// own. Infer `T` from the declared type of the initialized field and
 			// the shorthand value, reusing the numeric literal deferral below so
 			// that a later argument can still decide the placeholder's type.
-			base, _, is_generic := generic_type_application_parts(param_text)
-			if is_generic {
-				for field in tc.source_struct_field_decls(base) {
+			struct_name := field_init_struct_param_name(info, param_idx) or {
+				base, _, is_generic := generic_type_application_parts(param_text)
+				if is_generic { base } else { '' }
+			}
+			mut field_text := ''
+			if struct_name.len > 0 {
+				for field in tc.source_struct_field_decls(struct_name) {
 					if field.name == raw_arg.value {
-						param_text = trimmed_space(field.typ)
+						if type_text_mentions_any_generic_param(field.typ, generic_params) {
+							field_text = trimmed_space(field.typ)
+						}
 						break
 					}
 				}
+			}
+			if field_text.len > 0 {
+				if is_anonymous_struct_name(raw_arg.typ) {
+					// A shorthand with a literal value is parsed as an anonymous
+					// aggregate. The initialized field takes its type from the
+					// value, not from that aggregate type.
+					actual = tc.resolve_generic_call_arg_type(arg_id)
+				}
+				param_text = field_text
 			}
 		}
 		mut defer_numeric_literal := false
