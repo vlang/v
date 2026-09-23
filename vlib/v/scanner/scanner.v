@@ -301,7 +301,9 @@ fn (s &Scanner) char_literal_escape_byte(start int, end int) ?u8 {
 
 // char_literal_utf8_escapes_end extends a byte escape holding the UTF-8 lead byte `lead`
 // over the continuation byte escapes that complete its character, and returns where
-// they end. If the bytes that follow do not complete it, the escape stays on its own.
+// they end. The bytes have to be one well-formed UTF-8 sequence: if they are missing, are
+// not continuation bytes, or spell an overlong form, a surrogate or a code point above
+// U+10FFFF, the escape stays on its own.
 fn (s &Scanner) char_literal_utf8_escapes_end(lead u8, offset int, content_end int) int {
 	continuation_bytes := if lead >= 0xc2 && lead <= 0xdf {
 		1
@@ -312,6 +314,10 @@ fn (s &Scanner) char_literal_utf8_escapes_end(lead u8, offset int, content_end i
 	} else {
 		0
 	}
+	if continuation_bytes == 0 {
+		return offset
+	}
+	mut code_point := u32(lead) & (u32(0x7f) >> (continuation_bytes + 1))
 	mut end := offset
 	for _ in 0 .. continuation_bytes {
 		if end + 1 >= content_end || s.src[end] != `\\` {
@@ -322,7 +328,15 @@ fn (s &Scanner) char_literal_utf8_escapes_end(lead u8, offset int, content_end i
 		if b < 0x80 || b > 0xbf {
 			return offset
 		}
+		code_point = (code_point << 6) | u32(b & 0x3f)
 		end = next_end
+	}
+	// The same range `check_string_escape` enforces for `\u`/`\U`, plus the smallest code
+	// point each length may encode, which rules out overlong forms.
+	shortest_form_minimum := [u32(0x80), 0x800, 0x10000][continuation_bytes - 1]
+	if code_point < shortest_form_minimum || code_point > 0x10ffff
+		|| (code_point >= 0xd800 && code_point <= 0xdfff) {
+		return offset
 	}
 	return end
 }

@@ -1,5 +1,6 @@
 module scanner
 
+import encoding.utf8
 import v.pref
 import v.token
 
@@ -190,7 +191,7 @@ fn test_char_literal_escapes_that_spell_one_character_are_accepted() {
 	for source in [
 		r'`\141`',
 		r'`\x61`',
-		r'`a`',
+		r'`\u0061`',
 		r'`\U0001F680`',
 		r'`\0`',
 		r'`\xc3\xa9`',
@@ -217,5 +218,58 @@ fn test_char_literal_with_more_than_one_character_is_still_rejected() {
 		diagnostics := char_literal_diagnostics(source)
 		assert diagnostics.len == 1, source
 		assert diagnostics[0].ends_with('(more than one character)'), '${source}: ${diagnostics[0]}'
+	}
+}
+
+fn utf8_sequence_len(lead u8) int {
+	return if lead >= 0xf0 {
+		4
+	} else if lead >= 0xe0 {
+		3
+	} else {
+		2
+	}
+}
+
+// Byte escapes are one character exactly when they spell one well-formed UTF-8 sequence,
+// which is decided here by `encoding.utf8`, independently of the scanner. The first
+// continuation byte is where the lead-specific limits live (overlong forms after `E0` and
+// `F0`, surrogates after `ED`, code points above U+10FFFF after `F4`), so it walks every
+// boundary of those ranges for every lead byte, together with a valid and an invalid final
+// continuation byte, in both hex and octal spelling.
+fn test_char_literal_byte_escapes_are_one_character_only_when_well_formed_utf8() {
+	second_bytes := [u8(0x7f), 0x80, 0x8f, 0x90, 0x9f, 0xa0, 0xbf, 0xc0]
+	last_bytes := [u8(0x7f), 0x80, 0xbf, 0xc0]
+	mut sequences := [][]u8{}
+	for lead in u8(0xc0) .. u8(0xf8) {
+		for second in second_bytes {
+			if utf8_sequence_len(lead) == 2 {
+				sequences << [lead, second]
+				continue
+			}
+			for last in last_bytes {
+				mut bytes := [lead, second]
+				for bytes.len < utf8_sequence_len(lead) - 1 {
+					bytes << u8(0x80)
+				}
+				bytes << last
+				sequences << bytes
+			}
+		}
+	}
+	for bytes in sequences {
+		well_formed := utf8.validate_str(bytes.bytestr())
+		hex := bytes.map('\\x${it.hex()}').join('')
+		octal := bytes.map('\\${it:o}').join('')
+		for spelling in [hex, octal] {
+			source := '`${spelling}`'
+			diagnostics := char_literal_diagnostics(source)
+			if well_formed {
+				assert diagnostics == [], source
+			} else {
+				assert diagnostics.len == 1, source
+				assert diagnostics[0].ends_with('(more than one character)'), '${source}: ${diagnostics[0]}'
+			}
+		}
 	}
 }
