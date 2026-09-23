@@ -277,11 +277,10 @@ fn main() {
 	assert c_compact.contains('__v_thread__twthread0=t;'), c_code
 }
 
-// A discarded `if`/`match` whose branches all end in a `spawn` only yields fresh
-// threads, so every branch spawn must be detached too. The transformer would
-// otherwise lower the value into a temporary that hides the spawns from cgen. A
-// branch that yields an existing handle keeps the value joinable, because that
-// handle is still joined later.
+// A discarded `if`/`match` must detach the spawn in each branch that ends in one.
+// The transformer would otherwise lower the value into a temporary that hides the
+// spawns from cgen. A branch that yields an existing handle only evaluates it, so
+// the handle stays joinable for its later `.wait()`.
 fn test_discarded_conditional_spawns_detach_threads() {
 	v3_bin := build_v3()
 	c_code := gen_c(v3_bin, 'v3_spawn_discarded_conditional_detach', "
@@ -308,13 +307,18 @@ fn main() {
 	_ := (spawn work())
 	t := spawn work()
 	_ := if flag { t } else { spawn other() }
+	_ := match n {
+		1 { t }
+		else { spawn other() }
+	}
 	t.wait()
 }
 	")
 	c_compact := compact_c(c_code)
 	assert c_compact.count('__v_thread_detach(__v_thread_spawn(work_thread_wrapper,') == 5, c_code
-	assert c_compact.count('__v_thread_detach(__v_thread_spawn(other_thread_wrapper,') == 3, c_code
+	assert c_compact.count('__v_thread_detach(__v_thread_spawn(other_thread_wrapper,') == 5, c_code
+	assert c_compact.count('__v_thread_spawn(other_thread_wrapper,') == 5, c_code
 	assert c_compact.contains('__v_threadt=__v_thread_spawn(work_thread_wrapper,'), c_code
-	assert c_compact.contains('=t;'), c_code
-	assert c_compact.contains('=__v_thread_spawn(other_thread_wrapper,'), c_code
+	assert c_compact.count('(void)(t);') == 2, c_code
+	assert !c_compact.contains('__v_thread_detach(t)'), c_code
 }

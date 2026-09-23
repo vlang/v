@@ -11982,12 +11982,13 @@ fn (mut t Transformer) transform_assign_stmt(id flat.NodeId, node flat.Node) []f
 	return result
 }
 
-// try_lower_discarded_spawn_assign lowers `_ := v` / `_ = v` to the statement form of
-// `v` when `v` is an `if`/`match` whose branches all end in a `spawn`. As a value, `v`
+// try_lower_discarded_spawn_assign pushes the discard of `_ := v` / `_ = v` into the
+// branches of `v` when `v` is an `if`/`match` with a branch ending in a `spawn`:
+// `_ := if c { a } else { b }` becomes `if c { _ = a } else { _ = b }`. As a value, `v`
 // is lowered into a temporary that hides the spawns from cgen, so their threads stay
-// joinable with nothing left to join them. As a statement, cgen detaches each branch
-// spawn. A branch that yields anything else, such as an existing handle, keeps the
-// declaration: detaching that value would break a later `.wait()`.
+// joinable with nothing left to join them. Pushed into the branches, each `_ = spawn`
+// is detached by cgen, while any other branch value, such as an existing handle, is
+// only evaluated: `(void)(t)` leaves it joinable for a later `.wait()`.
 fn (mut t Transformer) try_lower_discarded_spawn_assign(node flat.Node) ?[]flat.NodeId {
 	if node.children_count != 2 || (node.kind == .assign && node.op != .assign) {
 		return none
@@ -11998,10 +11999,10 @@ fn (mut t Transformer) try_lower_discarded_spawn_assign(node flat.Node) ?[]flat.
 	}
 	value_id := t.skip_discarded_spawn_parens(t.a.child(&node, 1))
 	value := t.a.nodes[int(value_id)]
-	if value.kind !in [.if_expr, .match_stmt] || !t.yields_only_fresh_spawns(value_id) {
+	if value.kind !in [.if_expr, .match_stmt] || !t.yields_fresh_spawn(value_id) {
 		return none
 	}
-	return t.transform_stmt(value_id)
+	return t.transform_stmt(t.discard_conditional_branch_values(value_id))
 }
 
 fn (t &Transformer) skip_discarded_spawn_parens(id flat.NodeId) flat.NodeId {
@@ -12016,9 +12017,9 @@ fn (t &Transformer) skip_discarded_spawn_parens(id flat.NodeId) flat.NodeId {
 	return cur
 }
 
-// yields_only_fresh_spawns reports whether every value `id` can produce is a thread
-// started by `id` itself: a `spawn`, or an `if`/`match` whose branches all end in one.
-fn (t &Transformer) yields_only_fresh_spawns(id flat.NodeId) bool {
+// yields_fresh_spawn reports whether some value `id` can produce is a thread started
+// by `id` itself: a `spawn`, or an `if`/`match` with a branch that ends in one.
+fn (t &Transformer) yields_fresh_spawn(id flat.NodeId) bool {
 	value_id := t.skip_discarded_spawn_parens(id)
 	if int(value_id) < 0 || int(value_id) >= t.a.nodes.len {
 		return false
@@ -12033,28 +12034,21 @@ fn (t &Transformer) yields_only_fresh_spawns(id flat.NodeId) bool {
 			if node.children_count < 3 {
 				return false
 			}
-			return t.branch_ends_in_fresh_spawn(t.a.child(&node, 1))
-				&& t.branch_ends_in_fresh_spawn(t.a.child(&node, 2))
+			return t.if_branch_yields_fresh_spawn(t.a.child(&node, 1))
+				|| t.if_branch_yields_fresh_spawn(t.a.child(&node, 2))
 		}
 		.match_stmt {
-			if node.children_count < 2 {
-				return false
-			}
 			for i in 1 .. node.children_count {
 				branch := t.a.child_node(&node, i)
 				if branch.kind != .match_branch {
-					return false
+					continue
 				}
-				// Branch children are its conditions, then its statements.
-				cond_count := if branch.value == 'else' { 0 } else { branch.value.int() }
-				if branch.children_count <= cond_count {
-					return false
-				}
-				if !t.stmt_is_fresh_spawn_value(t.a.child(branch, branch.children_count - 1)) {
-					return false
+				value_idx := branch_value_index(branch) or { continue }
+				if t.stmt_yields_fresh_spawn(t.a.child(branch, value_idx)) {
+					return true
 				}
 			}
-			return true
+			return false
 		}
 		else {
 			return false
@@ -12062,35 +12056,102 @@ fn (t &Transformer) yields_only_fresh_spawns(id flat.NodeId) bool {
 	}
 }
 
-// branch_ends_in_fresh_spawn checks an `if` branch: a block whose trailing value
-// statement is a fresh spawn, or the nested `if` of an `else if` chain.
-fn (t &Transformer) branch_ends_in_fresh_spawn(id flat.NodeId) bool {
+// if_branch_yields_fresh_spawn checks an `if` branch: a block whose trailing value
+// statement yields a fresh spawn, or the nested `if` of an `else if` chain.
+fn (t &Transformer) if_branch_yields_fresh_spawn(id flat.NodeId) bool {
 	if int(id) < 0 || int(id) >= t.a.nodes.len {
 		return false
 	}
 	node := t.a.nodes[int(id)]
 	if node.kind == .if_expr {
-		return t.yields_only_fresh_spawns(id)
+		return t.yields_fresh_spawn(id)
 	}
-	if node.kind != .block || node.children_count == 0 {
+	if node.kind != .block {
 		return false
 	}
-	return t.stmt_is_fresh_spawn_value(t.a.child(&node, node.children_count - 1))
+	value_idx := branch_value_index(node) or { return false }
+	return t.stmt_yields_fresh_spawn(t.a.child(&node, value_idx))
 }
 
-fn (t &Transformer) stmt_is_fresh_spawn_value(id flat.NodeId) bool {
+// branch_value_index returns the index of the trailing value statement of an `if`
+// block or a `match_branch`. A `match_branch` lists its conditions before its
+// statements; `value` holds their count, or `else`.
+fn branch_value_index(node flat.Node) ?int {
+	first_stmt := if node.kind == .match_branch && node.value != 'else' {
+		node.value.int()
+	} else {
+		0
+	}
+	if node.children_count <= first_stmt {
+		return none
+	}
+	return node.children_count - 1
+}
+
+fn (t &Transformer) stmt_yields_fresh_spawn(id flat.NodeId) bool {
 	if int(id) < 0 || int(id) >= t.a.nodes.len {
 		return false
 	}
 	node := t.a.nodes[int(id)]
 	if node.kind == .expr_stmt && node.children_count > 0 {
-		return t.yields_only_fresh_spawns(t.a.child(&node, 0))
+		return t.yields_fresh_spawn(t.a.child(&node, 0))
 	}
 	// A nested conditional can be the trailing value statement of a branch.
 	if node.kind in [.if_expr, .match_stmt] {
-		return t.yields_only_fresh_spawns(id)
+		return t.yields_fresh_spawn(id)
 	}
 	return false
+}
+
+// discard_conditional_branch_values copies the `if`/`match` `id` with the trailing
+// value statement of every branch replaced by `_ = value`.
+fn (mut t Transformer) discard_conditional_branch_values(id flat.NodeId) flat.NodeId {
+	node := t.a.nodes[int(id)]
+	// children_of shares storage with the AST; copy before replacing branches.
+	mut children := t.a.children_of(&node).clone()
+	if node.kind == .if_expr {
+		// Children are the condition, the `then` block and the optional `else` block or `if`.
+		for i in 1 .. children.len {
+			branch := t.a.nodes[int(children[i])]
+			children[i] = if branch.kind == .if_expr {
+				t.discard_conditional_branch_values(children[i])
+			} else {
+				t.discard_block_value(children[i])
+			}
+		}
+	} else {
+		// Children are the subject, then one `match_branch` per arm.
+		for i in 1 .. children.len {
+			children[i] = t.discard_block_value(children[i])
+		}
+	}
+	return t.copy_discarded_value_node(node, children)
+}
+
+// discard_block_value copies a block or `match_branch` with its trailing value
+// statement replaced by `_ = value`. A trailing `return`, `break` or similar has no
+// value and is kept.
+fn (mut t Transformer) discard_block_value(id flat.NodeId) flat.NodeId {
+	node := t.a.nodes[int(id)]
+	value_idx := branch_value_index(node) or { return id }
+	mut children := t.a.children_of(&node).clone()
+	last := t.a.nodes[int(children[value_idx])]
+	value_id := if last.kind == .expr_stmt && last.children_count > 0 {
+		t.a.child(&last, 0)
+	} else if last.kind in [.if_expr, .match_stmt] {
+		children[value_idx]
+	} else {
+		return id
+	}
+	children[value_idx] = t.make_assign(t.make_ident('_'), value_id)
+	return t.copy_discarded_value_node(node, children)
+}
+
+fn (mut t Transformer) copy_discarded_value_node(node flat.Node, children []flat.NodeId) flat.NodeId {
+	copy_id := t.copy_node_with_children(node, children)
+	// Keep scope flags such as skip-ownership-drops; the copy helper does not carry them.
+	t.a.nodes[int(copy_id)].flags = node.flags
+	return copy_id
 }
 
 fn (mut t Transformer) try_lower_discarded_closure_assign(node flat.Node) ?[]flat.NodeId {
