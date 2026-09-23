@@ -2297,7 +2297,7 @@ fn (mut g FlatGen) collect_interface_boxed_types_for_dispatch() {
 		return
 	}
 	g.interface_boxed_types_done = true
-	for node_idx in g.type_metadata_nodes() {
+	for node_idx in g.interface_boxing_candidate_nodes() {
 		node := g.a.nodes[node_idx]
 		if node.kind != .struct_init || node.children_count == 0 {
 			continue
@@ -2337,6 +2337,28 @@ fn (mut g FlatGen) collect_interface_boxed_types_for_dispatch() {
 			}
 		}
 	}
+}
+
+// interface_boxing_candidates_in returns, in order, the ids in `ids[start..end]`
+// whose node is a struct literal with an `_object` field: the lowered form of an
+// interface value, and the only literals collect_interface_boxed_types_for_dispatch
+// records. The test is purely structural, so it is safe on any thread.
+fn interface_boxing_candidates_in(a &flat.FlatAst, ids []i32, start int, end int) []i32 {
+	mut found := []i32{}
+	for pos in start .. end {
+		node := unsafe { &a.nodes[ids[pos]] }
+		if node.kind != .struct_init || node.children_count == 0 {
+			continue
+		}
+		for i in 0 .. node.children_count {
+			field := a.child_node(node, i)
+			if field.kind == .field_init && field.value == '_object' && field.children_count > 0 {
+				found << ids[pos]
+				break
+			}
+		}
+	}
+	return found
 }
 
 fn (g &FlatGen) interface_semantic_application_candidates(iface_name string, _concrete_name string) []string {
