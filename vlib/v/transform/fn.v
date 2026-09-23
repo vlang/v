@@ -5513,6 +5513,9 @@ fn (mut t Transformer) wrap_string_conversion(expr flat.NodeId, typ string) flat
 		'u64' {
 			return t.make_call_typed('u64.str', [expr], 'string')
 		}
+		'u128' {
+			return t.make_call_typed('u128.str', [expr], 'string')
+		}
 		'int', 'int literal' {
 			return t.make_call_typed('int.str', [expr], 'string')
 		}
@@ -5527,6 +5530,9 @@ fn (mut t Transformer) wrap_string_conversion(expr flat.NodeId, typ string) flat
 		}
 		'i64' {
 			return t.make_call_typed('i64.str', [expr], 'string')
+		}
+		'i128' {
+			return t.make_call_typed('i128.str', [expr], 'string')
 		}
 		'char' {
 			return t.make_call_typed('v3_char_string', [

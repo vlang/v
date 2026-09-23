@@ -199,6 +199,37 @@ pub fn (nn u32) str() string {
 	}
 }
 
+// str returns the value of the `u128` as a `string`.
+// Example: assert u128(20000).str() == '20000'
+pub fn (nn u128) str() string {
+	if nn == u128(0) {
+		return '0'
+	}
+	mut n := nn
+	mut buf := []u8{len: 40}
+	mut index := buf.len
+	for n != u128(0) {
+		index--
+		buf[index] = u8(48) + u8(n % u128(10))
+		n = n / u128(10)
+	}
+	return unsafe { tos(&buf[index], buf.len - index) }
+}
+
+// str returns the value of the `i128` as a `string`.
+// Example: assert i128(-20000).str() == '-20000'
+pub fn (nn i128) str() string {
+	if nn == i128(0) {
+		return '0'
+	}
+	negative := nn < i128(0)
+	// The magnitude comes from the unsigned negation: negating the minimum value
+	// has no signed counterpart, but its bit pattern is the magnitude.
+	magnitude := if negative { u128(-nn) } else { u128(nn) }
+	text := magnitude.str()
+	return if negative { '-' + text } else { text }
+}
+
 // str returns the value of the `int_literal` as a `string`.
 @[inline]
 pub fn (n int_literal) str() string {
