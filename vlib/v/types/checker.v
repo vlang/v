@@ -7513,6 +7513,23 @@ pub fn (mut tc TypeChecker) diagnose_unused_private_declarations(used_fns map[st
 	if tc.errors.len > 0 || !tc.has_main_module_fn_main() {
 		return
 	}
+	tc.report_unused_private_declarations(used_fns)
+}
+
+// diagnose_unused_private_declarations_with_errors reports, in a program with
+// errors, the private functions and constants that nothing names. What is
+// reachable cannot be told there: a call the checker could not resolve would
+// leave its function looking unused. So a function that is called or named at
+// all counts as used, and no notice is one that fixing the errors takes back.
+pub fn (mut tc TypeChecker) diagnose_unused_private_declarations_with_errors() {
+	if !tc.has_main_module_fn_main() {
+		return
+	}
+	used, _ := tc.named_private_fns()
+	tc.report_unused_private_declarations(used)
+}
+
+fn (mut tc TypeChecker) report_unused_private_declarations(used_fns map[string]bool) {
 	unused := tc.unused_private_declarations(used_fns)
 	// The diagnostic filter and recorded file both read tc.cur_file; replay each
 	// candidate's file so deferred emission matches the former in-walk emission.
@@ -7535,10 +7552,20 @@ pub fn (mut tc TypeChecker) diagnose_unused_private_declarations(used_fns map[st
 // exported one is). A function named only by unused code counts as used here,
 // where a build, which knows what is reachable, can report it.
 pub fn (mut tc TypeChecker) used_fns_without_markused() ?map[string]bool {
-	mut used := map[string]bool{}
 	if tc.errors.len > 0 || !tc.has_main_module_fn_main() {
-		return used
+		return map[string]bool{}
 	}
+	used, all_named := tc.named_private_fns()
+	if !all_named {
+		return none
+	}
+	return used
+}
+
+// named_private_fns returns the private functions that are never called but are
+// named, as values such as callbacks, and whether every one of them is named.
+fn (mut tc TypeChecker) named_private_fns() (map[string]bool, bool) {
+	mut used := map[string]bool{}
 	// Markused may run next, and resolves names in the current file and module.
 	saved_file := tc.cur_file
 	saved_module := tc.cur_module
@@ -7558,7 +7585,7 @@ pub fn (mut tc TypeChecker) used_fns_without_markused() ?map[string]bool {
 	tc.cur_file = saved_file
 	tc.cur_module = saved_module
 	if uncalled.len == 0 {
-		return used
+		return used, true
 	}
 	mut named := []bool{len: uncalled.len}
 	for node in tc.a.nodes {
@@ -7579,13 +7606,15 @@ pub fn (mut tc TypeChecker) used_fns_without_markused() ?map[string]bool {
 			}
 		}
 	}
+	mut all_named := true
 	for idx, cand in uncalled {
 		if !named[idx] {
-			return none
+			all_named = false
+			continue
 		}
 		used[cand.qname] = true
 	}
-	return used
+	return used, all_named
 }
 
 // unused_private_declarations returns the private functions that are not in

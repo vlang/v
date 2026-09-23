@@ -11559,6 +11559,10 @@ pub fn run(args []string) {
 			if has_v3_authoritative_error(pre_tc.errors) {
 				clear_macos_v3_compiler_error_fallback(macos_v3_fallback_file)
 			}
+			if check_only && !is_checker_fixture {
+				// An editor shows these while the errors are being fixed.
+				pre_tc.diagnose_unused_private_declarations_with_errors()
+			}
 			if !macos_v3_fallback_suppresses_diagnostics(macos_v3_fallback_file) {
 				print_type_diagnostics(a, pre_tc.notices, pre_tc.errors, is_checker_fixture, fatal_errors,
 					check_only, message_limit, skip_notices)
