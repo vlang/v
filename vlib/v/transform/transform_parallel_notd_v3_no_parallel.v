@@ -2031,16 +2031,36 @@ fn (mut t Transformer) promote_scoped_ast_storage(scope voidptr) {
 // the active one, so the map's storage grows inside an arena that is released at
 // the end of the batch - while the entries themselves are read much later, by
 // merge_worker, out of the helper the master is merging.
-fn (mut t Transformer) promote_scoped_specialization_maps(nodes_len int, modules_len int, files_len int) {
+fn (mut t Transformer) promote_scoped_specialization_maps(scope voidptr, nodes_len int, modules_len int, files_len int) {
 	if t.a.specialized_fn_nodes.len != nodes_len {
 		t.a.specialized_fn_nodes = t.a.specialized_fn_nodes.clone()
 	}
 	if t.a.specialized_fn_modules.len != modules_len {
-		t.a.specialized_fn_modules = t.a.specialized_fn_modules.clone()
+		t.a.specialized_fn_modules = promote_scoped_specialization_texts(t.a.specialized_fn_modules,
+			scope)
 	}
 	if t.a.specialized_fn_files.len != files_len {
-		t.a.specialized_fn_files = t.a.specialized_fn_files.clone()
+		t.a.specialized_fn_files = promote_scoped_specialization_texts(t.a.specialized_fn_files,
+			scope)
 	}
+}
+
+// promote_scoped_specialization_texts clones a specialization table and every
+// module/file name in it that still lives in `scope`. `map.clone()` copies the
+// string values bitwise, and a batch can record names from its own
+// declaration-context table, which is rebuilt inside the scratch arena
+// (vlang/v#28897).
+fn promote_scoped_specialization_texts(values map[int]string, scope voidptr) map[int]string {
+	mut promoted := values.clone()
+	if scope == unsafe { nil } {
+		return promoted
+	}
+	for idx, value in values {
+		if value.len > 0 && transform_scope_owns(scope, value.str) {
+			promoted[idx] = value.clone()
+		}
+	}
+	return promoted
 }
 
 // absorb_scoped_batch publishes one batch's observable state into the helper's
@@ -2217,7 +2237,8 @@ fn (mut t Transformer) transform_scoped_helper_batches(items []FnWorkItem, max_b
 		t.absorb_scoped_batch(batch, scratch_scope, new_node_start)
 		storage_state := transform_stage_scope_suspend(t.merge_scratch_scope)
 		t.promote_scoped_ast_storage(scratch_scope)
-		t.promote_scoped_specialization_maps(spec_nodes_len, spec_modules_len, spec_files_len)
+		t.promote_scoped_specialization_maps(scratch_scope, spec_nodes_len, spec_modules_len,
+			spec_files_len)
 		transform_stage_scope_resume(t.merge_scratch_scope, storage_state)
 		for item in items[start..end] {
 			if item.fn_idx >= 0 && item.fn_idx < t.transformed_fns.len {
@@ -2298,7 +2319,8 @@ fn (mut t Transformer) transform_late_candidates_scoped(candidate_index map[stri
 		t.a.promote_transform_texts_from(text_start, scratch_scope)
 		t.absorb_scoped_batch(batch, scratch_scope, new_node_start)
 		t.promote_scoped_ast_storage(scratch_scope)
-		t.promote_scoped_specialization_maps(spec_nodes_len, spec_modules_len, spec_files_len)
+		t.promote_scoped_specialization_maps(scratch_scope, spec_nodes_len, spec_modules_len,
+			spec_files_len)
 		transform_worker_scope_free(scratch_scope)
 		for si, ci in selected {
 			idx := candidates[ci].idx
