@@ -251,6 +251,81 @@ fn main() {
 	assert run.output.trim_space() == 'from_a from_a [from_a] from_b [from_b]', run.output
 }
 
+// A generic sum spelled with a selectively imported argument (`maybe.Maybe[Token]` with
+// `import iam { Token }` next to another imported `Token`) is one specialization,
+// `maybe.Maybe[iam.Token]`, in parameter types, casts and variant literals alike.
+fn test_selective_import_generic_sum_arg_wins_over_imported_homonym() {
+	v3_bin := selective_arg_v3_bin()
+	dir := os.join_path(os.temp_dir(), 'v3_selective_import_generic_sum')
+	os.rmdir_all(dir) or {}
+	for sub in ['iam', 'other', 'maybe'] {
+		os.mkdir_all(os.join_path(dir, sub)) or { panic(err) }
+	}
+	defer {
+		os.rmdir_all(dir) or {}
+	}
+	os.write_file(os.join_path(dir, 'v.mod'), 'Module{\n\tname: "selective_generic_sum"\n}\n') or {
+		panic(err)
+	}
+	os.write_file(os.join_path(dir, 'iam', 'iam.v'), 'module iam
+
+pub struct Token {
+pub:
+	id int
+}
+') or { panic(err) }
+	os.write_file(os.join_path(dir, 'other', 'other.v'), 'module other
+
+pub struct Token {
+pub:
+	kind string
+	lit  []u8
+}
+') or { panic(err) }
+	os.write_file(os.join_path(dir, 'maybe', 'maybe.v'), 'module maybe
+
+pub struct None {}
+
+pub struct Some[T] {
+pub:
+	value T
+}
+
+pub type Maybe[T] = None | Some[T]
+') or { panic(err) }
+	os.write_file(os.join_path(dir, 'main.v'), 'module main
+
+import other
+import iam { Token }
+import maybe
+
+fn get(m maybe.Maybe[Token]) int {
+	return match m {
+		maybe.Some[Token] { m.value.id }
+		maybe.None { -1 }
+	}
+}
+
+fn main() {
+	m := maybe.Maybe[Token](maybe.Some[Token]{
+		value: Token{
+			id: 7
+		}
+	})
+	println(get(m))
+	println(get(maybe.Maybe[Token](maybe.None{})))
+	_ := other.Token{}
+}
+') or { panic(err) }
+	out := os.join_path(dir, 'app')
+	compile := os.execute('${v3_bin} -nocache -o ${out} ${dir}')
+	assert compile.exit_code == 0, compile.output
+	assert !compile.output.contains('C compilation failed'), compile.output
+	run := os.execute(out)
+	assert run.exit_code == 0, run.output
+	assert run.output.trim_space() == '7\n-1', run.output
+}
+
 // A selective import of a name wins over a same-named declaration in the writing
 // file's own module: the checker resolves the bare spelling through the file's
 // selective imports (`qualify_type_text_impl`), so the transform and cgen have to

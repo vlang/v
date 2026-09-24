@@ -3219,6 +3219,12 @@ fn (mut t Transformer) collect_generic_sum_spec_from_type(typ string, module_nam
 	if t.generic_args_have_placeholders(args) {
 		return
 	}
+	// A source node that its lowering detached no longer maps to a file. Its spelling
+	// (`maybe.Maybe[Token]` for `import iam { Token }` next to another imported `Token`)
+	// then names no type, and keying a specialization with it would emit a bogus one.
+	if file_name == '' && t.generic_args_name_unknown_type(args) {
+		return
+	}
 	spec_base := t.generic_sum_spec_base_name(base, module_name, file_name, decls) or { return }
 	spec_name := t.generic_sum_spec_name_in_scope(spec_base, args, module_name, file_name)
 	specs[spec_name] = GenericSpecContext{
@@ -3345,6 +3351,26 @@ fn (mut t Transformer) generic_struct_args_in_scope(args []string, module_name s
 	t.tc.cur_module = old_module
 	t.tc.cur_file = old_file
 	return scoped
+}
+
+// generic_args_name_unknown_type reports whether a bare generic argument names no
+// declared type when it is read without any file's imports.
+fn (t &Transformer) generic_args_name_unknown_type(args []string) bool {
+	if isnil(t.tc) {
+		return false
+	}
+	for arg in args {
+		name := arg.trim_space()
+		if name.len == 0 || !name[0].is_capital() || name.contains('.') || name.contains('[') {
+			continue
+		}
+		if name !in t.tc.structs && name !in t.tc.sum_types && name !in t.tc.enum_names
+			&& name !in t.tc.flag_enums && name !in t.tc.interface_names
+			&& name !in t.tc.type_aliases {
+			return true
+		}
+	}
+	return false
 }
 
 fn (mut t Transformer) generic_sum_args_in_scope(args []string, module_name string, file_name string) []string {

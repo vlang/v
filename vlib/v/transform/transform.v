@@ -21265,6 +21265,30 @@ fn (t &Transformer) operand_hoists_value_branch(id flat.NodeId) bool {
 	return false
 }
 
+// spelling_names_type reports whether the type `spelling` written at node `id`, read
+// with the imports of the file that wrote it, names the resolved type `typ`.
+fn (t &Transformer) spelling_names_type(id flat.NodeId, spelling string, typ string) bool {
+	if isnil(t.tc) {
+		return false
+	}
+	file := t.node_file_or(int(id), t.cur_file)
+	return file.len > 0 && t.tc.parse_resolution_type_in_file(spelling, file).name() == typ
+}
+
+// checker_type_for_spelling returns the checker's type for node `id` when the type
+// `spelling` written there names that type in the writing file, and `spelling`
+// otherwise. A spelling keeps the file's import names (`maybe.Maybe[Token]` for
+// `import iam { Token }`); synthesized nodes have no source file, so once lowered
+// into them it would name another type, or none when `Token` is not unique.
+fn (t &Transformer) checker_type_for_spelling(id flat.NodeId, spelling string) string {
+	checker_type := t.raw_checker_node_type(id)
+	if checker_type.len > 0 && checker_type != spelling
+		&& t.spelling_names_type(id, spelling, checker_type) {
+		return checker_type
+	}
+	return spelling
+}
+
 // transform_cast_expr transforms transform cast expr data for transform.
 @[direct_array_access]
 fn (mut t Transformer) transform_cast_expr(id flat.NodeId, node flat.Node) flat.NodeId {
@@ -21278,9 +21302,12 @@ fn (mut t Transformer) transform_cast_expr(id flat.NodeId, node flat.Node) flat.
 	// Expected-type propagation can replace an explicit alias cast's checker type
 	// with the surrounding sum type. Keep the named variant as the cast target;
 	// the caller that requested the sum will wrap the converted alias value.
+	// A generic target that only spells the checker's sum through the file's imports
+	// (`maybe.Maybe[Token]` with `import iam { Token }`) is that sum, not a variant.
 	checker_target_is_sum_context := checker_target.len > 0 && checker_target != node.value
 		&& t.is_sum_type_name(checker_target)
 		&& t.sum_target_accepts_variant_type(checker_target, node.value)
+		&& !(node.value.contains('[') && t.spelling_names_type(id, node.value, checker_target))
 	target_type := t.normalize_type_alias(if node.value in primitive_cast_type_names
 		|| node.value in ['voidptr', 'byteptr', 'charptr'] || checker_target_is_sum_context {
 		node.value
@@ -23597,7 +23624,7 @@ fn (t &Transformer) infer_decl_type(node &flat.Node) string {
 			}
 		}
 		if rhs.kind == .cast_expr && rhs.value.len > 0 {
-			target := t.normalize_type_alias(rhs.value)
+			target := t.normalize_type_alias(t.checker_type_for_spelling(rhs_id, rhs.value))
 			if decl_type_is_usable(target) {
 				return target
 			}
