@@ -47,12 +47,26 @@ fn v3_msvc_link_flags(target_os string, is_shared bool, is_o bool, subsystem pre
 	return flags
 }
 
-// msvc_cl_args translates gcc-style C compiler arguments into arguments for MSVC's
-// `cl`. Options without an MSVC counterpart (warning selection, code generation
-// tuning like `-fwrapv`, or `-std=gnu11`) are dropped.
+// msvc_cl_args translates the gcc-style arguments for V's generated C into arguments
+// for MSVC's `cl`. Options without an MSVC counterpart (warning selection, code
+// generation tuning like `-fwrapv`, or `-std=gnu11`) are dropped.
 fn msvc_cl_args(args []string, target_os string) []string {
+	return msvc_translate_cl_args(args, target_os, true)
+}
+
+// msvc_cl_object_args is msvc_cl_args for third-party C sources, which are compiled in
+// `cl`'s own default mode, as V1 did.
+fn msvc_cl_object_args(args []string, target_os string) []string {
+	return msvc_translate_cl_args(args, target_os, false)
+}
+
+fn msvc_translate_cl_args(args []string, target_os string, generated bool) []string {
 	// `/bigobj`: the program is one translation unit with tens of thousands of functions.
-	mut compile := ['/nologo', '/volatile:ms', '/we4013', '/utf-8', '/bigobj', '/MD']
+	mut compile := ['/nologo', '/volatile:ms', '/bigobj', '/MD']
+	if generated {
+		// V's C must declare everything it calls; its string literals are UTF-8.
+		compile << ['/we4013', '/utf-8']
+	}
 	mut inputs := []string{}
 	mut libs := []string{}
 	mut link := []string{}
@@ -197,7 +211,7 @@ fn msvc_cl_args(args []string, target_os string) []string {
 		// Any other gcc-style option (`-W...`, `-f...`, `-m...`, `-std=...`, `-pthread`,
 		// `-municode`, `-M...`) has no MSVC equivalent that V relies on.
 	}
-	if !has_cpp {
+	if generated && !has_cpp {
 		// C11 mode also enables MSVC's conforming preprocessor.
 		compile << '/std:c11'
 	}

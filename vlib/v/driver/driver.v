@@ -1335,7 +1335,7 @@ fn compile_cached_c_source_object(obj_path string, source_file string, source_la
 		// be validated against its headers later. Build it for this compilation only.
 		msvc_obj := os.join_path(uncached_dir, '${os.file_name(obj_path).all_before_last('.')}_${tempname.unique_token()}.obj')
 		args << ['-o', msvc_obj, '-c', source_file]
-		res := cmdexec.run(compiler, msvc_cl_args(args, target.os))
+		res := cmdexec.run(compiler, msvc_cl_object_args(args, target.os))
 		if res.exit_code != 0 {
 			os.rm(msvc_obj) or {}
 			return error('failed to build C object ${obj_path} from ${source_file}:\n${res.output}')
