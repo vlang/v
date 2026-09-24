@@ -188,6 +188,14 @@ fn loops(content string) int {
 	}
 	return n
 }
+
+fn (b Base) twice[T](x T) int {
+	return b.ident() * 2
+}
+
+fn (j Job) run[T](x T) int {
+	return j.ident()
+}
 '
 
 fn testsuite_begin() {
@@ -344,6 +352,11 @@ fn test_definition_of_a_declaration_is_the_declaration() {
 	// A local that the body of a loop declares, used further on in that body.
 	assert declaration(67, 'c', 0) == 'main.v:66:2'
 	assert declaration(74, 'y', 0) == 'main.v:73:2'
+	// A method called in the body of a generic function, which the checker does
+	// not type: the method of the receiver's declared type, or of the struct
+	// that type embeds.
+	assert declaration(80, 'ident', 0) == 'main.v:9:12'
+	assert declaration(84, 'ident', 0) == 'main.v:9:12'
 }
 
 fn test_signature_help_marks_the_argument_under_the_cursor() {
