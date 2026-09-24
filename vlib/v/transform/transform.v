@@ -2598,6 +2598,9 @@ fn (mut t Transformer) set_var_type(name string, typ string) {
 }
 
 fn (mut t Transformer) set_implicit_err_var_type() {
+	if !t.has_ierror_interface() {
+		return
+	}
 	t.set_var_type_binding('err', 'IError', 'IError', true)
 }
 
@@ -14325,6 +14328,9 @@ fn (mut t Transformer) make_ierror_none_type_check(typ flat.NodeId, iface string
 
 // make_optional_none_with_err builds make optional none with err data for transform.
 fn (mut t Transformer) make_optional_none_with_err(optional_type string, err_expr flat.NodeId) flat.NodeId {
+	if !t.has_ierror_interface() {
+		return t.make_optional_none(optional_type)
+	}
 	ok_field := t.make_sum_literal_field('ok', t.make_bool_literal(false), 'bool')
 	err_field := t.make_sum_literal_field('err', err_expr, 'IError')
 	start := t.a.children.len

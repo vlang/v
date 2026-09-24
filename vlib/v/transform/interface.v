@@ -8,6 +8,13 @@ fn (t &Transformer) is_interface_type(name string) bool {
 	return t.resolve_interface_type_name(name).len > 0
 }
 
+// has_ierror_interface reports whether option/result wrappers carry an `err`
+// field. cgen omits it when `IError` is not declared (`-no-builtin`), so lowering
+// must neither bind the implicit `err` nor copy `.err` between wrappers then.
+fn (t &Transformer) has_ierror_interface() bool {
+	return isnil(t.tc) || t.tc.has_ierror_interface()
+}
+
 fn (t &Transformer) is_builtin_ierror_interface_name(name string) bool {
 	clean := t.trim_pointer_type(t.normalize_type_alias(name))
 	return clean == 'IError' || clean == 'builtin.IError'

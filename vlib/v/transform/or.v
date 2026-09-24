@@ -2235,6 +2235,22 @@ fn (mut t Transformer) optional_source_value_expr(source_id flat.NodeId, expr fl
 	return value
 }
 
+// append_implicit_err_decl binds the implicit `err` of an `or {}` block or an
+// if-guard `else` branch to `err_expr`, or to a zero `IError` when there is no
+// source error. Without `IError` (`-no-builtin`) the option/result wrappers have
+// no `err` field, so no binding is emitted.
+fn (mut t Transformer) append_implicit_err_decl(mut stmts []flat.NodeId, err_expr flat.NodeId) {
+	if !t.has_ierror_interface() {
+		return
+	}
+	err_value := if int(err_expr) >= 0 {
+		err_expr
+	} else {
+		t.make_struct_init('IError')
+	}
+	stmts << t.make_decl_assign_typed('err', err_value, 'IError')
+}
+
 // lower_or_body_to_stmts converts lower or body to stmts data for transform.
 fn (mut t Transformer) lower_or_body_to_stmts(body_id flat.NodeId, target_name string, target_type string, mode string, err_source string) []flat.NodeId {
 	err_expr := if err_source != '' {
@@ -2269,13 +2285,8 @@ fn (mut t Transformer) lower_or_body_to_multi_return_stmts_with_err_expr(body_id
 	body := t.a.nodes[int(body_id)]
 	saved_var_types := t.var_types.clone()
 	t.set_implicit_err_var_type()
-	err_value := if int(err_expr) >= 0 {
-		err_expr
-	} else {
-		t.make_struct_init('IError')
-	}
 	mut result := []flat.NodeId{}
-	result << t.make_decl_assign_typed('err', err_value, 'IError')
+	t.append_implicit_err_decl(mut result, err_expr)
 	if t.stmt_tail_exits(body_id) {
 		t.restore_var_types(saved_var_types)
 		return t.lower_or_body_to_stmts_with_err_expr(body_id, '', '', mode, err_expr)
@@ -2532,12 +2543,7 @@ fn (mut t Transformer) lower_or_body_to_stmts_with_err_expr(body_id flat.NodeId,
 	// Mirrors transform_if_guard_else_block.
 	saved_var_types := t.var_types.clone()
 	t.set_implicit_err_var_type()
-	err_value := if int(err_expr) >= 0 {
-		err_expr
-	} else {
-		t.make_struct_init('IError')
-	}
-	result << t.make_decl_assign_typed('err', err_value, 'IError')
+	t.append_implicit_err_decl(mut result, err_expr)
 	for i in 0 .. body.children_count {
 		child_id := t.a.child(&body, i)
 		child := t.a.nodes[int(child_id)]

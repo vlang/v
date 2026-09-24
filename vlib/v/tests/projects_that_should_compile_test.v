@@ -240,6 +240,121 @@ fn test_custom_print_should_compile_with_no_builtin() {
 	assert os.exists(output_path)
 }
 
+// Without builtin there is no `IError`, so option/result wrappers have no `err`
+// field. `or {}` blocks, if-guard `else` branches, `?`/`!` propagation and `none`
+// must neither bind nor copy one (issue #28887).
+fn test_option_or_blocks_should_compile_and_run_with_no_builtin() {
+	$if windows {
+		return
+	}
+	source_path := os.join_path(os.vtmp_dir(), 'option_or_no_builtin_${os.getpid()}.v')
+	source := "module main
+
+fn C.printf(fmt &char, ...) int
+
+struct Holder {
+mut:
+	v ?int
+}
+
+fn opt(ok bool) ?int {
+	if ok {
+		return 7
+	}
+	return none
+}
+
+fn res(ok bool) !int {
+	return if ok { 8 } else { 80 }
+}
+
+fn pair(ok bool) ?(int, int) {
+	if ok {
+		return 1, 2
+	}
+	return none
+}
+
+fn prop(ok bool) ?int {
+	x := opt(ok)?
+	return x + 1
+}
+
+fn prop_res(ok bool) !int {
+	x := res(ok)!
+	return x + 1
+}
+
+fn stmt_or(ok bool) int {
+	opt(ok) or { return -1 }
+	return 1
+}
+
+fn guard_value(ok bool) int {
+	return if v := opt(ok) { v } else { -1 }
+}
+
+fn main() {
+	a := opt(true) or { 0 }
+	b := opt(false) or { 0 }
+	c := res(false) or { 5 }
+	d := opt(false) or {
+		y := 3
+		y + 1
+	}
+	p, q := pair(false) or { 9, 10 }
+	r := prop(true) or { -1 }
+	s := prop(false) or { -1 }
+	u := prop_res(false) or { -2 }
+	mut g := 0
+	if v := opt(false) {
+		g = v
+	} else {
+		g = -1
+	}
+	mut h := Holder{}
+	h.v = none
+	hv := h.v or { 11 }
+	C.printf(c'%d %d %d %d %d %d %d %d %d %d %d %d %d %d\\n', a, b, c, d, p, q, r, s, u, g,
+		stmt_or(false), guard_value(true), guard_value(false), hv)
+}
+"
+	os.write_file(source_path, source)!
+	defer {
+		os.rm(source_path) or {}
+	}
+	res := vrun_ok('-new-compiler -gc none -no-builtin run', source_path)
+	assert res.trim_space() == '7 0 80 4 9 10 8 -1 81 -1 -1 7 -1 11'
+}
+
+// With no `IError` there is no implicit `err` either, so using it is a checker
+// error instead of generated C that reads an absent field (issue #28887).
+fn test_implicit_err_is_undefined_with_no_builtin() {
+	source_path := os.join_path(os.vtmp_dir(), 'implicit_err_no_builtin_${os.getpid()}.v')
+	output_path := os.join_path(os.vtmp_dir(), 'implicit_err_no_builtin_${os.getpid()}.c')
+	source := [
+		'fn foo() ?int {',
+		'\treturn 1',
+		'}',
+		'',
+		'fn main() {',
+		'\tfoo() or {',
+		'\t\t_ = err',
+		'\t\treturn',
+		'\t}',
+		'}',
+	].join_lines()
+	os.write_file(source_path, source)!
+	defer {
+		os.rm(source_path) or {}
+		os.rm(output_path) or {}
+	}
+	res :=
+		os.execute('${os.quoted_path(@VEXE)} -new-compiler -gc none -no-builtin -o ${os.quoted_path(output_path)} ${os.quoted_path(source_path)}')
+	assert res.exit_code != 0, res.output
+	assert res.output.contains('undefined ident: `err`'), res.output
+}
+
 fn test_generic_recursive_self_method_call_should_compile() {
 	source_path := os.join_path(os.vtmp_dir(),
 		'generic_recursive_self_method_call_${os.getpid()}.v')

@@ -7737,7 +7737,7 @@ fn (mut tc TypeChecker) check_ident(id flat.NodeId, node flat.Node) {
 			return
 		}
 	}
-	if node.value == 'err' {
+	if node.value == 'err' && tc.has_ierror_interface() {
 		tc.register_synth_type(id, tc.parse_type('IError'))
 		return
 	}
@@ -11498,6 +11498,13 @@ fn (tc &TypeChecker) interface_method_names(iface_name string) []string {
 	}
 	mut seen := map[string]bool{}
 	return tc.interface_method_names_inner(iface_name, mut seen)
+}
+
+// has_ierror_interface reports whether the builtin `IError` interface is declared.
+// It is absent with `-no-builtin`: option/result wrappers then carry no `err`
+// field, and `or {}` blocks and if-guard `else` branches bind no implicit `err`.
+pub fn (tc &TypeChecker) has_ierror_interface() bool {
+	return 'IError' in tc.interface_names || 'builtin.IError' in tc.interface_names
 }
 
 // interface_abstract_method_names returns the methods an implementer must provide:
@@ -16029,7 +16036,7 @@ fn (tc &TypeChecker) resolve_type_uncached(id flat.NodeId) Type {
 			if tc.selective_import_symbol_is_ambiguous(node.value) {
 				return unknown_type('ambiguous selective import `${node.value}`')
 			}
-			if node.value == 'err' {
+			if node.value == 'err' && tc.has_ierror_interface() {
 				return tc.parse_type('IError')
 			}
 			if is_bare_generic_param(node.value) {

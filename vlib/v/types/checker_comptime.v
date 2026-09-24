@@ -9163,7 +9163,9 @@ fn (mut tc TypeChecker) check_or_expr(id flat.NodeId, node flat.Node) {
 	fallback_id := tc.a.child(&node, 1)
 	outer_expected := tc.expected_context_for_expr(id) or { Type(void_) }
 	tc.push_scope()
-	tc.cur_scope.insert('err', tc.parse_type('IError'))
+	if tc.has_ierror_interface() {
+		tc.cur_scope.insert('err', tc.parse_type('IError'))
+	}
 	saved_expected_expr_id := tc.expected_expr_id
 	saved_expected_expr_type := tc.expected_expr_type
 	if payload := tc.or_expr_payload_type(inner_id) {
