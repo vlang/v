@@ -17114,8 +17114,9 @@ fn (mut s NoClosuresLambdaScan) walk(id flat.NodeId) {
 			s.close_scope(mark)
 		}
 		.call {
-			if node.children_count > 0 && s.a.child_node(&node, 0).kind == .selector {
-				// Array method arguments can refer to the implicit `it`.
+			if node.children_count > 0 && is_it_dsl_callee(s.a.child_node(&node, 0)) {
+				// The arguments of an array DSL call (`arr.filter(it > 0)`) can refer
+				// to the implicit `it`; any other call sees the enclosing `it`, if any.
 				s.walk(s.a.child(&node, 0))
 				mark := s.bindings.len
 				s.declare('it')
@@ -17129,6 +17130,14 @@ fn (mut s NoClosuresLambdaScan) walk(id flat.NodeId) {
 			s.walk_children(node, 0)
 		}
 	}
+}
+
+// is_it_dsl_callee reports whether a call binds the implicit `it` in its
+// arguments. Like the checker's unresolved_array_dsl_call_name, it matches the
+// method name only.
+fn is_it_dsl_callee(callee &flat.Node) bool {
+	return callee.kind == .selector && callee.children_count > 0
+		&& callee.value in ['filter', 'map', 'any', 'all', 'count']
 }
 
 fn (mut s NoClosuresLambdaScan) walk_fn(node flat.Node) {
