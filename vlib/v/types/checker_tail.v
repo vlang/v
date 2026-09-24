@@ -19033,7 +19033,7 @@ fn (mut tc TypeChecker) check_if_expr(id flat.NodeId, node flat.Node) {
 		if tc.valid_node_id(else_id) && tc.a.node(else_id).kind == .if_expr {
 			tc.fn_context.mut_local_owners = saved_mut_local_owners.clone()
 		}
-		tc.check_branch_node(else_id, value_context)
+		tc.check_if_else_branch(cond_id, else_id, value_context)
 		$if ownership ? {
 			tc.ownership_end_branch(else_id)
 		}
@@ -19178,6 +19178,47 @@ fn (mut tc TypeChecker) check_if_expr(id flat.NodeId, node flat.Node) {
 	}
 }
 
+// check_if_else_branch checks the `else` branch `else_id` of an `if`. After an
+// `if x := call() {` guard, a plain `else` block names the error of the call
+// `err`, as an `or {}` block does; an `else if` does not.
+fn (mut tc TypeChecker) check_if_else_branch(cond_id flat.NodeId, else_id flat.NodeId, value_context bool) {
+	names_err := tc.valid_node_id(cond_id) && tc.a.node(cond_id).kind == .decl_assign
+		&& tc.valid_node_id(else_id) && tc.a.node(else_id).kind != .if_expr
+	if names_err {
+		tc.push_scope()
+		tc.cur_scope.insert('err', tc.parse_type('IError'))
+	}
+	tc.check_branch_node(else_id, value_context)
+	if names_err {
+		tc.pop_scope()
+	}
+}
+
+// err_block_holds reports whether the identifier `id` is in a block that names
+// the error it handles `err`: an `or {}` block, or the plain `else` block right
+// after an `if x := call() {` guard. It follows the tree rather than the scopes,
+// for the checks that keep no scope for such a block.
+fn (tc &TypeChecker) err_block_holds(id flat.NodeId) bool {
+	mut child := id
+	mut parent := tc.direct_parent_id(child)
+	for tc.valid_node_id(parent) {
+		node := tc.a.node(parent)
+		if node.kind in [.fn_decl, .fn_literal, .lambda_expr, .file] {
+			return false
+		}
+		if node.kind == .or_expr && node.children_count > 1 && tc.a.child(node, 1) == child {
+			return true
+		}
+		if node.kind == .if_expr && node.children_count > 2 && tc.a.child(node, 2) == child
+			&& tc.a.node(child).kind != .if_expr && tc.a.child_node(node, 0).kind == .decl_assign {
+			return true
+		}
+		child = parent
+		parent = tc.direct_parent_id(child)
+	}
+	return false
+}
+
 // check_valid_if_expr preserves scopes, guard bindings, smartcasts, and branch
 // expression typing without rebuilding diagnostics for the valid self-host input.
 fn (mut tc TypeChecker) check_valid_if_expr(id flat.NodeId, node flat.Node) {
@@ -19230,7 +19271,7 @@ fn (mut tc TypeChecker) check_valid_if_expr(id flat.NodeId, node flat.Node) {
 		if tc.valid_node_id(else_id) && tc.a.node(else_id).kind == .if_expr {
 			tc.fn_context.mut_local_owners = saved_mut_local_owners.clone()
 		}
-		tc.check_branch_node(else_id, value_context)
+		tc.check_if_else_branch(cond_id, else_id, value_context)
 		if value_context {
 			tc.branch_tail_type(else_id)
 		}
