@@ -1,0 +1,56 @@
+vlib/v/checker/tests/modules/private_struct_field_read_err/main.v:12:12: error: field `private_struct_field_read_err.fieldvis.Box.private` is not public
+   10 | fn main() {
+   11 |     mut b := fieldvis.new_box()
+   12 |     println(b.private)
+      |               ~~~~~~~
+   13 |     println(b.secret)
+   14 |     b.secret = 5
+vlib/v/checker/tests/modules/private_struct_field_read_err/main.v:13:12: error: field `private_struct_field_read_err.fieldvis.Box.secret` is not public
+   11 |     mut b := fieldvis.new_box()
+   12 |     println(b.private)
+   13 |     println(b.secret)
+      |               ~~~~~~
+   14 |     b.secret = 5
+   15 |     println(b.hidden)
+vlib/v/checker/tests/modules/private_struct_field_read_err/main.v:14:4: error: field `private_struct_field_read_err.fieldvis.Box.secret` is not public
+   12 |     println(b.private)
+   13 |     println(b.secret)
+   14 |     b.secret = 5
+      |       ~~~~~~
+   15 |     println(b.hidden)
+   16 |     println(b.Inner.hidden)
+vlib/v/checker/tests/modules/private_struct_field_read_err/main.v:15:12: error: field `private_struct_field_read_err.fieldvis.Box.hidden` is not public
+   13 |     println(b.secret)
+   14 |     b.secret = 5
+   15 |     println(b.hidden)
+      |               ~~~~~~
+   16 |     println(b.Inner.hidden)
+   17 |     println(b.readable + b.writable + b.shown + b.global + b.sum())
+vlib/v/checker/tests/modules/private_struct_field_read_err/main.v:16:18: error: field `private_struct_field_read_err.fieldvis.Inner.hidden` is not public
+   14 |     b.secret = 5
+   15 |     println(b.hidden)
+   16 |     println(b.Inner.hidden)
+      |                     ~~~~~~
+   17 |     println(b.readable + b.writable + b.shown + b.global + b.sum())
+   18 |     b.writable = 6
+vlib/v/checker/tests/modules/private_struct_field_read_err/main.v:21:14: error: field `private_struct_field_read_err.fieldvis.Box.secret` is not public
+   19 |     b.global = 7
+   20 |     ptr := &b
+   21 |     println(ptr.secret)
+      |                 ~~~~~~
+   22 |     // A fn field can be called like a method, but not read as a value.
+   23 |     println(b.cb())
+vlib/v/checker/tests/modules/private_struct_field_read_err/main.v:24:10: error: field `private_struct_field_read_err.fieldvis.Box.cb` is not public
+   22 |     // A fn field can be called like a method, but not read as a value.
+   23 |     println(b.cb())
+   24 |     cb := b.cb
+      |             ~~
+   25 |     println(cb())
+   26 |     alias := fieldvis.BoxAlias(b)
+vlib/v/checker/tests/modules/private_struct_field_read_err/main.v:27:16: error: field `private_struct_field_read_err.fieldvis.BoxAlias.secret` is not public
+   25 |     println(cb())
+   26 |     alias := fieldvis.BoxAlias(b)
+   27 |     println(alias.secret + alias.readable)
+      |                   ~~~~~~
+   28 |     local := Local{
+   29 |         own: 7

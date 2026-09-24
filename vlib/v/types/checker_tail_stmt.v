@@ -6084,6 +6084,11 @@ fn (mut tc TypeChecker) check_selector(id flat.NodeId, node flat.Node) {
 	clean_recv := unwrap_pointer(base_type)
 	selector_is_method_value := tc.expr_is_method_value(id)
 		&& !tc.ident_is_call_callee_or_generic_base(id)
+	if clean_recv is Alias && !tc.selector_is_call_callee(id)
+		&& tc.alias_struct_field_is_private_outside_module(clean_recv, node.value) {
+		tc.record_error_at(.unknown_field, 'field `${tc.diagnostic_type_name(Type(clean_recv))}.${node.value}` is not public', id,
+			tc.node_value_diagnostic_pos(id))
+	}
 	if clean_recv is Struct {
 		if !tc.expr_is_rooted_in_c_namespace(base_id) {
 			if visibility := tc.private_declaration(clean_recv.name) {
@@ -6104,6 +6109,10 @@ fn (mut tc TypeChecker) check_selector(id flat.NodeId, node flat.Node) {
 					tc.record_error_at(.unknown_type, 'struct `${display_name}` was declared as private to module `${decl_module}`, so it can not be used inside module `${inside_module}`', id,
 						tc.node_value_diagnostic_pos(id))
 				}
+			} else if !tc.selector_is_call_callee(id)
+				&& tc.struct_field_is_private_outside_module(clean_recv.name, node.value) {
+				tc.record_error_at(.unknown_field, 'field `${tc.diagnostic_type_name(Type(clean_recv))}.${node.value}` is not public', id,
+					tc.node_value_diagnostic_pos(id))
 			}
 		}
 		if deprecation := tc.deprecated_symbols['${clean_recv.name}.${node.value}'] {
@@ -7874,6 +7883,18 @@ fn (tc &TypeChecker) ident_is_call_callee_or_generic_base(id flat.NodeId) bool {
 		return false
 	}
 	return parent.kind in [.call, .index]
+}
+
+// selector_is_call_callee reports whether selector `id` names the function of a call,
+// like `x.f` in `x.f()`. Such a callee is a method, or a fn-typed field; like V1, the
+// visibility of a fn-typed field is not checked when the field is called.
+fn (tc &TypeChecker) selector_is_call_callee(id flat.NodeId) bool {
+	parent_id := tc.direct_parent_id(id)
+	if !tc.valid_node_id(parent_id) {
+		return false
+	}
+	parent := tc.a.node(parent_id)
+	return parent.kind == .call && parent.children_count > 0 && tc.a.child(parent, 0) == id
 }
 
 fn (tc &TypeChecker) future_local_decl_id(name string, use_id flat.NodeId) ?flat.NodeId {
