@@ -82,9 +82,9 @@ static int v3_modulecache_file_metadata(const char *path, u64 *device, u64 *inod
 	CloseHandle(handle);
 	u64 file_index = ((u64)info.nFileIndexHigh << 32) | (u64)info.nFileIndexLow;
 	if (file_index == 0) {
-		// FAT, exFAT and some network redirectors report no file index. Reporting
-		// a zero inode would make distinct files compare equal, so decline and let
-		// the caller hash the contents instead.
+		// Some network redirectors report no file index. Reporting a zero inode
+		// would make distinct files compare equal, so decline and let the caller
+		// compare the contents instead.
 		return 0;
 	}
 	*device = (u64)info.dwVolumeSerialNumber;

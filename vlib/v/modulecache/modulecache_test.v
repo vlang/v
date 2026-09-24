@@ -1,6 +1,7 @@
 module modulecache
 
 import os
+import time
 import crypto.sha256
 import v.flat
 import v.parser
@@ -584,8 +585,8 @@ fn test_cached_source_signature_tracks_vml_symlink_target() {
 }
 
 // without_file_metadata makes file_metadata_signature report nothing for
-// `paths`, as FAT, exFAT and some network redirectors do on Windows, and
-// returns the previous setting for restore_file_metadata.
+// `paths`, as it does for a file without a usable identity, and returns the
+// previous setting for restore_file_metadata.
 fn without_file_metadata(paths []string) (string, bool) {
 	was_set := 'V3_TEST_NO_FILE_METADATA' in os.environ()
 	old := os.getenv('V3_TEST_NO_FILE_METADATA')
@@ -692,6 +693,36 @@ fn test_cached_source_signature_tracks_vmod_edits_without_file_metadata() {
 
 	os.write_file(vmod, "Module {\n\tname: 'other'\n}\n")!
 	second := cached_source_signature(cache_dir, 'vmod-no-metadata', [source])
+	assert second.len > 0
+	assert second != first
+}
+
+// On FAT, exFAT and HFS+ a same-size edit within one timestamp step keeps the
+// file's metadata identical. os.utime sets whole-second times, which reproduces
+// that on any file system.
+fn test_cached_source_signature_tracks_edits_within_a_coarse_timestamp_step() {
+	root := os.join_path(os.vtmp_dir(), 'v3_modulecache_coarse_mtime_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	source := os.join_path(root, 'main.v')
+	template_vml := os.join_path(root, 'form.vml')
+	os.write_file(source, "module main\n\nfn build() { _ = \$vml('form.vml') }\n")!
+	old_time := time.utc().unix() - 600
+	os.utime(source, old_time, old_time)!
+	assert file_metadata_signature(source) != ''
+	step := time.utc().unix()
+	os.write_file(template_vml, 'Label { text: "First" }')!
+	os.utime(template_vml, step, step)!
+	cache_dir := os.join_path(root, 'cache')
+
+	first := cached_source_signature(cache_dir, 'coarse-mtime', [source])
+	assert first.len > 0
+	os.write_file(template_vml, 'Label { text: "Other" }')!
+	os.utime(template_vml, step, step)!
+	second := cached_source_signature(cache_dir, 'coarse-mtime', [source])
 	assert second.len > 0
 	assert second != first
 }

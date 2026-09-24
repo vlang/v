@@ -18,8 +18,8 @@ fn test_module_cache_compiler_identity_changes_when_executable_changes() {
 	assert old_identity != new_identity
 }
 
-// On FAT, exFAT and some network redirectors Windows reports no file identity, so
-// the compiler identity must fall back to the executable contents.
+// Without usable file metadata the compiler identity must fall back to the
+// executable contents.
 fn test_module_cache_compiler_identity_changes_without_file_metadata() {
 	root := os.join_path(os.vtmp_dir(), 'v3_cache_vexe_no_metadata_${os.getpid()}')
 	os.rmdir_all(root) or {}

@@ -8,6 +8,22 @@ fn test_file_metadata_signature_is_scoped_to_compiler_build() {
 	assert signature.starts_with('${@VCURRENTHASH}:')
 }
 
+// A whole-second modification time comes from a file system with coarse
+// timestamps (FAT and exFAT keep 2 second steps, HFS+ 1 second steps). While it
+// is that recent, a same-size edit can keep identical metadata, so the metadata
+// must not identify the file yet.
+fn test_coarse_mtime_is_recent_only_within_the_timestamp_steps() {
+	now := i64(1_790_000_000)
+	assert coarse_mtime_is_recent(u64(now), 0, now)
+	assert coarse_mtime_is_recent(u64(now - coarse_mtime_recent_seconds + 1), 0, now)
+	assert !coarse_mtime_is_recent(u64(now - coarse_mtime_recent_seconds), 0, now)
+	// A clock ahead of this machine's, or a future timestamp, proves nothing yet.
+	assert coarse_mtime_is_recent(u64(now + 3600), 0, now)
+	// A sub-second part means fine-grained timestamps, which a later edit changes.
+	assert !coarse_mtime_is_recent(u64(now), 1, now)
+	assert !coarse_mtime_is_recent(u64(now + 3600), 500, now)
+}
+
 fn test_file_metadata_helper_uses_generated_u64_abi() {
 	header_path := os.join_path(@VEXEROOT, 'vlib', 'v', 'modulecache', 'file_metadata.c')
 	header := os.read_file(header_path) or { panic(err) }
