@@ -167,6 +167,10 @@ fn main() {
 	println(time.now().year > 0)
 	shadowed()
 }
+fn slices(text string) string {
+	close := 3
+	return text[0..close + 1] + text[close..] + text[..close]
+}
 '
 
 fn testsuite_begin() {
@@ -314,6 +318,12 @@ fn test_definition_of_a_declaration_is_the_declaration() {
 	assert declaration(53, 'id', 0) == 'main.v:6:1'
 	assert declaration(16, 'Base', 0) == 'main.v:5:7'
 	assert declaration(14, 'Base', 0) == 'main.v:5:7'
+	// A local in the bounds of a slice, `s[a..b]`, whose parser node is not the
+	// parent the index of parents names.
+	for nth in 0 .. 3 {
+		assert declaration(59, 'close', nth) == 'main.v:58:1', 'close ${nth}'
+	}
+	assert ask(os.join_path(work_dir, 'declarations'), 'hv^', 59, 'close', 0).contains('close int')
 }
 
 fn test_signature_help_marks_the_argument_under_the_cursor() {

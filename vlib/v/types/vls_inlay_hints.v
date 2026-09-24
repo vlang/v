@@ -148,13 +148,13 @@ fn vls_parameter_label_hint(offset int, label string) VlsInlayHint {
 // vls_in_generic_fn reports whether `id` is in the body of a generic function,
 // whose variables have the types of the instance being checked.
 fn (tc &TypeChecker) vls_in_generic_fn(id flat.NodeId) bool {
-	mut cur := tc.direct_parent_id(id)
+	mut cur := tc.vls_parent_id(id)
 	for tc.valid_node_id(cur) {
 		node := tc.a.node(cur)
 		if node.kind == .fn_decl {
 			return node.generic_params().len > 0 || node.value.contains('[')
 		}
-		cur = tc.direct_parent_id(cur)
+		cur = tc.vls_parent_id(cur)
 	}
 	return false
 }

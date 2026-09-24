@@ -11,7 +11,7 @@ fn (tc &TypeChecker) vls_local_declaration(id flat.NodeId) ?flat.NodeId {
 	name := tc.a.nodes[int(id)].value
 	use_offset := int(tc.a.nodes[int(id)].pos.offset)
 	mut child := id
-	mut parent := tc.direct_parent_id(child)
+	mut parent := tc.vls_parent_id(child)
 	for _ in 0 .. 4096 {
 		if !tc.valid_node_id(parent) {
 			return none
@@ -94,7 +94,7 @@ fn (tc &TypeChecker) vls_local_declaration(id flat.NodeId) ?flat.NodeId {
 			}
 		}
 		child = parent
-		parent = tc.direct_parent_id(child)
+		parent = tc.vls_parent_id(child)
 	}
 	return none
 }
@@ -121,12 +121,36 @@ fn (tc &TypeChecker) vls_declared_before(block &flat.Node, child flat.NodeId, na
 	return found
 }
 
+// vls_parent_id is the node that holds `id`. The bounds of a slice, `s[a..b]`,
+// are children of the slice and of a `.range` node that the parser builds
+// first and leaves out of the tree: the index of parents may name that range,
+// and a walk up from a bound would stop there. The slice is the parent then.
+fn (tc &TypeChecker) vls_parent_id(id flat.NodeId) flat.NodeId {
+	parent := tc.direct_parent_id(id)
+	if !tc.valid_node_id(parent) || tc.a.node(parent).kind != .range
+		|| tc.valid_node_id(tc.direct_parent_id(parent)) {
+		return parent
+	}
+	for idx in tc.a.user_code_start .. tc.a.nodes.len {
+		node := tc.a.nodes[idx]
+		if node.kind != .index || node.value != 'range' {
+			continue
+		}
+		for i in 1 .. node.children_count {
+			if tc.a.child(&node, i) == id {
+				return flat.NodeId(idx)
+			}
+		}
+	}
+	return parent
+}
+
 // vls_declared_here is where the identifier `id` is declared when it is itself
 // the name a local declaration introduces: the left of a `:=`, or a variable
 // of a `for ... in`. VLS asks for the declaration of every occurrence of a name
 // it renames, the declaring one too.
 fn (tc &TypeChecker) vls_declared_here(id flat.NodeId) ?VlsPos {
-	parent_id := tc.direct_parent_id(id)
+	parent_id := tc.vls_parent_id(id)
 	if !tc.valid_node_id(parent_id) {
 		return none
 	}

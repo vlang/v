@@ -42,7 +42,7 @@ fn (mut tc TypeChecker) vls_hover_declaration(target VlsTarget) string {
 			return '${tc.vls_type_text(typ).all_after_last('.')}.${node.value}'
 		}
 		.enum_field {
-			decl_id := tc.direct_parent_id(id)
+			decl_id := tc.vls_parent_id(id)
 			if !tc.valid_node_id(decl_id) || tc.a.node(decl_id).kind != .enum_decl {
 				return ''
 			}
@@ -78,7 +78,7 @@ fn (mut tc TypeChecker) vls_hover_declaration(target VlsTarget) string {
 // vls_field_init_owner is the struct `name: value` sets a field of: the one of
 // a struct literal, or of a call's parameter, `f(name: value)`.
 fn (tc &TypeChecker) vls_field_init_owner(id flat.NodeId) ?Type {
-	parent_id := tc.direct_parent_id(id)
+	parent_id := tc.vls_parent_id(id)
 	if !tc.valid_node_id(parent_id) {
 		return none
 	}
@@ -107,11 +107,11 @@ fn (tc &TypeChecker) vls_field_init_owner(id flat.NodeId) ?Type {
 // vls_match_subject_type is the type of the value a `match` compares, for a
 // pattern of one of its branches: `.red` in `match c { .red {} }`.
 fn (tc &TypeChecker) vls_match_subject_type(id flat.NodeId) ?Type {
-	branch_id := tc.direct_parent_id(id)
+	branch_id := tc.vls_parent_id(id)
 	if !tc.valid_node_id(branch_id) || tc.a.node(branch_id).kind != .match_branch {
 		return none
 	}
-	match_id := tc.direct_parent_id(branch_id)
+	match_id := tc.vls_parent_id(branch_id)
 	if !tc.valid_node_id(match_id) || tc.a.node(match_id).kind != .match_stmt {
 		return none
 	}
@@ -215,12 +215,12 @@ fn (tc &TypeChecker) vls_local_type(id flat.NodeId) ?Type {
 	if typ := tc.expr_type(id) {
 		return typ
 	}
-	decl_id := tc.direct_parent_id(id)
+	decl_id := tc.vls_parent_id(id)
 	if !tc.valid_node_id(decl_id) {
 		return none
 	}
 	decl := tc.a.node(decl_id)
-	if_id := tc.direct_parent_id(decl_id)
+	if_id := tc.vls_parent_id(decl_id)
 	if decl.kind != .decl_assign || tc.multi_assign_rhs_count(decl) != 1
 		|| !tc.valid_node_id(if_id) || tc.a.node(if_id).kind != .if_expr
 		|| tc.a.child(tc.a.node(if_id), 0) != decl_id {
@@ -258,7 +258,7 @@ fn (tc &TypeChecker) vls_builtin_method_decl(method string) ?flat.NodeId {
 // vls_called_by returns the call whose callee is the node `id`: the name in
 // `name(...)`, or the member in `recv.name(...)`.
 fn (tc &TypeChecker) vls_called_by(id flat.NodeId) ?flat.NodeId {
-	parent_id := tc.direct_parent_id(id)
+	parent_id := tc.vls_parent_id(id)
 	if !tc.valid_node_id(parent_id) {
 		return none
 	}
@@ -379,7 +379,7 @@ fn (tc &TypeChecker) vls_member_name(module_name string, member string) string {
 // vls_import_symbol_module is the module an import takes the identifier `id`
 // from, `mod` for `Name` in `import mod { Name }`.
 fn (tc &TypeChecker) vls_import_symbol_module(id flat.NodeId) ?string {
-	parent_id := tc.direct_parent_id(id)
+	parent_id := tc.vls_parent_id(id)
 	if !tc.valid_node_id(parent_id) {
 		return none
 	}
@@ -393,7 +393,7 @@ fn (tc &TypeChecker) vls_import_symbol_module(id flat.NodeId) ?string {
 // vls_module_receiver_member returns the member after a module name that is
 // the receiver of a selector: `Notifier` for `services` in `services.Notifier`.
 fn (tc &TypeChecker) vls_module_receiver_member(id flat.NodeId) ?string {
-	parent_id := tc.direct_parent_id(id)
+	parent_id := tc.vls_parent_id(id)
 	if !tc.valid_node_id(parent_id) {
 		return none
 	}
