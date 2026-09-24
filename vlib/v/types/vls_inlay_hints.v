@@ -7,6 +7,9 @@ import v.flat
 const vls_hint_kind_type = 1
 const vls_hint_kind_parameter = 2
 
+// The keywords that can come before an argument, where it then starts.
+const vls_argument_keywords = ['mut', 'shared']
+
 // VlsInlayHint is a label the editor shows before the byte `offset` of the file.
 struct VlsInlayHint {
 	offset  int
@@ -224,13 +227,12 @@ fn (mut tc TypeChecker) vls_param_name_hints(call_id flat.NodeId, call flat.Node
 // vls_keyword_start moves `offset` back over a `mut ` or `shared ` written
 // before an argument, as the argument starts there.
 fn vls_keyword_start(source string, offset int) int {
-	before := source[..offset].trim_right(' \t')
-	for keyword in ['mut', 'shared'] {
-		if before.ends_with(keyword) {
-			start := before.len - keyword.len
-			if start == 0 || !vls_is_name_byte(before[start - 1]) {
-				return start
-			}
+	before_end := vls_blanks_start(source, offset)
+	for keyword in vls_argument_keywords {
+		start := before_end - keyword.len
+		if vls_holds_at(source, start, keyword)
+			&& (start == 0 || !vls_is_name_byte(source[start - 1])) {
+			return start
 		}
 	}
 	return offset
@@ -411,13 +413,13 @@ fn vls_field_name_start(source string, value_start int, name string) ?int {
 	if value_start <= 0 || value_start > source.len {
 		return none
 	}
-	before := source[..value_start].trim_right(' \t')
-	if !before.ends_with(':') {
+	colon_end := vls_blanks_start(source, value_start)
+	if colon_end == 0 || source[colon_end - 1] != `:` {
 		return none
 	}
-	name_end := before[..before.len - 1].trim_right(' \t').len
+	name_end := vls_blanks_start(source, colon_end - 1)
 	name_start := name_end - name.len
-	if name_start < 0 || source[name_start..name_end] != name
+	if name_start < 0 || !vls_holds_at(source, name_start, name)
 		|| (name_start > 0 && vls_is_name_byte(source[name_start - 1])) {
 		return none
 	}
