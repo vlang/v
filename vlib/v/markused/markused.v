@@ -1724,6 +1724,11 @@ fn markused_rt_helpers_thread(mut args RtHelpersScanArgs) {
 }
 
 fn par_markused_seeds_enabled() bool {
+	$if v3_no_parallel ? {
+		// The runtime-helper scan thread queries a checker fork beside the main
+		// thread; a serial build keeps it on the main thread.
+		return false
+	}
 	return os.getenv('V3_NO_PAR_MU_SEEDS') == ''
 }
 

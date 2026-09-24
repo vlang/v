@@ -89,10 +89,11 @@ fn interface_impl_index_chunk_thread(arg voidptr) voidptr {
 }
 
 fn (mut tc TypeChecker) prepare_interface_impl_indexes_parallel(iface_names []string) bool {
-	if iface_names.len < 8 || isnil(tc.a) || isnil(tc.a.worker_pool) {
+	pool := checker_worker_pool(tc.a)
+	if iface_names.len < 8 || isnil(pool) {
 		return false
 	}
-	n_jobs := int_min(tc.a.worker_pool.size() + 1, iface_names.len)
+	n_jobs := int_min(pool.size() + 1, iface_names.len)
 	if n_jobs <= 1 {
 		return false
 	}
@@ -131,7 +132,7 @@ fn (mut tc TypeChecker) prepare_interface_impl_indexes_parallel(iface_names []st
 			force_sync: job == 0
 		}
 	}
-	tc.a.worker_pool.run(tasks)
+	pool.run(tasks)
 	tc.restore_type_cache_base()
 	for i, iface_name in iface_names {
 		if !isnil(results.items[i]) {
@@ -216,15 +217,16 @@ fn collect_declaration_index_thread(arg voidptr) voidptr {
 // prepare_collect_index_parallel overlaps independent index tasks. Each cache
 // group owns its arrays, and all allocations survive in persistent arenas.
 fn (mut tc TypeChecker) prepare_collect_index_parallel(a &flat.FlatAst) bool {
-	if !tc.building_v_fast || os.getenv('V3_NO_PAR_CHECK_INDEX_PREP') != '' || isnil(a.worker_pool)
-		|| a.worker_pool.size() < 2 || a.nodes.len < 65536 {
+	pool := checker_worker_pool(a)
+	if !tc.building_v_fast || os.getenv('V3_NO_PAR_CHECK_INDEX_PREP') != '' || isnil(pool)
+		|| pool.size() < 2 || a.nodes.len < 65536 {
 		return false
 	}
 	// The cache groups below reset the node-indexed arrays on pool lanes; the
 	// sparse fn-value store is cleared here, on the collecting thread.
 	tc.reset_sparse_fn_values()
 	tc.init_direct_parent_index(a)
-	parent_jobs := int_min(8, a.worker_pool.size() + 1)
+	parent_jobs := int_min(8, pool.size() + 1)
 	mut args := []CollectIndexPrepArgs{cap: parent_jobs + 4}
 	mut start := 0
 	for job in 0 .. parent_jobs {
@@ -259,7 +261,7 @@ fn (mut tc TypeChecker) prepare_collect_index_parallel(a &flat.FlatAst) bool {
 			force_sync: i == args.len - 1
 		}
 	}
-	a.worker_pool.run(tasks)
+	pool.run(tasks)
 	for arg in args {
 		if arg.kind == 0 {
 			tc.merge_direct_parent_chunk(arg.parent_chunk)
@@ -278,9 +280,10 @@ fn (mut tc TypeChecker) prepare_collect_index_parallel(a &flat.FlatAst) bool {
 // prepare_collect_declaration_indexes_parallel builds independent
 // read-only-AST declaration indexes on separate persistent lanes.
 fn (mut tc TypeChecker) prepare_collect_declaration_indexes_parallel(a &flat.FlatAst) bool {
+	pool := checker_worker_pool(a)
 	if !tc.building_v_fast || !tc.scope_parallel_check_workers
-		|| os.getenv('V3_NO_PAR_CHECK_DECL_INDEXES') != '' || isnil(a.worker_pool)
-		|| a.worker_pool.size() < 2 || tc.top_level_idx.len < 2048 {
+		|| os.getenv('V3_NO_PAR_CHECK_DECL_INDEXES') != '' || isnil(pool)
+		|| pool.size() < 2 || tc.top_level_idx.len < 2048 {
 		return false
 	}
 	// Each index task owns its maps; the caller builds one of them itself.
@@ -300,7 +303,7 @@ fn (mut tc TypeChecker) prepare_collect_declaration_indexes_parallel(a &flat.Fla
 			force_sync: i == args.len - 1
 		}
 	}
-	a.worker_pool.run(tasks)
+	pool.run(tasks)
 	return true
 }
 
@@ -422,11 +425,12 @@ fn (mut tc TypeChecker) collect_pass2_fn_range(start int, end int, mut preps []P
 // deterministic id order.
 fn (mut tc TypeChecker) collect_pass2_fn_preps_parallel() []Pass2FnPrep {
 	n := tc.top_level_idx.len
-	if isnil(tc.a.worker_pool) || tc.a.worker_pool.size() == 0 || n < 2048
+	pool := checker_worker_pool(tc.a)
+	if isnil(pool) || pool.size() == 0 || n < 2048
 		|| os.getenv('V3_NO_PAR_PASS2') != '' {
 		return []Pass2FnPrep{}
 	}
-	mut n_jobs := tc.a.worker_pool.size() + 1
+	mut n_jobs := pool.size() + 1
 	if n_jobs > 10 {
 		n_jobs = 10
 	}
@@ -476,7 +480,7 @@ fn (mut tc TypeChecker) collect_pass2_fn_preps_parallel() []Pass2FnPrep {
 			force_sync: ji == 0
 		}
 	}
-	tc.a.worker_pool.run(tasks)
+	pool.run(tasks)
 	return preps
 }
 
@@ -487,7 +491,8 @@ fn (mut tc TypeChecker) finish_pass2_ancillary_registrations() {
 	if tc.fn_ancillary_registrations.len == 0 {
 		return
 	}
-	if isnil(tc.a.worker_pool) || tc.a.worker_pool.size() < 2 {
+	pool := checker_worker_pool(tc.a)
+	if isnil(pool) || pool.size() < 2 {
 		for group in 0 .. pass2_ancillary_groups {
 			tc.apply_pass2_ancillary_group(group)
 		}
@@ -507,7 +512,7 @@ fn (mut tc TypeChecker) finish_pass2_ancillary_registrations() {
 				force_sync: group == 0
 			}
 		}
-		tc.a.worker_pool.run(tasks)
+		pool.run(tasks)
 	}
 	tc.fn_ancillary_registrations = []FnAncillaryRegistration{}
 	tc.fn_c_variadic_registrations = []FnNamePairRegistration{}
@@ -741,6 +746,40 @@ fn check_worker_scope_free(scope voidptr) {
 	}
 }
 
+// checker_serial_only reports whether v3 was built with the internal
+// `v3_no_parallel` define. The other compiler phases swap in serial variant files
+// for that build; the checker keeps one implementation and instead reaches the
+// worker pool only through checker_worker_pool and ensure_checker_worker_pool.
+fn checker_serial_only() bool {
+	$if v3_no_parallel ? {
+		return true
+	}
+	return false
+}
+
+// checker_worker_pool returns the pool a checker pass may fan work out to. It is
+// nil when there is none, and in `v3_no_parallel` builds even when the driver
+// started one, so the pass takes its serial fallback.
+fn checker_worker_pool(a &flat.FlatAst) &workers.Pool {
+	if isnil(a) || checker_serial_only() {
+		return unsafe { nil }
+	}
+	return a.worker_pool
+}
+
+// ensure_checker_worker_pool returns the pool for the parallel semantic check,
+// starting one sized from VJOBS when the driver did not. It returns nil, and
+// starts nothing, in `v3_no_parallel` builds.
+fn ensure_checker_worker_pool(mut a flat.FlatAst) &workers.Pool {
+	if checker_serial_only() {
+		return unsafe { nil }
+	}
+	if isnil(a.worker_pool) {
+		a.worker_pool = workers.new(runtime.nr_jobs() - 1)
+	}
+	return a.worker_pool
+}
+
 // check_semantics_opt runs semantic checks, using worker threads for independent
 // function bodies when requested and there is enough work.
 pub fn (mut tc TypeChecker) check_semantics_opt(want_parallel bool) bool {
@@ -760,7 +799,7 @@ pub fn (mut tc TypeChecker) check_semantics_opt(want_parallel bool) bool {
 		}
 	}
 	tc.timing_profile('  [ttime]   ck preflights    ${f64(pfsw.elapsed().microseconds()) / 1000.0:7.2f} ms')
-	if !want_parallel {
+	if !want_parallel || checker_serial_only() {
 		if tc.scope_parallel_check_workers {
 			tc.check_semantics_scoped_serial()
 		} else {
@@ -943,11 +982,12 @@ fn (tc &TypeChecker) scan_unused_alive_range(fn_keys map[string][]int, const_key
 // to the serial scan regardless of shard boundaries.
 fn (mut tc TypeChecker) scan_unused_candidate_references(fn_keys map[string][]int, const_keys map[string][]int, mut alive []bool) {
 	n_nodes := tc.a.nodes.len
-	if isnil(tc.a.worker_pool) || tc.a.worker_pool.size() == 0 || n_nodes < 262_144 {
+	pool := checker_worker_pool(tc.a)
+	if isnil(pool) || pool.size() == 0 || n_nodes < 262_144 {
 		tc.scan_unused_alive_range(fn_keys, const_keys, 0, n_nodes, mut alive)
 		return
 	}
-	mut n_jobs := tc.a.worker_pool.size() + 1
+	mut n_jobs := pool.size() + 1
 	if n_jobs > 8 {
 		n_jobs = 8
 	}
@@ -970,7 +1010,7 @@ fn (mut tc TypeChecker) scan_unused_candidate_references(fn_keys map[string][]in
 			force_sync: job == 0
 		}
 	}
-	tc.a.worker_pool.run(tasks)
+	pool.run(tasks)
 	for arg in args {
 		for cand_idx in 0 .. alive.len {
 			if arg.alive[cand_idx] {
@@ -1282,10 +1322,9 @@ fn check_top_level_decl_signatures_thread(arg voidptr) voidptr {
 
 fn (mut tc TypeChecker) run_parallel_check(items []CheckWorkItem) bool {
 	mut ast := unsafe { tc.a }
-	if isnil(ast.worker_pool) {
-		ast.worker_pool = workers.new(runtime.nr_jobs() - 1)
-	}
-	mut n_jobs := check_job_count(ast.worker_pool.size() + 1, items.len)
+	pool := ensure_checker_worker_pool(mut ast)
+	// Without a pool every item is checked by the serial branch below.
+	mut n_jobs := if isnil(pool) { 1 } else { check_job_count(pool.size() + 1, items.len) }
 	if tc.scope_parallel_check_workers && n_jobs > max_scoped_check_jobs {
 		n_jobs = max_scoped_check_jobs
 	}
@@ -1395,7 +1434,7 @@ fn (mut tc TypeChecker) run_parallel_check(items []CheckWorkItem) bool {
 	}
 	check_worker_scope_leave(setup_scope)
 	rpsw2 := time.new_stopwatch()
-	any_started := ast.worker_pool.run(tasks)
+	any_started := pool.run(tasks)
 	if dynamic_dispatch {
 		for ci in 0 .. chunk_count {
 			chunks[ci] = args[ci].processed
@@ -1428,7 +1467,7 @@ fn (mut tc TypeChecker) run_parallel_check(items []CheckWorkItem) bool {
 				force_sync: ci == 0
 			}
 		}
-		ast.worker_pool.run(ctasks)
+		pool.run(ctasks)
 		mg_clone_ns += time.sys_mono_now() - mg_t0
 	}
 	for ci in merge_start .. chunk_count {
@@ -4370,15 +4409,16 @@ fn (mut tc TypeChecker) prepare_tail_decl_ids() {
 	mut cache := tc.type_cache
 	start := tc.top_level_idx_nodes_len
 	end := if isnil(tc.a) { 0 } else { tc.a.nodes.len }
+	pool := checker_worker_pool(tc.a)
 	// Only a base cache builds the lazy declaration indexes (overlays defer to it).
 	if !isnil(cache.base) || start <= 0 || end - start < min_parallel_tail_decl_scan
-		|| isnil(tc.a.worker_pool) || tc.a.worker_pool.size() == 0 {
+		|| isnil(pool) || pool.size() == 0 {
 		return
 	}
 	if cache.tail_decl_start == start && cache.tail_decl_end == end {
 		return
 	}
-	n := int_min(tc.a.worker_pool.size() + 1, 16)
+	n := int_min(pool.size() + 1, 16)
 	mut args := []TailDeclScanArgs{cap: n}
 	for i in 0 .. n {
 		args << TailDeclScanArgs{
@@ -4395,7 +4435,7 @@ fn (mut tc TypeChecker) prepare_tail_decl_ids() {
 			force_sync: i == 0
 		}
 	}
-	tc.a.worker_pool.run(tasks)
+	pool.run(tasks)
 	mut total := 0
 	for arg in args {
 		total += arg.ids.len
