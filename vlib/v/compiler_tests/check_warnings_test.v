@@ -2,15 +2,139 @@ module main
 
 import os
 
-fn check_output(name string, source string) os.Result {
+// Programs whose unused private declarations a check has to report as a build
+// does. Some are only told apart by markused: an exported function, or one
+// marked `@[markused]`, is used although no V code names it; a function passed
+// as a value is used when the code passing it is, and a function called only
+// by an unused one is not reported.
+const build_parity_programs = {
+	'mixed':         "module main
+
+const limit = 3
+
+const used_limit = 4
+
+fn helper() int {
+	return used_limit
+}
+
+fn unused_caller() int {
+	return only_from_unused()
+}
+
+fn only_from_unused() int {
+	return 2
+}
+
+@[export: 'exported_helper']
+fn exported_helper() int {
+	return 5
+}
+
+@[markused]
+fn kept_helper() int {
+	return 6
+}
+
+pub fn public_helper() int {
+	return 7
+}
+
+fn main() {
+	println(helper())
+}
+"
+	'kept_only':     "module main
+
+@[export: 'exported_helper']
+fn exported_helper() int {
+	return 5
+}
+
+@[markused]
+fn kept_helper() int {
+	return 6
+}
+
+fn main() {
+	println('hi')
+}
+"
+	'callbacks':     "module main
+
+type Visit = fn (name string) string
+
+fn shout(name string) string {
+	return name.to_upper()
+}
+
+fn visit_all(names []string, visit Visit) []string {
+	return names.map(visit(it))
+}
+
+fn main() {
+	println(visit_all(['a'], shout))
+}
+"
+	'dead_callback': "module main
+
+type Visit = fn (name string) string
+
+fn shout(name string) string {
+	return name.to_upper()
+}
+
+fn register(visit Visit) {
+	println(visit('a'))
+}
+
+fn unused_setup() {
+	register(shout)
+}
+
+fn main() {
+	register(fn (name string) string {
+		return name
+	})
+}
+"
+}
+
+// write_program writes `source` as the main.v of a new directory and returns its path.
+fn write_program(name string, source string) string {
 	dir := os.join_path(os.vtmp_dir(), 'v3_check_warnings_${name}_${os.getpid()}')
 	os.mkdir_all(dir) or { panic(err) }
-	defer {
-		os.rmdir_all(dir) or {}
-	}
 	path := os.join_path(dir, 'main.v')
 	os.write_file(path, source) or { panic(err) }
+	return path
+}
+
+fn check_output(name string, source string) os.Result {
+	path := write_program(name, source)
+	defer {
+		os.rmdir_all(os.dir(path)) or {}
+	}
 	return os.execute('${os.quoted_path(@VEXE)} -new-compiler -check -nocolor ${os.quoted_path(path)}')
+}
+
+// check_and_build_notices returns the notices of a check and of a build of the same program.
+fn check_and_build_notices(name string, source string) ([]string, []string) {
+	path := write_program(name, source)
+	defer {
+		os.rmdir_all(os.dir(path)) or {}
+	}
+	check := os.execute('${os.quoted_path(@VEXE)} -new-compiler -check -nocolor ${os.quoted_path(path)}')
+	assert check.exit_code == 0, check.output
+	exe := path.all_before_last('.v')
+	build := os.execute('${os.quoted_path(@VEXE)} -new-compiler -nocache -gc none -nocolor -o ${os.quoted_path(exe)} ${os.quoted_path(path)}')
+	assert build.exit_code == 0, build.output
+	return notice_lines(check.output), notice_lines(build.output)
+}
+
+fn notice_lines(output string) []string {
+	mut lines := output.split_into_lines().filter(it.contains(': notice: '))
+	lines.sort()
+	return lines
 }
 
 // A check prints the warnings of a program without errors too: they are
@@ -26,4 +150,20 @@ fn test_check_prints_warnings_next_to_errors() {
 	assert res.exit_code == 1, res.output
 	assert res.output.contains('warning: unused variable: `unused`'), res.output
 	assert res.output.contains('error: infix expr'), res.output
+}
+
+// A build reports the private functions and constants that nothing uses; a
+// check has to report them too.
+fn test_check_reports_unused_private_declarations() {
+	res := check_output('unused', "module main\n\nconst limit = 3\n\nfn helper() int {\n\treturn 1\n}\n\nfn main() {\n\tprintln('hi')\n}\n")
+	assert res.exit_code == 0, res.output
+	assert res.output.contains('notice: unused constant: `limit`'), res.output
+	assert res.output.contains('notice: unused function: `helper`'), res.output
+}
+
+fn test_check_reports_the_unused_declarations_a_build_reports() {
+	for name, source in build_parity_programs {
+		check, build := check_and_build_notices(name, source)
+		assert check == build, '${name}:\ncheck: ${check}\nbuild: ${build}'
+	}
 }

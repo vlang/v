@@ -11592,6 +11592,9 @@ pub fn run(args []string) {
 			exit(1)
 		}
 		if check_only {
+			// Before the monomorphization below rewrites the tree, as in a build.
+			report_unused_declarations_of_check(a, mut pre_tc, no_skip_unused, test_files,
+				input_file.ends_with('.vsh') || is_checker_fixture)
 			if pre_tc.global_names.len > 0 && os.getenv('V_CHECK_SELECTED_FILES_ONLY') == '' {
 				check_used_fns, check_uses_generics := markused.mark_used_with_generic_usage(a, &pre_tc)
 				if check_uses_generics {
@@ -16613,6 +16616,37 @@ fn test_harness_fn_return_supported(ret types.Type) bool {
 
 fn is_test_harness_hook_name(name string) bool {
 	return name in ['testsuite_begin', 'testsuite_end', 'before_each', 'after_each']
+}
+
+// report_unused_declarations_of_check reports the private functions and
+// constants that nothing uses, as a build does after markused. A check skips
+// markused, so it runs here only when a private function is not named at all.
+fn report_unused_declarations_of_check(a &flat.FlatAst, mut tc types.TypeChecker, no_skip_unused bool, test_files []string, full_runtime bool) {
+	used_fns := tc.used_fns_without_markused() or {
+		check_markused(a, mut tc, no_skip_unused, test_files, full_runtime)
+	}
+	tc.diagnose_unused_private_declarations(used_fns)
+}
+
+// check_markused returns what markused finds used, asked for the way a build
+// of the same input asks for it.
+fn check_markused(a &flat.FlatAst, mut tc types.TypeChecker, no_skip_unused bool, test_files []string, full_runtime bool) map[string]bool {
+	// As a build does: checking and comptime pruning add and detach nodes.
+	tc.refresh_direct_parent_index(a)
+	if no_skip_unused {
+		used, _ := markused.mark_all_used_with_generic_usage(a, tc, test_files)
+		return used
+	}
+	if test_files.len > 0 {
+		used, _ := markused.mark_used_for_tests_with_generic_usage(a, tc, test_files)
+		return used
+	}
+	if full_runtime {
+		used, _ := markused.mark_used_with_generic_usage_full_runtime(a, tc)
+		return used
+	}
+	used, _ := markused.mark_used_with_generic_usage(a, tc)
+	return used
 }
 
 fn set_diagnostic_files(mut tc types.TypeChecker, user_files []string) {
