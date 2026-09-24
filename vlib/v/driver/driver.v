@@ -16895,6 +16895,8 @@ fn no_closures_error(a &flat.FlatAst, tc &types.TypeChecker) ?types.TypeError {
 			}
 		}
 	}
+	mut capturing_lambdas := map[int]bool{}
+	mut capturing_lambdas_ready := false
 	for idx, node in a.nodes {
 		if idx < a.user_code_start {
 			continue
@@ -16913,6 +16915,15 @@ fn no_closures_error(a &flat.FlatAst, tc &types.TypeChecker) ?types.TypeError {
 			}
 		}
 		if node.kind == .lambda_expr {
+			// Only a lambda that captures an enclosing local is lowered into a
+			// closure; a capture-free one becomes a plain function, like `fn () {}`.
+			if !capturing_lambdas_ready {
+				capturing_lambdas = no_closures_capturing_lambdas(a)
+				capturing_lambdas_ready = true
+			}
+			if idx !in capturing_lambdas {
+				continue
+			}
 			return types.TypeError{
 				msg:       'a closure was generated for function'
 				kind:      .compile_error
@@ -16939,6 +16950,282 @@ fn no_closures_error(a &flat.FlatAst, tc &types.TypeChecker) ?types.TypeError {
 		}
 	}
 	return none
+}
+
+// NoClosuresLambdaScan resolves the identifiers of each `|x| expr` lambda
+// against the lexically visible locals, mirroring how the transform infers the
+// captured variables of a lambda before lifting it.
+struct NoClosuresLambdaScan {
+	a &flat.FlatAst = unsafe { nil }
+mut:
+	// bindings holds the in-scope local names in declaration order; visible maps
+	// a name to the `bindings` indexes of its live declarations.
+	bindings []string
+	visible  map[string][]int
+	// barrier is the first binding of the innermost function; earlier bindings
+	// belong to an enclosing function and are not visible.
+	barrier int
+	// lambdas holds the enclosing lambda node ids and their first binding index.
+	lambdas       []int
+	lambda_starts []int
+	capturing     map[int]bool
+}
+
+// no_closures_capturing_lambdas returns the node ids of the user code lambdas
+// that reference a local of an enclosing scope. Only those are lowered into
+// closures; capture-free lambdas become plain functions.
+fn no_closures_capturing_lambdas(a &flat.FlatAst) map[int]bool {
+	mut scan := NoClosuresLambdaScan{
+		a: a
+	}
+	for idx in a.user_code_start .. a.nodes.len {
+		if a.nodes[idx].kind == .file {
+			scan.walk_file(a.nodes[idx])
+		}
+	}
+	return scan.capturing
+}
+
+fn (mut s NoClosuresLambdaScan) declare(name string) {
+	if name.len == 0 || name == '_' {
+		return
+	}
+	mut decls := s.visible[name] or { []int{} }
+	decls << s.bindings.len
+	s.visible[name] = decls
+	s.bindings << name
+}
+
+fn (mut s NoClosuresLambdaScan) declare_ident(id flat.NodeId) {
+	node := s.a.node(id)
+	if node.kind == .ident {
+		s.declare(node.value)
+	}
+}
+
+// close_scope drops the bindings declared since `mark`.
+fn (mut s NoClosuresLambdaScan) close_scope(mark int) {
+	for s.bindings.len > mark {
+		name := s.bindings.pop()
+		mut decls := s.visible[name] or { continue }
+		decls.pop()
+		s.visible[name] = decls
+	}
+}
+
+fn (mut s NoClosuresLambdaScan) note_ident(name string) {
+	if s.lambdas.len == 0 {
+		return
+	}
+	decls := s.visible[name] or { return }
+	if decls.len == 0 {
+		return
+	}
+	decl := decls.last()
+	// A binding of the current function declared outside the innermost lambda
+	// is a capture. Names without a visible binding are fns, consts or globals.
+	if decl >= s.barrier && decl < s.lambda_starts.last() {
+		s.capturing[s.lambdas.last()] = true
+	}
+}
+
+fn (mut s NoClosuresLambdaScan) walk_file(file flat.Node) {
+	for i in 0 .. file.children_count {
+		child_id := s.a.child(&file, i)
+		if is_top_level_declaration_kind(s.a.node(child_id).kind) {
+			// Consts, globals and struct field defaults cannot see the locals of
+			// top-level script statements.
+			saved_barrier := s.barrier
+			s.barrier = s.bindings.len
+			s.walk(child_id)
+			s.barrier = saved_barrier
+		} else {
+			// Top-level script statements share the implicit `main` scope; a
+			// `fn_decl` opens its own function scope.
+			s.walk(child_id)
+		}
+	}
+}
+
+fn is_top_level_declaration_kind(kind flat.NodeKind) bool {
+	return kind in [.struct_decl, .global_decl, .const_decl, .enum_decl, .type_decl, .interface_decl,
+		.import_decl, .module_decl, .directive, .c_fn_decl]
+}
+
+fn (mut s NoClosuresLambdaScan) walk_children(node flat.Node, start int) {
+	for i in start .. node.children_count {
+		s.walk(s.a.child(&node, i))
+	}
+}
+
+fn (mut s NoClosuresLambdaScan) walk_scoped(node flat.Node) {
+	mark := s.bindings.len
+	s.walk_children(node, 0)
+	s.close_scope(mark)
+}
+
+fn (mut s NoClosuresLambdaScan) walk(id flat.NodeId) {
+	node := *s.a.node(id)
+	match node.kind {
+		.ident {
+			s.note_ident(node.value)
+		}
+		.selector {
+			// Only the receiver of `x.field` can name a local.
+			if node.children_count > 0 {
+				s.walk(s.a.child(&node, 0))
+			}
+		}
+		.fn_decl, .fn_literal {
+			s.walk_fn(node)
+		}
+		.lambda_expr {
+			s.walk_lambda(int(id), node)
+		}
+		.decl_assign {
+			s.walk_decl_assign(node)
+		}
+		.block, .for_stmt, .match_branch, .select_branch {
+			s.walk_scoped(node)
+		}
+		.for_in_stmt {
+			s.walk_for_in(node)
+		}
+		.if_expr {
+			s.walk_if(node)
+		}
+		.or_expr {
+			// `expr or { ... }` binds `err` inside its block.
+			if node.children_count > 0 {
+				s.walk(s.a.child(&node, 0))
+			}
+			mark := s.bindings.len
+			s.declare('err')
+			s.walk_children(node, 1)
+			s.close_scope(mark)
+		}
+		.comptime_for {
+			mark := s.bindings.len
+			s.declare(node.value.all_before('|'))
+			s.walk_children(node, 0)
+			s.close_scope(mark)
+		}
+		.call {
+			if node.children_count > 0 && s.a.child_node(&node, 0).kind == .selector {
+				// Array method arguments can refer to the implicit `it`.
+				s.walk(s.a.child(&node, 0))
+				mark := s.bindings.len
+				s.declare('it')
+				s.walk_children(node, 1)
+				s.close_scope(mark)
+			} else {
+				s.walk_children(node, 0)
+			}
+		}
+		else {
+			s.walk_children(node, 0)
+		}
+	}
+}
+
+fn (mut s NoClosuresLambdaScan) walk_fn(node flat.Node) {
+	saved_barrier := s.barrier
+	mark := s.bindings.len
+	s.barrier = mark
+	for i in 0 .. node.children_count {
+		child := s.a.child_node(&node, i)
+		// Parameters, plus the explicit capture list of a `fn [x] () {}` literal.
+		if child.kind == .param || (node.kind == .fn_literal && child.kind == .ident) {
+			s.declare(child.value)
+		}
+	}
+	for i in 0 .. node.children_count {
+		child_id := s.a.child(&node, i)
+		child_kind := s.a.node(child_id).kind
+		if child_kind != .param && !(node.kind == .fn_literal && child_kind == .ident) {
+			s.walk(child_id)
+		}
+	}
+	s.close_scope(mark)
+	s.barrier = saved_barrier
+}
+
+fn (mut s NoClosuresLambdaScan) walk_lambda(id int, node flat.Node) {
+	if node.children_count == 0 {
+		return
+	}
+	mark := s.bindings.len
+	s.lambdas << id
+	s.lambda_starts << mark
+	for i in 0 .. node.children_count - 1 {
+		s.declare_ident(s.a.child(&node, i))
+	}
+	s.walk(s.a.child(&node, node.children_count - 1))
+	s.lambdas.pop()
+	s.lambda_starts.pop()
+	s.close_scope(mark)
+}
+
+fn (mut s NoClosuresLambdaScan) walk_decl_assign(node flat.Node) {
+	count := int(node.children_count)
+	mut lhs_count := if count <= 2 { int_min(count, 1) } else { count - 1 }
+	if node.value.is_int() && node.value.int() > 0 && node.value.int() <= count {
+		lhs_count = node.value.int()
+	}
+	rhs_count := count - lhs_count
+	mut is_lhs := []bool{len: count}
+	for i in 0 .. lhs_count {
+		is_lhs[if i < rhs_count { i * 2 } else { rhs_count + i }] = true
+	}
+	// The right-hand side is evaluated before the new names come into scope.
+	for i in 0 .. count {
+		if !is_lhs[i] {
+			s.walk(s.a.child(&node, i))
+		}
+	}
+	for i in 0 .. count {
+		if is_lhs[i] {
+			s.declare_ident(s.a.child(&node, i))
+		}
+	}
+}
+
+fn (mut s NoClosuresLambdaScan) walk_for_in(node flat.Node) {
+	header := node.value.int()
+	if header < 3 || node.children_count < 3 {
+		s.walk_scoped(node)
+		return
+	}
+	for i in 2 .. int_min(header, int(node.children_count)) {
+		s.walk(s.a.child(&node, i))
+	}
+	mark := s.bindings.len
+	s.declare_ident(s.a.child(&node, 0))
+	s.declare_ident(s.a.child(&node, 1))
+	s.walk_children(node, header)
+	s.close_scope(mark)
+}
+
+fn (mut s NoClosuresLambdaScan) walk_if(node flat.Node) {
+	if node.children_count == 0 {
+		return
+	}
+	cond_id := s.a.child(&node, 0)
+	if s.a.node(cond_id).kind != .decl_assign {
+		s.walk_children(node, 0)
+		return
+	}
+	// `if x := opt() { ... } else { err }`: the guard names are visible only in
+	// the first branch, `err` only in the else branch.
+	mark := s.bindings.len
+	s.walk(cond_id)
+	if node.children_count > 1 {
+		s.walk(s.a.child(&node, 1))
+	}
+	s.close_scope(mark)
+	s.declare('err')
+	s.walk_children(node, 2)
+	s.close_scope(mark)
 }
 
 fn implicit_selector_is_qualified_type(node flat.Node) bool {

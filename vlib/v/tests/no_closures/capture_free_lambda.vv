@@ -1,0 +1,47 @@
+// Lambdas that do not capture locals are lowered to plain functions, so
+// `-no-closures` accepts them like the equivalent `fn () {}` literals.
+const factor = 3
+
+struct Handler {
+	cb fn (int) int = |x| x + factor
+}
+
+fn call(cb fn ()) {
+	cb()
+}
+
+fn apply(f fn (int) int, v int) int {
+	return f(v)
+}
+
+fn greet() {
+	println('greet')
+}
+
+fn double(x int) int {
+	return x * 2
+}
+
+fn parse(s string) !int {
+	if s == '' {
+		return error('empty')
+	}
+	return s.int()
+}
+
+fn main() {
+	call(|| greet())
+	println(apply(|x| x * 2, 21))
+	println(apply(|x| x * factor, 5))
+	println(apply(|x| double(x), 4))
+	println(apply(|n| parse(n.str()) or { panic(err) }, 7))
+	println(apply(|n| apply(|m| m + factor, n), 1))
+	println(Handler{}.cb(1))
+	println([1, 2, 3].map(|n| n * factor))
+	println([1, 2, 3].filter(|n| n > 1))
+	mut a := [3, 1, 2]
+	a.sort(|p, q| p < q)
+	println(a)
+	a.sort_with_compare(|p, q| *q - *p)
+	println(a)
+}
