@@ -250,7 +250,6 @@ mut:
 	has_spawn_expr                      bool
 	in_const_init                       bool
 	in_return_expr                      bool
-	in_string_interp_part               bool
 	expected_expr_node                  int = -1
 	expected_expr_type                  string
 	in_selector_base                    bool
@@ -6029,12 +6028,9 @@ fn (mut t Transformer) transform_string_interp_part(child_id flat.NodeId) flat.N
 		format = child.typ
 	}
 	t.mark_string_interp_call_part_used(expr_id)
-	saved_in_string_interp_part := t.in_string_interp_part
-	t.in_string_interp_part = true
 	// route a value `match`/`if` interpolation operand (e.g. `'${match x { ... }}'`)
 	// through its target type so its propagating arms are lowered as values.
 	mut transformed := t.transform_value_operand(expr_id)
-	t.in_string_interp_part = saved_in_string_interp_part
 	// The source annotation remains `?T` inside `if value != none`, but the
 	// transformed expression is the narrowed `.value` selector. Prefer that
 	// smartcast type so interpolation stringifies `T`, not a second Option wrapper.
@@ -9847,9 +9843,6 @@ pub fn (mut t Transformer) transform_expr(id flat.NodeId) flat.NodeId {
 	if kind_id == 56 {
 		return t.transform_select_expr(id, node)
 	}
-	if node.kind == .string_literal {
-		return t.transform_nested_string_literal_expr(id, node)
-	}
 	if kind_id == 30 || kind_id == 27 || kind_id == 57 {
 		return t.transform_children_expr(id, node)
 	}
@@ -9878,9 +9871,6 @@ pub fn (mut t Transformer) transform_expr(id flat.NodeId) flat.NodeId {
 		}
 		.string_interp {
 			return t.transform_string_interp(id, node)
-		}
-		.string_literal {
-			return t.transform_nested_string_literal_expr(id, node)
 		}
 		.selector {
 			return t.transform_selector_expr(id, node)
@@ -10160,23 +10150,6 @@ fn (t &Transformer) dump_expr_display_text(source string, child flat.Node) strin
 	return source.replace_once('${receiver.value}.', '.')
 }
 
-fn (mut t Transformer) transform_nested_string_literal_expr(id flat.NodeId, node flat.Node) flat.NodeId {
-	if !t.in_string_interp_part {
-		return id
-	}
-	if expr := t.complex_nested_string_interpolation(node.value) {
-		return expr
-	}
-	if inner := nested_interp_literal_inner(node.value) {
-		expr, typ := t.simple_nested_interp_expr(inner) or { return id }
-		return t.wrap_string_conversion(expr, typ)
-	}
-	if expr := t.simple_nested_string_interpolation(node.value) {
-		return expr
-	}
-	return id
-}
-
 fn (mut t Transformer) simple_nested_string_interpolation(value string) ?flat.NodeId {
 	mut parts := []flat.NodeId{}
 	mut start := 0
@@ -10220,164 +10193,6 @@ fn (mut t Transformer) simple_nested_string_interpolation(value string) ?flat.No
 	return result
 }
 
-fn (mut t Transformer) complex_nested_string_interpolation(value string) ?flat.NodeId {
-	inner := nested_interp_literal_inner_loose(value) or { return none }
-	return t.complex_nested_interp_expr(inner)
-}
-
-fn (mut t Transformer) complex_nested_interp_expr(inner string) ?flat.NodeId {
-	if match_expr := t.complex_nested_match_interp_expr(inner) {
-		return match_expr
-	}
-	cond_text, then_text, else_text := split_nested_if_interp(inner) or { return none }
-	cond := t.simple_nested_condition_expr(cond_text) or { return none }
-	result_name := t.new_temp('nested_interp')
-	decl := t.make_decl_assign_typed(result_name, t.make_string_literal(''), 'string')
-	outer_pending := t.pending_stmts.clone()
-
-	t.pending_stmts.clear()
-	then_expr := t.nested_string_branch_expr(then_text) or {
-		t.pending_stmts = outer_pending
-		return none
-	}
-	mut then_body := []flat.NodeId{}
-	t.drain_pending(mut then_body)
-	then_body << t.make_assign(t.make_ident(result_name), then_expr)
-
-	t.pending_stmts.clear()
-	else_expr := t.nested_string_branch_expr(else_text) or {
-		t.pending_stmts = outer_pending
-		return none
-	}
-	mut else_body := []flat.NodeId{}
-	t.drain_pending(mut else_body)
-	else_body << t.make_assign(t.make_ident(result_name), else_expr)
-
-	t.pending_stmts = outer_pending
-	t.pending_stmts << decl
-	t.pending_stmts << t.make_if(cond, t.make_block(then_body), t.make_block(else_body))
-	result := t.make_ident(result_name)
-	t.set_node_typ(int(result), 'string')
-	return result
-}
-
-fn (mut t Transformer) complex_nested_match_interp_expr(inner string) ?flat.NodeId {
-	subject_text, label_text, then_text, else_text := split_nested_match_interp(inner) or {
-		return none
-	}
-	subject, _ := t.simple_nested_interp_expr(subject_text) or { return none }
-	label, _ := t.simple_nested_interp_expr(label_text) or { return none }
-	cond := t.make_infix(.eq, subject, label)
-	t.set_node_typ(int(cond), 'bool')
-	result_name := t.new_temp('nested_interp')
-	decl := t.make_decl_assign_typed(result_name, t.make_string_literal(''), 'string')
-	outer_pending := t.pending_stmts.clone()
-
-	t.pending_stmts.clear()
-	then_expr := t.nested_match_branch_expr(then_text) or {
-		t.pending_stmts = outer_pending
-		return none
-	}
-	mut then_body := []flat.NodeId{}
-	t.drain_pending(mut then_body)
-	then_body << t.make_assign(t.make_ident(result_name), then_expr)
-
-	t.pending_stmts.clear()
-	else_expr := t.nested_match_branch_expr(else_text) or {
-		t.pending_stmts = outer_pending
-		return none
-	}
-	mut else_body := []flat.NodeId{}
-	t.drain_pending(mut else_body)
-	else_body << t.make_assign(t.make_ident(result_name), else_expr)
-
-	t.pending_stmts = outer_pending
-	t.pending_stmts << decl
-	t.pending_stmts << t.make_if(cond, t.make_block(then_body), t.make_block(else_body))
-	result := t.make_ident(result_name)
-	t.set_node_typ(int(result), 'string')
-	return result
-}
-
-fn (mut t Transformer) nested_match_branch_expr(text string) ?flat.NodeId {
-	if quoted := nested_quoted_string_literal_value(text) {
-		return t.nested_string_branch_expr(quoted)
-	}
-	expr, typ := t.simple_nested_interp_expr(text.trim_space()) or { return none }
-	return t.wrap_string_conversion(expr, typ)
-}
-
-fn (mut t Transformer) nested_string_branch_expr(text string) ?flat.NodeId {
-	mut value := text.trim_space()
-	if quoted := nested_quoted_string_literal_value(text) {
-		value = quoted
-	}
-	if expr := t.complex_nested_string_interpolation(value) {
-		return expr
-	}
-	if inner := nested_interp_literal_inner(value) {
-		expr, typ := t.simple_nested_interp_expr(inner) or { return none }
-		return t.wrap_string_conversion(expr, typ)
-	}
-	if expr := t.simple_nested_string_interpolation(value) {
-		return expr
-	}
-	return t.make_string_literal(value)
-}
-
-fn split_nested_if_interp(inner string) ?(string, string, string) {
-	text := inner.trim_space()
-	if !text.starts_with('if ') {
-		return none
-	}
-	then_open := nested_top_level_byte(text, `{`, 2) or { return none }
-	cond := text[2..then_open].trim_space()
-	then_close := nested_matching_brace(text, then_open) or { return none }
-	rest := text[then_close + 1..].trim_space()
-	if !rest.starts_with('else') {
-		return none
-	}
-	else_text := rest[4..].trim_space()
-	if else_text.len == 0 || else_text[0] != `{` {
-		return none
-	}
-	else_close := nested_matching_brace(else_text, 0) or { return none }
-	if else_text[else_close + 1..].trim_space().len > 0 {
-		return none
-	}
-	return cond, text[then_open + 1..then_close].trim_space(), else_text[1..else_close].trim_space()
-}
-
-fn split_nested_match_interp(inner string) ?(string, string, string, string) {
-	text := inner.trim_space()
-	if !text.starts_with('match ') {
-		return none
-	}
-	match_open := nested_top_level_byte(text, `{`, 6) or { return none }
-	match_close := nested_matching_brace(text, match_open) or { return none }
-	if text[match_close + 1..].trim_space().len > 0 {
-		return none
-	}
-	subject := text[6..match_open].trim_space()
-	body := text[match_open + 1..match_close].trim_space()
-	then_open := nested_top_level_byte(body, `{`, 0) or { return none }
-	label := body[..then_open].trim_space()
-	then_close := nested_matching_brace(body, then_open) or { return none }
-	rest := body[then_close + 1..].trim_space()
-	if !rest.starts_with('else') {
-		return none
-	}
-	else_text := rest[4..].trim_space()
-	if else_text.len == 0 || else_text[0] != `{` {
-		return none
-	}
-	else_close := nested_matching_brace(else_text, 0) or { return none }
-	if else_text[else_close + 1..].trim_space().len > 0 {
-		return none
-	}
-	return subject, label, body[then_open + 1..then_close].trim_space(), else_text[1..else_close].trim_space()
-}
-
 fn nested_top_level_byte(text string, target u8, start int) ?int {
 	mut quote := u8(0)
 	mut escaped := false
@@ -10402,53 +10217,6 @@ fn nested_top_level_byte(text string, target u8, start int) ?int {
 		}
 	}
 	return none
-}
-
-fn nested_matching_brace(text string, open int) ?int {
-	if open < 0 || open >= text.len || text[open] != `{` {
-		return none
-	}
-	mut quote := u8(0)
-	mut escaped := false
-	mut depth := 0
-	for i := open; i < text.len; i++ {
-		ch := text[i]
-		if quote != 0 {
-			if escaped {
-				escaped = false
-			} else if ch == `\\` {
-				escaped = true
-			} else if ch == quote {
-				quote = 0
-			}
-			continue
-		}
-		if ch == 39 || ch == 34 || ch == 96 {
-			quote = ch
-			continue
-		}
-		if ch == `{` {
-			depth++
-		} else if ch == `}` {
-			depth--
-			if depth == 0 {
-				return i
-			}
-		}
-	}
-	return none
-}
-
-fn nested_quoted_string_literal_value(text string) ?string {
-	clean := text.trim_space()
-	if clean.len < 2 {
-		return none
-	}
-	quote := clean[0]
-	if quote !in [u8(39), u8(34), u8(96)] || clean[clean.len - 1] != quote {
-		return none
-	}
-	return clean[1..clean.len - 1]
 }
 
 fn nested_interp_start_is_escaped(value string, dollar_idx int) bool {
@@ -10511,28 +10279,6 @@ fn nested_interp_text_reads_it(inner string) bool {
 		i++
 	}
 	return false
-}
-
-fn nested_interp_literal_inner(value string) ?string {
-	if value.len < 3 || value[0] != `$` || value[1] != `{` || !value.ends_with('}') {
-		return none
-	}
-	inner := value[2..value.len - 1].trim_space()
-	if inner.len == 0 || string_has_interp_start_bytes(inner) || string_has_newline_byte(inner) {
-		return none
-	}
-	return inner
-}
-
-fn nested_interp_literal_inner_loose(value string) ?string {
-	if value.len < 3 || value[0] != `$` || value[1] != `{` || !value.ends_with('}') {
-		return none
-	}
-	inner := value[2..value.len - 1].trim_space()
-	if inner.len == 0 {
-		return none
-	}
-	return inner
 }
 
 fn string_has_interp_start_bytes(value string) bool {
