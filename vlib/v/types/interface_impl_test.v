@@ -161,4 +161,12 @@ fn test_undeclared_ierror_does_not_make_every_type_an_error_payload() {
 	}))
 	assert !tc.type_compatible_with_ierror_payload(Type(int_))
 	assert !tc.named_type_compatible_with_ierror('Foo')
+	// A module-local `IError` is not the builtin one, even when it is the only
+	// interface with that short name.
+	tc.interface_names['pkg.IError'] = true
+	assert !tc.type_compatible_with_ierror_payload(Type(Enum{
+		name: 'Foo'
+	}))
+	assert !tc.type_compatible_with_ierror_payload(Type(int_))
+	assert !tc.named_type_compatible_with_ierror('Foo')
 }
