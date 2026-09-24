@@ -66,3 +66,29 @@ println(i18n.tr_plural('en', 'goods', 2))
 
 `tr` and `tr_plural` read from the `translations` directory. Use `load_tr_map_from_dir`
 with `tr_from_map` / `tr_plural_from_map` to read from another directory.
+
+## Embedding translations in the executable
+
+Reading translations from a directory at run time means shipping that directory next
+to the program. To carry them inside the executable instead, embed the files with
+`$embed_file` and load them with `load_tr_map_from_embedded`:
+
+```v ignore
+import i18n
+
+const translations = i18n.load_tr_map_from_embedded('translations', [
+	$embed_file('translations/en.tr'),
+	$embed_file('translations/pt-br.tr'),
+	$embed_file('translations/zh/dashboard.json'),
+])
+
+println(i18n.tr_from_map(translations, 'en', 'msg_hello'))
+```
+
+The first argument is the translations directory, spelled the way the embedded paths
+spell it. Each file's path inside it gives its language and key prefix, just as it
+does when the directory is read from disk.
+
+Translations that come from somewhere else, such as a database or a download, can be
+loaded with `load_tr_map_from_files`, which takes a map from each file's path inside
+the translations directory (`en.tr`, `zh/dashboard.json`) to its text.

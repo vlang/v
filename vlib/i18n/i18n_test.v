@@ -56,3 +56,39 @@ fn test_json_in_a_language_subdirectory_is_namespaced_by_file_name() {
 	assert translations['zh']['dashboard.title'] == '仪表板'
 	assert translations['zh']['dashboard.widgets.clock'] == '时钟'
 }
+
+fn test_load_tr_map_from_files_reads_texts_like_a_directory() {
+	translations := load_tr_map_from_files({
+		'en.tr':             'msg_hello\nHello\n-----\ngoods\ngoods|item|items\n'
+		'en.json':           '{"msg_hello": "Hello from JSON", "menu": {"file": "File"}}'
+		'zh/dashboard.json': '{"title": "仪表板"}'
+		'notes.txt':         'not a translation'
+	})
+
+	assert translations['en']['msg_hello'] == 'Hello'
+	assert translations['en']['goods'] == 'goods|item|items'
+	assert translations['en']['menu.file'] == 'File'
+	assert translations['zh']['dashboard.title'] == '仪表板'
+	assert translations.len == 2
+}
+
+fn test_load_tr_map_from_embedded_matches_the_directory() {
+	embedded := load_tr_map_from_embedded('testdata/translations', [
+		$embed_file('testdata/translations/en.tr'),
+		$embed_file('testdata/translations/en.json'),
+		$embed_file('testdata/translations/pt-br.tr'),
+		$embed_file('./testdata/translations/zh/dashboard.json'),
+	])
+
+	assert embedded == load_tr_map_from_dir(os.join_path(os.dir(@FILE), 'testdata', 'translations'))
+	assert tr_from_map(embedded, 'pt-br', 'msg_hello') == 'Ola'
+}
+
+fn test_embedded_relative_path_is_taken_inside_the_translations_directory() {
+	assert embedded_relative_path('translations', 'translations/en.tr') == 'en.tr'
+	assert embedded_relative_path('../../translations', '../../translations/zh/dashboard.json') == 'zh/dashboard.json'
+	assert embedded_relative_path('./translations/', 'translations/zh/dashboard.json') == 'zh/dashboard.json'
+	assert embedded_relative_path('', 'en.tr') == 'en.tr'
+	// a file outside the directory is read as if it were directly in it
+	assert embedded_relative_path('translations', 'other/en.json') == 'en.json'
+}

@@ -5,6 +5,7 @@ module i18n
 
 import json2
 import os
+import v.embed_file
 
 pub const default_translations_dir = 'translations'
 
@@ -48,6 +49,89 @@ pub fn load_tr_map_from_dir(dir string) map[string]map[string]string {
 		}
 	}
 	return res
+}
+
+// load_tr_map_from_files builds translations from file contents instead of reading
+// them from disk. files maps each file's path inside the translations directory
+// (`en.tr`, `en.json`, `zh/dashboard.json`) to its text, and is read exactly as
+// load_tr_map_from_dir reads the same files from a directory.
+pub fn load_tr_map_from_files(files map[string]string) map[string]map[string]string {
+	mut res := map[string]map[string]string{}
+	mut paths := files.keys()
+	paths.sort()
+	// JSON first, so that a `.tr` entry for the same key replaces it.
+	for path in paths {
+		if !path.ends_with('.json') {
+			continue
+		}
+		lang, prefix := fetch_lang_and_prefix_from_relative_json_path(path)
+		if lang.len == 0 {
+			continue
+		}
+		for key, val in parse_tr_json(files[path], prefix, path) {
+			res[lang][key] = val
+		}
+	}
+	for path in paths {
+		if !path.ends_with('.tr') {
+			continue
+		}
+		lang := fetch_lang_from_tr_path(path)
+		if lang.len == 0 {
+			continue
+		}
+		for key, val in parse_tr_text(files[path]) {
+			res[lang][key] = val
+		}
+	}
+	return res
+}
+
+// load_tr_map_from_embedded builds translations from files embedded in the program
+// with `$embed_file`, so it does not depend on a translations directory being
+// installed next to the executable:
+//
+// ```v ignore
+// const translations = i18n.load_tr_map_from_embedded('translations', [
+// 	$embed_file('translations/en.tr'),
+// 	$embed_file('translations/zh/dashboard.json'),
+// ])
+// ```
+//
+// dir is the translations directory, spelled the way the embedded paths spell it.
+// A file's path inside it decides its language and key prefix, as it does for
+// load_tr_map_from_dir. A file outside dir is read as if it were directly in it.
+pub fn load_tr_map_from_embedded(dir string, files []embed_file.EmbedFileData) map[string]map[string]string {
+	mut texts := map[string]string{}
+	for file in files {
+		texts[embedded_relative_path(dir, file.path)] = file.to_string()
+	}
+	return load_tr_map_from_files(texts)
+}
+
+// embedded_relative_path is where an embedded file sits inside the translations
+// directory, with `/` separators whatever the platform.
+fn embedded_relative_path(dir string, path string) string {
+	clean_path := os.norm_path(path).replace('\\', '/')
+	clean_dir := os.norm_path(dir).replace('\\', '/').trim_right('/')
+	if clean_dir in ['', '.'] {
+		return clean_path
+	}
+	if clean_path.starts_with(clean_dir + '/') {
+		return clean_path[clean_dir.len + 1..]
+	}
+	return os.file_name(clean_path)
+}
+
+// fetch_lang_and_prefix_from_relative_json_path is fetch_lang_and_prefix_from_json_path
+// for a path already relative to the translations directory.
+fn fetch_lang_and_prefix_from_relative_json_path(path string) (string, string) {
+	parts := path.split('/')
+	name := parts.last().all_before_last('.json')
+	if parts.len == 1 {
+		return name, ''
+	}
+	return parts[parts.len - 2], name
 }
 
 fn parse_tr_text(text string) map[string]string {
