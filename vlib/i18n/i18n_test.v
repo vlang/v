@@ -92,3 +92,18 @@ fn test_embedded_relative_path_is_taken_inside_the_translations_directory() {
 	// a file outside the directory is read as if it were directly in it
 	assert embedded_relative_path('translations', 'other/en.json') == 'en.json'
 }
+
+fn test_load_tr_map_from_files_accepts_either_path_separator() {
+	translations := load_tr_map_from_files({
+		'zh\\dashboard.json':                 '{"title": "仪表板"}'
+		os.join_path('ja', 'dashboard.json'): '{"title": "ダッシュボード"}'
+		'legacy\\ru.tr':                      'msg_hello\nПривет\n'
+		'mixed/pt\\pt-br.tr':                 'msg_hello\nOla\n'
+	})
+
+	assert translations['zh']['dashboard.title'] == '仪表板'
+	assert translations['ja']['dashboard.title'] == 'ダッシュボード'
+	assert translations['ru']['msg_hello'] == 'Привет'
+	assert translations['pt-br']['msg_hello'] == 'Ola'
+	assert translations.len == 4
+}

@@ -54,7 +54,8 @@ pub fn load_tr_map_from_dir(dir string) map[string]map[string]string {
 // load_tr_map_from_files builds translations from file contents instead of reading
 // them from disk. files maps each file's path inside the translations directory
 // (`en.tr`, `en.json`, `zh/dashboard.json`) to its text, and is read exactly as
-// load_tr_map_from_dir reads the same files from a directory.
+// load_tr_map_from_dir reads the same files from a directory. A path may use either
+// `/` or `\` between its parts, so one built with `os.join_path` works everywhere.
 pub fn load_tr_map_from_files(files map[string]string) map[string]map[string]string {
 	mut res := map[string]map[string]string{}
 	mut paths := files.keys()
@@ -64,7 +65,7 @@ pub fn load_tr_map_from_files(files map[string]string) map[string]map[string]str
 		if !path.ends_with('.json') {
 			continue
 		}
-		lang, prefix := fetch_lang_and_prefix_from_relative_json_path(path)
+		lang, prefix := fetch_lang_and_prefix_from_relative_json_path(slash_path(path))
 		if lang.len == 0 {
 			continue
 		}
@@ -76,7 +77,7 @@ pub fn load_tr_map_from_files(files map[string]string) map[string]map[string]str
 		if !path.ends_with('.tr') {
 			continue
 		}
-		lang := fetch_lang_from_tr_path(path)
+		lang := slash_path(path).all_after_last('/').all_before_last('.tr')
 		if lang.len == 0 {
 			continue
 		}
@@ -101,6 +102,12 @@ pub fn load_tr_map_from_files(files map[string]string) map[string]map[string]str
 // dir is the translations directory, spelled the way the embedded paths spell it.
 // A file's path inside it decides its language and key prefix, as it does for
 // load_tr_map_from_dir. A file outside dir is read as if it were directly in it.
+//
+// Only a `-prod` build (or `-os cross` C output) puts the files' contents into the
+// executable. A development build keeps just their paths, to keep rebuilds cheap,
+// and reads the files from those paths when the translations are loaded. It works
+// where it was built, but panics where the files are missing, so build anything you
+// ship to other machines with `-prod`.
 pub fn load_tr_map_from_embedded(dir string, files []embed_file.EmbedFileData) map[string]map[string]string {
 	mut texts := map[string]string{}
 	for file in files {
@@ -112,8 +119,8 @@ pub fn load_tr_map_from_embedded(dir string, files []embed_file.EmbedFileData) m
 // embedded_relative_path is where an embedded file sits inside the translations
 // directory, with `/` separators whatever the platform.
 fn embedded_relative_path(dir string, path string) string {
-	clean_path := os.norm_path(path).replace('\\', '/')
-	clean_dir := os.norm_path(dir).replace('\\', '/').trim_right('/')
+	clean_path := slash_path(os.norm_path(path))
+	clean_dir := slash_path(os.norm_path(dir)).trim_right('/')
 	if clean_dir in ['', '.'] {
 		return clean_path
 	}
@@ -123,8 +130,15 @@ fn embedded_relative_path(dir string, path string) string {
 	return os.file_name(clean_path)
 }
 
+// slash_path spells a path with `/` between its parts. Paths inside a translations
+// directory come from callers on every platform, and `os.join_path` separates them
+// with `\` on Windows.
+fn slash_path(path string) string {
+	return path.replace('\\', '/')
+}
+
 // fetch_lang_and_prefix_from_relative_json_path is fetch_lang_and_prefix_from_json_path
-// for a path already relative to the translations directory.
+// for a path already relative to the translations directory, separated with `/`.
 fn fetch_lang_and_prefix_from_relative_json_path(path string) (string, string) {
 	parts := path.split('/')
 	name := parts.last().all_before_last('.json')
