@@ -157,11 +157,11 @@ struct Conn {
 mut:
 	read_buf       [buf_size]u8
 	read_len       int
-	read_extra     []u8 // dynamic overflow buffer for large requests (e.g. chunked uploads)
-	write_buf      []u8
+	read_extra     []u8 = []u8{} // dynamic overflow buffer for large requests (e.g. chunked uploads)
+	write_buf      []u8 = []u8{}
 	write_pos      int
 	request_active bool
-	read_start     i64 // monotonic timestamp (in microseconds) when first data was received
+	read_start     i64 // monotonic timestamp when request data was last received
 	write_start    i64 // monotonic timestamp while a response is blocked on the socket
 	read_eof       bool
 
@@ -656,6 +656,7 @@ fn handle_read(server &Server, kq int, c_ptr voidptr, mut clients map[int]voidpt
 	if c.request_active {
 		return
 	}
+	previous_total := c.total_read_len()
 
 	// Drain the socket for this kqueue notification. EV_CLEAR only rearms once
 	// all readable data has been consumed.
@@ -703,8 +704,9 @@ fn handle_read(server &Server, kq int, c_ptr voidptr, mut clients map[int]voidpt
 		return
 	}
 
-	// Record when we first started receiving data for this request
-	if c.read_start == 0 {
+	// Treat the request timeout as an idle timeout. Active uploads can take longer
+	// than the configured interval as long as each read makes progress.
+	if total > previous_total {
 		c.read_start = time.sys_mono_now()
 	}
 

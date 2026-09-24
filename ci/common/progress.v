@@ -6,7 +6,7 @@ import os
 // exec_with_progress checkpoints a successful command and its output files when
 // invoked by the aggregate CI runner. Missing or changed outputs force a rerun.
 pub fn exec_with_progress(command string, outputs []string) {
-	dir := os.getenv('V_MACOS_CI_TASK_PROGRESS')
+	dir := ci_task_progress_dir()
 	if dir == '' {
 		exec(command)
 		return

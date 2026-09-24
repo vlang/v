@@ -1370,6 +1370,7 @@ fn test_atoi() {
 fn test_raw_inter() {
 	world := 'world'
 	s := r'hello\n$world'
+	assert world == 'world'
 	assert s == r'hello\n$world'
 	assert s.contains('$')
 }
@@ -1380,6 +1381,8 @@ fn test_c_r() {
 	cs := '${c}'
 	r := 50
 	rs := '${r}'
+	assert cs == '42'
+	assert rs == '50'
 }
 
 fn test_inter_before_comptime_if() {

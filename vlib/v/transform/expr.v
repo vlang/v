@@ -2499,6 +2499,26 @@ fn (t &Transformer) selective_import_struct_lookup_name(name string) ?string {
 	return none
 }
 
+// selective_import_type_name_for_file resolves a bare type spelling through the
+// selective imports of `file`. The same spelling can name different types in
+// different files (`import model { Context }` in one file, `import veb` with its
+// own `Context` in another), so callers that know the writing file must resolve
+// the name there instead of through a global short-name index.
+fn (t &Transformer) selective_import_type_name_for_file(file string, name string) ?string {
+	if isnil(t.tc) || name.len == 0 || name.contains('.') || file.len == 0 {
+		return none
+	}
+	for candidate in t.tc.file_selective_imports[file_import_key(file, name)] or { return none } {
+		if candidate in t.structs || candidate in t.sum_types || candidate in t.enum_types
+			|| candidate in t.tc.structs || candidate in t.tc.sum_types
+			|| candidate in t.tc.enum_names || candidate in t.tc.interface_names
+			|| candidate in t.tc.type_aliases {
+			return candidate
+		}
+	}
+	return none
+}
+
 // visible_builtin_struct_lookup_name resolves a globally visible builtin struct
 // only when the current module or file does not shadow it with another type.
 fn (t &Transformer) visible_builtin_struct_lookup_name(name string) ?string {
@@ -3494,23 +3514,23 @@ fn (mut t Transformer) build_sum_eq_helper_fn(clean_sum string, helper string) {
 	// Keep the helper in its request's output segment. This is normally the requesting
 	// module, but program-specific generic specializations and their nested helpers use
 	// main even though their bodies are resolved under the declaring module.
-	t.a.add_node(flat.Node{
-		kind:  .module_decl
-		value: if t.sum_eq_helper_module.len > 0 { t.sum_eq_helper_module } else { 'main' }
-	})
+	helper_module := if t.sum_eq_helper_module.len > 0 { t.sum_eq_helper_module } else { 'main' }
+	t.add_generated_fn_decl_context(helper_module)
 	start := t.a.children.len
 	t.a.children << param_a
 	t.a.children << param_b
 	for stmt in stmts {
 		t.a.children << stmt
 	}
-	t.a.add_node(flat.Node{
+	fn_decl := t.a.add_node(flat.Node{
 		kind:           .fn_decl
 		value:          helper
 		typ:            'bool'
 		children_start: i32(start)
 		children_count: flat.child_count(2 + stmts.len)
 	})
+	t.ensure_node_context_map_capacity()
+	t.mark_node_context(fn_decl, helper_module, t.cur_file)
 	t.register_sum_eq_helper_signature(helper, clean_sum)
 }
 
@@ -4274,7 +4294,7 @@ fn (t &Transformer) is_pure_constant_expr(id flat.NodeId) bool {
 	node := t.a.nodes[int(id)]
 	return match node.kind {
 		.int_literal, .float_literal, .bool_literal, .char_literal, .string_literal, .nil_literal,
-		.none_expr, .enum_val, .sizeof_expr, .typeof_expr {
+		.none_expr, .enum_val, .sizeof_expr, .typeof_expr, .empty {
 			true
 		}
 		.cast_expr, .paren {
@@ -4763,7 +4783,7 @@ fn fixed_array_elem_type(s string) string {
 }
 
 fn fixed_array_canonical_type(s string) string {
-	if !s.starts_with('[') {
+	if !s.starts_with('[') || s.starts_with('[]') {
 		return s
 	}
 	elem_type := fixed_array_canonical_type(fixed_array_elem_type(s))

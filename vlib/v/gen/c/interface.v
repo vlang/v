@@ -1734,7 +1734,7 @@ fn (mut g FlatGen) interface_method_forward_decls() {
 			ret_type := g.interface_dispatch_return_type(iface_name, decl_key, sig_key)
 			sig_params := g.interface_dispatch_param_types(iface_name, decl_key, sig_key)
 			storage_cn := g.interface_storage_c_name(iface_name)
-			g.write('${g.fn_return_type_name(ret_type)} ${cn}__${method}(${storage_cn}* i')
+			g.write('${g.interface_dispatch_linkage()}${g.fn_return_type_name(ret_type)} ${cn}__${method}(${storage_cn}* i')
 			for pi := 1; pi < sig_params.len; pi++ {
 				pct := g.interface_dispatch_param_c_type(sig_params[pi])
 				g.write(', ${pct} _a${pi - 1}')
@@ -1745,6 +1745,16 @@ fn (mut g FlatGen) interface_method_forward_decls() {
 	if g.interfaces.len > 0 {
 		g.writeln('')
 	}
+}
+
+fn (g &FlatGen) interface_dispatch_linkage() string {
+	if g.is_shared && g.target.os != 'windows' {
+		if g.ccompiler == 'tinyc' || g.ccompiler.to_lower().contains('tcc') {
+			return 'static '
+		}
+		return '__attribute__((visibility("hidden"))) '
+	}
+	return ''
 }
 
 fn (mut g FlatGen) ierror_dispatch_target_forward_decls(iface_name string, method string, ret_ct string) {
@@ -1769,7 +1779,16 @@ fn (g &FlatGen) should_emit_interface_dispatch(iface_name string, method string)
 		return false
 	}
 	if g.cache_split {
-		return true
+		decl_key := g.interface_method_signature_key(iface_name, method) or { '' }
+		if source_file := g.tc.fn_type_files[decl_key] {
+			// A cached object can call an interface dispatch from a function body that
+			// is absent from its public header. Source declarations still have their
+			// bodies available to markused and should obey the ordinary reachability
+			// filter below.
+			if source_file.ends_with('.vh') {
+				return true
+			}
+		}
 	}
 	if g.interface_name_is_specialized(iface_name) {
 		return true
@@ -1954,7 +1973,7 @@ fn (mut g FlatGen) gen_interface_dispatch_with_fallback(iface_name string, cn st
 	mut sig_params := g.interface_dispatch_param_types(iface_name, decl_key, sig_key)
 	mut arg_names := []string{}
 	storage_cn := g.interface_storage_c_name(iface_name)
-	g.write('${ret_ct} ${cn}__${method}(${storage_cn}* i')
+	g.write('${g.interface_dispatch_linkage()}${ret_ct} ${cn}__${method}(${storage_cn}* i')
 	for pi := 1; pi < sig_params.len; pi++ {
 		pct := g.interface_dispatch_param_c_type(sig_params[pi])
 		an := '_a${pi - 1}'
@@ -2288,7 +2307,7 @@ fn (mut g FlatGen) collect_interface_boxed_types_for_dispatch() {
 		return
 	}
 	g.interface_boxed_types_done = true
-	for node_idx in g.type_metadata_nodes() {
+	for node_idx in g.interface_boxing_candidate_nodes() {
 		node := g.a.nodes[node_idx]
 		if node.kind != .struct_init || node.children_count == 0 {
 			continue
@@ -2328,6 +2347,28 @@ fn (mut g FlatGen) collect_interface_boxed_types_for_dispatch() {
 			}
 		}
 	}
+}
+
+// interface_boxing_candidates_in returns, in order, the ids in `ids[start..end]`
+// whose node is a struct literal with an `_object` field: the lowered form of an
+// interface value, and the only literals collect_interface_boxed_types_for_dispatch
+// records. The test is purely structural, so it is safe on any thread.
+fn interface_boxing_candidates_in(a &flat.FlatAst, ids []i32, start int, end int) []i32 {
+	mut found := []i32{}
+	for pos in start .. end {
+		node := unsafe { &a.nodes[ids[pos]] }
+		if node.kind != .struct_init || node.children_count == 0 {
+			continue
+		}
+		for i in 0 .. node.children_count {
+			field := a.child_node(node, i)
+			if field.kind == .field_init && field.value == '_object' && field.children_count > 0 {
+				found << ids[pos]
+				break
+			}
+		}
+	}
+	return found
 }
 
 fn (g &FlatGen) interface_semantic_application_candidates(iface_name string, _concrete_name string) []string {
@@ -2648,7 +2689,7 @@ fn (mut g FlatGen) interface_pointer_str_expr(base_type types.Type, expr string,
 	ptr_type := types.Type(types.Pointer{
 		base_type: base_type
 	})
-	ptr_ct := g.tc.c_type(ptr_type)
+	ptr_ct := g.value_c_type(ptr_type)
 	tmp := g.interface_tmp('iface_str_ptr')
 	out := g.interface_tmp('iface_str_out')
 	mut inner := ''
@@ -2791,6 +2832,14 @@ fn (mut g FlatGen) interface_struct_str_expr(struct_name string, expr string, mu
 
 fn (mut g FlatGen) interface_sum_str_expr(sum_type types.SumType, expr string, mut stack []string) ?string {
 	sum_name := g.resolve_sum_name(sum_type.name)
+	stack_key := 'sum:${sum_name}'
+	if stack_key in stack {
+		return none
+	}
+	stack << stack_key
+	defer {
+		stack.delete_last()
+	}
 	variants := g.tc.sum_types[sum_name] or { return none }
 	ct := g.tc.c_type(sum_type)
 	tmp := g.interface_tmp('iface_str_sum')

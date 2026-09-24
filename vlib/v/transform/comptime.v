@@ -6,6 +6,7 @@ import strings
 import v.flat
 import v.types
 import v.util
+import v.workers
 
 const comptime_unsupported_late_generic_call = '__v3_comptime_unsupported_late_generic_call'
 const comptime_method_selector_marker = '__v3_comptime_method_selector'
@@ -254,6 +255,10 @@ fn (mut t Transformer) cache_comptime_param_reflection_metadata() {
 	old_file := t.cur_file
 	old_module := t.cur_module
 	old_fn_name := t.cur_fn_name
+	// Finding the rare `$for x in f.params` loops walks every node of every function
+	// body. Record each function's node range serially, scan the ranges on the worker
+	// pool, then resolve the hits here in source order, exactly as a serial walk.
+	mut ranges := []ComptimeParamScanRange{cap: t.tc.top_level_idx.len}
 	mut cur_file := ''
 	mut cur_module := ''
 	mut previous_top_level := -1
@@ -265,33 +270,146 @@ fn (mut t Transformer) cache_comptime_param_reflection_metadata() {
 		} else if node.kind == .module_decl {
 			cur_module = node.value
 		} else if node.kind == .fn_decl {
-			t.cur_file = cur_file
-			t.cur_module = cur_module
-			t.cur_fn_name = node.value
-			if t.should_transform_fn(node) {
-				for idx in previous_top_level + 1 .. top_level_idx {
-					candidate := t.a.nodes[idx]
-					if candidate.kind != .comptime_for {
-						continue
-					}
-					_, kind := comptime_for_parts(candidate.value)
-					if kind != 'params' {
-						continue
-					}
-					source := t.comptime_reflection_source(candidate.typ, flat.NodeId(idx))
-					resolved := t.comptime_resolve_selective_import_reflection_source(source)
-					if resolved != source && resolved !in t.comptime_reflected_params {
-						params := t.comptime_param_metas(resolved)
-						t.comptime_reflected_params[resolved] = params
-					}
-				}
+			ranges << ComptimeParamScanRange{
+				lo:      previous_top_level + 1
+				fn_idx:  top_level_idx
+				file:    cur_file
+				module:  cur_module
+				fn_name: node.value
 			}
 		}
 		previous_top_level = top_level_idx
 	}
+	scans := t.scan_comptime_param_ranges(ranges)
+	for scan in scans {
+		for hit in scan.hits {
+			r := ranges[hit.range_idx]
+			t.cur_file = r.file
+			t.cur_module = r.module
+			t.cur_fn_name = r.fn_name
+			idx := hit.node_idx
+			candidate := t.a.nodes[idx]
+			_, kind := comptime_for_parts(candidate.value)
+			if kind != 'params' {
+				continue
+			}
+			source := t.comptime_reflection_source(candidate.typ, flat.NodeId(idx))
+			resolved := t.comptime_resolve_selective_import_reflection_source(source)
+			if resolved != source && resolved !in t.comptime_reflected_params {
+				params := t.comptime_param_metas(resolved)
+				t.comptime_reflected_params[resolved] = params
+			}
+		}
+	}
 	t.cur_file = old_file
 	t.cur_module = old_module
 	t.cur_fn_name = old_fn_name
+}
+
+// ComptimeParamScanRange is one function's node range, (previous top-level
+// declaration, fn_idx), with the context its `$for` loops resolve in.
+struct ComptimeParamScanRange {
+	lo      int
+	fn_idx  int
+	file    string
+	module  string
+	fn_name string
+}
+
+struct ComptimeParamScanHit {
+	range_idx int
+	node_idx  int
+}
+
+struct ComptimeParamScan {
+	t      voidptr // &Transformer, read-only while scanning
+	start  int
+	end    int
+	ranges voidptr // &[]ComptimeParamScanRange
+mut:
+	hits []ComptimeParamScanHit
+}
+
+const comptime_param_scan_max_tasks = 16
+
+// scan_comptime_param_ranges finds the `$for` nodes of every transformed
+// function's range. Each task covers a contiguous run of ranges, so the tasks'
+// hits concatenated in task order are in source order.
+fn (t &Transformer) scan_comptime_param_ranges(ranges []ComptimeParamScanRange) []ComptimeParamScan {
+	mut task_count := 1
+	if !isnil(t.a.worker_pool) {
+		task_count = t.a.worker_pool.size() + 1
+	}
+	if task_count > comptime_param_scan_max_tasks {
+		task_count = comptime_param_scan_max_tasks
+	}
+	if task_count > ranges.len {
+		task_count = ranges.len
+	}
+	if task_count <= 1 {
+		mut scan := ComptimeParamScan{
+			t:      voidptr(t)
+			start:  0
+			end:    ranges.len
+			ranges: unsafe { voidptr(&ranges) }
+		}
+		comptime_param_scan_thread(voidptr(&scan))
+		return [scan]
+	}
+	mut total := i64(0)
+	for r in ranges {
+		total += i64(r.fn_idx - r.lo) + 1
+	}
+	mut scans := []ComptimeParamScan{cap: task_count}
+	mut start := 0
+	mut consumed := i64(0)
+	for ti in 0 .. task_count {
+		target := total * i64(ti + 1) / i64(task_count)
+		mut end := start
+		for end < ranges.len && (consumed < target || ti == task_count - 1) {
+			consumed += i64(ranges[end].fn_idx - ranges[end].lo) + 1
+			end++
+		}
+		scans << ComptimeParamScan{
+			t:      voidptr(t)
+			start:  start
+			end:    end
+			ranges: unsafe { voidptr(&ranges) }
+		}
+		start = end
+	}
+	mut tasks := []workers.Task{cap: scans.len}
+	for i in 0 .. scans.len {
+		tasks << workers.Task{
+			run:        comptime_param_scan_thread
+			arg:        unsafe { voidptr(&scans[i]) }
+			force_sync: i == 0
+		}
+	}
+	mut pool := t.a.worker_pool
+	pool.run(tasks)
+	return scans
+}
+
+fn comptime_param_scan_thread(arg voidptr) voidptr {
+	mut scan := unsafe { &ComptimeParamScan(arg) }
+	t := unsafe { &Transformer(scan.t) }
+	ranges := unsafe { &[]ComptimeParamScanRange(scan.ranges) }
+	for ri in scan.start .. scan.end {
+		r := unsafe { ranges[ri] }
+		if !t.should_transform_fn_in_module(t.a.nodes[r.fn_idx], r.module) {
+			continue
+		}
+		for idx in r.lo .. r.fn_idx {
+			if t.a.nodes[idx].kind == .comptime_for {
+				scan.hits << ComptimeParamScanHit{
+					range_idx: ri
+					node_idx:  idx
+				}
+			}
+		}
+	}
+	return unsafe { nil }
 }
 
 fn (t &Transformer) comptime_normalize_type_alias_chain(raw string) string {
@@ -2195,8 +2313,16 @@ fn (t &Transformer) enum_decl_value_metas(enum_name string) []EnumValueMeta {
 		mut next_val := i64(0)
 		for f in fields {
 			mut val := next_val
+			mut materialized_value := i64(0)
+			mut has_materialized_value := false
 			if checked_value := checked_values[f.name] {
-				val = i64(checked_value)
+				materialized_value = i64(checked_value)
+				has_materialized_value = true
+				if is_flag {
+					val = enum_flag_value_index(u64(checked_value)) or { next_val }
+				} else {
+					val = materialized_value
+				}
 			} else if int(f.expr_id) >= 0 {
 				if ev := t.enum_field_int_value_with_enum(f.expr_id, cur_mod, qualified, mut field_values, field_exprs, mut resolving) {
 					val = ev
@@ -2205,7 +2331,13 @@ fn (t &Transformer) enum_decl_value_metas(enum_name string) []EnumValueMeta {
 			field_values[f.name] = val
 			values << EnumValueMeta{
 				name:      f.name
-				value:     if is_flag { i64(u64(1) << u64(val)) } else { val }
+				value:     if has_materialized_value {
+					materialized_value
+				} else if is_flag {
+					i64(u64(1) << u64(val))
+				} else {
+					val
+				}
 				attrs:     f.attrs.clone()
 				enum_name: qualified
 			}
@@ -2214,6 +2346,19 @@ fn (t &Transformer) enum_decl_value_metas(enum_name string) []EnumValueMeta {
 		return values
 	}
 	return []EnumValueMeta{}
+}
+
+fn enum_flag_value_index(value u64) ?i64 {
+	if value == 0 || (value & (value - 1)) != 0 {
+		return none
+	}
+	mut index := i64(0)
+	mut remaining := value
+	for remaining > 1 {
+		remaining >>= 1
+		index++
+	}
+	return index
 }
 
 // enum_field_int_value evaluates an enum member's value expression using the transformer's
@@ -3724,6 +3869,9 @@ fn (t &Transformer) comptime_field_type_id_key(typ string, decl_module string) s
 	if is_generic_fn_placeholder_name(core) {
 		return core
 	}
+	if comptime_is_primitive_type(core) {
+		return core
+	}
 	// A bare type substituted into an imported generic still belongs to the
 	// caller's main module. Keep that provenance when producing stable type ids;
 	// otherwise `typeof[T]().idx` is hashed as though the type were declared by
@@ -3731,8 +3879,8 @@ fn (t &Transformer) comptime_field_type_id_key(typ string, decl_module string) s
 	if t.active_specialization_main_types[core] {
 		return 'main.${core}'
 	}
-	if comptime_is_primitive_type(core) || core.contains('.') || core.contains('[')
-		|| core.contains(' ') || decl_module == 'builtin' {
+	if core.contains('.') || core.contains('[') || core.contains(' ')
+		|| decl_module == 'builtin' {
 		return core
 	}
 	if decl_module in ['', 'main'] {
@@ -4718,8 +4866,8 @@ fn comptime_cond_is_quoted_literal(value string) bool {
 	return clean.len >= 2 && clean[0] in [`'`, `"`, `\``] && clean[clean.len - 1] == clean[0]
 }
 
-// eval_field_cond evaluates a fully-substituted comptime condition (`is`/`!is`, `==`/`!=`,
-// `&&`/`||`/`!`, bare bool). Returns none when it cannot be decided statically.
+// eval_field_cond evaluates a fully-substituted comptime condition (`is`/`!is`, `in`/`!in`,
+// `==`/`!=`, `&&`/`||`/`!`, bare bool). Returns none when it cannot be decided statically.
 fn (mut t Transformer) eval_field_cond(cond string) ?bool {
 	clean := comptime_condition_strip_outer_parens(cond.trim_space())
 	if clean == 'true' {
@@ -4775,7 +4923,21 @@ fn (mut t Transformer) eval_field_cond(cond string) ?bool {
 				continue
 			}
 			needle := comptime_unquote(clean[..op_idx].trim_space())
-			found := comptime_list_contains(clean[after..].trim_space(), needle)
+			list := clean[after..].trim_space()
+			mut found := false
+			if needle.ends_with('.typ') || needle.ends_with('.unaliased_typ') {
+				if !list.starts_with('[') || !list.ends_with(']') {
+					return none
+				}
+				for expected in split_generic_args(list[1..list.len - 1]) {
+					if t.comptime_type_matches(needle, expected) or { false } {
+						found = true
+						break
+					}
+				}
+			} else {
+				found = comptime_list_contains(list, needle)
+			}
 			return if op == ' in' { found } else { !found }
 		}
 	}

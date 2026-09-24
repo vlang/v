@@ -53,7 +53,15 @@ fn test_tools_that_consume_prefix_compiler_options_receive_them() {
 		'-check',
 		'build-tools',
 	]
+	assert external_tool_runtime_args('build-examples', ['-no-memory-limit'], ['build-examples']) == [
+		'-no-memory-limit',
+		'build-examples',
+	]
 	assert external_tool_runtime_args('self', ['-prod'], ['self']) == ['-prod', 'self']
+	assert external_tool_runtime_args('test-self', ['-no-memory-limit', '-silent'], [
+		'test-self',
+		'vlib',
+	]) == ['-no-memory-limit', '-silent', 'test-self', 'vlib']
 	assert external_tool_runtime_args('fmt', prefix, ['fmt', '-verify', 'file.v']) == [
 		'fmt',
 		'-verify',

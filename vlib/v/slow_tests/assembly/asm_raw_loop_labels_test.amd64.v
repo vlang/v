@@ -1,4 +1,4 @@
-// vtest build: !msvc
+// vtest build: !msvc && !tinyc
 
 import encoding.binary
 

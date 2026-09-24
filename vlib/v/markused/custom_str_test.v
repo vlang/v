@@ -212,6 +212,43 @@ fn test_string_interpolation_seeds_imported_enum_str_method() {
 	assert used['colors.Color.str']
 }
 
+fn test_debugger_seeds_custom_str_method() {
+	a, tc := parse_checked_two_file_source('debugger_custom_str', '
+module main
+
+struct Test {}
+
+fn (t &Test) str() string {
+	return "test"
+}
+
+fn main() {
+	value := Test{}
+	_ = value
+	\$dbg
+}
+', 'unused/unused.v', 'module unused')
+	used := mark_used(a, tc)
+	assert used['Test.str'] || used['main.Test.str']
+}
+
+fn test_assert_comparison_seeds_enum_autostr_helper() {
+	a, tc := parse_checked_two_file_source('assert_enum_autostr', '
+module main
+
+enum State {
+	ready
+}
+
+fn main() {
+	actual := State.ready
+	assert actual == State.ready
+}
+', 'unused/unused.v', 'module unused')
+	used := mark_used(a, tc)
+	assert used['State__autostr'] || used['main__State__autostr']
+}
+
 // test_optional_string_interpolation_seeds_imported_enum_str_method
 // validates this v3 regression case.
 fn test_optional_string_interpolation_seeds_imported_enum_str_method() {

@@ -114,6 +114,127 @@ fn (mut t Transformer) relocate_worker_regions(worker_ptrs []voidptr, node_start
 	t.merge_regions_relocated = true
 }
 
+// RegionCompaction is one relocated worker region's move into its final slot
+// of the shared master arrays.
+struct RegionCompaction {
+	node_src  int
+	node_dst  int
+	node_len  int
+	child_src int
+	child_dst int
+	child_len int
+mut:
+	wave          int
+	nodes_base    voidptr
+	children_base voidptr
+	node_size     usize
+	child_size    usize
+}
+
+fn region_compact_thread(arg voidptr) voidptr {
+	c := unsafe { &RegionCompaction(arg) }
+	if c.node_len > 0 && c.node_dst != c.node_src {
+		unsafe {
+			vmemmove(&u8(c.nodes_base) + usize(c.node_dst) * c.node_size, &u8(c.nodes_base) +
+				usize(c.node_src) * c.node_size, isize(usize(c.node_len) * c.node_size))
+		}
+	}
+	if c.child_len > 0 && c.child_dst != c.child_src {
+		unsafe {
+			vmemmove(&u8(c.children_base) + usize(c.child_dst) * c.child_size, &u8(c.children_base) +
+				usize(c.child_src) * c.child_size, isize(usize(c.child_len) * c.child_size))
+		}
+	}
+	return unsafe { nil }
+}
+
+@[inline]
+fn index_ranges_overlap(a_start int, a_len int, b_start int, b_len int) bool {
+	return a_len > 0 && b_len > 0 && a_start < b_start + b_len && b_start < a_start + a_len
+}
+
+// compact_worker_regions_parallel moves every relocated worker region of the
+// shared arrays into its final slot, using the merge-order offsets that
+// relocate_worker_regions applied. Regions only move left, so a destination can
+// overlap the not yet copied source of an earlier region but never a later
+// one; each move therefore runs in a wave after the moves it overwrites, and
+// the regions of one wave copy concurrently on the pool. The arrays grow to
+// their final length first. Returns no moves when the layout breaks that
+// invariant, leaving the copies to merge_worker's serial compaction.
+fn (mut t Transformer) compact_worker_regions_parallel(worker_ptrs []voidptr, node_starts []int, child_starts []int) []RegionCompaction {
+	mut moves := []RegionCompaction{cap: worker_ptrs.len}
+	mut running_nodes := t.a.nodes.len
+	mut running_children := t.a.children.len
+	for ci, ptr in worker_ptrs {
+		w := unsafe { &Transformer(ptr) }
+		node_len := w.a.nodes.len - node_starts[ci]
+		child_len := w.a.children.len - child_starts[ci]
+		moves << RegionCompaction{
+			node_src:  node_starts[ci]
+			node_dst:  running_nodes
+			node_len:  node_len
+			child_src: child_starts[ci]
+			child_dst: running_children
+			child_len: child_len
+		}
+		running_nodes += node_len
+		running_children += child_len
+	}
+	if running_nodes > t.a.nodes.cap || running_children > t.a.children.cap {
+		return []RegionCompaction{}
+	}
+	mut wave_count := 0
+	for k in 0 .. moves.len {
+		for j in 0 .. moves.len {
+			if j == k {
+				continue
+			}
+			if index_ranges_overlap(moves[j].node_src, moves[j].node_len, moves[k].node_dst,
+				moves[k].node_len)
+				|| index_ranges_overlap(moves[j].child_src, moves[j].child_len, moves[k].child_dst, moves[k].child_len) {
+				if j > k {
+					return []RegionCompaction{}
+				}
+				if moves[j].wave + 1 > moves[k].wave {
+					moves[k].wave = moves[j].wave + 1
+				}
+			}
+		}
+		if moves[k].wave + 1 > wave_count {
+			wave_count = moves[k].wave + 1
+		}
+	}
+	unsafe {
+		t.a.nodes.grow_len(running_nodes - t.a.nodes.len)
+		t.a.children.grow_len(running_children - t.a.children.len)
+	}
+	for mut move in moves {
+		move.nodes_base = t.a.nodes.data
+		move.children_base = t.a.children.data
+		move.node_size = usize(t.a.nodes.element_size)
+		move.child_size = usize(t.a.children.element_size)
+	}
+	for wave in 0 .. wave_count {
+		mut tasks := []workers.Task{cap: moves.len}
+		for i in 0 .. moves.len {
+			if moves[i].wave != wave || (moves[i].node_len == 0 && moves[i].child_len == 0) {
+				continue
+			}
+			tasks << workers.Task{
+				run:        region_compact_thread
+				arg:        unsafe { voidptr(&moves[i]) }
+				force_sync: tasks.len == 0
+			}
+		}
+		t.a.worker_pool.run(tasks)
+	}
+	// Everything past the final lengths is now dead region storage; merge_worker
+	// only publishes annotations for base nodes and tables from here on. Release
+	// those pages before the merge allocates, rather than after the stage.
+	unsafe { t.a.discard_unused_capacity() }
+	return moves
+}
+
 // RegionAbsorbArgs is one worker region's relocate-and-append job. The master
 // grows its arrays to the final length first, so every worker can write its
 // own disjoint destination slice at the same time and the merge that follows
@@ -296,6 +417,52 @@ fn shared_chunk_thread(arg voidptr) voidptr {
 		a.cost = cost
 		a.elapsed_us = csw.elapsed().microseconds()
 	}
+	return unsafe { nil }
+}
+
+struct CallCanonArgs {
+	master voidptr // &Transformer, whose checker symbol table is only read
+	worker voidptr // &Transformer
+}
+
+// lookup_worker_call_names resolves the canonical spelling of every call name the
+// workers recorded, on the pool. Nothing interns while it runs, so the lookups
+// read the symbol table without its lock; merge_worker then interns only the
+// names that were still missing, in the same order as before.
+fn (mut t Transformer) lookup_worker_call_names(worker_ptrs []voidptr) {
+	if isnil(t.tc) || worker_ptrs.len == 0 || isnil(t.a.worker_pool) {
+		return
+	}
+	mut args := []CallCanonArgs{cap: worker_ptrs.len}
+	for w in worker_ptrs {
+		args << CallCanonArgs{
+			master: voidptr(t)
+			worker: w
+		}
+	}
+	mut tasks := []workers.Task{cap: args.len}
+	for i in 0 .. args.len {
+		tasks << workers.Task{
+			run:        worker_call_canon_thread
+			arg:        unsafe { voidptr(&args[i]) }
+			force_sync: i == 0
+		}
+	}
+	t.a.worker_pool.run(tasks)
+}
+
+fn worker_call_canon_thread(arg voidptr) voidptr {
+	a := unsafe { &CallCanonArgs(arg) }
+	master := unsafe { &Transformer(a.master) }
+	mut w := unsafe { &Transformer(a.worker) }
+	if isnil(w.tc) || isnil(w.tc.fork_overlay) {
+		return unsafe { nil }
+	}
+	mut canon := []string{cap: w.tc.fork_overlay.resolved_call_names.len}
+	for _, name in w.tc.fork_overlay.resolved_call_names {
+		canon << master.tc.lookup_canonical_symbol_unlocked(name) or { '' }
+	}
+	w.merge_call_canon = canon
 	return unsafe { nil }
 }
 
@@ -1985,16 +2152,36 @@ fn (mut t Transformer) promote_scoped_ast_storage(scope voidptr) {
 // the active one, so the map's storage grows inside an arena that is released at
 // the end of the batch - while the entries themselves are read much later, by
 // merge_worker, out of the helper the master is merging.
-fn (mut t Transformer) promote_scoped_specialization_maps(nodes_len int, modules_len int, files_len int) {
+fn (mut t Transformer) promote_scoped_specialization_maps(scope voidptr, nodes_len int, modules_len int, files_len int) {
 	if t.a.specialized_fn_nodes.len != nodes_len {
 		t.a.specialized_fn_nodes = t.a.specialized_fn_nodes.clone()
 	}
 	if t.a.specialized_fn_modules.len != modules_len {
-		t.a.specialized_fn_modules = t.a.specialized_fn_modules.clone()
+		t.a.specialized_fn_modules = promote_scoped_specialization_texts(t.a.specialized_fn_modules,
+			scope)
 	}
 	if t.a.specialized_fn_files.len != files_len {
-		t.a.specialized_fn_files = t.a.specialized_fn_files.clone()
+		t.a.specialized_fn_files = promote_scoped_specialization_texts(t.a.specialized_fn_files,
+			scope)
 	}
+}
+
+// promote_scoped_specialization_texts clones a specialization table and every
+// module/file name in it that still lives in `scope`. `map.clone()` copies the
+// string values bitwise, and a batch can record names from its own
+// declaration-context table, which is rebuilt inside the scratch arena
+// (vlang/v#28897).
+fn promote_scoped_specialization_texts(values map[int]string, scope voidptr) map[int]string {
+	mut promoted := values.clone()
+	if scope == unsafe { nil } {
+		return promoted
+	}
+	for idx, value in values {
+		if value.len > 0 && transform_scope_owns(scope, value.str) {
+			promoted[idx] = value.clone()
+		}
+	}
+	return promoted
 }
 
 // absorb_scoped_batch publishes one batch's observable state into the helper's
@@ -2171,7 +2358,8 @@ fn (mut t Transformer) transform_scoped_helper_batches(items []FnWorkItem, max_b
 		t.absorb_scoped_batch(batch, scratch_scope, new_node_start)
 		storage_state := transform_stage_scope_suspend(t.merge_scratch_scope)
 		t.promote_scoped_ast_storage(scratch_scope)
-		t.promote_scoped_specialization_maps(spec_nodes_len, spec_modules_len, spec_files_len)
+		t.promote_scoped_specialization_maps(scratch_scope, spec_nodes_len, spec_modules_len,
+			spec_files_len)
 		transform_stage_scope_resume(t.merge_scratch_scope, storage_state)
 		for item in items[start..end] {
 			if item.fn_idx >= 0 && item.fn_idx < t.transformed_fns.len {
@@ -2252,7 +2440,8 @@ fn (mut t Transformer) transform_late_candidates_scoped(candidate_index map[stri
 		t.a.promote_transform_texts_from(text_start, scratch_scope)
 		t.absorb_scoped_batch(batch, scratch_scope, new_node_start)
 		t.promote_scoped_ast_storage(scratch_scope)
-		t.promote_scoped_specialization_maps(spec_nodes_len, spec_modules_len, spec_files_len)
+		t.promote_scoped_specialization_maps(scratch_scope, spec_nodes_len, spec_modules_len,
+			spec_files_len)
 		transform_worker_scope_free(scratch_scope)
 		for si, ci in selected {
 			idx := candidates[ci].idx
@@ -2485,6 +2674,61 @@ fn (mut t Transformer) run_parallel_transform(items []FnWorkItem, base_nodes int
 	return any_started
 }
 
+// SharedTableFlags holds the master's detach-on-write flags for the tables
+// that shared-base helpers read while the master keeps transforming.
+struct SharedTableFlags {
+	signature    bool
+	structs      bool
+	tc_signature bool
+	tc_structs   bool
+}
+
+// mark_shared_tables_for_helpers makes the master copy its signature and struct
+// tables before writing them while helpers still read the originals, and
+// returns the previous flags for end_shared_tables_for_helpers.
+fn (mut t Transformer) mark_shared_tables_for_helpers() SharedTableFlags {
+	mut tc_signature := false
+	mut tc_structs := false
+	if !isnil(t.tc) {
+		mut master_tc := unsafe { &types.TypeChecker(voidptr(t.tc)) }
+		tc_signature = master_tc.transform_signature_maps_shared
+		tc_structs = master_tc.transform_struct_maps_shared
+		master_tc.transform_signature_maps_shared = true
+		master_tc.transform_struct_maps_shared = true
+	}
+	prev := SharedTableFlags{
+		signature:    t.signature_maps_shared
+		structs:      t.struct_maps_shared
+		tc_signature: tc_signature
+		tc_structs:   tc_structs
+	}
+	t.signature_maps_shared = true
+	t.struct_maps_shared = true
+	return prev
+}
+
+// end_shared_tables_for_helpers runs after the helpers have joined. A table the
+// master never wrote has no concurrent readers any more, so it goes back to its
+// previous flag instead of being copied by a later serial write; a table the
+// master already detached stays private.
+fn (mut t Transformer) end_shared_tables_for_helpers(prev SharedTableFlags) {
+	if t.signature_maps_shared {
+		t.signature_maps_shared = prev.signature
+	}
+	if t.struct_maps_shared {
+		t.struct_maps_shared = prev.structs
+	}
+	if !isnil(t.tc) {
+		mut master_tc := unsafe { &types.TypeChecker(voidptr(t.tc)) }
+		if master_tc.transform_signature_maps_shared {
+			master_tc.transform_signature_maps_shared = prev.tc_signature
+		}
+		if master_tc.transform_struct_maps_shared {
+			master_tc.transform_struct_maps_shared = prev.tc_structs
+		}
+	}
+}
+
 fn (mut t Transformer) mark_parallel_worker_maps_shared() {
 	t.signature_maps_shared = true
 	t.struct_maps_shared = true
@@ -2711,7 +2955,13 @@ fn (mut t Transformer) run_parallel_transform_shared(items []FnWorkItem, base_no
 	transform_worker_scope_leave(setup_scope)
 	t.timing_profile('  [ttime]   shared setup     ${f64(ttsw.elapsed().microseconds()) / 1000.0:7.2f} ms (chunks: ${chunk_count}, jobs: ${n_jobs})')
 	ttsw.restart()
+	// The helpers read the master's signature and struct tables through their
+	// forks while the master transforms chunk 0 and absorbs its own batches, so
+	// the master must detach a table before its first write instead of
+	// rehashing it under the helpers.
+	share_flags := t.mark_shared_tables_for_helpers()
 	any_started := t.a.worker_pool.run(tasks)
+	t.end_shared_tables_for_helpers(share_flags)
 	t.node_context_read_only = false
 	t.timing_profile('  [ttime]   shared pool.run  ${f64(ttsw.elapsed().microseconds()) / 1000.0:7.2f} ms')
 	$if v3_ttime ? {
@@ -2756,6 +3006,25 @@ fn (mut t Transformer) run_parallel_transform_shared(items []FnWorkItem, base_no
 		&& os.getenv('V3_NO_MERGE_RELOC').len == 0 {
 		t.relocate_worker_regions(args[1..].map(it.worker), node_starts[1..chunk_count], child_starts[1..chunk_count])
 	}
+	if thread_count > 0 {
+		t.lookup_worker_call_names(args[1..].map(it.worker))
+	}
+	// Worker call resolutions for appended nodes land in the master's sparse
+	// call-name map. Size it once for every region instead of rehashing through
+	// each doubling while merging (prealloc keeps the outgrown entry arrays).
+	if t.tc.parallel_check_sparse {
+		mut worker_calls := 0
+		for ci in 0 .. thread_count {
+			ww := unsafe { &Transformer(args[ci + 1].worker) }
+			if !isnil(ww.tc.fork_overlay) {
+				worker_calls += ww.tc.fork_overlay.resolved_call_names.len
+			}
+		}
+		if worker_calls > 0 {
+			t.tc.sparse_resolved_call_names.reserve(u32(t.tc.sparse_resolved_call_names.len +
+				worker_calls))
+		}
+	}
 	// Compact each worker region in fixed order (deterministic
 	// node numbering). merge_worker treats the region start exactly like a
 	// clone's base offset; compaction always moves content left, so the
@@ -2763,6 +3032,16 @@ fn (mut t Transformer) run_parallel_transform_shared(items []FnWorkItem, base_no
 	mut merge_used_ms := f64(0)
 	mut merge_core_ms := f64(0)
 	mut mwsw := time.new_stopwatch()
+	// Relocated regions are plain moves: do them all up front on the pool, so
+	// the serial loop below only publishes each worker's annotations.
+	compactions := if t.merge_regions_relocated && thread_count > 0
+		&& os.getenv('V3_NO_PARALLEL_COMPACT').len == 0 {
+		t.compact_worker_regions_parallel(args[1..].map(it.worker), node_starts[1..chunk_count],
+			child_starts[1..chunk_count])
+	} else {
+		[]RegionCompaction{}
+	}
+	t.timing_profile('  [ttime]     mg compact     ${f64(mwsw.elapsed().microseconds()) / 1000.0:7.2f} ms (regions: ${compactions.len})')
 	for ci in 0 .. thread_count {
 		ww := unsafe { &Transformer(args[ci + 1].worker) }
 		t.timing_profile('  [ttime]     mg region ${ci}: nodes [${node_starts[ci + 1]}, ${ww.a.nodes.len}) cap ${node_starts[ci + 2]} children [${child_starts[ci + 1]}, ${ww.a.children.len}) cap ${child_starts[ci + 2]} dst n ${t.a.nodes.len} c ${t.a.children.len}')
@@ -2770,12 +3049,24 @@ fn (mut t Transformer) run_parallel_transform_shared(items []FnWorkItem, base_no
 		t.merge_worker_used_fns(ww)
 		merge_used_ms += f64(mwsw.elapsed().microseconds()) / 1000.0
 		deferred_start := t.deferred_base_writes.len
-		merged_node_start := t.a.nodes.len
+		mut merged_node_start := t.a.nodes.len
+		if compactions.len > 0 {
+			move := compactions[ci]
+			t.merge_regions_absorbed = true
+			t.merge_absorbed_node_shift = i32(move.node_dst - move.node_src)
+			t.merge_absorbed_child_shift = i32(move.child_dst - move.child_src)
+			merged_node_start = move.node_dst
+		}
 		mwsw.restart()
 		// Compaction appends each worker at the current master end. Sparse cache
 		// entries from the master and earlier workers end before that fresh range,
 		// so clearing every new id would only hash absent keys.
 		t.merge_worker(ww, chunks[ci + 1], node_starts[ci + 1], child_starts[ci + 1], false)
+		merged_node_end := if compactions.len > 0 {
+			compactions[ci].node_dst + compactions[ci].node_len
+		} else {
+			t.a.nodes.len
+		}
 		merge_core_ms += f64(mwsw.elapsed().microseconds()) / 1000.0
 		if ww.worker_scope != unsafe { nil } && !t.retain_worker_results {
 			t.clone_deferred_worker_writes_from(deferred_start)
@@ -2791,11 +3082,12 @@ fn (mut t Transformer) run_parallel_transform_shared(items []FnWorkItem, base_no
 			t.retained_worker_regions << ScopedTransformRegion{
 				scope:      ww.worker_scope
 				new_start:  merged_node_start
-				new_end:    t.a.nodes.len
+				new_end:    merged_node_end
 				base_nodes: worker_base_nodes
 			}
 		}
 	}
+	t.merge_regions_absorbed = false
 	t.merge_regions_relocated = false
 	t.timing_profile('  [ttime]   shared merge     ${f64(ttsw.elapsed().microseconds()) / 1000.0:7.2f} ms (used: ${merge_used_ms:.2f}, core: ${merge_core_ms:.2f})')
 	ttsw.restart()

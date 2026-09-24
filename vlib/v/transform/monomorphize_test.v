@@ -151,6 +151,17 @@ fn test_explicit_generic_fn_value_candidates_resolve_selective_import() {
 	assert 'id' in candidates
 }
 
+fn test_explicit_generic_arg_requires_a_known_type() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	mut t := new_transformer(mut a, &tc, map[string]bool{})
+
+	assert t.explicit_generic_arg_is_known_type('int', 'main')
+	assert t.explicit_generic_arg_is_known_type('[]string', 'main')
+	assert t.explicit_generic_arg_is_known_type('map[string]int', 'main')
+	assert !t.explicit_generic_arg_is_known_type('i', 'builtin')
+}
+
 fn test_materialized_generic_struct_fields_preserve_plain_alias_arguments() {
 	mut a := flat.FlatAst.new()
 	mut values_alias := flat.Node{

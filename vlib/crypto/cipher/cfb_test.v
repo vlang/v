@@ -12,7 +12,7 @@ fn test_cfb_stream_cipher() ! {
 	block := des.new_cipher(key[..8])
 	c := cipher.new_cfb_encrypter(block, iv)
 
-	s := StreamCipher{
+	_ := StreamCipher{
 		cipher: c
 	}
 }

@@ -949,6 +949,12 @@ fn (mut t Transformer) or_expr_types(expr_id flat.NodeId, fallback_type string) 
 	}
 	if !isnil(t.tc) {
 		if expr_node.kind == .call {
+			// `json.decode(Type, text)` is declared as returning `!voidptr`; recover
+			// its compiler-magic payload before generic/declaration fallbacks accept
+			// that erased signature.
+			if decode_ret := t.json_decode_or_expr_type(expr_id, expr_node) {
+				return t.canonical_or_expr_types(decode_ret)
+			}
 			if specialized_ret := t.specialized_interface_method_call_return_type(expr_id,
 				expr_node)
 			{
@@ -986,9 +992,6 @@ fn (mut t Transformer) or_expr_types(expr_id flat.NodeId, fallback_type string) 
 					&& t.is_optional_type_name(expr_node.typ) {
 					return t.specialized_or_expr_types(expr_node.typ)
 				}
-			}
-			if decode_ret := t.json_decode_or_expr_type(expr_id, expr_node) {
-				return t.canonical_or_expr_types(decode_ret)
 			}
 			if typ := t.tc.expr_type(expr_id) {
 				mut prefix := ''
@@ -1221,6 +1224,10 @@ fn (t &Transformer) call_declared_return_type_text(id flat.NodeId) ?string {
 		return none
 	}
 	name := t.tc.resolved_call_name(id) or { return none }
+	if name == 'json.decode' && int(id) < t.a.nodes.len {
+		// The magic `json.decode(T, s)` returns `!T`, not its `!voidptr` stub declaration.
+		return t.json_decode_or_expr_type(id, t.a.nodes[int(id)])
+	}
 	if ret := t.tc.fn_ret_type_texts[name] {
 		resolved := t.tc.fn_signature_type(name, ret)
 		if resolved !is types.Unknown && resolved !is types.Void {
@@ -1328,6 +1335,17 @@ fn (t &Transformer) json_decode_or_expr_type(expr_id flat.NodeId, expr_node flat
 	}
 	if !is_decode {
 		return none
+	}
+	// Pure-V `json2.decode[T](text)` can gain a synthesized default-options
+	// argument, so its first value argument must not be mistaken for the legacy
+	// `json.decode(Type, text)` type argument.
+	if !t.is_cgen_magic_json_call(expr_id, expr_node) {
+		if args := t.explicit_generic_call_args(expr_node, t.cur_module) {
+			if args.len == 1 && args[0].len > 0 {
+				return t.specialized_json_decode_result_type(args[0])
+			}
+			return none
+		}
 	}
 	// The established `json.decode(Type, text)` form keeps its type argument as
 	// the first call argument. Its synthetic generic metadata is erased to
@@ -2461,10 +2479,6 @@ fn (mut t Transformer) lower_or_multi_return_expr(expr_id flat.NodeId, target_na
 }
 
 fn (mut t Transformer) lower_or_body_to_stmts_with_err_expr(body_id flat.NodeId, target_name string, target_type string, mode string, err_expr flat.NodeId) []flat.NodeId {
-	saved_in_string_interp_part := t.in_string_interp_part
-	defer {
-		t.in_string_interp_part = saved_in_string_interp_part
-	}
 	if mode == '!' || mode == '?' {
 		if t.is_optional_type_name(t.cur_fn_ret_type) {
 			return [t.make_none_return_stmt_with_err_expr(err_expr)]
@@ -2599,6 +2613,19 @@ fn (mut t Transformer) lower_or_body_to_stmts_with_err_expr(body_id flat.NodeId,
 }
 
 fn (mut t Transformer) lower_or_comptime_if_value(node flat.Node, target_name string, target_type string) flat.NodeId {
+	if take_then := t.comptime_type_condition_value(node.value) {
+		branch_index := if take_then { 0 } else { 1 }
+		for i in 0 .. node.children_count {
+			if i != branch_index {
+				t.ignore_comptime_for_subtree(t.a.child(&node, i))
+			}
+		}
+		if branch_index >= node.children_count {
+			return t.make_block([]flat.NodeId{})
+		}
+		return t.if_value_branch_block(t.a.child(&node, branch_index), target_name,
+			target_type)
+	}
 	mut branches := []flat.NodeId{cap: int(node.children_count)}
 	for i in 0 .. node.children_count {
 		branches << t.if_value_branch_block(t.a.child(&node, i), target_name, target_type)

@@ -9,6 +9,9 @@ fn test_digest_implements_hash() {
 	get_digest := fn () hash.Hash {
 		return md5.new()
 	}
+	mut digest := get_digest()
+	assert digest.size() == md5.size
+	digest.free()
 }
 
 fn test_crypto_md5() {

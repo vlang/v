@@ -225,7 +225,9 @@ fn test_v3_implicit_tcc_uses_platform_compiler_for_non_c_objects() {
 	assert c_source_object_compiler('objective-c', 'clang', false, 'linux') == 'clang'
 	assert c_source_object_compiler('c++', 'clang', false, 'linux') == 'clang'
 	assert c_source_object_compiler('objective-c', 'tcc', false, 'linux') == 'tcc'
-	assert c_source_object_compiler('c++', 'tcc', false, 'linux') == 'tcc'
+	assert c_source_object_compiler('c++', 'tcc', false, 'linux') == 'c++'
+	assert c_source_object_compiler('c++', '/opt/toolchains/tcc', false, 'linux') == 'c++'
+	assert c_source_object_compiler('c++', 'tinyc', false, 'linux') == 'c++'
 }
 
 fn test_c_object_flag_plan_limits_primary_compiler_flags() {
@@ -485,6 +487,13 @@ fn test_v3_implicit_tcc_cpp_native_object_uses_platform_headers() {
 	output := os.join_path(root, 'main')
 	os.write_file(cpp_source, '#include <cstddef>\nextern "C" size_t v3_cpp_object_probe(void) { return sizeof(std::max_align_t); }\n')!
 	os.write_file(v_source, '#flag ${cpp_object}\n\nfn C.v3_cpp_object_probe() usize\n\nfn main() {\n\tassert C.v3_cpp_object_probe() > 0\n}\n')!
+	old_vflags := os.getenv_opt('VFLAGS')
+	os.unsetenv('VFLAGS')
+	defer {
+		if value := old_vflags {
+			os.setenv('VFLAGS', value, true)
+		}
+	}
 	build := cmdexec.run_in(v3_driver_test_executable(), ['-new-compiler', '-nocache',
 		'-no-retry-compilation', '-o', output, v_source], root)
 	assert !build.output.contains('failed to build C object'), build.output
@@ -544,6 +553,53 @@ fn test_v3_tcc_flag_plan_skips_backtrace_on_macos_arm64() {
 	assert '-B${tcc_install_dir}' in plan.before_inputs
 	assert '-I${os.join_path_single(tcc_install_dir, 'include')}' in plan.before_inputs
 	assert '-L${tcc_install_dir}' in plan.before_inputs
+}
+
+fn test_v3_linux_shared_flag_plan_hides_static_archive_symbols() {
+	plan := v3_c_compiler_flag_plan(V3CCompilerFlagOptions{
+		is_shared:  true
+		target_os:  'linux'
+		c_compiler: 'cc'
+	})
+	assert '-fvisibility=hidden' in plan.before_inputs
+	assert '-Wl,--exclude-libs,ALL' in plan.before_inputs
+	tcc_plan := v3_c_compiler_flag_plan(V3CCompilerFlagOptions{
+		is_tcc:     true
+		is_shared:  true
+		target_os:  'linux'
+		c_compiler: 'tinyc'
+		vroot:      os.join_path(os.temp_dir(), 'v3_linux_shared_tcc_flag_plan')
+	})
+	assert '-Wl,--exclude-libs,ALL' !in tcc_plan.before_inputs
+}
+
+fn test_tcc_monolithic_dependency_flags_put_native_sources_before_archives() {
+	flags := ['-DGC_THREADS=1', '-I', '/tmp/include', '/tmp/libgc.a', '-ldl', '/tmp/native.c',
+		'-lm']
+	assert tcc_monolithic_dependency_flags(flags, false) == [
+		'-DGC_THREADS=1',
+		'-I',
+		'/tmp/include',
+		'/tmp/native.c',
+		'/tmp/libgc.a',
+		'-ldl',
+		'-lm',
+	]
+	assert tcc_monolithic_dependency_flags(flags, true) == [
+		'-DGC_THREADS=1',
+		'-I',
+		'/tmp/include',
+	]
+}
+
+fn test_v3_object_flag_plan_omits_link_inputs() {
+	plan := v3_c_compiler_flag_plan(V3CCompilerFlagOptions{
+		is_o:         true
+		target_os:    'linux'
+		dependencies: ['-DGC_THREADS=1', '-I', '/tmp/include', '/tmp/libgc.a', '-ldl', '/tmp/native.c',
+			'-lm']
+	})
+	assert plan.after_inputs == ['-DGC_THREADS=1', '-I', '/tmp/include']
 }
 
 fn test_v3_tcc_resource_flags_use_windows_bundle_root() {
