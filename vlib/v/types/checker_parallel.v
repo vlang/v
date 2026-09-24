@@ -176,7 +176,7 @@ mut:
 struct CollectDeclarationIndexArgs {
 	tc   voidptr
 	a    &flat.FlatAst
-	kind u8 // 0 = generic params, 1 = type declarations, 2 = functions, 3 = visibility
+	kind u8 // 0 = generic params, 1 = type declarations, 2 = parameter mutability, 3 = visibility, 4 = function names, 5 = file declarations
 }
 
 fn collect_index_prep_thread(arg voidptr) voidptr {
@@ -205,8 +205,10 @@ fn collect_declaration_index_thread(arg voidptr) voidptr {
 	match a.kind {
 		0 { tc.build_enclosing_generic_param_index(a.a) }
 		1 { tc.build_type_declaration_index(a.a) }
-		2 { tc.build_fn_declaration_indexes(a.a) }
-		else { tc.collect_declaration_visibility() }
+		2 { tc.build_declaration_param_mutability_index(a.a) }
+		3 { tc.collect_declaration_visibility() }
+		4 { tc.build_fn_name_indexes(a.a) }
+		else { tc.build_file_declaration_indexes(a.a) }
 	}
 	return unsafe { nil }
 }
@@ -281,49 +283,30 @@ fn (mut tc TypeChecker) prepare_collect_declaration_indexes_parallel(a &flat.Fla
 		|| a.worker_pool.size() < 2 || tc.top_level_idx.len < 2048 {
 		return false
 	}
-	mut args := [
-		CollectDeclarationIndexArgs{
+	// Each index task owns its maps; the caller builds one of them itself.
+	mut args := []CollectDeclarationIndexArgs{cap: collect_declaration_index_tasks}
+	for kind in 0 .. collect_declaration_index_tasks {
+		args << CollectDeclarationIndexArgs{
 			tc:   voidptr(tc)
 			a:    a
-			kind: 0
-		},
-		CollectDeclarationIndexArgs{
-			tc:   voidptr(tc)
-			a:    a
-			kind: 1
-		},
-		CollectDeclarationIndexArgs{
-			tc:   voidptr(tc)
-			a:    a
-			kind: 2
-		},
-		CollectDeclarationIndexArgs{
-			tc:   voidptr(tc)
-			a:    a
-			kind: 3
-		},
-	]
-	a.worker_pool.run([
-		workers.Task{
-			run: collect_declaration_index_thread
-			arg: unsafe { voidptr(&args[0]) }
-		},
-		workers.Task{
-			run: collect_declaration_index_thread
-			arg: unsafe { voidptr(&args[1]) }
-		},
-		workers.Task{
-			run: collect_declaration_index_thread
-			arg: unsafe { voidptr(&args[2]) }
-		},
-		workers.Task{
+			kind: u8(kind)
+		}
+	}
+	mut tasks := []workers.Task{cap: args.len}
+	for i in 0 .. args.len {
+		tasks << workers.Task{
 			run:        collect_declaration_index_thread
-			arg:        unsafe { voidptr(&args[3]) }
-			force_sync: true
-		},
-	])
+			arg:        unsafe { voidptr(&args[i]) }
+			force_sync: i == args.len - 1
+		}
+	}
+	a.worker_pool.run(tasks)
 	return true
 }
+
+// collect_declaration_index_tasks is the number of independent declaration
+// index builders collect_declaration_index_thread dispatches on.
+const collect_declaration_index_tasks = 6
 
 // Pass2FnPrep carries the parse-heavy portion of one fn_decl's pass-2
 // collection (type parsing, param iteration, veb adjustments), computed on the
@@ -505,19 +488,19 @@ fn (mut tc TypeChecker) finish_pass2_ancillary_registrations() {
 		return
 	}
 	if isnil(tc.a.worker_pool) || tc.a.worker_pool.size() < 2 {
-		for group in 0 .. 9 {
+		for group in 0 .. pass2_ancillary_groups {
 			tc.apply_pass2_ancillary_group(group)
 		}
 	} else {
-		mut args := []Pass2AncillaryArgs{cap: 9}
-		mut tasks := []workers.Task{cap: 9}
-		for group in 0 .. 9 {
+		mut args := []Pass2AncillaryArgs{cap: pass2_ancillary_groups}
+		mut tasks := []workers.Task{cap: pass2_ancillary_groups}
+		for group in 0 .. pass2_ancillary_groups {
 			args << Pass2AncillaryArgs{
 				tc:    voidptr(tc)
 				group: group
 			}
 		}
-		for group in 0 .. 9 {
+		for group in 0 .. pass2_ancillary_groups {
 			tasks << workers.Task{
 				run:        pass2_ancillary_thread
 				arg:        unsafe { voidptr(&args[group]) }
@@ -568,9 +551,13 @@ fn (mut tc TypeChecker) apply_pass2_ancillary_group(group int) {
 		for registration in tc.fn_ret_text_registrations {
 			tc.fn_ret_type_texts[registration.name] = registration.text
 		}
-	} else if group == 6 {
+	} else if group == 6 || group == 9 {
+		// The module-qualified and module-less keys land in separate maps, so the
+		// largest registration set is split over two lanes.
 		for registration in tc.visible_mutation_registrations {
-			tc.register_visible_mutation_fn_decl_with_lowered(registration.idx, registration.module_name, registration.qname, registration.source_name, registration.c_qname, registration.c_source_name)
+			tc.register_visible_mutation_fn_decl_keys(registration.idx, registration.module_name,
+				registration.qname, registration.source_name, registration.c_qname,
+				registration.c_source_name, group == 9)
 		}
 	} else if group == 7 {
 		for registration in tc.fn_ancillary_registrations {
@@ -584,6 +571,10 @@ fn (mut tc TypeChecker) apply_pass2_ancillary_group(group int) {
 		}
 	}
 }
+
+// pass2_ancillary_groups is the number of independent table groups filled by
+// apply_pass2_ancillary_group.
+const pass2_ancillary_groups = 10
 
 struct Pass2AncillaryArgs {
 	tc    voidptr
@@ -3907,6 +3898,7 @@ fn (tc &TypeChecker) fork_for_parallel_check() &TypeChecker {
 	// sharing the declaration index that collect completed before checking starts.
 	w.visible_mutation_cache = &VisibleMutationCache{
 		decls:            tc.visible_mutation_cache.decls
+		global_decls:     tc.visible_mutation_cache.global_decls
 		decl_misses:      map[string]bool{}
 		results:          map[u64]bool{}
 		rebind_results:   map[u64]bool{}

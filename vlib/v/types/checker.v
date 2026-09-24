@@ -323,7 +323,11 @@ struct DeclarationVisibility {
 @[heap]
 struct VisibleMutationCache {
 mut:
+	// decls holds the module-qualified keys (`mod\x01name`) and global_decls the
+	// module-less ones (`\x01name`). The key spaces are disjoint, and keeping them
+	// apart lets collection fill both maps on separate pool lanes.
 	decls            map[string]VisibleMutationFnDecl
+	global_decls     map[string]VisibleMutationFnDecl
 	decl_misses      map[string]bool
 	results          map[u64]bool
 	rebind_results   map[u64]bool
@@ -333,6 +337,7 @@ mut:
 fn new_visible_mutation_cache() &VisibleMutationCache {
 	return &VisibleMutationCache{
 		decls:          map[string]VisibleMutationFnDecl{}
+		global_decls:   map[string]VisibleMutationFnDecl{}
 		decl_misses:    map[string]bool{}
 		results:        map[u64]bool{}
 		rebind_results: map[u64]bool{}
@@ -850,6 +855,9 @@ pub mut:
 	// checked. Consumers such as markused can walk these resolved Symbol-like
 	// names instead of reconstructing import and receiver resolution from syntax.
 	direct_dependencies_by_fn map[int][]SymbolId // enclosing fn node id -> resolved function identities
+	// Read-only post-check call graph for transform forks (see
+	// fork_for_parallel_transform); nil in the checker that owns the graph.
+	post_check_dependencies &DependencyGraphView = unsafe { nil }
 	// Methods used as *values* (`recv.method` passed as a callback), recorded per enclosing
 	// function during semantic checking — which has full scope/type info, runs before
 	// markused, and (unlike a call) routes a value-context selector through check_selector.
@@ -1528,6 +1536,17 @@ pub fn (tc &TypeChecker) fork_for_parallel_transform(ast &flat.FlatAst) &TypeChe
 	// still compatible across tables, while TypeIds stay local to its cache.
 	forked.type_interner = new_type_interner()
 	forked.symbols = new_symbol_interner()
+	// The fork's own dependency map only holds calls it resolves itself, under its
+	// private symbol ids. Transitive call-graph queries read the post-check graph
+	// of the checker that owns it instead; nested forks keep that same view.
+	forked.post_check_dependencies = if !isnil(tc.post_check_dependencies) {
+		tc.post_check_dependencies
+	} else {
+		&DependencyGraphView{
+			by_fn: tc.direct_dependencies_by_fn
+			names: if isnil(tc.symbols) { []string{} } else { tc.symbols.names }
+		}
+	}
 	forked.type_cache = new_type_cache_with_base(if tc.type_cache != unsafe { nil } {
 		tc.type_cache.parse_enabled
 	} else {
@@ -2076,40 +2095,21 @@ fn strings_builder_binding_key(fn_index int, name string) string {
 }
 
 fn (mut tc TypeChecker) build_fn_declaration_indexes(a &flat.FlatAst) {
-	tc.strings_builder_bindings = map[string]bool{}
-	tc.static_associated_fn_keys = map[string]bool{}
+	tc.build_declaration_param_mutability_index(a)
+	tc.build_fn_name_indexes(a)
+	tc.build_file_declaration_indexes(a)
+}
+
+// build_declaration_param_mutability_index records the parameter mutability of
+// every interface method, C function and V function declaration. It and the two
+// builders below each own their maps, so collection runs them on separate lanes.
+fn (mut tc TypeChecker) build_declaration_param_mutability_index(a &flat.FlatAst) {
 	tc.declaration_param_mutability = map[string][]bool{}
-	tc.strict_map_index_files = map[string]bool{}
-	tc.file_import_alias_paths = map[string]string{}
-	tc.file_import_suffix_paths = map[string]string{}
-	tc.fn_decl_short_name_ids = map[string]int{}
-	tc.file_bare_fn_names = map[string]bool{}
 	mut module_name := ''
-	mut file_name := ''
 	for index in tc.top_level_idx {
 		node := a.nodes[index]
-		if node.kind == .file {
-			file_name = node.value
-			continue
-		}
 		if node.kind == .module_decl {
 			module_name = node.value
-			if tc.declaration_has_attribute(flat.NodeId(index), 'strict_map_index') {
-				tc.strict_map_index_files[file_name] = true
-			}
-			continue
-		}
-		if node.kind == .import_decl {
-			path := tc.import_module_path_text(node)
-			if node.typ.len > 0 {
-				tc.file_import_alias_paths['${file_name}\x00${node.typ}'] = path
-			}
-			if path.contains('.') {
-				suffix_key := '${file_name}\x00${path.all_after_last('.')}'
-				if suffix_key !in tc.file_import_suffix_paths {
-					tc.file_import_suffix_paths[suffix_key] = path
-				}
-			}
 			continue
 		}
 		if node.kind == .interface_decl {
@@ -2155,11 +2155,6 @@ fn (mut tc TypeChecker) build_fn_declaration_indexes(a &flat.FlatAst) {
 		if node.kind != .fn_decl {
 			continue
 		}
-		short_name := node.value.all_after_last('.')
-		if short_name !in tc.fn_decl_short_name_ids {
-			tc.fn_decl_short_name_ids[short_name] = index
-		}
-		tc.file_bare_fn_names['${node.pos.id}\x00${node.value}'] = true
 		qname := checker_qualified_fn_name(module_name, node.value)
 		mut param_mutability := []bool{}
 		for child_index in 0 .. node.children_count {
@@ -2178,7 +2173,32 @@ fn (mut tc TypeChecker) build_fn_declaration_indexes(a &flat.FlatAst) {
 		if qname !in tc.declaration_param_mutability {
 			tc.declaration_param_mutability[qname] = param_mutability
 		}
+	}
+}
+
+// build_fn_name_indexes records the short names, per-file bare names and
+// static/associated keys of every V function declaration.
+fn (mut tc TypeChecker) build_fn_name_indexes(a &flat.FlatAst) {
+	tc.static_associated_fn_keys = map[string]bool{}
+	tc.fn_decl_short_name_ids = map[string]int{}
+	tc.file_bare_fn_names = map[string]bool{}
+	mut module_name := ''
+	for index in tc.top_level_idx {
+		node := a.nodes[index]
+		if node.kind == .module_decl {
+			module_name = node.value
+			continue
+		}
+		if node.kind != .fn_decl {
+			continue
+		}
+		short_name := node.value.all_after_last('.')
+		if short_name !in tc.fn_decl_short_name_ids {
+			tc.fn_decl_short_name_ids[short_name] = index
+		}
+		tc.file_bare_fn_names['${node.pos.id}\x00${node.value}'] = true
 		if node.value.contains('.') || node.is_static_type_method() {
+			qname := checker_qualified_fn_name(module_name, node.value)
 			is_static := node.is_static_type_method() || node.children_count == 0
 				|| a.child_node(&node, 0).kind != .param || a.child_node(&node, 0).op != .dot
 			if node.value !in tc.static_associated_fn_keys {
@@ -2186,6 +2206,41 @@ fn (mut tc TypeChecker) build_fn_declaration_indexes(a &flat.FlatAst) {
 			}
 			if qname !in tc.static_associated_fn_keys {
 				tc.static_associated_fn_keys[qname] = is_static
+			}
+		}
+	}
+}
+
+// build_file_declaration_indexes records per-file module attributes and import
+// paths, and resolves the strings.Builder bindings found while parsing.
+fn (mut tc TypeChecker) build_file_declaration_indexes(a &flat.FlatAst) {
+	tc.strings_builder_bindings = map[string]bool{}
+	tc.strict_map_index_files = map[string]bool{}
+	tc.file_import_alias_paths = map[string]string{}
+	tc.file_import_suffix_paths = map[string]string{}
+	mut file_name := ''
+	for index in tc.top_level_idx {
+		node := a.nodes[index]
+		if node.kind == .file {
+			file_name = node.value
+			continue
+		}
+		if node.kind == .module_decl {
+			if tc.declaration_has_attribute(flat.NodeId(index), 'strict_map_index') {
+				tc.strict_map_index_files[file_name] = true
+			}
+			continue
+		}
+		if node.kind == .import_decl {
+			path := tc.import_module_path_text(node)
+			if node.typ.len > 0 {
+				tc.file_import_alias_paths['${file_name}\x00${node.typ}'] = path
+			}
+			if path.contains('.') {
+				suffix_key := '${file_name}\x00${path.all_after_last('.')}'
+				if suffix_key !in tc.file_import_suffix_paths {
+					tc.file_import_suffix_paths[suffix_key] = path
+				}
 			}
 		}
 	}
@@ -3286,7 +3341,9 @@ fn (mut tc TypeChecker) reserve_collect_maps() {
 			tc.receiver_method_suffix_index.reserve(u32(tc.receiver_method_suffix_index.len) + decl_estimate * 3)
 			if !isnil(tc.visible_mutation_cache) {
 				mut mutation_cache := tc.visible_mutation_cache
-				mutation_cache.decls.reserve(u32(mutation_cache.decls.len) + decl_estimate * 3)
+				mutation_cache.decls.reserve(u32(mutation_cache.decls.len) + decl_estimate * 3 / 2)
+				mutation_cache.global_decls.reserve(u32(mutation_cache.global_decls.len) +
+					decl_estimate * 3 / 2)
 			}
 			if os.getenv('V3_NO_EXTENDED_COLLECT_RESERVES') == '' {
 				tc.fn_type_files.reserve(u32(tc.fn_type_files.len) + decl_estimate * 3)
@@ -8927,6 +8984,19 @@ fn (tc &TypeChecker) fn_may_store_globally(name string, mut visiting map[string]
 	}
 	decl_module := tc.fn_type_modules[name] or { '' }
 	decl := tc.visible_mutation_fn_decl(name, decl_module) or { return false }
+	if !isnil(tc.post_check_dependencies) {
+		// A transform fork: other workers may be rewriting callee bodies in place,
+		// so follow only the call graph recorded while checking.
+		view := tc.post_check_dependencies
+		for dependency in view.by_fn[decl.idx] or { []SymbolId{} } {
+			index := int(dependency) - 1
+			if index >= 0 && index < view.names.len
+				&& tc.fn_may_store_globally(view.names[index], mut visiting) {
+				return true
+			}
+		}
+		return false
+	}
 	for dependency in tc.direct_dependency_ids(decl.idx) {
 		dependency_name := tc.frozen_symbol_name(dependency)
 		if dependency_name.len > 0 && tc.fn_may_store_globally(dependency_name, mut visiting) {
@@ -9159,6 +9229,13 @@ pub fn (mut tc TypeChecker) apply_forked_fn_value(idx int, name string) {
 		return
 	}
 	tc.set_resolved_fn_value(idx, tc.canonical_symbol(name))
+}
+
+// DependencyGraphView is the checker's post-check call graph with the symbol
+// names its ids refer to. Transform forks share it read-only.
+struct DependencyGraphView {
+	by_fn map[int][]SymbolId
+	names []string
 }
 
 // direct_dependency_ids returns the checker-resolved function dependency

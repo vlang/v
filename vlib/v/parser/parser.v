@@ -185,16 +185,25 @@ mut:
 // reserve_selfhost_ast prepares the shared AST for a compiler-sized input
 // without retaining successively doubled backing arrays during transform.
 pub fn (mut p Parser) reserve_selfhost_ast() {
-	// Reserve transform headroom without ensure_cap rounding the node slab up
-	// to four million entries. Parallel transform partitions this capacity, so
-	// extra room also spreads worker writes across more physical pages.
-	selfhost_node_capacity := 3_145_728
+	// Reserve transform headroom without ensure_cap rounding the slabs up to the
+	// next power of two. Parallel transform partitions this capacity, so extra
+	// room also spreads worker writes across more physical pages. Keep both above
+	// reserve_parallel_transform_ast's targets (9/4 of the nodes, 8/3 of the
+	// children) with room for the compiler to grow: once the self-host AST
+	// outgrows them, transform copies the whole ~110 MB node slab serially and
+	// the old one stays resident. Untouched capacity costs no physical memory.
+	selfhost_node_capacity := 3_670_016
+	selfhost_child_capacity := 4_587_520
 	if p.a.nodes.cap < selfhost_node_capacity {
 		old_nodes := p.a.nodes
 		p.a.nodes = []flat.Node{cap: selfhost_node_capacity}
 		p.a.nodes << old_nodes
 	}
-	p.a.children.ensure_cap(4_194_304)
+	if p.a.children.cap < selfhost_child_capacity {
+		old_children := p.a.children
+		p.a.children = []flat.NodeId{cap: selfhost_child_capacity}
+		p.a.children << old_children
+	}
 }
 
 // enable_import_diagnostics enables parser diagnostics that require a complete

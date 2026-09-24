@@ -239,8 +239,27 @@ fn (mut g FlatGen) collect_fn_gen_items() []FlatFnGenItem {
 			ignore_overflow:           item.ignore_overflow
 		}
 	}
-	items.sort(a.c_name < b.c_name)
+	// Sort compact (name, index) keys instead of moving whole items through every
+	// merge pass, then permute the items once, in place. The sort is stable, so
+	// equal names keep their selection order exactly as when sorting the items.
+	mut keys := []FlatFnGenItemSortKey{cap: items.len}
+	for i, item in items {
+		keys << FlatFnGenItemSortKey{
+			c_name: item.c_name
+			idx:    i
+		}
+	}
+	keys.sort(a.c_name < b.c_name)
+	unsorted := items.clone()
+	for i, key in keys {
+		items[i] = unsorted[key.idx]
+	}
 	return items
+}
+
+struct FlatFnGenItemSortKey {
+	c_name string
+	idx    int
 }
 
 fn (mut g FlatGen) collect_fn_gen_candidates_range(nodes []i32, start int, end int, first_file string, first_module string, direct_array_access_fns DirectArrayAccessFns, ignore_overflow_fns DirectArrayAccessFns, program_modules map[string]bool) []FlatFnGenCandidate {
