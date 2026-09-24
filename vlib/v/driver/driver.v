@@ -17085,8 +17085,11 @@ fn (mut s NoClosuresLambdaScan) walk(id flat.NodeId) {
 		.decl_assign {
 			s.walk_decl_assign(node)
 		}
-		.block, .for_stmt, .match_branch, .select_branch {
+		.block, .for_stmt, .match_branch {
 			s.walk_scoped(node)
+		}
+		.select_branch {
+			s.walk_select_branch(node)
 		}
 		.for_in_stmt {
 			s.walk_for_in(node)
@@ -17203,6 +17206,20 @@ fn (mut s NoClosuresLambdaScan) walk_for_in(node flat.Node) {
 	s.declare_ident(s.a.child(&node, 0))
 	s.declare_ident(s.a.child(&node, 1))
 	s.walk_children(node, header)
+	s.close_scope(mark)
+}
+
+fn (mut s NoClosuresLambdaScan) walk_select_branch(node flat.Node) {
+	if node.value != 'recv' || node.children_count < 2 {
+		s.walk_scoped(node)
+		return
+	}
+	// `value := <-ch { ... }` stores the declared name and the receive as the
+	// first two children, not as a `decl_assign`; the name is visible in the body.
+	mark := s.bindings.len
+	s.walk(s.a.child(&node, 1))
+	s.declare_ident(s.a.child(&node, 0))
+	s.walk_children(node, 2)
 	s.close_scope(mark)
 }
 

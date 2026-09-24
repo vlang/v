@@ -44,4 +44,12 @@ fn main() {
 	println(a)
 	a.sort_with_compare(|p, q| *q - *p)
 	println(a)
+	ch := chan int{cap: 1}
+	ch <- 6
+	select {
+		got := <-ch {
+			// the received value is passed in, not captured
+			println(apply(|x| x + factor, got))
+		}
+	}
 }
