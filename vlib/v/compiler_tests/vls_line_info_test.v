@@ -281,6 +281,24 @@ fn test_inlay_hints_of_the_whole_file() {
 	assert warning.len == 1 && warning[0].tooltip == 'Field "x" is out of declaration order'
 }
 
+// ask_many asks several questions at once, `line:<code><column>` each: the
+// answers come one per line, after the index of their question.
+fn ask_many(dir string, questions []string) []string {
+	spec := questions.map('main.v:${it}').join('\t')
+	res := os.execute('cd ${os.quoted_path(dir)} && ${os.quoted_path(line_info_v3_bin)} -w -check -nocolor -vls-mode -line-info "${spec}" main.v')
+	assert res.exit_code == 0, res.output
+	return res.output.trim_right('\n').split('\n')
+}
+
+fn test_several_questions_get_an_answer_each() {
+	// A hover, a definition, and a column past the end of its line.
+	assert ask_many(work_dir, ['41:hv^9', '42:gd^7', '43:hv^40']) == [
+		'0\t{"contents":{"kind":"markdown","value":"```v\\nfn sum() int\\n```"}}',
+		'1\tmain.v:41:1',
+		'2\t',
+	]
+}
+
 fn test_a_column_past_the_end_of_its_line_has_no_answer() {
 	// Line 43 is `\tprintln(y + x)`: 15 bytes.
 	assert ask_at(work_dir, '43:hv^14') != ''
@@ -329,6 +347,10 @@ fn test_the_diagnostics_server_answers_queries_between_checks() {
 	// The files of `.` as V1 wrote them.
 	p.stdin_write('query t3 main.v:42:gd^7\n')
 	assert read_until(mut p, 'v-diagnostics-server: end 0 t3').contains('./main.v:41:1')
+	// Several questions in one query: an answer each, after its index.
+	p.stdin_write('query t5 main.v:41:hv^9\tmain.v:42:gd^7\n')
+	several := read_until(mut p, 'v-diagnostics-server: end 0 t5')
+	assert several.contains('0\t{"contents":{"kind":"markdown","value":"```v\\nfn sum() int\\n```"}}\n1\t./main.v:41:1\n'), several
 	p.stdin_write('query t4\n')
 	assert read_until(mut p, 'v-diagnostics-server: end 2').contains('unknown request `query t4`')
 	p.stdin_write('quit\n')

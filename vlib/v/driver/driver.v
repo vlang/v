@@ -9731,17 +9731,13 @@ pub fn run(args []string) {
 			i++
 		}
 	}
-	mut vls_query := if vls_line_info != '' {
-		query := types.parse_vls_line_info(vls_line_info) or {
+	mut vls_queries := if vls_line_info != '' {
+		types.parse_vls_line_infos(vls_line_info, input_file) or {
 			eprintln(err.msg())
 			exit(1)
 		}
-		types.VlsQuery{
-			...query
-			target: input_file
-		}
 	} else {
-		types.VlsQuery{}
+		[]types.VlsQuery{}
 	}
 	if vls_line_info != '' {
 		// A query answers from the project's own files: the library bodies,
@@ -10788,13 +10784,9 @@ pub fn run(args []string) {
 	question := diagserver.serve()
 	if question != '' {
 		vls_line_info = question
-		query := types.parse_vls_line_info(question) or {
+		vls_queries = types.parse_vls_line_infos(question, input_file) or {
 			eprintln(err.msg())
 			exit(1)
-		}
-		vls_query = types.VlsQuery{
-			...query
-			target: input_file
 		}
 	}
 	mut a := p.a
@@ -11533,9 +11525,17 @@ pub fn run(args []string) {
 		if vls_line_info != '' {
 			// The answer, if any, is all a query prints: the program's
 			// diagnostics are not its business, and code being written has some.
-			answer := pre_tc.vls_answer(vls_query)
-			if answer != '' {
-				println(answer)
+			// Several questions get an answer each, on a line of its own after
+			// its index, and empty when there is none.
+			if vls_queries.len == 1 {
+				answer := pre_tc.vls_answer(vls_queries[0])
+				if answer != '' {
+					println(answer)
+				}
+			} else {
+				for i, query in vls_queries {
+					println('${i}\t${pre_tc.vls_answer(query)}')
+				}
 			}
 			exit(0)
 		}
