@@ -14,7 +14,7 @@ fn test_file_metadata_helper_uses_generated_u64_abi() {
 	signature := 'static int v3_modulecache_file_metadata(const char *path, u64 *device, u64 *inode,
 	u64 *size, u64 *mtime_seconds, u64 *mtime_nanoseconds,
 	u64 *ctime_seconds, u64 *ctime_nanoseconds)'
-	assert header.count(signature) == 2
+	assert header.count(signature) == 3
 	assert !header.contains('uint64_t *')
 
 	cc := os.find_abs_path_of_executable('cc') or { return }
