@@ -11066,6 +11066,14 @@ fn (tc &TypeChecker) named_type_compatible_with_ierror_inner(concrete_name strin
 
 fn (tc &TypeChecker) named_type_implements_ierror_methods(concrete_name string) bool {
 	iface_name := if 'builtin.IError' in tc.interface_names { 'builtin.IError' } else { 'IError' }
+	// Without the builtin module (`-no-builtin`) no `IError` is declared at all.
+	// An undeclared interface lists no requirements, so every type would satisfy
+	// it, and plain values like enums or ints would pass for error payloads.
+	meta := tc.interface_metadata_name(iface_name)
+	if meta !in tc.interface_names && meta !in tc.interface_abstract_methods
+		&& meta !in tc.interface_embeds && meta !in tc.interface_fields {
+		return false
+	}
 	return tc.named_type_implements_interface(concrete_name, iface_name)
 }
 
