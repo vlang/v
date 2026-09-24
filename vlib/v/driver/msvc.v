@@ -212,8 +212,9 @@ fn msvc_translate_cl_args(args []string, target_os string, generated bool) []str
 		// `-municode`, `-M...`) has no MSVC equivalent that V relies on.
 	}
 	if generated && !has_cpp {
-		// C11 mode also enables MSVC's conforming preprocessor.
-		compile << '/std:c11'
+		// C11 mode also enables MSVC's conforming preprocessor. It defines `__STDC__`,
+		// which hides the POSIX names (`popen`, `fileno`, ...) that V calls.
+		compile << ['/std:c11', '/D_CRT_DECLARE_NONSTDC_NAMES=1']
 	}
 	if is_debug {
 		compile << '/Zi'

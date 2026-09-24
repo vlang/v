@@ -5,9 +5,9 @@ fn test_msvc_cl_args_translate_an_executable_build() {
 		'C:/v/thirdparty/include', '-DGC_THREADS=1', '-Wl,/STACK:33554432', '-o', 'out.exe', 'src.c',
 		'C:/v/thirdparty/obj.o', '-l', 'dbghelp', '-lws2_32', '-lm', '-LC:/libs'], 'windows')
 	assert args == ['/nologo', '/volatile:ms', '/bigobj', '/MD', '/we4013', '/utf-8', '/w', '/O2',
-		'/IC:/v/thirdparty/include', '/DGC_THREADS=1', '/std:c11', '/Feout.exe', 'src.c',
-		'C:/v/thirdparty/obj.o', 'kernel32.lib', 'user32.lib', 'advapi32.lib', 'dbghelp.lib',
-		'ws2_32.lib', '/link', '/STACK:33554432', '/LIBPATH:C:/libs']
+		'/IC:/v/thirdparty/include', '/DGC_THREADS=1', '/std:c11', '/D_CRT_DECLARE_NONSTDC_NAMES=1',
+		'/Feout.exe', 'src.c', 'C:/v/thirdparty/obj.o', 'kernel32.lib', 'user32.lib', 'advapi32.lib',
+		'dbghelp.lib', 'ws2_32.lib', '/link', '/STACK:33554432', '/LIBPATH:C:/libs']
 }
 
 fn test_msvc_cl_object_args_translate_a_third_party_object_build() {
