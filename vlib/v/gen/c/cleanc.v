@@ -18286,6 +18286,10 @@ fn (mut g FlatGen) system_libc_headers() {
 	g.writeln('#include <io.h>')
 	g.writeln('#include <process.h>')
 	g.writeln('#include <windows.h>')
+	if g.ccompiler == 'msvc' {
+		// builtin's MSVC backtraces call the dbghelp API directly.
+		g.writeln('#include <dbghelp.h>')
+	}
 	g.writeln('#else')
 	for header in ['dirent.h', 'dlfcn.h', 'fcntl.h', 'netdb.h', 'netinet/in.h', 'pthread.h',
 		'arpa/inet.h', 'netinet/tcp.h', 'semaphore.h', 'sys/ioctl.h', 'sys/mman.h', 'sys/resource.h',
@@ -20797,11 +20801,19 @@ fn (mut g FlatGen) atomic_builtin_compat_decls() {
 	// defines these helpers as function-like macros of its own.
 	windows_tcc := g.target.os == 'windows'
 		&& (g.ccompiler == 'tinyc' || g.ccompiler.to_lower().contains('tcc'))
-	windows_msvc := g.target.os == 'windows' && g.ccompiler == 'msvc'
-	if (windows_tcc || windows_msvc) && !g.output_cross_c {
-		header := os.join_path(g.compiler_vroot, 'thirdparty', 'stdatomic', 'win', 'atomic.h').replace('\\', '/')
+	header := os.join_path(g.compiler_vroot, 'thirdparty', 'stdatomic', 'win', 'atomic.h').replace('\\', '/')
+	if windows_tcc && !g.output_cross_c {
 		g.writeln(g.c_local_header_directive(header))
 		return
+	}
+	// MSVC takes them from the same header, but C generated for MSVC is also built
+	// with MinGW GCC (`-os windows -cc msvc -o v_win.c`), where the header conflicts
+	// with <stdatomic.h>. Let the preprocessor choose.
+	windows_msvc := g.target.os == 'windows' && g.ccompiler == 'msvc' && !g.output_cross_c
+	if windows_msvc {
+		g.writeln('#if defined(_WIN32) && (defined(__TINYC__) || (defined(_MSC_VER) && !defined(__clang__)))')
+		g.writeln(g.c_local_header_directive(header))
+		g.writeln('#else')
 	}
 	// A portable snapshot is compiled by a C compiler that is not known yet, so the
 	// choice above cannot be made from `g.ccompiler`; the preprocessor has to make
@@ -20893,7 +20905,7 @@ fn (mut g FlatGen) atomic_builtin_compat_decls() {
 	g.writeln('#else')
 	g.writeln('static inline void cpu_relax(void) { __asm__ __volatile__("" ::: "memory"); }')
 	g.writeln('#endif')
-	if guard_windows_tcc {
+	if guard_windows_tcc || windows_msvc {
 		g.writeln('#endif')
 	}
 }
