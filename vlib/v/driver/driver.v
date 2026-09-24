@@ -3676,8 +3676,12 @@ fn ast_has_native_source_include(a &flat.FlatAst) bool {
 }
 
 // should_overlap_v3_native_inputs reports whether native-input resolution can
-// safely run alongside the checker's declaration pass.
+// safely run alongside the checker's declaration pass. A `v3_no_parallel` build
+// resolves them on the main thread, before or after checking.
 fn should_overlap_v3_native_inputs(backend string, external_inputs_ready bool, module_cache_enabled bool, native_inputs_needed bool, building_v bool, scope_prealloc_stages bool) bool {
+	$if v3_no_parallel ? {
+		return false
+	}
 	if backend != 'c' || external_inputs_ready || module_cache_enabled {
 		return false
 	}
