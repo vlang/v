@@ -1064,6 +1064,25 @@ fn (t &Transformer) generic_call_type_arg_name(id flat.NodeId) string {
 			if node.typ.starts_with('map[') {
 				return node.typ
 			}
+			// A generic parameter is lexical: inside `fn outer[T]`, `T` in
+			// `inner[T](value)` names the parameter even when the writing file also
+			// imports a type spelled `T` (`import pkg { T }`), matching the checker,
+			// where the parameter wins over the file's selective imports
+			// (`qualify_type_text_impl` checks the generic parameters first).
+			// Resolving it through them would specialize the callee for `pkg.T` and
+			// lose the substitution of the caller's type argument.
+			if node.value in t.active_generic_params
+				|| t.node_has_enclosing_generic_param(id, node.value) {
+				return node.value
+			}
+			// A bare spelling must be resolved in the file that wrote the call:
+			// `import model { Context }` makes `Context` mean `model.Context` there
+			// even when another imported module declares a same-named type. A global
+			// short-name index would pick whichever type was indexed first, so the
+			// rewritten call and the emitted specialization would disagree.
+			if resolved := t.selective_import_type_name_for_file(t.node_file_or(int(id), t.cur_file), node.value) {
+				return resolved
+			}
 			return node.value
 		}
 		.selector {
@@ -1132,6 +1151,50 @@ fn (t &Transformer) generic_call_type_arg_name(id flat.NodeId) string {
 			return ''
 		}
 	}
+}
+
+// node_enclosing_generic_params returns the generic parameter names of the
+// declaration that lexically encloses `id`. Synthesized nodes have no source
+// parent entry; a live specialization records its parameters in
+// `active_generic_params` instead.
+fn (t &Transformer) node_enclosing_generic_params(id flat.NodeId) []string {
+	if int(id) < 0 || int(id) >= t.source_parent_ids.len {
+		return []string{}
+	}
+	mut cursor := int(id)
+	for _ in 0 .. t.a.nodes.len {
+		parent_id := t.source_parent_id(cursor)
+		if parent_id < 0 || parent_id == cursor || parent_id >= t.a.nodes.len {
+			return []string{}
+		}
+		parent := t.a.nodes[parent_id]
+		if parent.kind in [.fn_decl, .struct_decl, .type_decl, .interface_decl, .c_fn_decl] {
+			return parent.generic_params()
+		}
+		cursor = parent_id
+	}
+	return []string{}
+}
+
+// node_has_enclosing_generic_param reports whether `name` is a generic parameter
+// of a declaration that lexically encloses `id`. Such a parameter keeps its
+// meaning even when the writing file selectively imports a type with the same
+// spelling, so resolution has to see it before it consults those imports.
+fn (t &Transformer) node_has_enclosing_generic_param(id flat.NodeId, name string) bool {
+	if name.len == 0 {
+		return false
+	}
+	return name in t.node_enclosing_generic_params(id)
+}
+
+// type_arg_text_has_enclosing_generic_param reports whether `text` names a
+// generic parameter of the declaration that lexically encloses `id`. An
+// argument that does is not concrete: the enclosing specialization substitutes
+// it while it is cloned, so it must not be resolved through the writing file's
+// imports here.
+fn (t &Transformer) type_arg_text_has_enclosing_generic_param(id flat.NodeId, text string) bool {
+	params := t.node_enclosing_generic_params(id)
+	return params.len > 0 && generic_text_contains_param(text, params)
 }
 
 fn (t &Transformer) generic_call_type_args_name(index_node flat.Node) string {
@@ -5320,6 +5383,10 @@ fn (mut t Transformer) enum_autostr_call(expr flat.NodeId, typ string) flat.Node
 	return t.make_call_typed(helper, [expr], 'string')
 }
 
+// enum_autostr_type_name names the enum whose `<Enum>__autostr` helper formats a value of
+// the already resolved type `typ`. It deliberately ignores the current file's imports: a
+// value returned by `real_a.make()` has type `a.Kind` even in a file that imports another
+// module as `a`. Declaration spellings are resolved by `source_enum_type_name` first.
 fn (t &Transformer) enum_autostr_type_name(typ string) string {
 	mut qualified := typ
 	if qualified.starts_with('main.') {
@@ -5370,6 +5437,41 @@ fn (t &Transformer) enum_autostr_type_name(typ string) string {
 		}
 	}
 	return qualified
+}
+
+// source_enum_type_name resolves an enum spelling written in `file` through that file's
+// imports: a bare `Kind` through its selective imports, `token.Kind` through its import
+// aliases (`import toml.token` makes it `toml.token.Kind`). Only raw declaration
+// spellings may be resolved this way; see `enum_autostr_type_name`.
+fn (t &Transformer) source_enum_type_name(file string, spelling string) ?string {
+	if isnil(t.tc) || file.len == 0 || spelling.len == 0 {
+		return none
+	}
+	resolved := if spelling.contains('.') {
+		module_name := t.tc.file_imports[file_import_key(file, spelling.all_before('.'))] or {
+			return none
+		}
+		'${module_name}.${spelling.all_after('.')}'
+	} else {
+		t.selective_import_type_name_for_file(file, spelling) or { return none }
+	}
+	if resolved in t.enum_types || resolved in t.tc.enum_names {
+		return resolved
+	}
+	return none
+}
+
+// source_enum_elem_type resolves the enum at the core of an array element spelling
+// (`token.Kind`, `[]token.Kind`) that `file` wrote, keeping any other spelling as is.
+fn (t &Transformer) source_enum_elem_type(file string, spelling string) string {
+	mut prefix_len := 0
+	for spelling[prefix_len..].starts_with('[]') {
+		prefix_len += 2
+	}
+	if resolved := t.source_enum_type_name(file, spelling[prefix_len..]) {
+		return spelling[..prefix_len] + resolved
+	}
+	return spelling
 }
 
 // wrap_string_conversion transforms wrap string conversion data for transform.
@@ -8926,6 +9028,15 @@ fn (mut t Transformer) lower_array_str_impl(arr_expr flat.NodeId, base_type stri
 		}
 		if declared_type.starts_with('[]') && declared_type.len > 2 {
 			elem_type = declared_type[2..]
+			// A declaration spelling (`tokens []token.Kind`) names its enum through the
+			// imports of the file that wrote it. `enum_autostr_type_name` does not read
+			// them, so resolve the spelling here before the element is formatted.
+			if spelling := t.declared_var_spelling(src.value) {
+				if spelling == declared_type {
+					elem_type = t.source_enum_elem_type(t.node_file_or(int(arr_expr),
+						t.cur_file), elem_type)
+				}
+			}
 		}
 	}
 	// A selector's declaration spelling is more authoritative than the inferred expression

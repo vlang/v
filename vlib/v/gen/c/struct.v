@@ -4360,6 +4360,29 @@ fn (g &FlatGen) flattened_generic_struct_c_type_short_name(ct string) string {
 
 // find_struct_decl resolves find struct decl information for c.
 fn (g &FlatGen) find_struct_decl(type_name string) ?StructDeclInfo {
+	// A bare name belongs to the file that wrote it: `import model { Context }`
+	// must select `model.Context` here even when another imported module declares
+	// a same-named struct, or that homonym's declarations (fields, defaults)
+	// leak into this file's literals. Checked before the per-module cache below,
+	// because two files of one module can import different homonyms.
+	if !type_name.contains('.') && g.tc.cur_file.len > 0 {
+		selective_key := '${g.tc.cur_file}\n${type_name}'
+		for candidate in g.tc.file_selective_imports[selective_key] or { []string{} } {
+			if info := g.struct_decl_infos[candidate] {
+				return info
+			}
+			// The selected name can be a type alias to a struct
+			// (`import iam { Alias }`, `type Alias = Real`).
+			if alias_target := g.struct_type_alias_target(candidate) {
+				if info := g.find_struct_decl_preferred(alias_target) {
+					return info
+				}
+				if info := g.find_struct_decl_fallback(alias_target) {
+					return info
+				}
+			}
+		}
+	}
 	if info := g.find_struct_decl_preferred(type_name) {
 		return info
 	}

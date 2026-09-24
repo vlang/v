@@ -251,6 +251,31 @@ fn main() {}
 	assert !c_source.contains('Unused__autostr'), c_source
 }
 
+// cgen names `<Enum>__autostr` helpers from checked `types.Enum` names, which already
+// identify the declaring module. Reading them through the current file's imports would
+// retarget them: with `import a as real_a` and `import b as a`, a value returned by
+// `real_a.make()` has type `a.Kind`, and it must not become `b.Kind`.
+fn test_enum_autostr_c_name_ignores_current_file_imports() {
+	mut ast := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&ast)
+	tc.enum_names['Kind'] = true
+	tc.enum_names['a.Kind'] = true
+	tc.enum_names['b.Kind'] = true
+	tc.cur_file = '/tmp/main.v'
+	tc.cur_module = 'main'
+	tc.file_imports['/tmp/main.v\nreal_a'] = 'a'
+	tc.file_imports['/tmp/main.v\na'] = 'b'
+	tc.file_selective_imports['/tmp/main.v\nKind'] = ['b.Kind']
+	mut g := FlatGen.new()
+	g.a = &ast
+	g.tc = &tc
+
+	assert g.enum_autostr_c_name('a.Kind') == 'a__Kind'
+	assert g.enum_autostr_c_name('b.Kind') == 'b__Kind'
+	assert g.enum_autostr_c_name('Kind') == 'Kind'
+	assert g.enum_autostr_c_name('main.Kind') == 'Kind'
+}
+
 fn test_json_helper_scan_requires_legacy_json_module() {
 	mut ast := flat.FlatAst.new()
 	ast.nodes = [flat.Node{ kind: .call, children_count: 2 },
