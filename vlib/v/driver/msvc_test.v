@@ -1,5 +1,7 @@
 module driver
 
+import v.pref
+
 fn test_msvc_cl_args_translate_an_executable_build() {
 	args := msvc_cl_args(['-std=gnu11', '-w', '-fwrapv', '-Wno-int-conversion', '-O3', '-I',
 		'C:/v/thirdparty/include', '-DGC_THREADS=1', '-Wl,/STACK:33554432', '-o', 'out.exe', 'src.c',
@@ -52,4 +54,28 @@ fn test_c_compiler_is_msvc() {
 	assert c_compiler_is_msvc('msvc')
 	assert !c_compiler_is_msvc('clang')
 	assert !c_compiler_is_msvc('cc')
+}
+
+fn test_msvc_missing_cl_message_targets_windows_off_windows() {
+	macos_arm := pref.Target{
+		os:   'macos'
+		arch: 'arm64'
+	}
+	assert msvc_missing_cl_message('msvc', 'macos', macos_arm).contains('use `-os windows -arch amd64 -cc msvc -o file.c`')
+	linux_x64 := pref.Target{
+		os:   'linux'
+		arch: 'amd64'
+	}
+	assert msvc_missing_cl_message('msvc', 'linux', linux_x64).contains('use `-os windows -cc msvc -o file.c`')
+	// An explicit Windows target, including its architecture, is kept.
+	windows_arm := pref.Target{
+		os:   'windows'
+		arch: 'arm64'
+	}
+	assert msvc_missing_cl_message('msvc', 'linux', windows_arm).contains('use `-cc msvc -o file.c`')
+	windows_x64 := pref.Target{
+		os:   'windows'
+		arch: 'amd64'
+	}
+	assert msvc_missing_cl_message('cl', 'windows', windows_x64).contains('Developer Command Prompt')
 }

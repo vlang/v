@@ -12654,7 +12654,7 @@ pub fn run(args []string) {
 			b.step('MSVC C compatibility')
 		}
 		if effective_c_compiler == 'msvc' && !c_only {
-			msvc_require_cl(c_compiler, host_os)
+			msvc_require_cl(c_compiler, host_os, prefs.target)
 		}
 		pic_flag := shared_pic_flag(is_shared || use_cached_dev_dylib, prefs.normalized_target_os())
 		mut linux_cross_sysroot := ''

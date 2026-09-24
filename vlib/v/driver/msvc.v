@@ -302,13 +302,29 @@ fn msvc_lower_c_file(path string) ! {
 }
 
 // msvc_require_cl exits with an explanation when MSVC's compiler cannot be run.
-fn msvc_require_cl(c_compiler string, host_os string) {
+fn msvc_require_cl(c_compiler string, host_os string, target pref.Target) {
 	os.find_abs_path_of_executable(c_compiler) or {
-		if host_os == 'windows' {
-			eprintln('`-cc msvc` could not find `${c_compiler}`. Run V from a Visual Studio Developer Command Prompt (or after `vcvars64.bat`), so that `cl` and its INCLUDE/LIB environment are available.')
-		} else {
-			eprintln('`-cc msvc` can only compile on Windows; use `-o file.c` to generate C for MSVC on ${host_os}.')
-		}
+		eprintln(msvc_missing_cl_message(c_compiler, host_os, target))
 		exit(1)
 	}
+}
+
+// msvc_missing_cl_message explains why `cl` cannot run. Off Windows, it suggests generating
+// the C file instead, for a Windows target: C generated for the host target contains the
+// host's platform code, which MSVC cannot compile.
+fn msvc_missing_cl_message(c_compiler string, host_os string, target pref.Target) string {
+	if host_os == 'windows' {
+		return '`-cc msvc` could not find `${c_compiler}`. Run V from a Visual Studio Developer Command Prompt (or after `vcvars64.bat`), so that `cl` and its INCLUDE/LIB environment are available.'
+	}
+	mut flags := []string{}
+	if target.os != 'windows' {
+		flags << '-os windows'
+		// The target architecture follows the host otherwise. V's MSVC code paths (for
+		// example the `math.bits` intrinsics) target x64.
+		if target.arch != 'amd64' {
+			flags << '-arch amd64'
+		}
+	}
+	flags << ['-cc msvc', '-o file.c']
+	return '`-cc msvc` can only compile on Windows. To generate C for MSVC on ${host_os}, use `${flags.join(' ')}`, and compile `file.c` with `cl` on Windows.'
 }
