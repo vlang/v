@@ -11325,7 +11325,10 @@ pub fn run(args []string) {
 		set_diagnostic_files(mut pre_tc, user_files)
 		// The C generator has a dedicated literal-output path. The SSA/native backend
 		// still builds ordinary builtin bodies, so it needs their full dependency set.
+		// So does MSVC: its backtraces demangle symbols with string slices, which only
+		// become `string.substr` calls after markused.
 		trivial_literal_output = !is_trace_calls && backend != 'arm64' && test_files.len == 0 && !is_checker_fixture
+			&& effective_c_compiler != 'msvc'
 			&& markused.is_trivial_literal_output_program(a, pre_tc.diagnostic_files)
 		if verbose {
 			eprintln('  [ttime]   ck trivial gate  ${f64(ckpre_sw.elapsed().microseconds()) / 1000.0:7.2f} ms')
@@ -11645,6 +11648,10 @@ pub fn run(args []string) {
 				used_fns = markused.mark_used_without_generic_detection(a, markused_tc)
 			}
 			uses_generics = false
+		} else if effective_c_compiler == 'msvc' {
+			// Keep the runtime seeds that a literal-output program would drop; see
+			// `trivial_literal_output` above.
+			used_fns, uses_generics = markused.mark_used_with_generic_usage_full_runtime(a, markused_tc)
 		} else {
 			used_fns, uses_generics = markused.mark_used_with_generic_usage(a, markused_tc)
 		}

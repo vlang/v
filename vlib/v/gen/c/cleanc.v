@@ -18287,7 +18287,9 @@ fn (mut g FlatGen) system_libc_headers() {
 	g.writeln('#include <process.h>')
 	g.writeln('#include <windows.h>')
 	if g.ccompiler == 'msvc' {
-		// builtin's MSVC backtraces call the dbghelp API directly.
+		// math.bits calls MSVC intrinsics (`_umul128`, `_udiv128`, ...), and builtin's
+		// MSVC backtraces call the dbghelp API directly.
+		g.writeln('#include <intrin.h>')
 		g.writeln('#include <dbghelp.h>')
 	}
 	g.writeln('#else')
