@@ -1432,13 +1432,31 @@ fn (mut p Parser) remap_template_source(first_node int, first_diagnostic int, ge
 	mut control_map := []bool{len: generated_lines.len}
 	mut control_column_delta := []int{len: generated_lines.len}
 	mut interpolation_skip_offset := []int{len: generated_lines.len, init: -1}
+	// Each template line is rendered once. The search below compares a template
+	// line with every generated line until one matches, and rendering it again
+	// for each comparison made remapping quadratic in the template's length.
+	context_name := p.veb_context_name()
+	mut rendered_plain := []string{cap: source_lines.len}
+	mut rendered_escaped := []string{cap: source_lines.len}
+	mut controls := []TemplateControlSourceMap{cap: source_lines.len}
+	mut has_control := []bool{cap: source_lines.len}
+	for source_line in source_lines {
+		expanded_template_line := expand_veb_tr_shorthand(source_line.text, context_name)
+		rendered_plain << tmpl_line_content(expanded_template_line, false)
+		rendered_escaped << tmpl_line_content(expanded_template_line, true)
+		if control := template_control_source_map(source_line.text) {
+			controls << control
+			has_control << true
+		} else {
+			controls << TemplateControlSourceMap{}
+			has_control << false
+		}
+	}
 	mut template_search_start := 0
 	for generated_index, generated_line in generated_lines {
 		for template_index in template_search_start .. source_lines.len {
-			template_line := source_lines[template_index].text
-			expanded_template_line := expand_veb_tr_shorthand(template_line, p.veb_context_name())
-			plain := tmpl_line_content(expanded_template_line, false)
-			escaped := tmpl_line_content(expanded_template_line, true)
+			plain := rendered_plain[template_index]
+			escaped := rendered_escaped[template_index]
 			matches_content := (plain.len > 0 && generated_line.contains(plain))
 				|| (escaped.len > 0 && generated_line.contains(escaped))
 			mut matches_control := false
@@ -1446,7 +1464,8 @@ fn (mut p Parser) remap_template_source(first_node int, first_diagnostic int, ge
 			mut column_delta := 0
 			mut directive_offset := -1
 			mut control_has_inline_body := false
-			if control := template_control_source_map(template_line) {
+			if has_control[template_index] {
+				control := controls[template_index]
 				matches_control = generated_line.trim_space() == control.generated
 				matches_inline_body = control.has_inline_body && ((control.inline_plain.len > 0
 					&& generated_line.contains(control.inline_plain))

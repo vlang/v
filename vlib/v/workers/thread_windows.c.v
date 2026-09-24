@@ -35,3 +35,7 @@ fn worker_thread_join(worker WorkerThread) int {
 fn worker_thread_is_current(worker WorkerThread) bool {
 	return C.v3_win_thread_is_current(worker.handle) != 0
 }
+
+// name_worker_thread leaves the worker unnamed: diagnostics servers, which look
+// for the name before they fork, do not run on Windows.
+fn name_worker_thread() {}

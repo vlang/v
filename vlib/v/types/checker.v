@@ -6057,6 +6057,11 @@ fn (mut tc TypeChecker) check_selective_type_imports(node flat.Node, module_path
 }
 
 fn (mut tc TypeChecker) check_unused_import_diagnostics() {
+	// import_is_used looks at the nodes of the import's own file. Listing each
+	// file's nodes once, on the first import that needs it, saves a walk of the
+	// whole program for every import.
+	mut nodes_by_file := map[int][]int{}
+	mut nodes_listed := false
 	for idx in tc.top_level_idx {
 		node := tc.a.nodes[idx]
 		if node.kind == .file {
@@ -6071,8 +6076,16 @@ fn (mut tc TypeChecker) check_unused_import_diagnostics() {
 			continue
 		}
 		if node.kind != .import_decl || !node.pos.is_valid() || node.pos.end <= node.pos.offset
-			|| node.typ == '_'
-			|| tc.import_is_used(flat.NodeId(idx), node) {
+			|| node.typ == '_' {
+			continue
+		}
+		if !nodes_listed {
+			for node_idx, file_node in tc.a.nodes {
+				nodes_by_file[file_node.pos.id] << node_idx
+			}
+			nodes_listed = true
+		}
+		if tc.import_is_used(flat.NodeId(idx), node, nodes_by_file[node.pos.id] or { []int{} }) {
 			continue
 		}
 		if tc.errors.any(it.file == tc.cur_file && it.kind == .unknown_ident
@@ -6216,7 +6229,9 @@ fn is_import_ident_byte(ch u8) bool {
 	return ch.is_alnum() || ch == `_`
 }
 
-fn (tc &TypeChecker) import_is_used(import_id flat.NodeId, import_node flat.Node) bool {
+// import_is_used reports whether anything in the import's file uses it;
+// `file_nodes` lists the indices of that file's nodes, in order.
+fn (tc &TypeChecker) import_is_used(import_id flat.NodeId, import_node flat.Node, file_nodes []int) bool {
 	module_path := tc.import_module_path_text(import_node)
 	mut selective_names := []string{cap: int(import_node.children_count)}
 	for i in 0 .. import_node.children_count {
@@ -6225,7 +6240,8 @@ fn (tc &TypeChecker) import_is_used(import_id flat.NodeId, import_node flat.Node
 			selective_names << child.value
 		}
 	}
-	for idx, node in tc.a.nodes {
+	for idx in file_nodes {
+		node := tc.a.nodes[idx]
 		if idx == int(import_id) || node.kind == .import_decl || node.pos.id != import_node.pos.id {
 			continue
 		}
@@ -9834,13 +9850,20 @@ fn (mut tc TypeChecker) check_selective_builtin_import_diagnostics() {
 }
 
 fn (mut tc TypeChecker) check_c_js_generic_declarations() {
+	// Each report is on the declaration itself: trusted library files have none.
+	selected_files_only := tc.selected_files_only()
 	for declaration_kind in [flat.NodeKind.struct_decl, flat.NodeKind.fn_decl] {
 		tc.cur_module = ''
 		tc.cur_file = ''
+		mut skip_file := false
 		for index in tc.top_level_idx {
 			node := tc.a.node(flat.NodeId(index))
 			if node.kind == .file {
 				tc.enter_file(node.value)
+				skip_file = selected_files_only && !tc.diagnostic_files[node.value]
+				continue
+			}
+			if skip_file {
 				continue
 			}
 			if node.kind == .module_decl {

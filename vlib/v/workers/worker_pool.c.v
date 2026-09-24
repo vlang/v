@@ -39,6 +39,11 @@ __global v3_open_pools [64]voidptr
 __global v3_open_pools_len int
 __global v3_open_pools_hook_registered bool
 
+// fork() copies a pool into the child but not the threads serving it. A child
+// counts one more fork generation, and a pool from an earlier one gets new
+// queues and workers the first time it runs a batch (see revive).
+__global v3_fork_generation int
+
 // limit_pool_size caps pools created after this call to at most `size` workers.
 pub fn limit_pool_size(size int) {
 	if size > 0 && (v3_pool_size_limit == 0 || size < v3_pool_size_limit) {
@@ -153,9 +158,11 @@ mut:
 	worker_run_ns          u64
 	caller_run_ns          u64
 	started_at_ns          u64
+	generation             int // the fork generation the threads belong to
 }
 
 fn pool_worker(arg voidptr) voidptr {
+	name_worker_thread()
 	mut pool := unsafe { &Pool(arg) }
 	for {
 		task := <-pool.jobs
@@ -233,6 +240,7 @@ pub fn new(size int) &Pool {
 		launch_attempt_count: u64(wanted)
 		started_at_ns:        time.sys_mono_now()
 		caller_steals:        os.getenv('V3_NO_POOL_STEAL') == ''
+		generation:           v3_fork_generation
 	}
 	fail := os.getenv('V3_TEST_PTHREAD_CREATE_FAIL')
 	stack_size := worker_stack_size()
@@ -302,6 +310,36 @@ fn (p &Pool) has_current_worker() bool {
 	return false
 }
 
+// note_fork tells the pools that this process is a child created by fork():
+// the threads they list belong to the parent and do not exist here.
+pub fn note_fork() {
+	v3_fork_generation++
+}
+
+// revive gives a pool from an earlier fork generation a new job queue and as
+// many workers as it had, so a child's parallel phase does not wait on threads
+// that stayed in the parent. Completions need nothing: every batch makes its
+// own channel.
+fn (mut p Pool) revive() {
+	if p.generation == v3_fork_generation {
+		return
+	}
+	p.generation = v3_fork_generation
+	wanted := p.threads.len
+	queue_cap := if wanted > 0 { wanted * 16 } else { 1 }
+	p.jobs = chan Task{cap: queue_cap}
+	p.threads = []WorkerThread{}
+	stack_size := worker_stack_size()
+	for _ in 0 .. wanted {
+		worker, result := worker_thread_create(stack_size, pool_worker, voidptr(p))
+		if result == 0 {
+			p.threads << worker
+		} else {
+			p.launch_failure_count++
+		}
+	}
+}
+
 // size reports the number of successfully launched persistent workers.
 pub fn (p &Pool) size() int {
 	return p.threads.len
@@ -342,6 +380,7 @@ pub fn (mut p Pool) run(tasks []Task) bool {
 	if tasks.len == 0 {
 		return false
 	}
+	p.revive()
 	mut batch := BatchStats{
 		tasks: u64(tasks.len)
 	}
@@ -472,6 +511,11 @@ pub fn (mut p Pool) close() {
 	}
 	p.is_closed = true
 	unregister_open_pool(p)
+	if p.generation != v3_fork_generation {
+		// Those threads stayed in the parent: there is nothing here to join.
+		p.threads.clear()
+		return
+	}
 	for _ in p.threads {
 		p.jobs <- Task{
 			stop: true

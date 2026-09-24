@@ -14,6 +14,7 @@ import v.flat
 import v.fixturetest
 import v.gen.c as cgen
 import v.gen.c.naming
+import v.diagserver
 import v.markused
 import v.modulecache
 import v.parser
@@ -10754,6 +10755,7 @@ pub fn run(args []string) {
 	if !had_v3_backend_define {
 		prefs.user_defines = prefs.user_defines.filter(it != 'v3_backend')
 	}
+	diagserver.serve()
 	mut a := p.a
 	if !current_no_parallel {
 		// Later parallel stages can run inside disposable arenas. Ensure the shared
@@ -11590,7 +11592,7 @@ pub fn run(args []string) {
 			exit(1)
 		}
 		if check_only {
-			if pre_tc.global_names.len > 0 {
+			if pre_tc.global_names.len > 0 && os.getenv('V_CHECK_SELECTED_FILES_ONLY') == '' {
 				check_used_fns, check_uses_generics := markused.mark_used_with_generic_usage(a, &pre_tc)
 				if check_uses_generics {
 					_, _ = transform.monomorphize_with_used_checked_config(mut a, &pre_tc, check_used_fns, false)
@@ -11601,6 +11603,12 @@ pub fn run(args []string) {
 				print_type_diagnostics(a, pre_tc.notices, pre_tc.errors, is_checker_fixture, fatal_errors,
 					check_only, message_limit, skip_notices)
 				exit(1)
+			}
+			// The warnings of a program without errors are diagnostics too. A build
+			// prints them further on, past the point where a check returns.
+			if pre_tc.notices.len > 0 {
+				print_type_diagnostics(a, pre_tc.notices, []types.TypeError{}, is_checker_fixture,
+					fatal_errors, check_only, message_limit, skip_notices)
 			}
 			return
 		}
