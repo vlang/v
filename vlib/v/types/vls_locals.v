@@ -24,31 +24,37 @@ fn (tc &TypeChecker) vls_local_declaration(id flat.NodeId) ?flat.NodeId {
 				}
 			}
 			.for_in_stmt {
-				// The loop variables are the identifiers before the container.
-				for i in 0 .. p.children_count {
-					c := tc.a.child(p, i)
-					if c == child || i >= 2 {
+				// The statements of the body are children of the loop, after the
+				// variables, the container and the end of a range, as many as
+				// its value counts. A local of the body before the use comes
+				// first, then the loop variables, which exist in the body only.
+				if found := tc.vls_declared_before(p, child, name, use_offset) {
+					return found
+				}
+				header := p.value.int()
+				mut in_body := false
+				for i in header .. p.children_count {
+					if tc.a.child(p, i) == child {
+						in_body = true
 						break
 					}
-					if !tc.valid_node_id(c) {
-						continue
-					}
-					cn := tc.a.node(c)
-					if cn.kind == .ident && cn.value == name {
-						return c
+				}
+				if in_body {
+					for i in 0 .. 2 {
+						c := tc.a.child(p, i)
+						if tc.valid_node_id(c) && tc.a.node(c).kind == .ident
+							&& tc.a.node(c).value == name {
+							return c
+						}
 					}
 				}
 			}
 			.for_stmt {
-				// The variable a C-style loop declares, `for i := 0; ...`, exists
-				// in its condition, its step and its body.
-				if p.value == 'c_style' && p.children_count > 0 && tc.a.child(p, 0) != child {
-					init := tc.a.child(p, 0)
-					if tc.valid_node_id(init) && tc.a.node(init).kind == .decl_assign {
-						if found := tc.vls_assigned_name(init, name) {
-							return found
-						}
-					}
+				// The statements of the body are children of the loop, and so is
+				// the variable a C-style loop declares, `for i := 0; ...`, which
+				// exists in its condition, its step and its body.
+				if found := tc.vls_declared_before(p, child, name, use_offset) {
+					return found
 				}
 			}
 			.if_expr {
@@ -85,11 +91,11 @@ fn (tc &TypeChecker) vls_local_declaration(id flat.NodeId) ?flat.NodeId {
 				return none
 			}
 			else {
-				// Statements directly under a function body live in its block.
-				if p.kind in [.or_expr, .match_branch, .comptime_if] {
-					if found := tc.vls_declared_before(p, child, name, use_offset) {
-						return found
-					}
+				// Statements that are children of their node, not of a block: those
+				// of `or {}`, of a `match` branch, of `$if`, `defer` or a `select`
+				// branch. The node of an expression has no `:=` among them.
+				if found := tc.vls_declared_before(p, child, name, use_offset) {
+					return found
 				}
 			}
 		}
@@ -107,6 +113,11 @@ fn (tc &TypeChecker) vls_declared_before(block &flat.Node, child flat.NodeId, na
 		c := tc.a.child(block, i)
 		if c == child {
 			break
+		}
+		// The placeholder of a loop without an init or a step, which the
+		// parser may add after the body.
+		if !tc.valid_node_id(c) || tc.a.node(c).kind == .empty {
+			continue
 		}
 		cn := tc.a.node(c)
 		if int(cn.pos.offset) > use_offset {

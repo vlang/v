@@ -171,6 +171,23 @@ fn slices(text string) string {
 	close := 3
 	return text[0..close + 1] + text[close..] + text[..close]
 }
+
+fn loops(content string) int {
+	mut i := 0
+	mut n := 0
+	for i < content.len {
+		c := content[i]
+		if c == `a` {
+			n += 1
+		}
+		i++
+	}
+	for x in [1, 2] {
+		y := x * 2
+		n += y
+	}
+	return n
+}
 '
 
 fn testsuite_begin() {
@@ -324,6 +341,9 @@ fn test_definition_of_a_declaration_is_the_declaration() {
 		assert declaration(59, 'close', nth) == 'main.v:58:1', 'close ${nth}'
 	}
 	assert ask(os.join_path(work_dir, 'declarations'), 'hv^', 59, 'close', 0).contains('close int')
+	// A local that the body of a loop declares, used further on in that body.
+	assert declaration(67, 'c', 0) == 'main.v:66:2'
+	assert declaration(74, 'y', 0) == 'main.v:73:2'
 }
 
 fn test_signature_help_marks_the_argument_under_the_cursor() {
