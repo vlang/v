@@ -107,3 +107,27 @@ fn test_load_tr_map_from_files_accepts_either_path_separator() {
 	assert translations['pt-br']['msg_hello'] == 'Ola'
 	assert translations.len == 4
 }
+
+fn test_load_tr_map_from_files_resolves_dot_segments() {
+	translations := load_tr_map_from_files({
+		os.join_path('.', 'en.json'):     '{"title": "Dashboard"}'
+		'locales/../ru.json':             '{"title": "Панель"}'
+		'zh/./widgets/../dashboard.json': '{"title": "仪表板"}'
+		'..\\ja.tr':                      'msg_hello\nこんにちは\n'
+	})
+
+	// each resolves to where the directory loader would find it
+	assert translations['en']['title'] == 'Dashboard'
+	assert translations['ru']['title'] == 'Панель'
+	assert translations['zh']['dashboard.title'] == '仪表板'
+	assert translations['ja']['msg_hello'] == 'こんにちは'
+	assert translations.len == 4
+}
+
+fn test_clean_slash_path_folds_dot_segments_on_every_platform() {
+	assert clean_slash_path('./zh\\dashboard.json') == 'zh/dashboard.json'
+	assert clean_slash_path('locales/../en.json') == 'en.json'
+	assert clean_slash_path('../../translations/./en.tr') == '../../translations/en.tr'
+	assert clean_slash_path('a/b/../../../en.tr') == '../en.tr'
+	assert embedded_relative_path('./translations', 'translations/./zh/../en.tr') == 'en.tr'
+}

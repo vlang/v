@@ -55,7 +55,8 @@ pub fn load_tr_map_from_dir(dir string) map[string]map[string]string {
 // them from disk. files maps each file's path inside the translations directory
 // (`en.tr`, `en.json`, `zh/dashboard.json`) to its text, and is read exactly as
 // load_tr_map_from_dir reads the same files from a directory. A path may use either
-// `/` or `\` between its parts, so one built with `os.join_path` works everywhere.
+// `/` or `\` between its parts, so one built with `os.join_path` works everywhere, and
+// its `.` and `..` parts are resolved before the language is taken from it.
 pub fn load_tr_map_from_files(files map[string]string) map[string]map[string]string {
 	mut res := map[string]map[string]string{}
 	mut paths := files.keys()
@@ -65,7 +66,7 @@ pub fn load_tr_map_from_files(files map[string]string) map[string]map[string]str
 		if !path.ends_with('.json') {
 			continue
 		}
-		lang, prefix := fetch_lang_and_prefix_from_relative_json_path(slash_path(path))
+		lang, prefix := fetch_lang_and_prefix_from_relative_json_path(translation_file_path(path))
 		if lang.len == 0 {
 			continue
 		}
@@ -77,7 +78,7 @@ pub fn load_tr_map_from_files(files map[string]string) map[string]map[string]str
 		if !path.ends_with('.tr') {
 			continue
 		}
-		lang := slash_path(path).all_after_last('/').all_before_last('.tr')
+		lang := translation_file_path(path).all_after_last('/').all_before_last('.tr')
 		if lang.len == 0 {
 			continue
 		}
@@ -119,22 +120,46 @@ pub fn load_tr_map_from_embedded(dir string, files []embed_file.EmbedFileData) m
 // embedded_relative_path is where an embedded file sits inside the translations
 // directory, with `/` separators whatever the platform.
 fn embedded_relative_path(dir string, path string) string {
-	clean_path := slash_path(os.norm_path(path))
-	clean_dir := slash_path(os.norm_path(dir)).trim_right('/')
-	if clean_dir in ['', '.'] {
+	clean_path := clean_slash_path(path)
+	clean_dir := clean_slash_path(dir)
+	if clean_dir.len == 0 {
 		return clean_path
 	}
 	if clean_path.starts_with(clean_dir + '/') {
 		return clean_path[clean_dir.len + 1..]
 	}
-	return os.file_name(clean_path)
+	return clean_path.all_after_last('/')
 }
 
-// slash_path spells a path with `/` between its parts. Paths inside a translations
-// directory come from callers on every platform, and `os.join_path` separates them
-// with `\` on Windows.
-fn slash_path(path string) string {
-	return path.replace('\\', '/')
+// translation_file_path is where a file sits inside the translations directory, spelled
+// the way the directory loader finds it there. A path that climbs out of the directory
+// is read as if its file were directly in it.
+fn translation_file_path(path string) string {
+	clean := clean_slash_path(path)
+	if clean == '..' || clean.starts_with('../') {
+		return clean.all_after_last('/')
+	}
+	return clean
+}
+
+// clean_slash_path spells a path with `/` between its parts, and without the `.` parts
+// or the `..` parts that step back over a directory named earlier in it. Paths inside a
+// translations directory come from callers on every platform, and `os.join_path`
+// separates them with `\` on Windows, which os.norm_path elsewhere does not split on.
+// A `..` that climbs above the start of the path is kept.
+fn clean_slash_path(path string) string {
+	mut parts := []string{}
+	for part in path.replace('\\', '/').split('/') {
+		if part in ['', '.'] {
+			continue
+		}
+		if part == '..' && parts.len > 0 && parts.last() != '..' {
+			parts.delete_last()
+			continue
+		}
+		parts << part
+	}
+	return parts.join('/')
 }
 
 // fetch_lang_and_prefix_from_relative_json_path is fetch_lang_and_prefix_from_json_path
