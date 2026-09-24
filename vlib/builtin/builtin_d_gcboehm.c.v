@@ -342,13 +342,15 @@ fn gc_report_fatal_errors_on_stderr() {
 // internal_gc_abort_to_stderr prints a fatal Boehm error on stderr, as Boehm does
 // on Linux and macOS. Boehm then ends the process when this returns.
 fn internal_gc_abort_to_stderr(const_msg &char) {
-	// With a nil message the default handler only disables the at-exit leak
-	// collection (and honours GC_LOOP_ON_ABORT); it shows no message box.
-	C.v_gc_call_abort_func(gc_boehm_default_abort_func, unsafe { nil })
+	// Print before chaining: with GC_LOOP_ON_ABORT set the default handler never
+	// returns. Boehm's own handler also prints first and loops last.
 	if const_msg != unsafe { nil } {
 		C.fprintf(C.stderr, c'%s\n', const_msg)
 		C.fflush(C.stderr)
 	}
+	// With a nil message the default handler only disables the at-exit leak
+	// collection (and honours GC_LOOP_ON_ABORT); it shows no message box.
+	C.v_gc_call_abort_func(gc_boehm_default_abort_func, unsafe { nil })
 }
 
 @[markused]
