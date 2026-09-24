@@ -5641,7 +5641,7 @@ fn (tc &TypeChecker) unknown_method_call_parts(node flat.Node) ?(flat.Node, Type
 			return none
 		}
 	}
-	if _ := tc.unique_receiver_method_suffix_match(method_candidates) {
+	if _ := tc.unique_receiver_method_suffix_match(receiver_type, method_candidates) {
 		return none
 	}
 	if receiver_type is Struct {
@@ -8116,7 +8116,7 @@ fn (mut tc TypeChecker) resolve_call_info_uncached(id flat.NodeId, node flat.Nod
 					return tc.call_info(mname, true)
 				}
 			}
-			if mname := tc.unique_receiver_method_suffix_match(array_candidates) {
+			if mname := tc.unique_receiver_method_suffix_match(clean_array, array_candidates) {
 				return tc.call_info(mname, true)
 			}
 			if fn_node.value == 'get' {

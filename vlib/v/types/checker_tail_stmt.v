@@ -10886,7 +10886,8 @@ fn (tc &TypeChecker) concrete_method_signature_key_seen(concrete_name string, me
 				return candidate
 			}
 			if indexed := tc.receiver_method_suffix_index[candidate] {
-				if indexed != receiver_method_suffix_ambiguous {
+				if indexed != receiver_method_suffix_ambiguous
+					&& tc.suffix_indexed_method_fits_receiver(receiver_type.base_type, indexed) {
 					return indexed
 				}
 			}
@@ -10894,7 +10895,8 @@ fn (tc &TypeChecker) concrete_method_signature_key_seen(concrete_name string, me
 	}
 	for candidate in receiver_candidates {
 		if indexed := tc.receiver_method_suffix_index[candidate] {
-			if indexed != receiver_method_suffix_ambiguous {
+			if indexed != receiver_method_suffix_ambiguous
+				&& tc.suffix_indexed_method_fits_receiver(receiver_type, indexed) {
 				return indexed
 			}
 		}
@@ -10910,7 +10912,8 @@ fn (tc &TypeChecker) concrete_method_signature_key_seen(concrete_name string, me
 		}
 	}
 	if indexed := tc.receiver_method_suffix_index[key] {
-		if indexed != receiver_method_suffix_ambiguous {
+		if indexed != receiver_method_suffix_ambiguous
+			&& tc.suffix_indexed_method_fits_receiver(receiver_type, indexed) {
 			return indexed
 		}
 	}
@@ -16216,7 +16219,7 @@ fn (tc &TypeChecker) resolve_type_uncached(id flat.NodeId) Type {
 							return tc.alias_return_type_from_text(mname) or { ret }
 						}
 					}
-					if mname := tc.unique_receiver_method_suffix_match(candidates) {
+					if mname := tc.unique_receiver_method_suffix_match(clean_type, candidates) {
 						return tc.alias_return_type_from_text(mname) or {
 							tc.fn_ret_types[mname] or {
 								unknown_type('unknown return type for `${mname}`')
@@ -18395,12 +18398,15 @@ fn push_receiver_method_candidate(mut names []string, name string) {
 	}
 }
 
-fn (tc &TypeChecker) unique_receiver_method_suffix_match(candidates []string) ?string {
+fn (tc &TypeChecker) unique_receiver_method_suffix_match(receiver Type, candidates []string) ?string {
 	mut found := ''
 	for candidate in candidates {
 		name := tc.receiver_method_suffix_index[candidate] or { continue }
 		if name == receiver_method_suffix_ambiguous {
 			return none
+		}
+		if !tc.suffix_indexed_method_fits_receiver(receiver, name) {
+			continue
 		}
 		if found != '' && found != name {
 			return none
@@ -18411,6 +18417,62 @@ fn (tc &TypeChecker) unique_receiver_method_suffix_match(candidates []string) ?s
 		return none
 	}
 	return found
+}
+
+// suffix_indexed_method_fits_receiver reports whether `indexed`, a method found
+// through the short-name `receiver_method_suffix_index`, can belong to `receiver`.
+// The index drops module prefixes, so a `[]toml.Any` receiver also reaches
+// `json2.[]Any.str`; a method of a same-named type from another module must not
+// bind to it.
+pub fn (tc &TypeChecker) suffix_indexed_method_fits_receiver(receiver Type, indexed string) bool {
+	owner := tc.receiver_owner_module(receiver) or { return true }
+	return owner == type_owner_module(indexed.all_before_last('.'))
+}
+
+// receiver_owner_module returns the module declaring the struct, sum type or enum
+// whose methods `receiver` uses (the element or value type of arrays and maps).
+// Aliases, interfaces and structs with embedded fields can inherit methods that
+// are declared in other modules, so they report none.
+fn (tc &TypeChecker) receiver_owner_module(receiver Type) ?string {
+	mut t := receiver
+	for {
+		if t is Pointer {
+			t = t.base_type
+		} else if t is Array {
+			t = t.elem_type
+		} else if t is ArrayFixed {
+			t = t.elem_type
+		} else if t is Map {
+			t = t.value_type
+		} else {
+			break
+		}
+	}
+	if t is Struct {
+		if tc.struct_fields_for_type(t.name).any(it.is_embed) {
+			return none
+		}
+		return type_owner_module(t.name)
+	}
+	if t is SumType {
+		return type_owner_module(t.name)
+	}
+	if t is Enum {
+		return type_owner_module(t.name)
+	}
+	return none
+}
+
+// type_owner_module returns the module part of a type or method receiver name
+// (`json2.Any`, `json2.[]Any`, `json2.Box[T]` -> `json2`). Main and builtin
+// declarations are not module-qualified, so they all map to ''.
+fn type_owner_module(name string) string {
+	head := name.all_before('[')
+	if !head.contains('.') {
+		return ''
+	}
+	module_name := head.all_before_last('.').all_after_last('.')
+	return if module_name in ['main', 'builtin'] { '' } else { module_name }
 }
 
 fn module_can_prefix_collection_receiver(module_name string) bool {
