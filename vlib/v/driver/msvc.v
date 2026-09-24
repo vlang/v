@@ -51,7 +51,8 @@ fn v3_msvc_link_flags(target_os string, is_shared bool, is_o bool, subsystem pre
 // `cl`. Options without an MSVC counterpart (warning selection, code generation
 // tuning like `-fwrapv`, or `-std=gnu11`) are dropped.
 fn msvc_cl_args(args []string, target_os string) []string {
-	mut compile := ['/nologo', '/volatile:ms', '/we4013', '/utf-8', '/MD']
+	// `/bigobj`: the program is one translation unit with tens of thousands of functions.
+	mut compile := ['/nologo', '/volatile:ms', '/we4013', '/utf-8', '/bigobj', '/MD']
 	mut inputs := []string{}
 	mut libs := []string{}
 	mut link := []string{}
@@ -276,4 +277,16 @@ fn msvc_add_linker_option(mut link []string, option string) {
 fn msvc_lower_c_file(path string) ! {
 	source := os.read_file(path)!
 	os.write_file(path, cgen.msvc_compat_c_source(source))!
+}
+
+// msvc_require_cl exits with an explanation when MSVC's compiler cannot be run.
+fn msvc_require_cl(c_compiler string, host_os string) {
+	os.find_abs_path_of_executable(c_compiler) or {
+		if host_os == 'windows' {
+			eprintln('`-cc msvc` could not find `${c_compiler}`. Run V from a Visual Studio Developer Command Prompt (or after `vcvars64.bat`), so that `cl` and its INCLUDE/LIB environment are available.')
+		} else {
+			eprintln('`-cc msvc` can only compile on Windows; use `-o file.c` to generate C for MSVC on ${host_os}.')
+		}
+		exit(1)
+	}
 }

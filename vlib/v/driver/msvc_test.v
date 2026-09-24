@@ -4,7 +4,7 @@ fn test_msvc_cl_args_translate_an_executable_build() {
 	args := msvc_cl_args(['-std=gnu11', '-w', '-fwrapv', '-Wno-int-conversion', '-O3', '-I',
 		'C:/v/thirdparty/include', '-DGC_THREADS=1', '-Wl,/STACK:33554432', '-o', 'out.exe', 'src.c',
 		'C:/v/thirdparty/obj.o', '-l', 'dbghelp', '-lws2_32', '-lm', '-LC:/libs'], 'windows')
-	assert args == ['/nologo', '/volatile:ms', '/we4013', '/utf-8', '/MD', '/w', '/O2',
+	assert args == ['/nologo', '/volatile:ms', '/we4013', '/utf-8', '/bigobj', '/MD', '/w', '/O2',
 		'/IC:/v/thirdparty/include', '/DGC_THREADS=1', '/std:c11', '/Feout.exe', 'src.c',
 		'C:/v/thirdparty/obj.o', 'kernel32.lib', 'user32.lib', 'advapi32.lib', 'dbghelp.lib',
 		'ws2_32.lib', '/link', '/STACK:33554432', '/LIBPATH:C:/libs']
@@ -13,8 +13,8 @@ fn test_msvc_cl_args_translate_an_executable_build() {
 fn test_msvc_cl_args_translate_an_object_build() {
 	args := msvc_cl_args(['-std=gnu11', '-w', '-DNDEBUG', '-x', 'c', '-o', 'C:/tmp/cJSON.obj',
 		'-c', 'C:/v/thirdparty/cJSON/cJSON.c'], 'windows')
-	assert args == ['/nologo', '/volatile:ms', '/we4013', '/utf-8', '/MD', '/w', '/DNDEBUG', '/std:c11',
-		'/c', '/FoC:/tmp/cJSON.obj', 'C:/v/thirdparty/cJSON/cJSON.c']
+	assert args == ['/nologo', '/volatile:ms', '/we4013', '/utf-8', '/bigobj', '/MD', '/w', '/DNDEBUG',
+		'/std:c11', '/c', '/FoC:/tmp/cJSON.obj', 'C:/v/thirdparty/cJSON/cJSON.c']
 }
 
 fn test_msvc_cl_args_translate_shared_and_debug_builds() {
