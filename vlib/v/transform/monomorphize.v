@@ -499,9 +499,67 @@ fn (mut t Transformer) explicit_generic_fn_value_specialization(id flat.NodeId, 
 		if t.generic_args_have_placeholders(args) {
 			return none
 		}
+		for arg in args {
+			if !t.explicit_generic_arg_is_known_type(arg, module_name) {
+				return none
+			}
+		}
 		return decl_key, args
 	}
 	return none
+}
+
+fn (mut t Transformer) explicit_generic_arg_is_known_type(arg string, module_name string) bool {
+	clean := arg.trim_space()
+	if clean.len == 0 {
+		return false
+	}
+	if clean.starts_with('&') || clean.starts_with('?') || clean.starts_with('!') {
+		return t.explicit_generic_arg_is_known_type(clean[1..], module_name)
+	}
+	if clean.starts_with('[]') {
+		return t.explicit_generic_arg_is_known_type(clean[2..], module_name)
+	}
+	if clean.starts_with('map[') {
+		bracket_end := generic_matching_bracket(clean, 3)
+		return bracket_end < clean.len - 1
+			&& t.explicit_generic_arg_is_known_type(clean[4..bracket_end], module_name)
+			&& t.explicit_generic_arg_is_known_type(clean[bracket_end + 1..], module_name)
+	}
+	if clean.starts_with('[') {
+		bracket_end := generic_matching_bracket(clean, 0)
+		return bracket_end < clean.len - 1
+			&& t.explicit_generic_arg_is_known_type(clean[bracket_end + 1..], module_name)
+	}
+	if clean.starts_with('fn ') || clean.starts_with('fn(') || clean.starts_with('fn (') {
+		return true
+	}
+	if clean.starts_with('(') && clean.ends_with(')') {
+		parts := split_generic_args(clean[1..clean.len - 1])
+		if parts.len == 0 {
+			return false
+		}
+		for part in parts {
+			if !t.explicit_generic_arg_is_known_type(part, module_name) {
+				return false
+			}
+		}
+		return true
+	}
+	base, nested_args, is_generic := generic_app_parts(clean)
+	if is_generic {
+		if !t.explicit_generic_arg_is_known_type(base, module_name) {
+			return false
+		}
+		for nested_arg in nested_args {
+			if !t.explicit_generic_arg_is_known_type(nested_arg, module_name) {
+				return false
+			}
+		}
+		return true
+	}
+	return clean.starts_with('C.') || clean.starts_with('JS.')
+		|| t.concrete_type_name_known(clean, module_name)
 }
 
 fn (t &Transformer) explicit_generic_fn_value_decl_candidates(id flat.NodeId, base_id flat.NodeId, base flat.Node, module_name string) []string {

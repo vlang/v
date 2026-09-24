@@ -305,7 +305,7 @@ pub fn (mut f File) write_full_buffer(buffer voidptr, buffer_len usize) ! {
 	if !f.is_opened {
 		return error_file_not_opened()
 	}
-	mut ptr := &u8(buffer)
+	mut ptr := unsafe { &u8(buffer) }
 	mut remaining_bytes := i64(buffer_len)
 	for remaining_bytes > 0 {
 		unsafe {

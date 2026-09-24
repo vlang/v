@@ -965,6 +965,16 @@ fn tcc_native_c_source_flags(flags []string) []string {
 	return sources
 }
 
+fn tcc_monolithic_dependency_flags(flags []string, is_o bool) []string {
+	mut ordered := c_object_compile_flags(flags)
+	if is_o {
+		return ordered
+	}
+	ordered << tcc_native_c_source_flags(flags)
+	ordered << c_dylib_link_flags(flags)
+	return ordered
+}
+
 fn tcc_cached_main_source(source string, body string) string {
 	// Framework headers contain Objective-C syntax that TinyCC cannot parse.
 	// Their implementations and public native symbols live in the cached dylib;
@@ -1296,7 +1306,9 @@ fn c_source_object_compiler(language string, c_compiler string, use_platform_non
 	if use_platform_non_c_compiler && language == 'objective-c' {
 		return v3_platform_c_compiler(target_os)
 	}
-	if language in ['c++', 'objective-c++'] && (c_compiler == 'cc' || use_platform_non_c_compiler) {
+	is_tinyc := c_compiler == 'tinyc' || c_compiler.to_lower().contains('tcc')
+	if language in ['c++', 'objective-c++']
+		&& (c_compiler == 'cc' || use_platform_non_c_compiler || is_tinyc) {
 		return 'c++'
 	}
 	return c_compiler
@@ -2876,13 +2888,22 @@ fn v3_c_compiler_flag_plan(options V3CCompilerFlagOptions) V3CCompilerFlagPlan {
 			&& options.c_compiler != 'msvc' {
 			before_inputs << '-fvisibility=hidden'
 		}
+		if !options.is_liveshared && options.target_os == 'linux' && !options.is_tcc {
+			// Source visibility does not cover symbols pulled from static archives
+			// such as libgc. Keep those implementation details out of the DSO ABI.
+			before_inputs << '-Wl,--exclude-libs,ALL'
+		}
 	} else if options.is_o {
 		before_inputs << '-c'
 	}
 	if options.is_liveshared && options.target_os == 'macos' && !options.is_tcc {
 		before_inputs << ['-flat_namespace', '-undefined', 'dynamic_lookup']
 	}
-	mut after_inputs := options.dependencies.clone()
+	mut after_inputs := if options.is_o {
+		c_object_compile_flags(options.dependencies)
+	} else {
+		options.dependencies.clone()
+	}
 	add_v3_default_linker_flags(mut after_inputs, options.target_os, options.is_o)
 	if !options.is_o {
 		after_inputs << options.link_ld_flags
@@ -3379,9 +3400,11 @@ fn free_retained_scopes(transform_scope voidptr, prepare_scope voidptr) {
 	}
 }
 
-// release_unused_diagnostic_scope discards notice storage before its arena is released.
-fn release_unused_diagnostic_scope(mut notices []types.TypeError, scope voidptr) {
+// release_unused_diagnostic_scope preserves warnings promoted to errors and
+// discards notice storage before its arena is released.
+fn release_unused_diagnostic_scope(mut errors []types.TypeError, mut notices []types.TypeError, scope voidptr) {
 	prealloc_scope_leave_for_v3(scope)
+	errors = clone_type_errors(errors)
 	// clear() retains capacity that may have been grown in the disposable scope.
 	// Rebind under the parent allocator before releasing that scoped storage.
 	notices.clear()
@@ -9300,6 +9323,12 @@ pub fn run(args []string) {
 		} else if args[i] in ['-no-std', '--no-std'] {
 			no_std = true
 			i++
+		} else if args[i] == '-freestanding' {
+			// Select vlib's no-host-runtime branches. `-no-std` remains a separate
+			// option because freestanding programs may still be compiled as normal C.
+			record_user_define(mut user_defines, mut compile_values, 'freestanding')
+			no_cache = true
+			i++
 		} else if args[i] in ['-strict', '-cstrict'] {
 			is_strict = true
 			i++
@@ -10541,7 +10570,10 @@ pub fn run(args []string) {
 		&& !no_builtin && !parallel_cc && !keep_c && !backend_explicit
 		&& !minimal_literal_output && v3_c_compiler_matches_default_cc(c_compiler)
 		&& target.os == host_target.os
-		&& target.arch == host_target.arch
+		&& target.arch == host_target.arch &&
+	// Heap tracking hooks are supplied by user C declarations. Replaying a header
+	// that defines them in every cached translation unit creates duplicate symbols.
+	'track_heap' !in prefs.user_defines
 		&& !input_owns_builtin_bundle_module(input_file, prefs.vroot)
 	cc_identity := if cache_candidate_enabled { default_cc_identity() } else { '' }
 	compiler_signature := if cache_candidate_enabled {
@@ -10779,14 +10811,15 @@ pub fn run(args []string) {
 
 	skip_closure_runtime := minimal_literal_output || no_closures
 	if !no_builtin {
-		seed_implicit_imports(mut a, skip_closure_runtime)
+		seed_implicit_imports(mut a, skip_closure_runtime, check_overflow)
 	}
 	seed_cached_builtin_bundle_imports(mut a, cache_state.manager.enabled, builtin_dir)
 
 	// Resolve imports recursively
 	resolve_imports_started_us := b.current_step_time_us()
 	resolve_imports_parse_started_us := parse_timing.header_us + parse_timing.source_us
-	resolve_imports(mut a, mut p, prefs, user_files, !current_no_parallel, skip_closure_runtime, mut cache_state, mut parse_timing)
+	resolve_imports(mut a, mut p, prefs, user_files, !current_no_parallel, skip_closure_runtime,
+		check_overflow, mut cache_state, mut parse_timing)
 	resolve_imports_elapsed_us := b.current_step_time_us() - resolve_imports_started_us
 	resolve_imports_parse_us := parse_timing.header_us + parse_timing.source_us - resolve_imports_parse_started_us
 	resolve_imports_coordination_us := if resolve_imports_parse_us < resolve_imports_elapsed_us {
@@ -11725,7 +11758,8 @@ pub fn run(args []string) {
 			}
 		}
 		if unused_diag_scope != unsafe { nil } {
-			release_unused_diagnostic_scope(mut pre_tc.notices, unused_diag_scope)
+			release_unused_diagnostic_scope(mut pre_tc.errors, mut pre_tc.notices,
+				unused_diag_scope)
 		}
 		if backend == 'wasm' {
 			// Validate source-level operations before transform lowers aggregate
@@ -11987,6 +12021,11 @@ pub fn run(args []string) {
 				// interface snapshotting below iterates every alias, including otherwise
 				// unreachable callback aliases.
 				pre_tc.type_aliases = clone_string_string_map(pre_tc.type_aliases)
+				// Transform-time type queries can append diagnostics while the stage arena
+				// is active. Rehome both the containers and their text before releasing it;
+				// annotation consults existing errors when resolving lowered expressions.
+				pre_tc.errors = clone_type_errors(pre_tc.errors)
+				pre_tc.notices = clone_type_errors(pre_tc.notices)
 				transform_used_fns = clone_string_bool_map(transform_used_fns)
 				transform_errors = clone_string_list(transform_errors)
 				pre_tc.set_fresh_type_cache(parse_cache_enabled)
@@ -12786,7 +12825,7 @@ pub fn run(args []string) {
 		}
 		large_c_flag_plan := v3_c_compiler_flag_plan(large_c_flag_options)
 		mut native_support_inputs := []string{}
-		if effective_tcc {
+		if effective_tcc && !is_o {
 			atomic_input := if generate_c_project.len > 0 {
 				tcc_atomic_s_arg(prefs)
 			} else {
@@ -13253,13 +13292,15 @@ pub fn run(args []string) {
 			tcc_args << v3_windows_executable_linker_flags(prefs.normalized_target_os(), 'tinyc', is_shared, is_o, prefs.subsystem, windows_gui_entry_point)
 			tcc_args << tcc_cached_main_flags(resolved_c_flags)
 			tcc_args << ['-o', cc_output_name, os.base(tcc_main_file)]
-			atomic_s := tcc_atomic_arg(prefs, tcc_path, tcc_resources.include_arg)
-			if atomic_s.len > 0 {
-				tcc_args << atomic_s
+			if !is_o {
+				atomic_s := tcc_atomic_arg(prefs, tcc_path, tcc_resources.include_arg)
+				if atomic_s.len > 0 {
+					tcc_args << atomic_s
+				}
+				tcc_args << tcc_native_c_source_flags(resolved_c_flags)
+				tcc_args << cached_dev_dylib
+				tcc_args << tcc_dynamic_link_flags(resolved_c_flags)
 			}
-			tcc_args << tcc_native_c_source_flags(resolved_c_flags)
-			tcc_args << cached_dev_dylib
-			tcc_args << tcc_dynamic_link_flags(resolved_c_flags)
 			add_v3_default_linker_flags(mut tcc_args, prefs.normalized_target_os(), is_o)
 			if !is_o {
 				// Added before the cache key is derived from `tcc_args`, so a cached
@@ -13347,11 +13388,13 @@ pub fn run(args []string) {
 				'src.c'
 			}
 			tcc_args << ['-o', cc_output_name, tcc_source]
-			atomic_s := tcc_atomic_arg(prefs, tcc_path, tcc_resources.include_arg)
-			if atomic_s.len > 0 {
-				tcc_args << atomic_s
+			if !is_o {
+				atomic_s := tcc_atomic_arg(prefs, tcc_path, tcc_resources.include_arg)
+				if atomic_s.len > 0 {
+					tcc_args << atomic_s
+				}
 			}
-			tcc_args << resolved_c_flags
+			tcc_args << tcc_monolithic_dependency_flags(resolved_c_flags, is_o)
 			add_v3_default_linker_flags(mut tcc_args, prefs.normalized_target_os(), is_o)
 			if !is_o {
 				tcc_args << link_ld_flags
@@ -13401,10 +13444,12 @@ pub fn run(args []string) {
 			} else {
 				compiler_inputs << v3_c_source_inputs(fallback_source, needs_objective_c)
 			}
-			compiler_inputs << native_support_inputs
-			compiler_inputs << cached_objects
-			if cached_dev_dylib.len > 0 {
-				compiler_inputs << cached_dev_dylib
+			if !is_o {
+				compiler_inputs << native_support_inputs
+				compiler_inputs << cached_objects
+				if cached_dev_dylib.len > 0 {
+					compiler_inputs << cached_dev_dylib
+				}
 			}
 			if macos_linux_cross_compile && !is_o {
 				result = compile_v3_macos_linux_cross(c_compiler, &c_flag_plan, compiler_inputs,
@@ -16629,11 +16674,12 @@ mut:
 	has_closure          bool
 	needs_debugger       bool
 	has_debugger         bool
+	has_overflow         bool
 }
 
 const closure_runtime_import_alias = '__v3_builtin_closure_runtime'
 
-fn seed_implicit_imports(mut a flat.FlatAst, skip_closure_runtime bool) {
+fn seed_implicit_imports(mut a flat.FlatAst, skip_closure_runtime bool, check_overflow bool) {
 	start := a.nodes.len
 	// Builtin declares the channel ABI even when a program never uses channels.
 	// Start at user code so that declaration alone does not pull the whole sync
@@ -16657,6 +16703,9 @@ fn seed_implicit_imports(mut a flat.FlatAst, skip_closure_runtime bool) {
 	}
 	if scan.needs_debugger && !scan.has_debugger {
 		a.add_node(debugger_import_node())
+	}
+	if check_overflow && !scan.has_overflow {
+		a.add_node(overflow_import_node())
 	}
 	a.intern_node_texts_from(start)
 }
@@ -16765,6 +16814,14 @@ fn debugger_import_node() flat.Node {
 	}
 }
 
+fn overflow_import_node() flat.Node {
+	return flat.Node{
+		kind:  .import_decl
+		value: 'builtin.overflow'
+		typ:   '__v3_builtin_overflow_runtime'
+	}
+}
+
 fn seed_cached_builtin_bundle_imports(mut a flat.FlatAst, enabled bool, builtin_dir string) {
 	if !enabled {
 		return
@@ -16836,6 +16893,8 @@ fn scan_implicit_imports(a &flat.FlatAst, end_node int, mut scan ImplicitImportS
 				scan.has_closure = true
 			} else if node.value == 'v.debug' {
 				scan.has_debugger = true
+			} else if node.value == 'builtin.overflow' {
+				scan.has_overflow = true
 			}
 		}
 		if node.kind == .debugger_stmt {
@@ -17918,7 +17977,7 @@ fn discover_eager_selfhost_modules(a &flat.FlatAst, prefs &pref.Preferences, fir
 	return modules
 }
 
-fn resolve_imports(mut a flat.FlatAst, mut p parser.Parser, prefs &pref.Preferences, initial_files []string, allow_parallel bool, skip_closure_runtime bool, mut cache_state V3ModuleCacheState, mut parse_timing V3ParseTiming) bool {
+fn resolve_imports(mut a flat.FlatAst, mut p parser.Parser, prefs &pref.Preferences, initial_files []string, allow_parallel bool, skip_closure_runtime bool, check_overflow bool, mut cache_state V3ModuleCacheState, mut parse_timing V3ParseTiming) bool {
 	mut parsed_modules := map[string]bool{}
 	parsed_modules['builtin'] = true
 	parsed_modules['main'] = true
@@ -17967,6 +18026,12 @@ fn resolve_imports(mut a flat.FlatAst, mut p parser.Parser, prefs &pref.Preferen
 	mut resolved_collision_seeds := map[string]bool{}
 	mut unresolved_modules := map[string]bool{}
 	mut cached_header_source_contexts := map[string]string{}
+	if check_overflow {
+		// C generation names the late-injected overflow helpers by their full
+		// module path. Preserve that path even though it is the only module named
+		// `overflow` in this build.
+		forced_full_module_paths['builtin.overflow'] = true
+	}
 	bundle_import_file := cache_bundle_import_file(prefs.get_vlib_module_path('builtin'))
 	if builtin_sources := cache_state.module_sources['builtin'] {
 		if builtin_sources.len > 0 {
@@ -18020,7 +18085,7 @@ fn resolve_imports(mut a flat.FlatAst, mut p parser.Parser, prefs &pref.Preferen
 			// Imported code can be the first user of embed/channel/closure syntax.
 			// Seed those compiler-provided modules before the authoritative resolver
 			// scans the now-complete AST.
-			seed_implicit_imports(mut a, skip_closure_runtime)
+			seed_implicit_imports(mut a, skip_closure_runtime, check_overflow)
 		}
 	}
 

@@ -718,6 +718,20 @@ fn test_optional_array_typedef_ignores_nominal_name_collisions() {
 	assert g.sb.str().contains('Array value; } Optional_Array;')
 }
 
+fn test_optional_builtin_typedef_ignores_nominal_name_collisions() {
+	mut ast := &flat.FlatAst{}
+	mut tc := types.TypeChecker.new(ast)
+	tc.structs['first.u64'] = []types.StructField{}
+	tc.structs['second.u64'] = []types.StructField{}
+	mut g := FlatGen.new()
+	g.a = ast
+	g.tc = &tc
+
+	assert g.stale_ambiguous_qualified_struct_c_type('u64')
+	assert g.emit_optional_typedef('Optional_u64', 'u64')
+	assert g.sb.str().contains('u64 value; } Optional_u64;')
+}
+
 fn test_optional_sum_typedef_ignores_struct_name_collisions() {
 	mut ast := &flat.FlatAst{}
 	mut tc := types.TypeChecker.new(ast)

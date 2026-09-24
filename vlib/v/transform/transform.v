@@ -166,6 +166,7 @@ mut:
 	sum_variant_fields            map[string]string
 	qualified_types               map[string]string
 	fn_ret_types                  map[string]string
+	fn_ret_types_by_module        map[string]string
 	fn_ret_types_log              []string
 	tc_signature_names_log        []string
 	generated_capture_contexts    []string
@@ -226,6 +227,7 @@ mut:
 	ordering_snapshot_names             map[string]bool
 	pointer_value_lvalues               map[string]bool
 	pointer_value_rvalues               map[string]bool
+	fixed_array_value_rvalues           map[string]bool
 	addr_lvalue_pointer_locals          map[string]bool
 	orm_initialized_fields              map[string][]string
 	sql_query_data_aliases              map[string][]string
@@ -3058,6 +3060,7 @@ fn (mut t Transformer) collect_types() {
 				}
 				if node.typ.len > 0 {
 					ret_typ := t.normalize_type_in_module(node.typ, cur_mod)
+					t.fn_ret_types_by_module[transform_fn_module_key(cur_mod, node.value)] = ret_typ
 					if cur_mod.len > 0 && cur_mod != 'main' && cur_mod != 'builtin' {
 						qname := '${cur_mod}.${node.value}'
 						t.fn_ret_types[qname] = ret_typ
@@ -4003,6 +4006,7 @@ fn (t &Transformer) fork_worker_config(ast &flat.FlatAst, wtc &types.TypeChecker
 	w.pending_stmts = []flat.NodeId{}
 	w.pointer_value_lvalues = map[string]bool{}
 	w.pointer_value_rvalues = map[string]bool{}
+	w.fixed_array_value_rvalues = map[string]bool{}
 	w.orm_initialized_fields = map[string][]string{}
 	w.sql_query_data_aliases = map[string][]string{}
 	w.escaping_amp_ptrs = map[string]bool{}
@@ -4130,6 +4134,7 @@ fn (t &Transformer) fork_scan_worker(wtc &types.TypeChecker) &Transformer {
 	w.pending_stmts = []flat.NodeId{}
 	w.pointer_value_lvalues = map[string]bool{}
 	w.pointer_value_rvalues = map[string]bool{}
+	w.fixed_array_value_rvalues = map[string]bool{}
 	w.escaping_amp_ptrs = map[string]bool{}
 	w.escaping_amp_sources = map[string]bool{}
 	w.heaped_amp_locals = map[string]bool{}
@@ -4185,6 +4190,7 @@ fn (t &Transformer) fork_program_view(ast &flat.FlatAst, wtc &types.TypeChecker,
 		sum_variant_fields:                  t.sum_variant_fields
 		qualified_types:                     t.qualified_types
 		fn_ret_types:                        t.fn_ret_types
+		fn_ret_types_by_module:              t.fn_ret_types_by_module
 		multi_return_fn_ret_types:           t.multi_return_fn_ret_types
 		receiver_method_suffix_index:        t.receiver_method_suffix_index
 		declared_fn_name_counts:             t.declared_fn_name_counts
@@ -4261,6 +4267,7 @@ fn (t &Transformer) fork_program_view(ast &flat.FlatAst, wtc &types.TypeChecker,
 		mut_param_values:                    map[string]bool{}
 		pointer_value_lvalues:               map[string]bool{}
 		pointer_value_rvalues:               map[string]bool{}
+		fixed_array_value_rvalues:           map[string]bool{}
 		orm_initialized_fields:              map[string][]string{}
 		sql_query_data_aliases:              map[string][]string{}
 		invalidated_smartcasts:              map[string]bool{}
@@ -5582,6 +5589,11 @@ fn transform_qualified_fn_name(mod string, name string) string {
 	return '${mod}.${name}'
 }
 
+fn transform_fn_module_key(mod string, name string) string {
+	module_name := if mod == '' { 'main' } else { mod }
+	return '${module_name}\x01${name}'
+}
+
 // transform_const_decl transforms the initializer expression of each const field
 // so that const-level lowering (e.g. string concatenation in the prelude's
 // embedded data tables) happens in the transformer rather than the backend.
@@ -6100,6 +6112,13 @@ fn (mut t Transformer) transform_string_interp_part(child_id flat.NodeId) flat.N
 		t.set_var_type(shared_value_name, typ)
 		transformed = t.make_ident(shared_value_name)
 		t.set_node_typ(int(transformed), typ)
+	} else if format != 'p' && expr_node.kind == .ident
+		&& t.fixed_array_value_rvalues[expr_node.value] && typ.starts_with('&')
+		&& t.is_fixed_array_type(typ[1..]) {
+		// Mutable fixed-array for-in bindings are represented by inline C arrays.
+		// Their tracked `&[N]T` type describes write-back storage, while an ordinary
+		// interpolation reads the inline array value without a pointer dereference.
+		typ = typ[1..]
 	} else if format != 'p' && expr_node.kind == .ident
 		&& t.string_interp_needs_value_read(expr_node.value, typ) {
 		transformed = t.make_prefix(.mul, transformed)
@@ -6994,6 +7013,7 @@ fn (mut t Transformer) reset_escaping_amp_state() {
 	// for-loop element vars set and restore their own entries within the loop body.
 	t.pointer_value_lvalues.clear()
 	t.pointer_value_rvalues.clear()
+	t.fixed_array_value_rvalues.clear()
 	t.addr_lvalue_pointer_locals.clear()
 }
 
@@ -9057,8 +9077,18 @@ fn (mut t Transformer) transform_fn_body(fn_idx int) {
 			typ = '&${typ}'
 		}
 		if child.is_mut {
-			typ = mut_optional_param_value_type(typ)
-			raw_source_typ = mut_optional_param_value_type(raw_source_typ)
+			if t.validating_generic_spec && child.op != .amp && typ.starts_with('&?') {
+				// A specialized `mut value T` parameter adds an outer ABI pointer.
+				// When T is optional, remove that storage pointer without turning the
+				// optional payload itself into a pointer (`&?int` -> `?int`).
+				typ = typ[1..]
+				if raw_source_typ.starts_with('&?') {
+					raw_source_typ = raw_source_typ[1..]
+				}
+			} else {
+				typ = mut_optional_param_value_type(typ)
+				raw_source_typ = mut_optional_param_value_type(raw_source_typ)
+			}
 		}
 		if typ.starts_with('&') && raw_typ.len > 0 && !raw_typ.starts_with('&')
 			&& t.normalize_type_alias(typ[1..]) == raw_typ {
@@ -14851,7 +14881,15 @@ fn (mut t Transformer) transform_decl_assign_stmt(id flat.NodeId, node flat.Node
 				|| t.concrete_generic_type_refines(inferred_typ, rhs_typ))
 			if decl_type_is_usable(rhs_typ) && (unusable_decl_refined
 				|| t.decl_should_adopt_lowered_rhs_type(t.a.child(&node, 1), inferred_typ, rhs_typ)) {
-				t.set_decl_var_type(node, lhs.value, rhs_typ)
+				// Lowering an explicitly typed map can replace a packed enum key/value
+				// with its integer storage type. Update the runtime type without losing
+				// the usable semantic type retained for operations such as `.str()`.
+				raw_typ := t.raw_var_type(lhs.value)
+				if !unusable_decl_refined && raw_typ.len > 0 {
+					t.set_decl_var_type_with_raw(node, lhs.value, rhs_typ, raw_typ)
+				} else {
+					t.set_decl_var_type(node, lhs.value, rhs_typ)
+				}
 				t.set_node_typ(int(new_children[0]), rhs_typ)
 				lhs_original_id := t.a.child(&node, 0)
 				rhs_original_id := t.a.child(&node, 1)
@@ -23799,6 +23837,16 @@ fn (t &Transformer) infer_decl_type(node &flat.Node) string {
 				return fn_type
 			}
 		}
+		if rhs.kind == .call && rhs.children_count > 0 {
+			callee := t.a.child_node(rhs, 0)
+			if callee.kind == .ident && t.var_type(callee.value).len == 0 {
+				if ret := t.local_fn_decl_return_type(callee.value) {
+					if decl_type_is_usable(ret) && !t.generic_arg_is_unresolved(ret) {
+						return t.call_return_type_name(ret, *rhs)
+					}
+				}
+			}
+		}
 		if rhs.kind == .selector && comptime_method_selector_marker in rhs.generic_params() {
 			for param in rhs.generic_params() {
 				if param.starts_with(comptime_method_selector_fn_type_prefix) {
@@ -24137,16 +24185,19 @@ fn (t &Transformer) resolve_expr_type(id flat.NodeId) string {
 			if sum_ctor_type := t.generic_sum_constructor_call_type(node) {
 				return sum_ctor_type
 			}
+			// Map literals lower to the builtin runtime `new_map` helper. A user
+			// function with the same unqualified name must not override the concrete
+			// map type encoded by the generated sizeof arguments.
+			new_map_typ := t.new_map_call_type(node)
+			if new_map_typ.len > 0 {
+				return new_map_typ
+			}
 			if declared_ret := t.checker_resolved_non_builtin_return_type(id, node) {
 				return declared_ret
 			}
 			concrete_typ := t.concrete_node_type_name(node)
 			if concrete_typ.len > 0 {
 				return concrete_typ
-			}
-			new_map_typ := t.new_map_call_type(node)
-			if new_map_typ.len > 0 {
-				return new_map_typ
 			}
 			if array_typ := t.array_call_type_name(id, node) {
 				return array_typ

@@ -42,4 +42,5 @@ fn test_create_without_id_field() {
 	res := sql db {
 		select from ComplexWhere where name == 'a' && (id > 1 || (rank > 2.5 && rank < 3.33))
 	} or { assert false, err.msg() }
+	assert res.len == 0
 }

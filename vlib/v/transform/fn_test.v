@@ -480,8 +480,8 @@ fn test_auto_str_helper_call_uses_type_owner_module() {
 	mut t := Transformer{
 		a:          &a
 		tc:         &tc
-		cur_module: 'token'
-		cur_file:   'token.v'
+		cur_module: 'main'
+		cur_file:   'main.v'
 	}
 	value := t.make_ident('pos')
 	t.stringify_stack << 'Wrapper'
@@ -490,6 +490,21 @@ fn test_auto_str_helper_call_uses_type_owner_module() {
 
 	assert callee.value == '__v3_autostr_v__token__Pos'
 	assert t.auto_str_types['v.token.Pos'].helper_module == 'token'
+	t.synthesize_auto_str_helpers()
+	mut helper_idx := -1
+	for i, node in a.nodes {
+		if node.kind == .fn_decl && node.value == '__v3_autostr_v__token__Pos' {
+			helper_idx = i
+			break
+		}
+	}
+	assert helper_idx >= 3
+	assert a.nodes[helper_idx - 3].kind == .file
+	assert a.nodes[helper_idx - 3].value == 'main.v'
+	assert a.nodes[helper_idx - 2].kind == .module_decl
+	assert a.nodes[helper_idx - 2].value == 'main'
+	assert a.nodes[helper_idx - 1].kind == .module_decl
+	assert a.nodes[helper_idx - 1].value == 'token'
 }
 
 fn test_default_clone_helper_drops_owned_rvalue_after_saving_clone() {

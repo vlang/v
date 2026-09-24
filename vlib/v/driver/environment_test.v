@@ -1,12 +1,15 @@
 module driver
 
 import os
-import runtime
 import crypto.sha256
 import v.ansi
 import v.parser
 import v.pref
 import v.types
+
+$if freebsd || openbsd || netbsd || dragonfly {
+	import runtime
+}
 
 fn restore_driver_environment(name string, old_value string, was_set bool) {
 	if was_set {

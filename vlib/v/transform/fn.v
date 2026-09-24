@@ -97,6 +97,10 @@ fn (t &Transformer) local_fn_decl_return_type(name string) ?string {
 	if name == '' {
 		return none
 	}
+	module_key := transform_fn_module_key(t.cur_module, name)
+	if ret := t.fn_ret_types_by_module[module_key] {
+		return ret
+	}
 	qname := transform_qualified_fn_name(t.cur_module, name)
 	if ret := t.fn_ret_types[qname] {
 		return ret
@@ -130,6 +134,11 @@ fn (t &Transformer) fn_value_call_return_type(node flat.Node) ?string {
 		local_type := t.var_type(callee.value)
 		if ret := t.local_fn_value_return_type_from_type(local_type) {
 			return ret
+		}
+		if local_type.len == 0 {
+			if _ := t.local_fn_decl_return_type(callee.value) {
+				return none
+			}
 		}
 	}
 	if callee.kind == .selector {
@@ -3726,9 +3735,30 @@ fn (mut t Transformer) transform_call_arg_for_param_isolated(arg_id flat.NodeId,
 	if param_type.starts_with('&') && arg_node.kind == .prefix && arg_node.op == .amp
 		&& arg_node.children_count > 0 {
 		child_id := t.a.child(arg_node, 0)
+		child := t.a.nodes[int(child_id)]
 		child_type := t.node_type(child_id)
+		normalized_child_type := t.normalize_type_alias(child_type)
+		explicit_mut_pointer_slot := arg_node.is_mut && normalized_child_type == t.normalize_type_alias(param_type)
 		if child_type.len > 0
-			&& t.normalize_type_alias(child_type) == t.normalize_type_alias(param_type[1..]) {
+			&& (normalized_child_type == t.normalize_type_alias(param_type[1..])
+				|| explicit_mut_pointer_slot) {
+			// An explicit address of a pointer local supplies the caller's pointer
+			// slot to a mutable pointer parameter. Generic `&ident` lowering treats
+			// pointer-backed identifiers as their stored pointer value, which would
+			// otherwise drop this address and pass `T*` where `T**` is required.
+			if child.kind == .ident
+				&& (child_type.starts_with('&') || t.raw_var_type(child.value).starts_with('&')
+					|| t.pointer_value_rvalues[child.value]) {
+				value := t.transform_expr_preserving_pointer_value(child_id)
+				addr := t.make_prefix(.amp, value)
+				addr_type := if explicit_mut_pointer_slot {
+					t.node_type(arg_id)
+				} else {
+					param_type
+				}
+				t.set_node_typ(int(addr), addr_type)
+				return addr
+			}
 			return t.transform_expr(arg_id)
 		}
 	}
@@ -4934,7 +4964,9 @@ fn (mut t Transformer) stringify_expr(expr_id flat.NodeId) flat.NodeId {
 	// genuine nilable pointer.
 	if int(expr_id) >= 0 && typ.starts_with('&') {
 		raw_node := t.a.nodes[int(expr_id)]
-		if raw_node.kind == .ident && t.pointer_value_rvalues[raw_node.value] {
+		if raw_node.kind == .ident
+			&& (t.pointer_value_rvalues[raw_node.value]
+				|| t.fixed_array_value_rvalues[raw_node.value]) {
 			typ = typ[1..]
 		}
 	}
@@ -6055,20 +6087,24 @@ fn (mut t Transformer) build_auto_str_helper_fn(aggregate string) {
 	t.restore_var_types(saved_vars)
 	t.cur_fn_name = saved_fn_name
 	t.cur_fn_ret_type = saved_ret_type
-	t.a.add_node(flat.Node{
-		kind:  .module_decl
-		value: if t.auto_str_helper_module.len > 0 { t.auto_str_helper_module } else { 'main' }
-	})
+	helper_module := if t.auto_str_helper_module.len > 0 {
+		t.auto_str_helper_module
+	} else {
+		'main'
+	}
+	t.add_generated_fn_decl_context(helper_module)
 	start := t.a.children.len
 	t.a.children << param
 	t.a.children << stmts
-	t.a.add_node(flat.Node{
+	fn_decl := t.a.add_node(flat.Node{
 		kind:           .fn_decl
 		value:          helper
 		typ:            'string'
 		children_start: i32(start)
 		children_count: flat.child_count(1 + stmts.len)
 	})
+	t.ensure_node_context_map_capacity()
+	t.mark_node_context(fn_decl, helper_module, t.cur_file)
 	helper_key := if t.auto_str_helper_module !in ['', 'main', 'builtin'] {
 		'${t.auto_str_helper_module}.${helper}'
 	} else {
@@ -9250,6 +9286,11 @@ fn (t &Transformer) map_str_type_has_transform_conversion(typ string) bool {
 }
 
 fn (t &Transformer) map_str_kind_for_type(typ string) int {
+	// Packed enums have an integer storage type, but map stringification must use
+	// their enum names (or custom str method), not the underlying integer values.
+	if t.is_enum_stringify_type(typ) {
+		return 0
+	}
 	mut clean := t.normalize_type_alias(typ).trim_space()
 	if clean.starts_with('builtin.') {
 		clean = clean.all_after_last('.')
@@ -12150,6 +12191,17 @@ fn (mut t Transformer) add_generated_fn_decl_context(module_name string) {
 			kind:  .file
 			value: t.cur_file
 		})
+		// Establish the real source module before switching to a foreign namespace.
+		// Main files commonly omit `module main`, so a generated `.file` followed
+		// directly by an imported module marker would let later checker passes bind
+		// the source file itself to the imported module.
+		source_module := if t.cur_module.len > 0 { t.cur_module } else { 'main' }
+		if source_module != module_name {
+			t.a.add_node(flat.Node{
+				kind:  .module_decl
+				value: source_module
+			})
+		}
 	}
 	if module_name != '' {
 		t.a.add_node(flat.Node{
@@ -12487,13 +12539,11 @@ fn (mut t Transformer) try_lower_pointer_str_method_call(call_id flat.NodeId, no
 	if smartcast_str := t.smartcast_sum_str_call(base_id) {
 		return smartcast_str
 	}
-	mut propagated_pointer_receiver := false
 	if unwrapped_type := t.or_expr_receiver_unwrapped_type(base_id) {
 		if decl_type_is_usable(unwrapped_type) && !t.generic_arg_is_unresolved(unwrapped_type)
 			&& !unwrapped_type.starts_with('&') {
 			return none
 		}
-		propagated_pointer_receiver = unwrapped_type.starts_with('&')
 	}
 	// Mutable for-in bindings and mutable parameters use pointer-backed storage,
 	// but an ordinary receiver expression is the auto-dereferenced value. Do not
@@ -12524,8 +12574,8 @@ fn (mut t Transformer) try_lower_pointer_str_method_call(call_id flat.NodeId, no
 				return none
 			}
 			t.mark_fn_used_name(method_name)
-			return t.lower_ref_str_guarded(t.transform_expr(base_id), aggregate, propagated_pointer_receiver
-				|| !t.str_method_has_pointer_receiver(method_name), method_name, '&nil')
+			return t.lower_ref_str_guarded(t.transform_expr(base_id), aggregate,
+				!t.str_method_has_pointer_receiver(method_name), method_name, '&nil')
 		}
 		return t.lower_ref_str_prefixed(t.transform_expr(base_id), aggregate)
 	}
@@ -14632,12 +14682,59 @@ fn (mut t Transformer) make_receiver_method_call_typed(node flat.Node, method_na
 	// Reachability was computed before generic/comptime clones were transformed.
 	// Retain methods selected while lowering those generated bodies as well.
 	t.mark_fn_used_name(method_name)
-	call := t.make_call_typed(method_name, args, typ)
+	mut call_args := []flat.NodeId{}
+	mut borrowed_closure_cleanup := ''
+	if node.children_count == 2 && args.len >= 2
+		&& closure_lifetime_borrowed_callback_method(method_name) {
+		source_arg := t.a.child(&node, 1)
+		if t.expr_allocates_fresh_runtime_closure(source_arg) {
+			closure_type := t.fresh_runtime_closure_type(source_arg) or { t.node_type(args[1]) }
+			if closure_type.len > 0 {
+				borrowed_closure_cleanup = t.new_temp('borrowed_closure')
+				t.set_var_type(borrowed_closure_cleanup, closure_type)
+				t.pending_stmts << t.make_decl_assign_typed(borrowed_closure_cleanup, args[1],
+					closure_type)
+				call_args = args.clone()
+				call_args[1] = t.make_ident(borrowed_closure_cleanup)
+				t.set_node_typ(int(call_args[1]), closure_type)
+			}
+		}
+	}
+	call := if borrowed_closure_cleanup == '' {
+		t.make_call_typed(method_name, args, typ)
+	} else {
+		t.make_call_typed(method_name, call_args, typ)
+	}
 	generic_args := t.explicit_generic_call_arg_text(node)
 	if generic_args.len > 0 {
 		t.set_node_value(int(call), generic_args)
 	}
-	return call
+	return t.finish_borrowed_closure_call(call, borrowed_closure_cleanup, typ)
+}
+
+fn closure_lifetime_borrowed_callback_method(method_name string) bool {
+	method := method_name.all_after_last('.')
+	receiver := method_name.all_before_last('.')
+	return method in ['frame', 'suspend', 'untracked']
+		&& (receiver == 'builtin.closure.Lifetime' || receiver == 'closure.Lifetime')
+}
+
+fn (mut t Transformer) finish_borrowed_closure_call(call flat.NodeId, closure_name string, typ string) flat.NodeId {
+	if closure_name == '' {
+		return call
+	}
+	if typ == '' || typ == 'void' {
+		t.pending_stmts << t.make_expr_stmt(call)
+		t.pending_stmts << t.make_local_closure_destroy_stmt(closure_name)
+		return t.make_int_literal(0)
+	}
+	result_name := t.new_temp('borrowed_closure_result')
+	t.set_var_type(result_name, typ)
+	t.pending_stmts << t.make_decl_assign_typed(result_name, call, typ)
+	t.pending_stmts << t.make_local_closure_destroy_stmt(closure_name)
+	result := t.make_ident(result_name)
+	t.set_node_typ(int(result), typ)
+	return result
 }
 
 fn (t &Transformer) explicit_generic_call_arg_text(node flat.Node) string {
@@ -16065,6 +16162,20 @@ fn (t &Transformer) checker_resolved_non_builtin_return_type_uncached(id flat.No
 	if is_builtin_collection_resolved_call(name) {
 		return none
 	}
+	decl_module := t.tc.fn_type_modules[name] or { '' }
+	same_decl_module := decl_module == t.cur_module
+		|| (decl_module in ['', 'main'] && t.cur_module in ['', 'main'])
+	if !same_decl_module && node.children_count > 0 {
+		fn_node := t.a.child_node(&node, 0)
+		if fn_node.kind == .ident && t.var_type(fn_node.value).len == 0 {
+			if ret := t.local_fn_decl_return_type(fn_node.value) {
+				candidate := t.call_return_type_name(ret, node)
+				if decl_type_is_usable(candidate) || candidate == 'void' {
+					return candidate
+				}
+			}
+		}
+	}
 	if node.children_count > 0 && t.cur_module.len > 0 && t.cur_module !in ['main', 'builtin'] {
 		fn_node := t.a.child_node(&node, 0)
 		short_name := short_name_view(name)
@@ -16088,7 +16199,6 @@ fn (t &Transformer) checker_resolved_non_builtin_return_type_uncached(id flat.No
 	// The expression cache can contain a parser-inferred multi-return tail such as
 	// `!(m.Match, _)`. Prefer the resolved declaration, whose complete return type
 	// is authoritative, before falling back to that provisional expression type.
-	decl_module := t.tc.fn_type_modules[name] or { '' }
 	if ret := t.tc.fn_ret_types[name] {
 		if ret !is types.Unknown && ret !is types.Void {
 			candidate := t.call_return_type_name_in_module(t.semantic_type_name(ret), node, decl_module)

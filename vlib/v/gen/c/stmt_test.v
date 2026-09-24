@@ -376,6 +376,28 @@ fn test_fn_decl_signature_registration_preserves_call_name_aliases() {
 	}
 }
 
+fn test_same_named_fn_signatures_are_resolved_in_the_current_module() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	mut g := FlatGen.new()
+	g.a = &a
+	g.tc = &tc
+	main_params := [types.Type(types.int_)]
+	tc.cur_module = 'main'
+	g.register_fn_decl_signature_type('make', 'make', main_params, []bool{}, false, false,
+		types.Type(types.int_))
+	tc.cur_module = 'builtin'
+	g.register_fn_decl_signature_type('make', 'make', []types.Type{}, []bool{}, false,
+		false, types.Type(types.string_))
+
+	tc.cur_module = 'main'
+	assert g.param_types_for('make', 'make') == main_params
+	assert g.fn_decl_return_type_for_call_name('make') or { types.Type(types.void_) } == types.Type(types.int_)
+	tc.cur_module = 'builtin'
+	assert g.param_types_for('make', 'make') == []
+	assert g.fn_decl_return_type_for_call_name('make') or { types.Type(types.void_) } == types.Type(types.string_)
+}
+
 fn test_local_pointer_alias_branch_assignment_merges_outer_markers() {
 	mut a := flat.FlatAst.new()
 	mut tc := types.TypeChecker.new(&a)

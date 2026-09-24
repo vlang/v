@@ -12,12 +12,12 @@ fn test_parse() {
 }
 
 fn test_parse_invalid() {
-	if x := time.parse('Invalid time string') {
+	if _ := time.parse('Invalid time string') {
 		assert false
 	}
 	assert true
 
-	if x := time.parse('2020-02-02 02.20.02') {
+	if _ := time.parse('2020-02-02 02.20.02') {
 		assert false
 	}
 	assert true

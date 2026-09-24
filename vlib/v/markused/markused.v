@@ -462,6 +462,18 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 	for root in marked_roots {
 		enqueue(root, mut used, mut queue)
 	}
+	// Overflow calls are introduced by C generation after reachability has been
+	// computed. The synthetic `builtin.overflow` import exists only for
+	// `-check-overflow`, so its declarations are the signal to retain the helper
+	// bodies that those generated calls need.
+	if 'builtin.overflow.add_i8' in fn_decls || 'overflow.add_i8' in fn_decls {
+		for op in ['add', 'sub', 'mul'] {
+			for typ in ['i8', 'u8', 'i16', 'u16', 'i32', 'u32', 'i64', 'u64'] {
+				enqueue('builtin.overflow.${op}_${typ}', mut used, mut queue)
+				enqueue('overflow.${op}_${typ}', mut used, mut queue)
+			}
+		}
+	}
 	// Exported functions are externally reachable even when the input has no V
 	// entry point (for example `-is_o` modules called from C).
 	enqueue_export_roots(a, tc, mut used, mut queue)
@@ -1980,7 +1992,10 @@ fn build_prepared_markused_declarations(a &flat.FlatAst, tc &types.TypeChecker) 
 
 fn markused_syntax_needs_closure_runtime(a &flat.FlatAst) bool {
 	for idx, node in a.nodes {
-		if node.kind == .fn_literal || (idx >= a.user_code_start && node.kind == .lambda_expr) {
+		if (node.kind == .import_decl
+			&& (node.value == 'builtin.closure' || node.typ == '__v3_builtin_closure_runtime'))
+			|| node.kind == .fn_literal
+			|| (idx >= a.user_code_start && node.kind == .lambda_expr) {
 			return true
 		}
 	}
@@ -2677,6 +2692,9 @@ fn enqueue_detected_runtime_helpers(a &flat.FlatAst, tc &types.TypeChecker, mut 
 }
 
 fn markused_program_needs_closure_runtime(a &flat.FlatAst, tc &types.TypeChecker) bool {
+	if markused_syntax_needs_closure_runtime(a) {
+		return true
+	}
 	mut call_callees := map[int]bool{}
 	for node in a.nodes {
 		if node.kind == .call && node.children_count > 0 {

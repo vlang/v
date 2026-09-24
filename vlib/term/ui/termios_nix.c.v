@@ -403,7 +403,6 @@ fn escape_end(buf string) int {
 	}
 	// this point should be unreachable
 	assert false
-	return 0
 }
 
 @[inline]

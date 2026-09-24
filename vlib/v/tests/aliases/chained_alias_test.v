@@ -26,7 +26,7 @@ fn test_struct_chain() {
 		v: 7
 	}
 	w := Wrapped(dw)
-	b := Box(w)
+	b := Box{ ...w }
 	assert b.v == 7
 	assert dw.v == 7
 }

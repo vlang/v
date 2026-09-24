@@ -5673,6 +5673,11 @@ fn (g &FlatGen) local_fn_call_return_type(call_id flat.NodeId, call_node flat.No
 		}
 	}
 	if name := g.tc.resolved_call_name(call_id) {
+		if !name.contains('.') {
+			if ret := g.fn_decl_return_type_in_current_module(name) {
+				return ret
+			}
+		}
 		if ret := g.tc.fn_ret_types[name] {
 			return ret
 		}
@@ -5868,6 +5873,11 @@ fn (g &FlatGen) fn_decl_return_type_for_call_name(name string) ?types.Type {
 	if name.len == 0 {
 		return none
 	}
+	if !name.contains('.') {
+		if rt := g.fn_decl_return_type_in_current_module(name) {
+			return rt
+		}
+	}
 	if !name.contains('.') && g.tc.cur_module.len > 0 && g.tc.cur_module !in ['main', 'builtin'] {
 		qname := '${g.tc.cur_module}.${name}'
 		if rt := g.fn_decl_ret_types[qname] {
@@ -5890,6 +5900,20 @@ fn (g &FlatGen) fn_decl_return_type_for_call_name(name string) ?types.Type {
 		if rt := g.fn_decl_ret_types[cname] {
 			return rt
 		}
+	}
+	return none
+}
+
+fn (g &FlatGen) fn_decl_return_type_in_current_module(name string) ?types.Type {
+	if rt := g.fn_decl_ret_types[fn_decl_module_key(g.tc.cur_module, name)] {
+		return rt
+	}
+	// Empty and `main` are equivalent source-module spellings.
+	if g.tc.cur_module == '' {
+		return g.fn_decl_ret_types[fn_decl_module_key('main', name)] or { none }
+	}
+	if g.tc.cur_module == 'main' {
+		return g.fn_decl_ret_types[fn_decl_module_key('', name)] or { none }
 	}
 	return none
 }
@@ -6763,6 +6787,117 @@ fn (mut g FlatGen) gen_static_local_lazy_init(lhs_id flat.NodeId, rhs_id flat.No
 	g.writeln('}')
 }
 
+fn (mut g FlatGen) gen_large_heap_struct_decl(lhs_id flat.NodeId, rhs_id flat.NodeId, v_type types.Type, decl_prefix string, lhs_is_defer_capture bool) bool {
+	if lhs_is_defer_capture || decl_prefix == 'static ' {
+		return false
+	}
+	pointer_type := match v_type {
+		types.Pointer { v_type }
+		else { return false }
+	}
+	lhs := g.a.node(lhs_id)
+	rhs_outer := g.a.node(rhs_id)
+	mut struct_init_id := rhs_id
+	if rhs_outer.kind == .prefix && rhs_outer.op == .amp && rhs_outer.children_count == 1 {
+		struct_init_id = g.a.child(rhs_outer, 0)
+	}
+	rhs := g.a.node(struct_init_id)
+	if lhs.kind != .ident || rhs.kind != .struct_init {
+		return false
+	}
+	base_type := default_init_unalias_type(pointer_type.base_type)
+	if base_type !is types.Struct {
+		return false
+	}
+	lookup_name := g.struct_init_fields_key(g.struct_init_lookup_type_name(rhs.value),
+		base_type.name)
+	if !g.struct_has_large_fixed_array(lookup_name) {
+		return false
+	}
+	// This direct heap path assigns fields through the allocated pointer. Keep
+	// promoted/embedded initialization on the general struct-literal path.
+	for i in 0 .. rhs.children_count {
+		field := g.a.child_node(rhs, i)
+		if field.kind != .field_init || field.children_count == 0 {
+			continue
+		}
+		if field.value.len == 0 {
+			if g.struct_field_at(lookup_name, i) == none {
+				return false
+			}
+		} else if g.struct_field_named(lookup_name, field.value) == none {
+			return false
+		}
+	}
+	ct := g.value_c_type(v_type)
+	base_ct := g.value_c_type(base_type)
+	lhs_str := g.decl_lhs_str(lhs_id)
+	g.writeln('${decl_prefix}${ct} ${lhs_str} = (${ct})vcalloc(sizeof(${base_ct}));')
+	mut set_fields := map[string]bool{}
+	for i in 0 .. rhs.children_count {
+		field := g.a.child_node(rhs, i)
+		if field.kind != .field_init || field.children_count == 0 {
+			continue
+		}
+		field_info := if field.value.len > 0 {
+			g.struct_field_named(lookup_name, field.value) or { continue }
+		} else {
+			g.struct_field_at(lookup_name, i) or { continue }
+		}
+		cfield := g.init_field_c_name(lookup_name, field_info.name)
+		value_id := g.a.child(field, 0)
+		if _ := array_fixed_type(field_info.typ) {
+			g.write('memcpy(${lhs_str}->${cfield}, ')
+			g.gen_fixed_array_copy_source(value_id, field_info.typ)
+			g.writeln(', sizeof(${lhs_str}->${cfield}));')
+		} else {
+			g.write('${lhs_str}->${cfield} = ')
+			g.gen_struct_field_expr_for_field(value_id, lookup_name, field_info.name,
+				field_info.typ)
+			g.writeln(';')
+		}
+		set_fields[field_info.name] = true
+	}
+	if info := g.find_struct_decl(lookup_name) {
+		old_module := g.tc.cur_module
+		old_file := g.tc.cur_file
+		old_default_module := g.struct_default_module
+		g.tc.cur_module = info.module
+		g.tc.cur_file = info.file
+		g.struct_default_module = info.module
+		for i in 0 .. info.node.children_count {
+			field := g.a.child_node(&info.node, i)
+			if field.kind != .field_decl || field.children_count == 0
+				|| field.value in set_fields {
+				continue
+			}
+			field_type := g.struct_default_field_type(info, field)
+			cfield := g.init_field_c_name(info.full_name, field.value)
+			value_id := g.a.child(field, 0)
+			if _ := array_fixed_type(field_type) {
+				g.write('memcpy(${lhs_str}->${cfield}, ')
+				g.gen_fixed_array_copy_source(value_id, field_type)
+				g.writeln(', sizeof(${lhs_str}->${cfield}));')
+			} else {
+				g.write('${lhs_str}->${cfield} = ')
+				g.gen_struct_field_expr_for_field(value_id, info.full_name, field.value,
+					field_type)
+				g.writeln(';')
+			}
+		}
+		g.tc.cur_module = old_module
+		g.tc.cur_file = old_file
+		g.struct_default_module = old_default_module
+	}
+	owner := g.tc.cur_scope.insert_with_owner(lhs.value, v_type)
+	g.track_local_pointer_storage_decl(lhs, owner, v_type, ct)
+	g.track_ierror_owned_pointer_decl(owner, rhs_id, v_type)
+	g.track_local_pointer_alias_source(lhs, owner, rhs_id, v_type)
+	g.track_local_fn_value_decl(lhs, owner, rhs)
+	g.declare_local_raw_type(owner, rhs.value)
+	return true
+}
+
 fn (mut g FlatGen) static_local_initializer_needs_runtime(id flat.NodeId) bool {
 	if !g.is_const_expr(id) {
 		return true
@@ -7321,6 +7456,11 @@ fn (mut g FlatGen) gen_decl_assign(node flat.Node) {
 				&& !g.struct_init_effective_type_name(rhs_id, rhs).starts_with('&') {
 				v_type = types.unwrap_all_pointers(v_type)
 			}
+			if g.gen_large_heap_struct_decl(lhs_id, rhs_id, v_type, decl_prefix,
+				lhs_is_defer_capture) {
+				i += 2
+				continue
+			}
 			if fixed := array_fixed_type(v_type) {
 				lhs_str := g.decl_lhs_str(lhs_id)
 				if !lhs_is_defer_capture {
@@ -7358,6 +7498,30 @@ fn (mut g FlatGen) gen_decl_assign(node flat.Node) {
 				g.optional_type_name_for_expr(rhs_id, semantic_v_type)
 			} else {
 				ct0
+			}
+			if align := g.tinyc_stack_value_alignment(v_type, ct) {
+				if lhs.kind == .ident && !lhs_is_defer_capture && decl_prefix != 'static ' {
+					lhs_str := g.decl_lhs_str(lhs_id)
+					align_tmp := g.tmp_name()
+					storage_tmp := g.tmp_name()
+					value_tmp := g.tmp_name()
+					g.write('${decl_prefix}${ct}* ${lhs_str} = ({ size_t ${align_tmp} = (size_t)(${align}); ')
+					g.write('void* ${storage_tmp} = __builtin_alloca(sizeof(${ct}) + ${align_tmp} - 1); ')
+					g.write('${ct}* ${value_tmp} = (${ct}*)((((uintptr_t)${storage_tmp} + ${align_tmp} - 1) / ${align_tmp}) * ${align_tmp}); ')
+					g.write('*${value_tmp} = ')
+					g.gen_decl_init_expr(rhs_id, rhs, v_type, ct, true)
+					g.writeln('; ${value_tmp}; });')
+					owner := g.tc.cur_scope.insert_with_owner(lhs.value, v_type)
+					g.track_local_pointer_storage_decl(lhs, owner, v_type, '${ct}*')
+					g.declare_local_indirect_value_type(owner, v_type)
+					g.declare_local_implicit_deref(owner, true)
+					g.track_ierror_owned_pointer_decl(owner, rhs_id, v_type)
+					g.track_local_pointer_alias_source(lhs, owner, rhs_id, v_type)
+					g.track_local_fn_value_decl(lhs, owner, rhs)
+					g.declare_local_raw_type(owner, g.decl_raw_type_text(node, lhs, rhs))
+					i += 2
+					continue
+				}
 			}
 			if ct.starts_with('fn_ptr:') {
 				fp_ct, fp_suffix := fn_ptr_decl_type_parts(v_type, ct)
@@ -8395,6 +8559,11 @@ fn (mut g FlatGen) gen_assign(node flat.Node) {
 					i += 2
 					continue
 				}
+				if g.gen_checked_integer_assign(lhs_id, rhs_id, lhs_type, rhs_type, node.op) {
+					g.expected_enum = ''
+					i += 2
+					continue
+				}
 				if method_name := g.assign_struct_operator_method(lhs_type, node.op) {
 					g.gen_expr(lhs_id)
 					g.write(' = ${g.cname(method_name)}(')
@@ -8510,6 +8679,25 @@ fn (mut g FlatGen) gen_assign(node flat.Node) {
 		}
 		i += 2
 	}
+}
+
+fn (mut g FlatGen) gen_checked_integer_assign(lhs_id flat.NodeId, rhs_id flat.NodeId, lhs_type types.Type, rhs_type types.Type, op flat.Op) bool {
+	value_type := g.assign_rhs_expected_type(lhs_id, lhs_type)
+	helper := g.integer_overflow_helper(value_type, op) or { return false }
+	c_type := g.value_c_type(value_type)
+	if c_type.len == 0 {
+		return false
+	}
+	address := g.tmp_name()
+	g.write('{ ${c_type}* ${address} = &(')
+	if g.assign_lhs_needs_deref(lhs_id, lhs_type, rhs_type, op) {
+		g.write('*')
+	}
+	gen_expr_lvalue(mut g, lhs_id)
+	g.write('); *${address} = ${helper}(*${address}, ')
+	g.gen_expr_with_expected_type(rhs_id, value_type)
+	g.writeln('); }')
+	return true
 }
 
 fn (mut g FlatGen) gen_optional_abi_assignment(lhs_id flat.NodeId, rhs_id flat.NodeId, lhs flat.Node, lhs_type types.Type, rhs_type types.Type) bool {

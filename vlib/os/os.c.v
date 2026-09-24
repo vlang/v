@@ -746,8 +746,7 @@ pub fn get_raw_stdin() []u8 {
 
 // read_file_array reads an array of `T` values from file `path`.
 pub fn read_file_array[T](path string) []T {
-	a := T{}
-	tsize := int(sizeof(a))
+	tsize := int(sizeof(T))
 	// prepare for reading, get current file size
 	mut fp := vfopen(path, 'rb') or { return []T{} }
 	C.fseek(fp, 0, C.SEEK_END)

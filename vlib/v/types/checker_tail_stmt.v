@@ -1000,6 +1000,63 @@ fn (tc &TypeChecker) postfix_is_c_style_for_condition(id flat.NodeId) bool {
 	return false
 }
 
+fn (tc &TypeChecker) postfix_is_direct_return_value(id flat.NodeId) bool {
+	mut current := id
+	for _ in 0 .. 64 {
+		parent_id := tc.direct_parent_id(current)
+		if !tc.valid_node_id(parent_id) {
+			return false
+		}
+		parent := tc.a.node(parent_id)
+		if parent.kind == .paren {
+			current = parent_id
+			continue
+		}
+		return parent.kind == .return_stmt && parent.children_count == 1
+			&& tc.a.child(parent, 0) == current
+	}
+	return false
+}
+
+fn (tc &TypeChecker) postfix_is_direct_unsafe_decl_value(id flat.NodeId) bool {
+	if !tc.expr_is_inside_unsafe_block(id) {
+		return false
+	}
+	mut current := id
+	for _ in 0 .. 64 {
+		parent_id := tc.direct_parent_id(current)
+		if !tc.valid_node_id(parent_id) {
+			return false
+		}
+		parent := tc.a.node(parent_id)
+		if parent.kind == .paren {
+			current = parent_id
+			continue
+		}
+		return parent.kind == .decl_assign && parent.children_count > 1
+			&& tc.a.child(parent, parent.children_count - 1) == current
+	}
+	return false
+}
+
+fn (tc &TypeChecker) postfix_is_struct_field_default(id flat.NodeId) bool {
+	mut current := id
+	for _ in 0 .. 64 {
+		parent_id := tc.direct_parent_id(current)
+		if !tc.valid_node_id(parent_id) {
+			return false
+		}
+		parent := tc.a.node(parent_id)
+		if parent.kind == .paren {
+			current = parent_id
+			continue
+		}
+		return parent.kind == .field_decl && parent.children_count > 0
+			&& tc.a.child(parent, parent.children_count - 1) == current
+	}
+	return false
+}
+
 fn (mut tc TypeChecker) check_postfix_value_uses_preflight() {
 	saved_file := tc.cur_file
 	saved_module := tc.cur_module
@@ -1014,7 +1071,8 @@ fn (mut tc TypeChecker) check_postfix_value_uses_preflight() {
 			continue
 		}
 		if node.op !in [.inc, .dec] || tc.expr_is_standalone_statement(id)
-			|| tc.postfix_is_c_style_for_condition(id) {
+			|| tc.postfix_is_c_style_for_condition(id) || tc.postfix_is_direct_return_value(id)
+			|| tc.postfix_is_direct_unsafe_decl_value(id) || tc.postfix_is_struct_field_default(id) {
 			continue
 		}
 		file := tc.a.source_files[node.pos.id] or { continue }
@@ -7161,7 +7219,7 @@ fn (mut tc TypeChecker) check_index(id flat.NodeId, node flat.Node) {
 				}
 				tc.record_error_at(.cannot_index, message, index_id, token.new_span(node.pos.id, tc.a.node(base_id).pos.end, node.pos.end))
 			}
-			if unalias_type(base_type.value_type) is SumType
+			if tc.unsafe_depth == 0 && unalias_type(base_type.value_type) is SumType
 				&& !tc.index_is_handled_by_guard_or_or_block(id)
 				&& !tc.index_is_assignment_target(id) {
 				tc.record_warning_at(.cannot_index, '`or {}` block required when indexing a map with sum type value', id, token.new_span(node.pos.id, tc.a.node(base_id).pos.end, node.pos.end))
@@ -8682,6 +8740,20 @@ fn (tc &TypeChecker) expr_is_unsafe_nil(id flat.NodeId) bool {
 	}
 	if node.kind in [.paren, .expr_stmt] && node.children_count > 0 {
 		return tc.expr_is_unsafe_nil(tc.a.child(&node, 0))
+	}
+	return false
+}
+
+fn (tc &TypeChecker) expr_is_explicit_unsafe_value(id flat.NodeId) bool {
+	if int(id) < 0 || int(id) >= tc.a.nodes.len {
+		return false
+	}
+	node := tc.a.nodes[int(id)]
+	if node.kind == .block {
+		return node.value == 'unsafe'
+	}
+	if node.kind in [.paren, .expr_stmt] && node.children_count > 0 {
+		return tc.expr_is_explicit_unsafe_value(tc.a.child(&node, 0))
 	}
 	return false
 }
