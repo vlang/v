@@ -16626,6 +16626,9 @@ fn is_test_harness_hook_name(name string) bool {
 // constants that nothing uses, as a build does after markused. A check skips
 // markused, so it runs here only when a private function is not named at all.
 fn report_unused_declarations_of_check(a &flat.FlatAst, mut tc types.TypeChecker, no_skip_unused bool, test_files []string, full_runtime bool) {
+	if !full_runtime && test_files.len == 0 && tc.diagnose_unused_library_private_declarations() {
+		return
+	}
 	used_fns := tc.used_fns_without_markused() or {
 		check_markused(a, mut tc, no_skip_unused, test_files, full_runtime)
 	}

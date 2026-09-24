@@ -131,6 +131,18 @@ fn check_and_build_notices(name string, source string) ([]string, []string) {
 	return notice_lines(check.output), notice_lines(build.output)
 }
 
+// check_library_output checks `source` as the only file of a module that no
+// program imports, the way an editor checks it: on its own, as a library.
+fn check_library_output(name string, source string) os.Result {
+	dir := os.join_path(os.vtmp_dir(), 'v3_check_warnings_${name}_${os.getpid()}', name)
+	os.mkdir_all(dir) or { panic(err) }
+	defer {
+		os.rmdir_all(os.dir(dir)) or {}
+	}
+	os.write_file(os.join_path(dir, '${name}.v'), source) or { panic(err) }
+	return os.execute('${os.quoted_path(@VEXE)} -new-compiler -shared -check -nocolor ${os.quoted_path(dir)}')
+}
+
 fn notice_lines(output string) []string {
 	mut lines := output.split_into_lines().filter(it.contains(': notice: '))
 	lines.sort()
@@ -180,4 +192,60 @@ fn test_check_reports_unused_private_declarations_next_to_errors() {
 	assert res.output.contains('notice: unused function: `helper`'), res.output
 	assert !res.output.contains('`called_badly`'), res.output
 	assert !res.output.contains('unused function: `passed_to_unknown`'), res.output
+}
+
+const library_with_unused = "module lib
+
+pub const shared_limit = 1
+
+const limit = 3
+
+const used_limit = 4
+
+pub fn api() int {
+	return used_limit + helper()
+}
+
+fn helper() int {
+	return 1
+}
+
+fn orphan() int {
+	return 2
+}
+
+@[export: 'lib_exported']
+fn exported() int {
+	return 5
+}
+
+@[markused]
+fn kept() int {
+	return 6
+}
+
+pub fn unused_api() {}
+"
+
+// A module that no program imports is checked on its own, as a library. Its
+// public declarations are what other programs use, and what a private one serves
+// cannot be told without a program: the private ones that nothing names are
+// reported, and one exported to C or kept with `@[markused]` is used.
+fn test_check_reports_the_unused_private_declarations_of_a_library() {
+	res := check_library_output('lib', library_with_unused)
+	assert res.exit_code == 0, res.output
+	assert notice_lines(res.output).len == 2, res.output
+	assert res.output.contains('notice: unused constant: `limit`'), res.output
+	assert res.output.contains('notice: unused function: `orphan`'), res.output
+}
+
+// With errors too, as an editor shows them while they are being fixed.
+fn test_check_reports_the_unused_private_declarations_of_a_library_with_errors() {
+	res := check_library_output('lib', library_with_unused + "\nfn broken() int {\n\treturn 'a'\n}\n\npub fn calls_broken() int {\n\treturn broken()\n}\n")
+	assert res.exit_code == 1, res.output
+	assert res.output.contains('error:'), res.output
+	assert res.output.contains('notice: unused constant: `limit`'), res.output
+	assert res.output.contains('notice: unused function: `orphan`'), res.output
+	assert !res.output.contains('`shared_limit`'), res.output
+	assert !res.output.contains('`exported`'), res.output
 }

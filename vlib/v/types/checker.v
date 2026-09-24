@@ -7513,7 +7513,36 @@ pub fn (mut tc TypeChecker) diagnose_unused_private_declarations(used_fns map[st
 	if tc.errors.len > 0 || !tc.has_main_module_fn_main() {
 		return
 	}
-	tc.report_unused_private_declarations(used_fns)
+	tc.report_unused_private_declarations(used_fns, false)
+}
+
+// diagnose_unused_library_private_declarations reports the unused private
+// declarations of a library, a module checked on its own, as an editor checks a
+// module that no program imports, and tells whether the check is one. Its public
+// declarations are what other programs use, and what a private one serves cannot
+// be told without a program: one that is named at all counts as used, as one
+// exported to C or kept with `@[markused]` does.
+pub fn (mut tc TypeChecker) diagnose_unused_library_private_declarations() bool {
+	if !tc.is_library_check() {
+		return false
+	}
+	used, _ := tc.named_private_fns()
+	tc.report_unused_private_declarations(used, true)
+	return true
+}
+
+// is_library_check reports whether the checked files are a library: no main
+// function, and no test or script, which are programs of their own.
+fn (tc &TypeChecker) is_library_check() bool {
+	if tc.has_main_module_fn_main() || tc.a.has_vsh_source || tc.has_c_test_harness_main() {
+		return false
+	}
+	for file, _ in tc.diagnostic_files {
+		if file.ends_with('_test.v') {
+			return false
+		}
+	}
+	return true
 }
 
 // diagnose_unused_private_declarations_with_errors reports, in a program with
@@ -7522,15 +7551,17 @@ pub fn (mut tc TypeChecker) diagnose_unused_private_declarations(used_fns map[st
 // leave its function looking unused. So a function that is called or named at
 // all counts as used, and no notice is one that fixing the errors takes back.
 pub fn (mut tc TypeChecker) diagnose_unused_private_declarations_with_errors() {
-	if !tc.has_main_module_fn_main() {
+	if tc.diagnose_unused_library_private_declarations() || !tc.has_main_module_fn_main() {
 		return
 	}
 	used, _ := tc.named_private_fns()
-	tc.report_unused_private_declarations(used)
+	tc.report_unused_private_declarations(used, false)
 }
 
-fn (mut tc TypeChecker) report_unused_private_declarations(used_fns map[string]bool) {
-	unused := tc.unused_private_declarations(used_fns)
+// report_unused_private_declarations records the notices; for a `library`, see
+// unused_private_declarations.
+fn (mut tc TypeChecker) report_unused_private_declarations(used_fns map[string]bool, library bool) {
+	unused := tc.unused_private_declarations(used_fns, library)
 	// The diagnostic filter and recorded file both read tc.cur_file; replay each
 	// candidate's file so deferred emission matches the former in-walk emission.
 	walk_end_file := tc.cur_file
@@ -7571,7 +7602,7 @@ fn (mut tc TypeChecker) named_private_fns() (map[string]bool, bool) {
 	saved_module := tc.cur_module
 	mut uncalled := []UnusedDeclCandidate{}
 	mut keys := map[string][]int{}
-	for cand in tc.unused_private_declarations(map[string]bool{}) {
+	for cand in tc.unused_private_declarations(map[string]bool{}, false) {
 		tc.cur_file = cand.file
 		if !cand.is_fn || !tc.should_diagnose(cand.node_id) {
 			continue
@@ -7619,7 +7650,9 @@ fn (mut tc TypeChecker) named_private_fns() (map[string]bool, bool) {
 
 // unused_private_declarations returns the private functions that are not in
 // `used_fns` and that nothing calls, and the private constants nothing names.
-fn (mut tc TypeChecker) unused_private_declarations(used_fns map[string]bool) []UnusedDeclCandidate {
+// Of a `library`, the public constants are left out, since other programs use
+// them, and so are the functions exported to C or kept with `@[markused]`.
+fn (mut tc TypeChecker) unused_private_declarations(used_fns map[string]bool, library bool) []UnusedDeclCandidate {
 	// Collect the (few) candidate declarations first, then scan the AST once
 	// probing only against that small candidate set. Building referenced-name
 	// maps over every ident/selector/call in the program did the same work as
@@ -7652,6 +7685,10 @@ fn (mut tc TypeChecker) unused_private_declarations(used_fns map[string]bool) []
 			if tc.declaration_contains_error(node) {
 				continue
 			}
+			if library && (tc.declaration_has_attribute(flat.NodeId(idx), 'export')
+				|| tc.declaration_has_attribute(flat.NodeId(idx), 'markused')) {
+				continue
+			}
 			qname := checker_qualified_fn_name(module_name, node.value)
 			cname := tc.cached_c_name(qname)
 			if used_fns[node.value] || used_fns[qname] || used_fns[cname] {
@@ -7671,7 +7708,7 @@ fn (mut tc TypeChecker) unused_private_declarations(used_fns map[string]bool) []
 			}
 			continue
 		}
-		if node.kind != .const_decl {
+		if node.kind != .const_decl || (library && node.op == .arrow) {
 			continue
 		}
 		if node.op == .arrow {
