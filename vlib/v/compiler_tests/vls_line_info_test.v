@@ -3,6 +3,7 @@
 // signature help (`fn^`), completion (a bare column) and inlay hints (`ih^`).
 // V3 answers them from the checked program, in V1's formats.
 import os
+import time
 import x.json2
 
 const vexe = @VEXE
@@ -284,4 +285,53 @@ fn test_a_column_past_the_end_of_its_line_has_no_answer() {
 	// Line 43 is `\tprintln(y + x)`: 15 bytes.
 	assert ask_at(work_dir, '43:hv^14') != ''
 	assert ask_at(work_dir, '43:hv^40') == ''
+}
+
+// read_until collects what the server prints until `marker`, or gives up after
+// a while: stdout_read does not wait for output.
+fn read_until(mut p os.Process, marker string) string {
+	mut out := ''
+	for _ in 0 .. 60000 {
+		if out.contains(marker) || !p.is_alive() {
+			break
+		}
+		chunk := p.stdout_read()
+		if chunk == '' {
+			time.sleep(time.millisecond)
+			continue
+		}
+		out += chunk
+	}
+	return out
+}
+
+fn test_the_diagnostics_server_answers_queries_between_checks() {
+	$if !linux {
+		return
+	}
+	mut p := os.new_process(line_info_v3_bin)
+	p.set_args(['-no-memory-limit', '-w', '-check', '-nocolor', '.'])
+	p.set_work_folder(work_dir)
+	mut env := os.environ()
+	env['V_DIAGNOSTICS_SERVER'] = '1'
+	p.set_environment(env)
+	p.set_redirect_stdio()
+	p.run()
+	defer {
+		p.close()
+	}
+	assert read_until(mut p, 'v-diagnostics-server: ready').contains('v-diagnostics-server: ready')
+	p.stdin_write('query t1 main.v:41:hv^2\n')
+	assert read_until(mut p, 'v-diagnostics-server: end 0 t1').contains('"value":"```v\\ny int\\n```"')
+	p.stdin_write('check t2\n')
+	checked := read_until(mut p, 'v-diagnostics-server: end ')
+	assert checked.contains('v-diagnostics-server: end 0 t2'), checked
+	// The files of `.` as V1 wrote them.
+	p.stdin_write('query t3 main.v:42:gd^7\n')
+	assert read_until(mut p, 'v-diagnostics-server: end 0 t3').contains('./main.v:41:1')
+	p.stdin_write('query t4\n')
+	assert read_until(mut p, 'v-diagnostics-server: end 2').contains('unknown request `query t4`')
+	p.stdin_write('quit\n')
+	p.wait()
+	assert p.code == 0
 }

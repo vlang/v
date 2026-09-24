@@ -13,7 +13,7 @@ fn C.dup2(oldfd int, newfd int) int
 fn C._exit(code int)
 
 // serve turns this compilation into a diagnostics server when the environment
-// sets V_DIAGNOSTICS_SERVER, and returns at once otherwise. The work done so
+// sets V_DIAGNOSTICS_SERVER, and returns '' at once otherwise. The work done so
 // far - builtin, parsed - is kept for every request: each `check` line read on
 // stdin is answered by a child created by fork(), which returns from here and
 // finishes the compilation exactly as a one-shot run of the same command line
@@ -23,13 +23,18 @@ fn C._exit(code int)
 // request line: a source line quoted in a diagnostic cannot then pass for the
 // end of the answer. It stops when stdin closes or a `quit` line arrives.
 //
-// A request carries nothing but the word: the command line fixes the input,
-// and with it every setting the driver derived from the input before this
-// point. Between requests the client changes the files on disk, and it only
-// shows the diagnostics of its own files: see V_CHECK_SELECTED_FILES_ONLY.
-pub fn serve() {
+// A `query <token> <file>:<line>:<code><column>` line asks a question of the
+// mini-VLS protocol instead, as `-line-info` does: its child returns the
+// question, and answers it in place of the diagnostics. The token comes first,
+// as the path of the file may hold spaces.
+//
+// A request carries nothing else: the command line fixes the input, and with
+// it every setting the driver derived from the input before this point.
+// Between requests the client changes the files on disk, and it only shows the
+// diagnostics of its own files: see V_CHECK_SELECTED_FILES_ONLY.
+pub fn serve() string {
 	if os.getenv('V_DIAGNOSTICS_SERVER') == '' {
-		return
+		return ''
 	}
 	// fork() keeps only the calling thread. The child gives the worker pools new
 	// threads, and no other thread may be running.
@@ -37,7 +42,7 @@ pub fn serve() {
 	if others > 0 {
 		println('v-diagnostics-server: unavailable (${others} threads besides the worker pools; start it without -v and with -no-memory-limit)')
 		flush_stdout()
-		return
+		return ''
 	}
 	// The client shows the diagnostics of its own files only, so the library
 	// bodies that cannot produce one for them are left unchecked.
@@ -60,12 +65,19 @@ pub fn serve() {
 		if request == 'quit' {
 			exit(0)
 		}
-		if request != 'check' && !request.starts_with('check ') {
+		mut token := ''
+		mut question := ''
+		if request == 'check' || request.starts_with('check ') {
+			token = request.all_after('check').trim_space()
+		} else if request.starts_with('query ') && request.all_after('query ').trim_space().contains(' ') {
+			rest := request.all_after('query ').trim_space()
+			token = rest.all_before(' ')
+			question = rest.all_after(' ').trim_space()
+		} else {
 			println('v-diagnostics-server: unknown request `${request}`')
 			answered(2, '')
 			continue
 		}
-		token := request.all_after('check').trim_space()
 		pid := os.fork()
 		if pid == 0 {
 			// The client reads a single stream: diagnostics go where the answer goes.
@@ -78,7 +90,7 @@ pub fn serve() {
 			// The server runs without the compiler's memory watchdog, which is a
 			// thread of its own; the child, which may start threads, keeps one.
 			spawn watch_memory(memory_limit_kb())
-			return
+			return question
 		}
 		if pid < 0 {
 			println('v-diagnostics-server: fork failed')
