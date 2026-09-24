@@ -11547,6 +11547,9 @@ pub fn run(args []string) {
 		ckpre_sw.restart()
 		pre_tc.check_main_module_requirement(is_shared || test_files.len > 0
 			|| a.export_fn_names.len > 0)
+		// A call whose Result nothing handles loses its error: a warning, in a
+		// check, a build and a run alike.
+		pre_tc.warn_unhandled_result_calls()
 		if verbose {
 			eprintln('  [ttime]   ck main req      ${f64(ckpre_sw.elapsed().microseconds()) / 1000.0:7.2f} ms')
 		}
