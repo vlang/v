@@ -3061,13 +3061,27 @@ fn (mut g FlatGen) gen_node(id flat.NodeId) {
 			if g.show_test_stats && g.test_files.len > 0 {
 				g.writeln('__v_test_assertions++;')
 			}
-			captures := g.gen_assert_operand_captures(node)
-			if captures.len == 0 {
+			mut captures := g.gen_assert_operand_captures(node)
+			mut condition := ''
+			if captures.len > 0 {
+				condition = g.expr_to_string(g.a.child(&node, 0)).trim_left(' \t')
+				if captures.len == 2 && !condition.contains(captures[0].name)
+					&& condition.contains(captures[1].name) {
+					// Evaluating the right operand ahead of the condition is only safe
+					// after the left one was captured; keep their order instead, and
+					// report no values.
+					for capture in captures {
+						g.assert_expr_overrides.delete(capture.id)
+					}
+					captures = []AssertOperandCapture{}
+					condition = g.expr_to_string(g.a.child(&node, 0)).trim_left(' \t')
+				}
+			}
+			if condition.len == 0 {
 				g.write('if (!(')
 				g.gen_expr(g.a.child(&node, 0))
 				g.writeln(')) {')
 			} else {
-				condition := g.expr_to_string(g.a.child(&node, 0)).trim_left(' \t')
 				for capture in captures {
 					if condition.contains(capture.name) {
 						g.writeln(capture.decl)
@@ -3252,26 +3266,69 @@ fn (g &FlatGen) assert_operand_children_are_pure(node flat.Node) bool {
 
 // gen_assert_operand_captures prepares temps for the assert operands that have side
 // effects, and makes the condition read those temps, so that a failed assert can report
-// the operands without evaluating them again.
+// the operands without evaluating them again. The temps are evaluated ahead of the
+// condition, so capturing the right operand also needs a snapshot of the left one, even
+// when reading it has no side effects: in `assert c.n == bump(mut c)`, `c.n` must be
+// read before `bump` runs.
 fn (mut g FlatGen) gen_assert_operand_captures(node flat.Node) []AssertOperandCapture {
 	lhs_id, rhs_id := g.assert_value_ids(node) or { return [] }
 	mut captures := []AssertOperandCapture{cap: 2}
-	for id in [lhs_id, rhs_id] {
-		if g.assert_operand_is_pure(id) {
-			continue
-		}
-		c_type, is_number := g.assert_capture_c_type(id) or { continue }
-		name := '${g.tmp_name()}_assert_value'
-		expr := g.expr_to_string(id).trim_left(' \t')
-		value := if is_number { '(${c_type})(${expr})' } else { expr }
-		captures << AssertOperandCapture{
-			id:   int(id)
-			name: name
-			decl: '${c_type} ${name} = ${value};'
-		}
-		g.assert_expr_overrides[int(id)] = name
+	lhs_is_pure := g.assert_operand_is_pure(lhs_id)
+	if !lhs_is_pure {
+		g.add_assert_operand_capture(mut captures, lhs_id)
 	}
+	if g.assert_operand_is_pure(rhs_id) {
+		return captures
+	}
+	if captures.len == 0 && !g.assert_operand_is_constant(lhs_id) {
+		// Without a snapshot of the left operand, the right one stays in the condition.
+		if !lhs_is_pure || !g.add_assert_operand_capture(mut captures, lhs_id) {
+			return captures
+		}
+	}
+	g.add_assert_operand_capture(mut captures, rhs_id)
 	return captures
+}
+
+// add_assert_operand_capture adds a temp for an assert operand, when its value can be
+// copied into one.
+fn (mut g FlatGen) add_assert_operand_capture(mut captures []AssertOperandCapture, id flat.NodeId) bool {
+	c_type, is_number := g.assert_capture_c_type(id) or { return false }
+	name := '${g.tmp_name()}_assert_value'
+	expr := g.expr_to_string(id).trim_left(' \t')
+	value := if is_number { '(${c_type})(${expr})' } else { expr }
+	captures << AssertOperandCapture{
+		id:   int(id)
+		name: name
+		decl: '${c_type} ${name} = ${value};'
+	}
+	g.assert_expr_overrides[int(id)] = name
+	return true
+}
+
+// assert_operand_is_constant reports whether an assert operand has the same value
+// wherever it is evaluated, so that the other operand may be evaluated before it.
+fn (g &FlatGen) assert_operand_is_constant(id flat.NodeId) bool {
+	if int(id) < 0 || int(id) >= g.a.nodes.len {
+		return false
+	}
+	node := g.a.nodes[int(id)]
+	return match node.kind {
+		.int_literal, .float_literal, .bool_literal, .char_literal, .string_literal,
+		.nil_literal, .none_expr, .enum_val, .sizeof_expr, .typeof_expr {
+			true
+		}
+		.paren, .cast_expr {
+			node.children_count > 0 && g.assert_operand_is_constant(g.a.child(&node, 0))
+		}
+		.prefix {
+			node.op in [.plus, .minus, .not, .bit_not] && node.children_count > 0
+				&& g.assert_operand_is_constant(g.a.child(&node, 0))
+		}
+		else {
+			false
+		}
+	}
 }
 
 // assert_capture_c_type returns the C type of a temp for an assert operand, when its

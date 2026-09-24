@@ -85,3 +85,40 @@ fn test_assert_in_helper() {
 	assert output.contains(': fn check_answer\n   > assert x == 42\n     Left value (len: 1): `1`\n'), output
 	assert !output.contains('V panic'), output
 }
+
+// test_failed_assert_reads_left_operand_before_right checks that capturing a right
+// operand with side effects does not run it before the left operand is read.
+fn test_failed_assert_reads_left_operand_before_right() {
+	result := run_assert_failure_source('order_test.v', "struct Box {
+mut:
+	n int
+	s string
+}
+
+fn bump(mut b Box) int {
+	b.n++
+	return b.n
+}
+
+fn grow(mut b Box) string {
+	b.s += 'b'
+	return b.s
+}
+
+fn test_int_operands() {
+	mut b := Box{}
+	assert b.n == bump(mut b)
+}
+
+fn test_string_operands() {
+	mut b := Box{
+		s: 'a'
+	}
+	assert b.s == grow(mut b)
+}
+")
+	assert result.exit_code != 0, result.output
+	output := result.output
+	assert output.contains('     Left value (len: 1): `0`\n    Right value (len: 1): `1`\n'), output
+	assert output.contains('     Left value (len: 1): `a`\n    Right value (len: 2): `ab`\n'), output
+}
