@@ -643,10 +643,23 @@ fn (l &MsvcLowerer) stmt_end(i int) int {
 				if l.is(i + 1, ':') && t !in msvc_stmt_keywords {
 					return i + 2
 				}
+				if l.is_macro_block_stmt(i) {
+					return l.stmt_end(l.match_idx[i + 1] + 1)
+				}
 			}
 		}
 	}
 	return l.scan_to_semicolon(i)
+}
+
+// is_macro_block_stmt reports whether the statement at `i` is a macro that takes a block,
+// like `cJSON_ArrayForEach(item, array) { ... }`, which expands to a loop header. C has no
+// other statement that starts with a call followed directly by a block.
+fn (l &MsvcLowerer) is_macro_block_stmt(i int) bool {
+	if l.toks[i].kind != .ident || !l.is(i + 1, '(') || l.text(i) in msvc_stmt_keywords {
+		return false
+	}
+	return l.is(l.match_idx[i + 1] + 1, '{')
 }
 
 fn (l &MsvcLowerer) scan_to_semicolon(i int) int {
@@ -797,7 +810,15 @@ fn (mut l MsvcLowerer) emit_stmt(mut sb strings.Builder, i int, j int, in_block 
 				l.write_with_pre(mut sb, lead, value.pre, s.str(), in_block, after_label)
 				return
 			}
-			else {}
+			else {
+				if l.is_macro_block_stmt(i) {
+					// The macro arguments stay as they are; its block is a loop body.
+					close := l.match_idx[i + 1]
+					l.emit_range(mut sb, i, close + 1, true)
+					l.emit_stmt(mut sb, close + 1, j, false, false)
+					return
+				}
+			}
 		}
 	}
 	mut end := j
@@ -1045,7 +1066,7 @@ fn (mut l MsvcLowerer) mark_loop_continues(i int, j int, replacement string) {
 			} else if t in ['for', 'while'] && l.is(k + 1, '(') {
 				k = l.stmt_end(k)
 				continue
-			} else if t == 'do' {
+			} else if t == 'do' || l.is_macro_block_stmt(k) {
 				k = l.stmt_end(k)
 				continue
 			}
@@ -1403,10 +1424,14 @@ fn (mut l MsvcLowerer) lower_stmt_expr(k int) MsvcLowered {
 		s = e
 	}
 	// Rename the declarations of the statement expression's own scope; they become
-	// declarations of the enclosing block.
+	// declarations of the enclosing block. `extern` declarations and function
+	// prototypes name global symbols, and keep their names.
 	for st in stmts {
-		if l.is_decl_stmt(st[0], st[1]) {
+		if l.is_decl_stmt(st[0], st[1]) && !l.decl_is_extern(st[0], st[1]) {
 			for name_idx in l.decl_name_indices(st[0], st[1]) {
+				if l.is(name_idx + 1, '(') {
+					continue
+				}
 				l.rename_from(name_idx, body_end, l.text(name_idx))
 			}
 		}
@@ -1503,6 +1528,18 @@ fn (l &MsvcLowerer) is_decl_stmt(i int, j int) bool {
 	// Function pointer declarator: `ret (*name)(params)`.
 	return l.is(i + 1, '(') && l.is(i + 2, '*') && i + 3 < j && l.toks[i + 3].kind == .ident
 		&& l.is(i + 4, ')') && l.is(i + 5, '(')
+}
+
+// decl_is_extern reports whether the declaration [i, j) is an `extern` declaration.
+fn (l &MsvcLowerer) decl_is_extern(i int, j int) bool {
+	mut k := i
+	for k < j && l.toks[k].kind == .ident && l.text(k) in msvc_decl_start_keywords {
+		if l.is(k, 'extern') {
+			return true
+		}
+		k++
+	}
+	return false
 }
 
 // decl_name_indices returns the token indices of the names declared by [i, j).

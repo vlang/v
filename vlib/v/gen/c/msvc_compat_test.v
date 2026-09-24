@@ -124,3 +124,13 @@ fn test_functions_without_extensions_are_unchanged() {
 	src := 'int f(int a) {\n\tif (a) {\n\t\treturn a + 1;\n\t}\n\treturn 0;\n}\n'
 	assert msvc_compat_c_source(src) == src
 }
+
+fn test_extern_declarations_and_prototypes_keep_their_names() {
+	out := msvc_lower_fn('x = ({ extern int g_count; void helper(int); helper(g_count); g_count; });')
+	assert out.contains('extern int g_count; void helper(int); helper(g_count); x = (g_count);')
+}
+
+fn test_statement_expressions_in_macro_loop_bodies_stay_in_the_loop() {
+	out := msvc_lower_fn('int n = 0; each(item, list) { n += ({ int t = g(item); t; }); } h(n);')
+	assert out.contains('int n = 0; each(item, list) { int t__vmsvc1 = g(item); n += (t__vmsvc1); } h(n);')
+}
