@@ -4389,15 +4389,9 @@ fn (mut tc TypeChecker) check_cast_expr(id flat.NodeId, node flat.Node) {
 			}
 			return
 		}
-		actual_pointer := unalias_type(actual)
-		same_pointer_type := if actual_pointer is Pointer {
-			tc.type_compatible(actual_pointer.base_type, target_pointer.base_type)
-		} else {
-			false
-		}
 		if tc.unsafe_depth == 0 && !(target is Alias && tc.alias_type_is_shared(target))
-			&& actual_pointer is Pointer && struct_type_from_type(target_base) != none
-			&& actual.name() != target_name && !same_pointer_type {
+			&& unalias_type(actual) is Pointer && struct_type_from_type(target_base) != none
+			&& actual.name() != target_name {
 			tc.record_warning_at(.assignment_mismatch, 'casting `${actual.name()}` to `${target_name}` is only allowed in `unsafe` code', id, node.pos)
 			return
 		}

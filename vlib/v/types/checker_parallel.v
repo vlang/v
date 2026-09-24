@@ -908,11 +908,6 @@ fn (tc &TypeChecker) scan_unused_alive_range(fn_keys map[string][]int, const_key
 					alive[cand_idx] = true
 				}
 			}
-			if hits := fn_keys[node.value] {
-				for cand_idx in hits {
-					alive[cand_idx] = true
-				}
-			}
 			short_name := short_name_view(node.value)
 			if short_name.len != node.value.len {
 				if hits := const_keys[short_name] {
@@ -920,7 +915,9 @@ fn (tc &TypeChecker) scan_unused_alive_range(fn_keys map[string][]int, const_key
 						alive[cand_idx] = true
 					}
 				}
-				if hits := fn_keys[short_name] {
+			}
+			if resolved := tc.resolved_fn_value_name(flat.NodeId(i)) {
+				if hits := fn_keys[resolved] {
 					for cand_idx in hits {
 						alive[cand_idx] = true
 					}
