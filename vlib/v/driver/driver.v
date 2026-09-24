@@ -10106,7 +10106,7 @@ pub fn run(args []string) {
 			i++
 		}
 	}
-	vls_query := if vls_line_info != '' {
+	mut vls_query := if vls_line_info != '' {
 		query := types.parse_vls_line_info(vls_line_info) or {
 			eprintln(err.msg())
 			exit(1)
@@ -10117,6 +10117,12 @@ pub fn run(args []string) {
 		}
 	} else {
 		types.VlsQuery{}
+	}
+	if vls_line_info != '' {
+		// A query answers from the project's own files: the library bodies,
+		// which cannot change the answer, are left unchecked, as in the
+		// diagnostics server.
+		os.setenv('V_CHECK_SELECTED_FILES_ONLY', '1', false)
 	}
 	if force_bounds_checking {
 		// This option wins regardless of its ordering relative to
@@ -11161,7 +11167,19 @@ pub fn run(args []string) {
 	if !had_v3_backend_define {
 		prefs.user_defines = prefs.user_defines.filter(it != 'v3_backend')
 	}
-	diagserver.serve()
+	// A diagnostics server's child may have a question to answer instead.
+	question := diagserver.serve()
+	if question != '' {
+		vls_line_info = question
+		query := types.parse_vls_line_info(question) or {
+			eprintln(err.msg())
+			exit(1)
+		}
+		vls_query = types.VlsQuery{
+			...query
+			target: input_file
+		}
+	}
 	mut a := p.a
 	if !current_no_parallel {
 		// Later parallel stages can run inside disposable arenas. Ensure the shared
