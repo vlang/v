@@ -130,8 +130,10 @@ fn (mut tc TypeChecker) vls_enter_file(file_id int) {
 }
 
 // vls_call_target is the function a call calls: the name the checker resolved
-// it to, or for a builtin method of an array, a string or a map, which the
-// checker handles without resolving, that method of builtin's struct.
+// it to, or where the checker resolved none, the method of the declared type of
+// the receiver: a builtin method of an array, a string or a map, which the
+// checker handles without resolving, or any method in the body of a generic
+// function, which the checker does not type.
 fn (tc &TypeChecker) vls_call_target(call_id flat.NodeId, callee_id flat.NodeId) ?string {
 	if resolved := tc.resolved_call_name(call_id) {
 		return resolved
@@ -157,12 +159,14 @@ fn (tc &TypeChecker) vls_call_target(call_id flat.NodeId, callee_id flat.NodeId)
 	}
 	receiver_type := tc.vls_expr_type(tc.a.child(callee, 0)) or { return none }
 	owner := tc.vls_member_owner(receiver_type) or { return none }
-	if owner !in ['array', 'string', 'map'] {
-		return none
-	}
 	method := '${owner}.${callee.value}'
 	if method in tc.fn_type_files || tc.vls_builtin_method_decl(method) != none {
 		return method
+	}
+	// A method of a struct that the receiver's struct embeds.
+	owners := tc.embedded_method_candidates(owner, callee.value)
+	if owners.len == 1 {
+		return '${owners[0]}.${callee.value}'
 	}
 	return none
 }
