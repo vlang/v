@@ -218,3 +218,90 @@ fn test_concurrent_batches_account_only_their_own_tasks() {
 	assert pool.tasks_run() == 20 * 2 * 40
 	pool.close()
 }
+
+fn tiny_pool_test_task(arg voidptr) voidptr {
+	mut a := unsafe { &PoolTestArg(arg) }
+	a.value++
+	return unsafe { nil }
+}
+
+struct PushOrderArg {
+	ran chan bool
+}
+
+fn push_order_task(arg voidptr) voidptr {
+	a := unsafe { &PushOrderArg(arg) }
+	a.ran <- true
+	return unsafe { nil }
+}
+
+fn test_queued_task_releases_its_batch_only_after_the_completion_push() {
+	// Fill the batch channel so the completion push blocks: the task must keep
+	// counting as in flight until that push has returned.
+	done := chan Completion{cap: 1}
+	done <- Completion{}
+	mut pushes_in_flight := u32(1)
+	arg := &PushOrderArg{
+		ran: chan bool{cap: 1}
+	}
+	worker := spawn run_queued_task(Task{
+		run:              push_order_task
+		arg:              voidptr(arg)
+		done:             done
+		pushes_in_flight: &pushes_in_flight
+	}, true)
+	_ := <-arg.ran
+	time.sleep(20 * time.millisecond)
+	// The push is still blocked, so the worker must not have touched the count.
+	assert pushes_in_flight == 1
+	_ := <-done
+	wait_for_completion_pushes(&pushes_in_flight)
+	worker.wait()
+	assert done.len == 1
+	assert pushes_in_flight == 0
+}
+
+fn batch_scope_begin() voidptr {
+	$if prealloc {
+		return unsafe { prealloc_scope_begin() }
+	} $else {
+		return unsafe { nil }
+	}
+}
+
+fn batch_scope_end(scope voidptr) {
+	$if prealloc {
+		unsafe { prealloc_scope_end(scope) }
+	}
+}
+
+fn test_batches_in_disposable_scopes_outlive_their_completion_pushes() {
+	// Like the compiler stages, run every batch inside a disposable arena that
+	// is released as soon as Pool.run returns. The batch's `done` channel lives
+	// in that arena, so a worker still inside its completion push when run
+	// returns would touch released memory.
+	mut pool := new(4)
+	mut args := []&PoolTestArg{cap: 8}
+	for _ in 0 .. 8 {
+		args << &PoolTestArg{}
+	}
+	rounds := 3000
+	for round in 0 .. rounds {
+		scope := batch_scope_begin()
+		mut tasks := []Task{cap: args.len}
+		for i, a in args {
+			tasks << Task{
+				run:        tiny_pool_test_task
+				arg:        voidptr(a)
+				force_sync: i == 0 && round % 2 == 0
+			}
+		}
+		pool.run(tasks)
+		batch_scope_end(scope)
+	}
+	for a in args {
+		assert a.value == rounds
+	}
+	assert pool.tasks_run() == u64(rounds * args.len)
+	pool.close()
+}

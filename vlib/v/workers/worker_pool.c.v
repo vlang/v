@@ -17,6 +17,16 @@ const compiler_worker_stack_size = 64 * 1024 * 1024
 // a mistuned setting cannot hand the recursive phases a too-small stack.
 const min_worker_stack_size = 4 * 1024 * 1024
 
+// A completion push normally leaves Channel.push within a few instructions of
+// its value becoming receivable, so Pool.run spins briefly before yielding.
+const completion_push_spins = 100
+
+fn C.atomic_load_u32(voidptr) u32
+
+fn C.atomic_fetch_sub_u32(voidptr, u32) u32
+
+fn C.cpu_relax()
+
 __global v3_pool_size_limit int
 
 // limit_pool_size caps pools created after this call to at most `size` workers.
@@ -58,6 +68,9 @@ mut:
 	// own channel, so a batch never counts another batch's completions, even
 	// when it runs one of their queued tasks itself.
 	done chan Completion
+	// pushes_in_flight is the batch's count of queued tasks that have not yet
+	// returned from their push into `done` (see wait_for_completion_pushes).
+	pushes_in_flight &u32 = unsafe { nil }
 }
 
 // Stats is a cumulative snapshot of persistent worker-pool activity.
@@ -165,6 +178,32 @@ fn run_queued_task(task Task, on_worker bool) {
 		run_ns:        if finished_at >= started_at { finished_at - started_at } else { 0 }
 		on_worker:     on_worker
 	}
+	// Only now has the push stopped touching `done`. This must stay the last
+	// access to batch memory: once the count drops to zero, Pool.run returns and
+	// its caller may release the `done` channel and the counter itself.
+	C.atomic_fetch_sub_u32(task.pushes_in_flight, 1)
+}
+
+// wait_for_completion_pushes returns once every queued task of a batch has
+// returned from its push into the batch's `done` channel. Receiving the last
+// completion is not enough: a buffered Channel.push makes the value receivable
+// by posting the reader semaphore, and only then locks the channel's
+// `read_sub_mtx` to wake select subscribers; the semaphore post itself can also
+// still touch the channel after the token was taken. `done` is allocated by
+// the caller of Pool.run, which in the compiler is often a disposable prealloc
+// scope that is released right after the stage, so a worker still in that
+// window would otherwise write to released memory.
+fn wait_for_completion_pushes(pushes_in_flight &u32) {
+	mut spins := 0
+	for C.atomic_load_u32(pushes_in_flight) != 0 {
+		if spins < completion_push_spins {
+			spins++
+			C.cpu_relax()
+		} else {
+			// The pushing thread was descheduled inside Channel.push; let it run.
+			time.sleep(time.microsecond)
+		}
+	}
 }
 
 // new creates up to size persistent workers. Failed launches simply reduce
@@ -266,15 +305,20 @@ pub fn (mut p Pool) run(tasks []Task) bool {
 	}
 	// Buffered for the whole batch, so a worker never blocks on reporting.
 	done := chan Completion{cap: if async_count > 0 { async_count } else { 1 }}
+	// Every non-force_sync task is submitted below, and whoever runs it
+	// decrements this once its completion push has returned. It lives on this
+	// stack frame, which outlives the batch because run waits for it to reach 0.
+	mut pushes_in_flight := u32(async_count)
 	mut submitted := 0
 	mut completed := 0
 	for task in tasks {
 		if !task.force_sync {
 			queued_task := Task{
-				run:          task.run
-				arg:          task.arg
-				queued_at_ns: time.sys_mono_now()
-				done:         done
+				run:              task.run
+				arg:              task.arg
+				queued_at_ns:     time.sys_mono_now()
+				done:             done
+				pushes_in_flight: &pushes_in_flight
 			}
 			mut is_submitted := false
 			for !is_submitted {
@@ -322,6 +366,9 @@ pub fn (mut p Pool) run(tasks []Task) bool {
 			}
 		}
 	}
+	// Every completion was received, but the last pushers may still be inside
+	// Channel.push; `done` and pushes_in_flight must outlive them.
+	wait_for_completion_pushes(&pushes_in_flight)
 	done.close()
 	batch.async_tasks = u64(submitted)
 	p.merge_batch_stats(batch)
