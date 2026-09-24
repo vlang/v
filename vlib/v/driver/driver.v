@@ -3244,7 +3244,7 @@ fn v3_crun_build_identity(state &V3ModuleCacheState, prefs &pref.Preferences, us
 	for path in paths {
 		hash = c_hash_bytes(hash, path.bytes())
 		hash = c_hash_bytes(hash, [u8(0)])
-		hash = c_hash_bytes(hash, modulecache.file_metadata_signature(path).bytes())
+		hash = c_hash_bytes(hash, v3_cache_file_identity(path).bytes())
 		hash = c_hash_bytes(hash, [u8(0xff)])
 	}
 	return hash.hex()
@@ -7178,9 +7178,9 @@ fn v3_same_c_compiler_executable(first string, second string) bool {
 // compiler shims and wrappers.
 fn default_cc_identity() string {
 	cc_path := os.real_path(os.find_abs_path_of_executable('cc') or { 'cc' })
-	metadata := modulecache.file_metadata_signature(cc_path)
+	identity := v3_cache_file_identity(cc_path)
 	version := cmdexec.run(cc_path, ['--version'])
-	return '${cc_path}\t${metadata}\t${version.exit_code}\t${version.output.replace('\n', ' ')}'
+	return '${cc_path}\t${identity}\t${version.exit_code}\t${version.output.replace('\n', ' ')}'
 }
 
 fn v3_usable_tcc_compiler(tcc_path string) bool {
@@ -7705,7 +7705,7 @@ fn v3_cache_compiler_signature(vroot string) string {
 // cache under the source signature of a newer compiler that has not been rebuilt yet.
 fn v3_cache_compiler_executable_identity(vexe string) string {
 	path := os.real_path(vexe)
-	return '${path}\t${modulecache.file_metadata_signature(path)}'
+	return '${path}\t${v3_cache_file_identity(path)}'
 }
 
 fn restored_fn_c_name(name string) string {

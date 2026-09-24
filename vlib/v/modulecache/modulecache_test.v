@@ -583,6 +583,119 @@ fn test_cached_source_signature_tracks_vml_symlink_target() {
 	assert second != first
 }
 
+// without_file_metadata makes file_metadata_signature report nothing for
+// `paths`, as FAT, exFAT and some network redirectors do on Windows, and
+// returns the previous setting for restore_file_metadata.
+fn without_file_metadata(paths []string) (string, bool) {
+	was_set := 'V3_TEST_NO_FILE_METADATA' in os.environ()
+	old := os.getenv('V3_TEST_NO_FILE_METADATA')
+	os.setenv('V3_TEST_NO_FILE_METADATA', paths.join(os.path_delimiter), true)
+	return old, was_set
+}
+
+fn restore_file_metadata(old string, was_set bool) {
+	if was_set {
+		os.setenv('V3_TEST_NO_FILE_METADATA', old, true)
+	} else {
+		os.unsetenv('V3_TEST_NO_FILE_METADATA')
+	}
+}
+
+fn test_file_change_signature_falls_back_to_the_contents() {
+	root := os.join_path(os.vtmp_dir(), 'v3_modulecache_change_signature_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	with_metadata := os.join_path(root, 'with_metadata.vml')
+	without_metadata := os.join_path(root, 'without_metadata.vml')
+	absent := os.join_path(root, 'absent.vml')
+	os.write_file(with_metadata, 'first')!
+	os.write_file(without_metadata, 'first')!
+	old, was_set := without_file_metadata([without_metadata, absent])
+	defer {
+		restore_file_metadata(old, was_set)
+	}
+	assert file_change_signature(with_metadata) == file_metadata_signature(with_metadata)
+	assert file_metadata_signature(without_metadata) == ''
+	first := file_change_signature(without_metadata)
+	assert first.starts_with('content:')
+	assert file_change_signature_matches(without_metadata, first)
+	// Same size, different bytes: only the contents tell the edit apart.
+	os.write_file(without_metadata, 'other')!
+	assert !file_change_signature_matches(without_metadata, first)
+	assert file_change_signature(absent) == 'missing'
+	os.write_file(absent, 'appeared')!
+	assert !file_change_signature_matches(absent, 'missing')
+}
+
+// A source file on a file system with file identities can depend on inputs on one
+// without them. Edits to those inputs, and inputs that appear there, must still
+// invalidate the memoized source signature.
+fn test_cached_source_signature_tracks_vml_inputs_without_file_metadata() {
+	root := os.join_path(os.vtmp_dir(), 'v3_modulecache_vml_no_metadata_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(os.join_path(root, 'templates')) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	source := os.join_path(root, 'main.v')
+	template_vml := os.join_path(root, 'templates', 'form.vml')
+	direct_vml := os.join_path(root, 'form.vml')
+	os.write_file(source, "module main\n\nfn build() { _ = \$vml('form.vml') }\n")!
+	os.write_file(template_vml, 'Label { text: "First" }')!
+	old, was_set := without_file_metadata([template_vml, direct_vml])
+	defer {
+		restore_file_metadata(old, was_set)
+	}
+	assert file_metadata_signature(source) != ''
+	assert file_metadata_signature(template_vml) == ''
+	cache_dir := os.join_path(root, 'cache')
+
+	first := cached_source_signature(cache_dir, 'vml-no-metadata', [source])
+	assert first.len > 0
+	assert source_signature_details([source], '', '').cacheable
+	assert cached_source_signature(cache_dir, 'vml-no-metadata', [source]) == first
+
+	os.write_file(template_vml, 'Label { text: "Other" }')!
+	second := cached_source_signature(cache_dir, 'vml-no-metadata', [source])
+	assert second.len > 0
+	assert second != first
+
+	os.write_file(direct_vml, 'Label { text: "Direct" }')!
+	third := cached_source_signature(cache_dir, 'vml-no-metadata', [source])
+	assert third.len > 0
+	assert third != second
+}
+
+fn test_cached_source_signature_tracks_vmod_edits_without_file_metadata() {
+	root := os.join_path(os.vtmp_dir(), 'v3_modulecache_vmod_no_metadata_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	source := os.join_path(root, 'main.v')
+	vmod := os.join_path(root, 'v.mod')
+	os.write_file(source, 'module main\n\nconst manifest = @VMOD_FILE\n')!
+	os.write_file(vmod, "Module {\n\tname: 'first'\n}\n")!
+	old, was_set := without_file_metadata([vmod])
+	defer {
+		restore_file_metadata(old, was_set)
+	}
+	cache_dir := os.join_path(root, 'cache')
+
+	first := cached_source_signature(cache_dir, 'vmod-no-metadata', [source])
+	assert first.len > 0
+	assert cached_source_signature(cache_dir, 'vmod-no-metadata', [source]) == first
+
+	os.write_file(vmod, "Module {\n\tname: 'other'\n}\n")!
+	second := cached_source_signature(cache_dir, 'vmod-no-metadata', [source])
+	assert second.len > 0
+	assert second != first
+}
+
 fn test_version_pseudo_signature_ignores_build_clock() {
 	root := os.join_path(os.vtmp_dir(), 'v3_modulecache_version_pseudo_${os.getpid()}')
 	os.rmdir_all(root) or {}
