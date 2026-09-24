@@ -2908,10 +2908,12 @@ fn (mut t Transformer) collect_types() {
 		&& t.tc.top_level_idx_nodes_len == t.a.nodes.len
 	count := if use_idx { t.tc.top_level_idx.len } else { t.a.nodes.len }
 	mut cur_mod := ''
+	mut cur_file := ''
 	for ii in 0 .. count {
 		node := if use_idx { t.a.nodes[t.tc.top_level_idx[ii]] } else { t.a.nodes[ii] }
 		match node.kind {
 			.file {
+				cur_file = node.value
 				cur_mod = t.tc.file_modules[node.value] or { '' }
 			}
 			.module_decl {
@@ -3034,6 +3036,12 @@ fn (mut t Transformer) collect_types() {
 				}
 			}
 			.global_decl {
+				// Normalize in the declaring file, so a selectively imported type
+				// (`import foo { Foo }` then `__global g Foo[Bar]`) keeps its module.
+				old_file := t.cur_file
+				old_module := t.cur_module
+				t.cur_file = cur_file
+				t.cur_module = cur_mod
 				for i in 0 .. node.children_count {
 					f := t.a.child_node(&node, i)
 					mut typ := t.normalize_type_in_module(f.typ, cur_mod)
@@ -3051,6 +3059,8 @@ fn (mut t Transformer) collect_types() {
 						}
 					}
 				}
+				t.cur_file = old_file
+				t.cur_module = old_module
 			}
 			.fn_decl {
 				if t.declared_fn_name_counts[node.value] < 2 {
