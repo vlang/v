@@ -211,6 +211,13 @@ fn write_buf_to_fd_kernel32_status(fd int, buf &u8, buf_len int) int {
 	if write_buf_to_console_kernel32(fd, buf, buf_len) {
 		return 0
 	}
+	return write_buf_to_std_handle_kernel32(fd, buf, buf_len)
+}
+
+// write_buf_to_std_handle_kernel32 writes the bytes to the handle of stdout (fd 1) or
+// stderr (fd 2) with `WriteFile`. Unlike `write_buf_to_console_kernel32`, it does not
+// convert them to UTF-16 for a console, so it does not allocate.
+fn write_buf_to_std_handle_kernel32(fd int, buf &u8, buf_len int) int {
 	handle_id := if fd == 2 { std_error_handle } else { std_output_handle }
 	handle := C.GetStdHandle(handle_id)
 	if isnil(handle) || handle == voidptr(-1) {

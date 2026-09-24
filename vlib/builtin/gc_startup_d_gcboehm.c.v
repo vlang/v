@@ -63,13 +63,14 @@ fn gc_abort_without_message_box(msg &char) {
 			default_abort(msg)
 			return
 		}
-		// Write without allocating, and without the CRT stdio locks: the heap may be
-		// corrupted, and stopped threads may hold those locks.
+		// Write with `WriteFile`, without allocating (not even the UTF-16 buffer of the
+		// console path), and without the CRT stdio locks: the heap may be corrupted,
+		// and stopped threads may hold those locks, or the process heap lock.
 		prefix := 'Fatal error in GC: '
 		newline := '\n'
-		write_buf_to_fd_kernel32(2, prefix.str, prefix.len)
-		write_buf_to_fd_kernel32(2, &u8(msg), vstrlen_char(msg))
-		write_buf_to_fd_kernel32(2, newline.str, newline.len)
+		write_buf_to_std_handle_kernel32(2, prefix.str, prefix.len)
+		write_buf_to_std_handle_kernel32(2, &u8(msg), vstrlen_char(msg))
+		write_buf_to_std_handle_kernel32(2, newline.str, newline.len)
 		if C.IsDebuggerPresent() {
 			// Return, so that Boehm's `DebugBreak()` stops in the attached debugger.
 			return
