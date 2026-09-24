@@ -294,7 +294,8 @@ fn main() {
 	assert c_compact.contains('__v_thread__twthread0=t;'), c_code
 }
 
-// A discarded `if`/`match` must detach the spawn in each branch that ends in one.
+// A discarded `if`/`match`, including one in a `_` slot of a multi-assignment, must
+// detach the spawn in each branch that ends in one.
 // The transformer would otherwise lower the value into a temporary that hides the
 // spawns from cgen. A branch that yields an existing handle only evaluates it, so
 // the handle stays joinable for its later `.wait()`.
@@ -322,6 +323,9 @@ fn main() {
 		else { spawn other() }
 	}
 	_ := (spawn work())
+	mut a := 0
+	a, _ = 3, if flag { spawn work() } else { spawn other() }
+	println(a)
 	t := spawn work()
 	_ := if flag { t } else { spawn other() }
 	_ := match n {
@@ -332,8 +336,8 @@ fn main() {
 }
 	")
 	c_compact := compact_c(c_code)
-	assert c_compact.count('__v_thread_spawn_detached(work_thread_wrapper,') == 5, c_code
-	assert c_compact.count('__v_thread_spawn_detached(other_thread_wrapper,') == 5, c_code
+	assert c_compact.count('__v_thread_spawn_detached(work_thread_wrapper,') == 6, c_code
+	assert c_compact.count('__v_thread_spawn_detached(other_thread_wrapper,') == 6, c_code
 	assert !c_compact.contains('__v_thread_spawn(other_thread_wrapper,'), c_code
 	assert c_compact.contains('__v_threadt=__v_thread_spawn(work_thread_wrapper,'), c_code
 	assert c_compact.count('(void)(t);') == 2, c_code

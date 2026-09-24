@@ -11998,10 +11998,19 @@ fn (mut t Transformer) try_lower_discarded_spawn_assign(node flat.Node) ?[]flat.
 	if lhs.kind != .ident || lhs.value != '_' {
 		return none
 	}
-	value_id := t.skip_discarded_spawn_parens(t.a.child(&node, 1))
+	return t.lower_discarded_spawn_value(t.a.child(&node, 1))
+}
+
+// lower_discarded_spawn_value lowers the discarded value `id` of a `_` target, in a
+// single or a multi-assignment, when it can start a thread (see
+// try_lower_discarded_spawn_assign). It returns none for any other value.
+fn (mut t Transformer) lower_discarded_spawn_value(id flat.NodeId) ?[]flat.NodeId {
+	value_id := t.skip_discarded_spawn_parens(id)
 	value := t.a.nodes[int(value_id)]
 	if value.kind == .spawn_expr {
-		return t.transform_stmt(t.make_expr_stmt(value_id))
+		return t.transform_detached_spawn_stmt(flat.Node{
+			kind: .expr_stmt
+		}, value_id)
 	}
 	if value.kind !in [.if_expr, .match_stmt] || !t.yields_fresh_spawn(value_id) {
 		return none
@@ -15452,12 +15461,10 @@ fn (mut t Transformer) try_expand_plain_multi_assign(node flat.Node) ?[]flat.Nod
 		lhs_ids << lhs_id
 		lhs := t.a.nodes[int(lhs_id)]
 		if lhs.kind == .ident && lhs.value == '_' {
-			spawn_id := t.skip_discarded_spawn_parens(rhs_id)
-			if t.a.nodes[int(spawn_id)].kind == .spawn_expr {
-				// Nothing can join a discarded `spawn`; start its thread detached.
-				result << t.transform_detached_spawn_stmt(flat.Node{
-					kind: .expr_stmt
-				}, spawn_id)
+			// Nothing can join a thread the discarded value starts; lower it like a
+			// single `_ = v`, so its spawns start detached.
+			if lowered := t.lower_discarded_spawn_value(rhs_id) {
+				result << lowered
 				tmp_names << ''
 				continue
 			}
