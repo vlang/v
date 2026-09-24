@@ -193,6 +193,64 @@ fn main() {
 	assert run.output.trim_space() == '7'
 }
 
+// The reverse case: an enum type that the checker already resolved keeps its module. With
+// `import a as real_a` and `import b as a`, `real_a.make()` returns `a.Kind`, which must
+// be formatted by module a's helper even though this file spells module b as `a`. A
+// parameter declared as `[]a.Kind` in the same file still means module b's enum.
+fn test_resolved_enum_type_is_not_retargeted_by_file_import_alias() {
+	v3_bin := selective_arg_v3_bin()
+	dir := os.join_path(os.temp_dir(), 'v3_resolved_enum_import_alias')
+	os.rmdir_all(dir) or {}
+	os.mkdir_all(os.join_path(dir, 'a')) or { panic(err) }
+	os.mkdir_all(os.join_path(dir, 'b')) or { panic(err) }
+	defer {
+		os.rmdir_all(dir) or {}
+	}
+	os.write_file(os.join_path(dir, 'v.mod'), 'Module{\n\tname: "resolved_enum_alias"\n}\n') or {
+		panic(err)
+	}
+	os.write_file(os.join_path(dir, 'a', 'a.v'), 'module a
+
+pub enum Kind {
+	from_a
+}
+
+pub fn make() Kind {
+	return .from_a
+}
+') or { panic(err) }
+	os.write_file(os.join_path(dir, 'b', 'b.v'), 'module b
+
+pub enum Kind {
+	from_b
+}
+') or { panic(err) }
+	os.write_file(os.join_path(dir, 'main.v'), r"module main
+
+import a as real_a
+import b as a
+
+fn format_declared(kinds []a.Kind) string {
+	return '${kinds}'
+}
+
+fn main() {
+	value := real_a.make()
+	other := a.Kind.from_b
+	println('${value.str()} ${value} ${[value]} ${other} ${format_declared([other])}')
+}
+") or {
+		panic(err)
+	}
+	out := os.join_path(dir, 'app')
+	compile := os.execute('${v3_bin} -nocache -o ${out} ${dir}')
+	assert compile.exit_code == 0, compile.output
+	assert !compile.output.contains('C compilation failed'), compile.output
+	run := os.execute(out)
+	assert run.exit_code == 0, run.output
+	assert run.output.trim_space() == 'from_a from_a [from_a] from_b [from_b]', run.output
+}
+
 // A selective import of a name wins over a same-named declaration in the writing
 // file's own module: the checker resolves the bare spelling through the file's
 // selective imports (`qualify_type_text_impl`), so the transform and cgen have to

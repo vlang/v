@@ -242,33 +242,28 @@ fn main() {}
 	assert !c_source.contains('Unused__autostr'), c_source
 }
 
-// An `<Enum>__autostr` call must name the module that declares the enum even when
-// the writing file spells it through an import alias or a selective import:
-// `token.Kind` in a file that wrote `import toml.token` is `toml.token.Kind`
-// there, and a bare `Kind` resolves through that file's selective imports, not
-// through a same-named enum of another module.
-fn test_enum_autostr_c_name_resolves_import_alias_and_selective_import() {
+// cgen names `<Enum>__autostr` helpers from checked `types.Enum` names, which already
+// identify the declaring module. Reading them through the current file's imports would
+// retarget them: with `import a as real_a` and `import b as a`, a value returned by
+// `real_a.make()` has type `a.Kind`, and it must not become `b.Kind`.
+fn test_enum_autostr_c_name_ignores_current_file_imports() {
 	mut ast := flat.FlatAst.new()
 	mut tc := types.TypeChecker.new(&ast)
-	tc.enum_names['other.Kind'] = true
-	tc.enum_names['toml.token.Kind'] = true
+	tc.enum_names['Kind'] = true
+	tc.enum_names['a.Kind'] = true
+	tc.enum_names['b.Kind'] = true
 	tc.cur_file = '/tmp/main.v'
 	tc.cur_module = 'main'
-	tc.file_imports['/tmp/main.v\ntoken'] = 'toml.token'
-	tc.file_selective_imports['/tmp/main.v\nKind'] = ['toml.token.Kind']
+	tc.file_imports['/tmp/main.v\nreal_a'] = 'a'
+	tc.file_imports['/tmp/main.v\na'] = 'b'
+	tc.file_selective_imports['/tmp/main.v\nKind'] = ['b.Kind']
 	mut g := FlatGen.new()
 	g.a = &ast
 	g.tc = &tc
 
-	assert g.enum_autostr_c_name('token.Kind') == 'toml__token__Kind'
-	assert g.enum_autostr_c_name('Kind') == 'toml__token__Kind'
-	assert g.enum_autostr_c_name('toml.token.Kind') == 'toml__token__Kind'
-	assert g.enum_autostr_c_name('other.Kind') == 'other__Kind'
-	// The file's import alias wins even when another module declares an enum
-	// spelled exactly `token.Kind`.
-	tc.enum_names['token.Kind'] = true
-	assert g.enum_autostr_c_name('token.Kind') == 'toml__token__Kind'
-	// An explicit `main.` lock is not captured by a selective import.
+	assert g.enum_autostr_c_name('a.Kind') == 'a__Kind'
+	assert g.enum_autostr_c_name('b.Kind') == 'b__Kind'
+	assert g.enum_autostr_c_name('Kind') == 'Kind'
 	assert g.enum_autostr_c_name('main.Kind') == 'Kind'
 }
 

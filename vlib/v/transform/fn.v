@@ -5317,19 +5317,15 @@ fn (mut t Transformer) enum_autostr_call(expr flat.NodeId, typ string) flat.Node
 	return t.make_call_typed(helper, [expr], 'string')
 }
 
+// enum_autostr_type_name names the enum whose `<Enum>__autostr` helper formats a value of
+// the already resolved type `typ`. It deliberately ignores the current file's imports: a
+// value returned by `real_a.make()` has type `a.Kind` even in a file that imports another
+// module as `a`. Declaration spellings are resolved by `source_enum_type_name` first.
 fn (t &Transformer) enum_autostr_type_name(typ string) string {
 	mut qualified := typ
 	if qualified.starts_with('main.') {
 		qualified = qualified[5..]
 	} else if !typ.contains('.') {
-		// A bare enum name belongs to the file that wrote it: with several
-		// same-named enums in the program the suffix fallback below cannot pick
-		// one, and the helper would be emitted without its module prefix.
-		if resolved := t.selective_import_type_name_for_file(t.cur_file, typ) {
-			if resolved in t.enum_types {
-				return resolved
-			}
-		}
 		q := '${t.cur_module}.${typ}'
 		if t.cur_module.len > 0 && t.cur_module != 'main' && t.cur_module != 'builtin'
 			&& q in t.enum_types {
@@ -5366,20 +5362,6 @@ fn (t &Transformer) enum_autostr_type_name(typ string) string {
 		}
 	}
 	short_name := short_name_view(qualified)
-	// An import-alias prefix (`token.Kind` where this file imports `toml.token`)
-	// must be resolved before the short-name fallback below: the bare `Kind` table
-	// entry can belong to a different module, and the emitted helper would then
-	// name an enum that this file never declared.
-	if qualified.contains('.') && !qualified.starts_with('main.') {
-		alias := qualified.all_before('.')
-		resolved_module := t.import_alias_module(alias)
-		if resolved_module.len > 0 && resolved_module != alias {
-			resolved := '${resolved_module}.${qualified.all_after('.')}'
-			if resolved in t.enum_types || (!isnil(t.tc) && resolved in t.tc.enum_names) {
-				return resolved
-			}
-		}
-	}
 	if qualified !in t.enum_types && short_name in t.enum_types {
 		return short_name
 	}
@@ -5389,6 +5371,41 @@ fn (t &Transformer) enum_autostr_type_name(typ string) string {
 		}
 	}
 	return qualified
+}
+
+// source_enum_type_name resolves an enum spelling written in `file` through that file's
+// imports: a bare `Kind` through its selective imports, `token.Kind` through its import
+// aliases (`import toml.token` makes it `toml.token.Kind`). Only raw declaration
+// spellings may be resolved this way; see `enum_autostr_type_name`.
+fn (t &Transformer) source_enum_type_name(file string, spelling string) ?string {
+	if isnil(t.tc) || file.len == 0 || spelling.len == 0 {
+		return none
+	}
+	resolved := if spelling.contains('.') {
+		module_name := t.tc.file_imports[file_import_key(file, spelling.all_before('.'))] or {
+			return none
+		}
+		'${module_name}.${spelling.all_after('.')}'
+	} else {
+		t.selective_import_type_name_for_file(file, spelling) or { return none }
+	}
+	if resolved in t.enum_types || resolved in t.tc.enum_names {
+		return resolved
+	}
+	return none
+}
+
+// source_enum_elem_type resolves the enum at the core of an array element spelling
+// (`token.Kind`, `[]token.Kind`) that `file` wrote, keeping any other spelling as is.
+fn (t &Transformer) source_enum_elem_type(file string, spelling string) string {
+	mut prefix_len := 0
+	for spelling[prefix_len..].starts_with('[]') {
+		prefix_len += 2
+	}
+	if resolved := t.source_enum_type_name(file, spelling[prefix_len..]) {
+		return spelling[..prefix_len] + resolved
+	}
+	return spelling
 }
 
 // wrap_string_conversion transforms wrap string conversion data for transform.
@@ -8941,6 +8958,15 @@ fn (mut t Transformer) lower_array_str_impl(arr_expr flat.NodeId, base_type stri
 		}
 		if declared_type.starts_with('[]') && declared_type.len > 2 {
 			elem_type = declared_type[2..]
+			// A declaration spelling (`tokens []token.Kind`) names its enum through the
+			// imports of the file that wrote it. `enum_autostr_type_name` does not read
+			// them, so resolve the spelling here before the element is formatted.
+			if spelling := t.declared_var_spelling(src.value) {
+				if spelling == declared_type {
+					elem_type = t.source_enum_elem_type(t.node_file_or(int(arr_expr),
+						t.cur_file), elem_type)
+				}
+			}
 		}
 	}
 	// A selector's declaration spelling is more authoritative than the inferred expression

@@ -2664,6 +2664,22 @@ fn (t &Transformer) raw_var_type(name string) string {
 	return ''
 }
 
+// declared_var_spelling returns the type of `name` as its declaration wrote it, when the
+// binding recorded that spelling next to a different resolved type. Such a spelling still
+// needs the imports of the file that wrote it; a resolved type (for example one inferred
+// from `x := real_a.make()`) must not be read through them again.
+fn (t &Transformer) declared_var_spelling(name string) ?string {
+	i := t.var_type_index(name)
+	if i < 0 {
+		return none
+	}
+	binding := t.var_types[i]
+	if binding.raw_typ.len == 0 || binding.raw_typ == binding.typ {
+		return none
+	}
+	return binding.raw_typ
+}
+
 fn (mut t Transformer) record_orm_initialized_fields(name string, rhs_id flat.NodeId) {
 	if name == '' || int(rhs_id) < 0 || int(rhs_id) >= t.a.nodes.len {
 		return
