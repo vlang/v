@@ -416,7 +416,9 @@ fn (t &Transformer) resolve_receiver_method_for_type_uncached(receiver_type stri
 			}
 		}
 		if !isnil(t.tc) {
-			if method_name := t.tc.concrete_method_signature_key(clean_type, method) {
+			if method_name := t.tc.concrete_method_signature_key(t.local_receiver_type_name(clean_type),
+				method)
+			{
 				if t.is_known_fn_name(method_name) {
 					return method_name
 				}
@@ -427,7 +429,13 @@ fn (t &Transformer) resolve_receiver_method_for_type_uncached(receiver_type stri
 			return direct
 		}
 		if declared := t.declared_receiver_method(clean_type, method) {
-			return declared
+			// `declared` is the source spelling (`Any.str`); the suffix index names
+			// the module that registered it (`json2.Any.str`).
+			registered := t.receiver_method_suffix_index[declared] or { '' }
+			if registered == '' || registered == receiver_method_suffix_ambiguous
+				|| t.receiver_owns_method(clean_type, registered) {
+				return declared
+			}
 		}
 		if clean_type.starts_with('main.') && !clean_type['main.'.len..].contains('.') {
 			main_receiver := clean_type['main.'.len..]
@@ -548,7 +556,9 @@ fn (t &Transformer) resolve_receiver_method_for_type_uncached(receiver_type stri
 		}
 	}
 	if method_name := t.unique_receiver_method_suffix_match(t.receiver_method_candidates(clean_type, method)) {
-		return method_name
+		if t.receiver_owns_method(clean_type, method_name) {
+			return method_name
+		}
 	}
 	if !isnil(t.tc) {
 		if target := t.alias_target_type_preserving_main_lock(clean_type) {
@@ -560,6 +570,39 @@ fn (t &Transformer) resolve_receiver_method_for_type_uncached(receiver_type stri
 		}
 	}
 	return none
+}
+
+// local_receiver_type_name qualifies a bare receiver type, or the element type of
+// a bare array receiver, that names a struct, sum type or enum declared in the
+// current dependency module (`Any` -> `toml.Any`), so the type checker does not
+// resolve it against a same-named type from another module.
+fn (t &Transformer) local_receiver_type_name(clean_type string) string {
+	if isnil(t.tc) || !transform_can_prefix_collection_receiver(t.cur_module) {
+		return clean_type
+	}
+	mut elem := clean_type
+	for elem.starts_with('[]') {
+		elem = elem[2..]
+	}
+	if elem.len == 0 || elem.contains('.') || elem.contains('[') {
+		return clean_type
+	}
+	qualified := '${t.cur_module}.${elem}'
+	if qualified in t.tc.structs || qualified in t.tc.sum_types || qualified in t.tc.enum_names {
+		return clean_type[..clean_type.len - elem.len] + qualified
+	}
+	return clean_type
+}
+
+// receiver_owns_method reports whether `method_name`, found by its short receiver
+// spelling, is declared for `clean_type` rather than for a same-named type from
+// another module (`json2.[]Any.str` must not stringify a `[]toml.Any`).
+fn (t &Transformer) receiver_owns_method(clean_type string, method_name string) bool {
+	if isnil(t.tc) {
+		return true
+	}
+	receiver := t.tc.parse_type(t.local_receiver_type_name(clean_type))
+	return t.tc.suffix_indexed_method_fits_receiver(receiver, method_name)
 }
 
 fn (t &Transformer) resolve_imported_flattened_generic_receiver_method(receiver_type string, method string) ?string {
