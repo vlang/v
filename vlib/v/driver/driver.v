@@ -1330,7 +1330,7 @@ fn compile_cached_c_source_object(obj_path string, source_file string, source_la
 	if language.len > 0 {
 		args << ['-x', language]
 	}
-	if effective_c_compiler_name(compiler, target) == 'msvc' {
+	if c_compiler_is_msvc(compiler) {
 		// `cl` cannot list a source's dependencies like `-M` does, so the object cannot
 		// be validated against its headers later. Build it for this compilation only.
 		msvc_obj := os.join_path(uncached_dir, '${os.file_name(obj_path).all_before_last('.')}_${tempname.unique_token()}.obj')
@@ -3787,7 +3787,7 @@ fn c_typedef_is_function_pointer(source string, name string) bool {
 }
 
 fn cache_c_compiler_predefined_macros(flags []string, ccompiler string, target pref.Target, native_inputs_language string) (map[string]string, bool) {
-	if effective_c_compiler_name(ccompiler, target) == 'msvc' {
+	if c_compiler_is_msvc(ccompiler) {
 		// `cl` has no `-dM` equivalent.
 		return map[string]string{}, false
 	}
@@ -12645,7 +12645,7 @@ pub fn run(args []string) {
 		} else {
 			b.step_parallel('cgen', cgen_was_parallel)
 		}
-		if effective_c_compiler == 'msvc' && !cache_state.manager.enabled && !c_to_stdout {
+		if effective_c_compiler == 'msvc' && !cache_state.manager.enabled {
 			msvc_lower_c_file(cc_src) or {
 				eprintln('error preparing the generated C source for MSVC: ${err.msg()}')
 				cleanup_c_build_dir(cc_dir)

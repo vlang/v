@@ -45,3 +45,11 @@ fn test_v3_msvc_link_flags() {
 	assert v3_msvc_link_flags('windows', true, false, .windows, true) == []
 	assert v3_msvc_link_flags('linux', false, false, .windows, true) == []
 }
+
+fn test_c_compiler_is_msvc() {
+	assert c_compiler_is_msvc('cl')
+	assert c_compiler_is_msvc('C:/Program Files/Microsoft Visual Studio/VC/bin/CL.EXE')
+	assert c_compiler_is_msvc('msvc')
+	assert !c_compiler_is_msvc('clang')
+	assert !c_compiler_is_msvc('cc')
+}
