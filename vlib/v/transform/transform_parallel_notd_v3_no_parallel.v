@@ -2674,6 +2674,61 @@ fn (mut t Transformer) run_parallel_transform(items []FnWorkItem, base_nodes int
 	return any_started
 }
 
+// SharedTableFlags holds the master's detach-on-write flags for the tables
+// that shared-base helpers read while the master keeps transforming.
+struct SharedTableFlags {
+	signature    bool
+	structs      bool
+	tc_signature bool
+	tc_structs   bool
+}
+
+// mark_shared_tables_for_helpers makes the master copy its signature and struct
+// tables before writing them while helpers still read the originals, and
+// returns the previous flags for end_shared_tables_for_helpers.
+fn (mut t Transformer) mark_shared_tables_for_helpers() SharedTableFlags {
+	mut tc_signature := false
+	mut tc_structs := false
+	if !isnil(t.tc) {
+		mut master_tc := unsafe { &types.TypeChecker(voidptr(t.tc)) }
+		tc_signature = master_tc.transform_signature_maps_shared
+		tc_structs = master_tc.transform_struct_maps_shared
+		master_tc.transform_signature_maps_shared = true
+		master_tc.transform_struct_maps_shared = true
+	}
+	prev := SharedTableFlags{
+		signature:    t.signature_maps_shared
+		structs:      t.struct_maps_shared
+		tc_signature: tc_signature
+		tc_structs:   tc_structs
+	}
+	t.signature_maps_shared = true
+	t.struct_maps_shared = true
+	return prev
+}
+
+// end_shared_tables_for_helpers runs after the helpers have joined. A table the
+// master never wrote has no concurrent readers any more, so it goes back to its
+// previous flag instead of being copied by a later serial write; a table the
+// master already detached stays private.
+fn (mut t Transformer) end_shared_tables_for_helpers(prev SharedTableFlags) {
+	if t.signature_maps_shared {
+		t.signature_maps_shared = prev.signature
+	}
+	if t.struct_maps_shared {
+		t.struct_maps_shared = prev.structs
+	}
+	if !isnil(t.tc) {
+		mut master_tc := unsafe { &types.TypeChecker(voidptr(t.tc)) }
+		if master_tc.transform_signature_maps_shared {
+			master_tc.transform_signature_maps_shared = prev.tc_signature
+		}
+		if master_tc.transform_struct_maps_shared {
+			master_tc.transform_struct_maps_shared = prev.tc_structs
+		}
+	}
+}
+
 fn (mut t Transformer) mark_parallel_worker_maps_shared() {
 	t.signature_maps_shared = true
 	t.struct_maps_shared = true
@@ -2900,7 +2955,13 @@ fn (mut t Transformer) run_parallel_transform_shared(items []FnWorkItem, base_no
 	transform_worker_scope_leave(setup_scope)
 	t.timing_profile('  [ttime]   shared setup     ${f64(ttsw.elapsed().microseconds()) / 1000.0:7.2f} ms (chunks: ${chunk_count}, jobs: ${n_jobs})')
 	ttsw.restart()
+	// The helpers read the master's signature and struct tables through their
+	// forks while the master transforms chunk 0 and absorbs its own batches, so
+	// the master must detach a table before its first write instead of
+	// rehashing it under the helpers.
+	share_flags := t.mark_shared_tables_for_helpers()
 	any_started := t.a.worker_pool.run(tasks)
+	t.end_shared_tables_for_helpers(share_flags)
 	t.node_context_read_only = false
 	t.timing_profile('  [ttime]   shared pool.run  ${f64(ttsw.elapsed().microseconds()) / 1000.0:7.2f} ms')
 	$if v3_ttime ? {
