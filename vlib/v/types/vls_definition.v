@@ -50,6 +50,9 @@ fn (mut tc TypeChecker) vls_definition_at(target VlsTarget) ?VlsPos {
 	}
 	match node.kind {
 		.ident {
+			if at := tc.vls_declared_here(id) {
+				return at
+			}
 			if module_name := tc.vls_import_symbol_module(id) {
 				return tc.vls_module_member_definition(module_name, node.value)
 			}
@@ -94,8 +97,11 @@ fn (mut tc TypeChecker) vls_definition_at(target VlsTarget) ?VlsPos {
 		.cast_expr, .struct_init, .is_expr, .as_expr {
 			return tc.vls_type_definition(node.value)
 		}
-		.param, .enum_field {
-			return VlsPos{int(node.pos.id), int(node.pos.offset)}
+		.param, .enum_field, .field_decl, .fn_decl, .const_field, .interface_field {
+			// The name a declaration introduces, which the target spans: also
+			// the name of a method's receiver, whose node has no position of
+			// its own.
+			return VlsPos{target.file_id, target.start}
 		}
 		.field_init {
 			owner := tc.vls_field_init_owner(id)?
