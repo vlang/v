@@ -2859,6 +2859,7 @@ fn (tc &TypeChecker) expr_compatible(expr_id flat.NodeId, actual Type, expected 
 		|| tc.optional_pointer_expr_compatible(expr_id, actual, expected)
 		|| tc.failure_literal_expr_compatible(expr_id, actual, expected)
 		|| tc.fn_literal_omitted_params_compatible(expr_id, actual, expected)
+		|| tc.fn_decl_value_mut_ref_slot_compatible(expr_id, actual, expected)
 }
 
 fn (tc &TypeChecker) interface_expr_compatible(actual Type, expected Type) bool {
@@ -11958,6 +11959,20 @@ fn (tc &TypeChecker) call_fn_typed_param_is_mut(call flat.Node, param_idx int) b
 	return false
 }
 
+fn (tc &TypeChecker) call_indexed_fn_value_param_is_mut(call flat.Node, param_idx int) bool {
+	if call.children_count == 0 || param_idx < 0 {
+		return false
+	}
+	callee_id := tc.a.child(&call, 0)
+	callee := tc.a.node(callee_id)
+	if callee.kind != .index || callee.value == 'range' {
+		return false
+	}
+	callee_type := tc.cached_expr_type(callee_id) or { tc.resolve_type(callee_id) }
+	fn_type := fn_type_from_type(callee_type) or { return false }
+	return param_idx < fn_type.params_mut.len && fn_type.params_mut[param_idx]
+}
+
 fn (tc &TypeChecker) call_field_param_is_mut(node flat.Node, param_idx int) bool {
 	if node.children_count == 0 {
 		return false
@@ -13866,6 +13881,7 @@ fn (mut tc TypeChecker) check_call_arg_types(id flat.NodeId, node flat.Node, inf
 			|| tc.call_local_fn_param_is_mut(node, param_idx)
 			|| tc.call_local_fn_value_param_is_mut(node, param_idx, id)
 			|| tc.call_fn_typed_param_is_mut(node, param_idx)
+			|| tc.call_indexed_fn_value_param_is_mut(node, param_idx)
 		if param_is_mut && mut_arg_node.is_mut {
 			tc.check_locked_shared_base_lvalue_mutation(arg_id)
 		}
@@ -14428,6 +14444,11 @@ fn (mut tc TypeChecker) call_info_with_inferred_receiver(node flat.Node, info Ca
 	mut callee := tc.a.child_node(&node, 0)
 	if callee.kind == .index && callee.children_count > 0 {
 		callee = tc.a.child_node(callee, 0)
+		// `recv.fns[i](...)` indexes a field that holds functions, unlike the generic
+		// method call `recv.method[T](...)`, so `recv` is not a receiver.
+		if callee.kind == .selector && tc.selector_declared_value_type(*callee) != none {
+			return info
+		}
 	}
 	if callee.kind == .ident && info.name.contains('.') && node.children_count > 1 {
 		receiver_type := unwrap_pointer(info.params[0])
