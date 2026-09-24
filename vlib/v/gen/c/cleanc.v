@@ -13428,6 +13428,19 @@ fn (g &FlatGen) pointer_pointer_selector_base_type(base &flat.Node, fallback typ
 fn (mut g FlatGen) gen_sum_type_tag_selector(base_id flat.NodeId, base_type0 types.Type, op flat.Op) bool {
 	sum_name := g.sum_type_name_for_type(base_type0) or { return false }
 	sum_ct := g.tc.c_type(g.interface_concrete_type(sum_name))
+	if g.ccompiler == 'msvc' {
+		// MSVC has no statement expressions; a plain member read evaluates the base once too.
+		g.write('(')
+		if op == .arrow || base_type0 is types.Pointer {
+			g.write('*(')
+			g.gen_expr(base_id)
+			g.write(')')
+		} else {
+			g.gen_expr(base_id)
+		}
+		g.write(').typ')
+		return true
+	}
 	g.write('({ ${sum_ct} __sum = ')
 	if op == .arrow || base_type0 is types.Pointer {
 		g.write('*(')
@@ -18131,6 +18144,19 @@ fn (mut g FlatGen) preamble() {
 	g.writeln('#define VNORETURN')
 	g.writeln('#endif')
 	g.writeln('#endif')
+	// MSVC understands neither GNU attributes (the weak heap hooks, section and
+	// alignment attributes) nor the C11 spelling of thread-local storage. Its
+	// `_Atomic` needs `/experimental:c11atomics`; with `/volatile:ms`, volatile
+	// accesses have the acquire/release semantics V relies on.
+	g.writeln('#if defined(_MSC_VER) && !defined(__clang__)')
+	g.writeln('#define __attribute__(x)')
+	g.writeln('#ifndef _Thread_local')
+	g.writeln('#define _Thread_local __declspec(thread)')
+	g.writeln('#endif')
+	g.writeln('#define _Atomic volatile')
+	// Heap copies of `@[aligned]` structs ask for their alignment with GCC's spelling.
+	g.writeln('#define __alignof__(x) __alignof(x)')
+	g.writeln('#endif')
 	if use_system_libc {
 		g.writeln('typedef ptrdiff_t isize;')
 		g.writeln('typedef size_t usize;')
@@ -18245,7 +18271,9 @@ fn (mut g FlatGen) system_libc_headers() {
 	// available before struct declarations that contain atomic_uintptr_t fields, and
 	// including both implementations redefines atomic_flag and the operation macros.
 	windows_atomic_header := os.join_path(g.compiler_vroot, 'thirdparty', 'stdatomic', 'win', 'atomic.h').replace('\\', '/')
-	g.writeln('#if defined(_WIN32) && defined(__TINYC__)')
+	// MSVC uses it as well: its <stdatomic.h> needs `/experimental:c11atomics` and a
+	// recent Visual Studio.
+	g.writeln('#if defined(_WIN32) && (defined(__TINYC__) || (defined(_MSC_VER) && !defined(__clang__)))')
 	g.writeln(g.c_local_header_directive(windows_atomic_header))
 	g.writeln('#else')
 	g.gnu_objc_compatible_stdatomic_header()
@@ -18260,6 +18288,12 @@ fn (mut g FlatGen) system_libc_headers() {
 	g.writeln('#include <io.h>')
 	g.writeln('#include <process.h>')
 	g.writeln('#include <windows.h>')
+	if g.ccompiler == 'msvc' {
+		// math.bits calls MSVC intrinsics (`_umul128`, `_udiv128`, ...), and builtin's
+		// MSVC backtraces call the dbghelp API directly.
+		g.writeln('#include <intrin.h>')
+		g.writeln('#include <dbghelp.h>')
+	}
 	g.writeln('#else')
 	for header in ['dirent.h', 'dlfcn.h', 'fcntl.h', 'netdb.h', 'netinet/in.h', 'pthread.h',
 		'arpa/inet.h', 'netinet/tcp.h', 'semaphore.h', 'sys/ioctl.h', 'sys/mman.h', 'sys/resource.h',
@@ -20726,6 +20760,15 @@ fn (mut g FlatGen) libc_compat_decls() {
 }
 
 fn (mut g FlatGen) prealloc_atomic_compat_decls() {
+	// MSVC has no __atomic builtins; use the equivalent Interlocked functions.
+	g.writeln('#if defined(_MSC_VER) && !defined(__clang__)')
+	g.writeln('static inline int v_prealloc_atomic_add_i32(int *ptr, int delta) { return (int)InterlockedExchangeAdd((volatile LONG*)ptr, (LONG)delta) + delta; }')
+	g.writeln('static inline int v_prealloc_atomic_load_i32(int *ptr) { return (int)InterlockedExchangeAdd((volatile LONG*)ptr, 0); }')
+	g.writeln('static inline long long v_prealloc_atomic_add_i64(long long *ptr, long long delta) { return (long long)InterlockedExchangeAdd64((volatile LONG64*)ptr, (LONG64)delta) + delta; }')
+	g.writeln('static inline long long v_prealloc_atomic_load_i64(long long *ptr) { return (long long)InterlockedExchangeAdd64((volatile LONG64*)ptr, 0); }')
+	g.writeln('static inline int v_prealloc_atomic_store_i32(int *ptr, int val) { return (int)InterlockedExchange((volatile LONG*)ptr, (LONG)val); }')
+	g.writeln('static inline int v_prealloc_atomic_cas_i32(int *ptr, int expected, int desired) { return InterlockedCompareExchange((volatile LONG*)ptr, (LONG)desired, (LONG)expected) == (LONG)expected; }')
+	g.writeln('#else')
 	g.writeln('static inline int v_prealloc_atomic_add_i32(int *ptr, int delta) { return __atomic_add_fetch(ptr, delta, 5); }')
 	g.writeln('static inline int v_prealloc_atomic_load_i32(int *ptr) { return __atomic_add_fetch(ptr, 0, 5); }')
 	g.writeln('static inline long long v_prealloc_atomic_add_i64(long long *ptr, long long delta) { return __atomic_add_fetch(ptr, delta, 5); }')
@@ -20736,6 +20779,7 @@ fn (mut g FlatGen) prealloc_atomic_compat_decls() {
 	g.writeln('#else')
 	g.writeln('static inline int v_prealloc_atomic_store_i32(int *ptr, int val) { return __atomic_exchange_n(ptr, val, 5); }')
 	g.writeln('static inline int v_prealloc_atomic_cas_i32(int *ptr, int expected, int desired) { return __atomic_compare_exchange_n(ptr, &expected, desired, 0, 5, 5); }')
+	g.writeln('#endif')
 	g.writeln('#endif')
 }
 
@@ -20761,10 +20805,19 @@ fn (mut g FlatGen) atomic_builtin_compat_decls() {
 	// defines these helpers as function-like macros of its own.
 	windows_tcc := g.target.os == 'windows'
 		&& (g.ccompiler == 'tinyc' || g.ccompiler.to_lower().contains('tcc'))
+	header := os.join_path(g.compiler_vroot, 'thirdparty', 'stdatomic', 'win', 'atomic.h').replace('\\', '/')
 	if windows_tcc && !g.output_cross_c {
-		header := os.join_path(g.compiler_vroot, 'thirdparty', 'stdatomic', 'win', 'atomic.h').replace('\\', '/')
 		g.writeln(g.c_local_header_directive(header))
 		return
+	}
+	// MSVC takes them from the same header, but C generated for MSVC is also built
+	// with MinGW GCC (`-os windows -cc msvc -o v_win.c`), where the header conflicts
+	// with <stdatomic.h>. Let the preprocessor choose.
+	windows_msvc := g.target.os == 'windows' && g.ccompiler == 'msvc' && !g.output_cross_c
+	if windows_msvc {
+		g.writeln('#if defined(_WIN32) && (defined(__TINYC__) || (defined(_MSC_VER) && !defined(__clang__)))')
+		g.writeln(g.c_local_header_directive(header))
+		g.writeln('#else')
 	}
 	// A portable snapshot is compiled by a C compiler that is not known yet, so the
 	// choice above cannot be made from `g.ccompiler`; the preprocessor has to make
@@ -20775,7 +20828,7 @@ fn (mut g FlatGen) atomic_builtin_compat_decls() {
 	// which redefines the header's own function. Leave the block out exactly there.
 	guard_windows_tcc := g.output_cross_c
 	if guard_windows_tcc {
-		g.writeln('#if !(defined(_WIN32) && defined(__TINYC__))')
+		g.writeln('#if !(defined(_WIN32) && (defined(__TINYC__) || (defined(_MSC_VER) && !defined(__clang__))))')
 	}
 	// Atomic helpers. We use compiler __atomic_* builtins (memory order 5 == __ATOMIC_SEQ_CST).
 	// clang/gcc inline the generic _n / RMW builtins. tcc only implements the inline
@@ -20856,7 +20909,7 @@ fn (mut g FlatGen) atomic_builtin_compat_decls() {
 	g.writeln('#else')
 	g.writeln('static inline void cpu_relax(void) { __asm__ __volatile__("" ::: "memory"); }')
 	g.writeln('#endif')
-	if guard_windows_tcc {
+	if guard_windows_tcc || windows_msvc {
 		g.writeln('#endif')
 	}
 }
@@ -20875,8 +20928,8 @@ fn (mut g FlatGen) atomic_thread_fence_compat_decls() {
 	// `atomic_thread_fence` and maps `__atomic_thread_fence` to it. Redeclaring the
 	// mapped name with `int` conflicts with TCC's `memory_order` enum parameter.
 	// clang/gcc keep the builtin.
-	g.writeln('#if defined(_WIN32) && defined(__TINYC__)')
-	g.writeln('/* V atomic.h supplies atomic_thread_fence on Windows TCC. */')
+	g.writeln('#if defined(_WIN32) && (defined(__TINYC__) || (defined(_MSC_VER) && !defined(__clang__)))')
+	g.writeln('/* V atomic.h supplies atomic_thread_fence on Windows TCC and MSVC. */')
 	g.writeln('#elif defined(__TINYC__) && (defined(__i386__) || defined(__arm__) || defined(__aarch64__) || defined(__riscv))')
 	g.writeln('extern void _V_atomic_thread_fence(int order);')
 	g.writeln('#define atomic_thread_fence(order) _V_atomic_thread_fence(order)')

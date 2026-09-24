@@ -202,6 +202,43 @@ fn test_target_libc_opaque_packed_struct_restores_packing() {
 	assert c_code.contains('#pragma pack(push, 1)\nstruct TargetOpaque;\n#pragma pack(pop)')
 }
 
+fn aligned_struct_decl_c(ccompiler string, attrs string, union_decl bool) string {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	name := 'Aligned'
+	tc.structs[name] = []types.StructField{}
+	if union_decl {
+		tc.unions[name] = true
+	}
+	node_id := a.add_node(flat.Node{
+		kind:  .struct_decl
+		value: name
+		typ:   attrs
+	})
+	mut g := FlatGen.new()
+	g.a = &a
+	g.tc = &tc
+	g.set_ccompiler(ccompiler)
+	g.register_struct_decl_info_at(int(node_id), name, name, 'main', '/project/main.v', a.nodes[int(node_id)])
+	g.emit_struct(name)
+	return g.sb.str()
+}
+
+fn test_aligned_struct_decls_use_the_msvc_alignment_spelling() {
+	msvc := aligned_struct_decl_c('msvc', 'aligned=8', false)
+	assert msvc.contains('struct __declspec(align (8)) Aligned {'), msvc
+	assert !msvc.contains('__attribute__'), msvc
+	msvc_union := aligned_struct_decl_c('msvc', 'aligned=16', true)
+	assert msvc_union.contains('union __declspec(align (16)) Aligned {'), msvc_union
+	// A bare `@[aligned]` means the target's largest alignment, as with GCC.
+	msvc_bare := aligned_struct_decl_c('msvc', 'aligned', false)
+	assert msvc_bare.contains('struct __declspec(align (16)) Aligned {'), msvc_bare
+	gcc := aligned_struct_decl_c('gcc', 'aligned=8', false)
+	assert gcc.contains('struct Aligned {'), gcc
+	assert gcc.contains('} __attribute__((aligned(8)));'), gcc
+	assert !gcc.contains('__declspec'), gcc
+}
+
 fn test_collect_cache_native_c_symbols_only_records_type_declarations() {
 	mut a := flat.FlatAst.new()
 	mut tc := types.TypeChecker.new(&a)
