@@ -1330,6 +1330,19 @@ fn compile_cached_c_source_object(obj_path string, source_file string, source_la
 	if language.len > 0 {
 		args << ['-x', language]
 	}
+	if effective_c_compiler_name(compiler, target) == 'msvc' {
+		// `cl` cannot list a source's dependencies like `-M` does, so the object cannot
+		// be validated against its headers later. Build it for this compilation only.
+		msvc_obj := os.join_path(uncached_dir, '${os.file_name(obj_path).all_before_last('.')}_${tempname.unique_token()}.obj')
+		args << ['-o', msvc_obj, '-c', source_file]
+		res := cmdexec.run(compiler, msvc_cl_args(args, target.os))
+		if res.exit_code != 0 {
+			os.rm(msvc_obj) or {}
+			return error('failed to build C object ${obj_path} from ${source_file}:\n${res.output}')
+		}
+		stats.temporary_objects << msvc_obj
+		return msvc_obj
+	}
 	manifest_path := c_object_manifest_path(cache_dir, obj_path, compiler, args, target, mut stats)
 	if cached_obj := valid_c_object_manifest(manifest_path, mut stats) {
 		return cached_obj
@@ -2835,6 +2848,10 @@ fn v3_c_compiler_flag_plan(options V3CCompilerFlagOptions) V3CCompilerFlagPlan {
 		before_inputs << options.pic_flag
 	}
 	before_inputs << v3_windows_executable_linker_flags(options.target_os, options.c_compiler, options.is_shared, options.is_o, options.subsystem, options.windows_gui_app)
+	if options.c_compiler == 'msvc' {
+		before_inputs << v3_msvc_link_flags(options.target_os, options.is_shared, options.is_o,
+			options.subsystem, options.windows_gui_app)
+	}
 	mut tcc_includes := ''
 	if options.is_tcc {
 		tcc_resources := v3_tcc_resource_flags(options.vroot)
@@ -3770,6 +3787,10 @@ fn c_typedef_is_function_pointer(source string, name string) bool {
 }
 
 fn cache_c_compiler_predefined_macros(flags []string, ccompiler string, target pref.Target, native_inputs_language string) (map[string]string, bool) {
+	if effective_c_compiler_name(ccompiler, target) == 'msvc' {
+		// `cl` has no `-dM` equivalent.
+		return map[string]string{}, false
+	}
 	path := os.join_path(os.vtmp_dir(), 'v3_compiler_macros_${tempname.unique_token()}.c')
 	defer {
 		os.rm(path) or {}
@@ -10509,7 +10530,7 @@ pub fn run(args []string) {
 	minimal_literal_output := !is_prof && !is_trace_calls
 		&& input_uses_minimal_literal_output_builtin(input_file, prefs, is_test_command, is_checker_fixture)
 	mut use_parallel_c_compilation := parallel_cc && backend == 'c' && !c_only && !effective_tcc
-		&& !is_o && coverage_dir.len == 0 && profile_file.len == 0
+		&& effective_c_compiler != 'msvc' && !is_o && coverage_dir.len == 0 && profile_file.len == 0
 		&& !is_trace_calls
 		&& v3_parallel_cc_monolithic_define !in user_defines
 	// `-keepc` and explicit `-b c` promise a complete generated C translation unit.
@@ -12617,6 +12638,14 @@ pub fn run(args []string) {
 		} else {
 			b.step_parallel('cgen', cgen_was_parallel)
 		}
+		if effective_c_compiler == 'msvc' && !cache_state.manager.enabled && !c_to_stdout {
+			msvc_lower_c_file(cc_src) or {
+				eprintln('error preparing the generated C source for MSVC: ${err.msg()}')
+				cleanup_c_build_dir(cc_dir)
+				exit(1)
+			}
+			b.step('MSVC C compatibility')
+		}
 		pic_flag := shared_pic_flag(is_shared || use_cached_dev_dylib, prefs.normalized_target_os())
 		mut linux_cross_sysroot := ''
 		if macos_linux_cross_compile && !c_only {
@@ -13375,7 +13404,10 @@ pub fn run(args []string) {
 				&& fallback_source == 'src.c' {
 				result = compile_v3_parallel_c(cc_src, c_compiler, &c_flag_plan, &large_c_flag_plan, native_support_inputs, cached_objects, cached_dev_dylib, needs_objective_c, cc_dir, cc_output_name, verbose || show_cc, parallel_c_job_count, parallel_c_unit_count, is_shared)
 			} else {
-				cc_args := c_flag_plan.compiler_args(cc_output_name, compiler_inputs, [])
+				mut cc_args := c_flag_plan.compiler_args(cc_output_name, compiler_inputs, [])
+				if effective_c_compiler == 'msvc' {
+					cc_args = msvc_cl_args(cc_args, prefs.normalized_target_os())
+				}
 				if verbose || show_cc {
 					println('  > ${cmdexec.display(c_compiler, cc_args)}')
 				}
