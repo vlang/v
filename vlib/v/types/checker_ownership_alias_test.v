@@ -1,4 +1,3 @@
-// vtest vflags: -d ownership
 module types
 
 fn test_long_pointer_index_alias_chain_is_borrowed() {
