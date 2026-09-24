@@ -18154,6 +18154,8 @@ fn (mut g FlatGen) preamble() {
 	g.writeln('#define _Thread_local __declspec(thread)')
 	g.writeln('#endif')
 	g.writeln('#define _Atomic volatile')
+	// Heap copies of `@[aligned]` structs ask for their alignment with GCC's spelling.
+	g.writeln('#define __alignof__(x) __alignof(x)')
 	g.writeln('#endif')
 	if use_system_libc {
 		g.writeln('typedef ptrdiff_t isize;')

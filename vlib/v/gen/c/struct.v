@@ -4500,6 +4500,14 @@ fn struct_decl_alignment_attr(align StructDeclAlignment) string {
 	return '__attribute__((aligned(${align.value})))'
 }
 
+// struct_decl_alignment_declspec is MSVC's spelling of a struct alignment. A bare
+// `@[aligned]` asks for the target's largest alignment, like GCC's `aligned`, which is
+// 16 bytes on the x86-64 and arm64 targets MSVC compiles for.
+fn struct_decl_alignment_declspec(align StructDeclAlignment) string {
+	value := if align.value.len > 0 { align.value } else { '16' }
+	return '__declspec(align (${value}))'
+}
+
 fn struct_decl_alignment_memdup_arg(align StructDeclAlignment, c_type string) string {
 	if align.value.len > 0 {
 		return align.value
@@ -6406,14 +6414,27 @@ fn (mut g FlatGen) emit_struct(name string) {
 			g.tc.cur_module = old_module
 			return
 		}
-		g.writeln('${g.struct_decl_head(name)} {')
+		mut align := StructDeclAlignment{}
+		mut has_align := false
+		if decl_align := g.struct_decl_alignment_for_name(name) {
+			align = decl_align
+			has_align = true
+		}
+		head := g.struct_decl_head(name)
+		if has_align && g.ccompiler == 'msvc' {
+			// MSVC takes the alignment between the tag and the name, and has no GNU
+			// attributes (the preamble defines `__attribute__` away).
+			g.writeln('${head.all_before(' ')} ${struct_decl_alignment_declspec(align)} ${head.all_after(' ')} {')
+		} else {
+			g.writeln('${head} {')
+		}
 		if fields.len == 0 {
 			g.writeln('\tE_STRUCT_DECL;')
 		}
 		for f in fields {
 			g.write_struct_field(name, f)
 		}
-		if align := g.struct_decl_alignment_for_name(name) {
+		if has_align && g.ccompiler != 'msvc' {
 			g.writeln('} ${struct_decl_alignment_attr(align)};')
 		} else {
 			g.writeln('};')
