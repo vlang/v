@@ -8700,7 +8700,7 @@ fn v3_driver_option_requires_value(option string) bool {
 	return option in ['-o', '-output', '-b', '-backend', '-os', '-arch', '-compile-backend',
 		'--compile-backend', '-d', '-define', '-gc', '-cc', '-thread-stack-size', '-path', '-cov',
 		'-coverage', '-file-list', '-message-limit', '-printfn', '-generate-c-project', '-test-runner',
-		'-run-only', '-profile-fns', '-trace-fns', '-subsystem', '-exclude', '-dump-files']
+		'-run-only', '-profile-fns', '-trace-fns', '-subsystem', '-exclude', '-dump-files', '-line-info']
 }
 
 fn v3_driver_option_consumes_value(option string) bool {
@@ -9169,6 +9169,8 @@ pub fn run(args []string) {
 	mut print_watched_files := false
 	mut only_check_syntax := false
 	mut check_only := false
+	// `-line-info` asks a question of the mini-VLS protocol instead of compiling.
+	mut vls_line_info := ''
 	mut show_cc := false
 	mut show_c_output := false
 	mut translated_mode := false
@@ -9615,6 +9617,15 @@ pub fn run(args []string) {
 			skip_running = true
 			no_cache = true
 			i++
+		} else if args[i] == '-vls-mode' {
+			// Marks a request of the mini-VLS protocol; `-line-info` carries it.
+			i++
+		} else if args[i] == '-line-info' && i + 1 < args.len {
+			vls_line_info = args[i + 1]
+			check_only = true
+			skip_running = true
+			no_cache = true
+			i += 2
 		} else if args[i] == '-stats' {
 			show_test_stats = true
 			no_cache = true
@@ -9719,6 +9730,18 @@ pub fn run(args []string) {
 			}
 			i++
 		}
+	}
+	vls_query := if vls_line_info != '' {
+		query := types.parse_vls_line_info(vls_line_info) or {
+			eprintln(err.msg())
+			exit(1)
+		}
+		types.VlsQuery{
+			...query
+			target: input_file
+		}
+	} else {
+		types.VlsQuery{}
 	}
 	if force_bounds_checking {
 		// This option wins regardless of its ordering relative to
@@ -11479,13 +11502,24 @@ pub fn run(args []string) {
 			ck_stage_sw.restart()
 			// On very large user import graphs, serial checking uses less memory than
 			// retaining one semantic-check accumulator per worker.
+			// A query reads the checker's per-node types, which a serial check
+			// leaves in one place.
 			parallel_semantic_check := !current_no_parallel && a.missing_imports.len == 0
-				&& (building_v || !scope_prealloc_check
-					|| a.nodes.len < scoped_serial_user_check_node_threshold)
+				&& vls_line_info == '' && (building_v || !scope_prealloc_check
+				|| a.nodes.len < scoped_serial_user_check_node_threshold)
 			check_was_parallel = pre_tc.check_semantics_opt(parallel_semantic_check)
 			if verbose {
 				eprintln('  [ttime]   ck semantics     ${f64(ck_stage_sw.elapsed().microseconds()) / 1000.0:7.2f} ms')
 			}
+		}
+		if vls_line_info != '' {
+			// The answer, if any, is all a query prints: the program's
+			// diagnostics are not its business, and code being written has some.
+			answer := pre_tc.vls_answer(vls_query)
+			if answer != '' {
+				println(answer)
+			}
+			exit(0)
 		}
 		ck_stage_sw.restart()
 		mut prepared_markused := prepared_markused_thread.wait()
