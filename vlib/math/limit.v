@@ -18,8 +18,6 @@ pub fn maxof[T]() T {
 		return max_i64
 	} $else $if T is u8 {
 		return max_u8
-	} $else $if T is byte {
-		return max_u8
 	} $else $if T is u16 {
 		return max_u16
 	} $else $if T is u32 {
@@ -51,8 +49,6 @@ pub fn minof[T]() T {
 	} $else $if T is i64 {
 		return min_i64
 	} $else $if T is u8 {
-		return min_u8
-	} $else $if T is byte {
 		return min_u8
 	} $else $if T is u16 {
 		return min_u16

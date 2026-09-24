@@ -273,7 +273,7 @@ fn (mut d ChunksReader) read_blocks(chunk []u8) ReadResult {
 		}
 
 		// send a complete block
-		block := d.buffer[cut..cut + 512]
+		block := d.buffer[cut..cut + 512].clone()
 		cut += 512
 		d.result = d.read_block_fn(block) or {
 			assert false, 'Should not occur buffer overflow'

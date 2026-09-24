@@ -436,7 +436,7 @@ pub fn (mut d H3FrameDecoder) next() !H3FrameDecodeResult {
 		return H3FrameDecodeResult{}
 	}
 	total := int(total_u64)
-	payload := d.pending[header_len..total]
+	payload := unsafe { d.pending[header_len..total] }
 	frame := decode_h3_frame_payload(frame_type, payload)!
 	d.pending.delete_many(0, total)
 	return H3FrameDecodeResult{

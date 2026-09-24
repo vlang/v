@@ -74,7 +74,7 @@ fn (mut dom DocumentObjectModel) add_tag_attribute(tag &Tag) {
 		}
 		mut temp_array := unsafe { dom.tag_attributes[attribute_name][location] }
 		temp_array << tag
-		dom.tag_attributes[attribute_name][location] = temp_array
+		unsafe { dom.tag_attributes[attribute_name][location] = temp_array }
 	}
 }
 

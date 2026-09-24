@@ -3,8 +3,6 @@
 // that can be found in the LICENSE file.
 module http
 
-import net
-
 const vschannel_connect_failed_msg = 'Failed to connect to host'
 
 const vschannel_sec_e_internal_error = -2146893052
