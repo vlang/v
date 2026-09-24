@@ -121,6 +121,32 @@ fn (tc &TypeChecker) vls_declared_before(block &flat.Node, child flat.NodeId, na
 	return found
 }
 
+// vls_declared_here is where the identifier `id` is declared when it is itself
+// the name a local declaration introduces: the left of a `:=`, or a variable
+// of a `for ... in`. VLS asks for the declaration of every occurrence of a name
+// it renames, the declaring one too.
+fn (tc &TypeChecker) vls_declared_here(id flat.NodeId) ?VlsPos {
+	parent_id := tc.direct_parent_id(id)
+	if !tc.valid_node_id(parent_id) {
+		return none
+	}
+	parent := tc.a.node(parent_id)
+	node := tc.a.node(id)
+	mut declares := false
+	if parent.kind == .decl_assign {
+		if decl := tc.vls_assigned_name(parent_id, node.value) {
+			declares = decl == id
+		}
+	} else if parent.kind == .for_in_stmt && parent.children_count > 2 {
+		// The key and the value come before the container.
+		declares = tc.a.child(parent, 0) == id || tc.a.child(parent, 1) == id
+	}
+	if !declares {
+		return none
+	}
+	return VlsPos{int(node.pos.id), int(node.pos.offset)}
+}
+
 // vls_assigned_name returns the identifier that the `:=` node `id` declares
 // with the name `name`: one on its left, not a use of `name` on its right.
 fn (tc &TypeChecker) vls_assigned_name(id flat.NodeId, name string) ?flat.NodeId {
