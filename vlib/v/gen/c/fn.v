@@ -544,13 +544,19 @@ fn (mut g FlatGen) gen_fn_items(items []FlatFnGenItem) {
 // file_is_cache_program_file reports whether `file`, as written or resolved,
 // is one of the cached program files, memoizing the answer per file.
 fn (g &FlatGen) file_is_cache_program_file(file string, mut memo map[string]bool) bool {
-	if g.cache_program_files.len == 0 {
+	return cache_program_file_matches(g.cache_program_files, file, mut memo)
+}
+
+// cache_program_file_matches reports whether `file`, as written or resolved, is
+// one of `program_files`. It resolves each written path at most once per memo.
+fn cache_program_file_matches(program_files map[string]bool, file string, mut memo map[string]bool) bool {
+	if program_files.len == 0 {
 		return false
 	}
 	if known := memo[file] {
 		return known
 	}
-	is_program := g.cache_program_files[file] || g.cache_program_files[os.real_path(file)]
+	is_program := program_files[file] || program_files[os.real_path(file)]
 	memo[file] = is_program
 	return is_program
 }
