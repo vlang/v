@@ -56,6 +56,21 @@ pub fn parse_vls_line_info(spec string) !VlsQuery {
 	}
 }
 
+// parse_vls_line_infos parses a `-line-info` value that asks one question, or
+// several separated by tabs: a client that verifies many positions, as a rename
+// does, asks them all from one check. `target` is what the command line checks.
+pub fn parse_vls_line_infos(spec string, target string) ![]VlsQuery {
+	mut queries := []VlsQuery{}
+	for part in spec.split('\t') {
+		query := parse_vls_line_info(part)!
+		queries << VlsQuery{
+			...query
+			target: target
+		}
+	}
+	return queries
+}
+
 // VlsTarget is the node a query is about, and the source of its file.
 struct VlsTarget {
 	id      flat.NodeId
