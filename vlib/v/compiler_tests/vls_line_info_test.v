@@ -109,12 +109,75 @@ fn main() {
 }
 '
 
+// Every kind of name a declaration introduces, for go-to-definition on the
+// declaration itself: VLS asks it to learn which occurrences a rename changes.
+const declarations_program = 'module main
+
+import time
+
+struct Base {
+	id int
+}
+
+fn (b Base) ident() int {
+	return b.id
+}
+
+struct Job {
+	Base
+	time int
+	lead Base
+}
+
+interface Named {
+	name() string
+}
+
+const answer = 42
+
+fn find(n int) ?int {
+	return if n > 0 { n } else { none }
+}
+
+fn shadowed() {
+	time := [1, 2]
+	println(time.len)
+}
+
+fn main() {
+	offset := 7
+	mut out := []int{}
+	for item in [1, 2] {
+		out << item + offset
+	}
+	for i, value in out {
+		println(i + value)
+	}
+	for k := 0; k < 2; k++ {
+		println(k)
+	}
+	if found := find(1) {
+		println(found)
+	}
+	job := Job{
+		time: 3
+	}
+	println(job.ident() + job.time + answer)
+	println(time.now().year > 0)
+	shadowed()
+}
+'
+
 fn testsuite_begin() {
 	res := os.execute('${os.quoted_path(vexe)} -gc none -path ${os.quoted_path('${vlib_dir}|@vlib|@vmodules')} -o ${os.quoted_path(line_info_v3_bin)} ${os.quoted_path(v3_src)}')
 	assert res.exit_code == 0, res.output
 	os.mkdir_all(os.join_path(work_dir, 'completion')) or { panic(err) }
+	os.mkdir_all(os.join_path(work_dir, 'declarations')) or { panic(err) }
 	os.write_file(os.join_path(work_dir, 'main.v'), program) or { panic(err) }
 	os.write_file(os.join_path(work_dir, 'completion', 'main.v'), completion_program) or {
+		panic(err)
+	}
+	os.write_file(os.join_path(work_dir, 'declarations', 'main.v'), declarations_program) or {
 		panic(err)
 	}
 }
@@ -210,6 +273,44 @@ fn test_definition_prints_the_position_of_the_declaration() {
 	assert definition(48, 'err', 0) == 'main.v:47:25'
 	assert definition(54, 'err', 0) == 'main.v:53:8'
 	assert definition(56, 'it', 0) == 'main.v:56:15'
+}
+
+fn declaration(line int, word string, nth int) string {
+	return ask(os.join_path(work_dir, 'declarations'), 'gd^', line, word, nth)
+}
+
+fn test_definition_of_a_declaration_is_the_declaration() {
+	// A field, and one named like an imported module.
+	assert declaration(6, 'id', 0) == 'main.v:6:1'
+	assert declaration(15, 'time', 0) == 'main.v:15:1'
+	assert declaration(16, 'lead', 0) == 'main.v:16:1'
+	// A method's name and its receiver.
+	assert declaration(9, 'ident', 0) == 'main.v:9:12'
+	assert declaration(9, 'b', 0) == 'main.v:9:4'
+	// A method of an interface, and a const.
+	assert declaration(20, 'name', 0) == 'main.v:20:1'
+	assert declaration(23, 'answer', 0) == 'main.v:23:6'
+	// Locals, also one named like a function of an imported module, and one
+	// named like the module itself.
+	assert declaration(35, 'offset', 0) == 'main.v:35:1'
+	assert declaration(36, 'out', 0) == 'main.v:36:5'
+	assert declaration(30, 'time', 0) == 'main.v:30:1'
+	// The variables of loops and of an `if x :=` guard.
+	assert declaration(37, 'item', 0) == 'main.v:37:5'
+	assert declaration(40, 'i', 0) == 'main.v:40:5'
+	assert declaration(40, 'value', 0) == 'main.v:40:8'
+	assert declaration(43, 'k', 0) == 'main.v:43:5'
+	assert declaration(46, 'found', 0) == 'main.v:46:4'
+	// What already led to a declaration still does: the uses, the type written
+	// in a field, and an embedded struct, which is its type.
+	assert declaration(38, 'item', 0) == 'main.v:37:5'
+	assert declaration(38, 'offset', 0) == 'main.v:35:1'
+	assert declaration(31, 'time', 0) == 'main.v:30:1'
+	assert declaration(47, 'found', 0) == 'main.v:46:4'
+	assert declaration(50, 'time', 0) == 'main.v:15:1'
+	assert declaration(52, 'ident', 0) == 'main.v:9:12'
+	assert declaration(16, 'Base', 0) == 'main.v:5:7'
+	assert declaration(14, 'Base', 0) == 'main.v:5:7'
 }
 
 fn test_signature_help_marks_the_argument_under_the_cursor() {

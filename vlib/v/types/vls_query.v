@@ -221,6 +221,9 @@ fn (tc &TypeChecker) vls_target_at(file_id int, offset int, source string) ?VlsT
 		mut start, mut end := 0, 0
 		if node.kind == .field_init {
 			start, end = tc.vls_field_init_name_span(node, source) or { continue }
+		} else if node.kind == .param && !vls_spells_its_name(node, source) {
+			// A method's receiver: its node has the position of the method.
+			start, end = tc.vls_receiver_name_span(flat.NodeId(idx), node) or { continue }
 		} else {
 			start, end = vls_name_span(node, source) or { continue }
 		}
@@ -255,12 +258,53 @@ fn (tc &TypeChecker) vls_field_init_name_span(node flat.Node, source string) ?(i
 	return start, start + node.value.len
 }
 
+// vls_spells_its_name reports whether the span of `node` is its name.
+fn vls_spells_its_name(node flat.Node, source string) bool {
+	start := int(node.pos.offset)
+	end := int(node.pos.end)
+	return start >= 0 && start < end && end <= source.len && source[start..end] == node.value
+}
+
+// vls_receiver_name_span is the span of the name of the method receiver `id`.
+fn (tc &TypeChecker) vls_receiver_name_span(id flat.NodeId, node flat.Node) ?(int, int) {
+	at := tc.vls_receiver_name_at(id, &node)?
+	return at.offset, at.offset + node.value.len
+}
+
+// vls_embeds_its_type reports whether a struct field whose name ends at
+// `name_end` is written as a type alone, `Base` or `Box[int]`: it embeds that
+// type, and stands for it.
+fn vls_embeds_its_type(source string, name_end int) bool {
+	if name_end < source.len && source[name_end] == `[` {
+		return true
+	}
+	mut i := name_end
+	for i < source.len && source[i] in [` `, `\t`] {
+		i++
+	}
+	return i >= source.len || source[i] in [`\n`, `\r`, `}`] || source[i..].starts_with('//')
+}
+
 // vls_name_span returns the byte span of the name a node stands for: the
 // identifier itself, the member of a selector, the type of a cast or of a
-// struct literal, the value of an enum shorthand without its dot.
+// struct literal, the value of an enum shorthand without its dot, the name a
+// declaration introduces.
 fn vls_name_span(node flat.Node, source string) ?(int, int) {
 	start := int(node.pos.offset)
 	end := int(node.pos.end)
+	if node.kind in [.field_decl, .const_field, .interface_field, .fn_decl] {
+		// A declaration starts with its name, which its node may not span; a
+		// method's node names its receiver's type too.
+		name := if node.kind == .fn_decl { node.value.all_after_last('.') } else { node.value }
+		name_end := start + name.len
+		if name.len == 0 || start < 0 || name_end > source.len || source[start..name_end] != name {
+			return none
+		}
+		if node.kind == .field_decl && vls_embeds_its_type(source, name_end) {
+			return none
+		}
+		return start, name_end
+	}
 	if start < 0 || end > source.len || start >= end {
 		return none
 	}
