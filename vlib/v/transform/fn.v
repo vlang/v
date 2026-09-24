@@ -2844,6 +2844,16 @@ fn (t &Transformer) call_callee_fn_type(fn_id flat.NodeId) ?types.FnType {
 			return fn_type
 		}
 	}
+	if node.kind == .index {
+		// `fns[i](...)`: the checker's local scope is gone here, so type the
+		// element from the transformer's own view of the indexed container.
+		elem_type := t.node_type(fn_id)
+		if elem_type.len > 0 && elem_type != 'unknown' {
+			if fn_type := transform_fn_type(t.tc.parse_type(elem_type)) {
+				return fn_type
+			}
+		}
+	}
 	return transform_fn_type(t.tc.resolve_type(fn_id))
 }
 
@@ -3646,6 +3656,18 @@ fn (mut t Transformer) transform_call_arg_for_param_isolated(arg_id flat.NodeId,
 			storage := t.make_ident(arg_node.value)
 			t.set_node_typ(int(storage), storage_type)
 			return storage
+		}
+		if storage_type.starts_with('&')
+			&& t.normalize_type_alias('&${storage_type}') == t.normalize_type_alias(param_type) {
+			// A `mut x &T` slot (`T**`) needs the address of a pointer holding that
+			// storage; `&val` on a `mut T` parameter would still yield `T*`.
+			storage := t.make_ident(arg_node.value)
+			t.set_node_typ(int(storage), storage_type)
+			tmp_name := t.new_temp('ref_arg')
+			t.pending_stmts << t.make_decl_assign_typed(tmp_name, storage, storage_type)
+			addr := t.make_prefix(.amp, t.make_ident(tmp_name))
+			t.set_node_typ(int(addr), param_type)
+			return addr
 		}
 	}
 	if param_type.starts_with('&') && arg_node.kind == .selector

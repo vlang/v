@@ -8738,6 +8738,68 @@ fn (tc &TypeChecker) fn_type_from_key(key string) ?Type {
 	})
 }
 
+// fn_value_decl_key returns the declaration key of a named function used as a value.
+fn (tc &TypeChecker) fn_value_decl_key(expr flat.Node) ?string {
+	match expr.kind {
+		.ident {
+			if tc.ident_resolves_to_value(expr.value) {
+				return none
+			}
+			if local_name := tc.local_bare_fn_key(expr.value) {
+				return local_name
+			}
+			if imported_name := tc.resolve_selective_import_symbol(expr.value) {
+				return imported_name
+			}
+			if expr.value in tc.fn_ret_types {
+				return expr.value
+			}
+		}
+		.selector {
+			if expr.children_count == 0 {
+				return none
+			}
+			base := tc.a.child_node(&expr, 0)
+			if base.kind != .ident || tc.ident_resolves_to_value(base.value) {
+				return none
+			}
+			mod_name := tc.resolve_import_alias(base.value) or { base.value }
+			key := '${mod_name}.${expr.value}'
+			if key in tc.fn_ret_types {
+				return key
+			}
+		}
+		else {}
+	}
+	return none
+}
+
+// fn_decl_value_mut_ref_slot_compatible accepts a named function where an expected
+// `fn (mut &T)` type spells out the `&&T` slot of its explicit `mut x &T` parameters.
+// The declaration's own value type keeps `&T`, so that it still adapts to `fn (mut T)`.
+fn (tc &TypeChecker) fn_decl_value_mut_ref_slot_compatible(expr_id flat.NodeId, actual Type, expected Type) bool {
+	if fn_type_from_type(expected) == none {
+		return false
+	}
+	actual_fn := fn_type_from_type(actual) or { return false }
+	key := tc.fn_value_decl_key(tc.a.node(expr_id)) or { return false }
+	mut slots := actual_fn.params.clone()
+	mut has_slot := false
+	for i, typ in actual_fn.params {
+		if i < actual_fn.params_mut.len && actual_fn.params_mut[i] && typ is Pointer
+			&& tc.call_param_requires_mut_pointer_slot(CallInfo{ name: key }, i) {
+			slots[i] = Type(Pointer{
+				base_type: typ
+			})
+			has_slot = true
+		}
+	}
+	return has_slot && tc.type_compatible(Type(FnType{
+		...actual_fn
+		params: slots
+	}), expected)
+}
+
 fn (tc &TypeChecker) translated_c_string_fixed_array_compatible(id flat.NodeId, expected Type) bool {
 	if !tc.translated_files[tc.cur_file] && !tc.node_is_in_translated_file(id) {
 		return false

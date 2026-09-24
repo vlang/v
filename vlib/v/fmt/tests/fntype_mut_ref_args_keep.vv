@@ -1,0 +1,6 @@
+struct Handlers {
+mut:
+	list []fn (mut &Handlers, int)
+}
+
+type HandlerFn = fn (mut &Handlers, int)
