@@ -163,6 +163,7 @@ fn main() {
 		time: 3
 	}
 	println(job.ident() + job.time + answer)
+	println(job.id)
 	println(time.now().year > 0)
 	shadowed()
 }
@@ -309,6 +310,8 @@ fn test_definition_of_a_declaration_is_the_declaration() {
 	assert declaration(47, 'found', 0) == 'main.v:46:4'
 	assert declaration(50, 'time', 0) == 'main.v:15:1'
 	assert declaration(52, 'ident', 0) == 'main.v:9:12'
+	// A field of an embedded struct, through the struct that embeds it.
+	assert declaration(53, 'id', 0) == 'main.v:6:1'
 	assert declaration(16, 'Base', 0) == 'main.v:5:7'
 	assert declaration(14, 'Base', 0) == 'main.v:5:7'
 }

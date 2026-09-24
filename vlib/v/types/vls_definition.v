@@ -332,7 +332,8 @@ fn (tc &TypeChecker) vls_module_member_definition(module_name string, member str
 }
 
 // vls_field_definition is where the struct or interface `type_name` declares
-// the field `field`.
+// the field `field`, or the struct it embeds that declares it: `u.id` for the
+// `id` of a `Base` that `u`'s struct embeds.
 fn (tc &TypeChecker) vls_field_definition(type_name string, field string) ?VlsPos {
 	index := tc.first_type_declaration_ids[type_name] or { return none }
 	decl := tc.a.nodes[index]
@@ -341,6 +342,11 @@ fn (tc &TypeChecker) vls_field_definition(type_name string, field string) ?VlsPo
 		if member.kind in [.field_decl, .interface_field] && member.value == field {
 			return VlsPos{int(member.pos.id), int(member.pos.offset)}
 		}
+	}
+	// Two embedded structs that declare it make the name ambiguous: V rejects it.
+	owners := tc.embedded_field_candidates(type_name, field)
+	if owners.len == 1 {
+		return tc.vls_field_definition(owners[0], field)
 	}
 	return none
 }
