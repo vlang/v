@@ -10,7 +10,13 @@ fn call(cb fn ()) {
 	cb()
 }
 
+type Ints = []int
+
 fn apply(f fn (int) int, v int) int {
+	return f(v)
+}
+
+fn lens(f fn ([]int) int, v []int) int {
 	return f(v)
 }
 
@@ -41,6 +47,9 @@ fn main() {
 	println([1, 2, 3].filter(|n| n > 1))
 	// the implicit `it` of an array DSL call is not a capture
 	println(apply(|n| [1, 2, 3].filter(it > n).len, 1))
+	println(apply(|n| [1, 2, 3]!.filter(it > n).len, 2))
+	println(apply(|n| Ints([1, 2, 3]).any(it > n).str().len, 3))
+	println(lens(|a| a.filter(it > 1).len, [1, 2, 3]))
 	mut a := [3, 1, 2]
 	a.sort(|p, q| p < q)
 	println(a)

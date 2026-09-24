@@ -16918,7 +16918,7 @@ fn no_closures_error(a &flat.FlatAst, tc &types.TypeChecker) ?types.TypeError {
 			// Only a lambda that captures an enclosing local is lowered into a
 			// closure; a capture-free one becomes a plain function, like `fn () {}`.
 			if !capturing_lambdas_ready {
-				capturing_lambdas = no_closures_capturing_lambdas(a)
+				capturing_lambdas = no_closures_capturing_lambdas(a, tc)
 				capturing_lambdas_ready = true
 			}
 			if idx !in capturing_lambdas {
@@ -16956,7 +16956,8 @@ fn no_closures_error(a &flat.FlatAst, tc &types.TypeChecker) ?types.TypeError {
 // against the lexically visible locals, mirroring how the transform infers the
 // captured variables of a lambda before lifting it.
 struct NoClosuresLambdaScan {
-	a &flat.FlatAst = unsafe { nil }
+	a  &flat.FlatAst      = unsafe { nil }
+	tc &types.TypeChecker = unsafe { nil }
 mut:
 	// bindings holds the in-scope local names in declaration order; visible maps
 	// a name to the `bindings` indexes of its live declarations.
@@ -16974,9 +16975,10 @@ mut:
 // no_closures_capturing_lambdas returns the node ids of the user code lambdas
 // that reference a local of an enclosing scope. Only those are lowered into
 // closures; capture-free lambdas become plain functions.
-fn no_closures_capturing_lambdas(a &flat.FlatAst) map[int]bool {
+fn no_closures_capturing_lambdas(a &flat.FlatAst, tc &types.TypeChecker) map[int]bool {
 	mut scan := NoClosuresLambdaScan{
-		a: a
+		a:  a
+		tc: tc
 	}
 	for idx in a.user_code_start .. a.nodes.len {
 		if a.nodes[idx].kind == .file {
@@ -17114,9 +17116,10 @@ fn (mut s NoClosuresLambdaScan) walk(id flat.NodeId) {
 			s.close_scope(mark)
 		}
 		.call {
-			if node.children_count > 0 && is_it_dsl_callee(s.a.child_node(&node, 0)) {
+			if s.tc.call_binds_implicit_it(node) {
 				// The arguments of an array DSL call (`arr.filter(it > 0)`) can refer
-				// to the implicit `it`; any other call sees the enclosing `it`, if any.
+				// to the implicit `it`; any other call, including a user method named
+				// like a DSL method, sees the enclosing `it`, if any.
 				s.walk(s.a.child(&node, 0))
 				mark := s.bindings.len
 				s.declare('it')
@@ -17130,14 +17133,6 @@ fn (mut s NoClosuresLambdaScan) walk(id flat.NodeId) {
 			s.walk_children(node, 0)
 		}
 	}
-}
-
-// is_it_dsl_callee reports whether a call binds the implicit `it` in its
-// arguments. Like the checker's unresolved_array_dsl_call_name, it matches the
-// method name only.
-fn is_it_dsl_callee(callee &flat.Node) bool {
-	return callee.kind == .selector && callee.children_count > 0
-		&& callee.value in ['filter', 'map', 'any', 'all', 'count']
 }
 
 fn (mut s NoClosuresLambdaScan) walk_fn(node flat.Node) {
