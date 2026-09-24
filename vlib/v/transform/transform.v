@@ -11802,6 +11802,9 @@ fn (mut t Transformer) transform_assign_stmt(id flat.NodeId, node flat.Node) []f
 	if discarded := t.try_lower_discarded_closure_assign(node) {
 		return discarded
 	}
+	if discarded := t.try_lower_discarded_spawn_assign(node) {
+		return discarded
+	}
 	t.update_orm_initialized_fields_for_assignment(node)
 	t.update_sql_query_data_aliases_for_assignment(node)
 	if lowered := t.try_lower_sum_shared_field_assign(node) {
@@ -12051,6 +12054,216 @@ fn (mut t Transformer) transform_assign_stmt(id flat.NodeId, node flat.Node) []f
 		}
 	}
 	return result
+}
+
+// try_lower_discarded_spawn_assign lowers `_ := v` / `_ = v` when `v` can start a
+// thread whose handle the discard drops. A `spawn`, possibly parenthesized, becomes an
+// expression statement, which transform_expr_stmt marks detached. An `if`/`match`
+// with a branch ending in a `spawn` has the discard pushed into its branches:
+// `_ := if c { a } else { b }` becomes `if c { _ = a } else { _ = b }`. As a value it
+// would be lowered into a temporary that hides the spawns, leaving their threads
+// joinable with nothing left to join them. Any other branch value, such as an
+// existing handle, is only evaluated: `(void)(t)` leaves it joinable for `.wait()`.
+fn (mut t Transformer) try_lower_discarded_spawn_assign(node flat.Node) ?[]flat.NodeId {
+	if node.children_count != 2 || (node.kind == .assign && node.op != .assign) {
+		return none
+	}
+	lhs := t.a.child_node(&node, 0)
+	if lhs.kind != .ident || lhs.value != '_' {
+		return none
+	}
+	return t.lower_discarded_spawn_value(t.a.child(&node, 1))
+}
+
+// lower_discarded_spawn_value lowers the discarded value `id` of a `_` target, in a
+// single or a multi-assignment, when it can start a thread (see
+// try_lower_discarded_spawn_assign). It returns none for any other value.
+fn (mut t Transformer) lower_discarded_spawn_value(id flat.NodeId) ?[]flat.NodeId {
+	value_id := t.skip_discarded_spawn_parens(id)
+	value := t.a.nodes[int(value_id)]
+	if value.kind == .spawn_expr {
+		return t.transform_detached_spawn_stmt(flat.Node{
+			kind: .expr_stmt
+		}, value_id)
+	}
+	if value.kind !in [.if_expr, .match_stmt] || !t.yields_fresh_spawn(value_id) {
+		return none
+	}
+	return t.transform_stmt(t.discard_conditional_branch_values(value_id))
+}
+
+// transform_detached_spawn_stmt transforms the expression statement `stmt`, whose
+// value is the `spawn` `spawn_id`, and marks that spawn detached: its handle is
+// discarded, so the backend starts the thread detached instead of joinable. The mark
+// goes on a copy, so the source node is left as it was.
+fn (mut t Transformer) transform_detached_spawn_stmt(stmt flat.Node, spawn_id flat.NodeId) []flat.NodeId {
+	mut value := t.transform_expr(spawn_id)
+	spawn_node := t.a.nodes[int(value)]
+	if spawn_node.kind == .spawn_expr {
+		value = t.copy_node_with_children(spawn_node, t.a.children_of(&spawn_node).clone())
+		t.a.nodes[int(value)].flags = spawn_node.flags | flat.node_flag_detached_spawn
+	}
+	start := t.a.children.len
+	t.a.children << value
+	new_id := t.a.add_node(flat.Node{
+		kind:           .expr_stmt
+		op:             stmt.op
+		children_start: start
+		children_count: 1
+		pos:            stmt.pos
+		value:          stmt.value
+		typ:            stmt.typ
+	})
+	return t.with_pending_before(new_id)
+}
+
+fn (t &Transformer) skip_discarded_spawn_parens(id flat.NodeId) flat.NodeId {
+	mut cur := id
+	for int(cur) >= 0 && int(cur) < t.a.nodes.len {
+		node := t.a.nodes[int(cur)]
+		if node.kind != .paren || node.children_count != 1 {
+			break
+		}
+		cur = t.a.child(&node, 0)
+	}
+	return cur
+}
+
+// yields_fresh_spawn reports whether some value `id` can produce is a thread started
+// by `id` itself: a `spawn`, or an `if`/`match` with a branch that ends in one.
+fn (t &Transformer) yields_fresh_spawn(id flat.NodeId) bool {
+	value_id := t.skip_discarded_spawn_parens(id)
+	if int(value_id) < 0 || int(value_id) >= t.a.nodes.len {
+		return false
+	}
+	node := t.a.nodes[int(value_id)]
+	match node.kind {
+		.spawn_expr {
+			return true
+		}
+		.if_expr {
+			// An `if` without `else` has no value.
+			if node.children_count < 3 {
+				return false
+			}
+			return t.if_branch_yields_fresh_spawn(t.a.child(&node, 1))
+				|| t.if_branch_yields_fresh_spawn(t.a.child(&node, 2))
+		}
+		.match_stmt {
+			for i in 1 .. node.children_count {
+				branch := t.a.child_node(&node, i)
+				if branch.kind != .match_branch {
+					continue
+				}
+				value_idx := branch_value_index(branch) or { continue }
+				if t.stmt_yields_fresh_spawn(t.a.child(branch, value_idx)) {
+					return true
+				}
+			}
+			return false
+		}
+		else {
+			return false
+		}
+	}
+}
+
+// if_branch_yields_fresh_spawn checks an `if` branch: a block whose trailing value
+// statement yields a fresh spawn, or the nested `if` of an `else if` chain.
+fn (t &Transformer) if_branch_yields_fresh_spawn(id flat.NodeId) bool {
+	if int(id) < 0 || int(id) >= t.a.nodes.len {
+		return false
+	}
+	node := t.a.nodes[int(id)]
+	if node.kind == .if_expr {
+		return t.yields_fresh_spawn(id)
+	}
+	if node.kind != .block {
+		return false
+	}
+	value_idx := branch_value_index(node) or { return false }
+	return t.stmt_yields_fresh_spawn(t.a.child(&node, value_idx))
+}
+
+// branch_value_index returns the index of the trailing value statement of an `if`
+// block or a `match_branch`. A `match_branch` lists its conditions before its
+// statements; `value` holds their count, or `else`.
+fn branch_value_index(node flat.Node) ?int {
+	first_stmt := if node.kind == .match_branch && node.value != 'else' {
+		node.value.int()
+	} else {
+		0
+	}
+	if node.children_count <= first_stmt {
+		return none
+	}
+	return node.children_count - 1
+}
+
+fn (t &Transformer) stmt_yields_fresh_spawn(id flat.NodeId) bool {
+	if int(id) < 0 || int(id) >= t.a.nodes.len {
+		return false
+	}
+	node := t.a.nodes[int(id)]
+	if node.kind == .expr_stmt && node.children_count > 0 {
+		return t.yields_fresh_spawn(t.a.child(&node, 0))
+	}
+	// A nested conditional can be the trailing value statement of a branch.
+	if node.kind in [.if_expr, .match_stmt] {
+		return t.yields_fresh_spawn(id)
+	}
+	return false
+}
+
+// discard_conditional_branch_values copies the `if`/`match` `id` with the trailing
+// value statement of every branch replaced by `_ = value`.
+fn (mut t Transformer) discard_conditional_branch_values(id flat.NodeId) flat.NodeId {
+	node := t.a.nodes[int(id)]
+	// children_of shares storage with the AST; copy before replacing branches.
+	mut children := t.a.children_of(&node).clone()
+	if node.kind == .if_expr {
+		// Children are the condition, the `then` block and the optional `else` block or `if`.
+		for i in 1 .. children.len {
+			branch := t.a.nodes[int(children[i])]
+			children[i] = if branch.kind == .if_expr {
+				t.discard_conditional_branch_values(children[i])
+			} else {
+				t.discard_block_value(children[i])
+			}
+		}
+	} else {
+		// Children are the subject, then one `match_branch` per arm.
+		for i in 1 .. children.len {
+			children[i] = t.discard_block_value(children[i])
+		}
+	}
+	return t.copy_discarded_value_node(node, children)
+}
+
+// discard_block_value copies a block or `match_branch` with its trailing value
+// statement replaced by `_ = value`. A trailing `return`, `break` or similar has no
+// value and is kept.
+fn (mut t Transformer) discard_block_value(id flat.NodeId) flat.NodeId {
+	node := t.a.nodes[int(id)]
+	value_idx := branch_value_index(node) or { return id }
+	mut children := t.a.children_of(&node).clone()
+	last := t.a.nodes[int(children[value_idx])]
+	value_id := if last.kind == .expr_stmt && last.children_count > 0 {
+		t.a.child(&last, 0)
+	} else if last.kind in [.if_expr, .match_stmt] {
+		children[value_idx]
+	} else {
+		return id
+	}
+	children[value_idx] = t.make_assign(t.make_ident('_'), value_id)
+	return t.copy_discarded_value_node(node, children)
+}
+
+fn (mut t Transformer) copy_discarded_value_node(node flat.Node, children []flat.NodeId) flat.NodeId {
+	copy_id := t.copy_node_with_children(node, children)
+	// Keep scope flags such as skip-ownership-drops; the copy helper does not carry them.
+	t.a.nodes[int(copy_id)].flags = node.flags
+	return copy_id
 }
 
 fn (mut t Transformer) try_lower_discarded_closure_assign(node flat.Node) ?[]flat.NodeId {
@@ -14484,6 +14697,9 @@ fn (mut t Transformer) transform_decl_assign_stmt(id flat.NodeId, node flat.Node
 	if node.children_count == 0 {
 		return [id]
 	}
+	if discarded := t.try_lower_discarded_spawn_assign(node) {
+		return discarded
+	}
 	source_rhs_id := if node.children_count == 2 {
 		t.a.child(&node, 1)
 	} else {
@@ -15350,6 +15566,13 @@ fn (mut t Transformer) try_expand_plain_multi_assign(node flat.Node) ?[]flat.Nod
 		lhs_ids << lhs_id
 		lhs := t.a.nodes[int(lhs_id)]
 		if lhs.kind == .ident && lhs.value == '_' {
+			// Nothing can join a thread the discarded value starts; lower it like a
+			// single `_ = v`, so its spawns start detached.
+			if lowered := t.lower_discarded_spawn_value(rhs_id) {
+				result << lowered
+				tmp_names << ''
+				continue
+			}
 			rhs := t.transform_expr(rhs_id)
 			t.drain_pending(mut result)
 			result << t.make_expr_stmt(rhs)
@@ -16353,6 +16576,10 @@ fn (mut t Transformer) transform_expr_stmt(id flat.NodeId, node flat.Node) []fla
 	}
 	if discarded := t.lower_discarded_closure_value(child_id) {
 		return discarded
+	}
+	spawn_id := t.skip_discarded_spawn_parens(child_id)
+	if t.a.nodes[int(spawn_id)].kind == .spawn_expr {
+		return t.transform_detached_spawn_stmt(node, spawn_id)
 	}
 	if t.autolock_depth == 0 {
 		if lock_id := t.shared_postfix_autolock_target(child_id) {

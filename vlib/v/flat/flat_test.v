@@ -245,3 +245,22 @@ fn test_node_payloads_survive_gc_collections() {
 		assert params[1] == 'U'
 	}
 }
+
+// A detached spawn describes the node itself, so the mark has to survive copies such
+// as generic specialization; otherwise the copy would start a joinable thread again.
+fn test_clone_node_flags_keeps_detached_spawn() {
+	source := Node{
+		kind:  .spawn_expr
+		flags: node_flag_detached_spawn | node_flag_skip_ownership_drops
+	}
+	assert source.is_detached_spawn()
+	copy := Node{
+		kind:  .spawn_expr
+		flags: clone_node_flags(&source, false)
+	}
+	assert copy.is_detached_spawn()
+	assert !copy.skip_ownership_drops()
+	assert !Node{
+		kind: .spawn_expr
+	}.is_detached_spawn()
+}

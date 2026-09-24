@@ -246,3 +246,99 @@ fn main() {
 	assert !c_compact.contains('closure__closure_try_destroy((void*)p->f);'), c_code
 	assert !c_compact.contains('closure__closure_try_destroy((void*)cb);'), c_code
 }
+
+// A `spawn` whose handle is discarded can never be joined, so its thread must be
+// detached. Left joinable, every such thread keeps its OS resources until exit
+// (under Boehm GC on macOS, one mach port each, until the kernel kills the
+// process). A handle that is kept must stay joinable for `.wait()`.
+fn test_discarded_spawn_detaches_thread() {
+	v3_bin := build_v3()
+	c_code := gen_c(v3_bin, 'v3_spawn_discarded_detach', '
+fn work() {}
+
+fn answer() int {
+	return 42
+}
+
+fn add(a int, b int) int {
+	return a + b
+}
+
+fn wait_for(t thread int) {
+	println(t.wait())
+}
+
+fn main() {
+	spawn work()
+	_ := spawn work()
+	_ = spawn work()
+	mut b := 0
+	b, _ = 2, spawn work()
+	println(b)
+	spawn answer()
+	spawn add(1, 2)
+	spawn wait_for(spawn answer())
+	t := spawn answer()
+	println(t.wait())
+}
+	')
+	c_compact := compact_c(c_code)
+	assert c_code.contains('static void __v_thread_spawn_detached(__v_thread_start_fn start, void* arg, void (*cleanup)(void*))'), c_code
+	assert c_compact.count('__v_thread_spawn_detached(work_thread_wrapper,') == 4, c_code
+	assert c_compact.count('__v_thread_spawn_detached(answer_thread_wrapper,') == 1, c_code
+	assert c_compact.contains('__v_thread_spawn_detached(add_args_thread_wrapper,(void*)_sa'), c_code
+	// The spawn nested in the arguments is joined by `wait_for`, so it stays joinable.
+	assert c_compact.contains('__v_thread_spawn_detached(wait_for_args_thread_wrapper,(void*)_sa'), c_code
+	assert c_compact.count('__v_thread_spawn(answer_thread_wrapper,') == 2, c_code
+	assert c_compact.contains('__v_threadt=__v_thread_spawn(answer_thread_wrapper,'), c_code
+	assert c_compact.contains('__v_thread__twthread0=t;'), c_code
+}
+
+// A discarded `if`/`match`, including one in a `_` slot of a multi-assignment, must
+// detach the spawn in each branch that ends in one.
+// The transformer would otherwise lower the value into a temporary that hides the
+// spawns from cgen. A branch that yields an existing handle only evaluates it, so
+// the handle stays joinable for its later `.wait()`.
+fn test_discarded_conditional_spawns_detach_threads() {
+	v3_bin := build_v3()
+	c_code := gen_c(v3_bin, 'v3_spawn_discarded_conditional_detach', "
+fn work() {}
+
+fn other() {}
+
+fn main() {
+	flag := true
+	n := 2
+	_ := if flag { spawn work() } else { spawn other() }
+	_ = if flag {
+		println('a')
+		spawn work()
+	} else if n > 1 {
+		spawn other()
+	} else {
+		spawn work()
+	}
+	_ := match n {
+		1 { spawn work() }
+		else { spawn other() }
+	}
+	_ := (spawn work())
+	mut a := 0
+	a, _ = 3, if flag { spawn work() } else { spawn other() }
+	println(a)
+	t := spawn work()
+	_ := if flag { t } else { spawn other() }
+	_ := match n {
+		1 { t }
+		else { spawn other() }
+	}
+	t.wait()
+}
+	")
+	c_compact := compact_c(c_code)
+	assert c_compact.count('__v_thread_spawn_detached(work_thread_wrapper,') == 6, c_code
+	assert c_compact.count('__v_thread_spawn_detached(other_thread_wrapper,') == 6, c_code
+	assert !c_compact.contains('__v_thread_spawn(other_thread_wrapper,'), c_code
+	assert c_compact.contains('__v_threadt=__v_thread_spawn(work_thread_wrapper,'), c_code
+	assert c_compact.count('(void)(t);') == 2, c_code
+}
