@@ -365,6 +365,25 @@ fn add_unhandled_exception_handler() {
 
 fn C.IsDebuggerPresent() bool
 
+@[typedef]
+struct C.MEMORY_BASIC_INFORMATION {
+	AllocationBase voidptr
+}
+
+fn C.VirtualQuery(address voidptr, buffer &C.MEMORY_BASIC_INFORMATION, length usize) usize
+
+fn C.GetModuleHandleW(name &u16) voidptr
+
+// is_address_in_executable reports whether `address` is inside of the executable
+// image of the process, rather than inside of a DLL, which can be unloaded.
+fn is_address_in_executable(address voidptr) bool {
+	mut info := C.MEMORY_BASIC_INFORMATION{}
+	if C.VirtualQuery(address, &info, sizeof(info)) == 0 {
+		return false
+	}
+	return info.AllocationBase == C.GetModuleHandleW(unsafe { nil })
+}
+
 fn C.__debugbreak()
 
 fn break_if_debugger_attached() {

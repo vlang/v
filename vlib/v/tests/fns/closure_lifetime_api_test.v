@@ -743,6 +743,7 @@ fn test_closure_lifetime_boehm_leak_runtime_without_interior_pointers() {
 		eprintln('skipping boehm_leak runtime without interior pointers: missing libgc')
 		return
 	}
+	assert res.exit_code == 0, res.output
 	for gc_error in ['Invalid pointer', 'smashed', 'deallocated', 'Fatal error in GC'] {
 		assert !res.output.contains(gc_error), res.output
 	}

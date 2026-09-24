@@ -37,8 +37,13 @@ fn v3_gcboehm_runtime_init() {
 	// Windows tcc one) treats live array buffers as leaks, and frees them.
 	C.GC_REGISTER_DISPLACEMENT(sizeof(voidptr))
 	$if windows {
-		g_gc_default_abort_func = C.v_gc_get_abort_func()
-		C.v_gc_set_abort_func(gc_abort_without_message_box)
+		// Only an executable replaces the handler. A DLL can be unloaded, and a
+		// collector that it shares with its host (`-d dynamic_boehm`) would then
+		// still call the handler inside of it.
+		if is_address_in_executable(voidptr(&g_gc_default_abort_func)) {
+			g_gc_default_abort_func = C.v_gc_get_abort_func()
+			C.v_gc_set_abort_func(gc_abort_without_message_box)
+		}
 	}
 	gc_restore_roots_after_debugger_init(debugger_workaround)
 	$if gcboehm_incr ? {
