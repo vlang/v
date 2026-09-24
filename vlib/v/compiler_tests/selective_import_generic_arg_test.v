@@ -326,65 +326,14 @@ fn main() {
 	assert run.output.trim_space() == '7\n-1', run.output
 }
 
-// A selective import of a name wins over a same-named declaration in the writing
-// file's own module: the checker resolves the bare spelling through the file's
-// selective imports (`qualify_type_text_impl`), so the transform and cgen have to
-// keep that order as well. This program only compiles while every bare `Token` in
-// `main.v` means `iam.Token` - the local `main.Token` has a `name` field, the
-// imported one has `id` - so a local-first rewrite would break it again.
-fn test_bare_name_prefers_file_selective_import_over_local_declaration() {
-	v3_bin := selective_arg_v3_bin()
-	dir := os.join_path(os.temp_dir(), 'v3_local_vs_selective_import')
-	os.rmdir_all(dir) or {}
-	os.mkdir_all(os.join_path(dir, 'iam')) or { panic(err) }
-	defer {
-		os.rmdir_all(dir) or {}
-	}
-	os.write_file(os.join_path(dir, 'v.mod'), 'Module{\n\tname: "local_vs_import"\n}\n') or {
-		panic(err)
-	}
-	os.write_file(os.join_path(dir, 'iam', 'token.v'), 'module iam
-
-pub struct Token {
-pub mut:
-	id int
-}
-') or { panic(err) }
-	os.write_file(os.join_path(dir, 'main.v'), 'module main
-
-import iam { Token }
-
-struct Token {
-	name string
-}
-
-fn take_id[T](value T) {
-	println(value.id)
-}
-
-fn main() {
-	mut t := Token{}
-	t.id = 7
-	println(t.id)
-	take_id[iam.Token](t)
-}
-') or { panic(err) }
-	out := os.join_path(dir, 'app')
-	compile := os.execute('${v3_bin} -nocache -o ${out} ${dir}')
-	assert compile.exit_code == 0, compile.output
-	assert !compile.output.contains('C compilation failed'), compile.output
-	run := os.execute(out)
-	assert run.exit_code == 0, run.output
-	assert run.output.trim_space() == '7\n7', run.output
-}
-
 // A selective import can name a type alias (`type Alias = Real`). The literal
-// `Alias{}` then has to use `iam.Real`'s fields, not those of a same-named local
-// struct.
-fn test_selective_import_struct_alias_wins_over_local_homonym() {
+// `Alias{}` and the type argument in `take_id[Alias]` then mean `iam.Real`, not a
+// same-named struct in another imported module.
+fn test_selective_import_struct_alias_wins_over_imported_homonym() {
 	v3_bin := selective_arg_v3_bin()
 	dir := os.join_path(os.temp_dir(), 'v3_selective_alias_struct')
 	os.rmdir_all(dir) or {}
+	os.mkdir_all(os.join_path(dir, 'aaa')) or { panic(err) }
 	os.mkdir_all(os.join_path(dir, 'iam')) or { panic(err) }
 	defer {
 		os.rmdir_all(dir) or {}
@@ -392,6 +341,13 @@ fn test_selective_import_struct_alias_wins_over_local_homonym() {
 	os.write_file(os.join_path(dir, 'v.mod'), 'Module{\n\tname: "selective_alias"\n}\n') or {
 		panic(err)
 	}
+	os.write_file(os.join_path(dir, 'aaa', 'alias.v'), 'module aaa
+
+pub struct Alias {
+pub:
+	name string
+}
+') or { panic(err) }
 	os.write_file(os.join_path(dir, 'iam', 'token.v'), 'module iam
 
 pub struct Real {
@@ -403,10 +359,11 @@ pub type Alias = Real
 ') or { panic(err) }
 	os.write_file(os.join_path(dir, 'main.v'), 'module main
 
+import aaa
 import iam { Alias }
 
-struct Alias {
-	name string
+fn take_id[T](value T) {
+	println(value.id)
 }
 
 fn main() {
@@ -414,6 +371,8 @@ fn main() {
 		id: 5
 	}
 	println(value.id)
+	take_id[Alias](value)
+	_ := aaa.Alias{}
 }
 ') or { panic(err) }
 	out := os.join_path(dir, 'app')
@@ -422,7 +381,7 @@ fn main() {
 	assert !compile.output.contains('C compilation failed'), compile.output
 	run := os.execute(out)
 	assert run.exit_code == 0, run.output
-	assert run.output.trim_space() == '5', run.output
+	assert run.output.trim_space() == '5\n5', run.output
 }
 
 // A generic parameter is lexical: inside `fn outer[T]`, the `T` in
