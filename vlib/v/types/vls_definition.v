@@ -129,14 +129,14 @@ fn (tc &TypeChecker) vls_local_definition(id flat.NodeId) ?VlsPos {
 // `{` of the `or {}` block around it, or of the `else {}` of an `if x := f()`.
 fn (tc &TypeChecker) vls_err_block(id flat.NodeId) ?VlsPos {
 	mut child := id
-	mut parent := tc.direct_parent_id(child)
+	mut parent := tc.vls_parent_id(child)
 	for tc.valid_node_id(parent) {
 		p := tc.a.node(parent)
 		if p.kind in [.fn_decl, .fn_literal, .lambda_expr, .file] {
 			return none
 		}
 		if p.kind == .block {
-			block_parent_id := tc.direct_parent_id(parent)
+			block_parent_id := tc.vls_parent_id(parent)
 			if tc.valid_node_id(block_parent_id) {
 				owner := tc.a.node(block_parent_id)
 				from_or := owner.kind == .or_expr && owner.children_count > 1
@@ -150,7 +150,7 @@ fn (tc &TypeChecker) vls_err_block(id flat.NodeId) ?VlsPos {
 			}
 		}
 		child = parent
-		parent = tc.direct_parent_id(child)
+		parent = tc.vls_parent_id(child)
 	}
 	return none
 }
@@ -165,7 +165,7 @@ fn (tc &TypeChecker) vls_implicit_var_at(id flat.NodeId, name string) ?VlsPos {
 		['sort', 'sorted']
 	}
 	mut child := id
-	mut parent := tc.direct_parent_id(child)
+	mut parent := tc.vls_parent_id(child)
 	for tc.valid_node_id(parent) {
 		p := tc.a.node(parent)
 		if p.kind in [.fn_decl, .fn_literal, .lambda_expr, .file] {
@@ -178,7 +178,7 @@ fn (tc &TypeChecker) vls_implicit_var_at(id flat.NodeId, name string) ?VlsPos {
 			}
 		}
 		child = parent
-		parent = tc.direct_parent_id(child)
+		parent = tc.vls_parent_id(child)
 	}
 	return none
 }
@@ -186,7 +186,7 @@ fn (tc &TypeChecker) vls_implicit_var_at(id flat.NodeId, name string) ?VlsPos {
 // vls_receiver_name_at finds the name of a method's receiver in the source:
 // the parser gives the receiver no position of its own.
 fn (tc &TypeChecker) vls_receiver_name_at(param_id flat.NodeId, param &flat.Node) ?VlsPos {
-	fn_id := tc.direct_parent_id(param_id)
+	fn_id := tc.vls_parent_id(param_id)
 	if !tc.valid_node_id(fn_id) {
 		return none
 	}
@@ -241,7 +241,7 @@ fn (tc &TypeChecker) vls_function_definition(resolved string) ?VlsPos {
 fn (tc &TypeChecker) vls_const_definition(name string) ?VlsPos {
 	qualified := if name.contains('.') { name } else { tc.qualify_name(name) }
 	expr_id := tc.const_exprs[qualified] or { tc.const_exprs[name] or { return none } }
-	field_id := tc.direct_parent_id(expr_id)
+	field_id := tc.vls_parent_id(expr_id)
 	if !tc.valid_node_id(field_id) {
 		return none
 	}
