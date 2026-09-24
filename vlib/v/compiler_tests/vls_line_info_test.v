@@ -504,3 +504,146 @@ fn test_the_diagnostics_server_answers_queries_between_checks() {
 	p.wait()
 	assert p.code == 0
 }
+
+// start_server starts a diagnostics server that checks `dir`, as VLS starts the
+// one it asks its questions, with the environment variables `vars` besides.
+fn start_server(dir string, vars map[string]string) &os.Process {
+	mut p := os.new_process(line_info_v3_bin)
+	p.set_args(['-no-memory-limit', '-w', '-check', '-nocolor', '.'])
+	p.set_work_folder(dir)
+	mut env := os.environ()
+	env['V_DIAGNOSTICS_SERVER'] = '1'
+	for name, value in vars {
+		env[name] = value
+	}
+	p.set_environment(env)
+	p.set_redirect_stdio()
+	p.run()
+	assert read_until(mut p, 'v-diagnostics-server: ready').contains('v-diagnostics-server: ready')
+	return p
+}
+
+// query asks the server the questions of `spec`, and returns the pid of the
+// child that answered and what it answered.
+fn query(mut p os.Process, token string, spec string) (int, string) {
+	p.stdin_write('query ${token} ${spec}\n')
+	end := 'v-diagnostics-server: end 0 ${token}'
+	out := read_until(mut p, end)
+	assert out.contains(end), out
+	// The child may print before the line that names it.
+	marker := 'v-diagnostics-server: child '
+	start := out.index(marker) or { panic(out) }
+	child_line := out[start..].all_before('\n')
+	assert child_line.ends_with(' ${token}'), out
+	answer := out.replace_once(child_line + '\n', '').all_before(end).trim_space()
+	return child_line.all_after(marker).all_before(' ').int(), answer
+}
+
+// ask_once answers `questions` about main.v of `dir` in a compiler process of its
+// own that checks `.`, as the server does.
+fn ask_once(dir string, questions []string) []string {
+	spec := questions.map('main.v:${it}').join('\t')
+	res := os.execute('cd ${os.quoted_path(dir)} && ${os.quoted_path(line_info_v3_bin)} -w -check -nocolor -vls-mode -line-info "${spec}" .')
+	assert res.exit_code == 0, res.output
+	return res.output.trim_right('\n').split('\n').map(it.all_after('\t'))
+}
+
+fn test_a_server_child_answers_again_while_the_files_stay_the_same() {
+	$if !linux {
+		return
+	}
+	dir := os.join_path(work_dir, 'again')
+	os.mkdir_all(dir)!
+	os.write_file(os.join_path(dir, 'main.v'), program)!
+	// A hover, a definition, signature help, completion, inlay hints, and a
+	// definition in another function.
+	questions := ['41:hv^2', '42:gd^7', '47:fn^16', '60:4', '1:ih^0', '47:hv^9', '57:gd^10']
+	expected := ask_once(dir, questions)
+	mut p := start_server(dir, {})
+	defer {
+		p.close()
+	}
+	first, _ := query(mut p, 'a', 'main.v:41:hv^2')
+	// The child that checked the program answers the next questions from it,
+	// as a new check would.
+	for i, question in questions {
+		child, answer := query(mut p, 'q${i}', 'main.v:${question}')
+		assert child == first, question
+		assert answer == expected[i], question
+	}
+	child, several := query(mut p, 'all', questions.map('main.v:${it}').join('\t'))
+	assert child == first
+	assert several.split('\n').map(it.all_after('\t')) == expected
+	p.stdin_write('quit\n')
+	p.wait()
+	assert p.code == 0
+}
+
+fn test_a_server_child_answers_no_more_once_a_file_changes() {
+	$if !linux {
+		return
+	}
+	dir := os.join_path(work_dir, 'changes')
+	os.mkdir_all(dir)!
+	os.write_file(os.join_path(dir, 'main.v'), program)!
+	mut p := start_server(dir, {})
+	defer {
+		p.close()
+	}
+	first, definition := query(mut p, 'a', 'main.v:42:gd^7')
+	assert definition == './main.v:41:1'
+	// Another content, as a client writes between two questions: a new child
+	// checks it.
+	os.write_file(os.join_path(dir, 'main.v'), '// One line more.\n' + program)!
+	changed, moved := query(mut p, 'b', 'main.v:43:gd^7')
+	assert changed != first
+	assert moved == './main.v:42:1'
+	// A file added next to it changes the program too.
+	os.write_file(os.join_path(dir, 'extra.v'), 'module main\n\nfn extra() int {\n\treturn 1\n}\n')!
+	added, _ := query(mut p, 'c', 'main.v:43:gd^7')
+	assert added != changed
+	// A check in between, in a child of its own, leaves the one that answers.
+	p.stdin_write('check d\n')
+	assert read_until(mut p, 'v-diagnostics-server: end ').contains('v-diagnostics-server: end 0 d')
+	kept, _ := query(mut p, 'e', 'main.v:43:gd^7')
+	assert kept == added
+	p.stdin_write('quit\n')
+	p.wait()
+	assert p.code == 0
+	// No child outlives the server.
+	for _ in 0 .. 200 {
+		if !os.exists('/proc/${kept}') {
+			break
+		}
+		time.sleep(10 * time.millisecond)
+	}
+	assert !os.exists('/proc/${kept}')
+}
+
+fn test_a_server_child_that_grew_answers_its_last_question_and_leaves() {
+	$if !linux {
+		return
+	}
+	dir := os.join_path(work_dir, 'retire')
+	os.mkdir_all(dir)!
+	os.write_file(os.join_path(dir, 'main.v'), program)!
+	// A child may grow by nothing after its first answer.
+	mut p := start_server(dir, {
+		'V_DIAGNOSTICS_RETIRE_MB': '0'
+	})
+	defer {
+		p.close()
+	}
+	first, _ := query(mut p, 'a', 'main.v:42:gd^7')
+	// Its next answer, complete, is its last one.
+	last, definition := query(mut p, 'b', 'main.v:42:gd^7')
+	assert last == first
+	assert definition == './main.v:41:1'
+	next, answer := query(mut p, 'c', 'main.v:42:gd^7')
+	assert next != first
+	assert answer == './main.v:41:1'
+	assert !os.exists('/proc/${first}')
+	p.stdin_write('quit\n')
+	p.wait()
+	assert p.code == 0
+}

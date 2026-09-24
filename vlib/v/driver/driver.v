@@ -10781,10 +10781,10 @@ pub fn run(args []string) {
 		prefs.user_defines = prefs.user_defines.filter(it != 'v3_backend')
 	}
 	// A diagnostics server's child may have a question to answer instead.
-	question := diagserver.serve()
-	if question != '' {
-		vls_line_info = question
-		vls_queries = types.parse_vls_line_infos(question, input_file) or {
+	mut served := diagserver.serve()
+	if served.question != '' {
+		vls_line_info = served.question
+		vls_queries = types.parse_vls_line_infos(served.question, input_file) or {
 			eprintln(err.msg())
 			exit(1)
 		}
@@ -11525,16 +11525,24 @@ pub fn run(args []string) {
 		if vls_line_info != '' {
 			// The answer, if any, is all a query prints: the program's
 			// diagnostics are not its business, and code being written has some.
-			// Several questions get an answer each, on a line of its own after
-			// its index, and empty when there is none.
-			if vls_queries.len == 1 {
-				answer := pre_tc.vls_answer(vls_queries[0])
-				if answer != '' {
-					println(answer)
-				}
-			} else {
-				for i, query in vls_queries {
-					println('${i}\t${pre_tc.vls_answer(query)}')
+			print_vls_answers(mut pre_tc, vls_queries)
+			// A diagnostics server's child answers the next questions from the
+			// program it checked, while the server finds the files it read
+			// unchanged.
+			if served.answers_again() {
+				if digests := v3_input_digests(a, cache_state.cached_source_digests) {
+					served.keep_inputs(digests)
+					mut code := 0
+					for {
+						next := served.next_question(code) or { break }
+						queries := types.parse_vls_line_infos(next, input_file) or {
+							eprintln(err.msg())
+							code = 1
+							continue
+						}
+						code = 0
+						print_vls_answers(mut pre_tc, queries)
+					}
 				}
 			}
 			exit(0)
@@ -15522,6 +15530,59 @@ fn vmod_subdirs(dir string) ![]string {
 	// the legacy builder, while still honoring `subdirs` in valid manifests.
 	manifest := vmod.from_file(vmod_path) or { return []string{} }
 	return manifest.unknown['subdirs'] or { []string{} }
+}
+
+// print_vls_answers prints the answer to each question of the mini-VLS
+// protocol: the only one alone, if there is one, and several each on a line of
+// its own after its index, empty when there is none.
+fn print_vls_answers(mut tc types.TypeChecker, queries []types.VlsQuery) {
+	if queries.len == 1 {
+		answer := tc.vls_answer(queries[0])
+		if answer != '' {
+			println(answer)
+		}
+		return
+	}
+	for i, query in queries {
+		println('${i}\t${tc.vls_answer(query)}')
+	}
+}
+
+// v3_input_digests returns the SHA-256 of what this compilation read in each V
+// source, in hexadecimal and by absolute path: the files it parsed, and those
+// behind a module header it loaded from the cache. None when it read a file
+// twice with different contents, or read none.
+fn v3_input_digests(a &flat.FlatAst, cached_source_digests map[string]string) ?map[string]string {
+	mut digests := map[string]string{}
+	for _, file in a.source_files {
+		mut digest := ''
+		if file.has_source_sha256() {
+			source_digest := file.source_sha256()
+			digest = source_digest[..].hex()
+		} else if os.is_file(file.name) {
+			// A file indexed without its digest, as a C header, is read again.
+			bytes := os.read_bytes(file.name) or { return none }
+			digest = sha256.sum(bytes).hex()
+		} else {
+			continue
+		}
+		path := os.abs_path(file.name)
+		if path in digests && digests[path] != digest {
+			return none
+		}
+		digests[path] = digest
+	}
+	for source_path, digest in cached_source_digests {
+		path := os.abs_path(source_path)
+		if digest == '' || (path in digests && digests[path] != digest) {
+			return none
+		}
+		digests[path] = digest
+	}
+	if digests.len == 0 {
+		return none
+	}
+	return digests
 }
 
 // v3_directory_user_files lists the source files of the module in `dir`. Until
