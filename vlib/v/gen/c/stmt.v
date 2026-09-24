@@ -3238,8 +3238,11 @@ fn (g &FlatGen) assert_operand_is_pure(id flat.NodeId) bool {
 		.selector, .paren, .cast_expr {
 			node.children_count > 0 && g.assert_operand_is_pure(g.a.child(&node, 0))
 		}
-		.array_literal, .struct_init, .field_init {
+		.array_literal {
 			g.assert_operand_children_are_pure(node)
+		}
+		.struct_init {
+			g.assert_struct_init_is_pure(id, node)
 		}
 		.prefix {
 			node.op in [.plus, .minus, .not, .bit_not, .mul, .amp] && node.children_count > 0
@@ -3248,11 +3251,92 @@ fn (g &FlatGen) assert_operand_is_pure(id flat.NodeId) bool {
 		.index {
 			node.children_count >= 2 && g.assert_operand_is_pure(g.a.child(&node, 0))
 				&& g.assert_operand_is_pure(g.a.child(&node, 1))
+				&& !g.assert_index_is_overloaded(node)
 		}
 		else {
 			false
 		}
 	}
+}
+
+// assert_struct_init_is_pure reports whether a struct literal can be evaluated again.
+// Besides its field values, the literal also evaluates the defaults of the fields it
+// does not set, including those of nested and embedded structs, which cgen fills in.
+fn (g &FlatGen) assert_struct_init_is_pure(id flat.NodeId, node flat.Node) bool {
+	clean := default_init_unalias_type(g.usable_expr_type(id))
+	if clean !is types.Struct {
+		return false
+	}
+	type_name := (clean as types.Struct).name
+	fields := g.struct_fields_for_type(type_name) or { return false }
+	mut set_fields := map[string]bool{}
+	for i in 0 .. node.children_count {
+		field := g.a.child_node(&node, i)
+		if field.children_count == 0 || !g.assert_operand_is_pure(g.a.child(field, 0)) {
+			return false
+		}
+		if field.value.len > 0 {
+			set_fields[field.value] = true
+		} else if i < fields.len {
+			set_fields[fields[i].name] = true
+		}
+	}
+	mut seen := map[string]bool{}
+	return g.assert_struct_defaults_are_pure(type_name, set_fields, mut seen)
+}
+
+// assert_struct_defaults_are_pure reports whether the fields of a struct that are not
+// in `set_fields` get their default values without side effects.
+fn (g &FlatGen) assert_struct_defaults_are_pure(type_name string, set_fields map[string]bool, mut seen map[string]bool) bool {
+	if seen[type_name] {
+		return true
+	}
+	seen[type_name] = true
+	fields := g.struct_fields_for_type(type_name) or { return false }
+	for field in fields {
+		if field.name in set_fields {
+			continue
+		}
+		if field.has_default {
+			default_id := g.assert_struct_field_default(type_name, field.name) or { return false }
+			if !g.assert_operand_is_pure(default_id) {
+				return false
+			}
+			continue
+		}
+		mut clean := default_init_unalias_type(field.typ)
+		for clean is types.ArrayFixed {
+			clean = default_init_unalias_type(clean.elem_type)
+		}
+		if clean is types.Struct {
+			if !g.assert_struct_defaults_are_pure(clean.name, map[string]bool{}, mut seen) {
+				return false
+			}
+		}
+	}
+	return true
+}
+
+// assert_struct_field_default returns the default value expression of a struct field.
+fn (g &FlatGen) assert_struct_field_default(type_name string, field_name string) ?flat.NodeId {
+	info := g.find_struct_decl(type_name)?
+	for i in 0 .. info.node.children_count {
+		field := g.a.child_node(&info.node, i)
+		if field.kind == .field_decl && field.value == field_name && field.children_count > 0 {
+			return g.a.child(field, 0)
+		}
+	}
+	return none
+}
+
+// assert_index_is_overloaded reports whether an index expression calls the `[]`
+// method of its base.
+fn (g &FlatGen) assert_index_is_overloaded(node flat.Node) bool {
+	base_type := g.usable_expr_type(g.a.child(&node, 0))
+	if _ := g.tc.index_overload_call_info(base_type, false) {
+		return true
+	}
+	return false
 }
 
 fn (g &FlatGen) assert_operand_children_are_pure(node flat.Node) bool {

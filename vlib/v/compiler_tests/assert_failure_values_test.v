@@ -3,11 +3,15 @@ module v3tests
 import os
 
 fn run_assert_failure_source(name string, src string) os.Result {
+	return run_assert_failure_source_with_flags(name, src, '')
+}
+
+fn run_assert_failure_source_with_flags(name string, src string, flags string) os.Result {
 	tmp := os.join_path(os.vtmp_dir(), 'v3_assert_failure_values')
 	os.mkdir_all(tmp) or { panic(err) }
 	source := os.join_path(tmp, name)
 	os.write_file(source, src) or { panic(err) }
-	return os.execute('${os.quoted_path(@VEXE)} -no-memory-limit run ${os.quoted_path(source)}')
+	return os.execute('${os.quoted_path(@VEXE)} -no-memory-limit ${flags} run ${os.quoted_path(source)}')
 }
 
 // test_failed_assert_reports_operand_values checks the report of a failed assert
@@ -121,4 +125,66 @@ fn test_string_operands() {
 	output := result.output
 	assert output.contains('     Left value (len: 1): `0`\n    Right value (len: 1): `1`\n'), output
 	assert output.contains('     Left value (len: 1): `a`\n    Right value (len: 2): `ab`\n'), output
+}
+
+// test_failed_assert_reports_operands_with_hidden_calls_once checks that operands, which
+// call functions that are not visible among their children (defaults of the fields
+// of nested, generic and embedded structs, and `[]` methods), are not evaluated again.
+fn test_failed_assert_reports_operands_with_hidden_calls_once() {
+	result := run_assert_failure_source_with_flags('hidden_calls.v', "__global calls = 0
+
+fn next_id() int {
+	calls++
+	return calls
+}
+
+struct Item {
+	id int = next_id()
+}
+
+struct Outer {
+	inner Item
+}
+
+struct Gen[T] {
+	val T
+	id  int = next_id()
+}
+
+struct Embed {
+	Item
+}
+
+struct Getter {
+	base int
+}
+
+fn (g Getter) [] (i int) int {
+	calls++
+	return g.base + i + calls * 100
+}
+
+@[assert_continues]
+fn check() {
+	assert Outer{}.inner.id == 50
+	assert Gen[int]{}.id == 50
+	assert Embed{}.id == 50
+	g := Getter{
+		base: 1
+	}
+	assert g[0] == 50
+}
+
+fn main() {
+	check()
+	println('calls: \${calls}')
+}
+", '-enable-globals')
+	assert result.exit_code == 0, result.output
+	output := result.output
+	assert output.contains('   left value: Outer{}.inner.id = 1\n'), output
+	assert output.contains('   left value: Gen[int]{}.id = 2\n'), output
+	assert output.contains('   left value: Embed{}.id = 3\n'), output
+	assert output.contains('   left value: g[0] = 401\n'), output
+	assert output.contains('calls: 4\n'), output
 }
