@@ -118,7 +118,7 @@ fn (tc &TypeChecker) vls_local_definition(id flat.NodeId) ?VlsPos {
 	decl_id := tc.vls_local_declaration(id)?
 	decl := tc.a.node(decl_id)
 	if decl.kind == .param {
-		if at := tc.vls_receiver_name_at(decl_id, decl) {
+		if at := tc.vls_receiver_name_at(decl_id, decl, tc.vls_source(int(decl.pos.id))) {
 			return at
 		}
 	}
@@ -185,7 +185,7 @@ fn (tc &TypeChecker) vls_implicit_var_at(id flat.NodeId, name string) ?VlsPos {
 
 // vls_receiver_name_at finds the name of a method's receiver in the source:
 // the parser gives the receiver no position of its own.
-fn (tc &TypeChecker) vls_receiver_name_at(param_id flat.NodeId, param &flat.Node) ?VlsPos {
+fn (tc &TypeChecker) vls_receiver_name_at(param_id flat.NodeId, param &flat.Node, source string) ?VlsPos {
 	fn_id := tc.vls_parent_id(param_id)
 	if !tc.valid_node_id(fn_id) {
 		return none
@@ -195,10 +195,9 @@ fn (tc &TypeChecker) vls_receiver_name_at(param_id flat.NodeId, param &flat.Node
 		|| tc.a.child(fn_node, 0) != param_id {
 		return none
 	}
-	source := tc.vls_source(int(fn_node.pos.id))
 	name_offset := int(fn_node.pos.offset)
-	open := source[..name_offset].last_index('(') or { return none }
-	close := source[..name_offset].last_index(')') or { return none }
+	open := vls_last_index_before(source, name_offset, '(') or { return none }
+	close := vls_last_index_before(source, name_offset, ')') or { return none }
 	header := source[open + 1..close]
 	mut rel := 0
 	for word in header.fields() {
@@ -284,8 +283,7 @@ fn (tc &TypeChecker) vls_type_definition(name string) ?VlsPos {
 	source := tc.vls_source(file_id)
 	if decl.kind == .type_decl {
 		// The node covers what follows `=`; the name comes before it.
-		head := source[..start]
-		at := head.last_index(short) or { return none }
+		at := vls_last_index_before(source, start, short) or { return none }
 		return VlsPos{file_id, at}
 	}
 	at := source.index_after(short, start) or { return none }

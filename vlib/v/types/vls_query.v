@@ -223,7 +223,7 @@ fn (tc &TypeChecker) vls_target_at(file_id int, offset int, source string) ?VlsT
 			start, end = tc.vls_field_init_name_span(node, source) or { continue }
 		} else if node.kind == .param && !vls_spells_its_name(node, source) {
 			// A method's receiver: its node has the position of the method.
-			start, end = tc.vls_receiver_name_span(flat.NodeId(idx), node) or { continue }
+			start, end = tc.vls_receiver_name_span(flat.NodeId(idx), node, source) or { continue }
 		} else {
 			start, end = vls_name_span(node, source) or { continue }
 		}
@@ -262,12 +262,14 @@ fn (tc &TypeChecker) vls_field_init_name_span(node flat.Node, source string) ?(i
 fn vls_spells_its_name(node flat.Node, source string) bool {
 	start := int(node.pos.offset)
 	end := int(node.pos.end)
-	return start >= 0 && start < end && end <= source.len && source[start..end] == node.value
+	return start >= 0 && end - start == node.value.len && node.value.len > 0
+		&& vls_holds_at(source, start, node.value)
 }
 
-// vls_receiver_name_span is the span of the name of the method receiver `id`.
-fn (tc &TypeChecker) vls_receiver_name_span(id flat.NodeId, node flat.Node) ?(int, int) {
-	at := tc.vls_receiver_name_at(id, &node)?
+// vls_receiver_name_span is the span of the name of the method receiver `id`,
+// declared in `source`.
+fn (tc &TypeChecker) vls_receiver_name_span(id flat.NodeId, node flat.Node, source string) ?(int, int) {
+	at := tc.vls_receiver_name_at(id, &node, source)?
 	return at.offset, at.offset + node.value.len
 }
 
@@ -282,7 +284,7 @@ fn vls_embeds_its_type(source string, name_end int) bool {
 	for i < source.len && source[i] in [` `, `\t`] {
 		i++
 	}
-	return i >= source.len || source[i] in [`\n`, `\r`, `}`] || source[i..].starts_with('//')
+	return i >= source.len || source[i] in [`\n`, `\r`, `}`] || vls_holds_at(source, i, '//')
 }
 
 // vls_name_span returns the byte span of the name a node stands for: the
@@ -297,7 +299,7 @@ fn vls_name_span(node flat.Node, source string) ?(int, int) {
 		// method's node names its receiver's type too.
 		name := if node.kind == .fn_decl { node.value.all_after_last('.') } else { node.value }
 		name_end := start + name.len
-		if name.len == 0 || start < 0 || name_end > source.len || source[start..name_end] != name {
+		if name.len == 0 || !vls_holds_at(source, start, name) {
 			return none
 		}
 		if node.kind == .field_decl && vls_embeds_its_type(source, name_end) {
@@ -315,7 +317,7 @@ fn vls_name_span(node flat.Node, source string) ?(int, int) {
 		.param {
 			// A receiver's position is not its name: only a parameter whose
 			// span spells its name is a target.
-			if source[start..end] != node.value {
+			if end - start != node.value.len || !vls_holds_at(source, start, node.value) {
 				return none
 			}
 			return start, end
@@ -323,7 +325,7 @@ fn vls_name_span(node flat.Node, source string) ?(int, int) {
 		.selector {
 			member := node.value
 			if member.len == 0 || member.len > end - start
-				|| source[end - member.len..end] != member {
+				|| !vls_holds_at(source, end - member.len, member) {
 				return none
 			}
 			return end - member.len, end
@@ -340,7 +342,7 @@ fn vls_name_span(node flat.Node, source string) ?(int, int) {
 		}
 		.cast_expr, .struct_init {
 			name := node.value
-			if name.len == 0 || start + name.len > end || source[start..start + name.len] != name {
+			if name.len == 0 || start + name.len > end || !vls_holds_at(source, start, name) {
 				return none
 			}
 			return start, start + name.len
@@ -348,7 +350,7 @@ fn vls_name_span(node flat.Node, source string) ?(int, int) {
 		.is_expr, .as_expr {
 			// `x is Type`: the type ends the node.
 			name := node.value
-			if name.len == 0 || name.len > end - start || source[end - name.len..end] != name {
+			if name.len == 0 || name.len > end - start || !vls_holds_at(source, end - name.len, name) {
 				return none
 			}
 			return end - name.len, end
@@ -357,6 +359,43 @@ fn vls_name_span(node flat.Node, source string) ?(int, int) {
 			return none
 		}
 	}
+}
+
+// vls_holds_at reports whether `source` holds `word` at `start`. It compares in
+// place: the questions of a query look at every node of a file, and a copy of a
+// part of the file for each would cost as much as the file, each time.
+fn vls_holds_at(source string, start int, word string) bool {
+	if start < 0 || start + word.len > source.len {
+		return false
+	}
+	for i in 0 .. word.len {
+		if source[start + i] != word[i] {
+			return false
+		}
+	}
+	return true
+}
+
+// vls_blanks_start returns where the spaces and tabs that end at `end` start.
+fn vls_blanks_start(source string, end int) int {
+	mut i := end
+	for i > 0 && (source[i - 1] == ` ` || source[i - 1] == `\t`) {
+		i--
+	}
+	return i
+}
+
+// vls_last_index_before returns where `word` last starts in `source` and ends
+// before `end`.
+fn vls_last_index_before(source string, end int, word string) ?int {
+	mut i := end - word.len
+	for i >= 0 {
+		if vls_holds_at(source, i, word) {
+			return i
+		}
+		i--
+	}
+	return none
 }
 
 // vls_hover_json is the hover answer: the declaration in a `v` code block,
