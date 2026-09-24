@@ -5,6 +5,7 @@ import os.cmdline
 import testing
 import v.pref
 import v.util.vflags
+import v.util.vtest
 
 struct Context {
 mut:
@@ -210,6 +211,9 @@ fn (ctx &Context) should_test(path string, backend string) ShouldTestStatus {
 }
 
 fn (ctx &Context) should_test_when_it_contains_matching_fns(path string, _backend string) ShouldTestStatus {
+	if vtest.skip_ownership_autofree_tests() && vtest.is_ownership_autofree_test(path) {
+		return .skip
+	}
 	if ctx.run_only.len == 0 {
 		// no filters set, so just compile and test
 		return .test

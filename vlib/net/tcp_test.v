@@ -83,6 +83,7 @@ fn test_tcp_unix() {
 	address := 'tcp-test.sock'
 
 	mut l := net.listen_tcp(.unix, address) or { return }
+	l.close() or {}
 	assert false
 }
 

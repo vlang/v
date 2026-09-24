@@ -301,8 +301,8 @@ fn test_h1_unsafe_pooled_post_is_not_retried() {
 		stop_ka_srv(mut listener, th)
 		return
 	}
-	assert false, 'the POST unexpectedly succeeded'
 	stop_ka_srv(mut listener, th)
+	assert false, 'the POST unexpectedly succeeded'
 }
 
 fn test_h1_opt_out_disables_reuse() {

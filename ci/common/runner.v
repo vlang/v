@@ -9,7 +9,7 @@ import time
 // exec is a helper function, to execute commands and exit early, if they fail.
 pub fn exec(command string) {
 	cmd := resolve_v_command(command)
-	progress_dir := os.getenv('V_MACOS_CI_TASK_PROGRESS')
+	progress_dir := ci_task_progress_dir()
 	previous_resume_dir := os.getenv_opt('VTEST_RESUME_DIR')
 	if progress_dir != '' {
 		// Keep the same file's results separate across tasks and command variants.
@@ -29,6 +29,10 @@ pub fn exec(command string) {
 	if result != 0 {
 		exit(result)
 	}
+}
+
+fn ci_task_progress_dir() string {
+	return os.getenv_opt('V_CI_TASK_PROGRESS') or { os.getenv('V_MACOS_CI_TASK_PROGRESS') }
 }
 
 // resolve_v_command ensures that commands starting with `v ` use the V from @VEXEROOT,

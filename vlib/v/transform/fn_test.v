@@ -69,6 +69,44 @@ fn test_enum_autostr_call_marks_synthesized_helper_used() {
 	assert a.node(call).kind == .call
 }
 
+// With `import a as real_a` and `import b as a`, the checked type `a.Kind` is module a's
+// enum, but the declaration spelling `a.Kind` names module b's. Helper naming takes the
+// type as is; only a recorded declaration spelling goes through the file's imports.
+fn test_enum_autostr_keeps_checked_types_and_resolves_declaration_spellings() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	file := '/tmp/main.v'
+	tc.enum_names['a.Kind'] = true
+	tc.enum_names['b.Kind'] = true
+	tc.enum_names['toml.token.Kind'] = true
+	tc.cur_file = file
+	tc.file_imports['${file}\nreal_a'] = 'a'
+	tc.file_imports['${file}\na'] = 'b'
+	tc.file_imports['${file}\ntoken'] = 'toml.token'
+	tc.file_selective_imports['${file}\nKind'] = ['b.Kind']
+	mut t := new_transformer(mut a, &tc, {
+		'main': true
+	})
+	t.cur_file = file
+	t.enum_types['a.Kind'] = ['from_a']
+	t.enum_types['b.Kind'] = ['from_b']
+	t.enum_types['toml.token.Kind'] = ['eof']
+
+	assert t.enum_autostr_type_name('a.Kind') == 'a.Kind'
+	assert t.enum_autostr_type_name('b.Kind') == 'b.Kind'
+	assert (t.source_enum_type_name(file, 'a.Kind') or { '' }) == 'b.Kind'
+	assert (t.source_enum_type_name(file, 'real_a.Kind') or { '' }) == 'a.Kind'
+	assert (t.source_enum_type_name(file, 'token.Kind') or { '' }) == 'toml.token.Kind'
+	assert (t.source_enum_type_name(file, 'Kind') or { '' }) == 'b.Kind'
+	assert t.source_enum_elem_type(file, '[]token.Kind') == '[]toml.token.Kind'
+	assert t.source_enum_elem_type(file, 'string') == 'string'
+
+	t.set_var_type_with_raw('declared', '[]b.Kind', '[]a.Kind')
+	t.set_var_type('inferred', '[]a.Kind')
+	assert (t.declared_var_spelling('declared') or { '' }) == '[]a.Kind'
+	assert (t.declared_var_spelling('inferred') or { '' }) == ''
+}
+
 fn test_cloned_worker_merge_replays_relocated_children_and_body_roots() {
 	// 'plain' copies and relocates inside the serial merge, 'relocated' relocates
 	// the worker region in parallel first, and 'absorbed' also writes it straight
@@ -426,6 +464,38 @@ fn test_module_qualified_generic_callee_is_not_treated_as_value_index() {
 	assert t.generic_call_type_args_name(index_node) == 'Payload'
 }
 
+fn test_local_module_generic_call_keeps_explicit_type_args_when_normalized() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	tc.fn_ret_types['sync.new_channel'] = types.Type(types.void_)
+	mut t := new_transformer(mut a, &tc, map[string]bool{})
+	t.cur_module = 'sync'
+
+	callee_id := t.a.add_val(.ident, 'new_channel')
+	type_id := t.a.add_val(.ident, 'int')
+	index_children_start := t.a.children.len
+	t.a.children << callee_id
+	t.a.children << type_id
+	index_id := t.a.add_node(flat.Node{
+		kind:           .index
+		children_start: index_children_start
+		children_count: 2
+	})
+	arg_id := t.a.add_val(.int_literal, '0')
+	call_children_start := t.a.children.len
+	t.a.children << index_id
+	t.a.children << arg_id
+	call_id := t.a.add_node(flat.Node{
+		kind:           .call
+		children_start: call_children_start
+		children_count: 2
+	})
+
+	normalized_id := t.normalize_generic_call_expr(call_id, t.a.nodes[int(call_id)])
+	assert normalized_id != call_id
+	assert t.a.nodes[int(normalized_id)].value == 'int'
+}
+
 fn test_flattened_generic_receiver_short_variants() {
 	assert flattened_generic_receiver_short_variants('foo__Bar_baz__Qux') == [
 		'Bar_Qux',
@@ -448,8 +518,8 @@ fn test_auto_str_helper_call_uses_type_owner_module() {
 	mut t := Transformer{
 		a:          &a
 		tc:         &tc
-		cur_module: 'token'
-		cur_file:   'token.v'
+		cur_module: 'main'
+		cur_file:   'main.v'
 	}
 	value := t.make_ident('pos')
 	t.stringify_stack << 'Wrapper'
@@ -458,6 +528,21 @@ fn test_auto_str_helper_call_uses_type_owner_module() {
 
 	assert callee.value == '__v3_autostr_v__token__Pos'
 	assert t.auto_str_types['v.token.Pos'].helper_module == 'token'
+	t.synthesize_auto_str_helpers()
+	mut helper_idx := -1
+	for i, node in a.nodes {
+		if node.kind == .fn_decl && node.value == '__v3_autostr_v__token__Pos' {
+			helper_idx = i
+			break
+		}
+	}
+	assert helper_idx >= 3
+	assert a.nodes[helper_idx - 3].kind == .file
+	assert a.nodes[helper_idx - 3].value == 'main.v'
+	assert a.nodes[helper_idx - 2].kind == .module_decl
+	assert a.nodes[helper_idx - 2].value == 'main'
+	assert a.nodes[helper_idx - 1].kind == .module_decl
+	assert a.nodes[helper_idx - 1].value == 'token'
 }
 
 fn test_default_clone_helper_drops_owned_rvalue_after_saving_clone() {
@@ -526,6 +611,30 @@ fn test_program_sum_equality_helper_does_not_collide_with_cached_module_helper()
 	assert program_helper in t.sum_eq_types
 	assert t.sum_eq_types[module_helper].helper_module == 'orm'
 	assert t.sum_eq_types[program_helper].helper_module == 'main'
+}
+
+fn test_sum_equality_helper_keeps_requesting_file_context() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	mut t := new_transformer(mut a, &tc, map[string]bool{})
+	t.sum_types['xml.Contents'] = ['string']
+	t.cur_module = 'xml'
+	t.cur_file = 'parser_test.v'
+	t.sum_eq_helper_module = 'xml'
+	helper := sum_eq_helper_name('xml.Contents')
+	t.build_sum_eq_helper_fn('xml.Contents', helper)
+
+	mut helper_id := flat.empty_node
+	for i, node in a.nodes {
+		if node.kind == .fn_decl && node.value == helper {
+			helper_id = flat.NodeId(i)
+			break
+		}
+	}
+	assert helper_id != flat.empty_node
+	assert t.node_module_or(int(helper_id), '') == 'xml'
+	assert t.node_file_or(int(helper_id), '') == 'parser_test.v'
+	assert a.nodes.any(it.kind == .file && it.value == 'parser_test.v')
 }
 
 fn test_large_recursive_pointer_auto_str_stops_before_expanding_back_edge() {

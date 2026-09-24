@@ -65,9 +65,11 @@ fn test_interface_from_shared_library_can_call_methods() {
 	].join('\n')
 	os.write_file(lib_src, library_code) or { panic(err) }
 	os.write_file(host_src, host_code) or { panic(err) }
-	compile_lib_cmd := '${os.quoted_path(vexe)} -d no_backtrace -shared -o ${os.quoted_path(lib_bin)} ${os.quoted_path(lib_src)}'
+	// The host and plugin are separate V runtimes in one process. Boehm GC cannot
+	// safely initialize twice, and memory management is not part of this ABI test.
+	compile_lib_cmd := '${os.quoted_path(vexe)} -gc none -d no_backtrace -shared -o ${os.quoted_path(lib_bin)} ${os.quoted_path(lib_src)}'
 	run_cmd(compile_lib_cmd) or { panic(err) }
-	run_host_cmd := '${os.quoted_path(vexe)} -d no_backtrace run ${os.quoted_path(host_src)}'
+	run_host_cmd := '${os.quoted_path(vexe)} -gc none -d no_backtrace run ${os.quoted_path(host_src)}'
 	res := run_cmd(run_host_cmd) or { panic(err) }
 	assert res.output.contains('Hello, World!')
 }

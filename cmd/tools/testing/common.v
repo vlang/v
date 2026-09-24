@@ -698,7 +698,7 @@ pub fn (mut ts TestSession) test() {
 	ts.nmessages = chan LogMessage{cap: 10000}
 	ts.nmessage_idx = 0
 	printing_thread := spawn ts.print_messages()
-	pool_of_test_runners.set_shared_context(ts)
+	pool_of_test_runners.set_shared_context(&ts)
 	ts.reporter.worker_threads_start(remaining_files, mut ts)
 
 	ts.setup_build_environment()

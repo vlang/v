@@ -2313,8 +2313,16 @@ fn (t &Transformer) enum_decl_value_metas(enum_name string) []EnumValueMeta {
 		mut next_val := i64(0)
 		for f in fields {
 			mut val := next_val
+			mut materialized_value := i64(0)
+			mut has_materialized_value := false
 			if checked_value := checked_values[f.name] {
-				val = i64(checked_value)
+				materialized_value = i64(checked_value)
+				has_materialized_value = true
+				if is_flag {
+					val = enum_flag_value_index(u64(checked_value)) or { next_val }
+				} else {
+					val = materialized_value
+				}
 			} else if int(f.expr_id) >= 0 {
 				if ev := t.enum_field_int_value_with_enum(f.expr_id, cur_mod, qualified, mut field_values, field_exprs, mut resolving) {
 					val = ev
@@ -2323,7 +2331,13 @@ fn (t &Transformer) enum_decl_value_metas(enum_name string) []EnumValueMeta {
 			field_values[f.name] = val
 			values << EnumValueMeta{
 				name:      f.name
-				value:     if is_flag { i64(u64(1) << u64(val)) } else { val }
+				value:     if has_materialized_value {
+					materialized_value
+				} else if is_flag {
+					i64(u64(1) << u64(val))
+				} else {
+					val
+				}
 				attrs:     f.attrs.clone()
 				enum_name: qualified
 			}
@@ -2332,6 +2346,19 @@ fn (t &Transformer) enum_decl_value_metas(enum_name string) []EnumValueMeta {
 		return values
 	}
 	return []EnumValueMeta{}
+}
+
+fn enum_flag_value_index(value u64) ?i64 {
+	if value == 0 || (value & (value - 1)) != 0 {
+		return none
+	}
+	mut index := i64(0)
+	mut remaining := value
+	for remaining > 1 {
+		remaining >>= 1
+		index++
+	}
+	return index
 }
 
 // enum_field_int_value evaluates an enum member's value expression using the transformer's
@@ -3842,6 +3869,9 @@ fn (t &Transformer) comptime_field_type_id_key(typ string, decl_module string) s
 	if is_generic_fn_placeholder_name(core) {
 		return core
 	}
+	if comptime_is_primitive_type(core) {
+		return core
+	}
 	// A bare type substituted into an imported generic still belongs to the
 	// caller's main module. Keep that provenance when producing stable type ids;
 	// otherwise `typeof[T]().idx` is hashed as though the type were declared by
@@ -3849,8 +3879,8 @@ fn (t &Transformer) comptime_field_type_id_key(typ string, decl_module string) s
 	if t.active_specialization_main_types[core] {
 		return 'main.${core}'
 	}
-	if comptime_is_primitive_type(core) || core.contains('.') || core.contains('[')
-		|| core.contains(' ') || decl_module == 'builtin' {
+	if core.contains('.') || core.contains('[') || core.contains(' ')
+		|| decl_module == 'builtin' {
 		return core
 	}
 	if decl_module in ['', 'main'] {
@@ -4836,8 +4866,8 @@ fn comptime_cond_is_quoted_literal(value string) bool {
 	return clean.len >= 2 && clean[0] in [`'`, `"`, `\``] && clean[clean.len - 1] == clean[0]
 }
 
-// eval_field_cond evaluates a fully-substituted comptime condition (`is`/`!is`, `==`/`!=`,
-// `&&`/`||`/`!`, bare bool). Returns none when it cannot be decided statically.
+// eval_field_cond evaluates a fully-substituted comptime condition (`is`/`!is`, `in`/`!in`,
+// `==`/`!=`, `&&`/`||`/`!`, bare bool). Returns none when it cannot be decided statically.
 fn (mut t Transformer) eval_field_cond(cond string) ?bool {
 	clean := comptime_condition_strip_outer_parens(cond.trim_space())
 	if clean == 'true' {
@@ -4893,7 +4923,21 @@ fn (mut t Transformer) eval_field_cond(cond string) ?bool {
 				continue
 			}
 			needle := comptime_unquote(clean[..op_idx].trim_space())
-			found := comptime_list_contains(clean[after..].trim_space(), needle)
+			list := clean[after..].trim_space()
+			mut found := false
+			if needle.ends_with('.typ') || needle.ends_with('.unaliased_typ') {
+				if !list.starts_with('[') || !list.ends_with(']') {
+					return none
+				}
+				for expected in split_generic_args(list[1..list.len - 1]) {
+					if t.comptime_type_matches(needle, expected) or { false } {
+						found = true
+						break
+					}
+				}
+			} else {
+				found = comptime_list_contains(list, needle)
+			}
 			return if op == ' in' { found } else { !found }
 		}
 	}

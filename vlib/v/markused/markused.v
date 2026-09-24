@@ -462,6 +462,18 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 	for root in marked_roots {
 		enqueue(root, mut used, mut queue)
 	}
+	// Overflow calls are introduced by C generation after reachability has been
+	// computed. The synthetic `builtin.overflow` import exists only for
+	// `-check-overflow`, so its declarations are the signal to retain the helper
+	// bodies that those generated calls need.
+	if 'builtin.overflow.add_i8' in fn_decls || 'overflow.add_i8' in fn_decls {
+		for op in ['add', 'sub', 'mul'] {
+			for typ in ['i8', 'u8', 'i16', 'u16', 'i32', 'u32', 'i64', 'u64'] {
+				enqueue('builtin.overflow.${op}_${typ}', mut used, mut queue)
+				enqueue('overflow.${op}_${typ}', mut used, mut queue)
+			}
+		}
+	}
 	// Exported functions are externally reachable even when the input has no V
 	// entry point (for example `-is_o` modules called from C).
 	enqueue_export_roots(a, tc, mut used, mut queue)
@@ -569,6 +581,7 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 	}
 	if a.nodes.any(it.kind == .debugger_stmt) {
 		enqueue('debug.Debugger.interact', mut used, mut queue)
+		enqueue_debugger_custom_str_methods(tc, mut used, mut queue)
 	}
 	// Trace calls are injected by Cgen after AST reachability has been computed,
 	// so retain their two runtime entry points whenever the debug module exists.
@@ -1979,7 +1992,10 @@ fn build_prepared_markused_declarations(a &flat.FlatAst, tc &types.TypeChecker) 
 
 fn markused_syntax_needs_closure_runtime(a &flat.FlatAst) bool {
 	for idx, node in a.nodes {
-		if node.kind == .fn_literal || (idx >= a.user_code_start && node.kind == .lambda_expr) {
+		if (node.kind == .import_decl
+			&& (node.value == 'builtin.closure' || node.typ == '__v3_builtin_closure_runtime'))
+			|| node.kind == .fn_literal
+			|| (idx >= a.user_code_start && node.kind == .lambda_expr) {
 			return true
 		}
 	}
@@ -2553,6 +2569,18 @@ fn enqueue_detected_runtime_helpers(a &flat.FlatAst, tc &types.TypeChecker, mut 
 					}
 				}
 			}
+			.assert_stmt {
+				if node.children_count > 0 {
+					condition := a.child_node(&node, 0)
+					if condition.kind == .infix && condition.children_count >= 2
+						&& condition.op !in [.logical_and, .logical_or] {
+						for operand in 0 .. 2 {
+							enqueue_stringified_custom_str_method(a.child(condition, operand),
+								cur_module, tc, auto_str_skipped_fields, mut used, mut queue)
+						}
+					}
+				}
+			}
 			.in_expr {
 				if node.children_count >= 2 {
 					lhs_id := a.child(&node, 0)
@@ -2664,6 +2692,9 @@ fn enqueue_detected_runtime_helpers(a &flat.FlatAst, tc &types.TypeChecker, mut 
 }
 
 fn markused_program_needs_closure_runtime(a &flat.FlatAst, tc &types.TypeChecker) bool {
+	if markused_syntax_needs_closure_runtime(a) {
+		return true
+	}
 	mut call_callees := map[int]bool{}
 	for node in a.nodes {
 		if node.kind == .call && node.children_count > 0 {
@@ -3130,6 +3161,25 @@ fn markused_type_has_custom_str(name string, cur_module string, tc &types.TypeCh
 		}
 	}
 	return false
+}
+
+// enqueue_debugger_custom_str_methods retains formatters that debugger scope rendering may call.
+// Those calls are synthesized by cgen after ordinary AST reachability has been computed.
+fn enqueue_debugger_custom_str_methods(tc &types.TypeChecker, mut used map[string]bool, mut queue []string) {
+	for method, ret_type in tc.fn_ret_types {
+		if method.all_after_last('.') != 'str' || ret_type.name() != 'string' {
+			continue
+		}
+		params := tc.fn_param_types[method] or { continue }
+		if params.len != 1 {
+			continue
+		}
+		enqueue(method, mut used, mut queue)
+		lowered := markused_c_name(method)
+		if lowered != method {
+			enqueue(lowered, mut used, mut queue)
+		}
+	}
 }
 
 fn markused_struct_fields(name string, tc &types.TypeChecker) []types.StructField {
