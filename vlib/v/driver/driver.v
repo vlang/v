@@ -16963,6 +16963,10 @@ mut:
 	// a name to the `bindings` indexes of its live declarations.
 	bindings []string
 	visible  map[string][]int
+	// implicit marks the bindings the transform's capture collector
+	// (collect_lambda_capture_names) does not model: the `it` of an array DSL
+	// call and the `err` of an `or` block or guard `else` branch.
+	implicit []bool
 	// barrier is the first binding of the innermost function; earlier bindings
 	// belong to an enclosing function and are not visible.
 	barrier int
@@ -16996,6 +17000,14 @@ fn (mut s NoClosuresLambdaScan) declare(name string) {
 	decls << s.bindings.len
 	s.visible[name] = decls
 	s.bindings << name
+	s.implicit << false
+}
+
+// declare_implicit declares the implicit `it` of an array DSL call or the `err`
+// of an `or` block or guard `else` branch.
+fn (mut s NoClosuresLambdaScan) declare_implicit(name string) {
+	s.declare(name)
+	s.implicit[s.implicit.len - 1] = true
 }
 
 fn (mut s NoClosuresLambdaScan) declare_ident(id flat.NodeId) {
@@ -17009,6 +17021,7 @@ fn (mut s NoClosuresLambdaScan) declare_ident(id flat.NodeId) {
 fn (mut s NoClosuresLambdaScan) close_scope(mark int) {
 	for s.bindings.len > mark {
 		name := s.bindings.pop()
+		s.implicit.pop()
 		mut decls := s.visible[name] or { continue }
 		decls.pop()
 		s.visible[name] = decls
@@ -17020,14 +17033,21 @@ fn (mut s NoClosuresLambdaScan) note_ident(name string) {
 		return
 	}
 	decls := s.visible[name] or { return }
-	if decls.len == 0 {
+	lambda_start := s.lambda_starts.last()
+	for i := decls.len - 1; i >= 0; i-- {
+		decl := decls[i]
+		// The transform does not see the implicit bindings inside the lambda, so
+		// it captures an enclosing local of the same name even where one of them
+		// shadows it (`it := 1; f(|n| arr.filter(it > n))` builds a closure).
+		if decl >= lambda_start && s.implicit[decl] {
+			continue
+		}
+		// A binding of the current function declared outside the innermost lambda
+		// is a capture. Names without a visible binding are fns, consts or globals.
+		if decl >= s.barrier && decl < lambda_start {
+			s.capturing[s.lambdas.last()] = true
+		}
 		return
-	}
-	decl := decls.last()
-	// A binding of the current function declared outside the innermost lambda
-	// is a capture. Names without a visible binding are fns, consts or globals.
-	if decl >= s.barrier && decl < s.lambda_starts.last() {
-		s.capturing[s.lambdas.last()] = true
 	}
 }
 
@@ -17105,7 +17125,7 @@ fn (mut s NoClosuresLambdaScan) walk(id flat.NodeId) {
 				s.walk(s.a.child(&node, 0))
 			}
 			mark := s.bindings.len
-			s.declare('err')
+			s.declare_implicit('err')
 			s.walk_children(node, 1)
 			s.close_scope(mark)
 		}
@@ -17122,7 +17142,7 @@ fn (mut s NoClosuresLambdaScan) walk(id flat.NodeId) {
 				// like a DSL method, sees the enclosing `it`, if any.
 				s.walk(s.a.child(&node, 0))
 				mark := s.bindings.len
-				s.declare('it')
+				s.declare_implicit('it')
 				s.walk_children(node, 1)
 				s.close_scope(mark)
 			} else {
@@ -17244,7 +17264,7 @@ fn (mut s NoClosuresLambdaScan) walk_if(node flat.Node) {
 		s.walk(s.a.child(&node, 1))
 	}
 	s.close_scope(mark)
-	s.declare('err')
+	s.declare_implicit('err')
 	s.walk_children(node, 2)
 	s.close_scope(mark)
 }
