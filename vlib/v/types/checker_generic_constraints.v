@@ -248,8 +248,8 @@ fn (mut tc TypeChecker) check_generic_call_constraints(call_id flat.NodeId, call
 fn (tc &TypeChecker) generic_param_binding_site(call_id flat.NodeId, call flat.Node, info CallInfo, decl flat.Node, name string, k int) (flat.NodeId, token.Pos) {
 	callee := tc.a.child_node(&call, 0)
 	if callee.kind == .index && k + 1 < callee.children_count {
-		type_arg := tc.a.child(&callee, k + 1)
-		return type_arg, tc.a.node(type_arg).pos
+		// Reported on the call: a type argument has no position of its own.
+		return call_id, tc.explicit_type_arg_pos(call, k) or { call.pos }
 	}
 	mut arg_index := 1 + info.arg_offset
 	mut source_param_index := 0
@@ -273,6 +273,48 @@ fn (tc &TypeChecker) generic_param_binding_site(call_id flat.NodeId, call flat.N
 		source_param_index++
 	}
 	return call_id, call.pos
+}
+
+// explicit_type_arg_pos is where the `k`th type argument of the explicit
+// generic call `call` is written, `int` in `f[int](...)`.
+fn (tc &TypeChecker) explicit_type_arg_pos(call flat.Node, k int) ?token.Pos {
+	source := tc.vls_source(int(call.pos.id))
+	start := int(call.pos.offset)
+	if start < 0 || start >= source.len {
+		return none
+	}
+	open := source.index_after('[', start) or { return none }
+	mut depth := 0
+	mut arg := 0
+	mut arg_start := open + 1
+	for i := open + 1; i < source.len; i++ {
+		c := source[i]
+		if c == `[` {
+			depth++
+			continue
+		}
+		at_end := c == `]` && depth == 0
+		if c == `]` && depth > 0 {
+			depth--
+			continue
+		}
+		if at_end || (c == `,` && depth == 0) {
+			if arg == k {
+				mut first := arg_start
+				for first < i && (source[first] == ` ` || source[first] == `\t`) {
+					first++
+				}
+				last := vls_blanks_start(source, i)
+				return token.new_span(call.pos.id, first, last)
+			}
+			if at_end {
+				return none
+			}
+			arg++
+			arg_start = i + 1
+		}
+	}
+	return none
 }
 
 // check_generic_struct_constraints reports a type argument of a generic struct,
