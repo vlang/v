@@ -16,10 +16,10 @@ const coarse_mtime_recent_seconds = 3
 // Include the running compiler build so a memoized source signature cannot survive
 // a compiler update and make a new checker replay stale cached diagnostics.
 // An empty result means the metadata cannot identify the file: the file system
-// reports no identity for it (some network redirectors on Windows), or it was
-// modified so recently that another same-size edit could still leave identical
-// metadata. Callers must then compare the file contents instead, see
-// file_change_signature.
+// reports no identity for it (some network redirectors on Windows) or no change
+// time (FAT and exFAT on Windows), or it was modified so recently that another
+// same-size edit could still leave identical metadata. Callers must then compare
+// the file contents instead, see file_change_signature.
 pub fn file_metadata_signature(path string) string {
 	if file_metadata_disabled_for(path) {
 		return ''
