@@ -560,7 +560,7 @@ fn (mut p Parser) track_script_mode(id flat.NodeId, fallback_start int, fallback
 		return
 	}
 	is_definition := node.kind in [.fn_decl, .c_fn_decl, .struct_decl, .enum_decl, .interface_decl,
-		.type_decl, .const_decl, .global_decl, .constraint_decl]
+		.type_decl, .const_decl, .global_decl]
 	is_script_statement := node.kind !in [.empty, .import_decl, .module_decl, .directive, .comptime_if,
 		.asm_stmt]
 		&& !is_definition && !ignore_statement
@@ -1223,17 +1223,6 @@ fn (mut p Parser) top_level_stmt() flat.NodeId {
 		.semicolon {
 			p.next()
 			return flat.empty_node
-		}
-		.name {
-			// `constraint` is no keyword: vlib uses it as a name too. It declares a
-			// set of types before a name, after `pub`, and where no statement can
-			// go on with it, at the end of a line or of the file: half written, it
-			// is reported as a half written `type` declaration.
-			if p.lit == 'constraint'
-				&& (p.pending_decl_pub || p.peek() in [.name, .semicolon, .eof]) {
-				return p.constraint_decl()
-			}
-			return p.stmt()
 		}
 		else {
 			return p.stmt()
@@ -3286,72 +3275,6 @@ fn (mut p Parser) type_decl() flat.NodeId {
 		typ:     first_type
 		payload: flat.node_payload_with_constraints(generic_params, named_constraints(generic_constraints))
 		pos:     p.span_to(type_start)
-	})
-}
-
-// constraint_decl parses `constraint Number = int | i64 | f64`, the set of types
-// that a type parameter naming it as its constraint accepts.
-fn (mut p Parser) constraint_decl() flat.NodeId {
-	is_pub := p.pending_decl_pub
-	p.pending_decl_pub = false
-	p.next() // skip `constraint`
-	// The end of a line or of the file after `constraint` ends no statement, as
-	// it ends none after the keyword `type`: the name can come after it.
-	for p.tok == .semicolon && (p.tok_pos >= p.s.src.len || p.s.src[p.tok_pos] != `;`) {
-		p.next()
-	}
-	name_pos := p.current_pos()
-	name := p.expect_name()
-	if name.len == 1 && name[0] >= `A` && name[0] <= `Z` {
-		p.record_diagnostic_span('single letter capital names are reserved for generic template types',
-			name_pos.offset, name_pos.end)
-	}
-	if p.tok == .lsbr {
-		params_start := p.tok_pos
-		p.parse_generic_params()
-		p.record_diagnostic_span('a constraint cannot have type parameters', params_start,
-			p.prev_tok_end)
-	}
-	if p.tok == .assign {
-		p.next()
-	} else {
-		unexpected := if p.tok == .name { 'name `${p.lit}`' } else { 'token `${p.tok.str()}`' }
-		p.record_diagnostic_span('unexpected ${unexpected}, expecting `=`', p.tok_pos, p.tok_end)
-	}
-	mut types := []flat.NodeId{}
-	for {
-		type_start := p.span_start()
-		type_name := p.parse_type_name()
-		if type_name == 'none' {
-			p.record_diagnostic_span('a constraint cannot have none as one of its types', type_start,
-				p.prev_tok_end)
-		}
-		types << p.add_node(flat.Node{
-			kind:  .ident
-			value: type_name
-			pos:   p.span_to(type_start)
-		})
-		// The types can go on over several lines, each starting with `|`.
-		if p.tok == .pipe || (p.tok == .semicolon && p.peek_is(token.Token.pipe)) {
-			if p.tok == .semicolon {
-				p.next()
-			}
-			p.next()
-			continue
-		}
-		break
-	}
-	if p.tok == .semicolon {
-		p.next()
-	}
-	start := p.add_children(types)
-	return p.add_node(flat.Node{
-		kind:           .constraint_decl
-		op:             if is_pub { .arrow } else { .none }
-		value:          name
-		children_start: start
-		children_count: flat.child_count(types.len)
-		pos:            name_pos
 	})
 }
 

@@ -274,16 +274,7 @@ fn operator_program(typ string, constrained bool) (string, map[int]OperatorCase)
 	mut lines := operator_prelude.split('\n')
 	mut where := map[int]OperatorCase{}
 	param := if constrained { 'T' } else { typ }
-	generic := if !constrained {
-		''
-	} else if typ == 'Named' {
-		'[T Named]'
-	} else {
-		'[T Only]'
-	}
-	if constrained && typ != 'Named' {
-		lines << 'constraint Only = ${typ}'
-	}
+	generic := if constrained { '[T ${typ}]' } else { '' }
 	for group, cases in [binary, unary, assign] {
 		name := ['binary', 'unary', 'assign'][group]
 		lines << 'fn ${name}${generic}(a ${param}, b ${param}, ${value_params}) {'
@@ -338,17 +329,28 @@ fn test_an_operator_on_a_constrained_value_follows_the_checker_for_every_type() 
 	checks_order := probe.len > 0
 	mut failures := []string{}
 	mut compared := 0
+	mut concrete_by_type := map[string]map[int]bool{}
 	for typ in operator_types {
-		concrete_source, where := operator_program(typ, false)
+		concrete_source, _ := operator_program(typ, false)
+		concrete_by_type[typ] = check_operator_program(dir, 'concrete_${typ}', concrete_source)
+	}
+	// A sum type as the constraint stands for its variants: a `T` takes an
+	// operation that every variant takes.
+	variants := {
+		'Sum': ['int', 'string']
+	}
+	for typ in operator_types {
+		_, where := operator_program(typ, false)
 		constrained_source, constrained_where := operator_program(typ, true)
-		concrete := check_operator_program(dir, 'concrete_${compared}', concrete_source)
-		constrained := check_operator_program(dir, 'constrained_${compared}', constrained_source)
-		// The constrained program has one line more, its `constraint`, before the cases.
-		offset := if typ == 'Named' { 0 } else { 1 }
+		constrained := check_operator_program(dir, 'constrained_${typ}', constrained_source)
 		for line, c in where {
-			assert constrained_where[line + offset].name == c.name
-			by_type := line in concrete
-			by_constraint := (line + offset) in constrained
+			assert constrained_where[line].name == c.name
+			by_type := if names := variants[typ] {
+				names.any(line in concrete_by_type[it])
+			} else {
+				line in concrete_by_type[typ]
+			}
+			by_constraint := line in constrained
 			compared++
 			if typ in unchecked_types {
 				if by_constraint {

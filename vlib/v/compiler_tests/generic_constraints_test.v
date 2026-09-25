@@ -203,7 +203,7 @@ fn from_field[T Named](b Box[T]) int {
 	return x.age
 }
 
-constraint Number = int | f64
+type Number = int | f64
 
 fn from_set[T Number](x T) int {
 	y := x
@@ -320,11 +320,11 @@ fn main() {}
 fn test_an_operator_needs_every_type_of_the_constraint() {
 	// An interface declares no operators: a `T` it constrains has `==`, `!=` and
 	// `in`, as a value of the interface. A set takes what all of its types take.
-	res := check_program('operators', 'constraint Number = int | f64
+	res := check_program('operators', 'type Number = int | f64
 
-constraint Word = string | int
+type Word = string | int
 
-constraint Flag = bool | int
+type Flag = bool | int
 
 struct Vec {
 	x int
@@ -334,15 +334,15 @@ fn (a Vec) + (b Vec) Vec {
 	return Vec{a.x + b.x}
 }
 
-constraint Addable = int | Vec
+type Addable = int | Vec
 
 type IntArr = []int
 
 type StrMap = map[string]int
 
-constraint Indexable = string | IntArr
+type Indexable = string | IntArr
 
-constraint Keyed = string | StrMap
+type Keyed = string | StrMap
 
 fn iface[T Named](a T, b T, items []T) bool {
 	println(a == b)
@@ -424,7 +424,7 @@ fn test_an_append_to_a_constrained_array_is_left_to_its_elements() {
 
 type IntArr2 = []i64
 
-constraint Ints = IntArr | IntArr2
+type Ints = IntArr | IntArr2
 
 fn push[T Ints](mut items T) {
 	items << 1
@@ -443,7 +443,7 @@ fn test_a_compile_time_is_narrows_a_constrained_type() {
 	// In `$if T is f64 {`, `T` is `f64`; in its `$else`, the rest of its set. A
 	// branch that no type of the set reaches, `T is string`, is not checked, and
 	// a condition that names no type parameter leaves the set as it is.
-	res := check_program('comptime_is', 'constraint Number = int | f64
+	res := check_program('comptime_is', 'type Number = int | f64
 
 fn narrow[T Number](x T, y T) T {
 	$if T is f64 {
@@ -509,7 +509,7 @@ fn test_a_compile_time_is_on_a_value_narrows_its_type_parameter() {
 	// `$if x is f64 {` with `x T` asks what `$if T is f64 {` asks, for a local
 	// that gets its value from a `T` too, and with `!is`, `in`, `!in`, the groups
 	// and `||`. An `is` outside `$if` is no compile-time test: V rejects it.
-	res := check_program('comptime_value_is', 'constraint Number = int | f64
+	res := check_program('comptime_value_is', 'type Number = int | f64
 
 fn narrow[T Number](x T, y T) T {
 	$if x is f64 {
@@ -567,17 +567,15 @@ fn main() {}
 fn test_a_runtime_is_on_a_value_of_a_constrained_type_is_reported() {
 	// V takes `is` on a sum type or an interface value only: `value is f64` with
 	// `value T` does not build for a type of the constraint that is neither, so
-	// the check says so where it is written; `$if value is f64 {` tests `T`. A
-	// set of sum types takes it.
-	res := check_program('runtime_is', 'constraint Number = int | f64
+	// the check says so where it is written; `$if value is f64 {` tests `T`. A sum
+	// type as the constraint stands for its variants, which are no sum types.
+	res := check_program('runtime_is', 'type Number = int | f64
 
 type Shape = Square | Circle
 
 struct Square {}
 
 struct Circle {}
-
-constraint Shapes = Shape
 
 fn numbers[T Number](value T) string {
 	if value is f64 || value is int {
@@ -598,7 +596,7 @@ fn named[T Named](a T) {
 	}
 }
 
-fn shapes[T Shapes](s T) bool {
+fn shapes[T Shape](s T) bool {
 	return s is Circle
 }
 
@@ -606,10 +604,11 @@ fn main() {}
 ')
 	assert res.exit_code == 1, res.output
 	assert error_lines(res.output) == [
-		'12:5: `is` can only be used with sum type or interface values, not `T`: `int`, in its constraint `Number`, is neither; test `T` with `\$if value is f64`',
-		'12:21: `is` can only be used with sum type or interface values, not `T`: `int`, in its constraint `Number`, is neither; test `T` with `\$if value is int`',
-		'15:5: `is` can only be used with sum type or interface values, not `T`: `int`, in its constraint `Number`, is neither; test `T` with `\$if value !is f64`',
-		'25:5: `is` can only be used with sum type or interface values, not `T`: a type that implements `Named` does not have to be one; test `T` with `\$if a is User`',
+		'10:5: `is` can only be used with sum type or interface values, not `T`: `int`, in its constraint `Number`, is neither; test `T` with `\$if value is f64`',
+		'10:21: `is` can only be used with sum type or interface values, not `T`: `int`, in its constraint `Number`, is neither; test `T` with `\$if value is int`',
+		'13:5: `is` can only be used with sum type or interface values, not `T`: `int`, in its constraint `Number`, is neither; test `T` with `\$if value !is f64`',
+		'23:5: `is` can only be used with sum type or interface values, not `T`: a type that implements `Named` does not have to be one; test `T` with `\$if a is User`',
+		'29:9: `is` can only be used with sum type or interface values, not `T`: `Square`, in its constraint `Shape`, is neither; test `T` with `\$if s is Circle`',
 	], res.output
 }
 
@@ -660,9 +659,9 @@ fn call_explicit[U](a U) U {
 	return pick[U](a, a)
 }
 
-constraint Number = int | f64
+type Number = int | f64
 
-constraint Word = string | int
+type Word = string | int
 
 fn double[T Number](x T) T {
 	return x + x
@@ -781,7 +780,7 @@ fn main() {
 ')
 	assert res.exit_code == 1, res.output
 	assert error_lines(res.output) == [
-		'25:12: type `T` has no field named `v`: its constraint `Comparable` does not declare it',
+		'25:12: type `T` has no field named `v`: its constraint `Comparable[T]` does not declare it',
 		'39:7: `Odd` incorrectly implements method `less` of interface `Comparable`: expected `Odd`, not `int` for parameter 1',
 		'47:18: `smallest` needs `U` to implement `Comparable[U]`: `U` has no constraint: give it one, `[U Comparable[U]]`',
 		'52:19: `Odd` incorrectly implements method `less` of interface `Comparable`: expected `Odd`, not `int` for parameter 1',
@@ -1007,16 +1006,105 @@ fn main() {
 	assert error_lines(res.output) == ["7:17: `int` doesn't implement field `name` of interface `Named`"], res.output
 }
 
-fn test_a_constraint_must_be_an_interface() {
-	res := check_program('not_interface', 'fn twice[T User](x T) T {
+fn test_a_type_that_is_no_interface_or_sum_type_stands_for_itself() {
+	// `[T User]` takes `User`, as `[T Ints]` takes `Ints` for `type Ints = []int`:
+	// an alias of a type that is no interface or sum type is a type of its own. A
+	// type that does not exist is reported where it is written.
+	res := check_program('any_type', 'type Ints = []int
+
+fn twice[T User](x T) T {
 	return x
 }
 
-fn main() {}
+fn ints[T Ints](x T) int {
+	return x.len
+}
+
+fn nope[T Nope](x T) T {
+	return x
+}
+
+fn main() {
+	println(twice(User{}).age)
+	println(twice(Pet{}).name)
+	println(ints(Ints([1, 2])))
+	println(ints([1, 2]))
+}
 ')
 	assert res.exit_code == 1, res.output
 	assert error_lines(res.output) == [
-		'1:12: the constraint of `T` must be an interface or a constraint, not `User`',
+		'11:11: unknown type `Nope`',
+		'17:16: cannot use `Pet` as `T`: it is not in its constraint `User`',
+		'19:15: cannot use `[]int` as `T`: it is not in its constraint `Ints`',
+	], res.output
+}
+
+fn test_a_sum_type_is_a_constraint_that_stands_for_its_variants() {
+	// `type Number = int | f64` is a sum type as the type of a value, and in
+	// `[T Number]` the constraint whose types are its variants; a variant that is
+	// a sum type stands for its own variants.
+	res := check_program('sum_constraint', "type Number = int | f64
+
+type Integer = int | i64
+
+type Float = f32 | f64
+
+type Real = Integer | Float
+
+fn double[T Number](x T) T {
+	return x + x
+}
+
+fn describe[T Number](x T) string {
+	return x.str() + x.hex()
+}
+
+fn keep(n Number) Number {
+	return n
+}
+
+fn half[T Real](x T) T {
+	return x / 2
+}
+
+fn main() {
+	println(double(2))
+	println(double(1.5))
+	println(double('a'))
+	println(keep(Number(1)))
+	println(half(i64(4)))
+	println(half(f32(1)))
+	println(half(u8(1)))
+}
+")
+	assert res.exit_code == 1, res.output
+	assert error_lines(res.output) == [
+		'14:21: type `T` has no method `hex`: `f64`, in its constraint `Number`, does not have it',
+		'28:17: cannot use `string` as `T`: it is not in its constraint `Number`',
+		'32:15: cannot use `u8` as `T`: it is not in its constraint `Real`',
+	], res.output
+}
+
+fn test_an_alias_of_an_interface_is_a_constraint_for_what_implements_it() {
+	// The example of the original proposal: `type Value = ThingThatHasName`.
+	res := check_program('alias_constraint', "interface ThingThatHasName {
+	name string
+}
+
+type Value = ThingThatHasName
+
+fn show[T Value](x T) string {
+	return x.name
+}
+
+fn main() {
+	println(show(1))
+	println(show(User{ name: 'Alex' }))
+}
+")
+	assert res.exit_code == 1, res.output
+	assert error_lines(res.output) == [
+		"12:15: `int` doesn't implement field `name` of interface `ThingThatHasName`",
 	], res.output
 }
 
@@ -1092,7 +1180,7 @@ fn main() {
 // `T` what every type of the set has.
 
 fn test_a_call_with_a_type_of_the_constraint_set_is_valid() {
-	res := check_program('set_valid', 'constraint Number = int | i64 | f64
+	res := check_program('set_valid', 'type Number = int | i64 | f64
 
 fn double[T Number](x T) T {
 	return x + x
@@ -1113,7 +1201,7 @@ fn main() {
 }
 
 fn test_a_call_with_a_type_outside_the_constraint_set_is_reported_at_the_call() {
-	res := check_program('set_call', "constraint Number = int | i64 | f64
+	res := check_program('set_call', "type Number = int | i64 | f64
 
 fn double[T Number](x T) T {
 	return x + x
@@ -1128,7 +1216,7 @@ fn main() {
 }
 
 fn test_the_body_can_use_only_what_every_type_of_the_set_has() {
-	res := check_program('set_body', 'constraint Animal = User | Pet
+	res := check_program('set_body', 'type Animal = User | Pet
 
 fn label[T Animal](x T) string {
 	return x.name + x.greet()
@@ -1144,12 +1232,12 @@ fn main() {}
 
 fn test_the_body_can_use_what_every_type_of_a_set_of_any_types_has() {
 	// `len` of arrays, maps and strings, the fields and methods builtin declares
-	// for them, and what an interface of the set declares.
-	res := check_program('set_members_any', 'constraint Sized = []int | []string | map[string]int | string
+	// for them; and what an interface declares, named by an alias.
+	res := check_program('set_members_any', 'type Sized = []int | []string | map[string]int | string
 
-constraint Listy = []int | []string
+type Listy = []int | []string
 
-constraint Value = Named
+type Value = Named
 
 fn size[T Sized](x T) int {
 	return x.len
@@ -1184,157 +1272,22 @@ fn main() {}
 	assert res.exit_code == 1, res.output
 	assert error_lines(res.output) == [
 		'12:11: type `T` has no field named `cap`: `map[string]int`, in its constraint `Sized`, does not have it',
-		'28:11: type `T` has no field named `age`: `Named`, in its constraint `Value`, does not have it',
+		'28:11: type `T` has no field named `age`: its constraint `Value` does not declare it',
 	], res.output
 }
 
-fn test_a_constraint_set_of_unknown_types_is_reported() {
-	res := check_program('set_unknown', 'constraint Bad = int | Foo
+fn test_a_sum_type_of_unknown_types_is_reported_once() {
+	res := check_program('set_unknown', 'type Bad = int | Foo
+
+fn keep[T Bad](x T) T {
+	return x
+}
 
 fn main() {}
 ')
 	assert res.exit_code == 1, res.output
-	assert error_lines(res.output) == ['1:24: unknown type `Foo`'], res.output
-}
-
-// half_written_errors checks a program with `main` and `decl`, before `main` or,
-// `at_end`, after it, and returns `line:col: message` for each of its errors.
-fn half_written_errors(name string, decl string, at_end bool) []string {
-	dir := os.join_path(os.vtmp_dir(), 'v3_generic_constraints_half_${name}_${os.getpid()}')
-	os.mkdir_all(dir) or { panic(err) }
-	defer {
-		os.rmdir_all(dir) or {}
-	}
-	main_fn := 'fn main() {\n\tprintln(1)\n}\n'
-	source := if at_end {
-		'module main\n\n${main_fn}\n${decl}\n'
-	} else {
-		'module main\n\n${decl}\n\n${main_fn}'
-	}
-	path := os.join_path(dir, 'main.v')
-	os.write_file(path, source) or { panic(err) }
-	res := os.execute('${os.quoted_path(@VEXE)} -new-compiler -check -nocolor ${os.quoted_path(path)}')
-	mut lines := []string{}
-	for line in res.output.split_into_lines() {
-		if line.contains(': error: ') {
-			lines << line.all_after('main.v:')
-		}
-	}
-	return lines
-}
-
-// shifted_columns moves each error of `errors` on line `decl_line` that is past
-// column `keyword_col` right by `shift`: what a longer keyword moves.
-fn shifted_columns(errors []string, decl_line int, keyword_col int, shift int) []string {
-	mut result := []string{}
-	for e in errors {
-		parts := e.split_nth(':', 3)
-		if parts.len == 3 && parts[0].int() == decl_line && parts[1].int() > keyword_col {
-			result << '${parts[0]}:${parts[1].int() + shift}:${parts[2]}'
-		} else {
-			result << e
-		}
-	}
-	return result
-}
-
-// without_eof_column is `e` without its column when it is about the end of the
-// file: there, the error is where the scanner was last, on the keyword `type`
-// and past the word `constraint`, where the name is missing.
-fn without_eof_column(e string) string {
-	parts := e.split_nth(':', 3)
-	if !e.contains('eof') || parts.len != 3 {
-		return e
-	}
-	return '${parts[0]}:${parts[2]}'
-}
-
-fn test_a_half_written_constraint_is_reported_as_a_half_written_type() {
-	// While a `constraint` declaration is being written, V reports what it reports
-	// for a `type` declaration at the same point, and not a statement of a script
-	// such as "all definitions must occur before code in script mode". `type` at
-	// the end of a file also says "a type alias can not refer to itself: " about a
-	// name it did not get. Neither says anything about `Foo =` or `Foo = int |` at
-	// the end of a file.
-	mut compared := 0
-	for tail in ['', ' ', ' Foo', ' Foo ', ' Foo =', ' Foo = int |'] {
-		for prefix in ['', 'pub '] {
-			for at_end in [false, true] {
-				type_errors := half_written_errors('type', '${prefix}type${tail}', at_end)
-				constraint_errors := half_written_errors('constraint', '${prefix}constraint${tail}',
-					at_end)
-				decl_line := if at_end { 7 } else { 3 }
-				want := shifted_columns(type_errors.filter(!it.contains('a type alias can not refer to itself')),
-					decl_line, prefix.len + 1, 'constraint'.len - 'type'.len)
-				compared += want.len
-				assert constraint_errors.map(without_eof_column(it)) == want.map(without_eof_column(it)), '`${prefix}constraint${tail}`, at the end: ${at_end}'
-			}
-		}
-	}
-	assert compared > 20
-}
-
-fn test_a_constraint_declaration_follows_the_syntax_rules_of_a_type_declaration() {
-	// As `type T = int | f64` and `type Xy = none | int` are reported. A constraint
-	// has no type parameters: its types are the ones it lists.
-	res := check_program('constraint_syntax', 'constraint T = int | f64
-
-constraint WithNone = int | none
-
-constraint Pair[T] = int | f64
-
-fn main() {}
-')
-	assert res.exit_code == 1, res.output
-	assert error_lines(res.output) == [
-		'1:12: single letter capital names are reserved for generic template types',
-		'3:29: a constraint cannot have none as one of its types',
-		'5:16: a constraint cannot have type parameters',
-	], res.output
-}
-
-fn test_a_constraint_declaration_follows_the_rules_of_a_type_declaration() {
-	// Its name, the types it lists, and another type or constraint of the same
-	// name, as a sum type is checked. Any type can be in the set: an array, a
-	// map, an option, a pointer, a function, a channel, a fixed array.
-	res := check_program('constraint_rules', 'constraint lower = int | f64
-
-constraint Twice = int | int
-
-constraint Itself = int | Itself
-
-constraint Composite = []int | map[string]int | ?int | &int | fn () | chan int | [2]u8 | User
-
-constraint Unknown = []Nope | map[string]Nope
-
-constraint Named2 = int | f64
-
-struct Named2 {}
-
-struct Clash {}
-
-constraint Clash = int
-
-constraint Twin = int
-
-constraint Twin = f64
-
-constraint Res = !int | int
-
-fn main() {}
-')
-	assert res.exit_code == 1, res.output
-	assert error_lines(res.output) == [
-		'1:1: constraint `lower` must begin with capital letter',
-		'3:26: constraint Twice cannot hold the type `int` more than once',
-		'5:27: constraint cannot hold itself',
-		// Once per line, at the type that holds it, as for a sum type.
-		'9:22: unknown type `Nope`',
-		'13:8: cannot register struct `Named2`, another type with this name exists',
-		'17:1: cannot register constraint `Clash`, another type with this name exists',
-		'21:1: cannot register constraint `Twin`, another type with this name exists',
-		'23:18: a constraint cannot hold a Result type',
-	], res.output
+	// Once, by the sum type: not again by the constraint that names it.
+	assert error_lines(res.output) == ['1:18: unknown type `Foo`'], res.output
 }
 
 fn test_constraint_is_still_a_name() {
@@ -1368,7 +1321,7 @@ fn (b Box[T]) label() string {
 	return 'box of \${b.item.name}'
 }
 
-constraint Number = int | i64 | f64
+type Number = int | i64 | f64
 
 fn longest[T Named](a T, b T) T {
 	return if a.name.len >= b.name.len { a } else { b }

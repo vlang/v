@@ -109,9 +109,11 @@ interface Shelf[T Named] {
 
 type Picker[T Named] = fn (T) bool
 
-pub constraint Number = int | i64 | f64
+pub type Number = int | i64 | f64
 
-constraint Animal = User | mod.Pet
+fn double[T Number](x T) T {
+	return x
+}
 '
 	assert vfmt('generic_constraints', source) == source
 }

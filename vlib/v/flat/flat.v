@@ -130,10 +130,6 @@ pub enum NodeKind as u8 {
 	// A `$dbg;` statement. Keep new node kinds at the end because the hot phase
 	// dispatchers use stable numeric ids for the older kinds.
 	debugger_stmt
-	// `constraint Number = int | i64 | f64`: a set of types that a type
-	// parameter can name as its constraint, `[T Number]`. Its children are
-	// `.ident` nodes that spell the types, as the variants of a sum type.
-	constraint_decl
 }
 
 // Op lists op values used by flat.

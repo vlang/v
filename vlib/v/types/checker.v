@@ -766,7 +766,6 @@ pub mut:
 	transform_signature_names_log    []string
 	transform_struct_maps_shared     bool
 	fn_generic_params                map[string][]string
-	constraint_sets                  map[string]flat.NodeId
 	constraints_scanned              bool // program_declares_constraints has looked
 	declares_constraints             bool
 	specialized_generic_fns          map[string]bool
@@ -1108,7 +1107,6 @@ pub fn TypeChecker.new(a &flat.FlatAst) TypeChecker {
 		fn_type_files:                           map[string]string{}
 		fn_type_modules:                         map[string]string{}
 		fn_generic_params:                       map[string][]string{}
-		constraint_sets:                         map[string]flat.NodeId{}
 		specialized_generic_fns:                 map[string]bool{}
 		fn_variadic:                             map[string]bool{}
 		c_variadic_fns:                          map[string]bool{}
@@ -1267,7 +1265,6 @@ fn (tc &TypeChecker) fork_program_view(ast &flat.FlatAst, direct_dependencies_by
 		fn_type_files:                         tc.fn_type_files
 		fn_type_modules:                       tc.fn_type_modules
 		fn_generic_params:                     tc.fn_generic_params
-		constraint_sets:                       tc.constraint_sets
 		transform_signature_names_log:         []string{}
 		specialized_generic_fns:               tc.specialized_generic_fns
 		fn_variadic:                           tc.fn_variadic
@@ -2105,7 +2102,7 @@ fn (mut tc TypeChecker) build_type_declaration_index(a &flat.FlatAst) {
 			conflict_module_name = node.value
 			continue
 		}
-		if node.kind in [.struct_decl, .type_decl, .interface_decl, .enum_decl, .constraint_decl] {
+		if node.kind in [.struct_decl, .type_decl, .interface_decl, .enum_decl] {
 			qualified := qualify_decl_name_in_module(node.value, conflict_module_name)
 			if qualified !in tc.first_type_declaration_ids {
 				tc.first_type_declaration_ids[qualified] = index
@@ -3211,7 +3208,7 @@ fn (mut tc TypeChecker) collect_index_child(a &flat.FlatAst, i int, idx_file str
 			}
 			tc.top_level_idx << i
 		}
-		.import_decl, .const_decl, .global_decl, .fn_decl, .c_fn_decl, .constraint_decl {
+		.import_decl, .const_decl, .global_decl, .fn_decl, .c_fn_decl {
 			tc.top_level_idx << i
 		}
 		.comptime_if, .block {
@@ -3334,7 +3331,7 @@ pub fn (mut tc TypeChecker) collect(a &flat.FlatAst) {
 				}
 				tc.top_level_idx << i
 			}
-			.import_decl, .const_decl, .global_decl, .fn_decl, .c_fn_decl, .constraint_decl {
+			.import_decl, .const_decl, .global_decl, .fn_decl, .c_fn_decl {
 				tc.top_level_idx << i
 			}
 			else {}
@@ -3668,9 +3665,6 @@ fn (mut tc TypeChecker) collect_after_index(a &flat.FlatAst) {
 					tc.c_typedef_structs[qname] = true
 					tc.c_typedef_structs[node.value] = true
 				}
-			}
-			.constraint_decl {
-				tc.constraint_sets[tc.qualify_decl_name(node.value)] = flat.NodeId(tl_idx)
 			}
 			.type_decl {
 				if node.children_count > 0 {
@@ -15991,7 +15985,7 @@ fn (tc &TypeChecker) type_declaration_before(node_id flat.NodeId, name string) ?
 			module_name = candidate.value
 			continue
 		}
-		if candidate.kind in [.struct_decl, .type_decl, .interface_decl, .enum_decl, .constraint_decl]
+		if candidate.kind in [.struct_decl, .type_decl, .interface_decl, .enum_decl]
 			&& qualify_decl_name_in_module(candidate.value, module_name) == current_name {
 			return flat.NodeId(idx)
 		}
@@ -16015,7 +16009,6 @@ fn (mut tc TypeChecker) check_type_declaration_conflict(node_id flat.NodeId, nod
 			.struct_decl { 'struct' }
 			.interface_decl { 'interface' }
 			.enum_decl { 'enum' }
-			.constraint_decl { 'constraint' }
 			else { 'alias' }
 		}
 		tc.record_error_at(.duplicate_decl, 'cannot register ${kind} `${node.value}`, this type was already imported', node_id, name_pos)
@@ -16033,7 +16026,6 @@ fn (mut tc TypeChecker) check_type_declaration_conflict(node_id flat.NodeId, nod
 		.struct_decl { 'struct' }
 		.interface_decl { 'interface' }
 		.enum_decl { 'enum' }
-		.constraint_decl { 'constraint' }
 		else {
 			if is_fn_alias {
 				'fn'
@@ -16047,8 +16039,6 @@ fn (mut tc TypeChecker) check_type_declaration_conflict(node_id flat.NodeId, nod
 	name := if is_fn_alias { tc.qualify_name(node.value) } else { node.value }
 	pos := if node.kind == .type_decl && !is_fn_alias && !is_builtin_collision {
 		tc.declaration_keyword_name_pos(node_id, 'type')
-	} else if node.kind == .constraint_decl && !is_builtin_collision {
-		tc.declaration_keyword_name_pos(node_id, 'constraint')
 	} else if node.kind == .enum_decl && !is_builtin_collision {
 		tc.enum_declaration_diagnostic_pos(node_id)
 	} else {

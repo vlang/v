@@ -3,11 +3,12 @@ module types
 import v.flat
 import v.token
 
-// A type parameter can name what it must satisfy, its constraint: an interface,
-// `fn longest[T Named](a T, b T) T`, or a set of types declared with
-// `constraint Number = int | i64 | f64`. A call is checked against it, where V
-// checks a value passed to an interface parameter, and the body can use on a
-// value of type `T` only what the constraint provides: what the interface
+// A type parameter can name what it must satisfy, its constraint, with a type:
+// an interface, `fn longest[T Named](a T, b T) T`, stands for the types that
+// implement it, and a sum type, `type Number = int | i64 | f64` in
+// `fn double[T Number](x T) T`, for its variants. A call is checked against it,
+// where V checks a value passed to an interface parameter, and the body can use
+// on a value of type `T` only what the constraint provides: what the interface
 // declares, or what every type of the set has. The parser keeps the constraints
 // next to the generic params (see flat.Node.generic_constraints).
 
@@ -28,33 +29,69 @@ fn (tc &TypeChecker) generic_constraint_type(decl flat.Node, text string) Type {
 	return scoped.parse_resolution_type(text)
 }
 
-// generic_constraint_set is the `constraint` declaration that the constraint
-// `text` of a type parameter of `decl` names, as written there.
-fn (tc &TypeChecker) generic_constraint_set(decl flat.Node, text string) ?flat.NodeId {
-	file := tc.a.source_files[int(decl.pos.id)] or { return none }
-	decl_module := tc.file_modules[file.name] or { tc.cur_module }
-	mut scoped := tc.fork_type_parse_view(file.name, decl_module)
-	return tc.constraint_sets[scoped.qualify_decl_name(text)] or { return none }
-}
-
 // generic_constraint resolves the constraint `text` of a type parameter of
-// `decl`: an interface, or a set of types; none when it names neither.
+// `decl`, a type as written there, to the types it stands for: an interface,
+// the types that implement it; a sum type, its variants, with the variants of
+// a variant that is a sum type in its place; an alias of one of them, what it
+// names; any other type, itself. none when it names no type.
 fn (tc &TypeChecker) generic_constraint(decl flat.Node, text string) ?GenericConstraint {
-	if set_id := tc.generic_constraint_set(decl, text) {
-		return GenericConstraint{
-			name:  text
-			types: tc.constraint_set_types(set_id)
-		}
-	}
 	typ := tc.generic_constraint_type(decl, text)
-	if typ is Interface {
+	if typ is Unknown {
+		return none
+	}
+	mut named := typ
+	for _ in 0 .. 16 {
+		if named is Alias {
+			base := named.base_type
+			if base is Interface || base is SumType || base is Alias {
+				named = base
+				continue
+			}
+		}
+		break
+	}
+	if named is Interface {
 		return GenericConstraint{
 			name:         text
 			is_interface: true
-			iface:        typ
+			iface:        named
 		}
 	}
-	return none
+	if named is SumType {
+		mut types := []Type{}
+		mut seen := map[string]bool{}
+		tc.collect_sum_constraint_types(named, mut types, mut seen)
+		return GenericConstraint{
+			name:  text
+			types: types
+		}
+	}
+	return GenericConstraint{
+		name:  text
+		types: [typ]
+	}
+}
+
+// collect_sum_constraint_types adds to `types` the variants of the sum type
+// `sum`, bound to its type arguments, and in place of a variant that is a sum
+// type, its variants.
+fn (tc &TypeChecker) collect_sum_constraint_types(sum SumType, mut types []Type, mut seen map[string]bool) {
+	base := tc.sum_base_name(sum.name)
+	if seen[base] {
+		return
+	}
+	seen[base] = true
+	for variant in tc.sum_types[base] or { []string{} } {
+		concrete := tc.parse_type(tc.concrete_sum_variant_name(sum.name, variant))
+		inner := unalias_type(concrete)
+		if inner is SumType {
+			tc.collect_sum_constraint_types(inner, mut types, mut seen)
+			continue
+		}
+		if !types.any(it.name() == concrete.name()) {
+			types << concrete
+		}
+	}
 }
 
 // generic_constraint_with_args resolves the constraint `text` of `decl` with its
@@ -71,20 +108,6 @@ fn (tc &TypeChecker) generic_constraint_with_args(decl flat.Node, text string, n
 		}
 	}
 	return tc.generic_constraint(decl, text)
-}
-
-// constraint_set_types resolves the types of the `constraint` declaration
-// `set_id` where it is declared.
-fn (tc &TypeChecker) constraint_set_types(set_id flat.NodeId) []Type {
-	set := tc.a.node(set_id)
-	mut types := []Type{cap: set.children_count}
-	file := tc.a.source_files[int(set.pos.id)] or { return types }
-	set_module := tc.file_modules[file.name] or { tc.cur_module }
-	mut scoped := tc.fork_type_parse_view(file.name, set_module)
-	for i in 0 .. set.children_count {
-		types << scoped.parse_resolution_type(tc.a.child_node(set, i).value)
-	}
-	return types
 }
 
 // generic_constraint_accepts reports whether `actual` satisfies `constraint`.
@@ -169,33 +192,24 @@ fn (tc &TypeChecker) generic_struct_decl(name string) ?flat.Node {
 	return none
 }
 
-// check_generic_constraint_decls reports a constraint that names neither an
-// interface nor a set of types, as `[T User]`, where it is written.
+// check_generic_constraint_decls reports a constraint that names no type,
+// `[T Nope]`, where it is written. The parser takes a name there, `Named`,
+// `mod.Named` or `Comparable[T]`, whose type is the one to find.
 fn (mut tc TypeChecker) check_generic_constraint_decls(node_id flat.NodeId, node flat.Node) {
 	names := node.generic_params()
 	constraints := node.generic_constraints()
 	if constraints.len != names.len {
 		return
 	}
+	file := tc.a.source_files[int(node.pos.id)] or { return }
+	decl_module := tc.file_modules[file.name] or { tc.cur_module }
 	for i, text in constraints {
-		if text.len == 0 || tc.generic_constraint_set(node, text) != none {
+		if text.len == 0
+			|| tc.type_name_known_in_scope(text.all_before('['), file.name, decl_module) {
 			continue
 		}
-		typ := tc.generic_constraint_type(node, text)
-		if typ is Interface {
-			continue
-		}
-		pos := tc.generic_constraint_pos(node, names[i], text)
-		file := tc.a.source_files[int(node.pos.id)] or { continue }
-		if !tc.type_name_known_in_scope(text.all_before('['), file.name, tc.file_modules[file.name] or {
-			tc.cur_module
-		})
-		{
-			tc.record_error_at(.unknown_type, 'unknown type `${text}`', node_id, pos)
-			continue
-		}
-		tc.record_error_at(.unknown_type, 'the constraint of `${names[i]}` must be an interface or a constraint, not `${text}`',
-			node_id, pos)
+		tc.record_error_at(.unknown_type, 'unknown type `${text}`', node_id, tc.generic_constraint_pos(node,
+			names[i], text))
 	}
 }
 
@@ -602,49 +616,6 @@ fn (mut tc TypeChecker) check_generic_fn_value_constraints(id flat.NodeId, node 
 	}
 }
 
-// check_constraint_decl checks a `constraint` declaration as a sum type
-// declaration is checked: its name, a type or a constraint of the same name
-// before it, and the types it lists, which must exist, each once. A type of
-// the set can be any type, `[]int` or `?User`, but a Result type or the
-// constraint itself.
-fn (mut tc TypeChecker) check_constraint_decl(node_id flat.NodeId, node flat.Node) {
-	tc.check_type_declaration_conflict(node_id, node)
-	if tc.should_check_type_declaration_name(node_id, node)
-		&& !pascal_case_name_is_valid(node.value) {
-		tc.check_pascal_case_name(node_id, node.value, 'constraint', tc.declaration_keyword_name_pos(node_id,
-			'constraint'))
-	}
-	mut seen := map[string]bool{}
-	for i in 0 .. node.children_count {
-		type_id := tc.a.child(&node, i)
-		type_node := tc.a.node(type_id)
-		text := trimmed_space(type_node.value)
-		// The parser reports a missing type and `none`.
-		if text.len == 0 || text == 'none' {
-			continue
-		}
-		if text == node.value {
-			tc.record_error_at(.assignment_mismatch, 'constraint cannot hold itself', type_id,
-				type_node.pos)
-			continue
-		}
-		typ := tc.parse_type(text)
-		key := if typ is Unknown { text } else { typ.name() }
-		if seen[key] {
-			tc.record_error_at(.duplicate_decl, 'constraint ${node.value} cannot hold the type `${key.all_after_last('.')}` more than once',
-				type_id, type_node.pos)
-			continue
-		}
-		seen[key] = true
-		if typ is ResultType {
-			tc.record_error_at(.assignment_mismatch, 'a constraint cannot hold a Result type',
-				type_id, type_node.pos)
-			continue
-		}
-		tc.check_type_string_for_unsupported_generics(text, type_id, map[string]bool{})
-	}
-}
-
 struct ConstraintWalkItem {
 	id          flat.NodeId
 	narrowed    []string                     // names whose type an `is` or a `match` decided here
@@ -1021,14 +992,13 @@ fn (mut tc TypeChecker) constraint_walk_infer(param_text string, actual Type, na
 }
 
 // program_declares_constraints reports whether a declaration of the program names
-// a constraint, `[T Named]`, or declares a set of types. The checks that walk
-// every generic body and sweep every written type run only then: a program
-// without constraints is checked exactly as before.
+// a constraint, `[T Named]`. The checks that walk every generic body and sweep
+// every written type run only then: a program without constraints is checked
+// exactly as before.
 fn (mut tc TypeChecker) program_declares_constraints() bool {
 	if !tc.constraints_scanned {
 		tc.constraints_scanned = true
-		tc.declares_constraints = tc.constraint_sets.len > 0
-			|| tc.top_level_idx.any(tc.a.nodes[it].generic_constraints().any(it.len > 0))
+		tc.declares_constraints = tc.top_level_idx.any(tc.a.nodes[it].generic_constraints().any(it.len > 0))
 	}
 	return tc.declares_constraints
 }
@@ -1699,7 +1669,8 @@ fn (mut tc TypeChecker) check_constraint_member(node_id flat.NodeId, node flat.N
 		return
 	}
 	iface_name := tc.interface_metadata_name(constraint.iface.name)
-	display := iface_name.all_after_last('.')
+	// The constraint as written, `Value` for `type Value = Named`.
+	display := constraint.name
 	if member in tc.interface_abstract_method_names(iface_name) {
 		return
 	}
@@ -2309,8 +2280,7 @@ fn (tc &TypeChecker) constraint_operator_types(constraint GenericConstraint) []T
 // `typ` of `constraint` does not take, with the constraint that decides it.
 fn (mut tc TypeChecker) record_constraint_operator_error(id flat.NodeId, pos token.Pos, what string, constraint GenericConstraint, typ Type) {
 	message := if constraint.is_interface {
-		display := tc.interface_metadata_name(constraint.iface.name).all_after_last('.')
-		'${what}: its constraint `${display}` does not declare it'
+		'${what}: its constraint `${constraint.name}` does not declare it'
 	} else {
 		'${what}: `${typ.name().all_after_last('.')}`, in its constraint `${constraint.name}`, does not have it'
 	}

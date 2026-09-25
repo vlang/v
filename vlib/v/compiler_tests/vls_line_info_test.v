@@ -86,7 +86,8 @@ enum Perm {
 "
 
 // Generic functions whose type parameters name a constraint: an interface, or
-// a set of types. A client asks after a dot with a placeholder name, `a.zz`.
+// a sum type, for its variants. A client asks after a dot with a placeholder
+// name, `a.zz`.
 const constraints_program = "module main
 
 interface Named {
@@ -103,7 +104,7 @@ fn (u User) greet() string {
 	return u.name
 }
 
-constraint Number = int | f64
+type Number = int | f64
 
 fn longest[T Named](a T, b T) T {
 	if a.name.len >= b.name.len {
@@ -884,11 +885,11 @@ fn test_a_constrained_value_has_the_members_of_its_constraint() {
 }
 
 fn test_a_constraint_name_has_a_definition_and_a_hover() {
-	// `Number` in `describe[T Number]`: the `constraint` declaration.
-	assert constrained('gd^', 27, 'Number', 0) == 'main.v:17:11'
-	assert constrained('hv^', 27, 'Number', 0) == '{"contents":{"kind":"markdown","value":"```v\\nconstraint Number = int | f64\\n```"}}'
+	// `Number` in `describe[T Number]`: the sum type, `type Number = int | f64`.
+	assert constrained('gd^', 27, 'Number', 0) == 'main.v:17:5'
+	assert constrained('hv^', 27, 'Number', 0) == '{"contents":{"kind":"markdown","value":"```v\\ntype Number = int | f64\\n```"}}'
 	// On the name it declares: that declaration.
-	assert constrained('gd^', 17, 'Number', 0) == 'main.v:17:11'
+	assert constrained('gd^', 17, 'Number', 0) == 'main.v:17:5'
 	// `Named` in `longest[T Named]`: the interface, as any type written there.
 	assert constrained('gd^', 19, 'Named', 0) == 'main.v:3:10'
 }
@@ -896,7 +897,7 @@ fn test_a_constraint_name_has_a_definition_and_a_hover() {
 fn test_a_compile_time_branch_in_a_constrained_body_leaves_the_queries_working() {
 	// `$if T is f64 {` in `half[T Number]`: the walk of the body narrows `T` in
 	// each branch, and the program still answers the editor's queries.
-	assert constrained('hv^', 37, 'Number', 0) == '{"contents":{"kind":"markdown","value":"```v\\nconstraint Number = int | f64\\n```"}}'
+	assert constrained('hv^', 37, 'Number', 0) == '{"contents":{"kind":"markdown","value":"```v\\ntype Number = int | f64\\n```"}}'
 	assert constrained('gd^', 39, 'x', 0) == 'main.v:37:18'
 }
 
@@ -905,13 +906,13 @@ fn test_many_compile_time_branches_in_constrained_bodies_leave_the_queries_worki
 	// closures, which fail in the runtime of the compiler once there are enough.
 	dir := os.join_path(work_dir, 'comptime_many')
 	os.mkdir_all(dir) or { panic(err) }
-	mut src := 'module main\n\nconstraint Number = int | i8 | i64 | f32 | f64\n\n'
+	mut src := 'module main\n\ntype Number = int | i8 | i64 | f32 | f64\n\n'
 	for i in 0 .. 12 {
 		src += "fn f${i}[T Number](x T) string {\n\t\$if T is f64 {\n\t\treturn 'f64'\n\t} \$else \$if T is f32 || T is i8 {\n\t\treturn 'f32'\n\t} \$else \$if T in [int, i64] {\n\t\treturn 'int'\n\t} \$else {\n\t\treturn x.str()\n\t}\n}\n\n"
 	}
 	src += 'fn main() {}\n'
 	os.write_file(os.join_path(dir, 'main.v'), src) or { panic(err) }
-	assert ask_at(dir, '3:hv^12') == '{"contents":{"kind":"markdown","value":"```v\\nconstraint Number = int | i8 | i64 | f32 | f64\\n```"}}'
+	assert ask_at(dir, '3:hv^6') == '{"contents":{"kind":"markdown","value":"```v\\ntype Number = int | i8 | i64 | f32 | f64\\n```"}}'
 }
 
 fn test_a_compile_time_is_narrows_what_a_constrained_value_offers() {
@@ -932,7 +933,7 @@ struct User {
 	age  int
 }
 
-constraint Numeric = int | i8 | f32 | f64
+type Numeric = int | i8 | f32 | f64
 
 fn test[T Numeric](value T) string {
 	\$if T is f32 || T is f64 {
