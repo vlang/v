@@ -1101,13 +1101,10 @@ fn (mut tc TypeChecker) check_generic_call_in_body(id flat.NodeId, node flat.Nod
 			if param !in scope.names {
 				continue
 			}
-			bound_texts := own.map(fn [binding] (own_name string) string {
-				t := binding.types[own_name] or { return own_name }
-				if t is Unknown {
-					return generic_placeholder_from_unknown(t) or { own_name }
-				}
-				return t.name().all_after_last('.')
-			})
+			mut bound_texts := []string{cap: own.len}
+			for own_name in own {
+				bound_texts << binding_text(binding, own_name)
+			}
 			display := subst_generic_text(need.name, bound_texts, own)
 			if reason := tc.constraint_unmet_reason(constraints, param, need, display) {
 				callee := binding.info.name.all_after_last('.')
@@ -1119,6 +1116,16 @@ fn (mut tc TypeChecker) check_generic_call_in_body(id flat.NodeId, node flat.Nod
 			tc.record_generic_constraint_error(need, name, bound, id, pos)
 		}
 	}
+}
+
+// binding_text is how the type that `binding` binds the type parameter `name`
+// to is written: the name of a type parameter, or of a type.
+fn binding_text(binding CallBinding, name string) string {
+	t := binding.types[name] or { return name }
+	if t is Unknown {
+		return generic_placeholder_from_unknown(t) or { name }
+	}
+	return t.name().all_after_last('.')
 }
 
 // generic_param_arg_pos is where a call passes the first argument whose
@@ -1247,9 +1254,7 @@ fn (tc &TypeChecker) constraint_comptime_branches(node flat.Node, constraints ma
 		if constraint.is_interface {
 			branches << ConstraintBranch{else_id, constraints}
 		} else {
-			rest := constraint.types.filter(fn [then_types] (t Type) bool {
-				return !then_types.any(it.name() == t.name())
-			})
+			rest := types_without(constraint.types, then_types)
 			if rest.len > 0 {
 				branches << ConstraintBranch{else_id, constraints_with(constraints, name,
 					constraint, rest)}
@@ -1299,9 +1304,7 @@ fn (tc &TypeChecker) constraint_condition_types(cond string, name string, constr
 		mut types := tc.constraint_condition_term_types(alternative, name, constraint)?
 		for term in alternative.split('&&')[1..] {
 			allowed := tc.constraint_condition_term_types(term, name, constraint)?
-			types = types.filter(fn [allowed] (t Type) bool {
-				return allowed.any(it.name() == t.name())
-			})
+			types = types_within(types, allowed)
 		}
 		if i == 0 {
 			result = types
@@ -1369,9 +1372,6 @@ fn (tc &TypeChecker) constraint_condition_term_types(term_text string, name stri
 	} else {
 		named << tc.parse_type(rest)
 	}
-	matches := fn [tc, named, groups] (t Type) bool {
-		return named.any(it.name() == t.name()) || groups.any(tc.type_in_comptime_group(t, it))
-	}
 	positive := op in ['is', 'in']
 	if constraint.is_interface {
 		if !positive || groups.len > 0 {
@@ -1379,9 +1379,39 @@ fn (tc &TypeChecker) constraint_condition_term_types(term_text string, name stri
 		}
 		return named
 	}
-	return constraint.types.filter(fn [matches, positive] (t Type) bool {
-		return matches(t) == positive
-	})
+	mut result := []Type{}
+	for t in constraint.types {
+		matched := named.any(it.name() == t.name())
+			|| groups.any(tc.type_in_comptime_group(t, it))
+		if matched == positive {
+			result << t
+		}
+	}
+	return result
+}
+
+// types_without is `types` without the ones `removed` names. The walk keeps
+// away from closures: the compiler is built without a garbage collector, and
+// its closure runtime fails when the editor asks it about a program.
+fn types_without(types []Type, removed []Type) []Type {
+	mut rest := []Type{}
+	for t in types {
+		if !removed.any(it.name() == t.name()) {
+			rest << t
+		}
+	}
+	return rest
+}
+
+// types_within is `types` with only the ones `allowed` names.
+fn types_within(types []Type, allowed []Type) []Type {
+	mut kept := []Type{}
+	for t in types {
+		if allowed.any(it.name() == t.name()) {
+			kept << t
+		}
+	}
+	return kept
 }
 
 // type_in_comptime_group reports whether `typ` belongs to the compile-time type
