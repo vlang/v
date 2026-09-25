@@ -446,7 +446,12 @@ pub mut:
 	export_fn_names              map[string]string
 	noreturn_fns                 map[string]bool
 	source_files                 map[int]&token.File
-	comments                     []Comment
+	// resolved_source_paths maps source paths to their resolved form. The owning
+	// thread fills it through record_source_path and resolve_source_paths, which
+	// sets source_paths_frozen; from then on it is only read, see real_source_path.
+	resolved_source_paths map[string]string
+	source_paths_frozen   bool
+	comments              []Comment
 	// formatter_sources retains exact source spans or prefixes for constructs whose
 	// source syntax is intentionally opaque to compiler backends.
 	formatter_sources      map[int]string

@@ -1679,12 +1679,13 @@ pub fn (mut g FlatGen) set_program_body_only(enabled bool) {
 }
 
 // set_cache_program_files assigns entry-module source files to the program
-// translation unit rather than an imported module cache object.
-pub fn (mut g FlatGen) set_cache_program_files(files []string) {
+// translation unit rather than an imported module cache object. Each file is
+// resolved through `a`'s table of resolved source paths.
+pub fn (mut g FlatGen) set_cache_program_files(a &flat.FlatAst, files []string) {
 	g.cache_program_files = map[string]bool{}
 	for file in files {
 		g.cache_program_files[file] = true
-		g.cache_program_files[os.real_path(file)] = true
+		g.cache_program_files[a.real_source_path(file)] = true
 	}
 }
 
@@ -1931,7 +1932,7 @@ pub fn cache_external_input_snapshot_with_resolved_flags(a &flat.FlatAst, vroot 
 		node := a.nodes[node_id]
 		if node.kind == .file {
 			cur_file = node.value
-			cur_file_is_program = cache_program_file_matches(program_files, cur_file, mut
+			cur_file_is_program = cache_program_file_matches(a, program_files, cur_file, mut
 				program_file_memo)
 			cur_module = ''
 			conditionals.clear()
