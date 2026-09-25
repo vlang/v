@@ -27,5 +27,33 @@ fn main() {
 	} $else {
 		total += used_only_in_skipped_else(total)
 	}
-	println(total)
+	println(total + selected_platform_value + selected_in_skipped_if + selected_in_skipped_else)
 }
+
+const platform_value = 1
+
+const selected_platform_value = $if windows { platform_value } $else { 0 }
+
+fn used_only_in_skipped_const_if() int {
+	return 3
+}
+
+const selected_in_skipped_if = $if never_defined ? { used_only_in_skipped_const_if() } $else { 0 }
+
+fn used_only_in_skipped_const_else() int {
+	return 5
+}
+
+const selected_in_skipped_else = $if !never_defined ? { 0 } $else { used_only_in_skipped_const_else() }
+
+fn used_only_by_skipped_top_level_fn() int {
+	return 6
+}
+
+$if never_defined ? {
+	fn only_on_another_target() int {
+		return used_only_by_skipped_top_level_fn()
+	}
+}
+
+const unused_const = 9

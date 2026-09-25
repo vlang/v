@@ -6731,6 +6731,23 @@ fn (mut p Parser) skip_block() {
 	}
 }
 
+// skip_block_recording_decl_names skips a block like skip_block, recording each
+// name it spells as a possible use of a function or a constant.
+fn (mut p Parser) skip_block_recording_decl_names() {
+	mut depth := 1
+	p.next()
+	for depth > 0 && p.tok != .eof {
+		if p.tok == .name {
+			p.a.comptime_skipped_decl_names[p.lit] = true
+		} else if p.tok == .lcbr {
+			depth++
+		} else if p.tok == .rcbr {
+			depth--
+		}
+		p.next()
+	}
+}
+
 fn skipped_pipe_starts_lambda(prev_tok token.Token) bool {
 	return prev_tok !in [.name, .key_module, .key_shared, .key_type, .number, .string, .char,
 		.key_true, .key_false, .key_nil, .key_none, .rpar, .rsbr, .rcbr, .not, .question, .inc,
@@ -6793,8 +6810,10 @@ fn (mut p Parser) skip_comptime_block() {
 		return
 	}
 	if p.cur_fn_offset < 0 {
-		// A branch outside any function body cannot hide the use of a local.
-		p.skip_block()
+		// A branch outside any function body cannot hide the use of a local,
+		// but a const initializer or a declaration there can still use a
+		// function or a constant.
+		p.skip_block_recording_decl_names()
 		return
 	}
 	prefix := '${p.cur_file}:${p.cur_fn_offset}|'
