@@ -505,6 +505,107 @@ fn main() {}
 	], res.output
 }
 
+fn test_a_constrained_generic_needs_the_constraint_of_a_type_parameter_it_takes() {
+	// `Box[T]` or `pick(a, b)` with a type parameter of the declaration around
+	// them: its constraint has to satisfy theirs, where they are written, as in
+	// Go and Rust. A `T` without one is told which to take; an interface that
+	// embeds `Named` satisfies `Named`, and so does `T` in `$if T is int`.
+	res := check_program('propagation', 'struct Box[T Named] {
+	item T
+}
+
+fn wrap[T](x T) Box[T] {
+	return Box[T]{
+		item: x
+	}
+}
+
+fn wrap_ok[T Named](x T) Box[T] {
+	return Box[T]{
+		item: x
+	}
+}
+
+interface Other {
+	id int
+}
+
+fn wrap_other[T Other](x T) Box[T] {
+	return Box{
+		item: x
+	}
+}
+
+fn pick[T Named](a T, b T) T {
+	return a
+}
+
+fn call_unconstrained[U](a U, b U) U {
+	return pick(a, b)
+}
+
+fn call_ok[U NamedGreeter](a U, b U) U {
+	return pick(a, b)
+}
+
+fn call_explicit[U](a U) U {
+	return pick[U](a, a)
+}
+
+constraint Number = int | f64
+
+constraint Word = string | int
+
+fn double[T Number](x T) T {
+	return x + x
+}
+
+fn call_set[W Word](x W) W {
+	return double(x)
+}
+
+fn call_set_ok[W Number](x W) W {
+	return double(x)
+}
+
+fn call_literal[U](x U) {
+	println(pick(1, 2))
+}
+
+struct Outer[T] {
+	inner Box[T]
+}
+
+struct OuterOk[T Named] {
+	inner Box[T]
+}
+
+fn (b Box[T]) twice() Box[T] {
+	return b
+}
+
+fn narrowed_call[T Number](x T) {
+	$if T is int {
+		println(double(x))
+	}
+}
+
+fn main() {}
+')
+	assert res.exit_code == 1, res.output
+	assert error_lines(res.output) == [
+		'6:9: `Box[T]` needs `T` to implement `Named`: `T` has no constraint: give it one, `[T Named]`',
+		'5:17: `Box[T]` needs `T` to implement `Named`: `T` has no constraint: give it one, `[T Named]`',
+		'22:9: `Box[T]` needs `T` to implement `Named`: its constraint `Other` does not',
+		'21:29: `Box[T]` needs `T` to implement `Named`: its constraint `Other` does not',
+		'32:14: `pick` needs `U` to implement `Named`: `U` has no constraint: give it one, `[U Named]`',
+		'40:14: `pick` needs `U` to implement `Named`: `U` has no constraint: give it one, `[U Named]`',
+		'52:16: `double` needs `W` to be in `Number`: `string`, in its constraint `Word`, is not',
+		"60:15: `int` doesn't implement field `name` of interface `Named`",
+		'64:8: `Box[T]` needs `T` to implement `Named`: `T` has no constraint: give it one, `[T Named]`',
+	], res.output
+}
+
 fn test_a_local_of_type_t_can_use_what_the_constraint_declares() {
 	res := check_program('derived_valid', "fn total[T Named](a T, items []T) int {
 	x := a

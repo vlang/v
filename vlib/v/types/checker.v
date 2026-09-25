@@ -767,6 +767,8 @@ pub mut:
 	transform_struct_maps_shared     bool
 	fn_generic_params                map[string][]string
 	constraint_sets                  map[string]flat.NodeId
+	constraints_scanned              bool // program_declares_constraints has looked
+	declares_constraints             bool
 	specialized_generic_fns          map[string]bool
 	fn_variadic                      map[string]bool
 	c_variadic_fns                   map[string]bool
