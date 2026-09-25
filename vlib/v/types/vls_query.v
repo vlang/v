@@ -294,7 +294,7 @@ fn vls_embeds_its_type(source string, name_end int) bool {
 fn vls_name_span(node flat.Node, source string) ?(int, int) {
 	start := int(node.pos.offset)
 	end := int(node.pos.end)
-	if node.kind in [.field_decl, .const_field, .interface_field, .fn_decl] {
+	if node.kind in [.field_decl, .const_field, .interface_field, .fn_decl, .constraint_decl] {
 		// A declaration starts with its name, which its node may not span; a
 		// method's node names its receiver's type too.
 		name := if node.kind == .fn_decl { node.value.all_after_last('.') } else { node.value }

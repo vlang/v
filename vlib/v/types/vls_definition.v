@@ -87,7 +87,8 @@ fn (mut tc TypeChecker) vls_definition_at(target VlsTarget) ?VlsPos {
 		.cast_expr, .struct_init, .is_expr, .as_expr {
 			return tc.vls_type_definition(node.value)
 		}
-		.param, .enum_field, .field_decl, .fn_decl, .const_field, .interface_field {
+		.param, .enum_field, .field_decl, .fn_decl, .const_field, .interface_field,
+		.constraint_decl {
 			// The name a declaration introduces, which the target spans: also
 			// the name of a method's receiver, whose node has no position of
 			// its own.
@@ -205,8 +206,13 @@ fn (tc &TypeChecker) vls_global_definition(name string) ?VlsPos {
 }
 
 // vls_type_definition is where the type `name` is declared: the name after
-// `struct`, `interface`, `enum` or `type`.
+// `struct`, `interface`, `enum`, `type` or `constraint`.
 fn (tc &TypeChecker) vls_type_definition(name string) ?VlsPos {
+	// A set of types that a type parameter names as its constraint.
+	if set_id := tc.vls_constraint_set_id(name) {
+		set := tc.a.node(set_id)
+		return VlsPos{int(set.pos.id), int(set.pos.offset)}
+	}
 	short := name.all_after_last('.')
 	index := tc.first_type_declaration_ids[tc.qualify_name(name)] or {
 		tc.first_type_declaration_ids[name] or { return none }

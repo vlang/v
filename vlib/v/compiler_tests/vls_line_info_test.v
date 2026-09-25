@@ -874,3 +874,13 @@ fn test_a_constrained_value_has_the_members_of_its_constraint() {
 	assert 'str' in labels, labels.str()
 	assert 'hex' !in labels, labels.str()
 }
+
+fn test_a_constraint_name_has_a_definition_and_a_hover() {
+	// `Number` in `describe[T Number]`: the `constraint` declaration.
+	assert constrained('gd^', 27, 'Number', 0) == 'main.v:17:11'
+	assert constrained('hv^', 27, 'Number', 0) == '{"contents":{"kind":"markdown","value":"```v\\nconstraint Number = int | f64\\n```"}}'
+	// On the name it declares: that declaration.
+	assert constrained('gd^', 17, 'Number', 0) == 'main.v:17:11'
+	// `Named` in `longest[T Named]`: the interface, as any type written there.
+	assert constrained('gd^', 19, 'Named', 0) == 'main.v:3:10'
+}

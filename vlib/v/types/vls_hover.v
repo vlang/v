@@ -69,6 +69,9 @@ fn (mut tc TypeChecker) vls_hover_declaration(target VlsTarget) string {
 			typ := tc.vls_field_type(owner, node.value) or { return '' }
 			return '${node.value} ${tc.vls_type_text(typ)}'
 		}
+		.constraint_decl {
+			return tc.vls_constraint_declaration(id)
+		}
 		else {
 			return ''
 		}
@@ -591,11 +594,34 @@ fn (tc &TypeChecker) vls_enum_value_hover(enum_name string, field string) string
 	return '${name} = ${value}'
 }
 
+// vls_constraint_set_id is the `constraint` declaration named `name`, as it is
+// written in the current file.
+fn (tc &TypeChecker) vls_constraint_set_id(name string) ?flat.NodeId {
+	return tc.constraint_sets[tc.qualify_decl_name(name)] or {
+		tc.constraint_sets[name] or { return none }
+	}
+}
+
+// vls_constraint_declaration is the hover of a `constraint` declaration:
+// `constraint Number = int | f64`.
+fn (tc &TypeChecker) vls_constraint_declaration(set_id flat.NodeId) string {
+	set := tc.a.node(set_id)
+	mut types := []string{cap: set.children_count}
+	for i in 0 .. set.children_count {
+		types << tc.a.child_node(set, i).value
+	}
+	return 'constraint ${set.value} = ${types.join(' | ')}'
+}
+
 // vls_type_declaration is how V1 describes a type: `struct Name`, `enum Name`,
-// `interface Name`, `type Name = Parent` or `type Name = A | B`.
+// `interface Name`, `type Name = Parent` or `type Name = A | B`; a set of types
+// as it is declared, `constraint Name = A | B`.
 fn (tc &TypeChecker) vls_type_declaration(name string) ?string {
 	if name.len == 0 {
 		return none
+	}
+	if set_id := tc.vls_constraint_set_id(name) {
+		return tc.vls_constraint_declaration(set_id)
 	}
 	qualified := tc.qualify_name(name)
 	short := name.all_after_last('.')
