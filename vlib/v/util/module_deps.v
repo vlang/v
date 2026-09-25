@@ -5,9 +5,16 @@ import v.pref
 
 // external_module_dependencies_for_tool lists the modules from outside vlib that a
 // bundled tool needs before it can be compiled. `v build-tools` installs these up
-// front, so that building the tools does not fail on a fresh checkout.
+// front, and the `v` launcher installs them before it compiles a tool on demand, so
+// that building the tools does not fail on a fresh checkout.
 pub const external_module_dependencies_for_tool = {
 	'vdoc': ['markdown']
+}
+
+// external_modules_for_tool returns the modules from outside vlib that the bundled
+// tool `tool_name` (for example `vdoc`) needs before it can be compiled.
+pub fn external_modules_for_tool(tool_name string) []string {
+	return external_module_dependencies_for_tool[tool_name] or { []string{} }
 }
 
 // check_module_is_installed makes sure that `modulename` is present in ~/.vmodules,
@@ -64,17 +71,28 @@ and the existing module `${modulename}` may still work.')
 	return true
 }
 
+// ensure_modules_for_tool_are_installed installs the modules from outside vlib that the
+// bundled tool `tool_name` needs, before that tool is compiled. Modules that are already
+// installed are left alone, so this does not touch the network in the common case.
+// The returned error names the module that could not be installed, and how to install
+// it manually, instead of leaving the user with a `cannot import module` builder error.
+pub fn ensure_modules_for_tool_are_installed(tool_name string, is_verbose bool) ! {
+	for emodule in external_modules_for_tool(tool_name) {
+		check_module_is_installed(emodule, is_verbose, false) or {
+			return error('cannot install the `${emodule}` module, which the `${tool_name}` tool needs: ${err.msg().trim_space()}\nInstall it with `v install ${emodule}`, then try again.')
+		}
+	}
+}
+
 // ensure_modules_for_all_tools_are_installed installs every module named in
 // external_module_dependencies_for_tool. It is called by `v build-tools` before it
 // starts compiling, so a missing dependency is reported once, up front, instead of
 // as a confusing "unknown module" error from the middle of a tool's build.
 pub fn ensure_modules_for_all_tools_are_installed(is_verbose bool) {
-	for tool_name, tool_modules in external_module_dependencies_for_tool {
+	for tool_name, _ in external_module_dependencies_for_tool {
 		if is_verbose {
 			eprintln('Installing modules for tool: ${tool_name} ...')
 		}
-		for emodule in tool_modules {
-			check_module_is_installed(emodule, is_verbose, false) or { panic(err) }
-		}
+		ensure_modules_for_tool_are_installed(tool_name, is_verbose) or { panic(err) }
 	}
 }
