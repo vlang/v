@@ -505,6 +505,65 @@ fn main() {}
 	], res.output
 }
 
+fn test_a_compile_time_is_on_a_value_narrows_its_type_parameter() {
+	// `$if x is f64 {` with `x T` asks what `$if T is f64 {` asks, for a local
+	// that gets its value from a `T` too, and with `!is`, `in`, `!in`, the groups
+	// and `||`. An `is` outside `$if` is no compile-time test: V rejects it.
+	res := check_program('comptime_value_is', 'constraint Number = int | f64
+
+fn narrow[T Number](x T, y T) T {
+	$if x is f64 {
+		println(x % y)
+	} $else {
+		println(x % y)
+	}
+	$if y is int {
+		println(x % y)
+	}
+	$if x !is f64 {
+		println(x % y)
+	}
+	$if x in [int] {
+		println(x % y)
+	}
+	$if x !in [int] {
+		println(x % y)
+	}
+	$if x is $int {
+		println(x << 1)
+	} $else {
+		println(x << 1)
+	}
+	z := x
+	$if z is int {
+		println(z % y)
+	}
+	$if x is f64 || y is f64 {
+		println(x % y)
+	}
+	return x
+}
+
+fn narrow_iface[T Named](a T) {
+	$if a is User {
+		println(a.age)
+	} $else {
+		println(a.age)
+	}
+}
+
+fn main() {}
+')
+	assert res.exit_code == 1, res.output
+	assert error_lines(res.output) == [
+		'5:13: operator `%` is not defined on type `T`: `f64`, in its constraint `Number`, does not have it',
+		'19:13: operator `%` is not defined on type `T`: `f64`, in its constraint `Number`, does not have it',
+		'24:13: operator `<<` is not defined on type `T` and `int literal`: `f64`, in its constraint `Number`, does not have it',
+		'31:13: operator `%` is not defined on type `T`: `f64`, in its constraint `Number`, does not have it',
+		'40:13: type `T` has no field named `age`: its constraint `Named` does not declare it',
+	], res.output
+}
+
 fn test_a_constrained_generic_needs_the_constraint_of_a_type_parameter_it_takes() {
 	// `Box[T]` or `pick(a, b)` with a type parameter of the declaration around
 	// them: its constraint has to satisfy theirs, where they are written, as in

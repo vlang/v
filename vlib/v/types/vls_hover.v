@@ -227,17 +227,24 @@ fn (tc &TypeChecker) vls_constrained_type(id flat.NodeId, typ Type) ?Type {
 	if constraint.is_interface {
 		return Type(constraint.iface)
 	}
+	// `$if a is User {` leaves it one type: a value of it is one.
+	if constraint.types.len == 1 {
+		return constraint.types[0]
+	}
 	return none
 }
 
 // vls_type_constraint is the constraint of `typ` when it is a type parameter of
-// the generic function around `id` that names one.
+// the generic function around `id` that names one, where `id` is: in `$if T is
+// f64 {` it is `f64`, as the check of the body takes it.
 fn (tc &TypeChecker) vls_type_constraint(id flat.NodeId, typ Type) ?GenericConstraint {
 	clean := unwrap_pointer(typ)
 	if clean !is Unknown {
 		return none
 	}
 	param := generic_placeholder_from_unknown(clean as Unknown)?
+	// The nodes from `id` up to the function, each a child of the next.
+	mut path := [id]
 	mut cur := id
 	for _ in 0 .. 4096 {
 		cur = tc.vls_parent_id(cur)
@@ -246,10 +253,36 @@ fn (tc &TypeChecker) vls_type_constraint(id flat.NodeId, typ Type) ?GenericConst
 		}
 		node := tc.a.node(cur)
 		if node.kind == .fn_decl {
-			return tc.generic_constraints_of(*node)[param] or { return none }
+			return tc.vls_narrowed_constraints(*node, path)[param] or { return none }
 		}
+		path << cur
 	}
 	return none
+}
+
+// vls_narrowed_constraints are the constraints of the type parameters of
+// `fn_node` at the end of `path`, the nodes from there up to the body: each
+// `$if` on the way narrows them in the branch that holds the path, as the check
+// of the body does (see constraint_comptime_branches). A branch the check
+// cannot follow leaves them as they are.
+fn (tc &TypeChecker) vls_narrowed_constraints(fn_node flat.Node, path []flat.NodeId) map[string]GenericConstraint {
+	scope := tc.type_param_scope(fn_node)
+	mut constraints := scope.constraints.clone()
+	for i := path.len - 1; i >= 1; i-- {
+		node := tc.a.node(path[i])
+		if node.kind != .comptime_if {
+			continue
+		}
+		cond := comptime_condition_on_type_params(node.value, tc.comptime_tested_params(node.value,
+			fn_node, scope.names, false))
+		for branch in tc.constraint_comptime_branches(*node, cond, constraints) {
+			if branch.id == path[i - 1] {
+				constraints = branch.constraints.clone()
+				break
+			}
+		}
+	}
+	return constraints
 }
 
 // vls_local_type is the type of the variable the ident `id` declares: the one

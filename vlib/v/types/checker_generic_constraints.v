@@ -660,11 +660,13 @@ fn (mut tc TypeChecker) check_generic_fn_constraint_members(fn_node flat.Node) {
 		}
 		node := tc.a.node(item.id)
 		match node.kind {
-			// `$if T is f64 {` decides what `T` is in each branch; a condition that
-			// narrows a constrained type parameter in a way the walk cannot follow
-			// leaves both branches unchecked.
+			// `$if T is f64 {` decides what `T` is in each branch, as `$if x is f64 {`
+			// does for `x T`; a condition that narrows a constrained type parameter
+			// in a way the walk cannot follow leaves both branches unchecked.
 			.comptime_if {
-				for branch in tc.constraint_comptime_branches(*node, item.constraints) {
+				cond := comptime_condition_on_type_params(node.value, tc.comptime_tested_params(node.value,
+					fn_node, scope.names, true))
+				for branch in tc.constraint_comptime_branches(*node, cond, item.constraints) {
 					stack << ConstraintWalkItem{
 						id:          branch.id
 						narrowed:    item.narrowed
@@ -1220,16 +1222,18 @@ struct ConstraintBranch {
 }
 
 // constraint_comptime_branches are the branches of `$if`, `node`, to walk, each
-// with what its condition makes of the constrained type parameters: in
+// with what its condition `cond` makes of the constrained type parameters: in
 // `$if T is f64 {`, `T` is `f64`, and in its `$else` it is the rest of its
 // set. A condition that names no constrained type parameter leaves them as
 // they are. One that names one in a way that cannot be followed gives no
-// branch to walk, as a branch that no type of the set can reach.
-fn (tc &TypeChecker) constraint_comptime_branches(node flat.Node, constraints map[string]GenericConstraint) []ConstraintBranch {
+// branch to walk, as a branch that no type of the set can reach. `cond` is the
+// condition of `node` with the values it tests written as their type
+// parameters (see comptime_condition_on_type_params).
+fn (tc &TypeChecker) constraint_comptime_branches(node flat.Node, cond string, constraints map[string]GenericConstraint) []ConstraintBranch {
 	mut branches := []ConstraintBranch{}
 	then_id := if node.children_count > 0 { tc.a.child(&node, 0) } else { flat.NodeId(-1) }
 	else_id := if node.children_count > 1 { tc.a.child(&node, 1) } else { flat.NodeId(-1) }
-	names := constraints.keys().filter(comptime_condition_names(node.value, it))
+	names := constraints.keys().filter(comptime_condition_names(cond, it))
 	if names.len == 0 {
 		for id in [then_id, else_id] {
 			if int(id) >= 0 {
@@ -1243,9 +1247,7 @@ fn (tc &TypeChecker) constraint_comptime_branches(node flat.Node, constraints ma
 	}
 	name := names[0]
 	constraint := constraints[name]
-	then_types := tc.constraint_condition_types(node.value, name, constraint) or {
-		return branches
-	}
+	then_types := tc.constraint_condition_types(cond, name, constraint) or { return branches }
 	if int(then_id) >= 0 && then_types.len > 0 {
 		branches << ConstraintBranch{then_id, constraints_with(constraints, name, constraint,
 			then_types)}
@@ -1279,6 +1281,134 @@ fn comptime_condition_names(cond string, name string) bool {
 		i = idx + 1
 	}
 	return false
+}
+
+// comptime_condition_tested_names are the names that the condition `cond` of
+// `$if` tests with `is`, `!is`, `in` or `!in`: `x` in `x is f64`.
+fn comptime_condition_tested_names(cond string) []string {
+	mut names := []string{}
+	mut i := 0
+	for i < cond.len {
+		end := comptime_condition_name_end(cond, i)
+		if end == i {
+			i++
+			continue
+		}
+		name := cond[i..end]
+		if comptime_test_at(cond, end) && name !in names {
+			names << name
+		}
+		i = end
+	}
+	return names
+}
+
+// comptime_condition_name_end is the end of the name that starts at the byte `i`
+// of the condition `cond`, or `i` when no name starts there: a name that follows
+// a `.` or a `$`, `x.y` or `$int`, is part of what comes before it.
+fn comptime_condition_name_end(cond string, i int) int {
+	if !(cond[i].is_letter() || cond[i] == `_`) || (i > 0 && (cond[i - 1].is_alnum()
+		|| cond[i - 1] in [`_`, `.`, `$`])) {
+		return i
+	}
+	mut end := i
+	for end < cond.len && (cond[end].is_alnum() || cond[end] == `_`) {
+		end++
+	}
+	return end
+}
+
+// comptime_test_at reports whether a test, `is`, `!is`, `in` or `!in`, follows
+// the byte `at` of the condition `cond`, after blanks.
+fn comptime_test_at(cond string, at int) bool {
+	mut i := at
+	for i < cond.len && cond[i] in [` `, `\t`] {
+		i++
+	}
+	if i < cond.len && cond[i] == `!` {
+		i++
+	}
+	if i + 2 >= cond.len || cond[i] != `i` || cond[i + 1] !in [`s`, `n`] {
+		return false
+	}
+	// `T in[int]`: the parser writes the list right after `in`.
+	return cond[i + 2] in [` `, `\t`] || (cond[i + 1] == `n` && cond[i + 2] == `[`)
+}
+
+// comptime_tested_params maps each value that the condition `cond` of `$if`
+// in the body of `fn_node` tests, `x` in `$if x is f64`, to the type parameter,
+// one of `names`, that is its type: a parameter declared `x T` or `mut x T`,
+// and, `in_walk`, a local that the walk of the body bound to a `T`.
+fn (tc &TypeChecker) comptime_tested_params(cond string, fn_node flat.Node, names []string, in_walk bool) map[string]string {
+	mut tested := map[string]string{}
+	for name in comptime_condition_tested_names(cond) {
+		if name in names {
+			continue
+		}
+		if param := tc.fn_param_type_param(fn_node, name, names) {
+			tested[name] = param
+			continue
+		}
+		if !in_walk {
+			continue
+		}
+		typ := tc.cur_scope.lookup(name) or { continue }
+		if typ is Unknown {
+			param := generic_placeholder_from_unknown(typ) or { continue }
+			if param in names {
+				tested[name] = param
+			}
+		}
+	}
+	return tested
+}
+
+// fn_param_type_param is the type parameter, one of `names`, that the
+// parameter `name` of `fn_node` is declared as: `x T`, or `mut x T`, which the
+// parser keeps as `&T`.
+fn (tc &TypeChecker) fn_param_type_param(fn_node flat.Node, name string, names []string) ?string {
+	for i in 0 .. fn_node.children_count {
+		param := tc.a.child_node(&fn_node, i)
+		if param.kind != .param || param.value != name {
+			continue
+		}
+		mut typ := param.typ.trim_space()
+		if param.is_mut && param.op != .amp && typ.starts_with('&') {
+			typ = typ[1..]
+		}
+		if typ in names {
+			return typ
+		}
+		return none
+	}
+	return none
+}
+
+// comptime_condition_on_type_params is the condition `cond` of `$if` with each
+// value that `tested` names written as its type parameter: `$if x is f64` with
+// `x T` asks what `$if T is f64` asks.
+fn comptime_condition_on_type_params(cond string, tested map[string]string) string {
+	if tested.len == 0 {
+		return cond
+	}
+	mut result := ''
+	mut copied := 0
+	mut i := 0
+	for i < cond.len {
+		end := comptime_condition_name_end(cond, i)
+		if end == i {
+			i++
+			continue
+		}
+		if param := tested[cond[i..end]] {
+			if comptime_test_at(cond, end) {
+				result += cond[copied..i] + param
+				copied = end
+			}
+		}
+		i = end
+	}
+	return result + cond[copied..]
 }
 
 // constraints_with is `constraints` where the type parameter `name` has the

@@ -913,3 +913,67 @@ fn test_many_compile_time_branches_in_constrained_bodies_leave_the_queries_worki
 	os.write_file(os.join_path(dir, 'main.v'), src) or { panic(err) }
 	assert ask_at(dir, '3:hv^12') == '{"contents":{"kind":"markdown","value":"```v\\nconstraint Number = int | i8 | i64 | f32 | f64\\n```"}}'
 }
+
+fn test_a_compile_time_is_narrows_what_a_constrained_value_offers() {
+	// In `$if T is f32 || T is f64 {`, a `T` offers what `f32` and `f64` both
+	// have, not only what every type of its set has; `$if value is f64 {` asks the
+	// same of `value T`, and its `$else` has the rest. With an interface, `$if a is
+	// User {` makes `a` a `User`: its members, and its field on F12.
+	dir := os.join_path(work_dir, 'comptime_members')
+	os.mkdir_all(dir) or { panic(err) }
+	os.write_file(os.join_path(dir, 'main.v'), 'module main
+
+interface Named {
+	name string
+}
+
+struct User {
+	name string
+	age  int
+}
+
+constraint Numeric = int | i8 | f32 | f64
+
+fn test[T Numeric](value T) string {
+	\$if T is f32 || T is f64 {
+		println(value.zz)
+	} \$else {
+		println(value.zz)
+	}
+	\$if value is f64 {
+		println(value.zz)
+	} \$else \$if value is int {
+		println(value.zz)
+	}
+	return value.str()
+}
+
+fn named[T Named](a T) {
+	\$if a is User {
+		println(a.zz)
+		println(a.name)
+	} \$else {
+		println(a.zz)
+		println(a.name)
+	}
+}
+
+fn main() {}
+') or {
+		panic(err)
+	}
+	labels := fn [dir] (line int, col int) []string {
+		answer := ask_at(dir, '${line}:${col}')
+		assert answer != '', '${line}:${col}'
+		return (json2.decode[Details](answer) or { panic('${err}: ${answer}') }).details.map(it.label)
+	}
+	floats := ['eq_epsilon', 'str', 'strg', 'strlong', 'strsci']
+	assert labels(16, 16) == floats
+	assert labels(18, 16) == ['hex', 'hex_full', 'str']
+	assert labels(21, 16) == floats
+	assert labels(23, 16) == ['hex', 'hex2', 'hex_full', 'str']
+	assert labels(30, 12) == ['age', 'name']
+	assert labels(33, 12) == ['name']
+	assert ask(dir, 'gd^', 31, 'name', 0) == 'main.v:8:1'
+	assert ask(dir, 'gd^', 34, 'name', 0) == 'main.v:4:1'
+}
