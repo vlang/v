@@ -7,8 +7,11 @@ const vexe = @VEXE
 
 fn format_with(f fn (&char) int) (int, string) {
 	buf := []u8{len: 64}
+	// unsafe: C interop needs a raw `&char` view of `buf`; `buf` outlives every use of `ptr`.
 	ptr := unsafe { &char(buf.data) }
 	n := f(ptr)
+	// unsafe: reads a C string; the helpers write through vsnprintf with size 64, the length
+	// of the zeroed `buf`, so the text is always NUL-terminated inside `buf`.
 	return n, unsafe { cstring_to_vstring(ptr) }
 }
 
