@@ -564,6 +564,55 @@ fn main() {}
 	], res.output
 }
 
+fn test_a_runtime_is_on_a_value_of_a_constrained_type_is_reported() {
+	// V takes `is` on a sum type or an interface value only: `value is f64` with
+	// `value T` does not build for a type of the constraint that is neither, so
+	// the check says so where it is written; `$if value is f64 {` tests `T`. A
+	// set of sum types takes it.
+	res := check_program('runtime_is', 'constraint Number = int | f64
+
+type Shape = Square | Circle
+
+struct Square {}
+
+struct Circle {}
+
+constraint Shapes = Shape
+
+fn numbers[T Number](value T) string {
+	if value is f64 || value is int {
+		return value.str()
+	}
+	if value !is f64 {
+		return "x"
+	}
+	$if value is f64 {
+		return "f"
+	}
+	return ""
+}
+
+fn named[T Named](a T) {
+	if a is User {
+		println(a.age)
+	}
+}
+
+fn shapes[T Shapes](s T) bool {
+	return s is Circle
+}
+
+fn main() {}
+')
+	assert res.exit_code == 1, res.output
+	assert error_lines(res.output) == [
+		'12:5: `is` can only be used with sum type or interface values, not `T`: `int`, in its constraint `Number`, is neither; test `T` with `\$if value is f64`',
+		'12:21: `is` can only be used with sum type or interface values, not `T`: `int`, in its constraint `Number`, is neither; test `T` with `\$if value is int`',
+		'15:5: `is` can only be used with sum type or interface values, not `T`: `int`, in its constraint `Number`, is neither; test `T` with `\$if value !is f64`',
+		'25:5: `is` can only be used with sum type or interface values, not `T`: a type that implements `Named` does not have to be one; test `T` with `\$if a is User`',
+	], res.output
+}
+
 fn test_a_constrained_generic_needs_the_constraint_of_a_type_parameter_it_takes() {
 	// `Box[T]` or `pick(a, b)` with a type parameter of the declaration around
 	// them: its constraint has to satisfy theirs, where they are written, as in

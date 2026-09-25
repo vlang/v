@@ -652,6 +652,8 @@ fn (mut tc TypeChecker) check_generic_fn_constraint_members(fn_node flat.Node) {
 	mut guards := map[int]bool{}
 	// Operators written as statements, `items << x`, an append.
 	mut statements := map[int]bool{}
+	// The `is` of each `!is`, which the parser keeps as `!(x is Y)`.
+	mut negated := map[int]bool{}
 	tc.push_scope()
 	for stack.len > 0 {
 		item := stack.pop()
@@ -720,7 +722,13 @@ fn (mut tc TypeChecker) check_generic_fn_constraint_members(fn_node flat.Node) {
 			.struct_init {
 				tc.check_inferred_struct_in_body(item.id, *node, scope, item.constraints)
 			}
+			.is_expr {
+				tc.check_constraint_runtime_is(item.id, *node, item.constraints, negated[int(item.id)])
+			}
 			.infix, .prefix, .postfix, .assign, .selector_assign, .index_assign, .index {
+				if node.kind == .prefix && node.op == .not && node.children_count > 0 {
+					negated[int(tc.a.child(node, 0))] = true
+				}
 				tc.check_constraint_operator(item.id, *node, item.constraints, item.narrowed,
 					statements[int(item.id)])
 			}
@@ -1588,6 +1596,41 @@ fn (tc &TypeChecker) constraint_walk_narrowed(node flat.Node, narrowed []string)
 	mut result := narrowed.clone()
 	result << name
 	return result
+}
+
+// check_constraint_runtime_is reports an `is`, `node`, on a value of a
+// constrained type parameter, `value is f64` with `value T`, when a type that
+// its constraint allows is neither a sum type nor an interface: V takes `is` on
+// such values only, and the instance for that type does not build. `$if value
+// is f64 {` tests the type of `T`. `negated` is for the `is` of a `!is`.
+fn (mut tc TypeChecker) check_constraint_runtime_is(id flat.NodeId, node flat.Node, constraints map[string]GenericConstraint, negated bool) {
+	if node.children_count == 0 {
+		return
+	}
+	subject_id := tc.a.child(&node, 0)
+	// The subject is tested before an `if` around it decides its type.
+	param := tc.constraint_walk_param(subject_id, constraints, []string{}) or { return }
+	constraint := constraints[param] or { return }
+	mut reason := ''
+	if constraint.is_interface {
+		reason = 'a type that implements `${constraint.name}` does not have to be one'
+	} else {
+		for typ in constraint.types {
+			clean := unalias_type(typ)
+			if clean !is SumType && clean !is Interface {
+				reason = '`${typ.name().all_after_last('.')}`, in its constraint `${constraint.name}`, is neither'
+				break
+			}
+		}
+	}
+	if reason.len == 0 {
+		return
+	}
+	subject := tc.a.node(subject_id)
+	tested := if subject.kind == .ident { subject.value } else { param }
+	test := if negated { '!is' } else { 'is' }
+	tc.record_error_at(.condition_mismatch, '`is` can only be used with sum type or interface values, not `${param}`: ${reason}; test `${param}` with `\$if ${tested} ${test} ${node.value}`',
+		id, node.pos)
 }
 
 // check_constraint_member checks the member that the selector `sel` names, a
