@@ -525,6 +525,10 @@ mut:
 	scoped_base_nodes       int = -1
 	scoped_owned_base_nodes map[int]bool
 	scoped_owned_base_log   []flat.NodeId
+	// A helper that transforms a private copy of the base AST logs the base nodes
+	// it rewrites in place, so merge_worker can publish them. 0 disables the log.
+	clone_base_nodes        int
+	clone_base_write_log    []flat.NodeId
 	scoped_base_log_active  bool
 	scoped_promoted_texts   map[string]string
 	retain_worker_results   bool
@@ -2453,6 +2457,11 @@ fn (mut t Transformer) mark_scoped_owned_base_node(idx int) {
 		// ownership-guarded no-ops the second time), so a compact append-only
 		// log replaces the per-node map entries in the retained stage arena.
 		t.scoped_owned_base_log << flat.NodeId(idx)
+	}
+	// Only the fn subtree being transformed belongs to this helper, like the
+	// ownership rule of base_write_allowed for the shared-base path.
+	if idx < t.clone_base_nodes && idx >= t.item_range_lo && idx <= t.item_range_hi {
+		t.clone_base_write_log << flat.NodeId(idx)
 	}
 }
 
@@ -4881,6 +4890,24 @@ fn (mut t Transformer) merge_worker(w &Transformer, items []FnWorkItem, base_nod
 		if w.worker_scope != unsafe { nil } && !t.retain_worker_results
 			&& t.stage_scope == unsafe { nil } {
 			t.clone_scoped_worker_node(it.fn_idx, w.worker_scope)
+		}
+	}
+	// Type, value and generic-param annotations on existing nodes of the helper's
+	// functions were written into its private AST copy; publish them the same way.
+	for idx in w.clone_base_write_log {
+		i := int(idx)
+		if i < 0 || i >= base_nodes {
+			continue
+		}
+		n := w.a.nodes[i]
+		if n.children_start >= base_children {
+			t.set_node(i, n.with_shifted_children(child_shift))
+		} else {
+			t.set_node(i, n)
+		}
+		if w.worker_scope != unsafe { nil } && !t.retain_worker_results
+			&& t.stage_scope == unsafe { nil } {
+			t.clone_scoped_worker_node(i, w.worker_scope)
 		}
 	}
 	if t.scope_parallel_workers && t.retain_worker_results {
