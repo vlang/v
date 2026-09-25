@@ -1708,6 +1708,7 @@ fn (mut p Parser) fn_decl_body(name string, receiver_name string, receiver_type 
 	p.disable_fn_body = false
 	// generic params — skip
 	mut generic_params := []string{}
+	mut generic_constraints := []string{}
 	if p.tok == .lt {
 		p.record_diagnostic_span('unexpected token `<`, expecting `(`', p.tok_pos, p.tok_end)
 		for p.tok !in [.gt, .eof] {
@@ -1718,7 +1719,7 @@ fn (mut p Parser) fn_decl_body(name string, receiver_name string, receiver_type 
 		}
 	}
 	if p.tok == .lsbr {
-		generic_params = p.parse_generic_param_names()
+		generic_params, generic_constraints = p.parse_generic_params()
 	}
 	if p.pending_export.len > 0 {
 		if is_c_decl {
@@ -1819,7 +1820,7 @@ fn (mut p Parser) fn_decl_body(name string, receiver_name string, receiver_type 
 			}
 			typ:            ret_type
 			pos:            token.new_pos(p.cur_file_id, name_pos)
-			payload:        flat.node_payload(generic_params)
+			payload:        flat.node_payload_with_constraints(generic_params, named_constraints(generic_constraints))
 			children_start: start
 			children_count: flat.child_count(param_ids.len)
 			flags:          flat.node_flags(false, is_static_type_method)
@@ -1922,7 +1923,7 @@ fn (mut p Parser) fn_decl_body(name string, receiver_name string, receiver_type 
 		value:          name
 		typ:            ret_type
 		pos:            token.new_pos(p.cur_file_id, name_pos)
-		payload:        flat.node_payload(generic_params)
+		payload:        flat.node_payload_with_constraints(generic_params, named_constraints(generic_constraints))
 		children_start: start
 		children_count: flat.child_count(all_ids.len)
 		flags:          flat.node_flags(false, is_static_type_method)
@@ -2271,8 +2272,9 @@ fn (mut p Parser) struct_decl() flat.NodeId {
 	// generic params — skip
 	mut is_generic := false
 	mut generic_params := []string{}
+	mut generic_constraints := []string{}
 	if p.tok == .lsbr {
-		generic_params = p.parse_generic_param_names()
+		generic_params, generic_constraints = p.parse_generic_params()
 		is_generic = generic_params.len > 0
 	}
 	// implements clause
@@ -2302,7 +2304,7 @@ fn (mut p Parser) struct_decl() flat.NodeId {
 			op:      if is_pub { .arrow } else { .none }
 			value:   name
 			typ:     struct_decl_typ(is_union, is_generic, is_params, is_typedef, is_soa, is_aligned, aligned, implements_types)
-			payload: flat.node_payload(generic_params)
+			payload: flat.node_payload_with_constraints(generic_params, named_constraints(generic_constraints))
 			pos:     p.span_to(struct_start)
 		})
 	}
@@ -2681,7 +2683,7 @@ fn (mut p Parser) struct_decl() flat.NodeId {
 		op:             if is_pub { .arrow } else { .none }
 		value:          name
 		typ:            struct_decl_typ(is_union, is_generic, is_params, is_typedef, is_soa, is_aligned, aligned, implements_types)
-		payload:        flat.node_payload(generic_params)
+		payload:        flat.node_payload_with_constraints(generic_params, named_constraints(generic_constraints))
 		pos:            p.span_to(struct_start)
 		children_start: start
 		children_count: flat.child_count(ids.len)
@@ -3178,8 +3180,9 @@ fn (mut p Parser) type_decl() flat.NodeId {
 	name := language_prefix + p.expect_name()
 	// generic params
 	mut generic_params := []string{}
+	mut generic_constraints := []string{}
 	if p.tok == .lsbr {
-		generic_params = p.parse_generic_param_names()
+		generic_params, generic_constraints = p.parse_generic_params()
 	}
 	if p.tok == .assign {
 		p.next()
@@ -3251,7 +3254,7 @@ fn (mut p Parser) type_decl() flat.NodeId {
 			kind:           .type_decl
 			op:             if is_pub { .arrow } else { .none }
 			value:          name
-			payload:        flat.node_payload(generic_params)
+			payload:        flat.node_payload_with_constraints(generic_params, named_constraints(generic_constraints))
 			children_start: start
 			children_count: flat.child_count(variants.len)
 			pos:            p.span_to(type_start)
@@ -3270,7 +3273,7 @@ fn (mut p Parser) type_decl() flat.NodeId {
 		op:      if is_pub { .arrow } else { .none }
 		value:   name
 		typ:     first_type
-		payload: flat.node_payload(generic_params)
+		payload: flat.node_payload_with_constraints(generic_params, named_constraints(generic_constraints))
 		pos:     p.span_to(type_start)
 	})
 }
@@ -3342,8 +3345,9 @@ fn (mut p Parser) interface_decl() flat.NodeId {
 	}
 	// generic params
 	mut generic_params := []string{}
+	mut generic_constraints := []string{}
 	if p.tok == .lsbr {
-		generic_params = p.parse_generic_param_names()
+		generic_params, generic_constraints = p.parse_generic_params()
 	}
 	if p.tok == .semicolon && p.peek() == .lcbr {
 		p.next()
@@ -3521,7 +3525,7 @@ fn (mut p Parser) interface_decl() flat.NodeId {
 		kind:           .interface_decl
 		op:             if is_pub { .arrow } else { .none }
 		value:          name
-		payload:        flat.node_payload(generic_params)
+		payload:        flat.node_payload_with_constraints(generic_params, named_constraints(generic_constraints))
 		children_start: start
 		children_count: flat.child_count(ids.len)
 		pos:            p.span_to(interface_start)
@@ -7004,10 +7008,31 @@ fn (mut p Parser) skip_brackets() {
 	}
 }
 
+// named_constraints returns the constraints of a list of type parameters when
+// one of them names one, and no list otherwise: the payload of a declaration
+// without constraints stays as it was.
+fn named_constraints(constraints []string) []string {
+	for constraint in constraints {
+		if constraint.len > 0 {
+			return constraints
+		}
+	}
+	return []string{}
+}
+
 fn (mut p Parser) parse_generic_param_names() []string {
+	names, _ := p.parse_generic_params()
+	return names
+}
+
+// parse_generic_params returns the names of the type parameters of `[T, U X]`,
+// and the constraint each one names: a type name, qualified by its module or
+// not, with type arguments or not; empty when it names none.
+fn (mut p Parser) parse_generic_params() ([]string, []string) {
 	mut names := []string{}
+	mut constraints := []string{}
 	if p.tok != .lsbr {
-		return names
+		return names, constraints
 	}
 	mut depth := 1
 	mut expect_name := true
@@ -7029,10 +7054,15 @@ fn (mut p Parser) parse_generic_param_names() []string {
 				p.next()
 				if p.prefs.is_fmt {
 					names << '^${p.lit}'
+					constraints << ''
 				}
 				expect_name = false
 			} else if expect_name && p.tok == .name {
 				name := p.lit
+				// What follows a name reported already is skipped, as it was
+				// before constraints: `Hashable[K]` is one error.
+				name_is_valid := name !in names && names.len < 9 && name.len == 1
+					&& !(name[0] >= `a` && name[0] <= `z`)
 				if name in names {
 					p.record_diagnostic_span('duplicated generic parameter `${name}`', p.tok_pos,
 						p.tok_end)
@@ -7048,13 +7078,55 @@ fn (mut p Parser) parse_generic_param_names() []string {
 				}
 				names << name
 				expect_name = false
+				p.next()
+				if !name_is_valid {
+					constraints << ''
+					continue
+				}
+				constraints << p.parse_generic_constraint()
+				if p.tok != .comma && p.tok != .rsbr && p.tok != .eof {
+					p.record_diagnostic_span('unexpected token `${p.s.src[p.tok_pos..p.tok_end]}`, expecting `,` or `]`',
+						p.tok_pos, p.tok_end)
+				}
+				// The `,` or the `]` after the constraint is the loop's.
+				continue
 			} else {
 				expect_name = false
 			}
 		}
 		p.next()
 	}
-	return names
+	return names, constraints
+}
+
+// parse_generic_constraint returns the constraint written after the name of a
+// type parameter, `Named`, `mod.Named` or `Box[int]`, as it is written; '' when
+// none is.
+fn (mut p Parser) parse_generic_constraint() string {
+	if p.tok != .name {
+		return ''
+	}
+	start := p.tok_pos
+	p.next()
+	for p.tok == .dot && p.peek() == .name {
+		p.next()
+		p.next()
+	}
+	if p.tok == .lsbr {
+		mut depth := 0
+		for p.tok != .eof {
+			if p.tok == .lsbr {
+				depth++
+			} else if p.tok == .rsbr {
+				depth--
+			}
+			p.next()
+			if depth == 0 {
+				break
+			}
+		}
+	}
+	return p.s.src[start..p.prev_tok_end]
 }
 
 fn (mut p Parser) skip_parens() {

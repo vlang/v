@@ -79,6 +79,39 @@ pub fn (mut p Point) inc(dx int) int {
 '
 }
 
+fn test_formatter_keeps_generic_constraints() {
+	// `v fmt` used to delete them: `fn longest[T Named]` became `fn longest[T]`.
+	source := 'module m
+
+interface Named {
+	name string
+}
+
+struct Box[T Named] {
+	item T
+}
+
+fn longest[T Named](a T, b T) T {
+	return a
+}
+
+fn (b Box[T]) label() string {
+	return b.item.name
+}
+
+fn pair[K, V mod.Named](k K, v V) string {
+	return v.name
+}
+
+interface Shelf[T Named] {
+	items []T
+}
+
+type Picker[T Named] = fn (T) bool
+'
+	assert vfmt('generic_constraints', source) == source
+}
+
 fn test_formatter_preserves_operator_method_spacing() {
 	source := 'struct Number {\n\tvalue int\n}\n\nfn (a Number) + (b Number) Number {\n\treturn Number{a.value + b.value}\n}\n\nfn (a Number) == (b Number) bool {\n\treturn a.value == b.value\n}\n\nfn (a Number) < (b Number) bool {\n\treturn a.value < b.value\n}\n\nfn (a Number) [] (index int) int {\n\treturn a.value + index\n}\n'
 	out := vfmt('operator_method_spacing', source)

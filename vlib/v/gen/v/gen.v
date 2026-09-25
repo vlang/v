@@ -3686,6 +3686,22 @@ fn (mut g Gen) import_decl(id flat.NodeId) {
 	g.writeln('')
 }
 
+// write_generic_params writes the generic params of a declaration, each with
+// the constraint it names, as in `[K, V Named]`.
+fn (mut g Gen) write_generic_params(n flat.Node) {
+	gp := n.generic_params()
+	if gp.len == 0 {
+		return
+	}
+	constraints := n.generic_constraints()
+	mut items := []string{cap: gp.len}
+	for i, param in gp {
+		constraint := if i < constraints.len { constraints[i] } else { '' }
+		items << if constraint.len > 0 { '${param} ${constraint}' } else { param }
+	}
+	g.write('[${items.join(', ')}]')
+}
+
 fn (mut g Gen) fn_decl(id flat.NodeId) {
 	n := g.a.node(id)
 	was_in_c_function := g.in_c_function
@@ -3760,10 +3776,7 @@ fn (mut g Gen) fn_decl(id flat.NodeId) {
 	} else {
 		g.write(name)
 	}
-	gp := n.generic_params()
-	if gp.len > 0 {
-		g.write('[${gp.join(', ')}]')
-	}
+	g.write_generic_params(n)
 	g.params(id, params)
 	if n.typ.len > 0 && n.typ != 'void' {
 		g.write(' ${g.type_text(n.typ)}')
@@ -3878,10 +3891,7 @@ fn (mut g Gen) struct_decl(id flat.NodeId) {
 	kw := if tag_has(tags, 'union') { 'union ' } else { 'struct ' }
 	g.write(kw)
 	g.write(g.type_text(n.value))
-	gp := n.generic_params()
-	if gp.len > 0 {
-		g.write('[${gp.join(', ')}]')
-	}
+	g.write_generic_params(n)
 	impls := tag_value(tags, 'implements')
 	if impls.len > 0 {
 		g.write(' implements ${impls.replace('|', ', ')}')
@@ -4208,10 +4218,7 @@ fn (mut g Gen) type_decl(id flat.NodeId) {
 		g.write('pub ')
 	}
 	g.write('type ${n.value}')
-	gp := n.generic_params()
-	if gp.len > 0 {
-		g.write('[${gp.join(', ')}]')
-	}
+	g.write_generic_params(n)
 	variants := g.a.children_of(n)
 	if variants.len > 0 {
 		g.sum_type_variants(variants)
@@ -4301,10 +4308,7 @@ fn (mut g Gen) interface_decl(id flat.NodeId) {
 		g.write('pub ')
 	}
 	g.write('interface ${n.value}')
-	gp := n.generic_params()
-	if gp.len > 0 {
-		g.write('[${gp.join(', ')}]')
-	}
+	g.write_generic_params(n)
 	fields := g.a.children_of(n)
 	if fields.len == 0 && g.empty_braced_body_is_compact(n, n.pos.end)
 		&& !g.has_comment_between(n.pos.offset, n.pos.end) {

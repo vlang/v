@@ -184,6 +184,10 @@ pub enum Op as u8 {
 pub struct NodePayload {
 pub:
 	generic_params []string
+	// The constraint each type parameter names, `Named` in `[T Named]`, as it is
+	// written: empty for a parameter without one, and no list at all when none
+	// of them names one.
+	generic_constraints []string
 }
 
 // Comment retains source comments for syntax-preserving tools such as vfmt.
@@ -218,11 +222,19 @@ __global g_node_payload_lock u32
 // node_payload registers an uncommon node payload and returns its id, or 0
 // for an empty list.
 pub fn node_payload(generic_params []string) u32 {
-	if generic_params.len == 0 {
+	return node_payload_with_constraints(generic_params, []string{})
+}
+
+// node_payload_with_constraints registers generic params with the constraints
+// they name (see NodePayload), and returns the payload id, or 0 when both are
+// empty.
+pub fn node_payload_with_constraints(generic_params []string, generic_constraints []string) u32 {
+	if generic_params.len == 0 && generic_constraints.len == 0 {
 		return 0
 	}
 	payload := &NodePayload{
-		generic_params: generic_params
+		generic_params:      generic_params
+		generic_constraints: generic_constraints
 	}
 	node_payload_lock()
 	mut table := node_payload_table_load()
@@ -422,10 +434,34 @@ pub fn (n &Node) generic_params() []string {
 	return node_payload_at(n.payload).generic_params
 }
 
-// set_generic_params replaces this node's uncommon managed payload.
+// generic_constraints returns the constraint each generic param names (see
+// NodePayload).
+@[inline]
+pub fn (n &Node) generic_constraints() []string {
+	if n.payload == 0 {
+		return []string{}
+	}
+	return node_payload_at(n.payload).generic_constraints
+}
+
+// set_generic_params replaces this node's uncommon managed payload. The
+// constraints of the params it replaces stay when there are as many params: the
+// passes that move the params to longer-lived memory rebuild the payload.
 @[inline]
 pub fn (mut n Node) set_generic_params(params []string) {
-	n.payload = node_payload(params)
+	constraints := n.generic_constraints()
+	n.payload = node_payload_with_constraints(params, if constraints.len == params.len {
+		constraints
+	} else {
+		[]string{}
+	})
+}
+
+// set_generic_params_and_constraints replaces this node's generic params and the
+// constraints they name.
+@[inline]
+pub fn (mut n Node) set_generic_params_and_constraints(params []string, constraints []string) {
+	n.payload = node_payload_with_constraints(params, constraints)
 }
 
 // FlatAst represents flat ast data used by flat.
@@ -801,7 +837,16 @@ fn (mut a FlatAst) intern_node_texts_one(idx int, mut cache_ptrs [4096]voidptr, 
 		for item in params {
 			canonical_params << a.intern_text_ptr_cached(item, mut cache_ptrs, mut cache_vals)
 		}
-		a.nodes[idx].set_generic_params(canonical_params)
+		constraints := a.nodes[idx].generic_constraints()
+		mut canonical_constraints := []string{cap: constraints.len}
+		for item in constraints {
+			canonical_constraints << if item.len > 0 {
+				a.intern_text_ptr_cached(item, mut cache_ptrs, mut cache_vals)
+			} else {
+				''
+			}
+		}
+		a.nodes[idx].set_generic_params_and_constraints(canonical_params, canonical_constraints)
 	}
 }
 
@@ -1005,10 +1050,14 @@ pub fn (n Node) clone_owned() Node {
 	for param in n.generic_params() {
 		params << param.clone()
 	}
+	mut constraints := []string{cap: n.generic_constraints().len}
+	for constraint in n.generic_constraints() {
+		constraints << constraint.clone()
+	}
 	return Node{
 		value:          n.value.clone()
 		typ:            n.typ.clone()
-		payload:        node_payload(params)
+		payload:        node_payload_with_constraints(params, constraints)
 		pos:            n.pos
 		children_start: n.children_start
 		children_count: n.children_count

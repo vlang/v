@@ -6777,11 +6777,21 @@ fn promote_scoped_node(mut node flat.Node, scope voidptr) {
 	if old_params.len == 0 {
 		return
 	}
+	old_constraints := node.generic_constraints()
 	mut needs_promotion := scoped_value_owned(scope, node.payload_ptr())
 		|| scoped_value_owned(scope, old_params.data)
+		|| (old_constraints.len > 0 && scoped_value_owned(scope, old_constraints.data))
 	if !needs_promotion {
 		for param in old_params {
 			if param.len > 0 && scoped_value_owned(scope, param.str) {
+				needs_promotion = true
+				break
+			}
+		}
+	}
+	if !needs_promotion {
+		for constraint in old_constraints {
+			if constraint.len > 0 && scoped_value_owned(scope, constraint.str) {
 				needs_promotion = true
 				break
 			}
@@ -6798,7 +6808,15 @@ fn promote_scoped_node(mut node flat.Node, scope voidptr) {
 			param
 		}
 	}
-	node.set_generic_params(params)
+	mut constraints := []string{cap: old_constraints.len}
+	for constraint in old_constraints {
+		constraints << if constraint.len > 0 && scoped_value_owned(scope, constraint.str) {
+			constraint.clone()
+		} else {
+			constraint
+		}
+	}
+	node.set_generic_params_and_constraints(params, constraints)
 }
 
 // promote_scoped_ast_nodes_flagged is the scoped-node promotion walk with an optional
@@ -6891,17 +6909,8 @@ fn canonicalize_scoped_node_cached(mut ast flat.FlatAst, idx int, scope voidptr,
 	if old_params.len == 0 {
 		return
 	}
-	mut needs_params := scoped_value_owned(scope, node.payload_ptr())
-		|| scoped_value_owned(scope, old_params.data)
-	if !needs_params {
-		for param in old_params {
-			if param.len > 0 && scoped_value_owned(scope, param.str) {
-				needs_params = true
-				break
-			}
-		}
-	}
-	if !needs_params {
+	old_constraints := node.generic_constraints()
+	if !scoped_generic_payload_owned(node, old_params, old_constraints, scope) {
 		return
 	}
 	mut params := []string{cap: old_params.len}
@@ -6912,7 +6921,15 @@ fn canonicalize_scoped_node_cached(mut ast flat.FlatAst, idx int, scope voidptr,
 			params << param
 		}
 	}
-	node.set_generic_params(params)
+	mut constraints := []string{cap: old_constraints.len}
+	for constraint in old_constraints {
+		if constraint.len > 0 && scoped_value_owned(scope, constraint.str) {
+			constraints << ast.intern_text_ptr_cached(constraint, mut cache_ptrs, mut cache_vals)
+		} else {
+			constraints << constraint
+		}
+	}
+	node.set_generic_params_and_constraints(params, constraints)
 }
 
 fn canonicalize_scoped_node(mut ast flat.FlatAst, idx int, scope voidptr) {
@@ -6933,17 +6950,8 @@ fn canonicalize_scoped_node(mut ast flat.FlatAst, idx int, scope voidptr) {
 	if old_params.len == 0 {
 		return
 	}
-	mut needs_params := scoped_value_owned(scope, node.payload_ptr())
-		|| scoped_value_owned(scope, old_params.data)
-	if !needs_params {
-		for param in old_params {
-			if param.len > 0 && scoped_value_owned(scope, param.str) {
-				needs_params = true
-				break
-			}
-		}
-	}
-	if !needs_params {
+	old_constraints := node.generic_constraints()
+	if !scoped_generic_payload_owned(node, old_params, old_constraints, scope) {
 		return
 	}
 	mut params := []string{cap: old_params.len}
@@ -6955,7 +6963,37 @@ fn canonicalize_scoped_node(mut ast flat.FlatAst, idx int, scope voidptr) {
 			params << param
 		}
 	}
-	node.set_generic_params(params)
+	mut constraints := []string{cap: old_constraints.len}
+	for constraint in old_constraints {
+		if constraint.len > 0 && scoped_value_owned(scope, constraint.str) {
+			_, canonical := ast.intern_text(constraint)
+			constraints << canonical
+		} else {
+			constraints << constraint
+		}
+	}
+	node.set_generic_params_and_constraints(params, constraints)
+}
+
+// scoped_generic_payload_owned reports whether the generic params of `node`, or
+// the constraints they name, live in the scope's memory: its payload, their
+// arrays or their strings.
+fn scoped_generic_payload_owned(node &flat.Node, params []string, constraints []string, scope voidptr) bool {
+	if scoped_value_owned(scope, node.payload_ptr()) || scoped_value_owned(scope, params.data)
+		|| (constraints.len > 0 && scoped_value_owned(scope, constraints.data)) {
+		return true
+	}
+	for param in params {
+		if param.len > 0 && scoped_value_owned(scope, param.str) {
+			return true
+		}
+	}
+	for constraint in constraints {
+		if constraint.len > 0 && scoped_value_owned(scope, constraint.str) {
+			return true
+		}
+	}
+	return false
 }
 
 fn canonicalize_scoped_transform_region(mut ast flat.FlatAst, region transform.ScopedTransformRegion) {
