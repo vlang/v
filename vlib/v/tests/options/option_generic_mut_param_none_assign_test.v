@@ -43,6 +43,16 @@ fn test_none_assign_to_generic_mut_option_param() {
 	mut e := ?[]int([1, 2])
 	clear_if_option(mut e)
 	assert e == none
+	mut target := i64(42)
+	mut f := ?&i64(&target)
+	if ref := f {
+		assert *ref == 42
+	} else {
+		assert false, 'f should hold a reference before clearing'
+	}
+	clear_if_option(mut f)
+	assert f == none
+	assert target == 42
 }
 
 fn test_none_assign_to_mut_option_of_generic_param() {
