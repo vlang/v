@@ -580,8 +580,9 @@ fn (mut tc TypeChecker) check_constraint_decl(node_id flat.NodeId, node flat.Nod
 }
 
 struct ConstraintWalkItem {
-	id       flat.NodeId
-	narrowed []string // names whose type an `is` or a `match` decided here
+	id          flat.NodeId
+	narrowed    []string                     // names whose type an `is` or a `match` decided here
+	constraints map[string]GenericConstraint // what each type parameter is here: `$if T is f64` narrows it
 }
 
 // check_generic_fn_constraint_members reports, in the body of a generic
@@ -599,7 +600,8 @@ fn (mut tc TypeChecker) check_generic_fn_constraint_members(fn_node flat.Node) {
 		child := tc.a.child(&fn_node, i)
 		if tc.valid_node_id(child) && tc.a.node(child).kind != .param {
 			stack << ConstraintWalkItem{
-				id: child
+				id:          child
+				constraints: interfaces
 			}
 		}
 	}
@@ -619,8 +621,21 @@ fn (mut tc TypeChecker) check_generic_fn_constraint_members(fn_node flat.Node) {
 		}
 		node := tc.a.node(item.id)
 		match node.kind {
-			// Compile-time branches and closures decide their own types.
-			.comptime_if, .comptime_for, .fn_literal, .lambda_expr {
+			// `$if T is f64 {` decides what `T` is in each branch; a condition that
+			// narrows a constrained type parameter in a way the walk cannot follow
+			// leaves both branches unchecked.
+			.comptime_if {
+				for branch in tc.constraint_comptime_branches(*node, item.constraints) {
+					stack << ConstraintWalkItem{
+						id:          branch.id
+						narrowed:    item.narrowed
+						constraints: branch.constraints
+					}
+				}
+				continue
+			}
+			// Compile-time loops and closures decide their own types.
+			.comptime_for, .fn_literal, .lambda_expr {
 				continue
 			}
 			.decl_assign {
@@ -645,14 +660,14 @@ fn (mut tc TypeChecker) check_generic_fn_constraint_members(fn_node flat.Node) {
 					if callee.kind == .selector {
 						callees[int(callee_id)] = true
 						tc.check_constraint_member(item.id, *node, callee_id, callee, true,
-							interfaces, item.narrowed)
+							item.constraints, item.narrowed)
 					}
 				}
 			}
 			.selector {
 				if !callees[int(item.id)] {
-					tc.check_constraint_member(item.id, *node, item.id, *node, false, interfaces,
-						item.narrowed)
+					tc.check_constraint_member(item.id, *node, item.id, *node, false,
+						item.constraints, item.narrowed)
 				}
 			}
 			.expr_stmt {
@@ -661,7 +676,7 @@ fn (mut tc TypeChecker) check_generic_fn_constraint_members(fn_node flat.Node) {
 				}
 			}
 			.infix, .prefix, .postfix, .assign, .selector_assign, .index_assign, .index {
-				tc.check_constraint_operator(item.id, *node, interfaces, item.narrowed,
+				tc.check_constraint_operator(item.id, *node, item.constraints, item.narrowed,
 					statements[int(item.id)])
 			}
 			else {}
@@ -669,8 +684,9 @@ fn (mut tc TypeChecker) check_generic_fn_constraint_members(fn_node flat.Node) {
 		narrowed := tc.constraint_walk_narrowed(*node, item.narrowed)
 		for i := node.children_count - 1; i >= 0; i-- {
 			stack << ConstraintWalkItem{
-				id:       tc.a.child(node, i)
-				narrowed: narrowed
+				id:          tc.a.child(node, i)
+				narrowed:    narrowed
+				constraints: item.constraints
 			}
 		}
 	}
@@ -948,6 +964,205 @@ fn (mut tc TypeChecker) bind_constraint_walk_local(id flat.NodeId, typ Type) {
 	local := tc.a.node(id)
 	if local.kind == .ident && local.value.len > 0 && local.value != '_' {
 		tc.cur_scope.insert(local.value, typ)
+	}
+}
+
+struct ConstraintBranch {
+	id          flat.NodeId
+	constraints map[string]GenericConstraint
+}
+
+// constraint_comptime_branches are the branches of `$if`, `node`, to walk, each
+// with what its condition makes of the constrained type parameters: in
+// `$if T is f64 {`, `T` is `f64`, and in its `$else` it is the rest of its
+// set. A condition that names no constrained type parameter leaves them as
+// they are. One that names one in a way that cannot be followed gives no
+// branch to walk, as a branch that no type of the set can reach.
+fn (tc &TypeChecker) constraint_comptime_branches(node flat.Node, constraints map[string]GenericConstraint) []ConstraintBranch {
+	mut branches := []ConstraintBranch{}
+	then_id := if node.children_count > 0 { tc.a.child(&node, 0) } else { flat.NodeId(-1) }
+	else_id := if node.children_count > 1 { tc.a.child(&node, 1) } else { flat.NodeId(-1) }
+	names := constraints.keys().filter(comptime_condition_names(node.value, it))
+	if names.len == 0 {
+		for id in [then_id, else_id] {
+			if int(id) >= 0 {
+				branches << ConstraintBranch{id, constraints}
+			}
+		}
+		return branches
+	}
+	if names.len > 1 {
+		return branches
+	}
+	name := names[0]
+	constraint := constraints[name]
+	then_types := tc.constraint_condition_types(node.value, name, constraint) or {
+		return branches
+	}
+	if int(then_id) >= 0 && then_types.len > 0 {
+		branches << ConstraintBranch{then_id, constraints_with(constraints, name, constraint,
+			then_types)}
+	}
+	if int(else_id) >= 0 {
+		if constraint.is_interface {
+			branches << ConstraintBranch{else_id, constraints}
+		} else {
+			rest := constraint.types.filter(fn [then_types] (t Type) bool {
+				return !then_types.any(it.name() == t.name())
+			})
+			if rest.len > 0 {
+				branches << ConstraintBranch{else_id, constraints_with(constraints, name,
+					constraint, rest)}
+			}
+		}
+	}
+	return branches
+}
+
+// comptime_condition_names reports whether the condition `cond` of `$if` names
+// the type parameter `name`.
+fn comptime_condition_names(cond string, name string) bool {
+	mut i := 0
+	for {
+		idx := cond.index_after(name, i) or { return false }
+		before_ok := idx == 0 || !(cond[idx - 1].is_alnum() || cond[idx - 1] in [`_`, `.`, `$`])
+		end := idx + name.len
+		after_ok := end >= cond.len || !(cond[end].is_alnum() || cond[end] == `_`)
+		if before_ok && after_ok {
+			return true
+		}
+		i = idx + 1
+	}
+	return false
+}
+
+// constraints_with is `constraints` where the type parameter `name` has the
+// types `types`, as a set named after its constraint.
+fn constraints_with(constraints map[string]GenericConstraint, name string, constraint GenericConstraint, types []Type) map[string]GenericConstraint {
+	mut narrowed := constraints.clone()
+	narrowed[name] = GenericConstraint{
+		name:         constraint.name
+		is_interface: false
+		types:        types
+	}
+	return narrowed
+}
+
+// constraint_condition_types are the types that the condition `cond` of `$if`
+// lets the type parameter `name`, with `constraint`, have in its first branch:
+// `T is f64`, `T !is f64`, `T in [f32, f64]`, `T !in [...]`, `T is $int` and
+// the other groups, joined with `||` or `&&`. none when `cond` says something
+// else about it.
+fn (tc &TypeChecker) constraint_condition_types(cond string, name string, constraint GenericConstraint) ?[]Type {
+	mut result := []Type{}
+	for i, alternative in cond.split('||') {
+		mut types := tc.constraint_condition_term_types(alternative, name, constraint)?
+		for term in alternative.split('&&')[1..] {
+			allowed := tc.constraint_condition_term_types(term, name, constraint)?
+			types = types.filter(fn [allowed] (t Type) bool {
+				return allowed.any(it.name() == t.name())
+			})
+		}
+		if i == 0 {
+			result = types
+		} else {
+			for t in types {
+				if !result.any(it.name() == t.name()) {
+					result << t
+				}
+			}
+		}
+	}
+	return result
+}
+
+// constraint_condition_term_types is what one term of a `$if` condition, `T is
+// f64`, lets `name` be; a term about something else lets it be anything its
+// constraint allows.
+fn (tc &TypeChecker) constraint_condition_term_types(term_text string, name string, constraint GenericConstraint) ?[]Type {
+	// `(T is int) || (T is f64)`, as the parser keeps it: each term in parentheses.
+	mut term := term_text.all_before('&&').trim_space()
+	for term.starts_with('(') && term.ends_with(')') {
+		term = term[1..term.len - 1].trim_space()
+	}
+	if term.contains('(') || term.contains(')') {
+		return none
+	}
+	if !comptime_condition_names(term, name) {
+		return if constraint.is_interface { none } else { constraint.types }
+	}
+	if !term.starts_with(name) {
+		return none
+	}
+	// `T in[int, f64]`: the parser writes the list right after `in`.
+	mut rest := term[name.len..].trim_space()
+	mut op := ''
+	for candidate in ['!is', 'is', '!in', 'in'] {
+		if rest.starts_with(candidate) {
+			after := rest[candidate.len..]
+			if after.len > 0 && (after[0] in [` `, `\t`] || (candidate.ends_with('in')
+				&& after[0] == `[`)) {
+				op = candidate
+				rest = after.trim_space()
+				break
+			}
+		}
+	}
+	if op == '' {
+		return none
+	}
+	mut named := []Type{}
+	mut groups := []string{}
+	if op in ['in', '!in'] {
+		if !rest.starts_with('[') || !rest.ends_with(']') {
+			return none
+		}
+		for part in split_params(rest[1..rest.len - 1]) {
+			if part.starts_with('$') {
+				groups << part
+			} else {
+				named << tc.parse_type(part)
+			}
+		}
+	} else if rest.starts_with('$') {
+		groups << rest
+	} else {
+		named << tc.parse_type(rest)
+	}
+	matches := fn [tc, named, groups] (t Type) bool {
+		return named.any(it.name() == t.name()) || groups.any(tc.type_in_comptime_group(t, it))
+	}
+	positive := op in ['is', 'in']
+	if constraint.is_interface {
+		if !positive || groups.len > 0 {
+			return none
+		}
+		return named
+	}
+	return constraint.types.filter(fn [matches, positive] (t Type) bool {
+		return matches(t) == positive
+	})
+}
+
+// type_in_comptime_group reports whether `typ` belongs to the compile-time type
+// group `group`: `$int`, `$float`, `$array`, `$map`, `$struct`, `$enum`,
+// `$alias`, `$sumtype`, `$function`, `$interface`, `$option`, `$string`.
+fn (tc &TypeChecker) type_in_comptime_group(typ Type, group string) bool {
+	clean := unalias_type(typ)
+	return match group {
+		'$int' { clean.is_integer() }
+		'$float' { clean.is_float() }
+		'$string' { clean is String }
+		'$array' { clean is Array || clean is ArrayFixed }
+		'$map' { clean is Map }
+		'$struct' { clean is Struct }
+		'$enum' { clean is Enum }
+		'$alias' { typ is Alias }
+		'$sumtype' { clean is SumType }
+		'$function' { clean is FnType }
+		'$interface' { clean is Interface }
+		'$option' { clean is OptionType }
+		else { false }
 	}
 }
 

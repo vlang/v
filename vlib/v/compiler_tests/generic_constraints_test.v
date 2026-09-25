@@ -439,6 +439,72 @@ fn main() {}
 	], res.output
 }
 
+fn test_a_compile_time_is_narrows_a_constrained_type() {
+	// In `$if T is f64 {`, `T` is `f64`; in its `$else`, the rest of its set. A
+	// branch that no type of the set reaches, `T is string`, is not checked, and
+	// a condition that names no type parameter leaves the set as it is.
+	res := check_program('comptime_is', 'constraint Number = int | f64
+
+fn narrow[T Number](x T, y T) T {
+	$if T is f64 {
+		println(x % y)
+	} $else {
+		println(x % y)
+	}
+	$if T is int {
+		println(x.len)
+	}
+	$if T is string {
+		println(x.len)
+	}
+	$if T in [int, f64] {
+		println(x + y)
+	}
+	$if T is $int {
+		println(x << 1)
+	} $else {
+		println(x << 1)
+	}
+	$if debug {
+		println(x % y)
+	}
+	$if !debug {
+		println(x % y)
+	}
+	$if T !is f64 {
+		println(x % y)
+	}
+	$if T !in [int] {
+		println(x % y)
+	}
+	$if T is int || T is f64 {
+		println(x % y)
+	}
+	return x
+}
+
+fn narrow_iface[T Named](a T) {
+	$if T is User {
+		println(a.age)
+	} $else {
+		println(a.age)
+	}
+}
+
+fn main() {}
+')
+	assert res.exit_code == 1, res.output
+	assert error_lines(res.output) == [
+		'5:13: operator `%` is not defined on type `T`: `f64`, in its constraint `Number`, does not have it',
+		'10:13: type `T` has no field named `len`: `int`, in its constraint `Number`, does not have it',
+		'21:13: operator `<<` is not defined on type `T` and `int literal`: `f64`, in its constraint `Number`, does not have it',
+		'27:13: operator `%` is not defined on type `T`: `f64`, in its constraint `Number`, does not have it',
+		'33:13: operator `%` is not defined on type `T`: `f64`, in its constraint `Number`, does not have it',
+		'36:13: operator `%` is not defined on type `T`: `f64`, in its constraint `Number`, does not have it',
+		'45:13: type `T` has no field named `age`: its constraint `Named` does not declare it',
+	], res.output
+}
+
 fn test_a_local_of_type_t_can_use_what_the_constraint_declares() {
 	res := check_program('derived_valid', "fn total[T Named](a T, items []T) int {
 	x := a
