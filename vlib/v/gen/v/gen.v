@@ -2393,9 +2393,7 @@ fn (mut g Gen) fn_literal(id flat.NodeId) {
 		g.write(' {}')
 		return
 	}
-	if is_inline {
-		g.write(' ')
-		g.write_inline_body(body, n.pos.end)
+	if is_inline && g.write_inline_body(' ', body, n.pos.end) {
 		return
 	}
 	g.writeln(' {')
@@ -2464,9 +2462,7 @@ fn (mut g Gen) or_expr(id flat.NodeId) {
 	}
 	blk := g.a.node(children[1])
 	stmts := g.a.children_of(blk)
-	is_compact := stmts.len <= 1 && g.source_block_is_compact(blk)
-		&& !g.has_comment_between(blk.pos.offset, blk.pos.end)
-	if is_compact {
+	if g.or_block_is_compact(blk) {
 		g.write(' or {')
 		if stmts.len > 0 {
 			g.write(' ')
@@ -2483,6 +2479,13 @@ fn (mut g Gen) or_expr(id flat.NodeId) {
 	g.emit_comments_before(blk.pos.end)
 	g.indent--
 	g.write('}')
+}
+
+// or_block_is_compact reports whether the block of an `or { ... }` stays on the line of its
+// expression: it has at most one statement and the source wrote it on one line, without comments.
+fn (g &Gen) or_block_is_compact(blk &flat.Node) bool {
+	return blk.children_count <= 1 && g.source_block_is_compact(blk)
+		&& !g.has_comment_between(blk.pos.offset, blk.pos.end)
 }
 
 fn (mut g Gen) compact_stmt(id flat.NodeId) {
@@ -2997,8 +3000,7 @@ fn (mut g Gen) for_stmt_with_init(id flat.NodeId, init_override flat.NodeId) {
 	}
 	g.suppress_trailing_comments--
 	g.in_init = in_init
-	if is_inline {
-		g.write_inline_body(body, n.pos.end)
+	if is_inline && g.write_inline_body('', body, n.pos.end) {
 		g.writeln('')
 		return
 	}
@@ -3096,9 +3098,7 @@ fn (mut g Gen) for_in_stmt(id flat.NodeId) {
 		g.expr(children[3])
 	}
 	g.suppress_trailing_comments--
-	if is_inline {
-		g.write(' ')
-		g.write_inline_body(body, n.pos.end)
+	if is_inline && g.write_inline_body(' ', body, n.pos.end) {
 		g.writeln('')
 		return
 	}
@@ -3275,13 +3275,37 @@ fn (g &Gen) braced_body_is_inline(start int, body []flat.NodeId, end int) bool {
 	return g.inline_body_stmt(body) != none
 }
 
-// write_inline_body prints a body accepted by `braced_body_is_inline` as `{ stmt }`.
-fn (mut g Gen) write_inline_body(body []flat.NodeId, end int) {
-	stmt_id := g.inline_body_stmt(body) or { return }
+// write_inline_body prints `sep` and a body accepted by `braced_body_is_inline` as `{ stmt }`,
+// and reports whether that printed line fits in `formatter_max_line_len` columns. The source
+// length is not enough: normalizing `{return x}` to `{ return x }` can push the line past the
+// limit, and the next run would then expand it. A body that does not fit on one line is taken
+// back out, so the caller prints it expanded.
+fn (mut g Gen) write_inline_body(sep string, body []flat.NodeId, end int) bool {
+	stmt_id := g.inline_body_stmt(body) or { return false }
+	out_len := g.out.len
+	on_newline := g.on_newline
+	source_end := g.source_end
+	comment_i := g.comment_i
+	g.write(sep)
 	g.write('{ ')
 	g.compact_stmt(stmt_id)
 	g.write(' }')
+	mut fits := g.output_line_len() <= formatter_max_line_len
+	for i in out_len .. g.out.len {
+		if g.out.byte_at(i) == `\n` {
+			fits = false
+			break
+		}
+	}
+	if !fits {
+		g.out.go_back_to(out_len)
+		g.on_newline = on_newline
+		g.source_end = source_end
+		g.comment_i = comment_i
+		return false
+	}
 	g.source_end = int_max(g.source_end, end)
+	return true
 }
 
 // node_forces_line_break reports whether formatting `id` always breaks the line (a `match`,
@@ -3309,6 +3333,13 @@ fn (g &Gen) node_forces_line_break(id flat.NodeId) bool {
 		}
 		.fn_literal {
 			if !g.fn_literal_is_inline(n) {
+				return true
+			}
+		}
+		.or_expr {
+			// `x() or { a() b() }` is printed with one statement per line, see `or_expr`.
+			if n.value !in ['!', '?'] && n.children_count > 1
+				&& !g.or_block_is_compact(g.a.child_node(n, 1)) {
 				return true
 			}
 		}
@@ -3931,9 +3962,7 @@ fn (mut g Gen) fn_decl(id flat.NodeId) {
 		g.writeln(' {}')
 		return
 	}
-	if is_inline {
-		g.write(' ')
-		g.write_inline_body(body, formatter_end)
+	if is_inline && g.write_inline_body(' ', body, formatter_end) {
 		g.writeln('')
 		return
 	}

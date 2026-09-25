@@ -234,6 +234,97 @@ fn multi(x int) int {
 	assert vfmt('expanded_single_statement_bodies_twice', out) == out
 }
 
+fn test_formatter_measures_formatted_single_statement_bodies_against_the_line_limit() {
+	// Every source line is at most 99 columns, but `{return x}` gains two spaces when it is
+	// formatted: the bodies that end up over 100 columns are expanded on the first run, not
+	// on the second one.
+	over, fits := 'o'.repeat(71), 'f'.repeat(70)
+	for_in, c_for, lit := 'i'.repeat(66), 'c'.repeat(59), 'l'.repeat(65)
+	source := "fn over() string {return '${over}'}
+
+fn fits() string {return '${fits}'}
+
+fn loops() {
+	for i in 0 .. 3 {println('${for_in}')}
+	for i := 0; i < 3; i++ {println('${c_for}')}
+	cb := fn () string {return '${lit}'}
+	_ = cb
+}
+"
+	out := vfmt('formatted_single_statement_body_width', source)
+	assert out == "fn over() string {
+	return '${over}'
+}
+
+fn fits() string { return '${fits}' }
+
+fn loops() {
+	for i in 0 .. 3 {
+		println('${for_in}')
+	}
+	for i := 0; i < 3; i++ {
+		println('${c_for}')
+	}
+	cb := fn () string {
+		return '${lit}'
+	}
+	_ = cb
+}
+", out
+	assert vfmt('formatted_single_statement_body_width_twice', out) == out
+}
+
+fn test_formatter_expands_single_statement_bodies_with_multi_statement_or_blocks() {
+	source := "fn h() ?int { return 1 }
+
+fn first() int { return h() or { println('none') 0 } }
+
+fn second() int { return h() or { 0 } }
+
+fn loops(a []int) {
+	for x in a { _ = h() or { println(x) continue } }
+	if a.len > 0 { _ = h() or { println(a) return } }
+	cb := fn () int { return h() or { println('none') 0 } }
+	_ = cb
+}
+"
+	out := vfmt('multi_statement_or_block_bodies', source)
+	assert out == "fn h() ?int { return 1 }
+
+fn first() int {
+	return h() or {
+		println('none')
+		0
+	}
+}
+
+fn second() int { return h() or { 0 } }
+
+fn loops(a []int) {
+	for x in a {
+		_ = h() or {
+			println(x)
+			continue
+		}
+	}
+	if a.len > 0 {
+		_ = h() or {
+			println(a)
+			return
+		}
+	}
+	cb := fn () int {
+		return h() or {
+			println('none')
+			0
+		}
+	}
+	_ = cb
+}
+", out
+	assert vfmt('multi_statement_or_block_bodies_twice', out) == out
+}
+
 fn test_formatter_keeps_trailing_array_comments_inside_literal() {
 	source := 'fn array_comments() {\n\t_ := [\n\t\t// before\n\t\t6,\n\t\t// after\n\t]\n\t_ := [\n\t\t7, // inline after\n\t]\n}\n'
 	out := vfmt('trailing_array_comments', source)
