@@ -3676,6 +3676,9 @@ fn (mut tc TypeChecker) check_struct_init(id flat.NodeId, node flat.Node) {
 				}
 			}
 		}
+		if params.len > 0 {
+			tc.check_generic_struct_constraints(id, node, generic_base, params, generic_args)
+		}
 	}
 	if init_type_text != 'struct' && !is_anonymous_struct_name(init_type_text)
 		&& (!tc.type_name_known(init_type_text) || (init_type_text.starts_with('C.')

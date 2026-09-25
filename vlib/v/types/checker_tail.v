@@ -4016,6 +4016,7 @@ fn (mut tc TypeChecker) check_call(id flat.NodeId, node flat.Node) {
 		tc.check_c_callback_abi_args(id, node, info)
 		tc.invalidate_smartcasts_after_call(node, info)
 		tc.check_os_file_raw_io_call(id, node, info)
+		tc.check_generic_call_constraints(id, node, info)
 		tc.check_instantiated_generic_as_casts(node, info)
 		tc.check_instantiated_generic_noinit_structs(id, node, info)
 		tc.check_instantiated_generic_ordering_ops(node, info)

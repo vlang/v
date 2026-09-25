@@ -12406,6 +12406,10 @@ fn (mut tc TypeChecker) check_decl_type_strings(node_id flat.NodeId, node flat.N
 		tc.check_fn_decl_unmentioned_generic_types(node_id, node)
 		tc.check_fn_bare_generic_signature_types(node_id, node)
 	}
+	if node.kind in [.fn_decl, .struct_decl, .interface_decl, .type_decl]
+		&& node.generic_constraints().len > 0 {
+		tc.check_generic_constraint_decls(node_id, node)
+	}
 	if node.kind == .type_decl && node.children_count > 0 {
 		tc.check_implicit_generic_sumtype_decl(node_id, node)
 	}
