@@ -1334,6 +1334,11 @@ fn (mut tc TypeChecker) check_top_level_declarations_filtered(do_values bool, al
 					tc.check_decl_type_strings(flat.NodeId(i), node)
 				}
 			}
+			.constraint_decl {
+				if do_signatures {
+					tc.check_constraint_decl(flat.NodeId(i), node)
+				}
+			}
 			else {}
 		}
 	}

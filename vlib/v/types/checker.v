@@ -766,6 +766,7 @@ pub mut:
 	transform_signature_names_log    []string
 	transform_struct_maps_shared     bool
 	fn_generic_params                map[string][]string
+	constraint_sets                  map[string]flat.NodeId
 	specialized_generic_fns          map[string]bool
 	fn_variadic                      map[string]bool
 	c_variadic_fns                   map[string]bool
@@ -1105,6 +1106,7 @@ pub fn TypeChecker.new(a &flat.FlatAst) TypeChecker {
 		fn_type_files:                           map[string]string{}
 		fn_type_modules:                         map[string]string{}
 		fn_generic_params:                       map[string][]string{}
+		constraint_sets:                         map[string]flat.NodeId{}
 		specialized_generic_fns:                 map[string]bool{}
 		fn_variadic:                             map[string]bool{}
 		c_variadic_fns:                          map[string]bool{}
@@ -1263,6 +1265,7 @@ fn (tc &TypeChecker) fork_program_view(ast &flat.FlatAst, direct_dependencies_by
 		fn_type_files:                         tc.fn_type_files
 		fn_type_modules:                       tc.fn_type_modules
 		fn_generic_params:                     tc.fn_generic_params
+		constraint_sets:                       tc.constraint_sets
 		transform_signature_names_log:         []string{}
 		specialized_generic_fns:               tc.specialized_generic_fns
 		fn_variadic:                           tc.fn_variadic
@@ -3206,7 +3209,7 @@ fn (mut tc TypeChecker) collect_index_child(a &flat.FlatAst, i int, idx_file str
 			}
 			tc.top_level_idx << i
 		}
-		.import_decl, .const_decl, .global_decl, .fn_decl, .c_fn_decl {
+		.import_decl, .const_decl, .global_decl, .fn_decl, .c_fn_decl, .constraint_decl {
 			tc.top_level_idx << i
 		}
 		.comptime_if, .block {
@@ -3329,7 +3332,7 @@ pub fn (mut tc TypeChecker) collect(a &flat.FlatAst) {
 				}
 				tc.top_level_idx << i
 			}
-			.import_decl, .const_decl, .global_decl, .fn_decl, .c_fn_decl {
+			.import_decl, .const_decl, .global_decl, .fn_decl, .c_fn_decl, .constraint_decl {
 				tc.top_level_idx << i
 			}
 			else {}
@@ -3663,6 +3666,9 @@ fn (mut tc TypeChecker) collect_after_index(a &flat.FlatAst) {
 					tc.c_typedef_structs[qname] = true
 					tc.c_typedef_structs[node.value] = true
 				}
+			}
+			.constraint_decl {
+				tc.constraint_sets[tc.qualify_decl_name(node.value)] = flat.NodeId(tl_idx)
 			}
 			.type_decl {
 				if node.children_count > 0 {

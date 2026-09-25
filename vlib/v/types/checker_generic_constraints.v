@@ -3,15 +3,24 @@ module types
 import v.flat
 import v.token
 
-// A type parameter can name the interface it must satisfy, its constraint:
-// `fn longest[T Named](a T, b T) T`. A call is checked against the interface,
-// where V checks a value passed to an interface parameter, and the body can
-// use on a value of type `T` only the fields and methods the interface
-// declares. The parser keeps the constraints next to the generic params (see
-// flat.Node.generic_constraints).
+// A type parameter can name what it must satisfy, its constraint: an interface,
+// `fn longest[T Named](a T, b T) T`, or a set of types declared with
+// `constraint Number = int | i64 | f64`. A call is checked against it, where V
+// checks a value passed to an interface parameter, and the body can use on a
+// value of type `T` only what the constraint provides: what the interface
+// declares, or what every type of the set has. The parser keeps the constraints
+// next to the generic params (see flat.Node.generic_constraints).
+
+// GenericConstraint is what the constraint of a type parameter names.
+struct GenericConstraint {
+	name         string // as written, for the messages
+	is_interface bool
+	iface        Interface
+	types        []Type // the types of a set, when it names no interface
+}
 
 // generic_constraint_type resolves the constraint `text` of a type parameter
-// as written where `decl` declares it: in that file and that module.
+// as a type, as written where `decl` declares it: in that file and that module.
 fn (tc &TypeChecker) generic_constraint_type(decl flat.Node, text string) Type {
 	file := tc.a.source_files[int(decl.pos.id)] or { return tc.parse_type(text) }
 	decl_module := tc.file_modules[file.name] or { tc.cur_module }
@@ -19,22 +28,77 @@ fn (tc &TypeChecker) generic_constraint_type(decl flat.Node, text string) Type {
 	return scoped.parse_resolution_type(text)
 }
 
-// generic_constraint_interface is the interface that the constraint `text` of a
-// type parameter of `decl` names, or none when it names no interface.
-fn (tc &TypeChecker) generic_constraint_interface(decl flat.Node, text string) ?Interface {
+// generic_constraint_set is the `constraint` declaration that the constraint
+// `text` of a type parameter of `decl` names, as written there.
+fn (tc &TypeChecker) generic_constraint_set(decl flat.Node, text string) ?flat.NodeId {
+	file := tc.a.source_files[int(decl.pos.id)] or { return none }
+	decl_module := tc.file_modules[file.name] or { tc.cur_module }
+	mut scoped := tc.fork_type_parse_view(file.name, decl_module)
+	return tc.constraint_sets[scoped.qualify_decl_name(text)] or { return none }
+}
+
+// generic_constraint resolves the constraint `text` of a type parameter of
+// `decl`: an interface, or a set of types; none when it names neither.
+fn (tc &TypeChecker) generic_constraint(decl flat.Node, text string) ?GenericConstraint {
+	if set_id := tc.generic_constraint_set(decl, text) {
+		return GenericConstraint{
+			name:  text
+			types: tc.constraint_set_types(set_id)
+		}
+	}
 	typ := tc.generic_constraint_type(decl, text)
 	if typ is Interface {
-		return typ
+		return GenericConstraint{
+			name:         text
+			is_interface: true
+			iface:        typ
+		}
 	}
 	return none
 }
 
-// generic_constraint_interfaces maps each type parameter of the function `decl`
-// that names an interface as its constraint to that interface: its own type
-// parameters, and those of a generic receiver, `fn (b Box[T])`, which the
-// struct `Box[T Named]` constrains.
-fn (tc &TypeChecker) generic_constraint_interfaces(decl flat.Node) map[string]Interface {
-	mut interfaces := map[string]Interface{}
+// constraint_set_types resolves the types of the `constraint` declaration
+// `set_id` where it is declared.
+fn (tc &TypeChecker) constraint_set_types(set_id flat.NodeId) []Type {
+	set := tc.a.node(set_id)
+	mut types := []Type{cap: set.children_count}
+	file := tc.a.source_files[int(set.pos.id)] or { return types }
+	set_module := tc.file_modules[file.name] or { tc.cur_module }
+	mut scoped := tc.fork_type_parse_view(file.name, set_module)
+	for i in 0 .. set.children_count {
+		types << scoped.parse_resolution_type(tc.a.child_node(set, i).value)
+	}
+	return types
+}
+
+// generic_constraint_accepts reports whether `actual` satisfies `constraint`.
+fn (tc &TypeChecker) generic_constraint_accepts(constraint GenericConstraint, actual Type) bool {
+	if constraint.is_interface {
+		return tc.type_implements_interface(actual, constraint.iface)
+	}
+	if actual is Unknown {
+		return true
+	}
+	return constraint.types.any(it.name() == actual.name())
+}
+
+// record_generic_constraint_error reports that `actual`, the type argument of
+// the type parameter `param`, does not satisfy its constraint.
+fn (mut tc TypeChecker) record_generic_constraint_error(constraint GenericConstraint, param string, actual Type, id flat.NodeId, pos token.Pos) {
+	if constraint.is_interface {
+		tc.record_interface_implementation_error(.call_arg_mismatch, actual, constraint.iface,
+			id, pos)
+		return
+	}
+	tc.record_error_at(.call_arg_mismatch, 'cannot use `${actual.name().all_after_last('.')}` as `${param}`: it is not in its constraint `${constraint.name}`',
+		id, pos)
+}
+
+// generic_constraints_of maps each type parameter of the function `decl` that
+// names a constraint to it: its own type parameters, and those of a generic
+// receiver, `fn (b Box[T])`, which the struct `Box[T Named]` constrains.
+fn (tc &TypeChecker) generic_constraints_of(decl flat.Node) map[string]GenericConstraint {
+	mut interfaces := map[string]GenericConstraint{}
 	names := decl.generic_params()
 	constraints := decl.generic_constraints()
 	if constraints.len == names.len {
@@ -42,8 +106,8 @@ fn (tc &TypeChecker) generic_constraint_interfaces(decl flat.Node) map[string]In
 			if constraints[i].len == 0 {
 				continue
 			}
-			if iface := tc.generic_constraint_interface(decl, constraints[i]) {
-				interfaces[name] = iface
+			if constraint := tc.generic_constraint(decl, constraints[i]) {
+				interfaces[name] = constraint
 			}
 		}
 	}
@@ -69,8 +133,8 @@ fn (tc &TypeChecker) generic_constraint_interfaces(decl flat.Node) map[string]In
 		if struct_constraints[i].len == 0 || name.trim_space() in interfaces {
 			continue
 		}
-		if iface := tc.generic_constraint_interface(struct_decl, struct_constraints[i]) {
-			interfaces[name.trim_space()] = iface
+		if constraint := tc.generic_constraint(struct_decl, struct_constraints[i]) {
+			interfaces[name.trim_space()] = constraint
 		}
 	}
 	return interfaces
@@ -89,8 +153,8 @@ fn (tc &TypeChecker) generic_struct_decl(name string) ?flat.Node {
 	return none
 }
 
-// check_generic_constraint_decls reports a constraint that names no interface,
-// as `[T User]`, where it is written.
+// check_generic_constraint_decls reports a constraint that names neither an
+// interface nor a set of types, as `[T User]`, where it is written.
 fn (mut tc TypeChecker) check_generic_constraint_decls(node_id flat.NodeId, node flat.Node) {
 	names := node.generic_params()
 	constraints := node.generic_constraints()
@@ -98,7 +162,7 @@ fn (mut tc TypeChecker) check_generic_constraint_decls(node_id flat.NodeId, node
 		return
 	}
 	for i, text in constraints {
-		if text.len == 0 {
+		if text.len == 0 || tc.generic_constraint_set(node, text) != none {
 			continue
 		}
 		typ := tc.generic_constraint_type(node, text)
@@ -106,7 +170,11 @@ fn (mut tc TypeChecker) check_generic_constraint_decls(node_id flat.NodeId, node
 			continue
 		}
 		pos := tc.generic_constraint_pos(node, names[i], text)
-		if typ is Unknown {
+		file := tc.a.source_files[int(node.pos.id)] or { continue }
+		if !tc.type_name_known_in_scope(text.all_before('['), file.name, tc.file_modules[file.name] or {
+			tc.cur_module
+		})
+		{
 			tc.record_error_at(.unknown_type, 'unknown type `${text}`', node_id, pos)
 			continue
 		}
@@ -160,18 +228,17 @@ fn (mut tc TypeChecker) check_generic_call_constraints(call_id flat.NodeId, call
 		if constraints[i].len == 0 {
 			continue
 		}
-		iface := tc.generic_constraint_interface(decl, constraints[i]) or { continue }
+		constraint := tc.generic_constraint(decl, constraints[i]) or { continue }
 		k := instantiation.generic_params.index(name)
 		if k < 0 || k >= instantiation.concrete_args.len {
 			continue
 		}
 		actual := tc.parse_type(instantiation.concrete_args[k])
-		if tc.type_implements_interface(actual, iface) {
+		if tc.generic_constraint_accepts(constraint, actual) {
 			continue
 		}
 		site_id, site_pos := tc.generic_param_binding_site(call_id, call, info, decl, name, k)
-		tc.record_interface_implementation_error(.call_arg_mismatch, actual, iface, site_id,
-			site_pos)
+		tc.record_generic_constraint_error(constraint, name, actual, site_id, site_pos)
 	}
 }
 
@@ -221,12 +288,27 @@ fn (mut tc TypeChecker) check_generic_struct_constraints(id flat.NodeId, node fl
 		if text.len == 0 {
 			continue
 		}
-		iface := tc.generic_constraint_interface(decl, text) or { continue }
+		constraint := tc.generic_constraint(decl, text) or { continue }
 		actual := tc.parse_type(args[i])
-		if tc.type_implements_interface(actual, iface) {
+		if tc.generic_constraint_accepts(constraint, actual) {
 			continue
 		}
-		tc.record_interface_implementation_error(.call_arg_mismatch, actual, iface, id, node.pos)
+		tc.record_generic_constraint_error(constraint, params[i], actual, id, node.pos)
+	}
+}
+
+// check_constraint_decl reports a type of a `constraint` declaration that does
+// not exist.
+fn (mut tc TypeChecker) check_constraint_decl(node_id flat.NodeId, node flat.Node) {
+	file := tc.a.source_files[int(node.pos.id)] or { return }
+	decl_module := tc.file_modules[file.name] or { tc.cur_module }
+	for i in 0 .. node.children_count {
+		type_id := tc.a.child(&node, i)
+		type_node := tc.a.node(type_id)
+		if !tc.type_name_known_in_scope(type_node.value, file.name, decl_module) {
+			tc.record_error_at(.unknown_type, 'unknown type `${type_node.value}`', type_id,
+				type_node.pos)
+		}
 	}
 }
 
@@ -241,7 +323,7 @@ struct ConstraintWalkItem {
 // while its type parameters are open (see check_fn_decl_semantics), and this
 // check runs for bodies only, whether a call instantiates them or not.
 fn (mut tc TypeChecker) check_generic_fn_constraint_members(fn_node flat.Node) {
-	interfaces := tc.generic_constraint_interfaces(fn_node)
+	interfaces := tc.generic_constraints_of(fn_node)
 	if interfaces.len == 0 {
 		return
 	}
@@ -322,7 +404,7 @@ fn (tc &TypeChecker) constraint_walk_narrowed(node flat.Node, narrowed []string)
 // check_constraint_member checks the member that the selector `sel` names, a
 // field, or with `is_call` a method, when its base is a value of a type
 // parameter that `interfaces` constrains.
-fn (mut tc TypeChecker) check_constraint_member(node_id flat.NodeId, node flat.Node, sel_id flat.NodeId, sel flat.Node, is_call bool, interfaces map[string]Interface, narrowed []string) {
+fn (mut tc TypeChecker) check_constraint_member(node_id flat.NodeId, node flat.Node, sel_id flat.NodeId, sel flat.Node, is_call bool, interfaces map[string]GenericConstraint, narrowed []string) {
 	if sel.children_count == 0 || sel.value.len == 0 || sel.value.starts_with('$') {
 		return
 	}
@@ -337,10 +419,27 @@ fn (mut tc TypeChecker) check_constraint_member(node_id flat.NodeId, node flat.N
 		return
 	}
 	param := generic_placeholder_from_unknown(base_type as Unknown) or { return }
-	iface := interfaces[param] or { return }
-	iface_name := tc.interface_metadata_name(iface.name)
-	display := iface_name.all_after_last('.')
+	constraint := interfaces[param] or { return }
 	member := sel.value
+	if !constraint.is_interface {
+		// A set of types: every one of them must have the member.
+		for typ in constraint.types {
+			if tc.type_has_member(typ, member, is_call) {
+				continue
+			}
+			what := if is_call { 'method `${member}`' } else { 'field named `${member}`' }
+			message := 'type `${param}` has no ${what}: `${typ.name().all_after_last('.')}`, in its constraint `${constraint.name}`, does not have it'
+			if is_call {
+				tc.record_error_at(.unknown_fn, message, node_id, tc.method_call_name_pos(node, sel))
+			} else {
+				tc.record_error_at(.unknown_field, message, sel_id, tc.node_value_diagnostic_pos(sel_id))
+			}
+			return
+		}
+		return
+	}
+	iface_name := tc.interface_metadata_name(constraint.iface.name)
+	display := iface_name.all_after_last('.')
 	if member in tc.interface_abstract_method_names(iface_name) {
 		return
 	}
@@ -354,4 +453,17 @@ fn (mut tc TypeChecker) check_constraint_member(node_id flat.NodeId, node flat.N
 		tc.record_error_at(.unknown_field, 'type `${param}` has no field named `${member}`: its constraint `${display}` does not declare it',
 			sel_id, tc.node_value_diagnostic_pos(sel_id))
 	}
+}
+
+// type_has_member reports whether the type `typ` has the method `member`, or
+// without `is_call` the field or the method `member`.
+fn (tc &TypeChecker) type_has_member(typ Type, member string, is_call bool) bool {
+	name := method_type_name(unwrap_pointer(typ))
+	if tc.concrete_method_signature_key(name, member) != none {
+		return true
+	}
+	if member == 'str' && tc.type_has_implicit_str_method(name) {
+		return true
+	}
+	return !is_call && tc.struct_field_type(name, member) != none
 }

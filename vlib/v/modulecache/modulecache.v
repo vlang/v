@@ -5849,7 +5849,7 @@ fn declaration_node_needs_source(a &flat.FlatAst, id flat.NodeId) bool {
 		|| declaration_contains_fn_literal(a, node)
 		|| (node.kind in [.const_decl, .struct_decl, .global_decl]
 			&& declaration_has_unserializable_initializer(a, node))
-		|| node.kind == .comptime_if
+		|| node.kind in [.comptime_if, .constraint_decl]
 		|| (node.kind == .struct_decl && struct_has_unserializable_children(a, node)) {
 		return true
 	}

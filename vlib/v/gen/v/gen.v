@@ -864,6 +864,9 @@ fn (mut g Gen) stmt(id flat.NodeId) {
 		.enum_decl {
 			g.enum_decl(id)
 		}
+		.constraint_decl {
+			g.constraint_decl(id)
+		}
 		.type_decl {
 			g.type_decl(id)
 		}
@@ -4225,6 +4228,20 @@ fn (mut g Gen) type_decl(id flat.NodeId) {
 	} else if n.typ.len > 0 {
 		g.write(' = ${g.type_text(n.typ)}')
 	}
+	if !g.on_newline {
+		g.writeln('')
+	}
+}
+
+// constraint_decl writes `constraint Number = int | i64 | f64`.
+fn (mut g Gen) constraint_decl(id flat.NodeId) {
+	n := g.a.node(id)
+	g.emit_attrs(id)
+	if n.op == .arrow {
+		g.write('pub ')
+	}
+	g.write('constraint ${n.value}')
+	g.sum_type_variants(g.a.children_of(n))
 	if !g.on_newline {
 		g.writeln('')
 	}

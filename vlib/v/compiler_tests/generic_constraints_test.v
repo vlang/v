@@ -241,3 +241,123 @@ fn main() {
 	errors := res.output.split_into_lines().filter(it.contains(': error: '))
 	assert errors == ["main.v:11:25: error: `int` doesn't implement field `name` of interface `Named`"], res.output
 }
+
+// A constraint can also be a set of types, declared with `constraint`: the
+// type argument must be one of them, and the body can use on a value of type
+// `T` what every type of the set has.
+
+fn test_a_call_with_a_type_of_the_constraint_set_is_valid() {
+	res := check_program('set_valid', 'constraint Number = int | i64 | f64
+
+fn double[T Number](x T) T {
+	return x + x
+}
+
+fn describe[T Number](x T) string {
+	return x.str()
+}
+
+fn main() {
+	println(double(2))
+	println(double(2.5))
+	println(describe(i64(3)))
+}
+')
+	assert res.exit_code == 0, res.output
+	assert error_lines(res.output) == [], res.output
+}
+
+fn test_a_call_with_a_type_outside_the_constraint_set_is_reported_at_the_call() {
+	res := check_program('set_call', "constraint Number = int | i64 | f64
+
+fn double[T Number](x T) T {
+	return x + x
+}
+
+fn main() {
+	println(double('a'))
+}
+")
+	assert res.exit_code == 1, res.output
+	assert error_lines(res.output) == ['8:17: cannot use `string` as `T`: it is not in its constraint `Number`'], res.output
+}
+
+fn test_the_body_can_use_only_what_every_type_of_the_set_has() {
+	res := check_program('set_body', 'constraint Animal = User | Pet
+
+fn label[T Animal](x T) string {
+	return x.name + x.greet()
+}
+
+fn main() {}
+')
+	assert res.exit_code == 1, res.output
+	assert error_lines(res.output) == [
+		'4:20: type `T` has no method `greet`: `Pet`, in its constraint `Animal`, does not have it',
+	], res.output
+}
+
+fn test_a_constraint_set_of_unknown_types_is_reported() {
+	res := check_program('set_unknown', 'constraint Bad = int | Foo
+
+fn main() {}
+')
+	assert res.exit_code == 1, res.output
+	assert error_lines(res.output) == ['1:24: unknown type `Foo`'], res.output
+}
+
+fn test_constraint_is_still_a_name() {
+	res := check_program('name', "struct Rule {
+	constraint string
+}
+
+fn main() {
+	constraint := Rule{
+		constraint: 'x'
+	}
+	println(constraint.constraint)
+}
+")
+	assert res.exit_code == 0, res.output
+	assert error_lines(res.output) == [], res.output
+}
+
+fn test_a_program_with_constraints_builds_and_runs() {
+	dir := os.join_path(os.vtmp_dir(), 'v3_generic_constraints_run_${os.getpid()}')
+	os.mkdir_all(dir) or { panic(err) }
+	defer {
+		os.rmdir_all(dir) or {}
+	}
+	path := os.join_path(dir, 'main.v')
+	os.write_file(path, constraint_prelude + "struct Box[T Named] {
+	item T
+}
+
+fn (b Box[T]) label() string {
+	return 'box of \${b.item.name}'
+}
+
+constraint Number = int | i64 | f64
+
+fn longest[T Named](a T, b T) T {
+	return if a.name.len >= b.name.len { a } else { b }
+}
+
+fn double[T Number](x T) T {
+	return x + x
+}
+
+fn main() {
+	u := longest(User{ name: 'Alex', age: 30 }, User{ name: 'Bo', age: 25 })
+	println(u.age)
+	println(double(21))
+	println(double(1.25))
+	println(Box[User]{ item: u }.label())
+}
+") or {
+		panic(err)
+	}
+	res := os.execute('${os.quoted_path(@VEXE)} -new-compiler run ${os.quoted_path(path)}')
+	assert res.exit_code == 0, res.output
+	assert res.output.trim_space().split_into_lines() == ['30', '42', '2.5', 'box of Alex'], res.output
+}
