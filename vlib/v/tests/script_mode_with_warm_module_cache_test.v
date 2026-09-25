@@ -1,5 +1,32 @@
 import os
 
+struct SavedEnv {
+	name    string
+	value   string
+	present bool
+}
+
+fn save_env(name string) SavedEnv {
+	value := os.getenv_opt(name) or {
+		return SavedEnv{
+			name: name
+		}
+	}
+	return SavedEnv{
+		name:    name
+		value:   value
+		present: true
+	}
+}
+
+fn (s SavedEnv) restore() {
+	if s.present {
+		os.setenv(s.name, s.value, true)
+	} else {
+		os.unsetenv(s.name)
+	}
+}
+
 // A script (top-level statements, no `fn main`) written into the same directory as
 // the V3 module cache must still build once another program has warmed that cache:
 // the cached `.vh` module headers are not part of the script's project.
@@ -11,13 +38,17 @@ fn test_script_builds_next_to_a_warm_module_cache() {
 	os.find_abs_path_of_executable('cc') or { return }
 	dir := os.join_path(os.vtmp_dir(), 'v_script_warm_module_cache_${os.getpid()}')
 	os.mkdir_all(dir)!
-	old_vtmp := os.getenv('VTMP')
+	// Pin the module cache to `dir`, whatever the runner exports: V3CACHE would move
+	// it elsewhere, and VFLAGS (e.g. `-nocache`) or V3_CACHE_FORCE_SOURCE would keep
+	// the cached headers from being written or read, hiding the regression.
+	saved := ['VTMP', 'V3CACHE', 'VFLAGS', 'V3_CACHE_FORCE_SOURCE'].map(save_env(it))
 	os.setenv('VTMP', dir, true)
+	os.setenv('V3CACHE', dir, true)
+	os.unsetenv('VFLAGS')
+	os.unsetenv('V3_CACHE_FORCE_SOURCE')
 	defer {
-		if old_vtmp == '' {
-			os.unsetenv('VTMP')
-		} else {
-			os.setenv('VTMP', old_vtmp, true)
+		for s in saved {
+			s.restore()
 		}
 		os.rmdir_all(dir) or {}
 	}
