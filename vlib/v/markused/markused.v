@@ -516,7 +516,8 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 			used[seed] = true
 		}
 		for seed in ['__new_array', 'array.get', 'array.push', 'map_hash_int_4', 'map_hash_int_8',
-			'map_eq_int_4', 'map_eq_int_8', 'map_clone_int_4', 'map_clone_int_8', 'map_free_nop'] {
+			'map_hash_int_16', 'map_eq_int_4', 'map_eq_int_8', 'map_eq_int_16', 'map_clone_int_4',
+			'map_clone_int_8', 'map_clone_int_16', 'map_free_nop'] {
 			queue << seed
 			used[seed] = true
 		}
@@ -535,10 +536,11 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 			'bool.str', 'int.str', 'u64.str', 'rune.str', 'string.+', 'ptr_str', 'os.join_path_single',
 			'panic', 'u8.is_letter', 'u8.is_capital', 'string.is_capital', 'string.to_lower_ascii',
 			'rune.to_lower', 'Array_u8__bytestr', 'Array_u8__hex', 'data_to_hex_string',
-			'map_hash_string', 'map_hash_int_1', 'map_hash_int_2', 'map_eq_string', 'map_eq_int_1',
-			'map_eq_int_2', 'map_clone_string', 'map_clone_int_1', 'map_clone_int_2', 'map_free_string',
-			'[]string.join', 'Array_string__join', 'embed_file.Decoder.decompress',
-			'embed_file.join_chunks', 'exit', 'v_exit']
+			'map_hash_string', 'map_hash_int_1', 'map_hash_int_2', 'map_hash_int_16', 'map_eq_string',
+			'map_eq_int_1', 'map_eq_int_2', 'map_eq_int_16', 'map_clone_string', 'map_clone_int_1',
+			'map_clone_int_2', 'map_clone_int_16', 'map_free_string', '[]string.join',
+			'Array_string__join', 'embed_file.Decoder.decompress', 'embed_file.join_chunks', 'exit',
+			'v_exit']
 		if !tc.nofloat {
 			runtime_seeds << ['f32.str', 'f64.str', 'strconv__f32_to_str_l', 'strconv__f64_to_str_l']
 		}
@@ -1482,8 +1484,9 @@ fn enqueue_implicit_global_container_roots(a &flat.FlatAst, tc &types.TypeChecke
 	if needs_map {
 		for helper in ['new_map', 'map_hash_string', 'map_eq_string', 'map_clone_string',
 			'map_free_string', 'map_hash_int_1', 'map_hash_int_2', 'map_hash_int_4', 'map_hash_int_8',
-			'map_eq_int_1', 'map_eq_int_2', 'map_eq_int_4', 'map_eq_int_8', 'map_clone_int_1',
-			'map_clone_int_2', 'map_clone_int_4', 'map_clone_int_8', 'map_free_nop'] {
+			'map_hash_int_16', 'map_eq_int_1', 'map_eq_int_2', 'map_eq_int_4', 'map_eq_int_8',
+			'map_eq_int_16', 'map_clone_int_1', 'map_clone_int_2', 'map_clone_int_4', 'map_clone_int_8',
+			'map_clone_int_16', 'map_free_nop'] {
 			enqueue_initializer_callee(helper, fn_decls, a, mut used, mut queue)
 		}
 	}

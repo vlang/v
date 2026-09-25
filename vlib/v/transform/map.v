@@ -1638,6 +1638,11 @@ fn map_callback_names(key_type string) (string, string, string, string) {
 	} else if key_type in ['i64', 'u64', 'f64']
 		|| key_type.contains('Arc[') || key_type.contains('Arc_') {
 		size_suffix = '8'
+	} else if key_type in ['i128', 'u128'] {
+		// 128-bit keys need all sixteen bytes hashed, compared and copied; the
+		// 8-byte callbacks keep the low half of every key and let distinct keys
+		// overwrite each other.
+		size_suffix = '16'
 	}
 
 	return 'map_hash_int_${size_suffix}', 'map_eq_int_${size_suffix}', 'map_clone_int_${size_suffix}', 'map_free_nop'
