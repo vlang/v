@@ -1,0 +1,26 @@
+vlib/v/checker/tests/use_byte_instead_of_u8_padded_fn_param_err.vv:5:15: error: byte is deprecated, use u8 instead
+    3 | fn (byte Packet) name() {}
+    4 | 
+    5 | fn run(cb fn (byte ), pair fn (byte , u8)) {
+      |               ~~~~
+    6 |     cb(1)
+    7 |     pair(1, 2)
+vlib/v/checker/tests/use_byte_instead_of_u8_padded_fn_param_err.vv:5:32: error: byte is deprecated, use u8 instead
+    3 | fn (byte Packet) name() {}
+    4 | 
+    5 | fn run(cb fn (byte ), pair fn (byte , u8)) {
+      |                                ~~~~
+    6 |     cb(1)
+    7 |     pair(1, 2)
+vlib/v/checker/tests/use_byte_instead_of_u8_padded_fn_param_err.vv:16:11: error: byte is deprecated, use u8 instead
+   14 |     }
+   15 |     _ = add_one
+   16 |     _ := fn (byte ) {}
+      |              ~~~~
+   17 | }
+vlib/v/checker/tests/use_byte_instead_of_u8_padded_fn_param_err.vv:16:11: error: use `_` to name an unused parameter
+   14 |     }
+   15 |     _ = add_one
+   16 |     _ := fn (byte ) {}
+      |              ~~~~
+   17 | }

@@ -6418,6 +6418,14 @@ fn deprecated_byte_is_receiver_name(source string, start int, end int) bool {
 		// `fn (byte) m()` is a type-only receiver.
 		return false
 	}
+	mut next := end
+	for next < source.len && source[next] in [` `, `\t`] {
+		next++
+	}
+	if next >= source.len || source[next] in [`)`, `,`, `\n`, `\r`] {
+		// `fn (byte )` and `fn (byte , u8)` are type-only params: no type follows the name.
+		return false
+	}
 	mut i := deprecated_byte_skip_blanks_back(source, start)
 	mut word_start := i
 	for word_start > 0 && source[word_start - 1].is_letter() {
