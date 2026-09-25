@@ -3210,17 +3210,44 @@ fn (g &FlatGen) assert_message_id(node flat.Node) ?flat.NodeId {
 }
 
 // assert_reported_value_ids returns the operands of a failed assert that can be read
-// again: operands without side effects, and operands captured before the condition.
+// again: operands captured before the condition, and operands that did not need that.
 fn (g &FlatGen) assert_reported_value_ids(node flat.Node) ?(flat.NodeId, flat.NodeId) {
 	lhs_id, rhs_id := g.assert_value_ids(node)?
-	if !g.assert_value_is_readable(lhs_id) || !g.assert_value_is_readable(rhs_id) {
+	calls_operator := g.assert_comparison_calls_operator_method(node, lhs_id, rhs_id)
+	if !g.assert_value_is_readable(lhs_id, calls_operator)
+		|| !g.assert_value_is_readable(rhs_id, calls_operator) {
 		return none
 	}
 	return lhs_id, rhs_id
 }
 
-fn (g &FlatGen) assert_value_is_readable(id flat.NodeId) bool {
-	return int(id) in g.assert_expr_overrides || g.assert_operand_is_pure(id)
+fn (g &FlatGen) assert_value_is_readable(id flat.NodeId, calls_operator bool) bool {
+	return int(id) in g.assert_expr_overrides
+		|| !g.assert_operand_needs_capture(id, calls_operator)
+}
+
+// assert_operand_needs_capture reports whether an assert operand must be copied before
+// the comparison, to report the value that was compared: when it has side effects, or
+// when the comparison calls an operator method, which could change what it reads, like
+// in `assert current == Item{}`, with an `Item.==` method that changes `current`.
+fn (g &FlatGen) assert_operand_needs_capture(id flat.NodeId, calls_operator bool) bool {
+	if !g.assert_operand_is_pure(id) {
+		return true
+	}
+	return calls_operator && !g.assert_operand_is_constant(id)
+}
+
+// assert_comparison_calls_operator_method reports whether the comparison of an assert
+// calls a user defined `==` or `<` method, for its operands, or for their fields or elements.
+fn (g &FlatGen) assert_comparison_calls_operator_method(node flat.Node, lhs_id flat.NodeId, rhs_id flat.NodeId) bool {
+	// The marker is followed by `op:lhs_offset:lhs_end:rhs_offset:rhs_end`.
+	op_name := node.value.all_after(assert_infix_values_marker).all_before(':')
+	if op_name !in ['eq', 'ne', 'lt', 'gt', 'le', 'ge'] {
+		return false
+	}
+	op := if op_name in ['eq', 'ne'] { flat.Op.eq } else { flat.Op.lt }
+	return g.tc.comparison_calls_operator_method(g.usable_expr_type(lhs_id), op)
+		|| g.tc.comparison_calls_operator_method(g.usable_expr_type(rhs_id), op)
 }
 
 // assert_operand_is_pure reports whether reading an assert operand again, after
@@ -3348,25 +3375,26 @@ fn (g &FlatGen) assert_operand_children_are_pure(node flat.Node) bool {
 	return true
 }
 
-// gen_assert_operand_captures prepares temps for the assert operands that have side
-// effects, and makes the condition read those temps, so that a failed assert can report
-// the operands without evaluating them again. The temps are evaluated ahead of the
-// condition, so capturing the right operand also needs a snapshot of the left one, even
-// when reading it has no side effects: in `assert c.n == bump(mut c)`, `c.n` must be
-// read before `bump` runs.
+// gen_assert_operand_captures prepares temps for the assert operands that need them
+// (see `assert_operand_needs_capture`), and makes the condition read those temps, so
+// that a failed assert can report the compared values without evaluating the operands
+// again. The temps are evaluated ahead of the condition, so capturing the right operand
+// also needs a snapshot of the left one, even when reading it has no side effects: in
+// `assert c.n == bump(mut c)`, `c.n` must be read before `bump` runs.
 fn (mut g FlatGen) gen_assert_operand_captures(node flat.Node) []AssertOperandCapture {
 	lhs_id, rhs_id := g.assert_value_ids(node) or { return [] }
+	calls_operator := g.assert_comparison_calls_operator_method(node, lhs_id, rhs_id)
 	mut captures := []AssertOperandCapture{cap: 2}
-	lhs_is_pure := g.assert_operand_is_pure(lhs_id)
-	if !lhs_is_pure {
+	lhs_needs_capture := g.assert_operand_needs_capture(lhs_id, calls_operator)
+	if lhs_needs_capture {
 		g.add_assert_operand_capture(mut captures, lhs_id)
 	}
-	if g.assert_operand_is_pure(rhs_id) {
+	if !g.assert_operand_needs_capture(rhs_id, calls_operator) {
 		return captures
 	}
 	if captures.len == 0 && !g.assert_operand_is_constant(lhs_id) {
 		// Without a snapshot of the left operand, the right one stays in the condition.
-		if !lhs_is_pure || !g.add_assert_operand_capture(mut captures, lhs_id) {
+		if lhs_needs_capture || !g.add_assert_operand_capture(mut captures, lhs_id) {
 			return captures
 		}
 	}

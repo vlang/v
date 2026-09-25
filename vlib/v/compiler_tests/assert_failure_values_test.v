@@ -188,3 +188,65 @@ fn main() {
 	assert output.contains('   left value: g[0] = 401\n'), output
 	assert output.contains('calls: 4\n'), output
 }
+
+// test_failed_assert_reports_operands_compared_by_operator_methods checks that a failed
+// assert reports the values that were compared, also when the `==` or `<` method that
+// compared them changes what the operands read.
+fn test_failed_assert_reports_operands_compared_by_operator_methods() {
+	result := run_assert_failure_source_with_flags('operator_methods.v', "struct Item {
+	n int
+}
+
+struct Outer {
+	inner Item
+}
+
+__global current = Item{}
+__global outer = Outer{}
+__global items = []Item{len: 1}
+
+fn (a Item) == (b Item) bool {
+	current = Item{
+		n: current.n + 1
+	}
+	outer = Outer{
+		inner: Item{
+			n: outer.inner.n + 1
+		}
+	}
+	items = [Item{
+		n: items[0].n + 1
+	}]
+	return false
+}
+
+fn (a Item) < (b Item) bool {
+	current = Item{
+		n: current.n + 10
+	}
+	return false
+}
+
+@[assert_continues]
+fn check() {
+	assert current == Item{}
+	assert Item{} == current
+	assert current > Item{}
+	assert outer == Outer{}
+	assert items == [Item{}]
+}
+
+fn main() {
+	check()
+	println('current: \${current.n}, outer: \${outer.inner.n}, items: \${items[0].n}')
+}
+", '-enable-globals')
+	assert result.exit_code == 0, result.output
+	output := result.output
+	assert output.contains(': assert current == Item{}\n   left value: current = Item{\n    n: 0\n}\n'), output
+	assert output.contains(': assert Item{} == current\n   left value: Item{} = Item{\n    n: 0\n}\n  right value: current = Item{\n    n: 1\n}\n'), output
+	assert output.contains(': assert current > Item{}\n   left value: current = Item{\n    n: 2\n}\n'), output
+	assert output.contains(': assert outer == Outer{}\n   left value: outer = Outer{\n    inner: Item{\n        n: 2\n    }\n}\n'), output
+	// The elements are compared before the operands could be copied; report no values then.
+	assert output.contains(': assert items == [Item{}]\ncurrent: 14, outer: 4, items: 4\n'), output
+}
