@@ -1225,8 +1225,12 @@ fn (mut p Parser) top_level_stmt() flat.NodeId {
 			return flat.empty_node
 		}
 		.name {
-			// `constraint` is no keyword: vlib uses it as a name too.
-			if p.lit == 'constraint' && p.peek() == .name {
+			// `constraint` is no keyword: vlib uses it as a name too. It declares a
+			// set of types before a name, after `pub`, and where no statement can
+			// go on with it, at the end of a line or of the file: half written, it
+			// is reported as a half written `type` declaration.
+			if p.lit == 'constraint'
+				&& (p.pending_decl_pub || p.peek() in [.name, .semicolon, .eof]) {
 				return p.constraint_decl()
 			}
 			return p.stmt()
@@ -3291,8 +3295,23 @@ fn (mut p Parser) constraint_decl() flat.NodeId {
 	is_pub := p.pending_decl_pub
 	p.pending_decl_pub = false
 	p.next() // skip `constraint`
+	// The end of a line or of the file after `constraint` ends no statement, as
+	// it ends none after the keyword `type`: the name can come after it.
+	for p.tok == .semicolon && (p.tok_pos >= p.s.src.len || p.s.src[p.tok_pos] != `;`) {
+		p.next()
+	}
 	name_pos := p.current_pos()
 	name := p.expect_name()
+	if name.len == 1 && name[0] >= `A` && name[0] <= `Z` {
+		p.record_diagnostic_span('single letter capital names are reserved for generic template types',
+			name_pos.offset, name_pos.end)
+	}
+	if p.tok == .lsbr {
+		params_start := p.tok_pos
+		p.parse_generic_params()
+		p.record_diagnostic_span('a constraint cannot have type parameters', params_start,
+			p.prev_tok_end)
+	}
 	if p.tok == .assign {
 		p.next()
 	} else {
@@ -3303,6 +3322,10 @@ fn (mut p Parser) constraint_decl() flat.NodeId {
 	for {
 		type_start := p.span_start()
 		type_name := p.parse_type_name()
+		if type_name == 'none' {
+			p.record_diagnostic_span('a constraint cannot have none as one of its types', type_start,
+				p.prev_tok_end)
+		}
 		types << p.add_node(flat.Node{
 			kind:  .ident
 			value: type_name

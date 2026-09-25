@@ -1151,6 +1151,146 @@ fn main() {}
 	assert error_lines(res.output) == ['1:24: unknown type `Foo`'], res.output
 }
 
+// half_written_errors checks a program with `main` and `decl`, before `main` or,
+// `at_end`, after it, and returns `line:col: message` for each of its errors.
+fn half_written_errors(name string, decl string, at_end bool) []string {
+	dir := os.join_path(os.vtmp_dir(), 'v3_generic_constraints_half_${name}_${os.getpid()}')
+	os.mkdir_all(dir) or { panic(err) }
+	defer {
+		os.rmdir_all(dir) or {}
+	}
+	main_fn := 'fn main() {\n\tprintln(1)\n}\n'
+	source := if at_end {
+		'module main\n\n${main_fn}\n${decl}\n'
+	} else {
+		'module main\n\n${decl}\n\n${main_fn}'
+	}
+	path := os.join_path(dir, 'main.v')
+	os.write_file(path, source) or { panic(err) }
+	res := os.execute('${os.quoted_path(@VEXE)} -new-compiler -check -nocolor ${os.quoted_path(path)}')
+	mut lines := []string{}
+	for line in res.output.split_into_lines() {
+		if line.contains(': error: ') {
+			lines << line.all_after('main.v:')
+		}
+	}
+	return lines
+}
+
+// shifted_columns moves each error of `errors` on line `decl_line` that is past
+// column `keyword_col` right by `shift`: what a longer keyword moves.
+fn shifted_columns(errors []string, decl_line int, keyword_col int, shift int) []string {
+	mut result := []string{}
+	for e in errors {
+		parts := e.split_nth(':', 3)
+		if parts.len == 3 && parts[0].int() == decl_line && parts[1].int() > keyword_col {
+			result << '${parts[0]}:${parts[1].int() + shift}:${parts[2]}'
+		} else {
+			result << e
+		}
+	}
+	return result
+}
+
+// without_eof_column is `e` without its column when it is about the end of the
+// file: there, the error is where the scanner was last, on the keyword `type`
+// and past the word `constraint`, where the name is missing.
+fn without_eof_column(e string) string {
+	parts := e.split_nth(':', 3)
+	if !e.contains('eof') || parts.len != 3 {
+		return e
+	}
+	return '${parts[0]}:${parts[2]}'
+}
+
+fn test_a_half_written_constraint_is_reported_as_a_half_written_type() {
+	// While a `constraint` declaration is being written, V reports what it reports
+	// for a `type` declaration at the same point, and not a statement of a script
+	// such as "all definitions must occur before code in script mode". `type` at
+	// the end of a file also says "a type alias can not refer to itself: " about a
+	// name it did not get. Neither says anything about `Foo =` or `Foo = int |` at
+	// the end of a file.
+	mut compared := 0
+	for tail in ['', ' ', ' Foo', ' Foo ', ' Foo =', ' Foo = int |'] {
+		for prefix in ['', 'pub '] {
+			for at_end in [false, true] {
+				type_errors := half_written_errors('type', '${prefix}type${tail}', at_end)
+				constraint_errors := half_written_errors('constraint', '${prefix}constraint${tail}',
+					at_end)
+				decl_line := if at_end { 7 } else { 3 }
+				want := shifted_columns(type_errors.filter(!it.contains('a type alias can not refer to itself')),
+					decl_line, prefix.len + 1, 'constraint'.len - 'type'.len)
+				compared += want.len
+				assert constraint_errors.map(without_eof_column(it)) == want.map(without_eof_column(it)), '`${prefix}constraint${tail}`, at the end: ${at_end}'
+			}
+		}
+	}
+	assert compared > 20
+}
+
+fn test_a_constraint_declaration_follows_the_syntax_rules_of_a_type_declaration() {
+	// As `type T = int | f64` and `type Xy = none | int` are reported. A constraint
+	// has no type parameters: its types are the ones it lists.
+	res := check_program('constraint_syntax', 'constraint T = int | f64
+
+constraint WithNone = int | none
+
+constraint Pair[T] = int | f64
+
+fn main() {}
+')
+	assert res.exit_code == 1, res.output
+	assert error_lines(res.output) == [
+		'1:12: single letter capital names are reserved for generic template types',
+		'3:29: a constraint cannot have none as one of its types',
+		'5:16: a constraint cannot have type parameters',
+	], res.output
+}
+
+fn test_a_constraint_declaration_follows_the_rules_of_a_type_declaration() {
+	// Its name, the types it lists, and another type or constraint of the same
+	// name, as a sum type is checked. Any type can be in the set: an array, a
+	// map, an option, a pointer, a function, a channel, a fixed array.
+	res := check_program('constraint_rules', 'constraint lower = int | f64
+
+constraint Twice = int | int
+
+constraint Itself = int | Itself
+
+constraint Composite = []int | map[string]int | ?int | &int | fn () | chan int | [2]u8 | User
+
+constraint Unknown = []Nope | map[string]Nope
+
+constraint Named2 = int | f64
+
+struct Named2 {}
+
+struct Clash {}
+
+constraint Clash = int
+
+constraint Twin = int
+
+constraint Twin = f64
+
+constraint Res = !int | int
+
+fn main() {}
+')
+	assert res.exit_code == 1, res.output
+	assert error_lines(res.output) == [
+		'1:1: constraint `lower` must begin with capital letter',
+		'3:26: constraint Twice cannot hold the type `int` more than once',
+		'5:27: constraint cannot hold itself',
+		// Once per line, at the type that holds it, as for a sum type.
+		'9:22: unknown type `Nope`',
+		'13:8: cannot register struct `Named2`, another type with this name exists',
+		'17:1: cannot register constraint `Clash`, another type with this name exists',
+		'21:1: cannot register constraint `Twin`, another type with this name exists',
+		'23:18: a constraint cannot hold a Result type',
+	], res.output
+}
+
 fn test_constraint_is_still_a_name() {
 	res := check_program('name', "struct Rule {
 	constraint string

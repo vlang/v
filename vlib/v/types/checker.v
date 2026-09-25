@@ -2105,7 +2105,7 @@ fn (mut tc TypeChecker) build_type_declaration_index(a &flat.FlatAst) {
 			conflict_module_name = node.value
 			continue
 		}
-		if node.kind in [.struct_decl, .type_decl, .interface_decl, .enum_decl] {
+		if node.kind in [.struct_decl, .type_decl, .interface_decl, .enum_decl, .constraint_decl] {
 			qualified := qualify_decl_name_in_module(node.value, conflict_module_name)
 			if qualified !in tc.first_type_declaration_ids {
 				tc.first_type_declaration_ids[qualified] = index
@@ -15991,7 +15991,7 @@ fn (tc &TypeChecker) type_declaration_before(node_id flat.NodeId, name string) ?
 			module_name = candidate.value
 			continue
 		}
-		if candidate.kind in [.struct_decl, .type_decl, .interface_decl, .enum_decl]
+		if candidate.kind in [.struct_decl, .type_decl, .interface_decl, .enum_decl, .constraint_decl]
 			&& qualify_decl_name_in_module(candidate.value, module_name) == current_name {
 			return flat.NodeId(idx)
 		}
@@ -16015,6 +16015,7 @@ fn (mut tc TypeChecker) check_type_declaration_conflict(node_id flat.NodeId, nod
 			.struct_decl { 'struct' }
 			.interface_decl { 'interface' }
 			.enum_decl { 'enum' }
+			.constraint_decl { 'constraint' }
 			else { 'alias' }
 		}
 		tc.record_error_at(.duplicate_decl, 'cannot register ${kind} `${node.value}`, this type was already imported', node_id, name_pos)
@@ -16032,6 +16033,7 @@ fn (mut tc TypeChecker) check_type_declaration_conflict(node_id flat.NodeId, nod
 		.struct_decl { 'struct' }
 		.interface_decl { 'interface' }
 		.enum_decl { 'enum' }
+		.constraint_decl { 'constraint' }
 		else {
 			if is_fn_alias {
 				'fn'
@@ -16045,6 +16047,8 @@ fn (mut tc TypeChecker) check_type_declaration_conflict(node_id flat.NodeId, nod
 	name := if is_fn_alias { tc.qualify_name(node.value) } else { node.value }
 	pos := if node.kind == .type_decl && !is_fn_alias && !is_builtin_collision {
 		tc.declaration_keyword_name_pos(node_id, 'type')
+	} else if node.kind == .constraint_decl && !is_builtin_collision {
+		tc.declaration_keyword_name_pos(node_id, 'constraint')
 	} else if node.kind == .enum_decl && !is_builtin_collision {
 		tc.enum_declaration_diagnostic_pos(node_id)
 	} else {

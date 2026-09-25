@@ -602,18 +602,46 @@ fn (mut tc TypeChecker) check_generic_fn_value_constraints(id flat.NodeId, node 
 	}
 }
 
-// check_constraint_decl reports a type of a `constraint` declaration that does
-// not exist.
+// check_constraint_decl checks a `constraint` declaration as a sum type
+// declaration is checked: its name, a type or a constraint of the same name
+// before it, and the types it lists, which must exist, each once. A type of
+// the set can be any type, `[]int` or `?User`, but a Result type or the
+// constraint itself.
 fn (mut tc TypeChecker) check_constraint_decl(node_id flat.NodeId, node flat.Node) {
-	file := tc.a.source_files[int(node.pos.id)] or { return }
-	decl_module := tc.file_modules[file.name] or { tc.cur_module }
+	tc.check_type_declaration_conflict(node_id, node)
+	if tc.should_check_type_declaration_name(node_id, node)
+		&& !pascal_case_name_is_valid(node.value) {
+		tc.check_pascal_case_name(node_id, node.value, 'constraint', tc.declaration_keyword_name_pos(node_id,
+			'constraint'))
+	}
+	mut seen := map[string]bool{}
 	for i in 0 .. node.children_count {
 		type_id := tc.a.child(&node, i)
 		type_node := tc.a.node(type_id)
-		if !tc.type_name_known_in_scope(type_node.value, file.name, decl_module) {
-			tc.record_error_at(.unknown_type, 'unknown type `${type_node.value}`', type_id,
-				type_node.pos)
+		text := trimmed_space(type_node.value)
+		// The parser reports a missing type and `none`.
+		if text.len == 0 || text == 'none' {
+			continue
 		}
+		if text == node.value {
+			tc.record_error_at(.assignment_mismatch, 'constraint cannot hold itself', type_id,
+				type_node.pos)
+			continue
+		}
+		typ := tc.parse_type(text)
+		key := if typ is Unknown { text } else { typ.name() }
+		if seen[key] {
+			tc.record_error_at(.duplicate_decl, 'constraint ${node.value} cannot hold the type `${key.all_after_last('.')}` more than once',
+				type_id, type_node.pos)
+			continue
+		}
+		seen[key] = true
+		if typ is ResultType {
+			tc.record_error_at(.assignment_mismatch, 'a constraint cannot hold a Result type',
+				type_id, type_node.pos)
+			continue
+		}
+		tc.check_type_string_for_unsupported_generics(text, type_id, map[string]bool{})
 	}
 }
 
