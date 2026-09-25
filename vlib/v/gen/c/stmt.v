@@ -4577,6 +4577,12 @@ fn (mut g FlatGen) gen_assert_numeric_value(prefix string, id flat.NodeId) {
 		g.write('fprintf(stderr, "%s: %s = %.17g\\n", "${c_escape(prefix)}", "${c_escape(label)}", (double)(')
 		g.gen_expr(id)
 		g.writeln('));')
+	} else if helper := int128_decimal_helper(typ) {
+		// A 128-bit value does not fit `long long`, and the struct representation
+		// cannot be cast to it, so the message goes through the decimal helper.
+		g.write('fprintf(stderr, "%s: %s = %s\\n", "${c_escape(prefix)}", "${c_escape(label)}", ${helper}(')
+		g.gen_expr(id)
+		g.writeln('));')
 	} else if typ.is_integer() {
 		is_unsigned := if typ is types.Primitive {
 			typ.props.has(.unsigned)
@@ -8587,6 +8593,11 @@ fn (mut g FlatGen) gen_assign(node flat.Node) {
 							continue
 						}
 					}
+				}
+				if g.gen_int128_compound_assign(node.op, g.a.child(&node, i), rhs_id, lhs_type, rhs_type) {
+					g.expected_enum = ''
+					i += 2
+					continue
 				}
 				if node.op == .power_assign {
 					lhs_assign_id := g.a.child(&node, i)

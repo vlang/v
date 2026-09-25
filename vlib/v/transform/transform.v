@@ -21909,6 +21909,13 @@ fn (mut t Transformer) transform_typeof_expr_mode(id flat.NodeId, node flat.Node
 		}
 	}
 	if typ.len == 0 {
+		// An arithmetic expression that mixes a 128-bit type with a narrower one is
+		// recorded under the narrower operand's type, so `typeof` would name `u64`
+		// for a value that is 128 bits wide. The promotion goes to the wider operand,
+		// and the operands still carry their own types here.
+		typ = t.wide_method_receiver_type(expr_id)
+	}
+	if typ.len == 0 {
 		typ = t.node_type(expr_id)
 	}
 	if typ.len == 0 {
@@ -22358,6 +22365,13 @@ fn (t &Transformer) typeof_type_name(node flat.Node) string {
 				typ = typ.trim_string_left('&')
 			}
 		}
+	}
+	if typ.len == 0 {
+		// An arithmetic expression that mixes a 128-bit type with a narrower one is
+		// recorded under the narrower operand's type, so `typeof` would name `u64`
+		// for a value that is 128 bits wide. The promotion always goes to the wider
+		// operand, and the operands still carry their own types here.
+		typ = t.stringify_wide_integer_operand(expr_id)
 	}
 	if typ.len == 0 {
 		typ = t.node_type(expr_id)
@@ -24492,7 +24506,7 @@ fn is_numeric_type_name(name string) bool {
 fn is_integer_type_name(name string) bool {
 	return name == 'int' || name == 'i8' || name == 'i16' || name == 'i64' || name == 'u8'
 		|| name == 'byte' || name == 'u16' || name == 'u32' || name == 'u64' || name == 'isize'
-		|| name == 'usize' || name == 'rune'
+		|| name == 'usize' || name == 'rune' || name == 'i128' || name == 'u128'
 }
 
 fn is_float_type_name(name string) bool {

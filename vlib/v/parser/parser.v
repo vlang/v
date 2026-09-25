@@ -16522,9 +16522,9 @@ fn write_utf8_codepoint(buf &u8, j int, code u32) int {
 }
 
 fn is_builtin_type(name string) bool {
-	return name in ['int', 'i8', 'i16', 'i32', 'i64', 'u8', 'u16', 'u32', 'u64', 'f32', 'f64',
-		'byte', 'bool', 'string', 'rune', 'char', 'voidptr', 'charptr', 'byteptr', 'usize', 'isize',
-		'array', 'map', 'mapnode', '_result', '_option', 'any']
+	return name in ['int', 'i8', 'i16', 'i32', 'i64', 'i128', 'u8', 'u16', 'u32', 'u64', 'u128',
+		'f32', 'f64', 'byte', 'bool', 'string', 'rune', 'char', 'voidptr', 'charptr', 'byteptr',
+		'usize', 'isize', 'array', 'map', 'mapnode', '_result', '_option', 'any']
 }
 
 fn parser_name_can_start_pointer_type(name string) bool {

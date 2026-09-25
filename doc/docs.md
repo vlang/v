@@ -618,8 +618,8 @@ bool
 
 string
 
-i8    i16  int  i64      i128 (soon)
-u8    u16  u32  u64      u128 (soon)
+i8    i16  int  i64  i128
+u8    u16  u32  u64  u128
 
 rune // represents a Unicode code point
 
@@ -633,6 +633,91 @@ voidptr // this one is mostly used for [C interoperability](#v-and-c)
 > [!NOTE]
 > `int` is a platform-width signed integer: 64 bits on 64-bit targets and 32 bits on 32-bit
 > targets. Use `i32` or `i64` when you need a fixed width.
+
+### 128-bit integers
+
+`i128` and `u128` hold 128 bits. The usual operators work on them: arithmetic,
+bitwise, shifts, comparisons, and casts to and from the other numeric types.
+
+```v
+fn main() {
+	total := u128(1) << 100 // 2^100
+	assert total / u128(4) == u128(1) << 98
+	assert (u128(1) << 127) * u128(2) == u128(0) // wraps at 128 bits
+	assert i128(-8) >> 1 == i128(-4) // keeps the sign
+	assert i128(-8) >>> 1 == (u128(1) << 127) - u128(4)
+}
+```
+
+A shift by 128 or more gives `0`. The count is read at its own width, so a count
+that does not fit in 64 bits shifts everything out rather than being taken for a
+small one. `>>` on a negative signed value is an arithmetic shift, so it gives
+`-1` once the value is all ones, while `>>>` reads the same bits as unsigned.
+Division or modulo by zero panics, as it does for the other integer types, and
+overflow wraps.
+
+The compiler does not require a 128-bit C type. Every operation becomes a call
+to a small helper, and the helper has two implementations: the C compiler's own
+`__int128` where it exists (gcc, clang), and one built from 64-bit limbs
+everywhere else (tcc, MSVC, every 32-bit target), where a 128-bit value is a
+struct. Both answer identically. Pass `-d v3_no_native_int128` to force the
+portable implementation on a compiler that has the native type.
+
+Printing works through `str()`, so println and string interpolation show the
+decimal value, including the minimum `i128` that has no positive counterpart.
+
+A literal that needs more than 64 bits can be written directly and keeps its
+exact value:
+
+```v
+fn main() {
+	assert u128(31732946804115296442105984367).str() == '31732946804115296442105984367'
+}
+```
+
+The digits are split into two halves in the compiler, so the C compiler never
+sees a constant it would quietly cut down to its low 64 bits. A value outside
+the range of the target type is an error: `u128(2^128)` is rejected rather than
+wrapped, and `i128(-2^127)` is allowed because that is the minimum.
+
+A bare literal still follows the rule that applies to every other integer in V, so
+it wants an explicit cast.
+
+The promotion ladder has a row for both new types, so `wide + u64(1)` is a `u128`
+and keeps all 128 bits, and asking the expression for its own type answers `u128`
+too. A narrower operand widens by its own sign, so `i128(0) + u64(0xffffffffffffffff)`
+is 2^64 - 1 rather than -1.
+
+The usual conversions are there, so text, hex and binary work on a 128-bit value:
+
+```v
+fn main() {
+	wide := u128(1) << 100
+	assert '12345'.u128() == u128(12345)
+	assert wide.hex() == '10000000000000000000000000'
+	assert wide.bin().len == 101
+}
+```
+
+Format specifiers work on a 128-bit value, and a map of them prints its values:
+
+```v
+fn main() {
+	wide := (u128(1) << 100) + u128(255)
+	assert '${wide:08x}' == '100000000000000000000000ff'
+	m := {
+		'a': wide
+	}
+	assert m.str().contains('100000000000000000000000ff')
+}
+```
+
+`str_base` covers the bases a specifier cannot spell out: `wide.str_base(2)` writes
+the value in binary, and `char_str` writes the code point in the low bits.
+
+`typeof` and a method called on a mixed-width expression name the wider operand:
+`typeof(x + u64(1))` is `u128`, and `(x + u64(1)).str()` keeps all of its digits.
+Only `json` and `json2` still have no encoder for either type.
 
 There is an exception to the rule that all operators
 in V must have values of the same type on both sides. A small primitive type

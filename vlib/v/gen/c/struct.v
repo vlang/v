@@ -5632,6 +5632,10 @@ fn map_integer_callback_size_suffix(key_type types.Type, c_key string, pointer_b
 	if c_key in ['i64', 'u64', 'f64', 'double'] || c_key.starts_with('arc__Arc_') {
 		return '8'
 	}
+	if c_key in ['i128', 'u128'] {
+		// A 128-bit key needs callbacks that use all sixteen bytes.
+		return '16'
+	}
 	return '4'
 }
 

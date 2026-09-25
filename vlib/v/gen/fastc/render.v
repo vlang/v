@@ -3945,6 +3945,8 @@ fn fastc_map_runtime_functions(key_type string, pointer_bits int) (string, strin
 		'2'
 	} else if key_type in ['i64', 'u64'] {
 		'8'
+	} else if key_type in ['i128', 'u128'] {
+		'16'
 	} else if key_type in ['isize', 'usize'] || fastc_is_pointer_type(key_type) {
 		if pointer_bits == 32 { '4' } else { '8' }
 	} else {

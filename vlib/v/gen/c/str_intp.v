@@ -207,6 +207,7 @@ fn is_string_interp_char_code_type(name string) bool {
 fn (mut g FlatGen) gen_formatted_string_interp_child_expr(child_id flat.NodeId, typ types.Type, format string) bool {
 	f := parse_string_interp_format(format)
 	type_name := string_interp_type_name(g.value_unalias_type(typ))
+	eprintln('DBG fmt typ=[${type_name}] verb=${f.verb} width=${f.width} zero=${f.zero}')
 	left := if f.left { 1 } else { 0 }
 	// An unsigned-backed enum must format as unsigned so values >= 1<<63 are not
 	// rendered as negative; consult the enum backing type like the transformer does.
@@ -352,6 +353,69 @@ fn (mut g FlatGen) gen_formatted_string_interp_child_expr(child_id flat.NodeId, 
 			g.gen_string_interp_child_expr(child_id)
 			g.write(')), ${f.width}, ${left})')
 			return true
+		}
+	}
+	if signed := int128_signedness(typ) {
+		// The arms above reach for `i64`/`u64`, which would cut a 128-bit value back
+		// to its low half and, on the portable representation, cast a struct to an
+		// integer. These keep the value whole and pad the printed text instead.
+		if f.verb in [`b`, `o`, `x`, `X`] {
+			base := match f.verb {
+				`b` { 2 }
+				`o` { 8 }
+				else { 16 }
+			}
+			zero_pad := f.zero && f.width > 0
+			space_pad := !zero_pad && f.width > 0
+			if zero_pad {
+				g.write('v3_string_zpad(')
+			} else if space_pad {
+				g.write('v3_string_pad(')
+			}
+			if f.verb == `X` {
+				g.write('v3_string_upper_ascii(')
+			}
+			// Both signednesses format from the bit pattern, which is what a signed
+			// 64-bit value prints as in this position too.
+			g.write('u128__str_base((u128)(')
+			g.gen_string_interp_child_expr(child_id)
+			g.write('), ${base})')
+			if f.verb == `X` {
+				g.write(')')
+			}
+			if zero_pad {
+				g.write(', ${f.width})')
+			} else if space_pad {
+				g.write(', ${f.width}, ${left})')
+			}
+			return true
+		}
+		if f.verb == `c` {
+			if f.width > 1 {
+				g.write('v3_string_pad(')
+			}
+			g.write('rune__str((u32)(')
+			g.gen_string_interp_child_expr(child_id)
+			g.write('))')
+			if f.width > 1 {
+				g.write(', ${f.width}, ${left})')
+			}
+			return true
+		}
+		if f.verb == 0 || f.verb == `d` || f.verb == `u` {
+			str_fn := if signed { 'i128__str' } else { 'u128__str' }
+			if f.zero && f.width > 0 {
+				g.write('v3_string_zpad(${str_fn}(')
+				g.gen_string_interp_child_expr(child_id)
+				g.write('), ${f.width})')
+				return true
+			}
+			if f.width > 0 {
+				g.write('v3_string_pad(${str_fn}(')
+				g.gen_string_interp_child_expr(child_id)
+				g.write('), ${f.width}, ${left})')
+				return true
+			}
 		}
 	}
 	return false

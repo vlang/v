@@ -9540,6 +9540,11 @@ fn call_arg_numeric_promotion_index(name string) int {
 		'u32' { 13 }
 		'u64' { 14 }
 		'usize' { 15 }
+		// 128-bit ranks above the 64-bit types, so a narrower integer widens into
+		// it. Without these rows the index is -1, no widening is offered, and an
+		// expression like `wide + 1` is typed `int` and cut to 64 bits.
+		'i128' { 16 }
+		'u128' { 17 }
 		'rune' { 22 }
 		else { -1 }
 	}
@@ -15876,7 +15881,7 @@ pub fn (tc &TypeChecker) resolve_type(id flat.NodeId) Type {
 			&& (!tc.parallel_check_sparse || tc.in_check_range(tidx)) {
 			typ := tc.expr_type_values[tidx]
 			if !type_contains_unknown(typ) {
-				return typ
+				return tc.widen_mixed_integer_expr_type(id, typ)
 			}
 		}
 	}
@@ -15887,7 +15892,7 @@ pub fn (tc &TypeChecker) resolve_type(id flat.NodeId) Type {
 	}
 	mi := idx - memo.lo
 	if memo.filled[mi] != 0 {
-		return memo.types[mi]
+		return tc.widen_mixed_integer_expr_type(id, memo.types[mi])
 	}
 	typ := tc.resolve_type_uncached(id)
 	// Unknowns can be provisional (cycle guards, generic placeholders that a
@@ -15897,6 +15902,45 @@ pub fn (tc &TypeChecker) resolve_type(id flat.NodeId) Type {
 		mut m := unsafe { &BodyResolveMemo(memo) }
 		m.types[mi] = typ
 		m.filled[mi] = 1
+	}
+	return tc.widen_mixed_integer_expr_type(id, typ)
+}
+
+const narrow_integer_type_names = ['int', 'i8', 'i16', 'i32', 'i64', 'isize', 'u8', 'byte', 'u16',
+	'u32', 'u64', 'usize', 'rune', 'char']
+
+// widen_mixed_integer_expr_type gives an arithmetic node the 128-bit type of its
+// widest operand. The type recorded for an infix in argument position is the
+// narrower operand's, while the same expression assigned to a variable gets the
+// 128-bit type from the promotion ladder. Printing, `typeof` and interpolation all
+// read the recorded type, so they cut a mixed expression to 64 bits without this.
+fn (tc &TypeChecker) widen_mixed_integer_expr_type(id flat.NodeId, typ Type) Type {
+	name := typ.name().all_after_last('.')
+	if name !in narrow_integer_type_names {
+		return typ
+	}
+	tidx := int(id)
+	if tidx < 0 || tidx >= tc.a.nodes.len {
+		return typ
+	}
+	node := tc.a.nodes[tidx]
+	if node.kind != .infix {
+		return typ
+	}
+	if node.op in [.eq, .ne, .lt, .gt, .le, .ge, .logical_and, .logical_or] {
+		return typ
+	}
+	// A shift result is as wide as its left operand: the right one is a count, so
+	// a wide count does not make `u64(4) << count` a 128-bit expression, and the
+	// generator still emits a 64-bit operation for it.
+	shift := node.op in [.left_shift, .right_shift, .right_shift_unsigned]
+	child_limit := if shift { 1 } else { node.children_count }
+	for i in 0 .. child_limit {
+		child_type := tc.resolve_type(tc.a.child(&node, i))
+		child_name := child_type.name().all_after_last('.')
+		if child_name in ['u128', 'i128'] {
+			return child_type
+		}
 	}
 	return typ
 }

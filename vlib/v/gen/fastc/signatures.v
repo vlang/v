@@ -556,14 +556,17 @@ fn fastc_collect_referenced_function_names(sources []FastcSourceFile, prefs &pre
 		'map_hash_int_2':         true
 		'map_hash_int_4':         true
 		'map_hash_int_8':         true
+		'map_hash_int_16':        true
 		'map_eq_int_1':           true
 		'map_eq_int_2':           true
 		'map_eq_int_4':           true
 		'map_eq_int_8':           true
+		'map_eq_int_16':          true
 		'map_clone_int_1':        true
 		'map_clone_int_2':        true
 		'map_clone_int_4':        true
 		'map_clone_int_8':        true
+		'map_clone_int_16':       true
 		'new_array_from_c_array': true
 		'string_plus_many':       true
 		'v_fixed_index':          true
