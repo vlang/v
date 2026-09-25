@@ -6346,8 +6346,10 @@ fn (mut tc TypeChecker) check_deprecated_byte_types() {
 	mut identifier_offsets := map[u64]bool{}
 	mut inline_asm_ranges := map[int][]token.Pos{}
 	for node in tc.a.nodes {
-		if node.kind == .ident && node.value == 'byte' && node.pos.is_valid() {
-			identifier_offsets[deprecated_byte_position_key(node.pos.id, node.pos.offset)] = true
+		if node.value == 'byte' && node.pos.is_valid() {
+			if offset := deprecated_byte_name_offset(node) {
+				identifier_offsets[deprecated_byte_position_key(node.pos.id, offset)] = true
+			}
 		} else if node.kind == .asm_stmt && node.pos.is_valid() {
 			mut ranges := inline_asm_ranges[node.pos.id]
 			ranges << node.pos
@@ -6373,6 +6375,71 @@ fn (mut tc TypeChecker) check_deprecated_byte_types() {
 
 fn deprecated_byte_position_key(file_id int, offset int) u64 {
 	return (u64(u32(file_id)) << 32) | u64(u32(offset))
+}
+
+// deprecated_byte_name_offset returns the source offset at which `node` spells
+// `byte` as a name (variable, parameter, field, enum value), not as a type.
+fn deprecated_byte_name_offset(node flat.Node) ?int {
+	match node.kind {
+		.ident, .field_decl, .interface_field, .enum_field {
+			return node.pos.offset
+		}
+		.param {
+			// Receiver param nodes have no name span, and a param without a type
+			// is a type-only param (`fn f(byte)`).
+			if node.op != .dot && node.typ.len > 0 {
+				return node.pos.offset
+			}
+		}
+		.selector, .enum_val {
+			// `x.byte` and `.byte` end with the name.
+			return node.pos.end - 'byte'.len
+		}
+		else {}
+	}
+	return none
+}
+
+// deprecated_byte_is_field_key reports `byte:` in a struct init or config call,
+// whose field_init node has no name span.
+fn deprecated_byte_is_field_key(source string, end int) bool {
+	mut next := end
+	for next < source.len && source[next] in [` `, `\t`] {
+		next++
+	}
+	return next < source.len && source[next] == `:`
+		&& (next + 1 >= source.len || source[next + 1] != `=`)
+}
+
+// deprecated_byte_is_receiver_name reports the name in `fn (byte T)` and
+// `fn (mut byte T)`, whose receiver param node has no name span.
+fn deprecated_byte_is_receiver_name(source string, start int, end int) bool {
+	if end >= source.len || source[end] !in [` `, `\t`] {
+		// `fn (byte) m()` is a type-only receiver.
+		return false
+	}
+	mut i := deprecated_byte_skip_blanks_back(source, start)
+	mut word_start := i
+	for word_start > 0 && source[word_start - 1].is_letter() {
+		word_start--
+	}
+	if source[word_start..i] in ['mut', 'shared'] {
+		i = deprecated_byte_skip_blanks_back(source, word_start)
+	}
+	if i == 0 || source[i - 1] != `(` {
+		return false
+	}
+	i = deprecated_byte_skip_blanks_back(source, i - 1)
+	return i >= 2 && source[i - 2..i] == 'fn'
+		&& (i == 2 || !(source[i - 3].is_alnum() || source[i - 3] == `_`))
+}
+
+fn deprecated_byte_skip_blanks_back(source string, offset int) int {
+	mut i := offset
+	for i > 0 && source[i - 1] in [` `, `\t`] {
+		i--
+	}
+	return i
 }
 
 fn (mut tc TypeChecker) check_deprecated_byte_types_in_file(anchor flat.NodeId, file_id int, path string, identifier_offsets map[u64]bool, inline_asm_ranges []token.Pos) {
@@ -6423,6 +6490,8 @@ fn (mut tc TypeChecker) check_deprecated_byte_types_in_file(anchor flat.NodeId, 
 		if source[start..i] != 'byte' || deprecated_byte_is_alias_base(source, start)
 			|| deprecated_byte_position_key(file_id, start) in identifier_offsets
 			|| tc.deprecated_byte_is_value_ident(file_id, start)
+			|| deprecated_byte_is_field_key(source, i)
+			|| deprecated_byte_is_receiver_name(source, start, i)
 			|| deprecated_byte_is_in_ranges(inline_asm_ranges, start)
 			|| deprecated_byte_is_type_comparison(source, start) {
 			continue
