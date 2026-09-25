@@ -18017,6 +18017,11 @@ fn resolve_imports(mut a flat.FlatAst, mut p parser.Parser, prefs &pref.Preferen
 	shadow_explicit_roots := shadow_explicit_roots_for(prefs, shadow_dependency_roots)
 	mut parsed_module_identities := map[string]string{}
 	mut parsed_identity_dirs := map[string]string{}
+	// The identity each already parsed module directory (by real path) got. A
+	// directory on disk is one module, however an import spells its path.
+	mut parsed_dir_identities := map[string]string{}
+	// Import spellings already checked against a reused module directory.
+	mut checked_dir_spellings := map[string]bool{}
 	mut identity_source_paths := map[string]string{}
 	mut identity_source_dirs := map[string]string{}
 	mut forced_full_module_paths := map[string]bool{}
@@ -18058,6 +18063,7 @@ fn resolve_imports(mut a flat.FlatAst, mut p parser.Parser, prefs &pref.Preferen
 			}
 			parsed_modules[identity] = true
 			parsed_identity_dirs[identity] = module_info.dir
+			parsed_dir_identities[module_info.real_dir] = identity
 			cache_state.module_import_paths[identity] = if identity in module_info.import_paths {
 				identity
 			} else {
@@ -18282,18 +18288,36 @@ fn resolve_imports(mut a flat.FlatAst, mut p parser.Parser, prefs &pref.Preferen
 			} else {
 				resolve_project_or_pref_module_path_cached(prefs, mod_name, importing_file, project_root, mut module_path_cache)
 			}
+			mod_dir_exists := mod_dir.len > 0 && os.is_dir(mod_dir)
+			mod_real_dir := if mod_dir_exists { os.real_path(mod_dir) } else { '' }
 			mut module_identity := import_module_identity_cached(prefs, mod_name, importing_file, project_root, mod_dir, mut module_path_cache, mut module_identity_cache)
-			if forced_full_module_paths[mod_name] {
-				module_identity = mod_name
-			}
-			// Two distinct dotted imports can legitimately declare the same short
-			// module name (for example `a.http` and `b.http`). Keep the first short
-			// identity for compatibility, but qualify every colliding directory by
-			// its import path so it is parsed and indexed as a separate module.
-			if owner_dir := parsed_identity_dirs[module_identity] {
-				if mod_dir.len > 0 && owner_dir.len > 0 && os.is_dir(mod_dir)
-					&& os.real_path(owner_dir) != os.real_path(mod_dir) {
+			// Set when this import spells the path of an already parsed directory in a
+			// new way, so its module declarations still get checked below.
+			mut check_reused_dir := false
+			if dir_identity := parsed_dir_identities[mod_real_dir] {
+				// The directory was already parsed through another spelling of its
+				// path: `mod.types` inside an installed `smilecat.mod`, and
+				// `smilecat.mod.types` from outside of it. The identity probe above
+				// depends on the importer (a sibling `api/types` makes the short name
+				// ambiguous from `mod/api` only), so reuse the directory's identity
+				// instead of parsing it again as a second, incompatible module.
+				module_identity = dir_identity
+				spelling_key := '${mod_real_dir}\n${mod_name}'
+				check_reused_dir = spelling_key !in checked_dir_spellings
+				checked_dir_spellings[spelling_key] = true
+			} else {
+				if forced_full_module_paths[mod_name] {
 					module_identity = mod_name
+				}
+				// Two distinct dotted imports can legitimately declare the same short
+				// module name (for example `a.http` and `b.http`). Keep the first short
+				// identity for compatibility, but qualify every colliding directory by
+				// its import path so it is parsed and indexed as a separate module.
+				if owner_dir := parsed_identity_dirs[module_identity] {
+					if mod_dir_exists && owner_dir.len > 0
+						&& os.real_path(owner_dir) != mod_real_dir {
+						module_identity = mod_name
+					}
 				}
 			}
 			if module_identity.len > 0 {
@@ -18302,7 +18326,6 @@ fn resolve_imports(mut a flat.FlatAst, mut p parser.Parser, prefs &pref.Preferen
 			cache_module := if module_identity.len > 0 { module_identity } else { mod_name }
 			record_v3_fallback_module_use(mut cache_state, cache_module, is_bundle_warmup_import)
 			record_cache_module_dependency(mut cache_state, cur_module, cache_module)
-			mod_dir_exists := mod_dir.len > 0 && os.is_dir(mod_dir)
 			mod_files := if mod_dir_exists {
 				v3_directory_user_files(mod_dir, prefs, false, false) or {
 					prefs.without_excluded(pref.get_v_files_from_dir_for_target(mod_dir,
@@ -18317,7 +18340,37 @@ fn resolve_imports(mut a flat.FlatAst, mut p parser.Parser, prefs &pref.Preferen
 				record_missing_import_hint(mut a, prefs, node_idx, mod_name, importing_file)
 				unresolved_modules[mod_name] = true
 			}
-			if mod_name in parsed_modules || (mod_dir_exists && module_identity in parsed_modules) {
+			already_parsed := mod_name in parsed_modules
+				|| (mod_dir_exists && module_identity in parsed_modules)
+			// -building-v compiles the trusted compiler tree and already skips other
+			// validity-only diagnostics. Avoid reading every imported source once here
+			// just before the parser reads the same files.
+			if module_resolved && (!already_parsed || check_reused_dir) && !prefs.building_v
+				&& !import_uses_explicit_module_alias(prefs, mod_name, importing_file, project_root) {
+				expected_module := mod_name.all_after_last('.')
+				for imported_file in mod_files {
+					declared := declared_module_in_file(imported_file)
+					// A source file without a module declaration (including an
+					// entirely commented file) belongs to `main`.
+					declared_module := if declared.len > 0 { declared } else { 'main' }
+					if declared_module.all_after_last('.') != expected_module {
+						message := 'bad module definition: ${error_message_path(importing_file)} imports module "${mod_name}" but ${error_message_path(imported_file)} is defined as module `${declared_module}`'
+						// A mismatched module declaration is the project's error, and the
+						// diagnostic below names it exactly. Do not hand the build to the
+						// V1 compatibility compiler, which would repeat it against its own
+						// source tree.
+						clear_macos_v3_compiler_error_fallback(os.getenv(macos_v3_fallback_file_env))
+						eprintln('error: ${message}')
+						formatted := compiler_errors.formatted_error('error:', message, a, flat.NodeId(node_idx), a.nodes[node_idx].pos)
+						context := formatted.all_after_first('\n')
+						if context.len > 0 {
+							eprintln(context)
+						}
+						exit(1)
+					}
+				}
+			}
+			if already_parsed {
 				node_idx++
 				continue
 			}
@@ -18325,6 +18378,7 @@ fn resolve_imports(mut a flat.FlatAst, mut p parser.Parser, prefs &pref.Preferen
 			if mod_dir_exists && module_identity.len > 0 {
 				parsed_modules[module_identity] = true
 				parsed_identity_dirs[module_identity] = mod_dir
+				parsed_dir_identities[mod_real_dir] = module_identity
 			}
 			parsed_module_identities[mod_name] = if module_identity.len > 0 {
 				module_identity
@@ -18333,34 +18387,6 @@ fn resolve_imports(mut a flat.FlatAst, mut p parser.Parser, prefs &pref.Preferen
 			}
 
 			if module_resolved {
-				// -building-v compiles the trusted compiler tree and already skips other
-				// validity-only diagnostics. Avoid reading every imported source once here
-				// just before the parser reads the same files.
-				if !prefs.building_v
-					&& !import_uses_explicit_module_alias(prefs, mod_name, importing_file, project_root) {
-					expected_module := mod_name.all_after_last('.')
-					for imported_file in mod_files {
-						declared := declared_module_in_file(imported_file)
-						// A source file without a module declaration (including an
-						// entirely commented file) belongs to `main`.
-						declared_module := if declared.len > 0 { declared } else { 'main' }
-						if declared_module.all_after_last('.') != expected_module {
-							message := 'bad module definition: ${error_message_path(importing_file)} imports module "${mod_name}" but ${error_message_path(imported_file)} is defined as module `${declared_module}`'
-							// A mismatched module declaration is the project's error, and the
-							// diagnostic below names it exactly. Do not hand the build to the
-							// V1 compatibility compiler, which would repeat it against its own
-							// source tree.
-							clear_macos_v3_compiler_error_fallback(os.getenv(macos_v3_fallback_file_env))
-							eprintln('error: ${message}')
-							formatted := compiler_errors.formatted_error('error:', message, a, flat.NodeId(node_idx), a.nodes[node_idx].pos)
-							context := formatted.all_after_first('\n')
-							if context.len > 0 {
-								eprintln(context)
-							}
-							exit(1)
-						}
-					}
-				}
 				if cache_module !in cache_state.module_import_paths {
 					cache_state.module_import_paths[cache_module] = mod_name
 				}
