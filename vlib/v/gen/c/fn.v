@@ -4969,6 +4969,15 @@ fn (mut g FlatGen) gen_fn_in_module(node_id flat.NodeId, node flat.Node, module_
 		|| (is_entry_main && 'main' in g.print_fn_names)
 	fn_start_pos := g.sb.len
 	mut is_direct_no_main_export := false
+	// Whether this declarator actually received the naked C attribute below --
+	// never true for entry main, which does not go through fn_decl_naked_prefix
+	// at all. Read back from what was written rather than re-deriving it from
+	// the node's own attribute list: a specialized generic instantiation's
+	// node_id has no entry in the checker's declaration_attributes map (only
+	// its original, unspecialized declaration does), but fn_decl_naked_prefix
+	// already resolves that through fn_decl_attributes's source-position
+	// fallback -- reusing its result keeps this check exactly as accurate.
+	mut is_naked_fn := false
 	if is_entry_main {
 		force_main_console := g.tc.declaration_has_attribute(node_id, 'console')
 		g.writeln(g.c_main_declaration(force_main_console))
@@ -4998,7 +5007,9 @@ fn (mut g FlatGen) gen_fn_in_module(node_id flat.NodeId, node flat.Node, module_
 			}
 		}
 		g.write(g.fn_decl_noreturn_prefix(node_id))
-		g.write(g.fn_decl_naked_prefix(node_id))
+		naked_prefix := g.fn_decl_naked_prefix(node_id)
+		is_naked_fn = naked_prefix.len > 0
+		g.write(naked_prefix)
 		g.write(g.fn_return_type_name(ret_type))
 		g.write(' ')
 		g.write(generated_fn_name)
@@ -5014,8 +5025,15 @@ fn (mut g FlatGen) gen_fn_in_module(node_id flat.NodeId, node flat.Node, module_
 		g.writeln('_vno_main_init_caller();')
 	}
 	g.gen_function_defer_prelude()
-	g.gen_trace_fn_begin(node, module_name)
-	g.gen_profile_fn_begin(generated_fn_name, module_name, node.value, g.tc.declaration_has_attribute(node_id, 'inline'))
+	// A `@[_naked]` body has no compiler-generated frame for its own `ret` to
+	// unwind through, so nothing may run before the user's hand-written code:
+	// entry tracing's call, and profiling's timer read and two `double` locals,
+	// both write to stack slots relative to a frame that does not exist yet.
+	if !is_naked_fn {
+		g.gen_trace_fn_begin(node, module_name)
+		g.gen_profile_fn_begin(generated_fn_name, module_name, node.value,
+			g.tc.declaration_has_attribute(node_id, 'inline'))
+	}
 
 	for i in 0 .. node.children_count {
 		id := g.a.child(&node, i)
@@ -5026,7 +5044,9 @@ fn (mut g FlatGen) gen_fn_in_module(node_id flat.NodeId, node flat.Node, module_
 		}
 	}
 	g.gen_all_defers()
-	g.gen_profile_fn_exit()
+	if !is_naked_fn {
+		g.gen_profile_fn_exit()
+	}
 	g.gen_ownership_drops(g.tc.ownership_drop_entries_at_fn_exit(qualify_name_in_module(module_name, node.value)))
 	if is_entry_main {
 		g.writeln('return 0;')
