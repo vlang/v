@@ -283,8 +283,7 @@ fn (t &Transformer) optional_type_name_from_type(typ types.Type) ?string {
 
 // transform_if_guard_else_block transforms transform if guard else block data for transform.
 fn (mut t Transformer) transform_if_guard_else_block(else_id flat.NodeId, else_node flat.Node, err_source string) flat.NodeId {
-	saved_var_types := t.var_types.clone()
-	t.set_implicit_err_var_type()
+	err_scope := t.enter_implicit_err_scope()
 	mut children := []flat.NodeId{}
 	err_value := if err_source != '' {
 		t.make_selector(t.make_ident(err_source), 'err', 'IError')
@@ -299,7 +298,7 @@ fn (mut t Transformer) transform_if_guard_else_block(else_id flat.NodeId, else_n
 	} else {
 		children << t.transform_stmt(else_id)
 	}
-	t.restore_var_types(saved_var_types)
+	t.leave_implicit_err_scope(err_scope)
 	return t.make_block(children)
 }
 
@@ -385,8 +384,7 @@ fn (mut t Transformer) expand_map_index_if_guard(node flat.Node, lhs_name string
 }
 
 fn (mut t Transformer) transform_map_index_if_guard_else_block(else_id flat.NodeId, else_node flat.Node, ptr_name string, value_type string) flat.NodeId {
-	saved_var_types := t.var_types.clone()
-	t.set_implicit_err_var_type()
+	err_scope := t.enter_implicit_err_scope()
 	mut children := []flat.NodeId{}
 	missing_error := t.make_map_key_missing_error()
 	if t.is_optional_type_name(value_type) {
@@ -410,7 +408,7 @@ fn (mut t Transformer) transform_map_index_if_guard_else_block(else_id flat.Node
 	} else {
 		children << t.transform_stmt(else_id)
 	}
-	t.restore_var_types(saved_var_types)
+	t.leave_implicit_err_scope(err_scope)
 	return t.make_block(children)
 }
 
@@ -540,7 +538,7 @@ fn (mut t Transformer) if_expr_guard_result_type(node flat.Node) ?string {
 	then_type := t.stmt_value_type(t.a.child(&node, 1))
 	t.restore_var_types(saved_var_types)
 
-	t.set_implicit_err_var_type()
+	err_scope := t.enter_implicit_err_scope()
 	else_id := t.a.child(&node, 2)
 	else_node := t.a.nodes[int(else_id)]
 	else_type := if else_node.kind == .if_expr {
@@ -552,7 +550,7 @@ fn (mut t Transformer) if_expr_guard_result_type(node flat.Node) ?string {
 	} else {
 		t.stmt_value_type(else_id)
 	}
-	t.restore_var_types(saved_var_types)
+	t.leave_implicit_err_scope(err_scope)
 
 	mut result := ''
 	if then_type.len > 0 {
@@ -1159,14 +1157,13 @@ fn (mut t Transformer) build_if_value_guard_chain(if_node flat.Node, target_name
 	else_node := t.a.nodes[int(else_id)]
 	err_value := t.make_selector(t.make_ident(tmp_name), 'err', 'IError')
 	err_decl := t.make_decl_assign_typed('err', err_value, 'IError')
-	saved_else_var_types := t.var_types.clone()
-	t.set_implicit_err_var_type()
+	err_scope := t.enter_implicit_err_scope()
 	else_block0 := if else_node.kind == .if_expr {
 		t.make_block(t.build_if_value_chain(else_id, target_name, target_type))
 	} else {
 		t.if_value_branch_block(else_id, target_name, target_type)
 	}
-	t.restore_var_types(saved_else_var_types)
+	t.leave_implicit_err_scope(err_scope)
 	mut else_children := []flat.NodeId{cap: int(t.a.nodes[int(else_block0)].children_count) + 1}
 	else_children << err_decl
 	else_children << t.a.children_of(&t.a.nodes[int(else_block0)])
