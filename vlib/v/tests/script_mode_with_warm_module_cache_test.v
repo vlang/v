@@ -21,20 +21,20 @@ fn test_script_builds_next_to_a_warm_module_cache() {
 		}
 		os.rmdir_all(dir) or {}
 	}
-	warm_path := os.join_path(dir, 'warm.v')
-	os.write_file(warm_path, "fn main() {\n\tprintln('warm')\n}\n")!
-	script_path := os.join_path(dir, 'script.v')
-	os.write_file(script_path, "println('after warm cache')\n")!
+	os.write_file(os.join_path(dir, 'warm.v'), "fn main() {\n\tprintln('warm')\n}\n")!
+	os.write_file(os.join_path(dir, 'script.v'), "println('after warm cache')\n")!
 	vexe := os.quoted_path(@VEXE)
-	for path in [warm_path, script_path] {
-		exe := os.quoted_path(path.replace('.v', '.exe'))
-		res := os.execute('${vexe} -cc cc -o ${exe} ${os.quoted_path(path)}')
+	// Build every path from `dir` and a base name, so a `.v` inside VTMP is left alone.
+	for name in ['warm', 'script'] {
+		src := os.quoted_path(os.join_path(dir, '${name}.v'))
+		exe := os.quoted_path(os.join_path(dir, '${name}.exe'))
+		res := os.execute('${vexe} -cc cc -o ${exe} ${src}')
 		if res.exit_code != 0 {
 			eprintln(res.output)
 		}
 		assert res.exit_code == 0
 	}
-	res := os.execute(os.quoted_path(script_path.replace('.v', '.exe')))
+	res := os.execute(os.quoted_path(os.join_path(dir, 'script.exe')))
 	assert res.exit_code == 0
 	assert res.output.trim_space() == 'after warm cache'
 }
