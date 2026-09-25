@@ -576,12 +576,12 @@ pub fn (mut a FlatAst) set_node_is_mut(id NodeId, is_mut bool) {
 }
 
 // comptime_skipped_decl_key returns the comptime_skipped_decl_names key for
-// `name` spelled in a file of `module_name` (empty for `main`). A private
-// function or constant is only usable from its own module, so a name spelled in
-// another module's skipped branch must not keep it alive.
-pub fn comptime_skipped_decl_key(module_name string, name string) string {
-	mod := if module_name.len > 0 { module_name } else { 'main' }
-	return '${mod}.${name}'
+// `name` spelled in `file`. A private function or constant is only usable from
+// its own module, so the checker only probes that module's files. Files, not
+// module names, key the record: the loader may later rename a module to its
+// import path, but it never renames a file.
+pub fn comptime_skipped_decl_key(file string, name string) string {
+	return '${file}|${name}'
 }
 
 // new creates a FlatAst value for flat.

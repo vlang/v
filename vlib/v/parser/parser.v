@@ -6753,9 +6753,9 @@ fn (mut p Parser) skip_block_recording_decl_names() {
 // recorded the way keyword_ident_expr reads it.
 fn (mut p Parser) record_skipped_decl_name() {
 	if p.tok == .name {
-		p.a.comptime_skipped_decl_names[flat.comptime_skipped_decl_key(p.cur_module, p.lit)] = true
+		p.a.comptime_skipped_decl_names[flat.comptime_skipped_decl_key(p.cur_file, p.lit)] = true
 	} else if p.keyword_token_is_ident_expr() {
-		p.a.comptime_skipped_decl_names[flat.comptime_skipped_decl_key(p.cur_module, p.tok.str())] = true
+		p.a.comptime_skipped_decl_names[flat.comptime_skipped_decl_key(p.cur_file, p.tok.str())] = true
 	}
 }
 

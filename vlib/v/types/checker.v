@@ -7505,10 +7505,16 @@ pub fn (mut tc TypeChecker) diagnose_unused_private_declarations(used_fns map[st
 	mut fn_keys := map[string][]int{}
 	mut const_keys := map[string][]int{}
 	mut module_name := ''
+	// The files of each module, by the module identity the checker resolved, for
+	// the skipped `$if` branch records, which are keyed by file.
+	mut module_files := map[string][]string{}
+	mut file_module := ''
 	for idx in tc.top_level_idx {
 		node := tc.a.nodes[idx]
 		if node.kind == .file {
 			tc.enter_file(node.value)
+			file_module = if tc.cur_module.len > 0 { tc.cur_module } else { 'main' }
+			module_files[file_module] << tc.cur_file
 			continue
 		}
 		if node.kind == .module_decl {
@@ -7538,7 +7544,7 @@ pub fn (mut tc TypeChecker) diagnose_unused_private_declarations(used_fns map[st
 				name:        node.value
 				qname:       qname
 				file:        tc.cur_file
-				file_module: tc.cur_module
+				file_module: file_module
 				node_id:     flat.NodeId(idx)
 			}
 			fn_keys[node.value] << cand_idx
@@ -7571,7 +7577,7 @@ pub fn (mut tc TypeChecker) diagnose_unused_private_declarations(used_fns map[st
 				name:        field.value
 				qname:       qname
 				file:        tc.cur_file
-				file_module: tc.cur_module
+				file_module: file_module
 				node_id:     field_id
 				position:    field.pos
 			}
@@ -7600,10 +7606,7 @@ pub fn (mut tc TypeChecker) diagnose_unused_private_declarations(used_fns map[st
 	// candidate's file so deferred emission matches the former in-walk emission.
 	walk_end_file := tc.cur_file
 	for cand in candidates {
-		// A call or read inside a `$if` branch this build does not take is never
-		// parsed, so only the parser's record of the skipped names shows the use.
-		// Only a branch in the candidate's own module can use a private one.
-		if cand.alive || flat.comptime_skipped_decl_key(cand.file_module, cand.name) in tc.a.comptime_skipped_decl_names {
+		if cand.alive || tc.used_in_skipped_comptime_branch(cand, module_files) {
 			continue
 		}
 		tc.cur_file = cand.file
@@ -7614,6 +7617,22 @@ pub fn (mut tc TypeChecker) diagnose_unused_private_declarations(used_fns map[st
 		}
 	}
 	tc.cur_file = walk_end_file
+}
+
+// used_in_skipped_comptime_branch reports whether a file of the candidate's own
+// module spells its name in a `$if` branch this build does not take. Such a
+// body is never parsed, so only the parser's record of the skipped names shows
+// the use, and a private declaration cannot be used from any other module.
+fn (tc &TypeChecker) used_in_skipped_comptime_branch(cand UnusedDeclCandidate, module_files map[string][]string) bool {
+	if tc.a.comptime_skipped_decl_names.len == 0 {
+		return false
+	}
+	for file in module_files[cand.file_module] {
+		if flat.comptime_skipped_decl_key(file, cand.name) in tc.a.comptime_skipped_decl_names {
+			return true
+		}
+	}
+	return false
 }
 
 fn (tc &TypeChecker) declaration_contains_error(node flat.Node) bool {
