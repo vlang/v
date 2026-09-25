@@ -3129,8 +3129,22 @@ fn (mut g Gen) if_expr_chain(id flat.NodeId, is_else_if bool) {
 	if children.len < 2 {
 		return
 	}
-	start_line_len := g.output_line_len()
-	is_compact := !is_else_if && g.if_expr_is_compact(n, children, start_line_len)
+	if !is_else_if && g.if_expr_is_compact(n, children, g.output_line_len()) {
+		// As in `write_inline_body`, the printed line decides: `if c {return x}` gains two
+		// spaces, and a compact `if` that ends up over the limit is expanded on the next run.
+		mark := g.output_mark()
+		g.if_expr_layout(children, true)
+		if g.printed_on_one_line(mark) {
+			return
+		}
+		g.rollback_to(mark)
+	}
+	g.if_expr_layout(children, false)
+}
+
+// if_expr_layout prints an `if` expression with its branches either on the `if` line
+// (`is_compact`) or expanded.
+fn (mut g Gen) if_expr_layout(children []flat.NodeId, is_compact bool) {
 	cond := children[0]
 	cn := g.a.node(cond)
 	g.write('if ')
@@ -3282,30 +3296,54 @@ fn (g &Gen) braced_body_is_inline(start int, body []flat.NodeId, end int) bool {
 // back out, so the caller prints it expanded.
 fn (mut g Gen) write_inline_body(sep string, body []flat.NodeId, end int) bool {
 	stmt_id := g.inline_body_stmt(body) or { return false }
-	out_len := g.out.len
-	on_newline := g.on_newline
-	source_end := g.source_end
-	comment_i := g.comment_i
+	mark := g.output_mark()
 	g.write(sep)
 	g.write('{ ')
 	g.compact_stmt(stmt_id)
 	g.write(' }')
-	mut fits := g.output_line_len() <= formatter_max_line_len
-	for i in out_len .. g.out.len {
-		if g.out.byte_at(i) == `\n` {
-			fits = false
-			break
-		}
-	}
-	if !fits {
-		g.out.go_back_to(out_len)
-		g.on_newline = on_newline
-		g.source_end = source_end
-		g.comment_i = comment_i
+	if !g.printed_on_one_line(mark) {
+		g.rollback_to(mark)
 		return false
 	}
 	g.source_end = int_max(g.source_end, end)
 	return true
+}
+
+// OutputMark is a point in the output that a one-line layout can be rolled back to, when the
+// printed line turns out too long for it.
+struct OutputMark {
+	out_len    int
+	on_newline bool
+	source_end int
+	comment_i  int
+}
+
+fn (g &Gen) output_mark() OutputMark {
+	return OutputMark{
+		out_len:    g.out.len
+		on_newline: g.on_newline
+		source_end: g.source_end
+		comment_i:  g.comment_i
+	}
+}
+
+// printed_on_one_line reports whether the output written since `mark` has no line break and
+// ends a line of at most `formatter_max_line_len` columns.
+fn (g &Gen) printed_on_one_line(mark OutputMark) bool {
+	for i in mark.out_len .. g.out.len {
+		if g.out.byte_at(i) == `\n` {
+			return false
+		}
+	}
+	return g.output_line_len() <= formatter_max_line_len
+}
+
+// rollback_to removes the output written since `mark`.
+fn (mut g Gen) rollback_to(mark OutputMark) {
+	g.out.go_back_to(mark.out_len)
+	g.on_newline = mark.on_newline
+	g.source_end = mark.source_end
+	g.comment_i = mark.comment_i
 }
 
 // node_forces_line_break reports whether formatting `id` always breaks the line (a `match`,

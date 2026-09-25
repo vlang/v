@@ -274,6 +274,37 @@ fn loops() {
 	assert vfmt('formatted_single_statement_body_width_twice', out) == out
 }
 
+fn test_formatter_measures_formatted_compact_if_branches_against_the_line_limit() {
+	// As for function and loop bodies, `{return x}` and `{'x'}` gain two spaces each: the
+	// branches that end up over 100 columns are expanded on the first run.
+	over, fits := 'o'.repeat(79), 'f'.repeat(78)
+	expr_over, expr_fits := 'e'.repeat(71), 'v'.repeat(68)
+	source := "fn branches(c bool) string {
+	if c {return '${over}'}
+	if c {return '${fits}'}
+	s := if c {'${expr_over}'} else {''}
+	t := if c {'${expr_fits}'} else {''}
+	return s + t
+}
+"
+	out := vfmt('formatted_compact_if_width', source)
+	assert out == "fn branches(c bool) string {
+	if c {
+		return '${over}'
+	}
+	if c { return '${fits}' }
+	s := if c {
+		'${expr_over}'
+	} else {
+		''
+	}
+	t := if c { '${expr_fits}' } else { '' }
+	return s + t
+}
+", out
+	assert vfmt('formatted_compact_if_width_twice', out) == out
+}
+
 fn test_formatter_expands_single_statement_bodies_with_multi_statement_or_blocks() {
 	source := "fn h() ?int { return 1 }
 
