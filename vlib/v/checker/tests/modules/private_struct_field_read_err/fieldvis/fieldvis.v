@@ -23,6 +23,9 @@ __global:
 // BoxAlias is declared in this module, so the private fields of Box stay private through it.
 pub type BoxAlias = Box
 
+// BoxRef is a pointer alias of Box; selectors see through it.
+pub type BoxRef = &Box
+
 fn default_cb() int {
 	return 8
 }

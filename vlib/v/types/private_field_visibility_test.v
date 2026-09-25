@@ -26,6 +26,8 @@ pub mut:
 
 pub type BoxAlias = Box
 
+pub type BoxRef = &Box
+
 fn default_cb() int {
 	return 1
 }
@@ -67,6 +69,8 @@ fn main() {
 	println(local.own + local.hidden + local.shown)
 	local_box := LocalBox(b)
 	println(local_box.readable)
+	ref := unsafe { lib.BoxRef(&b) }
+	println(ref.secret + ref.readable)
 }
 '
 
@@ -110,5 +114,6 @@ fn test_private_struct_fields_of_other_modules_are_not_public() {
 		'main.v:19: field `lib.Box.secret` is not public',
 		'main.v:20: field `lib.Box.cb` is not public',
 		'main.v:22: field `lib.BoxAlias.secret` is not public',
+		'main.v:30: field `lib.BoxRef.secret` is not public',
 	], errors.str()
 }

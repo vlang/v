@@ -54,3 +54,9 @@ vlib/v/checker/tests/modules/private_struct_field_read_err/main.v:27:16: error: 
       |                   ~~~~~~
    28 |     local := Local{
    29 |         own: 7
+vlib/v/checker/tests/modules/private_struct_field_read_err/main.v:33:14: error: field `private_struct_field_read_err.fieldvis.BoxRef.secret` is not public
+   31 |     println(local.own + local.hidden + local.shown)
+   32 |     ref := unsafe { fieldvis.BoxRef(&b) }
+   33 |     println(ref.secret + ref.readable)
+      |                 ~~~~~~
+   34 | }

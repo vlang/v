@@ -12183,7 +12183,8 @@ fn (tc &TypeChecker) alias_struct_field_is_private_outside_module(alias Alias, f
 	if alias_mod == tc.cur_module || (alias_mod in ['', 'main'] && tc.cur_module in ['', 'main']) {
 		return false
 	}
-	target := unalias_type(alias.base_type)
+	// Selectors see through pointer aliases too (`pub type BoxRef = &Box`).
+	target := unalias_and_unwrap_pointer_type(alias.base_type)
 	return target is Struct && tc.struct_field_is_private_outside_module(target.name, field_name)
 }
 

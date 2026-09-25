@@ -29,4 +29,6 @@ fn main() {
 		own: 7
 	}
 	println(local.own + local.hidden + local.shown)
+	ref := unsafe { fieldvis.BoxRef(&b) }
+	println(ref.secret + ref.readable)
 }
