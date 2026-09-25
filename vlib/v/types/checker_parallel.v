@@ -1218,6 +1218,10 @@ fn (mut tc TypeChecker) check_top_level_declarations_filtered(do_values bool, al
 		} else if skip_file_semantics && node.kind != .module_decl {
 			continue
 		}
+		if do_signatures && node.kind in [.fn_decl, .struct_decl, .interface_decl, .type_decl,
+			.global_decl, .const_decl] {
+			tc.check_written_generic_types(flat.NodeId(i))
+		}
 		match node.kind {
 			.file {
 				tc.enter_file(node.value)

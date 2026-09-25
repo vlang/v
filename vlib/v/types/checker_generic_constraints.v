@@ -341,6 +341,201 @@ fn (mut tc TypeChecker) check_generic_struct_constraints(id flat.NodeId, pos tok
 	}
 }
 
+// check_written_generic_types checks every generic struct type written in the
+// top-level declaration `top_id`, its body included, against the constraints of
+// its type parameters: `map[string]Box[int]{}`, `sizeof(Box[int])`,
+// `Box[int](x)`, `fn (b Box[int]) {}`, as it is checked where the declared
+// types and the struct literals are. An error one of those checks reported
+// already, at the same place, is not repeated.
+fn (mut tc TypeChecker) check_written_generic_types(top_id flat.NodeId) {
+	if !tc.should_diagnose(top_id) {
+		return
+	}
+	// A node the compiler wrote, as the argument of `isreftype(Box[int])`, has
+	// no place of its own: its type is found in the nearest node that has one.
+	mut stack := [WrittenTypeItem{top_id, top_id}]
+	for stack.len > 0 {
+		item := stack.pop()
+		if !tc.valid_node_id(item.id) {
+			continue
+		}
+		node := tc.a.node(item.id)
+		anchor := if node.pos.end > 0 { item.id } else { item.anchor }
+		for text in written_type_texts(*node) {
+			if text.contains('[') {
+				tc.check_written_type_constraints(anchor, text, tc.written_type_start(*node,
+					anchor, text))
+			}
+		}
+		if node.kind == .call && tc.call_has_explicit_generic_type_args(*node) {
+			// `make[Box[int]]()`: the types in the brackets of what it calls.
+			callee_id := tc.a.child(node, 0)
+			for text in tc.generic_call_type_arg_names(tc.a.node(callee_id)) {
+				if text.contains('[') {
+					tc.check_written_type_constraints(callee_id, text, none)
+				}
+			}
+		}
+		for i in 0 .. node.children_count {
+			stack << WrittenTypeItem{tc.a.child(node, i), anchor}
+		}
+	}
+}
+
+struct WrittenTypeItem {
+	id     flat.NodeId
+	anchor flat.NodeId // the nearest node with a place in the source
+}
+
+// written_type_texts are the types that `node` writes: in `typ` for the kinds
+// that keep a type there, in `value` for the array, map and channel literals,
+// the casts, the tests and `sizeof` or `typeof` of a type.
+fn written_type_texts(node flat.Node) []string {
+	mut texts := []string{}
+	if node.typ.len > 0 && node.kind in [.param, .fn_decl, .interface_field, .field_decl, .type_decl,
+		.global_decl, .const_field, .fn_literal, .array_init, .decl_assign] {
+		texts << node.typ
+	}
+	// The variants of a sum type, `type Sum = Box[int] | string`.
+	if node.kind == .ident && node.value.contains('[') && node.pos.end > 0 {
+		texts << node.value
+	}
+	// A struct literal, `Box[int]{}`, is checked where it is checked; a channel,
+	// `chan Box[int]{}`, is one only by its syntax.
+	if node.value.len > 0 && (node.kind in [.map_init, .cast_expr, .is_expr, .as_expr, .array_init]
+		|| (node.kind in [.sizeof_expr, .typeof_expr] && node.children_count == 0)
+		|| (node.kind == .struct_init && node.value.starts_with('chan '))) {
+		texts << node.value
+	}
+	return texts
+}
+
+// check_written_type_constraints checks every generic application that the type
+// `text`, written at `id`, holds, at any depth: `map[string][]Box[Box[User]]`
+// checks both `Box`es. `map[K]V` and a fixed array's size are no applications.
+// `start` is where `text` starts in the source, when it is known.
+fn (mut tc TypeChecker) check_written_type_constraints(id flat.NodeId, text string, start ?int) {
+	mut i := 0
+	for i < text.len {
+		c := text[i]
+		if !(c.is_letter() || c == `_`) || (i > 0 && (text[i - 1].is_alnum()
+			|| text[i - 1] in [`_`, `.`])) {
+			i++
+			continue
+		}
+		mut end := i
+		for end < text.len && (text[end].is_alnum() || text[end] in [`_`, `.`]) {
+			end++
+		}
+		base := text[i..end]
+		if end >= text.len || text[end] != `[` || base == 'map' {
+			i = end
+			continue
+		}
+		close := find_matching_bracket(text, end)
+		if close >= text.len {
+			return
+		}
+		application := text[i..close + 1]
+		args := split_params(text[end + 1..close])
+		pos := if text_start := start {
+			node := tc.a.node(id)
+			token.new_span(node.pos.id, text_start + i, text_start + close + 1)
+		} else {
+			// Where a declaration writes its type, `keyed map[Box[int]]string`: at
+			// `Box`, not at `map`.
+			whole := tc.type_diagnostic_pos(id, text)
+			if whole.end - whole.offset == text.len {
+				token.new_span(whole.id, whole.offset + i, whole.offset + close + 1)
+			} else {
+				tc.type_diagnostic_pos(id, application)
+			}
+		}
+		errors_start := tc.errors.len
+		tc.check_generic_struct_constraints(id, pos, base, args)
+		tc.drop_repeated_errors(errors_start)
+		i = end
+	}
+}
+
+// written_type_start is where the type `text` of `node` starts in the source,
+// found from what surrounds it: the type of a cast comes right before its
+// value, `Box[int](x)`, the type of an `is` or an `as` right after the value
+// it tests, and the return type of a function literal after its parameters.
+// none leaves the place to type_diagnostic_pos, as for a declaration.
+fn (tc &TypeChecker) written_type_start(node flat.Node, anchor flat.NodeId, text string) ?int {
+	if node.kind !in [.cast_expr, .is_expr, .as_expr, .fn_literal] || node.children_count == 0 {
+		return none
+	}
+	source := tc.vls_source(int(tc.a.node(anchor).pos.id))
+	child := tc.a.child_node(&node, 0)
+	match node.kind {
+		.cast_expr {
+			end := int_min(int(child.pos.offset), source.len)
+			if end <= 0 {
+				return none
+			}
+			mut line_start := end
+			for line_start > 0 && source[line_start - 1] != `\n` {
+				line_start--
+			}
+			return source[line_start..end].last_index(text) or { return none } + line_start
+		}
+		.is_expr, .as_expr {
+			start := int(child.pos.end)
+			if start < 0 || start >= source.len {
+				return none
+			}
+			return source.index_after(text, start) or { return none }
+		}
+		else {
+			// After the parameters, `fn [x] (b Box[int]) Box[int] {`.
+			mut i := int(node.pos.offset) + 2
+			mut depth := 0
+			mut in_params := false
+			for i < source.len {
+				c := source[i]
+				if c == `[` && !in_params {
+					depth++
+				} else if c == `]` && !in_params {
+					depth--
+				} else if c == `(` && depth == 0 {
+					in_params = true
+					depth = 1
+					i++
+					break
+				}
+				i++
+			}
+			for in_params && i < source.len && depth > 0 {
+				if source[i] == `(` {
+					depth++
+				} else if source[i] == `)` {
+					depth--
+				}
+				i++
+			}
+			if !in_params || depth != 0 {
+				return none
+			}
+			return source.index_after(text, i) or { return none }
+		}
+	}
+}
+
+// drop_repeated_errors drops each error recorded since `start` that an earlier
+// one already says at the same place.
+fn (mut tc TypeChecker) drop_repeated_errors(start int) {
+	mut kept := []TypeError{}
+	for err in tc.errors[start..] {
+		if !tc.errors[..start].any(it.pos == err.pos && it.msg == err.msg) {
+			kept << err
+		}
+	}
+	tc.errors.trim(start)
+	tc.errors << kept
+}
+
 // check_generic_fn_value_constraints reports a type argument of a generic
 // function taken as a value, `f := longest[int]`, that does not satisfy the
 // constraint of its type parameter.

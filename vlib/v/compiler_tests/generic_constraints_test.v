@@ -528,6 +528,116 @@ fn main() {
 	assert error_lines(res.output) == ["9:9: `int` doesn't implement field `name` of interface `Named`"], res.output
 }
 
+fn test_a_generic_type_written_anywhere_in_a_declaration_is_checked() {
+	// A type alias of a function, the methods of an interface, an embedded struct,
+	// the key of a map, a nested application, an anonymous struct, a sum type and
+	// an alias: each at the application that fails, not at the start of the type.
+	res := check_program('written_decls', 'struct Box[T Named] {
+	item T
+}
+
+type FnAlias = fn (Box[int]) int
+
+type GoodFn = fn (Box[User]) int
+
+interface Shelf {
+	put(b Box[int])
+	get() Box[int]
+	keep(b Box[User]) Box[User]
+}
+
+struct Holder {
+	Box[int]
+	keyed map[Box[int]]string
+	nested []Box[Box[User]]
+	good Box[User]
+	anon struct {
+		inner Box[int]
+	}
+}
+
+type SumBad = Box[int] | string
+
+type AliasBad = Box[int]
+
+fn main() {}
+')
+	assert res.exit_code == 1, res.output
+	assert error_lines(res.output) == [
+		"5:20: `int` doesn't implement field `name` of interface `Named`",
+		"10:8: `int` doesn't implement field `name` of interface `Named`",
+		"11:8: `int` doesn't implement field `name` of interface `Named`",
+		"16:2: `int` doesn't implement field `name` of interface `Named`",
+		"17:12: `int` doesn't implement field `name` of interface `Named`",
+		"18:11: `Box[User]` doesn't implement field `name` of interface `Named`",
+		"21:9: `int` doesn't implement field `name` of interface `Named`",
+		"25:15: `int` doesn't implement field `name` of interface `Named`",
+		"27:17: `int` doesn't implement field `name` of interface `Named`",
+	], res.output
+}
+
+fn test_a_generic_type_written_in_an_expression_is_checked() {
+	// Explicit type arguments of a call, map, array and channel literals, `sizeof`,
+	// `typeof`, `isreftype`, casts to a pointer or an option, and a function literal's
+	// parameter and return type. The same with `Box[User]` is valid.
+	res := check_program('written_exprs', 'struct Box[T Named] {
+	item T
+}
+
+fn make[T]() T {
+	return T{}
+}
+
+fn sites() {
+	made := make[Box[int]]()
+	_ = made
+	x1 := map[string]Box[int]{}
+	x2 := sizeof(Box[int])
+	x3 := sizeof[Box[int]]()
+	x4 := typeof[Box[int]]().name
+	x5 := isreftype(Box[int])
+	x6 := unsafe { &Box[int](nil) }
+	x7 := ?Box[int](none)
+	x8 := []Box[int]{len: 2}
+	x9 := chan Box[int]{}
+	x10 := fn (b Box[int]) Box[int] {
+		return b
+	}
+	x11 := []&Box[int]{}
+	x12 := map[string][]Box[Box[User]]{}
+	good1 := map[string]Box[User]{}
+	good2 := sizeof(Box[User])
+	good3 := fn (b Box[User]) Box[User] {
+		return b
+	}
+	_ = [x1.len, int(x2), int(x3), x4.len]
+	_ = [x5, x6 == unsafe { nil }, x7 == none, x8.len == 0, x9.len == 0, x11.len == 0, x12.len == 0]
+	_ = [good1.len, int(good2)]
+	_ = x10
+	_ = good3
+}
+
+fn main() {}
+')
+	assert res.exit_code == 1, res.output
+	assert error_lines(res.output) == [
+		"10:15: `int` doesn't implement field `name` of interface `Named`",
+		"12:19: `int` doesn't implement field `name` of interface `Named`",
+		"13:15: `int` doesn't implement field `name` of interface `Named`",
+		"14:15: `int` doesn't implement field `name` of interface `Named`",
+		"15:15: `int` doesn't implement field `name` of interface `Named`",
+		"16:18: `int` doesn't implement field `name` of interface `Named`",
+		"17:18: `int` doesn't implement field `name` of interface `Named`",
+		"18:9: `int` doesn't implement field `name` of interface `Named`",
+		"19:10: `int` doesn't implement field `name` of interface `Named`",
+		"20:13: `int` doesn't implement field `name` of interface `Named`",
+		"21:15: `int` doesn't implement field `name` of interface `Named`",
+		"21:25: `int` doesn't implement field `name` of interface `Named`",
+		"24:12: `int` doesn't implement field `name` of interface `Named`",
+		"25:22: `Box[User]` doesn't implement field `name` of interface `Named`",
+	], res.output
+}
+
 fn test_a_generic_function_value_is_checked() {
 	res := check_program('fn_value', "fn longest[T Named](a T, b T) T {
 	return if a.name.len >= b.name.len { a } else { b }
