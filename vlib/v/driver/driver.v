@@ -3355,7 +3355,12 @@ fn should_parallel_monomorphize() bool {
 	$if tinyc {
 		return false
 	}
-	return os.getenv('V3_DISABLE_PARALLEL_MONOMORPHIZE') != '1'
+	// The parallel specializer still loses results with gcc/clang-built
+	// compilers too: e.g. interface dispatch for nested generic interfaces
+	// (generic_interface_nested_generic_type_infer_test.v panics at runtime).
+	// The default tcc-built compiler never used it, so the serial path is the one
+	// the test suite covers. Keep it opt-in until the parallel merge is correct.
+	return os.getenv('V3_PARALLEL_MONOMORPHIZE') == '1'
 }
 
 fn ownership_checker_compiled() bool {

@@ -305,3 +305,27 @@ fn test_batches_in_disposable_scopes_outlive_their_completion_pushes() {
 	assert pool.tasks_run() == u64(rounds * args.len)
 	pool.close()
 }
+
+fn open_pool_is_registered(pool &Pool) bool {
+	for i in 0 .. v3_open_pools_len {
+		if v3_open_pools[i] == voidptr(pool) {
+			return true
+		}
+	}
+	return false
+}
+
+fn test_exit_hook_closes_pools_left_open() {
+	mut closed := new(1)
+	mut left_open := new(1)
+	assert open_pool_is_registered(closed)
+	assert open_pool_is_registered(left_open)
+	closed.close()
+	assert !open_pool_is_registered(closed)
+	// `exit()` skips deferred Pool.close calls; the exit hook must still join the
+	// workers before the arena holding their job channel is freed.
+	close_open_pools_at_exit()
+	assert left_open.is_closed
+	assert left_open.threads.len == 0
+	assert !open_pool_is_registered(left_open)
+}

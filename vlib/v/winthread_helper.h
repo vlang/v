@@ -57,4 +57,8 @@ static inline int v3_win_thread_join(void *handle) {
 	return 0;
 }
 
+static inline int v3_win_thread_is_current(void *handle) {
+	return GetThreadId((HANDLE)handle) == GetCurrentThreadId();
+}
+
 #endif

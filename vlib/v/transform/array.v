@@ -6336,11 +6336,18 @@ fn (mut t Transformer) make_array_merge_sort_stmt(base flat.NodeId, elem_type st
 	// the sort stays stable.
 	right := t.make_unchecked_sort_element(src_name, j_name, elem_type)
 	left := t.make_unchecked_sort_element(src_name, i_name, elem_type)
+	// The comparator reads `src[i]`/`src[j]`, so anything it queues (such as an
+	// `__addr` temp for `&unsafe { src[j] }`) belongs inside the merge loop. The
+	// element blocks must not drain the caller's queue either, e.g. the clone
+	// decl `sorted()` has already queued for `base`.
+	outer_pending := t.begin_isolated_pending()
 	less := if use_compare {
 		t.array_sort_compare_less_expr(right, left, elem_type, cmp)
 	} else {
 		t.array_sort_less_expr(right, left, elem_type, cmp)
 	}
+	mut merge_body := t.pending_stmts.clone()
+	t.pending_stmts = outer_pending
 	take_right := t.make_block([
 		t.make_sort_move(dst_name, t.make_ident(k_name), src_name, j_name, t.make_int_literal(1),
 			storage_size_type),
@@ -6353,10 +6360,9 @@ fn (mut t Transformer) make_array_merge_sort_stmt(base flat.NodeId, elem_type st
 	])
 	both_runs := t.make_infix(.logical_and, t.make_infix(.lt, t.make_ident(i_name), t.make_ident(mid_name)),
 		t.make_infix(.lt, t.make_ident(j_name), t.make_ident(hi_name)))
+	merge_body << t.make_if_with_skip_ownership_drops(less, take_right, take_left)
 	merge_for := t.make_for_stmt(t.make_empty(), both_runs, t.make_expr_stmt(t.make_postfix(t.make_ident(k_name),
-		.inc)), [
-		t.make_if_with_skip_ownership_drops(less, take_right, take_left),
-	], src)
+		.inc)), merge_body, src)
 	// At most one run has elements left; move them in a single copy.
 	left_tail := t.make_block([
 		t.make_sort_move(dst_name, t.make_ident(k_name), src_name, i_name, t.make_infix(.minus,

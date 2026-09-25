@@ -337,6 +337,7 @@ mut:
 	ignore_overflow                bool
 	force_bounds_checking          bool
 	is_shared                      bool
+	interface_exports              []string
 	object_file_mode               bool
 	suppress_main                  bool
 	coverage_dir                   string
@@ -5033,6 +5034,9 @@ fn (mut g FlatGen) add_macos_shared_export_linker_flags() {
 		if name.len > 0 {
 			names[name] = true
 		}
+	}
+	if g.shared_exports_interface_table() {
+		names['_v_interface_exports'] = true
 	}
 	mut sorted_names := names.keys()
 	sorted_names.sort()

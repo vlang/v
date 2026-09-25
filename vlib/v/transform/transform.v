@@ -1601,7 +1601,12 @@ pub fn monomorphize_with_used_checked_config_scoped(mut a flat.FlatAst, tc &type
 pub fn monomorphize_with_used_checked_config_scoped_cached(mut a flat.FlatAst, tc &types.TypeChecker, used_fns map[string]bool, parallel bool, stage_scope voidptr, cached_specs []MonomorphCacheSpec) (map[string]bool, []string, []MonomorphCacheSpec) {
 	debug_started := time.ticks()
 	mut t := new_transformer(mut a, tc, used_fns)
-	t.parallel_monomorphize = parallel
+	// Checker fixtures fully re-check every specialized body
+	// (check_concrete_fn_semantics). Workers would do that through forked
+	// checkers that share mutable state with the master and keep their own
+	// diagnostics, so the specialization errors of a fixture were lost or
+	// became nondeterministic. Fixtures are small; specialize them serially.
+	t.parallel_monomorphize = parallel && (isnil(tc) || !tc.checker_fixture_mode)
 	t.stage_scope = stage_scope
 	t.scoped_monomorphize = stage_scope != unsafe { nil }
 	$if prealloc {

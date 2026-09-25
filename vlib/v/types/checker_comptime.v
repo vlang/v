@@ -4389,9 +4389,14 @@ fn (mut tc TypeChecker) check_cast_expr(id flat.NodeId, node flat.Node) {
 			}
 			return
 		}
+		clean_actual := unalias_type(actual)
+		// `Ref(&inode)` with `type Ref = &Inode` only renames the pointer type. An
+		// alias of the pointee (`&LocalMessage(msg)`) is a distinct type and still warns.
+		same_pointee := clean_actual is Pointer
+			&& clean_actual.base_type.name() == target_pointer.base_type.name()
 		if tc.unsafe_depth == 0 && !(target is Alias && tc.alias_type_is_shared(target))
-			&& unalias_type(actual) is Pointer && struct_type_from_type(target_base) != none
-			&& actual.name() != target_name {
+			&& clean_actual is Pointer && struct_type_from_type(target_base) != none
+			&& actual.name() != target_name && !same_pointee {
 			tc.record_warning_at(.assignment_mismatch, 'casting `${actual.name()}` to `${target_name}` is only allowed in `unsafe` code', id, node.pos)
 			return
 		}
