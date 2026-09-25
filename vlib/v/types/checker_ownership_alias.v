@@ -30,39 +30,34 @@ fn ownership_alias_chain_borrows_indexed_storage(aliases map[string]string, rhs_
 	return false
 }
 
-// ownership_return_param_call_source composes a callee's returned parameter path behind the
-// projection of the argument passed for that parameter: when `f` returns `.name` of its
-// parameter, `f(p.next)` returns `.next.name` of `p`. The second result reports a prefix
-// source, which aliases storage at or below the returned path rather than that exact path.
+// ownership_return_param_call_source composes, in function `caller`, a callee's returned
+// parameter path behind the projection of the argument passed for that parameter: when the
+// callee returns `.name` of its parameter, `callee(p.next)` returns `.next.name` of `p`. It also
+// returns whether the result is a prefix source, which aliases storage at or below the path
+// rather than that exact path, and the functions that composed the path (`callee_via` lists
+// those of the callee's path).
 //
-// Through recursion the argument projection is prepended again every round (`.next.name`,
+// Around a call cycle the argument projection is prepended again every round (`.next.name`,
 // `.next.next.name`, ...), so the return fixed point would never converge, and it would grow
-// exponentially for a function that recurses through several fields. So a direct recursive
-// call, or a call whose returned path already contains the argument projection (the path went
-// around a call cycle), yields a prefix source at the argument projection. That bounds every
-// composed path by the argument projections of the call sites it passes through; acyclic call
-// chains keep their exact paths.
-fn ownership_return_param_call_source(arg_suffix string, callee_suffix string, callee_is_prefix bool, is_recursive_call bool) (string, bool) {
-	if is_recursive_call || ownership_storage_suffix_contains_projection(callee_suffix, arg_suffix) {
-		return arg_suffix, true
+// exponentially for a function that recurses through several fields. A cycle shows as a
+// callee path that `caller` already composed; such a call yields a prefix source at the
+// argument projection. Every other composition extends `via` by a function that is not in it
+// yet, which bounds the exact paths, and keeps acyclic call chains exact.
+fn ownership_return_param_call_source(caller string, arg_suffix string, callee_suffix string, callee_is_prefix bool, callee_via []string) (string, bool, []string) {
+	if caller in callee_via {
+		return arg_suffix, true, [caller]
 	}
-	return arg_suffix + callee_suffix, callee_is_prefix
+	return arg_suffix + callee_suffix, callee_is_prefix, ownership_return_param_via(callee_via,
+		caller)
 }
 
-// ownership_storage_suffix_contains_projection reports whether the storage suffix `suffix`
-// contains all projections of `part`: `.next` is in `.left.next.name`, but not in `.nextval`.
-fn ownership_storage_suffix_contains_projection(suffix string, part string) bool {
-	if part.len == 0 {
-		return false
+// ownership_return_param_via returns `via` extended by `caller`, unless it already lists it.
+fn ownership_return_param_via(via []string, caller string) []string {
+	if caller in via {
+		return via
 	}
-	mut start := 0
-	for {
-		idx := suffix.index_after(part, start) or { return false }
-		end := idx + part.len
-		if end == suffix.len || suffix[end] in [`.`, `[`] {
-			return true
-		}
-		start = idx + 1
-	}
-	return false
+	mut out := []string{cap: via.len + 1}
+	out << via
+	out << caller
+	return out
 }

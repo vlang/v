@@ -66,10 +66,13 @@ struct OwnershipReturnParamDescendant {
 	slot_idx      int
 	source_suffix string
 	target_suffix string
-	// source_is_prefix marks a source widened through recursion: the result aliases storage
-	// at or below `source_suffix`, but not a known exact path. See
+	// source_is_prefix marks a source widened at a call cycle: the result aliases storage at
+	// or below `source_suffix`, but not a known exact path. See
 	// `ownership_return_param_call_source`.
 	source_is_prefix bool
+	// via lists the functions that composed `source_suffix`, starting with the one whose
+	// return expression named it, so that composing it again in one of them detects a cycle.
+	via []string
 }
 
 struct OwnershipReturnParamArg {
@@ -3052,12 +3055,12 @@ fn (mut tc TypeChecker) ownership_prescan_add_return_param_descendant_from_expr(
 	for pi, pname in param_names {
 		if source_name == pname {
 			tc.ownership_add_fn_return_param_descendant(fn_name, pi, slot_idx, '', target_suffix,
-				false)
+				false, [fn_name])
 			return true
 		}
 		if ownership_storage_key_is_descendant(source_name, pname) {
 			tc.ownership_add_fn_return_param_descendant(fn_name, pi, slot_idx, source_name[pname.len..],
-				target_suffix, false)
+				target_suffix, false, [fn_name])
 			return true
 		}
 	}
@@ -3269,7 +3272,7 @@ fn (mut tc TypeChecker) ownership_prescan_return_param_sources(fn_name string, e
 			}
 			if ownership_storage_key_is_descendant(name, pname) {
 				tc.ownership_add_fn_return_param_descendant(fn_name, pi, slot_idx, name[pname.len..],
-					'', false)
+					'', false, [fn_name])
 			}
 		}
 		return
@@ -3389,15 +3392,18 @@ fn (mut tc TypeChecker) ownership_prescan_add_return_param_descendant_from_call_
 	}
 	for pi, pname in param_names {
 		if arg_name == pname {
+			// Passing the parameter itself does not grow the path, so it cannot diverge.
 			tc.ownership_add_fn_return_param_descendant(fn_name, pi, slot_idx, source.source_suffix,
-				callee_desc.target_suffix, callee_desc.source_is_prefix)
+				callee_desc.target_suffix, callee_desc.source_is_prefix, ownership_return_param_via(callee_desc.via,
+					fn_name))
 			return
 		}
 		if ownership_storage_key_is_descendant(arg_name, pname) {
-			source_suffix, source_is_prefix := ownership_return_param_call_source(arg_name[pname.len..],
-				source.source_suffix, callee_desc.source_is_prefix, info.name == fn_name)
+			source_suffix, source_is_prefix, via := ownership_return_param_call_source(fn_name,
+				arg_name[pname.len..], source.source_suffix, callee_desc.source_is_prefix,
+				callee_desc.via)
 			tc.ownership_add_fn_return_param_descendant(fn_name, pi, slot_idx, source_suffix, callee_desc.target_suffix,
-				source_is_prefix)
+				source_is_prefix, via)
 			return
 		}
 	}
@@ -3483,7 +3489,7 @@ fn (mut tc TypeChecker) ownership_add_fn_return_descendant(fn_name string, slot_
 	st.ownership_fn_return_descs[fn_name] = descs
 }
 
-fn (mut tc TypeChecker) ownership_add_fn_return_param_descendant(fn_name string, param_idx int, slot_idx int, source_suffix string, target_suffix string, source_is_prefix bool) {
+fn (mut tc TypeChecker) ownership_add_fn_return_param_descendant(fn_name string, param_idx int, slot_idx int, source_suffix string, target_suffix string, source_is_prefix bool, via []string) {
 	if fn_name == '' || param_idx < 0 || slot_idx < 0
 		|| (source_suffix == '' && target_suffix == '' && !source_is_prefix) {
 		return
@@ -3498,6 +3504,7 @@ fn (mut tc TypeChecker) ownership_add_fn_return_param_descendant(fn_name string,
 		source_suffix:    source_suffix
 		target_suffix:    target_suffix
 		source_is_prefix: source_is_prefix
+		via:              via
 	}
 	for desc in descs {
 		if ownership_return_param_desc_subsumes(desc, candidate) {
