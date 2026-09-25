@@ -13630,11 +13630,13 @@ fn (mut g FlatGen) gen_arg_for_expected_type(arg_id flat.NodeId, expected types.
 	if expected is types.Pointer && !(arg_node.kind == .prefix && arg_node.op == .amp)
 		&& !g.arg_is_null_pointer_literal(arg_id, arg_node) {
 		arg_type := g.usable_expr_type(arg_id)
+		// A pointer const is stored as a C pointer, like a pointer global:
+		// pass it as is instead of taking the address of a copy of its target.
 		value_local := arg_node.kind == .ident && !g.local_storage_is_pointer(arg_node.value) && (g.current_param_type(arg_node.value) or {
 			types.Type(types.void_)
 		}) !is types.Pointer && (g.global_type_for_ident(arg_node.value) or {
 			types.Type(types.void_)
-		}) !is types.Pointer
+		}) !is types.Pointer && !g.arg_is_const_ident(arg_node)
 		if arg_type !is types.Pointer || value_local {
 			needs_addr = true
 		}
@@ -16466,9 +16468,10 @@ fn (mut g FlatGen) gen_call_args(fn_name string, node flat.Node, start int) {
 				|| g.method_receiver_is_mut(g.direct_call_name(fn_name))) && arg_node.kind == .ident
 				&& !g.local_storage_is_pointer(arg_node.value) && !arg_is_pointer_param
 				&& !arg_is_pointer_global && arg_type !is types.Pointer
+			// Pointer consts are C pointers too; see gen_arg_for_expected_type.
 			value_local_mut_arg := arg_node.kind == .ident
 				&& !g.local_storage_is_pointer(arg_node.value) && !arg_is_pointer_param
-				&& !arg_is_pointer_global
+				&& !arg_is_pointer_global && !g.arg_is_const_ident(arg_node)
 			explicit_mut_value := arg_node.is_mut && !(arg_node.kind == .ident
 				&& (g.local_storage_is_pointer(arg_node.value)
 					|| arg_is_pointer_param || arg_is_pointer_global))
