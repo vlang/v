@@ -176,6 +176,68 @@ fn main() {
 	assert error_lines(res.output) == ["11:10: `int` doesn't implement field `name` of interface `Named`"], res.output
 }
 
+fn test_a_generic_struct_type_written_in_a_declaration_is_checked() {
+	res := check_program('declared', "struct Box[T Named] {
+	item T
+}
+
+struct Shelf {
+	good Box[User]
+	bad  Box[int]
+}
+
+fn show(b Box[int]) string {
+	return ''
+}
+
+fn keep(b Box[User]) Box[User] {
+	return b
+}
+
+fn main() {}
+")
+	assert res.exit_code == 1, res.output
+	assert error_lines(res.output) == [
+		"7:7: `int` doesn't implement field `name` of interface `Named`",
+		"10:11: `int` doesn't implement field `name` of interface `Named`",
+	], res.output
+}
+
+fn test_an_inferred_generic_struct_init_is_checked() {
+	res := check_program('inferred_init', "struct Box[T Named] {
+	item T
+}
+
+fn main() {
+	good := Box{
+		item: User{ name: 'a' }
+	}
+	bad := Box{
+		item: 1
+	}
+	println('\${good.item.name} \${bad}')
+}
+")
+	assert res.exit_code == 1, res.output
+	assert error_lines(res.output) == ["9:9: `int` doesn't implement field `name` of interface `Named`"], res.output
+}
+
+fn test_a_generic_function_value_is_checked() {
+	res := check_program('fn_value', "fn longest[T Named](a T, b T) T {
+	return if a.name.len >= b.name.len { a } else { b }
+}
+
+fn main() {
+	good := longest[User]
+	bad := longest[int]
+	println(good(User{ name: 'a' }, User{ name: 'b' }).age)
+	println(bad(1, 2))
+}
+")
+	assert res.exit_code == 1, res.output
+	assert error_lines(res.output) == ["7:17: `int` doesn't implement field `name` of interface `Named`"], res.output
+}
+
 fn test_a_constraint_must_be_an_interface() {
 	res := check_program('not_interface', 'fn twice[T User](x T) T {
 	return x

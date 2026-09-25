@@ -142,7 +142,7 @@ fn (tc &TypeChecker) generic_constraints_of(decl flat.Node) map[string]GenericCo
 
 // generic_struct_decl is the declaration of the generic struct `name`.
 fn (tc &TypeChecker) generic_struct_decl(name string) ?flat.Node {
-	for candidate in [tc.qualify_decl_name(name), name] {
+	for candidate in [tc.qualify_decl_name(name), name, name.trim_string_left('main.')] {
 		if idx := tc.first_type_declaration_ids[candidate] {
 			node := tc.a.nodes[idx]
 			if node.kind == .struct_decl {
@@ -318,10 +318,12 @@ fn (tc &TypeChecker) explicit_type_arg_pos(call flat.Node, k int) ?token.Pos {
 }
 
 // check_generic_struct_constraints reports a type argument of a generic struct,
-// `Box[int]{...}`, that does not implement the interface its type parameter
-// names as its constraint.
-fn (mut tc TypeChecker) check_generic_struct_constraints(id flat.NodeId, node flat.Node, base string, params []string, args []string) {
+// `Box[int]`, that does not satisfy the constraint of its type parameter:
+// written in a struct literal, inferred from one, or written in a
+// declaration. `pos` is where the type is written.
+fn (mut tc TypeChecker) check_generic_struct_constraints(id flat.NodeId, pos token.Pos, base string, args []string) {
 	decl := tc.generic_struct_decl(base) or { return }
+	params := decl.generic_params()
 	constraints := decl.generic_constraints()
 	if constraints.len != params.len || args.len != params.len {
 		return
@@ -335,7 +337,35 @@ fn (mut tc TypeChecker) check_generic_struct_constraints(id flat.NodeId, node fl
 		if tc.generic_constraint_accepts(constraint, actual) {
 			continue
 		}
-		tc.record_generic_constraint_error(constraint, params[i], actual, id, node.pos)
+		tc.record_generic_constraint_error(constraint, params[i], actual, id, pos)
+	}
+}
+
+// check_generic_fn_value_constraints reports a type argument of a generic
+// function taken as a value, `f := longest[int]`, that does not satisfy the
+// constraint of its type parameter.
+fn (mut tc TypeChecker) check_generic_fn_value_constraints(id flat.NodeId, node flat.Node) {
+	name := tc.generic_call_base_name(tc.a.child_node(&node, 0)) or { return }
+	type_args := tc.generic_call_type_arg_names(node)
+	decl_module := tc.fn_type_modules[name] or { tc.cur_module }
+	found := tc.visible_mutation_fn_decl(name, decl_module) or { return }
+	decl := tc.a.node(flat.NodeId(found.idx))
+	params := decl.generic_params()
+	constraints := decl.generic_constraints()
+	if constraints.len != params.len || type_args.len != params.len {
+		return
+	}
+	for i, text in constraints {
+		if text.len == 0 {
+			continue
+		}
+		constraint := tc.generic_constraint(decl, text) or { continue }
+		actual := tc.parse_type(tc.explicit_generic_concrete_arg_text(type_args[i]))
+		if tc.generic_constraint_accepts(constraint, actual) {
+			continue
+		}
+		tc.record_generic_constraint_error(constraint, params[i], actual, id, tc.explicit_type_arg_pos(node,
+			i) or { node.pos })
 	}
 }
 

@@ -13780,7 +13780,10 @@ fn (mut tc TypeChecker) check_type_string_for_unsupported_generics(typ string, n
 			tc.record_unknown_decl_type(base, node_id)
 		}
 		if bracket_end < clean.len {
-			for part in split_params(clean[bracket + 1..bracket_end]) {
+			parts := split_params(clean[bracket + 1..bracket_end])
+			tc.check_generic_struct_constraints(node_id, tc.type_diagnostic_pos(node_id, clean),
+				base, parts)
+			for part in parts {
 				tc.check_type_string_for_unsupported_generics(part, node_id, generic_params)
 			}
 		}
