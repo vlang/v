@@ -6738,7 +6738,7 @@ fn (mut p Parser) skip_block_recording_decl_names() {
 	p.next()
 	for depth > 0 && p.tok != .eof {
 		if p.tok == .name {
-			p.a.comptime_skipped_decl_names[p.lit] = true
+			p.a.comptime_skipped_decl_names[flat.comptime_skipped_decl_key(p.cur_module, p.lit)] = true
 		} else if p.tok == .lcbr {
 			depth++
 		} else if p.tok == .rcbr {
@@ -6842,7 +6842,7 @@ fn (mut p Parser) skip_comptime_block() {
 	for depth > 0 && p.tok != .eof {
 		if p.tok == .name {
 			// Selector members count too: `mod.helper()` spells `helper`.
-			p.a.comptime_skipped_decl_names[p.lit] = true
+			p.a.comptime_skipped_decl_names[flat.comptime_skipped_decl_key(p.cur_module, p.lit)] = true
 		}
 		if map_type_depth >= 0 && depth == map_type_depth
 			&& paren_depth == map_type_paren_depth && bracket_depth == map_type_bracket_depth
