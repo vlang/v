@@ -16248,7 +16248,7 @@ fn (mut t Transformer) transform_expr_stmt(id flat.NodeId, node flat.Node) []fla
 
 fn (t &Transformer) is_void_test_propagation(node flat.Node) bool {
 	return node.value in ['!', '?'] && t.cur_fn_ret_type == 'void'
-		&& t.cur_fn_name.starts_with('test_') && t.cur_file.ends_with('_test.v')
+		&& t.cur_fn_name.starts_with('test_') && pref.is_test_file_for_backend(t.cur_file, 'c')
 }
 
 fn (t &Transformer) shared_postfix_autolock_target(id flat.NodeId) ?flat.NodeId {

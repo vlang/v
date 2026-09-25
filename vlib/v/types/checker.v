@@ -7,6 +7,7 @@ import strings
 import v.errors as compiler_errors
 import v.flat
 import v.gen.c.naming
+import v.pref
 import v.token
 import v.util
 
@@ -11722,19 +11723,15 @@ fn (tc &TypeChecker) is_selected_input_file(file string) bool {
 	return tc.diagnostic_files.len == 0 || tc.diagnostic_files[file]
 }
 
+// is_c_backend_test_file reports whether path names a test file the C backend compiles.
+// It defers to pref, so the checker and the driver agree on every spelling, including
+// architecture-qualified tests such as `foo_test.arm64.v`.
 fn is_c_backend_test_file(path string) bool {
 	file := path_leaf_view(path)
-	if file.ends_with('_test.v') || file.ends_with('_test.vv') || file.ends_with('_test.c.v') {
+	if file.ends_with('_test.vv') {
 		return true
 	}
-	if !file.ends_with('.v') {
-		return false
-	}
-	base := file[..file.len - 2]
-	if !base.contains('.') {
-		return false
-	}
-	return base.all_after_last('.') == 'c' && base.all_before_last('.').ends_with('_test')
+	return pref.is_test_file_for_backend(file, 'c')
 }
 
 fn is_regular_v_test_file(path string) bool {
