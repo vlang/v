@@ -12266,6 +12266,11 @@ fn (mut p Parser) prefix_expr() flat.NodeId {
 			if p.tok.is_keyword() {
 				p.record_diagnostic_span('invalid expression: unexpected keyword `${p.tok.str()}`',
 					p.tok_pos, p.tok_end)
+			} else if p.tok == .comma {
+				// A comma never starts an expression, e.g. the missing argument in
+				// `f(, b)`. Without this, the empty node is later emitted as `0`.
+				p.record_diagnostic_span('invalid expression: unexpected token `,`', p.tok_pos,
+					p.tok_end)
 			}
 			p.next()
 			return p.add(flat.NodeKind.empty)
