@@ -1,0 +1,27 @@
+vlib/v/parser/tests/fn_call_empty_arg_err.vv:19:17: error: invalid expression: unexpected token `,`
+   17 | fn main() {
+   18 |     b := 2.0
+   19 |     println(format(, b))
+      |                    ^
+   20 |     println(sum(1, , 2))
+   21 |     println(sum(1, 2,,))
+vlib/v/parser/tests/fn_call_empty_arg_err.vv:20:17: error: invalid expression: unexpected token `,`
+   18 |     b := 2.0
+   19 |     println(format(, b))
+   20 |     println(sum(1, , 2))
+      |                    ^
+   21 |     println(sum(1, 2,,))
+   22 |     println(Foo{}.add(, 1))
+vlib/v/parser/tests/fn_call_empty_arg_err.vv:21:19: error: invalid expression: unexpected token `,`
+   19 |     println(format(, b))
+   20 |     println(sum(1, , 2))
+   21 |     println(sum(1, 2,,))
+      |                      ^
+   22 |     println(Foo{}.add(, 1))
+   23 | }
+vlib/v/parser/tests/fn_call_empty_arg_err.vv:22:20: error: invalid expression: unexpected token `,`
+   20 |     println(sum(1, , 2))
+   21 |     println(sum(1, 2,,))
+   22 |     println(Foo{}.add(, 1))
+      |                       ^
+   23 | }
