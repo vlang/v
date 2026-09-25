@@ -1006,15 +1006,11 @@ fn main() {
 	assert error_lines(res.output) == ["7:17: `int` doesn't implement field `name` of interface `Named`"], res.output
 }
 
-fn test_a_type_that_is_no_interface_or_sum_type_stands_for_itself() {
-	// `[T User]` takes `User`, as `[T Ints]` takes `Ints` for `type Ints = []int`:
-	// an alias of a type that is no interface or sum type is a type of its own. A
-	// type that does not exist is reported where it is written.
+fn test_another_type_stands_for_itself() {
+	// `[T Ints]` takes `Ints` for `type Ints = []int`: an alias of a type that is
+	// no interface, sum type or struct is a type of its own. A type that does not
+	// exist is reported where it is written.
 	res := check_program('any_type', 'type Ints = []int
-
-fn twice[T User](x T) T {
-	return x
-}
 
 fn ints[T Ints](x T) int {
 	return x.len
@@ -1025,17 +1021,14 @@ fn nope[T Nope](x T) T {
 }
 
 fn main() {
-	println(twice(User{}).age)
-	println(twice(Pet{}).name)
 	println(ints(Ints([1, 2])))
 	println(ints([1, 2]))
 }
 ')
 	assert res.exit_code == 1, res.output
 	assert error_lines(res.output) == [
-		'11:11: unknown type `Nope`',
-		'17:16: cannot use `Pet` as `T`: it is not in its constraint `User`',
-		'19:15: cannot use `[]int` as `T`: it is not in its constraint `Ints`',
+		'7:11: unknown type `Nope`',
+		'13:15: cannot use `[]int` as `T`: it is not in its constraint `Ints`',
 	], res.output
 }
 
@@ -1082,6 +1075,117 @@ fn main() {
 		'14:21: type `T` has no method `hex`: `f64`, in its constraint `Number`, does not have it',
 		'28:17: cannot use `string` as `T`: it is not in its constraint `Number`',
 		'32:15: cannot use `u8` as `T`: it is not in its constraint `Real`',
+	], res.output
+}
+
+fn test_a_struct_constraint_takes_the_struct_and_the_structs_that_embed_it() {
+	// `[T User]` takes `User` and a struct that embeds it, at any depth, and the
+	// body has what `User` has. A struct that embeds `User` does not get its
+	// operators, so only `==` and `!=` work on such a `T`.
+	res := check_program('struct_family', "struct Admin {
+	User
+	level int
+}
+
+struct Root {
+	Admin
+}
+
+fn (a User) + (b User) User {
+	return User{
+		name: a.name + b.name
+	}
+}
+
+fn show[T User](x T) string {
+	return x.name + x.greet()
+}
+
+fn levels[T User](x T) int {
+	return x.level
+}
+
+fn sum[T User](a T, b T) T {
+	println(a == b)
+	return a + b
+}
+
+fn main() {
+	println(show(User{ name: 'u' }))
+	println(show(Admin{ User: User{ name: 'a' } }))
+	println(show(Root{}))
+	println(show(Pet{ name: 'p' }))
+}
+")
+	assert res.exit_code == 1, res.output
+	assert error_lines(res.output) == [
+		'21:11: type `T` has no field named `level`: `User`, in its constraint `User`, does not have it',
+		'26:11: operator `+` is not defined on type `T`: a struct that embeds `User` does not have it',
+		'33:15: cannot use `Pet` as `T`: it is not `User` and does not embed it',
+	], res.output
+}
+
+fn test_a_struct_constraint_needs_its_whole_family_where_its_t_is_given() {
+	// `[T User]` takes the structs that embed `User`: a constraint its `T` is
+	// given to must take them all, as an interface that `User` implements does,
+	// and a sum type that holds `User` alone does not.
+	res := check_program('struct_family_given', 'struct Admin {
+	User
+}
+
+type People = User | Pet
+
+fn greet_named[T Named](x T) string {
+	return x.name
+}
+
+fn only_people[T People](x T) string {
+	return x.name
+}
+
+fn relay[T User](x T) string {
+	return greet_named(x) + only_people(x)
+}
+
+fn narrowed[T User](a T, b T) bool {
+	\$if T is Admin {
+		return a == b
+	} \$else {
+		return a != b
+	}
+}
+
+fn main() {}
+')
+	assert res.exit_code == 1, res.output
+	assert error_lines(res.output) == [
+		'16:38: `only_people` needs `T` to be in `People`: a struct that embeds `User`, in its constraint `User`, is not',
+	], res.output
+}
+
+fn test_an_interface_among_the_types_of_a_constraint_stands_for_what_implements_it() {
+	// `type Value = Named | int` as a constraint takes `int` and what implements
+	// `Named`; `$if T is User {` makes `T` a `User` there.
+	res := check_program('interface_variant', "type Value = Named | int
+
+fn describe[T Value](x T) string {
+	\$if T is User {
+		return x.name + x.greet()
+	} \$else {
+		return ''
+	}
+}
+
+fn main() {
+	println(describe(User{ name: 'u' }))
+	println(describe(Pet{ name: 'p' }))
+	println(describe(3))
+	println(describe(1.5))
+}
+")
+	assert res.exit_code == 1, res.output
+	assert error_lines(res.output) == [
+		'15:19: cannot use `f64` as `T`: it is not in its constraint `Value`',
 	], res.output
 }
 

@@ -335,9 +335,15 @@ fn test_an_operator_on_a_constrained_value_follows_the_checker_for_every_type() 
 		concrete_by_type[typ] = check_operator_program(dir, 'concrete_${typ}', concrete_source)
 	}
 	// A sum type as the constraint stands for its variants: a `T` takes an
-	// operation that every variant takes.
-	variants := {
+	// operation that every variant takes. A struct stands for itself and the
+	// structs that embed it, which get none of its operators: a `T` takes what a
+	// struct without operators, `User`, takes.
+	mut variants := {
 		'Sum': ['int', 'string']
+	}
+	for typ in ['Vec', 'Eq', 'OpAdd', 'OpSub', 'OpMul', 'OpDiv', 'OpMod', 'OpPow', 'OpLt', 'OpLtEq',
+		'OpAll', 'OpIdx', 'OpIdxSet'] {
+		variants[typ] = ['User']
 	}
 	for typ in operator_types {
 		_, where := operator_program(typ, false)

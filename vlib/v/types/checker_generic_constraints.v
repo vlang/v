@@ -17,7 +17,13 @@ struct GenericConstraint {
 	name         string // as written, for the messages
 	is_interface bool
 	iface        Interface
-	types        []Type // the types of a set, when it names no interface
+	// The types of a set, when it names no interface: an interface among them
+	// stands for the types that implement it.
+	types []Type
+	// `[T User]`: the struct among the types that stands for itself and the
+	// structs that embed it, which get its fields and methods but not its
+	// operators.
+	family_struct string
 }
 
 // generic_constraint_type resolves the constraint `text` of a type parameter
@@ -67,9 +73,55 @@ fn (tc &TypeChecker) generic_constraint(decl flat.Node, text string) ?GenericCon
 		}
 	}
 	return GenericConstraint{
-		name:  text
-		types: [typ]
+		name:          text
+		types:         [typ]
+		family_struct: if typ is Struct { typ.name } else { '' }
 	}
+}
+
+// struct_embeds reports whether the struct `name` embeds the struct `base`,
+// itself or in a struct it embeds.
+fn (tc &TypeChecker) struct_embeds(name string, base string, depth int) bool {
+	if depth > 16 {
+		return false
+	}
+	for embedded in tc.struct_embed_receiver_names(name) {
+		if embedded == base || tc.struct_embeds(embedded, base, depth + 1) {
+			return true
+		}
+	}
+	return false
+}
+
+// constraint_family_holds reports whether `actual` is one of the types that
+// `member`, a type of `constraint`, stands for: an interface, the types that
+// implement it; its family struct, itself and the structs that embed it; any
+// other type, itself.
+fn (tc &TypeChecker) constraint_family_holds(constraint GenericConstraint, member Type, actual Type) bool {
+	if member.name() == actual.name() {
+		return true
+	}
+	if member is Interface {
+		return tc.type_implements_interface(actual, member)
+	}
+	if tc.is_family_struct(constraint, member) {
+		clean := unwrap_pointer(actual)
+		return clean is Struct && tc.struct_embeds(clean.name, member.name(), 0)
+	}
+	return false
+}
+
+// is_family_struct reports whether `member`, a type of `constraint`, is its
+// family struct, which stands for the structs that embed it too.
+fn (tc &TypeChecker) is_family_struct(constraint GenericConstraint, member Type) bool {
+	return constraint.family_struct.len > 0 && member is Struct
+		&& member.name() == constraint.family_struct
+}
+
+// is_constraint_family reports whether `member`, a type of `constraint`, stands
+// for more types than itself: an interface, or the family struct.
+fn (tc &TypeChecker) is_constraint_family(constraint GenericConstraint, member Type) bool {
+	return member is Interface || tc.is_family_struct(constraint, member)
 }
 
 // collect_sum_constraint_types adds to `types` the variants of the sum type
@@ -118,7 +170,12 @@ fn (tc &TypeChecker) generic_constraint_accepts(constraint GenericConstraint, ac
 	if actual is Unknown {
 		return true
 	}
-	return constraint.types.any(it.name() == actual.name())
+	for member in constraint.types {
+		if tc.constraint_family_holds(constraint, member, actual) {
+			return true
+		}
+	}
+	return false
 }
 
 // record_generic_constraint_error reports that `actual`, the type argument of
@@ -129,7 +186,12 @@ fn (mut tc TypeChecker) record_generic_constraint_error(constraint GenericConstr
 			id, pos)
 		return
 	}
-	tc.record_error_at(.call_arg_mismatch, 'cannot use `${actual.name().all_after_last('.')}` as `${param}`: it is not in its constraint `${constraint.name}`',
+	reason := if constraint.family_struct.len > 0 && constraint.types.len == 1 {
+		'it is not `${constraint.name}` and does not embed it'
+	} else {
+		'it is not in its constraint `${constraint.name}`'
+	}
+	tc.record_error_at(.call_arg_mismatch, 'cannot use `${actual.name().all_after_last('.')}` as `${param}`: ${reason}',
 		id, pos)
 }
 
@@ -1077,12 +1139,35 @@ fn (tc &TypeChecker) constraint_unmet_reason(constraints map[string]GenericConst
 		return 'its constraint `${have.name}` does not'
 	}
 	for typ in have.types {
+		verb := if need.is_interface { 'does not' } else { 'is not' }
+		if tc.is_family_struct(have, typ) && !need.is_interface {
+			// The structs that embed it too: `need` must take them all.
+			if !tc.constraint_takes_family(need, typ) {
+				return 'a struct that embeds `${typ.name().all_after_last('.')}`, in its constraint `${have.name}`, ${verb}'
+			}
+			continue
+		}
 		if !tc.generic_constraint_accepts(need, typ) {
-			verb := if need.is_interface { 'does not' } else { 'is not' }
 			return '`${typ.name().all_after_last('.')}`, in its constraint `${have.name}`, ${verb}'
 		}
 	}
 	return none
+}
+
+// constraint_takes_family reports whether the set `need` takes the struct `base`
+// and every struct that embeds it: through an interface that `base` implements,
+// which the structs that embed it implement too, or through its family struct,
+// when `base` is it or embeds it.
+fn (tc &TypeChecker) constraint_takes_family(need GenericConstraint, base Type) bool {
+	for member in need.types {
+		if member is Interface && tc.type_implements_interface(base, member) {
+			return true
+		}
+		if tc.is_family_struct(need, member) && tc.constraint_family_holds(need, member, base) {
+			return true
+		}
+	}
+	return false
 }
 
 // check_generic_call_in_body checks a call of a constrained generic function in
@@ -1422,9 +1507,10 @@ fn comptime_condition_on_type_params(cond string, tested map[string]string) stri
 fn constraints_with(constraints map[string]GenericConstraint, name string, constraint GenericConstraint, types []Type) map[string]GenericConstraint {
 	mut narrowed := constraints.clone()
 	narrowed[name] = GenericConstraint{
-		name:         constraint.name
-		is_interface: false
-		types:        types
+		name:          constraint.name
+		is_interface:  false
+		types:         types
+		family_struct: constraint.family_struct
 	}
 	return narrowed
 }
@@ -1517,10 +1603,24 @@ fn (tc &TypeChecker) constraint_condition_term_types(term_text string, name stri
 	}
 	mut result := []Type{}
 	for t in constraint.types {
+		family := tc.is_constraint_family(constraint, t)
+		if family && groups.len > 0 {
+			// `$if T is $struct`: which types of the family are in it is not known.
+			return none
+		}
 		matched := named.any(it.name() == t.name())
 			|| groups.any(tc.type_in_comptime_group(t, it))
 		if matched == positive {
 			result << t
+		}
+		if family && positive {
+			// `$if T is Admin` with `[T User]`: `Admin`, which embeds `User`.
+			for n in named {
+				if n.name() != t.name() && tc.constraint_family_holds(constraint, t, n)
+					&& !result.any(it.name() == n.name()) {
+					result << n
+				}
+			}
 		}
 	}
 	return result
@@ -2273,6 +2373,15 @@ fn (tc &TypeChecker) constraint_operator_types(constraint GenericConstraint) []T
 	if constraint.is_interface {
 		return [constraint.iface]
 	}
+	if constraint.family_struct.len > 0 {
+		// What any struct takes, for the family struct: a struct that embeds it
+		// does not get the operators it declares.
+		mut types := []Type{cap: constraint.types.len}
+		for member in constraint.types {
+			types << if tc.is_family_struct(constraint, member) { Type(Struct{}) } else { member }
+		}
+		return types
+	}
 	return constraint.types
 }
 
@@ -2281,6 +2390,8 @@ fn (tc &TypeChecker) constraint_operator_types(constraint GenericConstraint) []T
 fn (mut tc TypeChecker) record_constraint_operator_error(id flat.NodeId, pos token.Pos, what string, constraint GenericConstraint, typ Type) {
 	message := if constraint.is_interface {
 		'${what}: its constraint `${constraint.name}` does not declare it'
+	} else if typ is Struct && typ.name == '' {
+		'${what}: a struct that embeds `${constraint.family_struct.all_after_last('.')}` does not have it'
 	} else {
 		'${what}: `${typ.name().all_after_last('.')}`, in its constraint `${constraint.name}`, does not have it'
 	}
