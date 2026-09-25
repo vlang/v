@@ -223,7 +223,7 @@ fn (tc &TypeChecker) generic_constraints_of(decl flat.Node) map[string]GenericCo
 	if !receiver_type.contains('[') || !receiver_type.ends_with(']') {
 		return interfaces
 	}
-	struct_decl := tc.generic_struct_decl(receiver_type.all_before('[')) or { return interfaces }
+	struct_decl := tc.generic_type_decl(receiver_type.all_before('[')) or { return interfaces }
 	struct_constraints := struct_decl.generic_constraints()
 	struct_names := struct_decl.generic_params()
 	receiver_names := split_params(receiver_type.all_after('[').all_before_last(']'))
@@ -241,12 +241,13 @@ fn (tc &TypeChecker) generic_constraints_of(decl flat.Node) map[string]GenericCo
 	return interfaces
 }
 
-// generic_struct_decl is the declaration of the generic struct `name`.
-fn (tc &TypeChecker) generic_struct_decl(name string) ?flat.Node {
+// generic_type_decl is the declaration of the generic type `name`: a struct,
+// an interface, or a sum type or an alias with type parameters.
+fn (tc &TypeChecker) generic_type_decl(name string) ?flat.Node {
 	for candidate in [tc.qualify_decl_name(name), name, name.trim_string_left('main.')] {
 		if idx := tc.first_type_declaration_ids[candidate] {
 			node := tc.a.nodes[idx]
-			if node.kind == .struct_decl {
+			if node.kind in [.struct_decl, .interface_decl, .type_decl] {
 				return node
 			}
 		}
@@ -266,12 +267,18 @@ fn (mut tc TypeChecker) check_generic_constraint_decls(node_id flat.NodeId, node
 	file := tc.a.source_files[int(node.pos.id)] or { return }
 	decl_module := tc.file_modules[file.name] or { tc.cur_module }
 	for i, text in constraints {
-		if text.len == 0
-			|| tc.type_name_known_in_scope(text.all_before('['), file.name, decl_module) {
+		if text.len == 0 {
 			continue
 		}
-		tc.record_error_at(.unknown_type, 'unknown type `${text}`', node_id, tc.generic_constraint_pos(node,
-			names[i], text))
+		pos := tc.generic_constraint_pos(node, names[i], text)
+		if !tc.type_name_known_in_scope(text.all_before('['), file.name, decl_module) {
+			tc.record_error_at(.unknown_type, 'unknown type `${text}`', node_id, pos)
+			continue
+		}
+		// `[U Tree[int]]` writes `Tree[int]`, which is checked as written anywhere.
+		if text.contains('[') && pos.end - pos.offset == text.len {
+			tc.check_written_type_constraints(node_id, text, pos.offset, tc.type_param_scope(node))
+		}
 	}
 }
 
@@ -410,12 +417,12 @@ fn (tc &TypeChecker) explicit_type_arg_pos(call flat.Node, k int) ?token.Pos {
 	return none
 }
 
-// check_generic_struct_constraints reports a type argument of a generic struct,
-// `Box[int]`, that does not satisfy the constraint of its type parameter:
-// written in a struct literal, inferred from one, or written in a
+// check_generic_type_constraints reports a type argument of a generic type,
+// `Box[int]` or `Shelf[int]`, that does not satisfy the constraint of its type
+// parameter: written in a struct literal, inferred from one, or written in a
 // declaration. `pos` is where the type is written.
-fn (mut tc TypeChecker) check_generic_struct_constraints(id flat.NodeId, pos token.Pos, base string, args []string, scope TypeParamScope) {
-	decl := tc.generic_struct_decl(base) or { return }
+fn (mut tc TypeChecker) check_generic_type_constraints(id flat.NodeId, pos token.Pos, base string, args []string, scope TypeParamScope) {
+	decl := tc.generic_type_decl(base) or { return }
 	params := decl.generic_params()
 	constraints := decl.generic_constraints()
 	if constraints.len != params.len || args.len != params.len {
@@ -513,6 +520,11 @@ fn written_type_texts(node flat.Node) []string {
 	if node.kind == .ident && node.value.contains('[') && node.pos.end > 0 {
 		texts << node.value
 	}
+	// An interface that an interface embeds, `Shelf[T]`, written as its name.
+	if node.kind == .interface_field && node.op != .dot && node.typ.len == 0
+		&& node.value.contains('[') {
+		texts << node.value
+	}
 	// A struct literal, `Box[int]{}`, is checked where it is checked; a channel,
 	// `chan Box[int]{}`, is one only by its syntax.
 	if node.value.len > 0 && (node.kind in [.map_init, .cast_expr, .is_expr, .as_expr, .array_init]
@@ -565,7 +577,7 @@ fn (mut tc TypeChecker) check_written_type_constraints(id flat.NodeId, text stri
 			}
 		}
 		errors_start := tc.errors.len
-		tc.check_generic_struct_constraints(id, pos, base, args, scope)
+		tc.check_generic_type_constraints(id, pos, base, args, scope)
 		tc.drop_repeated_errors(errors_start)
 		i = end
 	}
@@ -930,6 +942,9 @@ fn (mut tc TypeChecker) constraint_walk_value_type(id flat.NodeId) Type {
 // the declaration's own `T`, which a type parameter of the caller can share by
 // chance.
 fn (mut tc TypeChecker) constraint_walk_call_type(id flat.NodeId, node flat.Node) ?Type {
+	if typ := tc.constraint_walk_interface_method_type(node) {
+		return typ
+	}
 	binding := tc.constraint_walk_call_bindings(id, node)?
 	mut args := []Type{cap: binding.names.len}
 	for name in binding.names {
@@ -937,6 +952,41 @@ fn (mut tc TypeChecker) constraint_walk_call_type(id flat.NodeId, node flat.Node
 	}
 	declared := tc.fn_ret_types[binding.info.name] or { binding.info.return_type }
 	return tc.substitute_generic_type_values(declared, args, binding.names)
+}
+
+// constraint_walk_interface_method_type is the type of the call `node` in the
+// body of the walk when it calls a method of a generic interface on a value of
+// it, `s.get()` with `s Shelf[T]`: what the interface declares it returns, with
+// the type arguments of the value.
+fn (mut tc TypeChecker) constraint_walk_interface_method_type(node flat.Node) ?Type {
+	if node.children_count == 0 {
+		return none
+	}
+	callee := tc.a.child_node(&node, 0)
+	if callee.kind != .selector || callee.children_count == 0 {
+		return none
+	}
+	receiver := unwrap_pointer(tc.constraint_walk_value_type(tc.a.child(callee, 0)))
+	if receiver !is Interface {
+		return none
+	}
+	base, args, is_generic := generic_type_application_parts(receiver.name())
+	if !is_generic {
+		return none
+	}
+	decl := tc.generic_type_decl(base) or { return none }
+	params := decl.generic_params().map(it.trim_space())
+	if decl.kind != .interface_decl || params.len != args.len {
+		return none
+	}
+	for i in 0 .. decl.children_count {
+		member := tc.a.child_node(&decl, i)
+		if member.kind == .interface_field && member.op == .dot && member.value == callee.value {
+			return tc.constraint_walk_named_type(subst_generic_text(member.typ, args.map(it.trim_space()),
+				params))
+		}
+	}
+	return none
 }
 
 // CallBinding is what a generic call binds each type parameter of its
@@ -1246,7 +1296,10 @@ fn (mut tc TypeChecker) check_inferred_struct_in_body(id flat.NodeId, node flat.
 	if node.value.contains('[') {
 		return
 	}
-	decl := tc.generic_struct_decl(node.value) or { return }
+	decl := tc.generic_type_decl(node.value) or { return }
+	if decl.kind != .struct_decl {
+		return
+	}
 	params := decl.generic_params().map(it.trim_space())
 	texts := tc.infer_generic_struct_init_param_texts(node, node.value, params)
 	if texts.len != params.len {
@@ -1256,7 +1309,7 @@ fn (mut tc TypeChecker) check_inferred_struct_in_body(id flat.NodeId, node flat.
 	if args.any(it.len == 0) {
 		return
 	}
-	tc.check_generic_struct_constraints(id, node.pos, node.value, args, TypeParamScope{
+	tc.check_generic_type_constraints(id, node.pos, node.value, args, TypeParamScope{
 		names:       scope.names
 		constraints: constraints
 	})

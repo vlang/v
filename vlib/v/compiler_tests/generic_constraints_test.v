@@ -861,6 +861,184 @@ fn main() {}
 	], res.output
 }
 
+fn test_a_generic_interface_alias_or_sum_type_checks_its_type_arguments() {
+	// `interface Shelf[T Named]`, `type Picker[T Named] = fn (T) T` and
+	// `type Tree[T Named] = Leaf[T] | Twig[T]` check their type arguments where
+	// they are written, as a generic struct does. The same with `User` is valid.
+	res := check_program('generic_types', 'interface Shelf[T Named] {
+	get() T
+}
+
+type Picker[T Named] = fn (T) T
+
+struct Leaf[T] {
+	v T
+}
+
+struct Twig[T] {
+	l T
+}
+
+type Tree[T Named] = Leaf[T] | Twig[T]
+
+struct IntShelf {}
+
+fn (s IntShelf) get() int {
+	return 1
+}
+
+struct Holder {
+	shelf  Shelf[int]
+	picker ?Picker[int]
+	tree   Tree[int]
+	good   Tree[User]
+}
+
+type Forest = Tree[int] | string
+
+fn use_shelf(s Shelf[int]) int {
+	return s.get()
+}
+
+fn make_picker() Picker[int] {
+	return fn (x int) int {
+		return x
+	}
+}
+
+fn good(s Shelf[User], p Picker[User], t Tree[User]) {}
+
+fn main() {
+	println(use_shelf(Shelf[int](IntShelf{})))
+	println(sizeof(Picker[int]))
+	trees := []Tree[int]{}
+	shelves := map[string]Shelf[int]{}
+	println(trees.len + shelves.len)
+}
+')
+	assert res.exit_code == 1, res.output
+	no_name := "`int` doesn't implement field `name` of interface `Named`"
+	assert error_lines(res.output) == [
+		'24:9: ${no_name}',
+		'25:10: ${no_name}',
+		'26:9: ${no_name}',
+		'30:15: ${no_name}',
+		'32:16: ${no_name}',
+		'36:18: ${no_name}',
+		'45:20: ${no_name}',
+		'46:17: ${no_name}',
+		'47:13: ${no_name}',
+		'48:24: ${no_name}',
+	], res.output
+}
+
+fn test_a_generic_interface_alias_or_sum_type_passes_its_constraint_on() {
+	// `Shelf[T]`, `?Picker[T]` or `Tree[T]` with a type parameter of the
+	// declaration around them needs its constraint to satisfy theirs, as `Box[T]`
+	// does; and a method of one takes its constraint: `s.get().name` works in
+	// `fn (s Shelf[T])`.
+	res := check_program('generic_types_given', 'interface Shelf[T Named] {
+	get() T
+}
+
+type Picker[T Named] = fn (T) T
+
+struct Leaf[T] {
+	v T
+}
+
+type Tree[T Named] = Leaf[T] | string
+
+fn take[T](s Shelf[T]) T {
+	return s.get()
+}
+
+fn take_ok[T Named](s Shelf[T]) T {
+	return s.get()
+}
+
+interface BigShelf[T] {
+	Shelf[T]
+	count() int
+}
+
+interface BigShelfOk[T Named] {
+	Shelf[T]
+	count() int
+}
+
+struct Keeper[T] {
+	p ?Picker[T]
+}
+
+struct KeeperOk[T NamedGreeter] {
+	p ?Picker[T]
+}
+
+type Forest[T] = Tree[T] | int
+
+type ForestOk[T Named] = Tree[T] | int
+
+fn (s Shelf[T]) label[T]() string {
+	return s.get().name
+}
+
+fn (s Shelf[T]) years[T]() int {
+	return s.get().age
+}
+
+fn (t Tree[T]) describe[T](x T) string {
+	return x.name
+}
+
+fn (t Tree[T]) years[T](x T) int {
+	return x.age
+}
+
+fn main() {}
+')
+	assert res.exit_code == 1, res.output
+	no_age := 'type `T` has no field named `age`: its constraint `Named` does not declare it'
+	assert error_lines(res.output) == [
+		'13:14: `Shelf[T]` needs `T` to implement `Named`: `T` has no constraint: give it one, `[T Named]`',
+		'22:2: `Shelf[T]` needs `T` to implement `Named`: `T` has no constraint: give it one, `[T Named]`',
+		'32:5: `Picker[T]` needs `T` to implement `Named`: `T` has no constraint: give it one, `[T Named]`',
+		'39:18: `Tree[T]` needs `T` to implement `Named`: `T` has no constraint: give it one, `[T Named]`',
+		'48:17: ${no_age}',
+		'56:11: ${no_age}',
+	], res.output
+}
+
+fn test_a_generic_type_written_as_a_constraint_checks_its_type_arguments() {
+	// `[U Tree[int]]` writes `Tree[int]` too; `[U Tree[User]]` stands for the
+	// variants of `Tree[User]`.
+	res := check_program('constraint_application', 'struct Leaf[T] {
+	v T
+}
+
+type Tree[T Named] = Leaf[T] | Pet
+
+fn bad[U Tree[int]](x U) U {
+	return x
+}
+
+fn good[U Tree[User]](x U) U {
+	return x
+}
+
+fn main() {
+	println(good(Leaf[User]{}).v.name)
+	println(good(Pet{}).name)
+	println(good(1))
+}
+')
+	assert res.exit_code == 1, res.output
+	assert error_lines(res.output) == [
+		"7:10: `int` doesn't implement field `name` of interface `Named`",
+		'18:15: cannot use `int` as `U`: it is not in its constraint `Tree[User]`',
+	], res.output
+}
+
 fn test_an_inferred_generic_struct_init_is_checked() {
 	res := check_program('inferred_init', "struct Box[T Named] {
 	item T

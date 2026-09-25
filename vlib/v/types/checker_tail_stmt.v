@@ -3677,7 +3677,7 @@ fn (mut tc TypeChecker) check_struct_init(id flat.NodeId, node flat.Node) {
 			}
 		}
 		if params.len > 0 {
-			tc.check_generic_struct_constraints(id, node.pos, generic_base, generic_args, TypeParamScope{})
+			tc.check_generic_type_constraints(id, node.pos, generic_base, generic_args, TypeParamScope{})
 		}
 	}
 	if init_type_text != 'struct' && !is_anonymous_struct_name(init_type_text)
@@ -3774,7 +3774,7 @@ fn (mut tc TypeChecker) check_struct_init(id flat.NodeId, node flat.Node) {
 			if inferred_type := tc.infer_generic_struct_init_type(node) {
 				tc.remember_expr_type(id, inferred_type)
 				inferred_base, inferred_args, _ := generic_type_application_parts(inferred_type.name())
-				tc.check_generic_struct_constraints(id, node.pos, inferred_base, inferred_args, TypeParamScope{})
+				tc.check_generic_type_constraints(id, node.pos, inferred_base, inferred_args, TypeParamScope{})
 			} else if generic_name := tc.bare_generic_decl_type_name(init_type_text) {
 				qualified := tc.qualify_name(generic_name)
 				params := tc.struct_generic_params[generic_name] or {
