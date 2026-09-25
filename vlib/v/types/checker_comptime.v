@@ -5437,10 +5437,15 @@ fn (mut tc TypeChecker) check_integer_literal_cast_overflow(id flat.NodeId, node
 	}
 	bit_size := if clean_target.size == 0 { 32 } else { int(clean_target.size) }
 	target_name := target.name()
+	radix := integer_literal_radix(magnitude)
 	if bit_size > 64 {
 		// strconv stops at 64 bits, so the digits are compared against the largest
-		// value the type holds. The negative limit is the magnitude of the minimum,
-		// because that is the one value whose positive counterpart does not exist.
+		// value the type holds. The limit is decimal while the literal may be
+		// written in any base, so the magnitude is converted first: comparing the
+		// source text by length let `0x100000000000000000000000000000000` (2^128)
+		// through and rejected a valid 65-bit binary literal.
+		// The negative limit is the magnitude of the minimum, because that is the
+		// one value whose positive counterpart does not exist.
 		limit := if clean_target.props.has(.unsigned) {
 			'340282366920938463463374607431768211455'
 		} else if is_negative {
@@ -5448,7 +5453,11 @@ fn (mut tc TypeChecker) check_integer_literal_cast_overflow(id flat.NodeId, node
 		} else {
 			'170141183460469231731687303715884105727'
 		}
-		if decimal_magnitude_exceeds(magnitude, limit) {
+		digits := decimal_magnitude_of_base(magnitude, radix) or {
+			tc.record_error_at(.assignment_mismatch, 'value `${literal}` overflows `${target_name}`', id, node.pos)
+			return
+		}
+		if decimal_magnitude_exceeds(digits, limit) {
 			tc.record_error_at(.assignment_mismatch, 'value `${literal}` overflows `${target_name}`', id, node.pos)
 		}
 		return
@@ -5473,6 +5482,74 @@ fn (mut tc TypeChecker) check_integer_literal_cast_overflow(id flat.NodeId, node
 	if overflows_sign_bit {
 		tc.record_warning_at(.assignment_mismatch, 'value `${literal}` overflows `${target_name}`, this will be considered hard error soon', id, node.pos)
 	}
+}
+
+// integer_literal_radix returns the base a magnitude is written in. The sign has
+// already been stripped by the caller.
+fn integer_literal_radix(magnitude string) int {
+	if magnitude.len >= 2 && magnitude[0] == `0` {
+		match magnitude[1] {
+			`x`, `X` { return 16 }
+			`o`, `O` { return 8 }
+			`b`, `B` { return 2 }
+			else {}
+		}
+	}
+	return 10
+}
+
+// decimal_magnitude_of_base renders a magnitude written in `radix` as decimal
+// digits, so a decimal limit can be compared with it whatever base the source
+// used. strconv parses 64 bits at most and this exists for the widths above
+// that, so the conversion is a digit at a time and needs no wide arithmetic. A
+// value with more digits than a 128-bit one has cannot fit the target either,
+// and none comes back for it.
+fn decimal_magnitude_of_base(magnitude string, radix int) ?string {
+	start := if radix != 10 && magnitude.len >= 2 { 2 } else { 0 }
+	digits := magnitude[start..]
+	if digits.len == 0 {
+		return none
+	}
+	// One byte per decimal digit, least significant first. 128 bits need 39
+	// digits; the room above that is for a value too large to be a concern here.
+	mut out := []u8{len: 48, init: 0}
+	mut out_len := 0
+	for ch in digits {
+		digit := if ch >= `0` && ch <= `9` {
+			int(ch - `0`)
+		} else if ch >= `a` && ch <= `f` {
+			int(ch - `a`) + 10
+		} else if ch >= `A` && ch <= `F` {
+			int(ch - `A`) + 10
+		} else {
+			return none
+		}
+		if digit >= radix {
+			return none
+		}
+		mut carry := digit
+		for i in 0 .. out_len {
+			scaled := int(out[i]) * radix + carry
+			out[i] = u8(scaled % 10)
+			carry = scaled / 10
+		}
+		for carry > 0 {
+			if out_len >= out.len {
+				return none
+			}
+			out[out_len] = u8(carry % 10)
+			carry /= 10
+			out_len++
+		}
+	}
+	if out_len == 0 {
+		return '0'
+	}
+	mut text := []u8{len: out_len}
+	for i in 0 .. out_len {
+		text[out_len - 1 - i] = out[i] + `0`
+	}
+	return text.bytestr()
 }
 
 // Compares a literal's digits against a limit too large for u64. Leading zeros go
