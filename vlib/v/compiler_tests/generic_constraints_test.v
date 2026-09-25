@@ -317,6 +317,128 @@ fn main() {}
 	], res.output
 }
 
+fn test_an_operator_needs_every_type_of_the_constraint() {
+	// An interface declares no operators: a `T` it constrains has `==`, `!=` and
+	// `in`, as a value of the interface. A set takes what all of its types take.
+	res := check_program('operators', 'constraint Number = int | f64
+
+constraint Word = string | int
+
+constraint Flag = bool | int
+
+struct Vec {
+	x int
+}
+
+fn (a Vec) + (b Vec) Vec {
+	return Vec{a.x + b.x}
+}
+
+constraint Addable = int | Vec
+
+type IntArr = []int
+
+type StrMap = map[string]int
+
+constraint Indexable = string | IntArr
+
+constraint Keyed = string | StrMap
+
+fn iface[T Named](a T, b T, items []T) bool {
+	println(a == b)
+	println(a in items)
+	println(a + b)
+	mut c := a
+	c += b
+	c++
+	println(-a)
+	d := items[0]
+	println(d * b)
+	return a < b
+}
+
+fn numbers[T Number](x T, y T) T {
+	println(x < y)
+	println(x + y * x - y / x)
+	println(x + 1)
+	println(x % y)
+	println(x << 1)
+	println(-x)
+	mut z := x
+	z += y
+	z++
+	return z
+}
+
+fn words[T Word](x T) T {
+	println(x + x)
+	println(x < x)
+	println(x + 1)
+	println(1 + x)
+	return x - x
+}
+
+fn flags[T Flag](x T) bool {
+	println(x == x)
+	println(!x)
+	return x && x
+}
+
+fn addables[T Addable](x T) T {
+	println(x + x)
+	return x - x
+}
+
+fn indexes[T Indexable, K Keyed](x T, k K) {
+	println(x[0])
+	println(k[0])
+}
+
+fn main() {}
+')
+	assert res.exit_code == 1, res.output
+	named := 'its constraint `Named` does not declare it'
+	assert error_lines(res.output) == [
+		'28:12: operator `+` is not defined on type `T`: ${named}',
+		'30:4: operator `+=` is not defined on type `T`: ${named}',
+		'31:3: operator `++` is not defined on type `T`: ${named}',
+		'32:10: operator `-` is not defined on type `T`: ${named}',
+		'34:12: operator `*` is not defined on type `T`: ${named}',
+		'35:11: operator `<` is not defined on type `T`: ${named}',
+		'42:12: operator `%` is not defined on type `T`: `f64`, in its constraint `Number`, does not have it',
+		'43:12: operator `<<` is not defined on type `T` and `int literal`: `f64`, in its constraint `Number`, does not have it',
+		'54:12: operator `+` is not defined on type `T` and `int literal`: `string`, in its constraint `Word`, does not have it',
+		'55:12: operator `+` is not defined on `int literal` and type `T`: `string`, in its constraint `Word`, does not have it',
+		'56:11: operator `-` is not defined on type `T`: `string`, in its constraint `Word`, does not have it',
+		'61:10: operator `!` is not defined on type `T`: `int`, in its constraint `Flag`, does not have it',
+		'62:11: operator `&&` is not defined on type `T`: `int`, in its constraint `Flag`, does not have it',
+		'67:11: operator `-` is not defined on type `T`: `Vec`, in its constraint `Addable`, does not have it',
+		'72:11: type `K` cannot be indexed with `int literal`: `StrMap`, in its constraint `Keyed`, does not have it',
+	], res.output
+}
+
+fn test_an_append_to_a_constrained_array_is_left_to_its_elements() {
+	// `items << x` as a statement is an append, which `[]int` takes; as a value,
+	// `_ = items << x`, it is a shift, which no array takes.
+	res := check_program('append', 'type IntArr = []int
+
+type IntArr2 = []i64
+
+constraint Ints = IntArr | IntArr2
+
+fn push[T Ints](mut items T) {
+	items << 1
+	_ = items << 1
+}
+
+fn main() {}
+')
+	assert res.exit_code == 1, res.output
+	assert error_lines(res.output) == [
+		'9:12: operator `<<` is not defined on type `T` and `int literal`: `IntArr`, in its constraint `Ints`, does not have it',
+	], res.output
+}
+
 fn test_a_local_of_type_t_can_use_what_the_constraint_declares() {
 	res := check_program('derived_valid', "fn total[T Named](a T, items []T) int {
 	x := a

@@ -414,6 +414,8 @@ fn (mut tc TypeChecker) check_generic_fn_constraint_members(fn_node flat.Node) {
 	// own. V has no shadowing, so one scope in source order gives every use the
 	// declaration it sees, and `x := a` makes `x` a `T` when `a` is one.
 	mut guards := map[int]bool{}
+	// Operators written as statements, `items << x`, an append.
+	mut statements := map[int]bool{}
 	tc.push_scope()
 	for stack.len > 0 {
 		item := stack.pop()
@@ -457,6 +459,15 @@ fn (mut tc TypeChecker) check_generic_fn_constraint_members(fn_node flat.Node) {
 					tc.check_constraint_member(item.id, *node, item.id, *node, false, interfaces,
 						item.narrowed)
 				}
+			}
+			.expr_stmt {
+				if node.children_count > 0 {
+					statements[int(tc.a.child(node, 0))] = true
+				}
+			}
+			.infix, .prefix, .postfix, .assign, .selector_assign, .index_assign, .index {
+				tc.check_constraint_operator(item.id, *node, interfaces, item.narrowed,
+					statements[int(item.id)])
 			}
 			else {}
 		}
@@ -847,4 +858,579 @@ fn (tc &TypeChecker) type_has_member(typ Type, member string, is_call bool) bool
 		return true
 	}
 	return !is_call && tc.struct_field_type(name, member) != none
+}
+
+// ConstraintOperand is the other operand of an operator on a value of a
+// constrained type parameter, told apart as the rules of the operators tell it:
+// another value of the same type parameter, a literal, or a value of a builtin
+// type. Nothing is checked against an unknown one.
+enum ConstraintOperand {
+	unknown
+	same
+	int_lit
+	float_lit
+	str_lit
+	bool_lit
+	rune_lit
+	int_val
+	float_val
+	str_val
+	bool_val
+	rune_val
+}
+
+fn (o ConstraintOperand) is_int_like() bool {
+	return o in [.int_lit, .rune_lit, .int_val, .rune_val]
+}
+
+fn (o ConstraintOperand) is_int() bool {
+	return o in [.int_lit, .int_val]
+}
+
+fn (o ConstraintOperand) is_rune() bool {
+	return o in [.rune_lit, .rune_val]
+}
+
+fn (o ConstraintOperand) is_float() bool {
+	return o in [.float_lit, .float_val]
+}
+
+fn (o ConstraintOperand) is_str() bool {
+	return o in [.str_lit, .str_val]
+}
+
+fn (o ConstraintOperand) is_bool() bool {
+	return o in [.bool_lit, .bool_val]
+}
+
+// ConstraintTypeKind groups the types of a constraint by the operators the
+// checker takes on them.
+enum ConstraintTypeKind {
+	unchecked // pointers and what else the rules below do not cover
+	integer
+	isize // `isize` and `usize`: no `==` with a float
+	rune
+	float
+	string
+	boolean
+	flag_enum
+	other // `==` and `!=`, and the operators the type declares
+}
+
+const constraint_integer_ops = ['+', '-', '*', '/', '%', '**', '<', '>', '<=', '>=', '==', '!=',
+	'&', '|', '^', '<<', '>>', '>>>']
+const constraint_float_ops = ['+', '-', '*', '/', '**', '<', '>', '<=', '>=', '==', '!=']
+const constraint_overloadable_ops = ['+', '-', '*', '/', '%', '**']
+const constraint_order_ops = ['<', '>', '<=', '>=']
+
+// constraint_type_kind is the group of `typ` for the rules of the operators.
+fn (tc &TypeChecker) constraint_type_kind(typ Type) ConstraintTypeKind {
+	clean := unalias_type(typ)
+	return match clean {
+		ISize, USize {
+			.isize
+		}
+		Rune {
+			.rune
+		}
+		Primitive {
+			if clean.props.has(.boolean) {
+				ConstraintTypeKind.boolean
+			} else if clean.props.has(.float) {
+				ConstraintTypeKind.float
+			} else if clean.props.has(.integer) {
+				ConstraintTypeKind.integer
+			} else {
+				ConstraintTypeKind.unchecked
+			}
+		}
+		String {
+			.string
+		}
+		Enum {
+			if clean.is_flag { ConstraintTypeKind.flag_enum } else { ConstraintTypeKind.other }
+		}
+		Struct, Interface, SumType, Array, ArrayFixed, Map, OptionType, ResultType, FnType {
+			.other
+		}
+		else {
+			.unchecked
+		}
+	}
+}
+
+// constraint_type_declares_operator reports whether `typ`, or the type it is an
+// alias of, declares the operator `op`: `fn (a Vec) + (b Vec) Vec`. `<` gives
+// `>`, `<=` and `>=` too.
+fn (tc &TypeChecker) constraint_type_declares_operator(typ Type, op string) bool {
+	name := if op in constraint_order_ops { '<' } else { op }
+	flat_op := match name {
+		'+' { flat.Op.plus }
+		'-' { flat.Op.minus }
+		'*' { flat.Op.mul }
+		'/' { flat.Op.div }
+		'%' { flat.Op.mod }
+		'**' { flat.Op.power }
+		'<' { flat.Op.lt }
+		else { return false }
+	}
+	return tc.infix_operator_signature(flat_op, typ) != none
+}
+
+// constraint_binary_allowed reports whether the operator `op` works on a value of
+// the type `typ` and `other`, on its right, or on its left with `left`: what the
+// checker takes for that type. The rules follow what it reports for every kind
+// of operand, `<` and the others with #28854, which rejects an order between
+// operands that have none.
+fn (tc &TypeChecker) constraint_binary_allowed(typ Type, op string, other ConstraintOperand, left bool) bool {
+	if other == .unknown {
+		return true
+	}
+	kind := tc.constraint_type_kind(typ)
+	match kind {
+		.unchecked {
+			return true
+		}
+		.integer, .isize, .rune {
+			if other == .same || other.is_int_like() {
+				return op in constraint_integer_ops
+			}
+			if other.is_float() {
+				if kind == .integer {
+					// An alias that declares the operator takes only its own type on its right.
+					if !left && typ is Alias && tc.constraint_type_declares_operator(typ, op) {
+						return false
+					}
+					return op in constraint_float_ops
+				}
+				return op in constraint_float_ops && op !in ['==', '!=']
+			}
+			return kind == .rune && other.is_str() && !left && op == '+'
+		}
+		.float {
+			if other == .same || other.is_float() || other.is_int() {
+				return op in constraint_float_ops
+			}
+			return other.is_rune() && op in constraint_float_ops && op !in ['==', '!=']
+		}
+		.string {
+			if other == .same || other.is_str() {
+				return op in ['+', '<', '>', '<=', '>=', '==', '!=']
+			}
+			return other.is_rune() && left && op == '+'
+		}
+		.boolean {
+			return (other == .same || other.is_bool()) && op in ['==', '!=', '&&', '||']
+		}
+		.flag_enum {
+			if other == .same {
+				return op in ['==', '!=', '&', '|', '^']
+			}
+			return other.is_int() && op in ['==', '!=']
+		}
+		.other {
+			if other != .same {
+				return false
+			}
+			if op in ['==', '!='] {
+				return true
+			}
+			if op in constraint_order_ops || op in constraint_overloadable_ops {
+				return tc.constraint_type_declares_operator(typ, op)
+			}
+			return false
+		}
+	}
+}
+
+// constraint_unary_allowed reports whether the prefix operator `op`, `-`, `!` or
+// `~`, works on a value of the type `typ`.
+fn (tc &TypeChecker) constraint_unary_allowed(typ Type, op string) bool {
+	return match tc.constraint_type_kind(typ) {
+		.unchecked { true }
+		.integer, .isize, .rune { op in ['-', '~'] }
+		.float { op == '-' }
+		.boolean { op == '!' }
+		.flag_enum { op == '~' }
+		else { false }
+	}
+}
+
+// constraint_postfix_allowed reports whether `++` and `--` work on a value of
+// the type `typ`.
+fn (tc &TypeChecker) constraint_postfix_allowed(typ Type) bool {
+	return tc.constraint_type_kind(typ) in [.unchecked, .integer, .isize, .rune, .float]
+}
+
+// constraint_assign_allowed reports whether the assignment operator `op=`, with
+// `op` the operator it applies, works on a value of the type `typ` and `other`.
+fn (tc &TypeChecker) constraint_assign_allowed(typ Type, op string, other ConstraintOperand) bool {
+	if other == .unknown {
+		return true
+	}
+	match tc.constraint_type_kind(typ) {
+		.unchecked {
+			return true
+		}
+		.integer, .isize, .rune {
+			return (other == .same || other.is_int_like()) && op in constraint_integer_ops
+				&& op !in ['<', '>', '<=', '>=', '==', '!=']
+		}
+		.float {
+			return (other == .same || other.is_float() || other.is_int())
+				&& op in constraint_overloadable_ops
+		}
+		.string {
+			if other == .same && typ is Alias {
+				// What the checker takes on an alias of `string` with its own type.
+				return op in ['+', '-', '*', '/', '%']
+			}
+			return (other == .same || other.is_str() || other.is_rune()) && op == '+'
+		}
+		.boolean {
+			return false
+		}
+		.flag_enum {
+			return (other == .same || other.is_int()) && op in ['&', '|', '^', '<<', '>>', '>>>']
+		}
+		.other {
+			return other == .same && op in constraint_overloadable_ops
+				&& tc.constraint_type_declares_operator(typ, op)
+		}
+	}
+}
+
+// constraint_index_allowed reports whether a value of the type `typ` can be
+// indexed with `index`: an array or a string with an integer, a map with its
+// key, a type that declares `[]` with its parameter.
+fn (tc &TypeChecker) constraint_index_allowed(typ Type, index ConstraintOperand) bool {
+	if index == .unknown {
+		return true
+	}
+	clean := unalias_type(typ)
+	match clean {
+		Array, ArrayFixed, String {
+			return index.is_int()
+		}
+		Map {
+			return tc.constraint_operand_matches(clean.key_type, index)
+		}
+		Struct, Alias {
+			info := tc.index_overload_call_info(typ, false) or { return false }
+			if info.params.len < 2 {
+				return false
+			}
+			return tc.constraint_operand_matches(info.params[1], index)
+		}
+		else {
+			return tc.constraint_type_kind(typ) == .unchecked
+		}
+	}
+}
+
+// constraint_operand_matches reports whether `operand` is of the builtin type
+// `typ`, which an index takes: an integer for an integer, a string for a string.
+fn (tc &TypeChecker) constraint_operand_matches(typ Type, operand ConstraintOperand) bool {
+	return match tc.constraint_type_kind(typ) {
+		.integer, .isize { operand.is_int() }
+		.string { operand.is_str() }
+		.unchecked { true }
+		else { false }
+	}
+}
+
+// constraint_operand is what the operand `id` is to an operator whose other
+// operand is a value of the type parameter `param`.
+fn (mut tc TypeChecker) constraint_operand(id flat.NodeId, param string) ConstraintOperand {
+	if !tc.valid_node_id(id) {
+		return .unknown
+	}
+	node := tc.a.node(id)
+	match node.kind {
+		.int_literal {
+			return .int_lit
+		}
+		.float_literal {
+			return .float_lit
+		}
+		.string_literal, .string_interp {
+			return .str_lit
+		}
+		.bool_literal {
+			return .bool_lit
+		}
+		.char_literal {
+			return .rune_lit
+		}
+		.paren {
+			if node.children_count > 0 {
+				return tc.constraint_operand(tc.a.child(node, 0), param)
+			}
+		}
+		else {}
+	}
+	typ := tc.constraint_walk_value_type(id)
+	if typ is Unknown {
+		if name := generic_placeholder_from_unknown(typ) {
+			return if name == param { ConstraintOperand.same } else { ConstraintOperand.unknown }
+		}
+		return .unknown
+	}
+	clean := unalias_type(typ)
+	return match clean {
+		ISize, USize {
+			.int_val
+		}
+		Rune {
+			.rune_val
+		}
+		Primitive {
+			if clean.props.has(.boolean) {
+				ConstraintOperand.bool_val
+			} else if clean.props.has(.float) {
+				ConstraintOperand.float_val
+			} else if clean.props.has(.integer) {
+				ConstraintOperand.int_val
+			} else {
+				ConstraintOperand.unknown
+			}
+		}
+		String {
+			.str_val
+		}
+		else {
+			.unknown
+		}
+	}
+}
+
+// constraint_operand_name is how an error names `operand`, the value of `id`.
+fn (mut tc TypeChecker) constraint_operand_name(id flat.NodeId, operand ConstraintOperand) string {
+	return match operand {
+		.int_lit { 'int literal' }
+		.float_lit { 'float literal' }
+		.str_lit { 'string' }
+		.bool_lit { 'bool' }
+		.rune_lit { 'rune' }
+		else { tc.constraint_walk_value_type(id).name().all_after_last('.') }
+	}
+}
+
+// constraint_walk_param is the constrained type parameter whose value `id` is,
+// if it is one that `interfaces` constrains and no `is` has decided its type.
+fn (mut tc TypeChecker) constraint_walk_param(id flat.NodeId, interfaces map[string]GenericConstraint, narrowed []string) ?string {
+	if !tc.valid_node_id(id) {
+		return none
+	}
+	node := tc.a.node(id)
+	if node.kind == .ident && node.value in narrowed {
+		return none
+	}
+	typ := tc.constraint_walk_value_type(id)
+	if typ !is Unknown {
+		return none
+	}
+	param := generic_placeholder_from_unknown(typ as Unknown) or { return none }
+	if param !in interfaces {
+		return none
+	}
+	return param
+}
+
+// check_constraint_operator reports an operator of the body of a generic
+// function, `a + b`, `-a`, `a++`, `a += b` or `a[i]`, on a value of a constrained
+// type parameter, that some type of its constraint does not take: an interface
+// takes `==` and `!=` only, as a value of the interface does, and a set of types
+// takes what every one of them takes.
+fn (mut tc TypeChecker) check_constraint_operator(id flat.NodeId, node flat.Node, interfaces map[string]GenericConstraint, narrowed []string, is_statement bool) {
+	match node.kind {
+		.infix {
+			if node.children_count < 2 {
+				return
+			}
+			op := infix_operator_name(node.op) or { return }
+			lhs_id := tc.a.child(&node, 0)
+			rhs_id := tc.a.child(&node, 1)
+			if param := tc.constraint_walk_param(lhs_id, interfaces, narrowed) {
+				other := tc.constraint_operand(rhs_id, param)
+				tc.check_constraint_binary(id, node, op, param, interfaces[param], other, rhs_id,
+					false, is_statement)
+			} else if param := tc.constraint_walk_param(rhs_id, interfaces, narrowed) {
+				other := tc.constraint_operand(lhs_id, param)
+				tc.check_constraint_binary(id, node, op, param, interfaces[param], other, lhs_id,
+					true, is_statement)
+			}
+		}
+		.prefix {
+			if node.children_count == 0 || node.op !in [.minus, .not, .bit_not] {
+				return
+			}
+			param := tc.constraint_walk_param(tc.a.child(&node, 0), interfaces, narrowed) or {
+				return
+			}
+			op := match node.op {
+				.minus { '-' }
+				.not { '!' }
+				else { '~' }
+			}
+			constraint := interfaces[param]
+			for typ in tc.constraint_operator_types(constraint) {
+				if !tc.constraint_unary_allowed(typ, op) {
+					tc.record_constraint_operator_error(id, tc.prefix_operator_pos(id, op), 'operator `${op}` is not defined on type `${param}`',
+						constraint, typ)
+					return
+				}
+			}
+		}
+		.postfix {
+			if node.children_count == 0 || node.op !in [.inc, .dec] {
+				return
+			}
+			param := tc.constraint_walk_param(tc.a.child(&node, 0), interfaces, narrowed) or {
+				return
+			}
+			op := if node.op == .inc { '++' } else { '--' }
+			constraint := interfaces[param]
+			for typ in tc.constraint_operator_types(constraint) {
+				if !tc.constraint_postfix_allowed(typ) {
+					tc.record_constraint_operator_error(id, tc.prefix_operator_pos(id, op), 'operator `${op}` is not defined on type `${param}`',
+						constraint, typ)
+					return
+				}
+			}
+		}
+		.assign, .selector_assign, .index_assign {
+			if node.children_count < 2 {
+				return
+			}
+			// `+=` and the like; a plain `=` changes no type.
+			assign_op := assignment_operator_text(node.op)
+			if assign_op.len < 2 {
+				return
+			}
+			op := assign_op[..assign_op.len - 1]
+			lhs_id := tc.a.child(&node, 0)
+			rhs_id := tc.a.child(&node, 1)
+			param := tc.constraint_walk_param(lhs_id, interfaces, narrowed) or { return }
+			other := tc.constraint_operand(rhs_id, param)
+			constraint := interfaces[param]
+			for typ in tc.constraint_operator_types(constraint) {
+				if !tc.constraint_assign_allowed(typ, op, other) {
+					what := if other == .same {
+						'operator `${assign_op}` is not defined on type `${param}`'
+					} else {
+						'operator `${assign_op}` is not defined on type `${param}` and `${tc.constraint_operand_name(rhs_id, other)}`'
+					}
+					tc.record_constraint_operator_error(id, tc.constraint_assign_operator_pos(node, assign_op),
+						what, constraint, typ)
+					return
+				}
+			}
+		}
+		.index {
+			if node.children_count < 2 || node.value == 'range' {
+				return
+			}
+			base_id := tc.a.child(&node, 0)
+			index_id := tc.a.child(&node, 1)
+			if tc.valid_node_id(index_id) && tc.a.node(index_id).kind == .range {
+				return
+			}
+			param := tc.constraint_walk_param(base_id, interfaces, narrowed) or { return }
+			index := tc.constraint_operand(index_id, param)
+			constraint := interfaces[param]
+			for typ in tc.constraint_operator_types(constraint) {
+				if !tc.constraint_index_allowed(typ, index) {
+					base := tc.a.node(base_id)
+					pos := tc.constraint_bracket_pos(node, base)
+					tc.record_constraint_operator_error(id, pos, 'type `${param}` cannot be indexed with `${tc.constraint_operand_name(index_id, index)}`', constraint, typ)
+					return
+				}
+			}
+		}
+		else {}
+	}
+}
+
+// check_constraint_binary reports the binary operator `op` of `node` when a type
+// of `constraint` does not take it with `other`, the value of `other_id`, on the
+// right of the value of `param`, or on its left with `left`.
+fn (mut tc TypeChecker) check_constraint_binary(id flat.NodeId, node flat.Node, op string, param string, constraint GenericConstraint, other ConstraintOperand, other_id flat.NodeId, left bool, is_statement bool) {
+	if op in ['&&', '||'] && other == .unknown {
+		return
+	}
+	for typ in tc.constraint_operator_types(constraint) {
+		if is_statement && op == '<<' && unalias_type(typ) is Array {
+			// An append, `items << x`: what the array holds decides it.
+			continue
+		}
+		if tc.constraint_binary_allowed(typ, op, other, left) {
+			continue
+		}
+		what := if other == .same {
+			'operator `${op}` is not defined on type `${param}`'
+		} else if left {
+			'operator `${op}` is not defined on `${tc.constraint_operand_name(other_id, other)}` and type `${param}`'
+		} else {
+			'operator `${op}` is not defined on type `${param}` and `${tc.constraint_operand_name(other_id, other)}`'
+		}
+		tc.record_constraint_operator_error(id, tc.infix_operator_pos(node, op), what, constraint,
+			typ)
+		return
+	}
+}
+
+// constraint_operator_types are the types an operator on a value of a type
+// parameter with `constraint` must work for: the interface itself, or every
+// type of the set.
+fn (tc &TypeChecker) constraint_operator_types(constraint GenericConstraint) []Type {
+	if constraint.is_interface {
+		return [constraint.iface]
+	}
+	return constraint.types
+}
+
+// record_constraint_operator_error reports `what`, an operator that the type
+// `typ` of `constraint` does not take, with the constraint that decides it.
+fn (mut tc TypeChecker) record_constraint_operator_error(id flat.NodeId, pos token.Pos, what string, constraint GenericConstraint, typ Type) {
+	message := if constraint.is_interface {
+		display := tc.interface_metadata_name(constraint.iface.name).all_after_last('.')
+		'${what}: its constraint `${display}` does not declare it'
+	} else {
+		'${what}: `${typ.name().all_after_last('.')}`, in its constraint `${constraint.name}`, does not have it'
+	}
+	tc.record_error_at(.assignment_mismatch, message, id, pos)
+}
+
+// constraint_assign_operator_pos is where the assignment operator `op` of
+// `node`, `+=` in `c += b`, is written: between its two sides.
+fn (tc &TypeChecker) constraint_assign_operator_pos(node flat.Node, op string) token.Pos {
+	if node.children_count >= 2 {
+		lhs := tc.a.child_node(&node, 0)
+		rhs := tc.a.child_node(&node, 1)
+		source := tc.vls_source(int(lhs.pos.id))
+		start := int(lhs.pos.end)
+		end := int_min(int(rhs.pos.offset), source.len)
+		if start >= 0 && start < end {
+			if relative := source[start..end].index(op) {
+				return token.new_span(lhs.pos.id, start + relative, start + relative + op.len)
+			}
+		}
+	}
+	return node.pos
+}
+
+// constraint_bracket_pos is where the `[` of the index `node` is written, after
+// its base.
+fn (tc &TypeChecker) constraint_bracket_pos(node flat.Node, base flat.Node) token.Pos {
+	source := tc.vls_source(int(node.pos.id))
+	start := int_max(int(base.pos.end), int(node.pos.offset))
+	if start >= 0 && start < source.len {
+		if open := source.index_after('[', start) {
+			if open < int(node.pos.end) {
+				return token.new_span(node.pos.id, open, open + 1)
+			}
+		}
+	}
+	return node.pos
 }
