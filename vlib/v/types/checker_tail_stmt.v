@@ -76,7 +76,14 @@ fn (tc &TypeChecker) expression_node_used_as_value(id flat.NodeId) bool {
 			return false
 		}
 		parent := tc.a.node(parent_id)
-		if parent.kind in [.fn_decl, .fn_literal, .lambda_expr, .comptime_for] {
+		if parent.kind == .lambda_expr {
+			// `|x| if c { x } else { 0 }`: the body is the lambda's result, unless the
+			// lambda returns nothing and its body was checked as a statement.
+			return parent.children_count > 0
+				&& tc.a.child(parent, parent.children_count - 1) == current
+				&& !tc.is_statement_node(current)
+		}
+		if parent.kind in [.fn_decl, .fn_literal, .comptime_for] {
 			return false
 		}
 		if parent.kind in [.paren, .expr_stmt] {
