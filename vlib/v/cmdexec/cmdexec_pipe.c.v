@@ -7,13 +7,8 @@ $if windows {
 
 	fn C.PeekNamedPipe(handle voidptr, buffer voidptr, size i32, bytes_read voidptr, bytes_available voidptr, bytes_left voidptr) bool
 } $else {
-	$if linux && !musl ? {
-		// glibc's <poll.h> only includes <sys/poll.h>. The linuxroot sysroot used
-		// for `-os linux` cross compilation from macOS ships just the latter.
-		#include <sys/poll.h>
-	} $else {
-		#include <poll.h>
-	}
+	// Picks <sys/poll.h> on glibc and <poll.h> elsewhere, including musl.
+	#insert "@VEXEROOT/vlib/v/cmdexec/cmdexec_poll.h"
 
 	struct C.pollfd {
 		fd      int
