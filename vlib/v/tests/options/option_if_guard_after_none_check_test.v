@@ -48,7 +48,11 @@ fn checked_title_else_if_return_expr(req IfGuardAfterNoneCheck, flag bool) !stri
 	}
 	return if flag {
 		'fixed'
-	} else if value := req.title { value.trim_space() } else { '' }
+	} else if value := req.title {
+		value.trim_space()
+	} else {
+		''
+	}
 }
 
 fn test_return_else_if_guard_after_none_check_uses_optional_wrapper() {
