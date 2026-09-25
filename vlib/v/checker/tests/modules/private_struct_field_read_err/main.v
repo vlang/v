@@ -31,4 +31,8 @@ fn main() {
 	println(local.own + local.hidden + local.shown)
 	ref := unsafe { fieldvis.BoxRef(&b) }
 	println(ref.secret + ref.readable)
+	pp := &ptr
+	println(pp.secret + pp.readable)
+	config := fieldvis.new_config()
+	println(config.secret + config.shown)
 }

@@ -39,6 +39,25 @@ pub fn new_box() Box {
 pub fn (b Box) sum() int {
 	return b.private + b.secret + b.readable + b.writable + b.hidden + b.shown
 }
+
+pub type Config = struct {
+	secret int
+pub:
+	shown int
+}
+
+pub fn new_config() Config {
+	return Config{}
+}
+
+pub struct Holder {
+pub:
+	cfg struct {
+		secret int
+	pub:
+		shown int
+	}
+}
 '
 
 const private_field_main_source = 'module main
@@ -71,6 +90,14 @@ fn main() {
 	println(local_box.readable)
 	ref := unsafe { lib.BoxRef(&b) }
 	println(ref.secret + ref.readable)
+	pp := &ptr
+	println(pp.secret + pp.readable)
+	config := lib.new_config()
+	println(config.secret + config.shown)
+	holder := lib.Holder{}
+	cfg_ptr := &holder.cfg
+	cfg_pp := &cfg_ptr
+	println(cfg_pp.secret + cfg_pp.shown)
 }
 '
 
@@ -115,5 +142,8 @@ fn test_private_struct_fields_of_other_modules_are_not_public() {
 		'main.v:20: field `lib.Box.cb` is not public',
 		'main.v:22: field `lib.BoxAlias.secret` is not public',
 		'main.v:30: field `lib.BoxRef.secret` is not public',
+		'main.v:32: field `lib.Box.secret` is not public',
+		'main.v:34: field `lib.Config.secret` is not public',
+		'main.v:38: field `cfg_pp.secret` is not public',
 	], errors.str()
 }

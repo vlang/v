@@ -12185,7 +12185,17 @@ fn (tc &TypeChecker) alias_struct_field_is_private_outside_module(alias Alias, f
 	}
 	// Selectors see through pointer aliases too (`pub type BoxRef = &Box`).
 	target := unalias_and_unwrap_pointer_type(alias.base_type)
-	return target is Struct && tc.struct_field_is_private_outside_module(target.name, field_name)
+	if target !is Struct {
+		return false
+	}
+	if tc.is_synthesized_anon_struct(target.name) {
+		// An alias of an anonymous struct (`pub type Config = struct { ... }`) keeps the
+		// `pub` sections of the fields, which `struct_field_is_private_outside_module` skips.
+		anon_mod := tc.struct_module_for_type(target.name)
+		return anon_mod != tc.cur_module
+			&& !tc.anonymous_struct_field_is_public(target.name, field_name, anon_mod)
+	}
+	return tc.struct_field_is_private_outside_module(target.name, field_name)
 }
 
 fn (tc &TypeChecker) receiver_expr_mutation_visibility(expr_id flat.NodeId, root_name string, receiver_type string, decl_mod string) ReceiverMutationVisibility {

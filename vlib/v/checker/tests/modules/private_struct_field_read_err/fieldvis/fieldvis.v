@@ -43,3 +43,14 @@ pub fn new_box() Box {
 pub fn (b Box) sum() int {
 	return b.private + b.secret + b.readable + b.writable + b.hidden + b.shown + b.cb()
 }
+
+// Config is an alias of an anonymous struct; its fields keep their `pub` sections.
+pub type Config = struct {
+	secret int
+pub:
+	shown int
+}
+
+pub fn new_config() Config {
+	return Config{}
+}

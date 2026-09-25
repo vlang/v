@@ -59,4 +59,18 @@ vlib/v/checker/tests/modules/private_struct_field_read_err/main.v:33:14: error: 
    32 |     ref := unsafe { fieldvis.BoxRef(&b) }
    33 |     println(ref.secret + ref.readable)
       |                 ~~~~~~
-   34 | }
+   34 |     pp := &ptr
+   35 |     println(pp.secret + pp.readable)
+vlib/v/checker/tests/modules/private_struct_field_read_err/main.v:35:13: error: field `private_struct_field_read_err.fieldvis.Box.secret` is not public
+   33 |     println(ref.secret + ref.readable)
+   34 |     pp := &ptr
+   35 |     println(pp.secret + pp.readable)
+      |                ~~~~~~
+   36 |     config := fieldvis.new_config()
+   37 |     println(config.secret + config.shown)
+vlib/v/checker/tests/modules/private_struct_field_read_err/main.v:37:17: error: field `private_struct_field_read_err.fieldvis.Config.secret` is not public
+   35 |     println(pp.secret + pp.readable)
+   36 |     config := fieldvis.new_config()
+   37 |     println(config.secret + config.shown)
+      |                    ~~~~~~
+   38 | }
