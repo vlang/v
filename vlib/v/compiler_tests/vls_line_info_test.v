@@ -85,6 +85,45 @@ enum Perm {
 }
 "
 
+// Generic functions whose type parameters name a constraint: an interface, or
+// a set of types. A client asks after a dot with a placeholder name, `a.zz`.
+const constraints_program = "module main
+
+interface Named {
+	name string
+	greet() string
+}
+
+struct User {
+	name string
+	age  int
+}
+
+fn (u User) greet() string {
+	return u.name
+}
+
+constraint Number = int | f64
+
+fn longest[T Named](a T, b T) T {
+	if a.name.len >= b.name.len {
+		return a
+	}
+	println(a.zz)
+	return b
+}
+
+fn describe[T Number](x T) string {
+	println(x.zz)
+	return x.str()
+}
+
+fn main() {
+	println(longest(User{ name: 'a' }, User{ name: 'bb' }).age)
+	println(describe(1))
+}
+"
+
 // A client asks for completion right after a dot with a placeholder name there,
 // `p.zz`, as the code has to parse.
 const completion_program = 'module main
@@ -258,11 +297,15 @@ fn testsuite_begin() {
 	os.write_file(os.join_path(work_dir, 'shadowing', 'main.v'), shadowing_program) or {
 		panic(err)
 	}
+	os.mkdir_all(os.join_path(work_dir, 'constraints')) or { panic(err) }
 	os.write_file(os.join_path(work_dir, 'main.v'), program) or { panic(err) }
 	os.write_file(os.join_path(work_dir, 'completion', 'main.v'), completion_program) or {
 		panic(err)
 	}
 	os.write_file(os.join_path(work_dir, 'declarations', 'main.v'), declarations_program) or {
+		panic(err)
+	}
+	os.write_file(os.join_path(work_dir, 'constraints', 'main.v'), constraints_program) or {
 		panic(err)
 	}
 }
@@ -805,4 +848,29 @@ fn test_a_server_child_that_grew_answers_its_last_question_and_leaves() {
 	p.stdin_write('quit\n')
 	p.wait()
 	assert p.code == 0
+}
+
+fn constrained(code string, line int, word string, nth int) string {
+	return ask(os.join_path(work_dir, 'constraints'), code, line, word, nth)
+}
+
+fn constrained_completion(line int, col int) []Detail {
+	answer := ask_at(os.join_path(work_dir, 'constraints'), '${line}:${col}')
+	if answer == '' {
+		return []
+	}
+	return (json2.decode[Details](answer) or { panic('${err}: ${answer}') }).details
+}
+
+fn test_a_constrained_value_has_the_members_of_its_constraint() {
+	// `a.zz` in `longest[T Named]`: what `Named` declares.
+	members := constrained_completion(23, 11).map('${it.kind} ${it.label} ${it.detail}')
+	assert members == ['2 greet string', '5 name string'], members.str()
+	assert constrained('hv^', 20, 'name', 0) == '{"contents":{"kind":"markdown","value":"```v\\nname string\\n```"}}'
+	// The field of the interface that declares it.
+	assert constrained('gd^', 20, 'name', 0) == 'main.v:4:1'
+	// `x.zz` in `describe[T Number]`: what `int` and `f64` both have.
+	labels := constrained_completion(28, 11).map(it.label)
+	assert 'str' in labels, labels.str()
+	assert 'hex' !in labels, labels.str()
 }

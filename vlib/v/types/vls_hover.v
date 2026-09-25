@@ -175,7 +175,7 @@ fn (tc &TypeChecker) vls_call_target(call_id flat.NodeId, callee_id flat.NodeId)
 // call it kept no type for, the return type of the function it calls.
 fn (tc &TypeChecker) vls_expr_type(id flat.NodeId) ?Type {
 	if typ := tc.expr_type(id) {
-		return typ
+		return tc.vls_constrained_type(id, typ) or { typ }
 	}
 	node := tc.a.node(id)
 	if node.kind == .call {
@@ -186,7 +186,8 @@ fn (tc &TypeChecker) vls_expr_type(id flat.NodeId) ?Type {
 	// some errors: the field's type, from the type of its receiver.
 	if node.kind == .selector && node.children_count > 0 {
 		receiver_type := tc.vls_expr_type(tc.a.child(node, 0))?
-		return tc.vls_field_type(receiver_type, node.value)
+		field_type := tc.vls_field_type(receiver_type, node.value)?
+		return tc.vls_constrained_type(id, field_type) or { field_type }
 	}
 	// Literals the checker keeps no type for, as the receivers of the builtin
 	// methods it handles itself: `[a, b].filter()`, `'abc'.to_upper()`.
@@ -205,9 +206,45 @@ fn (tc &TypeChecker) vls_expr_type(id flat.NodeId) ?Type {
 		decl := tc.a.node(decl_id)
 		if decl.kind == .param {
 			declared := tc.parse_type(decl.typ)
+			if constrained := tc.vls_constrained_type(id, declared) {
+				return constrained
+			}
 			return if type_contains_unknown(declared) { none } else { declared }
 		}
 		return tc.vls_local_type(decl_id)
+	}
+	return none
+}
+
+// vls_constrained_type is the interface that stands for `typ` when it is a type
+// parameter of the generic function around `id` that names that interface as
+// its constraint: a value of it has the members of the interface.
+fn (tc &TypeChecker) vls_constrained_type(id flat.NodeId, typ Type) ?Type {
+	constraint := tc.vls_type_constraint(id, typ)?
+	if constraint.is_interface {
+		return Type(constraint.iface)
+	}
+	return none
+}
+
+// vls_type_constraint is the constraint of `typ` when it is a type parameter of
+// the generic function around `id` that names one.
+fn (tc &TypeChecker) vls_type_constraint(id flat.NodeId, typ Type) ?GenericConstraint {
+	clean := unwrap_pointer(typ)
+	if clean !is Unknown {
+		return none
+	}
+	param := generic_placeholder_from_unknown(clean as Unknown)?
+	mut cur := id
+	for _ in 0 .. 4096 {
+		cur = tc.vls_parent_id(cur)
+		if !tc.valid_node_id(cur) {
+			return none
+		}
+		node := tc.a.node(cur)
+		if node.kind == .fn_decl {
+			return tc.generic_constraints_of(*node)[param] or { return none }
+		}
 	}
 	return none
 }
