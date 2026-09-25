@@ -71,13 +71,42 @@ and the existing module `${modulename}` may still work.')
 	return true
 }
 
+// resolvable_module_dir returns the folder that `modulename` can already be imported from,
+// searching every `VMODULES` root (not just the first one), and then `extra_search_roots`,
+// like the expanded `-path` entries of a build. Like the compiler, it only accepts a folder
+// that has `.v` files in it.
+fn resolvable_module_dir(modulename string, extra_search_roots []string) ?string {
+	mod_path := modulename.replace('.', os.path_separator)
+	mut roots := os.vmodules_paths()
+	roots << extra_search_roots
+	for root in roots {
+		if root.trim_space() == '' {
+			continue
+		}
+		mod_dir := os.join_path_single(root, mod_path)
+		entries := os.ls(mod_dir) or { continue }
+		if entries.any(it.ends_with('.v')) {
+			return mod_dir
+		}
+	}
+	return none
+}
+
 // ensure_modules_for_tool_are_installed installs the modules from outside vlib that the
-// bundled tool `tool_name` needs, before that tool is compiled. Modules that are already
-// installed are left alone, so this does not touch the network in the common case.
-// The returned error names the module that could not be installed, and how to install
-// it manually, instead of leaving the user with a `cannot import module` builder error.
-pub fn ensure_modules_for_tool_are_installed(tool_name string, is_verbose bool) ! {
+// bundled tool `tool_name` needs, before that tool is compiled. A module that the compiler
+// can already resolve, from any `VMODULES` root or from `extra_search_roots` (the `-path`
+// entries of the build), is left alone, so this does not touch the network in the common
+// case, and works offline. The returned error names the module that could not be installed,
+// and how to install it manually, instead of leaving the user with a `cannot import module`
+// builder error.
+pub fn ensure_modules_for_tool_are_installed(tool_name string, extra_search_roots []string, is_verbose bool) ! {
 	for emodule in external_modules_for_tool(tool_name) {
+		if mod_dir := resolvable_module_dir(emodule, extra_search_roots) {
+			if is_verbose {
+				eprintln('ensure_modules_for_tool_are_installed: `${emodule}` is available in ${mod_dir}')
+			}
+			continue
+		}
 		check_module_is_installed(emodule, is_verbose, false) or {
 			return error('cannot install the `${emodule}` module, which the `${tool_name}` tool needs: ${err.msg().trim_space()}\nInstall it with `v install ${emodule}`, then try again.')
 		}
@@ -93,6 +122,6 @@ pub fn ensure_modules_for_all_tools_are_installed(is_verbose bool) {
 		if is_verbose {
 			eprintln('Installing modules for tool: ${tool_name} ...')
 		}
-		ensure_modules_for_tool_are_installed(tool_name, is_verbose) or { panic(err) }
+		ensure_modules_for_tool_are_installed(tool_name, []string{}, is_verbose) or { panic(err) }
 	}
 }
