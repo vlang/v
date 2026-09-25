@@ -16753,11 +16753,6 @@ fn (tc &TypeChecker) resolve_type_uncached(id flat.NodeId) Type {
 						elem_type: Type(String{})
 					})
 				}
-				if gt := tc.file_scope.lookup(node.value) {
-					if gt !is Unknown {
-						return gt
-					}
-				}
 				resolved := tc.resolve_import_alias(base_node.value) or { base_node.value }
 				qname := '${resolved}.${node.value}'
 				if qname.starts_with('C.') {
