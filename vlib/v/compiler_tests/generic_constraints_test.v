@@ -1142,6 +1142,52 @@ fn main() {}
 	], res.output
 }
 
+fn test_the_body_can_use_what_every_type_of_a_set_of_any_types_has() {
+	// `len` of arrays, maps and strings, the fields and methods builtin declares
+	// for them, and what an interface of the set declares.
+	res := check_program('set_members_any', 'constraint Sized = []int | []string | map[string]int | string
+
+constraint Listy = []int | []string
+
+constraint Value = Named
+
+fn size[T Sized](x T) int {
+	return x.len
+}
+
+fn caps[T Sized](x T) int {
+	return x.cap
+}
+
+fn copies[T Sized](x T) T {
+	return x.clone()
+}
+
+fn reversed[T Listy](x T) T {
+	return x.reverse()
+}
+
+fn show[T Value](x T) string {
+	return x.name
+}
+
+fn ages[T Value](x T) int {
+	return x.age
+}
+
+fn texts[T Sized](x T) string {
+	return x.str()
+}
+
+fn main() {}
+')
+	assert res.exit_code == 1, res.output
+	assert error_lines(res.output) == [
+		'12:11: type `T` has no field named `cap`: `map[string]int`, in its constraint `Sized`, does not have it',
+		'28:11: type `T` has no field named `age`: `Named`, in its constraint `Value`, does not have it',
+	], res.output
+}
+
 fn test_a_constraint_set_of_unknown_types_is_reported() {
 	res := check_program('set_unknown', 'constraint Bad = int | Foo
 

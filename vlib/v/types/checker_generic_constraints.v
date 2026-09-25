@@ -1729,16 +1729,50 @@ fn (tc &TypeChecker) constraint_member_pos(sel_id flat.NodeId, sel flat.Node) to
 }
 
 // type_has_member reports whether the type `typ` has the method `member`, or
-// without `is_call` the field or the method `member`.
+// without `is_call` the field or the method `member`: what an interface
+// declares, and for an array, a map or a string, what builtin declares for them
+// with `len`, as a selector on a value of the type finds it.
 fn (tc &TypeChecker) type_has_member(typ Type, member string, is_call bool) bool {
+	clean := unalias_and_unwrap_pointer_type(typ)
+	if clean is Interface {
+		iface_name := tc.interface_metadata_name(clean.name)
+		if member in tc.interface_abstract_method_names(iface_name) {
+			return true
+		}
+		return !is_call && tc.interface_field_list(iface_name).any(it.name == member)
+	}
 	name := method_type_name(unwrap_pointer(typ))
-	if tc.concrete_method_signature_key(name, member) != none {
+	if name.len > 0 && tc.concrete_method_signature_key(name, member) != none {
 		return true
 	}
-	if member == 'str' && tc.type_has_implicit_str_method(name) {
+	if member == 'str' {
+		mut seen := map[string]bool{}
+		if tc.type_has_implicit_str_method(name) || tc.type_supports_implicit_str(typ, mut seen) {
+			return true
+		}
+	}
+	builtin := match clean {
+		Array { 'array' }
+		Map { 'map' }
+		String { 'string' }
+		else { '' }
+	}
+	if builtin.len > 0 && tc.concrete_method_signature_key(builtin, member) != none {
 		return true
 	}
-	return !is_call && tc.struct_field_type(name, member) != none
+	if is_call {
+		return false
+	}
+	if member == 'len' && (clean is Array || clean is ArrayFixed || clean is Map || clean is String) {
+		return true
+	}
+	if clean is Channel && member in ['len', 'cap', 'closed'] {
+		return true
+	}
+	if builtin.len > 0 && (tc.structs[builtin] or { []StructField{} }).any(it.name == member) {
+		return true
+	}
+	return name.len > 0 && tc.struct_field_type(name, member) != none
 }
 
 // ConstraintOperand is the other operand of an operator on a value of a
