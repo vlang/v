@@ -54,3 +54,34 @@ pub:
 pub fn new_config() Config {
 	return Config{}
 }
+
+pub struct Circle {
+	radius int
+mut:
+	secret int
+pub:
+	shown int
+	width int
+}
+
+pub struct Square {
+mut:
+	secret int
+pub:
+	shown int
+}
+
+// Shape is a sum type whose variants share the private field `secret` and the public field `shown`.
+pub type Shape = Circle | Square
+
+// ShapeAlias is declared in this module, so the private fields of the variants stay private through it.
+pub type ShapeAlias = Shape
+
+pub fn new_shape() Shape {
+	return Circle{}
+}
+
+// Fields shared by the variants are accessible inside the module that declares them.
+pub fn (s Shape) total() int {
+	return s.secret + s.shown
+}

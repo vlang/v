@@ -73,4 +73,32 @@ vlib/v/checker/tests/modules/private_struct_field_read_err/main.v:37:17: error: 
    36 |     config := fieldvis.new_config()
    37 |     println(config.secret + config.shown)
       |                    ~~~~~~
-   38 | }
+   38 |     mut shape := fieldvis.new_shape()
+   39 |     println(shape.secret + shape.shown + shape.total())
+vlib/v/checker/tests/modules/private_struct_field_read_err/main.v:39:16: error: field `private_struct_field_read_err.fieldvis.Shape.secret` is not public
+   37 |     println(config.secret + config.shown)
+   38 |     mut shape := fieldvis.new_shape()
+   39 |     println(shape.secret + shape.shown + shape.total())
+      |                   ~~~~~~
+   40 |     shape.secret = 9
+   41 |     shapes := [shape]
+vlib/v/checker/tests/modules/private_struct_field_read_err/main.v:40:8: error: field `private_struct_field_read_err.fieldvis.Shape.secret` is not public
+   38 |     mut shape := fieldvis.new_shape()
+   39 |     println(shape.secret + shape.shown + shape.total())
+   40 |     shape.secret = 9
+      |           ~~~~~~
+   41 |     shapes := [shape]
+   42 |     println(shapes[0].radius + shapes[0].width)
+vlib/v/checker/tests/modules/private_struct_field_read_err/main.v:42:20: error: field `private_struct_field_read_err.fieldvis.Circle.radius` is not public
+   40 |     shape.secret = 9
+   41 |     shapes := [shape]
+   42 |     println(shapes[0].radius + shapes[0].width)
+      |                       ~~~~~~
+   43 |     shape_alias := fieldvis.ShapeAlias(shape)
+   44 |     println(shape_alias.secret + shape_alias.shown)
+vlib/v/checker/tests/modules/private_struct_field_read_err/main.v:44:22: error: field `private_struct_field_read_err.fieldvis.ShapeAlias.secret` is not public
+   42 |     println(shapes[0].radius + shapes[0].width)
+   43 |     shape_alias := fieldvis.ShapeAlias(shape)
+   44 |     println(shape_alias.secret + shape_alias.shown)
+      |                         ~~~~~~
+   45 | }

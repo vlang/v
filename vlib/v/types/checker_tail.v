@@ -12185,6 +12185,11 @@ fn (tc &TypeChecker) alias_struct_field_is_private_outside_module(alias Alias, f
 	}
 	// Selectors see through pointer aliases too (`pub type BoxRef = &Box`).
 	target := unalias_and_unwrap_pointer_type(alias.base_type)
+	if target is SumType {
+		// An alias of a sum type (`pub type ShapeAlias = Shape`) selects the fields its variants share.
+		return tc.sum_shared_field_type(target, field_name) != none
+			&& tc.sum_variant_with_private_field(target.name, field_name) != none
+	}
 	if target !is Struct {
 		return false
 	}
@@ -12196,6 +12201,62 @@ fn (tc &TypeChecker) alias_struct_field_is_private_outside_module(alias Alias, f
 			&& !tc.anonymous_struct_field_is_public(target.name, field_name, anon_mod)
 	}
 	return tc.struct_field_is_private_outside_module(target.name, field_name)
+}
+
+// sum_type_private_field_owner returns the type to name in the error when field `field_name`,
+// selected through sum type `sum`, is private outside its module. Like V1, a field that the
+// variants share is used outside only when the sum type is declared in another module; it
+// is private when it is private in any struct variant declared in another module, and the
+// error names the sum type. A field of a single variant (`shapes[0].radius`, `is_indexed`)
+// is checked like a field of that variant, which the error names.
+fn (tc &TypeChecker) sum_type_private_field_owner(sum SumType, field_name string, is_indexed bool) ?Type {
+	if _ := tc.sum_shared_field_type(sum, field_name) {
+		visibility := tc.declaration_visibility[tc.sum_base_name(sum.name)] or { return none }
+		sum_mod := visibility.module_name
+		if sum_mod == tc.cur_module || (sum_mod in ['', 'main'] && tc.cur_module in ['', 'main']) {
+			return none
+		}
+		if _ := tc.sum_variant_with_private_field(sum.name, field_name) {
+			return Type(sum)
+		}
+		return none
+	}
+	if is_indexed && tc.sum_unique_variant_field_type(sum, field_name) != none {
+		if variant := tc.sum_variant_with_private_field(sum.name, field_name) {
+			return Type(variant)
+		}
+	}
+	return none
+}
+
+// sum_variant_with_private_field returns the struct variant of sum type `sum_name`, or of a
+// sum type nested in it, whose field `field_name` is private outside the module that declares
+// the variant (see `struct_field_is_private_outside_module`).
+fn (tc &TypeChecker) sum_variant_with_private_field(sum_name string, field_name string) ?Struct {
+	mut visited := map[string]bool{}
+	return tc.sum_variant_with_private_field_inner(sum_name, field_name, mut visited)
+}
+
+fn (tc &TypeChecker) sum_variant_with_private_field_inner(sum_name string, field_name string, mut visited map[string]bool) ?Struct {
+	base := tc.sum_base_name(sum_name)
+	if visited[base] {
+		return none
+	}
+	visited[base] = true
+	for variant in tc.sum_types[base] or { []string{} } {
+		variant_type := unalias_type(tc.parse_type(tc.concrete_sum_variant_name(sum_name, variant)))
+		if variant_type is SumType {
+			if owner := tc.sum_variant_with_private_field_inner(variant_type.name, field_name, mut
+				visited)
+			{
+				return owner
+			}
+		} else if variant_type is Struct
+			&& tc.struct_field_is_private_outside_module(variant_type.name, field_name) {
+			return variant_type
+		}
+	}
+	return none
 }
 
 fn (tc &TypeChecker) receiver_expr_mutation_visibility(expr_id flat.NodeId, root_name string, receiver_type string, decl_mod string) ReceiverMutationVisibility {

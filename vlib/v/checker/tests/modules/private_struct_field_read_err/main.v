@@ -35,4 +35,11 @@ fn main() {
 	println(pp.secret + pp.readable)
 	config := fieldvis.new_config()
 	println(config.secret + config.shown)
+	mut shape := fieldvis.new_shape()
+	println(shape.secret + shape.shown + shape.total())
+	shape.secret = 9
+	shapes := [shape]
+	println(shapes[0].radius + shapes[0].width)
+	shape_alias := fieldvis.ShapeAlias(shape)
+	println(shape_alias.secret + shape_alias.shown)
 }

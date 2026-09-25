@@ -58,6 +58,52 @@ pub:
 		shown int
 	}
 }
+
+pub struct Circle {
+	radius int
+mut:
+	secret int
+pub:
+	shown int
+	width int
+}
+
+pub struct Square {
+mut:
+	secret int
+pub:
+	shown int
+}
+
+pub struct Open {
+pub:
+	secret int
+	shown  int
+}
+
+pub type Shape = Circle | Square
+
+pub type ShapeAlias = Shape
+
+pub type Nested = Shape | Open
+
+pub type Mixed = Circle | Open
+
+pub fn new_shape() Shape {
+	return Circle{}
+}
+
+pub fn new_nested() Nested {
+	return Open{}
+}
+
+pub fn new_mixed() Mixed {
+	return Open{}
+}
+
+pub fn (s Shape) total(n Nested, m Mixed) int {
+	return s.secret + s.shown + n.secret + n.shown + m.secret + m.shown
+}
 '
 
 const private_field_main_source = 'module main
@@ -98,7 +144,30 @@ fn main() {
 	cfg_ptr := &holder.cfg
 	cfg_pp := &cfg_ptr
 	println(cfg_pp.secret + cfg_pp.shown)
+	mut shape := lib.new_shape()
+	nested := lib.new_nested()
+	mixed := lib.new_mixed()
+	println(shape.secret + shape.shown + shape.total(nested, mixed))
+	shape.secret = 1
+	shapes := [shape]
+	println(shapes[0].radius + shapes[0].width)
+	shape_alias := lib.ShapeAlias(shape)
+	println(shape_alias.secret + shape_alias.shown)
+	println(nested.secret + nested.shown)
+	println(mixed.secret + mixed.shown)
+	own := OwnSum(OwnA{})
+	println(own.hidden)
 }
+
+struct OwnA {
+	hidden int
+}
+
+struct OwnB {
+	hidden int
+}
+
+type OwnSum = OwnA | OwnB
 '
 
 fn private_field_errors() ![]string {
@@ -145,5 +214,11 @@ fn test_private_struct_fields_of_other_modules_are_not_public() {
 		'main.v:32: field `lib.Box.secret` is not public',
 		'main.v:34: field `lib.Config.secret` is not public',
 		'main.v:38: field `cfg_pp.secret` is not public',
+		'main.v:42: field `lib.Shape.secret` is not public',
+		'main.v:43: field `lib.Shape.secret` is not public',
+		'main.v:45: field `lib.Circle.radius` is not public',
+		'main.v:47: field `lib.ShapeAlias.secret` is not public',
+		'main.v:48: field `lib.Nested.secret` is not public',
+		'main.v:49: field `lib.Mixed.secret` is not public',
 	], errors.str()
 }

@@ -6092,6 +6092,15 @@ fn (mut tc TypeChecker) check_selector(id flat.NodeId, node flat.Node) {
 		tc.record_error_at(.unknown_field, 'field `${tc.diagnostic_type_name(Type(visibility_recv))}.${node.value}` is not public', id,
 			tc.node_value_diagnostic_pos(id))
 	}
+	// A field selected through a sum type is a field of its struct variants.
+	if visibility_recv is SumType && !tc.selector_is_call_callee(id) {
+		if owner := tc.sum_type_private_field_owner(visibility_recv, node.value,
+			base.kind == .index)
+		{
+			tc.record_error_at(.unknown_field, 'field `${tc.diagnostic_type_name(owner)}.${node.value}` is not public', id,
+				tc.node_value_diagnostic_pos(id))
+		}
+	}
 	if visibility_recv is Struct {
 		if !tc.expr_is_rooted_in_c_namespace(base_id) {
 			if visibility := tc.private_declaration(visibility_recv.name) {
