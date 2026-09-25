@@ -10566,14 +10566,14 @@ pub fn run(args []string) {
 	// The module cache splits imported implementations into separate objects, so its main source
 	// alone cannot reproduce the build. Literal output uses a deliberately reduced
 	// builtin source set, which likewise must remain a monolithic translation unit.
+	// Heap tracking hooks are supplied by user C declarations. Replaying a header
+	// that defines them in every cached translation unit creates duplicate symbols.
 	cache_candidate_enabled := backend == 'c' && !c_only && !no_cache && !no_skip_unused
 		&& !no_builtin && !parallel_cc && !keep_c && !backend_explicit
 		&& !minimal_literal_output && v3_c_compiler_matches_default_cc(c_compiler)
 		&& target.os == host_target.os
-		&& target.arch == host_target.arch &&
-	// Heap tracking hooks are supplied by user C declarations. Replaying a header
-	// that defines them in every cached translation unit creates duplicate symbols.
-	'track_heap' !in prefs.user_defines
+		&& target.arch == host_target.arch
+		&& 'track_heap' !in prefs.user_defines
 		&& !input_owns_builtin_bundle_module(input_file, prefs.vroot)
 	cc_identity := if cache_candidate_enabled { default_cc_identity() } else { '' }
 	compiler_signature := if cache_candidate_enabled {
