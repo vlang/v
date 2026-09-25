@@ -268,6 +268,7 @@ pub fn Parser.new(prefs &pref.Preferences) &Parser {
 			comptime_skipped_names:        map[string]bool{}
 			comptime_skipped_read_names:   map[string]bool{}
 			comptime_skipped_goto_labels:  map[string]bool{}
+			comptime_skipped_asm_spans:    map[string][]flat.SkippedAsmSpan{}
 			export_fn_names:               map[string]string{}
 			contextual_anon_struct_types:  map[string]bool{}
 			synthesized_anon_struct_types: map[string]bool{}
@@ -6720,15 +6721,96 @@ fn (mut p Parser) skip_block() {
 		return
 	}
 	mut depth := 1
+	mut paren_depth := 0
+	mut asm_state := SkippedAsmState{}
 	p.next()
 	for depth > 0 && p.tok != .eof {
-		if p.tok == .lcbr {
-			depth++
-		} else if p.tok == .rcbr {
-			depth--
+		p.skipped_asm_step(mut asm_state, depth, paren_depth)
+		match p.tok {
+			.lcbr { depth++ }
+			.rcbr { depth-- }
+			.lpar { paren_depth++ }
+			.rpar { paren_depth-- }
+			else {}
 		}
 		p.next()
 	}
+}
+
+// SkippedAsmState follows the `asm` statements in a block the parser skips without
+// parsing it.
+struct SkippedAsmState {
+mut:
+	in_header        bool
+	body_depth       int = -1
+	base_paren_depth int
+	section          int
+	is_goto          bool
+	start            int
+	operand_start    int = -1
+}
+
+// skipped_asm_step advances `state` over the current token of a skipped block, where
+// `depth` and `paren_depth` do not count that token yet. Like `asm_stmt`, it takes the
+// parenthesized expressions in the output and input sections as the operands. It
+// records the source span of every `asm` statement and of every operand expression,
+// and returns whether the token belongs to the assembly rather than to an operand.
+fn (mut p Parser) skipped_asm_step(mut state SkippedAsmState, depth int, paren_depth int) bool {
+	if state.body_depth >= 0 {
+		in_operand := state.section in [1, 2] && paren_depth > state.base_paren_depth
+		if depth == state.body_depth {
+			if state.section in [1, 2] && p.tok == .lpar && paren_depth == state.base_paren_depth {
+				state.operand_start = p.tok_pos
+			} else if in_operand && p.tok == .rpar && paren_depth == state.base_paren_depth + 1
+				&& state.operand_start >= 0 {
+				p.record_skipped_asm_span(state.operand_start, p.tok_end, true)
+				state.operand_start = -1
+			}
+			if p.tok == .semicolon && p.tok_pos >= 0 && p.tok_pos < p.s.src.len
+				&& p.s.src[p.tok_pos] == `;` {
+				state.section++
+			}
+			if p.tok == .rcbr {
+				p.record_skipped_asm_span(state.start, p.tok_end, false)
+				state.body_depth = -1
+			}
+		}
+		return !in_operand
+	}
+	if state.in_header {
+		if p.tok == .key_goto {
+			state.is_goto = true
+		} else if p.tok == .lcbr {
+			state.in_header = false
+			state.body_depth = depth + 1
+			state.base_paren_depth = paren_depth
+			state.section = 0
+			state.operand_start = -1
+		} else if p.tok in [.semicolon, .rcbr] {
+			state.in_header = false
+		}
+		return true
+	}
+	if p.tok == .key_asm {
+		state.in_header = true
+		state.is_goto = false
+		state.start = p.tok_pos
+		return true
+	}
+	return false
+}
+
+fn (mut p Parser) record_skipped_asm_span(start int, end int, is_operand bool) {
+	if start < 0 || end <= start {
+		return
+	}
+	mut spans := p.a.comptime_skipped_asm_spans[p.cur_file]
+	spans << flat.SkippedAsmSpan{
+		start:      start
+		end:        end
+		is_operand: is_operand
+	}
+	p.a.comptime_skipped_asm_spans[p.cur_file] = spans
 }
 
 fn skipped_pipe_starts_lambda(prev_tok token.Token) bool {
@@ -6808,11 +6890,7 @@ fn (mut p Parser) skip_comptime_block() {
 	mut shadowed_names := p.active_lambda_param_counts.clone()
 	mut pending_comma_lhs_reads := []string{}
 	mut pending_comma_lhs_depth := -1
-	mut in_asm_header := false
-	mut asm_body_depth := -1
-	mut asm_base_paren_depth := 0
-	mut asm_section := 0
-	mut asm_is_goto := false
+	mut asm_state := SkippedAsmState{}
 	mut expression_colon_braces := [false]
 	mut next_lcbr_is_lambda_body := false
 	mut map_type_depth := -1
@@ -6839,41 +6917,11 @@ fn (mut p Parser) skip_comptime_block() {
 			}
 			pending_comma_lhs_reads.clear()
 		}
-		mut skip_asm_token := false
-		if asm_body_depth >= 0 {
-			skip_asm_token = true
-			if asm_section in [1, 2] && paren_depth > asm_base_paren_depth {
-				skip_asm_token = false
-			}
-			if depth == asm_body_depth {
-				if asm_is_goto && asm_section == 4 && p.tok == .name {
-					p.a.comptime_skipped_goto_labels[prefix + p.lit] = true
-				}
-				if p.tok == .semicolon && p.tok_pos >= 0 && p.tok_pos < p.s.src.len
-					&& p.s.src[p.tok_pos] == `;` {
-					asm_section++
-				}
-				if p.tok == .rcbr {
-					asm_body_depth = -1
-				}
-			}
-		} else if in_asm_header {
-			skip_asm_token = true
-			if p.tok == .key_goto {
-				asm_is_goto = true
-			} else if p.tok == .lcbr {
-				in_asm_header = false
-				asm_body_depth = depth + 1
-				asm_base_paren_depth = paren_depth
-				asm_section = 0
-			} else if p.tok in [.semicolon, .rcbr] {
-				in_asm_header = false
-			}
-		} else if p.tok == .key_asm {
-			skip_asm_token = true
-			in_asm_header = true
-			asm_is_goto = false
+		if asm_state.body_depth >= 0 && depth == asm_state.body_depth && asm_state.is_goto
+			&& asm_state.section == 4 && p.tok == .name {
+			p.a.comptime_skipped_goto_labels[prefix + p.lit] = true
 		}
+		skip_asm_token := p.skipped_asm_step(mut asm_state, depth, paren_depth)
 		for lambda_scopes.len > 0
 			&& p.skipped_lambda_scope_ends(lambda_scopes.last(), p.tok, prev_tok, paren_depth, bracket_depth, depth) {
 			for name in lambda_scopes.last().names {

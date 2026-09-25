@@ -1,0 +1,13 @@
+fn main() {
+	x := u8(1)
+	mut buf := [u8(0), 0]
+	mut result := 0
+	asm amd64 {
+		.byte 0x90
+		mov result, y
+		; =r (result)
+		  =r (buf[byte(0)])
+		; r (byte(x)) as y
+	}
+	println('${result} ${buf}')
+}
