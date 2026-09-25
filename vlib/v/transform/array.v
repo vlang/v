@@ -3808,6 +3808,21 @@ fn (mut t Transformer) array_map_call_result_path_origin_is_external(source type
 	if root !in origins {
 		return true
 	}
+	if source.source_is_prefix {
+		// The result aliases some storage at or below the source path, but not a known one,
+		// so keep it external when the path covering that storage, or any path below it, is.
+		prefix_path := source_path + source.source_suffix
+		if origins[array_map_local_pointer_path(prefix_path, root, origins)] {
+			return true
+		}
+		for path, external in origins {
+			if external && !path.starts_with(array_map_local_pointer_pointee_prefix)
+				&& array_map_local_path_is_possible_projection(path, prefix_path) {
+				return true
+			}
+		}
+		return false
+	}
 	effective_path := source_path + source.source_suffix + relative_suffix
 	return origins[array_map_local_pointer_path(effective_path, root, origins)]
 }
