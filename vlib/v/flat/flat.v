@@ -441,6 +441,9 @@ pub mut:
 	// nothing in the AST records its identifier occurrences or reads.
 	comptime_skipped_names      map[string]bool
 	comptime_skipped_read_names map[string]bool
+	// Every name spelled in such a skipped body, unkeyed, whatever it refers to.
+	// A function or constant used only on another target is not unused.
+	comptime_skipped_decl_names map[string]bool
 	// Goto label operands use the same key format, but are not local-name uses.
 	comptime_skipped_goto_labels map[string]bool
 	export_fn_names              map[string]string
@@ -579,6 +582,7 @@ pub fn FlatAst.new() FlatAst {
 		disabled_fns:                  map[string]bool{}
 		comptime_skipped_names:        map[string]bool{}
 		comptime_skipped_read_names:   map[string]bool{}
+		comptime_skipped_decl_names:   map[string]bool{}
 		comptime_skipped_goto_labels:  map[string]bool{}
 		export_fn_names:               map[string]string{}
 		noreturn_fns:                  map[string]bool{}

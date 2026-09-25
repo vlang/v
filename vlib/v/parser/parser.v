@@ -267,6 +267,7 @@ pub fn Parser.new(prefs &pref.Preferences) &Parser {
 			disabled_fns:                  map[string]bool{}
 			comptime_skipped_names:        map[string]bool{}
 			comptime_skipped_read_names:   map[string]bool{}
+			comptime_skipped_decl_names:   map[string]bool{}
 			comptime_skipped_goto_labels:  map[string]bool{}
 			export_fn_names:               map[string]string{}
 			contextual_anon_struct_types:  map[string]bool{}
@@ -6771,8 +6772,9 @@ fn (mut p Parser) skipped_lambda_scope_ends(scope SkippedComptimeLambdaScope, to
 
 // skip_comptime_block skips the body of a `$if` branch or a `$match` arm this
 // build does not take, recording the names it spells. The body is never parsed,
-// so without this nothing tells the unused-declaration checks that a parameter
-// or a variable is used there, and they report it on every other target.
+// so without this nothing tells the unused-declaration checks that a parameter,
+// a variable, a function or a constant is used there, and they report it on
+// every other target.
 // Reading them off the token stream is what keeps strings, comments,
 // interpolations and operators right. Only tokens the expression parser can
 // turn into identifiers are recorded; selector members follow a dot, while
@@ -6819,6 +6821,10 @@ fn (mut p Parser) skip_comptime_block() {
 	mut map_type_bracket_depth := -1
 	p.next()
 	for depth > 0 && p.tok != .eof {
+		if p.tok == .name {
+			// Selector members count too: `mod.helper()` spells `helper`.
+			p.a.comptime_skipped_decl_names[p.lit] = true
+		}
 		if map_type_depth >= 0 && depth == map_type_depth
 			&& paren_depth == map_type_paren_depth && bracket_depth == map_type_bracket_depth
 			&& p.tok in [.comma, .semicolon] {

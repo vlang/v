@@ -1218,6 +1218,12 @@ fn (mut p Parser) merge_parsed_worker_bookkeeping(mut w Parser, mut starts []int
 			p.a.comptime_skipped_read_names[canonical] = true
 		}
 	}
+	for name, skipped in w.a.comptime_skipped_decl_names {
+		if skipped {
+			_, canonical := p.a.intern_text(name)
+			p.a.comptime_skipped_decl_names[canonical] = true
+		}
+	}
 	for key, skipped in w.a.comptime_skipped_goto_labels {
 		if skipped {
 			_, canonical := p.a.intern_text(key)

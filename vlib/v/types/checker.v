@@ -7597,7 +7597,9 @@ pub fn (mut tc TypeChecker) diagnose_unused_private_declarations(used_fns map[st
 	// candidate's file so deferred emission matches the former in-walk emission.
 	walk_end_file := tc.cur_file
 	for cand in candidates {
-		if cand.alive {
+		// A call or read inside a `$if` branch this build does not take is never
+		// parsed, so only the parser's record of the skipped names shows the use.
+		if cand.alive || cand.name in tc.a.comptime_skipped_decl_names {
 			continue
 		}
 		tc.cur_file = cand.file

@@ -1,0 +1,31 @@
+const limit_in_skipped_branch = 4
+
+fn used_only_in_skipped_if() int {
+	return limit_in_skipped_branch
+}
+
+fn used_only_in_skipped_else(x int) int {
+	return x
+}
+
+fn called_by_skipped_branch_helper() int {
+	return 1
+}
+
+fn unused_fn() int {
+	return 2
+}
+
+fn main() {
+	mut total := 0
+	$if never_defined ? {
+		total += used_only_in_skipped_if()
+		total += main.called_by_skipped_branch_helper()
+	}
+	$if !never_defined ? {
+		total++
+	} $else {
+		total += used_only_in_skipped_else(total)
+	}
+	println(total)
+}

@@ -1,0 +1,7 @@
+vlib/v/checker/tests/unused_fn_used_only_in_skipped_comptime_branch.vv:15:4: notice: unused function: `unused_fn`
+   13 | }
+   14 | 
+   15 | fn unused_fn() int {
+      |    ~~~~~~~~~
+   16 |     return 2
+   17 | }
