@@ -42,16 +42,23 @@ pub fn (app &App) index(mut ctx Context) veb.Result {
 	return ctx.text('${ctx.seen}, ${app.hits}')
 }
 
+fn run_app(mut app App) {
+	veb.run_at[App, Context](mut app, port: port, timeout_in_seconds: 2, family: .ip) or {
+		panic(err)
+	}
+}
+
 fn testsuite_begin() {
-	mut app := &App{}
-	app.use(handler: app.middleware_debug)
-	spawn veb.run_at[App, Context](mut app, port: port, timeout_in_seconds: 2, family: .ip)
-	_ := <-app.started
 	spawn fn () {
 		time.sleep(exit_after)
 		assert true == false, 'timeout reached!'
 		exit(1)
 	}()
+
+	mut app := &App{}
+	app.use(handler: app.middleware_debug)
+	spawn run_app(mut app)
+	_ := <-app.started
 }
 
 fn test_app_method_middleware_receives_custom_context() {
