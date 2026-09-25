@@ -16635,21 +16635,19 @@ fn set_diagnostic_files(mut tc types.TypeChecker, user_files []string) {
 			|| node.value in tc.diagnostic_files {
 			continue
 		}
-		// Cached module headers are never user code, even when the cache lives
-		// under the project directory (as it does for a script written into VTMP).
-		if is_v3_module_cache_header(node.value) {
-			continue
+		// A warm module header stands in for its module's sources, and the cache
+		// can live under the project directory (as it does for a script written
+		// into VTMP). Judge the header by those sources, never by its own path.
+		owner := if types.is_module_cache_header(node.value) {
+			tc.a.cached_header_sources[node.value] or { continue }
+		} else {
+			node.value
 		}
-		if resolver.owns_file(node.value, tc.shadow_diagnostic_root, tc.shadow_explicit_roots,
+		if resolver.owns_file(owner, tc.shadow_diagnostic_root, tc.shadow_explicit_roots,
 			tc.shadow_dependency_roots) {
 			tc.diagnostic_files[node.value] = true
 		}
 	}
-}
-
-fn is_v3_module_cache_header(path string) bool {
-	normalized := path.replace('\\', '/')
-	return normalized.contains('/v3_module_cache_') && normalized.ends_with('.vh')
 }
 
 fn set_unsupported_generic_files(mut tc types.TypeChecker, a &flat.FlatAst, include_imports bool, diagnostic_root string) {
@@ -18067,7 +18065,6 @@ fn resolve_imports(mut a flat.FlatAst, mut p parser.Parser, prefs &pref.Preferen
 	mut first_collision_seed_by_short := map[string]ImportCollisionSeed{}
 	mut resolved_collision_seeds := map[string]bool{}
 	mut unresolved_modules := map[string]bool{}
-	mut cached_header_source_contexts := map[string]string{}
 	if check_overflow {
 		// C generation names the late-injected overflow helpers by their full
 		// module path. Preserve that path even though it is the only module named
@@ -18078,7 +18075,7 @@ fn resolve_imports(mut a flat.FlatAst, mut p parser.Parser, prefs &pref.Preferen
 	if builtin_sources := cache_state.module_sources['builtin'] {
 		if builtin_sources.len > 0 {
 			builtin_header := cache_state.manager.entry('builtin', builtin_sources).header
-			cached_header_source_contexts[builtin_header] = builtin_sources[0]
+			a.cached_header_sources[builtin_header] = builtin_sources[0]
 		}
 	}
 	mut was_parallel := false
@@ -18296,7 +18293,7 @@ fn resolve_imports(mut a flat.FlatAst, mut p parser.Parser, prefs &pref.Preferen
 					continue
 				}
 			}
-			importing_file := cached_header_source_contexts[cur_file] or {
+			importing_file := a.cached_header_sources[cur_file] or {
 				if cur_file.len > 0 { cur_file } else { first_file }
 			}
 			if unresolved_modules[mod_name] {
@@ -18416,7 +18413,7 @@ fn resolve_imports(mut a flat.FlatAst, mut p parser.Parser, prefs &pref.Preferen
 							if !modulecache.header_needs_source(header) {
 								parse_files = [header.header]
 								if mod_files.len > 0 {
-									cached_header_source_contexts[header.header] = mod_files[0]
+									a.cached_header_sources[header.header] = mod_files[0]
 								}
 							} else {
 								cache_state.source_body_modules[cache_module] = true
@@ -18444,7 +18441,7 @@ fn resolve_imports(mut a flat.FlatAst, mut p parser.Parser, prefs &pref.Preferen
 						if !modulecache.header_needs_source(cached) && !owned_sources_need_check {
 							parse_files = [cached.header]
 							if mod_files.len > 0 {
-								cached_header_source_contexts[cached.header] = mod_files[0]
+								a.cached_header_sources[cached.header] = mod_files[0]
 							}
 						} else {
 							// Cached declaration headers omit local bindings. Project-owned
