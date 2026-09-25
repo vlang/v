@@ -2602,6 +2602,36 @@ fn (mut t Transformer) set_implicit_err_var_type() {
 	t.set_var_type_binding('err', 'IError', 'IError', true)
 }
 
+// ImplicitErrScope is the state saved while an `or`/`else` body binds its own `err`.
+struct ImplicitErrScope {
+	var_types   []VarTypeBinding
+	smartcasts  []SmartcastContext
+	invalidated map[string]bool
+}
+
+// enter_implicit_err_scope binds the implicit `err` of an `or`/`else` body. That `err`
+// shadows any outer one, so smartcasts of the outer `err` (e.g. `if err is MyError`)
+// are hidden until leave_implicit_err_scope restores them.
+fn (mut t Transformer) enter_implicit_err_scope() ImplicitErrScope {
+	scope := ImplicitErrScope{
+		var_types:   t.var_types.clone()
+		smartcasts:  t.smartcast_stack.clone()
+		invalidated: t.invalidated_smartcasts.clone()
+	}
+	t.set_implicit_err_var_type()
+	if t.smartcast_stack.len > 0 {
+		t.smartcast_stack = smartcasts_without_binding(t.smartcast_stack, 'err')
+	}
+	return scope
+}
+
+// leave_implicit_err_scope restores the bindings and smartcasts saved by
+// enter_implicit_err_scope; narrowing done inside the body does not leak out.
+fn (mut t Transformer) leave_implicit_err_scope(scope ImplicitErrScope) {
+	t.restore_var_types(scope.var_types)
+	t.restore_shadowed_smartcast_state('err', scope.smartcasts, scope.invalidated)
+}
+
 fn (mut t Transformer) mark_var_as_ref_param(name string) {
 	i := t.var_type_index(name)
 	if i >= 0 {
@@ -17937,10 +17967,9 @@ fn (mut t Transformer) transform_infix_expr(id flat.NodeId, node flat.Node) flat
 				send_prelude = t.pending_stmts[send_prelude_start..].clone()
 				t.pending_stmts = t.pending_stmts[..send_prelude_start].clone()
 			}
-			saved_var_types := t.var_types.clone()
-			t.set_implicit_err_var_type()
+			err_scope := t.enter_implicit_err_scope()
 			body := t.transform_expr(t.a.child(&rhs, 1))
-			t.restore_var_types(saved_var_types)
+			t.leave_implicit_err_scope(err_scope)
 			for stmt in send_prelude {
 				t.pending_stmts << stmt
 			}
