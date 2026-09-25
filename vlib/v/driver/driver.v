@@ -16635,11 +16635,21 @@ fn set_diagnostic_files(mut tc types.TypeChecker, user_files []string) {
 			|| node.value in tc.diagnostic_files {
 			continue
 		}
+		// Cached module headers are never user code, even when the cache lives
+		// under the project directory (as it does for a script written into VTMP).
+		if is_v3_module_cache_header(node.value) {
+			continue
+		}
 		if resolver.owns_file(node.value, tc.shadow_diagnostic_root, tc.shadow_explicit_roots,
 			tc.shadow_dependency_roots) {
 			tc.diagnostic_files[node.value] = true
 		}
 	}
+}
+
+fn is_v3_module_cache_header(path string) bool {
+	normalized := path.replace('\\', '/')
+	return normalized.contains('/v3_module_cache_') && normalized.ends_with('.vh')
 }
 
 fn set_unsupported_generic_files(mut tc types.TypeChecker, a &flat.FlatAst, include_imports bool, diagnostic_root string) {
