@@ -14250,7 +14250,7 @@ fn (mut g FlatGen) ensure_callback_userdata_wrapper(actual_name string, actual t
 fn (mut g FlatGen) callback_expected_return_c_type(typ types.Type, expected_c_abi string) string {
 	if expected_c_abi.len > 0 {
 		ret, _ := fn_ptr_typedef_parts(expected_c_abi)
-		return trimmed_space(ret)
+		return g.callback_c_abi_part_c_type(ret)
 	}
 	return g.callback_c_type(typ)
 }
@@ -14259,23 +14259,26 @@ fn (mut g FlatGen) callback_expected_param_c_type(expected types.FnType, idx int
 	if expected_c_abi.len > 0 {
 		params := callback_fn_ptr_param_c_types(expected_c_abi)
 		if idx < params.len {
-			return params[idx]
+			return g.callback_c_abi_part_c_type(params[idx])
 		}
 	}
 	return g.callback_c_type(fn_type_effective_param(expected, idx))
 }
 
+// callback_c_abi_part_c_type spells one return or parameter part of a retained C-ABI
+// `fn_ptr:` key as C: a nested function type is keyed as `fn_ptr:...` there, and is
+// named by its typedef like callback_c_type does.
+fn (mut g FlatGen) callback_c_abi_part_c_type(part string) string {
+	clean := trimmed_space(part)
+	if clean.starts_with('fn_ptr:') {
+		return g.resolve_fn_ptr_type(clean)
+	}
+	return clean
+}
+
 fn callback_fn_ptr_param_c_types(encoded string) []string {
 	_, params := fn_ptr_typedef_parts(encoded)
-	clean := trimmed_space(params)
-	if clean.len == 0 || clean == 'void' {
-		return []string{}
-	}
-	mut out := []string{}
-	for param in clean.split(',') {
-		out << trimmed_space(param)
-	}
-	return out
+	return naming.fn_ptr_encoded_params(params)
 }
 
 fn callback_can_cast_const_abi_param(actual_ct string, expected_ct string) bool {
@@ -18937,15 +18940,12 @@ fn (mut g FlatGen) c_extern_fn_ptr_encoded(t types.FnType) string {
 	} else {
 		g.c_extern_interop_type_name(t.return_type) or { g.tc.c_type(t.return_type) }
 	}
-	if t.params.len == 0 {
-		return 'fn_ptr:${ret}|void'
-	}
 	mut params := []string{}
 	for i in 0 .. t.params.len {
 		pt := fn_type_effective_param(t, i)
 		params << (g.c_extern_interop_type_name(pt) or { g.tc.c_type(pt) })
 	}
-	return 'fn_ptr:${ret}|${params.join(', ')}'
+	return naming.fn_ptr_encoded(ret, params)
 }
 
 // c_extern_fn_ptr_encoded_for_type merges source-retained callback ABI details,
@@ -18976,8 +18976,7 @@ fn merge_retained_fn_ptr_c_abi(extern_encoded string, retained_encoded string, o
 		}
 	}
 	ret := if retained_ret != ordinary_ret { retained_ret } else { extern_ret }
-	params := if extern_params.len == 0 { 'void' } else { extern_params.join(', ') }
-	return 'fn_ptr:${ret}|${params}'
+	return naming.fn_ptr_encoded(ret, extern_params)
 }
 
 // c_call_arg_cabi_cast returns the C spelling to cast a C-call argument to so it
@@ -20253,25 +20252,16 @@ fn (mut g FlatGen) emit_fn_ptr_typedef(encoded string, name string, mut emitted 
 }
 
 fn fn_ptr_typedef_parts(encoded string) (string, string) {
-	payload := if encoded.starts_with('fn_ptr:') { encoded['fn_ptr:'.len..] } else { encoded }
-	if payload.starts_with('fn_ptr:') {
-		first_pipe_idx := payload.index('|') or { return payload, 'void' }
-		rest := payload[first_pipe_idx + 1..]
-		second_pipe_idx := rest.index('|') or { return payload, 'void' }
-		split_idx := first_pipe_idx + 1 + second_pipe_idx
-		return payload[..split_idx], payload[split_idx + 1..]
-	}
-	pipe_idx := payload.index('|') or { return payload, 'void' }
-	return payload[..pipe_idx], payload[pipe_idx + 1..]
+	return naming.fn_ptr_encoded_split(encoded)
 }
 
 fn (mut g FlatGen) fn_ptr_typedef_params(params string, mut emitted map[string]bool) string {
-	clean := trimmed_space(params)
-	if clean.len == 0 || clean == 'void' {
+	param_cts := naming.fn_ptr_encoded_params(params)
+	if param_cts.len == 0 {
 		return 'void'
 	}
 	mut out := []string{}
-	for param in clean.split(',') {
+	for param in param_cts {
 		out << g.fn_ptr_typedef_type(param, mut emitted)
 	}
 	return out.join(', ')
@@ -20287,6 +20277,12 @@ fn (mut g FlatGen) fn_ptr_typedef_type(typ string, mut emitted map[string]bool) 
 		name := g.resolve_fn_ptr_type(clean)
 		g.emit_fn_ptr_typedef(clean, name, mut emitted)
 		return name
+	}
+	if clean.starts_with('_fn_ptr_') {
+		// C-ABI keys name a nested callback by its typedef (see
+		// c_extern_interop_type_name); emit it before the enclosing typedef.
+		g.ensure_fn_ptr_typedef_by_name(clean.trim_right('*'))
+		return clean
 	}
 	if clean == 'Optional' {
 		return 'struct Optional'
@@ -20532,12 +20528,9 @@ fn (mut g FlatGen) register_fn_ptr_type(typ string) string {
 // fn_ptr_type_key returns the normalized key used for function-pointer typedefs.
 fn (mut g FlatGen) fn_ptr_type_key(typ types.FnType) string {
 	ret := if typ.return_type is types.Void { 'void' } else { g.tc.c_type(typ.return_type) }
-	if typ.params.len == 0 {
-		return 'fn_ptr:${ret}|void'
-	}
 	mut params := []string{}
 	for i in 0 .. typ.params.len {
 		params << g.tc.c_type(fn_type_effective_param(typ, i))
 	}
-	return 'fn_ptr:${ret}|${params.join(', ')}'
+	return naming.fn_ptr_encoded(ret, params)
 }
