@@ -28,10 +28,11 @@ static DWORD WINAPI v3_win_thread_thunk(LPVOID raw_context) {
  * is a reservation (like pthread_attr_setstacksize), not just the initial
  * commit; without STACK_SIZE_PARAM_IS_A_RESERVATION the reserve would stay at
  * the PE default and the workers would overflow on the same inputs the POSIX
- * pool handles. Returns NULL when the context or the thread cannot be
- * created; the pool then counts a launch failure. */
+ * pool handles. Stores the new thread's id in *thread_id. Returns NULL when
+ * the context or the thread cannot be created; the pool then counts a launch
+ * failure. */
 static inline void *v3_win_thread_create(size_t stack_size,
-	void *(*start_routine)(void *), void *arg) {
+	void *(*start_routine)(void *), void *arg, unsigned int *thread_id) {
 	v3_win_thread_context *context = (v3_win_thread_context *)HeapAlloc(
 		GetProcessHeap(), 0, sizeof(v3_win_thread_context));
 	if (context == NULL) {
@@ -39,10 +40,13 @@ static inline void *v3_win_thread_create(size_t stack_size,
 	}
 	context->start_routine = start_routine;
 	context->arg = arg;
+	DWORD id = 0;
 	HANDLE handle = CreateThread(NULL, stack_size, v3_win_thread_thunk, context,
-		STACK_SIZE_PARAM_IS_A_RESERVATION, NULL);
+		STACK_SIZE_PARAM_IS_A_RESERVATION, &id);
 	if (handle == NULL) {
 		HeapFree(GetProcessHeap(), 0, context);
+	} else {
+		*thread_id = (unsigned int)id;
 	}
 	return (void *)handle;
 }
@@ -57,8 +61,11 @@ static inline int v3_win_thread_join(void *handle) {
 	return 0;
 }
 
-static inline int v3_win_thread_is_current(void *handle) {
-	return GetThreadId((HANDLE)handle) == GetCurrentThreadId();
+/* Compares against the id CreateThread reported, not GetThreadId(handle):
+ * the kernel32 import list bundled with tcc has no GetThreadId, so using it
+ * makes every tcc link of the compiler fail on Windows. */
+static inline int v3_win_thread_is_current(unsigned int thread_id) {
+	return thread_id == (unsigned int)GetCurrentThreadId();
 }
 
 #endif
