@@ -26,6 +26,7 @@ mut:
 	hits    int
 }
 
+// before_accept_loop signals the test suite that the server is ready to accept connections.
 pub fn (mut app App) before_accept_loop() {
 	app.started <- true
 }
@@ -36,6 +37,7 @@ fn (mut app App) middleware_debug(mut ctx Context) bool {
 	return true
 }
 
+// index returns the request recorded by the middleware and the middleware hit count.
 pub fn (app &App) index(mut ctx Context) veb.Result {
 	return ctx.text('${ctx.seen}, ${app.hits}')
 }
