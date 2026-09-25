@@ -1,7 +1,6 @@
 module sim
 
 import benchmark
-import term
 
 pub type SimRequestHandler = fn (request &SimRequest) !
 
@@ -50,7 +49,7 @@ pub fn run(params SimParams, settings RunnerSettings) {
 	mut bmark := benchmark.new_benchmark()
 	for y in 0 .. height {
 		$if verbose ? {
-			term.clear_previous_line()
+			clear_verbose_line()
 		}
 		log(@MOD + '.' + @FN + ': y: ${y + 1}')
 		for x in 0 .. width {

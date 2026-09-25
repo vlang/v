@@ -86,7 +86,7 @@ fn test_inline_asm() {
 	assert l == 7
 
 	// same as above
-	n := [5, 9, 0, 4]
+	n := [i32(5), 9, 0, 4]
 	asm amd64 {
 		loop_start2:
 		addq [in_data + rcx * 4 + 0], 2
@@ -158,7 +158,7 @@ $if !macos {
 @[if !macos]
 fn test_rip_relative_label_u8() {
 	$if !macos {
-		mut a := int(4)
+		mut a := i32(4)
 		asm amd64 {
 			mov a, [rip + byte_sequence] // see below
 			; =r (a)

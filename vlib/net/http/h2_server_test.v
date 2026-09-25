@@ -344,7 +344,6 @@ fn drive_until_rst_or_response(mut client_end PipeEnd, out []u8, label string) i
 		}
 	}
 	assert false, '${label}: server sent neither RST_STREAM nor a response'
-	return -2
 }
 
 // malformed_headers_out builds preface + SETTINGS + a single complete HEADERS
@@ -874,6 +873,48 @@ fn test_h2_server_drops_connection_specific_outbound_trailer_fields() {
 	assert !resp.headers.any(it.name == 'connection')
 }
 
+struct TeEverywhereHandler {}
+
+fn (mut h TeEverywhereHandler) handle(req Request) Response {
+	mut header := new_header()
+	header.add(.te, 'trailers')
+	header.add_custom('x-response', 'kept') or {}
+	mut trailers := new_header()
+	trailers.add_custom('TE', 'trailers') or {}
+	trailers.add_custom('grpc-status', '0') or {}
+	return Response{
+		status_code: 200
+		header:      header
+		body:        'x'
+		trailers:    trailers
+	}
+}
+
+// test_h2_server_drops_te_from_response_headers_and_trailers: RFC 9113 §8.2.2
+// permits TE only in requests (and only as "trailers"), so a response carrying
+// it in either section is malformed. TE is deliberately absent from
+// h2_conn_specific_headers (request-side validation allows it), so both
+// outbound filters must drop it explicitly. The body forces a separate trailer
+// HEADERS block, so both filters are exercised independently.
+fn test_h2_server_drops_te_from_response_headers_and_trailers() {
+	mut client_end, mut server_end := new_pipe()
+	mut handler_iface := Handler(TeEverywhereHandler{})
+	spawn fn [mut server_end, mut handler_iface] () {
+		mut transport := H2Transport(server_end)
+		serve_h2_conn(mut transport, mut handler_iface, '127.0.0.1:0') or {}
+	}()
+
+	mut conn := new_h2_conn(client_end)
+	resp := conn.do(H2ClientRequest{ authority: 'h.example' }) or {
+		assert false, 'client do() failed: ${err}'
+		return
+	}
+	assert resp.status == 200
+	assert resp.headers.any(it.name == 'x-response' && it.value == 'kept')
+	assert resp.headers.any(it.name == 'grpc-status' && it.value == '0')
+	assert !resp.headers.any(it.name == 'te'), 'TE must be dropped from response headers and trailers'
+}
+
 struct HugeBodyTrailerHandler {
 	size int
 }
@@ -1023,7 +1064,6 @@ fn drive_until_goaway_or_close(mut client_end PipeEnd, out []u8, label string) i
 		}
 	}
 	assert false, '${label}: server sent neither GOAWAY nor closed'
-	return -3
 }
 
 // preface_and_settings returns the client preface followed by an empty SETTINGS

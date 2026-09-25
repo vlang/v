@@ -93,8 +93,12 @@ fn ownership_vexe() string {
 	return vexe
 }
 
+fn skip_ownership_autofree_test() bool {
+	return common.is_github_job || os.getenv('VTEST_SKIP_OWNERSHIP') == '1'
+}
+
 fn build_hello_world_autofree() {
-	if os.getenv('VTEST_SKIP_OWNERSHIP') == '1' {
+	if skip_ownership_autofree_test() {
 		eprintln('> skipping ownership/autofree test')
 		return
 	}
@@ -103,7 +107,7 @@ fn build_hello_world_autofree() {
 }
 
 fn build_tetris_autofree() {
-	if os.getenv('VTEST_SKIP_OWNERSHIP') == '1' {
+	if skip_ownership_autofree_test() {
 		eprintln('> skipping ownership/autofree test')
 		return
 	}
@@ -111,6 +115,10 @@ fn build_tetris_autofree() {
 }
 
 fn build_blog_autofree() {
+	if skip_ownership_autofree_test() {
+		eprintln('> skipping ownership/autofree test')
+		return
+	}
 	// `-autofree` still needs the V1 compatibility compiler, and the frozen V 0.5.2
 	// release behind it ships a vlib without `json2`, which the blog imports. Build
 	// the tutorial with the default compiler until V3 ownership can run it;
@@ -213,6 +221,9 @@ fn ci_resume_index(path string) !int {
 	if !os.exists(path) {
 		return -1
 	}
+	if !os.is_file(path) {
+		return error('CI progress path is not a file: ${path}')
+	}
 	saved := os.read_file(path)!
 	for i, task_name in ci_tasks {
 		if saved == ci_progress_contents(task_name) {
@@ -226,6 +237,9 @@ fn ci_resume_index(path string) !int {
 fn save_ci_progress(path string, task_name string) ! {
 	// Write privately, then rename on the same filesystem. An interrupted write
 	// leaves the previous checkpoint intact, never a partially written cursor.
+	if os.exists(path) && !os.is_file(path) {
+		return error('CI progress path is not a file: ${path}')
+	}
 	tmp_dir := '${path}.${os.getpid()}.tmp'
 	os.mkdir(tmp_dir, mode: 0o700)!
 	defer {

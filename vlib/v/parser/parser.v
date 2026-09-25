@@ -185,16 +185,25 @@ mut:
 // reserve_selfhost_ast prepares the shared AST for a compiler-sized input
 // without retaining successively doubled backing arrays during transform.
 pub fn (mut p Parser) reserve_selfhost_ast() {
-	// Reserve transform headroom without ensure_cap rounding the node slab up
-	// to four million entries. Parallel transform partitions this capacity, so
-	// extra room also spreads worker writes across more physical pages.
-	selfhost_node_capacity := 3_145_728
+	// Reserve transform headroom without ensure_cap rounding the slabs up to the
+	// next power of two. Parallel transform partitions this capacity, so extra
+	// room also spreads worker writes across more physical pages. Keep both above
+	// reserve_parallel_transform_ast's targets (9/4 of the nodes, 8/3 of the
+	// children) with room for the compiler to grow: once the self-host AST
+	// outgrows them, transform copies the whole ~110 MB node slab serially and
+	// the old one stays resident. Untouched capacity costs no physical memory.
+	selfhost_node_capacity := 3_670_016
+	selfhost_child_capacity := 4_587_520
 	if p.a.nodes.cap < selfhost_node_capacity {
 		old_nodes := p.a.nodes
 		p.a.nodes = []flat.Node{cap: selfhost_node_capacity}
 		p.a.nodes << old_nodes
 	}
-	p.a.children.ensure_cap(4_194_304)
+	if p.a.children.cap < selfhost_child_capacity {
+		old_children := p.a.children
+		p.a.children = []flat.NodeId{cap: selfhost_child_capacity}
+		p.a.children << old_children
+	}
 }
 
 // enable_import_diagnostics enables parser diagnostics that require a complete
@@ -504,7 +513,9 @@ pub fn (mut p Parser) parse_into(path string) {
 				ids << id
 				continue
 			}
-			p.track_script_mode(id, stmt_start, stmt_end, is_malformed_const, mut script_mode)
+			if !p.prefs.is_fmt {
+				p.track_script_mode(id, stmt_start, stmt_end, is_malformed_const, mut script_mode)
+			}
 			ids << id
 		}
 	}
@@ -1282,7 +1293,7 @@ fn (mut p Parser) consume_decl_prefix_after_attrs() {
 }
 
 fn (mut p Parser) parse_pending_decl_attrs() {
-	parsed := p.parse_field_attrs_with_kinds()
+	parsed := p.parse_decl_attrs_with_kinds()
 	p.apply_decl_attr_flags(parsed.attrs)
 	p.pending_decl_attrs << parsed.attrs
 	p.pending_decl_attr_kinds << parsed.kinds
@@ -1534,7 +1545,7 @@ fn (mut p Parser) fn_decl() flat.NodeId {
 		}
 		// Scanning every AST node here made parsing quadratic in program size;
 		// the methods of the current file are tracked as they are declared instead.
-		if name in p.file_method_names {
+		if !p.prefs.is_fmt && name in p.file_method_names {
 			method_name := name.all_after_last('.')
 			p.record_diagnostic_span('duplicate method `${method_name}`', name_pos,
 				name_pos + method_name.len)
@@ -2483,7 +2494,8 @@ fn (mut p Parser) struct_decl() flat.NodeId {
 				}
 				continue
 			}
-			if p.tok == .lsbr && p.tok_pos > p.prev_tok_end && field_name.len > 0
+			if !p.parsing_c_struct_fields && p.tok == .lsbr && p.tok_pos > p.prev_tok_end
+				&& field_name.len > 0
 				&& field_name[0] >= `A` && field_name[0] <= `Z` && p.peek() != .rsbr {
 				attr_start := p.tok_pos
 				mut embed_attrs := pending_attrs.clone()
@@ -2512,7 +2524,8 @@ fn (mut p Parser) struct_decl() flat.NodeId {
 				}
 				continue
 			}
-			if p.tok == .lsbr && field_name.len > 0 && field_name[0] >= `A` && field_name[0] <= `Z` {
+			if !p.parsing_c_struct_fields && p.tok == .lsbr && field_name.len > 0
+				&& field_name[0] >= `A` && field_name[0] <= `Z` {
 				saved_s := p.s
 				saved_tok := p.tok
 				saved_lit := p.lit
@@ -3164,10 +3177,8 @@ fn (mut p Parser) type_decl() flat.NodeId {
 	name := language_prefix + p.expect_name()
 	// generic params
 	mut generic_params := []string{}
-	mut generic_params_end := decl_start
 	if p.tok == .lsbr {
 		generic_params = p.parse_generic_param_names()
-		generic_params_end = p.prev_tok_end
 	}
 	if p.tok == .assign {
 		p.next()
@@ -3178,10 +3189,6 @@ fn (mut p Parser) type_decl() flat.NodeId {
 	type_start := p.span_start()
 	first_type := p.parse_type_name()
 	is_sum_type := p.tok == .pipe || (p.tok == .semicolon && p.peek_is(token.Token.pipe))
-	if generic_params.len > 0 && !first_type.starts_with('fn(') && !is_sum_type {
-		p.record_diagnostic_span('generic type aliases are not yet implemented', decl_start,
-			generic_params_end)
-	}
 	if first_type.starts_with('fn(') && !is_sum_type {
 		close := first_type.index(')') or { -1 }
 		if close > 3 {
@@ -3842,15 +3849,23 @@ fn (mut p Parser) parse_field_attrs() []string {
 // attribute. Regardless of how the content splits, the loop always consumes through the closing
 // `]`, so parsing stays correct even for attribute forms it does not fully model.
 fn (mut p Parser) parse_field_attrs_with_kinds() ParsedFieldAttrs {
-	return p.parse_field_attrs_with_kinds_mode(false)
+	return p.parse_field_attrs_with_kinds_mode(false, false)
+}
+
+// parse_decl_attrs_with_kinds parses one `@[...]` group attached to a declaration.
+// Declaration attributes can be split across several groups, so duplicates are also
+// checked against the groups already collected in `pending_decl_attrs`. Field
+// attributes live in their own scope and must not be compared with the declaration's.
+fn (mut p Parser) parse_decl_attrs_with_kinds() ParsedFieldAttrs {
+	return p.parse_field_attrs_with_kinds_mode(false, true)
 }
 
 // parse_single_field_attr_group consumes only the trailing `@[]` group attached to an assignment.
 fn (mut p Parser) parse_single_field_attr_group() ParsedFieldAttrs {
-	return p.parse_field_attrs_with_kinds_mode(true)
+	return p.parse_field_attrs_with_kinds_mode(true, false)
 }
 
-fn (mut p Parser) parse_field_attrs_with_kinds_mode(single_group bool) ParsedFieldAttrs {
+fn (mut p Parser) parse_field_attrs_with_kinds_mode(single_group bool, check_pending_decl_attrs bool) ParsedFieldAttrs {
 	mut attrs := []string{}
 	mut kinds := []int{}
 	mut sources := []string{}
@@ -3908,7 +3923,8 @@ fn (mut p Parser) parse_field_attrs_with_kinds_mode(single_group bool) ParsedFie
 			piece_name := attr_unquote(p.lit).all_before(':').trim_space()
 			if piece_name.len > 0
 				&& (attrs.any(it.all_before(':').trim_space() == piece_name)
-					|| p.pending_decl_attrs.any(it.all_before(':').trim_space() == piece_name)) {
+					|| (check_pending_decl_attrs
+						&& p.pending_decl_attrs.any(it.all_before(':').trim_space() == piece_name))) {
 				p.record_diagnostic_span('duplicate attribute `${piece_name}`', piece_start, piece_end)
 			}
 			mut piece := if p.prefs.is_fmt { p.lit } else { attr_unquote(p.lit) }
@@ -4839,7 +4855,7 @@ fn (mut p Parser) parse_comptime_cond() string {
 	mut prev_tok_str := ''
 	for p.tok != .lcbr && p.tok != .eof {
 		raw_tok_str := p.comptime_cond_token_text()
-		tok_str := if raw_tok_str.starts_with('@') {
+		tok_str := if raw_tok_str.starts_with('@') && !p.prefs.is_fmt {
 			p.resolve_comptime_at_values_at(raw_tok_str, p.tok_pos)
 		} else {
 			raw_tok_str
@@ -8321,10 +8337,14 @@ fn (mut p Parser) validate_if_guard_rhs(rhs_id flat.NodeId, assign_end int) {
 	if int(rhs_id) < 0 || int(rhs_id) >= p.a.nodes.len {
 		return
 	}
-	rhs := p.a.nodes[int(rhs_id)]
+	mut core_id := rhs_id
+	for p.a.nodes[int(core_id)].kind == .paren && p.a.nodes[int(core_id)].children_count == 1 {
+		core_id = p.a.child(&p.a.nodes[int(core_id)], 0)
+	}
+	rhs := p.a.nodes[int(core_id)]
 	if rhs.kind !in [.call, .index, .prefix, .selector, .ident] {
 		mut start := assign_end
-		mut end := rhs.pos.end
+		mut end := p.a.nodes[int(rhs_id)].pos.end
 		source := p.s.src
 		start = int_max(0, int_min(start, source.len))
 		end = int_max(start, int_min(end, source.len))
@@ -12174,7 +12194,7 @@ fn (mut p Parser) prefix_expr() flat.NodeId {
 		}
 		.key_likely, .key_unlikely {
 			paren_start := p.span_start()
-			hint := if p.prefs.is_fmt { p.tok.str() } else { '' }
+			hint := p.tok.str()
 			p.next()
 			p.check(.lpar)
 			inner := p.expr(.lowest)
@@ -14623,7 +14643,8 @@ fn (mut p Parser) typeof_expr() flat.NodeId {
 	p.check(.lpar)
 	inner := p.expr(.lowest)
 	p.check(.rpar)
-	if !p.inside_array_init_type_expr && p.tok != .dot && (start == 0 || p.s.src[start - 1] != `$`)
+	if p.unsafe_depth == 0 && !p.inside_array_init_type_expr && p.tok != .dot
+		&& (start == 0 || p.s.src[start - 1] != `$`)
 		&& p.line_nr_for_pos(start) == p.line_nr_for_pos(p.tok_pos) {
 		p.record_warning_span('use e.g. `typeof(expr).name` or `sum_type_instance.type_name()` instead', start, start + 'typeof'.len)
 	}
@@ -15124,7 +15145,7 @@ fn interface_param_token_continues_type(tok token.Token, lit string, next token.
 
 // fn_type_param_with_mut supports fn type param with mut handling for parser.
 fn fn_type_param_with_mut(typ string, is_mut bool) string {
-	if !is_mut || typ.len == 0 || typ.starts_with('&') {
+	if !is_mut || typ.len == 0 {
 		return typ
 	}
 	return 'mut ' + typ

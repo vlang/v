@@ -1989,7 +1989,9 @@ fn (mut tc TypeChecker) check_node(id flat.NodeId) {
 		if node.value == 'function' && tc.fn_context.node_id >= 0 {
 			if tc.lock_depth > 0 {
 				tc.record_error_at(.assignment_mismatch, '`defer(fn)`s are not allowed in lock statements', id, node.pos)
-			} else if !tc.current_fn_has_invalid_defer_mode() {
+			} else if tc.cur_scope != unsafe { nil }
+				&& voidptr(tc.cur_scope.parent) == voidptr(tc.file_scope)
+				&& !tc.current_fn_has_invalid_defer_mode() {
 				tc.record_warning_at(.assignment_mismatch, '`defer` is already in function scope; just use `defer {` instead', id, node.pos)
 			}
 		}
@@ -2074,7 +2076,8 @@ fn (mut tc TypeChecker) check_node(id flat.NodeId) {
 		tc.check_node(default_id)
 		return
 	}
-	if node.kind == .paren && tc.paren_expr_has_redundant_parentheses(id) {
+	if node.kind == .paren && node.value !in ['_likely_', '_unlikely_']
+		&& tc.paren_expr_has_redundant_parentheses(id) {
 		tc.record_notice_at(.unknown_ident, 'redundant parentheses are used', id, node.pos)
 	}
 	// A method value stored in a container escapes the single-use guarantee of its per-site
@@ -2384,8 +2387,12 @@ fn (mut tc TypeChecker) check_labelled_loop_controls() {
 		return
 	}
 	mut diagnosed := map[string]bool{}
-	for index, node in tc.a.nodes {
-		if index < tc.a.user_code_start || node.kind !in [.break_stmt, .continue_stmt]
+	mut controls := tc.preflight_nodes(.break_stmt)
+	controls << tc.preflight_nodes(.continue_stmt)
+	controls.sort()
+	for index in controls {
+		node := tc.a.nodes[index]
+		if index < tc.a.user_code_start
 			|| node.value.len == 0 || !tc.node_is_in_selected_input_file(flat.NodeId(index))
 			|| tc.valid_labelled_loop_control(flat.NodeId(index), node.value) {
 			continue
@@ -2644,8 +2651,11 @@ fn (mut tc TypeChecker) check_map_literal_element_types(id flat.NodeId, node fla
 				}
 				continue
 			}
-			expected_key = tc.resolve_type(key_id)
-			expected_value = tc.resolve_type(tc.a.child(&node, i + 1))
+			key_type := tc.resolve_type(key_id)
+			expected_key = tc.mut_param_expr_base(key_id, key_type) or { key_type }
+			value_id := tc.a.child(&node, i + 1)
+			value_type := tc.resolve_type(value_id)
+			expected_value = tc.mut_param_expr_base(value_id, value_type) or { value_type }
 			break
 		}
 	}
@@ -2679,7 +2689,8 @@ fn (mut tc TypeChecker) check_map_literal_element_types(id flat.NodeId, node fla
 }
 
 fn (mut tc TypeChecker) check_map_literal_slot_type(value_id flat.NodeId, expected Type, slot string) {
-	actual := tc.resolve_expr(value_id, expected)
+	raw_actual := tc.resolve_expr(value_id, expected)
+	actual := tc.mut_param_expr_base(value_id, raw_actual) or { raw_actual }
 	value := tc.a.node(value_id)
 	mut compatible := tc.expr_compatible(value_id, actual, expected)
 	if expected is OptionType && actual !is OptionType {
@@ -4368,7 +4379,8 @@ fn (mut tc TypeChecker) check_cast_expr(id flat.NodeId, node flat.Node) {
 		// Match the established checker: only raw void pointers require an unsafe cast.
 		// Pointer aliases retain their declared type, and void-pointer aliases are valid
 		// cast targets without an unsafe block.
-		if tc.unsafe_depth == 0 && actual.name() in ['voidptr', '&void']
+		if tc.unsafe_depth == 0 && !tc.expr_is_explicit_unsafe_value(child_id)
+			&& actual.name() in ['voidptr', '&void']
 			&& !fn_param_is_voidptr_type(target) {
 			if unalias_type(target_base) is SumType {
 				tc.record_error_at(.assignment_mismatch, 'cannot cast voidptr to `${target_name}` outside `unsafe`', id, node.pos)
@@ -4404,7 +4416,8 @@ fn (mut tc TypeChecker) check_cast_expr(id flat.NodeId, node flat.Node) {
 		// underlying scalar conversion.
 		return
 	}
-	if clean_actual is ArrayFixed && clean_target is Pointer && !tc.node_is_in_translated_file(id) {
+	if clean_actual is ArrayFixed && clean_target is Pointer && tc.unsafe_depth == 0
+		&& !tc.node_is_in_translated_file(id) {
 		tc.record_warning_at(.assignment_mismatch, 'cannot cast a fixed array (use e.g. `&arr[0]` instead)', id, node.pos)
 	}
 	if (clean_target is Array || clean_target is ArrayFixed)
@@ -4502,7 +4515,7 @@ fn (mut tc TypeChecker) check_cast_expr(id flat.NodeId, node flat.Node) {
 		}
 		actual_struct := struct_type_from_type(actual)
 		if source_struct := actual_struct {
-			if target is Alias && source_struct.name == target_struct.name {
+			if source_struct.name == target_struct.name {
 				return
 			}
 			tc.record_warning_at(.assignment_mismatch, 'casting to struct is deprecated, use e.g. `Struct{...expr}` instead', id, node.pos)
@@ -9348,7 +9361,10 @@ fn (mut tc TypeChecker) check_result_propagation(id flat.NodeId, source_id flat.
 	source_type := tc.resolve_type(source_id)
 	clean_source_type := unalias_type(source_type)
 	clean_return_type := unalias_type(tc.fn_context.return_type)
-	if clean_source_type is OptionType {
+	// `array[index]!` handles both a failed bounds check and an optional
+	// element. The index expression is therefore a Result propagation site
+	// even when its resolved element type is an Option.
+	if clean_source_type is OptionType && source.kind != .index {
 		tc.record_error_at(.return_mismatch, 'to propagate a Result, the call must also return a Result type', id, tc.propagation_operator_pos(source_id, id, '!'))
 		return
 	}
@@ -9979,7 +9995,24 @@ fn (tc &TypeChecker) direct_parent_id(id flat.NodeId) flat.NodeId {
 	return tc.direct_parent_id_untrusted(id, idx)
 }
 
+// note_generated_parent seeds the worker-private parent cache for a freshly
+// generated node whose only parent is `parent`, so parent queries on it skip
+// the arena scan. An edge found by an earlier query is kept.
+pub fn (tc &TypeChecker) note_generated_parent(child flat.NodeId, parent flat.NodeId) {
+	idx := int(child)
+	if isnil(tc.type_cache) || idx < tc.direct_parent_ids.len {
+		return
+	}
+	mut cache := tc.type_cache
+	if idx !in cache.generated_parent_entries {
+		cache.generated_parent_entries[idx] = parent
+	}
+}
+
 fn (tc &TypeChecker) direct_parent_id_untrusted(id flat.NodeId, idx int) flat.NodeId {
+	if idx < 0 || idx >= tc.a.nodes.len {
+		return flat.empty_node
+	}
 	if idx >= 0 && idx < tc.direct_parent_ids.len {
 		parent_id := tc.direct_parent_ids[idx]
 		if parent_id != flat.empty_node {
@@ -10009,9 +10042,25 @@ fn (tc &TypeChecker) direct_parent_id_untrusted(id flat.NodeId, idx int) flat.No
 		// parent still references this shared generated node. Fall through to
 		// the arena scan when the indexed edge is stale.
 	}
+	if !isnil(tc.type_cache) {
+		if parent_id := tc.type_cache.generated_parent_entries[idx] {
+			if tc.valid_node_id(parent_id) {
+				parent := tc.a.node(parent_id)
+				for i in 0 .. parent.children_count {
+					if tc.a.child(parent, i) == id {
+						return parent_id
+					}
+				}
+			}
+		}
+	}
 	for parent_idx, candidate in tc.a.nodes {
 		for i in 0 .. candidate.children_count {
 			if tc.a.child(&candidate, i) == id {
+				if !isnil(tc.type_cache) {
+					mut cache := tc.type_cache
+					cache.generated_parent_entries[idx] = flat.NodeId(parent_idx)
+				}
 				return flat.NodeId(parent_idx)
 			}
 		}
@@ -11494,7 +11543,7 @@ fn (mut tc TypeChecker) check_fn_literal(id flat.NodeId, node flat.Node) {
 			&& !tc.comptime_skipped_body_uses(node, capture.value) {
 			if _ := tc.current_fn_param_type_text(capture.value) {
 				tc.record_notice_at(.unknown_ident, 'unused parameter: `${capture.value}`', capture_id, tc.node_value_diagnostic_pos(capture_id))
-			} else {
+			} else if !is_regular_v_test_file(tc.cur_file) {
 				tc.record_warning_at(.unknown_ident, 'unused variable: `${capture.value}`', capture_id, tc.node_value_diagnostic_pos(capture_id))
 			}
 		}
@@ -13369,6 +13418,11 @@ fn (mut tc TypeChecker) check_for_in_range_types(low_id flat.NodeId, high_id fla
 }
 
 fn (mut tc TypeChecker) check_for_in_range_high_overflow(low_id flat.NodeId, high_id flat.NodeId) bool {
+	// Explicitly typed high bounds define their own range width. Only an implicit
+	// or explicit `int` high bound can overflow the narrower low-bound type here.
+	if unalias_type(tc.resolve_type(high_id)).name() != Type(int_).name() {
+		return false
+	}
 	range_type := tc.range_loop_var_type(low_id, high_id)
 	type_range := integer_type_range(range_type) or { return false }
 	if type_range.bits <= 0 {
@@ -15394,6 +15448,12 @@ fn (mut tc TypeChecker) decl_assign_inferred_type(rhs_id flat.NodeId) Type {
 		}
 		return smartcast
 	}
+	if rhs.kind == .ident {
+		raw_type := tc.resolve_type(rhs_id)
+		if base := tc.mut_param_base_for_current_ident(rhs.value, raw_type) {
+			return base
+		}
+	}
 	if rhs.kind == .selector {
 		if declared := tc.selector_declared_value_type(rhs) {
 			if declared is OptionType || declared is ResultType {
@@ -16303,8 +16363,7 @@ fn (tc &TypeChecker) wrapped_multi_return_tail_is_error(branch_id flat.NodeId, w
 		return true
 	}
 	raw_type := tc.resolve_type(tail_id)
-	return wrapper is ResultType
-		&& (is_ierror_type(raw_type) || tc.type_compatible_with_ierror_payload(raw_type))
+	return is_ierror_type(raw_type) || tc.type_compatible_with_ierror_payload(raw_type)
 }
 
 fn (tc &TypeChecker) tuple_tail_value_groups(body_id flat.NodeId, count int, explicit_comma_tail bool) ?[][]flat.NodeId {

@@ -320,7 +320,25 @@ fn run_external_tool(args []string, command_index int, command string) {
 	if command_index >= 0 {
 		tool_args = external_tool_runtime_args(command, prefix_args, args[command_index..])
 	}
+	if command in test_session_commands {
+		export_vtest_build_environment(vroot, prefix_args)
+	}
 	launch_external_tool(vroot, tool_name, tool_source, prefix_args, tool_args)
+}
+
+// test_session_commands start a `cmd/tools/` program that evaluates the
+// `// vtest build:` constraints of the files it compiles, through
+// `cmd/tools/testing`, against the `VBUILD_FACTS`/`VBUILD_DEFINES` environment.
+const test_session_commands = ['test', 'test-self', 'test-cleancode', 'test-fmt', 'build-examples',
+	'build-tools', 'build-vbinaries']
+
+// export_vtest_build_environment records the facts and defines of the
+// compilation that the prefix compiler options describe, as the compiler itself
+// resolves them, so that the test runner skips and builds the same files that
+// `v file_test.v` would.
+fn export_vtest_build_environment(vroot string, prefix_args []string) {
+	environment := driver.vtest_build_environment(vroot, prefix_args)
+	pref.set_build_flags_and_defines(environment.facts, environment.defines)
 }
 
 fn external_tool_runtime_args(command string, prefix_args []string, command_args []string) []string {
@@ -330,7 +348,7 @@ fn external_tool_runtime_args(command string, prefix_args []string, command_args
 	// options for the replacement compiler, not just for the launcher helper.
 	// `v test` needs them for each test compilation and its failure reproduction command.
 	// Keep those options visible after the launcher has built the cached executable.
-	if command in ['build-tools', 'self', 'test'] {
+	if command in ['build-examples', 'build-tools', 'self', 'test', 'test-self'] {
 		tool_args << prefix_args
 	}
 	tool_args << command_args

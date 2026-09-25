@@ -659,7 +659,7 @@ pub fn tcp_socket_from_handle_raw(sockfd int) TcpSocket {
 
 fn (mut s TcpSocket) set_option(level int, opt int, value int) ! {
 	v := i32(value) // C socket options are 4-byte `int`; pass i32 storage (sizeof 4)
-	socket_error(C.setsockopt(s.handle, level, opt, &v, sizeof(v)))!
+	socket_error(C.setsockopt(s.handle, level, opt, voidptr(&v), sizeof(v)))!
 }
 
 pub fn (mut s TcpSocket) set_option_bool(opt SocketOption, value bool) ! {

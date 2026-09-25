@@ -1923,6 +1923,7 @@ dump(x)
 #### `If` unwrapping
 Anywhere you can use `or {}`, you can also use "if unwrapping". This binds the unwrapped value
 of an expression to a variable when that expression is not none nor an error.
+An optional struct field can be unwrapped this way even after an earlier `none` check.
 
 ```v
 m := {

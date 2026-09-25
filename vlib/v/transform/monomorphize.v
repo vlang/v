@@ -487,6 +487,14 @@ fn (mut t Transformer) explicit_generic_fn_value_specialization(id flat.NodeId, 
 	if type_arg_text.len == 0 {
 		return none
 	}
+	// A type argument that names a generic parameter of the declaration enclosing
+	// this call is not concrete: the enclosing specialization substitutes it while
+	// it is cloned. Resolving it here through the writing file's imports would
+	// request a specialization for a same-named imported type (`import pkg { T }`)
+	// instead of leaving the call to the clone.
+	if t.type_arg_text_has_enclosing_generic_param(id, type_arg_text) {
+		return none
+	}
 	raw_args := normalize_generic_args(split_generic_args(type_arg_text), module_name)
 	for candidate in t.explicit_generic_fn_value_decl_candidates(id, base_id, base, module_name) {
 		decl_key := generic_fn_decl_base_value(candidate)
@@ -499,9 +507,67 @@ fn (mut t Transformer) explicit_generic_fn_value_specialization(id flat.NodeId, 
 		if t.generic_args_have_placeholders(args) {
 			return none
 		}
+		for arg in args {
+			if !t.explicit_generic_arg_is_known_type(arg, module_name) {
+				return none
+			}
+		}
 		return decl_key, args
 	}
 	return none
+}
+
+fn (mut t Transformer) explicit_generic_arg_is_known_type(arg string, module_name string) bool {
+	clean := arg.trim_space()
+	if clean.len == 0 {
+		return false
+	}
+	if clean.starts_with('&') || clean.starts_with('?') || clean.starts_with('!') {
+		return t.explicit_generic_arg_is_known_type(clean[1..], module_name)
+	}
+	if clean.starts_with('[]') {
+		return t.explicit_generic_arg_is_known_type(clean[2..], module_name)
+	}
+	if clean.starts_with('map[') {
+		bracket_end := generic_matching_bracket(clean, 3)
+		return bracket_end < clean.len - 1
+			&& t.explicit_generic_arg_is_known_type(clean[4..bracket_end], module_name)
+			&& t.explicit_generic_arg_is_known_type(clean[bracket_end + 1..], module_name)
+	}
+	if clean.starts_with('[') {
+		bracket_end := generic_matching_bracket(clean, 0)
+		return bracket_end < clean.len - 1
+			&& t.explicit_generic_arg_is_known_type(clean[bracket_end + 1..], module_name)
+	}
+	if clean.starts_with('fn ') || clean.starts_with('fn(') || clean.starts_with('fn (') {
+		return true
+	}
+	if clean.starts_with('(') && clean.ends_with(')') {
+		parts := split_generic_args(clean[1..clean.len - 1])
+		if parts.len == 0 {
+			return false
+		}
+		for part in parts {
+			if !t.explicit_generic_arg_is_known_type(part, module_name) {
+				return false
+			}
+		}
+		return true
+	}
+	base, nested_args, is_generic := generic_app_parts(clean)
+	if is_generic {
+		if !t.explicit_generic_arg_is_known_type(base, module_name) {
+			return false
+		}
+		for nested_arg in nested_args {
+			if !t.explicit_generic_arg_is_known_type(nested_arg, module_name) {
+				return false
+			}
+		}
+		return true
+	}
+	return clean.starts_with('C.') || clean.starts_with('JS.')
+		|| t.concrete_type_name_known(clean, module_name)
 }
 
 fn (t &Transformer) explicit_generic_fn_value_decl_candidates(id flat.NodeId, base_id flat.NodeId, base flat.Node, module_name string) []string {
@@ -3211,6 +3277,12 @@ fn (mut t Transformer) collect_generic_sum_spec_from_type(typ string, module_nam
 	if t.generic_args_have_placeholders(args) {
 		return
 	}
+	// A source node that its lowering detached no longer maps to a file. Its spelling
+	// (`maybe.Maybe[Token]` for `import iam { Token }` next to another imported `Token`)
+	// then names no type, and keying a specialization with it would emit a bogus one.
+	if file_name == '' && t.generic_args_name_unknown_type(args) {
+		return
+	}
 	spec_base := t.generic_sum_spec_base_name(base, module_name, file_name, decls) or { return }
 	spec_name := t.generic_sum_spec_name_in_scope(spec_base, args, module_name, file_name)
 	specs[spec_name] = GenericSpecContext{
@@ -3311,17 +3383,52 @@ fn (mut t Transformer) generic_struct_args_in_scope(args []string, module_name s
 	for arg in args {
 		parsed := t.tc.parse_resolution_type(arg)
 		result := if parsed is types.Unknown {
-			t.normalize_sum_variant_type(arg, module_name, [])
+			if resolved := t.selective_import_type_name_for_file(file_name, arg) {
+				resolved
+			} else {
+				t.normalize_sum_variant_type(arg, module_name, [])
+			}
 		} else if parsed is types.Alias && parsed.base_type is types.ArrayFixed {
 			types.Type(parsed.base_type).name()
 		} else {
-			parsed.name()
+			// A bare spelling that resolves inside the declaring module still has to
+			// honor the writing file's selective imports: `import model { Context }`
+			// makes `Context` mean `model.Context`, not a same-named type from an
+			// imported module or the declaring module itself.
+			name := parsed.name()
+			if !name.contains('.') {
+				if resolved := t.selective_import_type_name_for_file(file_name, name) {
+					scoped << resolved
+					continue
+				}
+			}
+			name
 		}
 		scoped << result
 	}
 	t.tc.cur_module = old_module
 	t.tc.cur_file = old_file
 	return scoped
+}
+
+// generic_args_name_unknown_type reports whether a bare generic argument names no
+// declared type when it is read without any file's imports.
+fn (t &Transformer) generic_args_name_unknown_type(args []string) bool {
+	if isnil(t.tc) {
+		return false
+	}
+	for arg in args {
+		name := arg.trim_space()
+		if name.len == 0 || !name[0].is_capital() || name.contains('.') || name.contains('[') {
+			continue
+		}
+		if name !in t.tc.structs && name !in t.tc.sum_types && name !in t.tc.enum_names
+			&& name !in t.tc.flag_enums && name !in t.tc.interface_names
+			&& name !in t.tc.type_aliases {
+			return true
+		}
+	}
+	return false
 }
 
 fn (mut t Transformer) generic_sum_args_in_scope(args []string, module_name string, file_name string) []string {
@@ -3335,11 +3442,27 @@ fn (mut t Transformer) generic_sum_args_in_scope(args []string, module_name stri
 	mut scoped := []string{cap: args.len}
 	for arg in args {
 		parsed := t.tc.parse_resolution_type(arg)
-		scoped << if parsed is types.Unknown {
-			t.normalize_sum_variant_type(arg, module_name, [])
+		result := if parsed is types.Unknown {
+			if resolved := t.selective_import_type_name_for_file(file_name, arg) {
+				resolved
+			} else {
+				t.normalize_sum_variant_type(arg, module_name, [])
+			}
 		} else {
-			parsed.name()
+			// A bare spelling that resolves inside the declaring module still has to
+			// honor the writing file's selective imports: `import iam { Token }`
+			// makes `Token` mean `iam.Token`, not a same-named type from another
+			// imported module or the declaring module itself.
+			name := parsed.name()
+			if !name.contains('.') {
+				if resolved := t.selective_import_type_name_for_file(file_name, name) {
+					scoped << resolved
+					continue
+				}
+			}
+			name
 		}
+		scoped << result
 	}
 	t.tc.cur_module = old_module
 	t.tc.cur_file = old_file
@@ -4548,6 +4671,9 @@ fn (mut t Transformer) register_specialized_fn_signature_value(decl GenericFnDec
 		names << specialized_generic_fn_signature_aliases(decl, concrete_args)
 		t.record_generic_specialization_args_for_names(names, concrete_args)
 		for name in names {
+			// The names and declaration strings can point into a worker scope
+			// that is released before the driver promotes the checker metadata,
+			// so own them here.
 			owned_name := name.clone()
 			t.tc.fn_ret_types[owned_name] = ret
 			t.tc.register_generated_fn_param_types(owned_name, params.clone())
@@ -10569,7 +10695,12 @@ fn (mut t Transformer) substitute_cloned_generic_call_type_args(node flat.Node, 
 		// value index like `attr[start]` matches the `callee[arg]` shape too, and
 		// resolve_substituted_type_text would "qualify" the local `start` into a
 		// phantom type/fn name (`json2.start`), corrupting the index expression.
-		if !t.generic_args_have_placeholders([arg]) {
+		// A generic parameter is a placeholder even when the writing file also
+		// imports a type with the same spelling: `import pkg { T }` in a generic
+		// `fn outer[T]` makes the text `T` look like a concrete `pkg.T` to the
+		// declared-type tables, but the lexical parameter has precedence.
+		if !t.generic_args_have_placeholders([arg])
+			&& !generic_text_contains_param(arg, t.active_generic_params) {
 			continue
 		}
 		substituted := t.resolve_substituted_type_text(t.subst_type(arg, args))
@@ -12363,7 +12494,16 @@ fn (mut t Transformer) subst_node_value(node flat.Node, args []string) string {
 			return t.resolve_substituted_type_text(t.subst_type(node.value, args))
 		}
 		.array_init, .map_init, .struct_init, .assoc, .cast_expr, .as_expr, .offsetof_expr {
-			return t.resolve_substituted_type_text(t.subst_type(node.value, args))
+			substituted := t.subst_type(node.value, args)
+			if node.kind == .cast_expr && substituted != node.value
+				&& t.generic_type_text_contains_alias(substituted, t.cur_module) {
+				// Qualify source names before substitution, keeping the alias intact so
+				// caller types can be locked before alias expansion changes their scope.
+				source := t.qualify_generic_alias_cast_type_text(node.value)
+				return t.lock_colliding_main_substitution_type_text(source, t.subst_type(source,
+					args), t.cur_module, t.active_generic_params)
+			}
+			return t.resolve_substituted_type_text(substituted)
 		}
 		.sizeof_expr, .typeof_expr {
 			substituted := t.subst_type(node.value, args)
@@ -12417,6 +12557,72 @@ fn (t &Transformer) subst_sql_expr_token(token string, args []string) string {
 		}
 	}
 	return token
+}
+
+fn (t &Transformer) qualify_generic_alias_cast_type_text(typ string) string {
+	clean := typ.trim_space()
+	if clean.len == 0 || clean in t.active_generic_params || isnil(t.tc) {
+		return clean
+	}
+	for prefix in ['mut ', 'shared ', 'atomic ', '...', '[]', '?', '!', '&', 'chan ', 'thread '] {
+		if clean.starts_with(prefix) {
+			return prefix + t.qualify_generic_alias_cast_type_text(clean[prefix.len..])
+		}
+	}
+	if clean.starts_with('map[') {
+		end := generic_matching_bracket(clean, 3)
+		if end < clean.len - 1 {
+			key := t.qualify_generic_alias_cast_type_text(clean[4..end])
+			value := t.qualify_generic_alias_cast_type_text(clean[end + 1..])
+			return 'map[${key}]${value}'
+		}
+	}
+	if clean.starts_with('[') {
+		end := generic_matching_bracket(clean, 0)
+		if end > 1 && end < clean.len - 1 {
+			return clean[..end + 1] + t.qualify_generic_alias_cast_type_text(clean[end + 1..])
+		}
+	}
+	if clean.starts_with('fn(') || clean.starts_with('fn (') {
+		if params, ret := fn_type_text_parts(clean) {
+			mut qualified_params := []string{cap: params.len}
+			for param in params {
+				qualified_params << t.qualify_generic_alias_cast_type_text(generic_fn_type_param_mode_payload(param))
+			}
+			qualified_ret := t.qualify_generic_alias_cast_type_text(ret)
+			return if qualified_ret.len > 0 {
+				'fn (${qualified_params.join(', ')}) ${qualified_ret}'
+			} else {
+				'fn (${qualified_params.join(', ')})'
+			}
+		}
+	}
+	if clean.starts_with('(') && clean.ends_with(')') && clean.contains(',') {
+		mut qualified_parts := []string{}
+		for part in split_generic_args(clean[1..clean.len - 1]) {
+			qualified_parts << t.qualify_generic_alias_cast_type_text(part)
+		}
+		return '(' + qualified_parts.join(', ') + ')'
+	}
+	base, args, is_app := generic_app_parts(clean)
+	if is_app {
+		qualified_base := t.qualify_generic_alias_cast_type_text(base)
+		mut qualified_args := []string{cap: args.len}
+		for arg in args {
+			qualified_args << t.qualify_generic_alias_cast_type_text(arg)
+		}
+		return '${qualified_base}[${qualified_args.join(', ')}]'
+	}
+	if imported := t.resolve_imported_type_name(clean) {
+		return imported
+	}
+	if selective := t.selective_signature_type_symbol(t.cur_file, clean) {
+		return selective
+	}
+	if !clean.contains('.') && t.generic_arg_module_owns_type(clean, t.cur_module) {
+		return '${t.cur_module}.${clean}'
+	}
+	return clean
 }
 
 fn (t &Transformer) resolve_substituted_type_text(typ string) string {
@@ -13993,7 +14199,9 @@ fn (t &Transformer) generic_arg_is_unresolved(arg string) bool {
 	if !isnil(t.generic_unresolved_cache) {
 		mut cache := t.generic_unresolved_cache
 		if !same_transform_text(cache.module, t.cur_module) {
-			cache.module = t.cur_module
+			// cur_module can be a view into a scoped worker result. The cache
+			// survives that result, so retain its own module spelling.
+			cache.module = t.cur_module.clone()
 			cache.entries.clear()
 			cache.last_name = ''
 			cache.last_value = 0
