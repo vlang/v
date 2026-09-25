@@ -409,6 +409,12 @@ fn (mut tc TypeChecker) check_generic_fn_constraint_members(fn_node flat.Node) {
 		}
 	}
 	mut callees := map[int]bool{}
+	// The body is not checked, so its locals have no bindings: the walk binds
+	// each one to the type of its value where it is declared, in a scope of its
+	// own. V has no shadowing, so one scope in source order gives every use the
+	// declaration it sees, and `x := a` makes `x` a `T` when `a` is one.
+	mut guards := map[int]bool{}
+	tc.push_scope()
 	for stack.len > 0 {
 		item := stack.pop()
 		if !tc.valid_node_id(item.id) {
@@ -419,6 +425,21 @@ fn (mut tc TypeChecker) check_generic_fn_constraint_members(fn_node flat.Node) {
 			// Compile-time branches and closures decide their own types.
 			.comptime_if, .comptime_for, .fn_literal, .lambda_expr {
 				continue
+			}
+			.decl_assign {
+				tc.bind_constraint_walk_decl(*node, guards[int(item.id)])
+			}
+			.for_in_stmt {
+				tc.bind_constraint_walk_loop(*node)
+			}
+			.if_expr {
+				// `if x := opt {`: its guard binds what the option holds.
+				if node.children_count > 0 {
+					cond_id := tc.a.child(node, 0)
+					if tc.valid_node_id(cond_id) && tc.a.node(cond_id).kind == .decl_assign {
+						guards[int(cond_id)] = true
+					}
+				}
 			}
 			.call {
 				if node.children_count > 0 {
@@ -446,6 +467,281 @@ fn (mut tc TypeChecker) check_generic_fn_constraint_members(fn_node flat.Node) {
 				narrowed: narrowed
 			}
 		}
+	}
+	tc.pop_scope()
+}
+
+// bind_constraint_walk_decl binds the names that the declaration `node`
+// introduces to the types of their values; the guard of an `if x := opt {`
+// binds what the option holds.
+fn (mut tc TypeChecker) bind_constraint_walk_decl(node flat.Node, is_guard bool) {
+	if node.children_count < 2 {
+		return
+	}
+	if is_guard {
+		lhs_ids := tc.if_guard_lhs_ids(node)
+		if lhs_ids.len == 1 {
+			rhs_type := unalias_type(tc.constraint_walk_value_type(tc.a.child(&node, 1)))
+			held := match rhs_type {
+				OptionType { rhs_type.base_type }
+				ResultType { rhs_type.base_type }
+				else { rhs_type }
+			}
+			tc.bind_constraint_walk_local(lhs_ids[0], held)
+		}
+		return
+	}
+	lhs_ids := tc.multi_assign_lhs_ids(node)
+	rhs_count := tc.multi_assign_rhs_count(node)
+	if lhs_ids.len == rhs_count {
+		for k, lhs_id in lhs_ids {
+			tc.bind_constraint_walk_local(lhs_id, tc.constraint_walk_value_type(tc.multi_assign_rhs_id(node,
+				k)))
+		}
+	} else if rhs_count == 1 {
+		// `x, y := f()`: the values of a call that returns several.
+		rhs_type := unalias_type(tc.constraint_walk_value_type(tc.multi_assign_rhs_id(node, 0)))
+		if rhs_type is MultiReturn && rhs_type.types.len == lhs_ids.len {
+			for k, lhs_id in lhs_ids {
+				tc.bind_constraint_walk_local(lhs_id, rhs_type.types[k])
+			}
+		}
+	}
+}
+
+// bind_constraint_walk_loop binds the variables of a `for ... in` loop to what
+// its container holds: `for x in items` makes `x` a `T` when `items` is a `[]T`.
+fn (mut tc TypeChecker) bind_constraint_walk_loop(node flat.Node) {
+	header := node.value.int()
+	if header < 3 || node.children_count < 3 {
+		return
+	}
+	key_id := tc.a.child(&node, 0)
+	val_id := tc.a.child(&node, 1)
+	container_id := tc.a.child(&node, 2)
+	if header == 4 || tc.a.node(container_id).kind == .range {
+		tc.bind_constraint_walk_local(key_id, Type(int_))
+		return
+	}
+	container := tc.constraint_walk_iterable_type(container_id)
+	mut key := Type(int_)
+	mut value := Type(u8_)
+	match container {
+		Array {
+			value = container.elem_type
+		}
+		ArrayFixed {
+			value = container.elem_type
+		}
+		Map {
+			key = container.key_type
+			value = container.value_type
+		}
+		String {}
+		else {
+			return
+		}
+	}
+	if int(val_id) >= 0 {
+		tc.bind_constraint_walk_local(key_id, key)
+		tc.bind_constraint_walk_local(val_id, value)
+	} else {
+		tc.bind_constraint_walk_local(key_id, if container is Map { key } else { value })
+	}
+}
+
+// constraint_walk_value_type is the type of the value `id` in the body of the
+// walk. A generic call takes the types of its own arguments there: `find(items)`
+// in the body of `fn f[U Named](items []U)` is a `?U`, not the `?T` that `find`
+// declares, which would name a type parameter of the caller by chance.
+fn (mut tc TypeChecker) constraint_walk_value_type(id flat.NodeId) Type {
+	if !tc.valid_node_id(id) {
+		return tc.resolve_type(id)
+	}
+	node := tc.a.node(id)
+	match node.kind {
+		.call {
+			if typ := tc.constraint_walk_call_type(id, *node) {
+				return typ
+			}
+		}
+		.paren {
+			if node.children_count > 0 {
+				return tc.constraint_walk_value_type(tc.a.child(node, 0))
+			}
+		}
+		.or_expr {
+			// `f() or { ... }`: what the option holds.
+			if node.children_count > 0 {
+				held := unalias_type(tc.constraint_walk_value_type(tc.a.child(node, 0)))
+				return match held {
+					OptionType { held.base_type }
+					ResultType { held.base_type }
+					else { held }
+				}
+			}
+		}
+		else {}
+	}
+	return tc.resolve_type(id)
+}
+
+// constraint_walk_call_type is the type of the call `node` in the body of the
+// walk when what it calls is generic: its declared return type, with the type
+// parameters of its declaration bound from the call, from its explicit type
+// arguments, its receiver and its arguments; none when it is not generic. A type
+// parameter that stays unbound gives an unknown type rather than one that names
+// the declaration's own `T`, which a type parameter of the caller can share by
+// chance.
+fn (mut tc TypeChecker) constraint_walk_call_type(id flat.NodeId, node flat.Node) ?Type {
+	if node.children_count == 0 {
+		return none
+	}
+	info := tc.resolve_call_info(id, node) or { return none }
+	fn_params := tc.fn_generic_params[info.name] or { []string{} }
+	param_texts := tc.fn_param_type_texts[info.name] or { []string{} }
+	mut names := fn_params.clone()
+	callee := tc.a.child_node(&node, 0)
+	mut receiver_id := flat.NodeId(-1)
+	if info.has_receiver {
+		_, receiver_params, receiver_is_generic := generic_type_application_parts(info.name.all_before_last('.'))
+		if receiver_is_generic {
+			for param in receiver_params {
+				if param !in names {
+					names << param
+				}
+			}
+		}
+		mut method := *callee
+		if method.kind == .index && method.children_count > 0 {
+			method = *tc.a.child_node(&method, 0)
+		}
+		if method.kind == .selector && method.children_count > 0 {
+			receiver_id = tc.a.child(&method, 0)
+		}
+	}
+	if names.len == 0 {
+		return none
+	}
+	mut inferred := map[string]Type{}
+	if tc.call_has_explicit_generic_type_args(node) {
+		for k, name in tc.generic_call_type_arg_names(*callee) {
+			if k < fn_params.len {
+				inferred[fn_params[k]] = tc.constraint_walk_named_type(name)
+			}
+		}
+	}
+	mut first := 0
+	if info.has_receiver && param_texts.len > 0 {
+		if tc.valid_node_id(receiver_id) {
+			receiver := unwrap_pointer(tc.constraint_walk_value_type(receiver_id))
+			tc.constraint_walk_infer(param_texts[0], receiver, names, mut inferred)
+		}
+		first = 1
+	}
+	for param_idx in first .. param_texts.len {
+		arg_idx := param_idx - first + 1 + info.arg_offset
+		if arg_idx >= node.children_count {
+			break
+		}
+		arg := tc.constraint_walk_value_type(tc.call_arg_value(tc.a.child(&node, arg_idx)))
+		tc.constraint_walk_infer(param_texts[param_idx], arg, names, mut inferred)
+	}
+	mut args := []Type{cap: names.len}
+	for name in names {
+		args << inferred[name] or { return unknown_type('unbound type parameter') }
+	}
+	declared := tc.fn_ret_types[info.name] or { info.return_type }
+	return tc.substitute_generic_type_values(declared, args, names)
+}
+
+// constraint_walk_infer binds the type parameters `names` that `param_text`, the
+// type of a parameter of a generic declaration, spells, from `actual`, the type
+// of what a call passes there. A generic struct binds its type arguments,
+// `Box[T]` against `Box[U]`; infer_generic_type_value_from_type does the rest.
+fn (mut tc TypeChecker) constraint_walk_infer(param_text string, actual Type, names []string, mut inferred map[string]Type) {
+	clean := trimmed_space(param_text)
+	if clean.starts_with('&') {
+		tc.constraint_walk_infer(clean[1..], unwrap_pointer(actual), names, mut inferred)
+		return
+	}
+	if clean.starts_with('mut ') {
+		tc.constraint_walk_infer(clean[4..], actual, names, mut inferred)
+		return
+	}
+	if clean.starts_with('[]') {
+		if array := array_type_from_receiver(actual) {
+			tc.constraint_walk_infer(clean[2..], array.elem_type, names, mut inferred)
+		}
+		return
+	}
+	if clean.starts_with('?') || clean.starts_with('!') {
+		held := unalias_type(actual)
+		base := match held {
+			OptionType { held.base_type }
+			ResultType { held.base_type }
+			else { held }
+		}
+		tc.constraint_walk_infer(clean[1..], base, names, mut inferred)
+		return
+	}
+	if generic_type_application(clean) {
+		param_base, param_args, _ := generic_type_application_parts(clean)
+		actual_base, actual_args, actual_is_generic := generic_type_application_parts(tc.generic_infer_type_text(unwrap_pointer(actual)))
+		if actual_is_generic && param_args.len == actual_args.len
+			&& tc.generic_type_base_matches(tc.generic_param_type_text(param_base), actual_base) {
+			for i in 0 .. param_args.len {
+				tc.constraint_walk_infer(param_args[i], tc.constraint_walk_named_type(actual_args[i]),
+					names, mut inferred)
+			}
+			return
+		}
+	}
+	tc.infer_generic_type_value_from_type(clean, actual, names, mut inferred)
+}
+
+// constraint_walk_named_type is the type that `name`, an explicit type argument
+// of a call in the body of the walk, names there: a type parameter of the caller,
+// or a type.
+fn (tc &TypeChecker) constraint_walk_named_type(name string) Type {
+	if is_bare_generic_param(name)
+		&& (name in tc.fn_context.generic_params || tc.active_generic_param(name)) {
+		return unknown_type('generic placeholder `${name}`')
+	}
+	return tc.parse_type(name)
+}
+
+// constraint_walk_iterable_type is what a `for ... in` loop of the walk goes
+// through: the container without its aliases, its pointer or its option, as
+// for_in_iterable_type takes it.
+fn (mut tc TypeChecker) constraint_walk_iterable_type(container_id flat.NodeId) Type {
+	mut clean := unwrap_pointer(tc.constraint_walk_value_type(container_id))
+	for _ in 0 .. 8 {
+		if clean is Alias {
+			clean = clean.base_type
+			continue
+		}
+		if clean is OptionType {
+			base := unalias_type(unwrap_pointer(clean.base_type))
+			if base is Array || base is ArrayFixed {
+				clean = base
+				continue
+			}
+		}
+		break
+	}
+	return clean
+}
+
+// bind_constraint_walk_local binds the local that `id` names, if it names one,
+// to `typ` in the scope of the walk.
+fn (mut tc TypeChecker) bind_constraint_walk_local(id flat.NodeId, typ Type) {
+	if !tc.valid_node_id(id) {
+		return
+	}
+	local := tc.a.node(id)
+	if local.kind == .ident && local.value.len > 0 && local.value != '_' {
+		tc.cur_scope.insert(local.value, typ)
 	}
 }
 
@@ -486,7 +782,7 @@ fn (mut tc TypeChecker) check_constraint_member(node_id flat.NodeId, node flat.N
 	if base.kind == .ident && (base.value in interfaces || base.value in narrowed) {
 		return
 	}
-	base_type := unwrap_pointer(tc.resolve_type(base_id))
+	base_type := unwrap_pointer(tc.constraint_walk_value_type(base_id))
 	if base_type !is Unknown {
 		return
 	}
@@ -504,7 +800,7 @@ fn (mut tc TypeChecker) check_constraint_member(node_id flat.NodeId, node flat.N
 			if is_call {
 				tc.record_error_at(.unknown_fn, message, node_id, tc.method_call_name_pos(node, sel))
 			} else {
-				tc.record_error_at(.unknown_field, message, sel_id, tc.node_value_diagnostic_pos(sel_id))
+				tc.record_error_at(.unknown_field, message, sel_id, tc.constraint_member_pos(sel_id, sel))
 			}
 			return
 		}
@@ -523,8 +819,21 @@ fn (mut tc TypeChecker) check_constraint_member(node_id flat.NodeId, node flat.N
 			node_id, tc.method_call_name_pos(node, sel))
 	} else {
 		tc.record_error_at(.unknown_field, 'type `${param}` has no field named `${member}`: its constraint `${display}` does not declare it',
-			sel_id, tc.node_value_diagnostic_pos(sel_id))
+			sel_id, tc.constraint_member_pos(sel_id, sel))
 	}
+}
+
+// constraint_member_pos is where the member that the selector `sel` names is
+// written: at the end of the selector, after its base, which can hold the same
+// name before it, `x.age + pick(n).age`.
+fn (tc &TypeChecker) constraint_member_pos(sel_id flat.NodeId, sel flat.Node) token.Pos {
+	end := int(sel.pos.end)
+	start := end - sel.value.len
+	source := tc.vls_source(int(sel.pos.id))
+	if start > int(sel.pos.offset) && end <= source.len && source[start..end] == sel.value {
+		return token.new_span(sel.pos.id, start, end)
+	}
+	return tc.node_value_diagnostic_pos(sel_id)
 }
 
 // type_has_member reports whether the type `typ` has the method `member`, or

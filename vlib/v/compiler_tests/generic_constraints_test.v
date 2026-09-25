@@ -158,6 +158,190 @@ fn main() {}
 	], res.output
 }
 
+fn test_a_local_that_gets_its_value_from_a_t_is_a_t() {
+	// Every way a local can take a value of type `T`: each `.age` below is on a `T`.
+	res := check_program('derived', "fn derived[T Named](a T, b T, items []T, m map[string]T, c bool, n int) int {
+	x := a
+	mut total := x.age
+	mut y := a
+	y = b
+	total += y.age
+	z := if c { a } else { b }
+	total += z.age
+	for w in items {
+		total += w.age
+	}
+	for i, w2 in items {
+		total += i + w2.age
+	}
+	first := items[0]
+	total += first.age
+	p, q := a, b
+	total += p.name.len + q.age
+	r := (a)
+	total += r.age
+	s := &a
+	total += s.age
+	t := match n {
+		1 { a }
+		else { b }
+	}
+	total += t.age
+	u := m['k'] or { a }
+	total += u.age
+	v := x
+	total += v.age
+	return total + x.greet().len
+}
+
+struct Box[T Named] {
+	item T
+}
+
+fn from_field[T Named](b Box[T]) int {
+	x := b.item
+	return x.age
+}
+
+constraint Number = int | f64
+
+fn from_set[T Number](x T) int {
+	y := x
+	return y.len
+}
+
+fn main() {}
+")
+	assert res.exit_code == 1, res.output
+	no_age := 'type `T` has no field named `age`: its constraint `Named` does not declare it'
+	assert error_lines(res.output) == [
+		'3:17: ${no_age}',
+		'6:13: ${no_age}',
+		'8:13: ${no_age}',
+		'10:14: ${no_age}',
+		'13:19: ${no_age}',
+		'16:17: ${no_age}',
+		'18:26: ${no_age}',
+		'20:13: ${no_age}',
+		'22:13: ${no_age}',
+		'27:13: ${no_age}',
+		'29:13: ${no_age}',
+		'31:13: ${no_age}',
+		'32:19: type `T` has no method `greet`: its constraint `Named` does not declare it',
+		'41:11: ${no_age}',
+		'48:11: type `T` has no field named `len`: `int`, in its constraint `Number`, does not have it',
+	], res.output
+}
+
+fn test_a_local_from_a_guard_a_call_or_an_array_method_is_a_t() {
+	// `U`, not `T`: the type of a call must be the caller's parameter, not the
+	// callee's `T`, which has the same name in `find` and `pair`.
+	res := check_program('derived_calls', "fn find[T Named](items []T) ?T {
+	return none
+}
+
+fn pair[T Named](a T) (T, int) {
+	return a, 1
+}
+
+fn derived[U Named](a U, items []U, m map[string]U) int {
+	mut total := 0
+	if v := m['k'] {
+		total += v.age
+	}
+	if w := find(items) {
+		total += w.age
+	}
+	p, n := pair(a)
+	total += n + p.age
+	arr := [a]
+	total += arr[0].age
+	f := items.first()
+	total += f.age
+	for g in items.filter(it.name.len > 0) {
+		total += g.age
+	}
+	for h in items.reverse() {
+		total += h.age
+	}
+	return total
+}
+
+fn main() {}
+")
+	assert res.exit_code == 1, res.output
+	no_age := 'type `U` has no field named `age`: its constraint `Named` does not declare it'
+	assert error_lines(res.output) == [
+		'12:14: ${no_age}',
+		'15:14: ${no_age}',
+		'18:17: ${no_age}',
+		'20:18: ${no_age}',
+		'22:13: ${no_age}',
+		'24:14: ${no_age}',
+		'27:14: ${no_age}',
+	], res.output
+}
+
+fn test_a_generic_call_in_the_body_has_the_type_of_the_caller() {
+	// `pick(n)` is a `U`: its own `T` is bound to the caller's `U`, and the
+	// caller's `T` is another type parameter, with another constraint.
+	res := check_program('call_type', 'fn pick[T Named](a T) T {
+	return a
+}
+
+struct Box[T Named] {
+	item T
+}
+
+fn (b Box[T]) get() T {
+	return b.item
+}
+
+fn mixed[T Greeter, U Named](g T, n U, b Box[U]) int {
+	x := pick(n)
+	println(x.name)
+	println(g.greet())
+	y := b.get()
+	println(y.name)
+	return x.age + y.age + pick(n).age
+}
+
+fn main() {}
+')
+	assert res.exit_code == 1, res.output
+	no_age := 'type `U` has no field named `age`: its constraint `Named` does not declare it'
+	assert error_lines(res.output) == [
+		'19:11: ${no_age}',
+		'19:19: ${no_age}',
+		'19:33: ${no_age}',
+	], res.output
+}
+
+fn test_a_local_of_type_t_can_use_what_the_constraint_declares() {
+	res := check_program('derived_valid', "fn total[T Named](a T, items []T) int {
+	x := a
+	mut sum := x.name.len
+	for y in items {
+		sum += y.name.len
+	}
+	n := 5
+	sum += n
+	s := 'abc'
+	sum += s.len
+	first := items[0]
+	return sum + first.name.len
+}
+
+fn main() {
+	println(total(User{ name: 'a' }, [User{
+		name: 'b'
+	}]))
+}
+")
+	assert res.exit_code == 0, res.output
+	assert error_lines(res.output) == [], res.output
+}
+
 fn test_a_generic_struct_checks_its_type_arguments() {
 	res := check_program('struct', "struct Box[T Named] {
 	item T
