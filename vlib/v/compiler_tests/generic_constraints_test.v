@@ -606,6 +606,84 @@ fn main() {}
 	], res.output
 }
 
+fn test_a_generic_interface_is_a_constraint_bound_to_the_type_argument() {
+	// `[T Comparable[T]]`: the interface of each type argument itself, so `Odd`,
+	// whose `less` takes an `int`, is not `Comparable[Odd]`; `[T Comparable[int]]`
+	// is bound as it is written. The same for a generic struct, a function value
+	// and a type parameter passed on.
+	res := check_program('generic_iface', 'interface Comparable[T] {
+	less(other T) bool
+}
+
+struct Num {
+	v int
+}
+
+fn (a Num) less(b Num) bool {
+	return a.v < b.v
+}
+
+struct Odd {
+	v int
+}
+
+fn (a Odd) less(b int) bool {
+	return a.v < b
+}
+
+fn smallest[T Comparable[T]](a T, b T) T {
+	if a.less(b) {
+		return a
+	}
+	println(a.v)
+	return b
+}
+
+fn below[T Comparable[int]](a T, n int) bool {
+	return a.less(n)
+}
+
+struct Sorted[T Comparable[T]] {
+	items []T
+}
+
+struct Shelves {
+	good Sorted[Num]
+	bad  Sorted[Odd]
+}
+
+fn relay[U Comparable[U]](a U, b U) U {
+	return smallest(a, b)
+}
+
+fn relay_bad[U](a U, b U) U {
+	return smallest(a, b)
+}
+
+fn main() {
+	println(smallest(Num{1}, Num{2}).v)
+	println(smallest(Odd{1}, Odd{2}).v)
+	println(smallest(User{}, User{}).name)
+	println(smallest(1, 2))
+	println(below(Odd{1}, 5))
+	println(below(Num{1}, 5))
+	f := smallest[Odd]
+	println(f)
+}
+')
+	assert res.exit_code == 1, res.output
+	assert error_lines(res.output) == [
+		'25:12: type `T` has no field named `v`: its constraint `Comparable` does not declare it',
+		'39:7: `Odd` incorrectly implements method `less` of interface `Comparable`: expected `Odd`, not `int` for parameter 1',
+		'47:18: `smallest` needs `U` to implement `Comparable[U]`: `U` has no constraint: give it one, `[U Comparable[U]]`',
+		'52:19: `Odd` incorrectly implements method `less` of interface `Comparable`: expected `Odd`, not `int` for parameter 1',
+		"53:19: `User` doesn't implement method `less` of interface `Comparable`",
+		"54:19: `int` doesn't implement method `less` of interface `Comparable`",
+		'56:16: `Num` incorrectly implements method `less` of interface `Comparable`: expected `int`, not `Num` for parameter 1',
+		'57:16: `Odd` incorrectly implements method `less` of interface `Comparable`: expected `Odd`, not `int` for parameter 1',
+	], res.output
+}
+
 fn test_a_local_of_type_t_can_use_what_the_constraint_declares() {
 	res := check_program('derived_valid', "fn total[T Named](a T, items []T) int {
 	x := a

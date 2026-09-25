@@ -57,6 +57,22 @@ fn (tc &TypeChecker) generic_constraint(decl flat.Node, text string) ?GenericCon
 	return none
 }
 
+// generic_constraint_with_args resolves the constraint `text` of `decl` with its
+// type parameters `names` bound to the types that `args` spell: `Comparable[T]`
+// is `Comparable[Odd]` for `T = Odd`. It is the constraint as written when the
+// bound one cannot be resolved.
+fn (tc &TypeChecker) generic_constraint_with_args(decl flat.Node, text string, names []string, args []string) ?GenericConstraint {
+	if text.contains('[') && names.len == args.len {
+		bound := subst_generic_text(text, args.map(it.trim_space()), names.map(it.trim_space()))
+		if bound != text {
+			if constraint := tc.generic_constraint(decl, bound) {
+				return constraint
+			}
+		}
+	}
+	return tc.generic_constraint(decl, text)
+}
+
 // constraint_set_types resolves the types of the `constraint` declaration
 // `set_id` where it is declared.
 fn (tc &TypeChecker) constraint_set_types(set_id flat.NodeId) []Type {
@@ -228,11 +244,12 @@ fn (mut tc TypeChecker) check_generic_call_constraints(call_id flat.NodeId, call
 		if constraints[i].len == 0 {
 			continue
 		}
-		constraint := tc.generic_constraint(decl, constraints[i]) or { continue }
 		k := instantiation.generic_params.index(name)
 		if k < 0 || k >= instantiation.concrete_args.len {
 			continue
 		}
+		constraint := tc.generic_constraint_with_args(decl, constraints[i], instantiation.generic_params,
+			instantiation.concrete_args) or { continue }
 		actual := tc.parse_type(instantiation.concrete_args[k])
 		if tc.generic_constraint_accepts(constraint, actual) {
 			continue
@@ -336,18 +353,19 @@ fn (mut tc TypeChecker) check_generic_struct_constraints(id flat.NodeId, pos tok
 		arg := args[i].trim_space()
 		if arg in scope.names {
 			// `Box[T]` inside a declaration of `T`: its constraint has to do.
-			if reason := tc.constraint_unmet_reason(scope.constraints, arg, constraint) {
+			display := subst_generic_text(text, args.map(it.trim_space()), params.map(it.trim_space()))
+			if reason := tc.constraint_unmet_reason(scope.constraints, arg, constraint, display) {
 				application := '${base.all_after_last('.')}[${args.map(it.trim_space()).join(', ')}]'
-				tc.record_error_at(.call_arg_mismatch, '`${application}` needs `${arg}` to ${constraint_need(constraint)}: ${reason}',
-					id, pos)
+				tc.record_error_at(.call_arg_mismatch, '`${application}` needs `${arg}` to ${constraint_need(constraint, display)}: ${reason}', id, pos)
 			}
 			continue
 		}
+		bound := tc.generic_constraint_with_args(decl, text, params, args) or { constraint }
 		actual := tc.parse_type(args[i])
-		if tc.generic_constraint_accepts(constraint, actual) {
+		if tc.generic_constraint_accepts(bound, actual) {
 			continue
 		}
-		tc.record_generic_constraint_error(constraint, params[i], actual, id, pos)
+		tc.record_generic_constraint_error(bound, params[i], actual, id, pos)
 	}
 }
 
@@ -573,8 +591,9 @@ fn (mut tc TypeChecker) check_generic_fn_value_constraints(id flat.NodeId, node 
 		if text.len == 0 {
 			continue
 		}
-		constraint := tc.generic_constraint(decl, text) or { continue }
-		actual := tc.parse_type(tc.explicit_generic_concrete_arg_text(type_args[i]))
+		concrete := type_args.map(tc.explicit_generic_concrete_arg_text(it))
+		constraint := tc.generic_constraint_with_args(decl, text, params, concrete) or { continue }
+		actual := tc.parse_type(concrete[i])
 		if tc.generic_constraint_accepts(constraint, actual) {
 			continue
 		}
@@ -1017,36 +1036,37 @@ fn (tc &TypeChecker) type_param_scope(node flat.Node) TypeParamScope {
 	return TypeParamScope{names, constraints}
 }
 
-// constraint_need is what `constraint` asks of a type: to implement its
-// interface, or to be one of its set.
-fn constraint_need(constraint GenericConstraint) string {
+// constraint_need is what `constraint`, written as `display` where it is
+// asked, asks of a type: to implement its interface, or to be one of its set.
+fn constraint_need(constraint GenericConstraint, display string) string {
 	if constraint.is_interface {
-		return 'implement `${constraint.iface.name.all_after_last('.')}`'
+		return 'implement `${display}`'
 	}
-	return 'be in `${constraint.name}`'
+	return 'be in `${display}`'
 }
 
 // constraint_unmet_reason is why the type parameter `param`, with what
-// `constraints` says of it, does not satisfy `need`; none when it does: its
-// constraint implements the interface, or its set is part of the set.
-fn (tc &TypeChecker) constraint_unmet_reason(constraints map[string]GenericConstraint, param string, need GenericConstraint) ?string {
+// `constraints` says of it, does not satisfy `need`, written as `display` with
+// the type parameters of where it is asked, `Comparable[U]`; none when it does:
+// its constraint implements the interface, or its set is part of the set.
+fn (tc &TypeChecker) constraint_unmet_reason(constraints map[string]GenericConstraint, param string, need GenericConstraint, display string) ?string {
 	have := constraints[param] or {
-		name := if need.is_interface {
-			need.iface.name.all_after_last('.')
-		} else {
-			need.name
-		}
-		return '`${param}` has no constraint: give it one, `[${param} ${name}]`'
+		return '`${param}` has no constraint: give it one, `[${param} ${display}]`'
 	}
 	if have.is_interface {
 		if !need.is_interface {
-			return 'its constraint `${have.iface.name.all_after_last('.')}` is not a set of types'
+			return 'its constraint `${have.name}` is not a set of types'
 		}
-		if tc.interface_metadata_name(have.iface.name) == tc.interface_metadata_name(need.iface.name)
+		if have.name.contains('[') || display.contains('[') {
+			// A generic interface, `Comparable[U]`, with its own type arguments.
+			if have.name.replace(' ', '') == display.replace(' ', '') {
+				return none
+			}
+		} else if tc.interface_metadata_name(have.iface.name) == tc.interface_metadata_name(need.iface.name)
 			|| tc.type_implements_interface(Type(have.iface), need.iface) {
 			return none
 		}
-		return 'its constraint `${have.iface.name.all_after_last('.')}` does not'
+		return 'its constraint `${have.name}` does not'
 	}
 	for typ in have.types {
 		if !tc.generic_constraint_accepts(need, typ) {
@@ -1081,10 +1101,17 @@ fn (mut tc TypeChecker) check_generic_call_in_body(id flat.NodeId, node flat.Nod
 			if param !in scope.names {
 				continue
 			}
-			if reason := tc.constraint_unmet_reason(constraints, param, need) {
+			bound_texts := own.map(fn [binding] (own_name string) string {
+				t := binding.types[own_name] or { return own_name }
+				if t is Unknown {
+					return generic_placeholder_from_unknown(t) or { own_name }
+				}
+				return t.name().all_after_last('.')
+			})
+			display := subst_generic_text(need.name, bound_texts, own)
+			if reason := tc.constraint_unmet_reason(constraints, param, need, display) {
 				callee := binding.info.name.all_after_last('.')
-				tc.record_error_at(.call_arg_mismatch, '`${callee}` needs `${param}` to ${constraint_need(need)}: ${reason}',
-					id, pos)
+				tc.record_error_at(.call_arg_mismatch, '`${callee}` needs `${param}` to ${constraint_need(need, display)}: ${reason}', id, pos)
 			}
 			continue
 		}
