@@ -12491,6 +12491,18 @@ fn (mut g FlatGen) gen_expr_with_expected_type(id flat.NodeId, expected_type typ
 		g.expected_enum = old_expected_enum
 		return
 	}
+	if wide_target := int128_signedness(semantic_expected) {
+		// The promotion ladder accepts a narrower integer where a 128-bit one is
+		// expected, in an argument, a field, a return value or an element. On the
+		// native representation C widens it by itself; the struct representation
+		// has no such conversion, so the helper does the widening here instead.
+		if int128_signedness(semantic_actual) == none && source_signedness_known(semantic_actual) {
+			g.gen_int128_operand(id, semantic_actual, wide_target)
+			g.expected_expr_type = old_expected
+			g.expected_enum = old_expected_enum
+			return
+		}
+	}
 	g.gen_expr(id)
 	g.expected_expr_type = old_expected
 	g.expected_enum = old_expected_enum
@@ -24538,9 +24550,25 @@ fn (mut g FlatGen) gen_guarded_shift_from_text(lhs_text string, rhs_id flat.Node
 	}
 	lhs_tmp := g.tmp_name()
 	rhs_tmp := g.tmp_name()
-	g.write('({ ${lhs_type_name} ${lhs_tmp} = (${lhs_type_name})(${lhs_text}); u64 ${rhs_tmp} = (u64)(')
+	g.write('({ ${lhs_type_name} ${lhs_tmp} = (${lhs_type_name})(${lhs_text}); u64 ${rhs_tmp} = ')
+	g.gen_shift_count_value(rhs_id)
+	g.write('; ${rhs_tmp} >= ${bits} ? (${result_type})0 : (${result_type})(${lhs_tmp} ${op_text} ${rhs_tmp}); })')
+}
+
+// gen_shift_count_value writes a shift count as a u64. A 128-bit count is read
+// through the helpers: the struct representation has no C cast to a u64, and its
+// upper half has to count, because a count past 64 bits is past every width and
+// the guard around this value turns it into a zero result.
+fn (mut g FlatGen) gen_shift_count_value(rhs_id flat.NodeId) {
+	if int128_signedness(g.usable_expr_type(rhs_id)) != none {
+		g.write('__v_u128_shift_count(')
+		g.gen_expr(rhs_id)
+		g.write(')')
+		return
+	}
+	g.write('(u64)(')
 	g.gen_expr(rhs_id)
-	g.write('); ${rhs_tmp} >= ${bits} ? (${result_type})0 : (${result_type})(${lhs_tmp} ${op_text} ${rhs_tmp}); })')
+	g.write(')')
 }
 
 fn fixed_integer_c_type_width(c_type string) ?int {

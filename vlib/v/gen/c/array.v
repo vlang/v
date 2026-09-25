@@ -1831,23 +1831,21 @@ fn (mut g FlatGen) gen_index_assign(node flat.Node) {
 				}
 			}
 			g.write('; array__set(_a${tmp}, _i${tmp}, &(${c_elem}[]){')
-			if base_op := int128_assign_base_op(node.op) {
+			if _ := int128_assign_base_op(node.op) {
 				if signed := int128_signedness(arr_type.elem_type) {
-					if helper := int128_infix_helper(base_op, signed) {
-						// A 128-bit element has no C operator for a compound assignment,
-						// so the element is combined through the helpers a plain infix
-						// uses. The element address is read through the array either way.
-						lhs_text := '*(${c_elem}*)array_get(*_a${tmp}, _i${tmp})'
-						g.write('${helper}(${lhs_text}, ')
-						if base_op in int128_shift_ops {
-							g.gen_int128_shift_count(g.a.child(&node, 1), arr_type.elem_type)
-						} else {
-							g.gen_int128_operand(g.a.child(&node, 1), arr_type.elem_type, signed)
-						}
-						g.write(')')
-						g.writeln('}); }')
-						return
-					}
+					// A 128-bit element has no C compound operator in the struct
+					// representation, so it is combined the way a plain infix
+					// combines it: through the helper, with the right-hand side
+					// widened from its own type, a shift count taken at 128 bits and
+					// a divisor checked for zero. The element is read through the
+					// array temporaries hoisted above, so reading it twice runs no
+					// side effect twice.
+					rhs_id := g.a.child(&node, 1)
+					lhs_text := '*(${c_elem}*)array_get(*_a${tmp}, _i${tmp})'
+					g.gen_int128_compound_value(node.op, lhs_text, rhs_id, g.usable_expr_type(rhs_id),
+						signed, c_elem)
+					g.writeln('}); }')
+					return
 				}
 			}
 			if node.op == .power_assign {

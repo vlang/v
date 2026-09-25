@@ -17,6 +17,12 @@ static inline u128 __v_u128_make(u64 hi, u64 lo) {
 	return ((u128)hi << 64) | (u128)lo;
 }
 
+/* A shift count, clamped to the one value the shift helpers have to recognise as
+ * out of range. Reading only the low 64 bits let a count of 2^64 look like zero. */
+static inline u64 __v_u128_shift_count(u128 a) {
+	return a > (u128)(~(u64)0) ? (u64)128 : (u64)a;
+}
+
 /* The native type is two's complement, so every bit pattern is a value and the
  * conversions below are plain casts. */
 static inline u128 __v_u128_zero(void) {
@@ -264,6 +270,13 @@ static inline u128 __v_u128_make(u64 hi, u64 lo) {
 	r.lo = lo;
 	r.hi = hi;
 	return r;
+}
+
+/* A shift count, clamped to the one value the shift helpers have to recognise as
+ * out of range. Anything above the low 64 bits is at least 2^64, which is over
+ * the 128 a shift can use. */
+static inline u64 __v_u128_shift_count(u128 a) {
+	return a.hi != 0 ? (u64)128 : a.lo;
 }
 
 static inline u128 __v_u128_zero(void) {

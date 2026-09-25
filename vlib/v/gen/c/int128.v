@@ -162,28 +162,34 @@ fn (mut g FlatGen) gen_int128_infix(id flat.NodeId, node flat.Node, lhs_id flat.
 }
 
 // gen_int128_operand writes one operand of a 128-bit helper call, widening a
-// narrower integer into the helper's type. Widening by explicit i64/u64 casts
-// keeps the sign of signed values and the full range of unsigned ones.
+// narrower integer into the helper's type. The operand keeps its own sign while
+// it widens: a signed value sign-extends and an unsigned one zero-extends, the
+// same choice a cast makes. Widening every narrow operand through i64 instead
+// turned `u64(0xffffffffffffffff)` into -1, so `i128(0) + u64(0xffffffffffffffff)`
+// came out as -1 and the matching comparison was false.
 fn (mut g FlatGen) gen_int128_operand(id flat.NodeId, typ types.Type, signed bool) {
 	if int128_signedness(typ) != none {
 		g.gen_expr(id)
 		return
 	}
-	wrap := if signed { '__v_i128_from_i64' } else { '__v_u128_from_u64' }
-	cast := if signed { 'i64' } else { 'u64' }
+	from_signed := int128_source_is_signed(typ)
+	family := if signed { 'i128' } else { 'u128' }
+	wrap := if from_signed { '__v_${family}_from_i64' } else { '__v_${family}_from_u64' }
+	cast := if from_signed { 'i64' } else { 'u64' }
 	g.write('${wrap}((${cast})(')
 	g.gen_expr(id)
 	g.write('))')
 }
 
 // gen_int128_shift_count writes a shift count as a u64. The helpers answer 0 for
-// counts at or above 128, which is the same rule `gen_guarded_shift` applies at
-// the other widths; a negative count becomes a large u64 and lands on that same
-// rule.
+// counts at or above 128, which is the same rule the narrower widths apply, and
+// a count written as a 128-bit value has to be checked at that width: reading
+// only its low 64 bits turned `u128(1) << 64` into a count of 0, which shifted
+// by nothing. A negative count has its sign bit set, so it lands on the same
+// rule, as does a count whose upper half is not zero.
 fn (mut g FlatGen) gen_int128_shift_count(id flat.NodeId, typ types.Type) {
-	if kind := int128_signedness(typ) {
-		g.write(if kind { '__v_i128_to_u64' } else { '__v_u128_to_u64' })
-		g.write('(')
+	if int128_signedness(typ) != none {
+		g.write('__v_u128_shift_count(')
 		g.gen_expr(id)
 		g.write(')')
 		return
@@ -430,13 +436,14 @@ fn int128_assign_base_op(op flat.Op) ?flat.Op {
 	}
 }
 
-// gen_int128_compound_assign rewrites `x += y` on a 128-bit value into an
-// assignment from the helper call, because the C struct representation has no
-// compound operators. The lvalue is evaluated once by taking its address, the
-// way the shift compound path already does it for the other widths.
-fn (mut g FlatGen) gen_int128_compound_assign(op flat.Op, lhs_id flat.NodeId, rhs_id flat.NodeId, lhs_type types.Type, rhs_type types.Type) bool {
-	signed := int128_signedness(lhs_type) or { return false }
-	base_op := int128_assign_base_op(op) or { return false }
+// gen_int128_compound_value writes the new value of a compound assignment as an
+// expression, reading the target through `lhs_text`. It is shared by the scalar
+// lowering and the array-element one, so both widen the right-hand side from its
+// own type, clamp a wide shift count, and check a divisor for zero before the
+// helper divides. `value_ct` names the C type of the target, which the divisor
+// temporary needs.
+fn (mut g FlatGen) gen_int128_compound_value(op flat.Op, lhs_text string, rhs_id flat.NodeId, rhs_type types.Type, signed bool, value_ct string) {
+	base_op := int128_assign_base_op(op) or { return }
 	helper := if base_op in int128_shift_ops {
 		match base_op {
 			.left_shift { int128_helper(signed, 'shl') }
@@ -444,7 +451,37 @@ fn (mut g FlatGen) gen_int128_compound_assign(op flat.Op, lhs_id flat.NodeId, rh
 			else { int128_helper(false, 'shr') }
 		}
 	} else {
-		int128_infix_helper(base_op, signed) or { return false }
+		int128_infix_helper(base_op, signed) or { return }
+	}
+	if base_op in [.div, .mod] && g.has_builtins {
+		// `/= 0` and `%= 0` have to panic like every other width. The divisor goes
+		// through a temporary because a divisor expression may have side effects and
+		// must run once, and it is checked before the helper sees it.
+		message := if base_op == .div { 'division by zero' } else { 'modulo by zero' }
+		divisor := g.tmp_name()
+		g.write('({ ${value_ct} ${divisor} = ')
+		g.gen_int128_operand(rhs_id, rhs_type, signed)
+		g.write('; if (__v_u128_is_zero(${divisor})) v_panic(_S("${message}")); ')
+		g.write('${helper}(${lhs_text}, ${divisor}); })')
+		return
+	}
+	g.write('${helper}(${lhs_text}, ')
+	if base_op in int128_shift_ops {
+		g.gen_int128_shift_count(rhs_id, rhs_type)
+	} else {
+		g.gen_int128_operand(rhs_id, rhs_type, signed)
+	}
+	g.write(')')
+}
+
+// gen_int128_compound_assign rewrites `x += y` on a 128-bit value into an
+// assignment from the helper call, because the C struct representation has no
+// compound operators. The lvalue is evaluated once by taking its address, the
+// way the shift compound path already does it for the other widths.
+fn (mut g FlatGen) gen_int128_compound_assign(op flat.Op, lhs_id flat.NodeId, rhs_id flat.NodeId, lhs_type types.Type, rhs_type types.Type) bool {
+	signed := int128_signedness(lhs_type) or { return false }
+	if int128_assign_base_op(op) == none {
+		return false
 	}
 	lhs := g.a.nodes[int(lhs_id)]
 	mut lhs_text := ''
@@ -461,33 +498,12 @@ fn (mut g FlatGen) gen_int128_compound_assign(op flat.Op, lhs_id flat.NodeId, rh
 		g.write('); ')
 		lhs_text = '*${addr_tmp}'
 	}
-	if base_op in [.div, .mod] && g.has_builtins {
-		// `/= 0` and `%= 0` have to panic like every other width. The divisor goes
-		// through a temporary because a divisor expression may have side effects and
-		// must run once, and it is checked before the helper sees it.
-		message := if base_op == .div { 'division by zero' } else { 'modulo by zero' }
-		divisor := g.tmp_name()
-		value_ct := g.value_c_type(lhs_type)
-		g.write('{ ${value_ct} ${divisor} = ')
-		g.gen_int128_operand(rhs_id, rhs_type, signed)
-		g.write('; if (__v_u128_is_zero(${divisor})) v_panic(_S("${message}")); ${lhs_text} = ${helper}(${lhs_text}, ${divisor}); ')
-		if lhs.kind == .ident {
-			g.write('} ')
-		} else {
-			g.write('} } ')
-		}
-		return true
-	}
-	g.write('${lhs_text} = ${helper}(${lhs_text}, ')
-	if base_op in int128_shift_ops {
-		g.gen_int128_shift_count(rhs_id, rhs_type)
-	} else {
-		g.gen_int128_operand(rhs_id, rhs_type, signed)
-	}
+	g.write('${lhs_text} = ')
+	g.gen_int128_compound_value(op, lhs_text, rhs_id, rhs_type, signed, g.value_c_type(lhs_type))
 	if lhs.kind == .ident {
-		g.write('); ')
+		g.write('; ')
 	} else {
-		g.write('); } ')
+		g.write('; } ')
 	}
 	return true
 }

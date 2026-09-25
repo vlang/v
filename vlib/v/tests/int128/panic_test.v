@@ -35,7 +35,24 @@ fn test_a_compound_division_by_zero_panics() {
 }
 
 fn test_a_signed_division_by_zero_panics() {
-	result := run_probe('idiv0', '\ta := i128(-10)\n\tb := i128(0)\n\tprintln(a / b)\n')
+	result := run_probe('idiv0', '	a := i128(-10)\n	b := i128(0)\n	println(a / b)\n')
+	assert result.exit_code != 0
+	assert result.output.contains('by zero')
+}
+
+fn test_an_array_element_division_by_zero_panics() {
+	// The element path has to go through the same guard as the scalar one, which
+	// it skipped: it handed back the maximum u128 where the native
+	// representation raised SIGFPE instead.
+	result := run_probe('arr_div0',
+		'	mut a := [u128(10)]\n	b := u128(0)\n	a[0] /= b\n	println(a[0])\n')
+	assert result.exit_code != 0
+	assert result.output.contains('by zero')
+}
+
+fn test_an_array_element_modulo_by_zero_panics() {
+	result := run_probe('arr_mod0',
+		'	mut a := [u128(10)]\n	b := u128(0)\n	a[0] %= b\n	println(a[0])\n')
 	assert result.exit_code != 0
 	assert result.output.contains('by zero')
 }

@@ -106,6 +106,49 @@ fn test_u128_compound_assignment() {
 	assert c == u128(1)
 }
 
+fn test_u128_array_element_compound_assignment() {
+	// An element goes through the scalar lowering now. The right side used to be
+	// widened from the element type, which left a plain C `1` where a widened
+	// value was expected, and a shift had no 128-bit case at all.
+	mut a := [u128(10)]
+	a[0] += 1
+	assert a[0] == u128(11)
+	a[0] += u64(2)
+	assert a[0] == u128(13)
+	a[0] <<= 65
+	assert a[0] == (u128(13) << 65)
+	a[0] /= u128(2)
+	assert a[0] == (u128(13) << 64)
+	a[0] %= u128(7)
+	assert a[0] == (u128(13) << 64) % u128(7)
+	a[0] -= u128(1)
+	assert a[0] == ((u128(13) << 64) % u128(7)) - u128(1)
+}
+
+fn test_a_fixed_array_element_compound_assignment() {
+	mut a := [u128(3), u128(4), u128(5)]!
+	a[1] *= 2
+	assert a[1] == u128(8)
+	a[0] += u8(1)
+	assert a[0] == u128(4)
+	a[2] >>= 1
+	// The right side is a count, not a value to widen into the element.
+	assert a[2] == u128(2)
+}
+
+fn test_an_array_element_takes_another_element() {
+	mut a := [u128(1), u128(2)]
+	a[0] += a[1]
+	assert a[0] == u128(3)
+	mut b := u128(4)
+	a[1] += b
+	assert a[1] == u128(6)
+	b = 0
+	// The divisor is read once, before the assignment writes the element.
+	a[1] /= u128(3)
+	assert a[1] == u128(2)
+}
+
 fn i_min() i128 {
 	return i128(-1) - i128(((i128(1) << 126) - 1) + (i128(1) << 126))
 }
