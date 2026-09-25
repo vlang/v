@@ -36,7 +36,8 @@ jobs:
         os: [macos-14, macos-15, macos-26]
       fail-fast: false
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 151
+    # V3 self tests alone take well over an hour on these 3-core runners.
+    timeout-minutes: 240
     env:
       VFLAGS: -cc clang
       VTEST_SHOW_LONGEST_BY_RUNTIME: 3
