@@ -97,6 +97,10 @@ fn (t &Transformer) local_fn_decl_return_type(name string) ?string {
 	if name == '' {
 		return none
 	}
+	module_key := transform_fn_module_key(t.cur_module, name)
+	if ret := t.fn_ret_types_by_module[module_key] {
+		return ret
+	}
 	qname := transform_qualified_fn_name(t.cur_module, name)
 	if ret := t.fn_ret_types[qname] {
 		return ret
@@ -130,6 +134,11 @@ fn (t &Transformer) fn_value_call_return_type(node flat.Node) ?string {
 		local_type := t.var_type(callee.value)
 		if ret := t.local_fn_value_return_type_from_type(local_type) {
 			return ret
+		}
+		if local_type.len == 0 {
+			if _ := t.local_fn_decl_return_type(callee.value) {
+				return none
+			}
 		}
 	}
 	if callee.kind == .selector {
@@ -407,7 +416,9 @@ fn (t &Transformer) resolve_receiver_method_for_type_uncached(receiver_type stri
 			}
 		}
 		if !isnil(t.tc) {
-			if method_name := t.tc.concrete_method_signature_key(clean_type, method) {
+			if method_name := t.tc.concrete_method_signature_key(t.local_receiver_type_name(clean_type),
+				method)
+			{
 				if t.is_known_fn_name(method_name) {
 					return method_name
 				}
@@ -418,7 +429,13 @@ fn (t &Transformer) resolve_receiver_method_for_type_uncached(receiver_type stri
 			return direct
 		}
 		if declared := t.declared_receiver_method(clean_type, method) {
-			return declared
+			// `declared` is the source spelling (`Any.str`); the suffix index names
+			// the module that registered it (`json2.Any.str`).
+			registered := t.receiver_method_suffix_index[declared] or { '' }
+			if registered == '' || registered == receiver_method_suffix_ambiguous
+				|| t.receiver_owns_method(clean_type, registered) {
+				return declared
+			}
 		}
 		if clean_type.starts_with('main.') && !clean_type['main.'.len..].contains('.') {
 			main_receiver := clean_type['main.'.len..]
@@ -539,7 +556,9 @@ fn (t &Transformer) resolve_receiver_method_for_type_uncached(receiver_type stri
 		}
 	}
 	if method_name := t.unique_receiver_method_suffix_match(t.receiver_method_candidates(clean_type, method)) {
-		return method_name
+		if t.receiver_owns_method(clean_type, method_name) {
+			return method_name
+		}
 	}
 	if !isnil(t.tc) {
 		if target := t.alias_target_type_preserving_main_lock(clean_type) {
@@ -551,6 +570,39 @@ fn (t &Transformer) resolve_receiver_method_for_type_uncached(receiver_type stri
 		}
 	}
 	return none
+}
+
+// local_receiver_type_name qualifies a bare receiver type, or the element type of
+// a bare array receiver, that names a struct, sum type or enum declared in the
+// current dependency module (`Any` -> `toml.Any`), so the type checker does not
+// resolve it against a same-named type from another module.
+fn (t &Transformer) local_receiver_type_name(clean_type string) string {
+	if isnil(t.tc) || !transform_can_prefix_collection_receiver(t.cur_module) {
+		return clean_type
+	}
+	mut elem := clean_type
+	for elem.starts_with('[]') {
+		elem = elem[2..]
+	}
+	if elem.len == 0 || elem.contains('.') || elem.contains('[') {
+		return clean_type
+	}
+	qualified := '${t.cur_module}.${elem}'
+	if qualified in t.tc.structs || qualified in t.tc.sum_types || qualified in t.tc.enum_names {
+		return clean_type[..clean_type.len - elem.len] + qualified
+	}
+	return clean_type
+}
+
+// receiver_owns_method reports whether `method_name`, found by its short receiver
+// spelling, is declared for `clean_type` rather than for a same-named type from
+// another module (`json2.[]Any.str` must not stringify a `[]toml.Any`).
+fn (t &Transformer) receiver_owns_method(clean_type string, method_name string) bool {
+	if isnil(t.tc) {
+		return true
+	}
+	receiver := t.tc.parse_type(t.local_receiver_type_name(clean_type))
+	return t.tc.suffix_indexed_method_fits_receiver(receiver, method_name)
 }
 
 fn (t &Transformer) resolve_imported_flattened_generic_receiver_method(receiver_type string, method string) ?string {
@@ -1055,6 +1107,25 @@ fn (t &Transformer) generic_call_type_arg_name(id flat.NodeId) string {
 			if node.typ.starts_with('map[') {
 				return node.typ
 			}
+			// A generic parameter is lexical: inside `fn outer[T]`, `T` in
+			// `inner[T](value)` names the parameter even when the writing file also
+			// imports a type spelled `T` (`import pkg { T }`), matching the checker,
+			// where the parameter wins over the file's selective imports
+			// (`qualify_type_text_impl` checks the generic parameters first).
+			// Resolving it through them would specialize the callee for `pkg.T` and
+			// lose the substitution of the caller's type argument.
+			if node.value in t.active_generic_params
+				|| t.node_has_enclosing_generic_param(id, node.value) {
+				return node.value
+			}
+			// A bare spelling must be resolved in the file that wrote the call:
+			// `import model { Context }` makes `Context` mean `model.Context` there
+			// even when another imported module declares a same-named type. A global
+			// short-name index would pick whichever type was indexed first, so the
+			// rewritten call and the emitted specialization would disagree.
+			if resolved := t.selective_import_type_name_for_file(t.node_file_or(int(id), t.cur_file), node.value) {
+				return resolved
+			}
 			return node.value
 		}
 		.selector {
@@ -1123,6 +1194,50 @@ fn (t &Transformer) generic_call_type_arg_name(id flat.NodeId) string {
 			return ''
 		}
 	}
+}
+
+// node_enclosing_generic_params returns the generic parameter names of the
+// declaration that lexically encloses `id`. Synthesized nodes have no source
+// parent entry; a live specialization records its parameters in
+// `active_generic_params` instead.
+fn (t &Transformer) node_enclosing_generic_params(id flat.NodeId) []string {
+	if int(id) < 0 || int(id) >= t.source_parent_ids.len {
+		return []string{}
+	}
+	mut cursor := int(id)
+	for _ in 0 .. t.a.nodes.len {
+		parent_id := t.source_parent_id(cursor)
+		if parent_id < 0 || parent_id == cursor || parent_id >= t.a.nodes.len {
+			return []string{}
+		}
+		parent := t.a.nodes[parent_id]
+		if parent.kind in [.fn_decl, .struct_decl, .type_decl, .interface_decl, .c_fn_decl] {
+			return parent.generic_params()
+		}
+		cursor = parent_id
+	}
+	return []string{}
+}
+
+// node_has_enclosing_generic_param reports whether `name` is a generic parameter
+// of a declaration that lexically encloses `id`. Such a parameter keeps its
+// meaning even when the writing file selectively imports a type with the same
+// spelling, so resolution has to see it before it consults those imports.
+fn (t &Transformer) node_has_enclosing_generic_param(id flat.NodeId, name string) bool {
+	if name.len == 0 {
+		return false
+	}
+	return name in t.node_enclosing_generic_params(id)
+}
+
+// type_arg_text_has_enclosing_generic_param reports whether `text` names a
+// generic parameter of the declaration that lexically encloses `id`. An
+// argument that does is not concrete: the enclosing specialization substitutes
+// it while it is cloned, so it must not be resolved through the writing file's
+// imports here.
+fn (t &Transformer) type_arg_text_has_enclosing_generic_param(id flat.NodeId, text string) bool {
+	params := t.node_enclosing_generic_params(id)
+	return params.len > 0 && generic_text_contains_param(text, params)
 }
 
 fn (t &Transformer) generic_call_type_args_name(index_node flat.Node) string {
@@ -3726,9 +3841,30 @@ fn (mut t Transformer) transform_call_arg_for_param_isolated(arg_id flat.NodeId,
 	if param_type.starts_with('&') && arg_node.kind == .prefix && arg_node.op == .amp
 		&& arg_node.children_count > 0 {
 		child_id := t.a.child(arg_node, 0)
+		child := t.a.nodes[int(child_id)]
 		child_type := t.node_type(child_id)
+		normalized_child_type := t.normalize_type_alias(child_type)
+		explicit_mut_pointer_slot := arg_node.is_mut && normalized_child_type == t.normalize_type_alias(param_type)
 		if child_type.len > 0
-			&& t.normalize_type_alias(child_type) == t.normalize_type_alias(param_type[1..]) {
+			&& (normalized_child_type == t.normalize_type_alias(param_type[1..])
+				|| explicit_mut_pointer_slot) {
+			// An explicit address of a pointer local supplies the caller's pointer
+			// slot to a mutable pointer parameter. Generic `&ident` lowering treats
+			// pointer-backed identifiers as their stored pointer value, which would
+			// otherwise drop this address and pass `T*` where `T**` is required.
+			if child.kind == .ident
+				&& (child_type.starts_with('&') || t.raw_var_type(child.value).starts_with('&')
+					|| t.pointer_value_rvalues[child.value]) {
+				value := t.transform_expr_preserving_pointer_value(child_id)
+				addr := t.make_prefix(.amp, value)
+				addr_type := if explicit_mut_pointer_slot {
+					t.node_type(arg_id)
+				} else {
+					param_type
+				}
+				t.set_node_typ(int(addr), addr_type)
+				return addr
+			}
 			return t.transform_expr(arg_id)
 		}
 	}
@@ -4934,7 +5070,9 @@ fn (mut t Transformer) stringify_expr(expr_id flat.NodeId) flat.NodeId {
 	// genuine nilable pointer.
 	if int(expr_id) >= 0 && typ.starts_with('&') {
 		raw_node := t.a.nodes[int(expr_id)]
-		if raw_node.kind == .ident && t.pointer_value_rvalues[raw_node.value] {
+		if raw_node.kind == .ident
+			&& (t.pointer_value_rvalues[raw_node.value]
+				|| t.fixed_array_value_rvalues[raw_node.value]) {
 			typ = typ[1..]
 		}
 	}
@@ -5288,6 +5426,10 @@ fn (mut t Transformer) enum_autostr_call(expr flat.NodeId, typ string) flat.Node
 	return t.make_call_typed(helper, [expr], 'string')
 }
 
+// enum_autostr_type_name names the enum whose `<Enum>__autostr` helper formats a value of
+// the already resolved type `typ`. It deliberately ignores the current file's imports: a
+// value returned by `real_a.make()` has type `a.Kind` even in a file that imports another
+// module as `a`. Declaration spellings are resolved by `source_enum_type_name` first.
 fn (t &Transformer) enum_autostr_type_name(typ string) string {
 	mut qualified := typ
 	if qualified.starts_with('main.') {
@@ -5338,6 +5480,41 @@ fn (t &Transformer) enum_autostr_type_name(typ string) string {
 		}
 	}
 	return qualified
+}
+
+// source_enum_type_name resolves an enum spelling written in `file` through that file's
+// imports: a bare `Kind` through its selective imports, `token.Kind` through its import
+// aliases (`import toml.token` makes it `toml.token.Kind`). Only raw declaration
+// spellings may be resolved this way; see `enum_autostr_type_name`.
+fn (t &Transformer) source_enum_type_name(file string, spelling string) ?string {
+	if isnil(t.tc) || file.len == 0 || spelling.len == 0 {
+		return none
+	}
+	resolved := if spelling.contains('.') {
+		module_name := t.tc.file_imports[file_import_key(file, spelling.all_before('.'))] or {
+			return none
+		}
+		'${module_name}.${spelling.all_after('.')}'
+	} else {
+		t.selective_import_type_name_for_file(file, spelling) or { return none }
+	}
+	if resolved in t.enum_types || resolved in t.tc.enum_names {
+		return resolved
+	}
+	return none
+}
+
+// source_enum_elem_type resolves the enum at the core of an array element spelling
+// (`token.Kind`, `[]token.Kind`) that `file` wrote, keeping any other spelling as is.
+fn (t &Transformer) source_enum_elem_type(file string, spelling string) string {
+	mut prefix_len := 0
+	for spelling[prefix_len..].starts_with('[]') {
+		prefix_len += 2
+	}
+	if resolved := t.source_enum_type_name(file, spelling[prefix_len..]) {
+		return spelling[..prefix_len] + resolved
+	}
+	return spelling
 }
 
 // wrap_string_conversion transforms wrap string conversion data for transform.
@@ -6055,20 +6232,24 @@ fn (mut t Transformer) build_auto_str_helper_fn(aggregate string) {
 	t.restore_var_types(saved_vars)
 	t.cur_fn_name = saved_fn_name
 	t.cur_fn_ret_type = saved_ret_type
-	t.a.add_node(flat.Node{
-		kind:  .module_decl
-		value: if t.auto_str_helper_module.len > 0 { t.auto_str_helper_module } else { 'main' }
-	})
+	helper_module := if t.auto_str_helper_module.len > 0 {
+		t.auto_str_helper_module
+	} else {
+		'main'
+	}
+	t.add_generated_fn_decl_context(helper_module)
 	start := t.a.children.len
 	t.a.children << param
 	t.a.children << stmts
-	t.a.add_node(flat.Node{
+	fn_decl := t.a.add_node(flat.Node{
 		kind:           .fn_decl
 		value:          helper
 		typ:            'string'
 		children_start: i32(start)
 		children_count: flat.child_count(1 + stmts.len)
 	})
+	t.ensure_node_context_map_capacity()
+	t.mark_node_context(fn_decl, helper_module, t.cur_file)
 	helper_key := if t.auto_str_helper_module !in ['', 'main', 'builtin'] {
 		'${t.auto_str_helper_module}.${helper}'
 	} else {
@@ -8890,6 +9071,15 @@ fn (mut t Transformer) lower_array_str_impl(arr_expr flat.NodeId, base_type stri
 		}
 		if declared_type.starts_with('[]') && declared_type.len > 2 {
 			elem_type = declared_type[2..]
+			// A declaration spelling (`tokens []token.Kind`) names its enum through the
+			// imports of the file that wrote it. `enum_autostr_type_name` does not read
+			// them, so resolve the spelling here before the element is formatted.
+			if spelling := t.declared_var_spelling(src.value) {
+				if spelling == declared_type {
+					elem_type = t.source_enum_elem_type(t.node_file_or(int(arr_expr),
+						t.cur_file), elem_type)
+				}
+			}
 		}
 	}
 	// A selector's declaration spelling is more authoritative than the inferred expression
@@ -9250,6 +9440,11 @@ fn (t &Transformer) map_str_type_has_transform_conversion(typ string) bool {
 }
 
 fn (t &Transformer) map_str_kind_for_type(typ string) int {
+	// Packed enums have an integer storage type, but map stringification must use
+	// their enum names (or custom str method), not the underlying integer values.
+	if t.is_enum_stringify_type(typ) {
+		return 0
+	}
 	mut clean := t.normalize_type_alias(typ).trim_space()
 	if clean.starts_with('builtin.') {
 		clean = clean.all_after_last('.')
@@ -12150,6 +12345,17 @@ fn (mut t Transformer) add_generated_fn_decl_context(module_name string) {
 			kind:  .file
 			value: t.cur_file
 		})
+		// Establish the real source module before switching to a foreign namespace.
+		// Main files commonly omit `module main`, so a generated `.file` followed
+		// directly by an imported module marker would let later checker passes bind
+		// the source file itself to the imported module.
+		source_module := if t.cur_module.len > 0 { t.cur_module } else { 'main' }
+		if source_module != module_name {
+			t.a.add_node(flat.Node{
+				kind:  .module_decl
+				value: source_module
+			})
+		}
 	}
 	if module_name != '' {
 		t.a.add_node(flat.Node{
@@ -12487,13 +12693,11 @@ fn (mut t Transformer) try_lower_pointer_str_method_call(call_id flat.NodeId, no
 	if smartcast_str := t.smartcast_sum_str_call(base_id) {
 		return smartcast_str
 	}
-	mut propagated_pointer_receiver := false
 	if unwrapped_type := t.or_expr_receiver_unwrapped_type(base_id) {
 		if decl_type_is_usable(unwrapped_type) && !t.generic_arg_is_unresolved(unwrapped_type)
 			&& !unwrapped_type.starts_with('&') {
 			return none
 		}
-		propagated_pointer_receiver = unwrapped_type.starts_with('&')
 	}
 	// Mutable for-in bindings and mutable parameters use pointer-backed storage,
 	// but an ordinary receiver expression is the auto-dereferenced value. Do not
@@ -12524,8 +12728,8 @@ fn (mut t Transformer) try_lower_pointer_str_method_call(call_id flat.NodeId, no
 				return none
 			}
 			t.mark_fn_used_name(method_name)
-			return t.lower_ref_str_guarded(t.transform_expr(base_id), aggregate, propagated_pointer_receiver
-				|| !t.str_method_has_pointer_receiver(method_name), method_name, '&nil')
+			return t.lower_ref_str_guarded(t.transform_expr(base_id), aggregate,
+				!t.str_method_has_pointer_receiver(method_name), method_name, '&nil')
 		}
 		return t.lower_ref_str_prefixed(t.transform_expr(base_id), aggregate)
 	}
@@ -14632,12 +14836,59 @@ fn (mut t Transformer) make_receiver_method_call_typed(node flat.Node, method_na
 	// Reachability was computed before generic/comptime clones were transformed.
 	// Retain methods selected while lowering those generated bodies as well.
 	t.mark_fn_used_name(method_name)
-	call := t.make_call_typed(method_name, args, typ)
+	mut call_args := []flat.NodeId{}
+	mut borrowed_closure_cleanup := ''
+	if node.children_count == 2 && args.len >= 2
+		&& closure_lifetime_borrowed_callback_method(method_name) {
+		source_arg := t.a.child(&node, 1)
+		if t.expr_allocates_fresh_runtime_closure(source_arg) {
+			closure_type := t.fresh_runtime_closure_type(source_arg) or { t.node_type(args[1]) }
+			if closure_type.len > 0 {
+				borrowed_closure_cleanup = t.new_temp('borrowed_closure')
+				t.set_var_type(borrowed_closure_cleanup, closure_type)
+				t.pending_stmts << t.make_decl_assign_typed(borrowed_closure_cleanup, args[1],
+					closure_type)
+				call_args = args.clone()
+				call_args[1] = t.make_ident(borrowed_closure_cleanup)
+				t.set_node_typ(int(call_args[1]), closure_type)
+			}
+		}
+	}
+	call := if borrowed_closure_cleanup == '' {
+		t.make_call_typed(method_name, args, typ)
+	} else {
+		t.make_call_typed(method_name, call_args, typ)
+	}
 	generic_args := t.explicit_generic_call_arg_text(node)
 	if generic_args.len > 0 {
 		t.set_node_value(int(call), generic_args)
 	}
-	return call
+	return t.finish_borrowed_closure_call(call, borrowed_closure_cleanup, typ)
+}
+
+fn closure_lifetime_borrowed_callback_method(method_name string) bool {
+	method := method_name.all_after_last('.')
+	receiver := method_name.all_before_last('.')
+	return method in ['frame', 'suspend', 'untracked']
+		&& (receiver == 'builtin.closure.Lifetime' || receiver == 'closure.Lifetime')
+}
+
+fn (mut t Transformer) finish_borrowed_closure_call(call flat.NodeId, closure_name string, typ string) flat.NodeId {
+	if closure_name == '' {
+		return call
+	}
+	if typ == '' || typ == 'void' {
+		t.pending_stmts << t.make_expr_stmt(call)
+		t.pending_stmts << t.make_local_closure_destroy_stmt(closure_name)
+		return t.make_int_literal(0)
+	}
+	result_name := t.new_temp('borrowed_closure_result')
+	t.set_var_type(result_name, typ)
+	t.pending_stmts << t.make_decl_assign_typed(result_name, call, typ)
+	t.pending_stmts << t.make_local_closure_destroy_stmt(closure_name)
+	result := t.make_ident(result_name)
+	t.set_node_typ(int(result), typ)
+	return result
 }
 
 fn (t &Transformer) explicit_generic_call_arg_text(node flat.Node) string {
@@ -16065,6 +16316,20 @@ fn (t &Transformer) checker_resolved_non_builtin_return_type_uncached(id flat.No
 	if is_builtin_collection_resolved_call(name) {
 		return none
 	}
+	decl_module := t.tc.fn_type_modules[name] or { '' }
+	same_decl_module := decl_module == t.cur_module
+		|| (decl_module in ['', 'main'] && t.cur_module in ['', 'main'])
+	if !same_decl_module && node.children_count > 0 {
+		fn_node := t.a.child_node(&node, 0)
+		if fn_node.kind == .ident && t.var_type(fn_node.value).len == 0 {
+			if ret := t.local_fn_decl_return_type(fn_node.value) {
+				candidate := t.call_return_type_name(ret, node)
+				if decl_type_is_usable(candidate) || candidate == 'void' {
+					return candidate
+				}
+			}
+		}
+	}
 	if node.children_count > 0 && t.cur_module.len > 0 && t.cur_module !in ['main', 'builtin'] {
 		fn_node := t.a.child_node(&node, 0)
 		short_name := short_name_view(name)
@@ -16088,7 +16353,6 @@ fn (t &Transformer) checker_resolved_non_builtin_return_type_uncached(id flat.No
 	// The expression cache can contain a parser-inferred multi-return tail such as
 	// `!(m.Match, _)`. Prefer the resolved declaration, whose complete return type
 	// is authoritative, before falling back to that provisional expression type.
-	decl_module := t.tc.fn_type_modules[name] or { '' }
 	if ret := t.tc.fn_ret_types[name] {
 		if ret !is types.Unknown && ret !is types.Void {
 			candidate := t.call_return_type_name_in_module(t.semantic_type_name(ret), node, decl_module)

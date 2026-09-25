@@ -7545,6 +7545,9 @@ pub fn (mut tc TypeChecker) diagnose_unused_private_declarations(used_fns map[st
 		if node.kind != .const_decl {
 			continue
 		}
+		if node.op == .arrow {
+			continue
+		}
 		for i in 0 .. node.children_count {
 			field_id := tc.a.child(&node, i)
 			field := tc.a.node(field_id)
@@ -7738,7 +7741,8 @@ fn (mut tc TypeChecker) annotate_node(id flat.NodeId) {
 							typ = tc.parse_type(node.typ)
 							tc.annotate_expected_expr(rhs_id, typ)
 						} else {
-							typ = tc.resolve_type(rhs_id)
+							raw_type := tc.resolve_type(rhs_id)
+							typ = tc.mut_param_expr_base(rhs_id, raw_type) or { raw_type }
 						}
 						if typ !is MultiReturn && typ !is Void {
 							owner := tc.cur_scope.insert_with_owner(lhs.value, typ)
@@ -11906,11 +11910,74 @@ fn (tc &TypeChecker) fn_has_veb_context_param(node flat.Node) bool {
 		if p.typ.trim_space().trim_string_left('mut ').trim_left('&') == 'Context' {
 			return true
 		}
+		if tc.source_type_embeds_veb_context(p.typ) {
+			return true
+		}
 		if tc.is_veb_context_type(tc.parse_type(p.typ)) {
 			return true
 		}
 	}
 	return false
+}
+
+fn (tc &TypeChecker) source_type_embeds_veb_context(raw_type string) bool {
+	mut type_name := raw_type.trim_space().trim_string_left('mut ').trim_left('&')
+	if type_name.len == 0 {
+		return false
+	}
+	type_name = tc.qualify_resolution_type_name(type_name)
+	mut seen := map[string]bool{}
+	return tc.source_struct_embeds_veb_context(type_name, tc.cur_file, mut seen)
+}
+
+fn (tc &TypeChecker) source_struct_embeds_veb_context(type_name string, source_file string, mut seen map[string]bool) bool {
+	if type_name == 'veb.Context' {
+		return true
+	}
+	if seen[type_name] {
+		return false
+	}
+	seen[type_name] = true
+	decl_idx := tc.first_type_declaration_ids[type_name] or { return false }
+	decl := tc.a.nodes[decl_idx]
+	owner_module := if type_name.contains('.') { type_name.all_before_last('.') } else { 'main' }
+	decl_file := if file := tc.a.source_files[decl.pos.id] { file.name } else { source_file }
+	if decl.kind == .type_decl && decl.children_count == 0 && decl.typ.len > 0 {
+		alias_target := tc.source_type_name_in_module(decl.typ, owner_module, decl_file)
+		return tc.source_struct_embeds_veb_context(alias_target, decl_file, mut seen)
+	}
+	if decl.kind != .struct_decl {
+		return false
+	}
+	for i in 0 .. decl.children_count {
+		field := tc.a.child_node(&decl, i)
+		if field.kind != .field_decl {
+			continue
+		}
+		field_type := if field.typ.len > 0 { field.typ } else { field.value }
+		if !source_field_decl_is_embed(field, field_type) {
+			continue
+		}
+		embedded_name := tc.source_type_name_in_module(field_type, owner_module, decl_file)
+		if tc.source_struct_embeds_veb_context(embedded_name, decl_file, mut seen) {
+			return true
+		}
+	}
+	return false
+}
+
+fn (tc &TypeChecker) source_type_name_in_module(raw_type string, module_name string, source_file string) string {
+	mut type_name := raw_type.trim_space().trim_string_left('mut ').trim_left('&')
+	if type_name.contains('.') {
+		return tc.resolve_imported_type_text_in_file(type_name, source_file)
+	}
+	if resolved := tc.resolve_selective_import_type_symbol_in_file(type_name, source_file) {
+		return resolved
+	}
+	if module_name !in ['', 'main', 'builtin'] {
+		type_name = '${module_name}.${type_name}'
+	}
+	return type_name
 }
 
 fn (tc &TypeChecker) fn_returns_veb_result(node flat.Node) bool {
@@ -16094,6 +16161,10 @@ fn (mut tc TypeChecker) check_unreachable_after_noreturn_call(node flat.Node) {
 		if child.kind == .param {
 			continue
 		}
+		if child.kind != .expr_stmt {
+			previous_never_returns = false
+			continue
+		}
 		if previous_never_returns {
 			tc.record_warning_at(.return_mismatch, 'unreachable code after a @[noreturn] call', child_id, tc.noreturn_statement_diagnostic_pos(child_id))
 			return
@@ -16911,7 +16982,8 @@ fn (mut tc TypeChecker) check_comptime_for_members(_id flat.NodeId, node flat.No
 	if _ := tc.comptime_struct_update_source_pos(node) {
 		return
 	}
-	if !tc.comptime_subtree_references_var(body_id, parts[0]) {
+	if !is_regular_v_test_file(tc.cur_file)
+		&& !tc.comptime_subtree_references_var(body_id, parts[0]) {
 		tc.record_warning_at(.unknown_ident, 'unused variable: `${parts[0]}`', _id, tc.comptime_for_variable_pos(node, parts[0]))
 	}
 	if tc.check_comptime_for_source_type(_id, node) {

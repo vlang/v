@@ -1734,7 +1734,7 @@ fn (mut g FlatGen) interface_method_forward_decls() {
 			ret_type := g.interface_dispatch_return_type(iface_name, decl_key, sig_key)
 			sig_params := g.interface_dispatch_param_types(iface_name, decl_key, sig_key)
 			storage_cn := g.interface_storage_c_name(iface_name)
-			g.write('${g.fn_return_type_name(ret_type)} ${cn}__${method}(${storage_cn}* i')
+			g.write('${g.interface_dispatch_linkage()}${g.fn_return_type_name(ret_type)} ${cn}__${method}(${storage_cn}* i')
 			for pi := 1; pi < sig_params.len; pi++ {
 				pct := g.interface_dispatch_param_c_type(sig_params[pi])
 				g.write(', ${pct} _a${pi - 1}')
@@ -1745,6 +1745,16 @@ fn (mut g FlatGen) interface_method_forward_decls() {
 	if g.interfaces.len > 0 {
 		g.writeln('')
 	}
+}
+
+fn (g &FlatGen) interface_dispatch_linkage() string {
+	if g.is_shared && g.target.os != 'windows' {
+		if g.ccompiler == 'tinyc' || g.ccompiler.to_lower().contains('tcc') {
+			return 'static '
+		}
+		return '__attribute__((visibility("hidden"))) '
+	}
+	return ''
 }
 
 fn (mut g FlatGen) ierror_dispatch_target_forward_decls(iface_name string, method string, ret_ct string) {
@@ -1963,7 +1973,7 @@ fn (mut g FlatGen) gen_interface_dispatch_with_fallback(iface_name string, cn st
 	mut sig_params := g.interface_dispatch_param_types(iface_name, decl_key, sig_key)
 	mut arg_names := []string{}
 	storage_cn := g.interface_storage_c_name(iface_name)
-	g.write('${ret_ct} ${cn}__${method}(${storage_cn}* i')
+	g.write('${g.interface_dispatch_linkage()}${ret_ct} ${cn}__${method}(${storage_cn}* i')
 	for pi := 1; pi < sig_params.len; pi++ {
 		pct := g.interface_dispatch_param_c_type(sig_params[pi])
 		an := '_a${pi - 1}'
@@ -2679,7 +2689,7 @@ fn (mut g FlatGen) interface_pointer_str_expr(base_type types.Type, expr string,
 	ptr_type := types.Type(types.Pointer{
 		base_type: base_type
 	})
-	ptr_ct := g.tc.c_type(ptr_type)
+	ptr_ct := g.value_c_type(ptr_type)
 	tmp := g.interface_tmp('iface_str_ptr')
 	out := g.interface_tmp('iface_str_out')
 	mut inner := ''

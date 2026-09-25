@@ -1,6 +1,8 @@
 module main
 
-import os
+$if windows {
+	import os
+}
 
 fn main() {
 	$if windows {

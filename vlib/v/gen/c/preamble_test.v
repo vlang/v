@@ -316,6 +316,8 @@ fn test_target_libc_preamble_emits_pthread_runtime_when_threads_are_used() {
 	assert c_code.contains('static __v_thread __v_thread_spawn(')
 	assert c_code.contains('static void* __v_thread_join(')
 	assert c_code.contains('pthread_equal(a.handle, b.handle) != 0')
+	assert c_code.contains('void* p = GC_MALLOC_UNCOLLECTABLE(size);')
+	assert c_code.contains('GC_FREE(ptr);')
 }
 
 fn test_vinix_target_libc_thread_runtime_uses_freestanding_pthread_abi() {

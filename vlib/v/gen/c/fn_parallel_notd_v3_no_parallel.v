@@ -2979,6 +2979,7 @@ fn (g &FlatGen) new_parallel_worker_config(worker_id int, result_only bool) &Fla
 		w.local_c_type_by_owner = map[string]string{}
 		w.local_raw_type_by_owner = map[string]string{}
 		w.local_indirect_value_by_owner = map[string]types.Type{}
+		w.local_implicit_deref_by_owner = map[string]bool{}
 		w.local_shared_storage_by_owner = map[string]bool{}
 		w.local_fn_value_c_name_by_owner = map[string]string{}
 		w.default_value_stack = map[string]bool{}

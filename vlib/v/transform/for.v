@@ -634,14 +634,19 @@ fn (mut t Transformer) rebuild_for_in_stmt(_id flat.NodeId, node flat.Node) []fl
 	}
 	mut transformed_body := []flat.NodeId{}
 	mut pointer_value_name := ''
+	mut fixed_array_value_name := ''
 	if node.op == .amp {
 		bind_id := if has_index { val_id } else { key_id }
 		if int(bind_id) >= 0 {
 			bind := t.a.nodes[int(bind_id)]
 			if bind.kind == .ident && bind.value.len > 0 {
 				bind_type := t.var_type(bind.value)
-				if bind_type.starts_with('&') && !t.is_fixed_array_type(bind_type[1..]) {
-					pointer_value_name = bind.value
+				if bind_type.starts_with('&') {
+					if t.is_fixed_array_type(bind_type[1..]) {
+						fixed_array_value_name = bind.value
+					} else {
+						pointer_value_name = bind.value
+					}
 				}
 			}
 		}
@@ -661,6 +666,17 @@ fn (mut t Transformer) rebuild_for_in_stmt(_id flat.NodeId, node flat.Node) []fl
 			t.pointer_value_rvalues[pointer_value_name] = true
 		} else {
 			t.pointer_value_rvalues.delete(pointer_value_name)
+		}
+	} else if fixed_array_value_name.len > 0 {
+		had_fixed_array_value_rvalue := t.fixed_array_value_rvalues[fixed_array_value_name] or {
+			false
+		}
+		t.fixed_array_value_rvalues[fixed_array_value_name] = true
+		transformed_body = t.transform_stmts(body_ids)
+		if had_fixed_array_value_rvalue {
+			t.fixed_array_value_rvalues[fixed_array_value_name] = true
+		} else {
+			t.fixed_array_value_rvalues.delete(fixed_array_value_name)
 		}
 	} else {
 		transformed_body = t.transform_stmts(body_ids)

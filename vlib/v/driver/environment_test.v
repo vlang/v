@@ -1,13 +1,16 @@
 module driver
 
 import os
-import runtime
 import crypto.sha256
 import v.ansi
 import v.flat
 import v.parser
 import v.pref
 import v.types
+
+$if freebsd || openbsd || netbsd || dragonfly {
+	import runtime
+}
 
 fn restore_driver_environment(name string, old_value string, was_set bool) {
 	if was_set {
@@ -241,15 +244,22 @@ fn test_v3_default_diagnostic_color_uses_environment() {
 	assert ansi.red('error') == '\x1b[31merror\x1b[39m'
 }
 
-fn test_release_unused_diagnostic_scope_rebinds_notices() {
+fn test_release_unused_diagnostic_scope_preserves_errors_and_rebinds_notices() {
+	mut errors := []types.TypeError{cap: 1}
 	mut notices := []types.TypeError{cap: 1}
 	scope := prealloc_scope_begin_for_v3()
+	errors << types.TypeError{ msg: 'first error' }
+	errors << types.TypeError{ msg: 'second error' }
 	notices << types.TypeError{ msg: 'first' }
 	notices << types.TypeError{ msg: 'second' }
 	$if prealloc {
+		assert scoped_value_owned(scope, errors.data)
 		assert scoped_value_owned(scope, notices.data)
 	}
-	release_unused_diagnostic_scope(mut notices, scope)
+	release_unused_diagnostic_scope(mut errors, mut notices, scope)
+	assert errors.len == 2
+	assert errors[0].msg == 'first error'
+	assert errors[1].msg == 'second error'
 	assert notices.len == 0
 	assert notices.cap == 0
 	notices << types.TypeError{ msg: 'parent owned' }
