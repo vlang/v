@@ -6737,14 +6737,25 @@ fn (mut p Parser) skip_block_recording_decl_names() {
 	mut depth := 1
 	p.next()
 	for depth > 0 && p.tok != .eof {
-		if p.tok == .name {
-			p.a.comptime_skipped_decl_names[flat.comptime_skipped_decl_key(p.cur_module, p.lit)] = true
-		} else if p.tok == .lcbr {
+		p.record_skipped_decl_name()
+		if p.tok == .lcbr {
 			depth++
 		} else if p.tok == .rcbr {
 			depth--
 		}
 		p.next()
+	}
+}
+
+// record_skipped_decl_name records the current token of a skipped `$if` branch
+// when it can name a function or a constant. Keyword-named calls such as
+// `select()` or `lock()` are scanned as keyword tokens, so their spelling is
+// recorded the way keyword_ident_expr reads it.
+fn (mut p Parser) record_skipped_decl_name() {
+	if p.tok == .name {
+		p.a.comptime_skipped_decl_names[flat.comptime_skipped_decl_key(p.cur_module, p.lit)] = true
+	} else if p.keyword_token_is_ident_expr() {
+		p.a.comptime_skipped_decl_names[flat.comptime_skipped_decl_key(p.cur_module, p.tok.str())] = true
 	}
 }
 
@@ -6840,10 +6851,8 @@ fn (mut p Parser) skip_comptime_block() {
 	mut map_type_bracket_depth := -1
 	p.next()
 	for depth > 0 && p.tok != .eof {
-		if p.tok == .name {
-			// Selector members count too: `mod.helper()` spells `helper`.
-			p.a.comptime_skipped_decl_names[flat.comptime_skipped_decl_key(p.cur_module, p.lit)] = true
-		}
+		// Selector members count too: `mod.helper()` spells `helper`.
+		p.record_skipped_decl_name()
 		if map_type_depth >= 0 && depth == map_type_depth
 			&& paren_depth == map_type_paren_depth && bracket_depth == map_type_bracket_depth
 			&& p.tok in [.comma, .semicolon] {

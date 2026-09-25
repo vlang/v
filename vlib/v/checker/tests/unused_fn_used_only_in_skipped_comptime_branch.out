@@ -5,8 +5,10 @@ vlib/v/checker/tests/unused_fn_used_only_in_skipped_comptime_branch.vv:15:4: not
       |    ~~~~~~~~~
    16 |     return 2
    17 | }
-vlib/v/checker/tests/unused_fn_used_only_in_skipped_comptime_branch.vv:59:7: notice: unused constant: `unused_const`
-   57 | }
-   58 | 
-   59 | const unused_const = 9
+vlib/v/checker/tests/unused_fn_used_only_in_skipped_comptime_branch.vv:60:7: notice: unused constant: `unused_const`
+   58 | }
+   59 | 
+   60 | const unused_const = 9
       |       ~~~~~~~~~~~~~~~~
+   61 | 
+   62 | fn select() int {

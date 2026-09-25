@@ -27,7 +27,8 @@ fn main() {
 	} $else {
 		total += used_only_in_skipped_else(total)
 	}
-	println(total + selected_platform_value + selected_in_skipped_if + selected_in_skipped_else)
+	println(total + selected_platform_value + selected_in_skipped_if + selected_in_skipped_else +
+		keyword_fns_used_only_in_skipped_branch())
 }
 
 const platform_value = 1
@@ -57,3 +58,25 @@ $if never_defined ? {
 }
 
 const unused_const = 9
+
+fn select() int {
+	return 7
+}
+
+fn lock() int {
+	return 8
+}
+
+fn match() int {
+	return 9
+}
+
+const selected_keyword_fn = $if never_defined ? { select() } $else { 0 }
+
+fn keyword_fns_used_only_in_skipped_branch() int {
+	mut n := selected_keyword_fn
+	$if never_defined ? {
+		n += lock() + match()
+	}
+	return n
+}
