@@ -24,6 +24,46 @@ fn test_typeof_on_a_signed_wide_expression() {
 	assert typeof(y + 1) == 'i128'
 }
 
+fn test_typeof_on_a_shift_keeps_the_left_operand() {
+	// A shift count is a count, not an operand that widens the result: the
+	// generator emits a 64-bit shift when the left operand is 64 bits wide, and
+	// naming the result u128 made printing it fail the C compile.
+	count := u128(1)
+	assert typeof(u64(4) << count) == 'u64'
+	assert typeof(u64(4) >> count) == 'u64'
+	assert typeof(4 << count) == 'int'
+	x := (u128(1) << 100) + u128(5)
+	assert typeof(x << count) == 'u128'
+	assert typeof(x >> count) == 'u128'
+}
+
+fn test_a_count_past_the_width_shifts_every_bit_out() {
+	// Only the low 64 bits of the count were read, so a count of 2^64 looked
+	// like zero and the shift handed its operand back.
+	huge := u128(1) << 64
+	assert (u128(1) << huge).str() == '0'
+	assert (u128(1) >> huge).str() == '0'
+	assert (u64(4) << huge).str() == '0'
+	// A count that fits is still the count.
+	assert (u64(4) << u128(2)).str() == '16'
+	assert (u64(4) >> u128(1)).str() == '2'
+}
+
+fn takes_wide(x u128) int {
+	_ = x
+	return -7
+}
+
+fn test_typeof_on_a_call_keeps_the_call_type() {
+	// The type of the expression is what the printer and `typeof` both come from,
+	// and it used to be taken from the widest operand anywhere below it.
+	x := (u128(1) << 100) + u128(5)
+	assert typeof(takes_wide(x)) == 'int'
+	assert typeof(u8(x)) == 'u8'
+	assert typeof(u128(x)) == 'u128'
+	assert typeof(x) == 'u128'
+}
+
 fn test_str_on_a_mixed_width_expression_keeps_the_value() {
 	x := (u128(1) << 100) + u128(5)
 	assert (x + u64(1)).str() == '1267650600228229401496703205382'

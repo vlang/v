@@ -648,10 +648,12 @@ fn main() {
 }
 ```
 
-A shift by 128 or more gives `0`. `>>` on a negative signed value is an
-arithmetic shift, so it gives `-1` once the value is all ones, while `>>>`
-reads the same bits as unsigned. Division or modulo by zero panics, as it does
-for the other integer types, and overflow wraps.
+A shift by 128 or more gives `0`. The count is read at its own width, so a count
+that does not fit in 64 bits shifts everything out rather than being taken for a
+small one. `>>` on a negative signed value is an arithmetic shift, so it gives
+`-1` once the value is all ones, while `>>>` reads the same bits as unsigned.
+Division or modulo by zero panics, as it does for the other integer types, and
+overflow wraps.
 
 The compiler does not require a 128-bit C type. Every operation becomes a call
 to a small helper, and the helper has two implementations: the C compiler's own
@@ -681,10 +683,9 @@ A bare literal still follows the rule that applies to every other integer in V, 
 it wants an explicit cast.
 
 The promotion ladder has a row for both new types, so `wide + u64(1)` is a `u128`
-and keeps all 128 bits. One case is still wrong: a mixed expression that is asked
-for its own type gets the narrower operand's answer, so `(wide + u64(1)).str()`
-prints a truncated value and `typeof` names the narrower type. Assign it to a
-variable first, or write the smaller operand as `u128(...)`.
+and keeps all 128 bits, and asking the expression for its own type answers `u128`
+too. A narrower operand widens by its own sign, so `i128(0) + u64(0xffffffffffffffff)`
+is 2^64 - 1 rather than -1.
 
 The usual conversions are there, so text, hex and binary work on a 128-bit value:
 

@@ -28,3 +28,31 @@ fn test_interpolation_uses_the_same_text() {
 	neg := i128(-1) << 63
 	assert '${neg}' == '-9223372036854775808'
 }
+
+fn consume_wide(x u128) int {
+	_ = x
+	return -7
+}
+
+fn wide_zero() u128 {
+	return u128(0)
+}
+
+fn test_str_on_a_call_keeps_the_call_type() {
+	// The printer choice looked through the call for a wide operand and used the
+	// 128-bit conversion on the result, so this printed 2^128 - 7 natively and
+	// failed the C compile where a 128-bit value is a struct.
+	x := (u128(1) << 100) + u128(5)
+	assert consume_wide(x).str() == '-7'
+	assert '${consume_wide(x)}' == '-7'
+	assert consume_wide(wide_zero()).str() == '-7'
+}
+
+fn test_str_on_a_narrowing_cast_of_a_wide_value() {
+	// The same recovery crossed this cast, which made the text of a u8 depend on
+	// the width of the value it was taken from.
+	x := (u128(1) << 100) + u128(5)
+	assert u8(x).str() == '5'
+	assert '${u8(x)}' == '5'
+	assert u16(u128(70000)).str() == '4464'
+}

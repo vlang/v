@@ -5094,62 +5094,70 @@ const stringify_narrow_integer_types = ['int', 'i8', 'i16', 'i32', 'i64', 'isize
 
 // wide_method_receiver_type returns `u128` or `i128` when the expression is an
 // arithmetic node this compiler lowers as a 128-bit value, and an empty string
-// otherwise. It stays shallow on purpose: `rune(nn).str()` is a narrow value even
-// though a 128-bit operand sits under the cast, and the deeper search above would
-// report the operand and print the wrong number.
+// otherwise.
 fn (t &Transformer) wide_method_receiver_type(id flat.NodeId) string {
-	if int(id) < 0 || int(id) >= t.a.nodes.len {
+	return t.wide_operator_result_type(id, 0)
+}
+
+// wide_operator_result_type returns `u128` or `i128` when the expression is an
+// operator node whose result is that wide. Only an operator widens its result: a
+// call, a cast and an index have the type their callee, target or element
+// declares, whether or not a 128-bit value sits inside them. Searching through
+// those replaced the type of `consume(x)` (an int) and of `u8(x)` (a byte) with
+// the type of the operand, which picked the wrong printer and, on the portable
+// representation, produced C that does not compile. A shift is the same shape:
+// its result is as wide as its left operand, since the right one is a count.
+fn (t &Transformer) wide_operator_result_type(id flat.NodeId, depth int) string {
+	if depth > 4 || int(id) < 0 || int(id) >= t.a.nodes.len {
 		return ''
 	}
-	mut node := t.a.nodes[int(id)]
-	mut depth := 0
-	for node.kind == .paren && node.children_count > 0 && depth < 4 {
-		node = t.a.nodes[int(t.a.child(&node, 0))]
-		depth++
-	}
-	if node.kind == .infix {
-		if node.op in [.eq, .ne, .lt, .gt, .le, .ge, .logical_and, .logical_or] {
+	node := t.a.nodes[int(id)]
+	mut child_limit := node.children_count
+	match node.kind {
+		.paren {
+			if node.children_count == 0 {
+				return ''
+			}
+			return t.wide_operator_result_type(t.a.child(&node, 0), depth + 1)
+		}
+		.infix {
+			if node.op in [.eq, .ne, .lt, .gt, .le, .ge, .logical_and, .logical_or] {
+				return ''
+			}
+			if node.op in [.left_shift, .right_shift, .right_shift_unsigned] {
+				child_limit = 1
+			}
+		}
+		.prefix {
+			if node.op !in [.minus, .bit_not] {
+				return ''
+			}
+		}
+		else {
 			return ''
 		}
-	} else if node.kind == .prefix {
-		if node.op !in [.minus, .bit_not] {
-			return ''
-		}
-	} else {
-		return ''
 	}
-	for i in 0 .. node.children_count {
+	for i in 0 .. child_limit {
 		name := t.raw_checker_node_type(t.a.child(&node, i)).all_after_last('.')
 		if name in ['u128', 'i128'] {
 			return name
+		}
+	}
+	// An operand that is an operator node of its own widens the same way, and the
+	// checker records it under the narrower side just like the outer one.
+	for i in 0 .. child_limit {
+		nested := t.wide_operator_result_type(t.a.child(&node, i), depth + 1)
+		if nested.len > 0 {
+			return nested
 		}
 	}
 	return ''
 }
 
 // stringify_wide_integer_operand returns `u128` or `i128` when the expression is
-// an operator node with an operand of that type.
+// an operator node whose result is that wide.
 fn (t &Transformer) stringify_wide_integer_operand(id flat.NodeId) string {
-	return t.stringify_wide_integer_operand_depth(id, 0)
-}
-
-fn (t &Transformer) stringify_wide_integer_operand_depth(id flat.NodeId, depth int) string {
-	if depth > 4 || int(id) < 0 || int(id) >= t.a.nodes.len {
-		return ''
-	}
-	node := t.a.nodes[int(id)]
-	for i in 0 .. node.children_count {
-		child := t.a.child(&node, i)
-		child_name := t.raw_checker_node_type(child).all_after_last('.')
-		if child_name in ['u128', 'i128'] {
-			return child_name
-		}
-		nested := t.stringify_wide_integer_operand_depth(child, depth + 1)
-		if nested.len > 0 {
-			return nested
-		}
-	}
-	return ''
+	return t.wide_operator_result_type(id, 0)
 }
 
 fn (t &Transformer) declared_selector_pointer_alias_type(id flat.NodeId) ?string {

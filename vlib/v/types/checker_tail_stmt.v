@@ -15932,7 +15932,12 @@ fn (tc &TypeChecker) widen_mixed_integer_expr_type(id flat.NodeId, typ Type) Typ
 	if node.op in [.eq, .ne, .lt, .gt, .le, .ge, .logical_and, .logical_or] {
 		return typ
 	}
-	for i in 0 .. node.children_count {
+	// A shift result is as wide as its left operand: the right one is a count, so
+	// a wide count does not make `u64(4) << count` a 128-bit expression, and the
+	// generator still emits a 64-bit operation for it.
+	shift := node.op in [.left_shift, .right_shift, .right_shift_unsigned]
+	child_limit := if shift { 1 } else { node.children_count }
+	for i in 0 .. child_limit {
 		child_type := tc.resolve_type(tc.a.child(&node, i))
 		child_name := child_type.name().all_after_last('.')
 		if child_name in ['u128', 'i128'] {
