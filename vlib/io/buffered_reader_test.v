@@ -68,6 +68,9 @@ fn test_peek_does_not_advance_offset() {
 	data := rand.bytes(16)!
 	mut br := new_array_buffered_reader(data)
 	p := br.peek(8)!
+	for i, _ in p {
+		assert data[i] == p[i]
+	}
 	mut res := []u8{len: 8}
 	r := br.read(mut res)!
 	assert r == 8
@@ -170,6 +173,9 @@ fn new_one_byte_reader(a []u8) &OneByteReader {
 
 fn new_one_byte_buffered_reader(a []u8, cap ?int) &BufferedReader {
 	r := new_one_byte_reader(a)
+	if c := cap {
+		return new_buffered_reader(reader: r, cap: c)
+	}
 	return new_buffered_reader(reader: r)
 }
 

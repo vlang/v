@@ -746,8 +746,7 @@ pub fn get_raw_stdin() []u8 {
 
 // read_file_array reads an array of `T` values from file `path`.
 pub fn read_file_array[T](path string) []T {
-	a := T{}
-	tsize := int(sizeof(a))
+	tsize := int(sizeof(T))
 	// prepare for reading, get current file size
 	mut fp := vfopen(path, 'rb') or { return []T{} }
 	C.fseek(fp, 0, C.SEEK_END)
@@ -814,7 +813,7 @@ pub fn executable() string {
 	}
 	$if macos {
 		self_path := &char(C._dyld_get_image_name(u32(0)))
-		if self_path == C.NULL {
+		if self_path == unsafe { nil } {
 			return executable_fallback()
 		}
 		return unsafe { cstring_to_vstring(self_path) }
@@ -837,14 +836,14 @@ pub fn executable() string {
 		bufsize := usize(max_path_buffer_size)
 		pid := C.getpid()
 		mib := [i32(C.CTL_KERN), C.KERN_PROC_ARGS, pid, C.KERN_PROC_ARGV]! // C `int` mib buffer
-		if unsafe { C.sysctl(&mib[0], mib.len, C.NULL, &bufsize, C.NULL, 0) } == 0 {
+		if unsafe { C.sysctl(&mib[0], mib.len, nil, &bufsize, nil, 0) } == 0 {
 			if bufsize > max_path_buffer_size {
 				pbuf = unsafe { &&u8(malloc(int(bufsize))) }
 				defer(fn) {
 					unsafe { free(pbuf) }
 				}
 			}
-			if unsafe { C.sysctl(&mib[0], mib.len, pbuf, &bufsize, C.NULL, 0) } == 0 {
+			if unsafe { C.sysctl(&mib[0], mib.len, pbuf, &bufsize, nil, 0) } == 0 {
 				if unsafe { *pbuf[0] } == `/` {
 					res := unsafe { tos_clone(pbuf[0]) }
 					return res

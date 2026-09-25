@@ -116,13 +116,13 @@ fn select(handle int, test Select, timeout time.Duration) !bool {
 	if timeout == infinite_timeout {
 		match test {
 			.read {
-				socket_error(C.select(handle + 1, &set, C.NULL, C.NULL, &C.timeval(unsafe { nil })))!
+				socket_error(C.select(handle + 1, &set, unsafe { nil }, unsafe { nil }, &C.timeval(unsafe { nil })))!
 			}
 			.write {
-				socket_error(C.select(handle + 1, C.NULL, &set, C.NULL, &C.timeval(unsafe { nil })))!
+				socket_error(C.select(handle + 1, unsafe { nil }, &set, unsafe { nil }, &C.timeval(unsafe { nil })))!
 			}
 			.except {
-				socket_error(C.select(handle + 1, C.NULL, C.NULL, &set, &C.timeval(unsafe { nil })))!
+				socket_error(C.select(handle + 1, unsafe { nil }, unsafe { nil }, &set, &C.timeval(unsafe { nil })))!
 			}
 		}
 	} else {
@@ -134,13 +134,13 @@ fn select(handle int, test Select, timeout time.Duration) !bool {
 		}
 		match test {
 			.read {
-				socket_error(C.select(handle + 1, &set, C.NULL, C.NULL, &tt))!
+				socket_error(C.select(handle + 1, &set, unsafe { nil }, unsafe { nil }, &tt))!
 			}
 			.write {
-				socket_error(C.select(handle + 1, C.NULL, &set, C.NULL, &tt))!
+				socket_error(C.select(handle + 1, unsafe { nil }, &set, unsafe { nil }, &tt))!
 			}
 			.except {
-				socket_error(C.select(handle + 1, C.NULL, C.NULL, &set, &tt))!
+				socket_error(C.select(handle + 1, unsafe { nil }, unsafe { nil }, &set, &tt))!
 			}
 		}
 	}

@@ -17,7 +17,7 @@ fn default_setup() (MyReceiver, fsm.StateMachine) {
 fn test_statemachine_number_of_callbacks_correct_when_single_transition() {
 	mut receiver, mut s := default_setup()
 
-	s.run(receiver)!
+	s.run(&receiver)!
 
 	assert receiver.data.len == 3
 }
@@ -25,7 +25,7 @@ fn test_statemachine_number_of_callbacks_correct_when_single_transition() {
 fn test_statemachine_sequence_works_when_typical() {
 	mut receiver, mut s := default_setup()
 
-	s.run(receiver)!
+	s.run(&receiver)!
 
 	assert receiver.data[0] == 'on_state_exit: A -> B'
 	assert receiver.data[1] == 'on_state_entry: A -> B'
@@ -36,12 +36,12 @@ fn test_statemachine_works_when_final_state() {
 	mut receiver, mut s := default_setup()
 
 	// current state `A`, with a possible transition to `B`:
-	s.run(receiver)! // run should not error here
+	s.run(&receiver)! // run should not error here
 
 	// Note: run will now return error, because for state `B`,
 	// there are no more transitions:
-	s.run(receiver) or { assert true }
-	s.run(receiver) or { assert true }
+	s.run(&receiver) or { assert true }
+	s.run(&receiver) or { assert true }
 
 	assert receiver.data.len == 5
 	assert receiver.data[2] == 'on_state_run: A -> B'
@@ -58,7 +58,7 @@ fn test_simple_loop() {
 	// Run the FSM for a while.
 	// It will loop forever between `A` -> `B` -> `A` -> `B` ...
 	for _ in 0 .. 100 {
-		s.run(receiver) or { assert false }
+		s.run(&receiver) or { assert false }
 	}
 	assert receiver.data[1] == 'on_state_entry: A -> B'
 	assert receiver.data[4] == 'on_state_entry: B -> A'

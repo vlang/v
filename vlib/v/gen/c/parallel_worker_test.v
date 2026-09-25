@@ -512,8 +512,8 @@ fn test_open_generic_receiver_template_bypasses_stale_generic_app_cache() {
 		kind:  .fn_decl
 		value: 'AtomicVal[T].load'
 	}
-	assert g.fn_node_is_open_generic_template(node, 'stdatomic')
-	assert !g.should_emit_fn_node_in_module_known(node, 'stdatomic', 'atomic.v', 'stdatomic__AtomicVal_T__load', true)
+	assert g.fn_node_is_open_generic_template(node, -1, 'stdatomic')
+	assert !g.should_emit_fn_node_in_module_known(node, -1, 'stdatomic', 'atomic.v', 'stdatomic__AtomicVal_T__load', true)
 }
 
 fn test_parallel_type_declarations_include_body_discovered_fn_ptr_types() {

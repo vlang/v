@@ -112,7 +112,6 @@ fn fn_cofactor(mut data []u8) bool {
 }
 
 fn test_mult_by_cofactor() {
-	mut loworder := Point{}
 	mut data := rand.bytes(64)!
 
 	assert fn_cofactor(mut data) == true

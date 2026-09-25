@@ -30,14 +30,27 @@ fn interface_pattern_is_collapsed_container_type(name string) bool {
 }
 
 fn (mut t Transformer) pointer_sum_access_expr(expr_id flat.NodeId, expr_type string) (flat.NodeId, string, flat.Op) {
-	mut access := t.transform_selector_base_expr(expr_id)
+	has_smartcast := t.expr_has_smartcast(expr_id)
+	mut access := if has_smartcast {
+		// A runtime tag check always starts from the stored sum/interface value.
+		// Applying an active smartcast here would inspect the extracted variant.
+		t.make_plain_expr_for_smartcast(expr_id)
+	} else {
+		t.transform_selector_base_expr(expr_id)
+	}
 	mut access_type := expr_type
+	if has_smartcast {
+		raw_type := t.raw_expr_type_without_smartcast(expr_id)
+		if raw_type.len > 0 {
+			access_type = raw_type
+		}
+	}
 	for access_type.starts_with('&&') {
 		access = t.make_prefix(.mul, access)
 		access_type = access_type[1..]
 		t.set_node_typ(int(access), access_type)
 	}
-	mut value_type := t.node_type(access)
+	mut value_type := if has_smartcast { access_type } else { t.node_type(access) }
 	if value_type.len == 0 {
 		value_type = access_type
 	}

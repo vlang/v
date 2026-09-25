@@ -2280,6 +2280,10 @@ fn (mut t Transformer) transform_optional_wrapper_expr(id flat.NodeId) flat.Node
 	mut source_id := id
 	for int(source_id) >= 0 && int(source_id) < t.a.nodes.len {
 		source := t.a.nodes[int(source_id)]
+		if source.kind == .paren && source.children_count == 1 {
+			source_id = t.a.child(&source, 0)
+			continue
+		}
 		if source.kind != .selector || source.value != 'value' || source.children_count == 0 {
 			break
 		}
@@ -2308,20 +2312,41 @@ fn (mut t Transformer) transform_optional_wrapper_expr(id flat.NodeId) flat.Node
 			return t.transform_optional_wrapper_index_expr(source_id, source, raw_type)
 		}
 	}
-	if t.is_optional_type_name(raw_type) && t.a.nodes[int(id)].kind in [.ident, .selector] {
+	if t.is_optional_type_name(raw_type) && t.a.nodes[int(source_id)].kind in [.ident, .selector] {
 		// An optional sum variant gets its wrapper from the active smartcast, not
 		// from the declared expression storage. Select that variant before testing
 		// `.ok`; otherwise this would emit `.ok` on the outer sum struct.
 		if !t.is_optional_type_name(raw_source_type) && t.has_smartcast(t.expr_key(source_id)) {
 			return t.transform_expr(id)
 		}
-		// `source_id` is already the wrapper expression with any redundant top-level
-		// payload selectors removed. Rebuilding it here would transform its
-		// base again and could apply the same assignment smartcast a second time
-		// (`foo?.field` becoming `foo.value.value.field`).
+		// `source_id` is the wrapper expression with redundant payload selectors
+		// removed. A field selector still needs normal lowering for promoted fields.
+		if t.a.nodes[int(source_id)].kind == .selector {
+			return t.transform_optional_wrapper_selector_expr(source_id, raw_type)
+		}
 		return t.mark_optional_wrapper_expr(source_id, raw_type)
 	}
 	return t.transform_expr(id)
+}
+
+fn (mut t Transformer) transform_optional_wrapper_selector_expr(id flat.NodeId, raw_type string) flat.NodeId {
+	key := t.expr_key(id)
+	saved_smartcasts := t.smartcast_stack.clone()
+	saved_smartcast_event_id := t.smartcast_event_id
+	if key.len > 0 {
+		mut remaining_smartcasts := []SmartcastContext{cap: saved_smartcasts.len}
+		for smartcast in saved_smartcasts {
+			if smartcast.expr_name == key {
+				continue
+			}
+			remaining_smartcasts << smartcast
+		}
+		t.smartcast_stack = remaining_smartcasts
+	}
+	// Lower promoted fields and their bases before marking the optional wrapper.
+	transformed := t.transform_expr(id)
+	t.smartcast_stack = t.restore_smartcasts_since(saved_smartcast_event_id, saved_smartcasts)
+	return t.mark_optional_wrapper_expr(transformed, raw_type)
 }
 
 fn (mut t Transformer) transform_optional_wrapper_index_expr(id flat.NodeId, node flat.Node, raw_type string) flat.NodeId {
@@ -2468,6 +2493,26 @@ fn (t &Transformer) selective_import_struct_lookup_name(name string) ?string {
 		return none
 	} {
 		if candidate in t.structs || candidate in t.tc.structs {
+			return candidate
+		}
+	}
+	return none
+}
+
+// selective_import_type_name_for_file resolves a bare type spelling through the
+// selective imports of `file`. The same spelling can name different types in
+// different files (`import model { Context }` in one file, `import veb` with its
+// own `Context` in another), so callers that know the writing file must resolve
+// the name there instead of through a global short-name index.
+fn (t &Transformer) selective_import_type_name_for_file(file string, name string) ?string {
+	if isnil(t.tc) || name.len == 0 || name.contains('.') || file.len == 0 {
+		return none
+	}
+	for candidate in t.tc.file_selective_imports[file_import_key(file, name)] or { return none } {
+		if candidate in t.structs || candidate in t.sum_types || candidate in t.enum_types
+			|| candidate in t.tc.structs || candidate in t.tc.sum_types
+			|| candidate in t.tc.enum_names || candidate in t.tc.interface_names
+			|| candidate in t.tc.type_aliases {
 			return candidate
 		}
 	}
@@ -3469,23 +3514,23 @@ fn (mut t Transformer) build_sum_eq_helper_fn(clean_sum string, helper string) {
 	// Keep the helper in its request's output segment. This is normally the requesting
 	// module, but program-specific generic specializations and their nested helpers use
 	// main even though their bodies are resolved under the declaring module.
-	t.a.add_node(flat.Node{
-		kind:  .module_decl
-		value: if t.sum_eq_helper_module.len > 0 { t.sum_eq_helper_module } else { 'main' }
-	})
+	helper_module := if t.sum_eq_helper_module.len > 0 { t.sum_eq_helper_module } else { 'main' }
+	t.add_generated_fn_decl_context(helper_module)
 	start := t.a.children.len
 	t.a.children << param_a
 	t.a.children << param_b
 	for stmt in stmts {
 		t.a.children << stmt
 	}
-	t.a.add_node(flat.Node{
+	fn_decl := t.a.add_node(flat.Node{
 		kind:           .fn_decl
 		value:          helper
 		typ:            'bool'
 		children_start: i32(start)
 		children_count: flat.child_count(2 + stmts.len)
 	})
+	t.ensure_node_context_map_capacity()
+	t.mark_node_context(fn_decl, helper_module, t.cur_file)
 	t.register_sum_eq_helper_signature(helper, clean_sum)
 }
 
@@ -4249,7 +4294,7 @@ fn (t &Transformer) is_pure_constant_expr(id flat.NodeId) bool {
 	node := t.a.nodes[int(id)]
 	return match node.kind {
 		.int_literal, .float_literal, .bool_literal, .char_literal, .string_literal, .nil_literal,
-		.none_expr, .enum_val, .sizeof_expr, .typeof_expr {
+		.none_expr, .enum_val, .sizeof_expr, .typeof_expr, .empty {
 			true
 		}
 		.cast_expr, .paren {
@@ -4738,7 +4783,7 @@ fn fixed_array_elem_type(s string) string {
 }
 
 fn fixed_array_canonical_type(s string) string {
-	if !s.starts_with('[') {
+	if !s.starts_with('[') || s.starts_with('[]') {
 		return s
 	}
 	elem_type := fixed_array_canonical_type(fixed_array_elem_type(s))

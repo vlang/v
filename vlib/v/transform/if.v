@@ -3,6 +3,42 @@ module transform
 import v.flat
 import v.types
 
+fn (mut t Transformer) if_guard_optional_type_name(rhs_id flat.NodeId) string {
+	mut rhs_type := t.optional_result_expr_type_name(rhs_id)
+	if !t.is_optional_type_name(rhs_type) {
+		rhs_type = t.raw_expr_type_without_smartcast(rhs_id)
+	}
+	return rhs_type
+}
+
+fn (mut t Transformer) transform_if_guard_wrapper_source(rhs_id flat.NodeId, rhs_type string) (flat.NodeId, flat.NodeId) {
+	if !isnil(t.tc) && t.tc.ownership_guard_read_moves_value(rhs_id) {
+		if t.selector_chain_has_sum_shared_field(rhs_id) {
+			wrapper := t.transform_optional_wrapper_expr(rhs_id)
+			clear := t.make_assign_without_ownership_drop(rhs_id, t.make_optional_none(rhs_type))
+			return wrapper, clear
+		}
+		if t.expr_can_take_address(rhs_id) {
+			source := t.stabilize_transformed_lvalue_for_reuse(t.transform_lvalue_without_smartcast(rhs_id))
+			t.mark_optional_wrapper_expr(source, rhs_type)
+			return source, t.make_assign_without_ownership_drop(source, t.make_optional_none(rhs_type))
+		}
+	}
+	return t.transform_optional_wrapper_expr(rhs_id), flat.empty_node
+}
+
+fn (mut t Transformer) if_guard_source_clear_stmts(clear_id flat.NodeId) []flat.NodeId {
+	if clear_id == flat.empty_node {
+		return []flat.NodeId{}
+	}
+	clear := t.a.nodes[int(clear_id)]
+	if clear.kind == .selector_assign && clear.children_count == 2
+		&& t.selector_chain_has_sum_shared_field(t.a.child(&clear, 0)) {
+		return t.transform_stmt(clear_id)
+	}
+	return [clear_id]
+}
+
 // try_expand_if_guard detects an if-guard pattern where the condition is a
 // decl_assign whose RHS is a call returning an optional (?T) or result (!T).
 // When detected it expands:
@@ -42,23 +78,14 @@ fn (mut t Transformer) try_expand_if_guard(_id flat.NodeId, node flat.Node) ?[]f
 			return t.expand_channel_receive_if_guard(node, lhs.value, info)
 		}
 	}
-	mut rhs_type := t.optional_result_expr_type_name(rhs_id)
+	mut rhs_type := t.if_guard_optional_type_name(rhs_id)
 	if !t.is_optional_type_name(rhs_type) {
 		return none
 	}
 	rhs_type = t.qualify_optional_type(rhs_type)
 	value_type := t.optional_base_type(rhs_type)
 	tmp_name := t.new_temp('if_guard')
-	mut rhs_expr := flat.empty_node
-	mut source_clear := flat.empty_node
-	if !isnil(t.tc) && t.tc.ownership_guard_read_moves_value(rhs_id)
-		&& t.expr_can_take_address(rhs_id) {
-		source := t.stabilize_transformed_lvalue_for_reuse(t.transform_lvalue(rhs_id))
-		rhs_expr = source
-		source_clear = t.make_assign_without_ownership_drop(source, t.make_optional_none(rhs_type))
-	} else {
-		rhs_expr = t.transform_expr(rhs_id)
-	}
+	mut rhs_expr, source_clear := t.transform_if_guard_wrapper_source(rhs_id, rhs_type)
 	if !t.is_optional_type_name(t.node_type(rhs_expr)) {
 		rhs_node := t.a.nodes[int(rhs_expr)]
 		if rhs_node.kind == .selector && rhs_node.children_count > 0 {
@@ -128,9 +155,7 @@ fn (mut t Transformer) try_expand_if_guard(_id flat.NodeId, node flat.Node) ?[]f
 		expanded << stmt
 	}
 	expanded << tmp_decl
-	if source_clear != flat.empty_node {
-		expanded << source_clear
-	}
+	expanded << t.if_guard_source_clear_stmts(source_clear)
 	expanded << t.make_if(ok_cond, then_block, else_block)
 	return expanded
 }
@@ -502,7 +527,7 @@ fn (mut t Transformer) if_expr_guard_result_type(node flat.Node) ?string {
 	if lhs.kind != .ident || lhs.value.len == 0 {
 		return none
 	}
-	mut rhs_type := t.optional_result_expr_type_name(rhs_id)
+	mut rhs_type := t.if_guard_optional_type_name(rhs_id)
 	if !t.is_optional_type_name(rhs_type) {
 		return none
 	}
@@ -1082,17 +1107,18 @@ fn (mut t Transformer) build_if_value_guard_chain(if_node flat.Node, target_name
 	if info := t.array_index_info(rhs_id) {
 		return t.build_array_index_if_value_guard_chain(if_node, lhs.value, info, target_name, target_type)
 	}
-	mut rhs_type := t.optional_result_expr_type_name(rhs_id)
+	mut rhs_type := t.if_guard_optional_type_name(rhs_id)
 	if !t.is_optional_type_name(rhs_type) {
 		return none
 	}
 	rhs_type = t.qualify_optional_type(rhs_type)
 	value_type := t.optional_base_type(rhs_type)
 	tmp_name := t.new_temp('if_guard')
-	rhs_expr := t.transform_expr(rhs_id)
+	rhs_expr, source_clear := t.transform_if_guard_wrapper_source(rhs_id, rhs_type)
 	mut result := []flat.NodeId{}
 	t.drain_pending(mut result)
 	result << t.make_decl_assign_typed(tmp_name, rhs_expr, rhs_type)
+	result << t.if_guard_source_clear_stmts(source_clear)
 	ok_cond := t.make_selector(t.make_ident(tmp_name), 'ok', 'bool')
 	// An if-guard condition stores the call at child 1 and any extra
 	// destructured names after it: [lhs0, rhs, lhs1, lhs2, ...].

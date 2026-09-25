@@ -631,7 +631,8 @@ voidptr // this one is mostly used for [C interoperability](#v-and-c)
 ```
 
 > [!NOTE]
-> Unlike C and Go, `int` is always a 32 bit integer.
+> `int` is a platform-width signed integer: 64 bits on 64-bit targets and 32 bits on 32-bit
+> targets. Use `i32` or `i64` when you need a fixed width.
 
 There is an exception to the rule that all operators
 in V must have values of the same type on both sides. A small primitive type
@@ -1923,6 +1924,7 @@ dump(x)
 #### `If` unwrapping
 Anywhere you can use `or {}`, you can also use "if unwrapping". This binds the unwrapped value
 of an expression to a variable when that expression is not none nor an error.
+An optional struct field can be unwrapped this way even after an earlier `none` check.
 
 ```v
 m := {
@@ -8856,7 +8858,7 @@ fn C.sqlite3_step(&C.sqlite3_stmt)
 
 fn C.sqlite3_finalize(&C.sqlite3_stmt)
 
-fn C.sqlite3_exec(db &C.sqlite3, sql &char, cb FnSqlite3Callback, cb_arg voidptr, emsg &&char) int
+fn C.sqlite3_exec(db &C.sqlite3, query &char, cb FnSqlite3Callback, cb_arg voidptr, emsg &&char) int
 
 fn C.sqlite3_free(voidptr)
 
@@ -9314,8 +9316,8 @@ double-quoted template string through unchanged and still checks the output, inp
 lists. Operands can use GNU's named form or V's `constraint (expression) as alias` form:
 
 ```v ignore
-mut value := 40
-increment := 2
+mut value := i32(40)
+increment := i32(2)
 asm amd64 raw {
     "addl %[increment], %[value]\n\t"
     ; [value] "+r" (value)
@@ -9324,6 +9326,10 @@ asm amd64 raw {
 }
 assert value == 42
 ```
+
+The operands are `i32` because `addl` is a 32-bit instruction: a plain `int` is 64 bits wide on a
+64-bit target, so the C compiler would substitute a 64-bit register, which the GNU assembler
+rejects for an `l`-suffixed instruction.
 
 Raw templates are the right level for hand-written kernels that need GNU assembler features such
 as local labels or explicit operand modifiers. A label made with `%=` gets a unique numeric suffix

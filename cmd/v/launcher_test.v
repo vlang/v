@@ -53,7 +53,15 @@ fn test_tools_that_consume_prefix_compiler_options_receive_them() {
 		'-check',
 		'build-tools',
 	]
+	assert external_tool_runtime_args('build-examples', ['-no-memory-limit'], ['build-examples']) == [
+		'-no-memory-limit',
+		'build-examples',
+	]
 	assert external_tool_runtime_args('self', ['-prod'], ['self']) == ['-prod', 'self']
+	assert external_tool_runtime_args('test-self', ['-no-memory-limit', '-silent'], [
+		'test-self',
+		'vlib',
+	]) == ['-no-memory-limit', '-silent', 'test-self', 'vlib']
 	assert external_tool_runtime_args('fmt', prefix, ['fmt', '-verify', 'file.v']) == [
 		'fmt',
 		'-verify',
@@ -502,4 +510,35 @@ fn test_fallback_installer_writes_a_native_windows_root() {
 	assert writer.contains('cygpath -w')
 	assert writer.contains('pwd -W')
 	assert source.count('write_candidate_root || return 1') == 2
+}
+
+fn test_build_module_uses_the_compatibility_compilers_own_vlib() {
+	root := os.join_path(os.vtmp_dir(), 'v_build_module_args_${os.getpid()}')
+	current := os.join_path(root, 'current')
+	fallback := os.join_path(root, 'fallback')
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	for dir in [
+		os.join_path(current, 'vlib', 'v', 'parser'),
+		os.join_path(current, 'vlib', 'only_current'),
+		os.join_path(current, 'mymod'),
+		os.join_path(fallback, 'vlib', 'v', 'parser'),
+	] {
+		os.mkdir_all(dir) or { panic(err) }
+	}
+	parser := os.join_path(current, 'vlib', 'v', 'parser')
+	only_current := os.join_path(current, 'vlib', 'only_current')
+	mymod := os.join_path(current, 'mymod')
+	mapped := v1_build_module_args(['-keepc', 'build-module', parser], current, fallback)
+	assert mapped == ['-keepc', 'build-module', os.join_path(fallback, 'vlib', 'v', 'parser')]
+	// Modules the compatibility tree lacks, and code outside vlib, stay as given.
+	assert v1_build_module_args(['build-module', only_current], current, fallback) == [
+		'build-module',
+		only_current,
+	]
+	assert v1_build_module_args(['build-module', mymod], current, fallback) == [
+		'build-module',
+		mymod,
+	]
 }

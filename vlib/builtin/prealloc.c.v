@@ -1010,7 +1010,11 @@ fn prealloc_realloc(old_data &u8, old_size isize, new_size isize) &u8 {
 	}
 	new_ptr := unsafe { vmemory_block_malloc(new_size, 0) }
 	min_size := if old_size < new_size { old_size } else { new_size }
-	unsafe { C.memcpy(new_ptr, old_data, min_size) }
+	// Growing an empty buffer passes a nil `old_data`; memcpy requires a valid
+	// pointer even for a zero-length copy.
+	if old_data != unsafe { nil } && min_size > 0 {
+		unsafe { C.memcpy(new_ptr, old_data, min_size) }
+	}
 	// realloc invalidates the old buffer once its contents have been copied.
 	if old_size > 0 {
 		unsafe { prealloc_discard_pages(old_data, usize(old_size)) }
