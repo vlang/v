@@ -545,19 +545,20 @@ fn (mut g FlatGen) gen_fn_items(items []FlatFnGenItem) {
 // file_is_cache_program_file reports whether `file`, as written or resolved,
 // is one of the cached program files, memoizing the answer per file.
 fn (g &FlatGen) file_is_cache_program_file(file string, mut memo map[string]bool) bool {
-	return cache_program_file_matches(g.cache_program_files, file, mut memo)
+	return cache_program_file_matches(g.a, g.cache_program_files, file, mut memo)
 }
 
 // cache_program_file_matches reports whether `file`, as written or resolved, is
-// one of `program_files`. It resolves each written path at most once per memo.
-fn cache_program_file_matches(program_files map[string]bool, file string, mut memo map[string]bool) bool {
+// one of `program_files`. It resolves each written path at most once per memo,
+// through the AST's table of resolved source paths.
+fn cache_program_file_matches(a &flat.FlatAst, program_files map[string]bool, file string, mut memo map[string]bool) bool {
 	if program_files.len == 0 {
 		return false
 	}
 	if known := memo[file] {
 		return known
 	}
-	is_program := program_files[file] || program_files[os.real_path(file)]
+	is_program := program_files[file] || program_files[a.real_source_path(file)]
 	memo[file] = is_program
 	return is_program
 }
@@ -1129,7 +1130,8 @@ fn (g &FlatGen) is_program_specialization_fn_node_with_qfn(node flat.Node, node_
 	synthetic_name := c_short_name_view(node.value)
 	if synthetic_name.starts_with('__v3_sum_eq_') || synthetic_name.starts_with('__v3_autostr_')
 		|| synthetic_name.starts_with('__v3_default_clone_') {
-		return g.cache_program_files[file_name] || g.cache_program_files[os.real_path(file_name)]
+		return g.cache_program_files[file_name]
+			|| g.cache_program_files[g.a.real_source_path(file_name)]
 	}
 	return node.value in g.tc.specialized_generic_fns || qfn in g.tc.specialized_generic_fns
 		|| g.cname(node.value) in g.tc.specialized_generic_fns

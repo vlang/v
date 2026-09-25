@@ -3553,7 +3553,7 @@ fn prepare_v3_cache_external_inputs(mut state V3ModuleCacheState, a &flat.FlatAs
 	cache_input_modules['main'] = true
 	native_inputs_language := cgen.cache_native_inputs_language(a, prefs.vroot, user_c_flags, prefs.c99, prefs.ccompiler, prefs.target)
 	compiler_macros, compiler_macro_environment_complete := cache_c_compiler_predefined_macros(user_c_flags, c_compiler, prefs.target, native_inputs_language)
-	mut external_inputs, mut native_source_roots, mut native_root_contexts, unscoped_inputs, static_storage_inputs, resolution_dirs, missing_resolution_paths, mut external_input_digests, has_untracked_c_include := cgen.cache_external_input_snapshot_with_resolved_flags(a, prefs.vroot, cache_input_modules, user_c_flags, prefs.target, module_cache_source_path_set(user_files), compiler_macros, compiler_macro_environment_complete)
+	mut external_inputs, mut native_source_roots, mut native_root_contexts, unscoped_inputs, static_storage_inputs, resolution_dirs, missing_resolution_paths, mut external_input_digests, has_untracked_c_include := cgen.cache_external_input_snapshot_with_resolved_flags(a, prefs.vroot, cache_input_modules, user_c_flags, prefs.target, module_cache_source_path_set(a, user_files), compiler_macros, compiler_macro_environment_complete)
 	state.module_external_inputs = external_inputs.move()
 	state.module_native_roots = native_source_roots.move()
 	state.native_root_contexts = native_root_contexts.move()
@@ -3631,7 +3631,7 @@ fn prepare_v3_checker_native_inputs(mut state V3ModuleCacheState, a &flat.FlatAs
 	cache_input_modules['main'] = true
 	native_inputs_language := cgen.cache_native_inputs_language(a, prefs.vroot, user_c_flags, prefs.c99, prefs.ccompiler, prefs.target)
 	compiler_macros, compiler_macro_environment_complete := cache_c_compiler_predefined_macros(user_c_flags, c_compiler, prefs.target, native_inputs_language)
-	mut external_inputs, mut native_source_roots, mut native_root_contexts, _, _, resolution_dirs, missing_resolution_paths, mut external_input_digests, has_untracked_c_include := cgen.cache_external_input_snapshot_with_resolved_flags(a, prefs.vroot, cache_input_modules, user_c_flags, prefs.target, module_cache_source_path_set(user_files), compiler_macros, compiler_macro_environment_complete)
+	mut external_inputs, mut native_source_roots, mut native_root_contexts, _, _, resolution_dirs, missing_resolution_paths, mut external_input_digests, has_untracked_c_include := cgen.cache_external_input_snapshot_with_resolved_flags(a, prefs.vroot, cache_input_modules, user_c_flags, prefs.target, module_cache_source_path_set(a, user_files), compiler_macros, compiler_macro_environment_complete)
 	state.module_external_inputs = external_inputs.move()
 	state.module_native_roots = native_source_roots.move()
 	state.native_root_contexts = native_root_contexts.move()
@@ -7005,6 +7005,8 @@ fn clone_flat_ast_after_transform(ast &flat.FlatAst) &flat.FlatAst {
 		contextual_anon_struct_types:  ast.contextual_anon_struct_types
 		synthesized_anon_struct_types: ast.synthesized_anon_struct_types
 		source_files:                  ast.source_files
+		resolved_source_paths:         ast.resolved_source_paths.clone()
+		source_paths_frozen:           ast.source_paths_frozen
 		template_call_sites:           ast.template_call_sites.clone()
 		template_actions:              clone_int_string_map(ast.template_actions)
 		source_buffers:                ast.source_buffers
@@ -8352,7 +8354,7 @@ fn macos_v3_fallback_report_sources(a &flat.FlatAst, vroot string, cached_source
 	for _, file in a.source_files {
 		if (file.name.ends_with('.v') || file.name.ends_with('.vv')
 			|| file.name.ends_with('.vsh')) && file.has_source_sha256() {
-			path := os.real_path(file.name)
+			path := a.real_source_path(file.name)
 			if ignored_source_paths[path] {
 				continue
 			}
@@ -8373,7 +8375,7 @@ fn macos_v3_fallback_report_sources(a &flat.FlatAst, vroot string, cached_source
 		}
 	}
 	for source_path, digest in cached_source_digests {
-		path := os.real_path(source_path)
+		path := a.real_source_path(source_path)
 		if ignored_source_paths[path] {
 			continue
 		}
@@ -10689,11 +10691,11 @@ pub fn run(args []string) {
 	if minimal_literal_output {
 		builtin_files = builtin_files.filter(is_minimal_literal_output_builtin_file(it))
 	}
-	bundle_sources := builtin_bundle_source_files(prefs, builtin_files)
+	bundle_sources := builtin_bundle_source_files(mut p.a, prefs, builtin_files)
 	mut cache_state := V3ModuleCacheState{
 		manager:                   cache_manager
 		bundle_sources:            bundle_sources
-		bundle_source_paths:       module_cache_source_path_set(bundle_sources)
+		bundle_source_paths:       module_cache_source_path_set(p.a, bundle_sources)
 		force_source:              force_cache_source
 		module_sources:            map[string][]string{}
 		module_import_paths:       map[string]string{}
@@ -10778,9 +10780,9 @@ pub fn run(args []string) {
 	mut user_files := []string{}
 	if input_file.ends_with('.v') || input_file.ends_with('.vv') {
 		user_files << input_file
-		user_files = expand_single_test_file_inputs(user_files, prefs)
+		user_files = expand_single_test_file_inputs(mut a, user_files, prefs)
 	} else if os.is_dir(input_file) {
-		user_files = v3_directory_user_files(input_file, prefs, is_test_command, false) or {
+		user_files = v3_directory_user_files(mut a, input_file, prefs, is_test_command, false) or {
 			eprintln(err.msg())
 			exit(1)
 		}
@@ -10792,7 +10794,7 @@ pub fn run(args []string) {
 	}
 	for listed_path in file_list {
 		if os.is_dir(listed_path) {
-			user_files << v3_directory_user_files(listed_path, prefs, is_test_command, true) or {
+			user_files << v3_directory_user_files(mut a, listed_path, prefs, is_test_command, true) or {
 				eprintln(err.msg())
 				exit(1)
 			}
@@ -10838,6 +10840,10 @@ pub fn run(args []string) {
 	resolve_imports_parse_started_us := parse_timing.header_us + parse_timing.source_us
 	resolve_imports(mut a, mut p, prefs, user_files, !current_no_parallel, skip_closure_runtime,
 		check_overflow, mut cache_state, mut parse_timing)
+	// Later stages resolve the same source paths many times, on several threads
+	// and inside disposable arenas. Resolve them once here, on the main thread and
+	// in the build's own arena, before any of those stages start.
+	a.resolve_source_paths()
 	resolve_imports_elapsed_us := b.current_step_time_us() - resolve_imports_started_us
 	resolve_imports_parse_us := parse_timing.header_us + parse_timing.source_us - resolve_imports_parse_started_us
 	resolve_imports_coordination_us := if resolve_imports_parse_us < resolve_imports_elapsed_us {
@@ -12585,7 +12591,7 @@ pub fn run(args []string) {
 			g.set_parallel_cc(use_parallel_c_compilation)
 			g.set_cache_native_input_paths(cache_scoped_native_input_paths(cache_state))
 			g.set_program_body_only(generic_cache_hit)
-			g.set_cache_program_files(user_files)
+			g.set_cache_program_files(a, user_files)
 			g.set_incremental_fn_names(incremental_changed_names)
 			g.set_cached_support_declarations(incremental_known_declarations)
 			g.set_scope_parallel_workers(!generic_cache_hit)
@@ -12654,7 +12660,7 @@ pub fn run(args []string) {
 			g.set_parallel_cc(use_parallel_c_compilation)
 			g.set_cache_native_input_paths(cache_scoped_native_input_paths(cache_state))
 			g.set_program_body_only(generic_cache_hit)
-			g.set_cache_program_files(user_files)
+			g.set_cache_program_files(a, user_files)
 			g.set_incremental_fn_names(incremental_changed_names)
 			g.set_cached_support_declarations(incremental_known_declarations)
 			g.gen_to_file_with_used_test_options(generated_path, a, cgen_used_fns, &pre_tc, cache_no_parallel_cgen, test_files) or {
@@ -13818,11 +13824,11 @@ fn checker_fixture_header_exists(target string, source_file string, c_compiler s
 	return result.exit_code == 0
 }
 
-fn builtin_bundle_source_files(prefs &pref.Preferences, builtin_files []string) []string {
+fn builtin_bundle_source_files(mut a flat.FlatAst, prefs &pref.Preferences, builtin_files []string) []string {
 	mut files := builtin_files.clone()
 	mut seen := map[string]bool{}
 	for file in files {
-		seen[os.real_path(file)] = true
+		seen[a.record_source_path(file)] = true
 	}
 	for rel in ['strconv', 'strings', 'hash', os.join_path('math', 'bits')] {
 		dir := os.join_path(prefs.vroot, 'vlib', rel)
@@ -13831,7 +13837,7 @@ fn builtin_bundle_source_files(prefs &pref.Preferences, builtin_files []string) 
 		}
 		for file in prefs.without_excluded(pref.get_v_files_from_dir_for_target(dir, prefs.user_defines,
 			prefs.target)) {
-			key := os.real_path(file)
+			key := a.record_source_path(file)
 			if seen[key] {
 				continue
 			}
@@ -14462,10 +14468,10 @@ fn cache_write_native_declaration_segment(lines []string, restore_implementation
 	}
 }
 
-fn module_cache_source_path_set(source_files []string) map[string]bool {
+fn module_cache_source_path_set(a &flat.FlatAst, source_files []string) map[string]bool {
 	mut paths := map[string]bool{}
 	for source_file in source_files {
-		paths[os.real_path(source_file)] = true
+		paths[a.real_source_path(source_file)] = true
 	}
 	return paths
 }
@@ -15448,23 +15454,29 @@ fn vmod_subdirs(dir string) ![]string {
 	return manifest.unknown['subdirs'] or { []string{} }
 }
 
-fn v3_directory_user_files(dir string, prefs &pref.Preferences, is_test_command bool, recursive bool) ![]string {
+// v3_directory_user_files lists the source files of the module in `dir`. Until
+// a.resolve_source_paths() freezes the table, it records each file's resolved
+// path in `a` for later stages, so it must run on the thread that owns `a`.
+fn v3_directory_user_files(mut a flat.FlatAst, dir string, prefs &pref.Preferences, is_test_command bool, recursive bool) ![]string {
 	source_dir := v3_directory_source_root(dir)
 	mut files := []string{}
 	mut seen_files := map[string]bool{}
 	mut seen_dirs := map[string]bool{}
 	if recursive {
-		collect_v3_directory_user_files_rec(source_dir, source_dir, prefs, is_test_command, mut seen_dirs, mut seen_files, mut files)
+		collect_v3_directory_user_files_rec(mut a, source_dir, source_dir, prefs, is_test_command, mut
+			seen_dirs, mut seen_files, mut files)
 		return files
 	}
-	append_v3_directory_user_files(source_dir, prefs, is_test_command, mut seen_files, mut files)
+	append_v3_directory_user_files(mut a, source_dir, prefs, is_test_command, mut seen_files, mut
+		files)
 	for subdir in vmod_subdirs(dir)! {
-		collect_v3_directory_user_files_rec(source_dir, os.join_path_single(source_dir, subdir), prefs, is_test_command, mut seen_dirs, mut seen_files, mut files)
+		collect_v3_directory_user_files_rec(mut a, source_dir, os.join_path_single(source_dir,
+			subdir), prefs, is_test_command, mut seen_dirs, mut seen_files, mut files)
 	}
 	return files
 }
 
-fn collect_v3_directory_user_files_rec(module_root string, dir string, prefs &pref.Preferences, is_test_command bool, mut seen_dirs map[string]bool, mut seen_files map[string]bool, mut files []string) {
+fn collect_v3_directory_user_files_rec(mut a flat.FlatAst, module_root string, dir string, prefs &pref.Preferences, is_test_command bool, mut seen_dirs map[string]bool, mut seen_files map[string]bool, mut files []string) {
 	if !os.is_dir(dir) {
 		return
 	}
@@ -15476,25 +15488,27 @@ fn collect_v3_directory_user_files_rec(module_root string, dir string, prefs &pr
 	if real_dir != os.real_path(module_root) && os.is_file(os.join_path_single(real_dir, 'v.mod')) {
 		return
 	}
-	append_v3_directory_user_files(real_dir, prefs, is_test_command, mut seen_files, mut files)
+	append_v3_directory_user_files(mut a, real_dir, prefs, is_test_command, mut seen_files, mut
+		files)
 	mut entries := os.ls(real_dir) or { return }
 	entries.sort()
 	for entry in entries {
 		entry_path := os.join_path_single(real_dir, entry)
 		if os.is_dir(entry_path) {
-			collect_v3_directory_user_files_rec(module_root, entry_path, prefs, is_test_command, mut seen_dirs, mut seen_files, mut files)
+			collect_v3_directory_user_files_rec(mut a, module_root, entry_path, prefs,
+				is_test_command, mut seen_dirs, mut seen_files, mut files)
 		}
 	}
 }
 
-fn append_v3_directory_user_files(dir string, prefs &pref.Preferences, is_test_command bool, mut seen map[string]bool, mut files []string) {
+fn append_v3_directory_user_files(mut a flat.FlatAst, dir string, prefs &pref.Preferences, is_test_command bool, mut seen map[string]bool, mut files []string) {
 	for file in prefs.without_excluded(pref.get_v_files_from_dir_for_target(dir, prefs.user_defines,
 		prefs.target)) {
-		append_unique_file(mut files, mut seen, file)
+		append_unique_file(mut a, mut files, mut seen, file)
 	}
 	if is_test_command {
 		for file in prefs.without_excluded(pref.get_test_v_files_from_dir_for_target(dir, prefs.user_defines, prefs.backend, prefs.target)) {
-			append_unique_file(mut files, mut seen, file)
+			append_unique_file(mut a, mut files, mut seen, file)
 		}
 	}
 }
@@ -15533,24 +15547,24 @@ If you want to split one module across subdirectories after moving the root file
 	return true
 }
 
-fn expand_single_test_file_inputs(user_files []string, prefs &pref.Preferences) []string {
+fn expand_single_test_file_inputs(mut a flat.FlatAst, user_files []string, prefs &pref.Preferences) []string {
 	mut expanded := []string{}
 	mut seen := map[string]bool{}
 	for file in user_files {
 		if pref.is_test_file_for_backend(file, prefs.backend) {
 			module_name := declared_module_in_file(file)
 			if module_name != 'builtin' {
-				for module_file in same_dir_module_source_files(file, module_name, prefs) {
-					append_unique_file(mut expanded, mut seen, module_file)
+				for module_file in same_dir_module_source_files(mut a, file, module_name, prefs) {
+					append_unique_file(mut a, mut expanded, mut seen, module_file)
 				}
 			}
 		}
-		append_unique_file(mut expanded, mut seen, file)
+		append_unique_file(mut a, mut expanded, mut seen, file)
 	}
 	return expanded
 }
 
-fn same_dir_module_source_files(test_file string, module_name string, prefs &pref.Preferences) []string {
+fn same_dir_module_source_files(mut a flat.FlatAst, test_file string, module_name string, prefs &pref.Preferences) []string {
 	dir := os.dir(test_file)
 	mut all_files := prefs.without_excluded(pref.get_v_files_from_dir_for_target(dir,
 		prefs.user_defines, prefs.target))
@@ -15559,7 +15573,7 @@ fn same_dir_module_source_files(test_file string, module_name string, prefs &pre
 	// the complete module instead of only its physical-directory siblings.
 	vmod_root := nearest_vmod_root_for_file(test_file)
 	if vmod_root.len > 0 {
-		virtual_module_files := v3_directory_user_files(vmod_root, prefs, false, false) or {
+		virtual_module_files := v3_directory_user_files(mut a, vmod_root, prefs, false, false) or {
 			[]string{}
 		}
 		real_dir := os.real_path(dir)
@@ -15663,8 +15677,8 @@ fn append_declared_import(mut imports []string, line string) {
 	}
 }
 
-fn append_unique_file(mut files []string, mut seen map[string]bool, file string) {
-	key := os.real_path(file)
+fn append_unique_file(mut a flat.FlatAst, mut files []string, mut seen map[string]bool, file string) {
+	key := a.record_source_path(file)
 	if seen[key] {
 		return
 	}
@@ -18322,7 +18336,7 @@ fn resolve_imports(mut a flat.FlatAst, mut p parser.Parser, prefs &pref.Preferen
 			record_cache_module_dependency(mut cache_state, cur_module, cache_module)
 			mod_dir_exists := mod_dir.len > 0 && os.is_dir(mod_dir)
 			mod_files := if mod_dir_exists {
-				v3_directory_user_files(mod_dir, prefs, false, false) or {
+				v3_directory_user_files(mut a, mod_dir, prefs, false, false) or {
 					prefs.without_excluded(pref.get_v_files_from_dir_for_target(mod_dir,
 						prefs.user_defines, prefs.target))
 				}
