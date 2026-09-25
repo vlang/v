@@ -3699,8 +3699,12 @@ fn ast_has_native_source_include(a &flat.FlatAst) bool {
 }
 
 // should_overlap_v3_native_inputs reports whether native-input resolution can
-// safely run alongside the checker's declaration pass.
+// safely run alongside the checker's declaration pass. A `v3_no_parallel` build
+// resolves them on the main thread, before or after checking.
 fn should_overlap_v3_native_inputs(backend string, external_inputs_ready bool, module_cache_enabled bool, native_inputs_needed bool, building_v bool, scope_prealloc_stages bool) bool {
+	$if v3_no_parallel ? {
+		return false
+	}
 	if backend != 'c' || external_inputs_ready || module_cache_enabled {
 		return false
 	}
@@ -9043,6 +9047,17 @@ $if !skip_fastc ? {
 	}
 }
 
+// v3_parallel_transform_allowed reports whether transform may run in parallel,
+// together with the markused and transform preparation threads the driver
+// overlaps with checking. Both preparation threads read the checker beside the
+// main thread, so a `-no-parallel` run and a `v3_no_parallel` build keep them off.
+fn v3_parallel_transform_allowed(parallel_transform bool, no_parallel bool) bool {
+	$if v3_no_parallel ? {
+		return false
+	}
+	return parallel_transform && !no_parallel
+}
+
 // run executes the V3 compiler driver with `args`.
 @[markused]
 pub fn run(args []string) {
@@ -9761,10 +9776,8 @@ pub fn run(args []string) {
 		current_no_parallel = true
 		no_cache = true
 	}
-	mut current_parallel_transform := parallel_transform
-	if current_no_parallel {
-		current_parallel_transform = false
-	}
+	mut current_parallel_transform := v3_parallel_transform_allowed(parallel_transform,
+		current_no_parallel)
 
 	if input_file == '' {
 		// A malformed command line is the user's error, not a compiler error, so it
@@ -10568,14 +10581,14 @@ pub fn run(args []string) {
 	// The module cache splits imported implementations into separate objects, so its main source
 	// alone cannot reproduce the build. Literal output uses a deliberately reduced
 	// builtin source set, which likewise must remain a monolithic translation unit.
+	// Heap tracking hooks are supplied by user C declarations. Replaying a header
+	// that defines them in every cached translation unit creates duplicate symbols.
 	cache_candidate_enabled := backend == 'c' && !c_only && !no_cache && !no_skip_unused
 		&& !no_builtin && !parallel_cc && !keep_c && !backend_explicit
 		&& !minimal_literal_output && v3_c_compiler_matches_default_cc(c_compiler)
 		&& target.os == host_target.os
-		&& target.arch == host_target.arch &&
-	// Heap tracking hooks are supplied by user C declarations. Replaying a header
-	// that defines them in every cached translation unit creates duplicate symbols.
-	'track_heap' !in prefs.user_defines
+		&& target.arch == host_target.arch
+		&& 'track_heap' !in prefs.user_defines
 		&& !input_owns_builtin_bundle_module(input_file, prefs.vroot)
 	cc_identity := if cache_candidate_enabled { default_cc_identity() } else { '' }
 	compiler_signature := if cache_candidate_enabled {

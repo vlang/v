@@ -245,6 +245,9 @@ pub:
 	arg_id        flat.NodeId
 	source_suffix string
 	target_suffix string
+	// source_is_prefix reports that the result aliases storage at or below `source_suffix`
+	// of the argument, but not a known exact path (a path widened through recursion).
+	source_is_prefix bool
 }
 
 // LocalBinding represents local binding data used by types.
@@ -14465,14 +14468,30 @@ fn is_fixed_array_len_text(inner string) bool {
 	if v_int_literal_value(s) != none {
 		return true
 	}
+	// A type argument can hold a pointer type after its first character (`&&Node`, `?&Node`,
+	// `[]&Node`, `map[string]&Node`, `fn (&Node) int`, `chan &Node`). No integer length
+	// expression starts with such type syntax, so its `&` is never a bitwise-and.
+	if s[0] in [`&`, `?`, `!`, `[`] || s.starts_with('...') || s.starts_with('map[')
+		|| s.starts_with('fn(') || s.starts_with('fn ') || s.starts_with('chan ')
+		|| s.starts_with('thread ') || s.starts_with('shared ') || s.starts_with('atomic ')
+		|| s.starts_with('mut ') {
+		return false
+	}
+	mut depth := 0
 	for i in 0 .. s.len {
 		c := s[i]
+		if c == `[` {
+			depth++
+		} else if c == `]` {
+			depth--
+		}
 		if c in [`+`, `*`, `/`, `%`, `|`, `^`, `<`, `>`] {
 			return true
 		}
-		// A leading `-`/`&` is a negative literal / pointer-type argument; elsewhere they are the
-		// subtraction / bitwise-and operators of a length expression.
-		if (c == `-` || c == `&`) && i > 0 {
+		// A leading `-`/`&` is a negative literal / pointer-type argument, and one inside
+		// brackets belongs to a nested type argument (`Box[&Node]`, `Box[fn (&Node) int]`);
+		// elsewhere they are the subtraction / bitwise-and operators of a length expression.
+		if (c == `-` || c == `&`) && i > 0 && depth == 0 {
 			return true
 		}
 	}
