@@ -2,6 +2,8 @@ struct Packet {}
 
 fn (byte Packet) name() {}
 
+fn (byte &Packet) id() {}
+
 fn run(cb fn (byte ), pair fn (byte , u8)) {
 	cb(1)
 	pair(1, 2)
@@ -14,4 +16,5 @@ fn main() {
 	}
 	_ = add_one
 	_ := fn (byte ) {}
+	_ := fn (byte /* type only */, u8) {}
 }

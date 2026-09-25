@@ -6422,8 +6422,9 @@ fn deprecated_byte_is_receiver_name(source string, start int, end int) bool {
 	for next < source.len && source[next] in [` `, `\t`] {
 		next++
 	}
-	if next >= source.len || source[next] in [`)`, `,`, `\n`, `\r`] {
-		// `fn (byte )` and `fn (byte , u8)` are type-only params: no type follows the name.
+	if next >= source.len || !deprecated_byte_starts_type(source[next]) {
+		// `fn (byte )`, `fn (byte , u8)` and `fn (byte /* c */)` are type-only params:
+		// no type follows the name.
 		return false
 	}
 	mut i := deprecated_byte_skip_blanks_back(source, start)
@@ -6440,6 +6441,12 @@ fn deprecated_byte_is_receiver_name(source string, start int, end int) bool {
 	i = deprecated_byte_skip_blanks_back(source, i - 1)
 	return i >= 2 && source[i - 2..i] == 'fn'
 		&& (i == 2 || !(source[i - 3].is_alnum() || source[i - 3] == `_`))
+}
+
+// deprecated_byte_starts_type reports whether `c` can begin the type after a
+// name: `T`, `&T`, `[]T`, `?T`, `!T` or `...T`.
+fn deprecated_byte_starts_type(c u8) bool {
+	return c.is_letter() || c in [`_`, `&`, `[`, `?`, `!`, `.`]
 }
 
 fn deprecated_byte_skip_blanks_back(source string, offset int) int {
