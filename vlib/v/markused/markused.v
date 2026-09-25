@@ -1557,8 +1557,10 @@ fn markused_file_is_vlib(file string) bool {
 
 // markused_file_is_test defers to pref, so every spelling the driver treats as a test
 // (including architecture-qualified ones such as `foo_test.arm64.v`) is treated the same here.
+// pref reports `_test.js.v` as a test for no backend while V3 has no JS backend, so that
+// spelling is still matched directly.
 fn markused_file_is_test(file string) bool {
-	return pref.is_test_file_for_backend(file, 'c') || pref.is_test_file_for_backend(file, 'js')
+	return pref.is_test_file_for_backend(file, 'c') || file.ends_with('_test.js.v')
 }
 
 fn enqueue_top_level_calls(a &flat.FlatAst, collector CallCollector, fn_decls map[string]FnDeclInfo, has_entry_main bool, mut used map[string]bool, mut queue []string, initial_uses_generics bool) bool {
