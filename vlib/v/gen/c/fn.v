@@ -1957,6 +1957,13 @@ fn (g &FlatGen) selector_base_module(name string) ?string {
 	if mod := g.tc.imports[name] {
 		return mod
 	}
+	// A file can qualify a symbol with the name of its own module (`m.f` written inside
+	// `m`). No import statement records that, so without this check the qualified name
+	// reaches the C output verbatim and the C compiler reports the module name itself as
+	// an undeclared identifier.
+	if g.tc != unsafe { nil } && name == g.tc.cur_module {
+		return g.tc.cur_module
+	}
 	return none
 }
 
