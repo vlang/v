@@ -12221,10 +12221,21 @@ fn (tc &TypeChecker) sum_type_private_field_owner(sum SumType, field_name string
 		}
 		return none
 	}
-	if is_indexed && tc.sum_unique_variant_field_type(sum, field_name) != none {
-		return tc.sum_variant_with_private_field(sum.name, field_name)
+	if is_indexed {
+		return tc.sum_unique_field_private_variant(sum, field_name)
 	}
 	return none
+}
+
+// sum_unique_field_private_variant returns the variant to name in the error when field
+// `field_name`, which only one variant of sum type `sum` has, is private outside the module
+// that declares the variant. Like V1, that variant decides also when the field is selected
+// through an alias of `sum`, wherever the alias is declared.
+fn (tc &TypeChecker) sum_unique_field_private_variant(sum SumType, field_name string) ?Type {
+	if tc.sum_unique_variant_field_type(sum, field_name) == none {
+		return none
+	}
+	return tc.sum_variant_with_private_field(sum.name, field_name)
 }
 
 // sum_variant_with_private_field returns the struct variant (or alias of one) of sum type

@@ -47,4 +47,6 @@ fn main() {
 	look.secret = 9
 	looks := [look]
 	println(looks[0].extra)
+	shape_aliases := [shape_alias]
+	println(shape_aliases[0].radius + shape_aliases[0].width)
 }

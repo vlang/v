@@ -122,4 +122,11 @@ vlib/v/checker/tests/modules/private_struct_field_read_err/main.v:49:19: error: 
    48 |     looks := [look]
    49 |     println(looks[0].extra)
       |                      ~~~~~
-   50 | }
+   50 |     shape_aliases := [shape_alias]
+   51 |     println(shape_aliases[0].radius + shape_aliases[0].width)
+vlib/v/checker/tests/modules/private_struct_field_read_err/main.v:51:27: error: field `private_struct_field_read_err.fieldvis.Circle.radius` is not public
+   49 |     println(looks[0].extra)
+   50 |     shape_aliases := [shape_alias]
+   51 |     println(shape_aliases[0].radius + shape_aliases[0].width)
+      |                              ~~~~~~
+   52 | }

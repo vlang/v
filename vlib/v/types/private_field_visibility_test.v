@@ -187,6 +187,10 @@ fn main() {
 	look.secret = 1
 	looks := [look]
 	println(looks[0].extra)
+	shape_aliases := [shape_alias]
+	println(shape_aliases[0].radius + shape_aliases[0].width)
+	local_shapes := [LocalShape(shape)]
+	println(local_shapes[0].radius + local_shapes[0].width)
 }
 
 struct OwnA {
@@ -198,6 +202,8 @@ struct OwnB {
 }
 
 type OwnSum = OwnA | OwnB
+
+type LocalShape = lib.Shape
 '
 
 fn private_field_errors() ![]string {
@@ -253,5 +259,7 @@ fn test_private_struct_fields_of_other_modules_are_not_public() {
 		'main.v:53: field `lib.Look.secret` is not public',
 		'main.v:54: field `lib.Look.secret` is not public',
 		'main.v:56: field `lib.Plain.extra` is not public',
+		'main.v:58: field `lib.Circle.radius` is not public',
+		'main.v:60: field `lib.Circle.radius` is not public',
 	], errors.str()
 }

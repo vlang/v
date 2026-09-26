@@ -6087,10 +6087,20 @@ fn (mut tc TypeChecker) check_selector(id flat.NodeId, node flat.Node) {
 	// Selectors see through every pointer layer (`pp.field` with `pp` of type `&&Box`),
 	// so the visibility checks use the receiver without any of them.
 	visibility_recv := unwrap_all_pointers(base_type)
-	if visibility_recv is Alias && !tc.selector_is_call_callee(id)
-		&& tc.alias_struct_field_is_private_outside_module(visibility_recv, node.value) {
-		tc.record_error_at(.unknown_field, 'field `${tc.diagnostic_type_name(Type(visibility_recv))}.${node.value}` is not public', id,
-			tc.node_value_diagnostic_pos(id))
+	if visibility_recv is Alias && !tc.selector_is_call_callee(id) {
+		if tc.alias_struct_field_is_private_outside_module(visibility_recv, node.value) {
+			tc.record_error_at(.unknown_field, 'field `${tc.diagnostic_type_name(Type(visibility_recv))}.${node.value}` is not public', id,
+				tc.node_value_diagnostic_pos(id))
+		} else if base.kind == .index {
+			// `aliases[0].radius`: a field of a single variant, selected through an alias of a sum type.
+			alias_target := unalias_and_unwrap_pointer_type(Type(visibility_recv))
+			if alias_target is SumType && tc.sum_shared_field_type(alias_target, node.value) == none {
+				if owner := tc.sum_unique_field_private_variant(alias_target, node.value) {
+					tc.record_error_at(.unknown_field, 'field `${tc.diagnostic_type_name(owner)}.${node.value}` is not public', id,
+						tc.node_value_diagnostic_pos(id))
+				}
+			}
+		}
 	}
 	// A field selected through a sum type is a field of its struct variants.
 	if visibility_recv is SumType && !tc.selector_is_call_callee(id) {
