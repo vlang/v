@@ -9603,7 +9603,7 @@ See https://github.com/vlang/v/blob/master/cmd/tools/vrun for more details.
 
 ## Appendix I: Keywords
 
-V has 45 reserved keywords (3 are literals):
+V has 48 reserved keywords (3 are literals):
 
 ```v ignore
 as
@@ -9614,6 +9614,7 @@ break
 const
 continue
 defer
+dump
 else
 enum
 false
@@ -9622,7 +9623,6 @@ for
 go
 goto
 if
-implements
 import
 in
 interface
@@ -9632,6 +9632,7 @@ lock
 match
 module
 mut
+nil
 none
 or
 pub
@@ -9651,6 +9652,8 @@ unsafe
 volatile
 __global
 __offsetof
+_likely_
+_unlikely_
 ```
 
 See also [V Types](#v-types).
