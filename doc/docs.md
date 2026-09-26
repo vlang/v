@@ -7250,6 +7250,16 @@ it will make it more self contained and thus easier to distribute.
 When that happens (the default), `embedded_file.data()` will cause *no IO*,
 and it will always return the same data.
 
+With `-prod`, a large embedded file is stored through the assembler's `.incbin`
+directive: V writes the bytes to a file, assembles a small `.S` source that
+includes it, and links the resulting object next to the generated C, so the C
+compiler never has to parse the bytes as an array initializer. That happens when
+the build links natively with GCC, Clang or MinGW, or with TCC when a GCC or
+Clang compatible compiler is installed. Generated C or object output (`-o file.c`,
+`-o file.o`, `-generate-c-project`), MSVC, iOS and WebAssembly targets, and a
+Windows target built on another OS keep the array form, and `-d no_incbin`
+selects it everywhere.
+
 `$embed_file` supports compression of the embedded file when compiling with `-prod`.
 Currently only one compression type is supported: `zlib`.
 

@@ -342,6 +342,12 @@ fn (mut g FlatGen) gen_embed_file_uncompressed_field(value_id flat.NodeId, struc
 	// and between the specializations of a generic that cloned the expression,
 	// and it keeps the externally linked joined buffer nameable by a separately
 	// generated translation unit, which is what the module cache produces.
+	if g.embed_payload_uses_incbin(embed_blob_symbol(data.value)) {
+		// The assembler puts the bytes in the object file; gen_embed_file_blobs
+		// declares the object, and the driver assembles and links it.
+		g.write('(u8*)_v_embed_blob_${embed_blob_symbol(data.value)}')
+		return true
+	}
 	if data.value.len > c_max_object_size {
 		// Split across several objects, which `_vinit` joins once into the buffer
 		// named here. Reading a pointer rather than joining at every evaluation is
@@ -398,6 +404,15 @@ fn (mut g FlatGen) gen_embed_file_blobs() {
 			continue
 		}
 		seen[sym] = true
+		if g.embed_payload_uses_incbin(sym) {
+			// Defined by the object the driver assembles from the payload with
+			// `.incbin`; see embed_incbin_payloads. No size split is needed there:
+			// the C object size limit is about initializers, which that object
+			// does not have.
+			g.writeln('extern const unsigned char _v_embed_blob_${sym}[];')
+			defined++
+			continue
+		}
 		if node.value.len <= c_max_object_size {
 			g.write('static const unsigned char _v_embed_blob_${sym}')
 			g.write_embed_blob_bytes(node.value, 0, node.value.len)
@@ -436,20 +451,91 @@ fn (mut g FlatGen) for_each_embed_blob_chunked(each fn (mut FlatGen, string, str
 			continue
 		}
 		seen[sym] = true
+		if g.embed_payload_uses_incbin(sym) {
+			continue
+		}
 		each(mut g, sym, node.value)
 	}
 }
 
 // has_chunked_embed_blobs reports whether `_vinit` has any payload to join.
-fn (g &FlatGen) has_chunked_embed_blobs() bool {
+fn (mut g FlatGen) has_chunked_embed_blobs() bool {
 	for i in 0 .. g.a.nodes.len {
 		node := unsafe { &g.a.nodes[i] }
 		if node.kind == .string_literal && node.is_embed_payload()
-			&& node.value.len > c_max_object_size {
+			&& node.value.len > c_max_object_size
+			&& !g.embed_payload_uses_incbin(embed_blob_symbol(node.value)) {
 			return true
 		}
 	}
 	return false
+}
+
+// EmbedIncbinPayload is one `$embed_file` payload that the C build stores through
+// the assembler's `.incbin` directive rather than a C array initializer.
+pub struct EmbedIncbinPayload {
+pub:
+	symbol  string // the suffix of the `_v_embed_blob_` object the generated C names
+	payload string // the bytes that object holds
+}
+
+// embed_incbin_payloads lists the payloads that take the `.incbin` path when the
+// driver has enabled it: every payload too long for a string literal, in AST
+// order, except, under the module cache, those that a cached module refers to.
+// A cached module is a file outside `program_files`; its object is reused by
+// later builds that do not assemble this build's objects, so its payloads stay
+// self contained C arrays. The same bytes referred to from both sides are one
+// symbol, and go the self contained way too. The driver and the generator
+// derive the list from the same inputs, so they agree on which objects exist.
+pub fn embed_incbin_payloads(a &flat.FlatAst, program_files map[string]bool, module_cache bool) []EmbedIncbinPayload {
+	mut candidates := []EmbedIncbinPayload{}
+	mut seen := map[string]bool{}
+	mut in_cached_module := map[string]bool{}
+	mut cur_file_is_program := true
+	mut program_file_memo := map[string]bool{}
+	for i in 0 .. a.nodes.len {
+		node := unsafe { &a.nodes[i] }
+		if node.kind == .file {
+			cur_file_is_program = !module_cache
+				|| cache_program_file_matches(a, program_files, node.value, mut program_file_memo)
+			continue
+		}
+		if node.kind != .string_literal || !node.is_embed_payload()
+			|| !embed_payload_needs_blob(node.value.len) {
+			continue
+		}
+		sym := embed_blob_symbol(node.value)
+		if !cur_file_is_program {
+			in_cached_module[sym] = true
+		}
+		if seen[sym] {
+			continue
+		}
+		seen[sym] = true
+		candidates << EmbedIncbinPayload{
+			symbol:  sym
+			payload: node.value
+		}
+	}
+	return candidates.filter(!in_cached_module[it.symbol])
+}
+
+// embed_payload_uses_incbin reports whether the object named `sym` is one the
+// driver assembles with `.incbin`, which decides how the generated C refers to
+// it. The set is derived once from the AST and kept; the AST does not change
+// under code generation.
+fn (mut g FlatGen) embed_payload_uses_incbin(sym string) bool {
+	if !g.embed_incbin {
+		return false
+	}
+	if !g.embed_incbin_syms_ready {
+		g.embed_incbin_syms = map[string]bool{}
+		for entry in embed_incbin_payloads(g.a, g.cache_program_files, g.cache_stable_symbols) {
+			g.embed_incbin_syms[entry.symbol] = true
+		}
+		g.embed_incbin_syms_ready = true
+	}
+	return g.embed_incbin_syms[sym]
 }
 
 // gen_embed_blob_joined defines the buffers that _vinit fills, and is emitted
