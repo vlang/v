@@ -59,16 +59,6 @@ fn (mut tc TypeChecker) vls_definition_at(target VlsTarget) ?VlsPos {
 			if at := tc.vls_local_definition(id) {
 				return at
 			}
-			if node.value == 'err' {
-				if at := tc.vls_err_block(id) {
-					return at
-				}
-			}
-			if node.value in ['it', 'a', 'b'] {
-				if at := tc.vls_implicit_var_at(id, node.value) {
-					return at
-				}
-			}
 			if at := tc.vls_const_definition(node.value) {
 				return at
 			}
@@ -113,9 +103,14 @@ fn (mut tc TypeChecker) vls_definition_at(target VlsTarget) ?VlsPos {
 	}
 }
 
-// vls_local_definition is where a local name is declared.
+// vls_local_definition is where a local name is declared: by the code, or by
+// the language, as `err` of an `or {}` block is.
 fn (tc &TypeChecker) vls_local_definition(id flat.NodeId) ?VlsPos {
-	decl_id := tc.vls_local_declaration(id)?
+	binding := tc.vls_local_binding(id)?
+	if binding.implicit {
+		return binding.at
+	}
+	decl_id := binding.decl_id
 	decl := tc.a.node(decl_id)
 	if decl.kind == .param {
 		if at := tc.vls_receiver_name_at(decl_id, decl, tc.vls_source(int(decl.pos.id))) {
@@ -123,64 +118,6 @@ fn (tc &TypeChecker) vls_local_definition(id flat.NodeId) ?VlsPos {
 		}
 	}
 	return VlsPos{int(decl.pos.id), int(decl.pos.offset)}
-}
-
-// vls_err_block is where the implicit `err` that `id` names comes from: the
-// `{` of the `or {}` block around it, or of the `else {}` of an `if x := f()`.
-fn (tc &TypeChecker) vls_err_block(id flat.NodeId) ?VlsPos {
-	mut child := id
-	mut parent := tc.vls_parent_id(child)
-	for tc.valid_node_id(parent) {
-		p := tc.a.node(parent)
-		if p.kind in [.fn_decl, .fn_literal, .lambda_expr, .file] {
-			return none
-		}
-		if p.kind == .block {
-			block_parent_id := tc.vls_parent_id(parent)
-			if tc.valid_node_id(block_parent_id) {
-				owner := tc.a.node(block_parent_id)
-				from_or := owner.kind == .or_expr && owner.children_count > 1
-					&& tc.a.child(owner, 1) == parent
-				from_else := owner.kind == .if_expr && owner.children_count > 2
-					&& tc.a.child(owner, 2) == parent
-					&& tc.a.child_node(owner, 0).kind == .decl_assign
-				if from_or || from_else {
-					return VlsPos{int(p.pos.id), int(p.pos.offset)}
-				}
-			}
-		}
-		child = parent
-		parent = tc.vls_parent_id(child)
-	}
-	return none
-}
-
-// vls_implicit_var_at is where the implicit `it` of `.map(it.x)`, `.filter()`,
-// `.any()`, `.all()` and `.count()`, or the `a` and `b` of `.sort(a < b)` and
-// `.sorted()`, come from: the name of that method, as V1 answered.
-fn (tc &TypeChecker) vls_implicit_var_at(id flat.NodeId, name string) ?VlsPos {
-	methods := if name == 'it' {
-		['filter', 'map', 'any', 'all', 'count']
-	} else {
-		['sort', 'sorted']
-	}
-	mut child := id
-	mut parent := tc.vls_parent_id(child)
-	for tc.valid_node_id(parent) {
-		p := tc.a.node(parent)
-		if p.kind in [.fn_decl, .fn_literal, .lambda_expr, .file] {
-			return none
-		}
-		if p.kind == .call && p.children_count > 1 && tc.a.child(p, 0) != child {
-			callee := tc.a.child_node(p, 0)
-			if callee.kind == .selector && callee.value in methods {
-				return VlsPos{int(callee.pos.id), int(callee.pos.end) - callee.value.len}
-			}
-		}
-		child = parent
-		parent = tc.vls_parent_id(child)
-	}
-	return none
 }
 
 // vls_receiver_name_at finds the name of a method's receiver in the source:
