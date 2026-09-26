@@ -16127,6 +16127,41 @@ fn (g &FlatGen) type_is_reftype(typ types.Type, mut seen map[string]bool) bool {
 	return false
 }
 
+// gen_mut_param_value_call_arg emits a `mut` parameter that a call passes by
+// value. In V a `mut` parameter read by value is one dereference deep: the value
+// is `*name`, not the address of its parameter slot. The plain expression path
+// handles this through the expected type, but a call whose parameter types are
+// not registered (notably a `C.` function) has no expected type, so the argument
+// would otherwise be emitted as the slot itself and the callee would read an
+// unrelated value. Returns false when the argument is not such a case.
+fn (mut g FlatGen) gen_mut_param_value_call_arg(arg_id flat.NodeId, arg_node flat.Node) bool {
+	if arg_node.kind != .ident || arg_node.is_mut || !g.current_param_is_mut(arg_node.value) {
+		return false
+	}
+	if g.current_mut_param_binding_is_shadowed(arg_node.value) {
+		return false
+	}
+	// Only a mutable parameter whose own value is a pointer is one dereference deep:
+	// passing it by value means passing `*name`. For every other mutable parameter the
+	// C variable already holds the address of the caller's storage, so a callee that
+	// asks for a pointer wants the slot itself, not `*name`.
+	param_type := g.current_param_type(arg_node.value) or { return false }
+	if param_type is types.Pointer {
+		if !c_type_is_pointer_like(param_type.base_type) {
+			return false
+		}
+	} else {
+		return false
+	}
+	g.write('*')
+	if g.current_param_is_mut_pointer(arg_node.value) {
+		g.gen_mut_pointer_slot_expr(arg_id)
+	} else {
+		g.gen_expr(arg_id)
+	}
+	return true
+}
+
 // gen_call_args emits call args output for c.
 fn (mut g FlatGen) gen_call_args(fn_name string, node flat.Node, start int) {
 	callee_name := if node.children_count > 0 {
@@ -16199,6 +16234,11 @@ fn (mut g FlatGen) gen_call_args(fn_name string, node flat.Node, start int) {
 		}
 		if i > start {
 			g.write(', ')
+		}
+		if !arg_node.is_mut && arg_node.kind == .ident
+			&& (arg_idx >= param_types.len || c_type_is_pointer_like(param_types[arg_idx]))
+			&& g.gen_mut_param_value_call_arg(arg_id, arg_node) {
+			continue
 		}
 		if arg_node.kind == .field_init && variadic_idx >= 0 && arg_idx == variadic_idx {
 			variadic_type := param_types[variadic_idx]
