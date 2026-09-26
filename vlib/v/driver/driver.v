@@ -2135,7 +2135,7 @@ struct V3CCompilerFlagPlan {
 }
 
 const v3_parallel_cc_unit_marker = '/* V3PARALLEL_CC_UNIT */'
-const v3_parallel_cc_max_jobs = 2
+const v3_parallel_cc_max_jobs = 8
 const v3_parallel_cc_units_per_job = 4
 const v3_parallel_cc_monolithic_define = 'v3_parallel_cc_monolithic'
 const v3_parallel_cc_monolithic_exit_code = 125
@@ -2155,10 +2155,9 @@ fn v3_parallel_c_job_count(available_jobs int, building_v bool, is_bsd_host bool
 	} else {
 		v3_parallel_cc_max_jobs
 	}
-	// The default cap keeps the concurrent optimizing C compiles (and their
-	// memory) modest for CI-sized hosts. A developer machine with the cores and
-	// RAM to spare can raise it for one build; the available job count still
-	// bounds it.
+	// The default cap balances concurrent optimizing C compiles and memory use.
+	// A developer machine with more cores and RAM can raise it for one build;
+	// the available job count still bounds it.
 	requested := os.getenv('V3_PARALLEL_CC_JOBS').int()
 	if requested > max_jobs {
 		max_jobs = requested
