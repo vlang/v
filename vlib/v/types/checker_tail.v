@@ -3834,6 +3834,28 @@ fn (mut tc TypeChecker) check_call(id flat.NodeId, node flat.Node) {
 				tc.check_builtin_array_mutable_receiver(receiver_id)
 			}
 		}
+		if callee.kind == .selector && callee.value == 'wait' && callee.children_count > 0 {
+			// Only thread handles and arrays of them have `.wait()`. On any other
+			// array the call resolves silently, so report it here like V1 does.
+			receiver_id := tc.a.child(callee, 0)
+			raw_receiver_type := tc.resolve_type(receiver_id)
+			receiver_type := unalias_and_unwrap_pointer_type(raw_receiver_type)
+			receiver_name := receiver_type.name()
+			if !unresolved_generic_receiver_type(receiver_type) && receiver_type is Array
+				&& !tc.alias_declares_method(raw_receiver_type, 'wait') {
+				elem := array_elem_type(receiver_type)
+				is_thread_elem := if _ := tc.thread_wait_return_type(elem) { true } else { false }
+				if elem !is Unknown && !is_thread_elem {
+					tc.record_error(.unknown_fn,
+						'`${receiver_name}` has no method `wait()` (only thread handles and arrays of them have)',
+						receiver_id)
+					tc.register_synth_type(id, Type(MultiReturn{
+						types: []Type{}
+					}))
+					return
+				}
+			}
+		}
 		if callee.kind == .selector && callee.value == 'sort' && callee.children_count > 0 {
 			receiver_id := tc.a.child(callee, 0)
 			receiver_type := unalias_and_unwrap_pointer_type(tc.resolve_type(receiver_id))
@@ -18942,7 +18964,9 @@ fn (tc &TypeChecker) is_known_call(node flat.Node) bool {
 			if fn_node.value == 'hex' {
 				return tc.is_builtin_hex_receiver(base_type)
 			}
-			return true
+			// The builtin map methods; any other name is an unknown method, as in V1.
+			return fn_node.value in ['clone', 'move', 'delete', 'clear', 'free', 'keys', 'values',
+				'reserve', 'str']
 		}
 		if clean_type is String {
 			if fn_node.value == 'hex' {
@@ -19024,6 +19048,20 @@ fn (tc &TypeChecker) is_known_array_receiver_method(receiver Type, method string
 			}
 		}
 		return method == 'pointers'
+	}
+	return false
+}
+
+// alias_declares_method reports whether any alias in the chain of `typ` (for
+// `type MyArr = []int`, `MyArr`) declares its own `method`, which takes priority
+// over the builtin methods of the aliased type.
+fn (tc &TypeChecker) alias_declares_method(typ Type, method string) bool {
+	mut current := unwrap_pointer(typ)
+	for current is Alias {
+		if '${current.name}.${method}' in tc.fn_ret_types {
+			return true
+		}
+		current = unwrap_pointer(current.base_type)
 	}
 	return false
 }

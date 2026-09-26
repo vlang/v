@@ -384,3 +384,196 @@ fn test_selected_file_calling_invalid_ierror_method_return_reports_dependency_er
 	assert main_errors[0].msg.contains('bad.NotError')
 	assert main_errors[0].msg.contains('`!int`')
 }
+
+fn test_wait_on_non_thread_array_reports_error() {
+	errors := check_diagnostic_project('wait_on_non_thread_array', {
+		'main.v': 'module main
+
+fn main() {
+	chs2 := []int{}
+	chs2.wait()
+}
+'
+	}, ['main.v'])
+	assert errors.len == 1, errors.str()
+	assert errors[0].msg == '`[]int` has no method `wait()` (only thread handles and arrays of them have)'
+	assert errors[0].node_value == 'chs2', errors.str()
+}
+
+fn test_unknown_method_on_map_reports_error() {
+	errors := check_diagnostic_project('unknown_map_method', {
+		'main.v': 'module main
+
+fn main() {
+	mut m := map[string]int{}
+	m.close()
+	m.foo()
+	m.wait()
+}
+'
+	}, ['main.v'])
+	assert errors.len == 3, errors.str()
+	for i, method in ['close', 'foo', 'wait'] {
+		// The wording belongs to the existing unknown-call path; assert the kind
+		// and the named method, which is what this check adds.
+		assert errors[i].kind == .unknown_fn, errors[i].str()
+		assert errors[i].msg.contains('m.${method}'), errors[i].msg
+	}
+}
+
+fn test_builtin_map_methods_are_not_reported() {
+	errors := check_diagnostic_project('builtin_map_methods', {
+		'main.v': "module main
+
+fn main() {
+	mut m := map[string]int{}
+	m.reserve(4)
+	m['a'] = 1
+	_ := m.keys()
+	_ := m.values()
+	c := m.clone()
+	println(c.str())
+	mut n := m.move()
+	n.delete('a')
+	n.clear()
+	unsafe { n.free() }
+}
+"
+	}, ['main.v'])
+	assert errors.len == 0, errors.str()
+}
+
+fn test_user_wait_method_on_array_alias_is_allowed() {
+	errors := check_diagnostic_project('array_alias_user_wait', {
+		'main.v': "module main
+
+type MyArr = []int
+
+type Nested = MyArr
+
+fn (a MyArr) wait() string {
+	return 'ok'
+}
+
+fn main() {
+	x := MyArr([1, 2])
+	println(x.wait())
+	y := Nested([3])
+	println(y.wait())
+}
+"
+	}, ['main.v'])
+	assert errors.len == 0, errors.str()
+}
+
+fn test_builtin_wait_on_thread_arrays_is_allowed() {
+	// The results of `.wait()` are used as values of their element type, so a
+	// wrong result type would be reported too.
+	errors := check_diagnostic_project('thread_array_wait', {
+		'main.v': 'module main
+
+fn compute(n int) int {
+	return n * 2
+}
+
+fn tick() {}
+
+fn main() {
+	mut threads := []thread int{}
+	threads << spawn compute(1)
+	results := threads.wait()
+	println(results[0] + 1)
+	mut ticks := []thread{}
+	ticks << spawn tick()
+	ticks.wait()
+}
+'
+	}, ['main.v'])
+	assert errors.len == 0, errors.str()
+}
+
+fn test_unknown_enum_values_are_reported() {
+	errors := check_diagnostic_project('unknown_enum_values', {
+		'main.v': 'module main
+
+enum Color {
+	red
+	green
+}
+
+fn main() {
+	a := Color.nope
+	match a {
+		.red { println(1) }
+		.bogus { println(2) }
+		else {}
+	}
+}
+'
+	}, ['main.v'])
+	assert errors.len == 2, errors.str()
+	assert errors[0].msg == 'unknown enum field `nope` for `Color`', errors.str()
+	assert errors[1].msg == 'unknown enum field `bogus` for `Color`', errors.str()
+}
+
+fn test_enum_statics_and_methods_are_not_reported() {
+	errors := check_diagnostic_project('enum_statics', {
+		'main.v': "module main
+
+enum Color {
+	red
+	green
+}
+
+@[flag]
+enum Permission {
+	read
+	write
+}
+
+fn (c Color) label() string {
+	return c.str()
+}
+
+fn Color.first() Color {
+	return .red
+}
+
+fn apply(f fn (Color) string) string {
+	return f(Color.green)
+}
+
+fn main() {
+	c := Color.from(1) or { Color.red }
+	p := Permission.zero()
+	s := Color.from_string('green') or { Color.red }
+	f := Color.first
+	println('\${c.label()} \${p} \${s} \${Color.green} \${f()} \${apply(Color.label)}')
+}
+"
+	}, ['main.v'])
+	assert errors.len == 0, errors.str()
+}
+
+fn test_escaped_keyword_enum_values_are_not_reported() {
+	errors := check_diagnostic_project('escaped_enum_values', {
+		'main.v': 'module main
+
+enum Mode {
+	@none
+	@type
+	normal
+}
+
+fn main() {
+	m := Mode.@none
+	match m {
+		.@none { println(0) }
+		.@type { println(1) }
+		.normal { println(2) }
+	}
+}
+'
+	}, ['main.v'])
+	assert errors.len == 0, errors.str()
+}

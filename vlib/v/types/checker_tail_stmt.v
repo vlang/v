@@ -1929,6 +1929,10 @@ fn (mut tc TypeChecker) check_match_condition_type(subject_type Type, cond_id fl
 		return
 	}
 	if cond.kind == .enum_val && clean_subject is Enum {
+		enum_name := tc.resolve_enum_name(clean_subject.name) or { clean_subject.name }
+		if !tc.enum_value_matches(cond.value, enum_name) {
+			tc.record_error_at(.unknown_field, 'unknown enum field `${cond.value.all_after_last('.')}` for `${enum_name}`', cond_id, cond.pos)
+		}
 		return
 	}
 	clean_condition := unalias_type(condition_type)
@@ -5959,6 +5963,21 @@ fn (mut tc TypeChecker) check_selector(id flat.NodeId, node flat.Node) {
 		tc.register_synth_type(id, typ)
 		return
 	}
+	// `Color.nope`: the enum is a namespace below, which accepts any member, so a
+	// value the enum does not declare would otherwise pass unnoticed.
+	if base.kind == .ident && base.value.len > 0 && base.value[0].is_capital() {
+		if enum_name := tc.resolve_enum_name(base.value) {
+			if !tc.enum_has_field(enum_name, node.value)
+				&& !tc.enum_member_is_callable(enum_name, base.value, node.value) {
+				tc.record_error_at(.unknown_field, 'unknown enum field `${node.value}` for `${enum_name}`', id, tc.node_value_diagnostic_pos(id))
+				tc.register_synth_type(id, Type(Enum{
+					name:    enum_name
+					is_flag: enum_name in tc.flag_enums
+				}))
+				return
+			}
+		}
+	}
 	if base.kind == .prefix && base.op == .amp && base.children_count > 0 {
 		addressed := tc.a.child_node(&base, 0)
 		if addressed.kind == .struct_init {
@@ -9075,7 +9094,27 @@ fn (tc &TypeChecker) enum_value_matches(value string, enum_name string) bool {
 // enum_has_field converts enum has field data for types.
 fn (tc &TypeChecker) enum_has_field(enum_name string, field string) bool {
 	fields := tc.enum_fields[enum_name] or { return false }
-	return field in fields
+	// `Mode.@none` escapes a keyword; the value is declared as `none`.
+	return field in fields || (field.starts_with('@') && field[1..] in fields)
+}
+
+// enum_member_is_callable reports whether `Enum.member` names a function rather
+// than a value: a static one declared for the enum (`fn Color.first()`) or a
+// method passed as a value (`colors.map(Color.label)`).
+fn (tc &TypeChecker) enum_member_is_callable(enum_name string, base string, member string) bool {
+	if _ := tc.static_assoc_fn_key_for_base(base, member) {
+		return true
+	}
+	enum_type := Type(Enum{
+		name:    enum_name
+		is_flag: enum_name in tc.flag_enums
+	})
+	for mname in receiver_method_name_candidates(enum_type, member, tc.cur_module) {
+		if mname in tc.fn_ret_types {
+			return true
+		}
+	}
+	return false
 }
 
 // resolve_enum_name resolves resolve enum name information for types.
