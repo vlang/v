@@ -1137,39 +1137,8 @@ fn (mut tc TypeChecker) check_if_guard(id flat.NodeId, node flat.Node) []LocalBi
 			}
 		}
 	}
-	mut payload := Type(void_)
+	mut payload := tc.if_guard_payload_type(rhs_id, rhs_type)
 	is_optional_result := rhs_type is OptionType || rhs_type is ResultType
-	if rhs_type is OptionType {
-		payload = rhs_type.base_type
-	} else if rhs_type is ResultType {
-		payload = rhs_type.base_type
-	} else {
-		rhs := tc.a.nodes[int(rhs_id)]
-		if rhs.kind == .index && rhs.children_count > 0 {
-			base_type := unalias_and_unwrap_pointer_type(tc.resolve_type(tc.a.child(&rhs, 0)))
-			if base_type is Map {
-				payload = base_type.value_type
-			} else if base_type is Array {
-				payload = base_type.elem_type
-			} else if base_type is ArrayFixed {
-				payload = base_type.elem_type
-			} else if base_type is String {
-				payload = Type(u8_)
-			}
-		} else if rhs.kind == .call && rhs.children_count > 0 {
-			fn_node := tc.a.child_node(&rhs, 0)
-			if fn_node.kind == .selector && fn_node.value == 'get' {
-				if arr := tc.call_receiver_array_type(rhs) {
-					payload = arr.elem_type
-				}
-			}
-		} else if rhs.kind == .prefix && rhs.op == .arrow && rhs.children_count > 0 {
-			source_type := unalias_and_unwrap_pointer_type(tc.resolve_type(tc.a.child(&rhs, 0)))
-			if source_type is Channel {
-				payload = source_type.elem_type
-			}
-		}
-	}
 	if payload is Void && !is_optional_result {
 		if tc.should_diagnose(id) {
 			tc.record_error_at(.condition_mismatch, 'expression should either return an Option or a Result', rhs_id, rhs_node.pos)
@@ -1225,6 +1194,91 @@ fn (mut tc TypeChecker) check_if_guard(id flat.NodeId, node flat.Node) []LocalBi
 		return result
 	}
 	return []LocalBinding{}
+}
+
+// if_guard_payload_type returns the value an `if x := rhs` guard unwraps from
+// `rhs` (of type `rhs_type`), or `void` when `rhs` cannot be guarded.
+fn (tc &TypeChecker) if_guard_payload_type(rhs_id flat.NodeId, rhs_type Type) Type {
+	if rhs_type is OptionType {
+		return rhs_type.base_type
+	}
+	if rhs_type is ResultType {
+		return rhs_type.base_type
+	}
+	rhs := tc.a.nodes[int(rhs_id)]
+	if rhs.kind == .index && rhs.children_count > 0 {
+		base_type := unalias_and_unwrap_pointer_type(tc.resolve_type(tc.a.child(&rhs, 0)))
+		if base_type is Map {
+			return base_type.value_type
+		} else if base_type is Array {
+			return base_type.elem_type
+		} else if base_type is ArrayFixed {
+			return base_type.elem_type
+		} else if base_type is String {
+			return Type(u8_)
+		}
+	} else if rhs.kind == .call && rhs.children_count > 0 {
+		fn_node := tc.a.child_node(&rhs, 0)
+		if fn_node.kind == .selector && fn_node.value == 'get' {
+			if arr := tc.call_receiver_array_type(rhs) {
+				return arr.elem_type
+			}
+		}
+	} else if rhs.kind == .prefix && rhs.op == .arrow && rhs.children_count > 0 {
+		source_type := unalias_and_unwrap_pointer_type(tc.resolve_type(tc.a.child(&rhs, 0)))
+		if source_type is Channel {
+			return source_type.elem_type
+		}
+	}
+	return Type(void_)
+}
+
+// if_guard_query_bindings types the variables bound by the guard `cond` without
+// checking it. Type queries made outside the guard's checked scope need them,
+// e.g. const initializers, which are typed before any body is checked.
+fn (tc &TypeChecker) if_guard_query_bindings(cond flat.Node) []LocalBinding {
+	if cond.kind != .decl_assign || cond.children_count < 2 {
+		return []LocalBinding{}
+	}
+	rhs_id := tc.a.child(&cond, 1)
+	if !tc.valid_node_id(rhs_id) {
+		return []LocalBinding{}
+	}
+	mut rhs_type := tc.resolve_type(rhs_id)
+	rhs_node := tc.a.node(rhs_id)
+	if rhs_node.kind == .selector {
+		if declared := tc.selector_declared_value_type(*rhs_node) {
+			if declared is OptionType || declared is ResultType {
+				rhs_type = declared
+			}
+		}
+	}
+	payload := tc.if_guard_payload_type(rhs_id, rhs_type)
+	if payload is Void || type_contains_unknown(payload) {
+		return []LocalBinding{}
+	}
+	mut result := []LocalBinding{}
+	for i, lhs_id in tc.if_guard_lhs_ids(cond) {
+		lhs := tc.a.node(lhs_id)
+		if lhs.kind != .ident || lhs.value.len == 0 || lhs.value == '_'
+			|| !valid_string_data(lhs.value) {
+			continue
+		}
+		if payload is MultiReturn {
+			if i < payload.types.len {
+				result << LocalBinding{
+					name: lhs.value
+					typ:  payload.types[i]
+				}
+			}
+		} else if i == 0 {
+			result << LocalBinding{
+				name: lhs.value
+				typ:  payload
+			}
+		}
+	}
+	return result
 }
 
 fn (tc &TypeChecker) if_guard_unknown_bindings(lhs_ids []flat.NodeId, is_mut bool) []LocalBinding {
@@ -3087,8 +3141,19 @@ fn (tc &TypeChecker) if_expr_tail_type(id flat.NodeId) Type {
 			return tc.choose_if_tail_type(result, tc.branch_tail_type(cur_id))
 		}
 		if node.children_count > 1 {
-			smartcasts := tc.extract_smartcasts(tc.a.child(&node, 0))
-			then_type := tc.branch_tail_type_with_smartcasts(tc.a.child(&node, 1), smartcasts)
+			cond_id := tc.a.child(&node, 0)
+			then_id := tc.a.child(&node, 1)
+			mut smartcasts := tc.extract_smartcasts(cond_id)
+			mut then_type := tc.branch_tail_type_with_smartcasts(then_id, smartcasts)
+			if type_contains_unknown(then_type) && tc.valid_node_id(cond_id) {
+				// Outside the checked scope (e.g. a const initializer) the guard's
+				// `x` in `if x := opt { x }` is unbound; type it from `opt`.
+				guard_bindings := tc.if_guard_query_bindings(tc.a.nodes[int(cond_id)])
+				if guard_bindings.len > 0 {
+					smartcasts << guard_bindings
+					then_type = tc.branch_tail_type_with_smartcasts(then_id, smartcasts)
+				}
+			}
 			result = tc.choose_if_tail_type(result, then_type)
 		}
 		if node.children_count <= 2 {
