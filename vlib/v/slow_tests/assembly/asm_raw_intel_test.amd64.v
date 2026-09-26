@@ -1,9 +1,13 @@
 // vtest build: !msvc
 
 fn test_raw_template_with_named_operands() {
-	lhs := 19
-	rhs := 23
-	mut result := 0
+	// `movl`/`addl` are 32-bit instructions, so the operands have to be 32-bit too:
+	// V's `int` is platform width (64-bit here), and an `r` constraint on it is
+	// substituted with a 64-bit register that GNU as refuses to pair with an `l`
+	// suffix.
+	lhs := i32(19)
+	rhs := i32(23)
+	mut result := i32(0)
 	asm amd64 raw {
 		"movl %[lhs], %[result]\n\t"
 		"addl %[rhs], %[result]\n\t"

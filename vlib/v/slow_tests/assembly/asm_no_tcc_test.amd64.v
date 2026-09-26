@@ -48,8 +48,12 @@ fn test_flag_output() {
 	}
 	assert out
 
-	mut maybe_four := 4
-	mut four := 4
+	// The `l` suffixes below are 32-bit instructions, so the operands have to be
+	// 32-bit too: V's `int` is platform width (64-bit here), and an `r` constraint
+	// on it is substituted with a 64-bit register that GNU as refuses to pair with
+	// an `l` suffix.
+	mut maybe_four := i32(4)
+	mut four := i32(4)
 	asm amd64 {
 		subl four, maybe_four
 		testl four, maybe_four
