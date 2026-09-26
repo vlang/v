@@ -95,6 +95,16 @@ fn test_shift_assign_accepts_int_count_for_unsigned_left_operand() {
 	assert value == u64(1)
 }
 
+fn take_shifted_u16(value u16) u16 {
+	return value
+}
+
+fn test_shift_preserves_small_unsigned_left_operand_type() {
+	shift := 3
+	assert take_shifted_u16(u16(1) << shift) == 8
+	assert take_shifted_u16(u16(8) >> shift) == 1
+}
+
 fn oversized_shift_count() u64 {
 	return u64(64)
 }

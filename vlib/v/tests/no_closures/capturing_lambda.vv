@@ -1,0 +1,9 @@
+fn apply(f fn (int) int, v int) int {
+	return f(v)
+}
+
+fn main() {
+	offset := 10
+	// `offset` is captured, so the lambda needs a closure
+	println(apply(|x| x + offset, 1))
+}

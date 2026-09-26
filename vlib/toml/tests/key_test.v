@@ -23,12 +23,12 @@ fn test_keys() {
 	println(toml_json)
 	assert toml_json == out_file_json
 
-	if x := toml_doc.value_opt('unknown key') {
+	if _ := toml_doc.value_opt('unknown key') {
 		assert false
 	} else {
 		assert err.msg() == 'no value for key'
 	}
-	if x := toml_doc.value_opt("'a") {
+	if _ := toml_doc.value_opt("'a") {
 		assert false
 	} else {
 		assert err.msg() == 'invalid dotted key'
@@ -40,7 +40,7 @@ fn test_parse_dotted_key() {
 	assert toml.parse_dotted_key('abc')! == ['abc']
 	assert toml.parse_dotted_key('tube.test."test.test".h."i.j."."k"')! == ['tube', 'test', 'test.test',
 		'h', 'i.j.', 'k']
-	if x := toml.parse_dotted_key("'some unclosed string") {
+	if _ := toml.parse_dotted_key("'some unclosed string") {
 		assert false
 	} else {
 		assert err.msg().starts_with('parse_dotted_key: could not parse key, missing closing string delimiter')

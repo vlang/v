@@ -69,6 +69,7 @@ fn test_tagandlength_handling() ! {
 			assert err == c.err
 			continue
 		}
+		assert length == c.explength
 		assert idx == c.lastpos
 	}
 }

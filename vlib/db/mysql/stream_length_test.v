@@ -1,3 +1,4 @@
+// vtest build: started_mysqld?
 module mysql
 
 fn test_checked_stream_value_length() {

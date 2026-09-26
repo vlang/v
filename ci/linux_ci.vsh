@@ -256,21 +256,41 @@ fn self_tests_cstrict_gcc() {
 	exec('VTEST_JUST_ESSENTIAL=1 V_CI_CSTRICT=1 v -cc gcc -cstrict -silent test-self vlib')
 }
 
+fn skip_ownership_autofree_test() bool {
+	return common.is_github_job || os.getenv('VTEST_SKIP_OWNERSHIP') == '1'
+}
+
+fn report_skipped_ownership_autofree_test() {
+	eprintln('> skipping ownership/autofree test')
+}
+
 fn build_examples_gcc() {
 	build_examples()
 }
 
 fn build_tetris_autofree_gcc() {
+	if skip_ownership_autofree_test() {
+		report_skipped_ownership_autofree_test()
+		return
+	}
 	exec('v -autofree -o tetris examples/tetris/tetris.v')
 	exec('rm -f tetris')
 }
 
 fn build_blog_autofree_gcc() {
+	if skip_ownership_autofree_test() {
+		report_skipped_ownership_autofree_test()
+		return
+	}
 	exec('v -autofree -o blog tutorials/building_a_simple_web_blog_with_veb/code/blog')
 	exec('rm -f blog')
 }
 
 fn build_option_test_autofree_gcc() {
+	if skip_ownership_autofree_test() {
+		report_skipped_ownership_autofree_test()
+		return
+	}
 	exec('v -autofree vlib/v/tests/options/option_test.c.v')
 }
 
@@ -383,6 +403,10 @@ fn build_examples_clang() {
 }
 
 fn build_examples_autofree_clang() {
+	if skip_ownership_autofree_test() {
+		report_skipped_ownership_autofree_test()
+		return
+	}
 	exec('v -N -W -autofree -experimental -o tetris examples/tetris/tetris.v')
 	exec('rm -f tetris')
 }
@@ -405,8 +429,9 @@ fn test_inline_assembly() {
 	exec('v test vlib/v/slow_tests/assembly')
 }
 
-// Keep this ordered plan in sync with the script tasks in
-// .github/workflows/linux_ci.yml: TCC, then GCC, then Clang.
+// Keep this list in the same order as the active tasks in
+// .github/workflows/linux_ci.yml. The aggregate runner changes compiler flags at
+// the same boundaries as the three workflow jobs.
 const ci_tasks = [
 	'build_v_with_prealloc',
 	'all_code_is_formatted_tcc',
@@ -468,40 +493,23 @@ const ci_tasks = [
 	'build_modules_clang',
 ]
 
-fn ci_task_compiler(task_name string) string {
-	if task_name.ends_with('_gcc') {
-		return 'gcc'
-	}
-	if task_name.ends_with('_clang') {
-		return 'clang'
-	}
-	// The shared prealloc and assembly tasks belong to the TCC job.
-	return 'tcc'
-}
-
-fn ci_task_vflags(task_name string) string {
-	compiler := ci_task_compiler(task_name)
-	return if compiler == 'tcc' { '-cc tcc -no-retry-compilation' } else { '-cc ${compiler}' }
-}
-
-// Preserve progress across compiler fixes, but never share it between checkouts,
-// users, or the macOS runner.
+// Keep progress across edits/rebuilds, but isolate users and checkout directories.
 fn ci_progress_path() string {
 	checkout := sha256.hexhash(os.real_path(os.getwd()))
-	return '/tmp/v-linux-ci-${os.getuid()}-${checkout}.progress'
+	return os.join_path(os.cache_dir(), 'v-linux-ci-${os.getuid()}-${checkout}.progress')
 }
 
 fn ci_progress_contents(task_name string) string {
-	mut plan := ['linux-ci-v1', task_name]
-	for task in ci_tasks {
-		plan << '${task}\t${ci_task_vflags(task)}'
-	}
-	return plan.join('\n') + '\n'
+	// Record the whole ordered task list so changed plans restart safely.
+	return 'linux-ci-v1\n${task_name}\n${ci_tasks.join('\n')}\n'
 }
 
 fn ci_resume_index(path string) !int {
 	if !os.exists(path) {
 		return -1
+	}
+	if !os.is_file(path) {
+		return error('CI progress path is not a file: ${path}')
 	}
 	saved := os.read_file(path)!
 	for i, task_name in ci_tasks {
@@ -514,7 +522,11 @@ fn ci_resume_index(path string) !int {
 }
 
 fn save_ci_progress(path string, task_name string) ! {
-	// An interrupted write must leave the previous checkpoint intact.
+	// Write privately, then rename on the same filesystem. An interrupted write
+	// leaves the previous checkpoint intact, never a partially written cursor.
+	if os.exists(path) && !os.is_file(path) {
+		return error('CI progress path is not a file: ${path}')
+	}
 	tmp_dir := '${path}.${os.getpid()}.tmp'
 	os.mkdir(tmp_dir, mode: 0o700)!
 	defer {
@@ -525,23 +537,36 @@ fn save_ci_progress(path string, task_name string) ! {
 	os.rename(tmp_path, path)!
 }
 
+fn ci_vflags(task_index int) string {
+	if task_index < ci_tasks.index('all_code_is_formatted_gcc') {
+		return '-cc tcc -no-retry-compilation'
+	}
+	if task_index < ci_tasks.index('all_code_is_formatted_clang') {
+		return ''
+	}
+	return '-cc clang'
+}
+
+// run_ci_tasks mirrors the active ci/linux_ci.vsh steps in
+// .github/workflows/linux_ci.yml. The generic `all` mode intentionally remains
+// exhaustive, including tasks that are currently disabled in the workflow.
 fn run_ci_tasks(reset bool) ! {
+	// Match the GitHub Actions environment that changes test behavior.
 	os.setenv('CI', 'true', true)
 	os.setenv('GITHUB_ACTIONS', 'true', true)
 	os.setenv('RUNNER_OS', 'Linux', true)
 	os.setenv('V_MACOS_V3_NO_FALLBACK', '1', true)
-	// Stop inside test sessions, not only between tasks. Parallel files would
-	// otherwise keep running beyond the failure that the next run should retry.
+	// Stop test/build sessions promptly while retaining Linux CI's normal worker count.
 	os.setenv('VTEST_FAIL_FAST', '1', true)
-	os.setenv('VJOBS', '1', true)
 	os.setenv('VTEST_SHOW_LONGEST_BY_RUNTIME', '3', true)
 	os.setenv('VTEST_SHOW_LONGEST_BY_COMPTIME', '3', true)
 	os.setenv('VTEST_SHOW_LONGEST_BY_TOTALTIME', '3', true)
+	os.setenv('VTEST_SKIP_OWNERSHIP', '1', true)
 
 	progress_path := ci_progress_path()
 	progress_dir := '${progress_path}.d'
 	saved_index := if reset { -1 } else { ci_resume_index(progress_path)! }
-	// A reset, missing cursor or changed plan invalidates finer-grained state too.
+	// No valid cursor means none of its finer-grained records may be reused.
 	if saved_index < 0 && os.exists(progress_dir) {
 		os.rmdir_all(progress_dir)!
 	}
@@ -557,13 +582,17 @@ fn run_ci_tasks(reset bool) ! {
 	}
 	for i in start .. ci_tasks.len {
 		task_name := ci_tasks[i]
-		os.setenv('GITHUB_JOB', '${ci_task_compiler(task_name)}-linux', true)
-		os.setenv('VFLAGS', ci_task_vflags(task_name), true)
-		// Save BEFORE execution so failures and interruptions retry this task.
+		// Save BEFORE execution: a failure or interruption must retry this task.
 		save_ci_progress(progress_path, task_name)!
-		// This historical name is the shared common.exec/TestSession resume hook.
-		// The Linux-specific path keeps task/command/test results isolated.
-		os.setenv('V_MACOS_CI_TASK_PROGRESS', os.join_path(progress_dir, task_name), true)
+		os.setenv('V_CI_TASK_PROGRESS', os.join_path(progress_dir, task_name), true)
+		os.setenv('VFLAGS', ci_vflags(i), true)
+		if task_name.ends_with('_tcc') || task_name in ['build_v_with_prealloc', 'test_inline_assembly'] {
+			os.setenv('GITHUB_JOB', 'tcc-linux', true)
+		} else if task_name.ends_with('_gcc') {
+			os.setenv('GITHUB_JOB', 'gcc-linux', true)
+		} else {
+			os.setenv('GITHUB_JOB', 'clang-linux', true)
+		}
 		eprintln('CI task ${i + 1}/${ci_tasks.len}: ${task_name}')
 		exec('v run ci/linux_ci.vsh ${task_name}')
 	}

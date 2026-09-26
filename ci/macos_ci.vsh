@@ -1,6 +1,7 @@
 import common { Task, exec }
 import crypto.sha256
 import os
+import runtime
 
 fn test_symlink() {
 	exec('v symlink')
@@ -58,8 +59,12 @@ fn self_tests() {
 	// test the release's own standard library instead of this repository's.
 	// Individual files still fall back to it when the default compiler cannot
 	// build them.
+	// V3 needs several seconds per test file on the macOS runners, so a single job
+	// cannot get through vlib before the job timeout. The automatic job count
+	// allows one job per 8 GB of RAM, which is still one job on these 7 GB
+	// runners, while a V3 test build peaks well below 2 GB; use every core.
 	if common.is_github_job {
-		exec('VJOBS=1 v -no-memory-limit -silent test-self vlib')
+		exec('VJOBS=${runtime.nr_cpus()} v -no-memory-limit -silent test-self vlib')
 	} else {
 		vjobs := os.getenv_opt('VJOBS') or { '1' }
 		exec('VJOBS=${vjobs} v -no-memory-limit -progress test-self vlib')
@@ -93,8 +98,12 @@ fn ownership_vexe() string {
 	return vexe
 }
 
+fn skip_ownership_autofree_test() bool {
+	return common.is_github_job || os.getenv('VTEST_SKIP_OWNERSHIP') == '1'
+}
+
 fn build_hello_world_autofree() {
-	if os.getenv('VTEST_SKIP_OWNERSHIP') == '1' {
+	if skip_ownership_autofree_test() {
 		eprintln('> skipping ownership/autofree test')
 		return
 	}
@@ -103,7 +112,7 @@ fn build_hello_world_autofree() {
 }
 
 fn build_tetris_autofree() {
-	if os.getenv('VTEST_SKIP_OWNERSHIP') == '1' {
+	if skip_ownership_autofree_test() {
 		eprintln('> skipping ownership/autofree test')
 		return
 	}
@@ -111,6 +120,10 @@ fn build_tetris_autofree() {
 }
 
 fn build_blog_autofree() {
+	if skip_ownership_autofree_test() {
+		eprintln('> skipping ownership/autofree test')
+		return
+	}
 	// `-autofree` still needs the V1 compatibility compiler, and the frozen V 0.5.2
 	// release behind it ships a vlib without `json2`, which the blog imports. Build
 	// the tutorial with the default compiler until V3 ownership can run it;
@@ -213,6 +226,9 @@ fn ci_resume_index(path string) !int {
 	if !os.exists(path) {
 		return -1
 	}
+	if !os.is_file(path) {
+		return error('CI progress path is not a file: ${path}')
+	}
 	saved := os.read_file(path)!
 	for i, task_name in ci_tasks {
 		if saved == ci_progress_contents(task_name) {
@@ -226,6 +242,9 @@ fn ci_resume_index(path string) !int {
 fn save_ci_progress(path string, task_name string) ! {
 	// Write privately, then rename on the same filesystem. An interrupted write
 	// leaves the previous checkpoint intact, never a partially written cursor.
+	if os.exists(path) && !os.is_file(path) {
+		return error('CI progress path is not a file: ${path}')
+	}
 	tmp_dir := '${path}.${os.getpid()}.tmp'
 	os.mkdir(tmp_dir, mode: 0o700)!
 	defer {

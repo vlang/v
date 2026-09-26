@@ -58,6 +58,7 @@ fn test_varinttou64_u64tovarint() {
 		println('${k:b}:${v}')
 		n, len := conv.varinttou64(v)!
 		assert n == k
+		assert int(len) == v.len
 		rn := conv.u64tovarint(k)!
 		assert rn == v
 	}

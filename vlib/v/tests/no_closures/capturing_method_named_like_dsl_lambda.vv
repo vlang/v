@@ -1,0 +1,15 @@
+struct Widget {}
+
+fn (w Widget) map(x int) int {
+	return x + 1
+}
+
+fn call(f fn () int) int {
+	return f()
+}
+
+fn main() {
+	it := 1
+	// `Widget.map` is not the array DSL, so `it` is the captured local
+	println(call(|| Widget{}.map(it)))
+}

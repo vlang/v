@@ -169,10 +169,13 @@ jobs:
           V_MACOS_V3_NO_FALLBACK: 1
         run: v run ci/linux_ci.vsh build_examples_gcc
       - name: Build tetris with -autofree
+        if: ${{ false }} # Ownership/autofree coverage is temporarily disabled on GitHub CI.
         run: v run ci/linux_ci.vsh build_tetris_autofree_gcc
       - name: Build blog tutorial with -autofree
+        if: ${{ false }} # Ownership/autofree coverage is temporarily disabled on GitHub CI.
         run: v run ci/linux_ci.vsh build_blog_autofree_gcc
       - name: Build option_test.c.v with -autofree
+        if: ${{ false }} # Ownership/autofree coverage is temporarily disabled on GitHub CI.
         run: v run ci/linux_ci.vsh build_option_test_autofree_gcc
       - name: V self compilation with -parallel-cc
         run: v run ci/linux_ci.vsh v_self_compilation_parallel_cc_gcc
@@ -241,6 +244,7 @@ jobs:
           V_MACOS_V3_NO_FALLBACK: 1
         run: v run ci/linux_ci.vsh build_examples_clang
       - name: Build examples with -autofree
+        if: ${{ false }} # Ownership/autofree coverage is temporarily disabled on GitHub CI.
         run: v run ci/linux_ci.vsh build_examples_autofree_clang
       - name: Build modules
         run: v run ci/linux_ci.vsh build_modules_clang

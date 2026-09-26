@@ -287,7 +287,10 @@ fn test_host_header_sent_to_server() {
 		}
 		log.fatal(estr)
 	}
-	defer { server.stop() }
+	defer {
+		server.stop()
+		t.wait()
+	}
 	dump(server.addr)
 	x := http.get('http://${server.addr}/')!
 	dump(x)

@@ -5,34 +5,36 @@
 From the repository root of a built checkout on Linux, run:
 
 ```sh
-./v ci/linux_ci.vsh ci
+./v run ci/linux_ci.vsh ci
 ```
 
 This runs the script tasks from `.github/workflows/linux_ci.yml` in workflow order:
 TCC, GCC, then Clang. It does not bootstrap V or run the workflow's separate shell
 canaries. The tasks include dependency installation with `sudo apt`; use the Ubuntu
 24.04 environment expected by the workflow, with all three C compilers available.
-The command explicitly selects each job's compiler (`-cc tcc -no-retry-compilation`,
-`-cc gcc`, or `-cc clang`), sets the corresponding `GITHUB_JOB`, and disables the
-compatibility compiler fallback. Existing task bodies and test exclusions are unchanged.
+The command uses the workflow's compiler flags (`-cc tcc -no-retry-compilation`
+for TCC, the default compiler for GCC, and `-cc clang` for Clang), sets the
+corresponding `GITHUB_JOB`, and disables the compatibility compiler fallback.
 
 Like the macOS runner, it saves the current task **before** executing it and sets
-`VTEST_FAIL_FAST=1` and `VJOBS=1`. Fix a failure and repeat the command to resume that
-same task. Successful test files are retained through the shared per-test resume
-mechanism described below; failed, interrupted and not-yet-run files are retried.
-Non-test commands restart at the beginning of their task.
+`VTEST_FAIL_FAST=1`. It retains Linux CI's normal test worker count. Fix a failure
+and repeat the command to resume that same task. Successful test files are retained
+through the shared per-test resume mechanism described below; failed, interrupted
+and not-yet-run files are retried. Non-test commands restart at the beginning of
+their task.
 
-Linux progress is stored in `/tmp/v-linux-ci-<uid>-<checkout-hash>.progress`, with
-per-test records in the sibling `.progress.d` directory. It is separate from macOS
-progress and from other users and checkouts. Edits and compiler rebuilds preserve
-progress. Missing or invalid cursors, changed task plans or compiler flags, and
-`--reset` discard per-test state as well. A complete run clears both levels of progress.
-Read/write errors stop execution instead of silently losing progress.
+Linux progress is stored in the user cache directory (`$XDG_CACHE_HOME`, or
+`~/.cache`) as `v-linux-ci-<uid>-<checkout-hash>.progress`, with per-test records
+in the sibling `.progress.d` directory. It is separate from macOS progress and
+from other users and checkouts. Edits and compiler rebuilds preserve progress.
+Missing or invalid cursors, changed task plans, and `--reset` discard per-test
+state as well. A complete run clears both levels of progress. Read/write errors
+stop execution instead of silently losing progress.
 
 After fixing compiler/library bugs, perform a fresh validation of earlier work with:
 
 ```sh
-./v ci/linux_ci.vsh ci --reset
+./v run ci/linux_ci.vsh ci --reset
 ```
 
 A resumed pass alone does not revalidate earlier successes against shared source

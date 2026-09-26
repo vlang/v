@@ -1,11 +1,12 @@
 #!/bin/sh
 # Exercise the real Linux runner without installing packages or running CI workloads.
 set -eu
-unset VTEST_RESUME_DIR VTEST_RESUME_OWNER V_MACOS_CI_TASK_PROGRESS
+unset VTEST_RESUME_DIR VTEST_RESUME_OWNER V_CI_TASK_PROGRESS V_MACOS_CI_TASK_PROGRESS
 
 repo=$(CDPATH= cd "$(dirname "$0")/.." && pwd -P)
 vexe=${VEXE:-"$repo/v"}
 work=$(mktemp -d "${TMPDIR:-/tmp}/v-linux-ci-resume.XXXXXX")
+work=$(cd "$work" && pwd -P)
 checkpoint=
 other_checkpoint=
 cleanup() {
@@ -41,7 +42,8 @@ cat > "$fake_v" <<'MOCK'
 set -eu
 if [ "$1" = doctor ]; then
     [ "${VTEST_FAIL_FAST:-}" = 0 ] && [ "${VJOBS:-}" = 8 ] || exit 94
-    [ -z "${V_MACOS_CI_TASK_PROGRESS:-}" ] && [ -z "${VTEST_RESUME_DIR:-}" ] || exit 95
+    [ -z "${V_CI_TASK_PROGRESS:-}" ] && [ -z "${VTEST_RESUME_DIR:-}" ] || exit 95
+    [ "${VTEST_SKIP_OWNERSHIP:-}" = 0 ] || exit 95
     [ "$VFLAGS" = '-cc inherited' ] || exit 98
     echo doctor >> direct.log
     exit 0
@@ -49,20 +51,21 @@ fi
 [ "$1" = run ] && [ "$2" = ci/linux_ci.vsh ] || exit 90
 [ "$CI" = true ] && [ "$GITHUB_ACTIONS" = true ] && [ "$RUNNER_OS" = Linux ] || exit 91
 [ "$V_MACOS_V3_NO_FALLBACK" = 1 ] || exit 92
-[ "${VTEST_FAIL_FAST:-}" = 1 ] && [ "${VJOBS:-}" = 1 ] || exit 93
+[ "${VTEST_FAIL_FAST:-}" = 1 ] && [ "${VJOBS:-}" = 8 ] || exit 93
+[ "${VTEST_SKIP_OWNERSHIP:-}" = 1 ] || exit 93
 [ -z "${VTEST_RESUME_OWNER:-}" ] || exit 99
 case "$3" in
-    *_gcc) compiler=gcc; flags='-cc gcc' ;;
+    *_gcc) compiler=gcc; flags='' ;;
     *_clang) compiler=clang; flags='-cc clang' ;;
     *) compiler=tcc; flags='-cc tcc -no-retry-compilation' ;;
 esac
 [ "$GITHUB_JOB" = "$compiler-linux" ] && [ "$VFLAGS" = "$flags" ] || exit 92
-case "$V_MACOS_CI_TASK_PROGRESS" in */"$3") ;; *) exit 96 ;; esac
-case "$VTEST_RESUME_DIR" in "$V_MACOS_CI_TASK_PROGRESS"/tests/*) ;; *) exit 97 ;; esac
+case "$V_CI_TASK_PROGRESS" in */"$3") ;; *) exit 96 ;; esac
+case "$VTEST_RESUME_DIR" in "$V_CI_TASK_PROGRESS"/tests/*) ;; *) exit 97 ;; esac
 # The failing/interrupted task must already be durable before it starts.
-progress_dir=${V_MACOS_CI_TASK_PROGRESS%/*}
+progress_dir=${V_CI_TASK_PROGRESS%/*}
 [ "$(sed -n '2p' "${progress_dir%.d}")" = "$3" ] || exit 98
-mkdir -p "$V_MACOS_CI_TASK_PROGRESS"
+mkdir -p "$V_CI_TASK_PROGRESS"
 printf '%s\n' "$3" >> tasks.log
 if [ -f fail-task ] && [ "$3" = "$(cat fail-task)" ]; then
     exit 7
@@ -75,9 +78,10 @@ run_ci() {
     shift
     : > "$checkout/tasks.log"
     status=0
-    # Aggregate CI must override inherited parallelism and compiler selection.
+    # Aggregate CI must select the workflow compiler without changing parallelism.
     (cd "$checkout" && VTEST_FAIL_FAST=0 VJOBS=8 VFLAGS='-cc inherited' \
-        VTEST_RESUME_OWNER=inherited V_MACOS_V3_NO_FALLBACK=0 \
+        VTEST_SKIP_OWNERSHIP=0 VTEST_RESUME_OWNER=inherited V_MACOS_V3_NO_FALLBACK=0 \
+        XDG_CACHE_HOME="$work/cache" \
         V_CI_VEXE="$fake_v" "$runner" "$@") > "$work/output" 2>&1 || status=$?
     [ "$status" -eq "$expected_status" ] || fail "exit $status, expected $expected_status"
 }
@@ -91,7 +95,7 @@ tail -n "+$failed_line" "$work/tasks" > "$work/suffix"
 run_ci 7 ci
 checkpoint=$(sed -n 's/^CI progress: //p' "$work/output")
 [ -f "$checkpoint" ] || fail 'failure did not leave a checkpoint'
-case "$checkpoint" in /tmp/v-linux-ci-*.progress) ;; *) fail 'wrong checkpoint namespace' ;; esac
+case "$checkpoint" in "$work/cache"/v-linux-ci-*.progress) ;; *) fail 'wrong checkpoint namespace' ;; esac
 [ "$(sed -n '2p' "$checkpoint")" = "$failed_task" ] || fail 'saved the wrong task'
 cmp "$work/prefix" "$checkout/tasks.log"
 cp "$checkpoint" "$work/saved"
@@ -127,14 +131,13 @@ run_ci 7 ci --reset
 [ ! -e "$checkpoint.d/stale" ] || fail 'reset retained per-test progress'
 cmp "$work/prefix" "$checkout/tasks.log"
 
-# Reject corruption and changes to the ordered plan or compiler options.
-for state in truncated unknown changed flags; do
+# Reject corruption and changes to the ordered plan.
+for state in truncated unknown changed; do
     touch "$checkpoint.d/stale"
     case "$state" in
         truncated) printf 'linux-ci-v1\n' > "$checkpoint" ;;
         unknown) sed '2s/.*/no_such_task/' "$work/saved" > "$checkpoint" ;;
         changed) sed 's/build_v_with_prealloc/changed_task/' "$work/saved" > "$checkpoint" ;;
-        flags) sed 's/-cc gcc/-cc changed/' "$work/saved" > "$checkpoint" ;;
     esac
     run_ci 7 ci
     cmp "$work/prefix" "$checkout/tasks.log"

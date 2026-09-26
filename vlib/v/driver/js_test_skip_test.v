@@ -23,8 +23,7 @@ fn test_js_test_selection_is_disabled_on_every_target() {
 	os.write_file(native_test, 'fn test_native() { assert true }\n')!
 	os.write_file(js_source, 'fn main() {}\n')!
 	for target_os in ['windows', 'macos', 'linux', 'freebsd', 'openbsd', 'netbsd', 'dragonfly',
-		'android', 'termux', 'ios', 'solaris', 'qnx', 'haiku', 'serenity', 'vinix',
-		'wasm32_emscripten'] {
+		'android', 'termux', 'ios', 'solaris', 'qnx', 'haiku', 'serenity', 'vinix', 'wasm32_emscripten'] {
 		arch := if target_os == 'wasm32_emscripten' { 'wasm32' } else { 'amd64' }
 		target := pref.target_from(target_os, arch)!
 		for backend in ['c', 'fastc', 'arm64', 'wasm', 'eval', 'js'] {
@@ -85,8 +84,8 @@ fn test_direct_js_test_commands_skip_before_parsing() {
 		// The explicit JS backend returns before the normal backend test filter.
 		// `test` is covered by vtest_test.v, since the launcher dispatches it to vtest.
 		for command in ['', 'run'] {
-			mut args := ['-new-compiler', '-no-retry-compilation', '-nocache', '-cc', cc,
-				'-b', backend]
+			mut args := ['-new-compiler', '-no-retry-compilation', '-nocache', '-cc', cc, '-b',
+				backend]
 			if command.len > 0 {
 				args << command
 			}
@@ -95,15 +94,15 @@ fn test_direct_js_test_commands_skip_before_parsing() {
 			assert result.exit_code == 0, result.output
 			assert result.output.trim_space() == 'SKIP ${source}', result.output
 		}
-		quiet := cmdexec.run_with_timeout(vexe, ['-new-compiler', '-no-retry-compilation',
-			'-silent', '-cc', cc, '-b', backend, source], 120_000)
+		quiet := cmdexec.run_with_timeout(vexe, ['-new-compiler', '-no-retry-compilation', '-silent',
+			'-cc', cc, '-b', backend, source], 120_000)
 		assert quiet.exit_code == 0, quiet.output
 		assert quiet.output == '', quiet.output
 	}
 	// Match the command emitted by testing.TestSession, including an output path.
 	output := os.join_path(root, 'unexpected.js')
-	result := cmdexec.run_with_timeout(vexe, ['-new-compiler', '-no-retry-compilation',
-		'-skip-running', '-b', 'js', '-o', output, source], 120_000)
+	result := cmdexec.run_with_timeout(vexe, ['-new-compiler', '-no-retry-compilation', '-skip-running',
+		'-b', 'js', '-o', output, source], 120_000)
 	assert result.exit_code == 0, result.output
 	assert result.output.trim_space() == 'SKIP ${source}', result.output
 	assert !os.exists(output)
@@ -112,8 +111,8 @@ fn test_direct_js_test_commands_skip_before_parsing() {
 	// Do not disable the limited compatibility generator for non-test programs.
 	program := os.join_path(root, 'literal.v')
 	os.write_file(program, "fn main() { println('still supported') }\n")!
-	compiled := cmdexec.run_with_timeout(vexe, ['-new-compiler', '-no-retry-compilation',
-		'-b', 'js', '-o', output, program], 120_000)
+	compiled := cmdexec.run_with_timeout(vexe, ['-new-compiler', '-no-retry-compilation', '-b',
+		'js', '-o', output, program], 120_000)
 	assert compiled.exit_code == 0, compiled.output
 	assert os.read_file(output)!.contains('console.log(')
 }

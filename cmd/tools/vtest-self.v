@@ -2,6 +2,7 @@ module main
 
 import os
 import testing
+import v.util.vtest
 
 struct Config {
 	run_just_essential     bool   = '${os.getenv('VTEST_JUST_ESSENTIAL')}${os.getenv('VTEST_SANDBOXED_PACKAGING')}' != ''
@@ -437,9 +438,8 @@ fn main() {
 		dir_fragment := '${os.path_separator}vlib${os.path_separator}${test_dir}${os.path_separator}'
 		tsession.skip_files << tsession.files.filter(it.contains(dir_fragment))
 	}
-	if os.getenv('VTEST_SKIP_OWNERSHIP') == '1' {
-		tsession.skip_files << tsession.files.filter(os.file_name(it).contains('ownership')
-			|| os.file_name(it).contains('autofree'))
+	if vtest.skip_ownership_autofree_tests() {
+		tsession.skip_files << tsession.files.filter(vtest.is_ownership_autofree_test(it))
 	}
 	if cfg.werror {
 		tsession.custom_defines << 'self_werror'

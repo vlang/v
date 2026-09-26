@@ -98,22 +98,22 @@ fn test_number() {
 	assert json.decode[i8]('127')! == 127
 	assert json.decode[i8]('-128')! == -128
 
-	if x := json.decode[i8]('128') {
+	if _ := json.decode[i8]('128') {
 		assert false
 	}
-	if x := json.decode[i8]('130') {
+	if _ := json.decode[i8]('130') {
 		assert false
 	}
-	if x := json.decode[i8]('1000') {
+	if _ := json.decode[i8]('1000') {
 		assert false
 	}
-	if x := json.decode[i8]('-129') {
+	if _ := json.decode[i8]('-129') {
 		assert false
 	}
-	if x := json.decode[i8]('-130') {
+	if _ := json.decode[i8]('-130') {
 		assert false
 	}
-	if x := json.decode[i8]('-1000') {
+	if _ := json.decode[i8]('-1000') {
 		assert false
 	}
 }

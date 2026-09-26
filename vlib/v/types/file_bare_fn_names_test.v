@@ -1,7 +1,6 @@
 module types
 
 import os
-import v.flat
 import v.parser
 import v.pref
 

@@ -1,12 +1,16 @@
 module driver
 
 import os
-import runtime
 import crypto.sha256
 import v.ansi
+import v.flat
 import v.parser
 import v.pref
 import v.types
+
+$if freebsd || openbsd || netbsd || dragonfly {
+	import runtime
+}
 
 fn restore_driver_environment(name string, old_value string, was_set bool) {
 	if was_set {
@@ -177,7 +181,8 @@ fn test_single_moduleless_test_does_not_duplicate_a_resolvable_same_dir_module()
 	os.write_file(module_file, 'module sample\n\npub fn value() int { return 1 }\n')!
 	mut prefs := pref.new_preferences()
 	prefs.vroot = root
-	assert same_dir_module_source_files(test_file, '', prefs) == []
+	mut a := flat.FlatAst.new()
+	assert same_dir_module_source_files(mut a, test_file, '', prefs) == []
 }
 
 fn test_single_moduleless_test_keeps_an_unresolvable_same_dir_fixture_module() {
@@ -193,7 +198,8 @@ fn test_single_moduleless_test_keeps_an_unresolvable_same_dir_fixture_module() {
 	os.write_file(module_file, 'module helper\n\npub fn value() int { return 1 }\n')!
 	mut prefs := pref.new_preferences()
 	prefs.vroot = os.join_path(root, 'toolchain')
-	assert same_dir_module_source_files(test_file, '', prefs) == [module_file]
+	mut a := flat.FlatAst.new()
+	assert same_dir_module_source_files(mut a, test_file, '', prefs) == [module_file]
 }
 
 fn test_main_module_test_includes_an_implicit_main_source() {
@@ -208,7 +214,8 @@ fn test_main_module_test_includes_an_implicit_main_source() {
 	os.write_file(test_file, 'module main\n\nfn test_value() {}\n')!
 	os.write_file(module_file, 'fn value() int { return 1 }\n')!
 	mut prefs := pref.new_preferences()
-	assert same_dir_module_source_files(test_file, 'main', prefs) == [module_file]
+	mut a := flat.FlatAst.new()
+	assert same_dir_module_source_files(mut a, test_file, 'main', prefs) == [module_file]
 }
 
 fn test_v3_diagnostic_color_option() {
@@ -237,15 +244,22 @@ fn test_v3_default_diagnostic_color_uses_environment() {
 	assert ansi.red('error') == '\x1b[31merror\x1b[39m'
 }
 
-fn test_release_unused_diagnostic_scope_rebinds_notices() {
+fn test_release_unused_diagnostic_scope_preserves_errors_and_rebinds_notices() {
+	mut errors := []types.TypeError{cap: 1}
 	mut notices := []types.TypeError{cap: 1}
 	scope := prealloc_scope_begin_for_v3()
+	errors << types.TypeError{ msg: 'first error' }
+	errors << types.TypeError{ msg: 'second error' }
 	notices << types.TypeError{ msg: 'first' }
 	notices << types.TypeError{ msg: 'second' }
 	$if prealloc {
+		assert scoped_value_owned(scope, errors.data)
 		assert scoped_value_owned(scope, notices.data)
 	}
-	release_unused_diagnostic_scope(mut notices, scope)
+	release_unused_diagnostic_scope(mut errors, mut notices, scope)
+	assert errors.len == 2
+	assert errors[0].msg == 'first error'
+	assert errors[1].msg == 'second error'
 	assert notices.len == 0
 	assert notices.cap == 0
 	notices << types.TypeError{ msg: 'parent owned' }
@@ -456,9 +470,9 @@ fn test_wayland_gg_precheck_inspects_parsed_imports_in_every_user_file() {
 	os.write_file(sapp_file, 'module main\nimport sokol.sapp\nfn sapp_import() {}\n')!
 	prefs := pref.new_preferences()
 	mut p := parser.Parser.new(prefs)
-	a := p.parse_files([comment_file, string_file, gg_file, sapp_file])
+	mut a := p.parse_files([comment_file, string_file, gg_file, sapp_file])
 	assert !parsed_files_import_linux_gg(a, [comment_file, string_file])
-	directory_files := v3_directory_user_files(root, prefs, false, false)!
+	directory_files := v3_directory_user_files(mut a, root, prefs, false, false)!
 	assert directory_files.len == 4
 	assert parsed_files_import_linux_gg(a, directory_files)
 	assert parsed_files_import_linux_gg(a, [sapp_file])
@@ -647,4 +661,16 @@ fn test_record_user_define_normalizes_nonempty_valued_defines() {
 	assert 'empty' !in defines
 	assert 'empty=' in defines
 	assert values['empty'] == ''
+}
+
+// The clone that promotes transform results out of a disposable arena must keep
+// the frozen table of resolved source paths, because cgen reads it.
+fn test_clone_after_transform_keeps_the_frozen_source_path_table() {
+	mut a := flat.FlatAst.new()
+	// An answer only the table can give, so a fallback resolution would show.
+	a.resolved_source_paths['written.v'] = 'recorded.v'
+	a.resolve_source_paths()
+	cloned := clone_flat_ast_after_transform(&a)
+	assert cloned.source_paths_frozen
+	assert cloned.real_source_path('written.v') == 'recorded.v'
 }

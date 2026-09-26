@@ -135,7 +135,7 @@ fn (mut r H2HpackReader) read_string() !string {
 		return error('hpack: string length exceeds buffer')
 	}
 	n := int(length)
-	raw := r.buf[r.pos..r.pos + n]
+	raw := r.buf[r.pos..r.pos + n].clone()
 	r.pos += n
 	if huffman {
 		return h2_huffman_decode(raw)!.bytestr()

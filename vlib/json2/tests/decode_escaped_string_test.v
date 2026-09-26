@@ -16,7 +16,7 @@ fn test_surrogate() {
 }
 
 fn test_invalid_surrogate() {
-	if x := json2.decode[string](r'"\ud83d"') {
+	if _ := json2.decode[string](r'"\ud83d"') {
 		assert false
 	} else {
 		if err is json2.JsonDecodeError {
@@ -26,7 +26,7 @@ fn test_invalid_surrogate() {
 		}
 	}
 
-	if x := json2.decode[string](r'"\ud83d\n\n\n\n"') {
+	if _ := json2.decode[string](r'"\ud83d\n\n\n\n"') {
 		assert false
 	} else {
 		if err is json2.JsonDecodeError {
@@ -36,7 +36,7 @@ fn test_invalid_surrogate() {
 		}
 	}
 
-	if x := json2.decode[string](r'"\ud83d\ud83d"') {
+	if _ := json2.decode[string](r'"\ud83d\ud83d"') {
 		assert false
 	} else {
 		if err is json2.JsonDecodeError {
@@ -46,7 +46,7 @@ fn test_invalid_surrogate() {
 		}
 	}
 
-	if x := json2.decode[string](r'"\ude00\ud83d"') {
+	if _ := json2.decode[string](r'"\ude00\ud83d"') {
 		assert false
 	} else {
 		if err is json2.JsonDecodeError {
