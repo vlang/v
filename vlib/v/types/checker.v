@@ -6449,9 +6449,11 @@ fn deprecated_byte_starts_type(c u8) bool {
 	return c.is_letter() || c in [`_`, `&`, `[`, `?`, `!`, `.`]
 }
 
+// deprecated_byte_skip_blanks_back skips the whitespace before `offset`, line breaks
+// included: the parser accepts a receiver wrapped after `fn (`, as in `fn (\n\tbyte T)`.
 fn deprecated_byte_skip_blanks_back(source string, offset int) int {
 	mut i := offset
-	for i > 0 && source[i - 1] in [` `, `\t`] {
+	for i > 0 && source[i - 1] in [` `, `\t`, `\n`, `\r`] {
 		i--
 	}
 	return i
