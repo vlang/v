@@ -1,5 +1,5 @@
 type Sumtype = string | int
-type DemoType[T] = T | fn () T
+type DemoType[T] = T | fn() T
 
 fn generic_fn[T]() ?T {
 	a := Sumtype('123')

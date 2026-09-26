@@ -71,9 +71,9 @@ fn main() {
 			}
 			decision := bin.evaluate_candidate_manifest_for_execution(automation_root, os.args[2],
 				kind, os.args[4], os.args[5], os.args[6], os.args[7], bin.RuntimeContractBinding{
-				repository: tccbin_contract_repository
-				sha:        tccbin_contract_sha
-			}, os.args[8] == 'true') or {
+					repository: tccbin_contract_repository
+					sha:        tccbin_contract_sha
+				}, os.args[8] == 'true') or {
 				eprintln(err.msg())
 				exit(1)
 			}
@@ -335,20 +335,20 @@ fn run_live_state_command(automation_root string) {
 			}
 			decision := bin.resolve_live_receiver_request(automation_root, os.args[3], trust,
 				proof_bundle_dir, bin.ReceiverRequestFacts{
-				opaque_id:                 os.args[5]
-				repository:                trust.repository
-				workflow_id:               os.args[6].i64()
-				workflow_path:             os.args[7]
-				workflow_ref:              'master'
-				event:                     'workflow_dispatch'
-				current_run_id:            os.args[8].i64()
-				current_run_attempt:       os.args[9].int()
-				current_head_sha:          if os.args[10] == 'none' { '' } else { os.args[10] }
-				current_run_name:          if os.args[11] == 'none' { '' } else { os.args[11] }
-				observed_canonical_head:   os.args[12]
-				observed_subject_ref_head: os.args[13]
-				requested_publish:         false
-			}) or {
+					opaque_id:                 os.args[5]
+					repository:                trust.repository
+					workflow_id:               os.args[6].i64()
+					workflow_path:             os.args[7]
+					workflow_ref:              'master'
+					event:                     'workflow_dispatch'
+					current_run_id:            os.args[8].i64()
+					current_run_attempt:       os.args[9].int()
+					current_head_sha:          if os.args[10] == 'none' { '' } else { os.args[10] }
+					current_run_name:          if os.args[11] == 'none' { '' } else { os.args[11] }
+					observed_canonical_head:   os.args[12]
+					observed_subject_ref_head: os.args[13]
+					requested_publish:         false
+				}) or {
 				eprintln(err.msg())
 				exit(1)
 			}

@@ -209,12 +209,12 @@ fn conn_test_concat_bytes(a []u8, b []u8) []u8 {
 // they care about.
 fn generous_transport_params() QuicTransportParameters {
 	return QuicTransportParameters{
-		initial_max_data: 1_000_000
-		initial_max_stream_data_bidi_local: 100_000
+		initial_max_data:                    1_000_000
+		initial_max_stream_data_bidi_local:  100_000
 		initial_max_stream_data_bidi_remote: 100_000
-		initial_max_stream_data_uni: 100_000
-		initial_max_streams_bidi: 10
-		initial_max_streams_uni: 10
+		initial_max_stream_data_uni:         100_000
+		initial_max_streams_bidi:            10
+		initial_max_streams_uni:             10
 	}
 }
 
@@ -229,12 +229,12 @@ fn generous_transport_params() QuicTransportParameters {
 fn build_fake_long_header_packet(typ LongPacketType, dcid []u8, scid []u8, pn u64, payload []u8, keys QuicPacketProtectionKeys) !QuicDatagram {
 	pn_length := 2
 	h := QuicLongHeader{
-		typ: typ
+		typ:     typ
 		version: quic_v1
-		dcid: dcid
-		scid: scid
-		token: []u8{}
-		length: u64(pn_length) + u64(payload.len) + aead_tag_len
+		dcid:    dcid
+		scid:    scid
+		token:   []u8{}
+		length:  u64(pn_length) + u64(payload.len) + aead_tag_len
 	}
 	mut header := encode_long_header(h, 0, u8(pn_length - 1))!
 	header << [u8(pn >> 8), u8(pn)]
@@ -301,9 +301,9 @@ fn conn_test_decrypt_one_rtt(datagram []u8, dcid_len int, keys QuicPacketProtect
 fn drive_to_established(own_params QuicTransportParameters, peer_params QuicTransportParameters) !(&QuicConn, []u8, u64) {
 	mut now := u64(1000)
 	mut c, initial_dg := dial(DialParams{
-		server_name: 'example.com'
-		ca_bundle_pem: conn_test_cert_pem
-		alpn_protocols: ['h3']
+		server_name:          'example.com'
+		ca_bundle_pem:        conn_test_cert_pem
+		alpn_protocols:       ['h3']
 		transport_parameters: own_params
 	}, now)!
 	assert initial_dg.bytes.len >= min_initial_datagram_size
@@ -415,9 +415,9 @@ fn drive_to_established(own_params QuicTransportParameters, peer_params QuicTran
 // of that same pipeline produces the same result).
 fn test_dial_produces_a_valid_padded_initial_datagram() {
 	mut c, dg := dial(DialParams{
-		server_name: 'example.com'
-		ca_bundle_pem: conn_test_cert_pem
-		alpn_protocols: ['h3']
+		server_name:          'example.com'
+		ca_bundle_pem:        conn_test_cert_pem
+		alpn_protocols:       ['h3']
 		transport_parameters: QuicTransportParameters{}
 	}, u64(0))!
 	defer {
@@ -613,9 +613,9 @@ fn test_close_sends_connection_close_and_transitions_to_closing() {
 fn test_close_before_one_rtt_keys_downgrades_to_transport_connection_close() {
 	mut now := u64(1000)
 	mut c, initial_dg := dial(DialParams{
-		server_name: 'example.com'
-		ca_bundle_pem: conn_test_cert_pem
-		alpn_protocols: ['h3']
+		server_name:          'example.com'
+		ca_bundle_pem:        conn_test_cert_pem
+		alpn_protocols:       ['h3']
 		transport_parameters: QuicTransportParameters{}
 	}, now)!
 	defer {
@@ -637,7 +637,7 @@ fn test_close_before_one_rtt_keys_downgrades_to_transport_connection_close() {
 	defer {
 		client_pub.free()
 	}
-	server_shared_secret := server_priv.derive_shared_secret(client_pub)!
+	_ := server_priv.derive_shared_secret(client_pub)!
 	server_hello_framed := conn_test_build_fake_server_hello(server_random, server_ecdhe_public_bytes)!
 
 	sh_payload := encode_crypto_frame(0, server_hello_framed)!
@@ -699,7 +699,7 @@ fn test_non_ack_eliciting_packet_does_not_elicit_an_ack() {
 	server_app_keys := read_keys.current_keys
 	ack_only_payload := encode_ack_frame([AckRange{
 		smallest: 0
-		largest: 0
+		largest:  0
 	}], 0, none)!
 	incoming := build_fake_one_rtt_packet(c.scid, 0, ack_only_payload, server_app_keys, false)!
 	result := c.poll(incoming.bytes, now)!
@@ -735,10 +735,10 @@ fn test_handle_ack_frame_uses_peer_advertised_ack_delay_exponent() {
 	c.loss_detection.on_packet_sent(.application_data, 100, 50, true, true, now)
 	first_ack := AckFrame{
 		largest_acknowledged: 100
-		ack_delay: 0
-		ranges: [AckRange{
+		ack_delay:            0
+		ranges:               [AckRange{
 			smallest: 100
-			largest: 100
+			largest:  100
 		}]
 	}
 	c.handle_ack_frame(.application_data, first_ack, now + 10_000_000)
@@ -752,10 +752,10 @@ fn test_handle_ack_frame_uses_peer_advertised_ack_delay_exponent() {
 	c.loss_detection.on_packet_sent(.application_data, 101, 50, true, true, now + 20_000_000)
 	second_ack := AckFrame{
 		largest_acknowledged: 101
-		ack_delay: 5
-		ranges: [AckRange{
+		ack_delay:            5
+		ranges:               [AckRange{
 			smallest: 101
-			largest: 101
+			largest:  101
 		}]
 	}
 	c.handle_ack_frame(.application_data, second_ack, now + 20_000_000 + 130_000_000)
@@ -1108,9 +1108,9 @@ fn test_discarded_handshake_keys_reject_further_packets() {
 // observable via c.peer_scid/c.dcid changing from empty.
 fn test_wrong_destination_cid_rejected_on_long_header() {
 	mut c, initial_dg := dial(DialParams{
-		server_name: 'example.com'
-		ca_bundle_pem: conn_test_cert_pem
-		alpn_protocols: ['h3']
+		server_name:          'example.com'
+		ca_bundle_pem:        conn_test_cert_pem
+		alpn_protocols:       ['h3']
 		transport_parameters: QuicTransportParameters{}
 	}, u64(0))!
 	defer {
@@ -1139,7 +1139,7 @@ fn test_wrong_destination_cid_rejected_on_long_header() {
 // same missing check, in process_one_rtt_packet's use of parse_short_header's
 // discarded header return value (previously `_, offset := ...`).
 fn test_wrong_destination_cid_rejected_on_short_header() {
-	mut c, server_initial_scid, mut now := drive_to_established(generous_transport_params(), generous_transport_params())!
+	mut c, _, mut now := drive_to_established(generous_transport_params(), generous_transport_params())!
 	defer {
 		c.handshake.free()
 	}
@@ -1184,9 +1184,9 @@ fn test_wrong_destination_cid_rejected_on_short_header() {
 // practically-exploitable subset.)
 fn test_wrong_source_cid_rejected_after_peer_scid_established() {
 	mut c, initial_dg := dial(DialParams{
-		server_name: 'example.com'
-		ca_bundle_pem: conn_test_cert_pem
-		alpn_protocols: ['h3']
+		server_name:          'example.com'
+		ca_bundle_pem:        conn_test_cert_pem
+		alpn_protocols:       ['h3']
 		transport_parameters: QuicTransportParameters{}
 	}, u64(0))!
 	defer {
@@ -1254,9 +1254,9 @@ fn test_wrong_source_cid_rejected_after_peer_scid_established() {
 // describes.
 fn test_compute_next_timeout_includes_closing_deadline() {
 	mut c, _ := dial(DialParams{
-		server_name: 'example.com'
-		ca_bundle_pem: conn_test_cert_pem
-		alpn_protocols: ['h3']
+		server_name:          'example.com'
+		ca_bundle_pem:        conn_test_cert_pem
+		alpn_protocols:       ['h3']
 		transport_parameters: QuicTransportParameters{}
 	}, u64(0))!
 	defer {
@@ -1340,9 +1340,9 @@ fn test_write_stream_on_auto_created_sibling_stream_is_not_stuck() {
 // caller would check to confirm h3 was actually negotiated.
 fn test_negotiated_alpn_is_none_before_established_and_selected_value_after() {
 	mut fresh, _ := dial(DialParams{
-		server_name: 'example.com'
-		ca_bundle_pem: conn_test_cert_pem
-		alpn_protocols: ['h3']
+		server_name:          'example.com'
+		ca_bundle_pem:        conn_test_cert_pem
+		alpn_protocols:       ['h3']
 		transport_parameters: QuicTransportParameters{}
 	}, u64(0))!
 	defer {

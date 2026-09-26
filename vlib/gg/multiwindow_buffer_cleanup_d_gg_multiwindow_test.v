@@ -1072,7 +1072,9 @@ fn multiwindow_buffer_contract_new_app() !&App {
 		'wayland' { .wayland }
 		'appkit' { .appkit }
 		'win32' { .win32 }
-		else { return error('VGG_MULTIWINDOW_RUNTIME_BACKEND must select x11, wayland, appkit, or win32') }
+		else {
+			return error('VGG_MULTIWINDOW_RUNTIME_BACKEND must select x11, wayland, appkit, or win32')
+		}
 	}
 
 	mut app := new_app(

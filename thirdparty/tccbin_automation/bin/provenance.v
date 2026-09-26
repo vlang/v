@@ -193,23 +193,23 @@ pub fn validate_staged_manifest_material(manifest JsonValue, manifest_source str
 		path := require_string_member(patch, 'path')!
 		path_key := manifest_path_key(target_id, path)
 		if path_key in control_paths || manifest_path_is_reserved(target_id, path) {
-			issues << SchemaIssue{'$/patches/${index}/path', 'control input paths must be globally unique'}
+			issues << SchemaIssue{'\$/patches/${index}/path', 'control input paths must be globally unique'}
 			continue
 		}
 		control_paths << path_key
 		issues << validate_git_input_hash(staging, path, require_string_member(patch, 'sha256')!,
-			'$/patches/${index}', false)!
+			'\$/patches/${index}', false)!
 	}
 	for index, transform in require_array_member(manifest, 'transforms')! {
 		path := require_string_member(transform, 'path')!
 		path_key := manifest_path_key(target_id, path)
 		if path_key in control_paths || manifest_path_is_reserved(target_id, path) {
-			issues << SchemaIssue{'$/transforms/${index}/path', 'control input paths must be globally unique'}
+			issues << SchemaIssue{'\$/transforms/${index}/path', 'control input paths must be globally unique'}
 			continue
 		}
 		control_paths << path_key
 		issues << validate_git_input_hash(staging, path,
-			require_string_member(transform, 'sha256')!, '$/transforms/${index}', false)!
+			require_string_member(transform, 'sha256')!, '\$/transforms/${index}', false)!
 	}
 	if issues.len > 0 {
 		return issues
@@ -219,7 +219,7 @@ pub fn validate_staged_manifest_material(manifest JsonValue, manifest_source str
 	for collection_name in ['inventory', 'overlays', 'outputs'] {
 		for index, entry in require_array_member(manifest, collection_name)! {
 			entries << entry
-			issue_paths << '$/${collection_name}/${index}'
+			issue_paths << '\$/${collection_name}/${index}'
 		}
 	}
 	mut expected_paths := []string{cap: entries.len}
@@ -298,8 +298,7 @@ fn validate_staging_contract_roots(staging StagingContract) ! {
 		return error('source Git checkout must be detached at the candidate commit')
 	}
 	status := os.exec(['git', '--no-replace-objects', '-C', staging.source_git_root, '-c',
-		'core.autocrlf=false', 'status', '--porcelain=v1', '--untracked-files=all',
-		'--ignored=matching'])
+		'core.autocrlf=false', 'status', '--porcelain=v1', '--untracked-files=all', '--ignored=matching'])
 	if status.exit_code != 0 || status.output != '' {
 		return error('source Git checkout must be clean at the candidate commit')
 	}
@@ -624,8 +623,8 @@ fn authoritative_git_entry(repository_root string, source_ref string,
 	if !git_reference_is_safe(source_ref) || !contract_relative_path_is_safe(relative_path) {
 		return error('immutable Git lookup received an unsafe ref or path')
 	}
-	result := os.exec(['git', '--no-replace-objects', '-C', repository_root, '-c',
-		'core.autocrlf=false', 'ls-tree', '-z', '--full-tree', source_ref, '--', relative_path])
+	result := os.exec(['git', '--no-replace-objects', '-C', repository_root, '-c', 'core.autocrlf=false',
+		'ls-tree', '-z', '--full-tree', source_ref, '--', relative_path])
 	if result.exit_code != 0 {
 		return error('authoritative Git tree lookup failed')
 	}

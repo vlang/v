@@ -188,7 +188,8 @@ fn test_with_timeout_context_uses_parent_context() {
 			_ := <-done {
 				return context_error_or_closed_without_error(mut ctx)
 			}
-			1 * time.second {}
+			1 * time.second {
+			}
 		}
 	}) or {
 		assert err.msg() == 'context canceled'
@@ -261,7 +262,8 @@ fn test_with_timeout_context_waits_for_controlled_parent_done_and_returns_exact_
 		msg := <-result {
 			assert false, 'with_timeout_context returned before parent done closed: ${msg}'
 		}
-		else {}
+		else {
+		}
 	}
 
 	parent_ctx.close_with_error(error('controlled parent deadline'))

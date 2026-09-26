@@ -159,19 +159,18 @@ fn test_hpack_c_3_request_sequence() {
 	mut d := H2HpackDecoder{}
 
 	f1 := d.decode(hexb('8286 8441 0f77 7777 2e65 7861 6d70 6c65 2e63 6f6d'))!
-	assert_fields(f1, [[':method', 'GET'], [':scheme', 'http'],
-		[':path', '/'], [':authority', 'www.example.com']])
+	assert_fields(f1, [[':method', 'GET'], [':scheme', 'http'], [':path', '/'],
+		[':authority', 'www.example.com']])
 	assert d.dyn_table.cur_size == 57
 
 	f2 := d.decode(hexb('8286 84be 5808 6e6f 2d63 6163 6865'))!
-	assert_fields(f2, [[':method', 'GET'], [':scheme', 'http'],
-		[':path', '/'], [':authority', 'www.example.com'], ['cache-control', 'no-cache']])
+	assert_fields(f2, [[':method', 'GET'], [':scheme', 'http'], [':path', '/'],
+		[':authority', 'www.example.com'], ['cache-control', 'no-cache']])
 
 	f3 :=
 		d.decode(hexb('8287 85bf 400a 6375 7374 6f6d 2d6b 6579 0c63 7573 746f 6d2d 7661 6c75 65'))!
-	assert_fields(f3, [[':method', 'GET'], [':scheme', 'https'],
-		[':path', '/index.html'], [':authority', 'www.example.com'],
-		['custom-key', 'custom-value']])
+	assert_fields(f3, [[':method', 'GET'], [':scheme', 'https'], [':path', '/index.html'],
+		[':authority', 'www.example.com'], ['custom-key', 'custom-value']])
 }
 
 // --- C.4: Request sequence with Huffman, shared decoder ---
@@ -180,17 +179,16 @@ fn test_hpack_c_4_request_sequence_huffman() {
 	mut d := H2HpackDecoder{}
 
 	f1 := d.decode(hexb('8286 8441 8cf1 e3c2 e5f2 3a6b a0ab 90f4 ff'))!
-	assert_fields(f1, [[':method', 'GET'], [':scheme', 'http'],
-		[':path', '/'], [':authority', 'www.example.com']])
+	assert_fields(f1, [[':method', 'GET'], [':scheme', 'http'], [':path', '/'],
+		[':authority', 'www.example.com']])
 
 	f2 := d.decode(hexb('8286 84be 5886 a8eb 1064 9cbf'))!
-	assert_fields(f2, [[':method', 'GET'], [':scheme', 'http'],
-		[':path', '/'], [':authority', 'www.example.com'], ['cache-control', 'no-cache']])
+	assert_fields(f2, [[':method', 'GET'], [':scheme', 'http'], [':path', '/'],
+		[':authority', 'www.example.com'], ['cache-control', 'no-cache']])
 
 	f3 := d.decode(hexb('8287 85bf 4088 25a8 49e9 5ba9 7d7f 8925 a849 e95b b8e8 b4bf'))!
-	assert_fields(f3, [[':method', 'GET'], [':scheme', 'https'],
-		[':path', '/index.html'], [':authority', 'www.example.com'],
-		['custom-key', 'custom-value']])
+	assert_fields(f3, [[':method', 'GET'], [':scheme', 'https'], [':path', '/index.html'],
+		[':authority', 'www.example.com'], ['custom-key', 'custom-value']])
 }
 
 // --- Dynamic table eviction (RFC 7541 Sections 4.3, 4.4) ---
@@ -275,9 +273,9 @@ fn test_hpack_roundtrip() {
 	mut d := H2HpackDecoder{}
 	encoded := e.encode(fields)
 	decoded := d.decode(encoded)!
-	assert_fields(decoded, [[':method', 'GET'], [':scheme', 'https'],
-		[':authority', 'example.com'], [':path', '/index.html'],
-		['user-agent', 'v.http/0.1'], ['accept', '*/*'], ['cookie', 'session=abc123']])
+	assert_fields(decoded, [[':method', 'GET'], [':scheme', 'https'], [':authority', 'example.com'],
+		[':path', '/index.html'], ['user-agent', 'v.http/0.1'], ['accept', '*/*'],
+		['cookie', 'session=abc123']])
 }
 
 // --- Decoder error handling ---

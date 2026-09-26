@@ -106,7 +106,6 @@ fn (mut runner TAPTestRunner) assert_pass(i &VAssertMetaInfo) {
 
 fn (mut runner TAPTestRunner) assert_fail(i &VAssertMetaInfo) {
 	runner.total_assert_fails++
-	flush_println('# failed assert: ${runner.fn_assert_passes + 1} in ${runner.fname}, assert was in ${normalise_fname(i.fn_name)}, line: ${
-		i.line_nr + 1}')
+	flush_println('# failed assert: ${runner.fn_assert_passes + 1} in ${runner.fname}, assert was in ${normalise_fname(i.fn_name)}, line: ${i.line_nr + 1}')
 	unsafe { i.free() }
 }

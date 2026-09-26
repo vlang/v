@@ -60,54 +60,33 @@ working compiler executable.
 But don't worry, you can always simply run `make` (or `makev.bat`), it will
 download the C version of the compiler and rebuild it from scratch.
 
-The architecture of the compiler is very simple and has three distinct steps:
+The compiler pipeline has these main stages:
 
-Parse/generate AST (`v.parser`) => Check types (`v.checker`)
-=> Generate C/JavaScript/machine code (`v.gen`)
+Scan (`v.scanner`) => parse a flat AST (`v.parser`, `v.flat`) => resolve and
+check types (`v.types`) => simplify (`v.transform`) => remove unreachable code
+(`v.markused`) => generate output (`v.gen`).
 
 The main files are:
 
-1. `cmd/v/v.v` The entry point.
+1. `cmd/v/v.v` is the command and tool dispatcher. Native builds link the compiler
+   driver directly.
 
-   - V figures out the build mode.
-   - Constructs the compiler object (`struct V`).
-   - Creates a list of .v files that need to be parsed.
-   - Creates a parser object for each file and runs `parse()` on them.
-   - The correct backend is called (C, JS, native), and a binary is compiled.
+2. `vlib/v/v.v` is the standalone compiler entry point, and `vlib/v/driver` owns
+   command-line processing, module resolution, caching, and build orchestration.
 
-2. `vlib/v/scanner` The scanner's job is to parse a list of characters and convert
-   them to tokens.
+3. `vlib/v/scanner` converts source text into the tokens defined by `vlib/v/token`.
 
-3. `vlib/v/token` This is simply a list of all tokens, their string values, and a
-   couple of helper functions.
+4. `vlib/v/parser` parses those tokens into the compact representation in
+   `vlib/v/flat`.
 
-4. `vlib/v/parser` The parser. It converts a list of tokens into an AST.
-   In V, objects can be used before declaration, so unknown types are marked as
-   unresolved. They are resolved later in the type checker.
+5. `vlib/v/types` resolves names and types and performs semantic checking.
 
-5. `vlib/v/table` V creates one table object that is shared by all parsers. It
-   contains all types, consts, and functions, as well as several helpers to search
-   for objects by name, register new objects, modify types' fields, etc.
+6. `vlib/v/transform` simplifies checked programs, and `vlib/v/markused` computes
+   the reachable declarations.
 
-6. `vlib/v/checker` Type checker and resolver. It processes the AST and makes sure
-   the types are correct. Unresolved types are resolved, type information is added
-   to the AST.
-
-7. `vlib/v/gen/c` C backend. It simply walks the AST and generates C code that can be
-   compiled with Clang, GCC, Visual Studio, and TCC.
-
-8. `vlib/v/gen/js` JavaScript backend. It simply walks the AST and generates JS code that can be
-   executed on the browser or in NodeJS/Deno.
-
-9. `vlib/v/gen/c/json.v` defines the json code generation. This file will be removed once V
-   supports comptime code generation, and it will be possible to do this using the
-   language's tools.
-
-10. `vlib/v/gen/native` is the directory with all the machine code generation logic. It
-    defines a set of functions that translate assembly instructions to machine code
-    and build the binary from scratch byte by byte. It manually builds all headers,
-    segments, sections, symtable, relocations, etc. Right now it only has basic
-    support of the native platform (ELF, MACHO format).
+7. `vlib/v/gen/c` is the primary C backend. Other backends and lowerings live under
+   `vlib/v/gen/`, including FastC, WebAssembly, and ARM64 via SSA, MIR, and instruction
+   selection.
 
 The rest of the directories are vlib modules: `builtin/` (strings, arrays,
 maps), `time/`, `os/`, etc. Their documentation is pretty clear.

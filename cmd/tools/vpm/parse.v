@@ -258,15 +258,10 @@ fn is_local_repository(query string) bool {
 		if os.exists(path) {
 			// A bare relative name like `vsl` is ambiguous: it might be a
 			// registered VPM module, or a like-named local directory in the
-			// caller's cwd. If the candidate resolves to a path inside
-			// `settings.vmodules_path`, it is just a previously installed
-			// module shadowing the registered name — don't treat it as a
-			// local repository. This keeps `v install vsl@<tag>` working when
-			// cwd happens to be the vmodules directory (the test setup for
-			// versioned installs does exactly this).
+			// caller's cwd.
 			abs_path := os.real_path(path)
 			vmodules_real := os.real_path(settings.vmodules_path)
-			if abs_path.starts_with(vmodules_real + os.path_separator) || abs_path == vmodules_real {
+			if path_shadows_installed_module(abs_path, vmodules_real, settings.is_local) {
 				continue
 			}
 			return true
@@ -275,11 +270,30 @@ fn is_local_repository(query string) bool {
 	return false
 }
 
+// A path inside the module store is a previously installed module shadowing the
+// registered name, not a repository to clone: that keeps `v install vsl@<tag>`
+// working when cwd happens to be the module store (the test setup for versioned
+// installs does exactly this). Under `--local` that store is the project itself,
+// where only what VPM installed there is an installed module -- the directories
+// the project keeps are local repositories like anyone else's.
+fn path_shadows_installed_module(abs_path string, vmodules_real string, is_local bool) bool {
+	if abs_path == vmodules_real {
+		return true
+	}
+	if !abs_path.starts_with(vmodules_real + os.path_separator) {
+		return false
+	}
+	return !is_local || is_recorded_local_install(abs_path)
+}
+
 fn (mut m Module) get_installed() {
 	if m.url != '' && !m.existing_checkout_matches_source() {
 		return
 	}
-	refs := os.execute_opt('git ls-remote --refs ${m.install_path}') or { return }
+	refs := os.exec(['git', 'ls-remote', '--refs', m.install_path])
+	if refs.exit_code != 0 {
+		return
+	}
 	vpm_log(@FILE_LINE, @FN, 'refs: ${refs}')
 	m.is_installed = true
 	// In case the head just temporarily matches a tag, make sure that there

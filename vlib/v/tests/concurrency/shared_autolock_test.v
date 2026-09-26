@@ -39,4 +39,8 @@ fn test_autolock_map() {
 	rlock m {
 		assert m['asd'] == 2 * iterations + 7
 	}
+	m['new']++
+	rlock m {
+		assert m['new'] == 1
+	}
 }

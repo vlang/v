@@ -14,6 +14,10 @@ fn vpm_install(query []string) {
 	if settings.is_help {
 		help.print_and_exit('vpm')
 	}
+	if settings.is_adopt {
+		vpm_adopt(query)
+		return
+	}
 
 	mut selector := new_install_server_selector()
 	mut modules := parse_query(if query.len == 0 {
@@ -166,8 +170,9 @@ fn (m Module) install() InstallResult {
 		// Case: installed, but not an explicit version. Update instead of continuing the installation.
 		if m.version == '' && m.installed_version == '' {
 			if m.is_external && m.url.starts_with('http://') {
-				vpm_update([m.install_path.all_after(settings.vmodules_path).trim_left(os.path_separator).replace(os.path_separator,
-					'.')])
+				vpm_update([
+					m.install_path.all_after(settings.vmodules_path).trim_left(os.path_separator).replace(os.path_separator, '.'),
+				])
 			} else {
 				vpm_update([m.name])
 			}
@@ -175,6 +180,12 @@ fn (m Module) install() InstallResult {
 		}
 		// Case: installed, but conflicting. Confirmation or -[-f]orce flag required.
 		if settings.is_force || m.confirm_install() {
+			if !vpm_owns_module_dir(m.install_path) {
+				vpm_error('refusing to replace `${m.name}`: `${m.install_path_fmted}` was not installed by VPM.',
+					details: not_installed_by_vpm_details()
+				)
+				return .failed
+			}
 			m.remove() or {
 				vpm_error('failed to remove `${m.name}`.', details: err.msg())
 				return .failed
@@ -200,6 +211,23 @@ fn (m Module) install() InstallResult {
 	os.mv(m.tmp_path, m.install_path) or {
 		vpm_error('failed to install `${m.name}`.', details: err.msg())
 		return .failed
+	}
+	if settings.is_local {
+		// The local root is shared with the project's own modules, so this record is
+		// the only thing that will later tell VPM the directory is one it may touch.
+		// An install it cannot own could neither be updated nor removed afterwards,
+		// which is worse than no install at all, so undo it.
+		record_local_install(m.install_path) or {
+			vpm_error('failed to record the local installation of `${m.name}`.',
+				details: err.msg()
+			)
+			rmdir_all(m.install_path) or {
+				vpm_error('failed to undo the unrecorded installation at `${m.install_path_fmted}`.',
+					details: err.msg()
+				)
+			}
+			return .failed
+		}
 	}
 	return .installed
 }
@@ -327,6 +355,6 @@ fn local_git_changes_reason(path string) string {
 
 fn (m Module) remove() ! {
 	verbose_println('Removing `${m.name}` from `${m.install_path_fmted}`...')
-	rmdir_all(m.install_path)!
+	remove_installed_dir(m.install_path)!
 	verbose_println('Removed `${m.name}`.')
 }

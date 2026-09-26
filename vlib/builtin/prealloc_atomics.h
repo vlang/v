@@ -25,6 +25,9 @@ static inline long long v_prealloc_atomic_load_i64(long long *ptr) {
 #elif defined(__TINYC__)
 // TinyCC does not implement the legacy __sync_* family. Its __atomic_* builtins
 // lower to fixed-width helpers provided by libtcc1.a.
+extern unsigned int __atomic_exchange_4(unsigned int *ptr, unsigned int val, int order);
+extern _Bool __atomic_compare_exchange_4(unsigned int *ptr, unsigned int *expected,
+	unsigned int desired, int success_order, int failure_order);
 static inline int v_prealloc_atomic_add_i32(int *ptr, int delta) {
 	return __atomic_add_fetch(ptr, delta, 5);
 }

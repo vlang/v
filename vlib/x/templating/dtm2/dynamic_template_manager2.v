@@ -35,8 +35,8 @@ const allowed_html_tags = ['<div>', '</div>', '<h1>', '</h1>', '<h2>', '</h2>', 
 	'</th>', '<tr>', '</tr>', '<td>', '</td>', '<thead>', '</thead>', '<thread>', '</thread>',
 	'<tbody>', '</tbody>', '<tfoot>', '</tfoot>', '<col>', '</col>', '<colgroup>', '</colgroup>',
 	'<header>', '</header>', '<footer>', '</footer>', '<main>', '</main>', '<section>', '</section>',
-	'<article>', '</article>', '<aside>', '</aside>', '<details>', '</details>', '<dialog>',
-	'</dialog>', '<data>', '</data>', '<summary>', '</summary>']!
+	'<article>', '</article>', '<aside>', '</aside>', '<details>', '</details>', '<dialog>', '</dialog>',
+	'<data>', '</data>', '<summary>', '</summary>']!
 
 pub enum TemplateType {
 	html

@@ -15,9 +15,9 @@ pub mut:
 	index_file     string        = $d('http_index_file', 'index.html') // A request for http://localhost:4001/ will map to `index.html`, if that file is present.
 	auto_index     bool          = $d('http_auto_index', true)         // when an index_file is *not* present, a request for http://localhost:4001/ will list automatically all files in the folder.
 	on             string        = $d('http_on', 'localhost:4001')     // on which address:port to listen for http requests.
-	filter_myexe   bool          = true // whether to filter the name of the static file executable from the automatic folder listings for / . Useful with `v -e 'import net.http.file; file.serve()'`
+	filter_myexe   bool          = true              // whether to filter the name of the static file executable from the automatic folder listings for / . Useful with `v -e 'import net.http.file; file.serve()'`
 	workers        int           = runtime.nr_jobs() // how many worker threads to use for serving the responses, by default it is limited to the number of available cores; can be controlled with setting VJOBS
-	shutdown_after time.Duration = time.infinite // after this time has passed, the webserver will gracefully shutdown on its own
+	shutdown_after time.Duration = time.infinite     // after this time has passed, the webserver will gracefully shutdown on its own
 }
 
 // serve will start a static files web server.

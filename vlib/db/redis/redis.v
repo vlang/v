@@ -80,7 +80,7 @@ pub mut:
 pub struct Config {
 pub mut:
 	host     string = '127.0.0.1' // Redis server host
-	port     u16    = 6379        // Redis server port
+	port     u16    = 6379      // Redis server port
 	password string // Redis server password (optional)
 	tls      bool   // Enable TLS/SSL connection
 	version  int @[deprecated] // ignored - RESP version auto handled in connect
@@ -237,11 +237,11 @@ pub fn (mut db DB) set[T](key string, value T) !string {
 	db.cmd_buf << '*3\r\n$3\r\nSET\r\n$${key.len}\r\n${key}\r\n'.bytes()
 	$if T is $int {
 		val_str := value.str()
-		db.cmd_buf << '$${val_str.len}\r\n${val_str}'.bytes()
+		db.cmd_buf << '\$${val_str.len}\r\n${val_str}'.bytes()
 	} $else $if T is string {
-		db.cmd_buf << '$${value.len}\r\n${value}'.bytes()
+		db.cmd_buf << '\$${value.len}\r\n${value}'.bytes()
 	} $else $if T is []u8 {
-		db.cmd_buf << '$${value.len}\r\n'.bytes()
+		db.cmd_buf << '\$${value.len}\r\n'.bytes()
 		db.cmd_buf << value
 	} $else {
 		return error('`set()`: unsupported value type. Allowed: number, string, []u8')
@@ -335,15 +335,15 @@ pub fn (mut db DB) hset[T](key string, m map[string]T) !int {
 	db.cmd_buf.clear()
 	db.cmd_buf << '*${2 + m.len * 2}\r\n$4\r\nHSET\r\n$${key.len}\r\n${key}\r\n'.bytes()
 	for k, v in m {
-		db.cmd_buf << '$${k.len}\r\n${k}\r\n'.bytes()
+		db.cmd_buf << '\$${k.len}\r\n${k}\r\n'.bytes()
 		$if T is string {
-			db.cmd_buf << '$${v.len}\r\n${v}\r\n'.bytes()
+			db.cmd_buf << '\$${v.len}\r\n${v}\r\n'.bytes()
 		} $else $if T is $int {
 			v_str := v.str()
-			db.cmd_buf << '$${v_str.len}\r\n${v_str}\r\n'.bytes()
+			db.cmd_buf << '\$${v_str.len}\r\n${v_str}\r\n'.bytes()
 		} $else $if T is []u8 {
 			// Write bulk string header correctly (no stray '$' after the length)
-			db.cmd_buf << '$${v.len}\r\n'.bytes()
+			db.cmd_buf << '\$${v.len}\r\n'.bytes()
 			db.cmd_buf << v
 			db.cmd_buf << '\r\n'.bytes()
 		} $else {
@@ -366,7 +366,7 @@ pub fn (mut db DB) hget[T](key string, m_key string) !T {
 	// *3\r\n$4\r\nHGET\r\n$6\r\nuser:1\r\n$4\r\nname\r\n
 	db.cmd_buf.clear()
 	db.cmd_buf << '*3\r\n$4\r\nHGET\r\n$${key.len}\r\n${key}\r\n'.bytes()
-	db.cmd_buf << '$${m_key.len}\r\n${m_key}\r\n'.bytes()
+	db.cmd_buf << '\$${m_key.len}\r\n${m_key}\r\n'.bytes()
 	if db.pipeline_mode {
 		db.pipeline_buffer << db.cmd_buf
 		db.pipeline_cmd_count++
@@ -418,7 +418,9 @@ pub fn (mut db DB) hgetall[T](key string) !map[string]T {
 						k := match key_val {
 							[]u8 { key_val.bytestr() }
 							string { key_val }
-							else { return error('`hgetall()`: unexpected key type: ${key_val.type_name()}') }
+							else {
+								return error('`hgetall()`: unexpected key type: ${key_val.type_name()}')
+							}
 						}
 
 						// value
@@ -426,7 +428,9 @@ pub fn (mut db DB) hgetall[T](key string) !map[string]T {
 							[]u8 { val_val.bytestr() }
 							string { val_val }
 							i64 { val_val.str() }
-							else { return error('`hgetall()`: unexpected value type: ${val_val.type_name()}') }
+							else {
+								return error('`hgetall()`: unexpected value type: ${val_val.type_name()}')
+							}
 						}
 
 						result[k] = v
@@ -439,7 +443,9 @@ pub fn (mut db DB) hgetall[T](key string) !map[string]T {
 							[]u8 { v.bytestr() }
 							string { v }
 							i64 { v.str() }
-							else { return error('`hgetall()`: unexpected value type in map: ${v.type_name()}') }
+							else {
+								return error('`hgetall()`: unexpected value type in map: ${v.type_name()}')
+							}
 						}
 
 						result[k] = val_str
@@ -457,14 +463,18 @@ pub fn (mut db DB) hgetall[T](key string) !map[string]T {
 						k := match key_val {
 							[]u8 { key_val.bytestr() }
 							string { key_val }
-							else { return error('`hgetall()`: unexpected key type in RedisMap: ${key_val.type_name()}') }
+							else {
+								return error('`hgetall()`: unexpected key type in RedisMap: ${key_val.type_name()}')
+							}
 						}
 
 						v := match val_val {
 							[]u8 { val_val.bytestr() }
 							string { val_val }
 							i64 { val_val.str() }
-							else { return error('`hgetall()`: unexpected value type in RedisMap: ${val_val.type_name()}') }
+							else {
+								return error('`hgetall()`: unexpected value type in RedisMap: ${val_val.type_name()}')
+							}
 						}
 
 						result[k] = v
@@ -488,14 +498,18 @@ pub fn (mut db DB) hgetall[T](key string) !map[string]T {
 						k := match key_val {
 							[]u8 { key_val.bytestr() }
 							string { key_val }
-							else { return error('`hgetall()`: unexpected key type: ${key_val.type_name()}') }
+							else {
+								return error('`hgetall()`: unexpected key type: ${key_val.type_name()}')
+							}
 						}
 
 						v := match val_val {
 							[]u8 { val_val.bytestr().i64() }
 							string { val_val.i64() }
 							i64 { val_val }
-							else { return error('`hgetall()`: unexpected value type: ${val_val.type_name()}') }
+							else {
+								return error('`hgetall()`: unexpected value type: ${val_val.type_name()}')
+							}
 						}
 
 						result[k] = T(v)
@@ -508,7 +522,9 @@ pub fn (mut db DB) hgetall[T](key string) !map[string]T {
 							[]u8 { v.bytestr().i64() }
 							string { v.i64() }
 							i64 { v }
-							else { return error('`hgetall()`: unexpected value type in map: ${v.type_name()}') }
+							else {
+								return error('`hgetall()`: unexpected value type in map: ${v.type_name()}')
+							}
 						}
 
 						result[k] = T(n)
@@ -526,14 +542,18 @@ pub fn (mut db DB) hgetall[T](key string) !map[string]T {
 						k := match key_val {
 							[]u8 { key_val.bytestr() }
 							string { key_val }
-							else { return error('`hgetall()`: unexpected key type in RedisMap: ${key_val.type_name()}') }
+							else {
+								return error('`hgetall()`: unexpected key type in RedisMap: ${key_val.type_name()}')
+							}
 						}
 
 						n := match val_val {
 							[]u8 { val_val.bytestr().i64() }
 							string { val_val.i64() }
 							i64 { val_val }
-							else { return error('`hgetall()`: unexpected value type in RedisMap: ${val_val.type_name()}') }
+							else {
+								return error('`hgetall()`: unexpected value type in RedisMap: ${val_val.type_name()}')
+							}
 						}
 
 						result[k] = T(n)
@@ -557,14 +577,18 @@ pub fn (mut db DB) hgetall[T](key string) !map[string]T {
 						k := match key_val {
 							[]u8 { key_val.bytestr() }
 							string { key_val }
-							else { return error('`hgetall()`: unexpected key type: ${key_val.type_name()}') }
+							else {
+								return error('`hgetall()`: unexpected key type: ${key_val.type_name()}')
+							}
 						}
 
 						v := match val_val {
 							[]u8 { val_val }
 							string { val_val.bytes() }
 							i64 { val_val.str().bytes() }
-							else { return error('`hgetall()`: unexpected value type: ${val_val.type_name()}') }
+							else {
+								return error('`hgetall()`: unexpected value type: ${val_val.type_name()}')
+							}
 						}
 
 						result[k] = v
@@ -577,7 +601,9 @@ pub fn (mut db DB) hgetall[T](key string) !map[string]T {
 							[]u8 { v }
 							string { v.bytes() }
 							i64 { v.str().bytes() }
-							else { return error('`hgetall()`: unexpected value type in map: ${v.type_name()}') }
+							else {
+								return error('`hgetall()`: unexpected value type in map: ${v.type_name()}')
+							}
 						}
 
 						result[k] = b
@@ -595,14 +621,18 @@ pub fn (mut db DB) hgetall[T](key string) !map[string]T {
 						k := match key_val {
 							[]u8 { key_val.bytestr() }
 							string { key_val }
-							else { return error('`hgetall()`: unexpected key type in RedisMap: ${key_val.type_name()}') }
+							else {
+								return error('`hgetall()`: unexpected key type in RedisMap: ${key_val.type_name()}')
+							}
 						}
 
 						b := match val_val {
 							[]u8 { val_val }
 							string { val_val.bytes() }
 							i64 { val_val.str().bytes() }
-							else { return error('`hgetall()`: unexpected value type in RedisMap: ${val_val.type_name()}') }
+							else {
+								return error('`hgetall()`: unexpected value type in RedisMap: ${val_val.type_name()}')
+							}
 						}
 
 						result[k] = b
@@ -628,7 +658,7 @@ pub fn (mut db DB) expire(key string, seconds int) !bool {
 	seconds_str := seconds.str()
 	db.cmd_buf.clear()
 	db.cmd_buf << '*3\r\n$6\r\nEXPIRE\r\n$${key.len}\r\n${key}\r\n'.bytes()
-	db.cmd_buf << '$${seconds_str.len}\r\n${seconds_str}\r\n'.bytes()
+	db.cmd_buf << '\$${seconds_str.len}\r\n${seconds_str}\r\n'.bytes()
 	if db.pipeline_mode {
 		db.pipeline_buffer << db.cmd_buf
 		db.pipeline_cmd_count++
@@ -1106,7 +1136,7 @@ fn (mut db DB) read_response() !RedisValue {
 			for i in 0 .. db.resp_buf.len {
 				hex += '${int(db.resp_buf[i]):02x} '
 			}
-			return error("`read_response()`: unknown response prefix byte=${prefix_val} data_hex=\"${hex}\" data_str=\"${db.resp_buf.bytestr()}\"")
+			return error('`read_response()`: unknown response prefix byte=${prefix_val} data_hex="${hex}" data_str="${db.resp_buf.bytestr()}"')
 		}
 		// Read and discard one more byte from the socket and treat it as the new candidate.
 		mut tmp := []u8{len: 1}
@@ -1204,7 +1234,7 @@ fn (mut db DB) read_response() !RedisValue {
 			for i in 0 .. db.resp_buf.len {
 				hex += '${int(db.resp_buf[i]):02x} '
 			}
-			return error("`read_response()`: unknown response prefix byte=${prefix_val} data_hex=\"${hex}\" data_str=\"${db.resp_buf.bytestr()}\"")
+			return error('`read_response()`: unknown response prefix byte=${prefix_val} data_hex="${hex}" data_str="${db.resp_buf.bytestr()}"')
 		}
 	}
 
@@ -1217,7 +1247,7 @@ pub fn (mut db DB) cmd(cmd ...string) !RedisValue {
 	mut sb := strings.new_builder(cmd.len * 20)
 	sb.write_string('*${cmd.len}\r\n') // Command array header
 	for arg in cmd {
-		sb.write_string('$${arg.len}\r\n${arg}\r\n')
+		sb.write_string('\$${arg.len}\r\n${arg}\r\n')
 	}
 	if db.pipeline_mode {
 		db.pipeline_buffer << unsafe { sb.reuse_as_plain_u8_array() }

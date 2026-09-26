@@ -33,8 +33,8 @@ pub fn (mut p Path) add(b Bezier) {
 
 fn test_main() {
 	b1 := Bezier{
-		points: [vec.Vec2[f32]{100, 100}, vec.Vec2[f32]{120, 80},
-			vec.Vec2[f32]{200, 70}, vec.Vec2[f32]{400, 200}]!
+		points: [vec.Vec2[f32]{100, 100}, vec.Vec2[f32]{120, 80}, vec.Vec2[f32]{200, 70},
+			vec.Vec2[f32]{400, 200}]!
 	}
 	b2 := Bezier{
 		points: [b1.end(), b1.h3() + vec.Vec2[f32]{0, 2 * 80}, vec.Vec2[f32]{200, 70},
@@ -46,7 +46,7 @@ fn test_main() {
 	path.add(b1)
 	path.add(b2)
 
-	assert sizeof(path) == $if new_int ? && x64 {
+	assert sizeof(path) == $if new_int ?&& x64 {
 		32776
 	} $else {
 		32772

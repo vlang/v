@@ -130,7 +130,7 @@ fn test_wrapped_scalar_pointer_alias_honors_parent_custom_str() {
 
 fn test_option_alias_reference_prints_as_option_value() {
 	assert option_alias_ref_string(?int(42)) == '&Option(42)'
-	assert option_alias_ref_string(?int(none)) == '&Option(none)'
+	assert option_alias_ref_string(?int(none)) == '&Option(&nil)'
 }
 
 fn test_shared_scalars_print_as_values() {

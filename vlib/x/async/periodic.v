@@ -64,7 +64,8 @@ pub fn every(parent context.Context, interval time.Duration, f JobFn) ! {
 			}
 			watch_done = false
 		}
-		else {}
+		else {
+		}
 	}
 
 	for {
@@ -192,7 +193,8 @@ fn run_detached_periodic_loop(mut ctx context.Context, interval time.Duration, f
 			}
 			watch_done = false
 		}
-		else {}
+		else {
+		}
 	}
 
 	for {
@@ -227,10 +229,12 @@ fn run_detached_periodic_loop(mut ctx context.Context, interval time.Duration, f
 }
 
 fn run_detached_periodic_iteration(mut ctx context.Context, f JobFn) PeriodicResult {
-	f(mut ctx) or { return PeriodicResult{
-		kind: .job_error
-		err:  err
-	} }
+	f(mut ctx) or {
+		return PeriodicResult{
+			kind: .job_error
+			err:  err
+		}
+	}
 	err := ctx.err()
 	if err !is none {
 		return PeriodicResult{

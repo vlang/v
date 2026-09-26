@@ -5,11 +5,13 @@ import crypto.sha1
 import encoding.base64
 import encoding.binary
 import log
+import os
 
 const default_logger = setup_default_logger()
 
 fn setup_default_logger() &log.Log {
 	mut l := &log.Log{}
+	l.set_output_stream(os.stderr())
 	l.set_level(.info)
 	return l
 }

@@ -242,6 +242,7 @@ fn get_projection(angle f64, a f64, z_min f64, z_max f64) []f64 {
 
 fn JS.Math.cos(JS.Number) JS.Number
 fn JS.Math.sin(JS.Number) JS.Number
+
 fn rotate_x(mut m []f64, angle f64) {
 	c := math.cos(angle)
 	s := math.sin(angle)

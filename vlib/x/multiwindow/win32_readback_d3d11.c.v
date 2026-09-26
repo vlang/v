@@ -198,10 +198,10 @@ fn (bridge &Win32D3D11ReadbackBridge) stage_window(swapchain voidptr, request u6
 		return C.v_multiwindow_win32_d3d11_readback_native_stage_window(bridge.native,
 			native_identity(swapchain), request, state_identity, renderer_generation, window_slot,
 			window_generation, x, y, width, height, producing_frame, if resize_pending {
-			1
-		} else {
-			0
-		}) == 1
+				1
+			} else {
+				0
+			}) == 1
 	} $else {
 		return false
 	}
@@ -215,10 +215,10 @@ fn (bridge &Win32D3D11ReadbackBridge) stage_image(texture voidptr, request u64, 
 		return C.v_multiwindow_win32_d3d11_readback_native_stage_image(bridge.native,
 			native_identity(texture), request, state_identity, renderer_generation, window_slot,
 			window_generation, x, y, width, height, producing_frame, if resize_pending {
-			1
-		} else {
-			0
-		}) == 1
+				1
+			} else {
+				0
+			}) == 1
 	} $else {
 		return false
 	}

@@ -16,6 +16,7 @@ const radix_options = {
 // vfmt on
 pub const digit_bits = 60 // 60bits
 const max_digit = (u64(1) << digit_bits) - u64(1)
+
 // big.Integer
 // -----------
 // It has the following properties:

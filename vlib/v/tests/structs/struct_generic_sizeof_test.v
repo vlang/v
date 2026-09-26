@@ -8,16 +8,13 @@ mut:
 
 fn test_main() {
 	x := PaddedSlot[int]{}
-	$if new_int ? && x64 {
+	$if new_int ?&& x64 {
 		assert '${x}' == 'PaddedSlot[int]{
     data: 0
     pad: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
 }'
 	} $else {
-		assert '${x}' == 'PaddedSlot[int]{
-    data: 0
-    pad: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
-}'
+		assert '${x}' == 'PaddedSlot[int]{\n    data: 0\n    pad: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]\n}'
 	}
 	x2 := PaddedSlot[u8]{}
 	assert '${x2}' == 'PaddedSlot[u8]{

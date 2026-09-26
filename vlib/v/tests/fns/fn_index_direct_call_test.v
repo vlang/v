@@ -41,5 +41,5 @@ fn add(a int, b int) int {
 }
 
 fn test_parenthesized_fn_direct_call() {
-	assert (add)(2, 4) == 6
+	assert add(2, 4) == 6
 }

@@ -10,6 +10,7 @@ struct Vec3d {
 }
 
 type Vec = Vec2d | Vec3d
+
 type SumType = int | string | Vec2d | []Vec2d
 
 fn match_vec(v Vec) {

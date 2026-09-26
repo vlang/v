@@ -186,24 +186,24 @@ fn conn_test_concat_bytes(a []u8, b []u8) []u8 {
 
 fn generous_transport_params() QuicTransportParameters {
 	return QuicTransportParameters{
-		initial_max_data: 1_000_000
-		initial_max_stream_data_bidi_local: 100_000
+		initial_max_data:                    1_000_000
+		initial_max_stream_data_bidi_local:  100_000
 		initial_max_stream_data_bidi_remote: 100_000
-		initial_max_stream_data_uni: 100_000
-		initial_max_streams_bidi: 10
-		initial_max_streams_uni: 10
+		initial_max_stream_data_uni:         100_000
+		initial_max_streams_bidi:            10
+		initial_max_streams_uni:             10
 	}
 }
 
 fn build_fake_long_header_packet(typ LongPacketType, dcid []u8, scid []u8, pn u64, payload []u8, keys QuicPacketProtectionKeys) !QuicDatagram {
 	pn_length := 2
 	h := QuicLongHeader{
-		typ: typ
+		typ:     typ
 		version: quic_v1
-		dcid: dcid
-		scid: scid
-		token: []u8{}
-		length: u64(pn_length) + u64(payload.len) + aead_tag_len
+		dcid:    dcid
+		scid:    scid
+		token:   []u8{}
+		length:  u64(pn_length) + u64(payload.len) + aead_tag_len
 	}
 	mut header := encode_long_header(h, 0, u8(pn_length - 1))!
 	header << [u8(pn >> 8), u8(pn)]
@@ -231,9 +231,9 @@ fn build_fake_one_rtt_packet(dcid []u8, pn u64, payload []u8, keys QuicPacketPro
 fn drive_to_established(own_params QuicTransportParameters, peer_params QuicTransportParameters) !(&QuicConn, []u8, u64) {
 	mut now := u64(1000)
 	mut c, initial_dg := dial(DialParams{
-		server_name: 'example.com'
-		ca_bundle_pem: conn_test_cert_pem
-		alpn_protocols: ['h3']
+		server_name:          'example.com'
+		ca_bundle_pem:        conn_test_cert_pem
+		alpn_protocols:       ['h3']
 		transport_parameters: own_params
 	}, now)!
 	assert initial_dg.bytes.len >= min_initial_datagram_size
@@ -327,10 +327,10 @@ fn drive_to_established(own_params QuicTransportParameters, peer_params QuicTran
 fn h3_test_conn() !(&QuicConn, &H3Conn, []u8, u64) {
 	mut c, server_initial_scid, now := drive_to_established(generous_transport_params(), generous_transport_params())!
 	mut h := new_h3_conn(mut c, H3ConnParams{
-		settings: [
+		settings:                     [
 			H3Setting{
 				identifier: qpack_settings_max_table_capacity_id
-				value: 4096
+				value:      4096
 			},
 		]
 		own_qpack_max_table_capacity: 4096
@@ -459,7 +459,7 @@ fn test_h3_conn_qpack_glue_loop_end_to_end_with_section_ack() {
 	set_cap_instr := peer_encoder.set_capacity(4096, 4096)!
 	encoded := peer_encoder.encode_field_section(0, [
 		QpackFieldLine{
-			name: 'x-test'
+			name:  'x-test'
 			value: 'hello'
 		},
 	])!
@@ -514,14 +514,14 @@ fn test_h3_conn_1xx_interim_response_is_discarded_not_misdelivered_as_final_or_t
 
 	interim := peer_encoder.encode_field_section(stream_id, [
 		QpackFieldLine{
-			name: ':status'
+			name:  ':status'
 			value: '103'
 		},
 	])!
 	assert interim.encoder_instructions.len == 0, 'a static-table-only reference must not need an encoder instruction'
 	final := peer_encoder.encode_field_section(stream_id, [
 		QpackFieldLine{
-			name: ':status'
+			name:  ':status'
 			value: '200'
 		},
 	])!
@@ -560,7 +560,7 @@ fn test_h3_conn_prunes_request_stream_state_once_finalized() {
 
 	final := peer_encoder.encode_field_section(stream_id, [
 		QpackFieldLine{
-			name: ':status'
+			name:  ':status'
 			value: '200'
 		},
 	])!
@@ -660,7 +660,7 @@ fn test_h3_conn_blocked_headers_retry_after_delayed_encoder_instruction() {
 	set_cap_instr := peer_encoder.set_capacity(4096, 4096)!
 	encoded := peer_encoder.encode_field_section(0, [
 		QpackFieldLine{
-			name: 'x-blocked'
+			name:  'x-blocked'
 			value: 'later'
 		},
 	])!

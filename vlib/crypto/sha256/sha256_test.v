@@ -9,6 +9,9 @@ fn test_digest_implements_hash() {
 	get_digest := fn () hash.Hash {
 		return sha256.new()
 	}
+	mut digest := get_digest()
+	assert digest.size() == sha256.size
+	digest.free()
 }
 
 fn test_crypto_sha256() {

@@ -157,11 +157,11 @@ struct Conn {
 mut:
 	read_buf       [buf_size]u8
 	read_len       int
-	read_extra     []u8 // dynamic overflow buffer for large requests (e.g. chunked uploads)
-	write_buf      []u8
+	read_extra     []u8 = []u8{} // dynamic overflow buffer for large requests (e.g. chunked uploads)
+	write_buf      []u8 = []u8{}
 	write_pos      int
 	request_active bool
-	read_start     i64 // monotonic timestamp (in microseconds) when first data was received
+	read_start     i64 // monotonic timestamp when request data was last received
 	write_start    i64 // monotonic timestamp while a response is blocked on the socket
 	read_eof       bool
 
@@ -229,14 +229,14 @@ pub mut:
 	poll_fd                 int = -1 // kqueue fd
 	user_data               voidptr
 	request_handler         fn (HttpRequest) !HttpResponse = unsafe { nil }
-	append_handler          AppendHandler = unsafe { nil }
-	make_state              fn () voidptr = unsafe { nil }
-	running                 &stdatomic.AtomicVal[bool] = stdatomic.new_atomic(false)
-	shutting_down           &stdatomic.AtomicVal[bool] = stdatomic.new_atomic(false)
-	stopped                 &stdatomic.AtomicVal[bool] = stdatomic.new_atomic(true)
-	active_requests         &stdatomic.AtomicVal[int] = stdatomic.new_atomic(0)
+	append_handler          AppendHandler                  = unsafe { nil }
+	make_state              fn () voidptr                  = unsafe { nil }
+	running                 &stdatomic.AtomicVal[bool]     = stdatomic.new_atomic(false)
+	shutting_down           &stdatomic.AtomicVal[bool]     = stdatomic.new_atomic(false)
+	stopped                 &stdatomic.AtomicVal[bool]     = stdatomic.new_atomic(true)
+	active_requests         &stdatomic.AtomicVal[int]      = stdatomic.new_atomic(0)
 mut:
-	poll_fds []int = []int{len: bsd_thread_pool_size, cap: bsd_thread_pool_size, init: -1}
+	poll_fds []int    = []int{len: bsd_thread_pool_size, cap: bsd_thread_pool_size, init: -1}
 	threads  []thread = []thread{len: bsd_thread_pool_size, cap: bsd_thread_pool_size}
 }
 
@@ -257,20 +257,20 @@ pub fn new_server(config ServerConfig) !&Server {
 		return error('set only one of `handler` or `append_handler`, not both')
 	}
 	mut server := &Server{
-		family: config.family
-		host: config.host
-		port: config.port
+		family:                  config.family
+		host:                    config.host
+		port:                    config.port
 		max_request_buffer_size: config.max_request_buffer_size
-		max_request_body_size: config.max_request_body_size
-		timeout_in_seconds: config.timeout_in_seconds
-		user_data: config.user_data
-		request_handler: config.handler
-		append_handler: config.append_handler
-		make_state: config.make_state
-		running: stdatomic.new_atomic(false)
-		shutting_down: stdatomic.new_atomic(false)
-		stopped: stdatomic.new_atomic(true)
-		active_requests: stdatomic.new_atomic(0)
+		max_request_body_size:   config.max_request_body_size
+		timeout_in_seconds:      config.timeout_in_seconds
+		user_data:               config.user_data
+		request_handler:         config.handler
+		append_handler:          config.append_handler
+		make_state:              config.make_state
+		running:                 stdatomic.new_atomic(false)
+		shutting_down:           stdatomic.new_atomic(false)
+		stopped:                 stdatomic.new_atomic(true)
+		active_requests:         stdatomic.new_atomic(0)
 	}
 	unsafe {
 		server.poll_fds.flags.set(.noslices | .noshrink | .nogrow)
@@ -462,11 +462,11 @@ fn process_request(server &Server, kq int, c_ptr voidptr, frame_total int, mut c
 		mut ctl := ResponseControl{}
 		step := server.append_handler(decoded, mut out, c.worker_state, mut ctl)
 		HttpResponse{
-			content: out
+			content:       out
 			content_owned: true
 			takeover_mode: ctl.takeover_mode
-			should_close: ctl.should_close || step != .done
-			file_path: ctl.file_path
+			should_close:  ctl.should_close || step != .done
+			file_path:     ctl.file_path
 		}
 	} else {
 		server.request_handler(decoded) or {
@@ -656,6 +656,7 @@ fn handle_read(server &Server, kq int, c_ptr voidptr, mut clients map[int]voidpt
 	if c.request_active {
 		return
 	}
+	previous_total := c.total_read_len()
 
 	// Drain the socket for this kqueue notification. EV_CLEAR only rearms once
 	// all readable data has been consumed.
@@ -703,8 +704,9 @@ fn handle_read(server &Server, kq int, c_ptr voidptr, mut clients map[int]voidpt
 		return
 	}
 
-	// Record when we first started receiving data for this request
-	if c.read_start == 0 {
+	// Treat the request timeout as an idle timeout. Active uploads can take longer
+	// than the configured interval as long as each read makes progress.
+	if total > previous_total {
 		c.read_start = time.sys_mono_now()
 	}
 
@@ -731,11 +733,11 @@ fn accept_clients(kq int, listen_fd int, worker_state voidptr, retired &RetiredC
 			C.setsockopt(client_fd, C.SOL_SOCKET, C.SO_NOSIGPIPE, &nosigpipe_opt, sizeof(int))
 		}
 		mut c := &Conn{
-			fd: client_fd
-			user_data: unsafe { nil }
-			file_fd: -1
+			fd:           client_fd
+			user_data:    unsafe { nil }
+			file_fd:      -1
 			worker_state: worker_state
-			retired: retired
+			retired:      retired
 		}
 		if add_event(kq, u64(client_fd), i16(C.EVFILT_READ), u16(C.EV_ADD | C.EV_ENABLE | C.EV_CLEAR), c) < 0 {
 			C.close(client_fd)
@@ -824,7 +826,7 @@ fn process_events(server &Server, kq int, listen_fd int) {
 			return
 		}
 		timeout := C.timespec{
-			tv_sec: 0
+			tv_sec:  0
 			tv_nsec: kqueue_wait_timeout_ms * 1_000_000
 		}
 		nev := C.kevent(kq, unsafe { nil }, 0, &events[0], kqueue_max_events, &timeout)

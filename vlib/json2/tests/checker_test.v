@@ -168,6 +168,10 @@ fn test_check_json_format() {
 			'json':  '{"key": "value"    '
 			'error': 'Syntax: EOF: expected object end'
 		},
+		{
+			'json':  '{\n"a": 1\n'
+			'error': 'Syntax: EOF: expected object end'
+		},
 	]
 
 	for json_and_error in json_and_error_message {

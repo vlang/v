@@ -6,11 +6,17 @@ pub const v_version = '0.5.2'
 
 pub fn full_hash() string {
 	build_hash := vhash()
-
-	if vcurrent_hash() == '' || build_hash[..7] == vcurrent_hash() {
+	current_hash := vcurrent_hash()
+	// `C.V_COMMIT_HASH` is only injected into the bootstrap `vc/v.c` by `gen_vc.v`,
+	// so anything else compiled by V (`v self`, the `vdoctor`/`vup` tools, ...) sees
+	// the empty `#define` fallback. There is no build hash to report then.
+	if build_hash.len < 7 {
+		return current_hash
+	}
+	if current_hash == '' || build_hash[..7] == current_hash {
 		return build_hash
 	}
-	return '${build_hash}.${vcurrent_hash()}'
+	return '${build_hash}.${current_hash}'
 }
 
 // full_v_version() returns the full version of the V compiler

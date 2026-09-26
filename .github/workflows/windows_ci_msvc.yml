@@ -6,7 +6,6 @@ on:
       - master
       - 'smoke/**'
     paths-ignore:
-      - 'vlib/v3/**'
       - '**.md'
       - '**.yml'
       - '!**.bat'
@@ -15,7 +14,6 @@ on:
       - '!cmd/tools/builders/**.v'
   pull_request:
     paths-ignore:
-      - 'vlib/v3/**'
       - '**.md'
       - '**.yml'
       - '!**.bat'
@@ -69,7 +67,7 @@ jobs:
           # `#flag` mechanism has no compiler-specific gating that can
           # special-case MSVC here (only OS-name gates and one hardcoded
           # `mingw` case are ever actually selected at build time, verified
-          # by reading vlib/v/builder/cflags.v's get_os_cflags()), so fix
+          # by the compiler's platform flag selection), so fix
           # it here instead: alias the file under the name MSVC expects.
           # A plain copy is safe -- a Windows import library doesn't embed
           # its own filename.
@@ -95,7 +93,9 @@ jobs:
           echo %VFLAGS%
           echo $VFLAGS
           .\makev.bat -msvc
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           .\v.exe symlink
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Pkg-config regressions (MSVC dynamic isolation)
         run: |
           $tests = @(
@@ -307,7 +307,9 @@ jobs:
           echo %VFLAGS%
           echo $VFLAGS
           .\makev.bat -msvc
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           .\v.exe symlink
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Legacy gg import multiwindow isolation
         run: v -cc msvc test vlib/gg/legacy_import_multiwindow_isolation_test.v
       - name: Public gg Win32 services no-flag contract
@@ -316,8 +318,8 @@ jobs:
         shell: pwsh
         run: |
           .\.github\workflows\run_multiwindow_win32_w3_green.ps1 -Compiler msvc `
-            -ExpectedCompositeSha256 '6f20eb6d5cb7c3a774fbe75eac6c41f9598acfc87cabad2d73e6ed669f15e9c7' `
-            -ExpectedRunnerSha256 '7336fe67127c63cd70d978305e256eb1b515e0746433da084452cb5268938982'
+            -ExpectedCompositeSha256 '8af83e2cde13c81ea42ccd5b4f628a9236da1eb98f2ac7bffef1aba986788281' `
+            -ExpectedRunnerSha256 '8093ef9753a33d042cf5bcc416e7b35fd01fb6293334234c109f54fc371a52a1'
       - name: Package 2 native Win32 RED matrix
         shell: pwsh
         run: .\.github\workflows\run_multiwindow_win32_package2_red.ps1 -Compiler msvc
@@ -330,7 +332,7 @@ jobs:
             -Compiler msvc `
             -Expectation Green `
             -ExpectedOracleSha256 '804e8cbc5f5f7c390e90736d54a60d65d19b649a94afa4915bd9cb4e95c4e04d' `
-            -ExpectedNativeTestSha256 'e71a0856bcbe5b278b9a580c5151faacae66c0f0c3f9b0861c710b2238ed43bc' `
+            -ExpectedNativeTestSha256 'a67fe2c406bfee3a67db212679e0157a5474c1859e0971b80b3f2609f5a67664' `
             -ExpectedPublicTestSha256 'd08eafb919ae97b185fc480c22f6d990973396152e9a0b3a01035c3e9a30275c' `
             -ExpectedNoOptProbeSha256 '288f148ca15b6694481f117c03be5f80c4045baf76d3b0e90db61b5e0596741c' `
             -ExpectedServiceBackendSha256 '8ad39d63360446ef7049c726544200780eff61ff39917830f7024243dfd363be' `
@@ -340,7 +342,7 @@ jobs:
             -ExpectedWin32ServiceNativeSha256 '2ffc93e245a43c4a557fd7cc66ebcdda8874b9783ec3050ba754657a97efd033' `
             -ExpectedRedSurfaceSha256 'fe7fa76370ee25883e4da25e72b339daeba9d1b47ff70b8b56b0ada87a0027c6' `
             -ExpectedGreenSurfaceSha256 '0ea0c7c0fb681cd1c6e6b61a5785cb57739b92c641eba55aab3d63174d0a6b45' `
-            -ExpectedRunnerSha256 'a80262a5d4d8e5f13b60e2f6583154060ed3eed9f21e90c6d5bf18c1a85fbc2e'
+            -ExpectedRunnerSha256 'a42390a558646e2704c6563a3b7fe9d8ab66a2a1f98382c744dd23f5716d7795'
       - name: Win32 W5 raw-input A0 preflight
         shell: pwsh
         run: |

@@ -467,8 +467,8 @@ pub fn (mut p Parser) allocate_table(key DottedKey) ! {
 // sub_table_key returns the logic parts of a dotted key (`a.b.c`) for
 // use with the `find_sub_table` method.
 pub fn (mut p Parser) sub_table_key(key DottedKey) (DottedKey, DottedKey) {
-	last := [key.last()]
-	first := key[..key.len - 1]
+	last := DottedKey([key.last()])
+	first := DottedKey(key[..key.len - 1])
 	return first, last
 }
 
@@ -1829,7 +1829,7 @@ pub fn (mut p Parser) time() !ast.Time {
 	if !lit[lit.len - 1].is_digit() {
 		return error(@MOD + '.' + @STRUCT + '.' + @FN +
 			' expected a number as last occurrence in "${lit}" got "${lit[lit.len -
-			1].ascii_str()}"')
+				1].ascii_str()}"')
 	}
 
 	// Parse offset

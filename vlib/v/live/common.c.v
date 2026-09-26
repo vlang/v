@@ -20,7 +20,7 @@ pub mut:
 	reloads_ok        int      // how many times the reloads succeeded
 	reload_time_ms    int      // how much time the last reload took (compilation + loading)
 	last_mod_ts       i64      // a timestamp for when the original was last changed
-	recheck_period_ms int            = 100            // how often do you want to check for changes
+	recheck_period_ms int            = 100          // how often do you want to check for changes
 	cb_recheck        FNLiveReloadCB = unsafe { nil } // executed periodically
 	cb_compile_failed FNLiveReloadCB = unsafe { nil } // executed when a reload compilation failed
 	cb_before         FNLiveReloadCB = unsafe { nil } // executed before a reload try happens

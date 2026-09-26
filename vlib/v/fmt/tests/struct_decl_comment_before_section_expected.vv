@@ -1,0 +1,35 @@
+// The comment after a blank line, right before a section keyword,
+// should stay with the previous field.
+pub struct Linker {
+	macho int
+	// frameworks to link
+pub mut:
+	frameworks []string
+	// private, mutable
+mut:
+	count int
+	// public, immutable
+pub:
+	name string
+	// global
+__global:
+	flag bool
+	// module
+module:
+	handle voidptr
+}
+
+pub interface Reader {
+	name string
+	// mutable part
+mut:
+	count int
+	read() int
+}
+
+pub interface Writer {
+	flush()
+	// after a method
+mut:
+	write() int
+}

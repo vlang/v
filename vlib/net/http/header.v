@@ -492,6 +492,31 @@ pub fn (mut h Header) delete(key CommonHeader) {
 	h.delete_custom(key.str())
 }
 
+// remove_custom_all removes every header whose key matches `key`
+// case-insensitively, compacting the entries that follow so no empty
+// placeholder is left behind for a later lookup to find.
+//
+// This is deliberately stricter than `delete_custom`, which only matches the
+// exact casing and overwrites matches with an empty value in place -- a
+// tombstone that `get_custom` still returns, as an empty string, ahead of any
+// value added afterwards.
+fn (mut h Header) remove_custom_all(key string) {
+	mut kept := 0
+	for i := 0; i < h.cur_pos; i++ {
+		if header_key_eq(h.data[i].key, key) {
+			continue
+		}
+		if kept != i {
+			h.data[kept] = h.data[i]
+		}
+		kept++
+	}
+	for i := kept; i < h.cur_pos; i++ {
+		h.data[i] = HeaderKV{}
+	}
+	h.cur_pos = kept
+}
+
 // delete_custom deletes all values for a custom header key.
 pub fn (mut h Header) delete_custom(key string) {
 	for i := 0; i < h.cur_pos; i++ {

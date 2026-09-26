@@ -1,0 +1,20 @@
+enum ComparisonFirst {
+	a
+	b
+}
+
+enum ComparisonSecond {
+	a
+	b
+}
+
+fn compare(flag bool) {
+	state := ComparisonFirst.a
+	println(state == if flag { .missing } else { .b })
+	println((if flag { ComparisonSecond.a } else { ComparisonSecond.b }) == state)
+	println(state == if flag { .a } else { ComparisonSecond.b })
+}
+
+fn main() {
+	compare(true)
+}

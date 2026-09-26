@@ -1,0 +1,84 @@
+vlib/v/checker/tests/local_shadows_global.vv:11:6: error: variable `counter` shadows a global variable
+    9 | fn uses_a_shadowing_local() int {
+   10 |     // Resolved to the global, so this local is declared and never read.
+   11 |     mut counter := 5
+      |         ~~~~~~~
+   12 |     counter = 7
+   13 |     return counter
+vlib/v/checker/tests/local_shadows_global.vv:17:2: error: variable `devices` shadows a global variable
+   15 | 
+   16 | fn uses_a_shadowing_local_from_another_statement() int {
+   17 |     devices := 3
+      |     ~~~~~~~
+   18 |     return devices
+   19 | }
+vlib/v/checker/tests/local_shadows_global.vv:33:9: error: variable `devices` shadows a global variable
+   31 | // single-declaration checks, so its targets need checking too.
+   32 | fn shadows_through_a_multi_return() int {
+   33 |     value, devices := make_pair()
+      |            ~~~~~~~
+   34 |     return value + devices.len
+   35 | }
+vlib/v/checker/tests/local_shadows_global.vv:38:2: error: variable `counter` shadows a global variable
+   36 |
+   37 | fn shadows_through_a_multi_value_list() int {
+   38 |     counter, other := 1, 2
+      |     ~~~~~~~
+   39 |     return counter + other
+   40 | }
+vlib/v/checker/tests/local_shadows_global.vv:42:32: error: variable `counter` shadows a global variable
+   40 | }
+   41 |
+   42 | fn shadows_through_a_parameter(counter int) int {
+      |                                ~~~~~~~
+   43 |     return counter
+   44 | }
+vlib/v/checker/tests/local_shadows_global.vv:48:6: error: variable `counter` shadows a global variable
+   46 | fn shadows_through_for_in(values []int) int {
+   47 |     mut total := 0
+   48 |     for counter in values {
+      |         ~~~~~~~
+   49 |         total += counter
+   50 |     }
+vlib/v/checker/tests/local_shadows_global.vv:59:5: error: variable `counter` shadows a global variable
+   57 |
+   58 | fn shadows_through_if_guard() int {
+   59 |     if counter := maybe_value() {
+      |        ~~~~~~~
+   60 |         return counter
+   61 |     }
+vlib/v/checker/tests/local_shadows_global.vv:66:19: error: variable `devices` shadows a global variable
+   64 |
+   65 | fn shadows_through_fn_literal() int {
+   66 |     transform := fn (devices []int) int {
+      |                      ~~~~~~~
+   67 |         return devices.len
+   68 |     }
+vlib/v/checker/tests/local_shadows_global.vv:77:26: error: variable `counter` shadows a global variable
+   75 |
+   76 | fn shadows_through_lambda() int {
+   77 |     return apply_transform(|counter| counter + 1)
+      |                             ~~~~~~~
+   78 | }
+   79 |
+vlib/v/checker/tests/local_shadows_global.vv:82:3: error: variable `counter` shadows a global variable
+   80 | fn shadows_through_select(ch chan int) int {
+   81 |     select {
+   82 |         counter := <-ch {
+      |         ~~~~~~~
+   83 |             return counter
+   84 |         }
+vlib/v/checker/tests/local_shadows_global.vv:94:7: error: variable `counter` shadows a global variable
+   92 |
+   93 | fn shadows_through_comptime_for() int {
+   94 |     $for counter in ShadowField.fields {
+      |          ~~~~~~~
+   95 |         if counter.name == 'value' {
+   96 |             return 1
+vlib/v/checker/tests/local_shadows_global.vv:104:8: error: variable `counter` shadows a global variable
+  102 | fn shadows_through_nested_comptime_for() int {
+  103 |     $for field in ShadowField.fields {
+  104 |         $for counter in ShadowField.fields {
+      |              ~~~~~~~
+  105 |             if counter.name == field.name {
+  106 |                 return 1

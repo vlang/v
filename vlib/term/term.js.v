@@ -1,6 +1,7 @@
 module term
 
 #const $tty = require('tty');
+
 // get_terminal_size returns a number of columns and rows of terminal window.
 pub fn get_terminal_size() (int, int) {
 	$if js_node {

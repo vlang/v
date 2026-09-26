@@ -603,7 +603,8 @@ pub fn native_gate_subject_hash(subject NativeGateSubjectModel) !string {
 pub fn validate_native_gate_subject(subject NativeGateSubjectModel) ! {
 	if !is_lower_hex_64(subject.consumer_id)
 		|| subject.consumer_id != subject.intent_or_operation_id
-		|| subject.consumer_kind !in ['publish_candidate', 'rollback_candidate', 'adopt_current', 'initial_adopt_current', 'publish_post', 'rollback_post', 'remediation']
+		|| subject.consumer_kind !in ['publish_candidate', 'rollback_candidate', 'adopt_current',
+			'initial_adopt_current', 'publish_post', 'rollback_post', 'remediation']
 		|| subject.target_id !in managed_target_ids || subject.subject_generation < 0
 		|| subject.initial_run_mode !in ['original_push', 'no_native_push_expected']
 		|| !is_lower_hex_40(subject.sha) || !is_lower_hex_40(subject.tree)
@@ -708,7 +709,8 @@ fn validate_gate_run_candidate(gate NativeGateModel, run GateRunCandidate) ! {
 		|| run.event != 'push' || run.run_id <= 0 || run.run_attempt <= 0 || run.check_suite_id <= 0
 		|| !timestamp_is_exact(run.created_at) || run.actor != auth.original_actor
 		|| run.actor_integration_id != auth.original_actor_integration_id
-		|| run.conclusion !in ['pending', 'success', 'failure', 'cancelled', 'timed_out', 'neutral', 'skipped'] {
+		|| run.conclusion !in ['pending', 'success', 'failure', 'cancelled', 'timed_out', 'neutral',
+			'skipped'] {
 		return error('gate run does not match the immutable workflow/ref/event/run/actor subject')
 	}
 	if run.run_attempt == 1 {

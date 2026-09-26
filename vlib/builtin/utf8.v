@@ -78,7 +78,7 @@ pub fn utf32_decode_to_buffer(code u32, mut buf &u8) int {
 //
 // this function is left for backward compatibility
 // it is used in vlib/builtin/string.v,
-// and also in vlib/v/gen/c/cgen.v
+// and also by the V compiler's C backend
 pub fn (_rune string) utf32_code() int {
 	if _rune.len > 4 {
 		return 0

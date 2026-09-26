@@ -4,15 +4,15 @@ import encoding.base64
 
 fn test_mail_message_data_with_attachment_has_valid_multipart_boundaries() {
 	mail := Mail{
-		from: 'sender@example.com'
-		to: 'receiver@example.com'
-		subject: 'Multipart test'
-		body: 'message body'
-		boundary: 'test-boundary'
+		from:        'sender@example.com'
+		to:          'receiver@example.com'
+		subject:     'Multipart test'
+		body:        'message body'
+		boundary:    'test-boundary'
 		attachments: [
 			Attachment{
 				filename: 'note.txt'
-				bytes: 'attachment'.bytes()
+				bytes:    'attachment'.bytes()
 			},
 		]
 	}
@@ -28,15 +28,15 @@ fn test_mail_message_data_with_attachment_has_valid_multipart_boundaries() {
 
 fn test_mail_message_data_with_text_and_html_uses_multipart_alternative() {
 	mail := Mail{
-		from: 'sender@example.com'
-		to: 'receiver@example.com'
-		subject: 'Multipart alternative test'
-		body: 'legacy body'
+		from:     'sender@example.com'
+		to:       'receiver@example.com'
+		subject:  'Multipart alternative test'
+		body:     'legacy body'
 		boundary: 'test-boundary'
-		text: Message{
+		text:     Message{
 			body: 'text body'
 		}
-		html: Message{
+		html:     Message{
 			body: '<h1>Hello</h1>'
 		}
 	}
@@ -52,19 +52,19 @@ fn test_mail_message_data_with_text_and_html_uses_multipart_alternative() {
 
 fn test_mail_message_data_with_text_html_and_attachment_uses_nested_multipart() {
 	mail := Mail{
-		from: 'sender@example.com'
-		to: 'receiver@example.com'
-		subject: 'Multipart mixed test'
+		from:     'sender@example.com'
+		to:       'receiver@example.com'
+		subject:  'Multipart mixed test'
 		boundary: 'test-boundary'
-		text: Message{
+		text:     Message{
 			body: 'text body'
 		}
-		html: Message{
-			body: '<p>Hello</p>'
+		html:     Message{
+			body:        '<p>Hello</p>'
 			attachments: [
 				Attachment{
 					filename: 'note.txt'
-					bytes: 'attachment'.bytes()
+					bytes:    'attachment'.bytes()
 				},
 			]
 		}
@@ -118,10 +118,10 @@ fn test_envelope_addr_strips_display_name() {
 
 fn test_mail_message_data_preserves_display_name_in_from_header() {
 	mail := Mail{
-		from: 'Ivan Petrov <ivan@example.com>'
-		to: 'recipient@example.com'
+		from:    'Ivan Petrov <ivan@example.com>'
+		to:      'recipient@example.com'
 		subject: 'Test'
-		body: 'hi'
+		body:    'hi'
 	}
 
 	message := mail.message_data()
@@ -132,10 +132,10 @@ fn test_mail_message_data_preserves_display_name_in_from_header() {
 
 fn test_mail_message_data_wraps_bare_from_addr() {
 	mail := Mail{
-		from: 'sender@example.com'
-		to: 'receiver@example.com'
+		from:    'sender@example.com'
+		to:      'receiver@example.com'
 		subject: 'Test'
-		body: 'hi'
+		body:    'hi'
 	}
 
 	message := mail.message_data()
@@ -147,10 +147,10 @@ fn test_mail_message_data_wraps_bare_from_addr() {
 fn test_mail_message_data_encodes_non_ascii_from() {
 	// non-ASCII display names must become an RFC 2047 encoded-word, not raw UTF-8
 	mail := Mail{
-		from: 'Иван Петров <ivan@example.com>'
-		to: 'recipient@example.com'
+		from:    'Иван Петров <ivan@example.com>'
+		to:      'recipient@example.com'
 		subject: 'Test'
-		body: 'hi'
+		body:    'hi'
 	}
 
 	message := mail.message_data()
@@ -160,8 +160,8 @@ fn test_mail_message_data_encodes_non_ascii_from() {
 
 fn test_mail_message_data_omits_empty_cc_and_bcc_headers() {
 	mail := Mail{
-		from: 'sender@example.com'
-		to: 'receiver@example.com'
+		from:    'sender@example.com'
+		to:      'receiver@example.com'
 		subject: 'No cc/bcc test'
 	}
 
@@ -174,8 +174,8 @@ fn test_mail_message_data_omits_empty_cc_and_bcc_headers() {
 
 fn test_mail_message_data_omits_empty_to_for_bcc_only_mail() {
 	mail := Mail{
-		from: 'sender@example.com'
-		bcc: 'hidden@example.com'
+		from:    'sender@example.com'
+		bcc:     'hidden@example.com'
 		subject: 'Bcc-only test'
 	}
 
@@ -187,10 +187,10 @@ fn test_mail_message_data_omits_empty_to_for_bcc_only_mail() {
 
 fn test_mail_message_data_includes_cc_header_but_omits_bcc() {
 	mail := Mail{
-		from: 'sender@example.com'
-		to: 'receiver@example.com; '
-		cc: '<copy@example.com>; One <one@example.com>;'
-		bcc: 'hidden@example.com;Two <two@example.com>'
+		from:    'sender@example.com'
+		to:      'receiver@example.com; '
+		cc:      '<copy@example.com>; One <one@example.com>;'
+		bcc:     'hidden@example.com;Two <two@example.com>'
 		subject: 'Cc/bcc test'
 	}
 
@@ -205,8 +205,8 @@ fn test_mail_message_data_includes_cc_header_but_omits_bcc() {
 fn test_mail_message_data_formats_to_header() {
 	// bare ';'-separated addresses become a ','-joined list
 	mail := Mail{
-		from: 'sender@example.com'
-		to: 'a@ex.com;b@ex.com'
+		from:    'sender@example.com'
+		to:      'a@ex.com;b@ex.com'
 		subject: 'To test'
 	}
 	message := mail.message_data()
@@ -214,8 +214,8 @@ fn test_mail_message_data_formats_to_header() {
 
 	// a display name is quoted instead of producing nested angle brackets
 	mail2 := Mail{
-		from: 'sender@example.com'
-		to: 'Ivan Petrov <ivan@example.com>'
+		from:    'sender@example.com'
+		to:      'Ivan Petrov <ivan@example.com>'
 		subject: 'To test'
 	}
 	message2 := mail2.message_data()
@@ -225,8 +225,8 @@ fn test_mail_message_data_formats_to_header() {
 fn test_mail_message_data_encodes_non_ascii_subject() {
 	// an ASCII subject stays raw
 	mail := Mail{
-		from: 'sender@example.com'
-		to: 'receiver@example.com'
+		from:    'sender@example.com'
+		to:      'receiver@example.com'
 		subject: 'Hello world'
 	}
 	message := mail.message_data()
@@ -234,8 +234,8 @@ fn test_mail_message_data_encodes_non_ascii_subject() {
 
 	// a non-ASCII subject becomes an RFC 2047 encoded-word, not raw UTF-8
 	mail2 := Mail{
-		from: 'sender@example.com'
-		to: 'receiver@example.com'
+		from:    'sender@example.com'
+		to:      'receiver@example.com'
 		subject: 'Привет мир'
 	}
 	message2 := mail2.message_data()
@@ -243,8 +243,8 @@ fn test_mail_message_data_encodes_non_ascii_subject() {
 
 	// ASCII controls are encoded so they cannot inject additional headers.
 	mail3 := Mail{
-		from: 'sender@example.com'
-		to: 'receiver@example.com'
+		from:    'sender@example.com'
+		to:      'receiver@example.com'
 		subject: 'Hello\r\nBcc: injected@example.com'
 	}
 	message3 := mail3.message_data()
@@ -269,8 +269,8 @@ fn test_encode_rfc2047_splits_long_utf8_without_cutting_characters() {
 
 fn test_long_encoded_headers_are_folded_below_the_hard_line_limit() {
 	mail := Mail{
-		from: 'Ж'.repeat(315) + ' <sender@example.com>'
-		to: 'receiver@example.com'
+		from:    'Ж'.repeat(315) + ' <sender@example.com>'
+		to:      'receiver@example.com'
 		subject: 'Ж'.repeat(315)
 	}
 	message := mail.message_data()

@@ -35,9 +35,7 @@ fn (state &BFState) show(suffix string) {
 			break
 		}
 	}
-	println('PC: ${state.pc:04} | Address: ${state.address:04} | Memory: ${state.memory#[0..
-		max_non_zero_address + 1]:-40s} | Memory[Address]: ${state.memory#[state.address..
-		state.address + 1]:-10s} | ${suffix}')
+	println('PC: ${state.pc:04} | Address: ${state.address:04} | Memory: ${state.memory#[0..max_non_zero_address + 1]:-40s} | Memory[Address]: ${state.memory#[state.address..state.address + 1]:-10s} | ${suffix}')
 }
 
 // find_matching_pairs fills in the `targets` mapping for all pairs of `[` and `]`,

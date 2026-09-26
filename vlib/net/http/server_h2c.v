@@ -41,7 +41,7 @@ fn (mut t H2cTransport) write(buf []u8) !int {
 // when the connection should be parsed as HTTP/1.1 instead, including when
 // the peek itself fails (e.g. the client connected and sent nothing yet): the
 // existing HTTP/1.1 path already handles that case the same way it always has.
-fn try_serve_h2c(mut reader io.BufferedReader, mut conn net.TcpConn, mut handler Handler) bool {
+fn try_serve_h2c(mut reader io.BufferedReader, mut conn net.TcpConn, mut handler Handler, remote_addr string) bool {
 	peeked := reader.peek(h2c_preface_prefix.len) or { return false }
 	if peeked.bytestr() != h2c_preface_prefix {
 		return false
@@ -50,6 +50,6 @@ fn try_serve_h2c(mut reader io.BufferedReader, mut conn net.TcpConn, mut handler
 		reader: reader
 		conn:   conn
 	})
-	serve_h2_conn(mut transport, mut handler) or {}
+	serve_h2_conn(mut transport, mut handler, remote_addr) or {}
 	return true
 }

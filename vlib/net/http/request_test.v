@@ -203,6 +203,7 @@ admin123\r
 	}
 	assert form['username'] == 'admin'
 	assert form['password'] == 'admin123'
+	assert files.len == 0
 }
 
 fn test_multipart_form_body() {

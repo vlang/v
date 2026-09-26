@@ -9,7 +9,7 @@ const cmd_exe_args_with_tail = ['/a', 'C:\\', '/b', '/B', 'xyz', '/a', 'D:\\', '
 	'"xyz"', '"/path/to/x"', '"/path/to/y"', '"/path/to/z"']
 
 struct Config {
-	big_b      string = 'def'   @[long: Big; short: B]
+	big_b      string = 'def'     @[long: Big; short: B]
 	small_b    bool     @[short: b]
 	a_device   []string @[short: a]
 	paths      []string @[tail]

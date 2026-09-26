@@ -360,14 +360,14 @@ pub fn run_dark_mode_dry_run(automation_root string) ! {
 	subject_hash := native_gate_subject_hash(native_subject)!
 	native_gate := initial_native_gate(native_subject, target.generation + 1, candidate_ref,
 		'original_push', '', '2026-08-02T00:00:00Z', GateRunAuthentication{
-		repository:                      'vlang/tccbin'
-		workflow_id:                     3001
-		workflow_path:                   '.github/workflows/build-and-test.yml'
-		original_actor:                  'vlang-publisher'
-		original_actor_integration_id:   4001
-		rerun_triggering_actor:          'vlang-gate-dispatcher'
-		rerun_triggering_integration_id: 4002
-	}, '')!
+			repository:                      'vlang/tccbin'
+			workflow_id:                     3001
+			workflow_path:                   '.github/workflows/build-and-test.yml'
+			original_actor:                  'vlang-publisher'
+			original_actor_integration_id:   4001
+			rerun_triggering_actor:          'vlang-gate-dispatcher'
+			rerun_triggering_integration_id: 4002
+		}, '')!
 	operation_id := deterministic_operation_id(OperationIdentityInput{
 		audience:                'vlang/v:tccbin-automation-state'
 		run_id:                  100

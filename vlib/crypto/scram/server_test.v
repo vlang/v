@@ -81,11 +81,11 @@ fn test_a_full_exchange_carries_the_authorization_identity() {
 fn test_the_server_prepares_the_authorization_identity_before_exposing_it() {
 	creds := pencil_credentials(.sha256)
 	mut server := new_server(
-		nonce: 'servernonce'
+		nonce:           'servernonce'
 		prepare_authzid: fn (authzid string) !string {
 			return authzid.replace('\u00ad', '')
 		}
-		lookup: fn [creds] (username string) !Credentials {
+		lookup:          fn [creds] (username string) !Credentials {
 			return creds
 		}
 	)!
@@ -125,11 +125,11 @@ fn test_a_full_exchange_carries_an_escaped_user_name() {
 fn test_the_server_prepares_the_username_before_lookup() {
 	creds := pencil_credentials(.sha256)
 	mut server := new_server(
-		nonce: 'servernonce'
+		nonce:            'servernonce'
 		prepare_username: fn (username string) !string {
 			return username.replace('\u00ad', '')
 		}
-		lookup: fn [creds] (username string) !Credentials {
+		lookup:           fn [creds] (username string) !Credentials {
 			assert username == 'IX'
 			return creds
 		}

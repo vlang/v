@@ -13,7 +13,7 @@ fn test_basic_tls() {
 	tls_i8.set(-4)!
 	assert tls_i8.get()! == -4
 	tls_i8.destroy()!
-	if v := tls_i8.get() {
+	if _ := tls_i8.get() {
 		assert false
 	} else {
 		assert err.msg().contains('already destroyed')
@@ -25,7 +25,7 @@ fn test_basic_tls() {
 	tls_i16.set(-58)!
 	assert tls_i16.get()! == -58
 	tls_i16.destroy()!
-	if v := tls_i16.get() {
+	if _ := tls_i16.get() {
 		assert false
 	} else {
 		assert err.msg().contains('already destroyed')
@@ -37,7 +37,7 @@ fn test_basic_tls() {
 	tls_i32.set(-580)!
 	assert tls_i32.get()! == -580
 	tls_i32.destroy()!
-	if v := tls_i32.get() {
+	if _ := tls_i32.get() {
 		assert false
 	} else {
 		assert err.msg().contains('already destroyed')
@@ -49,7 +49,7 @@ fn test_basic_tls() {
 	tls_i64.set(-5800)!
 	assert tls_i64.get()! == -5800
 	tls_i64.destroy()!
-	if v := tls_i64.get() {
+	if _ := tls_i64.get() {
 		assert false
 	} else {
 		assert err.msg().contains('already destroyed')
@@ -61,7 +61,7 @@ fn test_basic_tls() {
 	tls_u8.set(4)!
 	assert tls_u8.get()! == 4
 	tls_u8.destroy()!
-	if v := tls_u8.get() {
+	if _ := tls_u8.get() {
 		assert false
 	} else {
 		assert err.msg().contains('already destroyed')
@@ -73,7 +73,7 @@ fn test_basic_tls() {
 	tls_u16.set(58)!
 	assert tls_u16.get()! == 58
 	tls_u16.destroy()!
-	if v := tls_u16.get() {
+	if _ := tls_u16.get() {
 		assert false
 	} else {
 		assert err.msg().contains('already destroyed')
@@ -85,7 +85,7 @@ fn test_basic_tls() {
 	tls_u32.set(580)!
 	assert tls_u32.get()! == 580
 	tls_u32.destroy()!
-	if v := tls_u32.get() {
+	if _ := tls_u32.get() {
 		assert false
 	} else {
 		assert err.msg().contains('already destroyed')
@@ -97,7 +97,7 @@ fn test_basic_tls() {
 	tls_u64.set(5800)!
 	assert tls_u64.get()! == 5800
 	tls_u64.destroy()!
-	if v := tls_u64.get() {
+	if _ := tls_u64.get() {
 		assert false
 	} else {
 		assert err.msg().contains('already destroyed')
@@ -109,7 +109,7 @@ fn test_basic_tls() {
 	tls_isize.set(-58000)!
 	assert tls_isize.get()! == -58000
 	tls_isize.destroy()!
-	if v := tls_isize.get() {
+	if _ := tls_isize.get() {
 		assert false
 	} else {
 		assert err.msg().contains('already destroyed')
@@ -121,7 +121,7 @@ fn test_basic_tls() {
 	tls_usize.set(58000)!
 	assert tls_usize.get()! == 58000
 	tls_usize.destroy()!
-	if v := tls_usize.get() {
+	if _ := tls_usize.get() {
 		assert false
 	} else {
 		assert err.msg().contains('already destroyed')
@@ -133,7 +133,7 @@ fn test_basic_tls() {
 	tls_int.set(-32768)!
 	assert tls_int.get()! == -32768
 	tls_int.destroy()!
-	if v := tls_int.get() {
+	if _ := tls_int.get() {
 		assert false
 	} else {
 		assert err.msg().contains('already destroyed')
@@ -145,7 +145,7 @@ fn test_basic_tls() {
 	tls_f32.set(2.5)!
 	assert tls_f32.get()! == 2.5
 	tls_f32.destroy()!
-	if v := tls_f32.get() {
+	if _ := tls_f32.get() {
 		assert false
 	} else {
 		assert err.msg().contains('already destroyed')
@@ -157,7 +157,7 @@ fn test_basic_tls() {
 	tls_f64.set(-2.5)!
 	assert tls_f64.get()! == -2.5
 	tls_f64.destroy()!
-	if v := tls_f64.get() {
+	if _ := tls_f64.get() {
 		assert false
 	} else {
 		assert err.msg().contains('already destroyed')
@@ -198,7 +198,7 @@ fn test_pointer_tls() {
 	tls.set(data) or { assert err.msg().contains('already destroyed') }
 
 	// Attempt to get value after destruction
-	if res_get := tls.get() {
+	if _ := tls.get() {
 		assert false
 	} else {
 		assert err.msg().contains('already destroyed')

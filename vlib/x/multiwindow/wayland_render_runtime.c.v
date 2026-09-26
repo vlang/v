@@ -1,10 +1,10 @@
 module multiwindow
 
-$if gg_multiwindow ? || x_multiwindow_render ? {
+$if gg_multiwindow ?|| x_multiwindow_render ? {
 	import sokol.gfx
 }
 
-$if gg_multiwindow ? || x_multiwindow_render ? {
+$if gg_multiwindow ?|| x_multiwindow_render ? {
 	$if linux && sokol_wayland ? {
 		fn (backend &WaylandBackend) renderer_anchor_lifetime_absent() bool {
 			return backend.anchor_surface == unsafe { nil }
@@ -667,7 +667,7 @@ $if gg_multiwindow ? || x_multiwindow_render ? {
 
 fn (mut backend WaylandBackend) collect_render_updates() ![]BackendRenderUpdate {
 	mut updates := []BackendRenderUpdate{}
-	$if gg_multiwindow ? || x_multiwindow_render ? {
+	$if gg_multiwindow ?|| x_multiwindow_render ? {
 		$if linux && sokol_wayland ? {
 			for record in backend.windows {
 				if record.native_destroyed {

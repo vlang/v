@@ -16,6 +16,7 @@ $if new_1 ? {
 	import time
 	// this is comment, should skip
 }
+
 // this is comment, should skip
 
 const t = $if amd64 { 1 } $else { 2 }

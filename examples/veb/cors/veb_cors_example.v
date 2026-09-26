@@ -49,7 +49,7 @@ xhr.send();
 	// use veb's cors middleware to handle CORS requests
 	app.use(veb.cors[Context](veb.CorsOptions{
 		// allow CORS requests from every domain
-		origins: ['*']
+		origins:         ['*']
 		// allow CORS requests with the following request methods:
 		allowed_methods: [.get, .head, .patch, .put, .post, .delete]
 	}))

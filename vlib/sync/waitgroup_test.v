@@ -38,7 +38,8 @@ fn test_waitgroup_no_use() {
 	done := chan bool{cap: 1}
 	watchdog := spawn fn (done chan bool) {
 		select {
-			_ := <-done {}
+			_ := <-done {
+			}
 			i64(10_000_000_000) {
 				panic('test_waitgroup_no_use did not complete in time')
 			}
@@ -84,7 +85,8 @@ fn test_waitgroup_add_while_waiting() {
 
 		for _ in 0 .. 8 {
 			select {
-				_ := <-wait_done {}
+				_ := <-wait_done {
+				}
 				i64(2_000_000_000) {
 					assert false, 'wait() missed a wakeup while work added more tasks'
 				}

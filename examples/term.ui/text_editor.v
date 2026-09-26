@@ -644,7 +644,7 @@ fn main() {
 		files: files
 	}
 	a.tui = tui.init(
-		user_data: a
+		user_data:      a
 		// The tui callback slots are `voidptr`; these handlers (`init`, `frame`, `event`)
 		// instead take the typed app pointer that `user_data` hands back. `&T` and `voidptr`
 		// share a representation, so reinterpreting each fn pointer across that parameter is

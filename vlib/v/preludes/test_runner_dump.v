@@ -91,7 +91,6 @@ fn (mut runner DumpTestRunner) assert_pass(i &VAssertMetaInfo) {
 
 fn (mut runner DumpTestRunner) assert_fail(i &VAssertMetaInfo) {
 	runner.total_assert_fails++
-	eprintln('> ${@METHOD} ASSERT FAIL: ${runner.fn_assert_passes + 1} in ${runner.fname}, assert was in ${i.fn_name}, line: ${
-		i.line_nr + 1}')
+	eprintln('> ${@METHOD} ASSERT FAIL: ${runner.fn_assert_passes + 1} in ${runner.fname}, assert was in ${i.fn_name}, line: ${i.line_nr + 1}')
 	unsafe { i.free() }
 }

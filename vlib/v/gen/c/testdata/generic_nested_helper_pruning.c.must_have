@@ -1,0 +1,12 @@
+VV_LOC string main__helper_value_T_u8(u8 value) {
+VV_LOC string main__helper_value_T_u16(u16 value) {
+VV_LOC string main__helper_value_T_main__GenericHelperStruct(main__GenericHelperStruct value) {
+VV_LOC int main__helper_array_T_u8(Array_u8 value) {
+VV_LOC int main__helper_array_T_u16(Array_u16 value) {
+VV_LOC int main__helper_array_T_string(Array_string value) {
+VV_LOC int main__helper_map_T_string_u8(Map_string_u8 value) {
+VV_LOC int main__helper_map_T_string_u16(Map_string_u16 value) {
+VV_LOC int main__helper_map_T_string_main__GenericHelperStruct(Map_string_main__GenericHelperStruct value) {
+VV_LOC int main__GenericMethodContext_T_u8_render_T_u8(main__GenericMethodContext_T_u8 c, Array_u8 value) {
+VV_LOC int main__GenericMethodContext_T_u16_render_T_u16(main__GenericMethodContext_T_u16 c, Array_u16 value) {
+VV_LOC int main__GenericMethodContext_T_string_render_T_string(main__GenericMethodContext_T_string c, Array_string value) {

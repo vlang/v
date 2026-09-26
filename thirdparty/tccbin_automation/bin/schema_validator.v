@@ -131,8 +131,8 @@ fn (context SchemaContext) validate(schema JsonValue, instance JsonValue, path s
 	}
 	match instance.kind {
 		.object {
-			if schema_has_any(schema, ['properties', 'required', 'additionalProperties',
-				'minProperties', 'maxProperties'])
+			if schema_has_any(schema, ['properties', 'required', 'additionalProperties', 'minProperties',
+				'maxProperties'])
 			{
 				issues << context.validate_object(schema, instance, path, current_schema_path)!
 			}
@@ -651,7 +651,7 @@ fn validate_last_native_validation_semantics(root JsonValue,
 		if index >= expected_names.len || sha != expected_names[index] || size <= 0
 			|| size > i64(native_validation_evidence_max_bytes)
 			|| u64(size) > native_validation_capsule_max_bytes - total_bytes {
-			issues << semantic_issue('$/last_native_validation/evidence/${index}',
+			issues << semantic_issue('\$/last_native_validation/evidence/${index}',
 				'last native validation evidence differs from the sorted exact declared set')
 		} else {
 			total_bytes += u64(size)
@@ -752,7 +752,7 @@ fn validate_last_native_validation_semantics(root JsonValue,
 		publisher_lane_is_exact := (publication_state == 'promotion_blocked'
 			&& intent_type == 'publish' && active_kind == 'publish_candidate')
 			|| (publication_state == 'rollback_blocked' && intent_type == 'rollback'
-			&& active_kind in ['rollback_candidate', 'rollback_post'])
+				&& active_kind in ['rollback_candidate', 'rollback_post'])
 		publisher_preserved := stage == 'blocked' && transition == 'candidate_checks_green'
 			&& verdict == 'green' && publisher_lane_is_exact
 		blocked_red := stage == 'blocked'
@@ -774,9 +774,9 @@ fn validate_last_native_validation_semantics(root JsonValue,
 				transition, verdict)
 			if !branch_is_exact
 				|| !json_equal(require_member(intent, 'gate_runs')!, JsonValue{
-				kind:        .array
-				array_value: [native_gate, smoke_gate]
-			})
+					kind:        .array
+					array_value: [native_gate, smoke_gate]
+				})
 				|| !json_equal(active_subject, subject)
 				|| require_nullable_string_member(root, 'active_subject_hash')! != subject_hash {
 				issues << semantic_issue('$/last_native_validation',
@@ -844,12 +844,12 @@ fn native_validation_subject_matches_exact_owner_json(subject JsonValue, expecte
 	}
 	if require_string_member(subject, 'consumer_id') or { return false } != consumer_id
 		|| require_string_member(subject, 'intent_or_operation_id') or {
-		return false
-	} != consumer_id
+			return false
+		} != consumer_id
 		|| require_string_member(subject, 'consumer_kind') or { return false } != consumer_kind
 		|| require_string_member(subject, 'original_ref') or {
-		return false
-	} != expected_ref
+			return false
+		} != expected_ref
 		|| require_string_member(subject, 'input_fingerprint') or { return false } != input_fingerprint {
 		return false
 	}
@@ -891,16 +891,14 @@ fn blocked_red_native_validation_owner_is_exact(root JsonValue, subject JsonValu
 	rollback_provisional := require_member(intent, 'rollback_provisional') or { return false }
 	if rollback_provisional.kind == .object {
 		return native_validation_subject_matches_exact_owner_json(subject, rollback_provisional, require_nullable_string_member(root,
-			'input_fingerprint') or { return false }, 'thirdparty-${require_string_member(root,
-			'target_id') or { return false }}', require_nullable_string_member(root,
+			'input_fingerprint') or { return false }, 'thirdparty-${require_string_member(root, 'target_id') or { return false }}', require_nullable_string_member(root,
 			'post_validation_operation_id') or { return false }, 'rollback_post')
 	}
 	return native_validation_subject_matches_intent_json(subject, intent)
 }
 
 fn native_validation_subject_matches_artifact_json(subject JsonValue, artifact JsonValue) bool {
-	for key in ['sha', 'tree', 'input_fingerprint', 'artifact_fingerprint', 'manifest_hash',
-		'digests'] {
+	for key in ['sha', 'tree', 'input_fingerprint', 'artifact_fingerprint', 'manifest_hash', 'digests'] {
 		left := require_member(subject, key) or { return false }
 		right := require_member(artifact, key) or { return false }
 		if !json_equal(left, right) {
@@ -951,7 +949,7 @@ fn validate_applied_operation_ledger_semantics(root JsonValue) ![]SchemaIssue {
 	mut operation_ids := []string{}
 	mut previous_generation := i64(-1)
 	for index, operation in operations {
-		path := '$/applied_operations/${index}'
+		path := '\$/applied_operations/${index}'
 		operation_id := require_string_member(operation, 'operation_id')!
 		operation_generation := require_integer_member(operation, 'resulting_generation')!
 		if operation_id in operation_ids {
@@ -988,7 +986,7 @@ fn validate_recovery_handoff_history_semantics(root JsonValue) ![]SchemaIssue {
 	mut active_matches := 0
 	mut unfinished_count := 0
 	for index, handoff in handoffs {
-		path := '$/recovery_handoffs/${index}'
+		path := '\$/recovery_handoffs/${index}'
 		handoff_id := require_string_member(handoff, 'handoff_id')!
 		if handoff_id in ids {
 			issues << semantic_issue('${path}/handoff_id',
@@ -1061,7 +1059,7 @@ fn validate_recovery_handoff_history_semantics(root JsonValue) ![]SchemaIssue {
 			'recovery history must expose exactly its sole unfinished handoff, or no active pointer')
 	}
 	for index, handoff in handoffs {
-		path := '$/recovery_handoffs/${index}'
+		path := '\$/recovery_handoffs/${index}'
 		handoff_id := require_string_member(handoff, 'handoff_id')!
 		ordinal := require_integer_member(handoff, 'handoff_ordinal')!
 		predecessor_id := require_nullable_string_member(handoff, 'predecessor_handoff_id')!
@@ -1105,7 +1103,7 @@ fn validate_recovery_handoff_history_semantics(root JsonValue) ![]SchemaIssue {
 						issues << semantic_issue('${path}/successor_handoff_id',
 							'recovery successor must point back to the exact next chain ordinal')
 					}
-					successor_path := '$/recovery_handoffs/${successor_index}'
+					successor_path := '\$/recovery_handoffs/${successor_index}'
 					issues << validate_native_recovery_successor_semantics(root, handoff,
 						successor, active_id, generation, path, successor_path)!
 				}
@@ -1231,12 +1229,12 @@ fn validate_native_recovery_successor_semantics(root JsonValue, predecessor Json
 	valid_successor_capability := successor_capability in ['v_smoke', 'evidence_only']
 	valid_identity :=
 		require_string_member(successor, 'consumer_type')! == predecessor_consumer_type
-		&& json_equal(require_object_member(successor, 'subject')!, require_object_member(predecessor, 'subject')!)
-		&& json_equal(require_member(successor, 'expected_check_sources')!, require_member(predecessor, 'expected_check_sources')!)
-		&& require_nullable_string_member(successor, 'native_gate_check_digest')! == require_nullable_string_member(predecessor, 'native_gate_check_digest')!
-		&& require_integer_member(successor, 'subject_generation')! == predecessor_subject_generation
-		&& require_string_member(successor, 'expected_canonical_head')! == require_string_member(predecessor, 'expected_canonical_head')!
-		&& require_string_member(successor, 'subject_ref_head')! == require_string_member(predecessor, 'subject_ref_head')!
+			&& json_equal(require_object_member(successor, 'subject')!, require_object_member(predecessor, 'subject')!)
+			&& json_equal(require_member(successor, 'expected_check_sources')!, require_member(predecessor, 'expected_check_sources')!)
+			&& require_nullable_string_member(successor, 'native_gate_check_digest')! == require_nullable_string_member(predecessor, 'native_gate_check_digest')!
+			&& require_integer_member(successor, 'subject_generation')! == predecessor_subject_generation
+			&& require_string_member(successor, 'expected_canonical_head')! == require_string_member(predecessor, 'expected_canonical_head')!
+			&& require_string_member(successor, 'subject_ref_head')! == require_string_member(predecessor, 'subject_ref_head')!
 	successor_state := require_string_member(successor, 'state')!
 	successor_dispatch_generation := require_integer_member(successor, 'dispatch_generation')!
 	mut dispatches_follow_creation := true
@@ -1254,8 +1252,8 @@ fn validate_native_recovery_successor_semantics(root JsonValue, predecessor Json
 	} else {
 		successor_generation > chain_generation && dispatches_follow_creation
 			&& ((active_id == successor_id
-			&& successor_state in ['pending', 'dispatched', 'blocked'])
-			|| (active_id != successor_id && successor_state == 'complete'))
+				&& successor_state in ['pending', 'dispatched', 'blocked'])
+				|| (active_id != successor_id && successor_state == 'complete'))
 	}
 	terminal_proof := require_member(successor, 'terminal_revalidation')!
 	mut evidence_smoke := require_member(root, 'v_smoke_execution')!
@@ -1366,7 +1364,7 @@ fn validate_recovery_successor_smoke_binding(successor JsonValue, smoke JsonValu
 	smoke_state := require_string_member(smoke, 'state')!
 	if (successor_state == 'pending' && smoke_state != 'pending')
 		|| (successor_state == 'dispatched'
-		&& smoke_state !in ['dispatched', 'completed', 'blocked'])
+			&& smoke_state !in ['dispatched', 'completed', 'blocked'])
 		|| (successor_state == 'blocked' && smoke_state != 'blocked')
 		|| (successor_state == 'complete' && smoke_state !in ['completed', 'blocked']) {
 		issues << semantic_issue('${successor_path}/state',
@@ -1578,19 +1576,42 @@ fn validate_terminal_source_atomic_projection(proof JsonValue, source_waiting bo
 	pre_attempts := require_array_member(pre_smoke, 'attempts')!
 	mut exact :=
 		require_integer_member(atomic_projection, 'generation')! + 1 == require_integer_member(pre, 'generation')!
-		&& require_integer_member(atomic_native, 'expected_ledger_generation')! == require_integer_member(atomic_projection, 'generation')!
-		&& require_integer_member(pre_native, 'expected_ledger_generation')! == require_integer_member(pre, 'generation')!
-		&& require_integer_member(atomic_smoke, 'expected_ledger_generation')! == require_integer_member(atomic_projection, 'generation')!
-		&& require_integer_member(pre_smoke, 'expected_ledger_generation')! == require_integer_member(pre, 'generation')!
-		&& require_string_member(atomic_smoke, 'state')! == 'dispatched'
-		&& require_string_member(pre_smoke, 'state')! == 'blocked' && atomic_attempts.len == 1
-		&& pre_attempts.len == 1
-		&& json_objects_equal_except(atomic_projection, pre, ['generation', 'native_gate_execution', 'v_smoke_execution'])!
-		&& json_objects_equal_except(atomic_native, pre_native, ['expected_ledger_generation'])!
-		&& json_objects_equal_except(atomic_smoke, pre_smoke, ['expected_ledger_generation', 'state', 'attempts', 'active_attempt', 'completion_operation_ids', 'replay_facts_digest'])!
+			&& require_integer_member(atomic_native, 'expected_ledger_generation')! == require_integer_member(atomic_projection, 'generation')!
+			&& require_integer_member(pre_native, 'expected_ledger_generation')! == require_integer_member(pre, 'generation')!
+			&& require_integer_member(atomic_smoke, 'expected_ledger_generation')! == require_integer_member(atomic_projection, 'generation')!
+			&& require_integer_member(pre_smoke, 'expected_ledger_generation')! == require_integer_member(pre, 'generation')!
+			&& require_string_member(atomic_smoke, 'state')! == 'dispatched'
+			&& require_string_member(pre_smoke, 'state')! == 'blocked' && atomic_attempts.len == 1
+			&& pre_attempts.len == 1
+			&& json_objects_equal_except(atomic_projection, pre, ['generation', 'native_gate_execution',
+				'v_smoke_execution'])!
+			&& json_objects_equal_except(atomic_native, pre_native, ['expected_ledger_generation'])!
+			&& json_objects_equal_except(atomic_smoke, pre_smoke, [
+				'expected_ledger_generation',
+				'state',
+				'attempts',
+				'active_attempt',
+				'completion_operation_ids',
+				'replay_facts_digest',
+			])!
 	if atomic_attempts.len == 1 && pre_attempts.len == 1 {
 		exact = exact
-			&& json_objects_equal_except(atomic_attempts[0], pre_attempts[0], ['run_conclusion', 'completion_operation_id', 'completion_facts_digest', 'check_run_id', 'check_name', 'check_sha', 'details_url', 'external_id', 'validator_integration_id', 'check_conclusion', 'output_digest', 'evidence_digest', 'completed_at', 'completion_kind'])!
+			&& json_objects_equal_except(atomic_attempts[0], pre_attempts[0], [
+				'run_conclusion',
+				'completion_operation_id',
+				'completion_facts_digest',
+				'check_run_id',
+				'check_name',
+				'check_sha',
+				'details_url',
+				'external_id',
+				'validator_integration_id',
+				'check_conclusion',
+				'output_digest',
+				'evidence_digest',
+				'completed_at',
+				'completion_kind',
+			])!
 			&& require_member(atomic_attempts[0], 'completion_operation_id')!.kind == .null_value
 			&& require_member(pre_attempts[0], 'completion_operation_id')!.kind == .string_value
 	}
@@ -1722,13 +1743,13 @@ fn validate_terminal_native_check(proof JsonValue, predecessor JsonValue, succes
 		&& require_string_member(check, 'check_conclusion')! == 'success'
 	integers_are_exact :=
 		require_integer_member(check, 'integration_id')! == require_integer_member(native_source, 'integration_id')!
-		&& require_integer_member(check, 'workflow_id')! == require_integer_member(native_source, 'workflow_id')!
-		&& require_integer_member(check, 'run_id')! == require_integer_member(observed, 'run_id')!
-		&& require_integer_member(check, 'run_attempt')! == require_integer_member(observed, 'run_attempt')!
-		&& require_integer_member(check, 'check_suite_id')! == require_integer_member(observed, 'check_suite_id')!
-		&& require_integer_member(check, 'check_suite_integration_id')! == require_integer_member(native_source, 'integration_id')!
-		&& require_integer_member(check, 'actor_integration_id')! == require_integer_member(observed, 'actor_integration_id')!
-		&& require_integer_member(check, 'triggering_actor_integration_id')! == require_integer_member(observed, 'triggering_actor_integration_id')!
+			&& require_integer_member(check, 'workflow_id')! == require_integer_member(native_source, 'workflow_id')!
+			&& require_integer_member(check, 'run_id')! == require_integer_member(observed, 'run_id')!
+			&& require_integer_member(check, 'run_attempt')! == require_integer_member(observed, 'run_attempt')!
+			&& require_integer_member(check, 'check_suite_id')! == require_integer_member(observed, 'check_suite_id')!
+			&& require_integer_member(check, 'check_suite_integration_id')! == require_integer_member(native_source, 'integration_id')!
+			&& require_integer_member(check, 'actor_integration_id')! == require_integer_member(observed, 'actor_integration_id')!
+			&& require_integer_member(check, 'triggering_actor_integration_id')! == require_integer_member(observed, 'triggering_actor_integration_id')!
 	expected_external_id := deterministic_check_external_id('vlang/tccbin:native-gate-check:v1',
 		consumer_id, subject_hash, run_id, int(require_integer_member(check, 'run_attempt')!))!
 	completed_at := require_string_member(check, 'completed_at')!
@@ -1840,14 +1861,14 @@ fn validate_terminal_source_refetch(proof JsonValue, subject JsonValue, outcome 
 		'http_5xx']
 	refetch_is_exact :=
 		require_string_member(refetch, 'target_id')! == require_string_member(subject, 'target_id')!
-		&& require_integer_member(refetch, 'expected_generation')! == pre_generation
-		&& require_string_member(refetch, 'expected_canonical_head')! == require_string_member(pre_projection, 'canonical_observed_sha')!
-		&& require_string_member(refetch, 'input_fingerprint')! == require_nullable_string_member(pre_projection, 'input_fingerprint')!
-		&& require_string_member(refetch, 'operation_id')! == business_id
-		&& require_string_member(refetch, 'status')! == 'unreachable' && valid_failure
-		&& require_member(refetch, 'resolved_sha')!.kind == .null_value
-		&& require_member(refetch, 'resolved_tree')!.kind == .null_value
-		&& !json_equal(pre_refetch, refetch) && json_equal(final_refetch, refetch)
+			&& require_integer_member(refetch, 'expected_generation')! == pre_generation
+			&& require_string_member(refetch, 'expected_canonical_head')! == require_string_member(pre_projection, 'canonical_observed_sha')!
+			&& require_string_member(refetch, 'input_fingerprint')! == require_nullable_string_member(pre_projection, 'input_fingerprint')!
+			&& require_string_member(refetch, 'operation_id')! == business_id
+			&& require_string_member(refetch, 'status')! == 'unreachable' && valid_failure
+			&& require_member(refetch, 'resolved_sha')!.kind == .null_value
+			&& require_member(refetch, 'resolved_tree')!.kind == .null_value
+			&& !json_equal(pre_refetch, refetch) && json_equal(final_refetch, refetch)
 	resolved_inputs := require_member(pre_projection, 'resolved_inputs')!
 	mut source_matches := 0
 	mut source_check_matches := 0
@@ -2127,26 +2148,26 @@ fn validate_terminal_business_projection(root JsonValue, subject JsonValue, subj
 				business_id)!
 			rollback_owner :=
 				require_string_member(final, 'publication_state')! == 'rollback_pending'
-				&& require_nullable_string_member(final, 'active_intent_id')! == business_id
-				&& require_nullable_string_member(final, 'active_intent_type')! == 'rollback'
-				&& require_nullable_string_member(final, 'active_intent_stage')! == 'intent_reserved'
-				&& require_nullable_string_member(final, 'native_subject_hash')! == ''
-				&& !require_bool_member(final, 'native_gate_execution_present')!
-				&& !require_bool_member(final, 'v_smoke_execution_present')! && head_is_bound
-				&& require_string_member(head_observation, 'relationship')! == 'exact_subject'
-				&& ancestry_proof.kind == .null_value
-				&& terminal_reserved_rollback_is_exact(final, pre, subject, business_id, expected_sources)!
+					&& require_nullable_string_member(final, 'active_intent_id')! == business_id
+					&& require_nullable_string_member(final, 'active_intent_type')! == 'rollback'
+					&& require_nullable_string_member(final, 'active_intent_stage')! == 'intent_reserved'
+					&& require_nullable_string_member(final, 'native_subject_hash')! == ''
+					&& !require_bool_member(final, 'native_gate_execution_present')!
+					&& !require_bool_member(final, 'v_smoke_execution_present')! && head_is_bound
+					&& require_string_member(head_observation, 'relationship')! == 'exact_subject'
+					&& ancestry_proof.kind == .null_value
+					&& terminal_reserved_rollback_is_exact(final, pre, subject, business_id, expected_sources)!
 			adopt_owner :=
 				require_string_member(final, 'publication_state')! == 'candidate_pending'
-				&& require_nullable_string_member(final, 'active_intent_id')! == business_id
-				&& require_nullable_string_member(final, 'active_intent_type')! == 'adopt-current'
-				&& require_nullable_string_member(final, 'native_subject_hash')! != ''
-				&& require_nullable_string_member(final, 'native_consumer_kind')! == 'adopt_current'
-				&& require_bool_member(final, 'native_gate_execution_present')!
-				&& require_bool_member(final, 'v_smoke_execution_present')! && head_is_bound
-				&& require_string_member(head_observation, 'relationship')! == 'subject_ancestor'
-				&& terminal_git_ancestry_is_exact(ancestry_proof, head_observation, subject, business_id)!
-				&& terminal_reserved_adopt_current_is_exact(final, pre, subject, business_id, expected_sources)!
+					&& require_nullable_string_member(final, 'active_intent_id')! == business_id
+					&& require_nullable_string_member(final, 'active_intent_type')! == 'adopt-current'
+					&& require_nullable_string_member(final, 'native_subject_hash')! != ''
+					&& require_nullable_string_member(final, 'native_consumer_kind')! == 'adopt_current'
+					&& require_bool_member(final, 'native_gate_execution_present')!
+					&& require_bool_member(final, 'v_smoke_execution_present')! && head_is_bound
+					&& require_string_member(head_observation, 'relationship')! == 'subject_ancestor'
+					&& terminal_git_ancestry_is_exact(ancestry_proof, head_observation, subject, business_id)!
+					&& terminal_reserved_adopt_current_is_exact(final, pre, subject, business_id, expected_sources)!
 			final_is_exact = consumer_kind == 'publish_post'
 				&& outcome == 'functional_defect_routed'
 				&& require_string_member(final, 'target_state')! == 'quarantined'
@@ -2379,15 +2400,15 @@ fn validate_current_terminal_projection(root JsonValue, successor JsonValue, pro
 	])!
 	derived_fields_are_exact :=
 		require_nullable_string_member(projection, 'active_intent_id')! == intent_id
-		&& require_nullable_string_member(projection, 'active_intent_type')! == intent_type
-		&& require_nullable_string_member(projection, 'active_intent_stage')! == intent_stage
-		&& require_nullable_string_member(projection, 'native_subject_hash')! == require_nullable_string_member(root, 'active_subject_hash')!
-		&& require_nullable_string_member(projection, 'native_consumer_kind')! == native_kind
-		&& require_bool_member(projection, 'native_gate_execution_present')! == (require_member(root, 'native_gate_execution')!.kind == .object)
-		&& require_bool_member(projection, 'v_smoke_execution_present')! == (require_member(root, 'v_smoke_execution')!.kind == .object)
-		&& require_nullable_string_member(projection, 'active_remediation_operation_id')! == remediation_operation_id
-		&& require_string_member(projection, 'v_source_sha')! == v_source_sha
-		&& json_equal(require_member(projection, 'owner_check_sources')!, owner_sources)
+			&& require_nullable_string_member(projection, 'active_intent_type')! == intent_type
+			&& require_nullable_string_member(projection, 'active_intent_stage')! == intent_stage
+			&& require_nullable_string_member(projection, 'native_subject_hash')! == require_nullable_string_member(root, 'active_subject_hash')!
+			&& require_nullable_string_member(projection, 'native_consumer_kind')! == native_kind
+			&& require_bool_member(projection, 'native_gate_execution_present')! == (require_member(root, 'native_gate_execution')!.kind == .object)
+			&& require_bool_member(projection, 'v_smoke_execution_present')! == (require_member(root, 'v_smoke_execution')!.kind == .object)
+			&& require_nullable_string_member(projection, 'active_remediation_operation_id')! == remediation_operation_id
+			&& require_string_member(projection, 'v_source_sha')! == v_source_sha
+			&& json_equal(require_member(projection, 'owner_check_sources')!, owner_sources)
 	if !direct_fields_are_exact || !derived_fields_are_exact {
 		issues << semantic_issue('${path}/terminal_revalidation/final_projection',
 			'current terminal H2 snapshot differs from the authoritative current target root')
@@ -2543,13 +2564,15 @@ fn terminal_projection_retained_executions_are_exact(pre JsonValue, final JsonVa
 		|| final_smoke.kind != .object {
 		return false
 	}
-	return
-		json_equal(require_member(pre, 'native_gate_subject')!, require_member(final, 'native_gate_subject')!)
+	return json_equal(require_member(pre, 'native_gate_subject')!, require_member(final, 'native_gate_subject')!)
 		&& require_nullable_string_member(pre, 'native_subject_hash')! == require_nullable_string_member(final, 'native_subject_hash')!
 		&& json_objects_equal_except(pre_native, final_native, ['expected_ledger_generation'])!
 		&& require_integer_member(pre_native, 'expected_ledger_generation')! == require_integer_member(pre, 'generation')!
 		&& require_integer_member(final_native, 'expected_ledger_generation')! == require_integer_member(final, 'generation')!
-		&& json_objects_equal_except(pre_smoke, final_smoke, ['expected_ledger_generation', 'replay_facts_digest'])!
+		&& json_objects_equal_except(pre_smoke, final_smoke, [
+			'expected_ledger_generation',
+			'replay_facts_digest',
+		])!
 		&& require_integer_member(pre_smoke, 'expected_ledger_generation')! == require_integer_member(pre, 'generation')!
 		&& require_integer_member(final_smoke, 'expected_ledger_generation')! == require_integer_member(final, 'generation')!
 		&& require_string_member(pre_smoke, 'replay_facts_digest')! == v_smoke_replay_facts_digest(pre_smoke)!
@@ -2557,8 +2580,7 @@ fn terminal_projection_retained_executions_are_exact(pre JsonValue, final JsonVa
 }
 
 fn terminal_projection_root_tuple_matches_subject(projection JsonValue, subject JsonValue) !bool {
-	return
-		require_string_member(projection, 'canonical_observed_sha')! == require_string_member(subject, 'sha')!
+	return require_string_member(projection, 'canonical_observed_sha')! == require_string_member(subject, 'sha')!
 		&& require_nullable_string_member(projection, 'input_fingerprint')! == require_string_member(subject, 'input_fingerprint')!
 		&& require_nullable_string_member(projection, 'artifact_fingerprint')! == require_string_member(subject, 'artifact_fingerprint')!
 		&& require_nullable_string_member(projection, 'manifest_hash')! == require_string_member(subject, 'manifest_hash')!
@@ -2572,15 +2594,14 @@ fn terminal_head_observation_is_exact(observation JsonValue, old_subject JsonVal
 	relationship := require_string_member(observation, 'relationship')!
 	canonical_head := require_string_member(observation, 'canonical_head')!
 	subject_sha := require_string_member(old_subject, 'sha')!
-	return
-		require_string_member(observation, 'target_id')! == require_string_member(old_subject, 'target_id')!
+	return require_string_member(observation, 'target_id')! == require_string_member(old_subject, 'target_id')!
 		&& require_integer_member(observation, 'expected_generation')! == require_integer_member(pre, 'generation')!
 		&& require_string_member(observation, 'expected_previous_head')! == require_string_member(pre, 'canonical_observed_sha')!
 		&& require_string_member(observation, 'subject_sha')! == subject_sha
 		&& require_string_member(observation, 'operation_id')! == business_id
 		&& relationship in ['exact_subject', 'subject_ancestor']
 		&& ((relationship == 'exact_subject' && canonical_head == subject_sha)
-		|| (relationship == 'subject_ancestor' && canonical_head != subject_sha))
+			|| (relationship == 'subject_ancestor' && canonical_head != subject_sha))
 }
 
 fn terminal_git_ancestry_is_exact(ancestry JsonValue, observation JsonValue,
@@ -2648,13 +2669,13 @@ fn terminal_reserved_adopt_current_is_exact(final JsonValue, pre JsonValue,
 	new_subject_hash := require_nullable_string_member(final, 'native_subject_hash')!
 	validation_tuple_is_exact :=
 		require_string_member(validation_subject, 'sha')! == canonical_head
-		&& require_string_member(validation_subject, 'sha')! == require_string_member(native_subject, 'sha')!
-		&& require_string_member(validation_subject, 'tree')! == require_string_member(native_subject, 'tree')!
-		&& require_string_member(validation_subject, 'candidate_ref')! == require_string_member(native_subject, 'original_ref')!
-		&& require_string_member(validation_subject, 'input_fingerprint')! == require_string_member(native_subject, 'input_fingerprint')!
-		&& require_string_member(validation_subject, 'artifact_fingerprint')! == require_string_member(native_subject, 'artifact_fingerprint')!
-		&& require_string_member(validation_subject, 'manifest_hash')! == require_string_member(native_subject, 'manifest_hash')!
-		&& json_equal(require_member(validation_subject, 'digests')!, require_member(native_subject, 'digests')!)
+			&& require_string_member(validation_subject, 'sha')! == require_string_member(native_subject, 'sha')!
+			&& require_string_member(validation_subject, 'tree')! == require_string_member(native_subject, 'tree')!
+			&& require_string_member(validation_subject, 'candidate_ref')! == require_string_member(native_subject, 'original_ref')!
+			&& require_string_member(validation_subject, 'input_fingerprint')! == require_string_member(native_subject, 'input_fingerprint')!
+			&& require_string_member(validation_subject, 'artifact_fingerprint')! == require_string_member(native_subject, 'artifact_fingerprint')!
+			&& require_string_member(validation_subject, 'manifest_hash')! == require_string_member(native_subject, 'manifest_hash')!
+			&& json_equal(require_member(validation_subject, 'digests')!, require_member(native_subject, 'digests')!)
 	intent_is_exact := require_string_member(intent, 'intent_id')! == business_id
 		&& require_string_member(intent, 'intent_type')! == 'adopt-current'
 		&& require_string_member(intent, 'stage')! == 'intent_reserved'
@@ -2768,15 +2789,14 @@ pub fn terminal_state_projection(root JsonValue) !JsonValue {
 	}
 	keys := ['schema_version', 'generation', 'target_state', 'publication_state',
 		'canonical_observed_sha', 'input_fingerprint', 'artifact_fingerprint', 'manifest_hash',
-		'v_source_sha', 'resolved_inputs', 'last_known_good', 'provisional_published',
-		'active_intent', 'active_intent_id', 'active_intent_type', 'active_intent_stage',
-		'post_validation_operation_id', 'native_gate_subject', 'native_subject_hash',
-		'native_consumer_kind', 'native_gate_execution', 'native_gate_execution_present',
-		'v_smoke_execution', 'v_smoke_execution_present', 'active_recovery_handoff_id',
-		'active_remediation_id', 'active_remediation_binding', 'active_remediation_operation_id',
-		'remediation_check_sources', 'owner_check_sources', 'last_head_observation',
-		'last_validation', 'last_native_validation', 'last_source_refetch', 'blocking_probe_ids',
-		'issue_number']
+		'v_source_sha', 'resolved_inputs', 'last_known_good', 'provisional_published', 'active_intent',
+		'active_intent_id', 'active_intent_type', 'active_intent_stage', 'post_validation_operation_id',
+		'native_gate_subject', 'native_subject_hash', 'native_consumer_kind', 'native_gate_execution',
+		'native_gate_execution_present', 'v_smoke_execution', 'v_smoke_execution_present',
+		'active_recovery_handoff_id', 'active_remediation_id', 'active_remediation_binding',
+		'active_remediation_operation_id', 'remediation_check_sources', 'owner_check_sources',
+		'last_head_observation', 'last_validation', 'last_native_validation', 'last_source_refetch',
+		'blocking_probe_ids', 'issue_number']
 	values := [JsonValue{ kind: .integer, int_value: 3 }, require_member(root, 'generation')!,
 		require_member(root, 'target_state')!, require_member(root, 'publication_state')!,
 		require_member(root, 'canonical_observed_sha')!, require_member(root, 'input_fingerprint')!,
@@ -2786,10 +2806,8 @@ pub fn terminal_state_projection(root JsonValue) !JsonValue {
 			string_value: v_source_sha
 		}, require_member(root, 'resolved_inputs')!, require_member(root, 'last_known_good')!,
 		require_member(root, 'provisional_published')!, intent, intent_id, intent_type, intent_stage,
-		require_member(root, 'post_validation_operation_id')!, native_subject,
-		require_member(root,
-			'active_subject_hash')!, native_kind,
-		require_member(root,
+		require_member(root, 'post_validation_operation_id')!, native_subject, require_member(root,
+			'active_subject_hash')!, native_kind, require_member(root,
 			'native_gate_execution')!, JsonValue{
 			kind:       .boolean
 			bool_value: require_member(root, 'native_gate_execution')!.kind == .object
@@ -2798,8 +2816,7 @@ pub fn terminal_state_projection(root JsonValue) !JsonValue {
 			bool_value: require_member(root, 'v_smoke_execution')!.kind == .object
 		}, require_member(root, 'active_recovery_handoff_id')!,
 		require_member(root, 'active_remediation_id')!, remediation_binding, remediation_operation_id,
-		require_member(root, 'remediation_check_sources')!, owner_sources,
-		require_member(root,
+		require_member(root, 'remediation_check_sources')!, owner_sources, require_member(root,
 			'last_head_observation')!, require_member(root, 'last_validation')!,
 		require_member(root, 'last_native_validation')!, require_member(root, 'last_source_refetch')!,
 		require_member(root, 'blocking_probe_ids')!, require_member(root, 'issue_number')!]
@@ -2924,19 +2941,19 @@ fn validate_historical_native_gate_semantics(predecessor JsonValue, execution Js
 		selected_matches++
 		actor_is_exact :=
 			require_string_member(run, 'actor')! == require_string_member(execution, 'original_actor')!
-			&& require_integer_member(run, 'actor_integration_id')! == require_integer_member(execution, 'original_actor_integration_id')!
+				&& require_integer_member(run, 'actor_integration_id')! == require_integer_member(execution, 'original_actor_integration_id')!
 		trigger_is_exact := if selected_attempt == 1 {
-				require_string_member(run, 'triggering_actor')! == require_string_member(execution, 'original_actor')!
+			require_string_member(run, 'triggering_actor')! == require_string_member(execution, 'original_actor')!
 				&& require_integer_member(run, 'triggering_actor_integration_id')! == require_integer_member(execution, 'original_actor_integration_id')!
 		} else {
-				require_string_member(run, 'triggering_actor')! == require_string_member(execution, 'rerun_triggering_actor')!
+			require_string_member(run, 'triggering_actor')! == require_string_member(execution, 'rerun_triggering_actor')!
 				&& require_integer_member(run, 'triggering_actor_integration_id')! == require_integer_member(execution, 'rerun_triggering_integration_id')!
 		}
 		run_created := require_string_member(run, 'created_at')!
 		closed_at := require_nullable_string_member(epoch, 'closed_at')!
 		original_ref_is_exact := require_string_member(epoch, 'reason')! != 'original_push'
 			|| (require_string_member(epoch, 'expected_ref')! == require_string_member(subject, 'original_ref')!
-			&& require_nullable_string_member(epoch, 'trigger_id')! == '')
+				&& require_nullable_string_member(epoch, 'trigger_id')! == '')
 		if require_string_member(run, 'repository')! != require_string_member(native_source, 'repository')!
 			|| require_integer_member(run, 'workflow_id')! != require_integer_member(native_source, 'workflow_id')!
 			|| require_string_member(run, 'workflow_path')! != require_string_member(native_source, 'workflow_path')!
@@ -3039,7 +3056,7 @@ fn validate_native_subject_owner_semantics(root JsonValue, subject JsonValue) ![
 		['artifact_fingerprint', 'artifact_fingerprint'], ['manifest_hash', 'manifest_hash']] {
 		if require_nullable_string_member(root, binding[0])! != require_string_member(subject,
 			binding[1])! {
-			issues << semantic_issue('$/native_gate_subject/${binding[1]}',
+			issues << semantic_issue('\$/native_gate_subject/${binding[1]}',
 				'native subject fingerprints must equal the authoritative target projection')
 		}
 	}
@@ -3163,8 +3180,8 @@ fn validate_native_subject_owner_semantics(root JsonValue, subject JsonValue) ![
 		}
 		if require_string_member(trigger, 'repository')! == 'vlang/tccbin'
 			&& (require_string_member(trigger, 'ref')! != 'thirdparty-${target_id}'
-			|| require_string_member(trigger, 'after')! != require_string_member(subject, 'sha')!
-			|| require_string_member(trigger, 'tree')! != require_string_member(subject, 'tree')!) {
+				|| require_string_member(trigger, 'after')! != require_string_member(subject, 'sha')!
+				|| require_string_member(trigger, 'tree')! != require_string_member(subject, 'tree')!) {
 			issues << semantic_issue('$/native_gate_subject/remediation_trigger',
 				'tccbin remediation trigger after/tree/ref must equal the exact native subject')
 		}
@@ -3220,7 +3237,8 @@ fn validate_v_smoke_execution_semantics_mode(root JsonValue, subject JsonValue,
 			'native subject is bound to a different target row')
 	}
 	if require_current_owner
-		&& consumer_kind in ['publish_candidate', 'rollback_candidate', 'adopt_current', 'initial_adopt_current'] {
+		&& consumer_kind in ['publish_candidate', 'rollback_candidate', 'adopt_current',
+			'initial_adopt_current'] {
 		intent := require_member(root, 'active_intent')!
 		if intent.kind != .object {
 			issues << semantic_issue('$/active_intent',
@@ -3265,7 +3283,7 @@ fn validate_v_smoke_execution_semantics_mode(root JsonValue, subject JsonValue,
 	]
 	for binding in bindings {
 		if require_string_member(smoke, binding[0])! != require_string_member(subject, binding[1])! {
-			issues << semantic_issue('$/v_smoke_execution/${binding[0]}',
+			issues << semantic_issue('\$/v_smoke_execution/${binding[0]}',
 				'V smoke identity differs from native subject ${binding[1]}')
 		}
 	}
@@ -3282,7 +3300,7 @@ fn validate_v_smoke_execution_semantics_mode(root JsonValue, subject JsonValue,
 	smoke_generation := require_integer_member(smoke, 'expected_ledger_generation')!
 	if (require_current_owner && smoke_generation != generation)
 		|| (!require_current_owner && (smoke_generation < subject_generation
-		|| smoke_generation > generation)) {
+			|| smoke_generation > generation)) {
 		issues << semantic_issue('$/v_smoke_execution/expected_ledger_generation',
 			'V smoke CAS generation is stale')
 	}
@@ -3316,10 +3334,10 @@ fn validate_v_smoke_execution_semantics_mode(root JsonValue, subject JsonValue,
 		name := require_string_member(source, 'name')!
 		if name == 'v-candidate-smoke'
 			&& (validator_integration_id != require_integer_member(source, 'integration_id')!
-			|| require_integer_member(smoke, 'workflow_id')! != require_integer_member(source, 'workflow_id')!
-			|| require_string_member(smoke, 'repository')! != require_string_member(source, 'repository')!
-			|| require_string_member(smoke, 'workflow_path')! != require_string_member(source, 'workflow_path')!
-			|| require_string_member(smoke, 'event')! != require_string_member(source, 'event')!) {
+				|| require_integer_member(smoke, 'workflow_id')! != require_integer_member(source, 'workflow_id')!
+				|| require_string_member(smoke, 'repository')! != require_string_member(source, 'repository')!
+				|| require_string_member(smoke, 'workflow_path')! != require_string_member(source, 'workflow_path')!
+				|| require_string_member(smoke, 'event')! != require_string_member(source, 'event')!) {
 			issues << semantic_issue('$/v_smoke_execution',
 				'V smoke reservation differs from the allowlisted validator check source')
 		}
@@ -3363,7 +3381,7 @@ fn validate_v_smoke_execution_semantics_mode(root JsonValue, subject JsonValue,
 	if consumer_kind == 'remediation' && remediation_trigger.kind == .object
 		&& require_string_member(remediation_trigger, 'repository')! == 'vlang/v'
 		&& (require_string_member(remediation_trigger, 'ref')! != 'master'
-		|| require_string_member(remediation_trigger, 'after')! != require_string_member(smoke, 'v_master_sha')!) {
+			|| require_string_member(remediation_trigger, 'after')! != require_string_member(smoke, 'v_master_sha')!) {
 		issues << semantic_issue('$/v_smoke_execution/v_master_sha',
 			'V-owned remediation smoke is not bound to the exact reviewed vlang/v:master push')
 	}
@@ -3400,7 +3418,7 @@ fn validate_v_smoke_execution_semantics_mode(root JsonValue, subject JsonValue,
 		|| reservation_generation != subject_generation
 		|| reservation_generation > generation || !valid_reservation_transition
 		|| (consumer_kind in ['publish_post', 'rollback_post', 'remediation']
-		&& reservation_id != consumer_id) {
+			&& reservation_id != consumer_id) {
 		issues << semantic_issue('$/v_smoke_execution/reservation_operation_id',
 			'V smoke reservation must reuse the unique current owner CAS that atomically created the native subject')
 	}
@@ -3436,7 +3454,7 @@ fn validate_v_smoke_execution_semantics_mode(root JsonValue, subject JsonValue,
 	mut outcome_counts := [0, 0]
 	mut previous_dispatch_generation := reservation_generation
 	for index, dispatch in dispatches {
-		path := '$/v_smoke_execution/dispatches/${index}'
+		path := '\$/v_smoke_execution/dispatches/${index}'
 		attempt_index := require_integer_member(dispatch, 'attempt_index')!
 		if attempt_index != i64(index + 1) {
 			issues << semantic_issue('${path}/attempt_index',
@@ -3492,7 +3510,7 @@ fn validate_v_smoke_execution_semantics_mode(root JsonValue, subject JsonValue,
 		event_completed_at[logical_index] = requested_at
 	}
 	for index, run_absent in run_absent_attempts {
-		path := '$/v_smoke_execution/run_absent_attempts/${index}'
+		path := '\$/v_smoke_execution/run_absent_attempts/${index}'
 		attempt_index := require_integer_member(run_absent, 'attempt_index')!
 		if attempt_index < 1 || attempt_index > 2 || (index > 0
 			&& attempt_index <= require_integer_member(run_absent_attempts[index - 1], 'attempt_index')!) {
@@ -3536,7 +3554,7 @@ fn validate_v_smoke_execution_semantics_mode(root JsonValue, subject JsonValue,
 		outcome_counts[logical_index]++
 	}
 	for index, attempt in attempts {
-		path := '$/v_smoke_execution/attempts/${index}'
+		path := '\$/v_smoke_execution/attempts/${index}'
 		attempt_index := require_integer_member(attempt, 'attempt_index')!
 		if attempt_index < 1 || attempt_index > 2 || (index > 0
 			&& attempt_index <= require_integer_member(attempts[index - 1], 'attempt_index')!) {
@@ -3665,7 +3683,7 @@ fn validate_v_smoke_execution_semantics_mode(root JsonValue, subject JsonValue,
 			completion_transition_is_exact := if require_current_owner {
 				completion_transition == plain_completion_transition
 					|| (completion_transition.starts_with('${plain_completion_transition}_')
-					&& is_lower_hex_64(completion_transition.all_after('${plain_completion_transition}_')))
+						&& is_lower_hex_64(completion_transition.all_after('${plain_completion_transition}_')))
 			} else {
 				completion_transition == committed_completion_transition
 			}
@@ -3695,7 +3713,7 @@ fn validate_v_smoke_execution_semantics_mode(root JsonValue, subject JsonValue,
 			}
 			expected_external_id := deterministic_check_external_id('vlang/tccbin:v-smoke-check:v1',
 				consumer_id, subject_hash, run_id, int(require_integer_member(attempt,
-				'run_attempt')!))!
+					'run_attempt')!))!
 			if require_nullable_string_member(attempt, 'external_id')! != expected_external_id {
 				issues << semantic_issue('${path}/external_id',
 					'validator check external ID is not the deterministic JCS identity')
@@ -3777,7 +3795,7 @@ fn validate_v_smoke_execution_semantics_mode(root JsonValue, subject JsonValue,
 	} else {
 		for index, completion_id in completion_ids {
 			if require_string(completion_id)! != observed_completion_ids[index] {
-				issues << semantic_issue('$/v_smoke_execution/completion_operation_ids/${index}',
+				issues << semantic_issue('\$/v_smoke_execution/completion_operation_ids/${index}',
 					'completion operations must preserve attempt order')
 			}
 		}
@@ -3868,7 +3886,7 @@ fn validate_v_smoke_state_semantics(smoke JsonValue, attempts []JsonValue,
 	if first_outcome == 'infrastructure' && second_outcome == '' {
 		if !(allow_source_retry_short_circuit && retry_count == 0 && state == 'blocked')
 			&& (retry_count != 1 || (state != 'pending' && (state != 'blocked'
-			|| require_member(smoke, 'block_operation_id')!.kind == .null_value))) {
+				|| require_member(smoke, 'block_operation_id')!.kind == .null_value))) {
 			issues << semantic_issue('$/v_smoke_execution/infra_retry_count',
 				'first infrastructure attempt must reserve its one retry or retain the second pre-ACK block')
 		}
@@ -4009,10 +4027,11 @@ fn validate_gate_run_semantics(root JsonValue, subject_hash string,
 		&& require_string_member(root, 'publication_state')! == 'promotion_blocked'
 	post_history_blocked := stage == 'blocked' && post_history_projection
 	green_required :=
-		stage in ['checks_green', 'promotion_unknown', 'post_checks_running', 'post_checks_waiting_source', 'completed']
-		|| promotion_blocked || post_history_blocked
+		stage in ['checks_green', 'promotion_unknown', 'post_checks_running',
+			'post_checks_waiting_source', 'completed']
+			|| promotion_blocked || post_history_blocked
 	for index, run in require_array_member(intent, 'gate_runs')! {
-		path := '$/active_intent/gate_runs/${index}'
+		path := '\$/active_intent/gate_runs/${index}'
 		name := require_string_member(run, 'check_name')!
 		mut expected_integration_id := i64(0)
 		for source in require_array_member(intent, 'expected_check_sources')! {
@@ -4100,8 +4119,7 @@ fn validate_gate_run_semantics(root JsonValue, subject_hash string,
 					issues << semantic_issue(path,
 						'initial native gate triggering actor is not the original allowlisted App')
 				}
-			} else if
-				require_string_member(run, 'triggering_actor')! != require_string_member(native_execution, 'rerun_triggering_actor')!
+			} else if require_string_member(run, 'triggering_actor')! != require_string_member(native_execution, 'rerun_triggering_actor')!
 				|| require_integer_member(run, 'triggering_actor_integration_id')! != require_integer_member(native_execution, 'rerun_triggering_integration_id')! {
 				issues << semantic_issue(path,
 					'native rerun triggering actor is not the allowlisted gate dispatcher App')
@@ -4300,10 +4318,10 @@ pub fn deterministic_check_external_id(audience string, consumer_id string, subj
 pub fn v_smoke_dispatch_facts_digest(smoke JsonValue, dispatch JsonValue) !string {
 	mut facts := select_object_members(dispatch, ['attempt_index', 'mode', 'rerun_of_run_id',
 		'expected_run_attempt', 'dispatch_operation_id', 'requested_at', 'discovery_deadline'])!
-	facts = append_object_members(facts, ['schema_version', 'audience', 'consumer_id',
-		'consumer_kind', 'target_id', 'subject_hash', 'subject_generation', 'subject_ref',
-		'subject_sha', 'v_master_sha', 'repository', 'workflow_id', 'workflow_path', 'workflow_ref',
-		'event', 'actions_integration_id', 'validator_integration_id', 'run_name'], [
+	facts = append_object_members(facts, ['schema_version', 'audience', 'consumer_id', 'consumer_kind',
+		'target_id', 'subject_hash', 'subject_generation', 'subject_ref', 'subject_sha', 'v_master_sha',
+		'repository', 'workflow_id', 'workflow_path', 'workflow_ref', 'event', 'actions_integration_id',
+		'validator_integration_id', 'run_name'], [
 		JsonValue{ kind: .integer, int_value: 1 },
 		JsonValue{
 			kind:         .string_value
@@ -4334,14 +4352,14 @@ pub fn v_smoke_run_absent_facts_digest(smoke JsonValue, run_absent JsonValue) !s
 		'dispatch_facts_digest', 'run_absent_operation_id', 'outcome', 'completed_at'])!
 	facts = append_object_members(facts,
 		['schema_version', 'audience', 'consumer_id', 'subject_hash'], [
-		JsonValue{ kind: .integer, int_value: 1 },
-		JsonValue{
-			kind:         .string_value
-			string_value: 'vlang/v:tccbin-v-smoke-run-absent:v1'
-		},
-		require_member(smoke, 'consumer_id')!,
-		require_member(smoke, 'subject_hash')!,
-	])!
+			JsonValue{ kind: .integer, int_value: 1 },
+			JsonValue{
+				kind:         .string_value
+				string_value: 'vlang/v:tccbin-v-smoke-run-absent:v1'
+			},
+			require_member(smoke, 'consumer_id')!,
+			require_member(smoke, 'subject_hash')!,
+		])!
 	return json_sha256(facts)
 }
 
@@ -4354,32 +4372,32 @@ pub fn v_smoke_ack_facts_digest(smoke JsonValue, attempt JsonValue) !string {
 		'deadline', 'rerunnable_until', 'ack_operation_id'])!
 	facts = append_object_members(facts,
 		['schema_version', 'audience', 'consumer_id', 'subject_hash'], [
-		JsonValue{ kind: .integer, int_value: 1 },
-		JsonValue{
-			kind:         .string_value
-			string_value: 'vlang/v:tccbin-v-smoke-ack:v1'
-		},
-		require_member(smoke, 'consumer_id')!,
-		require_member(smoke, 'subject_hash')!,
-	])!
+			JsonValue{ kind: .integer, int_value: 1 },
+			JsonValue{
+				kind:         .string_value
+				string_value: 'vlang/v:tccbin-v-smoke-ack:v1'
+			},
+			require_member(smoke, 'consumer_id')!,
+			require_member(smoke, 'subject_hash')!,
+		])!
 	return json_sha256(facts)
 }
 
 pub fn v_smoke_completion_facts_digest(smoke JsonValue, attempt JsonValue) !string {
-	mut facts := select_object_members(attempt, ['attempt_index', 'ack_facts_digest',
-		'completion_kind', 'run_conclusion', 'completion_operation_id', 'check_run_id', 'check_name',
-		'check_sha', 'details_url', 'external_id', 'validator_integration_id', 'check_conclusion',
-		'output_digest', 'evidence_digest', 'completed_at'])!
+	mut facts := select_object_members(attempt, ['attempt_index', 'ack_facts_digest', 'completion_kind',
+		'run_conclusion', 'completion_operation_id', 'check_run_id', 'check_name', 'check_sha',
+		'details_url', 'external_id', 'validator_integration_id', 'check_conclusion', 'output_digest',
+		'evidence_digest', 'completed_at'])!
 	facts = append_object_members(facts,
 		['schema_version', 'audience', 'consumer_id', 'subject_hash'], [
-		JsonValue{ kind: .integer, int_value: 1 },
-		JsonValue{
-			kind:         .string_value
-			string_value: 'vlang/v:tccbin-v-smoke-completion:v1'
-		},
-		require_member(smoke, 'consumer_id')!,
-		require_member(smoke, 'subject_hash')!,
-	])!
+			JsonValue{ kind: .integer, int_value: 1 },
+			JsonValue{
+				kind:         .string_value
+				string_value: 'vlang/v:tccbin-v-smoke-completion:v1'
+			},
+			require_member(smoke, 'consumer_id')!,
+			require_member(smoke, 'subject_hash')!,
+		])!
 	return json_sha256(facts)
 }
 
@@ -4456,8 +4474,8 @@ pub fn terminal_revalidation_facts_digest(proof JsonValue) !string {
 pub fn terminal_owner_payload_digest(projection JsonValue) !string {
 	mut facts := select_object_members(projection, ['target_state', 'publication_state',
 		'canonical_observed_sha', 'input_fingerprint', 'artifact_fingerprint', 'manifest_hash',
-		'v_source_sha', 'resolved_inputs', 'last_known_good', 'provisional_published',
-		'active_intent', 'post_validation_operation_id', 'native_gate_subject', 'native_subject_hash',
+		'v_source_sha', 'resolved_inputs', 'last_known_good', 'provisional_published', 'active_intent',
+		'post_validation_operation_id', 'native_gate_subject', 'native_subject_hash',
 		'native_consumer_kind', 'active_remediation_id', 'active_remediation_binding',
 		'active_remediation_operation_id', 'remediation_check_sources', 'owner_check_sources'])!
 	facts = append_object_members(facts, ['schema_version', 'audience'], [
@@ -4477,8 +4495,8 @@ pub fn terminal_owner_payload_digest(projection JsonValue) !string {
 // The resulting digest is excluded to avoid a recursive hash definition.
 pub fn source_state_operation_chain_digest(entry JsonValue) !string {
 	mut facts := select_object_members(entry, ['sequence', 'operation_id', 'transition',
-		'previous_generation', 'resulting_generation', 'previous_state_digest',
-		'resulting_state_digest', 'evidence_path', 'evidence_digest', 'previous_chain_digest'])!
+		'previous_generation', 'resulting_generation', 'previous_state_digest', 'resulting_state_digest',
+		'evidence_path', 'evidence_digest', 'previous_chain_digest'])!
 	facts = append_object_members(facts, ['schema_version', 'audience'], [
 		JsonValue{
 			kind:      .integer
@@ -4535,10 +4553,10 @@ fn validate_source_state_schema_semantics(source_state JsonValue) ![]SchemaIssue
 			|| entry_previous_chain != previous_chain
 			|| entry_resulting_generation != entry_previous_generation + 1
 			|| (index > 0 && (entry_previous_generation != previous_generation
-			|| entry_previous_state != previous_state_digest))
+				|| entry_previous_state != previous_state_digest))
 			|| entry_resulting_chain != source_state_operation_chain_digest(entry)!
 			|| operation_id in operation_ids {
-			issues << semantic_issue('$/operation_window/entries/${index}',
+			issues << semantic_issue('\$/operation_window/entries/${index}',
 				'SourceState retained operations must form one contiguous unique generation/state/hash chain')
 		}
 		operation_ids << operation_id
@@ -4553,7 +4571,7 @@ fn validate_source_state_schema_semantics(source_state JsonValue) ![]SchemaIssue
 	}
 	if entries.len > 0
 		&& (require_integer_member(entries[entries.len - 1], 'resulting_generation')! != require_integer_member(source_state, 'generation')!
-		|| require_string_member(entries[entries.len - 1], 'resulting_state_digest')! != source_state_snapshot_digest(source_state)!) {
+			|| require_string_member(entries[entries.len - 1], 'resulting_state_digest')! != source_state_snapshot_digest(source_state)!) {
 		issues << semantic_issue('$/generation',
 			'SourceState generation and snapshot digest must equal the retained operation window tail')
 	}
@@ -4571,8 +4589,7 @@ fn source_state_operation_window_contains(source_state JsonValue, operation_id s
 }
 
 fn source_state_transition_matches_window_entry(transition JsonValue, entry JsonValue) !bool {
-	return
-		require_integer_member(entry, 'sequence')! == require_integer_member(transition, 'sequence')!
+	return require_integer_member(entry, 'sequence')! == require_integer_member(transition, 'sequence')!
 		&& require_string_member(entry, 'operation_id')! == require_string_member(transition, 'operation_id')!
 		&& require_string_member(entry, 'transition')! == require_string_member(transition, 'transition')!
 		&& require_integer_member(entry, 'previous_generation')! == require_integer_member(transition, 'previous_generation')!
@@ -4616,8 +4633,7 @@ fn source_state_append_is_exact(pre JsonValue, post JsonValue, transition JsonVa
 		}
 	}
 	entry := post_entries[post_entries.len - 1]
-	return
-		require_integer_member(post, 'generation')! == require_integer_member(pre, 'generation')! + 1
+	return require_integer_member(post, 'generation')! == require_integer_member(pre, 'generation')! + 1
 		&& require_integer_member(entry, 'sequence')! == post_count
 		&& require_integer_member(entry, 'previous_generation')! == require_integer_member(pre, 'generation')!
 		&& require_integer_member(entry, 'resulting_generation')! == require_integer_member(post, 'generation')!

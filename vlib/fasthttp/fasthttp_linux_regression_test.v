@@ -20,9 +20,9 @@ fn regression_handler(_ HttpRequest) !HttpResponse {
 
 fn new_regression_worker(server &Server, epoll_fd int) Worker {
 	mut w := Worker{
-		epoll_fd: epoll_fd
+		epoll_fd:  epoll_fd
 		listen_fd: -1
-		conns: []&ConnState{len: conn_table_min, init: unsafe { nil }}
+		conns:     []&ConnState{len: conn_table_min, init: unsafe { nil }}
 	}
 	unsafe {
 		w.server = server
@@ -49,8 +49,8 @@ fn recv_available(fd int) string {
 
 fn test_pipelined_requests_answered_in_one_batch() ! {
 	server := new_server(ServerConfig{
-		family: .ip
-		port: 0
+		family:  .ip
+		port:    0
 		handler: regression_handler
 	})!
 	epoll_fd := C.epoll_create1(0)
@@ -85,8 +85,8 @@ fn test_pipelined_requests_answered_in_one_batch() ! {
 
 fn test_fragmented_request_is_reassembled() ! {
 	server := new_server(ServerConfig{
-		family: .ip
-		port: 0
+		family:  .ip
+		port:    0
 		handler: regression_handler
 	})!
 	epoll_fd := C.epoll_create1(0)
@@ -125,8 +125,8 @@ fn test_fragmented_request_is_reassembled() ! {
 
 fn test_half_closed_client_still_receives_buffered_response() ! {
 	server := new_server(ServerConfig{
-		family: .ip
-		port: 0
+		family:  .ip
+		port:    0
 		handler: regression_handler
 	})!
 	epoll_fd := C.epoll_create1(0)
@@ -157,8 +157,8 @@ fn test_half_closed_client_still_receives_buffered_response() ! {
 
 fn test_keep_alive_rearms_after_consumed_edge() ! {
 	server := new_server(ServerConfig{
-		family: .ip
-		port: 0
+		family:  .ip
+		port:    0
 		handler: regression_handler
 	})!
 	epoll_fd := C.epoll_create1(0)
@@ -216,8 +216,8 @@ fn append_close_handler(req HttpRequest, mut out []u8, worker_state voidptr, mut
 
 fn test_append_handler_pipelining_zero_copy() ! {
 	server := new_server(ServerConfig{
-		family: .ip
-		port: 0
+		family:         .ip
+		port:           0
 		append_handler: append_ok_handler
 	})!
 	epoll_fd := C.epoll_create1(0)
@@ -248,8 +248,8 @@ fn test_append_handler_pipelining_zero_copy() ! {
 
 fn test_append_handler_should_close() ! {
 	server := new_server(ServerConfig{
-		family: .ip
-		port: 0
+		family:         .ip
+		port:           0
 		append_handler: append_close_handler
 	})!
 	epoll_fd := C.epoll_create1(0)
@@ -283,8 +283,8 @@ fn test_new_server_requires_exactly_one_handler() {
 	}
 	// Both set → error.
 	if _ := new_server(ServerConfig{
-		port: 0
-		handler: regression_handler
+		port:           0
+		handler:        regression_handler
 		append_handler: append_ok_handler
 	}) {
 		assert false, 'expected an error when both handlers are set'
@@ -304,9 +304,9 @@ fn test_worker_state_reaches_handler() ! {
 		}
 	}
 	server := new_server(ServerConfig{
-		family: .ip
-		port: 0
-		handler: handler
+		family:     .ip
+		port:       0
+		handler:    handler
 		make_state: make_state
 	})!
 	epoll_fd := C.epoll_create1(0)
@@ -346,19 +346,19 @@ fn test_pipelined_request_behind_file_response_is_served() ! {
 		path := req.buffer[req.path.start..req.path.start + req.path.len].bytestr()
 		if path == '/file' {
 			return HttpResponse{
-				content: 'HTTP/1.1 200 OK\r\nContent-Length: 8\r\nConnection: keep-alive\r\n\r\n'.bytes()
+				content:       'HTTP/1.1 200 OK\r\nContent-Length: 8\r\nConnection: keep-alive\r\n\r\n'.bytes()
 				content_owned: true
-				file_path: tmp
+				file_path:     tmp
 			}
 		}
 		return HttpResponse{
-			content: 'HTTP/1.1 200 OK\r\nContent-Length: 5\r\nConnection: keep-alive\r\n\r\nafter'.bytes()
+			content:       'HTTP/1.1 200 OK\r\nContent-Length: 5\r\nConnection: keep-alive\r\n\r\nafter'.bytes()
 			content_owned: true
 		}
 	}
 	server := new_server(ServerConfig{
-		family: .ip
-		port: 0
+		family:  .ip
+		port:    0
 		handler: file_handler
 	})!
 	epoll_fd := C.epoll_create1(0)
@@ -395,13 +395,13 @@ fn test_blocked_file_response_stays_a_pipeline_boundary() ! {
 	defer {
 		os.rm(tmp) or {}
 	}
-	mut handled := 0
+	mut handled := &WorkerCounter{}
 	file_handler := fn [tmp, file_size, mut handled] (req HttpRequest) !HttpResponse {
-		handled++
+		handled.n++
 		path := req.buffer[req.path.start..req.path.start + req.path.len].bytestr()
 		if path == '/file' {
 			return HttpResponse{
-				content: 'HTTP/1.1 200 OK\r\nContent-Length: ${file_size}\r\nConnection: keep-alive\r\n\r\n'.bytes()
+				content:   'HTTP/1.1 200 OK\r\nContent-Length: ${file_size}\r\nConnection: keep-alive\r\n\r\n'.bytes()
 				file_path: tmp
 			}
 		}
@@ -410,8 +410,8 @@ fn test_blocked_file_response_stays_a_pipeline_boundary() ! {
 		}
 	}
 	server := new_server(ServerConfig{
-		family: .ip
-		port: 0
+		family:  .ip
+		port:    0
 		handler: file_handler
 	})!
 	epoll_fd := C.epoll_create1(0)
@@ -432,20 +432,20 @@ fn test_blocked_file_response_stays_a_pipeline_boundary() ! {
 	req := 'GET /file HTTP/1.1\r\nHost: x\r\n\r\nGET /next HTTP/1.1\r\nHost: x\r\n\r\n'
 	assert C.send(client_fd, req.str, req.len, C.MSG_NOSIGNAL) == req.len
 	serve_conn(mut w, server_fd, mut cs)
-	assert handled == 1
+	assert handled.n == 1
 	assert cs.file_fd != -1
 	assert cs.read_buf.len > 0
 
 	mut response := ''
 	for _ in 0 .. 64 {
 		response += recv_available(client_fd)
-		if handled == 2 && !has_pending_response(cs) {
+		if handled.n == 2 && !has_pending_response(cs) {
 			break
 		}
 		handle_writable(mut w, server_fd)
 	}
 	response += recv_available(client_fd)
-	assert handled == 2
+	assert handled.n == 2
 	assert response.count('HTTP/1.1 200 OK') == 2, response[..if response.len < 512 {
 		response.len
 	} else {
@@ -472,14 +472,14 @@ fn test_zero_length_file_response_does_not_leak_fd() ! {
 	}
 	empty_file_handler := fn [tmp] (req HttpRequest) !HttpResponse {
 		return HttpResponse{
-			content: 'HTTP/1.1 200 OK\r\nContent-Length: 0\r\nConnection: keep-alive\r\n\r\n'.bytes()
+			content:       'HTTP/1.1 200 OK\r\nContent-Length: 0\r\nConnection: keep-alive\r\n\r\n'.bytes()
 			content_owned: true
-			file_path: tmp
+			file_path:     tmp
 		}
 	}
 	server := new_server(ServerConfig{
-		family: .ip
-		port: 0
+		family:  .ip
+		port:    0
 		handler: empty_file_handler
 	})!
 	epoll_fd := C.epoll_create1(0)
@@ -523,7 +523,7 @@ fn record_sigpipe_handler(_ os.Signal) {
 
 fn current_thread_blocks_sigpipe() bool {
 	mut current_mask := C.sigset_t{}
-	if C.pthread_sigmask(C.SIG_SETMASK, C.NULL, &current_mask) != 0 {
+	if C.pthread_sigmask(C.SIG_SETMASK, unsafe { nil }, &current_mask) != 0 {
 		return true
 	}
 	return C.sigismember(&current_mask, C.SIGPIPE) == 1
@@ -603,8 +603,8 @@ fn reorder_takeover_handler(req HttpRequest, mut out []u8, worker_state voidptr,
 
 fn test_reusable_takeover_behind_buffered_response_closes() ! {
 	server := new_server(ServerConfig{
-		family: .ip
-		port: 0
+		family:         .ip
+		port:           0
 		append_handler: reorder_takeover_handler
 	})!
 	epoll_fd := C.epoll_create1(0)
@@ -634,8 +634,8 @@ fn test_reusable_takeover_behind_buffered_response_closes() ! {
 
 fn test_conn_state_is_pooled_with_buffers_retained() ! {
 	server := new_server(ServerConfig{
-		family: .ip
-		port: 0
+		family:  .ip
+		port:    0
 		handler: regression_handler
 	})!
 	epoll_fd := C.epoll_create1(0)

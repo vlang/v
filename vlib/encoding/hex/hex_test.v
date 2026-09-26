@@ -61,14 +61,13 @@ fn test_decode_0x() {
 }
 
 fn test_decode_error_indexes() {
-	decode('g') or {
-		assert err.msg() == 'invalid hex char g at index 0'
-		return
-	}
-	assert false
+	assert_decode_error('g', 'invalid hex char g at index 0')
+	assert_decode_error('0xg', 'invalid hex char g at index 2')
+}
 
-	decode('0xg') or {
-		assert err.msg() == 'invalid hex char g at index 2'
+fn assert_decode_error(input string, expected string) {
+	decode(input) or {
+		assert err.msg() == expected
 		return
 	}
 	assert false

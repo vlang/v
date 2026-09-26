@@ -17,6 +17,23 @@ fn test_zstd() {
 	assert decompressed == uncompressed.bytes()
 }
 
+fn test_zstd_builds_with_cstrict_on_linux() {
+	$if linux {
+		root := os.join_path(os.vtmp_dir(), 'zstd_cstrict_${os.getpid()}')
+		os.mkdir_all(root) or { panic(err) }
+		defer {
+			os.rmdir_all(root) or {}
+		}
+		source := os.join_path(root, 'main.v')
+		executable := os.join_path(root, 'zstd_cstrict')
+		os.write_file(source, 'import compress.zstd\n\nfn main() {\n\tprintln(zstd.version_number())\n}\n') or {
+			panic(err)
+		}
+		compile := os.execute('${os.quoted_path(@VEXE)} -new-compiler -cstrict -nocache -o ${os.quoted_path(executable)} ${os.quoted_path(source)}')
+		assert compile.exit_code == 0, compile.output
+	}
+}
+
 fn test_zstd_deferent_compression_level() {
 	uncompressed := 'Hello world!'.repeat(10000)
 

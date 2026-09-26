@@ -4,7 +4,7 @@ struct Exponent {
 	value int
 }
 
-fn (a Exponent) **(b Exponent) Exponent {
+fn (a Exponent) ** (b Exponent) Exponent {
 	mut result := 1
 	for _ in 0 .. b.value {
 		result *= a.value

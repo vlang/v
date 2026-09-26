@@ -114,10 +114,10 @@ fn print_backtrace_skipping_top_frames_msvc(skipframes int) bool {
 		}
 		for i in 0 .. frames {
 			frame_addr := backtraces[i]
-			if C.SymFromAddr(handle, frame_addr, &offset, si) == 1 {
+			if C.SymFromAddr(handle, u64(frame_addr), &offset, si) == 1 {
 				nframe := frames - i - 1
 				mut lineinfo := ''
-				if C.SymGetLineFromAddr64(handle, frame_addr, &offset, &sline64) == 1 {
+				if C.SymGetLineFromAddr64(handle, u64(frame_addr), &offset, &sline64) == 1 {
 					file_name := unsafe { tos3(sline64.f_file_name) }
 					lnumber := sline64.f_line_number
 					lineinfo = file_name + ':' + i64(lnumber).str()
@@ -160,6 +160,7 @@ fn print_backtrace_skipping_top_frames_mingw(skipframes int) bool {
 	return false
 }
 
+@[c_extern]
 fn C.tcc_backtrace(fmt &char) i32
 
 fn print_backtrace_skipping_top_frames_tcc(skipframes int) bool {

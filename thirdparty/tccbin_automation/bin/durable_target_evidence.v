@@ -194,9 +194,9 @@ $if test {
 	}
 
 	pub fn prepare_durable_target_evidence_for_test(automation_root string,
-	invocation DurableTargetPlanInvocation, operation_id string, transition string,
-	subject_id string, subject_fingerprint string, input_fingerprint string,
-	artifact_fingerprint string, generation_read i64, result string, target_sha256 string) !DurableTargetEvidenceTestObservation {
+		invocation DurableTargetPlanInvocation, operation_id string, transition string,
+		subject_id string, subject_fingerprint string, input_fingerprint string,
+		artifact_fingerprint string, generation_read i64, result string, target_sha256 string) !DurableTargetEvidenceTestObservation {
 		prepared := prepare_durable_target_evidence(automation_root, DurableTargetEvidenceRequest{
 			invocation:           invocation
 			operation_id:         operation_id

@@ -17,7 +17,7 @@ mut:
 @[direct_array_access]
 fn (mut state AppState) update() {
 	for {
-		unsafe { vmemset(&state.pixels, 0, pwidth * pheight * sizeof[gg.Color]()) }
+		unsafe { vmemset(&state.pixels, 0, pwidth * pheight * sizeof(gg.Color)) }
 		state.draw_sky() or {}
 		time.sleep(30_000 * time.millisecond)
 	}

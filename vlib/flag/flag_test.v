@@ -642,6 +642,7 @@ fn test_dashdash_acts_as_parser_full_stop_dashdash_at_end() {
 fn test_empty_string_with_flag() {
 	mut fp := flag.new_flag_parser([''])
 	s := fp.string('something', `s`, 'default', 'Hey parse me')
+	assert s == 'default'
 }
 
 fn test_finalize_with_multi_shortargs() {

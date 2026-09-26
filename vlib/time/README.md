@@ -92,6 +92,20 @@ fields (`year`, `hour`, ...) are wall time in that location. Prefer
 marks system-local wall time with a fixed process offset and is left `false`
 on IANA-zoned `Time` values.
 
+`parse_rfc3339` and `parse_iso8601` keep a non-zero numeric UTC offset in the
+same way: the calendar fields stay as written, and `t.zone()` returns a fixed
+zone with that offset (in seconds east of UTC). Inputs ending in `Z`, `+00:00`
+or `-00:00` give plain UTC values without a location.
+
+```v
+import time
+
+t := time.parse_rfc3339('2024-07-15T18:30:45-05:00')!
+assert t.format_ss() == '2024-07-15 18:30:45'
+assert (t.zone()!).offset == -18_000
+assert t.format_rfc3339() == '2024-07-15T23:30:45.000Z'
+```
+
 The bundled `vlib/time/tzdata/zoneinfo.zip` is a store-only (uncompressed) zip
 of IANA zoneinfo files for offline use via `import time.tzdata`. Refresh it
 from a full IANA tzdb source archive with packrat data enabled, so named zones

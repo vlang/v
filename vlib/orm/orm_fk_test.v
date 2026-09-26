@@ -245,11 +245,6 @@ fn test_double_fkey_insert() {
 		name: 'def'
 	}
 
-	bar_one := Bar2{
-		id:   0
-		name: 'name'
-	}
-
 	foo := Foo2{
 		name:     'abc'
 		children: [

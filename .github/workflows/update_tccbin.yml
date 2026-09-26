@@ -1743,7 +1743,7 @@ jobs:
           } >> "$GITHUB_ENV"
 
       - name: Start ${{ matrix.id }} VM
-        uses: cross-platform-actions/action@faa0c6197e94aacf1c5956460152c8380d3560a5
+        uses: cross-platform-actions/action@e0b9770014ba65d5e0815f15b74031c3a635f641
         with:
           operating_system: ${{ matrix.operating_system }}
           version: ${{ matrix.version }}

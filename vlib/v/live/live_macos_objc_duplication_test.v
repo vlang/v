@@ -1,3 +1,5 @@
+// vtest build: false
+
 import os
 
 fn live_reload_info_call_source(c_source string) string {

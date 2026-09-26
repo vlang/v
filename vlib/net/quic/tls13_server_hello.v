@@ -78,7 +78,7 @@ pub fn parse_extension_list(buf []u8) ![]TlsExtension {
 		}
 		seen[typ] = true
 		extensions << TlsExtension{
-			typ: typ
+			typ:  typ
 			data: buf[cursor..cursor + length].clone()
 		}
 		cursor += length
@@ -265,11 +265,11 @@ pub fn parse_server_hello(body []u8) !ServerHelloMessage {
 			cookie = parse_cookie_extension(cookie_ext.data)!
 		}
 		return ParsedHelloRetryRequest{
-			cipher_suite: cipher_suite
+			cipher_suite:     cipher_suite
 			selected_version: selected_version
-			selected_group: selected_group
-			cookie: cookie
-			extensions: extensions
+			selected_group:   selected_group
+			cookie:           cookie
+			extensions:       extensions
 		}
 	}
 
@@ -292,12 +292,12 @@ pub fn parse_server_hello(body []u8) !ServerHelloMessage {
 	}
 
 	return ParsedServerHello{
-		random: random
-		cipher_suite: cipher_suite
-		selected_version: selected_version
-		key_share_group: key_share_group
+		random:                 random
+		cipher_suite:           cipher_suite
+		selected_version:       selected_version
+		key_share_group:        key_share_group
 		key_share_key_exchange: ks_ext.data[4..].clone()
-		extensions: extensions
+		extensions:             extensions
 	}
 }
 

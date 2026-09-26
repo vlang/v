@@ -17,7 +17,13 @@ fn main() {
 		mut chunk := &WorkChunk{
 			thread_id: i
 			// make the last thread fill the remaining characters too:
-			part: unsafe { buf[start..if i == nthreads - 1 { buf.len } else { start + part_len }] }
+			part:      unsafe {
+				buf[start..if i == nthreads - 1 {
+					buf.len
+				} else {
+					start + part_len
+				}]
+			}
 		}
 		arr << spawn worker(mut chunk)
 	}

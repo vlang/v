@@ -211,6 +211,13 @@ fn write_buf_to_fd_kernel32_status(fd int, buf &u8, buf_len int) int {
 	if write_buf_to_console_kernel32(fd, buf, buf_len) {
 		return 0
 	}
+	return write_buf_to_std_handle_kernel32(fd, buf, buf_len)
+}
+
+// write_buf_to_std_handle_kernel32 writes the bytes to the handle of stdout (fd 1) or
+// stderr (fd 2) with `WriteFile`. Unlike `write_buf_to_console_kernel32`, it does not
+// convert them to UTF-16 for a console, so it does not allocate.
+fn write_buf_to_std_handle_kernel32(fd int, buf &u8, buf_len int) int {
 	handle_id := if fd == 2 { std_error_handle } else { std_output_handle }
 	handle := C.GetStdHandle(handle_id)
 	if isnil(handle) || handle == voidptr(-1) {
@@ -364,6 +371,25 @@ fn add_unhandled_exception_handler() {
 }
 
 fn C.IsDebuggerPresent() bool
+
+@[typedef]
+struct C.MEMORY_BASIC_INFORMATION {
+	AllocationBase voidptr
+}
+
+fn C.VirtualQuery(address voidptr, buffer &C.MEMORY_BASIC_INFORMATION, length usize) usize
+
+fn C.GetModuleHandleW(name &u16) voidptr
+
+// is_address_in_executable reports whether `address` is inside of the executable
+// image of the process, rather than inside of a DLL, which can be unloaded.
+fn is_address_in_executable(address voidptr) bool {
+	mut info := C.MEMORY_BASIC_INFORMATION{}
+	if C.VirtualQuery(address, &info, sizeof(info)) == 0 {
+		return false
+	}
+	return info.AllocationBase == C.GetModuleHandleW(unsafe { nil })
+}
 
 fn C.__debugbreak()
 

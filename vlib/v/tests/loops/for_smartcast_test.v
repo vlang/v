@@ -40,7 +40,7 @@ mut:
 
 fn test_match_mut() {
 	mut f := Food(Eggs{'test'})
-	for mut f is Eggs {
+	for f is Eggs {
 		f.name = 'eggs'
 		assert f.name == 'eggs'
 		break
@@ -49,7 +49,7 @@ fn test_match_mut() {
 
 fn test_conditional_break() {
 	mut f := Food(Eggs{'test'})
-	for mut f is Eggs {
+	for f is Eggs {
 		f = Milk{'test'}
 	}
 	assert true
@@ -62,7 +62,7 @@ struct ReceiverPar {
 }
 
 fn (mut expr ReceiverExpr) strip_par() ReceiverExpr {
-	for mut expr is ReceiverPar {
+	for expr is ReceiverPar {
 		expr = expr.expr
 	}
 	return expr

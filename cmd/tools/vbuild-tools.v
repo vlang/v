@@ -53,8 +53,12 @@ fn main() {
 	// eprintln('> session.skip_files: ${session.skip_files}')
 	session.test()
 	eprintln(session.benchmark.total_message(finish_label))
-	if session.failed_cmds.len > 0 {
+	if session.has_failures() {
 		exit(1)
+	}
+	// Check-only invocations do not produce a temporary directory of executables to install.
+	if os.args[1..].any(it in ['-check', '-c']) {
+		return
 	}
 
 	mut executables := os.ls(session.vtmp_dir)!

@@ -950,8 +950,7 @@ fn prepare_complete_candidate(suffix string, production bool,
 	recipe_path := os.join_path(source_repo, 'build.sh')
 	inventory_path := os.join_path(source_repo, 'src', 'tcc.c')
 	output_path := os.join_path(source_repo, 'tcc.exe')
-	for directory in [os.dir(manifest_path), os.dir(inventory_path),
-		os.join_path(staging_root, 'src')] {
+	for directory in [os.dir(manifest_path), os.dir(inventory_path), os.join_path(staging_root, 'src')] {
 		os.mkdir_all(directory) or { panic(err) }
 	}
 	os.write_file(manifest_path, manifest_source) or { panic(err) }
@@ -1689,8 +1688,7 @@ fn test_native_timestamp_snapshots_keep_posix_components_and_windows_ticks_indep
 		assert header_source.contains(layout)
 	}
 	assert header_source.count('TCCBIN_WINDOWS_ABI_ASSERT') == 35
-	for forbidden in ['UNICODE_STRING', 'OBJECT_ATTRIBUTES', 'IO_STATUS_BLOCK',
-		'FILE_NAMES_INFORMATION'] {
+	for forbidden in ['UNICODE_STRING', 'OBJECT_ATTRIBUTES', 'IO_STATUS_BLOCK', 'FILE_NAMES_INFORMATION'] {
 		assert !windows_source.contains(forbidden)
 	}
 	assert !windows_source.contains('open_child_snapshot_no_follow')
@@ -2035,8 +2033,8 @@ fn test_opaque_scanner_rejects_absent_truncated_byte_header_type_and_mode_change
 	mut byte_changed := base_bytes.clone()
 	byte_changed[63] = 1
 	cases << byte_changed
-	for offset_value in [HeaderMutation{4, 1}, HeaderMutation{5, 2},
-		HeaderMutation{7, 3}, HeaderMutation{16, 2}, HeaderMutation{18, 3}] {
+	for offset_value in [HeaderMutation{4, 1}, HeaderMutation{5, 2}, HeaderMutation{7, 3},
+		HeaderMutation{16, 2}, HeaderMutation{18, 3}] {
 		mut changed := base_bytes.clone()
 		changed[offset_value.offset] = offset_value.value
 		cases << changed
@@ -2672,8 +2670,7 @@ fn test_native_validation_capsule_rejects_closed_set_bytes_types_and_bounds() {
 	oversized_root := os.join_path(capsule_base, 'capsule-oversized')
 	oversized_names := t2c_write_native_validation_capsule(oversized_root, matrix_source,
 		fixture.authority, false)
-	os.write_file(os.join_path(oversized_root, 'evidence', oversized_names[0]), 'x'.repeat(
-		256 * 1024 + 1)) or { panic(err) }
+	os.write_file(os.join_path(oversized_root, 'evidence', oversized_names[0]), 'x'.repeat(256 * 1024 + 1)) or { panic(err) }
 	assert t2c_capsule_error(fixture.automation_root, authenticated, subject, oversized_root) == 'native validation evidence is empty or exceeds its strict byte bound'
 
 	case_root := os.join_path(capsule_base, 'capsule-case')
@@ -3046,7 +3043,15 @@ fn advance_candidate_fixture(fixture CompleteCandidateFixture, message string) C
 
 fn extra_candidate_inventory_record(path string, bytes []u8) string {
 	return ',\n' +
-		['    {', '      "path": "${path}",', '      "kind": "file",', '      "git_mode": "100644",', '      "sha256": "${sha256_bytes(bytes)}",', '      "symlink_target": null,', '      "provenance": {', '        "status": "complete",', '        "repository": "TinyCC/tinycc",', '        "sha": "cccccccccccccccccccccccccccccccccccccccc",', '        "source_path": "${path}",', '        "license": "LGPL-2.1-or-later"', '      },', '      "role": "compiler-source",', '      "opaque": false,', '      "opaque_acceptance_id": null,', '      "format": null,', '      "object_type": null,', '      "machine": null,', '      "os_abi": null', '    }'].join('\n')
+		['    {', '      "path": "${path}",', '      "kind": "file",', '      "git_mode": "100644",',
+			'      "sha256": "${sha256_bytes(bytes)}",', '      "symlink_target": null,',
+			'      "provenance": {', '        "status": "complete",',
+			'        "repository": "TinyCC/tinycc",',
+			'        "sha": "cccccccccccccccccccccccccccccccccccccccc",',
+			'        "source_path": "${path}",', '        "license": "LGPL-2.1-or-later"', '      },',
+			'      "role": "compiler-source",', '      "opaque": false,',
+			'      "opaque_acceptance_id": null,', '      "format": null,', '      "object_type": null,',
+			'      "machine": null,', '      "os_abi": null', '    }'].join('\n')
 }
 
 fn manifest_with_extra_candidate_inventory(source string, path string, bytes []u8) string {
@@ -3092,8 +3097,8 @@ fn commit_candidate_paths(source_repo string, paths []string, message string) st
 }
 
 fn candidate_git_entry_for_test(repository string, reference string, path string) (string, string) {
-	result := os.exec(['git', '--no-replace-objects', '-C', repository, 'ls-tree', '-z',
-		'--full-tree', reference, '--', path])
+	result := os.exec(['git', '--no-replace-objects', '-C', repository, 'ls-tree', '-z', '--full-tree',
+		reference, '--', path])
 	assert result.exit_code == 0, result.output
 	records := result.output.split('\x00')
 	assert records.len == 2 && records[1] == ''
@@ -4288,8 +4293,8 @@ fn test_candidate_blob_materialization_uses_exact_crlf_bytes_despite_git_attribu
 		os.write_file(payload_path, raw_source) or { panic(err) }
 		filtered := os.exec(['git', '--no-replace-objects', '-C', base, 'hash-object',
 			'--path=payload.txt', '--', payload_path])
-		raw := os.exec(['git', '--no-replace-objects', '-C', base, 'hash-object', '-w',
-			'--no-filters', '--', payload_path])
+		raw := os.exec(['git', '--no-replace-objects', '-C', base, 'hash-object', '-w', '--no-filters',
+			'--', payload_path])
 		assert filtered.exit_code == 0 && raw.exit_code == 0
 		assert filtered.output.trim_space() != raw.output.trim_space()
 		materialized := os.exec(['git', '--no-replace-objects', '-C', base, 'cat-file', 'blob',
@@ -4597,11 +4602,10 @@ fn test_reviewed_legacy_composition_exposes_only_a_preflighted_direct_child_caps
 		parent := os.exec(['git', '--no-replace-objects', '-C', repository, 'rev-parse', 'HEAD^'])
 		symbolic := os.exec(['git', '--no-replace-objects', '-C', repository, 'symbolic-ref', '-q',
 			'HEAD'])
-		status := os.exec(['git', '--no-replace-objects', '-C', repository, 'status',
-			'--porcelain=v1', '--untracked-files=all', '--ignored=matching'])
-		diff := os.exec(['git', '--no-replace-objects', '-C', repository, 'diff-tree',
-			'--no-commit-id', '--name-status', '-r', '--no-renames', fixture.base_sha, result.candidate_sha,
-			'--'])
+		status := os.exec(['git', '--no-replace-objects', '-C', repository, 'status', '--porcelain=v1',
+			'--untracked-files=all', '--ignored=matching'])
+		diff := os.exec(['git', '--no-replace-objects', '-C', repository, 'diff-tree', '--no-commit-id',
+			'--name-status', '-r', '--no-renames', fixture.base_sha, result.candidate_sha, '--'])
 		assert head.exit_code == 0 && head.output.trim_space() == result.candidate_sha
 		assert parent.exit_code == 0 && parent.output.trim_space() == fixture.base_sha
 		assert symbolic.exit_code == 1
@@ -5211,9 +5215,9 @@ fn test_runtime_contract_binding_matches_manifest_and_controls_publication() {
 		production_fixture.manifest_path, production_fixture.contract, fork_runtime, false) == 'runtime contract binding differs from the authenticated manifest'
 	assert staged_execution_error(fork_fixture.automation_root, fork_fixture.manifest_path,
 		fork_fixture.contract, bin.RuntimeContractBinding{
-		repository: fork_runtime.repository
-		sha:        'b'.repeat(40)
-	}, false) == 'runtime contract binding differs from the authenticated manifest'
+			repository: fork_runtime.repository
+			sha:        'b'.repeat(40)
+		}, false) == 'runtime contract binding differs from the authenticated manifest'
 	assert staged_execution_error(fork_fixture.automation_root, fork_fixture.manifest_path,
 		fork_fixture.contract, fork_runtime, true) == 'publication requires an authenticated production vlang/v contract'
 	production_dry_run := bin.evaluate_staged_manifest_for_execution(production_fixture.automation_root,

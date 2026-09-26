@@ -89,7 +89,7 @@ type FrameFn = fn (voidptr)
 fn main() {
 	mut app := &App{}
 	app.tui = tui.init(
-		user_data: app
+		user_data:   app
 		// The tui callback slots are `voidptr`; `frame`/`event` instead take the typed app
 		// pointer that `user_data` hands back. `&T` and `voidptr` share a representation, so
 		// reinterpreting the fn pointer across that parameter is ABI-safe; the cast only

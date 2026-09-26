@@ -28,10 +28,10 @@ fn test_full_initial_round_trip_over_fake_transport() {
 	scid := rand.bytes(8)!
 
 	client_hello := build_client_hello(ClientHelloParams{
-		random: client_hello_random
-		server_name: 'example.com'
-		ecdhe_public_key: ecdhe_public_key
-		alpn_protocols: ['h3']
+		random:               client_hello_random
+		server_name:          'example.com'
+		ecdhe_public_key:     ecdhe_public_key
+		alpn_protocols:       ['h3']
 		transport_parameters: QuicTransportParameters{
 			initial_source_connection_id: scid
 		}
@@ -57,23 +57,23 @@ fn test_full_initial_round_trip_over_fake_transport() {
 	// comfortably within the same 2-byte class for any realistic
 	// ClientHello size) -- see pad_initial_payload's doc comment.
 	h_probe := QuicLongHeader{
-		typ: .initial
+		typ:     .initial
 		version: quic_v1
-		dcid: dcid
-		scid: scid
-		token: []u8{}
-		length: u64(pn_length) + u64(payload.len) + 16 // + AEAD tag
+		dcid:    dcid
+		scid:    scid
+		token:   []u8{}
+		length:  u64(pn_length) + u64(payload.len) + 16 // + AEAD tag
 	}
 	header_probe := encode_long_header(h_probe, 0, u8(pn_length - 1))!
 	padded_payload := pad_initial_payload(payload, header_probe.len + pn_length, 16)
 
 	h := QuicLongHeader{
-		typ: .initial
+		typ:     .initial
 		version: quic_v1
-		dcid: dcid
-		scid: scid
-		token: []u8{}
-		length: u64(pn_length) + u64(padded_payload.len) + 16
+		dcid:    dcid
+		scid:    scid
+		token:   []u8{}
+		length:  u64(pn_length) + u64(padded_payload.len) + 16
 	}
 	mut header := encode_long_header(h, 0, u8(pn_length - 1))!
 	header << [u8(packet_number >> 8), u8(packet_number)]
@@ -159,10 +159,10 @@ fn test_full_initial_round_trip_rejects_tampered_datagram() {
 	scid := rand.bytes(8)!
 
 	client_hello := build_client_hello(ClientHelloParams{
-		random: rand.bytes(32)!
-		server_name: 'example.com'
-		ecdhe_public_key: ecdhe_public_key
-		alpn_protocols: ['h3']
+		random:               rand.bytes(32)!
+		server_name:          'example.com'
+		ecdhe_public_key:     ecdhe_public_key
+		alpn_protocols:       ['h3']
 		transport_parameters: QuicTransportParameters{
 			initial_source_connection_id: scid
 		}
@@ -173,23 +173,23 @@ fn test_full_initial_round_trip_rejects_tampered_datagram() {
 
 	pn_length := 2
 	h_probe := QuicLongHeader{
-		typ: .initial
+		typ:     .initial
 		version: quic_v1
-		dcid: dcid
-		scid: scid
-		token: []u8{}
-		length: u64(pn_length) + u64(payload.len) + 16
+		dcid:    dcid
+		scid:    scid
+		token:   []u8{}
+		length:  u64(pn_length) + u64(payload.len) + 16
 	}
 	header_probe := encode_long_header(h_probe, 0, u8(pn_length - 1))!
 	padded_payload := pad_initial_payload(payload, header_probe.len + pn_length, 16)
 
 	h := QuicLongHeader{
-		typ: .initial
+		typ:     .initial
 		version: quic_v1
-		dcid: dcid
-		scid: scid
-		token: []u8{}
-		length: u64(pn_length) + u64(padded_payload.len) + 16
+		dcid:    dcid
+		scid:    scid
+		token:   []u8{}
+		length:  u64(pn_length) + u64(padded_payload.len) + 16
 	}
 	mut header := encode_long_header(h, 0, u8(pn_length - 1))!
 	header << [u8(0), 0]

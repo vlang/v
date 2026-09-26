@@ -143,7 +143,7 @@ pub fn (mut ctx Context) set_window_title(s string) {
 	if !ctx.supports_window_title {
 		return
 	}
-	print('\x1b]0;${s}\x07')
+	print('\x1b]0;${s}\a')
 	flush_stdout()
 }
 

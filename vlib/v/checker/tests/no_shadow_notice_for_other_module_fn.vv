@@ -1,0 +1,10 @@
+import os
+
+// `os.uname` belongs to another module and is only reachable through its `os.`
+// prefix, so a local `uname` shadows nothing. The `fn C.uname()` extern that
+// `os` declares next to it must not be mistaken for a shadowed V function
+// either.
+fn main() {
+	uname := os.uname()
+	println(uname.machine.len)
+}

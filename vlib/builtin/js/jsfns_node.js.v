@@ -21,7 +21,9 @@ pub:
 pub fn js_node_process() JS.node_process {
 	#return process
 
-	return JS.node_process{}
+	return JS.node_process
+	{
+	}
 }
 
 fn JS.process.exit(int)

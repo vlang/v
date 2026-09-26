@@ -76,8 +76,7 @@ fn test_to_h2_request_collapses_cookies() {
 fn test_h2_response_to_http() {
 	h2resp := H2ClientResponse{
 		status:  200
-		headers: [H2HeaderField{'content-type', 'text/plain'},
-			H2HeaderField{'x-foo', 'bar'}]
+		headers: [H2HeaderField{'content-type', 'text/plain'}, H2HeaderField{'x-foo', 'bar'}]
 		body:    'hi'.bytes()
 	}
 	resp := h2_response_to_http(h2resp)
