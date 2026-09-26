@@ -430,6 +430,59 @@ fn main() {
 }
 "
 
+// The locals of a generic body, which the checker does not type: each one of
+// the ways a local is declared.
+const locals_program = "module main
+
+interface Named {
+	name string
+}
+
+struct User {
+	name string
+}
+
+fn pair[T Named](x T) (string, int) {
+	return x.name, x.name.len
+}
+
+fn locals[T Named](x T, xs []T, m map[string]T) int {
+	lengths := xs.map(it.name.len)
+	mut total := 0
+	for n in lengths {
+		total += n
+	}
+	label := x.name
+	same := x
+	first := xs[0]
+	one, two := x.name, 2
+	word, size := pair(x)
+	for i, item in xs {
+		println('\${i} \${item.name}')
+	}
+	for key, value in m {
+		println('\${key} \${value.name}')
+	}
+	for c in label {
+		println(c)
+	}
+	for k in 0 .. 3 {
+		println(k)
+	}
+	println('\${same.name} \${first.name} \${one} \${two} \${word} \${size}')
+	return total
+}
+
+fn main() {
+	u := User{
+		name: 'eva'
+	}
+	println(locals(u, [u], {
+		'a': u
+	}))
+}
+"
+
 fn testsuite_begin() {
 	res := os.execute('${os.quoted_path(vexe)} -gc none -prealloc -path ${os.quoted_path('${vlib_dir}|@vlib|@vmodules')} -o ${os.quoted_path(line_info_v3_bin)} ${os.quoted_path(v3_src)}')
 	assert res.exit_code == 0, res.output
@@ -445,6 +498,8 @@ fn testsuite_begin() {
 		panic(err)
 	}
 	os.mkdir_all(os.join_path(work_dir, 'functions')) or { panic(err) }
+	os.mkdir_all(os.join_path(work_dir, 'locals')) or { panic(err) }
+	os.write_file(os.join_path(work_dir, 'locals', 'main.v'), locals_program) or { panic(err) }
 	os.write_file(os.join_path(work_dir, 'functions', 'main.v'), functions_program) or {
 		panic(err)
 	}
@@ -1255,4 +1310,74 @@ fn main() {
 	assert map_decl.contains('builtin/array.v:'), map_decl
 	assert ask(dir, 'gd^', 4, 'map', 0) == map_decl
 	assert ask(dir, 'hv^', 4, 'it', 0) == hover_of('it T')
+}
+
+// local asks about the first `word` of the line of locals_program that reads
+// `text`.
+fn local(code string, text string, word string) string {
+	line := locals_program.split('\n').index(text) + 1
+	assert line > 0, '`${text}` is not a line of locals_program'
+	return ask(os.join_path(work_dir, 'locals'), code, line, word, 0)
+}
+
+fn test_a_local_of_a_generic_body_has_the_type_of_its_value() {
+	// The type its value has, with a type parameter by its name; a variable of
+	// a `for ... in` loop has what its container holds.
+	for text, want in {
+		'\tlengths := xs.map(it.name.len)': 'lengths []int'
+		'\tfor n in lengths {':             'n int'
+		'\tlabel := x.name':                'label string'
+		'\tsame := x':                      'same T'
+		'\tfirst := xs[0]':                 'first T'
+		'\tone, two := x.name, 2':          'one string'
+		'\tword, size := pair(x)':          'word string'
+		'\tfor i, item in xs {':            'i int'
+		'\tfor key, value in m {':          'key string'
+		'\tfor c in label {':               'c u8'
+		'\tfor k in 0 .. 3 {':              'k int'
+		'\t\ttotal += n':                   'total int'
+	} {
+		name := want.all_before(' ')
+		assert local('hv^', text, name) == hover_of(want), '${text}: ${local('hv^', text, name)}'
+	}
+	for text, want in {
+		'\tfor n in lengths {':    'lengths []int'
+		'\tone, two := x.name, 2': 'two int'
+		'\tword, size := pair(x)': 'size int'
+		'\tfor i, item in xs {':   'item T'
+		'\tfor key, value in m {': 'value T'
+	} {
+		name := want.all_before(' ')
+		assert local('hv^', text, name) == hover_of(want), '${text}: ${local('hv^', text, name)}'
+	}
+	// A local that holds a `T` has what its constraint declares, as the `T` does.
+	line := locals_program.split('\n').index("\tprintln('\${same.name} \${first.name} \${one} \${two} \${word} \${size}')") + 1
+	assert line > 0
+	text := locals_program.split('\n')[line - 1]
+	for receiver in ['same', 'first'] {
+		col := text.index('${receiver}.') or { -1 } + receiver.len + 2
+		answer := ask_at(os.join_path(work_dir, 'locals'), '${line}:${col}')
+		labels := (json2.decode[Details](answer) or { panic('${err}: ${answer}') }).details.map(it.label)
+		assert labels == ['name'], '${receiver}: ${labels}'
+	}
+}
+
+fn test_a_local_of_no_known_type_has_no_hover() {
+	// The value of a call of a function that does not exist yet, as one is being
+	// written: the checker gives it no type, which is no answer, not `()`.
+	dir := os.join_path(work_dir, 'unknown_local')
+	os.mkdir_all(dir) or { panic(err) }
+	os.write_file(os.join_path(dir, 'main.v'), 'module main
+
+fn main() {
+	value := missing_function(1)
+	println(value)
+}
+') or {
+		panic(err)
+	}
+	assert ask(dir, 'hv^', 4, 'value', 0) == ''
+	assert ask(dir, 'hv^', 5, 'value', 0) == ''
+	// Where it is declared still is.
+	assert ask(dir, 'gd^', 5, 'value', 0) == 'main.v:4:1'
 }

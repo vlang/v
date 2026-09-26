@@ -262,7 +262,15 @@ fn (tc &TypeChecker) vls_expr_type(id flat.NodeId) ?Type {
 			}
 			return if type_contains_unknown(elem) { none } else { elem }
 		}
-		return tc.vls_local_type(decl_id)
+		// A local that holds a `T` has what the constraint of `T` declares.
+		typ := tc.vls_local_type(decl_id)?
+		return tc.vls_constrained_type(id, typ) or { typ }
+	}
+	// An element of an array or a map the checker kept no type for: `xs[0]` of
+	// `xs []T` is a `T`, which has what its constraint declares.
+	if node.kind == .index {
+		elem := tc.vls_element_type(node)?
+		return tc.vls_constrained_type(id, elem) or { elem }
 	}
 	return none
 }
@@ -469,33 +477,145 @@ fn (tc &TypeChecker) vls_local_type(id flat.NodeId) ?Type {
 		return none
 	}
 	decl := tc.a.node(decl_id)
-	// A function literal in a body the checker did not type, as the body of a
-	// generic function: the type its signature writes, `fn (T) int`.
-	if decl.kind == .decl_assign && tc.multi_assign_rhs_count(decl) == 1
-		&& tc.multi_assign_lhs_ids(decl) == [id] {
-		value := tc.a.node(tc.multi_assign_rhs_id(decl, 0))
-		if value.kind == .fn_literal {
-			return tc.vls_fn_literal_type(value)
-		}
+	// A variable of a `for ... in` loop: what its container holds.
+	if decl.kind == .for_in_stmt {
+		return tc.vls_loop_variable_type(*decl, id)
 	}
-	if_id := tc.vls_parent_id(decl_id)
-	if decl.kind != .decl_assign || tc.multi_assign_rhs_count(decl) != 1
-		|| !tc.valid_node_id(if_id) || tc.a.node(if_id).kind != .if_expr
-		|| tc.a.child(tc.a.node(if_id), 0) != decl_id {
+	if decl.kind != .decl_assign {
 		return none
 	}
 	lhs_ids := tc.multi_assign_lhs_ids(decl)
 	i := lhs_ids.index(id)
-	value := tc.vls_expr_type(tc.multi_assign_rhs_id(decl, 0))?
-	base := match value {
-		OptionType { value.base_type }
-		ResultType { value.base_type }
-		else { value }
+	if i < 0 {
+		return none
 	}
-	if base is MultiReturn {
-		return if i >= 0 && i < base.types.len { base.types[i] } else { none }
+	rhs_count := tc.multi_assign_rhs_count(decl)
+	if_id := tc.vls_parent_id(decl_id)
+	if rhs_count == 1 && tc.valid_node_id(if_id) && tc.a.node(if_id).kind == .if_expr
+		&& tc.a.child(tc.a.node(if_id), 0) == decl_id {
+		value := tc.vls_expr_type(tc.multi_assign_rhs_id(decl, 0))?
+		base := match value {
+			OptionType { value.base_type }
+			ResultType { value.base_type }
+			else { value }
+		}
+		if base is MultiReturn {
+			return if i < base.types.len { base.types[i] } else { none }
+		}
+		return if lhs_ids.len == 1 { base } else { none }
 	}
-	return if lhs_ids.len == 1 { base } else { none }
+	// A local of a body the checker did not type, as the body of a generic
+	// function: the type of its value, `[]int` for `xs.map(it.name.len)`, with a
+	// type parameter kept as one, `T` for `x` of `x T`.
+	if rhs_count == lhs_ids.len {
+		value_id := tc.multi_assign_rhs_id(decl, i)
+		value := tc.a.node(value_id)
+		// A function literal: the type its signature writes, `fn (T) int`.
+		if value.kind == .fn_literal {
+			return tc.vls_fn_literal_type(value)
+		}
+		return tc.vls_unconstrained_type(value_id)
+	}
+	// `x, y := f()`: the values of a call that returns several.
+	if rhs_count == 1 {
+		values := unalias_type(tc.vls_unconstrained_type(tc.multi_assign_rhs_id(decl, 0))?)
+		if values is MultiReturn && i < values.types.len {
+			return values.types[i]
+		}
+	}
+	return none
+}
+
+// vls_loop_variable_type is the type of the variable `id` of the `for ... in`
+// loop `loop`, which the checker did not type: an index or a key, or what the
+// container holds, `T` for an element of a `[]T`.
+fn (tc &TypeChecker) vls_loop_variable_type(loop flat.Node, id flat.NodeId) ?Type {
+	header := loop.value.int()
+	if header < 3 || loop.children_count < 3 {
+		return none
+	}
+	key_id := tc.a.child(&loop, 0)
+	val_id := tc.a.child(&loop, 1)
+	container_id := tc.a.child(&loop, 2)
+	if id != key_id && id != val_id {
+		return none
+	}
+	// `for i in 0 .. n`
+	if header == 4 || tc.a.node(container_id).kind == .range {
+		return if id == key_id { Type(int_) } else { none }
+	}
+	container := unalias_type(unwrap_pointer(tc.vls_unconstrained_type(container_id)?))
+	mut key := Type(int_)
+	mut value := Type(u8_)
+	match container {
+		Array {
+			value = container.elem_type
+		}
+		ArrayFixed {
+			value = container.elem_type
+		}
+		Map {
+			key = container.key_type
+			value = container.value_type
+		}
+		String {}
+		else {
+			return none
+		}
+	}
+	// `for x in c` names one variable, `for k, x in c` two: as the check of the
+	// body binds them (see bind_constraint_walk_loop).
+	if int(val_id) < 0 {
+		return if container is Map { key } else { value }
+	}
+	return if id == key_id { key } else { value }
+}
+
+// vls_unconstrained_type is the type of the value `id` as the code writes it,
+// with a type parameter kept as one: `T` for `x` of `x T`, which vls_expr_type
+// gives as the constraint of `T`, whose members it has.
+fn (tc &TypeChecker) vls_unconstrained_type(id flat.NodeId) ?Type {
+	node := tc.a.node(id)
+	if node.kind == .ident {
+		if binding := tc.vls_local_binding(id) {
+			if binding.implicit {
+				return tc.vls_implicit_type(binding)
+			}
+			decl := tc.a.node(binding.decl_id)
+			if decl.kind == .param && decl.typ.len > 0 {
+				return tc.parse_type(decl.typ)
+			}
+			if elem := tc.vls_lambda_param_type(binding.decl_id) {
+				return elem
+			}
+			return tc.vls_local_type(binding.decl_id)
+		}
+	}
+	if node.kind == .index {
+		return tc.vls_element_type(*node)
+	}
+	return tc.vls_value_type(id)
+}
+
+// vls_element_type is the type of `node`, an index, where the checker kept
+// none: an element of an array or a map, a byte of a string, or for a slice,
+// `xs[1..]`, the container itself.
+fn (tc &TypeChecker) vls_element_type(node flat.Node) ?Type {
+	if node.children_count == 0 {
+		return none
+	}
+	container := tc.vls_unconstrained_type(tc.a.child(&node, 0))?
+	if node.value == 'range' {
+		return container
+	}
+	base := unalias_type(unwrap_pointer(container))
+	return match base {
+		Array { base.elem_type }
+		ArrayFixed { base.elem_type }
+		Map { base.value_type }
+		String { Type(u8_) }
+		else { none }
+	}
 }
 
 // vls_fn_literal_type is the type of the function literal `literal` as its
@@ -572,11 +692,13 @@ fn (mut tc TypeChecker) vls_hover_ident(id flat.NodeId, node flat.Node) string {
 			}
 			return '${name} ${tc.vls_type_text(declared)}'
 		}
+		// A variable of no type the checker knows, as the value of a call of a
+		// function that does not exist, has nothing to show.
 		if typ := tc.expr_type(id) {
-			return '${name} ${tc.vls_type_text(typ)}'
+			return if vls_holds_a_value(typ) { '${name} ${tc.vls_type_text(typ)}' } else { '' }
 		}
 		if typ := tc.vls_local_type(decl_id) {
-			return '${name} ${tc.vls_type_text(typ)}'
+			return if vls_holds_a_value(typ) { '${name} ${tc.vls_type_text(typ)}' } else { '' }
 		}
 		// A parameter of a lambda that the checker did not type, in the body
 		// of a generic function.
@@ -593,7 +715,7 @@ fn (mut tc TypeChecker) vls_hover_ident(id flat.NodeId, node flat.Node) string {
 	}
 	// A variable where it is declared, `if v := f() {` too.
 	if typ := tc.vls_local_type(id) {
-		return '${name} ${tc.vls_type_text(typ)}'
+		return if vls_holds_a_value(typ) { '${name} ${tc.vls_type_text(typ)}' } else { '' }
 	}
 	// `it`, `a`, `b` or `err` that the checker did not type, in the body of a
 	// generic function.
@@ -767,6 +889,19 @@ fn (tc &TypeChecker) vls_member_owner(typ Type) ?string {
 		return 'map'
 	}
 	return none
+}
+
+// vls_holds_a_value reports whether a variable of the type `typ` holds a
+// value: not `void`, nor the empty list of values that the checker gives a call
+// of a function it does not know.
+fn vls_holds_a_value(typ Type) bool {
+	if typ is Void {
+		return false
+	}
+	if typ is MultiReturn {
+		return typ.types.len > 0
+	}
+	return true
 }
 
 // vls_unwrap_type strips pointers and aliases, as a selector does.
