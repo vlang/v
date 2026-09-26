@@ -3778,8 +3778,7 @@ fn (mut g FlatGen) gen_test_assert_failure(node flat.Node) {
 		g.writeln('v3_eprint_lit("Assertion failed\\n");')
 		return
 	}
-	module_name := if g.tc.cur_module.len > 0 { g.tc.cur_module } else { 'main' }
-	expression := qualify_assert_builtin_types(detail.expression, module_name)
+	expression := detail.expression
 	g.writeln('v3_eprint_lit("${c_escape('${detail.file}:${detail.line}: fn ${g.cur_fn_name}')}\\n");')
 	lhs_id, rhs_id := g.assert_reported_value_ids(node) or {
 		g.writeln('v3_eprint_lit("    assert ${c_escape(expression)}\\n");')
@@ -4952,36 +4951,6 @@ fn c_inline_asm_ident_start(c u8) bool {
 
 fn c_inline_asm_ident_char(c u8) bool {
 	return c_inline_asm_ident_start(c) || c.is_digit()
-}
-
-fn qualify_assert_builtin_types(expression string, module_name string) string {
-	mut result := expression
-	for call_name in ['__offsetof(', 'offsetof(', 'sizeof('] {
-		mut search_from := 0
-		for search_from < result.len {
-			relative := result[search_from..].index(call_name) or { break }
-			call_start := search_from + relative
-			type_start := call_start + call_name.len
-			mut type_end := type_start
-			for type_end < result.len && result[type_end] !in [`,`, `)`] {
-				type_end++
-			}
-			raw_type := result[type_start..type_end]
-			clean_type := raw_type.trim_space()
-			if clean_type.len > 0 && !clean_type.contains('.')
-				&& clean_type !in ['bool', 'byte', 'char', 'f32', 'f64', 'int', 'i8', 'i16', 'i32',
-					'i64', 'isize', 'rune', 'string', 'u8', 'u16', 'u32', 'u64', 'usize', 'voidptr'] {
-				leading := raw_type[..raw_type.len - raw_type.trim_left(' \t').len]
-				trailing := raw_type[raw_type.trim_right(' \t').len..]
-				replacement := '${leading}${module_name}.${clean_type}${trailing}'
-				result = result[..type_start] + replacement + result[type_end..]
-				search_from = type_start + replacement.len
-			} else {
-				search_from = type_end
-			}
-		}
-	}
-	return result
 }
 
 fn (g &FlatGen) is_numeric_literal_expr(id flat.NodeId) bool {
