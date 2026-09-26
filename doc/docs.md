@@ -5888,6 +5888,9 @@ The compiler takes into consideration that `MyStruct` objects are always heap
 allocated when checking `f()` and allows assigning the reference to `s` to the
 `r.r` field.
 
+Type aliases of a heap struct retain its allocation behavior. Returning such a value as
+`Alias`, `?Alias`, or `!Alias` preserves the struct value, including when a `defer` runs.
+
 There is a pattern often seen in other programming languages:
 
 ```v failcompile

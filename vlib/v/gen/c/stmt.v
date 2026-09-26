@@ -4829,13 +4829,14 @@ fn (mut g FlatGen) write_pointer_value_return_expr(ret_id flat.NodeId, expected 
 	if g.source_mut_pointer_param_deref_type(source_id) != none {
 		return false
 	}
-	actual := g.usable_expr_type(source_id)
-	expected0 := if expected is types.Alias { expected.base_type } else { expected }
+	actual := cgen_unalias_type(g.usable_expr_type(source_id))
+	expected0 := cgen_unalias_type(expected)
 	if expected0 is types.Pointer {
 		return false
 	}
 	if actual is types.Pointer {
-		if g.type_names_match(actual.base_type, expected0) {
+		// Heap storage can point to an alias of the returned value type.
+		if g.type_names_match(cgen_unalias_type(actual.base_type), expected0) {
 			g.write('*(')
 			g.gen_expr(source_id)
 			g.write(')')
