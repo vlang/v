@@ -7869,7 +7869,9 @@ fn (mut tc TypeChecker) check_ident(id flat.NodeId, node flat.Node) {
 			return
 		}
 	}
-	if node.value == 'err' {
+	// The `err` of a block that handles an error, where the check of that block
+	// kept no scope for it, as the check of an instance of a generic function.
+	if node.value == 'err' && tc.err_block_holds(id) {
 		tc.register_synth_type(id, tc.parse_type('IError'))
 		return
 	}

@@ -6059,6 +6059,11 @@ fn (mut tc TypeChecker) check_selective_type_imports(node flat.Node, module_path
 }
 
 fn (mut tc TypeChecker) check_unused_import_diagnostics() {
+	// import_is_used looks at the nodes of the import's own file. Listing each
+	// file's nodes once, on the first import that needs it, saves a walk of the
+	// whole program for every import.
+	mut nodes_by_file := map[int][]int{}
+	mut nodes_listed := false
 	for idx in tc.top_level_idx {
 		node := tc.a.nodes[idx]
 		if node.kind == .file {
@@ -6073,8 +6078,16 @@ fn (mut tc TypeChecker) check_unused_import_diagnostics() {
 			continue
 		}
 		if node.kind != .import_decl || !node.pos.is_valid() || node.pos.end <= node.pos.offset
-			|| node.typ == '_'
-			|| tc.import_is_used(flat.NodeId(idx), node) {
+			|| node.typ == '_' {
+			continue
+		}
+		if !nodes_listed {
+			for node_idx, file_node in tc.a.nodes {
+				nodes_by_file[file_node.pos.id] << node_idx
+			}
+			nodes_listed = true
+		}
+		if tc.import_is_used(flat.NodeId(idx), node, nodes_by_file[node.pos.id] or { []int{} }) {
 			continue
 		}
 		if tc.errors.any(it.file == tc.cur_file && it.kind == .unknown_ident
@@ -6218,7 +6231,9 @@ fn is_import_ident_byte(ch u8) bool {
 	return ch.is_alnum() || ch == `_`
 }
 
-fn (tc &TypeChecker) import_is_used(import_id flat.NodeId, import_node flat.Node) bool {
+// import_is_used reports whether anything in the import's file uses it;
+// `file_nodes` lists the indices of that file's nodes, in order.
+fn (tc &TypeChecker) import_is_used(import_id flat.NodeId, import_node flat.Node, file_nodes []int) bool {
 	module_path := tc.import_module_path_text(import_node)
 	mut selective_names := []string{cap: int(import_node.children_count)}
 	for i in 0 .. import_node.children_count {
@@ -6227,7 +6242,8 @@ fn (tc &TypeChecker) import_is_used(import_id flat.NodeId, import_node flat.Node
 			selective_names << child.value
 		}
 	}
-	for idx, node in tc.a.nodes {
+	for idx in file_nodes {
+		node := tc.a.nodes[idx]
 		if idx == int(import_id) || node.kind == .import_decl || node.pos.id != import_node.pos.id {
 			continue
 		}
@@ -7680,6 +7696,146 @@ pub fn (mut tc TypeChecker) diagnose_unused_private_declarations(used_fns map[st
 	if tc.errors.len > 0 || !tc.has_main_module_fn_main() {
 		return
 	}
+	tc.report_unused_private_declarations(used_fns, false)
+}
+
+// diagnose_unused_library_private_declarations reports the unused private
+// declarations of a library, a module checked on its own, as an editor checks a
+// module that no program imports, and tells whether the check is one. Its public
+// declarations are what other programs use, and what a private one serves cannot
+// be told without a program: one that is named at all counts as used, as one
+// exported to C or kept with `@[markused]` does.
+pub fn (mut tc TypeChecker) diagnose_unused_library_private_declarations() bool {
+	if !tc.is_library_check() {
+		return false
+	}
+	used, _ := tc.named_private_fns()
+	tc.report_unused_private_declarations(used, true)
+	return true
+}
+
+// is_library_check reports whether the checked files are a library: no main
+// function, and no test or script, which are programs of their own.
+fn (tc &TypeChecker) is_library_check() bool {
+	if tc.has_main_module_fn_main() || tc.a.has_vsh_source || tc.has_c_test_harness_main() {
+		return false
+	}
+	for file, _ in tc.diagnostic_files {
+		if file.ends_with('_test.v') {
+			return false
+		}
+	}
+	return true
+}
+
+// diagnose_unused_private_declarations_with_errors reports, in a program with
+// errors, the private functions and constants that nothing names. What is
+// reachable cannot be told there: a call the checker could not resolve would
+// leave its function looking unused. So a function that is called or named at
+// all counts as used, and no notice is one that fixing the errors takes back.
+pub fn (mut tc TypeChecker) diagnose_unused_private_declarations_with_errors() {
+	if tc.diagnose_unused_library_private_declarations() || !tc.has_main_module_fn_main() {
+		return
+	}
+	used, _ := tc.named_private_fns()
+	tc.report_unused_private_declarations(used, false)
+}
+
+// report_unused_private_declarations records the notices; for a `library`, see
+// unused_private_declarations.
+fn (mut tc TypeChecker) report_unused_private_declarations(used_fns map[string]bool, library bool) {
+	unused := tc.unused_private_declarations(used_fns, library)
+	// The diagnostic filter and recorded file both read tc.cur_file; replay each
+	// candidate's file so deferred emission matches the former in-walk emission.
+	walk_end_file := tc.cur_file
+	for cand in unused {
+		tc.cur_file = cand.file
+		if cand.is_fn {
+			tc.record_notice_at(.unknown_ident, 'unused function: `${cand.name}`', cand.node_id, tc.node_value_diagnostic_pos(cand.node_id))
+		} else {
+			tc.record_notice_at(.unknown_ident, 'unused constant: `${cand.name}`', cand.node_id, cand.position)
+		}
+	}
+	tc.cur_file = walk_end_file
+}
+
+// used_fns_without_markused returns what a check can take as the used functions
+// without running markused: the private functions that are never called but are
+// named as values, such as callbacks. It returns none when a private function is
+// not named at all, since only markused can tell whether that one is used (an
+// exported one is). A function named only by unused code counts as used here,
+// where a build, which knows what is reachable, can report it.
+pub fn (mut tc TypeChecker) used_fns_without_markused() ?map[string]bool {
+	if tc.errors.len > 0 || !tc.has_main_module_fn_main() {
+		return map[string]bool{}
+	}
+	used, all_named := tc.named_private_fns()
+	if !all_named {
+		return none
+	}
+	return used
+}
+
+// named_private_fns returns the private functions that are never called but are
+// named, as values such as callbacks, and whether every one of them is named.
+fn (mut tc TypeChecker) named_private_fns() (map[string]bool, bool) {
+	mut used := map[string]bool{}
+	// Markused may run next, and resolves names in the current file and module.
+	saved_file := tc.cur_file
+	saved_module := tc.cur_module
+	mut uncalled := []UnusedDeclCandidate{}
+	mut keys := map[string][]int{}
+	for cand in tc.unused_private_declarations(map[string]bool{}, false) {
+		tc.cur_file = cand.file
+		if !cand.is_fn || !tc.should_diagnose(cand.node_id) {
+			continue
+		}
+		keys[cand.name] << uncalled.len
+		if cand.qname != cand.name {
+			keys[cand.qname] << uncalled.len
+		}
+		uncalled << cand
+	}
+	tc.cur_file = saved_file
+	tc.cur_module = saved_module
+	if uncalled.len == 0 {
+		return used, true
+	}
+	mut named := []bool{len: uncalled.len}
+	for node in tc.a.nodes {
+		if node.kind !in [.ident, .selector] || node.value.len == 0 {
+			continue
+		}
+		if hits := keys[node.value] {
+			for idx in hits {
+				named[idx] = true
+			}
+		}
+		short_name := short_name_view(node.value)
+		if short_name.len != node.value.len {
+			if hits := keys[short_name] {
+				for idx in hits {
+					named[idx] = true
+				}
+			}
+		}
+	}
+	mut all_named := true
+	for idx, cand in uncalled {
+		if !named[idx] {
+			all_named = false
+			continue
+		}
+		used[cand.qname] = true
+	}
+	return used, all_named
+}
+
+// unused_private_declarations returns the private functions that are not in
+// `used_fns` and that nothing calls, and the private constants nothing names.
+// Of a `library`, the public constants are left out, since other programs use
+// them, and so are the functions exported to C or kept with `@[markused]`.
+fn (mut tc TypeChecker) unused_private_declarations(used_fns map[string]bool, library bool) []UnusedDeclCandidate {
 	// Collect the (few) candidate declarations first, then scan the AST once
 	// probing only against that small candidate set. Building referenced-name
 	// maps over every ident/selector/call in the program did the same work as
@@ -7712,6 +7868,10 @@ pub fn (mut tc TypeChecker) diagnose_unused_private_declarations(used_fns map[st
 			if tc.declaration_contains_error(node) {
 				continue
 			}
+			if library && (tc.declaration_has_attribute(flat.NodeId(idx), 'export')
+				|| tc.declaration_has_attribute(flat.NodeId(idx), 'markused')) {
+				continue
+			}
 			qname := checker_qualified_fn_name(module_name, node.value)
 			cname := tc.cached_c_name(qname)
 			if used_fns[node.value] || used_fns[qname] || used_fns[cname] {
@@ -7731,7 +7891,7 @@ pub fn (mut tc TypeChecker) diagnose_unused_private_declarations(used_fns map[st
 			}
 			continue
 		}
-		if node.kind != .const_decl {
+		if node.kind != .const_decl || (library && node.op == .arrow) {
 			continue
 		}
 		if node.op == .arrow {
@@ -7765,7 +7925,7 @@ pub fn (mut tc TypeChecker) diagnose_unused_private_declarations(used_fns map[st
 		}
 	}
 	if candidates.len == 0 {
-		return
+		return []UnusedDeclCandidate{}
 	}
 	// A reference through either the full spelling or its short (last-segment)
 	// spelling keeps a candidate alive, mirroring the referenced-name maps the
@@ -7779,21 +7939,7 @@ pub fn (mut tc TypeChecker) diagnose_unused_private_declarations(used_fns map[st
 			candidates[cand_idx].alive = true
 		}
 	}
-	// The diagnostic filter and recorded file both read tc.cur_file; replay each
-	// candidate's file so deferred emission matches the former in-walk emission.
-	walk_end_file := tc.cur_file
-	for cand in candidates {
-		if cand.alive {
-			continue
-		}
-		tc.cur_file = cand.file
-		if cand.is_fn {
-			tc.record_notice_at(.unknown_ident, 'unused function: `${cand.name}`', cand.node_id, tc.node_value_diagnostic_pos(cand.node_id))
-		} else {
-			tc.record_notice_at(.unknown_ident, 'unused constant: `${cand.name}`', cand.node_id, cand.position)
-		}
-	}
-	tc.cur_file = walk_end_file
+	return candidates.filter(!it.alive)
 }
 
 fn (tc &TypeChecker) declaration_contains_error(node flat.Node) bool {
@@ -10017,13 +10163,20 @@ fn (mut tc TypeChecker) check_selective_builtin_import_diagnostics() {
 }
 
 fn (mut tc TypeChecker) check_c_js_generic_declarations() {
+	// Each report is on the declaration itself: trusted library files have none.
+	selected_files_only := tc.selected_files_only()
 	for declaration_kind in [flat.NodeKind.struct_decl, flat.NodeKind.fn_decl] {
 		tc.cur_module = ''
 		tc.cur_file = ''
+		mut skip_file := false
 		for index in tc.top_level_idx {
 			node := tc.a.node(flat.NodeId(index))
 			if node.kind == .file {
 				tc.enter_file(node.value)
+				skip_file = selected_files_only && !tc.diagnostic_files[node.value]
+				continue
+			}
+			if skip_file {
 				continue
 			}
 			if node.kind == .module_decl {

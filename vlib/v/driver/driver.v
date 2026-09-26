@@ -14,6 +14,7 @@ import v.flat
 import v.fixturetest
 import v.gen.c as cgen
 import v.gen.c.naming
+import v.diagserver
 import v.markused
 import v.modulecache
 import v.parser
@@ -168,6 +169,7 @@ mut:
 	native_declared_functions map[string]map[string]bool
 	objects                   map[string]string
 	headers                   map[string]string
+	import_resolutions        V3ImportResolutions
 }
 
 struct V3ParseTiming {
@@ -8699,7 +8701,7 @@ fn v3_driver_option_requires_value(option string) bool {
 	return option in ['-o', '-output', '-b', '-backend', '-os', '-arch', '-compile-backend',
 		'--compile-backend', '-d', '-define', '-gc', '-cc', '-thread-stack-size', '-path', '-cov',
 		'-coverage', '-file-list', '-message-limit', '-printfn', '-generate-c-project', '-test-runner',
-		'-run-only', '-profile-fns', '-trace-fns', '-subsystem', '-exclude', '-dump-files']
+		'-run-only', '-profile-fns', '-trace-fns', '-subsystem', '-exclude', '-dump-files', '-line-info']
 }
 
 fn v3_driver_option_consumes_value(option string) bool {
@@ -9168,6 +9170,8 @@ pub fn run(args []string) {
 	mut print_watched_files := false
 	mut only_check_syntax := false
 	mut check_only := false
+	// `-line-info` asks a question of the mini-VLS protocol instead of compiling.
+	mut vls_line_info := ''
 	mut show_cc := false
 	mut show_c_output := false
 	mut translated_mode := false
@@ -9614,6 +9618,15 @@ pub fn run(args []string) {
 			skip_running = true
 			no_cache = true
 			i++
+		} else if args[i] == '-vls-mode' {
+			// Marks a request of the mini-VLS protocol; `-line-info` carries it.
+			i++
+		} else if args[i] == '-line-info' && i + 1 < args.len {
+			vls_line_info = args[i + 1]
+			check_only = true
+			skip_running = true
+			no_cache = true
+			i += 2
 		} else if args[i] == '-stats' {
 			show_test_stats = true
 			no_cache = true
@@ -9718,6 +9731,20 @@ pub fn run(args []string) {
 			}
 			i++
 		}
+	}
+	mut vls_queries := if vls_line_info != '' {
+		types.parse_vls_line_infos(vls_line_info, input_file) or {
+			eprintln(err.msg())
+			exit(1)
+		}
+	} else {
+		[]types.VlsQuery{}
+	}
+	if vls_line_info != '' {
+		// A query answers from the project's own files: the library bodies,
+		// which cannot change the answer, are left unchecked, as in the
+		// diagnostics server.
+		os.setenv('V_CHECK_SELECTED_FILES_ONLY', '1', false)
 	}
 	if force_bounds_checking {
 		// This option wins regardless of its ordering relative to
@@ -10754,6 +10781,15 @@ pub fn run(args []string) {
 	if !had_v3_backend_define {
 		prefs.user_defines = prefs.user_defines.filter(it != 'v3_backend')
 	}
+	// A diagnostics server's child may have a question to answer instead.
+	mut served := diagserver.serve()
+	if served.question != '' {
+		vls_line_info = served.question
+		vls_queries = types.parse_vls_line_infos(served.question, input_file) or {
+			eprintln(err.msg())
+			exit(1)
+		}
+	}
 	mut a := p.a
 	if !current_no_parallel {
 		// Later parallel stages can run inside disposable arenas. Ensure the shared
@@ -11477,13 +11513,44 @@ pub fn run(args []string) {
 			ck_stage_sw.restart()
 			// On very large user import graphs, serial checking uses less memory than
 			// retaining one semantic-check accumulator per worker.
+			// A query reads the checker's per-node types, which a serial check
+			// leaves in one place.
 			parallel_semantic_check := !current_no_parallel && a.missing_imports.len == 0
-				&& (building_v || !scope_prealloc_check
-					|| a.nodes.len < scoped_serial_user_check_node_threshold)
+				&& vls_line_info == '' && (building_v || !scope_prealloc_check
+				|| a.nodes.len < scoped_serial_user_check_node_threshold)
 			check_was_parallel = pre_tc.check_semantics_opt(parallel_semantic_check)
 			if verbose {
 				eprintln('  [ttime]   ck semantics     ${f64(ck_stage_sw.elapsed().microseconds()) / 1000.0:7.2f} ms')
 			}
+		}
+		if vls_line_info != '' {
+			// The answer, if any, is all a query prints: the program's
+			// diagnostics are not its business, and code being written has some.
+			print_vls_answers(mut pre_tc, vls_queries)
+			// A diagnostics server's child answers the next questions from the
+			// program it checked, while the server finds the files it read
+			// unchanged.
+			if served.answers_again() {
+				if digests := v3_input_digests(a, cache_state.cached_source_digests) {
+					project_root := cache_state.import_resolutions.project_root
+					resolved_imports := v3_imports_to_resolve(a, cache_state.import_resolutions)
+					served.keep_inputs(digests, fn [prefs, project_root, resolved_imports] () bool {
+						return v3_imports_resolve_as_before(prefs, project_root, resolved_imports)
+					})
+					mut code := 0
+					for {
+						next := served.next_question(code) or { break }
+						queries := types.parse_vls_line_infos(next, input_file) or {
+							eprintln(err.msg())
+							code = 1
+							continue
+						}
+						code = 0
+						print_vls_answers(mut pre_tc, queries)
+					}
+				}
+			}
+			exit(0)
 		}
 		ck_stage_sw.restart()
 		mut prepared_markused := prepared_markused_thread.wait()
@@ -11493,6 +11560,9 @@ pub fn run(args []string) {
 		ckpre_sw.restart()
 		pre_tc.check_main_module_requirement(is_shared || test_files.len > 0
 			|| a.export_fn_names.len > 0)
+		// A call whose Result nothing handles loses its error: a warning, in a
+		// check, a build and a run alike.
+		pre_tc.warn_unhandled_result_calls()
 		if verbose {
 			eprintln('  [ttime]   ck main req      ${f64(ckpre_sw.elapsed().microseconds()) / 1000.0:7.2f} ms')
 		}
@@ -11557,6 +11627,10 @@ pub fn run(args []string) {
 			if has_v3_authoritative_error(pre_tc.errors) {
 				clear_macos_v3_compiler_error_fallback(macos_v3_fallback_file)
 			}
+			if check_only && !is_checker_fixture {
+				// An editor shows these while the errors are being fixed.
+				pre_tc.diagnose_unused_private_declarations_with_errors()
+			}
 			if !macos_v3_fallback_suppresses_diagnostics(macos_v3_fallback_file) {
 				print_type_diagnostics(a, pre_tc.notices, pre_tc.errors, is_checker_fixture, fatal_errors,
 					check_only, message_limit, skip_notices)
@@ -11590,7 +11664,10 @@ pub fn run(args []string) {
 			exit(1)
 		}
 		if check_only {
-			if pre_tc.global_names.len > 0 {
+			// Before the monomorphization below rewrites the tree, as in a build.
+			report_unused_declarations_of_check(a, mut pre_tc, no_skip_unused, test_files,
+				input_file.ends_with('.vsh') || is_checker_fixture)
+			if pre_tc.global_names.len > 0 && os.getenv('V_CHECK_SELECTED_FILES_ONLY') == '' {
 				check_used_fns, check_uses_generics := markused.mark_used_with_generic_usage(a, &pre_tc)
 				if check_uses_generics {
 					_, _ = transform.monomorphize_with_used_checked_config(mut a, &pre_tc, check_used_fns, false)
@@ -11601,6 +11678,12 @@ pub fn run(args []string) {
 				print_type_diagnostics(a, pre_tc.notices, pre_tc.errors, is_checker_fixture, fatal_errors,
 					check_only, message_limit, skip_notices)
 				exit(1)
+			}
+			// The warnings of a program without errors are diagnostics too. A build
+			// prints them further on, past the point where a check returns.
+			if pre_tc.notices.len > 0 {
+				print_type_diagnostics(a, pre_tc.notices, []types.TypeError{}, is_checker_fixture,
+					fatal_errors, check_only, message_limit, skip_notices)
 			}
 			return
 		}
@@ -15454,6 +15537,127 @@ fn vmod_subdirs(dir string) ![]string {
 	return manifest.unknown['subdirs'] or { []string{} }
 }
 
+// print_vls_answers prints the answer to each question of the mini-VLS
+// protocol: the only one alone, if there is one, and several each on a line of
+// its own after its index, empty when there is none.
+fn print_vls_answers(mut tc types.TypeChecker, queries []types.VlsQuery) {
+	if queries.len == 1 {
+		answer := tc.vls_answer(queries[0])
+		if answer != '' {
+			println(answer)
+		}
+		return
+	}
+	for i, query in queries {
+		println('${i}\t${tc.vls_answer(query)}')
+	}
+}
+
+// v3_input_digests returns the SHA-256 of what this compilation read in each V
+// source, in hexadecimal and by absolute path: the files it parsed, and those
+// behind a module header it loaded from the cache. None when it read a file
+// twice with different contents, or read none.
+fn v3_input_digests(a &flat.FlatAst, cached_source_digests map[string]string) ?map[string]string {
+	mut digests := map[string]string{}
+	for _, file in a.source_files {
+		mut digest := ''
+		if file.has_source_sha256() {
+			source_digest := file.source_sha256()
+			digest = source_digest[..].hex()
+		} else if os.is_file(file.name) {
+			// A file indexed without its digest, as a C header, is read again.
+			bytes := os.read_bytes(file.name) or { return none }
+			digest = sha256.sum(bytes).hex()
+		} else {
+			continue
+		}
+		path := os.abs_path(file.name)
+		if path in digests && digests[path] != digest {
+			return none
+		}
+		digests[path] = digest
+	}
+	for source_path, digest in cached_source_digests {
+		path := os.abs_path(source_path)
+		if digest == '' || (path in digests && digests[path] != digest) {
+			return none
+		}
+		digests[path] = digest
+	}
+	if digests.len == 0 {
+		return none
+	}
+	return digests
+}
+
+// V3ImportResolutions is what the imports of a compilation resolved to, as
+// resolve_imports found them: the directory of each module by
+// `<directory of the importing file>\n<module>`, and the project root the
+// search started from. The directories searched before that one, which held no
+// such module, were read nowhere: only resolving the imports again tells
+// whether one holds it now.
+struct V3ImportResolutions {
+	project_root string
+	dirs         map[string]string
+}
+
+// V3ImportResolution is an import to resolve again: the module `module_name`
+// for the file `importing_file`, which resolved to the directory `dir`.
+struct V3ImportResolution {
+	module_name    string
+	importing_file string
+	dir            string
+}
+
+// v3_imports_to_resolve lists the imports of `resolutions`, each with a file of
+// the program in the directory it was resolved for: resolving takes a file, and
+// finds the directory from it.
+fn v3_imports_to_resolve(a &flat.FlatAst, resolutions V3ImportResolutions) []V3ImportResolution {
+	mut file_in_dir := map[string]string{}
+	for _, file in a.source_files {
+		dir := os.dir(file.name)
+		if dir !in file_in_dir {
+			file_in_dir[dir] = file.name
+		}
+	}
+	mut imports := []V3ImportResolution{cap: resolutions.dirs.len}
+	for key, dir in resolutions.dirs {
+		importing_dir := key.all_before('\n')
+		// A module of vlib or of a root of modules, for any importer: resolving
+		// the others resolves it again.
+		if importing_dir == '@global' {
+			continue
+		}
+		// Resolving takes the real path of the file: a missing one keeps a
+		// relative path relative.
+		importing_file := if importing_dir == '' {
+			''
+		} else {
+			file_in_dir[importing_dir] or { os.join_path_single(os.real_path(importing_dir), '_') }
+		}
+		imports << V3ImportResolution{
+			module_name:    key.all_after('\n')
+			importing_file: importing_file
+			dir:            dir
+		}
+	}
+	return imports
+}
+
+// v3_imports_resolve_as_before reports whether each of `imports` still resolves
+// to the directory it did: a module added to a directory searched first, or
+// one found now for an import that found none, changes the program.
+fn v3_imports_resolve_as_before(prefs &pref.Preferences, project_root string, imports []V3ImportResolution) bool {
+	mut cache := map[string]string{}
+	for imp in imports {
+		if resolve_project_or_pref_module_path_cached(prefs, imp.module_name, imp.importing_file,
+			project_root, mut cache) != imp.dir {
+			return false
+		}
+	}
+	return true
+}
+
 // v3_directory_user_files lists the source files of the module in `dir`. Until
 // a.resolve_source_paths() freezes the table, it records each file's resolved
 // path in `a` for later stages, so it must run on the thread that owns `a`.
@@ -16605,6 +16809,40 @@ fn test_harness_fn_return_supported(ret types.Type) bool {
 
 fn is_test_harness_hook_name(name string) bool {
 	return name in ['testsuite_begin', 'testsuite_end', 'before_each', 'after_each']
+}
+
+// report_unused_declarations_of_check reports the private functions and
+// constants that nothing uses, as a build does after markused. A check skips
+// markused, so it runs here only when a private function is not named at all.
+fn report_unused_declarations_of_check(a &flat.FlatAst, mut tc types.TypeChecker, no_skip_unused bool, test_files []string, full_runtime bool) {
+	if !full_runtime && test_files.len == 0 && tc.diagnose_unused_library_private_declarations() {
+		return
+	}
+	used_fns := tc.used_fns_without_markused() or {
+		check_markused(a, mut tc, no_skip_unused, test_files, full_runtime)
+	}
+	tc.diagnose_unused_private_declarations(used_fns)
+}
+
+// check_markused returns what markused finds used, asked for the way a build
+// of the same input asks for it.
+fn check_markused(a &flat.FlatAst, mut tc types.TypeChecker, no_skip_unused bool, test_files []string, full_runtime bool) map[string]bool {
+	// As a build does: checking and comptime pruning add and detach nodes.
+	tc.refresh_direct_parent_index(a)
+	if no_skip_unused {
+		used, _ := markused.mark_all_used_with_generic_usage(a, tc, test_files)
+		return used
+	}
+	if test_files.len > 0 {
+		used, _ := markused.mark_used_for_tests_with_generic_usage(a, tc, test_files)
+		return used
+	}
+	if full_runtime {
+		used, _ := markused.mark_used_with_generic_usage_full_runtime(a, tc)
+		return used
+	}
+	used, _ := markused.mark_used_with_generic_usage(a, tc)
+	return used
 }
 
 fn set_diagnostic_files(mut tc types.TypeChecker, user_files []string) {
@@ -18921,6 +19159,10 @@ fn resolve_imports(mut a flat.FlatAst, mut p parser.Parser, prefs &pref.Preferen
 		insert_synthetic_imports(mut a, insertions)
 		implicit_imports.node_idx += insertions.len
 		implicit_imports.field_index_node_idx += insertions.len
+	}
+	cache_state.import_resolutions = V3ImportResolutions{
+		project_root: project_root
+		dirs:         module_path_cache.clone()
 	}
 	return was_parallel
 }
