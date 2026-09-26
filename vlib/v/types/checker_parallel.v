@@ -1377,7 +1377,7 @@ fn (mut tc TypeChecker) run_parallel_check(items []CheckWorkItem) bool {
 	if tc.scope_parallel_check_workers && n_jobs > max_scoped_check_jobs {
 		n_jobs = max_scoped_check_jobs
 	}
-	if items.len < min_parallel_check_items || n_jobs <= 1 {
+	if items.len < tc.parallel_check_min_items || n_jobs <= 1 {
 		tc.check_top_level_declarations()
 		if tc.scope_parallel_check_workers {
 			tc.check_scoped_batches(items, scoped_check_serial_batches)

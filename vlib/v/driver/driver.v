@@ -11807,6 +11807,12 @@ pub fn run(args []string) {
 	pre_tc.enable_globals = enable_globals_compat
 	pre_tc.disable_explicit_mutability = disable_explicit_mutability
 	pre_tc.checker_fixture_mode = is_checker_fixture
+	// A diagnostics server's check waits on its bodies: the pool checks a few
+	// of them sooner than one thread, as it does many (p20, 201 functions: 31 ms
+	// on one thread, 13 ms on the pool). A query stays on one thread.
+	if served.from_server && vls_line_info == '' {
+		pre_tc.parallel_check_min_items = 2
+	}
 	pre_tc.is_test = prefs.is_test
 	pre_tc.module_diagnostic_root = if os.is_dir(input_file) {
 		os.real_path(input_file)

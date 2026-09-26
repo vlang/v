@@ -740,6 +740,7 @@ pub mut:
 	method_suffix_prescreen          bool
 	prefix_param_scan                bool
 	building_v_fast                  bool
+	parallel_check_min_items         int = min_parallel_check_items // the fewest function bodies a check splits among the worker pool
 	valid_diagnostic_fast            bool
 	valid_resolution_fast            bool
 	defer_fn_ancillary               bool
