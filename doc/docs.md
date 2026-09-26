@@ -6260,6 +6260,9 @@ fn first_positive(a []int) int {
 }
 ```
 
+A comment after a compact `match` branch's closing brace stays with that branch,
+including the final `else` branch.
+
 During the formatter transition, `v fmt -verify` and `v fmt -c` accept
 files matching either current or legacy vfmt output. `v fmt -w` uses current formatting,
 so it may rewrite a file accepted by either check mode.
