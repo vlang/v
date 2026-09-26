@@ -3218,7 +3218,51 @@ fn (g &FlatGen) assert_reported_value_ids(node flat.Node) ?(flat.NodeId, flat.No
 		|| !g.assert_value_is_readable(rhs_id, calls_operator) {
 		return none
 	}
+	if calls_operator && (g.assert_operand_shares_storage(lhs_id)
+		|| g.assert_operand_shares_storage(rhs_id)) {
+		// The temp of such an operand shares storage with it, which the operator method
+		// can change in place, so it could report a value other than the compared one.
+		return none
+	}
 	return lhs_id, rhs_id
+}
+
+// assert_operand_shares_storage reports whether a C copy of an assert operand still
+// shares storage with the operand, like the elements of an array field.
+fn (g &FlatGen) assert_operand_shares_storage(id flat.NodeId) bool {
+	mut seen := map[string]bool{}
+	return g.assert_type_shares_storage(g.usable_expr_type(id), mut seen)
+}
+
+fn (g &FlatGen) assert_type_shares_storage(typ types.Type, mut seen map[string]bool) bool {
+	clean := types.unalias_type(typ)
+	match clean {
+		types.Array, types.Map, types.Pointer, types.Channel, types.SumType, types.Interface {
+			return true
+		}
+		types.ArrayFixed {
+			return g.assert_type_shares_storage(clean.elem_type, mut seen)
+		}
+		types.OptionType {
+			return g.assert_type_shares_storage(clean.base_type, mut seen)
+		}
+		types.ResultType {
+			return g.assert_type_shares_storage(clean.base_type, mut seen)
+		}
+		types.Struct {
+			if clean.name in seen {
+				return false
+			}
+			seen[clean.name] = true
+			for field in g.tc.struct_fields_for_type(clean.name) {
+				if g.assert_type_shares_storage(field.typ, mut seen) {
+					return true
+				}
+			}
+		}
+		else {}
+	}
+	return false
 }
 
 fn (g &FlatGen) assert_value_is_readable(id flat.NodeId, calls_operator bool) bool {

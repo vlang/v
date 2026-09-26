@@ -250,3 +250,41 @@ fn main() {
 	// The elements are compared before the operands could be copied; report no values then.
 	assert output.contains(': assert items == [Item{}]\ncurrent: 14, outer: 4, items: 4\n'), output
 }
+
+// test_failed_assert_reports_no_shared_operands_changed_by_operator_methods checks that a
+// failed assert reports no values, when the `==` method, that compared them, could change
+// storage that a copy of an operand still shares, like the elements of an array field.
+fn test_failed_assert_reports_no_shared_operands_changed_by_operator_methods() {
+	result := run_assert_failure_source_with_flags('operator_shared_storage.v', "struct Bag {
+mut:
+	items []int
+}
+
+__global bag = Bag{
+	items: [0]
+}
+
+fn (a Bag) == (b Bag) bool {
+	bag.items[0]++
+	return false
+}
+
+@[assert_continues]
+fn check() {
+	assert bag == Bag{
+		items: [0]
+	}
+}
+
+fn main() {
+	check()
+	println('items: \${bag.items[0]}')
+}
+", '-enable-globals')
+	assert result.exit_code == 0, result.output
+	output := result.output
+	assert output.contains(': assert bag == Bag{'), output
+	assert !output.contains('left value:'), output
+	assert !output.contains('right value:'), output
+	assert output.contains('items: 1\n'), output
+}
