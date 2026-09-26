@@ -76,6 +76,11 @@ fn test_ensure_modules_for_tool_are_installed_searches_every_module_root() {
 	}
 	// A module that no root has is installed, and a failed install says how to do it manually.
 	assert install_is_attempted('')
+	// A module in the `vlib` next to VEXE is used, since the compiler searches that first.
+	vlib := os.join_path(base, 'vlib')
+	write_markdown_module(vlib)!
+	assert !install_is_attempted('')
+	os.rmdir_all(vlib)!
 	// A module in a later VMODULES root is used, even though the first root does not have it.
 	write_markdown_module(later_root)!
 	assert !install_is_attempted('')
@@ -174,6 +179,41 @@ fn test_ensure_modules_for_tool_are_installed_waits_for_a_concurrent_install_to_
 	assert os.is_file(os.join_path(vmodules, 'markdown', 'markdown.v'))
 }
 
+fn test_ensure_modules_for_tool_are_installed_reports_an_interrupted_install() {
+	base := os.join_path(os.vtmp_dir(), 'util_module_deps_interrupted_${os.getpid()}')
+	os.rmdir_all(base) or {}
+	vmodules := os.join_path(base, 'vmodules')
+	markdown_dir := os.join_path(vmodules, 'markdown')
+	// An interrupted `git clone` leaves the destination with only its `.git` folder, which
+	// then does not change anymore.
+	git_dir := os.join_path(markdown_dir, '.git')
+	os.mkdir_all(git_dir)!
+	os.write_file(os.join_path(git_dir, 'HEAD'), 'ref: refs/heads/master\n')!
+	an_hour_ago := time.now().unix() - 3600
+	for path in [os.join_path(git_dir, 'HEAD'), git_dir, markdown_dir] {
+		os.utime(path, an_hour_ago, an_hour_ago)!
+	}
+	old_vmodules := os.getenv_opt('VMODULES')
+	old_vexe := os.getenv_opt('VEXE')
+	os.setenv('VEXE', os.join_path(base, 'missing_v'), true)
+	os.setenv('VMODULES', vmodules, true)
+	defer {
+		restore_env('VMODULES', old_vmodules)
+		restore_env('VEXE', old_vexe)
+		os.rmdir_all(base) or {}
+	}
+	// That is reported at once, instead of waiting for it to finish, and it is left as it is.
+	started := time.now()
+	mut reported := false
+	ensure_modules_for_tool_are_installed('vdoc', '', false) or {
+		assert err.msg().contains('looks like an interrupted install: remove ${markdown_dir}')
+		reported = true
+	}
+	assert reported
+	assert time.since(started) < concurrent_install_stale_time
+	assert os.ls(markdown_dir)! == ['.git']
+}
+
 fn test_wait_for_concurrent_install_gives_up() {
 	base := os.join_path(os.vtmp_dir(), 'util_module_deps_wait_${os.getpid()}')
 	os.rmdir_all(base) or {}
@@ -182,12 +222,25 @@ fn test_wait_for_concurrent_install_gives_up() {
 	}
 	mod_dir := os.join_path(base, 'markdown')
 	// Without an install in progress, there is nothing to wait for.
-	assert !wait_for_concurrent_install(mod_dir, time.minute)
+	assert !wait_for_concurrent_install(mod_dir, time.minute, time.minute)!
 	os.mkdir_all(mod_dir)!
-	assert !wait_for_concurrent_install(mod_dir, time.minute)
+	assert !wait_for_concurrent_install(mod_dir, time.minute, time.minute)!
 	// An install that does not finish in time counts as failed.
 	os.mkdir_all(os.join_path(mod_dir, '.git'))!
 	started := time.now()
-	assert !wait_for_concurrent_install(mod_dir, time.second)
+	mut failed := false
+	wait_for_concurrent_install(mod_dir, time.second, time.minute) or {
+		assert err.msg().contains('did not finish in 1s')
+		failed = true
+	}
+	assert failed
 	assert time.since(started) >= time.second
+	// So does one that stops changing anything, for the (here shortened) stale time.
+	failed = false
+	wait_for_concurrent_install(mod_dir, time.minute, time.second) or {
+		assert err.msg().contains('looks like an interrupted install')
+		failed = true
+	}
+	assert failed
+	assert time.since(started) < time.minute
 }

@@ -84,12 +84,14 @@ fn module_dir_is_present(dir string) bool {
 
 // resolvable_module_dir returns a folder that the compiler can likely import `modulename` from,
 // when it compiles the tool in `tool_source` (a `.v` file or a folder) without a `-path`. It
-// looks in every `VMODULES` root (not just the first one), and then, like the compiler's
-// project-local and ancestor lookup, in the folder of `tool_source` and in each folder above
-// it, which includes the tool's project root.
+// looks in `vlib`, and in every `VMODULES` root (not just the first one), and then, like the
+// compiler's project-local and ancestor lookup, in the folder of `tool_source` and in each
+// folder above it, which includes the tool's project root.
 fn resolvable_module_dir(modulename string, tool_source string) ?string {
 	mod_path := modulename.replace('.', os.path_separator)
-	for root in os.vmodules_paths() {
+	mut roots := [os.join_path_single(os.dir(pref.vexe_path()), 'vlib')]
+	roots << os.vmodules_paths()
+	for root in roots {
 		if root.trim_space() == '' {
 			continue
 		}
@@ -121,19 +123,52 @@ fn resolvable_module_dir(modulename string, tool_source string) ?string {
 // `v` process to finish installing a module, when that makes its own install fail.
 const concurrent_install_timeout = 120 * time.second
 
-// wait_for_concurrent_install waits, for at most `timeout`, until another process finishes
-// installing a module into `mod_dir`, which its `git clone` has started, since `mod_dir` has a
-// `.git` folder. It reports whether the module is there, and returns at once when it already is,
-// or when no install is in progress there.
-fn wait_for_concurrent_install(mod_dir string, timeout time.Duration) bool {
+// concurrent_install_stale_time is how long such an install may go without changing anything in
+// the module folder, before ensure_modules_for_tool_are_installed takes it as interrupted.
+const concurrent_install_stale_time = 15 * time.second
+
+// newest_change_in returns the newest modification time, in Unix seconds, of `dir` and of
+// everything in it. A running `git clone` keeps changing some file below `.git`.
+fn newest_change_in(dir string) i64 {
+	mut newest := os.file_last_mod_unix(dir)
+	mut pending := [dir]
+	for pending.len > 0 {
+		current := pending.pop()
+		for entry in os.ls(current) or { []string{} } {
+			path := os.join_path_single(current, entry)
+			modified := os.file_last_mod_unix(path)
+			if modified > newest {
+				newest = modified
+			}
+			if os.is_dir(path) && !os.is_link(path) {
+				pending << path
+			}
+		}
+	}
+	return newest
+}
+
+// wait_for_concurrent_install waits until another process finishes installing a module into
+// `mod_dir`, which its `git clone` has started, since `mod_dir` has a `.git` folder. It reports
+// whether the module is there, and returns false at once when no install is in progress there.
+// It fails when nothing in `mod_dir` changes for `stale_time`, since then the install was
+// interrupted, and when the install is not done after `timeout`.
+fn wait_for_concurrent_install(mod_dir string, timeout time.Duration, stale_time time.Duration) !bool {
 	deadline := time.now().add(timeout)
 	mut announced := false
 	for {
 		if module_dir_is_present(mod_dir) {
 			return true
 		}
-		if !os.is_dir(os.join_path_single(mod_dir, '.git')) || time.now() > deadline {
+		if !os.is_dir(os.join_path_single(mod_dir, '.git')) {
 			return false
+		}
+		idle_seconds := time.now().unix() - newest_change_in(mod_dir)
+		if f64(idle_seconds) >= stale_time.seconds() {
+			return error('${mod_dir} has a `.git` folder, but no module in it, and it has not changed for ${idle_seconds}s. It looks like an interrupted install: remove ${mod_dir}, and try again.')
+		}
+		if time.now() > deadline {
+			return error('another process started installing it into ${mod_dir}, but did not finish in ${timeout.seconds():.0f}s')
 		}
 		if !announced {
 			eprintln('Waiting for another process to finish installing the module in ${mod_dir} ...')
@@ -163,13 +198,17 @@ pub fn ensure_modules_for_tool_are_installed(tool_name string, tool_source strin
 			continue
 		}
 		check_module_is_installed(emodule, is_verbose, false) or {
+			install_error := err.msg().trim_space()
 			// Another `v` process can install the same module at the same time, and then its
 			// clone makes this one fail. The module is installed all the same, once it is done.
-			if wait_for_concurrent_install(os.join_path_single(os.vmodules_dir(), emodule),
-				concurrent_install_timeout) {
+			installed := wait_for_concurrent_install(os.join_path_single(os.vmodules_dir(),
+				emodule), concurrent_install_timeout, concurrent_install_stale_time) or {
+				return error('cannot install the `${emodule}` module, which the `${tool_name}` tool needs: ${err.msg()}')
+			}
+			if installed {
 				continue
 			}
-			return error('cannot install the `${emodule}` module, which the `${tool_name}` tool needs: ${err.msg().trim_space()}\nInstall it with `v install ${emodule}`, then try again.')
+			return error('cannot install the `${emodule}` module, which the `${tool_name}` tool needs: ${install_error}\nInstall it with `v install ${emodule}`, then try again.')
 		}
 	}
 }
