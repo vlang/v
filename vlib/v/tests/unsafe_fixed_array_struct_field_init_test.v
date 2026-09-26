@@ -176,3 +176,22 @@ fn test_unsafe_fixed_array_of_maps_arg_and_return() {
 	a[0]['y'] = 5
 	assert a[0]['y'] == 5
 }
+
+fn unsafe_fixed_pick(sel [3]int, i int) UnsafeFixedInts {
+	a := [1, 2, 3]!
+	b := [4, 5, 6]!
+	return UnsafeFixedInts{
+		elems: unsafe {
+			if sel[i] == 0 {
+				a
+			} else {
+				b
+			}
+		}
+	}
+}
+
+fn test_unsafe_fixed_array_if_value_struct_field() {
+	assert unsafe_fixed_pick([0, 1, 0]!, 0).elems == [1, 2, 3]!
+	assert unsafe_fixed_pick([0, 1, 0]!, 1).elems == [4, 5, 6]!
+}

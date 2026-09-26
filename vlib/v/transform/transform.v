@@ -13683,14 +13683,30 @@ fn (mut t Transformer) transform_block_expr_for_type(id flat.NodeId, node flat.N
 		prefix << t.a.child(&node, i)
 	}
 	mut new_children := t.transform_stmts(prefix)
+	outer_pending_len := t.pending_stmts.len
 	tail_expr := t.transform_expr_for_type(tail_expr_id, target_type)
 	tail_stmt := t.make_expr_stmt(tail_expr)
 	if node.value == 'unsafe' && prefix.len == 0
 		&& t.is_fixed_array_type(t.normalize_type_alias(target_type)) {
-		// A C statement expression can't yield an array, so statements hoisted from a
-		// lone fixed-array value (`unsafe { [2]map[string]int{init: {'a': index}} }`)
-		// stay pending for the enclosing statement, as they do without `unsafe`.
-		new_children << tail_stmt
+		if t.pending_stmts.len == outer_pending_len {
+			new_children << tail_stmt
+		} else {
+			// A C statement expression can't yield an array. Statements hoisted from a
+			// lone fixed-array value (`unsafe { [2]map[string]int{init: {'a': index}} }`,
+			// an `if` value) run before the enclosing statement, still inside `unsafe`,
+			// and fill a staging local that becomes the value.
+			mut body := t.pending_stmts[outer_pending_len..].clone()
+			t.pending_stmts = t.pending_stmts[..outer_pending_len].clone()
+			tmp_name := t.new_temp('unsafe_val')
+			body << t.make_assign(t.make_ident(tmp_name), tail_expr)
+			unsafe_body := t.make_block(body)
+			t.set_node_value(int(unsafe_body), node.value)
+			t.pending_stmts << t.make_staging_value_decl(tmp_name, target_type)
+			t.pending_stmts << unsafe_body
+			tmp := t.make_ident(tmp_name)
+			t.set_node_typ(int(tmp), target_type)
+			return tmp
+		}
 	} else {
 		for stmt in t.with_pending_before(tail_stmt) {
 			new_children << stmt
