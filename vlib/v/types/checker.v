@@ -16316,8 +16316,17 @@ fn (tc &TypeChecker) stmt_has_v1_compatible_returning_or_fallback(id flat.NodeId
 	return false
 }
 
-fn (mut tc TypeChecker) check_noreturn_fn_semantics(id flat.NodeId, node flat.Node, qname string) {
-	if node.value !in tc.a.noreturn_fns && qname !in tc.a.noreturn_fns {
+fn (tc &TypeChecker) fn_decl_is_noreturn(module_name string, name string) bool {
+	if checker_qualified_fn_name(module_name, name) in tc.a.noreturn_fns {
+		return true
+	}
+	short_module := module_name.all_after_last('.')
+	return short_module != module_name
+		&& checker_qualified_fn_name(short_module, name) in tc.a.noreturn_fns
+}
+
+fn (mut tc TypeChecker) check_noreturn_fn_semantics(id flat.NodeId, node flat.Node, module_name string) {
+	if !tc.fn_decl_is_noreturn(module_name, node.value) {
 		return
 	}
 	mut tail_id := flat.NodeId(-1)
@@ -16593,7 +16602,8 @@ fn (tc &TypeChecker) call_never_returns(id flat.NodeId) bool {
 	}
 	callee := tc.a.child_node(&call, 0)
 	if callee.kind == .ident {
-		if callee.value in ['panic', 'exit'] && tc.no_return_builtin_is_shadowed(callee.value) {
+		if callee.value in ['panic', 'exit'] && (tc.no_return_builtin_is_shadowed(callee.value)
+			|| tc.module_declares_fn(tc.cur_module, callee.value)) {
 			return false
 		}
 		return callee.value in ['panic', 'exit', '__v_compile_error']
@@ -16619,6 +16629,16 @@ fn (tc &TypeChecker) no_return_builtin_is_shadowed(name string) bool {
 		return true
 	}
 	return false
+}
+
+pub fn (tc &TypeChecker) module_declares_fn(module_name string, name string) bool {
+	if module_name in ['', 'main', 'builtin'] {
+		return false
+	}
+	visibility := tc.declaration_visibility[checker_qualified_fn_name(module_name, name)] or {
+		return false
+	}
+	return visibility.kind == .fn_decl
 }
 
 fn (mut tc TypeChecker) call_never_returns_resolving(id flat.NodeId) bool {
