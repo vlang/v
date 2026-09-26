@@ -77,6 +77,15 @@ fn (mut u ConstArgGenericUser[T]) mut_int_value(n &int) int {
 	return *n
 }
 
+fn const_arg_fn_deref2(pp &&ConstArgTarget) int {
+	return (**pp).x
+}
+
+struct ConstArgFnFields {
+	ptr    fn (t &ConstArgTarget) voidptr = unsafe { nil }
+	deref2 fn (pp &&ConstArgTarget) int   = unsafe { nil }
+}
+
 // A pointer const is passed as the pointer itself, not as the address of a
 // copy of its target.
 fn test_pointer_const_passed_to_pointer_param_keeps_its_address() {
@@ -90,6 +99,19 @@ fn test_pointer_const_passed_to_pointer_param_keeps_its_address() {
 	assert g.ptr(const_arg_ptr) == voidptr(const_arg_ptr)
 	assert g.mut_ptr(const_arg_ptr) == voidptr(const_arg_ptr)
 	assert u.cstr(const_arg_cstr) == voidptr(const_arg_cstr)
+	fields := ConstArgFnFields{
+		ptr: const_arg_fn
+	}
+	assert fields.ptr(const_arg_ptr) == voidptr(const_arg_ptr)
+}
+
+// A `&T` const passed to a `&&T` param still needs the address of a copy.
+fn test_pointer_const_passed_to_deeper_pointer_param() {
+	fields := ConstArgFnFields{
+		deref2: const_arg_fn_deref2
+	}
+	assert fields.deref2(const_arg_ptr) == 7
+	assert const_arg_fn_deref2(const_arg_ptr) == 7
 }
 
 fn test_value_consts_passed_to_pointer_params() {
