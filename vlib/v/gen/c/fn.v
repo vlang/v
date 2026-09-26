@@ -16435,7 +16435,11 @@ fn (mut g FlatGen) gen_call_args(fn_name string, node flat.Node, start int) {
 				if _ := fn_type_from(param_types[arg_idx]) {
 					if !g.is_c_extern_fn_name_arg(arg_id) {
 						if thunk := g.c_call_callback_abi_thunk(arg_id, param_types[arg_idx]) {
-							g.write(thunk)
+							// The thunk has the `fn C.` declaration's signature, which can
+							// differ from the header prototype in qualifiers (`const char *`
+							// vs `char *`); clang 16+ rejects that as an incompatible function
+							// pointer. Let the header's parameter type apply.
+							g.write('(void*)${thunk}')
 							continue
 						}
 					}
@@ -17834,12 +17838,28 @@ fn (g &FlatGen) clone_parallel_type_checker() &types.TypeChecker {
 	return g.tc.fork_for_parallel_codegen()
 }
 
+// bare_builtin_hook_forward_decls declares the hooks that builtin's `-freestanding`
+// branches call. A bare builtin implementation (`-bare-builtin-dir`) provides them,
+// so no V source declares them; without a prototype, clang 16+ and gcc 14 reject
+// the calls as implicit function declarations.
+fn (mut g FlatGen) bare_builtin_hook_forward_decls() {
+	if 'freestanding' !in g.compile_defines {
+		return
+	}
+	g.writeln('void bare_print(u8* buf, u64 len);')
+	g.writeln('void bare_eprint(u8* buf, u64 len);')
+	g.writeln('void bare_panic(string msg);')
+	g.writeln('string bare_backtrace(void);')
+	g.writeln('void* __malloc(size_t n);')
+}
+
 // forward_decls supports forward decls handling for FlatGen.
 fn (mut g FlatGen) forward_decls() {
 	items := g.ensure_fn_gen_items()
 	mut forwarded_exports := []string{cap: g.a.export_fn_names.len}
 	if !g.scope_parallel_workers {
 		g.forward_decl_items(items, mut forwarded_exports)
+		g.bare_builtin_hook_forward_decls()
 		if g.needs_no_main_runtime_init_caller() {
 			g.writeln('static void _vno_main_init_caller(void);')
 		}
@@ -17896,6 +17916,7 @@ fn (mut g FlatGen) forward_decls() {
 		unsafe { batch_output.free() }
 		cgen_worker_scope_free(scratch_scope)
 	}
+	g.bare_builtin_hook_forward_decls()
 	if g.needs_no_main_runtime_init_caller() {
 		g.writeln('static void _vno_main_init_caller(void);')
 	}
