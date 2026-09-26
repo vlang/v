@@ -441,6 +441,10 @@ pub mut:
 	// nothing in the AST records its identifier occurrences or reads.
 	comptime_skipped_names      map[string]bool
 	comptime_skipped_read_names map[string]bool
+	// Every name spelled in such a skipped body, whatever it refers to, keyed by
+	// comptime_skipped_decl_key. A function or constant used only on another
+	// target is not unused.
+	comptime_skipped_decl_names map[string]bool
 	// Goto label operands use the same key format, but are not local-name uses.
 	comptime_skipped_goto_labels map[string]bool
 	export_fn_names              map[string]string
@@ -581,6 +585,15 @@ pub fn (mut a FlatAst) set_node_is_mut(id NodeId, is_mut bool) {
 	}
 }
 
+// comptime_skipped_decl_key returns the comptime_skipped_decl_names key for
+// `name` spelled in `file`. A private function or constant is only usable from
+// its own module, so the checker only probes that module's files. Files, not
+// module names, key the record: the loader may later rename a module to its
+// import path, but it never renames a file.
+pub fn comptime_skipped_decl_key(file string, name string) string {
+	return '${file}|${name}'
+}
+
 // new creates a FlatAst value for flat.
 pub fn FlatAst.new() FlatAst {
 	return FlatAst{
@@ -589,6 +602,7 @@ pub fn FlatAst.new() FlatAst {
 		disabled_fns:                  map[string]bool{}
 		comptime_skipped_names:        map[string]bool{}
 		comptime_skipped_read_names:   map[string]bool{}
+		comptime_skipped_decl_names:   map[string]bool{}
 		comptime_skipped_goto_labels:  map[string]bool{}
 		export_fn_names:               map[string]string{}
 		noreturn_fns:                  map[string]bool{}

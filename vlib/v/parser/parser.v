@@ -267,6 +267,7 @@ pub fn Parser.new(prefs &pref.Preferences) &Parser {
 			disabled_fns:                  map[string]bool{}
 			comptime_skipped_names:        map[string]bool{}
 			comptime_skipped_read_names:   map[string]bool{}
+			comptime_skipped_decl_names:   map[string]bool{}
 			comptime_skipped_goto_labels:  map[string]bool{}
 			export_fn_names:               map[string]string{}
 			contextual_anon_struct_types:  map[string]bool{}
@@ -6735,6 +6736,62 @@ fn (mut p Parser) skip_block() {
 	}
 }
 
+// skip_block_recording_decl_names skips a block like skip_block, recording each
+// name it spells as a possible use of a function or a constant.
+fn (mut p Parser) skip_block_recording_decl_names() {
+	mut depth := 1
+	mut scan := p.new_skipped_decl_name_scan()
+	p.next()
+	for depth > 0 && p.tok != .eof {
+		p.record_skipped_decl_name(mut scan)
+		if p.tok == .lcbr {
+			depth++
+		} else if p.tok == .rcbr {
+			depth--
+		}
+		p.next()
+	}
+}
+
+// SkippedDeclNameScan remembers the tokens before the current one in a skipped
+// `$if` branch, so record_skipped_decl_name can tell a member after a dot from a
+// bare name.
+struct SkippedDeclNameScan {
+	own_module string
+mut:
+	prev_tok  token.Token
+	prev_name string
+	qualifier string
+}
+
+fn (p &Parser) new_skipped_decl_name_scan() SkippedDeclNameScan {
+	return SkippedDeclNameScan{
+		own_module: if p.cur_module.len > 0 { p.cur_module } else { 'main' }
+		prev_tok:   p.tok
+	}
+}
+
+// record_skipped_decl_name records the current token of a skipped `$if` branch
+// when it can name a free function or a constant of this module. It must see
+// every token of the branch once, before the parser moves past it.
+// Keyword-named calls such as `select()` or `lock()` are scanned as keyword
+// tokens, so their spelling is recorded the way keyword_ident_expr reads it.
+// A name after a dot is a field, a method or another module's member, and the
+// unused checks report none of those; only the module's own qualifier, as in
+// `main.helper()`, still names one of its declarations.
+fn (mut p Parser) record_skipped_decl_name(mut scan SkippedDeclNameScan) {
+	if scan.prev_tok != .dot || scan.qualifier == scan.own_module {
+		if p.tok == .name {
+			p.a.comptime_skipped_decl_names[flat.comptime_skipped_decl_key(p.cur_file, p.lit)] = true
+		} else if p.keyword_token_is_ident_expr() {
+			p.a.comptime_skipped_decl_names[flat.comptime_skipped_decl_key(p.cur_file, p.tok.str())] = true
+		}
+	}
+	scan.qualifier = if p.tok == .dot { scan.prev_name } else { '' }
+	scan.prev_name = if p.tok == .name { p.lit } else { '' }
+	scan.prev_tok = p.tok
+}
+
 fn skipped_pipe_starts_lambda(prev_tok token.Token) bool {
 	return prev_tok !in [.name, .key_module, .key_shared, .key_type, .number, .string, .char,
 		.key_true, .key_false, .key_nil, .key_none, .rpar, .rsbr, .rcbr, .not, .question, .inc,
@@ -6776,8 +6833,9 @@ fn (mut p Parser) skipped_lambda_scope_ends(scope SkippedComptimeLambdaScope, to
 
 // skip_comptime_block skips the body of a `$if` branch or a `$match` arm this
 // build does not take, recording the names it spells. The body is never parsed,
-// so without this nothing tells the unused-declaration checks that a parameter
-// or a variable is used there, and they report it on every other target.
+// so without this nothing tells the unused-declaration checks that a parameter,
+// a variable, a function or a constant is used there, and they report it on
+// every other target.
 // Reading them off the token stream is what keeps strings, comments,
 // interpolations and operators right. Only tokens the expression parser can
 // turn into identifiers are recorded; selector members follow a dot, while
@@ -6796,8 +6854,10 @@ fn (mut p Parser) skip_comptime_block() {
 		return
 	}
 	if p.cur_fn_offset < 0 {
-		// A branch outside any function body cannot hide the use of a local.
-		p.skip_block()
+		// A branch outside any function body cannot hide the use of a local,
+		// but a const initializer or a declaration there can still use a
+		// function or a constant.
+		p.skip_block_recording_decl_names()
 		return
 	}
 	prefix := '${p.cur_file}:${p.cur_fn_offset}|'
@@ -6822,8 +6882,10 @@ fn (mut p Parser) skip_comptime_block() {
 	mut map_type_depth := -1
 	mut map_type_paren_depth := -1
 	mut map_type_bracket_depth := -1
+	mut decl_name_scan := p.new_skipped_decl_name_scan()
 	p.next()
 	for depth > 0 && p.tok != .eof {
+		p.record_skipped_decl_name(mut decl_name_scan)
 		if map_type_depth >= 0 && depth == map_type_depth
 			&& paren_depth == map_type_paren_depth && bracket_depth == map_type_bracket_depth
 			&& p.tok in [.comma, .semicolon] {
