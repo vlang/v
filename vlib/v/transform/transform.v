@@ -225,6 +225,7 @@ mut:
 	fixed_array_param_values            map[string]bool
 	mut_value_ident_nodes               map[int]bool
 	ordering_snapshot_names             map[string]bool
+	assert_watch                        AssertOperandWatch
 	pointer_value_lvalues               map[string]bool
 	pointer_value_rvalues               map[string]bool
 	fixed_array_value_rvalues           map[string]bool
@@ -9828,6 +9829,11 @@ pub fn (mut t Transformer) transform_expr(id flat.NodeId) flat.NodeId {
 	if int(id) < 0 {
 		return id
 	}
+	if t.assert_watch.active {
+		if result := t.transform_watched_assert_operand(id, '') {
+			return result
+		}
+	}
 	node := t.a.nodes[int(id)]
 	if node.kind == .string_literal && node.children_count == 1
 		&& node.value in ['__v3_comptime_zero', '__v3_comptime_new'] {
@@ -13315,6 +13321,11 @@ fn (t &Transformer) optional_conversion_source_type(id flat.NodeId) string {
 
 @[direct_array_access]
 fn (mut t Transformer) transform_expr_for_type(id flat.NodeId, target_type string) flat.NodeId {
+	if t.assert_watch.active {
+		if result := t.transform_watched_assert_operand(id, target_type) {
+			return result
+		}
+	}
 	old_expected_node := t.expected_expr_node
 	old_expected_type := t.expected_expr_type
 	if int(id) >= 0 && target_type != '' {
@@ -17791,18 +17802,47 @@ fn (mut t Transformer) transform_children_stmt(id flat.NodeId, node flat.Node) [
 // condition into a temp bool (with its guard/branch prelude) before the
 // assert. Without this, cgen calls `gen_expr` on the bare `if`-expression,
 // which is not a C expression, and emits an empty `if (!())` condition.
+//
+// For a comparison (`assert got == want`), the lowered operands are appended as the
+// last two children, and `node.value` gets `assert_infix_values_marker`, followed by
+// the source spans of both operands, so that a failed assert can report them.
 fn (mut t Transformer) transform_assert_stmt(id flat.NodeId, node flat.Node) []flat.NodeId {
 	if node.children_count == 0 {
 		return [id]
 	}
 	cond_id := t.a.child(&node, 0)
 	cond := t.a.nodes[int(cond_id)]
-	lowered := if cond.kind in [.if_expr, .match_stmt] {
-		t.transform_expr_for_type(cond_id, 'bool')
+	mut operands := []flat.NodeId{}
+	mut operand_spans := ''
+	mut lowered := flat.NodeId(-1)
+	if cond.kind in [.if_expr, .match_stmt] {
+		lowered = t.transform_expr_for_type(cond_id, 'bool')
+	} else if t.assert_reports_operands(cond) {
+		lhs_id := t.a.child(&cond, 0)
+		rhs_id := t.a.child(&cond, 1)
+		lhs_pos := t.a.nodes[int(lhs_id)].pos
+		rhs_pos := t.a.nodes[int(rhs_id)].pos
+		operand_spans = '${lhs_pos.offset}:${lhs_pos.end}:${rhs_pos.offset}:${rhs_pos.end}'
+		pending_start := t.pending_stmts.len
+		saved_watch := t.assert_watch
+		t.assert_watch = AssertOperandWatch{
+			active:  true
+			ids:     [int(lhs_id), int(rhs_id)]!
+			results: [-1, -1]!
+		}
+		lowered = t.transform_expr(cond_id)
+		results := t.assert_watch.results
+		t.assert_watch = saved_watch
+		if lhs := t.assert_report_operand(lhs_id, results[0], pending_start) {
+			if rhs := t.assert_report_operand(rhs_id, results[1], pending_start) {
+				operands << lhs
+				operands << rhs
+			}
+		}
 	} else {
-		t.transform_expr(cond_id)
+		lowered = t.transform_expr(cond_id)
 	}
-	mut new_children := []flat.NodeId{cap: int(node.children_count)}
+	mut new_children := []flat.NodeId{cap: int(node.children_count) + operands.len}
 	new_children << lowered
 	for i in 1 .. node.children_count {
 		child_id := t.a.child(&node, i)
@@ -17816,13 +17856,9 @@ fn (mut t Transformer) transform_assert_stmt(id flat.NodeId, node flat.Node) []f
 		}
 	}
 	mut value := node.value
-	if cond.kind == .infix && cond.children_count >= 2
-		&& cond.op !in [.logical_and, .logical_or] {
-		if lhs, rhs := t.assert_lowered_comparison_values(lowered) {
-			new_children << lhs
-			new_children << rhs
-			value = '${assert_infix_values_marker}${cond.op}'
-		}
+	if operands.len == 2 {
+		new_children << operands
+		value = '${assert_infix_values_marker}${cond.op}:${operand_spans}'
 	}
 	start := t.a.children.len
 	for nc in new_children {
@@ -17841,24 +17877,96 @@ fn (mut t Transformer) transform_assert_stmt(id flat.NodeId, node flat.Node) []f
 	return [new_id]
 }
 
-fn (t &Transformer) assert_lowered_comparison_values(id flat.NodeId) ?(flat.NodeId, flat.NodeId) {
-	if int(id) < 0 || int(id) >= t.a.nodes.len {
+// AssertOperandWatch records the lowered form of the two operands of an assert
+// comparison, while the comparison is lowered.
+struct AssertOperandWatch {
+mut:
+	active  bool
+	ids     [2]int
+	results [2]int
+}
+
+// assert_reports_operands reports whether a failed assert with this condition reports
+// the values of its operands. `-prod` builds remove all asserts.
+fn (t &Transformer) assert_reports_operands(cond flat.Node) bool {
+	if isnil(t.tc) || t.tc.is_prod || cond.kind != .infix || cond.children_count != 2
+		|| cond.op !in [.eq, .ne, .lt, .gt, .le, .ge] {
+		return false
+	}
+	// Value `if`/`match` operands are materialized into their own temps.
+	return !t.operand_hoists_value_branch(t.a.child(&cond, 0))
+		&& !t.operand_hoists_value_branch(t.a.child(&cond, 1))
+}
+
+// transform_watched_assert_operand transforms an operand of the assert comparison
+// that is being lowered, and records its lowered form.
+fn (mut t Transformer) transform_watched_assert_operand(id flat.NodeId, target_type string) ?flat.NodeId {
+	side := if int(id) == t.assert_watch.ids[0] {
+		0
+	} else if int(id) == t.assert_watch.ids[1] {
+		1
+	} else {
 		return none
 	}
+	t.assert_watch.active = false
+	result := if target_type == '' {
+		t.transform_expr(id)
+	} else {
+		t.transform_expr_for_type(id, target_type)
+	}
+	t.assert_watch.active = true
+	t.assert_watch.results[side] = int(result)
+	return result
+}
+
+// assert_report_operand returns the node that a failed assert reads to report the
+// value of one operand: the operand as the comparison lowered it, or the temp that
+// the lowering stored it in. A literal that the lowering did not transform stays as is.
+fn (mut t Transformer) assert_report_operand(source flat.NodeId, result int, pending_start int) ?flat.NodeId {
+	if result < 0 || result >= t.a.nodes.len {
+		return if t.is_assert_literal_operand(source) { source } else { none }
+	}
+	for i in pending_start .. t.pending_stmts.len {
+		stmt := t.a.nodes[int(t.pending_stmts[i])]
+		if stmt.kind == .decl_assign && stmt.children_count == 2
+			&& int(t.a.child(&stmt, 1)) == result {
+			tmp := t.a.child_node(&stmt, 0)
+			if tmp.kind == .ident {
+				return t.make_ident(tmp.value)
+			}
+		}
+	}
+	// A `mut` parameter or receiver is passed as a pointer; report its value, like
+	// the source operand reads it.
+	node := t.a.nodes[result]
+	typ := t.node_type(flat.NodeId(result))
+	if node.kind == .ident && t.mut_param_values[node.value] && typ.starts_with('&') {
+		deref := t.make_prefix(.mul, flat.NodeId(result))
+		t.set_node_typ(int(deref), typ[1..])
+		return deref
+	}
+	return flat.NodeId(result)
+}
+
+// is_assert_literal_operand reports whether an assert operand is a literal, whose
+// source text already is its value.
+fn (t &Transformer) is_assert_literal_operand(id flat.NodeId) bool {
+	if int(id) < 0 || int(id) >= t.a.nodes.len {
+		return false
+	}
 	node := t.a.nodes[int(id)]
-	if node.kind == .infix && node.children_count >= 2 {
-		return t.a.child(&node, 0), t.a.child(&node, 1)
+	return match node.kind {
+		.int_literal, .float_literal, .char_literal, .bool_literal, .string_literal,
+		.nil_literal, .none_expr, .enum_val {
+			true
+		}
+		.paren, .prefix {
+			node.children_count == 1 && t.is_assert_literal_operand(t.a.child(&node, 0))
+		}
+		else {
+			false
+		}
 	}
-	if node.kind in [.paren, .prefix] && node.children_count == 1 {
-		return t.assert_lowered_comparison_values(t.a.child(&node, 0))
-	}
-	// String, sum-type, and aggregate comparisons lower to a two-argument helper.
-	// Reuse those already-lowered arguments so assertion reporting does not emit the
-	// original source call a second time without its method lowering.
-	if node.kind == .call && node.children_count == 3 {
-		return t.a.child(&node, 1), t.a.child(&node, 2)
-	}
-	return none
 }
 
 // --- expr handlers (skeleton - identity transforms with child recursion) ---
