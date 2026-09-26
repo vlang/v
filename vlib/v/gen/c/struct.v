@@ -6979,7 +6979,7 @@ fn (mut g FlatGen) preseed_fn_ptr_type(typ types.Type) {
 		return
 	}
 	if typ is types.FnType {
-		ct := g.tc.c_type(typ)
+		ct := g.fn_ptr_type_key(typ)
 		g.resolve_fn_ptr_type(ct)
 		for param in typ.params {
 			g.preseed_fn_ptr_type(param)

@@ -13631,6 +13631,9 @@ fn (mut g FlatGen) type_name_c_type(type_name string) string {
 		return g.resolve_fn_ptr_type(type_name)
 	}
 	t := g.tc.parse_type(type_name)
+	if _ := fn_type_from(t) {
+		return g.value_c_type(t)
+	}
 	ct := if t is types.OptionType || t is types.ResultType {
 		g.optional_type_name(t)
 	} else if t is types.Enum {
@@ -21399,6 +21402,16 @@ fn (mut g FlatGen) collect_fixed_array_typedefs_needed() map[string]FixedArrayTy
 			if fixed_array_type_first_seen(param_type, g.tc.cur_module, mut type_seen) {
 				g.collect_fixed_array_typedef(param_type, g.tc.cur_module, mut needed)
 			}
+		}
+	}
+	for name, target in g.tc.type_aliases {
+		if !target.contains('[') {
+			continue
+		}
+		g.tc.cur_module = module_from_qualified_name(name)
+		alias_type := g.tc.parse_type(target)
+		if fixed_array_type_first_seen(alias_type, g.tc.cur_module, mut type_seen) {
+			g.collect_fixed_array_typedef(alias_type, g.tc.cur_module, mut needed)
 		}
 	}
 	for name, fields in g.tc.structs {
