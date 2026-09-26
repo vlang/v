@@ -138,15 +138,24 @@ fn module_dir_belongs_to_other_project(mod_dir string, project_root string, modu
 	return manifest.name != modulename && !modulename.starts_with(manifest.name + '.')
 }
 
+// search_paths_include_install_root reports whether the `-path` roots in `search_paths` include
+// the root that modules are installed into, like they do with `@vmodules`.
+fn search_paths_include_install_root(search_paths []string) bool {
+	install_root := os.real_path(os.vmodules_dir())
+	return search_paths.any(os.real_path(it) == install_root)
+}
+
 // ensure_modules_for_tool_are_installed installs the modules from outside vlib that the
 // bundled tool `tool_name`, with its sources in `tool_source`, needs before it is compiled.
 // `search_paths` are the expanded `-path` roots of the tool's build, if it has any. A module
 // that the compiler can already resolve, from those roots or else from any `VMODULES` root, or
 // from the folder of `tool_source` or a folder above it (like the tool's project root), is left
 // alone. So this does not touch the network in the common case, and works offline. An empty
-// `tool_source` skips the folder lookup. The returned error names the module that could not be
-// installed, and how to install it manually, instead of leaving the user with a
-// `cannot import module` builder error.
+// `tool_source` skips the folder lookup. Modules are installed into the first `VMODULES` root,
+// which a build with a `-path` searches only when the `-path` includes it. Otherwise, a missing
+// module is reported right away, instead of being installed where the build cannot find it.
+// The returned error names the module that could not be installed, and how to install it
+// manually, instead of leaving the user with a `cannot import module` builder error.
 pub fn ensure_modules_for_tool_are_installed(tool_name string, tool_source string, search_paths []string, is_verbose bool) ! {
 	for emodule in external_modules_for_tool(tool_name) {
 		if mod_dir := resolvable_module_dir(emodule, tool_source, search_paths) {
@@ -154,6 +163,9 @@ pub fn ensure_modules_for_tool_are_installed(tool_name string, tool_source strin
 				eprintln('ensure_modules_for_tool_are_installed: `${emodule}` is available in ${mod_dir}')
 			}
 			continue
+		}
+		if search_paths.len > 0 && !search_paths_include_install_root(search_paths) {
+			return error('cannot find the `${emodule}` module, which the `${tool_name}` tool needs, in the `-path` roots: ${search_paths.join(', ')}\n`-path` replaces the default module roots, so V does not install `${emodule}` into ${os.vmodules_dir()}, where this build would not find it.\nPut `${emodule}` into one of the `-path` roots, or add `@vmodules` to `-path` and run `v install ${emodule}`, then try again.')
 		}
 		check_module_is_installed(emodule, is_verbose, false) or {
 			// Another `v` process can install the same module at the same time, and then its

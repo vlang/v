@@ -151,3 +151,43 @@ fn test_ensure_modules_for_tool_are_installed_accepts_a_module_installed_concurr
 	ensure_modules_for_tool_are_installed('vdoc', '', []string{}, false)!
 	assert os.is_file(os.join_path(vmodules, 'markdown', 'markdown.v'))
 }
+
+fn test_ensure_modules_for_tool_are_installed_does_not_install_where_the_path_roots_miss_it() {
+	$if windows {
+		return
+	}
+	base := os.join_path(os.vtmp_dir(), 'util_module_deps_path_install_${os.getpid()}')
+	os.rmdir_all(base) or {}
+	vmodules := os.join_path(base, 'vmodules')
+	path_root := os.join_path(base, 'path')
+	os.mkdir_all(vmodules)!
+	os.mkdir_all(path_root)!
+	// This stands in for `v retry -- git clone ...`, and records every install attempt.
+	attempts := os.join_path(base, 'install_attempts')
+	fake_vexe := os.join_path(base, 'fake_v')
+	os.write_file(fake_vexe, '#!/bin/sh\necho "\$*" >> ${os.quoted_path(attempts)}\nexit 1\n')!
+	os.chmod(fake_vexe, 0o755)!
+	old_vmodules := os.getenv_opt('VMODULES')
+	old_vexe := os.getenv_opt('VEXE')
+	os.setenv('VEXE', fake_vexe, true)
+	os.setenv('VMODULES', vmodules, true)
+	defer {
+		restore_env('VMODULES', old_vmodules)
+		restore_env('VEXE', old_vexe)
+		os.rmdir_all(base) or {}
+	}
+	// A build with a `-path` that does not include VMODULES would not find a module installed
+	// there, so it is reported at once, with how to fix it, instead of being installed.
+	mut reported := false
+	ensure_modules_for_tool_are_installed('vdoc', '', [path_root], false) or {
+		assert err.msg().contains('cannot find the `markdown` module')
+		assert err.msg().contains(path_root)
+		assert err.msg().contains('add `@vmodules` to `-path` and run `v install markdown`')
+		reported = true
+	}
+	assert reported
+	assert !os.exists(attempts)
+	// When the `-path` includes VMODULES, like with `@vmodules`, the module is installed there.
+	assert install_is_attempted('', [path_root, vmodules])
+	assert os.read_file(attempts)!.contains('git clone https://github.com/vlang/markdown')
+}
