@@ -542,3 +542,39 @@ fn test_build_module_uses_the_compatibility_compilers_own_vlib() {
 		mymod,
 	]
 }
+
+fn test_install_external_tool_modules_leaves_a_build_with_a_path_to_the_compiler() {
+	$if windows {
+		return
+	}
+	base := os.join_path(os.vtmp_dir(), 'launcher_tool_modules_${os.getpid()}')
+	os.rmdir_all(base) or {}
+	vmodules := os.join_path(base, 'vmodules')
+	path_root := os.join_path(base, 'path')
+	tool_source := os.join_path(base, 'vdoc')
+	os.mkdir_all(vmodules)!
+	os.mkdir_all(path_root)!
+	os.mkdir_all(tool_source)!
+	// This stands in for `v retry -- git clone ...`, and records every install attempt. It
+	// fails, so an attempt would also make install_external_tool_modules exit.
+	attempts := os.join_path(base, 'install_attempts')
+	fake_vexe := os.join_path(base, 'fake_v')
+	os.write_file(fake_vexe, '#!/bin/sh\necho "\$*" >> ${os.quoted_path(attempts)}\nexit 1\n')!
+	os.chmod(fake_vexe, 0o755)!
+	previous_vmodules := os.getenv_opt('VMODULES')
+	previous_vexe := os.getenv_opt('VEXE')
+	previous_sandboxed := os.getenv_opt('VTEST_SANDBOXED_PACKAGING')
+	os.setenv('VMODULES', vmodules, true)
+	os.setenv('VEXE', fake_vexe, true)
+	os.unsetenv('VTEST_SANDBOXED_PACKAGING')
+	defer {
+		restore_environment('VMODULES', previous_vmodules)
+		restore_environment('VEXE', previous_vexe)
+		restore_environment('VTEST_SANDBOXED_PACKAGING', previous_sandboxed)
+		os.rmdir_all(base) or {}
+	}
+	// `markdown` is in none of the roots, but a `-path` replaces VMODULES, so installing it
+	// there would not help. The compiler reports the missing module instead.
+	install_external_tool_modules('vdoc', tool_source, ['-path', path_root])
+	assert !os.exists(attempts)
+}

@@ -9,6 +9,7 @@ import v.cmdexec
 import v.driver
 import v.help
 import v.pref
+import v.util
 
 const v_version = '0.5.2'
 const v1_fallback_binary = 'v1_fallback'
@@ -382,6 +383,9 @@ fn launch_external_tool(vroot string, tool_name string, tool_source string, pref
 				}
 				exec_cached_tool(entry.binary, tool_args)
 			}
+			// Install what the tool needs from outside vlib first: this can make a recorded
+			// `cannot import module` failure below stale, since it stamps the missing module.
+			install_external_tool_modules(tool_name, tool_source, compile_args)
 			if recorded := unbuildable_tool_failure(entry) {
 				// Rebuilding a tool that is already known to not compile would cost seconds on
 				// every single invocation, so report the recorded failure straight away instead.
@@ -398,11 +402,33 @@ fn launch_external_tool(vroot string, tool_name string, tool_source string, pref
 			exec_cached_tool(entry.binary, tool_args)
 		}
 	}
+	install_external_tool_modules(tool_name, tool_source, compile_args)
 	mut driver_args := []string{}
 	driver_args << compile_args
 	driver_args << ['run', tool_source]
 	driver_args << tool_args
 	driver.run(driver_args)
+}
+
+// install_external_tool_modules installs the modules from outside vlib that a tool imports,
+// like `markdown` for `vdoc`, right before the tool is compiled. A fresh V installation does
+// not have them yet, and compiling the tool without them fails with a confusing
+// `cannot import module` error. Sandboxed packaging has no network access, and must provide
+// such modules itself, just like it does for `v build-tools`.
+fn install_external_tool_modules(tool_name string, tool_source string, compile_args []string) {
+	if os.getenv('VTEST_SANDBOXED_PACKAGING') != '' {
+		return
+	}
+	// A `-path` replaces the default module roots, including VMODULES, where modules are
+	// installed. So a build with a `-path` is left to the compiler, which reports a module
+	// that is really missing.
+	if '-path' in compile_args {
+		return
+	}
+	util.ensure_modules_for_tool_are_installed(tool_name, tool_source, tool_cache_is_verbose()) or {
+		eprintln(err.msg())
+		exit(1)
+	}
 }
 
 // external_tool_compile_args applies launcher-only build policy to a `cmd/tools/` helper.
