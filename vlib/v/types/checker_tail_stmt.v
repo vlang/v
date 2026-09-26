@@ -145,6 +145,11 @@ fn (mut tc TypeChecker) check_statement_sequence(node flat.Node, body_start int,
 		}
 		is_value_tail := value_tail && i == last_idx
 		if is_value_tail {
+			if node.kind == .match_branch {
+				if expected := tc.match_branch_enum_context(child_id) {
+					_ = tc.resolve_expr(child_id, expected)
+				}
+			}
 			tc.check_node(child_id)
 		} else {
 			tc.check_stmt_node(child_id)
@@ -163,6 +168,35 @@ fn (mut tc TypeChecker) check_statement_sequence(node flat.Node, body_start int,
 	if tc.valid_node_id(unreachable_id) && tc.should_diagnose(unreachable_id) {
 		tc.record_error_at(.return_mismatch, 'unreachable code', unreachable_id, tc.unreachable_statement_diagnostic_pos(unreachable_id))
 	}
+}
+
+// match_branch_enum_context uses the first branch's enum result to type later
+// shorthands before checking their parenthesized and bitwise expressions.
+fn (tc &TypeChecker) match_branch_enum_context(tail_id flat.NodeId) ?Type {
+	branch_id := tc.direct_parent_id(tail_id)
+	match_id := tc.direct_parent_id(branch_id)
+	if !tc.valid_node_id(match_id) {
+		return none
+	}
+	match_node := tc.a.node(match_id)
+	if match_node.kind != .match_stmt || match_node.children_count < 2 {
+		return none
+	}
+	first_branch_id := tc.a.child(match_node, 1)
+	first_tail := tc.branch_tail_expr_id(first_branch_id)
+	if !tc.valid_node_id(first_tail) {
+		return none
+	}
+	subject_id := tc.a.child(match_node, 0)
+	subject_type := unalias_type(unwrap_pointer(tc.declared_receiver_expr_type(subject_id) or {
+		tc.resolve_type(subject_id)
+	}))
+	expected := tc.match_branch_tail_diagnostic_type(tc.expr_key(subject_id), subject_type,
+		*tc.a.node(first_branch_id), first_tail)
+	if unalias_type(expected) is Enum {
+		return expected
+	}
+	return none
 }
 
 fn (mut tc TypeChecker) initialize_pointer_alias_goto_targets() {
@@ -2086,11 +2120,7 @@ fn (mut tc TypeChecker) check_general_match_branch_tail_types(id flat.NodeId, no
 	}
 	for i in 1 .. tails.len {
 		tail_id := tails[i]
-		actual := if unalias_type(expected) is Enum && tc.a.node(tail_id).kind == .enum_val {
-			tc.resolve_expr(tail_id, expected)
-		} else {
-			tail_types[i]
-		}
+		actual := tail_types[i]
 		if inferred := inferred_contextual_if_type(expected, actual) {
 			expected = inferred
 			continue

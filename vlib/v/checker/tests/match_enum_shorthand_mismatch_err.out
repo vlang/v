@@ -19,3 +19,24 @@ vlib/v/checker/tests/match_enum_shorthand_mismatch_err.vv:20:11: error: unknown 
       |                    ~~~~~~~~
    21 |         }
    22 |         println('${mixed} ${invalid}')
+vlib/v/checker/tests/match_enum_shorthand_mismatch_err.vv:25:12: error: unknown enum field `missing` for `First`
+   23 |         wrapped := match i {
+   24 |             0 { First.a }
+   25 |             else { (.missing) }
+      |                     ~~~~~~~~
+   26 |         }
+   27 |         flags := match i {
+vlib/v/checker/tests/match_enum_shorthand_mismatch_err.vv:25:11: error: return type mismatch, it should be `First`, but it is instead `int`
+   23 |         wrapped := match i {
+   24 |             0 { First.a }
+   25 |             else { (.missing) }
+      |                    ~~~~~~~~~~
+   26 |         }
+   27 |         flags := match i {
+vlib/v/checker/tests/match_enum_shorthand_mismatch_err.vv:29:20: error: unknown enum field `missing` for `Access`
+   27 |         flags := match i {
+   28 |             0 { Access.read }
+   29 |             else { .read | (.missing) }
+      |                             ~~~~~~~~
+   30 |         }
+   31 |         println('${wrapped} ${flags}')

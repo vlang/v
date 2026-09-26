@@ -2130,6 +2130,7 @@ match false {
 A match expression returns the value of the final expression from the matching branch.
 When inferring an enum result, a qualified value in the first branch, such as `Color.red`,
 provides the type for shorthand values such as `.blue` in subsequent branches.
+This also applies to parenthesized shorthand values and bitwise expressions with flag enums.
 
 ```v
 enum Color {
