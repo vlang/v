@@ -32,6 +32,7 @@ mut:
 	buffer    []u8   // where the child reads them again
 	current   bool   // they held what the check read when the child looked
 	base_kb   i64    // the child's resident memory after its first answer
+	work_dir  string // the input directory, which the child enters by name
 }
 
 // serve turns this compilation into a diagnostics server when the environment
@@ -141,7 +142,7 @@ pub fn serve() Request {
 			// The server runs without the compiler's memory watchdog, which is a
 			// thread of its own; the child, which may start threads, keeps one.
 			spawn watch_memory(memory_limit_kb())
-			return channel.child_request(question)
+			return channel.child_request(question, work_dir)
 		}
 		if pid < 0 {
 			channel.close_all()
@@ -217,6 +218,15 @@ pub fn (mut r Request) next_question(code int) ?string {
 	}
 	os.fd_write(r.status_fd, 'done ${code}\n')
 	question := r.questions.read_line()?
+	// The client may have written the input directory again, with the same
+	// files: the child enters it by name again, as a new child does, or it would
+	// read the relative paths of its next answer from the directory it replaced.
+	if r.work_dir != '' {
+		os.chdir(r.work_dir) or {
+			os.fd_write(r.status_fd, 'stale\n')
+			return none
+		}
+	}
 	// The child answers only from the program on disk. The server names it
 	// before its answer: it waits for `go`.
 	if r.inputs.changed(mut r.buffer) {
@@ -270,7 +280,7 @@ fn new_channel() Channel {
 }
 
 // child_request closes the server's ends in the child, which keeps its own.
-fn (mut c Channel) child_request(question string) Request {
+fn (mut c Channel) child_request(question string, work_dir string) Request {
 	os.fd_close(c.questions_fd)
 	os.fd_close(c.status_fd)
 	return Request{
@@ -279,6 +289,7 @@ fn (mut c Channel) child_request(question string) Request {
 			fd: c.child_questions_fd
 		}
 		status_fd: c.child_status_fd
+		work_dir:  work_dir
 	}
 }
 
