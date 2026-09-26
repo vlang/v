@@ -9454,9 +9454,9 @@ a := 100
 b := 20
 mut c := 0
 asm amd64 {
-    mov eax, a
-    add eax, b
-    mov c, eax
+    mov rax, a
+    add rax, b
+    mov c, rax
     ; =r (c) as c // output
     ; r (a) as a // input
       r (b) as b
