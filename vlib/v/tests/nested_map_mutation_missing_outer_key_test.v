@@ -132,3 +132,13 @@ fn test_mutation_keys_are_evaluated_once() {
 	assert c.n == 2
 	assert assigned.str() == "{'a': {'b': 1}}"
 }
+
+fn test_mutation_through_parenthesized_outer_index() {
+	mut appended := map[string]map[string][]int{}
+	(appended['x'])['k'] << 3
+	assert appended.str() == "{'x': {'k': [3]}}"
+	mut counts := map[string]map[string]int{}
+	(counts['x'])['k'] += 1
+	(counts['x'])['k'] += 2
+	assert counts.str() == "{'x': {'k': 3}}"
+}

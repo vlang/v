@@ -1827,9 +1827,22 @@ fn (mut t Transformer) stable_map_lvalue_for_reuse(id flat.NodeId) flat.NodeId {
 	return t.stable_expr_for_reuse(id)
 }
 
+// unwrap_parens returns `id` without the parentheses around it.
+fn (t &Transformer) unwrap_parens(id flat.NodeId) flat.NodeId {
+	mut cur := id
+	for int(cur) >= 0 {
+		node := t.a.nodes[int(cur)]
+		if node.kind != .paren || node.children_count == 0 {
+			break
+		}
+		cur = t.a.child(&node, 0)
+	}
+	return cur
+}
+
 // map_index_yields_map reports whether `id` is a map index whose value is a map.
 fn (mut t Transformer) map_index_yields_map(id flat.NodeId) bool {
-	info := t.map_index_info(id) or { return false }
+	info := t.map_index_info(t.unwrap_parens(id)) or { return false }
 	return t.clean_map_type(info.value_type).starts_with('map[')
 }
 
@@ -1839,7 +1852,8 @@ fn (mut t Transformer) map_index_yields_map(id flat.NodeId) bool {
 // mutation is kept in `m`. `m` and `k` are evaluated once, and the empty map is
 // only allocated for a missing key.
 fn (mut t Transformer) map_index_inner_map_slot(id flat.NodeId) ?flat.NodeId {
-	info := t.map_index_info(id) or { return none }
+	// `(m[k])[k2] << v` mutates the same inner map as `m[k][k2] << v`.
+	info := t.map_index_info(t.unwrap_parens(id)) or { return none }
 	if !t.clean_map_type(info.value_type).starts_with('map[') {
 		return none
 	}
