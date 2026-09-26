@@ -13631,6 +13631,9 @@ fn (mut g FlatGen) type_name_c_type(type_name string) string {
 		return g.resolve_fn_ptr_type(type_name)
 	}
 	t := g.tc.parse_type(type_name)
+	if fn_type := fn_type_from(t) {
+		return g.resolve_fn_ptr_type(g.fn_ptr_type_key(fn_type))
+	}
 	ct := if t is types.OptionType || t is types.ResultType {
 		g.optional_type_name(t)
 	} else if t is types.Enum {

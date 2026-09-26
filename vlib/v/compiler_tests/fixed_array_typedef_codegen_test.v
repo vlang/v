@@ -307,3 +307,35 @@ fn main() {
 	assert generated.contains('typedef fixture__Mode Array_fixed_fixture__Mode_2[2];'), generated
 	assert !generated.contains('Array_fixed_int_2'), generated
 }
+
+fn test_enum_fixed_array_fn_pointer_uses_emitted_typedef_name() {
+	v3_bin := fixed_array_build_v3()
+	root := fixed_array_write_project('enum_fn_pointer', 'module fixture
+
+pub enum Combiner as i32 {
+	keep = 0
+	replace = 1
+}
+
+pub type Callback = fn (command voidptr, ops [2]Combiner)
+
+pub fn callback_size() int {
+	return sizeof(Callback)
+}
+', 'module main
+
+import fixture
+
+fn main() {
+	println(fixture.callback_size())
+}
+')
+	bin := os.join_path(root, 'out')
+	compile := os.execute('${v3_bin} ${root} -b c -o ${bin}')
+	assert compile.exit_code == 0, compile.output
+	generated := os.read_file(bin + '.c') or { panic(err) }
+	assert generated.contains('Array_fixed_fixture__Combiner_2[2]'), generated
+	run := os.execute(bin)
+	assert run.exit_code == 0, run.output
+	assert run.output.trim_space().int() > 0, run.output
+}
