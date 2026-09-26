@@ -51,6 +51,19 @@ fn test_sizeof_in_assert() {
 	assert res.output.contains('assert sizeof(Abc) == sizeof(Xyz)')
 }
 
+fn test_assert_failure_preserves_builtin_source_spelling() {
+	res := vexecute('vlib/v/tests/testdata/assert_builtin_source_spelling_failing_test.v')
+	assert res.exit_code == 1, res.output
+	for expression in [
+		"assert 'sizeof(AssertSourceType)' == 'sizeof(int)'",
+		"assert '__offsetof(AssertSourceType, value)' == 'offsetof(AssertSourceType, value)'",
+		'assert sizeof(&AssertSourceType) == 0',
+		'assert sizeof([2]AssertSourceType) == 0',
+	] {
+		assert res.output.contains(expression), res.output
+	}
+}
+
 fn test_assert_failure_runs_scoped_defer_cleanup() {
 	defer {
 		os.rm(assert_failed_defer_cleanup_path) or {}
