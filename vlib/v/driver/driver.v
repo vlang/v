@@ -19441,9 +19441,10 @@ fn resolve_imports(mut a flat.FlatAst, mut p parser.Parser, prefs &pref.Preferen
 	mut parsed_modules := map[string]bool{}
 	parsed_modules['builtin'] = true
 	parsed_modules['main'] = true
-	explicit_initial_imports := imports_from_files(a, initial_files)
-	canonicalize_colliding_initial_modules(mut a, prefs, initial_files, explicit_initial_imports)
-	seed_initial_modules(a, initial_files, explicit_initial_imports, mut parsed_modules)
+	initial_file_nodes := selected_file_node_ids(a, initial_files)
+	explicit_initial_imports := imports_from_file_nodes(a, initial_file_nodes)
+	canonicalize_colliding_initial_modules(mut a, prefs, initial_file_nodes, explicit_initial_imports)
+	seed_initial_modules(a, initial_file_nodes, explicit_initial_imports, mut parsed_modules)
 
 	// Backend modules excluded by the active configuration are never parsed: their
 	// dispatch in main() is gated out by the matching `$if !skip_* ?`, so nothing
@@ -20114,21 +20115,44 @@ fn record_cache_module_dependency(mut state V3ModuleCacheState, owner string, de
 	}
 }
 
-fn seed_initial_modules(a &flat.FlatAst, initial_files []string, explicit_imports map[string]bool, mut parsed_modules map[string]bool) {
+// selected_file_node_ids returns the `.file` nodes of user code that hold the
+// declarations of `files`, named as given or by their real path.
+fn selected_file_node_ids(a &flat.FlatAst, files []string) []int {
+	mut ids := []int{}
+	if files.len == 0 {
+		return ids
+	}
 	mut selected_files := map[string]bool{}
-	for file in initial_files {
+	for file in files {
 		selected_files[file] = true
 		selected_files[os.real_path(file)] = true
 	}
-	mut declared_modules := map[string]bool{}
+	// A file has two `.file` nodes; the declarations hang from the second.
+	mut real_paths := map[string]string{}
 	for file_idx, file_node in a.nodes {
-		if file_idx < a.user_code_start || file_node.kind != .file || file_node.value.len == 0 {
+		if file_idx < a.user_code_start || file_node.kind != .file || file_node.value.len == 0
+			|| file_node.children_count == 0 {
 			continue
 		}
-		if !selected_files[file_node.value] && !selected_files[os.real_path(file_node.value)] {
-			continue
+		if !selected_files[file_node.value] {
+			real_path := real_paths[file_node.value] or {
+				path := os.real_path(file_node.value)
+				real_paths[file_node.value] = path
+				path
+			}
+			if !selected_files[real_path] {
+				continue
+			}
 		}
-		module_name := test_file_module_name(a, file_node)
+		ids << file_idx
+	}
+	return ids
+}
+
+fn seed_initial_modules(a &flat.FlatAst, initial_file_nodes []int, explicit_imports map[string]bool, mut parsed_modules map[string]bool) {
+	mut declared_modules := map[string]bool{}
+	for file_idx in initial_file_nodes {
+		module_name := test_file_module_name(a, a.nodes[file_idx])
 		if module_name.len > 0 {
 			declared_modules[module_name] = true
 		}
@@ -20138,14 +20162,8 @@ fn seed_initial_modules(a &flat.FlatAst, initial_files []string, explicit_import
 	// project root (issue #28074), and that local module must win over the path
 	// lookup, which only ever looks for a subdirectory of the same name.
 	holds_local_submodules := declared_modules.len > 1
-	for file_idx, file_node in a.nodes {
-		if file_idx < a.user_code_start || file_node.kind != .file || file_node.value.len == 0 {
-			continue
-		}
-		if !selected_files[file_node.value] && !selected_files[os.real_path(file_node.value)] {
-			continue
-		}
-		module_name := test_file_module_name(a, file_node)
+	for file_idx in initial_file_nodes {
+		module_name := test_file_module_name(a, a.nodes[file_idx])
 		if module_name.len == 0 {
 			continue
 		}
@@ -20159,19 +20177,9 @@ fn seed_initial_modules(a &flat.FlatAst, initial_files []string, explicit_import
 	}
 }
 
-fn canonicalize_colliding_initial_modules(mut a flat.FlatAst, prefs &pref.Preferences, initial_files []string, explicit_imports map[string]bool) {
-	mut selected_files := map[string]bool{}
-	for file in initial_files {
-		selected_files[file] = true
-		selected_files[os.real_path(file)] = true
-	}
-	for file_idx, file_node in a.nodes {
-		if file_idx < a.user_code_start || file_node.kind != .file || file_node.value.len == 0 {
-			continue
-		}
-		if !selected_files[file_node.value] && !selected_files[os.real_path(file_node.value)] {
-			continue
-		}
+fn canonicalize_colliding_initial_modules(mut a flat.FlatAst, prefs &pref.Preferences, initial_file_nodes []int, explicit_imports map[string]bool) {
+	for file_idx in initial_file_nodes {
+		file_node := a.nodes[file_idx]
 		module_name := test_file_module_name(a, file_node)
 		if module_name.len == 0 || module_name !in explicit_imports {
 			continue
@@ -20220,19 +20228,13 @@ fn initial_module_path_identity(prefs &pref.Preferences, file string, module_nam
 }
 
 fn imports_from_files(a &flat.FlatAst, files []string) map[string]bool {
-	mut selected_files := map[string]bool{}
-	for file in files {
-		selected_files[file] = true
-		selected_files[os.real_path(file)] = true
-	}
+	return imports_from_file_nodes(a, selected_file_node_ids(a, files))
+}
+
+fn imports_from_file_nodes(a &flat.FlatAst, file_nodes []int) map[string]bool {
 	mut imports := map[string]bool{}
-	for file_idx, file_node in a.nodes {
-		if file_idx < a.user_code_start || file_node.kind != .file || file_node.value.len == 0 {
-			continue
-		}
-		if !selected_files[file_node.value] && !selected_files[os.real_path(file_node.value)] {
-			continue
-		}
+	for file_idx in file_nodes {
+		file_node := a.nodes[file_idx]
 		for i in 0 .. file_node.children_count {
 			child := a.child_node(&file_node, i)
 			if child.kind == .import_decl && child.value.len > 0 {
