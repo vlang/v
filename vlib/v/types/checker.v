@@ -6403,10 +6403,7 @@ fn deprecated_byte_name_offset(node flat.Node) ?int {
 // deprecated_byte_is_field_key reports `byte:` in a struct init or config call,
 // whose field_init node has no name span.
 fn deprecated_byte_is_field_key(source string, end int) bool {
-	mut next := end
-	for next < source.len && source[next] in [` `, `\t`] {
-		next++
-	}
+	next := deprecated_byte_skip_trivia_forward(source, end)
 	return next < source.len && source[next] == `:`
 		&& (next + 1 >= source.len || source[next + 1] != `=`)
 }
@@ -6414,31 +6411,28 @@ fn deprecated_byte_is_field_key(source string, end int) bool {
 // deprecated_byte_is_receiver_name reports the name in `fn (byte T)` and
 // `fn (mut byte T)`, whose receiver param node has no name span.
 fn deprecated_byte_is_receiver_name(source string, start int, end int) bool {
-	if end >= source.len || source[end] !in [` `, `\t`, `\n`, `\r`] {
+	next := deprecated_byte_skip_trivia_forward(source, end)
+	if next == end {
 		// `fn (byte) m()` is a type-only receiver.
 		return false
-	}
-	mut next := end
-	for next < source.len && source[next] in [` `, `\t`, `\n`, `\r`] {
-		next++
 	}
 	if next >= source.len || !deprecated_byte_starts_type(source[next]) {
 		// `fn (byte )`, `fn (byte , u8)`, `fn (byte\n)` and `fn (byte /* c */)` are type-only
 		// params: no type follows the name.
 		return false
 	}
-	mut i := deprecated_byte_skip_blanks_back(source, start)
+	mut i := deprecated_byte_skip_trivia_back(source, start)
 	mut word_start := i
 	for word_start > 0 && source[word_start - 1].is_letter() {
 		word_start--
 	}
 	if source[word_start..i] in ['mut', 'shared'] {
-		i = deprecated_byte_skip_blanks_back(source, word_start)
+		i = deprecated_byte_skip_trivia_back(source, word_start)
 	}
 	if i == 0 || source[i - 1] != `(` {
 		return false
 	}
-	i = deprecated_byte_skip_blanks_back(source, i - 1)
+	i = deprecated_byte_skip_trivia_back(source, i - 1)
 	return i >= 2 && source[i - 2..i] == 'fn'
 		&& (i == 2 || !(source[i - 3].is_alnum() || source[i - 3] == `_`))
 }
@@ -6449,14 +6443,84 @@ fn deprecated_byte_starts_type(c u8) bool {
 	return c.is_letter() || c in [`_`, `&`, `[`, `?`, `!`, `.`]
 }
 
-// deprecated_byte_skip_blanks_back skips the whitespace before `offset`, line breaks
-// included: the parser accepts a receiver wrapped after `fn (`, as in `fn (\n\tbyte T)`.
-fn deprecated_byte_skip_blanks_back(source string, offset int) int {
+// deprecated_byte_skip_trivia_forward returns the offset of the first token at or after
+// `offset`, skipping whitespace, line breaks, `// ...` and `/* ... */` comments.
+fn deprecated_byte_skip_trivia_forward(source string, offset int) int {
 	mut i := offset
-	for i > 0 && source[i - 1] in [` `, `\t`, `\n`, `\r`] {
-		i--
+	for i < source.len {
+		if source[i] in [` `, `\t`, `\n`, `\r`] {
+			i++
+		} else if i + 1 < source.len && source[i] == `/` && source[i + 1] == `*` {
+			i = deprecated_byte_block_comment_end(source, i)
+		} else if i + 1 < source.len && source[i] == `/` && source[i + 1] == `/` {
+			i = source.index_after('\n', i + 2) or { source.len }
+		} else {
+			break
+		}
 	}
 	return i
+}
+
+// deprecated_byte_skip_trivia_back returns the offset just after the last token before
+// `offset`, skipping whitespace, line breaks and `/* ... */` comments, as in
+// `fn ( /* c */\n\tbyte T)`.
+fn deprecated_byte_skip_trivia_back(source string, offset int) int {
+	mut i := offset
+	for i > 0 {
+		if source[i - 1] in [` `, `\t`, `\n`, `\r`] {
+			i--
+		} else if i >= 2 && source[i - 2] == `*` && source[i - 1] == `/` {
+			i = deprecated_byte_block_comment_start(source, i)
+		} else {
+			break
+		}
+	}
+	return i
+}
+
+// deprecated_byte_block_comment_end returns the offset after the `/* ... */` comment that
+// starts at `start`. Like the scanner, it nests: an inner `/*` (but not `/*/`) needs its own `*/`.
+fn deprecated_byte_block_comment_end(source string, start int) int {
+	mut depth := 1
+	mut i := start + 2
+	for i < source.len {
+		if i + 1 < source.len && source[i] == `/` && source[i + 1] == `*`
+			&& (i + 2 >= source.len || source[i + 2] != `/`) {
+			depth++
+			i += 2
+		} else if i + 1 < source.len && source[i] == `*` && source[i + 1] == `/` {
+			depth--
+			i += 2
+			if depth == 0 {
+				return i
+			}
+		} else {
+			i++
+		}
+	}
+	return source.len
+}
+
+// deprecated_byte_block_comment_start returns the offset of the `/*` that opens the nested
+// block comment ending at `end`, just after its `*/`.
+fn deprecated_byte_block_comment_start(source string, end int) int {
+	mut depth := 1
+	mut i := end - 2
+	for i >= 2 {
+		if source[i - 2] == `*` && source[i - 1] == `/` {
+			depth++
+			i -= 2
+		} else if source[i - 2] == `/` && source[i - 1] == `*` {
+			depth--
+			i -= 2
+			if depth == 0 {
+				return i
+			}
+		} else {
+			i--
+		}
+	}
+	return 0
 }
 
 fn (mut tc TypeChecker) check_deprecated_byte_types_in_file(anchor flat.NodeId, file_id int, path string, identifier_offsets map[u64]bool, inline_asm_ranges []token.Pos) {
@@ -6476,8 +6540,7 @@ fn (mut tc TypeChecker) check_deprecated_byte_types_in_file(anchor flat.NodeId, 
 			continue
 		}
 		if i + 1 < source.len && source[i] == `/` && source[i + 1] == `*` {
-			end := source.index_after('*/', i + 2) or { source.len }
-			i = int_min(end + 2, source.len)
+			i = deprecated_byte_block_comment_end(source, i)
 			continue
 		}
 		if source[i] in [`'`, `"`, `\``] {
@@ -6537,10 +6600,7 @@ fn deprecated_byte_is_in_ranges(ranges []token.Pos, offset int) bool {
 }
 
 fn deprecated_byte_is_type_comparison(source string, offset int) bool {
-	mut end := offset
-	for end > 0 && source[end - 1] in [` `, `\t`, `\r`, `\n`] {
-		end--
-	}
+	end := deprecated_byte_skip_trivia_back(source, offset)
 	mut start := end
 	for start > 0 && (source[start - 1].is_alnum() || source[start - 1] == `_`) {
 		start--

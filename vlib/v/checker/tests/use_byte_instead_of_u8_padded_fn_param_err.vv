@@ -1,4 +1,8 @@
-struct Packet {}
+struct Packet {
+	byte u8
+}
+
+type Val = int | u8
 
 fn (byte Packet) name() {}
 
@@ -6,6 +10,10 @@ fn (byte &Packet) id() {}
 
 fn (
 	byte Packet) wrapped() {}
+
+fn (byte /* receiver */ Packet) commented() {}
+
+fn (mut /* a /* nested */ comment */ byte Packet) nested() {}
 
 fn run(cb fn (byte ), pair fn (byte , u8)) {
 	cb(1)
@@ -19,6 +27,10 @@ fn run_wrapped(cb fn (byte
 	pair(1, 2)
 }
 
+fn run_commented(cb fn (byte /* comment */)) {
+	cb(1)
+}
+
 fn main() {
 	run(fn (_ u8) {}, fn (_ u8, _ u8) {})
 	add_one := fn (byte int) int {
@@ -29,4 +41,10 @@ fn main() {
 	_ := fn (byte /* type only */, u8) {}
 	_ := fn (
 		byte, u8) {}
+	_ := Packet{
+		byte /* field */: 3
+	}
+	v := Val(u8(1))
+	_ = v is /* c */ byte
+	/* outer /* inner */ byte */
 }
