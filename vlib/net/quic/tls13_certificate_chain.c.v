@@ -4,6 +4,207 @@ import net.mbedtls
 import crypto.sha256
 import crypto.sha512
 
+// Vendored mbedTLS enum values used only to translate its parsed X.509
+// signature metadata into RFC 8446 SignatureScheme codepoints. They are kept
+// here, beside the translation, instead of leaking C enums into the plain-V
+// server handshake.
+const mbedtls_pk_rsa = 1
+const mbedtls_pk_eckey = 2
+const mbedtls_pk_ecdsa = 4
+const mbedtls_pk_rsassa_pss = 6
+const mbedtls_md_sha256 = 0x09
+const mbedtls_md_sha384 = 0x0a
+const mbedtls_md_sha512 = 0x0b
+const mbedtls_ecp_group_secp256r1 = 3
+const mbedtls_ecp_group_secp384r1 = 4
+const mbedtls_ecp_group_secp521r1 = 5
+const sig_scheme_rsa_pss_pss_sha256 = u16(0x0809)
+const sig_scheme_rsa_pss_pss_sha384 = u16(0x080a)
+const sig_scheme_rsa_pss_pss_sha512 = u16(0x080b)
+
+fn validate_certificate_pss_parameters(info mbedtls.CertificateSignatureInfo) ! {
+	digest_len := match info.signature_digest_type {
+		mbedtls_md_sha256 { 32 }
+		mbedtls_md_sha384 { 48 }
+		mbedtls_md_sha512 { 64 }
+		else {
+			return error('unsupported RSA-PSS certificate signature digest ${info.signature_digest_type}')
+		}
+	}
+	if info.signature_pss_mgf1_digest != info.signature_digest_type {
+		return error('RSA-PSS certificate signature MGF1 digest ${info.signature_pss_mgf1_digest} does not match signature digest ${info.signature_digest_type}')
+	}
+	if info.signature_pss_salt_len != digest_len {
+		return error('RSA-PSS certificate signature salt length ${info.signature_pss_salt_len} does not match digest length ${digest_len}')
+	}
+}
+
+fn certificate_signature_scheme(info mbedtls.CertificateSignatureInfo) !u16 {
+	if !info.issuer_known {
+		return error('the issuer certificate is absent, so its public-key type and curve cannot be determined')
+	}
+	match info.signature_public_key_type {
+		mbedtls_pk_rsa {
+			if info.issuer_public_key_type != mbedtls_pk_rsa {
+				return error('an RSA-PKCS1 certificate signature has issuer public-key type ${info.issuer_public_key_type}, expected RSA')
+			}
+			return match info.signature_digest_type {
+				mbedtls_md_sha256 { sig_scheme_rsa_pkcs1_sha256 }
+				mbedtls_md_sha384 { sig_scheme_rsa_pkcs1_sha384 }
+				mbedtls_md_sha512 { sig_scheme_rsa_pkcs1_sha512 }
+				else {
+					error('unsupported RSA-PKCS1 certificate signature digest ${info.signature_digest_type}')
+				}
+			}
+		}
+		mbedtls_pk_ecdsa {
+			if info.issuer_public_key_type !in [mbedtls_pk_eckey, mbedtls_pk_ecdsa] {
+				return error('an ECDSA certificate signature has non-EC issuer public-key type ${info.issuer_public_key_type}')
+			}
+			if info.issuer_public_key_curve_id == mbedtls_ecp_group_secp256r1
+				&& info.signature_digest_type == mbedtls_md_sha256 {
+				return sig_scheme_ecdsa_secp256r1_sha256
+			}
+			if info.issuer_public_key_curve_id == mbedtls_ecp_group_secp384r1
+				&& info.signature_digest_type == mbedtls_md_sha384 {
+				return sig_scheme_ecdsa_secp384r1_sha384
+			}
+			if info.issuer_public_key_curve_id == mbedtls_ecp_group_secp521r1
+				&& info.signature_digest_type == mbedtls_md_sha512 {
+				return sig_scheme_ecdsa_secp521r1_sha512
+			}
+			return error('unsupported ECDSA certificate signature curve ${info.issuer_public_key_curve_id} and digest ${info.signature_digest_type}')
+		}
+		mbedtls_pk_rsassa_pss {
+			validate_certificate_pss_parameters(info)!
+			if info.issuer_public_key_type == mbedtls_pk_rsa {
+				return match info.signature_digest_type {
+					mbedtls_md_sha256 { sig_scheme_rsa_pss_rsae_sha256 }
+					mbedtls_md_sha384 { sig_scheme_rsa_pss_rsae_sha384 }
+					mbedtls_md_sha512 { sig_scheme_rsa_pss_rsae_sha512 }
+					else {
+						error('unsupported RSA-PSS certificate signature digest ${info.signature_digest_type}')
+					}
+				}
+			}
+			if info.issuer_public_key_type == mbedtls_pk_rsassa_pss {
+				return match info.signature_digest_type {
+					mbedtls_md_sha256 { sig_scheme_rsa_pss_pss_sha256 }
+					mbedtls_md_sha384 { sig_scheme_rsa_pss_pss_sha384 }
+					mbedtls_md_sha512 { sig_scheme_rsa_pss_pss_sha512 }
+					else {
+						error('unsupported RSA-PSS certificate signature digest ${info.signature_digest_type}')
+					}
+				}
+			}
+			return error('an RSA-PSS certificate signature has incompatible issuer public-key type ${info.issuer_public_key_type}')
+		}
+		else {
+			return error('unsupported certificate signature public-key type ${info.signature_public_key_type}')
+		}
+	}
+}
+
+fn certificate_signature_scheme_candidates(info mbedtls.CertificateSignatureInfo) ![]u16 {
+	if info.issuer_known {
+		return [certificate_signature_scheme(info)!]
+	}
+	return match info.signature_public_key_type {
+		mbedtls_pk_rsa {
+			match info.signature_digest_type {
+				mbedtls_md_sha256 { [sig_scheme_rsa_pkcs1_sha256] }
+				mbedtls_md_sha384 { [sig_scheme_rsa_pkcs1_sha384] }
+				mbedtls_md_sha512 { [sig_scheme_rsa_pkcs1_sha512] }
+				else {
+					error('unsupported RSA-PKCS1 certificate signature digest ${info.signature_digest_type}')
+				}
+			}
+		}
+		mbedtls_pk_ecdsa {
+			// The signature OID identifies its digest but not the omitted
+			// issuer's EC curve. Retain every currently supported ECDSA scheme
+			// with that digest rather than inventing an issuer curve.
+			match info.signature_digest_type {
+				mbedtls_md_sha256 { [sig_scheme_ecdsa_secp256r1_sha256] }
+				mbedtls_md_sha384 { [sig_scheme_ecdsa_secp384r1_sha384] }
+				mbedtls_md_sha512 { [sig_scheme_ecdsa_secp521r1_sha512] }
+				else {
+					error('unsupported ECDSA certificate signature digest ${info.signature_digest_type}')
+				}
+			}
+		}
+		mbedtls_pk_rsassa_pss {
+			validate_certificate_pss_parameters(info)!
+			// The signature OID likewise cannot distinguish rsaEncryption from
+			// RSASSA-PSS in an omitted issuer's SubjectPublicKeyInfo.
+			match info.signature_digest_type {
+				mbedtls_md_sha256 {
+					[sig_scheme_rsa_pss_rsae_sha256, sig_scheme_rsa_pss_pss_sha256]
+				}
+				mbedtls_md_sha384 {
+					[sig_scheme_rsa_pss_rsae_sha384, sig_scheme_rsa_pss_pss_sha384]
+				}
+				mbedtls_md_sha512 {
+					[sig_scheme_rsa_pss_rsae_sha512, sig_scheme_rsa_pss_pss_sha512]
+				}
+				else {
+					error('unsupported RSA-PSS certificate signature digest ${info.signature_digest_type}')
+				}
+			}
+		}
+		else {
+			error('unsupported certificate signature public-key type ${info.signature_public_key_type}')
+		}
+	}
+}
+
+// validate_certificate_chain_signature_algorithms parses the configured DER
+// chain and verifies every non-anchor certificate signature can be expressed
+// by a scheme in the client's certificate-specific offer. A terminal
+// self-issued certificate is the prospective trust anchor and its signature
+// is exempt from negotiation. If a terminal certificate's issuer was omitted,
+// all schemes compatible with the known signature OID/digest are considered;
+// exact issuer key type and curve matching is retained whenever it is present.
+fn validate_certificate_chain_signature_algorithms(certificate_list []CertificateEntry, offered_schemes []u16, offer_name string) ! {
+	mut der_certs := [][]u8{cap: certificate_list.len}
+	for entry in certificate_list {
+		der_certs << entry.cert_data
+	}
+	chain := mbedtls.build_certificate_chain(der_certs)!
+	defer {
+		mbedtls.free_certificate_chain(chain)
+	}
+	infos := mbedtls.certificate_signature_infos(chain)
+	if infos.len != certificate_list.len {
+		return error('parsed ${infos.len} certificates from a configured chain containing ${certificate_list.len} entries')
+	}
+	for i, info in infos {
+		if i == infos.len - 1 && info.self_issued {
+			continue
+		}
+		candidates := certificate_signature_scheme_candidates(info) or {
+			return error('certificate ${i} signature cannot be matched to a TLS SignatureScheme: ${err.msg()}')
+		}
+		mut compatible := false
+		for scheme in candidates {
+			if scheme in offered_schemes {
+				compatible = true
+				break
+			}
+		}
+		if !compatible {
+			if candidates.len == 1 {
+				return error('certificate ${i} uses signature scheme 0x${candidates[0]:04x}, which the ClientHello did not offer in ${offer_name}')
+			}
+			mut candidate_names := []string{cap: candidates.len}
+			for scheme in candidates {
+				candidate_names << '0x${scheme:04x}'
+			}
+			return error('certificate ${i} uses one of the signature schemes ${candidate_names.join(', ')}, none of which the ClientHello offered in ${offer_name}')
+		}
+	}
+}
+
 // VerifiedCertificateChain wraps an mbedTLS certificate chain built from a
 // parsed TLS 1.3 Certificate message (tls13_certificate.v's
 // ParsedCertificate) once it has passed chain-trust validation. The caller
