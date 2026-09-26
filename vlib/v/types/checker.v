@@ -6987,7 +6987,14 @@ fn (tc &TypeChecker) imported_type_short_name(typ string) ?string {
 		return none
 	}
 	if _ := tc.resolve_import_alias(typ[..dot]) {
-		return typ.all_after_last('.')
+		short := typ.all_after_last('.')
+		// `main` and `builtin` declarations are also keyed by their short names, but
+		// a module qualifier never reaches them: `baz.Foo` must not resolve to the
+		// `Foo` of `main` when module `baz` declares no such type.
+		if short in tc.first_type_declaration_ids {
+			return none
+		}
+		return short
 	}
 	return none
 }

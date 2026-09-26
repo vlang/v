@@ -5150,8 +5150,10 @@ fn (tc &TypeChecker) unknown_qualified_struct_init_pos(node flat.Node) token.Pos
 	source := tc.source_texts_by_file[file.name] or { return node.pos }
 	start := int_max(0, int_min(node.pos.offset, source.len))
 	end := int_max(start, int_min(node.pos.end, source.len))
-	text := source[start..end]
-	dot := text.last_index_u8(`.`)
+	// Only the type name holds the module qualifier; the field values and generic
+	// arguments after it can contain dots of their own (`baz.Foo{bar.MyData{}}`).
+	type_name := source[start..end].all_before('{').all_before('[')
+	dot := type_name.last_index_u8(`.`)
 	if dot >= 0 {
 		return token.new_span(node.pos.id, start + dot + 1, end)
 	}
@@ -10175,6 +10177,13 @@ pub fn (tc &TypeChecker) interface_metadata_name(name string) string {
 	// short-name match below maps e.g. `csv.Reader` onto `io.Reader`, making the
 	// struct an implementer of that interface and its methods interface methods.
 	if tc.non_interface_type_known(lookup) {
+		return lookup
+	}
+	// Only a plain, possibly module-qualified, name can name an interface. In an
+	// array, map, option, pointer or function type the text after the last `.` is
+	// an element or parameter type (`[]bar.MyData` -> `MyData`), which must not
+	// match a same-named interface of another module.
+	if !should_check_named_type(lookup) {
 		return lookup
 	}
 	short := lookup.all_after_last('.')
