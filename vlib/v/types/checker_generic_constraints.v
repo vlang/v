@@ -180,6 +180,27 @@ fn (tc &TypeChecker) generic_constraint_accepts(constraint GenericConstraint, ac
 
 // record_generic_constraint_error reports that `actual`, the type argument of
 // the type parameter `param`, does not satisfy its constraint.
+// generic_instance_satisfies_constraints reports whether the concrete types
+// `args`, given to the type parameters `names` of the generic function `decl`,
+// satisfy their constraints. The call that asks for an instance that does not
+// has an error of its own: the errors of the instance's body would repeat it.
+pub fn (tc &TypeChecker) generic_instance_satisfies_constraints(decl flat.Node, names []string, args []string) bool {
+	constraints := tc.generic_constraints_of(decl)
+	if constraints.len == 0 {
+		return true
+	}
+	for i, name in names {
+		if i >= args.len {
+			break
+		}
+		constraint := constraints[name] or { continue }
+		if !tc.generic_constraint_accepts(constraint, tc.parse_type(args[i])) {
+			return false
+		}
+	}
+	return true
+}
+
 fn (mut tc TypeChecker) record_generic_constraint_error(constraint GenericConstraint, param string, actual Type, id flat.NodeId, pos token.Pos) {
 	if constraint.is_interface {
 		tc.record_interface_implementation_error(.call_arg_mismatch, actual, constraint.iface,

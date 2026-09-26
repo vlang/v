@@ -50,6 +50,20 @@ fn check_program(name string, source string) os.Result {
 	return os.execute('${os.quoted_path(@VEXE)} -new-compiler -check -nocolor ${os.quoted_path(path)}')
 }
 
+// check_fixture checks `source` after the prelude as the checker fixtures are
+// checked, `-checker-fixture`, where each concrete instance of a generic
+// function is checked in full.
+fn check_fixture(name string, source string) os.Result {
+	dir := os.join_path(os.vtmp_dir(), 'v3_generic_constraints_fixture_${name}_${os.getpid()}')
+	os.mkdir_all(dir) or { panic(err) }
+	defer {
+		os.rmdir_all(dir) or {}
+	}
+	path := os.join_path(dir, 'main.v')
+	os.write_file(path, constraint_prelude + source) or { panic(err) }
+	return os.execute('${os.quoted_path(@VEXE)} -new-compiler -checker-fixture -check -nocolor ${os.quoted_path(path)}')
+}
+
 // error_lines returns `line:col: message` for every error of a check output,
 // with the line counted from the program's own first line.
 fn error_lines(output string) []string {
@@ -1162,6 +1176,61 @@ fn main() {}
 		'29:12: ${no_age}',
 		'37:13: ${no_age}',
 		'56:25: ${no_age}',
+	], res.output
+}
+
+fn test_an_instance_the_constraint_rejects_is_reported_at_its_call_only() {
+	// Where each instance is checked in full, as in the checker fixtures, the
+	// body of one whose type argument does not satisfy the constraint repeats
+	// the error of the call in errors of its own: those are left out.
+	res := check_fixture('rejected_instances', "struct Rock {
+	weight int
+}
+
+type Number = int | f64
+
+fn say[T Greeter](x T) string {
+	return x.greet()
+}
+
+fn relay[T Greeter](x T) string {
+	return say(x)
+}
+
+fn label[T Named](x T) string {
+	return 'n: \${x.name}'
+}
+
+struct Box[T Named] {
+	item T
+}
+
+fn wrap[T Named](x T) Box[T] {
+	return Box[T]{
+		item: x
+	}
+}
+
+fn twice[T Number](x T) T {
+	return x + x
+}
+
+fn main() {
+	println(say(Pet{}))
+	println(relay(Rock{}))
+	println(label(Rock{}))
+	println(wrap(Rock{}))
+	println(twice('a'))
+	println(say(User{}))
+}
+")
+	assert res.exit_code == 1, res.output
+	assert error_lines(res.output) == [
+		"34:14: `Pet` doesn't implement method `greet` of interface `Greeter`",
+		"35:16: `Rock` doesn't implement method `greet` of interface `Greeter`",
+		"36:16: `Rock` doesn't implement field `name` of interface `Named`",
+		"37:15: `Rock` doesn't implement field `name` of interface `Named`",
+		'38:16: cannot use `string` as `T`: it is not in its constraint `Number`',
 	], res.output
 }
 
