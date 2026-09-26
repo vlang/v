@@ -8905,7 +8905,15 @@ fn (mut g FlatGen) gen_assign(node flat.Node) {
 						}
 						if _ := array_fixed_type(rhs_type) {
 							dst := g.expr_to_string(lhs_id)
-							g.writeln('memmove(${dst}, ${g.expr_to_string(rhs_id)}, sizeof(${dst}));')
+							if rhs_node.kind == .block && rhs_node.children_count == 1 {
+								// `unsafe { [1]map[string]int{} }`: gen_expr would emit its
+								// fixed-array literal as an untyped `{...}` list.
+								g.write('memmove(${dst}, ')
+								g.gen_fixed_array_copy_source(rhs_id, lhs_type)
+								g.writeln(', sizeof(${dst}));')
+							} else {
+								g.writeln('memmove(${dst}, ${g.expr_to_string(rhs_id)}, sizeof(${dst}));')
+							}
 							i += 2
 							continue
 						} else {
