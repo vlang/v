@@ -20933,14 +20933,15 @@ fn (mut g FlatGen) atomic_builtin_compat_decls() {
 		g.writeln(g.c_local_header_directive(header))
 		g.writeln('#else')
 	}
-	// A portable snapshot is compiled by a C compiler that is not known yet, so the
-	// choice above cannot be made from `g.ccompiler`; the preprocessor has to make
-	// it instead. system_libc_headers() already includes that header behind
+	// Generated Windows C can be compiled by TCC even when the selected compiler
+	// recorded in `g.ccompiler` is different (including portable snapshots). The
+	// preprocessor must make the final choice. system_libc_headers() includes
+	// that header behind
 	// `_WIN32 && __TINYC__`, so defining the helpers again wherever it is in effect
 	// expands its macros over the definitions - `atomic_fetch_add_byte(void* ptr,
 	// byte delta)` becomes `ManualInterlockedExchangeAdd8(void* ptr, byte delta)`,
 	// which redefines the header's own function. Leave the block out exactly there.
-	guard_windows_tcc := g.output_cross_c
+	guard_windows_tcc := g.output_cross_c || g.target.os == 'windows'
 	if guard_windows_tcc {
 		g.writeln('#if !(defined(_WIN32) && (defined(__TINYC__) || (defined(_MSC_VER) && !defined(__clang__))))')
 	}
