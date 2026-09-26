@@ -3355,7 +3355,12 @@ fn should_parallel_monomorphize() bool {
 	$if tinyc {
 		return false
 	}
-	return os.getenv('V3_DISABLE_PARALLEL_MONOMORPHIZE') != '1'
+	// The parallel specializer still loses results with gcc/clang-built
+	// compilers too: e.g. interface dispatch for nested generic interfaces
+	// (generic_interface_nested_generic_type_infer_test.v panics at runtime).
+	// The default tcc-built compiler never used it, so the serial path is the one
+	// the test suite covers. Keep it opt-in until the parallel merge is correct.
+	return os.getenv('V3_PARALLEL_MONOMORPHIZE') == '1'
 }
 
 fn ownership_checker_compiled() bool {
@@ -3548,7 +3553,7 @@ fn prepare_v3_cache_external_inputs(mut state V3ModuleCacheState, a &flat.FlatAs
 	cache_input_modules['main'] = true
 	native_inputs_language := cgen.cache_native_inputs_language(a, prefs.vroot, user_c_flags, prefs.c99, prefs.ccompiler, prefs.target)
 	compiler_macros, compiler_macro_environment_complete := cache_c_compiler_predefined_macros(user_c_flags, c_compiler, prefs.target, native_inputs_language)
-	mut external_inputs, mut native_source_roots, mut native_root_contexts, unscoped_inputs, static_storage_inputs, resolution_dirs, missing_resolution_paths, mut external_input_digests, has_untracked_c_include := cgen.cache_external_input_snapshot_with_resolved_flags(a, prefs.vroot, cache_input_modules, user_c_flags, prefs.target, module_cache_source_path_set(user_files), compiler_macros, compiler_macro_environment_complete)
+	mut external_inputs, mut native_source_roots, mut native_root_contexts, unscoped_inputs, static_storage_inputs, resolution_dirs, missing_resolution_paths, mut external_input_digests, has_untracked_c_include := cgen.cache_external_input_snapshot_with_resolved_flags(a, prefs.vroot, cache_input_modules, user_c_flags, prefs.target, module_cache_source_path_set(a, user_files), compiler_macros, compiler_macro_environment_complete)
 	state.module_external_inputs = external_inputs.move()
 	state.module_native_roots = native_source_roots.move()
 	state.native_root_contexts = native_root_contexts.move()
@@ -3626,7 +3631,7 @@ fn prepare_v3_checker_native_inputs(mut state V3ModuleCacheState, a &flat.FlatAs
 	cache_input_modules['main'] = true
 	native_inputs_language := cgen.cache_native_inputs_language(a, prefs.vroot, user_c_flags, prefs.c99, prefs.ccompiler, prefs.target)
 	compiler_macros, compiler_macro_environment_complete := cache_c_compiler_predefined_macros(user_c_flags, c_compiler, prefs.target, native_inputs_language)
-	mut external_inputs, mut native_source_roots, mut native_root_contexts, _, _, resolution_dirs, missing_resolution_paths, mut external_input_digests, has_untracked_c_include := cgen.cache_external_input_snapshot_with_resolved_flags(a, prefs.vroot, cache_input_modules, user_c_flags, prefs.target, module_cache_source_path_set(user_files), compiler_macros, compiler_macro_environment_complete)
+	mut external_inputs, mut native_source_roots, mut native_root_contexts, _, _, resolution_dirs, missing_resolution_paths, mut external_input_digests, has_untracked_c_include := cgen.cache_external_input_snapshot_with_resolved_flags(a, prefs.vroot, cache_input_modules, user_c_flags, prefs.target, module_cache_source_path_set(a, user_files), compiler_macros, compiler_macro_environment_complete)
 	state.module_external_inputs = external_inputs.move()
 	state.module_native_roots = native_source_roots.move()
 	state.native_root_contexts = native_root_contexts.move()
@@ -3699,8 +3704,12 @@ fn ast_has_native_source_include(a &flat.FlatAst) bool {
 }
 
 // should_overlap_v3_native_inputs reports whether native-input resolution can
-// safely run alongside the checker's declaration pass.
+// safely run alongside the checker's declaration pass. A `v3_no_parallel` build
+// resolves them on the main thread, before or after checking.
 fn should_overlap_v3_native_inputs(backend string, external_inputs_ready bool, module_cache_enabled bool, native_inputs_needed bool, building_v bool, scope_prealloc_stages bool) bool {
+	$if v3_no_parallel ? {
+		return false
+	}
 	if backend != 'c' || external_inputs_ready || module_cache_enabled {
 		return false
 	}
@@ -6996,6 +7005,8 @@ fn clone_flat_ast_after_transform(ast &flat.FlatAst) &flat.FlatAst {
 		contextual_anon_struct_types:  ast.contextual_anon_struct_types
 		synthesized_anon_struct_types: ast.synthesized_anon_struct_types
 		source_files:                  ast.source_files
+		resolved_source_paths:         ast.resolved_source_paths.clone()
+		source_paths_frozen:           ast.source_paths_frozen
 		template_call_sites:           ast.template_call_sites.clone()
 		template_actions:              clone_int_string_map(ast.template_actions)
 		source_buffers:                ast.source_buffers
@@ -8343,7 +8354,7 @@ fn macos_v3_fallback_report_sources(a &flat.FlatAst, vroot string, cached_source
 	for _, file in a.source_files {
 		if (file.name.ends_with('.v') || file.name.ends_with('.vv')
 			|| file.name.ends_with('.vsh')) && file.has_source_sha256() {
-			path := os.real_path(file.name)
+			path := a.real_source_path(file.name)
 			if ignored_source_paths[path] {
 				continue
 			}
@@ -8364,7 +8375,7 @@ fn macos_v3_fallback_report_sources(a &flat.FlatAst, vroot string, cached_source
 		}
 	}
 	for source_path, digest in cached_source_digests {
-		path := os.real_path(source_path)
+		path := a.real_source_path(source_path)
 		if ignored_source_paths[path] {
 			continue
 		}
@@ -9039,6 +9050,17 @@ $if !skip_fastc ? {
 			output:  result.output
 		}
 	}
+}
+
+// v3_parallel_transform_allowed reports whether transform may run in parallel,
+// together with the markused and transform preparation threads the driver
+// overlaps with checking. Both preparation threads read the checker beside the
+// main thread, so a `-no-parallel` run and a `v3_no_parallel` build keep them off.
+fn v3_parallel_transform_allowed(parallel_transform bool, no_parallel bool) bool {
+	$if v3_no_parallel ? {
+		return false
+	}
+	return parallel_transform && !no_parallel
 }
 
 // run executes the V3 compiler driver with `args`.
@@ -9759,10 +9781,8 @@ pub fn run(args []string) {
 		current_no_parallel = true
 		no_cache = true
 	}
-	mut current_parallel_transform := parallel_transform
-	if current_no_parallel {
-		current_parallel_transform = false
-	}
+	mut current_parallel_transform := v3_parallel_transform_allowed(parallel_transform,
+		current_no_parallel)
 
 	if input_file == '' {
 		// A malformed command line is the user's error, not a compiler error, so it
@@ -10566,14 +10586,14 @@ pub fn run(args []string) {
 	// The module cache splits imported implementations into separate objects, so its main source
 	// alone cannot reproduce the build. Literal output uses a deliberately reduced
 	// builtin source set, which likewise must remain a monolithic translation unit.
+	// Heap tracking hooks are supplied by user C declarations. Replaying a header
+	// that defines them in every cached translation unit creates duplicate symbols.
 	cache_candidate_enabled := backend == 'c' && !c_only && !no_cache && !no_skip_unused
 		&& !no_builtin && !parallel_cc && !keep_c && !backend_explicit
 		&& !minimal_literal_output && v3_c_compiler_matches_default_cc(c_compiler)
 		&& target.os == host_target.os
-		&& target.arch == host_target.arch &&
-	// Heap tracking hooks are supplied by user C declarations. Replaying a header
-	// that defines them in every cached translation unit creates duplicate symbols.
-	'track_heap' !in prefs.user_defines
+		&& target.arch == host_target.arch
+		&& 'track_heap' !in prefs.user_defines
 		&& !input_owns_builtin_bundle_module(input_file, prefs.vroot)
 	cc_identity := if cache_candidate_enabled { default_cc_identity() } else { '' }
 	compiler_signature := if cache_candidate_enabled {
@@ -10671,11 +10691,11 @@ pub fn run(args []string) {
 	if minimal_literal_output {
 		builtin_files = builtin_files.filter(is_minimal_literal_output_builtin_file(it))
 	}
-	bundle_sources := builtin_bundle_source_files(prefs, builtin_files)
+	bundle_sources := builtin_bundle_source_files(mut p.a, prefs, builtin_files)
 	mut cache_state := V3ModuleCacheState{
 		manager:                   cache_manager
 		bundle_sources:            bundle_sources
-		bundle_source_paths:       module_cache_source_path_set(bundle_sources)
+		bundle_source_paths:       module_cache_source_path_set(p.a, bundle_sources)
 		force_source:              force_cache_source
 		module_sources:            map[string][]string{}
 		module_import_paths:       map[string]string{}
@@ -10760,9 +10780,9 @@ pub fn run(args []string) {
 	mut user_files := []string{}
 	if input_file.ends_with('.v') || input_file.ends_with('.vv') {
 		user_files << input_file
-		user_files = expand_single_test_file_inputs(user_files, prefs)
+		user_files = expand_single_test_file_inputs(mut a, user_files, prefs)
 	} else if os.is_dir(input_file) {
-		user_files = v3_directory_user_files(input_file, prefs, is_test_command, false) or {
+		user_files = v3_directory_user_files(mut a, input_file, prefs, is_test_command, false) or {
 			eprintln(err.msg())
 			exit(1)
 		}
@@ -10774,7 +10794,7 @@ pub fn run(args []string) {
 	}
 	for listed_path in file_list {
 		if os.is_dir(listed_path) {
-			user_files << v3_directory_user_files(listed_path, prefs, is_test_command, true) or {
+			user_files << v3_directory_user_files(mut a, listed_path, prefs, is_test_command, true) or {
 				eprintln(err.msg())
 				exit(1)
 			}
@@ -10820,6 +10840,10 @@ pub fn run(args []string) {
 	resolve_imports_parse_started_us := parse_timing.header_us + parse_timing.source_us
 	resolve_imports(mut a, mut p, prefs, user_files, !current_no_parallel, skip_closure_runtime,
 		check_overflow, mut cache_state, mut parse_timing)
+	// Later stages resolve the same source paths many times, on several threads
+	// and inside disposable arenas. Resolve them once here, on the main thread and
+	// in the build's own arena, before any of those stages start.
+	a.resolve_source_paths()
 	resolve_imports_elapsed_us := b.current_step_time_us() - resolve_imports_started_us
 	resolve_imports_parse_us := parse_timing.header_us + parse_timing.source_us - resolve_imports_parse_started_us
 	resolve_imports_coordination_us := if resolve_imports_parse_us < resolve_imports_elapsed_us {
@@ -12567,7 +12591,7 @@ pub fn run(args []string) {
 			g.set_parallel_cc(use_parallel_c_compilation)
 			g.set_cache_native_input_paths(cache_scoped_native_input_paths(cache_state))
 			g.set_program_body_only(generic_cache_hit)
-			g.set_cache_program_files(user_files)
+			g.set_cache_program_files(a, user_files)
 			g.set_incremental_fn_names(incremental_changed_names)
 			g.set_cached_support_declarations(incremental_known_declarations)
 			g.set_scope_parallel_workers(!generic_cache_hit)
@@ -12636,7 +12660,7 @@ pub fn run(args []string) {
 			g.set_parallel_cc(use_parallel_c_compilation)
 			g.set_cache_native_input_paths(cache_scoped_native_input_paths(cache_state))
 			g.set_program_body_only(generic_cache_hit)
-			g.set_cache_program_files(user_files)
+			g.set_cache_program_files(a, user_files)
 			g.set_incremental_fn_names(incremental_changed_names)
 			g.set_cached_support_declarations(incremental_known_declarations)
 			g.gen_to_file_with_used_test_options(generated_path, a, cgen_used_fns, &pre_tc, cache_no_parallel_cgen, test_files) or {
@@ -13800,11 +13824,11 @@ fn checker_fixture_header_exists(target string, source_file string, c_compiler s
 	return result.exit_code == 0
 }
 
-fn builtin_bundle_source_files(prefs &pref.Preferences, builtin_files []string) []string {
+fn builtin_bundle_source_files(mut a flat.FlatAst, prefs &pref.Preferences, builtin_files []string) []string {
 	mut files := builtin_files.clone()
 	mut seen := map[string]bool{}
 	for file in files {
-		seen[os.real_path(file)] = true
+		seen[a.record_source_path(file)] = true
 	}
 	for rel in ['strconv', 'strings', 'hash', os.join_path('math', 'bits')] {
 		dir := os.join_path(prefs.vroot, 'vlib', rel)
@@ -13813,7 +13837,7 @@ fn builtin_bundle_source_files(prefs &pref.Preferences, builtin_files []string) 
 		}
 		for file in prefs.without_excluded(pref.get_v_files_from_dir_for_target(dir, prefs.user_defines,
 			prefs.target)) {
-			key := os.real_path(file)
+			key := a.record_source_path(file)
 			if seen[key] {
 				continue
 			}
@@ -14444,10 +14468,10 @@ fn cache_write_native_declaration_segment(lines []string, restore_implementation
 	}
 }
 
-fn module_cache_source_path_set(source_files []string) map[string]bool {
+fn module_cache_source_path_set(a &flat.FlatAst, source_files []string) map[string]bool {
 	mut paths := map[string]bool{}
 	for source_file in source_files {
-		paths[os.real_path(source_file)] = true
+		paths[a.real_source_path(source_file)] = true
 	}
 	return paths
 }
@@ -15430,23 +15454,29 @@ fn vmod_subdirs(dir string) ![]string {
 	return manifest.unknown['subdirs'] or { []string{} }
 }
 
-fn v3_directory_user_files(dir string, prefs &pref.Preferences, is_test_command bool, recursive bool) ![]string {
+// v3_directory_user_files lists the source files of the module in `dir`. Until
+// a.resolve_source_paths() freezes the table, it records each file's resolved
+// path in `a` for later stages, so it must run on the thread that owns `a`.
+fn v3_directory_user_files(mut a flat.FlatAst, dir string, prefs &pref.Preferences, is_test_command bool, recursive bool) ![]string {
 	source_dir := v3_directory_source_root(dir)
 	mut files := []string{}
 	mut seen_files := map[string]bool{}
 	mut seen_dirs := map[string]bool{}
 	if recursive {
-		collect_v3_directory_user_files_rec(source_dir, source_dir, prefs, is_test_command, mut seen_dirs, mut seen_files, mut files)
+		collect_v3_directory_user_files_rec(mut a, source_dir, source_dir, prefs, is_test_command, mut
+			seen_dirs, mut seen_files, mut files)
 		return files
 	}
-	append_v3_directory_user_files(source_dir, prefs, is_test_command, mut seen_files, mut files)
+	append_v3_directory_user_files(mut a, source_dir, prefs, is_test_command, mut seen_files, mut
+		files)
 	for subdir in vmod_subdirs(dir)! {
-		collect_v3_directory_user_files_rec(source_dir, os.join_path_single(source_dir, subdir), prefs, is_test_command, mut seen_dirs, mut seen_files, mut files)
+		collect_v3_directory_user_files_rec(mut a, source_dir, os.join_path_single(source_dir,
+			subdir), prefs, is_test_command, mut seen_dirs, mut seen_files, mut files)
 	}
 	return files
 }
 
-fn collect_v3_directory_user_files_rec(module_root string, dir string, prefs &pref.Preferences, is_test_command bool, mut seen_dirs map[string]bool, mut seen_files map[string]bool, mut files []string) {
+fn collect_v3_directory_user_files_rec(mut a flat.FlatAst, module_root string, dir string, prefs &pref.Preferences, is_test_command bool, mut seen_dirs map[string]bool, mut seen_files map[string]bool, mut files []string) {
 	if !os.is_dir(dir) {
 		return
 	}
@@ -15458,25 +15488,27 @@ fn collect_v3_directory_user_files_rec(module_root string, dir string, prefs &pr
 	if real_dir != os.real_path(module_root) && os.is_file(os.join_path_single(real_dir, 'v.mod')) {
 		return
 	}
-	append_v3_directory_user_files(real_dir, prefs, is_test_command, mut seen_files, mut files)
+	append_v3_directory_user_files(mut a, real_dir, prefs, is_test_command, mut seen_files, mut
+		files)
 	mut entries := os.ls(real_dir) or { return }
 	entries.sort()
 	for entry in entries {
 		entry_path := os.join_path_single(real_dir, entry)
 		if os.is_dir(entry_path) {
-			collect_v3_directory_user_files_rec(module_root, entry_path, prefs, is_test_command, mut seen_dirs, mut seen_files, mut files)
+			collect_v3_directory_user_files_rec(mut a, module_root, entry_path, prefs,
+				is_test_command, mut seen_dirs, mut seen_files, mut files)
 		}
 	}
 }
 
-fn append_v3_directory_user_files(dir string, prefs &pref.Preferences, is_test_command bool, mut seen map[string]bool, mut files []string) {
+fn append_v3_directory_user_files(mut a flat.FlatAst, dir string, prefs &pref.Preferences, is_test_command bool, mut seen map[string]bool, mut files []string) {
 	for file in prefs.without_excluded(pref.get_v_files_from_dir_for_target(dir, prefs.user_defines,
 		prefs.target)) {
-		append_unique_file(mut files, mut seen, file)
+		append_unique_file(mut a, mut files, mut seen, file)
 	}
 	if is_test_command {
 		for file in prefs.without_excluded(pref.get_test_v_files_from_dir_for_target(dir, prefs.user_defines, prefs.backend, prefs.target)) {
-			append_unique_file(mut files, mut seen, file)
+			append_unique_file(mut a, mut files, mut seen, file)
 		}
 	}
 }
@@ -15515,24 +15547,24 @@ If you want to split one module across subdirectories after moving the root file
 	return true
 }
 
-fn expand_single_test_file_inputs(user_files []string, prefs &pref.Preferences) []string {
+fn expand_single_test_file_inputs(mut a flat.FlatAst, user_files []string, prefs &pref.Preferences) []string {
 	mut expanded := []string{}
 	mut seen := map[string]bool{}
 	for file in user_files {
 		if pref.is_test_file_for_backend(file, prefs.backend) {
 			module_name := declared_module_in_file(file)
 			if module_name != 'builtin' {
-				for module_file in same_dir_module_source_files(file, module_name, prefs) {
-					append_unique_file(mut expanded, mut seen, module_file)
+				for module_file in same_dir_module_source_files(mut a, file, module_name, prefs) {
+					append_unique_file(mut a, mut expanded, mut seen, module_file)
 				}
 			}
 		}
-		append_unique_file(mut expanded, mut seen, file)
+		append_unique_file(mut a, mut expanded, mut seen, file)
 	}
 	return expanded
 }
 
-fn same_dir_module_source_files(test_file string, module_name string, prefs &pref.Preferences) []string {
+fn same_dir_module_source_files(mut a flat.FlatAst, test_file string, module_name string, prefs &pref.Preferences) []string {
 	dir := os.dir(test_file)
 	mut all_files := prefs.without_excluded(pref.get_v_files_from_dir_for_target(dir,
 		prefs.user_defines, prefs.target))
@@ -15541,7 +15573,7 @@ fn same_dir_module_source_files(test_file string, module_name string, prefs &pre
 	// the complete module instead of only its physical-directory siblings.
 	vmod_root := nearest_vmod_root_for_file(test_file)
 	if vmod_root.len > 0 {
-		virtual_module_files := v3_directory_user_files(vmod_root, prefs, false, false) or {
+		virtual_module_files := v3_directory_user_files(mut a, vmod_root, prefs, false, false) or {
 			[]string{}
 		}
 		real_dir := os.real_path(dir)
@@ -15645,8 +15677,8 @@ fn append_declared_import(mut imports []string, line string) {
 	}
 }
 
-fn append_unique_file(mut files []string, mut seen map[string]bool, file string) {
-	key := os.real_path(file)
+fn append_unique_file(mut a flat.FlatAst, mut files []string, mut seen map[string]bool, file string) {
+	key := a.record_source_path(file)
 	if seen[key] {
 		return
 	}
@@ -16603,7 +16635,15 @@ fn set_diagnostic_files(mut tc types.TypeChecker, user_files []string) {
 			|| node.value in tc.diagnostic_files {
 			continue
 		}
-		if resolver.owns_file(node.value, tc.shadow_diagnostic_root, tc.shadow_explicit_roots,
+		// A warm module header stands in for its module's sources, and the cache
+		// can live under the project directory (as it does for a script written
+		// into VTMP). Judge the header by those sources, never by its own path.
+		owner := if types.is_module_cache_header(node.value) {
+			tc.a.cached_header_sources[node.value] or { continue }
+		} else {
+			node.value
+		}
+		if resolver.owns_file(owner, tc.shadow_diagnostic_root, tc.shadow_explicit_roots,
 			tc.shadow_dependency_roots) {
 			tc.diagnostic_files[node.value] = true
 		}
@@ -16954,6 +16994,8 @@ fn no_closures_error(a &flat.FlatAst, tc &types.TypeChecker) ?types.TypeError {
 			}
 		}
 	}
+	mut capturing_lambdas := map[int]bool{}
+	mut capturing_lambdas_ready := false
 	for idx, node in a.nodes {
 		if idx < a.user_code_start {
 			continue
@@ -16972,6 +17014,15 @@ fn no_closures_error(a &flat.FlatAst, tc &types.TypeChecker) ?types.TypeError {
 			}
 		}
 		if node.kind == .lambda_expr {
+			// Only a lambda that captures an enclosing local is lowered into a
+			// closure; a capture-free one becomes a plain function, like `fn () {}`.
+			if !capturing_lambdas_ready {
+				capturing_lambdas = no_closures_capturing_lambdas(a, tc)
+				capturing_lambdas_ready = true
+			}
+			if idx !in capturing_lambdas {
+				continue
+			}
 			return types.TypeError{
 				msg:       'a closure was generated for function'
 				kind:      .compile_error
@@ -16998,6 +17049,344 @@ fn no_closures_error(a &flat.FlatAst, tc &types.TypeChecker) ?types.TypeError {
 		}
 	}
 	return none
+}
+
+// NoClosuresBindingKind tells how the transform treats a binding of the lambda scan.
+enum NoClosuresBindingKind {
+	local
+	// implicit is a binding the transform's capture collector
+	// (collect_lambda_capture_names) does not model: the `it` of an array DSL
+	// call and the `err` of an `or` block or guard `else` branch.
+	implicit
+	// comptime is a `$for` loop variable. The transform unrolls the loop and
+	// replaces the variable with the literal metadata of each iteration before it
+	// lifts the lambdas of the body, so a lambda never captures it.
+	comptime
+}
+
+// NoClosuresLambdaScan resolves the identifiers of each `|x| expr` lambda
+// against the lexically visible locals, mirroring how the transform infers the
+// captured variables of a lambda before lifting it.
+struct NoClosuresLambdaScan {
+	a  &flat.FlatAst      = unsafe { nil }
+	tc &types.TypeChecker = unsafe { nil }
+mut:
+	// bindings holds the in-scope local names in declaration order, and kinds
+	// their kinds; visible maps a name to the `bindings` indexes of its live
+	// declarations.
+	bindings []string
+	kinds    []NoClosuresBindingKind
+	visible  map[string][]int
+	// barrier is the first binding of the innermost function; earlier bindings
+	// belong to an enclosing function and are not visible.
+	barrier int
+	// lambdas holds the enclosing lambda node ids and their first binding index.
+	lambdas       []int
+	lambda_starts []int
+	capturing     map[int]bool
+}
+
+// no_closures_capturing_lambdas returns the node ids of the user code lambdas
+// that reference a local of an enclosing scope. Only those are lowered into
+// closures; capture-free lambdas become plain functions.
+fn no_closures_capturing_lambdas(a &flat.FlatAst, tc &types.TypeChecker) map[int]bool {
+	mut scan := NoClosuresLambdaScan{
+		a:  a
+		tc: tc
+	}
+	for idx in a.user_code_start .. a.nodes.len {
+		if a.nodes[idx].kind == .file {
+			scan.walk_file(a.nodes[idx])
+		}
+	}
+	return scan.capturing
+}
+
+fn (mut s NoClosuresLambdaScan) declare(name string) {
+	s.declare_kind(name, .local)
+}
+
+fn (mut s NoClosuresLambdaScan) declare_kind(name string, kind NoClosuresBindingKind) {
+	if name.len == 0 || name == '_' {
+		return
+	}
+	mut decls := s.visible[name] or { []int{} }
+	decls << s.bindings.len
+	s.visible[name] = decls
+	s.bindings << name
+	s.kinds << kind
+}
+
+// declare_implicit declares the implicit `it` of an array DSL call or the `err`
+// of an `or` block or guard `else` branch.
+fn (mut s NoClosuresLambdaScan) declare_implicit(name string) {
+	s.declare_kind(name, .implicit)
+}
+
+fn (mut s NoClosuresLambdaScan) declare_ident(id flat.NodeId) {
+	node := s.a.node(id)
+	if node.kind == .ident {
+		s.declare(node.value)
+	}
+}
+
+// close_scope drops the bindings declared since `mark`.
+fn (mut s NoClosuresLambdaScan) close_scope(mark int) {
+	for s.bindings.len > mark {
+		name := s.bindings.pop()
+		s.kinds.pop()
+		mut decls := s.visible[name] or { continue }
+		decls.pop()
+		s.visible[name] = decls
+	}
+}
+
+fn (mut s NoClosuresLambdaScan) note_ident(name string) {
+	if s.lambdas.len == 0 {
+		return
+	}
+	decls := s.visible[name] or { return }
+	lambda_start := s.lambda_starts.last()
+	for i := decls.len - 1; i >= 0; i-- {
+		decl := decls[i]
+		kind := s.kinds[decl]
+		// The transform does not see the implicit bindings inside the lambda, so
+		// it captures an enclosing local of the same name even where one of them
+		// shadows it (`it := 1; f(|n| arr.filter(it > n))` builds a closure).
+		if decl >= lambda_start && kind == .implicit {
+			continue
+		}
+		// A `$for` loop variable is never captured: `$for field in S.fields {
+		// f(|| field.name) }` lifts `|| 'a'`, `|| 'b'`, ... into plain functions.
+		if kind == .comptime {
+			return
+		}
+		// A binding of the current function declared outside the innermost lambda
+		// is a capture. Names without a visible binding are fns, consts or globals.
+		if decl >= s.barrier && decl < lambda_start {
+			s.capturing[s.lambdas.last()] = true
+		}
+		return
+	}
+}
+
+fn (mut s NoClosuresLambdaScan) walk_file(file flat.Node) {
+	for i in 0 .. file.children_count {
+		child_id := s.a.child(&file, i)
+		if is_top_level_declaration_kind(s.a.node(child_id).kind) {
+			// Consts, globals and struct field defaults cannot see the locals of
+			// top-level script statements.
+			saved_barrier := s.barrier
+			s.barrier = s.bindings.len
+			s.walk(child_id)
+			s.barrier = saved_barrier
+		} else {
+			// Top-level script statements share the implicit `main` scope; a
+			// `fn_decl` opens its own function scope.
+			s.walk(child_id)
+		}
+	}
+}
+
+fn is_top_level_declaration_kind(kind flat.NodeKind) bool {
+	return kind in [.struct_decl, .global_decl, .const_decl, .enum_decl, .type_decl, .interface_decl,
+		.import_decl, .module_decl, .directive, .c_fn_decl]
+}
+
+fn (mut s NoClosuresLambdaScan) walk_children(node flat.Node, start int) {
+	for i in start .. node.children_count {
+		s.walk(s.a.child(&node, i))
+	}
+}
+
+fn (mut s NoClosuresLambdaScan) walk_scoped(node flat.Node) {
+	mark := s.bindings.len
+	s.walk_children(node, 0)
+	s.close_scope(mark)
+}
+
+fn (mut s NoClosuresLambdaScan) walk(id flat.NodeId) {
+	node := *s.a.node(id)
+	match node.kind {
+		.ident {
+			s.note_ident(node.value)
+		}
+		.selector {
+			// Only the receiver of `x.field` can name a local.
+			if node.children_count > 0 {
+				s.walk(s.a.child(&node, 0))
+			}
+		}
+		.fn_decl, .fn_literal {
+			s.walk_fn(node)
+		}
+		.lambda_expr {
+			s.walk_lambda(int(id), node)
+		}
+		.decl_assign {
+			s.walk_decl_assign(node)
+		}
+		.block, .for_stmt, .match_branch {
+			s.walk_scoped(node)
+		}
+		.select_branch {
+			s.walk_select_branch(node)
+		}
+		.for_in_stmt {
+			s.walk_for_in(node)
+		}
+		.if_expr {
+			s.walk_if(node)
+		}
+		.or_expr {
+			// `expr or { ... }` binds `err` inside its block.
+			if node.children_count > 0 {
+				s.walk(s.a.child(&node, 0))
+			}
+			mark := s.bindings.len
+			s.declare_implicit('err')
+			s.walk_children(node, 1)
+			s.close_scope(mark)
+		}
+		.comptime_for {
+			// The loop variable still hides an enclosing local of the same name.
+			mark := s.bindings.len
+			s.declare_kind(node.value.all_before('|'), .comptime)
+			s.walk_children(node, 0)
+			s.close_scope(mark)
+		}
+		.call {
+			if s.tc.call_binds_implicit_it(node) {
+				// The arguments of an array DSL call (`arr.filter(it > 0)`) can refer
+				// to the implicit `it`; any other call, including a user method named
+				// like a DSL method, sees the enclosing `it`, if any.
+				s.walk(s.a.child(&node, 0))
+				mark := s.bindings.len
+				s.declare_implicit('it')
+				s.walk_children(node, 1)
+				s.close_scope(mark)
+			} else {
+				s.walk_children(node, 0)
+			}
+		}
+		else {
+			s.walk_children(node, 0)
+		}
+	}
+}
+
+fn (mut s NoClosuresLambdaScan) walk_fn(node flat.Node) {
+	saved_barrier := s.barrier
+	mark := s.bindings.len
+	s.barrier = mark
+	for i in 0 .. node.children_count {
+		child := s.a.child_node(&node, i)
+		// Parameters, plus the explicit capture list of a `fn [x] () {}` literal.
+		if child.kind == .param || (node.kind == .fn_literal && child.kind == .ident) {
+			s.declare(child.value)
+		}
+	}
+	for i in 0 .. node.children_count {
+		child_id := s.a.child(&node, i)
+		child_kind := s.a.node(child_id).kind
+		if child_kind != .param && !(node.kind == .fn_literal && child_kind == .ident) {
+			s.walk(child_id)
+		}
+	}
+	s.close_scope(mark)
+	s.barrier = saved_barrier
+}
+
+fn (mut s NoClosuresLambdaScan) walk_lambda(id int, node flat.Node) {
+	if node.children_count == 0 {
+		return
+	}
+	mark := s.bindings.len
+	s.lambdas << id
+	s.lambda_starts << mark
+	for i in 0 .. node.children_count - 1 {
+		s.declare_ident(s.a.child(&node, i))
+	}
+	s.walk(s.a.child(&node, node.children_count - 1))
+	s.lambdas.pop()
+	s.lambda_starts.pop()
+	s.close_scope(mark)
+}
+
+fn (mut s NoClosuresLambdaScan) walk_decl_assign(node flat.Node) {
+	count := int(node.children_count)
+	mut lhs_count := if count <= 2 { int_min(count, 1) } else { count - 1 }
+	if node.value.is_int() && node.value.int() > 0 && node.value.int() <= count {
+		lhs_count = node.value.int()
+	}
+	rhs_count := count - lhs_count
+	mut is_lhs := []bool{len: count}
+	for i in 0 .. lhs_count {
+		is_lhs[if i < rhs_count { i * 2 } else { rhs_count + i }] = true
+	}
+	// The right-hand side is evaluated before the new names come into scope.
+	for i in 0 .. count {
+		if !is_lhs[i] {
+			s.walk(s.a.child(&node, i))
+		}
+	}
+	for i in 0 .. count {
+		if is_lhs[i] {
+			s.declare_ident(s.a.child(&node, i))
+		}
+	}
+}
+
+fn (mut s NoClosuresLambdaScan) walk_for_in(node flat.Node) {
+	header := node.value.int()
+	if header < 3 || node.children_count < 3 {
+		s.walk_scoped(node)
+		return
+	}
+	for i in 2 .. int_min(header, int(node.children_count)) {
+		s.walk(s.a.child(&node, i))
+	}
+	mark := s.bindings.len
+	s.declare_ident(s.a.child(&node, 0))
+	s.declare_ident(s.a.child(&node, 1))
+	s.walk_children(node, header)
+	s.close_scope(mark)
+}
+
+fn (mut s NoClosuresLambdaScan) walk_select_branch(node flat.Node) {
+	if node.value != 'recv' || node.children_count < 2 {
+		s.walk_scoped(node)
+		return
+	}
+	// `value := <-ch { ... }` stores the declared name and the receive as the
+	// first two children, not as a `decl_assign`; the name is visible in the body.
+	mark := s.bindings.len
+	s.walk(s.a.child(&node, 1))
+	s.declare_ident(s.a.child(&node, 0))
+	s.walk_children(node, 2)
+	s.close_scope(mark)
+}
+
+fn (mut s NoClosuresLambdaScan) walk_if(node flat.Node) {
+	if node.children_count == 0 {
+		return
+	}
+	cond_id := s.a.child(&node, 0)
+	if s.a.node(cond_id).kind != .decl_assign {
+		s.walk_children(node, 0)
+		return
+	}
+	// `if x := opt() { ... } else { err }`: the guard names are visible only in
+	// the first branch, `err` only in the else branch.
+	mark := s.bindings.len
+	s.walk(cond_id)
+	if node.children_count > 1 {
+		s.walk(s.a.child(&node, 1))
+	}
+	s.close_scope(mark)
+	s.declare_implicit('err')
+	s.walk_children(node, 2)
+	s.close_scope(mark)
 }
 
 fn implicit_selector_is_qualified_type(node flat.Node) bool {
@@ -18017,6 +18406,11 @@ fn resolve_imports(mut a flat.FlatAst, mut p parser.Parser, prefs &pref.Preferen
 	shadow_explicit_roots := shadow_explicit_roots_for(prefs, shadow_dependency_roots)
 	mut parsed_module_identities := map[string]string{}
 	mut parsed_identity_dirs := map[string]string{}
+	// The identity each already parsed module directory (by real path) got. A
+	// directory on disk is one module, however an import spells its path.
+	mut parsed_dir_identities := map[string]string{}
+	// Import spellings already checked against a reused module directory.
+	mut checked_dir_spellings := map[string]bool{}
 	mut identity_source_paths := map[string]string{}
 	mut identity_source_dirs := map[string]string{}
 	mut forced_full_module_paths := map[string]bool{}
@@ -18025,7 +18419,6 @@ fn resolve_imports(mut a flat.FlatAst, mut p parser.Parser, prefs &pref.Preferen
 	mut first_collision_seed_by_short := map[string]ImportCollisionSeed{}
 	mut resolved_collision_seeds := map[string]bool{}
 	mut unresolved_modules := map[string]bool{}
-	mut cached_header_source_contexts := map[string]string{}
 	if check_overflow {
 		// C generation names the late-injected overflow helpers by their full
 		// module path. Preserve that path even though it is the only module named
@@ -18036,7 +18429,7 @@ fn resolve_imports(mut a flat.FlatAst, mut p parser.Parser, prefs &pref.Preferen
 	if builtin_sources := cache_state.module_sources['builtin'] {
 		if builtin_sources.len > 0 {
 			builtin_header := cache_state.manager.entry('builtin', builtin_sources).header
-			cached_header_source_contexts[builtin_header] = builtin_sources[0]
+			a.cached_header_sources[builtin_header] = builtin_sources[0]
 		}
 	}
 	mut was_parallel := false
@@ -18058,6 +18451,7 @@ fn resolve_imports(mut a flat.FlatAst, mut p parser.Parser, prefs &pref.Preferen
 			}
 			parsed_modules[identity] = true
 			parsed_identity_dirs[identity] = module_info.dir
+			parsed_dir_identities[module_info.real_dir] = identity
 			cache_state.module_import_paths[identity] = if identity in module_info.import_paths {
 				identity
 			} else {
@@ -18254,7 +18648,7 @@ fn resolve_imports(mut a flat.FlatAst, mut p parser.Parser, prefs &pref.Preferen
 					continue
 				}
 			}
-			importing_file := cached_header_source_contexts[cur_file] or {
+			importing_file := a.cached_header_sources[cur_file] or {
 				if cur_file.len > 0 { cur_file } else { first_file }
 			}
 			if unresolved_modules[mod_name] {
@@ -18282,18 +18676,36 @@ fn resolve_imports(mut a flat.FlatAst, mut p parser.Parser, prefs &pref.Preferen
 			} else {
 				resolve_project_or_pref_module_path_cached(prefs, mod_name, importing_file, project_root, mut module_path_cache)
 			}
+			mod_dir_exists := mod_dir.len > 0 && os.is_dir(mod_dir)
+			mod_real_dir := if mod_dir_exists { os.real_path(mod_dir) } else { '' }
 			mut module_identity := import_module_identity_cached(prefs, mod_name, importing_file, project_root, mod_dir, mut module_path_cache, mut module_identity_cache)
-			if forced_full_module_paths[mod_name] {
-				module_identity = mod_name
-			}
-			// Two distinct dotted imports can legitimately declare the same short
-			// module name (for example `a.http` and `b.http`). Keep the first short
-			// identity for compatibility, but qualify every colliding directory by
-			// its import path so it is parsed and indexed as a separate module.
-			if owner_dir := parsed_identity_dirs[module_identity] {
-				if mod_dir.len > 0 && owner_dir.len > 0 && os.is_dir(mod_dir)
-					&& os.real_path(owner_dir) != os.real_path(mod_dir) {
+			// Set when this import spells the path of an already parsed directory in a
+			// new way, so its module declarations still get checked below.
+			mut check_reused_dir := false
+			if dir_identity := parsed_dir_identities[mod_real_dir] {
+				// The directory was already parsed through another spelling of its
+				// path: `mod.types` inside an installed `smilecat.mod`, and
+				// `smilecat.mod.types` from outside of it. The identity probe above
+				// depends on the importer (a sibling `api/types` makes the short name
+				// ambiguous from `mod/api` only), so reuse the directory's identity
+				// instead of parsing it again as a second, incompatible module.
+				module_identity = dir_identity
+				spelling_key := '${mod_real_dir}\n${mod_name}'
+				check_reused_dir = spelling_key !in checked_dir_spellings
+				checked_dir_spellings[spelling_key] = true
+			} else {
+				if forced_full_module_paths[mod_name] {
 					module_identity = mod_name
+				}
+				// Two distinct dotted imports can legitimately declare the same short
+				// module name (for example `a.http` and `b.http`). Keep the first short
+				// identity for compatibility, but qualify every colliding directory by
+				// its import path so it is parsed and indexed as a separate module.
+				if owner_dir := parsed_identity_dirs[module_identity] {
+					if mod_dir_exists && owner_dir.len > 0
+						&& os.real_path(owner_dir) != mod_real_dir {
+						module_identity = mod_name
+					}
 				}
 			}
 			if module_identity.len > 0 {
@@ -18302,9 +18714,8 @@ fn resolve_imports(mut a flat.FlatAst, mut p parser.Parser, prefs &pref.Preferen
 			cache_module := if module_identity.len > 0 { module_identity } else { mod_name }
 			record_v3_fallback_module_use(mut cache_state, cache_module, is_bundle_warmup_import)
 			record_cache_module_dependency(mut cache_state, cur_module, cache_module)
-			mod_dir_exists := mod_dir.len > 0 && os.is_dir(mod_dir)
 			mod_files := if mod_dir_exists {
-				v3_directory_user_files(mod_dir, prefs, false, false) or {
+				v3_directory_user_files(mut a, mod_dir, prefs, false, false) or {
 					prefs.without_excluded(pref.get_v_files_from_dir_for_target(mod_dir,
 						prefs.user_defines, prefs.target))
 				}
@@ -18317,7 +18728,37 @@ fn resolve_imports(mut a flat.FlatAst, mut p parser.Parser, prefs &pref.Preferen
 				record_missing_import_hint(mut a, prefs, node_idx, mod_name, importing_file)
 				unresolved_modules[mod_name] = true
 			}
-			if mod_name in parsed_modules || (mod_dir_exists && module_identity in parsed_modules) {
+			already_parsed := mod_name in parsed_modules
+				|| (mod_dir_exists && module_identity in parsed_modules)
+			// -building-v compiles the trusted compiler tree and already skips other
+			// validity-only diagnostics. Avoid reading every imported source once here
+			// just before the parser reads the same files.
+			if module_resolved && (!already_parsed || check_reused_dir) && !prefs.building_v
+				&& !import_uses_explicit_module_alias(prefs, mod_name, importing_file, project_root) {
+				expected_module := mod_name.all_after_last('.')
+				for imported_file in mod_files {
+					declared := declared_module_in_file(imported_file)
+					// A source file without a module declaration (including an
+					// entirely commented file) belongs to `main`.
+					declared_module := if declared.len > 0 { declared } else { 'main' }
+					if declared_module.all_after_last('.') != expected_module {
+						message := 'bad module definition: ${error_message_path(importing_file)} imports module "${mod_name}" but ${error_message_path(imported_file)} is defined as module `${declared_module}`'
+						// A mismatched module declaration is the project's error, and the
+						// diagnostic below names it exactly. Do not hand the build to the
+						// V1 compatibility compiler, which would repeat it against its own
+						// source tree.
+						clear_macos_v3_compiler_error_fallback(os.getenv(macos_v3_fallback_file_env))
+						eprintln('error: ${message}')
+						formatted := compiler_errors.formatted_error('error:', message, a, flat.NodeId(node_idx), a.nodes[node_idx].pos)
+						context := formatted.all_after_first('\n')
+						if context.len > 0 {
+							eprintln(context)
+						}
+						exit(1)
+					}
+				}
+			}
+			if already_parsed {
 				node_idx++
 				continue
 			}
@@ -18325,6 +18766,7 @@ fn resolve_imports(mut a flat.FlatAst, mut p parser.Parser, prefs &pref.Preferen
 			if mod_dir_exists && module_identity.len > 0 {
 				parsed_modules[module_identity] = true
 				parsed_identity_dirs[module_identity] = mod_dir
+				parsed_dir_identities[mod_real_dir] = module_identity
 			}
 			parsed_module_identities[mod_name] = if module_identity.len > 0 {
 				module_identity
@@ -18333,34 +18775,6 @@ fn resolve_imports(mut a flat.FlatAst, mut p parser.Parser, prefs &pref.Preferen
 			}
 
 			if module_resolved {
-				// -building-v compiles the trusted compiler tree and already skips other
-				// validity-only diagnostics. Avoid reading every imported source once here
-				// just before the parser reads the same files.
-				if !prefs.building_v
-					&& !import_uses_explicit_module_alias(prefs, mod_name, importing_file, project_root) {
-					expected_module := mod_name.all_after_last('.')
-					for imported_file in mod_files {
-						declared := declared_module_in_file(imported_file)
-						// A source file without a module declaration (including an
-						// entirely commented file) belongs to `main`.
-						declared_module := if declared.len > 0 { declared } else { 'main' }
-						if declared_module.all_after_last('.') != expected_module {
-							message := 'bad module definition: ${error_message_path(importing_file)} imports module "${mod_name}" but ${error_message_path(imported_file)} is defined as module `${declared_module}`'
-							// A mismatched module declaration is the project's error, and the
-							// diagnostic below names it exactly. Do not hand the build to the
-							// V1 compatibility compiler, which would repeat it against its own
-							// source tree.
-							clear_macos_v3_compiler_error_fallback(os.getenv(macos_v3_fallback_file_env))
-							eprintln('error: ${message}')
-							formatted := compiler_errors.formatted_error('error:', message, a, flat.NodeId(node_idx), a.nodes[node_idx].pos)
-							context := formatted.all_after_first('\n')
-							if context.len > 0 {
-								eprintln(context)
-							}
-							exit(1)
-						}
-					}
-				}
 				if cache_module !in cache_state.module_import_paths {
 					cache_state.module_import_paths[cache_module] = mod_name
 				}
@@ -18374,7 +18788,7 @@ fn resolve_imports(mut a flat.FlatAst, mut p parser.Parser, prefs &pref.Preferen
 							if !modulecache.header_needs_source(header) {
 								parse_files = [header.header]
 								if mod_files.len > 0 {
-									cached_header_source_contexts[header.header] = mod_files[0]
+									a.cached_header_sources[header.header] = mod_files[0]
 								}
 							} else {
 								cache_state.source_body_modules[cache_module] = true
@@ -18402,7 +18816,7 @@ fn resolve_imports(mut a flat.FlatAst, mut p parser.Parser, prefs &pref.Preferen
 						if !modulecache.header_needs_source(cached) && !owned_sources_need_check {
 							parse_files = [cached.header]
 							if mod_files.len > 0 {
-								cached_header_source_contexts[cached.header] = mod_files[0]
+								a.cached_header_sources[cached.header] = mod_files[0]
 							}
 						} else {
 							// Cached declaration headers omit local bindings. Project-owned

@@ -76,7 +76,14 @@ fn (tc &TypeChecker) expression_node_used_as_value(id flat.NodeId) bool {
 			return false
 		}
 		parent := tc.a.node(parent_id)
-		if parent.kind in [.fn_decl, .fn_literal, .lambda_expr, .comptime_for] {
+		if parent.kind == .lambda_expr {
+			// `|x| if c { x } else { 0 }`: the body is the lambda's result, unless the
+			// lambda returns nothing and its body was checked as a statement.
+			return parent.children_count > 0
+				&& tc.a.child(parent, parent.children_count - 1) == current
+				&& !tc.is_statement_node(current)
+		}
+		if parent.kind in [.fn_decl, .fn_literal, .comptime_for] {
 			return false
 		}
 		if parent.kind in [.paren, .expr_stmt] {
@@ -138,6 +145,11 @@ fn (mut tc TypeChecker) check_statement_sequence(node flat.Node, body_start int,
 		}
 		is_value_tail := value_tail && i == last_idx
 		if is_value_tail {
+			if node.kind == .match_branch {
+				if expected := tc.match_branch_enum_context(child_id) {
+					_ = tc.resolve_expr(child_id, expected)
+				}
+			}
 			tc.check_node(child_id)
 		} else {
 			tc.check_stmt_node(child_id)
@@ -156,6 +168,35 @@ fn (mut tc TypeChecker) check_statement_sequence(node flat.Node, body_start int,
 	if tc.valid_node_id(unreachable_id) && tc.should_diagnose(unreachable_id) {
 		tc.record_error_at(.return_mismatch, 'unreachable code', unreachable_id, tc.unreachable_statement_diagnostic_pos(unreachable_id))
 	}
+}
+
+// match_branch_enum_context uses the first branch's enum result to type later
+// shorthands before checking their parenthesized and bitwise expressions.
+fn (tc &TypeChecker) match_branch_enum_context(tail_id flat.NodeId) ?Type {
+	branch_id := tc.direct_parent_id(tail_id)
+	match_id := tc.direct_parent_id(branch_id)
+	if !tc.valid_node_id(match_id) {
+		return none
+	}
+	match_node := tc.a.node(match_id)
+	if match_node.kind != .match_stmt || match_node.children_count < 2 {
+		return none
+	}
+	first_branch_id := tc.a.child(match_node, 1)
+	first_tail := tc.branch_tail_expr_id(first_branch_id)
+	if !tc.valid_node_id(first_tail) {
+		return none
+	}
+	subject_id := tc.a.child(match_node, 0)
+	subject_type := unalias_type(unwrap_pointer(tc.declared_receiver_expr_type(subject_id) or {
+		tc.resolve_type(subject_id)
+	}))
+	expected := tc.match_branch_tail_diagnostic_type(tc.expr_key(subject_id), subject_type,
+		*tc.a.node(first_branch_id), first_tail)
+	if unalias_type(expected) is Enum {
+		return expected
+	}
+	return none
 }
 
 fn (mut tc TypeChecker) initialize_pointer_alias_goto_targets() {
@@ -6144,28 +6185,61 @@ fn (mut tc TypeChecker) check_selector(id flat.NodeId, node flat.Node) {
 	clean_recv := unwrap_pointer(base_type)
 	selector_is_method_value := tc.expr_is_method_value(id)
 		&& !tc.ident_is_call_callee_or_generic_base(id)
-	if clean_recv is Struct {
+	// Selectors see through every pointer layer (`pp.field` with `pp` of type `&&Box`),
+	// so the visibility checks use the receiver without any of them.
+	visibility_recv := unwrap_all_pointers(base_type)
+	if visibility_recv is Alias && !tc.selector_is_call_callee(id) {
+		if tc.alias_struct_field_is_private_outside_module(visibility_recv, node.value) {
+			tc.record_error_at(.unknown_field, 'field `${tc.diagnostic_type_name(Type(visibility_recv))}.${node.value}` is not public', id,
+				tc.node_value_diagnostic_pos(id))
+		} else if base.kind == .index {
+			// `aliases[0].radius`: a field of a single variant, selected through an alias of a sum type.
+			alias_target := unalias_and_unwrap_pointer_type(Type(visibility_recv))
+			if alias_target is SumType && tc.sum_shared_field_type(alias_target, node.value) == none {
+				if owner := tc.sum_unique_field_private_variant(alias_target, node.value) {
+					tc.record_error_at(.unknown_field, 'field `${tc.diagnostic_type_name(owner)}.${node.value}` is not public', id,
+						tc.node_value_diagnostic_pos(id))
+				}
+			}
+		}
+	}
+	// A field selected through a sum type is a field of its struct variants.
+	if visibility_recv is SumType && !tc.selector_is_call_callee(id) {
+		if owner := tc.sum_type_private_field_owner(visibility_recv, node.value,
+			base.kind == .index)
+		{
+			tc.record_error_at(.unknown_field, 'field `${tc.diagnostic_type_name(owner)}.${node.value}` is not public', id,
+				tc.node_value_diagnostic_pos(id))
+		}
+	}
+	if visibility_recv is Struct {
 		if !tc.expr_is_rooted_in_c_namespace(base_id) {
-			if visibility := tc.private_declaration(clean_recv.name) {
-				if tc.is_synthesized_anon_struct(clean_recv.name) {
+			if visibility := tc.private_declaration(visibility_recv.name) {
+				if tc.is_synthesized_anon_struct(visibility_recv.name) {
 					// An anonymous struct has no name of its own that could be private: another
 					// module can only reach it through a field or value of some other declaration.
 					// What still applies there is the `pub` section of the field used here. The
 					// field is named through the expression, since its struct has no name.
-					if !tc.anonymous_struct_field_is_public(clean_recv.name, node.value,
+					if !tc.anonymous_struct_field_is_public(visibility_recv.name, node.value,
 						visibility.module_name) {
 						tc.record_error_at(.unknown_field, 'field `${tc.source_text_for_node(base_id)}.${node.value}` is not public', id,
 							tc.node_value_diagnostic_pos(id))
 					}
 				} else {
-					display_name := tc.diagnostic_type_name(Type(clean_recv))
+					display_name := tc.diagnostic_type_name(Type(visibility_recv))
 					decl_module := tc.diagnostic_module_display_name(visibility.module_name)
 					inside_module := if tc.cur_module.len > 0 { tc.cur_module } else { 'main' }
 					tc.record_error_at(.unknown_type, 'struct `${display_name}` was declared as private to module `${decl_module}`, so it can not be used inside module `${inside_module}`', id,
 						tc.node_value_diagnostic_pos(id))
 				}
+			} else if !tc.selector_is_call_callee(id)
+				&& tc.struct_field_is_private_outside_module(visibility_recv.name, node.value) {
+				tc.record_error_at(.unknown_field, 'field `${tc.diagnostic_type_name(Type(visibility_recv))}.${node.value}` is not public', id,
+					tc.node_value_diagnostic_pos(id))
 			}
 		}
+	}
+	if clean_recv is Struct {
 		if deprecation := tc.deprecated_symbols['${clean_recv.name}.${node.value}'] {
 			tc.record_deprecation(id, 'field', deprecation, tc.node_value_diagnostic_pos(id))
 		}
@@ -7934,6 +8008,18 @@ fn (tc &TypeChecker) ident_is_call_callee_or_generic_base(id flat.NodeId) bool {
 		return false
 	}
 	return parent.kind in [.call, .index]
+}
+
+// selector_is_call_callee reports whether selector `id` names the function of a call,
+// like `x.f` in `x.f()`. Such a callee is a method, or a fn-typed field; like V1, the
+// visibility of a fn-typed field is not checked when the field is called.
+fn (tc &TypeChecker) selector_is_call_callee(id flat.NodeId) bool {
+	parent_id := tc.direct_parent_id(id)
+	if !tc.valid_node_id(parent_id) {
+		return false
+	}
+	parent := tc.a.node(parent_id)
+	return parent.kind == .call && parent.children_count > 0 && tc.a.child(parent, 0) == id
 }
 
 fn (tc &TypeChecker) future_local_decl_id(name string, use_id flat.NodeId) ?flat.NodeId {
@@ -11211,7 +11297,19 @@ fn (tc &TypeChecker) named_type_compatible_with_ierror_inner(concrete_name strin
 }
 
 fn (tc &TypeChecker) named_type_implements_ierror_methods(concrete_name string) bool {
-	iface_name := if 'builtin.IError' in tc.interface_names { 'builtin.IError' } else { 'IError' }
+	// Without the builtin module (`-no-builtin`) no `IError` is declared at all.
+	// An undeclared interface lists no requirements, so every type would satisfy
+	// it, and plain values like enums or ints would pass for error payloads. Only
+	// the exact global names count: a module-local `pkg.IError` would otherwise be
+	// picked up by the short-name fallback of `interface_metadata_name`, but it is
+	// not the builtin error protocol.
+	iface_name := if 'builtin.IError' in tc.interface_names {
+		'builtin.IError'
+	} else if 'IError' in tc.interface_names {
+		'IError'
+	} else {
+		return false
+	}
 	return tc.named_type_implements_interface(concrete_name, iface_name)
 }
 
@@ -15633,9 +15731,7 @@ fn (tc &TypeChecker) c_abi_fn_ptr_type_from_text(typ string) ?string {
 		return none
 	}
 	ret_type := if ret_str.len > 0 { tc.parse_type(ret_str) } else { Type(Void{}) }
-	ret_ct := tc.fn_ptr_return_c_type(ret_type)
-	params_ct := if params.len == 0 { 'void' } else { params.join(', ') }
-	return 'fn_ptr:${ret_ct}|${params_ct}'
+	return naming.fn_ptr_encoded(tc.fn_ptr_return_c_type(ret_type), params)
 }
 
 // c_abi_fn_ptr_type_for_type_text returns the C ABI function-pointer encoding retained
@@ -16762,11 +16858,6 @@ fn (tc &TypeChecker) resolve_type_uncached(id flat.NodeId) Type {
 						elem_type: Type(String{})
 					})
 				}
-				if gt := tc.file_scope.lookup(node.value) {
-					if gt !is Unknown {
-						return gt
-					}
-				}
 				resolved := tc.resolve_import_alias(base_node.value) or { base_node.value }
 				qname := '${resolved}.${node.value}'
 				if qname.starts_with('C.') {
@@ -17240,9 +17331,6 @@ fn (tc &TypeChecker) c_extern_abi_type(t Type) string {
 	}
 	if t is FnType {
 		ret := tc.c_extern_abi_type(t.return_type)
-		if t.params.len == 0 {
-			return 'fn_ptr:${ret}|void'
-		}
 		mut params := []string{}
 		for i in 0 .. t.params.len {
 			mut param_type := fn_param_type(t, i)
@@ -17253,7 +17341,7 @@ fn (tc &TypeChecker) c_extern_abi_type(t Type) string {
 			}
 			params << tc.c_extern_abi_type(param_type)
 		}
-		return 'fn_ptr:${ret}|${params.join(', ')}'
+		return naming.fn_ptr_encoded(ret, params)
 	}
 	return tc.c_type(t)
 }
@@ -17375,9 +17463,6 @@ fn (tc &TypeChecker) c_type_uncached(t Type) string {
 	}
 	if t is FnType {
 		ret := tc.fn_ptr_return_c_type(t.return_type)
-		if t.params.len == 0 {
-			return 'fn_ptr:${ret}|void'
-		}
 		mut params := []string{}
 		for i in 0 .. t.params.len {
 			mut param_type := fn_param_type(t, i)
@@ -17394,7 +17479,7 @@ fn (tc &TypeChecker) c_type_uncached(t Type) string {
 				params << tc.c_type(param_type)
 			}
 		}
-		return 'fn_ptr:${ret}|${params.join(', ')}'
+		return naming.fn_ptr_encoded(ret, params)
 	}
 	if t is OptionType {
 		return 'Optional'

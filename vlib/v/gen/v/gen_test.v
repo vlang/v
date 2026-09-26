@@ -154,6 +154,208 @@ fn test_formatter_preserves_compact_function_and_expression_bodies() {
 	assert vfmt('compact_bodies_twice', out) == out
 }
 
+fn test_formatter_keeps_single_statement_bodies_written_on_one_line() {
+	source := 'struct Point {
+	x int
+mut:
+	y int
+}
+
+fn (p &Point) sum() int { return p.x + p.y }
+
+pub fn (mut p Point) set(y int) { p.y = y }
+
+fn first_positive(a []int) int {
+	mut total := 0
+	for i := 0; i < a.len; i++ { total += a[i] }
+	for x in a { if x > 0 { return x } }
+	for i, x in a { total += i * x }
+	for total > 100 { total /= 2 }
+	if total > 10 { return total } else { total = 0 }
+	if total < 0 { total = -total }
+	cmp := fn (x &int, y &int) int { return *x - *y }
+	_ = cmp
+	return total
+}
+'
+	out := vfmt('single_statement_bodies', source)
+	assert out == source, out
+	assert vfmt('single_statement_bodies_twice', out) == out
+}
+
+fn test_formatter_expands_single_statement_bodies_that_do_not_fit_one_line() {
+	source := "fn expand(a []int, extra_long_argument_name int, another_long_argument_name int) int { return a.len }
+
+fn loops(a []int) {
+	for x in a { m := {'k': x} }
+	for x in a { if x > 1 { println(x) } else if x > 2 { println(x) } }
+	for x in a { // note
+		println(x)
+	}
+	if a.len > 1 { return } else if a.len > 2 { println(a) }
+}
+
+fn multi(x int) int {
+	return x
+}
+"
+	out := vfmt('expanded_single_statement_bodies', source)
+	assert out == "fn expand(a []int, extra_long_argument_name int, another_long_argument_name int) int {
+	return a.len
+}
+
+fn loops(a []int) {
+	for x in a {
+		m := {
+			'k': x
+		}
+	}
+	for x in a {
+		if x > 1 {
+			println(x)
+		} else if x > 2 {
+			println(x)
+		}
+	}
+	for x in a { // note
+		println(x)
+	}
+	if a.len > 1 {
+		return
+	} else if a.len > 2 {
+		println(a)
+	}
+}
+
+fn multi(x int) int {
+	return x
+}
+", out
+	assert vfmt('expanded_single_statement_bodies_twice', out) == out
+}
+
+fn test_formatter_measures_formatted_single_statement_bodies_against_the_line_limit() {
+	// Every source line is at most 99 columns, but `{return x}` gains two spaces when it is
+	// formatted: the bodies that end up over 100 columns are expanded on the first run, not
+	// on the second one.
+	over, fits := 'o'.repeat(71), 'f'.repeat(70)
+	for_in, c_for, lit := 'i'.repeat(66), 'c'.repeat(59), 'l'.repeat(65)
+	source := "fn over() string {return '${over}'}
+
+fn fits() string {return '${fits}'}
+
+fn loops() {
+	for i in 0 .. 3 {println('${for_in}')}
+	for i := 0; i < 3; i++ {println('${c_for}')}
+	cb := fn () string {return '${lit}'}
+	_ = cb
+}
+"
+	out := vfmt('formatted_single_statement_body_width', source)
+	assert out == "fn over() string {
+	return '${over}'
+}
+
+fn fits() string { return '${fits}' }
+
+fn loops() {
+	for i in 0 .. 3 {
+		println('${for_in}')
+	}
+	for i := 0; i < 3; i++ {
+		println('${c_for}')
+	}
+	cb := fn () string {
+		return '${lit}'
+	}
+	_ = cb
+}
+", out
+	assert vfmt('formatted_single_statement_body_width_twice', out) == out
+}
+
+fn test_formatter_measures_formatted_compact_if_branches_against_the_line_limit() {
+	// As for function and loop bodies, `{return x}` and `{'x'}` gain two spaces each: the
+	// branches that end up over 100 columns are expanded on the first run.
+	over, fits := 'o'.repeat(79), 'f'.repeat(78)
+	expr_over, expr_fits := 'e'.repeat(71), 'v'.repeat(68)
+	source := "fn branches(c bool) string {
+	if c {return '${over}'}
+	if c {return '${fits}'}
+	s := if c {'${expr_over}'} else {''}
+	t := if c {'${expr_fits}'} else {''}
+	return s + t
+}
+"
+	out := vfmt('formatted_compact_if_width', source)
+	assert out == "fn branches(c bool) string {
+	if c {
+		return '${over}'
+	}
+	if c { return '${fits}' }
+	s := if c {
+		'${expr_over}'
+	} else {
+		''
+	}
+	t := if c { '${expr_fits}' } else { '' }
+	return s + t
+}
+", out
+	assert vfmt('formatted_compact_if_width_twice', out) == out
+}
+
+fn test_formatter_expands_single_statement_bodies_with_multi_statement_or_blocks() {
+	source := "fn h() ?int { return 1 }
+
+fn first() int { return h() or { println('none') 0 } }
+
+fn second() int { return h() or { 0 } }
+
+fn loops(a []int) {
+	for x in a { _ = h() or { println(x) continue } }
+	if a.len > 0 { _ = h() or { println(a) return } }
+	cb := fn () int { return h() or { println('none') 0 } }
+	_ = cb
+}
+"
+	out := vfmt('multi_statement_or_block_bodies', source)
+	assert out == "fn h() ?int { return 1 }
+
+fn first() int {
+	return h() or {
+		println('none')
+		0
+	}
+}
+
+fn second() int { return h() or { 0 } }
+
+fn loops(a []int) {
+	for x in a {
+		_ = h() or {
+			println(x)
+			continue
+		}
+	}
+	if a.len > 0 {
+		_ = h() or {
+			println(a)
+			return
+		}
+	}
+	cb := fn () int {
+		return h() or {
+			println('none')
+			0
+		}
+	}
+	_ = cb
+}
+", out
+	assert vfmt('multi_statement_or_block_bodies_twice', out) == out
+}
+
 fn test_formatter_keeps_trailing_array_comments_inside_literal() {
 	source := 'fn array_comments() {\n\t_ := [\n\t\t// before\n\t\t6,\n\t\t// after\n\t]\n\t_ := [\n\t\t7, // inline after\n\t]\n}\n'
 	out := vfmt('trailing_array_comments', source)
@@ -999,7 +1201,7 @@ fn test_formatter_ignores_vfmt_directives_inside_strings() {
 	out := vfmt('vfmt_directives_in_strings', "fn main(){\n\toff := '// vfmt off'\n\ton := '// vfmt on'\n\tprintln(off + on)\n}\n\nfn format_me(){println('yes')}\n")
 	assert out.contains("off := '// vfmt off'"), out
 	assert out.contains("on := '// vfmt on'"), out
-	assert out.contains("fn format_me() {\n\tprintln('yes')\n}"), out
+	assert out.contains("fn format_me() { println('yes') }"), out
 }
 
 fn test_formatter_preserves_go_legacy_dollar_builtins_and_bodyless_functions() {

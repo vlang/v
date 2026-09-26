@@ -10,7 +10,6 @@ struct Foo {
 struct Holder {
 	foo   baz.Foo
 	alias q.Foo
-	name  baz.string
 }
 
 fn take(foo baz.Foo) baz.Foo {

@@ -1,0 +1,7 @@
+vlib/v/tests/no_closures/capturing_comptime_for_lambda.vv:14:16: cgen error: a closure was generated for function
+   12 |     $for field in Point.fields {
+   13 |         // `field` is compile-time metadata, but `p` is captured
+   14 |         println(call(|| p.$(field.name)))
+      |                      ~~~~~~~~~~~~~~~~~~
+   15 |     }
+   16 | }

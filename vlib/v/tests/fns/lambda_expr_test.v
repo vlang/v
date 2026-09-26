@@ -79,3 +79,15 @@ fn test_inferred_lambda_reference_parameters_compare_values() {
 	assert !compare_lambda_data(|x, y| x == y, a, c)
 	assert compare_lambda_data(|x, y| x != y, a, c)
 }
+
+fn test_lambda_expr_with_if_and_match_body() {
+	assert [1, 2, 3].map(|x| if x > 1 { x } else { 0 }) == [0, 2, 3]
+	assert [1, 2, 3].map(|x| match x {
+		1 { 10 }
+		else { 20 }
+	}) == [10, 20, 20]
+	assert [1, 2, 3].filter(|x| if x > 1 { true } else { false }) == [2, 3]
+	assert f1(|x| if x > 1 { x * 2 } else { 0 }) == 20
+	k := 5
+	assert [1, 2].map(|x| if x > 1 { x + k } else { k }) == [5, 7]
+}

@@ -1,0 +1,17 @@
+fn apply(f fn (int) int, v int) int {
+	return f(v)
+}
+
+fn parse(s string) !int {
+	if s == '' {
+		return error('empty')
+	}
+	return s.int()
+}
+
+fn main() {
+	err := 'outer'
+	println(err)
+	// the transform captures the outer `err`, although the `or` block shadows it
+	println(apply(|n| parse(if n > 0 { '' } else { n.str() }) or { err.msg().len }, 7))
+}

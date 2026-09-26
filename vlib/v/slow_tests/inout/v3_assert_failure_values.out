@@ -1,0 +1,34 @@
+vlib/v/slow_tests/inout/v3_assert_failure_values.v3.v:31: FAIL: fn main.check: assert next(mut calls) == 'call 2', 'calls: ${calls}'
+   left value: next(mut calls) = call 1
+  right value: 'call 2' = call 2
+      message: calls: ['next']
+vlib/v/slow_tests/inout/v3_assert_failure_values.v3.v:32: FAIL: fn main.check: assert Point{1, 2} == Point{1, 3}
+   left value: Point{1, 2} = Point{
+    x: 1
+    y: 2
+}
+  right value: Point{1, 3} = Point{
+    x: 1
+    y: 3
+}
+vlib/v/slow_tests/inout/v3_assert_failure_values.v3.v:33: FAIL: fn main.check: assert Name{'a'} != Name{'a'}
+   left value: Name{'a'} = Name(a)
+  right value: Name{'a'} = Name(a)
+vlib/v/slow_tests/inout/v3_assert_failure_values.v3.v:34: FAIL: fn main.check: assert values == [1, 2]
+   left value: values = [3]
+  right value: [1, 2]
+vlib/v/slow_tests/inout/v3_assert_failure_values.v3.v:35: FAIL: fn main.check: assert values.len > 5
+   left value: values.len = 1
+  right value: 5
+vlib/v/slow_tests/inout/v3_assert_failure_values.v3.v:37: FAIL: fn main.check: assert color == .green
+   left value: color = red
+  right value: .green = green
+vlib/v/slow_tests/inout/v3_assert_failure_values.v3.v:39: FAIL: fn main.check: assert ratio >= 1.5
+   left value: ratio = 0.5
+  right value: 1.5
+vlib/v/slow_tests/inout/v3_assert_failure_values.v3.v:41: FAIL: fn main.check: assert ok, 'ok should be true'
+      message: ok should be true
+vlib/v/slow_tests/inout/v3_assert_failure_values.v3.v:47: FAIL: fn main.main: assert foo() == 'www'
+   left value: foo() = zzz
+  right value: 'www' = www
+V panic: Assertion failed...
