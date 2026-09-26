@@ -1846,11 +1846,13 @@ fn (mut t Transformer) map_index_yields_map(id flat.NodeId) bool {
 	return t.clean_map_type(info.value_type).starts_with('map[')
 }
 
-// map_index_inner_map_slot lowers a map-valued `m[k]` that is mutated through to
-// `*(&Inner)slot`, where `slot` points at the value stored in `m`. Like V1's
-// `map__get_and_set`, a missing `k` is inserted with an empty map first, so the
-// mutation is kept in `m`. `m` and `k` are evaluated once, and the empty map is
-// only allocated for a missing key.
+// map_index_inner_map_slot lowers a map-valued `m[k]` that is mutated through to a
+// local copy of the inner map stored in `m`. Like V1's `map__get_and_set`, a missing
+// `k` is inserted with an empty map first, so the mutation is kept in `m`. `m` and `k`
+// are evaluated once, and the empty map is only allocated for a missing key.
+// A V3 map value is a pointer to its data, so the copy shares that data with the
+// stored map. Unlike a pointer to the stored value, it stays valid when later
+// operands (`m[k][grow(mut m)] << v`) make `m` reallocate its values.
 fn (mut t Transformer) map_index_inner_map_slot(id flat.NodeId) ?flat.NodeId {
 	// `(m[k])[k2] << v` mutates the same inner map as `m[k][k2] << v`.
 	info := t.map_index_info(t.unwrap_parens(id)) or { return none }
@@ -1889,11 +1891,14 @@ fn (mut t Transformer) map_index_inner_map_slot(id flat.NodeId) ?flat.NodeId {
 	missing := t.make_infix(.eq, t.make_ident(slot_name), t.a.add(.nil_literal))
 	stmts << t.make_if(missing, insert, t.make_empty())
 	t.append_owned_map_set_key_cleanup(key_name, cleanup_key, existing_key_name, mut stmts)
-	t.pending_stmts << stmts
 	value_type := t.normalize_type_alias(info.value_type)
 	slot := t.make_prefix(.mul, t.make_cast('&${value_type}', t.make_ident(slot_name), '&${value_type}'))
-	t.set_node_typ(int(slot), value_type)
-	return slot
+	inner_name := t.new_temp('map_inner')
+	stmts << t.make_decl_assign_typed(inner_name, slot, value_type)
+	t.pending_stmts << stmts
+	inner := t.make_ident(inner_name)
+	t.set_node_typ(int(inner), value_type)
+	return inner
 }
 
 // const_expr_for_ident supports const expr for ident handling for Transformer.

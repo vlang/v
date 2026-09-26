@@ -142,3 +142,28 @@ fn test_mutation_through_parenthesized_outer_index() {
 	(counts['x'])['k'] += 2
 	assert counts.str() == "{'x': {'k': 3}}"
 }
+
+fn grow_nested_map_outer(mut m map[string]map[string][]int) string {
+	for i in 0 .. 2000 {
+		m['grow${i}'] = map[string][]int{}
+	}
+	return 'k'
+}
+
+fn test_mutation_when_a_later_operand_grows_the_outer_map() {
+	mut m := map[string]map[string][]int{}
+	m['a'] = map[string][]int{}
+	m['a'][grow_nested_map_outer(mut m)] << 1
+	m['b'][grow_nested_map_outer(mut m)] << 2
+	assert m['a'].str() == "{'k': [1]}"
+	assert m['b'].str() == "{'k': [2]}"
+	assert m.len == 2002
+}
+
+fn test_field_assign_into_an_existing_empty_inner_map() {
+	mut points := map[string]map[string]NestedMapPoint{}
+	points['a'] = map[string]NestedMapPoint{}
+	points['a']['b'].x = 5
+	assert points['a']['b'].x == 5
+	assert points['a'].len == 1
+}
