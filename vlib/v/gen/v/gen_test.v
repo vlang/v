@@ -1965,6 +1965,13 @@ fn test_formatter_keeps_a_trailing_comment_on_a_match_branch() {
 	assert vfmt('match_branch_trailing_comment_twice', out) == out
 }
 
+fn test_formatter_keeps_trailing_comments_on_compact_match_branches() {
+	source := 'fn foo(arg int) int {\n\treturn match arg {\n\t\t1 { 1 } // return 1\n\t\telse { 0 } // return 2\n\t}\n}\n'
+	out := vfmt('compact_match_branch_trailing_comments', source)
+	assert out == source, out
+	assert vfmt('compact_match_branch_trailing_comments_twice', out) == out
+}
+
 // A blank separator line must carry no indentation. Writing it left a line of whitespace, which
 // V source never carries and which the next run read back differently, so the formatter was not a
 // fixed point.

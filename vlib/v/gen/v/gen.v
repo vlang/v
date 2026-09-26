@@ -3450,7 +3450,10 @@ fn (mut g Gen) match_node(id flat.NodeId) {
 			if g.match_branch_is_compact(b, bchildren) {
 				g.write('else ')
 				g.compact_match_branch(b, bchildren)
-				g.writeln('')
+				g.emit_trailing_comments(b.pos.end)
+				if !g.on_newline {
+					g.writeln('')
+				}
 			} else {
 				g.write('else')
 				g.writeln(' {')
@@ -3496,7 +3499,10 @@ fn (mut g Gen) match_node(id flat.NodeId) {
 			if g.match_branch_is_compact(b, rest) {
 				g.write(' ')
 				g.compact_match_branch(b, rest)
-				g.writeln('')
+				g.emit_trailing_comments(b.pos.end)
+				if !g.on_newline {
+					g.writeln('')
+				}
 			} else {
 				g.writeln(' {')
 				g.stmt_list_ids(rest)
