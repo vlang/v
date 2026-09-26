@@ -19,6 +19,11 @@ const scoped_check_worker_batches = 96
 // A serial checker owns the whole import graph instead of one worker shard, so
 // use finer arena batches to keep compiler-module checks below the memory cap.
 const scoped_check_serial_batches = 64
+// A batch forks the checker and promotes its results back, ~0.3 ms each, which
+// a few small functions do not pay back: 64 batches of a 200-function program
+// took 43 ms of a check, one batch 24 ms. A batch checks at least this many
+// nodes (item costs), a few ms of work.
+const min_scoped_check_batch_cost = 2048
 // Keep one scheduled chunk per scoped worker. Finer arena batches within each
 // chunk release transient checker allocations without retaining extra shards.
 // (Re-verified 2026-08: oversubscribe=2 costs ~3-5ms here — the extra per-chunk
@@ -691,15 +696,11 @@ fn (mut tc TypeChecker) check_scoped_batches(items []CheckWorkItem, batch_limit 
 	if items.len == 0 {
 		return
 	}
-	n_batches := if items.len < batch_limit {
-		items.len
-	} else {
-		batch_limit
-	}
 	mut total_cost := i64(0)
 	for item in items {
 		total_cost += i64(item.cost) + 1
 	}
+	n_batches := scoped_check_batch_count(items.len, total_cost, batch_limit)
 	mut start := 0
 	mut consumed_cost := i64(0)
 	for batch_idx in 0 .. n_batches {
@@ -719,6 +720,18 @@ fn (mut tc TypeChecker) check_scoped_batches(items []CheckWorkItem, batch_limit 
 		check_worker_scope_free(scratch_scope)
 		start = end
 	}
+}
+
+// scoped_check_batch_count splits `n_items` of `total_cost` into at most
+// `batch_limit` batches, and into fewer when a batch would check fewer nodes
+// than min_scoped_check_batch_cost.
+fn scoped_check_batch_count(n_items int, total_cost i64, batch_limit int) int {
+	mut n := int_min(n_items, batch_limit)
+	by_cost := total_cost / min_scoped_check_batch_cost
+	if by_cost < i64(n) {
+		n = int(by_cost)
+	}
+	return int_max(n, 1)
 }
 
 fn check_worker_scope_begin(enabled bool) voidptr {
