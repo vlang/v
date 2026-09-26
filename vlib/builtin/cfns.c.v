@@ -450,7 +450,7 @@ fn C.closesocket(i32) i32
 
 fn C.vschannel_init(&C.TlsContext, C.BOOL)
 
-fn C.request(&C.TlsContext, i32, &u16, &u8, u32, &&u8, fn (voidptr, isize) voidptr) i32
+fn C.request(&C.TlsContext, i32, &u16, &u8, u32, &&char, fn (voidptr, isize) voidptr) i32
 
 fn C.vschannel_cleanup(&C.TlsContext)
 
