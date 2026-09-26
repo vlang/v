@@ -149,7 +149,7 @@ fn (tc &TypeChecker) vls_local_binding(id flat.NodeId) ?VlsBinding {
 // `name`: `err` in an `or {}` block and in the `else` of an `if x := f()`, from
 // the `{` of the block, and `it`, or `a` and `b`, in the argument of `.map()`,
 // `.filter()`, `.any()`, `.all()` and `.count()`, or of `.sort()` and
-// `.sorted()`, from the name of the method, as V1 answered.
+// `.sorted()` of an array, from the name of the method, as V1 answered.
 fn (tc &TypeChecker) vls_implicit_binding(p_id flat.NodeId, p &flat.Node, child flat.NodeId, name string) ?VlsPos {
 	if name == 'err' && p.kind == .block {
 		owner_id := tc.vls_parent_id(p_id)
@@ -176,10 +176,28 @@ fn (tc &TypeChecker) vls_implicit_binding(p_id flat.NodeId, p &flat.Node, child 
 		['sort', 'sorted']
 	}
 	callee := tc.a.child_node(p, 0)
-	if callee.kind == .selector && callee.value in methods {
-		return VlsPos{int(callee.pos.id), int(callee.pos.end) - callee.value.len}
+	if callee.kind != .selector || callee.value !in methods || tc.vls_calls_no_array_method(p_id, p) {
+		return none
 	}
-	return none
+	return VlsPos{int(callee.pos.id), int(callee.pos.end) - callee.value.len}
+}
+
+// vls_calls_no_array_method reports whether `call` is known to call a method
+// that is not one of an array: a method of another type named like one, as a
+// user's `fn (s Sorter) sort(value int)`, whose argument declares nothing. A
+// receiver of no known type, in a body the checker did not type, may be an
+// array: V tells for each instance.
+fn (tc &TypeChecker) vls_calls_no_array_method(call_id flat.NodeId, call &flat.Node) bool {
+	if resolved := tc.resolved_call_name(call_id) {
+		return !resolved.starts_with('array.')
+	}
+	callee := tc.a.child_node(call, 0)
+	if callee.children_count == 0 {
+		return false
+	}
+	receiver := tc.vls_value_type(tc.a.child(callee, 0)) or { return false }
+	base := unalias_type(unwrap_pointer(receiver))
+	return base !is Array && base !is ArrayFixed
 }
 
 // vls_declared_before looks through the statements of `block` that come before
