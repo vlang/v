@@ -2,12 +2,29 @@ module types
 
 import v.flat
 
+// VlsBinding is what a local name stands for where it is used: the node that
+// declares it, or, for a variable the language declares, where that comes from
+// (see vls_implicit_binding).
+struct VlsBinding {
+	decl_id  flat.NodeId
+	implicit bool
+	at       VlsPos
+}
+
 // vls_local_declaration finds the node that declares the local name the
-// identifier `id` uses: the identifier on the left of a `:=`, a variable of a
-// `for ... in`, of an `if x := ...` guard or of a closure's capture list, or a
-// parameter. It walks out from the use, through the statements before it in
-// each enclosing block, as the scopes of the checker did while checking.
+// identifier `id` uses, if the code declares it (see vls_local_binding).
 fn (tc &TypeChecker) vls_local_declaration(id flat.NodeId) ?flat.NodeId {
+	binding := tc.vls_local_binding(id)?
+	return if binding.implicit { none } else { binding.decl_id }
+}
+
+// vls_local_binding finds what the local name the identifier `id` uses stands
+// for: the identifier on the left of a `:=`, a variable of a `for ... in`, of
+// an `if x := ...` guard or of a closure's capture list, a parameter, or a
+// variable the language declares, `err`, `it`, `a` or `b`. It walks out from
+// the use, through the statements before it in each enclosing block, as the
+// scopes of the checker did while checking: the nearest one is the one.
+fn (tc &TypeChecker) vls_local_binding(id flat.NodeId) ?VlsBinding {
 	name := tc.a.nodes[int(id)].value
 	use_offset := int(tc.a.nodes[int(id)].pos.offset)
 	mut child := id
@@ -20,7 +37,9 @@ fn (tc &TypeChecker) vls_local_declaration(id flat.NodeId) ?flat.NodeId {
 		match p.kind {
 			.block {
 				if found := tc.vls_declared_before(p, child, name, use_offset) {
-					return found
+					return VlsBinding{
+						decl_id: found
+					}
 				}
 			}
 			.for_in_stmt {
@@ -29,7 +48,9 @@ fn (tc &TypeChecker) vls_local_declaration(id flat.NodeId) ?flat.NodeId {
 				// its value counts. A local of the body before the use comes
 				// first, then the loop variables, which exist in the body only.
 				if found := tc.vls_declared_before(p, child, name, use_offset) {
-					return found
+					return VlsBinding{
+						decl_id: found
+					}
 				}
 				header := p.value.int()
 				mut in_body := false
@@ -44,7 +65,9 @@ fn (tc &TypeChecker) vls_local_declaration(id flat.NodeId) ?flat.NodeId {
 						c := tc.a.child(p, i)
 						if tc.valid_node_id(c) && tc.a.node(c).kind == .ident
 							&& tc.a.node(c).value == name {
-							return c
+							return VlsBinding{
+								decl_id: c
+							}
 						}
 					}
 				}
@@ -54,7 +77,9 @@ fn (tc &TypeChecker) vls_local_declaration(id flat.NodeId) ?flat.NodeId {
 				// the variable a C-style loop declares, `for i := 0; ...`, which
 				// exists in its condition, its step and its body.
 				if found := tc.vls_declared_before(p, child, name, use_offset) {
-					return found
+					return VlsBinding{
+						decl_id: found
+					}
 				}
 			}
 			.if_expr {
@@ -63,7 +88,9 @@ fn (tc &TypeChecker) vls_local_declaration(id flat.NodeId) ?flat.NodeId {
 					cond := tc.a.child_node(p, 0)
 					if cond.kind == .decl_assign {
 						if found := tc.vls_assigned_name(tc.a.child(p, 0), name) {
-							return found
+							return VlsBinding{
+								decl_id: found
+							}
 						}
 					}
 				}
@@ -72,13 +99,17 @@ fn (tc &TypeChecker) vls_local_declaration(id flat.NodeId) ?flat.NodeId {
 				// A function's statements are its own children, after its
 				// parameters.
 				if found := tc.vls_declared_before(p, child, name, use_offset) {
-					return found
+					return VlsBinding{
+						decl_id: found
+					}
 				}
 				for i in 0 .. p.children_count {
 					c := tc.a.child(p, i)
 					cn := tc.a.node(c)
 					if cn.kind == .param && cn.value == name {
-						return c
+						return VlsBinding{
+							decl_id: c
+						}
 					}
 				}
 				// A closure's capture list names a variable of the enclosing
@@ -95,12 +126,58 @@ fn (tc &TypeChecker) vls_local_declaration(id flat.NodeId) ?flat.NodeId {
 				// of `or {}`, of a `match` branch, of `$if`, `defer` or a `select`
 				// branch. The node of an expression has no `:=` among them.
 				if found := tc.vls_declared_before(p, child, name, use_offset) {
-					return found
+					return VlsBinding{
+						decl_id: found
+					}
 				}
+			}
+		}
+		if at := tc.vls_implicit_binding(parent, p, child, name) {
+			return VlsBinding{
+				implicit: true
+				at:       at
 			}
 		}
 		child = parent
 		parent = tc.vls_parent_id(child)
+	}
+	return none
+}
+
+// vls_implicit_binding is where a variable the language declares comes from,
+// when the node `p`, the parent of `child`, declares it there with the name
+// `name`: `err` in an `or {}` block and in the `else` of an `if x := f()`, from
+// the `{` of the block, and `it`, or `a` and `b`, in the argument of `.map()`,
+// `.filter()`, `.any()`, `.all()` and `.count()`, or of `.sort()` and
+// `.sorted()`, from the name of the method, as V1 answered.
+fn (tc &TypeChecker) vls_implicit_binding(p_id flat.NodeId, p &flat.Node, child flat.NodeId, name string) ?VlsPos {
+	if name == 'err' && p.kind == .block {
+		owner_id := tc.vls_parent_id(p_id)
+		if !tc.valid_node_id(owner_id) {
+			return none
+		}
+		owner := tc.a.node(owner_id)
+		from_or := owner.kind == .or_expr && owner.children_count > 1
+			&& tc.a.child(owner, 1) == p_id
+		from_else := owner.kind == .if_expr && owner.children_count > 2
+			&& tc.a.child(owner, 2) == p_id && tc.a.child_node(owner, 0).kind == .decl_assign
+		if from_or || from_else {
+			return VlsPos{int(p.pos.id), int(p.pos.offset)}
+		}
+		return none
+	}
+	if name !in ['it', 'a', 'b'] || p.kind != .call || p.children_count < 2
+		|| tc.a.child(p, 0) == child {
+		return none
+	}
+	methods := if name == 'it' {
+		['filter', 'map', 'any', 'all', 'count']
+	} else {
+		['sort', 'sorted']
+	}
+	callee := tc.a.child_node(p, 0)
+	if callee.kind == .selector && callee.value in methods {
+		return VlsPos{int(callee.pos.id), int(callee.pos.end) - callee.value.len}
 	}
 	return none
 }

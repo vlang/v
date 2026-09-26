@@ -198,11 +198,66 @@ fn (j Job) run[T](x T) int {
 }
 '
 
+// Locals and a parameter named like the variables the language declares,
+// `err`, `it` and `a`, in the functions where those are declared too.
+const shadowing_program = "module main
+
+fn fails() !int {
+	return error('x')
+}
+
+fn demo(err string) {
+	println(err)
+	if value := fails() {
+		println(value)
+	} else {
+		println(err)
+	}
+	n := fails() or {
+		println(err)
+		0
+	}
+	println(n)
+}
+
+fn items() {
+	it := 'five'
+	println([1, 2].map(it + 1))
+	println(it)
+	a := 'one'
+	mut xs := [3, 1]
+	xs.sort(a < b)
+	println(a)
+}
+
+fn captured(err string) {
+	n := fails() or {
+		f := fn [err] () string {
+			return err.msg()
+		}
+		println(f())
+		0
+	}
+	println(n)
+	println(err)
+}
+
+fn main() {
+	demo('outer')
+	items()
+	captured('outer')
+}
+"
+
 fn testsuite_begin() {
 	res := os.execute('${os.quoted_path(vexe)} -gc none -path ${os.quoted_path('${vlib_dir}|@vlib|@vmodules')} -o ${os.quoted_path(line_info_v3_bin)} ${os.quoted_path(v3_src)}')
 	assert res.exit_code == 0, res.output
 	os.mkdir_all(os.join_path(work_dir, 'completion')) or { panic(err) }
 	os.mkdir_all(os.join_path(work_dir, 'declarations')) or { panic(err) }
+	os.mkdir_all(os.join_path(work_dir, 'shadowing')) or { panic(err) }
+	os.write_file(os.join_path(work_dir, 'shadowing', 'main.v'), shadowing_program) or {
+		panic(err)
+	}
 	os.write_file(os.join_path(work_dir, 'main.v'), program) or { panic(err) }
 	os.write_file(os.join_path(work_dir, 'completion', 'main.v'), completion_program) or {
 		panic(err)
@@ -357,6 +412,34 @@ fn test_definition_of_a_declaration_is_the_declaration() {
 	// that type embeds.
 	assert declaration(80, 'ident', 0) == 'main.v:9:12'
 	assert declaration(84, 'ident', 0) == 'main.v:9:12'
+}
+
+fn shadowing(code string, line int, word string) string {
+	return ask(os.join_path(work_dir, 'shadowing'), code, line, word, 0)
+}
+
+fn test_a_name_stands_for_its_nearest_declaration_implicit_ones_too() {
+	// The parameter `err`, and the `err` an `else` and an `or {}` declare in
+	// its function: a rename of the parameter changes the occurrences whose
+	// definition is the parameter only.
+	assert shadowing('gd^', 8, 'err') == 'main.v:7:8'
+	assert shadowing('gd^', 12, 'err') == 'main.v:11:8'
+	assert shadowing('gd^', 15, 'err') == 'main.v:14:17'
+	assert shadowing('hv^', 8, 'err').contains('err string')
+	assert shadowing('hv^', 12, 'err').contains('err IError')
+	assert shadowing('hv^', 15, 'err').contains('err IError')
+	// Locals `it` and `a`, and those `.map()` and `.sort()` declare.
+	assert shadowing('gd^', 23, 'it') == 'main.v:23:16'
+	assert shadowing('hv^', 23, 'it').contains('it int')
+	assert shadowing('gd^', 24, 'it') == 'main.v:22:1'
+	assert shadowing('hv^', 24, 'it').contains('it string')
+	assert shadowing('gd^', 27, 'a') == 'main.v:27:4'
+	assert shadowing('gd^', 28, 'a') == 'main.v:25:1'
+	// A closure's capture list names the `err` of the `or {}` around it.
+	assert shadowing('gd^', 33, 'err') == 'main.v:32:17'
+	assert shadowing('gd^', 34, 'err') == 'main.v:32:17'
+	assert shadowing('hv^', 34, 'err').contains('err IError')
+	assert shadowing('gd^', 40, 'err') == 'main.v:31:12'
 }
 
 fn test_signature_help_marks_the_argument_under_the_cursor() {
