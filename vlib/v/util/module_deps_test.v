@@ -39,6 +39,25 @@ fn write_markdown_module(root string) ! {
 	os.write_file(os.join_path(markdown_dir, 'markdown.v'), 'module markdown\n')!
 }
 
+fn restore_env(name string, value ?string) {
+	if v := value {
+		os.setenv(name, v, true)
+	} else {
+		os.unsetenv(name)
+	}
+}
+
+// install_is_attempted reports whether the `markdown` module of `vdoc` had to be installed,
+// since it could not be resolved. The tests point VEXE at a missing program, so that every
+// install attempt fails at once, and the network is never reached.
+fn install_is_attempted(tool_source string, search_paths []string) bool {
+	ensure_modules_for_tool_are_installed('vdoc', tool_source, search_paths, false) or {
+		assert err.msg().contains('Install it with `v install markdown`')
+		return true
+	}
+	return false
+}
+
 fn test_ensure_modules_for_tool_are_installed_searches_every_module_root() {
 	base := os.join_path(os.vtmp_dir(), 'util_module_deps_roots_${os.getpid()}')
 	os.rmdir_all(base) or {}
@@ -50,43 +69,30 @@ fn test_ensure_modules_for_tool_are_installed_searches_every_module_root() {
 	write_markdown_module(path_root)!
 	old_vmodules := os.getenv_opt('VMODULES')
 	old_vexe := os.getenv_opt('VEXE')
-	// Installing a module runs `$VEXE retry -- git clone ...`. A missing VEXE makes every
-	// install attempt fail at once, so this test never reaches the network.
 	os.setenv('VEXE', os.join_path(base, 'missing_v'), true)
 	defer {
-		if value := old_vmodules {
-			os.setenv('VMODULES', value, true)
-		} else {
-			os.unsetenv('VMODULES')
-		}
-		if value := old_vexe {
-			os.setenv('VEXE', value, true)
-		} else {
-			os.unsetenv('VEXE')
-		}
+		restore_env('VMODULES', old_vmodules)
+		restore_env('VEXE', old_vexe)
 		os.rmdir_all(base) or {}
 	}
 	// A module in a later VMODULES root is used, even though the first root does not have it.
 	os.setenv('VMODULES', [first_root, later_root].join(os.path_delimiter), true)
-	ensure_modules_for_tool_are_installed('vdoc', '', []string{}, false)!
-	assert os.ls(first_root)! == []
-	// So is a module that only a `-path` root of the build has.
-	os.setenv('VMODULES', first_root, true)
-	ensure_modules_for_tool_are_installed('vdoc', '', [path_root], false)!
-	assert os.ls(first_root)! == []
+	assert !install_is_attempted('', [])
+	// Like in the compiler, the roots of a `-path` replace the VMODULES roots.
+	assert !install_is_attempted('', [path_root])
+	assert install_is_attempted('', [first_root])
 	// A module that no root has is installed, and a failed install says how to do it manually.
-	ensure_modules_for_tool_are_installed('vdoc', '', []string{}, false) or {
-		assert err.msg().contains('Install it with `v install markdown`')
-		return
-	}
-	assert false, 'a module that no root has must be installed'
+	os.setenv('VMODULES', first_root, true)
+	assert install_is_attempted('', [])
+	assert os.ls(first_root)! == []
 }
 
 fn test_ensure_modules_for_tool_are_installed_searches_the_tool_project_and_its_parents() {
 	base := os.join_path(os.vtmp_dir(), 'util_module_deps_project_${os.getpid()}')
 	os.rmdir_all(base) or {}
 	vmodules := os.join_path(base, 'vmodules')
-	project := os.join_path(base, 'workspace', 'project')
+	workspace := os.join_path(base, 'workspace')
+	project := os.join_path(workspace, 'project')
 	tool_source := os.join_path(project, 'cmd', 'tools', 'vdoc')
 	os.mkdir_all(vmodules)!
 	os.mkdir_all(tool_source)!
@@ -94,30 +100,54 @@ fn test_ensure_modules_for_tool_are_installed_searches_the_tool_project_and_its_
 	os.write_file(os.join_path(tool_source, 'vdoc.v'), 'module main\n\nimport markdown\n')!
 	old_vmodules := os.getenv_opt('VMODULES')
 	old_vexe := os.getenv_opt('VEXE')
-	// As above: a missing VEXE makes every install attempt fail, without any network access.
 	os.setenv('VEXE', os.join_path(base, 'missing_v'), true)
 	os.setenv('VMODULES', vmodules, true)
 	defer {
-		if value := old_vmodules {
-			os.setenv('VMODULES', value, true)
-		} else {
-			os.unsetenv('VMODULES')
-		}
-		if value := old_vexe {
-			os.setenv('VEXE', value, true)
-		} else {
-			os.unsetenv('VEXE')
-		}
+		restore_env('VMODULES', old_vmodules)
+		restore_env('VEXE', old_vexe)
 		os.rmdir_all(base) or {}
 	}
-	// The compiler resolves a module in the tool's project root, like `<vroot>/markdown`.
+	// The compiler resolves a module in the tool's project root, like `<vroot>/markdown`,
+	// with or without a `-path`.
 	write_markdown_module(project)!
-	ensure_modules_for_tool_are_installed('vdoc', tool_source, []string{}, false)!
-	ensure_modules_for_tool_are_installed('vdoc', os.join_path(tool_source, 'vdoc.v'), []string{},
-		false)!
+	assert !install_is_attempted(tool_source, [])
+	assert !install_is_attempted(os.join_path(tool_source, 'vdoc.v'), [])
+	assert !install_is_attempted(tool_source, [vmodules])
 	// It also resolves one that is checked out next to the project.
 	os.rmdir_all(os.join_path(project, 'markdown'))!
-	write_markdown_module(os.join_path(base, 'workspace'))!
-	ensure_modules_for_tool_are_installed('vdoc', tool_source, []string{}, false)!
+	write_markdown_module(workspace)!
+	assert !install_is_attempted(tool_source, [])
+	assert !install_is_attempted(tool_source, [vmodules])
+	// With a `-path`, it skips such a folder when its `v.mod` declares another module.
+	os.write_file(os.join_path(workspace, 'markdown', 'v.mod'), "Module {\n\tname: 'other'\n}\n")!
+	assert !install_is_attempted(tool_source, [])
+	assert install_is_attempted(tool_source, [vmodules])
 	assert os.ls(vmodules)! == []
+}
+
+fn test_ensure_modules_for_tool_are_installed_accepts_a_module_installed_concurrently() {
+	$if windows {
+		return
+	}
+	base := os.join_path(os.vtmp_dir(), 'util_module_deps_concurrent_${os.getpid()}')
+	os.rmdir_all(base) or {}
+	vmodules := os.join_path(base, 'vmodules')
+	os.mkdir_all(vmodules)!
+	// This stands in for `v retry -- git clone <url> <destination>`, while another `v` process
+	// installs the module first: the destination gets populated, and this clone fails, like a
+	// `git clone` into a folder that is not empty does.
+	fake_vexe := os.join_path(base, 'fake_v')
+	os.write_file(fake_vexe, '#!/bin/sh\nmkdir -p "\$6" && echo "module markdown" > "\$6/markdown.v"\nexit 128\n')!
+	os.chmod(fake_vexe, 0o755)!
+	old_vmodules := os.getenv_opt('VMODULES')
+	old_vexe := os.getenv_opt('VEXE')
+	os.setenv('VEXE', fake_vexe, true)
+	os.setenv('VMODULES', vmodules, true)
+	defer {
+		restore_env('VMODULES', old_vmodules)
+		restore_env('VEXE', old_vexe)
+		os.rmdir_all(base) or {}
+	}
+	ensure_modules_for_tool_are_installed('vdoc', '', []string{}, false)!
+	assert os.is_file(os.join_path(vmodules, 'markdown', 'markdown.v'))
 }

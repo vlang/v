@@ -415,15 +415,15 @@ fn launch_external_tool(vroot string, tool_name string, tool_source string, pref
 // not have them yet, and compiling the tool without them fails with a confusing
 // `cannot import module` error. Sandboxed packaging has no network access, and must provide
 // such modules itself, just like it does for `v build-tools`. A module that the tool's build
-// already resolves, from any `VMODULES` root, through a `-path` in `compile_args`, or from the
-// folder of `tool_source` or a folder above it, is used as it is, so an offline `v doc` keeps
-// working.
+// already resolves, through a `-path` in `compile_args` (or any `VMODULES` root without one), or
+// from the folder of `tool_source` or a folder above it, is used as it is, so an offline `v doc`
+// keeps working.
 fn install_external_tool_modules(vroot string, tool_name string, tool_source string, compile_args []string) {
 	if os.getenv('VTEST_SANDBOXED_PACKAGING') != '' {
 		return
 	}
-	search_roots := module_search_roots(vroot, compile_args)
-	util.ensure_modules_for_tool_are_installed(tool_name, tool_source, search_roots, tool_cache_is_verbose()) or {
+	search_paths := explicit_module_search_roots(vroot, compile_args)
+	util.ensure_modules_for_tool_are_installed(tool_name, tool_source, search_paths, tool_cache_is_verbose()) or {
 		eprintln(err.msg())
 		exit(1)
 	}
