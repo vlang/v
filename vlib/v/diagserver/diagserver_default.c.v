@@ -4,7 +4,8 @@ module diagserver
 // than on Linux there is no server, and so no request.
 pub struct Request {
 pub:
-	question string
+	question    string
+	from_server bool
 }
 
 // serve is a diagnostics server only on Linux, where the child answering a

@@ -11204,6 +11204,10 @@ pub fn run(args []string) {
 	}
 	// A diagnostics server's child may have a question to answer instead.
 	mut served := diagserver.serve()
+	// Its child only asks of its sources whether they still hold what it read.
+	if served.from_server {
+		p.quick_source_sums = true
+	}
 	if served.question != '' {
 		vls_line_info = served.question
 		vls_queries = types.parse_vls_line_infos(served.question, input_file) or {
@@ -16044,14 +16048,17 @@ fn print_vls_answers(mut tc types.TypeChecker, queries []types.VlsQuery) {
 }
 
 // v3_input_digests returns the SHA-256 of what this compilation read in each V
-// source, in hexadecimal and by absolute path: the files it parsed, and those
-// behind a module header it loaded from the cache. None when it read a file
-// twice with different contents, or read none.
+// source, in hexadecimal and by absolute path, or the quick sum the parser took
+// of it instead: the files it parsed, and those behind a module header it
+// loaded from the cache. None when it read a file twice with different
+// contents, or read none.
 fn v3_input_digests(a &flat.FlatAst, cached_source_digests map[string]string) ?map[string]string {
 	mut digests := map[string]string{}
 	for _, file in a.source_files {
 		mut digest := ''
-		if file.has_source_sha256() {
+		if file.has_source_quick_sum() {
+			digest = diagserver.quick_sum_digest(file.source_quick_sum())
+		} else if file.has_source_sha256() {
 			source_digest := file.source_sha256()
 			digest = source_digest[..].hex()
 		} else if os.is_file(file.name) {

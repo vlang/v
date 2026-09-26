@@ -4,6 +4,7 @@ import crypto.sha256
 import hash
 import os
 import time
+import v.token
 import v.workers
 
 #include <errno.h>
@@ -25,6 +26,8 @@ fn C.prctl(option int, arg2 voidptr, arg3 u64, arg4 u64, arg5 u64) int
 pub struct Request {
 pub:
 	question string
+	// from_server tells a child of the server from a one-shot compilation.
+	from_server bool
 mut:
 	questions LineReader // the next questions from the server, and its `go`
 	status_fd int = -1 // where the child tells the server what it does
@@ -187,10 +190,11 @@ pub fn (r &Request) answers_again() bool {
 }
 
 // keep_inputs takes the files the check read, by absolute path, with the
-// SHA-256 of what it read in each, in hexadecimal: the child answers a next
-// question only while they hold it, no file was added next to one of them or
-// removed, and `imports_hold` finds each import resolving to the directory it
-// was read from. It reads them again already, as one may have changed meanwhile.
+// SHA-256 of what it read in each, in hexadecimal, or its quick_sum_digest:
+// the child answers a next question only while they hold it, no file was added
+// next to one of them or removed, and `imports_hold` finds each import
+// resolving to the directory it was read from. It reads them again already, as
+// one may have changed meanwhile.
 pub fn (mut r Request) keep_inputs(digests map[string]string, imports_hold fn () bool) {
 	r.inputs.imports_hold = imports_hold
 	r.current = r.inputs.prepare(digests, mut r.buffer) && imports_hold()
@@ -284,12 +288,13 @@ fn (mut c Channel) child_request(question string, work_dir string) Request {
 	os.fd_close(c.questions_fd)
 	os.fd_close(c.status_fd)
 	return Request{
-		question:  question
-		questions: LineReader{
+		question:    question
+		from_server: true
+		questions:   LineReader{
 			fd: c.child_questions_fd
 		}
-		status_fd: c.child_status_fd
-		work_dir:  work_dir
+		status_fd:   c.child_status_fd
+		work_dir:    work_dir
 	}
 }
 
@@ -421,7 +426,12 @@ fn (mut i Inputs) prepare(digests map[string]string, mut buffer []u8) bool {
 	mut dirs := map[string]bool{}
 	for path, digest in digests {
 		size := read_whole(path, mut buffer) or { return false }
-		if sha256.sum(buffer[..size]).hex() != digest {
+		held := if digest.starts_with(quick_digest_prefix) {
+			quick_sum_digest(quick_sum(buffer, size))
+		} else {
+			sha256.sum(buffer[..size]).hex()
+		}
+		if held != digest {
 			return false
 		}
 		i.files << InputFile{
@@ -477,7 +487,7 @@ fn (i &Inputs) changed(mut buffer []u8) bool {
 }
 
 fn quick_sum(buffer []u8, size int) u64 {
-	return hash.wyhash_c(unsafe { &u8(buffer.data) }, u64(size), 0)
+	return token.quick_sum(unsafe { &u8(buffer.data) }, size)
 }
 
 // read_whole reads the file `path` into `buffer`, which it makes larger than

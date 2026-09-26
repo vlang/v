@@ -167,7 +167,10 @@ mut:
 	sql_query_data_aliases            map[string]bool
 	export_records                    []ExportRecord
 pub mut:
-	a                          &flat.FlatAst = unsafe { nil }
+	a &flat.FlatAst = unsafe { nil }
+	// quick_source_sums records the quick_sum of each parsed source instead of
+	// its SHA-256 (see token.File.index_lines_with_quick_sum).
+	quick_source_sums          bool
 	parsed_v_files             int
 	parsed_v_file_paths        []string
 	parsed_v_header_files      int
@@ -436,7 +439,11 @@ pub fn (mut p Parser) parse_into(path string) {
 	p.reserve_for_source(stable_src.len)
 	mut file_set := token.FileSet.new()
 	mut file := file_set.add_file(path, stable_src.len)
-	file.index_lines(stable_src)
+	if p.quick_source_sums {
+		file.index_lines_with_quick_sum(stable_src)
+	} else {
+		file.index_lines(stable_src)
+	}
 	p.a.source_files[p.cur_file_id] = file
 	p.s.init(file, stable_src)
 	if stable_src.contains('dynamic') && stable_src.contains('sql') {

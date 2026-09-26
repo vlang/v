@@ -70,3 +70,24 @@ fn test_keyword_property_does_not_depend_on_enum_ordinals() {
 	assert !Token.name.is_keyword()
 	assert !Token.lcbr.is_keyword()
 }
+
+fn test_a_quick_sum_indexes_the_lines_as_a_digest_does() {
+	src := 'module main\n\nfn main() {\n\tprintln(1)\n}\n'
+	mut fs := FileSet.new()
+	mut with_digest := fs.add_file('a.v', src.len)
+	with_digest.index_lines(src)
+	mut with_sum := fs.add_file('a.v', src.len)
+	with_sum.index_lines_with_quick_sum(src)
+	assert with_sum.line_count() == with_digest.line_count()
+	for line in 1 .. with_digest.line_count() + 1 {
+		assert with_sum.line_start(line) == with_digest.line_start(line)
+	}
+	assert with_digest.has_source_sha256() && !with_digest.has_source_quick_sum()
+	assert with_sum.has_source_quick_sum() && !with_sum.has_source_sha256()
+	assert with_sum.source_quick_sum() == quick_sum(src.str, src.len)
+	other := src.replace('1', '2')
+	assert quick_sum(other.str, other.len) != with_sum.source_quick_sum()
+	// Indexing again with a digest drops the sum: a file records one of them.
+	with_sum.index_lines(src)
+	assert !with_sum.has_source_quick_sum()
+}

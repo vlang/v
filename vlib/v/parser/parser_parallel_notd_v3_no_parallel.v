@@ -180,6 +180,7 @@ pub fn (mut p Parser) parse_files_dispatch(paths []string, allow_parallel bool) 
 	for ci in 0 .. thread_count {
 		mut w := Parser.new(p.prefs)
 		w.next_file_id = dispatch_file_id_start + bounds[ci + 1]
+		w.quick_source_sums = p.quick_source_sums
 		mut chunk_bytes := i64(0)
 		for i in bounds[ci + 1] .. bounds[ci + 2] {
 			chunk_bytes += sizes[i]
@@ -1049,6 +1050,9 @@ fn clone_parser_source_file(file &token.File) &token.File {
 	mut stored_file := file_set.add_file(file.name.clone(), file.size)
 	if file.has_source_sha256() {
 		stored_file.set_source_sha256(file.source_sha256())
+	}
+	if file.has_source_quick_sum() {
+		stored_file.set_source_quick_sum(file.source_quick_sum())
 	}
 	for line in 2 .. file.line_count() + 1 {
 		stored_file.add_line(file.line_start(line))

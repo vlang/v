@@ -1,6 +1,7 @@
 module token
 
 import crypto.sha256
+import hash
 
 // Pos represents pos data used by token.
 // The byte offsets, span end and file id are stored as i32: a Pos is embedded in
@@ -115,6 +116,9 @@ mut:
 	// Keep the digest inline: stored files can outlive parser-worker preallocation scopes.
 	source_digest     [sha256.size]u8
 	has_source_digest bool
+	// A quick sum stands in for the digest where only a change of the file matters.
+	source_sum     u64
+	has_source_sum bool
 }
 
 // FileSet represents file set data used by token.
@@ -164,17 +168,38 @@ pub fn (mut f File) add_line(offset int) {
 // index_lines records every source-line start for logarithmic position lookup
 // and stores the source digest consumed by cache and fallback verification.
 pub fn (mut f File) index_lines(src string) {
-	f.index_lines_without_digest(src)
-	for i, c in src {
-		if c == `\n` {
-			f.line_offsets << i32(i + 1)
-		}
-	}
+	f.index_line_offsets(src)
 	digest := sha256.sum(src.bytes())
 	for i in 0 .. sha256.size {
 		f.source_digest[i] = digest[i]
 	}
 	f.has_source_digest = true
+}
+
+// index_lines_with_quick_sum indexes the lines of `src` as index_lines does, but
+// records its quick_sum instead of its SHA-256: a diagnostics server's child
+// only asks whether a file still holds what it read, and hashing every parsed
+// source with SHA-256 cost more than parsing some of them.
+pub fn (mut f File) index_lines_with_quick_sum(src string) {
+	f.index_line_offsets(src)
+	f.source_sum = quick_sum(src.str, src.len)
+	f.has_source_sum = true
+}
+
+fn (mut f File) index_line_offsets(src string) {
+	f.index_lines_without_digest(src)
+	f.has_source_sum = false
+	for i, c in src {
+		if c == `\n` {
+			f.line_offsets << i32(i + 1)
+		}
+	}
+}
+
+// quick_sum is the sum a diagnostics server compares to tell whether a file
+// changed: a 64-bit wyhash of its bytes.
+pub fn quick_sum(data &u8, len int) u64 {
+	return hash.wyhash_c(data, u64(len), 0)
 }
 
 // index_lines_without_digest resets the line table without indexing. FastC is
@@ -205,6 +230,22 @@ pub fn (f &File) has_source_sha256() bool {
 pub fn (mut f File) set_source_sha256(digest [sha256.size]u8) {
 	f.source_digest = digest
 	f.has_source_digest = true
+}
+
+// source_quick_sum returns the quick_sum of the exact source indexed for this file.
+pub fn (f &File) source_quick_sum() u64 {
+	return f.source_sum
+}
+
+// has_source_quick_sum reports whether this file index recorded a quick_sum of its source.
+pub fn (f &File) has_source_quick_sum() bool {
+	return f.has_source_sum
+}
+
+// set_source_quick_sum preserves a quick_sum when a parser worker clones a file index.
+pub fn (mut f File) set_source_quick_sum(sum u64) {
+	f.source_sum = sum
+	f.has_source_sum = true
 }
 
 // line_count supports line count handling for File.
