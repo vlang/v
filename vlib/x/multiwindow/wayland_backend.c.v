@@ -8206,7 +8206,11 @@ fn (record &WaylandWindowRecord) service_window_state() ServiceWindowState {
 			ServiceObservedBool.unknown
 		}
 		fullscreen:                  if record.observed_service_state_valid {
-			if record.observed_fullscreen { ServiceObservedBool.on } else { ServiceObservedBool.off }
+			if record.observed_fullscreen {
+				ServiceObservedBool.on
+			} else {
+				ServiceObservedBool.off
+			}
 		} else {
 			ServiceObservedBool.unknown
 		}
