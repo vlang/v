@@ -7,6 +7,7 @@ import strings
 import v.errors as compiler_errors
 import v.flat
 import v.gen.c.naming
+import v.pref
 import v.token
 import v.util
 
@@ -997,6 +998,10 @@ pub mut:
 	// fork_overlay is non-nil only on parallel-transform worker forks; see
 	// TransformForkOverlay and fork_for_parallel_transform.
 	fork_overlay &TransformForkOverlay = unsafe { nil }
+	// Immutable declaration indexes shared by checker workers. They are public, so
+	// the tests of other compiler modules can register declarations directly.
+	declaration_attributes map[int][]string
+	type_declaration_ids   map[string][]int
 mut:
 	// Includes method-value aliases and binding-owner maps; all backing maps are
 	// replaced together at every function/worker boundary.
@@ -1020,8 +1025,6 @@ mut:
 	direct_parent_index_trusted bool
 	has_goto_nodes              bool
 	// Immutable declaration indexes shared by checker workers.
-	declaration_attributes            map[int][]string
-	type_declaration_ids              map[string][]int
 	strings_builder_bindings          map[string]bool
 	strings_builder_candidates        []i32
 	static_associated_fn_keys         map[string]bool
@@ -6750,7 +6753,9 @@ pub fn (tc &TypeChecker) resolve_any_selective_import_fn(name string) ?string {
 fn (tc &TypeChecker) resolve_selective_import_type_symbol(name string) ?string {
 	candidates := tc.selective_import_candidates(name) or { return none }
 	for candidate in candidates {
-		if tc.type_symbol_known(candidate) {
+		// Monomorphization erases generic struct templates from `structs`, but cgen
+		// still has to resolve `Foo[Bar]` after `import foo { Foo }` to `foo.Foo`.
+		if tc.type_symbol_known(candidate) || candidate in tc.struct_generic_params {
 			return candidate
 		}
 	}
@@ -11722,19 +11727,15 @@ fn (tc &TypeChecker) is_selected_input_file(file string) bool {
 	return tc.diagnostic_files.len == 0 || tc.diagnostic_files[file]
 }
 
+// is_c_backend_test_file reports whether path names a test file the C backend compiles.
+// It defers to pref, so the checker and the driver agree on every spelling, including
+// architecture-qualified tests such as `foo_test.arm64.v`.
 fn is_c_backend_test_file(path string) bool {
 	file := path_leaf_view(path)
-	if file.ends_with('_test.v') || file.ends_with('_test.vv') || file.ends_with('_test.c.v') {
+	if file.ends_with('_test.vv') {
 		return true
 	}
-	if !file.ends_with('.v') {
-		return false
-	}
-	base := file[..file.len - 2]
-	if !base.contains('.') {
-		return false
-	}
-	return base.all_after_last('.') == 'c' && base.all_before_last('.').ends_with('_test')
+	return pref.is_test_file_for_backend(file, 'c')
 }
 
 fn is_regular_v_test_file(path string) bool {

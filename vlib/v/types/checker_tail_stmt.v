@@ -6142,28 +6142,61 @@ fn (mut tc TypeChecker) check_selector(id flat.NodeId, node flat.Node) {
 	clean_recv := unwrap_pointer(base_type)
 	selector_is_method_value := tc.expr_is_method_value(id)
 		&& !tc.ident_is_call_callee_or_generic_base(id)
-	if clean_recv is Struct {
+	// Selectors see through every pointer layer (`pp.field` with `pp` of type `&&Box`),
+	// so the visibility checks use the receiver without any of them.
+	visibility_recv := unwrap_all_pointers(base_type)
+	if visibility_recv is Alias && !tc.selector_is_call_callee(id) {
+		if tc.alias_struct_field_is_private_outside_module(visibility_recv, node.value) {
+			tc.record_error_at(.unknown_field, 'field `${tc.diagnostic_type_name(Type(visibility_recv))}.${node.value}` is not public', id,
+				tc.node_value_diagnostic_pos(id))
+		} else if base.kind == .index {
+			// `aliases[0].radius`: a field of a single variant, selected through an alias of a sum type.
+			alias_target := unalias_and_unwrap_pointer_type(Type(visibility_recv))
+			if alias_target is SumType && tc.sum_shared_field_type(alias_target, node.value) == none {
+				if owner := tc.sum_unique_field_private_variant(alias_target, node.value) {
+					tc.record_error_at(.unknown_field, 'field `${tc.diagnostic_type_name(owner)}.${node.value}` is not public', id,
+						tc.node_value_diagnostic_pos(id))
+				}
+			}
+		}
+	}
+	// A field selected through a sum type is a field of its struct variants.
+	if visibility_recv is SumType && !tc.selector_is_call_callee(id) {
+		if owner := tc.sum_type_private_field_owner(visibility_recv, node.value,
+			base.kind == .index)
+		{
+			tc.record_error_at(.unknown_field, 'field `${tc.diagnostic_type_name(owner)}.${node.value}` is not public', id,
+				tc.node_value_diagnostic_pos(id))
+		}
+	}
+	if visibility_recv is Struct {
 		if !tc.expr_is_rooted_in_c_namespace(base_id) {
-			if visibility := tc.private_declaration(clean_recv.name) {
-				if tc.is_synthesized_anon_struct(clean_recv.name) {
+			if visibility := tc.private_declaration(visibility_recv.name) {
+				if tc.is_synthesized_anon_struct(visibility_recv.name) {
 					// An anonymous struct has no name of its own that could be private: another
 					// module can only reach it through a field or value of some other declaration.
 					// What still applies there is the `pub` section of the field used here. The
 					// field is named through the expression, since its struct has no name.
-					if !tc.anonymous_struct_field_is_public(clean_recv.name, node.value,
+					if !tc.anonymous_struct_field_is_public(visibility_recv.name, node.value,
 						visibility.module_name) {
 						tc.record_error_at(.unknown_field, 'field `${tc.source_text_for_node(base_id)}.${node.value}` is not public', id,
 							tc.node_value_diagnostic_pos(id))
 					}
 				} else {
-					display_name := tc.diagnostic_type_name(Type(clean_recv))
+					display_name := tc.diagnostic_type_name(Type(visibility_recv))
 					decl_module := tc.diagnostic_module_display_name(visibility.module_name)
 					inside_module := if tc.cur_module.len > 0 { tc.cur_module } else { 'main' }
 					tc.record_error_at(.unknown_type, 'struct `${display_name}` was declared as private to module `${decl_module}`, so it can not be used inside module `${inside_module}`', id,
 						tc.node_value_diagnostic_pos(id))
 				}
+			} else if !tc.selector_is_call_callee(id)
+				&& tc.struct_field_is_private_outside_module(visibility_recv.name, node.value) {
+				tc.record_error_at(.unknown_field, 'field `${tc.diagnostic_type_name(Type(visibility_recv))}.${node.value}` is not public', id,
+					tc.node_value_diagnostic_pos(id))
 			}
 		}
+	}
+	if clean_recv is Struct {
 		if deprecation := tc.deprecated_symbols['${clean_recv.name}.${node.value}'] {
 			tc.record_deprecation(id, 'field', deprecation, tc.node_value_diagnostic_pos(id))
 		}
@@ -7932,6 +7965,18 @@ fn (tc &TypeChecker) ident_is_call_callee_or_generic_base(id flat.NodeId) bool {
 		return false
 	}
 	return parent.kind in [.call, .index]
+}
+
+// selector_is_call_callee reports whether selector `id` names the function of a call,
+// like `x.f` in `x.f()`. Such a callee is a method, or a fn-typed field; like V1, the
+// visibility of a fn-typed field is not checked when the field is called.
+fn (tc &TypeChecker) selector_is_call_callee(id flat.NodeId) bool {
+	parent_id := tc.direct_parent_id(id)
+	if !tc.valid_node_id(parent_id) {
+		return false
+	}
+	parent := tc.a.node(parent_id)
+	return parent.kind == .call && parent.children_count > 0 && tc.a.child(parent, 0) == id
 }
 
 fn (tc &TypeChecker) future_local_decl_id(name string, use_id flat.NodeId) ?flat.NodeId {
@@ -15624,9 +15669,7 @@ fn (tc &TypeChecker) c_abi_fn_ptr_type_from_text(typ string) ?string {
 		return none
 	}
 	ret_type := if ret_str.len > 0 { tc.parse_type(ret_str) } else { Type(Void{}) }
-	ret_ct := tc.fn_ptr_return_c_type(ret_type)
-	params_ct := if params.len == 0 { 'void' } else { params.join(', ') }
-	return 'fn_ptr:${ret_ct}|${params_ct}'
+	return naming.fn_ptr_encoded(tc.fn_ptr_return_c_type(ret_type), params)
 }
 
 // c_abi_fn_ptr_type_for_type_text returns the C ABI function-pointer encoding retained
@@ -17231,9 +17274,6 @@ fn (tc &TypeChecker) c_extern_abi_type(t Type) string {
 	}
 	if t is FnType {
 		ret := tc.c_extern_abi_type(t.return_type)
-		if t.params.len == 0 {
-			return 'fn_ptr:${ret}|void'
-		}
 		mut params := []string{}
 		for i in 0 .. t.params.len {
 			mut param_type := fn_param_type(t, i)
@@ -17244,7 +17284,7 @@ fn (tc &TypeChecker) c_extern_abi_type(t Type) string {
 			}
 			params << tc.c_extern_abi_type(param_type)
 		}
-		return 'fn_ptr:${ret}|${params.join(', ')}'
+		return naming.fn_ptr_encoded(ret, params)
 	}
 	return tc.c_type(t)
 }
@@ -17366,9 +17406,6 @@ fn (tc &TypeChecker) c_type_uncached(t Type) string {
 	}
 	if t is FnType {
 		ret := tc.fn_ptr_return_c_type(t.return_type)
-		if t.params.len == 0 {
-			return 'fn_ptr:${ret}|void'
-		}
 		mut params := []string{}
 		for i in 0 .. t.params.len {
 			mut param_type := fn_param_type(t, i)
@@ -17385,7 +17422,7 @@ fn (tc &TypeChecker) c_type_uncached(t Type) string {
 				params << tc.c_type(param_type)
 			}
 		}
-		return 'fn_ptr:${ret}|${params.join(', ')}'
+		return naming.fn_ptr_encoded(ret, params)
 	}
 	if t is OptionType {
 		return 'Optional'
