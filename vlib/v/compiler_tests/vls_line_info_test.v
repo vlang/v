@@ -409,6 +409,7 @@ fn main() {
 	nums := [1, 2]
 	println(nums.map(it * 2))
 	println(nums.filter(it > 1))
+	println([3, 4].map(it + 1))
 	mut sorted := nums.clone()
 	sorted.sort(a < b)
 	double := fn (x int) int {
@@ -1185,6 +1186,9 @@ fn test_a_member_of_a_generic_value_is_the_member_of_its_type() {
 	assert map_decl.contains('builtin/array.v:'), map_decl
 	assert function('gd^', '\tprintln(xs.map(count))', 'map', 0) == map_decl
 	assert function('gd^', '\treturn xs.map(|x| x.name.to_upper())', 'map', 0) == map_decl
+	// Over an array literal, whose elements the checker keeps no type for.
+	assert function('gd^', '\tprintln([3, 4].map(it + 1))', 'map', 0) == map_decl
+	assert function('hv^', '\tprintln([3, 4].map(it + 1))', 'it', 0) == hover_of('it int')
 	map_hover := function('hv^', '\tprintln(nums.map(it * 2))', 'map', 0)
 	assert map_hover.contains('fn map('), map_hover
 	assert function('hv^', '\tprintln(xs.map(count))', 'map', 0) == map_hover

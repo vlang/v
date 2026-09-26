@@ -225,6 +225,15 @@ fn (tc &TypeChecker) vls_expr_type(id flat.NodeId) ?Type {
 	if node.kind in [.string_literal, .string_interp] {
 		return Type(String{})
 	}
+	// The other literals, as the elements of `[1, 2].map()`: the type V gives
+	// them by default.
+	match node.kind {
+		.int_literal { return tc.parse_type('int') }
+		.float_literal { return tc.parse_type('f64') }
+		.bool_literal { return tc.parse_type('bool') }
+		.char_literal { return tc.parse_type('rune') }
+		else {}
+	}
 	// The receiver of a builtin method, which the checker handles without
 	// typing it: the type of the local it names, from its declaration.
 	if node.kind == .ident {
