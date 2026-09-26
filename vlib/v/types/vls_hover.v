@@ -185,7 +185,9 @@ fn (tc &TypeChecker) vls_expr_type(id flat.NodeId) ?Type {
 	// A field the checker did not reach, as it stops typing a function after
 	// some errors: the field's type, from the type of its receiver.
 	if node.kind == .selector && node.children_count > 0 {
-		receiver_type := tc.vls_expr_type(tc.a.child(node, 0))?
+		// With the type parameters of the receiver: `b.item` of `b Box[T]` is a
+		// `T`, which its constraint makes a value with members.
+		receiver_type := tc.vls_value_type(tc.a.child(node, 0))?
 		field_type := tc.vls_field_type(receiver_type, node.value)?
 		return tc.vls_constrained_type(id, field_type) or { field_type }
 	}
@@ -586,6 +588,36 @@ fn (tc &TypeChecker) vls_module_receiver_member(id flat.NodeId) ?string {
 // behind `typ`, through pointers and aliases.
 fn (tc &TypeChecker) vls_field_type(typ Type, name string) ?Type {
 	type_name := tc.vls_member_owner(typ) or { return none }
+	if declared := tc.vls_declared_field_type(type_name, name) {
+		return declared
+	}
+	// A generic type applied to type arguments, `Box[T]` or `Box[User]`: the
+	// field of `Box`, with its type parameters bound to them. A type parameter
+	// given stays one, for its constraint.
+	base, args, is_generic := generic_type_application_parts(type_name)
+	if !is_generic {
+		return none
+	}
+	declared := tc.vls_declared_field_type(base, name)?
+	decl := tc.generic_type_decl(base) or { return declared }
+	params := decl.generic_params().map(it.trim_space())
+	if params.len != args.len {
+		return declared
+	}
+	mut values := []Type{cap: args.len}
+	for arg in args {
+		values << if is_bare_generic_param(arg) {
+			unknown_type('generic placeholder `${arg}`')
+		} else {
+			tc.parse_type(arg)
+		}
+	}
+	return tc.substitute_generic_type_values(declared, values, params)
+}
+
+// vls_declared_field_type is the type of the field `name` as the struct or the
+// interface `type_name` declares it.
+fn (tc &TypeChecker) vls_declared_field_type(type_name string, name string) ?Type {
 	fields := tc.structs[type_name] or { tc.interface_fields[type_name] or { return none } }
 	for field in fields {
 		if field.name == name {

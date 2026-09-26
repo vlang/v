@@ -131,6 +131,14 @@ fn half[T Number](x T) T {
 		return x / 2
 	}
 }
+
+struct Box[T Named] {
+	item T
+}
+
+fn (b Box[T]) label() string {
+	return b.item.name + b.item.zz
+}
 "
 
 // A client asks for completion right after a dot with a placeholder name there,
@@ -965,6 +973,14 @@ fn test_the_implicit_variables_and_lambdas_of_a_constrained_body_have_its_member
 	// `err` of an `or {}` in a generic body: an `IError`.
 	errs := closure_completion(37, 14).map(it.all_after(' ').all_before(' '))
 	assert 'msg' in errs && 'code' in errs, errs.str()
+}
+
+fn test_a_field_of_a_constrained_type_has_the_members_of_its_constraint() {
+	// `b.item.name` in `fn (b Box[T]) label()`, `item T` of `Box[T Named]`.
+	assert constrained('hv^', 50, 'name', 0) == '{"contents":{"kind":"markdown","value":"```v\\nname string\\n```"}}'
+	assert constrained('gd^', 50, 'name', 0) == 'main.v:4:1'
+	members := constrained_completion(50, 29).map('${it.kind} ${it.label} ${it.detail}')
+	assert members == ['2 greet string', '5 name string'], members.str()
 }
 
 fn test_a_constraint_name_has_a_definition_and_a_hover() {
