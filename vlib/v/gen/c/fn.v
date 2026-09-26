@@ -14455,7 +14455,7 @@ fn (mut g FlatGen) gen_optional_arg_with_abi(arg_id flat.NodeId, expected types.
 				g.write(', .err = ')
 				g.gen_expr(err_id)
 			} else {
-				g.write(', .err = builtin__none__')
+				g.write(g.optional_none_err_field())
 			}
 			g.write('}')
 			return true
@@ -14495,7 +14495,7 @@ fn (mut g FlatGen) gen_optional_arg_with_abi(arg_id flat.NodeId, expected types.
 		&& !g.expr_really_returns_optional(arg_id)
 	if concrete_abi && arg_node.kind == .none_expr {
 		ct := g.concrete_optional_type_name(expected)
-		g.write('(${ct}){.ok = false, .err = builtin__none__}')
+		g.write('(${ct}){.ok = false${g.optional_none_err_field()}}')
 		return true
 	}
 	if arg_node.typ.len > 0 && !plain_call_in_optional_context {

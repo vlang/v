@@ -16820,7 +16820,7 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 				g.write(g.ierror_none_literal_string())
 			} else {
 				ct := g.optional_type_name(g.optional_none_type(id))
-				g.write('(${ct}){.ok = false, .err = builtin__none__}')
+				g.write('(${ct}){.ok = false${g.optional_none_err_field()}}')
 			}
 		}
 		.or_expr {

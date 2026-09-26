@@ -1618,6 +1618,12 @@ fn (g &FlatGen) has_ierror_interface() bool {
 	return false
 }
 
+// optional_none_err_field returns the `err` initializer of a `none` option/result
+// literal. Without `IError` (`-no-builtin`) the wrappers have no `err` field.
+fn (g &FlatGen) optional_none_err_field() string {
+	return if g.has_ierror_interface() { ', .err = builtin__none__' } else { '' }
+}
+
 // interface_init_typ_id computes the `_typ` dispatch id for a boxed interface
 // literal by recovering the concrete type from its `_object` field.
 fn (g &FlatGen) interface_init_typ_id(node flat.Node) ?int {
