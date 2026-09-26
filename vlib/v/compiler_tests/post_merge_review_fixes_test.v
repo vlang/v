@@ -87,11 +87,15 @@ fn check_good(name string, src string) {
 }
 
 fn gen_c(v3_bin string, name string, src string) string {
+	return gen_c_with_flags(v3_bin, name, '', src)
+}
+
+fn gen_c_with_flags(v3_bin string, name string, flags string, src string) string {
 	src_path := '${tmp_test_path(name)}.v'
 	os.write_file(src_path, src) or { panic(err) }
 	c_path := '${tmp_test_path(name)}.c'
 	os.rm(c_path) or {}
-	compile := os.execute('${v3_bin} ${src_path} -b c -o ${c_path}')
+	compile := os.execute('${v3_bin} ${flags} ${src_path} -b c -o ${c_path}')
 	assert compile.exit_code == 0, '${name}: ${compile.output}'
 	assert os.exists(c_path)
 	return os.read_file(c_path) or { panic(err) }
@@ -10755,4 +10759,103 @@ fn main() {
 }
 ')
 	assert out == '2\n2'
+}
+
+// A `@[_naked]` function is its own prologue and epilogue: without
+// `__attribute__((naked))` the C compiler wraps the hand-written body in a frame
+// the body's own `ret` never unwinds, and calling it crashes. The attribute has
+// to precede the declarator -- gcc rejects it after the parameter list with
+// "attributes should be specified before the declarator in a function definition".
+fn test_naked_attribute_precedes_the_declarator() {
+	v3_bin := build_v3()
+	c_source := gen_c(v3_bin, 'naked_attribute', '
+@[_naked]
+fn naked_body() {
+}
+
+fn ordinary_body() {
+}
+
+fn main() {
+	naked_body()
+	ordinary_body()
+}
+')
+	assert c_source.contains('__attribute__((naked)) void naked_body(void) {'), c_source
+	assert !c_source.contains('__attribute__((naked)) void ordinary_body'), c_source
+}
+
+// `-profile` and `-trace-calls` both insert code at the very start of a function
+// body, before the user's own code runs: profiling declares a timer read and two
+// `double` locals, tracing emits a call. A `@[_naked]` body has no compiler-
+// generated frame for those to live in or for its own `ret` to unwind through,
+// so either one corrupts the caller's stack. Neither may be emitted for one.
+fn test_naked_attribute_skips_profiling_and_trace_instrumentation() {
+	v3_bin := build_v3()
+	profile_path := tmp_test_path('naked_attribute_profile_out')
+	c_source := gen_c_with_flags(v3_bin, 'naked_attribute_profile', '-profile ${profile_path} -trace-calls',
+		'
+@[_naked]
+fn naked_fn() {
+	asm amd64 {
+		push rbp
+		mov rbp, rsp
+		mov rsp, rbp
+		pop rbp
+		ret
+	}
+}
+
+fn ordinary_fn() {
+}
+
+fn main() {
+	naked_fn()
+	ordinary_fn()
+}
+')
+	naked_body := c_fn_body(c_source, 'void naked_fn(void) {')
+	ordinary_body := c_fn_body(c_source, 'void ordinary_fn(void) {')
+	assert naked_body != '', c_source
+	assert ordinary_body != '', c_source
+	assert !naked_body.contains('_PROF_FN_START'), naked_body
+	assert !naked_body.contains('on_call('), naked_body
+	// The ordinary function proves profiling and tracing were truly active, so
+	// the naked function's clean body above is the fix and not a flag typo.
+	assert ordinary_body.contains('_PROF_FN_START'), ordinary_body
+	assert ordinary_body.contains('on_call('), ordinary_body
+}
+
+// A generic function's specialized instantiation gets its OWN node id, distinct
+// from the generic declaration's; the checker only records attributes against
+// the declaration it walked, never the specialization gen/c synthesizes later.
+// `fn_decl_naked_prefix` already resolves this correctly (`fn_decl_attributes`
+// falls back to a source-position lookup for a specialized node); the guard
+// above must resolve it the same way, not by asking the checker directly.
+fn test_naked_attribute_skips_profiling_for_generic_specialization() {
+	v3_bin := build_v3()
+	profile_path := tmp_test_path('naked_attribute_generic_profile_out')
+	c_source := gen_c_with_flags(v3_bin, 'naked_attribute_generic_profile', '-profile ${profile_path}',
+		'
+@[_naked]
+fn naked_fn[T]() {
+	asm amd64 {
+		push rbp
+		mov rbp, rsp
+		mov rsp, rbp
+		pop rbp
+		ret
+	}
+}
+
+fn main() {
+	naked_fn[int]()
+}
+')
+	// `c_fn_body` starts matching AT the signature text, after any attribute
+	// prefix on the same line -- check the prefix against the full source.
+	assert c_source.contains('__attribute__((naked)) void naked_fn_T_v_int(void) {'), c_source
+	naked_body := c_fn_body(c_source, 'void naked_fn_T_v_int(void) {')
+	assert naked_body != '', c_source
+	assert !naked_body.contains('_PROF_FN_START'), naked_body
 }
