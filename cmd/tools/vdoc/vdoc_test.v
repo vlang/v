@@ -384,3 +384,130 @@ fn test_module_display_name_is_relative_to_the_input_root() {
 	assert module_display_name('/tmp/app', '/tmp/app') == 'app'
 	assert module_display_name('/somewhere/else/foo', '/tmp/app') == 'foo'
 }
+
+fn write_subdirs_fixture(root string, vmod_extra string, files map[string]string) ! {
+	os.mkdir_all(root)!
+	os.write_file(os.join_path(root, 'v.mod'), "Module {\n\tname: 'mypkg'\n\tversion: '0.0.1'\n${vmod_extra}}\n")!
+	for rel, content in files {
+		path := os.join_path(root, rel)
+		os.mkdir_all(os.dir(path))!
+		os.write_file(path, content)!
+	}
+}
+
+fn test_vmod_subdirs_are_documented_as_part_of_the_module() {
+	root := 'subdirs_mod'
+	write_subdirs_fixture(root, "\tsubdirs: ['internal', 'internal/deep']\n", {
+		'root.v':                   'module mypkg\n\npub fn root_fn() {}\n'
+		'internal/sub.v':           'module mypkg\n\npub fn sub_fn() {}\n'
+		'internal/deep/deep.v':     'module mypkg\n\npub fn deep_fn() {}\n'
+		'internal/nested/v.mod':    "Module {\n\tname: 'nested'\n}\n"
+		'internal/nested/nested.v': 'module nested\n\npub fn nested_fn() {}\n'
+		'internal_other/other.v':   'module internal_other\n\npub fn other_fn() {}\n'
+	})!
+	d := doc.generate(root, true, true, .auto)!
+	assert d.head.name == 'mypkg'
+	assert d.contents.keys().sorted() == ['deep_fn', 'root_fn', 'sub_fn']
+	assert get_modules(root) == [root, os.join_path(root, 'internal', 'nested'),
+		os.join_path(root, 'internal_other')]
+	res := os.execute_opt('${vexe_} doc -no-timestamp -f text -o - ${root}')!
+	assert res.output.contains('fn root_fn()')
+	assert res.output.contains('fn sub_fn()')
+	assert res.output.contains('fn deep_fn()')
+}
+
+fn test_vmod_subdirs_without_root_files() {
+	root := 'subdirs_only'
+	write_subdirs_fixture(root, "\tsubdirs: ['internal']\n", {
+		'internal/sub.v': 'module mypkg\n\npub fn sub_fn() {}\n'
+	})!
+	d := doc.generate(root, true, true, .auto)!
+	assert d.contents.keys() == ['sub_fn']
+	assert get_modules(root) == [root]
+}
+
+fn test_vmod_subdirs_are_resolved_from_base_url() {
+	root := 'subdirs_base_url'
+	write_subdirs_fixture(root, "\tbase_url: 'src'\n\tsubdirs: ['internal']\n", {
+		'src/root.v':         'module mypkg\n\npub fn root_fn() {}\n'
+		'src/internal/sub.v': 'module mypkg\n\npub fn sub_fn() {}\n'
+	})!
+	src := os.join_path(root, 'src')
+	d := doc.generate(src, true, true, .auto)!
+	assert d.contents.keys().sorted() == ['root_fn', 'sub_fn']
+	assert get_modules(root) == [src]
+}
+
+fn test_vmod_subdirs_dot_walks_the_whole_module_tree() {
+	root := 'subdirs_dot'
+	write_subdirs_fixture(root, "\tsubdirs: ['.']\n", {
+		'root.v':                   'module mypkg\n\npub struct Thing {}\n\npub fn (t Thing) method_fn() {}\n'
+		'internal/deep/deep.v':     'module mypkg\n\npub fn deep_fn() {}\n'
+		'internal/nested/v.mod':    "Module {\n\tname: 'nested'\n}\n"
+		'internal/nested/nested.v': 'module nested\n\npub fn nested_fn() {}\n'
+	})!
+	// A symlink to an already documented file must not document its symbols twice.
+	os.symlink(os.real_path(os.join_path(root, 'root.v')), os.join_path(root, 'internal',
+		'root_link.v'))!
+	d := doc.generate(root, true, true, .auto)!
+	assert d.contents.keys().sorted() == ['Thing', 'deep_fn']
+	assert d.contents['Thing'].children.filter(it.name == 'method_fn').len == 1
+	assert get_modules(root) == [root, os.join_path(root, 'internal', 'nested')]
+}
+
+fn test_repo_file_path_for_links_keeps_subdirs() {
+	root := 'subdirs_links'
+	write_subdirs_fixture(root, "\tsubdirs: ['internal']\n", {
+		'root.v':         'module mypkg\n\npub fn root_fn() {}\n'
+		'internal/sub.v': 'module mypkg\n\npub fn sub_fn() {}\n'
+	})!
+	vd := VDoc{
+		cfg: Config{
+			input_path: root
+		}
+	}
+	real_root := os.real_path(root)
+	assert vd.get_repo_file_path_for_links(os.join_path(real_root, 'root.v')) == 'root.v'
+	assert vd.get_repo_file_path_for_links(os.join_path(real_root, 'internal', 'sub.v')) == 'internal/sub.v'
+}
+
+fn test_vdocignore_applies_to_vmod_subdirs() {
+	root := 'subdirs_ignored'
+	// A subdir outside of the module folder is documented, but the default rules
+	// (e.g. `testdata`) still apply to it.
+	os.mkdir_all('subdirs_shared')!
+	os.write_file(os.join_path('subdirs_shared', 'shared.v'), 'module mypkg\n\npub fn shared_fn() {}\n')!
+	os.mkdir_all(os.join_path('subdirs_shared', 'testdata'))!
+	os.write_file(os.join_path('subdirs_shared', 'testdata', 't.v'), 'module mypkg\n\npub fn shared_fixture_fn() {}\n')!
+	os.mkdir_all('subdirs_link_target')!
+	os.write_file(os.join_path('subdirs_link_target', 'linked.v'), 'module mypkg\n\npub fn linked_fn() {}\n')!
+	os.mkdir_all('subdirs_two_links_target')!
+	os.write_file(os.join_path('subdirs_two_links_target', 'two.v'), 'module mypkg\n\npub fn two_links_fn() {}\n')!
+	write_subdirs_fixture(root, "\tsubdirs: ['internal', 'linked', 'ignored_link', 'allowed_link', '../subdirs_shared']\n", {
+		'.vdocignore':           'private\nskip.v\n/linked\n/ignored_link/two.v\n'
+		'root.v':                'module mypkg\n\npub fn root_fn() {}\n'
+		'internal/sub.v':        'module mypkg\n\npub fn sub_fn() {}\n'
+		'internal/skip.v':       'module mypkg\n\npub fn skipped_fn() {}\n'
+		'internal/private/p.v':  'module mypkg\n\npub fn private_fn() {}\n'
+		'internal/testdata/t.v': 'module mypkg\n\npub fn fixture_fn() {}\n'
+	})!
+	// Rules match the subdir name used in the module, even when it is a symlink.
+	os.symlink(os.real_path('subdirs_link_target'), os.join_path(root, 'linked'))!
+	// A file ignored through one alias is still documented when reached through another one.
+	os.symlink(os.real_path('subdirs_two_links_target'), os.join_path(root, 'ignored_link'))!
+	os.symlink(os.real_path('subdirs_two_links_target'), os.join_path(root, 'allowed_link'))!
+	single := os.execute_opt('${vexe_} doc -no-timestamp -f text -o - ${root}')!
+	os.execute_opt('${vexe_} doc -no-timestamp -m -f text ${root}')!
+	multi := os.read_file(os.join_path(root, '_docs', 'mypkg.txt'))!
+	for output in [single.output, multi] {
+		assert output.contains('fn root_fn()')
+		assert output.contains('fn sub_fn()')
+		assert output.contains('fn shared_fn()')
+		assert !output.contains('skipped_fn')
+		assert !output.contains('private_fn')
+		assert !output.contains('fixture_fn')
+		assert !output.contains('shared_fixture_fn')
+		assert !output.contains('linked_fn')
+		assert output.contains('fn two_links_fn()')
+	}
+}

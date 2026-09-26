@@ -369,9 +369,13 @@ fn (mut vd VDoc) generate_docs_from_file() {
 		}
 	}
 	dirs := if cfg.is_multi { get_modules(cfg.input_path) } else { [cfg.input_path] }
+	rules_root := if os.is_dir(cfg.input_path) { cfg.input_path } else { os.dir(cfg.input_path) }
+	mut rules_cache := map[string]IgnoreRules{}
 	for dirpath in dirs {
 		vd.vprintln('Generating ${out.typ} docs for "${dirpath}"')
-		mut dcs := doc.generate(dirpath, cfg.pub_only, true, cfg.platform, cfg.symbol_name) or {
+		keep_subdir_file := subdir_files_filter(dirpath, rules_root, mut rules_cache)
+		mut dcs := doc.generate_with_subdir_filter(dirpath, keep_subdir_file, cfg.pub_only,
+			true, cfg.platform, cfg.symbol_name) or {
 			// TODO: use a variable like `src_path := os.join_path(dirpath, 'src')` after `https://github.com/vlang/v/issues/21504`
 			if os.exists(os.join_path(dirpath, 'src')) {
 				doc.generate(os.join_path(dirpath, 'src'), cfg.pub_only, true, cfg.platform, cfg.symbol_name) or {

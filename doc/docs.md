@@ -6520,7 +6520,7 @@ Package are up to date.
    You can also add `subdirs: ['internal']` to `v.mod` to compile files from
    selected subdirectories as part of the same module. These paths are relative
    to the module source root, and files there should declare the same
-   `module mypackage`.
+   `module mypackage`. `v doc` documents them as part of that module too.
 
    The name of your package should be used with the `module` directive
    at the top of all files in your package. For `mypackage.v`:

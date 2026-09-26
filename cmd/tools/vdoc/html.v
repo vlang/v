@@ -178,6 +178,13 @@ fn (vd &VDoc) get_repo_file_path_for_links(file_path string) string {
 	}
 	cfg := vd.cfg
 	if !cfg.is_multi {
+		// Files pulled in through v.mod `subdirs` keep their folder in the link.
+		input_path := os.real_path(cfg.input_path)
+		input_dir := if os.is_dir(input_path) { input_path } else { os.dir(input_path) }
+		prefix := input_dir + os.path_separator
+		if file_path.starts_with(prefix) {
+			return file_path[prefix.len..].replace('\\', '/')
+		}
 		return os.file_name(file_path).replace('\\', '/')
 	}
 	base_dir := os.dir(os.real_path(cfg.input_path))
