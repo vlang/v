@@ -1,6 +1,7 @@
 module util
 
 import os
+import time
 import v.pref
 
 // external_module_dependencies_for_tool lists the modules from outside vlib that a
@@ -116,6 +117,33 @@ fn resolvable_module_dir(modulename string, tool_source string) ?string {
 	return none
 }
 
+// concurrent_install_timeout is how long ensure_modules_for_tool_are_installed waits for another
+// `v` process to finish installing a module, when that makes its own install fail.
+const concurrent_install_timeout = 120 * time.second
+
+// wait_for_concurrent_install waits, for at most `timeout`, until another process finishes
+// installing a module into `mod_dir`, which its `git clone` has started, since `mod_dir` has a
+// `.git` folder. It reports whether the module is there, and returns at once when it already is,
+// or when no install is in progress there.
+fn wait_for_concurrent_install(mod_dir string, timeout time.Duration) bool {
+	deadline := time.now().add(timeout)
+	mut announced := false
+	for {
+		if module_dir_is_present(mod_dir) {
+			return true
+		}
+		if !os.is_dir(os.join_path_single(mod_dir, '.git')) || time.now() > deadline {
+			return false
+		}
+		if !announced {
+			eprintln('Waiting for another process to finish installing the module in ${mod_dir} ...')
+			announced = true
+		}
+		time.sleep(500 * time.millisecond)
+	}
+	return false
+}
+
 // ensure_modules_for_tool_are_installed installs the modules from outside vlib that the
 // bundled tool `tool_name`, with its sources in `tool_source`, needs before it is compiled
 // without a `-path`. It errs on the side of leaving a module alone: a folder named like the
@@ -136,8 +164,9 @@ pub fn ensure_modules_for_tool_are_installed(tool_name string, tool_source strin
 		}
 		check_module_is_installed(emodule, is_verbose, false) or {
 			// Another `v` process can install the same module at the same time, and then its
-			// clone makes this one fail. The module is installed all the same.
-			if module_dir_is_present(os.join_path_single(os.vmodules_dir(), emodule)) {
+			// clone makes this one fail. The module is installed all the same, once it is done.
+			if wait_for_concurrent_install(os.join_path_single(os.vmodules_dir(), emodule),
+				concurrent_install_timeout) {
 				continue
 			}
 			return error('cannot install the `${emodule}` module, which the `${tool_name}` tool needs: ${err.msg().trim_space()}\nInstall it with `v install ${emodule}`, then try again.')

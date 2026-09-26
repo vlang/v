@@ -1,6 +1,7 @@
 module util
 
 import os
+import time
 
 fn test_external_modules_for_tool() {
 	assert external_modules_for_tool('vdoc') == ['markdown']
@@ -144,4 +145,49 @@ fn test_ensure_modules_for_tool_are_installed_accepts_a_module_installed_concurr
 	}
 	ensure_modules_for_tool_are_installed('vdoc', '', false)!
 	assert os.is_file(os.join_path(vmodules, 'markdown', 'markdown.v'))
+}
+
+fn test_ensure_modules_for_tool_are_installed_waits_for_a_concurrent_install_to_finish() {
+	$if windows {
+		return
+	}
+	base := os.join_path(os.vtmp_dir(), 'util_module_deps_in_progress_${os.getpid()}')
+	os.rmdir_all(base) or {}
+	vmodules := os.join_path(base, 'vmodules')
+	os.mkdir_all(vmodules)!
+	// This stands in for `v retry -- git clone <url> <destination>`, while the `git clone` of
+	// another `v` process is still running: that clone has created the destination with its
+	// `.git` folder, and checks out the sources a second later. This clone fails at once.
+	fake_vexe := os.join_path(base, 'fake_v')
+	os.write_file(fake_vexe, '#!/bin/sh\nmkdir -p "\$6/.git"\n(sleep 1; echo "module markdown" > "\$6/markdown.v") > /dev/null 2>&1 &\nexit 128\n')!
+	os.chmod(fake_vexe, 0o755)!
+	old_vmodules := os.getenv_opt('VMODULES')
+	old_vexe := os.getenv_opt('VEXE')
+	os.setenv('VEXE', fake_vexe, true)
+	os.setenv('VMODULES', vmodules, true)
+	defer {
+		restore_env('VMODULES', old_vmodules)
+		restore_env('VEXE', old_vexe)
+		os.rmdir_all(base) or {}
+	}
+	ensure_modules_for_tool_are_installed('vdoc', '', false)!
+	assert os.is_file(os.join_path(vmodules, 'markdown', 'markdown.v'))
+}
+
+fn test_wait_for_concurrent_install_gives_up() {
+	base := os.join_path(os.vtmp_dir(), 'util_module_deps_wait_${os.getpid()}')
+	os.rmdir_all(base) or {}
+	defer {
+		os.rmdir_all(base) or {}
+	}
+	mod_dir := os.join_path(base, 'markdown')
+	// Without an install in progress, there is nothing to wait for.
+	assert !wait_for_concurrent_install(mod_dir, time.minute)
+	os.mkdir_all(mod_dir)!
+	assert !wait_for_concurrent_install(mod_dir, time.minute)
+	// An install that does not finish in time counts as failed.
+	os.mkdir_all(os.join_path(mod_dir, '.git'))!
+	started := time.now()
+	assert !wait_for_concurrent_install(mod_dir, time.second)
+	assert time.since(started) >= time.second
 }
