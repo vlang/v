@@ -7487,20 +7487,56 @@ fn (mut tc TypeChecker) index_multiple_module_import_lines(a &flat.FlatAst) {
 	for file_id, file in a.source_files {
 		source := os.read_file(file.name) or { continue }
 		tc.source_texts_by_file[file.name] = source
-		mut line_number := 1
-		mut line_start := 0
-		for line_start <= source.len {
-			line_end := source.index_after('\n', line_start) or { source.len }
-			if source_line_has_multiple_module_imports(source[line_start..line_end]) {
-				tc.multiple_module_import_lines[multiple_module_import_line_key(file_id, line_number)] = true
-			}
-			if line_end >= source.len {
-				break
-			}
-			line_start = line_end + 1
-			line_number++
+		for line in module_import_lines(source) {
+			tc.multiple_module_import_lines[multiple_module_import_line_key(file_id, line)] = true
 		}
 	}
+}
+
+// module_import_lines returns the numbers of the lines of `source` that
+// source_line_has_multiple_module_imports holds. Only a line that starts with
+// `import ` can, so it looks at the lines where that word starts, not at each
+// line of the file.
+@[direct_array_access]
+fn module_import_lines(source string) []int {
+	mut lines := []int{}
+	mut line_number := 1
+	mut line_start := 0
+	// Every newline before `counted` is in `line_number` already.
+	mut counted := 0
+	mut from := 0
+	for {
+		at := source.index_after_('import ', from)
+		if at < 0 {
+			break
+		}
+		for counted < at {
+			if source[counted] == `\n` {
+				line_number++
+				line_start = counted + 1
+			}
+			counted++
+		}
+		mut indented := true
+		for i in line_start .. at {
+			if source[i] != ` ` && source[i] != `\t` {
+				indented = false
+				break
+			}
+		}
+		if indented {
+			line_end := source.index_after_('\n', at)
+			if source_line_has_multiple_module_imports(source[line_start..if line_end < 0 {
+				source.len
+			} else {
+				line_end
+			}]) {
+				lines << line_number
+			}
+		}
+		from = at + 1
+	}
+	return lines
 }
 
 fn (tc &TypeChecker) node_is_on_multiple_module_import_line(id flat.NodeId) bool {
