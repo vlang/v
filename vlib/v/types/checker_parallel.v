@@ -1208,6 +1208,7 @@ fn (mut tc TypeChecker) check_top_level_declarations_filtered(do_values bool, al
 	selected_files_only := tc.selected_files_only()
 	mut skip_file_semantics := false
 	mut do_signatures := all_signatures
+	mut file_values := do_values
 	for i in tc.top_level_idx {
 		node := tc.a.nodes[i]
 		if node.kind == .file {
@@ -1215,6 +1216,9 @@ fn (mut tc TypeChecker) check_top_level_declarations_filtered(do_values bool, al
 			// A signature check only reports on its own declaration.
 			do_signatures = all_signatures
 				&& (!selected_files_only || tc.diagnostic_files[node.value])
+			// So does a value check, as the bodies of the other files, which
+			// such a check leaves unchecked too.
+			file_values = do_values && (!selected_files_only || tc.diagnostic_files[node.value])
 		} else if skip_file_semantics && node.kind != .module_decl {
 			continue
 		}
@@ -1225,7 +1229,7 @@ fn (mut tc TypeChecker) check_top_level_declarations_filtered(do_values bool, al
 		match node.kind {
 			.file {
 				tc.enter_file(node.value)
-				if do_values {
+				if file_values {
 					tc.check_top_level_file_statements(node)
 				}
 			}
@@ -1254,7 +1258,7 @@ fn (mut tc TypeChecker) check_top_level_declarations_filtered(do_values bool, al
 					tc.check_decl_type_strings(flat.NodeId(i), node)
 					tc.check_struct_implements(flat.NodeId(i), node)
 				}
-				if do_values {
+				if file_values {
 					tc.check_struct_field_defaults(node_id, node)
 				}
 			}
@@ -1294,13 +1298,13 @@ fn (mut tc TypeChecker) check_top_level_declarations_filtered(do_values bool, al
 						tc.check_pascal_case_name(node_id, node.value, 'enum name', tc.declaration_keyword_name_pos(node_id, 'enum'))
 					}
 				}
-				if do_values {
+				if file_values {
 					tc.check_enum_backing_type(flat.NodeId(i), node)
 					tc.check_enum_field_values(flat.NodeId(i), node)
 				}
 			}
 			.const_decl {
-				if do_values {
+				if file_values {
 					tc.check_const_field_values(node)
 				}
 			}
@@ -1308,7 +1312,7 @@ fn (mut tc TypeChecker) check_top_level_declarations_filtered(do_values bool, al
 				if do_signatures {
 					tc.check_global_decl_semantics(flat.NodeId(i), node)
 				}
-				if do_values {
+				if file_values {
 					if !tc.enable_globals && !tc.has_globals_files[tc.cur_file] {
 						tc.record_error_at(.duplicate_decl, 'use `v -enable-globals ...` to enable globals', flat.NodeId(i), tc.source_line_declaration_pos(flat.NodeId(i)))
 					}
