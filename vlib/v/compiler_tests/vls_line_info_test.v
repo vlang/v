@@ -297,6 +297,50 @@ fn main() {
 }
 "
 
+// The implicit variables of array methods and the parameters of lambdas, in a
+// constrained body and outside one.
+const closures_program = "module main
+
+interface Named {
+	name string
+	greet() string
+}
+
+struct User {
+	name string
+	age  int
+}
+
+fn (u User) greet() string {
+	return u.name
+}
+
+fn names[T Named](mut xs []T) []string {
+	println(xs.map(it.zz))
+	xs.sort(a.name < b.zz)
+	println(xs.filter(it.name.len > 0))
+	return xs.map(|x| x.zz)
+}
+
+fn main() {
+	users := [User{ name: 'a' }]
+	println(users.map(|u| u.name))
+	mut people := users.clone()
+	println(names(mut people))
+}
+
+fn fails() !int {
+	return error('x')
+}
+
+fn guarded[T Named](x T) int {
+	return fails() or {
+		println(err.zz)
+		x.name.len
+	}
+}
+"
+
 fn testsuite_begin() {
 	res := os.execute('${os.quoted_path(vexe)} -gc none -prealloc -path ${os.quoted_path('${vlib_dir}|@vlib|@vmodules')} -o ${os.quoted_path(line_info_v3_bin)} ${os.quoted_path(v3_src)}')
 	assert res.exit_code == 0, res.output
@@ -307,6 +351,10 @@ fn testsuite_begin() {
 		panic(err)
 	}
 	os.mkdir_all(os.join_path(work_dir, 'constraints')) or { panic(err) }
+	os.mkdir_all(os.join_path(work_dir, 'closures')) or { panic(err) }
+	os.write_file(os.join_path(work_dir, 'closures', 'main.v'), closures_program) or {
+		panic(err)
+	}
 	os.write_file(os.join_path(work_dir, 'main.v'), program) or { panic(err) }
 	os.write_file(os.join_path(work_dir, 'completion', 'main.v'), completion_program) or {
 		panic(err)
@@ -882,6 +930,41 @@ fn test_a_constrained_value_has_the_members_of_its_constraint() {
 	labels := constrained_completion(28, 11).map(it.label)
 	assert 'str' in labels, labels.str()
 	assert 'hex' !in labels, labels.str()
+}
+
+fn closure(code string, line int, word string, nth int) string {
+	return ask(os.join_path(work_dir, 'closures'), code, line, word, nth)
+}
+
+fn closure_completion(line int, col int) []string {
+	answer := ask_at(os.join_path(work_dir, 'closures'), '${line}:${col}')
+	if answer == '' {
+		return []
+	}
+	return (json2.decode[Details](answer) or { panic('${err}: ${answer}') }).details.map('${it.kind} ${it.label} ${it.detail}')
+}
+
+fn hover_of(text string) string {
+	return '{"contents":{"kind":"markdown","value":"```v\\n${text}\\n```"}}'
+}
+
+fn test_the_implicit_variables_and_lambdas_of_a_constrained_body_have_its_members() {
+	// `it`, `a` and `b` of an array method over a `[]T`, and the parameter of a
+	// lambda there, are values of `T`: they have what `Named` declares.
+	named := ['2 greet string', '5 name string']
+	assert closure_completion(18, 19) == named
+	assert closure_completion(19, 20) == named
+	assert closure_completion(21, 21) == named
+	assert closure('hv^', 20, 'it', 0) == hover_of('it T')
+	assert closure('hv^', 19, 'a', 0) == hover_of('a T')
+	assert closure('hv^', 21, 'x', 1) == hover_of('x T')
+	// The parameter of a lambda is where its uses are declared, in any body.
+	assert closure('gd^', 21, 'x', 1) == 'main.v:21:16'
+	assert closure('gd^', 26, 'u', 1) == 'main.v:26:20'
+	assert closure('hv^', 26, 'u', 1) == hover_of('u main.User')
+	// `err` of an `or {}` in a generic body: an `IError`.
+	errs := closure_completion(37, 14).map(it.all_after(' ').all_before(' '))
+	assert 'msg' in errs && 'code' in errs, errs.str()
 }
 
 fn test_a_constraint_name_has_a_definition_and_a_hover() {

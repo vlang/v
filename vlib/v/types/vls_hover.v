@@ -202,7 +202,17 @@ fn (tc &TypeChecker) vls_expr_type(id flat.NodeId) ?Type {
 	// The receiver of a builtin method, which the checker handles without
 	// typing it: the type of the local it names, from its declaration.
 	if node.kind == .ident {
-		decl_id := tc.vls_local_declaration(id) or { return none }
+		binding := tc.vls_local_binding(id) or { return none }
+		// `it`, `a`, `b` or `err` in a body the checker did not type, as that
+		// of a generic function.
+		if binding.implicit {
+			typ := tc.vls_implicit_type(binding) or { return none }
+			if constrained := tc.vls_constrained_type(id, typ) {
+				return constrained
+			}
+			return if type_contains_unknown(typ) { none } else { typ }
+		}
+		decl_id := binding.decl_id
 		decl := tc.a.node(decl_id)
 		if decl.kind == .param {
 			declared := tc.parse_type(decl.typ)
@@ -211,9 +221,89 @@ fn (tc &TypeChecker) vls_expr_type(id flat.NodeId) ?Type {
 			}
 			return if type_contains_unknown(declared) { none } else { declared }
 		}
+		if elem := tc.vls_lambda_param_type(decl_id) {
+			if constrained := tc.vls_constrained_type(id, elem) {
+				return constrained
+			}
+			return if type_contains_unknown(elem) { none } else { elem }
+		}
 		return tc.vls_local_type(decl_id)
 	}
 	return none
+}
+
+// vls_implicit_type is the type of a variable the language declares, from the
+// node that declares it (see VlsBinding): the elements of the array that an
+// array method is called on for its `it`, `a` and `b`, and `IError` for `err`.
+fn (tc &TypeChecker) vls_implicit_type(binding VlsBinding) ?Type {
+	if !tc.valid_node_id(binding.site) {
+		return none
+	}
+	site := tc.a.node(binding.site)
+	if site.kind == .block {
+		return tc.parse_type('IError')
+	}
+	return tc.vls_array_method_elem(*site)
+}
+
+// vls_lambda_param_type is the type of a parameter of a short lambda that is an
+// argument of an array method, `|x| x.name` in `xs.map()`: its elements.
+fn (tc &TypeChecker) vls_lambda_param_type(decl_id flat.NodeId) ?Type {
+	lambda_id := tc.vls_parent_id(decl_id)
+	if !tc.valid_node_id(lambda_id) || tc.a.node(lambda_id).kind != .lambda_expr {
+		return none
+	}
+	call_id := tc.vls_parent_id(lambda_id)
+	if !tc.valid_node_id(call_id) {
+		return none
+	}
+	call := tc.a.node(call_id)
+	if call.kind != .call || call.children_count == 0 || tc.a.child(call, 0) == lambda_id {
+		return none
+	}
+	return tc.vls_array_method_elem(*call)
+}
+
+// vls_array_method_elem is the type of the elements of the array that `call`,
+// an array method such as `xs.map(...)`, is called on: a `T` in the body of a
+// generic function where `xs` is a `[]T`.
+fn (tc &TypeChecker) vls_array_method_elem(call flat.Node) ?Type {
+	if call.kind != .call || call.children_count == 0 || tc.unresolved_array_dsl_call_name(call) == '' {
+		return none
+	}
+	callee := tc.a.child_node(&call, 0)
+	if callee.kind != .selector || callee.children_count == 0 {
+		return none
+	}
+	receiver := unalias_type(unwrap_pointer(tc.vls_value_type(tc.a.child(callee, 0))?))
+	return if receiver is Array { receiver.elem_type } else { none }
+}
+
+// vls_value_type is the type of the value `id` with the type parameters it
+// holds: `xs` of `fn f[T](xs []T)` is a `[]T`, which vls_expr_type leaves out.
+fn (tc &TypeChecker) vls_value_type(id flat.NodeId) ?Type {
+	if typ := tc.vls_expr_type(id) {
+		return typ
+	}
+	if tc.a.node(id).kind == .ident {
+		decl_id := tc.vls_local_declaration(id)?
+		decl := tc.a.node(decl_id)
+		if decl.kind == .param && decl.typ.len > 0 {
+			return tc.parse_type(decl.typ)
+		}
+	}
+	return none
+}
+
+// vls_value_type_text writes the type of a value for a hover, a type parameter
+// by its name: `it T`.
+fn (tc &TypeChecker) vls_value_type_text(typ Type) string {
+	if typ is Unknown {
+		if param := generic_placeholder_from_unknown(typ) {
+			return param
+		}
+	}
+	return tc.vls_type_text(typ)
 }
 
 // vls_constrained_type is the interface that stands for `typ` when it is a type
@@ -366,6 +456,11 @@ fn (mut tc TypeChecker) vls_hover_ident(id flat.NodeId, node flat.Node) string {
 		if typ := tc.vls_local_type(decl_id) {
 			return '${name} ${tc.vls_type_text(typ)}'
 		}
+		// A parameter of a lambda that the checker did not type, in the body
+		// of a generic function.
+		if typ := tc.vls_lambda_param_type(decl_id) {
+			return '${name} ${tc.vls_value_type_text(typ)}'
+		}
 	}
 	if typ := tc.vls_const_type(name) {
 		return 'const ${name.all_after_last('.')} ${tc.vls_type_text(typ)}'
@@ -377,6 +472,15 @@ fn (mut tc TypeChecker) vls_hover_ident(id flat.NodeId, node flat.Node) string {
 	// A variable where it is declared, `if v := f() {` too.
 	if typ := tc.vls_local_type(id) {
 		return '${name} ${tc.vls_type_text(typ)}'
+	}
+	// `it`, `a`, `b` or `err` that the checker did not type, in the body of a
+	// generic function.
+	if binding := tc.vls_local_binding(id) {
+		if binding.implicit {
+			if typ := tc.vls_implicit_type(binding) {
+				return '${name} ${tc.vls_value_type_text(typ)}'
+			}
+		}
 	}
 	if declaration := tc.vls_type_declaration(name) {
 		return declaration
