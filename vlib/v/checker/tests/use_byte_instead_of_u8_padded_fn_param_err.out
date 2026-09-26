@@ -1,0 +1,63 @@
+vlib/v/checker/tests/use_byte_instead_of_u8_padded_fn_param_err.vv:28:15: error: byte is deprecated, use u8 instead
+   26 |     byte Packet) line_commented_mut() {}
+   27 | 
+   28 | fn run(cb fn (byte ), pair fn (byte , u8)) {
+      |               ~~~~
+   29 |     cb(1)
+   30 |     pair(1, 2)
+vlib/v/checker/tests/use_byte_instead_of_u8_padded_fn_param_err.vv:28:32: error: byte is deprecated, use u8 instead
+   26 |     byte Packet) line_commented_mut() {}
+   27 | 
+   28 | fn run(cb fn (byte ), pair fn (byte , u8)) {
+      |                                ~~~~
+   29 |     cb(1)
+   30 |     pair(1, 2)
+vlib/v/checker/tests/use_byte_instead_of_u8_padded_fn_param_err.vv:33:23: error: byte is deprecated, use u8 instead
+   31 | }
+   32 | 
+   33 | fn run_wrapped(cb fn (byte
+      |                       ~~~~
+   34 | ), pair fn (byte
+   35 |     , u8)) {
+vlib/v/checker/tests/use_byte_instead_of_u8_padded_fn_param_err.vv:34:13: error: byte is deprecated, use u8 instead
+   32 | 
+   33 | fn run_wrapped(cb fn (byte
+   34 | ), pair fn (byte
+      |             ~~~~
+   35 |     , u8)) {
+   36 |     cb(1)
+vlib/v/checker/tests/use_byte_instead_of_u8_padded_fn_param_err.vv:40:25: error: byte is deprecated, use u8 instead
+   38 | }
+   39 | 
+   40 | fn run_commented(cb fn (byte /* comment */)) {
+      |                         ~~~~
+   41 |     cb(1)
+   42 | }
+vlib/v/checker/tests/use_byte_instead_of_u8_padded_fn_param_err.vv:50:11: error: byte is deprecated, use u8 instead
+   48 |     }
+   49 |     _ = add_one
+   50 |     _ := fn (byte ) {}
+      |              ~~~~
+   51 |     _ := fn (byte /* type only */, u8) {}
+   52 |     _ := fn (
+vlib/v/checker/tests/use_byte_instead_of_u8_padded_fn_param_err.vv:51:11: error: byte is deprecated, use u8 instead
+   49 |     _ = add_one
+   50 |     _ := fn (byte ) {}
+   51 |     _ := fn (byte /* type only */, u8) {}
+      |              ~~~~
+   52 |     _ := fn (
+   53 |         byte, u8) {}
+vlib/v/checker/tests/use_byte_instead_of_u8_padded_fn_param_err.vv:53:3: error: byte is deprecated, use u8 instead
+   51 |     _ := fn (byte /* type only */, u8) {}
+   52 |     _ := fn (
+   53 |         byte, u8) {}
+      |         ~~~~
+   54 |     _ := Packet{
+   55 |         byte /* field */: 3
+vlib/v/checker/tests/use_byte_instead_of_u8_padded_fn_param_err.vv:50:11: error: use `_` to name an unused parameter
+   48 |     }
+   49 |     _ = add_one
+   50 |     _ := fn (byte ) {}
+      |              ~~~~
+   51 |     _ := fn (byte /* type only */, u8) {}
+   52 |     _ := fn (
