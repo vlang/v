@@ -28,7 +28,7 @@ fn main() {
 		total += used_only_in_skipped_else(total)
 	}
 	println(total + selected_platform_value + selected_in_skipped_if + selected_in_skipped_else +
-		keyword_fns_used_only_in_skipped_branch())
+		keyword_fns_used_only_in_skipped_branch() + members_used_only_in_skipped_branch())
 }
 
 const platform_value = 1
@@ -77,6 +77,30 @@ fn keyword_fns_used_only_in_skipped_branch() int {
 	mut n := selected_keyword_fn
 	$if never_defined ? {
 		n += lock() + match()
+	}
+	return n
+}
+
+// A member after a dot is not this module's same-named fn or const.
+fn shadowed_by_member() int {
+	return 10
+}
+
+const shadowed_const_member = 11
+
+const selected_member = $if never_defined ? { dep.shadowed_const_member } $else { 0 }
+
+struct Holder {}
+
+fn (h Holder) method_used_only_in_skipped_branch() int {
+	return 12
+}
+
+fn members_used_only_in_skipped_branch() int {
+	h := Holder{}
+	mut n := selected_member
+	$if never_defined ? {
+		n += dep.shadowed_by_member() + h.method_used_only_in_skipped_branch()
 	}
 	return n
 }

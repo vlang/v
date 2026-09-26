@@ -6735,9 +6735,10 @@ fn (mut p Parser) skip_block() {
 // name it spells as a possible use of a function or a constant.
 fn (mut p Parser) skip_block_recording_decl_names() {
 	mut depth := 1
+	mut scan := p.new_skipped_decl_name_scan()
 	p.next()
 	for depth > 0 && p.tok != .eof {
-		p.record_skipped_decl_name()
+		p.record_skipped_decl_name(mut scan)
 		if p.tok == .lcbr {
 			depth++
 		} else if p.tok == .rcbr {
@@ -6747,16 +6748,43 @@ fn (mut p Parser) skip_block_recording_decl_names() {
 	}
 }
 
-// record_skipped_decl_name records the current token of a skipped `$if` branch
-// when it can name a function or a constant. Keyword-named calls such as
-// `select()` or `lock()` are scanned as keyword tokens, so their spelling is
-// recorded the way keyword_ident_expr reads it.
-fn (mut p Parser) record_skipped_decl_name() {
-	if p.tok == .name {
-		p.a.comptime_skipped_decl_names[flat.comptime_skipped_decl_key(p.cur_file, p.lit)] = true
-	} else if p.keyword_token_is_ident_expr() {
-		p.a.comptime_skipped_decl_names[flat.comptime_skipped_decl_key(p.cur_file, p.tok.str())] = true
+// SkippedDeclNameScan remembers the tokens before the current one in a skipped
+// `$if` branch, so record_skipped_decl_name can tell a member after a dot from a
+// bare name.
+struct SkippedDeclNameScan {
+	own_module string
+mut:
+	prev_tok  token.Token
+	prev_name string
+	qualifier string
+}
+
+fn (p &Parser) new_skipped_decl_name_scan() SkippedDeclNameScan {
+	return SkippedDeclNameScan{
+		own_module: if p.cur_module.len > 0 { p.cur_module } else { 'main' }
+		prev_tok:   p.tok
 	}
+}
+
+// record_skipped_decl_name records the current token of a skipped `$if` branch
+// when it can name a free function or a constant of this module. It must see
+// every token of the branch once, before the parser moves past it.
+// Keyword-named calls such as `select()` or `lock()` are scanned as keyword
+// tokens, so their spelling is recorded the way keyword_ident_expr reads it.
+// A name after a dot is a field, a method or another module's member, and the
+// unused checks report none of those; only the module's own qualifier, as in
+// `main.helper()`, still names one of its declarations.
+fn (mut p Parser) record_skipped_decl_name(mut scan SkippedDeclNameScan) {
+	if scan.prev_tok != .dot || scan.qualifier == scan.own_module {
+		if p.tok == .name {
+			p.a.comptime_skipped_decl_names[flat.comptime_skipped_decl_key(p.cur_file, p.lit)] = true
+		} else if p.keyword_token_is_ident_expr() {
+			p.a.comptime_skipped_decl_names[flat.comptime_skipped_decl_key(p.cur_file, p.tok.str())] = true
+		}
+	}
+	scan.qualifier = if p.tok == .dot { scan.prev_name } else { '' }
+	scan.prev_name = if p.tok == .name { p.lit } else { '' }
+	scan.prev_tok = p.tok
 }
 
 fn skipped_pipe_starts_lambda(prev_tok token.Token) bool {
@@ -6849,10 +6877,10 @@ fn (mut p Parser) skip_comptime_block() {
 	mut map_type_depth := -1
 	mut map_type_paren_depth := -1
 	mut map_type_bracket_depth := -1
+	mut decl_name_scan := p.new_skipped_decl_name_scan()
 	p.next()
 	for depth > 0 && p.tok != .eof {
-		// Selector members count too: `mod.helper()` spells `helper`.
-		p.record_skipped_decl_name()
+		p.record_skipped_decl_name(mut decl_name_scan)
 		if map_type_depth >= 0 && depth == map_type_depth
 			&& paren_depth == map_type_paren_depth && bracket_depth == map_type_bracket_depth
 			&& p.tok in [.comma, .semicolon] {
