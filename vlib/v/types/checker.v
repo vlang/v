@@ -7764,7 +7764,9 @@ fn (mut tc TypeChecker) unused_private_declarations(used_fns map[string]bool, li
 				|| node.value.contains('.') || node.is_static_type_method() {
 				continue
 			}
-			if tc.declaration_contains_error(node) {
+			// Only a declaration whose diagnostics show can be reported: skipping
+			// the others here spares the reference scan their names.
+			if !tc.should_diagnose(flat.NodeId(idx)) || tc.declaration_contains_error(node) {
 				continue
 			}
 			if library && (tc.declaration_has_attribute(flat.NodeId(idx), 'export')
@@ -7800,7 +7802,7 @@ fn (mut tc TypeChecker) unused_private_declarations(used_fns map[string]bool, li
 			field_id := tc.a.child(&node, i)
 			field := tc.a.node(field_id)
 			if field.kind != .const_field || field.value.len == 0 || field.value.starts_with('C.')
-				|| field.value.starts_with('_') {
+				|| field.value.starts_with('_') || !tc.should_diagnose(field_id) {
 				continue
 			}
 			qname := if module_name.len > 0 && module_name != 'main' {
