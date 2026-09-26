@@ -117,6 +117,22 @@ fn test_cross_output_leaves_the_atomic_helpers_to_the_windows_tcc_header() {
 	}
 }
 
+fn test_windows_msvc_output_balances_atomic_header_guards() {
+	c_code := cross_generate_with('-os windows -cc msvc', 'windows_msvc_atomics', "module main\n\nfn main() {\n\tprintln('ok')\n}\n")
+	assert c_code.contains('static inline byte atomic_fetch_add_byte(')
+	mut depth := 0
+	for line in c_code.split_into_lines() {
+		directive := line.trim_space()
+		if directive.starts_with('#if') {
+			depth++
+		} else if directive.starts_with('#endif') {
+			depth--
+			assert depth >= 0, 'unmatched #endif in generated MSVC C'
+		}
+	}
+	assert depth == 0, '${depth} unterminated #if directives in generated MSVC C'
+}
+
 fn test_cross_output_keeps_the_posix_semaphore_off_apple() {
 	// A snapshot generated on Linux is compiled on macOS to bootstrap v1, and the
 	// `sync` file it bakes in is the POSIX one. Apple has no `sem_timedwait` symbol

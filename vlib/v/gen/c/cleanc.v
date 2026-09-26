@@ -20941,7 +20941,8 @@ fn (mut g FlatGen) atomic_builtin_compat_decls() {
 	// expands its macros over the definitions - `atomic_fetch_add_byte(void* ptr,
 	// byte delta)` becomes `ManualInterlockedExchangeAdd8(void* ptr, byte delta)`,
 	// which redefines the header's own function. Leave the block out exactly there.
-	guard_windows_tcc := g.output_cross_c || g.target.os == 'windows'
+	// The ordinary MSVC path already opened the same choice above.
+	guard_windows_tcc := (g.output_cross_c || g.target.os == 'windows') && !windows_msvc
 	if guard_windows_tcc {
 		g.writeln('#if !(defined(_WIN32) && (defined(__TINYC__) || (defined(_MSC_VER) && !defined(__clang__))))')
 	}
