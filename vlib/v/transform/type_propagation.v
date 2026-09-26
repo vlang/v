@@ -761,14 +761,24 @@ fn (t &Transformer) resolve_selector_type_uncached(node flat.Node) string {
 	if ftyp := t.lookup_struct_field_type(lookup_type, field_name) {
 		return ftyp
 	}
-	if info := t.lookup_struct_info(lookup_type) {
-		if embedded := t.embedded_field_for_promoted_field(info, field_name) {
-			if embedded_info := t.lookup_struct_info(embedded.typ) {
-				if ftyp := t.struct_field_type(embedded_info, field_name) {
+	if _ := t.lookup_struct_info(lookup_type) {
+		// Follow the complete embedding path, including pointer embeddings.
+		if path := t.struct_field_path_for_field(lookup_type, field_name) {
+			owner_type := if path.len > 0 {
+				t.trim_pointer_type(path.last().typ)
+			} else {
+				lookup_type
+			}
+			if owner_info := t.lookup_struct_info(owner_type) {
+				if ftyp := t.struct_field_type(owner_info, field_name) {
 					return ftyp
 				}
 			}
 		}
+		// A selector on a known struct may be a bound method. Do not infer its
+		// type from a same-named field on an unrelated struct; let the checker
+		// supply the method's function type instead.
+		return ''
 	}
 	if ftyp := t.lookup_unique_field_type(field_name) {
 		return ftyp
