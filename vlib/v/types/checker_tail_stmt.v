@@ -2086,7 +2086,11 @@ fn (mut tc TypeChecker) check_general_match_branch_tail_types(id flat.NodeId, no
 	}
 	for i in 1 .. tails.len {
 		tail_id := tails[i]
-		actual := tail_types[i]
+		actual := if unalias_type(expected) is Enum && tc.a.node(tail_id).kind == .enum_val {
+			tc.resolve_expr(tail_id, expected)
+		} else {
+			tail_types[i]
+		}
 		if inferred := inferred_contextual_if_type(expected, actual) {
 			expected = inferred
 			continue

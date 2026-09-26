@@ -1,0 +1,24 @@
+enum First {
+	a
+	b
+}
+
+enum Second {
+	a
+	b
+}
+
+fn main() {
+	for i in 0 .. 3 {
+		mixed := match i {
+			0 { First.a }
+			1 { .b }
+			else { Second.a }
+		}
+		invalid := match i {
+			0 { First.a }
+			else { .missing }
+		}
+		println('${mixed} ${invalid}')
+	}
+}

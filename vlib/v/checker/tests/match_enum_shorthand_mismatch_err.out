@@ -1,0 +1,21 @@
+vlib/v/checker/tests/match_enum_shorthand_mismatch_err.vv:16:18: error: return type mismatch, it should be `First`, but it is instead `Second`
+   14 |             0 { First.a }
+   15 |             1 { .b }
+   16 |             else { Second.a }
+      |                           ^
+   17 |         }
+   18 |         invalid := match i {
+vlib/v/checker/tests/match_enum_shorthand_mismatch_err.vv:20:11: error: return type mismatch, it should be `First`, but it is instead `int`
+   18 |         invalid := match i {
+   19 |             0 { First.a }
+   20 |             else { .missing }
+      |                    ~~~~~~~~
+   21 |         }
+   22 |         println('${mixed} ${invalid}')
+vlib/v/checker/tests/match_enum_shorthand_mismatch_err.vv:20:11: error: unknown enum field `missing` for `First`
+   18 |         invalid := match i {
+   19 |             0 { First.a }
+   20 |             else { .missing }
+      |                    ~~~~~~~~
+   21 |         }
+   22 |         println('${mixed} ${invalid}')
