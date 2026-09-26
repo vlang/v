@@ -1822,3 +1822,34 @@ fn main() {
 	assert res.exit_code == 0, res.output
 	assert res.output.trim_space().split_into_lines() == ['30', '42', '2.5', 'box of Alex'], res.output
 }
+
+fn test_the_thousands_formatting_of_28797_takes_a_constraint() {
+	// vlang/v#28797 rejects the types that are not numbers with `$if T !in
+	// [...] { $compile_error(...) }`. With `[T Number]` in its place, its code
+	// builds and runs, and its examples and tests hold...
+	path := os.join_path(os.dir(@FILE), 'testdata', 'format_thousands_28797.v')
+	res := os.execute('${os.quoted_path(@VEXE)} -new-compiler run ${os.quoted_path(path)}')
+	assert res.exit_code == 0, res.output
+	assert res.output.trim_space().ends_with('1.234.567.891.42'), res.output
+	// ... and a call with a string is reported where it is made, as the error of
+	// the constraint.
+	last := "\tprintln(format_thousands(1234567891.42, '.'))"
+	source := os.read_file(path) or { panic(err) }
+	call := source.split('\n').index(last) + 2
+	assert call > 1
+	dir := os.join_path(os.vtmp_dir(), 'v3_generic_constraints_28797_${os.getpid()}')
+	os.mkdir_all(dir) or { panic(err) }
+	defer {
+		os.rmdir_all(dir) or {}
+	}
+	misuse := os.join_path(dir, 'main.v')
+	os.write_file(misuse, source.replace(last, last + "\n\tprintln(format_thousands('1234', ','))")) or {
+		panic(err)
+	}
+	check := os.execute('${os.quoted_path(@VEXE)} -new-compiler -check -nocolor ${os.quoted_path(misuse)}')
+	assert check.exit_code != 0, check.output
+	errors := check.output.split_into_lines().filter(it.contains(': error: '))
+	assert errors.len == 1, check.output
+	assert errors[0].contains('main.v:${call}:'), errors[0]
+	assert errors[0].ends_with('cannot use `string` as `T`: it is not in its constraint `Number`'), errors[0]
+}
