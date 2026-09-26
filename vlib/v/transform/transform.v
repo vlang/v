@@ -5727,10 +5727,37 @@ fn (mut t Transformer) transform_const_decl(node flat.Node) {
 				// Overwrite the field's value slot in place (each const_field owns
 				// its own single-element child range, so this is safe).
 				t.a.children[cf.children_start] = new_val
+			} else if t.expr_has_if_guard(val_id) {
+				// `if x := opt { x } else { y }` must unwrap `opt` into `x` in a
+				// statement; it has no plain C expression form.
+				new_val := t.transform_const_expr_no_pending(val_id)
+				t.a.children[cf.children_start] = new_val
 			}
 		}
 	}
 	t.in_const_init = old_in_const_init
+}
+
+// expr_has_if_guard reports whether the expression `id` contains an
+// `if x := opt { ... }` guard outside of nested function bodies.
+fn (t &Transformer) expr_has_if_guard(id flat.NodeId) bool {
+	if int(id) < 0 || int(id) >= t.a.nodes.len {
+		return false
+	}
+	node := t.a.nodes[int(id)]
+	if node.kind in [.fn_literal, .lambda_expr] {
+		return false
+	}
+	if node.kind == .if_expr && node.children_count > 0
+		&& t.a.child_node(&node, 0).kind == .decl_assign {
+		return true
+	}
+	for i in 0 .. node.children_count {
+		if t.expr_has_if_guard(t.a.child(&node, i)) {
+			return true
+		}
+	}
+	return false
 }
 
 // const_field_type_name supports const field type name handling for Transformer.
@@ -5833,6 +5860,12 @@ fn (mut t Transformer) transform_global_decl(node flat.Node) {
 			}
 			if preserved := t.transform_global_amp_initializer(val_id, val) {
 				t.a.children[gf.children_start] = preserved
+				continue
+			}
+			if t.expr_has_if_guard(val_id) {
+				// Keep the guard's unwrap statements with the value (see
+				// transform_const_decl); the runtime init renders the block.
+				t.a.children[gf.children_start] = t.transform_const_expr_no_pending(val_id)
 				continue
 			}
 			old_pending := t.pending_stmts.clone()
