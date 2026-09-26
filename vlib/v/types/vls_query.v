@@ -297,7 +297,7 @@ fn vls_name_span(node flat.Node, source string) ?(int, int) {
 	if node.kind in [.field_decl, .const_field, .interface_field, .fn_decl] {
 		// A declaration starts with its name, which its node may not span; a
 		// method's node names its receiver's type too.
-		name := if node.kind == .fn_decl { node.value.all_after_last('.') } else { node.value }
+		name := if node.kind == .fn_decl { vls_declared_fn_name(node.value) } else { node.value }
 		name_end := start + name.len
 		if name.len == 0 || !vls_holds_at(source, start, name) {
 			return none
@@ -359,6 +359,16 @@ fn vls_name_span(node flat.Node, source string) ?(int, int) {
 			return none
 		}
 	}
+}
+
+// vls_declared_fn_name is the name a function declaration writes after its
+// receiver: `label` of the method `Box.label`, `new` of the static method
+// `User.new`, which the parser names apart from the methods.
+fn vls_declared_fn_name(value string) string {
+	if _, method := flat.decode_static_type_method_name(value) {
+		return method
+	}
+	return value.all_after_last('.')
 }
 
 // vls_holds_at reports whether `source` holds `word` at `start`. It compares in
