@@ -349,6 +349,86 @@ fn guarded[T Named](x T) int {
 }
 "
 
+// Functions and methods named where they are declared and where they are
+// called, by name or through a value that holds one.
+const functions_program = "module main
+
+interface Named {
+	name string
+}
+
+struct User {
+	name string
+}
+
+struct Box[T Named] {
+	item T
+}
+
+fn (b Box[T]) label() string {
+	return b.item.name
+}
+
+fn User.new(name string) User {
+	return User{
+		name: name
+	}
+}
+
+fn (u User) greet() string {
+	return u.name
+}
+
+fn longest[T Named](a T, b T) T {
+	return if a.name.len >= b.name.len { a } else { b }
+}
+
+fn apply(f fn (int) int, x int) int {
+	return f(x)
+}
+
+fn lengths[T Named](xs []T) []int {
+	count := fn (x T) int {
+		return x.name.len
+	}
+	println(xs.map(count))
+	return xs.map(count)
+}
+
+fn shouted[T Named](mut xs []T) []string {
+	println(xs.filter(it.name.len > 1))
+	xs.sort(a.name < b.name)
+	return xs.map(|x| x.name.to_upper())
+}
+
+fn tag[T Named](b Box[T]) string {
+	return b.label()
+}
+
+fn main() {
+	nums := [1, 2]
+	println(nums.map(it * 2))
+	println(nums.filter(it > 1))
+	mut sorted := nums.clone()
+	sorted.sort(a < b)
+	double := fn (x int) int {
+		return x * 2
+	}
+	println(double(4))
+	println(apply(double, 5))
+	u := User.new('eva')
+	g := u.greet
+	println(g())
+	f := longest[User]
+	println(f(u, User{ name: 'bo' }).name)
+	println(longest[User](u, u).name)
+	println(tag(Box[User]{ item: u }))
+	mut people := [u]
+	println(lengths(people))
+	println(shouted(mut people))
+}
+"
+
 fn testsuite_begin() {
 	res := os.execute('${os.quoted_path(vexe)} -gc none -prealloc -path ${os.quoted_path('${vlib_dir}|@vlib|@vmodules')} -o ${os.quoted_path(line_info_v3_bin)} ${os.quoted_path(v3_src)}')
 	assert res.exit_code == 0, res.output
@@ -361,6 +441,10 @@ fn testsuite_begin() {
 	os.mkdir_all(os.join_path(work_dir, 'constraints')) or { panic(err) }
 	os.mkdir_all(os.join_path(work_dir, 'closures')) or { panic(err) }
 	os.write_file(os.join_path(work_dir, 'closures', 'main.v'), closures_program) or {
+		panic(err)
+	}
+	os.mkdir_all(os.join_path(work_dir, 'functions')) or { panic(err) }
+	os.write_file(os.join_path(work_dir, 'functions', 'main.v'), functions_program) or {
 		panic(err)
 	}
 	os.write_file(os.join_path(work_dir, 'main.v'), program) or { panic(err) }
@@ -1076,4 +1160,95 @@ fn main() {}
 	assert labels(33, 12) == ['name']
 	assert ask(dir, 'gd^', 31, 'name', 0) == 'main.v:8:1'
 	assert ask(dir, 'gd^', 34, 'name', 0) == 'main.v:4:1'
+}
+
+// function asks about the `nth` `word` of the line of functions_program that
+// reads `text`.
+fn function(code string, text string, word string, nth int) string {
+	dir := os.join_path(work_dir, 'functions')
+	line := functions_line(text)
+	return ask(dir, code, line, word, nth)
+}
+
+// functions_line is the 1-based number of the line of functions_program that
+// reads `text`.
+fn functions_line(text string) int {
+	line := functions_program.split('\n').index(text) + 1
+	assert line > 0, '`${text}` is not a line of functions_program'
+	return line
+}
+
+fn test_a_member_of_a_generic_value_is_the_member_of_its_type() {
+	// `xs.map()` over `xs []T` in a generic body calls the `map` of every array:
+	// the declaration and the signature of `nums.map()` over an `[]int`.
+	map_decl := function('gd^', '\tprintln(nums.map(it * 2))', 'map', 0)
+	assert map_decl.contains('builtin/array.v:'), map_decl
+	assert function('gd^', '\tprintln(xs.map(count))', 'map', 0) == map_decl
+	assert function('gd^', '\treturn xs.map(|x| x.name.to_upper())', 'map', 0) == map_decl
+	map_hover := function('hv^', '\tprintln(nums.map(it * 2))', 'map', 0)
+	assert map_hover.contains('fn map('), map_hover
+	assert function('hv^', '\tprintln(xs.map(count))', 'map', 0) == map_hover
+	filter_decl := function('gd^', '\tprintln(nums.filter(it > 1))', 'filter', 0)
+	assert filter_decl.contains('builtin/array.v:'), filter_decl
+	assert function('gd^', '\tprintln(xs.filter(it.name.len > 1))', 'filter', 0) == filter_decl
+	sort_decl := function('gd^', '\tsorted.sort(a < b)', 'sort', 0)
+	assert sort_decl.contains('builtin/array.v:'), sort_decl
+	assert function('gd^', '\txs.sort(a.name < b.name)', 'sort', 0) == sort_decl
+	// A method of a generic struct, called on a `Box[T]`.
+	label := functions_line('fn (b Box[T]) label() string {')
+	assert function('gd^', '\treturn b.label()', 'label', 0) == 'main.v:${label}:14'
+	assert function('hv^', '\treturn b.label()', 'label', 0) == hover_of('fn label() string')
+}
+
+fn test_the_callee_of_a_call_through_a_value_is_that_value() {
+	// A local that holds a function literal, a method value, an instance of a
+	// generic function and a parameter of a function type are described where
+	// they are called as where they are declared.
+	assert function('hv^', '\tprintln(double(4))', 'double', 0) == hover_of('double fn (int) int')
+	assert function('hv^', '\tprintln(g())', 'g', 0) == hover_of('g fn () string')
+	instance := function('hv^', '\tf := longest[User]', 'f', 0)
+	assert instance.contains('f fn ('), instance
+	assert function('hv^', "\tprintln(f(u, User{ name: 'bo' }).name)", 'f', 0) == instance
+	assert function('hv^', '\treturn f(x)', 'f', 0) == hover_of('f fn (int) int')
+	// A generic function called with its type arguments is that function.
+	longest := functions_line('fn longest[T Named](a T, b T) T {')
+	assert function('hv^', '\tprintln(longest[User](u, u).name)', 'longest', 0) == hover_of('fn longest(a T, b T) T')
+	assert function('gd^', '\tprintln(longest[User](u, u).name)', 'longest', 0) == 'main.v:${longest}:3'
+	// A function literal in a generic body takes a `T`, written by its name.
+	assert function('hv^', '\tprintln(xs.map(count))', 'count', 0) == hover_of('count fn (T) int')
+	assert function('hv^', '\tcount := fn (x T) int {', 'count', 0) == hover_of('count fn (T) int')
+}
+
+fn test_a_static_method_is_declared_by_its_name() {
+	new := functions_line('fn User.new(name string) User {')
+	assert function('gd^', 'fn User.new(name string) User {', 'new', 0) == 'main.v:${new}:8'
+	assert function('gd^', "\tu := User.new('eva')", 'new', 0) == 'main.v:${new}:8'
+}
+
+fn test_a_chain_of_array_methods_in_a_generic_body_keeps_its_elements() {
+	// In a body without constraints, which the checker does not type:
+	// `xs.filter()` gives a `[]T`, whose `map` is that of every array, and whose
+	// elements are the `it` of that `map`.
+	dir := os.join_path(work_dir, 'chains')
+	os.mkdir_all(dir) or { panic(err) }
+	os.write_file(os.join_path(dir, 'main.v'), 'module main
+
+fn plain[T](xs []T) int {
+	kept := xs.filter(true).map(it)
+	println(kept)
+	return kept.len
+}
+
+fn main() {
+	nums := [1, 2]
+	println(nums.map(it * 2))
+	println(plain(nums))
+}
+') or {
+		panic(err)
+	}
+	map_decl := ask(dir, 'gd^', 11, 'map', 0)
+	assert map_decl.contains('builtin/array.v:'), map_decl
+	assert ask(dir, 'gd^', 4, 'map', 0) == map_decl
+	assert ask(dir, 'hv^', 4, 'it', 0) == hover_of('it T')
 }

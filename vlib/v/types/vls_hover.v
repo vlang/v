@@ -19,12 +19,12 @@ fn (mut tc TypeChecker) vls_hover_declaration(target VlsTarget) string {
 	id := target.id
 	node := tc.a.nodes[int(id)]
 	tc.vls_enter_file(target.file_id)
-	// The name of a call stands for what it calls.
+	// The name of a call stands for the function it calls; a value that holds
+	// one, as a local or a parameter of a function type, is that value.
 	if call_id := tc.vls_called_by(id) {
 		if resolved := tc.vls_call_target(call_id, id) {
 			return tc.vls_fn_signature(resolved) or { '' }
 		}
-		return ''
 	}
 	match node.kind {
 		.ident {
@@ -157,11 +157,18 @@ fn (tc &TypeChecker) vls_call_target(call_id flat.NodeId, callee_id flat.NodeId)
 	if callee.kind != .selector || callee.children_count == 0 {
 		return none
 	}
-	receiver_type := tc.vls_expr_type(tc.a.child(callee, 0)) or { return none }
+	// With the type parameters of the receiver: `xs.map()` of `xs []T` calls the
+	// `map` of every array.
+	receiver_type := tc.vls_value_type(tc.a.child(callee, 0)) or { return none }
 	owner := tc.vls_member_owner(receiver_type) or { return none }
 	method := '${owner}.${callee.value}'
 	if method in tc.fn_type_files || tc.vls_builtin_method_decl(method) != none {
 		return method
+	}
+	// A method of a generic struct, which is registered with its receiver as
+	// its declaration writes it: `Box[T].label` for `b.label()` of a `Box[T]`.
+	if info := tc.resolve_generic_struct_method(owner, callee.value) {
+		return info.name
 	}
 	// A method of a struct that the receiver's struct embeds.
 	owners := tc.embedded_method_candidates(owner, callee.value)
@@ -179,8 +186,25 @@ fn (tc &TypeChecker) vls_expr_type(id flat.NodeId) ?Type {
 	}
 	node := tc.a.node(id)
 	if node.kind == .call {
-		resolved := tc.resolved_call_name(id) or { return none }
-		return tc.fn_ret_types[resolved] or { return none }
+		if resolved := tc.resolved_call_name(id) {
+			return tc.fn_ret_types[resolved] or { return none }
+		}
+		// A call in a body the checker did not type, as that of a generic
+		// function: an array method over a `[]T`, or what the function it calls
+		// returns.
+		if typ := tc.vls_array_method_call_type(node) {
+			return typ
+		}
+		if node.children_count == 0 {
+			return none
+		}
+		target := tc.vls_call_target(id, tc.a.child(node, 0)) or { return none }
+		// Builtin declares the methods of arrays and maps over `voidptr`: the
+		// checker types their calls itself.
+		if target.starts_with('array.') || target.starts_with('map.') {
+			return none
+		}
+		return tc.fn_ret_types[target] or { return none }
 	}
 	// A field the checker did not reach, as it stops typing a function after
 	// some errors: the field's type, from the type of its receiver.
@@ -232,6 +256,56 @@ fn (tc &TypeChecker) vls_expr_type(id flat.NodeId) ?Type {
 		return tc.vls_local_type(decl_id)
 	}
 	return none
+}
+
+// vls_array_method_call_type is the type of `call`, an array method that the
+// checker types itself, where it did not: in the body of a generic function,
+// over a `[]T`. `filter` and `sorted` give the array, `any` and `all` a bool,
+// `count` an int, and `map` an array of what its argument gives an element.
+fn (tc &TypeChecker) vls_array_method_call_type(call flat.Node) ?Type {
+	name := tc.unresolved_array_dsl_call_name(call)
+	if name == '' {
+		return none
+	}
+	callee := tc.a.child_node(&call, 0)
+	receiver := tc.vls_value_type(tc.a.child(callee, 0))?
+	if unalias_type(unwrap_pointer(receiver)) !is Array {
+		return none
+	}
+	match name {
+		'array.filter', 'array.sorted' {
+			return receiver
+		}
+		'array.any', 'array.all' {
+			return tc.parse_type('bool')
+		}
+		'array.count' {
+			return tc.parse_type('int')
+		}
+		'array.map' {
+			if call.children_count < 2 {
+				return none
+			}
+			arg_id := tc.a.child(&call, 1)
+			arg := tc.a.node(arg_id)
+			// A lambda gives what its body does, a function value what it returns.
+			elem := if arg.kind == .lambda_expr && arg.children_count > 0 {
+				tc.vls_expr_type(tc.a.child(arg, int(arg.children_count) - 1))?
+			} else {
+				value := tc.vls_value_type(arg_id)?
+				if value is FnType { value.return_type } else { value }
+			}
+			if elem is Void {
+				return none
+			}
+			return Type(Array{
+				elem_type: elem
+			})
+		}
+		else {
+			return none
+		}
+	}
 }
 
 // vls_implicit_type is the type of a variable the language declares, from the
@@ -386,6 +460,15 @@ fn (tc &TypeChecker) vls_local_type(id flat.NodeId) ?Type {
 		return none
 	}
 	decl := tc.a.node(decl_id)
+	// A function literal in a body the checker did not type, as the body of a
+	// generic function: the type its signature writes, `fn (T) int`.
+	if decl.kind == .decl_assign && tc.multi_assign_rhs_count(decl) == 1
+		&& tc.multi_assign_lhs_ids(decl) == [id] {
+		value := tc.a.node(tc.multi_assign_rhs_id(decl, 0))
+		if value.kind == .fn_literal {
+			return tc.vls_fn_literal_type(value)
+		}
+	}
 	if_id := tc.vls_parent_id(decl_id)
 	if decl.kind != .decl_assign || tc.multi_assign_rhs_count(decl) != 1
 		|| !tc.valid_node_id(if_id) || tc.a.node(if_id).kind != .if_expr
@@ -406,6 +489,30 @@ fn (tc &TypeChecker) vls_local_type(id flat.NodeId) ?Type {
 	return if lhs_ids.len == 1 { base } else { none }
 }
 
+// vls_fn_literal_type is the type of the function literal `literal` as its
+// signature writes it.
+fn (tc &TypeChecker) vls_fn_literal_type(literal flat.Node) Type {
+	mut params := []Type{}
+	mut params_mut := []bool{}
+	for i in 0 .. literal.children_count {
+		param := tc.a.child_node(&literal, i)
+		if param.kind != .param {
+			continue
+		}
+		params << tc.parse_type(param.typ)
+		params_mut << param.is_mut
+	}
+	return Type(FnType{
+		params:      params
+		params_mut:  params_mut
+		return_type: if literal.typ in ['', 'void'] {
+			Type(void_)
+		} else {
+			tc.parse_type(literal.typ)
+		}
+	})
+}
+
 // vls_builtin_method_decl finds the declaration of a method of builtin's
 // `array`, `string` or `map` by its name, `array.map`: the checker keeps no
 // signature for the methods it handles itself.
@@ -422,7 +529,8 @@ fn (tc &TypeChecker) vls_builtin_method_decl(method string) ?flat.NodeId {
 }
 
 // vls_called_by returns the call whose callee is the node `id`: the name in
-// `name(...)`, or the member in `recv.name(...)`.
+// `name(...)`, the member in `recv.name(...)`, or the name of a generic
+// function called with its type arguments, `name[T](...)`.
 fn (tc &TypeChecker) vls_called_by(id flat.NodeId) ?flat.NodeId {
 	parent_id := tc.vls_parent_id(id)
 	if !tc.valid_node_id(parent_id) {
@@ -431,6 +539,9 @@ fn (tc &TypeChecker) vls_called_by(id flat.NodeId) ?flat.NodeId {
 	parent := tc.a.node(parent_id)
 	if parent.kind == .call && parent.children_count > 0 && tc.a.child(parent, 0) == id {
 		return parent_id
+	}
+	if parent.kind == .index && parent.children_count > 0 && tc.a.child(parent, 0) == id {
+		return tc.vls_called_by(parent_id)
 	}
 	return none
 }
@@ -1022,7 +1133,30 @@ fn (tc &TypeChecker) vls_type_text(t Type) string {
 		}
 		FnType {
 			// V1 wrote a function type with a space: `fn (int) string`.
-			return 'fn ${t.name().all_after('fn')}'
+			if !type_contains_unknown(t) {
+				return 'fn ${t.name().all_after('fn')}'
+			}
+			// One that takes or returns a type parameter, of a function literal
+			// in a generic body, names it: `fn (T) int`.
+			mut params := []string{cap: t.params.len}
+			for i in 0 .. t.params.len {
+				param := fn_type_param_type(t, i)
+				if fn_type_param_is_mut(t, i) {
+					base := if param is Pointer { param.base_type } else { param }
+					params << 'mut ${tc.vls_type_text(base)}'
+				} else {
+					params << tc.vls_type_text(param)
+				}
+			}
+			ret := if t.return_type is Void { '' } else { ' ${tc.vls_type_text(t.return_type)}' }
+			return 'fn (${params.join(', ')})${ret}'
+		}
+		Unknown {
+			// A type parameter, in a generic body: by its name, `T`.
+			if param := generic_placeholder_from_unknown(t) {
+				return param
+			}
+			return t.name()
 		}
 		else {
 			return t.name()
