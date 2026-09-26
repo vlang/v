@@ -50,6 +50,10 @@ jobs:
       - name: Check executable resolution
         if: ${{ !cancelled() && steps.build.outcome == 'success' }}
         run: ${{ matrix.v }} -new-compiler vlib/v/cmdexec/cmdexec_resolve_program_test.v
+      - name: Check capture-only commands receive stdin EOF
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        timeout-minutes: 3
+        run: ${{ matrix.v }} -new-compiler vlib/v/cmdexec/cmdexec_stdin_test.v
       - name: Check diagnostic replay
         if: ${{ !cancelled() && steps.build.outcome == 'success' }}
         run: ${{ matrix.v }} -new-compiler cmd/v/v3_fallback_diagnostics_test.v
