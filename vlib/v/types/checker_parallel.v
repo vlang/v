@@ -45,8 +45,7 @@ struct InterfaceImplChunkArgs {
 	checker     voidptr
 	iface_names voidptr
 	results     voidptr
-	start       int
-	end         int
+	queue       chan int
 	scoped      bool
 mut:
 	scope voidptr
@@ -68,7 +67,10 @@ fn interface_impl_index_chunk_thread(arg voidptr) voidptr {
 	tc := unsafe { &TypeChecker(a.checker) }
 	iface_names := unsafe { &[]string(a.iface_names) }
 	mut results := unsafe { &InterfaceImplResults(a.results) }
-	for i in a.start .. a.end {
+	// Implementer scans differ widely in cost (IError checks every type), so
+	// each job pulls the next interface instead of taking a fixed slice.
+	for {
+		i := <-a.queue or { break }
 		iface_name := unsafe { iface_names[i] }
 		impls := if is_builtin_ierror_name(iface_name) {
 			tc.ierror_impl_names()
@@ -87,71 +89,72 @@ fn interface_impl_index_chunk_thread(arg voidptr) voidptr {
 }
 
 fn (mut tc TypeChecker) prepare_interface_impl_indexes_parallel(iface_names []string) bool {
-	$if windows {
+	pool := checker_worker_pool(tc.a)
+	if iface_names.len < 8 || isnil(pool) {
 		return false
-	} $else {
-		if iface_names.len < 8 || isnil(tc.a) || isnil(tc.a.worker_pool) {
-			return false
-		}
-		n_jobs := int_min(tc.a.worker_pool.size() + 1, iface_names.len)
-		if n_jobs <= 1 {
-			return false
-		}
-		tc.install_type_cache_overlay()
-		mut checkers := []&TypeChecker{cap: n_jobs}
-		checkers << tc
-		for _ in 1 .. n_jobs {
-			checkers << tc.fork_for_parallel_transform(tc.a)
-		}
-		mut results := &InterfaceImplResults{
-			items: []&InterfaceImplIndex{cap: iface_names.len}
-		}
-		for _ in iface_names {
-			results.items << &InterfaceImplIndex(unsafe { nil })
-		}
-		mut args := []InterfaceImplChunkArgs{cap: n_jobs}
-		mut tasks := []workers.Task{cap: n_jobs}
-		for job in 0 .. n_jobs {
-			args << InterfaceImplChunkArgs{
-				checker:     voidptr(checkers[job])
-				iface_names: unsafe { voidptr(&iface_names) }
-				results:     voidptr(results)
-				start:       iface_names.len * job / n_jobs
-				end:         iface_names.len * (job + 1) / n_jobs
-				// Job 0 runs on the master checker, whose overlay is folded back
-				// into the shared cache below; only forks may use scratch arenas.
-				scoped:      job > 0
-			}
-			tasks << workers.Task{
-				run:        interface_impl_index_chunk_thread
-				arg:        unsafe { voidptr(&args[job]) }
-				force_sync: job == 0
-			}
-		}
-		tc.a.worker_pool.run(tasks)
-		tc.restore_type_cache_base()
-		for i, iface_name in iface_names {
-			if !isnil(results.items[i]) {
-				// Worker indexes are backed by disposable worker arenas. Publish a
-				// parent-owned copy before those arenas are released.
-				worker_index := results.items[i]
-				mut names := []string{cap: worker_index.names.len}
-				for name in worker_index.names {
-					names << name.clone()
-				}
-				tc.interface_impl_indexes[iface_name] = &InterfaceImplIndex{
-					names: names
-					ids:   stable_interface_type_ids(names)
-				}
-			}
-		}
-		for arg in args {
-			if arg.scope != unsafe { nil } {
-				check_worker_scope_free(arg.scope)
-			}
-		}
-		return true
 	}
+	n_jobs := int_min(pool.size() + 1, iface_names.len)
+	if n_jobs <= 1 {
+		return false
+	}
+	tc.install_type_cache_overlay()
+	mut checkers := []&TypeChecker{cap: n_jobs}
+	checkers << tc
+	for _ in 1 .. n_jobs {
+		checkers << tc.fork_for_parallel_transform(tc.a)
+	}
+	mut results := &InterfaceImplResults{
+		items: []&InterfaceImplIndex{cap: iface_names.len}
+	}
+	for _ in iface_names {
+		results.items << &InterfaceImplIndex(unsafe { nil })
+	}
+	queue := chan int{cap: iface_names.len}
+	for i in 0 .. iface_names.len {
+		queue <- i
+	}
+	queue.close()
+	mut args := []InterfaceImplChunkArgs{cap: n_jobs}
+	mut tasks := []workers.Task{cap: n_jobs}
+	for job in 0 .. n_jobs {
+		args << InterfaceImplChunkArgs{
+			checker:     voidptr(checkers[job])
+			iface_names: unsafe { voidptr(&iface_names) }
+			results:     voidptr(results)
+			queue:       queue
+			// Job 0 runs on the master checker, whose overlay is folded back
+			// into the shared cache below; only forks may use scratch arenas.
+			scoped:      job > 0
+		}
+		tasks << workers.Task{
+			run:        interface_impl_index_chunk_thread
+			arg:        unsafe { voidptr(&args[job]) }
+			force_sync: job == 0
+		}
+	}
+	pool.run(tasks)
+	tc.restore_type_cache_base()
+	for i, iface_name in iface_names {
+		if !isnil(results.items[i]) {
+			// Worker indexes are backed by disposable worker arenas. Publish a
+			// parent-owned copy before those arenas are released.
+			worker_index := results.items[i]
+			mut names := []string{cap: worker_index.names.len}
+			for name in worker_index.names {
+				names << name.clone()
+			}
+			tc.interface_impl_indexes[iface_name] = &InterfaceImplIndex{
+				names: names
+				ids:   stable_interface_type_ids(names)
+			}
+		}
+	}
+	for arg in args {
+		if arg.scope != unsafe { nil } {
+			check_worker_scope_free(arg.scope)
+		}
+	}
+	return true
 }
 
 struct UnusedFnVarCandidate {
@@ -174,7 +177,7 @@ mut:
 struct CollectDeclarationIndexArgs {
 	tc   voidptr
 	a    &flat.FlatAst
-	kind u8 // 0 = generic params, 1 = type declarations, 2 = functions, 3 = visibility
+	kind u8 // 0 = generic params, 1 = type declarations, 2 = parameter mutability, 3 = visibility, 4 = function names, 5 = file declarations
 }
 
 fn collect_index_prep_thread(arg voidptr) voidptr {
@@ -203,8 +206,10 @@ fn collect_declaration_index_thread(arg voidptr) voidptr {
 	match a.kind {
 		0 { tc.build_enclosing_generic_param_index(a.a) }
 		1 { tc.build_type_declaration_index(a.a) }
-		2 { tc.build_fn_declaration_indexes(a.a) }
-		else { tc.collect_declaration_visibility() }
+		2 { tc.build_declaration_param_mutability_index(a.a) }
+		3 { tc.collect_declaration_visibility() }
+		4 { tc.build_fn_name_indexes(a.a) }
+		else { tc.build_file_declaration_indexes(a.a) }
 	}
 	return unsafe { nil }
 }
@@ -212,15 +217,16 @@ fn collect_declaration_index_thread(arg voidptr) voidptr {
 // prepare_collect_index_parallel overlaps independent index tasks. Each cache
 // group owns its arrays, and all allocations survive in persistent arenas.
 fn (mut tc TypeChecker) prepare_collect_index_parallel(a &flat.FlatAst) bool {
-	if !tc.building_v_fast || os.getenv('V3_NO_PAR_CHECK_INDEX_PREP') != '' || isnil(a.worker_pool)
-		|| a.worker_pool.size() < 2 || a.nodes.len < 65536 {
+	pool := checker_worker_pool(a)
+	if !tc.building_v_fast || os.getenv('V3_NO_PAR_CHECK_INDEX_PREP') != '' || isnil(pool)
+		|| pool.size() < 2 || a.nodes.len < 65536 {
 		return false
 	}
 	// The cache groups below reset the node-indexed arrays on pool lanes; the
 	// sparse fn-value store is cleared here, on the collecting thread.
 	tc.reset_sparse_fn_values()
 	tc.init_direct_parent_index(a)
-	parent_jobs := int_min(8, a.worker_pool.size() + 1)
+	parent_jobs := int_min(8, pool.size() + 1)
 	mut args := []CollectIndexPrepArgs{cap: parent_jobs + 4}
 	mut start := 0
 	for job in 0 .. parent_jobs {
@@ -255,7 +261,7 @@ fn (mut tc TypeChecker) prepare_collect_index_parallel(a &flat.FlatAst) bool {
 			force_sync: i == args.len - 1
 		}
 	}
-	a.worker_pool.run(tasks)
+	pool.run(tasks)
 	for arg in args {
 		if arg.kind == 0 {
 			tc.merge_direct_parent_chunk(arg.parent_chunk)
@@ -274,54 +280,36 @@ fn (mut tc TypeChecker) prepare_collect_index_parallel(a &flat.FlatAst) bool {
 // prepare_collect_declaration_indexes_parallel builds independent
 // read-only-AST declaration indexes on separate persistent lanes.
 fn (mut tc TypeChecker) prepare_collect_declaration_indexes_parallel(a &flat.FlatAst) bool {
+	pool := checker_worker_pool(a)
 	if !tc.building_v_fast || !tc.scope_parallel_check_workers
-		|| os.getenv('V3_NO_PAR_CHECK_DECL_INDEXES') != '' || isnil(a.worker_pool)
-		|| a.worker_pool.size() < 2 || tc.top_level_idx.len < 2048 {
+		|| os.getenv('V3_NO_PAR_CHECK_DECL_INDEXES') != '' || isnil(pool)
+		|| pool.size() < 2 || tc.top_level_idx.len < 2048 {
 		return false
 	}
-	mut args := [
-		CollectDeclarationIndexArgs{
+	// Each index task owns its maps; the caller builds one of them itself.
+	mut args := []CollectDeclarationIndexArgs{cap: collect_declaration_index_tasks}
+	for kind in 0 .. collect_declaration_index_tasks {
+		args << CollectDeclarationIndexArgs{
 			tc:   voidptr(tc)
 			a:    a
-			kind: 0
-		},
-		CollectDeclarationIndexArgs{
-			tc:   voidptr(tc)
-			a:    a
-			kind: 1
-		},
-		CollectDeclarationIndexArgs{
-			tc:   voidptr(tc)
-			a:    a
-			kind: 2
-		},
-		CollectDeclarationIndexArgs{
-			tc:   voidptr(tc)
-			a:    a
-			kind: 3
-		},
-	]
-	a.worker_pool.run([
-		workers.Task{
-			run: collect_declaration_index_thread
-			arg: unsafe { voidptr(&args[0]) }
-		},
-		workers.Task{
-			run: collect_declaration_index_thread
-			arg: unsafe { voidptr(&args[1]) }
-		},
-		workers.Task{
-			run: collect_declaration_index_thread
-			arg: unsafe { voidptr(&args[2]) }
-		},
-		workers.Task{
+			kind: u8(kind)
+		}
+	}
+	mut tasks := []workers.Task{cap: args.len}
+	for i in 0 .. args.len {
+		tasks << workers.Task{
 			run:        collect_declaration_index_thread
-			arg:        unsafe { voidptr(&args[3]) }
-			force_sync: true
-		},
-	])
+			arg:        unsafe { voidptr(&args[i]) }
+			force_sync: i == args.len - 1
+		}
+	}
+	pool.run(tasks)
 	return true
 }
+
+// collect_declaration_index_tasks is the number of independent declaration
+// index builders collect_declaration_index_thread dispatches on.
+const collect_declaration_index_tasks = 6
 
 // Pass2FnPrep carries the parse-heavy portion of one fn_decl's pass-2
 // collection (type parsing, param iteration, veb adjustments), computed on the
@@ -436,67 +424,64 @@ fn (mut tc TypeChecker) collect_pass2_fn_range(start int, end int, mut preps []P
 // Type values are plain data and the master's interner keeps its own
 // deterministic id order.
 fn (mut tc TypeChecker) collect_pass2_fn_preps_parallel() []Pass2FnPrep {
-	$if windows {
+	n := tc.top_level_idx.len
+	pool := checker_worker_pool(tc.a)
+	if isnil(pool) || pool.size() == 0 || n < 2048
+		|| os.getenv('V3_NO_PAR_PASS2') != '' {
 		return []Pass2FnPrep{}
-	} $else {
-		n := tc.top_level_idx.len
-		if isnil(tc.a.worker_pool) || tc.a.worker_pool.size() == 0 || n < 2048
-			|| os.getenv('V3_NO_PAR_PASS2') != '' {
-			return []Pass2FnPrep{}
-		}
-		mut n_jobs := tc.a.worker_pool.size() + 1
-		if n_jobs > 10 {
-			n_jobs = 10
-		}
-		mut preps := []Pass2FnPrep{len: n}
-		// One cheap serial walk captures the (file, module) context active at
-		// each shard boundary.
-		mut ctx_files := []string{len: n_jobs}
-		mut ctx_modules := []string{len: n_jobs}
-		mut cur_file := ''
-		mut cur_module := ''
-		mut bi := 0
-		for pi in 0 .. n {
-			for bi < n_jobs && pi == n * bi / n_jobs {
-				ctx_files[bi] = cur_file
-				ctx_modules[bi] = cur_module
-				bi++
-			}
-			node := tc.a.nodes[tc.top_level_idx[pi]]
-			if node.kind == .file {
-				cur_file = node.value
-				cur_module = tc.file_modules[node.value] or { '' }
-			} else if node.kind == .module_decl {
-				cur_module = node.value
-			}
-		}
-		for bi < n_jobs {
+	}
+	mut n_jobs := pool.size() + 1
+	if n_jobs > 10 {
+		n_jobs = 10
+	}
+	mut preps := []Pass2FnPrep{len: n}
+	// One cheap serial walk captures the (file, module) context active at
+	// each shard boundary.
+	mut ctx_files := []string{len: n_jobs}
+	mut ctx_modules := []string{len: n_jobs}
+	mut cur_file := ''
+	mut cur_module := ''
+	mut bi := 0
+	for pi in 0 .. n {
+		for bi < n_jobs && pi == n * bi / n_jobs {
 			ctx_files[bi] = cur_file
 			ctx_modules[bi] = cur_module
 			bi++
 		}
-		mut args := []Pass2PrepArgs{cap: n_jobs}
-		for ji in 0 .. n_jobs {
-			args << Pass2PrepArgs{
-				tc:          voidptr(tc)
-				start:       n * ji / n_jobs
-				end:         n * (ji + 1) / n_jobs
-				file:        ctx_files[ji]
-				module_name: ctx_modules[ji]
-				preps:       unsafe { voidptr(&preps) }
-			}
+		node := tc.a.nodes[tc.top_level_idx[pi]]
+		if node.kind == .file {
+			cur_file = node.value
+			cur_module = tc.file_modules[node.value] or { '' }
+		} else if node.kind == .module_decl {
+			cur_module = node.value
 		}
-		mut tasks := []workers.Task{cap: n_jobs}
-		for ji in 0 .. n_jobs {
-			tasks << workers.Task{
-				run:        pass2_fn_prep_thread
-				arg:        unsafe { voidptr(&args[ji]) }
-				force_sync: ji == 0
-			}
-		}
-		tc.a.worker_pool.run(tasks)
-		return preps
 	}
+	for bi < n_jobs {
+		ctx_files[bi] = cur_file
+		ctx_modules[bi] = cur_module
+		bi++
+	}
+	mut args := []Pass2PrepArgs{cap: n_jobs}
+	for ji in 0 .. n_jobs {
+		args << Pass2PrepArgs{
+			tc:          voidptr(tc)
+			start:       n * ji / n_jobs
+			end:         n * (ji + 1) / n_jobs
+			file:        ctx_files[ji]
+			module_name: ctx_modules[ji]
+			preps:       unsafe { voidptr(&preps) }
+		}
+	}
+	mut tasks := []workers.Task{cap: n_jobs}
+	for ji in 0 .. n_jobs {
+		tasks << workers.Task{
+			run:        pass2_fn_prep_thread
+			arg:        unsafe { voidptr(&args[ji]) }
+			force_sync: ji == 0
+		}
+	}
+	pool.run(tasks)
+	return preps
 }
 
 // finish_pass2_ancillary_registrations replays independent signature tables on
@@ -506,33 +491,28 @@ fn (mut tc TypeChecker) finish_pass2_ancillary_registrations() {
 	if tc.fn_ancillary_registrations.len == 0 {
 		return
 	}
-	$if windows {
-		for group in 0 .. 9 {
+	pool := checker_worker_pool(tc.a)
+	if isnil(pool) || pool.size() < 2 {
+		for group in 0 .. pass2_ancillary_groups {
 			tc.apply_pass2_ancillary_group(group)
 		}
-	} $else {
-		if isnil(tc.a.worker_pool) || tc.a.worker_pool.size() < 2 {
-			for group in 0 .. 9 {
-				tc.apply_pass2_ancillary_group(group)
+	} else {
+		mut args := []Pass2AncillaryArgs{cap: pass2_ancillary_groups}
+		mut tasks := []workers.Task{cap: pass2_ancillary_groups}
+		for group in 0 .. pass2_ancillary_groups {
+			args << Pass2AncillaryArgs{
+				tc:    voidptr(tc)
+				group: group
 			}
-		} else {
-			mut args := []Pass2AncillaryArgs{cap: 9}
-			mut tasks := []workers.Task{cap: 9}
-			for group in 0 .. 9 {
-				args << Pass2AncillaryArgs{
-					tc:    voidptr(tc)
-					group: group
-				}
-			}
-			for group in 0 .. 9 {
-				tasks << workers.Task{
-					run:        pass2_ancillary_thread
-					arg:        unsafe { voidptr(&args[group]) }
-					force_sync: group == 0
-				}
-			}
-			tc.a.worker_pool.run(tasks)
 		}
+		for group in 0 .. pass2_ancillary_groups {
+			tasks << workers.Task{
+				run:        pass2_ancillary_thread
+				arg:        unsafe { voidptr(&args[group]) }
+				force_sync: group == 0
+			}
+		}
+		pool.run(tasks)
 	}
 	tc.fn_ancillary_registrations = []FnAncillaryRegistration{}
 	tc.fn_c_variadic_registrations = []FnNamePairRegistration{}
@@ -576,9 +556,13 @@ fn (mut tc TypeChecker) apply_pass2_ancillary_group(group int) {
 		for registration in tc.fn_ret_text_registrations {
 			tc.fn_ret_type_texts[registration.name] = registration.text
 		}
-	} else if group == 6 {
+	} else if group == 6 || group == 9 {
+		// The module-qualified and module-less keys land in separate maps, so the
+		// largest registration set is split over two lanes.
 		for registration in tc.visible_mutation_registrations {
-			tc.register_visible_mutation_fn_decl_with_lowered(registration.idx, registration.module_name, registration.qname, registration.source_name, registration.c_qname, registration.c_source_name)
+			tc.register_visible_mutation_fn_decl_keys(registration.idx, registration.module_name,
+				registration.qname, registration.source_name, registration.c_qname,
+				registration.c_source_name, group == 9)
 		}
 	} else if group == 7 {
 		for registration in tc.fn_ancillary_registrations {
@@ -593,108 +577,110 @@ fn (mut tc TypeChecker) apply_pass2_ancillary_group(group int) {
 	}
 }
 
-$if !windows {
-	struct Pass2AncillaryArgs {
-		tc    voidptr
-		group int
-	}
+// pass2_ancillary_groups is the number of independent table groups filled by
+// apply_pass2_ancillary_group.
+const pass2_ancillary_groups = 10
 
-	fn pass2_ancillary_thread(arg voidptr) voidptr {
-		a := unsafe { &Pass2AncillaryArgs(arg) }
-		mut tc := unsafe { &TypeChecker(a.tc) }
-		tc.apply_pass2_ancillary_group(a.group)
-		return unsafe { nil }
-	}
+struct Pass2AncillaryArgs {
+	tc    voidptr
+	group int
+}
 
-	struct Pass2PrepArgs {
-		tc          voidptr // master &TypeChecker
-		start       int
-		end         int
-		file        string
-		module_name string
-		preps       voidptr // &[]Pass2FnPrep — shards fill disjoint positions
-	}
+fn pass2_ancillary_thread(arg voidptr) voidptr {
+	a := unsafe { &Pass2AncillaryArgs(arg) }
+	mut tc := unsafe { &TypeChecker(a.tc) }
+	tc.apply_pass2_ancillary_group(a.group)
+	return unsafe { nil }
+}
 
-	fn pass2_fn_prep_thread(arg voidptr) voidptr {
-		a := unsafe { &Pass2PrepArgs(arg) }
-		master := unsafe { &TypeChecker(a.tc) }
-		mut view := master.fork_for_parallel_transform(master.a)
-		view.cur_file = a.file
-		view.cur_module = a.module_name
-		mut preps := unsafe { &[]Pass2FnPrep(a.preps) }
-		view.collect_pass2_fn_range(a.start, a.end, mut *preps)
-		return unsafe { nil }
-	}
+struct Pass2PrepArgs {
+	tc          voidptr // master &TypeChecker
+	start       int
+	end         int
+	file        string
+	module_name string
+	preps       voidptr // &[]Pass2FnPrep — shards fill disjoint positions
+}
 
-	// UnusedAliveScanArgs shards the unused-declaration reference scan: each
-	// task probes its node range against the shared read-only candidate-key
-	// maps and records hits in a private alive array.
-	struct UnusedAliveScanArgs {
-		tc         voidptr // &TypeChecker
-		fn_keys    map[string][]int
-		const_keys map[string][]int
-		start      int
-		end        int
-	mut:
-		alive []bool
-	}
+fn pass2_fn_prep_thread(arg voidptr) voidptr {
+	a := unsafe { &Pass2PrepArgs(arg) }
+	master := unsafe { &TypeChecker(a.tc) }
+	mut view := master.fork_for_parallel_transform(master.a)
+	view.cur_file = a.file
+	view.cur_module = a.module_name
+	mut preps := unsafe { &[]Pass2FnPrep(a.preps) }
+	view.collect_pass2_fn_range(a.start, a.end, mut *preps)
+	return unsafe { nil }
+}
 
-	fn unused_alive_scan_thread(arg voidptr) voidptr {
-		mut a := unsafe { &UnusedAliveScanArgs(arg) }
-		tc := unsafe { &TypeChecker(a.tc) }
-		tc.scan_unused_alive_range(a.fn_keys, a.const_keys, a.start, a.end, mut a.alive)
-		return unsafe { nil }
-	}
+// UnusedAliveScanArgs shards the unused-declaration reference scan: each
+// task probes its node range against the shared read-only candidate-key
+// maps and records hits in a private alive array.
+struct UnusedAliveScanArgs {
+	tc         voidptr // &TypeChecker
+	fn_keys    map[string][]int
+	const_keys map[string][]int
+	start      int
+	end        int
+mut:
+	alive []bool
+}
 
-	struct CheckChunkArgs {
-		worker        voidptr
-		items_ptr     voidptr
-		dynamic_items voidptr
-		chunk_queue   chan int
-		scope_enabled bool
-		index         int
-	mut:
-		scope     voidptr
-		processed []CheckWorkItem
-	}
+fn unused_alive_scan_thread(arg voidptr) voidptr {
+	mut a := unsafe { &UnusedAliveScanArgs(arg) }
+	tc := unsafe { &TypeChecker(a.tc) }
+	tc.scan_unused_alive_range(a.fn_keys, a.const_keys, a.start, a.end, mut a.alive)
+	return unsafe { nil }
+}
 
-	fn check_chunk_thread(arg voidptr) voidptr {
-		mut a := unsafe { &CheckChunkArgs(arg) }
-		cksw := time.new_stopwatch()
-		a.scope = check_worker_scope_begin(a.scope_enabled)
-		mut w := unsafe { &TypeChecker(a.worker) }
-		items := unsafe { &[]CheckWorkItem(a.items_ptr) }
-		configured_batches := os.getenv('V3_CHECK_WORKER_BATCHES').int()
-		batch_limit := if configured_batches > 0 {
-			configured_batches
-		} else if os.getenv('V3_NO_COARSER_CHECK_BATCHES') != '' {
-			scoped_check_worker_batches
-		} else {
-			scoped_check_worker_batches / 12
-		}
-		if a.dynamic_items != unsafe { nil } {
-			chunks := unsafe { &[][]CheckWorkItem(a.dynamic_items) }
-			dynamic_batch_limit := int_max(1, batch_limit / dynamic_check_chunks_per_job)
-			for {
-				chunk_idx := <-a.chunk_queue or { break }
-				chunk := unsafe { chunks[chunk_idx] }
-				if a.scope_enabled {
-					w.check_scoped_batches(chunk, dynamic_batch_limit)
-				} else {
-					w.check_fn_items_serial(chunk)
-				}
-				a.processed << chunk
+struct CheckChunkArgs {
+	worker        voidptr
+	items_ptr     voidptr
+	dynamic_items voidptr
+	chunk_queue   chan int
+	scope_enabled bool
+	index         int
+mut:
+	scope     voidptr
+	processed []CheckWorkItem
+}
+
+fn check_chunk_thread(arg voidptr) voidptr {
+	mut a := unsafe { &CheckChunkArgs(arg) }
+	cksw := time.new_stopwatch()
+	a.scope = check_worker_scope_begin(a.scope_enabled)
+	mut w := unsafe { &TypeChecker(a.worker) }
+	items := unsafe { &[]CheckWorkItem(a.items_ptr) }
+	configured_batches := os.getenv('V3_CHECK_WORKER_BATCHES').int()
+	batch_limit := if configured_batches > 0 {
+		configured_batches
+	} else if os.getenv('V3_NO_COARSER_CHECK_BATCHES') != '' {
+		scoped_check_worker_batches
+	} else {
+		scoped_check_worker_batches / 12
+	}
+	if a.dynamic_items != unsafe { nil } {
+		chunks := unsafe { &[][]CheckWorkItem(a.dynamic_items) }
+		dynamic_batch_limit := int_max(1, batch_limit / dynamic_check_chunks_per_job)
+		for {
+			chunk_idx := <-a.chunk_queue or { break }
+			chunk := unsafe { chunks[chunk_idx] }
+			if a.scope_enabled {
+				w.check_scoped_batches(chunk, dynamic_batch_limit)
+			} else {
+				w.check_fn_items_serial(chunk)
 			}
-		} else if a.scope_enabled {
-			w.check_scoped_batches(*items, batch_limit)
-		} else {
-			w.check_fn_items_serial(*items)
+			a.processed << chunk
 		}
-		check_worker_scope_leave(a.scope)
-		item_count := if a.dynamic_items == unsafe { nil } { items.len } else { a.processed.len }
-		w.timing_profile('  [ttime]     ck chunk ${a.index:2}  ${f64(cksw.elapsed().microseconds()) / 1000.0:7.2f} ms (items: ${item_count})')
-		return unsafe { nil }
+	} else if a.scope_enabled {
+		w.check_scoped_batches(*items, batch_limit)
+	} else {
+		w.check_fn_items_serial(*items)
 	}
+	check_worker_scope_leave(a.scope)
+	item_count := if a.dynamic_items == unsafe { nil } { items.len } else { a.processed.len }
+	w.timing_profile('  [ttime]     ck chunk ${a.index:2}  ${f64(cksw.elapsed().microseconds()) / 1000.0:7.2f} ms (items: ${item_count})')
+	return unsafe { nil }
 }
 
 // check_scoped_batches bounds each worker's temporary type-resolution state.
@@ -760,10 +746,46 @@ fn check_worker_scope_free(scope voidptr) {
 	}
 }
 
+// checker_serial_only reports whether v3 was built with the internal
+// `v3_no_parallel` define. The other compiler phases swap in serial variant files
+// for that build; the checker keeps one implementation and instead reaches the
+// worker pool only through checker_worker_pool and ensure_checker_worker_pool.
+fn checker_serial_only() bool {
+	$if v3_no_parallel ? {
+		return true
+	}
+	return false
+}
+
+// checker_worker_pool returns the pool a checker pass may fan work out to. It is
+// nil when there is none, and in `v3_no_parallel` builds even when the driver
+// started one, so the pass takes its serial fallback.
+fn checker_worker_pool(a &flat.FlatAst) &workers.Pool {
+	if isnil(a) || checker_serial_only() {
+		return unsafe { nil }
+	}
+	return a.worker_pool
+}
+
+// ensure_checker_worker_pool returns the pool for the parallel semantic check,
+// starting one sized from VJOBS when the driver did not. It returns nil, and
+// starts nothing, in `v3_no_parallel` builds.
+fn ensure_checker_worker_pool(mut a flat.FlatAst) &workers.Pool {
+	if checker_serial_only() {
+		return unsafe { nil }
+	}
+	if isnil(a.worker_pool) {
+		a.worker_pool = workers.new(runtime.nr_jobs() - 1)
+	}
+	return a.worker_pool
+}
+
 // check_semantics_opt runs semantic checks, using worker threads for independent
 // function bodies when requested and there is enough work.
 pub fn (mut tc TypeChecker) check_semantics_opt(want_parallel bool) bool {
+	mut pfsw := time.new_stopwatch()
 	error_count := tc.errors.len
+	tc.check_postfix_value_uses_preflight()
 	tc.check_for_in_const_conflicts_preflight()
 	if tc.checker_fixture_mode && tc.errors.len > 0 {
 		return false
@@ -776,7 +798,8 @@ pub fn (mut tc TypeChecker) check_semantics_opt(want_parallel bool) bool {
 			return false
 		}
 	}
-	if !want_parallel {
+	tc.timing_profile('  [ttime]   ck preflights    ${f64(pfsw.elapsed().microseconds()) / 1000.0:7.2f} ms')
+	if !want_parallel || checker_serial_only() {
 		if tc.scope_parallel_check_workers {
 			tc.check_semantics_scoped_serial()
 		} else {
@@ -784,12 +807,7 @@ pub fn (mut tc TypeChecker) check_semantics_opt(want_parallel bool) bool {
 		}
 		return false
 	}
-	$if windows {
-		tc.check_semantics()
-		return false
-	} $else {
-		return tc.check_semantics_parallel()
-	}
+	return tc.check_semantics_parallel()
 }
 
 // check_semantics_scoped_serial keeps a no-parallel preallocated check bounded
@@ -797,12 +815,19 @@ pub fn (mut tc TypeChecker) check_semantics_opt(want_parallel bool) bool {
 // independently when scope_parallel_check_workers is enabled.
 fn (mut tc TypeChecker) check_semantics_scoped_serial() {
 	tc.resolution_type_mode = false
+	tc.checked_const_names = map[string]bool{}
+	tc.check_import_diagnostics()
 	tc.check_duplicate_fn_declarations()
+	tc.check_deprecated_byte_types()
 	tc.install_type_cache_overlay()
 	tc.defer_ierror_gating = tc.diagnostic_files.len > 0
 	tc.selected_file_called_fns = map[string]bool{}
 	tc.selected_file_worklist = []string{}
 	tc.check_export_attrs()
+	tc.check_c_js_generic_declarations()
+	tc.check_interface_reserved_parameter_names()
+	tc.check_goto_labels()
+	tc.check_labelled_loop_controls()
 	items := tc.collect_parallel_check_items()
 	tc.check_top_level_declarations()
 	final_file := tc.cur_file
@@ -810,6 +835,10 @@ fn (mut tc TypeChecker) check_semantics_scoped_serial() {
 	tc.check_scoped_batches(items, scoped_check_serial_batches)
 	tc.cur_file = final_file
 	tc.cur_module = final_module
+	if !tc.valid_diagnostic_fast {
+		tc.check_unused_import_diagnostics()
+	}
+	tc.check_selective_builtin_import_diagnostics()
 	if tc.defer_ierror_gating {
 		if tc.pending_ierror_errors.len > 0 {
 			tc.collect_selected_file_called_fns()
@@ -819,6 +848,7 @@ fn (mut tc TypeChecker) check_semantics_scoped_serial() {
 		}
 		tc.defer_ierror_gating = false
 	}
+	tc.discard_cascading_fn_redefinition_diagnostics()
 	tc.sort_parallel_check_errors()
 	tc.restore_type_cache_base()
 	tc.direct_parent_index_trusted = false
@@ -925,6 +955,13 @@ fn (tc &TypeChecker) scan_unused_alive_range(fn_keys map[string][]int, const_key
 					}
 				}
 			}
+			if resolved := tc.resolved_fn_value_name(flat.NodeId(i)) {
+				if hits := fn_keys[resolved] {
+					for cand_idx in hits {
+						alive[cand_idx] = true
+					}
+				}
+			}
 		}
 		if node.kind == .call && node.children_count > 0 {
 			callee := tc.a.child_node(&node, 0)
@@ -951,101 +988,113 @@ fn (tc &TypeChecker) scan_unused_alive_range(fn_keys map[string][]int, const_key
 // worker pool when available; hit-flag OR-merging keeps the result identical
 // to the serial scan regardless of shard boundaries.
 fn (mut tc TypeChecker) scan_unused_candidate_references(fn_keys map[string][]int, const_keys map[string][]int, mut alive []bool) {
-	$if windows {
-		tc.scan_unused_alive_range(fn_keys, const_keys, 0, tc.a.nodes.len, mut alive)
+	n_nodes := tc.a.nodes.len
+	pool := checker_worker_pool(tc.a)
+	if isnil(pool) || pool.size() == 0 || n_nodes < 262_144 {
+		tc.scan_unused_alive_range(fn_keys, const_keys, 0, n_nodes, mut alive)
 		return
-	} $else {
-		n_nodes := tc.a.nodes.len
-		if isnil(tc.a.worker_pool) || tc.a.worker_pool.size() == 0 || n_nodes < 262_144 {
-			tc.scan_unused_alive_range(fn_keys, const_keys, 0, n_nodes, mut alive)
-			return
+	}
+	mut n_jobs := pool.size() + 1
+	if n_jobs > 8 {
+		n_jobs = 8
+	}
+	mut args := []UnusedAliveScanArgs{cap: n_jobs}
+	mut tasks := []workers.Task{cap: n_jobs}
+	for job in 0 .. n_jobs {
+		args << UnusedAliveScanArgs{
+			tc:         voidptr(tc)
+			fn_keys:    fn_keys
+			const_keys: const_keys
+			start:      n_nodes * job / n_jobs
+			end:        n_nodes * (job + 1) / n_jobs
+			alive:      []bool{len: alive.len}
 		}
-		mut n_jobs := tc.a.worker_pool.size() + 1
-		if n_jobs > 8 {
-			n_jobs = 8
+	}
+	for job in 0 .. n_jobs {
+		tasks << workers.Task{
+			run:        unused_alive_scan_thread
+			arg:        unsafe { voidptr(&args[job]) }
+			force_sync: job == 0
 		}
-		mut args := []UnusedAliveScanArgs{cap: n_jobs}
-		mut tasks := []workers.Task{cap: n_jobs}
-		for job in 0 .. n_jobs {
-			args << UnusedAliveScanArgs{
-				tc:         voidptr(tc)
-				fn_keys:    fn_keys
-				const_keys: const_keys
-				start:      n_nodes * job / n_jobs
-				end:        n_nodes * (job + 1) / n_jobs
-				alive:      []bool{len: alive.len}
-			}
-		}
-		for job in 0 .. n_jobs {
-			tasks << workers.Task{
-				run:        unused_alive_scan_thread
-				arg:        unsafe { voidptr(&args[job]) }
-				force_sync: job == 0
-			}
-		}
-		tc.a.worker_pool.run(tasks)
-		for arg in args {
-			for cand_idx in 0 .. alive.len {
-				if arg.alive[cand_idx] {
-					alive[cand_idx] = true
-				}
+	}
+	pool.run(tasks)
+	for arg in args {
+		for cand_idx in 0 .. alive.len {
+			if arg.alive[cand_idx] {
+				alive[cand_idx] = true
 			}
 		}
 	}
 }
 
 fn (mut tc TypeChecker) check_semantics_parallel() bool {
-	$if windows {
-		tc.check_semantics()
-		return false
-	} $else {
-		tc.resolution_type_mode = false
-		tc.check_duplicate_fn_declarations()
-		// Freeze the warm post-collect type cache as the shared read-only base
-		// for every worker thread and the master itself via a private overlay.
-		tc.install_type_cache_overlay()
-		// Invalid-IError-return diagnostics are gated to functions reachable
-		// from the selected files. Most successful compiles never produce a
-		// candidate, so defer the call-graph walk until after checking and only
-		// run it when there is something to filter.
-		tc.defer_ierror_gating = tc.diagnostic_files.len > 0
-		tc.selected_file_called_fns = map[string]bool{}
-		tc.selected_file_worklist = []string{}
-		mut cksw := time.new_stopwatch()
-		tc.check_export_attrs()
-		tc.timing_profile('  [ttime]   ck export attrs  ${f64(cksw.elapsed().microseconds()) / 1000.0:7.2f} ms')
-		cksw.restart()
-		// The work list only drives the dispatch below; keep it and its
-		// collection scratch out of the persistent arena.
-		items_scope := check_worker_scope_begin(tc.scope_parallel_check_workers)
-		items := tc.collect_parallel_check_items()
-		check_worker_scope_leave(items_scope)
-		tc.timing_profile('  [ttime]   ck collect items ${f64(cksw.elapsed().microseconds()) / 1000.0:7.2f} ms (items: ${items.len})')
-		final_file := tc.cur_file
-		final_module := tc.cur_module
-		was_parallel := tc.run_parallel_check(items)
-		check_worker_scope_free(items_scope)
-		// Per-function check costs only schedule the parallel batches above.
-		unsafe { tc.fn_check_costs.free() }
-		tc.fn_check_costs = []i32{}
-		tc.cur_file = final_file
-		tc.cur_module = final_module
-		if tc.defer_ierror_gating {
-			if tc.pending_ierror_errors.len > 0 {
-				tc.collect_selected_file_called_fns()
-			}
-			if tc.filter_pending_ierror_errors() {
-				tc.sort_parallel_check_errors()
-			}
-			tc.defer_ierror_gating = false
-		}
-		tc.restore_type_cache_base()
-		// Match the serial checker: only generated post-check type text may use the
-		// cross-module generic-argument fallback.
-		tc.direct_parent_index_trusted = false
-		tc.resolution_type_mode = true
-		return was_parallel
+	tc.resolution_type_mode = false
+	tc.checked_const_names = map[string]bool{}
+	mut presw := time.new_stopwatch()
+	tc.check_import_diagnostics()
+	tc.timing_profile('  [ttime]   ck import diag   ${f64(presw.elapsed().microseconds()) / 1000.0:7.2f} ms')
+	presw.restart()
+	tc.check_duplicate_fn_declarations()
+	tc.timing_profile('  [ttime]   ck dup fns       ${f64(presw.elapsed().microseconds()) / 1000.0:7.2f} ms')
+	presw.restart()
+	tc.check_deprecated_byte_types()
+	// Freeze the warm post-collect type cache as the shared read-only base
+	// for every worker thread and the master itself via a private overlay.
+	tc.install_type_cache_overlay()
+	tc.timing_profile('  [ttime]   ck byte+overlay  ${f64(presw.elapsed().microseconds()) / 1000.0:7.2f} ms')
+	// Invalid-IError-return diagnostics are gated to functions reachable
+	// from the selected files. Most successful compiles never produce a
+	// candidate, so defer the call-graph walk until after checking and only
+	// run it when there is something to filter.
+	tc.defer_ierror_gating = tc.diagnostic_files.len > 0
+	tc.selected_file_called_fns = map[string]bool{}
+	tc.selected_file_worklist = []string{}
+	mut cksw := time.new_stopwatch()
+	tc.check_export_attrs()
+	tc.check_c_js_generic_declarations()
+	tc.check_interface_reserved_parameter_names()
+	tc.check_goto_labels()
+	tc.check_labelled_loop_controls()
+	tc.timing_profile('  [ttime]   ck export attrs  ${f64(cksw.elapsed().microseconds()) / 1000.0:7.2f} ms')
+	cksw.restart()
+	// The work list only drives the dispatch below; keep it and its
+	// collection scratch out of the persistent arena.
+	items_scope := check_worker_scope_begin(tc.scope_parallel_check_workers)
+	items := tc.collect_parallel_check_items()
+	check_worker_scope_leave(items_scope)
+	tc.timing_profile('  [ttime]   ck collect items ${f64(cksw.elapsed().microseconds()) / 1000.0:7.2f} ms (items: ${items.len})')
+	final_file := tc.cur_file
+	final_module := tc.cur_module
+	was_parallel := tc.run_parallel_check(items)
+	mut tailsw := time.new_stopwatch()
+	check_worker_scope_free(items_scope)
+	// Per-function check costs only schedule the parallel batches above.
+	unsafe { tc.fn_check_costs.free() }
+	tc.fn_check_costs = []i32{}
+	tc.cur_file = final_file
+	tc.cur_module = final_module
+	if !tc.valid_diagnostic_fast {
+		tc.check_unused_import_diagnostics()
 	}
+	tc.check_selective_builtin_import_diagnostics()
+	if tc.defer_ierror_gating {
+		if tc.pending_ierror_errors.len > 0 {
+			tc.collect_selected_file_called_fns()
+		}
+		if tc.filter_pending_ierror_errors() {
+			tc.sort_parallel_check_errors()
+		}
+		tc.defer_ierror_gating = false
+	}
+	tc.discard_cascading_fn_redefinition_diagnostics()
+	tc.sort_parallel_check_errors()
+	tc.restore_type_cache_base()
+	// Match the serial checker: only generated post-check type text may use the
+	// cross-module generic-argument fallback.
+	tc.direct_parent_index_trusted = false
+	tc.resolution_type_mode = true
+	tc.timing_profile('  [ttime]   ck tail          ${f64(tailsw.elapsed().microseconds()) / 1000.0:7.2f} ms')
+	return was_parallel
 }
 
 fn (mut tc TypeChecker) filter_pending_ierror_errors() bool {
@@ -1063,6 +1112,7 @@ fn (mut tc TypeChecker) filter_pending_ierror_errors() bool {
 fn (mut tc TypeChecker) collect_parallel_check_items() []CheckWorkItem {
 	tc.cur_module = ''
 	tc.cur_file = ''
+	blocking_import_files := tc.blocking_import_error_files()
 	mut items := []CheckWorkItem{}
 	// Fn subtrees are contiguous: the fn_decl at index i owns exactly the node
 	// range (previous top-level node, i], so the span doubles as the cost
@@ -1080,6 +1130,10 @@ fn (mut tc TypeChecker) collect_parallel_check_items() []CheckWorkItem {
 				tc.enter_module(node.value)
 			}
 			.fn_decl {
+				if blocking_import_files[tc.cur_file] {
+					prev_tl = i
+					continue
+				}
 				span := i - prev_tl
 				cost := if i < tc.fn_check_costs.len && tc.fn_check_costs[i] > 0 {
 					tc.fn_check_costs[i]
@@ -1134,8 +1188,15 @@ fn (mut tc TypeChecker) check_top_level_declaration_signatures() {
 fn (mut tc TypeChecker) check_top_level_declarations_filtered(do_values bool, do_signatures bool) {
 	tc.cur_module = ''
 	tc.cur_file = ''
+	blocking_import_files := tc.blocking_import_error_files()
+	mut skip_file_semantics := false
 	for i in tc.top_level_idx {
 		node := tc.a.nodes[i]
+		if node.kind == .file {
+			skip_file_semantics = blocking_import_files[node.value]
+		} else if skip_file_semantics && node.kind != .module_decl {
+			continue
+		}
 		match node.kind {
 			.file {
 				tc.enter_file(node.value)
@@ -1145,14 +1206,28 @@ fn (mut tc TypeChecker) check_top_level_declarations_filtered(do_values bool, do
 			}
 			.module_decl {
 				tc.enter_module(node.value)
+				if do_signatures {
+					node_id := flat.NodeId(i)
+					tc.check_invalid_test_file_name(node_id, node)
+					if tc.should_check_source_name(node_id)
+						&& !snake_case_name_is_valid(node.value) {
+						tc.check_snake_case_name(node_id, node.value, 'module name', tc.declaration_keyword_name_pos(node_id, 'module'))
+					}
+				}
 			}
 			.struct_decl {
 				node_id := flat.NodeId(i)
 				if do_signatures {
+					tc.check_type_declaration_conflict(node_id, node)
 					if comma_attr_text_has(node.typ, 'typedef') && !node.value.starts_with('C.') {
 						tc.record_error_at(.assignment_mismatch, '`typedef` attribute can only be used with C structs', node_id, tc.declaration_keyword_name_pos(node_id, 'struct'))
 					}
+					if tc.should_check_type_declaration_name(node_id, node)
+						&& !pascal_case_name_is_valid(node.value) {
+						tc.check_pascal_case_name(node_id, node.value, 'struct name', tc.declaration_keyword_name_pos(node_id, 'struct'))
+					}
 					tc.check_decl_type_strings(flat.NodeId(i), node)
+					tc.check_struct_implements(flat.NodeId(i), node)
 				}
 				if do_values {
 					tc.check_struct_field_defaults(node_id, node)
@@ -1163,30 +1238,39 @@ fn (mut tc TypeChecker) check_top_level_declarations_filtered(do_values bool, do
 					continue
 				}
 				node_id := flat.NodeId(i)
-				is_c_alias := node.kind == .type_decl && node.value.starts_with('C.')
-					&& node.children_count == 0 && split_sum_variant_texts(node.typ).len <= 1
-				if node.kind == .type_decl && !is_c_alias
-					&& tc.type_declaration_exists_before(node_id, node.value) {
-					is_fn_alias := node.children_count == 0 && node.typ.starts_with('fn')
-					kind := if is_fn_alias {
-						'fn'
-					} else if node.children_count > 0 || split_sum_variant_texts(node.typ).len > 1 {
+				tc.check_type_declaration_conflict(node_id, node)
+				if node.kind == .interface_decl {
+					if tc.should_check_type_declaration_name(node_id, node)
+						&& !pascal_case_name_is_valid(node.value) {
+						tc.check_pascal_case_name(node_id, node.value, 'interface name', tc.source_line_declaration_pos(node_id))
+					}
+					tc.check_interface_member_names(node)
+				} else {
+					type_kind := if node.children_count > 0 {
 						'sum type'
+					} else if node.typ.starts_with('fn') {
+						'fn type'
 					} else {
-						'alias'
+						'type alias'
 					}
-					name := if is_fn_alias { tc.qualify_name(node.value) } else { node.value }
-					pos := if is_fn_alias {
-						tc.node_value_diagnostic_pos(node_id)
-					} else {
-						tc.declaration_keyword_name_pos(node_id, 'type')
+					if tc.should_check_type_declaration_name(node_id, node)
+						&& !pascal_case_name_is_valid(node.value) {
+						tc.check_pascal_case_name(node_id, node.value, type_kind, tc.declaration_keyword_name_pos(node_id, 'type'))
 					}
-					tc.record_error_at(.duplicate_decl, 'cannot register ${kind} `${name}`, another type with this name exists', node_id, pos)
 				}
 				tc.check_decl_type_strings(flat.NodeId(i), node)
 			}
 			.enum_decl {
+				if do_signatures {
+					node_id := flat.NodeId(i)
+					tc.check_type_declaration_conflict(node_id, node)
+					if tc.should_check_type_declaration_name(node_id, node)
+						&& !pascal_case_name_is_valid(node.value) {
+						tc.check_pascal_case_name(node_id, node.value, 'enum name', tc.declaration_keyword_name_pos(node_id, 'enum'))
+					}
+				}
 				if do_values {
+					tc.check_enum_backing_type(flat.NodeId(i), node)
 					tc.check_enum_field_values(flat.NodeId(i), node)
 				}
 			}
@@ -1196,9 +1280,12 @@ fn (mut tc TypeChecker) check_top_level_declarations_filtered(do_values bool, do
 				}
 			}
 			.global_decl {
+				if do_signatures {
+					tc.check_global_decl_semantics(flat.NodeId(i), node)
+				}
 				if do_values {
 					if !tc.enable_globals && !tc.has_globals_files[tc.cur_file] {
-						tc.record_error_at(.duplicate_decl, 'use `v -enable-globals ...` to enable globals', flat.NodeId(i), node.pos)
+						tc.record_error_at(.duplicate_decl, 'use `v -enable-globals ...` to enable globals', flat.NodeId(i), tc.source_line_declaration_pos(flat.NodeId(i)))
 					}
 					tc.check_const_global_initializers(node)
 				}
@@ -1208,6 +1295,7 @@ fn (mut tc TypeChecker) check_top_level_declarations_filtered(do_values bool, do
 					continue
 				}
 				tc.check_fn_declaration_name(flat.NodeId(i), node)
+				tc.check_method_field_name_collision(flat.NodeId(i), node)
 				tc.check_main_fn_signature(flat.NodeId(i), node)
 				tc.check_init_fn_signature(flat.NodeId(i), node)
 				tc.check_str_method_signature(flat.NodeId(i), node)
@@ -1240,193 +1328,188 @@ fn check_top_level_decl_signatures_thread(arg voidptr) voidptr {
 }
 
 fn (mut tc TypeChecker) run_parallel_check(items []CheckWorkItem) bool {
-	$if windows {
+	mut ast := unsafe { tc.a }
+	pool := ensure_checker_worker_pool(mut ast)
+	// Without a pool every item is checked by the serial branch below.
+	mut n_jobs := if isnil(pool) { 1 } else { check_job_count(pool.size() + 1, items.len) }
+	if tc.scope_parallel_check_workers && n_jobs > max_scoped_check_jobs {
+		n_jobs = max_scoped_check_jobs
+	}
+	if items.len < min_parallel_check_items || n_jobs <= 1 {
 		tc.check_top_level_declarations()
-		tc.check_fn_items_serial(items)
-		return false
-	} $else {
-		mut ast := unsafe { tc.a }
-		if isnil(ast.worker_pool) {
-			ast.worker_pool = workers.new(runtime.nr_jobs() - 1)
-		}
-		mut n_jobs := check_job_count(ast.worker_pool.size() + 1, items.len)
-		if tc.scope_parallel_check_workers && n_jobs > max_scoped_check_jobs {
-			n_jobs = max_scoped_check_jobs
-		}
-		if items.len < min_parallel_check_items || n_jobs <= 1 {
-			tc.check_top_level_declarations()
-			if tc.scope_parallel_check_workers {
-				tc.check_scoped_batches(items, scoped_check_serial_batches)
-			} else {
-				tc.check_fn_items_serial(items)
-			}
-			return false
-		}
-		// Initializer-value checks can mutate compilation-wide state that the
-		// body workers read (for example the const-cycle poisoning of
-		// tc.const_types), so they must complete before any chunk is
-		// submitted; only the read-only signature checks overlap the pool.
-		tlv_sw := time.new_stopwatch()
-		tc.check_top_level_declaration_values()
-		tc.timing_profile('  [ttime]   ck tl values     ${f64(tlv_sw.elapsed().microseconds()) / 1000.0:7.2f} ms')
-		mut chunk_target := n_jobs
 		if tc.scope_parallel_check_workers {
-			chunk_target = n_jobs * check_chunk_oversubscribe
-			if chunk_target > items.len {
-				chunk_target = items.len
-			}
-		}
-		fail := os.getenv('V3_TEST_PTHREAD_CREATE_FAIL')
-		dynamic_dispatch := tc.scope_parallel_check_workers && tc.building_v_fast && fail.len == 0
-		// Dynamic workers record their actual assignments after dispatch; the
-		// static partition would only allocate and sort buckets that get replaced.
-		// The chunk partition only serves the dispatch below; keep it out of the
-		// persistent arena together with the worker forks.
-		setup_scope := check_worker_scope_begin(tc.scope_parallel_check_workers)
-		mut chunks := if dynamic_dispatch {
-			[][]CheckWorkItem{len: chunk_target}
+			tc.check_scoped_batches(items, scoped_check_serial_batches)
 		} else {
-			split_check_items(items, chunk_target)
+			tc.check_fn_items_serial(items)
 		}
-		chunk_count := chunks.len
-		mut dynamic_chunks := [][]CheckWorkItem{}
-		mut chunk_queue := chan int{cap: 1}
-		if dynamic_dispatch {
-			dynamic_target := int_min(items.len, chunk_count * dynamic_check_chunks_per_job)
-			dynamic_chunks = split_check_items(items, dynamic_target)
-			chunk_queue = chan int{cap: dynamic_chunks.len}
-			for ci in 0 .. dynamic_chunks.len {
-				chunk_queue <- ci
-			}
-			chunk_queue.close()
+		return false
+	}
+	// Initializer-value checks can mutate compilation-wide state that the
+	// body workers read (for example the const-cycle poisoning of
+	// tc.const_types), so they must complete before any chunk is
+	// submitted; only the read-only signature checks overlap the pool.
+	tlv_sw := time.new_stopwatch()
+	tc.check_top_level_declaration_values()
+	tc.timing_profile('  [ttime]   ck tl values     ${f64(tlv_sw.elapsed().microseconds()) / 1000.0:7.2f} ms')
+	split_sw := time.new_stopwatch()
+	mut chunk_target := n_jobs
+	if tc.scope_parallel_check_workers {
+		chunk_target = n_jobs * check_chunk_oversubscribe
+		if chunk_target > items.len {
+			chunk_target = items.len
 		}
-		thread_count := chunk_count - 1
-		worker_count := if tc.scope_parallel_check_workers { chunk_count } else { thread_count }
-		rpsw := time.new_stopwatch()
-		mut checker_workers := []voidptr{cap: worker_count}
-		for _ in 0 .. worker_count {
-			mut w := tc.fork_for_parallel_check()
-			w.verbose = tc.verbose
-			checker_workers << voidptr(w)
+	}
+	fail := os.getenv('V3_TEST_PTHREAD_CREATE_FAIL')
+	dynamic_dispatch := tc.scope_parallel_check_workers && tc.building_v_fast && fail.len == 0
+	// Dynamic workers record their actual assignments after dispatch; the
+	// static partition would only allocate and sort buckets that get replaced.
+	// The chunk partition only serves the dispatch below; keep it out of the
+	// persistent arena together with the worker forks.
+	setup_scope := check_worker_scope_begin(tc.scope_parallel_check_workers)
+	mut chunks := if dynamic_dispatch {
+		[][]CheckWorkItem{len: chunk_target}
+	} else {
+		split_check_items(items, chunk_target)
+	}
+	chunk_count := chunks.len
+	mut dynamic_chunks := [][]CheckWorkItem{}
+	mut chunk_queue := chan int{cap: 1}
+	if dynamic_dispatch {
+		dynamic_target := int_min(items.len, chunk_count * dynamic_check_chunks_per_job)
+		dynamic_chunks = split_check_items(items, dynamic_target)
+		chunk_queue = chan int{cap: dynamic_chunks.len}
+		for ci in 0 .. dynamic_chunks.len {
+			chunk_queue <- ci
 		}
-		tc.timing_profile('  [ttime]   ck forks         ${f64(rpsw.elapsed().microseconds()) / 1000.0:7.2f} ms (workers: ${worker_count})')
-		mut args := []CheckChunkArgs{cap: chunk_count}
-		mut dynamic_items_ptr := unsafe { nil }
-		if dynamic_dispatch {
-			dynamic_items_ptr = unsafe { voidptr(&dynamic_chunks) }
+		chunk_queue.close()
+	}
+	thread_count := chunk_count - 1
+	worker_count := if tc.scope_parallel_check_workers { chunk_count } else { thread_count }
+	tc.timing_profile('  [ttime]   ck split         ${f64(split_sw.elapsed().microseconds()) / 1000.0:7.2f} ms')
+	rpsw := time.new_stopwatch()
+	mut checker_workers := []voidptr{cap: worker_count}
+	for _ in 0 .. worker_count {
+		mut w := tc.fork_for_parallel_check()
+		w.verbose = tc.verbose
+		checker_workers << voidptr(w)
+	}
+	tc.timing_profile('  [ttime]   ck forks         ${f64(rpsw.elapsed().microseconds()) / 1000.0:7.2f} ms (workers: ${worker_count})')
+	mut args := []CheckChunkArgs{cap: chunk_count}
+	mut dynamic_items_ptr := unsafe { nil }
+	if dynamic_dispatch {
+		dynamic_items_ptr = unsafe { voidptr(&dynamic_chunks) }
+	}
+	for ci in 0 .. chunk_count {
+		mut worker := voidptr(tc)
+		if tc.scope_parallel_check_workers {
+			worker = checker_workers[ci]
+		} else if ci > 0 {
+			worker = checker_workers[ci - 1]
 		}
-		for ci in 0 .. chunk_count {
-			mut worker := voidptr(tc)
-			if tc.scope_parallel_check_workers {
-				worker = checker_workers[ci]
-			} else if ci > 0 {
-				worker = checker_workers[ci - 1]
-			}
-			args << CheckChunkArgs{
-				worker:        worker
-				items_ptr:     unsafe { voidptr(&chunks[ci]) }
-				dynamic_items: dynamic_items_ptr
-				chunk_queue:   chunk_queue
-				scope_enabled: tc.scope_parallel_check_workers
-				index:         ci
-			}
+		args << CheckChunkArgs{
+			worker:        worker
+			items_ptr:     unsafe { voidptr(&chunks[ci]) }
+			dynamic_items: dynamic_items_ptr
+			chunk_queue:   chunk_queue
+			scope_enabled: tc.scope_parallel_check_workers
+			index:         ci
 		}
-		// The master checks its own chunk under the same range discipline as the
-		// workers: in-range cache writes go straight into the shared arrays (the
-		// master owns those slots), out-of-range ones into its sparse maps, which
-		// are replayed first after join so that worker merges overwrite them in
-		// the same order the old serial flow did. The read-only signature checks
-		// run as a final synchronous task, so the master performs them while the
-		// pool workers are still checking bodies; its sparse mode keeps their
-		// cache writes out of the worker-owned shared array ranges. The mutating
-		// value checks already ran before any chunk was created.
-		tc.parallel_check_sparse = true
-		mut tasks := []workers.Task{cap: chunk_count + 1}
-		for ci in 0 .. chunk_count {
-			helper_idx := ci - 1
-			tasks << workers.Task{
-				run:        check_chunk_thread
-				arg:        unsafe { voidptr(&args[ci]) }
-				force_sync: ci == 0 || fail == 'checker:all' || fail == 'checker:${helper_idx}'
-			}
-		}
+	}
+	// The master checks its own chunk under the same range discipline as the
+	// workers: in-range cache writes go straight into the shared arrays (the
+	// master owns those slots), out-of-range ones into its sparse maps, which
+	// are replayed first after join so that worker merges overwrite them in
+	// the same order the old serial flow did. The read-only signature checks
+	// run as a final synchronous task, so the master performs them while the
+	// pool workers are still checking bodies; its sparse mode keeps their
+	// cache writes out of the worker-owned shared array ranges. The mutating
+	// value checks already ran before any chunk was created.
+	tc.parallel_check_sparse = true
+	mut tasks := []workers.Task{cap: chunk_count + 1}
+	for ci in 0 .. chunk_count {
+		helper_idx := ci - 1
 		tasks << workers.Task{
-			run:        check_top_level_decl_signatures_thread
-			arg:        voidptr(tc)
-			force_sync: true
+			run:        check_chunk_thread
+			arg:        unsafe { voidptr(&args[ci]) }
+			force_sync: ci == 0 || fail == 'checker:all' || fail == 'checker:${helper_idx}'
 		}
-		check_worker_scope_leave(setup_scope)
-		rpsw2 := time.new_stopwatch()
-		any_started := ast.worker_pool.run(tasks)
-		if dynamic_dispatch {
-			for ci in 0 .. chunk_count {
-				chunks[ci] = args[ci].processed
+	}
+	tasks << workers.Task{
+		run:        check_top_level_decl_signatures_thread
+		arg:        voidptr(tc)
+		force_sync: true
+	}
+	check_worker_scope_leave(setup_scope)
+	rpsw2 := time.new_stopwatch()
+	any_started := pool.run(tasks)
+	if dynamic_dispatch {
+		for ci in 0 .. chunk_count {
+			chunks[ci] = args[ci].processed
+		}
+	}
+	tc.timing_profile('  [ttime]   ck pool.run      ${f64(rpsw2.elapsed().microseconds()) / 1000.0:7.2f} ms (chunks: ${chunk_count})')
+	tc.merge_own_sparse_caches()
+	tc.parallel_check_sparse = false
+	merge_start := if tc.scope_parallel_check_workers { 0 } else { 1 }
+	// Promote scope-resident cache payloads across the pool while every
+	// worker scope is still alive; only unknown-type interning stays serial.
+	par_clone := tc.scope_parallel_check_workers && par_check_clone_enabled()
+	mut clone_args := []CheckCloneChunkArgs{cap: chunk_count}
+	mut mg_clone_ns := u64(0)
+	mut mg_merge_ns := u64(0)
+	if par_clone {
+		mg_t0 := time.sys_mono_now()
+		for ci in 0 .. chunk_count {
+			clone_args << CheckCloneChunkArgs{
+				tc:        voidptr(tc)
+				items_ptr: unsafe { voidptr(&chunks[ci]) }
+				miss:      []int{cap: 1024}
 			}
 		}
-		tc.timing_profile('  [ttime]   ck pool.run      ${f64(rpsw2.elapsed().microseconds()) / 1000.0:7.2f} ms (chunks: ${chunk_count})')
-		tc.merge_own_sparse_caches()
-		tc.parallel_check_sparse = false
-		merge_start := if tc.scope_parallel_check_workers { 0 } else { 1 }
-		// Promote scope-resident cache payloads across the pool while every
-		// worker scope is still alive; only unknown-type interning stays serial.
-		par_clone := tc.scope_parallel_check_workers && par_check_clone_enabled()
-		mut clone_args := []CheckCloneChunkArgs{cap: chunk_count}
-		mut mg_clone_ns := u64(0)
-		mut mg_merge_ns := u64(0)
-		if par_clone {
+		mut ctasks := []workers.Task{cap: chunk_count}
+		for ci in 0 .. chunk_count {
+			ctasks << workers.Task{
+				run:        check_clone_chunk_thread
+				arg:        unsafe { voidptr(&clone_args[ci]) }
+				force_sync: ci == 0
+			}
+		}
+		pool.run(ctasks)
+		mg_clone_ns += time.sys_mono_now() - mg_t0
+	}
+	for ci in merge_start .. chunk_count {
+		worker_idx := if tc.scope_parallel_check_workers { ci } else { ci - 1 }
+		mut w := unsafe { &TypeChecker(checker_workers[worker_idx]) }
+		// Scoped-mode forks always own private interners, even when this compiler
+		// was built without the prealloc allocator and therefore has no arena.
+		scoped := tc.scope_parallel_check_workers
+		if scoped {
 			mg_t0 := time.sys_mono_now()
-			for ci in 0 .. chunk_count {
-				clone_args << CheckCloneChunkArgs{
-					tc:        voidptr(tc)
-					items_ptr: unsafe { voidptr(&chunks[ci]) }
-					miss:      []int{cap: 1024}
-				}
+			if par_clone {
+				tc.intern_expr_type_misses(clone_args[ci].miss)
+			} else {
+				tc.clone_parallel_worker_node_caches(chunks[ci])
 			}
-			mut ctasks := []workers.Task{cap: chunk_count}
-			for ci in 0 .. chunk_count {
-				ctasks << workers.Task{
-					run:        check_clone_chunk_thread
-					arg:        unsafe { voidptr(&clone_args[ci]) }
-					force_sync: ci == 0
-				}
-			}
-			ast.worker_pool.run(ctasks)
 			mg_clone_ns += time.sys_mono_now() - mg_t0
 		}
-		for ci in merge_start .. chunk_count {
-			worker_idx := if tc.scope_parallel_check_workers { ci } else { ci - 1 }
-			mut w := unsafe { &TypeChecker(checker_workers[worker_idx]) }
-			// Scoped-mode forks always own private interners, even when this compiler
-			// was built without the prealloc allocator and therefore has no arena.
-			scoped := tc.scope_parallel_check_workers
-			if scoped {
-				mg_t0 := time.sys_mono_now()
-				if par_clone {
-					tc.intern_expr_type_misses(clone_args[ci].miss)
-				} else {
-					tc.clone_parallel_worker_node_caches(chunks[ci])
-				}
-				mg_clone_ns += time.sys_mono_now() - mg_t0
-			}
-			mg_t1 := time.sys_mono_now()
-			tc.merge_parallel_check_worker_scoped(w, scoped)
-			mg_merge_ns += time.sys_mono_now() - mg_t1
-			if scoped {
-				check_worker_scope_free(args[ci].scope)
-			} else {
-				w.free_parallel_check_worker_cache()
-			}
+		mg_t1 := time.sys_mono_now()
+		tc.merge_parallel_check_worker_scoped(w, scoped)
+		mg_merge_ns += time.sys_mono_now() - mg_t1
+		if scoped {
+			check_worker_scope_free(args[ci].scope)
+		} else {
+			w.free_parallel_check_worker_cache()
 		}
-		mg_clone_ms := f64(mg_clone_ns) / 1e6
-		mg_merge_ms := f64(mg_merge_ns) / 1e6
-		tc.timing_profile('  [ttime]     ck mg clone    ${mg_clone_ms:7.2f} ms, merge ${mg_merge_ms:.2f} ms')
-		tc.timing_profile('  [ttime]   ck merge         ${f64(rpsw2.elapsed().microseconds()) / 1000.0:7.2f} ms (cumulative)')
-		check_worker_scope_free(setup_scope)
-		sort_sw := time.new_stopwatch()
-		tc.sort_parallel_check_errors()
-		tc.timing_profile('  [ttime]   ck err sort      ${f64(sort_sw.elapsed().microseconds()) / 1000.0:7.2f} ms')
-		return any_started
 	}
+	mg_clone_ms := f64(mg_clone_ns) / 1e6
+	mg_merge_ms := f64(mg_merge_ns) / 1e6
+	tc.timing_profile('  [ttime]     ck mg clone    ${mg_clone_ms:7.2f} ms, merge ${mg_merge_ms:.2f} ms')
+	tc.timing_profile('  [ttime]   ck merge         ${f64(rpsw2.elapsed().microseconds()) / 1000.0:7.2f} ms (cumulative)')
+	check_worker_scope_free(setup_scope)
+	sort_sw := time.new_stopwatch()
+	tc.sort_parallel_check_errors()
+	tc.timing_profile('  [ttime]   ck err sort      ${f64(sort_sw.elapsed().microseconds()) / 1000.0:7.2f} ms')
+	return any_started
 }
 
 fn (mut tc TypeChecker) sort_parallel_check_errors() {
@@ -1438,7 +1521,11 @@ fn (mut tc TypeChecker) sort_parallel_check_errors() {
 	mut deduped := []TypeError{cap: tc.errors.len}
 	for err in tc.errors {
 		if deduped.len > 0 && type_errors_equal(deduped[deduped.len - 1], err) {
-			continue
+			preserve_fixture_duplicate := tc.checker_fixture_mode
+				&& err.msg.contains('` is a generic fn, you should pass its concrete types, e.g. ')
+			if !preserve_fixture_duplicate {
+				continue
+			}
 		}
 		deduped << err
 	}
@@ -1446,6 +1533,11 @@ fn (mut tc TypeChecker) sort_parallel_check_errors() {
 }
 
 fn compare_type_notices(a &TypeError, b &TypeError) int {
+	a_is_postfix_value_warning := a.msg.ends_with('operator can only be used as a statement')
+	b_is_postfix_value_warning := b.msg.ends_with('operator can only be used as a statement')
+	if a_is_postfix_value_warning != b_is_postfix_value_warning {
+		return if a_is_postfix_value_warning { -1 } else { 1 }
+	}
 	a_is_unsafe_call := a.msg.contains('must be called from an `unsafe` block')
 	b_is_unsafe_call := b.msg.contains('must be called from an `unsafe` block')
 	if a_is_unsafe_call != b_is_unsafe_call {
@@ -1465,6 +1557,713 @@ fn compare_type_notices(a &TypeError, b &TypeError) int {
 }
 
 fn compare_type_errors(a &TypeError, b &TypeError) int {
+	if a.node == b.node && a.diagnostic_order > 0 && b.diagnostic_order > 0
+		&& a.diagnostic_order != b.diagnostic_order {
+		return a.diagnostic_order - b.diagnostic_order
+	}
+	a_is_struct_field_mismatch := a.msg.starts_with('cannot assign to field `')
+	b_is_struct_field_mismatch := b.msg.starts_with('cannot assign to field `')
+	a_is_struct_field_nil := a.msg.starts_with('cannot assign `nil` to struct field `')
+	b_is_struct_field_nil := b.msg.starts_with('cannot assign `nil` to struct field `')
+	if a.pos.id == b.pos.id && a.pos.offset < b.pos.end && b.pos.offset < a.pos.end {
+		if a_is_struct_field_mismatch && b_is_struct_field_nil {
+			return -1
+		}
+		if b_is_struct_field_mismatch && a_is_struct_field_nil {
+			return 1
+		}
+	}
+	a_is_unknown_format := a.msg.starts_with('unknown format specifier `')
+	b_is_unknown_format := b.msg.starts_with('unknown format specifier `')
+	a_is_illegal_format := a.msg.starts_with('illegal format specifier `')
+	b_is_illegal_format := b.msg.starts_with('illegal format specifier `')
+	if a.node == b.node && a_is_unknown_format && b_is_illegal_format {
+		return -1
+	}
+	if a.node == b.node && b_is_unknown_format && a_is_illegal_format {
+		return 1
+	}
+	a_is_shared_call_in_lock := a.msg.contains('with `shared` arguments cannot be called inside `lock`/`rlock` block')
+	b_is_shared_call_in_lock := b.msg.contains('with `shared` arguments cannot be called inside `lock`/`rlock` block')
+	a_is_missing_shared_arg := a.msg.contains(' parameter `')
+		&& a.msg.contains('` is `shared`, so use `shared ')
+	b_is_missing_shared_arg := b.msg.contains(' parameter `')
+		&& b.msg.contains('` is `shared`, so use `shared ')
+	if a.node == b.node && a_is_shared_call_in_lock && b_is_missing_shared_arg {
+		return -1
+	}
+	if a.node == b.node && b_is_shared_call_in_lock && a_is_missing_shared_arg {
+		return 1
+	}
+	a_is_shared_receiver := a.msg.ends_with('to be used as non-mut receiver')
+	b_is_shared_receiver := b.msg.ends_with('to be used as non-mut receiver')
+	a_is_shared_assignment := a.msg.ends_with('to be used as non-mut right-hand side of assignment')
+	b_is_shared_assignment := b.msg.ends_with('to be used as non-mut right-hand side of assignment')
+	if a.node == b.node && a_is_shared_receiver && b_is_shared_assignment {
+		return -1
+	}
+	if a.node == b.node && b_is_shared_receiver && a_is_shared_assignment {
+		return 1
+	}
+	a_is_missing_lock_entry := a.msg.ends_with('must be added to the `lock` list above')
+	b_is_missing_lock_entry := b.msg.ends_with('must be added to the `lock` list above')
+	a_is_unlocked_shared_mut := a.msg.contains(' is `shared` and must be `lock`ed to be passed as `mut`')
+	b_is_unlocked_shared_mut := b.msg.contains(' is `shared` and must be `lock`ed to be passed as `mut`')
+	if a.node == b.node && a_is_missing_lock_entry && b_is_unlocked_shared_mut {
+		return -1
+	}
+	if a.node == b.node && b_is_missing_lock_entry && a_is_unlocked_shared_mut {
+		return 1
+	}
+	a_is_duplicate_export := a.msg.starts_with('duplicate export name `')
+	b_is_duplicate_export := b.msg.starts_with('duplicate export name `')
+	if a.file == b.file && a.msg == b.msg && a_is_duplicate_export && b_is_duplicate_export
+		&& a.node_kind != b.node_kind {
+		if a.node_kind == 'const_field' && b.node_kind == 'field_decl' {
+			return -1
+		}
+		if b.node_kind == 'const_field' && a.node_kind == 'field_decl' {
+			return 1
+		}
+	}
+	a_decl_assign_lhs_order := decl_assign_lhs_diagnostic_order(a.msg)
+	b_decl_assign_lhs_order := decl_assign_lhs_diagnostic_order(b.msg)
+	if a.node == b.node && a_decl_assign_lhs_order > 0 && b_decl_assign_lhs_order > 0
+		&& a_decl_assign_lhs_order != b_decl_assign_lhs_order {
+		return a_decl_assign_lhs_order - b_decl_assign_lhs_order
+	}
+	a_is_like_operand := a.msg.starts_with('the left operand of the `like` operator')
+		|| a.msg.starts_with('the right operand of the `like` operator')
+	b_is_like_operand := b.msg.starts_with('the left operand of the `like` operator')
+		|| b.msg.starts_with('the right operand of the `like` operator')
+	a_is_orm_like_field := a.msg.starts_with('ORM: left side of the `like` expression')
+	b_is_orm_like_field := b.msg.starts_with('ORM: left side of the `like` expression')
+	if a.file == b.file && a_is_like_operand && b_is_orm_like_field {
+		return -1
+	}
+	if a.file == b.file && b_is_like_operand && a_is_orm_like_field {
+		return 1
+	}
+	a_is_nested_lock := a.msg == 'nested `lock`/`rlock` not allowed'
+	b_is_nested_lock := b.msg == 'nested `lock`/`rlock` not allowed'
+	a_is_already_locked := a.msg.ends_with(' is already locked')
+		|| a.msg.ends_with(' is already read-locked')
+	b_is_already_locked := b.msg.ends_with(' is already locked')
+		|| b.msg.ends_with(' is already read-locked')
+	a_is_lock_diagnostic := a_is_nested_lock || a_is_already_locked
+		|| a.msg.contains(' has an `rlock` but needs a `lock`')
+		|| (a.msg.contains(' is `shared`') && a.msg.contains('lock'))
+	b_is_lock_diagnostic := b_is_nested_lock || b_is_already_locked
+		|| b.msg.contains(' has an `rlock` but needs a `lock`')
+		|| (b.msg.contains(' is `shared`') && b.msg.contains('lock'))
+	if a.file == b.file && a_is_lock_diagnostic && b_is_lock_diagnostic
+		&& a.pos.offset != b.pos.offset {
+		return a.pos.offset - b.pos.offset
+	}
+	a_is_rlock_write := a.msg.contains(' has an `rlock` but needs a `lock`')
+	b_is_rlock_write := b.msg.contains(' has an `rlock` but needs a `lock`')
+	a_is_explicit_lock := a.msg.contains(' is `shared` and needs explicit lock')
+	b_is_explicit_lock := b.msg.contains(' is `shared` and needs explicit lock')
+	if a.file == b.file && a.pos.offset == b.pos.offset && a_is_rlock_write
+		&& b_is_explicit_lock {
+		return -1
+	}
+	if a.file == b.file && a.pos.offset == b.pos.offset && b_is_rlock_write
+		&& a_is_explicit_lock {
+		return 1
+	}
+	if a.file == b.file && a_is_nested_lock && b_is_already_locked {
+		return -1
+	}
+	if a.file == b.file && b_is_nested_lock && a_is_already_locked {
+		return 1
+	}
+	a_is_reserved_parameter := a.msg.starts_with('invalid use of reserved type `')
+		&& a.msg.ends_with(' as a parameter name')
+	b_is_reserved_parameter := b.msg.starts_with('invalid use of reserved type `')
+		&& b.msg.ends_with(' as a parameter name')
+	if a.file == b.file && a_is_reserved_parameter && b_is_reserved_parameter
+		&& a.node != b.node {
+		return int(b.node) - int(a.node)
+	}
+	a_is_missing_generic_decl := a.msg in [
+		'generic function declaration must specify generic type names',
+		'generic method declaration must specify generic type names',
+	]
+	b_is_missing_generic_decl := b.msg in [
+		'generic function declaration must specify generic type names',
+		'generic method declaration must specify generic type names',
+	]
+	a_is_unmentioned_fn_generic := a.msg.starts_with('generic type name `')
+		&& a.msg.contains(' is not mentioned in fn `')
+	b_is_unmentioned_fn_generic := b.msg.starts_with('generic type name `')
+		&& b.msg.contains(' is not mentioned in fn `')
+	if a.pos.id == b.pos.id && a.pos.offset <= b.pos.offset && a.pos.end >= b.pos.end
+		&& a_is_missing_generic_decl && b_is_unmentioned_fn_generic {
+		return -1
+	}
+	if a.pos.id == b.pos.id && b.pos.offset <= a.pos.offset && b.pos.end >= a.pos.end
+		&& b_is_missing_generic_decl && a_is_unmentioned_fn_generic {
+		return 1
+	}
+	a_is_noreturn_return := a.msg == '[noreturn] functions cannot use return statements'
+	b_is_noreturn_return := b.msg == '[noreturn] functions cannot use return statements'
+	a_is_noreturn_tail := a.msg.starts_with('@[noreturn] functions should end with ')
+	b_is_noreturn_tail := b.msg.starts_with('@[noreturn] functions should end with ')
+	if a.file == b.file && a_is_noreturn_return && b_is_noreturn_tail {
+		return -1
+	}
+	if a.file == b.file && b_is_noreturn_return && a_is_noreturn_tail {
+		return 1
+	}
+	a_is_option_alias_return := a.msg.starts_with('the fn returns type `')
+		&& a.msg.contains(' is an Option alias, you can not mix them')
+	b_is_option_alias_return := b.msg.starts_with('the fn returns type `')
+		&& b.msg.contains(' is an Option alias, you can not mix them')
+	a_is_none_return := a.msg.starts_with('cannot use `none` as type `')
+		&& a.msg.ends_with(' in return argument')
+	b_is_none_return := b.msg.starts_with('cannot use `none` as type `')
+		&& b.msg.ends_with(' in return argument')
+	if a.file == b.file && a_is_option_alias_return && b_is_none_return {
+		return -1
+	}
+	if a.file == b.file && b_is_option_alias_return && a_is_none_return {
+		return 1
+	}
+	a_is_unsafe_nil := a.msg == '`nil` is only allowed in `unsafe` code'
+	b_is_unsafe_nil := b.msg == '`nil` is only allowed in `unsafe` code'
+	a_is_nil_option_assignment := a.msg == 'cannot assign `nil` to option value'
+	b_is_nil_option_assignment := b.msg == 'cannot assign `nil` to option value'
+	if a.file == b.file && a_is_unsafe_nil && b_is_nil_option_assignment {
+		return -1
+	}
+	if a.file == b.file && b_is_unsafe_nil && a_is_nil_option_assignment {
+		return 1
+	}
+	a_is_unhandled_result_call := a.msg.contains('() returns `!')
+		&& a.msg.ends_with('`, so it should have either an `or {}` block, or `!` at the end')
+	b_is_unhandled_result_call := b.msg.contains('() returns `!')
+		&& b.msg.ends_with('`, so it should have either an `or {}` block, or `!` at the end')
+	a_is_unwrapped_result_operand := a.msg.starts_with('unwrapped Result cannot be used')
+	b_is_unwrapped_result_operand := b.msg.starts_with('unwrapped Result cannot be used')
+	if a.node == b.node && a_is_unwrapped_result_operand != b_is_unwrapped_result_operand
+		&& (a_is_unhandled_result_call || b_is_unhandled_result_call) {
+		return if a_is_unwrapped_result_operand { -1 } else { 1 }
+	}
+	a_is_direct_result_call := a.msg == 'Result type cannot be called directly'
+	b_is_direct_result_call := b.msg == 'Result type cannot be called directly'
+	if a.file == b.file
+		&& ((a_is_unhandled_result_call && b_is_direct_result_call)
+			|| (b_is_unhandled_result_call && a_is_direct_result_call)) {
+		if a.pos.offset != b.pos.offset {
+			return a.pos.offset - b.pos.offset
+		}
+		return if a_is_unhandled_result_call { -1 } else { 1 }
+	}
+	a_is_for_in_same_variable := a.msg.starts_with('in a `for x in ')
+		&& a.msg.contains(' can not be the same as the low variable')
+	b_is_for_in_same_variable := b.msg.starts_with('in a `for x in ')
+		&& b.msg.contains(' can not be the same as the low variable')
+	a_is_for_in_cannot_index := a.msg.starts_with('for in: cannot index `')
+	b_is_for_in_cannot_index := b.msg.starts_with('for in: cannot index `')
+	if a.node == b.node && a_is_for_in_same_variable && b_is_for_in_cannot_index {
+		return -1
+	}
+	if a.node == b.node && b_is_for_in_same_variable && a_is_for_in_cannot_index {
+		return 1
+	}
+	a_is_init_visibility := a.msg == 'fn `init` must not be public'
+	b_is_init_visibility := b.msg == 'fn `init` must not be public'
+	a_is_init_return := a.msg == 'fn `init` cannot have a return type'
+	b_is_init_return := b.msg == 'fn `init` cannot have a return type'
+	if a.node == b.node && a_is_init_visibility && b_is_init_return {
+		return -1
+	}
+	if a.node == b.node && b_is_init_visibility && a_is_init_return {
+		return 1
+	}
+	a_is_leading_underscore_name := a.msg.contains(' cannot start with `_`')
+	b_is_leading_underscore_name := b.msg.contains(' cannot start with `_`')
+	a_is_uppercase_name := a.msg.contains(' cannot contain uppercase letters')
+	b_is_uppercase_name := b.msg.contains(' cannot contain uppercase letters')
+	if a.node == b.node && a_is_leading_underscore_name && b_is_uppercase_name {
+		return -1
+	}
+	if a.node == b.node && b_is_leading_underscore_name && a_is_uppercase_name {
+		return 1
+	}
+	a_is_same_name_import := a.msg.starts_with('cannot import `')
+		&& a.msg.ends_with('` into a module with the same name') && !a.msg.contains(' as `')
+	b_is_same_name_import := b.msg.starts_with('cannot import `')
+		&& b.msg.ends_with('` into a module with the same name') && !b.msg.contains(' as `')
+	a_is_aliased_same_name_import := a.msg.starts_with('cannot import `')
+		&& a.msg.contains(' as `') && a.msg.ends_with('` into a module with the same name')
+	b_is_aliased_same_name_import := b.msg.starts_with('cannot import `')
+		&& b.msg.contains(' as `') && b.msg.ends_with('` into a module with the same name')
+	if a.node == b.node && a_is_same_name_import && b_is_aliased_same_name_import {
+		return -1
+	}
+	if a.node == b.node && b_is_same_name_import && a_is_aliased_same_name_import {
+		return 1
+	}
+	a_is_builtin_import_override := a.msg == 'cannot import or override builtin type'
+	b_is_builtin_import_override := b.msg == 'cannot import or override builtin type'
+	a_is_unknown_imported_type := a.msg.starts_with('unknown type `')
+	b_is_unknown_imported_type := b.msg.starts_with('unknown type `')
+	if a.file == b.file && a_is_unknown_imported_type && b_is_builtin_import_override {
+		return -1
+	}
+	if a.file == b.file && b_is_unknown_imported_type && a_is_builtin_import_override {
+		return 1
+	}
+	a_is_enum_value := a.msg.starts_with('enum value ')
+		|| a.msg == 'the default value for an enum has to be an integer'
+		|| (a.msg.contains(' is not one of `i8`,`i16`,`i32`,`int`,`i64`,`u8`,`u16`,`u32`,`u64`')
+			&& a.msg.starts_with('`'))
+	b_is_enum_value := b.msg.starts_with('enum value ')
+		|| b.msg == 'the default value for an enum has to be an integer'
+		|| (b.msg.contains(' is not one of `i8`,`i16`,`i32`,`int`,`i64`,`u8`,`u16`,`u32`,`u64`')
+			&& b.msg.starts_with('`'))
+	if a.file == b.file && a_is_enum_value && b_is_enum_value && a.pos.offset != b.pos.offset {
+		return a.pos.offset - b.pos.offset
+	}
+	a_is_field_method_collision := a.msg.starts_with('type `')
+		&& a.msg.contains(' has both field and method named `')
+	b_is_field_method_collision := b.msg.starts_with('type `')
+		&& b.msg.contains(' has both field and method named `')
+	if a.file == b.file && a_is_field_method_collision && b_is_field_method_collision
+		&& a.node_kind != b.node_kind {
+		if a.node_kind == 'interface_field' {
+			return -1
+		}
+		if b.node_kind == 'interface_field' {
+			return 1
+		}
+	}
+	a_is_duplicate_match_else := a.msg == '`match` can have only one `else` branch'
+	b_is_duplicate_match_else := b.msg == '`match` can have only one `else` branch'
+	a_is_nonfinal_match_else := a.msg == '`else` must be the last branch of `match`'
+	b_is_nonfinal_match_else := b.msg == '`else` must be the last branch of `match`'
+	if a.node == b.node && a_is_duplicate_match_else && b_is_nonfinal_match_else {
+		return -1
+	}
+	if a.node == b.node && b_is_duplicate_match_else && a_is_nonfinal_match_else {
+		return 1
+	}
+	a_is_empty_struct_init := a.msg.starts_with('`{}` can not be used for initialising empty structs')
+	b_is_empty_struct_init := b.msg.starts_with('`{}` can not be used for initialising empty structs')
+	a_is_empty_map_value := a.msg.starts_with('`map{  }` (no value) used as value')
+	b_is_empty_map_value := b.msg.starts_with('`map{  }` (no value) used as value')
+	if a.node == b.node && a_is_empty_struct_init && b_is_empty_map_value {
+		return -1
+	}
+	if a.node == b.node && b_is_empty_struct_init && a_is_empty_map_value {
+		return 1
+	}
+	a_match_range_order := match true {
+		a.msg.starts_with('the low and high parts of a range expression') { 1 }
+		a.msg.starts_with('the range type and the match condition type') { 2 }
+		a.msg.starts_with('match branch range expressions need the ') { 3 }
+		a.msg.starts_with('the start value `') && a.msg.contains(' should be lower than ') { 3 }
+		else { 0 }
+	}
+	b_match_range_order := match true {
+		b.msg.starts_with('the low and high parts of a range expression') { 1 }
+		b.msg.starts_with('the range type and the match condition type') { 2 }
+		b.msg.starts_with('match branch range expressions need the ') { 3 }
+		b.msg.starts_with('the start value `') && b.msg.contains(' should be lower than ') { 3 }
+		else { 0 }
+	}
+	if a.node == b.node && a_match_range_order > 0 && b_match_range_order > 0
+		&& a_match_range_order != b_match_range_order {
+		return a_match_range_order - b_match_range_order
+	}
+	a_is_invalid_comptime_field_access := a.msg.starts_with('compile time field access can only be used')
+	b_is_invalid_comptime_field_access := b.msg.starts_with('compile time field access can only be used')
+	a_is_unknown_comptime_for_var := a.msg.starts_with('unknown `$for` variable `')
+	b_is_unknown_comptime_for_var := b.msg.starts_with('unknown `$for` variable `')
+	if a.node == b.node && a_is_invalid_comptime_field_access && b_is_unknown_comptime_for_var {
+		return -1
+	}
+	if a.node == b.node && b_is_invalid_comptime_field_access && a_is_unknown_comptime_for_var {
+		return 1
+	}
+	a_is_nonliteral_comptime_method := a.msg == 'todo: not a string literal'
+	b_is_nonliteral_comptime_method := b.msg == 'todo: not a string literal'
+	a_is_empty_comptime_method := a.msg == 'could not find method ``'
+	b_is_empty_comptime_method := b.msg == 'could not find method ``'
+	if a.node == b.node && a_is_nonliteral_comptime_method && b_is_empty_comptime_method {
+		return -1
+	}
+	if a.node == b.node && b_is_nonliteral_comptime_method && a_is_empty_comptime_method {
+		return 1
+	}
+	a_is_c_js_generic_struct := a.msg.ends_with('structs cannot be declared as generic')
+	b_is_c_js_generic_struct := b.msg.ends_with('structs cannot be declared as generic')
+	a_is_c_js_generic_fn := a.msg.ends_with('functions cannot be declared as generic')
+	b_is_c_js_generic_fn := b.msg.ends_with('functions cannot be declared as generic')
+	if a.file == b.file && a_is_c_js_generic_struct && b_is_c_js_generic_fn {
+		return -1
+	}
+	if a.file == b.file && b_is_c_js_generic_struct && a_is_c_js_generic_fn {
+		return 1
+	}
+	if a.node == b.node && is_inline_asm_instruction_error(a.msg)
+		&& is_inline_asm_instruction_error(b.msg) && a.pos.offset != b.pos.offset {
+		return a.pos.offset - b.pos.offset
+	}
+	a_is_ierror_msg_method := a.msg.contains("doesn't implement method `msg` of interface `IError`")
+	b_is_ierror_msg_method := b.msg.contains("doesn't implement method `msg` of interface `IError`")
+	a_is_ierror_code_method := a.msg.contains("doesn't implement method `code` of interface `IError`")
+	b_is_ierror_code_method := b.msg.contains("doesn't implement method `code` of interface `IError`")
+	if a.node == b.node && a_is_ierror_msg_method && b_is_ierror_code_method {
+		return -1
+	}
+	if a.node == b.node && b_is_ierror_msg_method && a_is_ierror_code_method {
+		return 1
+	}
+	a_is_missing_interface_method := a.msg.contains("doesn't implement method `")
+	b_is_missing_interface_method := b.msg.contains("doesn't implement method `")
+	a_is_interface_implementation_summary := a.msg.contains("doesn't implement interface `")
+	b_is_interface_implementation_summary := b.msg.contains("doesn't implement interface `")
+	if a.node == b.node && a_is_missing_interface_method && b_is_missing_interface_method {
+		a_orm_order := orm_connection_method_diagnostic_order(a.msg)
+		b_orm_order := orm_connection_method_diagnostic_order(b.msg)
+		if a_orm_order > 0 && b_orm_order > 0 && a_orm_order != b_orm_order {
+			return a_orm_order - b_orm_order
+		}
+		a_interface := a.msg.all_after_last(' of interface `').all_before('`')
+		b_interface := b.msg.all_after_last(' of interface `').all_before('`')
+		if a_interface < b_interface {
+			return -1
+		}
+		if a_interface > b_interface {
+			return 1
+		}
+	}
+	if a.node == b.node && a_is_missing_interface_method && b_is_interface_implementation_summary {
+		return -1
+	}
+	if a.node == b.node && b_is_missing_interface_method && a_is_interface_implementation_summary {
+		return 1
+	}
+	a_is_interface_cast_summary := a.msg.contains(' does not implement interface `')
+		&& a.msg.contains(', cannot cast `')
+	b_is_interface_cast_summary := b.msg.contains(' does not implement interface `')
+		&& b.msg.contains(', cannot cast `')
+	a_is_interface_method_mismatch := a.msg.contains(' incorrectly implements method `')
+	b_is_interface_method_mismatch := b.msg.contains(' incorrectly implements method `')
+	if a.node == b.node && (a_is_missing_interface_method || a_is_interface_method_mismatch)
+		&& b_is_interface_cast_summary {
+		return -1
+	}
+	if a.node == b.node && (b_is_missing_interface_method || b_is_interface_method_mismatch)
+		&& a_is_interface_cast_summary {
+		return 1
+	}
+	a_is_cast_to_struct := a.msg.starts_with('cannot cast `') && a.msg.ends_with(' to struct')
+	b_is_cast_to_struct := b.msg.starts_with('cannot cast `') && b.msg.ends_with(' to struct')
+	a_is_sum_type_cast := a.msg.contains(' sum type value to `')
+	b_is_sum_type_cast := b.msg.contains(' sum type value to `')
+	if a.node == b.node && a_is_cast_to_struct && b_is_sum_type_cast {
+		return -1
+	}
+	if a.node == b.node && b_is_cast_to_struct && a_is_sum_type_cast {
+		return 1
+	}
+	a_is_sumtype_string_cast := a.msg.starts_with('cannot cast sumtype `')
+	b_is_sumtype_string_cast := b.msg.starts_with('cannot cast sumtype `')
+	if a.node == b.node && a_is_sumtype_string_cast && b_is_sum_type_cast {
+		return -1
+	}
+	if a.node == b.node && b_is_sumtype_string_cast && a_is_sum_type_cast {
+		return 1
+	}
+	a_is_cast_into_sumtype := a.msg.starts_with('cannot cast `') && a.msg.ends_with(' to `SumType`')
+	b_is_cast_into_sumtype := b.msg.starts_with('cannot cast `') && b.msg.ends_with(' to `SumType`')
+	a_is_cast_from_sumtype := a.msg.starts_with('cannot cast `SumType` to `')
+	b_is_cast_from_sumtype := b.msg.starts_with('cannot cast `SumType` to `')
+	if a.file == b.file && a_is_cast_into_sumtype && b_is_cast_from_sumtype {
+		return -1
+	}
+	if a.file == b.file && b_is_cast_into_sumtype && a_is_cast_from_sumtype {
+		return 1
+	}
+	a_is_empty_or_block := a.msg == 'expression requires a non empty `or {}` block'
+	b_is_empty_or_block := b.msg == 'expression requires a non empty `or {}` block'
+	a_is_void_branch_tail := a.msg == 'the final expression in `if` or `match`, must have a value of a non-void type'
+	b_is_void_branch_tail := b.msg == 'the final expression in `if` or `match`, must have a value of a non-void type'
+	a_is_void_multi_return := a.msg == 'type `void` cannot be used in multi-return'
+	b_is_void_multi_return := b.msg == 'type `void` cannot be used in multi-return'
+	if a.file == b.file && a_is_empty_or_block && b_is_void_branch_tail {
+		return -1
+	}
+	if a.file == b.file && b_is_empty_or_block && a_is_void_branch_tail {
+		return 1
+	}
+	if a.file == b.file && a.pos.offset == b.pos.offset && a_is_void_multi_return
+		&& b_is_void_branch_tail {
+		return -1
+	}
+	if a.file == b.file && a.pos.offset == b.pos.offset && b_is_void_multi_return
+		&& a_is_void_branch_tail {
+		return 1
+	}
+	a_is_infix_mismatch := a.msg.starts_with('mismatched types `')
+	b_is_infix_mismatch := b.msg.starts_with('mismatched types `')
+	a_is_infix_rhs := a.msg.starts_with('infix expr: cannot use `')
+	b_is_infix_rhs := b.msg.starts_with('infix expr: cannot use `')
+	a_is_option_infix_unwrap := a.msg.ends_with('unwrap the option first')
+	b_is_option_infix_unwrap := b.msg.ends_with('unwrap the option first')
+	a_is_or_block_default := a.msg.starts_with('`or` block must provide a default value')
+	b_is_or_block_default := b.msg.starts_with('`or` block must provide a default value')
+	a_infix_error_order := if a_is_infix_mismatch {
+		1
+	} else if a_is_option_infix_unwrap {
+		2
+	} else if a_is_infix_rhs {
+		3
+	} else if a_is_or_block_default {
+		4
+	} else {
+		0
+	}
+	b_infix_error_order := if b_is_infix_mismatch {
+		1
+	} else if b_is_option_infix_unwrap {
+		2
+	} else if b_is_infix_rhs {
+		3
+	} else if b_is_or_block_default {
+		4
+	} else {
+		0
+	}
+	if a.pos.id == b.pos.id && a.pos.offset == b.pos.offset && a_infix_error_order > 0
+		&& b_infix_error_order > 0 && a_infix_error_order != b_infix_error_order {
+		return a_infix_error_order - b_infix_error_order
+	}
+	a_is_multi_return_operand := a.msg.starts_with('invalid number of operand for `')
+	b_is_multi_return_operand := b.msg.starts_with('invalid number of operand for `')
+	a_is_none_operand := a.msg.starts_with('invalid operator `') && a.msg.ends_with(' to `none` and `none`')
+	b_is_none_operand := b.msg.starts_with('invalid operator `') && b.msg.ends_with(' to `none` and `none`')
+	a_is_primary_infix_operand := a_is_multi_return_operand || a_is_none_operand
+	b_is_primary_infix_operand := b_is_multi_return_operand || b_is_none_operand
+	if a.pos.id == b.pos.id && a.pos.offset < b.pos.end && b.pos.offset < a.pos.end
+		&& a_is_primary_infix_operand != b_is_primary_infix_operand {
+		return if a_is_primary_infix_operand { -1 } else { 1 }
+	}
+	if a.node == b.node && a_is_infix_mismatch && b_is_infix_rhs {
+		return -1
+	}
+	if a.node == b.node && b_is_infix_mismatch && a_is_infix_rhs {
+		return 1
+	}
+	if a.pos.id == b.pos.id && a.pos.offset <= b.pos.offset && a.pos.end >= b.pos.end
+		&& a_is_infix_mismatch && b_is_option_infix_unwrap {
+		return -1
+	}
+	if a.pos.id == b.pos.id && b.pos.offset <= a.pos.offset && b.pos.end >= a.pos.end
+		&& b_is_infix_mismatch && a_is_option_infix_unwrap {
+		return 1
+	}
+	a_is_invalid_operator := a.msg.starts_with('invalid operator `')
+	b_is_invalid_operator := b.msg.starts_with('invalid operator `')
+	a_is_pointer_infix := a.msg.starts_with('infix `')
+		&& a.msg.ends_with(' is not defined for pointer values')
+	b_is_pointer_infix := b.msg.starts_with('infix `')
+		&& b.msg.ends_with(' is not defined for pointer values')
+	if a.node == b.node && a_is_invalid_operator && b_is_pointer_infix {
+		return -1
+	}
+	if a.node == b.node && b_is_invalid_operator && a_is_pointer_infix {
+		return 1
+	}
+	a_array_init_order := if a.msg.ends_with(' as initializer') {
+		1
+	} else if a.msg.ends_with(' as length') {
+		2
+	} else if a.msg.ends_with(' as capacity') {
+		3
+	} else {
+		0
+	}
+	b_array_init_order := if b.msg.ends_with(' as initializer') {
+		1
+	} else if b.msg.ends_with(' as length') {
+		2
+	} else if b.msg.ends_with(' as capacity') {
+		3
+	} else {
+		0
+	}
+	if a.node == b.node && a_array_init_order > 0 && b_array_init_order > 0
+		&& a_array_init_order != b_array_init_order {
+		return a_array_init_order - b_array_init_order
+	}
+	a_is_array_compare_callback_param := a.msg.contains(' callback function parameter `')
+	b_is_array_compare_callback_param := b.msg.contains(' callback function parameter `')
+	if a.file == b.file && a_is_array_compare_callback_param != b_is_array_compare_callback_param {
+		return if a_is_array_compare_callback_param { -1 } else { 1 }
+	}
+	a_is_invalid_sort_arg := a.msg.starts_with('`.sort()` can only use `a` or `b`')
+	b_is_invalid_sort_arg := b.msg.starts_with('`.sort()` can only use `a` or `b`')
+	a_is_sort_undefined_ident := a.msg.starts_with('undefined ident:')
+	b_is_sort_undefined_ident := b.msg.starts_with('undefined ident:')
+	if a.file == b.file && a_is_invalid_sort_arg && b_is_sort_undefined_ident {
+		return -1
+	}
+	if a.file == b.file && b_is_invalid_sort_arg && a_is_sort_undefined_ident {
+		return 1
+	}
+	a_is_sort_call_receiver := a.msg.starts_with('the `sort()` method can be called only on mutable receivers')
+	b_is_sort_call_receiver := b.msg.starts_with('the `sort()` method can be called only on mutable receivers')
+	a_is_mut_expression := a.msg == 'cannot pass expression as `mut`'
+	b_is_mut_expression := b.msg == 'cannot pass expression as `mut`'
+	if a.file == b.file && a_is_sort_call_receiver && b_is_mut_expression {
+		return -1
+	}
+	if a.file == b.file && b_is_sort_call_receiver && a_is_mut_expression {
+		return 1
+	}
+	a_is_missing_mut_arg := (a.msg.starts_with('function `') || a.msg.starts_with('method `'))
+		&& a.msg.contains(' is `mut`, so use `mut ')
+	b_is_missing_mut_arg := (b.msg.starts_with('function `') || b.msg.starts_with('method `'))
+		&& b.msg.contains(' is `mut`, so use `mut ')
+	a_is_call_arg_type_mismatch := a.msg.starts_with('cannot use `')
+		&& a.msg.contains(' in argument ')
+	b_is_call_arg_type_mismatch := b.msg.starts_with('cannot use `')
+		&& b.msg.contains(' in argument ')
+	if a.node == b.node && a_is_missing_mut_arg && b_is_call_arg_type_mismatch {
+		return -1
+	}
+	if a.node == b.node && b_is_missing_mut_arg && a_is_call_arg_type_mismatch {
+		return 1
+	}
+	a_is_unneeded_mut_arg := a.msg.ends_with(' is not `mut`, `mut` is not needed`')
+	b_is_unneeded_mut_arg := b.msg.ends_with(' is not `mut`, `mut` is not needed`')
+	a_is_invalid_mut_expr := a.msg == 'array literal can not be modified' || a_is_mut_expression
+	b_is_invalid_mut_expr := b.msg == 'array literal can not be modified' || b_is_mut_expression
+	if a.node == b.node && a_is_invalid_mut_expr && b_is_unneeded_mut_arg {
+		return -1
+	}
+	if a.node == b.node && b_is_invalid_mut_expr && a_is_unneeded_mut_arg {
+		return 1
+	}
+	a_is_array_append_expr := a.msg == 'array append cannot be used in an expression'
+	b_is_array_append_expr := b.msg == 'array append cannot be used in an expression'
+	a_is_array_literal_mutation := a.msg == 'array literal can not be modified'
+	b_is_array_literal_mutation := b.msg == 'array literal can not be modified'
+	if a.file == b.file && a_is_array_append_expr && b_is_array_literal_mutation {
+		return -1
+	}
+	if a.file == b.file && b_is_array_append_expr && a_is_array_literal_mutation {
+		return 1
+	}
+	a_is_mutable_const_reference := a.msg.starts_with('cannot have mutable reference to const `')
+	b_is_mutable_const_reference := b.msg.starts_with('cannot have mutable reference to const `')
+	a_is_immutable_reference := a.msg.contains(' is immutable, cannot have a mutable reference to it')
+	b_is_immutable_reference := b.msg.contains(' is immutable, cannot have a mutable reference to it')
+	if a.node == b.node && a_is_mutable_const_reference && b_is_immutable_reference {
+		return -1
+	}
+	if a.node == b.node && b_is_mutable_const_reference && a_is_immutable_reference {
+		return 1
+	}
+	a_is_anon_param_semantic := a.msg == 'use `_` to name an unused parameter'
+		|| a.msg.contains('must be explicitly listed as inherited variable to be used inside a closure')
+		|| a.msg.ends_with(' used as value')
+	b_is_anon_param_semantic := b.msg == 'use `_` to name an unused parameter'
+		|| b.msg.contains('must be explicitly listed as inherited variable to be used inside a closure')
+		|| b.msg.ends_with(' used as value')
+	a_is_anon_param_followup := a.msg.starts_with('unknown type `')
+		|| (a.msg.starts_with('cannot use `') && a.msg.contains(' in argument '))
+	b_is_anon_param_followup := b.msg.starts_with('unknown type `')
+		|| (b.msg.starts_with('cannot use `') && b.msg.contains(' in argument '))
+	if a.file == b.file && a_is_anon_param_semantic && b_is_anon_param_followup {
+		return -1
+	}
+	if a.file == b.file && b_is_anon_param_semantic && a_is_anon_param_followup {
+		return 1
+	}
+	a_is_compound_operand := (a.msg.starts_with('operator ')
+		&& a.msg.contains(' not defined on right operand')) || a.msg.starts_with('invalid right operand:')
+	b_is_compound_operand := (b.msg.starts_with('operator ')
+		&& b.msg.contains(' not defined on right operand')) || b.msg.starts_with('invalid right operand:')
+	a_is_assignment_infix_mismatch := a.msg.starts_with('mismatched types `')
+	b_is_assignment_infix_mismatch := b.msg.starts_with('mismatched types `')
+	a_is_assignment_type_mismatch := a.msg.starts_with('cannot assign to `')
+	b_is_assignment_type_mismatch := b.msg.starts_with('cannot assign to `')
+	if a.node == b.node && a_is_assignment_infix_mismatch && b_is_assignment_type_mismatch {
+		return -1
+	}
+	if a.node == b.node && b_is_assignment_infix_mismatch && a_is_assignment_type_mismatch {
+		return 1
+	}
+	if a.pos.id == b.pos.id && a.pos.offset == b.pos.offset && a_is_compound_operand
+		&& b_is_assignment_type_mismatch {
+		return -1
+	}
+	if a.pos.id == b.pos.id && a.pos.offset == b.pos.offset && b_is_compound_operand
+		&& a_is_assignment_type_mismatch {
+		return 1
+	}
+	a_is_deref_unsafe := a.msg.starts_with('modifying variables via dereferencing')
+	b_is_deref_unsafe := b.msg.starts_with('modifying variables via dereferencing')
+	a_is_deref_assignment := a.msg.starts_with('cannot assign to `*')
+	b_is_deref_assignment := b.msg.starts_with('cannot assign to `*')
+	if a.file == b.file && a_is_deref_unsafe && b_is_deref_assignment {
+		return -1
+	}
+	if a.file == b.file && b_is_deref_unsafe && a_is_deref_assignment {
+		return 1
+	}
+	a_is_missing_anon_generic := a.msg.starts_with('Add the generic type `')
+	b_is_missing_anon_generic := b.msg.starts_with('Add the generic type `')
+	a_is_invalid_comptime_for_type := a.msg.starts_with('\$for expects a type name or variable name')
+	b_is_invalid_comptime_for_type := b.msg.starts_with('\$for expects a type name or variable name')
+	if a.file == b.file && a_is_missing_anon_generic && b_is_invalid_comptime_for_type {
+		return -1
+	}
+	if a.file == b.file && b_is_missing_anon_generic && a_is_invalid_comptime_for_type {
+		return 1
+	}
+	a_is_generic_arg_count := a.msg.starts_with('expected ')
+		&& a.msg.contains(' generic parameter')
+	b_is_generic_arg_count := b.msg.starts_with('expected ')
+		&& b.msg.contains(' generic parameter')
+	a_is_value_arg_count := a.msg.starts_with('expected ') && a.msg.contains(' argument')
+	b_is_value_arg_count := b.msg.starts_with('expected ') && b.msg.contains(' argument')
+	if a.node == b.node && a_is_generic_arg_count && b_is_value_arg_count {
+		return -1
+	}
+	if a.node == b.node && b_is_generic_arg_count && a_is_value_arg_count {
+		return 1
+	}
+	a_is_no_arg_method := a.msg.ends_with('does not have any arguments')
+	b_is_no_arg_method := b.msg.ends_with('does not have any arguments')
+	a_is_immutable_receiver := a.msg.contains('is immutable, declare it with `mut`')
+	b_is_immutable_receiver := b.msg.contains('is immutable, declare it with `mut`')
+	if a.file == b.file && a_is_no_arg_method && b_is_immutable_receiver {
+		return -1
+	}
+	if a.file == b.file && b_is_no_arg_method && a_is_immutable_receiver {
+		return 1
+	}
+	a_is_immutable_field := a.msg.starts_with('field `') && a.msg.contains(' is immutable')
+	b_is_immutable_field := b.msg.starts_with('field `') && b.msg.contains(' is immutable')
+	a_is_immutable_binding := a.msg.starts_with('`')
+		&& a.msg.contains('` is immutable, declare it with `mut`')
+	b_is_immutable_binding := b.msg.starts_with('`')
+		&& b.msg.contains('` is immutable, declare it with `mut`')
+	nearby_positions := a.pos.id == b.pos.id && a.pos.offset - b.pos.offset < 64
+		&& b.pos.offset - a.pos.offset < 64
+	if nearby_positions && a_is_immutable_field && b_is_immutable_binding {
+		return -1
+	}
+	if nearby_positions && b_is_immutable_field && a_is_immutable_binding {
+		return 1
+	}
 	a_is_c_string_buffer_conversion := a.msg.starts_with('to convert a C string buffer pointer')
 	b_is_c_string_buffer_conversion := b.msg.starts_with('to convert a C string buffer pointer')
 	a_is_pointer_string_cast := a.msg.starts_with('cannot cast pointer type ')
@@ -1505,12 +2304,83 @@ fn compare_type_errors(a &TypeError, b &TypeError) int {
 			return if a_is_option_array_push { -1 } else { 1 }
 		}
 	}
+	a_is_option_index_unwrap := a.msg.starts_with('type `?')
+		&& a.msg.contains(' is an Option, it must be unwrapped first; use `')
+	b_is_option_index_unwrap := b.msg.starts_with('type `?')
+		&& b.msg.contains(' is an Option, it must be unwrapped first; use `')
+	a_is_option_field_unwrap := a.msg.starts_with('field `')
+		&& a.msg.ends_with(' is an Option, so it should have either an `or {}` block, or `?` at the end')
+	b_is_option_field_unwrap := b.msg.starts_with('field `')
+		&& b.msg.ends_with(' is an Option, so it should have either an `or {}` block, or `?` at the end')
+	if a.node == b.node && a_is_option_index_unwrap && b_is_option_field_unwrap {
+		return -1
+	}
+	if a.node == b.node && b_is_option_index_unwrap && a_is_option_field_unwrap {
+		return 1
+	}
 	a_is_bare_generic_fntype_decl := a.msg.starts_with('generic function `')
 		&& a.msg.contains(' in fn declaration must specify the generic type names')
 	b_is_bare_generic_fntype_decl := b.msg.starts_with('generic function `')
 		&& b.msg.contains(' in fn declaration must specify the generic type names')
 	if a_is_bare_generic_fntype_decl != b_is_bare_generic_fntype_decl {
 		return if a_is_bare_generic_fntype_decl { 1 } else { -1 }
+	}
+	a_is_print_void := a.msg.contains('can not print void expressions')
+	b_is_print_void := b.msg.contains('can not print void expressions')
+	a_is_undefined_ident := a.msg.starts_with('undefined ident:')
+	b_is_undefined_ident := b.msg.starts_with('undefined ident:')
+	a_is_boolean_operand := (a.msg.starts_with('left operand for `')
+		|| a.msg.starts_with('right operand for `')) && a.msg.ends_with(' is not a boolean')
+	b_is_boolean_operand := (b.msg.starts_with('left operand for `')
+		|| b.msg.starts_with('right operand for `')) && b.msg.ends_with(' is not a boolean')
+	if a.file == b.file && a_is_undefined_ident && b_is_boolean_operand {
+		return -1
+	}
+	if a.file == b.file && b_is_undefined_ident && a_is_boolean_operand {
+		return 1
+	}
+	if a_is_print_void && b_is_undefined_ident {
+		return -1
+	}
+	if b_is_print_void && a_is_undefined_ident {
+		return 1
+	}
+	a_is_test_signature := a.msg.starts_with('test functions should ')
+	b_is_test_signature := b.msg.starts_with('test functions should ')
+	a_is_missing_return := a.msg.starts_with('missing return at end of function `')
+	b_is_missing_return := b.msg.starts_with('missing return at end of function `')
+	if a.node == b.node && a_is_test_signature && b_is_missing_return {
+		return -1
+	}
+	if a.node == b.node && b_is_test_signature && a_is_missing_return {
+		return 1
+	}
+	a_is_unknown_asm_register := a.msg.starts_with('unknown register `')
+		|| a.msg.starts_with('unknown clobbered register `')
+	b_is_unknown_asm_register := b.msg.starts_with('unknown register `')
+		|| b.msg.starts_with('unknown clobbered register `')
+	if a.node == b.node && a_is_unknown_asm_register && b_is_unknown_asm_register
+		&& a.pos.offset != b.pos.offset {
+		return a.pos.offset - b.pos.offset
+	}
+	if a.node == b.node {
+		if a_case := duplicate_match_case_int(a.msg) {
+			if b_case := duplicate_match_case_int(b.msg) {
+				if a_case != b_case {
+					return a_case - b_case
+				}
+			}
+		}
+		a_is_nonconstant_array_bound := a.msg.starts_with('non-constant array bound `')
+		b_is_nonconstant_array_bound := b.msg.starts_with('non-constant array bound `')
+		a_is_invalid_fixed_size := a.msg.starts_with('fixed size cannot be zero or negative')
+		b_is_invalid_fixed_size := b.msg.starts_with('fixed size cannot be zero or negative')
+		if a_is_nonconstant_array_bound && b_is_invalid_fixed_size {
+			return -1
+		}
+		if b_is_nonconstant_array_bound && a_is_invalid_fixed_size {
+			return 1
+		}
 	}
 	if a.node != b.node {
 		return int(a.node) - int(b.node)
@@ -1527,8 +2397,70 @@ fn compare_type_errors(a &TypeError, b &TypeError) int {
 	return 0
 }
 
+fn decl_assign_lhs_diagnostic_order(message string) int {
+	return match message {
+		'parentheses are not supported on the left side of `:=`' { 1 }
+		'modifying variables via dereferencing can only be done in `unsafe` blocks' { 2 }
+		'non-name on the left side of `:=`' { 3 }
+		else { 0 }
+	}
+}
+
+fn orm_connection_method_diagnostic_order(message string) int {
+	if !message.ends_with(' of interface `orm.Connection`') {
+		return 0
+	}
+	method := message.all_after("doesn't implement method `").all_before('`')
+	return match method {
+		'select' { 1 }
+		'insert' { 2 }
+		'update' { 3 }
+		'delete' { 4 }
+		'create' { 5 }
+		'drop' { 6 }
+		'last_id' { 7 }
+		'execute' { 8 }
+		else { 0 }
+	}
+}
+
+fn duplicate_match_case_int(message string) ?int {
+	prefix := 'match case `'
+	if !message.starts_with(prefix) {
+		return none
+	}
+	end := message.index_after('`', prefix.len) or { return none }
+	value := message[prefix.len..end]
+	if value.len == 0 {
+		return none
+	}
+	mut start := 0
+	if value[0] == `-` {
+		if value.len == 1 {
+			return none
+		}
+		start = 1
+	}
+	for i in start .. value.len {
+		if !value[i].is_digit() {
+			return none
+		}
+	}
+	return value.int()
+}
+
 fn type_errors_equal(a TypeError, b TypeError) bool {
+	if a.node == b.node && a.kind == b.kind && a.msg == b.msg
+		&& (is_inline_asm_instruction_error(a.msg)
+			|| a.msg.starts_with('cannot embed non-struct `')
+			|| a.msg == 'byte is deprecated, use u8 instead') {
+		return a.pos == b.pos
+	}
 	return a.node == b.node && a.kind == b.kind && a.msg == b.msg
+}
+
+fn is_inline_asm_instruction_error(message string) bool {
+	return message.contains('structured `intel`') || message.contains('`raw intel` block')
 }
 
 fn check_job_count(n_runtime_jobs int, n_items int) int {
@@ -1557,20 +2489,51 @@ fn split_check_items(items []CheckWorkItem, n int) [][]CheckWorkItem {
 		}
 		loads[0] = -total * check_master_bias_pct / i64(100 * n)
 	}
-	mut sorted := items.clone()
-	sorted.sort(a.rank > b.rank)
+	// Sort compact (rank, index) pairs instead of whole work items. The sort is
+	// stable, so the assignment order is exactly that of sorting the items.
+	mut ranked := []CheckItemRank{cap: items.len}
+	for i, it in items {
+		ranked << CheckItemRank{
+			rank: it.rank
+			idx:  i
+		}
+	}
+	ranked.sort(a.rank > b.rank)
 	mut least_loaded := []int{len: n, init: index}
 	restore_check_load_heap(mut least_loaded, loads)
-	for it in sorted {
+	mut bucket_of := []int{len: items.len}
+	for r in ranked {
 		best := least_loaded[0]
-		buckets[best] << it
-		loads[best] += i64(it.cost) + 1
+		bucket_of[r.idx] = best
+		loads[best] += i64(items[r.idx].cost) + 1
 		restore_check_load_heap(mut least_loaded, loads)
+	}
+	mut strictly_ordered := true
+	for i in 1 .. items.len {
+		if items[i].fn_idx <= items[i - 1].fn_idx {
+			strictly_ordered = false
+			break
+		}
+	}
+	if strictly_ordered {
+		// Filling the buckets in source order already sorts each one by fn_idx.
+		for i, it in items {
+			buckets[bucket_of[i]] << it
+		}
+		return buckets
+	}
+	for r in ranked {
+		buckets[bucket_of[r.idx]] << items[r.idx]
 	}
 	for mut bucket in buckets {
 		bucket.sort(a.fn_idx < b.fn_idx)
 	}
 	return buckets
+}
+
+struct CheckItemRank {
+	rank i64
+	idx  int
 }
 
 // Only the root's load changes. Break equal-load ties by bucket index, exactly
@@ -1669,6 +2632,19 @@ fn (mut tc TypeChecker) check_fn_decl_semantics(fn_idx int, node flat.Node, file
 	}
 	tc.cur_file = file
 	tc.cur_module = module_name
+	if !fast_valid_build {
+		if receiver_id := tc.global_receiver_id(node) {
+			receiver := tc.a.node(receiver_id)
+			name_pos := tc.fn_receiver_param_diagnostic_pos(node, receiver.value)
+			_, receiver_pos := tc.fn_receiver_source_text_pos(node)
+			pos := token.new_span(name_pos.id, name_pos.offset, int_max(name_pos.end,
+				receiver_pos.end - 1))
+			tc.record_error_at(.duplicate_decl, 'cannot use global variable name `${receiver.value}` as receiver',
+				receiver_id, pos)
+			tc.fn_context = saved_fn_context
+			return
+		}
+	}
 	if !fast_valid_build && module_name in ['', 'main'] && !node.value.contains('.') {
 		if visibility := tc.declaration_visibility['builtin.${node.value}'] {
 			if visibility.is_pub {
@@ -1783,6 +2759,9 @@ fn (mut tc TypeChecker) check_fn_decl_semantics(fn_idx int, node flat.Node, file
 	has_body := !node.is_mut
 	if has_body && generic_params.len > 0 {
 		tc.check_generic_fn_body_global_shadowing(node)
+		tc.check_generic_fn_literal_capture_types(node)
+		tc.check_generic_fn_chained_bare_struct_method_inference(node)
+		tc.check_generic_fn_struct_init_type_args(node)
 	}
 	signature_has_bare_generic_type := tc.fn_decl_has_bare_generic_signature_type(node)
 	should_check_generic_body := generic_params.len == 0
@@ -1837,9 +2816,37 @@ fn (mut tc TypeChecker) check_fn_receiver_and_operator_return(node flat.Node, id
 	if node.children_count > 0 {
 		receiver_id := tc.a.child(&node, 0)
 		receiver := tc.a.node(receiver_id)
-		if receiver.kind == .param && receiver.op == .dot
-			&& unalias_type(tc.parse_type(receiver.typ)) is MultiReturn {
-			tc.record_error_at(.call_arg_mismatch, 'cannot define method on multi-value', receiver_id, tc.type_diagnostic_pos(receiver_id, receiver.typ))
+		if receiver.kind == .param && receiver.op == .dot {
+			receiver_type := unwrap_pointer(tc.parse_type(receiver.typ))
+			if unalias_type(receiver_type) is MultiReturn {
+				tc.record_error_at(.call_arg_mismatch, 'cannot define method on multi-value', receiver_id, tc.type_diagnostic_pos(receiver_id, receiver.typ))
+			}
+			is_non_local_builtin := match receiver_type {
+				Primitive, String, Char, Rune, ISize, USize, Array, ArrayFixed, Channel, Map,
+				FnType {
+					true
+				}
+				else {
+					false
+				}
+			}
+			is_builtin_array_override := receiver_type is Array && node.value.ends_with('.map')
+			is_local_collection := match receiver_type {
+				Array {
+					tc.receiver_collection_payload_is_local(receiver_type.elem_type)
+				}
+				Map {
+					tc.receiver_collection_payload_is_local(receiver_type.value_type)
+				}
+				else {
+					false
+				}
+			}
+			if tc.cur_module != 'builtin' && is_non_local_builtin && !is_builtin_array_override
+				&& !is_local_collection {
+				receiver_text, receiver_pos := tc.fn_receiver_declared_type_pos(node, receiver)
+				tc.record_error_at(.call_arg_mismatch, 'cannot define new methods on non-local type ${receiver_text}. Define an alias and use that instead like `type AliasName = ${receiver_text}`', receiver_id, receiver_pos)
+			}
 		}
 	}
 	raw_return_type := node.typ.trim_space()
@@ -1873,6 +2880,11 @@ fn (mut tc TypeChecker) check_fn_receiver_and_operator_return(node flat.Node, id
 			if receiver_type is OptionType || receiver.typ.contains('?')
 				|| receiver_name.starts_with('?') {
 				tc.record_error_at(.call_arg_mismatch, 'option types cannot have methods', id, tc.fn_option_receiver_diagnostic_pos(node, receiver.value))
+			}
+			method := node.value.all_after_last('.')
+			if receiver_type is Enum && receiver_type.is_flag
+				&& method in ['has', 'all', 'set', 'clear', 'toggle', 'set_all', 'clear_all'] {
+				tc.record_error_at(.duplicate_decl, 'duplicate method `${method}`, `${method}` is an enum type built-in method', id, token.new_span(node.pos.id, node.pos.offset, node.pos.offset + method.len))
 			}
 		}
 	}
@@ -1945,6 +2957,78 @@ fn (mut tc TypeChecker) check_fn_receiver_and_operator_return(node flat.Node, id
 	}
 }
 
+fn (tc &TypeChecker) receiver_collection_payload_is_local(typ Type) bool {
+	clean := unwrap_pointer(typ)
+	return match clean {
+		Alias {
+			tc.source_module_declares_type(clean.name)
+		}
+		Struct {
+			tc.source_module_declares_type(clean.name)
+		}
+		Interface {
+			tc.source_module_declares_type(clean.name)
+		}
+		Enum {
+			tc.source_module_declares_type(clean.name)
+		}
+		SumType {
+			tc.source_module_declares_type(clean.name)
+		}
+		Array {
+			tc.receiver_collection_payload_is_local(clean.elem_type)
+		}
+		ArrayFixed {
+			tc.receiver_collection_payload_is_local(clean.elem_type)
+		}
+		Map {
+			tc.receiver_collection_payload_is_local(clean.value_type)
+		}
+		OptionType {
+			tc.receiver_collection_payload_is_local(clean.base_type)
+		}
+		ResultType {
+			tc.receiver_collection_payload_is_local(clean.base_type)
+		}
+		else {
+			false
+		}
+	}
+}
+
+fn (tc &TypeChecker) source_module_declares_type(type_name string) bool {
+	qualified_base := type_name.all_before('[')
+	current_module := if tc.cur_module in ['', 'main'] { 'main' } else { tc.cur_module }
+	if qualified_base.contains('.') {
+		owner_module := qualified_base.all_before_last('.')
+		if owner_module != current_module {
+			return false
+		}
+	}
+	base_name := qualified_base.all_after_last('.')
+	mut module_name := ''
+	for idx in tc.top_level_idx {
+		node := tc.a.nodes[idx]
+		match node.kind {
+			.file {
+				module_name = ''
+			}
+			.module_decl {
+				module_name = node.value
+			}
+			.struct_decl, .type_decl, .interface_decl, .enum_decl {
+				decl_module := if module_name in ['', 'main'] { 'main' } else { module_name }
+				modules_match := decl_module == current_module
+				if modules_match && node.value.all_before('[').all_after_last('.') == base_name {
+					return true
+				}
+			}
+			else {}
+		}
+	}
+	return false
+}
+
 fn (tc &TypeChecker) operator_receiver_without_mut_pos(node flat.Node) token.Pos {
 	text, pos := tc.fn_receiver_source_text_pos(node)
 	if text.starts_with('(mut ') && pos.end - pos.offset > 6 {
@@ -1990,7 +3074,7 @@ fn (tc &TypeChecker) comptime_skipped_body_uses_goto_label(node flat.Node, name 
 }
 
 fn (mut tc TypeChecker) record_unused_fn_vars(node flat.Node) {
-	if tc.node_is_from_translated_file(node) {
+	if tc.node_is_from_translated_file(node) || is_regular_v_test_file(tc.cur_file) {
 		return
 	}
 	for diagnostic in tc.errors {
@@ -2049,6 +3133,9 @@ fn (mut tc TypeChecker) record_unused_fn_vars(node flat.Node) {
 		if used_names[candidate.name] {
 			continue
 		}
+		if tc.expr_calls_fn_with_duplicate_parameters(candidate.rhs_id) {
+			continue
+		}
 		if tc.expr_subtree_has_error_except(candidate.rhs_id, .if_branch_mismatch)
 			&& !tc.expr_subtree_allows_unused_warning(candidate.rhs_id) {
 			continue
@@ -2058,6 +3145,42 @@ fn (mut tc TypeChecker) record_unused_fn_vars(node flat.Node) {
 		}
 		tc.record_warning_at(.unknown_ident, 'unused variable: `${candidate.name}`', candidate.lhs_id, tc.node_value_diagnostic_pos(candidate.lhs_id))
 	}
+}
+
+fn (tc &TypeChecker) expr_calls_fn_with_duplicate_parameters(id flat.NodeId) bool {
+	if !tc.valid_node_id(id) {
+		return false
+	}
+	node := tc.a.node(id)
+	if node.kind == .call && node.children_count > 0 {
+		callee := tc.a.child_node(node, 0)
+		if callee.kind == .ident {
+			name := (tc.cached_resolved_call(id) or { callee.value }).all_after_last('.')
+			if decl_index := tc.fn_decl_short_name_ids[name] {
+				decl := tc.a.node(flat.NodeId(decl_index))
+				mut names := map[string]bool{}
+				for i in 0 .. decl.children_count {
+					param := tc.a.child_node(decl, i)
+					if param.kind != .param || param.value.len == 0 || param.value == '_' {
+						continue
+					}
+					if names[param.value] {
+						return true
+					}
+					names[param.value] = true
+				}
+			}
+		}
+	}
+	if node.kind in [.fn_decl, .fn_literal, .lambda_expr] {
+		return false
+	}
+	for i in 0 .. node.children_count {
+		if tc.expr_calls_fn_with_duplicate_parameters(tc.a.child(node, i)) {
+			return true
+		}
+	}
+	return false
 }
 
 fn (mut tc TypeChecker) record_lambda_capture_errors(fn_node flat.Node) {
@@ -2369,6 +3492,7 @@ fn (tc &TypeChecker) expr_subtree_allows_unused_warning(id flat.NodeId) bool {
 	root := tc.a.node(id)
 	return tc.errors.any(it.pos.id == root.pos.id && it.pos.offset >= root.pos.offset
 		&& it.pos.end <= root.pos.end && (it.msg == 'map value cannot be only `none`'
+		|| it.msg == 'cannot assign global variable to shared variable'
 		|| it.msg == 'cannot take the address of a literal value'
 		|| it.msg.starts_with('ambiguous field `')
 		|| it.msg.starts_with('invalid empty map initialisation syntax')
@@ -2419,7 +3543,22 @@ fn (tc &TypeChecker) fn_body_read_names(node flat.Node, candidate_names map[stri
 			&& shadow_depth[current.value] == 0 {
 			used_names[current.value] = true
 		}
+		if current.kind == .directive && current.value == 'string_interp_format' {
+			for name, _ in candidate_names {
+				if shadow_depth[name] == 0
+					&& string_interp_format_uses_ident(current.typ, name) {
+					used_names[name] = true
+				}
+			}
+		}
 		if current.kind in [.sql_expr, .comptime_if, .array_init] {
+			if current.kind == .comptime_if {
+				metadata := current.generic_params()
+				if metadata.len > 1 && metadata[0] == '__v3_comptime_match'
+					&& candidate_names[metadata[1]] && shadow_depth[metadata[1]] == 0 {
+					used_names[metadata[1]] = true
+				}
+			}
 			for name, _ in candidate_names {
 				if shadow_depth[name] > 0 || used_names[name] {
 					continue
@@ -2590,9 +3729,39 @@ fn (tc &TypeChecker) fn_body_uses_ident(node flat.Node, name string) bool {
 		if child.kind == .sql_expr && sql_text_contains_ident(child.value, name) {
 			return true
 		}
+		if child.kind == .directive && child.value == 'string_interp_format'
+			&& string_interp_format_uses_ident(child.typ, name) {
+			return true
+		}
 		for i in 0 .. child.children_count {
 			stack << tc.a.child(child, i)
 		}
+	}
+	return false
+}
+
+fn string_interp_format_uses_ident(format string, name string) bool {
+	if name.len == 0 {
+		return false
+	}
+	mut i := 0
+	for i < format.len {
+		if format[i] != `(` {
+			i++
+			continue
+		}
+		end_offset := format[i + 1..].index_u8(`)`)
+		if end_offset < 0 {
+			return false
+		}
+		mut candidate := format[i + 1..i + 1 + end_offset].trim_space()
+		if candidate.starts_with('-') {
+			candidate = candidate[1..].trim_space()
+		}
+		if candidate == name {
+			return true
+		}
+		i += end_offset + 2
 	}
 	return false
 }
@@ -2610,6 +3779,9 @@ fn sql_text_contains_ident(text string, name string) bool {
 }
 
 fn (mut tc TypeChecker) fn_has_deferred_generic_return(node flat.Node, generic_params map[string]bool) bool {
+	if tc.type_contains_open_generic_placeholder(tc.fn_context.return_type) {
+		return true
+	}
 	mut last_stmt := flat.empty_node
 	for i := int(node.children_count) - 1; i >= 0; i-- {
 		child_id := tc.a.child(&node, i)
@@ -2721,6 +3893,7 @@ fn (mut tc TypeChecker) prewarm_shared_type_cache() {
 	if isnil(tc.type_cache) {
 		return
 	}
+	tc.prepare_tail_decl_ids()
 	_ = tc.local_fn_decl_exists('__v3_prewarm__')
 	_ = tc.unique_qualified_type_name('__V3Prewarm__') or { '' }
 	_ = tc.source_struct_has_non_builtin_error_embed('__V3Prewarm__', '', '')
@@ -2809,6 +3982,7 @@ fn (tc &TypeChecker) fork_for_parallel_check() &TypeChecker {
 	// sharing the declaration index that collect completed before checking starts.
 	w.visible_mutation_cache = &VisibleMutationCache{
 		decls:            tc.visible_mutation_cache.decls
+		global_decls:     tc.visible_mutation_cache.global_decls
 		decl_misses:      map[string]bool{}
 		results:          map[u64]bool{}
 		rebind_results:   map[u64]bool{}
@@ -3070,16 +4244,17 @@ fn clone_parallel_type_error(err TypeError) TypeError {
 		details << detail.clone()
 	}
 	return TypeError{
-		msg:        err.msg.clone()
-		kind:       err.kind
-		node:       err.node
-		file:       err.file.clone()
-		node_kind:  err.node_kind.clone()
-		node_value: err.node_value.clone()
-		node_pos:   err.node_pos.clone()
-		pos:        err.pos
-		details:    details
-		severity:   err.severity.clone()
+		msg:              err.msg.clone()
+		kind:             err.kind
+		node:             err.node
+		file:             err.file.clone()
+		node_kind:        err.node_kind.clone()
+		node_value:       err.node_value.clone()
+		node_pos:         err.node_pos.clone()
+		pos:              err.pos
+		details:          details
+		severity:         err.severity.clone()
+		diagnostic_order: err.diagnostic_order
 	}
 }
 
@@ -3258,4 +4433,84 @@ fn (mut tc TypeChecker) free_parallel_check_worker_cache() {
 			}
 		}
 	}
+}
+
+struct TailDeclScanArgs {
+	a     &flat.FlatAst = unsafe { nil }
+	start int
+	end   int
+mut:
+	ids []i32
+}
+
+const min_parallel_tail_decl_scan = 65_536
+
+// prepare_tail_decl_ids finds the declaration nodes appended after collect built
+// the top-level index (transform appends about a million expression nodes, and
+// only a handful of declarations among them). The lazy index builders consult
+// this list instead of walking the whole tail. It runs only while prewarming a
+// frozen cache, when the persistent pool is idle.
+fn (mut tc TypeChecker) prepare_tail_decl_ids() {
+	mut cache := tc.type_cache
+	start := tc.top_level_idx_nodes_len
+	end := if isnil(tc.a) { 0 } else { tc.a.nodes.len }
+	pool := checker_worker_pool(tc.a)
+	// Only a base cache builds the lazy declaration indexes (overlays defer to it).
+	if !isnil(cache.base) || start <= 0 || end - start < min_parallel_tail_decl_scan
+		|| isnil(pool) || pool.size() == 0 {
+		return
+	}
+	if cache.tail_decl_start == start && cache.tail_decl_end == end {
+		return
+	}
+	n := int_min(pool.size() + 1, 16)
+	mut args := []TailDeclScanArgs{cap: n}
+	for i in 0 .. n {
+		args << TailDeclScanArgs{
+			a:     tc.a
+			start: start + (end - start) * i / n
+			end:   start + (end - start) * (i + 1) / n
+		}
+	}
+	mut tasks := []workers.Task{cap: n}
+	for i in 0 .. n {
+		tasks << workers.Task{
+			run:        tail_decl_scan_thread
+			arg:        unsafe { voidptr(&args[i]) }
+			force_sync: i == 0
+		}
+	}
+	pool.run(tasks)
+	mut total := 0
+	for arg in args {
+		total += arg.ids.len
+	}
+	mut ids := []i32{cap: total}
+	for arg in args {
+		ids << arg.ids
+	}
+	cache.tail_decl_ids = ids
+	cache.tail_decl_start = start
+	cache.tail_decl_end = end
+}
+
+fn tail_decl_scan_thread(arg voidptr) voidptr {
+	mut a := unsafe { &TailDeclScanArgs(arg) }
+	for i in a.start .. a.end {
+		kind := a.a.nodes[i].kind
+		if kind == .file || kind == .module_decl || kind == .fn_decl || kind == .struct_decl {
+			a.ids << i32(i)
+		}
+	}
+	return unsafe { nil }
+}
+
+// tail_decl_ids_for returns the precomputed declaration ids of [start, end), and
+// whether they were prepared for exactly that range.
+fn (tc &TypeChecker) tail_decl_ids_for(start int, end int) ([]i32, bool) {
+	cache := tc.type_cache
+	if isnil(cache) || cache.tail_decl_start != start || cache.tail_decl_end != end {
+		return []i32{}, false
+	}
+	return cache.tail_decl_ids, true
 }

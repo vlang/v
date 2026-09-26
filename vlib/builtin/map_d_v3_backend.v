@@ -464,15 +464,23 @@ fn (mut m VMapData) clear() {
 	m.count = 0
 }
 
+// panic_nil_map_hash_fn reports a corrupted map header. It is kept out of line
+// so the diagnostic's string building does not stop key_to_index, which runs on
+// every map access, from being inlined.
+@[noinline]
+fn (m &VMapData) panic_nil_map_hash_fn() {
+	unsafe {
+		p := &u64(m)
+		prev2 := (&u64(usize(m) - usize(16)))[0]
+		prev1 := (&u64(usize(m) - usize(8)))[0]
+		panic('map.hash_fn is nil map_ptr=${usize(m)} key_bytes=${m.key_bytes} value_bytes=${m.value_bytes} even_index=${m.even_index} shift=${m.shift} metas=${usize(m.metas)} prev2=${prev2} prev1=${prev1} w0=${p[0]} w1=${p[1]} w2=${p[2]} w3=${p[3]} w4=${p[4]} w5=${p[5]} w6=${p[6]} w7=${p[7]} hash_fn=${usize(voidptr(m.hash_fn))}')
+	}
+}
+
 @[inline]
 fn (m &VMapData) key_to_index(pkey voidptr) (u32, u32) {
 	if voidptr(m.hash_fn) == unsafe { nil } {
-		unsafe {
-			p := &u64(m)
-			prev2 := (&u64(usize(m) - usize(16)))[0]
-			prev1 := (&u64(usize(m) - usize(8)))[0]
-			panic('map.hash_fn is nil map_ptr=${usize(m)} key_bytes=${m.key_bytes} value_bytes=${m.value_bytes} even_index=${m.even_index} shift=${m.shift} metas=${usize(m.metas)} prev2=${prev2} prev1=${prev1} w0=${p[0]} w1=${p[1]} w2=${p[2]} w3=${p[3]} w4=${p[4]} w5=${p[5]} w6=${p[6]} w7=${p[7]} hash_fn=${usize(voidptr(m.hash_fn))}')
-		}
+		m.panic_nil_map_hash_fn()
 	}
 	hash := m.hash_fn(pkey)
 	index := hash & m.even_index

@@ -112,3 +112,43 @@ fn test_load_from_file_matches_memory_decode() {
 	assert img_from_file.original_nr_channels == img_from_memory.original_nr_channels
 	assert img_from_file.ext == 'png'
 }
+
+fn test_info_from_memory() {
+	bytes := os.read_bytes(logo_path) or { panic(err) }
+	info := stbi.info_from_memory(bytes.data, bytes.len) or { panic(err) }
+	loaded := stbi.load(logo_path) or { panic(err) }
+	assert info.width == loaded.width
+	assert info.height == loaded.height
+	// The header names what the file holds, not the layout `load` converts to.
+	assert info.nr_channels == loaded.original_nr_channels
+	// A header that names no known format is reported, not guessed at.
+	not_an_image := 'this is not an image at all'.bytes()
+	if _ := stbi.info_from_memory(not_an_image.data, not_an_image.len) {
+		assert false, 'text should not be read as an image header'
+	}
+}
+
+fn test_info_from_memory_reads_a_three_channel_file() {
+	bytes := os.read_bytes(background_path) or { panic(err) }
+	info := stbi.info_from_memory(bytes.data, bytes.len) or { panic(err) }
+	loaded := stbi.load(background_path) or { panic(err) }
+	assert info.nr_channels == loaded.original_nr_channels
+	assert info.nr_channels != loaded.nr_channels
+	assert info.width == loaded.width
+}
+
+fn test_info_from_memory_refuses_a_length_c_cannot_hold() {
+	bytes := os.read_bytes(logo_path) or { panic(err) }
+	// `bufsize` narrows to a C int; a larger length must not wrap around to a
+	// small one and report a header that was never read.
+	if _ := stbi.info_from_memory(bytes.data, max_i32 + bytes.len) {
+		assert false, 'a length above max_i32 should be refused'
+	} else {
+		assert err.msg().contains('cannot read a header')
+	}
+	if _ := stbi.info_from_memory(bytes.data, -1) {
+		assert false, 'a negative length should be refused'
+	} else {
+		assert err.msg().contains('cannot read a header')
+	}
+}

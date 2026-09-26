@@ -52,7 +52,8 @@ fn test_fontstash_c_int_output_buffers() {
 
 	// Rasterizing a glyph dirties the atlas, so fonsValidateTexture must write all
 	// four C `int` rectangle entries. The wrapper copies them back to V `int`s.
-	_ = fons.draw_text(0, 0, 'x')
+	mut bounds := [4]f32{}
+	_ = fons.text_bounds(0, 0, 'x', &bounds[0])
 	mut dirty := [-1, -1, -1, -1]!
 	assert fons.validate_texture(&dirty[0]) == 1
 	for value in dirty {

@@ -123,7 +123,7 @@ fn (mut t Transformer) transformed_direct_optional_forward_return(value_id flat.
 	if !t.optional_types_match(qualified_ret, expr_type) {
 		return none
 	}
-	value := t.transform_expr(value_id)
+	value := t.transform_optional_wrapper_expr(value_id)
 	t.set_node_typ(int(value), qualified_ret)
 	ret := t.make_return(value, qualified_ret)
 	t.set_node_value(int(ret), '${transformed_direct_optional_forward_value_prefix}${int(source_return_id)}')
@@ -267,7 +267,7 @@ fn (mut t Transformer) try_return_direct_optional_expr(node flat.Node) ?[]flat.N
 	if !t.optional_types_match(ret_type, expr_type) {
 		return none
 	}
-	mut new_expr := t.transform_expr(child_id)
+	mut new_expr := t.transform_optional_wrapper_expr(child_id)
 	t.set_node_typ(int(new_expr), ret_type)
 	if skipped_propagation {
 		// Keep CGen's positional ownership records aligned after removing the or-expression.
@@ -313,7 +313,7 @@ fn (mut t Transformer) try_expand_return_optional_expr(source_return_id flat.Nod
 	}
 	ret_type := t.qualify_optional_type(t.cur_fn_ret_type)
 	expr_type := t.qualify_optional_type(expr_type0)
-	new_expr := t.transform_expr(child_id)
+	new_expr := t.transform_optional_wrapper_expr(child_id)
 	mut result := []flat.NodeId{}
 	t.drain_pending(mut result)
 	tmp_name := t.new_temp('return_opt')
@@ -1006,6 +1006,9 @@ fn (mut t Transformer) try_expand_return_if(source_return_id flat.NodeId, node f
 	if val_node.kind != .if_expr || val_node.children_count < 3 {
 		return none
 	}
+	if t.return_if_chain_needs_wrapper_recovery(val_id) {
+		return none
+	}
 	mut extra_return_vals := []flat.NodeId{}
 	for i in 1 .. node.children_count {
 		extra_return_vals << t.a.child(&node, i)
@@ -1014,6 +1017,32 @@ fn (mut t Transformer) try_expand_return_if(source_return_id flat.NodeId, node f
 	return [
 		t.build_return_if_chain(val_id, ret_typ, extra_return_vals, source_return_id),
 	]
+}
+
+fn (mut t Transformer) return_if_chain_needs_wrapper_recovery(if_id flat.NodeId) bool {
+	mut arm_id := if_id
+	for {
+		arm := t.a.nodes[int(arm_id)]
+		cond_id := t.a.child(&arm, 0)
+		cond := t.a.nodes[int(cond_id)]
+		if cond.kind == .decl_assign && cond.children_count >= 2 {
+			rhs_id := t.a.child(&cond, 1)
+			// Let the value guard path recover the wrapper when a prior check smartcast its source.
+			if !t.is_optional_type_name(t.optional_result_expr_type_name(rhs_id))
+				&& t.is_optional_type_name(t.if_guard_optional_type_name(rhs_id)) {
+				return true
+			}
+		}
+		if arm.children_count < 3 {
+			break
+		}
+		else_id := t.a.child(&arm, 2)
+		if t.a.nodes[int(else_id)].kind != .if_expr {
+			break
+		}
+		arm_id = else_id
+	}
+	return false
 }
 
 fn (t &Transformer) match_branch_tuple_parts(branch flat.Node, body_start_idx int, count int) ?TupleBlockParts {

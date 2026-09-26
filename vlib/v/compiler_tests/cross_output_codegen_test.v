@@ -93,14 +93,14 @@ fn test_cross_windows_output_orders_windows_header_before_bcrypt() {
 
 fn test_cross_output_leaves_the_atomic_helpers_to_the_windows_tcc_header() {
 	// The snapshot does not know its C compiler yet. V's WinAPI atomic header is
-	// emitted behind `_WIN32 && __TINYC__` and defines `atomic_fetch_add_byte` and
+	// emitted behind `_WIN32 && (__TINYC__ || MSVC)` and defines `atomic_fetch_add_byte` and
 	// friends as function-like macros, so the backend's own `static inline`
 	// definitions have to sit behind the negation of that same guard. Without it
 	// the macro expanded over the definition and tcc rejected `vc/v_win.c` with
 	// `redefinition of 'ManualInterlockedExchangeAdd8'`.
 	for flags in ['-cross -os windows -cc msvc', '-os cross'] {
 		c_code := cross_generate_with(flags, 'atomics', "module main\n\nfn main() {\n\tprintln('ok')\n}\n")
-		guard := '#if !(defined(_WIN32) && defined(__TINYC__))'
+		guard := '#if !(defined(_WIN32) && (defined(__TINYC__) || (defined(_MSC_VER) && !defined(__clang__))))'
 		definition := 'static inline byte atomic_fetch_add_byte('
 		at := c_code.index(definition) or {
 			assert false, '${flags}: the atomic helpers are missing from the snapshot'
@@ -183,6 +183,28 @@ fn test_cross_output_keeps_a_working_clock_on_apple() {
 	assert now.contains('time__linux_now()'), 'the snapshot cannot read the local time on Apple: ${now}'
 	utc := function_body(c_code, 'time__Time time__darwin_utc(void) {')
 	assert utc.contains('time__linux_utc()'), 'the snapshot cannot read UTC on Apple: ${utc}'
+}
+
+fn test_cross_output_lets_the_target_libc_pick_the_poll_header() {
+	// The portable snapshot is generated on glibc Linux and later compiled on musl
+	// too. musl warns about <sys/poll.h>, which fails consumers building with
+	// `-Werror`, while the linuxroot sysroot ships only <sys/poll.h>. A `$if musl ?`
+	// check is folded for the generating host, so the target C preprocessor has to
+	// pick the header from the libc it actually compiles against.
+	c_code := cross_generate_with('-cross -os linux', 'cmdexec_poll', "module main\n\nimport v.cmdexec\n\nfn main() {\n\tprintln(cmdexec.run('true', []string{}).exit_code)\n}\n")
+	sys_poll_at := c_code.index('#include <sys/poll.h>') or {
+		assert false, 'the glibc poll header is missing from the snapshot'
+		return
+	}
+	before := c_code[..sys_poll_at]
+	guard_at := before.last_index('#if ') or {
+		assert false, '<sys/poll.h> is not behind any preprocessor guard'
+		return
+	}
+	condition := before[guard_at..].all_before('\n')
+	assert condition.contains('__GLIBC__'), '<sys/poll.h> is guarded by `${condition}`, which does not check for glibc'
+	fallback := c_code[sys_poll_at..].all_before('#endif')
+	assert fallback.contains('#else\n#include <poll.h>'), 'musl and the other targets lost <poll.h>: ${fallback}'
 }
 
 // function_body returns the source of the C function that `signature` opens.

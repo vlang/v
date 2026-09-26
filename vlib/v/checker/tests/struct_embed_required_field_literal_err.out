@@ -1,0 +1,7 @@
+vlib/v/checker/tests/struct_embed_required_field_literal_err.vv:12:9: error: field `Base.b` must be initialized
+   10 | fn main() {
+   11 |     d := Derived{
+   12 |         Base: Base{
+      |               ~~~~~
+   13 |             a: 1
+   14 |         }

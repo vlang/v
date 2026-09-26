@@ -1,0 +1,49 @@
+vlib/v/checker/tests/modules/anon_struct_private_field_err/main.v:8:22: error: field `outer.inner.secret` is not public
+    6 |     mut outer := amod.Outer{}
+    7 |     outer.inner.value = outer.inner.deep.shown
+    8 |     println(outer.inner.secret)
+      |                         ~~~~~~
+    9 |     outer.inner.deep.hidden = 1
+   10 |     deep := outer.inner.deep
+vlib/v/checker/tests/modules/anon_struct_private_field_err/main.v:9:19: error: field `outer.inner.deep.hidden` is not public
+    7 |     outer.inner.value = outer.inner.deep.shown
+    8 |     println(outer.inner.secret)
+    9 |     outer.inner.deep.hidden = 1
+      |                      ~~~~~~
+   10 |     deep := outer.inner.deep
+   11 |     println(deep.hidden)
+vlib/v/checker/tests/modules/anon_struct_private_field_err/main.v:11:15: error: field `deep.hidden` is not public
+    9 |     outer.inner.deep.hidden = 1
+   10 |     deep := outer.inner.deep
+   11 |     println(deep.hidden)
+      |                  ~~~~~~
+   12 |     println(outer.inner.public)
+   13 |     println(outer.inner.private)
+vlib/v/checker/tests/modules/anon_struct_private_field_err/main.v:13:22: error: field `outer.inner.private` is not public
+   11 |     println(deep.hidden)
+   12 |     println(outer.inner.public)
+   13 |     println(outer.inner.private)
+      |                         ~~~~~~~
+   14 |     outer.inner.counter = 2
+   15 | }
+vlib/v/checker/tests/modules/anon_struct_private_field_err/main.v:14:14: error: field `outer.inner.counter` is not public
+   12 |     println(outer.inner.public)
+   13 |     println(outer.inner.private)
+   14 |     outer.inner.counter = 2
+      |                 ~~~~~~~
+   15 | }
+   16 |
+vlib/v/checker/tests/modules/anon_struct_private_field_err/main.v:22:5: error: cannot access private field `secret` of an anonymous struct from module `anon_struct_private_field_err.amod`
+   20 |             inner: struct {
+   21 |                 value:  1
+   22 |                 secret: 2
+      |                 ~~~~~~~~~
+   23 |             }
+   24 |         },
+vlib/v/checker/tests/modules/anon_struct_private_field_err/main.v:27:5: error: cannot access private field `secret` of an anonymous struct from module `anon_struct_private_field_err.amod`
+   25 |         amod.Outer{
+   26 |             inner: struct {
+   27 |                 secret: arg
+      |                 ~~~~~~~~~~~
+   28 |             }
+   29 |         },

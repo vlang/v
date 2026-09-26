@@ -598,7 +598,7 @@ pub fn format_fl_old(f f64, p BF_param) string {
 		}
 		mut res := strings.new_builder(if p.len0 > fs.len { p.len0 } else { fs.len })
 		defer {
-			res.free()
+			unsafe { res.free() }
 		}
 
 		mut sign_len_diff := 0
@@ -665,9 +665,11 @@ fn format_es_old(f f64, p BF_param) string {
 		}
 		mut res := strings.new_builder(if p.len0 > fs.len { p.len0 } else { fs.len })
 		defer {
-			res.free()
-			fs.free()
-			s.free()
+			unsafe {
+				res.free()
+				fs.free()
+				s.free()
+			}
 		}
 
 		mut sign_len_diff := 0

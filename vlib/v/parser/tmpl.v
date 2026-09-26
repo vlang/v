@@ -719,6 +719,14 @@ mut:
 	state TmplState
 }
 
+struct TemplateDiagnostic {
+	path    string
+	line    int
+	start   int
+	end     int
+	message string
+}
+
 struct RegisteredTemplateSource {
 	file  &token.File
 	lines []string
@@ -748,14 +756,22 @@ fn nearest_templates_root(start_dir string) ?string {
 // A referenced partial that cannot be opened records a diagnostic instead of being
 // silently dropped, so a missing/misspelled include fails the compile rather than
 // rendering a page without its required partials.
-fn (mut p Parser) process_tmpl_includes(dir string, line string, mut seen map[string]bool) []TemplateSourceLine {
+fn (mut p Parser) process_tmpl_includes(source_line TemplateSourceLine, mut seen map[string]bool) []TemplateSourceLine {
+	dir := os.dir(source_line.path)
+	line := source_line.text
 	include_pos := line.index('@include ') or { return [] }
 	mut quote_pos := include_pos + '@include '.len
 	for quote_pos < line.len && line[quote_pos].is_space() {
 		quote_pos++
 	}
 	if quote_pos >= line.len || (line[quote_pos] != `'` && line[quote_pos] != `"`) {
-		p.record_diagnostic('path for @include must be quoted with \' or "', p.tok_pos)
+		p.pending_template_diagnostics << TemplateDiagnostic{
+			path:    source_line.path
+			line:    source_line.line
+			start:   quote_pos
+			end:     line.len
+			message: 'path for @include must be quoted with \' or "'
+		}
 		return []
 	}
 	quote := line[quote_pos]
@@ -764,7 +780,13 @@ fn (mut p Parser) process_tmpl_includes(dir string, line string, mut seen map[st
 		end_pos++
 	}
 	if end_pos >= line.len {
-		p.record_diagnostic('path for @include must be quoted with \' or "', p.tok_pos)
+		p.pending_template_diagnostics << TemplateDiagnostic{
+			path:    source_line.path
+			line:    source_line.line
+			start:   quote_pos
+			end:     line.len
+			message: 'path for @include must be quoted with \' or "'
+		}
 		return []
 	}
 	mut file_name := line[quote_pos + 1..end_pos]
@@ -790,21 +812,36 @@ fn (mut p Parser) process_tmpl_includes(dir string, line string, mut seen map[st
 		// stop expanding, rather than silently dropping the include line. (A partial
 		// already fully expanded and popped is NOT in `seen`, so the same partial may
 		// legitimately be included more than once.)
-		p.record_diagnostic('circular veb template include `${file_name}${file_ext}` (${file_path})', p.tok_pos)
+		p.pending_template_diagnostics << TemplateDiagnostic{
+			path:    source_line.path
+			line:    source_line.line
+			start:   include_pos
+			end:     quote_pos
+			message: 'A recursive call is being made on template ${file_name}'
+		}
 		return []
 	}
 	content := os.read_lines(file_path) or {
-		p.record_diagnostic('veb template include `${file_name}${file_ext}` could not be opened (${file_path})', p.tok_pos)
+		p.pending_template_diagnostics << TemplateDiagnostic{
+			path:    source_line.path
+			line:    source_line.line
+			start:   quote_pos
+			end:     end_pos + 1
+			message: 'veb template include `${file_name}${file_ext}` could not be opened (${file_path})'
+		}
 		return []
 	}
 	// Mark this file as on the current recursion stack while its own includes are
 	// resolved, then pop it so a later sibling include of the same file still expands.
 	seen[file_path] = true
-	base := os.dir(file_path)
 	mut out := []TemplateSourceLine{}
 	for line_index, l in content {
 		if l.contains('@include ') {
-			out << p.process_tmpl_includes(base, l, mut seen)
+			out << p.process_tmpl_includes(TemplateSourceLine{
+				text: l
+				path: file_path
+				line: line_index + 1
+			}, mut seen)
 		} else {
 			out << TemplateSourceLine{
 				text: l
@@ -877,6 +914,7 @@ fn expand_veb_tr_shorthand(line string, ctx_name string) string {
 // set (a `$veb.html()` template), interpolated values are HTML-escaped via
 // `veb.filter_html`.
 fn (mut p Parser) compile_template_file(template_file string, bname string, escape bool) (string, []TemplateSourceLine) {
+	p.pending_template_diagnostics.clear()
 	raw_lines := os.read_lines(template_file) or {
 		p.record_diagnostic('reading from template ${template_file} failed', p.tok_pos)
 		return "mut ${bname} := ''\n", []TemplateSourceLine{}
@@ -904,7 +942,7 @@ fn (mut p Parser) compile_template_file(template_file string, bname string, esca
 	mut in_html_comment := false
 	mut brace_block_kinds := []TmplBraceBlockKind{}
 	mut seen_includes := map[string]bool{}
-	base_dir := os.dir(os.real_path(template_file))
+	seen_includes[root_path] = true
 	for i := 0; i < lines.len; i++ {
 		line := lines[i].text
 		trimmed_line := line.trim_space()
@@ -930,7 +968,7 @@ fn (mut p Parser) compile_template_file(template_file string, bname string, esca
 			}
 		}
 		if line.contains('@include ') {
-			resolved := p.process_tmpl_includes(base_dir, line, mut seen_includes)
+			resolved := p.process_tmpl_includes(lines[i], mut seen_includes)
 			lines.delete(i)
 			for resolved_line in resolved.reverse() {
 				lines.insert(i, resolved_line)
@@ -1090,6 +1128,12 @@ fn (mut p Parser) compile_template_file(template_file string, bname string, esca
 // 'html' (for veb.html, yields a veb.Result) or 'tmpl' (yields a string).
 fn (mut p Parser) parse_veb_template_expr(is_html bool) flat.NodeId {
 	call_start := int_max(0, p.span_start() - 1)
+	missing_veb_import := is_html && p.check_imports
+		&& !p.imported_module_names['veb']
+	if missing_veb_import {
+		p.record_diagnostic_span('`\$veb` cannot be used without importing veb', call_start,
+			call_start + 4)
+	}
 	if is_html {
 		p.next() // skip `veb`
 		p.check(.dot)
@@ -1123,12 +1167,14 @@ fn (mut p Parser) parse_veb_template_expr(is_html bool) flat.NodeId {
 	}
 	p.next() // skip `(`
 	mut had_arg := false
+	mut arg_pos := token.Pos{}
 	if p.tok != .rpar && p.tok != .eof && p.tok != .semicolon {
 		// The path may be a compile-time expression (a `const`, a local binding
 		// with a literal value, or a `+` concatenation of those), not just a raw
 		// string token — e.g. `const p = 'x.html'; $tmpl(p)`. Parse and resolve it.
 		had_arg = true
 		arg_id := p.expr(.lowest)
+		arg_pos = p.a.node(arg_id).pos
 		arg = p.resolve_tmpl_path_arg(arg_id)
 	}
 	for p.tok != .rpar && p.tok != .eof && p.tok != .semicolon {
@@ -1150,7 +1196,23 @@ fn (mut p Parser) parse_veb_template_expr(is_html bool) flat.NodeId {
 		p.record_diagnostic('${call}() template path must be a compile-time string (a string literal, `const`, or a `+` of those); dynamic paths are not supported', p.tok_pos)
 		return p.add_val_id(5, '')
 	}
+	if missing_veb_import {
+		return p.add_val_id(5, '')
+	}
 	path := p.resolve_veb_template_path(is_html, arg)
+	if !os.is_file(path) {
+		message := if is_html {
+			'veb HTML template "${arg}" not found'
+		} else {
+			'template file "${arg}" not found'
+		}
+		if had_arg && arg_pos.end >= arg_pos.offset {
+			p.record_diagnostic_span(message, arg_pos.offset, arg_pos.end)
+		} else {
+			p.record_diagnostic(message, call_start)
+		}
+		return p.add_val_id(5, '')
+	}
 	p.has_veb_template = true
 	return p.add_node(flat.Node{
 		kind:  .veb_template
@@ -1471,6 +1533,42 @@ fn (mut p Parser) remap_template_source(first_node int, first_diagnostic int, ge
 			})
 		}
 	}
+	mut diagnostic_sources := map[string]RegisteredTemplateSource{}
+	for diagnostic in p.pending_template_diagnostics {
+		mut registered := diagnostic_sources[diagnostic.path] or {
+			source := os.read_file(diagnostic.path) or { continue }
+			mut diagnostic_file_set := token.FileSet.new()
+			mut diagnostic_file := diagnostic_file_set.add_file(diagnostic.path, source.len)
+			diagnostic_file.index_lines(source)
+			diagnostic_id := p.next_file_id
+			p.next_file_id++
+			p.a.source_files[diagnostic_id] = diagnostic_file
+			created := RegisteredTemplateSource{
+				file:  diagnostic_file
+				lines: source.split_into_lines()
+				id:    diagnostic_id
+			}
+			diagnostic_sources[diagnostic.path] = created
+			created
+		}
+		if diagnostic.line <= 0 || diagnostic.line > registered.lines.len {
+			continue
+		}
+		line_text := registered.lines[diagnostic.line - 1]
+		line_start := registered.file.line_start(diagnostic.line)
+		start_column := int_max(0, int_min(diagnostic.start, line_text.len))
+		end_column := int_max(start_column + 1, int_min(diagnostic.end, line_text.len))
+		start := line_start + start_column
+		end := line_start + end_column
+		p.append_diagnostic(Diagnostic{
+			file:    diagnostic.path
+			pos:     token.new_span(registered.id, start, end)
+			line:    diagnostic.line
+			column:  diagnostic.start + 1
+			message: diagnostic.message
+		})
+	}
+	p.pending_template_diagnostics.clear()
 }
 
 fn (p &Parser) template_action_name() string {
@@ -2001,7 +2099,8 @@ fn (p &Parser) collect_template_free_idents(id flat.NodeId, mut declared map[str
 			// Skip the builder's own bindings and imported module names — a module
 			// (`os` in `@{os.base(path)}`) is not a local variable and must not be
 			// captured. A module-qualified helper is still reachable inside the closure.
-			if name.len > 0 && name != '_' && name !in declared && name !in p.imported_module_names {
+			if name.len > 0 && name != '_' && name !in declared && name !in p.imported_module_names
+				&& p.is_local_binding(name) {
 				// A mutable use (`mut buf` argument) must be captured `mut`; record it
 				// even if the name was already seen through an immutable use.
 				if node.is_mut {

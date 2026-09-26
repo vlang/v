@@ -312,7 +312,7 @@ NB: the build flags are shared with the run command too:
     each .v file.
 
   -n
-    Hide all notices.
+    Hide all notices, without hiding warnings or errors.
 
   -N
     Treat *all V notices* as errors.

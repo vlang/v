@@ -2443,7 +2443,7 @@ fn test_x11_backend_native_deps_are_flag_gated_source_guard() {
 	assert source.count('#flag linux -lxcb') == 1
 	assert source.count('#flag linux -lEGL') == 1
 	assert source.count('#flag linux -lGL') == 1
-	assert source.contains('$if gg_multiwindow ? || x_multiwindow_render ? {\n\timport sokol.gfx')
+	assert source.contains('$if gg_multiwindow ?|| x_multiwindow_render ? {\n\timport sokol.gfx')
 	assert guarded_native_deps.contains('\t#flag linux -lX11-xcb\n\t#flag linux -lX11\n')
 	assert_source_order(guarded_native_deps, '#flag linux -lX11', '#include <X11/Xlib.h>')
 }

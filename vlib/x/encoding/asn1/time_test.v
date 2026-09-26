@@ -18,6 +18,7 @@ fn test_serialize_utctime_basic() ! {
 
 	// back
 	back, pos := UtcTime.decode(out)!
+	assert pos == out.len
 	assert back.tag().tag_number() == int(TagType.utctime)
 	assert back == ut
 	assert back.value == inp
@@ -59,37 +60,33 @@ fn test_serialize_utctime_error_without_z() ! {
 	// this input does not contains zulu 'Z' part
 	inp := '191215190210'
 
-	exp := [u8(0x17), 0x0D, 49, 57, 49, 50, 49, 53, 49, 57, 48, 50, 49, 48]
-
-	ut := UtcTime.new(inp) or {
+	UtcTime.new(inp) or {
 		assert err == error('UtcTime: fail on validate utctime')
 		return
 	}
+	assert false, 'expected UtcTime.new to reject a value without the Z suffix'
 }
 
 fn test_serialize_utctime_error_month() ! {
 	// the month part is > 12
 	inp := '191815190210Z'
 
-	exp := [u8(0x17), 0x0D, 49, 57, 49, 56, 49, 53, 49, 57, 48, 50, 49, 48]
-
-	ut := UtcTime.new(inp) or {
+	UtcTime.new(inp) or {
 		assert err == error('UtcTime: fail on validate utctime')
 		return
 	}
+	assert false, 'expected UtcTime.new to reject an invalid month'
 }
 
 fn test_serialize_utctime_error_day() ! {
 	// the day part is > 30
 	inp := '191235190210Z'
 
-	exp := [u8(0x17), 0x0D, 0x31, 0x39, 0x31, 0x32, 0x31, 0x32, 0x31, 0x39, 0x30, 0x32, 0x31, 0x30,
-		0x5A]
-
-	ut := UtcTime.new(inp) or {
+	UtcTime.new(inp) or {
 		assert err == error('UtcTime: fail on validate utctime')
 		return
 	}
+	assert false, 'expected UtcTime.new to reject an invalid day'
 }
 
 fn test_serialize_decode_generalizedtime() ! {
@@ -103,6 +100,7 @@ fn test_serialize_decode_generalizedtime() ! {
 
 	// back
 	back, pos := GeneralizedTime.decode(out)!
+	assert pos == out.len
 
 	assert back == gt
 	assert back.value == s

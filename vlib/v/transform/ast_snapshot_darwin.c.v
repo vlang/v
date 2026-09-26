@@ -39,7 +39,7 @@ fn snapshot_ast_buffer(data voidptr, len u64, capacity u64) ?AstBufferSnapshot {
 	mut max_protection := 0
 	// Only replace the prefix of our own reservation. copy=1 gives both source
 	// and worker independent writes while initially sharing physical pages.
-	if C.mach_vm_remap(task, &address, copy_bytes, 0, C.VM_FLAGS_FIXED | C.VM_FLAGS_OVERWRITE, task, source - offset, 1, &current_protection, &max_protection, C.VM_INHERIT_NONE) != 0 {
+	if C.mach_vm_remap(task, &address, copy_bytes, 0, C.VM_FLAGS_FIXED | C.VM_FLAGS_OVERWRITE, task, source - offset, 1, &current_protection, &max_protection, u32(C.VM_INHERIT_NONE)) != 0 {
 		C.mach_vm_deallocate(task, reservation, bytes)
 		return none
 	}

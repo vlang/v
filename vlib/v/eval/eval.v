@@ -4073,7 +4073,8 @@ fn (mut e Eval) eval_map_init(node &flat.Node) !Value {
 }
 
 fn (mut e Eval) eval_map_init_flow(node &flat.Node) !FlowSignal {
-	mut key_type, mut value_type := split_map_type(node.value)
+	map_type := if node.typ.len > 0 { node.typ } else { node.value }
+	mut key_type, mut value_type := split_map_type(map_type)
 	children := e.children(node)
 	mut keys := []Value{}
 	mut values := []Value{}
@@ -5419,7 +5420,12 @@ fn (e &Eval) map_set_value(receiver MapValue, key Value, value Value) MapValue {
 }
 
 fn (e &Eval) map_delete_value(receiver MapValue, key Value) MapValue {
-	mut m := receiver
+	mut m := MapValue{
+		key_type_name:   receiver.key_type_name
+		value_type_name: receiver.value_type_name
+		default_value:   receiver.default_value
+		entries:         receiver.entries.clone()
+	}
 	typed_key := e.adapt_value_to_type_name(key, receiver.key_type_name)
 	for i, entry in m.entries {
 		if e.value_eq(entry.key, typed_key) {

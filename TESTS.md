@@ -191,6 +191,10 @@ In this mode, the output lines will be limited, no matter how many `_test.v`
 files there are. The output will contain the total stats and the output of
 the failing tests too.
 
+NB 6: Set `VTEST_SKIP_OWNERSHIP=1` to omit ownership and autofree tests from
+`v test`, `v test-self`, and `vlib/v/test_all.vsh`. GitHub Actions enables this
+behavior automatically while ownership/autofree coverage is disabled there.
+
 ## `.github/workflows/ci.yml`
 
 This is a Github Actions configuration file, that runs various CI

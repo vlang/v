@@ -277,12 +277,14 @@ fn (mut registry IocpConnRegistry) sweep_timed_out_io(timeout_ns u64) {
 		}
 		read_start := conn.read_start.load()
 		write_start := conn.write_start.load()
-		if !conn.request_active.load() && read_start > 0 && now - read_start >= timeout_ns
-			&& conn.mark_closing() {
+		// Workers can publish timestamps newer than this sweep's clock sample.
+		if !conn.request_active.load() && read_start > 0 && now >= read_start
+			&& now - read_start >= timeout_ns && conn.mark_closing() {
 			C.v_fasthttp_send(conn.fd, status_408_response.data, status_408_response.len, 0)
 			close_conn_socket(conn.fd)
 		}
-		if write_start > 0 && now - write_start >= timeout_ns && conn.mark_closing() {
+		if write_start > 0 && now >= write_start && now - write_start >= timeout_ns
+			&& conn.mark_closing() {
 			close_conn_socket(conn.fd)
 		}
 	}

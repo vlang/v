@@ -121,8 +121,15 @@ fn (mut t Transformer) transform_struct_fields(id flat.NodeId, node flat.Node) f
 			sum_field_type := t.struct_field_sum_type(field_type, info.module)
 			enum_field_type := t.enum_type_name_for_expected(field_type, info.module)
 			fixed_to_dynamic := field_type.starts_with('[]') && t.is_fixed_array_type(value_type)
+			shared_interface_source := !isnil(t.tc) && t.is_interface_type(field_type)
+				&& t.tc.struct_field_is_shared(node.value, target_field_name)
+				&& t.expr_is_shared_value(val_id)
 			// Check if the value is an enum shorthand and the field type is an enum
-			mut new_val := if val_node.kind == .enum_val && enum_field_type.len > 0 {
+			mut new_val := if shared_interface_source {
+				// Keep the concrete shared source intact so cgen can make the interface
+				// wrapper borrow both its value and its synchronization guard.
+				t.transform_expr(val_id)
+			} else if val_node.kind == .enum_val && enum_field_type.len > 0 {
 				t.transform_enum_shorthand(val_id, val_node, enum_field_type)
 			} else if fixed_to_dynamic {
 				t.fixed_array_value_to_owned_array(val_id, value_type, field_type)
@@ -137,10 +144,10 @@ fn (mut t Transformer) transform_struct_fields(id flat.NodeId, node flat.Node) f
 			} else {
 				t.transform_expr(val_id)
 			}
-			if sum_field_type.len == 0 && field_type.len > 0 {
+			if !shared_interface_source && sum_field_type.len == 0 && field_type.len > 0 {
 				new_val = t.coerce_transformed_expr_to_type(new_val, val_id, field_type)
 			}
-			if field_type.len > 0 && !fixed_to_dynamic {
+			if !shared_interface_source && field_type.len > 0 && !fixed_to_dynamic {
 				new_val = t.clone_borrowed_projection(val_id, new_val, field_type)
 			}
 			// Snapshot a preceding field value before a later field hoists its branch prelude,
@@ -870,8 +877,42 @@ fn (t &Transformer) lookup_struct_info(name string) ?StructInfo {
 	if name.starts_with('main.') && !name['main.'.len..].contains('.')
 		&& !name['main.'.len..].contains('[') {
 		bare := name['main.'.len..]
-		if bare in t.structs {
-			return t.structs[bare]
+		// The bare table is first-wins across modules, so it can hold an imported
+		// homonym: the explicit `main.` lock may only accept program-module entries.
+		if info := t.structs[bare] {
+			if info.module.len == 0 || info.module == 'main' {
+				return info
+			}
+		}
+	}
+	// A bare spelling belongs to the file that wrote it: `import iam { Token }`
+	// must select `iam.Token` even when another imported module declares a
+	// same-named type, otherwise field defaults and aliases of the homonym leak
+	// into the literal.
+	// `Token{}` and the generic application `Token[int]{}` both have to resolve
+	// their base through the writing file's imports; the candidate may also be a
+	// type alias (`import iam { Alias }`, `type Alias = Real`).
+	mut scoped_name := name
+	if t.cur_file.len > 0 {
+		scoped_base, _, scoped_has_generic_args := generic_app_parts(name)
+		lookup_name := if scoped_has_generic_args { scoped_base } else { name }
+		if !lookup_name.contains('.') {
+			if resolved := t.selective_import_type_name_for_file(t.cur_file, lookup_name) {
+				if scoped_has_generic_args {
+					// Keep the arguments; the generic branch below specializes the
+					// resolved base with them.
+					scoped_name = '${resolved}${name[scoped_base.len..]}'
+				} else {
+					if info := t.lookup_struct_info_direct(resolved) {
+						return info
+					}
+					if alias_target := t.alias_target_type_preserving_main_lock(resolved) {
+						if info := t.lookup_struct_info_direct(alias_target) {
+							return info
+						}
+					}
+				}
+			}
 		}
 	}
 	if alias_target := t.alias_target_type_preserving_main_lock(name) {
@@ -881,7 +922,7 @@ fn (t &Transformer) lookup_struct_info(name string) ?StructInfo {
 			}
 		}
 	}
-	base, args, has_generic_args := generic_app_parts(name)
+	base, args, has_generic_args := generic_app_parts(scoped_name)
 	if has_generic_args {
 		if base_info := t.lookup_struct_info_direct(base) {
 			params := t.generic_struct_param_names_for_base(base)
@@ -902,6 +943,7 @@ fn (t &Transformer) lookup_struct_info(name string) ?StructInfo {
 					name:      name
 					module:    base_info.module
 					is_params: base_info.is_params
+					is_c_anon: base_info.is_c_anon
 					fields:    fields
 				}
 			}

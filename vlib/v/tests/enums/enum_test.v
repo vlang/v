@@ -58,6 +58,7 @@ fn test_in() {
 	color := Color.red
 	num := 3 // used to be an expr bug before `in`
 	assert color in [.red, .green]
+	assert color in [Color.red, Color.green]
 	assert num == 3
 	println(color)
 	assert true

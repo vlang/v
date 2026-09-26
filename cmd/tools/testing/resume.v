@@ -29,9 +29,11 @@ fn test_resume_dir() string {
 }
 
 fn (ts &TestSession) test_resume(file string) !TestResume {
-	if ts.resume_dir == '' || !ts.will_compile || ts.exec_mode != .compile_and_run
-		|| !(file.ends_with('_test.v') || file.ends_with('_test.c.v')
-		|| file.ends_with('_test.js.v')) {
+	is_test_file := ts.will_compile && ts.exec_mode == .compile_and_run
+		&& (file.ends_with('_test.v') || file.ends_with('_test.c.v')
+			|| file.ends_with('_test.js.v'))
+	is_source_check := ts.vargs.split(' ').any(it in ['vet', 'fmt'])
+	if ts.resume_dir == '' || (!is_test_file && !is_source_check) {
 		return TestResume{}
 	}
 	// Separate files and compiler options, including function filters. Hash the
@@ -48,6 +50,9 @@ fn (ts &TestSession) test_resume(file string) !TestResume {
 	contents := 'vtest-resume-v1\n${file}\n${sha256.hexhash(os.read_file(file)!)}\n'
 	mut passed := false
 	if os.exists(path) {
+		if !os.is_file(path) {
+			return error('test progress path is not a file: ${path}')
+		}
 		passed = os.read_file(path)! == contents
 	}
 	return TestResume{

@@ -187,3 +187,14 @@ fn test_defer_inside_comptime_if_else() {
 	}
 	assert true
 }
+
+fn test_defer_unsafe_block_is_not_nested_in_enclosing_unsafe() {
+	unsafe {
+		p := malloc(1)
+		defer {
+			unsafe {
+				p.free()
+			}
+		}
+	}
+}

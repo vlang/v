@@ -114,7 +114,21 @@ fn C.SSL_CTX_free(ctx &C.SSL_CTX)
 
 fn C.SSL_CTX_use_certificate_file(ctx &C.SSL_CTX, const_file &char, file_type i32) i32
 
+fn C.SSL_CTX_use_certificate_chain_file(ctx &C.SSL_CTX, const_file &char) i32
+
 fn C.SSL_CTX_use_PrivateKey_file(ctx &C.SSL_CTX, const_file &char, file_type i32) i32
+
+fn C.v_net_openssl_SSL_CTX_use_certificate_chain_memory(ctx &C.SSL_CTX, data &u8, len usize) i32
+
+fn C.v_net_openssl_SSL_CTX_extra_chain_certs_count(ctx &C.SSL_CTX) int
+
+fn C.v_net_openssl_SSL_CTX_use_PrivateKey_memory(ctx &C.SSL_CTX, data &u8, len usize) i32
+
+fn C.v_net_openssl_SSL_CTX_load_verify_memory(ctx &C.SSL_CTX, data &u8, len usize) i32
+
+fn C.v_net_openssl_SSL_CTX_load_client_CA_file(ctx &C.SSL_CTX, const_file &char) i32
+
+fn C.v_net_openssl_SSL_CTX_client_CA_names_count(ctx &C.SSL_CTX) int
 
 fn C.SSL_new(&C.SSL_CTX) &C.SSL
 
@@ -158,6 +172,8 @@ fn C.v_net_openssl_set_alpn_protos(ssl &C.SSL, protos &u8, protos_len u32) i32
 
 fn C.v_net_openssl_get0_alpn_selected(ssl &C.SSL, data voidptr, len &u32)
 
+fn C.v_net_openssl_SSL_CTX_set_alpn_select_protos(ctx &C.SSL_CTX, protos &u8, protos_len u32) voidptr
+
 fn C.SSL_shutdown(&C.SSL) i32
 
 fn C.SSL_free(&C.SSL)
@@ -170,7 +186,13 @@ fn C.SSLv23_client_method() &C.SSL_METHOD
 
 fn C.TLS_method() voidptr
 
+fn C.v_net_openssl_TLS_server_method() &C.SSL_METHOD
+
 fn C.TLSv1_2_method() voidptr
+
+fn C.SSL_CTX_check_private_key(ctx &C.SSL_CTX) i32
+
+fn C.SSL_accept(ssl &C.SSL) i32
 
 fn C.v_net_openssl_init_ssl() i32
 

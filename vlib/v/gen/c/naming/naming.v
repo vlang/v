@@ -69,6 +69,7 @@ const libc_collisions = {
 	'ceilf':    true
 	'close':    true
 	'clock':    true
+	'connect':  true
 	'cos':      true
 	'drem':     true
 	'dup2':     true
@@ -96,6 +97,7 @@ const libc_collisions = {
 	'pipe':     true
 	'pow':      true
 	'printf':   true
+	'raise':    true
 	'read':     true
 	'realpath': true
 	'rint':     true
@@ -427,4 +429,103 @@ pub fn fn_ptr_type_name(encoded string) string {
 		hash = (hash ^ u64(c)) * u64(1099511628211)
 	}
 	return '_fn_ptr_${hash.hex()}'
+}
+
+// fn_ptr_encoded returns the internal `fn_ptr:ret|params` key of a function-pointer
+// signature from the C spellings of its return type and parameter types. A part that
+// is itself a `fn_ptr:` key is wrapped in parentheses (see fn_ptr_encoded_part), so
+// its own `|` and `, ` separators cannot merge into the enclosing signature.
+pub fn fn_ptr_encoded(ret string, params []string) string {
+	mut sb := strings.new_builder(32)
+	sb.write_string('fn_ptr:')
+	sb.write_string(fn_ptr_encoded_part(ret))
+	sb.write_u8(`|`)
+	if params.len == 0 {
+		sb.write_string('void')
+	}
+	for i, param in params {
+		if i > 0 {
+			sb.write_string(', ')
+		}
+		sb.write_string(fn_ptr_encoded_part(param))
+	}
+	return sb.str()
+}
+
+// fn_ptr_encoded_part spells a return or parameter C type the way it is embedded in
+// an enclosing `fn_ptr:ret|params` key. A nested `fn_ptr:` key is parenthesized:
+// spliced in as is, `fn (int, fn (int, int) int)` and `fn (int, fn (int) int, int)`
+// would both read `fn_ptr:void|i64, fn_ptr:i64|i64, i64`.
+pub fn fn_ptr_encoded_part(ct string) string {
+	if ct.starts_with('fn_ptr:') {
+		return '(${ct})'
+	}
+	return ct
+}
+
+// fn_ptr_encoded_unwrap undoes fn_ptr_encoded_part for one return or parameter part.
+pub fn fn_ptr_encoded_unwrap(part string) string {
+	clean := part.trim_space()
+	if clean.len > 2 && clean[0] == `(` && clean[clean.len - 1] == `)`
+		&& clean[1..].starts_with('fn_ptr:') {
+		return clean[1..clean.len - 1]
+	}
+	return clean
+}
+
+// fn_ptr_encoded_split splits a `fn_ptr:ret|params` key into its return type (with a
+// nested `fn_ptr:` key unwrapped) and its raw parameter list (see fn_ptr_encoded_params).
+// A key without a parameter list yields `void` parameters.
+pub fn fn_ptr_encoded_split(encoded string) (string, string) {
+	payload := if encoded.starts_with('fn_ptr:') { encoded['fn_ptr:'.len..] } else { encoded }
+	mut depth := 0
+	for i in 0 .. payload.len {
+		match payload[i] {
+			`(` {
+				depth++
+			}
+			`)` {
+				depth--
+			}
+			`|` {
+				if depth == 0 {
+					return fn_ptr_encoded_unwrap(payload[..i]), payload[i + 1..]
+				}
+			}
+			else {}
+		}
+	}
+	return fn_ptr_encoded_unwrap(payload), 'void'
+}
+
+// fn_ptr_encoded_params splits the raw parameter list of a `fn_ptr:ret|params` key into
+// its parameter C types, keeping each parenthesized nested `fn_ptr:` key in one piece
+// and unwrapping it. A `void` (or empty) list yields no parameters.
+pub fn fn_ptr_encoded_params(params string) []string {
+	clean := params.trim_space()
+	if clean.len == 0 || clean == 'void' {
+		return []string{}
+	}
+	mut out := []string{}
+	mut depth := 0
+	mut start := 0
+	for i in 0 .. clean.len {
+		match clean[i] {
+			`(` {
+				depth++
+			}
+			`)` {
+				depth--
+			}
+			`,` {
+				if depth == 0 {
+					out << fn_ptr_encoded_unwrap(clean[start..i])
+					start = i + 1
+				}
+			}
+			else {}
+		}
+	}
+	out << fn_ptr_encoded_unwrap(clean[start..])
+	return out
 }

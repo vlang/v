@@ -8,6 +8,13 @@ fn (t &Transformer) is_interface_type(name string) bool {
 	return t.resolve_interface_type_name(name).len > 0
 }
 
+// has_ierror_interface reports whether option/result wrappers carry an `err`
+// field. cgen omits it when `IError` is not declared (`-no-builtin`), so lowering
+// must neither bind the implicit `err` nor copy `.err` between wrappers then.
+fn (t &Transformer) has_ierror_interface() bool {
+	return isnil(t.tc) || t.tc.has_ierror_interface()
+}
+
 fn (t &Transformer) is_builtin_ierror_interface_name(name string) bool {
 	clean := t.trim_pointer_type(t.normalize_type_alias(name))
 	return clean == 'IError' || clean == 'builtin.IError'
@@ -107,6 +114,12 @@ fn (t &Transformer) interface_target_should_share_source(id flat.NodeId, target_
 	iface_name := t.resolve_interface_type_name(target_type)
 	if iface_name.len == 0 {
 		return false
+	}
+	// Interfaces with mutable fields are views onto the source object. The checker
+	// already rejects immutable value sources for these casts, so an addressable
+	// value must be shared rather than copied into an independent interface box.
+	if t.tc.interface_field_list(iface_name).any(it.is_mut) && t.expr_can_take_address(id) {
+		return true
 	}
 	if !t.in_return_expr && t.interface_pointer_source_needs_heap_copy(id) {
 		return true
@@ -210,12 +223,23 @@ fn (mut t Transformer) transform_interface_value_for_type(id flat.NodeId, target
 	if target_is_ptr && node.kind == .cast_expr && node.value.starts_with('&')
 		&& t.resolve_interface_type_name(node.value) == iface_name {
 		if node.children_count == 1 {
-			child := t.a.nodes[int(t.a.child(&node, 0))]
+			child_id := t.a.child(&node, 0)
+			child := t.a.nodes[int(child_id)]
 			if child.kind == .call && child.children_count > 0 {
 				callee := t.a.child_node(&child, 0)
 				if callee.kind == .ident && callee.value == 'memdup' {
 					return id
 				}
+			}
+			mut child_type := t.node_type(child_id)
+			if child_type.len == 0 {
+				child_type = t.checker_node_type(child_id)
+			}
+			if t.normalize_type_alias(child_type) in ['voidptr', '&void'] {
+				literal := t.make_interface_literal_from_expr(child_id, iface_name, false) or {
+					return none
+				}
+				return t.heap_copy_interface_expr(literal, iface_name, target_type)
 			}
 		}
 		return t.transform_expr(id)
@@ -749,7 +773,8 @@ fn (mut t Transformer) make_interface_literal_from_expr(id flat.NodeId, iface_na
 	}
 	source_node := t.a.nodes[int(source_id)]
 	source_is_mut_pointer_slot := source_node.kind == .ident
-		&& t.pointer_value_rvalues[source_node.value]
+		&& (t.pointer_value_rvalues[source_node.value]
+			|| source_node.value in t.mut_param_values)
 		&& t.var_type(source_node.value).starts_with('&&')
 	if source_is_mut_pointer_slot {
 		// `mut p &T` has `&&T` storage but its expression value is `&T`.
@@ -758,7 +783,16 @@ fn (mut t Transformer) make_interface_literal_from_expr(id flat.NodeId, iface_na
 	if source_type.len == 0 {
 		return none
 	}
-	source_expr := if source_is_heaped_amp_child || source_type.starts_with('&') {
+	source_is_generic_mut_pointer_slot := source_is_mut_pointer_slot
+		&& source_node.value !in t.pointer_value_rvalues
+	source_expr := if source_is_generic_mut_pointer_slot {
+		// A `mut x T` specialization with `T = &U` has `&&U` storage, while the
+		// scoped expression type is `&U`. Read the pointer value before boxing it.
+		value := t.transform_expr(source_id)
+		deref := t.make_prefix(.mul, value)
+		t.set_node_typ(int(deref), source_type)
+		deref
+	} else if source_is_heaped_amp_child || source_type.starts_with('&') {
 		source := t.a.nodes[int(source_id)]
 		had_rvalue := source.kind == .ident && source.value in t.pointer_value_rvalues
 			&& !source_is_mut_pointer_slot
@@ -845,8 +879,12 @@ fn (mut t Transformer) make_interface_literal_from_expr(id flat.NodeId, iface_na
 	field_ids << t.make_sum_literal_field('_object', object_expr, '&${concrete_type}')
 	for field in fields {
 		field_type := t.normalize_type_alias(field.typ.name())
-		mut field_value := t.make_selector(field_base, field.name, field_type)
-		if is_ptr {
+		mut field_value := if concrete_type == 'voidptr' {
+			t.zero_value_for_type(field_type)
+		} else {
+			t.make_selector(field_base, field.name, field_type)
+		}
+		if is_ptr && concrete_type != 'voidptr' {
 			field_value = t.null_safe_interface_pointer_field(source, field_value, field_type)
 		}
 		field_ids << t.make_sum_literal_field(field.name, field_value, field_type)

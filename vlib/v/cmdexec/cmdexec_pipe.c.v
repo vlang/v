@@ -7,7 +7,8 @@ $if windows {
 
 	fn C.PeekNamedPipe(handle voidptr, buffer voidptr, size i32, bytes_read voidptr, bytes_available voidptr, bytes_left voidptr) bool
 } $else {
-	#include <poll.h>
+	// Picks <sys/poll.h> on glibc and <poll.h> elsewhere, including musl.
+	#insert "@VEXEROOT/vlib/v/cmdexec/cmdexec_poll.h"
 
 	struct C.pollfd {
 		fd      int
@@ -31,7 +32,7 @@ fn read_process_pipe(mut process os.Process, kind os.ChildProcessPipeKind) (stri
 			return '', true
 		}
 		mut available := u32(0)
-		if !C.PeekNamedPipe(handle, 0, 0, 0, &available, 0) {
+		if !C.PeekNamedPipe(handle, 0, 0, 0, voidptr(&available), 0) {
 			return '', true
 		}
 		if available == 0 {

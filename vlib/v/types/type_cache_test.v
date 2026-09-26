@@ -581,6 +581,23 @@ fn test_generic_text_substitution_recurses_through_wrappers() {
 	assert subst_generic_text('chan ?[]T', ['i16'], ['T']) == 'chan ?[]i16'
 }
 
+fn test_generic_type_substitution_updates_fixed_array_length_expr() {
+	a := flat.FlatAst.new()
+	tc := TypeChecker.new(&a)
+	typ := tc.parse_type('[cache_line_size - sizeof(T)]u8')
+	assert typ is ArrayFixed
+
+	text_substituted := tc.substitute_generic_type(typ, ['int'], ['T'])
+	assert text_substituted is ArrayFixed
+	assert (text_substituted as ArrayFixed).len_expr == 'cache_line_size - sizeof(int)'
+
+	value_substituted := tc.substitute_generic_type_values(typ, [Type(int_)], ['T'])
+	assert value_substituted is ArrayFixed
+	assert (value_substituted as ArrayFixed).len_expr == 'cache_line_size - sizeof(int)'
+	assert subst_generic_const_expr('sizeof(T) + T_SIZE', ['u64'], ['T']) ==
+		'sizeof(u64) + T_SIZE'
+}
+
 fn test_generic_text_substitution_preserves_mut_fn_pointer_params() {
 	substituted := subst_generic_text('fn (mut T) string', ['&Dog'], ['T'])
 	assert substituted == 'fn(mut &Dog) string'

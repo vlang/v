@@ -7,7 +7,8 @@ fn test_reading_from_a_map_of_sumtype_values() {
 	values['abc'] = 'xyz'
 	values['xyz'] = 123
 	values['xxx'] = true
-	println(unsafe { values['abcz'] }) // no warning/error, due to the unsafe{}
+	missing := values['abcz'] or { false }
+	assert missing is bool
 	if value := values['abc'] {
 		eprintln('existing key `abc` is present, value: ${value}')
 		assert true

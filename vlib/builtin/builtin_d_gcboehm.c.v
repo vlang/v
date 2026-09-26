@@ -40,6 +40,8 @@ $if dynamic_boehm ? {
 			#flag -I @VEXEROOT/thirdparty/libgc/include
 		} $else {
 			#flag -DGC_WIN32_THREADS=1
+			#flag -DNO_MSGBOX_ON_ERROR=1
+			#flag -DCONSOLE_LOG=1
 			#flag -DGC_BUILTIN_ATOMIC=1
 			#flag -I @VEXEROOT/thirdparty/libgc/include
 			#flag -DALL_INTERIOR_POINTERS=1
@@ -148,6 +150,10 @@ $if dynamic_boehm ? {
 	} $else $if windows {
 		#flag -DGC_NOT_DLL=1
 		#flag -DGC_WIN32_THREADS=1
+		// For the libgc built from source: report like on other platforms, on
+		// stderr, instead of in a modal message box and an `<exe>.gc.log` file.
+		#flag -DNO_MSGBOX_ON_ERROR=1
+		#flag -DCONSOLE_LOG=1
 		#flag -luser32
 		$if tinyc {
 			#flag -DGC_BUILTIN_ATOMIC=1
@@ -185,6 +191,9 @@ $if gcboehm_leak ? {
 #include <gc.h>
 #include "@VEXEROOT/vlib/builtin/gc_debugger_linux.h"
 #define v_gc_set_warn_proc(cb) GC_set_warn_proc((GC_warn_proc)(cb))
+#define v_gc_set_abort_func(cb) GC_set_abort_func((GC_abort_func)(cb))
+#define v_gc_get_abort_func() ((void *)GC_get_abort_func())
+#define v_gc_call_abort_func(fn, msg) ((GC_abort_func)(fn))(msg)
 
 // #include <gc/gc_mark.h>
 
@@ -296,7 +305,22 @@ pub type FnGC_WarnCB = fn (const_msg &char, arg usize)
 fn C.GC_get_warn_proc() FnGC_WarnCB
 fn C.v_gc_set_warn_proc(cb FnGC_WarnCB)
 
-fn C.GC_register_displacement(offset usize)
+// GC_REGISTER_DISPLACEMENT is `GC_debug_register_displacement` when `GC_DEBUG` is set
+// (`-gc boehm_leak`), and `GC_register_displacement` otherwise.
+fn C.GC_REGISTER_DISPLACEMENT(offset usize)
+
+// FnGC_AbortCB is the type of Boehm's fatal error handler (`GC_abort_func`).
+// `const_msg` is nil when Boehm calls it right before `exit(1)`.
+type FnGC_AbortCB = fn (const_msg &char)
+
+// The abort handler functions go through casting macros: V function types drop
+// the `const` of Boehm's `const char *` parameter, which gcc rejects.
+fn C.v_gc_get_abort_func() voidptr
+fn C.v_gc_set_abort_func(cb FnGC_AbortCB)
+fn C.v_gc_call_abort_func(cb voidptr, msg &char)
+
+// Boehm's own abort handler, kept for the non-display part of its work.
+__global gc_boehm_default_abort_func voidptr
 
 // gc_get_warn_proc returns the current callback fn, that will be used for printing GC warnings.
 pub fn gc_get_warn_proc() FnGC_WarnCB {
@@ -310,6 +334,46 @@ pub fn gc_set_warn_proc(cb FnGC_WarnCB) {
 
 // used by builtin_init:
 fn internal_gc_warn_proc_none(const_msg &char, arg usize) {}
+
+// gc_report_fatal_errors_on_stderr replaces Boehm's abort handler. On Windows the
+// default one shows a modal message box and waits for someone to dismiss it, so a
+// console program or a test run hangs instead of failing.
+fn gc_report_fatal_errors_on_stderr() {
+	gc_boehm_default_abort_func = C.v_gc_get_abort_func()
+	C.v_gc_set_abort_func(internal_gc_abort_to_stderr)
+}
+
+// internal_gc_abort_to_stderr prints a fatal Boehm error on stderr, as Boehm does
+// on Linux and macOS. Windows reporting avoids allocating or locking CRT stdio.
+fn internal_gc_abort_to_stderr(const_msg &char) {
+	// Print before chaining: with GC_LOOP_ON_ABORT set the default handler never
+	// returns. Boehm's own handler also prints first and loops last.
+	if const_msg != unsafe { nil } {
+		$if windows {
+			// The heap may be corrupted, and stopped threads may hold heap or stdio locks.
+			newline := '\n'
+			write_buf_to_std_handle_kernel32(2, &u8(const_msg), vstrlen_char(const_msg))
+			write_buf_to_std_handle_kernel32(2, newline.str, newline.len)
+		} $else {
+			C.fprintf(C.stderr, c'%s\n', const_msg)
+			C.fflush(C.stderr)
+		}
+	}
+	// With a nil message the default handler only disables the at-exit leak
+	// collection (and honours GC_LOOP_ON_ABORT); it shows no message box.
+	C.v_gc_call_abort_func(gc_boehm_default_abort_func, unsafe { nil })
+	$if windows {
+		if const_msg == unsafe { nil } || C.IsDebuggerPresent() {
+			// Let Boehm finish its exit path or stop in the attached debugger.
+			return
+		}
+		$if tinyc {
+			print_backtrace()
+		}
+		// Skip at-exit handlers after a fatal collector error.
+		C._exit(1)
+	}
+}
 
 @[markused]
 fn gc_prepare_for_debugger_init() bool {
