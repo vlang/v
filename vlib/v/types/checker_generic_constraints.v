@@ -694,6 +694,13 @@ struct ConstraintWalkItem {
 	id          flat.NodeId
 	narrowed    []string                     // names whose type an `is` or a `match` decided here
 	constraints map[string]GenericConstraint // what each type parameter is here: `$if T is f64` narrows it
+	// The names that an array method gives its argument here, `it`, or `a` and
+	// `b` of a sort, and the type of the elements they stand for.
+	dsl_names []string
+	dsl_elem  Type = Type(void_)
+	// The types of the parameters of a short lambda written here, `|x| x.age`,
+	// as the call it is an argument of gives them.
+	lambda_types []Type
 }
 
 // check_generic_fn_constraint_members reports, in the body of a generic
@@ -734,6 +741,16 @@ fn (mut tc TypeChecker) check_generic_fn_constraint_members(fn_node flat.Node) {
 			continue
 		}
 		node := tc.a.node(item.id)
+		// The names an array method gives its argument stand for its elements
+		// again here: a method of the same kind inside gave them others.
+		for name in item.dsl_names {
+			tc.cur_scope.insert(name, item.dsl_elem)
+		}
+		// The names that the arguments of an array method called here get, and
+		// the types of the parameters of the lambdas among the arguments.
+		mut arg_dsl_names := []string{}
+		mut arg_dsl_elem := Type(void_)
+		mut arg_lambda_types := map[int][]Type{}
 		match node.kind {
 			// `$if T is f64 {` decides what `T` is in each branch, as `$if x is f64 {`
 			// does for `x T`; a condition that narrows a constrained type parameter
@@ -746,13 +763,33 @@ fn (mut tc TypeChecker) check_generic_fn_constraint_members(fn_node flat.Node) {
 						id:          branch.id
 						narrowed:    item.narrowed
 						constraints: branch.constraints
+						dsl_names:   item.dsl_names
+						dsl_elem:    item.dsl_elem
 					}
 				}
 				continue
 			}
-			// Compile-time loops and closures decide their own types.
-			.comptime_for, .fn_literal, .lambda_expr {
+			// Compile-time loops decide their own types.
+			.comptime_for {
 				continue
+			}
+			// A closure takes values of the types its parameters name, `fn (x T)`.
+			.fn_literal {
+				for i in 0 .. node.children_count {
+					param := tc.a.child_node(node, i)
+					if param.kind == .param && param.value.len > 0 {
+						tc.cur_scope.insert(param.value, tc.constraint_walk_named_type(param.typ))
+					}
+				}
+			}
+			// `|x| x.age`: its parameters take the types that the call it is an
+			// argument of gives them, the elements of an array method's array.
+			.lambda_expr {
+				for i in 0 .. node.children_count - 1 {
+					if i < item.lambda_types.len {
+						tc.bind_constraint_walk_local(tc.a.child(node, i), item.lambda_types[i])
+					}
+				}
 			}
 			.decl_assign {
 				tc.bind_constraint_walk_decl(*node, guards[int(item.id)])
@@ -778,6 +815,28 @@ fn (mut tc TypeChecker) check_generic_fn_constraint_members(fn_node flat.Node) {
 						callees[int(callee_id)] = true
 						tc.check_constraint_member(item.id, *node, callee_id, callee, true,
 							item.constraints, item.narrowed)
+					}
+					// `xs.map(it.age)`: the argument of an array method has
+					// the elements of the array as `it`, or as `a` and `b`.
+					dsl_name := tc.unresolved_array_dsl_call_name(*node)
+					if dsl_name.len > 0 && callee.children_count > 0 {
+						receiver := unalias_type(unwrap_pointer(tc.constraint_walk_value_type(tc.a.child(callee,
+							0))))
+						if receiver is Array {
+							is_sort := is_array_sort_dsl_call_name(dsl_name)
+							arg_dsl_names = if is_sort { ['a', 'b'] } else { ['it'] }
+							arg_dsl_elem = receiver.elem_type
+							elems := if is_sort {
+								[receiver.elem_type, receiver.elem_type]
+							} else {
+								[receiver.elem_type]
+							}
+							for i in 1 .. node.children_count {
+								arg_lambda_types[i] = elems
+							}
+						}
+					} else {
+						arg_lambda_types = tc.constraint_walk_lambda_arg_types(item.id, *node)
 					}
 				}
 			}
@@ -809,14 +868,55 @@ fn (mut tc TypeChecker) check_generic_fn_constraint_members(fn_node flat.Node) {
 		}
 		narrowed := tc.constraint_walk_narrowed(*node, item.narrowed)
 		for i := node.children_count - 1; i >= 0; i-- {
+			// The arguments of an array method, after what it is called on.
+			is_dsl_arg := arg_dsl_names.len > 0 && i > 0
 			stack << ConstraintWalkItem{
-				id:          tc.a.child(node, i)
-				narrowed:    narrowed
-				constraints: item.constraints
+				id:           tc.a.child(node, i)
+				narrowed:     narrowed
+				constraints:  item.constraints
+				dsl_names:    if is_dsl_arg { arg_dsl_names } else { item.dsl_names }
+				dsl_elem:     if is_dsl_arg { arg_dsl_elem } else { item.dsl_elem }
+				lambda_types: arg_lambda_types[i] or { []Type{} }
 			}
 		}
 	}
 	tc.pop_scope()
+}
+
+// constraint_walk_lambda_arg_types gives each short lambda among the arguments
+// of the call `node`, `apply(xs, |x| x.age)`, by the index of its argument, the
+// types of the parameters of the function type that the callee declares there,
+// with the type parameters that the call binds.
+fn (mut tc TypeChecker) constraint_walk_lambda_arg_types(id flat.NodeId, node flat.Node) map[int][]Type {
+	mut result := map[int][]Type{}
+	mut lambdas := []int{}
+	for i in 1 .. node.children_count {
+		if tc.a.child_node(&node, i).kind == .lambda_expr {
+			lambdas << i
+		}
+	}
+	if lambdas.len == 0 {
+		return result
+	}
+	binding := tc.constraint_walk_call_bindings(id, node) or { return result }
+	param_texts := tc.fn_param_type_texts[binding.info.name] or { return result }
+	first := if binding.info.has_receiver && param_texts.len > 0 { 1 } else { 0 }
+	mut args := []Type{cap: binding.names.len}
+	for name in binding.names {
+		args << binding.types[name] or { unknown_type('unbound type parameter') }
+	}
+	for i in lambdas {
+		param_idx := i - 1 - binding.info.arg_offset + first
+		if param_idx < first || param_idx >= param_texts.len {
+			continue
+		}
+		expected := unalias_type(tc.substitute_generic_type_values(tc.parse_type(param_texts[param_idx]),
+			args, binding.names))
+		if expected is FnType {
+			result[i] = expected.params
+		}
+	}
+	return result
 }
 
 // bind_constraint_walk_decl binds the names that the declaration `node`

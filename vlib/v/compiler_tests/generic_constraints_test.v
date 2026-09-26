@@ -1039,6 +1039,132 @@ fn main() {
 	], res.output
 }
 
+fn test_a_closure_in_a_constrained_body_uses_what_the_constraint_provides() {
+	// A function literal, `fn (x T) string {`, `it` of an array method,
+	// `xs.map(it.age)`, `a` and `b` of a sort, and a short lambda, `|x| x.age`,
+	// take a value of `T` too, with what its constraint provides.
+	res := check_program('closures', 'fn labels[T Named](xs []T) []string {
+	f := fn (x T) string {
+		return x.name + x.age.str()
+	}
+	return xs.map(f)
+}
+
+fn ages[T Named](xs []T) []int {
+	return xs.map(fn (x T) int {
+		return x.age
+	})
+}
+
+fn its[T Named](xs []T) []int {
+	println(xs.filter(it.name.len > 0).len)
+	return xs.map(it.age)
+}
+
+fn sorted_ages[T Named](mut xs []T) {
+	xs.sort(a.age < b.age)
+}
+
+fn lambdas[T Named](xs []T) []int {
+	println(xs.map(|x| x.name))
+	return xs.map(|x| x.age)
+}
+
+fn main() {}
+')
+	assert res.exit_code == 1, res.output
+	no_age := 'type `T` has no field named `age`: its constraint `Named` does not declare it'
+	assert error_lines(res.output) == [
+		'3:21: ${no_age}',
+		'10:12: ${no_age}',
+		'16:19: ${no_age}',
+		'20:12: ${no_age}',
+		'20:20: ${no_age}',
+		'25:22: ${no_age}',
+	], res.output
+}
+
+fn test_every_kind_of_closure_and_array_method_in_a_constrained_body_is_checked() {
+	// `it` is the element of the nearest array method, again after an inner one
+	// over other elements; `sorted` and its lambda, `any`, `all` and `count`; a
+	// closure over `&T`, one inside another; a lambda passed to a generic
+	// function, whose parameter type binds it. What `User` or an `int` has, or
+	// what the constraint declares, stays allowed.
+	res := check_program('closures_everywhere', 'fn apply[U](xs []U, f fn (U) int) []int {
+	mut out := []int{}
+	for x in xs {
+		out << f(x)
+	}
+	return out
+}
+
+fn twice(f fn (int) int) int {
+	return f(2)
+}
+
+fn nested[T Named](xs []T) int {
+	return xs.filter(it.name.len > 0 && [1, 2].any(it > 0) && it.age > 0).len
+}
+
+fn sorted_by_age[T Named](xs []T) []T {
+	return xs.sorted(|p, q| p.age < q.age)
+}
+
+fn tests[T Named](xs []T) {
+	println(xs.any(it.age > 1))
+	println(xs.all(it.age > 1))
+	println(xs.count(it.age > 1))
+}
+
+fn pointers[T Named](x &T) int {
+	f := fn (y &T) int {
+		return y.age
+	}
+	return f(x)
+}
+
+fn inside[T Named](x T) int {
+	outer := fn (y T) int {
+		inner := fn (z T) int {
+			return z.age
+		}
+		return inner(y)
+	}
+	return outer(x)
+}
+
+fn fine[T Named](xs []T, users []User) {
+	println([1, 2].map(it * 2))
+	println(users.map(it.age))
+	g := fn (u User) int {
+		return u.age
+	}
+	println(users.map(g))
+	println(twice(|n| n * 2))
+	println(apply(xs, |x| x.name.len))
+}
+
+fn given[T Named](xs []T) []int {
+	return apply(xs, |x| x.age)
+}
+
+fn main() {}
+')
+	assert res.exit_code == 1, res.output
+	no_age := 'type `T` has no field named `age`: its constraint `Named` does not declare it'
+	assert error_lines(res.output) == [
+		'14:63: ${no_age}',
+		'18:28: ${no_age}',
+		'18:36: ${no_age}',
+		'22:20: ${no_age}',
+		'23:20: ${no_age}',
+		'24:22: ${no_age}',
+		'29:12: ${no_age}',
+		'37:13: ${no_age}',
+		'56:25: ${no_age}',
+	], res.output
+}
+
 fn test_an_inferred_generic_struct_init_is_checked() {
 	res := check_program('inferred_init', "struct Box[T Named] {
 	item T
