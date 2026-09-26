@@ -1921,6 +1921,10 @@ x := if n > 2 {
 dump(x)
 ```
 
+When comparing an enum value with an `if` or `match` expression using `==` or `!=`,
+the enum operand supplies the type for shorthand values such as `.red` in the branches.
+This works with the enum operand on either side of the comparison.
+
 #### `If` unwrapping
 Anywhere you can use `or {}`, you can also use "if unwrapping". This binds the unwrapped value
 of an expression to a variable when that expression is not none nor an error.
