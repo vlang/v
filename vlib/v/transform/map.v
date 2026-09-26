@@ -1814,11 +1814,86 @@ fn (mut t Transformer) make_map_set_stmt(map_expr flat.NodeId, base_type string,
 	return t.make_expr_stmt(call)
 }
 
+// stable_map_lvalue_for_reuse returns a reusable lvalue for a map that is about to be
+// mutated. A map-valued `m[k]` (the base of `m[k][k2] << v` or `m[k][k2][k3] = v`)
+// becomes a reference to the inner map stored in `m`.
 fn (mut t Transformer) stable_map_lvalue_for_reuse(id flat.NodeId) flat.NodeId {
+	if slot := t.map_index_inner_map_slot(id) {
+		return slot
+	}
 	if t.expr_can_take_address(id) {
 		return t.transform_lvalue(id)
 	}
 	return t.stable_expr_for_reuse(id)
+}
+
+// unwrap_parens returns `id` without the parentheses around it.
+fn (t &Transformer) unwrap_parens(id flat.NodeId) flat.NodeId {
+	mut cur := id
+	for int(cur) >= 0 {
+		node := t.a.nodes[int(cur)]
+		if node.kind != .paren || node.children_count == 0 {
+			break
+		}
+		cur = t.a.child(&node, 0)
+	}
+	return cur
+}
+
+// map_index_yields_map reports whether `id` is a map index whose value is a map.
+fn (mut t Transformer) map_index_yields_map(id flat.NodeId) bool {
+	info := t.map_index_info(t.unwrap_parens(id)) or { return false }
+	return t.clean_map_type(info.value_type).starts_with('map[')
+}
+
+// map_index_inner_map_slot lowers a map-valued `m[k]` that is mutated through to
+// `*(&Inner)slot`, where `slot` points at the value stored in `m`. Like V1's
+// `map__get_and_set`, a missing `k` is inserted with an empty map first, so the
+// mutation is kept in `m`. `m` and `k` are evaluated once, and the empty map is
+// only allocated for a missing key.
+fn (mut t Transformer) map_index_inner_map_slot(id flat.NodeId) ?flat.NodeId {
+	// `(m[k])[k2] << v` mutates the same inner map as `m[k][k2] << v`.
+	info := t.map_index_info(t.unwrap_parens(id)) or { return none }
+	if !t.clean_map_type(info.value_type).starts_with('map[') {
+		return none
+	}
+	map_expr := t.stable_map_lvalue_for_reuse(info.base_id)
+	mut key_value := t.transform_expr_for_type(info.key_id, info.key_type)
+	mut key_is_owned := t.map_key_expr_creates_owned_value(info.key_id, info.key_type)
+	if !key_is_owned && !isnil(t.tc)
+		&& t.normalize_type_alias(info.key_type).trim_space() != 'string' {
+		key_type := t.tc.parse_type(info.key_type)
+		if t.tc.ownership_type_requires_destruction(key_type)
+			&& t.tc.ownership_default_clone_missing_method(key_type) == none {
+			key_value = t.make_compiler_default_clone_value(key_value, info.key_type, true)
+			key_is_owned = true
+		}
+	}
+	// Queued after the pending setup of `m` and `k`, which keeps source order.
+	mut stmts := []flat.NodeId{}
+	key_name := t.new_temp('map_key')
+	stmts << t.make_decl_assign_typed(key_name, key_value, info.key_storage_type)
+	cleanup_key, existing_key_name := t.prepare_owned_map_set_key_cleanup(key_is_owned, info.key_type, map_expr, info.base_type, key_name, mut stmts)
+	slot_name := t.new_temp('map_slot')
+	stmts << t.make_decl_assign_typed(slot_name, t.make_map_get_check_expr(map_expr, info.base_type, key_name), 'voidptr')
+	zero_name := t.new_temp('map_zero')
+	get_and_set := t.make_call_typed('map__get_and_set', [
+		t.runtime_addr(map_expr, info.base_type),
+		t.make_prefix(.amp, t.make_ident(key_name)),
+		t.make_prefix(.amp, t.make_ident(zero_name)),
+	], 'voidptr')
+	insert := t.make_block([
+		t.make_decl_assign_typed(zero_name, t.zero_value_for_type(info.value_type), info.value_type),
+		t.make_assign(t.make_ident(slot_name), get_and_set),
+	])
+	missing := t.make_infix(.eq, t.make_ident(slot_name), t.a.add(.nil_literal))
+	stmts << t.make_if(missing, insert, t.make_empty())
+	t.append_owned_map_set_key_cleanup(key_name, cleanup_key, existing_key_name, mut stmts)
+	t.pending_stmts << stmts
+	value_type := t.normalize_type_alias(info.value_type)
+	slot := t.make_prefix(.mul, t.make_cast('&${value_type}', t.make_ident(slot_name), '&${value_type}'))
+	t.set_node_typ(int(slot), value_type)
+	return slot
 }
 
 // const_expr_for_ident supports const expr for ident handling for Transformer.
@@ -2755,7 +2830,14 @@ fn (mut t Transformer) try_lower_map_index_selector_assign(node flat.Node) ?[]fl
 	if field_type.len == 0 {
 		return none
 	}
-	map_expr := t.stable_map_lvalue_for_reuse(info.base_id)
+	// Like V1, `m[k1][k2].field = v` does not insert a missing `k1` (see
+	// nested_map_shared_lookup_test.v). The inner map is read instead; an existing
+	// one shares its storage with the read value, so the update is kept.
+	map_expr := if t.map_index_yields_map(info.base_id) {
+		t.stable_expr_for_reuse(info.base_id)
+	} else {
+		t.stable_map_lvalue_for_reuse(info.base_id)
+	}
 	key_name := t.new_temp('map_key')
 	mut result := []flat.NodeId{}
 	t.drain_pending(mut result)
