@@ -2,6 +2,10 @@ struct Packet {
 	byte u8
 }
 
+struct Grouped {
+	first, byte u8
+}
+
 type Val = int | u8
 
 fn (byte Packet) name() {}

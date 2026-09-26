@@ -2591,10 +2591,14 @@ fn (mut p Parser) struct_decl() flat.NodeId {
 			}
 			// grouped fields: x, y int
 			if p.tok == .comma {
+				// Each name keeps its own start, as in `parse_anonymous_aggregate_type`.
 				mut names := []string{}
+				mut name_starts := []int{}
 				names << field_name
+				name_starts << field_start
 				for p.tok == .comma {
 					p.next()
+					name_starts << p.span_start()
 					names << p.expect_name_or_keyword()
 				}
 				field_type := p.parse_struct_field_type()
@@ -2604,12 +2608,12 @@ fn (mut p Parser) struct_decl() flat.NodeId {
 				if p.tok == .attribute || p.tok == .lsbr {
 					group_attrs << p.parse_field_attrs()
 				}
-				for n in names {
+				for index, n in names {
 					fid := p.add_node(flat.Node{
 						kind:  .field_decl
 						value: n
 						typ:   field_type
-						pos:   p.span_to(field_start)
+						pos:   p.span_to(name_starts[index])
 					})
 					p.apply_field_meta(fid, sect_is_mut, sect_is_pub, sect_is_global, sect_is_module, group_attrs, false)
 					ids << fid
