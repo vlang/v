@@ -1,0 +1,6 @@
+vlib/v/tests/no_closures/capturing_method_named_like_dsl_lambda.vv:14:15: cgen error: a closure was generated for function
+   12 |     it := 1
+   13 |     // `Widget.map` is not the array DSL, so `it` is the captured local
+   14 |     println(call(|| Widget{}.map(it)))
+      |                  ~~~~~~~~~~~~~~~~~~~
+   15 | }

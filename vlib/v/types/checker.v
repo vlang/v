@@ -7,6 +7,7 @@ import strings
 import v.errors as compiler_errors
 import v.flat
 import v.gen.c.naming
+import v.pref
 import v.token
 import v.util
 
@@ -997,6 +998,10 @@ pub mut:
 	// fork_overlay is non-nil only on parallel-transform worker forks; see
 	// TransformForkOverlay and fork_for_parallel_transform.
 	fork_overlay &TransformForkOverlay = unsafe { nil }
+	// Immutable declaration indexes shared by checker workers. They are public, so
+	// the tests of other compiler modules can register declarations directly.
+	declaration_attributes map[int][]string
+	type_declaration_ids   map[string][]int
 mut:
 	// Includes method-value aliases and binding-owner maps; all backing maps are
 	// replaced together at every function/worker boundary.
@@ -1020,8 +1025,6 @@ mut:
 	direct_parent_index_trusted bool
 	has_goto_nodes              bool
 	// Immutable declaration indexes shared by checker workers.
-	declaration_attributes            map[int][]string
-	type_declaration_ids              map[string][]int
 	strings_builder_bindings          map[string]bool
 	strings_builder_candidates        []i32
 	static_associated_fn_keys         map[string]bool
@@ -6345,8 +6348,10 @@ fn (mut tc TypeChecker) check_deprecated_byte_types() {
 	mut identifier_offsets := map[u64]bool{}
 	mut inline_asm_ranges := map[int][]token.Pos{}
 	for node in tc.a.nodes {
-		if node.kind == .ident && node.value == 'byte' && node.pos.is_valid() {
-			identifier_offsets[deprecated_byte_position_key(node.pos.id, node.pos.offset)] = true
+		if node.value == 'byte' && node.pos.is_valid() {
+			if offset := deprecated_byte_name_offset(node) {
+				identifier_offsets[deprecated_byte_position_key(node.pos.id, offset)] = true
+			}
 		} else if node.kind == .asm_stmt && node.pos.is_valid() {
 			mut ranges := inline_asm_ranges[node.pos.id]
 			ranges << node.pos
@@ -6374,6 +6379,187 @@ fn deprecated_byte_position_key(file_id int, offset int) u64 {
 	return (u64(u32(file_id)) << 32) | u64(u32(offset))
 }
 
+// deprecated_byte_name_offset returns the source offset at which `node` spells
+// `byte` as a name (variable, parameter, field, enum value), not as a type.
+fn deprecated_byte_name_offset(node flat.Node) ?int {
+	match node.kind {
+		.ident, .field_decl, .interface_field, .enum_field {
+			return node.pos.offset
+		}
+		.param {
+			// Receiver param nodes have no name span, and a param without a type
+			// is a type-only param (`fn f(byte)`).
+			if node.op != .dot && node.typ.len > 0 {
+				return node.pos.offset
+			}
+		}
+		.selector, .enum_val {
+			// `x.byte` and `.byte` end with the name.
+			return node.pos.end - 'byte'.len
+		}
+		else {}
+	}
+	return none
+}
+
+// deprecated_byte_is_field_key reports `byte:` in a struct init or config call,
+// whose field_init node has no name span.
+fn deprecated_byte_is_field_key(source string, end int) bool {
+	next := deprecated_byte_skip_trivia_forward(source, end)
+	return next < source.len && source[next] == `:`
+		&& (next + 1 >= source.len || source[next + 1] != `=`)
+}
+
+// deprecated_byte_is_receiver_name reports the name in `fn (byte T)` and
+// `fn (mut byte T)`, whose receiver param node has no name span.
+fn deprecated_byte_is_receiver_name(source string, start int, end int) bool {
+	next := deprecated_byte_skip_trivia_forward(source, end)
+	if next == end {
+		// `fn (byte) m()` is a type-only receiver.
+		return false
+	}
+	if next >= source.len || !deprecated_byte_starts_type(source[next]) {
+		// `fn (byte )`, `fn (byte , u8)`, `fn (byte\n)` and `fn (byte /* c */)` are type-only
+		// params: no type follows the name.
+		return false
+	}
+	mut i := deprecated_byte_skip_trivia_back(source, start)
+	mut word_start := i
+	for word_start > 0 && source[word_start - 1].is_letter() {
+		word_start--
+	}
+	if source[word_start..i] in ['mut', 'shared'] {
+		i = deprecated_byte_skip_trivia_back(source, word_start)
+	}
+	if i == 0 || source[i - 1] != `(` {
+		return false
+	}
+	i = deprecated_byte_skip_trivia_back(source, i - 1)
+	return i >= 2 && source[i - 2..i] == 'fn'
+		&& (i == 2 || !(source[i - 3].is_alnum() || source[i - 3] == `_`))
+}
+
+// deprecated_byte_starts_type reports whether `c` can begin the type after a
+// name: `T`, `&T`, `[]T`, `?T`, `!T` or `...T`.
+fn deprecated_byte_starts_type(c u8) bool {
+	return c.is_letter() || c in [`_`, `&`, `[`, `?`, `!`, `.`]
+}
+
+// deprecated_byte_skip_trivia_forward returns the offset of the first token at or after
+// `offset`, skipping whitespace, line breaks, `// ...` and `/* ... */` comments.
+fn deprecated_byte_skip_trivia_forward(source string, offset int) int {
+	mut i := offset
+	for i < source.len {
+		if source[i] in [` `, `\t`, `\n`, `\r`] {
+			i++
+		} else if i + 1 < source.len && source[i] == `/` && source[i + 1] == `*` {
+			i = deprecated_byte_block_comment_end(source, i)
+		} else if i + 1 < source.len && source[i] == `/` && source[i + 1] == `/` {
+			i = source.index_after('\n', i + 2) or { source.len }
+		} else {
+			break
+		}
+	}
+	return i
+}
+
+// deprecated_byte_skip_trivia_back returns the offset just after the last token before
+// `offset`, skipping whitespace, line breaks, `/* ... */` comments and `//` comments that
+// end an earlier line, as in `fn ( /* c */\n\tbyte T)` or `fn ( // c\n\tbyte T)`.
+fn deprecated_byte_skip_trivia_back(source string, offset int) int {
+	mut i := offset
+	for i > 0 {
+		if source[i - 1] == `\n` {
+			i--
+			// The line before may end in a `//` comment, as in `fn ( // c\n\tbyte T)`.
+			if comment := deprecated_byte_line_comment_start(source, i) {
+				i = comment
+			}
+		} else if source[i - 1] in [` `, `\t`, `\r`] {
+			i--
+		} else if i >= 2 && source[i - 2] == `*` && source[i - 1] == `/` {
+			i = deprecated_byte_block_comment_start(source, i)
+		} else {
+			break
+		}
+	}
+	return i
+}
+
+// deprecated_byte_line_comment_start returns the offset of the `//` comment that ends the
+// line ending at `line_end`, skipping string literals and block comments on that line.
+fn deprecated_byte_line_comment_start(source string, line_end int) ?int {
+	mut i := line_end
+	for i > 0 && source[i - 1] != `\n` {
+		i--
+	}
+	for i + 1 < line_end {
+		c := source[i]
+		if c in [`'`, `"`, `\``] {
+			i++
+			for i < line_end && source[i] != c {
+				if source[i] == `\\` {
+					i++
+				}
+				i++
+			}
+			i++
+		} else if c == `/` && source[i + 1] == `*` {
+			i = deprecated_byte_block_comment_end(source, i)
+		} else if c == `/` && source[i + 1] == `/` {
+			return i
+		} else {
+			i++
+		}
+	}
+	return none
+}
+
+// deprecated_byte_block_comment_end returns the offset after the `/* ... */` comment that
+// starts at `start`. Like the scanner, it nests: an inner `/*` (but not `/*/`) needs its own `*/`.
+fn deprecated_byte_block_comment_end(source string, start int) int {
+	mut depth := 1
+	mut i := start + 2
+	for i < source.len {
+		if i + 1 < source.len && source[i] == `/` && source[i + 1] == `*`
+			&& (i + 2 >= source.len || source[i + 2] != `/`) {
+			depth++
+			i += 2
+		} else if i + 1 < source.len && source[i] == `*` && source[i + 1] == `/` {
+			depth--
+			i += 2
+			if depth == 0 {
+				return i
+			}
+		} else {
+			i++
+		}
+	}
+	return source.len
+}
+
+// deprecated_byte_block_comment_start returns the offset of the `/*` that opens the nested
+// block comment ending at `end`, just after its `*/`.
+fn deprecated_byte_block_comment_start(source string, end int) int {
+	mut depth := 1
+	mut i := end - 2
+	for i >= 2 {
+		if source[i - 2] == `*` && source[i - 1] == `/` {
+			depth++
+			i -= 2
+		} else if source[i - 2] == `/` && source[i - 1] == `*` {
+			depth--
+			i -= 2
+			if depth == 0 {
+				return i
+			}
+		} else {
+			i--
+		}
+	}
+	return 0
+}
+
 fn (mut tc TypeChecker) check_deprecated_byte_types_in_file(anchor flat.NodeId, file_id int, path string, identifier_offsets map[u64]bool, inline_asm_ranges []token.Pos) {
 	if tc.diagnostic_files.len > 0 && path !in tc.diagnostic_files {
 		return
@@ -6391,8 +6577,7 @@ fn (mut tc TypeChecker) check_deprecated_byte_types_in_file(anchor flat.NodeId, 
 			continue
 		}
 		if i + 1 < source.len && source[i] == `/` && source[i + 1] == `*` {
-			end := source.index_after('*/', i + 2) or { source.len }
-			i = int_min(end + 2, source.len)
+			i = deprecated_byte_block_comment_end(source, i)
 			continue
 		}
 		if source[i] in [`'`, `"`, `\``] {
@@ -6422,6 +6607,8 @@ fn (mut tc TypeChecker) check_deprecated_byte_types_in_file(anchor flat.NodeId, 
 		if source[start..i] != 'byte' || deprecated_byte_is_alias_base(source, start)
 			|| deprecated_byte_position_key(file_id, start) in identifier_offsets
 			|| tc.deprecated_byte_is_value_ident(file_id, start)
+			|| deprecated_byte_is_field_key(source, i)
+			|| deprecated_byte_is_receiver_name(source, start, i)
 			|| deprecated_byte_is_in_ranges(inline_asm_ranges, start)
 			|| deprecated_byte_is_type_comparison(source, start) {
 			continue
@@ -6450,10 +6637,7 @@ fn deprecated_byte_is_in_ranges(ranges []token.Pos, offset int) bool {
 }
 
 fn deprecated_byte_is_type_comparison(source string, offset int) bool {
-	mut end := offset
-	for end > 0 && source[end - 1] in [` `, `\t`, `\r`, `\n`] {
-		end--
-	}
+	end := deprecated_byte_skip_trivia_back(source, offset)
 	mut start := end
 	for start > 0 && (source[start - 1].is_alnum() || source[start - 1] == `_`) {
 		start--
@@ -6750,7 +6934,9 @@ pub fn (tc &TypeChecker) resolve_any_selective_import_fn(name string) ?string {
 fn (tc &TypeChecker) resolve_selective_import_type_symbol(name string) ?string {
 	candidates := tc.selective_import_candidates(name) or { return none }
 	for candidate in candidates {
-		if tc.type_symbol_known(candidate) {
+		// Monomorphization erases generic struct templates from `structs`, but cgen
+		// still has to resolve `Foo[Bar]` after `import foo { Foo }` to `foo.Foo`.
+		if tc.type_symbol_known(candidate) || candidate in tc.struct_generic_params {
 			return candidate
 		}
 	}
@@ -11722,19 +11908,15 @@ fn (tc &TypeChecker) is_selected_input_file(file string) bool {
 	return tc.diagnostic_files.len == 0 || tc.diagnostic_files[file]
 }
 
+// is_c_backend_test_file reports whether path names a test file the C backend compiles.
+// It defers to pref, so the checker and the driver agree on every spelling, including
+// architecture-qualified tests such as `foo_test.arm64.v`.
 fn is_c_backend_test_file(path string) bool {
 	file := path_leaf_view(path)
-	if file.ends_with('_test.v') || file.ends_with('_test.vv') || file.ends_with('_test.c.v') {
+	if file.ends_with('_test.vv') {
 		return true
 	}
-	if !file.ends_with('.v') {
-		return false
-	}
-	base := file[..file.len - 2]
-	if !base.contains('.') {
-		return false
-	}
-	return base.all_after_last('.') == 'c' && base.all_before_last('.').ends_with('_test')
+	return pref.is_test_file_for_backend(file, 'c')
 }
 
 fn is_regular_v_test_file(path string) bool {

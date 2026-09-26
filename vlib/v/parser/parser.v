@@ -275,6 +275,7 @@ pub fn Parser.new(prefs &pref.Preferences) &Parser {
 			template_call_sites:           map[int]token.Pos{}
 			template_actions:              map[int]string{}
 			missing_imports:               map[int]string{}
+			cached_header_sources:         map[string]string{}
 			missing_import_hints:          map[int]string{}
 			formatter_sources:             map[int]string{}
 			formatter_file_sources:        map[int]string{}
@@ -2591,10 +2592,14 @@ fn (mut p Parser) struct_decl() flat.NodeId {
 			}
 			// grouped fields: x, y int
 			if p.tok == .comma {
+				// Each name keeps its own start, as in `parse_anonymous_aggregate_type`.
 				mut names := []string{}
+				mut name_starts := []int{}
 				names << field_name
+				name_starts << field_start
 				for p.tok == .comma {
 					p.next()
+					name_starts << p.span_start()
 					names << p.expect_name_or_keyword()
 				}
 				field_type := p.parse_struct_field_type()
@@ -2604,12 +2609,12 @@ fn (mut p Parser) struct_decl() flat.NodeId {
 				if p.tok == .attribute || p.tok == .lsbr {
 					group_attrs << p.parse_field_attrs()
 				}
-				for n in names {
+				for index, n in names {
 					fid := p.add_node(flat.Node{
 						kind:  .field_decl
 						value: n
 						typ:   field_type
-						pos:   p.span_to(field_start)
+						pos:   p.span_to(name_starts[index])
 					})
 					p.apply_field_meta(fid, sect_is_mut, sect_is_pub, sect_is_global, sect_is_module, group_attrs, false)
 					ids << fid
@@ -8338,11 +8343,15 @@ fn (mut p Parser) validate_if_guard_rhs(rhs_id flat.NodeId, assign_end int) {
 		return
 	}
 	mut core_id := rhs_id
+	mut parenthesized := false
 	for p.a.nodes[int(core_id)].kind == .paren && p.a.nodes[int(core_id)].children_count == 1 {
+		parenthesized = true
 		core_id = p.a.child(&p.a.nodes[int(core_id)], 0)
 	}
 	rhs := p.a.nodes[int(core_id)]
-	if rhs.kind !in [.call, .index, .prefix, .selector, .ident] {
+	// Only field selectors have wrapper recovery through parentheses here.
+	if rhs.kind !in [.call, .index, .prefix, .selector, .ident]
+		|| (parenthesized && rhs.kind != .selector) {
 		mut start := assign_end
 		mut end := p.a.nodes[int(rhs_id)].pos.end
 		source := p.s.src
@@ -12265,6 +12274,11 @@ fn (mut p Parser) prefix_expr() flat.NodeId {
 			if p.tok.is_keyword() {
 				p.record_diagnostic_span('invalid expression: unexpected keyword `${p.tok.str()}`',
 					p.tok_pos, p.tok_end)
+			} else if p.tok == .comma {
+				// A comma never starts an expression, e.g. the missing argument in
+				// `f(, b)`. Without this, the empty node is later emitted as `0`.
+				p.record_diagnostic_span('invalid expression: unexpected token `,`', p.tok_pos,
+					p.tok_end)
 			}
 			p.next()
 			return p.add(flat.NodeKind.empty)

@@ -48,7 +48,11 @@ fn checked_title_else_if_return_expr(req IfGuardAfterNoneCheck, flag bool) !stri
 	}
 	return if flag {
 		'fixed'
-	} else if value := req.title { value.trim_space() } else { '' }
+	} else if value := req.title {
+		value.trim_space()
+	} else {
+		''
+	}
 }
 
 fn test_return_else_if_guard_after_none_check_uses_optional_wrapper() {
@@ -80,6 +84,40 @@ fn test_parenthesized_if_guards_after_none_check_use_optional_wrapper() {
 	assert checked_parenthesized_title(req)! == 'hello'
 	assert checked_parenthesized_title_expr(req)! == 'hello'
 	assert (checked_parenthesized_title(IfGuardAfterNoneCheck{}) or { err.msg() }) == 'title is required'
+}
+
+struct NestedValueField {
+	value ?string
+}
+
+struct NestedOptionalField {
+	inner ?NestedValueField
+}
+
+fn nested_value_field_guard(outer NestedOptionalField) !string {
+	if outer.inner == none {
+		return error('inner is required')
+	}
+	if value := outer.inner.value {
+		return value
+	}
+	return error('value is required')
+}
+
+fn nested_value_field_guard_expr(outer NestedOptionalField) !string {
+	if outer.inner == none {
+		return error('inner is required')
+	}
+	return if value := outer.inner.value { value } else { '' }
+}
+
+fn test_user_declared_value_field_in_optional_payload() {
+	outer := NestedOptionalField{ inner: NestedValueField{ value: 'hello' } }
+	assert nested_value_field_guard(outer)! == 'hello'
+	assert nested_value_field_guard_expr(outer)! == 'hello'
+	empty_value := NestedOptionalField{ inner: NestedValueField{} }
+	assert (nested_value_field_guard(empty_value) or { err.msg() }) == 'value is required'
+	assert nested_value_field_guard_expr(empty_value)! == ''
 }
 
 struct PromotedOptionalFieldInner {
@@ -138,6 +176,48 @@ fn test_if_guards_lower_promoted_optional_field() {
 	assert promoted_field_guard_expr(empty) == ''
 	assert (promoted_field_guard_after_none(empty) or { err.msg() }) == 'value is required'
 	assert (promoted_field_guard_expr_after_none(empty) or { err.msg() }) == 'value is required'
+}
+
+struct DeepPromotedFieldInner {
+	value ?string
+}
+
+struct DeepPromotedFieldMiddle {
+	DeepPromotedFieldInner
+}
+
+struct DeepPromotedFieldOuter {
+	DeepPromotedFieldMiddle
+}
+
+fn deep_promoted_field_guard(outer DeepPromotedFieldOuter) !string {
+	if outer.value == none {
+		return error('value is required')
+	}
+	if value := outer.value {
+		return value
+	}
+	return error('value is required')
+}
+
+fn deep_promoted_field_guard_expr(outer DeepPromotedFieldOuter) !string {
+	if outer.value == none {
+		return error('value is required')
+	}
+	return if value := outer.value { value } else { '' }
+}
+
+fn test_if_guard_lowers_nested_promoted_optional_field() {
+	outer := DeepPromotedFieldOuter{
+		DeepPromotedFieldMiddle: DeepPromotedFieldMiddle{
+			DeepPromotedFieldInner: DeepPromotedFieldInner{ value: 'hello' }
+		}
+	}
+	assert deep_promoted_field_guard(outer)! == 'hello'
+	assert deep_promoted_field_guard_expr(outer)! == 'hello'
+	empty := DeepPromotedFieldOuter{}
+	assert (deep_promoted_field_guard(empty) or { err.msg() }) == 'value is required'
+	assert (deep_promoted_field_guard_expr(empty) or { err.msg() }) == 'value is required'
 }
 
 struct SharedOptionalField {

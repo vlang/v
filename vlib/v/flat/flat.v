@@ -481,6 +481,11 @@ pub mut:
 	// missing_import_hints holds the migration hint the resolver produced for an
 	// unresolved import node, when it can explain the failure. Usually empty.
 	missing_import_hints map[int]string
+	// cached_header_sources maps each module cache header parsed in place of a
+	// module's sources to one of those sources, so diagnostics and ownership can
+	// judge a warm header by the code it stands for rather than by where the
+	// cache directory happens to be.
+	cached_header_sources map[string]string
 	// file_node_ids records every .file node the parser creates, in creation
 	// order: (marker, trailing) pairs per source file. The trailing node's
 	// children are the file's top-level declarations, letting collect build
@@ -593,6 +598,7 @@ pub fn FlatAst.new() FlatAst {
 		template_call_sites:           map[int]token.Pos{}
 		template_actions:              map[int]string{}
 		missing_imports:               map[int]string{}
+		cached_header_sources:         map[string]string{}
 		missing_import_hints:          map[int]string{}
 		formatter_sources:             map[int]string{}
 		formatter_file_sources:        map[int]string{}

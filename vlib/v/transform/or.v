@@ -1795,10 +1795,9 @@ fn (mut t Transformer) preserve_or_expr_for_codegen(id flat.NodeId, node flat.No
 		t.pending_stmts << stmt
 	}
 
-	saved_var_types := t.var_types.clone()
-	t.set_implicit_err_var_type()
+	err_scope := t.enter_implicit_err_scope()
 	new_body := t.transform_or_body_for_codegen(body_id)
-	t.restore_var_types(saved_var_types)
+	t.leave_implicit_err_scope(err_scope)
 
 	start := t.a.children.len
 	t.a.children << new_expr
@@ -2267,8 +2266,7 @@ fn (mut t Transformer) lower_or_body_to_multi_return_stmts_with_err_expr(body_id
 			err_expr)
 	}
 	body := t.a.nodes[int(body_id)]
-	saved_var_types := t.var_types.clone()
-	t.set_implicit_err_var_type()
+	err_scope := t.enter_implicit_err_scope()
 	err_value := if int(err_expr) >= 0 {
 		err_expr
 	} else {
@@ -2277,18 +2275,18 @@ fn (mut t Transformer) lower_or_body_to_multi_return_stmts_with_err_expr(body_id
 	mut result := []flat.NodeId{}
 	result << t.make_decl_assign_typed('err', err_value, 'IError')
 	if t.stmt_tail_exits(body_id) {
-		t.restore_var_types(saved_var_types)
+		t.leave_implicit_err_scope(err_scope)
 		return t.lower_or_body_to_stmts_with_err_expr(body_id, '', '', mode, err_expr)
 	}
 	if lowered := t.lower_or_multi_return_tail(body_id, target_name, target_type, field_types) {
 		for stmt in lowered {
 			result << stmt
 		}
-		t.restore_var_types(saved_var_types)
+		t.leave_implicit_err_scope(err_scope)
 		return result
 	}
 	_ = body
-	t.restore_var_types(saved_var_types)
+	t.leave_implicit_err_scope(err_scope)
 	return t.lower_or_body_to_stmts_with_err_expr(body_id, target_name, target_type, mode, err_expr)
 }
 
@@ -2526,8 +2524,7 @@ fn (mut t Transformer) lower_or_body_to_stmts_with_err_expr(body_id flat.NodeId,
 	// for its lowering and restored afterwards, so the previous binding (e.g. an outer
 	// `err := 1`) survives and a subsequent `${err}` is not mis-typed as `IError`.
 	// Mirrors transform_if_guard_else_block.
-	saved_var_types := t.var_types.clone()
-	t.set_implicit_err_var_type()
+	err_scope := t.enter_implicit_err_scope()
 	err_value := if int(err_expr) >= 0 {
 		err_expr
 	} else {
@@ -2608,7 +2605,7 @@ fn (mut t Transformer) lower_or_body_to_stmts_with_err_expr(body_id flat.NodeId,
 		}
 	}
 	_ = target_type
-	t.restore_var_types(saved_var_types)
+	t.leave_implicit_err_scope(err_scope)
 	return result
 }
 

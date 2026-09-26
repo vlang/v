@@ -2284,7 +2284,8 @@ fn (mut t Transformer) transform_optional_wrapper_expr(id flat.NodeId) flat.Node
 			source_id = t.a.child(&source, 0)
 			continue
 		}
-		if source.kind != .selector || source.value != 'value' || source.children_count == 0 {
+		if source.kind != .selector || source.value != 'value' || source.children_count == 0
+			|| transformed_option_unwrap_access_marker !in source.generic_params() {
 			break
 		}
 		base_id := t.a.child(&source, 0)

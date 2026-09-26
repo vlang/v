@@ -148,3 +148,25 @@ fn test_interface_metadata_name_keeps_same_named_structs_out_of_interfaces() {
 	// A name that is not a known type still resolves through its short name.
 	assert tc.interface_metadata_name('iomod.Reader') == 'io.Reader'
 }
+
+fn test_undeclared_ierror_does_not_make_every_type_an_error_payload() {
+	// https://github.com/vlang/v/issues/28886
+	// With `-no-builtin` no `IError` is declared. A missing interface has no
+	// requirements, but that must not turn plain values into error payloads.
+	mut a := flat.FlatAst.new()
+	mut tc := TypeChecker.new(&a)
+	tc.enum_names['Foo'] = true
+	assert !tc.type_compatible_with_ierror_payload(Type(Enum{
+		name: 'Foo'
+	}))
+	assert !tc.type_compatible_with_ierror_payload(Type(int_))
+	assert !tc.named_type_compatible_with_ierror('Foo')
+	// A module-local `IError` is not the builtin one, even when it is the only
+	// interface with that short name.
+	tc.interface_names['pkg.IError'] = true
+	assert !tc.type_compatible_with_ierror_payload(Type(Enum{
+		name: 'Foo'
+	}))
+	assert !tc.type_compatible_with_ierror_payload(Type(int_))
+	assert !tc.named_type_compatible_with_ierror('Foo')
+}
