@@ -104,6 +104,31 @@ pub fn new_mixed() Mixed {
 pub fn (s Shape) total(n Nested, m Mixed) int {
 	return s.secret + s.shown + n.secret + n.shown + m.secret + m.shown
 }
+
+pub type Plain = struct {
+	extra int
+mut:
+	secret int
+pub:
+	shown int
+}
+
+pub type Fancy = struct {
+mut:
+	secret int
+pub:
+	shown int
+}
+
+pub type Look = Plain | Fancy
+
+pub fn new_look() Look {
+	return Plain{}
+}
+
+pub fn (l Look) total() int {
+	return l.secret + l.shown
+}
 '
 
 const private_field_main_source = 'module main
@@ -157,6 +182,11 @@ fn main() {
 	println(mixed.secret + mixed.shown)
 	own := OwnSum(OwnA{})
 	println(own.hidden)
+	mut look := lib.new_look()
+	println(look.secret + look.shown + look.total())
+	look.secret = 1
+	looks := [look]
+	println(looks[0].extra)
 }
 
 struct OwnA {
@@ -220,5 +250,8 @@ fn test_private_struct_fields_of_other_modules_are_not_public() {
 		'main.v:47: field `lib.ShapeAlias.secret` is not public',
 		'main.v:48: field `lib.Nested.secret` is not public',
 		'main.v:49: field `lib.Mixed.secret` is not public',
+		'main.v:53: field `lib.Look.secret` is not public',
+		'main.v:54: field `lib.Look.secret` is not public',
+		'main.v:56: field `lib.Plain.extra` is not public',
 	], errors.str()
 }

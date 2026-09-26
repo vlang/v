@@ -42,4 +42,9 @@ fn main() {
 	println(shapes[0].radius + shapes[0].width)
 	shape_alias := fieldvis.ShapeAlias(shape)
 	println(shape_alias.secret + shape_alias.shown)
+	mut look := fieldvis.new_look()
+	println(look.secret + look.shown + look.total())
+	look.secret = 9
+	looks := [look]
+	println(looks[0].extra)
 }

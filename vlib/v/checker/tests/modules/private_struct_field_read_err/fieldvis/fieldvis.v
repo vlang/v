@@ -85,3 +85,30 @@ pub fn new_shape() Shape {
 pub fn (s Shape) total() int {
 	return s.secret + s.shown
 }
+
+// Plain and Fancy are aliases of anonymous structs; their fields keep their `pub` sections.
+pub type Plain = struct {
+	extra int
+mut:
+	secret int
+pub:
+	shown int
+}
+
+pub type Fancy = struct {
+mut:
+	secret int
+pub:
+	shown int
+}
+
+// Look is a sum type of the anonymous struct aliases Plain and Fancy.
+pub type Look = Plain | Fancy
+
+pub fn new_look() Look {
+	return Plain{}
+}
+
+pub fn (l Look) total() int {
+	return l.secret + l.shown
+}

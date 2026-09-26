@@ -12222,34 +12222,39 @@ fn (tc &TypeChecker) sum_type_private_field_owner(sum SumType, field_name string
 		return none
 	}
 	if is_indexed && tc.sum_unique_variant_field_type(sum, field_name) != none {
-		if variant := tc.sum_variant_with_private_field(sum.name, field_name) {
-			return Type(variant)
-		}
+		return tc.sum_variant_with_private_field(sum.name, field_name)
 	}
 	return none
 }
 
-// sum_variant_with_private_field returns the struct variant of sum type `sum_name`, or of a
-// sum type nested in it, whose field `field_name` is private outside the module that declares
-// the variant (see `struct_field_is_private_outside_module`).
-fn (tc &TypeChecker) sum_variant_with_private_field(sum_name string, field_name string) ?Struct {
+// sum_variant_with_private_field returns the struct variant (or alias of one) of sum type
+// `sum_name`, or of a sum type nested in it, whose field `field_name` is private outside the
+// module that declares the variant (see `struct_field_is_private_outside_module`). A variant that is an alias is
+// checked through it, like a direct alias receiver, so an alias of an anonymous struct
+// (`pub type A = struct { ... }`) keeps the `pub` sections of its fields.
+fn (tc &TypeChecker) sum_variant_with_private_field(sum_name string, field_name string) ?Type {
 	mut visited := map[string]bool{}
 	return tc.sum_variant_with_private_field_inner(sum_name, field_name, mut visited)
 }
 
-fn (tc &TypeChecker) sum_variant_with_private_field_inner(sum_name string, field_name string, mut visited map[string]bool) ?Struct {
+fn (tc &TypeChecker) sum_variant_with_private_field_inner(sum_name string, field_name string, mut visited map[string]bool) ?Type {
 	base := tc.sum_base_name(sum_name)
 	if visited[base] {
 		return none
 	}
 	visited[base] = true
 	for variant in tc.sum_types[base] or { []string{} } {
-		variant_type := unalias_type(tc.parse_type(tc.concrete_sum_variant_name(sum_name, variant)))
-		if variant_type is SumType {
-			if owner := tc.sum_variant_with_private_field_inner(variant_type.name, field_name, mut
+		variant_type := tc.parse_type(tc.concrete_sum_variant_name(sum_name, variant))
+		target := unalias_type(variant_type)
+		if target is SumType {
+			if owner := tc.sum_variant_with_private_field_inner(target.name, field_name, mut
 				visited)
 			{
 				return owner
+			}
+		} else if variant_type is Alias {
+			if tc.alias_struct_field_is_private_outside_module(variant_type, field_name) {
+				return variant_type
 			}
 		} else if variant_type is Struct
 			&& tc.struct_field_is_private_outside_module(variant_type.name, field_name) {

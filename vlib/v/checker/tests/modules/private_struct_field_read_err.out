@@ -101,4 +101,25 @@ vlib/v/checker/tests/modules/private_struct_field_read_err/main.v:44:22: error: 
    43 |     shape_alias := fieldvis.ShapeAlias(shape)
    44 |     println(shape_alias.secret + shape_alias.shown)
       |                         ~~~~~~
-   45 | }
+   45 |     mut look := fieldvis.new_look()
+   46 |     println(look.secret + look.shown + look.total())
+vlib/v/checker/tests/modules/private_struct_field_read_err/main.v:46:15: error: field `private_struct_field_read_err.fieldvis.Look.secret` is not public
+   44 |     println(shape_alias.secret + shape_alias.shown)
+   45 |     mut look := fieldvis.new_look()
+   46 |     println(look.secret + look.shown + look.total())
+      |                  ~~~~~~
+   47 |     look.secret = 9
+   48 |     looks := [look]
+vlib/v/checker/tests/modules/private_struct_field_read_err/main.v:47:7: error: field `private_struct_field_read_err.fieldvis.Look.secret` is not public
+   45 |     mut look := fieldvis.new_look()
+   46 |     println(look.secret + look.shown + look.total())
+   47 |     look.secret = 9
+      |          ~~~~~~
+   48 |     looks := [look]
+   49 |     println(looks[0].extra)
+vlib/v/checker/tests/modules/private_struct_field_read_err/main.v:49:19: error: field `private_struct_field_read_err.fieldvis.Plain.extra` is not public
+   47 |     look.secret = 9
+   48 |     looks := [look]
+   49 |     println(looks[0].extra)
+      |                      ~~~~~
+   50 | }
