@@ -33,6 +33,9 @@ resp := http.fetch(
 )!
 ```
 
+HTTPS requests use HTTP/1.1 by default. Set `enable_http2: true` in
+`http.fetch` or a `http.Request` to opt in to HTTP/2 when the server supports it.
+
 ## Serving requests
 
 A server is a `Handler` — anything with a `handle(Request) Response` method —
