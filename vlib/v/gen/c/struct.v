@@ -1521,6 +1521,18 @@ fn (mut g FlatGen) gen_fixed_array_copy_source(value_id flat.NodeId, field_type 
 		g.gen_fixed_array_copy_source(g.a.child(val_node, 0), field_type)
 		return
 	}
+	// `unsafe { [1]map[string]int{} }` yields its only expression. gen_expr emits that
+	// expression bare, which for a fixed-array literal is an untyped `{...}` list, so
+	// peel the block like a paren (keeping its unsafe context) to get a compound literal.
+	if val_node.kind in [.block, .expr_stmt] && val_node.children_count == 1 {
+		old_unsafe_depth := g.unsafe_depth
+		if val_node.kind == .block && val_node.value == 'unsafe' {
+			g.unsafe_depth++
+		}
+		g.gen_fixed_array_copy_source(g.a.child(val_node, 0), field_type)
+		g.unsafe_depth = old_unsafe_depth
+		return
+	}
 	if val_node.kind == .prefix && val_node.op == .mul && val_node.children_count > 0 {
 		child_id := g.a.child(val_node, 0)
 		child := g.a.node(child_id)

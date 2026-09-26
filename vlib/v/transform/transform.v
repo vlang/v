@@ -13685,8 +13685,16 @@ fn (mut t Transformer) transform_block_expr_for_type(id flat.NodeId, node flat.N
 	mut new_children := t.transform_stmts(prefix)
 	tail_expr := t.transform_expr_for_type(tail_expr_id, target_type)
 	tail_stmt := t.make_expr_stmt(tail_expr)
-	for stmt in t.with_pending_before(tail_stmt) {
-		new_children << stmt
+	if node.value == 'unsafe' && prefix.len == 0
+		&& t.is_fixed_array_type(t.normalize_type_alias(target_type)) {
+		// A C statement expression can't yield an array, so statements hoisted from a
+		// lone fixed-array value (`unsafe { [2]map[string]int{init: {'a': index}} }`)
+		// stay pending for the enclosing statement, as they do without `unsafe`.
+		new_children << tail_stmt
+	} else {
+		for stmt in t.with_pending_before(tail_stmt) {
+			new_children << stmt
+		}
 	}
 	new_block := t.make_block(new_children)
 	t.set_node_value(int(new_block), node.value)
