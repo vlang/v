@@ -7160,6 +7160,21 @@ fn (mut t Transformer) mark_local_closure_cleanup_decls(body_ids []flat.NodeId) 
 		} else {
 			t.local_closure_binding_decl_in_scope(body_ids, candidate) or { continue }
 		}
+		decl := t.a.nodes[int(decl_id)]
+		mut aggregate_type := ''
+		for i in 0 .. t.multi_assign_lhs_count(decl) {
+			lhs_id := t.multi_assign_lhs_id(decl, i)
+			lhs := t.a.nodes[int(lhs_id)]
+			if lhs.kind == .ident && lhs.value == candidate.aggregate_name {
+				aggregate_type = t.node_type(lhs_id)
+				break
+			}
+		}
+		// A local pointer can refer to storage owned by its caller. A callback
+		// stored through it must survive this function's scope.
+		if t.normalize_type_alias(aggregate_type).starts_with('&') {
+			continue
+		}
 		if candidate.aggregate_scope < 0 {
 			t.collect_local_closure_binding_uses(body_ids, candidate.aggregate_name, decl_id, false, mut bound_uses, mut bound_assigns)
 		} else {
