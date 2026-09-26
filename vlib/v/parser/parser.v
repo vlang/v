@@ -1066,6 +1066,18 @@ fn (mut p Parser) expect_name() string {
 	return name
 }
 
+// expect_module_name reads one segment of a module path. A keyword used as a
+// module name is written with the `@` escape (`module @type`, `import @type.bar`);
+// the escape is spelling only, so the segment is the bare name everywhere but in
+// vfmt, which must write the source back as it was.
+fn (mut p Parser) expect_module_name() string {
+	name := p.expect_name()
+	if !p.prefs.is_fmt && name.len > 1 && name[0] == `@` {
+		return name[1..]
+	}
+	return name
+}
+
 fn (mut p Parser) expect_name_or_keyword() string {
 	name := if p.lit.len > 0 {
 		p.lit
@@ -3535,17 +3547,17 @@ fn (mut p Parser) interface_decl() flat.NodeId {
 fn (mut p Parser) import_stmt() flat.NodeId {
 	import_start := p.span_start()
 	p.next() // skip 'import'
-	mut name := p.expect_name()
+	mut name := p.expect_module_name()
 	mut alias := name
 	mut selective_ids := []flat.NodeId{}
 	for p.tok == .dot {
 		p.next()
-		alias = p.expect_name()
+		alias = p.expect_module_name()
 		name += '.' + alias
 	}
 	if p.tok == .key_as {
 		p.next()
-		alias = p.expect_name()
+		alias = p.expect_module_name()
 	}
 	// Record the module's in-file alias (the identifier used as a `mod.symbol` base) so
 	// an inlined template closure does not try to capture it as if it were a local.
@@ -3607,7 +3619,7 @@ fn (mut p Parser) import_stmt() flat.NodeId {
 fn (mut p Parser) module_stmt() flat.NodeId {
 	module_start := p.span_start()
 	p.next() // skip 'module'
-	name := p.expect_name()
+	name := p.expect_module_name()
 	p.cur_module = name
 	if p.tok == .semicolon {
 		p.next()

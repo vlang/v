@@ -15929,7 +15929,13 @@ fn declared_module_in_file(path string) string {
 			if comment := module_name.index('/*') {
 				module_name = module_name[..comment]
 			}
-			return module_name.trim_space()
+			module_name = module_name.trim_space()
+			// `module @type` is the keyword `type` used as a module name; the
+			// escape is spelling, not part of the name.
+			if module_name.len > 1 && module_name[0] == `@` {
+				module_name = module_name[1..]
+			}
+			return module_name
 		}
 		return ''
 	}
@@ -19530,6 +19536,13 @@ fn resolve_ancestor_module_path(prefs &pref.Preferences, mod_name string, mod_pa
 				&& !module_dir_belongs_to_other_project(candidate, importer_vmod_root, mod_name) {
 				return candidate
 			}
+		}
+		// An explicit `.v.mod.stop` ends the walk: the directories above it are
+		// not part of this project, so a module up there is not what the import
+		// means. A checkout marker is not a stop here, since a neighbour checked
+		// out next to the project is exactly what this walk exists to find.
+		if pref.is_module_search_stop_dir(current) {
+			break
 		}
 		parent := os.dir(current)
 		if parent == current {

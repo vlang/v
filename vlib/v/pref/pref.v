@@ -444,6 +444,12 @@ pub fn (p &Preferences) get_module_path(mod string, importing_file_path string) 
 				return try_path
 			}
 		}
+		// An explicit `.v.mod.stop` marker ends the walk: what lies above it is
+		// not part of this project, so a module up there is not what the import
+		// means.
+		if is_module_search_stop_dir(current_dir) {
+			break
+		}
 		parent_dir := os.dir(current_dir)
 		if parent_dir == current_dir {
 			break
@@ -451,6 +457,18 @@ pub fn (p &Preferences) get_module_path(mod string, importing_file_path string) 
 		current_dir = parent_dir
 	}
 	return ''
+}
+
+// module_search_stop_marker is the file that explicitly ends the module search
+// in a directory: the module lookups that walk up from a file do not continue
+// above a directory that holds it. It is what a test session's temp directory
+// carries, so that tests never resolve against whatever contains that directory.
+pub const module_search_stop_marker = '.v.mod.stop'
+
+// is_module_search_stop_dir reports whether `dir` holds the
+// module_search_stop_marker.
+pub fn is_module_search_stop_dir(dir string) bool {
+	return os.exists(os.join_path_single(dir, module_search_stop_marker))
 }
 
 // is_retired_modules_namespace reports whether a directory is the `modules/` a

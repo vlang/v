@@ -719,6 +719,7 @@ pub fn (mut ts TestSession) test() {
 			os.rmdir_all(ts.vtmp_dir) or {}
 		}
 	}
+	os.rm(os.join_path(ts.vtmp_dir, '.v.mod.stop')) or {}
 	if os.ls(ts.vtmp_dir) or { [] }.len == 0 {
 		os.rmdir_all(ts.vtmp_dir) or {}
 	}
@@ -1193,6 +1194,10 @@ pub fn h_divider() {
 pub fn setup_new_vtmp_folder(hash string) string {
 	new_vtmp_dir := os.join_path(os.vtmp_dir(), 'tsession_${hash}')
 	os.mkdir_all(new_vtmp_dir) or { panic(err) }
+	// A test session must not inherit an unrelated `v.mod` from the shared temp
+	// directory, or from whatever contains it. The explicit project-boundary
+	// marker ends the upward search there.
+	os.write_file(os.join_path(new_vtmp_dir, '.v.mod.stop'), '') or { panic(err) }
 	os.setenv('VTMP', new_vtmp_dir, true)
 	return new_vtmp_dir
 }
