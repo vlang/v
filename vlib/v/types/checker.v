@@ -6462,12 +6462,18 @@ fn deprecated_byte_skip_trivia_forward(source string, offset int) int {
 }
 
 // deprecated_byte_skip_trivia_back returns the offset just after the last token before
-// `offset`, skipping whitespace, line breaks and `/* ... */` comments, as in
-// `fn ( /* c */\n\tbyte T)`.
+// `offset`, skipping whitespace, line breaks, `/* ... */` comments and `//` comments that
+// end an earlier line, as in `fn ( /* c */\n\tbyte T)` or `fn ( // c\n\tbyte T)`.
 fn deprecated_byte_skip_trivia_back(source string, offset int) int {
 	mut i := offset
 	for i > 0 {
-		if source[i - 1] in [` `, `\t`, `\n`, `\r`] {
+		if source[i - 1] == `\n` {
+			i--
+			// The line before may end in a `//` comment, as in `fn ( // c\n\tbyte T)`.
+			if comment := deprecated_byte_line_comment_start(source, i) {
+				i = comment
+			}
+		} else if source[i - 1] in [` `, `\t`, `\r`] {
 			i--
 		} else if i >= 2 && source[i - 2] == `*` && source[i - 1] == `/` {
 			i = deprecated_byte_block_comment_start(source, i)
@@ -6476,6 +6482,35 @@ fn deprecated_byte_skip_trivia_back(source string, offset int) int {
 		}
 	}
 	return i
+}
+
+// deprecated_byte_line_comment_start returns the offset of the `//` comment that ends the
+// line ending at `line_end`, skipping string literals and block comments on that line.
+fn deprecated_byte_line_comment_start(source string, line_end int) ?int {
+	mut i := line_end
+	for i > 0 && source[i - 1] != `\n` {
+		i--
+	}
+	for i + 1 < line_end {
+		c := source[i]
+		if c in [`'`, `"`, `\``] {
+			i++
+			for i < line_end && source[i] != c {
+				if source[i] == `\\` {
+					i++
+				}
+				i++
+			}
+			i++
+		} else if c == `/` && source[i + 1] == `*` {
+			i = deprecated_byte_block_comment_end(source, i)
+		} else if c == `/` && source[i + 1] == `/` {
+			return i
+		} else {
+			i++
+		}
+	}
+	return none
 }
 
 // deprecated_byte_block_comment_end returns the offset after the `/* ... */` comment that

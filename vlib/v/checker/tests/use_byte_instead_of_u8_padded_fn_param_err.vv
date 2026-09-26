@@ -19,6 +19,12 @@ fn (byte /* receiver */ Packet) commented() {}
 
 fn (mut /* a /* nested */ comment */ byte Packet) nested() {}
 
+fn ( // receiver
+	byte Packet) line_commented() {}
+
+fn (mut // mutable receiver
+	byte Packet) line_commented_mut() {}
+
 fn run(cb fn (byte ), pair fn (byte , u8)) {
 	cb(1)
 	pair(1, 2)
