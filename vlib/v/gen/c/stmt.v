@@ -3059,7 +3059,7 @@ fn (mut g FlatGen) gen_node(id flat.NodeId) {
 				return
 			}
 			condition_id := g.a.child(&node, 0)
-			captured_ids := g.gen_assert_capture_numeric_operands(condition_id)
+			captured_ids := g.gen_assert_capture_operands(condition_id)
 			if g.show_test_stats && g.test_files.len > 0 {
 				g.writeln('__v_test_assertions++;')
 			}
@@ -3074,7 +3074,7 @@ fn (mut g FlatGen) gen_node(id flat.NodeId) {
 				if detail := g.assert_failure_detail(node, condition_id) {
 					g.writeln('v3_eprint_lit("${c_escape(detail)}\\n");')
 				}
-				g.gen_assert_infix_values(condition_id)
+				g.gen_assert_condition_values(condition_id)
 				has_message := if node.value.starts_with(assert_infix_values_marker) {
 					node.children_count >= 4
 				} else {
@@ -4500,32 +4500,73 @@ fn qualify_assert_builtin_types(expression string, module_name string) string {
 	return result
 }
 
-fn (mut g FlatGen) gen_assert_infix_values(condition_id flat.NodeId) {
-	condition := g.a.node(condition_id)
-	if condition.kind != .infix || condition.children_count < 2 {
+// gen_assert_condition_values prints the operand values of a failing assertion,
+// so a failed comparison reports what it compared, not just the source line.
+fn (mut g FlatGen) gen_assert_condition_values(condition_id flat.NodeId) {
+	operands := g.assert_condition_operands(condition_id)
+	if operands.len < 2 {
 		return
 	}
-	lhs_id := g.a.child(condition, 0)
-	rhs_id := g.a.child(condition, 1)
-	g.gen_assert_numeric_value('   left value', lhs_id)
-	g.gen_assert_numeric_value('  right value', rhs_id)
+	g.gen_assert_operand_value('   left value', operands[0])
+	g.gen_assert_operand_value('  right value', operands[1])
 }
 
-fn (mut g FlatGen) gen_assert_capture_numeric_operands(condition_id flat.NodeId) []int {
+// assert_condition_operands returns the left and right operand of an assertion
+// condition, for both shapes the transformer leaves behind: plain infix
+// comparisons, and the string__eq calls that comparisons on strings are lowered
+// into (`!string__eq(a, b)` for `!=`).
+fn (g &FlatGen) assert_condition_operands(condition_id flat.NodeId) []flat.NodeId {
 	condition := g.a.node(condition_id)
-	if condition.kind != .infix || condition.children_count < 2 {
-		return []
+	if condition.kind == .infix && condition.children_count >= 2 {
+		return [g.a.child(condition, 0), g.a.child(condition, 1)]
 	}
+	if condition.kind == .prefix && condition.op == .not && condition.children_count == 1 {
+		return g.assert_call_operands(g.a.child(condition, 0))
+	}
+	return g.assert_call_operands(condition_id)
+}
+
+// assert_call_operands returns the two compared operands of a lowered
+// string__eq call, and an empty list for every other node.
+fn (g &FlatGen) assert_call_operands(id flat.NodeId) []flat.NodeId {
+	node := g.a.node(id)
+	if node.kind == .call && node.children_count == 3 && g.assert_call_is_string_equality(node) {
+		return [g.a.child(node, 1), g.a.child(node, 2)]
+	}
+	return []flat.NodeId{}
+}
+
+// assert_call_is_string_equality reports whether a node is the lowered form of an
+// equality comparison between two strings.
+fn (g &FlatGen) assert_call_is_string_equality(node &flat.Node) bool {
+	callee := g.a.node(g.a.child(node, 0))
+	return callee.kind == .ident && callee.value == 'string__eq'
+}
+
+// assert_call_is_string_operator reports whether a call is one of the string
+// operations the transformer builds in place of an infix expression. Their
+// operands are the operands of that expression.
+fn (g &FlatGen) assert_call_is_string_operator(node &flat.Node) bool {
+	callee := g.a.node(g.a.child(node, 0))
+	if callee.kind != .ident {
+		return false
+	}
+	return callee.value in ['string__plus', 'string__eq', 'string__lt']
+}
+
+// gen_assert_capture_operands evaluates the operands of an assertion condition
+// into temporaries before the condition itself runs, so that a failing assertion
+// can print both values without running an operand twice.
+fn (mut g FlatGen) gen_assert_capture_operands(condition_id flat.NodeId) []int {
 	mut captured_ids := []int{cap: 2}
-	for operand_index in 0 .. 2 {
-		operand_id := g.a.child(condition, operand_index)
+	for operand_id in g.assert_condition_operands(condition_id) {
 		node := g.a.node(operand_id)
-		if g.is_numeric_literal_expr(operand_id) || g.arg_is_const_ident(node) {
+		if g.is_assert_literal_operand(operand_id) || g.arg_is_const_ident(node) {
 			continue
 		}
 		operand_type := g.usable_expr_type(operand_id)
 		typ := g.value_unalias_type(operand_type)
-		if !typ.is_integer() && !typ.is_float() {
+		if !typ.is_integer() && !typ.is_float() && !assert_operand_type_has_text_value(typ) {
 			continue
 		}
 		c_type := g.value_c_type(operand_type)
@@ -4563,17 +4604,46 @@ fn (g &FlatGen) is_numeric_literal_expr(id flat.NodeId) bool {
 	return false
 }
 
-fn (mut g FlatGen) gen_assert_numeric_value(prefix string, id flat.NodeId) {
-	label := g.assert_source_text(id)
+// is_assert_literal_operand reports whether an operand is written exactly as it
+// prints, so the failure message shows its source text once, instead of the
+// `label = value` form that would repeat it.
+fn (g &FlatGen) is_assert_literal_operand(id flat.NodeId) bool {
+	if g.is_numeric_literal_expr(id) {
+		return true
+	}
+	return g.a.node(id).kind == .bool_literal
+}
+
+// assert_operand_type_has_text_value reports whether a failing assertion can print
+// the value of this operand as text, instead of only its source label. Numbers are
+// rendered by gen_assert_operand_value itself; strings and bools by the
+// v3_eprint_assert_* helpers.
+fn assert_operand_type_has_text_value(typ types.Type) bool {
+	if typ.is_string() {
+		return true
+	}
+	return typ is types.Primitive && typ.props.has(.boolean)
+}
+
+fn (mut g FlatGen) gen_assert_operand_value(prefix string, id flat.NodeId) {
+	label := g.assert_operand_text(id)
 	if label.len == 0 {
 		return
 	}
-	if g.is_numeric_literal_expr(id) {
+	if g.is_assert_literal_operand(id) {
 		g.writeln('v3_eprint_lit("${c_escape(prefix)}: ${c_escape(label)}\\n");')
 		return
 	}
 	typ := g.value_unalias_type(g.usable_expr_type(id))
-	if typ.is_float() {
+	if typ.is_string() {
+		g.write('v3_eprint_assert_string("${c_escape(prefix)}", "${c_escape(label)}", (')
+		g.gen_expr(id)
+		g.writeln('));')
+	} else if assert_operand_type_has_text_value(typ) {
+		g.write('v3_eprint_assert_bool("${c_escape(prefix)}", "${c_escape(label)}", (')
+		g.gen_expr(id)
+		g.writeln('));')
+	} else if typ.is_float() {
 		g.write('fprintf(stderr, "%s: %s = %.17g\\n", "${c_escape(prefix)}", "${c_escape(label)}", (double)(')
 		g.gen_expr(id)
 		g.writeln('));')
@@ -4745,6 +4815,79 @@ fn (g &FlatGen) assert_source_text(id flat.NodeId) string {
 		return ''
 	}
 	return source[start..end].trim_space()
+}
+
+struct AssertOperandSpan {
+	file_id int
+	start   int
+	end     int
+}
+
+// assert_operand_text returns the source text of an assertion operand. Operands
+// the transformer rebuilds carry no span of their own, so those fall back to the
+// span covering the operands of the string operation they were rebuilt from.
+fn (g &FlatGen) assert_operand_text(id flat.NodeId) string {
+	text := g.assert_source_text(id)
+	if text.len > 0 {
+		return text
+	}
+	span := g.assert_operand_span(id) or { return '' }
+	file := g.a.source_files[span.file_id] or { return '' }
+	source := os.read_file(file.name) or { return '' }
+	if span.start >= span.end || span.end > source.len {
+		return ''
+	}
+	return source[span.start..span.end].trim_space()
+}
+
+// assert_operand_span returns the byte range covering a rebuilt operand. For a
+// string operation the transformer builds a call over the two operands of the
+// expression it replaced, so the range covering those operands is the text the
+// operand was written as. Every other rebuilt node names one part of an
+// expression (the receiver of a method call, the base of a smartcast) and gets
+// no label rather than a wrong one.
+fn (g &FlatGen) assert_operand_span(id flat.NodeId) ?AssertOperandSpan {
+	operand := g.a.node(id)
+	if operand.kind != .call || operand.children_count != 3
+		|| !g.assert_call_is_string_operator(operand) {
+		return none
+	}
+	mut file_id := -1
+	mut start := -1
+	mut end := -1
+	mut stack := [id]
+	for stack.len > 0 {
+		node := g.a.node(stack.pop())
+		if node.pos.is_valid() {
+			if file_id < 0 {
+				file_id = int(node.pos.id)
+			}
+			if int(node.pos.id) == file_id {
+				offset := int_max(0, int(node.pos.offset))
+				offset_end := int_max(offset, int(node.pos.end))
+				if start < 0 || offset < start {
+					start = offset
+				}
+				if offset_end > end {
+					end = offset_end
+				}
+			}
+		}
+		for i in 0 .. node.children_count {
+			child := g.a.child(node, int(i))
+			if int(child) >= 0 {
+				stack << child
+			}
+		}
+	}
+	if file_id < 0 || start < 0 || start >= end {
+		return none
+	}
+	return AssertOperandSpan{
+		file_id: file_id
+		start:   start
+		end:     end
+	}
 }
 
 // has_pending_defers reports whether has pending defers applies in c.
