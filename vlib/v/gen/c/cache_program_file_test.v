@@ -3,6 +3,7 @@ module c
 import os
 import v.flat
 import v.token
+import v.types
 
 // cache_program_file_matches must accept a program file under any spelling that
 // resolves to it, and resolve each written path at most once per memo.
@@ -98,4 +99,17 @@ fn test_program_file_checks_resolve_through_the_source_path_table() {
 		assert g.is_program_specialization_fn_node_with_qfn(node, int(node_id), helper,
 			'written.v')
 	}
+}
+
+// The test files of a test build resolve through the same table.
+fn test_test_files_resolve_through_the_source_path_table() {
+	mut a := flat.FlatAst.new()
+	// An answer only the table can give, so a direct os.real_path would show.
+	a.resolved_source_paths['written_test.v'] = 'recorded_test.v'
+	a.resolve_source_paths()
+	tc := types.TypeChecker.new(&a)
+	mut g := FlatGen.new()
+	_ = g.gen_with_used_test_options(&a, map[string]bool{}, &tc, true, ['written_test.v'])
+	assert g.test_files['written_test.v']
+	assert g.test_files['recorded_test.v']
 }

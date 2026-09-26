@@ -5824,7 +5824,7 @@ fn cache_v3_type_diagnostics(a &flat.FlatAst, diagnostics []types.TypeError) []V
 			}
 		}
 		if file.len > 0 {
-			file = os.real_path(file)
+			file = a.real_source_path(file)
 		}
 		cached << V3CachedTypeDiagnostic{
 			file:            file.clone()
@@ -5844,7 +5844,7 @@ fn restore_v3_type_diagnostics(mut a flat.FlatAst, diagnostics []V3CachedTypeDia
 	mut file_ids := map[string]int{}
 	mut next_file_id := 1
 	for id, file in a.source_files {
-		file_ids[os.real_path(file.name)] = id
+		file_ids[a.real_source_path(file.name)] = id
 		if id >= next_file_id {
 			next_file_id = id + 1
 		}
@@ -5918,12 +5918,12 @@ fn monomorph_cache_runtime_strings(a &flat.FlatAst, source_files []string) []str
 	cacheable := cacheable_runtime_string_nodes(a)
 	mut source_paths := map[string]bool{}
 	for path in source_files {
-		source_paths[os.real_path(path)] = true
+		source_paths[a.real_source_path(path)] = true
 	}
 	mut source_nodes := []bool{len: a.nodes.len}
 	mut stack := []flat.NodeId{cap: 256}
 	for idx, node in a.nodes {
-		if node.kind != .file || os.real_path(node.value) !in source_paths {
+		if node.kind != .file || a.real_source_path(node.value) !in source_paths {
 			continue
 		}
 		stack << flat.NodeId(idx)
@@ -5956,11 +5956,11 @@ fn monomorph_cache_semantic_signature(a &flat.FlatAst, source_files []string) st
 	mut source_paths := map[string]bool{}
 	mut source_function_names := map[string]bool{}
 	for path in source_files {
-		source_paths[os.real_path(path)] = true
+		source_paths[a.real_source_path(path)] = true
 	}
 	mut file_ids := []int{}
 	for idx, node in a.nodes {
-		if node.kind == .file && os.real_path(node.value) in source_paths {
+		if node.kind == .file && a.real_source_path(node.value) in source_paths {
 			file_ids << idx
 		}
 	}
@@ -6198,7 +6198,7 @@ fn incremental_declaration_attribute_signatures(a &flat.FlatAst) map[int]string 
 fn incremental_program_snapshot(a &flat.FlatAst, source_files []string) V3IncrementalSnapshot {
 	mut source_paths := map[string]bool{}
 	for path in source_files {
-		source_paths[os.real_path(path)] = true
+		source_paths[a.real_source_path(path)] = true
 	}
 	mut module_names := map[string]string{}
 	for node in a.nodes {
@@ -6206,7 +6206,7 @@ fn incremental_program_snapshot(a &flat.FlatAst, source_files []string) V3Increm
 			continue
 		}
 		file := a.source_files[node.pos.id] or { continue }
-		module_names[os.real_path(file.name)] = node.value
+		module_names[a.real_source_path(file.name)] = node.value
 	}
 	mut declaration_parts := []string{}
 	mut ordered_import_directive_parts := []string{}
@@ -6219,7 +6219,7 @@ fn incremental_program_snapshot(a &flat.FlatAst, source_files []string) V3Increm
 	for idx, node in a.nodes {
 		file := a.source_files[node.pos.id] or { continue }
 		cur_file := file.name
-		real_file := os.real_path(cur_file)
+		real_file := a.real_source_path(cur_file)
 		if real_file !in source_paths {
 			continue
 		}
@@ -6364,7 +6364,7 @@ fn incremental_changed_functions_require_reachability_rebuild(a &flat.FlatAst, t
 	mut program_files := map[string]bool{}
 	for file in user_files {
 		program_files[file] = true
-		program_files[os.real_path(file)] = true
+		program_files[a.real_source_path(file)] = true
 	}
 	mut cur_module := ''
 	mut is_program_file := false
@@ -6374,7 +6374,7 @@ fn incremental_changed_functions_require_reachability_rebuild(a &flat.FlatAst, t
 			.file {
 				cur_module = ''
 				is_program_file = program_files[node.value]
-					|| program_files[os.real_path(node.value)]
+					|| program_files[a.real_source_path(node.value)]
 			}
 			.module_decl {
 				cur_module = node.value
@@ -10815,7 +10815,7 @@ pub fn run(args []string) {
 	parse_files_dispatch_profiled(mut p, user_files, !current_no_parallel, mut parse_timing)
 	if is_linux_wayland_only_session(target.os, os.getenv('DISPLAY'), os.getenv('WAYLAND_DISPLAY'), os.getenv('XDG_SESSION_TYPE'))
 		&& !user_defines.any(it.all_before('=').trim_space() == 'sokol_wayland')
-		&& parsed_files_import_linux_gg(a, user_files) {
+		&& parsed_files_import_linux_gg(mut a, user_files) {
 		eprintln('`gg`/`sokol.sapp` cannot run in a Wayland-only Linux session without `-d sokol_wayland`.')
 		exit(1)
 	}
@@ -10860,20 +10860,7 @@ pub fn run(args []string) {
 	mut fallback_report_sources := macos_v3_fallback_report_sources(a, prefs.vroot, cache_state.cached_source_digests, v3_fallback_ignored_warmup_source_paths(cache_state))
 	_ = stage_macos_v3_fallback_source_digests(macos_v3_c_error_dir, fallback_report_sources)
 	if print_v_files || print_watched_files || dump_files != '' {
-		mut watched := map[string]bool{}
-		for _, file in a.source_files {
-			if file.name.ends_with('.v') || file.name.ends_with('.vv')
-				|| file.name.ends_with('.vsh') {
-				watched[os.real_path(file.name)] = true
-			}
-		}
-		for source_files in cache_state.module_sources.values() {
-			for file in source_files {
-				if file.ends_with('.v') || file.ends_with('.vv') || file.ends_with('.vsh') {
-					watched[os.real_path(file)] = true
-				}
-			}
-		}
+		watched := watched_v_source_paths(a, cache_state.module_sources)
 		mut watched_files := watched.keys()
 		watched_files.sort()
 		// `$embed_file` reads a non-V file at compile time and puts its bytes in the binary,
@@ -11623,7 +11610,7 @@ pub fn run(args []string) {
 					cache_state.headers[module_name] = header
 				}
 			}
-			if invalidate_changed_cache_dependents(mut cache_state) {
+			if invalidate_changed_cache_dependents(mut cache_state, a) {
 				restart_v3_after_cache_invalidation()
 			}
 		}
@@ -12959,7 +12946,7 @@ pub fn run(args []string) {
 				}
 				compile_signature = v3_cached_object_wrapper_compile_signature(compile_signature, prefix_source)
 				objects := cache_state.manager.valid_cgen_prepared_objects(cgen_cache_entry, compile_signature) or {
-					if resolve_flag_specific_cache_objects(mut cache_state, compile_signature) {
+					if resolve_flag_specific_cache_objects(mut cache_state, a, compile_signature) {
 						os.setenv('V3_CACHE_FORCE_SOURCE', '1', true)
 						restart_v3_after_cache_invalidation()
 					}
@@ -13006,7 +12993,7 @@ pub fn run(args []string) {
 							os.setenv('V3_CACHE_FORCE_SOURCE', '1', true)
 							restart_v3_after_cache_invalidation()
 						}
-						prepared_cache = prepare_v3_incremental_cached_body(cache_plan_file, incremental_prefix_path, incremental_tcc_declarations_path, cached_prefix, compile_signature, mut cache_state) or {
+						prepared_cache = prepare_v3_incremental_cached_body(cache_plan_file, incremental_prefix_path, incremental_tcc_declarations_path, cached_prefix, compile_signature, a, mut cache_state) or {
 							message := err.msg()
 							if request_macos_v3_c_error_fallback_from_message(macos_v3_fallback_file, macos_v3_c_error_dir, c_compiler, message, [
 								cache_plan_file,
@@ -13043,7 +13030,7 @@ pub fn run(args []string) {
 							cleanup_c_build_dir(cc_dir)
 							exit(1)
 						}
-						prepared_cache = prepare_v3_cached_generic_body(generated_source, cached_prefix, cached_declarations, cached_body, compile_signature, mut cache_state) or {
+						prepared_cache = prepare_v3_cached_generic_body(generated_source, cached_prefix, cached_declarations, cached_body, compile_signature, a, mut cache_state) or {
 							message := err.msg()
 							if request_macos_v3_c_error_fallback_from_message(macos_v3_fallback_file, macos_v3_c_error_dir, c_compiler, message, [
 								cache_plan_file,
@@ -13647,7 +13634,7 @@ Please install the corresponding development package/libraries and make sure the
 fn checker_fixture_missing_header(a &flat.FlatAst, user_files []string, c_compiler string, user_defines []string) ?string {
 	mut selected_files := map[string]bool{}
 	for file in user_files {
-		selected_files[os.real_path(file)] = true
+		selected_files[a.real_source_path(file)] = true
 	}
 	mut current_file := ''
 	mut current_module := 'main'
@@ -13656,7 +13643,7 @@ fn checker_fixture_missing_header(a &flat.FlatAst, user_files []string, c_compil
 		if node.kind == .file {
 			current_file = node.value
 			current_module = 'main'
-			selected = os.real_path(current_file) in selected_files
+			selected = a.real_source_path(current_file) in selected_files
 			continue
 		}
 		if !selected {
@@ -13870,8 +13857,8 @@ fn v3_incremental_program_main_source(cached_prefix string, body_source string) 
 	return cached_prefix + modulecache.without_duplicate_static_string_definitions(body_source, cached_prefix)
 }
 
-fn prepare_v3_incremental_cached_body(body_path string, prefix_path string, tcc_declarations_path string, cached_prefix string, compile_signature string, mut state V3ModuleCacheState) !V3PreparedModuleCache {
-	if resolve_flag_specific_cache_objects(mut state, compile_signature) {
+fn prepare_v3_incremental_cached_body(body_path string, prefix_path string, tcc_declarations_path string, cached_prefix string, compile_signature string, a &flat.FlatAst, mut state V3ModuleCacheState) !V3PreparedModuleCache {
+	if resolve_flag_specific_cache_objects(mut state, a, compile_signature) {
 		os.setenv('V3_CACHE_FORCE_SOURCE', '1', true)
 		restart_v3_after_cache_invalidation()
 	}
@@ -13890,11 +13877,11 @@ fn prepare_v3_incremental_cached_body(body_path string, prefix_path string, tcc_
 	}
 }
 
-fn prepare_v3_cached_generic_body(generated_source string, cached_prefix string, cached_declarations string, cached_body string, compile_signature string, mut state V3ModuleCacheState) !V3PreparedModuleCache {
+fn prepare_v3_cached_generic_body(generated_source string, cached_prefix string, cached_declarations string, cached_body string, compile_signature string, a &flat.FlatAst, mut state V3ModuleCacheState) !V3PreparedModuleCache {
 	if !state.manager.ensure_dir() {
 		return error('v3 module cache directory is unavailable')
 	}
-	if resolve_flag_specific_cache_objects(mut state, compile_signature) {
+	if resolve_flag_specific_cache_objects(mut state, a, compile_signature) {
 		os.setenv('V3_CACHE_FORCE_SOURCE', '1', true)
 		restart_v3_after_cache_invalidation()
 	}
@@ -13938,7 +13925,7 @@ fn prepare_v3_module_cache(generated_source string, cache_used_fns &map[string]b
 	mut needs_declarations := !state.bundle_valid
 	if !needs_declarations {
 		for module_name in parsed_modules {
-			if !module_is_builtin_bundle(state, module_name) {
+			if !module_is_builtin_bundle(state, tc.a, module_name) {
 				needs_declarations = true
 				break
 			}
@@ -13951,7 +13938,7 @@ fn prepare_v3_module_cache(generated_source string, cache_used_fns &map[string]b
 	}
 	declarations := cache_source_without_cached_native_inputs(raw_declarations, state, false)
 	compile_signature := v3_cached_object_wrapper_compile_signature(v3_cached_object_compile_signature(c_standard, opt_flag, pic_flag, warning_flags, generated_c_flags, objective_c, interface_impl_signature), generated_source)
-	if resolve_flag_specific_cache_objects(mut state, compile_signature) {
+	if resolve_flag_specific_cache_objects(mut state, tc.a, compile_signature) {
 		os.setenv('V3_CACHE_FORCE_SOURCE', '1', true)
 		restart_v3_after_cache_invalidation()
 	}
@@ -13975,11 +13962,11 @@ fn prepare_v3_module_cache(generated_source string, cache_used_fns &map[string]b
 		mut split_modules := split.modules.keys()
 		split_modules.sort()
 		for module_name in split_modules {
-			if module_is_builtin_bundle(state, module_name) {
+			if module_is_builtin_bundle(state, tc.a, module_name) {
 				bundle_body.write_string(split.modules[module_name])
 			}
 		}
-		bundle_roots := cache_builtin_bundle_roots(state)
+		bundle_roots := cache_builtin_bundle_roots(state, tc.a)
 		bundle_declarations := prune_cached_native_function_prototypes(raw_declarations, state, bundle_roots)
 		bundle_native := cache_source_with_cached_native_inputs(bundle_declarations, state, bundle_roots)
 		module_source := if bundle_native.has_native {
@@ -13997,26 +13984,27 @@ fn prepare_v3_module_cache(generated_source string, cache_used_fns &map[string]b
 		prealloc_scope_leave_for_v3(bundle_compile_scope)
 		prealloc_scope_free_for_v3(bundle_compile_scope)
 		for module_name, header in state.headers {
-			if !module_is_builtin_bundle(state, module_name) {
+			if !module_is_builtin_bundle(state, tc.a, module_name) {
 				continue
 			}
 			if source_files := state.module_sources[module_name] {
 				state.manager.write_header(module_name, source_files, header)!
 			}
 		}
-		bundle_dependencies := cache_object_dependency_signatures(state, cache_builtin_bundle_roots(state))
+		bundle_dependencies := cache_object_dependency_signatures(state, tc.a, cache_builtin_bundle_roots(state,
+			tc.a))
 		state.manager.write_stamp('builtin', state.bundle_sources, bundle_dependencies, compile_signature)!
 		object_paths['builtin'] = entry.object
 		state.bundle_valid = true
 		for module_name in state.headers.keys() {
-			if module_is_builtin_bundle(state, module_name) {
+			if module_is_builtin_bundle(state, tc.a, module_name) {
 				newly_cached_modules[module_name] = true
 			}
 		}
 	}
 
 	for module_name in parsed_modules {
-		if module_is_builtin_bundle(state, module_name) {
+		if module_is_builtin_bundle(state, tc.a, module_name) {
 			continue
 		}
 		source_files := state.module_sources[module_name] or { continue }
@@ -14055,7 +14043,7 @@ fn prepare_v3_module_cache(generated_source string, cache_used_fns &map[string]b
 		if header := state.headers[module_name] {
 			state.manager.write_header(module_name, source_files, header)!
 		}
-		dependencies := cache_object_dependency_signatures(state, [module_name])
+		dependencies := cache_object_dependency_signatures(state, tc.a, [module_name])
 		state.manager.write_stamp(module_name, source_files, dependencies, compile_signature)!
 		object_paths[module_name] = entry.object
 		newly_cached_modules[module_name] = true
@@ -14078,7 +14066,7 @@ fn cache_used_object_paths(object_paths map[string]string, program_used_fns &map
 	mut selected := map[string]string{}
 	mut runtime_roots := []string{}
 	for module_name, object_path in object_paths {
-		if module_is_builtin_bundle(state, module_name) {
+		if module_is_builtin_bundle(state, tc.a, module_name) {
 			selected[module_name] = object_path
 			continue
 		}
@@ -14476,7 +14464,10 @@ fn module_cache_source_path_set(a &flat.FlatAst, source_files []string) map[stri
 	return paths
 }
 
-fn module_is_builtin_bundle(state &V3ModuleCacheState, module_name string) bool {
+// module_is_builtin_bundle reports whether `module_name` is a builtin bundle
+// module whose source files, at least one, all belong to the bundle. It resolves
+// each file through `a`'s table of resolved source paths.
+fn module_is_builtin_bundle(state &V3ModuleCacheState, a &flat.FlatAst, module_name string) bool {
 	if module_name !in modulecache.builtin_bundle_modules {
 		return false
 	}
@@ -14485,17 +14476,17 @@ fn module_is_builtin_bundle(state &V3ModuleCacheState, module_name string) bool 
 		return false
 	}
 	for source_file in source_files {
-		if !state.bundle_source_paths[os.real_path(source_file)] {
+		if !state.bundle_source_paths[a.real_source_path(source_file)] {
 			return false
 		}
 	}
 	return true
 }
 
-fn cache_builtin_bundle_roots(state &V3ModuleCacheState) []string {
+fn cache_builtin_bundle_roots(state &V3ModuleCacheState, a &flat.FlatAst) []string {
 	mut roots := []string{}
 	for module_name in state.module_sources.keys() {
-		if module_is_builtin_bundle(state, module_name) {
+		if module_is_builtin_bundle(state, a, module_name) {
 			roots << module_name
 		}
 	}
@@ -14581,7 +14572,7 @@ fn cache_add_module_header_signature(state &V3ModuleCacheState, module_name stri
 	signatures[entry.header] = modulecache.header_signature(header)
 }
 
-fn cache_object_dependency_signatures(state &V3ModuleCacheState, roots []string) map[string]string {
+fn cache_object_dependency_signatures(state &V3ModuleCacheState, a &flat.FlatAst, roots []string) map[string]string {
 	mut signatures := cache_dependency_header_signatures(state, roots)
 	// The parser injects these imports into the program stream instead of a
 	// particular file. Their position therefore cannot assign them to a stable
@@ -14595,7 +14586,7 @@ fn cache_object_dependency_signatures(state &V3ModuleCacheState, roots []string)
 	}
 	// Every cached translation unit is compiled with the builtin bundle's declarations
 	// prefix, even when its V module has no explicit builtin import.
-	for module_name in cache_builtin_bundle_roots(state) {
+	for module_name in cache_builtin_bundle_roots(state, a) {
 		cache_add_module_header_signature(state, module_name, mut signatures)
 	}
 	mut external_input_modules := map[string]bool{}
@@ -14642,7 +14633,7 @@ fn cache_object_dependency_signatures(state &V3ModuleCacheState, roots []string)
 	return signatures
 }
 
-fn invalidate_changed_cache_dependents(mut state V3ModuleCacheState) bool {
+fn invalidate_changed_cache_dependents(mut state V3ModuleCacheState, a &flat.FlatAst) bool {
 	mut changed_headers := map[string]bool{}
 	for module_name, header in state.headers {
 		source_files := state.module_sources[module_name] or { continue }
@@ -14658,7 +14649,7 @@ fn invalidate_changed_cache_dependents(mut state V3ModuleCacheState) bool {
 	mut invalidated := false
 	for object_name in state.objects.keys() {
 		roots := if object_name == 'builtin' {
-			cache_builtin_bundle_roots(state)
+			cache_builtin_bundle_roots(state, a)
 		} else {
 			[object_name]
 		}
@@ -15025,7 +15016,7 @@ fn cache_external_identifiers_are_private_to_module(a &flat.FlatAst, state &V3Mo
 	}
 	if owner_module != 'main' {
 		for path in user_files {
-			real_path := os.real_path(path)
+			real_path := a.real_source_path(path)
 			scanned_paths[real_path] = true
 			file_source := os.read_file(real_path) or { continue }
 			for identifier in v_c_identifiers(file_source) {
@@ -15044,7 +15035,7 @@ fn cache_external_identifiers_are_private_to_module(a &flat.FlatAst, state &V3Mo
 			continue
 		}
 		for path in source_files {
-			real_path := os.real_path(path)
+			real_path := a.real_source_path(path)
 			scanned_paths[real_path] = true
 			file_source := os.read_file(real_path) or { continue }
 			for identifier in v_c_identifiers(file_source) {
@@ -15081,7 +15072,7 @@ fn cache_external_identifiers_are_private_to_module(a &flat.FlatAst, state &V3Mo
 		if canonical_module == owner_module || !os.is_file(file_node.value) {
 			continue
 		}
-		real_path := os.real_path(file_node.value)
+		real_path := a.real_source_path(file_node.value)
 		if scanned_paths[real_path] {
 			continue
 		}
@@ -15370,10 +15361,10 @@ fn v3_cached_object_wrapper_compile_signature(base string, generated_source stri
 	return '${base}\nprogram_wrappers=${sha256.hexhash(wrapper_source)}'
 }
 
-fn resolve_flag_specific_cache_objects(mut state V3ModuleCacheState, compile_signature string) bool {
+fn resolve_flag_specific_cache_objects(mut state V3ModuleCacheState, a &flat.FlatAst, compile_signature string) bool {
 	for object_name in state.objects.keys() {
 		roots := if object_name == 'builtin' {
-			cache_builtin_bundle_roots(state)
+			cache_builtin_bundle_roots(state, a)
 		} else {
 			[object_name]
 		}
@@ -15382,7 +15373,7 @@ fn resolve_flag_specific_cache_objects(mut state V3ModuleCacheState, compile_sig
 		} else {
 			state.module_sources[object_name] or { continue }
 		}
-		dependency_inputs := cache_object_dependency_signatures(state, roots)
+		dependency_inputs := cache_object_dependency_signatures(state, a, roots)
 		if entry := state.manager.valid_object_for_compile_signature(object_name, source_files, compile_signature, dependency_inputs) {
 			state.objects[object_name] = entry.object
 		} else {
@@ -16654,19 +16645,20 @@ fn set_unsupported_generic_files(mut tc types.TypeChecker, a &flat.FlatAst, incl
 	if !include_imports {
 		return
 	}
+	real_root := os.real_path(diagnostic_root)
 	for i, node in a.nodes {
 		if i < a.user_code_start || node.kind != .file || node.value.len == 0 {
 			continue
 		}
-		if path_is_in_dir(node.value, diagnostic_root) {
+		if real_path_is_in_dir(a.real_source_path(node.value), real_root) {
 			tc.diagnostic_files['generic:' + node.value] = true
 		}
 	}
 }
 
-fn path_is_in_dir(path string, dir string) bool {
-	real_path := os.real_path(path)
-	real_dir := os.real_path(dir)
+// real_path_is_in_dir reports whether the resolved path `real_path` is the
+// resolved directory `real_dir` or lies inside it.
+fn real_path_is_in_dir(real_path string, real_dir string) bool {
 	return real_path == real_dir || real_path.starts_with(real_dir + os.path_separator)
 }
 
@@ -16756,6 +16748,26 @@ fn sync_import_node() flat.Node {
 		value: 'sync'
 		typ:   'sync'
 	}
+}
+
+// watched_v_source_paths returns the resolved paths of the `.v`, `.vv` and `.vsh`
+// files among the sources this build parsed and the module sources the cache
+// state lists, resolving each through the AST's table of resolved source paths.
+fn watched_v_source_paths(a &flat.FlatAst, module_sources map[string][]string) map[string]bool {
+	mut watched := map[string]bool{}
+	for _, file in a.source_files {
+		if file.name.ends_with('.v') || file.name.ends_with('.vv') || file.name.ends_with('.vsh') {
+			watched[a.real_source_path(file.name)] = true
+		}
+	}
+	for source_files in module_sources.values() {
+		for file in source_files {
+			if file.ends_with('.v') || file.ends_with('.vv') || file.ends_with('.vsh') {
+				watched[a.real_source_path(file)] = true
+			}
+		}
+	}
+	return watched
 }
 
 // native_build_input_paths returns the local C sources and headers this build compiles or
@@ -18370,9 +18382,9 @@ fn resolve_imports(mut a flat.FlatAst, mut p parser.Parser, prefs &pref.Preferen
 	mut parsed_modules := map[string]bool{}
 	parsed_modules['builtin'] = true
 	parsed_modules['main'] = true
-	explicit_initial_imports := imports_from_files(a, initial_files)
+	explicit_initial_imports := imports_from_files(mut a, initial_files)
 	canonicalize_colliding_initial_modules(mut a, prefs, initial_files, explicit_initial_imports)
-	seed_initial_modules(a, initial_files, explicit_initial_imports, mut parsed_modules)
+	seed_initial_modules(mut a, initial_files, explicit_initial_imports, mut parsed_modules)
 
 	// Backend modules excluded by the active configuration are never parsed: their
 	// dispatch in main() is gated out by the matching `$if !skip_* ?`, so nothing
@@ -18629,7 +18641,7 @@ fn resolve_imports(mut a flat.FlatAst, mut p parser.Parser, prefs &pref.Preferen
 				&& mod_name in modulecache.builtin_bundle_imports
 			if is_bundle_warmup_import
 				&& (mod_name in parsed_module_identities || mod_name in parsed_modules)
-				&& !module_is_builtin_bundle(cache_state, mod_name) {
+				&& !module_is_builtin_bundle(cache_state, a, mod_name) {
 				// A project module may shadow an optional builtin-bundle import (for
 				// example, a top-level `hash` module). Keep the project module as its
 				// own cache object and omit the shadowed warmup import from this bundle.
@@ -18780,7 +18792,7 @@ fn resolve_imports(mut a flat.FlatAst, mut p parser.Parser, prefs &pref.Preferen
 				}
 				cache_state.module_sources[cache_module] = mod_files
 				mut parse_files := mod_files.clone()
-				is_builtin_bundle := module_is_builtin_bundle(cache_state, cache_module)
+				is_builtin_bundle := module_is_builtin_bundle(cache_state, a, cache_module)
 				if is_builtin_bundle {
 					if cache_state.bundle_valid {
 						if header := cache_state.manager.valid_header(cache_module, mod_files) {
@@ -18989,18 +19001,22 @@ fn record_cache_module_dependency(mut state V3ModuleCacheState, owner string, de
 	}
 }
 
-fn seed_initial_modules(a &flat.FlatAst, initial_files []string, explicit_imports map[string]bool, mut parsed_modules map[string]bool) {
+// seed_initial_modules marks the modules the initial files declare as parsed,
+// except a module they also import explicitly while declaring no other module.
+// Like imports_from_files it records the paths it resolves in `a`.
+fn seed_initial_modules(mut a flat.FlatAst, initial_files []string, explicit_imports map[string]bool, mut parsed_modules map[string]bool) {
 	mut selected_files := map[string]bool{}
 	for file in initial_files {
 		selected_files[file] = true
-		selected_files[os.real_path(file)] = true
+		selected_files[a.record_source_path(file)] = true
 	}
 	mut declared_modules := map[string]bool{}
 	for file_idx, file_node in a.nodes {
 		if file_idx < a.user_code_start || file_node.kind != .file || file_node.value.len == 0 {
 			continue
 		}
-		if !selected_files[file_node.value] && !selected_files[os.real_path(file_node.value)] {
+		if !selected_files[file_node.value]
+			&& !selected_files[a.record_source_path(file_node.value)] {
 			continue
 		}
 		module_name := test_file_module_name(a, file_node)
@@ -19017,7 +19033,8 @@ fn seed_initial_modules(a &flat.FlatAst, initial_files []string, explicit_import
 		if file_idx < a.user_code_start || file_node.kind != .file || file_node.value.len == 0 {
 			continue
 		}
-		if !selected_files[file_node.value] && !selected_files[os.real_path(file_node.value)] {
+		if !selected_files[file_node.value]
+			&& !selected_files[a.record_source_path(file_node.value)] {
 			continue
 		}
 		module_name := test_file_module_name(a, file_node)
@@ -19034,17 +19051,22 @@ fn seed_initial_modules(a &flat.FlatAst, initial_files []string, explicit_import
 	}
 }
 
+// canonicalize_colliding_initial_modules gives each initial file whose module
+// name is also imported the path-qualified module name its location under a
+// module root implies, if any. Like imports_from_files it records the paths it
+// resolves in `a`.
 fn canonicalize_colliding_initial_modules(mut a flat.FlatAst, prefs &pref.Preferences, initial_files []string, explicit_imports map[string]bool) {
 	mut selected_files := map[string]bool{}
 	for file in initial_files {
 		selected_files[file] = true
-		selected_files[os.real_path(file)] = true
+		selected_files[a.record_source_path(file)] = true
 	}
 	for file_idx, file_node in a.nodes {
 		if file_idx < a.user_code_start || file_node.kind != .file || file_node.value.len == 0 {
 			continue
 		}
-		if !selected_files[file_node.value] && !selected_files[os.real_path(file_node.value)] {
+		if !selected_files[file_node.value]
+			&& !selected_files[a.record_source_path(file_node.value)] {
 			continue
 		}
 		module_name := test_file_module_name(a, file_node)
@@ -19094,18 +19116,22 @@ fn initial_module_path_identity(prefs &pref.Preferences, file string, module_nam
 	return none
 }
 
-fn imports_from_files(a &flat.FlatAst, files []string) map[string]bool {
+// imports_from_files returns the imports of the parsed files among `files`.
+// Until a.resolve_source_paths() freezes the table, it records each path it
+// resolves in `a` for later stages, so it must run on the thread that owns `a`.
+fn imports_from_files(mut a flat.FlatAst, files []string) map[string]bool {
 	mut selected_files := map[string]bool{}
 	for file in files {
 		selected_files[file] = true
-		selected_files[os.real_path(file)] = true
+		selected_files[a.record_source_path(file)] = true
 	}
 	mut imports := map[string]bool{}
 	for file_idx, file_node in a.nodes {
 		if file_idx < a.user_code_start || file_node.kind != .file || file_node.value.len == 0 {
 			continue
 		}
-		if !selected_files[file_node.value] && !selected_files[os.real_path(file_node.value)] {
+		if !selected_files[file_node.value]
+			&& !selected_files[a.record_source_path(file_node.value)] {
 			continue
 		}
 		for i in 0 .. file_node.children_count {
@@ -19118,8 +19144,8 @@ fn imports_from_files(a &flat.FlatAst, files []string) map[string]bool {
 	return imports
 }
 
-fn parsed_files_import_linux_gg(a &flat.FlatAst, files []string) bool {
-	imports := imports_from_files(a, files)
+fn parsed_files_import_linux_gg(mut a flat.FlatAst, files []string) bool {
+	imports := imports_from_files(mut a, files)
 	return imports['gg'] || imports['sokol.sapp']
 }
 

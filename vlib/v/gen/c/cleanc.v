@@ -3101,11 +3101,14 @@ pub fn (mut g FlatGen) gen_with_used(a &flat.FlatAst, used_fns map[string]bool, 
 	return g.gen_with_used_options(a, used_fns, tc, false)
 }
 
+// gen_with_used_test_options emits `a` like gen_with_used_options, generating the
+// test harness for `test_files`. Each test file counts as written and as
+// resolved through `a`'s table of resolved source paths.
 pub fn (mut g FlatGen) gen_with_used_test_options(a &flat.FlatAst, used_fns map[string]bool, tc &types.TypeChecker, no_parallel bool, test_files []string) string {
 	g.test_files = map[string]bool{}
 	for file in test_files {
 		g.test_files[file] = true
-		g.test_files[os.real_path(file)] = true
+		g.test_files[a.real_source_path(file)] = true
 	}
 	return g.gen_with_used_options(a, used_fns, tc, no_parallel)
 }

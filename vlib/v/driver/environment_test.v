@@ -471,11 +471,11 @@ fn test_wayland_gg_precheck_inspects_parsed_imports_in_every_user_file() {
 	prefs := pref.new_preferences()
 	mut p := parser.Parser.new(prefs)
 	mut a := p.parse_files([comment_file, string_file, gg_file, sapp_file])
-	assert !parsed_files_import_linux_gg(a, [comment_file, string_file])
+	assert !parsed_files_import_linux_gg(mut a, [comment_file, string_file])
 	directory_files := v3_directory_user_files(mut a, root, prefs, false, false)!
 	assert directory_files.len == 4
-	assert parsed_files_import_linux_gg(a, directory_files)
-	assert parsed_files_import_linux_gg(a, [sapp_file])
+	assert parsed_files_import_linux_gg(mut a, directory_files)
+	assert parsed_files_import_linux_gg(mut a, [sapp_file])
 }
 
 fn test_linux_wayland_only_session_matches_established_compiler_detection() {
