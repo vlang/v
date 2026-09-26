@@ -4886,6 +4886,10 @@ println(compare(1.1, 1.1)) //          0
 println(compare(1.1, 1.2)) //         -1
 ```
 
+V can also infer a generic callback's return type from an unbound instance
+method passed as an argument, such as `item.call(Item.value)` when `call[T]`
+accepts a `fn (mut Item) T` callback.
+
 #### Structured generic receiver patterns
 
 Generic methods can constrain their receiver to a *structured* shape of the
