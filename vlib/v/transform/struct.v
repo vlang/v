@@ -877,8 +877,42 @@ fn (t &Transformer) lookup_struct_info(name string) ?StructInfo {
 	if name.starts_with('main.') && !name['main.'.len..].contains('.')
 		&& !name['main.'.len..].contains('[') {
 		bare := name['main.'.len..]
-		if bare in t.structs {
-			return t.structs[bare]
+		// The bare table is first-wins across modules, so it can hold an imported
+		// homonym: the explicit `main.` lock may only accept program-module entries.
+		if info := t.structs[bare] {
+			if info.module.len == 0 || info.module == 'main' {
+				return info
+			}
+		}
+	}
+	// A bare spelling belongs to the file that wrote it: `import iam { Token }`
+	// must select `iam.Token` even when another imported module declares a
+	// same-named type, otherwise field defaults and aliases of the homonym leak
+	// into the literal.
+	// `Token{}` and the generic application `Token[int]{}` both have to resolve
+	// their base through the writing file's imports; the candidate may also be a
+	// type alias (`import iam { Alias }`, `type Alias = Real`).
+	mut scoped_name := name
+	if t.cur_file.len > 0 {
+		scoped_base, _, scoped_has_generic_args := generic_app_parts(name)
+		lookup_name := if scoped_has_generic_args { scoped_base } else { name }
+		if !lookup_name.contains('.') {
+			if resolved := t.selective_import_type_name_for_file(t.cur_file, lookup_name) {
+				if scoped_has_generic_args {
+					// Keep the arguments; the generic branch below specializes the
+					// resolved base with them.
+					scoped_name = '${resolved}${name[scoped_base.len..]}'
+				} else {
+					if info := t.lookup_struct_info_direct(resolved) {
+						return info
+					}
+					if alias_target := t.alias_target_type_preserving_main_lock(resolved) {
+						if info := t.lookup_struct_info_direct(alias_target) {
+							return info
+						}
+					}
+				}
+			}
 		}
 	}
 	if alias_target := t.alias_target_type_preserving_main_lock(name) {
@@ -888,7 +922,7 @@ fn (t &Transformer) lookup_struct_info(name string) ?StructInfo {
 			}
 		}
 	}
-	base, args, has_generic_args := generic_app_parts(name)
+	base, args, has_generic_args := generic_app_parts(scoped_name)
 	if has_generic_args {
 		if base_info := t.lookup_struct_info_direct(base) {
 			params := t.generic_struct_param_names_for_base(base)

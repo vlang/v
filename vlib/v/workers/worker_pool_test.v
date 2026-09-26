@@ -218,3 +218,191 @@ fn test_concurrent_batches_account_only_their_own_tasks() {
 	assert pool.tasks_run() == 20 * 2 * 40
 	pool.close()
 }
+
+fn tiny_pool_test_task(arg voidptr) voidptr {
+	mut a := unsafe { &PoolTestArg(arg) }
+	a.value++
+	return unsafe { nil }
+}
+
+struct PushOrderArg {
+	ran chan bool
+}
+
+fn push_order_task(arg voidptr) voidptr {
+	a := unsafe { &PushOrderArg(arg) }
+	a.ran <- true
+	return unsafe { nil }
+}
+
+fn test_queued_task_releases_its_batch_only_after_the_completion_push() {
+	// Fill the batch channel so the completion push blocks: the task must keep
+	// counting as in flight until that push has returned.
+	done := chan Completion{cap: 1}
+	done <- Completion{}
+	mut pushes_in_flight := u32(1)
+	arg := &PushOrderArg{
+		ran: chan bool{cap: 1}
+	}
+	worker := spawn run_queued_task(Task{
+		run:              push_order_task
+		arg:              voidptr(arg)
+		done:             done
+		pushes_in_flight: &pushes_in_flight
+	}, true)
+	_ := <-arg.ran
+	time.sleep(20 * time.millisecond)
+	// The push is still blocked, so the worker must not have touched the count.
+	assert pushes_in_flight == 1
+	_ := <-done
+	wait_for_completion_pushes(&pushes_in_flight)
+	worker.wait()
+	assert done.len == 1
+	assert pushes_in_flight == 0
+}
+
+fn batch_scope_begin() voidptr {
+	$if prealloc {
+		return unsafe { prealloc_scope_begin() }
+	} $else {
+		return unsafe { nil }
+	}
+}
+
+fn batch_scope_end(scope voidptr) {
+	$if prealloc {
+		unsafe { prealloc_scope_end(scope) }
+	}
+}
+
+fn test_batches_in_disposable_scopes_outlive_their_completion_pushes() {
+	// Like the compiler stages, run every batch inside a disposable arena that
+	// is released as soon as Pool.run returns. The batch's `done` channel lives
+	// in that arena, so a worker still inside its completion push when run
+	// returns would touch released memory.
+	mut pool := new(4)
+	mut args := []&PoolTestArg{cap: 8}
+	for _ in 0 .. 8 {
+		args << &PoolTestArg{}
+	}
+	rounds := 3000
+	for round in 0 .. rounds {
+		scope := batch_scope_begin()
+		mut tasks := []Task{cap: args.len}
+		for i, a in args {
+			tasks << Task{
+				run:        tiny_pool_test_task
+				arg:        voidptr(a)
+				force_sync: i == 0 && round % 2 == 0
+			}
+		}
+		pool.run(tasks)
+		batch_scope_end(scope)
+	}
+	for a in args {
+		assert a.value == rounds
+	}
+	assert pool.tasks_run() == u64(rounds * args.len)
+	pool.close()
+}
+
+fn open_pool_is_registered(pool &Pool) bool {
+	for i in 0 .. v3_open_pools_len {
+		if v3_open_pools[i] == voidptr(pool) {
+			return true
+		}
+	}
+	return false
+}
+
+fn test_exit_hook_closes_pools_left_open() {
+	mut closed := new(1)
+	mut left_open := new(1)
+	assert open_pool_is_registered(closed)
+	assert open_pool_is_registered(left_open)
+	closed.close()
+	assert !open_pool_is_registered(closed)
+	// `exit()` skips deferred Pool.close calls; the exit hook must still join the
+	// workers before the arena holding their job channel is freed.
+	close_open_pools_at_exit()
+	assert left_open.is_closed
+	assert left_open.threads.len == 0
+	assert !open_pool_is_registered(left_open)
+}
+
+struct CurrentWorkerProbe {
+mut:
+	pool    &Pool = unsafe { nil }
+	matches int
+}
+
+fn current_worker_probe_task(arg voidptr) voidptr {
+	mut probe := unsafe { &CurrentWorkerProbe(arg) }
+	// Hold each task long enough that the caller cannot steal the whole batch.
+	time.sleep(20 * time.millisecond)
+	for worker in probe.pool.threads {
+		if worker_thread_is_current(worker) {
+			probe.matches++
+		}
+	}
+	return unsafe { nil }
+}
+
+// worker_thread_is_current holds on a worker for exactly its own entry, and
+// never on the caller.
+fn test_worker_thread_is_current_matches_only_the_running_worker() {
+	mut pool := new(2)
+	defer {
+		pool.close()
+	}
+	mut probes := []&CurrentWorkerProbe{cap: 8}
+	mut tasks := []Task{cap: 8}
+	for idx in 0 .. 8 {
+		probes << &CurrentWorkerProbe{
+			pool: pool
+		}
+		tasks << Task{
+			run:        current_worker_probe_task
+			arg:        voidptr(probes[idx])
+			force_sync: idx == 0
+		}
+	}
+	assert pool.run(tasks)
+	for worker in pool.threads {
+		assert !worker_thread_is_current(worker)
+	}
+	// The forced-sync task runs on the caller, which is no worker.
+	assert probes[0].matches == 0
+	for probe in probes {
+		assert probe.matches in [0, 1]
+	}
+	assert probes.any(it.matches == 1)
+}
+
+// A program using the pool must link with the tcc bundled for Windows, whose
+// kernel32 import list lacks some newer Win32 functions. A failed tcc build is
+// retried with another C compiler, even under `-cc tcc`, so turn the retry off
+// to see the failure itself.
+fn test_pool_links_with_the_bundled_tcc_on_windows() {
+	$if !windows {
+		return
+	}
+	vexe := @VEXE
+	if !os.exists(os.join_path(os.dir(vexe), 'thirdparty', 'tcc', 'tcc.exe')) {
+		eprintln('skipping: ${vexe} has no bundled tcc')
+		return
+	}
+	dir := os.join_path(os.vtmp_dir(), 'v_workers_tcc_link_${os.getpid()}')
+	os.mkdir_all(dir) or { panic(err) }
+	defer {
+		os.rmdir_all(dir) or {}
+	}
+	source := os.join_path(dir, 'pool_main.v')
+	os.write_file(source, "import v.workers\n\nfn main() {\n\tmut pool := workers.new(1)\n\tpool.close()\n\tprintln('pool closed')\n}\n")!
+	exe := os.join_path(dir, 'pool_main.exe')
+	build := os.execute('${os.quoted_path(vexe)} -cc tcc -no-retry-compilation -o ${os.quoted_path(exe)} ${os.quoted_path(source)}')
+	assert build.exit_code == 0, build.output
+	run := os.execute(os.quoted_path(exe))
+	assert run.exit_code == 0, run.output
+	assert run.output.trim_space() == 'pool closed'
+}

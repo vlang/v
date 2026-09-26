@@ -2859,6 +2859,7 @@ fn (tc &TypeChecker) expr_compatible(expr_id flat.NodeId, actual Type, expected 
 		|| tc.optional_pointer_expr_compatible(expr_id, actual, expected)
 		|| tc.failure_literal_expr_compatible(expr_id, actual, expected)
 		|| tc.fn_literal_omitted_params_compatible(expr_id, actual, expected)
+		|| tc.fn_decl_value_mut_ref_slot_compatible(expr_id, actual, expected)
 }
 
 fn (tc &TypeChecker) interface_expr_compatible(actual Type, expected Type) bool {
@@ -5640,7 +5641,7 @@ fn (tc &TypeChecker) unknown_method_call_parts(node flat.Node) ?(flat.Node, Type
 			return none
 		}
 	}
-	if _ := tc.unique_receiver_method_suffix_match(method_candidates) {
+	if _ := tc.unique_receiver_method_suffix_match(receiver_type, method_candidates) {
 		return none
 	}
 	if receiver_type is Struct {
@@ -6562,6 +6563,13 @@ fn (tc &TypeChecker) array_accessor_membership_has_overloaded_equality(consumer 
 	return tc.array_accessor_type_has_overloaded_operator(elem_type, .eq, mut seen)
 }
 
+// comparison_calls_operator_method reports whether comparing values of `typ` with `op`
+// calls a user defined operator method, also for their fields, elements or variants.
+pub fn (tc &TypeChecker) comparison_calls_operator_method(typ Type, op flat.Op) bool {
+	mut seen := map[string]bool{}
+	return tc.array_accessor_type_has_overloaded_operator(typ, op, mut seen)
+}
+
 fn (tc &TypeChecker) array_accessor_type_has_overloaded_operator(typ Type, op flat.Op, mut seen map[string]bool) bool {
 	raw := unwrap_pointer(typ)
 	// `>`, `>=`, `<=` all lower to the type's `<` method (reversed/negated), and `!=`
@@ -7044,6 +7052,13 @@ fn (tc &TypeChecker) shadow_check_owns_file(file string) bool {
 	if file == '' {
 		return false
 	}
+	if is_module_cache_header(file) {
+		// A warm header can embed generic bodies of a module that is not the
+		// project's, and V3CACHE or VTMP may still place it under the project
+		// root. Own it exactly when the sources it stands for are owned.
+		source := tc.a.cached_header_sources[file] or { return false }
+		return !is_module_cache_header(source) && tc.shadow_check_owns_file(source)
+	}
 	if file in tc.diagnostic_files {
 		// Named on the command line, so the user is working on it whatever
 		// directory it happens to live in.
@@ -7056,6 +7071,13 @@ fn (tc &TypeChecker) shadow_check_owns_file(file string) bool {
 	}
 	return shadow_roots_own_file(file, tc.shadow_diagnostic_root, tc.shadow_explicit_roots,
 		tc.shadow_dependency_roots)
+}
+
+// is_module_cache_header reports whether `path` is a declaration header in the
+// V3 module cache, parsed in place of a module's sources on a warm build.
+pub fn is_module_cache_header(path string) bool {
+	normalized := path.replace('\\', '/')
+	return normalized.contains('/v3_module_cache_') && normalized.ends_with('.vh')
 }
 
 // shadow_roots_own_file reports whether `file` belongs to an explicit project
@@ -8115,7 +8137,7 @@ fn (mut tc TypeChecker) resolve_call_info_uncached(id flat.NodeId, node flat.Nod
 					return tc.call_info(mname, true)
 				}
 			}
-			if mname := tc.unique_receiver_method_suffix_match(array_candidates) {
+			if mname := tc.unique_receiver_method_suffix_match(clean_array, array_candidates) {
 				return tc.call_info(mname, true)
 			}
 			if fn_node.value == 'get' {
@@ -9539,7 +9561,9 @@ fn (tc &TypeChecker) call_info(name string, has_receiver bool) CallInfo {
 	if name.starts_with('C.') {
 		if module_name := tc.visible_c_fn_module(name) {
 			module_key := c_fn_module_signature_key(module_name, name)
-			return_type := tc.c_fn_module_ret_types[module_key]
+			return_type := tc.c_fn_module_ret_types[module_key] or {
+				unknown_type('unknown return type for `${name}`')
+			}
 			is_variadic := tc.c_fn_module_variadic[module_key] or { false }
 			params := tc.c_fn_module_param_types[module_key] or { []Type{} }
 			return CallInfo{
@@ -10244,9 +10268,20 @@ fn (tc &TypeChecker) cache_visible_mutation_fn_decl(key string, decl VisibleMuta
 		return
 	}
 	mut cache := tc.visible_mutation_cache
-	if key !in cache.decls {
+	if visible_mutation_key_is_global(key) {
+		if key !in cache.global_decls {
+			cache.global_decls[key] = decl
+		}
+	} else if key !in cache.decls {
 		cache.decls[key] = decl
 	}
+}
+
+// visible_mutation_key_is_global reports whether a visible-mutation cache key has
+// no module part (`\x01name`); such keys live in VisibleMutationCache.global_decls.
+@[inline]
+fn visible_mutation_key_is_global(key string) bool {
+	return key.len > 0 && key[0] == 0x01
 }
 
 fn (mut tc TypeChecker) register_visible_mutation_fn_decl(idx int, module_name string, qname string, source_name string) {
@@ -10267,6 +10302,15 @@ fn (mut tc TypeChecker) register_visible_mutation_fn_decl_with_lowered(idx int, 
 		}
 		return
 	}
+	tc.register_visible_mutation_fn_decl_keys(idx, module_name, qname, source_name, c_qname,
+		c_source_name, false)
+	tc.register_visible_mutation_fn_decl_keys(idx, module_name, qname, source_name, c_qname,
+		c_source_name, true)
+}
+
+// register_visible_mutation_fn_decl_keys records one declaration under either its
+// module-less (`global`) or its module-qualified keys.
+fn (mut tc TypeChecker) register_visible_mutation_fn_decl_keys(idx int, module_name string, qname string, source_name string, c_qname string, c_source_name string, global bool) {
 	decl_module := if module_name == '' { 'main' } else { module_name }
 	decl := VisibleMutationFnDecl{
 		idx: idx
@@ -10282,9 +10326,17 @@ fn (mut tc TypeChecker) register_visible_mutation_fn_decl_with_lowered(idx int, 
 		candidates << c_qname
 		candidates << c_source_name
 	}
-	for candidate in candidates {
-		tc.cache_visible_mutation_fn_decl('\x01${candidate}', decl)
-		tc.cache_visible_mutation_fn_decl('${decl_module}\x01${candidate}', decl)
+	for i, candidate in candidates {
+		// A repeated spelling (a plain name is its own C name) only meets the
+		// entry the earlier one inserted, so skip building its keys again.
+		if candidate in candidates[..i] {
+			continue
+		}
+		if global {
+			tc.cache_visible_mutation_fn_decl('\x01${candidate}', decl)
+		} else {
+			tc.cache_visible_mutation_fn_decl('${decl_module}\x01${candidate}', decl)
+		}
 	}
 }
 
@@ -10292,7 +10344,11 @@ fn (tc &TypeChecker) visible_mutation_fn_decl(name string, fallback_mod string) 
 	cache_key := '${fallback_mod}\x01${visible_mutation_fn_lookup_name(name)}'
 	if !isnil(tc.visible_mutation_cache) {
 		cache := tc.visible_mutation_cache
-		if decl := cache.decls[cache_key] {
+		if visible_mutation_key_is_global(cache_key) {
+			if decl := cache.global_decls[cache_key] {
+				return decl
+			}
+		} else if decl := cache.decls[cache_key] {
 			return decl
 		}
 		if cache.decl_misses[cache_key] {
@@ -10330,7 +10386,11 @@ fn (tc &TypeChecker) visible_mutation_fn_decl(name string, fallback_mod string) 
 					}
 					if !isnil(tc.visible_mutation_cache) {
 						mut cache := tc.visible_mutation_cache
-						cache.decls[cache_key] = decl
+						if visible_mutation_key_is_global(cache_key) {
+							cache.global_decls[cache_key] = decl
+						} else {
+							cache.decls[cache_key] = decl
+						}
 					}
 					return decl
 				}
@@ -11922,6 +11982,20 @@ fn (tc &TypeChecker) call_fn_typed_param_is_mut(call flat.Node, param_idx int) b
 	return false
 }
 
+fn (tc &TypeChecker) call_indexed_fn_value_param_is_mut(call flat.Node, param_idx int) bool {
+	if call.children_count == 0 || param_idx < 0 {
+		return false
+	}
+	callee_id := tc.a.child(&call, 0)
+	callee := tc.a.node(callee_id)
+	if callee.kind != .index || callee.value == 'range' {
+		return false
+	}
+	callee_type := tc.cached_expr_type(callee_id) or { tc.resolve_type(callee_id) }
+	fn_type := fn_type_from_type(callee_type) or { return false }
+	return param_idx < fn_type.params_mut.len && fn_type.params_mut[param_idx]
+}
+
 fn (tc &TypeChecker) call_field_param_is_mut(node flat.Node, param_idx int) bool {
 	if node.children_count == 0 {
 		return false
@@ -12093,6 +12167,135 @@ fn (tc &TypeChecker) anonymous_struct_field_is_public(struct_name string, field_
 		}
 	}
 	return true
+}
+
+// struct_field_is_private_outside_module reports whether field `field_name` of the named
+// struct `struct_name` is used outside the module that declares the struct, although the
+// field is not in a `pub:`, `pub mut:` or `__global:` section. Like V1, the module of the
+// struct used as the receiver decides: a field promoted from an embedded struct of another
+// module stays accessible through a struct of the current module. C and JS structs, and
+// the anonymous structs checked by `anonymous_struct_field_is_public`, are skipped.
+fn (tc &TypeChecker) struct_field_is_private_outside_module(struct_name string, field_name string) bool {
+	// Most selectors use a struct of their own module; settle those before scanning any declaration.
+	decl_mod := tc.struct_module_for_type(struct_name)
+	if decl_mod == '' || decl_mod == tc.cur_module
+		|| (decl_mod == 'main' && tc.cur_module in ['', 'main']) {
+		return false
+	}
+	if struct_name.starts_with('C.') || struct_name.starts_with('JS.')
+		|| tc.is_synthesized_anon_struct(struct_name) {
+		return false
+	}
+	if is_public := tc.visible_mutation_struct_field_is_public(struct_name, field_name, decl_mod) {
+		return !is_public
+	}
+	for owner in tc.embedded_field_candidates(struct_name, field_name) {
+		owner_mod := tc.struct_module_for_type(owner)
+		if !(tc.visible_mutation_struct_field_is_public(owner, field_name, owner_mod) or { true }) {
+			return true
+		}
+	}
+	return false
+}
+
+// alias_struct_field_is_private_outside_module is `struct_field_is_private_outside_module`
+// for a field used through `alias` of a struct. Like V1, the module of the alias decides
+// where the field is used from: an alias declared in the current module does not report it.
+fn (tc &TypeChecker) alias_struct_field_is_private_outside_module(alias Alias, field_name string) bool {
+	alias_mod := tc.type_alias_modules[alias.name] or { return false }
+	if alias_mod == tc.cur_module || (alias_mod in ['', 'main'] && tc.cur_module in ['', 'main']) {
+		return false
+	}
+	// Selectors see through pointer aliases too (`pub type BoxRef = &Box`).
+	target := unalias_and_unwrap_pointer_type(alias.base_type)
+	if target is SumType {
+		// An alias of a sum type (`pub type ShapeAlias = Shape`) selects the fields its variants share.
+		return tc.sum_shared_field_type(target, field_name) != none
+			&& tc.sum_variant_with_private_field(target.name, field_name) != none
+	}
+	if target !is Struct {
+		return false
+	}
+	if tc.is_synthesized_anon_struct(target.name) {
+		// An alias of an anonymous struct (`pub type Config = struct { ... }`) keeps the
+		// `pub` sections of the fields, which `struct_field_is_private_outside_module` skips.
+		anon_mod := tc.struct_module_for_type(target.name)
+		return anon_mod != tc.cur_module
+			&& !tc.anonymous_struct_field_is_public(target.name, field_name, anon_mod)
+	}
+	return tc.struct_field_is_private_outside_module(target.name, field_name)
+}
+
+// sum_type_private_field_owner returns the type to name in the error when field `field_name`,
+// selected through sum type `sum`, is private outside its module. Like V1, a field that the
+// variants share is used outside only when the sum type is declared in another module; it
+// is private when it is private in any struct variant declared in another module, and the
+// error names the sum type. A field of a single variant (`shapes[0].radius`, `is_indexed`)
+// is checked like a field of that variant, which the error names.
+fn (tc &TypeChecker) sum_type_private_field_owner(sum SumType, field_name string, is_indexed bool) ?Type {
+	if _ := tc.sum_shared_field_type(sum, field_name) {
+		visibility := tc.declaration_visibility[tc.sum_base_name(sum.name)] or { return none }
+		sum_mod := visibility.module_name
+		if sum_mod == tc.cur_module || (sum_mod in ['', 'main'] && tc.cur_module in ['', 'main']) {
+			return none
+		}
+		if _ := tc.sum_variant_with_private_field(sum.name, field_name) {
+			return Type(sum)
+		}
+		return none
+	}
+	if is_indexed {
+		return tc.sum_unique_field_private_variant(sum, field_name)
+	}
+	return none
+}
+
+// sum_unique_field_private_variant returns the variant to name in the error when field
+// `field_name`, which only one variant of sum type `sum` has, is private outside the module
+// that declares the variant. Like V1, that variant decides also when the field is selected
+// through an alias of `sum`, wherever the alias is declared.
+fn (tc &TypeChecker) sum_unique_field_private_variant(sum SumType, field_name string) ?Type {
+	if tc.sum_unique_variant_field_type(sum, field_name) == none {
+		return none
+	}
+	return tc.sum_variant_with_private_field(sum.name, field_name)
+}
+
+// sum_variant_with_private_field returns the struct variant (or alias of one) of sum type
+// `sum_name`, or of a sum type nested in it, whose field `field_name` is private outside the
+// module that declares the variant (see `struct_field_is_private_outside_module`). A variant that is an alias is
+// checked through it, like a direct alias receiver, so an alias of an anonymous struct
+// (`pub type A = struct { ... }`) keeps the `pub` sections of its fields.
+fn (tc &TypeChecker) sum_variant_with_private_field(sum_name string, field_name string) ?Type {
+	mut visited := map[string]bool{}
+	return tc.sum_variant_with_private_field_inner(sum_name, field_name, mut visited)
+}
+
+fn (tc &TypeChecker) sum_variant_with_private_field_inner(sum_name string, field_name string, mut visited map[string]bool) ?Type {
+	base := tc.sum_base_name(sum_name)
+	if visited[base] {
+		return none
+	}
+	visited[base] = true
+	for variant in tc.sum_types[base] or { []string{} } {
+		variant_type := tc.parse_type(tc.concrete_sum_variant_name(sum_name, variant))
+		target := unalias_type(variant_type)
+		if target is SumType {
+			if owner := tc.sum_variant_with_private_field_inner(target.name, field_name, mut
+				visited)
+			{
+				return owner
+			}
+		} else if variant_type is Alias {
+			if tc.alias_struct_field_is_private_outside_module(variant_type, field_name) {
+				return variant_type
+			}
+		} else if variant_type is Struct
+			&& tc.struct_field_is_private_outside_module(variant_type.name, field_name) {
+			return variant_type
+		}
+	}
+	return none
 }
 
 fn (tc &TypeChecker) receiver_expr_mutation_visibility(expr_id flat.NodeId, root_name string, receiver_type string, decl_mod string) ReceiverMutationVisibility {
@@ -13830,6 +14033,7 @@ fn (mut tc TypeChecker) check_call_arg_types(id flat.NodeId, node flat.Node, inf
 			|| tc.call_local_fn_param_is_mut(node, param_idx)
 			|| tc.call_local_fn_value_param_is_mut(node, param_idx, id)
 			|| tc.call_fn_typed_param_is_mut(node, param_idx)
+			|| tc.call_indexed_fn_value_param_is_mut(node, param_idx)
 		if param_is_mut && mut_arg_node.is_mut {
 			tc.check_locked_shared_base_lvalue_mutation(arg_id)
 		}
@@ -14035,7 +14239,11 @@ fn (mut tc TypeChecker) check_call_arg_types(id flat.NodeId, node flat.Node, inf
 			}
 			continue
 		}
+		voidptr_arg_node := tc.a.node(arg_id)
+		arg_is_mut_receiver := voidptr_arg_node.kind == .ident
+			&& tc.current_fn_param_is_mut_receiver(voidptr_arg_node.value)
 		if fn_param_is_voidptr_type(expected) && unalias_type(actual) is Struct
+			&& !arg_is_mut_receiver
 			&& !json_runtime_voidptr_accepts_arg(info.name, param_idx, expected, actual) {
 			tc.record_warning_at(.call_arg_mismatch, 'automatic ${unalias_type(actual).name()} referencing/dereferencing into voidptr is deprecated and will be removed soon; use `foo(&x)` instead of `foo(x)`', arg_id, tc.call_argument_diagnostic_pos(arg_id))
 		}
@@ -14392,6 +14600,11 @@ fn (mut tc TypeChecker) call_info_with_inferred_receiver(node flat.Node, info Ca
 	mut callee := tc.a.child_node(&node, 0)
 	if callee.kind == .index && callee.children_count > 0 {
 		callee = tc.a.child_node(callee, 0)
+		// `recv.fns[i](...)` indexes a field that holds functions, unlike the generic
+		// method call `recv.method[T](...)`, so `recv` is not a receiver.
+		if callee.kind == .selector && tc.selector_declared_value_type(*callee) != none {
+			return info
+		}
 	}
 	if callee.kind == .ident && info.name.contains('.') && node.children_count > 1 {
 		receiver_type := unwrap_pointer(info.params[0])
@@ -17167,6 +17380,21 @@ fn is_array_sort_dsl_call_name(name string) bool {
 	return name.len == 10 || (name[start + 4] == `e` && name[start + 5] == `d`)
 }
 
+// call_binds_implicit_it reports whether the arguments of `call` see the implicit
+// `it` of an array DSL call (`arr.filter(it > 0)`), as push_array_dsl_scope binds
+// it: a `filter`, `map`, `any`, `all` or `count` call on an array receiver. A
+// user-defined method with one of these names does not bind `it`.
+pub fn (tc &TypeChecker) call_binds_implicit_it(call flat.Node) bool {
+	dsl_name := tc.unresolved_array_dsl_call_name(call)
+	if dsl_name.len == 0 || is_array_sort_dsl_call_name(dsl_name) {
+		return false
+	}
+	if _ := tc.call_receiver_array_type(call) {
+		return true
+	}
+	return false
+}
+
 // call_receiver_array_type updates call receiver array type state for TypeChecker.
 fn (tc &TypeChecker) call_receiver_array_type(node flat.Node) ?Array {
 	if node.children_count == 0 {
@@ -18866,7 +19094,8 @@ fn (mut tc TypeChecker) check_if_expr(id flat.NodeId, node flat.Node) {
 	cond_id := tc.a.child(&node, 0)
 	condition := tc.a.node(cond_id)
 	// Branch hints also use .paren nodes, but their parentheses are required.
-	if condition.kind == .paren && condition.value != '__v3_comptime_d'
+	if condition.kind == .paren
+		&& condition.value !in ['__v3_comptime_d', '_likely_', '_unlikely_']
 		&& tc.node_source_starts_with(cond_id, '(') {
 		tc.record_warning_at(.condition_mismatch, 'unnecessary `()` in `if` condition, use `if expr {` instead of `if (expr) {`.', cond_id, tc.if_parenthesized_condition_pos(condition))
 	}

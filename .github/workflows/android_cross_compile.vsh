@@ -25,8 +25,8 @@ fn main() {
 	android_include_path := os.join_path(include_path, 'android')
 
 	//'-I"${include_path}"'
-	cflags := ['-I"${android_include_path}"', '-Wno-unused-value',
-		'-Wno-implicit-function-declaration', '-Wno-int-conversion']
+	cflags := ['-I"${android_include_path}"', '-Wno-unused-value', '-Wno-implicit-function-declaration',
+		'-Wno-int-conversion']
 	for arch in ndk.supported_archs {
 		v_arch := match arch {
 			'arm64-v8a' { 'arm64' }

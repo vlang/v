@@ -355,6 +355,49 @@ fn test_implicit_err_is_undefined_with_no_builtin() {
 	assert res.output.contains('undefined ident: `err`'), res.output
 }
 
+// https://github.com/vlang/v/issues/28886
+fn test_enum_shorthand_match_branches_should_compile_with_no_builtin() {
+	source_path := os.join_path(os.vtmp_dir(), 'enum_shorthand_match_no_builtin_${os.getpid()}.v')
+	output_path := os.join_path(os.vtmp_dir(), 'enum_shorthand_match_no_builtin_${os.getpid()}.c')
+	source := [
+		'enum Foo {',
+		'\tfoo',
+		'\tbar',
+		'}',
+		'',
+		'fn foo(value int) Foo {',
+		'\treturn match value {',
+		'\t\t0 { .foo }',
+		'\t\telse { .bar }',
+		'\t}',
+		'}',
+		'',
+		'fn take(f Foo) int {',
+		'\treturn int(f)',
+		'}',
+		'',
+		'fn main() {',
+		'\tmut f := foo(1)',
+		'\tf = match int(f) {',
+		'\t\t0 { .bar }',
+		'\t\telse { .foo }',
+		'\t}',
+		'\t_ = take(match int(f) {',
+		'\t\t0 { .foo }',
+		'\t\telse { .bar }',
+		'\t})',
+		'}',
+	].join_lines()
+	os.write_file(source_path, source)!
+	defer {
+		os.rm(source_path) or {}
+		os.rm(output_path) or {}
+	}
+	_ = vrun_ok('-check -no-builtin', source_path)
+	_ = vrun_ok('-o ${os.quoted_path(output_path)} -no-builtin', source_path)
+	assert os.exists(output_path)
+}
+
 fn test_generic_recursive_self_method_call_should_compile() {
 	source_path := os.join_path(os.vtmp_dir(),
 		'generic_recursive_self_method_call_${os.getpid()}.v')

@@ -30,12 +30,14 @@ fn test_diagnostics() {
 	dump(sizeof(in6.sin6_port))
 	dump(sizeof(in6.sin6_addr))
 	dump(sizeof(in6))
+	_ = in6
 	eprintln('')
 	dump(__offsetof(Ip6, port))
 	dump(__offsetof(Ip6, addr))
 	dump(sizeof(our_ip6.port))
 	dump(sizeof(our_ip6.addr))
 	dump(sizeof(our_ip6))
+	_ = our_ip6
 	eprintln('--------')
 	in4 := C.sockaddr_in{}
 	our_ip4 := Ip{}
@@ -52,12 +54,14 @@ fn test_diagnostics() {
 	dump(sizeof(in4.sin_port))
 	dump(sizeof(in4.sin_addr))
 	dump(sizeof(in4))
+	_ = in4
 	eprintln('')
 	dump(__offsetof(Ip, port))
 	dump(__offsetof(Ip, addr))
 	dump(sizeof(our_ip4.port))
 	dump(sizeof(our_ip4.addr))
 	dump(sizeof(our_ip4))
+	_ = our_ip4
 	eprintln('--------')
 	dump(__offsetof(C.sockaddr_un, sun_path))
 	dump(__offsetof(Unix, path))
@@ -68,6 +72,8 @@ fn test_sizes_unix_sun_path() {
 	x1 := C.sockaddr_un{}
 	x2 := Unix{}
 	assert sizeof(x1.sun_path) == sizeof(x2.path)
+	_ = x1
+	_ = x2
 }
 
 fn test_offsets_ipv6() {

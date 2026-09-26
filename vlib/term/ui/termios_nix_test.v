@@ -21,8 +21,15 @@ fn test_terminal_capabilities_keep_xterm_defaults() {
 }
 
 fn test_get_cursor_position_reads_valid_row_column_data() ! {
-	mut original_stdin_fd := -1
 	unsafe {
+		original_stdin_fd := C.dup(C.STDIN_FILENO)
+		if original_stdin_fd == -1 {
+			return error('error duplicating stdin: ${C.strerror(C.errno)}')
+		}
+		defer {
+			C.dup2(original_stdin_fd, C.STDIN_FILENO)
+			C.close(original_stdin_fd)
+		}
 		mut pipe := os.pipe()!
 
 		fake_cursor_pos_data := '\033[45;70R'
@@ -48,8 +55,15 @@ fn test_get_cursor_position_reads_valid_row_column_data() ! {
 }
 
 fn test_get_cursor_position_reads_empty_position_data() ! {
-	mut original_stdin_fd := -1
 	unsafe {
+		original_stdin_fd := C.dup(C.STDIN_FILENO)
+		if original_stdin_fd == -1 {
+			return error('error duplicating stdin: ${C.strerror(C.errno)}')
+		}
+		defer {
+			C.dup2(original_stdin_fd, C.STDIN_FILENO)
+			C.close(original_stdin_fd)
+		}
 		mut pipe := os.pipe()!
 
 		fake_cursor_pos_data := ''

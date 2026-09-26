@@ -2175,8 +2175,7 @@ fn (mut t Transformer) lower_map_or_body_to_stmts(body_id flat.NodeId, target_na
 	if body.children_count == 0 {
 		return result
 	}
-	saved_var_types := t.var_types.clone()
-	t.set_implicit_err_var_type()
+	err_scope := t.enter_implicit_err_scope()
 	t.append_implicit_err_decl(mut result, err_expr)
 	for i in 0 .. body.children_count {
 		child_id := t.a.child(&body, i)
@@ -2228,7 +2227,7 @@ fn (mut t Transformer) lower_map_or_body_to_stmts(body_id flat.NodeId, target_na
 		}
 	}
 	_ = target_type
-	t.restore_var_types(saved_var_types)
+	t.leave_implicit_err_scope(err_scope)
 	return result
 }
 
