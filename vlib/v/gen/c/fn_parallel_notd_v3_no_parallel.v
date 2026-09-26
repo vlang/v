@@ -2791,6 +2791,9 @@ fn (g &FlatGen) new_parallel_worker_config(worker_id int, result_only bool) &Fla
 		has_builtins:                       g.has_builtins
 		cache_split:                        g.cache_split
 		cache_stable_symbols:               g.cache_stable_symbols
+		embed_incbin:                       g.embed_incbin
+		embed_incbin_syms:                  g.embed_incbin_syms
+		embed_incbin_syms_ready:            g.embed_incbin_syms_ready
 		compile_defines:                    g.compile_defines
 		compile_values:                     g.compile_values
 		trace_calls:                        g.trace_calls

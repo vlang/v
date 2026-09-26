@@ -1264,9 +1264,6 @@ println(a) // [[[0, 0], [0, 2], [0, 0]], [[0, 0], [0, 0], [0, 0]]]
 
 #### Array methods
 
-A function literal passed to `map` uses its return type for the output elements. Its parameters
-and nested array expressions have their own scope, including parameters named `it`.
-
 All arrays can be easily printed with `println(arr)` and converted to a string
 with `s := arr.str()`.
 
@@ -4889,10 +4886,6 @@ println(compare(1.1, 1.1)) //          0
 println(compare(1.1, 1.2)) //         -1
 ```
 
-V can also infer a generic callback's return type from an unbound instance
-method passed as an argument, such as `item.call(Item.value)` when `call[T]`
-accepts a `fn (mut Item) T` callback.
-
 #### Structured generic receiver patterns
 
 Generic methods can constrain their receiver to a *structured* shape of the
@@ -7257,12 +7250,15 @@ it will make it more self contained and thus easier to distribute.
 When that happens (the default), `embedded_file.data()` will cause *no IO*,
 and it will always return the same data.
 
-For final native links with GCC, Clang, MinGW, or TCC plus a system assembler,
-V embeds large files efficiently with the assembler's `.incbin` directive.
-Modes that cannot link a separate assembly object use generated C byte arrays
-instead and may warn for files of about 5 MB or larger. These modes include
-MSVC, iOS and WebAssembly builds, generated-C and object output, cached modules,
-and cross-compiling to Windows from another host OS.
+With `-prod`, a large embedded file is stored through the assembler's `.incbin`
+directive: V writes the bytes to a file, assembles a small `.S` source that
+includes it, and links the resulting object next to the generated C, so the C
+compiler never has to parse the bytes as an array initializer. That happens when
+the build links natively with GCC, Clang or MinGW, or with TCC when a GCC or
+Clang compatible compiler is installed. Generated C or object output (`-o file.c`,
+`-o file.o`, `-generate-c-project`), MSVC, iOS and WebAssembly targets, and a
+Windows target built on another OS keep the array form, and `-d no_incbin`
+selects it everywhere.
 
 `$embed_file` supports compression of the embedded file when compiling with `-prod`.
 Currently only one compression type is supported: `zlib`.
@@ -7338,7 +7334,6 @@ See more [details](https://github.com/vlang/v/blob/master/vlib/v/TEMPLATES.md)
 The compiler can compile a VML file directly into an `ui2.Element` expression with
 `$vml(path)`. The VML is parsed while the application is compiled; the resulting program
 constructs UI2 elements directly and does not parse the VML file at runtime.
-Diagnostics from compiled VML include the `$vml` call site in the V source file.
 
 ```v ignore
 import ui2
