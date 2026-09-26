@@ -8343,11 +8343,15 @@ fn (mut p Parser) validate_if_guard_rhs(rhs_id flat.NodeId, assign_end int) {
 		return
 	}
 	mut core_id := rhs_id
+	mut parenthesized := false
 	for p.a.nodes[int(core_id)].kind == .paren && p.a.nodes[int(core_id)].children_count == 1 {
+		parenthesized = true
 		core_id = p.a.child(&p.a.nodes[int(core_id)], 0)
 	}
 	rhs := p.a.nodes[int(core_id)]
-	if rhs.kind !in [.call, .index, .prefix, .selector, .ident] {
+	// Only field selectors have wrapper recovery through parentheses here.
+	if rhs.kind !in [.call, .index, .prefix, .selector, .ident]
+		|| (parenthesized && rhs.kind != .selector) {
 		mut start := assign_end
 		mut end := p.a.nodes[int(rhs_id)].pos.end
 		source := p.s.src

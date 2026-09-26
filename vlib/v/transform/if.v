@@ -13,9 +13,14 @@ fn (mut t Transformer) if_guard_optional_type_name(rhs_id flat.NodeId) string {
 
 fn (mut t Transformer) transform_if_guard_wrapper_source(rhs_id flat.NodeId, rhs_type string) (flat.NodeId, flat.NodeId) {
 	if !isnil(t.tc) && t.tc.ownership_guard_read_moves_value(rhs_id) {
-		if t.selector_chain_has_sum_shared_field(rhs_id) {
+		mut source_id := rhs_id
+		for t.a.nodes[int(source_id)].kind == .paren
+			&& t.a.nodes[int(source_id)].children_count == 1 {
+			source_id = t.a.child(&t.a.nodes[int(source_id)], 0)
+		}
+		if t.selector_chain_has_sum_shared_field(source_id) {
 			wrapper := t.transform_optional_wrapper_expr(rhs_id)
-			clear := t.make_assign_without_ownership_drop(rhs_id, t.make_optional_none(rhs_type))
+			clear := t.make_assign_without_ownership_drop(source_id, t.make_optional_none(rhs_type))
 			return wrapper, clear
 		}
 		if t.expr_can_take_address(rhs_id) {
