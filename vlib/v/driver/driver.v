@@ -16952,6 +16952,19 @@ fn no_closures_error(a &flat.FlatAst, tc &types.TypeChecker) ?types.TypeError {
 	return none
 }
 
+// NoClosuresBindingKind tells how the transform treats a binding of the lambda scan.
+enum NoClosuresBindingKind {
+	local
+	// implicit is a binding the transform's capture collector
+	// (collect_lambda_capture_names) does not model: the `it` of an array DSL
+	// call and the `err` of an `or` block or guard `else` branch.
+	implicit
+	// comptime is a `$for` loop variable. The transform unrolls the loop and
+	// replaces the variable with the literal metadata of each iteration before it
+	// lifts the lambdas of the body, so a lambda never captures it.
+	comptime
+}
+
 // NoClosuresLambdaScan resolves the identifiers of each `|x| expr` lambda
 // against the lexically visible locals, mirroring how the transform infers the
 // captured variables of a lambda before lifting it.
@@ -16959,14 +16972,12 @@ struct NoClosuresLambdaScan {
 	a  &flat.FlatAst      = unsafe { nil }
 	tc &types.TypeChecker = unsafe { nil }
 mut:
-	// bindings holds the in-scope local names in declaration order; visible maps
-	// a name to the `bindings` indexes of its live declarations.
+	// bindings holds the in-scope local names in declaration order, and kinds
+	// their kinds; visible maps a name to the `bindings` indexes of its live
+	// declarations.
 	bindings []string
+	kinds    []NoClosuresBindingKind
 	visible  map[string][]int
-	// implicit marks the bindings the transform's capture collector
-	// (collect_lambda_capture_names) does not model: the `it` of an array DSL
-	// call and the `err` of an `or` block or guard `else` branch.
-	implicit []bool
 	// barrier is the first binding of the innermost function; earlier bindings
 	// belong to an enclosing function and are not visible.
 	barrier int
@@ -16993,6 +17004,10 @@ fn no_closures_capturing_lambdas(a &flat.FlatAst, tc &types.TypeChecker) map[int
 }
 
 fn (mut s NoClosuresLambdaScan) declare(name string) {
+	s.declare_kind(name, .local)
+}
+
+fn (mut s NoClosuresLambdaScan) declare_kind(name string, kind NoClosuresBindingKind) {
 	if name.len == 0 || name == '_' {
 		return
 	}
@@ -17000,14 +17015,13 @@ fn (mut s NoClosuresLambdaScan) declare(name string) {
 	decls << s.bindings.len
 	s.visible[name] = decls
 	s.bindings << name
-	s.implicit << false
+	s.kinds << kind
 }
 
 // declare_implicit declares the implicit `it` of an array DSL call or the `err`
 // of an `or` block or guard `else` branch.
 fn (mut s NoClosuresLambdaScan) declare_implicit(name string) {
-	s.declare(name)
-	s.implicit[s.implicit.len - 1] = true
+	s.declare_kind(name, .implicit)
 }
 
 fn (mut s NoClosuresLambdaScan) declare_ident(id flat.NodeId) {
@@ -17021,7 +17035,7 @@ fn (mut s NoClosuresLambdaScan) declare_ident(id flat.NodeId) {
 fn (mut s NoClosuresLambdaScan) close_scope(mark int) {
 	for s.bindings.len > mark {
 		name := s.bindings.pop()
-		s.implicit.pop()
+		s.kinds.pop()
 		mut decls := s.visible[name] or { continue }
 		decls.pop()
 		s.visible[name] = decls
@@ -17036,11 +17050,17 @@ fn (mut s NoClosuresLambdaScan) note_ident(name string) {
 	lambda_start := s.lambda_starts.last()
 	for i := decls.len - 1; i >= 0; i-- {
 		decl := decls[i]
+		kind := s.kinds[decl]
 		// The transform does not see the implicit bindings inside the lambda, so
 		// it captures an enclosing local of the same name even where one of them
 		// shadows it (`it := 1; f(|n| arr.filter(it > n))` builds a closure).
-		if decl >= lambda_start && s.implicit[decl] {
+		if decl >= lambda_start && kind == .implicit {
 			continue
+		}
+		// A `$for` loop variable is never captured: `$for field in S.fields {
+		// f(|| field.name) }` lifts `|| 'a'`, `|| 'b'`, ... into plain functions.
+		if kind == .comptime {
+			return
 		}
 		// A binding of the current function declared outside the innermost lambda
 		// is a capture. Names without a visible binding are fns, consts or globals.
@@ -17130,8 +17150,9 @@ fn (mut s NoClosuresLambdaScan) walk(id flat.NodeId) {
 			s.close_scope(mark)
 		}
 		.comptime_for {
+			// The loop variable still hides an enclosing local of the same name.
 			mark := s.bindings.len
-			s.declare(node.value.all_before('|'))
+			s.declare_kind(node.value.all_before('|'), .comptime)
 			s.walk_children(node, 0)
 			s.close_scope(mark)
 		}

@@ -12,12 +12,21 @@ fn call(cb fn ()) {
 
 type Ints = []int
 
+struct Point {
+	x int
+	y int
+}
+
 fn apply(f fn (int) int, v int) int {
 	return f(v)
 }
 
 fn lens(f fn ([]int) int, v []int) int {
 	return f(v)
+}
+
+fn label(f fn () string) string {
+	return f()
 }
 
 fn greet() {
@@ -55,6 +64,11 @@ fn main() {
 	println(a)
 	a.sort_with_compare(|p, q| *q - *p)
 	println(a)
+	// a `$for` loop variable is replaced with the metadata of each field
+	$for field in Point.fields {
+		println(label(|| field.name))
+		println(apply(|n| n + field.name.len, 10))
+	}
 	ch := chan int{cap: 1}
 	ch <- 6
 	select {
