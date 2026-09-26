@@ -7324,6 +7324,7 @@ See more [details](https://github.com/vlang/v/blob/master/vlib/v/TEMPLATES.md)
 The compiler can compile a VML file directly into an `ui2.Element` expression with
 `$vml(path)`. The VML is parsed while the application is compiled; the resulting program
 constructs UI2 elements directly and does not parse the VML file at runtime.
+Diagnostics from compiled VML include the `$vml` call site in the V source file.
 
 ```v ignore
 import ui2
