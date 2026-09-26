@@ -1139,3 +1139,34 @@ fn test_a_method_named_like_an_array_one_declares_no_variable() {
 		assert ask(dir, 'gd^', line, word, 0) == 'main.v:${line}:${col}', text
 	}
 }
+
+fn test_a_warm_child_reads_the_directory_the_client_writes_again() {
+	$if !linux {
+		return
+	}
+	// The client may remove the input directory and write it again with the
+	// same files: a child that stays warm answers questions about a relative
+	// path from the new one, as a new child does.
+	dir := os.join_path(work_dir, 'written_again')
+	os.mkdir_all(dir)!
+	source := 'module main\n\nfn main() {\n\tanswer := 42\n\tprintln(answer)\n}\n'
+	os.write_file(os.join_path(dir, 'main.v'), source)!
+	expected := ask_once(dir, ['5:hv^10'])[0]
+	assert expected.contains('answer int'), expected
+	mut p := start_server(dir, {})
+	defer {
+		p.close()
+	}
+	first, answer := query(mut p, 'a', 'main.v:5:hv^10')
+	assert answer == expected
+	os.rmdir_all(dir)!
+	os.mkdir_all(dir)!
+	os.write_file(os.join_path(dir, 'main.v'), source)!
+	child, again := query(mut p, 'b', 'main.v:5:hv^10')
+	assert again == expected
+	// Same files: the child that checked them still answers.
+	assert child == first
+	p.stdin_write('quit\n')
+	p.wait()
+	assert p.code == 0
+}
