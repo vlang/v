@@ -13642,7 +13642,7 @@ fn (mut g FlatGen) gen_arg_for_expected_type(arg_id flat.NodeId, expected types.
 			types.Type(types.void_)
 		}) !is types.Pointer && (g.global_type_for_ident(arg_node.value) or {
 			types.Type(types.void_)
-		}) !is types.Pointer
+		}) !is types.Pointer && !g.arg_is_pointer_const_for(arg_node, arg_type, expected)
 		if arg_type !is types.Pointer || value_local {
 			needs_addr = true
 		}
@@ -16480,6 +16480,7 @@ fn (mut g FlatGen) gen_call_args(fn_name string, node flat.Node, start int) {
 			value_local_mut_arg := arg_node.kind == .ident
 				&& !g.local_storage_is_pointer(arg_node.value) && !arg_is_pointer_param
 				&& !arg_is_pointer_global
+				&& !g.arg_is_pointer_const_for(arg_node, arg_type, param_types[arg_idx])
 			explicit_mut_value := arg_node.is_mut && !(arg_node.kind == .ident
 				&& (g.local_storage_is_pointer(arg_node.value)
 					|| arg_is_pointer_param || arg_is_pointer_global))
@@ -17604,6 +17605,15 @@ fn (g &FlatGen) spread_arg_child(arg_node flat.Node) ?flat.NodeId {
 		return g.a.child(&arg_node, 0)
 	}
 	return none
+}
+
+// arg_is_pointer_const_for reports whether `arg_node` is a const holding a pointer as deep
+// as `expected`. Such a const is stored as a C pointer, like a pointer global, so it is
+// passed as is. A shallower one, like a `&T` const for a `&&T` param, still needs the
+// address of a copy.
+fn (g &FlatGen) arg_is_pointer_const_for(arg_node flat.Node, arg_type types.Type, expected types.Type) bool {
+	return g.arg_is_const_ident(arg_node)
+		&& cgen_type_pointer_depth(arg_type) == cgen_type_pointer_depth(expected)
 }
 
 fn (g &FlatGen) arg_is_const_ident(arg_node flat.Node) bool {
