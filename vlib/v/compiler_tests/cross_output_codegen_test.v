@@ -92,13 +92,14 @@ fn test_cross_windows_output_orders_windows_header_before_bcrypt() {
 }
 
 fn test_cross_output_leaves_the_atomic_helpers_to_the_windows_tcc_header() {
-	// The snapshot does not know its C compiler yet. V's WinAPI atomic header is
+	// The generated C may run through TCC even if it was generated for another
+	// compiler. V's WinAPI atomic header is
 	// emitted behind `_WIN32 && (__TINYC__ || MSVC)` and defines `atomic_fetch_add_byte` and
 	// friends as function-like macros, so the backend's own `static inline`
 	// definitions have to sit behind the negation of that same guard. Without it
 	// the macro expanded over the definition and tcc rejected `vc/v_win.c` with
 	// `redefinition of 'ManualInterlockedExchangeAdd8'`.
-	for flags in ['-cross -os windows -cc msvc', '-os cross'] {
+	for flags in ['-cross -os windows -cc msvc', '-os cross', '-os windows -cc gcc'] {
 		c_code := cross_generate_with(flags, 'atomics', "module main\n\nfn main() {\n\tprintln('ok')\n}\n")
 		guard := '#if !(defined(_WIN32) && (defined(__TINYC__) || (defined(_MSC_VER) && !defined(__clang__))))'
 		definition := 'static inline byte atomic_fetch_add_byte('
@@ -114,6 +115,22 @@ fn test_cross_output_leaves_the_atomic_helpers_to_the_windows_tcc_header() {
 		between := c_code[opened..at].clone()
 		assert between.count('#endif') < between.count('#if'), '${flags}: the guard closed before the atomic helpers'
 	}
+}
+
+fn test_windows_msvc_output_balances_atomic_header_guards() {
+	c_code := cross_generate_with('-os windows -cc msvc', 'windows_msvc_atomics', "module main\n\nfn main() {\n\tprintln('ok')\n}\n")
+	assert c_code.contains('static inline byte atomic_fetch_add_byte(')
+	mut depth := 0
+	for line in c_code.split_into_lines() {
+		directive := line.trim_space()
+		if directive.starts_with('#if') {
+			depth++
+		} else if directive.starts_with('#endif') {
+			depth--
+			assert depth >= 0, 'unmatched #endif in generated MSVC C'
+		}
+	}
+	assert depth == 0, '${depth} unterminated #if directives in generated MSVC C'
 }
 
 fn test_cross_output_keeps_the_posix_semaphore_off_apple() {
