@@ -12791,7 +12791,12 @@ pub fn run(args []string) {
 				mut c_object_cache_stats) or {
 				message := err.msg()
 				if v3_should_regenerate_after_implicit_tcc(retry_compilation, use_implicit_tcc_semantics, false, 0) {
-					v3_regenerate_after_implicit_tcc(args, c_compiler_arg_index, cc_dir, verbose, show_cc)
+					v3_regenerate_after_implicit_tcc(args, c_compiler_arg_index, cc_dir, verbose,
+						show_cc, silent, if message.len > 0 {
+							message
+						} else {
+							'its C flags could not be prepared'
+						})
 					return
 				}
 				if use_implicit_tcc_semantics {
@@ -13431,7 +13436,14 @@ pub fn run(args []string) {
 			used_tcc = result.exit_code == 0
 		}
 		if v3_should_regenerate_after_implicit_tcc(retry_compilation, use_implicit_tcc_semantics, tried_tcc, result.exit_code) {
-			v3_regenerate_after_implicit_tcc(args, c_compiler_arg_index, cc_dir, verbose, show_cc)
+			v3_regenerate_after_implicit_tcc(args, c_compiler_arg_index, cc_dir, verbose, show_cc,
+				silent, if !tried_tcc {
+					''
+				} else if result.output.trim_space().len > 0 {
+					result.output
+				} else {
+					'tcc exited with code ${result.exit_code}'
+				})
 			return
 		}
 		if !retry_compilation && use_implicit_tcc_semantics && (!tried_tcc || result.exit_code != 0) {
@@ -13743,9 +13755,43 @@ fn v3_retry_compilation_args(args []string, c_compiler_arg_index int, fallback s
 	return public_args
 }
 
-fn v3_regenerate_after_implicit_tcc(args []string, c_compiler_arg_index int, cc_dir string, verbose bool, show_cc bool) {
+// v3_implicit_tcc_fallback_warning explains why a build that tcc was chosen
+// for by default is regenerated for `fallback`, citing one line of `reason`
+// (tcc's output or the error that ruled tcc out): the first that reports an
+// error, else the first non-empty one, so an "In file included from" line does
+// not hide the actual error.
+fn v3_implicit_tcc_fallback_warning(fallback string, reason string) string {
+	mut cause := ''
+	for line in reason.split_into_lines() {
+		trimmed := line.trim_space()
+		if trimmed.len == 0 {
+			continue
+		}
+		if trimmed.to_lower().contains('error') {
+			cause = trimmed
+			break
+		}
+		if cause.len == 0 {
+			cause = trimmed
+		}
+	}
+	if cause.len == 0 {
+		return 'warning: implicit tcc could not be used for this build, regenerating it with ${fallback}'
+	}
+	return 'warning: implicit tcc could not be used for this build (${cause}), regenerating it with ${fallback}'
+}
+
+// v3_regenerate_after_implicit_tcc rebuilds the program for the platform C
+// compiler. A non-empty `failure` means tcc failed rather than being skipped
+// on purpose (-prod, -cg, cross builds ...); unless the build is `-silent`, that
+// is reported like the explicit `-cc tcc` fallback, because the retry is often
+// several times slower and an unreported one hides the tcc failure behind a
+// slow build.
+fn v3_regenerate_after_implicit_tcc(args []string, c_compiler_arg_index int, cc_dir string, verbose bool, show_cc bool, silent bool, failure string) {
 	fallback := v3_platform_c_compiler_command(os.user_os())
-	if verbose || show_cc {
+	if failure.len > 0 && !silent {
+		eprintln(v3_implicit_tcc_fallback_warning(fallback, failure))
+	} else if verbose || show_cc {
 		eprintln('warning: regenerating the tcc-targeted unit with ${fallback}')
 	}
 	retry_args := v3_retry_compilation_args(args, c_compiler_arg_index, fallback)
