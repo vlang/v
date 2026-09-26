@@ -385,7 +385,7 @@ fn launch_external_tool(vroot string, tool_name string, tool_source string, pref
 			}
 			// Install what the tool needs from outside vlib first: this can make a recorded
 			// `cannot import module` failure below stale, since it stamps the missing module.
-			install_external_tool_modules(vroot, tool_name, compile_args)
+			install_external_tool_modules(vroot, tool_name, tool_source, compile_args)
 			if recorded := unbuildable_tool_failure(entry) {
 				// Rebuilding a tool that is already known to not compile would cost seconds on
 				// every single invocation, so report the recorded failure straight away instead.
@@ -402,7 +402,7 @@ fn launch_external_tool(vroot string, tool_name string, tool_source string, pref
 			exec_cached_tool(entry.binary, tool_args)
 		}
 	}
-	install_external_tool_modules(vroot, tool_name, compile_args)
+	install_external_tool_modules(vroot, tool_name, tool_source, compile_args)
 	mut driver_args := []string{}
 	driver_args << compile_args
 	driver_args << ['run', tool_source]
@@ -415,14 +415,15 @@ fn launch_external_tool(vroot string, tool_name string, tool_source string, pref
 // not have them yet, and compiling the tool without them fails with a confusing
 // `cannot import module` error. Sandboxed packaging has no network access, and must provide
 // such modules itself, just like it does for `v build-tools`. A module that the tool's build
-// already resolves, from any `VMODULES` root or through a `-path` in `compile_args`, is used
-// as it is, so an offline `v doc` keeps working.
-fn install_external_tool_modules(vroot string, tool_name string, compile_args []string) {
+// already resolves, from any `VMODULES` root, through a `-path` in `compile_args`, or from the
+// folder of `tool_source` or a folder above it, is used as it is, so an offline `v doc` keeps
+// working.
+fn install_external_tool_modules(vroot string, tool_name string, tool_source string, compile_args []string) {
 	if os.getenv('VTEST_SANDBOXED_PACKAGING') != '' {
 		return
 	}
 	search_roots := module_search_roots(vroot, compile_args)
-	util.ensure_modules_for_tool_are_installed(tool_name, search_roots, tool_cache_is_verbose()) or {
+	util.ensure_modules_for_tool_are_installed(tool_name, tool_source, search_roots, tool_cache_is_verbose()) or {
 		eprintln(err.msg())
 		exit(1)
 	}

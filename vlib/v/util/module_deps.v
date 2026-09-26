@@ -71,11 +71,13 @@ and the existing module `${modulename}` may still work.')
 	return true
 }
 
-// resolvable_module_dir returns the folder that `modulename` can already be imported from,
-// searching every `VMODULES` root (not just the first one), and then `extra_search_roots`,
-// like the expanded `-path` entries of a build. Like the compiler, it only accepts a folder
-// that has `.v` files in it.
-fn resolvable_module_dir(modulename string, extra_search_roots []string) ?string {
+// resolvable_module_dir returns the folder that the compiler can already import `modulename`
+// from, when it compiles the tool in `tool_source` (a `.v` file or a folder). It searches every
+// `VMODULES` root (not just the first one), `extra_search_roots` (like the expanded `-path`
+// entries of the build), and then, like the compiler's project-local and ancestor lookup, the
+// folder of `tool_source` and each folder above it, which includes the tool's project root.
+// Like the compiler, it only accepts a folder that has `.v` files in it.
+fn resolvable_module_dir(modulename string, tool_source string, extra_search_roots []string) ?string {
 	mod_path := modulename.replace('.', os.path_separator)
 	mut roots := os.vmodules_paths()
 	roots << extra_search_roots
@@ -84,24 +86,49 @@ fn resolvable_module_dir(modulename string, extra_search_roots []string) ?string
 			continue
 		}
 		mod_dir := os.join_path_single(root, mod_path)
-		entries := os.ls(mod_dir) or { continue }
-		if entries.any(it.ends_with('.v')) {
+		if dir_has_v_files(mod_dir) {
 			return mod_dir
 		}
+	}
+	if tool_source == '' {
+		return none
+	}
+	source := os.real_path(tool_source)
+	mut current := if os.is_dir(source) { source } else { os.dir(source) }
+	project_root := nearest_vmod_root(current) or { '' }
+	for {
+		// The compiler passes by the retired `modules/` namespace of a project.
+		if !pref.is_retired_modules_namespace(current, project_root) {
+			mod_dir := os.join_path_single(current, mod_path)
+			if dir_has_v_files(mod_dir) {
+				return mod_dir
+			}
+		}
+		parent := os.dir(current)
+		if parent == current {
+			break
+		}
+		current = parent
 	}
 	return none
 }
 
+fn dir_has_v_files(dir string) bool {
+	entries := os.ls(dir) or { return false }
+	return entries.any(it.ends_with('.v'))
+}
+
 // ensure_modules_for_tool_are_installed installs the modules from outside vlib that the
-// bundled tool `tool_name` needs, before that tool is compiled. A module that the compiler
-// can already resolve, from any `VMODULES` root or from `extra_search_roots` (the `-path`
-// entries of the build), is left alone, so this does not touch the network in the common
-// case, and works offline. The returned error names the module that could not be installed,
-// and how to install it manually, instead of leaving the user with a `cannot import module`
-// builder error.
-pub fn ensure_modules_for_tool_are_installed(tool_name string, extra_search_roots []string, is_verbose bool) ! {
+// bundled tool `tool_name`, with its sources in `tool_source`, needs before it is compiled.
+// A module that the compiler can already resolve, from any `VMODULES` root, from
+// `extra_search_roots` (the `-path` entries of the build), or from the folder of `tool_source`
+// or a folder above it (like the tool's project root), is left alone. So this does not touch
+// the network in the common case, and works offline. An empty `tool_source` skips the folder
+// lookup. The returned error names the module that could not be installed, and how to install
+// it manually, instead of leaving the user with a `cannot import module` builder error.
+pub fn ensure_modules_for_tool_are_installed(tool_name string, tool_source string, extra_search_roots []string, is_verbose bool) ! {
 	for emodule in external_modules_for_tool(tool_name) {
-		if mod_dir := resolvable_module_dir(emodule, extra_search_roots) {
+		if mod_dir := resolvable_module_dir(emodule, tool_source, extra_search_roots) {
 			if is_verbose {
 				eprintln('ensure_modules_for_tool_are_installed: `${emodule}` is available in ${mod_dir}')
 			}
@@ -122,6 +149,9 @@ pub fn ensure_modules_for_all_tools_are_installed(is_verbose bool) {
 		if is_verbose {
 			eprintln('Installing modules for tool: ${tool_name} ...')
 		}
-		ensure_modules_for_tool_are_installed(tool_name, []string{}, is_verbose) or { panic(err) }
+		tool_source := os.join_path(os.dir(pref.vexe_path()), 'cmd', 'tools', tool_name)
+		ensure_modules_for_tool_are_installed(tool_name, tool_source, []string{}, is_verbose) or {
+			panic(err)
+		}
 	}
 }
