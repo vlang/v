@@ -305,8 +305,12 @@ pub type FnGC_WarnCB = fn (const_msg &char, arg usize)
 fn C.GC_get_warn_proc() FnGC_WarnCB
 fn C.v_gc_set_warn_proc(cb FnGC_WarnCB)
 
+// GC_REGISTER_DISPLACEMENT is `GC_debug_register_displacement` when `GC_DEBUG` is set
+// (`-gc boehm_leak`), and `GC_register_displacement` otherwise.
 fn C.GC_REGISTER_DISPLACEMENT(offset usize)
 
+// FnGC_AbortCB is the type of Boehm's fatal error handler (`GC_abort_func`).
+// `const_msg` is nil when Boehm calls it right before `exit(1)`.
 type FnGC_AbortCB = fn (const_msg &char)
 
 // The abort handler functions go through casting macros: V function types drop
@@ -340,17 +344,35 @@ fn gc_report_fatal_errors_on_stderr() {
 }
 
 // internal_gc_abort_to_stderr prints a fatal Boehm error on stderr, as Boehm does
-// on Linux and macOS. Boehm then ends the process when this returns.
+// on Linux and macOS. Windows reporting avoids allocating or locking CRT stdio.
 fn internal_gc_abort_to_stderr(const_msg &char) {
 	// Print before chaining: with GC_LOOP_ON_ABORT set the default handler never
 	// returns. Boehm's own handler also prints first and loops last.
 	if const_msg != unsafe { nil } {
-		C.fprintf(C.stderr, c'%s\n', const_msg)
-		C.fflush(C.stderr)
+		$if windows {
+			// The heap may be corrupted, and stopped threads may hold heap or stdio locks.
+			newline := '\n'
+			write_buf_to_std_handle_kernel32(2, &u8(const_msg), vstrlen_char(const_msg))
+			write_buf_to_std_handle_kernel32(2, newline.str, newline.len)
+		} $else {
+			C.fprintf(C.stderr, c'%s\n', const_msg)
+			C.fflush(C.stderr)
+		}
 	}
 	// With a nil message the default handler only disables the at-exit leak
 	// collection (and honours GC_LOOP_ON_ABORT); it shows no message box.
 	C.v_gc_call_abort_func(gc_boehm_default_abort_func, unsafe { nil })
+	$if windows {
+		if const_msg == unsafe { nil } || C.IsDebuggerPresent() {
+			// Let Boehm finish its exit path or stop in the attached debugger.
+			return
+		}
+		$if tinyc {
+			print_backtrace()
+		}
+		// Skip at-exit handlers after a fatal collector error.
+		C._exit(1)
+	}
 }
 
 @[markused]
