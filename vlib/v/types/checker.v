@@ -741,6 +741,7 @@ pub mut:
 	prefix_param_scan                bool
 	building_v_fast                  bool
 	parallel_check_min_items         int = min_parallel_check_items // the fewest function bodies a check splits among the worker pool
+	logical_file_order               []int // the `.file` markers in the order to collect them, when not the node order
 	valid_diagnostic_fast            bool
 	valid_resolution_fast            bool
 	defer_fn_ancillary               bool
@@ -3291,6 +3292,7 @@ pub fn (mut tc TypeChecker) collect(a &flat.FlatAst) {
 	}
 	if file_index_usable(a) {
 		tc.collect_top_level_idx_fast(a, inactive_comptime_nodes)
+		tc.order_top_level_idx_by_files()
 		tc.top_level_idx_nodes_len = a.nodes.len
 		tc.reserve_collect_maps()
 		tc.timing_profile('  [ttime]     ck c idx       ${f64(ck_c_sw.elapsed().microseconds()) / 1000.0:7.2f} ms (fast)')
@@ -3347,10 +3349,46 @@ pub fn (mut tc TypeChecker) collect(a &flat.FlatAst) {
 			else {}
 		}
 	}
+	tc.order_top_level_idx_by_files()
 	tc.top_level_idx_nodes_len = a.nodes.len
 	tc.reserve_collect_maps()
 	tc.timing_profile('  [ttime]     ck c idx       ${f64(ck_c_sw.elapsed().microseconds()) / 1000.0:7.2f} ms')
 	tc.collect_after_index(a)
+}
+
+// order_top_level_idx_by_files moves each file's part of the top-level index,
+// from its `.file` marker to the next one, into logical_file_order: a
+// diagnostics server parses the modules builtin imports before the user's code,
+// and collects them where a one-shot check does, after it.
+fn (mut tc TypeChecker) order_top_level_idx_by_files() {
+	if tc.logical_file_order.len == 0 {
+		return
+	}
+	mut is_marker := map[int]bool{}
+	for marker in tc.logical_file_order {
+		is_marker[marker] = true
+	}
+	mut parts := map[int][]i32{}
+	mut head := []i32{}
+	mut current := -1
+	for idx in tc.top_level_idx {
+		if is_marker[int(idx)] {
+			current = int(idx)
+		}
+		if current < 0 {
+			head << idx
+		} else {
+			parts[current] << idx
+		}
+	}
+	mut ordered := []i32{cap: tc.top_level_idx.len}
+	ordered << head
+	for marker in tc.logical_file_order {
+		ordered << parts[marker] or { []i32{} }
+	}
+	if ordered.len == tc.top_level_idx.len {
+		tc.top_level_idx = ordered
+	}
 }
 
 fn (mut tc TypeChecker) reserve_collect_maps() {

@@ -1511,3 +1511,89 @@ fn main() {
 	assert map_decl.contains('builtin/array.v:'), map_decl
 	assert ask(dir, 'gd^', 4, 'map', 0) == map_decl
 }
+
+const prepared_program = "module main
+
+import os
+
+fn unused() {}
+
+fn count(names []string) int {
+	return names.len + os.args.len
+}
+
+fn main() {
+	x := count(['a']) + 'b'
+	println(x)
+}
+"
+
+// check_as_prepared_server checks `dir` with a diagnostics server that prepares
+// the modules builtin imports before its first check, as VLS starts the one of
+// its diagnostics, after `change` runs on `dir`, and returns what the check
+// printed and what the server traced.
+fn check_as_prepared_server(dir string, change fn (string)) (string, string) {
+	trace := os.join_path(dir, 'trace.txt')
+	os.rm(trace) or {}
+	mut p := start_server_with(dir, [], {
+		'V_DIAGNOSTICS_PREPARE': '1'
+		'V_DIAGNOSTICS_TRACE':   trace
+	})
+	defer {
+		p.close()
+	}
+	change(dir)
+	p.stdin_write('check c\n')
+	out := read_until(mut p, 'v-diagnostics-server: end ')
+	p.stdin_write('quit\n')
+	p.wait()
+	mut lines := []string{}
+	for line in out.split_into_lines() {
+		if !line.starts_with('v-diagnostics-server: ') {
+			lines << line
+		}
+	}
+	code := out.all_after('v-diagnostics-server: end ').all_before(' ')
+	return 'exit ${code}\n' + lines.join('\n').trim_space(), os.read_file(trace) or { '' }
+}
+
+// one_shot_check checks `dir` as a one-shot check of the same command line.
+fn one_shot_check(dir string) string {
+	res := os.execute('cd ${os.quoted_path(dir)} && V_CHECK_SELECTED_FILES_ONLY=1 ${os.quoted_path(line_info_v3_bin)} -no-memory-limit -w -check -nocolor .')
+	return 'exit ${res.exit_code}\n' + res.output.trim_space()
+}
+
+fn test_a_prepared_server_checks_as_a_one_shot_check_does() {
+	$if !linux {
+		return
+	}
+	dir := os.join_path(work_dir, 'prepared')
+	os.mkdir_all(dir)!
+	os.write_file(os.join_path(dir, 'main.v'), prepared_program)!
+	checked, trace := check_as_prepared_server(dir, fn (_ string) {})
+	assert checked == one_shot_check(dir)
+	assert checked.contains('error: '), checked
+	// The server parsed the modules builtin imports once, and the check used them.
+	assert trace.contains('v-diagnostics-server: prepared '), trace
+	assert trace.contains(' strconv'), trace
+	assert !trace.contains('one-shot check'), trace
+}
+
+fn test_a_prepared_server_checks_as_a_one_shot_check_does_once_a_module_shadows_a_prepared_one() {
+	$if !linux {
+		return
+	}
+	dir := os.join_path(work_dir, 'prepared_shadow')
+	os.mkdir_all(dir)!
+	os.write_file(os.join_path(dir, 'main.v'), prepared_program)!
+	// A module of the project named like one builtin imports, after the server
+	// prepared the one of vlib: an import of it from builtin resolves to it now.
+	checked, trace := check_as_prepared_server(dir, fn (dir string) {
+		os.mkdir_all(os.join_path(dir, 'strings')) or { panic(err) }
+		os.write_file(os.join_path(dir, 'strings', 'strings.v'), 'module strings\n\npub fn shadow() {}\n') or {
+			panic(err)
+		}
+	})
+	assert checked == one_shot_check(dir)
+	assert trace.contains('one-shot check: the prepared module strings resolves to another directory'), trace
+}

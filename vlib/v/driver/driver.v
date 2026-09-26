@@ -11202,6 +11202,37 @@ pub fn run(args []string) {
 	if !had_v3_backend_define {
 		prefs.user_defines = prefs.user_defines.filter(it != 'v3_backend')
 	}
+	// A diagnostics server parses the modules builtin imports once, before its
+	// first request, when its client asks it to (see PreparedImports).
+	mut prepared_imports := PreparedImports{}
+	if os.getenv('V_DIAGNOSTICS_SERVER') != '' && os.getenv('V_DIAGNOSTICS_PREPARE') != ''
+		&& check_only && vls_line_info == '' && !no_builtin && !minimal_literal_output
+		&& !cache_state.manager.enabled && file_list.len == 0 && !is_prof && !is_trace_calls
+		&& !prefs.building_v {
+		mut prepared_ast := p.a
+		if prepared_user_files := server_user_files(mut prepared_ast, input_file, prefs,
+			is_test_command)
+		{
+			if 'test' !in prefs.user_defines
+				&& (is_test_command || is_v3_test_file(input_file, backend, target)) {
+				prefs.user_defines << 'test'
+			}
+			prepared_ast.user_code_start = prepared_ast.nodes.len
+			prepared_imports.capturing = true
+			prepared_imports.project_root = project_root_for_files(prepared_user_files)
+			prepared_imports.is_test = prepared_user_files.any(is_v3_test_file(it, backend,
+				prefs.target))
+			prefs.is_test = prepared_imports.is_test
+			mut unscanned := ImplicitImportScan{}
+			resolve_imports(mut prepared_ast, mut p, prefs, []string{}, !current_no_parallel,
+				minimal_literal_output || no_closures, check_overflow, mut cache_state, mut
+				parse_timing, mut unscanned, mut prepared_imports)
+			prepared_imports.capturing = false
+			prepared_imports.ready = true
+			prepared_imports.user_start = prepared_ast.nodes.len
+			trace_diagnostics_server('prepared ${prepared_imports.regions.map(it.path).join(' ')}')
+		}
+	}
 	// A diagnostics server's child may have a question to answer instead.
 	mut served := diagserver.serve()
 	// Its child only asks of its sources whether they still hold what it read.
@@ -11224,7 +11255,9 @@ pub fn run(args []string) {
 	defer {
 		a.close_workers()
 	}
-	a.user_code_start = a.nodes.len
+	if !prepared_imports.ready {
+		a.user_code_start = a.nodes.len
+	}
 	if minimal_literal_output {
 		suppress_minimal_literal_output_builtin_imports(mut a)
 	}
@@ -11276,6 +11309,9 @@ pub fn run(args []string) {
 		parse_files_dispatch_profiled(mut p, [trace_prelude], false, mut parse_timing)
 	}
 	prefs.is_test = user_files.any(is_v3_test_file(it, backend, prefs.target))
+	if prepared_imports.ready && prefs.is_test != prepared_imports.is_test {
+		rerun_as_one_shot_check('a test file came or went since the preparation')
+	}
 	parse_files_dispatch_profiled(mut p, user_files, !current_no_parallel, mut parse_timing)
 	if is_linux_wayland_only_session(target.os, os.getenv('DISPLAY'), os.getenv('WAYLAND_DISPLAY'), os.getenv('XDG_SESSION_TYPE'))
 		&& !user_defines.any(it.all_before('=').trim_space() == 'sokol_wayland')
@@ -11298,7 +11334,12 @@ pub fn run(args []string) {
 		node_idx: a.user_code_start
 	}
 	if !no_builtin {
-		implicit_imports = seed_implicit_imports(mut a, skip_closure_runtime, check_overflow)
+		implicit_imports = if prepared_imports.ready {
+			seed_implicit_imports_from(mut a, prepared_imports.user_start, skip_closure_runtime,
+				check_overflow)
+		} else {
+			seed_implicit_imports(mut a, skip_closure_runtime, check_overflow)
+		}
 	}
 	seed_cached_builtin_bundle_imports(mut a, cache_state.manager.enabled, builtin_dir)
 
@@ -11306,7 +11347,17 @@ pub fn run(args []string) {
 	resolve_imports_started_us := b.current_step_time_us()
 	resolve_imports_parse_started_us := parse_timing.header_us + parse_timing.source_us
 	resolve_imports(mut a, mut p, prefs, user_files, !current_no_parallel, skip_closure_runtime,
-		check_overflow, mut cache_state, mut parse_timing, mut implicit_imports)
+		check_overflow, mut cache_state, mut parse_timing, mut implicit_imports, mut prepared_imports)
+	if prepared_imports.diverged != '' {
+		rerun_as_one_shot_check(prepared_imports.diverged)
+	}
+	mut logical_file_order := []int{}
+	if prepared_imports.ready {
+		logical_file_order = prepared_imports.logical_file_order(a, &cache_state) or {
+			rerun_as_one_shot_check('a parsed file has no place in the order of a one-shot check')
+			[]int{}
+		}
+	}
 	// Later stages resolve the same source paths many times, on several threads
 	// and inside disposable arenas. Resolve them once here, on the main thread and
 	// in the build's own arena, before any of those stages start.
@@ -11807,6 +11858,7 @@ pub fn run(args []string) {
 	pre_tc.enable_globals = enable_globals_compat
 	pre_tc.disable_explicit_mutability = disable_explicit_mutability
 	pre_tc.checker_fixture_mode = is_checker_fixture
+	pre_tc.logical_file_order = logical_file_order
 	// A diagnostics server's check waits on its bodies: the pool checks a few
 	// of them sooner than one thread, as it does many (p20, 201 functions: 31 ms
 	// on one thread, 13 ms on the pool). A query stays on one thread.
@@ -17484,12 +17536,25 @@ const closure_runtime_import_alias = '__v3_builtin_closure_runtime'
 // parsed code needs, and returns the scan that found them: resolve_imports
 // continues it rather than scanning the code again.
 fn seed_implicit_imports(mut a flat.FlatAst, skip_closure_runtime bool, check_overflow bool) ImplicitImportScan {
+	return seed_implicit_imports_from(mut a, a.user_code_start, skip_closure_runtime,
+		check_overflow)
+}
+
+// seed_implicit_imports_from scans the code from `scan_start`: the user's files
+// start after builtin, or after the modules a diagnostics server prepared.
+fn seed_implicit_imports_from(mut a flat.FlatAst, scan_start int, skip_closure_runtime bool, check_overflow bool) ImplicitImportScan {
 	start := a.nodes.len
 	// Builtin declares the channel ABI even when a program never uses channels.
 	// Start at user code so that declaration alone does not pull the whole sync
 	// module into every program; imported source is scanned wave by wave below.
 	mut scan := ImplicitImportScan{
-		node_idx: a.user_code_start
+		node_idx: scan_start
+	}
+	if scan_start != a.user_code_start {
+		// The field index of a program's own code holds builtin too, and not the
+		// modules prepared between the two.
+		implicit_field_scan_index_append(a, 0, a.user_code_start, mut scan.field_index)
+		scan.field_index_node_idx = scan_start
 	}
 	scan_implicit_imports(a, a.nodes.len, mut scan)
 	if scan.needs_sync && !scan.has_sync {
@@ -18620,6 +18685,238 @@ struct SyntheticInsertion {
 	node flat.Node
 }
 
+// SyntheticImportsAdded tells which compiler-provided modules the import
+// resolution already seeded: each is seeded once, at the first module whose
+// code needs it.
+struct SyntheticImportsAdded {
+mut:
+	sync     bool
+	embed    bool
+	closure  bool
+	debugger bool
+}
+
+// insertions_at returns the imports to splice in at `region_end` for what
+// `scan` found needed and nothing imports yet.
+fn (mut added SyntheticImportsAdded) insertions_at(scan ImplicitImportScan, region_end int, skip_closure_runtime bool) []SyntheticInsertion {
+	mut insertions := []SyntheticInsertion{}
+	if !added.sync && scan.needs_sync && !scan.has_sync {
+		insertions << SyntheticInsertion{
+			pos:  region_end
+			node: sync_import_node()
+		}
+		added.sync = true
+	}
+	if !added.embed && scan.needs_embed && !scan.has_embed_import {
+		insertions << SyntheticInsertion{
+			pos:  region_end
+			node: embed_file_import_node()
+		}
+		added.embed = true
+	}
+	if !skip_closure_runtime && !added.closure && scan.needs_closure && !scan.has_closure {
+		insertions << SyntheticInsertion{
+			pos:  region_end
+			node: closure_import_node()
+		}
+		added.closure = true
+	}
+	if !added.debugger && scan.needs_debugger && !scan.has_debugger {
+		insertions << SyntheticInsertion{
+			pos:  region_end
+			node: debugger_import_node()
+		}
+		added.debugger = true
+	}
+	return insertions
+}
+
+// logical_file_order returns the `.file` markers of the program in the order a
+// one-shot check parses them: builtin, the user's files, then each wave of
+// imported modules, the prepared ones where that check finds them. None when a
+// parsed file has no place in it.
+fn (prepared &PreparedImports) logical_file_order(a &flat.FlatAst, cache_state &V3ModuleCacheState) ?[]int {
+	mut markers := []int{cap: a.file_node_ids.len / 2}
+	for k := 0; k + 1 < a.file_node_ids.len; k += 2 {
+		markers << int(a.file_node_ids[k])
+	}
+	// A file's nodes end at the next file's marker, after the implicit imports
+	// spliced in behind it.
+	mut region_ends := map[int]int{}
+	for i, marker in markers {
+		region_ends[marker] = if i + 1 < markers.len { markers[i + 1] } else { a.nodes.len }
+	}
+	mut module_of_file := map[string]string{}
+	for identity, files in cache_state.module_sources {
+		for file in files {
+			module_of_file[file] = identity
+		}
+	}
+	mut module_markers := map[string][]int{}
+	mut first_wave := []int{}
+	for marker in markers {
+		path := a.nodes[marker].value
+		if identity := module_of_file[path] {
+			if marker >= a.user_code_start {
+				module_markers[identity] << marker
+				continue
+			}
+		}
+		// Builtin, and the user's own files after the prepared modules.
+		if marker < a.user_code_start || marker >= prepared.user_start {
+			first_wave << marker
+		}
+	}
+	mut order := first_wave.clone()
+	mut parsed := prepared.initial_parsed.clone()
+	mut current := first_wave.clone()
+	for current.len > 0 {
+		mut next := []int{}
+		for marker in current {
+			for idx in marker .. region_ends[marker] {
+				node := a.nodes[idx]
+				if node.kind != .import_decl || node.value in parsed {
+					continue
+				}
+				files := module_markers[node.value] or { continue }
+				parsed[node.value] = true
+				next << files
+			}
+		}
+		order << next
+		current = next.clone()
+	}
+	if order.len != markers.len {
+		return none
+	}
+	return order
+}
+
+// server_user_files lists the input's files as a check lists them, for a
+// diagnostics server that prepares before its first check. None where the
+// check would stop on the input itself: that check then says why.
+fn server_user_files(mut a flat.FlatAst, input_file string, prefs &pref.Preferences, is_test_command bool) ?[]string {
+	if input_file.ends_with('.v') || input_file.ends_with('.vv') {
+		return expand_single_test_file_inputs(mut a, [input_file], prefs)
+	}
+	if os.is_dir(input_file) {
+		files := v3_directory_user_files(mut a, input_file, prefs, is_test_command, false) or {
+			return none
+		}
+		if files.len == 0 {
+			return none
+		}
+		return files
+	}
+	return none
+}
+
+// trace_diagnostics_server tells what a diagnostics server did, when
+// V_DIAGNOSTICS_TRACE asks: on stderr, or at the end of the file it names by
+// an absolute path, which leaves the output of a check what it would be.
+fn trace_diagnostics_server(message string) {
+	trace := os.getenv('V_DIAGNOSTICS_TRACE')
+	if trace.starts_with('/') {
+		mut f := os.open_append(trace) or { return }
+		f.writeln('v-diagnostics-server: ${message}') or {}
+		f.close()
+	} else if trace != '' {
+		eprintln('v-diagnostics-server: ${message}')
+	}
+}
+
+// rerun_as_one_shot_check replaces a diagnostics server's child with the
+// one-shot check of the same command line, whose output a check that relies on
+// a preparation cannot guarantee to match.
+fn rerun_as_one_shot_check(reason string) {
+	trace_diagnostics_server('one-shot check: ${reason}')
+	mut envs := []string{}
+	for name, value in os.environ() {
+		if name in ['V_DIAGNOSTICS_SERVER', 'V_DIAGNOSTICS_PREPARE'] {
+			continue
+		}
+		envs << '${name}=${value}'
+	}
+	flush_stdout()
+	flush_stderr()
+	os.execve(os.executable(), os.args[1..], envs) or {
+		eprintln('v-diagnostics-server: cannot run the one-shot check: ${err}')
+		exit(2)
+	}
+}
+
+// PreparedImports is what resolve_imports learned of the modules that
+// builtin imports, parsed before the user's code: a diagnostics server
+// prepares them once (capturing), and each of its checks continues from them
+// (ready). Where the program would make a one-shot check resolve one of them
+// otherwise, the check says why in `diverged`, and is run as a one-shot check.
+struct PreparedImports {
+mut:
+	capturing bool
+	ready     bool
+	diverged  string
+	// Where the user's code starts, after the prepared modules.
+	user_start int
+	// Whether the user's files held a test when the modules were prepared.
+	is_test bool
+	// The project root the user's files give, which resolves module paths.
+	project_root string
+	// The prepared modules, in the order they were parsed.
+	regions []PreparedModule
+	// The modules a one-shot check takes as parsed before its first wave.
+	initial_parsed                map[string]bool
+	parsed_modules                map[string]bool
+	parsed_module_identities      map[string]string
+	parsed_identity_dirs          map[string]string
+	parsed_dir_identities         map[string]string
+	checked_dir_spellings         map[string]bool
+	identity_source_paths         map[string]string
+	identity_source_dirs          map[string]string
+	forced_full_module_paths      map[string]bool
+	module_path_cache             map[string]string
+	module_identity_cache         map[string]string
+	first_collision_seed_by_short map[string]ImportCollisionSeed
+	resolved_collision_seeds      map[string]bool
+	unresolved_modules            map[string]bool
+}
+
+// PreparedModule is a module parsed by a preparation: the import that named it,
+// what it resolved to, and its nodes.
+struct PreparedModule {
+mut:
+	path           string
+	identity       string
+	importing_file string
+	dir            string
+	start          int
+	end            int
+}
+
+// resolution_change returns why the program checked after the preparation
+// resolves a prepared module otherwise than the preparation did, or ''.
+fn (prepared &PreparedImports) resolution_change(prefs &pref.Preferences, project_root string, forced_full_module_paths map[string]bool, parsed_module_identities map[string]string) string {
+	if project_root != prepared.project_root {
+		return 'the project root is ${project_root}, not ${prepared.project_root}'
+	}
+	mut fresh := map[string]string{}
+	for region in prepared.regions {
+		if forced_full_module_paths[region.path] != prepared.forced_full_module_paths[region.path] {
+			return 'an import collides with the prepared module ${region.path}'
+		}
+		if (parsed_module_identities[region.path] or { '' }) != (prepared.parsed_module_identities[region.path] or {
+			''
+		}) {
+			return 'the prepared module ${region.path} got another identity'
+		}
+		// A module of the project can shadow one of vlib after the preparation.
+		if resolve_project_or_pref_module_path(prefs, region.path, region.importing_file,
+			project_root, mut fresh) != region.dir {
+			return 'the prepared module ${region.path} resolves to another directory'
+		}
+	}
+	return ''
+}
+
 // insert_synthetic_imports shifts a.nodes in place with each synthetic import spliced in
 // before its recorded original-array position, so the next resolver pass scans a
 // module's synthetic import right after that module's own region — in the same
@@ -19140,7 +19437,7 @@ fn discover_eager_selfhost_modules(a &flat.FlatAst, prefs &pref.Preferences, fir
 
 // resolve_imports parses the modules that the parsed code imports, wave by wave.
 // It continues `implicit_imports`, the scan of seed_implicit_imports.
-fn resolve_imports(mut a flat.FlatAst, mut p parser.Parser, prefs &pref.Preferences, initial_files []string, allow_parallel bool, skip_closure_runtime bool, check_overflow bool, mut cache_state V3ModuleCacheState, mut parse_timing V3ParseTiming, mut implicit_imports ImplicitImportScan) bool {
+fn resolve_imports(mut a flat.FlatAst, mut p parser.Parser, prefs &pref.Preferences, initial_files []string, allow_parallel bool, skip_closure_runtime bool, check_overflow bool, mut cache_state V3ModuleCacheState, mut parse_timing V3ParseTiming, mut implicit_imports ImplicitImportScan, mut prepared PreparedImports) bool {
 	mut parsed_modules := map[string]bool{}
 	parsed_modules['builtin'] = true
 	parsed_modules['main'] = true
@@ -19170,11 +19467,18 @@ fn resolve_imports(mut a flat.FlatAst, mut p parser.Parser, prefs &pref.Preferen
 		}
 	}
 
+	if prepared.ready {
+		prepared.initial_parsed = parsed_modules.clone()
+	}
 	mut first_file := ''
 	if initial_files.len > 0 {
 		first_file = initial_files[0]
 	}
-	project_root := project_root_for_files(initial_files)
+	project_root := if prepared.capturing {
+		prepared.project_root
+	} else {
+		project_root_for_files(initial_files)
+	}
 	shadow_diagnostic_root := os.real_path(project_root)
 	shadow_dependency_roots := shadow_dependency_roots_for(prefs)
 	shadow_explicit_roots := shadow_explicit_roots_for(prefs, shadow_dependency_roots)
@@ -19193,6 +19497,23 @@ fn resolve_imports(mut a flat.FlatAst, mut p parser.Parser, prefs &pref.Preferen
 	mut first_collision_seed_by_short := map[string]ImportCollisionSeed{}
 	mut resolved_collision_seeds := map[string]bool{}
 	mut unresolved_modules := map[string]bool{}
+	if prepared.ready {
+		for name, _ in prepared.parsed_modules {
+			parsed_modules[name] = true
+		}
+		parsed_module_identities = prepared.parsed_module_identities.clone()
+		parsed_identity_dirs = prepared.parsed_identity_dirs.clone()
+		parsed_dir_identities = prepared.parsed_dir_identities.clone()
+		checked_dir_spellings = prepared.checked_dir_spellings.clone()
+		identity_source_paths = prepared.identity_source_paths.clone()
+		identity_source_dirs = prepared.identity_source_dirs.clone()
+		forced_full_module_paths = prepared.forced_full_module_paths.clone()
+		module_path_cache = prepared.module_path_cache.clone()
+		module_identity_cache = prepared.module_identity_cache.clone()
+		first_collision_seed_by_short = prepared.first_collision_seed_by_short.clone()
+		resolved_collision_seeds = prepared.resolved_collision_seeds.clone()
+		unresolved_modules = prepared.unresolved_modules.clone()
+	}
 	if check_overflow {
 		// C generation names the late-injected overflow helpers by their full
 		// module path. Preserve that path even though it is the only module named
@@ -19266,11 +19587,37 @@ fn resolve_imports(mut a flat.FlatAst, mut p parser.Parser, prefs &pref.Preferen
 	// wave the synthetic nodes are only spliced in after every boundary has been
 	// checked, so a later module's bounded already-imported scan cannot yet see an
 	// earlier module's pending seed; the flags stand in for it.
-	scan_implicit_imports(a, a.nodes.len, mut implicit_imports)
-	mut synthetic_sync_added := implicit_imports.has_sync
-	mut synthetic_embed_file_added := implicit_imports.has_embed_import
-	mut synthetic_closure_added := implicit_imports.has_closure
-	mut synthetic_debugger_added := implicit_imports.has_debugger
+	// A preparation leaves the implicit imports to the check that continues it.
+	if !prepared.capturing {
+		scan_implicit_imports(a, a.nodes.len, mut implicit_imports)
+	}
+	mut synthetic := SyntheticImportsAdded{
+		sync:     implicit_imports.has_sync
+		embed:    implicit_imports.has_embed_import
+		closure:  implicit_imports.has_closure
+		debugger: implicit_imports.has_debugger
+	}
+	if prepared.ready {
+		// The prepared modules come before the user's code, where a one-shot
+		// check parses them after it. Scan them as it does: after the user's
+		// code, one module after another, each with the imports it needs.
+		scan_end := implicit_imports.node_idx
+		mut insertions := []SyntheticInsertion{}
+		for region in prepared.regions {
+			implicit_imports.node_idx = region.start
+			implicit_imports.field_index_node_idx = region.start
+			scan_implicit_imports(a, region.end, mut implicit_imports)
+			insertions << synthetic.insertions_at(implicit_imports, region.end, skip_closure_runtime)
+		}
+		implicit_imports.node_idx = scan_end
+		implicit_imports.field_index_node_idx = scan_end
+		if insertions.len > 0 {
+			prepared.diverged = 'a prepared module needs an implicit import'
+		}
+		insert_synthetic_imports(mut a, insertions)
+		implicit_imports.node_idx += insertions.len
+		implicit_imports.field_index_node_idx += insertions.len
+	}
 	mut ri_collision_ns := u64(0)
 	mut ri_wave_ns := u64(0)
 	mut ri_waves := 0
@@ -19377,6 +19724,7 @@ fn resolve_imports(mut a flat.FlatAst, mut p parser.Parser, prefs &pref.Preferen
 		mut wave_files := []string{}
 		mut wave_canon := []string{}
 		mut wave_module_file_ends := []int{}
+		mut wave_modules := []PreparedModule{}
 		for wave_scan_i in 0 .. scan_ids.len {
 			node_idx = scan_ids[wave_scan_i]
 			node := a.nodes[node_idx]
@@ -19610,6 +19958,12 @@ fn resolve_imports(mut a flat.FlatAst, mut p parser.Parser, prefs &pref.Preferen
 					wave_canon << canon
 				}
 				wave_module_file_ends << wave_files.len
+				wave_modules << PreparedModule{
+					path:           mod_name
+					identity:       module_identity
+					importing_file: importing_file
+					dir:            mod_dir
+				}
 			}
 			node_idx++
 		}
@@ -19646,7 +20000,7 @@ fn resolve_imports(mut a flat.FlatAst, mut p parser.Parser, prefs &pref.Preferen
 		// module's last file, so module-path resolution uses the right context.
 		mut insertions := []SyntheticInsertion{}
 		mut module_start := 0
-		for module_file_end in wave_module_file_ends {
+		for module_idx, module_file_end in wave_module_file_ends {
 			if module_file_end == module_start {
 				continue
 			}
@@ -19655,38 +20009,16 @@ fn resolve_imports(mut a flat.FlatAst, mut p parser.Parser, prefs &pref.Preferen
 			} else {
 				wave_end_nodes
 			}
+			if prepared.capturing {
+				mut region := wave_modules[module_idx]
+				region.start = starts[module_start]
+				region.end = region_end
+				prepared.regions << region
+				module_start = module_file_end
+				continue
+			}
 			scan_implicit_imports(a, region_end, mut implicit_imports)
-			if !synthetic_sync_added && implicit_imports.needs_sync && !implicit_imports.has_sync {
-				insertions << SyntheticInsertion{
-					pos:  region_end
-					node: sync_import_node()
-				}
-				synthetic_sync_added = true
-			}
-			if !synthetic_embed_file_added && implicit_imports.needs_embed
-				&& !implicit_imports.has_embed_import {
-				insertions << SyntheticInsertion{
-					pos:  region_end
-					node: embed_file_import_node()
-				}
-				synthetic_embed_file_added = true
-			}
-			if !skip_closure_runtime && !synthetic_closure_added && implicit_imports.needs_closure
-				&& !implicit_imports.has_closure {
-				insertions << SyntheticInsertion{
-					pos:  region_end
-					node: closure_import_node()
-				}
-				synthetic_closure_added = true
-			}
-			if !synthetic_debugger_added && implicit_imports.needs_debugger
-				&& !implicit_imports.has_debugger {
-				insertions << SyntheticInsertion{
-					pos:  region_end
-					node: debugger_import_node()
-				}
-				synthetic_debugger_added = true
-			}
+			insertions << synthetic.insertions_at(implicit_imports, region_end, skip_closure_runtime)
 			module_start = module_file_end
 		}
 		insert_synthetic_imports(mut a, insertions)
@@ -19696,6 +20028,24 @@ fn resolve_imports(mut a flat.FlatAst, mut p parser.Parser, prefs &pref.Preferen
 	cache_state.import_resolutions = V3ImportResolutions{
 		project_root: project_root
 		dirs:         module_path_cache.clone()
+	}
+	if prepared.capturing {
+		prepared.parsed_modules = parsed_modules.clone()
+		prepared.parsed_module_identities = parsed_module_identities.clone()
+		prepared.parsed_identity_dirs = parsed_identity_dirs.clone()
+		prepared.parsed_dir_identities = parsed_dir_identities.clone()
+		prepared.checked_dir_spellings = checked_dir_spellings.clone()
+		prepared.identity_source_paths = identity_source_paths.clone()
+		prepared.identity_source_dirs = identity_source_dirs.clone()
+		prepared.forced_full_module_paths = forced_full_module_paths.clone()
+		prepared.module_path_cache = module_path_cache.clone()
+		prepared.module_identity_cache = module_identity_cache.clone()
+		prepared.first_collision_seed_by_short = first_collision_seed_by_short.clone()
+		prepared.resolved_collision_seeds = resolved_collision_seeds.clone()
+		prepared.unresolved_modules = unresolved_modules.clone()
+	} else if prepared.ready && prepared.diverged == '' {
+		prepared.diverged = prepared.resolution_change(prefs, project_root, forced_full_module_paths,
+			parsed_module_identities)
 	}
 	return was_parallel
 }
