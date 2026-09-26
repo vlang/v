@@ -591,8 +591,16 @@ fn test_the_diagnostics_server_answers_queries_between_checks() {
 // start_server starts a diagnostics server that checks `dir`, as VLS starts the
 // one it asks its questions, with the environment variables `vars` besides.
 fn start_server(dir string, vars map[string]string) &os.Process {
+	return start_server_with(dir, [], vars)
+}
+
+// start_server_with is start_server with the options `options` besides.
+fn start_server_with(dir string, options []string, vars map[string]string) &os.Process {
 	mut p := os.new_process(line_info_v3_bin)
-	p.set_args(['-no-memory-limit', '-w', '-check', '-nocolor', '.'])
+	mut args := ['-no-memory-limit', '-w', '-check', '-nocolor']
+	args << options
+	args << '.'
+	p.set_args(args)
 	p.set_work_folder(dir)
 	mut env := os.environ()
 	env['V_DIAGNOSTICS_SERVER'] = '1'
@@ -625,8 +633,13 @@ fn query(mut p os.Process, token string, spec string) (int, string) {
 // ask_once answers `questions` about main.v of `dir` in a compiler process of its
 // own that checks `.`, as the server does.
 fn ask_once(dir string, questions []string) []string {
+	return ask_once_with(dir, '', questions)
+}
+
+// ask_once_with is ask_once with the options `options` besides.
+fn ask_once_with(dir string, options string, questions []string) []string {
 	spec := questions.map('main.v:${it}').join('\t')
-	res := os.execute('cd ${os.quoted_path(dir)} && ${os.quoted_path(line_info_v3_bin)} -w -check -nocolor -vls-mode -line-info "${spec}" .')
+	res := os.execute('cd ${os.quoted_path(dir)} && ${os.quoted_path(line_info_v3_bin)} -w -check -nocolor ${options} -vls-mode -line-info "${spec}" .')
 	assert res.exit_code == 0, res.output
 	return res.output.trim_right('\n').split('\n').map(it.all_after('\t'))
 }
@@ -701,6 +714,69 @@ fn test_a_server_child_answers_no_more_once_a_file_changes() {
 		time.sleep(10 * time.millisecond)
 	}
 	assert !os.exists('/proc/${kept}')
+}
+
+fn test_a_server_child_answers_no_more_once_an_import_resolves_elsewhere() {
+	$if !linux {
+		return
+	}
+	// `helper` is only in the second of two roots of modules, and nothing of
+	// the first one is read.
+	dir := os.join_path(work_dir, 'search_roots')
+	first_root := os.join_path(dir, 'first')
+	second_root := os.join_path(dir, 'second')
+	project := os.join_path(dir, 'project')
+	os.mkdir_all(first_root)!
+	os.mkdir_all(os.join_path(second_root, 'helper'))!
+	os.mkdir_all(project)!
+	os.write_file(os.join_path(second_root, 'helper', 'helper.v'), 'module helper\n\npub fn answer() int {\n\treturn 1\n}\n')!
+	os.write_file(os.join_path(project, 'main.v'), 'module main\n\nimport helper\n\nfn main() {\n\tprintln(helper.answer())\n}\n')!
+	roots := '${first_root}|${second_root}|@vlib'
+	mut p := start_server_with(project, ['-path', roots], {})
+	defer {
+		p.close()
+	}
+	first, before := query(mut p, 'a', 'main.v:6:gd^17')
+	assert before == os.join_path(second_root, 'helper', 'helper.v') + ':3:7'
+	// A module of that name added to the first root: the import is that one now.
+	os.mkdir_all(os.join_path(first_root, 'helper'))!
+	os.write_file(os.join_path(first_root, 'helper', 'helper.v'), 'module helper\n\n// Another one.\npub fn answer() int {\n\treturn 2\n}\n')!
+	child, after := query(mut p, 'b', 'main.v:6:gd^17')
+	assert after == ask_once_with(project, '-path ${os.quoted_path(roots)}', ['6:gd^17'])[0]
+	assert after == os.join_path(first_root, 'helper', 'helper.v') + ':4:7'
+	assert child != first
+	p.stdin_write('quit\n')
+	p.wait()
+	assert p.code == 0
+}
+
+fn test_a_server_child_answers_no_more_once_a_module_appears_at_the_project_root() {
+	$if !linux {
+		return
+	}
+	// A program below the v.mod root imports `hash`, a module of vlib, and
+	// nothing of the root itself is read.
+	root := os.join_path(work_dir, 'project_root')
+	app := os.join_path(root, 'cmd', 'app')
+	os.mkdir_all(app)!
+	os.write_file(os.join_path(root, 'v.mod'), "Module {\n\tname: 'proj'\n}\n")!
+	os.write_file(os.join_path(app, 'main.v'), "module main\n\nimport hash\n\nfn main() {\n\tprintln(hash.sum64_string('a', 0))\n}\n")!
+	mut p := start_server(app, {})
+	defer {
+		p.close()
+	}
+	first, before := query(mut p, 'a', 'main.v:6:gd^15')
+	assert before.contains(os.join_path('vlib', 'hash')), before
+	// A module of that name at the root: the project's own comes before vlib's.
+	os.mkdir_all(os.join_path(root, 'hash'))!
+	os.write_file(os.join_path(root, 'hash', 'hash.v'), "module hash\n\n// The project's own.\npub fn sum64_string(s string, seed u64) u64 {\n\treturn 0\n}\n")!
+	child, after := query(mut p, 'b', 'main.v:6:gd^15')
+	assert after == ask_once(app, ['6:gd^15'])[0]
+	assert after == os.join_path(root, 'hash', 'hash.v') + ':4:7'
+	assert child != first
+	p.stdin_write('quit\n')
+	p.wait()
+	assert p.code == 0
 }
 
 fn test_a_server_child_that_grew_answers_its_last_question_and_leaves() {

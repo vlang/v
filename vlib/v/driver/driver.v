@@ -169,6 +169,7 @@ mut:
 	native_declared_functions map[string]map[string]bool
 	objects                   map[string]string
 	headers                   map[string]string
+	import_resolutions        V3ImportResolutions
 }
 
 struct V3ParseTiming {
@@ -11531,7 +11532,11 @@ pub fn run(args []string) {
 			// unchanged.
 			if served.answers_again() {
 				if digests := v3_input_digests(a, cache_state.cached_source_digests) {
-					served.keep_inputs(digests)
+					project_root := cache_state.import_resolutions.project_root
+					resolved_imports := v3_imports_to_resolve(a, cache_state.import_resolutions)
+					served.keep_inputs(digests, fn [prefs, project_root, resolved_imports] () bool {
+						return v3_imports_resolve_as_before(prefs, project_root, resolved_imports)
+					})
 					mut code := 0
 					for {
 						next := served.next_question(code) or { break }
@@ -15585,6 +15590,74 @@ fn v3_input_digests(a &flat.FlatAst, cached_source_digests map[string]string) ?m
 	return digests
 }
 
+// V3ImportResolutions is what the imports of a compilation resolved to, as
+// resolve_imports found them: the directory of each module by
+// `<directory of the importing file>\n<module>`, and the project root the
+// search started from. The directories searched before that one, which held no
+// such module, were read nowhere: only resolving the imports again tells
+// whether one holds it now.
+struct V3ImportResolutions {
+	project_root string
+	dirs         map[string]string
+}
+
+// V3ImportResolution is an import to resolve again: the module `module_name`
+// for the file `importing_file`, which resolved to the directory `dir`.
+struct V3ImportResolution {
+	module_name    string
+	importing_file string
+	dir            string
+}
+
+// v3_imports_to_resolve lists the imports of `resolutions`, each with a file of
+// the program in the directory it was resolved for: resolving takes a file, and
+// finds the directory from it.
+fn v3_imports_to_resolve(a &flat.FlatAst, resolutions V3ImportResolutions) []V3ImportResolution {
+	mut file_in_dir := map[string]string{}
+	for _, file in a.source_files {
+		dir := os.dir(file.name)
+		if dir !in file_in_dir {
+			file_in_dir[dir] = file.name
+		}
+	}
+	mut imports := []V3ImportResolution{cap: resolutions.dirs.len}
+	for key, dir in resolutions.dirs {
+		importing_dir := key.all_before('\n')
+		// A module of vlib or of a root of modules, for any importer: resolving
+		// the others resolves it again.
+		if importing_dir == '@global' {
+			continue
+		}
+		// Resolving takes the real path of the file: a missing one keeps a
+		// relative path relative.
+		importing_file := if importing_dir == '' {
+			''
+		} else {
+			file_in_dir[importing_dir] or { os.join_path_single(os.real_path(importing_dir), '_') }
+		}
+		imports << V3ImportResolution{
+			module_name:    key.all_after('\n')
+			importing_file: importing_file
+			dir:            dir
+		}
+	}
+	return imports
+}
+
+// v3_imports_resolve_as_before reports whether each of `imports` still resolves
+// to the directory it did: a module added to a directory searched first, or
+// one found now for an import that found none, changes the program.
+fn v3_imports_resolve_as_before(prefs &pref.Preferences, project_root string, imports []V3ImportResolution) bool {
+	mut cache := map[string]string{}
+	for imp in imports {
+		if resolve_project_or_pref_module_path_cached(prefs, imp.module_name, imp.importing_file,
+			project_root, mut cache) != imp.dir {
+			return false
+		}
+	}
+	return true
+}
+
 // v3_directory_user_files lists the source files of the module in `dir`. Until
 // a.resolve_source_paths() freezes the table, it records each file's resolved
 // path in `a` for later stages, so it must run on the thread that owns `a`.
@@ -18737,6 +18810,10 @@ fn resolve_imports(mut a flat.FlatAst, mut p parser.Parser, prefs &pref.Preferen
 		insert_synthetic_imports(mut a, insertions)
 		implicit_imports.node_idx += insertions.len
 		implicit_imports.field_index_node_idx += insertions.len
+	}
+	cache_state.import_resolutions = V3ImportResolutions{
+		project_root: project_root
+		dirs:         module_path_cache.clone()
 	}
 	return was_parallel
 }
