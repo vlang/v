@@ -8333,10 +8333,12 @@ fn (mut g FlatGen) gen_call(id flat.NodeId, node flat.Node) {
 			}
 			// Count the forwarded ctx (if any) as already supplied.
 			actual_args := emitted_arg_count + (if forward_ctx { 1 } else { 0 })
+			// A C-style `...` tail is not a V array parameter: omitted variadic
+			// args must not be defaulted to an empty array.
 			expected_args := if is_method {
-				param_types.len - 1
+				typed_param_count - 1
 			} else {
-				param_types.len
+				typed_param_count
 			}
 			if !is_c_call && expected_args > 0 && actual_args < expected_args {
 				mut emitted_defaults := 0
