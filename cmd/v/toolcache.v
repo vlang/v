@@ -464,37 +464,27 @@ fn unresolved_import_modules(details string) []string {
 	return result
 }
 
-// explicit_module_search_roots returns the roots of the `-path` in `build_args`, with the same
-// placeholders expanded as the driver does, or none without a `-path`.
-fn explicit_module_search_roots(vroot string, build_args []string) []string {
+// module_search_roots returns the directories an import is resolved against, in the order
+// `pref` searches them. An explicit `-path` replaces the defaults and supports the same
+// placeholders as the driver. Without one, the tree's own `vlib` and every `~/.vmodules`
+// entry are searched. A missing module can reappear in any of those roots.
+fn module_search_roots(vroot string, build_args []string) []string {
 	mut spec := ''
 	for index, argument in build_args {
 		if argument == '-path' && index + 1 < build_args.len {
 			spec = build_args[index + 1]
 		}
 	}
-	mut roots := []string{}
-	if spec == '' {
-		return roots
-	}
-	for path in spec.replace('|', os.path_delimiter).split(os.path_delimiter) {
-		match path {
-			'@vlib' { roots << os.join_path(vroot, 'vlib') }
-			'@vmodules' { roots << os.vmodules_paths() }
-			else { roots << path.replace('@vroot', vroot) }
+	if spec != '' {
+		mut roots := []string{}
+		for path in spec.replace('|', os.path_delimiter).split(os.path_delimiter) {
+			match path {
+				'@vlib' { roots << os.join_path(vroot, 'vlib') }
+				'@vmodules' { roots << os.vmodules_paths() }
+				else { roots << path.replace('@vroot', vroot) }
+			}
 		}
-	}
-	return roots
-}
-
-// module_search_roots returns the directories an import is resolved against, in the order
-// `pref` searches them. An explicit `-path` replaces the defaults and supports the same
-// placeholders as the driver. Without one, the tree's own `vlib` and every `~/.vmodules`
-// entry are searched. A missing module can reappear in any of those roots.
-fn module_search_roots(vroot string, build_args []string) []string {
-	explicit_roots := explicit_module_search_roots(vroot, build_args)
-	if explicit_roots.len > 0 {
-		return explicit_roots
+		return roots
 	}
 	mut roots := [os.join_path(vroot, 'vlib')]
 	for path in os.vmodules_paths() {
