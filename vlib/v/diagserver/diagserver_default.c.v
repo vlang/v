@@ -21,7 +21,7 @@ pub fn (r &Request) answers_again() bool {
 }
 
 // keep_inputs does nothing without a server.
-pub fn (mut r Request) keep_inputs(digests map[string]string) {}
+pub fn (mut r Request) keep_inputs(digests map[string]string, imports_hold fn () bool) {}
 
 // next_question returns none: without a server, no question comes.
 pub fn (mut r Request) next_question(code int) ?string {

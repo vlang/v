@@ -50,8 +50,9 @@ mut:
 // question, and answers it in place of the diagnostics. The token comes first,
 // as the path of the file may hold spaces. The child that answered a query
 // stays, with the program it checked: the next query goes to it while every
-// file it read holds the same bytes, and no file was added next to one of them
-// or removed, and to a new child that checks the program otherwise.
+// file it read holds the same bytes, no file was added next to one of them or
+// removed, and each import resolves to the directory it was read from, and to a
+// new child that checks the program otherwise.
 //
 // A request carries nothing else: the command line fixes the input, and with
 // it every setting the driver derived from the input before this point.
@@ -186,10 +187,12 @@ pub fn (r &Request) answers_again() bool {
 
 // keep_inputs takes the files the check read, by absolute path, with the
 // SHA-256 of what it read in each, in hexadecimal: the child answers a next
-// question only while they hold it, and no file was added next to one of them
-// or removed. It reads them again already, as one may have changed meanwhile.
-pub fn (mut r Request) keep_inputs(digests map[string]string) {
-	r.current = r.inputs.prepare(digests, mut r.buffer)
+// question only while they hold it, no file was added next to one of them or
+// removed, and `imports_hold` finds each import resolving to the directory it
+// was read from. It reads them again already, as one may have changed meanwhile.
+pub fn (mut r Request) keep_inputs(digests map[string]string, imports_hold fn () bool) {
+	r.inputs.imports_hold = imports_hold
+	r.current = r.inputs.prepare(digests, mut r.buffer) && imports_hold()
 }
 
 // next_question tells the server that the answer is complete, with the exit
@@ -375,11 +378,14 @@ fn (mut w Warm) answered(line string) ?int {
 
 // Inputs are the files a check read, with a quick sum of what it read in each,
 // and a sum of the names in each of their directories. Comparing them again
-// allocates no memory.
+// allocates no memory. And a check that each import still resolves to the
+// directory it was read from: a module added to a directory searched before
+// that one changes no file that was read, nor any of their directories.
 struct Inputs {
 mut:
-	files []InputFile
-	dirs  []InputDir
+	files        []InputFile
+	dirs         []InputDir
+	imports_hold fn () bool = unsafe { nil }
 }
 
 struct InputFile {
@@ -456,7 +462,7 @@ fn (i &Inputs) changed(mut buffer []u8) bool {
 			return true
 		}
 	}
-	return false
+	return i.imports_hold != unsafe { nil } && !i.imports_hold()
 }
 
 fn quick_sum(buffer []u8, size int) u64 {
