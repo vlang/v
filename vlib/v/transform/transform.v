@@ -1601,7 +1601,12 @@ pub fn monomorphize_with_used_checked_config_scoped(mut a flat.FlatAst, tc &type
 pub fn monomorphize_with_used_checked_config_scoped_cached(mut a flat.FlatAst, tc &types.TypeChecker, used_fns map[string]bool, parallel bool, stage_scope voidptr, cached_specs []MonomorphCacheSpec) (map[string]bool, []string, []MonomorphCacheSpec) {
 	debug_started := time.ticks()
 	mut t := new_transformer(mut a, tc, used_fns)
-	t.parallel_monomorphize = parallel
+	// Checker fixtures fully re-check every specialized body
+	// (check_concrete_fn_semantics). Workers would do that through forked
+	// checkers that share mutable state with the master and keep their own
+	// diagnostics, so the specialization errors of a fixture were lost or
+	// became nondeterministic. Fixtures are small; specialize them serially.
+	t.parallel_monomorphize = parallel && (isnil(tc) || !tc.checker_fixture_mode)
 	t.stage_scope = stage_scope
 	t.scoped_monomorphize = stage_scope != unsafe { nil }
 	$if prealloc {
@@ -2602,6 +2607,36 @@ fn (mut t Transformer) set_implicit_err_var_type() {
 	t.set_var_type_binding('err', 'IError', 'IError', true)
 }
 
+// ImplicitErrScope is the state saved while an `or`/`else` body binds its own `err`.
+struct ImplicitErrScope {
+	var_types   []VarTypeBinding
+	smartcasts  []SmartcastContext
+	invalidated map[string]bool
+}
+
+// enter_implicit_err_scope binds the implicit `err` of an `or`/`else` body. That `err`
+// shadows any outer one, so smartcasts of the outer `err` (e.g. `if err is MyError`)
+// are hidden until leave_implicit_err_scope restores them.
+fn (mut t Transformer) enter_implicit_err_scope() ImplicitErrScope {
+	scope := ImplicitErrScope{
+		var_types:   t.var_types.clone()
+		smartcasts:  t.smartcast_stack.clone()
+		invalidated: t.invalidated_smartcasts.clone()
+	}
+	t.set_implicit_err_var_type()
+	if t.smartcast_stack.len > 0 {
+		t.smartcast_stack = smartcasts_without_binding(t.smartcast_stack, 'err')
+	}
+	return scope
+}
+
+// leave_implicit_err_scope restores the bindings and smartcasts saved by
+// enter_implicit_err_scope; narrowing done inside the body does not leak out.
+fn (mut t Transformer) leave_implicit_err_scope(scope ImplicitErrScope) {
+	t.restore_var_types(scope.var_types)
+	t.restore_shadowed_smartcast_state('err', scope.smartcasts, scope.invalidated)
+}
+
 fn (mut t Transformer) mark_var_as_ref_param(name string) {
 	i := t.var_type_index(name)
 	if i >= 0 {
@@ -2925,10 +2960,12 @@ fn (mut t Transformer) collect_types() {
 		&& t.tc.top_level_idx_nodes_len == t.a.nodes.len
 	count := if use_idx { t.tc.top_level_idx.len } else { t.a.nodes.len }
 	mut cur_mod := ''
+	mut cur_file := ''
 	for ii in 0 .. count {
 		node := if use_idx { t.a.nodes[t.tc.top_level_idx[ii]] } else { t.a.nodes[ii] }
 		match node.kind {
 			.file {
+				cur_file = node.value
 				cur_mod = t.tc.file_modules[node.value] or { '' }
 			}
 			.module_decl {
@@ -3051,6 +3088,12 @@ fn (mut t Transformer) collect_types() {
 				}
 			}
 			.global_decl {
+				// Normalize in the declaring file, so a selectively imported type
+				// (`import foo { Foo }` then `__global g Foo[Bar]`) keeps its module.
+				old_file := t.cur_file
+				old_module := t.cur_module
+				t.cur_file = cur_file
+				t.cur_module = cur_mod
 				for i in 0 .. node.children_count {
 					f := t.a.child_node(&node, i)
 					mut typ := t.normalize_type_in_module(f.typ, cur_mod)
@@ -3068,6 +3111,8 @@ fn (mut t Transformer) collect_types() {
 						}
 					}
 				}
+				t.cur_file = old_file
+				t.cur_module = old_module
 			}
 			.fn_decl {
 				if t.declared_fn_name_counts[node.value] < 2 {
@@ -16243,7 +16288,7 @@ fn (mut t Transformer) transform_expr_stmt(id flat.NodeId, node flat.Node) []fla
 
 fn (t &Transformer) is_void_test_propagation(node flat.Node) bool {
 	return node.value in ['!', '?'] && t.cur_fn_ret_type == 'void'
-		&& t.cur_fn_name.starts_with('test_') && t.cur_file.ends_with('_test.v')
+		&& t.cur_fn_name.starts_with('test_') && pref.is_test_file_for_backend(t.cur_file, 'c')
 }
 
 fn (t &Transformer) shared_postfix_autolock_target(id flat.NodeId) ?flat.NodeId {
@@ -17937,10 +17982,9 @@ fn (mut t Transformer) transform_infix_expr(id flat.NodeId, node flat.Node) flat
 				send_prelude = t.pending_stmts[send_prelude_start..].clone()
 				t.pending_stmts = t.pending_stmts[..send_prelude_start].clone()
 			}
-			saved_var_types := t.var_types.clone()
-			t.set_implicit_err_var_type()
+			err_scope := t.enter_implicit_err_scope()
 			body := t.transform_expr(t.a.child(&rhs, 1))
-			t.restore_var_types(saved_var_types)
+			t.leave_implicit_err_scope(err_scope)
 			for stmt in send_prelude {
 				t.pending_stmts << stmt
 			}
@@ -22046,9 +22090,9 @@ fn typeof_display_is_fixed_array_len_text(text string) bool {
 	if clean.len == 0 || clean.contains(',') || clean.contains('[') || clean.contains(']') {
 		return false
 	}
-	if clean.starts_with('fn(') || clean.starts_with('fn (') || clean.starts_with('chan ')
-		|| clean.starts_with('shared ') || clean.starts_with('atomic ') || clean.starts_with('mut ')
-		|| clean.starts_with('thread ') {
+	if clean[0] in [`&`, `?`, `!`] || clean.starts_with('fn(') || clean.starts_with('fn (')
+		|| clean.starts_with('chan ') || clean.starts_with('shared ') || clean.starts_with('atomic ')
+		|| clean.starts_with('mut ') || clean.starts_with('thread ') {
 		return false
 	}
 	if is_decimal_text(clean) || (clean[0] >= `0` && clean[0] <= `9`) {

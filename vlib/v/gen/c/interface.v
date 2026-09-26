@@ -1700,6 +1700,7 @@ fn (mut g FlatGen) interface_method_stubs() {
 			g.gen_interface_dispatch(iface_name, cn, method)
 		}
 	}
+	g.interface_exports_table()
 	if g.interfaces.len > 0 {
 		g.writeln('')
 	}
@@ -1983,6 +1984,7 @@ fn (mut g FlatGen) gen_interface_dispatch_with_fallback(iface_name string, cn st
 	g.writeln(') {')
 	str_dispatch_is_boxed_only := g.interface_dispatch_can_use_implicit_str(method, ret_ct,
 		sig_params)
+	mut dispatched_ids := []int{}
 	if impls.len > 0 {
 		g.writeln('\tswitch (i->_typ) {')
 		for concrete in impls {
@@ -2014,6 +2016,7 @@ fn (mut g FlatGen) gen_interface_dispatch_with_fallback(iface_name string, cn st
 					'*(${g.cname(concrete)}*)i->_object'
 				}
 				g.write('\t\tcase ${id}: ')
+				dispatched_ids << id
 				mut call := '${g.cname(concrete)}__${method}(${recv}'
 				for ai, an in arg_names {
 					arg_idx := ai + 1
@@ -2061,6 +2064,7 @@ fn (mut g FlatGen) gen_interface_dispatch_with_fallback(iface_name string, cn st
 						g.interface_dispatch_boxed_value_expr(concrete), false, mut str_stack)
 					{
 						g.writeln('\t\tcase ${id}: return ${str_expr};')
+						dispatched_ids << id
 					}
 				}
 				continue
@@ -2072,6 +2076,7 @@ fn (mut g FlatGen) gen_interface_dispatch_with_fallback(iface_name string, cn st
 			recv_is_ptr := concrete_params.len > 0 && concrete_params[0] is types.Pointer
 			recv := g.interface_dispatch_receiver_expr(concrete, concrete_params, recv_is_ptr)
 			g.write('\t\tcase ${id}: ')
+			dispatched_ids << id
 			mut call := '${g.interface_method_call_cname(method_key)}(${recv}'
 			for ai, an in arg_names {
 				arg_idx := ai + 1
@@ -2116,6 +2121,13 @@ fn (mut g FlatGen) gen_interface_dispatch_with_fallback(iface_name string, cn st
 		g.writeln('\t}')
 	}
 	if panic_on_default {
+		if g.is_shared {
+			for id in dispatched_ids {
+				g.interface_exports << '\t{"${cn}", "${method}", ${id}u, (void*)${cn}__${method}},'
+			}
+		}
+		g.gen_interface_dispatch_export_lookup(cn, method, ret_ct, storage_cn, sig_params,
+			arg_names)
 		g.writeln('\tv_panic(_str_${sid});')
 	} else if ret_ct == 'void' {
 		g.writeln('\treturn;')
@@ -2124,6 +2136,74 @@ fn (mut g FlatGen) gen_interface_dispatch_with_fallback(iface_name string, cn st
 		g.writeln('\treturn (${ret_ct}){0};')
 	}
 	g.writeln('}')
+}
+
+// interface_export_find_cname names `dl.interface_export_find` when the program
+// can load V shared libraries, whose concrete types it cannot dispatch itself.
+fn (g &FlatGen) interface_export_find_cname() ?string {
+	name := 'dl.interface_export_find'
+	if name !in g.tc.fn_param_types {
+		return none
+	}
+	if g.has_used_fn_filter() && !g.used_interface_dispatch_key(name) {
+		return none
+	}
+	return g.cname(name)
+}
+
+// gen_interface_dispatch_export_lookup forwards a type tag that the program does
+// not implement to the dispatcher of the loaded shared library that boxed it.
+fn (mut g FlatGen) gen_interface_dispatch_export_lookup(cn string, method string, ret_ct string, storage_cn string, sig_params []types.Type, arg_names []string) {
+	find_fn := g.interface_export_find_cname() or { return }
+	mut param_cts := ['${storage_cn}*']
+	for pi := 1; pi < sig_params.len; pi++ {
+		param_cts << g.interface_dispatch_param_c_type(sig_params[pi])
+	}
+	mut args := ['i']
+	args << arg_names
+	call := '((${ret_ct} (*)(${param_cts.join(', ')}))_export)(${args.join(', ')})'
+	g.writeln('\tvoid* _export = ${find_fn}("${cn}", "${method}", i->_typ);')
+	g.writeln('\tif (_export != 0) {')
+	if ret_ct == 'void' {
+		g.writeln('\t\t${call};')
+		g.writeln('\t\treturn;')
+	} else {
+		g.writeln('\t\treturn ${call};')
+	}
+	g.writeln('\t}')
+}
+
+// shared_exports_interface_table reports whether a shared library exports its
+// interface dispatchers. It only depends on declarations, so the macOS export
+// list can be decided before the dispatchers are generated.
+fn (g &FlatGen) shared_exports_interface_table() bool {
+	if !g.is_shared {
+		return false
+	}
+	for name, _ in g.interfaces {
+		if !g.is_ierror_type_name(name) {
+			return true
+		}
+	}
+	return false
+}
+
+// interface_exports_table exports the dispatchers of a shared library for the
+// program that loads it (see `vlib/dl/interface_exports.c.v`).
+fn (mut g FlatGen) interface_exports_table() {
+	if !g.shared_exports_interface_table() {
+		return
+	}
+	if g.cache_split {
+		g.writeln('/* V3CACHE_MODULE main */')
+	}
+	g.writeln('struct _v_interface_export { const char* iface; const char* method; u32 typ; void* fn_ptr; };')
+	g.writeln('${g.exported_symbol_attribute()}struct _v_interface_export _v_interface_exports[] = {')
+	for entry in g.interface_exports {
+		g.writeln(entry)
+	}
+	g.writeln('\t{0, 0, 0u, 0}')
+	g.writeln('};')
 }
 
 // gen_interface_dispatch_optional_abi_value_return emits the adapted wrapper return

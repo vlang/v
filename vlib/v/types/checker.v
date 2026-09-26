@@ -7,6 +7,7 @@ import strings
 import v.errors as compiler_errors
 import v.flat
 import v.gen.c.naming
+import v.pref
 import v.token
 import v.util
 
@@ -245,6 +246,9 @@ pub:
 	arg_id        flat.NodeId
 	source_suffix string
 	target_suffix string
+	// source_is_prefix reports that the result aliases storage at or below `source_suffix`
+	// of the argument, but not a known exact path (a path widened through recursion).
+	source_is_prefix bool
 }
 
 // LocalBinding represents local binding data used by types.
@@ -6747,7 +6751,9 @@ pub fn (tc &TypeChecker) resolve_any_selective_import_fn(name string) ?string {
 fn (tc &TypeChecker) resolve_selective_import_type_symbol(name string) ?string {
 	candidates := tc.selective_import_candidates(name) or { return none }
 	for candidate in candidates {
-		if tc.type_symbol_known(candidate) {
+		// Monomorphization erases generic struct templates from `structs`, but cgen
+		// still has to resolve `Foo[Bar]` after `import foo { Foo }` to `foo.Foo`.
+		if tc.type_symbol_known(candidate) || candidate in tc.struct_generic_params {
 			return candidate
 		}
 	}
@@ -11719,19 +11725,15 @@ fn (tc &TypeChecker) is_selected_input_file(file string) bool {
 	return tc.diagnostic_files.len == 0 || tc.diagnostic_files[file]
 }
 
+// is_c_backend_test_file reports whether path names a test file the C backend compiles.
+// It defers to pref, so the checker and the driver agree on every spelling, including
+// architecture-qualified tests such as `foo_test.arm64.v`.
 fn is_c_backend_test_file(path string) bool {
 	file := path_leaf_view(path)
-	if file.ends_with('_test.v') || file.ends_with('_test.vv') || file.ends_with('_test.c.v') {
+	if file.ends_with('_test.vv') {
 		return true
 	}
-	if !file.ends_with('.v') {
-		return false
-	}
-	base := file[..file.len - 2]
-	if !base.contains('.') {
-		return false
-	}
-	return base.all_after_last('.') == 'c' && base.all_before_last('.').ends_with('_test')
+	return pref.is_test_file_for_backend(file, 'c')
 }
 
 fn is_regular_v_test_file(path string) bool {
@@ -14465,14 +14467,30 @@ fn is_fixed_array_len_text(inner string) bool {
 	if v_int_literal_value(s) != none {
 		return true
 	}
+	// A type argument can hold a pointer type after its first character (`&&Node`, `?&Node`,
+	// `[]&Node`, `map[string]&Node`, `fn (&Node) int`, `chan &Node`). No integer length
+	// expression starts with such type syntax, so its `&` is never a bitwise-and.
+	if s[0] in [`&`, `?`, `!`, `[`] || s.starts_with('...') || s.starts_with('map[')
+		|| s.starts_with('fn(') || s.starts_with('fn ') || s.starts_with('chan ')
+		|| s.starts_with('thread ') || s.starts_with('shared ') || s.starts_with('atomic ')
+		|| s.starts_with('mut ') {
+		return false
+	}
+	mut depth := 0
 	for i in 0 .. s.len {
 		c := s[i]
+		if c == `[` {
+			depth++
+		} else if c == `]` {
+			depth--
+		}
 		if c in [`+`, `*`, `/`, `%`, `|`, `^`, `<`, `>`] {
 			return true
 		}
-		// A leading `-`/`&` is a negative literal / pointer-type argument; elsewhere they are the
-		// subtraction / bitwise-and operators of a length expression.
-		if (c == `-` || c == `&`) && i > 0 {
+		// A leading `-`/`&` is a negative literal / pointer-type argument, and one inside
+		// brackets belongs to a nested type argument (`Box[&Node]`, `Box[fn (&Node) int]`);
+		// elsewhere they are the subtraction / bitwise-and operators of a length expression.
+		if (c == `-` || c == `&`) && i > 0 && depth == 0 {
 			return true
 		}
 	}

@@ -5,6 +5,7 @@ import time
 import os
 import v.flat
 import v.gen.c.naming
+import v.pref
 import v.types
 
 const trace_markused = false
@@ -473,6 +474,12 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 				enqueue('overflow.${op}_${typ}', mut used, mut queue)
 			}
 		}
+	}
+	// Interface dispatchers are generated after reachability has been computed.
+	// When the program can load V shared libraries, they forward type tags they do
+	// not implement to the libraries' dispatchers through this lookup.
+	if 'dl.interface_export_find' in fn_decls {
+		enqueue('dl.interface_export_find', mut used, mut queue)
 	}
 	// Exported functions are externally reachable even when the input has no V
 	// entry point (for example `-is_o` modules called from C).
@@ -1578,8 +1585,12 @@ fn markused_file_is_vlib(file string) bool {
 		|| file.starts_with('vlib\\')
 }
 
+// markused_file_is_test defers to pref, so every spelling the driver treats as a test
+// (including architecture-qualified ones such as `foo_test.arm64.v`) is treated the same here.
+// pref reports `_test.js.v` as a test for no backend while V3 has no JS backend, so that
+// spelling is still matched directly.
 fn markused_file_is_test(file string) bool {
-	return file.ends_with('_test.v') || file.ends_with('_test.c.v') || file.ends_with('_test.js.v')
+	return pref.is_test_file_for_backend(file, 'c') || file.ends_with('_test.js.v')
 }
 
 fn enqueue_top_level_calls(a &flat.FlatAst, collector CallCollector, fn_decls map[string]FnDeclInfo, has_entry_main bool, mut used map[string]bool, mut queue []string, initial_uses_generics bool) bool {
@@ -1736,6 +1747,11 @@ fn markused_rt_helpers_thread(mut args RtHelpersScanArgs) {
 }
 
 fn par_markused_seeds_enabled() bool {
+	$if v3_no_parallel ? {
+		// The runtime-helper scan thread queries a checker fork beside the main
+		// thread; a serial build keeps it on the main thread.
+		return false
+	}
 	return os.getenv('V3_NO_PAR_MU_SEEDS') == ''
 }
 
@@ -4482,7 +4498,7 @@ fn receiver_info(a &flat.FlatAst, node &flat.Node) (string, string) {
 	return '', receiver_struct
 }
 
-fn (c &CallCollector) collect_interface_boxed_generic_methods(call &flat.Node, resolved_call string, cur_module string, imports map[string]string, local_values map[string]bool, mut calls []string) {
+fn (c &CallCollector) collect_interface_boxed_methods(call &flat.Node, resolved_call string, cur_module string, imports map[string]string, local_values map[string]bool, mut calls []string) {
 	if call.children_count < 2 {
 		return
 	}
@@ -4512,7 +4528,7 @@ fn (c &CallCollector) collect_interface_boxed_generic_methods(call &flat.Node, r
 			arg_id := markused_generic_call_arg_value(c.a, c.a.child(call, arg_i))
 			actual := types.unwrap_pointer(c.tc.resolve_type(arg_id))
 			actual_name := resolve_type_name(actual)
-			c.add_interface_boxed_generic_methods(expected.name(), actual_name, mut calls)
+			c.add_interface_boxed_methods(expected.name(), actual_name, mut calls)
 		}
 	}
 }
@@ -4595,21 +4611,57 @@ fn (c &CallCollector) call_receiver_param_offset(callee &flat.Node, imports map[
 	return 0
 }
 
-fn (c &CallCollector) add_interface_boxed_generic_methods(iface_name string, actual_name string, mut calls []string) {
+fn (c &CallCollector) add_interface_boxed_methods(iface_name string, actual_name string, mut calls []string) {
 	if iface_name.len == 0 || actual_name.len == 0 {
-		return
-	}
-	_, _, is_generic := markused_generic_app_parts(actual_name)
-	if !is_generic {
 		return
 	}
 	if !c.tc.named_type_implements_interface(actual_name, iface_name) {
 		return
 	}
 	for method in c.tc.interface_abstract_method_names(iface_name) {
-		info := c.tc.resolve_generic_struct_method(actual_name, method) or { continue }
-		c.add_typed_receiver_method_name(info.name, mut calls)
+		calls << '${iface_name}.${method}'
+		if info := c.tc.resolve_generic_struct_method(actual_name, method) {
+			c.add_typed_receiver_method_name(info.name, mut calls)
+		}
+		if concrete_method := c.tc.concrete_method_signature_key(actual_name, method) {
+			c.add_typed_receiver_method_name(concrete_method, mut calls)
+		}
 		c.add_typed_receiver_method_name('${actual_name}.${method}', mut calls)
+	}
+}
+
+fn (c &CallCollector) collect_interface_boxed_return_methods(node &flat.Node, mut calls []string) {
+	return_type := types.unwrap_pointer(c.tc.fn_ret_types[node.value] or { return })
+	if return_type !is types.Interface {
+		return
+	}
+	mut stack := []flat.NodeId{cap: int(node.children_count)}
+	for i in 0 .. node.children_count {
+		child_id := c.a.child(node, i)
+		if int(child_id) >= 0 {
+			stack << child_id
+		}
+	}
+	for stack.len > 0 {
+		id := stack.pop()
+		child := c.a.node(id)
+		if child.kind == .fn_decl {
+			continue
+		}
+		if child.kind == .return_stmt {
+			for i in 0 .. child.children_count {
+				value_id := c.a.child(child, i)
+				actual := types.unwrap_pointer(c.tc.resolve_type(value_id))
+				c.add_interface_boxed_methods(return_type.name(), resolve_type_name(actual), mut calls)
+			}
+			continue
+		}
+		for i in 0 .. child.children_count {
+			child_id := c.a.child(child, i)
+			if int(child_id) >= 0 {
+				stack << child_id
+			}
+		}
 	}
 }
 
@@ -4646,6 +4698,7 @@ fn (c &CallCollector) collect_body(node &flat.Node, cur_module string, imports m
 			|| c.node_uses_generics(node, cur_module, imports))
 	}
 	result.uses_generics = c.collect_calls_with_locals_and_generics(node, cur_module, imports, receiver_name, receiver_struct, local_values, local_types, visible_local_idents, c.body_checker_edges_authoritative, c.detect_generics, result.uses_generics, mut result.calls, mut result.refs, true)
+	c.collect_interface_boxed_return_methods(node, mut result.calls)
 	return result
 }
 
@@ -4777,9 +4830,7 @@ fn (c &CallCollector) collect_calls_with_locals_and_generics(node &flat.Node, cu
 					&& c.generic_fn_name_is_known(resolved_call, cur_module) {
 					uses_generics = true
 				}
-				if c.detect_generics {
-					c.collect_interface_boxed_generic_methods(child, resolved_call, cur_module, imports, local_values, mut calls)
-				}
+				c.collect_interface_boxed_methods(child, resolved_call, cur_module, imports, local_values, mut calls)
 				c.collect_lowered_join_path_single(child, resolved_call, mut calls)
 				if !source_edges_authoritative && child.children_count > 0 {
 					callee_id := c.a.child(child, 0)

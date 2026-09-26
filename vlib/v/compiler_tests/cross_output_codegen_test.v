@@ -185,6 +185,28 @@ fn test_cross_output_keeps_a_working_clock_on_apple() {
 	assert utc.contains('time__linux_utc()'), 'the snapshot cannot read UTC on Apple: ${utc}'
 }
 
+fn test_cross_output_lets_the_target_libc_pick_the_poll_header() {
+	// The portable snapshot is generated on glibc Linux and later compiled on musl
+	// too. musl warns about <sys/poll.h>, which fails consumers building with
+	// `-Werror`, while the linuxroot sysroot ships only <sys/poll.h>. A `$if musl ?`
+	// check is folded for the generating host, so the target C preprocessor has to
+	// pick the header from the libc it actually compiles against.
+	c_code := cross_generate_with('-cross -os linux', 'cmdexec_poll', "module main\n\nimport v.cmdexec\n\nfn main() {\n\tprintln(cmdexec.run('true', []string{}).exit_code)\n}\n")
+	sys_poll_at := c_code.index('#include <sys/poll.h>') or {
+		assert false, 'the glibc poll header is missing from the snapshot'
+		return
+	}
+	before := c_code[..sys_poll_at]
+	guard_at := before.last_index('#if ') or {
+		assert false, '<sys/poll.h> is not behind any preprocessor guard'
+		return
+	}
+	condition := before[guard_at..].all_before('\n')
+	assert condition.contains('__GLIBC__'), '<sys/poll.h> is guarded by `${condition}`, which does not check for glibc'
+	fallback := c_code[sys_poll_at..].all_before('#endif')
+	assert fallback.contains('#else\n#include <poll.h>'), 'musl and the other targets lost <poll.h>: ${fallback}'
+}
+
 // function_body returns the source of the C function that `signature` opens.
 fn function_body(c_code string, signature string) string {
 	at := c_code.index(signature) or {

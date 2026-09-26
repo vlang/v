@@ -7045,6 +7045,13 @@ fn (tc &TypeChecker) shadow_check_owns_file(file string) bool {
 	if file == '' {
 		return false
 	}
+	if is_module_cache_header(file) {
+		// A warm header can embed generic bodies of a module that is not the
+		// project's, and V3CACHE or VTMP may still place it under the project
+		// root. Own it exactly when the sources it stands for are owned.
+		source := tc.a.cached_header_sources[file] or { return false }
+		return !is_module_cache_header(source) && tc.shadow_check_owns_file(source)
+	}
 	if file in tc.diagnostic_files {
 		// Named on the command line, so the user is working on it whatever
 		// directory it happens to live in.
@@ -7057,6 +7064,13 @@ fn (tc &TypeChecker) shadow_check_owns_file(file string) bool {
 	}
 	return shadow_roots_own_file(file, tc.shadow_diagnostic_root, tc.shadow_explicit_roots,
 		tc.shadow_dependency_roots)
+}
+
+// is_module_cache_header reports whether `path` is a declaration header in the
+// V3 module cache, parsed in place of a module's sources on a warm build.
+pub fn is_module_cache_header(path string) bool {
+	normalized := path.replace('\\', '/')
+	return normalized.contains('/v3_module_cache_') && normalized.ends_with('.vh')
 }
 
 // shadow_roots_own_file reports whether `file` belongs to an explicit project
