@@ -135,3 +135,13 @@ fn test_call_search_distinguishes_leaf_index_and_nested_call() {
 	assert c.expr_contains_call_or_index(nested)
 	assert c.expr_contains_call(nested)
 }
+
+fn test_closure_runtime_import_marks_syntax_need() {
+	mut a := flat.FlatAst.new()
+	a.add_node(flat.Node{
+		kind:  .import_decl
+		value: 'closure'
+		typ:   '__v3_builtin_closure_runtime'
+	})
+	assert markused_syntax_needs_closure_runtime(&a)
+}

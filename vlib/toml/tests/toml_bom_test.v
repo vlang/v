@@ -20,6 +20,7 @@ const toml_text_with_utf32_bom = os.read_file(os.real_path(os.join_path(os.dir(@
 fn test_toml_with_bom() {
 	toml_doc := toml.parse_text(toml_text_with_utf8_bom) or { panic(err) }
 	toml_json := to.json(toml_doc)
+	_ = toml_json
 
 	title := toml_doc.value('title')
 	assert title == toml.Any('TOML Example')
@@ -48,4 +49,5 @@ fn test_toml_with_bom() {
 		assert true
 		empty_toml_document
 	}
+	_ = bad_toml_doc
 }

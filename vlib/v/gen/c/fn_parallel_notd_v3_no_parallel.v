@@ -525,6 +525,61 @@ fn unresolved_call_optional_thread(arg voidptr) voidptr {
 	return unsafe { nil }
 }
 
+// InterfaceBoxingScanArgs is one slice of the interface-literal pre-filter.
+struct InterfaceBoxingScanArgs {
+	a     &flat.FlatAst = unsafe { nil }
+	ids   []i32
+	start int
+	end   int
+mut:
+	found []i32
+}
+
+fn interface_boxing_scan_thread(arg voidptr) voidptr {
+	mut a := unsafe { &InterfaceBoxingScanArgs(arg) }
+	a.found = interface_boxing_candidates_in(a.a, a.ids, a.start, a.end)
+	return unsafe { nil }
+}
+
+// interface_boxing_candidate_nodes narrows the type-metadata nodes to lowered
+// interface literals before collect_interface_boxed_types_for_dispatch resolves
+// their names. Nearly every metadata node is rejected by the structural test,
+// so large ASTs split it over the worker pool and keep the slices in node order.
+fn (g &FlatGen) interface_boxing_candidate_nodes() []i32 {
+	ids := g.type_metadata_nodes()
+	if ids.len < min_parallel_interface_boxing_scan || isnil(g.a.worker_pool)
+		|| g.a.worker_pool.size() == 0 {
+		return interface_boxing_candidates_in(g.a, ids, 0, ids.len)
+	}
+	n_jobs := g.a.worker_pool.size() + 1
+	chunk := (ids.len + n_jobs - 1) / n_jobs
+	mut args := []InterfaceBoxingScanArgs{cap: n_jobs}
+	for start := 0; start < ids.len; start += chunk {
+		args << InterfaceBoxingScanArgs{
+			a:     g.a
+			ids:   ids
+			start: start
+			end:   int_min(start + chunk, ids.len)
+		}
+	}
+	mut tasks := []workers.Task{cap: args.len}
+	for i in 0 .. args.len {
+		tasks << workers.Task{
+			run:        interface_boxing_scan_thread
+			arg:        unsafe { voidptr(&args[i]) }
+			force_sync: i == 0
+		}
+	}
+	g.a.worker_pool.run(tasks)
+	mut found := []i32{}
+	for arg in args {
+		found << arg.found
+	}
+	return found
+}
+
+const min_parallel_interface_boxing_scan = 8192
+
 // interface_impl_scan_thread builds the structural-interface dispatch tables
 // while the master pre-seeds independent declaration metadata.
 fn interface_impl_scan_thread(arg voidptr) voidptr {
@@ -2790,6 +2845,7 @@ fn (g &FlatGen) new_parallel_worker_config(worker_id int, result_only bool) &Fla
 		compiler_vexe:                      g.compiler_vexe
 		compiler_vexe_env_setup:            g.compiler_vexe_env_setup
 		ccompiler:                          g.ccompiler
+		is_shared:                          g.is_shared
 		target:                             g.target
 		// `int_ct` is derived from the target by set_target, which a worker never
 		// calls. Without copying it a worker keeps the 64-bit default and emits an
@@ -2924,6 +2980,7 @@ fn (g &FlatGen) new_parallel_worker_config(worker_id int, result_only bool) &Fla
 		w.local_c_type_by_owner = map[string]string{}
 		w.local_raw_type_by_owner = map[string]string{}
 		w.local_indirect_value_by_owner = map[string]types.Type{}
+		w.local_implicit_deref_by_owner = map[string]bool{}
 		w.local_shared_storage_by_owner = map[string]bool{}
 		w.local_fn_value_c_name_by_owner = map[string]string{}
 		w.default_value_stack = map[string]bool{}

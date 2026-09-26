@@ -1255,6 +1255,22 @@ fn (mut g FlatGen) struct_init_has_fixed_array_field(node flat.Node, type_name s
 	return false
 }
 
+fn (g &FlatGen) struct_has_large_fixed_array(type_name string) bool {
+	fields := g.struct_fields_for_type(type_name) or { return false }
+	for field in fields {
+		if fixed := array_fixed_type(field.typ) {
+			// Match the long-standing conservative C-backend threshold. Exact element
+			// sizes are unavailable here, and eight bytes avoids stack-sized compound
+			// literals for every plausibly large fixed array.
+			length := g.tc.fixed_array_len_value(fixed) or { fixed.len }
+			if i64(length) * 8 > 65536 {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 fn (mut g FlatGen) gen_struct_init_with_fixed_array_fields(node flat.Node, name string, init_module string) {
 	g.gen_struct_init_with_fixed_array_fields_impl(node, name, init_module, false)
 }
@@ -4344,6 +4360,29 @@ fn (g &FlatGen) flattened_generic_struct_c_type_short_name(ct string) string {
 
 // find_struct_decl resolves find struct decl information for c.
 fn (g &FlatGen) find_struct_decl(type_name string) ?StructDeclInfo {
+	// A bare name belongs to the file that wrote it: `import model { Context }`
+	// must select `model.Context` here even when another imported module declares
+	// a same-named struct, or that homonym's declarations (fields, defaults)
+	// leak into this file's literals. Checked before the per-module cache below,
+	// because two files of one module can import different homonyms.
+	if !type_name.contains('.') && g.tc.cur_file.len > 0 {
+		selective_key := '${g.tc.cur_file}\n${type_name}'
+		for candidate in g.tc.file_selective_imports[selective_key] or { []string{} } {
+			if info := g.struct_decl_infos[candidate] {
+				return info
+			}
+			// The selected name can be a type alias to a struct
+			// (`import iam { Alias }`, `type Alias = Real`).
+			if alias_target := g.struct_type_alias_target(candidate) {
+				if info := g.find_struct_decl_preferred(alias_target) {
+					return info
+				}
+				if info := g.find_struct_decl_fallback(alias_target) {
+					return info
+				}
+			}
+		}
+	}
 	if info := g.find_struct_decl_preferred(type_name) {
 		return info
 	}
@@ -4500,6 +4539,14 @@ fn struct_decl_alignment_attr(align StructDeclAlignment) string {
 	return '__attribute__((aligned(${align.value})))'
 }
 
+// struct_decl_alignment_declspec is MSVC's spelling of a struct alignment. A bare
+// `@[aligned]` asks for the target's largest alignment, like GCC's `aligned`, which is
+// 16 bytes on the x86-64 and arm64 targets MSVC compiles for.
+fn struct_decl_alignment_declspec(align StructDeclAlignment) string {
+	value := if align.value.len > 0 { align.value } else { '16' }
+	return '__declspec(align (${value}))'
+}
+
 fn struct_decl_alignment_memdup_arg(align StructDeclAlignment, c_type string) string {
 	if align.value.len > 0 {
 		return align.value
@@ -4536,6 +4583,29 @@ fn (g &FlatGen) struct_decl_alignment_c_type(type_name string, fallback string) 
 		}
 	}
 	return ct
+}
+
+fn (g &FlatGen) tinyc_stack_value_alignment(typ types.Type, c_type string) ?string {
+	if g.ccompiler != 'tinyc' && !g.ccompiler.to_lower().contains('tcc') {
+		return none
+	}
+	if typ is types.Pointer {
+		return none
+	}
+	clean := default_init_unalias_type(typ)
+	if clean !is types.Struct {
+		return none
+	}
+	for name in [typ.name(), clean.name, c_type] {
+		if name.len == 0 {
+			continue
+		}
+		if align := g.struct_decl_alignment_for_name(name) {
+			align_ct := g.struct_decl_alignment_c_type(clean.name, c_type)
+			return struct_decl_alignment_memdup_arg(align, align_ct)
+		}
+	}
+	return none
 }
 
 fn (g &FlatGen) struct_type_alias_target(type_name string) ?string {
@@ -6406,14 +6476,27 @@ fn (mut g FlatGen) emit_struct(name string) {
 			g.tc.cur_module = old_module
 			return
 		}
-		g.writeln('${g.struct_decl_head(name)} {')
+		mut align := StructDeclAlignment{}
+		mut has_align := false
+		if decl_align := g.struct_decl_alignment_for_name(name) {
+			align = decl_align
+			has_align = true
+		}
+		head := g.struct_decl_head(name)
+		if has_align && g.ccompiler == 'msvc' {
+			// MSVC takes the alignment between the tag and the name, and has no GNU
+			// attributes (the preamble defines `__attribute__` away).
+			g.writeln('${head.all_before(' ')} ${struct_decl_alignment_declspec(align)} ${head.all_after(' ')} {')
+		} else {
+			g.writeln('${head} {')
+		}
 		if fields.len == 0 {
 			g.writeln('\tE_STRUCT_DECL;')
 		}
 		for f in fields {
 			g.write_struct_field(name, f)
 		}
-		if align := g.struct_decl_alignment_for_name(name) {
+		if has_align && g.ccompiler != 'msvc' {
 			g.writeln('} ${struct_decl_alignment_attr(align)};')
 		} else {
 			g.writeln('};')

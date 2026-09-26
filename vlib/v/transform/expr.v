@@ -2284,7 +2284,8 @@ fn (mut t Transformer) transform_optional_wrapper_expr(id flat.NodeId) flat.Node
 			source_id = t.a.child(&source, 0)
 			continue
 		}
-		if source.kind != .selector || source.value != 'value' || source.children_count == 0 {
+		if source.kind != .selector || source.value != 'value' || source.children_count == 0
+			|| transformed_option_unwrap_access_marker !in source.generic_params() {
 			break
 		}
 		base_id := t.a.child(&source, 0)
@@ -2493,6 +2494,26 @@ fn (t &Transformer) selective_import_struct_lookup_name(name string) ?string {
 		return none
 	} {
 		if candidate in t.structs || candidate in t.tc.structs {
+			return candidate
+		}
+	}
+	return none
+}
+
+// selective_import_type_name_for_file resolves a bare type spelling through the
+// selective imports of `file`. The same spelling can name different types in
+// different files (`import model { Context }` in one file, `import veb` with its
+// own `Context` in another), so callers that know the writing file must resolve
+// the name there instead of through a global short-name index.
+fn (t &Transformer) selective_import_type_name_for_file(file string, name string) ?string {
+	if isnil(t.tc) || name.len == 0 || name.contains('.') || file.len == 0 {
+		return none
+	}
+	for candidate in t.tc.file_selective_imports[file_import_key(file, name)] or { return none } {
+		if candidate in t.structs || candidate in t.sum_types || candidate in t.enum_types
+			|| candidate in t.tc.structs || candidate in t.tc.sum_types
+			|| candidate in t.tc.enum_names || candidate in t.tc.interface_names
+			|| candidate in t.tc.type_aliases {
 			return candidate
 		}
 	}
@@ -4763,7 +4784,7 @@ fn fixed_array_elem_type(s string) string {
 }
 
 fn fixed_array_canonical_type(s string) string {
-	if !s.starts_with('[') {
+	if !s.starts_with('[') || s.starts_with('[]') {
 		return s
 	}
 	elem_type := fixed_array_canonical_type(fixed_array_elem_type(s))

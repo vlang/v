@@ -1428,9 +1428,10 @@ fn (mut g FlatGen) emit_optional_typedef(opt_name string, val_type string) bool 
 	interface_matches := g.qualified_interface_c_types(bare_val_type.all_after_last('__'))
 	is_known_interface := bare_val_type in interface_matches
 	is_known_sum_type := g.is_known_sum_c_type(bare_val_type)
+	is_known_builtin := types.is_builtin_type_name(bare_val_type)
 	// Multi-return names can contain a module-qualified field component, but the
 	// payload is the generated tuple struct rather than a stale source struct.
-	if bare_val_type != 'Array' && !is_known_interface && !is_known_sum_type
+	if bare_val_type != 'Array' && !is_known_builtin && !is_known_interface && !is_known_sum_type
 		&& !bare_val_type.starts_with('multi_return_')
 		&& (g.stale_ambiguous_qualified_struct_c_type(bare_val_type)
 			|| g.stale_missing_qualified_struct_c_type(bare_val_type)) {

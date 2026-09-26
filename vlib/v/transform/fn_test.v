@@ -69,6 +69,44 @@ fn test_enum_autostr_call_marks_synthesized_helper_used() {
 	assert a.node(call).kind == .call
 }
 
+// With `import a as real_a` and `import b as a`, the checked type `a.Kind` is module a's
+// enum, but the declaration spelling `a.Kind` names module b's. Helper naming takes the
+// type as is; only a recorded declaration spelling goes through the file's imports.
+fn test_enum_autostr_keeps_checked_types_and_resolves_declaration_spellings() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	file := '/tmp/main.v'
+	tc.enum_names['a.Kind'] = true
+	tc.enum_names['b.Kind'] = true
+	tc.enum_names['toml.token.Kind'] = true
+	tc.cur_file = file
+	tc.file_imports['${file}\nreal_a'] = 'a'
+	tc.file_imports['${file}\na'] = 'b'
+	tc.file_imports['${file}\ntoken'] = 'toml.token'
+	tc.file_selective_imports['${file}\nKind'] = ['b.Kind']
+	mut t := new_transformer(mut a, &tc, {
+		'main': true
+	})
+	t.cur_file = file
+	t.enum_types['a.Kind'] = ['from_a']
+	t.enum_types['b.Kind'] = ['from_b']
+	t.enum_types['toml.token.Kind'] = ['eof']
+
+	assert t.enum_autostr_type_name('a.Kind') == 'a.Kind'
+	assert t.enum_autostr_type_name('b.Kind') == 'b.Kind'
+	assert (t.source_enum_type_name(file, 'a.Kind') or { '' }) == 'b.Kind'
+	assert (t.source_enum_type_name(file, 'real_a.Kind') or { '' }) == 'a.Kind'
+	assert (t.source_enum_type_name(file, 'token.Kind') or { '' }) == 'toml.token.Kind'
+	assert (t.source_enum_type_name(file, 'Kind') or { '' }) == 'b.Kind'
+	assert t.source_enum_elem_type(file, '[]token.Kind') == '[]toml.token.Kind'
+	assert t.source_enum_elem_type(file, 'string') == 'string'
+
+	t.set_var_type_with_raw('declared', '[]b.Kind', '[]a.Kind')
+	t.set_var_type('inferred', '[]a.Kind')
+	assert (t.declared_var_spelling('declared') or { '' }) == '[]a.Kind'
+	assert (t.declared_var_spelling('inferred') or { '' }) == ''
+}
+
 fn test_cloned_worker_merge_replays_relocated_children_and_body_roots() {
 	// 'plain' copies and relocates inside the serial merge, 'relocated' relocates
 	// the worker region in parallel first, and 'absorbed' also writes it straight
@@ -480,8 +518,8 @@ fn test_auto_str_helper_call_uses_type_owner_module() {
 	mut t := Transformer{
 		a:          &a
 		tc:         &tc
-		cur_module: 'token'
-		cur_file:   'token.v'
+		cur_module: 'main'
+		cur_file:   'main.v'
 	}
 	value := t.make_ident('pos')
 	t.stringify_stack << 'Wrapper'
@@ -490,6 +528,21 @@ fn test_auto_str_helper_call_uses_type_owner_module() {
 
 	assert callee.value == '__v3_autostr_v__token__Pos'
 	assert t.auto_str_types['v.token.Pos'].helper_module == 'token'
+	t.synthesize_auto_str_helpers()
+	mut helper_idx := -1
+	for i, node in a.nodes {
+		if node.kind == .fn_decl && node.value == '__v3_autostr_v__token__Pos' {
+			helper_idx = i
+			break
+		}
+	}
+	assert helper_idx >= 3
+	assert a.nodes[helper_idx - 3].kind == .file
+	assert a.nodes[helper_idx - 3].value == 'main.v'
+	assert a.nodes[helper_idx - 2].kind == .module_decl
+	assert a.nodes[helper_idx - 2].value == 'main'
+	assert a.nodes[helper_idx - 1].kind == .module_decl
+	assert a.nodes[helper_idx - 1].value == 'token'
 }
 
 fn test_default_clone_helper_drops_owned_rvalue_after_saving_clone() {

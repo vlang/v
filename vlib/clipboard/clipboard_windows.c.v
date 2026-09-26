@@ -103,7 +103,7 @@ fn new_clipboard() &Clipboard {
 		println('Failed registering class.')
 	}
 	hwnd := C.CreateWindowEx(0, wndclass.lpsz_class_name, wndclass.lpsz_class_name, 0, 0, 0, 0, 0,
-		C.HWND_MESSAGE, C.NULL, C.NULL, C.NULL)
+		C.HWND_MESSAGE, unsafe { nil }, unsafe { nil }, unsafe { nil })
 	if hwnd == unsafe { nil } {
 		println('Error creating window!')
 	}
@@ -143,7 +143,7 @@ const cp_utf8 = 65001
 fn to_wide(text string) C.HGLOBAL {
 	len_required := C.MultiByteToWideChar(cp_utf8, C.MB_ERR_INVALID_CHARS, voidptr(text.str),
 
-		text.len + 1, C.NULL, 0)
+		text.len + 1, unsafe { nil }, 0)
 	buf := C.GlobalAlloc(C.GMEM_MOVEABLE, i64(sizeof(u16)) * len_required)
 	if buf != unsafe { nil } {
 		mut locked := &u16(C.GlobalLock(buf))
