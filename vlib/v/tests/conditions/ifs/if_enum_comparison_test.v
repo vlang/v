@@ -44,6 +44,64 @@ fn test_enum_comparison_with_conditional_shorthand() {
 	assert matches_conditional_state(ComparisonTicket{.other}, false, true)
 }
 
+fn test_enum_comparison_with_branch_local_values() {
+	for abandoned in [false, true] {
+		state := if abandoned { ComparisonState.abandoned } else { ComparisonState.bound }
+		assert state == if abandoned {
+			local := ComparisonState.abandoned
+			local
+		} else {
+			.bound
+		}
+		assert (if abandoned {
+			.abandoned
+		} else {
+			local := ComparisonState.bound
+			local
+		}) == state
+		assert state != if abandoned {
+			local := ComparisonState.bound
+			local
+		} else {
+			.abandoned
+		}
+		assert (if abandoned {
+			.bound
+		} else {
+			local := ComparisonState.abandoned
+			local
+		}) != state
+		assert state == match abandoned {
+			true {
+				local := ComparisonState.abandoned
+				local
+			}
+			else { .bound }
+		}
+		assert (match abandoned {
+			true { .abandoned }
+			else {
+				local := ComparisonState.bound
+				local
+			}
+		}) == state
+		assert state != match abandoned {
+			true {
+				local := ComparisonState.bound
+				local
+			}
+			else { .abandoned }
+		}
+		assert (match abandoned {
+			true { .bound }
+			else {
+				local := ComparisonState.abandoned
+				local
+			}
+		}) != state
+	}
+}
+
 @[flag]
 enum ComparisonAccess {
 	read

@@ -2190,9 +2190,7 @@ fn (mut tc TypeChecker) check_node(id flat.NodeId) {
 				other_idx := if i == 0 { 1 } else { 0 }
 				other_type := tc.infix_read_type(tc.a.child(&node, other_idx))
 				if unalias_type(other_type) is Enum
-					&& tc.branches_compatible_with(tc.unwrap_paren_expr_id(child_id), other_type) {
-					// Type the branch tails before checking nested shorthand expressions.
-					_ = tc.resolve_expr(child_id, other_type)
+					&& tc.a.node(tc.unwrap_paren_expr_id(child_id)).kind in [.if_expr, .match_stmt] {
 					infix_expected = other_type
 					has_infix_expected = true
 				}
@@ -2255,6 +2253,17 @@ fn (mut tc TypeChecker) check_node(id flat.NodeId) {
 				}
 			} else {
 				tc.check_node(child_id)
+			}
+		}
+		if has_infix_expected && unalias_type(infix_expected) is Enum {
+			// Resolve branch tails after their local declarations have been checked.
+			conditional_id := tc.unwrap_paren_expr_id(child_id)
+			checked_type := tc.infix_read_type(child_id)
+			if tc.branches_compatible_with(conditional_id, infix_expected) {
+				_ = tc.resolve_expr(child_id, infix_expected)
+			} else {
+				// A failed probe can still type shorthand tails; preserve the checked result.
+				tc.register_synth_type(conditional_id, checked_type)
 			}
 		}
 		if node.kind == .infix && node.op in [.logical_and, .logical_or] && i == 1 {
