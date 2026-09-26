@@ -44,7 +44,8 @@ fn test_veb_serves_https_requests() ! {
 		}
 	)
 	select {
-		_ := <-app.started {}
+		_ := <-app.started {
+		}
 		5 * time.second {
 			return error('mbedTLS HTTPS server did not start in time')
 		}
