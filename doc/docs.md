@@ -2800,6 +2800,9 @@ _ = Foo{}
 Here "short" means omitting the field names and relying on the struct field
 order, so `Point{10, 20}` is a shorter form of `Point{x: 10, y: 20}`.
 
+For imported struct types, both forms report an unknown type using its qualified name
+and the same suggestions. Dots in field values do not affect which type name is highlighted.
+
 ```v
 struct Point {
 	x int

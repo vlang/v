@@ -3731,8 +3731,6 @@ fn (mut tc TypeChecker) check_struct_init(id flat.NodeId, node flat.Node) {
 		}
 		if init_type_text.starts_with('C.') {
 			tc.record_error_at(.unknown_type, 'unknown type `${node.value}`', id, node.pos)
-		} else if tc.struct_init_has_positional_fields(node) {
-			tc.record_error_at(.unknown_type, 'unknown type `${node.value}`', id, node.pos)
 		} else if init_type_text.contains('.')
 			&& tc.current_file_import_path_for_alias(init_type_text.all_before('.')) != none {
 			mut message := tc.unknown_type_message(init_type_text, id)
@@ -3741,6 +3739,8 @@ fn (mut tc TypeChecker) check_struct_init(id flat.NodeId, node flat.Node) {
 				message += '.\nDid you mean `${tc.expected_expr_type.name()}`?'
 			}
 			tc.record_error_at(.unknown_type, message, id, tc.unknown_qualified_struct_init_pos(node))
+		} else if tc.struct_init_has_positional_fields(node) {
+			tc.record_error_at(.unknown_type, 'unknown type `${node.value}`', id, node.pos)
 		} else if candidates := tc.selective_import_candidates(init_type_text) {
 			if candidates.len == 1 {
 				tc.record_error_at(.unknown_type, tc.unknown_type_message(candidates[0], id), id, node.pos)
