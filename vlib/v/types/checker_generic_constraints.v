@@ -878,6 +878,9 @@ fn (mut tc TypeChecker) check_generic_fn_constraint_members(fn_node flat.Node) {
 			.is_expr {
 				tc.check_constraint_runtime_is(item.id, *node, item.constraints, negated[int(item.id)])
 			}
+			.match_stmt {
+				tc.check_constraint_runtime_match(*node, item.constraints)
+			}
 			.infix, .prefix, .postfix, .assign, .selector_assign, .index_assign, .index {
 				if node.kind == .prefix && node.op == .not && node.children_count > 0 {
 					negated[int(tc.a.child(node, 0))] = true
@@ -1703,7 +1706,7 @@ fn (tc &TypeChecker) constraint_condition_types(cond string, name string, constr
 			types = types_within(types, allowed)
 		}
 		if i == 0 {
-			result = types
+			result = types.clone()
 		} else {
 			for t in types {
 				if !result.any(it.name() == t.name()) {
@@ -1847,15 +1850,18 @@ fn (tc &TypeChecker) type_in_comptime_group(typ Type, group string) bool {
 }
 
 // constraint_walk_narrowed adds to `narrowed` the name that `node`, an `if x is
-// Y` or a `match x`, decides the type of in its branches.
+// Y` or a `match x` by type, decides the type of in its branches. A match on
+// values, `match x { 1 {} }`, decides none.
 fn (tc &TypeChecker) constraint_walk_narrowed(node flat.Node, narrowed []string) []string {
-	if node.children_count == 0 || node.kind !in [.if_expr, .match_expr] {
+	if node.children_count == 0 || node.kind !in [.if_expr, .match_stmt] {
 		return narrowed
 	}
 	subject := tc.a.child_node(&node, 0)
 	mut name := ''
-	if node.kind == .match_expr && subject.kind == .ident {
-		name = subject.value
+	if node.kind == .match_stmt {
+		if subject.kind == .ident && tc.constraint_match_type_pattern(node) != none {
+			name = subject.value
+		}
 	} else if subject.kind == .is_expr && subject.children_count > 0 {
 		left := tc.a.child_node(subject, 0)
 		if left.kind == .ident {
@@ -1883,18 +1889,7 @@ fn (mut tc TypeChecker) check_constraint_runtime_is(id flat.NodeId, node flat.No
 	// The subject is tested before an `if` around it decides its type.
 	param := tc.constraint_walk_param(subject_id, constraints, []string{}) or { return }
 	constraint := constraints[param] or { return }
-	mut reason := ''
-	if constraint.is_interface {
-		reason = 'a type that implements `${constraint.name}` does not have to be one'
-	} else {
-		for typ in constraint.types {
-			clean := unalias_type(typ)
-			if clean !is SumType && clean !is Interface {
-				reason = '`${typ.name().all_after_last('.')}`, in its constraint `${constraint.name}`, is neither'
-				break
-			}
-		}
-	}
+	reason := constraint_runtime_type_test_reason(constraint)
 	if reason.len == 0 {
 		return
 	}
@@ -1903,6 +1898,72 @@ fn (mut tc TypeChecker) check_constraint_runtime_is(id flat.NodeId, node flat.No
 	test := if negated { '!is' } else { 'is' }
 	tc.record_error_at(.condition_mismatch, '`is` can only be used with sum type or interface values, not `${param}`: ${reason}; test `${param}` with `\$if ${tested} ${test} ${node.value}`',
 		id, node.pos)
+}
+
+// check_constraint_runtime_match reports a match by type, `node`, on a value of
+// a constrained type parameter, `match value { f64 {} }` with `value T`, as
+// `check_constraint_runtime_is` reports an `is`: once, at its first type
+// pattern.
+fn (mut tc TypeChecker) check_constraint_runtime_match(node flat.Node, constraints map[string]GenericConstraint) {
+	if node.children_count == 0 {
+		return
+	}
+	pattern_id := tc.constraint_match_type_pattern(node) or { return }
+	subject_id := tc.a.child(&node, 0)
+	param := tc.constraint_walk_param(subject_id, constraints, []string{}) or { return }
+	constraint := constraints[param] or { return }
+	reason := constraint_runtime_type_test_reason(constraint)
+	if reason.len == 0 {
+		return
+	}
+	pattern := tc.match_type_pattern(tc.a.node(pattern_id)) or { return }
+	subject := tc.a.node(subject_id)
+	tested := if subject.kind == .ident { subject.value } else { param }
+	tc.record_error_at(.condition_mismatch, 'matching by type can only be done on sum type or interface values, not `${param}`: ${reason}; test `${param}` with `\$if ${tested} is ${pattern}`',
+		pattern_id, tc.match_condition_diagnostic_pos(pattern_id))
+}
+
+// constraint_match_type_pattern is the first condition among the branches of
+// the match `node` that names a type, `User` in `match x { User {} }`; none for
+// a match on values.
+fn (tc &TypeChecker) constraint_match_type_pattern(node flat.Node) ?flat.NodeId {
+	for i in 1 .. node.children_count {
+		branch := tc.a.child_node(&node, i)
+		if branch.kind != .match_branch || branch.value == 'else' {
+			continue
+		}
+		for j in 0 .. branch.value.int() {
+			cond_id := tc.a.child(branch, j)
+			if tc.match_type_pattern(tc.a.node(cond_id)) != none {
+				return cond_id
+			}
+		}
+	}
+	return none
+}
+
+// constraint_runtime_type_test_reason is why a type test at run time, `x is Y`
+// or a match by type, cannot be done on a value of a type parameter with
+// `constraint`: a type it allows is neither a sum type nor an interface, or it
+// allows the types that implement an interface. '' when every type it allows
+// is a sum type.
+fn constraint_runtime_type_test_reason(constraint GenericConstraint) string {
+	if constraint.is_interface {
+		return 'a type that implements `${constraint.name}` does not have to be one'
+	}
+	for typ in constraint.types {
+		clean := unalias_type(typ)
+		if clean !is SumType && clean !is Interface {
+			return '`${typ.name().all_after_last('.')}`, in its constraint `${constraint.name}`, is neither'
+		}
+	}
+	// `type Two = Named | Greeter` allows the types that implement `Named`.
+	for typ in constraint.types {
+		if unalias_type(typ) is Interface {
+			return 'a type that implements `${typ.name().all_after_last('.')}`, in its constraint `${constraint.name}`, does not have to be one'
+		}
+	}
+	return ''
 }
 
 // check_constraint_member checks the member that the selector `sel` names, a

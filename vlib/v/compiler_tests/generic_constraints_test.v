@@ -626,6 +626,61 @@ fn main() {}
 	], res.output
 }
 
+fn test_a_match_by_type_on_a_value_of_a_constrained_type_is_reported_once() {
+	// `match x { User { ... } }` tests the type of a value, as `x is User` does:
+	// it is reported once, at its first type pattern, when a type that the
+	// constraint allows is neither a sum type nor an interface, and `x` is not
+	// reported again in its branches. A match on values tests no type and
+	// decides none: the constraint still applies in its branches. A set with an
+	// interface among its variants allows the types that implement it.
+	res := check_program('runtime_match', 'type Number = int | f64
+
+type Shape = Square | Circle
+
+struct Square {}
+
+struct Circle {
+	r f64
+}
+
+type Two = Named | Greeter
+
+fn named[T Named](a T) {
+	match a {
+		User { println(a.age) }
+		else {}
+	}
+}
+
+fn shapes[T Shape](s T) f64 {
+	return match s {
+		Circle { s.r }
+		else { 0.0 }
+	}
+}
+
+fn two[T Two](x T) bool {
+	return x is User
+}
+
+fn values[T Number](value T) string {
+	return match value {
+		1 { value.nme() }
+		else { "" }
+	}
+}
+
+fn main() {}
+')
+	assert res.exit_code == 1, res.output
+	assert error_lines(res.output) == [
+		'15:3: matching by type can only be done on sum type or interface values, not `T`: a type that implements `Named` does not have to be one; test `T` with `\$if a is User`',
+		'22:3: matching by type can only be done on sum type or interface values, not `T`: `Square`, in its constraint `Shape`, is neither; test `T` with `\$if s is Circle`',
+		'28:9: `is` can only be used with sum type or interface values, not `T`: a type that implements `Named`, in its constraint `Two`, does not have to be one; test `T` with `\$if x is User`',
+		'33:13: type `T` has no method `nme`: `int`, in its constraint `Number`, does not have it',
+	], res.output
+}
+
 fn test_a_constrained_generic_needs_the_constraint_of_a_type_parameter_it_takes() {
 	// `Box[T]` or `pick(a, b)` with a type parameter of the declaration around
 	// them: its constraint has to satisfy theirs, where they are written, as in
