@@ -17380,6 +17380,21 @@ fn is_array_sort_dsl_call_name(name string) bool {
 	return name.len == 10 || (name[start + 4] == `e` && name[start + 5] == `d`)
 }
 
+// call_binds_implicit_it reports whether the arguments of `call` see the implicit
+// `it` of an array DSL call (`arr.filter(it > 0)`), as push_array_dsl_scope binds
+// it: a `filter`, `map`, `any`, `all` or `count` call on an array receiver. A
+// user-defined method with one of these names does not bind `it`.
+pub fn (tc &TypeChecker) call_binds_implicit_it(call flat.Node) bool {
+	dsl_name := tc.unresolved_array_dsl_call_name(call)
+	if dsl_name.len == 0 || is_array_sort_dsl_call_name(dsl_name) {
+		return false
+	}
+	if _ := tc.call_receiver_array_type(call) {
+		return true
+	}
+	return false
+}
+
 // call_receiver_array_type updates call receiver array type state for TypeChecker.
 fn (tc &TypeChecker) call_receiver_array_type(node flat.Node) ?Array {
 	if node.children_count == 0 {

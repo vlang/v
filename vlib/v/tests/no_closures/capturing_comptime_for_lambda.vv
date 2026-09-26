@@ -1,0 +1,16 @@
+struct Point {
+	x int
+	y int
+}
+
+fn call(f fn () int) int {
+	return f()
+}
+
+fn main() {
+	p := Point{1, 2}
+	$for field in Point.fields {
+		// `field` is compile-time metadata, but `p` is captured
+		println(call(|| p.$(field.name)))
+	}
+}
