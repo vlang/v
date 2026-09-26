@@ -1080,3 +1080,62 @@ fn main() {
 	// Where it is declared still is.
 	assert ask(dir, 'gd^', 5, 'value', 0) == 'main.v:4:1'
 }
+
+// not_array_methods_program calls methods of a struct named like the array
+// methods whose argument declares `it`, `a` and `b`, with locals of those names.
+const not_array_methods_program = 'module main
+
+struct Sorter {}
+
+fn (s Sorter) sort(value int) int {
+	return value
+}
+
+fn (s Sorter) map(value int) int {
+	return value * 10
+}
+
+fn firsts[T](xs []T) []T {
+	mut ys := xs.clone()
+	ys.sort(a == b)
+	return xs.filter(it == ys[0])
+}
+
+fn main() {
+	a := 7
+	s := Sorter{}
+	println(s.sort(a))
+	it := 3
+	println(s.map(it))
+	nums := [3, 1, 2]
+	mut sorted := nums.clone()
+	sorted.sort(a < b)
+	println(sorted)
+	println(nums.map(it * 2))
+}
+'
+
+fn test_a_method_named_like_an_array_one_declares_no_variable() {
+	// `s.sort(a)` of a user's `fn (s Sorter) sort(value int)` passes the local
+	// `a`, no comparator, and `s.map(it)` the local `it`.
+	dir := program_dir('not_array_methods', not_array_methods_program)
+	src := not_array_methods_program
+	a := line_of(src, '\ta := 7')
+	it := line_of(src, '\tit := 3')
+	assert ask(dir, 'gd^', line_of(src, '\tprintln(s.sort(a))'), 'a', 0) == 'main.v:${a}:1'
+	assert ask(dir, 'gd^', line_of(src, '\tprintln(s.map(it))'), 'it', 0) == 'main.v:${it}:1'
+	// The methods of an array declare them, over an `[]int` and over the `[]T`
+	// of a generic body, and over a value there that nothing types.
+	for text, word in {
+		'\tsorted.sort(a < b)':            'a'
+		'\tprintln(nums.map(it * 2))':     'it'
+		'\tys.sort(a == b)':               'a'
+		'\treturn xs.filter(it == ys[0])': 'it'
+	} {
+		line := line_of(src, text)
+		method := if word == 'it' { text.all_after('.').all_before('(') } else { 'sort' }
+		// The 0-based column of the method's name, after its dot.
+		col := text.index('.${method}(') or { -1 } + 1
+		assert ask(dir, 'gd^', line, word, 0) == 'main.v:${line}:${col}', text
+	}
+}
