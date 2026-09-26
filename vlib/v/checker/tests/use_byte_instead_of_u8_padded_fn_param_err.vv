@@ -12,6 +12,13 @@ fn run(cb fn (byte ), pair fn (byte , u8)) {
 	pair(1, 2)
 }
 
+fn run_wrapped(cb fn (byte
+), pair fn (byte
+	, u8)) {
+	cb(1)
+	pair(1, 2)
+}
+
 fn main() {
 	run(fn (_ u8) {}, fn (_ u8, _ u8) {})
 	add_one := fn (byte int) int {

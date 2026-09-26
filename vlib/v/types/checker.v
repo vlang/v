@@ -6414,17 +6414,17 @@ fn deprecated_byte_is_field_key(source string, end int) bool {
 // deprecated_byte_is_receiver_name reports the name in `fn (byte T)` and
 // `fn (mut byte T)`, whose receiver param node has no name span.
 fn deprecated_byte_is_receiver_name(source string, start int, end int) bool {
-	if end >= source.len || source[end] !in [` `, `\t`] {
+	if end >= source.len || source[end] !in [` `, `\t`, `\n`, `\r`] {
 		// `fn (byte) m()` is a type-only receiver.
 		return false
 	}
 	mut next := end
-	for next < source.len && source[next] in [` `, `\t`] {
+	for next < source.len && source[next] in [` `, `\t`, `\n`, `\r`] {
 		next++
 	}
 	if next >= source.len || !deprecated_byte_starts_type(source[next]) {
-		// `fn (byte )`, `fn (byte , u8)` and `fn (byte /* c */)` are type-only params:
-		// no type follows the name.
+		// `fn (byte )`, `fn (byte , u8)`, `fn (byte\n)` and `fn (byte /* c */)` are type-only
+		// params: no type follows the name.
 		return false
 	}
 	mut i := deprecated_byte_skip_blanks_back(source, start)
