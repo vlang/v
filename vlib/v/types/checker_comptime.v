@@ -2174,8 +2174,8 @@ fn (mut tc TypeChecker) check_node(id flat.NodeId) {
 	mut pointer_alias_skipped_rhs := map[string][]string{}
 	for i in 0 .. node.children_count {
 		child_id := tc.a.child(&node, i)
-		mut infix_anonymous_expected := Type(void_)
-		mut has_infix_anonymous_expected := false
+		mut infix_expected := Type(void_)
+		mut has_infix_expected := false
 		if node.kind == .infix && node.op in [.eq, .ne] && node.children_count >= 2 {
 			child := tc.a.node(child_id)
 			if child.kind == .struct_init
@@ -2183,8 +2183,16 @@ fn (mut tc TypeChecker) check_node(id flat.NodeId) {
 				other_idx := if i == 0 { 1 } else { 0 }
 				other_type := tc.resolve_type(tc.a.child(&node, other_idx))
 				if tc.anonymous_struct_literal_compatible(child, other_type) {
-					infix_anonymous_expected = other_type
-					has_infix_anonymous_expected = true
+					infix_expected = other_type
+					has_infix_expected = true
+				}
+			} else if child.kind in [.if_expr, .match_stmt, .paren] {
+				other_idx := if i == 0 { 1 } else { 0 }
+				other_type := tc.infix_read_type(tc.a.child(&node, other_idx))
+				if unalias_type(other_type) is Enum
+					&& tc.a.node(tc.unwrap_paren_expr_id(child_id)).kind in [.if_expr, .match_stmt] {
+					infix_expected = other_type
+					has_infix_expected = true
 				}
 			}
 		}
@@ -2210,14 +2218,14 @@ fn (mut tc TypeChecker) check_node(id flat.NodeId) {
 			defer_append_rhs := node.kind == .infix && node.op == .left_shift
 				&& node.children_count >= 2 && i == 1
 				&& unwrap_pointer(tc.resolve_type(tc.a.child(&node, 0))) is Array
-			if has_infix_anonymous_expected {
-				tc.ownership_check_node_with_expected_context_and_aggregate_consumption_mode(child_id, infix_anonymous_expected, defer_append_rhs)
+			if has_infix_expected {
+				tc.ownership_check_node_with_expected_context_and_aggregate_consumption_mode(child_id, infix_expected, defer_append_rhs)
 			} else {
 				tc.ownership_check_node_with_aggregate_consumption_mode(child_id, defer_append_rhs)
 			}
 		} $else {
-			if has_infix_anonymous_expected {
-				tc.check_node_with_expected_context(child_id, infix_anonymous_expected)
+			if has_infix_expected {
+				tc.check_node_with_expected_context(child_id, infix_expected)
 			} else if node.kind == .array_literal {
 				if expected := tc.expected_context_for_expr(id) {
 					context_type := unalias_type(contextual_payload_type(expected) or { expected })
@@ -2245,6 +2253,17 @@ fn (mut tc TypeChecker) check_node(id flat.NodeId) {
 				}
 			} else {
 				tc.check_node(child_id)
+			}
+		}
+		if has_infix_expected && unalias_type(infix_expected) is Enum {
+			// Resolve branch tails after their local declarations have been checked.
+			conditional_id := tc.unwrap_paren_expr_id(child_id)
+			checked_type := tc.infix_read_type(child_id)
+			if tc.branches_compatible_with(conditional_id, infix_expected) {
+				_ = tc.resolve_expr(child_id, infix_expected)
+			} else {
+				// A failed probe can still type shorthand tails; preserve the checked result.
+				tc.register_synth_type(conditional_id, checked_type)
 			}
 		}
 		if node.kind == .infix && node.op in [.logical_and, .logical_or] && i == 1 {
