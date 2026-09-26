@@ -10366,6 +10366,7 @@ fn (mut t Transformer) clone_generic_node_from(node flat.Node, args []string, is
 	}
 	cloned_typ = t.retarget_cloned_map_key_storage_type(node, mut children, cloned_typ)
 	t.retarget_cloned_new_map_call(node, mut children, cloned_typ)
+	t.retarget_cloned_fn_value_generic_call(node, mut children)
 	static_assoc_typ := t.retarget_cloned_static_assoc_call(node, mut children, args)
 	retargeted_typ := t.retarget_cloned_generic_call(node, mut children, args)
 	final_typ := if retargeted_typ.len > 0 {
@@ -10839,6 +10840,30 @@ fn (mut t Transformer) retarget_cloned_new_map_call(node flat.Node, mut children
 	children[4] = t.make_ident(eq_fn)
 	children[5] = t.make_ident(clone_fn)
 	children[6] = t.make_ident(free_fn)
+}
+
+// retarget_cloned_fn_value_generic_call rewrites a cloned `cb[T](args)` or
+// `h.cb[T](args)` to `cb(args)`/`h.cb(args)` when the callee is a fn value (for
+// example a `GenericFn[T]` parameter or struct field). The specialization already
+// gives the value its concrete fn type, so the type arguments select nothing.
+// Cloned nodes have no checker types, and `!`/`?`/`or` lowering types the call
+// before `normalize_generic_call_expr` would drop the index, so an index callee
+// there hides the fn value's return type.
+fn (mut t Transformer) retarget_cloned_fn_value_generic_call(node flat.Node, mut children []flat.NodeId) {
+	if node.kind != .call || children.len == 0 {
+		return
+	}
+	callee := t.a.nodes[int(children[0])]
+	if callee.kind != .index || callee.children_count < 2 || callee.value == 'range' {
+		return
+	}
+	base_id := t.a.child(&callee, 0)
+	base := t.a.nodes[int(base_id)]
+	is_fn_field := base.kind == .selector && base.children_count > 0
+		&& t.receiver_selector_is_fn_field(t.trim_pointer_type(t.node_type(t.a.child(&base, 0))), base.value)
+	if is_fn_field || t.generic_call_base_is_fn_value(base_id, base) {
+		children[0] = base_id
+	}
 }
 
 fn (mut t Transformer) retarget_cloned_map_key_storage_type(node flat.Node, mut children []flat.NodeId, cloned_typ string) string {
