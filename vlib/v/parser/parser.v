@@ -13702,7 +13702,7 @@ fn (mut p Parser) array_literal() flat.NodeId {
 			p.next()
 		}
 		// A second comma with no element in between is not a separator.
-		if p.tok == .rsbr || p.tok == .eof || p.tok == .comma {
+		if p.tok == .rsbr || p.tok == .rcbr || p.tok == .eof || p.tok == .comma {
 			break
 		}
 		ids << p.array_element_expr()
