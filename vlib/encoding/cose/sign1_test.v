@@ -1,0 +1,577 @@
+// Tests for COSE_Sign1: roundtrip per algorithm and bytes-exact match
+// against cose-wg/Examples reference vectors. EdDSA signatures are
+// deterministic (RFC 8032 §5.1.6) so we can compare bytes directly;
+// ECDSA signatures use a fresh nonce each run, so for ES* we test by
+// verifying the message produced by another implementation and by
+// round-tripping our own output through verify1.
+module cose
+
+import encoding.base64
+import encoding.cbor
+import encoding.hex
+
+// EdDSA ed25519-sig-01 from cose-wg/Examples (Unlicense).
+const eddsa_d_hex = '9d61b19deffd5a60ba844af492ec2cc44449c5697b326919703bac031cae7f60'
+const eddsa_x_hex = 'd75a980182b10ab7d54bfed3c964073a0ee172f3daa62325af021a68f707511a'
+const eddsa_sig01_message = 'D28445A201270300A10442313154546869732069732074686520636F6E74656E742E58407142FD2FF96D56DB85BEE905A76BA1D0B7321A95C8C4D3607C5781932B7AFB8711497DFA751BF40B58B3BCC32300B1487F3DB34085EEF013BF08F4A44D6FEF0D'
+
+// ECDSA ecdsa-sig-01 from cose-wg/Examples.
+const ecdsa_p256_x_b64u = 'usWxHK2PmfnHKwXPS54m0kTcGJ90UiglWiGahtagnv8'
+const ecdsa_p256_y_b64u = 'IBOL-C3BttVivg-lSreASjpkttcsz-1rb7btKLv8EX4'
+const ecdsa_p256_d_b64u = 'V8kgd2ZBRuh2dgyVINBUqpPDr7BOMGcF22CQMIUHtNM'
+const ecdsa_sig01_message = 'D28445A201260300A10442313154546869732069732074686520636F6E74656E742E58406520BBAF2081D7E0ED0F95F76EB0733D667005F7467CEC4B87B9381A6BA1EDE8E00DF29F32A37230F39A842A54821FDD223092819D7728EFB9D3A0080B75380B'
+const key_bound_unprotected_alg_message = 'D28440A201260442313154546869732069732074686520636F6E74656E742E584087DB0D2E5571843B78AC33ECB2830DF7B6E0A4D5B7376DE336B23C591C90C425317E56127FBE04370097CE347087B233BF722B64072BEB4486BDA4031D27244F'
+
+const sample_text = 'This is the content.'
+
+fn sign1_unchecked(payload []u8, key Key, protected Headers, unprotected Headers) ![]u8 {
+	body_protected := protected.encode_protected()!
+	tbs := sig_structure_sign1(body_protected, []u8{}, payload)
+	signature := sign_with_key(.eddsa, key, tbs)!
+	mut p := cbor.new_packer(cbor.EncodeOpts{ canonical: true })
+	p.pack_tag(tag_sign1)
+	p.pack_array_header(4)
+	p.pack_bytes(body_protected)
+	p.pack_value(unprotected.to_value())!
+	p.pack_bytes(payload)
+	p.pack_bytes(signature)
+	return p.bytes()
+}
+
+fn test_sign1_eddsa_matches_reference_vector() {
+	// EdDSA is deterministic, so we can match the reference bytes-exact.
+	d := hex.decode(eddsa_d_hex)!
+	x := hex.decode(eddsa_x_hex)!
+	key := Key.okp_private(.ed25519, x, d)
+	mut hp := Headers{}
+	hp.algorithm = .eddsa
+	hp.content_type_int = u64(0)
+	mut hu := Headers{}
+	hu.kid = '11'.bytes()
+	got := sign1(sample_text.bytes(), key, protected: hp, unprotected: hu)!
+	want := hex.decode(eddsa_sig01_message)!
+	assert got == want
+}
+
+fn test_verify1_accepts_reference_eddsa_message() {
+	x := hex.decode(eddsa_x_hex)!
+	pub_key := Key.okp_public(.ed25519, x)
+	msg := hex.decode(eddsa_sig01_message)!
+	payload := verify1(msg, pub_key)!
+	assert payload == sample_text.bytes()
+}
+
+fn test_verify1_accepts_reference_ecdsa_p256_message() {
+	x := base64.url_decode(ecdsa_p256_x_b64u)
+	y := base64.url_decode(ecdsa_p256_y_b64u)
+	pub_key := Key.ec2_public(.p_256, x, y)
+	msg := hex.decode(ecdsa_sig01_message)!
+	payload := verify1(msg, pub_key)!
+	assert payload == sample_text.bytes()
+}
+
+fn test_verify1_accepts_key_bound_unprotected_algorithm() {
+	x := base64.url_decode(ecdsa_p256_x_b64u)
+	y := base64.url_decode(ecdsa_p256_y_b64u)
+	mut key := Key.ec2_public(.p_256, x, y)
+	key.alg = .es256
+	payload := verify1(hex.decode(key_bound_unprotected_alg_message)!, key)!
+	assert payload == sample_text.bytes()
+}
+
+fn test_sign1_ecdsa_p256_roundtrip() {
+	x := base64.url_decode(ecdsa_p256_x_b64u)
+	y := base64.url_decode(ecdsa_p256_y_b64u)
+	d := base64.url_decode(ecdsa_p256_d_b64u)
+	priv_key := Key.ec2_private(.p_256, x, y, d)
+	pub_key := Key.ec2_public(.p_256, x, y)
+	mut hp := Headers{}
+	hp.algorithm = .es256
+	mut hu := Headers{}
+	hu.kid = '11'.bytes()
+	signed := sign1('hello'.bytes(), priv_key, protected: hp, unprotected: hu)!
+	got := verify1(signed, pub_key)!
+	assert got == 'hello'.bytes()
+}
+
+fn test_verify1_rejects_tampered_payload() {
+	x := hex.decode(eddsa_x_hex)!
+	pub_key := Key.okp_public(.ed25519, x)
+	mut msg := hex.decode(eddsa_sig01_message)!
+	// Find the last byte of the payload bstr and flip a bit. The payload
+	// "This is the content." (20 bytes) starts after the unprotected
+	// map. We flip the first content byte by scanning for the bstr
+	// header 0x54 (bstr of length 20).
+	mut idx := 0
+	for idx < msg.len {
+		if msg[idx] == 0x54 && idx + 20 < msg.len {
+			break
+		}
+		idx++
+	}
+	msg[idx + 1] ^= 0x01
+	if _ := verify1(msg, pub_key) {
+		assert false, 'tampered payload must not verify'
+	} else {
+		assert err is VerificationFailed
+	}
+}
+
+fn test_verify1_rejects_wrong_key() {
+	// Use a different Ed25519 public key (zeros) to verify the reference
+	// message — it must fail.
+	wrong_x := []u8{len: 32, init: 0}
+	pub_key := Key.okp_public(.ed25519, wrong_x)
+	msg := hex.decode(eddsa_sig01_message)!
+	if _ := verify1(msg, pub_key) {
+		assert false, 'wrong key must not verify'
+	} else {
+		assert err is VerificationFailed
+	}
+}
+
+fn test_verify1_rejects_unknown_critical_label() {
+	// Per RFC 9052 §3.1, a verifier MUST fail when `crit` lists a
+	// label it does not understand. Build a message whose protected
+	// header carries a crit list referencing label 99 (unknown).
+	x := hex.decode(eddsa_x_hex)!
+	d := hex.decode(eddsa_d_hex)!
+	priv_key := Key.okp_private(.ed25519, x, d)
+	pub_key := Key.okp_public(.ed25519, x)
+	mut hp := Headers{}
+	hp.algorithm = .eddsa
+	hp.critical = [i64(99)]
+	signed := sign1_unchecked('payload'.bytes(), priv_key, hp, Headers{})!
+	if _ := verify1(signed, pub_key) {
+		assert false, 'must reject unknown crit label'
+	} else {
+		assert err is MalformedMessage
+		assert err.msg().contains('crit lists unknown label')
+	}
+}
+
+fn test_verify1_accepts_known_critical_label() {
+	// `crit` listing only known labels (e.g. label 1 = alg) must
+	// not block verification.
+	x := hex.decode(eddsa_x_hex)!
+	d := hex.decode(eddsa_d_hex)!
+	priv_key := Key.okp_private(.ed25519, x, d)
+	pub_key := Key.okp_public(.ed25519, x)
+	mut hp := Headers{}
+	hp.algorithm = .eddsa
+	hp.critical = [i64(1)]
+	signed := sign1('payload'.bytes(), priv_key, protected: hp)!
+	got := verify1(signed, pub_key)!
+	assert got == 'payload'.bytes()
+}
+
+fn test_verify1_rejects_critical_in_unprotected_header() {
+	x := hex.decode(eddsa_x_hex)!
+	d := hex.decode(eddsa_d_hex)!
+	priv_key := Key.okp_private(.ed25519, x, d)
+	pub_key := Key.okp_public(.ed25519, x)
+	mut hp := Headers{}
+	hp.algorithm = .eddsa
+	mut hu := Headers{}
+	hu.critical = [i64(1)]
+	signed := sign1_unchecked('payload'.bytes(), priv_key, hp, hu)!
+	if _ := verify1(signed, pub_key) {
+		assert false, 'crit in unprotected headers must be rejected'
+	} else {
+		assert err is MalformedMessage
+		assert err.msg().contains('crit label must be in protected headers')
+	}
+}
+
+fn test_verify1_rejects_critical_label_missing_from_protected_header() {
+	x := hex.decode(eddsa_x_hex)!
+	d := hex.decode(eddsa_d_hex)!
+	priv_key := Key.okp_private(.ed25519, x, d)
+	pub_key := Key.okp_public(.ed25519, x)
+	mut hp := Headers{}
+	hp.algorithm = .eddsa
+	hp.critical = [i64(4)]
+	mut hu := Headers{}
+	hu.kid = 'kid-1'.bytes()
+	signed := sign1_unchecked('payload'.bytes(), priv_key, hp, hu)!
+	if _ := verify1(signed, pub_key) {
+		assert false, 'crit labels must be present in protected headers'
+	} else {
+		assert err is MalformedMessage
+		assert err.msg().contains('not present in protected headers')
+	}
+}
+
+fn test_sign1_rejects_key_alg_mismatch() {
+	// A key declaring `alg = ES256` must not be silently used for an
+	// EdDSA signing call: this catches a common copy-paste mistake.
+	x := hex.decode(eddsa_x_hex)!
+	d := hex.decode(eddsa_d_hex)!
+	mut key := Key.okp_private(.ed25519, x, d)
+	key.alg = .es256 // wrong intent for an OKP key
+	mut hp := Headers{}
+	hp.algorithm = .eddsa
+	if _ := sign1('payload'.bytes(), key, protected: hp) {
+		assert false, 'must reject alg mismatch'
+	} else {
+		assert err is AlgorithmMismatch
+	}
+}
+
+fn test_sign1_rejects_invalid_header_buckets_on_creation() {
+	x := hex.decode(eddsa_x_hex)!
+	d := hex.decode(eddsa_d_hex)!
+	key := Key.okp_private(.ed25519, x, d)
+	mut protected := Headers{}
+	protected.algorithm = .eddsa
+	for unprotected in [
+		Headers{
+			algorithm: .eddsa
+		},
+		Headers{
+			critical: [i64(1)]
+		},
+	] {
+		if _ := sign1('payload'.bytes(), key,
+			protected:   protected
+			unprotected: unprotected
+		) {
+			assert false, 'message creation must reject invalid header buckets'
+		} else {
+			assert err is MalformedMessage
+		}
+	}
+}
+
+fn test_sign1_decode_preserves_text_algorithm() {
+	mut p := cbor.new_packer(cbor.EncodeOpts{})
+	p.pack_array_header(4)
+	p.pack_bytes(hex.decode('a10163666f6f')!)
+	p.pack_value(Headers{}.to_value())!
+	p.pack_null()
+	p.pack_bytes([]u8{})
+	msg := Sign1Message.decode(p.bytes())!
+	assert msg.protected.algorithm == none
+	assert msg.protected.extra_int_labels.len == 1
+	assert msg.protected.extra_int_labels[0].value.as_string() == ?string('foo')
+}
+
+fn test_sign1_external_aad_changes_signature() {
+	x := hex.decode(eddsa_x_hex)!
+	d := hex.decode(eddsa_d_hex)!
+	key := Key.okp_private(.ed25519, x, d)
+	mut hp := Headers{}
+	hp.algorithm = .eddsa
+	a := sign1('payload'.bytes(), key, protected: hp)!
+	b := sign1('payload'.bytes(), key, protected: hp, external_aad: 'context'.bytes())!
+	assert a != b
+}
+
+fn test_sign1_detached_payload_omits_payload_in_message() {
+	x := hex.decode(eddsa_x_hex)!
+	d := hex.decode(eddsa_d_hex)!
+	priv_key := Key.okp_private(.ed25519, x, d)
+	pub_key := Key.okp_public(.ed25519, x)
+	mut hp := Headers{}
+	hp.algorithm = .eddsa
+	signed := sign1([]u8{}, priv_key,
+		protected:        hp
+		detached_payload: 'remote payload'.bytes()
+	)!
+	// The encoded message must contain a CBOR null where the payload
+	// would normally be. Decode and check.
+	msg := Sign1Message.decode(signed)!
+	assert msg.payload == none
+	// Verifier needs the detached bytes back.
+	got := verify1(signed, pub_key, detached_payload: 'remote payload'.bytes())!
+	assert got == 'remote payload'.bytes()
+}
+
+fn test_verify1_rejects_detached_override_of_attached_payload() {
+	d := hex.decode(eddsa_d_hex)!
+	x := hex.decode(eddsa_x_hex)!
+	mut hp := Headers{}
+	hp.algorithm = .eddsa
+	signed := sign1('attached'.bytes(), Key.okp_private(.ed25519, x, d), protected: hp)!
+	if _ := verify1(signed, Key.okp_public(.ed25519, x), detached_payload: 'other'.bytes()) {
+		assert false, 'detached input must not override an attached payload'
+	} else {
+		assert err.msg().contains('cannot be used when the message contains an attached payload')
+	}
+	msg := Sign1Message.decode(signed)!
+	if _ := msg.verify(Key.okp_public(.ed25519, x), 'other'.bytes(), []u8{}) {
+		assert false, 'low-level verification must not override an attached payload'
+	} else {
+		assert err.msg().contains('does not match the attached message payload')
+	}
+	mut unsigned := Sign1Message{
+		protected: hp
+		payload:   'attached'.bytes()
+	}
+	if _ := unsigned.sign(Key.okp_private(.ed25519, x, d), 'other'.bytes(), []u8{}) {
+		assert false, 'low-level signing must not override an attached payload'
+	} else {
+		assert err.msg().contains('does not match the attached message payload')
+	}
+}
+
+fn test_sign1_untagged_roundtrip() {
+	x := hex.decode(eddsa_x_hex)!
+	d := hex.decode(eddsa_d_hex)!
+	priv_key := Key.okp_private(.ed25519, x, d)
+	pub_key := Key.okp_public(.ed25519, x)
+	mut hp := Headers{}
+	hp.algorithm = .eddsa
+	signed := sign1('payload'.bytes(), priv_key, protected: hp, untagged: true)!
+	// First byte must be 0x84 (array(4)), not 0xD2 (tag 18).
+	assert signed[0] == 0x84
+	got := verify1(signed, pub_key)!
+	assert got == 'payload'.bytes()
+}
+
+fn test_sign1_enforces_key_operations() {
+	x := hex.decode(eddsa_x_hex)!
+	d := hex.decode(eddsa_d_hex)!
+	mut signing_key := Key.okp_private(.ed25519, x, d)
+	signing_key.key_ops = [.verify]
+	mut hp := Headers{}
+	hp.algorithm = .eddsa
+	if _ := sign1('payload'.bytes(), signing_key, protected: hp) {
+		assert false, 'key_ops without sign must reject signing'
+	} else {
+		assert err.msg().contains('key_ops')
+	}
+
+	signed := sign1('payload'.bytes(), Key.okp_private(.ed25519, x, d), protected: hp)!
+	mut verification_key := Key.okp_public(.ed25519, x)
+	verification_key.key_ops = [.sign]
+	if _ := verify1(signed, verification_key) {
+		assert false, 'key_ops without verify must reject verification'
+	} else {
+		assert err.msg().contains('key_ops')
+	}
+}
+
+fn test_sign1_rejects_ed25519_public_key_mismatching_seed() {
+	d := hex.decode(eddsa_d_hex)!
+	key := Key.okp_private(.ed25519, []u8{len: 32}, d)
+	mut hp := Headers{}
+	hp.algorithm = .eddsa
+	if _ := key.encode() {
+		assert false, 'the key codec must reject inconsistent Ed25519 x/d material'
+	} else {
+		assert err.msg().contains('does not match private seed')
+	}
+	encoded := hex.decode('a401012006215820' + '00'.repeat(32) + '235820' + eddsa_d_hex)!
+	if _ := Key.decode(encoded) {
+		assert false, 'key decoding must reject inconsistent Ed25519 x/d material'
+	} else {
+		assert err.msg().contains('does not match private seed')
+	}
+	if _ := sign1('payload'.bytes(), key, protected: hp) {
+		assert false, 'Ed25519 x must correspond to d'
+	} else {
+		assert err.msg().contains('does not match private seed')
+	}
+}
+
+fn test_sign1_derives_public_key_when_private_okp_x_is_absent() {
+	decoded := Key.decode(hex.decode('a301012006235820' + eddsa_d_hex)!)!
+	key := Key.decode(decoded.encode()!)!
+	mut hp := Headers{}
+	hp.algorithm = .eddsa
+	signed := sign1('payload'.bytes(), key, protected: hp)!
+	public_key := Key.okp_public(.ed25519, hex.decode(eddsa_x_hex)!)
+	assert verify1(signed, public_key)! == 'payload'.bytes()
+	assert verify1(signed, key)! == 'payload'.bytes()
+}
+
+fn test_sign1_rejects_ec_public_coordinates_mismatching_scalar() {
+	mut x := base64.url_decode(ecdsa_p256_x_b64u)
+	y := base64.url_decode(ecdsa_p256_y_b64u)
+	d := base64.url_decode(ecdsa_p256_d_b64u)
+	x[0] ^= 1
+	key := Key.ec2_private(.p_256, x, y, d)
+	mut hp := Headers{}
+	hp.algorithm = .es256
+	if _ := sign1('payload'.bytes(), key, protected: hp) {
+		assert false, 'EC2 x/y must correspond to d'
+	} else {
+		assert err.msg().contains('do not match private scalar')
+	}
+}
+
+fn test_key_decode_preserves_unsupported_curve() {
+	encoded := hex.decode('a301012004215820' + '11'.repeat(32))!
+	key := Key.decode(encoded)!
+	roundtripped := Key.decode(key.encode()!)!
+	if _ := verify_with_key(.eddsa, roundtripped, []u8{}, []u8{}) {
+		assert false, 'an unsupported decoded curve must fail only when used'
+	} else {
+		assert err.msg().contains('unsupported curve 4')
+	}
+}
+
+fn test_key_decode_preserves_text_curve() {
+	encoded := hex.decode('a301012068582d637573746f6d215820' + '11'.repeat(32))!
+	key := Key.decode(encoded)!
+	roundtripped := Key.decode(key.encode()!)!
+	assert roundtripped.raw_curve_text == ?string('X-custom')
+	if _ := verify_with_key(.eddsa, roundtripped, []u8{}, []u8{}) {
+		assert false, 'an unsupported text curve must fail only when used'
+	} else {
+		assert err.msg().contains('unsupported curve "X-custom"')
+	}
+}
+
+fn test_key_decode_rejects_incomplete_asymmetric_keys() {
+	for encoded in [
+		hex.decode('a10102')!,
+		hex.decode('a201022001')!,
+		hex.decode('a301022001215820' + '11'.repeat(32))!,
+		hex.decode('a201012006')!,
+	] {
+		if _ := Key.decode(encoded) {
+			assert false, 'asymmetric keys must contain their mandatory parameters'
+		} else {
+			assert err.msg().contains('COSE_Key requires')
+		}
+	}
+}
+
+fn test_key_rejects_curve_incompatible_with_key_type() {
+	for key in [
+		Key.ec2_public(.ed25519, []u8{len: 32}, []u8{len: 32}),
+		Key.okp_public(.p_256, []u8{len: 32}),
+	] {
+		if _ := key.encode() {
+			assert false, 'known curves from another key family must be rejected'
+		} else {
+			assert err.msg().contains('key cannot use curve')
+		}
+	}
+	for encoded in [
+		hex.decode('a401022006215820' + '11'.repeat(32) + '225820' + '22'.repeat(32))!,
+		hex.decode('a301012001215820' + '11'.repeat(32))!,
+	] {
+		if _ := Key.decode(encoded) {
+			assert false, 'decoded keys must reject curves from another key family'
+		} else {
+			assert err.msg().contains('key cannot use curve')
+		}
+	}
+}
+
+fn test_key_encode_pads_ec2_coordinates_to_curve_width() {
+	for curve, width in {
+		Curve.p_256: 32
+		Curve.p_384: 48
+		Curve.p_521: 66
+	} {
+		key := Key.ec2_public(curve, [u8(1)], [u8(2)])
+		decoded := Key.decode(key.encode()!)!
+		x := decoded.x or { panic('missing x') }
+		y := decoded.y or { panic('missing y') }
+		assert x.len == width
+		assert y.len == width
+		assert x#[-1] == 1
+		assert y#[-1] == 2
+	}
+}
+
+fn test_key_decode_rejects_non_fixed_width_ec2_coordinates() {
+	for encoded in [
+		hex.decode('a40102200121581f' + '11'.repeat(31) + '225820' + '22'.repeat(32))!,
+		hex.decode('a401022001215820' + '11'.repeat(32) + '22581f' + '22'.repeat(31))!,
+	] {
+		if _ := Key.decode(encoded) {
+			assert false, 'decoded EC2 coordinates must use their fixed curve width'
+		} else {
+			assert err.msg().contains('must each be 32 bytes')
+		}
+	}
+}
+
+fn test_key_codec_rejects_invalid_ed25519_widths() {
+	for key in [
+		Key.okp_public(.ed25519, [u8(1)]),
+		Key.okp_private(.ed25519, []u8{len: 32}, [u8(1)]),
+	] {
+		if _ := key.encode() {
+			assert false, 'Ed25519 x and d must each be 32 bytes'
+		} else {
+			assert err.msg().contains('must be 32 bytes')
+		}
+	}
+	for encoded in [
+		hex.decode('a301012006214101')!,
+		hex.decode('a301012006234101')!,
+	] {
+		if _ := Key.decode(encoded) {
+			assert false, 'decoded Ed25519 x and d must each be 32 bytes'
+		} else {
+			assert err.msg().contains('must be 32 bytes')
+		}
+	}
+}
+
+fn test_key_codec_rejects_invalid_ec2_private_scalar_width() {
+	key := Key.ec2_private(.p_256, []u8{len: 32}, []u8{len: 32}, [u8(1)])
+	if _ := key.encode() {
+		assert false, 'EC2 private scalar must use the curve width'
+	} else {
+		assert err.msg().contains('private scalar d must be 32 bytes')
+	}
+	encoded := hex.decode('a501022001215820' + '11'.repeat(32) + '225820' + '22'.repeat(32) +
+		'234101')!
+	if _ := Key.decode(encoded) {
+		assert false, 'decoded EC2 private scalar must use the curve width'
+	} else {
+		assert err.msg().contains('private scalar d must be 32 bytes')
+	}
+}
+
+fn test_key_decode_rejects_unsupported_rsa_keys() {
+	if _ := Key.decode(hex.decode('a10103')!) {
+		assert false, 'unsupported RSA keys must not decode after discarding their parameters'
+	} else {
+		assert err.msg().contains('RSA keys are not supported')
+	}
+}
+
+fn test_key_codec_rejects_incompatible_algorithm_constraints() {
+	mut symmetric := Key.symmetric([]u8{len: 32})
+	symmetric.alg = .es256
+	mut ec2 := Key.ec2_public(.p_384, []u8{len: 48}, []u8{len: 48})
+	ec2.alg = .es256
+	for key in [symmetric, ec2] {
+		if _ := key.encode() {
+			assert false, 'algorithm constraint must match the key family and curve'
+		} else {
+			assert err.msg().contains('is incompatible')
+		}
+	}
+	for encoded in [
+		hex.decode('a301040326205820' + '11'.repeat(32))!,
+		hex.decode('a5010203262002215830' + '11'.repeat(48) + '225830' + '22'.repeat(48))!,
+	] {
+		if _ := Key.decode(encoded) {
+			assert false, 'decoded algorithm constraint must match key family and curve'
+		} else {
+			assert err.msg().contains('is incompatible')
+		}
+	}
+}
+
+fn test_sign1_decodes_indefinite_length_outer_array() {
+	mut p := cbor.new_packer(cbor.EncodeOpts{})
+	p.pack_array_indef()!
+	p.pack_bytes([]u8{})
+	p.pack_value(Headers{}.to_value())!
+	p.pack_null()
+	p.pack_bytes([u8(1)])
+	p.pack_break()!
+	msg := Sign1Message.decode(p.bytes())!
+	assert msg.payload == none
+	assert msg.signature == [u8(1)]
+}
