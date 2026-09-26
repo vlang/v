@@ -16165,6 +16165,10 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 			} else {
 				''
 			}
+			if base.kind == .ident && !base_is_local && g.expected_enum.len > 0
+				&& g.expected_enum.all_after_last('.') == base.value {
+				enum_selector_qbase = g.expected_enum
+			}
 			// Fully qualified enum value: `mod.Enum.field` — the base is itself a
 			// selector over a module ident, not a plain ident. Enum type names are
 			// capitalized and module names are not, which filters out ordinary
