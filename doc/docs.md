@@ -3809,6 +3809,7 @@ Reserved keywords can be module names without escaping. For example, `type/type.
 `module type`; another file can use `import type` and call `type.value()`. Keywords also work in
 longer import paths, such as `import type.bar`. If a keyword cannot be used as an expression
 qualifier, give the import an alias with `as`.
+Module path segments must not start with `@`.
 
 In normal projects, the nearest `v.mod` file is that lookup root.
 Besides package metadata, `v.mod` also acts as a relative module anchor:

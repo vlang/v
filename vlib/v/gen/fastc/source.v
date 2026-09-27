@@ -1441,7 +1441,7 @@ fn fastc_scan_source_header(source string, path string, prefs &pref.Preferences)
 		}
 		if module_name == '' && tok == .key_module {
 			tok = scan.scan()
-			if tok != .name && !tok.is_keyword() {
+			if (tok != .name && !tok.is_keyword()) || scan.lit.starts_with('@') {
 				return error('fastc parser does not support module declaration in ${path}')
 			}
 			module_name = scan.lit
@@ -1884,7 +1884,7 @@ fn fastc_skip_module_or_import(mut scan scanner.Scanner, declaration token.Token
 
 fn fastc_scan_import(mut scan scanner.Scanner, first token.Token, path string) !(string, string, []string, token.Token) {
 	mut tok := first
-	if tok != .name && !tok.is_keyword() {
+	if (tok != .name && !tok.is_keyword()) || scan.lit.starts_with('@') {
 		return error('fastc parser does not support import `${tok.str()}` in ${path}')
 	}
 	mut alias := scan.lit
@@ -1892,7 +1892,7 @@ fn fastc_scan_import(mut scan scanner.Scanner, first token.Token, path string) !
 	tok = scan.scan()
 	for tok == .dot {
 		tok = scan.scan()
-		if tok != .name && !tok.is_keyword() {
+		if (tok != .name && !tok.is_keyword()) || scan.lit.starts_with('@') {
 			return error('fastc parser does not support import path in ${path}')
 		}
 		alias = scan.lit

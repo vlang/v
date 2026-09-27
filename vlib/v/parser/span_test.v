@@ -46,6 +46,20 @@ fn test_keyword_top_level_module_declaration_uses_name() {
 	assert modules[0].value == 'type'
 }
 
+fn test_module_paths_reject_at_escapes() {
+	path := os.join_path(os.temp_dir(), 'v3_module_escapes_${os.getpid()}.v')
+	defer {
+		os.rm(path) or {}
+	}
+	for source in ['module @foo\n', 'module @type\n', 'module main\nimport @foo as foo\n',
+		'module main\nimport pkg.@FN\n'] {
+		os.write_file(path, source)!
+		mut p := Parser.new(pref.new_preferences())
+		_ := p.parse_file(path)
+		assert p.diagnostics.str().contains('module names cannot use `@` escapes'), p.diagnostics.str()
+	}
+}
+
 fn test_parenthesized_match_statement_accepts_newline_before_block() {
 	path := os.join_path(os.temp_dir(), 'v3_parenthesized_match_${os.getpid()}.v')
 	os.write_file(path, 'fn main() {\n\tmatch (2)\n\t{\n\t\t2 {}\n\t\telse {}\n\t}\n}\n') or {

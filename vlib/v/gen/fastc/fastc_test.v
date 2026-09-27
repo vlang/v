@@ -2116,6 +2116,19 @@ fn test_bare_keyword_module_names_resolve_without_escapes() {
 	assert run_result.output.trim_space() == '42'
 }
 
+fn test_module_paths_reject_at_escapes() {
+	prefs := pref.new_preferences()
+	for source in ['module @foo\n', 'module @type\n', 'module main\nimport @foo as foo\n',
+		'module main\nimport pkg.@FN\n'] {
+		mut message := ''
+		_ := fastc_scan_source_header(source, 'invalid_module_path.v', prefs) or {
+			message = err.msg()
+			FastcSourceHeader{}
+		}
+		assert message != '', 'FastC accepted `${source}`'
+	}
+}
+
 fn test_generate_files_resolves_modules_without_an_ast() {
 	root := os.join_path(os.vtmp_dir(), 'v3_fastc_modules_${os.getpid()}')
 	os.rmdir_all(root) or {}

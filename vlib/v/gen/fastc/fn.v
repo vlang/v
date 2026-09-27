@@ -540,7 +540,7 @@ fn (mut g Parser) expect(expected token.Token) ! {
 
 fn (mut g Parser) parse_module() ! {
 	g.next()
-	if g.tok != .name && !g.tok.is_keyword() {
+	if (g.tok != .name && !g.tok.is_keyword()) || g.lit.starts_with('@') {
 		return g.unsupported('module declaration')
 	}
 	if g.lit != g.module_name.all_after_last('.') {

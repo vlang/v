@@ -466,6 +466,10 @@ pub fn (mut p Parser) parse_into(path string) {
 				&& p.s.src[module_end..p.tok_pos].contains('\n') {
 				p.record_diagnostic_span('`module` and `${p.lit}` must be at same line', p.tok_pos, p.tok_end)
 			}
+			if p.lit.starts_with('@') {
+				p.record_diagnostic_span('module names cannot use `@` escapes', p.tok_pos,
+					p.tok_end)
+			}
 			p.cur_module = p.lit
 			module_name_end := p.tok_end
 			mod_id := p.add_node(flat.Node{
@@ -1068,6 +1072,9 @@ fn (mut p Parser) expect_name() string {
 
 // expect_module_name reads a module path segment, including keyword names.
 fn (mut p Parser) expect_module_name() string {
+	if p.lit.starts_with('@') {
+		p.record_diagnostic_span('module names cannot use `@` escapes', p.tok_pos, p.tok_end)
+	}
 	return p.expect_name_or_keyword()
 }
 
