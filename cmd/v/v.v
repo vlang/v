@@ -351,6 +351,10 @@ fn external_tool_runtime_args(command string, prefix_args []string, command_args
 	if command in ['build-examples', 'build-tools', 'self', 'test', 'test-self'] {
 		tool_args << prefix_args
 	}
+	if command == 'fmt' {
+		backend_args, _ := split_tool_backend_args(prefix_args)
+		tool_args << backend_args
+	}
 	tool_args << command_args
 	return tool_args
 }
@@ -410,6 +414,11 @@ fn launch_external_tool(vroot string, tool_name string, tool_source string, pref
 // they can start even when libgc cannot allocate executable pages or cannot be loaded.
 fn external_tool_compile_args(tool_name string, prefix_args []string) []string {
 	mut compile_args := clean_compiler_selection_flags(prefix_args)
+	if tool_name == 'vfmt' {
+		// Backend options select formatting rules, not the formatter executable's target.
+		_, native_args := split_tool_backend_args(compile_args)
+		compile_args = native_args.clone()
+	}
 	if tool_name in ['vself', 'vup', 'vdoctor', 'vsymlink'] {
 		compile_args = external_tool_args_without_gc(compile_args)
 		if '-g' !in compile_args {
@@ -418,6 +427,24 @@ fn external_tool_compile_args(tool_name string, prefix_args []string) []string {
 		compile_args << ['-gc', 'none']
 	}
 	return compile_args
+}
+
+fn split_tool_backend_args(args []string) ([]string, []string) {
+	mut backend_args := []string{}
+	mut other_args := []string{}
+	mut backend_value_follows := false
+	for arg in args {
+		if backend_value_follows {
+			backend_args << arg
+			backend_value_follows = false
+		} else if arg in ['-b', '-backend'] {
+			backend_args << arg
+			backend_value_follows = true
+		} else {
+			other_args << arg
+		}
+	}
+	return backend_args, other_args
 }
 
 fn external_tool_args_without_gc(args []string) []string {

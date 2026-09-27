@@ -1477,7 +1477,7 @@ fn test_fmt_demangles_function_local_aggregate_types_with_v3() {
 		value: 2
 	}
 	wrapper := Wrapper{
-		Tick: first
+		Tick:    first
 		numbers: {
 			'one': Number{
 				integer: 1

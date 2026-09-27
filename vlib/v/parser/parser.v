@@ -3391,7 +3391,7 @@ fn (mut p Parser) interface_decl() flat.NodeId {
 				method_generic_params = p.parse_generic_param_names()
 			}
 		}
-		if generic_params.len == 0 && method_generic_params.len > 0 {
+		if !p.prefs.is_fmt && generic_params.len == 0 && method_generic_params.len > 0 {
 			p.record_diagnostic_span('non-generic interface `${name}` cannot define a generic method',
 				method_generic_start, method_generic_start + 1)
 		}
@@ -8897,6 +8897,9 @@ fn (mut p Parser) for_in_parts(key_id flat.NodeId, val_id flat.NodeId, first_is_
 }
 
 fn (mut p Parser) record_for_mut_diagnostic(id flat.NodeId, message string) {
+	if p.prefs.is_fmt {
+		return
+	}
 	variable := p.a.node(id)
 	mut word_end := variable.pos.offset
 	mut i := word_end - 1
@@ -14064,7 +14067,7 @@ fn (mut p Parser) fn_literal() flat.NodeId {
 	}
 	for capture_id in capture_ids {
 		capture := p.a.node(capture_id)
-		if capture.value.len > 0 && !p.global_names[capture.value]
+		if !p.prefs.is_fmt && capture.value.len > 0 && !p.global_names[capture.value]
 			&& !p.is_local_binding(capture.value) {
 			p.record_diagnostic_span('undefined ident: `${capture.value}`', capture.pos.offset,
 				capture.pos.end)

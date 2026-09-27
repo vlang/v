@@ -6244,6 +6244,10 @@ A vfmt run is usually pretty cheap (takes <30ms).
 
 Always run `v fmt -w file.v` before pushing your code.
 
+The formatter checks syntax without requiring the code to pass semantic checks.
+For example, it preserves closure captures and loop binder mutability while you edit
+incomplete code.
+
 A function, loop, `if` branch or `match` branch whose body is a single statement
 stays on one line when you write it that way and it fits in 100 columns:
 

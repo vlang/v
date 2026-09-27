@@ -69,6 +69,20 @@ fn test_tools_that_consume_prefix_compiler_options_receive_them() {
 	]
 }
 
+fn test_formatter_backend_options_are_runtime_preferences() {
+	for flag in ['-b', '-backend'] {
+		prefix := ['-cc', 'clang', flag, 'js', '-gc', 'none']
+		assert external_tool_compile_args('vfmt', prefix) == ['-cc', 'clang', '-gc', 'none']
+		assert external_tool_runtime_args('fmt', prefix, ['fmt', 'source.v']) == [
+			flag,
+			'js',
+			'fmt',
+			'source.v',
+		]
+		assert external_tool_compile_args('vtest', prefix) == prefix
+	}
+}
+
 fn test_ownership_compiler_is_selected_only_for_explicit_modes() {
 	assert ownership_compiler_is_required(['-autofree', 'main.v'])
 	assert ownership_compiler_is_required(['-ownership', 'main.v'])
