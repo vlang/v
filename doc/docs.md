@@ -4125,6 +4125,9 @@ You can see the complete
 
 ### Interfaces
 
+Casting a pointer to an interface can be used directly as the receiver of a method returning
+multiple values. Interface data fields retain their individual types during the conversion.
+
 ```v
 // interface-example.1
 struct Dog {
