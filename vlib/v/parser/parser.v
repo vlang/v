@@ -1435,8 +1435,7 @@ fn (mut p Parser) fn_decl() flat.NodeId {
 					else { '' }
 				}
 				clean_type := method_receiver_type_name(receiver_type)
-				has_base_overload := p.a.nodes.any(it.kind == .fn_decl
-					&& it.value == '${clean_type}.${base_op}')
+				has_base_overload := '${clean_type}.${base_op}' in p.file_method_names
 				message := if has_base_overload {
 					'cannot overload `${assignment_op}`, operator is implicitly overloaded because the `${base_op}` operator is overloaded'
 				} else {
@@ -1462,7 +1461,7 @@ fn (mut p Parser) fn_decl() flat.NodeId {
 				name_pos = p.tok_pos
 				op_name := overload_token_name(p.tok)
 				clean_type := method_receiver_type_name(receiver_type)
-				if p.a.nodes.any(it.kind == .fn_decl && it.value == '${clean_type}.${op_name}') {
+				if '${clean_type}.${op_name}' in p.file_method_names {
 					p.record_diagnostic_span('cannot duplicate operator overload `${op_name}`',
 						p.tok_pos, p.tok_end)
 				}
@@ -1605,6 +1604,7 @@ fn (mut p Parser) fn_operator_overload(receiver_name string, receiver_type strin
 
 	clean_type := method_receiver_type_name(receiver_type)
 	name := '${clean_type}.${op_name}'
+	p.file_method_names[name] = true
 
 	// Match the bodyless-header marker used by ordinary functions and methods.
 	is_v_header_decl := p.cur_file.ends_with('.vh') && p.tok != .lcbr

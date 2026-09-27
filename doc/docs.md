@@ -7890,6 +7890,7 @@ assert __offsetof(Foo, b) == 4
 ## Limited operator overloading
 
 Operator overloading defines the behavior of certain binary operators for certain types.
+Types in different modules can define their own operators even when their type names match.
 
 ```v
 struct Vec {
