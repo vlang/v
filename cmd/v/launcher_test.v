@@ -84,11 +84,14 @@ fn test_formatter_backend_options_are_runtime_preferences() {
 }
 
 fn test_formatter_target_options_do_not_target_its_executable() {
-	assert external_tool_compile_args('vfmt', ['-b', 'wasm', '-os', 'browser', '-cc', 'clang']) == [
+	assert external_tool_compile_args('vfmt', ['-b', 'wasm', '-os', 'browser', '-arch', 'wasm32',
+		'-cc', 'clang']) == [
 		'-cc',
 		'clang',
 	]
-	assert external_tool_compile_args('vfmt', ['-os=browser', '-prod']) == ['-prod']
+	assert external_tool_compile_args('vfmt', ['-os=browser', '-arch=wasm32', '-prod']) == [
+		'-prod',
+	]
 }
 
 fn test_ownership_compiler_is_selected_only_for_explicit_modes() {
