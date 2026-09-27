@@ -138,6 +138,9 @@ fn (mut tc TypeChecker) vls_answer_type_word(q VlsQuery, file_id int, source str
 				}
 			}
 			.definition {
+				if at := tc.vls_type_param_definition_at(file_id, offset, word) {
+					return tc.vls_position_text(at.file_id, at.offset, q.target)
+				}
 				if at := tc.vls_type_definition(word) {
 					return tc.vls_position_text(at.file_id, at.offset, q.target)
 				}
@@ -197,6 +200,19 @@ fn (tc &TypeChecker) vls_condition_value_hover_at(file_id int, offset int, sourc
 	}
 	typ := tc.vls_local_named_type(decl, word)?
 	return tc.vls_value_hover(id, word, typ)
+}
+
+// vls_type_param_definition_at is where the type parameter `word` written at
+// `offset` of `file_id` is declared, where no node of its own stands for it (see
+// vls_type_param_hover_at and vls_type_param_declared_at).
+fn (tc &TypeChecker) vls_type_param_definition_at(file_id int, offset int, word string) ?VlsPos {
+	if id := tc.vls_node_around(file_id, offset) {
+		if at := tc.vls_type_param_definition(id, word) {
+			return at
+		}
+	}
+	decl_id := tc.vls_decl_before(file_id, offset)?
+	return tc.vls_type_param_declared_at(*tc.a.node(decl_id), word)
 }
 
 // vls_decl_before returns the last declaration of a function or a type of
