@@ -14326,6 +14326,11 @@ fn (t &Transformer) collect_callback_nested_fn_types(param string, mut signature
 				return
 			}
 			payload = payload[end + 1..].trim_space()
+		} else if payload.starts_with('(') && payload.ends_with(')') {
+			for part in split_generic_args(payload[1..payload.len - 1]) {
+				t.collect_callback_nested_fn_types(part, mut signatures)
+			}
+			return
 		} else {
 			_, args, is_generic := generic_app_parts(payload)
 			if is_generic {

@@ -50,6 +50,10 @@ fn test_specialized_receiver_callback_uses_function_type_compatibility() {
 		'fn (shared handlers []fn (int))')
 	assert t.resolved_receiver_arg_compatible(id, 'fn (shared handlers []fn (shared int))',
 		'fn (shared handlers []fn (shared int))')
+	assert !t.resolved_receiver_arg_compatible(id, 'fn () (fn (shared int), int)',
+		'fn () (fn (int), int)')
+	assert t.resolved_receiver_arg_compatible(id, 'fn () (fn (shared int), int)',
+		'fn () (fn (shared int), int)')
 	assert !t.resolved_receiver_arg_compatible(id, 'fn () shared int', 'fn () int')
 	assert !t.resolved_receiver_arg_compatible(id, 'fn () int', 'fn () atomic int')
 }
