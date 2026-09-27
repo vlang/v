@@ -1842,3 +1842,39 @@ fn test_the_child_of_a_question_answers_again_once_its_version_comes_back() {
 	p.wait()
 	assert p.code == 0
 }
+
+fn test_a_prepared_server_scans_the_prepared_modules_for_implicit_imports_once() {
+	$if !linux {
+		return
+	}
+	// A program with no value that may be a closure: the scan of the prepared
+	// modules reads the field index, which the program's declarations join.
+	dir := os.join_path(work_dir, 'prepared_scan')
+	os.mkdir_all(dir)!
+	os.write_file(os.join_path(dir, 'main.v'), shared_program)!
+	checked, trace := check_as_prepared_server(dir, fn (_ string) {})
+	assert checked == one_shot_check(dir)
+	assert checked.contains('error: '), checked
+	assert trace.contains('replaying the scan of the prepared modules'), trace
+	assert !trace.contains('scanning the prepared modules anew'), trace
+	// One that may need the closure runtime already: the scan reads no index.
+	os.write_file(os.join_path(dir, 'main.v'), prepared_program)!
+	checked_closure, trace_closure := check_as_prepared_server(dir, fn (_ string) {})
+	assert checked_closure == one_shot_check(dir)
+	assert trace_closure.contains('replaying the scan of the prepared modules'), trace_closure
+}
+
+fn test_a_prepared_server_scans_the_prepared_modules_anew_for_a_program_that_changes_what_they_read() {
+	$if !linux {
+		return
+	}
+	dir := os.join_path(work_dir, 'prepared_scan_anew')
+	os.mkdir_all(dir)!
+	// strconv calls a function `tos`: a program's own `tos` could change what
+	// the scan of strconv finds.
+	os.write_file(os.join_path(dir, 'main.v'), shared_program +
+		'\nfn tos(x int) int {\n\treturn x\n}\n')!
+	checked, trace := check_as_prepared_server(dir, fn (_ string) {})
+	assert checked == one_shot_check(dir)
+	assert trace.contains('scanning the prepared modules anew: the program writes `r:tos`'), trace
+}

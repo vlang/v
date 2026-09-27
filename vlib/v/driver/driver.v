@@ -11266,6 +11266,8 @@ pub fn run(args []string) {
 			prepared_imports.native_include = ast_has_native_source_include(prepared_ast)
 			implicit_field_scan_index_append(prepared_ast, 0, prepared_ast.user_code_start, mut
 				prepared_imports.builtin_field_index)
+			prepared_imports.scan = prepare_region_scan(prepared_ast, prepared_imports.regions,
+				prepared_imports.builtin_field_index)
 			// The declarations of builtin and of those modules, collected once too.
 			prepared_config := TypeCheckerConfig{
 				user_files:                  prepared_user_files
@@ -17629,6 +17631,104 @@ mut:
 	enum_fields map[string]map[string]bool
 	fn_returns  map[string]string
 	globals     map[string]string
+	// record, when set, notes the writes to this index, and the keys asked of
+	// it (see PreparedScan).
+	record &ImplicitIndexRecord = unsafe { nil }
+	// bindings_are_globals is set while the globals of a module are typed:
+	// their bindings are this index's globals.
+	bindings_are_globals bool
+}
+
+// ImplicitIndexRecord is what a scan wrote to its field index, by key, with the
+// writes themselves to repeat them, and, with `reads`, every key it asked of it.
+// A key names its map: `a:` aliases, `i:` imports, `f:` fields, `e:` enum
+// fields, `r:` function returns, `g:` globals.
+@[heap]
+struct ImplicitIndexRecord {
+mut:
+	with_reads bool
+	with_ops   bool
+	reads      map[string]bool
+	writes     map[string]bool
+	ops        []ImplicitIndexOp
+}
+
+// ImplicitIndexOp is a write of implicit_field_scan_index_append, to repeat it.
+struct ImplicitIndexOp {
+	kind        ImplicitIndexOpKind
+	key         string
+	value       string
+	fields      map[string]string
+	enum_fields map[string]bool
+}
+
+enum ImplicitIndexOpKind {
+	import_alias
+	alias
+	fields
+	enum_fields
+	fn_return
+	global
+}
+
+// read notes that a scan asked this index for `key` of the map `prefix` names,
+// when it records reads.
+fn (index &ImplicitFieldScanIndex) read(prefix string, key string) {
+	if isnil(index.record) || !index.record.with_reads {
+		return
+	}
+	mut record := unsafe { index.record }
+	record.reads[prefix + key] = true
+}
+
+// write notes a write to this index, when it records them.
+fn (index &ImplicitFieldScanIndex) write(op ImplicitIndexOp) {
+	if isnil(index.record) {
+		return
+	}
+	mut record := unsafe { index.record }
+	prefix := match op.kind {
+		.import_alias { 'i:' }
+		.alias { 'a:' }
+		.fields { 'f:' }
+		.enum_fields { 'e:' }
+		.fn_return { 'r:' }
+		.global { 'g:' }
+	}
+	record.writes[prefix + op.key] = true
+	if record.with_ops {
+		record.ops << op
+	}
+}
+
+// apply repeats the write `op` of implicit_field_scan_index_append.
+fn (mut index ImplicitFieldScanIndex) apply(op ImplicitIndexOp) {
+	match op.kind {
+		.import_alias {
+			index.imports[op.key] = true
+		}
+		.alias {
+			index.aliases[op.key] = op.value
+		}
+		.fields {
+			index.fields[op.key] = op.fields.clone()
+		}
+		.enum_fields {
+			index.enum_fields[op.key] = op.enum_fields.clone()
+		}
+		.fn_return {
+			if old := index.fn_returns[op.key] {
+				if old != op.value {
+					index.fn_returns[op.key] = ''
+				}
+			} else {
+				index.fn_returns[op.key] = op.value
+			}
+		}
+		.global {
+			index.globals[op.key] = op.value
+		}
+	}
 }
 
 fn (index &ImplicitFieldScanIndex) clone() ImplicitFieldScanIndex {
@@ -17658,6 +17758,106 @@ mut:
 	has_overflow         bool
 }
 
+// ImplicitScanFlags are what an implicit-import scan found so far.
+struct ImplicitScanFlags {
+	needs_sync       bool
+	has_sync         bool
+	needs_embed      bool
+	has_embed_import bool
+	needs_closure    bool
+	has_closure      bool
+	needs_debugger   bool
+	has_debugger     bool
+	has_overflow     bool
+}
+
+fn (scan &ImplicitImportScan) flags() ImplicitScanFlags {
+	return ImplicitScanFlags{
+		needs_sync:       scan.needs_sync
+		has_sync:         scan.has_sync
+		needs_embed:      scan.needs_embed
+		has_embed_import: scan.has_embed_import
+		needs_closure:    scan.needs_closure
+		has_closure:      scan.has_closure
+		needs_debugger:   scan.needs_debugger
+		has_debugger:     scan.has_debugger
+		has_overflow:     scan.has_overflow
+	}
+}
+
+// add_flags sets what `flags` found too: the flags of a scan only turn true.
+fn (mut scan ImplicitImportScan) add_flags(flags ImplicitScanFlags) {
+	scan.needs_sync = scan.needs_sync || flags.needs_sync
+	scan.has_sync = scan.has_sync || flags.has_sync
+	scan.needs_embed = scan.needs_embed || flags.needs_embed
+	scan.has_embed_import = scan.has_embed_import || flags.has_embed_import
+	scan.needs_closure = scan.needs_closure || flags.needs_closure
+	scan.has_closure = scan.has_closure || flags.has_closure
+	scan.needs_debugger = scan.needs_debugger || flags.needs_debugger
+	scan.has_debugger = scan.has_debugger || flags.has_debugger
+	scan.has_overflow = scan.has_overflow || flags.has_overflow
+}
+
+// PreparedScan is the implicit-import scan of the modules a diagnostics server
+// prepared, done once, as a check does it after a program that needs no closure
+// runtime yet: the flags after each module, the writes to the field index, and
+// every key read of it. A check replays it when the program's own code wrote
+// none of those keys, or needs the closure runtime already, when the scan reads
+// no index: nothing else of the program reaches that scan.
+struct PreparedScan {
+mut:
+	ready bool
+	after []ImplicitScanFlags
+	ops   []ImplicitIndexOp
+	reads map[string]bool
+}
+
+// prepare_region_scan scans `regions` of `a` for implicit imports with the field
+// index of builtin, as a check scans them after a program that needs nothing.
+fn prepare_region_scan(a &flat.FlatAst, regions []PreparedModule, builtin_index ImplicitFieldScanIndex) PreparedScan {
+	mut record := &ImplicitIndexRecord{
+		with_reads: true
+		with_ops:   true
+	}
+	mut scan := ImplicitImportScan{
+		field_index: builtin_index.clone()
+	}
+	scan.field_index.record = record
+	mut prepared := PreparedScan{
+		ready: true
+	}
+	for region in regions {
+		scan.node_idx = region.start
+		scan.field_index_node_idx = region.start
+		scan_implicit_imports(a, region.end, mut scan)
+		prepared.after << scan.flags()
+	}
+	prepared.ops = record.ops
+	prepared.reads = record.reads.clone()
+	return prepared
+}
+
+// replay_conflict returns why a check whose scan is `scan` cannot replay this
+// one, or '': it can when its program wrote no key this one read, or needs the
+// closure runtime.
+fn (prepared &PreparedScan) replay_conflict(scan &ImplicitImportScan, regions int) string {
+	if !prepared.ready || prepared.after.len != regions {
+		return 'the server did not scan them'
+	}
+	if scan.needs_closure {
+		return ''
+	}
+	if isnil(scan.field_index.record) {
+		return 'the program was scanned without a record'
+	}
+	for key, _ in scan.field_index.record.writes {
+		if key in prepared.reads {
+			return 'the program writes `${key}`'
+		}
+	}
+	return ''
+}
+
 const closure_runtime_import_alias = '__v3_builtin_closure_runtime'
 
 // seed_implicit_imports adds the imports of the compiler-provided modules that the
@@ -17683,6 +17883,9 @@ fn seed_implicit_imports_from(mut a flat.FlatAst, scan_start int, builtin_field_
 		// modules prepared between the two: the server indexed builtin once.
 		scan.field_index = builtin_field_index.clone()
 		scan.field_index_node_idx = scan_start
+		// What the program writes to it decides whether a check can replay the
+		// scan of those modules (see PreparedScan).
+		scan.field_index.record = &ImplicitIndexRecord{}
 	}
 	scan_implicit_imports(a, a.nodes.len, mut scan)
 	if scan.needs_sync && !scan.has_sync {
@@ -18385,7 +18588,7 @@ fn implicit_known_field_selectors(a &flat.FlatAst, start int, end int, index Imp
 				if child.value in bindings {
 					ambiguous[child.value] = true
 				} else if child.typ.len > 0 {
-					bindings[child.value] = implicit_normalize_type(child.typ, index.aliases)
+					bindings[child.value] = implicit_normalize_type(child.typ, index)
 				}
 			} else {
 				body_roots << child_id
@@ -18443,7 +18646,7 @@ fn implicit_known_field_selectors(a &flat.FlatAst, start int, end int, index Imp
 					if typ == '' {
 						continue
 					}
-					normalized := implicit_normalize_type(typ, index.aliases)
+					normalized := implicit_normalize_type(typ, index)
 					if old := bindings[lhs.value] {
 						if old != normalized {
 							ambiguous[lhs.value] = true
@@ -18472,6 +18675,7 @@ fn implicit_known_field_selectors(a &flat.FlatAst, start int, end int, index Imp
 				continue
 			}
 			if base.kind == .ident {
+				index.read('e:', base.value)
 				if enum_fields := index.enum_fields[base.value] {
 					if selector.value in enum_fields {
 						selectors[int(selector_id)] = true
@@ -18479,6 +18683,7 @@ fn implicit_known_field_selectors(a &flat.FlatAst, start int, end int, index Imp
 				}
 				if !local_names[base.value] {
 					if file := a.source_files[selector.pos.id] {
+						index.read('i:', '${file.name}\n${base.value}')
 						if index.imports['${file.name}\n${base.value}'] {
 							selectors[int(selector_id)] = true
 						}
@@ -18498,11 +18703,21 @@ fn implicit_field_scan_index_append(a &flat.FlatAst, start int, end int, mut ind
 			.import_decl {
 				alias := if node.typ.len > 0 { node.typ } else { node.value.all_after_last('.') }
 				if file := a.source_files[node.pos.id] {
-					index.imports['${file.name}\n${alias}'] = true
+					key := '${file.name}\n${alias}'
+					index.write(ImplicitIndexOp{
+						kind: .import_alias
+						key:  key
+					})
+					index.imports[key] = true
 				}
 			}
 			.type_decl {
 				if node.value.len > 0 && node.typ.len > 0 {
+					index.write(ImplicitIndexOp{
+						kind:  .alias
+						key:   node.value
+						value: node.typ
+					})
 					index.aliases[node.value] = node.typ
 				}
 			}
@@ -18515,6 +18730,11 @@ fn implicit_field_scan_index_append(a &flat.FlatAst, start int, end int, mut ind
 					}
 				}
 				if declared.len > 0 {
+					index.write(ImplicitIndexOp{
+						kind:   .fields
+						key:    node.value
+						fields: declared.clone()
+					})
 					index.fields[node.value] = declared.move()
 				}
 			}
@@ -18527,6 +18747,11 @@ fn implicit_field_scan_index_append(a &flat.FlatAst, start int, end int, mut ind
 					}
 				}
 				if declared.len > 0 {
+					index.write(ImplicitIndexOp{
+						kind:        .enum_fields
+						key:         node.value
+						enum_fields: declared.clone()
+					})
 					index.enum_fields[node.value] = declared.move()
 				}
 			}
@@ -18534,6 +18759,11 @@ fn implicit_field_scan_index_append(a &flat.FlatAst, start int, end int, mut ind
 				if node.value.len == 0 || node.typ.len == 0 {
 					continue
 				}
+				index.write(ImplicitIndexOp{
+					kind:  .fn_return
+					key:   node.value
+					value: node.typ
+				})
 				if old := index.fn_returns[node.value] {
 					if old != node.typ {
 						index.fn_returns[node.value] = ''
@@ -18559,10 +18789,19 @@ fn implicit_field_scan_index_append(a &flat.FlatAst, start int, end int, mut ind
 			typ := if field.typ.len > 0 {
 				field.typ
 			} else {
-				implicit_expr_type(a, a.child(field, 0), index.globals, index, 0)
+				implicit_expr_type(a, a.child(field, 0), index.globals, ImplicitFieldScanIndex{
+					...index
+					bindings_are_globals: true
+				}, 0)
 			}
 			if typ.len > 0 {
-				index.globals[field.value] = implicit_normalize_type(typ, index.aliases)
+				global_type := implicit_normalize_type(typ, index)
+				index.write(ImplicitIndexOp{
+					kind:  .global
+					key:   field.value
+					value: global_type
+				})
+				index.globals[field.value] = global_type
 			}
 		}
 	}
@@ -18574,16 +18813,22 @@ fn implicit_expr_type(a &flat.FlatAst, id flat.NodeId, bindings map[string]strin
 	}
 	node := a.node(id)
 	if node.typ.len > 0 {
-		return implicit_normalize_type(node.typ, index.aliases)
+		return implicit_normalize_type(node.typ, index)
 	}
 	match node.kind {
 		.ident {
+			if index.bindings_are_globals {
+				index.read('g:', node.value)
+			}
 			if typ := bindings[node.value] {
 				return typ
 			}
+			index.read('g:', node.value)
 			if typ := index.globals[node.value] {
 				return typ
 			}
+			index.read('f:', node.value)
+			index.read('e:', node.value)
 			if node.value in index.fields || node.value in index.enum_fields {
 				return node.value
 			}
@@ -18618,7 +18863,7 @@ fn implicit_expr_type(a &flat.FlatAst, id flat.NodeId, bindings map[string]strin
 			return if node.typ.len > 0 { node.typ } else { 'map[void]void' }
 		}
 		.struct_init {
-			return implicit_normalize_type(node.value, index.aliases)
+			return implicit_normalize_type(node.value, index)
 		}
 		.paren, .expr_stmt, .postfix {
 			if node.children_count == 1 {
@@ -18643,7 +18888,7 @@ fn implicit_expr_type(a &flat.FlatAst, id flat.NodeId, bindings map[string]strin
 				}
 				if typ == '' {
 					typ = branch_type
-				} else if implicit_normalize_type(typ, index.aliases) != implicit_normalize_type(branch_type, index.aliases) {
+				} else if implicit_normalize_type(typ, index) != implicit_normalize_type(branch_type, index) {
 					return ''
 				}
 			}
@@ -18660,7 +18905,7 @@ fn implicit_expr_type(a &flat.FlatAst, id flat.NodeId, bindings map[string]strin
 		}
 		.index {
 			if node.children_count > 0 {
-				base_type := implicit_normalize_type(implicit_expr_type(a, a.child(node, 0), bindings, index, depth + 1), index.aliases)
+				base_type := implicit_normalize_type(implicit_expr_type(a, a.child(node, 0), bindings, index, depth + 1), index)
 				if base_type.starts_with('[]') {
 					return base_type[2..]
 				}
@@ -18677,10 +18922,10 @@ fn implicit_expr_type(a &flat.FlatAst, id flat.NodeId, bindings map[string]strin
 		}
 		.cast_expr, .as_expr {
 			if node.typ.len > 0 {
-				return implicit_normalize_type(node.typ, index.aliases)
+				return implicit_normalize_type(node.typ, index)
 			}
 			if node.value.len > 0 {
-				return implicit_normalize_type(node.value, index.aliases)
+				return implicit_normalize_type(node.value, index)
 			}
 		}
 		else {}
@@ -18695,8 +18940,9 @@ fn implicit_call_return_type(a &flat.FlatAst, call &flat.Node, bindings map[stri
 	}
 	callee := a.child_node(call, 0)
 	if callee.kind == .ident {
+		index.read('r:', callee.value)
 		if typ := index.fn_returns[callee.value] {
-			return implicit_normalize_type(typ, index.aliases)
+			return implicit_normalize_type(typ, index)
 		}
 		return ''
 	}
@@ -18704,7 +18950,7 @@ fn implicit_call_return_type(a &flat.FlatAst, call &flat.Node, bindings map[stri
 		return ''
 	}
 	base_id := a.child(callee, 0)
-	base_type := implicit_normalize_type(implicit_expr_type(a, base_id, bindings, index, depth + 1), index.aliases)
+	base_type := implicit_normalize_type(implicit_expr_type(a, base_id, bindings, index, depth + 1), index)
 	if base_type == 'string' {
 		if callee.value == 'runes' {
 			return '[]rune'
@@ -18715,8 +18961,9 @@ fn implicit_call_return_type(a &flat.FlatAst, call &flat.Node, bindings map[stri
 	}
 	if base_type.len > 0 {
 		for key in ['${base_type}.${callee.value}', '${base_type.all_after_last('.')}.${callee.value}'] {
+			index.read('r:', key)
 			if typ := index.fn_returns[key] {
-				return implicit_normalize_type(typ, index.aliases)
+				return implicit_normalize_type(typ, index)
 			}
 		}
 	}
@@ -18728,7 +18975,7 @@ fn implicit_type_has_field(raw_type string, field string, index ImplicitFieldSca
 }
 
 fn implicit_field_type(raw_type string, field string, index ImplicitFieldScanIndex) string {
-	typ := implicit_normalize_type(raw_type, index.aliases)
+	typ := implicit_normalize_type(raw_type, index)
 	if typ == '' {
 		return ''
 	}
@@ -18753,15 +19000,16 @@ fn implicit_field_type(raw_type string, field string, index ImplicitFieldScanInd
 			else { '' }
 		}
 	}
+	index.read('f:', typ)
 	if declared := index.fields[typ] {
 		if field_type := declared[field] {
-			return implicit_normalize_type(field_type, index.aliases)
+			return implicit_normalize_type(field_type, index)
 		}
 	}
 	return ''
 }
 
-fn implicit_normalize_type(raw string, aliases map[string]string) string {
+fn implicit_normalize_type(raw string, index ImplicitFieldScanIndex) string {
 	mut typ := raw.trim_space()
 	for _ in 0 .. 12 {
 		mut changed := false
@@ -18771,7 +19019,8 @@ fn implicit_normalize_type(raw string, aliases map[string]string) string {
 				changed = true
 			}
 		}
-		if target := aliases[typ] {
+		index.read('a:', typ)
+		if target := index.aliases[typ] {
 			typ = target.trim_space()
 			changed = true
 		}
@@ -19060,6 +19309,8 @@ mut:
 	// The field index of the implicit-import scan over builtin, which the scan
 	// of the user's code starts from.
 	builtin_field_index ImplicitFieldScanIndex
+	// The implicit-import scan of the prepared modules, done once.
+	scan PreparedScan
 	// The project root the user's files give, which resolves module paths.
 	project_root string
 	// The prepared modules, in the order they were parsed.
@@ -19807,15 +20058,35 @@ fn resolve_imports(mut a flat.FlatAst, mut p parser.Parser, prefs &pref.Preferen
 	if prepared.ready {
 		// The prepared modules come before the user's code, where a one-shot
 		// check parses them after it. Scan them as it does: after the user's
-		// code, one module after another, each with the imports it needs.
+		// code, one module after another, each with the imports it needs. The
+		// server scanned them once already, and that scan holds for a program
+		// that changes nothing it read (see PreparedScan).
 		scan_end := implicit_imports.node_idx
 		mut insertions := []SyntheticInsertion{}
-		for region in prepared.regions {
-			implicit_imports.node_idx = region.start
-			implicit_imports.field_index_node_idx = region.start
-			scan_implicit_imports(a, region.end, mut implicit_imports)
-			insertions << synthetic.insertions_at(implicit_imports, region.end, skip_closure_runtime)
+		conflict := prepared.scan.replay_conflict(implicit_imports, prepared.regions.len)
+		if conflict == '' {
+			trace_diagnostics_server('replaying the scan of the prepared modules')
+			incoming := implicit_imports.flags()
+			for i, region in prepared.regions {
+				implicit_imports.add_flags(prepared.scan.after[i])
+				insertions << synthetic.insertions_at(implicit_imports, region.end, skip_closure_runtime)
+			}
+			if !incoming.needs_closure {
+				for op in prepared.scan.ops {
+					implicit_imports.field_index.apply(op)
+				}
+			}
+		} else {
+			trace_diagnostics_server('scanning the prepared modules anew: ${conflict}')
+			implicit_imports.field_index.record = unsafe { nil }
+			for region in prepared.regions {
+				implicit_imports.node_idx = region.start
+				implicit_imports.field_index_node_idx = region.start
+				scan_implicit_imports(a, region.end, mut implicit_imports)
+				insertions << synthetic.insertions_at(implicit_imports, region.end, skip_closure_runtime)
+			}
 		}
+		implicit_imports.field_index.record = unsafe { nil }
 		implicit_imports.node_idx = scan_end
 		implicit_imports.field_index_node_idx = scan_end
 		// An import spliced into the prepared modules moves their nodes: the
