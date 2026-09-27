@@ -2095,7 +2095,7 @@ fn test_bare_keyword_module_names_resolve_without_escapes() {
 	}
 	main_file := os.join_path(root, 'main.v')
 	os.write_file(main_file,
-		'module main\nimport if as conditionals\nimport type\nfn main() { println(type.value() + conditionals.value()) }\n') or {
+		'module main\nimport if as conditionals\nimport type\nconst copied = type.value()\nfn main() { println(copied + conditionals.value()) }\n') or {
 		panic(err)
 	}
 	os.write_file(os.join_path(root, 'type', 'type.v'),

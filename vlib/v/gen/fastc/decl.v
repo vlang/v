@@ -27,6 +27,10 @@ fn collect_declared_types(source string, path string, module_name string, prefs 
 	mut declaration_has_block := false
 	mut tok := scan.scan()
 	for tok != .eof {
+		if brace_depth == 0 && fastc_keyword_is_qualifier(tok, scan) {
+			tok = scan.scan()
+			continue
+		}
 		if brace_depth == 0 && tok in [.key_module, .key_import] {
 			tok = fastc_skip_module_or_import(mut scan, tok, path)!
 			previous_tok = .unknown
@@ -198,6 +202,10 @@ fn collect_constant_names(source string, path string, module_name string, prefs 
 	mut skip_index := 0
 	mut tok := scan.scan()
 	for tok != .eof {
+		if brace_depth == 0 && fastc_keyword_is_qualifier(tok, scan) {
+			tok = scan.scan()
+			continue
+		}
 		if brace_depth == 0 && tok in [.key_module, .key_import] {
 			tok = fastc_skip_module_or_import(mut scan, tok, path)!
 			previous_tok = .unknown
@@ -374,6 +382,10 @@ fn collect_global_names(source string, path string, header FastcSourceHeader, pr
 	mut skip_index := 0
 	mut tok := scan.scan()
 	for tok != .eof {
+		if depth == 0 && fastc_keyword_is_qualifier(tok, scan) {
+			tok = scan.scan()
+			continue
+		}
 		if depth == 0 && tok in [.key_module, .key_import] {
 			tok = fastc_skip_module_or_import(mut scan, tok, path)!
 			continue
@@ -1939,6 +1951,10 @@ fn fastc_emit_source_type_declarations(source_file FastcSourceFile, prefs &pref.
 	mut next_type_is_enabled := true
 	mut tok := scan.scan()
 	for tok != .eof {
+		if depth == 0 && fastc_keyword_is_qualifier(tok, scan) {
+			tok = scan.scan()
+			continue
+		}
 		if depth == 0 && tok in [.key_module, .key_import] {
 			tok = fastc_skip_module_or_import(mut scan, tok, source_file.path)!
 			continue

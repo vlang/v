@@ -1423,6 +1423,10 @@ fn fastc_scan_source_header(source string, path string, prefs &pref.Preferences)
 	mut brace_depth := 0
 	mut tok := scan.scan()
 	for tok != .eof {
+		if brace_depth == 0 && fastc_keyword_is_qualifier(tok, scan) {
+			tok = scan.scan()
+			continue
+		}
 		if module_name == '' && tok == .attribute {
 			mut attribute_depth := 1
 			tok = scan.scan()
@@ -1880,6 +1884,15 @@ fn fastc_skip_module_or_import(mut scan scanner.Scanner, declaration token.Token
 	}
 	_, _, _, next := fastc_scan_import(mut scan, first, path)!
 	return next
+}
+
+// A keyword followed by `.` is a module qualifier, not a declaration keyword.
+fn fastc_keyword_is_qualifier(tok token.Token, scan scanner.Scanner) bool {
+	if !tok.is_keyword() {
+		return false
+	}
+	mut lookahead := scan
+	return lookahead.scan() == .dot
 }
 
 fn fastc_scan_import(mut scan scanner.Scanner, first token.Token, path string) !(string, string, []string, token.Token) {
