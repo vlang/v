@@ -74,11 +74,10 @@ fn check_duplicate_fn_source(sources []string, mode DuplicateFnCheckMode, paddin
 		else {
 			want_parallel := mode in [.parallel, .scoped_parallel]
 			was_parallel := tc.check_semantics_opt(want_parallel)
-			$if windows {
-				assert !was_parallel
-			} $else {
-				assert was_parallel == (want_parallel && padding >= min_parallel_check_items)
-			}
+			// Parallel checking used to abort under Boehm GC's interior-pointer scanning
+			// on Windows; fixed in feaac2e (fix #28896), so it now behaves like every
+			// other OS instead of being forced serial here.
+			assert was_parallel == (want_parallel && padding >= min_parallel_check_items)
 		}
 	}
 	return tc.errors.clone()

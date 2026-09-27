@@ -668,7 +668,10 @@ fn v1_fallback_exit_identifies_compiler_failure(args []string) bool {
 			return skip_running
 		}
 		if !arg.starts_with('-') {
-			is_test := pref.is_test_file_for_backend(arg, backend) || arg.ends_with('_test.vv')
+			// The compatibility compiler runs JavaScript tests even though V3's
+			// test discovery disables them until its JavaScript backend is available.
+			is_test := pref.is_test_file_for_backend(arg, backend)
+				|| (backend == 'js' && arg.ends_with('_test.js.v')) || arg.ends_with('_test.vv')
 			if is_test {
 				direct_test = true
 				continue

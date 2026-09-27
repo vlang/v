@@ -24,6 +24,8 @@ jobs:
       - name: Build V
         id: build
         run: make -j4
+      - name: Check native compiler flag routing
+        run: ./v -new-compiler vlib/v/driver/c_link_input_flags_test.v
       - name: Check cached header declaration semantics
         run: ./v -new-compiler vlib/v/types/cached_header_semantics_test.v
       - name: Check transformed map key callbacks
