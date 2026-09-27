@@ -2004,7 +2004,7 @@ fn (g &FlatGen) current_module_selector_const_name(base string, member string) ?
 		return none
 	}
 	mod := g.selector_base_module_for_member(base, member) or { return none }
-	if mod != g.tc.cur_module {
+	if mod != current {
 		return none
 	}
 	storage := g.const_storage_name(mod, member)
