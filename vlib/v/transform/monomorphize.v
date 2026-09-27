@@ -4171,6 +4171,12 @@ fn (mut t Transformer) generated_fn_body_call_names_filtered(root flat.NodeId, c
 	mut saved_vars := unsafe { t.var_types }
 	mut saved_var_indices := t.var_type_indices.move()
 	mut saved_mut_param_values := t.mut_param_values.move()
+	mut saved_fn_value_locals := t.fn_value_locals.move()
+	mut saved_fixed_array_param_values := t.fixed_array_param_values.move()
+	mut saved_interface_var_concrete_types := t.interface_var_concrete_types.move()
+	mut saved_addr_lvalue_pointer_locals := t.addr_lvalue_pointer_locals.move()
+	mut saved_orm_initialized_fields := t.orm_initialized_fields.move()
+	mut saved_sql_query_data_aliases := t.sql_query_data_aliases.move()
 	t.var_types = []VarTypeBinding{}
 	t.var_type_indices = map[string]int{}
 	t.mut_param_values = map[string]bool{}
@@ -4181,6 +4187,12 @@ fn (mut t Transformer) generated_fn_body_call_names_filtered(root flat.NodeId, c
 	t.var_types = unsafe { saved_vars }
 	t.var_type_indices = saved_var_indices.move()
 	t.mut_param_values = saved_mut_param_values.move()
+	t.fn_value_locals = saved_fn_value_locals.move()
+	t.fixed_array_param_values = saved_fixed_array_param_values.move()
+	t.interface_var_concrete_types = saved_interface_var_concrete_types.move()
+	t.addr_lvalue_pointer_locals = saved_addr_lvalue_pointer_locals.move()
+	t.orm_initialized_fields = saved_orm_initialized_fields.move()
+	t.sql_query_data_aliases = saved_sql_query_data_aliases.move()
 	if !isnil(t.var_type_cache) {
 		t.var_type_cache.clear()
 	}
