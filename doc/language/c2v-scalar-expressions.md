@@ -9,6 +9,8 @@ Translated scalar return statements also use C conversions, including float to
 integer and negative integer sentinels returned as unsigned values. Unary numeric
 and bitwise operations, and shifts, accept enum, character, and boolean operands
 through C's integral promotion rules.
+Mixed numeric arithmetic and conditional branches use C's usual arithmetic
+conversions when determining the expression type.
 
 Negative integer sentinels can be converted to unsigned destinations and compared
 using C's integer conversion rules. Function addresses supplied through `voidptr`

@@ -3154,14 +3154,65 @@ fn (tc &TypeChecker) if_expr_tail_type(id flat.NodeId) Type {
 
 fn (tc &TypeChecker) choose_translated_if_tail_type(id flat.NodeId, current Type, next Type) Type {
 	if tc.translated_numeric_expr_compatible(id, current, next) {
-		if unalias_type(current) == Type(bool_) && unalias_type(next) != Type(bool_) {
-			return next
-		}
-		if unalias_type(next) == Type(bool_) && unalias_type(current) != Type(bool_) {
-			return current
-		}
+		return translated_common_numeric_type(current, next)
 	}
 	return tc.choose_if_tail_type(current, next)
+}
+
+fn translated_promoted_numeric_type(typ Type) Type {
+	clean := unalias_type(typ)
+	if clean is Char || clean is Enum || clean == Type(bool_) {
+		return Type(int_)
+	}
+	if clean is Primitive && clean.props.has(.integer) && clean.size > 0 && clean.size < 32 {
+		return Type(int_)
+	}
+	return clean
+}
+
+fn translated_integer_bit_width(typ Type) int {
+	if typ is Primitive {
+		return if typ.size == 0 { 32 } else { int(typ.size) }
+	}
+	if typ is ISize || typ is USize {
+		return platform_int_bits()
+	}
+	return 32
+}
+
+fn translated_integer_is_unsigned(typ Type) bool {
+	if typ is Primitive {
+		return typ.props.has(.unsigned)
+	}
+	return typ is USize
+}
+
+fn translated_common_numeric_type(lhs Type, rhs Type) Type {
+	left := translated_promoted_numeric_type(lhs)
+	right := translated_promoted_numeric_type(rhs)
+	if left.is_float() || right.is_float() {
+		if left.is_float() && !type_is_f32(left) {
+			return Type(f64_)
+		}
+		if right.is_float() && !type_is_f32(right) {
+			return Type(f64_)
+		}
+		return Type(f32_)
+	}
+	left_bits := translated_integer_bit_width(left)
+	right_bits := translated_integer_bit_width(right)
+	left_unsigned := translated_integer_is_unsigned(left)
+	right_unsigned := translated_integer_is_unsigned(right)
+	if left_bits > right_bits {
+		return left
+	}
+	if right_bits > left_bits {
+		return right
+	}
+	if left_unsigned != right_unsigned {
+		return if left_unsigned { left } else { right }
+	}
+	return left
 }
 
 // match_expr_tail_type supports match expression value type handling for TypeChecker.
@@ -16690,6 +16741,11 @@ fn (tc &TypeChecker) resolve_type_uncached(id flat.NodeId) Type {
 				}
 				return lt_raw
 			}
+			if tc.node_is_in_translated_file(id) && translated_numeric_type(lt)
+				&& translated_numeric_type(rt)
+				&& node.op in [.plus, .minus, .mul, .div, .mod, .amp, .pipe, .xor] {
+				return translated_common_numeric_type(lt, rt)
+			}
 			if node.op == .plus {
 				if lt is String && optional_payload_is_string(rt) {
 					return rt_raw
@@ -16735,6 +16791,14 @@ fn (tc &TypeChecker) resolve_type_uncached(id flat.NodeId) Type {
 					return Type(Pointer{
 						base_type: inner
 					})
+				}
+			}
+			if node.children_count > 0 && tc.node_is_in_translated_file(id)
+				&& node.op in [.plus, .minus, .bit_not] {
+				child_type := tc.resolve_type(tc.a.child(&node, 0))
+				if (node.op == .bit_not && translated_integer_type(child_type))
+					|| (node.op in [.plus, .minus] && translated_numeric_type(child_type)) {
+					return translated_promoted_numeric_type(child_type)
 				}
 			}
 			if node.typ.len > 0 {

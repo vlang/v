@@ -131,11 +131,24 @@ fn test_translated_scalar_return_conversions() {
 fn test_translated_unary_and_shift_integral_promotions() {
 	kind := TranslatedScalarKind.value
 	character := char(2)
+	negative_bool := -true
+	assert negative_bool == -1
+	assert typeof(negative_bool).name == 'int'
 	assert int(~kind) == -43
 	assert int(-kind) == -42
 	assert int(~character) == -3
 	assert int(-character) == -2
+	bool_sum := true + 2
+	assert bool_sum == 3
+	assert typeof(bool_sum).name == 'int'
 	assert int(kind << 1) == 84
 	assert int(character >> 1) == 1
 	assert int(1 << true) == 2
+}
+
+fn test_translated_conditional_uses_common_numeric_type() {
+	flag := false
+	value := if flag { 1 } else { 2.5 }
+	assert value == 2.5
+	assert typeof(value).name == 'f64'
 }

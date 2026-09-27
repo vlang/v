@@ -664,6 +664,17 @@ fn (t &Transformer) if_expr_result_type(id flat.NodeId, node flat.Node) string {
 		}
 	}
 	branch_typ := t.if_expr_branch_result_type(node)
+	if !isnil(t.tc) {
+		if file := t.a.source_files[node.pos.id] {
+			if t.tc.translated_files[file.name] {
+				resolved := t.normalize_type_alias(t.tc.resolve_type(id).name())
+				if t.translated_if_numeric_type(branch_typ)
+					&& t.translated_if_numeric_type(resolved) {
+					return resolved
+				}
+			}
+		}
+	}
 	if branch_typ in ['', 'unknown'] && checked_typ in ['', 'unknown']
 		&& node_typ in ['', 'unknown'] && t.if_expr_has_c_macro_values(node) {
 		return 'int'
