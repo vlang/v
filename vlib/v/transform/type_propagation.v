@@ -1403,6 +1403,7 @@ fn (t &Transformer) normalize_type_alias_uncached(typ string) string {
 
 fn (mut t Transformer) build_type_alias_suffix_index() {
 	t.type_alias_suffixes = map[string]string{}
+	mut by_short := map[string][]TypeAliasEntry{}
 	for name, target in t.tc.type_aliases {
 		short := if name.contains('.') { name.all_after_last('.') } else { name }
 		if existing := t.type_alias_suffixes[short] {
@@ -1412,7 +1413,50 @@ fn (mut t Transformer) build_type_alias_suffix_index() {
 		} else {
 			t.type_alias_suffixes[short] = target
 		}
+		by_short[short] << TypeAliasEntry{
+			name:   name
+			target: target
+		}
 	}
+	t.type_alias_short_index = &TypeAliasShortIndex{
+		alias_count: t.tc.type_aliases.len
+		by_short:    by_short
+	}
+}
+
+// TypeAliasEntry is one `name -> target` pair of the checker's type aliases.
+struct TypeAliasEntry {
+	name   string
+	target string
+}
+
+// TypeAliasShortIndex groups the checker's type aliases by short name (the text
+// after the last `.`), keeping `tc.type_aliases` order within each group. The
+// alias map is complete before transform starts, so the index is built once and
+// shared read-only with worker forks.
+struct TypeAliasShortIndex {
+	alias_count int
+	by_short    map[string][]TypeAliasEntry
+}
+
+// type_aliases_with_short_name returns the aliases whose short name is `short`,
+// in `tc.type_aliases` order. It scans the alias map only when the index is
+// missing or stale.
+fn (t &Transformer) type_aliases_with_short_name(short string) []TypeAliasEntry {
+	if !isnil(t.type_alias_short_index)
+		&& t.type_alias_short_index.alias_count == t.tc.type_aliases.len {
+		return t.type_alias_short_index.by_short[short] or { []TypeAliasEntry{} }
+	}
+	mut entries := []TypeAliasEntry{}
+	for name, target in t.tc.type_aliases {
+		if short_name_view(name) == short {
+			entries << TypeAliasEntry{
+				name:   name
+				target: target
+			}
+		}
+	}
+	return entries
 }
 
 fn (t &Transformer) expand_generic_type_alias(typ string) ?string {

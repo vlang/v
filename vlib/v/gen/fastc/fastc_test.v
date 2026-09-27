@@ -2077,6 +2077,58 @@ fn test_colliding_import_aliases_are_rejected() {
 	}
 }
 
+fn test_bare_keyword_module_names_resolve_without_escapes() {
+	mut prefs := pref.new_preferences()
+	header := fastc_scan_source_header('module type\nimport type.bar\nimport foo.type\n',
+		'bare_keyword_imports.v', prefs) or { panic(err) }
+	assert header.module_name == 'type'
+	assert header.import_order == ['type.bar', 'foo.type']
+	assert header.imports['bar'] == 'type.bar'
+	assert header.imports['type'] == 'foo.type'
+
+	root := os.join_path(os.vtmp_dir(), 'v3_fastc_bare_keyword_module_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(os.join_path(root, 'type')) or { panic(err) }
+	os.mkdir_all(os.join_path(root, 'if')) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	main_file := os.join_path(root, 'main.v')
+	os.write_file(main_file,
+		'module main\nimport if as conditionals\nimport type\nconst copied = type.value()\nfn main() { println(copied + conditionals.value()) }\n') or {
+		panic(err)
+	}
+	os.write_file(os.join_path(root, 'type', 'type.v'),
+		'module type\npub fn value() int { return 40 }\n') or { panic(err) }
+	os.write_file(os.join_path(root, 'if', 'if.v'),
+		'module if\npub fn value() int { return 2 }\n') or { panic(err) }
+	prefs.module_search_paths = [root]
+	c_source := generate_files([main_file], prefs) or { panic(err) }
+	assert c_source.contains('type__value()'), c_source
+	c_file := os.join_path(root, 'program.c')
+	bin_file := os.join_path(root, 'program')
+	os.write_file(c_file, c_source) or { panic(err) }
+	tcc := os.join_path(prefs.vroot, 'thirdparty', 'tcc', 'tcc.exe')
+	compile_result := cmdexec.run(tcc, ['-std=gnu11', '-o', bin_file, c_file])
+	assert compile_result.exit_code == 0, compile_result.output
+	run_result := cmdexec.run(bin_file, [])
+	assert run_result.exit_code == 0, run_result.output
+	assert run_result.output.trim_space() == '42'
+}
+
+fn test_module_paths_reject_at_escapes() {
+	prefs := pref.new_preferences()
+	for source in ['module @foo\n', 'module @type\n', 'module main\nimport @foo as foo\n',
+		'module main\nimport pkg.@FN\n'] {
+		mut message := ''
+		_ := fastc_scan_source_header(source, 'invalid_module_path.v', prefs) or {
+			message = err.msg()
+			FastcSourceHeader{}
+		}
+		assert message != '', 'FastC accepted `${source}`'
+	}
+}
+
 fn test_generate_files_resolves_modules_without_an_ast() {
 	root := os.join_path(os.vtmp_dir(), 'v3_fastc_modules_${os.getpid()}')
 	os.rmdir_all(root) or {}

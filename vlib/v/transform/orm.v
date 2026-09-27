@@ -698,8 +698,95 @@ fn (mut t Transformer) sql_type_name_expr(name string) flat.NodeId {
 	return t.sql_qualified_selector(name)
 }
 
+// SQL keeps value expressions as tokens, outside ordinary identifier substitution.
+fn (mut t Transformer) bind_sql_array_it(lambda_param string, elem_name string) string {
+	saved := t.sql_array_it_name
+	if lambda_param.len == 0 {
+		t.sql_array_it_name = elem_name
+	} else if lambda_param == 'it' {
+		t.sql_array_it_name = ''
+	}
+	return saved
+}
+
+fn (t &Transformer) sql_bound_value_name(name string) string {
+	if t.sql_array_it_name.len > 0 && (name == 'it' || name.starts_with('it.')) {
+		return t.sql_array_it_name + name[2..]
+	}
+	return name
+}
+
+fn (t &Transformer) sql_bound_interpolation_text(value string) string {
+	if t.sql_array_it_name.len == 0 {
+		return value
+	}
+	mut result := ''
+	mut start := 0
+	mut i := 0
+	for i < value.len - 1 {
+		if value[i] != `$` || value[i + 1] != `{`
+			|| nested_interp_start_is_escaped(value, i) {
+			i++
+			continue
+		}
+		end := nested_interp_closing_brace(value, i + 2) or { return value }
+		inner := value[i + 2..end]
+		bound_inner := sql_replace_interpolation_it(inner, t.sql_array_it_name)
+		if bound_inner != inner {
+			result += value[start..i] + '$' + '{' + bound_inner + '}'
+			start = end + 1
+		}
+		i = end + 1
+	}
+	return result + value[start..]
+}
+
+fn sql_replace_interpolation_it(inner string, bound_name string) string {
+	mut result := ''
+	mut i := 0
+	mut quote := u8(0)
+	for i < inner.len {
+		ch := inner[i]
+		if quote != 0 {
+			if ch == `\\` && i + 1 < inner.len {
+				result += inner[i..i + 2]
+				i += 2
+				continue
+			}
+			if ch == quote {
+				quote = 0
+			}
+			result += inner[i..i + 1]
+			i++
+			continue
+		}
+		if ch == `'` || ch == `"` || ch == `\`` {
+			quote = ch
+			result += inner[i..i + 1]
+			i++
+			continue
+		}
+		if ch.is_letter() || ch == `_` {
+			mut end := i + 1
+			for end < inner.len && (inner[end].is_alnum() || inner[end] == `_`) {
+				end++
+			}
+			if inner[i..end] == 'it' && (i == 0 || inner[i - 1] != `.`) {
+				result += bound_name
+			} else {
+				result += inner[i..end]
+			}
+			i = end
+			continue
+		}
+		result += inner[i..i + 1]
+		i++
+	}
+	return result
+}
+
 fn (mut t Transformer) sql_value_name_expr(name string) flat.NodeId {
-	return t.sql_qualified_selector(name)
+	return t.sql_qualified_selector(t.sql_bound_value_name(name))
 }
 
 fn (mut t Transformer) sql_string_array(values []string) flat.NodeId {
@@ -989,7 +1076,7 @@ fn (t &Transformer) sql_dynamic_value_type(tokens []string) string {
 	if clean.len != 1 {
 		return ''
 	}
-	token := clean[0]
+	token := t.sql_bound_value_name(clean[0])
 	if token.contains('.') {
 		root := token.all_before('.')
 		field_name := token.all_after('.')
@@ -1453,7 +1540,7 @@ fn (mut t Transformer) sql_expr_from_token(token string) flat.NodeId {
 fn (mut t Transformer) sql_expr_from_token_for_type(token string, typ string) flat.NodeId {
 	if sql_token_is_quoted_string(token) {
 		value := sql_unquote_string_token(token)
-		if interp := t.simple_nested_string_interpolation(value) {
+		if interp := t.simple_nested_string_interpolation(t.sql_bound_interpolation_text(value)) {
 			return interp
 		}
 		return t.make_string_literal(value)
@@ -1524,13 +1611,14 @@ fn (mut t Transformer) sql_value_call_expr(callee_name string, args []string, ty
 }
 
 fn (mut t Transformer) sql_value_call_callee(callee_name string) flat.NodeId {
-	parts := callee_name.split('.')
+	bound_name := t.sql_bound_value_name(callee_name)
+	parts := bound_name.split('.')
 	if parts.len < 2 {
-		return t.make_ident(callee_name)
+		return t.make_ident(bound_name)
 	}
 	mut receiver_type := t.sql_root_value_type_name(parts[0])
 	if receiver_type.len == 0 {
-		return t.sql_qualified_selector(callee_name)
+		return t.sql_qualified_selector(bound_name)
 	}
 	mut receiver := t.make_ident(parts[0])
 	t.set_node_typ(int(receiver), receiver_type)
@@ -3324,17 +3412,18 @@ fn (t &Transformer) sql_selector_value_type_name(value_name string) string {
 }
 
 fn (t &Transformer) sql_root_value_type_name(value_name string) string {
-	if smartcast := t.find_smartcast(value_name) {
+	bound_name := t.sql_bound_value_name(value_name)
+	if smartcast := t.find_smartcast(bound_name) {
 		narrowed := t.smartcast_target_type(smartcast)
 		if narrowed.len > 0 {
 			return narrowed
 		}
 	}
-	mut typ := t.var_type(value_name)
+	mut typ := t.var_type(bound_name)
 	if typ.len == 0 && !isnil(t.tc) {
-		if current := t.tc.cur_scope.lookup(value_name) {
+		if current := t.tc.cur_scope.lookup(bound_name) {
 			typ = current.name()
-		} else if file := t.tc.file_scope.lookup(value_name) {
+		} else if file := t.tc.file_scope.lookup(bound_name) {
 			typ = file.name()
 		}
 	}
