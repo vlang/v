@@ -35,3 +35,17 @@ fn test_negative_mut_interface_condition_without_else() {
 	}
 	assert total == 5
 }
+
+fn first_id_after_guard(mut child Widget) int {
+	if mut child !is First {
+		return 0
+	}
+	return child.id
+}
+
+fn test_negative_mut_interface_guard_with_explicit_marker() {
+	mut first := Widget(First{ id: 7 })
+	mut second := Widget(Second{ id: 9 })
+	assert first_id_after_guard(mut first) == 7
+	assert first_id_after_guard(mut second) == 0
+}

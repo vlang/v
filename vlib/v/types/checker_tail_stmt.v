@@ -3051,7 +3051,8 @@ fn (tc &TypeChecker) is_expr_used_for_branch_smartcast(id flat.NodeId) bool {
 		if parent.kind == .if_expr {
 			if parent.children_count == 0 || tc.a.child(parent, 0) != current { return false }
 			if positive { return true }
-			return parent.children_count > 2 && tc.a.child_node(parent, 2).kind != .empty
+			return (parent.children_count > 2 && tc.a.child_node(parent, 2).kind != .empty)
+				|| (parent.children_count > 1 && tc.stmt_definitely_returns(tc.a.child(parent, 1)))
 		}
 		if parent.kind == .for_stmt {
 			return positive && parent.children_count > 1 && tc.a.child(parent, 1) == current
