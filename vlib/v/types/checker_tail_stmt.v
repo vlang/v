@@ -16352,6 +16352,9 @@ fn (tc &TypeChecker) resolve_type_uncached(id flat.NodeId) Type {
 			return unknown_type('unknown identifier `${node.value}`')
 		}
 		.call {
+			if type_name := tc.translated_named_cast_call_name(id, node) {
+				return tc.parse_type(type_name)
+			}
 			fn_node := tc.a.child_node(node_ref, 0)
 			if _ := tc.builtin_isreftype_call_arg(node) {
 				return Type(bool_)
@@ -16774,6 +16777,9 @@ fn (tc &TypeChecker) resolve_type_uncached(id flat.NodeId) Type {
 		}
 		.prefix {
 			if node.op == .amp && node.children_count > 0 {
+				if cast := tc.translated_pointer_cast_node(id, node) {
+					return tc.parse_type(cast.value)
+				}
 				child_id := tc.a.child(&node, 0)
 				if inner := tc.smartcast_type(child_id) {
 					return Type(Pointer{

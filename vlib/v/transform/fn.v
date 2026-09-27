@@ -12381,6 +12381,9 @@ fn (mut t Transformer) try_lower_builtin_call(_id flat.NodeId, node flat.Node) ?
 			return t.make_string_literal('<none>')
 		}
 	}
+	if named_cast := t.try_lower_resolved_named_cast_call(_id, node) {
+		return named_cast
+	}
 	if cast_call := t.try_lower_primitive_cast_call(node) {
 		return cast_call
 	}
@@ -12933,6 +12936,21 @@ fn (mut t Transformer) try_lower_generic_sum_constructor_call(node flat.Node) ?f
 		children_count: 1
 		typ:            target
 	})
+}
+
+fn (mut t Transformer) try_lower_resolved_named_cast_call(id flat.NodeId, node flat.Node) ?flat.NodeId {
+	if isnil(t.tc) || node.children_count != 2 {
+		return none
+	}
+	callee := t.a.child_node(&node, 0)
+	if callee.kind != .ident || t.var_type(callee.value).len > 0 {
+		return none
+	}
+	target := t.tc.resolved_call_name(id) or { return none }
+	if target !in t.tc.type_aliases && target !in t.tc.structs {
+		return none
+	}
+	return t.make_cast(target, t.transform_expr(t.a.child(&node, 1)), target)
 }
 
 fn (mut t Transformer) try_lower_generic_named_type_cast_call(node flat.Node) ?flat.NodeId {

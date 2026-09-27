@@ -3417,6 +3417,18 @@ fn (mut tc TypeChecker) call_callee_indexes_container(callee &flat.Node) bool {
 // check_call validates check call state for types.
 @[direct_array_access]
 fn (mut tc TypeChecker) check_call(id flat.NodeId, node flat.Node) {
+	if type_name := tc.translated_named_cast_call_name(id, node) {
+		tc.check_cast_expr(id, flat.Node{
+			...node
+			kind:           .cast_expr
+			value:          type_name
+			children_start: node.children_start + 1
+			children_count: 1
+		})
+		tc.remember_resolved_call(id, type_name)
+		tc.remember_expr_type(id, tc.parse_type(type_name))
+		return
+	}
 	if tc.valid_resolution_fast {
 		if tc.check_valid_call_preamble(id, node) {
 			return
@@ -4125,6 +4137,26 @@ fn (tc &TypeChecker) v_source_fn_has_body(name string) bool {
 		}
 	}
 	return false
+}
+
+// Lowercase C type names are parsed as calls. Resolve them after collecting
+// module declarations, so the type can live in another translated file.
+fn (tc &TypeChecker) translated_named_cast_call_name(id flat.NodeId, node flat.Node) ?string {
+	if node.children_count != 2 || !tc.node_is_in_translated_file(id) {
+		return none
+	}
+	callee := tc.a.child_node(&node, 0)
+	if callee.kind != .ident || tc.ident_resolves_to_value(callee.value) {
+		return none
+	}
+	qualified := tc.qualify_name(callee.value)
+	if callee.value in tc.fn_ret_types || qualified in tc.fn_ret_types {
+		return none
+	}
+	if qualified in tc.type_aliases || qualified in tc.structs {
+		return qualified
+	}
+	return none
 }
 
 fn (mut tc TypeChecker) check_c_alias_cast_call(id flat.NodeId, node flat.Node, callee flat.Node) bool {

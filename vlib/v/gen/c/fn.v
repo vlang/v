@@ -7708,11 +7708,13 @@ fn (mut g FlatGen) gen_call(id flat.NodeId, node flat.Node) {
 				fn_ident := g.a.nodes[int(fn_id)]
 				if fn_ident.kind == .ident {
 					qname := g.tc.qualify_name(fn_ident.value)
-					if fn_ident.value in g.tc.type_aliases || qname in g.tc.type_aliases
+					is_local_fn_value := g.current_param_type(fn_ident.value) != none
+						|| g.cur_scope_has_local_name(fn_ident.value)
+					if !is_local_fn_value && (fn_ident.value in g.tc.type_aliases || qname in g.tc.type_aliases
 						|| fn_ident.value in g.tc.structs || qname in g.tc.structs
 						|| fn_ident.value in g.tc.enum_names || qname in g.tc.enum_names
 						|| fn_ident.value in g.tc.sum_types || qname in g.tc.sum_types
-						|| fn_ident.value in g.tc.interface_names || qname in g.tc.interface_names {
+						|| fn_ident.value in g.tc.interface_names || qname in g.tc.interface_names) {
 						type_name := if fn_ident.value in g.tc.type_aliases
 							|| fn_ident.value in g.tc.structs || fn_ident.value in g.tc.enum_names
 							|| fn_ident.value in g.tc.sum_types
@@ -7746,8 +7748,6 @@ fn (mut g FlatGen) gen_call(id flat.NodeId, node flat.Node) {
 					looked_up := g.tc.cur_scope.lookup(fn_ident.value) or {
 						types.Type(types.void_)
 					}
-					is_local_fn_value := g.current_param_type(fn_ident.value) != none
-						|| g.cur_scope_has_local_name(fn_ident.value)
 					if !is_local_fn_value && fn_type_from(g.global_type_for_ident(fn_ident.value) or {
 						types.Type(types.void_)
 					}) != none {
