@@ -4837,6 +4837,11 @@ fn (t &Transformer) qualify_specialized_signature_type_text(typ string, decl Gen
 	if clean.starts_with('shared ') {
 		return 'shared ' + t.qualify_specialized_signature_type_text(clean[7..], decl)
 	}
+	for prefix in ['atomic ', 'chan ', 'thread '] {
+		if clean.starts_with(prefix) {
+			return prefix + t.qualify_specialized_signature_type_text(clean[prefix.len..], decl)
+		}
+	}
 	if clean.starts_with('[]') {
 		return '[]' + t.qualify_specialized_signature_type_text(clean[2..], decl)
 	}
