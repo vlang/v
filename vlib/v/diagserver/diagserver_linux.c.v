@@ -90,6 +90,12 @@ mut:
 // that checked the program, while its files hold (see diagnose_in_grandchild).
 // A client that asks both of each version of a program checks it once.
 //
+// The children of the last versions of the program stay, up to
+// V_DIAGNOSTICS_WARM_CHILDREN (3 by default): a child whose files changed waits
+// for them to hold what it read again, as when an edit is undone, and answers
+// then at once. Each request goes to the child that holds the version on disk,
+// which each of them looks for at once, and to a new child when none does.
+//
 // A request carries nothing else: the command line fixes the input, and with
 // it every setting the driver derived from the input before this point.
 // Between requests the client changes the files on disk, and it only shows the
@@ -119,11 +125,13 @@ pub fn serve() Request {
 	C.signal(C.SIGPIPE, C.SIG_IGN)
 	println('v-diagnostics-server: ready')
 	flush_stdout()
-	mut warm := Warm{}
+	// The children that stay, the one that answered last first.
+	mut warm := []Warm{}
+	warm_limit := warm_children_limit()
 	for {
 		line := os.get_raw_line()
 		if line == '' {
-			warm.stop()
+			stop_all(mut warm)
 			exit(0)
 		}
 		request := line.trim_space()
@@ -131,7 +139,7 @@ pub fn serve() Request {
 			continue
 		}
 		if request == 'quit' {
-			warm.stop()
+			stop_all(mut warm)
 			exit(0)
 		}
 		mut token := ''
@@ -147,14 +155,19 @@ pub fn serve() Request {
 			answered(2, '')
 			continue
 		}
-		if (question != '' || shared) && warm.pid > 0 {
-			if warm.accepts(if question != '' { question } else { check_question }) {
-				println('v-diagnostics-server: child ${warm.pid} ${token}')
+		if (question != '' || shared) && warm.len > 0 {
+			if i := holding_child(mut warm, if question != '' { question } else { check_question }) {
+				mut child := warm[i]
+				warm.delete(i)
+				println('v-diagnostics-server: child ${child.pid} ${token}')
 				flush_stdout()
-				answered(warm.answer(), token)
+				code := child.answer()
+				if child.pid > 0 {
+					warm.prepend(child)
+				}
+				answered(code, token)
 				continue
 			}
-			warm.stop()
 		}
 		// The child of a query reads its next questions from one pipe and tells
 		// the server on another that it answered.
@@ -169,7 +182,9 @@ pub fn serve() Request {
 			C.signal(C.SIGPIPE, C.SIG_DFL)
 			// Nobody reads what a child prints once the server is gone.
 			C.prctl(C.PR_SET_PDEATHSIG, voidptr(usize(C.SIGKILL)), 0, 0, 0)
-			warm.close_server_ends()
+			for mut other in warm {
+				other.close_server_ends()
+			}
 			os.chdir(work_dir) or {
 				eprintln('v-diagnostics-server: cannot enter ${work_dir}: ${err}')
 				exit(2)
@@ -202,7 +217,11 @@ pub fn serve() Request {
 			// again, or ends.
 			if code := child.read_first_report() {
 				if child.answers_again {
-					warm = child
+					warm.prepend(child)
+					for warm.len > warm_limit {
+						mut oldest := warm.pop()
+						oldest.stop()
+					}
 				} else {
 					child.stop()
 				}
@@ -378,37 +397,41 @@ pub fn (mut r Request) next_question(code int) ?string {
 	if r.current && r.digests.len > 0 && r.inputs.note_files(r.digests, mut r.buffer) {
 		r.digests = map[string]string{}
 	}
-	question := r.questions.read_line()?
-	if r.current && r.digests.len > 0 {
-		r.current = r.inputs.note_files(r.digests, mut r.buffer)
-		r.digests = map[string]string{}
-	}
-	// A child whose files held something else already answers no more, nor does
-	// one whose grandchild could not take the diagnostics, for a check.
-	if !r.current || (question == check_question && (!r.shared || r.diagnostics.failed)) {
-		os.fd_write(r.status_fd, 'stale\n')
-		return none
-	}
-	// The client may have written the input directory again, with the same
-	// files: the child enters it by name again, as a new child does, or it would
-	// read the relative paths of its next answer from the directory it replaced.
-	if r.work_dir != '' {
-		os.chdir(r.work_dir) or {
+	for {
+		question := r.questions.read_line()?
+		if r.current && r.digests.len > 0 {
+			r.current = r.inputs.note_files(r.digests, mut r.buffer)
+			r.digests = map[string]string{}
+		}
+		// A child whose files held something else already answers no more, nor
+		// does one whose grandchild could not take the diagnostics, for a check.
+		if !r.current || (question == check_question && (!r.shared || r.diagnostics.failed)) {
 			os.fd_write(r.status_fd, 'stale\n')
 			return none
 		}
+		// The client may have written the input directory again, with the same
+		// files: the child enters it by name again, as a new child does, or it
+		// would read the relative paths of its next answer from the directory it
+		// replaced. The child answers only from the program on disk: for another
+		// version of it, it waits for the next question, which may find its own.
+		if r.work_dir != '' {
+			os.chdir(r.work_dir) or {
+				os.fd_write(r.status_fd, 'other\n')
+				continue
+			}
+		}
+		if r.inputs.changed(mut r.buffer) {
+			os.fd_write(r.status_fd, 'other\n')
+			continue
+		}
+		// The server names the child that answers before its answer: it waits
+		// for `go`, or another child answers.
+		os.fd_write(r.status_fd, 'current\n')
+		if r.questions.read_line()? == 'go' {
+			return question
+		}
 	}
-	// The child answers only from the program on disk. The server names it
-	// before its answer: it waits for `go`.
-	if r.inputs.changed(mut r.buffer) {
-		os.fd_write(r.status_fd, 'stale\n')
-		return none
-	}
-	os.fd_write(r.status_fd, 'current\n')
-	if r.questions.read_line()? != 'go' {
-		return none
-	}
-	return question
+	return none
 }
 
 fn retire_growth_kb() i64 {
@@ -481,9 +504,9 @@ fn (mut c Channel) close_all() {
 	c.status_fd = -1
 }
 
-// Warm is the child that answered the last query, kept with the program it
-// checked. What it keeps is its own: the server, built without a garbage
-// collector and running for hours, allocates next to nothing for it.
+// Warm is a child that stays, with the program it checked. What it keeps is its
+// own: the server, built without a garbage collector and running for hours,
+// allocates next to nothing for it.
 struct Warm {
 mut:
 	pid           int = -1
@@ -498,9 +521,9 @@ fn (mut w Warm) read_first_report() ?int {
 	return w.answered(w.status.read_line()?)
 }
 
-// accepts sends the child `question` and reports whether it answers it: it is
-// still there, and every file its check read holds what it read.
-fn (mut w Warm) accepts(question string) bool {
+// offer sends the child `question`, which it answers if every file its check
+// read holds what it read (see holding_child). False when it ended.
+fn (mut w Warm) offer(question string) bool {
 	mut status := 0
 	if C.waitpid(w.pid, &status, C.WNOHANG) != 0 {
 		// It ended, or cannot be waited for.
@@ -509,7 +532,55 @@ fn (mut w Warm) accepts(question string) bool {
 		return false
 	}
 	write_line(w.questions_fd, question)
-	return (w.status.read_line() or { return false }) == 'current'
+	return true
+}
+
+// holding_child offers `question` to every child that stays, which each read
+// their files again at once, and returns the index of the first one that holds
+// the version of the program on disk. The others stay for their versions, but
+// those that ended, or that answer no more, which leave.
+fn holding_child(mut warm []Warm, question string) ?int {
+	mut offered := []bool{len: warm.len}
+	for i, mut child in warm {
+		offered[i] = child.offer(question)
+	}
+	mut holding := -1
+	mut leaving := []int{}
+	for i, mut child in warm {
+		reply := if offered[i] { child.status.read_line() or { '' } } else { '' }
+		if reply == 'current' && holding < 0 {
+			holding = i
+		} else if reply == 'current' {
+			// Two children of one version: the first answers.
+			write_line(child.questions_fd, 'no')
+		} else if reply != 'other' {
+			leaving << i
+		}
+	}
+	for j := leaving.len - 1; j >= 0; j-- {
+		i := leaving[j]
+		warm[i].stop()
+		warm.delete(i)
+		if holding > i {
+			holding--
+		}
+	}
+	return if holding >= 0 { holding } else { none }
+}
+
+// stop_all ends every child that stays.
+fn stop_all(mut warm []Warm) {
+	for mut child in warm {
+		child.stop()
+	}
+	warm.clear()
+}
+
+// warm_children_limit is how many children may stay: V_DIAGNOSTICS_WARM_CHILDREN,
+// or 3.
+fn warm_children_limit() int {
+	limit := os.getenv('V_DIAGNOSTICS_WARM_CHILDREN').int()
+	return if limit > 0 { limit } else { 3 }
 }
 
 // answer lets the child answer the question it accepted, and returns the exit

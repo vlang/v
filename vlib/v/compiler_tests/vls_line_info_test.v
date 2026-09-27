@@ -1757,3 +1757,88 @@ fn test_a_shared_server_child_made_for_a_question_answers_the_checks() {
 	p.wait()
 	assert p.code == 0
 }
+
+fn test_a_server_keeps_the_children_of_the_last_versions_of_a_program() {
+	$if !linux {
+		return
+	}
+	dir := os.join_path(work_dir, 'versions')
+	os.mkdir_all(dir)!
+	path := os.join_path(dir, 'main.v')
+	versions := [shared_program, shared_program.replace(" + 'a'", ''),
+		shared_program.replace('twice(3)', 'twice(4)')]
+	mut expected := []string{}
+	for version in versions {
+		os.write_file(path, version)!
+		expected << one_shot_check(dir)
+	}
+	mut p := start_server(dir, {
+		'V_DIAGNOSTICS_SHARED':        '1'
+		'V_DIAGNOSTICS_WARM_CHILDREN': '2'
+	})
+	defer {
+		p.close()
+	}
+	mut children := []int{}
+	for i in 0 .. 2 {
+		os.write_file(path, versions[i])!
+		child, checked := server_check(mut p, 'v${i}')
+		assert checked == expected[i]
+		children << child
+	}
+	assert children[0] != children[1]
+	// Back to the first version, as when an edit is undone: its child answers
+	// the check and the questions.
+	os.write_file(path, versions[0])!
+	back, checked := server_check(mut p, 'back')
+	assert back == children[0]
+	assert checked == expected[0]
+	asked, _ := query(mut p, 'q', 'main.v:10:hv^2')
+	assert asked == children[0]
+	// A third version gets a child of its own, and the child of the version
+	// asked about longest ago leaves: two stay at most.
+	os.write_file(path, versions[2])!
+	third, checked_third := server_check(mut p, 'v2')
+	assert third !in children
+	assert checked_third == expected[2]
+	for _ in 0 .. 200 {
+		if !os.exists('/proc/${children[1]}') {
+			break
+		}
+		time.sleep(10 * time.millisecond)
+	}
+	assert !os.exists('/proc/${children[1]}')
+	os.write_file(path, versions[1])!
+	again, checked_again := server_check(mut p, 'v1')
+	assert again !in [children[0], children[1], third]
+	assert checked_again == expected[1]
+	p.stdin_write('quit\n')
+	p.wait()
+	assert p.code == 0
+}
+
+fn test_the_child_of_a_question_answers_again_once_its_version_comes_back() {
+	$if !linux {
+		return
+	}
+	dir := os.join_path(work_dir, 'version_back')
+	os.mkdir_all(dir)!
+	path := os.join_path(dir, 'main.v')
+	os.write_file(path, program)!
+	mut p := start_server(dir, {})
+	defer {
+		p.close()
+	}
+	first, _ := query(mut p, 'a', 'main.v:42:gd^7')
+	os.write_file(path, '// One line more.\n' + program)!
+	second, moved := query(mut p, 'b', 'main.v:43:gd^7')
+	assert second != first
+	assert moved == './main.v:42:1'
+	os.write_file(path, program)!
+	back, answer := query(mut p, 'c', 'main.v:42:gd^7')
+	assert back == first
+	assert answer == './main.v:41:1'
+	p.stdin_write('quit\n')
+	p.wait()
+	assert p.code == 0
+}
