@@ -4165,6 +4165,7 @@ fn main() {
 #### Implement an interface
 
 A type implements an interface by implementing its methods and fields.
+An interface field's default value may be a pointer to a type that implements the interface.
 
 An interface can have a `mut:` section. Implementing types will need
 to have a `mut` receiver, for methods declared in the `mut:` section
