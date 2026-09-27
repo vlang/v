@@ -64,6 +64,9 @@ fn (t &Transformer) resolve_call_name(node flat.Node) string {
 			// Top-level script expressions may not have a recorded checker call.
 			if !isnil(t.tc) && t.a.has_vsh_source && t.cur_module == 'main'
 				&& t.cur_file.ends_with('.vsh') {
+				if t.tc.file_bare_fn_names['${node.pos.id}\x00${name}'] {
+					return name
+				}
 				for imported in t.tc.file_selective_imports[file_import_key(t.cur_file, name)] or {
 					[]string{}
 				} {

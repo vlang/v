@@ -81,6 +81,18 @@ println(free([2, 3])!.filter(it == "3"))
 	result := os.execute('${v3_bin} -gc none -silent ${script}')
 	assert result.exit_code == 0, result.output
 	assert result.output.split_into_lines() == ['from helper', 'custom', "['3']"], result.output
+	shadow_script := os.join_path(root, 'shadow_import.vsh')
+	os.write_file(shadow_script, 'import helper { ls }
+
+fn ls(path string) ![]string {
+	return ["local " + path]
+}
+
+println(ls("custom")!.join(","))
+') or { panic(err) }
+	shadow_result := os.execute('${v3_bin} -gc none -silent ${shadow_script}')
+	assert shadow_result.exit_code == 0, shadow_result.output
+	assert shadow_result.output.trim_space() == 'local custom', shadow_result.output
 }
 
 // Script mode is a last resort: a declaration in the script itself keeps its
