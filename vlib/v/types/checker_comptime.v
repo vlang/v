@@ -14638,7 +14638,7 @@ fn (mut tc TypeChecker) call_returned_alias_arguments(id flat.NodeId, mut visiti
 		if node.kind == .return_stmt {
 			for i in 0 .. node.children_count {
 				returned_id := tc.a.child(node, i)
-				sources << tc.returned_alias_arguments(returned_id, args_by_param, mut visiting)
+				sources << tc.returned_alias_arguments(returned_id, args_by_param, false, mut visiting)
 			}
 			continue
 		}
@@ -14653,7 +14653,7 @@ fn (mut tc TypeChecker) call_returned_alias_arguments(id flat.NodeId, mut visiti
 	return sources
 }
 
-fn (mut tc TypeChecker) returned_alias_arguments(id flat.NodeId, args_by_param map[string]flat.NodeId, mut visiting map[int]bool) []flat.NodeId {
+fn (mut tc TypeChecker) returned_alias_arguments(id flat.NodeId, args_by_param map[string]flat.NodeId, addressed bool, mut visiting map[int]bool) []flat.NodeId {
 	if !tc.valid_node_id(id) {
 		return []flat.NodeId{}
 	}
@@ -14661,14 +14661,20 @@ fn (mut tc TypeChecker) returned_alias_arguments(id flat.NodeId, args_by_param m
 	if node.kind == .ident && node.value in args_by_param {
 		return [args_by_param[node.value]]
 	}
+	// Returning a stored pointer does not borrow the containing struct's storage.
+	// Taking the field's address still aliases that storage.
+	if node.kind == .selector && !addressed && unalias_type(tc.resolve_type(id)) is Pointer {
+		return []flat.NodeId{}
+	}
 	if node.kind in [.index, .selector, .prefix, .paren, .cast_expr, .as_expr, .expr_stmt]
 		&& node.children_count > 0 {
-		return tc.returned_alias_arguments(tc.a.child(node, 0), args_by_param, mut visiting)
+		return tc.returned_alias_arguments(tc.a.child(node, 0), args_by_param,
+			addressed || (node.kind == .prefix && node.op == .amp), mut visiting)
 	}
 	if node.kind == .call {
 		mut sources := []flat.NodeId{}
 		for source_id in tc.call_returned_alias_arguments(id, mut visiting) {
-			sources << tc.returned_alias_arguments(source_id, args_by_param, mut visiting)
+			sources << tc.returned_alias_arguments(source_id, args_by_param, addressed, mut visiting)
 		}
 		return sources
 	}
