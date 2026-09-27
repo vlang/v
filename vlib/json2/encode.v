@@ -647,6 +647,12 @@ fn check_not_empty[T](val T) ?bool {
 			return sval != ''
 		}
 		return false
+	} $else $if val is ?bool {
+		opt := ?bool(val)
+		if bval := opt {
+			return bval
+		}
+		return false
 	} $else $if val is ?int {
 		opt := ?int(val)
 		if ival := opt {
@@ -669,6 +675,8 @@ fn check_not_empty[T](val T) ?bool {
 		return !struct_field_is_none(val)
 	} $else $if T.indirections != 0 {
 		return val != unsafe { nil }
+	} $else $if T.unaliased_typ is bool {
+		return bool(val)
 	} $else $if T.unaliased_typ is string {
 		if val == '' {
 			return false
