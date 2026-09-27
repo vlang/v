@@ -8854,7 +8854,18 @@ fn (mut g FlatGen) gen_assign(node flat.Node) {
 				continue
 			}
 			if rhs_node.kind == .array_literal {
-				lhs_type := types.unwrap_pointer(g.usable_expr_type(lhs_id))
+				lhs_raw_type := g.usable_expr_type(lhs_id)
+				lhs_type := types.unwrap_pointer(lhs_raw_type)
+				if node.op == .assign && lhs_raw_type.name() in ['voidptr', 'builtin.voidptr'] {
+					if rhs_fixed := array_fixed_type(g.usable_expr_type(rhs_id)) {
+						g.gen_expr(lhs_id)
+						g.write(' = ')
+						g.gen_fixed_array_data_arg(rhs_id, rhs_fixed)
+						g.writeln(';')
+						i += 2
+						continue
+					}
+				}
 				if lhs_type is types.ArrayFixed {
 					if g.gen_single_fixed_array_elem_assign_to_scalar_local(lhs, lhs_id, rhs_id, lhs_type) {
 						i += 2

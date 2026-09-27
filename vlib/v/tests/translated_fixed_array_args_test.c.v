@@ -18,6 +18,12 @@ fn test_translated_fixed_array_arguments() {
 	assert first_byte(chars) == 65
 }
 
+fn test_translated_fixed_array_voidptr_assignment() {
+	mut pointer := unsafe { voidptr(nil) }
+	pointer = [20, 22]!
+	assert unsafe { (&int(pointer))[0] } == 20
+}
+
 fn test_translated_fixed_array_comparisons() {
 	values := [char(3), char(5)]!
 	pointer := unsafe { &values[0] }

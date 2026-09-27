@@ -497,11 +497,7 @@ fn (g &FlatGen) array_init_field_value(node flat.Node, field_name string) ?flat.
 }
 
 fn (mut g FlatGen) gen_fixed_array_pointer_lvalue_arg(id flat.NodeId, expected types.Type) bool {
-	if _ := fixed_array_pointer_type(expected) {
-		// handled below
-	} else {
-		return false
-	}
+	expected_fixed := fixed_array_pointer_type(expected) or { return false }
 	if int(id) < 0 || int(id) >= g.a.nodes.len {
 		return false
 	}
@@ -515,9 +511,16 @@ fn (mut g FlatGen) gen_fixed_array_pointer_lvalue_arg(id flat.NodeId, expected t
 	if actual is types.Pointer {
 		return false
 	}
-	if _ := array_fixed_type(actual) {
+	if actual_fixed := array_fixed_type(actual) {
 		if !g.expr_is_addressable(id) {
 			return false
+		}
+		if inner_fixed := array_fixed_type(actual_fixed.elem_type) {
+			if g.fixed_array_len_value(inner_fixed) == g.fixed_array_len_value(expected_fixed)
+				&& cgen_types_equal_after_alias_erasure(inner_fixed.elem_type, expected_fixed.elem_type) {
+				g.gen_expr(id)
+				return true
+			}
 		}
 		g.write('&')
 		g.gen_expr(id)
