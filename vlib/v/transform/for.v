@@ -446,6 +446,7 @@ fn (mut t Transformer) rebuild_for_in_stmt(_id flat.NodeId, node flat.Node) []fl
 	container_id := t.a.child(&node, 2)
 	raw_iter_type := t.detect_for_in_type(node)
 	iter_type := t.normalize_type_alias(raw_iter_type)
+	iter_value_type := if iter_type.starts_with('&') { iter_type[1..] } else { iter_type }
 	map_iter_type := t.clean_map_type(iter_type)
 	container := t.a.nodes[int(container_id)]
 	container_is_pointer_storage := container.kind == .ident
@@ -532,7 +533,7 @@ fn (mut t Transformer) rebuild_for_in_stmt(_id flat.NodeId, node flat.Node) []fl
 			if key_name.len > 0 && bracket_end > 4 {
 				t.set_var_type(key_name, map_iter_type[4..bracket_end])
 			}
-		} else if iter_type.starts_with('[]') || iter_type == 'string' {
+		} else if iter_value_type.starts_with('[]') || iter_value_type == 'string' {
 			// []E: child0 (index) -> 'int'
 			if key_name.len > 0 {
 				t.set_var_type(key_name, 'int')
@@ -607,7 +608,7 @@ fn (mut t Transformer) rebuild_for_in_stmt(_id flat.NodeId, node flat.Node) []fl
 			}
 			binding_clones << t.make_for_in_binding_clone(value_name, binding_type)
 		}
-	} else if iter_type.starts_with('[]') || t.is_fixed_array_type(iter_type) {
+	} else if iter_value_type.starts_with('[]') || t.is_fixed_array_type(iter_value_type) {
 		value_name := if has_index {
 			if int(val_id) >= 0 { t.a.nodes[int(val_id)].value } else { '' }
 		} else {
@@ -638,7 +639,7 @@ fn (mut t Transformer) rebuild_for_in_stmt(_id flat.NodeId, node flat.Node) []fl
 	mut element_type_text := ''
 	if map_iter_type.starts_with('map[') {
 		element_type_text = t.map_value_type(map_iter_type)
-	} else if iter_type.starts_with('[]') || t.is_fixed_array_type(iter_type) {
+	} else if iter_value_type.starts_with('[]') || t.is_fixed_array_type(iter_value_type) {
 		element_type_text = t.infer_for_in_elem_type(iter_type, node)
 	}
 	normalized_element_type := t.normalize_type_alias(element_type_text)
