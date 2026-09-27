@@ -2,31 +2,120 @@ module types
 
 import v.flat
 
-// A check (`-check`) checks the body of a generic function as the body of any
-// other function: what does not depend on its type parameters is reported as
-// it is in a function without them, `asd` alone on a line, `takes_int('s')`,
-// `return 5` in a function that returns a string. What does depend on them is
-// left to the checks against their constraints (checker_generic_constraints.v)
-// and to the instances of the function: with its type parameters open the
-// checker does not type it, and what it would say there would not be about the
-// program.
+// A check and a build check the body of a generic function whose type
+// parameters all have a constraint as the body of any other function: with
+// each type parameter as a type that its constraint admits, the interface
+// itself, as any type that implements it, or each type of a set in turn. What
+// is wrong with one of them is wrong with the function: `e = x` for `x T` with
+// `T Number` and `e int`, as `f64` is not an `int`. The body of a generic
+// function with a type parameter without a constraint is left to its
+// instances, as before: V checks those.
 
 // check_generic_fn_body checks the body of the generic function `node`, whose
-// type parameters are `params`, and keeps the diagnostics of the statements
-// that do not depend on them. The body is checked by a fork of the checker, as
-// a worker of the parallel check with no range of its own: all it learns stays
-// in its private caches. With the type parameters open, `xs.map(it.name.len)`
-// of `xs []T` is a `[]void` to it, where the questions about the body infer a
-// `[]int`.
+// type parameters are `params`, when they all have a constraint. The body is
+// checked by forks of the checker, as workers of the parallel check with no
+// range of their own: all they learn stays in their private caches, and only
+// their errors come back. The checks against the constraints report what a
+// member or an operator of a type parameter does wrong
+// (checker_generic_constraints.v): a statement with one of those errors gets
+// no other.
 fn (mut tc TypeChecker) check_generic_fn_body(node flat.Node, fn_idx int, params map[string]bool) {
+	if params.len == 0 {
+		return
+	}
+	constraints := tc.generic_constraints_of(node)
+	for name, _ in params {
+		if name !in constraints {
+			return
+		}
+	}
+	// With its type parameters open, the checker says of a statement that does
+	// not depend on them what it says in every instance.
+	open := tc.check_generic_fn_body_as(node, fn_idx, map[string]string{})
+	dependent := tc.type_param_dependent_names(node, params)
+	mut statements := map[int]bool{}
+	for notice in open.notices {
+		if !tc.diagnostic_depends_on_type_params(notice.node, fn_idx, dependent, params, mut
+			statements)
+		{
+			tc.notices << notice
+		}
+	}
+	texts := tc.type_param_instance_texts(params, constraints) or {
+		// A constraint that names a type parameter, `[T Comparable[T]]`, gives
+		// no type to check the body with: its statements that do not depend on
+		// the type parameters are what can be told.
+		for open_error in open.errors {
+			if !tc.diagnostic_depends_on_type_params(open_error.node, fn_idx, dependent,
+				params, mut statements)
+			{
+				tc.errors << open_error
+			}
+		}
+		return
+	}
+	reported := tc.statements_with_errors(fn_idx)
+	mut independent := map[string]bool{}
+	for err in open.errors {
+		independent[type_error_key(err)] = true
+	}
+	mut positions := map[string]bool{}
+	for combination in type_param_combinations(texts, 32) {
+		instance := tc.check_generic_fn_body_as(node, fn_idx, combination)
+		for err in instance.errors {
+			statement := tc.enclosing_body_statement(err.node, fn_idx) or { continue }
+			if reported[int(statement)] {
+				continue
+			}
+			position := '${err.pos.id}:${err.pos.offset}:${err.pos.end}'
+			if position in positions {
+				continue
+			}
+			positions[position] = true
+			if type_error_key(err) in independent {
+				tc.errors << err
+			} else {
+				tc.errors << TypeError{
+					...err
+					msg: '${err.msg}: ${type_param_instance_reason(combination, constraints)}'
+				}
+			}
+		}
+	}
+}
+
+// GenericBodyDiagnostics are what a check of a generic body reports.
+struct GenericBodyDiagnostics {
+	errors  []TypeError
+	notices []TypeError
+}
+
+// check_generic_fn_body_as checks the body of the generic function `node` in a
+// fork of the checker, with each type parameter that `texts` names as the type
+// written there, or with its type parameters open when it names none.
+fn (tc &TypeChecker) check_generic_fn_body_as(node flat.Node, fn_idx int, texts map[string]string) GenericBodyDiagnostics {
 	mut w := tc.fork_for_parallel_check()
-	w.fn_context.generic_params = tc.fn_context.generic_params.clone()
-	w.fn_context.return_type = tc.fn_context.return_type
 	w.fn_context.node_id = fn_idx
 	w.fn_context.concrete_generic_receiver_specialization =
 		tc.fn_context.concrete_generic_receiver_specialization
-	w.cur_fn_ret_type = tc.cur_fn_ret_type
 	w.cur_fn_node_id = fn_idx
+	if texts.len > 0 {
+		// A function without type parameters, whose types name the ones given.
+		w.type_param_texts = texts.clone()
+		w.type_cache.parse_enabled = false
+		w.fn_context.generic_params = []string{}
+		return_text := if node.typ.ends_with('?') && !node.typ.starts_with('?') {
+			node.typ.trim_right('?')
+		} else {
+			node.typ
+		}
+		w.cur_fn_ret_type = w.parse_type(return_text)
+		w.fn_context.return_type = w.cur_fn_ret_type
+	} else {
+		w.fn_context.generic_params = tc.fn_context.generic_params.clone()
+		w.fn_context.return_type = tc.fn_context.return_type
+		w.cur_fn_ret_type = tc.cur_fn_ret_type
+	}
 	w.index_local_decl_rhs(flat.NodeId(fn_idx))
 	$if ownership ? {
 		w.ownership_begin_fn(node)
@@ -42,25 +131,182 @@ fn (mut tc TypeChecker) check_generic_fn_body(node flat.Node, fn_idx int, params
 	$if ownership ? {
 		w.ownership_end_fn()
 	}
-	if w.errors.len == 0 && w.notices.len == 0 {
-		return
+	return GenericBodyDiagnostics{
+		errors:  w.errors
+		notices: w.notices
 	}
-	dependent := tc.type_param_dependent_names(node, params)
+}
+
+// parse_type_as_instance parses `typ` in a fork that checks a generic body with
+// its type parameters as types that their constraints admit (see
+// check_generic_fn_body_as): each of them is its type there, and no parse comes
+// from the cache or goes to it, which holds the types of other functions.
+fn (tc &TypeChecker) parse_type_as_instance(typ string) Type {
+	mut names := []string{cap: tc.type_param_texts.len}
+	mut args := []string{cap: tc.type_param_texts.len}
+	mut name_set := map[string]bool{}
+	for name, text in tc.type_param_texts {
+		names << name
+		args << text
+		name_set[name] = true
+	}
+	text := if type_text_names_any(typ, name_set) {
+		subst_generic_text(typ, args, names)
+	} else {
+		typ
+	}
+	_, result := tc.intern_type(tc.parse_type_uncached(text))
+	return result
+}
+
+// instance_type_text is the type that `text` stands for in a `$if` of a generic
+// body checked with types for its type parameters (see check_generic_fn_body_as):
+// the type of a type parameter, and the type of a value that the `$if` tests,
+// `x` in `$if x is f64`, a parameter declared with a type parameter or a local.
+// Anything else is `text`.
+fn (tc &TypeChecker) instance_type_text(text string) string {
+	if tc.type_param_texts.len == 0 {
+		return text
+	}
+	if instance := tc.type_param_texts[text] {
+		return instance
+	}
+	fn_id := flat.NodeId(tc.fn_context.node_id)
+	if tc.valid_node_id(fn_id) {
+		if param := tc.fn_param_type_param(tc.a.node(fn_id), text, tc.type_param_texts.keys()) {
+			return tc.type_param_texts[param] or { text }
+		}
+	}
+	if typ := tc.cur_scope.lookup(text) {
+		if typ !is Unknown {
+			return typ.name()
+		}
+	}
+	return text
+}
+
+// type_param_instance_texts gives each type parameter of `params` the texts of
+// the types its constraint admits for a check of the body: the interface, or
+// the types of the set. None when a type there names a type parameter.
+fn (tc &TypeChecker) type_param_instance_texts(params map[string]bool, constraints map[string]GenericConstraint) ?map[string][]string {
+	mut texts := map[string][]string{}
+	for name, _ in params {
+		constraint := constraints[name] or { return none }
+		mut options := []string{}
+		if constraint.is_interface {
+			options << constraint.iface.name
+		} else {
+			for typ in constraint.types {
+				options << typ.name()
+			}
+		}
+		if options.len == 0 {
+			return none
+		}
+		for option in options {
+			if option.len == 0 || type_text_names_any(option, params) {
+				return none
+			}
+		}
+		texts[name] = options
+	}
+	return texts
+}
+
+// type_param_combinations gives each type parameter of `texts` one of its
+// types, in every combination, or, past `limit`, one type parameter at a time
+// through all of its types while the others keep their first.
+fn type_param_combinations(texts map[string][]string, limit int) []map[string]string {
+	mut combinations := [map[string]string{}]
+	mut count := 1
+	for _, options in texts {
+		count *= options.len
+	}
+	if count <= limit {
+		for name, options in texts {
+			mut next := []map[string]string{cap: combinations.len * options.len}
+			for combination in combinations {
+				for option in options {
+					mut with := combination.clone()
+					with[name] = option
+					next << with
+				}
+			}
+			combinations = next.clone()
+		}
+		return combinations
+	}
+	mut first := map[string]string{}
+	for name, options in texts {
+		first[name] = options[0]
+	}
+	combinations = [first]
+	for name, options in texts {
+		for option in options[1..] {
+			mut with := first.clone()
+			with[name] = option
+			combinations << with
+		}
+	}
+	return combinations
+}
+
+// type_param_instance_reason says why an error of a check with the types
+// `combination` is an error of the generic function: what each type parameter
+// can be.
+fn type_param_instance_reason(combination map[string]string, constraints map[string]GenericConstraint) string {
+	mut parts := []string{}
+	for name, text in combination {
+		constraint := constraints[name] or { continue }
+		if constraint.is_interface {
+			parts << '`${name}` is any type that implements `${constraint.name}`'
+		} else {
+			parts << 'when `${name}` is `${text.all_after_last('.')}`, in its constraint `${constraint.name}`'
+		}
+	}
+	return parts.join(', and ')
+}
+
+// type_error_key tells two errors apart by what they say and where.
+fn type_error_key(err TypeError) string {
+	return '${err.pos.id}:${err.pos.offset}:${err.pos.end}:${err.msg}'
+}
+
+// statements_with_errors returns the statements of the body of the function at
+// `fn_idx` that an error was already reported in.
+fn (tc &TypeChecker) statements_with_errors(fn_idx int) map[int]bool {
+	first := tc.first_node_below(flat.NodeId(fn_idx))
 	mut statements := map[int]bool{}
-	for err in w.errors {
-		if !tc.diagnostic_depends_on_type_params(err.node, fn_idx, dependent, params, mut
-			statements)
-		{
-			tc.errors << err
+	for err in tc.errors {
+		if int(err.node) < first || int(err.node) > fn_idx {
+			continue
+		}
+		if statement := tc.enclosing_body_statement(err.node, fn_idx) {
+			statements[int(statement)] = true
 		}
 	}
-	for notice in w.notices {
-		if !tc.diagnostic_depends_on_type_params(notice.node, fn_idx, dependent, params, mut
-			statements)
-		{
-			tc.notices << notice
+	return statements
+}
+
+// first_node_below returns the lowest id among `id` and the nodes below it: in
+// the flat tree a node comes after the nodes below it.
+fn (tc &TypeChecker) first_node_below(id flat.NodeId) int {
+	mut first := int(id)
+	mut stack := [id]
+	for stack.len > 0 {
+		current := stack.pop()
+		if !tc.valid_node_id(current) {
+			continue
+		}
+		if int(current) < first {
+			first = int(current)
+		}
+		node := tc.a.node(current)
+		for i in 0 .. node.children_count {
+			stack << tc.a.child(node, i)
 		}
 	}
+	return first
 }
 
 // type_param_dependent_names returns the names whose values depend on the type

@@ -923,9 +923,10 @@ pub mut:
 	reject_unsupported_generics   bool
 	checker_fixture_mode          bool
 	is_test                       bool
-	check_concrete_generic_bodies bool // `-check` checks the concrete clones of the program's generics for fields and methods their types lack
-	check_generic_bodies          bool // `-check` checks the bodies of generic functions for what does not depend on their type parameters
-	concrete_parents_indexed      int  // nodes the parent index covered when the last concrete clone was checked
+	check_concrete_generic_bodies bool              // `-check` checks the concrete clones of the program's generics for fields and methods their types lack
+	check_generic_bodies          bool              // the bodies of generic functions whose type parameters all have a constraint are checked
+	type_param_texts              map[string]string // in a fork that checks a generic body with its type parameters as types their constraints admit, the text of each (check_generic_fn_body_as)
+	concrete_parents_indexed      int               // nodes the parent index covered when the last concrete clone was checked
 	module_diagnostic_root        string
 	autofree_mode                 bool
 	no_main                       bool

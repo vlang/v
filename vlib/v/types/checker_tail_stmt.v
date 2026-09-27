@@ -14170,6 +14170,9 @@ pub fn type_text_contains_typeof(s string) bool {
 }
 
 pub fn (tc &TypeChecker) parse_type(typ string) Type {
+	if tc.type_param_texts.len > 0 {
+		return tc.parse_type_as_instance(typ)
+	}
 	// Do this before the memoization lookup. The outer alias expansion is not
 	// cached until its complete semantic type exists; caching this symbolic
 	// recursive edge would otherwise leave the shallow placeholder as the

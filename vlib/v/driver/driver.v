@@ -12060,9 +12060,10 @@ pub fn run(args []string) {
 			cvsw.restart()
 		}
 		pre_tc.diagnose_unknown_calls = true
-		// A check reports what the body of a generic function does wrong without
-		// its type parameters; a build leaves those bodies to their instances.
-		pre_tc.check_generic_bodies = check_only && !is_checker_fixture
+		// The body of a generic function whose type parameters all have a
+		// constraint is checked as the body of any other function, in a check and
+		// in a build; the others are left to their instances.
+		pre_tc.check_generic_bodies = !is_checker_fixture
 		pre_tc.prepare_threads_condition()
 		set_unsupported_generic_files(mut pre_tc, a, is_selfhost, diagnostic_root)
 		if verbose {
