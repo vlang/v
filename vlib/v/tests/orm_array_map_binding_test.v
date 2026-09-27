@@ -27,6 +27,12 @@ fn test_sql_select_inside_array_map_uses_current_element() ! {
 	}!))
 	assert scalar_selected.map(it.name) == ['second', 'first']
 
+	names := ['third', 'first']
+	interpolated := arrays.flatten(names.map(sql db {
+		select from MapSqlRow where name == '${it}'
+	}!))
+	assert interpolated.map(it.id) == [3, 1]
+
 	filtered := [0, 2, 4].filter((sql db {
 		select count from MapSqlRow where id == it
 	}!) > 0)
