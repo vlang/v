@@ -24,7 +24,7 @@ import v.vmod
 //
 // The cache lives under the user's V cache directory, never inside the source tree.
 
-const tool_cache_manifest_version = 'v3-tool-cache-3'
+const tool_cache_manifest_version = 'v3-tool-cache-4'
 const tool_cache_disable_env = 'VTOOLS_NO_CACHE'
 const tool_cache_dir_env = 'VTOOLS_CACHE_DIR'
 const tool_cache_verbose_env = 'VTOOLS_CACHE_VERBOSE'
@@ -153,6 +153,12 @@ fn collect_tool_key_sources(directory string, mut files []string) {
 fn file_stamp(path string) string {
 	attributes := os.stat(path) or { return file_stamp_missing }
 	return '${attributes.mtime}${tool_cache_field_separator}${attributes.size}'
+}
+
+// boundary_marker_stamp records only whether a marker exists; its contents and directory
+// metadata do not change module resolution.
+fn boundary_marker_stamp(path string) string {
+	return if os.exists(path) { 'present' } else { 'missing' }
 }
 
 // file_stamp_missing is the stamp of a path that does not exist. A build input can legitimately
@@ -334,6 +340,7 @@ fn recorded_inputs_changed(manifest_path string) string {
 		kind, path, recorded := fields[0], fields[1], fields[2..].join(tool_cache_field_separator)
 		current := match kind {
 			'd' { dir_stamp(path) }
+			'e' { boundary_marker_stamp(path) }
 			'm' { module_root_stamp(path) }
 			'p' { module_directory_stamp(path) }
 			'b' { binary_identity(path) }
@@ -891,7 +898,7 @@ fn encode_tool_cache_manifest(source_files []string, started i64) string {
 	mut marker_paths := boundaries.keys()
 	marker_paths.sort()
 	for path in marker_paths {
-		lines << 'f${tool_cache_field_separator}${path}${tool_cache_field_separator}${file_stamp(path)}'
+		lines << 'e${tool_cache_field_separator}${path}${tool_cache_field_separator}${boundary_marker_stamp(path)}'
 	}
 	return lines.join('\n') + '\n'
 }

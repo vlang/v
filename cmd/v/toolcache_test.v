@@ -201,9 +201,13 @@ fn test_project_boundary_markers_invalidate_the_cache() {
 		os.write_file(entry.manifest, encode_tool_cache_manifest([dependency], time.now().unix()))!
 		assert tool_cache_is_fresh(entry)
 		if marker_name == '.v.mod.stop' {
+			os.write_file(marker, 'marker contents changed')!
+			assert tool_cache_is_fresh(entry), 'editing ${marker_name} must not force a rebuild'
 			os.rm(marker)!
 		} else {
-			os.rmdir(marker)!
+			os.write_file(os.join_path(marker, 'index.lock'), '')!
+			assert tool_cache_is_fresh(entry), 'editing ${marker_name} must not force a rebuild'
+			os.rmdir_all(marker)!
 		}
 		assert !tool_cache_is_fresh(entry), 'removing ${marker_name} must force a rebuild'
 	}
