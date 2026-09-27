@@ -13,12 +13,12 @@ type TranslatedValue = Cell | int
 
 fn test_translated_reference_defaults() {
 	c := Cell{}
-	assert c.link == unsafe { nil }
+	assert isnil(c.link)
 	p := Outer{}
-	assert p.cell.link == unsafe { nil }
+	assert isnil(p.cell.link)
 	value := TranslatedValue{}
 	if value is Cell {
-		assert value.link == unsafe { nil }
+		assert isnil(value.link)
 	} else {
 		assert false
 	}
@@ -37,6 +37,8 @@ enum NonzeroTranslatedMode {
 fn test_translated_empty_enum_initializers() {
 	mode := TranslatedMode{}
 	assert mode == .first
+	optional_mode := ?TranslatedMode{}
+	assert (optional_mode or { TranslatedMode.second }) == .second
 	nonzero := NonzeroTranslatedMode{}
 	assert int(nonzero) == 0
 }

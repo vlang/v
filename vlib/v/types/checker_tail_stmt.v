@@ -3846,7 +3846,9 @@ fn (mut tc TypeChecker) check_struct_init(id flat.NodeId, node flat.Node) {
 	}
 	if unalias_type(init_type) is Enum {
 		if tc.node_is_in_translated_file(id) && node.children_count == 0 {
-			tc.remember_expr_type(id, init_type)
+			if !is_optional_init {
+				tc.remember_expr_type(id, init_type)
+			}
 			return
 		}
 		tc.record_error_at(.assignment_mismatch, 'cannot initialize enums', id, node.pos)
