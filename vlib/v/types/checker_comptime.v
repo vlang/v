@@ -14569,6 +14569,9 @@ fn (mut tc TypeChecker) call_returned_alias_arguments(id flat.NodeId, mut visiti
 		return []flat.NodeId{}
 	}
 	return_type := unalias_type(tc.resolve_type(id))
+	if return_type is Unknown || return_type is Void {
+		return tc.conservative_call_alias_arguments(*call, true)
+	}
 	if return_type !is Array && return_type !is Map && return_type !is Pointer {
 		return []flat.NodeId{}
 	}
