@@ -4,6 +4,8 @@ struct Box[T] {
 	values []T
 }
 
+type ReceiverAlias = int
+
 fn test_imported_generic_receiver_infers_its_declaring_module() {
 	local := Box[int]{ values: [7] }
 	assert local.values == [7]
@@ -25,6 +27,12 @@ fn test_imported_generic_receiver_keeps_distinct_specializations() {
 	assert second.get() == f64(2.5)
 	assert gm.read_box(first) == f32(1.5)
 	assert gm.read_box(second) == f64(2.5)
+}
+
+fn test_imported_generic_receiver_typeof_preserves_alias() {
+	box := gm.box(ReceiverAlias(9))
+	assert typeof(box.get()).name == 'ReceiverAlias'
+	assert typeof[ReceiverAlias]().name == 'ReceiverAlias'
 }
 
 fn test_generic_receiver_inference_after_result_propagation() ! {
