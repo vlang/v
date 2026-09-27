@@ -21,7 +21,7 @@ $if windows {
 @[inline]
 fn get_time() i64 {
 	// time.now() is slow
-	return i64(C.time(C.NULL))
+	return i64(C.time(unsafe { nil }))
 }
 
 @[inline]

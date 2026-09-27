@@ -20,23 +20,28 @@ send "c\n"
 expect "Break on * main in ${test_file}:26"
 expect "${test_file}:26 vdbg> "
 send "scope\n"
-expect "a = 1 (int)"
-expect "b = 2 (int)"
+expect {
+	"a = 1 (int)\r\nb = 2 (int)" {}
+	"b = 2 (int)\r\na = 1 (int)" {}
+}
 expect "x = 1 (int)"
 send "c\n"
 expect "Break on * main in ${test_file}:31"
 expect "${test_file}:31 vdbg> "
 send "scope\n"
-expect "a = 1 (int)"
-expect "b = 2 (int)"
+expect {
+	"a = 1 (int)\r\nb = 2 (int)" {}
+	"b = 2 (int)\r\na = 1 (int)" {}
+}
 expect "x = 1 (int)"
 send "c\n"
 expect "Break on * main in ${test_file}:34"
 expect "${test_file}:34 vdbg> "
 send "scope\n"
-expect "a = 1 (int)"
-expect "b = 2 (int)"
-expect "z = 0 (int)"
+expect {
+	"a = 1 (int)\r\nb = 2 (int)\r\nz = 0 (int)" {}
+	"z = 0 (int)\r\nb = 2 (int)\r\na = 1 (int)" {}
+}
 expect "x = 1 (int)"
 send "c\n"
 expect "Break on * main in ${test_file}:40"

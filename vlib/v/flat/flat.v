@@ -279,6 +279,9 @@ pub const node_flag_static_type_method = u8(2)
 pub const node_flag_embed_payload = u8(4)
 // node_flag_freed_assignment marks an assignment annotated with `@[freed]`.
 pub const node_flag_freed_assignment = u8(8)
+// node_flag_mut_builtin_pointer_param marks a source `mut p voidptr`/`byteptr`/`charptr`
+// parameter before the parser folds its mutable caller slot into the type text.
+pub const node_flag_mut_builtin_pointer_param = u8(16)
 
 // node_flags packs rare node bools into Node.flags.
 @[inline]
@@ -304,7 +307,8 @@ pub fn node_flags(skip_ownership_drops bool, is_static_type_method bool) u8 {
 @[inline]
 pub fn clone_node_flags(source &Node, skip_ownership_drops bool) u8 {
 	mut flags := node_flags(skip_ownership_drops, source.is_static_type_method())
-	flags |= source.flags & (node_flag_embed_payload | node_flag_freed_assignment)
+	flags |= source.flags & (node_flag_embed_payload | node_flag_freed_assignment |
+		node_flag_mut_builtin_pointer_param)
 	return flags
 }
 
@@ -360,6 +364,13 @@ pub fn (n &Node) is_embed_payload() bool {
 @[inline]
 pub fn (n &Node) is_freed_assignment() bool {
 	return (n.flags & node_flag_freed_assignment) != 0
+}
+
+// is_mut_builtin_pointer_param reports whether this parameter was declared as
+// `mut p voidptr`, `mut p byteptr`, or `mut p charptr` in source.
+@[inline]
+pub fn (n &Node) is_mut_builtin_pointer_param() bool {
+	return (n.flags & node_flag_mut_builtin_pointer_param) != 0
 }
 
 // set_freed_assignment updates the assignment's `@[freed]` marker.
@@ -435,7 +446,12 @@ pub mut:
 	export_fn_names              map[string]string
 	noreturn_fns                 map[string]bool
 	source_files                 map[int]&token.File
-	comments                     []Comment
+	// resolved_source_paths maps source paths to their resolved form. The owning
+	// thread fills it through record_source_path and resolve_source_paths, which
+	// sets source_paths_frozen; from then on it is only read, see real_source_path.
+	resolved_source_paths map[string]string
+	source_paths_frozen   bool
+	comments              []Comment
 	// formatter_sources retains exact source spans or prefixes for constructs whose
 	// source syntax is intentionally opaque to compiler backends.
 	formatter_sources      map[int]string
@@ -465,6 +481,11 @@ pub mut:
 	// missing_import_hints holds the migration hint the resolver produced for an
 	// unresolved import node, when it can explain the failure. Usually empty.
 	missing_import_hints map[int]string
+	// cached_header_sources maps each module cache header parsed in place of a
+	// module's sources to one of those sources, so diagnostics and ownership can
+	// judge a warm header by the code it stands for rather than by where the
+	// cache directory happens to be.
+	cached_header_sources map[string]string
 	// file_node_ids records every .file node the parser creates, in creation
 	// order: (marker, trailing) pairs per source file. The trailing node's
 	// children are the file's top-level declarations, letting collect build
@@ -577,6 +598,7 @@ pub fn FlatAst.new() FlatAst {
 		template_call_sites:           map[int]token.Pos{}
 		template_actions:              map[int]string{}
 		missing_imports:               map[int]string{}
+		cached_header_sources:         map[string]string{}
 		missing_import_hints:          map[int]string{}
 		formatter_sources:             map[int]string{}
 		formatter_file_sources:        map[int]string{}

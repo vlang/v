@@ -100,7 +100,7 @@ fn (mut pv Picoev) apply_pending_changes(apply_all bool) int {
 			}
 			// Apply the changes if the total changes exceed the changelist size
 			if total + 1 >= pv.loop.changelist.len {
-				nevents = C.kevent(pv.loop.kq_id, &pv.loop.changelist, total, C.NULL, 0, C.NULL)
+				nevents = C.kevent(pv.loop.kq_id, &pv.loop.changelist, total, unsafe { nil }, 0, unsafe { nil })
 				assert nevents == 0
 				total = 0
 			}
@@ -111,7 +111,7 @@ fn (mut pv Picoev) apply_pending_changes(apply_all bool) int {
 	}
 
 	if apply_all && total != 0 {
-		nevents = C.kevent(pv.loop.kq_id, &pv.loop.changelist, total, C.NULL, 0, C.NULL)
+		nevents = C.kevent(pv.loop.kq_id, &pv.loop.changelist, total, unsafe { nil }, 0, unsafe { nil })
 		assert nevents == 0
 		total = 0
 	}

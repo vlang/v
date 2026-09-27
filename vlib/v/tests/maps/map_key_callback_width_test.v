@@ -15,8 +15,7 @@ fn test_int_map_keys_keep_high_bits_when_hashing_comparing_and_cloning() {
 	}
 	// All keys have the same low 32 bits. Four-byte equality conflates them,
 	// and four-byte cloning loses the rest of each key even without a collision.
-	keys := [int(7), int((u64(1) << 32) + 7), int((u64(3) << 40) + 7),
-		-int((u64(1) << 40) - 7)]
+	keys := [int(7), int((u64(1) << 32) + 7), int((u64(3) << 40) + 7), -int((u64(1) << 40) - 7)]
 	mut local := map[int]int{}
 	mut fields := CallbackKeyMaps{}
 	for i, key in keys {

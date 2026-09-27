@@ -20,8 +20,8 @@ fn test_map_callbacks_follow_target_width_not_host_width() {
 	for bits in [32, 64] {
 		types.set_platform_int_bits(bits)
 		expected := map_callback_test_integer_names((bits / 8).str())
-		for key in ['int', 'isize', 'usize', 'uint', 'voidptr', 'charptr', 'byteptr', '&int',
-			'&Item', '&&Item'] {
+		for key in ['int', 'isize', 'usize', 'uint', 'voidptr', 'charptr', 'byteptr', '&int', '&Item',
+			'&&Item'] {
 			assert map_callback_test_names(key) == expected, '${bits}: ${key}'
 		}
 	}
@@ -41,8 +41,7 @@ fn test_map_callbacks_preserve_fixed_width_and_string_keys() {
 			'8': ['u64', 'i64', 'f64']
 		} {
 			for key in keys {
-				assert map_callback_test_names(key) == map_callback_test_integer_names(size),
-					'${bits}: ${key}'
+				assert map_callback_test_names(key) == map_callback_test_integer_names(size), '${bits}: ${key}'
 			}
 		}
 		assert map_callback_test_names('string') == ['map_hash_string', 'map_eq_string',
@@ -84,9 +83,14 @@ fn test_map_callbacks_resolve_aliases_and_keep_fixed_array_helpers() {
 			actual := [hash_fn, eq_fn, clone_fn, free_fn]
 			if name == 'BlockKey' {
 				prefix := '${tc.c_type(tc.parse_type(base))}_map_key'
-				assert actual == ['${prefix}_hash', '${prefix}_eq', '${prefix}_clone', '${prefix}_free']
+				assert actual == ['${prefix}_hash', '${prefix}_eq', '${prefix}_clone',
+					'${prefix}_free']
 			} else {
-				expected := map_callback_test_names(if name == 'NestedKey' { 'string' } else { base })
+				expected := map_callback_test_names(if name == 'NestedKey' {
+					'string'
+				} else {
+					base
+				})
 				assert actual == expected, '${bits}: ${name}'
 			}
 		}

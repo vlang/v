@@ -103,6 +103,29 @@ fn test_include_preserves_header_without_scanning_declarations() {
 	assert linked.should_emit_c_extern_decl_from_file('header_api', source, 'main')
 }
 
+fn test_include_from_cflag_directory_keeps_portable_spelling() {
+	root := os.join_path(os.vtmp_dir(), 'v3_cflag_header_include_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root)!
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	include_dir := os.join_path(root, 'include')
+	os.mkdir_all(include_dir)!
+	header := os.join_path(include_dir, 'api.h')
+	source := os.join_path(root, 'main.v')
+	os.write_file(header, 'int api(void);\n')!
+	os.write_file(source, 'fn main() {}\n')!
+
+	mut g := FlatGen.new()
+	g.c_flags = ['-I', include_dir]
+	assert g.c_include_directive_text(0, '', '"api.h"', source) == '#include "api.h"'
+
+	local_header := os.join_path(root, 'local.h')
+	os.write_file(local_header, 'int local(void);\n')!
+	assert g.c_include_directive_text(0, '', '"local.h"', source) == c_native_source_context_include(local_header)
+}
+
 fn test_preinclude_does_not_scan_macro_state() {
 	root := os.join_path(os.vtmp_dir(), 'v3_preinclude_macro_state_${os.getpid()}')
 	os.rmdir_all(root) or {}
@@ -260,7 +283,6 @@ fn test_builtin_abi_helper_matches_only_exact_headers() {
 	assert c_include_arg_is_builtin_abi_helper('"/root/vlib/builtin/prealloc_atomics.h"', root)
 	assert c_include_arg_is_builtin_abi_helper('"/root/vlib/os/filelock/filelock_helpers.h"', root)
 	assert c_include_arg_is_builtin_abi_helper('"/root/vlib/sync/stdatomic/tcc_compat_aliases.h"', root)
-	assert c_include_arg_is_builtin_abi_helper('"/root/vlib/sync/stdatomic/stdatomic_include_after_compat.h"', root)
 	assert c_include_arg_is_builtin_abi_helper('"/root/thirdparty/stdatomic/nix/atomic.h"', root)
 	assert c_include_arg_is_builtin_abi_helper('"C:\\root\\thirdparty\\stdatomic\\win\\atomic.h"', 'C:\\root')
 	// A trailing slash on VROOT resolves to the same anchored path.
@@ -280,6 +302,9 @@ fn test_builtin_abi_helper_matches_only_exact_headers() {
 	assert !c_include_arg_is_builtin_abi_helper('"prealloc_atomics.h"', root)
 	assert !c_include_arg_is_builtin_abi_helper('"my_stdatomic_wrapper.h"', root)
 	assert !c_include_arg_is_builtin_abi_helper('"vendor/atomic.h"', root)
+	// This regression-test header declares a callable probe and must remain included.
+	assert !c_include_arg_is_builtin_abi_helper('"/root/vlib/sync/stdatomic/stdatomic_include_after_compat.h"',
+		root)
 	// The `/` boundary keeps a `.../myvlib/...` path from matching `/vlib/...`.
 	assert !c_include_arg_is_builtin_abi_helper('"/home/user/myvlib/os/filelock/filelock_helpers.h"', root)
 	// The real system header is not one of the superseded inline helpers either.

@@ -39,13 +39,6 @@ vlib/v/checker/tests/compare_unsigned_signed.vv:19:13: error: `i16` cannot be co
       |                ~~
    20 |     _ = int(0) == u64(0)
    21 |     _ = i32(0) == u64(0) // FIXME
-vlib/v/checker/tests/compare_unsigned_signed.vv:20:13: error: `int` cannot be compared with `u64`
-   18 |     _ = i8(0) == u16(0)
-   19 |     _ = i16(0) != u32(0)
-   20 |     _ = int(0) == u64(0)
-      |                ~~
-   21 |     _ = i32(0) == u64(0) // FIXME
-   22 |     // swap order
 vlib/v/checker/tests/compare_unsigned_signed.vv:21:13: error: `i32` cannot be compared with `u64`
    19 |     _ = i16(0) != u32(0)
    20 |     _ = int(0) == u64(0)

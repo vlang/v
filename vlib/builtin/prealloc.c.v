@@ -220,6 +220,7 @@ fn vmemory_abort_on_nil(p voidptr, bytes isize) {
 	}
 }
 
+@[inline]
 fn vmemory_effective_align(align isize) isize {
 	default_align := isize(prealloc_default_align)
 	if align > default_align {
@@ -228,13 +229,16 @@ fn vmemory_effective_align(align isize) isize {
 	return default_align
 }
 
-@[unsafe]
+@[inline; unsafe]
 fn vmemory_align_up(ptr &u8, align isize) &u8 {
 	if align <= 1 {
 		return ptr
 	}
 	addr := u64(ptr)
 	alignment := u64(align)
+	if alignment & (alignment - 1) == 0 {
+		return unsafe { &u8((addr + alignment - 1) & ~(alignment - 1)) }
+	}
 	offset := addr % alignment
 	if offset == 0 {
 		return ptr
@@ -389,16 +393,52 @@ fn vmemory_block_current_or_new() &VMemoryBlock {
 		// blocks have a per-thread recycle cache after the scope is detached.
 		mut mb := g_memory_block
 		if _unlikely_(mb == nil) {
-			mb = vmemory_block_new(nil, isize(prealloc_block_size), 0)
-			mb.recycle_cache = &VPreallocBlockCache(C.calloc(1, sizeof(VPreallocBlockCache)))
-			vmemory_abort_on_nil(mb.recycle_cache, sizeof(VPreallocBlockCache))
-			g_memory_block = mb
+			mb = vmemory_block_init_thread()
 		}
 		return mb
 	}
 }
 
-@[unsafe]
+// Keep thread initialization and block growth out of the allocation fast path.
+@[noinline; unsafe]
+fn vmemory_block_init_thread() &VMemoryBlock {
+	unsafe {
+		mut mb := vmemory_block_new(nil, isize(prealloc_block_size), 0)
+		mb.recycle_cache = &VPreallocBlockCache(C.calloc(1, sizeof(VPreallocBlockCache)))
+		vmemory_abort_on_nil(mb.recycle_cache, sizeof(VPreallocBlockCache))
+		g_memory_block = mb
+		return mb
+	}
+}
+
+@[noinline; unsafe]
+fn vmemory_block_grow(previous &VMemoryBlock, n isize, align isize) &VMemoryBlock {
+	unsafe {
+		was_scope := previous.is_scope
+		scope := previous.scope
+		mut min_block_size := if previous.min_block_size > 0 {
+			previous.min_block_size
+		} else {
+			isize(prealloc_block_size)
+		}
+		if was_scope && min_block_size < isize(prealloc_scope_block_size) * 4 {
+			// Scopes that outgrow one block tend to keep growing: doubling
+			// the block size (256K..4M) turns a 100-block scope into ~10
+			// blocks, cutting refill and map/unmap churn per batch.
+			min_block_size *= 2
+		}
+		mut mb := vmemory_block_new_sized(previous, n, align, min_block_size)
+		mb.is_scope = was_scope
+		mb.scope = scope
+		if scope != 0 {
+			prealloc_scope_add_block(scope, mb)
+		}
+		g_memory_block = mb
+		return mb
+	}
+}
+
+@[inline; unsafe]
 fn vmemory_block_malloc(n isize, align isize) &u8 {
 	unsafe {
 		// Read the thread-local block pointer ONCE per call: it only stores
@@ -413,26 +453,7 @@ fn vmemory_block_malloc(n isize, align isize) &u8 {
 		mut current := vmemory_align_up(mb.current, fixed_align)
 		remaining := i64(mb.stop) - i64(current)
 		if _unlikely_(remaining < n) {
-			was_scope := mb.is_scope
-			scope := mb.scope
-			mut min_block_size := if mb.min_block_size > 0 {
-				mb.min_block_size
-			} else {
-				isize(prealloc_block_size)
-			}
-			if was_scope && min_block_size < isize(prealloc_scope_block_size) * 4 {
-				// Scopes that outgrow one block tend to keep growing: doubling
-				// the block size (256K..4M) turns a 100-block scope into ~10
-				// blocks, cutting refill and map/unmap churn per batch.
-				min_block_size *= 2
-			}
-			mb = vmemory_block_new_sized(mb, n, fixed_align, min_block_size)
-			mb.is_scope = was_scope
-			mb.scope = scope
-			if scope != 0 {
-				prealloc_scope_add_block(scope, mb)
-			}
-			g_memory_block = mb
+			mb = vmemory_block_grow(mb, n, fixed_align)
 			current = vmemory_align_up(mb.current, fixed_align)
 		}
 		res := &u8(current)
@@ -989,7 +1010,11 @@ fn prealloc_realloc(old_data &u8, old_size isize, new_size isize) &u8 {
 	}
 	new_ptr := unsafe { vmemory_block_malloc(new_size, 0) }
 	min_size := if old_size < new_size { old_size } else { new_size }
-	unsafe { C.memcpy(new_ptr, old_data, min_size) }
+	// Growing an empty buffer passes a nil `old_data`; memcpy requires a valid
+	// pointer even for a zero-length copy.
+	if old_data != unsafe { nil } && min_size > 0 {
+		unsafe { C.memcpy(new_ptr, old_data, min_size) }
+	}
 	// realloc invalidates the old buffer once its contents have been copied.
 	if old_size > 0 {
 		unsafe { prealloc_discard_pages(old_data, usize(old_size)) }

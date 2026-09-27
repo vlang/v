@@ -449,3 +449,48 @@ fn main() {
 	assert c_code.contains('App__index(app, &ctx->veb__Context)'), c_code
 	assert !c_code.contains('App__index(app, ctx)'), c_code
 }
+
+// A route whose custom context embeds veb.Context must keep the complete custom
+// context at the reflected route call, while a promoted generic veb.Context
+// method called by that route must receive the embedded framework context.
+fn test_veb_custom_context_route_with_promoted_generic_method() {
+	v3_bin := build_v3()
+	src := '
+import veb
+
+pub struct Context {
+	veb.Context
+}
+
+pub struct App {}
+
+pub struct SomeData {
+	id string
+}
+
+fn (mut ctx Context) handle_ok[T](payload T) veb.Result {
+	ctx.res.set_status(.ok)
+	return ctx.json(payload)
+}
+
+@["/some_data"; get]
+pub fn (mut app App) some_data(mut ctx Context) veb.Result {
+	return ctx.handle_ok(SomeData{ id: "v3" })
+}
+
+fn main() {
+	mut app := App{}
+	veb.run[App, Context](mut app, 8080)
+}
+'
+	src_file := os.join_path(os.temp_dir(), 'v3_veb_custom_context_generic_method.v')
+	os.write_file(src_file, src) or { panic(err) }
+	c_out := os.join_path(os.temp_dir(), 'v3_veb_custom_context_generic_method.c')
+	os.rm(c_out) or {}
+	compile := os.execute('${v3_bin} -no-memory-limit -nocache ${src_file} -o ${c_out}')
+	assert compile.exit_code == 0, compile.output
+	c_code := os.read_file(c_out) or { '' }
+	assert c_code.contains('veb__Context_SomeData__json(&ctx->veb__Context, payload)'), c_code
+	assert c_code.contains('App__some_data(app, user_context)'), c_code
+	assert !c_code.contains('App__some_data(app, &user_context->veb__Context)'), c_code
+}

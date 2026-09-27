@@ -12,7 +12,7 @@ import v.util
 pub const builtin_bundle_imports = ['strconv', 'strings', 'hash', 'math.bits']
 pub const builtin_bundle_modules = ['builtin', 'strconv', 'strings', 'hash', 'bits', 'math.bits']
 
-const cache_format = 'v3-module-cache-52'
+const cache_format = 'v3-module-cache-53'
 const c_body_begin = '/* V3CACHE_BODY_BEGIN */'
 const c_body_end = '/* V3CACHE_BODY_END */'
 const c_module_prefix = '/* V3CACHE_MODULE '
@@ -835,18 +835,10 @@ fn source_digest_map(source_files []string, digests []string) map[string]string 
 }
 
 fn signature_vmod_root(source_file string) (string, string) {
-	mut dir := os.dir(os.real_path(source_file))
-	original_dir := dir
-	for dir.len > 0 {
-		vmod_file := os.join_path_single(dir, 'v.mod')
-		if os.exists(vmod_file) {
-			return os.real_path(dir), os.real_path(vmod_file)
-		}
-		// `os.parent_dir` stops at a filesystem root; `os.dir` would escape a bare
-		// Windows drive into the relative `.` and match the current directory.
-		dir = os.parent_dir(dir)
+	if root := util.nearest_vmod_root(source_file) {
+		return root, os.real_path(os.join_path_single(root, 'v.mod'))
 	}
-	return os.real_path(original_dir), ''
+	return os.dir(os.real_path(source_file)), ''
 }
 
 fn signature_vmod_hash(root string, vmod_file string) string {
@@ -4614,6 +4606,25 @@ fn module_header_const_replacements(a &flat.FlatAst, module_name string, const_o
 // constants whose helper bodies are intentionally omitted from warm headers.
 pub fn module_header_with_const_order(a &flat.FlatAst, tc &types.TypeChecker, module_name string, vroot string, import_paths map[string]string, const_order []string) string {
 	mut out := strings.new_builder(4096)
+	declaration_attrs := cached_declaration_attrs(a)
+	mut module_attr_lines := []string{}
+	mut seen_module_attrs := map[string]bool{}
+	for idx, node in a.nodes {
+		if node.kind != .module_decl || node.value != module_name {
+			continue
+		}
+		attrs := declaration_attrs[idx] or { continue }
+		for line in cached_declaration_attrs_text(attrs).split_into_lines() {
+			if line.len == 0 || seen_module_attrs[line] {
+				continue
+			}
+			seen_module_attrs[line] = true
+			module_attr_lines << line
+		}
+	}
+	if module_attr_lines.len > 0 {
+		out.writeln(module_attr_lines.join('\n'))
+	}
 	out.writeln('module ${module_name.all_after_last('.')}')
 	generic_specialization_callees := generic_specialization_callee_names(tc)
 	needs_source_bodies := module_needs_source_bodies(a, tc, module_name, generic_specialization_callees)
@@ -4642,7 +4653,6 @@ pub fn module_header_with_const_order(a &flat.FlatAst, tc &types.TypeChecker, mo
 		}
 	}
 	mut seen := map[string]bool{}
-	declaration_attrs := cached_declaration_attrs(a)
 	const_replacements, const_files := module_header_const_replacements(a, module_name, const_order)
 	for file_node in a.nodes {
 		if file_node.kind != .file || file_node.children_count == 0 {
@@ -6137,14 +6147,8 @@ fn cached_flag_path_is_relative(path string) bool {
 }
 
 fn cached_vmod_root(source_file string) string {
-	mut dir := os.dir(os.real_path(source_file))
-	for dir.len > 0 {
-		if os.is_file(os.join_path_single(dir, 'v.mod')) {
-			return dir
-		}
-		// `os.parent_dir` stops at a filesystem root; `os.dir` would escape a bare
-		// Windows drive into the relative `.` and match the current directory.
-		dir = os.parent_dir(dir)
+	if root := util.nearest_vmod_root(source_file) {
+		return root
 	}
 	return os.dir(os.real_path(source_file))
 }

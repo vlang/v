@@ -34,8 +34,11 @@ typedef enum {
  * link. Resolve them from advapi32.dll at run time instead; every wrapper reports
  * failure when a lookup fails, which makes v_toolcache_root_is_private() answer
  * "not private", the conservative side. */
+/* advapi32 is already linked into the process, so the module handle lookup is
+ * cheap; a function-local cache would be file-static state, which the parallel
+ * C compilation splitter refuses to replicate across translation units. */
 static FARPROC v_toolcache_advapi32_proc(const char *name) {
-	static HMODULE advapi32 = NULL;
+	HMODULE advapi32 = GetModuleHandleW(L"advapi32.dll");
 	if (advapi32 == NULL) {
 		advapi32 = LoadLibraryW(L"advapi32.dll");
 	}

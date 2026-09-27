@@ -1,0 +1,6 @@
+fn main() {
+	values := {'key': 'hello'}
+	if value := (values['key']) {
+		println(value)
+	}
+}

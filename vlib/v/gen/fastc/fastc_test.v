@@ -1,3 +1,5 @@
+// vtest build: false
+
 module fastc
 
 import os
@@ -887,8 +889,9 @@ fn test_parallel_constant_seed_preserves_constant_field_defaults() {
 		},
 	]
 	c_source, _, _ := generate_source_files(sources, map[string]string{}, prefs) or { panic(err) }
-	assert c_source.contains('#define v3__gen__fastc__default_retries (3)'), c_source
-	assert c_source.contains('.retries=(v3__gen__fastc__default_retries)'), c_source
+	assert c_source.contains('#define v__gen__fastc__default_retries (3)'), c_source
+	assert c_source.contains('struct F__Config'), c_source
+	assert c_source.contains('.retries=(v__gen__fastc__default_retries)'), c_source
 }
 
 fn test_fastc_fragmented_generation_matches_serial_output() {
@@ -2074,6 +2077,58 @@ fn test_colliding_import_aliases_are_rejected() {
 	}
 }
 
+fn test_bare_keyword_module_names_resolve_without_escapes() {
+	mut prefs := pref.new_preferences()
+	header := fastc_scan_source_header('module type\nimport type.bar\nimport foo.type\n',
+		'bare_keyword_imports.v', prefs) or { panic(err) }
+	assert header.module_name == 'type'
+	assert header.import_order == ['type.bar', 'foo.type']
+	assert header.imports['bar'] == 'type.bar'
+	assert header.imports['type'] == 'foo.type'
+
+	root := os.join_path(os.vtmp_dir(), 'v3_fastc_bare_keyword_module_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(os.join_path(root, 'type')) or { panic(err) }
+	os.mkdir_all(os.join_path(root, 'if')) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	main_file := os.join_path(root, 'main.v')
+	os.write_file(main_file,
+		'module main\nimport if as conditionals\nimport type\nconst copied = type.value()\nfn main() { println(copied + conditionals.value()) }\n') or {
+		panic(err)
+	}
+	os.write_file(os.join_path(root, 'type', 'type.v'),
+		'module type\npub fn value() int { return 40 }\n') or { panic(err) }
+	os.write_file(os.join_path(root, 'if', 'if.v'),
+		'module if\npub fn value() int { return 2 }\n') or { panic(err) }
+	prefs.module_search_paths = [root]
+	c_source := generate_files([main_file], prefs) or { panic(err) }
+	assert c_source.contains('type__value()'), c_source
+	c_file := os.join_path(root, 'program.c')
+	bin_file := os.join_path(root, 'program')
+	os.write_file(c_file, c_source) or { panic(err) }
+	tcc := os.join_path(prefs.vroot, 'thirdparty', 'tcc', 'tcc.exe')
+	compile_result := cmdexec.run(tcc, ['-std=gnu11', '-o', bin_file, c_file])
+	assert compile_result.exit_code == 0, compile_result.output
+	run_result := cmdexec.run(bin_file, [])
+	assert run_result.exit_code == 0, run_result.output
+	assert run_result.output.trim_space() == '42'
+}
+
+fn test_module_paths_reject_at_escapes() {
+	prefs := pref.new_preferences()
+	for source in ['module @foo\n', 'module @type\n', 'module main\nimport @foo as foo\n',
+		'module main\nimport pkg.@FN\n'] {
+		mut message := ''
+		_ := fastc_scan_source_header(source, 'invalid_module_path.v', prefs) or {
+			message = err.msg()
+			FastcSourceHeader{}
+		}
+		assert message != '', 'FastC accepted `${source}`'
+	}
+}
+
 fn test_generate_files_resolves_modules_without_an_ast() {
 	root := os.join_path(os.vtmp_dir(), 'v3_fastc_modules_${os.getpid()}')
 	os.rmdir_all(root) or {}
@@ -2273,10 +2328,12 @@ pub fn ping() {}
 	assert resolved_modules == ['main', 'alpha']
 	prefs.building_v = true
 	c_source, _, _ := generate_source_files(sources, aliases, prefs) or { panic(err) }
-	assert c_source.contains('\talpha__init();'), c_source
-	assert c_source.contains('\talpha__cleanup();'), c_source
-	assert !c_source.contains('beta__init'), c_source
-	assert !c_source.contains('beta__cleanup'), c_source
+	// Self-host generation compacts non-main C function names, so check the selected
+	// lifecycle bodies instead of their private symbol spelling.
+	assert c_source.contains('println(_S("alpha init"));'), c_source
+	assert c_source.contains('println(_S("alpha cleanup"));'), c_source
+	assert !c_source.contains('println(_S("beta init"));'), c_source
+	assert !c_source.contains('println(_S("beta cleanup"));'), c_source
 }
 
 fn test_generate_files_rejects_mismatched_imported_module_declarations() {
@@ -2327,7 +2384,7 @@ pub fn (d Duration) microseconds() i64 { return i64(d) / 1000 }
 			header: fastc_scan_source_header(clock_source, 'clock.v', prefs) or { panic(err) }
 		},
 	], map[string]string{}, prefs) or { panic(err) }
-	assert c_source.contains('clock__Duration_microseconds(((clock__Duration)'), c_source
+	assert c_source.contains('v_f0(((clock__Duration)'), c_source
 }
 
 fn test_selfhost_module_qualified_pointer_cast() {
@@ -2338,7 +2395,9 @@ import transport
 fn convert(pointer voidptr) &transport.Conn {
 	return unsafe { &transport.Conn(pointer) }
 }
-fn main() {}
+fn main() {
+	_ = convert(voidptr(0))
+}
 '
 	transport_source := 'module transport
 pub struct Conn {}
@@ -2375,7 +2434,10 @@ fn set_list(mut state State, pointer voidptr) {
 	state.list = unsafe { &&char(pointer) }
 }
 
-fn main() {}
+fn main() {
+	mut state := State{}
+	set_list(mut state, voidptr(0))
+}
 ', 'selfhost_double_pointer_cast_assignment.v', prefs) or { panic(err) }
 	assert c_source.contains('state->list=((char**)(pointer))'), c_source
 	assert !c_source.contains('state->list=)&&'), c_source
@@ -2462,9 +2524,12 @@ fn use() !int {
 	return Tool.run(1, kind: .two)
 }
 
-fn main() {}
+fn main() {
+	_ := use() or { 0 }
+}
 ', 'selfhost_static_named_options.v', prefs) or { panic(err) }
-	assert c_source.contains('Tool_run(1,(Options){.kind='), c_source
+	assert c_source.contains('return Tool_run(1,({ Kind'), c_source
+	assert c_source.contains('(Options){.kind='), c_source
 	assert c_source.contains('Kind__two'), c_source
 	assert !c_source.contains('kind:.two'), c_source
 }
@@ -2682,7 +2747,7 @@ fn test_selfhost_method_params_struct_named_args() {
 	mut prefs := pref.new_preferences()
 	prefs.building_v = true
 	source := generate('module main\n@[params]\nstruct Options {\n\tafter bool\n}\nstruct Service {}\nfn (mut service Service) use(options Options) {}\nfn (mut service Service) redirect(path string, options Options) {}\nfn main() {\n\tmut service := Service{}\n\tservice.use(after: true)\n\tservice.redirect("/next")\n}\n', 'method_params_struct.v', prefs) or { panic(err) }
-	assert source.contains('Service_use(&(service),(Options){'), source
+	assert source.contains('Service_use(&(service),({ bool'), source
 	assert source.contains('.after='), source
 	assert source.contains('Service_redirect(&(service),_S("/next"),(Options){0})'), source
 }
@@ -2734,7 +2799,10 @@ fn same_storage(left string, right string) bool {
 	return left.len == right.len && unsafe { left.str == right.str }
 }
 
-fn main() {}
+fn main() {
+	_ = accepts_str_method(Node{})
+	_ = same_storage("", "")
+}
 ', 'selector_after_binary.v', prefs) or { panic(err) }
 	assert !source.contains('&builtin__bool_str'), source
 	assert source.contains('Kind__str'), source
@@ -3215,7 +3283,7 @@ fn main() {
 	println(config.retries)
 }
 ', 'struct_field_default.v', prefs) or { panic(err) }
-	assert c_source.contains('int default_retries(void)'), c_source
+	assert c_source.contains('${fastc_platform_int_c_type} default_retries(void)'), c_source
 	assert c_source.contains('__vf_sd.retries=(default_retries());'), c_source
 }
 

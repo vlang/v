@@ -33,7 +33,7 @@ pub const default_allocator = Allocator{
 }
 
 fn default_alloc(size int, ctx voidptr) voidptr {
-	return unsafe { C.malloc(size) }
+	return unsafe { C.malloc(usize(size)) }
 }
 
 fn default_free(ptr voidptr, ctx voidptr) {
@@ -41,7 +41,7 @@ fn default_free(ptr voidptr, ctx voidptr) {
 }
 
 fn default_realloc(ptr voidptr, new_size int, ctx voidptr) voidptr {
-	return unsafe { C.realloc(ptr, new_size) }
+	return unsafe { C.realloc(ptr, usize(new_size)) }
 }
 
 // User code calls these - they use the current allocator implicitly

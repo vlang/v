@@ -99,6 +99,16 @@ fn test_generic_unresolved_type_detects_multi_return_placeholders() {
 	assert !t.generic_arg_is_unresolved('(f64, f64)')
 }
 
+fn test_generic_field_type_substitutes_fixed_array_length_expr() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	tc.struct_generic_params['PaddedSlot'] = ['T']
+	t := new_transformer(mut a, &tc, map[string]bool{})
+
+	assert t.normalize_field_type('[32 - sizeof(T)]u8', 'PaddedSlot[int]') ==
+		'[32 - sizeof(int)]u8'
+}
+
 fn test_zero_value_normalizes_generic_alias_but_preserves_generic_struct() {
 	mut a := flat.FlatAst.new()
 	mut tc := types.TypeChecker.new(&a)
@@ -139,6 +149,17 @@ fn test_explicit_generic_fn_value_candidates_resolve_selective_import() {
 	candidates := t.explicit_generic_fn_value_decl_candidates(index_id, base_id, a.nodes[int(base_id)], 'main')
 	assert candidates[0] == 'lib.id'
 	assert 'id' in candidates
+}
+
+fn test_explicit_generic_arg_requires_a_known_type() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	mut t := new_transformer(mut a, &tc, map[string]bool{})
+
+	assert t.explicit_generic_arg_is_known_type('int', 'main')
+	assert t.explicit_generic_arg_is_known_type('[]string', 'main')
+	assert t.explicit_generic_arg_is_known_type('map[string]int', 'main')
+	assert !t.explicit_generic_arg_is_known_type('i', 'builtin')
 }
 
 fn test_materialized_generic_struct_fields_preserve_plain_alias_arguments() {
