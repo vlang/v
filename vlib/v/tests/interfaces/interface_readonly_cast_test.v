@@ -21,6 +21,13 @@ fn read(l Layout) int {
 	return 0
 }
 
+fn read_parenthesized(l Layout) int {
+	p := l
+	if p is Item { return (Widget(p)).read_id() }
+	return 0
+}
+
 fn test_readonly_interface_cast() {
 	assert read(Item{ id: 42 }) == 42
+	assert read_parenthesized(Item{ id: 42 }) == 42
 }

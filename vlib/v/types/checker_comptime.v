@@ -4601,10 +4601,21 @@ fn (tc &TypeChecker) interface_cast_is_readonly_receiver(id flat.NodeId, child_i
 	_ := tc.smartcast_type(child_id) or { return false }
 	declared := tc.declared_receiver_expr_type(child_id) or { return false }
 	if unalias_and_unwrap_pointer_type(declared) !is Interface { return false }
-	selector_id := tc.direct_parent_id(id)
+	mut receiver_id := id
+	mut selector_id := tc.direct_parent_id(receiver_id)
+	for tc.valid_node_id(selector_id) {
+		parent := tc.a.node(selector_id)
+		if parent.kind != .paren || parent.children_count != 1
+			|| tc.a.child(parent, 0) != receiver_id {
+			break
+		}
+		receiver_id = selector_id
+		selector_id = tc.direct_parent_id(receiver_id)
+	}
 	if !tc.valid_node_id(selector_id) { return false }
 	selector := tc.a.node(selector_id)
-	if selector.kind != .selector || selector.children_count == 0 || tc.a.child(selector, 0) != id {
+	if selector.kind != .selector || selector.children_count == 0
+		|| tc.a.child(selector, 0) != receiver_id {
 		return false
 	}
 	call_id := tc.direct_parent_id(selector_id)
