@@ -4526,7 +4526,7 @@ fn (mut tc TypeChecker) check_call_privacy(id flat.NodeId, node flat.Node, info 
 			receiver_id := tc.a.child(callee, 0)
 			name_pos := tc.method_call_name_pos(node, callee)
 			receiver_type := tc.resolve_type(receiver_id)
-			receiver_name := method_type_name(unwrap_pointer(receiver_type))
+			receiver_name := method_type_name(unalias_type(unwrap_pointer(receiver_type)))
 			receiver_module := tc.struct_module_for_type(receiver_name)
 			if receiver_module == tc.cur_module
 				|| (receiver_module in ['', 'main'] && tc.cur_module in ['', 'main']) {
