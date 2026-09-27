@@ -4267,7 +4267,11 @@ fn (mut t Transformer) collect_generated_fn_body_call_names(id flat.NodeId, cand
 	}
 	node := t.a.nodes[int(id)]
 	if node.kind == .decl_assign {
+		for i in 1 .. node.children_count {
+			t.collect_generated_fn_body_call_names(t.a.child(&node, i), candidate_names, filter_candidates, mut names, mut seen)
+		}
 		t.seed_generated_decl_assign_binding(node)
+		return
 	}
 	if node.kind == .call {
 		call_name := t.generated_call_name_for_used(id, node)

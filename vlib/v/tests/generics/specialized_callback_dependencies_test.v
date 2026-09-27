@@ -1,4 +1,5 @@
 import math
+import time { now }
 
 struct Tensor[T] {
 	data []T
@@ -27,9 +28,19 @@ fn test_used_specialized_callback_dependencies() {
 fn fixed_array_comparison_after_callback(a [1]int) bool {
 	callback := fn (value int) int { return value + 1 }
 	assert callback(0) == 1
-	return a == [1]int{1: }
+	return a == [1]!
 }
 
 fn test_fixed_array_parameter_survives_callback_dependency_scan() {
-	assert fixed_array_comparison_after_callback([1]int{1: })
+	assert fixed_array_comparison_after_callback([1]!)
+}
+
+fn test_lifted_callback_initializer_keeps_global_callee() {
+	t := &Tensor[f64]{ data: [f64(1)] }
+	result := t.apply(fn (value f64) f64 {
+		now := now()
+		_ = now
+		return value + 1
+	})
+	assert result.data == [f64(2)]
 }
