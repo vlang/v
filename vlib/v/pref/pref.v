@@ -1368,7 +1368,7 @@ fn parse_args_impl(known_external_commands []string, args []string, show_output 
 		// `v build <target>` compiles <target>, just like `v <target>` does. Without
 		// the target in res.path, the builder could only report an empty path in its
 		// `<target> doesn't exist` error.
-		if build_target == '' {
+		if build_target == '' && !res.is_help {
 			eprintln_exit('no input file')
 		}
 		res.path = build_target

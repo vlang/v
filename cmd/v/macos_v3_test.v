@@ -118,6 +118,15 @@ fn test_macos_v3_explicit_build_reports_a_regular_input_error() {
 	}
 }
 
+fn test_macos_v3_build_help_without_target() {
+	vexe := macos_v3_test_dispatcher_or_skip(@FN) or { return }
+	for flag in ['-h', '--help'] {
+		result := run_macos_v3_test_process(vexe, ['build', flag], macos_v3_test_vroot, {})
+		assert result.exit_code == 0, result.output
+		assert result.output.contains('Usage:'), result.output
+	}
+}
+
 fn test_macos_v3_cmd_source_unlinks_v1_on_every_native_host() {
 	source := os.read_file(os.join_path(macos_v3_test_vroot, 'cmd', 'v', 'v.v'))!
 	assert source.contains('\$if v1_fallback ?|| cross ? {')
