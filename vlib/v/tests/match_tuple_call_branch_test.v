@@ -114,6 +114,21 @@ fn test_match_tuple_parenthesized_error_is_result_failure() {
 	}
 }
 
+fn test_match_tuple_value_block_error_is_result_failure() {
+	for flag in [true, false] {
+		_, item := match flag {
+			true { wrapped_ierror_pair() }
+			else { 2, unsafe { error('boom') } }
+		}
+		if got := item {
+			assert flag
+			assert got.msg() == 'payload'
+		} else {
+			assert !flag
+		}
+	}
+}
+
 fn test_match_tuple_error_promotes_to_optional_slot() {
 	for flag in [true, false] {
 		value, text := match flag {

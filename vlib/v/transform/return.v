@@ -176,8 +176,14 @@ fn (mut t Transformer) return_expr_is_propagated_err(id flat.NodeId, payload_typ
 	}
 	mut expression_id := id
 	mut node := t.a.nodes[int(expression_id)]
-	for node.kind in [.paren, .expr_stmt] && node.children_count == 1 {
-		expression_id = t.a.child(&node, 0)
+	for node.children_count > 0 {
+		if node.kind in [.paren, .expr_stmt] && node.children_count == 1 {
+			expression_id = t.a.child(&node, 0)
+		} else if node.kind == .block {
+			expression_id = t.a.child(&node, node.children_count - 1)
+		} else {
+			break
+		}
 		node = t.a.nodes[int(expression_id)]
 	}
 	actual_type := t.return_ierror_expr_type(expression_id)
