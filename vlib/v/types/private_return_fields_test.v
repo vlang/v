@@ -28,3 +28,24 @@ fn main() {
 	assert result.output.contains('value.secret'), result.output
 	assert result.output.contains('opaque.Record'), result.output
 }
+
+fn test_private_method_value_on_private_return_type_is_rejected() {
+	root := os.join_path(os.vtmp_dir(), 'v3_private_return_method_${os.getpid()}')
+	os.mkdir_all(os.join_path(root, 'opaque'))!
+	defer { os.rmdir_all(root) or {} }
+	os.write_file(os.join_path(root, 'opaque', 'opaque.v'), 'module opaque
+struct Record {}
+pub fn make_record() Record { return Record{} }
+fn (r Record) private_method() int { return 1 }
+')!
+	path := os.join_path(root, 'main.v')
+	os.write_file(path, 'import opaque
+fn main() {
+ callback := opaque.make_record().private_method
+ println(callback())
+}
+')!
+	result := os.execute('${os.quoted_path(@VEXE)} -check ${os.quoted_path(path)}')
+	assert result.exit_code != 0, result.output
+	assert result.output.contains('Record.private_method` is private'), result.output
+}
