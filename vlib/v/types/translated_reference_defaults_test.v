@@ -51,3 +51,14 @@ fn test_empty_enum_initializers_remain_limited_to_translated_files() {
 	assert result.exit_code != 0, result.output
 	assert result.output.contains('cannot initialize enums'), result.output
 }
+
+fn test_translated_empty_enum_initializer_respects_private_type() {
+	root := os.join_path(os.vtmp_dir(), 'translated_private_enum_${os.getpid()}')
+	os.mkdir_all(os.join_path(root, 'dep'))!
+	defer { os.rmdir_all(root) or {} }
+	os.write_file(os.join_path(root, 'dep', 'dep.v'), 'module dep\nenum Secret { first }\n')!
+	os.write_file(os.join_path(root, 'main.v'), '@[translated]\nmodule main\nimport dep\nfn main() { _ = dep.Secret{} }\n')!
+	result := os.execute('${os.quoted_path(@VEXE)} -check ${os.quoted_path(root)}')
+	assert result.exit_code != 0, result.output
+	assert result.output.contains('type `dep.Secret` is private'), result.output
+}

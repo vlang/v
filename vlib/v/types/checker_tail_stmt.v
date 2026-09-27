@@ -3846,6 +3846,11 @@ fn (mut tc TypeChecker) check_struct_init(id flat.NodeId, node flat.Node) {
 	}
 	if unalias_type(init_type) is Enum {
 		if tc.node_is_in_translated_file(id) && node.children_count == 0 {
+			if _ := tc.private_declaration(init_type.name()) {
+				tc.record_error_at(.unknown_type, 'type `${init_type.name()}` is private', id,
+					node.pos)
+				return
+			}
 			if !is_optional_init {
 				tc.remember_expr_type(id, init_type)
 			}
