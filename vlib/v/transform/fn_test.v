@@ -394,6 +394,32 @@ fn test_sql_table_name_substitutes_active_generic_parameter() {
 	assert t.sql_table_type_names_match('main.User', 'User')
 }
 
+fn test_embedded_field_path_specializes_each_owner() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	mut t := new_transformer(mut a, &tc, map[string]bool{})
+	outer := StructInfo{
+		fields: [FieldInfo{ name: 'Middle', typ: 'Middle[T]', is_embedded: true }]
+	}
+	middle := StructInfo{
+		fields: [FieldInfo{ name: 'Leaf', typ: 'Leaf[T]', is_embedded: true }]
+	}
+	leaf := StructInfo{
+		fields: [FieldInfo{ name: 'payload', typ: 'T' }]
+	}
+	t.structs['Outer'] = outer
+	t.structs['Outer[Choice]'] = outer
+	t.structs['Middle'] = middle
+	t.structs['Middle[T]'] = middle
+	t.structs['Middle[Choice]'] = middle
+	t.structs['Leaf'] = leaf
+	t.structs['Leaf[T]'] = leaf
+	t.structs['Leaf[Choice]'] = leaf
+	path := t.struct_field_path_for_field('Outer[Choice]', 'payload') or { panic('missing embed path') }
+	assert path.map(it.typ) == ['Middle[Choice]', 'Leaf[Choice]']
+	assert t.lookup_struct_field_type(path.last().typ, 'payload') or { '' } == 'Choice'
+}
+
 fn test_sql_table_name_keeps_main_lock_outside_main_module() {
 	t := Transformer{
 		cur_module: 'orm'

@@ -13089,10 +13089,16 @@ fn (t &Transformer) struct_field_path_for_field_inner(struct_type string, field 
 		if !t.is_embedded_field(f) {
 			continue
 		}
-		embedded_type := t.trim_pointer_type(f.typ)
+		embedded_field_type := t.lookup_struct_field_type(clean, f.name) or {
+			t.normalize_field_type(f.typ, clean)
+		}
+		embedded_type := t.trim_pointer_type(embedded_field_type)
 		if path := t.struct_field_path_for_field_inner(embedded_type, field, mut seen) {
 			mut result := []FieldInfo{cap: path.len + 1}
-			result << f
+			result << FieldInfo{
+				...f
+				typ: embedded_field_type
+			}
 			result << path
 			return result
 		}
