@@ -4502,9 +4502,13 @@ fn (mut tc TypeChecker) check_call_privacy(id flat.NodeId, node flat.Node, info 
 		callee := tc.a.child_node(&node, 0)
 		if callee.kind == .selector && callee.children_count > 0 {
 			receiver_type := tc.resolve_type(tc.a.child(callee, 0))
-			receiver_name := method_type_name(unalias_and_unwrap_pointer_type(receiver_type))
+			receiver_name := method_type_name(unwrap_pointer(receiver_type))
 			mut has_direct_method := '${receiver_name}.${callee.value}' in tc.fn_ret_types
-			if !has_direct_method {
+			mut selected_is_private := false
+			if _ := tc.private_declaration(info.name) {
+				selected_is_private = true
+			}
+			if !has_direct_method && !selected_is_private {
 				if direct_info := tc.resolve_generic_struct_method(receiver_name, callee.value) {
 					has_direct_method = direct_info.name == info.name
 				}

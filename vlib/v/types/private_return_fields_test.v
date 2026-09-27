@@ -101,3 +101,15 @@ fn test_direct_private_method_wins_over_public_embedded_namesake() {
 	assert result.exit_code != 0, result.output
 	assert result.output.contains('value` is private'), result.output
 }
+
+fn test_alias_private_method_wins_over_public_embedded_namesake() {
+	root := os.join_path(os.vtmp_dir(), 'v3_private_alias_method_${os.getpid()}')
+	os.mkdir_all(os.join_path(root, 'opaque'))!
+	defer { os.rmdir_all(root) or {} }
+	os.write_file(os.join_path(root, 'opaque', 'opaque.v'), 'module opaque\npub struct Inner {}\npub fn (i Inner) value() int { return 1 }\npub struct Outer { Inner }\npub type Alias = Outer\nfn (a Alias) value() int { return 2 }\npub fn make_alias() Alias { return Alias(Outer{}) }\n')!
+	path := os.join_path(root, 'main.v')
+	os.write_file(path, 'import opaque\nfn main() { println(opaque.make_alias().value()) }\n')!
+	result := os.execute('${os.quoted_path(@VEXE)} -new-compiler -check ${os.quoted_path(path)}')
+	assert result.exit_code != 0, result.output
+	assert result.output.contains('value` is private'), result.output
+}
