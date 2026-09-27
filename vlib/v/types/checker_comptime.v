@@ -14651,66 +14651,57 @@ fn (mut tc TypeChecker) call_returned_alias_arguments(id flat.NodeId, mut visiti
 		callee_view.cur_scope.insert(param.value, param_type)
 		binding_index++
 	}
-	// Return analysis runs after checking. Restore function-valued locals from their
-	// checked bindings so a local callable cannot resolve as a same-named top-level fn.
-	mut local_stack := []flat.NodeId{}
-	for i in 0 .. fn_node.children_count {
-		child_id := tc.a.child(fn_node, i)
-		if tc.a.node(child_id).kind != .param {
-			local_stack << child_id
-		}
-	}
-	for local_stack.len > 0 {
-		local_id := local_stack.pop()
-		local_node := tc.a.node(local_id)
-		if local_node.kind in [.fn_literal, .lambda_expr] {
-			continue
-		}
-		if local_node.kind == .decl_assign {
-			for i in 0 .. int(local_node.children_count) / 2 {
-				lhs_id := tc.a.child(local_node, i * 2)
-				lhs := tc.a.node(lhs_id)
-				if lhs.kind == .ident {
-					if typ := callee_view.cached_expr_type(lhs_id) {
-						if fn_type_from_type(typ) != none {
-							callee_view.cur_scope.insert(lhs.value, typ)
-						}
-					}
-				}
-			}
-		}
-		for i in 0 .. local_node.children_count {
-			local_stack << tc.a.child(local_node, i)
-		}
-	}
 	visiting[decl.idx] = true
 	mut sources := []flat.NodeId{}
-	mut stack := []flat.NodeId{}
 	for i in 0 .. fn_node.children_count {
 		child_id := tc.a.child(fn_node, i)
 		if tc.a.node(child_id).kind != .param {
-			stack << child_id
-		}
-	}
-	for stack.len > 0 {
-		node_id := stack.pop()
-		node := tc.a.node(node_id)
-		if node.kind == .return_stmt {
-			for i in 0 .. node.children_count {
-				returned_id := tc.a.child(node, i)
-				sources << callee_view.returned_alias_arguments(returned_id, args_by_param, mut visiting)
-			}
-			continue
-		}
-		if node.kind in [.fn_literal, .lambda_expr] {
-			continue
-		}
-		for i in 0 .. node.children_count {
-			stack << tc.a.child(node, i)
+			callee_view.collect_returned_alias_sources_in_scope(child_id, args_by_param, mut visiting,
+				mut sources)
 		}
 	}
 	visiting.delete(decl.idx)
 	return sources
+}
+
+fn (mut tc TypeChecker) collect_returned_alias_sources_in_scope(id flat.NodeId, args_by_param map[string]flat.NodeId, mut visiting map[int]bool, mut sources []flat.NodeId) {
+	if !tc.valid_node_id(id) {
+		return
+	}
+	node := tc.a.node(id)
+	if node.kind in [.fn_literal, .lambda_expr] {
+		return
+	}
+	if node.kind == .return_stmt {
+		for i in 0 .. node.children_count {
+			sources << tc.returned_alias_arguments(tc.a.child(node, i), args_by_param, mut visiting)
+		}
+		return
+	}
+	has_nested_scope := node.kind in [.block, .for_stmt, .for_in_stmt, .match_branch]
+	if has_nested_scope {
+		tc.push_scope()
+	}
+	for i in 0 .. node.children_count {
+		tc.collect_returned_alias_sources_in_scope(tc.a.child(node, i), args_by_param,
+			mut visiting, mut sources)
+	}
+	if node.kind == .decl_assign {
+		for i in 0 .. int(node.children_count) / 2 {
+			lhs_id := tc.a.child(node, i * 2)
+			lhs := tc.a.node(lhs_id)
+			if lhs.kind == .ident {
+				if typ := tc.cached_expr_type(lhs_id) {
+					if fn_type_from_type(typ) != none {
+						tc.cur_scope.insert(lhs.value, typ)
+					}
+				}
+			}
+		}
+	}
+	if has_nested_scope {
+		tc.pop_scope()
+	}
 }
 
 fn (mut tc TypeChecker) returned_alias_arguments(id flat.NodeId, args_by_param map[string]flat.NodeId, mut visiting map[int]bool) []flat.NodeId {
