@@ -81,3 +81,19 @@ fn test_aliased_import_may_have_the_same_basename() {
 	tc.check_import_diagnostics()
 	assert tc.errors.len == 0, tc.errors.str()
 }
+
+fn test_nested_module_can_import_another_module_with_the_same_basename() {
+	root := os.join_path(os.vtmp_dir(), 'v3_nested_import_${os.getpid()}')
+	path := os.join_path(root, 'nn', 'layers', 'layer.v')
+	os.mkdir_all(os.dir(path))!
+	defer { os.rmdir_all(root) or {} }
+	os.write_file(os.join_path(root, 'v.mod'), "Module { name: 'project' }")!
+	os.write_file(path, 'module layers\nimport project.nn.gates.layers\n')!
+	mut p := parser.Parser.new(pref.new_preferences())
+	a := p.parse_file(path)
+	mut tc := TypeChecker.new(a)
+	tc.module_diagnostic_root = os.join_path(root, 'nn', 'models')
+	tc.collect(a)
+	tc.check_import_diagnostics()
+	assert tc.errors.len == 0, tc.errors.str()
+}

@@ -1849,7 +1849,8 @@ fn main() {
 }
 ```
 
-Aliasing also lets a nested module such as `app.html` import a distinct module named `net.html`.
+A nested module such as `app.html` can import a distinct module named `net.html`, with or without
+an alias. Their full module paths determine their identities.
 
 You cannot alias an imported function or type.
 However, you _can_ redeclare a type.

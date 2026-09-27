@@ -5904,7 +5904,7 @@ fn (mut tc TypeChecker) check_import_diagnostics() {
 		if has_source && node.value == tc.cur_module {
 			tc.record_error_at(.duplicate_decl, 'cannot import `${module_path}` into a module with the same name', flat.NodeId(idx), tc.import_module_path_pos(node))
 		}
-		if has_source && node.typ == tc.cur_module {
+		if has_source && node.typ == tc.cur_module && !tc.current_file_uses_nested_module_path() {
 			alias_pos := if explicit_alias {
 				tc.import_alias_pos(node)
 			} else {
