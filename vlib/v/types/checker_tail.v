@@ -2234,8 +2234,10 @@ fn (mut tc TypeChecker) check_return(id flat.NodeId, node flat.Node) {
 		|| (clean_expected_for_reference is ResultType
 			&& unalias_type(clean_expected_for_reference.base_type) is Interface)
 	reference_mismatch := source_actual is Pointer && expected !is Pointer
-		&& !expected_accepts_pointer_value && tc.type_compatible(source_actual.base_type, expected)
-		&& !tc.type_compatible(source_actual, expected) && !(tc.a.node(child_id).kind == .ident
+		&& !expected_accepts_pointer_value
+		&& tc.type_compatible(source_actual.base_type, expected)
+		&& !tc.type_compatible(source_actual, expected)
+		&& !tc.expr_has_interface_smartcast_reference(child_id) && !(tc.a.node(child_id).kind == .ident
 		&& tc.mut_param_binding_matches_lvalue(tc.a.node(child_id).value))
 	if numeric_kind_mismatch || reference_mismatch
 		|| !tc.return_type_compatible(child_id, actual, expected) {
@@ -2664,6 +2666,38 @@ fn (tc &TypeChecker) tuple_tail_return_error(expr_id flat.NodeId, expected []Typ
 		else {}
 	}
 	return none
+}
+
+fn (tc &TypeChecker) expr_has_interface_smartcast_reference(id flat.NodeId) bool {
+	if declared := tc.declared_smartcast_receiver_type(id) {
+		if unalias_and_unwrap_pointer_type(declared) is Interface {
+			return true
+		}
+	}
+	if !tc.valid_node_id(id) {
+		return false
+	}
+	node := tc.a.node(id)
+	if node.kind in [.paren, .expr_stmt] && node.children_count > 0 {
+		return tc.expr_has_interface_smartcast_reference(tc.a.child(node, 0))
+	}
+	if node.kind !in [.if_expr, .match_stmt] {
+		return false
+	}
+	mut has_reference := false
+	for i in 1 .. node.children_count {
+		branch_id := tc.a.child(node, i)
+		if tc.branch_tail_never_returns(branch_id) {
+			continue
+		}
+		tail_id := tc.branch_tail_expr_id(branch_id)
+		if tc.expr_has_interface_smartcast_reference(tail_id) {
+			has_reference = true
+		} else if unalias_type(tc.resolve_type(tail_id)) is Pointer {
+			return false
+		}
+	}
+	return has_reference
 }
 
 fn (mut tc TypeChecker) return_type_compatible(expr_id flat.NodeId, actual Type, expected Type) bool {
@@ -18590,6 +18624,11 @@ fn (tc &TypeChecker) if_branch_types_compatible_with_expected(a Type, a_tail fla
 
 fn (tc &TypeChecker) if_branch_type_compatible_with_context(actual Type, tail_id flat.NodeId, expected Type) bool {
 	if tc.expr_never_returns(tail_id) {
+		return true
+	}
+	if actual is Pointer && unalias_type(expected) is Struct
+		&& tc.type_compatible(actual.base_type, expected)
+		&& tc.expr_has_interface_smartcast_reference(tail_id) {
 		return true
 	}
 	if actual is None {
