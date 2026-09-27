@@ -79,3 +79,25 @@ fn test_generated_c_output_spells_the_bytes_out() {
 	assert source.contains('static const unsigned char _v_embed_blob_')
 	assert !source.contains('extern const unsigned char _v_embed_blob_')
 }
+
+fn test_retained_c_output_spells_the_bytes_out() {
+	build, output := build_and_run('app_retained', '-b c')
+	assert output == expected_output()
+	assert !build.output.contains('.S -o'), build.output
+	source := os.read_file(os.join_path(incbin_workspace, 'app_retained.c')) or { panic(err) }
+	assert source.contains('static const unsigned char _v_embed_blob_')
+	assert !source.contains('extern const unsigned char _v_embed_blob_')
+}
+
+fn test_keepc_and_dumped_flags_do_not_use_temporary_incbin_objects() {
+	keepc_build, keepc_output := build_and_run('app_keepc', '-keepc')
+	assert keepc_output == expected_output()
+	assert !keepc_build.output.contains('.S -o'), keepc_build.output
+	flags_file := os.join_path(incbin_workspace, 'flags.txt')
+	dump_build, dump_output := build_and_run('app_dump_flags',
+		'-dump-c-flags ${os.quoted_path(flags_file)}')
+	assert dump_output == expected_output()
+	assert !dump_build.output.contains('.S -o'), dump_build.output
+	flags := os.read_file(flags_file) or { panic(err) }
+	assert !flags.contains('_v_embed_blob_'), flags
+}

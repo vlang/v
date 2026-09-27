@@ -329,9 +329,11 @@ fn tcc_atomic_arg(prefs &pref.Preferences, tcc_path string, tcc_includes string)
 // what makes a large embedded file cheap to compile. That needs a final native
 // link of this build's objects, so generated C and object output, MSVC, iOS,
 // WebAssembly, a Windows target built elsewhere, and the sysroot link of a Linux
-// build on macOS keep the array form. `-d no_incbin` keeps it everywhere.
-fn v3_embed_incbin_supported(target_os string, host_os string, effective_c_compiler string, backend string, c_only bool, is_o bool, macos_linux_cross bool, user_defines []string) bool {
-	if backend != 'c' || c_only || is_o || macos_linux_cross {
+// build on macOS keep the array form. Retained C and dumped C flags must stay
+// reusable after the temporary build directory is removed. `-d no_incbin`
+// keeps the array form everywhere.
+fn v3_embed_incbin_supported(target_os string, host_os string, effective_c_compiler string, backend string, c_only bool, is_o bool, macos_linux_cross bool, reusable_c_output bool, user_defines []string) bool {
+	if backend != 'c' || c_only || is_o || macos_linux_cross || reusable_c_output {
 		return false
 	}
 	if 'no_incbin' in user_defines {
@@ -405,11 +407,33 @@ fn v3_asm_string_escape(s string) string {
 	return s.replace('\\', '\\\\').replace('"', '\\"')
 }
 
+// v3_embed_incbin_assembly_flags carries object ABI and target options from
+// the C compile/link plan to the compiler used to assemble the payload.
+fn v3_embed_incbin_assembly_flags(flags []string) []string {
+	mut assembly_flags := []string{}
+	mut i := 0
+	for i < flags.len {
+		flag := flags[i]
+		if flag in ['-target', '--target', '-arch'] && i + 1 < flags.len {
+			assembly_flags << [flag, flags[i + 1]]
+			i += 2
+			continue
+		}
+		if flag in ['-m32', '-m64', '-mx32', '-mthumb', '-marm']
+			|| flag.starts_with('-mabi=') || flag.starts_with('-march=')
+			|| flag.starts_with('-mcpu=') || flag.starts_with('--target=') {
+			assembly_flags << flag
+		}
+		i++
+	}
+	return assembly_flags
+}
+
 // assemble_v3_embed_incbin_objects writes each payload to `build_dir` next to
 // the assembler source that includes it, assembles that source with `assembler`
 // for the link target, and returns the object paths for the link. The build
 // directory is removed with the rest of the C build, so nothing is left behind.
-fn assemble_v3_embed_incbin_objects(payloads []cgen.EmbedIncbinPayload, assembler string, target_args []string, build_dir string, show_command bool) ![]string {
+fn assemble_v3_embed_incbin_objects(payloads []cgen.EmbedIncbinPayload, assembler string, assembly_flags []string, build_dir string, show_command bool) ![]string {
 	mut objects := []string{}
 	for entry in payloads {
 		bin_path := os.join_path_single(build_dir, '_v_embed_blob_${entry.symbol}.bin')
@@ -421,7 +445,7 @@ fn assemble_v3_embed_incbin_objects(payloads []cgen.EmbedIncbinPayload, assemble
 		os.write_file(asm_path, v3_embed_incbin_assembly(entry.symbol, bin_path, entry.payload.len)) or {
 			return error('cannot write the embedded file assembly ${asm_path}: ${err.msg()}')
 		}
-		mut args := target_args.clone()
+		mut args := assembly_flags.clone()
 		args << ['-c', asm_path, '-o', obj_path]
 		if show_command {
 			println('  > ${cmdexec.display(assembler, args)}')
@@ -12801,7 +12825,8 @@ pub fn run(args []string) {
 		mut embed_incbin_payloads := []cgen.EmbedIncbinPayload{}
 		mut embed_incbin_assembler := ''
 		if v3_embed_incbin_supported(prefs.normalized_target_os(), host_os, effective_c_compiler,
-			backend, c_only, is_o, macos_linux_cross_compile, prefs.user_defines) {
+			backend, c_only, is_o, macos_linux_cross_compile, keep_c || backend_explicit
+				|| dump_c_flags.len > 0, prefs.user_defines) {
 			candidates := cgen.embed_incbin_payloads(a, cgen.cache_program_file_set(a, user_files),
 				cache_state.manager.enabled)
 			if candidates.len > 0 {
@@ -13192,8 +13217,11 @@ pub fn run(args []string) {
 		}
 		mut embed_incbin_objects := []string{}
 		if use_embed_incbin {
+			mut assembly_flag_candidates := c_flag_plan.before_inputs.clone()
+			assembly_flag_candidates << c_flag_plan.after_inputs
+			assembly_flags := v3_embed_incbin_assembly_flags(assembly_flag_candidates)
 			embed_incbin_objects = assemble_v3_embed_incbin_objects(embed_incbin_payloads,
-				embed_incbin_assembler, target_args, cc_dir, verbose || show_cc) or {
+				embed_incbin_assembler, assembly_flags, cc_dir, verbose || show_cc) or {
 				eprintln(err.msg())
 				cleanup_c_build_dir(cc_dir)
 				exit(1)
