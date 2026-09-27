@@ -6272,7 +6272,9 @@ fn (mut t Transformer) cached_generic_call_specialization(id flat.NodeId, node f
 		callee := t.a.child_node(&node, 0)
 		if callee.kind == .ident && t.generic_callee_is_specialization(callee.value) {
 			if exact := t.exact_generic_specialization_args_from_callee(callee.value) {
-				preserved := t.canonical_generic_specialization_args(split_generic_args(node.value))
+				// The rewritten value already uses the callee's semantic type names.
+				// Resolving it in the current scan module can rebind a caller homonym.
+				preserved := split_generic_args(node.value)
 				if generic_type_args_equal(preserved, exact) {
 					decl_key := if spec := t.generic_call_spec_cache[idx] {
 						spec.decl_key
