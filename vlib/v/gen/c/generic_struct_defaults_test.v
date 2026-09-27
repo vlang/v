@@ -23,63 +23,63 @@ fn test_generic_channel_default_uses_concrete_element_size() {
 fn test_flattened_generic_struct_default_value_preserves_field_defaults() {
 	mut ast := flat.FlatAst.new()
 	default_value := ast.add_node(flat.Node{
-		kind:  .int_literal
+		kind: .int_literal
 		value: '5'
 	})
 	field_start := ast.children.len
 	ast.children << default_value
 	x_field := ast.add_node(flat.Node{
-		kind:           .field_decl
-		value:          'x'
-		typ:            'int'
+		kind: .field_decl
+		value: 'x'
+		typ: 'int'
 		children_start: field_start
 		children_count: 1
 	})
 	items_field := ast.add_node(flat.Node{
-		kind:  .field_decl
+		kind: .field_decl
 		value: 'items'
-		typ:   '[]T'
+		typ: '[]T'
 	})
 	channel_cap := ast.add_node(flat.Node{
-		kind:  .int_literal
+		kind: .int_literal
 		value: '1'
 	})
 	channel_cap_start := ast.children.len
 	ast.children << channel_cap
 	channel_cap_field := ast.add_node(flat.Node{
-		kind:           .field_init
-		value:          'cap'
+		kind: .field_init
+		value: 'cap'
 		children_start: channel_cap_start
 		children_count: 1
 	})
 	channel_init_start := ast.children.len
 	ast.children << channel_cap_field
 	channel_init := ast.add_node(flat.Node{
-		kind:           .struct_init
-		value:          'chan T'
-		typ:            'chan T'
+		kind: .struct_init
+		value: 'chan T'
+		typ: 'chan T'
 		children_start: channel_init_start
 		children_count: 1
 	})
 	channel_field_start := ast.children.len
 	ast.children << channel_init
 	channel_field := ast.add_node(flat.Node{
-		kind:           .field_decl
-		value:          'ch'
-		typ:            'chan T'
+		kind: .field_decl
+		value: 'ch'
+		typ: 'chan T'
 		children_start: channel_field_start
 		children_count: 1
 	})
 	size_value := ast.add_node(flat.Node{
-		kind:  .sizeof_expr
+		kind: .sizeof_expr
 		value: 'T'
 	})
 	size_field_start := ast.children.len
 	ast.children << size_value
 	size_field := ast.add_node(flat.Node{
-		kind:           .field_decl
-		value:          'size'
-		typ:            'int'
+		kind: .field_decl
+		value: 'size'
+		typ: 'int'
 		children_start: size_field_start
 		children_count: 1
 	})
@@ -89,8 +89,8 @@ fn test_flattened_generic_struct_default_value_preserves_field_defaults() {
 	ast.children << channel_field
 	ast.children << size_field
 	mut box_decl := flat.Node{
-		kind:           .struct_decl
-		value:          'GenericBox'
+		kind: .struct_decl
+		value: 'GenericBox'
 		children_start: struct_start
 		children_count: 4
 	}
@@ -101,11 +101,11 @@ fn test_flattened_generic_struct_default_value_preserves_field_defaults() {
 		types.StructField{ name: 'x', typ: types.Type(types.int_), has_default: true },
 		types.StructField{
 			name: 'items'
-			typ:  types.Type(types.Array{ elem_type: types.Type(types.int_) })
+			typ: types.Type(types.Array{ elem_type: types.Type(types.int_) })
 		},
 		types.StructField{
-			name:        'ch'
-			typ:         types.Type(types.Channel{ elem_type: types.Type(types.int_) })
+			name: 'ch'
+			typ: types.Type(types.Channel{ elem_type: types.Type(types.int_) })
 			has_default: true
 		},
 		types.StructField{ name: 'size', typ: types.Type(types.int_), has_default: true },
@@ -114,11 +114,11 @@ fn test_flattened_generic_struct_default_value_preserves_field_defaults() {
 		types.StructField{ name: 'x', typ: types.Type(types.int_), has_default: true },
 		types.StructField{
 			name: 'items'
-			typ:  types.Type(types.Array{ elem_type: types.Type(types.int_) })
+			typ: types.Type(types.Array{ elem_type: types.Type(types.int_) })
 		},
 		types.StructField{
-			name:        'ch'
-			typ:         types.Type(types.Channel{ elem_type: types.Type(types.int_) })
+			name: 'ch'
+			typ: types.Type(types.Channel{ elem_type: types.Type(types.int_) })
 			has_default: true
 		},
 		types.StructField{ name: 'size', typ: types.Type(types.int_), has_default: true },
@@ -127,11 +127,11 @@ fn test_flattened_generic_struct_default_value_preserves_field_defaults() {
 		types.StructField{ name: 'x', typ: types.Type(types.int_), has_default: true },
 		types.StructField{
 			name: 'items'
-			typ:  types.Type(types.Array{ elem_type: types.Type(types.string_) })
+			typ: types.Type(types.Array{ elem_type: types.Type(types.string_) })
 		},
 		types.StructField{
-			name:        'ch'
-			typ:         types.Type(types.Channel{ elem_type: types.Type(types.string_) })
+			name: 'ch'
+			typ: types.Type(types.Channel{ elem_type: types.Type(types.string_) })
 			has_default: true
 		},
 		types.StructField{ name: 'size', typ: types.Type(types.int_), has_default: true },
@@ -140,11 +140,11 @@ fn test_flattened_generic_struct_default_value_preserves_field_defaults() {
 		types.StructField{ name: 'x', typ: types.Type(types.int_), has_default: true },
 		types.StructField{
 			name: 'items'
-			typ:  types.Type(types.Array{ elem_type: types.Type(types.string_) })
+			typ: types.Type(types.Array{ elem_type: types.Type(types.string_) })
 		},
 		types.StructField{
-			name:        'ch'
-			typ:         types.Type(types.Channel{ elem_type: types.Type(types.string_) })
+			name: 'ch'
+			typ: types.Type(types.Channel{ elem_type: types.Type(types.string_) })
 			has_default: true
 		},
 		types.StructField{ name: 'size', typ: types.Type(types.int_), has_default: true },
@@ -153,11 +153,11 @@ fn test_flattened_generic_struct_default_value_preserves_field_defaults() {
 		types.StructField{ name: 'x', typ: types.Type(types.int_), has_default: true },
 		types.StructField{
 			name: 'items'
-			typ:  types.Type(types.Array{ elem_type: types.Type(types.int_) })
+			typ: types.Type(types.Array{ elem_type: types.Type(types.int_) })
 		},
 		types.StructField{
-			name:        'ch'
-			typ:         types.Type(types.Channel{ elem_type: types.Type(types.int_) })
+			name: 'ch'
+			typ: types.Type(types.Channel{ elem_type: types.Type(types.int_) })
 			has_default: true
 		},
 		types.StructField{ name: 'size', typ: types.Type(types.int_), has_default: true },
@@ -166,11 +166,11 @@ fn test_flattened_generic_struct_default_value_preserves_field_defaults() {
 		types.StructField{ name: 'x', typ: types.Type(types.int_), has_default: true },
 		types.StructField{
 			name: 'items'
-			typ:  types.Type(types.Array{ elem_type: types.Type(types.int_) })
+			typ: types.Type(types.Array{ elem_type: types.Type(types.int_) })
 		},
 		types.StructField{
-			name:        'ch'
-			typ:         types.Type(types.Channel{ elem_type: types.Type(types.int_) })
+			name: 'ch'
+			typ: types.Type(types.Channel{ elem_type: types.Type(types.int_) })
 			has_default: true
 		},
 		types.StructField{ name: 'size', typ: types.Type(types.int_), has_default: true },
@@ -179,10 +179,10 @@ fn test_flattened_generic_struct_default_value_preserves_field_defaults() {
 	g.a = &ast
 	g.tc = &tc
 	g.struct_decl_infos['GenericBox'] = StructDeclInfo{
-		node:      box_decl
-		node_id:   int(box_id)
-		module:    'main'
-		file:      'main.v'
+		node: box_decl
+		node_id: int(box_id)
+		module: 'main'
+		file: 'main.v'
 		full_name: 'GenericBox'
 	}
 	g.struct_decl_short_infos['GenericBox'] = g.struct_decl_infos['GenericBox']
@@ -225,15 +225,15 @@ fn test_struct_default_generic_args_preserve_caller_module() {
 	g.a = &ast
 	g.tc = &tc
 	g.register_struct_decl_info('Local', 'Local', 'main', 'main.v', flat.Node{
-		kind:  .struct_decl
+		kind: .struct_decl
 		value: 'Local'
 	})
 	g.register_struct_decl_info('Local', 'lib.Local', 'lib', 'lib.v', flat.Node{
-		kind:  .struct_decl
+		kind: .struct_decl
 		value: 'Local'
 	})
-	assert g.struct_default_field_type_text(g.struct_decl_infos['lib.Local'], 'Local').name() == 'lib.Local'
 
+	assert g.struct_default_field_type_text(g.struct_decl_infos['lib.Local'], 'Local').name() == 'lib.Local'
 	args := g.struct_default_canonical_generic_args(['Local', '&Local', 'fn (Local) Local'])
 	assert args == ['main.Local', '&main.Local', 'fn (main.Local) main.Local']
 	resolved := g.struct_default_field_type_text(g.struct_decl_infos['lib.Local'], args[0])
@@ -243,26 +243,26 @@ fn test_struct_default_generic_args_preserve_caller_module() {
 fn test_promoted_root_declared_default_recovers_generic_source() {
 	mut ast := flat.FlatAst.new()
 	size_value := ast.add_node(flat.Node{
-		kind:  .sizeof_expr
+		kind: .sizeof_expr
 		value: 'T'
 	})
 	a_start := ast.children.len
 	ast.children << size_value
 	a_field := ast.add_node(flat.Node{
-		kind:           .field_init
-		value:          'a'
+		kind: .field_init
+		value: 'a'
 		children_start: a_start
 		children_count: 1
 	})
 	b_value := ast.add_node(flat.Node{
-		kind:  .int_literal
+		kind: .int_literal
 		value: '4'
 	})
 	b_start := ast.children.len
 	ast.children << b_value
 	b_field := ast.add_node(flat.Node{
-		kind:           .field_init
-		value:          'b'
+		kind: .field_init
+		value: 'b'
 		children_start: b_start
 		children_count: 1
 	})
@@ -270,25 +270,25 @@ fn test_promoted_root_declared_default_recovers_generic_source() {
 	ast.children << a_field
 	ast.children << b_field
 	inner_init := ast.add_node(flat.Node{
-		kind:           .struct_init
-		value:          'Inner'
-		typ:            'Inner'
+		kind: .struct_init
+		value: 'Inner'
+		typ: 'Inner'
 		children_start: init_start
 		children_count: 2
 	})
 	embed_start := ast.children.len
 	ast.children << inner_init
 	embed_field := ast.add_node(flat.Node{
-		kind:           .field_decl
-		value:          'Inner'
+		kind: .field_decl
+		value: 'Inner'
 		children_start: embed_start
 		children_count: 1
 	})
 	struct_start := ast.children.len
 	ast.children << embed_field
 	mut outer_decl := flat.Node{
-		kind:           .struct_decl
-		value:          'Outer'
+		kind: .struct_decl
+		value: 'Outer'
 		children_start: struct_start
 		children_count: 1
 	}
@@ -301,9 +301,9 @@ fn test_promoted_root_declared_default_recovers_generic_source() {
 	]
 	tc.structs['Outer[i64]'] = [
 		types.StructField{
-			name:        'Inner'
-			typ:         types.Type(types.Struct{ name: 'Inner' })
-			is_embed:    true
+			name: 'Inner'
+			typ: types.Type(types.Struct{ name: 'Inner' })
+			is_embed: true
 			has_default: true
 		},
 	]
@@ -311,10 +311,10 @@ fn test_promoted_root_declared_default_recovers_generic_source() {
 	g.a = &ast
 	g.tc = &tc
 	g.struct_decl_infos['Outer'] = StructDeclInfo{
-		node:      outer_decl
-		node_id:   int(outer_id)
-		module:    'main'
-		file:      'main.v'
+		node: outer_decl
+		node_id: int(outer_id)
+		module: 'main'
+		file: 'main.v'
 		full_name: 'Outer'
 	}
 	g.struct_decl_short_infos['Outer'] = g.struct_decl_infos['Outer']
