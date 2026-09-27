@@ -16219,7 +16219,20 @@ pub fn (tc &TypeChecker) multi_expr_tail_types_for_transform(expr_id flat.NodeId
 	return tc.multi_expr_tail_types(expr_id, count)
 }
 
+fn multi_tail_wrappers_match(current Type, actual Type) bool {
+	clean_current := unalias_type(current)
+	clean_actual := unalias_type(actual)
+	if clean_current is Nil || clean_actual is Nil {
+		return true
+	}
+	return (clean_current is OptionType) == (clean_actual is OptionType)
+		&& (clean_current is ResultType) == (clean_actual is ResultType)
+}
+
 fn (tc &TypeChecker) promoted_multi_tail_type(current Type, actual Type) ?Type {
+	if !multi_tail_wrappers_match(current, actual) {
+		return none
+	}
 	if (current.name() == 'voidptr' || unalias_type(current) is Nil)
 		&& unalias_type(actual) is Pointer {
 		return Type(Pointer{

@@ -2131,6 +2131,10 @@ fn (mut tc TypeChecker) check_general_match_branch_tail_types(id flat.NodeId, no
 			&& clean_expected.types.len == clean_actual.types.len {
 			mut promoted := []Type{cap: clean_expected.types.len}
 			for j, current in clean_expected.types {
+				if !multi_tail_wrappers_match(current, clean_actual.types[j]) {
+					tc.record_match_branch_return_type_mismatch(tail_id, expected, actual)
+					return
+				}
 				promoted << tc.promoted_multi_tail_type(current, clean_actual.types[j]) or { break }
 			}
 			if promoted.len == clean_expected.types.len {
