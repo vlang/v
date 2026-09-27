@@ -470,6 +470,45 @@ fn (tc &TypeChecker) vls_narrowed_constraints(fn_node flat.Node, path []flat.Nod
 // `name` of the generic function `fn_node` holds a value of: `T` for `y` of
 // `y := x` with `x T`.
 fn (tc &TypeChecker) vls_local_type_param(fn_node flat.Node, name string, names []string) ?string {
+	for id in tc.vls_idents_named(fn_node, name) {
+		if typ := tc.vls_local_type(id) {
+			clean := unwrap_pointer(typ)
+			if clean is Unknown {
+				if param := generic_placeholder_from_unknown(clean) {
+					if param in names {
+						return param
+					}
+				}
+			}
+		}
+	}
+	return none
+}
+
+// vls_local_named_type is the type of the local `name` of the function
+// `fn_node` where it is declared, `y := x` or `for y in ys {`: what its value
+// or its container gives it, not what an `is` makes of it somewhere.
+fn (tc &TypeChecker) vls_local_named_type(fn_node flat.Node, name string) ?Type {
+	for id in tc.vls_idents_named(fn_node, name) {
+		parent_id := tc.vls_parent_id(id)
+		if !tc.valid_node_id(parent_id) {
+			continue
+		}
+		parent := tc.a.node(parent_id)
+		if (parent.kind == .decl_assign && id in tc.multi_assign_lhs_ids(parent))
+			|| parent.kind == .for_in_stmt {
+			if typ := tc.vls_local_type(id) {
+				return typ
+			}
+		}
+	}
+	return none
+}
+
+// vls_idents_named returns the idents `name` of the function `fn_node`. V has
+// no shadowing: they all stand for one binding.
+fn (tc &TypeChecker) vls_idents_named(fn_node flat.Node, name string) []flat.NodeId {
+	mut found := []flat.NodeId{}
 	mut stack := []flat.NodeId{}
 	for i in 0 .. fn_node.children_count {
 		stack << tc.a.child(&fn_node, i)
@@ -481,22 +520,13 @@ fn (tc &TypeChecker) vls_local_type_param(fn_node flat.Node, name string, names 
 		}
 		node := tc.a.node(id)
 		if node.kind == .ident && node.value == name {
-			if typ := tc.vls_local_type(id) {
-				clean := unwrap_pointer(typ)
-				if clean is Unknown {
-					if param := generic_placeholder_from_unknown(clean) {
-						if param in names {
-							return param
-						}
-					}
-				}
-			}
+			found << id
 		}
 		for i in 0 .. node.children_count {
 			stack << tc.a.child(node, i)
 		}
 	}
-	return none
+	return found
 }
 
 // vls_enclosing_decl returns the declaration around the node `id` that type

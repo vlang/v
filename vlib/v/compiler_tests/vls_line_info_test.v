@@ -1975,6 +1975,16 @@ fn listed[T Number3](x T) f64 {
 	return 0.0
 }
 
+fn nested_tests[T Number3](t T) f64 {
+	// the value of t
+	\$if T in [i64, f64] {
+		\$if t is f64 {
+			return t
+		}
+	}
+	return 0.0
+}
+
 fn tested[T Number3](x T) f64 {
 	\$if x is f64 {
 		return x
@@ -2025,6 +2035,7 @@ fn main() {
 	println(half(1.0, 2.0, [3.0]))
 	println(tested(1))
 	println(listed(2))
+	println(nested_tests(3))
 	println(named(User{'ana', 3}))
 	println(family(User{'bo', 1}))
 	println(locals(User{'cy', 2}))
@@ -2100,6 +2111,17 @@ fn test_a_type_parameter_shows_its_constraint_and_what_it_is_there() {
 	assert narrowed('hv^', '\t\tzero := T(0)', 'T', 0) == hover_of('[T Number3]\\nT: f64')
 	// A function writes its type parameters, with their constraints.
 	assert narrowed('hv^', '\tprintln(half(1.0, 2.0, [3.0]))', 'half', 0) == hover_of('fn half[T Number3](x T, y T, xs []T) f64')
+}
+
+fn test_a_value_in_the_condition_of_a_compile_time_if_is_a_value_there() {
+	// The condition keeps `t` as text: it is the parameter, with what the `$if`s
+	// around it leave of `T`, not yet what this one decides.
+	assert narrowed('hv^', '\t\t\$if t is f64 {', 't', 0) == hover_of('t T\\nT: i64 | f64')
+	// A local that holds a `T`, and a parameter with no `$if` around it.
+	assert narrowed('hv^', '\t\$if y is User {', 'y', 0) == hover_of('y T\\nT: implements main.Named')
+	assert narrowed('hv^', '\t\$if x is f64 {', 'x', 0) == hover_of('x T\\nT: int | i64 | f64')
+	// The same word in a comment is no value.
+	assert narrowed('hv^', '\t// the value of t', 't', 0) == ''
 }
 
 fn test_a_parameter_is_the_type_that_is_or_match_makes_it() {

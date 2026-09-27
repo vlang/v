@@ -130,6 +130,9 @@ fn (mut tc TypeChecker) vls_answer_type_word(q VlsQuery, file_id int, source str
 				if text := tc.vls_type_param_hover_at(file_id, offset, word) {
 					return vls_hover_json(text, '')
 				}
+				if text := tc.vls_condition_value_hover_at(file_id, offset, source, word) {
+					return vls_hover_json(text, '')
+				}
 				if declaration := tc.vls_type_declaration(word) {
 					return vls_hover_json(declaration, '')
 				}
@@ -160,6 +163,40 @@ fn (tc &TypeChecker) vls_type_param_hover_at(file_id int, offset int, word strin
 	}
 	decl_id := tc.vls_decl_before(file_id, offset)?
 	return tc.vls_type_param_hover(decl_id, word)
+}
+
+// vls_condition_value_hover_at is the hover of the value `word` written at
+// `offset` of `file_id` in the condition of a `$if`, which keeps it as text:
+// `c` in `$if c is $float {`, a parameter or a local of the function around
+// it, with what the `$if`s around it leave of its type parameters (see
+// vls_value_hover).
+fn (tc &TypeChecker) vls_condition_value_hover_at(file_id int, offset int, source string, word string) ?string {
+	id := tc.vls_node_around(file_id, offset)?
+	node := tc.a.node(id)
+	// Between `$if` and the `{` of its branch.
+	if node.kind != .comptime_if || offset < int(node.pos.offset) {
+		return none
+	}
+	brace := source.index_after('{', int(node.pos.offset)) or { return none }
+	if offset > brace {
+		return none
+	}
+	decl, _ := tc.vls_enclosing_decl(id)?
+	if decl.kind != .fn_decl {
+		return none
+	}
+	for i in 0 .. decl.children_count {
+		param := tc.a.child_node(&decl, i)
+		if param.kind == .param && param.value == word && param.typ.len > 0 {
+			declared := tc.parse_type(param.typ)
+			if type_contains_unknown(declared) {
+				return tc.vls_generic_value_text(id, word, param.typ)
+			}
+			return '${word} ${tc.vls_type_text(declared)}'
+		}
+	}
+	typ := tc.vls_local_named_type(decl, word)?
+	return tc.vls_value_hover(id, word, typ)
 }
 
 // vls_decl_before returns the last declaration of a function or a type of
