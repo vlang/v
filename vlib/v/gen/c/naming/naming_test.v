@@ -55,3 +55,10 @@ fn test_fn_ptr_encoded_round_trips_nested_keys() {
 	assert nested_ret == 'i64'
 	assert fn_ptr_encoded_params(nested_params) == [inner, 'i64']
 }
+
+fn test_file_function_names_do_not_collide_with_libc() {
+	assert c_name('mktemp') == 'v_mktemp'
+	assert c_name('truncate') == 'v_truncate'
+	assert c_name('C.mktemp') == 'mktemp'
+	assert c_name('C.truncate') == 'truncate'
+}

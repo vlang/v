@@ -93,6 +93,7 @@ const libc_collisions = {
 	'memcpy':   true
 	'memmove':  true
 	'memset':   true
+	'mktemp':   true
 	'open':     true
 	'pipe':     true
 	'pow':      true
@@ -115,6 +116,7 @@ const libc_collisions = {
 	'strncpy':  true
 	'strrchr':  true
 	'strstr':   true
+	'truncate': true
 	'wait':     true
 	'y0':       true
 	'y1':       true
