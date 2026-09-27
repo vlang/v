@@ -50,6 +50,18 @@ fn test_private_return_type_requires_explicit_str() {
 	assert result_with_method.exit_code == 0, result_with_method.output
 }
 
+fn test_private_alias_method_value_through_double_pointer_is_rejected() {
+	root := os.join_path(os.vtmp_dir(), 'v3_private_alias_double_pointer_${os.getpid()}')
+	os.mkdir_all(os.join_path(root, 'opaque'))!
+	defer { os.rmdir_all(root) or {} }
+	os.write_file(os.join_path(root, 'opaque', 'opaque.v'), 'module opaque\npub struct Record {}\npub type Alias = Record\nfn (r Record) hidden() int { return 1 }\npub fn make_alias() Alias { return Alias(Record{}) }\n')!
+	path := os.join_path(root, 'main.v')
+	os.write_file(path, 'import opaque\nfn main() {\n value := opaque.make_alias()\n p := &value\n pp := &p\n callback := pp.hidden\n println(callback())\n}\n')!
+	result := os.execute('${os.quoted_path(@VEXE)} -new-compiler -check ${os.quoted_path(path)}')
+	assert result.exit_code != 0, result.output
+	assert result.output.contains('hidden` is private'), result.output
+}
+
 fn test_private_method_value_on_private_return_type_is_rejected() {
 	root := os.join_path(os.vtmp_dir(), 'v3_private_return_method_${os.getpid()}')
 	os.mkdir_all(os.join_path(root, 'opaque'))!

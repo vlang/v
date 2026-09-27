@@ -6252,6 +6252,16 @@ fn (mut tc TypeChecker) check_selector(id flat.NodeId, node flat.Node) {
 				tc.node_value_diagnostic_pos(id))
 		}
 	}
+	if selector_is_method_value && clean_recv is Alias
+		&& tc.struct_field_type(clean_recv.name, node.value) == none {
+		if declaration_key := tc.concrete_method_signature_key(clean_recv.name, node.value) {
+			if tc.private_declaration(declaration_key) != none {
+				method_name := '${tc.diagnostic_type_name(Type(clean_recv))}.${node.value}'
+				tc.record_error_at(.unknown_fn, 'method `${method_name}` is private', id,
+					tc.node_value_diagnostic_pos(id))
+			}
+		}
+	}
 	if clean_recv is Struct {
 		if deprecation := tc.deprecated_symbols['${clean_recv.name}.${node.value}'] {
 			tc.record_deprecation(id, 'field', deprecation, tc.node_value_diagnostic_pos(id))
