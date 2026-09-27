@@ -1565,7 +1565,12 @@ fn (mut tc TypeChecker) check_match_stmt(id flat.NodeId, node flat.Node) {
 				} else {
 					pattern
 				}
-				tc.smartcasts[subject_key] = tc.parse_type(smartcast_type)
+				variant_type := tc.parse_type(smartcast_type)
+				tc.smartcasts[subject_key] = if subject_type is Interface {
+					interface_smartcast_variant_type(variant_type)
+				} else {
+					variant_type
+				}
 			}
 		} else if subject_key.len > 0 && valid_string_data(subject_key) && n_conds > 1
 			&& subject_type is SumType {
@@ -3365,7 +3370,12 @@ fn (mut tc TypeChecker) apply_match_branch_context_smartcasts(subject_key string
 	} else {
 		return
 	}
-	tc.smartcasts[subject_key] = tc.parse_type(smartcast_type)
+	variant_type := tc.parse_type(smartcast_type)
+	tc.smartcasts[subject_key] = if subject_type is Interface {
+		interface_smartcast_variant_type(variant_type)
+	} else {
+		variant_type
+	}
 }
 
 // extract_smartcasts supports extract smartcasts handling for TypeChecker.
@@ -13889,16 +13899,22 @@ fn (tc &TypeChecker) smartcast_target_type_for_is_expr(expr_id flat.NodeId, patt
 	if subject is Interface {
 		if variant := tc.resolve_interface_match_pattern(pattern) {
 			variant_type := tc.parse_type(variant)
-			if variant_type is Struct
-				|| (tc.expr_has_explicit_mut_marker(expr_id) && raw_subject is Pointer) {
+			if tc.expr_has_explicit_mut_marker(expr_id) && raw_subject is Pointer {
 				return Type(Pointer{
 					base_type: variant_type
 				})
 			}
-			return variant_type
+			return interface_smartcast_variant_type(variant_type)
 		}
 	}
 	return tc.parse_type(pattern)
+}
+
+fn interface_smartcast_variant_type(variant_type Type) Type {
+	if variant_type is Struct {
+		return Type(Pointer{ base_type: variant_type })
+	}
+	return variant_type
 }
 
 fn (mut tc TypeChecker) invalidate_smartcasts_for_write_key(key string) {
