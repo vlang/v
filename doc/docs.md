@@ -8780,6 +8780,9 @@ Note that such redeclarations only need to have enough details about the
 functions/structs that you want to use.
 Note also that they *do not have* to be complete, unlike the ones in the .h files.
 
+Parameter names in `C.` function declarations may start with uppercase letters, as in C headers.
+The lowercase naming rule still applies to parameters of ordinary V functions.
+
 
 **C. struct redeclarations**
 For example, if a struct has 3 fields on the C side, but you want to only
