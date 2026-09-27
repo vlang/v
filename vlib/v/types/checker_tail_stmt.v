@@ -3896,6 +3896,17 @@ fn (mut tc TypeChecker) check_struct_init(id flat.NodeId, node flat.Node) {
 		}))
 	}
 	if unalias_type(init_type) is Enum {
+		if tc.node_is_in_translated_file(id) && node.children_count == 0 {
+			if _ := tc.private_declaration(init_type.name()) {
+				tc.record_error_at(.unknown_type, 'type `${init_type.name()}` is private', id,
+					node.pos)
+				return
+			}
+			if !is_optional_init {
+				tc.remember_expr_type(id, init_type)
+			}
+			return
+		}
 		tc.record_error_at(.assignment_mismatch, 'cannot initialize enums', id, node.pos)
 		return
 	}
@@ -4042,7 +4053,7 @@ fn (mut tc TypeChecker) check_struct_init(id flat.NodeId, node flat.Node) {
 		// Match V1's generic recheck behavior: a concrete generic struct literal can
 		// acquire pointer fields only after substituting its type arguments, so those
 		// fields retain their zero/default initialization unless explicitly supplied.
-		if !init_type_text.contains('[') {
+		if !init_type_text.contains('[') && !tc.node_is_in_translated_file(id) {
 			for diagnostic_index, missing in tc.missing_reference_struct_fields(init_name, supplied_fields, []string{}) {
 				if seen_missing_references[missing.path] {
 					continue
@@ -4328,7 +4339,8 @@ fn (mut tc TypeChecker) check_struct_init(id flat.NodeId, node flat.Node) {
 		}
 		return
 	}
-	if clean_init_type is SumType && node.children_count == 0 {
+	if clean_init_type is SumType && node.children_count == 0
+		&& !tc.node_is_in_translated_file(id) {
 		base := tc.sum_base_name(clean_init_type.name)
 		variants := tc.sum_types[base] or { []string{} }
 		if variants.len > 0 {
