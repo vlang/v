@@ -4506,6 +4506,17 @@ fn (mut tc TypeChecker) check_call_privacy(id flat.NodeId, node flat.Node, info 
 			for direct_type is Pointer {
 				direct_type = direct_type.base_type
 			}
+			if callee.value == 'str' && direct_type is Struct {
+				if visibility := tc.private_declaration(direct_type.name) {
+					if tc.concrete_method_signature_key(direct_type.name, 'str') == none {
+						type_name := tc.diagnostic_type_name(Type(direct_type))
+						name_pos := tc.method_call_name_pos(node, callee)
+						tc.record_error_at(.assignment_mismatch, 'cannot stringify private type `${type_name}` outside module `${visibility.module_name}` without an explicit `str()` method', id,
+							token.new_span(name_pos.id, name_pos.offset, node.pos.end))
+						return true
+					}
+				}
+			}
 			receiver_name := method_type_name(direct_type)
 			mut has_direct_method := '${receiver_name}.${callee.value}' in tc.fn_ret_types
 			mut selected_is_private := false

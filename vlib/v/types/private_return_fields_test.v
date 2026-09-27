@@ -12,6 +12,7 @@ struct Record {
 pub:
  value int
 }
+
 pub fn make_record() Record { return Record{secret: 1, value: 2} }
 ')!
 	path := os.join_path(root, 'main.v')
@@ -27,6 +28,26 @@ fn main() {
 	assert result.output.contains('private'), result.output
 	assert result.output.contains('value.secret'), result.output
 	assert result.output.contains('opaque.Record'), result.output
+}
+
+fn test_private_return_type_requires_explicit_str() {
+	root := os.join_path(os.vtmp_dir(), 'v3_private_return_str_${os.getpid()}')
+	os.mkdir_all(os.join_path(root, 'opaque'))!
+	defer { os.rmdir_all(root) or {} }
+	module_path := os.join_path(root, 'opaque', 'opaque.v')
+	os.write_file(module_path, 'module opaque\nstruct Record { secret int }\npub fn make_record() Record { return Record{secret: 7} }\n')!
+	path := os.join_path(root, 'main.v')
+	os.write_file(path, 'import opaque\nfn main() { println(opaque.make_record().str()) }\n')!
+	result := os.execute('${os.quoted_path(@VEXE)} -new-compiler -check ${os.quoted_path(path)}')
+	assert result.exit_code != 0, result.output
+	assert result.output.contains('cannot stringify private type'), result.output
+	os.write_file(module_path, 'module opaque\nstruct Record { secret int }\npub fn make_record() Record { return Record{secret: 7} }\nfn (r Record) str() string { return "record" }\n')!
+	result_with_private_method := os.execute('${os.quoted_path(@VEXE)} -new-compiler -check ${os.quoted_path(path)}')
+	assert result_with_private_method.exit_code != 0, result_with_private_method.output
+	assert result_with_private_method.output.contains('str` is private'), result_with_private_method.output
+	os.write_file(module_path, 'module opaque\nstruct Record { secret int }\npub fn make_record() Record { return Record{secret: 7} }\npub fn (r Record) str() string { return "record" }\n')!
+	result_with_method := os.execute('${os.quoted_path(@VEXE)} -new-compiler -check ${os.quoted_path(path)}')
+	assert result_with_method.exit_code == 0, result_with_method.output
 }
 
 fn test_private_method_value_on_private_return_type_is_rejected() {
