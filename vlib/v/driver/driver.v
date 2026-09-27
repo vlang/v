@@ -11919,7 +11919,7 @@ pub fn run(args []string) {
 		enable_globals:              enable_globals_compat
 		disable_explicit_mutability: disable_explicit_mutability
 		checker_fixture_mode:        is_checker_fixture
-		pool_checks_small_programs:  served.from_server && vls_line_info == ''
+		pool_checks_small_programs:  served.from_server
 		warns_are_errors:            effective_warns_are_errors
 		notes_are_errors:            notes_are_errors
 		building_v:                  building_v
@@ -12076,11 +12076,13 @@ pub fn run(args []string) {
 			ck_stage_sw.restart()
 			// On very large user import graphs, serial checking uses less memory than
 			// retaining one semantic-check accumulator per worker.
-			// A query reads the checker's per-node types, which a serial check
-			// leaves in one place.
+			// A query reads the checker's per-node types: a check with scoped workers
+			// promotes those of each worker into the program's, as a serial one
+			// leaves them.
 			parallel_semantic_check := !current_no_parallel && a.missing_imports.len == 0
-				&& vls_line_info == '' && (building_v || !scope_prealloc_check
-				|| a.nodes.len < scoped_serial_user_check_node_threshold)
+				&& (vls_line_info == '' || pre_tc.scope_parallel_check_workers)
+				&& (building_v || !scope_prealloc_check
+					|| a.nodes.len < scoped_serial_user_check_node_threshold)
 			check_was_parallel = pre_tc.check_semantics_opt(parallel_semantic_check)
 			if verbose {
 				eprintln('  [ttime]   ck semantics     ${f64(ck_stage_sw.elapsed().microseconds()) / 1000.0:7.2f} ms')
@@ -18924,7 +18926,7 @@ fn configure_type_checker(mut tc types.TypeChecker, prefs &pref.Preferences, cfg
 	tc.checker_fixture_mode = cfg.checker_fixture_mode
 	// A diagnostics server's check waits on its bodies: the pool checks a few
 	// of them sooner than one thread, as it does many (p20, 201 functions: 31 ms
-	// on one thread, 13 ms on the pool). A query stays on one thread.
+	// on one thread, 13 ms on the pool).
 	if cfg.pool_checks_small_programs {
 		tc.parallel_check_min_items = 2
 	}
