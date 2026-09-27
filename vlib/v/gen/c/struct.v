@@ -6588,11 +6588,18 @@ fn (g &FlatGen) cocoa_nsfont_class(name string) bool {
 		return false
 	}
 	mut directives := []string{}
+	mut directive_lines := []string{}
+	for preinclude in g.preinclude_directives {
+		directive_lines << preinclude.split_into_lines()
+	}
 	for directive in g.c_directives {
 		if directive.late {
 			continue
 		}
-		line := directive.text.trim_space()
+		directive_lines << directive.text.split_into_lines()
+	}
+	for raw_line in directive_lines {
+		line := raw_line.trim_space()
 		if line.starts_with('#include') || line.starts_with('#import') {
 			// Reuse the C preprocessor guard evaluator to decide whether the header is active.
 			if line.contains('Cocoa/') || line.contains('AppKit/') {
