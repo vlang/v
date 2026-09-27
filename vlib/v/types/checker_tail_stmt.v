@@ -3025,23 +3025,36 @@ fn (mut tc TypeChecker) check_is_expr(id flat.NodeId, node flat.Node) {
 
 fn (tc &TypeChecker) is_expr_used_for_branch_smartcast(id flat.NodeId) bool {
 	mut current := id
+	mut positive := true
 	for _ in 0 .. 128 {
 		parent_id := tc.direct_parent_id(current)
-		if !tc.valid_node_id(parent_id) {
-			return false
-		}
+		if !tc.valid_node_id(parent_id) { return false }
 		parent := tc.a.node(parent_id)
-		if parent.kind == .paren
-			|| (parent.kind == .prefix && parent.op == .not)
-			|| (parent.kind == .infix && parent.op in [.logical_and, .logical_or]) {
+		if parent.kind == .paren {
+			current = parent_id
+			continue
+		}
+		if parent.kind == .prefix && parent.op == .not {
+			positive = !positive
+			current = parent_id
+			continue
+		}
+		if parent.kind == .infix && parent.op in [.logical_and, .logical_or] {
+			// Only a true AND operand or a false OR operand can narrow the value.
+			if (parent.op == .logical_and) != positive { return false }
+			if parent.children_count > 0 && tc.a.child(parent, 0) == current {
+				return true
+			}
 			current = parent_id
 			continue
 		}
 		if parent.kind == .if_expr {
-			return parent.children_count > 0 && tc.a.child(parent, 0) == current
+			if parent.children_count == 0 || tc.a.child(parent, 0) != current { return false }
+			if positive { return true }
+			return parent.children_count > 2 && tc.a.child_node(parent, 2).kind != .empty
 		}
 		if parent.kind == .for_stmt {
-			return parent.children_count > 1 && tc.a.child(parent, 1) == current
+			return positive && parent.children_count > 1 && tc.a.child(parent, 1) == current
 		}
 		return false
 	}
@@ -7774,7 +7787,7 @@ fn (mut tc TypeChecker) check_ident(id flat.NodeId, node flat.Node) {
 		mut explicit_mut_expr_id := id
 		mut selector_parent_id := parent_id
 		for tc.valid_node_id(selector_parent_id)
-			&& tc.a.node(selector_parent_id).kind in [.selector, .index, .paren] {
+			&& tc.a.node(selector_parent_id).kind in [.selector, .index, .paren, .as_expr] {
 			explicit_mut_expr_id = selector_parent_id
 			selector_parent_id = tc.direct_parent_id(selector_parent_id)
 		}
