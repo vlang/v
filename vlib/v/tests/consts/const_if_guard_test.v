@@ -28,6 +28,13 @@ fn opt_point(ok bool) ?Point {
 	return none
 }
 
+fn opt_fixed(ok bool) ?[2]int {
+	if ok {
+		return [4, 5]!
+	}
+	return none
+}
+
 fn add_one(x int) int {
 	return x + 1
 }
@@ -61,6 +68,8 @@ const res_err_msg = if v := res_int(false) { v.str() } else { err.msg() }
 
 const point_some = if p := opt_point(true) { p } else { Point{} }
 const point_none = if p := opt_point(false) { p } else { Point{7, 8} }
+const fixed_some = if values := opt_fixed(true) { values } else { [0, 0]! }
+const fixed_none = if values := opt_fixed(false) { values } else { [6, 7]! }
 
 const pair = if a, b := opt_pair(true) { '${a}:${b}' } else { 'none' }
 
@@ -130,6 +139,11 @@ fn test_struct_payload() {
 	assert point_some == Point{1, 2}
 	assert point_none == Point{7, 8}
 	assert point_some.x + point_none.y == 9
+}
+
+fn test_fixed_array_payload() {
+	assert fixed_some == [4, 5]!
+	assert fixed_none == [6, 7]!
 }
 
 fn test_multi_return_payload() {
