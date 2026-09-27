@@ -5755,6 +5755,10 @@ fn (mut t Transformer) transform_nested_if_string_interp_node(node flat.Node) ?f
 		|| last.kind != .string_literal {
 		return none
 	}
+	if first.has_literal_interpolation_text() || middle.has_literal_interpolation_text()
+		|| last.has_literal_interpolation_text() {
+		return none
+	}
 	cond_text := nested_if_interp_prefix_condition(first.value) or { return none }
 	if !middle.value.contains('} else {') || !last.value.trim_space().ends_with('}}') {
 		return none
@@ -5816,6 +5820,10 @@ fn (mut t Transformer) transform_nested_match_string_interp_node(node flat.Node)
 	last := t.a.nodes[int(last_id)]
 	if first.kind != .string_literal || middle.kind != .string_literal
 		|| last.kind != .string_literal {
+		return none
+	}
+	if first.has_literal_interpolation_text() || middle.has_literal_interpolation_text()
+		|| last.has_literal_interpolation_text() {
 		return none
 	}
 	subject_text, label_text := nested_match_interp_prefix(first.value) or { return none }
