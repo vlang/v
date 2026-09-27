@@ -7161,18 +7161,9 @@ fn (mut t Transformer) mark_local_closure_cleanup_decls(body_ids []flat.NodeId) 
 			t.local_closure_binding_decl_in_scope(body_ids, candidate) or { continue }
 		}
 		decl := t.a.nodes[int(decl_id)]
-		mut aggregate_type := ''
-		for i in 0 .. t.multi_assign_lhs_count(decl) {
-			lhs_id := t.multi_assign_lhs_id(decl, i)
-			lhs := t.a.nodes[int(lhs_id)]
-			if lhs.kind == .ident && lhs.value == candidate.aggregate_name {
-				aggregate_type = t.node_type(lhs_id)
-				break
-			}
-		}
-		// A local pointer can refer to storage owned by its caller. A callback
-		// stored through it must survive this function's scope.
-		if t.normalize_type_alias(aggregate_type).starts_with('&') {
+		// Only fields reached through caller-backed pointers outlive this scope.
+		// Fresh pointer aggregates remain eligible for cleanup after escape analysis.
+		if t.local_closure_field_crosses_caller_pointer(candidate, decl) {
 			continue
 		}
 		if candidate.aggregate_scope < 0 {
@@ -7198,6 +7189,56 @@ fn (mut t Transformer) mark_local_closure_cleanup_decls(body_ids []flat.NodeId) 
 			t.mark_local_method_value_receiver_borrow(flat.NodeId(candidate.source_id))
 		}
 	}
+}
+
+fn (t &Transformer) local_closure_field_crosses_caller_pointer(candidate LocalClosureFieldCandidate, decl flat.Node) bool {
+	owner := t.a.nodes[candidate.owner_id]
+	if owner.kind !in [.assign, .selector_assign, .index_assign] || owner.children_count < 2 {
+		return false
+	}
+	mut id := t.a.child(&owner, 0)
+	for int(id) >= 0 && int(id) < t.a.nodes.len {
+		node := t.a.nodes[int(id)]
+		if node.kind in [.paren, .as_expr] && node.children_count > 0 {
+			id = t.a.child(&node, 0)
+			continue
+		}
+		if node.kind !in [.selector, .index] || node.children_count == 0 {
+			break
+		}
+		base_id := t.a.child(&node, 0)
+		if t.normalize_type_alias(t.node_type(base_id)).starts_with('&') {
+			base := t.a.nodes[int(base_id)]
+			if base.kind != .ident || base.value != candidate.aggregate_name
+				|| !t.local_closure_decl_has_fresh_pointer(decl, candidate.aggregate_name) {
+				return true
+			}
+		}
+		id = base_id
+	}
+	return false
+}
+
+fn (t &Transformer) local_closure_decl_has_fresh_pointer(decl flat.Node, name string) bool {
+	if decl.kind != .decl_assign {
+		return false
+	}
+	for i in 0 .. t.multi_assign_lhs_count(decl) {
+		lhs := t.a.nodes[int(t.multi_assign_lhs_id(decl, i))]
+		if lhs.kind != .ident || lhs.value != name || i >= t.multi_assign_rhs_count(decl) {
+			continue
+		}
+		mut rhs_id := t.multi_assign_rhs_id(decl, i)
+		mut rhs := t.a.nodes[int(rhs_id)]
+		for rhs.kind in [.paren, .expr_stmt] && rhs.children_count > 0 {
+			rhs_id = t.a.child(&rhs, 0)
+			rhs = t.a.nodes[int(rhs_id)]
+		}
+		if rhs.kind == .prefix && rhs.op == .amp && rhs.children_count > 0 {
+			return t.a.child_node(&rhs, 0).kind == .struct_init
+		}
+	}
+	return false
 }
 
 fn (mut t Transformer) mark_local_method_value_receiver_borrow(owner_id flat.NodeId) {
