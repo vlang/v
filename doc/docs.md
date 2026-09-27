@@ -7254,11 +7254,12 @@ With `-prod`, a large embedded file is stored through the assembler's `.incbin`
 directive: V writes the bytes to a file, assembles a small `.S` source that
 includes it, and links the resulting object next to the generated C, so the C
 compiler never has to parse the bytes as an array initializer. That happens when
-the build links natively with GCC, Clang or MinGW, or with TCC for non-macOS
-targets when a GCC or Clang compatible compiler is installed. On ELF targets,
-the payload object marks its stack as non-executable. Generated C or
-object output (`-o file.c`, `-o file.o`, `-generate-c-project`), MSVC, iOS and
-WebAssembly targets, and a Windows target built on another OS keep the array form.
+the build links natively with GCC, Clang or MinGW, or with TCC targeting the
+host on non-macOS systems when a GCC or Clang compatible compiler is installed.
+On ELF targets, the payload object marks its stack as non-executable.
+Generated C or object output (`-o file.c`, `-o file.o`, `-generate-c-project`),
+MSVC, iOS and WebAssembly targets, and a Windows target built on another OS keep
+the array form. TCC builds targeting another OS or architecture also keep it.
 `-keepc`, an explicit `-b c`, and `-dump-c-flags` also keep the array form so
 their retained output does not depend on temporary object files. `-d no_incbin`
 selects it everywhere.

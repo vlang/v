@@ -357,9 +357,14 @@ fn v3_embed_incbin_supported(target_os string, host_os string, effective_c_compi
 
 // v3_embed_incbin_assembler picks the driver that assembles the payload objects:
 // the C compiler itself when it is GCC or Clang compatible, otherwise (tcc does
-// not preprocess and assemble a `.S` file) a GCC or Clang found on PATH.
-fn v3_embed_incbin_assembler(c_compiler string, effective_tcc bool) ?string {
+// not preprocess and assemble a `.S` file) a GCC or Clang found on PATH. A
+// cross-target TCC may encode its target without flags, so the host assembler
+// cannot safely produce an object for it.
+fn v3_embed_incbin_assembler(c_compiler string, effective_tcc bool, target pref.Target, host pref.Target) ?string {
 	if effective_tcc {
+		if target.os != host.os || target.arch != host.arch {
+			return none
+		}
 		return pref.find_system_assembler()
 	}
 	if pref.ccompiler_can_assemble(c_compiler) {
@@ -12835,7 +12840,8 @@ pub fn run(args []string) {
 			candidates := cgen.embed_incbin_payloads(a, cgen.cache_program_file_set(a, user_files),
 				cache_state.manager.enabled)
 			if candidates.len > 0 {
-				if assembler := v3_embed_incbin_assembler(c_compiler, effective_tcc) {
+				if assembler := v3_embed_incbin_assembler(c_compiler, effective_tcc, prefs.target,
+					host_target) {
 					embed_incbin_payloads = candidates.clone()
 					embed_incbin_assembler = assembler
 				}

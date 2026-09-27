@@ -61,6 +61,13 @@ fn test_v3_embed_incbin_assembly_flags_keep_object_abi_options() {
 	]
 }
 
+fn test_v3_embed_incbin_assembler_skips_cross_target_tcc_without_target_flags() {
+	host := pref.target_from('linux', 'amd64')!
+	target := pref.target_from('linux', 'x86')!
+	assert c_compiler_target_args(target, 'i386-tcc', true, '')! == []string{}
+	assert v3_embed_incbin_assembler('i386-tcc', true, target, host) == none
+}
+
 fn test_v3_embed_incbin_assembly_names_the_object_and_the_payload_file() {
 	source := v3_embed_incbin_assembly('abc123', '/tmp/dir with "quotes"\\x/_v_embed_blob_abc123.bin',
 		4096)
