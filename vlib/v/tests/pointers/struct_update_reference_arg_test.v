@@ -73,3 +73,36 @@ fn test_parenthesized_struct_updates_stored_as_pointers() {
 		assert value.label == 'parenthesized'
 	}
 }
+
+struct ReferenceNodeA {
+	value int
+}
+
+struct ReferenceNodeB {
+	value int
+}
+
+type ReferenceNode = ReferenceNodeA | ReferenceNodeB
+
+fn updated_sum_array(base ReferenceNodeA, value int) []&ReferenceNode {
+	return [ReferenceNodeA{ ...base, value: value }]
+}
+
+fn test_struct_update_stored_as_sum_pointer() {
+	base := ReferenceNodeA{ value: -1 }
+	mut values := []&ReferenceNode{}
+	for value in 0 .. 8 {
+		values << updated_sum_array(base, value)
+	}
+	for i, value in values {
+		node := *value
+		match node {
+			ReferenceNodeA {
+				assert node.value == i
+			}
+			else {
+				assert false
+			}
+		}
+	}
+}
