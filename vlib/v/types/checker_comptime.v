@@ -14651,6 +14651,38 @@ fn (mut tc TypeChecker) call_returned_alias_arguments(id flat.NodeId, mut visiti
 		callee_view.cur_scope.insert(param.value, param_type)
 		binding_index++
 	}
+	// Return analysis runs after checking. Restore function-valued locals from their
+	// checked bindings so a local callable cannot resolve as a same-named top-level fn.
+	mut local_stack := []flat.NodeId{}
+	for i in 0 .. fn_node.children_count {
+		child_id := tc.a.child(fn_node, i)
+		if tc.a.node(child_id).kind != .param {
+			local_stack << child_id
+		}
+	}
+	for local_stack.len > 0 {
+		local_id := local_stack.pop()
+		local_node := tc.a.node(local_id)
+		if local_node.kind in [.fn_literal, .lambda_expr] {
+			continue
+		}
+		if local_node.kind == .decl_assign {
+			for i in 0 .. int(local_node.children_count) / 2 {
+				lhs_id := tc.a.child(local_node, i * 2)
+				lhs := tc.a.node(lhs_id)
+				if lhs.kind == .ident {
+					if typ := callee_view.cached_expr_type(lhs_id) {
+						if fn_type_from_type(typ) != none {
+							callee_view.cur_scope.insert(lhs.value, typ)
+						}
+					}
+				}
+			}
+		}
+		for i in 0 .. local_node.children_count {
+			local_stack << tc.a.child(local_node, i)
+		}
+	}
 	visiting[decl.idx] = true
 	mut sources := []flat.NodeId{}
 	mut stack := []flat.NodeId{}

@@ -47,3 +47,12 @@ fn main() { original := [1, 2]; mut fresh := nested(original); fresh[0] = 9 }
 	result := os.execute('${os.quoted_path(@VEXE)} -check ${os.quoted_path(path)}')
 	assert result.exit_code == 0, result.output
 }
+
+fn test_local_function_value_shadows_fresh_top_level_helper() {
+	path := os.join_path(os.vtmp_dir(), 'v3_return_alias_local_fn_${os.getpid()}.v')
+	os.write_file(path, 'fn helper(values []int) []int { return values.clone() }\nfn nested(values []int) []int { helper := fn (input []int) []int { return input }; return helper(values) }\nfn main() { original := [1, 2]; mut alias := nested(original); alias[0] = 9 }\n')!
+	defer { os.rm(path) or {} }
+	result := os.execute('${os.quoted_path(@VEXE)} -check ${os.quoted_path(path)}')
+	assert result.exit_code != 0, result.output
+	assert result.output.contains('immutable'), result.output
+}
