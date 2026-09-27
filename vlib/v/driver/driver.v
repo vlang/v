@@ -13964,11 +13964,7 @@ Please install the corresponding development package/libraries and make sure the
 				exit(1)
 			}
 		}
-		os.mv(v3_produced_binary(cc_out), bin_file) or {
-			eprintln('failed to finalize ${bin_file}: ${err}')
-			cleanup_c_build_dir(cc_dir)
-			exit(1)
-		}
+		staged_binary := v3_produced_binary(cc_out)
 		$if windows {
 			if icon_path != '' {
 				ico_path := prepare_windows_icon_ico_path(icon_path, cc_dir) or {
@@ -13976,12 +13972,17 @@ Please install the corresponding development package/libraries and make sure the
 					cleanup_c_build_dir(cc_dir)
 					exit(1)
 				}
-				apply_windows_icon_to_executable(bin_file, ico_path) or {
+				apply_windows_icon_to_executable(staged_binary, ico_path) or {
 					eprintln(err.msg())
 					cleanup_c_build_dir(cc_dir)
 					exit(1)
 				}
 			}
+		}
+		os.mv(staged_binary, bin_file) or {
+			eprintln('failed to finalize ${bin_file}: ${err}')
+			cleanup_c_build_dir(cc_dir)
+			exit(1)
 		}
 		for temporary_object in c_object_cache_stats.temporary_objects {
 			os.rm(temporary_object) or {}

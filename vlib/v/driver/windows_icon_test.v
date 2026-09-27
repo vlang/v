@@ -73,3 +73,32 @@ fn test_windows_icon_cli_builds_with_all_aliases() {
 		assert os.is_file(output)
 	}
 }
+
+fn test_windows_icon_failed_update_does_not_publish_executable() {
+	$if windows {
+		root := os.join_path(os.vtmp_dir(), 'v3_windows_icon_invalid_${os.getpid()}')
+		os.rmdir_all(root) or {}
+		os.mkdir_all(root)!
+		defer {
+			os.rmdir_all(root) or {}
+		}
+		icon := os.join_path(root, 'invalid.ico')
+		os.write_file(icon, 'invalid icon')!
+		source := os.join_path(@VEXEROOT, 'examples', 'hello_world.v')
+		for existing in [false, true] {
+			output := os.join_path(root, 'result.exe')
+			if existing {
+				os.write_file(output, 'previous output')!
+			}
+			result := cmdexec.run(@VEXE, ['-new-compiler', '-nocache', '-os', 'windows', '-icon',
+				icon, '-o', output, source])
+			assert result.exit_code != 0
+			assert result.output.contains('invalid icon file'), result.output
+			if existing {
+				assert os.read_file(output)! == 'previous output'
+			} else {
+				assert !os.exists(output)
+			}
+		}
+	}
+}
