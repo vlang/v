@@ -1378,7 +1378,7 @@ fn (mut tc TypeChecker) check_lvalue_mutability(id flat.NodeId) {
 	if tc.ident_is_mutable_lvalue(root.value) {
 		return
 	}
-	if (tc.unsafe_depth > 0 || tc.current_fn_declared_unsafe())
+	if (tc.unsafe_depth > 0 || tc.current_fn_declared_unsafe() || tc.node_is_in_translated_file(id))
 		&& tc.const_key_for_name(root.value) == none && tc.fn_value_type(root.value) == none {
 		return
 	}
@@ -1496,7 +1496,7 @@ fn (mut tc TypeChecker) check_lvalue_field_mutability(id flat.NodeId) {
 		tc.record_error_at(.assignment_mismatch, '`${tc.source_text_for_node(id)}` is `shared` and needs explicit lock for `v.ast.SelectorExpr`', id, tc.selector_field_diagnostic_pos(id, node.value))
 		return
 	}
-	if tc.unsafe_depth > 0 || tc.current_fn_declared_unsafe() {
+	if tc.unsafe_depth > 0 || tc.current_fn_declared_unsafe() || tc.node_is_in_translated_file(id) {
 		return
 	}
 	raw_base_type := unalias_type(tc.resolve_type(base_id))
