@@ -61,6 +61,30 @@ fn (t &Transformer) resolve_call_name(node flat.Node) string {
 					return qname
 				}
 			}
+			// Top-level script expressions may not have a recorded checker call.
+			if !isnil(t.tc) && t.a.has_vsh_source && t.cur_module == 'main'
+				&& t.cur_file.ends_with('.vsh') {
+				if declared_file := t.tc.fn_type_files[name] {
+					if source_file := t.a.source_files[node.pos.id] {
+						if declared_file == source_file.name {
+							return name
+						}
+					}
+				}
+				for imported in t.tc.file_selective_imports[file_import_key(t.cur_file, name)] or {
+					[]string{}
+				} {
+					if t.is_known_fn_name(imported) {
+						return imported
+					}
+				}
+				if name !in t.tc.v_fn_semantic_names {
+					qualified := 'os.${name}'
+					if t.is_known_fn_name(qualified) {
+						return qualified
+					}
+				}
+			}
 			// Try unqualified name after current-module authority.
 			if t.is_known_fn_name(name) {
 				return name
@@ -3141,62 +3165,93 @@ fn (mut t Transformer) parse_decl_param_type(typ string, module_name string, fil
 }
 
 fn (t &Transformer) decl_param_type_in_module(typ string, module_name string) string {
+	return t.decl_param_type_in_scope(typ, module_name, '')
+}
+
+fn (t &Transformer) decl_param_type_in_scope(typ string, module_name string, file_name string) string {
 	clean := typ.trim_space()
 	if clean.len == 0 {
 		return clean
 	}
 	if clean.starts_with('&') {
-		return '&' + t.decl_param_type_in_module(clean[1..], module_name)
+		return '&' + t.decl_param_type_in_scope(clean[1..], module_name, file_name)
 	}
 	if clean.starts_with('mut ') {
-		return 'mut ' + t.decl_param_type_in_module(clean[4..], module_name)
+		return 'mut ' + t.decl_param_type_in_scope(clean[4..], module_name, file_name)
 	}
 	if clean.starts_with('shared ') {
-		return 'shared ' + t.decl_param_type_in_module(clean[7..], module_name)
+		return 'shared ' + t.decl_param_type_in_scope(clean[7..], module_name, file_name)
 	}
 	if clean.starts_with('atomic ') {
-		return 'atomic ' + t.decl_param_type_in_module(clean[7..], module_name)
+		return 'atomic ' + t.decl_param_type_in_scope(clean[7..], module_name, file_name)
 	}
 	if clean.starts_with('?') {
-		return '?' + t.decl_param_type_in_module(clean[1..], module_name)
+		return '?' + t.decl_param_type_in_scope(clean[1..], module_name, file_name)
 	}
 	if clean.starts_with('!') {
-		return '!' + t.decl_param_type_in_module(clean[1..], module_name)
+		return '!' + t.decl_param_type_in_scope(clean[1..], module_name, file_name)
 	}
 	if clean.starts_with('...') {
-		return '...' + t.decl_param_type_in_module(clean[3..], module_name)
+		return '...' + t.decl_param_type_in_scope(clean[3..], module_name, file_name)
 	}
 	if clean.starts_with('[]') {
-		return '[]' + t.decl_param_type_in_module(clean[2..], module_name)
+		return '[]' + t.decl_param_type_in_scope(clean[2..], module_name, file_name)
+	}
+	if clean.starts_with('chan mut ') {
+		return 'chan mut ' + t.decl_param_type_in_scope(clean[9..], module_name, file_name)
+	}
+	if clean.starts_with('chan ') {
+		return 'chan ' + t.decl_param_type_in_scope(clean[5..], module_name, file_name)
+	}
+	if clean.starts_with('thread ') {
+		return 'thread ' + t.decl_param_type_in_scope(clean[7..], module_name, file_name)
 	}
 	if clean.starts_with('map[') {
 		bracket_end := generic_matching_bracket(clean, 3)
 		if bracket_end < clean.len {
-			key := t.decl_param_type_in_module(clean[4..bracket_end], module_name)
-			value := t.decl_param_type_in_module(clean[bracket_end + 1..], module_name)
+			key := t.decl_param_type_in_scope(clean[4..bracket_end], module_name, file_name)
+			value := t.decl_param_type_in_scope(clean[bracket_end + 1..], module_name, file_name)
 			return 'map[${key}]${value}'
 		}
 	}
 	if clean.starts_with('[') {
 		bracket_end := generic_matching_bracket(clean, 0)
 		if bracket_end < clean.len {
-			return clean[..bracket_end + 1] + t.decl_param_type_in_module(clean[bracket_end + 1..], module_name)
+			return clean[..bracket_end + 1] + t.decl_param_type_in_scope(clean[bracket_end + 1..], module_name, file_name)
 		}
 	}
 	if clean.starts_with('fn(') || clean.starts_with('fn (') {
-		if scoped_fn_type := t.decl_fn_type_in_module(clean, module_name) {
+		if scoped_fn_type := t.decl_fn_type_in_scope(clean, module_name, file_name) {
 			return scoped_fn_type
 		}
 		return clean
+	}
+	if clean.starts_with('(') && clean.ends_with(')') {
+		parts := split_generic_args(clean[1..clean.len - 1])
+		if parts.len > 1 {
+			mut scoped_parts := []string{cap: parts.len}
+			for part in parts {
+				scoped_parts << t.decl_param_type_in_scope(part, module_name, file_name)
+			}
+			return '(' + scoped_parts.join(', ') + ')'
+		}
 	}
 	base, args, ok := generic_app_parts(clean)
 	if ok {
 		mut scoped_args := []string{}
 		for arg in args {
-			scoped_args << t.decl_param_type_in_module(arg, module_name)
+			scoped_args << t.decl_param_type_in_scope(arg, module_name, file_name)
 		}
-		scoped_base := t.decl_param_type_in_module(base, module_name)
+		scoped_base := t.decl_param_type_in_scope(base, module_name, file_name)
 		return scoped_base + '[' + scoped_args.join(', ') + ']'
+	}
+	if file_name != '' && !isnil(t.tc) {
+		if selected := t.selective_signature_type_symbol(file_name, clean) {
+			return selected
+		}
+		if clean.contains('.') {
+			return t.tc.resolve_imported_type_text_in_file(clean, file_name)
+		}
 	}
 	if clean.contains('.') || module_name == '' || module_name == 'main'
 		|| module_name == 'builtin' || types.is_builtin_type_name(clean)
@@ -3215,19 +3270,19 @@ fn (t &Transformer) decl_param_type_in_module(typ string, module_name string) st
 	return clean
 }
 
-fn (t &Transformer) decl_fn_type_in_module(typ string, module_name string) ?string {
+fn (t &Transformer) decl_fn_type_in_scope(typ string, module_name string, file_name string) ?string {
 	params, ret := fn_type_text_parts(typ) or { return none }
 	mut scoped_params := []string{cap: params.len}
 	for param in params {
-		scoped_params << t.decl_fn_type_param_in_module(param, module_name)
+		scoped_params << t.decl_fn_type_param_in_scope(param, module_name, file_name)
 	}
 	if ret.len > 0 {
-		return 'fn(${scoped_params.join(', ')}) ${t.decl_param_type_in_module(ret, module_name)}'
+		return 'fn(${scoped_params.join(', ')}) ${t.decl_param_type_in_scope(ret, module_name, file_name)}'
 	}
 	return 'fn(${scoped_params.join(', ')})'
 }
 
-fn (t &Transformer) decl_fn_type_param_in_module(param string, module_name string) string {
+fn (t &Transformer) decl_fn_type_param_in_scope(param string, module_name string, file_name string) string {
 	mut text := param.trim_space()
 	mut is_mut := false
 	if text.starts_with('mut ') {
@@ -3254,7 +3309,7 @@ fn (t &Transformer) decl_fn_type_param_in_module(param string, module_name strin
 		}
 		break
 	}
-	scoped := t.decl_param_type_in_module(text, module_name)
+	scoped := t.decl_param_type_in_scope(text, module_name, file_name)
 	if is_mut && scoped.len > 0 && !scoped.starts_with('&') {
 		return '&' + scoped
 	}
@@ -5602,10 +5657,9 @@ fn (mut t Transformer) wrap_string_conversion(expr flat.NodeId, typ string) flat
 			}
 		}
 		if !clean_typ.contains('.') && !local_struct_shadows_alias {
-			for aname, target in t.tc.type_aliases {
-				if short_name_view(aname) == clean_typ {
-					return t.alias_str_wrap(expr, clean_typ, target, is_ref)
-				}
+			aliases := t.type_aliases_with_short_name(clean_typ)
+			if aliases.len > 0 {
+				return t.alias_str_wrap(expr, clean_typ, aliases[0].target, is_ref)
 			}
 		}
 		if !local_struct_shadows_alias {
@@ -9579,6 +9633,8 @@ fn (t &Transformer) resolve_flag_enum_type_name(typ string) ?string {
 			if parsed.is_flag {
 				return parsed.name
 			}
+			// A known ordinary enum must not inherit another module's flag methods.
+			return none
 		}
 		if clean in t.tc.flag_enums {
 			return clean
@@ -10543,6 +10599,11 @@ fn (mut t Transformer) try_lower_array_method_call(call_id flat.NodeId, node fla
 		}
 	}
 	base_node := t.a.nodes[int(base_id)]
+	if unwrapped := t.or_expr_receiver_unwrapped_type(base_id) {
+		if unwrapped.starts_with('[]') || t.is_fixed_array_type(unwrapped) {
+			base_type = unwrapped
+		}
+	}
 	if base_node.kind == .call {
 		concrete_base_type := t.concrete_generic_call_return_type(base_id, base_node)
 		if concrete_base_type.starts_with('[]') {
@@ -10658,6 +10719,9 @@ fn (mut t Transformer) try_lower_array_method_call(call_id flat.NodeId, node fla
 		// fixed array to a dynamic array for builtin lowering.
 		if exact_call := t.lower_checker_selected_receiver_method(call_id, node, base_id, array_builtin_method) {
 			return exact_call
+		}
+		if fn_node.value == 'map' {
+			return t.lower_array_map_call(node, fn_node, clean_base_type)
 		}
 		elem_type := fixed_array_elem_type(clean_base_type)
 		array_type := '[]${elem_type}'
@@ -11825,13 +11889,24 @@ fn (t &Transformer) fn_literal_lvalue_is_rooted_at_capture(id flat.NodeId, name 
 // lift_fn_literal supports lift fn literal handling for Transformer.
 fn (mut t Transformer) lift_fn_literal(_id flat.NodeId, node flat.Node) flat.NodeId {
 	name := t.new_fn_literal_name()
+	source_file := if file := t.a.source_files[node.pos.id] {
+		file.name
+	} else {
+		t.node_file_or(int(_id), t.cur_file)
+	}
+	source_module := if !isnil(t.tc) {
+		t.tc.file_modules[source_file] or { t.node_module_or(int(_id), t.cur_module) }
+	} else {
+		t.node_module_or(int(_id), t.cur_module)
+	}
 	// A checked literal can carry its complete function-value type here; the
 	// synthesized declaration itself needs only that signature's return type.
-	ret_type := if node.typ.len > 0 {
+	raw_ret_type := if node.typ.len > 0 {
 		fn_type_return_type_text(node.typ) or { node.typ }
 	} else {
 		'void'
 	}
+	ret_type := t.decl_param_type_in_scope(raw_ret_type, source_module, source_file)
 	result_may_alias_capture := t.immediate_closure_result_may_alias_capture(ret_type)
 	mut param_types := []types.Type{}
 	mut param_type_texts := []string{}
@@ -11849,12 +11924,22 @@ fn (mut t Transformer) lift_fn_literal(_id flat.NodeId, node flat.Node) flat.Nod
 		child_id := t.a.child(&node, i)
 		child := t.a.nodes[int(child_id)]
 		if child.kind == .param {
-			param_ids << child_id
+			// A default callback can be lifted while constructing an imported
+			// struct. Resolve its signature types using the declaration's imports.
+			param_type := t.decl_param_type_in_scope(child.typ, source_module, source_file)
+			param_ids << if param_type == child.typ {
+				child_id
+			} else {
+				t.a.add_node(flat.Node{
+					...child
+					typ: param_type
+				})
+			}
 			// mut x &T keeps its own pointer in typ and marks the extra mutable
 			// caller slot with op == .amp; mut x T already carries that slot as
 			// the folded &T. The lifted signature and the fn-value cast below both
 			// describe the slot, so add the level the text is still missing.
-			slot_type_text := explicit_mut_pointer_param_type_text(child, child.typ)
+			slot_type_text := explicit_mut_pointer_param_type_text(child, param_type)
 			param_type_texts << slot_type_text
 			if child.value.len > 0 {
 				param_names << child.value
@@ -12154,6 +12239,11 @@ fn (mut t Transformer) lift_fn_literal(_id flat.NodeId, node flat.Node) flat.Nod
 	// declarations. Root the generated declaration explicitly so module-local
 	// callbacks are not referenced without a prototype/body in the C output.
 	t.mark_fn_used_name(name)
+	// Specialization can lift a literal after markused scanned its source body.
+	// Its callees are no longer children of the enclosing generated function.
+	for callee in t.generated_fn_body_call_names(fn_decl) {
+		t.mark_fn_used_name(callee)
+	}
 	mut fn_value_param_type_texts := []string{cap: param_types.len}
 	for i, param_type in param_types {
 		raw_type := if i < param_type_texts.len { param_type_texts[i] } else { '' }
@@ -16010,6 +16100,19 @@ fn (mut t Transformer) is_method_call(node flat.Node) bool {
 fn (t &Transformer) get_call_return_type(id flat.NodeId, node flat.Node) string {
 	if ret := t.fn_value_call_return_type(node) {
 		return t.call_return_type_name(ret, node)
+	}
+	if !isnil(t.tc) && t.a.has_vsh_source && t.cur_module == 'main'
+		&& t.cur_file.ends_with('.vsh')
+		&& node.children_count > 0 {
+		callee := t.a.child_node(&node, 0)
+		if callee.kind == .ident {
+			selected := t.resolve_call_name(node)
+			if selected != callee.value {
+				if ret := t.tc.fn_ret_types[selected] {
+					return t.call_return_type_name(t.semantic_type_name(ret), node)
+				}
+			}
+		}
 	}
 	if ret := t.current_generic_receiver_call_return_type(node) {
 		return ret

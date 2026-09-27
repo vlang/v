@@ -282,6 +282,9 @@ pub const node_flag_freed_assignment = u8(8)
 // node_flag_mut_builtin_pointer_param marks a source `mut p voidptr`/`byteptr`/`charptr`
 // parameter before the parser folds its mutable caller slot into the type text.
 pub const node_flag_mut_builtin_pointer_param = u8(16)
+// node_flag_literal_interpolation_text marks a string literal whose source token
+// contained `${...}` as literal text (for example, `\${name}` or a raw string).
+pub const node_flag_literal_interpolation_text = u8(32)
 
 // node_flags packs rare node bools into Node.flags.
 @[inline]
@@ -308,7 +311,7 @@ pub fn node_flags(skip_ownership_drops bool, is_static_type_method bool) u8 {
 pub fn clone_node_flags(source &Node, skip_ownership_drops bool) u8 {
 	mut flags := node_flags(skip_ownership_drops, source.is_static_type_method())
 	flags |= source.flags & (node_flag_embed_payload | node_flag_freed_assignment |
-		node_flag_mut_builtin_pointer_param)
+		node_flag_mut_builtin_pointer_param | node_flag_literal_interpolation_text)
 	return flags
 }
 
@@ -364,6 +367,13 @@ pub fn (n &Node) is_embed_payload() bool {
 @[inline]
 pub fn (n &Node) is_freed_assignment() bool {
 	return (n.flags & node_flag_freed_assignment) != 0
+}
+
+// has_literal_interpolation_text reports whether `${...}` in this string literal
+// was parsed as text and must not be reinterpreted by nested-interpolation lowering.
+@[inline]
+pub fn (n &Node) has_literal_interpolation_text() bool {
+	return (n.flags & node_flag_literal_interpolation_text) != 0
 }
 
 // is_mut_builtin_pointer_param reports whether this parameter was declared as

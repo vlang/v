@@ -1423,6 +1423,10 @@ fn fastc_scan_source_header(source string, path string, prefs &pref.Preferences)
 	mut brace_depth := 0
 	mut tok := scan.scan()
 	for tok != .eof {
+		if brace_depth == 0 && fastc_keyword_is_qualifier(tok, scan) {
+			tok = scan.scan()
+			continue
+		}
 		if module_name == '' && tok == .attribute {
 			mut attribute_depth := 1
 			tok = scan.scan()
@@ -1441,7 +1445,7 @@ fn fastc_scan_source_header(source string, path string, prefs &pref.Preferences)
 		}
 		if module_name == '' && tok == .key_module {
 			tok = scan.scan()
-			if tok != .name {
+			if (tok != .name && !tok.is_keyword()) || scan.lit.starts_with('@') {
 				return error('fastc parser does not support module declaration in ${path}')
 			}
 			module_name = scan.lit
@@ -1869,22 +1873,45 @@ fn fastc_register_import_alias(import_path string, alias string, path string, mu
 	imports[alias] = import_path
 }
 
+fn fastc_skip_module_or_import(mut scan scanner.Scanner, declaration token.Token, path string) !token.Token {
+	if declaration == .key_module {
+		_ = scan.scan()
+		return scan.scan()
+	}
+	first := scan.scan()
+	if first == .lpar {
+		return fastc_skip_balanced_tokens(mut scan, first, .lpar, .rpar)
+	}
+	_, _, _, next := fastc_scan_import(mut scan, first, path)!
+	return next
+}
+
+// A keyword followed by `.` is a module qualifier, not a declaration keyword.
+fn fastc_keyword_is_qualifier(tok token.Token, scan scanner.Scanner) bool {
+	if !tok.is_keyword() {
+		return false
+	}
+	mut lookahead := scan
+	return lookahead.scan() == .dot
+}
+
 fn fastc_scan_import(mut scan scanner.Scanner, first token.Token, path string) !(string, string, []string, token.Token) {
 	mut tok := first
-	if tok != .name {
+	if (tok != .name && !tok.is_keyword()) || scan.lit.starts_with('@') {
 		return error('fastc parser does not support import `${tok.str()}` in ${path}')
 	}
-	mut parts := [scan.lit]
+	mut alias := scan.lit
+	mut parts := [alias]
 	tok = scan.scan()
 	for tok == .dot {
 		tok = scan.scan()
-		if tok != .name {
+		if (tok != .name && !tok.is_keyword()) || scan.lit.starts_with('@') {
 			return error('fastc parser does not support import path in ${path}')
 		}
-		parts << scan.lit
+		alias = scan.lit
+		parts << alias
 		tok = scan.scan()
 	}
-	mut alias := parts.last()
 	if tok == .key_as {
 		tok = scan.scan()
 		if tok != .name {

@@ -4171,6 +4171,12 @@ fn (mut t Transformer) generated_fn_body_call_names_filtered(root flat.NodeId, c
 	mut saved_vars := unsafe { t.var_types }
 	mut saved_var_indices := t.var_type_indices.move()
 	mut saved_mut_param_values := t.mut_param_values.move()
+	mut saved_fn_value_locals := t.fn_value_locals.move()
+	mut saved_fixed_array_param_values := t.fixed_array_param_values.move()
+	mut saved_interface_var_concrete_types := t.interface_var_concrete_types.move()
+	mut saved_addr_lvalue_pointer_locals := t.addr_lvalue_pointer_locals.move()
+	mut saved_orm_initialized_fields := t.orm_initialized_fields.move()
+	mut saved_sql_query_data_aliases := t.sql_query_data_aliases.move()
 	t.var_types = []VarTypeBinding{}
 	t.var_type_indices = map[string]int{}
 	t.mut_param_values = map[string]bool{}
@@ -4181,6 +4187,12 @@ fn (mut t Transformer) generated_fn_body_call_names_filtered(root flat.NodeId, c
 	t.var_types = unsafe { saved_vars }
 	t.var_type_indices = saved_var_indices.move()
 	t.mut_param_values = saved_mut_param_values.move()
+	t.fn_value_locals = saved_fn_value_locals.move()
+	t.fixed_array_param_values = saved_fixed_array_param_values.move()
+	t.interface_var_concrete_types = saved_interface_var_concrete_types.move()
+	t.addr_lvalue_pointer_locals = saved_addr_lvalue_pointer_locals.move()
+	t.orm_initialized_fields = saved_orm_initialized_fields.move()
+	t.sql_query_data_aliases = saved_sql_query_data_aliases.move()
 	if !isnil(t.var_type_cache) {
 		t.var_type_cache.clear()
 	}
@@ -4254,8 +4266,21 @@ fn (mut t Transformer) collect_generated_fn_body_call_names(id flat.NodeId, cand
 		return
 	}
 	node := t.a.nodes[int(id)]
+	if node.kind in [.block, .for_stmt, .for_in_stmt, .select_branch] {
+		saved_vars := t.var_types.clone()
+		for i in 0 .. node.children_count {
+			t.collect_generated_fn_body_call_names(t.a.child(&node, i), candidate_names,
+				filter_candidates, mut names, mut seen)
+		}
+		t.restore_var_types(saved_vars)
+		return
+	}
 	if node.kind == .decl_assign {
+		for i in 1 .. node.children_count {
+			t.collect_generated_fn_body_call_names(t.a.child(&node, i), candidate_names, filter_candidates, mut names, mut seen)
+		}
 		t.seed_generated_decl_assign_binding(node)
+		return
 	}
 	if node.kind == .call {
 		call_name := t.generated_call_name_for_used(id, node)
@@ -4765,6 +4790,13 @@ fn (mut t Transformer) specialized_signature_type_text(decl GenericFnDecl, typ s
 	if parsed is types.Unknown {
 		return qualified
 	}
+	// Parsing a variadic parameter produces an Array and loses the call convention.
+	if qualified.trim_space().starts_with('...') {
+		if parsed is types.Array {
+			return '...' + specialized_signature_storage_type_name(parsed.elem_type)
+		}
+		return qualified
+	}
 	if is_shared {
 		return qualified
 	}
@@ -4836,6 +4868,11 @@ fn (t &Transformer) qualify_specialized_signature_type_text(typ string, decl Gen
 	}
 	if clean.starts_with('shared ') {
 		return 'shared ' + t.qualify_specialized_signature_type_text(clean[7..], decl)
+	}
+	for prefix in ['atomic ', 'chan ', 'thread '] {
+		if clean.starts_with(prefix) {
+			return prefix + t.qualify_specialized_signature_type_text(clean[prefix.len..], decl)
+		}
 	}
 	if clean.starts_with('[]') {
 		return '[]' + t.qualify_specialized_signature_type_text(clean[2..], decl)
@@ -5527,7 +5564,10 @@ fn (mut t Transformer) infer_generic_call_args_from_params(decl GenericFnDecl, c
 	mut args := []string{cap: param_names.len}
 	for name in param_names {
 		arg := inferred[name] or { return none }
-		args << t.generic_arg_for_call_and_decl_module(arg, call_module, decl.module)
+		qualified_arg := t.qualify_specialized_signature_type_text(arg, GenericFnDecl{
+			file: t.node_file_or(int(call_id), t.cur_file)
+		})
+		args << t.generic_arg_for_call_and_decl_module(qualified_arg, call_module, decl.module)
 	}
 	return args
 }
@@ -6272,7 +6312,9 @@ fn (mut t Transformer) cached_generic_call_specialization(id flat.NodeId, node f
 		callee := t.a.child_node(&node, 0)
 		if callee.kind == .ident && t.generic_callee_is_specialization(callee.value) {
 			if exact := t.exact_generic_specialization_args_from_callee(callee.value) {
-				preserved := t.canonical_generic_specialization_args(split_generic_args(node.value))
+				// The rewritten value already uses the callee's semantic type names.
+				// Resolving it in the current scan module can rebind a caller homonym.
+				preserved := split_generic_args(node.value)
 				if generic_type_args_equal(preserved, exact) {
 					decl_key := if spec := t.generic_call_spec_cache[idx] {
 						spec.decl_key
@@ -8035,7 +8077,11 @@ fn (mut t Transformer) infer_generic_call_args_seeded(decl GenericFnDecl, _id fl
 	mut args := []string{cap: param_names.len}
 	for name in param_names {
 		arg := inferred[name] or { return none }
-		args << t.generic_arg_for_call_and_decl_module(arg, call_module, decl.module)
+		// Preserve selective imports while the original call file is still known.
+		qualified_arg := t.qualify_specialized_signature_type_text(arg, GenericFnDecl{
+			file: t.node_file_or(int(_id), t.cur_file)
+		})
+		args << t.generic_arg_for_call_and_decl_module(qualified_arg, call_module, decl.module)
 	}
 	return args
 }
