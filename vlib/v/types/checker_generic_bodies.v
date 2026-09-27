@@ -299,9 +299,16 @@ fn (tc &TypeChecker) type_param_instance_texts(node flat.Node, params map[string
 // comptime_tested_types returns the types that a `$if` of the body of the
 // generic function `node` tests its type parameter `param` against: itself,
 // `$if T is User`, or through a parameter declared with it, `$if x is User`,
-// `$if x in [User, Admin]`; `!is` and `!in` too, whose `$else` is those types.
-// `names` are the type parameters of `node`.
+// `$if x in [User, Admin]`, or through a local whose value comes from any type
+// parameter, `y := x` and `$if y is User`; `!is` and `!in` too, whose `$else`
+// is those types. `names` are the type parameters of `node`.
 fn (tc &TypeChecker) comptime_tested_types(node flat.Node, param string, names []string) []string {
+	mut name_set := map[string]bool{}
+	for name in names {
+		name_set[name] = true
+	}
+	// The locals whose values come from the type parameters, `y := x`.
+	dependent := tc.type_param_dependent_names(node, name_set)
 	mut found := []string{}
 	mut stack := []flat.NodeId{}
 	for i in 0 .. node.children_count {
@@ -314,8 +321,14 @@ fn (tc &TypeChecker) comptime_tested_types(node flat.Node, param string, names [
 		}
 		current := tc.a.node(id)
 		if current.kind == .comptime_if {
-			cond := comptime_condition_on_type_params(current.value, tc.comptime_tested_params(current.value,
-				node, names, false))
+			mut tested := tc.comptime_tested_params(current.value, node, names, false)
+			for tested_name in comptime_condition_tested_names(current.value) {
+				if tested_name !in tested && tested_name !in name_set
+					&& tested_name in dependent {
+					tested[tested_name] = param
+				}
+			}
+			cond := comptime_condition_on_type_params(current.value, tested)
 			for alternative in cond.split('||') {
 				for part in alternative.split('&&') {
 					mut term := part.trim_space()

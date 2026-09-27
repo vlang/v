@@ -286,6 +286,39 @@ fn main() {}
 	assert errors[0].starts_with('main.v:16:9: error: cannot use `int` as type `string` in return argument'), errors[0]
 }
 
+fn test_a_local_that_a_compile_time_is_tests_checks_the_branch_of_its_type() {
+	// `y := x` holds the `T` of `x`: `$if y is User` has a branch for `User`.
+	errors := check('local_is', 'module main
+
+interface Named {
+	name string
+}
+
+struct User {
+	name string
+	age  int
+}
+
+fn takes_int(n int) int {
+	return n
+}
+
+fn describe[T Named](x T) int {
+	y := x
+	\$if y is User {
+		return takes_int(y.name)
+	}
+	return 0
+}
+
+fn main() {
+	println(describe(User{"ana", 30}))
+}
+')
+	assert errors.len == 1, errors.str()
+	assert errors[0].starts_with('main.v:19:20: error: cannot use `string` as `int` in argument 1 to `takes_int`: when `T` is `User`, which implements `Named`'), errors[0]
+}
+
 fn test_a_generic_body_with_a_type_parameter_without_a_constraint_is_not_checked() {
 	// As before: V checks such a body in each of its instances.
 	errors := check('unconstrained', "module main
