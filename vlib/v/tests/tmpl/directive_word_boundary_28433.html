@@ -1,0 +1,9 @@
+<form METHOD="@form_method">
+@if show_form
+<p>@end_note</p>
+@endif
+@for entry in entries
+<li>@entry</li>
+@endfor
+<span>@elsewhere</span>
+</form>

@@ -1,0 +1,9 @@
+fn main() {
+	cond := true
+	fallback := $embed_file(@FILE)
+	(if cond {
+		$embed_file(@FILE)
+	} else {
+		fallback
+	})
+}

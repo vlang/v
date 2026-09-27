@@ -1,0 +1,10 @@
+// A `$if` branch this build takes is parsed like any other code, so a variable
+// declared and never read inside one is still unused.
+fn main() {
+	$if true {
+		x := 1
+		$if true {
+			y := 2
+		}
+	}
+}

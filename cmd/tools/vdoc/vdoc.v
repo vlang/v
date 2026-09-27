@@ -8,7 +8,7 @@ import runtime
 import document as doc
 import v.vmod
 import v.util
-import json
+import json2
 import term
 
 struct Readme {
@@ -67,7 +67,7 @@ fn (vd &VDoc) gen_json(d doc.Doc) string {
 		jw.write_string('"description":"${escape(comments)}",')
 	}
 	jw.write_string('"contents":')
-	jw.write_string(json.encode(d.contents.keys().map(d.contents[it])))
+	jw.write_string(json2.encode(d.contents.keys().map(d.contents[it])))
 	jw.write_string(',"generator":"vdoc","time_generated":"${d.time_generated.str()}"}')
 	return jw.str()
 }
@@ -75,7 +75,7 @@ fn (vd &VDoc) gen_json(d doc.Doc) string {
 fn (mut vd VDoc) gen_plaintext(d doc.Doc) string {
 	cfg := vd.cfg
 	mut pw := strings.new_builder(200)
-	if cfg.is_color {
+	if cfg.is_color && d.head.content.contains(' ') {
 		content_arr := d.head.content.split(' ')
 		pw.writeln('${term.bright_blue(content_arr[0])} ${term.green(content_arr[1])}')
 	} else {
@@ -120,7 +120,7 @@ fn (mut vd VDoc) write_plaintext_content(contents []doc.DocNode, mut pw strings.
 				write_location(cn, mut pw)
 			}
 			if cfg.is_color {
-				pw.writeln(color_highlight(cn.content, vd.docs[0].table))
+				pw.writeln(color_highlight(cn.content))
 			} else {
 				pw.writeln(cn.content)
 			}
@@ -138,7 +138,7 @@ fn (mut vd VDoc) write_plaintext_content(contents []doc.DocNode, mut pw strings.
 							fex = indent(ex)
 						}
 						if cfg.is_color {
-							fex = color_highlight(fex, vd.docs[0].table)
+							fex = color_highlight(fex)
 						}
 						pw.writeln(fex)
 					}
@@ -272,11 +272,25 @@ fn (vd &VDoc) emit_generate_err(err IError) {
 		mod_list := get_modules(cfg.input_path)
 		println('Available modules:\n==================')
 		for mod in mod_list {
-			println(mod.all_after('vlib/').all_after('modules/').replace('/', '.'))
+			println(module_display_name(mod, cfg.input_path))
 		}
 		err_msg += ' Use the `-m` flag when generating docs from a directory that has multiple modules.'
 	}
 	eprintln(err_msg)
+}
+
+// `get_modules` hands back directories, not names. What a reader needs is where
+// each one sits under the input root, read as a module path: an absolute input
+// would otherwise print the whole filesystem path with dots for separators. There
+// is no `modules/` to strip out of it either -- that is an ordinary directory
+// now, so a module under one really is `modules.<name>`.
+fn module_display_name(mod string, input_path string) string {
+	normalized := mod.replace('\\', '/').trim_right('/')
+	root := input_path.replace('\\', '/').trim_right('/')
+	if root != '' && normalized.starts_with(root + '/') {
+		return normalized[root.len + 1..].replace('/', '.')
+	}
+	return os.file_name(normalized)
 }
 
 fn (mut vd VDoc) generate_docs_from_file() {
@@ -360,8 +374,7 @@ fn (mut vd VDoc) generate_docs_from_file() {
 		mut dcs := doc.generate(dirpath, cfg.pub_only, true, cfg.platform, cfg.symbol_name) or {
 			// TODO: use a variable like `src_path := os.join_path(dirpath, 'src')` after `https://github.com/vlang/v/issues/21504`
 			if os.exists(os.join_path(dirpath, 'src')) {
-				doc.generate(os.join_path(dirpath, 'src'), cfg.pub_only, true, cfg.platform,
-					cfg.symbol_name) or {
+				doc.generate(os.join_path(dirpath, 'src'), cfg.pub_only, true, cfg.platform, cfg.symbol_name) or {
 					vd.emit_generate_err(err)
 					exit(1)
 				}
@@ -369,6 +382,13 @@ fn (mut vd VDoc) generate_docs_from_file() {
 				vd.emit_generate_err(err)
 				exit(1)
 			}
+		}
+		if dcs.head.name == '' && dcs.contents.len == 0 {
+			// The folder had no valid V files for the target platform (e.g. the
+			// `ios`/`macos` modules when generating docs on Linux), so `generate`
+			// skipped it. There is nothing to document, so do not add an empty
+			// `Doc` that would later be rendered (and crash on its empty head).
+			continue
 		}
 		if cfg.is_multi || (!cfg.is_multi && cfg.include_readme) {
 			readme := vd.get_readme(dirpath)
@@ -397,22 +417,25 @@ fn (mut vd VDoc) generate_docs_from_file() {
 		exit(1)
 	}
 	vd.vprintln('Rendering docs...')
+	if vd.docs.len == 0 {
+		// Every discovered module was skipped (e.g. a tree containing only files
+		// that are filtered out for the target platform), so there is nothing to
+		// render. Report it and fail, regardless of the output destination, instead
+		// of silently creating/cleaning an empty output directory and exiting 0.
+		if dirs.len == 0 {
+			eprintln('vdoc: No documentation found')
+		} else {
+			eprintln('vdoc: No documentation found for ${dirs[0]}')
+		}
+		exit(1)
+	}
 	if out.path == '' || out.path == 'stdout' || out.path == '-' {
 		if out.typ == .html {
 			vd.render_static_html(out)
 		}
 		outputs := vd.render(out)
-		if outputs.len == 0 {
-			if dirs.len == 0 {
-				eprintln('vdoc: No documentation found')
-			} else {
-				eprintln('vdoc: No documentation found for ${dirs[0]}')
-			}
-			exit(1)
-		} else {
-			first := outputs.keys()[0]
-			println(outputs[first])
-		}
+		first := outputs.keys()[0]
+		println(outputs[first])
 	} else {
 		if !os.exists(out.path) {
 			os.mkdir_all(out.path) or { panic(err) }

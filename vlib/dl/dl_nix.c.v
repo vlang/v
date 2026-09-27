@@ -23,11 +23,16 @@ fn C.dlerror() &char
 
 // open loads a given dynamic shared object.
 pub fn open(filename string, flags int) voidptr {
-	return C.dlopen(&char(filename.str), flags)
+	handle := C.dlopen(&char(filename.str), flags)
+	if handle != unsafe { nil } {
+		register_interface_exports(handle)
+	}
+	return handle
 }
 
 // close frees a given shared object.
 pub fn close(handle voidptr) bool {
+	unregister_interface_exports(handle)
 	return C.dlclose(handle) == 0
 }
 

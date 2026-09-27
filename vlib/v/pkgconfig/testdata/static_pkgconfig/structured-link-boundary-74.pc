@@ -1,0 +1,6 @@
+libdir=/issue74/structured-boundary
+
+Name: structured-link-boundary-74
+Description: Structured private search path and literal archive boundary
+Version: 1.0.0
+Libs.private: -L${libdir} ${libdir}/libissue74_b.a ${libdir}/libissue74_a.a ${libdir}/libissue74_b.a

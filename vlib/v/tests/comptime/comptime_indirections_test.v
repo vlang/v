@@ -2,7 +2,7 @@ fn count_muls[T](val T) int {
 	mut nr_muls := 0
 	dump(T.indirections)
 	dump(typeof(val).indirections)
-	$if (int(typeof(val).idx) >> 16) & 0xff == 0 {
+	$if ( int ( typeof ( val ).idx ) >> 16 ) &0xff == 0 {
 		assert T.indirections == 0
 	} $else {
 		nr_muls = (int(typeof(val).idx) >> 16) & 0xff

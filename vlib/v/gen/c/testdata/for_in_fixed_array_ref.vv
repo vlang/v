@@ -1,0 +1,80 @@
+module main
+
+struct Point {
+	x int
+	y int
+}
+
+struct Holder {
+	buf [3]Point
+}
+
+struct PointerHolder {
+	buf [2]&Point
+}
+
+type PointPtr = &Point
+
+type Callback = fn (int) int
+
+struct AliasCallbackHolder {
+mut:
+	buf [2]Callback
+}
+
+struct AliasPointerHolder {
+mut:
+	buf [2]PointPtr
+}
+
+fn increment(value int) int {
+	return value + 1
+}
+
+fn double(value int) int {
+	return value * 2
+}
+
+fn visit[T](items [2]T) {
+	unsafe {
+		for generic_callback in &items {
+			_ = generic_callback
+		}
+	}
+}
+
+fn main() {
+	h := Holder{
+		buf: [Point{1, 2}, Point{3, 4}, Point{5, 6}]!
+	}
+	for i in &h.buf {
+		println(i.x)
+	}
+	first := &Point{7, 8}
+	second := &Point{9, 10}
+	pointers := PointerHolder{
+		buf: [first, second]!
+	}
+	for point in &pointers.buf {
+		println(point.x)
+	}
+	mut alias_pointers := AliasPointerHolder{
+		buf: [PointPtr(first), PointPtr(second)]!
+	}
+	for mut point_ref in alias_pointers.buf {
+		_ = point_ref
+	}
+	mut alias_callbacks := AliasCallbackHolder{
+		buf: [Callback(increment), Callback(double)]!
+	}
+	for mut callback_alias in alias_callbacks.buf {
+		_ = callback_alias
+	}
+	callbacks := [increment, double]!
+	unsafe {
+		for callback in &callbacks {
+			_ = callback
+		}
+	}
+	visit([increment, double]!)
+}

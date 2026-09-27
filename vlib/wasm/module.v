@@ -69,6 +69,8 @@ mut:
 	fn_imports     []FunctionImport
 	global_imports []GlobalImport
 	segments       []DataSegment
+	tables         []Table
+	elements       []Element
 	debug          bool
 	mod_name       ?string
 }
@@ -108,10 +110,34 @@ struct DataSegment {
 	name ?string
 }
 
+struct Table {
+	name    string
+	export  bool
+	reftype RefType
+	min     u32
+	max     ?u32
+}
+
+enum ElementMode {
+	active
+	declarative
+	passive
+}
+
+struct Element {
+	mode     ElementMode
+	tableidx TableIndex
+	offset   int
+	funcs    []string
+}
+
 pub type LocalIndex = int
 pub type GlobalIndex = int
 pub type GlobalImportIndex = int
 pub type DataSegmentIndex = int
+pub type TableIndex = int
+pub type TypeIndex = int
+pub type ElementIndex = int
 
 pub struct FuncType {
 pub:
@@ -120,7 +146,9 @@ pub:
 	name       ?string
 }
 
-fn (mut mod Module) new_functype(ft FuncType) int {
+// new_functype interns a function type and returns its type index.
+// Use it to obtain the type index required by `call_indirect`.
+pub fn (mut mod Module) new_functype(ft FuncType) TypeIndex {
 	// interns existing types
 	mut idx := mod.functypes.index(ft)
 
@@ -185,6 +213,48 @@ pub fn (mut mod Module) assign_memory(name string, export bool, min u32, max ?u3
 // assign_start assigns the start function to the current module.
 pub fn (mut mod Module) assign_start(name string) {
 	mod.start = name
+}
+
+// assign_table declares a table in the current module and returns its index.
+// `reftype` is the element type (`funcref_t` or `externref_t`); pass `max` as
+// `none` for a growable table.
+pub fn (mut mod Module) assign_table(name string, export bool, reftype RefType, min u32, max ?u32) TableIndex {
+	len := mod.tables.len
+	mod.tables << Table{
+		name:    name
+		export:  export
+		reftype: reftype
+		min:     min
+		max:     max
+	}
+	return len
+}
+
+// new_active_element appends an active element segment that initialises table
+// `tableidx` starting at `offset` with the given (local) function references,
+// and returns its index. An active segment also declares its functions, so a
+// later `ref.func` to any of them validates.
+pub fn (mut mod Module) new_active_element(tableidx TableIndex, offset int, funcs []string) ElementIndex {
+	len := mod.elements.len
+	mod.elements << Element{
+		mode:     .active
+		tableidx: tableidx
+		offset:   offset
+		funcs:    funcs
+	}
+	return len
+}
+
+// new_declarative_element appends a declarative element segment that declares
+// the given (local) functions, so that `ref.func` to a non-exported function
+// validates. It allocates no table space. Returns its index.
+pub fn (mut mod Module) new_declarative_element(funcs []string) ElementIndex {
+	len := mod.elements.len
+	mod.elements << Element{
+		mode:  .declarative
+		funcs: funcs
+	}
+	return len
 }
 
 // new_function_import imports a new function into the current module.

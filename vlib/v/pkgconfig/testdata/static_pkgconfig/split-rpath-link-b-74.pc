@@ -1,0 +1,4 @@
+Name: split-rpath-link-b-74
+Description: Second split GNU rpath-link operand
+Version: 1.0.0
+Libs: -Wl,-rpath-link -Wl,/var/tmp

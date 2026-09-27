@@ -956,7 +956,7 @@ fn (mut dl Dlmalloc) malloc_real(size usize) voidptr {
 				// the next smallest bin
 
 				// todo(playXE): Find out why in the world this part of code does not work in
-				// some programs (esp. x.json2). Theoretically disabling this path just
+				// some programs (esp. json2). Theoretically disabling this path just
 				// makes fragmentation a little worse but nothing really bad should happen
 				if false && smallbits != 0 {
 					leftbits := (smallbits << idx) & left_bits(1 << idx)

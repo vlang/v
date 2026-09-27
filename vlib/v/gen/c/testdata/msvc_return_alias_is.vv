@@ -1,0 +1,14 @@
+// vtest vflags: -cc msvc -os windows
+
+struct MsvcAliasTagNull {}
+
+type MsvcAliasTagNullAlias = MsvcAliasTagNull
+type MsvcAliasTagSum = MsvcAliasTagNull | MsvcAliasTagNullAlias | int
+
+fn returns_alias_check(v MsvcAliasTagSum) bool {
+	return v is MsvcAliasTagNullAlias
+}
+
+fn main() {
+	_ = returns_alias_check(MsvcAliasTagSum(MsvcAliasTagNull{}))
+}

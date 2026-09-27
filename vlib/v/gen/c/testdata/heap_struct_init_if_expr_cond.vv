@@ -1,0 +1,37 @@
+struct Issue27601Obj {
+	a int
+}
+
+fn issue_27601_is_positive(obj &Issue27601Obj) bool {
+	return obj.a > 0
+}
+
+fn main() {
+	x := if (&Issue27601Obj{
+		a: 1
+	}).a > 0 {
+		10
+	} else {
+		20
+	}
+	y := if issue_27601_is_positive(&Issue27601Obj{ a: -1 }) { 30 } else { 40 }
+	z := if x == 10 {
+		(&Issue27601Obj{
+			a: 3
+		}).a
+	} else {
+		0
+	}
+	s := if x == 10 {
+		'a' + (if (&Issue27601Obj{
+			a: 1
+		}).a > 0 {
+			'b'
+		} else {
+			'c'
+		})
+	} else {
+		'd'
+	}
+	println('${x} ${y} ${z} ${s}')
+}

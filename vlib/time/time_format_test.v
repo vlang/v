@@ -90,9 +90,52 @@ fn test_http_header_string() {
 	assert 'Fri, 11 Jul 1980 21:23:42 GMT' == time_to_test.http_header_string()
 }
 
+fn test_write_http_header() {
+	// fixed array, at an offset (a cached `Date: ...\r\n` line)
+	mut line := [37]u8{}
+	unsafe { time_to_test.write_http_header(&line[6], 31)! }
+	assert line[6..35].bytestr() == 'Fri, 11 Jul 1980 21:23:42 GMT'
+	// dynamic array, at an offset
+	mut buf := []u8{len: 40}
+	unsafe { time_to_test.write_http_header(&buf[5], buf.len - 5)! }
+	assert buf[5..34].bytestr() == 'Fri, 11 Jul 1980 21:23:42 GMT'
+	// a too-small destination is refused and left untouched
+	mut small := [28]u8{}
+	mut refused := false
+	unsafe { time_to_test.write_http_header(&small[0], small.len) or { refused = true } }
+	assert refused
+	for b in small {
+		assert b == 0
+	}
+	assert time.http_date_len == 29
+	// a degenerate Time (zero month) keeps smonth()'s historical '---' fallback
+	mut zero_buf := []u8{}
+	time.Time{}.push_to_http_header(mut zero_buf)
+	assert zero_buf.bytestr().contains('---')
+}
+
 fn test_push_to_http_header() {
 	mut http1_1_buffer := 'HTTP/1.1 200 OK\r\nDate: '.bytes()
 	time_to_test.push_to_http_header(mut http1_1_buffer)
 
 	assert http1_1_buffer.bytestr() == 'HTTP/1.1 200 OK\r\nDate: Fri, 11 Jul 1980 21:23:42 GMT'
+}
+
+fn test_update_http_header() {
+	mut buf := [29]u8{}
+	// every bucket rollover, checked against the full formatter as oracle:
+	// seed, +1s, :59, minute rollover, hour rollover, day rollover, a jump
+	// forward, a jump backward across years, and forward again
+	seq := [i64(1735689600), 1735689601, 1735689659, 1735689660, 1735693199, 1735693200, 1735775999,
+		1735776000, 1740787199, 999999999, 1000000000]
+	mut last := i64(0)
+	for u in seq {
+		unsafe { time.update_http_header(&buf[0], 29, last, u)! }
+		assert buf[..].bytestr() == time.unix(u).http_header_string(), 'mismatch at unix=${u}'
+		last = u
+	}
+	// a too-small destination is refused
+	mut refused := false
+	unsafe { time.update_http_header(&buf[0], 28, last, last + 1) or { refused = true } }
+	assert refused
 }

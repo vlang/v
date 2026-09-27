@@ -1,0 +1,26 @@
+vlib/v/parser/tests/embed_file_in_inactive_comptime_match_branch_not_evaluated.vv:3:3: notice: match is always false
+    1 | fn inactive_match_branch_embed_is_not_evaluated() {
+    2 |     _ := 0 == ($match 'ok' {
+    3 |         'skip' {
+      |         ~~~~~~
+    4 |             $embed_file(@FILE).len
+    5 |         }
+vlib/v/parser/tests/embed_file_in_inactive_comptime_match_branch_not_evaluated.vv:16:3: notice: match is always false
+   14 | fn inactive_const_match_branch_embed_is_not_evaluated() {
+   15 |     _ := 0 == ($match 'ok' {
+   16 |         skip {
+      |         ~~~~
+   17 |             $embed_file(@FILE).len
+   18 |         }
+vlib/v/parser/tests/embed_file_in_inactive_comptime_match_branch_not_evaluated.vv:26:9: error: undefined ident: `missing_symbol`
+   24 |
+   25 | fn main() {
+   26 |     assert missing_symbol == 0
+      |            ~~~~~~~~~~~~~~
+   27 | }
+vlib/v/parser/tests/embed_file_in_inactive_comptime_match_branch_not_evaluated.vv:26:9: error: assert can be used only with `bool` expressions, but found `void` instead
+   24 |
+   25 | fn main() {
+   26 |     assert missing_symbol == 0
+      |            ~~~~~~~~~~~~~~~~~~~
+   27 | }

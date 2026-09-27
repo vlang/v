@@ -1,0 +1,23 @@
+// vtest vflags: -os wasi
+// Memory-contract fixture: `-b wasm` must not emit frontend-inserted frees.
+// Uses only currently-supported constructs (scalars, structs, `+` string concat).
+struct Point {
+	x int
+	y int
+}
+
+fn make_point(a int, b int) Point {
+	return Point{
+		x: a + b
+		y: a - b
+	}
+}
+
+pub fn greet_len() int {
+	a := 'hello'
+	b := a + ' world'
+	p := make_point(2, 3)
+	return b.len + p.x + p.y
+}
+
+println(greet_len())

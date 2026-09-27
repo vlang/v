@@ -1,0 +1,5 @@
+type Arr = []?map
+
+fn main() {
+	_ := Arr{}
+}

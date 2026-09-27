@@ -1,4 +1,5 @@
 // vtest retry: 3
+// vtest vflags: -w
 import orm
 import db.sqlite
 
@@ -89,6 +90,10 @@ fn (db MockDB) create(table orm.Table, fields []orm.TableField) ! {
 
 fn (db MockDB) drop(table orm.Table) ! {
 	return db.db.drop(table)
+}
+
+fn (db MockDB) execute(query string) ![]orm.Row {
+	return db.db.execute(query)
 }
 
 fn (db MockDB) last_id() int {

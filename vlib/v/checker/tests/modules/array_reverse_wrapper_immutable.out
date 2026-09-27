@@ -1,0 +1,6 @@
+vlib/v/checker/tests/modules/array_reverse_wrapper_immutable/main.v:7:2: error: `values` is immutable, declare it with `mut` to make it mutable
+    5 | fn main() {
+    6 |     values := arraywrap.MyArray([1, 2])
+    7 |     values.flip()
+      |     ~~~~~~
+    8 | }

@@ -19,6 +19,14 @@ pub fn pub_fn() int {
 	return helper_used_by_pub()
 }
 
+pub const public_const = 5
+
+struct CallbackHolder {
+	callback fn () @[required]
+}
+
+fn referenced_callback() {}
+
 $if never_defined ? {
 	const skipped_const = 4
 
@@ -28,5 +36,8 @@ $if never_defined ? {
 }
 
 fn main() {
+	_ := CallbackHolder{
+		callback: referenced_callback
+	}
 	println(used_fn())
 }

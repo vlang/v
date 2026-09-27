@@ -3,7 +3,7 @@ module edwards25519
 import math.bits
 import math.unsigned
 import encoding.binary
-import crypto.internal.subtle
+import crypto.subtle
 
 // embedded unsigned.Uint128
 struct Uint128 {
@@ -678,10 +678,11 @@ fn (mut v Element) bytes_generic() []u8 {
 }
 
 // equal returns 1 if v and u are equal, and 0 otherwise.
-pub fn (mut v Element) equal(ue Element) int {
+pub fn (v Element) equal(ue Element) int {
+	mut left := v
 	mut u := ue
 	sa := u.bytes()
-	sv := v.bytes()
+	sv := left.bytes()
 	return subtle.constant_time_compare(sa, sv)
 }
 

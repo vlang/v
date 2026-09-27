@@ -368,6 +368,11 @@ pub fn (mut db DB) last_id() int {
 	return db.conn.last_id()
 }
 
+// execute runs a raw SQL query on the wrapped connection and returns the result rows.
+pub fn (mut db DB) execute(query string) ![]Row {
+	return db.conn.execute(query)
+}
+
 // DB implements orm.TransactionalConnection (decorator) -----------------------
 
 // unwrap_to_tx extracts a TransactionalConnection from a Connection interface.

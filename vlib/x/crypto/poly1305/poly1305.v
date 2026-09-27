@@ -8,7 +8,7 @@ module poly1305
 import math
 import math.unsigned
 import encoding.binary
-import crypto.internal.subtle
+import crypto.subtle
 
 // Constants defined in this module
 // -------------------------------

@@ -4,7 +4,7 @@
 module asn1
 
 // for bytes compare
-import crypto.internal.subtle { constant_time_compare }
+import crypto.subtle { constant_time_compare }
 
 // This file contains structures and routines for handling ASN.1 Element.
 // Its includes:
@@ -216,7 +216,7 @@ pub fn (el Element) equal(other Element) bool {
 }
 
 fn (el Element) equal_payload(other Element) bool {
-	// taken from crypto.internal.subtle
+	// taken from crypto.subtle
 	x := el.payload() or { panic(err) }
 	y := other.payload() or { panic(err) }
 

@@ -3,6 +3,7 @@ Low-level atomic operations for V with explicit i386 support (MMX required on i3
 Native atomic primitives for V implemented with inline assembly, without relying on C FFI.
 This repository is an experiment in providing low-level atomic operations directly in V,
 using V's inline assembly support.
+The current implementations target amd64 and i386; other architectures are not yet supported.
 At the moment, all operations provide sequentially consistent semantics.
 ## Motivation
 In the current V ecosystem, atomic operations are implemented via calls into C.
@@ -31,7 +32,7 @@ All operations in this library are intended to be **sequentially consistent**:
 ## Examples
 See the [examples](examples/) directory for complete runnable examples.
 ### Basic Usage
-```v
+```v ignore
 import x.atomics
 
 fn main() {
@@ -50,7 +51,7 @@ fn main() {
 }
 ```
 ### Compare-and-Swap (CAS)
-```v
+```v ignore
 import x.atomics
 
 fn main() {

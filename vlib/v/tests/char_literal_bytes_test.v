@@ -513,3 +513,34 @@ fn test_all_byte_char_literals() {
 	a = `\xff`
 	assert u8(a) == u8(255)
 }
+
+fn test_high_byte_char_literals_preserve_rune_value() {
+	assert int(`\x80`) == 128
+	assert int(`\xff`) == 255
+	assert `\x80` == rune(128)
+	assert `\xff` == rune(255)
+}
+
+const high_byte_char_literal = `\xff`
+const high_byte_char_literal_int = int(`\xff`)
+
+fn test_high_byte_char_literals_preserve_comptime_value() {
+	assert high_byte_char_literal == rune(255)
+	assert high_byte_char_literal_int == 255
+}
+
+fn high_byte_char_literal_transformer_branch() int {
+	if `\x80` == `\xff` {
+		return 1
+	}
+	if `\x80` < `\xff` {
+		return 2
+	}
+	return 3
+}
+
+fn test_high_byte_char_literals_preserve_transformer_value() {
+	assert `\x80` != `\xff`
+	assert `\x80` < `\xff`
+	assert high_byte_char_literal_transformer_branch() == 2
+}

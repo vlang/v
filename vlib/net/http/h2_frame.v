@@ -34,6 +34,10 @@ pub const h2_frame_header_len = 9
 // (RFC 7540 Section 6.5.2), and the smallest value a peer may set it to.
 pub const h2_default_max_frame_size = u32(16384)
 
+// h2_max_max_frame_size is the largest permitted SETTINGS_MAX_FRAME_SIZE
+// (RFC 7540 Section 6.5.2): 2^24-1 bytes.
+pub const h2_max_max_frame_size = u32(16777215)
+
 // HTTP/2 setting identifiers (RFC 7540 Section 6.5.2).
 pub const h2_settings_header_table_size = u16(0x1)
 pub const h2_settings_enable_push = u16(0x2)
@@ -54,8 +58,12 @@ pub:
 pub struct H2DataFrame {
 pub:
 	stream_id  u32
-	data       []u8
+	data       []u8 // payload with any padding stripped
 	end_stream bool
+	// flow_size is the full received payload length (pad-length byte + data +
+	// padding) that counts toward flow control (RFC 7540 6.9.1). For outgoing
+	// frames it is left 0 and unused; the parser sets it for received frames.
+	flow_size int
 }
 
 pub struct H2HeadersFrame {
@@ -243,6 +251,7 @@ pub fn h2_parse_frame(header H2FrameHeader, payload []u8) !H2Frame {
 				stream_id:  header.stream_id
 				data:       body.clone()
 				end_stream: header.flags & h2_flag_end_stream != 0
+				flow_size:  payload.len
 			}
 		}
 		h2_frame_headers {

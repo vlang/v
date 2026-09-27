@@ -59,6 +59,88 @@ mut:
 	next &Circular
 }
 
+struct DeepCircular {
+	value int
+mut:
+	next &DeepCircular = unsafe { nil }
+}
+
+fn test_autostr_address_guard_bounds_cycles_beyond_stack_capacity() {
+	mut root := &DeepCircular{}
+	mut cursor := root
+	for i in 1 .. 80 {
+		next := &DeepCircular{
+			value: i
+		}
+		cursor.next = next
+		cursor = next
+	}
+	cursor.next = cursor
+	s := '${root}'
+	assert s.contains('<circular>')
+	assert s.len < 20_000
+}
+
+fn render_circular_concurrently() bool {
+	for _ in 0 .. 200 {
+		mut elem := &Circular{unsafe { nil }}
+		elem.next = elem
+		s := '${elem}'.replace('\n', '|')
+		if s != '&Circular{|    next: &<circular>|}' {
+			return false
+		}
+	}
+	return true
+}
+
+fn test_autostr_address_guard_state_is_thread_local() {
+	mut threads := []thread bool{cap: 8}
+	for _ in 0 .. 8 {
+		threads << spawn render_circular_concurrently()
+	}
+	for ok in threads.wait() {
+		assert ok
+	}
+}
+
+struct AcyclicNode {
+	value int
+	next  &AcyclicNode = unsafe { nil }
+}
+
+fn test_acyclic_recursive_pointer_auto_str_keeps_nested_value() {
+	child := &AcyclicNode{
+		value: 2
+	}
+	root := AcyclicNode{
+		value: 1
+		next:  child
+	}
+	s := '${root}'.replace('\n', '|')
+	assert s == 'AcyclicNode{|    value: 1|    next: &AcyclicNode{|        value: 2|        next: &nil|    }|}'
+}
+
+struct AddressChild {
+	value int
+}
+
+struct AddressOuter {
+mut:
+	child AddressChild
+	ref   &AddressChild = unsafe { nil }
+}
+
+fn test_autostr_address_guard_distinguishes_first_field_type() {
+	mut outer := AddressOuter{
+		child: AddressChild{
+			value: 7
+		}
+	}
+	outer.ref = &outer.child
+	s := '${outer}'.replace('\n', '|')
+	assert s == 'AddressOuter{|    child: AddressChild{|        value: 7|    }|    ref: &AddressChild{|        value: 7|    }|}'
+}
+
 fn test_stack_circular_elem_auto_str() {
 	mut elem := Circular{unsafe { nil }}
 	elem.next = &elem
@@ -89,7 +171,7 @@ fn test_cross_reference_field_auto_str() {
 	widget.parent = window
 	window.widgets << widget
 	s := '${window}'.replace('\n', '|')
-	assert s == '&CrossRefWindow{|    widgets: [CrossRefWidget{|        parent: &CrossRefWindow{|            widgets: [CrossRefWidget{|                parent: &<circular>|            }]|        }|    }]|}'
+	assert s == '&CrossRefWindow{|    widgets: [CrossRefWidget{|        parent: &<circular>|    }]|}'
 }
 
 interface FamilyMember {

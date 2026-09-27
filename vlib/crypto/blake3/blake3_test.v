@@ -9,7 +9,7 @@
 module blake3
 
 import encoding.hex
-import json
+import json2 as json
 import os
 
 struct TestObject {
@@ -29,7 +29,7 @@ struct TestVectors {
 const object_string = os.read_file(os.real_path(os.join_path(os.dir(@FILE), 'testdata',
 	'test_vectors.json'))) or { panic(err) }
 
-const test_object = json.decode(TestObject, object_string) or { panic(err) }
+const test_object = json.decode[TestObject](object_string) or { panic(err) }
 
 const data_segment = []u8{len: 251, cap: 251, init: u8(index)}
 

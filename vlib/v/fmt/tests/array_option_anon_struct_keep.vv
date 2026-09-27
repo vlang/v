@@ -1,6 +1,6 @@
 module main
 
-import json
+import json2
 
 struct Data {
 mut:
@@ -17,6 +17,6 @@ fn main() {
 		"email": "email@email.ru"
 		}
 	}'
-	d := json.decode(Data, j)!
+	d := json2.decode[Data](j)!
 	println(d)
 }

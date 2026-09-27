@@ -4457,8 +4457,14 @@
 #define MBEDTLS_PADLOCK_C
 #endif // __TINYC__
 
-#if ( defined(__linux__) || defined(__FreeBSD__) ) || defined (__OpenBSD__)
+#if ( defined(__linux__) || defined(__FreeBSD__) ) || defined (__OpenBSD__) || defined(__APPLE__)
 #define MBEDTLS_THREADING_PTHREAD
+#define MBEDTLS_THREADING_C
+#elif defined(_WIN32)
+// Windows has no pthreads; the mutex callbacks are provided via
+// MBEDTLS_THREADING_ALT (see vlib/net/mbedtls/mbedtls_threading.h, installed by
+// mbedtls_threading_set_alt() from the net.mbedtls module init()).
+#define MBEDTLS_THREADING_ALT
 #define MBEDTLS_THREADING_C
 #else
 #undef MBEDTLS_THREADING_PTHREAD

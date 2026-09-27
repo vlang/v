@@ -1,7 +1,7 @@
 module dtm2
 
 import hash
-import json
+import json2 as json
 import os
 import strings
 
@@ -35,8 +35,8 @@ const allowed_html_tags = ['<div>', '</div>', '<h1>', '</h1>', '<h2>', '</h2>', 
 	'</th>', '<tr>', '</tr>', '<td>', '</td>', '<thead>', '</thead>', '<thread>', '</thread>',
 	'<tbody>', '</tbody>', '<tfoot>', '</tfoot>', '<col>', '</col>', '<colgroup>', '</colgroup>',
 	'<header>', '</header>', '<footer>', '</footer>', '<main>', '</main>', '<section>', '</section>',
-	'<article>', '</article>', '<aside>', '</aside>', '<details>', '</details>', '<dialog>',
-	'</dialog>', '<data>', '</data>', '<summary>', '</summary>']!
+	'<article>', '</article>', '<aside>', '</aside>', '<details>', '</details>', '<dialog>', '</dialog>',
+	'<data>', '</data>', '<summary>', '</summary>']!
 
 pub enum TemplateType {
 	html
@@ -213,7 +213,7 @@ fn read_extension_config_file(config_path string) !map[string]TemplateType {
 		return error('extension config file "${config_path}" is larger than ${max_extension_config_size} bytes')
 	}
 	raw_config := os.read_file(config_path)!
-	config := json.decode(ExtensionConfig, raw_config)!
+	config := json.decode[ExtensionConfig](raw_config)!
 	mut extensions := map[string]TemplateType{}
 	merge_template_extension_list(mut extensions, config.html, .html)
 	merge_template_extension_list(mut extensions, config.text, .text)

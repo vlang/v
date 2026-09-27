@@ -32,21 +32,41 @@ pub mut:
 	url        string
 	user_agent string = 'v.http'
 	verbose    bool
-	user_ptr   voidptr
-	proxy      &HttpProxy = unsafe { nil }
+	// remote_addr is the network address of the peer that sent this request,
+	// in `ip:port` form (`[ipv6]:port` for IPv6) -- the equivalent of Go's
+	// http.Request.RemoteAddr. `http.Server` fills it in for every request it
+	// hands to a `Handler`, over HTTP/1.1 and HTTP/2, plain and TLS, reading it
+	// straight off the accepted socket, so a client cannot forge it.
+	//
+	// It is empty for a request you build yourself to send with the client, and
+	// for one served by `veb`, which has its own server: use `ctx.ip()` there.
+	//
+	// A scoped IPv6 peer keeps its RFC 4007 zone, as in `[fe80::1%3]:8080`;
+	// without it a link-local address neither identifies an interface nor can
+	// be dialled back. The zone is the numeric interface index.
+	//
+	// When the server sits behind a reverse proxy this is the proxy's address.
+	// Recovering the original client then means trusting a header the proxy set
+	// (X-Forwarded-For, X-Real-Ip), which is only safe if nothing but that proxy
+	// can reach the server.
+	remote_addr string
+	user_ptr    voidptr
+	proxy       &HttpProxy = unsafe { nil }
 	// NOT implemented for ssl connections
 	// time = -1 for no timeout
 	read_timeout  i64 = 30 * time.second
 	write_timeout i64 = 30 * time.second
 
-	validate               bool // when true, certificate failures will stop further processing
-	verify                 string
-	cert                   string
-	cert_key               string
-	in_memory_verification bool // if true, verify, cert, and cert_key are read from memory, not from a file
-	allow_redirect         bool = true // whether to allow redirect
-	max_retries            int  = 5    // maximum number of retries required when an underlying socket error occurs
-	enable_http2           bool = true // when true (the default) and the URL is https, advertise ALPN `h2, http/1.1` and use HTTP/2 if the server selects it; set to false to force HTTP/1.1. Ignored for plain http://, and for the Windows SChannel backend which has no ALPN yet (see vlang/v#27383). on_progress / on_progress_body / stop_copying_limit / stop_receiving_limit are honored on the HTTP/2 path; on_progress fires per DATA frame payload rather than per raw network read.
+	validate                 bool // when true, certificate failures will stop further processing
+	verify                   string
+	cert                     string
+	cert_key                 string
+	in_memory_verification   bool // if true, verify, cert, and cert_key are read from memory, not from a file
+	allow_redirect           bool = true // whether to allow redirect
+	max_retries              int  = 5    // maximum number of retries required when an underlying socket error occurs
+	enable_http2             bool // opt in to HTTP/2 for HTTPS: advertise ALPN `h2, http/1.1` and use HTTP/2 if selected. HTTP/1.1 is the default. Ignored for plain http://. Progress callbacks and receive limits work on HTTP/2; on_progress fires per DATA frame payload.
+	enable_http3             bool // when true and the URL is https, use HTTP/3 (QUIC over UDP) for this request instead of the TCP-based HTTP/1.1/2 path. **Requires building with `-d http3`**: the QUIC/TLS/QPACK stack is compiled only on demand so ordinary net.http and veb builds do not pay its compile-time cost -- without the flag, an enable_http3 request fails fast with a "not compiled in" error. Opt-in only (default false) and, unlike enable_http2, never automatically probed: UDP has no fast-fail signal the way a closed TCP port does, so there is no automatic fallback to HTTP/1.1/2 if the h3 attempt fails or times out -- that decision is the caller's. Ignored for plain http://. req.cert/req.cert_key (mutual TLS) are not supported by this v1 HTTP/3 client; setting either alongside enable_http3 fails the request immediately rather than silently ignoring them. req.validate is also not honorable yet: net.quic's client TLS stack has no skip-verification mode at all (v1 limitation, unlike the h1/h2 ssl.SSLConn path), so certificate validation is always enforced regardless of this flag. **req.verify is effectively REQUIRED for HTTP/3 today**: net.quic's TLS 1.3 stack has no OS/default trust-store fallback of any kind (unlike the h1/h2 ssl.SSLConn path, which uses the platform's own trust store when req.verify is empty) -- leaving req.verify unset means every h3 request fails certificate verification against every real server, since there are no trust anchors to validate against at all. on_progress / on_progress_body / stop_copying_limit / stop_receiving_limit are not honored on the HTTP/3 path (see H3ClientRequest's own scope note).
+	disable_connection_reuse bool // opt out of the shared connection pool: open a fresh connection for this request, send `Connection: close`, and close the connection after the response (the pre-pooling behavior)
 	// callbacks to allow custom reporting code to run, while the request is running, and to implement streaming
 	on_redirect      RequestRedirectFn     = unsafe { nil }
 	on_progress      RequestProgressFn     = unsafe { nil }
@@ -100,6 +120,16 @@ fn (mut req Request) free() {
 			user_agent.free()
 			freed_ptrs[user_agent_ptr] = true
 		}
+		// The mirrored `Remote-Addr` header above can share this buffer:
+		// set_remote_addr stores the address unchanged as the header value when
+		// there is no port to strip. The freed_ptrs guard is what keeps that
+		// from being a double free, here as for every other field.
+		mut remote_addr := req.remote_addr
+		remote_addr_ptr := u64(usize(remote_addr.str))
+		if remote_addr_ptr !in freed_ptrs {
+			remote_addr.free()
+			freed_ptrs[remote_addr_ptr] = true
+		}
 		mut verify := req.verify
 		verify_ptr := u64(usize(verify.str))
 		if verify_ptr !in freed_ptrs {
@@ -138,6 +168,50 @@ pub fn (mut req Request) add_header(key CommonHeader, val string) {
 // This method may fail if the key contains characters that are not permitted
 pub fn (mut req Request) add_custom_header(key string, val string) ! {
 	return req.header.add_custom(key, val)
+}
+
+// remote_ip returns just the IP part of `req.remote_addr`, without the port,
+// for example `127.0.0.1` or `::1`. A scoped IPv6 address keeps its zone
+// (`fe80::1%3`), which is part of the address rather than of the port.
+// It returns an empty string for a request that was not received by
+// `http.Server`. See `Request.remote_addr`.
+pub fn (req &Request) remote_ip() string {
+	return strip_addr_port(req.remote_addr)
+}
+
+// strip_addr_port drops the `:port` suffix of an `ip:port` address, handling
+// the bracketed `[::1]:8080` form that IPv6 addresses use. An RFC 4007 zone
+// sits inside the brackets (`[fe80::1%3]:8080`), so it survives untouched.
+fn strip_addr_port(addr string) string {
+	if addr.contains(']:') {
+		return addr.all_before(']:').all_after('[')
+	}
+	if addr.count(':') != 1 {
+		// A bare IPv6 address without a port, or an empty string: nothing to strip.
+		return addr
+	}
+	return addr.all_before(':')
+}
+
+// set_remote_addr records `addr` (an `ip:port` string read from the accepted
+// socket) as the address of the peer that sent this request, and mirrors it
+// into the legacy `Remote-Addr` header that the V server has always set.
+//
+// Any `Remote-Addr` header the client sent is dropped first, in any casing:
+// header lookups return the *first* match, so a client that sent its own
+// `Remote-Addr` would otherwise shadow the real one and hand every reader a
+// forged source address. The header is only a best-effort mirror -- headers
+// live in a fixed-size array, so a request that already filled it leaves no
+// room -- while `req.remote_addr` is always set.
+fn (mut req Request) set_remote_addr(addr string) {
+	req.remote_addr = addr
+	req.header.remove_custom_all('Remote-Addr')
+	if addr == '' {
+		return
+	}
+	if req.header.cur_pos < max_headers {
+		req.header.add_custom('Remote-Addr', strip_addr_port(addr)) or {}
+	}
 }
 
 // add_cookie adds a cookie to the request.
@@ -254,6 +328,22 @@ fn (req &Request) method_and_url_to_response(method Method, url urllib.URL, data
 		}
 	}
 	// println('fetch ${method}, ${scheme}, ${host_name}, ${nport}, ${path} ')
+	if req.proxy == unsafe { nil } && !req.disable_connection_reuse
+		&& (scheme == 'http' || scheme == 'https') {
+		// Default path: route through the shared connection-pooling Transport,
+		// which reuses keep-alive connections across requests to the same origin.
+		mut transport := default_transport()
+		for i in 0 .. req.max_retries {
+			res := transport.round_trip(req, method, scheme, host_name, nport, path, data, header) or {
+				if i == req.max_retries - 1 || is_no_need_retry_error(err.code()) {
+					return err
+				}
+				continue
+			}
+			return res
+		}
+		return error('http.request.method_and_url_to_response: exhausted retries')
+	}
 	if scheme == 'https' && req.proxy == unsafe { nil } {
 		// println('ssl_do( ${nport}, ${method}, ${host_name}, ${path} )')
 		for i in 0 .. req.max_retries {
@@ -295,6 +385,15 @@ fn (req &Request) build_request_headers(method Method, host_name string, port in
 }
 
 fn (req &Request) build_request_headers_with(method Method, host_name string, port int, path string, data string, header Header) string {
+	return req.build_request_headers_opts(method, host_name, port, path, data, header, true)
+}
+
+// build_request_headers_opts builds the raw HTTP/1.x request. With
+// `connection_close` true it appends `Connection: close` (the historical
+// one-shot behavior); the pooled keep-alive path passes false and emits no
+// Connection header, leaving the HTTP/1.1 default (keep-alive) in effect and
+// respecting any Connection header the caller set themselves.
+fn (req &Request) build_request_headers_opts(method Method, host_name string, port int, path string, data string, header Header, connection_close bool) string {
 	mut sb := strings.new_builder(4096)
 	version := if req.version == .unknown { Version.v1_1 } else { req.version }
 	sb.write_string(method.str())
@@ -337,7 +436,9 @@ fn (req &Request) build_request_headers_with(method Method, host_name string, po
 		sb.write_string('\r\n')
 	}
 	sb.write_string(req.build_request_cookies_header_with_header(header))
-	sb.write_string('Connection: close\r\n')
+	if connection_close {
+		sb.write_string('Connection: close\r\n')
+	}
 	sb.write_string('\r\n')
 	sb.write_string(data)
 	return sb.str()
@@ -401,6 +502,28 @@ fn (req &Request) http_do(host string, method Method, path string, data string, 
 		req.on_finish(req, u64(response_text.len))!
 	}
 	return parse_received_response(response_text, response_data.info)
+}
+
+// h1_exchange_tcp sends an already-built HTTP/1.x request over an open TCP
+// connection and reads one response, leaving the connection open. The bool
+// result reports whether the response was precisely framed, so the connection
+// can safely carry another request (see ReceivedResponseInfo.reusable).
+fn (req &Request) h1_exchange_tcp(mut client net.TcpConn, raw string) !(Response, bool) {
+	client.write(raw.bytes()) or {
+		return error('http.transport: connection write failed: ${err.msg()}')
+	}
+	response_data := req.read_all_from_client_connection(client)!
+	response_text := response_data.data.bytestr()
+	$if trace_http_response ? {
+		eprint('< ')
+		eprint(response_text)
+		eprintln('')
+	}
+	if req.on_finish != unsafe { nil } {
+		req.on_finish(req, u64(response_text.len))!
+	}
+	resp := parse_received_response(response_text, response_data.info)!
+	return resp, response_data.info.reusable
 }
 
 // abstract over reading the whole content from TCP or SSL connections:
@@ -543,6 +666,12 @@ struct ReceivedResponseInfo {
 	headers_end         int = -1
 	is_chunked_transfer bool
 	has_truncated_body  bool
+	// reusable is true when the read loop terminated via precise response
+	// framing (Content-Length satisfied, chunked transfer complete, or a
+	// no-body status), meaning the connection holds no response leftovers and
+	// can safely carry another request. EOF-terminated or truncated reads
+	// leave it false.
+	reusable bool
 }
 
 fn parse_received_response(response_text string, info ReceivedResponseInfo) !Response {
@@ -589,6 +718,7 @@ fn (req &Request) receive_all_data_from_cb_in_builder(mut content strings.Builde
 	mut new_len := u64(0)
 	mut status_code := -1
 	mut has_truncated_body := false
+	mut framed_complete := false
 	for {
 		readcounter++
 		len := receive_chunk_cb(con, bp, bufsize) or {
@@ -703,18 +833,25 @@ fn (req &Request) receive_all_data_from_cb_in_builder(mut content strings.Builde
 			has_truncated_body = true
 		}
 		if is_chunked_transfer && chunked_complete {
+			framed_complete = true
 			break
 		}
 		if headers_end >= 0 && response_has_no_body(req.method, status_code) {
 			// HEAD / 1xx / 204 / 304: response body is forbidden by the spec, so
 			// stop as soon as the headers terminator is in. Any `Content-Length`
 			// describes a body that will never be sent.
+			framed_complete = true
 			break
 		}
-		if has_content_length {
-			if expected_size > 0 && body_so_far >= expected_size {
-				break
-			}
+		if has_content_length && body_so_far >= expected_size {
+			// The framing is satisfied even when expected_size == 0: on a
+			// keep-alive connection the server sends nothing further, so waiting
+			// for EOF here would stall until the read timeout.
+			// A response carrying MORE body bytes than its declared
+			// Content-Length is malformed: the stream position is no longer
+			// trustworthy, so such a connection must never be reused.
+			framed_complete = body_so_far == expected_size
+			break
 		}
 		if req.stop_receiving_limit > 0 && new_len > req.stop_receiving_limit {
 			break
@@ -725,6 +862,7 @@ fn (req &Request) receive_all_data_from_cb_in_builder(mut content strings.Builde
 		headers_end:         headers_end
 		is_chunked_transfer: is_chunked_transfer
 		has_truncated_body:  has_truncated_body
+		reusable:            framed_complete
 	}
 }
 
@@ -1165,5 +1303,6 @@ fn is_no_need_retry_error(err_code int) bool {
 		net.err_no_udp_remote.code(),
 		net.err_connect_timed_out.code(),
 		net.err_timed_out_code,
+		transport_err_unsafe_retry,
 	]
 }

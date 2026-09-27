@@ -1,3 +1,4 @@
+// vtest vflags: -w
 import json
 
 fn test_main() {

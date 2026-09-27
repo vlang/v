@@ -1,0 +1,53 @@
+fn main() {
+	ch_if := chan int{cap: 1}
+	ch_if <- 1
+	ch_match := chan int{cap: 1}
+	ch_match <- 1
+	mut sink := 0
+	mut selected_if := 0
+	mut selected_match := 0
+	fallback := $embed_file(@FILE)
+	embedded_if := if sink == 0 {
+		sink++
+		if select {
+			_ := <-ch_if {
+				selected_if = 1
+			}
+			else {
+				selected_if = 2
+			}
+		} {
+			$embed_file(@FILE)
+		} else {
+			fallback
+		}
+	} else {
+		fallback
+	}
+	embedded_match := if sink == 1 {
+		sink++
+		match select {
+			_ := <-ch_match {
+				selected_match = 1
+			}
+			else {
+				selected_match = 2
+			}
+		} {
+			true {
+				fallback
+			}
+			else {
+				$embed_file(@FILE)
+			}
+		}
+	} else {
+		fallback
+	}
+	assert embedded_if.len > 0
+	assert embedded_match.len > 0
+	assert sink == 2
+	assert selected_if == 1
+	assert selected_match == 1
+	sink = missing_symbol
+}

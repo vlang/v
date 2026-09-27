@@ -1,0 +1,12 @@
+import v.embed_file
+
+fn main() {
+	ok := true
+	'' == fn () embed_file.EmbedFileData {
+		if ok {
+			return $embed_file(@FILE)
+		} else {
+			return $embed_file(@FILE)
+		}
+	}().path
+}

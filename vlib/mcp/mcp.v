@@ -1,6 +1,6 @@
 module mcp
 
-import json
+import json2 as json
 import net.http
 import os
 import time
@@ -259,20 +259,22 @@ pub fn (resp Response) decode_result[T]() !T {
 
 // decode_request decodes a JSON payload into an MCP request.
 pub fn decode_request(raw string) !Request {
-	return json.decode(Request, raw) or { return err }
+	return json.decode[Request](raw) or { return err }
 }
 
 // decode_notification decodes a JSON payload into an MCP notification.
 pub fn decode_notification(raw string) !Notification {
-	return json.decode(Notification, raw) or { return err }
+	return json.decode[Notification](raw) or { return err }
 }
 
 // decode_response decodes a JSON payload into an MCP response.
 pub fn decode_response(raw string) !Response {
-	return json.decode(Response, raw) or { return err }
+	return json.decode[Response](raw) or { return err }
 }
 
-struct MessageEnvelope {
+// MessageEnvelope is the shared wire representation used while decoding MCP messages.
+pub struct MessageEnvelope {
+pub:
 	jsonrpc string
 	id      string @[raw]
 	method  string
@@ -309,7 +311,7 @@ fn (env MessageEnvelope) encode() string {
 }
 
 fn decode_envelope(raw string) !MessageEnvelope {
-	return json.decode(MessageEnvelope, raw) or { return err }
+	return json.decode[MessageEnvelope](raw) or { return err }
 }
 
 // Transport is the boundary between MCP messages and the wire format.
@@ -599,7 +601,7 @@ fn (mut transport HttpTransport) send(message string) ! {
 
 fn read_negotiated_version(body string) string {
 	envelope := decode_envelope(body) or { return '' }
-	result := json.decode(InitializeResult, envelope.result) or { return '' }
+	result := json.decode[InitializeResult](envelope.result) or { return '' }
 	return result.protocol_version
 }
 
@@ -738,7 +740,7 @@ fn split_json_payloads(body string) ![]string {
 	if trimmed[0] != `[` {
 		return [trimmed]
 	}
-	envelopes := json.decode([]MessageEnvelope, trimmed) or { return err }
+	envelopes := json.decode[[]MessageEnvelope](trimmed) or { return err }
 	mut messages := []string{cap: envelopes.len}
 	for envelope in envelopes {
 		messages << envelope.encode()
@@ -864,7 +866,7 @@ fn decode_value[T](value string) !T {
 		return error('mcp: expected null, got `${value}`')
 	} $else $if T is string {
 		if value.len >= 2 && value[0] == `"` && value[value.len - 1] == `"` {
-			return json.decode(string, value) or { return err }
+			return json.decode[string](value) or { return err }
 		}
 		return error('mcp: could not decode `${value}` into string')
 	} $else $if T is bool {
@@ -876,7 +878,7 @@ fn decode_value[T](value string) !T {
 		}
 		return error('mcp: could not decode `${value}` into bool')
 	} $else {
-		return json.decode(T, value) or { return err }
+		return json.decode[T](value) or { return err }
 	}
 }
 

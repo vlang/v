@@ -76,6 +76,13 @@ pub type Primitive = Null
 
 pub struct Null {}
 
+// Row represents a single result row from a raw SQL exec query.
+pub struct Row {
+pub mut:
+	vals  []string
+	names []string // column names; populated by drivers that provide them
+}
+
 pub enum OperationKind {
 	neq         // !=
 	eq          // ==
@@ -138,10 +145,11 @@ fn (jt JoinType) to_str() string {
 // JoinConfig holds configuration for a JOIN clause in a SELECT query
 pub struct JoinConfig {
 pub mut:
-	kind         JoinType
-	table        Table
-	on_left_col  string // Column from main table (e.g., 'user_id')
-	on_right_col string // Column from joined table (e.g., 'id')
+	kind          JoinType
+	table         Table
+	on_left_table string // Table from the left side of the join predicate
+	on_left_col   string // Column from the left table (e.g., 'user_id')
+	on_right_col  string // Column from joined table (e.g., 'id')
 }
 
 pub enum SQLDialect {
@@ -298,6 +306,8 @@ struct TenantFilterScopeState {
 	current_tenant     Primitive
 }
 
+@[deprecated: 'use `orm.DataScope` and `orm.new_db()` for per-instance request-level filtering']
+@[deprecated_after: '2027-06-08']
 pub struct TenantFilterConfig {
 pub:
 	enabled    bool   = true
@@ -328,6 +338,7 @@ mut:
 	create(table Table, fields []TableField) !
 	drop(table Table) !
 	last_id() int
+	execute(query string) ![]Row
 }
 
 // TransactionalConnection extends Connection with transaction primitives.
@@ -343,17 +354,23 @@ mut:
 }
 
 // configure_tenant_filter configures the global ORM tenant filter behavior.
+@[deprecated: 'use `orm.DataScope` and `orm.new_db()` for per-instance request-level filtering']
+@[deprecated_after: '2027-06-08']
 pub fn configure_tenant_filter(config TenantFilterConfig) {
 	tenant_filter_state.enabled = config.enabled
 	tenant_filter_state.field_name = normalize_tenant_filter_field_name(config.field_name)
 }
 
 // set_tenant_filter_enabled enables or disables global tenant filtering.
+@[deprecated: 'use `orm.DataScope` and `orm.new_db()` for per-instance request-level filtering']
+@[deprecated_after: '2027-06-08']
 pub fn set_tenant_filter_enabled(enabled bool) {
 	tenant_filter_state.enabled = enabled
 }
 
 // set_current_tenant_id sets the current tenant id used by global tenant filtering.
+@[deprecated: 'use `orm.DataScope` and `orm.new_db()` for per-instance request-level filtering']
+@[deprecated_after: '2027-06-08']
 pub fn set_current_tenant_id(tenant_id Primitive) {
 	if tenant_id is Null {
 		clear_current_tenant_id()
@@ -364,12 +381,16 @@ pub fn set_current_tenant_id(tenant_id Primitive) {
 }
 
 // clear_current_tenant_id clears the current tenant id used by global tenant filtering.
+@[deprecated: 'use `orm.DataScope` and `orm.new_db()` for per-instance request-level filtering']
+@[deprecated_after: '2027-06-08']
 pub fn clear_current_tenant_id() {
 	tenant_filter_state.has_current_tenant = false
 	tenant_filter_state.current_tenant = null_primitive
 }
 
 // with_tenant executes `callback` with a temporary tenant id and enabled tenant filtering.
+@[deprecated: 'use `orm.DataScope` and `orm.new_db()` for per-instance request-level filtering']
+@[deprecated_after: '2027-06-08']
 pub fn with_tenant[T](tenant_id Primitive, callback fn () !T) !T {
 	saved := tenant_filter_scope_snapshot()
 	tenant_filter_state.enabled = true
@@ -382,6 +403,8 @@ pub fn with_tenant[T](tenant_id Primitive, callback fn () !T) !T {
 }
 
 // with_tenant_value executes `callback` with a temporary tenant id and enabled tenant filtering.
+@[deprecated: 'use `orm.DataScope` and `orm.new_db()` for per-instance request-level filtering']
+@[deprecated_after: '2027-06-08']
 pub fn with_tenant_value[T](tenant_id Primitive, callback fn () T) T {
 	saved := tenant_filter_scope_snapshot()
 	tenant_filter_state.enabled = true
@@ -394,6 +417,8 @@ pub fn with_tenant_value[T](tenant_id Primitive, callback fn () T) T {
 }
 
 // without_tenant_filter executes `callback` with tenant filtering temporarily disabled.
+@[deprecated: 'use `orm.DB.unscoped()` for per-instance scope bypass']
+@[deprecated_after: '2027-06-08']
 pub fn without_tenant_filter[T](callback fn () !T) !T {
 	saved := tenant_filter_scope_snapshot()
 	tenant_filter_state.enabled = false
@@ -404,6 +429,8 @@ pub fn without_tenant_filter[T](callback fn () !T) !T {
 }
 
 // without_tenant_filter_value executes `callback` with tenant filtering temporarily disabled.
+@[deprecated: 'use `orm.DB.unscoped()` for per-instance scope bypass']
+@[deprecated_after: '2027-06-08']
 pub fn without_tenant_filter_value[T](callback fn () T) T {
 	saved := tenant_filter_scope_snapshot()
 	tenant_filter_state.enabled = false
@@ -809,7 +836,9 @@ fn clone_query_data(data QueryData) QueryData {
 pub fn orm_stmt_gen(sql_dialect SQLDialect, table Table, q string, kind StmtKind, num bool, qm string,
 	start_pos int, data QueryData, where QueryData) (string, QueryData) {
 	mut str := ''
-	mut c := start_pos
+	mut c := PlaceholderCounter{
+		position: start_pos
+	}
 	insert_data := prepare_insert_query_data(data)
 
 	match kind {
@@ -826,8 +855,8 @@ pub fn orm_stmt_gen(sql_dialect SQLDialect, table Table, q string, kind StmtKind
 				for _ in 0 .. row_count {
 					mut row_values := []string{}
 					for _ in insert_data.fields {
-						row_values << factory_insert_qm_value(num, qm, c)
-						c++
+						row_values << factory_insert_qm_value(num, qm, c.position)
+						c.position++
 					}
 					values << '(${row_values.join(', ')})'
 				}
@@ -857,13 +886,13 @@ pub fn orm_stmt_gen(sql_dialect SQLDialect, table Table, q string, kind StmtKind
 					for _ in 0 .. data.batch_rows {
 						str += 'WHEN ${qm}'
 						if num {
-							str += '${c}'
-							c++
+							str += '${c.position}'
+							c.position++
 						}
 						str += ' THEN ${qm}'
 						if num {
-							str += '${c}'
-							c++
+							str += '${c.position}'
+							c.position++
 						}
 						str += ' '
 					}
@@ -901,8 +930,8 @@ pub fn orm_stmt_gen(sql_dialect SQLDialect, table Table, q string, kind StmtKind
 						str += '${qm}'
 					}
 					if num {
-						str += '${c}'
-						c++
+						str += '${c.position}'
+						c.position++
 					}
 					if i < data.fields.len - 1 {
 						str += ', '
@@ -918,7 +947,7 @@ pub fn orm_stmt_gen(sql_dialect SQLDialect, table Table, q string, kind StmtKind
 
 	// where
 	if kind == .update || kind == .delete {
-		str += gen_where_clause(where, q, qm, num, mut &c)
+		str += gen_where_clause(where, q, qm, num, mut c)
 	}
 	str += ';'
 	$if trace_orm_stmt ? {
@@ -1150,7 +1179,7 @@ pub fn orm_select_gen(cfg SelectConfig, q string, num bool, qm string, start_pos
 		if cfg.aggregate_kind == .count {
 			str += cfg.aggregate_kind.to_str()
 		} else {
-			str += '${cfg.aggregate_kind.to_str()}(${q}${cfg.aggregate_field}${q})'
+			str += '${cfg.aggregate_kind.to_str()}(${gen_qualified_field(cfg.aggregate_field, q)})'
 		}
 	} else {
 		for i, field in cfg.fields {
@@ -1161,6 +1190,8 @@ pub fn orm_select_gen(cfg SelectConfig, q string, num bool, qm string, start_pos
 			}
 			if select_expr == field {
 				str += '${q}${field}${q}'
+			} else if select_expr.contains(table_qualified_field_separator) {
+				str += gen_qualified_field(select_expr, q)
 			} else {
 				str += select_expr
 			}
@@ -1174,12 +1205,15 @@ pub fn orm_select_gen(cfg SelectConfig, q string, num bool, qm string, start_pos
 
 	// Generate JOIN clauses
 	for join in cfg.joins {
+		left_table := if join.on_left_table.len > 0 { join.on_left_table } else { cfg.table.name }
 		str += ' ${join.kind.to_str()} ${q}${join.table.name}${q}'
-		str += ' ON ${q}${cfg.table.name}${q}.${q}${join.on_left_col}${q}'
+		str += ' ON ${q}${left_table}${q}.${q}${join.on_left_col}${q}'
 		str += ' = ${q}${join.table.name}${q}.${q}${join.on_right_col}${q}'
 	}
 
-	mut c := start_pos
+	mut c := PlaceholderCounter{
+		position: start_pos
+	}
 
 	if cfg.has_where {
 		str += ' WHERE '
@@ -1190,30 +1224,30 @@ pub fn orm_select_gen(cfg SelectConfig, q string, num bool, qm string, start_pos
 				eprintln('> orm_select_gen: field[${i}] = ${field}')
 			}
 		}
-		str += gen_where_clause(where, q, qm, num, mut &c)
+		str += gen_where_clause(where, q, qm, num, mut c)
 	}
 
 	// Note: do not order, if the user did not want it explicitly,
 	// ordering is *slow*, especially if there are no indexes!
 	if cfg.has_order {
 		str += ' ORDER BY '
-		str += '${q}${cfg.order}${q} '
+		str += gen_qualified_field(cfg.order, q) + ' '
 		str += cfg.order_type.to_str()
 	}
 
 	if cfg.has_limit {
 		str += ' LIMIT ${qm}'
 		if num {
-			str += '${c}'
-			c++
+			str += '${c.position}'
+			c.position++
 		}
 	}
 
 	if cfg.has_offset {
 		str += ' OFFSET ${qm}'
 		if num {
-			str += '${c}'
-			c++
+			str += '${c.position}'
+			c.position++
 		}
 	}
 
@@ -1229,11 +1263,16 @@ pub fn orm_select_gen(cfg SelectConfig, q string, num bool, qm string, start_pos
 
 const table_qualified_field_separator = '::v_orm_table::'
 
+struct PlaceholderCounter {
+mut:
+	position int
+}
+
 fn table_qualified_field(table_name string, column_name string) string {
 	return '${table_name}${table_qualified_field_separator}${column_name}'
 }
 
-fn gen_where_clause(where QueryData, q string, qm string, num bool, mut c &int) string {
+fn gen_where_clause(where QueryData, q string, qm string, num bool, mut c PlaceholderCounter) string {
 	mut str := ''
 	mut data_idx := 0
 	for i, field in where.fields {
@@ -1245,7 +1284,8 @@ fn gen_where_clause(where QueryData, q string, qm string, num bool, mut c &int) 
 		}
 		str += gen_qualified_field(field, q) + ' ${where.kinds[i].to_str()}'
 		if !where.kinds[i].is_unary() {
-			array_len := if where.data.len > data_idx {
+			expand_array := where.kinds[i] in [.in, .not_in]!
+			array_len := if expand_array && where.data.len > data_idx {
 				primitive_array_len(where.data[data_idx])
 			} else {
 				-1
@@ -1255,16 +1295,16 @@ fn gen_where_clause(where QueryData, q string, qm string, num bool, mut c &int) 
 				for j in 0 .. array_len {
 					tmp[j] = '${qm}'
 					if num {
-						tmp[j] += '${c}'
-						c++
+						tmp[j] += '${c.position}'
+						c.position++
 					}
 				}
 				str += ' (${tmp.join(', ')})'
 			} else {
 				str += ' ${qm}'
 				if num {
-					str += '${c}'
-					c++
+					str += '${c.position}'
+					c.position++
 				}
 			}
 			data_idx++
@@ -1322,6 +1362,22 @@ fn parse_table_attr_fields(table Table, attr VAttribute, valid_sql_field_names [
 	return attr_fields
 }
 
+// sql_string_literal renders `value` as a quoted SQL string literal.
+// Doubling single quotes is standard SQL, and is understood by every dialect.
+//
+// A backslash has no single MySQL spelling: with the default sql_mode it escapes
+// the next character, so `C:\tmp` has to be written `C:\\tmp`, while under
+// NO_BACKSLASH_ESCAPES that same text is two literal backslashes. orm_table_gen()
+// generates DDL without a connection and cannot know the server's mode, so rather
+// than silently storing one or two backslashes depending on it, a backslash in a
+// MySQL string literal default is rejected.
+fn sql_string_literal(sql_dialect SQLDialect, value string) !string {
+	if sql_dialect == .mysql && value.contains('\\') {
+		return error('orm: a backtick delimited `default:` value cannot contain a backslash on MySQL, because its meaning depends on the NO_BACKSLASH_ESCAPES sql_mode of the server; use `sql_type` with an explicit DEFAULT clause instead')
+	}
+	return "'" + value.replace("'", "''") + "'"
+}
+
 pub fn orm_table_gen(sql_dialect SQLDialect, table Table, q string, defaults bool, def_unique_len int, fields []TableField, sql_from_v fn (int) !string,
 	alternative bool) !string {
 	mut str := 'CREATE TABLE IF NOT EXISTS ${q}${table.name}${q} ('
@@ -1377,6 +1433,7 @@ pub fn orm_table_gen(sql_dialect SQLDialect, table Table, q string, defaults boo
 		}
 		mut default_val := field.default_val
 		mut has_default := default_val != ''
+		mut default_is_literal := false
 		mut nullable := field.nullable
 		mut is_unique := false
 		mut is_skip := false
@@ -1388,7 +1445,7 @@ pub fn orm_table_gen(sql_dialect SQLDialect, table Table, q string, defaults boo
 		mut col_typ := sql_from_v(sql_field_type(field)) or {
 			// Struct fields are treated as foreign key references, which requires a primary key
 			if primary_typ == 0 {
-				return error('struct field `${field_name}` in table `${table.name}` requires a primary key field for foreign key reference - add a field with [primary] attribute or use [sql: \'-\'] to skip this field')
+				return error("struct field `${field_name}` in table `${table.name}` requires a primary key field for foreign key reference - add a field with [primary] attribute or use [sql: '-'] to skip this field")
 			}
 			field_name = '${field_name}_id'
 			sql_from_v(primary_typ)!
@@ -1430,7 +1487,16 @@ pub fn orm_table_gen(sql_dialect SQLDialect, table Table, q string, defaults boo
 				'default' {
 					has_default = true
 					if default_val == '' {
-						default_val = attr.arg.str()
+						arg := attr.arg.trim_space()
+						if arg.len >= 2 && arg.starts_with('`') && arg.ends_with('`') {
+							// As documented, a value surrounded by backticks is a plain
+							// string, that has to reach the DB as a quoted SQL literal,
+							// instead of verbatim SQL like `CURRENT_TIME`.
+							default_is_literal = true
+							default_val = arg#[1..-1]
+						} else {
+							default_val = arg
+						}
 					}
 				}
 				'references' {
@@ -1446,8 +1512,9 @@ pub fn orm_table_gen(sql_dialect SQLDialect, table Table, q string, defaults boo
 						if attr.arg.trim(' ') == '' {
 							return error("references attribute needs to be in the format [references], [references: 'tablename'], or [references: 'tablename(field_id)']")
 						}
-						if attr.arg.contains('(') {
-							if ref_table, ref_field := attr.arg.split_once('(') {
+						ref_arg := trim_attr_arg(attr.arg)
+						if ref_arg.contains('(') {
+							if ref_table, ref_field := ref_arg.split_once('(') {
 								if !ref_field.ends_with(')') {
 									return error("explicit references attribute should be written as [references: 'tablename(field_id)']")
 								}
@@ -1455,7 +1522,7 @@ pub fn orm_table_gen(sql_dialect SQLDialect, table Table, q string, defaults boo
 								references_field = ref_field[..ref_field.len - 1]
 							}
 						} else {
-							references_table = attr.arg
+							references_table = ref_arg
 							references_field = 'id'
 						}
 					}
@@ -1483,7 +1550,9 @@ pub fn orm_table_gen(sql_dialect SQLDialect, table Table, q string, defaults boo
 		}
 		stmt = '${q}${field_name}${q} ${col_typ}'
 		if defaults && has_default {
-			if default_val != '' {
+			if default_is_literal {
+				stmt += ' DEFAULT ${sql_string_literal(sql_dialect, default_val)!}'
+			} else if default_val != '' {
 				stmt += ' DEFAULT ${default_val}'
 			} else {
 				// Handle @[default: ''] - explicitly set DEFAULT '' for the column
@@ -1550,17 +1619,19 @@ pub fn orm_table_gen(sql_dialect SQLDialect, table Table, q string, defaults boo
 	str += ';'
 
 	if sql_dialect in [.pg, .h2] {
+		quote := '"'
 		if table_comment != '' {
-			str += "\nCOMMENT ON TABLE \"${table.name}\" IS '${table_comment}';"
+			str += "\nCOMMENT ON TABLE ${quote}${table.name}${quote} IS '${table_comment}';"
 		}
 		for f, c in field_comments {
-			str += "\nCOMMENT ON COLUMN \"${table.name}\".\"${f}\" IS '${c}';"
+			str += "\nCOMMENT ON COLUMN ${quote}${table.name}${quote}.${quote}${f}${quote} IS '${c}';"
 		}
 	}
 	if sql_dialect in [.pg, .sqlite, .h2] && index_fields.len > 0 {
-		str += '\nCREATE INDEX "idx_${table.name}" ON "${table.name}" ("'
+		quote := '"'
+		str += '\nCREATE INDEX ${quote}idx_${table.name}${quote} ON ${quote}${table.name}${quote} (${quote}'
 		str += index_fields.join('","')
-		str += '");'
+		str += '${quote});'
 	}
 	$if trace_orm_create ? {
 		eprintln('> orm_create table: ${table.name} | query: ${str}')
@@ -1600,7 +1671,7 @@ fn sql_field_name(field TableField) string {
 	mut name := field.name
 	for attr in field.attrs {
 		if attr.name == 'sql' && attr.has_arg && attr.kind == .string {
-			name = attr.arg
+			name = trim_attr_arg(attr.arg)
 			break
 		}
 	}

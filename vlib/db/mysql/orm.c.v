@@ -50,14 +50,14 @@ pub fn (db DB) select(config orm.SelectConfig, data orm.QueryData, where orm.Que
 				data_pointers << &u8(unsafe { nil })
 			}
 			else {
-				return error('\'${unsafe { FieldType(field.type) }}\' is not yet implemented. Please create a new issue at https://github.com/vlang/v/issues/new')
+				return error("'${unsafe { FieldType(field.type) }}' is not yet implemented. Please create a new issue at https://github.com/vlang/v/issues/new")
 			}
 		}
 	}
 
-	mut lengths := []u32{len: int(num_fields), init: 0}
-	mut is_null := []bool{len: int(num_fields)}
-	stmt.bind_res(fields, data_pointers, lengths, is_null, num_fields)
+	mut lengths := []C.v_mysql_ulong{len: int(num_fields), init: 0}
+	mut is_null := []C.v_mysql_bool{len: int(num_fields)}
+	stmt.bind_res_abi(fields, data_pointers, lengths, is_null, num_fields)
 
 	mut types := config.types.clone()
 	mut field_types := []FieldType{}
@@ -88,7 +88,7 @@ pub fn (db DB) select(config orm.SelectConfig, data orm.QueryData, where orm.Que
 			.type_time, .type_date, .type_datetime, .type_timestamp {
 				// FIXME: Allocate memory for blobs dynamically.
 				mysql_bind.buffer_type = C.MYSQL_TYPE_BLOB
-				mysql_bind.buffer_length = FieldType.type_blob.get_len()
+				mysql_bind.buffer_length = usize(FieldType.type_blob.get_len())
 			}
 			else {}
 		}
@@ -193,6 +193,36 @@ pub fn (db DB) create(table orm.Table, fields []orm.TableField) ! {
 pub fn (db DB) drop(table orm.Table) ! {
 	query := 'DROP TABLE `${table.name}`;'
 	mysql_stmt_worker(db, query, orm.QueryData{}, orm.QueryData{})!
+}
+
+// execute runs a raw SQL query and returns result rows as driver-agnostic orm.Row values,
+// with column names populated from the result metadata.
+pub fn (db DB) execute(query string) ![]orm.Row {
+	mut guard := db.acquire_connection_guard()!
+	defer {
+		guard.release()
+	}
+	if C.mysql_query(guard.conn, query.str) != 0 {
+		throw_mysql_error_for_conn(guard.conn)!
+	}
+
+	result := C.mysql_store_result(guard.conn)
+	if result == unsafe { nil } {
+		if get_errno(guard.conn) != 0 {
+			throw_mysql_error_for_conn(guard.conn)!
+		}
+		return []orm.Row{}
+	} else {
+		res := Result{result}
+		defer { unsafe { res.free() } }
+		fields := res.fields()
+		mut names := []string{}
+		for f in fields {
+			names << f.name
+		}
+		rows := res.rows()
+		return rows.map(orm.Row{ vals: it.vals, names: names })
+	}
 }
 
 // orm_begin starts a transaction for ORM helpers.
@@ -355,12 +385,12 @@ fn stmt_bind_primitive(mut stmt Stmt, data orm.Primitive) {
 
 // data_pointers_to_primitives returns an array of `Primitive`
 // cast from `data_pointers` using `types`.
-fn data_pointers_to_primitives(is_null []bool, data_pointers []&u8, types []int, field_types []FieldType) ![]orm.Primitive {
+fn data_pointers_to_primitives(is_null []C.v_mysql_bool, data_pointers []&u8, types []int, field_types []FieldType) ![]orm.Primitive {
 	mut result := []orm.Primitive{}
 
 	for i, data in data_pointers {
 		mut primitive := orm.Primitive(0)
-		if !is_null[i] {
+		if is_null[i] == 0 {
 			if field_types[i] in [.type_decimal, .type_newdecimal] {
 				decimal_value := unsafe { cstring_to_vstring(&char(data)) }
 				primitive = decimal_string_to_primitive(decimal_value, types[i])!
@@ -374,7 +404,20 @@ fn data_pointers_to_primitives(is_null []bool, data_pointers []&u8, types []int,
 				orm.type_idx['i16'] {
 					primitive = *(unsafe { &i16(data) })
 				}
-				orm.type_idx['int'], orm.serial {
+				orm.type_idx['int'] {
+					$if new_int ?&& x64 {
+						primitive = match field_types[i] {
+							.type_long { orm.Primitive(int(*(unsafe { &i32(data) }))) }
+							.type_longlong { orm.Primitive(int(*(unsafe { &i64(data) }))) }
+							else {
+								return error('Unsupported MySQL field type ${field_types[i]} for V int')
+							}
+						}
+					} $else {
+						primitive = *(unsafe { &int(data) })
+					}
+				}
+				orm.serial {
 					primitive = *(unsafe { &int(data) })
 				}
 				orm.type_idx['i64'] {
@@ -407,7 +450,7 @@ fn data_pointers_to_primitives(is_null []bool, data_pointers []&u8, types []int,
 				orm.time_ {
 					match field_types[i] {
 						.type_long {
-							timestamp := *(unsafe { &int(data) })
+							timestamp := int(*(unsafe { &i32(data) }))
 							primitive = time.unix(timestamp)
 						}
 						.type_datetime, .type_timestamp {
@@ -417,7 +460,19 @@ fn data_pointers_to_primitives(is_null []bool, data_pointers []&u8, types []int,
 					}
 				}
 				orm.enum_ {
-					primitive = *(unsafe { &i64(data) })
+					// V's ORM stores enums in a `BIGINT` column, but a native MySQL
+					// `ENUM(...)` column returns the label of the value instead. Pass
+					// such a label on unchanged, so that the ORM can match it against
+					// the names of the enum values.
+					primitive = match field_types[i] {
+						.type_string, .type_var_string, .type_blob, .type_tiny_blob,
+						.type_medium_blob, .type_long_blob {
+							orm.Primitive(unsafe { cstring_to_vstring(&char(data)) })
+						}
+						else {
+							orm.Primitive(*(unsafe { &i64(data) }))
+						}
+					}
 				}
 				else {
 					return error('Unknown type ${types[i]}')
@@ -479,7 +534,14 @@ fn mysql_type_from_v(typ int) !string {
 		orm.type_idx['i16'], orm.type_idx['u16'] {
 			'SMALLINT'
 		}
-		orm.type_idx['int'], orm.type_idx['u32'], orm.time_ {
+		orm.type_idx['int'] {
+			$if new_int ?&& x64 {
+				'BIGINT'
+			} $else {
+				'INT'
+			}
+		}
+		orm.type_idx['u32'], orm.time_ {
 			'INT'
 		}
 		orm.type_idx['i64'], orm.type_idx['u64'], orm.enum_ {

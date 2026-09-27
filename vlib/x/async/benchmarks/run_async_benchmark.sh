@@ -22,10 +22,8 @@ out="$tmp_root/out/async_benchmark"
 mkdir -p "$vtmp" "$vcache" "$(dirname "$out")"
 
 echo "Running x.async benchmark with isolated VTMP and VCACHE."
-echo "Tune sizes with XASYNC_BENCH_GROUP_ROUNDS, XASYNC_BENCH_GROUP_JOBS,"
-echo "XASYNC_BENCH_TASK_ROUNDS, XASYNC_BENCH_POOL_JOBS,"
-echo "XASYNC_BENCH_POOL_WORKERS, XASYNC_BENCH_TIMEOUT_ROUNDS,"
-echo "XASYNC_BENCH_EVERY_ITERATIONS, and XASYNC_BENCH_EVERY_INTERVAL_MS."
+echo "Tune sizes with XASYNC_BENCH_* environment variables."
+echo "See vlib/x/async/benchmarks/README.md for the full list."
 
 if command -v timeout >/dev/null 2>&1; then
 	timeout 180s env VTMP="$vtmp" VCACHE="$vcache" ./v -prod -o "$out" run vlib/x/async/benchmarks/async_benchmark.v

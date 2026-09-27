@@ -1,0 +1,6 @@
+vlib/v/parser/tests/embed_file_as_nested_branch_result_with_selector_index_continuation.vv:42:9: error: undefined ident: `missing_symbol`
+   40 |     assert path_match.len > 0
+   41 |     assert indexed_if.len > 0
+   42 |     sink = missing_symbol
+      |            ~~~~~~~~~~~~~~
+   43 | }

@@ -118,9 +118,15 @@ fn (mut a array) mark_buffer_has_slices() {
 	if !a.flags.has(.managed) || a.data == unsafe { nil } {
 		return
 	}
+	// Compute the data-header pointer inline. `data_header()` would redundantly
+	// re-check `.managed`/`nil` (already guaranteed above), so skip the call and
+	// the now-dead `header != nil` test. Only store when the flag is not already
+	// set, to avoid dirtying the buffer's header cache line on every transient
+	// slice of the same buffer in a hot loop. See issue #27507.
 	unsafe {
-		header := a.data_header()
-		if header != nil {
+		base_data := &u8(a.data) - u64(a.offset)
+		header := &ArrayDataHeader(base_data - array_data_header_size())
+		if !header.has_slices {
 			header.has_slices = true
 		}
 	}
@@ -181,7 +187,7 @@ fn __new_array(mylen int, cap int, elm_size int) array {
 	mut data := unsafe { nil }
 	if cap_ > 0 && mylen == 0 {
 		data = alloc_array_data_uninit(total_size)
-	} else {
+	} else if cap_ > 0 {
 		data = alloc_array_data(total_size)
 	}
 	arr := array{
@@ -211,7 +217,7 @@ fn __new_array_with_default(mylen int, cap int, elm_size int, val voidptr) array
 	total_size := u64(cap_) * u64(elm_size)
 	if cap_ > 0 && mylen == 0 {
 		arr.data = alloc_array_data_uninit(total_size)
-	} else {
+	} else if cap_ > 0 {
 		arr.data = alloc_array_data(total_size)
 	}
 	if val != 0 {
@@ -250,7 +256,9 @@ fn __new_array_with_multi_default(mylen int, cap int, elm_size int, val voidptr)
 	//    -> total_size == 0 -> malloc(0) -> panic;
 	//    to avoid it, just allocate a single byte
 	total_size := u64(cap_) * u64(elm_size)
-	arr.data = alloc_array_data(total_size)
+	if cap_ > 0 {
+		arr.data = alloc_array_data(total_size)
+	}
 	if val != 0 {
 		mut eptr := &u8(arr.data)
 		unsafe {
@@ -271,10 +279,12 @@ fn __new_array_with_array_default(mylen int, cap int, elm_size int, val array, d
 	cap_ := if cap < mylen { mylen } else { cap }
 	mut arr := array{
 		element_size: elm_size
-		data:         alloc_array_data(u64(cap_) * u64(elm_size))
 		len:          mylen
 		cap:          cap_
 		flags:        .managed
+	}
+	if cap_ > 0 {
+		arr.data = alloc_array_data(u64(cap_) * u64(elm_size))
 	}
 	mut eptr := &u8(arr.data)
 	unsafe {
@@ -289,16 +299,18 @@ fn __new_array_with_array_default(mylen int, cap int, elm_size int, val array, d
 	return arr
 }
 
-fn __new_array_with_map_default(mylen int, cap int, elm_size int, val map) array {
+fn __new_array_with_map_default(mylen int, cap int, elm_size int, val map, free_seed bool) array {
 	panic_on_negative_len(mylen)
 	panic_on_negative_cap(cap)
 	cap_ := if cap < mylen { mylen } else { cap }
 	mut arr := array{
 		element_size: elm_size
-		data:         alloc_array_data(u64(cap_) * u64(elm_size))
 		len:          mylen
 		cap:          cap_
 		flags:        .managed
+	}
+	if cap_ > 0 {
+		arr.data = alloc_array_data(u64(cap_) * u64(elm_size))
 	}
 	mut eptr := &u8(arr.data)
 	unsafe {
@@ -309,6 +321,9 @@ fn __new_array_with_map_default(mylen int, cap int, elm_size int, val map) array
 				eptr += arr.element_size
 			}
 		}
+	}
+	if free_seed {
+		unsafe { val.free() }
 	}
 	return arr
 }
@@ -390,6 +405,9 @@ pub fn (mut a array) ensure_cap(required int) {
 		// TODO: the old data may be leaked when no GC is used (ref-counting?)
 		if a.flags.has(.noslices) && !a.flags.has(.is_slice) && !a.buffer_has_slices() {
 			unsafe {
+				$if prealloc {
+					prealloc_discard_pages(a.data, usize(a.cap) * usize(a.element_size))
+				}
 				if a.flags.has(.managed) {
 					free(&u8(a.data) - u64(array_data_header_size()))
 				} else {
@@ -481,6 +499,11 @@ fn (a array) needs_unique_append(required int) bool {
 @[inline]
 fn (a array) needs_unique_shrink() bool {
 	return a.flags.has(.is_slice) || a.buffer_has_slices()
+}
+
+@[inline]
+fn (a array) is_slice_view() bool {
+	return a.flags.has(.is_slice)
 }
 
 // insert inserts a value in the array at index `i` and increases
@@ -939,8 +962,7 @@ fn (a array) slice(start int, _end int) array {
 	end := if _end == max_i64 || _end == max_i32 { a.len } else { _end } // max_int
 	$if !no_bounds_checking {
 		if start > end {
-			panic(
-				'array.slice: invalid slice index (start>end):' + impl_i64_to_string(i64(start)) +
+			panic('array.slice: invalid slice index (start>end):' + impl_i64_to_string(i64(start)) +
 				', ' + impl_i64_to_string(end))
 		}
 		if end > a.len {
@@ -1049,11 +1071,24 @@ pub fn (a &array) clone() array {
 pub fn (a &array) clone_to_depth(depth int) array {
 	source_capacity_in_bytes := u64(a.cap) * u64(a.element_size)
 	use_noscan_data := depth == 0 && a.uses_noscan_data()
+	// Unless nested arrays/strings are cloned element by element below, the
+	// whole capacity is copied from `a`, so zeroing the new buffer first is wasted.
+	clones_elements := depth > 0 && a.len >= 0 && a.cap >= a.len
+		&& (a.element_size == sizeof(array) || a.element_size == sizeof(string))
+	copies_capacity := !clones_elements && a.data != 0 && source_capacity_in_bytes > 0
 	mut data := unsafe { nil }
-	if use_noscan_data {
-		data = a.alloc_array_data_like(source_capacity_in_bytes)
-	} else {
-		data = alloc_array_data(source_capacity_in_bytes)
+	if a.cap > 0 {
+		if use_noscan_data {
+			if copies_capacity {
+				data = a.alloc_array_data_like_uninit(source_capacity_in_bytes)
+			} else {
+				data = a.alloc_array_data_like(source_capacity_in_bytes)
+			}
+		} else if copies_capacity {
+			data = alloc_array_data_uninit(source_capacity_in_bytes)
+		} else {
+			data = alloc_array_data(source_capacity_in_bytes)
+		}
 	}
 	mut arr := array{
 		element_size: a.element_size
@@ -1102,6 +1137,16 @@ fn (mut a array) set(i int, val voidptr) {
 	unsafe { vmemcpy(&u8(a.data) + u64(a.element_size) * u64(i), val, a.element_size) }
 }
 
+// array_sort_move copies `count` elements of `element_size` bytes from index `si`
+// of `src` to index `di` of `dst`. The compiler's lowered stable sort calls it
+// with indexes it has already bounded, so it skips the per-element range checks
+// of `array.set`.
+@[inline; markused; unsafe]
+fn array_sort_move(dst voidptr, di int, src voidptr, si int, count int, element_size usize) {
+	vmemcpy(&u8(dst) + usize(di) * element_size, &u8(src) + usize(si) * element_size,
+		isize(usize(count) * element_size))
+}
+
 @[markused]
 fn (mut a array) set_i64(i i64, val voidptr) {
 	$if !no_bounds_checking {
@@ -1128,6 +1173,27 @@ fn (mut a array) set_ni(i int, val voidptr) {
 	a.set(v_ni_index(i, a.len), val)
 }
 
+// copy_element_to copies a single `element_size` byte element from `src` to `dest`.
+// It dispatches the common small element sizes to `vmemcpy` with a *compile time constant*
+// size: since `vmemcpy` is inlined and forwards to `C.memcpy`, a literal size lets the C
+// backend inline the copy as plain loads/stores instead of a `memcpy` library call, which
+// otherwise dominates the cost of single element pushes (`a << x`) in hot loops.
+// The copy semantics stay exactly those of `memcpy`, so it is safe for arbitrary element
+// types regardless of their alignment, padding or aliasing.
+@[inline; unsafe]
+fn copy_element_to(dest voidptr, src voidptr, element_size int) {
+	unsafe {
+		match element_size {
+			1 { vmemcpy(dest, src, 1) }
+			2 { vmemcpy(dest, src, 2) }
+			4 { vmemcpy(dest, src, 4) }
+			8 { vmemcpy(dest, src, 8) }
+			16 { vmemcpy(dest, src, 16) }
+			else { vmemcpy(dest, src, element_size) }
+		}
+	}
+}
+
 fn (mut a array) push(val voidptr) {
 	$if !no_bounds_checking {
 		if a.len < 0 {
@@ -1138,12 +1204,15 @@ fn (mut a array) push(val voidptr) {
 		panic('array.push: len bigger than max_int')
 	}
 	required := a.len + 1
-	if a.needs_unique_append(required) {
-		a.clone_shallow_to_cap(a.cap)
-	} else if required > a.cap {
+	if required > a.cap {
 		a.ensure_cap(required)
+	} else if a.flags.has(.is_slice) {
+		// `required <= a.cap` here, so this is the `needs_unique_append` case
+		a.clone_shallow_to_cap(a.cap)
 	}
-	unsafe { vmemcpy(&u8(a.data) + u64(a.element_size) * u64(a.len), val, a.element_size) }
+	unsafe {
+		copy_element_to(&u8(a.data) + u64(a.element_size) * u64(a.len), val, a.element_size)
+	}
 	a.len++
 }
 
@@ -1225,11 +1294,19 @@ pub fn (a array) reverse() array {
 @[unsafe]
 pub fn (a &array) free() {
 	$if prealloc {
+		if !a.flags.has(.is_slice) && !a.flags.has(.nofree) {
+			unsafe { prealloc_discard_pages(a.data, usize(a.cap) * usize(a.element_size)) }
+		}
 		return
 	}
-	// if a.is_slice {
-	// return
-	// }
+	// A slice is a borrowed view into another array's buffer; its `.data` points
+	// into (not at the start of) that buffer. Freeing it resolves back to the
+	// owner's block (via `.data - .offset`) and frees live memory out from under
+	// the owner. Harmless with the default allocator (the block is still mapped),
+	// but a use-after-free that guard-malloc/ASAN flag. Only the owner frees.
+	if a.flags.has(.is_slice) {
+		return
+	}
 	if a.flags.has(.nofree) {
 		return
 	}

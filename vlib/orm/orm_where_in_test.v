@@ -4,8 +4,9 @@
 import db.sqlite
 
 struct User {
-	id   int @[primary; sql: serial]
-	name string
+	id      int @[primary; sql: serial]
+	name    string
+	deleted ?string
 }
 
 fn get_users_in(mut db sqlite.DB, names []string) ![]User {
@@ -17,6 +18,12 @@ fn get_users_in(mut db sqlite.DB, names []string) ![]User {
 fn get_users_not_in(mut db sqlite.DB, names []string) ![]User {
 	return sql db {
 		select from User where name !in names
+	}!
+}
+
+fn get_users_null_then_in_then_eq(mut db sqlite.DB, ids []int, target_name string) ![]User {
+	return sql db {
+		select from User where deleted is none && id in ids && name == target_name
 	}!
 }
 
@@ -49,4 +56,8 @@ fn test_orm_mut_db() {
 
 	all_users := get_users_in(mut db, ['first', 'second'])!
 	assert all_users.len == 2
+
+	null_then_in_users := get_users_null_then_in_then_eq(mut db, [1, 2], 'first')!
+	assert null_then_in_users.len == 1
+	assert null_then_in_users[0].name == 'first'
 }

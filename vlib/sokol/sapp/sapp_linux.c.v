@@ -461,15 +461,28 @@ const map_private = 2
 #include <X11/extensions/XInput2.h>
 #include <X11/Xcursor/Xcursor.h>
 
+// X11 C typedefs are unsigned long based. Define them locally so V1 can
+// type-check scalar operations while keeping the public aliases compatible
+// with the shared x11 modules.
+pub type C.XID = u64
+pub type C.Atom = C.XID
+pub type C.Window = C.XID
+pub type C.Colormap = C.XID
+pub type C.Cursor = C.XID
+pub type C.KeySym = C.XID
+pub type C.Time = C.XID
+pub type C.VisualID = C.XID
+
 // X11 types
-pub type XID = u64
-pub type Atom = u64
-pub type Window = u64
-pub type Colormap = u64
-pub type Cursor = u64
-pub type KeySym = u64
-pub type Time = u64
-pub type VisualID = u64
+pub type XID = C.XID
+pub type Atom = C.Atom
+pub type Window = C.Window
+pub type Colormap = C.Colormap
+pub type Cursor = C.Cursor
+pub type KeySym = C.KeySym
+pub type Time = C.Time
+pub type VisualID = C.VisualID
+pub type XlibULong = C.XID
 
 // X11 types are defined by X11 headers (#preinclude above)
 // Forward declarations for V type checking only
@@ -500,7 +513,7 @@ pub mut:
 	selection Atom
 	target    Atom
 	property  Atom
-	time      int
+	time      Time
 }
 
 @[typedef]
@@ -519,7 +532,7 @@ pub mut:
 	selection Atom
 	target    Atom
 	property  Atom
-	time      int
+	time      Time
 }
 
 @[typedef]
@@ -620,6 +633,7 @@ pub struct C.XrmDatabase__rec {}
 
 pub type XrmDatabase = &C.XrmDatabase__rec
 
+@[typedef]
 pub struct C.XSetWindowAttributes {
 mut:
 	colormap     Colormap
@@ -662,6 +676,7 @@ mut:
 	win_gravity int
 }
 
+@[typedef]
 pub struct C.XVisualInfo {
 mut:
 	visual   &C.Visual = unsafe { nil }
@@ -672,6 +687,7 @@ mut:
 // X11 event types are defined in vlib/x/x11/x11.v
 // XEvent union is defined here since it's used extensively in sokol
 
+@[typedef]
 pub union C.XEvent {
 pub mut:
 	@type             int
@@ -689,12 +705,14 @@ pub mut:
 	xcookie           C.XGenericEventCookie
 }
 
+@[typedef]
 pub struct C.XKeyEvent {
 pub mut:
 	keycode u32
 	state   u32
 }
 
+@[typedef]
 pub struct C.XButtonEvent {
 pub mut:
 	button u32
@@ -703,6 +721,7 @@ pub mut:
 	y      int
 }
 
+@[typedef]
 pub struct C.XMotionEvent {
 pub mut:
 	x     int
@@ -710,6 +729,7 @@ pub mut:
 	state u32
 }
 
+@[typedef]
 pub struct C.XCrossingEvent {
 pub mut:
 	x     int
@@ -717,11 +737,13 @@ pub mut:
 	state u32
 }
 
+@[typedef]
 pub struct C.XFocusChangeEvent {
 pub mut:
 	mode int
 }
 
+@[typedef]
 pub struct C.XPropertyEvent {
 pub mut:
 	state int
@@ -731,6 +753,7 @@ pub mut:
 // XSelection* structs are forward-declared above
 // Full definitions come from X11 headers or clipboard module
 
+@[typedef]
 pub struct C.XClientMessageEvent {
 pub mut:
 	window       Window
@@ -739,11 +762,13 @@ pub mut:
 	data         C.XClientMessageData
 }
 
+@[typedef]
 pub union C.XClientMessageData {
 pub mut:
 	l [5]i64
 }
 
+@[typedef]
 pub struct C.XGenericEventCookie {
 pub mut:
 	extension int
@@ -751,11 +776,13 @@ pub mut:
 	data      voidptr
 }
 
+@[typedef]
 pub struct C.XrmValue {
 	addr &char = unsafe { nil }
 }
 
 // XKB types
+@[typedef]
 pub struct C.XkbDescRec {
 mut:
 	min_key_code u8
@@ -765,6 +792,7 @@ mut:
 
 pub type XkbDescPtr = &C.XkbDescRec
 
+@[typedef]
 pub struct C.XkbNamesRec {
 mut:
 	keys            &C.XkbKeyNameRec  = unsafe { nil }
@@ -772,11 +800,13 @@ mut:
 	num_key_aliases u8
 }
 
+@[typedef]
 pub struct C.XkbKeyNameRec {
 mut:
 	name [4]u8
 }
 
+@[typedef]
 pub struct C.XkbKeyAliasRec {
 mut:
 	real  [4]u8
@@ -784,6 +814,7 @@ mut:
 }
 
 // XInput2 types
+@[typedef]
 pub struct C.XIEventMask {
 mut:
 	deviceid int
@@ -791,12 +822,14 @@ mut:
 	mask     &u8 = unsafe { nil }
 }
 
+@[typedef]
 pub struct C.XIRawEvent {
 mut:
 	valuators  C.XIValuatorState
 	raw_values &f64 = unsafe { nil }
 }
 
+@[typedef]
 pub struct C.XIValuatorState {
 mut:
 	mask_len int
@@ -804,6 +837,7 @@ mut:
 }
 
 // Xcursor types
+@[typedef]
 pub struct C.XcursorImage {
 mut:
 	width  u32
@@ -845,12 +879,12 @@ fn C.XSetWMProtocols(display &C.Display, window Window, protocols &Atom, count i
 fn C.XSetWMNormalHints(display &C.Display, window Window, hints &C.XSizeHints) int
 fn C.XAllocSizeHints() &C.XSizeHints
 fn C.XGetWindowAttributes(display &C.Display, window Window, attrs &C.XWindowAttributes) int
-fn C.XGetWindowProperty(display &C.Display, window Window, property Atom, long_offset i64, long_length i64, delete int, req_type Atom, actual_type &Atom, actual_format &int, nitems &u64, bytes_after &u64, prop &&&u8) int
+fn C.XGetWindowProperty(display &C.Display, window Window, property Atom, long_offset i64, long_length i64, delete int, req_type Atom, actual_type &Atom, actual_format &int, nitems &XlibULong, bytes_after &XlibULong, prop &&u8) int
 fn C.XChangeProperty(display &C.Display, window Window, property Atom, @type Atom, format int, mode int, data &u8, nelements int) int
 fn C.Xutf8SetWMProperties(display &C.Display, window Window, window_name &char, icon_name &char, argv &&char, argc int, normal_hints voidptr, wm_hints voidptr, class_hints voidptr)
-fn C.XSetSelectionOwner(display &C.Display, selection Atom, owner Window, time Time)
+fn C.XSetSelectionOwner(display &C.Display, selection Atom, owner Window, time Time) int
 fn C.XGetSelectionOwner(display &C.Display, selection Atom) Window
-fn C.XConvertSelection(display &C.Display, selection Atom, target Atom, property Atom, requestor Window, time Time)
+fn C.XConvertSelection(display &C.Display, selection Atom, target Atom, property Atom, requestor Window, time Time) int
 fn C.XFree(data voidptr) int
 fn C.XDefineCursor(display &C.Display, window Window, cursor Cursor) int
 fn C.XUndefineCursor(display &C.Display, window Window) int
@@ -913,6 +947,9 @@ fn C.strncmp(s1 &char, s2 &char, n usize) int
 const x_false = 0
 const x_true = 1
 const x_none = Atom(0)
+const x_window_none = Window(0)
+const x_colormap_none = Colormap(0)
+const x_cursor_none = Cursor(0)
 const xa_atom = Atom(4)
 const xa_cardinal = Atom(6)
 const alloc_none = 0

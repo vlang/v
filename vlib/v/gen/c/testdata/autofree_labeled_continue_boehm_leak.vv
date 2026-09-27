@@ -1,0 +1,116 @@
+// vtest vflags: -autofree -gc boehm_leak
+
+fn make_label(n int) string {
+	return 'x'.repeat(n)
+}
+
+fn labeled_continue_cleanup() {
+	outer: for _ in 0 .. 1 {
+		target := make_label(7)
+		defer {
+			assert target.len == 7
+		}
+		{
+			inner := make_label(3)
+			assert inner.len == 3
+			continue outer
+		}
+		after := make_label(5)
+		defer {
+			assert after.len == 5
+		}
+	}
+}
+
+fn for_c_init_cleanup() {
+	mut i := 0
+	outer: for init := make_label(4); i < 2; i++ {
+		assert init.len == 4
+		body := make_label(5 + i)
+		assert body.len >= 5
+		if i == 0 {
+			continue outer
+		}
+		break outer
+	}
+}
+
+fn for_c_init_return_cleanup() int {
+	mut i := 0
+	for init := make_label(4); i < 1; i++ {
+		assert init.len == 4
+		body := make_label(5)
+		assert body.len == 5
+		return body.len
+	}
+	return 0
+}
+
+fn for_c_multi_init_return_cleanup() int {
+	mut i := 0
+	for first, second := make_label(4), make_label(3); i < 1; i++ {
+		assert first.len + second.len == 7
+		body := make_label(5)
+		assert body.len == 5
+		return body.len
+	}
+	return 0
+}
+
+fn for_c_return_init_string() string {
+	mut i := 0
+	for init := make_label(6); i < 1; i++ {
+		body := make_label(5)
+		assert body.len == 5
+		return init
+	}
+	return ''
+}
+
+fn for_c_multi_init_return_second_string() string {
+	mut i := 0
+	for first, second := make_label(4), make_label(3); i < 1; i++ {
+		assert first.len == 4
+		body := make_label(5)
+		assert body.len == 5
+		return second
+	}
+	return ''
+}
+
+fn for_c_branch_return_body_after_init_path(cond bool) string {
+	mut i := 0
+	for init := make_label(4); i < 1; i++ {
+		if cond {
+			return init
+		}
+		body := make_label(5)
+		return body
+	}
+	return ''
+}
+
+fn for_c_multi_init_branch_return_body_after_second_path(cond bool) string {
+	mut i := 0
+	for first, second := make_label(4), make_label(3); i < 1; i++ {
+		assert first.len == 4
+		if cond {
+			return second
+		}
+		body := make_label(5)
+		return body
+	}
+	return ''
+}
+
+fn main() {
+	labeled_continue_cleanup()
+	for_c_init_cleanup()
+	assert for_c_init_return_cleanup() == 5
+	assert for_c_multi_init_return_cleanup() == 5
+	assert for_c_return_init_string() == 'xxxxxx'
+	assert for_c_multi_init_return_second_string() == 'xxx'
+	assert for_c_branch_return_body_after_init_path(false) == 'xxxxx'
+	assert for_c_multi_init_branch_return_body_after_second_path(false) == 'xxxxx'
+	gc_check_leaks()
+}

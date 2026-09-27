@@ -4,7 +4,7 @@ struct Exponent {
 	value int
 }
 
-fn (a Exponent) **(b Exponent) Exponent {
+fn (a Exponent) ** (b Exponent) Exponent {
 	mut result := 1
 	for _ in 0 .. b.value {
 		result *= a.value
@@ -21,6 +21,8 @@ fn test_power_operator_with_ints() {
 	assert 2 ** 3 == 8
 	assert 2 ** 3 ** 2 == 512
 	assert -2 ** 2 == -4
+	assert +2 ** 2 == 4
+	assert ~2 ** 2 == -5
 	assert (-2) ** 2 == 4
 }
 

@@ -2,7 +2,7 @@ module main
 
 import veb
 import os
-import json
+import json2 as json
 import arrays
 import net.http
 import math
@@ -107,8 +107,7 @@ pub fn (mut app App) controller_get_all_task(mut ctx Context) !veb.Result {
 		}
 
 		from_framework[orm_stmt_kind] = json.encode(framework_platform[orm_stmt_kind])
-		table[orm_stmt_kind] = gen_table_info(attribute_names[orm_stmt_kind],
-			framework_platform[orm_stmt_kind])
+		table[orm_stmt_kind] = gen_table_info(attribute_names[orm_stmt_kind], framework_platform[orm_stmt_kind])
 		max_benchmark[orm_stmt_kind] = arrays.max(maxs[orm_stmt_kind]) or { continue }
 	}
 
@@ -117,7 +116,7 @@ pub fn (mut app App) controller_get_all_task(mut ctx Context) !veb.Result {
 
 fn insert_framework_benchmark_times() !FrameworkPlatform {
 	numbers := FrameworkPlatform{
-		v_sqlite_memory: v_sqlite_memory()!.insert
+		v_sqlite_memory:          v_sqlite_memory()!.insert
 		// v_sqlite_file: v_sqlite_file()!.insert
 		typescript_sqlite_memory: typescript_sqlite_memory()!.insert
 	}
@@ -127,7 +126,7 @@ fn insert_framework_benchmark_times() !FrameworkPlatform {
 
 fn select_framework_benchmark_times() !FrameworkPlatform {
 	numbers := FrameworkPlatform{
-		v_sqlite_memory: v_sqlite_memory()!.select
+		v_sqlite_memory:          v_sqlite_memory()!.select
 		// v_sqlite_file: v_sqlite_file()!.select
 		typescript_sqlite_memory: typescript_sqlite_memory()!.select
 	}
@@ -137,7 +136,7 @@ fn select_framework_benchmark_times() !FrameworkPlatform {
 
 fn update_framework_benchmark_times() !FrameworkPlatform {
 	numbers := FrameworkPlatform{
-		v_sqlite_memory: v_sqlite_memory()!.update
+		v_sqlite_memory:          v_sqlite_memory()!.update
 		// v_sqlite_file: v_sqlite_file()!.select
 		typescript_sqlite_memory: typescript_sqlite_memory()!.update
 	}
@@ -148,14 +147,14 @@ fn update_framework_benchmark_times() !FrameworkPlatform {
 fn typescript_sqlite_memory() !FrameworkBenchmarkResponse {
 	url := 'http://localhost:3000/sqlite-memory/${benchmark_loop_length}'
 	res := http.get(url) or { panic(err) }
-	framework_benchmark_response := json.decode(FrameworkBenchmarkResponse, res.body)!
+	framework_benchmark_response := json.decode[FrameworkBenchmarkResponse](res.body)!
 	return framework_benchmark_response
 }
 
 fn v_sqlite_memory() !FrameworkBenchmarkResponse {
 	url := 'http://localhost:4000/sqlite-memory/${benchmark_loop_length}'
 	res := http.get(url) or { panic(err) }
-	framework_benchmark_response := json.decode(FrameworkBenchmarkResponse, res.body)!
+	framework_benchmark_response := json.decode[FrameworkBenchmarkResponse](res.body)!
 	return framework_benchmark_response
 }
 

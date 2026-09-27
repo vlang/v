@@ -9,7 +9,7 @@ struct Colour {
 	b u8
 }
 
-const buffer_size = image_width * image_height * sizeof[Colour]()
+const buffer_size = image_width * image_height * sizeof(Colour)
 
 type ImageBuffer = [buffer_size]Colour
 

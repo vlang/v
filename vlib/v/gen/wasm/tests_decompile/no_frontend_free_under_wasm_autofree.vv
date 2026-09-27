@@ -1,0 +1,24 @@
+// vtest vflags: -os wasi -autofree
+// Same as no_frontend_free_under_wasm.vv, but with -autofree explicitly on:
+// proves the flag is inert on the wasm backend (autofree codegen is C-only),
+// so no free/drop is injected even when requested.
+struct Point {
+	x int
+	y int
+}
+
+fn make_point(a int, b int) Point {
+	return Point{
+		x: a + b
+		y: a - b
+	}
+}
+
+pub fn greet_len() int {
+	a := 'hello'
+	b := a + ' world'
+	p := make_point(2, 3)
+	return b.len + p.x + p.y
+}
+
+println(greet_len())

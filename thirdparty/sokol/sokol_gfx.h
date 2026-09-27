@@ -3951,6 +3951,28 @@ typedef struct sg_commit_listener {
     void* user_data;
 } sg_commit_listener;
 
+/* V_SOKOL_MTL_END_PASS_DECL_BEGIN */
+#if defined(SOKOL_METAL) && defined(V_SOKOL_MTL_END_PASS_HOOK)
+typedef void (*v_sokol_mtl_end_pass_hook_t)(
+    const void* command_buffer,
+    const void* drawable_or_null,
+    void* user_data);
+
+/*
+    V-private, single-owner Metal hook. A non-null callback installs into an
+    empty slot and requires non-null user_data as its owner token. Passing a
+    null callback uninstalls only when user_data matches the current owner;
+    (null, null) is an idempotent no-op while the slot is empty. Install,
+    uninstall and invocation are confined to the rendering owner thread.
+    command_buffer and drawable_or_null are borrowed only for the duration of
+    the callback; the callback must not retain or store either pointer.
+*/
+SOKOL_GFX_API_DECL bool v_sokol_mtl_set_end_pass_hook(
+    v_sokol_mtl_end_pass_hook_t callback,
+    void* user_data);
+#endif
+/* V_SOKOL_MTL_END_PASS_DECL_END */
+
 /*
     sg_allocator
 
@@ -11536,6 +11558,56 @@ _SOKOL_PRIVATE void _sg_d3d11_update_image(_sg_image_t* img, const sg_image_data
 #define _SG_OBJC_RELEASE(obj) { [obj release]; obj = nil; }
 #endif
 
+/* V_SOKOL_MTL_END_PASS_IMPL_BEGIN */
+#if defined(SOKOL_METAL) && defined(V_SOKOL_MTL_END_PASS_HOOK)
+typedef struct {
+    v_sokol_mtl_end_pass_hook_t callback;
+    void* user_data;
+} _v_sokol_mtl_end_pass_hook_slot_t;
+
+static _v_sokol_mtl_end_pass_hook_slot_t _v_sokol_mtl_end_pass_hook_slot;
+
+SOKOL_API_IMPL bool v_sokol_mtl_set_end_pass_hook(
+    v_sokol_mtl_end_pass_hook_t callback,
+    void* user_data)
+{
+    if (callback) {
+        if ((0 == user_data) || (0 != _v_sokol_mtl_end_pass_hook_slot.callback)) {
+            return false;
+        }
+        _v_sokol_mtl_end_pass_hook_slot.callback = callback;
+        _v_sokol_mtl_end_pass_hook_slot.user_data = user_data;
+        return true;
+    }
+    if (0 == _v_sokol_mtl_end_pass_hook_slot.callback) {
+        return 0 == user_data;
+    }
+    if (_v_sokol_mtl_end_pass_hook_slot.user_data != user_data) {
+        return false;
+    }
+    _v_sokol_mtl_end_pass_hook_slot.callback = 0;
+    _v_sokol_mtl_end_pass_hook_slot.user_data = 0;
+    return true;
+}
+
+_SOKOL_PRIVATE void _v_sokol_mtl_clear_end_pass_hook(void) {
+    _v_sokol_mtl_end_pass_hook_slot.callback = 0;
+    _v_sokol_mtl_end_pass_hook_slot.user_data = 0;
+}
+
+_SOKOL_PRIVATE void _v_sokol_metal_invoke_pre_present(
+    const void* command_buffer,
+    const void* drawable_or_null)
+{
+    v_sokol_mtl_end_pass_hook_t callback = _v_sokol_mtl_end_pass_hook_slot.callback;
+    void* user_data = _v_sokol_mtl_end_pass_hook_slot.user_data;
+    if (callback) {
+        callback(command_buffer, drawable_or_null, user_data);
+    }
+}
+#endif
+/* V_SOKOL_MTL_END_PASS_IMPL_END */
+
 //-- enum translation functions ------------------------------------------------
 _SOKOL_PRIVATE MTLLoadAction _sg_mtl_load_action(sg_load_action a) {
     switch (a) {
@@ -12236,6 +12308,9 @@ _SOKOL_PRIVATE void _sg_mtl_setup_backend(const sg_desc* desc) {
 
 _SOKOL_PRIVATE void _sg_mtl_discard_backend(void) {
     SOKOL_ASSERT(_sg.mtl.valid);
+    #if defined(SOKOL_METAL) && defined(V_SOKOL_MTL_END_PASS_HOOK)
+    _v_sokol_mtl_clear_end_pass_hook();
+    #endif
     // wait for the last frame to finish
     for (int i = 0; i < SG_NUM_INFLIGHT_FRAMES; i++) {
         dispatch_semaphore_wait(_sg.mtl.sem, DISPATCH_TIME_FOREVER);
@@ -13027,11 +13102,24 @@ _SOKOL_PRIVATE void _sg_mtl_begin_pass(const sg_pass* pass) {
 }
 
 _SOKOL_PRIVATE void _sg_mtl_end_pass(void) {
+    #if defined(SOKOL_METAL) && defined(V_SOKOL_MTL_END_PASS_HOOK)
+    bool v_sokol_pass_encoded = false;
+    #endif
     if (nil != _sg.mtl.cmd_encoder) {
         [_sg.mtl.cmd_encoder endEncoding];
         // NOTE: MTLRenderCommandEncoder is autoreleased
         _sg.mtl.cmd_encoder = nil;
+        #if defined(SOKOL_METAL) && defined(V_SOKOL_MTL_END_PASS_HOOK)
+        v_sokol_pass_encoded = true;
+        #endif
     }
+    #if defined(SOKOL_METAL) && defined(V_SOKOL_MTL_END_PASS_HOOK)
+    if (v_sokol_pass_encoded) {
+        _v_sokol_metal_invoke_pre_present(
+            (__bridge const void*)_sg.mtl.cmd_buffer,
+            (__bridge const void*)_sg.mtl.cur_drawable);
+    }
+    #endif
     // if this is a swapchain pass, present the drawable
     if (nil != _sg.mtl.cur_drawable) {
         [_sg.mtl.cmd_buffer presentDrawable:_sg.mtl.cur_drawable];

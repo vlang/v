@@ -18,7 +18,7 @@ const repeatable_cluster_args_3 = ['-mmv']
 
 struct Config {
 	linker_option string   @[short: m]
-	test          string = 'def'   @[short: t]
+	test          string = 'def'     @[short: t]
 	device        []string @[short: d]
 	paths         []string @[tail]
 	verbosity     int      @[repeats; short: v]

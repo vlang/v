@@ -9,6 +9,8 @@ const default_group_jobs = 16
 const default_task_rounds = 32
 const default_pool_jobs = 64
 const default_pool_workers = 4
+const default_pool_bounded_rounds = 8
+const default_pool_bounded_timeout_ms = 2
 const default_timeout_rounds = 32
 const default_every_iterations = 5
 const default_every_interval_ms = 1
@@ -26,6 +28,10 @@ fn run_benchmarks() ! {
 	task_rounds := env_int('XASYNC_BENCH_TASK_ROUNDS', default_task_rounds, 1, 500)
 	pool_jobs := env_int('XASYNC_BENCH_POOL_JOBS', default_pool_jobs, 1, 1000)
 	pool_workers := env_int('XASYNC_BENCH_POOL_WORKERS', default_pool_workers, 1, 64)
+	pool_bounded_rounds := env_int('XASYNC_BENCH_POOL_BOUNDED_ROUNDS', default_pool_bounded_rounds,
+		1, 100)
+	pool_bounded_timeout_ms := env_int('XASYNC_BENCH_POOL_BOUNDED_TIMEOUT_MS',
+		default_pool_bounded_timeout_ms, 1, 100)
 	timeout_rounds := env_int('XASYNC_BENCH_TIMEOUT_ROUNDS', default_timeout_rounds, 1, 500)
 	every_iterations := env_int('XASYNC_BENCH_EVERY_ITERATIONS', default_every_iterations, 1, 100)
 	every_interval_ms :=
@@ -44,6 +50,9 @@ fn run_benchmarks() ! {
 
 	checksum += bench_pool(pool_jobs, pool_workers)!
 	b.measure('Pool: jobs=${pool_jobs}, workers=${pool_workers}, checksum=${checksum}')
+
+	checksum += bench_pool_bounded_admission(pool_bounded_rounds, pool_bounded_timeout_ms)!
+	b.measure('Pool bounded admission: rounds=${pool_bounded_rounds}, timeout_ms=${pool_bounded_timeout_ms}, checksum=${checksum}')
 
 	checksum += bench_timeout(timeout_rounds)!
 	b.measure('with_timeout: rounds=${timeout_rounds}, checksum=${checksum}')
@@ -115,6 +124,69 @@ fn bench_pool(jobs int, workers int) !int {
 	return total
 }
 
+fn bench_pool_bounded_admission(rounds int, timeout_ms int) !int {
+	mut total := 0
+	admission_timeout := time.Duration(timeout_ms) * time.millisecond
+	for _ in 0 .. rounds {
+		mut pool := xasync.new_pool(workers: 1, queue_size: 1)!
+		started := chan bool{cap: 2}
+		release := chan bool{cap: 3}
+		finished := chan bool{cap: 2}
+		attempting := chan bool{cap: 1}
+		accepted := chan bool{cap: 1}
+		ran := chan int{cap: 1}
+		blocking_job := fn [started, release, finished] (mut ctx context.Context) ! {
+			_ = ctx
+			started <- true
+			_ := <-release
+			finished <- true
+		}
+
+		pool.try_submit(blocking_job)!
+		wait_for_benchmark_bool(started, 'bounded admission pool job did not start')!
+		pool.try_submit(blocking_job)!
+
+		mut timed_out := false
+		pool.submit_with_timeout(admission_timeout, fn (mut ctx context.Context) ! {
+			_ = ctx
+		}) or {
+			if err.msg() != 'async: timeout' {
+				return err
+			}
+			timed_out = true
+		}
+		if !timed_out {
+			release <- true
+			release <- true
+			pool.close()!
+			return error('submit_with_timeout accepted while the pool was full')
+		}
+
+		submit_thread := spawn fn [mut pool, attempting, accepted, ran] () {
+			attempting <- true
+			pool.submit_with_context(context.background(), fn [ran] (mut ctx context.Context) ! {
+				_ = ctx
+				ran <- 1
+			}) or {
+				accepted <- false
+				return
+			}
+			accepted <- true
+		}()
+		wait_for_benchmark_bool(attempting, 'bounded admission submitter did not start')!
+
+		release <- true
+		wait_for_benchmark_bool(finished, 'bounded admission first job did not finish')!
+		wait_for_benchmark_bool(accepted,
+			'submit_with_context did not accept after capacity opened')!
+		release <- true
+		total += read_benchmark_int(ran, 'bounded admission accepted job did not run')!
+		pool.close()!
+		submit_thread.wait()
+	}
+	return total
+}
+
 fn bench_timeout(rounds int) !int {
 	mut total := 0
 	for _ in 0 .. rounds {
@@ -170,4 +242,29 @@ fn bench_every(iterations int, interval_ms int) !int {
 	}
 	worker.wait()
 	return total
+}
+
+fn wait_for_benchmark_bool(signal chan bool, message string) ! {
+	select {
+		ok := <-signal {
+			if !ok {
+				return error(message)
+			}
+		}
+		1 * time.second {
+			return error(message)
+		}
+	}
+}
+
+fn read_benchmark_int(signal chan int, message string) !int {
+	select {
+		value := <-signal {
+			return value
+		}
+		1 * time.second {
+			return error(message)
+		}
+	}
+	return 0
 }

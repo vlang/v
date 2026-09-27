@@ -1,0 +1,67 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "diagnostic.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "repository",
+    "os",
+    "target_id",
+    "architecture",
+    "component",
+    "failure_class",
+    "test_id",
+    "lane",
+    "expected",
+    "observed_summary",
+    "subject_sha",
+    "input_fingerprint",
+    "artifact_fingerprint",
+    "run_url",
+    "job_url",
+    "artifact_url",
+    "human_action"
+  ],
+  "properties": {
+    "schema_version": {"type": "integer", "const": 1},
+    "repository": {"$ref": "common.schema.json#/$defs/repository"},
+    "os": {"$ref": "common.schema.json#/$defs/os_family"},
+    "target_id": {"$ref": "common.schema.json#/$defs/target_id"},
+    "architecture": {"type": "string", "enum": ["amd64", "arm64", "x64", "i386"]},
+    "component": {"type": "string", "minLength": 1, "maxLength": 128},
+    "failure_class": {
+      "type": "string",
+      "enum": [
+        "patch-probe-failed",
+        "payload-review-required",
+        "manifest-invalid",
+        "native-build-failed",
+        "v-smoke-failed",
+        "required-lane-missing",
+        "ci-infrastructure-exhausted",
+        "control-plane-failed",
+        "ownership-ambiguous"
+      ]
+    },
+    "test_id": {"type": "string", "minLength": 1, "maxLength": 128},
+    "lane": {"type": "string", "minLength": 1, "maxLength": 128},
+    "expected": {"type": "string", "minLength": 1, "maxLength": 1024},
+    "observed_summary": {"type": "string", "minLength": 1, "maxLength": 4096},
+    "subject_sha": {"$ref": "common.schema.json#/$defs/sha40"},
+    "input_fingerprint": {"$ref": "common.schema.json#/$defs/sha256"},
+    "artifact_fingerprint": {"$ref": "common.schema.json#/$defs/nullable_sha256"},
+    "run_url": {"type": "string", "pattern": "^https://github\\.com/"},
+    "job_url": {"type": "string", "pattern": "^https://github\\.com/"},
+    "artifact_url": {
+      "oneOf": [
+        {"type": "null"},
+        {"type": "string", "pattern": "^https://github\\.com/"}
+      ]
+    },
+    "human_action": {
+      "type": "string",
+      "enum": ["keep", "rebase", "split", "retire", "fix-recipe", "review-change"]
+    }
+  }
+}

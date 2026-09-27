@@ -1,8 +1,10 @@
 module sqlite
 
-type Sig1 = fn (&C.sqlite3_file, &i64) int // https://github.com/vlang/v/issues/16291
+// SQLite's VFS/io-method ABI uses C `int` throughout. Keep those fields and
+// callback signatures explicitly i32 now that V's platform `int` is 64-bit.
+type Sig1 = fn (&C.sqlite3_file, &i64) i32 // https://github.com/vlang/v/issues/16291
 
-type Sig2 = fn (&Sqlite3_file, &int) int // https://github.com/vlang/v/issues/16291
+type Sig2 = fn (&Sqlite3_file, &i32) i32 // https://github.com/vlang/v/issues/16291
 
 pub type Sqlite3_file = C.sqlite3_file
 pub type Sqlite3_vfs = C.sqlite3_vfs
@@ -12,53 +14,53 @@ type Fn_sqlite3_syscall_ptr = fn ()
 
 // Keep these callback signatures named so v2 does not need to parse qualified
 // type names inside inline `fn (...)` struct fields.
-type Sqlite3_file_op_fn = fn (&Sqlite3_file) int
+type Sqlite3_file_op_fn = fn (&Sqlite3_file) i32
 
-type Sqlite3_file_rw_fn = fn (&Sqlite3_file, voidptr, int, i64) int
+type Sqlite3_file_rw_fn = fn (&Sqlite3_file, voidptr, i32, i64) i32
 
-type Sqlite3_file_truncate_fn = fn (&Sqlite3_file, i64) int
+type Sqlite3_file_truncate_fn = fn (&Sqlite3_file, i64) i32
 
-type Sqlite3_file_flag_fn = fn (&Sqlite3_file, int) int
+type Sqlite3_file_flag_fn = fn (&Sqlite3_file, i32) i32
 
-type Sqlite3_file_control_fn = fn (&Sqlite3_file, int, voidptr) int
+type Sqlite3_file_control_fn = fn (&Sqlite3_file, i32, voidptr) i32
 
-type Sqlite3_file_shm_map_fn = fn (&Sqlite3_file, int, int, int, &voidptr) int
+type Sqlite3_file_shm_map_fn = fn (&Sqlite3_file, i32, i32, i32, &voidptr) i32
 
-type Sqlite3_file_shm_lock_fn = fn (&Sqlite3_file, int, int, int) int
+type Sqlite3_file_shm_lock_fn = fn (&Sqlite3_file, i32, i32, i32) i32
 
 type Sqlite3_file_shm_barrier_fn = fn (&Sqlite3_file)
 
-type Sqlite3_file_fetch_fn = fn (&Sqlite3_file, i64, int, &voidptr) int
+type Sqlite3_file_fetch_fn = fn (&Sqlite3_file, i64, i32, &voidptr) i32
 
-type Sqlite3_file_unfetch_fn = fn (&Sqlite3_file, i64, voidptr) int
+type Sqlite3_file_unfetch_fn = fn (&Sqlite3_file, i64, voidptr) i32
 
-type Sqlite3_vfs_open_fn = fn (&Sqlite3_vfs, &char, &Sqlite3_file, int, &int) int
+type Sqlite3_vfs_open_fn = fn (&Sqlite3_vfs, &char, &Sqlite3_file, i32, &i32) i32
 
-type Sqlite3_vfs_delete_fn = fn (&Sqlite3_vfs, &char, int) int
+type Sqlite3_vfs_delete_fn = fn (&Sqlite3_vfs, &char, i32) i32
 
-type Sqlite3_vfs_access_fn = fn (&Sqlite3_vfs, &char, int, &int) int
+type Sqlite3_vfs_access_fn = fn (&Sqlite3_vfs, &char, i32, &i32) i32
 
-type Sqlite3_vfs_fullpathname_fn = fn (&Sqlite3_vfs, &char, int, &char) int
+type Sqlite3_vfs_fullpathname_fn = fn (&Sqlite3_vfs, &char, i32, &char) i32
 
 type Sqlite3_vfs_dlopen_fn = fn (&Sqlite3_vfs, &char) voidptr
 
-type Sqlite3_vfs_dlerror_fn = fn (&Sqlite3_vfs, int, &char)
+type Sqlite3_vfs_dlerror_fn = fn (&Sqlite3_vfs, i32, &char)
 
 type Sqlite3_vfs_dlsym_fn = fn (&Sqlite3_vfs, voidptr, &char) voidptr
 
 type Sqlite3_vfs_dlclose_fn = fn (&Sqlite3_vfs, voidptr)
 
-type Sqlite3_vfs_randomness_fn = fn (&Sqlite3_vfs, int, &char) int
+type Sqlite3_vfs_randomness_fn = fn (&Sqlite3_vfs, i32, &char) i32
 
-type Sqlite3_vfs_sleep_fn = fn (&Sqlite3_vfs, int) int
+type Sqlite3_vfs_sleep_fn = fn (&Sqlite3_vfs, i32) i32
 
-type Sqlite3_vfs_current_time_fn = fn (&Sqlite3_vfs, &f64) int
+type Sqlite3_vfs_current_time_fn = fn (&Sqlite3_vfs, &f64) i32
 
-type Sqlite3_vfs_get_last_error_fn = fn (&Sqlite3_vfs, int, &char) int
+type Sqlite3_vfs_get_last_error_fn = fn (&Sqlite3_vfs, i32, &char) i32
 
-type Sqlite3_vfs_current_time_i64_fn = fn (&Sqlite3_vfs, &i64) int
+type Sqlite3_vfs_current_time_i64_fn = fn (&Sqlite3_vfs, &i64) i32
 
-type Sqlite3_vfs_set_system_call_fn = fn (&Sqlite3_vfs, &char, Fn_sqlite3_syscall_ptr) int
+type Sqlite3_vfs_set_system_call_fn = fn (&Sqlite3_vfs, &char, Fn_sqlite3_syscall_ptr) i32
 
 type Sqlite3_vfs_get_system_call_fn = fn (&Sqlite3_vfs, &char) Fn_sqlite3_syscall_ptr
 
@@ -75,7 +77,7 @@ pub mut:
 pub struct C.sqlite3_io_methods {
 mut:
 	// version 1 and later fields
-	iVersion int
+	iVersion i32
 
 	xClose                 Sqlite3_file_op_fn
 	xRead                  Sqlite3_file_rw_fn
@@ -105,9 +107,9 @@ pub type Sqlite3_io_methods = C.sqlite3_io_methods
 pub struct C.sqlite3_vfs {
 pub mut:
 	// version 1 and later fields
-	iVersion   int          // Structure version number (currently 3)
-	szOsFile   int          // Size of subclassed sqlite3_file
-	mxPathname int          // Maximum file pathname length
+	iVersion   i32          // Structure version number (currently 3)
+	szOsFile   i32          // Size of subclassed sqlite3_file
+	mxPathname i32          // Maximum file pathname length
 	pNext      &Sqlite3_vfs // Next registered VFS
 	zName      &char        // Name of this virtual file system
 	pAppData   voidptr      // Pointer to application-specific data

@@ -1,0 +1,7 @@
+import v.embed_file
+
+fn main() {
+	'' == fn () embed_file.EmbedFileData {
+		return $embed_file(@FILE)
+	}()
+}

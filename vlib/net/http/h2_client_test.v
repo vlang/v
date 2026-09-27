@@ -41,6 +41,22 @@ fn test_to_h2_request_strips_hop_by_hop_and_host() {
 	assert !h2req.headers.any(it.name == 'transfer-encoding')
 }
 
+fn test_to_h2_request_te_only_trailers() {
+	// RFC 9113 §8.2.2: TE may be sent on an HTTP/2 request but only with the
+	// value 'trailers'; any other value must be dropped.
+	req := Request{}
+	mut h := new_header()
+	h.add_custom('TE', 'gzip') or {}
+	h2req := req.to_h2_request(.get, 'h.example', '/', '', h)
+	assert !h2req.headers.any(it.name == 'te'), 'a non-trailers TE must be dropped'
+
+	mut h2 := new_header()
+	h2.add_custom('TE', 'trailers') or {}
+	h2req2 := req.to_h2_request(.get, 'h.example', '/', '', h2)
+	te := h2req2.headers.filter(it.name == 'te')
+	assert te.len == 1 && te[0].value == 'trailers', 'te: trailers must be kept'
+}
+
 fn test_to_h2_request_collapses_cookies() {
 	mut h := new_header()
 	h.add(.cookie, 'a=1')
@@ -60,8 +76,7 @@ fn test_to_h2_request_collapses_cookies() {
 fn test_h2_response_to_http() {
 	h2resp := H2ClientResponse{
 		status:  200
-		headers: [H2HeaderField{'content-type', 'text/plain'},
-			H2HeaderField{'x-foo', 'bar'}]
+		headers: [H2HeaderField{'content-type', 'text/plain'}, H2HeaderField{'x-foo', 'bar'}]
 		body:    'hi'.bytes()
 	}
 	resp := h2_response_to_http(h2resp)
@@ -85,15 +100,15 @@ fn test_http2_fetch_real_server() {
 	$if !network ? {
 		return
 	}
-	// HTTP/2 is negotiated by default for https requests. On Windows this runs
-	// over the SChannel backend's ALPN + HTTP/2 path (vlang/v#27383).
-	resp := get('https://www.google.com/')!
+	// An ordinary HTTPS request stays on HTTP/1.1.
+	plain := get('https://www.google.com/')!
+	assert plain.version() == .v1_1
+	// Explicit opt-in negotiates HTTP/2 when the server supports it. On
+	// Windows this uses the SChannel ALPN + HTTP/2 path (vlang/v#27383).
+	resp := fetch(url: 'https://www.google.com/', enable_http2: true)!
 	assert resp.version() == .v2_0
 	assert resp.status_code == 200
 	assert resp.body.len > 0
-	// Opting out forces HTTP/1.1 against the same server.
-	plain := fetch(url: 'https://www.google.com/', enable_http2: false)!
-	assert plain.version() == .v1_1
 }
 
 fn test_to_h2_request_authority_from_host_header() {

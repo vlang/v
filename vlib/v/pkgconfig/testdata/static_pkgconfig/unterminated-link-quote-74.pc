@@ -1,0 +1,4 @@
+Name: unterminated-link-quote-74
+Description: Unterminated static linker quote rejection fixture
+Version: 1.0.0
+Libs: -L "/issue74/unterminated path

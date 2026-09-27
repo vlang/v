@@ -1,0 +1,5 @@
+struct Receiver {}
+
+fn (Receiver) type_only() {}
+
+fn (_ Receiver) explicitly_ignored() {}

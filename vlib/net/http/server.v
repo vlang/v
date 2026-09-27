@@ -7,6 +7,7 @@ import io
 import net
 import time
 import runtime
+
 // ServerStatus is the current status of the server.
 // .closed means that the server is completely inactive (the default on creation, and after calling .close()).
 // .running means that the server is active and serving (after .listen_and_serve()).
@@ -37,6 +38,7 @@ pub mut:
 	read_timeout            time.Duration = 30 * time.second
 	write_timeout           time.Duration = 30 * time.second
 	accept_timeout          time.Duration = 30 * time.second
+	tls_handshake_timeout   time.Duration = 30 * time.second // fallback handshake budget used when accept_timeout is zero or net.infinite_timeout; ignored on non-TLS servers
 	pool_channel_slots      int           = 1024
 	worker_num              int           = runtime.nr_jobs()
 	max_keep_alive_requests int           = 100 // max requests per keep-alive connection (0 = unlimited)
@@ -51,7 +53,7 @@ pub mut:
 	cert                   string
 	cert_key               string
 	in_memory_verification bool
-	enable_http2           bool // opt in to HTTP/2 on the TLS listener: advertises ALPN `h2, http/1.1`. Clients that select `h2` are served by the HTTP/2 driver; clients that select `http/1.1` (or send no ALPN) keep the existing HTTP/1.1 path.
+	enable_http2           bool // opt in to HTTP/2. On the TLS listener, advertises ALPN `h2, http/1.1`; clients that select `h2` are served by the HTTP/2 driver, others keep the existing HTTP/1.1 path. On the plain listener, opts into prior-knowledge cleartext h2c (RFC 9113 §3.4): a connection whose first bytes are the HTTP/2 client preface is served by the HTTP/2 driver, others are parsed as HTTP/1.1 as before. A `Server` only ever runs one listener (see listen_and_serve), so one flag unambiguously covers both.
 
 	on_running fn (mut s Server) = unsafe { nil } // Blocking cb. If set, ran by the web server on transitions to its .running state.
 	on_stopped fn (mut s Server) = unsafe { nil } // Blocking cb. If set, ran by the web server on transitions to its .stopped state.
@@ -98,7 +100,7 @@ pub fn (mut s Server) listen_and_serve() {
 	// Create workers
 	mut ws := []thread{cap: s.worker_num}
 	for wid in 0 .. s.worker_num {
-		ws << new_handler_worker(wid, ch, s.handler, s.max_keep_alive_requests)
+		ws << new_handler_worker(wid, ch, s.handler, s.max_keep_alive_requests, s.enable_http2)
 	}
 
 	if s.show_startup_message {
@@ -186,16 +188,18 @@ struct HandlerWorker {
 	id                      int
 	ch                      chan &net.TcpConn
 	max_keep_alive_requests int
+	enable_http2            bool
 pub mut:
 	handler Handler
 }
 
-fn new_handler_worker(wid int, ch chan &net.TcpConn, handler Handler, max_keep_alive_requests int) thread {
+fn new_handler_worker(wid int, ch chan &net.TcpConn, handler Handler, max_keep_alive_requests int, enable_http2 bool) thread {
 	mut w := &HandlerWorker{
 		id:                      wid
 		ch:                      ch
 		handler:                 handler
 		max_keep_alive_requests: max_keep_alive_requests
+		enable_http2:            enable_http2
 	}
 	return spawn w.process_requests()
 }
@@ -224,6 +228,15 @@ fn (mut w HandlerWorker) handle_conn(mut conn net.TcpConn) {
 		}
 	}
 
+	// The peer of a keep-alive connection never changes, so read it once here
+	// rather than per request. '0.0.0.0' preserves the fallback this server has
+	// always used when the address cannot be read back from the socket.
+	remote_addr := if paddr := conn.peer_addr() { paddr.str() } else { '0.0.0.0' }
+
+	if w.enable_http2 && try_serve_h2c(mut reader, mut conn, mut w.handler, remote_addr) {
+		return
+	}
+
 	mut request_count := 0
 	for {
 		mut req := parse_request(mut reader) or {
@@ -237,8 +250,7 @@ fn (mut w HandlerWorker) handle_conn(mut conn net.TcpConn) {
 		}
 		request_count++
 
-		remote_ip := conn.peer_ip() or { '0.0.0.0' }
-		req.header.add_custom('Remote-Addr', remote_ip) or {}
+		req.set_remote_addr(remote_addr)
 
 		mut resp := w.handler.handle(req)
 		normalize_server_response(mut resp, req)

@@ -1,0 +1,88 @@
+{
+  "intent_id": "1111111111111111111111111111111111111111111111111111111111111111",
+  "intent_type": "initial_adopt_current",
+  "stage": "intent_reserved",
+  "run_id": 10,
+  "run_attempt": 1,
+  "ordinal": 0,
+  "input_fingerprint": "3333333333333333333333333333333333333333333333333333333333333333",
+  "resolved_inputs": {
+    "sources": [
+      {
+        "id": "tinycc",
+        "repository": "https://repo.or.cz/tinycc.git",
+        "ref": "mob",
+        "sha": "cccccccccccccccccccccccccccccccccccccccc",
+        "tree": "dddddddddddddddddddddddddddddddddddddddd"
+      }
+    ],
+    "source_checks": [
+      {
+        "source_id": "tinycc",
+        "resolved_sha": "cccccccccccccccccccccccccccccccccccccccc",
+        "status": "resolved",
+        "evidence_digest": "7777777777777777777777777777777777777777777777777777777777777777"
+      }
+    ],
+    "recipe_path": "thirdparty/build_scripts/thirdparty-linux-amd64_tcc.sh",
+    "recipe_hash": "8888888888888888888888888888888888888888888888888888888888888888",
+    "contract_repository": "vlang/v",
+    "contract_sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "v_source_sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "producer_toolchain": {
+      "profile_id": "linux-amd64-synthetic-v1",
+      "profile_sha256": "9999999999999999999999999999999999999999999999999999999999999999",
+      "observation_sha256": "8888888888888888888888888888888888888888888888888888888888888888",
+      "observation_digest": "7777777777777777777777777777777777777777777777777777777777777777"
+    }
+  },
+  "expected_canonical_head": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "candidate_ref": "tccbin-candidate/linux-amd64/1111111111111111111111111111111111111111111111111111111111111111",
+  "generation": 0,
+  "expected_check_sources": [
+    {
+      "name": "tccbin-candidate-gate",
+      "repository": "vlang/tccbin",
+      "integration_id": 1001,
+      "workflow_id": 2001,
+      "workflow_path": ".github/workflows/build-and-test.yml",
+      "event": "push"
+    },
+    {
+      "name": "v-candidate-smoke",
+      "repository": "vlang/v",
+      "integration_id": 1002,
+      "workflow_id": 2002,
+      "workflow_path": ".github/workflows/tccbin_revalidate.yml",
+      "event": "workflow_dispatch"
+    }
+  ],
+  "gate_runs": [],
+  "gate_trigger_refs": [],
+  "deadlines": {
+    "build_deadline": "2026-08-02T01:00:00Z",
+    "checks_deadline": "2026-08-02T02:30:00Z",
+    "promotion_deadline": "2026-08-02T02:45:00Z"
+  },
+  "infra_retry_count": 0,
+  "source_retry_count": 0,
+  "candidate_binding": null,
+  "validation_subject": {
+    "sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "tree": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "input_fingerprint": "3333333333333333333333333333333333333333333333333333333333333333",
+    "artifact_fingerprint": "4444444444444444444444444444444444444444444444444444444444444444",
+    "manifest_hash": "5555555555555555555555555555555555555555555555555555555555555555",
+    "digests": [
+      {
+        "path": "tcc.exe",
+        "sha256": "6666666666666666666666666666666666666666666666666666666666666666"
+      }
+    ],
+    "candidate_ref": "tccbin-candidate/linux-amd64/1111111111111111111111111111111111111111111111111111111111111111"
+  },
+  "previous_last_known_good": null,
+  "bad_provisional": null,
+  "rollback_diff_fingerprint": null,
+  "rollback_provisional": null
+}

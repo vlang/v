@@ -42,7 +42,6 @@ fn match_branch_extra_comma() {
 		Foo, Bar {}
 		int, string {}
 	}
-
 	match n {
 		0...5 {}
 		2, 3 {}

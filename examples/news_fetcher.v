@@ -2,7 +2,7 @@
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 import net.http
-import x.json2
+import json2
 import sync.pool
 
 struct Story {

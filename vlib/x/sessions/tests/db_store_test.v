@@ -1,6 +1,6 @@
 // vtest retry: 3
 import db.sqlite
-import x.json2 as json
+import json2 as json
 import os
 import time
 import x.sessions
@@ -82,7 +82,7 @@ fn test_store_session_expired() {
 
 	time.sleep(2 * max_age)
 
-	if data := store.get('c', max_age) {
+	if _ := store.get('c', max_age) {
 		assert false, 'session should be expired!'
 	} else {
 		assert err.msg() == 'session is expired'

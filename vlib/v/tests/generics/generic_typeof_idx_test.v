@@ -8,27 +8,27 @@ struct Foo {
 }
 
 fn unaliased_typ[T](a T) int {
-	$if typeof[T]().unaliased_typ is $int {
+	$if typeof[T]( ).unaliased_typ is $int {
 		return 1
-	} $else $if typeof[T]().unaliased_typ is $string {
+	} $else $if typeof[T]( ).unaliased_typ is $string {
 		return 2
 	}
 	return 0
 }
 
 fn idx[T](a [][]T) int {
-	$if typeof[T]().idx is $int {
+	$if typeof[T]( ).idx is $int {
 		return 1
-	} $else $if typeof[T]().idx is $string {
+	} $else $if typeof[T]( ).idx is $string {
 		return 2
 	}
 	return 0
 }
 
 fn typ[T](a [][]T) int {
-	$if typeof[T]().typ is $int {
+	$if typeof[T]( ).typ is $int {
 		return 1
-	} $else $if typeof[T]().typ is $string {
+	} $else $if typeof[T]( ).typ is $string {
 		return 2
 	}
 	return 0

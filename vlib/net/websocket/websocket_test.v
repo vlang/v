@@ -127,7 +127,7 @@ fn ws_test(family net.AddrFamily, uri string) ! {
 	mut client := websocket.new_client(uri)!
 	client.on_open(open_cb)
 	client.on_error(close_cb)
-	client.on_message_ref(message_cb, test_results)
+	client.on_message_ref(message_cb, &test_results)
 	client.connect()!
 	spawn client.listen()
 
@@ -160,7 +160,7 @@ fn test_on_close_when_server_closing_connection() ! {
 	mut ws := websocket.new_server(.ip, 30003, '')
 	ws.on_message(on_message_cb_2)
 	mut test_results := WebsocketTestResults{}
-	ws.on_close_ref(on_close_cb_2, test_results)
+	ws.on_close_ref(on_close_cb_2, &test_results)
 	start_server_in_thread_and_wait_till_it_is_ready_to_accept_connections(mut ws)
 
 	mut client := websocket.new_client('ws://localhost:30003')!
@@ -176,13 +176,22 @@ fn on_close_cb_3(mut cli websocket.Client, code int, reason string, mut res Webs
 	res.nr_closes++
 }
 
+fn test_close_unconnected_client_returns_error() ! {
+	mut client := websocket.new_client('ws://localhost:30004')!
+	client.close(1000, 'closing connection') or {
+		assert err.msg() == 'Socket already closed: 1000'
+		return
+	}
+	assert false, 'closing an unconnected client should return an error'
+}
+
 fn test_on_close_when_client_closing_connection() ! {
 	mut ws := websocket.new_server(.ip, 30004, '')
 	start_server_in_thread_and_wait_till_it_is_ready_to_accept_connections(mut ws)
 
 	mut client := websocket.new_client('ws://localhost:30004')!
 	mut test_results := WebsocketTestResults{}
-	client.on_close_ref(on_close_cb_3, test_results)
+	client.on_close_ref(on_close_cb_3, &test_results)
 	client.connect()!
 	spawn client.listen()
 	time.sleep(1000 * time.millisecond)

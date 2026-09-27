@@ -1,4 +1,4 @@
-import x.json2
+import json2
 
 fn maybe_map_map[T, U, X, Y](m map[T]U, f fn (T, U) !(X, Y)) !map[X]Y {
 	mut r := map[X]Y{}

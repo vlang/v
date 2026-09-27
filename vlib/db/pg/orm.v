@@ -2,6 +2,7 @@ module pg
 
 import orm
 import time
+import strconv
 import net.conv
 
 // ---- ORM on Conn (single pinned connection) ----
@@ -77,6 +78,25 @@ pub fn (c &Conn) create(table orm.Table, fields []orm.TableField) ! {
 pub fn (c &Conn) drop(table orm.Table) ! {
 	query := 'DROP TABLE "${table.name}";'
 	c.exec(query)!
+}
+
+// execute runs a raw SQL query and returns result rows as driver-agnostic orm.Row values,
+// with column names populated from the result metadata.
+pub fn (c &Conn) execute(query string) ![]orm.Row {
+	res := c.exec_result(query)!
+
+	mut orm_rows := []orm.Row{}
+	for r in res.rows {
+		mut vals := []string{}
+		for i in 0 .. r.vals.len {
+			vals << r.val(i)
+		}
+		orm_rows << orm.Row{
+			vals:  vals
+			names: res.names
+		}
+	}
+	return orm_rows
 }
 
 // orm_begin starts a transaction on this conn.
@@ -170,6 +190,13 @@ pub fn (mut db DB) drop(table orm.Table) ! {
 	c.drop(table)!
 }
 
+// execute runs a raw SQL query on a pooled conn and returns result rows.
+pub fn (mut db DB) execute(query string) ![]orm.Row {
+	mut c := db.pool.acquire()!
+	defer { c.close() or {} }
+	return c.execute(query)
+}
+
 // last_id returns the id stashed by this thread's most recent `DB.insert`
 // (or 0 if there is none). LASTVAL() itself is session-scoped, so calling
 // it on a freshly-checked-out pool conn would return the wrong value or 0;
@@ -217,6 +244,12 @@ pub fn (mut tx Tx) drop(table orm.Table) ! {
 	tx.conn.drop(table)!
 }
 
+// execute runs a raw SQL query on the pinned transaction conn and returns result rows.
+pub fn (mut tx Tx) execute(query string) ![]orm.Row {
+	tx.ensure_active()!
+	return tx.conn.execute(query)
+}
+
 // last_id returns the last inserted id on the pinned conn.
 pub fn (mut tx Tx) last_id() int {
 	if tx.done || isnil(tx.conn) {
@@ -257,92 +290,106 @@ pub fn (mut tx Tx) orm_release_savepoint(name string) ! {
 
 // ---- utils ----
 
-fn pg_stmt_binder(mut types []u32, mut vals []&char, mut lens []int, mut formats []int, d orm.QueryData) {
+fn pg_stmt_binder(mut types []u32, mut vals []&char, mut lens []i32, mut formats []i32, d orm.QueryData) {
 	for data in d.data {
 		pg_stmt_match(mut types, mut vals, mut lens, mut formats, data)
 	}
 }
 
-fn pg_stmt_match_array[T](mut types []u32, mut vals []&char, mut lens []int, mut formats []int, data []T) {
+fn pg_stmt_match_array[T](mut types []u32, mut vals []&char, mut lens []i32, mut formats []i32, data []T) {
 	for element in data {
 		pg_stmt_match(mut types, mut vals, mut lens, mut formats, orm.Primitive(element))
 	}
 }
 
-fn pg_stmt_match(mut types []u32, mut vals []&char, mut lens []int, mut formats []int, data orm.Primitive) {
+fn pg_stmt_match(mut types []u32, mut vals []&char, mut lens []i32, mut formats []i32, data orm.Primitive) {
 	match data {
 		bool {
 			types << u32(Oid.t_bool)
 			vals << &char(&data)
-			lens << int(sizeof(bool))
+			lens << i32(sizeof(bool))
 			formats << 1
 		}
 		u8 {
-			types << u32(Oid.t_char)
-			vals << &char(&data)
-			lens << int(sizeof(u8))
+			// `u8` columns are declared as SMALLINT (int2) by pg_type_from_v(), so
+			// they have to be bound as int2 too. Binding them as the internal
+			// `"char"` type (Oid.t_char) makes PostgreSQL reject the statement with
+			// `column ... is of type smallint but expression is of type "char"`.
+			types << u32(Oid.t_int2)
+			num := conv.hton16(u16(data))
+			vals << &char(&num)
+			lens << i32(sizeof(u16))
 			formats << 1
 		}
 		u16 {
 			types << u32(Oid.t_int2)
 			num := conv.hton16(data)
 			vals << &char(&num)
-			lens << int(sizeof(u16))
+			lens << i32(sizeof(u16))
 			formats << 1
 		}
 		u32 {
 			types << u32(Oid.t_int4)
 			num := conv.hton32(data)
 			vals << &char(&num)
-			lens << int(sizeof(u32))
+			lens << i32(sizeof(u32))
 			formats << 1
 		}
 		u64 {
 			types << u32(Oid.t_int8)
 			num := conv.hton64(data)
 			vals << &char(&num)
-			lens << int(sizeof(u64))
+			lens << i32(sizeof(u64))
 			formats << 1
 		}
 		i8 {
-			types << u32(Oid.t_char)
-			vals << &char(&data)
-			lens << int(sizeof(i8))
+			// See the `u8` branch above: `i8` columns are SMALLINT (int2) as well.
+			types << u32(Oid.t_int2)
+			num := conv.hton16(u16(i16(data)))
+			vals << &char(&num)
+			lens << i32(sizeof(i16))
 			formats << 1
 		}
 		i16 {
 			types << u32(Oid.t_int2)
 			num := conv.hton16(u16(data))
 			vals << &char(&num)
-			lens << int(sizeof(i16))
+			lens << i32(sizeof(i16))
 			formats << 1
 		}
 		int {
-			types << u32(Oid.t_int4)
-			num := conv.hton32(u32(data))
-			vals << &char(&num)
-			lens << int(sizeof(int))
+			$if new_int ?&& x64 {
+				types << u32(Oid.t_int8)
+				num := conv.hton64(u64(data))
+				vals << &char(&num)
+				lens << i32(sizeof(i64))
+			} $else {
+				types << u32(Oid.t_int4)
+				num := conv.hton32(u32(data))
+				vals << &char(&num)
+				lens << i32(sizeof(i32))
+			}
 			formats << 1
 		}
 		i64 {
 			types << u32(Oid.t_int8)
 			num := conv.hton64(u64(data))
 			vals << &char(&num)
-			lens << int(sizeof(i64))
+			lens << i32(sizeof(i64))
 			formats << 1
 		}
 		f32 {
 			types << u32(Oid.t_float4)
 			num := conv.htonf32(f32(data))
 			vals << &char(&num)
-			lens << int(sizeof(f32))
+			lens << i32(sizeof(f32))
 			formats << 1
 		}
 		f64 {
 			types << u32(Oid.t_float8)
 			num := conv.htonf64(f64(data))
 			vals << &char(&num)
-			lens << int(sizeof(f64))
+			lens << i32(sizeof(f64))
 			formats << 1
 		}
 		string {
@@ -351,14 +398,16 @@ fn pg_stmt_match(mut types []u32, mut vals []&char, mut lens []int, mut formats 
 			// it would do for an untyped literal string.
 			types << u32(0)
 			vals << &char(data.str)
-			lens << data.len
+			lens << i32(data.len)
 			formats << 0
 		}
 		time.Time {
-			datetime := data.format_ss()
+			// Use a microsecond-precision representation so fractional seconds survive
+			// a write/read round-trip (relevant for TIMESTAMP/TIMESTAMPTZ columns).
+			datetime := data.format_ss_micro()
 			types << u32(0)
 			vals << &char(datetime.str)
-			lens << datetime.len
+			lens << i32(datetime.len)
 			formats << 0
 		}
 		orm.InfixType {
@@ -367,7 +416,7 @@ fn pg_stmt_match(mut types []u32, mut vals []&char, mut lens []int, mut formats 
 		orm.Null {
 			types << u32(0) // we do not know col type, let server infer
 			vals << &char(unsafe { nil }) // NULL pointer indicates NULL
-			lens << int(0) // ignored
+			lens << i32(0) // ignored
 			formats << 0 // ignored
 		}
 		[]orm.Primitive {
@@ -426,7 +475,14 @@ fn pg_type_from_v(typ int) !string {
 		orm.type_idx['bool'] {
 			'BOOLEAN'
 		}
-		orm.type_idx['int'], orm.type_idx['u32'] {
+		orm.type_idx['int'] {
+			$if new_int ?&& x64 {
+				'BIGINT'
+			} $else {
+				'INT'
+			}
+		}
+		orm.type_idx['u32'] {
 			'INT'
 		}
 		orm.time_ {
@@ -461,6 +517,158 @@ fn pg_type_from_v(typ int) !string {
 	return str
 }
 
+// pg_parse_timestamp parses a PostgreSQL `TIMESTAMP`/`TIMESTAMPTZ` text value into a
+// `time.Time`. It accepts the form `YYYY-MM-DD HH:mm:ss[.fraction][Z|±HH[:MM[:SS]]]`,
+// preserving up to nanosecond precision. When a timezone offset is present (as produced
+// by `TIMESTAMPTZ` columns, e.g. `+00`, `+02`, `+02:30`), the returned time is
+// normalized to UTC.
+fn pg_parse_timestamp(value string) !time.Time {
+	str := value.trim_space()
+	if str == 'infinity' || str == '-infinity' {
+		return error('pg: cannot decode special timestamp value `${str}` into time.Time')
+	}
+	// PostgreSQL appends ` BC` for dates before year 1. `time.Time` cannot represent
+	// those unambiguously, so reject them with a clear error instead of silently
+	// constructing the corresponding AD instant.
+	if str.ends_with(' BC') || str.ends_with(' bc') {
+		return error('pg: cannot decode BC timestamp value `${str}` into time.Time')
+	}
+	space_pos := str.index(' ') or {
+		// Fall back to the generic parser for values without a date/time separator.
+		return time.parse(str)
+	}
+	date_part := str[..space_pos]
+	mut time_part := str[space_pos + 1..]
+
+	// Detect and strip an optional timezone designator.
+	mut offset_seconds := 0
+	if time_part.ends_with('Z') || time_part.ends_with('z') {
+		time_part = time_part[..time_part.len - 1]
+	} else {
+		// PostgreSQL appends the offset sign (`+`/`-`) directly after the time part.
+		// Scan past the leading hour so a negative hour can never be mistaken for a sign.
+		mut sign_pos := -1
+		for i := 1; i < time_part.len; i++ {
+			c := time_part[i]
+			if c == `+` || c == `-` {
+				sign_pos = i
+				break
+			}
+		}
+		if sign_pos != -1 {
+			offset_seconds = pg_parse_offset(time_part[sign_pos..])!
+			time_part = time_part[..sign_pos]
+		}
+	}
+
+	// Split the optional fractional seconds off the `HH:mm:ss` part.
+	mut nanosecond := 0
+	mut hms := time_part
+	if dot_pos := time_part.index('.') {
+		hms = time_part[..dot_pos]
+		mut frac := time_part[dot_pos + 1..]
+		if frac.len > 9 {
+			frac = frac[..9]
+		}
+		// strconv.atoi is strict, so any non-digit (e.g. a stray suffix) errors out
+		// instead of being silently truncated by `string.int()`.
+		mut scaled := strconv.atoi(frac)!
+		for _ in 0 .. 9 - frac.len {
+			scaled *= 10
+		}
+		nanosecond = scaled
+	}
+
+	ymd := date_part.split('-')
+	if ymd.len != 3 {
+		return error('pg: invalid timestamp date `${date_part}`')
+	}
+	hms_parts := hms.split(':')
+	if hms_parts.len != 3 {
+		return error('pg: invalid timestamp time `${hms}`')
+	}
+
+	// Use strict numeric parsing so suffixes such as ` BC` or other malformed values
+	// are rejected rather than silently coerced (`string.int()` keeps the digit prefix).
+	year := strconv.atoi(ymd[0])!
+	month := strconv.atoi(ymd[1])!
+	day := strconv.atoi(ymd[2])!
+	hour := strconv.atoi(hms_parts[0])!
+	minute := strconv.atoi(hms_parts[1])!
+	second := strconv.atoi(hms_parts[2])!
+
+	// Validate the ranges up front: `time.new` *panics* on out-of-range fields, but
+	// PostgreSQL accepts values V cannot represent (e.g. years past 9999), so turn
+	// those into a clear error instead of aborting the process. Supported AD years are
+	// 1..9999; year 0 / negative years are BC (proleptic Gregorian) and unrepresentable,
+	// matching the explicit ` BC` rejection above.
+	if year > 9999 {
+		return error('pg: year out of range in timestamp `${str}`')
+	}
+	if year < 1 {
+		return error('pg: cannot decode BC/year-0 timestamp `${str}` into time.Time')
+	}
+	if month < 1 || month > 12 {
+		return error('pg: month out of range in timestamp `${str}`')
+	}
+	if day < 1 || day > 31 {
+		return error('pg: day out of range in timestamp `${str}`')
+	}
+	if hour < 0 || hour > 23 {
+		return error('pg: hour out of range in timestamp `${str}`')
+	}
+	if minute < 0 || minute > 59 {
+		return error('pg: minute out of range in timestamp `${str}`')
+	}
+	if second < 0 || second > 59 {
+		return error('pg: second out of range in timestamp `${str}`')
+	}
+
+	mut result := time.new(
+		year:       year
+		month:      month
+		day:        day
+		hour:       hour
+		minute:     minute
+		second:     second
+		nanosecond: nanosecond
+		is_local:   false
+	)
+	if offset_seconds != 0 {
+		// Normalize to UTC by subtracting the parsed offset.
+		result = result.add_seconds(-offset_seconds)
+		// The offset can push a boundary value past the representable range in either
+		// direction, so re-check the normalized result; otherwise offset-bearing
+		// timestamps would silently bypass the range guards above. Examples:
+		// `9999-12-31 23:30:00-01` -> year 10000, `0001-01-01 00:30:00+01` -> year 0 (BC).
+		if result.year > 9999 {
+			return error('pg: year out of range in timestamp `${str}` after UTC normalization')
+		}
+		if result.year < 1 {
+			return error('pg: timestamp `${str}` normalizes to a BC/year-0 date, which is unrepresentable')
+		}
+	}
+	return result
+}
+
+// pg_parse_offset parses a PostgreSQL timezone offset such as `+02`, `-05`, `+02:30`
+// or `+02:30:00` and returns the offset in seconds (signed).
+fn pg_parse_offset(offset string) !int {
+	if offset.len < 3 {
+		return error('pg: invalid timezone offset `${offset}`')
+	}
+	sign := if offset[0] == `-` { -1 } else { 1 }
+	parts := offset[1..].split(':')
+	mut seconds := strconv.atoi(parts[0])! * 3600
+	if parts.len > 1 {
+		seconds += strconv.atoi(parts[1])! * 60
+	}
+	if parts.len > 2 {
+		seconds += strconv.atoi(parts[2])!
+	}
+	return sign * seconds
+}
+
 fn val_to_primitive(val ?string, typ int) !orm.Primitive {
 	if str := val {
 		match typ {
@@ -486,8 +694,10 @@ fn val_to_primitive(val ?string, typ int) !orm.Primitive {
 			}
 			// u8
 			orm.type_idx['u8'] {
-				data := str.i8()
-				return orm.Primitive(*unsafe { &u8(&data) })
+				// `u8` columns are SMALLINT, and are bound as a non negative int2,
+				// so the text PostgreSQL returns spans the full 0..255 range;
+				// parsing it as an i8 would saturate everything above 127.
+				return orm.Primitive(str.u8())
 			}
 			// u16
 			orm.type_idx['u16'] {
@@ -516,16 +726,24 @@ fn val_to_primitive(val ?string, typ int) !orm.Primitive {
 				return orm.Primitive(str)
 			}
 			orm.time_ {
-				if str.contains_any(' /:-') {
-					date_time_str := time.parse(str)!
-					return orm.Primitive(date_time_str)
+				// A bare (optionally signed) integer is a Unix timestamp; route every
+				// other value through the PostgreSQL-aware parser so textual timestamps
+				// and special values such as `infinity` are decoded (or rejected) there
+				// instead of silently falling through to `time.unix(0)`.
+				if timestamp := strconv.atoi64(str.trim_space()) {
+					return orm.Primitive(time.unix(timestamp))
 				}
-
-				timestamp := str.int()
-				return orm.Primitive(time.unix(timestamp))
+				return orm.Primitive(pg_parse_timestamp(str)!)
 			}
 			orm.enum_ {
-				return orm.Primitive(str.i64())
+				// V's ORM stores enums in a `BIGINT` column, but a native PostgreSQL
+				// enum type (`CREATE TYPE ... AS ENUM`) returns the label of the value
+				// instead. Pass such a label on unchanged, so that the ORM can match it
+				// against the names of the enum values.
+				if number := strconv.atoi64(str.trim_space()) {
+					return orm.Primitive(number)
+				}
+				return orm.Primitive(str)
 			}
 			else {}
 		}

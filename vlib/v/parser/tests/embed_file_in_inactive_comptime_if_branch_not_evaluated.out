@@ -1,0 +1,12 @@
+vlib/v/parser/tests/embed_file_in_inactive_comptime_if_branch_not_evaluated.vv:10:9: error: undefined ident: `missing_symbol`
+    8 |
+    9 | fn main() {
+   10 |     assert missing_symbol == 0
+      |            ~~~~~~~~~~~~~~
+   11 | }
+vlib/v/parser/tests/embed_file_in_inactive_comptime_if_branch_not_evaluated.vv:10:9: error: assert can be used only with `bool` expressions, but found `void` instead
+    8 |
+    9 | fn main() {
+   10 |     assert missing_symbol == 0
+      |            ~~~~~~~~~~~~~~~~~~~
+   11 | }

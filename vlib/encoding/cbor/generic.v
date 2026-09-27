@@ -416,7 +416,7 @@ fn (mut u Unpacker) unpack_struct_into[T](mut result T) ! {
 							u.pos++
 							result.$(field.name) = none
 						} else {
-							mut inner := create_value_from_optional(result.$(field.name))
+							mut inner := $zero(field.typ.payload_type)
 							u.unpack_into(mut inner)!
 							result.$(field.name) = inner
 						}
@@ -570,12 +570,6 @@ fn utf8_validate_slice(data []u8, start int, size int) bool {
 	return true
 }
 
-// create_value_from_optional returns a zero value of an Option's inner T.
-// Exists so the comptime call site can infer T from a struct field.
-fn create_value_from_optional[T](_val ?T) T {
-	return T{}
-}
-
 // unpack_into fills the target through a mutable reference. The mut
 // parameter exists so V's generic inferer picks up T from the
 // `u.unpack_into(mut result.$(field.name))!` call site.
@@ -593,7 +587,7 @@ fn (mut u Unpacker) unpack_into[T](mut out T) ! {
 // session is encoded as the correct instant rather than as wall-clock
 // digits without an offset.
 fn format_rfc3339_nano(t time.Time) string {
-	utc := if t.is_local { t.local_to_utc() } else { t }
+	utc := if t.is_local || t.location() != none { t.local_to_utc() } else { t }
 	return '${utc.year:04d}-${utc.month:02d}-${utc.day:02d}T${utc.hour:02d}:${utc.minute:02d}:${utc.second:02d}.${utc.nanosecond:09d}Z'
 }
 

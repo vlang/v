@@ -60,12 +60,14 @@ fn v_segmentation_fault_handler(signal_number i32) {
 		} $else {
 			C.fprintf(C.stderr, c'signal %d: segmentation fault\n', signal_number)
 		}
-		$if use_libbacktrace ? {
+		$if use_libbacktrace ?&& !tinyc {
 			$if openbsd {
 				print_backtrace()
 			} $else {
 				eprint_libbacktrace(1)
 			}
+		} $else $if tinyc && glibc {
+			print_backtrace_skipping_top_frames(1)
 		} $else {
 			print_backtrace()
 		}
@@ -73,7 +75,7 @@ fn v_segmentation_fault_handler(signal_number i32) {
 	}
 }
 
-@[inline]
+@[inline; markused]
 fn v_fixed_index(i int, len int) int {
 	$if !no_bounds_checking {
 		if i < 0 || i >= len {

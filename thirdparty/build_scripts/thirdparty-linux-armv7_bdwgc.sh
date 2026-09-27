@@ -44,6 +44,7 @@ CC=$CC CFLAGS='-fPIC' LDFLAGS='-fPIC' ./configure \
 	--enable-parallel-mark \
 	--enable-single-obj-compilation \
 	--enable-gc-debug \
+	--enable-thread-local-alloc \
 	--with-libatomic-ops=yes \
 	--enable-sigrt-signals
 

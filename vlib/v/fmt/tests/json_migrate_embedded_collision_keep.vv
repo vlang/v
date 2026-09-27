@@ -1,0 +1,24 @@
+import json
+
+struct Foo {
+	a int
+	c int
+}
+
+struct Baz {
+	c int
+}
+
+// Bar embeds Foo and Baz, whose fields collide with each other and with Bar's own `a`.
+// Legacy json flattens embedded fields under their original names (emitting duplicate `a`/`c`
+// keys), while json2 disambiguates them as `Foo.a` / `Foo.Baz.c`, so migrating `json.encode`
+// here would change the serialized payload. The file is kept on legacy json.
+struct Bar {
+	Foo
+	Baz
+	a int
+}
+
+fn to_json(b Bar) string {
+	return json.encode(b)
+}

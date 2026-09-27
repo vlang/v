@@ -20,6 +20,17 @@ fn emit_recorded_frame_to_stdout(frame u64) ! {
 	flush_stdout()
 }
 
+@[if gg_record ?]
+fn (mut ctx Context) stop_recording_if_needed() {
+	if ctx.frame == recorder_settings.stop_at_frame {
+		$if gg_record_trace ? {
+			eprintln('>>> exiting at frame ${ctx.frame}')
+		}
+		flush_stdout()
+		exit(0)
+	}
+}
+
 // record_frame records the current frame to a file or stdout.
 // record_frame acts according to settings specified in `gg.recorder_settings`.
 @[if gg_record ?]
@@ -41,13 +52,7 @@ pub fn (mut ctx Context) record_frame() {
 			}
 		}
 	}
-	if ctx.frame == recorder_settings.stop_at_frame {
-		$if gg_record_trace ? {
-			eprintln('>>> exiting at frame ${ctx.frame}')
-		}
-		flush_stdout()
-		exit(0)
-	}
+	ctx.stop_recording_if_needed()
 }
 
 fn new_gg_recorder_settings() &SSRecorderSettings {

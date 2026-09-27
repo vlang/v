@@ -13,7 +13,7 @@ fn test_ctr_stream_cipher() ! {
 	block := des.new_cipher(key[..8])
 	c := cipher.new_ctr(block, iv)
 
-	s := StreamCipher{
+	_ := StreamCipher{
 		cipher: c
 	}
 }
@@ -24,7 +24,7 @@ fn test_ctr_byte_by_byte() {
 	txt := []u8{len: 32, init: index}
 	mut out := []u8{len: 32}
 
-	mut ofb := cipher.new_ctr(aes.new_cipher(key), iv)
+	mut ofb := cipher.new_ctr(aes.new_cipher(key) or { panic(err) }, iv)
 	for i in 0 .. 32 {
 		ofb.xor_key_stream(mut out[i..i + 1], txt[i..i + 1])
 	}

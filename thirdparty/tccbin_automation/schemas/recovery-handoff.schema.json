@@ -1,0 +1,752 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "recovery-handoff.schema.json",
+  "$defs": {
+    "terminal_remediation_check_sources": {
+      "type": "array",
+      "maxItems": 2,
+      "uniqueItems": true,
+      "items": {"$ref": "common.schema.json#/$defs/check_source"},
+      "allOf": [
+        {
+          "contains": {
+            "properties": {"name": {"const": "tccbin-candidate-gate"}},
+            "required": ["name"]
+          },
+          "minContains": 0,
+          "maxContains": 1
+        },
+        {
+          "contains": {
+            "properties": {"name": {"const": "v-candidate-smoke"}},
+            "required": ["name"]
+          },
+          "minContains": 0,
+          "maxContains": 1
+        }
+      ]
+    },
+    "terminal_remediation_binding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "operation_id",
+        "subject_generation",
+        "validation_subject",
+        "remediation_trigger",
+        "v_source_sha",
+        "expected_check_sources"
+      ],
+      "properties": {
+        "operation_id": {"$ref": "common.schema.json#/$defs/sha256"},
+        "subject_generation": {"$ref": "common.schema.json#/$defs/generation"},
+        "validation_subject": {"$ref": "common.schema.json#/$defs/validation_subject"},
+        "remediation_trigger": {"$ref": "common.schema.json#/$defs/remediation_trigger"},
+        "v_source_sha": {"$ref": "common.schema.json#/$defs/sha40"},
+        "expected_check_sources": {
+          "$ref": "active-intent.schema.json#/properties/expected_check_sources"
+        }
+      }
+    },
+    "terminal_head_observation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "target_id",
+        "expected_generation",
+        "expected_previous_head",
+        "canonical_head",
+        "subject_sha",
+        "relationship",
+        "observed_at",
+        "operation_id",
+        "evidence_digest"
+      ],
+      "properties": {
+        "target_id": {"$ref": "common.schema.json#/$defs/target_id"},
+        "expected_generation": {"$ref": "common.schema.json#/$defs/generation"},
+        "expected_previous_head": {"$ref": "common.schema.json#/$defs/sha40"},
+        "canonical_head": {"$ref": "common.schema.json#/$defs/sha40"},
+        "subject_sha": {"$ref": "common.schema.json#/$defs/sha40"},
+        "relationship": {
+          "type": "string",
+          "enum": ["exact_subject", "subject_ancestor", "unrelated"]
+        },
+        "observed_at": {"$ref": "common.schema.json#/$defs/timestamp"},
+        "operation_id": {"$ref": "common.schema.json#/$defs/sha256"},
+        "evidence_digest": {"$ref": "common.schema.json#/$defs/sha256"}
+      }
+    },
+    "source_state_transition": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema_version",
+        "source_id",
+        "sequence",
+        "operation_id",
+        "transition",
+        "previous_generation",
+        "resulting_generation",
+        "previous_state_digest",
+        "resulting_state_digest",
+        "observed_at",
+        "originating_run_id",
+        "expected_state_parent_sha",
+        "universal_evidence",
+        "universal_evidence_digest",
+        "evidence_path",
+        "previous_chain_digest",
+        "resulting_chain_digest",
+        "evidence_digest"
+      ],
+      "properties": {
+        "schema_version": {"type": "integer", "const": 1},
+        "source_id": {"type": "string", "enum": ["tinycc-mob", "bdwgc-master", "libatomic_ops-master"]},
+        "sequence": {"type": "integer", "minimum": 1},
+        "operation_id": {"$ref": "common.schema.json#/$defs/sha256"},
+        "transition": {"type": "string", "const": "resolve_source_unreachable"},
+        "previous_generation": {"$ref": "common.schema.json#/$defs/generation"},
+        "resulting_generation": {"type": "integer", "minimum": 1},
+        "previous_state_digest": {"$ref": "common.schema.json#/$defs/sha256"},
+        "resulting_state_digest": {"$ref": "common.schema.json#/$defs/sha256"},
+        "observed_at": {"$ref": "common.schema.json#/$defs/timestamp"},
+        "originating_run_id": {"$ref": "common.schema.json#/$defs/run_id"},
+        "expected_state_parent_sha": {"$ref": "common.schema.json#/$defs/sha40"},
+        "universal_evidence": {"$ref": "evidence.schema.json"},
+        "universal_evidence_digest": {"$ref": "common.schema.json#/$defs/sha256"},
+        "evidence_path": {
+          "type": "string",
+          "pattern": "^evidence/[0-9]{4}/[0-9]{2}/[1-9][0-9]*/[1-9][0-9]*/((tinycc-mob)|(bdwgc-master)|(libatomic_ops-master))/[0-9a-f]{64}/[0-9]+-resolve_source_unreachable-[0-9a-f]{64}\\.json$",
+          "maxLength": 512
+        },
+        "previous_chain_digest": {"$ref": "common.schema.json#/$defs/sha256"},
+        "resulting_chain_digest": {"$ref": "common.schema.json#/$defs/sha256"},
+        "evidence_digest": {"$ref": "common.schema.json#/$defs/sha256"}
+      }
+    },
+    "git_ancestry_proof": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema_version",
+        "repository",
+        "canonical_ref",
+        "target_id",
+        "subject_sha",
+        "canonical_head",
+        "merge_base_sha",
+        "relationship",
+        "query_method",
+        "observed_at",
+        "operation_id",
+        "evidence_digest"
+      ],
+      "properties": {
+        "schema_version": {"type": "integer", "const": 1},
+        "repository": {"type": "string", "const": "vlang/tccbin"},
+        "canonical_ref": {
+          "type": "string",
+          "pattern": "^thirdparty-((freebsd-amd64)|(linux-amd64)|(macos-amd64)|(macos-arm64)|(openbsd-amd64)|(windows-amd64))$"
+        },
+        "target_id": {"$ref": "common.schema.json#/$defs/target_id"},
+        "subject_sha": {"$ref": "common.schema.json#/$defs/sha40"},
+        "canonical_head": {"$ref": "common.schema.json#/$defs/sha40"},
+        "merge_base_sha": {"$ref": "common.schema.json#/$defs/sha40"},
+        "relationship": {"type": "string", "const": "subject_ancestor"},
+        "query_method": {"type": "string", "const": "git_merge_base_is_ancestor"},
+        "observed_at": {"$ref": "common.schema.json#/$defs/timestamp"},
+        "operation_id": {"$ref": "common.schema.json#/$defs/sha256"},
+        "evidence_digest": {"$ref": "common.schema.json#/$defs/sha256"}
+      }
+    },
+    "terminal_state_projection": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema_version",
+        "generation",
+        "target_state",
+        "publication_state",
+        "canonical_observed_sha",
+        "input_fingerprint",
+        "artifact_fingerprint",
+        "manifest_hash",
+        "v_source_sha",
+        "resolved_inputs",
+        "last_known_good",
+        "provisional_published",
+        "active_intent",
+        "active_intent_id",
+        "active_intent_type",
+        "active_intent_stage",
+        "post_validation_operation_id",
+        "native_gate_subject",
+        "native_subject_hash",
+        "native_consumer_kind",
+        "native_gate_execution",
+        "native_gate_execution_present",
+        "v_smoke_execution",
+        "v_smoke_execution_present",
+        "active_recovery_handoff_id",
+        "active_remediation_id",
+        "active_remediation_binding",
+        "active_remediation_operation_id",
+        "remediation_check_sources",
+        "owner_check_sources",
+        "last_head_observation",
+        "last_validation",
+        "last_native_validation",
+        "last_source_refetch",
+        "blocking_probe_ids",
+        "issue_number"
+      ],
+      "properties": {
+        "schema_version": {"type": "integer", "const": 3},
+        "generation": {"$ref": "common.schema.json#/$defs/generation"},
+        "target_state": {
+          "type": "string",
+          "enum": ["uninitialized", "eligible", "quarantined", "validating", "unknown_blocked"]
+        },
+        "publication_state": {
+          "type": "string",
+          "enum": [
+            "idle",
+            "candidate_pending",
+            "promotion_blocked",
+            "post_publish_validating",
+            "post_publish_waiting_source",
+            "adopt_current_waiting_source",
+            "post_publish_blocked",
+            "rollback_pending",
+            "rollback_waiting_source",
+            "rollback_blocked",
+            "restored_last_known_good"
+          ]
+        },
+        "canonical_observed_sha": {"$ref": "common.schema.json#/$defs/sha40"},
+        "input_fingerprint": {"$ref": "common.schema.json#/$defs/nullable_sha256"},
+        "artifact_fingerprint": {"$ref": "common.schema.json#/$defs/nullable_sha256"},
+        "manifest_hash": {"$ref": "common.schema.json#/$defs/nullable_sha256"},
+        "v_source_sha": {"$ref": "common.schema.json#/$defs/sha40"},
+        "resolved_inputs": {
+          "oneOf": [
+            {"type": "null"},
+            {"$ref": "common.schema.json#/$defs/resolved_inputs"}
+          ]
+        },
+        "last_known_good": {
+          "oneOf": [
+            {"type": "null"},
+            {"$ref": "common.schema.json#/$defs/artifact_tuple"}
+          ]
+        },
+        "provisional_published": {
+          "oneOf": [
+            {"type": "null"},
+            {"$ref": "common.schema.json#/$defs/artifact_tuple"}
+          ]
+        },
+        "active_intent": {
+          "oneOf": [
+            {"type": "null"},
+            {"$ref": "active-intent.schema.json"}
+          ]
+        },
+        "active_intent_id": {"$ref": "common.schema.json#/$defs/nullable_sha256"},
+        "active_intent_type": {
+          "oneOf": [
+            {"type": "null"},
+            {"type": "string", "enum": ["publish", "rollback", "adopt-current", "initial_adopt_current"]}
+          ]
+        },
+        "active_intent_stage": {
+          "oneOf": [
+            {"type": "null"},
+            {
+              "type": "string",
+              "enum": [
+                "intent_reserved",
+                "building",
+                "build_waiting_source",
+                "ref_unknown",
+                "candidate_bound",
+                "checks_running",
+                "checks_waiting_source",
+                "checks_green",
+                "promotion_unknown",
+                "post_checks_running",
+                "post_checks_waiting_source",
+                "completed",
+                "aborted",
+                "superseded",
+                "blocked"
+              ]
+            }
+          ]
+        },
+        "post_validation_operation_id": {"$ref": "common.schema.json#/$defs/nullable_sha256"},
+        "native_gate_subject": {
+          "oneOf": [
+            {"type": "null"},
+            {"$ref": "native-gate-subject.schema.json"}
+          ]
+        },
+        "native_subject_hash": {"$ref": "common.schema.json#/$defs/nullable_sha256"},
+        "native_consumer_kind": {
+          "oneOf": [
+            {"type": "null"},
+            {
+              "type": "string",
+              "enum": [
+                "publish_candidate",
+                "rollback_candidate",
+                "adopt_current",
+                "initial_adopt_current",
+                "publish_post",
+                "rollback_post",
+                "remediation"
+              ]
+            }
+          ]
+        },
+        "native_gate_execution": {
+          "oneOf": [
+            {"type": "null"},
+            {"$ref": "native-gate-execution.schema.json"}
+          ]
+        },
+        "native_gate_execution_present": {"type": "boolean"},
+        "v_smoke_execution": {
+          "oneOf": [
+            {"type": "null"},
+            {"$ref": "common.schema.json#/$defs/v_smoke_execution"}
+          ]
+        },
+        "v_smoke_execution_present": {"type": "boolean"},
+        "active_recovery_handoff_id": {"$ref": "common.schema.json#/$defs/nullable_sha256"},
+        "active_remediation_id": {"$ref": "common.schema.json#/$defs/nullable_sha256"},
+        "active_remediation_binding": {
+          "oneOf": [
+            {"type": "null"},
+            {"$ref": "#/$defs/terminal_remediation_binding"}
+          ]
+        },
+        "active_remediation_operation_id": {"$ref": "common.schema.json#/$defs/nullable_sha256"},
+        "remediation_check_sources": {"$ref": "#/$defs/terminal_remediation_check_sources"},
+        "owner_check_sources": {
+          "type": "array",
+          "maxItems": 2,
+          "uniqueItems": true,
+          "items": {"$ref": "common.schema.json#/$defs/check_source"}
+        },
+        "last_head_observation": {
+          "oneOf": [
+            {"type": "null"},
+            {"$ref": "#/$defs/terminal_head_observation"}
+          ]
+        },
+        "last_validation": {
+          "oneOf": [
+            {"type": "null"},
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["run_id", "run_attempt", "subject_hash", "conclusion", "evidence_digest"],
+              "properties": {
+                "run_id": {"$ref": "common.schema.json#/$defs/run_id"},
+                "run_attempt": {"type": "integer", "minimum": 1},
+                "subject_hash": {"$ref": "common.schema.json#/$defs/sha256"},
+                "conclusion": {"type": "string", "enum": ["success", "failure", "blocked", "stale"]},
+                "evidence_digest": {"$ref": "common.schema.json#/$defs/sha256"}
+              }
+            }
+          ]
+        },
+        "last_native_validation": {
+          "oneOf": [
+            {"type": "null"},
+            {"$ref": "common.schema.json#/$defs/native_validation_record"}
+          ]
+        },
+        "last_source_refetch": {
+          "oneOf": [
+            {"type": "null"},
+            {"$ref": "common.schema.json#/$defs/source_refetch"}
+          ]
+        },
+        "blocking_probe_ids": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {"type": "string", "minLength": 1, "maxLength": 128}
+        },
+        "issue_number": {
+          "oneOf": [
+            {"type": "null"},
+            {"type": "integer", "minimum": 1}
+          ]
+        }
+      }
+    }
+  },
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "handoff_id",
+    "handoff_ordinal",
+    "predecessor_handoff_id",
+    "successor_handoff_id",
+    "audience",
+    "recovery_operation_id",
+    "consumer_type",
+    "resume_capability",
+    "intent_or_operation_id",
+    "subject_hash",
+    "subject_generation",
+    "expected_ledger_generation",
+    "expected_canonical_head",
+    "subject_ref_head",
+    "subject",
+    "expected_check_sources",
+    "native_gate_evidence_digest",
+    "native_gate_check_digest",
+    "receiver_repository",
+    "workflow_id",
+    "workflow_path",
+    "workflow_ref",
+    "event",
+    "receiver_run_name",
+    "state",
+    "dispatch_generation",
+    "dispatch_operation_ids",
+    "ack_operation_id",
+    "selected_run_id",
+    "selected_run_attempt",
+    "receiver_master_sha",
+    "receiver_conclusion",
+    "receiver_output_digest",
+    "deadline",
+    "terminal_outcome",
+    "completion_operation_id",
+    "terminal_revalidation"
+  ],
+  "properties": {
+    "handoff_id": {"$ref": "common.schema.json#/$defs/sha256"},
+    "handoff_ordinal": {"type": "integer", "minimum": 0},
+    "predecessor_handoff_id": {"$ref": "common.schema.json#/$defs/nullable_sha256"},
+    "successor_handoff_id": {"$ref": "common.schema.json#/$defs/nullable_sha256"},
+    "audience": {"type": "string", "const": "vlang/v:tccbin-automation-state"},
+    "recovery_operation_id": {"$ref": "common.schema.json#/$defs/sha256"},
+    "consumer_type": {
+      "type": "string",
+      "enum": ["candidate", "post-validation", "remediation", "adopt-current", "rollback"]
+    },
+    "resume_capability": {"type": "string", "enum": ["native_gate", "v_smoke", "evidence_only"]},
+    "intent_or_operation_id": {"$ref": "common.schema.json#/$defs/sha256"},
+    "subject_hash": {"$ref": "common.schema.json#/$defs/sha256"},
+    "subject_generation": {"$ref": "common.schema.json#/$defs/generation"},
+    "expected_ledger_generation": {"$ref": "common.schema.json#/$defs/generation"},
+    "expected_canonical_head": {"$ref": "common.schema.json#/$defs/sha40"},
+    "subject_ref_head": {"$ref": "common.schema.json#/$defs/sha40"},
+    "subject": {"$ref": "native-gate-subject.schema.json"},
+    "expected_check_sources": {
+      "$ref": "active-intent.schema.json#/properties/expected_check_sources"
+    },
+    "native_gate_evidence_digest": {"$ref": "common.schema.json#/$defs/nullable_sha256"},
+    "native_gate_check_digest": {"$ref": "common.schema.json#/$defs/nullable_sha256"},
+    "receiver_repository": {"type": "string", "const": "vlang/v"},
+    "workflow_id": {"$ref": "common.schema.json#/$defs/run_id"},
+    "workflow_path": {
+      "type": "string",
+      "enum": [".github/workflows/update_tccbin.yml", ".github/workflows/tccbin_revalidate.yml"]
+    },
+    "workflow_ref": {"type": "string", "const": "master"},
+    "event": {"type": "string", "const": "workflow_dispatch"},
+    "receiver_run_name": {"type": "string", "pattern": "^tccbin-recovery-[0-9a-f]{64}$"},
+    "state": {"type": "string", "enum": ["pending", "dispatched", "blocked", "complete"]},
+    "dispatch_generation": {"type": "integer", "minimum": 0, "maximum": 2},
+    "dispatch_operation_ids": {
+      "type": "array",
+      "maxItems": 2,
+      "uniqueItems": true,
+      "items": {"$ref": "common.schema.json#/$defs/sha256"}
+    },
+    "ack_operation_id": {"$ref": "common.schema.json#/$defs/nullable_sha256"},
+    "selected_run_id": {"$ref": "common.schema.json#/$defs/nullable_run_id"},
+    "selected_run_attempt": {
+      "oneOf": [{"type": "null"}, {"type": "integer", "minimum": 1}]
+    },
+    "receiver_master_sha": {"$ref": "common.schema.json#/$defs/nullable_sha40"},
+    "receiver_conclusion": {
+      "oneOf": [
+        {"type": "null"},
+        {"type": "string", "enum": ["pending", "success", "failure", "cancelled", "timed_out"]}
+      ]
+    },
+    "receiver_output_digest": {"$ref": "common.schema.json#/$defs/nullable_sha256"},
+    "deadline": {"$ref": "common.schema.json#/$defs/nullable_timestamp"},
+    "terminal_outcome": {
+      "oneOf": [
+        {"type": "null"},
+        {
+          "type": "string",
+          "enum": [
+            "green",
+            "no_op",
+            "functional_defect_routed",
+            "infrastructure_blocked",
+            "source_waiting",
+            "native_gate_green_successor"
+          ]
+        }
+      ]
+    },
+    "completion_operation_id": {"$ref": "common.schema.json#/$defs/nullable_sha256"},
+    "terminal_completed_at": {"$ref": "common.schema.json#/$defs/nullable_timestamp"},
+    "terminal_revalidation": {
+      "oneOf": [
+        {"type": "null"},
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "schema_version",
+            "expected_check_sources",
+            "native_gate_execution",
+            "native_gate_check",
+            "v_smoke_execution",
+            "business_operation_id",
+            "business_transition",
+            "source_refetch",
+            "source_state_pre_snapshot",
+            "source_state_snapshot",
+            "source_state_cas_history",
+            "git_ancestry_proof",
+            "source_atomic_pre_projection",
+            "pre_business_projection",
+            "final_projection",
+            "facts_digest"
+          ],
+          "properties": {
+            "schema_version": {"type": "integer", "const": 5},
+            "expected_check_sources": {
+              "$ref": "active-intent.schema.json#/properties/expected_check_sources"
+            },
+            "native_gate_execution": {"$ref": "native-gate-execution.schema.json"},
+            "native_gate_check": {"$ref": "common.schema.json#/$defs/gate_run"},
+            "v_smoke_execution": {"$ref": "common.schema.json#/$defs/v_smoke_execution"},
+            "business_operation_id": {"$ref": "common.schema.json#/$defs/sha256"},
+            "business_transition": {
+              "type": "string",
+              "enum": [
+                "post_check_green",
+                "post_check_red",
+                "post_check_infra_exhausted",
+                "rollback_post_green",
+                "rollback_failed",
+                "remediation_green",
+                "remediation_red",
+                "source_unreachable"
+              ]
+            },
+            "source_refetch": {
+              "oneOf": [
+                {"type": "null"},
+                {"$ref": "common.schema.json#/$defs/source_refetch"}
+              ]
+            },
+            "source_state_snapshot": {
+              "oneOf": [
+                {"type": "null"},
+                {"$ref": "source-state.schema.json"}
+              ]
+            },
+            "source_state_pre_snapshot": {
+              "oneOf": [
+                {"type": "null"},
+                {"$ref": "source-state.schema.json"}
+              ]
+            },
+            "source_state_cas_history": {
+              "type": "array",
+              "maxItems": 128,
+              "uniqueItems": true,
+              "items": {"$ref": "#/$defs/source_state_transition"}
+            },
+            "git_ancestry_proof": {
+              "oneOf": [
+                {"type": "null"},
+                {"$ref": "#/$defs/git_ancestry_proof"}
+              ]
+            },
+            "source_atomic_pre_projection": {
+              "oneOf": [
+                {"type": "null"},
+                {"$ref": "#/$defs/terminal_state_projection"}
+              ]
+            },
+            "pre_business_projection": {"$ref": "#/$defs/terminal_state_projection"},
+            "final_projection": {"$ref": "#/$defs/terminal_state_projection"},
+            "facts_digest": {"$ref": "common.schema.json#/$defs/sha256"}
+          }
+        }
+      ]
+    }
+  },
+  "allOf": [
+    {
+      "if": {"properties": {"handoff_ordinal": {"const": 0}}, "required": ["handoff_ordinal"]},
+      "then": {"properties": {"predecessor_handoff_id": {"type": "null"}}},
+      "else": {"properties": {"predecessor_handoff_id": {"$ref": "common.schema.json#/$defs/sha256"}}}
+    },
+    {
+      "if": {
+        "properties": {"consumer_type": {"enum": ["candidate", "adopt-current", "rollback"]}},
+        "required": ["consumer_type"]
+      },
+      "then": {"properties": {"resume_capability": {"const": "native_gate"}}}
+    },
+    {
+      "if": {"properties": {"resume_capability": {"const": "native_gate"}}, "required": ["resume_capability"]},
+      "then": {
+        "properties": {
+          "workflow_path": {"const": ".github/workflows/update_tccbin.yml"},
+          "subject": {"$ref": "native-gate-subject.schema.json"}
+        }
+      },
+      "else": {
+        "properties": {"workflow_path": {"const": ".github/workflows/tccbin_revalidate.yml"}}
+      }
+    },
+    {
+      "if": {"properties": {"state": {"const": "pending"}}, "required": ["state"]},
+      "then": {
+        "properties": {
+          "selected_run_id": {"type": "null"},
+          "selected_run_attempt": {"type": "null"},
+          "receiver_master_sha": {"type": "null"},
+          "ack_operation_id": {"type": "null"},
+          "receiver_conclusion": {"type": "null"},
+          "receiver_output_digest": {"type": "null"},
+          "deadline": {"type": "null"},
+          "terminal_outcome": {"type": "null"},
+          "completion_operation_id": {"type": "null"},
+          "terminal_revalidation": {"type": "null"}
+        }
+      }
+    },
+    {
+      "if": {"properties": {"state": {"const": "dispatched"}}, "required": ["state"]},
+      "then": {
+        "properties": {
+          "dispatch_generation": {"minimum": 1},
+          "dispatch_operation_ids": {"minItems": 1},
+          "selected_run_id": {"$ref": "common.schema.json#/$defs/run_id"},
+          "selected_run_attempt": {"type": "integer", "minimum": 1},
+          "receiver_master_sha": {"$ref": "common.schema.json#/$defs/sha40"},
+          "ack_operation_id": {"$ref": "common.schema.json#/$defs/sha256"},
+          "deadline": {"$ref": "common.schema.json#/$defs/timestamp"},
+          "terminal_outcome": {"type": "null"},
+          "completion_operation_id": {"type": "null"},
+          "terminal_revalidation": {"type": "null"}
+        }
+      }
+    },
+    {
+      "if": {"properties": {"state": {"const": "complete"}}, "required": ["state"]},
+      "then": {
+        "properties": {
+          "dispatch_generation": {"minimum": 1},
+          "dispatch_operation_ids": {"minItems": 1},
+          "selected_run_id": {"$ref": "common.schema.json#/$defs/run_id"},
+          "selected_run_attempt": {"type": "integer", "minimum": 1},
+          "receiver_master_sha": {"$ref": "common.schema.json#/$defs/sha40"},
+          "ack_operation_id": {"$ref": "common.schema.json#/$defs/sha256"},
+          "receiver_conclusion": {"type": "string", "enum": ["success", "failure", "cancelled", "timed_out"]},
+          "receiver_output_digest": {"$ref": "common.schema.json#/$defs/sha256"},
+          "deadline": {"$ref": "common.schema.json#/$defs/timestamp"},
+          "terminal_outcome": {
+            "type": "string",
+            "enum": ["green", "no_op", "functional_defect_routed", "infrastructure_blocked", "source_waiting", "native_gate_green_successor"]
+          },
+          "completion_operation_id": {"$ref": "common.schema.json#/$defs/sha256"}
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {"terminal_outcome": {"const": "source_waiting"}},
+        "required": ["terminal_outcome"]
+      },
+      "then": {
+        "required": ["terminal_completed_at"],
+        "properties": {"terminal_completed_at": {"$ref": "common.schema.json#/$defs/timestamp"}}
+      },
+      "else": {"properties": {"terminal_completed_at": {"type": "null"}}}
+    },
+    {
+      "if": {
+        "properties": {
+          "terminal_outcome": {"enum": ["green", "no_op", "native_gate_green_successor"]}
+        },
+        "required": ["terminal_outcome"]
+      },
+      "then": {"properties": {"receiver_conclusion": {"const": "success"}}}
+    },
+    {
+      "if": {
+        "properties": {"terminal_outcome": {"const": "native_gate_green_successor"}},
+        "required": ["terminal_outcome"]
+      },
+      "then": {
+        "properties": {
+          "resume_capability": {"const": "native_gate"},
+          "successor_handoff_id": {"$ref": "common.schema.json#/$defs/sha256"},
+          "native_gate_evidence_digest": {"$ref": "common.schema.json#/$defs/sha256"},
+          "native_gate_check_digest": {"$ref": "common.schema.json#/$defs/sha256"},
+          "terminal_revalidation": {"type": "null"}
+        }
+      },
+      "else": {
+        "if": {"properties": {"state": {"const": "complete"}}, "required": ["state"]},
+        "then": {"properties": {"successor_handoff_id": {"type": "null"}}}
+      }
+    },
+    {
+      "if": {"properties": {"handoff_ordinal": {"minimum": 1}}, "required": ["handoff_ordinal"]},
+      "then": {
+        "properties": {
+          "native_gate_evidence_digest": {"$ref": "common.schema.json#/$defs/sha256"},
+          "native_gate_check_digest": {"$ref": "common.schema.json#/$defs/sha256"}
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "state": {"const": "complete"},
+          "resume_capability": {"enum": ["v_smoke", "evidence_only"]}
+        },
+        "required": ["state", "resume_capability"]
+      },
+      "then": {
+        "properties": {
+          "terminal_revalidation": {"$ref": "#/properties/terminal_revalidation/oneOf/1"}
+        }
+      },
+      "else": {"properties": {"terminal_revalidation": {"type": "null"}}}
+    },
+    {
+      "if": {
+        "properties": {"state": {"const": "blocked"}},
+        "required": ["state"]
+      },
+      "then": {
+        "properties": {
+          "completion_operation_id": {"type": "null"},
+          "terminal_revalidation": {"type": "null"}
+        }
+      }
+    }
+  ]
+}

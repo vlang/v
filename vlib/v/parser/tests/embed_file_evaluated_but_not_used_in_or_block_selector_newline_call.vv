@@ -1,0 +1,11 @@
+import v.embed_file
+
+fn maybe_file() ?embed_file.EmbedFileData {
+	return none
+}
+
+fn main() {
+	maybe_file() or { $embed_file(@FILE) }.to_string
+	// Keep the following parenthesized statement separate from the selector above.
+	(1)
+}

@@ -1,3 +1,4 @@
+// vtest vflags: -w
 import os
 import term
 import v.util.diff
@@ -312,11 +313,7 @@ fn test_main() {
 			println('fail execute ${t.cmd}')
 			panic(res.output)
 		}
-		res_output := $if windows {
-			res.output.replace('\r\n', '\n')
-		} $else {
-			res.output
-		}
+		res_output := $if windows { res.output.replace('\r\n', '\n') } $else { res.output }
 		if t.output.trim_space() != res_output.trim_space() {
 			println('${term.red('FAIL')} ${t.cmd}')
 			if diff_ := diff.compare_text(t.output, res_output) {

@@ -1,0 +1,12 @@
+import json
+
+struct User {
+	name string
+}
+
+// A parameter/local/function/const/global named `json2` collides with the `import json2`
+// the migration would add (the checker rejects a declaration that duplicates an imported
+// symbol), so the file is kept on legacy json.
+fn to_json(json2 int, u User) string {
+	return json.encode(u)
+}

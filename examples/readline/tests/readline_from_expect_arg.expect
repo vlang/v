@@ -1,6 +1,7 @@
 #!/usr/bin/env expect
 
-set timeout 3
+# Allow a cold compiler/module-cache startup before the interactive prompt.
+set timeout 10
 set v_root [exec sh -c "git rev-parse --show-toplevel"]
 # Use input arguments for send and expect.
 set send_ [lindex $argv 0]

@@ -23,6 +23,9 @@ on:
       - 'cmd/tools/**'
       - '!cmd/tools/builders/**.v'
 
+permissions:
+  contents: read
+
 # Allow only one concurrent deployment, skipping runs queued between the run in-progress and latest queued.
 # However, do NOT cancel in-progress runs as we want to allow these production deployments to complete.
 concurrency:
@@ -34,7 +37,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - name: Build V
         run: make -j4
       - name: Regenerate v.c and v_win.c
@@ -50,14 +53,20 @@ jobs:
 
           rm -rf vc/v.c vc/v_win.c
           ./v -o vc/v.c     -cross               cmd/v
-          ./v -o vc/v_win.c -os windows -cc msvc cmd/v
+          ./v -o vc/v_win.c -cross -os windows -cc msvc cmd/v
 
           sed -i "1s/^/#define V_COMMIT_HASH \"$COMMIT_HASH\"\n/" vc/v.c
           sed -i "1s/^/#define V_COMMIT_HASH \"$COMMIT_HASH\"\n/" vc/v_win.c
 
-          # do some sanity checks for the generated v.c file:
+          # do some sanity checks for the generated v.c/v_win.c files. `-cross` makes `$if cross ?`
+          # (and the `?`-guarded v1_fallback/musl branches that key off it, e.g. in
+          # target-specific compiler support files resolve statically instead of compiling out empty,
+          # which is what lets GNUmakefile later recompile these snapshots with
+          # -DCUSTOM_DEFINE_v1_fallback to build v1$(EXE_EXT).
           grep 'Turned ON custom defines: no_backtrace,cross'  vc/v.c
           grep '#define CUSTOM_DEFINE_cross' vc/v.c
+          grep 'Turned ON custom defines: no_backtrace,cross'  vc/v_win.c
+          grep '#define CUSTOM_DEFINE_cross' vc/v_win.c
 
           # ensure the generated C files for the compiler, are over 5000 lines long, as a safety measure
           [ "$(wc -l < vc/v.c)" -gt 5000 ]
@@ -72,4 +81,17 @@ jobs:
 
       - name: Deploy
         if: github.event_name == 'push' && github.repository == 'vlang/v' && github.ref == 'refs/heads/master'
-        run: git -C vc push || true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # A queued run can become stale while it is generating C. Publishing that run
+          # would rewind vc to a compiler that predates master, and the Windows CI jobs,
+          # which bootstrap from vc/v_win.c, would fail until the next run. Comparing
+          # against master's current tip also keeps publishing working after a force-push.
+          COMMIT_HASH="$(git rev-parse HEAD)"
+          latest="$(gh api "repos/${{ github.repository }}/commits/master" --jq '.sha')"
+          if [ "$COMMIT_HASH" != "$latest" ]; then
+            echo "master is now at ${latest}; the stale ${COMMIT_HASH} snapshot is not published"
+            exit 0
+          fi
+          git -C vc push

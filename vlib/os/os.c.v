@@ -69,9 +69,9 @@ fn C._wstat64(&u16, voidptr) u64
 
 fn C.chown(&char, i32, i32) i32
 
-fn C.ftruncate(voidptr, u64) i32
+fn C.ftruncate(i32, u64) i32
 
-fn C._chsize_s(voidptr, u64) i32
+fn C._chsize_s(i32, u64) i32
 
 // read_bytes returns all bytes read from file in `path`.
 @[manualfree]
@@ -508,19 +508,30 @@ pub fn is_executable(path string) bool {
 		// 02 Write-only
 		// 04 Read-only
 		// 06 Read and write
-		p := real_path(path)
-		if !exists(p) {
-			return false
+		// Windows decides by extension, so check that first: a name that already
+		// carries an executable extension needs a single existence check, without
+		// opening the file to resolve links (`real_path`), which costs several
+		// times more and runs for every hit in `find_abs_path_of_executable`.
+		// A name without one may still be a link to an executable, so resolve it.
+		if win_has_executable_extension(path) {
+			return exists(path)
 		}
-		ext := p.to_lower().all_after_last('.')
-		// Note: Extensions like 'ps1', 'vbs', 'js', 'msi', 'scr', 'pif' require specific interpreters and are not directly executable
-		return ext in ['exe', 'com', 'bat', 'cmd']
+		p := real_path(path)
+		return exists(p) && win_has_executable_extension(p)
 	}
 	$if solaris {
 		attr := stat(path) or { return false }
 		return (int(attr.mode) & (s_ixusr | s_ixgrp | s_ixoth)) != 0
 	}
 	return C.access(&char(path.str), x_ok) != -1
+}
+
+// win_has_executable_extension reports whether `path` ends in one of the
+// extensions Windows runs directly.
+// Note: Extensions like 'ps1', 'vbs', 'js', 'msi', 'scr', 'pif' require specific interpreters and are not directly executable
+fn win_has_executable_extension(path string) bool {
+	ext := path.to_lower().all_after_last('.')
+	return ext in ['exe', 'com', 'bat', 'cmd']
 }
 
 // is_writable returns `true` if `path` is writable.
@@ -612,7 +623,7 @@ pub fn get_raw_line() string {
 		unsafe {
 			initial_size := 256 * wide_char_size
 			mut buf := malloc_noscan(initial_size)
-			defer { unsafe { buf.free() } }
+			defer { buf.free() }
 			mut capacity := initial_size
 			mut offset := 0
 
@@ -735,8 +746,7 @@ pub fn get_raw_stdin() []u8 {
 
 // read_file_array reads an array of `T` values from file `path`.
 pub fn read_file_array[T](path string) []T {
-	a := T{}
-	tsize := int(sizeof(a))
+	tsize := int(sizeof(T))
 	// prepare for reading, get current file size
 	mut fp := vfopen(path, 'rb') or { return []T{} }
 	C.fseek(fp, 0, C.SEEK_END)
@@ -803,14 +813,14 @@ pub fn executable() string {
 	}
 	$if macos {
 		self_path := &char(C._dyld_get_image_name(u32(0)))
-		if self_path == C.NULL {
+		if self_path == unsafe { nil } {
 			return executable_fallback()
 		}
 		return unsafe { cstring_to_vstring(self_path) }
 	}
 	$if freebsd {
 		bufsize := usize(max_path_buffer_size)
-		mib := [C.CTL_KERN, C.KERN_PROC, C.KERN_PROC_PATHNAME, -1]!
+		mib := [i32(C.CTL_KERN), C.KERN_PROC, C.KERN_PROC_PATHNAME, -1]! // C `int` mib buffer
 		unsafe { C.sysctl(&mib[0], mib.len, &result[0], &bufsize, 0, 0) }
 		res := unsafe { tos_clone(&result[0]) }
 		return res
@@ -825,15 +835,15 @@ pub fn executable() string {
 		mut pbuf := unsafe { &&u8(&result[0]) }
 		bufsize := usize(max_path_buffer_size)
 		pid := C.getpid()
-		mib := [C.CTL_KERN, C.KERN_PROC_ARGS, pid, C.KERN_PROC_ARGV]!
-		if unsafe { C.sysctl(&mib[0], mib.len, C.NULL, &bufsize, C.NULL, 0) } == 0 {
+		mib := [i32(C.CTL_KERN), C.KERN_PROC_ARGS, pid, C.KERN_PROC_ARGV]! // C `int` mib buffer
+		if unsafe { C.sysctl(&mib[0], mib.len, nil, &bufsize, nil, 0) } == 0 {
 			if bufsize > max_path_buffer_size {
 				pbuf = unsafe { &&u8(malloc(int(bufsize))) }
 				defer(fn) {
 					unsafe { free(pbuf) }
 				}
 			}
-			if unsafe { C.sysctl(&mib[0], mib.len, pbuf, &bufsize, C.NULL, 0) } == 0 {
+			if unsafe { C.sysctl(&mib[0], mib.len, pbuf, &bufsize, nil, 0) } == 0 {
 				if unsafe { *pbuf[0] } == `/` {
 					res := unsafe { tos_clone(pbuf[0]) }
 					return res
@@ -1055,7 +1065,11 @@ pub fn file_last_mod_unix(path string) i64 {
 
 // flush will flush the stdout buffer.
 pub fn flush() {
-	C.fflush(C.stdout)
+	$if v2_native_windows_pe_minimal ? {
+		return
+	} $else {
+		C.fflush(C.stdout)
+	}
 }
 
 // chmod change file access attributes of `path` to `mode`.
@@ -1161,9 +1175,30 @@ pub fn execve(cmdpath string, cmdargs []string, envs []string) ! {
 pub fn is_atty(fd int) int {
 	$if windows {
 		mut mode := u32(0)
-		osfh := voidptr(C._get_osfhandle(fd))
-		C.GetConsoleMode(osfh, voidptr(&mode))
-		return int(mode)
+		$if v2_native_windows_pe_minimal ? {
+			if fd != 0 && fd != 1 && fd != 2 {
+				return 0
+			}
+			handle_id := if fd == 0 {
+				C.STD_INPUT_HANDLE
+			} else if fd == 2 {
+				C.STD_ERROR_HANDLE
+			} else {
+				C.STD_OUTPUT_HANDLE
+			}
+			handle := C.GetStdHandle(handle_id)
+			if isnil(handle) || handle == C.INVALID_HANDLE_VALUE {
+				return 0
+			}
+			if !C.GetConsoleMode(handle, voidptr(&mode)) {
+				return 0
+			}
+			return int(mode)
+		} $else {
+			osfh := voidptr(C._get_osfhandle(fd))
+			C.GetConsoleMode(osfh, voidptr(&mode))
+			return int(mode)
+		}
 	} $else {
 		return C.isatty(fd)
 	}

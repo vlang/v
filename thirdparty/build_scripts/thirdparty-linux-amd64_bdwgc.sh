@@ -41,6 +41,7 @@ CC=$CC CFLAGS='-Os -mtune=generic -fPIC' LDFLAGS='-Os -fPIC' ./configure \
 	--enable-parallel-mark \
 	--enable-single-obj-compilation \
 	--enable-gc-debug \
+	--enable-thread-local-alloc \
 	--with-libatomic-ops=yes \
 	--enable-sigrt-signals
 

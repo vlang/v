@@ -64,7 +64,7 @@ fn main() {
 	}
 
 	if config.show_help {
-		// Generate and layout (a configuable) documentation for the flags
+		// Generate and layout (a configurable) documentation for the flags
 		documentation := flag.to_doc[Config](
 			version: '1.0' // NOTE: this overrides the `@[version: '1.2.3']` struct attribute
 			fields:  {

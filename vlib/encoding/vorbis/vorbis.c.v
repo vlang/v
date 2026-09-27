@@ -36,16 +36,16 @@ pub mut:
 
 pub enum VorbisErrorCode {
 	no_error
-	need_more_data              = 1                   // not a real error
-	invalid_api_mixing    // can not mix API modes
-	out_of_memory         // not enough memory
-	not_supported         // uses floor 0
-	too_many_channels     // STB_VORBIS_MAX_CHANNELS is too small
-	file_open_failure     // fopen() failed
-	seek_without_length   // can't seek in unknown-length file
-	unexpected_eof              = 10                  // file is truncated?
-	seek_invalid          // seek past EOF
-	vorbis_invalid_setup        = 20                  // vorbis decoding error (corrupt/invalid stream)
+	need_more_data              = 1 // not a real error
+	invalid_api_mixing  // can not mix API modes
+	out_of_memory       // not enough memory
+	not_supported       // uses floor 0
+	too_many_channels   // STB_VORBIS_MAX_CHANNELS is too small
+	file_open_failure   // fopen() failed
+	seek_without_length // can't seek in unknown-length file
+	unexpected_eof              = 10 // file is truncated?
+	seek_invalid // seek past EOF
+	vorbis_invalid_setup        = 20 // vorbis decoding error (corrupt/invalid stream)
 	vorbis_invalid_stream // vorbis decoding error
 	ogg_missing_capture_pattern = 30
 	ogg_invalid_stream_structure_version

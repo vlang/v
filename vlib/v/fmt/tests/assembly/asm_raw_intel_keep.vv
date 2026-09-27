@@ -1,0 +1,16 @@
+fn example(lhs int, rhs int) int {
+	mut value := lhs
+	asm amd64 raw {
+		"addl %[rhs], %[value]\n\t"
+		; +r (value)
+		; r (rhs)
+		; cc
+	}
+	asm amd64 intel {
+		add value, rhs
+		; +r (value)
+		; r (rhs)
+		; cc
+	}
+	return value
+}

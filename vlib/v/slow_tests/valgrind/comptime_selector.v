@@ -28,7 +28,7 @@ fn serialize_to[T](val T, mut output []u8) ! {
 	$for v in Primitive.variants {
 		$if v.typ is T {
 			output << binary.encode_binary(val, binary.EncodeConfig{
-				buffer_len: int(sizeof[T]())
+				buffer_len: int(sizeof(T))
 				big_endian: false
 			})!
 			return
@@ -40,7 +40,7 @@ fn serialize_to[T](val T, mut output []u8) ! {
 		}
 		bytes := val.bytes()
 		output << binary.encode_binary(u16(bytes.len), binary.EncodeConfig{
-			buffer_len: int(sizeof[u16]())
+			buffer_len: int(sizeof(u16))
 			big_endian: false
 		})!
 		output << bytes

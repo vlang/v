@@ -1,0 +1,95 @@
+module main
+
+import gg
+
+gg.start(
+	width:        500
+	height:       400
+	window_title: 'Test draw_rounded_rect_border'
+	bg_color:     gg.white
+	sample_count: 4
+	frame_fn:     fn (mut ctx gg.Context) {
+		ctx.begin()
+		w := 60
+		h := 30
+		// row1
+		ctx.draw_rounded_rect_border(20, 20, w, h, 5, 1, gg.rgba(100, 100, 100, 255), gg.rgba(100,
+			100, 100, 0))
+		ctx.draw_rounded_rect_border(90, 20, w, h, 5, 2, gg.rgba(100, 100, 100, 255), gg.rgba(100,
+			100, 100, 0))
+		ctx.draw_rounded_rect_border(160, 20, w, h, 5, 3, gg.rgba(100, 100, 100, 255), gg.rgba(100,
+			100, 100, 0))
+		ctx.draw_rounded_rect_border(230, 20, w, h, 5, 5, gg.rgba(100, 100, 100, 255), gg.rgba(100,
+			100, 100, 0))
+		ctx.draw_rounded_rect_border(300, 20, w, h, 5, 8, gg.rgba(100, 100, 100, 255), gg.rgba(100,
+			100, 100, 0))
+		ctx.draw_rounded_rect_border(370, 20, w, h, 5, 15, gg.rgba(100, 100, 100, 255), gg.rgba(100,
+			100, 100, 0))
+		// row2
+		ctx.draw_rounded_rect_border(20, 70, w, h, 5, 1, gg.rgba(100, 100, 100, 255), gg.rgba(100,
+			100, 100, 50))
+		ctx.draw_rounded_rect_border(90, 70, w, h, 5, 2, gg.rgba(100, 100, 100, 255), gg.rgba(100,
+			100, 100, 50))
+		ctx.draw_rounded_rect_border(160, 70, w, h, 5, 3, gg.rgba(100, 100, 100, 255), gg.rgba(100,
+			100, 100, 50))
+		ctx.draw_rounded_rect_border(230, 70, w, h, 5, 5, gg.rgba(100, 100, 100, 255), gg.rgba(100,
+			100, 100, 50))
+		ctx.draw_rounded_rect_border(300, 70, w, h, 5, 8, gg.rgba(100, 100, 100, 255), gg.rgba(100,
+			100, 100, 50))
+		ctx.draw_rounded_rect_border(370, 70, w, h, 5, 15, gg.rgba(100, 100, 100, 255), gg.rgba(100,
+			100, 100, 50))
+		// row3
+		ctx.draw_rounded_rect_border(20, 120, w, h, 5, 1, gg.rgba(100, 100, 100, 255), gg.rgba(0,
+			0, 0, 50))
+		ctx.draw_rounded_rect_border(90, 120, w, h, 7, 2, gg.rgba(100, 100, 100, 255), gg.rgba(0,
+			0, 0, 50))
+		ctx.draw_rounded_rect_border(160, 120, w, h, 9, 3, gg.rgba(100, 100, 100, 255), gg.rgba(0,
+			0, 0, 50))
+		ctx.draw_rounded_rect_border(230, 120, w, h, 11, 5, gg.rgba(100, 100, 100, 255), gg.rgba(0,
+			0, 0, 50))
+		ctx.draw_rounded_rect_border(300, 120, w, h, 15, 8, gg.rgba(100, 100, 100, 255), gg.rgba(0,
+			0, 0, 50))
+		ctx.draw_rounded_rect_border(370, 120, w, h, 15, 15, gg.rgba(100, 100, 100, 255), gg.rgba(0,
+			0, 0, 50))
+		// row4
+		ctx.draw_rounded_rect_border(20, 170, w, h, 0, 1, gg.rgba(100, 100, 100, 255), gg.rgba(0,
+			0, 0, 50))
+		ctx.draw_rounded_rect_border(90, 170, w, h, 0, 2, gg.rgba(100, 100, 100, 255), gg.rgba(0,
+			0, 0, 50))
+		ctx.draw_rounded_rect_border(160, 170, w, h, 0, 3, gg.rgba(100, 100, 100, 255), gg.rgba(0,
+			0, 0, 50))
+		ctx.draw_rounded_rect_border(230, 170, w, h, 0, 5, gg.rgba(100, 100, 100, 255), gg.rgba(0,
+			0, 0, 50))
+		ctx.draw_rounded_rect_border(300, 170, w, h, 0, 8, gg.rgba(100, 100, 100, 255), gg.rgba(0,
+			0, 0, 50))
+		ctx.draw_rounded_rect_border(370, 170, w, h, 0, 15, gg.rgba(100, 100, 100, 255), gg.rgba(0,
+			0, 0, 50))
+		// row5
+		ctx.draw_rounded_rect_border(20, 220, w, h, 5, 0, gg.rgba(100, 100, 100, 255), gg.rgba(0,
+			0, 0, 50))
+		ctx.draw_rounded_rect_border(90, 220, w, h, 7, 0, gg.rgba(100, 100, 100, 255), gg.rgba(0,
+			0, 0, 50))
+		ctx.draw_rounded_rect_border(160, 220, w, h, 9, 0, gg.rgba(100, 100, 100, 255), gg.rgba(0,
+			0, 0, 50))
+		ctx.draw_rounded_rect_border(230, 220, w, h, 11, 5, gg.rgba(100, 100, 100, 0), gg.rgba(0,
+			0, 0, 50))
+		ctx.draw_rounded_rect_border(300, 220, w, h, 15, 8, gg.rgba(100, 100, 100, 0), gg.rgba(0,
+			0, 0, 50))
+		ctx.draw_rounded_rect_border(370, 220, w, h, 15, 15, gg.rgba(100, 100, 100, 0), gg.rgba(0,
+			0, 0, 50))
+		// row6
+		ctx.draw_rounded_rect_border(20, 270, w, w, 5, 1, gg.rgba(100, 100, 100, 255), gg.rgba(0,
+			0, 0, 50))
+		ctx.draw_rounded_rect_border(90, 270, w, w, 7, 2, gg.rgba(100, 100, 100, 255), gg.rgba(0,
+			0, 0, 50))
+		ctx.draw_rounded_rect_border(160, 270, w, w, 9, 3, gg.rgba(100, 100, 100, 255), gg.rgba(0,
+			0, 0, 50))
+		ctx.draw_rounded_rect_border(230, 270, w, w, 11, 5, gg.rgba(100, 100, 100, 255), gg.rgba(0,
+			0, 0, 50))
+		ctx.draw_rounded_rect_border(300, 270, w, w, 15, 8, gg.rgba(100, 100, 100, 255), gg.rgba(0,
+			0, 0, 50))
+		ctx.draw_rounded_rect_border(370, 270, w, w, 30, 15, gg.rgba(100, 100, 100, 255), gg.rgba(0,
+			0, 0, 50))
+		ctx.end()
+	}
+)

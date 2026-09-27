@@ -46,8 +46,10 @@ pub type C.LPTSTR = &C.TCHAR
 
 pub type C.LPCTSTR = &C.TCHAR
 
-fn C.WriteConsoleW(voidptr, &u16, u32, &u32, voidptr) bool
-fn C.WriteFile(voidptr, &u8, u32, &u32, voidptr) bool
+type C.DWORD = u32
+
+fn C.WriteConsoleW(voidptr, &u16, C.DWORD, &C.DWORD, voidptr) bool
+fn C.WriteFile(voidptr, &u8, C.DWORD, &C.DWORD, voidptr) bool
 fn C.ExitProcess(u32)
 fn C.GetProcessHeap() voidptr
 fn C.HeapAlloc(voidptr, u32, usize) voidptr
@@ -64,7 +66,7 @@ fn set_stream_binary_mode(stream &C.FILE) {
 }
 
 fn is_terminal(fd int) int {
-	mut mode := u32(0)
+	mut mode := C.DWORD(0)
 	$if v2_native_windows_pe_minimal ? {
 		if fd != 0 && fd != 1 && fd != 2 {
 			return 0
@@ -133,8 +135,8 @@ fn write_buf_to_console(fd int, buf &u8, buf_len int) bool {
 		mut remaining_chars := converted
 		mut wide_ptr := wide_buf
 		for remaining_chars > 0 {
-			mut chars_written := u32(0)
-			if !C.WriteConsoleW(console_handle, wide_ptr, u32(remaining_chars), &chars_written, nil)
+			mut chars_written := C.DWORD(0)
+			if !C.WriteConsoleW(console_handle, wide_ptr, C.DWORD(remaining_chars), &chars_written, nil)
 				|| chars_written == 0 {
 				return false
 			}
@@ -154,7 +156,7 @@ fn write_buf_to_console_kernel32(fd int, buf &u8, buf_len int) bool {
 	if isnil(console_handle) || console_handle == voidptr(-1) {
 		return false
 	}
-	mut mode := u32(0)
+	mut mode := C.DWORD(0)
 	if !C.GetConsoleMode(console_handle, &mode) {
 		return false
 	}
@@ -183,8 +185,8 @@ fn write_buf_to_console_kernel32(fd int, buf &u8, buf_len int) bool {
 		mut remaining_chars := converted
 		mut wide_ptr := wide_buf
 		for remaining_chars > 0 {
-			mut chars_written := u32(0)
-			if !C.WriteConsoleW(console_handle, wide_ptr, u32(remaining_chars), &chars_written, nil)
+			mut chars_written := C.DWORD(0)
+			if !C.WriteConsoleW(console_handle, wide_ptr, C.DWORD(remaining_chars), &chars_written, nil)
 				|| chars_written == 0 {
 				return false
 			}
@@ -209,6 +211,13 @@ fn write_buf_to_fd_kernel32_status(fd int, buf &u8, buf_len int) int {
 	if write_buf_to_console_kernel32(fd, buf, buf_len) {
 		return 0
 	}
+	return write_buf_to_std_handle_kernel32(fd, buf, buf_len)
+}
+
+// write_buf_to_std_handle_kernel32 writes the bytes to the handle of stdout (fd 1) or
+// stderr (fd 2) with `WriteFile`. Unlike `write_buf_to_console_kernel32`, it does not
+// convert them to UTF-16 for a console, so it does not allocate.
+fn write_buf_to_std_handle_kernel32(fd int, buf &u8, buf_len int) int {
 	handle_id := if fd == 2 { std_error_handle } else { std_output_handle }
 	handle := C.GetStdHandle(handle_id)
 	if isnil(handle) || handle == voidptr(-1) {
@@ -223,8 +232,8 @@ fn write_buf_to_fd_kernel32_status(fd int, buf &u8, buf_len int) int {
 			} else {
 				remaining_bytes
 			}
-			mut written := u32(0)
-			if !C.WriteFile(handle, ptr, u32(chunk), &written, nil) {
+			mut written := C.DWORD(0)
+			if !C.WriteFile(handle, ptr, C.DWORD(chunk), &written, nil) {
 				return 3
 			}
 			if written == 0 {
@@ -362,6 +371,25 @@ fn add_unhandled_exception_handler() {
 }
 
 fn C.IsDebuggerPresent() bool
+
+@[typedef]
+struct C.MEMORY_BASIC_INFORMATION {
+	AllocationBase voidptr
+}
+
+fn C.VirtualQuery(address voidptr, buffer &C.MEMORY_BASIC_INFORMATION, length usize) usize
+
+fn C.GetModuleHandleW(name &u16) voidptr
+
+// is_address_in_executable reports whether `address` is inside of the executable
+// image of the process, rather than inside of a DLL, which can be unloaded.
+fn is_address_in_executable(address voidptr) bool {
+	mut info := C.MEMORY_BASIC_INFORMATION{}
+	if C.VirtualQuery(address, &info, sizeof(info)) == 0 {
+		return false
+	}
+	return info.AllocationBase == C.GetModuleHandleW(unsafe { nil })
+}
 
 fn C.__debugbreak()
 

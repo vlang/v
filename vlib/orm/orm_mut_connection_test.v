@@ -16,11 +16,11 @@ fn (mut db Database) query(sql_stmt string) ! {
 }
 
 // select is used internally by V's ORM for processing `SELECT` queries
-fn (mut db Database) select(config orm.SelectConfig, data orm.QueryData, where orm.QueryData) ![][]orm.Primitive {
+fn (mut db Database) select(config orm.SelectConfig, _data orm.QueryData, where orm.QueryData) ![][]orm.Primitive {
 	// 1. Create query and bind necessary data
 	query := orm.orm_select_gen(config, '', true, ':', 1, where)
-	mut ret := [][]orm.Primitive{}
-	return ret
+	db.query(query)!
+	return [][]orm.Primitive{}
 }
 
 // insert is used internally by V's ORM for processing `INSERT` queries
@@ -39,7 +39,7 @@ fn (mut db Database) update(table orm.Table, data orm.QueryData, where orm.Query
 
 // delete is used internally by V's ORM for processing `DELETE ` queries
 fn (mut db Database) delete(table orm.Table, where orm.QueryData) ! {
-	query, converted := orm.orm_stmt_gen(.sqlite, table, '', .delete, true, ':', 1, orm.QueryData{},
+	query, _ := orm.orm_stmt_gen(.sqlite, table, '', .delete, true, ':', 1, orm.QueryData{},
 		where)
 
 	db.query(query)!
@@ -80,6 +80,12 @@ fn (mut db Database) drop(table orm.Table) ! {
 	db.query(query)!
 }
 
+// execute is used internally by V's ORM for executing raw SQL queries
+fn (mut db Database) execute(query string) ![]orm.Row {
+	db.query(query)!
+	return []orm.Row{}
+}
+
 fn test_orm_mut_connection() {
 	mut db := Database{}
 
@@ -104,4 +110,12 @@ fn test_orm_mut_connection() {
 	}!
 
 	assert db.last_query == 'DROP TABLE user;'
+}
+
+fn test_orm_execute_on_mock() {
+	mut db := Database{}
+
+	result := db.execute('SELECT 1 AS test_val')!
+	assert db.last_query == 'SELECT 1 AS test_val'
+	assert result.len == 0
 }

@@ -1,0 +1,61 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "transition-envelope.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "contract_version",
+    "audience",
+    "repository",
+    "workflow",
+    "workflow_ref",
+    "workflow_sha",
+    "run_id",
+    "run_attempt",
+    "operation_id",
+    "operation_ordinal",
+    "cas_attempt",
+    "intent_id",
+    "transition",
+    "subject_id",
+    "target_id",
+    "canonical_head",
+    "input_fingerprint",
+    "artifact_fingerprint",
+    "generation_read",
+    "generation_written",
+    "timestamp",
+    "expires_at",
+    "nonce"
+  ],
+  "properties": {
+    "contract_version": {"$ref": "common.schema.json#/$defs/contract_version"},
+    "audience": {"type": "string", "const": "vlang/v:tccbin-automation-state"},
+    "repository": {"type": "string", "const": "vlang/v"},
+    "workflow": {"$ref": "common.schema.json#/$defs/relative_path"},
+    "workflow_ref": {"type": "string", "const": "master"},
+    "workflow_sha": {"$ref": "common.schema.json#/$defs/sha40"},
+    "run_id": {"$ref": "common.schema.json#/$defs/run_id"},
+    "run_attempt": {"type": "integer", "minimum": 1},
+    "operation_id": {"$ref": "common.schema.json#/$defs/sha256"},
+    "operation_ordinal": {"type": "integer", "minimum": 0},
+    "cas_attempt": {"type": "integer", "minimum": 1, "maximum": 3},
+    "intent_id": {"$ref": "common.schema.json#/$defs/nullable_sha256"},
+    "transition": {"type": "string", "minLength": 1, "maxLength": 128},
+    "subject_id": {"type": "string", "minLength": 1, "maxLength": 128},
+    "target_id": {
+      "oneOf": [
+        {"type": "null"},
+        {"$ref": "common.schema.json#/$defs/target_id"}
+      ]
+    },
+    "canonical_head": {"$ref": "common.schema.json#/$defs/nullable_sha40"},
+    "input_fingerprint": {"$ref": "common.schema.json#/$defs/nullable_sha256"},
+    "artifact_fingerprint": {"$ref": "common.schema.json#/$defs/nullable_sha256"},
+    "generation_read": {"$ref": "common.schema.json#/$defs/generation"},
+    "generation_written": {"$ref": "common.schema.json#/$defs/generation"},
+    "timestamp": {"type": "string", "minLength": 20, "maxLength": 32},
+    "expires_at": {"type": "string", "minLength": 20, "maxLength": 32},
+    "nonce": {"$ref": "common.schema.json#/$defs/sha256"}
+  }
+}

@@ -1,0 +1,27 @@
+fn inactive_match_branch_embed_is_not_evaluated() {
+	_ := 0 == ($match 'ok' {
+		'skip' {
+			$embed_file(@FILE).len
+		}
+		$else {
+			0
+		}
+	})
+}
+
+const skip = 'skip'
+
+fn inactive_const_match_branch_embed_is_not_evaluated() {
+	_ := 0 == ($match 'ok' {
+		skip {
+			$embed_file(@FILE).len
+		}
+		$else {
+			0
+		}
+	})
+}
+
+fn main() {
+	assert missing_symbol == 0
+}

@@ -1,5 +1,5 @@
 import net.http
-import json
+import json2 as json
 
 struct MimeType {
 	source       string
@@ -13,7 +13,7 @@ fn main() {
 	chdir(mime_folder)!
 	//
 	mt_json := http.get('https://raw.githubusercontent.com/jshttp/mime-db/master/db.json')!
-	mt_map := json.decode(map[string]MimeType, mt_json.body)!
+	mt_map := json.decode[map[string]MimeType](mt_json.body)!
 
 	mut ext_to_mt_str := map[string]string{}
 	for mt_str, mt in mt_map {

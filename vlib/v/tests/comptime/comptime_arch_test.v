@@ -2,9 +2,8 @@ const arch = $if amd64 {
 	'amd64'
 } $else $if i386 {
 	'i386'
-}
-//$else $if aarch64 {'aarch64'}
-$else $if arm64 {
+} $else $if arm64 {
+	//$else $if aarch64 {'aarch64'}
 	'arm64'
 } $else $if arm32 {
 	'arm32'

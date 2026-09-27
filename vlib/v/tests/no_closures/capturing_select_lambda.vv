@@ -1,0 +1,14 @@
+fn call(f fn () int) int {
+	return f()
+}
+
+fn main() {
+	ch := chan int{cap: 1}
+	ch <- 5
+	select {
+		value := <-ch {
+			// the received `value` is captured, so the lambda needs a closure
+			println(call(|| value))
+		}
+	}
+}

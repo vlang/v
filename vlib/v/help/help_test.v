@@ -35,6 +35,13 @@ fn test_run_topic_mentions_conditional_cleanup() {
 	assert res.output.contains('If the executable already existed before the command')
 }
 
+fn test_build_topic_lists_fastc_backend() {
+	res := os.execute(vexe + ' help build')
+	assert res.exit_code == 0, res.output
+	assert res.output.contains('* `fastc`'), res.output
+	assert res.output.contains('on macOS and Linux hosts in V builds that embed V3'), res.output
+}
+
 fn test_all_topics() {
 	help_dir := os.join_path(@VEXEROOT, 'vlib', 'v', 'help')
 	topic_paths := os.walk_ext(help_dir, '.txt')

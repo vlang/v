@@ -1,0 +1,26 @@
+@[translated]
+module main
+
+type TooSmallAlias = [2]char
+type TooSmallElement = char
+type NestedTooSmallElement = TooSmallElement
+
+struct TooSmallFixedNames {
+	char_name          [2]char
+	signed_name        [2]i8
+	unsigned_name      [2]u8
+	alias_name         TooSmallAlias
+	element_alias_name [2]NestedTooSmallElement
+	utf8_name          [1]u8
+}
+
+fn main() {
+	_ := TooSmallFixedNames{
+		char_name:          c'abc'
+		signed_name:        c'abc'
+		unsigned_name:      c'abc'
+		alias_name:         c'abc'
+		element_alias_name: c'abc'
+		utf8_name:          c'é'
+	}
+}

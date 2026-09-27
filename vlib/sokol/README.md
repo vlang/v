@@ -9,6 +9,19 @@ Each `.h` file in the sokol source code is well-documented as can be seen here:
 
 [sokol_audio.h](https://github.com/floooh/sokol/blob/master/sokol_audio.h)
 
+## Windows graphics backend
+
+On Windows, sokol uses OpenGL by default. Compile with `-d sokol_d3d11` to opt in
+to the D3D11 backend:
+
+```sh
+v -d sokol_d3d11 examples/gg/minimal.v
+```
+
+This selects `SOKOL_D3D11` and links D3D11/DXGI without changing the default
+Windows OpenGL path. Screenshot/readback uses the selected backend, but real
+D3D11 pixel correctness should be validated on Windows.
+
 ## Example from `@VEXEROOT/examples/sokol/sounds/simple_sin_tones.v`
 
 ```v cgen
@@ -24,21 +37,23 @@ fn sintone(periods int, frame int, num_frames int) f32 {
 	return math.sinf(f32(periods) * (2 * math.pi) * f32(frame) / f32(num_frames))
 }
 
-fn my_audio_stream_callback(buffer &f32, num_frames int, num_channels int) {
+fn my_audio_stream_callback(buffer &f32, num_frames i32, num_channels i32) {
+	frame_count := int(num_frames)
+	channel_count := int(num_channels)
 	ms := sw.elapsed().milliseconds() - sw_start_ms
 	unsafe {
 		mut soundbuffer := buffer
-		for frame := 0; frame < num_frames; frame++ {
-			for ch := 0; ch < num_channels; ch++ {
-				idx := frame * num_channels + ch
+		for frame := 0; frame < frame_count; frame++ {
+			for ch := 0; ch < channel_count; ch++ {
+				idx := frame * channel_count + ch
 				if ms < 250 {
-					soundbuffer[idx] = 0.5 * sintone(20, frame, num_frames)
+					soundbuffer[idx] = 0.5 * sintone(20, frame, frame_count)
 				} else if ms < 300 {
-					soundbuffer[idx] = 0.5 * sintone(25, frame, num_frames)
+					soundbuffer[idx] = 0.5 * sintone(25, frame, frame_count)
 				} else if ms < 1500 {
-					soundbuffer[idx] *= sintone(22, frame, num_frames)
+					soundbuffer[idx] *= sintone(22, frame, frame_count)
 				} else {
-					soundbuffer[idx] = 0.5 * sintone(25, frame, num_frames)
+					soundbuffer[idx] = 0.5 * sintone(25, frame, frame_count)
 				}
 			}
 		}

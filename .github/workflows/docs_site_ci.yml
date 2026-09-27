@@ -1,0 +1,114 @@
+name: docs.vlang.io deploy
+
+### Regenerate https://docs.vlang.io/ (the GitHub Pages site served from the
+### `main` branch of https://github.com/vlang/docs ), on every change to
+### doc/docs.md that lands on master.
+###
+### Historically docs.vlang.io was updated by the FreeBSD machine that also runs
+### cmd/tools/fast/fast.v . When that single machine stops, the site silently
+### goes stale (see issue #27038, where it was stuck at the 2026-02-09 snapshot).
+### Generating and deploying from CI removes that single point of failure, the
+### same way modules.vlang.io is deployed from module_docs_ci.yml .
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - master
+    paths:
+      - 'doc/docs.md'
+      - '**/docs_site_ci.yml'
+
+# Allow only one concurrent deployment, skipping runs queued between the run in-progress and latest queued.
+# However, do NOT cancel in-progress runs as we want to allow these production deployments to complete.
+concurrency:
+  group: docs_site-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ !contains(github.ref, 'master')}}
+
+jobs:
+  deploy-docs-site:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/cache-apt-packages-action
+      - name: Build V
+        run: make -j4 && ./v symlink
+      - name: Install dependencies (the docs generator uses the markdown module)
+        run: ./v retry -- ./v install markdown
+
+      - name: Generate the HTML pages from doc/docs.md
+        run: |
+          set -e
+          # The generator (the `generator` branch of vlang/docs) fetches
+          # doc/docs.md from the master branch of vlang/v, transforms it into one
+          # HTML page per section, and writes them into its own output/ folder.
+          rm -rf docs_generator
+          ./v retry -- git clone --depth=1 --branch generator https://github.com/vlang/docs docs_generator
+          ./v run docs_generator/.
+          [ -f docs_generator/output/introduction.html ]
+
+      - name: Deploy to vlang/docs (main branch -> docs.vlang.io)
+        if: github.event_name != 'pull_request' && github.repository == 'vlang/v' && github.ref == 'refs/heads/master'
+        run: |
+          set -e
+          git config --global user.email "vlang-bot@users.noreply.github.com"
+          git config --global user.name "vlang-bot"
+
+          COMMIT_HASH="$(git rev-parse --short HEAD)"
+          COMMIT_MSG="$(git log -1 --pretty='%s' HEAD)"
+
+          rm -rf docs_site
+          ./v retry -- git clone --depth=1 --branch main "https://vlang-bot:${{ secrets.VLANG_BOT_SECRET }}@github.com/vlang/docs.git" docs_site
+
+          # The legacy FreeBSD uploader (cmd/tools/fast/fast.v) may still be
+          # pushing to vlang/docs main too, so our push can be rejected as
+          # non-fast-forward. `v retry` would only rerun the same push, never
+          # fetching the new tip, so retry here by re-syncing onto the latest main
+          # and pushing again. The sync is idempotent, so re-applying it on top of
+          # whatever landed meanwhile is safe.
+          deploy_attempts=5
+          for attempt in $(seq 1 "${deploy_attempts}"); do
+            git -C docs_site fetch --depth=1 origin main
+            git -C docs_site reset --hard FETCH_HEAD
+
+            # Sync the freshly generated pages onto the published site. --delete so
+            # that pages/assets removed or renamed in doc/docs.md do not linger as
+            # stale files, but protect the site-only files at the repo root that the
+            # generator does not produce (git metadata, CNAME, .nojekyll, README.md,
+            # favicon.ico and the legacy build.vsh).
+            rsync -a --delete \
+              --exclude '/.git' \
+              --exclude '/.gitattributes' \
+              --exclude '/.gitignore' \
+              --exclude '/.nojekyll' \
+              --exclude '/CNAME' \
+              --exclude '/README.md' \
+              --exclude '/favicon.ico' \
+              --exclude '/build.vsh' \
+              docs_generator/output/ docs_site/
+
+            git -C docs_site add -A
+            # `git diff --cached --quiet` exits 0 with nothing staged, 1 when there
+            # are staged changes, and >1 on a real error - so only 1 means "deploy".
+            set +e
+            git -C docs_site diff --cached --quiet
+            diff_rc=$?
+            set -e
+            if [ "${diff_rc}" -eq 0 ]; then
+              echo "docs.vlang.io is already up to date for ${COMMIT_HASH}; nothing to deploy."
+              exit 0
+            elif [ "${diff_rc}" -ne 1 ]; then
+              echo "::error::git diff --cached failed with exit code ${diff_rc}" >&2
+              exit "${diff_rc}"
+            fi
+            git -C docs_site commit -m "update docs for commit ${COMMIT_HASH} - ${COMMIT_MSG}"
+
+            if git -C docs_site push origin main; then
+              echo "docs.vlang.io updated for ${COMMIT_HASH} (attempt ${attempt})."
+              exit 0
+            fi
+            echo "push to vlang/docs main was rejected (attempt ${attempt}/${deploy_attempts}); refetching and retrying..."
+          done
+          echo "::error::could not push to vlang/docs main after ${deploy_attempts} attempts" >&2
+          exit 1

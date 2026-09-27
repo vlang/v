@@ -22,7 +22,7 @@ mut:
 
 @[typedef]
 pub struct C.KEY_EVENT_RECORD {
-	bKeyDown          int
+	bKeyDown          i32 // Windows BOOL == C `int` (4 bytes)
 	wRepeatCount      u16
 	wVirtualKeyCode   u16
 	wVirtualScanCode  u16
@@ -50,7 +50,7 @@ pub struct C.MENU_EVENT_RECORD {
 
 @[typedef]
 pub struct C.FOCUS_EVENT_RECORD {
-	bSetFocus int
+	bSetFocus i32 // Windows BOOL == C `int` (4 bytes)
 }
 
 @[typedef]

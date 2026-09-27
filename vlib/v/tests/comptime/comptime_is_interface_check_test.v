@@ -25,7 +25,7 @@ fn do_thing[T](s1 Struct1) T {
 			i := TestInterface(t.$(field.name))
 			assert false
 		} $else $if field.typ is ?TestInterface {
-			i := TestInterface(t.$(field.name) ?)
+			i := TestInterface(t.$(field.name)?)
 			assert true
 		}
 	}

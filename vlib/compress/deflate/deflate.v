@@ -134,7 +134,10 @@ pub fn compress(data []u8, format CompressParams) ![]u8 {
 }
 
 pub fn compress_zlib(data []u8) ![]u8 {
-	payload := deflate_compress_fixed(data)!
+	mut payload := deflate_compress_fixed(data)!
+	defer {
+		unsafe { payload.free() }
+	}
 	cksum := adler32.sum(data)
 	mut out := []u8{cap: 2 + payload.len + 4}
 	out << u8(0x78) // CMF: CM=8 deflate, CINFO=7 (32K window)
@@ -146,7 +149,10 @@ pub fn compress_zlib(data []u8) ![]u8 {
 
 // compress_gzip compresses data into a gzip stream (RFC 1952).
 pub fn compress_gzip(data []u8) ![]u8 {
-	payload := deflate_compress_fixed(data)!
+	mut payload := deflate_compress_fixed(data)!
+	defer {
+		unsafe { payload.free() }
+	}
 	mut out := []u8{cap: 10 + payload.len + 8}
 	// 10-byte gzip header: ID1 ID2 CM FLG MTIME(4) XFL OS
 	out << [u8(0x1f), 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xff]
@@ -189,7 +195,9 @@ pub fn decompress_zlib(data []u8) ![]u8 {
 		return error('invalid zlib stream: trailing data before adler32')
 	}
 	decoded := res.decoded
-	if adler32.sum(decoded) != expected { return error('invalid zlib stream: adler32 mismatch') }
+	if adler32.sum(decoded) != expected {
+		return error('invalid zlib stream: adler32 mismatch')
+	}
 	return decoded
 }
 

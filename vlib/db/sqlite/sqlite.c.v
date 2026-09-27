@@ -7,7 +7,7 @@ $if freebsd || openbsd {
 $if tinyc {
 	#flag -DSQLITE_DISABLE_INTRINSIC
 }
-$if $pkgconfig('sqlite3') {
+$if $pkgconfig ( 'sqlite3' ) {
 	#pkgconfig sqlite3
 	#include "sqlite3.h" # The SQLite header file is missing. Please install the corresponding development package.
 } $else $if windows {
@@ -228,7 +228,7 @@ pub fn (mut db DB) close() ! {
 // Only for V ORM
 fn get_int_from_stmt(stmt &C.sqlite3_stmt) int {
 	x := C.sqlite3_step(stmt)
-	if x != C.SQLITE_OK && x != C.SQLITE_DONE {
+	if x != sqlite_ok && x != sqlite_done {
 		C.puts(C.sqlite3_errstr(x))
 	}
 	res := C.sqlite3_column_int(stmt, 0)

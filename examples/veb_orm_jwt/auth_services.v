@@ -4,7 +4,7 @@ import crypto.hmac
 import crypto.sha256
 import crypto.bcrypt
 import encoding.base64
-import json
+import json2 as json
 import databases
 import time
 import os

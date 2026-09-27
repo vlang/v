@@ -4,11 +4,15 @@ import io
 import orm
 import time
 
-$if $pkgconfig('libpq') {
+$if $pkgconfig ( 'libpq' ) {
 	#pkgconfig --cflags --libs libpq
 } $else {
 	$if msvc {
 		#flag -llibpq
+	} $else $if windows {
+		// GCC and TCC need a GNU-compatible import library, not MSVC's libpq.lib.
+		// Keep the path explicit so a missing dependency names the expected file.
+		#flag @VEXEROOT/thirdparty/pg/win64/mingw/libpq.dll.a
 	} $else {
 		#flag -lpq
 	}
@@ -37,7 +41,7 @@ $if $pkgconfig('libpq') {
 	#flag openbsd -L/usr/local/lib
 }
 
-$if cross_compile ? && linux {
+$if cross_compile ?&& linux {
 	#include <libpq/libpq-fe.h>
 	#include <libpq/pg_config.h>
 
@@ -110,10 +114,36 @@ pub mut:
 	vals []string
 }
 
+// Field contains the metadata that libpq reports for a result column.
+pub struct Field {
+pub:
+	name          string
+	type_oid      u32
+	type_modifier int
+	size          int
+	format        int
+	table_oid     u32
+	table_column  int
+}
+
 pub struct Result {
 pub:
-	cols map[string]int
-	rows []Row
+	cols   map[string]int
+	names  []string
+	rows   []Row
+	fields []Field
+}
+
+// SslMode controls PostgreSQL SSL/TLS negotiation through libpq's `sslmode`
+// connection keyword.
+pub enum SslMode {
+	unset
+	disable
+	allow
+	prefer
+	require
+	verify_ca
+	verify_full
 }
 
 // Notification represents a notification received from the server via LISTEN/NOTIFY
@@ -132,6 +162,12 @@ pub:
 	username string
 	password string
 	dbname   string
+	// SSL/TLS configuration, passed through to libpq connection keywords.
+	ssl_mode SslMode
+	ssl_key  string // client key file path, maps to sslkey
+	ssl_cert string // client certificate file path, maps to sslcert
+	ssl_ca   string // CA certificate file path, maps to sslrootcert
+	ssl_crl  string // certificate revocation list file path, maps to sslcrl
 }
 
 //
@@ -155,34 +191,34 @@ pub struct C.PGnotify {
 }
 
 pub enum ConnStatusType {
-	ok  = C.CONNECTION_OK
-	bad = C.CONNECTION_BAD
+	ok                = C.CONNECTION_OK
+	bad               = C.CONNECTION_BAD
 	// Non-blocking mode only below here
 	// The existence of these should never be relied upon - they should only be used for user feedback or similar purposes.
-	started           = C.CONNECTION_STARTED           // Waiting for connection to be made.
-	made              = C.CONNECTION_MADE              // Connection OK; waiting to send.
+	started           = C.CONNECTION_STARTED // Waiting for connection to be made.
+	made              = C.CONNECTION_MADE // Connection OK; waiting to send.
 	awaiting_response = C.CONNECTION_AWAITING_RESPONSE // Waiting for a response from the postmaster.
-	auth_ok           = C.CONNECTION_AUTH_OK           // Received authentication; waiting for backend startup.
-	setenv            = C.CONNECTION_SETENV            // Negotiating environment.
-	ssl_startup       = C.CONNECTION_SSL_STARTUP       // Negotiating SSL.
-	needed            = C.CONNECTION_NEEDED            // Internal state: connect() needed . Available in PG 8
-	check_writable    = C.CONNECTION_CHECK_WRITABLE    // Check if we could make a writable connection. Available since PG 10
-	consume           = C.CONNECTION_CONSUME           // Wait for any pending message and consume them. Available since PG 10
-	gss_startup       = C.CONNECTION_GSS_STARTUP       // Negotiating GSSAPI; available since PG 12
+	auth_ok           = C.CONNECTION_AUTH_OK // Received authentication; waiting for backend startup.
+	setenv            = C.CONNECTION_SETENV // Negotiating environment.
+	ssl_startup       = C.CONNECTION_SSL_STARTUP // Negotiating SSL.
+	needed            = C.CONNECTION_NEEDED // Internal state: connect() needed . Available in PG 8
+	check_writable    = C.CONNECTION_CHECK_WRITABLE // Check if we could make a writable connection. Available since PG 10
+	consume           = C.CONNECTION_CONSUME // Wait for any pending message and consume them. Available since PG 10
+	gss_startup       = C.CONNECTION_GSS_STARTUP // Negotiating GSSAPI; available since PG 12
 }
 
 @[typedef]
 pub enum ExecStatusType {
-	empty_query    = C.PGRES_EMPTY_QUERY    // empty query string was executed
-	command_ok     = C.PGRES_COMMAND_OK     // a query command that doesn't return anything was executed properly by the backend
-	tuples_ok      = C.PGRES_TUPLES_OK      // a query command that returns tuples was executed properly by the backend, PGresult contains the result tuples
-	copy_out       = C.PGRES_COPY_OUT       // Copy Out data transfer in progress
-	copy_in        = C.PGRES_COPY_IN        // Copy In data transfer in progress
-	bad_response   = C.PGRES_BAD_RESPONSE   // an unexpected response was recv'd from the backend
+	empty_query    = C.PGRES_EMPTY_QUERY // empty query string was executed
+	command_ok     = C.PGRES_COMMAND_OK // a query command that doesn't return anything was executed properly by the backend
+	tuples_ok      = C.PGRES_TUPLES_OK // a query command that returns tuples was executed properly by the backend, PGresult contains the result tuples
+	copy_out       = C.PGRES_COPY_OUT // Copy Out data transfer in progress
+	copy_in        = C.PGRES_COPY_IN // Copy In data transfer in progress
+	bad_response   = C.PGRES_BAD_RESPONSE // an unexpected response was recv'd from the backend
 	nonfatal_error = C.PGRES_NONFATAL_ERROR // notice or warning message
-	fatal_error    = C.PGRES_FATAL_ERROR    // query failed
-	copy_both      = C.PGRES_COPY_BOTH      // Copy In/Out data transfer in progress
-	single_tuple   = C.PGRES_SINGLE_TUPLE   // single tuple from larger resultset
+	fatal_error    = C.PGRES_FATAL_ERROR // query failed
+	copy_both      = C.PGRES_COPY_BOTH // Copy In/Out data transfer in progress
+	single_tuple   = C.PGRES_SINGLE_TUPLE // single tuple from larger resultset
 }
 
 //
@@ -211,13 +247,25 @@ fn C.PQnfields(const_res &C.PGresult) i32
 
 fn C.PQfname(const_res &C.PGresult, i32) &char
 
+fn C.PQftype(const_res &C.PGresult, i32) u32
+
+fn C.PQfmod(const_res &C.PGresult, i32) i32
+
+fn C.PQfsize(const_res &C.PGresult, i32) i32
+
+fn C.PQfformat(const_res &C.PGresult, i32) i32
+
+fn C.PQftable(const_res &C.PGresult, i32) u32
+
+fn C.PQftablecol(const_res &C.PGresult, i32) i32
+
 // Params:
 // const Oid *paramTypes
 // const char *const *paramValues
 // const int *paramLengths
 // const int *paramFormats
-fn C.PQexecParams(conn &C.PGconn, const_command &char, nParams i32, const_paramTypes &int, const_paramValues &char,
-	const_paramLengths &int, const_paramFormats &int, resultFormat i32) &C.PGresult
+fn C.PQexecParams(conn &C.PGconn, const_command &char, nParams i32, const_paramTypes &u32, const_paramValues voidptr,
+	const_paramLengths &i32, const_paramFormats &i32, resultFormat i32) &C.PGresult
 
 fn C.PQputCopyData(conn &C.PGconn, const_buffer &char, nbytes i32) i32
 
@@ -227,8 +275,8 @@ fn C.PQgetCopyData(conn &C.PGconn, buffer &&char, async i32) i32
 
 fn C.PQprepare(conn &C.PGconn, const_stmtName &char, const_query &char, nParams i32, const_param_types &&char) &C.PGresult
 
-fn C.PQexecPrepared(conn &C.PGconn, const_stmtName &char, nParams i32, const_paramValues &char,
-	const_paramLengths &int, const_paramFormats &int, resultFormat i32) &C.PGresult
+fn C.PQexecPrepared(conn &C.PGconn, const_stmtName &char, nParams i32, const_paramValues voidptr,
+	const_paramLengths &i32, const_paramFormats &i32, resultFormat i32) &C.PGresult
 
 // cleanup
 
@@ -272,6 +320,18 @@ fn escape_conninfo_value(value string) string {
 	return escaped.bytestr()
 }
 
+fn (mode SslMode) conninfo_value() string {
+	return match mode {
+		.unset { '' }
+		.disable { 'disable' }
+		.allow { 'allow' }
+		.prefer { 'prefer' }
+		.require { 'require' }
+		.verify_ca { 'verify-ca' }
+		.verify_full { 'verify-full' }
+	}
+}
+
 // connection_user returns the configured username, accepting both `user` and `username`.
 pub fn (config Config) connection_user() !string {
 	if config.user != '' && config.username != '' && config.user != config.username {
@@ -284,7 +344,7 @@ pub fn (config Config) connection_user() !string {
 }
 
 fn (config Config) conninfo() !string {
-	mut parts := []string{cap: 5}
+	mut parts := []string{cap: 10}
 	if config.host != '' {
 		parts << 'host=${escape_conninfo_value(config.host)}'
 	}
@@ -301,6 +361,21 @@ fn (config Config) conninfo() !string {
 	if config.password != '' {
 		parts << 'password=${escape_conninfo_value(config.password)}'
 	}
+	if config.ssl_mode != .unset {
+		parts << 'sslmode=${config.ssl_mode.conninfo_value()}'
+	}
+	if config.ssl_cert != '' {
+		parts << 'sslcert=${escape_conninfo_value(config.ssl_cert)}'
+	}
+	if config.ssl_key != '' {
+		parts << 'sslkey=${escape_conninfo_value(config.ssl_key)}'
+	}
+	if config.ssl_ca != '' {
+		parts << 'sslrootcert=${escape_conninfo_value(config.ssl_ca)}'
+	}
+	if config.ssl_crl != '' {
+		parts << 'sslcrl=${escape_conninfo_value(config.ssl_crl)}'
+	}
 	return parts.join(' ')
 }
 
@@ -315,12 +390,9 @@ fn connect_slot(conninfo string) !IdleSlot {
 	}
 	status := unsafe { ConnStatusType(C.PQstatus(conn)) }
 	if status != .ok {
-		// We force the construction of a new string as the
-		// error message will be freed by the next `PQfinish` call
-		c_error_msg := unsafe { C.PQerrorMessage(conn).vstring() }
-		error_msg := '${c_error_msg}'
+		c_error_msg := unsafe { cstring_to_vstring(C.PQerrorMessage(conn)) }
 		C.PQfinish(conn)
-		return error('Connection to a PG database failed: ${error_msg}')
+		return error('Connection to a PG database failed: ${c_error_msg}')
 	}
 	return IdleSlot{
 		handle:     conn
@@ -399,7 +471,7 @@ fn (mut c Conn) physical_close() {
 	}
 }
 
-fn res_to_rows(res voidptr) []db.pg.Row {
+fn res_to_rows(res voidptr) []Row {
 	nr_rows := C.PQntuples(res)
 	nr_cols := C.PQnfields(res)
 
@@ -443,14 +515,26 @@ fn res_to_result(res voidptr) Result {
 	nr_cols := C.PQnfields(res)
 
 	mut cols := map[string]int{}
+	mut names := []string{}
+	mut fields := []Field{cap: nr_cols}
+	for j in 0 .. nr_cols {
+		field_name := unsafe { cstring_to_vstring(C.PQfname(res, j)) }
+		cols[field_name] = j
+		names << field_name
+		fields << Field{
+			name:          field_name
+			type_oid:      C.PQftype(res, j)
+			type_modifier: C.PQfmod(res, j)
+			size:          C.PQfsize(res, j)
+			format:        C.PQfformat(res, j)
+			table_oid:     C.PQftable(res, j)
+			table_column:  C.PQftablecol(res, j)
+		}
+	}
 	mut rows := []Row{}
 	for i in 0 .. nr_rows {
 		mut row := Row{}
 		for j in 0 .. nr_cols {
-			if i == 0 {
-				field_name := unsafe { cstring_to_vstring(C.PQfname(res, j)) }
-				cols[field_name] = j
-			}
 			if C.PQgetisnull(res, i, j) != 0 {
 				row.vals << none
 			} else {
@@ -462,7 +546,12 @@ fn res_to_result(res voidptr) Result {
 	}
 
 	C.PQclear(res)
-	return Result{cols, rows}
+	return Result{
+		cols:   cols
+		names:  names
+		rows:   rows
+		fields: fields
+	}
 }
 
 // close releases this conn back to its pool. Safe to call more than once:
@@ -514,12 +603,12 @@ pub fn (c &Conn) q_string(query string) !string {
 
 // q_strings submit a command to the database server and
 // returns the resulting row set. Alias of `exec`
-pub fn (c &Conn) q_strings(query string) ![]db.pg.Row {
+pub fn (c &Conn) q_strings(query string) ![]Row {
 	return c.exec(query)
 }
 
 // exec submits a command to the database server and wait for the result, returning an error on failure and a row set on success
-pub fn (c &Conn) exec(query string) ![]db.pg.Row {
+pub fn (c &Conn) exec(query string) ![]Row {
 	c.ensure_active()!
 	res := C.PQexec(c.conn, &char(query.str))
 	return c.handle_error_or_rows(res, 'exec')
@@ -539,7 +628,7 @@ pub fn (c &Conn) exec_result(query string) !Result {
 	return c.handle_error_or_result(res, 'exec_result')
 }
 
-fn rows_first_or_empty(rows []db.pg.Row) !Row {
+fn rows_first_or_empty(rows []Row) !Row {
 	if rows.len == 0 {
 		return error('no row')
 	}
@@ -560,7 +649,7 @@ pub fn (c &Conn) exec_one(query string) !Row {
 }
 
 // exec_param_many executes a query with the parameters provided as ($1), ($2), ($n)
-pub fn (c &Conn) exec_param_many(query string, params []string) ![]db.pg.Row {
+pub fn (c &Conn) exec_param_many(query string, params []string) ![]Row {
 	c.ensure_active()!
 	unsafe {
 		mut param_vals := []&char{len: params.len}
@@ -588,12 +677,12 @@ pub fn (c &Conn) exec_param_many_result(query string, params []string) !Result {
 }
 
 // exec_param executes a query with 1 parameter ($1), and returns either an error on failure, or the full result set on success
-pub fn (c &Conn) exec_param(query string, param string) ![]db.pg.Row {
+pub fn (c &Conn) exec_param(query string, param string) ![]Row {
 	return c.exec_param_many(query, [param])
 }
 
 // exec_param2 executes a query with 2 parameters ($1) and ($2), and returns either an error on failure, or the full result set on success
-pub fn (c &Conn) exec_param2(query string, param string, param2 string) ![]db.pg.Row {
+pub fn (c &Conn) exec_param2(query string, param string, param2 string) ![]Row {
 	return c.exec_param_many(query, [param, param2])
 }
 
@@ -607,7 +696,7 @@ pub fn (c &Conn) prepare(name string, query string, num_params int) ! {
 }
 
 // exec_prepared sends a request to execute a prepared statement with given parameters, and waits for the result. The number of parameters must match with the parameters declared in the prepared statement.
-pub fn (c &Conn) exec_prepared(name string, params []string) ![]db.pg.Row {
+pub fn (c &Conn) exec_prepared(name string, params []string) ![]Row {
 	c.ensure_active()!
 	unsafe {
 		mut param_vals := []&char{len: params.len}
@@ -645,7 +734,7 @@ fn (c &Conn) mark_bad_if_disconnected() {
 	}
 }
 
-fn (c &Conn) handle_error_or_rows(res voidptr, elabel string) ![]db.pg.Row {
+fn (c &Conn) handle_error_or_rows(res voidptr, elabel string) ![]Row {
 	e := unsafe { C.PQerrorMessage(c.conn).vstring() }
 	if e != '' {
 		C.PQclear(res)
@@ -761,11 +850,13 @@ pub fn (c &Conn) copy_expert(query string, mut file io.ReaderWriter) !int {
 	return 0
 }
 
-fn pg_stmt_worker(c &Conn, query string, data orm.QueryData, where orm.QueryData) ![]db.pg.Row {
+fn pg_stmt_worker(c &Conn, query string, data orm.QueryData, where orm.QueryData) ![]Row {
 	mut param_types := []u32{}
 	mut param_vals := []&char{}
-	mut param_lens := []int{}
-	mut param_formats := []int{}
+	// C's PQexecParams reads these as `const int *` (4-byte C ints); back them with
+	// i32 so `.data` matches the C ABI (a V `[]int` is now 64-bit per element).
+	mut param_lens := []i32{}
+	mut param_formats := []i32{}
 
 	pg_stmt_binder(mut param_types, mut param_vals, mut param_lens, mut param_formats, data)
 	pg_stmt_binder(mut param_types, mut param_vals, mut param_lens, mut param_formats, where)
@@ -939,6 +1030,20 @@ pub fn (c &Conn) unlisten_all() ! {
 	}
 }
 
+// escape_literal returns `value` as a quoted PostgreSQL literal that is safe to interpolate into
+// a query. Prefer parameterized queries when they can express the operation.
+pub fn (c &Conn) escape_literal(value string) !string {
+	c.ensure_active()!
+	escaped := C.PQescapeLiteral(c.conn, &char(value.str), usize(value.len))
+	if escaped == unsafe { nil } {
+		e := unsafe { C.PQerrorMessage(c.conn).vstring() }
+		return error('pg escape_literal error: "${e}"')
+	}
+	result := unsafe { escaped.vstring().clone() }
+	C.PQfreemem(escaped)
+	return result
+}
+
 // notify sends a notification on the specified channel with an optional payload.
 // All connections currently listening on that channel will receive the notification.
 pub fn (c &Conn) notify(channel string, payload string) ! {
@@ -948,14 +1053,8 @@ pub fn (c &Conn) notify(channel string, payload string) ! {
 	}
 	mut sql_stmt := ''
 	if payload.len > 0 {
-		// Use PQescapeLiteral to safely escape the payload
-		escaped := C.PQescapeLiteral(c.conn, &char(payload.str), usize(payload.len))
-		if escaped == unsafe { nil } {
-			e := unsafe { C.PQerrorMessage(c.conn).vstring() }
-			return error('pg notify error: failed to escape payload: "${e}"')
-		}
-		sql_stmt = unsafe { 'NOTIFY ${channel}, ' + escaped.vstring() + ';' }
-		C.PQfreemem(escaped)
+		escaped := c.escape_literal(payload)!
+		sql_stmt = 'NOTIFY ${channel}, ${escaped};'
 	} else {
 		sql_stmt = 'NOTIFY ${channel};'
 	}

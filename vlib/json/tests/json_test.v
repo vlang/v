@@ -1,3 +1,4 @@
+// vtest vflags: -w
 import json
 import time
 
@@ -261,7 +262,7 @@ fn test_parse_map() {
 		'three': 3
 		'four':  4
 	}
-	out := json.decode(map[string]int, '{"one":1,"two":2,"three":3,"four":4}')!
+	out := json.decode(map[string]int{}, '{"one":1,"two":2,"three":3,"four":4}')!
 	// println(out)
 	assert out == expected
 }

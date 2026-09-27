@@ -39,7 +39,7 @@ fn dump_of_struct() {
 	x3.x += 100
 	assert x1 == Point{101, 2, 3}
 	assert x2 == Point{101, 2, 3}
-	assert x3 == Point{101, 2, 3}
+	assert *x3 == Point{101, 2, 3}
 }
 
 fn dump_of_callexpr() {

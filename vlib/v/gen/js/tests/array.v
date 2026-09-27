@@ -64,6 +64,7 @@ fn main() {
 	idx2 := slice4[0]
 	print('66\t=> ')
 	println(idx2)
+
 	// TODO:
 	// slice4[3] = `c`
 
@@ -86,7 +87,8 @@ fn main() {
 	println('badkey' !in m)
 
 	// for in
-	for _ in arr1 {}
+	for _ in arr1 {
+	}
 	println('0 to 8\t=>')
 	for i, _ in arr2 {
 		println(i)

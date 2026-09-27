@@ -1,0 +1,7 @@
+vlib/v/parser/tests/embed_file_evaluated_but_not_used_in_or_block.vv:8:4: error: expression evaluated but not used
+    6 |     value := maybe_int() or {
+    7 |         {
+    8 |             $embed_file(@FILE)
+      |             ~~~~~~~~~~~~~~~~~~
+    9 |         }
+   10 |         0

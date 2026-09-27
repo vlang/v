@@ -447,6 +447,15 @@ pub fn free(ptr voidptr) {
 	if ptr == none_err._object {
 		return
 	}
+	// `error_sentinel` is likewise a cached, non-owning singleton IError (see
+	// chan_option_result.v). Under `-autofree`, const cleanup frees every IError
+	// const's boxed object, and the sentinel can also be copied/re-exported
+	// (`const my_err = error_sentinel`), so guard its shared object here to avoid
+	// a double free / dangling singleton, exactly as for `none__` above.
+	sentinel_err := &C.IError(&error_sentinel)
+	if ptr == sentinel_err._object {
+		return
+	}
 	$if prealloc {
 		return
 	} $else $if vgc ? {

@@ -1,0 +1,119 @@
+name: TCC source recovery
+
+run-name: tccbin-source-recovery-${{ inputs.resume_handoff_id || github.event.workflow_run.id || 'daily-resolver' }}
+
+on:
+  workflow_dispatch:
+    inputs:
+      resume_handoff_id:
+        description: 'Opaque persisted recovery handoff identifier'
+        required: true
+        type: string
+  schedule:
+    - cron: '47 3 * * *'
+  workflow_run:
+    workflows: ['Update tccbin', 'TCC bundle revalidation']
+    types: [completed]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: tccbin-control-plane
+  cancel-in-progress: false
+  queue: max
+
+jobs:
+  resolver:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    outputs:
+      authorized: ${{ steps.preflight.outputs.authorized }}
+      mode: ${{ steps.preflight.outputs.mode }}
+      handoff_id: ${{ steps.preflight.outputs.handoff_id }}
+    steps:
+      - name: Validate the source-recovery envelope
+        id: preflight
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          HANDOFF_ID: ${{ inputs.resume_handoff_id || '' }}
+          UPSTREAM_PATH: ${{ github.event.workflow_run.path || '' }}
+        run: |
+          set -euo pipefail
+          case "$EVENT_NAME" in
+            workflow_dispatch)
+              [[ "$HANDOFF_ID" =~ ^[0-9a-f]{64}$ ]]
+              [ "$GITHUB_REPOSITORY" = vlang/v ]
+              [ "$GITHUB_REF" = refs/heads/master ]
+              echo 'mode=handoff' >> "$GITHUB_OUTPUT"
+              echo "handoff_id=$HANDOFF_ID" >> "$GITHUB_OUTPUT"
+              ;;
+            schedule)
+              [ "$GITHUB_REF" = refs/heads/master ]
+              echo 'mode=schedule' >> "$GITHUB_OUTPUT"
+              echo 'handoff_id=' >> "$GITHUB_OUTPUT"
+              ;;
+            workflow_run)
+              case "$UPSTREAM_PATH" in
+                '.github/workflows/update_tccbin.yml'|'.github/workflows/tccbin_revalidate.yml') ;;
+                *) exit 1 ;;
+              esac
+              echo 'mode=workflow_run' >> "$GITHUB_OUTPUT"
+              echo 'handoff_id=' >> "$GITHUB_OUTPUT"
+              ;;
+            *) exit 1 ;;
+          esac
+          echo 'authorized=true' >> "$GITHUB_OUTPUT"
+
+  state-pre-dark-mode:
+    needs: resolver
+    if: needs.resolver.outputs.authorized == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - name: Checkout the trusted workflow revision
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - name: Build the local compiler
+        run: |
+          make
+          ./v -o ./vnew cmd/v
+      - name: Resolve the active handoff without state mutation
+        if: needs.resolver.outputs.mode == 'handoff'
+        env:
+          HANDOFF_ID: ${{ needs.resolver.outputs.handoff_id }}
+        run: |
+          ./vnew run thirdparty/tccbin_automation/bin/cmd handoff \
+            thirdparty/tccbin_automation/tests/fixtures/receiver-ledger.dark.json \
+            "$HANDOFF_ID"
+      - name: Re-authenticate the exact completed receiver run
+        if: needs.resolver.outputs.mode == 'workflow_run'
+        run: |
+          ./vnew run thirdparty/tccbin_automation/bin/cmd workflow-run \
+            thirdparty/tccbin_automation/tests/fixtures/receiver-ledger.dark.json \
+            "$GITHUB_EVENT_PATH"
+      - name: Simulate the logically inactive daily resolver
+        if: needs.resolver.outputs.mode == 'schedule'
+        run: ./vnew run thirdparty/tccbin_automation/bin/cmd dry-run
+      - name: Validate the pure recovery machine after request authentication
+        if: needs.resolver.outputs.mode != 'schedule'
+        run: ./vnew -silent test thirdparty/tccbin_automation/tests/gate_recovery_test.v
+
+  dispatch-dark-mode:
+    needs: state-pre-dark-mode
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Confirm that Phase A cannot dispatch
+        run: test -z "${TCCBIN_RECOVERY_DISPATCH_TOKEN:-}"
+
+  state-ack-dark-mode:
+    needs: [state-pre-dark-mode, dispatch-dark-mode]
+    if: always()
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Confirm that Phase A cannot mutate state
+        run: test -z "${TCCBIN_STATE_WRITE_TOKEN:-}"

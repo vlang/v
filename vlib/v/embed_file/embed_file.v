@@ -1,5 +1,75 @@
 module embed_file
 
+// EmbedFileChunk is one piece of an embedded file. C only guarantees that an
+// implementation accepts 65535 bytes in a single object, so a payload past that
+// is emitted as several of these, and join_chunks puts them back together.
+//
+// A table of them ends with a zero length entry. If that entry still carries a
+// pointer, it is not the end but a link to the next table, which is how a table
+// stays an acceptable size itself.
+pub struct EmbedFileChunk {
+pub:
+	data &u8 = unsafe { nil }
+	len  int
+}
+
+// join_chunks_buffer reserves the memory a joined payload lives in.
+//
+// Under `-prealloc` it deliberately does not come from the preallocator. The
+// buffer is filled at the top of `_vinit`, before `prealloc_vinit()` has
+// installed the first arena, so allocating it there would create an arena that
+// the installation then orphans, throwing off both the statistics and the
+// cleanup. It is also the wrong home for it either way: the buffer lives for the
+// whole program, while the preallocator is reset.
+@[unsafe]
+fn join_chunks_buffer(size int) &u8 {
+	$if prealloc {
+		unsafe {
+			buffer := join_chunks_raw_alloc(size)
+			if buffer == nil {
+				panic('EmbedFileData error: could not reserve ${size} bytes for a joined payload')
+			}
+			return buffer
+		}
+	} $else {
+		return unsafe { &u8(malloc(isize(size))) }
+	}
+}
+
+// join_chunks copies a payload that was embedded in pieces into one buffer, and
+// is called by generated code while the `EmbedFileData` is being built, not when
+// its bytes are first read. Materializing it there and not later is what keeps
+// `data()` free of the lazy mutation that two threads reading the same embedded
+// constant would race on.
+//
+// The buffer lives as long as the program, like the static bytes it replaces.
+@[markused]
+pub fn join_chunks(chunks &EmbedFileChunk, len int) &u8 {
+	unsafe {
+		buffer := join_chunks_buffer(if len > 0 { len } else { 1 })
+		mut offset := 0
+		mut chunk := chunks
+		for offset < len {
+			if chunk.len == 0 {
+				if chunk.data == nil {
+					break
+				}
+				// A link to the table that continues this one.
+				chunk = &EmbedFileChunk(chunk.data)
+				continue
+			}
+			mut n := chunk.len
+			if offset + n > len {
+				n = len - offset
+			}
+			vmemcpy(buffer + offset, chunk.data, isize(n))
+			offset += n
+			chunk++
+		}
+		return buffer
+	}
+}
+
 // EmbedFileData encapsulates functionality for the `$embed_file()` compile time call.
 pub struct EmbedFileData {
 	apath            string

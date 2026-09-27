@@ -23,14 +23,18 @@ fn test_println_does_not_hang_on_failed_stdout_write() {
 	$if windows {
 		return
 	}
-	child_source_path := os.join_path(os.vtmp_dir(),
-		'broken_stdout_child_${time.now().unix_milli()}.v')
+	stamp := time.now().unix_milli()
+	child_source_path := os.join_path(os.vtmp_dir(), 'broken_stdout_child_${stamp}.v')
+	child_binary_path := os.join_path(os.vtmp_dir(), 'broken_stdout_child_${stamp}.bin')
 	os.write_file(child_source_path, broken_stdout_child_source)!
 	defer {
 		os.rm(child_source_path) or {}
+		os.rm(child_binary_path) or {}
 	}
-	mut p := os.new_process(@VEXE)
-	p.set_args(['run', child_source_path])
+	compile_cmd := '${os.quoted_path(@VEXE)} -o ${os.quoted_path(child_binary_path)} ${os.quoted_path(child_source_path)}'
+	compile_result := os.execute(compile_cmd)
+	assert compile_result.exit_code == 0, 'child compilation failed\ncommand: ${compile_cmd}\noutput:\n${compile_result.output}'
+	mut p := os.new_process(child_binary_path)
 	p.set_redirect_stdio()
 	p.run()
 	defer {

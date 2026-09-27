@@ -33,7 +33,7 @@ fn test_main() {
 		created_at: time.now()
 		// updated_at defaults to none
 		// deleted_at defaults to none
-		children: [
+		children:   [
 			Child{
 				name: 'abc'
 			},

@@ -1,0 +1,16 @@
+import v.embed_file
+
+fn load(ok bool) embed_file.EmbedFileData {
+	fallback := $embed_file(@FILE)
+	return if ok {
+		$embed_file(@FILE)
+	} else {
+		fallback
+	}
+}
+
+fn main() {
+	data := load(true)
+	assert data.path.len > 0
+	assert missing_symbol == 0
+}

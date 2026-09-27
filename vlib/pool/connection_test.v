@@ -103,6 +103,7 @@ fn test_pool_exhaustion() {
 		// Acquire all connections
 		c1 := p.get()!
 		c2 := p.get()!
+		assert !is_same_conn(c1, c2)
 		assert p.stats().active_conns == 2
 
 		// Attempt to acquire third connection (should timeout)
@@ -181,6 +182,7 @@ fn test_retry_mechanism() {
 	// Should successfully create connection after retries
 	conn := p.get()!
 	assert test_conns.len == 1
+	assert is_same_conn(conn, test_conns[0])
 	assert p.stats().creation_errors == 3
 }
 

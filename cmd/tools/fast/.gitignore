@@ -1,11 +1,19 @@
+# compiled tool
 fast
-index.html
-table.html
+
+# runtime data / logs
+fast.db
+fast.db-shm
+fast.db-wal
+*.log
+
+# oldv helper binary (compiled on demand)
+oldv
+
+# benchmark build artifacts
 v.c
 v2
-fast.log
-
-website/
-
-fast.vlang.io/
-docs.vlang.io/
+vprod
+fastv3
+fast_hello
+vwarm_caches

@@ -14,8 +14,8 @@ module termios
 
 const cclen = 32
 
-type TcFlag = int
-type Speed = int
+type TcFlag = i32
+type Speed = i32
 type Cc = u8
 
 // Termios stores the terminal options on Linux.

@@ -1,0 +1,4 @@
+Name: whole-archive-normal-74
+Description: Normal duplicate collapse before a whole-archive epoch
+Version: 1.0.0
+Libs: -lissue74_epoch -lissue74_epoch -lissue74_epoch_dependency

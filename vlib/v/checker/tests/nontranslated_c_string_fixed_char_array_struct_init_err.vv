@@ -1,0 +1,9 @@
+struct FixedName {
+	name [4]i8
+}
+
+fn main() {
+	_ := FixedName{
+		name: c'abcd'
+	}
+}

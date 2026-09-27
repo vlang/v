@@ -1,0 +1,22 @@
+# h2spec known-failure baseline for the net.http HTTP/2 server.
+#
+# One case ID per line, format "<package> :: <classname>" exactly as emitted by
+# the JUnit parser in run_h2spec.sh. Lines starting with # are comments.
+#
+# This is the set of h2spec cases the V server does NOT yet pass. CI fails only on
+# a REGRESSION (a case not listed here that newly fails). When a listed case starts
+# passing, run_h2spec.sh warns so the line can be removed and the gate tightened.
+#
+# Generated with h2spec v2.6.0 (146 tests). The original baseline was 37 failures
+# (109 pass). Request header/pseudo-header validation (RFC 9113 §8.1.2/§8.2.2/§8.3)
+# plus HPACK decode-error scope (§4.3) closed 21; the §5.1/§6.1/§6.4 stream-state
+# rules closed 8 more; routing the flow-control stall path (pump_for_window)
+# through the same dispatch closed §5.1.2; flow-control validation (§6.9/§6.9.1
+# zero-increment and window-overflow), SETTINGS_ENABLE_PUSH range checking
+# (§6.5.2), and priority self-dependency rejection (RFC 7540 §5.3.1) closed the
+# final 7 — the server now passes ALL 146 h2spec cases and this baseline is
+# EMPTY. CI fails on any h2spec failure. NOTE: a handful of h2spec cases
+# (CONTINUATION sequencing, unknown error codes) are timing-flaky at h2spec's 2s
+# default — they wait for the server's GOAWAY/close — so run_h2spec.sh uses
+# --timeout 5 (H2SPEC_TIMEOUT) to keep the gate stable. Do not baseline a flaky
+# case; raise the timeout instead.

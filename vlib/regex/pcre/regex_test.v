@@ -147,6 +147,9 @@ fn test_flags() {
 	// $ matches end of line
 	tst_find('(?m)line1$', 'line1\nline2', 'line1')
 	tst_find('line1$', 'line1\nline2', 'none') // Default: matches only end of string
+	tst_find('(?m)(?:foobar\\nfoobar\\nfoo|quux)', 'foobar\nfoobar\nfoo quux',
+		'foobar\nfoobar\nfoo')
+	tst_find('^(?P<indent>\\s*)a=(?P<value>(?ms:[(].*?[)])|.*?)$', '	a=(\n		a\n	)', '	a=(\n		a\n	)')
 
 	// 3. Dot-all / Singleline (?s)
 	// . matches newline
@@ -376,8 +379,7 @@ fn test_named_groups() {
 	r_nested := pcre.compile(nested_pat) or { panic(err) }
 	m_nested := r_nested.find(nested_txt) or { panic('Match not found') }
 
-	println('Nested: entry="${r_nested.group_by_name(m_nested, 'entry')}", val="${r_nested.group_by_name(m_nested,
-		'val')}"')
+	println('Nested: entry="${r_nested.group_by_name(m_nested, 'entry')}", val="${r_nested.group_by_name(m_nested, 'val')}"')
 	assert r_nested.group_by_name(m_nested, 'entry') == 'key: 99'
 	assert r_nested.group_by_name(m_nested, 'val') == '99'
 
@@ -417,6 +419,11 @@ fn test_non_capturing_groups() {
 	tst_find_with_groups('(a(?:b)c)', 'abc', 'abc', ['abc'])
 
 	tst_find_with_groups('(?:header): (\\d+)', 'header: 123', 'header: 123', ['123'])
+
+	tst_find_with_groups('(?:a(?:.*c))', 'abc', 'abc', [])
+	tst_find_with_groups('(?:a(.*c))', 'abc', 'abc', ['bc'])
+	tst_find_with_groups('(?m)(?:a(?:.*c))', 'abc', 'abc', [])
+	tst_find_with_groups('(?m)(?:a(.*c))', 'abc', 'abc', ['bc'])
 
 	// --- Negative Tests (Non-Capturing Groups) ---
 	tst_find('(?:a|b)c', 'dc', 'none')

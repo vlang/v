@@ -1,3 +1,5 @@
+// vtest vflags: -w
+
 // This file checks that string interpolations where expressions that generate
 // multiple C statements work correctly
 import json

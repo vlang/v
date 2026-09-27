@@ -14,6 +14,10 @@ fn vpm_install(query []string) {
 	if settings.is_help {
 		help.print_and_exit('vpm')
 	}
+	if settings.is_adopt {
+		vpm_adopt(query)
+		return
+	}
 
 	mut selector := new_install_server_selector()
 	mut modules := parse_query(if query.len == 0 {
@@ -94,15 +98,64 @@ fn install_modules(modules []Module, selected_server_url string) {
 			}
 		}
 		println('Installed `${m.name}` in ${m.install_path_fmted} .')
+		m.warn_on_normalized_name()
 	}
 	if errors > 0 {
 		exit(1)
 	}
 }
 
+// Module names may contain characters that are not valid in V import paths, e.g. `-`.
+// Those are normalized away when the module is placed into `vmodules`, so point out
+// the resulting import path instead of leaving the mismatch for the compiler to report.
+fn (m Module) warn_on_normalized_name() {
+	// Direct HTTP installs intentionally add the repository owner to the install path. That prefix
+	// is not a normalization of the manifest name and should not trigger this warning on its own.
+	if !m.name_was_normalized() {
+		return
+	}
+	import_path := import_path_of(m.install_path)
+	vpm_warn('`${m.name}` is not a valid V import path, it was installed as `${import_path}`.',
+		details: m.normalized_name_warning_details(import_path)
+	)
+}
+
+fn (m Module) normalized_name_warning_details(import_path string) string {
+	mut details := 'Use `${import_path}` as the normalized import prefix (for example, `import ${import_path}` when the package root is a module).'
+	if m.manifest_name_was_normalized() {
+		details += '\nConsider renaming the `name` field in the `v.mod` of the module.'
+	}
+	return details
+}
+
+fn (m Module) name_was_normalized() bool {
+	normalized_name := direct_install_mod_path('', m.name).replace(os.path_separator, '.')
+	return normalized_name != m.name
+}
+
+fn (m Module) manifest_name_was_normalized() bool {
+	if m.manifest.name == '' {
+		return false
+	}
+	normalized_name := direct_install_mod_path('', m.manifest.name).replace(os.path_separator, '.')
+	return normalized_name != m.manifest.name
+}
+
 fn (m Module) install() InstallResult {
 	defer {
 		os.rmdir_all(m.tmp_path) or {}
+	}
+	if !install_path_is_in_vmodules(m.install_path, settings.vmodules_path) {
+		vpm_error('refusing to install `${m.name}` outside the V modules directory.')
+		return .failed
+	}
+	if install_path_has_symlinked_ancestor(m.install_path, settings.vmodules_path) {
+		vpm_error('refusing to install `${m.name}` inside a symlinked module namespace.')
+		return .failed
+	}
+	if ancestor := vcs_backed_install_ancestor(m.install_path, settings.vmodules_path) {
+		vpm_error('refusing to install `${m.name}` inside existing module `${fmt_mod_path(ancestor)}`.')
+		return .failed
 	}
 	// Run this check unconditionally — `m.is_installed` is computed via
 	// `git ls-remote`, which itself fails when `.git` is corrupted or
@@ -117,8 +170,9 @@ fn (m Module) install() InstallResult {
 		// Case: installed, but not an explicit version. Update instead of continuing the installation.
 		if m.version == '' && m.installed_version == '' {
 			if m.is_external && m.url.starts_with('http://') {
-				vpm_update([m.install_path.all_after(settings.vmodules_path).trim_left(os.path_separator).replace(os.path_separator,
-					'.')])
+				vpm_update([
+					m.install_path.all_after(settings.vmodules_path).trim_left(os.path_separator).replace(os.path_separator, '.'),
+				])
 			} else {
 				vpm_update([m.name])
 			}
@@ -126,6 +180,12 @@ fn (m Module) install() InstallResult {
 		}
 		// Case: installed, but conflicting. Confirmation or -[-f]orce flag required.
 		if settings.is_force || m.confirm_install() {
+			if !vpm_owns_module_dir(m.install_path) {
+				vpm_error('refusing to replace `${m.name}`: `${m.install_path_fmted}` was not installed by VPM.',
+					details: not_installed_by_vpm_details()
+				)
+				return .failed
+			}
 			m.remove() or {
 				vpm_error('failed to remove `${m.name}`.', details: err.msg())
 				return .failed
@@ -133,6 +193,10 @@ fn (m Module) install() InstallResult {
 		} else {
 			return .skipped
 		}
+	}
+	if os.exists(m.install_path) {
+		vpm_error('refusing to install `${m.name}`: destination `${m.install_path_fmted}` already exists.')
+		return .failed
 	}
 	println('Installing `${m.name}`...')
 	// When the module should be relocated into a subdirectory we need to make sure
@@ -148,7 +212,88 @@ fn (m Module) install() InstallResult {
 		vpm_error('failed to install `${m.name}`.', details: err.msg())
 		return .failed
 	}
+	if settings.is_local {
+		// The local root is shared with the project's own modules, so this record is
+		// the only thing that will later tell VPM the directory is one it may touch.
+		// An install it cannot own could neither be updated nor removed afterwards,
+		// which is worse than no install at all, so undo it.
+		record_local_install(m.install_path) or {
+			vpm_error('failed to record the local installation of `${m.name}`.',
+				details: err.msg()
+			)
+			rmdir_all(m.install_path) or {
+				vpm_error('failed to undo the unrecorded installation at `${m.install_path_fmted}`.',
+					details: err.msg()
+				)
+			}
+			return .failed
+		}
+	}
 	return .installed
+}
+
+fn install_path_is_in_vmodules(install_path string, vmodules_path string) bool {
+	vmodules_root := real_path_with_missing_suffix(vmodules_path)
+	resolved_install_path := real_path_with_missing_suffix(install_path)
+	return path_is_below(resolved_install_path, vmodules_root)
+}
+
+fn path_is_below(path string, root string) bool {
+	if path == root {
+		return false
+	}
+	boundary := if root.ends_with(os.path_separator) { root } else { root + os.path_separator }
+	return path.starts_with(boundary)
+}
+
+fn install_path_has_symlinked_ancestor(install_path string, vmodules_path string) bool {
+	vmodules_root := os.abs_path(vmodules_path)
+	mut parent := os.dir(os.abs_path(install_path))
+	for path_is_below(parent, vmodules_root) {
+		if os.is_link(parent) {
+			return true
+		}
+		next := os.dir(parent)
+		if next == parent {
+			break
+		}
+		parent = next
+	}
+	return false
+}
+
+fn vcs_backed_install_ancestor(install_path string, vmodules_path string) ?string {
+	vmodules_root := real_path_with_missing_suffix(vmodules_path)
+	mut parent := real_path_with_missing_suffix(os.dir(install_path))
+	for path_is_below(parent, vmodules_root) {
+		if vcs_used_in_dir(parent) != none {
+			return parent
+		}
+		next := os.dir(parent)
+		if next == parent {
+			break
+		}
+		parent = next
+	}
+	return none
+}
+
+fn real_path_with_missing_suffix(path string) string {
+	mut existing := path
+	mut missing := []string{}
+	for !os.exists(existing) {
+		parent := os.dir(existing)
+		if parent == existing {
+			break
+		}
+		missing << os.file_name(existing)
+		existing = parent
+	}
+	mut resolved := os.real_path(existing)
+	for i := missing.len - 1; i >= 0; i-- {
+		resolved = os.join_path(resolved, missing[i])
+	}
+	return resolved
 }
 
 fn (m Module) confirm_install() bool {
@@ -210,6 +355,6 @@ fn local_git_changes_reason(path string) string {
 
 fn (m Module) remove() ! {
 	verbose_println('Removing `${m.name}` from `${m.install_path_fmted}`...')
-	rmdir_all(m.install_path)!
+	remove_installed_dir(m.install_path)!
 	verbose_println('Removed `${m.name}`.')
 }

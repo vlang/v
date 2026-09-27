@@ -1,0 +1,7 @@
+// A public `builtin` function stays callable without a module prefix, so a
+// local of the same name shadows it.
+fn main() {
+	println := 1
+	free := 2
+	assert println + free == 3
+}

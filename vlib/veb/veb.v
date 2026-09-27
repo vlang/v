@@ -103,6 +103,10 @@ fn startup_host(params RunParams) string {
 	if params.host == '' {
 		return 'localhost'
 	}
+	// Bracket a bare IPv6 literal so the startup URL is valid (e.g. `[::1]`).
+	if params.host.contains(':') && !params.host.starts_with('[') {
+		return '[${params.host}]'
+	}
 	return params.host
 }
 
@@ -220,9 +224,7 @@ fn handle_ssl_request[A, X](req http.Request, params &SslRequestParams) ?&Contex
 			user_context, url, host)
 		{
 			// Preserve the handled context on the heap before the stack-local user context goes away.
-			unsafe {
-				*ctx = user_context.Context
-			}
+			ctx.preserve_for_response_writer(user_context.Context)
 			return ctx
 		}
 	}
@@ -233,9 +235,7 @@ fn handle_ssl_request[A, X](req http.Request, params &SslRequestParams) ?&Contex
 	}
 	handle_route[A, X](mut global_app, mut user_context, url, host, params.routes)
 	// Preserve the handled context on the heap before the stack-local user context goes away.
-	unsafe {
-		*ctx = user_context.Context
-	}
+	ctx.preserve_for_response_writer(user_context.Context)
 	return ctx
 }
 
@@ -349,6 +349,8 @@ fn handle_route[A, X](mut app A, mut user_context X, url urllib.URL, host string
 				if !user_context.Context.done {
 					validate_middleware[X](mut user_context, get_handlers_for_method(route.after_middlewares,
 						user_context.Context.req.method))
+					// Preserve an after-middleware response, or restore the handler response state.
+					user_context.Context.done = user_context.Context.done || was_done
 				}
 			}
 		}
@@ -788,10 +790,10 @@ fn serve_if_static[X](app StaticHandler, mut user_context X, url urllib.URL, hos
 	// Configure static file compression settings
 	user_context.set_static_compression_config(static_handler.enable_static_gzip,
 		static_handler.enable_static_zstd, static_handler.enable_static_compression, if static_handler.static_compression_max_size >= 0 {
-		static_handler.static_compression_max_size
-	} else {
-		1048576 // Default: 1MB
-	}, static_handler.static_compression_mime_types)
+			static_handler.static_compression_max_size
+		} else {
+			1048576 // Default: 1MB
+		}, static_handler.static_compression_mime_types)
 
 	user_context.send_file(mime_type, static_file)
 	return true

@@ -1,0 +1,4 @@
+vlib/v/slow_tests/inout/v3_assert_percent_label.v3.v:2: FAIL: fn main.main: assert '%s'.len == 0
+   left value: '%s'.len = 2
+  right value: 0
+V panic: Assertion failed...

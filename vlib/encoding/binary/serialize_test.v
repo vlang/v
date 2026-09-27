@@ -291,6 +291,7 @@ fn test_encode_decode_map() {
 	assert a_map_string_u8 == c_map_string_u8
 	assert a_map_string_u16 == c_map_string_u16
 	assert a_map_string_u32 == c_map_string_u32
+	assert a_map_string_u64 == c_map_string_u64
 	assert a_map_string_i8 == c_map_string_i8
 	assert a_map_string_i16 == c_map_string_i16
 	assert a_map_string_i32 == c_map_string_i32

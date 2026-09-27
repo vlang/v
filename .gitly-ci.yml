@@ -1,0 +1,58 @@
+# Full macOS CI (ci/macos_ci.vsh), executed by a local gitly_ci instance on a
+# self-hosted macOS runner. gitly_ci runs each step and streams its output back
+# into the GitHub Actions log in real time (.github/workflows/macos_gitly_ci.yml).
+#
+# V is built from the checked-out source first, then every task runs with that
+# freshly built ./v. Like GitHub Actions, gitly_ci stops at the first failing
+# step, so tasks are ordered reliable-first: the long / environment-heavy ones
+# (build_examples, run_sanitizers, self_tests) run last so a failure there does
+# not hide the rest.
+#
+# `test_symlink` from macos_ci.vsh is intentionally omitted: it repoints the
+# host's /usr/local/bin/v to the ephemeral CI workspace, which is fine on a
+# throwaway CI VM but not on a persistent self-hosted runner.
+jobs:
+  macos-clang:
+    steps:
+      - name: Build V from source
+        run: make -j4
+      - name: v doctor
+        run: ./v run ci/macos_ci.vsh v_doctor
+      - name: Build V using V
+        run: ./v run ci/macos_ci.vsh build_using_v
+      - name: Verify `v test` works
+        run: ./v run ci/macos_ci.vsh verify_v_test_works
+      - name: Build V with -cstrict
+        run: ./v run ci/macos_ci.vsh build_with_cstrict
+      - name: Test cross compilation to Linux
+        run: ./v run ci/macos_ci.vsh test_cross_compilation
+      - name: Test inline assembly
+        run: ./v run ci/macos_ci.vsh test_inline_assembly
+      - name: Test pure V math module
+        run: ./v run ci/macos_ci.vsh test_pure_v_math_module
+      - name: Build examples with -prod
+        run: ./v run ci/macos_ci.vsh build_examples_prod
+      - name: Build tetris with -autofree
+        run: ./v run ci/macos_ci.vsh build_tetris_autofree
+      - name: Build blog tutorial with -autofree
+        run: ./v run ci/macos_ci.vsh build_blog_autofree
+      - name: Build examples with V compiled with tcc
+        run: ./v run ci/macos_ci.vsh build_examples_v_compiled_with_tcc
+      - name: V self compilation with -parallel-cc
+        run: ./v run ci/macos_ci.vsh v_self_compilation_parallel_cc
+      - name: Test password input
+        run: ./v run ci/macos_ci.vsh test_password_input
+      - name: Test readline
+        run: ./v run ci/macos_ci.vsh test_readline
+      - name: Install iconv for encoding.iconv
+        run: ./v run ci/macos_ci.vsh install_iconv
+      - name: Build V with prealloc
+        run: ./v run ci/macos_ci.vsh build_v_with_prealloc
+      - name: All code is formatted
+        run: ./v run ci/macos_ci.vsh all_code_is_formatted
+      - name: Build examples
+        run: ./v run ci/macos_ci.vsh build_examples
+      - name: Run sanitizers
+        run: ./v run ci/macos_ci.vsh run_sanitizers
+      - name: Self tests
+        run: ./v run ci/macos_ci.vsh self_tests

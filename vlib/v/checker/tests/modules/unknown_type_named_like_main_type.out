@@ -1,0 +1,35 @@
+vlib/v/checker/tests/modules/unknown_type_named_like_main_type/main.v:11:8: error: unknown type `unknown_type_named_like_main_type.baz.Foo`
+    9 | 
+   10 | struct Holder {
+   11 |     foo   baz.Foo
+      |           ~~~~~~~
+   12 |     alias q.Foo
+   13 | }
+vlib/v/checker/tests/modules/unknown_type_named_like_main_type/main.v:12:8: error: unknown type `unknown_type_named_like_main_type.qux.Foo`
+   10 | struct Holder {
+   11 |     foo   baz.Foo
+   12 |     alias q.Foo
+      |           ~~~~~
+   13 | }
+   14 |
+vlib/v/checker/tests/modules/unknown_type_named_like_main_type/main.v:15:13: error: unknown type `unknown_type_named_like_main_type.baz.Foo`
+   13 | }
+   14 | 
+   15 | fn take(foo baz.Foo) baz.Foo {
+      |             ~~~~~~~
+   16 |     return foo
+   17 | }
+vlib/v/checker/tests/modules/unknown_type_named_like_main_type/main.v:20:11: error: unknown type `unknown_type_named_like_main_type.baz.Foo`
+   18 | 
+   19 | fn main() {
+   20 |     _ := baz.Foo{[bar.MyData{'hello'}]}
+      |              ~~~~~~~~~~~~~~~~~~~~~~~~~~
+   21 |     _ := baz.Foo{
+   22 |         data: [bar.MyData{'world'}]
+vlib/v/checker/tests/modules/unknown_type_named_like_main_type/main.v:21:11: error: unknown type `unknown_type_named_like_main_type.baz.Foo`
+   19 | fn main() {
+   20 |     _ := baz.Foo{[bar.MyData{'hello'}]}
+   21 |     _ := baz.Foo{
+      |              ~~~~
+   22 |         data: [bar.MyData{'world'}]
+   23 |     }

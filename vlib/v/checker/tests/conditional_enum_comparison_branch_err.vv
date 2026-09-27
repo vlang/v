@@ -1,0 +1,60 @@
+enum ComparisonFirst {
+	a
+	b
+}
+
+enum ComparisonSecond {
+	a
+	b
+}
+
+fn compare_branch_locals(flag bool) {
+	state := ComparisonFirst.a
+	println(state == if flag {
+		local := ComparisonSecond.a
+		local
+	} else {
+		.b
+	})
+	println((if flag {
+		.a
+	} else {
+		local := ComparisonSecond.b
+		local
+	}) != state)
+	println(state != match flag {
+		true {
+			local := ComparisonSecond.a
+			local
+		}
+		else { .b }
+	})
+	println((match flag {
+		true { .a }
+		else {
+			local := ComparisonSecond.b
+			local
+		}
+	}) == state)
+}
+
+fn compare_match(flag bool) {
+	state := ComparisonFirst.a
+	println(state == match flag {
+		true { .missing }
+		else { .b }
+	})
+	println((match flag {
+		true { ComparisonSecond.a }
+		else { ComparisonSecond.b }
+	}) == state)
+	println(state == match flag {
+		true { .a }
+		else { ComparisonSecond.b }
+	})
+}
+
+fn main() {
+	compare_branch_locals(true)
+	compare_match(true)
+}

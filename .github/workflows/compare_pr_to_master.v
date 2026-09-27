@@ -112,7 +112,7 @@ fn main() {
 	// Use `make` to bootstrap the old V from the C sources on the master branch,
 	// because the new V compiler may have breaking changes that prevent it from
 	// compiling the old code directly.
-	xtime('make -j4')
+	xtime('make -j4 local=1')
 	xtime('./v     -o vold1 cmd/v')
 	xtime('./vold1 -no-parallel -o vold cmd/v')
 	xtime('./vold -no-parallel -o ohw_master.c examples/hello_world.v')

@@ -1,0 +1,16 @@
+type Arr = [8]u8
+
+struct Original {
+	arr Arr
+}
+
+struct Copy {
+	arr Arr
+}
+
+fn main() {
+	original := Original{}
+	_ := Copy{
+		arr: &original.arr
+	}
+}

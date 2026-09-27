@@ -1,3 +1,4 @@
+// vtest vflags: -w
 import json
 
 struct Number {
@@ -7,8 +8,8 @@ struct Number {
 
 pub struct Resp {
 pub:
-	options []string @[omitempty]
-	number  &Number = unsafe { nil }  @[omitempty]
+	options []string  @[omitempty]
+	number  &Number = unsafe { nil } @[omitempty]
 }
 
 fn (r Resp) str() string {

@@ -38,6 +38,9 @@ fn C.realloc(a voidptr, b usize) voidptr
 fn C.free(ptr voidptr)
 
 fn C.mmap(addr_length voidptr, length usize, prot i32, flags i32, fd i32, offset isize) voidptr
+
+// C.munmap releases a memory mapping created by C.mmap.
+fn C.munmap(addr_length voidptr, len usize) i32
 fn C.mprotect(addr_length voidptr, len usize, prot i32) i32
 
 fn C.aligned_alloc(align usize, size usize) voidptr
@@ -52,8 +55,10 @@ fn C._aligned_msize(voidptr, align isize, offset isize) isize
 fn C._aligned_recalloc(voidptr, num isize, size isize, align isize) voidptr
 
 $if windows {
+	type C.DWORD = u32
+
 	fn C.VirtualAlloc(voidptr, isize, u32, u32) voidptr
-	fn C.VirtualProtect(voidptr, isize, u32, &u32) bool
+	fn C.VirtualProtect(voidptr, isize, C.DWORD, &C.DWORD) bool
 }
 
 @[noreturn; trusted]
@@ -61,7 +66,7 @@ fn C.exit(code i32)
 
 fn C.qsort(base voidptr, items usize, item_size usize, cb C.qsort_callback_func)
 
-fn C.strlen(s &char) i32
+fn C.strlen(s &char) usize
 
 @[trusted]
 fn C.isdigit(c i32) bool
@@ -91,6 +96,7 @@ fn C.sscanf(str &char, const_format &char, opt ...voidptr) i32
 fn C.scanf(const_format &char, opt ...voidptr) i32
 
 fn C.puts(msg &char) i32
+
 @[trusted]
 fn C.abs(f64) f64
 
@@ -99,7 +105,11 @@ fn C.fputs(msg &char, fstream &C.FILE) i32
 fn C.fflush(fstream &C.FILE) i32
 
 // TODO: define args in these functions
-fn C.fseek(stream &C.FILE, offset i32, whence i32) i32
+$if windows {
+	fn C.fseek(stream &C.FILE, offset i32, whence i32) i32
+} $else {
+	fn C.fseek(stream &C.FILE, offset isize, whence i32) i32
+}
 
 fn C.fopen(filename &char, mode &char) &C.FILE
 
@@ -123,13 +133,16 @@ fn C.strstr(const_haystack &char, const_needle &char) &char
 // process execution, os.process:
 @[trusted]
 fn C.GetCurrentProcessId() u32
+
 @[trusted]
 fn C._getpid() i32
+
 @[trusted]
 fn C.getpid() i32
 
 @[trusted]
 fn C.GetCurrentThreadId() u32
+
 @[trusted]
 fn C.gettid() u32
 
@@ -151,7 +164,7 @@ fn C.execvp(cmd_path &char, args &&char) i32
 
 fn C._execve(cmd_path &char, args voidptr, envs voidptr) i32
 
-fn C._execvp(cmd_path &char, args &&char) i32
+fn C._execvp(cmd_path &char, args voidptr) i32
 
 fn C.strcmp(s1 &char, s2 &char) i32
 
@@ -189,7 +202,7 @@ fn C.statvfs(const_path &char, buf &C.statvfs) i32
 
 fn C.rename(old_filename &char, new_filename &char) i32
 
-fn C.fgets(str &char, n i32, stream &C.FILE) i32
+fn C.fgets(str &char, n i32, stream &C.FILE) &char
 
 fn C.fgetpos(&C.FILE, voidptr) i32
 
@@ -254,7 +267,7 @@ fn C.strncasecmp(s &char, s2 &char, n i32) i32
 
 fn C.strcasecmp(s &char, s2 &char) i32
 
-fn C.strncmp(s &char, s2 &char, n i32) i32
+fn C.strncmp(s &char, s2 &char, n usize) i32
 
 @[trusted]
 fn C.strerror(i32) &char
@@ -276,7 +289,7 @@ fn C.isatty(fd i32) i32
 
 fn C.syscall(number i32, va ...voidptr) i32
 
-fn C.sysctl(name &int, namelen u32, oldp voidptr, oldlenp voidptr, newp voidptr, newlen usize) i32
+fn C.sysctl(name &i32, namelen u32, oldp voidptr, oldlenp voidptr, newp voidptr, newlen usize) i32
 
 @[trusted]
 fn C._fileno(&C.FILE) i32
@@ -295,7 +308,13 @@ fn C.CreateFile(lpFilename &u16, dwDesiredAccess u32, dwShareMode u32, lpSecurit
 fn C.CreateFileW(lpFilename &u16, dwDesiredAccess u32, dwShareMode u32, lpSecurityAttributes &u16, dwCreationDisposition u32,
 	dwFlagsAndAttributes u32, hTemplateFile voidptr) voidptr
 
-fn C.GetFinalPathNameByHandleW(hFile voidptr, lpFilePath &u16, nSize u32, dwFlags u32) u32
+$if windows {
+	// The TCC-only declaration is guarded with `#ifdef __TINYC__` in the
+	// header, so it survives cross compilation; GCC/MSVC use the SDK header.
+	#insert "@VEXEROOT/vlib/builtin/cfns_windows_tcc.h"
+
+	fn C.GetFinalPathNameByHandleW(hFile voidptr, lpFilePath &u16, nSize u32, dwFlags u32) u32
+}
 
 fn C.CreatePipe(hReadPipe &voidptr, hWritePipe &voidptr, lpPipeAttributes voidptr, nSize u32) bool
 
@@ -470,6 +489,17 @@ $if windows {
 
 // pthread.h
 fn C.pthread_self() usize
+
+fn C.pthread_create(thread voidptr, attr voidptr, start_routine voidptr, arg voidptr) i32
+
+fn C.pthread_join(thread voidptr, retval voidptr) i32
+
+fn C.pthread_attr_init(attr voidptr) i32
+
+fn C.pthread_attr_setstacksize(attr voidptr, stacksize usize) i32
+
+fn C.pthread_attr_destroy(attr voidptr) i32
+
 fn C.pthread_mutex_init(voidptr, voidptr) i32
 
 fn C.pthread_mutex_lock(voidptr) i32
@@ -541,9 +571,17 @@ fn C.write(fd i32, buf voidptr, count usize) i32
 fn C.close(fd i32) i32
 
 // pipes
-fn C.pipe(pipefds &int) i32
+fn C.pipe(pipefds &i32) i32
 
 fn C.dup2(oldfd i32, newfd i32) i32
+
+fn C.fcntl(fd i32, cmd i32, arg ...voidptr) i32
+
+fn C.execlp(file &char, arg &char, va ...voidptr) i32
+
+fn C._exit(code i32)
+
+fn C.signal(sig i32, handler voidptr) voidptr
 
 // used by gl, stbi, freetype
 fn C.glTexImage2D()

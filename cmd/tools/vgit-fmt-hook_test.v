@@ -5,6 +5,7 @@ const tfolder = os.to_slash(os.join_path(os.vtmp_dir(), 'fmt_hook_test'))
 const unformatted_content = '   fn main() {\nprintln(   "hi" )\n println ( 123 )\n   }'
 const formatted_content = "fn main() {\n\tprintln('hi')\n\tprintln(123)\n}\n"
 const hook_file = '.git/hooks/pre-commit'
+
 // 'env -S' not supported on OpenBSD
 $if openbsd {
 	const foreign_script = '#!/bin/sh\ncat <<EOF | ${vexe} run -\nprintln("hello hello")\nEOF'

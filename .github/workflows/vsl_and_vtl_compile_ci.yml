@@ -33,13 +33,13 @@ jobs:
     env:
       VFLAGS: -no-parallel
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - name: Cache apt packages
         if: runner.os == 'Linux'
         uses: ./.github/actions/cache-apt-packages-action
       - name: Cache Homebrew downloads
         if: runner.os == 'macOS'
-        uses: actions/cache@v5
+        uses: actions/cache@v6
         with:
           path: ~/Library/Caches/Homebrew
           key: brew-${{ matrix.os }}-vsl-${{ hashFiles('.github/workflows/vsl_and_vtl_compile_ci.yml') }}
@@ -84,17 +84,18 @@ jobs:
     timeout-minutes: 25
     env:
       VFLAGS: -no-parallel
+      VJOBS: 1
       # Fixes complaints about $TERM not being set when running the vtl test script
       # (a warning on Linux, but an error on macOS).
       TERM: xterm
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - name: Cache apt packages
         if: runner.os == 'Linux'
         uses: ./.github/actions/cache-apt-packages-action
       - name: Cache Homebrew downloads
         if: runner.os == 'macOS'
-        uses: actions/cache@v5
+        uses: actions/cache@v6
         with:
           path: ~/Library/Caches/Homebrew
           key: brew-${{ matrix.os }}-vtl-${{ hashFiles('.github/workflows/vsl_and_vtl_compile_ci.yml') }}

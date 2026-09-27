@@ -12,6 +12,11 @@ enum Color2 as i64 {
 	green
 }
 
+enum Example {
+	exam1
+	exam2
+}
+
 fn test_enum_static_from_string() {
 	color11 := Color1.from_string('red')?
 	println(color11)
@@ -36,4 +41,16 @@ fn test_enum_static_from_string() {
 	color23 := Color2.from_string('bbbbb') or { Color2.unknown }
 	println(color23)
 	assert color23 == Color2.unknown
+}
+
+fn test_enum_static_from_string_if_guard_match() {
+	str := 'exam1'
+	mut matched := ''
+	if value := Example.from_string(str) {
+		match value {
+			.exam1 { matched = 'exam1' }
+			.exam2 { matched = 'exam2' }
+		}
+	}
+	assert matched == 'exam1'
 }

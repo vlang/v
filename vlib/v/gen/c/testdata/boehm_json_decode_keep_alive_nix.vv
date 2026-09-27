@@ -1,4 +1,4 @@
-// vtest vflags: -prod -gc boehm_full_opt -cc gcc
+// vtest vflags: -w -prod -gc boehm_full_opt -cc gcc
 import json
 
 struct Objective {

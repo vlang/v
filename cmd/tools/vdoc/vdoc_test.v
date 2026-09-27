@@ -4,7 +4,6 @@ module main
 
 import os
 import arrays
-import v.ast
 import document as doc
 import markdown
 
@@ -112,12 +111,11 @@ fn test_get_module_list() {
 }
 
 fn test_html_highlight_escapes_html_tokens() {
-	table := ast.new_table()
 	code := 'fn main() {
 	// <h1>owned</h1>
 	assert 1 < 2
 }'
-	highlighted := html_highlight(code, table)
+	highlighted := html_highlight(code)
 	assert highlighted.contains('// &lt;h1&gt;owned&lt;/h1&gt;')
 	assert !highlighted.contains('<h1>owned</h1>')
 	assert highlighted.contains('<span class="token operator">&lt;</span>')
@@ -210,8 +208,7 @@ pub fn greet() string {
 	return 'hello'
 }
 ")!
-	res := os.execute_opt('${vexe_} doc -no-timestamp -f text -o - -readme -comments ${os.quoted_path(
-		'./' + mod_dir)}') or { panic(err) }
+	res := os.execute_opt('${vexe_} doc -no-timestamp -f text -o - -readme -comments ${os.quoted_path('./' + mod_dir)}') or { panic(err) }
 	assert res.exit_code == 0
 	assert res.output.replace('\r\n', '\n').trim_space() == 'module overview
     `overview` uses the first comment after the module declaration as the module overview.
@@ -237,8 +234,7 @@ pub enum Bar {
 	bar
 }
 ')!
-	res := os.execute_opt('${vexe_} doc -no-timestamp -m -f html -o - -html-only-contents ${os.quoted_path(
-		'./' + mod_dir)}') or { panic(err) }
+	res := os.execute_opt('${vexe_} doc -no-timestamp -m -f html -o - -html-only-contents ${os.quoted_path('./' + mod_dir)}') or { panic(err) }
 	assert res.exit_code == 0
 	output := res.output.replace('\r\n', '\n')
 	assert output.contains('Foo lorem ipsum foo.')
@@ -277,7 +273,6 @@ fn test_markdown_renderer_resolves_relative_links() ! {
 	base := 'https://github.com/vlang/v/blob/master/vlib/net/html/'
 	mut renderer := markdown.HtmlRenderer{
 		transformer: &MdHtmlCodeHighlighter{
-			table:              ast.new_table()
 			relative_link_base: base
 		}
 	}
@@ -287,12 +282,9 @@ fn test_markdown_renderer_resolves_relative_links() ! {
 
 fn test_prepare_markdown_for_html_preserves_blockquote_linebreaks() ! {
 	mut renderer := markdown.HtmlRenderer{
-		transformer: &MdHtmlCodeHighlighter{
-			table: ast.new_table()
-		}
+		transformer: &MdHtmlCodeHighlighter{}
 	}
-	out := markdown.render(prepare_markdown_for_html('> **Note**\n> line one\n> line two'), mut
-		renderer)!
+	out := markdown.render(prepare_markdown_for_html('> **Note**\n> line one\n> line two'), mut renderer)!
 	assert out.contains('<blockquote>')
 	assert out.contains('<strong>Note</strong><br />line one<br />line two')
 }
@@ -305,9 +297,7 @@ fn test_prepare_markdown_for_html_skips_fenced_code_blocks() {
 fn test_markdown_renderer_preserves_wrapped_readme_markdown() ! {
 	input := '1. The basic atomic elements of this regex engine are the tokens.\n   In a query string a simple character is a token.\n\n- The basic element **is the token not the sequence of symbols**,\n  and the most simple token, is a single character.\n\n- `|` **the OR operator acts on tokens,** for example `abc|ebc` is not\n  `abc` OR `ebc`.'
 	mut renderer := markdown.HtmlRenderer{
-		transformer: &MdHtmlCodeHighlighter{
-			table: ast.new_table()
-		}
+		transformer: &MdHtmlCodeHighlighter{}
 	}
 	out := markdown.render(prepare_markdown_for_html(input), mut renderer)!
 	assert !out.contains('tokens.In')
@@ -316,4 +306,81 @@ fn test_markdown_renderer_preserves_wrapped_readme_markdown() ! {
 	assert out.contains('tokens. In a query string a simple character is a token.')
 	assert out.contains('the most simple token')
 	assert out.contains('is not <code>abc</code> OR <code>ebc</code>')
+}
+
+fn test_doc_multi_skips_modules_without_valid_files_for_platform() {
+	// https://github.com/vlang/v/issues/27464
+	// A module whose only V files are filtered out for the target platform (e.g.
+	// the `ios`/`macos` modules when generating docs on Linux) is skipped during
+	// generation. It must not produce an empty `Doc` that later crashes rendering.
+	base_dir := 'skip_platform_modules'
+	good_dir := os.join_path(base_dir, 'good')
+	skipped_dir := os.join_path(base_dir, 'winonly')
+	os.mkdir_all(good_dir)!
+	os.mkdir_all(skipped_dir)!
+	os.write_file(os.join_path(good_dir, 'good.v'), "module good
+
+// hello returns a greeting.
+pub fn hello() string {
+	return 'hi'
+}
+")!
+	// This file only compiles on Windows, so on every other platform the `winonly`
+	// module has no valid V files and gets skipped. The test never runs on Windows
+	// (see the `vtest build: !windows` directive at the top of the file).
+	os.write_file(os.join_path(skipped_dir, 'winonly_windows.c.v'), 'module winonly
+
+// only_win does nothing useful here.
+pub fn only_win() int {
+	return 1
+}
+')!
+	// `-color` exercises the original crash path in `gen_plaintext`.
+	res := os.execute_opt('${vexe_} doc -no-timestamp -m -color -f text -o - ${os.quoted_path('./' + base_dir)}') or { panic(err) }
+	// The crash showed up as a non-zero exit code (V panic), so this is the key check.
+	assert res.exit_code == 0
+	assert res.output.contains('hello')
+	// The skipped module must not be documented (its public symbol must be absent).
+	// Note: `os.execute_opt` merges stderr, where the `Skipping folder: ...winonly`
+	// notice is printed, so we check for the rendered symbol rather than the name.
+	assert !res.output.contains('only_win')
+}
+
+fn test_doc_multi_all_modules_skipped_fails_for_file_output() {
+	// https://github.com/vlang/v/issues/27464 (review follow-up)
+	// When every discovered module is filtered out for the target platform, there
+	// is nothing to document. Writing to a real output path must fail with the same
+	// `No documentation found` error as the stdout path, instead of silently
+	// creating/cleaning an empty output directory and exiting 0.
+	base_dir := 'all_skipped_modules'
+	skipped_dir := os.join_path(base_dir, 'winonly')
+	out_dir := os.join_path(base_dir, 'out')
+	os.mkdir_all(skipped_dir)!
+	os.write_file(os.join_path(skipped_dir, 'winonly_windows.c.v'), 'module winonly
+
+pub fn only_win() int {
+	return 1
+}
+')!
+	// `os.execute` (not `execute_opt`) so the expected non-zero exit is not an error.
+	res := os.execute('${vexe_} doc -no-timestamp -m -f html -o ${os.quoted_path('./' + out_dir)} ${os.quoted_path('./' + base_dir)}')
+	assert res.exit_code != 0
+	assert res.output.contains('No documentation found')
+	// The output directory must not have been created.
+	assert !os.exists(out_dir)
+}
+
+// The "Available modules" list names modules, not directories: each one as it
+// sits under the input root, which is what a reader can act on. `modules/` is an
+// ordinary directory now, so a module under one keeps that in its name.
+fn test_module_display_name_is_relative_to_the_input_root() {
+	assert module_display_name('/tmp/app/modules/foo', '/tmp/app') == 'modules.foo'
+	assert module_display_name('/tmp/app/foo', '/tmp/app') == 'foo'
+	assert module_display_name('/tmp/app/foo/bar', '/tmp/app/') == 'foo.bar'
+	assert module_display_name('./vlib/os', '.') == 'vlib.os'
+	assert module_display_name('vlib/v/ast', 'vlib') == 'v.ast'
+	// An input that is the module itself, and anything the root does not hold,
+	// are named by the directory they are.
+	assert module_display_name('/tmp/app', '/tmp/app') == 'app'
+	assert module_display_name('/somewhere/else/foo', '/tmp/app') == 'foo'
 }

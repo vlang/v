@@ -342,7 +342,7 @@ pub enum BlendOp as u32 {
 }
 
 pub enum ColorMask as u32 {
-	_default   = 0    // value 0 reserved for default-init
+	_default   = 0 // value 0 reserved for default-init
 	none       = 0x10 // special value for 'all channels disabled
 	r          = 1
 	g          = 2
@@ -378,7 +378,7 @@ pub enum StoreAction as u32 {
 }
 
 pub enum UniformLayout as u32 {
-	uniformlayout_default = 0                  // value 0 reserved for default-init
+	uniformlayout_default = 0 // value 0 reserved for default-init
 	uniformlayout_native // default: layout depends on currently active backend
 	uniformlayout_std140 // std140: memory layout according to std140
 	_num

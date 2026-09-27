@@ -1,7 +1,10 @@
 module main
 
-import v.builder.wasmbuilder
+import os
+import v.driver
 
 fn main() {
-	wasmbuilder.start()
+	mut args := ['-b', 'wasm']
+	args << os.args[1..]
+	driver.run(args)
 }

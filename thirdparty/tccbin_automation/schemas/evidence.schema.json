@@ -1,0 +1,59 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "evidence.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "operation_id",
+    "operation_ordinal",
+    "cas_attempt",
+    "run_id",
+    "run_attempt",
+    "intent_id",
+    "transition",
+    "workflow",
+    "workflow_ref",
+    "workflow_sha",
+    "subject_id",
+	"subject_fingerprint",
+    "target_id",
+    "input_fingerprint",
+    "artifact_fingerprint",
+    "generation_read",
+    "generation_written",
+    "result",
+    "digests"
+  ],
+  "properties": {
+    "schema_version": {"type": "integer", "const": 1},
+    "operation_id": {"$ref": "common.schema.json#/$defs/sha256"},
+    "operation_ordinal": {"type": "integer", "minimum": 0},
+    "cas_attempt": {"type": "integer", "minimum": 1, "maximum": 3},
+    "run_id": {"$ref": "common.schema.json#/$defs/run_id"},
+    "run_attempt": {"type": "integer", "minimum": 1},
+    "intent_id": {"$ref": "common.schema.json#/$defs/nullable_sha256"},
+    "transition": {"type": "string", "minLength": 1, "maxLength": 128},
+    "workflow": {"$ref": "common.schema.json#/$defs/relative_path"},
+    "workflow_ref": {"type": "string", "const": "master"},
+    "workflow_sha": {"$ref": "common.schema.json#/$defs/sha40"},
+    "subject_id": {"type": "string", "minLength": 1, "maxLength": 128},
+	"subject_fingerprint": {"$ref": "common.schema.json#/$defs/sha256"},
+    "target_id": {
+      "oneOf": [
+        {"type": "null"},
+        {"$ref": "common.schema.json#/$defs/target_id"}
+      ]
+    },
+    "input_fingerprint": {"$ref": "common.schema.json#/$defs/nullable_sha256"},
+    "artifact_fingerprint": {"$ref": "common.schema.json#/$defs/nullable_sha256"},
+    "generation_read": {"$ref": "common.schema.json#/$defs/generation"},
+    "generation_written": {"$ref": "common.schema.json#/$defs/generation"},
+    "result": {"type": "string", "enum": ["passed", "failed", "blocked", "no_op", "stale"]},
+    "digests": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {"$ref": "common.schema.json#/$defs/digest_entry"}
+    }
+  }
+}

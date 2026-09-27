@@ -1,0 +1,16 @@
+vlib/v/checker/tests/interface_method_option_fn_component_alias_mismatch_err.vv:20:10: error: `OptionalPlainCalc` incorrectly implements method `get_operation` of interface `OptionalAliasedCalculator`: expected return type `?fn (MyInt, MyInt) MyInt`
+   18 |
+   19 | fn main() {
+   20 |     calc := OptionalAliasedCalculator(OptionalPlainCalc{})
+      |             ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+   21 |     operation := calc.get_operation() or { panic('missing operation') }
+   22 |     assert operation(2, 3) == 5
+Details: main.OptionalAliasedCalculator has `fn get_operation(x main.OptionalAliasedCalculator) ?fn (main.MyInt, main.MyInt) main.MyInt`
+         main.OptionalPlainCalc has `fn get_operation(_ main.OptionalPlainCalc) ?fn (int, int) int`
+vlib/v/checker/tests/interface_method_option_fn_component_alias_mismatch_err.vv:20:10: error: `OptionalPlainCalc` does not implement interface `OptionalAliasedCalculator`, cannot cast `OptionalPlainCalc` to interface `OptionalAliasedCalculator`
+   18 |
+   19 | fn main() {
+   20 |     calc := OptionalAliasedCalculator(OptionalPlainCalc{})
+      |             ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+   21 |     operation := calc.get_operation() or { panic('missing operation') }
+   22 |     assert operation(2, 3) == 5

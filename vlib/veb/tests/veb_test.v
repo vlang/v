@@ -2,7 +2,7 @@
 // vtest build: !sanitized_job? && !windows // !windows: fasthttp.Server.run not implemented yet
 import os
 import time
-import x.json2 as json
+import json2 as json
 import net
 import net.http
 import io
@@ -56,6 +56,16 @@ fn test_a_simple_veb_app_runs_in_the_background() {
 		time.sleep(1000 * time.millisecond)
 	} $else {
 		time.sleep(100 * time.millisecond)
+	}
+	// A freshly built server can need much longer than the fixed pause to start
+	// listening on a slow or emulated machine; wait for its port to accept.
+	for _ in 0 .. 100 {
+		mut probe := net.dial_tcp(localserver) or {
+			time.sleep(100 * time.millisecond)
+			continue
+		}
+		probe.close() or {}
+		break
 	}
 }
 
@@ -137,7 +147,15 @@ fn test_http_client_index() {
 	assert_common_http_headers(x)!
 	assert x.header.get(.content_type)? == 'text/plain'
 	assert x.body == 'Welcome to veb'
-	assert x.header.get(.connection)? == 'close'
+	// The default http client keeps connections alive (it no longer sends
+	// `Connection: close`), so veb must not answer with a close either.
+	if conn_header := x.header.get(.connection) {
+		assert conn_header != 'close'
+	}
+	// Opting out of connection reuse restores the historical behavior
+	// end-to-end: the client sends `Connection: close` and veb honors it.
+	y := http.fetch(url: 'http://${localserver}/', disable_connection_reuse: true) or { panic(err) }
+	assert y.header.get(.connection)? == 'close'
 }
 
 fn test_http_client_404() {

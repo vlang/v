@@ -1,6 +1,9 @@
 module closure
 
 #include <synchapi.h>
+#insert "@VEXEROOT/vlib/builtin/closure/closure_once_windows.h"
+
+fn C.v_closure_init_once(ClosureInitFn)
 
 struct ClosureMutex {
 	closure_mtx C.SRWLOCK
@@ -15,7 +18,7 @@ fn closure_alloc_platform() &u8 {
 
 @[inline]
 fn closure_memory_protect_platform(ptr voidptr, size isize, attr MemoryProtectAtrr) {
-	mut tmp := u32(0)
+	mut tmp := C.DWORD(0)
 	match attr {
 		.read_exec {
 			_ := C.VirtualProtect(ptr, size, C.PAGE_EXECUTE_READ, &tmp)
@@ -50,4 +53,14 @@ fn closure_mtx_lock_platform() {
 @[inline]
 fn closure_mtx_unlock_platform() {
 	C.ReleaseSRWLockExclusive(&g_closure.closure_mtx)
+}
+
+@[inline]
+fn closure_current_thread_id_platform() u64 {
+	return u64(C.GetCurrentThreadId())
+}
+
+@[inline]
+fn closure_init_once_platform() {
+	C.v_closure_init_once(closure_init_body)
 }

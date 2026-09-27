@@ -1,0 +1,30 @@
+fn main() {
+	unsafe {
+		values := [1, 2, 3]!
+		p := &values[0]
+		_ := []int(p)
+		_ := [3]int(p)
+	}
+}
+
+fn reject_other_pointer_sources() {
+	unsafe {
+		byte_value := u8(1)
+		_ := []int(&byte_value)
+		value := 1
+		p := &value
+		pp := &p
+		_ := []int(pp)
+		raw := voidptr(p)
+		_ := []int(raw)
+	}
+}
+
+fn preserve_pointer_to_array_reinterpret_casts() {
+	unsafe {
+		dynamic := [1, 2, 3]
+		_ := *&[]int(&dynamic)
+		fixed := [1, 2, 3]!
+		_ := *&[3]int(&fixed)
+	}
+}

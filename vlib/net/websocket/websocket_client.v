@@ -40,7 +40,7 @@ pub:
 pub mut:
 	header            http.Header // headers that will be passed when connecting
 	conn              &net.TcpConn = unsafe { nil } // underlying TCP socket connection
-	nonce_size        int          = 16             // size of nounce used for masking
+	nonce_size        int          = 16           // size of nounce used for masking
 	panic_on_callback bool               // set to true of callbacks can panic
 	client_state      shared ClientState // current state of connection
 	// logger used to log messages
@@ -336,7 +336,7 @@ pub fn (mut ws Client) close(code int, message string) ! {
 	ws.debug_log('sending close, ${code}, ${message}')
 	ws_state := ws.get_state()
 	if ws_state in [.closed, .closing] || ws.conn.sock.handle <= 1 {
-		ws.debug_log('close: Websocket already closed (${ws_state}), ${message}, ${code} handle(${ws.conn.sock.handle})')
+		ws.debug_log('close: Websocket already closed (${ws_state}), ${message}, ${code}')
 		err_msg := 'Socket already closed: ${code}'
 		return error(err_msg)
 	}
@@ -470,7 +470,9 @@ fn (ws &Client) assert_not_connected() ! {
 	match ws.get_state() {
 		.connecting { return error('connect: websocket is connecting') }
 		.open { return error('connect: websocket already open') }
-		.closing { return error('connect: reconnect on closing websocket not supported, please use new client') }
+		.closing {
+			return error('connect: reconnect on closing websocket not supported, please use new client')
+		}
 		else {}
 	}
 }

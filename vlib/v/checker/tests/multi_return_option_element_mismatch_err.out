@@ -1,0 +1,21 @@
+vlib/v/checker/tests/multi_return_option_element_mismatch_err.vv:5:47: error: wrong return type `(string, ?string)` in the `or {}` block, expected `(string, string)`
+    3 | // mismatched `multi_return_*` C structs. See issue #27562.
+    4 | fn parse(s string) ?(string, string) {
+    5 |     subtype, parameter := s.split_once(';') or { s, ?string(none) }
+      |                                                  ^
+    6 |     return subtype, parameter
+    7 | }
+vlib/v/checker/tests/multi_return_option_element_mismatch_err.vv:10:25: error: mismatched types `(string, string)` and `(string, ?string)`
+    8 |
+    9 | fn extract(s string) (string, ?string) {
+   10 |     rawurl, description := if s.contains(' ') {
+      |                            ~~
+   11 |         s[..1], s[1..]
+   12 |     } else {
+vlib/v/checker/tests/multi_return_option_element_mismatch_err.vv:20:25: error: mismatched types `(string, ?string)` and `(string, string)`
+   18 | // the same mismatch must be caught regardless of which branch is the optional one
+   19 | fn extract_rev(s string) (string, ?string) {
+   20 |     rawurl, description := if s.contains(' ') {
+      |                            ~~
+   21 |         s, ?string(none)
+   22 |     } else {

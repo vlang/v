@@ -53,9 +53,8 @@ fn test_many_senders() {
 	spawn g(ch, res)
 	spawn g(ch, res)
 	spawn g(ch, res)
-	mut k := 0
 	for _ in 0 .. 3 * n {
-		k = <-ch
+		_ := <-ch
 	}
 	ch.close()
 	mut sum := <-res

@@ -18,7 +18,7 @@ fn t(mut opt ?Bar) {
 		assert opt.a == 123
 		assert v.field != none
 	}
-	if mut opt != none {
+	if opt != none {
 		opt.a = 321
 	}
 }

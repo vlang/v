@@ -455,7 +455,7 @@ fn make_capture_fn(cap &ChunkCapture) H2DataFn {
 
 fn test_h2_on_data_fires_per_chunk() {
 	mut cap := &ChunkCapture{}
-	inbound := build_streamed_response('200', '12', [
+	inbound := build_streamed_response('200', '14', [
 		'foo'.bytes(),
 		'bar'.bytes(),
 		'baz quux'.bytes(),
@@ -478,7 +478,7 @@ fn test_h2_on_data_fires_per_chunk() {
 	// body_so_far is cumulative including the current chunk.
 	assert cap.running == [u64(3), u64(6), u64(14)]
 	// content-length is reported.
-	assert cap.expected == [u64(12), u64(12), u64(12)]
+	assert cap.expected == [u64(14), u64(14), u64(14)]
 	// Status was known by the first callback (headers arrived first).
 	assert cap.status == [200, 200, 200]
 }
@@ -551,4 +551,50 @@ fn test_h2_stop_receiving_limit_breaks_early() {
 		return
 	}
 	assert false, 'expected error on reuse after early termination'
+}
+
+// RFC 9113 §8.2: the synchronous client must reject a response carrying a
+// malformed field (connection-specific header or uppercase field name) rather
+// than delivering it — parity with the mux path. Conformance gap G1.
+fn test_h2_conn_rejects_malformed_response_fields() {
+	// A connection-specific header (§8.2.2) is forbidden in HTTP/2.
+	inbound1 := build_server_stream([H2HeaderField{':status', '200'},
+		H2HeaderField{'transfer-encoding', 'chunked'}], [])
+	mut c1 := new_h2_conn(&MockTransport{ inbound: inbound1 })
+	if _ := c1.do(H2ClientRequest{ authority: 'h.example' }) {
+		assert false, 'connection-specific response header was accepted'
+	} else {
+		assert err.msg().contains('transfer-encoding'), 'unexpected error: ${err.msg()}'
+	}
+	// An uppercase field name (§8.2.1) is malformed.
+	inbound2 := build_server_stream([H2HeaderField{':status', '200'},
+		H2HeaderField{'Content-Type', 'text/plain'}], [])
+	mut c2 := new_h2_conn(&MockTransport{ inbound: inbound2 })
+	if _ := c2.do(H2ClientRequest{ authority: 'h.example' }) {
+		assert false, 'uppercase response header name was accepted'
+	} else {
+		assert err.msg().contains('uppercase'), 'unexpected error: ${err.msg()}'
+	}
+}
+
+// RFC 9113 §6.5.2: the client honors the peer's advisory
+// SETTINGS_MAX_HEADER_LIST_SIZE and refuses an over-limit request rather than
+// emitting it. Conformance gap G4 (set white-box: on the sync path the peer's
+// SETTINGS arrive only with the response, after the request is built).
+fn test_h2_conn_respects_peer_max_header_list_size() {
+	mut c := new_h2_conn(&MockTransport{
+		inbound: build_server_stream([H2HeaderField{':status', '200'}], [])
+	})
+	c.peer.max_header_list_size = 40 // tiny: even the pseudo-headers exceed it
+	if _ := c.do(H2ClientRequest{
+		method:    'GET'
+		scheme:    'https'
+		authority: 'example.com'
+		path:      '/a-fairly-long-path-to-exceed-the-limit'
+	})
+	{
+		assert false, 'over-limit request was sent'
+	} else {
+		assert err.msg().contains('MAX_HEADER_LIST_SIZE'), 'unexpected error: ${err.msg()}'
+	}
 }

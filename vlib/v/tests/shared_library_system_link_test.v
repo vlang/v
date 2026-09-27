@@ -83,15 +83,18 @@ fn test_shared_library_only_exports_tagged_symbols() {
 	symbol_token := if uos == 'macos' { ' _my_add' } else { ' my_add' }
 	assert res.output.contains(symbol_token), 'expected exported `my_add` in:\n${res.output}'
 	// None of the V runtime/stdlib helpers should leak into the exported ABI.
-	leaky_prefixes := ['Array_string_', 'main__', 'builtin__', 'GC_', '_vinit', '_vcleanup',
-		'_const_']
+	leaky_prefixes := ['Array_string_', 'main__', 'builtin__', 'GC_', '_vinit', '_vcleanup', '_const_']
 	for line in res.output.split('\n') {
 		for prefix in leaky_prefixes {
-			needles := if uos == 'macos' { [' _${prefix}', ' T _${prefix}', ' D _${prefix}'] } else { [
+			needles := if uos == 'macos' {
+				[' _${prefix}', ' T _${prefix}', ' D _${prefix}']
+			} else {
+				[
 					' ${prefix}',
 					' T ${prefix}',
 					' D ${prefix}',
-				] }
+				]
+			}
 			for needle in needles {
 				assert !line.contains(needle), 'unexpected exported symbol on line: ${line}'
 			}

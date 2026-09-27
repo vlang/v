@@ -11,7 +11,7 @@ fn tag(params ...Either) int {
 }
 
 fn div(params ...Either) int {
-	return tag(params)
+	return tag(...params)
 }
 
 fn div2(params ...Either) int {

@@ -300,3 +300,34 @@ fn test_savepoint_becomes_inactive_when_parent_transaction_closes() {
 	}
 	assert false
 }
+
+fn test_orm_execute_in_transaction() {
+	mut db := setup_tx_db()!
+	defer {
+		db.close() or {}
+	}
+
+	mut tx := orm.begin(mut db)!
+	result := tx.execute('SELECT 1')!
+	assert result.len == 1
+	assert result[0].vals.len == 1
+	assert result[0].vals[0] == '1'
+	assert result[0].names.len == 1
+	assert result[0].names[0] == '1'
+	tx.commit()!
+}
+
+fn test_orm_execute_after_commit_fails() {
+	mut db := setup_tx_db()!
+	defer {
+		db.close() or {}
+	}
+
+	mut tx := orm.begin(mut db)!
+	tx.commit()!
+	tx.execute('SELECT 1') or {
+		assert err.msg().contains('inactive')
+		return
+	}
+	assert false
+}

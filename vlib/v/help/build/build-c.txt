@@ -11,7 +11,42 @@ see also `v help build`.
       Change the C compiler V invokes to the specified compiler.
       The C compiler is required to support C99.
       Officially supported/tested C compilers include:
-      `clang`, `gcc`, `tcc`, `mingw-w64` and `msvc`.
+      `clang`, `gcc`, `tcc` (also accepted as `tinyc`), `mingw-w64` and `msvc`.
+
+   -glibc
+   -musl
+      Pin the C library that the generated program is expected to link against.
+      These flags select `$if glibc {` and `$if musl ? {` respectively.
+
+      On a native Linux build that V compiles and links itself, V infers the
+      host libc when neither flag is present. Host inference is not reused for
+      C-only output (`-o out.c` or `-o -`), object output (`-o out.o`/`-is_o`),
+      `-generate-c-project`, portable `-os cross` output, or a foreign target,
+      because another toolchain may perform the final link. Pass `-glibc` or
+      `-musl` explicitly for those builds when the target libc is known.
+      Selecting a compiler whose executable name ends in `musl-gcc` implies
+      `-musl`.
+
+   -old-compiler
+      On macOS, Linux, and BSD the experimental V3 compiler (vlib/v) is the default;
+      `-old-compiler` bypasses it and compiles with the established compiler in
+      vlib/v. V already falls back to this compiler automatically when V3 cannot
+      build an eligible program, and (unless V_C_ERROR_BUG_REPORT_DISABLED=1 is
+      set) normally reports the failure to https://bugs.vlang.io so the gap can
+      be fixed: the V version, target and build options, plus a bounded snippet
+      of the failing V source when one is available (always a strict subset,
+      never the whole file). An internal V3 error on a short program or a
+      directory build such as `v .` submits metadata only. If the input selected
+      for a source excerpt changes after V3 parses it, that report also submits
+      metadata only, rather than source V3 did not parse. Before submitting, the
+      stable compiler verifies that it parsed the same bytes for every captured
+      project input; otherwise no fallback report is submitted. An unchanged input
+      mapped from a generated-C error can still include a strict-subset excerpt.
+      Inline-assembly fallbacks and reports that cannot fit safely through the
+      retry environment are notice-only; test compilations and GitHub CI also
+      submit no report to the default endpoint. An explicitly configured custom
+      bug report URL remains active in CI. See `v help build` for the full
+      description of the default.
 
    -cflags <flag>
       Pass the provided flag as is to the C compiler.
@@ -57,6 +92,7 @@ see also `v help build`.
       When set to `console` V will generate a `wmain` main function.
       When set to `windows` V will generate a `wWinMain` main function,
       even when you are not compiling `gg` apps.
+      The FastC backend does not support `-subsystem windows` yet.
 
    -icon <path>
    --icon=<path>
@@ -130,7 +166,32 @@ see also `v help build`.
          implementation can be found in `vlib/builtin/linux_bare`.
 
    -cross
-      With `-cross`, V will attempt to output cross-platform C code.
+      Produce portable C, like `-os cross` (see the `-os` entry below), but as a
+      modifier that combines with an explicit target, so that
+      `v -cross -os windows -cc msvc -o v_win.c cmd/v` generates the Windows
+      bootstrap snapshot.
+
+      It additionally turns on the `cross` and `no_backtrace` custom defines, so
+      that the `$if cross ?` guards in the standard library select their portable
+      path instead of a platform syscall, and no backtrace support is baked in.
+
+   -target-libc-headers
+      The target supplies the C library headers itself, so V includes them
+      rather than restating what they declare. A kernel is the case: it
+      compiles the generated C with `-nostdinc -ffreestanding` against its own
+      header tree, and defines `struct stat`, `FILE` and the rest for itself.
+
+      V otherwise decides this from whether the program has any `#include` of
+      its own, which reads a project's own headers as proof that the host libc
+      is present, and then emits the full hosted set (`<sys/un.h>`,
+      `<pthread.h>`, `<sys/epoll.h>`) into a unit that has none of them. It
+      cannot be inferred from `-os` either, because the same OS also hosts
+      ordinary programs that link the host's libc.
+
+      This is not `-freestanding`, which means no libc at all and needs a
+      `-bare-builtin-dir`. Here there is a libc; it is the target's own. Windows
+      targets, non-C backends, and portable `-os cross`/`-cross` output are
+      not currently supported by this mode.
 
    -os <os>, -target-os <os>
       Change the target OS that V tries to compile for.
@@ -150,6 +211,48 @@ see also `v help build`.
             `plan9`,
             `wasm32`, `wasm32-wasi`, `wasm32-emscripten`
 
+      The pseudo target `-os cross` is not a platform. It asks for portable C,
+      i.e. C that is not tied to one OS, architecture or C compiler, so that a
+      single generated `.c` file can be compiled on any of them. This is how
+      the bootstrap snapshot `vc/v.c` is produced. It only makes sense together
+      with `-o file.c`, since there is no single machine to build for.
+
+      In this mode V does not resolve a target-dependent `$if` while generating.
+      It keeps every branch and emits the condition as a C preprocessor guard,
+      so that the compiler that eventually builds the C file chooses:
+
+            $if linux { a() } $else { b() }
+
+      becomes
+
+            #if (defined(__linux__) && !defined(__ANDROID__))
+            a();
+            #else
+            b();
+            #endif
+
+      Conditions that do not depend on the target (`$if prealloc`, `-d` values,
+      `$if debug`) are still resolved while generating, exactly as usual.
+
+      What is not portable, and is decided while generating instead:
+
+        * A `$if` used as an *expression*. Its branches may have different types
+          - `closure_thunk` in `vlib/builtin/closure` is a differently sized
+          fixed array per architecture - which no guard around an expression can
+          express.
+        * A `$if` at file scope holding declarations. A function, type, constant
+          or global cannot be wrapped in `#if`, so only the host's branch is
+          emitted. Directives (`#include`, `#flag`) at file scope are kept from
+          every branch and guarded; that is what makes the headers portable.
+        * Platform files (see below) are still selected by the host V runs on.
+          A module split into `x_linux.c.v` and `x_darwin.c.v` therefore
+          contributes only the generating host's variant, so generate the
+          portable C on the platform whose variants are the portable ones.
+        * The pointer width. V's `int`, the type layouts and the literal ranges
+          are baked for the generating target, so the output carries a check
+          that fails the build with a clear `#error` when it is compiled for a
+          different width. It stays portable across targets of the same width.
+
       Note that V has the concept of platform files, i.e. files ending
       with `_platform.c.v`, and usually only the matching files are used in
       a compilation, and also it supports a `_default.c.v` file, that will
@@ -164,10 +267,10 @@ see also `v help build`.
       If you compile with `-os freebsd`, then x_default.c.v will be used.
       If you compile with `-os linux`, then x_linux.c.v will be used.
       If you compile with `-os windows`, then x_windows.c.v will be used.
-      If you compile with `-cross`, then all, *except x_default.c.v*
-      will be used, wrapped in conditional compilation guards, so that
-      the generated C source code will be larger, but will compile on all
-      explicitly supported platforms without source changes.
+      If you compile with `-os cross`, the file for the host V runs on is
+      used, the same as without it: `-os cross` guards the target-dependent
+      `$if` conditions *inside* the selected files, it does not combine the
+      platform files themselves.
 
    -m32, -m64
       Whether 32-bit or 64-bit machine code will be generated.
@@ -233,6 +336,25 @@ see also `v help build`.
       collector is conservative, and it may affect program speed if it does many small
       allocations in a loop.
 
+      V enables Boehm thread-local allocation by default for better allocation
+      scaling on multi-threaded programs. It can increase RSS in long-running
+      services because each thread keeps local small-object free lists.
+
+      Boehm reads these environment variables during GC_INIT(), so they can be
+      set per run before the collector starts, without rebuilding the V program:
+        GC_MAXIMUM_HEAP_SIZE  Cap the heap size in bytes.
+        GC_FREE_SPACE_DIVISOR Higher values collect more often and can reduce
+                              spare heap; lower values favor throughput.
+        GC_MARKERS            Set the number of parallel marker threads.
+
+      To compile V's bundled source copy of Boehm without thread-local
+      allocation, use `-d no_gc_thread_local_alloc`. This keeps GC_THREADS
+      enabled, but skips THREAD_LOCAL_ALLOC. Since this requires compiling the
+      bundled libgc source, V uses the platform C compiler by default instead
+      of bundled TCC. An explicit `-cc` still wins. The option does not change
+      a system libgc selected with `-d dynamic_boehm`; use a system libgc built
+      without thread-local allocation for that case.
+
       The option `-gc boehm_leak` is intended for leak detection in
       manual memory management. The function `gc_check_leaks()`
       can be called to get detection results. This function is a no-op
@@ -266,7 +388,7 @@ see also `v help build`.
       C code, without opening the generated .c file in a text editor,
       i.e. it enables this workflow:
 
-      1) change vlib/v/gen/cgen.v
+      1) change vlib/v/gen/c/cgen.v
       2) ./v -o v2 cmd/v && ./v2 -printfn main__main bug.v
       3) inspect the produced C, and goto 1) till the bug is fixed.
 
@@ -326,7 +448,8 @@ see also `v help build`.
       Useful with `v bug-report --host localhost --port 8080` for local testing.
       The report includes both the failing generated C line and the V source line
       that produced it (V code is regenerated with `#line` info if needed to map it).
-      Automatic reports to bugs.vlang.io are skipped when running in GitHub CI.
+      Automatic reports to bugs.vlang.io are skipped when running in GitHub CI;
+      an explicitly configured custom endpoint remains active.
       Set V_C_ERROR_BUG_REPORT_DISABLED=1 to disable automatic report submission.
 
    -dump-c-flags file.txt

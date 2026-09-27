@@ -1,0 +1,18 @@
+import json
+import rand as json2
+
+struct User {
+	name string
+}
+
+// The file already uses `json2` as the local name for another module (`rand`).
+// Migrating would add a second import with that alias (a duplicate-import error) and
+// rewrite calls to the wrong module, so the file's json usage is left unmigrated.
+fn to_json(u User) string {
+	_ := json2.u32()
+	return json.encode(u)
+}
+
+fn main() {
+	println(to_json(User{ name: 'bob' }))
+}

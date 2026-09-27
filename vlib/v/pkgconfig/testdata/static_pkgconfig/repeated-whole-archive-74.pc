@@ -1,0 +1,4 @@
+Name: repeated-whole-archive-74
+Description: Repeated whole-archive linker-state controls
+Version: 1.0.0
+Libs: -Wl,--whole-archive -lissue74_whole_a -Wl,--no-whole-archive -Wl,--whole-archive -lissue74_whole_b -Wl,--no-whole-archive

@@ -11,7 +11,7 @@ import os
 // https://wkhtmltopdf.org/downloads.html
 // https://wkhtmltopdf.org/libwkhtmltox/
 #flag -lwkhtmltox
-#include "wkhtmltox/pdf.h" # You can install the C package for your system from the wkhtmltopdf.org/downloads.html page
+#include "c_interop_wkhtmltopdf_wrapper.h" # You can install the C package for your system from the wkhtmltopdf.org/downloads.html page
 
 pub struct C.wkhtmltopdf_global_settings {}
 
@@ -19,42 +19,42 @@ pub struct C.wkhtmltopdf_object_settings {}
 
 pub struct C.wkhtmltopdf_converter {}
 
-fn C.wkhtmltopdf_init(use_graphics bool) i32
+fn C.wkhtmltopdf_init(use_graphics i32) i32
 
 fn C.wkhtmltopdf_deinit() i32
 
-fn C.wkhtmltopdf_version() &char
+fn C.v_example_wkhtmltopdf_version() &char
 
 fn C.wkhtmltopdf_create_global_settings() &C.wkhtmltopdf_global_settings
 
 fn C.wkhtmltopdf_destroy_global_settings(global_settings &C.wkhtmltopdf_global_settings)
 
-fn C.wkhtmltopdf_set_global_setting(global_settings &C.wkhtmltopdf_global_settings, name &char, value &char) bool
+fn C.wkhtmltopdf_set_global_setting(global_settings &C.wkhtmltopdf_global_settings, const_name &char, const_value &char) i32
 
 fn C.wkhtmltopdf_create_object_settings() &C.wkhtmltopdf_object_settings
 
 fn C.wkhtmltopdf_destroy_object_settings(object_settings &C.wkhtmltopdf_object_settings)
 
-fn C.wkhtmltopdf_set_object_setting(object_settings &C.wkhtmltopdf_object_settings, name &char, value &char) bool
+fn C.wkhtmltopdf_set_object_setting(object_settings &C.wkhtmltopdf_object_settings, const_name &char, const_value &char) i32
 
 fn C.wkhtmltopdf_create_converter(global_settings &C.wkhtmltopdf_global_settings) &C.wkhtmltopdf_converter
 
 fn C.wkhtmltopdf_destroy_converter(converter &C.wkhtmltopdf_converter)
 
 fn C.wkhtmltopdf_add_object(converter &C.wkhtmltopdf_converter, object_settings &C.wkhtmltopdf_object_settings,
-	data &char)
+	const_data &char)
 
-fn C.wkhtmltopdf_convert(converter &C.wkhtmltopdf_converter) bool
+fn C.wkhtmltopdf_convert(converter &C.wkhtmltopdf_converter) i32
 
 fn C.wkhtmltopdf_http_error_code(converter &C.wkhtmltopdf_converter) i32
 
-fn C.wkhtmltopdf_get_output(converter &C.wkhtmltopdf_converter, data &&char) i32
+fn C.wkhtmltopdf_get_output(converter &C.wkhtmltopdf_converter, const_data &&u8) isize
 
 fn main() {
 	// init
 	init := C.wkhtmltopdf_init(0)
 	println('wkhtmltopdf_init: ${init}')
-	version := unsafe { cstring_to_vstring(&char(C.wkhtmltopdf_version())) }
+	version := unsafe { cstring_to_vstring(C.v_example_wkhtmltopdf_version()) }
 	println('wkhtmltopdf_version: ${version}')
 	global_settings := C.wkhtmltopdf_create_global_settings()
 	println('wkhtmltopdf_create_global_settings: ${voidptr(global_settings)}')
@@ -64,16 +64,16 @@ fn main() {
 	println('wkhtmltopdf_create_converter: ${voidptr(converter)}')
 	// convert
 	mut result := C.wkhtmltopdf_set_object_setting(object_settings, c'page',
-		c'http://www.google.com.br')
+		c'http://www.google.com.br') != 0
 	println('wkhtmltopdf_set_object_setting: ${result} [page = http://www.google.com.br]')
 	C.wkhtmltopdf_add_object(converter, object_settings, 0)
 	println('wkhtmltopdf_add_object')
-	result = C.wkhtmltopdf_convert(converter)
+	result = C.wkhtmltopdf_convert(converter) != 0
 	println('wkhtmltopdf_convert: ${result}')
 	error_code := C.wkhtmltopdf_http_error_code(converter)
 	println('wkhtmltopdf_http_error_code: ${error_code}')
 	if result {
-		pdata := &char(unsafe { nil })
+		pdata := &u8(unsafe { nil })
 		ppdata := &pdata
 		nbytes := C.wkhtmltopdf_get_output(converter, voidptr(ppdata))
 		println('wkhtmltopdf_get_output: ${nbytes} bytes')
@@ -81,7 +81,7 @@ fn main() {
 			println('ERR: ${err}')
 			return
 		}
-		wrote := unsafe { file.write_ptr(pdata, nbytes) }
+		wrote := unsafe { file.write_ptr(pdata, int(nbytes)) }
 		println('write_bytes: ${wrote} [./google.pdf]')
 		file.flush()
 		file.close()

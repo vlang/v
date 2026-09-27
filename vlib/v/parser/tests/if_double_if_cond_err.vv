@@ -1,0 +1,14 @@
+fn get_commands() []string {
+	mut commands := []string{}
+	x := 1
+	if x == 1 {
+		commands << 'a'
+	} else if if x == 2 {
+		commands << 'b'
+	}
+	return commands
+}
+
+fn main() {
+	println(get_commands())
+}

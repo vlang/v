@@ -8,7 +8,7 @@
 
 module cipher
 
-import crypto.internal.subtle
+import crypto.subtle
 
 struct Cfb {
 mut:

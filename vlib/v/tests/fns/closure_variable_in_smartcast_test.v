@@ -1,4 +1,4 @@
-pub type MyCallback = fn () | fn (ctx voidptr)
+pub type MyCallback = fn() | fn(ctx voidptr)
 
 fn my_lower_level_func(func fn (ctx voidptr), ctx voidptr) {
 	println('Bar')
@@ -7,10 +7,10 @@ fn my_lower_level_func(func fn (ctx voidptr), ctx voidptr) {
 fn my_func(cb MyCallback, ctx voidptr) {
 	my_lower_level_func(fn [cb] (ctx voidptr) {
 		match cb {
-			fn () {
+			fn() {
 				cb()
 			}
-			fn (ctx voidptr) {
+			fn(ctx voidptr) {
 				cb(ctx)
 			}
 		}

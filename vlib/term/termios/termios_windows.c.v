@@ -8,8 +8,8 @@
 //
 module termios
 
-type TcFlag = int
-type Speed = int
+type TcFlag = i32
+type Speed = i32
 type Cc = u8
 
 // flag provides a termios flag of the correct size for the underlying C.termios structure.

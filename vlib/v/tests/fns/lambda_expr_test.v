@@ -59,3 +59,35 @@ fn test_lambda_expr_can_omit_unused_callback_params() {
 	assert f1(|| 4) == 4
 	assert f2(|x| x + 4) == 14
 }
+
+struct LambdaData {
+	value int
+}
+
+fn compare_lambda_data(compare fn (&LambdaData, &LambdaData) bool, a &LambdaData, b &LambdaData) bool {
+	return compare(a, b)
+}
+
+fn test_inferred_lambda_reference_parameters_compare_values() {
+	a := LambdaData{}
+	b := LambdaData{}
+	c := LambdaData{
+		value: 1
+	}
+	assert compare_lambda_data(|x, y| x == y, a, b)
+	assert !compare_lambda_data(|x, y| x != y, a, b)
+	assert !compare_lambda_data(|x, y| x == y, a, c)
+	assert compare_lambda_data(|x, y| x != y, a, c)
+}
+
+fn test_lambda_expr_with_if_and_match_body() {
+	assert [1, 2, 3].map(|x| if x > 1 { x } else { 0 }) == [0, 2, 3]
+	assert [1, 2, 3].map(|x| match x {
+		1 { 10 }
+		else { 20 }
+	}) == [10, 20, 20]
+	assert [1, 2, 3].filter(|x| if x > 1 { true } else { false }) == [2, 3]
+	assert f1(|x| if x > 1 { x * 2 } else { 0 }) == 20
+	k := 5
+	assert [1, 2].map(|x| if x > 1 { x + k } else { k }) == [5, 7]
+}

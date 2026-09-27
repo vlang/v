@@ -1,0 +1,9 @@
+Name: static-root-74
+Description: Synthetic root for static pkg-config regression coverage
+Version: 1.0.0
+Requires: static-public-74 >= 1.0.0
+Requires.private: static-private-74 >= 1.0.0
+Libs: -lissue74_root
+Libs.private: -Wl,--start-group -lissue74_cycle_a -lissue74_cycle_b -lissue74_cycle_a -Wl,--end-group -lissue74_root_private
+Cflags: -DISSUE74_ROOT
+Cflags.private: -DISSUE74_ROOT_PRIVATE

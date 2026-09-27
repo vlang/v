@@ -1,4 +1,12 @@
-// vtest build: present_openssl? && !(openbsd && gcc) && !(sanitize-memory-clang || docker-ubuntu-musl)
+// vtest build: !(openbsd && gcc) && !(sanitize-memory-clang || docker-ubuntu-musl)
+//
+// No present_openssl? conjunct: this file's own tests are genuinely
+// backend-neutral (they exercise the default mbedTLS backend directly, with
+// zero OpenSSL dependency) -- gating the whole file behind present_openssl?
+// would incorrectly skip it on any machine lacking OpenSSL, exactly the
+// class of machine this PR's own mbedTLS-default backend exists to newly
+// support. The other two exclusions are unrelated to OpenSSL and are kept
+// unchanged.
 module ecdsa
 
 fn test_ecdsa() {
@@ -35,31 +43,17 @@ fn test_ecdsa_signing_with_recommended_hash_options() {
 }
 
 fn test_generate_key() ! {
-	// Test key generation with high level opaque
+	// Test key generation actually produced a usable key pair -- backend-
+	// neutral (no direct access to either backend's own internal key-handle
+	// field): a successful sign+verify round trip proves both halves are
+	// real, live keys, not just that generate_key() returned without error.
 	pub_key, priv_key := generate_key() or { panic(err) }
-	assert pub_key.evpkey != unsafe { nil }
-	assert priv_key.evpkey != unsafe { nil }
+	message := 'generate_key produced a usable pair'.bytes()
+	signature := priv_key.sign(message) or { panic(err) }
+	assert pub_key.verify(message, signature) or { panic(err) }
 
 	priv_key.free()
 	pub_key.free()
-}
-
-fn test_new_key_from_seed() ! {
-	// Test generating a key from a seed
-	seed := [u8(1), 2, 3, 4, 5]
-	priv_key := new_key_from_seed(seed) or { panic(err) }
-	retrieved_seed := priv_key.bytes() or { panic(err) }
-	assert seed == retrieved_seed
-	priv_key.free()
-}
-
-fn test_new_key_from_seed_with_leading_zeros_bytes() ! {
-	// Test generating a key from a seed
-	seed := [u8(0), u8(1), 2, 3, 4, 5]
-	priv_key := new_key_from_seed(seed) or { panic(err) }
-	retrieved_seed := priv_key.bytes() or { panic(err) }
-	assert seed == retrieved_seed
-	priv_key.free()
 }
 
 fn test_sign_and_verify() ! {
@@ -97,30 +91,6 @@ fn test_public_key() ! {
 	pub_key2.free()
 }
 
-fn test_private_key_equal() ! {
-	// Test private key equality
-	pbk, priv_key1 := generate_key() or { panic(err) }
-	seed := priv_key1.bytes() or { panic(err) }
-	priv_key2 := new_key_from_seed(seed) or { panic(err) }
-	assert priv_key1.equal(priv_key2)
-
-	pbk.free()
-	priv_key1.free()
-	priv_key2.free()
-}
-
-fn test_private_key_equality_on_different_curve() ! {
-	// default group
-	pbk, priv_key1 := generate_key() or { panic(err) }
-	seed := priv_key1.bytes() or { panic(err) }
-	// using different group
-	priv_key2 := new_key_from_seed(seed, nid: .secp384r1) or { panic(err) }
-	assert !priv_key1.equal(priv_key2)
-	pbk.free()
-	priv_key1.free()
-	priv_key2.free()
-}
-
 fn test_public_key_equal() ! {
 	// Test public key equality
 	pbk, priv_key := generate_key() or { panic(err) }
@@ -131,19 +101,6 @@ fn test_public_key_equal() ! {
 	priv_key.free()
 	pub_key1.free()
 	pub_key2.free()
-}
-
-fn test_sign_with_new_key_from_seed() ! {
-	// Test signing with a key generated from a seed
-	seed := [u8(10), 20, 30, 40, 50]
-	priv_key := new_key_from_seed(seed) or { panic(err) }
-	message := 'Another test message'.bytes()
-	signature := priv_key.sign(message) or { panic(err) }
-	pub_key := priv_key.public_key() or { panic(err) }
-	is_valid := pub_key.verify(message, signature) or { panic(err) }
-	assert is_valid
-	priv_key.free()
-	pub_key.free()
 }
 
 fn test_invalid_signature() ! {
@@ -177,7 +134,11 @@ fn test_different_keys_not_equal() ! {
 fn test_private_key_new() ! {
 	priv_key := PrivateKey.new()!
 	assert priv_key.ks_flag == .fixed
-	size := evp_key_size(priv_key.evpkey)!
+	// PrivateKey.new()'s default curve is prime256v1 (P-256): a .fixed-
+	// flagged key's .bytes() always returns exactly the curve's native
+	// size (32 bytes) -- backend-neutral equivalent of directly checking
+	// the OpenSSL-only evp_key_size(priv_key.evpkey) helper.
+	size := priv_key.bytes()!.len
 	assert size == 32
 	pubkey := priv_key.public_key()!
 
@@ -186,29 +147,12 @@ fn test_private_key_new() ! {
 	is_valid := pubkey.verify(message, signature)!
 	assert is_valid
 
-	// new private key
-	seed := priv_key.bytes()!
-	priv_key2 := new_key_from_seed(seed)!
-	pubkey2 := priv_key2.public_key()!
-	assert priv_key.equal(priv_key2)
-	assert pubkey.equal(pubkey2)
-	is_valid2 := pubkey2.verify(message, signature)!
-	assert is_valid2
-
-	// generates new key with different curve
-	priv_key3 := new_key_from_seed(seed, nid: .secp384r1)!
-	pubkey3 := priv_key3.public_key()!
-	assert !priv_key3.equal(priv_key2)
-	assert !pubkey3.equal(pubkey2)
-	is_valid3 := pubkey3.verify(message, signature)!
-	assert !is_valid3
+	// The new_key_from_seed-based continuation of this test (recreating this
+	// same key from its own .bytes(), on the same and a different curve, and
+	// comparing) lives in test_private_key_new_seed_roundtrip below.
 
 	priv_key.free()
-	priv_key2.free()
-	priv_key3.free()
 	pubkey.free()
-	pubkey2.free()
-	pubkey3.free()
 }
 
 // See https://discord.com/channels/592103645835821068/592114487759470596/1334319744098107423
@@ -233,4 +177,168 @@ fn test_key_with_msg_exceed_key_size() ! {
 
 	pv.free()
 	pb.free()
+}
+
+// The new_key_from_seed tests below were once split out into
+// ecdsa_seed_use_openssl_test.v (forced under -d use_openssl) while the
+// default mbedTLS backend still stubbed new_key_from_seed; both backends
+// implement it now (fix #28505), so they live here with the rest of the
+// backend-neutral tests again.
+
+fn test_new_key_from_seed() ! {
+	// Test generating a key from a seed
+	seed := [u8(1), 2, 3, 4, 5]
+	priv_key := new_key_from_seed(seed) or { panic(err) }
+	retrieved_seed := priv_key.bytes() or { panic(err) }
+	assert seed == retrieved_seed
+	priv_key.free()
+}
+
+fn test_new_key_from_seed_with_leading_zeros_bytes() ! {
+	// Test generating a key from a seed
+	seed := [u8(0), u8(1), 2, 3, 4, 5]
+	priv_key := new_key_from_seed(seed) or { panic(err) }
+	retrieved_seed := priv_key.bytes() or { panic(err) }
+	assert seed == retrieved_seed
+	priv_key.free()
+}
+
+fn test_private_key_equal() ! {
+	// Test private key equality
+	pbk, priv_key1 := generate_key() or { panic(err) }
+	seed := priv_key1.bytes() or { panic(err) }
+	priv_key2 := new_key_from_seed(seed) or { panic(err) }
+	assert priv_key1.equal(priv_key2)
+
+	pbk.free()
+	priv_key1.free()
+	priv_key2.free()
+}
+
+fn test_private_key_equality_on_different_curve() ! {
+	// default group
+	pbk, priv_key1 := generate_key() or { panic(err) }
+	seed := priv_key1.bytes() or { panic(err) }
+	// using different group
+	priv_key2 := new_key_from_seed(seed, nid: .secp384r1) or { panic(err) }
+	assert !priv_key1.equal(priv_key2)
+	pbk.free()
+	priv_key1.free()
+	priv_key2.free()
+}
+
+fn test_sign_with_new_key_from_seed() ! {
+	// Test signing with a key generated from a seed
+	seed := [u8(10), 20, 30, 40, 50]
+	priv_key := new_key_from_seed(seed) or { panic(err) }
+	message := 'Another test message'.bytes()
+	signature := priv_key.sign(message) or { panic(err) }
+	pub_key := priv_key.public_key() or { panic(err) }
+	is_valid := pub_key.verify(message, signature) or { panic(err) }
+	assert is_valid
+	priv_key.free()
+	pub_key.free()
+}
+
+// test_private_key_new_seed_roundtrip is the new_key_from_seed-dependent
+// continuation of ecdsa_test.v's own test_private_key_new (which keeps the
+// backend-neutral half: keygen, curve-size check, sign/verify).
+fn test_private_key_new_seed_roundtrip() ! {
+	priv_key := PrivateKey.new()!
+	pubkey := priv_key.public_key()!
+	message := 'Another test message'.bytes()
+	signature := priv_key.sign(message)!
+
+	// new private key, recreated from this same key's own seed bytes
+	seed := priv_key.bytes()!
+	priv_key2 := new_key_from_seed(seed)!
+	pubkey2 := priv_key2.public_key()!
+	assert priv_key.equal(priv_key2)
+	assert pubkey.equal(pubkey2)
+	is_valid2 := pubkey2.verify(message, signature)!
+	assert is_valid2
+
+	// generates new key with different curve
+	priv_key3 := new_key_from_seed(seed, nid: .secp384r1)!
+	pubkey3 := priv_key3.public_key()!
+	assert !priv_key3.equal(priv_key2)
+	assert !pubkey3.equal(pubkey2)
+	is_valid3 := pubkey3.verify(message, signature)!
+	assert !is_valid3
+
+	priv_key.free()
+	priv_key2.free()
+	priv_key3.free()
+	pubkey.free()
+	pubkey2.free()
+	pubkey3.free()
+}
+
+// test_new_key_from_seed_fixed_size_roundtrip_all_curves is the exact
+// scenario of issue #28505: a server saves its identity key via bytes() and
+// reloads it on restart via new_key_from_seed(fixed_size: true), on every
+// supported curve, with no build flags.
+fn test_new_key_from_seed_fixed_size_roundtrip_all_curves() ! {
+	for nid in [Nid.prime256v1, .secp384r1, .secp521r1, .secp256k1] {
+		key := PrivateKey.new(nid: nid)!
+		seed := key.bytes()!
+		reloaded := new_key_from_seed(seed, nid: nid, fixed_size: true)!
+		assert key.equal(reloaded), 'reloaded key differs on ${nid}'
+		assert reloaded.bytes()! == seed, 'bytes() differs after reload on ${nid}'
+		message := 'issue 28505 ${nid}'.bytes()
+		sig := reloaded.sign(message)!
+		pub_key := key.public_key()!
+		assert pub_key.verify(message, sig)!, 'signature from reloaded key rejected on ${nid}'
+		pub_key.free()
+		reloaded.free()
+		key.free()
+	}
+}
+
+// test_new_key_from_seed_rejects_bad_sizes locks in the length checks both
+// backends share (same messages as the OpenSSL backend).
+fn test_new_key_from_seed_rejects_bad_sizes() ! {
+	if _ := new_key_from_seed([]u8{}) {
+		assert false, 'empty seed should be rejected'
+	} else {
+		assert err.msg() == 'Seed with null-length was not allowed'
+	}
+	if _ := new_key_from_seed([]u8{len: 33, init: 1}) {
+		assert false, '33-byte seed on P-256 should be rejected'
+	} else {
+		assert err.msg() == 'Seed length exceeds key size'
+	}
+	if _ := new_key_from_seed([u8(1), 2, 3], fixed_size: true) {
+		assert false, '3-byte fixed_size seed on P-256 should be rejected'
+	} else {
+		assert err.msg() == 'seed size doesnt match with curve key size'
+	}
+}
+
+// test_new_key_from_seed_fixed_size_leading_zero_seed_keeps_width locks in
+// the rule behind the fixed_size round trip on BOTH backends: a .fixed key's
+// bytes() is always the curve's full width, zero-padded, even when the
+// scalar's own top byte(s) are zero -- so it always reloads with
+// `fixed_size: true`. Deterministic, unlike a random keygen where a
+// leading-zero scalar only shows up ~1/2 of the time on P-521 and ~1/256
+// on P-256 (the flake the OpenSSL backend's bytes() used to have).
+fn test_new_key_from_seed_fixed_size_leading_zero_seed_keeps_width() ! {
+	for nid, size in {
+		Nid.prime256v1: 32
+		.secp384r1:     48
+		.secp521r1:     66
+		.secp256k1:     32
+	} {
+		mut seed := []u8{len: size, init: 0x5a}
+		seed[0] = 0
+		seed[1] = 0
+		key := new_key_from_seed(seed, nid: nid, fixed_size: true)!
+		got := key.bytes()!
+		assert got.len == size, 'bytes() must be ${size} wide on ${nid}, got ${got.len}'
+		assert got == seed, 'bytes() must round-trip the zero-padded seed on ${nid}'
+		reloaded := new_key_from_seed(got, nid: nid, fixed_size: true)!
+		assert key.equal(reloaded), 'reloaded key differs on ${nid}'
+		reloaded.free()
+		key.free()
+	}
 }

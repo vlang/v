@@ -54,7 +54,7 @@ fn test_atoi_common() {
 		assert strconv.atoi(v.str_value)! == v.int_value
 	}
 
-	ko := [// Parsing of these strings should fail on all types.
+	ko := [ // Parsing of these strings should fail on all types.
 		'-3__1', // Two consecutives underscore.
 		'-3_1A', // Non radix 10 char.
 		'A42', // Non radix 10 char.
@@ -389,14 +389,14 @@ fn test_common_parse_uint2_fail() {
 	for ch in ascii_characters {
 		// println("ch: [${ch}]")
 		txt_str := '${ch[0]:c}12Ab'
-		num, err := strconv.common_parse_uint2(txt_str, 16, 32)
+		_, err := strconv.common_parse_uint2(txt_str, 16, 32)
 		assert err != 0
 	}
 
 	for ch in special_characters {
 		// println("ch: [${ch}]")
 		txt_str := '${ch[0]:c}12Ab'
-		num, err := strconv.common_parse_uint2(txt_str, 16, 32)
+		_, err := strconv.common_parse_uint2(txt_str, 16, 32)
 		assert err != 0
 	}
 }

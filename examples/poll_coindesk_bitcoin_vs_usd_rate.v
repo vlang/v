@@ -1,7 +1,7 @@
 import log
 import term
 import time
-import x.json2
+import json2
 import net.http
 
 const url = 'https://api.coinbase.com/v2/prices/BTC-USD/spot'

@@ -75,10 +75,10 @@ fn main() {
 
 	// setting values of app
 	app.gg = gg.new_context(
-		bg_color:      gg.black      // background color
-		width:         window_width  // window width
-		height:        window_height // window height
-		create_window: true          // this will create a different window
+		bg_color:      gg.black                              // background color
+		width:         window_width                          // window width
+		height:        window_height                         // window height
+		create_window: true                                  // this will create a different window
 		window_title:  'A* Path finding algorithm visusalizer' // title of the window
 		frame_fn:      frame    // this is frame function update the frame
 		event_fn:      on_event // it calls on every event

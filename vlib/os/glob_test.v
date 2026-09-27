@@ -4,8 +4,8 @@ fn deep_glob() ! {
 	os.chdir(@VMODROOT)!
 	matches := os.glob('vlib/v/*/*.v') or { panic(err) }
 	assert matches.len > 10
-	assert 'vlib/v/ast/ast.v' in matches
-	assert 'vlib/v/ast/table.v' in matches
+	assert 'vlib/v/parser/parser.v' in matches
+	assert 'vlib/v/pref/pref.v' in matches
 	assert 'vlib/v/token/token.v' in matches
 	for f in matches {
 		if !f.starts_with('vlib/v/') {
@@ -19,8 +19,8 @@ fn redeep_glob() ! {
 	os.chdir(@VMODROOT)!
 	matches := os.glob('vlib/v/**/*.v') or { panic(err) }
 	assert matches.len > 10
-	assert 'vlib/v/ast/ast.v' in matches
-	assert 'vlib/v/ast/table.v' in matches
+	assert 'vlib/v/parser/parser.v' in matches
+	assert 'vlib/v/pref/pref.v' in matches
 	assert 'vlib/v/token/token.v' in matches
 	for f in matches {
 		if !f.starts_with('vlib/v/') {

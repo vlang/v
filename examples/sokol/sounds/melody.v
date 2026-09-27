@@ -9,20 +9,27 @@ mut:
 	gg      &gg.Context = unsafe { nil } // used for drawing
 }
 
-fn my_audio_stream_callback(mut soundbuffer &f32, num_frames int, num_channels int, mut acontext AppState) {
-	for frame := 0; frame < num_frames; frame++ {
+fn my_audio_stream_callback(mut soundbuffer &f32, num_frames i32, num_channels i32, mut acontext AppState) {
+	frame_count := int(num_frames)
+	channel_count := int(num_channels)
+	for frame := 0; frame < frame_count; frame++ {
 		t := int(f32(acontext.frame_0 + frame) * 0.245)
 		// "Techno" by Gabriel Miceli
 		y := (t * (((t / 10 | 0) ^ ((t / 10 | 0) - 1280)) % 11) / 2 & 127) +
 			(t * (((t / 640 | 0) ^ ((t / 640 | 0) - 2)) % 13) / 2 & 127)
-		for ch := 0; ch < num_channels; ch++ {
-			idx := frame * num_channels + ch
+		for ch := 0; ch < channel_count; ch++ {
+			idx := frame * channel_count + ch
 			a := f32(y - 127) / 255.0
-			soundbuffer[idx] = a
+			// The sokol audio callback guarantees `soundbuffer` points to at least
+			// `num_frames * num_channels` writable samples, so `idx` (`frame < num_frames`,
+			// `ch < num_channels`) is always in bounds for this write.
+			unsafe {
+				soundbuffer[idx] = a
+			}
 			acontext.frames[idx & 2047] = a
 		}
 	}
-	acontext.frame_0 += num_frames
+	acontext.frame_0 += frame_count
 }
 
 fn graphics_frame(mut state AppState) {

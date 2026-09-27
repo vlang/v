@@ -1,7 +1,6 @@
 module lz
 
-const sample_data = ('The quick brown fox jumps over the lazy dog. '.repeat(12) +
-	'aaaaaaaaabbbbbbbbbcccccccccdddddddddeeeeeeeee').bytes()
+const sample_data = ('The quick brown fox jumps over the lazy dog. '.repeat(12) + 'aaaaaaaaabbbbbbbbbcccccccccdddddddddeeeeeeeee').bytes()
 
 fn test_roundtrip_all_formats() {
 	formats := [Format.lz77, .lz78, .lzw, .lz4, .lzss, .lzma, .lzma2, .lzjb]
@@ -51,7 +50,7 @@ fn test_decoded_length_too_large_fails() {
 	mut corrupt := []u8{}
 	corrupt << stream_magic
 	corrupt << u8(Format.lz77)
-	encode_uvarint(mut corrupt, u64(1) << 31)
+	encode_uvarint(mut corrupt, u64(max_int) + 1)
 
 	decompress_lz77(corrupt) or {
 		assert err.msg().contains('decoded length too large')

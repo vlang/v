@@ -1,7 +1,7 @@
 module main
 
 // Note: This program, requires that the shared library was already compiled.
-// To do so, run `v -d no_backtrace -o library -shared modules/library/library.v`
+// To do so, run `v -d no_backtrace -o library -shared library/library.v`
 // before running this program.
 import os
 import dl
@@ -14,7 +14,7 @@ const default_paths = [
 	os.join_path(cfolder, 'library${dl.dl_ext}'),
 	os.join_path(cfolder, 'location1/library${dl.dl_ext}'),
 	os.join_path(cfolder, 'location2/library${dl.dl_ext}'),
-	os.join_path(cfolder, 'modules/library/library${dl.dl_ext}'),
+	os.join_path(cfolder, 'library/library${dl.dl_ext}'),
 ]
 
 fn main() {

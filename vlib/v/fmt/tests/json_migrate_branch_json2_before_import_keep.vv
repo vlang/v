@@ -1,0 +1,18 @@
+module main
+
+// A branch-local `import json2` that appears *before* the `import json` being
+// migrated is emitted first, into branch_processed_imports; the later top-level
+// import would not dedupe against it, so migrating would yield two `import json2`
+// lines. The file is left unmigrated regardless of import order.
+$if linux {
+	import json2
+}
+import json
+
+fn dump_json(x int) string {
+	return json.encode(x)
+}
+
+fn main() {
+	println(dump_json(1))
+}

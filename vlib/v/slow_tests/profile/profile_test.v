@@ -56,7 +56,9 @@ fn test_v_profile_works_when_interrupted() {
 	assert p.status == .closed
 	eprintln('> reading profile_content from ${program_profile} ...')
 	profile_content := os.read_file(program_profile)!
-	assert profile_content.contains('str_intp')
+	// V1 routes this fixed-width interpolation through `str_intp`, while V3
+	// lowers it to `int.str` plus its generated zero-padding helper.
+	assert profile_content.contains('str_intp') || profile_content.contains('int__str')
 	assert profile_content.contains('println')
 	assert profile_content.contains('time__sleep')
 	assert profile_content.contains('main__main')

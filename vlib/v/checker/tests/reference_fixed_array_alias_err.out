@@ -1,0 +1,7 @@
+vlib/v/checker/tests/reference_fixed_array_alias_err.vv:5:8: error: cannot reference fixed array `a` outside `unsafe` blocks as it is supposed to be stored on stack
+    3 | fn main() {
+    4 |     a := Array{}
+    5 |     n := &a[0]
+      |           ^
+    6 |     println(n)
+    7 | }

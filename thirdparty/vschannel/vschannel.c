@@ -1,6 +1,20 @@
 #include <vschannel.h>
 #include <sspi.h>
 
+#ifndef SCHANNEL_NAME
+#ifdef UNICODE
+#define SCHANNEL_NAME L"Schannel"
+#else
+#define SCHANNEL_NAME "Schannel"
+#endif
+#endif
+
+#ifdef VSCHANNEL_DEBUG
+#define VSCHANNEL_LOG(...) do { wprintf(__VA_ARGS__); } while (0)
+#else
+#define VSCHANNEL_LOG(...) do {} while (0)
+#endif
+
 // ALPN (RFC 7301) compatibility shim. Older toolchain headers (notably the
 // ones bundled with tcc) predate the SChannel ALPN additions, so the structs,
 // enums and constants below are missing there. Define them ourselves when the
@@ -284,19 +298,26 @@ void vschannel_cleanup(TlsContext *tls_ctx) {
 }
 
 void vschannel_init(TlsContext *tls_ctx, BOOL validate_server_certificate) {
+	SECURITY_STATUS status;
+
 	tls_ctx->sspi = InitSecurityInterface();
 	tls_ctx->validate_server_certificate = validate_server_certificate;
 
 	if(tls_ctx->sspi == NULL) {
-		wprintf(L"Error 0x%x reading security interface.\n",
-			   GetLastError());
+		DWORD err = GetLastError();
+		VSCHANNEL_LOG(L"Error 0x%x reading security interface.\n", err);
+		vschannel_set_last_error(tls_ctx, err != 0 ? (INT)err : (INT)SEC_E_INTERNAL_ERROR);
 		vschannel_cleanup(tls_ctx);
+		return;
 	}
 
 	// Create credentials.
-	if(create_credentials(tls_ctx)) {
-		wprintf(L"Error creating credentials\n");
+	status = create_credentials(tls_ctx);
+	if(status != SEC_E_OK) {
+		VSCHANNEL_LOG(L"Error creating credentials\n");
+		vschannel_set_last_error(tls_ctx, status);
 		vschannel_cleanup(tls_ctx);
+		return;
 	}
 	tls_ctx->creds_initialized = TRUE;
 }
@@ -318,6 +339,13 @@ static SECURITY_STATUS vschannel_open_and_handshake(TlsContext *tls_ctx, INT ipo
 
 	extra->pvBuffer = NULL;
 	extra->cbBuffer = 0;
+
+	if(!tls_ctx->creds_initialized) {
+		if(tls_ctx->last_error_code == 0) {
+			vschannel_set_last_error(tls_ctx, SEC_E_NO_CREDENTIALS);
+		}
+		return tls_ctx->last_error_code;
+	}
 
 	protocol = SP_PROT_TLS1_2_CLIENT;
 	port_number = iport;
@@ -397,7 +425,7 @@ INT request(TlsContext *tls_ctx, INT iport, LPWSTR host, CHAR *req, DWORD req_le
 	Status = disconnect_from_server(tls_ctx);
 	if(Status) {
 		vschannel_set_last_error(tls_ctx, Status);
-		wprintf(L"Error disconnecting from server\n");
+		VSCHANNEL_LOG(L"Error disconnecting from server\n");
 		vschannel_cleanup(tls_ctx);
 		return resp_length;
 	}
@@ -554,6 +582,40 @@ INT vschannel_h2_connect(TlsContext *tls_ctx, INT iport, LPWSTR host) {
 	}
 
 	return 0;
+}
+
+// vschannel_set_io_timeouts bounds how long vschannel_read()/vschannel_write()
+// may block in recv()/send() on the underlying socket. Independent Winsock
+// socket options, set once after connecting and never touched again -- unlike
+// mbedTLS/OpenSSL's shared read-timeout duration field (reused for both
+// directions' internal retry loops), SO_RCVTIMEO and SO_SNDTIMEO are separate
+// knobs, so no widen-then-restore dance is needed around individual calls. A
+// timed-out recv()/send() returns SOCKET_ERROR with WSAGetLastError() ==
+// WSAETIMEDOUT, exactly like any other socket error -- callers distinguish it
+// via vschannel_last_error() after a negative return, same as every other
+// vschannel_read()/vschannel_write() failure.
+void vschannel_set_io_timeouts(TlsContext *tls_ctx, DWORD recv_timeout_ms, DWORD send_timeout_ms) {
+	setsockopt(tls_ctx->socket, SOL_SOCKET, SO_RCVTIMEO, (const char *)&recv_timeout_ms, sizeof(recv_timeout_ms));
+	setsockopt(tls_ctx->socket, SOL_SOCKET, SO_SNDTIMEO, (const char *)&send_timeout_ms, sizeof(send_timeout_ms));
+}
+
+// vschannel_wait_writable waits up to timeout_ms for the underlying socket to
+// become writable. Pure raw-socket select() -- never touches TLS/SSPI state --
+// so it is safe to call without holding any lock that guards concurrent
+// access to the TLS context itself. Returns 1 if writable, 0 on timeout, -1 on
+// error.
+INT vschannel_wait_writable(TlsContext *tls_ctx, INT timeout_ms) {
+	fd_set write_set;
+	struct timeval tv;
+	FD_ZERO(&write_set);
+	FD_SET(tls_ctx->socket, &write_set);
+	tv.tv_sec = timeout_ms / 1000;
+	tv.tv_usec = (timeout_ms % 1000) * 1000;
+	int n = select(0, NULL, &write_set, NULL, &tv);
+	if(n == SOCKET_ERROR) {
+		return -1;
+	}
+	return n > 0 ? 1 : 0;
 }
 
 // vschannel_write encrypts and sends `len` application bytes over the open
@@ -797,10 +859,10 @@ static SECURITY_STATUS create_credentials(TlsContext *tls_ctx) {
 	// Open the "MY" certificate store, which is where Internet Explorer
 	// stores its client certificates.
 	if(tls_ctx->cert_store == NULL) {
-		tls_ctx->cert_store = CertOpenSystemStore(0, L"MY");
+		tls_ctx->cert_store = CertOpenSystemStoreW(0, L"MY");
 
 		if(!tls_ctx->cert_store) {
-			wprintf(L"Error 0x%x returned by CertOpenSystemStore\n", 
+			VSCHANNEL_LOG(L"Error 0x%x returned by CertOpenSystemStore\n",
 			GetLastError());
 			return SEC_E_NO_CREDENTIALS;
 		}
@@ -843,7 +905,7 @@ static SECURITY_STATUS create_credentials(TlsContext *tls_ctx) {
 
 	Status = tls_ctx->sspi->AcquireCredentialsHandle(
 						NULL,                   // Name of principal    
-						UNISP_NAME_W,           // Name of package
+						SCHANNEL_NAME,           // Name of package
 						SECPKG_CRED_OUTBOUND,   // Flags indicating use
 						NULL,                   // Pointer to logon ID
 						&tls_ctx->schannel_cred,          // Package specific data
@@ -852,7 +914,7 @@ static SECURITY_STATUS create_credentials(TlsContext *tls_ctx) {
 						&tls_ctx->h_client_creds,                // (out) Cred Handle
 						&tsExpiry);             // (out) Lifetime (optional)
 	if(Status != SEC_E_OK) {
-		wprintf(L"Error 0x%x returned by AcquireCredentialsHandle\n", Status);
+		VSCHANNEL_LOG(L"Error 0x%x returned by AcquireCredentialsHandle\n", Status);
 		goto cleanup;
 	}
 
@@ -967,7 +1029,7 @@ static LONG disconnect_from_server(TlsContext *tls_ctx) {
 	Status = tls_ctx->sspi->ApplyControlToken(&tls_ctx->h_context, &OutBuffer);
 
 	if(FAILED(Status)) {
-		wprintf(L"Error 0x%x returned by ApplyControlToken\n", Status);
+		VSCHANNEL_LOG(L"Error 0x%x returned by ApplyControlToken\n", Status);
 		goto cleanup;
 	}
 
@@ -993,7 +1055,7 @@ static LONG disconnect_from_server(TlsContext *tls_ctx) {
 		NULL, 0, &tls_ctx->h_context, &OutBuffer, &dwSSPIOutFlags, &tsExpiry);
 
 	if(FAILED(Status))  {
-		wprintf(L"Error 0x%x returned by InitializeSecurityContext\n", Status);
+		VSCHANNEL_LOG(L"Error 0x%x returned by InitializeSecurityContext\n", Status);
 		goto cleanup;
 	}
 
@@ -1006,7 +1068,7 @@ static LONG disconnect_from_server(TlsContext *tls_ctx) {
 		cbData = send(tls_ctx->socket, pbMessage, cbMessage, 0);
 		if(cbData == SOCKET_ERROR || cbData == 0) {
 			Status = WSAGetLastError();
-			wprintf(L"Error %d sending close notify\n", Status);
+			VSCHANNEL_LOG(L"Error %d sending close notify\n", Status);
 			goto cleanup;
 		}
 
@@ -1103,7 +1165,7 @@ static SECURITY_STATUS perform_client_handshake(TlsContext *tls_ctx, WCHAR *host
 
 	if(scRet != SEC_I_CONTINUE_NEEDED)
 	{
-		wprintf(L"Error %d returned by InitializeSecurityContext (1)\n", scRet);
+		VSCHANNEL_LOG(L"Error %d returned by InitializeSecurityContext (1)\n", scRet);
 		return scRet;
 	}
 
@@ -1112,7 +1174,7 @@ static SECURITY_STATUS perform_client_handshake(TlsContext *tls_ctx, WCHAR *host
 	{
 		cbData = send(tls_ctx->socket, OutBuffers[0].pvBuffer, OutBuffers[0].cbBuffer, 0);
 		if(cbData == SOCKET_ERROR || cbData == 0) {
-			wprintf(L"Error %d sending data to server (1)\n", WSAGetLastError());
+			VSCHANNEL_LOG(L"Error %d sending data to server (1)\n", WSAGetLastError());
 			tls_ctx->sspi->FreeContextBuffer(OutBuffers[0].pvBuffer);
 			tls_ctx->sspi->DeleteSecurityContext(&tls_ctx->h_context);
 			return SEC_E_INTERNAL_ERROR;
@@ -1157,7 +1219,7 @@ static SECURITY_STATUS client_handshake_loop(TlsContext *tls_ctx, BOOL fDoInitia
 	IoBuffer = LocalAlloc(LPTR, IO_BUFFER_SIZE);
 	if(IoBuffer == NULL)
 	{
-		wprintf(L"Out of memory (1)\n");
+		VSCHANNEL_LOG(L"Out of memory (1)\n");
 		return SEC_E_INTERNAL_ERROR;
 	}
 	cbIoBuffer = 0;
@@ -1183,12 +1245,12 @@ static SECURITY_STATUS client_handshake_loop(TlsContext *tls_ctx, BOOL fDoInitia
 							  IO_BUFFER_SIZE - cbIoBuffer, 
 							  0);
 				if(cbData == SOCKET_ERROR) {
-					wprintf(L"Error %d reading data from server\n", WSAGetLastError());
+					VSCHANNEL_LOG(L"Error %d reading data from server\n", WSAGetLastError());
 					scRet = SEC_E_INTERNAL_ERROR;
 					break;
 				}
 				else if(cbData == 0) {
-					wprintf(L"Server unexpectedly disconnected\n");
+					VSCHANNEL_LOG(L"Server unexpectedly disconnected\n");
 					scRet = SEC_E_INTERNAL_ERROR;
 					break;
 				}
@@ -1248,7 +1310,7 @@ static SECURITY_STATUS client_handshake_loop(TlsContext *tls_ctx, BOOL fDoInitia
 							  OutBuffers[0].cbBuffer,
 							  0);
 				if(cbData == SOCKET_ERROR || cbData == 0) {
-					wprintf(L"Error %d sending data to server (2)\n", 
+					VSCHANNEL_LOG(L"Error %d sending data to server (2)\n",
 						WSAGetLastError());
 					tls_ctx->sspi->FreeContextBuffer(OutBuffers[0].pvBuffer);
 					tls_ctx->sspi->DeleteSecurityContext(&tls_ctx->h_context);
@@ -1279,7 +1341,7 @@ static SECURITY_STATUS client_handshake_loop(TlsContext *tls_ctx, BOOL fDoInitia
 			{
 				pExtraData->pvBuffer = LocalAlloc(LPTR, InBuffers[1].cbBuffer);
 				if(pExtraData->pvBuffer == NULL) {
-					wprintf(L"Out of memory (2)\n");
+					VSCHANNEL_LOG(L"Out of memory (2)\n");
 					return SEC_E_INTERNAL_ERROR;
 				}
 
@@ -1304,7 +1366,7 @@ static SECURITY_STATUS client_handshake_loop(TlsContext *tls_ctx, BOOL fDoInitia
 
 		// Check for fatal error.
 		if(FAILED(scRet)) {
-			wprintf(L"Error 0x%x returned by InitializeSecurityContext (2)\n", scRet);
+			VSCHANNEL_LOG(L"Error 0x%x returned by InitializeSecurityContext (2)\n", scRet);
 			break;
 		}
 
@@ -1356,6 +1418,267 @@ static SECURITY_STATUS client_handshake_loop(TlsContext *tls_ctx, BOOL fDoInitia
 }
 
 
+// ---------------------------------------------------------------------------
+// One-shot HTTP/1.1 response-completion detection (https_make_request).
+//
+// A keep-alive peer is free to leave the connection open indefinitely after
+// responding (HTTP/1.1's default), so waiting for the peer to close the
+// socket (or send a TLS close_notify) is not a valid completion signal on
+// its own -- a compliant server that never does either would hang the
+// client forever (vlang/v#27705). These helpers let the read loop below
+// recognize a complete response from its own framing (Content-Length, or a
+// fully-received chunked body) and stop as soon as it has arrived, without
+// waiting on the peer. Deliberately conservative throughout: anything that
+// cannot be confidently parsed reports "incomplete", falling back to the
+// existing read-until-close/read-until-context-expired behavior, which
+// remains correct in every case -- these helpers only ever add an EARLIER
+// stopping point, never a different one.
+
+// http_ci_equal reports whether buf[0..len) case-insensitively equals name
+// (an ASCII literal of length name_len) -- HTTP header names and the
+// "chunked" token are always ASCII.
+static BOOL http_ci_equal(const CHAR *buf, int len, const CHAR *name, int name_len) {
+	if(len != name_len) {
+		return FALSE;
+	}
+	for(int i = 0; i < len; i++) {
+		CHAR a = buf[i];
+		CHAR b = name[i];
+		if(a >= 'A' && a <= 'Z') a = a - 'A' + 'a';
+		if(b >= 'A' && b <= 'Z') b = b - 'A' + 'a';
+		if(a != b) {
+			return FALSE;
+		}
+	}
+	return TRUE;
+}
+
+// http_has_transfer_coding reports whether the Transfer-Encoding value
+// buf[0..len) contains `coding` as a real comma-separated transfer-coding
+// token (any ";parameters" suffix stripped, OWS trimmed, ASCII
+// case-insensitive) -- deliberately matching net.http's own
+// parse_response/has_header_token semantics, so this C-level framing
+// decision and the V-level chunked-decode decision can never disagree. A
+// substring match is NOT sufficient: an extension coding merely CONTAINING
+// the word (e.g. "xchunked") must fall back to read-until-close framing,
+// not have chunk framing applied to a body whose raw bytes might
+// accidentally look like a complete chunked message.
+static BOOL http_has_transfer_coding(const CHAR *buf, int len, const CHAR *coding, int coding_len) {
+	int start = 0;
+	for(int i = 0; i <= len; i++) {
+		if(i == len || buf[i] == ',') {
+			int tok_start = start;
+			int tok_end = i;
+			for(int j = tok_start; j < tok_end; j++) {
+				if(buf[j] == ';') {
+					tok_end = j;
+					break;
+				}
+			}
+			while(tok_start < tok_end && (buf[tok_start] == ' ' || buf[tok_start] == '\t')) {
+				tok_start++;
+			}
+			while(tok_end > tok_start && (buf[tok_end - 1] == ' ' || buf[tok_end - 1] == '\t')) {
+				tok_end--;
+			}
+			if(http_ci_equal(buf + tok_start, tok_end - tok_start, coding, coding_len)) {
+				return TRUE;
+			}
+			start = i + 1;
+		}
+	}
+	return FALSE;
+}
+
+// http_find_header case-insensitively locates a "<name>: value" line within
+// buf[0..headers_end) (the response's header block) and returns a pointer to
+// the value (spaces/tabs trimmed on BOTH sides -- RFC 7230's field-value
+// grammar allows OWS before and after, and real servers do emit e.g.
+// "Content-Length: 27 " with trailing whitespace), with its length in
+// *out_len. Returns NULL if the header is not present.
+static const CHAR* http_find_header(const CHAR *buf, int headers_end, const CHAR *name, int name_len, int *out_len) {
+	int i = 0;
+	while(i < headers_end) {
+		int line_end = -1;
+		for(int j = i; j + 1 < headers_end; j++) {
+			if(buf[j] == '\r' && buf[j + 1] == '\n') {
+				line_end = j;
+				break;
+			}
+		}
+		if(line_end < 0) {
+			break;
+		}
+		if(line_end - i > name_len && buf[i + name_len] == ':'
+				&& http_ci_equal(buf + i, name_len, name, name_len)) {
+			const CHAR *val = buf + i + name_len + 1;
+			int val_len = line_end - (i + name_len + 1);
+			while(val_len > 0 && (*val == ' ' || *val == '\t')) {
+				val++;
+				val_len--;
+			}
+			while(val_len > 0 && (val[val_len - 1] == ' ' || val[val_len - 1] == '\t')) {
+				val_len--;
+			}
+			*out_len = val_len;
+			return val;
+		}
+		i = line_end + 2;
+	}
+	return NULL;
+}
+
+// http_parse_decimal/http_parse_hex reject a value that would overflow
+// `long` (Windows' LLP64 model keeps `long` 32-bit even in 64-bit builds)
+// rather than let the multiply-add silently wrap into a small or negative
+// number: http_response_complete compares this value against a byte count
+// to decide whether the full response has arrived, so a wrapped length
+// could make it signal "complete" after only a few real bytes -- a
+// truncation bug strictly worse than the hang this file fixes. No
+// legitimate response from this one-shot client's callers is anywhere
+// close to this bound.
+#define HTTP_MAX_PARSED_LENGTH 0x3FFFFFFFL
+
+// http_parse_decimal parses buf[0..len) as an unsigned decimal integer,
+// rejecting anything that is not entirely digits -- a lenient parse that
+// silently accepts trailing garbage is not a trustworthy length signal.
+static BOOL http_parse_decimal(const CHAR *buf, int len, long *out) {
+	if(len <= 0) {
+		return FALSE;
+	}
+	long value = 0;
+	for(int i = 0; i < len; i++) {
+		if(buf[i] < '0' || buf[i] > '9') {
+			return FALSE;
+		}
+		int digit = buf[i] - '0';
+		if(value > (HTTP_MAX_PARSED_LENGTH - digit) / 10) {
+			return FALSE;
+		}
+		value = value * 10 + digit;
+	}
+	*out = value;
+	return TRUE;
+}
+
+// http_parse_hex parses a chunk-size line's leading hex digits, stopping at
+// the first non-hex-digit byte (permitting a ";extension" suffix per
+// RFC 7230 4.1.1, read past but not interpreted here). Requires at least one
+// hex digit.
+static BOOL http_parse_hex(const CHAR *buf, int len, long *out) {
+	int i = 0;
+	long value = 0;
+	while(i < len) {
+		CHAR c = buf[i];
+		int digit;
+		if(c >= '0' && c <= '9') {
+			digit = c - '0';
+		} else if(c >= 'a' && c <= 'f') {
+			digit = c - 'a' + 10;
+		} else if(c >= 'A' && c <= 'F') {
+			digit = c - 'A' + 10;
+		} else {
+			break;
+		}
+		if(value > (HTTP_MAX_PARSED_LENGTH - digit) / 16) {
+			return FALSE;
+		}
+		value = value * 16 + digit;
+		i++;
+	}
+	if(i == 0) {
+		return FALSE;
+	}
+	*out = value;
+	return TRUE;
+}
+
+// http_chunked_body_complete reports whether buf[0..len) -- the bytes
+// immediately following the response headers -- contains a complete
+// chunked-encoded body: every chunk present through the terminating
+// zero-size chunk and its (possibly empty) trailer section (RFC 7230 4.1).
+static BOOL http_chunked_body_complete(const CHAR *buf, int len) {
+	int pos = 0;
+	BOOL in_trailers = FALSE;
+	while(TRUE) {
+		int line_end = -1;
+		for(int i = pos; i + 1 < len; i++) {
+			if(buf[i] == '\r' && buf[i + 1] == '\n') {
+				line_end = i;
+				break;
+			}
+		}
+		if(line_end < 0) {
+			return FALSE; // line not fully received yet
+		}
+		if(in_trailers) {
+			if(line_end == pos) {
+				return TRUE; // empty line: end of the trailer section
+			}
+			pos = line_end + 2;
+			continue;
+		}
+		long chunk_size = 0;
+		if(!http_parse_hex(buf + pos, line_end - pos, &chunk_size)) {
+			return FALSE; // not a valid chunk-size line -- do not trust it
+		}
+		int data_start = line_end + 2;
+		if(chunk_size == 0) {
+			in_trailers = TRUE;
+			pos = data_start;
+			continue;
+		}
+		long data_end = (long)data_start + chunk_size;
+		if(data_end + 1 >= (long)len) {
+			return FALSE; // chunk data + trailing CRLF not fully received yet
+		}
+		pos = (int)(data_end + 2);
+	}
+}
+
+// http_response_complete inspects the response bytes accumulated so far
+// (buf[0..len)) and reports whether they already contain one complete HTTP
+// response. Only Content-Length and chunked Transfer-Encoding are
+// understood; a response framed neither way (or with a malformed length)
+// reports incomplete, so the caller keeps reading until the peer closes —
+// identical to this function's behavior before these helpers existed.
+static BOOL http_response_complete(const CHAR *buf, int len) {
+	int headers_end = -1;
+	for(int i = 0; i + 3 < len; i++) {
+		if(buf[i] == '\r' && buf[i + 1] == '\n' && buf[i + 2] == '\r' && buf[i + 3] == '\n') {
+			headers_end = i + 4;
+			break;
+		}
+	}
+	if(headers_end < 0) {
+		return FALSE;
+	}
+
+	int te_len = 0;
+	const CHAR *te = http_find_header(buf, headers_end, "Transfer-Encoding", 17, &te_len);
+	if(te != NULL) {
+		// RFC 7230 3.3.3: Transfer-Encoding, when present, overrides
+		// Content-Length. Only a real `chunked` transfer-coding token is
+		// understood here; anything else falls back to the existing
+		// (always-correct) read-until-close behavior.
+		if(http_has_transfer_coding(te, te_len, "chunked", 7)) {
+			return http_chunked_body_complete(buf + headers_end, len - headers_end);
+		}
+		return FALSE;
+	}
+
+	int cl_len = 0;
+	const CHAR *cl = http_find_header(buf, headers_end, "Content-Length", 14, &cl_len);
+	if(cl == NULL) {
+		return FALSE; // no length-framing header: must read until the peer closes
+	}
+	long content_length = 0;
+	if(!http_parse_decimal(cl, cl_len, &content_length)) {
+		return FALSE; // not a clean digit string -- do not trust it
+	}
+	return (long)(len - headers_end) >= content_length;
+}
+
 static SECURITY_STATUS https_make_request(TlsContext *tls_ctx, CHAR *req, DWORD req_len, CHAR **out, int *length, vschannel_allocator afn) {
 	SecPkgContext_StreamSizes Sizes;
 	SECURITY_STATUS scRet;
@@ -1382,7 +1705,7 @@ static SECURITY_STATUS https_make_request(TlsContext *tls_ctx, CHAR *req, DWORD 
 	// Read stream encryption properties.
 	scRet = tls_ctx->sspi->QueryContextAttributes(&tls_ctx->h_context, SECPKG_ATTR_STREAM_SIZES, &Sizes);
 	if(scRet != SEC_E_OK) {
-		wprintf(L"Error 0x%x reading SECPKG_ATTR_STREAM_SIZES\n", scRet);
+		VSCHANNEL_LOG(L"Error 0x%x reading SECPKG_ATTR_STREAM_SIZES\n", scRet);
 		return scRet;
 	}
 
@@ -1393,7 +1716,7 @@ static SECURITY_STATUS https_make_request(TlsContext *tls_ctx, CHAR *req, DWORD 
 
 	pbIoBuffer = LocalAlloc(LPTR, cbIoBufferLength);
 	if(pbIoBuffer == NULL) {
-		wprintf(L"Out of memory (2)\n");
+		VSCHANNEL_LOG(L"Out of memory (2)\n");
 		return SEC_E_INTERNAL_ERROR;
 	}
 	
@@ -1430,7 +1753,8 @@ static SECURITY_STATUS https_make_request(TlsContext *tls_ctx, CHAR *req, DWORD 
 
 		scRet = tls_ctx->sspi->EncryptMessage(&tls_ctx->h_context, 0, &Message, 0);
 		if(FAILED(scRet)) {
-			wprintf(L"Error 0x%x returned by EncryptMessage\n", scRet);
+			VSCHANNEL_LOG(L"Error 0x%x returned by EncryptMessage\n", scRet);
+			LocalFree(pbIoBuffer);
 			return scRet;
 		}
 
@@ -1440,8 +1764,9 @@ static SECURITY_STATUS https_make_request(TlsContext *tls_ctx, CHAR *req, DWORD 
 		while(sent < to_send) {
 			cbData = send(tls_ctx->socket, (char*)pbIoBuffer + sent, (int)(to_send - sent), 0);
 			if(cbData == SOCKET_ERROR || cbData == 0) {
-				wprintf(L"Error %d sending data to server (3)\n", WSAGetLastError());
+				VSCHANNEL_LOG(L"Error %d sending data to server (3)\n", WSAGetLastError());
 				tls_ctx->sspi->DeleteSecurityContext(&tls_ctx->h_context);
+				LocalFree(pbIoBuffer);
 				return SEC_E_INTERNAL_ERROR;
 			}
 			sent += (DWORD)cbData;
@@ -1458,15 +1783,16 @@ static SECURITY_STATUS https_make_request(TlsContext *tls_ctx, CHAR *req, DWORD 
 		if(0 == cbIoBuffer || scRet == SEC_E_INCOMPLETE_MESSAGE) {
 			cbData = recv(tls_ctx->socket, pbIoBuffer + cbIoBuffer, cbIoBufferLength - cbIoBuffer, 0);
 			if(cbData == SOCKET_ERROR) {
-				wprintf(L"Error %d reading data from server\n", WSAGetLastError());
+				VSCHANNEL_LOG(L"Error %d reading data from server\n", WSAGetLastError());
 				scRet = SEC_E_INTERNAL_ERROR;
 				break;
 			}
 			else if(cbData == 0) {
 				// Server disconnected.
 				if(cbIoBuffer) {
-					wprintf(L"Server unexpectedly disconnected\n");
+					VSCHANNEL_LOG(L"Server unexpectedly disconnected\n");
 					scRet = SEC_E_INTERNAL_ERROR;
+					LocalFree(pbIoBuffer);
 					return scRet;
 				}
 				else {
@@ -1509,7 +1835,8 @@ static SECURITY_STATUS https_make_request(TlsContext *tls_ctx, CHAR *req, DWORD 
 			scRet != SEC_I_RENEGOTIATE && 
 			scRet != SEC_I_CONTEXT_EXPIRED)
 		{
-			wprintf(L"Error 0x%x returned by DecryptMessage\n", scRet);
+			VSCHANNEL_LOG(L"Error 0x%x returned by DecryptMessage\n", scRet);
+			LocalFree(pbIoBuffer);
 			return scRet;
 		}
 
@@ -1534,6 +1861,7 @@ static SECURITY_STATUS https_make_request(TlsContext *tls_ctx, CHAR *req, DWORD 
 			CHAR *a = afn(*out, required_length);
 			if( a == NULL ) {
 				scRet = SEC_E_INTERNAL_ERROR;
+				LocalFree(pbIoBuffer);
 				return scRet;
 			}
 			*out = a;
@@ -1542,7 +1870,15 @@ static SECURITY_STATUS https_make_request(TlsContext *tls_ctx, CHAR *req, DWORD 
 		// Copy the decrypted data to our output buffer
 		memcpy(*out+*length, pDataBuffer->pvBuffer, (int)pDataBuffer->cbBuffer);
 		*length += (int)pDataBuffer->cbBuffer;
-		
+
+		// Stop as soon as the response itself is fully framed (see
+		// http_response_complete's doc comment) rather than waiting for the
+		// peer to close the connection or send a TLS close_notify -- a
+		// keep-alive peer may do neither for a long time (vlang/v#27705).
+		if(http_response_complete(*out, *length)) {
+			return SEC_E_OK;
+		}
+
 		// Move any "extra" data to the input buffer.
 		if(pExtraBuffer) {
 			MoveMemory(pbIoBuffer, pExtraBuffer->pvBuffer, pExtraBuffer->cbBuffer);
@@ -1557,6 +1893,7 @@ static SECURITY_STATUS https_make_request(TlsContext *tls_ctx, CHAR *req, DWORD 
 			// The server wants to perform another handshake sequence.
 			scRet = client_handshake_loop(tls_ctx, FALSE, &ExtraBuffer);
 			if(scRet != SEC_E_OK) {
+				LocalFree(pbIoBuffer);
 				return scRet;
 			}
 
@@ -1565,10 +1902,12 @@ static SECURITY_STATUS https_make_request(TlsContext *tls_ctx, CHAR *req, DWORD 
 			{
 				MoveMemory(pbIoBuffer, ExtraBuffer.pvBuffer, ExtraBuffer.cbBuffer);
 				cbIoBuffer = ExtraBuffer.cbBuffer;
+				LocalFree(ExtraBuffer.pvBuffer);
 			}
 		}
 	}
 
+	LocalFree(pbIoBuffer);
 	return SEC_E_OK;
 }
 
@@ -1616,7 +1955,7 @@ static DWORD verify_server_certificate( PCCERT_CONTEXT  pServerCert, LPWSTR host
 		CERT_CHAIN_REVOCATION_ACCUMULATIVE_TIMEOUT,
 		NULL, &pChainContext)) {
 		Status = GetLastError();
-		wprintf(L"Error 0x%x returned by CertGetCertificateChain!\n", Status);
+		VSCHANNEL_LOG(L"Error 0x%x returned by CertGetCertificateChain!\n", Status);
 		goto cleanup;
 	}
 
@@ -1637,7 +1976,7 @@ static DWORD verify_server_certificate( PCCERT_CONTEXT  pServerCert, LPWSTR host
 
 	if(!CertVerifyCertificateChainPolicy(CERT_CHAIN_POLICY_SSL, pChainContext, &PolicyPara, &PolicyStatus)){
 		Status = GetLastError();
-		wprintf(L"Error 0x%x returned by CertVerifyCertificateChainPolicy!\n", Status);
+		VSCHANNEL_LOG(L"Error 0x%x returned by CertVerifyCertificateChainPolicy!\n", Status);
 		goto cleanup;
 	}
 
@@ -1677,7 +2016,7 @@ static void get_new_client_credentials(TlsContext *tls_ctx) {
 	// Read list of trusted issuers from schannel.
 	Status = tls_ctx->sspi->QueryContextAttributes(&tls_ctx->h_context, SECPKG_ATTR_ISSUER_LIST_EX, (PVOID)&IssuerListInfo);
 	if(Status != SEC_E_OK) {
-		wprintf(L"Error 0x%x querying issuer list info\n", Status);
+		VSCHANNEL_LOG(L"Error 0x%x querying issuer list info\n", Status);
 		return;
 	}
 
@@ -1702,7 +2041,7 @@ static void get_new_client_credentials(TlsContext *tls_ctx) {
 											 &FindByIssuerPara,
 											 pChainContext);
 		if(pChainContext == NULL) {
-			wprintf(L"Error 0x%x finding cert chain\n", GetLastError());
+			VSCHANNEL_LOG(L"Error 0x%x finding cert chain\n", GetLastError());
 			break;
 		}
 
@@ -1716,7 +2055,7 @@ static void get_new_client_credentials(TlsContext *tls_ctx) {
 
 		Status = tls_ctx->sspi->AcquireCredentialsHandle(
 							NULL,                   // Name of principal
-							UNISP_NAME_W,           // Name of package
+							SCHANNEL_NAME,           // Name of package
 							SECPKG_CRED_OUTBOUND,   // Flags indicating use
 							NULL,                   // Pointer to logon ID
 							&tls_ctx->schannel_cred,          // Package specific data
@@ -1725,7 +2064,7 @@ static void get_new_client_credentials(TlsContext *tls_ctx) {
 							&hCreds,                // (out) Cred Handle
 							&tsExpiry);             // (out) Lifetime (optional)
 		if(Status != SEC_E_OK) {
-			wprintf(L"Error 0x%x returned by AcquireCredentialsHandle\n", Status);
+			VSCHANNEL_LOG(L"Error 0x%x returned by AcquireCredentialsHandle\n", Status);
 			continue;
 		}
 
@@ -1754,3 +2093,5 @@ static void get_new_client_credentials(TlsContext *tls_ctx) {
 		break;
 	}
 }
+
+#undef VSCHANNEL_LOG

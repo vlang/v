@@ -1,0 +1,11 @@
+fn main() {
+	fallback := $embed_file(@FILE)
+	(match 0 {
+		0 {
+			$embed_file(@FILE)
+		}
+		else {
+			fallback
+		}
+	})
+}

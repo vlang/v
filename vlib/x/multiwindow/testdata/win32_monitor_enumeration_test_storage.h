@@ -1,0 +1,11 @@
+#ifndef V_MULTIWINDOW_WIN32_MONITOR_ENUMERATION_TEST_STORAGE_H
+#define V_MULTIWINDOW_WIN32_MONITOR_ENUMERATION_TEST_STORAGE_H
+
+#include "win32_monitor_enumeration_test_seam.h"
+
+#if defined(_WIN32) && defined(V_MULTIWINDOW_WIN32_SERVICE_TEST)
+VMultiwindowWin32TestMonitorEnumeration
+	v_multiwindow_win32_test_monitor_enumeration;
+#endif
+
+#endif

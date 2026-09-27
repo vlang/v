@@ -1,0 +1,7 @@
+libdir = /issue74/spaced-assignment
+embedded_equals = left=right
+
+Name: spaced-variable-assignment-74
+Description: Spaced assignment=field value
+Version: 1.0.0
+Libs: -L${libdir} -lissue74_spaced_assignment

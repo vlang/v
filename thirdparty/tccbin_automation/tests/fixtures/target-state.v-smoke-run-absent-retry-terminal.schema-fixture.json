@@ -1,0 +1,421 @@
+{
+  "schema_version": 1,
+  "generation": 6,
+  "target_id": "linux-amd64",
+  "target_state": "validating",
+  "publication_state": "candidate_pending",
+  "bootstrap_required": true,
+  "canonical_observed_sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "input_fingerprint": "3333333333333333333333333333333333333333333333333333333333333333",
+  "artifact_fingerprint": "4444444444444444444444444444444444444444444444444444444444444444",
+  "manifest_hash": "5555555555555555555555555555555555555555555555555555555555555555",
+  "provenance_status": "complete",
+  "affected_targets": [
+    "linux-amd64"
+  ],
+  "resolved_inputs": {
+    "sources": [
+      {
+        "id": "tinycc",
+        "repository": "https://repo.or.cz/tinycc.git",
+        "ref": "mob",
+        "sha": "cccccccccccccccccccccccccccccccccccccccc",
+        "tree": "dddddddddddddddddddddddddddddddddddddddd"
+      }
+    ],
+    "source_checks": [
+      {
+        "source_id": "tinycc",
+        "resolved_sha": "cccccccccccccccccccccccccccccccccccccccc",
+        "status": "resolved",
+        "evidence_digest": "7777777777777777777777777777777777777777777777777777777777777777"
+      }
+    ],
+    "recipe_path": "thirdparty/build_scripts/thirdparty-linux-amd64_tcc.sh",
+    "recipe_hash": "8888888888888888888888888888888888888888888888888888888888888888",
+    "contract_repository": "vlang/v",
+    "contract_sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "v_source_sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "producer_toolchain": {
+      "profile_id": "linux-amd64-synthetic-v1",
+      "profile_sha256": "9999999999999999999999999999999999999999999999999999999999999999",
+      "observation_sha256": "8888888888888888888888888888888888888888888888888888888888888888",
+      "observation_digest": "7777777777777777777777777777777777777777777777777777777777777777"
+    }
+  },
+  "last_source_refetch": null,
+  "last_known_good": null,
+  "provisional_published": null,
+  "active_intent": {
+    "intent_id": "1111111111111111111111111111111111111111111111111111111111111111",
+    "intent_type": "initial_adopt_current",
+    "stage": "checks_running",
+    "run_id": 10,
+    "run_attempt": 1,
+    "ordinal": 0,
+    "input_fingerprint": "3333333333333333333333333333333333333333333333333333333333333333",
+    "resolved_inputs": {
+      "sources": [
+        {
+          "id": "tinycc",
+          "repository": "https://repo.or.cz/tinycc.git",
+          "ref": "mob",
+          "sha": "cccccccccccccccccccccccccccccccccccccccc",
+          "tree": "dddddddddddddddddddddddddddddddddddddddd"
+        }
+      ],
+      "source_checks": [
+        {
+          "source_id": "tinycc",
+          "resolved_sha": "cccccccccccccccccccccccccccccccccccccccc",
+          "status": "resolved",
+          "evidence_digest": "7777777777777777777777777777777777777777777777777777777777777777"
+        }
+      ],
+      "recipe_path": "thirdparty/build_scripts/thirdparty-linux-amd64_tcc.sh",
+      "recipe_hash": "8888888888888888888888888888888888888888888888888888888888888888",
+      "contract_repository": "vlang/v",
+      "contract_sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "v_source_sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "producer_toolchain": {
+        "profile_id": "linux-amd64-synthetic-v1",
+        "profile_sha256": "9999999999999999999999999999999999999999999999999999999999999999",
+        "observation_sha256": "8888888888888888888888888888888888888888888888888888888888888888",
+        "observation_digest": "7777777777777777777777777777777777777777777777777777777777777777"
+      }
+    },
+    "expected_canonical_head": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "candidate_ref": "tccbin-candidate/linux-amd64/1111111111111111111111111111111111111111111111111111111111111111",
+    "generation": 0,
+    "expected_check_sources": [
+      {
+        "name": "tccbin-candidate-gate",
+        "repository": "vlang/tccbin",
+        "integration_id": 1001,
+        "workflow_id": 2001,
+        "workflow_path": ".github/workflows/build-and-test.yml",
+        "event": "push"
+      },
+      {
+        "name": "v-candidate-smoke",
+        "repository": "vlang/v",
+        "integration_id": 1002,
+        "workflow_id": 2002,
+        "workflow_path": ".github/workflows/tccbin_revalidate.yml",
+        "event": "workflow_dispatch"
+      }
+    ],
+    "gate_runs": [
+      {
+        "check_name": "v-candidate-smoke",
+        "repository": "vlang/v",
+        "integration_id": 1002,
+        "workflow_id": 2002,
+        "workflow_path": ".github/workflows/tccbin_revalidate.yml",
+        "event": "workflow_dispatch",
+        "run_id": 3001,
+        "run_attempt": 1,
+        "check_suite_id": 5001,
+        "check_suite_integration_id": 1001,
+        "job_id": 4001,
+        "subject_hash": "d92d02fd9ab49678ad2957e36da68e91db51a3e7a42de837e3c0693b2b38f8fd",
+        "check_run_id": 6001,
+        "external_id": "080d1a8c47b6286ddd3de975408ca79c14d10eddcb9e3df5fd31bc04aa10af00",
+        "run_name": "tccbin-v-smoke/1111111111111111111111111111111111111111111111111111111111111111",
+        "run_url": "https://github.com/vlang/v/actions/runs/3001",
+        "job_url": "https://github.com/vlang/v/actions/runs/3001/job/4001",
+        "details_url": "https://github.com/vlang/v/actions/runs/3001/job/4001",
+        "ref": "master",
+        "workflow_head_sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "check_sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "actor": "validator-dispatcher[bot]",
+        "actor_integration_id": 1002,
+        "triggering_actor": "validator-dispatcher[bot]",
+        "triggering_actor_integration_id": 1002,
+        "created_at": "2026-08-03T00:04:00Z",
+        "completed_at": "2026-08-03T01:00:00Z",
+        "run_conclusion": "success",
+        "check_conclusion": "success",
+        "output_digest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "evidence_digest": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+      }
+    ],
+    "gate_trigger_refs": [],
+    "deadlines": {
+      "build_deadline": "2026-08-02T01:00:00Z",
+      "checks_deadline": "2026-08-02T02:30:00Z",
+      "promotion_deadline": "2026-08-02T02:45:00Z"
+    },
+    "infra_retry_count": 0,
+    "source_retry_count": 0,
+    "candidate_binding": null,
+    "validation_subject": {
+      "sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "tree": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "input_fingerprint": "3333333333333333333333333333333333333333333333333333333333333333",
+      "artifact_fingerprint": "4444444444444444444444444444444444444444444444444444444444444444",
+      "manifest_hash": "5555555555555555555555555555555555555555555555555555555555555555",
+      "digests": [
+        {
+          "path": "tcc.exe",
+          "sha256": "6666666666666666666666666666666666666666666666666666666666666666"
+        }
+      ],
+      "candidate_ref": "tccbin-candidate/linux-amd64/1111111111111111111111111111111111111111111111111111111111111111"
+    },
+    "previous_last_known_good": null,
+    "bad_provisional": null,
+    "rollback_diff_fingerprint": null,
+    "rollback_provisional": null
+  },
+  "post_validation_operation_id": null,
+  "native_gate_subject": {
+    "consumer_id": "1111111111111111111111111111111111111111111111111111111111111111",
+    "consumer_kind": "initial_adopt_current",
+    "intent_or_operation_id": "1111111111111111111111111111111111111111111111111111111111111111",
+    "target_id": "linux-amd64",
+    "subject_generation": 1,
+    "initial_run_mode": "original_push",
+    "remediation_trigger": null,
+    "sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "tree": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "original_ref": "tccbin-candidate/linux-amd64/1111111111111111111111111111111111111111111111111111111111111111",
+    "input_fingerprint": "3333333333333333333333333333333333333333333333333333333333333333",
+    "artifact_fingerprint": "4444444444444444444444444444444444444444444444444444444444444444",
+    "manifest_hash": "5555555555555555555555555555555555555555555555555555555555555555",
+    "digests": [
+      {
+        "path": "tcc.exe",
+        "sha256": "6666666666666666666666666666666666666666666666666666666666666666"
+      }
+    ]
+  },
+  "active_subject_hash": "d92d02fd9ab49678ad2957e36da68e91db51a3e7a42de837e3c0693b2b38f8fd",
+  "native_gate_execution": {
+    "subject": {
+      "consumer_id": "1111111111111111111111111111111111111111111111111111111111111111",
+      "consumer_kind": "initial_adopt_current",
+      "intent_or_operation_id": "1111111111111111111111111111111111111111111111111111111111111111",
+      "target_id": "linux-amd64",
+      "subject_generation": 1,
+      "initial_run_mode": "original_push",
+      "remediation_trigger": null,
+      "sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "tree": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "original_ref": "tccbin-candidate/linux-amd64/1111111111111111111111111111111111111111111111111111111111111111",
+      "input_fingerprint": "3333333333333333333333333333333333333333333333333333333333333333",
+      "artifact_fingerprint": "4444444444444444444444444444444444444444444444444444444444444444",
+      "manifest_hash": "5555555555555555555555555555555555555555555555555555555555555555",
+      "digests": [
+        {
+          "path": "tcc.exe",
+          "sha256": "6666666666666666666666666666666666666666666666666666666666666666"
+        }
+      ]
+    },
+    "subject_hash": "d92d02fd9ab49678ad2957e36da68e91db51a3e7a42de837e3c0693b2b38f8fd",
+    "subject_sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "subject_generation": 1,
+    "repository": "vlang/tccbin",
+    "workflow_id": 2001,
+    "workflow_path": ".github/workflows/build-and-test.yml",
+    "original_actor": "tccbin-publisher[bot]",
+    "original_actor_integration_id": 5001,
+    "rerun_triggering_actor": "tccbin-gate-dispatcher[bot]",
+    "rerun_triggering_integration_id": 5002,
+    "expected_ledger_generation": 6,
+    "active_gate_epoch": 0,
+    "gate_epochs": [
+      {
+        "epoch": 0,
+        "reason": "original_push",
+        "expected_ref": "tccbin-candidate/linux-amd64/1111111111111111111111111111111111111111111111111111111111111111",
+        "trigger_id": null,
+        "state": "open_unselected",
+        "selected_run_id": null,
+        "selected_run_attempt": null,
+        "selected_check_suite_id": null,
+        "conclusion": null,
+        "opened_at": "2026-08-02T00:00:00Z",
+        "closed_at": null,
+        "source_recovery_operation_id": null
+      }
+    ],
+    "gate_runs": [],
+    "ack_operation_ids": [],
+    "completion_operation_ids": [],
+    "epoch_close_operation_ids": [],
+    "selected_run_id": null,
+    "selected_run_attempt": null,
+    "selected_check_suite_id": null,
+    "selected_conclusion": null,
+    "infra_retry_count": 0,
+    "source_recovery_operation_id": null
+  },
+  "v_smoke_execution": {
+    "schema_version": 1,
+    "consumer_id": "1111111111111111111111111111111111111111111111111111111111111111",
+    "consumer_kind": "initial_adopt_current",
+    "intent_or_operation_id": "1111111111111111111111111111111111111111111111111111111111111111",
+    "target_id": "linux-amd64",
+    "subject_hash": "d92d02fd9ab49678ad2957e36da68e91db51a3e7a42de837e3c0693b2b38f8fd",
+    "subject_generation": 1,
+    "subject_ref": "tccbin-candidate/linux-amd64/1111111111111111111111111111111111111111111111111111111111111111",
+    "subject_sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "v_master_sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "repository": "vlang/v",
+    "workflow_id": 2002,
+    "workflow_path": ".github/workflows/tccbin_revalidate.yml",
+    "workflow_ref": "master",
+    "event": "workflow_dispatch",
+    "actions_integration_id": 1001,
+    "validator_integration_id": 1002,
+    "run_name": "tccbin-v-smoke/1111111111111111111111111111111111111111111111111111111111111111",
+    "reservation_operation_id": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+    "expected_ledger_generation": 6,
+    "state": "completed",
+    "active_attempt": null,
+    "attempts": [
+      {
+        "attempt_index": 2,
+        "repository": "vlang/v",
+        "workflow_id": 2002,
+        "workflow_path": ".github/workflows/tccbin_revalidate.yml",
+        "workflow_ref": "master",
+        "event": "workflow_dispatch",
+        "run_id": 3001,
+        "run_attempt": 1,
+        "check_suite_id": 5001,
+        "check_suite_integration_id": 1001,
+        "job_id": 4001,
+        "run_name": "tccbin-v-smoke/1111111111111111111111111111111111111111111111111111111111111111",
+        "run_url": "https://github.com/vlang/v/actions/runs/3001",
+        "job_url": "https://github.com/vlang/v/actions/runs/3001/job/4001",
+        "head_sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "subject_ref": "tccbin-candidate/linux-amd64/1111111111111111111111111111111111111111111111111111111111111111",
+        "subject_sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "actor": "validator-dispatcher[bot]",
+        "actor_integration_id": 1002,
+        "triggering_actor": "validator-dispatcher[bot]",
+        "triggering_actor_integration_id": 1002,
+        "created_at": "2026-08-03T00:04:00Z",
+        "deadline": "2026-08-03T01:34:00Z",
+        "rerunnable_until": "2026-09-02T00:04:00Z",
+        "ack_operation_id": "1212121212121212121212121212121212121212121212121212121212121212",
+        "ack_facts_digest": "43114158d65a8f063bef16bbc2f86d98571a6281e70b3a573a7e9fe05d0566b9",
+        "run_conclusion": "success",
+        "completion_operation_id": "3434343434343434343434343434343434343434343434343434343434343434",
+        "completion_facts_digest": "1d4aa1c24a79c7169f6e1d87b48290267a34575be1a899d3af110fb0c817529e",
+        "check_run_id": 6001,
+        "check_name": "v-candidate-smoke",
+        "check_sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "details_url": "https://github.com/vlang/v/actions/runs/3001/job/4001",
+        "external_id": "080d1a8c47b6286ddd3de975408ca79c14d10eddcb9e3df5fd31bc04aa10af00",
+        "validator_integration_id": 1002,
+        "check_conclusion": "success",
+        "output_digest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "evidence_digest": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+        "completed_at": "2026-08-03T01:00:00Z",
+        "dispatch_operation_id": "d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2",
+        "dispatch_facts_digest": "18d45e6ac62783d71048125576bef749d742fcf312101b5fb79b5e5360d2b48f",
+        "completion_kind": "actions_terminal"
+      }
+    ],
+    "run_absent_attempts": [
+      {
+        "attempt_index": 1,
+        "dispatch_operation_id": "d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1",
+        "dispatch_facts_digest": "a574338cd24037b4cbd016cdc83b06927d2d49e6ab8c862755a661e79b89bf32",
+        "run_absent_operation_id": "abababababababababababababababababababababababababababababababab",
+        "outcome": "run_absent",
+        "completed_at": "2026-08-03T00:03:00Z",
+        "facts_digest": "e886526f1b3d88e0ea03f4c596fe14d3ad2566937d7ea9c1a0023eaab9221770"
+      }
+    ],
+    "infra_retry_count": 1,
+    "ack_operation_ids": [
+      "1212121212121212121212121212121212121212121212121212121212121212"
+    ],
+    "completion_operation_ids": [
+      "3434343434343434343434343434343434343434343434343434343434343434"
+    ],
+    "block_operation_id": null,
+    "block_facts_digest": null,
+    "block_reason": null,
+    "blocked_at": null,
+    "replay_facts_digest": "c39cefa104ba094bbb46a1d16024d82565d9389e3f3f69d8ee247a0e007bf6bf",
+    "created_at": "2026-08-03T00:00:00Z",
+    "dispatches": [
+      {
+        "attempt_index": 1,
+        "mode": "workflow_dispatch",
+        "rerun_of_run_id": null,
+        "expected_run_attempt": 1,
+        "dispatch_operation_id": "d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1",
+        "requested_at": "2026-08-03T00:01:00Z",
+        "discovery_deadline": "2026-08-03T00:03:00Z",
+        "facts_digest": "a574338cd24037b4cbd016cdc83b06927d2d49e6ab8c862755a661e79b89bf32"
+      },
+      {
+        "attempt_index": 2,
+        "mode": "workflow_dispatch",
+        "rerun_of_run_id": null,
+        "expected_run_attempt": 1,
+        "dispatch_operation_id": "d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2",
+        "requested_at": "2026-08-03T00:03:00Z",
+        "discovery_deadline": "2026-08-03T00:05:00Z",
+        "facts_digest": "18d45e6ac62783d71048125576bef749d742fcf312101b5fb79b5e5360d2b48f"
+      }
+    ],
+    "active_dispatch": null
+  },
+  "recovery_handoffs": [],
+  "active_recovery_handoff_id": null,
+  "active_remediation_id": null,
+  "active_remediation_binding": null,
+  "remediation_check_sources": [],
+  "last_head_observation": null,
+  "last_native_validation": null,
+  "applied_operations": [
+    {
+      "operation_id": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+      "transition": "begin_bootstrap",
+      "resulting_generation": 1
+    },
+    {
+      "operation_id": "d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1",
+      "transition": "v-smoke-dispatch-1",
+      "resulting_generation": 2
+    },
+    {
+      "operation_id": "abababababababababababababababababababababababababababababababab",
+      "transition": "v-smoke-run-absent-1",
+      "resulting_generation": 3
+    },
+    {
+      "operation_id": "d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2",
+      "transition": "v-smoke-dispatch-2",
+      "resulting_generation": 4
+    },
+    {
+      "operation_id": "1212121212121212121212121212121212121212121212121212121212121212",
+      "transition": "v-smoke-ack-2",
+      "resulting_generation": 5
+    },
+    {
+      "operation_id": "3434343434343434343434343434343434343434343434343434343434343434",
+      "transition": "v-smoke-complete-2",
+      "resulting_generation": 6
+    }
+  ],
+  "incidents": [],
+  "owner_repository": "vlang/v",
+  "issue_number": null,
+  "blocking_probe_ids": [],
+  "last_validation": null,
+  "resolved_by": null,
+  "last_operation_id": "3434343434343434343434343434343434343434343434343434343434343434",
+  "last_transition": "v-smoke-complete-2",
+  "manual_green_publications": 0
+}

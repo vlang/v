@@ -84,9 +84,12 @@ mut:
 fn (mut handler MyHttpHandler) handle(req http.Request) http.Response {
 	handler.counter++
 	// eprintln('${time.now()} | counter: ${handler.counter} | ${req.method} ${req.url}\n${req.header}\n${req.data} - 200 OK\n')
+	// Note: the response must not echo `req.header` wholesale — the request's
+	// `Content-Length` (0 for GETs) would override the server's correct one,
+	// yielding a malformed response whose declared length disagrees with its
+	// body.
 	mut r := http.Response{
-		body:   req.data + ', ${req.url}'
-		header: req.header
+		body: req.data + ', ${req.url}'
 	}
 	match req.url.all_before('?') {
 		'/endpoint', '/another/endpoint' {
@@ -284,7 +287,10 @@ fn test_host_header_sent_to_server() {
 		}
 		log.fatal(estr)
 	}
-	defer { server.stop() }
+	defer {
+		server.stop()
+		t.wait()
+	}
 	dump(server.addr)
 	x := http.get('http://${server.addr}/')!
 	dump(x)

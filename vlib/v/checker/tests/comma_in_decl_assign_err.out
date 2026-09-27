@@ -1,0 +1,19 @@
+vlib/v/checker/tests/comma_in_decl_assign_err.vv:3:24: error: unexpected `,` in expression, use `;` or a new line to separate statements
+    1 | fn main() {
+    2 |     a := [1, 2, 3]
+    3 |     mut b := a.clone(), a.clone()
+      |                           ~~~~~~~
+    4 |     println(b)
+    5 | }
+vlib/v/checker/tests/comma_in_decl_assign_err.vv:4:10: error: invalid variable `b`
+    2 |     a := [1, 2, 3]
+    3 |     mut b := a.clone(), a.clone()
+    4 |     println(b)
+      |             ^
+    5 | }
+vlib/v/checker/tests/comma_in_decl_assign_err.vv:4:2: error: `println` can not print void expressions
+    2 |     a := [1, 2, 3]
+    3 |     mut b := a.clone(), a.clone()
+    4 |     println(b)
+      |     ~~~~~~~~~~
+    5 | }

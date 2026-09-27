@@ -12,6 +12,7 @@ $if freebsd {
 	#flag -I/usr/X11R6/include
 	#flag -L/usr/X11R6/lib
 }
+
 #flag -lX11
 
 // Include X11 headers BEFORE any type definitions to avoid incomplete type errors
@@ -30,18 +31,19 @@ pub mut:
 // Local type aliases for convenience
 type Window = u64
 type Atom = u64
+type Time = u64
 
 // Forward declarations for V type checking (actual types from X11 headers)
 @[typedef]
 pub struct C.XSelectionEvent {
 pub mut:
 	type      int
-	display   voidptr
+	display   &C.Display = unsafe { nil }
 	requestor Window
 	selection Atom
 	target    Atom
 	property  Atom
-	time      int
+	time      Time
 }
 
 @[typedef]
@@ -54,13 +56,13 @@ pub mut:
 @[typedef]
 pub struct C.XSelectionRequestEvent {
 pub mut:
-	display   voidptr
+	display   &C.Display = unsafe { nil }
 	owner     Window
 	requestor Window
 	selection Atom
 	target    Atom
 	property  Atom
-	time      int
+	time      Time
 }
 
 @[typedef]
@@ -71,31 +73,31 @@ pub mut:
 
 fn C.XInitThreads() i32
 
-fn C.XCloseDisplay(d &C.Display)
+fn C.XCloseDisplay(d &C.Display) int
 
-fn C.XFlush(d &C.Display)
+fn C.XFlush(d &C.Display) int
 
-fn C.XDestroyWindow(d &C.Display, w Window)
+fn C.XDestroyWindow(d &C.Display, w Window) int
 
-fn C.XNextEvent(d &C.Display, e &C.XEvent)
+fn C.XNextEvent(d &C.Display, e &C.XEvent) int
 
-fn C.XSetSelectionOwner(d &C.Display, a Atom, w Window, time i32)
+fn C.XSetSelectionOwner(d &C.Display, a Atom, w Window, time Time) int
 
 fn C.XGetSelectionOwner(d &C.Display, a Atom) Window
 
 fn C.XChangeProperty(d &C.Display, requestor Window, property Atom, typ Atom, format i32, mode i32, data voidptr,
 	nelements i32) i32
 
-fn C.XSendEvent(d &C.Display, requestor Window, propagate i32, mask i64, event &C.XEvent)
+fn C.XSendEvent(d &C.Display, requestor Window, propagate i32, mask i64, event &C.XEvent) int
 
-fn C.XInternAtom(d &C.Display, typ &u8, only_if_exists i32) Atom
+fn C.XInternAtom(d &C.Display, typ &char, only_if_exists i32) Atom
 
 fn C.XCreateSimpleWindow(d &C.Display, root Window, x i32, y i32, width u32, height u32, border_width u32,
 	border u64, background u64) Window
 
-fn C.XOpenDisplay(name &u8) &C.Display
+fn C.XOpenDisplay(name &char) &C.Display
 
-fn C.XConvertSelection(d &C.Display, selection Atom, target Atom, property Atom, requestor Window, time i32) i32
+fn C.XConvertSelection(d &C.Display, selection Atom, target Atom, property Atom, requestor Window, time Time) i32
 
 fn C.XSync(d &C.Display, discard i32) i32
 
@@ -112,7 +114,7 @@ fn C.BlackPixel(display &C.Display, screen_number i32) u32
 
 fn C.WhitePixel(display &C.Display, screen_number i32) u32
 
-fn C.XFree(data voidptr)
+fn C.XFree(data voidptr) int
 
 // X11 event type constants
 pub const C.DestroyNotify int
@@ -140,8 +142,8 @@ pub mut:
 	xselection        C.XSelectionEvent
 }
 
-const atom_names = ['TARGETS', 'CLIPBOARD', 'PRIMARY', 'SECONDARY', 'TEXT', 'UTF8_STRING',
-	'text/plain', 'text/html']
+const atom_names = ['TARGETS', 'CLIPBOARD', 'PRIMARY', 'SECONDARY', 'TEXT', 'UTF8_STRING', 'text/plain',
+	'text/html']
 const atom_types = [AtomType.targets, .clipboard, .primary, .secondary, .text, .utf8_string,
 	.text_plain, .text_html]
 
@@ -203,7 +205,7 @@ fn new_x11_clipboard(selection AtomType) &Clipboard {
 
 	display := new_display()
 
-	if display == C.NULL {
+	if display == unsafe { nil } {
 		println('ERROR: No X Server running. Clipboard cannot be used.')
 		return &Clipboard{
 			display: unsafe { nil }
@@ -226,7 +228,7 @@ fn new_x11_clipboard(selection AtomType) &Clipboard {
 
 // check_availability returns `true` if the clipboard is available for use.
 pub fn (cb &Clipboard) check_availability() bool {
-	return cb.display != C.NULL
+	return cb.display != unsafe { nil }
 }
 
 // free releases the clipboard resources.
@@ -240,7 +242,7 @@ pub fn (mut cb Clipboard) free() {
 // clear clears the clipboard (sets it to an empty string).
 pub fn (mut cb Clipboard) clear() {
 	cb.mutex.lock()
-	C.XSetSelectionOwner(cb.display, cb.selection, Window(0), C.CurrentTime)
+	C.XSetSelectionOwner(cb.display, cb.selection, Window(0), Time(C.CurrentTime))
 	C.XFlush(cb.display)
 	cb.is_owner = false
 	cb.text = ''
@@ -253,7 +255,7 @@ pub fn (cb &Clipboard) has_ownership() bool {
 }
 
 fn (cb &Clipboard) take_ownership() {
-	C.XSetSelectionOwner(cb.display, cb.selection, cb.window, C.CurrentTime)
+	C.XSetSelectionOwner(cb.display, cb.selection, cb.window, Time(C.CurrentTime))
 	C.XFlush(cb.display)
 }
 
@@ -285,7 +287,7 @@ pub fn (mut cb Clipboard) get_text() string {
 
 	// Request a list of possible conversions, if we're pasting.
 	C.XConvertSelection(cb.display, cb.selection, cb.get_atom(.targets), cb.selection, cb.window,
-		C.CurrentTime)
+		Time(C.CurrentTime))
 
 	// wait for the text to arrive
 	mut retries := 5
@@ -381,7 +383,7 @@ fn (mut cb Clipboard) start_listener() {
 							to_be_requested = cb.pick_target(prop)
 							if to_be_requested != Atom(0) {
 								C.XConvertSelection(cb.display, cb.selection, to_be_requested,
-									cb.selection, cb.window, C.CurrentTime)
+									cb.selection, cb.window, Time(C.CurrentTime))
 							}
 						} else if event.xselection.target == to_be_requested {
 							sent_request = false
@@ -436,8 +438,8 @@ fn read_property(d &C.Display, w Window, p Atom) Property {
 		if ret != 0 {
 			C.XFree(ret)
 		}
-		C.XGetWindowProperty(d, w, p, 0, read_bytes, 0, 0, &actual_type, &actual_format, &nitems,
-			&bytes_after, &ret)
+		C.XGetWindowProperty(d, w, p, 0, read_bytes, 0, Atom(0), &actual_type, &actual_format,
+			&nitems, &bytes_after, &ret)
 		read_bytes *= 2
 		if bytes_after == 0 {
 			break
@@ -518,7 +520,7 @@ fn create_xwindow(display &C.Display) Window {
 }
 
 fn new_display() &C.Display {
-	return C.XOpenDisplay(C.NULL)
+	return C.XOpenDisplay(unsafe { nil })
 }
 
 // new_primary returns a new X11 `PRIMARY` type `Clipboard` instance allocated on the heap.

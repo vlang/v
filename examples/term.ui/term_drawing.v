@@ -113,8 +113,12 @@ fn main() {
 	mut app := &App{}
 	app.ui = ui.init(
 		user_data:    app
-		frame_fn:     FrameFn(frame)
-		event_fn:     EventFn(event)
+		// The tui callback slots are `voidptr`; `frame`/`event` instead take the typed app
+		// pointer that `user_data` hands back. `&T` and `voidptr` share a representation, so
+		// reinterpreting the fn pointer across that parameter is ABI-safe; the cast only
+		// satisfies the static fn-type check.
+		frame_fn:     unsafe { FrameFn(frame) }
+		event_fn:     unsafe { EventFn(event) }
 		frame_rate:   frame_rate
 		hide_cursor:  true
 		window_title: 'V terminal pixelart drawing app'

@@ -1,7 +1,7 @@
 module main
 
 import flag
-import json
+import json2
 import net.http
 import os
 import time
@@ -72,7 +72,7 @@ fn send_bug_report(config SendConfig) !CreateBugReportResponse {
 	if response.status_code < 200 || response.status_code >= 300 {
 		return error('server responded with HTTP ${response.status_code}')
 	}
-	return json.decode(CreateBugReportResponse, response.body)!
+	return json2.decode[CreateBugReportResponse](response.body)!
 }
 
 fn main() {

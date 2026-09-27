@@ -1,0 +1,26 @@
+module callbacks
+
+pub struct Callback {
+pub:
+	invoke fn (string) !
+}
+
+pub fn bind[T](mut model T) Callback {
+	return Callback{
+		invoke: fn [mut model] [T](name string) ! {
+			dispatch[T](mut model, name)!
+		}
+	}
+}
+
+fn dispatch[T](mut model T, name string) ! {
+	$for method in T.methods {
+		if method.name == name {
+			$if method.is_pub && method.typ is fn () {
+				model.$method()
+				return
+			}
+		}
+	}
+	return error('unknown action ${name}')
+}

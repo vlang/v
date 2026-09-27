@@ -1,0 +1,12 @@
+struct C.NativeConfig {
+	value int
+}
+
+type NativeConfig = C.NativeConfig
+
+fn main() {
+	config := NativeConfig{
+		value: 42
+	}
+	println(config.value)
+}

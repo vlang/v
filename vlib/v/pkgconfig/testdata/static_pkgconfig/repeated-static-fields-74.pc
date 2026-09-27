@@ -1,0 +1,15 @@
+Name: repeated-static-fields-74
+Description: Repeated static fields accumulate in source order
+Version: 1.0.0
+Requires: static-public-74
+Requires: oracle-diamond-common-74
+Requires.private: static-private-74
+Requires.private: uppercase-private-provider-74
+Cflags: -DISSUE74_REPEATED_ROOT_PUBLIC_A
+Cflags: -DISSUE74_REPEATED_ROOT_PUBLIC_B
+Cflags.private: -DISSUE74_REPEATED_ROOT_PRIVATE_A
+Cflags.private: -DISSUE74_REPEATED_ROOT_PRIVATE_B
+Libs: -lissue74_repeated_root_public_a
+Libs: -lissue74_repeated_root_public_b
+Libs.private: -lissue74_repeated_root_private_a
+Libs.private: -lissue74_repeated_root_private_b

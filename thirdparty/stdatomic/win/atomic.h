@@ -277,7 +277,8 @@ static inline int atomic_compare_exchange_strong_u64(unsigned long long volatile
                                                  unsigned long long desired)
 {
 	unsigned long long old = *expected;
-    *expected = InterlockedCompareExchange64(object, desired, old);
+    *expected = (unsigned long long) InterlockedCompareExchange64((volatile long long *) object,
+        (long long) desired, (long long) old);
     return *expected == old;
 }
 
@@ -391,7 +392,8 @@ static inline int atomic_compare_exchange_strong_u16(unsigned short volatile * o
                                                  unsigned short desired)
 {
 	unsigned short old = *expected;
-    *expected = InterlockedCompareExchange16(object, desired, old);
+    *expected = (unsigned short) InterlockedCompareExchange16((volatile short *) object,
+        (short) desired, (short) old);
     return *expected == old;
 }
 
@@ -450,6 +452,16 @@ static inline int atomic_compare_exchange_strong_u16(unsigned short volatile * o
 #define InterlockedAnd8 _InterlockedAnd8
 
 #else
+
+#ifdef InterlockedOr8
+#undef InterlockedOr8
+#endif
+#ifdef InterlockedXor8
+#undef InterlockedXor8
+#endif
+#ifdef InterlockedAnd8
+#undef InterlockedAnd8
+#endif
 
 #define InterlockedExchange8 ManualInterlockedExchange8
 #define InterlockedCompareExchange8 ManualInterlockedCompareExchange8

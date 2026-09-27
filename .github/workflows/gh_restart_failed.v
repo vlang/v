@@ -1,5 +1,5 @@
 import os
-import json
+import json2
 import term
 import time
 
@@ -125,7 +125,7 @@ fn get_checks_for_pr(pr_number int) []Check {
 		println('Error: ${res.output}')
 		exit(1)
 	}
-	return json.decode([]Check, res.output) or { exit(1) }
+	return json2.decode[[]Check](res.output) or { exit(1) }
 }
 
 fn get_checks_for_commit(commit string) []Check {
@@ -135,7 +135,7 @@ fn get_checks_for_commit(commit string) []Check {
 		println('Error: ${res.output}')
 		exit(1)
 	}
-	resp := json.decode(GhCheckRunsResponse, res.output) or { exit(1) }
+	resp := json2.decode[GhCheckRunsResponse](res.output) or { exit(1) }
 	mut checks := []Check{}
 	for cr in resp.check_runs {
 		checks << Check{

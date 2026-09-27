@@ -247,3 +247,9 @@ pub fn (mut tx Tx) last_id() int {
 	}
 	return tx.inner.conn.last_id()
 }
+
+// execute forwards raw SQL execution through the active transaction and returns the result rows.
+pub fn (mut tx Tx) execute(query string) ![]Row {
+	tx.ensure_active('use the transaction')!
+	return tx.inner.conn.execute(query)
+}

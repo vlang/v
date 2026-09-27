@@ -5,6 +5,7 @@
 At the moment, the following compression algorithms are implemented:
 
 - `compress.bzip2`
+- `compress.brotli`
 - `compress.deflate`
 - `compress.gzip`
 - `compress.lz` supporting the following variations:

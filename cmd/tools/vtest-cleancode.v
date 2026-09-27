@@ -24,7 +24,7 @@ const vet_known_failing_windows = [
 
 const vet_folders = [
 	'vlib/v',
-	'vlib/x/json2',
+	'vlib/json2',
 	'vlib/x/ttf',
 	'cmd/v',
 	'cmd/tools',
@@ -35,6 +35,8 @@ const vet_folders = [
 
 const verify_known_failing_exceptions = [
 	'vlib/veb/tests/graceful_shutdown_test.v',
+	// This file uses V3-only lifetime syntax, which the V1 formatter cannot parse.
+	'vlib/sync/arc/arc_d_ownership.v',
 ]
 
 const vfmt_verify_list = [
@@ -46,6 +48,10 @@ const vfmt_verify_list = [
 
 const vfmt_known_failing_exceptions = arrays.merge(verify_known_failing_exceptions, [
 	'vlib/v/tests/structs/anon_struct_local_init_test.v',
+	// This benchmark deliberately compares the legacy `json` module against `json2`, so it
+	// must keep its `import json` and `json.*` calls; exclude it from the json->json2 vfmt
+	// migration that `v fmt -verify` would otherwise apply.
+	'vlib/v/tests/bench/bench_json_vs_json2.v',
 ])
 
 const vexe = os.getenv('VEXE')
@@ -60,19 +66,19 @@ fn main() {
 	v_test_vetting(pass_args)!
 }
 
-fn tsession(vargs string, tool_source string, tool_cmd string, tool_args string, flist []string, slist []string) testing.TestSession {
+fn tsession(vargs string, tool_cmd string, tool_args string, flist []string, slist []string) testing.TestSession {
 	os.chdir(vroot) or {}
 	title_message := 'running ${tool_cmd} over most .v files'
 	testing.eheader(title_message)
 	mut test_session := testing.new_test_session('${vargs} ${tool_args}', false)
 	test_session.files << flist
 	test_session.skip_files << slist
-	util.prepare_tool_when_needed(tool_source)
-	// note that util.prepare_tool_when_needed will put its temporary files
-	// in the VTMP from the test session too, so they will be cleaned up
-	// at the end
 	test_session.test()
 	eprintln(test_session.benchmark.total_message(title_message))
+	// Do not start the next session (fmt after vet) when fail-fast is requested.
+	if testing.fail_fast && test_session.has_failures() {
+		exit(1)
+	}
 	return test_session
 }
 
@@ -84,8 +90,7 @@ fn v_test_vetting(vargs string) ! {
 	vet_known_exceptions = vet_known_exceptions.map(os.abs_path(os.join_path(vroot, it)))
 	expanded_vet_list :=
 		(util.find_all_v_files(vet_folders)!).filter(os.abs_path(it) !in vet_known_exceptions)
-	vet_session := tsession(vargs, 'vvet', '${os.quoted_path(vexe)} vet', 'vet', expanded_vet_list,
-		vet_known_exceptions)
+	vet_session := tsession(vargs, '${os.quoted_path(vexe)} vet', 'vet', expanded_vet_list, vet_known_exceptions)
 
 	fmt_cmd, fmt_args := if is_fix {
 		'${os.quoted_path(vexe)} fmt -w', 'fmt -w'
@@ -96,7 +101,7 @@ fn v_test_vetting(vargs string) ! {
 	exceptions :=
 		(util.find_all_v_files(vfmt_known_failing_exceptions) or { return }).map(os.abs_path)
 	filtered_vfmt_list := vfmt_list.filter(os.abs_path(it) !in exceptions)
-	verify_session := tsession(vargs, 'vfmt.v', fmt_cmd, fmt_args, filtered_vfmt_list, exceptions)
+	verify_session := tsession(vargs, fmt_cmd, fmt_args, filtered_vfmt_list, exceptions)
 
 	if vet_session.benchmark.nfail > 0 || verify_session.benchmark.nfail > 0 {
 		eprintln('\n')

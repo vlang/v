@@ -116,6 +116,7 @@ fn parse_arguments(args []string) Config {
 			}
 			'-theme-dir' {
 				cfg.theme_dir = cmdline.option(current_args, '-theme-dir', default_theme)
+				i++
 			}
 			'-l' {
 				cfg.show_loc = true

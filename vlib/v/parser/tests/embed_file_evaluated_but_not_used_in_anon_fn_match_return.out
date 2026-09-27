@@ -1,0 +1,6 @@
+vlib/v/parser/tests/embed_file_evaluated_but_not_used_in_anon_fn_match_return.vv:14:6: error: expression evaluated but not used
+   12 |             }
+   13 |         }
+   14 |     }().path
+      |         ~~~~
+   15 | }

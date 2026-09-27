@@ -7,6 +7,20 @@ struct FixedStruct1 {
 
 struct Encoder {}
 
+struct OptionalPointerStringer {
+	value string
+}
+
+fn (value &OptionalPointerStringer) str() string {
+	return 'custom: ${value.value}'
+}
+
+fn optional_pointer_stringer() ?&OptionalPointerStringer {
+	return &OptionalPointerStringer{
+		value: 'value'
+	}
+}
+
 fn test_main() {
 	fixed := FixedStruct1{123, '456', 789, '321'}
 	// this work well
@@ -21,6 +35,10 @@ fn test_main() {
 	e.encode_struct(fixed)
 }
 
+fn test_custom_str_on_optional_pointer() {
+	assert optional_pointer_stringer()?.str() == 'custom: value'
+}
+
 fn (e &Encoder) encode_struct[T](val T) {
 	mut count := 0
 	$for field in T.fields {
@@ -29,8 +47,8 @@ fn (e &Encoder) encode_struct[T](val T) {
 			if field.name in ['c', 'd'] {
 				assert true
 			}
-			println('>> ${value ?.str()}')
-			println(val.$(field.name) ?.str())
+			println('>> ${value?.str()}')
+			println(val.$(field.name)?.str())
 			count += 1
 		}
 	}

@@ -1,0 +1,11 @@
+// vtest vflags: -os wasi
+fn add1(x int) int {
+	return x + 1
+}
+
+pub fn run() int {
+	f := add1
+	return f(41)
+}
+
+run()

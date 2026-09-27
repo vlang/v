@@ -62,14 +62,10 @@ mut:
 pub fn (s string) runes() []rune {
 	mut runes := []rune{cap: s.len}
 	for i := 0; i < s.len; i++ {
-		char_len := utf8_char_len(unsafe { s.str[i] })
+		r, char_len := utf8_decode_rune(unsafe { &s.str[i] }, s.len - i)
+		runes << r
 		if char_len > 1 {
-			end := if s.len - 1 >= i + char_len { i + char_len } else { s.len }
-			mut r := unsafe { s[i..end] }
-			runes << r.utf32_code()
 			i += char_len - 1
-		} else {
-			runes << unsafe { s.str[i] }
 		}
 	}
 	return runes
@@ -376,6 +372,7 @@ pub fn (s string) replace_once(rep string, with string) string {
 }
 
 const replace_stack_buffer_size = 10
+
 // replace replaces all occurrences of `rep` with the string passed in `with`.
 @[direct_array_access; manualfree]
 pub fn (s string) replace(rep string, with string) string {
@@ -865,12 +862,11 @@ fn (s string) == (a string) bool {
 @[direct_array_access]
 pub fn (s string) compare(a string) int {
 	min_len := if s.len < a.len { s.len } else { a.len }
-	for i in 0 .. min_len {
-		if s[i] < a[i] {
-			return -1
-		}
-		if s[i] > a[i] {
-			return 1
+	if min_len > 0 {
+		// memcmp orders bytes as unsigned, exactly like comparing the u8 elements.
+		cmp := unsafe { vmemcmp(s.str, a.str, min_len) }
+		if cmp != 0 {
+			return if cmp < 0 { -1 } else { 1 }
 		}
 	}
 	if s.len < a.len {
@@ -884,17 +880,16 @@ pub fn (s string) compare(a string) int {
 
 @[direct_array_access]
 fn (s string) < (a string) bool {
-	for i in 0 .. s.len {
-		if i >= a.len || s[i] > a[i] {
-			return false
-		} else if s[i] < a[i] {
-			return true
+	min_len := if s.len < a.len { s.len } else { a.len }
+	if min_len > 0 {
+		// memcmp orders bytes as unsigned, exactly like comparing the u8 elements;
+		// sorted symbol names share long prefixes that a byte loop walks slowly.
+		cmp := unsafe { vmemcmp(s.str, a.str, min_len) }
+		if cmp != 0 {
+			return cmp < 0
 		}
 	}
-	if s.len < a.len {
-		return true
-	}
-	return false
+	return s.len < a.len
 }
 
 @[direct_array_access]
@@ -1388,22 +1383,31 @@ pub fn (s string) index_(p string) int {
 	if p.len > s.len || p.len == 0 || u64(s.str) <= 0xFFFF || u64(p.str) <= 0xFFFF {
 		return -1
 	}
-	if p.len > 2 {
+	if p.len > max_direct_index_needle_len {
 		return s.index_kmp(p)
 	}
-	mut i := 0
-	for i < s.len {
-		mut j := 0
+	// Short needles: scanning for the first byte and comparing the rest in place
+	// needs no prefix table, and costs at most p.len compares per position.
+	first := unsafe { p.str[0] }
+	last_start := s.len - p.len
+	for i := 0; i <= last_start; i++ {
+		if unsafe { s.str[i] } != first {
+			continue
+		}
+		mut j := 1
 		for j < p.len && unsafe { s.str[i + j] == p.str[j] } {
 			j++
 		}
 		if j == p.len {
 			return i
 		}
-		i++
 	}
 	return -1
 }
+
+// Needles up to this length are searched directly; longer ones use KMP, which
+// keeps the search linear in `s.len` whatever the needle.
+const max_direct_index_needle_len = 16
 
 // index returns the position of the first character of the first occurrence of the `needle` string in `s`.
 // It will return `none` if the `needle` string can't be found in `s`.
@@ -3236,17 +3240,7 @@ pub fn (mut ri RunesIterator) next() ?rune {
 	if ri.i >= ri.s.len {
 		return none
 	}
-	char_len := utf8_char_len(unsafe { ri.s.str[ri.i] })
-	if char_len == 1 {
-		res := unsafe { ri.s.str[ri.i] }
-		ri.i++
-		return res
-	}
-	start := &u8(unsafe { &ri.s.str[ri.i] })
-	len := if ri.s.len - 1 >= ri.i + char_len { char_len } else { ri.s.len - ri.i }
-	ri.i += char_len
-	if char_len > 4 {
-		return 0
-	}
-	return rune(impl_utf8_to_utf32(start, len))
+	r, char_len := utf8_decode_rune(unsafe { &ri.s.str[ri.i] }, ri.s.len - ri.i)
+	ri.i += if char_len > 0 { char_len } else { 1 }
+	return r
 }

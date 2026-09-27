@@ -12,3 +12,10 @@ vlib/v/checker/tests/match_duplicate_branch_mixed_int_literals.vv:17:3: error: m
       |         ~~~~~~~~~~~~
    18 |             println('line feed')
    19 |         }
+vlib/v/checker/tests/match_duplicate_branch_mixed_int_literals.vv:29:3: error: match case `255` is handled more than once
+   27 |     match ch {
+   28 |         `\xff` {}
+   29 |         255 {}
+      |         ~~~
+   30 |         else {}
+   31 |     }

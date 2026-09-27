@@ -28,6 +28,13 @@ mut:
 	note     string
 }
 
+@[table: 'default_upsert_users']
+struct DefaultUpsertUser {
+mut:
+	id     int    @[primary]
+	status string @[default: '"active"']
+}
+
 fn test_upsert_updates_existing_row_using_unique_field() {
 	mut db := sqlite.connect(':memory:') or { panic(err) }
 	defer {
@@ -142,4 +149,45 @@ fn test_upsert_errors_when_conflict_groups_match_multiple_rows() {
 	assert rows.len == 2
 	assert rows[0].note == 'first'
 	assert rows[1].note == 'second'
+}
+
+fn test_sql_upsert_omits_uninitialized_default_fields() {
+	mut db := sqlite.connect(':memory:') or { panic(err) }
+	defer {
+		db.close() or {}
+	}
+
+	sql db {
+		create table DefaultUpsertUser
+	}!
+
+	created := DefaultUpsertUser{
+		id: 1
+	}
+	explicit := DefaultUpsertUser{
+		id:     1
+		status: 'paused'
+	}
+	omitted_again := DefaultUpsertUser{
+		id: 1
+	}
+
+	sql db {
+		upsert created into DefaultUpsertUser
+	}!
+	rows_after_insert := sql db {
+		select from DefaultUpsertUser where id == 1
+	}!
+	assert rows_after_insert.len == 1
+	assert rows_after_insert[0].status == 'active'
+
+	sql db {
+		upsert explicit into DefaultUpsertUser
+		upsert omitted_again into DefaultUpsertUser
+	}!
+	rows_after_update := sql db {
+		select from DefaultUpsertUser where id == 1
+	}!
+	assert rows_after_update.len == 1
+	assert rows_after_update[0].status == 'paused'
 }

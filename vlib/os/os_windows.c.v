@@ -21,7 +21,7 @@ pub const path_devnull = r'\\.\nul'
 fn C.CreateSymbolicLinkW(&u16, &u16, u32) i32
 
 // See https://docs.microsoft.com/en-us/windows/win32/api/winbase/nf-winbase-createhardlinkw
-fn C.CreateHardLinkW(&u16, &u16, C.SECURITY_ATTRIBUTES) i32
+fn C.CreateHardLinkW(&u16, &u16, &C.SECURITY_ATTRIBUTES) i32
 
 // See https://learn.microsoft.com/en-us/windows/win32/api/winbase/nf-winbase-getshortpathnamew
 fn C.GetShortPathNameW(&u16, &u16, u32) u32
@@ -30,7 +30,10 @@ fn C.AddVectoredExceptionHandler(u32, voidptr) voidptr
 
 fn C._getpid() i32
 
-const executable_suffixes = ['.exe', '.bat', '.cmd', '']
+// executable_suffixes are the extensions tried for a command name without one,
+// in the order of the default `PATHEXT` (`.COM;.EXE;.BAT;.CMD`), which is what
+// cmd.exe uses when two programs differ only by extension.
+const executable_suffixes = ['.com', '.exe', '.bat', '.cmd', '']
 
 // these consts are declared for parity with the nix version, their values are not used, except for -cross
 const s_ifmt = 0xF000 // type of file
@@ -657,7 +660,7 @@ pub fn readlink(path string) !string {
 }
 
 pub fn link(origin string, target string) ! {
-	res := C.CreateHardLinkW(target.to_wide(), origin.to_wide(), C.NULL)
+	res := C.CreateHardLinkW(target.to_wide(), origin.to_wide(), unsafe { nil })
 	// 1 = success, != 1 failure => https://stackoverflow.com/questions/33010440/createsymboliclink-on-windows-10
 	if res != 1 {
 		return error(get_error_msg(int(C.GetLastError())))

@@ -133,7 +133,8 @@ fn propagate_cancel(mut parent Context, mut child Canceler) {
 			child.cancel(false, parent.err())
 			return
 		}
-		else {}
+		else {
+		}
 	}
 	mut p := parent_cancel_context(mut parent) or {
 		// Pre-extract the parent done channel and pass it by value into the

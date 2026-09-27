@@ -1,0 +1,15 @@
+module main
+
+struct Point {}
+
+struct OptionalPointerHolder {
+mut:
+	buf [2]?&Point
+}
+
+fn main() {
+	mut holder := OptionalPointerHolder{}
+	for mut optional_point in holder.buf {
+		_ = optional_point
+	}
+}

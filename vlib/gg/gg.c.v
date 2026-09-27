@@ -27,7 +27,7 @@ struct C.XRRCrtcInfo {
 	height u32
 }
 
-fn C.XOpenDisplay(i32) voidptr
+fn C.XOpenDisplay(voidptr) voidptr
 fn C.XCloseDisplay(voidptr) i32
 fn C.DefaultScreen(voidptr) i32
 fn C.DefaultRootWindow(voidptr) u64
@@ -236,7 +236,6 @@ pub mut:
 	update_timer time.StopWatch // measures how much time has passed since the start of the frame.
 	frame_timer  time.StopWatch // enforces swap_interval as a fallback when the platform ignores vsync.
 	// Note: when there is an update_fn, this timer is reset by GG itself, at the start of each frame.
-
 	mbtn_mask     u8
 	mouse_buttons MouseButtons // typed version of mbtn_mask; easier to use for user programs
 	mouse_pos_x   int
@@ -257,6 +256,7 @@ pub mut:
 
 fn gg_init_sokol_window(user_data voidptr) {
 	mut ctx := unsafe { &Context(user_data) }
+	gg_claim_gfx_render_owner(.legacy_context, user_data) or { panic(err.msg()) }
 	desc := sapp.create_desc()
 	/*
 	desc := gfx.Desc{
@@ -374,7 +374,19 @@ fn gg_frame_fn(mut ctx Context) {
 		ctx.scroll_y = 0
 	}
 
-	ctx.record_frame()
+	$if sokol_d3d11 ? {
+		// D3D11 uses the DXGI flip present model, which invalidates the
+		// backbuffer contents after Present. Its readback must therefore run
+		// after frame_fn has drawn but before the implicit Present at the end
+		// of this frame callback, so it is done further below instead of here.
+	} $else {
+		// GL and the other backends can read the presented framebuffer at any
+		// time, so capture here, before this frame's frame_fn draws the next
+		// one. This capture point matches the committed gg regression reference
+		// images; capturing after frame_fn would shift the recorded frame by
+		// one and break the comparison.
+		ctx.record_frame()
+	}
 	ctx.memory_trace_frame()
 
 	if ctx.ui_mode && !ctx.needs_refresh {
@@ -382,6 +394,7 @@ fn gg_frame_fn(mut ctx Context) {
 		// Draw 3 more frames after the "stop refresh" command
 		ctx.ticks++
 		if ctx.ticks > 3 {
+			ctx.stop_recording_if_needed()
 			return
 		}
 	}
@@ -391,6 +404,10 @@ fn gg_frame_fn(mut ctx Context) {
 		ctx.config.update_fn(f32(dt), ctx.user_data)
 	}
 	ctx.config.frame_fn(ctx.user_data)
+	$if sokol_d3d11 ? {
+		// See the note above: capture the freshly drawn frame before Present.
+		ctx.record_frame()
+	}
 	ctx.needs_refresh = false
 }
 
@@ -534,7 +551,7 @@ fn gg_event_fn(ce voidptr, user_data voidptr) {
 		}
 	}
 
-	$if windows || (linux && !sokol_wayland ?) {
+	$if windows || ( linux && !sokol_wayland ?) {
 		if e.typ == .key_down && e.key_code in [.backspace, .delete, .enter, .tab] {
 			// with Win32 and X11, sokol does not send .char events for some keys;
 			// we will emulate them for consistency here:
@@ -568,6 +585,7 @@ fn gg_cleanup_fn(user_data voidptr) {
 		ctx.config.cleanup_fn(ctx.user_data)
 	}
 	gfx.shutdown()
+	gg_release_gfx_render_owner(.legacy_context, user_data)
 }
 
 fn gg_fail_fn(msg &char, user_data voidptr) {
@@ -603,25 +621,25 @@ pub fn new_context(cfg Config) &Context {
 		ui_mode:          cfg.ui_mode
 		native_rendering: cfg.native_rendering
 		window:           sapp.Desc{
-			init_userdata_cb:  gg_init_sokol_window
-			frame_userdata_cb: gg_frame_fn
-			event_userdata_cb: gg_event_fn
+			init_userdata_cb:             gg_init_sokol_window
+			frame_userdata_cb:            gg_frame_fn
+			event_userdata_cb:            gg_event_fn
 			// fail_userdata_cb: gg_fail_fn
-			cleanup_userdata_cb: gg_cleanup_fn
-			window_title:        &char(cfg.window_title.str)
-			icon:                cfg.icon
-			html5:               sapp.Html5Desc{
+			cleanup_userdata_cb:          gg_cleanup_fn
+			window_title:                 &char(cfg.window_title.str)
+			icon:                         cfg.icon
+			html5:                        sapp.Html5Desc{
 				canvas_selector: &char(cfg.html5_canvas_name.str)
 			}
-			width:               cfg.width
-			height:              cfg.height
-			sample_count:        cfg.sample_count
-			high_dpi:            true
-			fullscreen:          cfg.fullscreen
-			__v_native_render:   cfg.native_rendering
-			min_width:           cfg.min_width
-			min_height:          cfg.min_height
-			borderless_window:   cfg.borderless_window
+			width:                        cfg.width
+			height:                       cfg.height
+			sample_count:                 cfg.sample_count
+			high_dpi:                     true
+			fullscreen:                   cfg.fullscreen
+			__v_native_render:            cfg.native_rendering
+			min_width:                    cfg.min_width
+			min_height:                   cfg.min_height
+			borderless_window:            cfg.borderless_window
 			// drag&drop
 			enable_dragndrop:             cfg.enable_dragndrop
 			max_dropped_files:            cfg.max_dropped_files

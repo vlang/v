@@ -141,7 +141,7 @@ pub fn random_list(cfg []string) []string {
 	return p_list
 }
 
-pub fn random_set(cfg PrimeCfg) ![]v.tests.bench.math_big_gcd.prime.PrimeSet {
+pub fn random_set(cfg PrimeCfg) ![]PrimeSet {
 	p_lists := [
 		cfg.r.split('.'),
 		cfg.a.split('.'),

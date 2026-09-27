@@ -84,7 +84,12 @@ fn (mut ws Client) dial_socket() !&net.TcpConn {
 	t.set_read_timeout(ws.read_timeout)
 	t.set_write_timeout(ws.write_timeout)
 	if ws.is_ssl {
-		ws.ssl_conn.connect(mut t, ws.uri.hostname)!
+		ws.ssl_conn.connect(mut t, ws.uri.hostname) or {
+			// The TcpConn is not the client's yet, so nothing else can close it: a failed TLS
+			// handshake would otherwise leak the connected socket, and the peer's half of it.
+			t.close() or {}
+			return err
+		}
 	}
 	return t
 }

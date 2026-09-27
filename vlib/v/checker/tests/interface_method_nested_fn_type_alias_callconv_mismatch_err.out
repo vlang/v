@@ -1,0 +1,14 @@
+vlib/v/checker/tests/interface_method_nested_fn_type_alias_callconv_mismatch_err.vv:28:7: error: `CdeclFactoryProvider` incorrectly implements method `factory` of interface `FactoryProvider`: expected return type `fn () fn (int) int`
+   26 |
+   27 | fn main() {
+   28 |     _ := FactoryProvider(CdeclFactoryProvider{})
+      |          ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+   29 | }
+Details: main.FactoryProvider has `fn factory(x main.FactoryProvider) fn () fn (int) int`
+         main.CdeclFactoryProvider has `fn factory(_ main.CdeclFactoryProvider) fn () fn (int) int`
+vlib/v/checker/tests/interface_method_nested_fn_type_alias_callconv_mismatch_err.vv:28:7: error: `CdeclFactoryProvider` does not implement interface `FactoryProvider`, cannot cast `CdeclFactoryProvider` to interface `FactoryProvider`
+   26 |
+   27 | fn main() {
+   28 |     _ := FactoryProvider(CdeclFactoryProvider{})
+      |          ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+   29 | }

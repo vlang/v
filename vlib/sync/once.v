@@ -16,7 +16,9 @@ pub fn new_once() &Once {
 	return once
 }
 
-// do executes the function `f()` only once.
+// do executes the function `f()` only once, regardless of how many goroutines
+// call it concurrently. When do returns, f() has completed.
+// Note: if f() calls do on the same Once, it will deadlock.
 pub fn (mut o Once) do(f fn ()) {
 	if stdatomic.load_u64(&o.count) < 1 {
 		o.do_slow(f)
@@ -26,8 +28,8 @@ pub fn (mut o Once) do(f fn ()) {
 fn (mut o Once) do_slow(f fn ()) {
 	o.m.lock()
 	if o.count < 1 {
-		stdatomic.store_u64(&o.count, 1)
 		f()
+		stdatomic.store_u64(&o.count, 1)
 	}
 	o.m.unlock()
 }
@@ -49,7 +51,10 @@ fn (mut o Once) do_slow(f fn ()) {
 //    }, o)
 // ```
 
-// do_with_param executes the function `f()` with parameter `param` only once.
+// do_with_param executes the function `f(param)` only once, regardless of how
+// many goroutines call it concurrently. When do_with_param returns, f() has
+// completed.
+// Note: if f() calls do_with_param on the same Once, it will deadlock.
 pub fn (mut o Once) do_with_param(f fn (voidptr), param voidptr) {
 	if stdatomic.load_u64(&o.count) < 1 {
 		o.do_slow_with_param(f, param)
@@ -59,8 +64,8 @@ pub fn (mut o Once) do_with_param(f fn (voidptr), param voidptr) {
 fn (mut o Once) do_slow_with_param(f fn (p voidptr), param voidptr) {
 	o.m.lock()
 	if o.count < 1 {
-		stdatomic.store_u64(&o.count, 1)
 		f(param)
+		stdatomic.store_u64(&o.count, 1)
 	}
 	o.m.unlock()
 }

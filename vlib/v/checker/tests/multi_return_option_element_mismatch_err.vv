@@ -1,0 +1,26 @@
+// An optional multi-return element (`?T`) lowers to a different C struct than a
+// plain `T`, so mixing them must be rejected at the V level instead of emitting
+// mismatched `multi_return_*` C structs. See issue #27562.
+fn parse(s string) ?(string, string) {
+	subtype, parameter := s.split_once(';') or { s, ?string(none) }
+	return subtype, parameter
+}
+
+fn extract(s string) (string, ?string) {
+	rawurl, description := if s.contains(' ') {
+		s[..1], s[1..]
+	} else {
+		s, ?string(none)
+	}
+	return rawurl, description
+}
+
+// the same mismatch must be caught regardless of which branch is the optional one
+fn extract_rev(s string) (string, ?string) {
+	rawurl, description := if s.contains(' ') {
+		s, ?string(none)
+	} else {
+		s[..1], s[1..]
+	}
+	return rawurl, description
+}

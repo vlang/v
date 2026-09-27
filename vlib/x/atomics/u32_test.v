@@ -1,4 +1,4 @@
-// vtest build: !(macos || windows)
+// vtest build: !macos && !windows && (amd64 || i386)
 
 module atomics
 

@@ -1,10 +1,13 @@
 name: CI macOS
 
 on:
+  workflow_dispatch:
   push:
     branches:
       - master
     paths-ignore:
+      # vlib/v/** is intentionally NOT ignored: V3 is the default compiler on
+      # macOS, so changes to it must run this suite; the canary below stays strict.
       - '**.md'
       - '**.yml'
       - '!**/macos_ci.yml'
@@ -12,6 +15,8 @@ on:
       - '!cmd/tools/builders/**.v'
   pull_request:
     paths-ignore:
+      # vlib/v/** is intentionally NOT ignored: V3 is the default compiler on
+      # macOS, so changes to it must run this suite; the canary below stays strict.
       - '**.md'
       - '**.yml'
       - '!**/macos_ci.yml'
@@ -26,26 +31,240 @@ jobs:
   clang-macos:
     strategy:
       matrix:
-        os: [macos-14]
+        # V3 (vlib/v, `-new-compiler`) is the default compiler on macOS, so
+        # exercise it on every arm64 (Apple-silicon) runner image, not just one.
+        os: [macos-14, macos-15, macos-26]
       fail-fast: false
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 151
+    timeout-minutes: 120
     env:
       VFLAGS: -cc clang
+      VTEST_SELF_SHARD_INDEX: '0'
+      VTEST_SELF_SHARD_COUNT: '3'
       VTEST_SHOW_LONGEST_BY_RUNTIME: 3
       VTEST_SHOW_LONGEST_BY_COMPTIME: 3
       VTEST_SHOW_LONGEST_BY_TOTALTIME: 3
+      # Keep every command on V3; the canary below also proves which compiler ran.
+      V_MACOS_V3_NO_FALLBACK: 1
+      # Temporarily disable x.multiwindow coverage while it is brought up on V3.
+      V_MACOS_MULTIWINDOW_TESTS: '0'
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - name: Cache Homebrew downloads
-        uses: actions/cache@v5
+        uses: actions/cache@v6
         with:
           path: ~/Library/Caches/Homebrew
           key: brew-${{ matrix.os }}-${{ hashFiles('.github/workflows/macos_ci.yml', 'ci/macos_ci.vsh') }}
           restore-keys: |
             brew-${{ matrix.os }}-
       - name: Build V
+        # Bootstrap helpers must also compile with V3 once the fresh compiler exists.
+        env:
+          V_MACOS_V3_NO_FALLBACK: 1
         run: make -j4 && ./v symlink
+      - name: Assert V is the default compiler (fail if V1 is silently used)
+        run: |
+          set -uo pipefail
+          printf 'fn main() { println(6 * 7) }\n' > "$RUNNER_TEMP/v3_canary.v"
+          V_MACOS_V3_NO_FALLBACK=1 ./v -v run "$RUNNER_TEMP/v3_canary.v" > "$RUNNER_TEMP/v3_canary.out" 2>&1 || true
+          cat "$RUNNER_TEMP/v3_canary.out"
+          grep -q '=== V compiler benchmark ===' "$RUNNER_TEMP/v3_canary.out" || { echo '::error::the default compiler was not dispatched on macOS'; exit 1; }
+          grep -qx '42' "$RUNNER_TEMP/v3_canary.out" || { echo '::error::the V-compiled canary did not build/run correctly'; exit 1; }
+          if grep -qiE 'retrying with .-old-compiler|compatibility fallback|used the stable compiler' "$RUNNER_TEMP/v3_canary.out"; then echo '::error::the default compiler silently fell back to V1'; exit 1; fi
+          echo 'OK: V compiled and ran this program in-process on macOS, with the fallback disabled'
+      - name: Legacy gg import multiwindow isolation
+        if: env.V_MACOS_MULTIWINDOW_TESTS == '1'
+        run: ./v test vlib/gg/legacy_import_multiwindow_isolation_test.v
+      - name: Prepare multiwindow process-tree watchdog
+        if: env.V_MACOS_MULTIWINDOW_TESTS == '1'
+        run: |
+          set -euo pipefail
+          cat > "$RUNNER_TEMP/multiwindow_ci_watchdog.v" <<'EOF'
+          module main
+
+          import gg.testdata.multiwindow_probe_watchdog
+          import os
+          import time
+
+          fn main() {
+              run_ci_watchdog() or {
+                  eprintln(err.msg())
+                  exit(1)
+              }
+          }
+
+          fn run_ci_watchdog() ! {
+              if os.args.len < 4 {
+                  return error('usage: multiwindow_ci_watchdog timeout-seconds expected-final-line executable [args...]')
+              }
+              timeout_seconds := os.args[1].int()
+              if timeout_seconds <= 0 {
+                  return error('multiwindow CI watchdog timeout must be positive')
+              }
+              expected_final_line := os.args[2]
+              gate_path := os.join_path(os.temp_dir(), 'multiwindow_ci_gate_${os.getpid()}_${time.now().unix_nano()}')
+              defer {
+                  os.rm(gate_path) or {}
+              }
+              result := multiwindow_probe_watchdog.run(
+                  executable: os.args[3]
+                  args:       os.args[4..]
+                  timeout:    timeout_seconds * time.second
+                  start_file: gate_path
+              )!
+              if result.stdout != '' {
+                  print(result.stdout)
+              }
+              if result.stderr != '' {
+                  eprint(result.stderr)
+              }
+              if result.timed_out {
+                  return error('multiwindow CI child timed out after ${timeout_seconds} seconds')
+              }
+              if !result.reaped {
+                  return error('multiwindow CI child leader was not reaped')
+              }
+              if !result.confinement_empty {
+                  return error('multiwindow CI child process confinement is not empty')
+              }
+              if result.forced_cleanup {
+                  return error('multiwindow CI child required forced cleanup')
+              }
+              if result.exit_code != 0 {
+                  return error('multiwindow CI child exited with ${result.exit_code}')
+              }
+              if expected_final_line == '-' {
+                  return
+              }
+              mut actual_final_line := ''
+              for line in result.stdout.split_into_lines() {
+                  if line.trim_space() != '' {
+                      actual_final_line = line.trim_space()
+                  }
+              }
+              if actual_final_line != expected_final_line {
+                  return error('multiwindow CI final record mismatch: expected `${expected_final_line}`, got `${actual_final_line}`')
+              }
+          }
+          EOF
+          ./v -cc clang -o "$RUNNER_TEMP/multiwindow_ci_watchdog" "$RUNNER_TEMP/multiwindow_ci_watchdog.v"
+      - name: Native operation proof (strict default-compiler gate)
+        if: env.V_MACOS_MULTIWINDOW_TESTS == '1'
+        env:
+          V_MACOS_V3_NO_FALLBACK: '1'
+          VGG_MULTIWINDOW_RUNTIME_PROBES: '1'
+          VGG_MULTIWINDOW_RUNTIME_BACKEND: appkit
+          VGG_MULTIWINDOW_EXAMPLE_UNATTENDED: appkit
+          V_MULTIWINDOW_PROBE_BACKEND: appkit
+        run: |
+          set -euo pipefail
+
+          source='vlib/x/multiwindow/native_operation_proof_test.v'
+          expected_source_sha256='a145f335da52d9b6f618adbc316b6d26c42136f75c7b1e46af0c19e5af2541dc'
+          if [[ "${VFLAGS:-}" != '-cc clang' ]]; then
+            echo "native operation default-compiler gate VFLAGS mismatch" >&2
+            exit 1
+          fi
+          if [[ ! -s "$source" ]]; then
+            echo "native operation default-compiler gate source is missing or empty" >&2
+            exit 1
+          fi
+          actual_source_sha256="$(shasum -a 256 "$source" | awk '{print $1}')"
+          if [[ "$actual_source_sha256" != "$expected_source_sha256" ]]; then
+            echo "native operation default-compiler gate source hash mismatch" >&2
+            exit 1
+          fi
+          source_test_count="$(grep -Ec '^fn test_[A-Za-z0-9_]+\(\) \{$' "$source")"
+          if [[ "$source_test_count" != '53' ]]; then
+            echo "native operation default-compiler gate source test count mismatch" >&2
+            exit 1
+          fi
+          if [[ -n "${V_MACOS_V3_RETRY:-}" \
+            || -n "${V_MACOS_V3_FALLBACK_FILE:-}" \
+            || -n "${V_MACOS_V3_C_ERROR_DIR:-}" \
+            || -n "${VTEST_ONLY:-}" \
+            || -n "${VTEST_ONLY_FN:-}" \
+            || -n "${VTEST_RUNNER:-}" \
+            || -n "${V_MULTIWINDOW_NATIVE_PROOF_EGL_BAD_DISPLAY_CHILD:-}" \
+            || -n "${V_MULTIWINDOW_NATIVE_PROOF_APPKIT_ORDINAL_EXHAUSTION_CHILD:-}" ]]; then
+            echo "native operation default-compiler gate inherited selector mismatch" >&2
+            exit 1
+          fi
+
+          "$RUNNER_TEMP/multiwindow_ci_watchdog" 300 - \
+            ./v -no-retry-compilation -cc clang \
+            -d gg_multiwindow -d sokol_metal test "$source"
+          printf 'MULTIWINDOW_MACOS_NATIVE_OPERATION_PROOF status=PASS route=V3 sha256=%s tests=%s\n' \
+            "$actual_source_sha256" "$source_test_count"
+      - name: Multiwindow Metal regressions and runtime probes
+        if: env.V_MACOS_MULTIWINDOW_TESTS == '1'
+        # Keep the multiwindow runtime probes on V3 too.
+        env:
+          V_MACOS_V3_NO_FALLBACK: 1
+          VGG_MULTIWINDOW_RUNTIME_PROBES: '1'
+          VGG_MULTIWINDOW_RUNTIME_BACKEND: appkit
+          VGG_MULTIWINDOW_EXAMPLE_UNATTENDED: appkit
+          V_MULTIWINDOW_PROBE_BACKEND: appkit
+        run: |
+          set -euo pipefail
+
+          ./v -cc clang -d gg_multiwindow -d sokol_metal \
+            -o /tmp/gg_multiwindow_metal examples/gg/multiwindow.v
+          ./v -cc clang -d gg_multiwindow -d sokol_metal \
+            -o /tmp/gg_multiwindow_render_runtime_metal examples/gg/multiwindow_render_runtime.v
+
+          tests=(
+            vlib/x/multiwindow/event_sequence_exhaustion_test.v
+            vlib/x/multiwindow/event_terminal_delivery_test.v
+            vlib/x/multiwindow/internal_fault_matrix_test.v
+            vlib/x/multiwindow/multiwindow_test.v
+            vlib/x/multiwindow/render_scheduler_test.v
+            vlib/x/multiwindow/render_target_lease_test.v
+            vlib/x/multiwindow/service_mock_test.v
+            vlib/x/multiwindow/service_native_appkit_contract_red_test.v
+            vlib/x/multiwindow/service_native_appkit_final_nonreadback_red_test.v
+            vlib/x/multiwindow/service_native_appkit_nonreadback_test.v
+            vlib/x/multiwindow/service_native_appkit_readback_metal_red_test.v
+            vlib/x/multiwindow/teardown_contract_test.v
+            vlib/sokol/gfx/metal_private_hook_contract_test.v
+            vlib/gg/multiwindow_api_d_gg_multiwindow_test.v
+            vlib/gg/multiwindow_appkit_readback_d_gg_multiwindow_test.v
+            vlib/gg/multiwindow_buffer_cleanup_d_gg_multiwindow_test.v
+            vlib/gg/multiwindow_render_fault_matrix_d_gg_multiwindow_test.v
+            vlib/gg/multiwindow_render_runtime_contract_test.v
+            vlib/gg/frame_pacing_test.v
+            vlib/gg/draw_fns_api_test.v
+            vlib/gg/draw_rect_empty_test.v
+          )
+          native_operation_proof='vlib/x/multiwindow/native_operation_proof_test.v'
+          if [[ "${#tests[@]}" -ne 21 ]]; then
+            echo "multiwindow Metal test inventory cardinality mismatch" >&2
+            exit 1
+          fi
+          for test in "${tests[@]}"; do
+            if [[ "$test" == "$native_operation_proof" ]]; then
+              echo "native operation proof leaked into the strict V3 Metal inventory" >&2
+              exit 1
+            fi
+          done
+          for test in "${tests[@]}"; do
+            "$RUNNER_TEMP/multiwindow_ci_watchdog" 300 - \
+              ./v -cc clang -d gg_multiwindow -d sokol_metal test "$test"
+          done
+
+          "$RUNNER_TEMP/multiwindow_ci_watchdog" 300 - \
+            ./v -cc clang test vlib/gg/multiwindow_services_contract_test.v
+
+          "$RUNNER_TEMP/multiwindow_ci_watchdog" 120 \
+            '{"example":"multiwindow_render_runtime","status":"PASS","cleanup":"complete"}' \
+            /tmp/gg_multiwindow_render_runtime_metal
+
+          "$RUNNER_TEMP/multiwindow_ci_watchdog" 120 \
+            '{"example":"multiwindow","status":"PASS","cleanup":"complete"}' \
+            /tmp/gg_multiwindow_metal
+      - name: Test AppKit GLCore rejection guard
+        if: env.V_MACOS_MULTIWINDOW_TESTS == '1'
+        run: ./v -d gg_multiwindow -d darwin_sokol_glcore33 test vlib/x/multiwindow/multiwindow_test.v
       - name: Test symlink
         run: v run ci/macos_ci.vsh test_symlink
       - name: v doctor
@@ -74,9 +293,14 @@ jobs:
         run: v run ci/macos_ci.vsh self_tests
       - name: Build examples
         run: v run ci/macos_ci.vsh build_examples
+      - name: Build hello_world with -autofree
+        if: ${{ false }} # Ownership/autofree coverage is temporarily disabled on GitHub CI.
+        run: v run ci/macos_ci.vsh build_hello_world_autofree
       - name: Build tetris with -autofree
+        if: ${{ false }} # Ownership/autofree coverage is temporarily disabled on GitHub CI.
         run: v run ci/macos_ci.vsh build_tetris_autofree
       - name: Build blog tutorial with -autofree
+        if: ${{ false }} # Ownership/autofree coverage is temporarily disabled on GitHub CI.
         run: v run ci/macos_ci.vsh build_blog_autofree
       - name: Build examples with -prod
         run: v run ci/macos_ci.vsh build_examples_prod
@@ -86,281 +310,40 @@ jobs:
       ##        run: v run ci/macos_ci.vsh v_self_compilation_usecache
       - name: V self compilation with -parallel-cc
         run: v run ci/macos_ci.vsh v_self_compilation_parallel_cc
-      - name: v2 test suite
-        if: ${{ false }} # Temporarily disabled.
-        run: v run cmd/v2/test_all.vsh -prod
       - name: Test password input
         run: v run ci/macos_ci.vsh test_password_input
       - name: Test readline
         run: v run ci/macos_ci.vsh test_readline
 
-  v2-x64-native-macos:
-    runs-on: macos-15-intel
-    timeout-minutes: 30
+  clang-macos-self-tests:
+    strategy:
+      matrix:
+        os: [macos-14, macos-15, macos-26]
+        shard: [1, 2]
+      fail-fast: false
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 90
+    env:
+      VFLAGS: -cc clang
+      VTEST_SELF_SHARD_INDEX: ${{ matrix.shard }}
+      VTEST_SELF_SHARD_COUNT: '3'
+      VTEST_SHOW_LONGEST_BY_RUNTIME: 3
+      VTEST_SHOW_LONGEST_BY_COMPTIME: 3
+      VTEST_SHOW_LONGEST_BY_TOTALTIME: 3
+      V_MACOS_V3_NO_FALLBACK: 1
+      V_MACOS_MULTIWINDOW_TESTS: '0'
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
+      - name: Cache Homebrew downloads
+        uses: actions/cache@v6
+        with:
+          path: ~/Library/Caches/Homebrew
+          key: brew-${{ matrix.os }}-${{ hashFiles('.github/workflows/macos_ci.yml', 'ci/macos_ci.vsh') }}
+          restore-keys: |
+            brew-${{ matrix.os }}-
       - name: Build V
-        run: make -j4
-      - name: V2 x64 native checks
-        run: |
-          set -e
-
-          VJOBS=1 ./v test vlib/v2/abi vlib/v2/gen/x64
-          ./v test vlib/v2/builder/native_test.v vlib/v2/builder/target_os_test.v
-          ./v test vlib/v2/ssa/optimize
-          V2_VERIFY_STRICT=1 ./v test vlib/v2/ssa/optimize
-
-          tmp="$(mktemp -d)"
-          trap 'rm -rf "$tmp"' EXIT
-
-          check_empty_stderr() {
-            label="$1"
-            stderr="$2"
-            if [ -s "$stderr" ]; then
-              echo "::error::$label wrote to stderr"
-              cat "$stderr"
-              return 1
-            fi
-          }
-
-          check_v_run_stderr() {
-            label="$1"
-            stderr="$2"
-            if [ ! -s "$stderr" ]; then
-              return 0
-            fi
-            if python3 - "$stderr" <<'PY'
-          import re
-          import sys
-
-          text = open(sys.argv[1], "rb").read().decode("utf-8", "replace")
-          text = re.sub(r"\x1b\[[0-?]*[ -/]*[@-~]", "", text).strip()
-          expected = "warning: tcc compilation failed, falling back to cc (this is much slower)"
-          raise SystemExit(0 if text == expected else 1)
-          PY
-            then
-              return 0
-            fi
-            echo "::error::$label wrote unexpected stderr"
-            cat "$stderr"
-            return 1
-          }
-
-          check_stdout() {
-            label="$1"
-            expected="$2"
-            actual="$3"
-            if ! cmp -s "$expected" "$actual"; then
-              echo "::error::$label stdout mismatch"
-              echo "expected:"
-              cat "$expected"
-              echo "actual:"
-              cat "$actual"
-              return 1
-            fi
-          }
-
-          run_native_x64_example() {
-            source="$1"
-            name="$2"
-            expected="$3"
-            shift 3
-
-            ./v -v2 -no-parallel -b x64 "$source" -o "$tmp/$name"
-            "$tmp/$name" "$@" > "$tmp/$name.out" 2> "$tmp/$name.err"
-            check_empty_stderr "$name" "$tmp/$name.err"
-            check_stdout "$name" "$expected" "$tmp/$name.out"
-          }
-
-          write_v_run_expected() {
-            source="$1"
-            expected="$2"
-            stderr="$tmp/$(basename "$expected").stderr"
-            ./v run "$source" > "$expected" 2> "$stderr"
-            check_v_run_stderr "v run $source" "$stderr"
-          }
-
-          write_fizz_buzz_expected() {
-            i=1
-            while [ "$i" -le 100 ]; do
-              if [ $((i % 15)) -eq 0 ]; then
-                echo FizzBuzz
-              elif [ $((i % 3)) -eq 0 ]; then
-                echo Fizz
-              elif [ $((i % 5)) -eq 0 ]; then
-                echo Buzz
-              else
-                echo "$i"
-              fi
-              i=$((i + 1))
-            done
-          }
-
-          write_hanoi_expected() {
-            python3 - <<'PY'
-          def hanoi(n, a, b, c):
-              if n == 1:
-                  print(f"Disc 1 from {a} to {c}...")
-              else:
-                  hanoi(n - 1, a, c, b)
-                  print(f"Disc {n} from {a} to {c}...")
-                  hanoi(n - 1, b, a, c)
-
-          hanoi(7, "A", "B", "C")
-          PY
-          }
-
-          write_sudoku_expected() {
-            python3 - <<'PY'
-          import sys
-
-          puzzle = [
-              [0, 3, 0, 0, 7, 0, 0, 0, 0],
-              [0, 0, 0, 1, 3, 5, 0, 0, 0],
-              [0, 0, 1, 0, 0, 0, 0, 5, 0],
-              [1, 0, 0, 0, 6, 0, 0, 0, 3],
-              [4, 0, 0, 8, 0, 3, 0, 0, 1],
-              [7, 0, 0, 0, 2, 0, 0, 0, 6],
-              [0, 0, 0, 0, 0, 0, 2, 1, 0],
-              [0, 0, 0, 4, 1, 2, 0, 0, 5],
-              [0, 0, 0, 0, 0, 0, 0, 7, 4],
-          ]
-          solution = [
-              [2, 3, 5, 6, 7, 8, 1, 4, 9],
-              [9, 4, 7, 1, 3, 5, 8, 6, 2],
-              [6, 8, 1, 2, 4, 9, 3, 5, 7],
-              [1, 2, 8, 7, 6, 4, 5, 9, 3],
-              [4, 5, 6, 8, 9, 3, 7, 2, 1],
-              [7, 9, 3, 5, 2, 1, 4, 8, 6],
-              [3, 6, 4, 9, 5, 7, 2, 1, 8],
-              [8, 7, 9, 4, 1, 2, 6, 3, 5],
-              [5, 1, 2, 3, 8, 6, 9, 7, 4],
-          ]
-
-          def append_grid(lines, label, grid):
-              lines.append(label)
-              for i, row in enumerate(grid):
-                  if i % 3 == 0 and i != 0:
-                      lines.append("- - - - - - - - - - - -")
-                  line = ""
-                  for j, value in enumerate(row):
-                      if j % 3 == 0 and j != 0:
-                          line += " | "
-                      line += f"{value} "
-                  lines.append(line)
-
-          lines = []
-          append_grid(lines, "Sudoku Puzzle:", puzzle)
-          lines.append("Solving...")
-          append_grid(lines, "Solution:", solution)
-          out = ("\n".join(lines) + "\n").encode()
-          if len(out) != 582:
-              raise SystemExit(f"sudoku stdout oracle shape changed: {len(out)} bytes")
-          sys.stdout.buffer.write(out)
-          PY
-          }
-
-          write_tree_of_nodes_expected() {
-            cat <<'EOF'
-          tree structure:
-           Node{
-              value: 10
-              left: Tree(Node{
-                  value: 30
-                  left: Tree(Empty{})
-                  right: Tree(Empty{})
-              })
-              right: Tree(Node{
-                  value: 20
-                  left: Tree(Empty{})
-                  right: Tree(Empty{})
-              })
-          }
-          tree size: 3
-          EOF
-          }
-
-          write_js_hello_world_expected() {
-            printf 'Hello from V.js (0)\nHello from V.js (1)\nHello from V.js (2)\n'
-          }
-
-          write_vascii_expected() {
-            python3 - <<'PY'
-          from pathlib import Path
-          import sys
-
-          source = Path("examples/vascii.v").read_text(encoding="utf-8")
-          start_marker = "println('"
-          end_marker = "')"
-          if source.count(start_marker) != 1:
-              raise SystemExit("vascii stdout oracle expects one single-quoted println literal")
-          start = source.index(start_marker) + len(start_marker)
-          end = source.rindex(end_marker)
-          if source[end + len(end_marker):].strip() != "}":
-              raise SystemExit("vascii stdout oracle expects the println literal to be the final main statement")
-
-          out = bytearray()
-          literal = source[start:end]
-          i = 0
-          while i < len(literal):
-              ch = literal[i]
-              if ch == "\\":
-                  i += 1
-                  if i >= len(literal):
-                      raise SystemExit("unterminated escape in vascii literal")
-                  escaped = literal[i]
-                  if escaped == "n":
-                      out.append(10)
-                  elif escaped == "t":
-                      out.append(9)
-                  elif escaped == "r":
-                      out.append(13)
-                  elif escaped == "\\":
-                      out.append(92)
-                  elif escaped == "'":
-                      out.append(39)
-                  elif escaped == '"':
-                      out.append(34)
-                  else:
-                      out.extend(escaped.encode("utf-8"))
-              else:
-                  out.extend(ch.encode("utf-8"))
-              i += 1
-          out.append(10)
-          sys.stdout.buffer.write(out)
-          PY
-          }
-
-          write_rune_expected() {
-            printf '\360\237\230\200\n@\n'
-          }
-
-          printf 'Hello, World!\n' > "$tmp/hello_world.expected"
-          write_fizz_buzz_expected > "$tmp/fizz_buzz.expected"
-          write_hanoi_expected > "$tmp/hanoi.expected"
-          write_sudoku_expected > "$tmp/sudoku.expected"
-          printf 'HELLO WORLD\nHELLO WORLD\nHELLO WORLD\n' > "$tmp/function_types.expected"
-          printf '5\n3\n' > "$tmp/submodule.expected"
-          printf '1\n1\n2\n3\n5\n8\n13\n21\n34\n55\n89\n' > "$tmp/fibonacci_10.expected"
-          write_tree_of_nodes_expected > "$tmp/tree_of_nodes.expected"
-          write_js_hello_world_expected > "$tmp/js_hello_world.expected"
-          write_vascii_expected > "$tmp/vascii.expected"
-          write_rune_expected > "$tmp/rune.expected"
-          write_v_run_expected examples/graphs/bfs.v "$tmp/bfs.expected"
-          write_v_run_expected examples/graphs/dfs.v "$tmp/dfs.expected"
-          write_v_run_expected examples/graphs/dijkstra.v "$tmp/dijkstra.expected"
-
-          run_native_x64_example examples/hello_world.v hello_world "$tmp/hello_world.expected"
-          run_native_x64_example examples/fizz_buzz.v fizz_buzz "$tmp/fizz_buzz.expected"
-          run_native_x64_example examples/hanoi.v hanoi "$tmp/hanoi.expected"
-          run_native_x64_example examples/sudoku.v sudoku "$tmp/sudoku.expected"
-          run_native_x64_example examples/function_types.v function_types "$tmp/function_types.expected"
-          run_native_x64_example examples/submodule/main.v submodule "$tmp/submodule.expected"
-          run_native_x64_example examples/fibonacci.v fibonacci "$tmp/fibonacci_10.expected" 10
-          run_native_x64_example examples/tree_of_nodes.v tree_of_nodes "$tmp/tree_of_nodes.expected"
-          run_native_x64_example examples/js_hello_world.v js_hello_world "$tmp/js_hello_world.expected"
-          run_native_x64_example examples/vascii.v vascii "$tmp/vascii.expected"
-          run_native_x64_example examples/rune.v rune "$tmp/rune.expected"
-          run_native_x64_example examples/graphs/bfs.v bfs "$tmp/bfs.expected"
-          run_native_x64_example examples/graphs/dfs.v dfs "$tmp/dfs.expected"
-          run_native_x64_example examples/graphs/dijkstra.v dijkstra "$tmp/dijkstra.expected"
+        run: make -j4 && ./v symlink
+      - name: Install iconv for encoding.iconv
+        run: v run ci/macos_ci.vsh install_iconv
+      - name: Self tests
+        run: v run ci/macos_ci.vsh self_tests

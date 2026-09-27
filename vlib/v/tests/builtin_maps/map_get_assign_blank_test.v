@@ -2,7 +2,7 @@ type Abc = int | string
 
 fn test_map_get_decl_assign_blank() {
 	x := map[string]Abc{}
-	_ := unsafe { x['nonexisting'] }
+	_ := x['nonexisting'] or { Abc(0) }
 	if y := x['nonexisting'] {
 		println(y)
 	}
@@ -11,7 +11,7 @@ fn test_map_get_decl_assign_blank() {
 
 fn test_map_get_assign_blank() {
 	x := map[string]Abc{}
-	_ = unsafe { x['nonexisting'] }
+	_ = x['nonexisting'] or { Abc(0) }
 	if y := x['nonexisting'] {
 		println(y)
 	}

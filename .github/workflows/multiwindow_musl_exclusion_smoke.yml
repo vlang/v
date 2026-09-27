@@ -1,0 +1,82 @@
+name: Package 2 multiwindow musl exclusion smoke
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - smoke/x-multiwindow-windows-20260717
+    paths:
+      - '.github/workflows/multiwindow_musl_exclusion_smoke.yml'
+      - 'vlib/gg/multiwindow_render_runtime_contract_test.v'
+      - 'vlib/gg/multiwindow_services_contract_test.v'
+      - 'vlib/x/multiwindow/service_native_win32_no_flag_test.v'
+      - 'vlib/gg/multiwindow_gl_readback_helpers_d_gg_multiwindow_test.v'
+      - 'vlib/gg/multiwindow_wayland_services_d_gg_multiwindow_test.v'
+      - 'vlib/sokol/gfx/metal_private_hook_contract_test.v'
+      - 'cmd/tools/vtest-self.v'
+
+concurrency:
+  group: package2-musl-exclusion-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  V_CI_MUSL: 1
+
+jobs:
+  multiwindow-musl-exclusion:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    container:
+      image: thevlang/vlang:alpine-build
+      env:
+        VFLAGS: -cc gcc
+      volumes:
+        - ${{github.workspace}}:/opt/vlang
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+      - name: Add Alpine build dependencies
+        run: apk add libc6-compat gcompat gc gc-dev binutils diffutils elfutils
+      - name: Build V
+        run: CC=gcc make
+      - name: Verify candidate-owned tests are skipped under musl
+        run: |
+          set -eu
+          grep -F "'vlib/gg/multiwindow_services_contract_test.v'" cmd/tools/vtest-self.v
+          grep -F "'vlib/x/multiwindow/service_native_win32_no_flag_test.v'" cmd/tools/vtest-self.v
+          grep -F "'vlib/gg/multiwindow_gl_readback_helpers_d_gg_multiwindow_test.v'" cmd/tools/vtest-self.v
+          grep -F "'vlib/gg/multiwindow_wayland_services_d_gg_multiwindow_test.v'" cmd/tools/vtest-self.v
+          grep -F "'vlib/sokol/gfx/metal_private_hook_contract_test.v'" cmd/tools/vtest-self.v
+          head -n 1 vlib/gg/multiwindow_services_contract_test.v | grep -F '!musl? && !self_ubuntu_musl_ci?'
+          head -n 1 vlib/x/multiwindow/service_native_win32_no_flag_test.v | grep -F '!musl? && !self_ubuntu_musl_ci?'
+          head -n 1 vlib/gg/multiwindow_gl_readback_helpers_d_gg_multiwindow_test.v | grep -F 'gg_multiwindow? && !musl? && !self_ubuntu_musl_ci?'
+          head -n 1 vlib/gg/multiwindow_wayland_services_d_gg_multiwindow_test.v | grep -F 'gg_multiwindow? && !musl? && !self_ubuntu_musl_ci?'
+          head -n 1 vlib/sokol/gfx/metal_private_hook_contract_test.v | grep -F '!windows && !musl? && !self_ubuntu_musl_ci?'
+          verify_skip() {
+            label="$1"
+            path="$2"
+            shift 2
+            log="/tmp/multiwindow_musl_exclusion_${label}.log"
+            if VTEST_HIDE_SKIP=0 ./v -silent "$@" test "$path" >"$log" 2>&1; then
+              cat "$log"
+            else
+              cat "$log"
+              exit 1
+            fi
+            grep -F 'SKIP' "$log"
+            grep -F "$path" "$log"
+          }
+          verify_skip runtime \
+            vlib/gg/multiwindow_render_runtime_contract_test.v
+          verify_skip services \
+            vlib/gg/multiwindow_services_contract_test.v
+          verify_skip win32_no_flag \
+            vlib/x/multiwindow/service_native_win32_no_flag_test.v
+          verify_skip gl_readback \
+            vlib/gg/multiwindow_gl_readback_helpers_d_gg_multiwindow_test.v \
+            -d gg_multiwindow
+          verify_skip wayland_services \
+            vlib/gg/multiwindow_wayland_services_d_gg_multiwindow_test.v \
+            -d gg_multiwindow
+          verify_skip metal_hook \
+            vlib/sokol/gfx/metal_private_hook_contract_test.v

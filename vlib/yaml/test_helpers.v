@@ -1,6 +1,6 @@
 module yaml
 
-import x.json2
+import json2
 
 // json_logically_eq compares two JSON strings by decoding and re-encoding
 // both sides via json2, normalizing whitespace and treating an empty input

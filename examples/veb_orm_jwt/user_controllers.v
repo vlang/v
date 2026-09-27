@@ -1,7 +1,7 @@
 module main
 
 import veb
-import json
+import json2 as json
 import databases
 
 @['/user/:id/get'; get]
@@ -15,7 +15,7 @@ pub fn (mut app App) controller_get_user_by_id(mut ctx Context, id string) veb.R
 
 @['/user/create'; post]
 pub fn (mut app App) controller_create_user(mut ctx Context) veb.Result {
-	body := json.decode(User, ctx.req.data) or {
+	body := json.decode[User](ctx.req.data) or {
 		ctx.res.set_status(.bad_request)
 		return ctx.text('Failed to decode json, error: ${err}')
 	}

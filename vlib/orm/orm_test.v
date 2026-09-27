@@ -44,6 +44,11 @@ struct SelectTransformUser {
 	name string @[sql_select: 'upper(name)']
 }
 
+struct SignedScoreUser {
+	id    int @[primary; sql: serial]
+	score int
+}
+
 fn test_use_struct_field_as_limit() {
 	db := sqlite.connect(':memory:') or { panic(err) }
 
@@ -80,6 +85,37 @@ fn test_use_struct_field_as_limit() {
 	assert users[0].skipped_array2 == [], "should be skipped, because of the sql specific @[sql: '-'] tag"
 }
 
+fn test_orm_select_limit_zero() {
+	mut db := sqlite.connect(':memory:') or { panic(err) }
+	defer {
+		db.close() or {}
+	}
+
+	sql db {
+		create table User
+	}!
+
+	sam := User{
+		age:  29
+		name: 'Sam'
+	}
+
+	sql db {
+		insert sam into User
+	}!
+
+	static_rows := sql db {
+		select from User limit 0
+	}!
+	assert static_rows.len == 0
+
+	zero := 0
+	runtime_rows := sql db {
+		select from User limit zero
+	}!
+	assert runtime_rows.len == 0
+}
+
 fn test_orm_sql_select_attribute() {
 	mut db := sqlite.connect(':memory:') or { panic(err) }
 	defer {
@@ -110,6 +146,36 @@ fn test_orm_sql_select_attribute() {
 
 	assert qb_rows.len == 1
 	assert qb_rows[0].name == 'ALICE'
+}
+
+fn test_orm_select_with_signed_static_where_literal() {
+	mut db := sqlite.connect(':memory:') or { panic(err) }
+	defer {
+		db.close() or {}
+	}
+
+	sql db {
+		create table SignedScoreUser
+	}!
+
+	negative := SignedScoreUser{
+		score: -1
+	}
+	positive := SignedScoreUser{
+		score: 1
+	}
+
+	sql db {
+		insert negative into SignedScoreUser
+		insert positive into SignedScoreUser
+	}!
+
+	rows := sql db {
+		select from SignedScoreUser where score == -1
+	}!
+
+	assert rows.len == 1
+	assert rows[0].score == -1
 }
 
 fn test_orm_select_specific_fields() {

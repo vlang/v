@@ -137,8 +137,7 @@ pub fn decompress(input []u8) ![]u8 {
 				return error('snappy: truncated copy-4 tag')
 			}
 			length := int((tag >> 2) & 0x3f) + 1
-			offset := int(u32(input[pos]) | u32(input[pos + 1]) << 8 | u32(input[pos + 2]) << 16 | u32(input[
-				pos + 3]) << 24)
+			offset := int(u32(input[pos]) | u32(input[pos + 1]) << 8 | u32(input[pos + 2]) << 16 | u32(input[pos + 3]) << 24)
 			pos += 4
 			if offset == 0 {
 				return error('snappy: zero offset in copy-4')

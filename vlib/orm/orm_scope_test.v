@@ -1976,3 +1976,18 @@ fn test_data_scope_join_qualifies_table() {
 	assert rows[0].jname == 'main1'
 	assert rows[0].tenant_id == 1
 }
+
+fn test_db_execute_raw_sql() {
+	mut raw_db := sqlite.connect(':memory:') or { panic(err) }
+	defer {
+		raw_db.close() or {}
+	}
+	mut db := orm.new_db(raw_db, orm.DataScope{})
+
+	result := db.execute('SELECT 1')!
+	assert result.len == 1
+	assert result[0].vals.len == 1
+	assert result[0].vals[0] == '1'
+	assert result[0].names.len == 1
+	assert result[0].names[0] == '1'
+}

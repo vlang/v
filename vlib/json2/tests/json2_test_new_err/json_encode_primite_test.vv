@@ -1,0 +1,15 @@
+import json2 as json
+
+struct UnicodeString {
+	emoji string
+}
+
+fn test_encode_unicode_as_ascii_escape_sequences() {
+	valid_json := r'{"emoji":"\u3007"}'
+	decoded := json.decode[UnicodeString](valid_json)!
+	assert decoded.emoji == '〇'
+	assert json.encode(UnicodeString{
+		emoji: '〇'
+	}) == valid_json
+	assert json.encode('😀') == r'"\uD83D\ude00"'
+}

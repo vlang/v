@@ -1,0 +1,5 @@
+vlib/db/mysql/mysql_orm_test.v
+vlib/x/atomics/i32_test.v
+vlib/x/atomics/i64_test.v
+vlib/x/atomics/u32_test.v
+vlib/x/atomics/u64_test.v

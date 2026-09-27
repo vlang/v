@@ -1,0 +1,4 @@
+Name: group-alias-74
+Description: GNU ld archive group alias regression
+Version: 1.0.0
+Libs: -Wl,-( -lissue74_alias_a -lissue74_alias_b -lissue74_alias_a -Wl,-)

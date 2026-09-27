@@ -1,0 +1,11 @@
+fn maybe(_ string) ?string {
+	return ''
+}
+
+fn main() {
+	'' == (if x := maybe($embed_file(@FILE).path) {
+		x
+	} else {
+		''
+	})
+}

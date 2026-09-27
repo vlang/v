@@ -4,7 +4,7 @@
 
 Tape archives (tar) are a file format for storing a sequence of files that can be read and written 
 as streams. This module covers the reading of the basic sections of archives produced by GNU tools
-like Linux command `tar -xvf` but in memory instead modifing the filesystem. Parses directories, 
+like Linux command `tar -xvf` but in memory instead modifying the filesystem. Parses directories, 
 files, and file's content and manage paths longer than 100 chars.
 
 ### Read Efficiency

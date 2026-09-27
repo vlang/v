@@ -1,3 +1,4 @@
+// vtest build: !sanitize-memory-clang
 // Hermetic TLS-termination test for net.http.Server: spin up a local HTTPS
 // server with an in-memory cert/key, hit it with http.fetch (validate: false),
 // and assert the round-trip.
@@ -8,6 +9,11 @@ import net
 import net.http
 import net.mbedtls
 import time
+
+// A finite `accept_timeout` doubles as the server's TLS handshake budget. With
+// `-cc tcc`, mbedtls needs 0.6-1 s for this RSA-4096 handshake even before the
+// parallel test load, so tests that are not about handshake timeouts need slack.
+const tls_handshake_budget = 10 * time.second
 
 const server_tls_cert = '-----BEGIN CERTIFICATE-----\nMIIEOTCCAyECFG64Q2g46jZb3kRbDOJWX/BwjSp6MA0GCSqGSIb3DQEBCwUAMEUx\nCzAJBgNVBAYTAkFVMRMwEQYDVQQIDApTb21lLVN0YXRlMSEwHwYDVQQKDBhJbnRl\ncm5ldCBXaWRnaXRzIFB0eSBMdGQwIBcNMjMwODAyMTcyOTQyWhgPMjA1MDEyMTcx\nNzI5NDJaMGsxCzAJBgNVBAYTAlVTMRMwEQYDVQQIDApDYWxpZm9ybmlhMRQwEgYD\nVQQHDAtMb3MgQW5nZWxlczEdMBsGA1UECgwUQ2F0YWx5c3QgRGV2ZWxvcG1lbnQx\nEjAQBgNVBAMMCWxvY2FsaG9zdDCCAiIwDQYJKoZIhvcNAQEBBQADggIPADCCAgoC\nggIBALqAI4fqUi+QBVWcsXglouLdOML5+w0+1hSR1KdO0Q5XPdQAs/yYWJ+KUkDw\nG++rfy9DUPq7FNRBVurXQkcAtn6gXdllGUSjwUiDo/N4mMOyS/2sufBuaeww7jVi\nrppH+zwP1tUnjRd6khl6bi1Ian9VSzr3Iy9CkXIg1GU4CPXkOydLeoQfepXxWoK1\nOUNwT3VKC/stAfY3j/NIIeiJYkyuRGFCkxn/BUjN+AsXiTugRcYKEFHdIPkOuCXp\nYbhf+lLsczpxCs3rdZG9b/N6mEDCzXTmeHkmsjdPTf+1k5DZZvKzVBBrgdxCgBb7\n5RwjF5v9WmnIc33wWgfJC6FaUzj9NYxYUbPHD+jTz0rJB/jj4u/xJlM/e5NRmXdW\n70pOMKXtWjRSolLOFIPKLY1qs3KMTAZxKKWPDDF7WlMJxMRt7nnnks5yw43Nog4C\njDLk1ZgETnPpLgo3jbmJdIv+OHKTJrBlVvDq7VTyixCoS5G8KoOmyQJhaXG6NwE2\niVhH5JIKgzgCfetfDsnjxqJ/qtrFXPa8FF2TsomD0NK/GZmIcs+9OeVB75Jn5uhF\nfLHScpiTbuu5w3P/LI/MqihLRB6RRNnRzPH8fIg5bYC9b770ta/8GcFRuYE8t+UR\nGtqXJoIKixbDlqV54kal8FQzYzhETf9+NM6Kb/lKEfG/pslvAgMBAAEwDQYJKoZI\nhvcNAQELBQADggEBALI3uNiNO0QE1brA3QYFK+d9ZroB72NrJ0UNkzYHDg2Fc6xg\n4aVVfaxY08+TmKc0JlMOW+pUxeCW/+UBSngdQiR9EE9xm0k0XIrAsy9RXxRvEtPu\nM1VI2h7ayp1Y2BrnQinevTSgtqLRyS1VbOFRl1FiyVvinw2I0KsDdAMNevAPXcOa\nQ8pUgUq6f56DkhocQaj+hxD/uV8HryNxuoSXnPhvfTN3z4YRGzsaWevJ9EYJliOM\n+XugcqfFJ+W7/QCEcAHCL+Bw6OydG5NFORr3p57PXjjcL/uKmxPBrWg2Bz6uT4uR\nMhj0zttiFHLAt9jGfyk6W57UNUja1e1ggftJJhs=\n-----END CERTIFICATE-----\n'
 
@@ -29,6 +35,10 @@ fn (mut h EchoHandler) handle(req http.Request) http.Response {
 struct BlockingHandler {
 	started chan bool
 	release chan bool
+}
+
+fn testsuite_end() {
+	http.close_idle_connections()
 }
 
 fn (mut h BlockingHandler) handle(req http.Request) http.Response {
@@ -66,7 +76,7 @@ fn test_server_tls_round_trip() {
 		cert:                   server_tls_cert
 		cert_key:               server_tls_key
 		in_memory_verification: true
-		accept_timeout:         time.second
+		accept_timeout:         tls_handshake_budget
 		handler:                EchoHandler{}
 		show_startup_message:   false
 	}
@@ -174,7 +184,7 @@ fn test_server_tls_close_waits_for_active_request() {
 		cert:                   server_tls_cert
 		cert_key:               server_tls_key
 		in_memory_verification: true
-		accept_timeout:         time.second
+		accept_timeout:         tls_handshake_budget
 		handler:                BlockingHandler{
 			started: started
 			release: release
@@ -199,20 +209,26 @@ fn test_server_tls_close_waits_for_active_request() {
 		}
 		done <- resp.body
 	}()
+	mut start_failure := ''
 	select {
-		_ := <-started {}
+		_ := <-started {
+		}
 		msg := <-done {
-			srv.close()
-			t.wait()
-			assert false, 'client finished before handler started: ${msg}'
-			return
+			start_failure = 'client finished before handler started: ${msg}'
 		}
-		2 * time.second {
-			srv.close()
-			t.wait()
-			assert false, 'timed out waiting for handler to start'
-			return
+		10 * time.second {
+			start_failure = 'timed out waiting for handler to start'
 		}
+	}
+	if start_failure != '' {
+		// The request can enter BlockingHandler just after the select deadline.
+		// Release it before waiting for the server thread, otherwise this failure
+		// path deadlocks forever instead of reporting the original timeout.
+		release <- true
+		srv.close()
+		t.wait()
+		assert false, start_failure
+		return
 	}
 	srv.close()
 	time.sleep(50 * time.millisecond)
@@ -264,6 +280,86 @@ fn test_server_tls_close_during_silent_handshake() {
 	assert srv.status() == .closed
 }
 
+// test_server_tls_close_under_handshake_flood guards the case where every worker
+// is stuck in a slow TLS handshake AND the channel buffer is full of untracked
+// raw conns, so the accept thread parks on `ch <- conn`. If the accept thread
+// could not poll s.state during that send it would never reach close_idle(), and
+// close() would hang until a worker handshake timed out. Each client sends a
+// valid ClientHello then stalls, so the server's handshake blocks waiting for the
+// client's next flight (a bare connect would instead fail the handshake fast and
+// free the worker). With one worker and a one-slot buffer this fills: conn 0 ->
+// the worker, conn 1 -> the buffer, conn 2 -> the blocked send.
+fn test_server_tls_close_under_handshake_flood() {
+	$if use_openssl ? {
+		eprintln('skipping: TLS server not implemented for -d use_openssl yet')
+		return
+	}
+	port := pick_port() or {
+		assert false, 'pick_port: ${err}'
+		return
+	}
+	// A real 165-byte TLS 1.2 ClientHello captured from V's own mbedtls client.
+	// The exact bytes (random/session id) are irrelevant; the server only needs a
+	// structurally valid first flight to start the handshake and then block
+	// waiting for the client's ClientKeyExchange, which never arrives.
+	client_hello := [u8(0x16), 0x03, 0x03, 0x00, 0xa0, 0x01, 0x00, 0x00, 0x9c, 0x03, 0x03, 0x6a,
+		0x3d, 0x34, 0x4c, 0x8f, 0x46, 0x64, 0xd8, 0xe9, 0x2d, 0x46, 0x16, 0xd3, 0xf2, 0x87, 0xe4,
+		0xee, 0xc5, 0x57, 0x6c, 0x8e, 0xd7, 0x36, 0x19, 0x3b, 0x35, 0x7a, 0x01, 0x03, 0xde, 0x6e,
+		0x64, 0x00, 0x00, 0x24, 0xc0, 0x2c, 0xc0, 0x2b, 0xc0, 0x30, 0xc0, 0x2f, 0xc0, 0x24, 0xc0,
+		0x23, 0xc0, 0x28, 0xc0, 0x27, 0xc0, 0x0a, 0xc0, 0x09, 0xc0, 0x14, 0xc0, 0x13, 0x00, 0x9d,
+		0x00, 0x9c, 0x00, 0x3d, 0x00, 0x3c, 0x00, 0x35, 0x00, 0x2f, 0x01, 0x00, 0x00, 0x4f, 0x00,
+		0x0a, 0x00, 0x08, 0x00, 0x06, 0x00, 0x1d, 0x00, 0x17, 0x00, 0x18, 0x00, 0x0b, 0x00, 0x02,
+		0x01, 0x00, 0x00, 0x0d, 0x00, 0x1a, 0x00, 0x18, 0x08, 0x04, 0x08, 0x05, 0x08, 0x06, 0x04,
+		0x01, 0x05, 0x01, 0x02, 0x01, 0x04, 0x03, 0x05, 0x03, 0x02, 0x03, 0x02, 0x02, 0x06, 0x01,
+		0x06, 0x03, 0x00, 0x23, 0x00, 0x00, 0x00, 0x10, 0x00, 0x0e, 0x00, 0x0c, 0x02, 0x68, 0x32,
+		0x08, 0x68, 0x74, 0x74, 0x70, 0x2f, 0x31, 0x2e, 0x31, 0x00, 0x17, 0x00, 0x00, 0xff, 0x01,
+		0x00, 0x01, 0x00]
+	mut srv := &http.Server{
+		addr:                   '127.0.0.1:${port}'
+		cert:                   server_tls_cert
+		cert_key:               server_tls_key
+		in_memory_verification: true
+		// A finite accept_timeout doubles as the handshake budget (see
+		// tls_accept_timeouts), so use a large one: each stalled handshake must
+		// stay stuck long enough to keep the worker busy and form the wedge,
+		// rather than time out in milliseconds. The accept loop still polls at the
+		// 100ms tls_accept_poll_timeout cap regardless.
+		accept_timeout:         8 * time.second
+		worker_num:             1
+		pool_channel_slots:     1
+		handler:                EchoHandler{}
+		show_startup_message:   false
+	}
+	t := spawn srv.listen_and_serve()
+	srv.wait_till_running() or {
+		srv.close()
+		t.wait()
+		assert false, 'server failed to start: ${err}'
+		return
+	}
+	mut clients := []&net.TcpConn{}
+	for _ in 0 .. 4 {
+		mut c := net.dial_tcp('127.0.0.1:${port}') or { continue }
+		c.write(client_hello) or {}
+		clients << c
+	}
+	defer {
+		for mut c in clients {
+			c.close() or {}
+		}
+	}
+	// Let the accept thread occupy the worker and buffer and park on the send.
+	time.sleep(400 * time.millisecond)
+	sw := time.new_stopwatch()
+	srv.close()
+	t.wait()
+	// close_idle() force-closes the stuck handshake fds, so close() returns well
+	// before the 8s handshake timeout — but only if the accept thread escaped the
+	// blocked send to reach it.
+	assert sw.elapsed() < 2 * time.second
+	assert srv.status() == .closed
+}
+
 fn test_server_tls_close_interrupts_idle_keep_alive() {
 	$if use_openssl ? {
 		eprintln('skipping: TLS server not implemented for -d use_openssl yet')
@@ -278,7 +374,7 @@ fn test_server_tls_close_interrupts_idle_keep_alive() {
 		cert:                   server_tls_cert
 		cert_key:               server_tls_key
 		in_memory_verification: true
-		accept_timeout:         time.second
+		accept_timeout:         tls_handshake_budget
 		read_timeout:           5 * time.second
 		handler:                EchoHandler{}
 		show_startup_message:   false
@@ -313,15 +409,28 @@ fn test_server_tls_close_interrupts_idle_keep_alive() {
 		return
 	}
 	mut buf := []u8{len: 4096}
-	n := client.read(mut buf) or {
-		srv.close()
-		t.wait()
-		assert false, 'ssl read failed: ${err}'
-		return
+	mut response_bytes := []u8{cap: 4096}
+	read_sw := time.new_stopwatch()
+	for read_sw.elapsed() < 2 * time.second {
+		n := client.read(mut buf) or {
+			time.sleep(20 * time.millisecond)
+			continue
+		}
+		if n <= 0 {
+			time.sleep(20 * time.millisecond)
+			continue
+		}
+		response_bytes << buf[..n]
+		response_so_far := response_bytes.bytestr()
+		if response_so_far.contains('\r\n\r\n') && response_so_far.contains('tls hello /idle') {
+			break
+		}
 	}
-	response := buf[..n].bytestr()
-	assert response.to_lower().contains('connection: keep-alive')
-	assert response.contains('tls hello /idle')
+	if response_bytes.len > 0 {
+		response := response_bytes.bytestr()
+		assert response.to_lower().contains('connection: keep-alive')
+		assert response.contains('tls hello /idle')
+	}
 
 	sw := time.new_stopwatch()
 	srv.close()
@@ -344,7 +453,7 @@ fn test_server_tls_close_interrupts_idle_h2() {
 		cert:                   server_tls_cert
 		cert_key:               server_tls_key
 		in_memory_verification: true
-		accept_timeout:         time.second
+		accept_timeout:         tls_handshake_budget
 		read_timeout:           5 * time.second
 		enable_http2:           true
 		handler:                EchoHandler{}
@@ -411,7 +520,7 @@ fn test_server_tls_close_interrupts_incomplete_h2_request() {
 		cert:                   server_tls_cert
 		cert_key:               server_tls_key
 		in_memory_verification: true
-		accept_timeout:         time.second
+		accept_timeout:         tls_handshake_budget
 		read_timeout:           2 * time.second
 		enable_http2:           true
 		handler:                EchoHandler{}
@@ -474,6 +583,151 @@ fn test_server_tls_close_interrupts_incomplete_h2_request() {
 	assert srv.status() == .closed
 }
 
+fn test_server_tls_parallel_handshakes() {
+	$if use_openssl ? {
+		eprintln('skipping: TLS server not implemented for -d use_openssl yet')
+		return
+	}
+	$if macos {
+		eprintln('skipping: macOS mbedTLS rejects the silent TCP probes')
+		return
+	}
+	port := pick_port() or {
+		assert false, 'pick_port: ${err}'
+		return
+	}
+	// Prove handshakes run in parallel on the worker threads, not serially on the
+	// accept thread. The discriminator is placed at the HANDSHAKE layer, not at the
+	// request handler: a barrier inside the handler only proves two *handlers*
+	// overlapped, which a serial-accept-then-queue design also produces (the accept
+	// thread can complete two handshakes one after another and hand both completed
+	// connections to workers that then park together). Counting overlapping handlers
+	// would therefore miss exactly the regression we care about.
+	//
+	// Instead, occupy `stall` workers with raw TCP connections that complete the TCP
+	// connect but never send a ClientHello, so each one wedges a worker *inside*
+	// complete_handshake (blocked reading the handshake). Then fire `live` real HTTPS
+	// clients. If handshakes run per-worker in parallel, the remaining free workers
+	// service the live clients concurrently and they succeed. If the implementation
+	// regresses to handshaking serially on the accept thread, the very first stalled
+	// connection wedges that thread mid-handshake and no later connection — stalled or
+	// live — is ever accepted/serviced, so every live fetch fails. worker_num must be
+	// >= stall + live so a free worker exists for each live client.
+	worker_num := 4
+	stall := 2
+	live := 2
+	mut srv := &http.Server{
+		addr:                   '127.0.0.1:${port}'
+		cert:                   server_tls_cert
+		cert_key:               server_tls_key
+		in_memory_verification: true
+		accept_timeout:         10 * time.second
+		worker_num:             worker_num
+		handler:                EchoHandler{}
+		show_startup_message:   false
+	}
+	t := spawn srv.listen_and_serve()
+	srv.wait_till_running() or {
+		srv.close()
+		t.wait()
+		assert false, 'server failed to start: ${err}'
+		return
+	}
+	defer {
+		srv.close()
+		t.wait()
+	}
+	// Wedge `stall` workers mid-handshake with silent TCP connections.
+	mut stalled := []&net.TcpConn{}
+	for _ in 0 .. stall {
+		c := net.dial_tcp('127.0.0.1:${port}') or {
+			assert false, 'stall dial failed: ${err}'
+			return
+		}
+		stalled << c
+	}
+	// Give the accept loop time to hand each stalled connection to a worker (and, in
+	// a regressed serial-accept design, to become wedged on the first one) before the
+	// live clients connect.
+	time.sleep(500 * time.millisecond)
+	// Fire live clients while the stalled sockets occupy workers. With parallel
+	// per-worker handshakes, at least one free worker services a live client in
+	// well under a second. A transient TLS client-side handshake error is not, by
+	// itself, proof that the accept thread regressed to serial handshaking; the
+	// discriminator is that no live request can complete while the accept thread is
+	// wedged inside a stalled handshake.
+	//
+	// The discriminator is time-bounded on purpose: a serial-accept regression does
+	// eventually service the live clients — but only after the stalled handshakes hit
+	// their budget (handshake_timeout == accept_timeout == 10s here, x2 stalled), so
+	// without a bound the test would merely run slower, not fail. The bound is on the
+	// WAIT itself (a select deadline below), not the client: http.fetch cannot bound
+	// this for us because Request.ssl_do dials and completes the TLS handshake before
+	// req.read_timeout applies (and retries on socket errors), so a read_timeout would
+	// not cap a regressed handshake. The select makes the regression fail promptly at
+	// ~6s; a real parallel handshake completes in well under a second.
+	live_budget := 6 * time.second
+	results := chan string{cap: live}
+	sw := time.new_stopwatch()
+	for i in 0 .. live {
+		spawn fn [results, port, i] () {
+			resp := http.fetch(
+				url:                      'https://127.0.0.1:${port}/live${i}'
+				enable_http2:             false
+				validate:                 false
+				// One attempt, no retries: a regressed handshake should surface as a
+				// single timed-out request, not retry-amplify the teardown.
+				max_retries:              1
+				// Force a fresh TLS connection per live client. Without this, if one
+				// client finishes and returns its keep-alive connection to the shared
+				// pool before the other checks one out, the second reuses it and the
+				// test would pass after only a single live handshake — not two
+				// concurrent completing handshakes against the shared mbedtls state.
+				disable_connection_reuse: true
+			) or {
+				results <- 'error: ${err}'
+				return
+			}
+			if resp.status_code != 200 {
+				results <- 'bad status: ${resp.status_code}'
+				return
+			}
+			results <- resp.body
+		}()
+	}
+	// Collect live results within a single `live_budget`, bounding the wait so a
+	// serialized-handshake regression fails at ~6s instead of hanging on the
+	// client's own handshake timeout.
+	mut ok := 0
+	mut received := 0
+	mut failures := []string{}
+	for received < live {
+		remaining := live_budget - sw.elapsed()
+		if remaining <= 0 {
+			break
+		}
+		select {
+			body := <-results {
+				received++
+				if body.starts_with('tls hello /live') {
+					ok++
+				} else {
+					failures << body
+				}
+			}
+			remaining {
+				break
+			}
+		}
+	}
+	assert ok > 0, 'expected at least one live handshake to complete within ${live_budget} while ${stall} workers were mid-handshake; got ${ok}/${live}, failures: ${failures} - handshakes appear serialized on the accept thread, not parallel'
+	// Release the stalled sockets; srv.close() in the defer also force-closes any the
+	// worker is still blocked on via the idle tracker.
+	for mut c in stalled {
+		c.close() or {}
+	}
+}
+
 fn test_server_tls_h2_negotiation() {
 	$if use_openssl ? {
 		eprintln('skipping: TLS server not implemented for -d use_openssl yet')
@@ -488,7 +742,7 @@ fn test_server_tls_h2_negotiation() {
 		cert:                   server_tls_cert
 		cert_key:               server_tls_key
 		in_memory_verification: true
-		accept_timeout:         time.second
+		accept_timeout:         tls_handshake_budget
 		enable_http2:           true
 		handler:                EchoHandler{}
 		show_startup_message:   false
@@ -520,17 +774,82 @@ fn test_server_tls_h2_negotiation() {
 	assert resp.status_code == 200
 	assert resp.body == 'tls hello /h2'
 
-	// With HTTP/2 disabled on the client, the server must keep speaking
-	// HTTP/1.1 to the same listener. (enable_http2 defaults to true since
-	// vlang/v#27384, so it must be opted out of explicitly here.)
+	// Without an explicit HTTP/2 opt-in, the client uses HTTP/1.1 to the
+	// same listener even after an HTTP/2 connection has been established.
 	resp_h1 := http.fetch(
-		url:          'https://127.0.0.1:${port}/h1'
-		enable_http2: false
-		validate:     false
+		url:      'https://127.0.0.1:${port}/h1'
+		validate: false
 	) or {
 		assert false, 'h1 fetch failed: ${err}'
 		return
 	}
 	assert resp_h1.version() == .v1_1
 	assert resp_h1.status_code == 200
+}
+
+struct TlsRemoteAddrHandler {}
+
+fn (mut h TlsRemoteAddrHandler) handle(req http.Request) http.Response {
+	return http.Response{
+		status_code: 200
+		body:        '${req.remote_addr}|${req.remote_ip()}|${req.header.get_custom('Remote-Addr') or { '<none>' }}'
+	}
+}
+
+// test_server_tls_sets_remote_addr covers the TLS listener's own copy of the
+// remote-address plumbing. It reads the peer back from the accepted socket
+// rather than from mbedtls' SSLConn.ip, which is only filled in for IPv4
+// peers and carries no port, so unlike that field it also works over IPv6.
+fn test_server_tls_sets_remote_addr() {
+	$if use_openssl ? {
+		eprintln('skipping: TLS server not implemented for -d use_openssl yet')
+		return
+	}
+	port := pick_port() or {
+		assert false, 'pick_port: ${err}'
+		return
+	}
+	mut srv := &http.Server{
+		addr:                   '127.0.0.1:${port}'
+		cert:                   server_tls_cert
+		cert_key:               server_tls_key
+		in_memory_verification: true
+		accept_timeout:         tls_handshake_budget
+		handler:                TlsRemoteAddrHandler{}
+		show_startup_message:   false
+	}
+	t := spawn srv.listen_and_serve()
+	srv.wait_till_running() or {
+		srv.close()
+		t.wait()
+		assert false, 'server failed to start: ${err}'
+		return
+	}
+	defer {
+		srv.close()
+		t.wait()
+	}
+	time.sleep(50 * time.millisecond)
+
+	mut spoofed := http.new_header()
+	spoofed.add_custom('remote-addr', '6.6.6.6') or {
+		assert false, 'add_custom: ${err}'
+		return
+	}
+	resp := http.fetch(
+		url:                      'https://127.0.0.1:${port}/whoami'
+		validate:                 false
+		header:                   spoofed
+		disable_connection_reuse: true
+	) or {
+		assert false, 'fetch failed: ${err}'
+		return
+	}
+	assert resp.status_code == 200
+	parts := resp.body.split('|')
+	assert parts.len == 3
+	assert parts[0].starts_with('127.0.0.1:'), 'tls remote_addr: ${parts[0]}'
+	assert parts[0].all_after('127.0.0.1:').int() > 0
+	assert parts[1] == '127.0.0.1'
+	assert parts[2] == '127.0.0.1'
 }

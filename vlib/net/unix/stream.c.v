@@ -74,13 +74,11 @@ pub fn (mut c StreamConn) write_ptr(b &u8, len int) !int {
 		eprintln('>>> StreamConn.write_ptr | c: ${ptr_str(c)} | c.sock.handle: ${c.sock.handle} | b: ${ptr_str(b)} | len: ${len}')
 	}
 	$if trace_unix ? {
-		eprintln(
-			'>>> StreamConn.write_ptr | c.sock.handle: ${c.sock.handle} | b: ${ptr_str(b)} len: ${len} |\n' +
+		eprintln('>>> StreamConn.write_ptr | c.sock.handle: ${c.sock.handle} | b: ${ptr_str(b)} len: ${len} |\n' +
 			unsafe { b.vstring_with_len(len) })
 	}
 	$if trace_unix_data_write ? {
-		eprintln(
-			'>>> StreamConn.write_ptr | data.len: ${len:6} | hex: ${unsafe { b.vbytes(len) }.hex()} | data: ' +
+		eprintln('>>> StreamConn.write_ptr | data.len: ${len:6} | hex: ${unsafe { b.vbytes(len) }.hex()} | data: ' +
 			unsafe { b.vstring_with_len(len) })
 	}
 	unsafe {
@@ -134,8 +132,7 @@ pub fn (mut c StreamConn) read_ptr(buf_ptr &u8, len int) !int {
 	}
 	if res > 0 {
 		$if trace_unix_data_read ? {
-			eprintln(
-				'<<< StreamConn.read_ptr  | 1 data.len: ${res:6} | hex: ${unsafe { buf_ptr.vbytes(res) }.hex()} | data: ' +
+			eprintln('<<< StreamConn.read_ptr  | 1 data.len: ${res:6} | hex: ${unsafe { buf_ptr.vbytes(res) }.hex()} | data: ' +
 				unsafe { buf_ptr.vstring_with_len(res) })
 		}
 		return res
@@ -153,8 +150,7 @@ pub fn (mut c StreamConn) read_ptr(buf_ptr &u8, len int) !int {
 		}
 		$if trace_unix_data_read ? {
 			if res > 0 {
-				eprintln(
-					'<<< StreamConn.read_ptr  | 2 data.len: ${res:6} | hex: ${unsafe { buf_ptr.vbytes(res) }.hex()} | data: ' +
+				eprintln('<<< StreamConn.read_ptr  | 2 data.len: ${res:6} | hex: ${unsafe { buf_ptr.vbytes(res) }.hex()} | data: ' +
 					unsafe { buf_ptr.vstring_with_len(res) })
 			}
 		}
@@ -365,7 +361,7 @@ pub fn (mut l StreamListener) unlink() ! {
 pub fn (mut l StreamListener) unlink_on_signal(signum os.Signal) ! {
 	os.signal_opt(.int, fn [mut l] (sign os.Signal) {
 		$if trace_unix ? {
-			eprintln('	StreamListener.unlink_on_signal received signal ${sign}; unlinking unix socket ${l.sock.socket_path}')
+			eprintln('\tStreamListener.unlink_on_signal received signal ${sign}; unlinking unix socket ${l.sock.socket_path}')
 		}
 		l.unlink() or {}
 		exit(1)
@@ -416,7 +412,8 @@ fn (mut s StreamSocket) select(test Select, timeout time.Duration) !bool {
 
 // set_option sets an option on the socket
 fn (mut s StreamSocket) set_option(level int, opt int, value int) ! {
-	net.socket_error(C.setsockopt(s.handle, level, opt, &value, sizeof(int)))!
+	v := i32(value) // C socket options are 4-byte `int`; pass i32 storage (sizeof 4)
+	net.socket_error(C.setsockopt(s.handle, level, opt, &v, sizeof(v)))!
 }
 
 // set_option_bool sets a boolean option on the socket
@@ -466,7 +463,7 @@ fn (mut s StreamSocket) connect(socket_path string) ! {
 				// The socket is nonblocking and the connection cannot be completed
 				// immediately. Wait till the socket is ready to write
 				write_result := s.select(.write, connect_timeout)!
-				err := 0
+				err := i32(0) // SO_ERROR is a C `int`; i32 storage keeps &err int* and sizeof 4
 				len := sizeof(err)
 				// determine whether connect() completed successfully (SO_ERROR is zero)
 				xyz := C.getsockopt(s.handle, C.SOL_SOCKET, C.SO_ERROR, &err, &len)

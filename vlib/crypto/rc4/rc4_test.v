@@ -12,7 +12,7 @@ fn test_cfb_stream_cipher() ! {
 	key := 'tthisisourrc4key'.bytes()
 	c := rc4.new_cipher(key)!
 
-	s := StreamCipher{
+	_ := StreamCipher{
 		cipher: c
 	}
 }

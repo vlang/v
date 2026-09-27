@@ -10,7 +10,8 @@ import sokol.memory as _
 // Platform-specific library linking
 // X11 is the default on Linux
 // Use `-d sokol_wayland` to enable Wayland support
-#flag linux -DSOKOL_GLCORE
+#flag linux -DSOKOL_GLCORE -USOKOL_D3D11 -USOKOL_GLES3 -USOKOL_METAL -USOKOL_VULKAN -USOKOL_WGPU
+
 $if sokol_wayland ? {
 	#flag linux -lwayland-client -lwayland-egl -lxkbcommon -lxkbcommon-x11 -lEGL -lGL -lpthread -lm -ldl -lX11 -lXi -lXcursor
 } $else {
@@ -20,15 +21,21 @@ $if sokol_wayland ? {
 	// XWayland sessions.
 	#flag linux -lX11 -lXi -lXcursor -lEGL -lGL -lpthread -lm -ldl
 }
+
 #flag freebsd -DSOKOL_GLCORE
 #flag freebsd -L/usr/local/lib -lX11 -lGL -lXcursor -lXi
 #flag openbsd -DSOKOL_GLCORE
 #flag openbsd -I/usr/X11R6/include -L/usr/X11R6/lib -lX11 -lGL -lXcursor -lXi
-#flag windows -DSOKOL_GLCORE
 #flag windows -lgdi32
 
 $if windows {
-	#flag windows -lopengl32
+	$if sokol_d3d11 ? {
+		#flag windows -DSOKOL_D3D11
+		#flag windows -ld3d11 -ldxgi
+	} $else {
+		#flag windows -DSOKOL_GLCORE
+		#flag windows -lopengl32
+	}
 	$if msvc {
 		$if livemain ? {
 			#define SOKOL_DLL
@@ -54,6 +61,9 @@ $if macos {
 		#flag darwin -DSOKOL_GLCORE -framework OpenGL -framework Cocoa -framework QuartzCore
 	} $else {
 		#flag -DSOKOL_METAL
+		$if gg_multiwindow ? {
+			#flag darwin -DV_SOKOL_MTL_END_PASS_HOOK
+		}
 		#flag -framework Metal -framework Cocoa -framework MetalKit -framework QuartzCore
 	}
 }
@@ -78,10 +88,6 @@ $if emscripten ? {
 	// https://github.com/emscripten-core/emscripten/issues/7950
 	//	#flag -s MODULARIZE
 }
-
-// D3D
-//#flag windows -DSOKOL_D3D11
-#flag windows -DSOKOL_GLCORE
 
 // for simplicity, all header includes are here because import order matters and we dont have any way
 // to ensure import order with V yet
@@ -140,6 +146,7 @@ $if windows && sharedlive ? {
 	@[use_once]
 	#define SOKOL_GFX_IMPL
 }
+
 #define SOKOL_NO_DEPRECATED
 #include "sokol_gfx.h"
 
@@ -148,6 +155,7 @@ $if windows && sharedlive ? {
 	@[use_once]
 	#define SOKOL_IMPL
 }
+
 #include "util/sokol_gl.h"
 
 #include "sokol_v.post.h"

@@ -140,6 +140,7 @@ pub fn method_from_str(m string) Method {
 		'UPDATE' { Method.update }
 		'UPDATEREDIRECTREF' { Method.updateredirectref }
 		'VERSION-CONTROL' { Method.version_control }
-		else { Method.get } // always default to .get, it is the safest
+		else { Method.get }
 	}
+	// always default to .get, it is the safest
 }

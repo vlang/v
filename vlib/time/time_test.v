@@ -530,3 +530,12 @@ fn test_is_zero() {
 		is_local: true
 	}.is_zero()
 }
+
+fn test_unix_now() {
+	before := time.utc().unix()
+	un := time.unix_now()
+	after := time.utc().unix()
+	// second resolution: allow the boundary tick in either direction
+	assert un >= before - 1
+	assert un <= after + 1
+}

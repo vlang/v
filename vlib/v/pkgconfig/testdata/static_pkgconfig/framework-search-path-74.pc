@@ -1,0 +1,4 @@
+Name: framework-search-path-74
+Description: Framework search path precedence fixture
+Version: 1.0.0
+Libs: -F/sdk1 -F/sdk2 -F/sdk1 -framework Foo

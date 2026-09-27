@@ -1,17 +1,9 @@
 // Copyright (c) 2019-2024 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
-
 module rand
 
-struct ReadError {
-	Error
-}
-
-// msg returns the error message.
-pub fn (err ReadError) msg() string {
-	return 'crypto.rand.read() error reading random bytes'
-}
+import crypto.rand.internal
 
 // bytes returns an array of `bytes_needed` random bytes.
 // Note: this call can block your program for a long period of time,
@@ -20,5 +12,10 @@ pub fn (err ReadError) msg() string {
 // but instead pseudo random ones, from a pseudo random generator
 // that can be seeded, and that is usually faster.
 pub fn bytes(bytes_needed int) ![]u8 {
-	return read(bytes_needed)
+	return internal.bytes(bytes_needed)
+}
+
+// read fills `buffer` with random bytes from the OS.
+pub fn read(mut buffer []u8) ! {
+	internal.read(mut buffer)!
 }

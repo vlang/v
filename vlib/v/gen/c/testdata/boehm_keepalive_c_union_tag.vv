@@ -17,9 +17,15 @@ fn consume(n int) {
 	_ = n
 }
 
+fn trigger_root_union(data C.my_data) {
+	fd := unsafe { data.fd }
+	consume(fd)
+}
+
 fn main() {
 	mut ev := C.my_event{}
 	ev.data.fd = 42
 	fd := unsafe { ev.data.fd }
 	consume(fd)
+	trigger_root_union(ev.data)
 }

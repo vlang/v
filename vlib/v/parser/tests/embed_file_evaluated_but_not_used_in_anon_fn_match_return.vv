@@ -1,0 +1,15 @@
+import v.embed_file
+
+fn main() {
+	n := 0
+	'' == fn () embed_file.EmbedFileData {
+		match n {
+			0 {
+				return $embed_file(@FILE)
+			}
+			else {
+				return $embed_file(@FILE)
+			}
+		}
+	}().path
+}

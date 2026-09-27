@@ -1,0 +1,15 @@
+vlib/v/checker/tests/generic_sumtype_alias_distinct_variant_match.vv:8:3: error: `GenericAliasBox[string]` has no variant `GenericAliasB`.
+Did you mean `GenericAliasA`?
+    6 |     value := GenericAliasBox[string](GenericAliasA(1))
+    7 |     match value {
+    8 |         GenericAliasB {
+      |         ~~~~~~~~~~~~~
+    9 |             println('bad')
+   10 |         }
+vlib/v/checker/tests/generic_sumtype_alias_distinct_variant_match.vv:7:2: error: match must be exhaustive (add match branches for: `GenericAliasA` or `else {}` at the end)
+    5 | fn main() {
+    6 |     value := GenericAliasBox[string](GenericAliasA(1))
+    7 |     match value {
+      |     ~~~~~~~~~~~~~
+    8 |         GenericAliasB {
+    9 |             println('bad')

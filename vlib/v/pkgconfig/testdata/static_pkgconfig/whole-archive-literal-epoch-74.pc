@@ -1,0 +1,4 @@
+Name: whole-archive-literal-epoch-74
+Description: Literal archive inside a balanced whole-archive epoch
+Version: 1.0.0
+Libs: -Wl,--whole-archive /issue74/libliteral-epoch.a -Wl,--no-whole-archive

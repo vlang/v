@@ -1,1 +1,8 @@
+vlib/v/tests/skip_unused/json_decode_u32.vv:3:1: warning: module `json` has been deprecated; `json` will be removed soon; use the pure V `json2` module instead
+    1 | module main
+    2 |
+    3 | import json
+      | ~~~~~~~~~~~
+    4 |
+    5 | struct Message {
 []

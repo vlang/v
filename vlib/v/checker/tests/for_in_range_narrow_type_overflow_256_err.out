@@ -1,0 +1,6 @@
+vlib/v/checker/tests/for_in_range_narrow_type_overflow_256_err.vv:2:11: error: `high` value `256` does not fit in the range value type `u8` (max `255`); the loop variable would overflow and the loop would never terminate
+    1 | fn main() {
+    2 |     for b in u8(0) .. 256 {
+      |              ~~~~~~~~~~~~
+    3 |         println(b)
+    4 |     }

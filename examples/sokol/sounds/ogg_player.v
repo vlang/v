@@ -47,7 +47,9 @@ mut:
 	stream_len_seconds f32
 	xerror             vorbis.VorbisErrorCode
 	allocator          C.stb_vorbis_alloc = C.stb_vorbis_alloc{
-		alloc_buffer:                 0
+		// The allocator starts with no backing buffer (zero length); a real buffer is
+		// installed before `stb_vorbis` decodes, so the null pointer is valid here.
+		alloc_buffer:                 unsafe { nil }
 		alloc_buffer_length_in_bytes: 0
 	}
 	decoder            &C.stb_vorbis // TODO: cgen error with -cstrict -gcc, when this is = unsafe { nil } here
@@ -103,8 +105,8 @@ fn (mut p Player) play_ogg_file(fpath string) ! {
 	if !(p.channels == p.stream_channels && p.sample_rate == p.stream_rate) {
 		audio.shutdown()
 		audio.setup(
-			num_channels: p.stream_channels
-			sample_rate:  int(p.stream_rate)
+			num_channels: i32(p.stream_channels)
+			sample_rate:  i32(p.stream_rate)
 		)
 		p.sample_rate = audio.sample_rate()
 		p.channels = audio.channels()

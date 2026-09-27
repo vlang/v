@@ -244,6 +244,22 @@ fn flag_default_value[T](value T) string {
 	}
 }
 
+fn flag_default_bool_value(value bool) string {
+	return '${value}'
+}
+
+fn flag_default_int_value(value int) string {
+	return '${value}'
+}
+
+fn flag_default_float_value(value f64) string {
+	return '${value}'
+}
+
+fn flag_default_string_value(value string) string {
+	return '"${escape_default_string(value)}"'
+}
+
 fn (mut fs FlagParser) bool_flag(name string, abbr u8, usage string, c FlagConfig, default_value ?string) !bool {
 	val_desc := flag_value_description(c, '<bool>')
 	fs.add_flag(name, abbr, usage, val_desc, default_value)
@@ -417,7 +433,9 @@ pub fn (mut fs FlagParser) bool_opt(name string, abbr u8, usage string, c FlagCo
 // This version supports abbreviations.
 // This version supports a custom value description.
 pub fn (mut fs FlagParser) bool(name string, abbr u8, bdefault bool, usage string, c FlagConfig) bool {
-	value := fs.bool_flag(name, abbr, usage, c, flag_default_value(bdefault)) or { return bdefault }
+	value := fs.bool_flag(name, abbr, usage, c, flag_default_bool_value(bdefault)) or {
+		return bdefault
+	}
 	return value
 }
 
@@ -458,7 +476,9 @@ pub fn (mut fs FlagParser) int_opt(name string, abbr u8, usage string, c FlagCon
 // This version supports abbreviations.
 // This version supports a custom value description.
 pub fn (mut fs FlagParser) int(name string, abbr u8, idefault int, usage string, c FlagConfig) int {
-	value := fs.int_flag(name, abbr, usage, c, flag_default_value(idefault)) or { return idefault }
+	value := fs.int_flag(name, abbr, usage, c, flag_default_int_value(idefault)) or {
+		return idefault
+	}
 	return value
 }
 
@@ -499,7 +519,7 @@ pub fn (mut fs FlagParser) float_opt(name string, abbr u8, usage string, c FlagC
 // This version supports abbreviations.
 // This version supports a custom value description.
 pub fn (mut fs FlagParser) float(name string, abbr u8, fdefault f64, usage string, c FlagConfig) f64 {
-	value := fs.float_flag(name, abbr, usage, c, flag_default_value(fdefault)) or {
+	value := fs.float_flag(name, abbr, usage, c, flag_default_float_value(fdefault)) or {
 		return fdefault
 	}
 	return value
@@ -539,7 +559,7 @@ pub fn (mut fs FlagParser) string_opt(name string, abbr u8, usage string, c Flag
 // This version supports abbreviations.
 // This version supports a custom value description.
 pub fn (mut fs FlagParser) string(name string, abbr u8, sdefault string, usage string, c FlagConfig) string {
-	value := fs.string_flag(name, abbr, usage, c, flag_default_value(sdefault)) or {
+	value := fs.string_flag(name, abbr, usage, c, flag_default_string_value(sdefault)) or {
 		return sdefault
 	}
 	return value

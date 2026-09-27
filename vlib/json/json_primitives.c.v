@@ -1,6 +1,7 @@
 // Copyright (c) 2019-2024 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
+@[deprecated: '`json` will be removed soon; use the pure V `json2` module instead']
 module json
 
 import math
@@ -341,8 +342,7 @@ fn json_ascii_string(val string) string {
 						unsafe { output.push_many(hex_string.str, 4) }
 					} else {
 						unicode_point_low := u32(character) - 0x10000
-						surrogate_pair := '\\u${0xD800 + ((unicode_point_low >> 10) & 0x3FF):04X}\\u${
-							0xDC00 + (unicode_point_low & 0x3FF):04x}'
+						surrogate_pair := '\\u${0xD800 + ((unicode_point_low >> 10) & 0x3FF):04X}\\u${0xDC00 + (unicode_point_low & 0x3FF):04x}'
 						unsafe { output.push_many(surrogate_pair.str, surrogate_pair.len) }
 					}
 				} else {

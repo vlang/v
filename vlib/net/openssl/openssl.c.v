@@ -1,6 +1,6 @@
 module openssl
 
-#define OPENSSL_API_COMPAT 0x30000000L
+#define OPENSSL_API_COMPAT 0x10100000L
 
 // On Linux, prefer a locally built openssl, because it is
 // much more likely for it to be newer, than the system
@@ -23,7 +23,7 @@ module openssl
 #flag windows -IC:/Program Files/OpenSSL/include
 #flag windows -LC:/Program Files/OpenSSL/lib/VC/x64/MD
 
-$if $pkgconfig('openssl') {
+$if $pkgconfig ( 'openssl' ) {
 	#pkgconfig --cflags --libs openssl
 } $else {
 	#flag windows -l libssl -l libcrypto
@@ -44,6 +44,7 @@ $if $pkgconfig('openssl') {
 #include <openssl/rand.h> # Please install OpenSSL development headers
 #include <openssl/ssl.h>
 #include <openssl/err.h>
+#include <openssl/x509v3.h>
 #insert "@VEXEROOT/vlib/net/openssl/openssl_compat.h"
 
 @[typedef]
@@ -103,13 +104,31 @@ fn C.SSL_CTX_set_options(ctx &C.SSL_CTX, options i32)
 
 fn C.SSL_CTX_set_verify_depth(s &C.SSL_CTX, depth i32)
 
-fn C.SSL_CTX_load_verify_locations(ctx &C.SSL_CTX, const_file &char, ca_path &char) i32
+fn C.SSL_CTX_set_verify(ctx &C.SSL_CTX, mode int, verify_callback voidptr)
+
+fn C.SSL_CTX_set_default_verify_paths(ctx &C.SSL_CTX) int
+
+fn C.SSL_CTX_load_verify_locations(ctx &C.SSL_CTX, const_file &char, const_ca_path &char) i32
 
 fn C.SSL_CTX_free(ctx &C.SSL_CTX)
 
 fn C.SSL_CTX_use_certificate_file(ctx &C.SSL_CTX, const_file &char, file_type i32) i32
 
+fn C.SSL_CTX_use_certificate_chain_file(ctx &C.SSL_CTX, const_file &char) i32
+
 fn C.SSL_CTX_use_PrivateKey_file(ctx &C.SSL_CTX, const_file &char, file_type i32) i32
+
+fn C.v_net_openssl_SSL_CTX_use_certificate_chain_memory(ctx &C.SSL_CTX, data &u8, len usize) i32
+
+fn C.v_net_openssl_SSL_CTX_extra_chain_certs_count(ctx &C.SSL_CTX) int
+
+fn C.v_net_openssl_SSL_CTX_use_PrivateKey_memory(ctx &C.SSL_CTX, data &u8, len usize) i32
+
+fn C.v_net_openssl_SSL_CTX_load_verify_memory(ctx &C.SSL_CTX, data &u8, len usize) i32
+
+fn C.v_net_openssl_SSL_CTX_load_client_CA_file(ctx &C.SSL_CTX, const_file &char) i32
+
+fn C.v_net_openssl_SSL_CTX_client_CA_names_count(ctx &C.SSL_CTX) int
 
 fn C.SSL_new(&C.SSL_CTX) &C.SSL
 
@@ -123,9 +142,19 @@ fn C.SSL_set_cipher_list(ctx &C.SSL, str &char) i32
 
 fn C.v_net_openssl_get1_peer_certificate(ssl &C.SSL) &C.X509
 
+fn C.v_net_openssl_has_x509_identity_checks() int
+
 fn C.X509_free(const_cert &C.X509)
 
+fn C.v_net_openssl_x509_check_host(const_cert &C.X509, const_name &char, name_len usize, flags u32, peer_name &&char) int
+
+fn C.v_net_openssl_x509_check_ip_asc(const_cert &C.X509, const_ip_asc &char, flags u32) int
+
 fn C.ERR_clear_error()
+
+fn C.ERR_get_error() u64
+
+fn C.ERR_error_string_n(e u64, buf &char, len usize)
 
 fn C.SSL_get_error(ssl &C.SSL, ret i32) i32
 
@@ -143,6 +172,8 @@ fn C.v_net_openssl_set_alpn_protos(ssl &C.SSL, protos &u8, protos_len u32) i32
 
 fn C.v_net_openssl_get0_alpn_selected(ssl &C.SSL, data voidptr, len &u32)
 
+fn C.v_net_openssl_SSL_CTX_set_alpn_select_protos(ctx &C.SSL_CTX, protos &u8, protos_len u32) voidptr
+
 fn C.SSL_shutdown(&C.SSL) i32
 
 fn C.SSL_free(&C.SSL)
@@ -155,12 +186,39 @@ fn C.SSLv23_client_method() &C.SSL_METHOD
 
 fn C.TLS_method() voidptr
 
+fn C.v_net_openssl_TLS_server_method() &C.SSL_METHOD
+
 fn C.TLSv1_2_method() voidptr
+
+fn C.SSL_CTX_check_private_key(ctx &C.SSL_CTX) i32
+
+fn C.SSL_accept(ssl &C.SSL) i32
 
 fn C.v_net_openssl_init_ssl() i32
 
 fn init() {
 	C.v_net_openssl_init_ssl()
+}
+
+// ssl_get_error_queue drains the current thread's OpenSSL error queue and
+// returns a human-readable, semicolon-separated description of every queued
+// entry (oldest first), or an empty string if the queue is empty. It always
+// leaves the queue empty afterwards: this both turns the otherwise opaque
+// `SSL_ERROR_SSL`/`SSL_ERROR_SYSCALL` codes into actionable messages, and
+// prevents a leftover entry from making a later SSL_get_error() misreport the
+// status of the next, unrelated I/O operation.
+fn ssl_get_error_queue() string {
+	mut reasons := []string{}
+	for {
+		code := C.ERR_get_error()
+		if code == 0 {
+			break
+		}
+		mut buf := [256]char{}
+		C.ERR_error_string_n(code, &buf[0], usize(buf.len))
+		reasons << unsafe { cstring_to_vstring(&buf[0]) }
+	}
+	return reasons.join('; ')
 }
 
 // ssl_error returns non error ssl code or error if unrecoverable and we should panic
@@ -171,10 +229,15 @@ fn ssl_error(ret int, ssl voidptr) !SSLError {
 	}
 	match unsafe { SSLError(res) } {
 		.ssl_error_syscall {
-			return error_with_code('net.openssl unrecoverable syscall (${res})', res)
+			details := ssl_get_error_queue()
+			suffix := if details == '' { '' } else { ': ${details}' }
+			return error_with_code('net.openssl unrecoverable syscall (${res})${suffix}', res)
 		}
 		.ssl_error_ssl {
-			return error_with_code('net.openssl unrecoverable ssl protocol error (${res})', res)
+			details := ssl_get_error_queue()
+			suffix := if details == '' { '' } else { ': ${details}' }
+			return error_with_code('net.openssl unrecoverable ssl protocol error (${res})${suffix}',
+				res)
 		}
 		else {
 			return unsafe { SSLError(res) }

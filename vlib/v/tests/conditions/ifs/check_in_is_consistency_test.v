@@ -6,7 +6,7 @@ struct Test {
 }
 
 fn check[T](val T) string {
-	$if T in [?int, ?int] {
+	$if T in [ ?int, ?int] {
 		return 'option int'
 	}
 	$if T in [int, int] {
@@ -18,7 +18,7 @@ fn check[T](val T) string {
 fn check2[T](val T) string {
 	mut str := string{}
 	$for field in T.fields {
-		$if field.typ in [?int, ?int] {
+		$if field.typ in [ ?int, ?int] {
 			str += 'option int'
 		}
 		$if field.typ in [int, int] {

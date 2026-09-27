@@ -47,6 +47,9 @@ pub fn sleep(dur Duration) {
 }
 
 fn time_with_unix(t Time) Time {
+	if t.has_location() {
+		return t
+	}
 	if t.unix != 0 {
 		return t
 	}
@@ -61,6 +64,18 @@ fn time_with_unix(t Time) Time {
 	#res.unix.val = t.unix.val
 
 	return res
+}
+
+// unix_now returns the current UNIX time in seconds (UTC), i.e. the value
+// that `utc().unix()` would produce, without constructing a `Time`.
+pub fn unix_now() i64 {
+	t := i64(0)
+	// floor to whole seconds, matching UNIX `time()` on the C backend.
+	// `toFixed(0)` would round, reporting the next second for the latter
+	// half of every second and firing TTL/expiry checks up to 1s early.
+	#t.val = BigInt(Math.floor(new Date().getTime() / 1000))
+
+	return t
 }
 
 // ticks returns the number of milliseconds since the UNIX epoch.

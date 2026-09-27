@@ -10,7 +10,44 @@ pub mut:
 	vals []string
 }
 
+// NullableRow contains streamed values while preserving SQL NULL as `none`.
+pub struct NullableRow {
+pub mut:
+	vals []?string
+}
+
+// val returns the value at `index`, flattening SQL NULL to an empty string.
+pub fn (row NullableRow) val(index int) string {
+	if value := row.vals[index] {
+		return value
+	}
+	return ''
+}
+
+// values returns all row values, flattening SQL NULL to empty strings.
+pub fn (row NullableRow) values() []string {
+	mut values := []string{cap: row.vals.len}
+	for value in row.vals {
+		values << if unwrapped := value { unwrapped } else { '' }
+	}
+	return values
+}
+
+// val_opt returns the raw optional value at `index`.
+pub fn (row NullableRow) val_opt(index int) ?string {
+	return row.vals[index]
+}
+
+// RowSet contains materialized rows and their column names.
+pub struct RowSet {
+pub:
+	names []string
+	rows  []Row
+}
+
+// Field contains metadata for one column in a MySQL result set.
 pub struct Field {
+pub:
 	name             string
 	org_name         string
 	table            string
@@ -18,8 +55,8 @@ pub struct Field {
 	db               string
 	catalog          string
 	def              string
-	length           int
-	max_length       int
+	length           u64
+	max_length       u64
 	name_length      u32
 	org_name_length  u32
 	table_length     u32
@@ -31,6 +68,42 @@ pub struct Field {
 	decimals         u32
 	charsetnr        u32
 	type             FieldType
+}
+
+fn fields_from_result(result &C.MYSQL_RES) []Field {
+	if result == unsafe { nil } {
+		return []Field{}
+	}
+	mut fields := []Field{}
+	nr_cols := C.mysql_num_fields(result)
+	orig_fields := C.mysql_fetch_fields(result)
+	for i in 0 .. nr_cols {
+		unsafe {
+			fields << Field{
+				name:             mystring(orig_fields[i].name)
+				org_name:         mystring(orig_fields[i].org_name)
+				table:            mystring(orig_fields[i].table)
+				org_table:        mystring(orig_fields[i].org_table)
+				db:               mystring(orig_fields[i].db)
+				catalog:          mystring(orig_fields[i].catalog)
+				def:              resolve_nil_str(orig_fields[i].def)
+				length:           orig_fields[i].length
+				max_length:       orig_fields[i].max_length
+				name_length:      orig_fields[i].name_length
+				org_name_length:  orig_fields[i].org_name_length
+				table_length:     orig_fields[i].table_length
+				org_table_length: orig_fields[i].org_table_length
+				db_length:        orig_fields[i].db_length
+				catalog_length:   orig_fields[i].catalog_length
+				def_length:       orig_fields[i].def_length
+				flags:            orig_fields[i].flags
+				decimals:         orig_fields[i].decimals
+				charsetnr:        orig_fields[i].charsetnr
+				type:             FieldType(orig_fields[i].type)
+			}
+		}
+	}
+	return fields
 }
 
 // fetch_row fetches the next row from a result.
@@ -107,36 +180,20 @@ pub fn (r Result) fields() []Field {
 	defer {
 		thread_guard.release()
 	}
-	mut fields := []Field{}
-	nr_cols := C.mysql_num_fields(r.result)
-	orig_fields := C.mysql_fetch_fields(r.result)
-	for i in 0 .. nr_cols {
-		unsafe {
-			fields << Field{
-				name:             mystring(orig_fields[i].name)
-				org_name:         mystring(orig_fields[i].org_name)
-				table:            mystring(orig_fields[i].table)
-				org_table:        mystring(orig_fields[i].org_table)
-				db:               mystring(orig_fields[i].db)
-				catalog:          mystring(orig_fields[i].catalog)
-				def:              resolve_nil_str(orig_fields[i].def)
-				length:           orig_fields.length
-				max_length:       orig_fields.max_length
-				name_length:      orig_fields.name_length
-				org_name_length:  orig_fields.org_name_length
-				table_length:     orig_fields.table_length
-				org_table_length: orig_fields.org_table_length
-				db_length:        orig_fields.db_length
-				catalog_length:   orig_fields.catalog_length
-				def_length:       orig_fields.def_length
-				flags:            orig_fields.flags
-				decimals:         orig_fields.decimals
-				charsetnr:        orig_fields.charsetnr
-				type:             FieldType(orig_fields.type)
-			}
-		}
+	return fields_from_result(r.result)
+}
+
+// field_names returns the column names for this result set.
+pub fn (r Result) field_names() []string {
+	if r.result == unsafe { nil } {
+		return []string{}
 	}
-	return fields
+	fields := r.fields()
+	mut names := []string{cap: fields.len}
+	for field in fields {
+		names << field.name
+	}
+	return names
 }
 
 // str serializes the field.

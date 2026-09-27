@@ -2,9 +2,7 @@ module main
 
 import builtin.linux_bare.old.checks.forkedtest
 
-const (
-	sample_text_file1 = ''
-)
+const sample_text_file1 = ''
 
 fn check_fork_minimal() {
 	child := sys_fork()
@@ -164,7 +162,7 @@ fn check_read_file() {
 }
 
 fn check_open_file_fail() {
-	fd1, ec1 := sys_open('./nofilehere'.str, .o_rdonly, 0)
+	fd1, ec1 := sys_open(c'./nofilehere', .o_rdonly, 0)
 	assert fd1 == -1
 	assert ec1 == .enoent
 }
@@ -191,8 +189,7 @@ fn check_munmap_fail() {
 fn check_mmap_one_page() {
 	mp := int(Mm_prot.prot_read) | int(Mm_prot.prot_write)
 	mf := int(Map_flags.map_private) | int(Map_flags.map_anonymous)
-	mut a, e := sys_mmap(0, u64(Linux_mem.page_size), Mm_prot(mp), Map_flags(mf), -1,
-		0)
+	mut a, e := sys_mmap(0, u64(Linux_mem.page_size), Mm_prot(mp), Map_flags(mf), -1, 0)
 
 	assert e == .enoerror
 	assert a != byteptr(-1)

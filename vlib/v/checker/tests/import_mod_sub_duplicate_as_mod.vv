@@ -2,6 +2,6 @@ module json2
 
 import x.json2 as json
 
-any := json.Any(json.null)
+struct Any {}
 
-println(any)
+println(json.Any{})

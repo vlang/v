@@ -1,0 +1,35 @@
+fn test_same_module_const_shadow_is_moved() {
+	cache := Payload{
+		values: ["local"]
+	}
+	dst := cache
+	assert dst.values[0] == "local"
+}
+
+fn test_same_module_const_projections_are_cloned() {
+	drop_same_module_const_field_projection()
+	assert cache.values[0] == "constant"
+
+	mut payload := cached_payloads[0]
+	payload.values[0] = "index copy"
+	assert cached_payloads[0].values[0] == "cached"
+}
+
+fn test_same_typed_const_array_argument_is_cloned() {
+	assert consume_cached_payloads(cached_payloads) == "cached"
+	assert consume_cached_payloads(cached_payloads) == "cached"
+}
+
+fn main() {
+	holder := &Holder{
+		left: Payload{
+			values: ["left"]
+		}
+		right: Payload{
+			values: ["right"]
+		}
+	}
+	test_same_module_const_shadow_is_moved()
+	test_same_module_const_projections_are_cloned()
+	test_same_typed_const_array_argument_is_cloned()
+}

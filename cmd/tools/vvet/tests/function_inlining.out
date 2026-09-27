@@ -1,0 +1,1 @@
+cmd/tools/vvet/tests/function_inlining.vv:2: notice: add fn might be inlined (possibly called at least 10 times)

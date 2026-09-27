@@ -1,5 +1,5 @@
 // fixes https://github.com/vlang/v/issues/11564, test is copied from the code by https://github.com/ken0x0a and formatted
-import x.json2
+import json2
 
 struct SA {}
 

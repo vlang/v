@@ -24,9 +24,9 @@ fn test_vectors() {
 				md.write(tv.i.bytes()) or { panic(err) }
 			} else {
 				half := tv.i.len / 2
-				md.write(tv.i.bytes()[0..tv.i.len / 2]) or { panic(err) }
+				md.write(tv.i.bytes()[..half]) or { panic(err) }
 				md.sum([])
-				md.write(tv.i.bytes()[tv.i.len / 2..]) or { panic(err) }
+				md.write(tv.i.bytes()[half..]) or { panic(err) }
 			}
 			assert md.sum([]).hex() == tv.o
 			assert ripemd160.hexhash(tv.i) == tv.o

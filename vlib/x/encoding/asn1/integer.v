@@ -4,7 +4,7 @@
 module asn1
 
 import math.big
-import crypto.internal.subtle
+import crypto.subtle
 
 // default_integer_tag is the default of ASN.1 INTEGER type.
 pub const default_integer_tag = Tag{.universal, false, int(TagType.integer)}

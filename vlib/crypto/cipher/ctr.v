@@ -11,7 +11,7 @@
 // See NIST SP 800-38A, pp 13-15
 module cipher
 
-import crypto.internal.subtle
+import crypto.subtle
 
 struct Ctr {
 mut:
