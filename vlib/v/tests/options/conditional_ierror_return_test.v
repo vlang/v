@@ -16,6 +16,25 @@ fn conditional_error_payload(eof bool) !IError {
 	return if eof { IError(io.Eof{}) } else { IError(io.NotExpected{}) }
 }
 
+fn nested_conditional_number(outer bool, inner bool) !int {
+	return if outer {
+		if inner { IError(io.Eof{}) } else { 11 }
+	} else {
+		22
+	}
+}
+
+fn nested_match_number(outer bool, choice int) !int {
+	return if outer {
+		match choice {
+			0 { IError(io.Eof{}) }
+			else { 11 }
+		}
+	} else {
+		22
+	}
+}
+
 fn test_conditional_ierror_is_result_failure() {
 	assert conditional_number(false)! == 42
 	if _ := conditional_number(true) {
@@ -38,4 +57,21 @@ fn test_conditional_ierror_can_be_successful_payload() {
 	second := conditional_error_payload(false)!
 	assert first is io.Eof
 	assert second is io.NotExpected
+}
+
+fn test_nested_conditional_ierror_is_result_failure() {
+	assert nested_conditional_number(false, true)! == 22
+	assert nested_conditional_number(true, false)! == 11
+	if _ := nested_conditional_number(true, true) {
+		assert false
+	} else {
+		assert err is io.Eof
+	}
+	assert nested_match_number(false, 0)! == 22
+	assert nested_match_number(true, 1)! == 11
+	if _ := nested_match_number(true, 0) {
+		assert false
+	} else {
+		assert err is io.Eof
+	}
 }

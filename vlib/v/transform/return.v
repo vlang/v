@@ -822,6 +822,10 @@ fn (mut t Transformer) return_block_from_branch(branch_id flat.NodeId, ret_typ s
 		}
 		return t.make_block(all)
 	}
+	if extra_return_vals.len == 0 && branch.kind in [.if_expr, .match_stmt] {
+		return t.make_block(t.transform_stmt(t.make_transformed_return(branch_id, ret_typ,
+			source_return_id)))
+	}
 	if branch.kind != .block {
 		// single expression branch: just `return <expr>`
 		mut all := []flat.NodeId{}
@@ -877,6 +881,12 @@ fn (mut t Transformer) return_block_from_branch(branch_id flat.NodeId, ret_typ s
 		ret_stmts := t.transform_stmt(tail_id)
 		t.drain_pending(mut all)
 		for stmt in ret_stmts {
+			all << stmt
+		}
+		return t.make_block(all)
+	}
+	if extra_return_vals.len == 0 && t.a.nodes[int(tail_expr)].kind in [.if_expr, .match_stmt] {
+		for stmt in t.transform_stmt(t.make_transformed_return(tail_expr, ret_typ, source_return_id)) {
 			all << stmt
 		}
 		return t.make_block(all)
