@@ -6,6 +6,7 @@ import time
 import v.flat
 import v.token
 import v.util
+import v.vmod
 
 // last_index_between returns the last occurrence of needle that starts at or
 // after lo and ends at or before end, scanning by index: a substr copy of the
@@ -383,7 +384,12 @@ fn (tc &TypeChecker) current_file_uses_nested_module_path() bool {
 	if dir == '' || tc.cur_module != dir.all_after_last('/') {
 		return false
 	}
-	project_root := checker_vmod_root_for_file(tc.cur_file).replace('\\', '/').trim_right('/')
+	vmod_root := checker_vmod_root_for_file(tc.cur_file)
+	mut project_root := vmod_root
+	if manifest := vmod.from_file(os.join_path(vmod_root, 'v.mod')) {
+		project_root = manifest.source_root(vmod_root)
+	}
+	project_root = project_root.replace('\\', '/').trim_right('/')
 	project_dir := os.real_path(dir).replace('\\', '/').trim_right('/')
 	if project_root.len > 0 && project_dir.starts_with(project_root + '/') {
 		return project_dir[project_root.len + 1..].contains('/')

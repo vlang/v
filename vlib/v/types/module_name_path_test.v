@@ -32,6 +32,23 @@ fn test_current_file_path_not_matching_module_keeps_conflict() {
 	assert !mismatched_module.current_file_uses_nested_module_path()
 }
 
+fn test_base_url_source_root_decides_module_nesting() {
+	root := os.join_path(os.vtmp_dir(), 'v3_module_base_url_${os.getpid()}')
+	os.mkdir_all(os.join_path(root, 'src', 'bar', 'foo'))!
+	defer { os.rmdir_all(root) or {} }
+	os.write_file(os.join_path(root, 'v.mod'), "Module { name: 'project', base_url: 'src', subdirs: ['foo'] }")!
+	for path, nested in {
+		os.join_path(root, 'src', 'foo', 'foo.v'):        false
+		os.join_path(root, 'src', 'bar', 'foo', 'foo.v'): true
+	} {
+		tc := TypeChecker{
+			cur_file:   path
+			cur_module: 'foo'
+		}
+		assert tc.current_file_uses_nested_module_path() == nested
+	}
+}
+
 fn test_local_can_match_module_when_file_is_in_module_directory() {
 	root := os.join_path(os.vtmp_dir(), 'v3_module_name_path_${os.getpid()}')
 	module_dir := os.join_path(root, 'sim', 'args')
