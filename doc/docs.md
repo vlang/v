@@ -2083,6 +2083,9 @@ match mut x {
 
 ### Match
 
+Conditions that compare different nested fields remain distinct match cases, even when
+their final field names and comparison operators are the same.
+
 ```v
 os := 'windows'
 print('V is running on ')
