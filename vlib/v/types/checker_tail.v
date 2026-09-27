@@ -435,15 +435,20 @@ fn (tc &TypeChecker) current_file_module_source_root() ?string {
 			return search_root
 		}
 	}
+	vmod_root := checker_vmod_root_for_file(tc.cur_file)
+	mut source_root := ''
+	if manifest := vmod.from_file(os.join_path(vmod_root, 'v.mod')) {
+		source_root = os.real_path(manifest.source_root(vmod_root)).replace('\\', '/').trim_right('/')
+	}
 	if tc.compiler_vroot.len > 0 {
 		vlib_root := os.real_path(os.join_path(tc.compiler_vroot, 'vlib')).replace('\\', '/').trim_right('/')
 		if directory.starts_with(vlib_root + '/') {
+			if source_root.starts_with(vlib_root + '/') && directory.starts_with(source_root + '/') {
+				return source_root
+			}
 			return vlib_root
 		}
 	}
-	vmod_root := checker_vmod_root_for_file(tc.cur_file)
-	manifest := vmod.from_file(os.join_path(vmod_root, 'v.mod')) or { return none }
-	source_root := os.real_path(manifest.source_root(vmod_root)).replace('\\', '/').trim_right('/')
 	if source_root == '' || !directory.starts_with(source_root + '/') {
 		return none
 	}

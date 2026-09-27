@@ -160,3 +160,20 @@ fn test_explicit_module_search_root_defines_self_import_identity() {
 	tc.check_import_diagnostics()
 	assert tc.errors.any(it.msg.contains('cannot import `nn.layers` into a module with the same name')), tc.errors.str()
 }
+
+fn test_nested_vlib_project_manifest_defines_module_identity() {
+	root := os.join_path(os.vtmp_dir(), 'v3_nested_vlib_project_${os.getpid()}')
+	project := os.join_path(root, 'vlib', 'v', 'tests', 'project')
+	module_file := os.join_path(project, 'mod1', 'mod1.v')
+	os.mkdir_all(os.dir(module_file))!
+	defer { os.rmdir_all(root) or {} }
+	os.write_file(os.join_path(project, 'v.mod'), "Module { name: 'project' }")!
+	os.write_file(module_file, 'module mod1\n')!
+	mut tc := TypeChecker.new(&flat.FlatAst{})
+	tc.compiler_vroot = root
+	tc.cur_file = module_file
+	tc.cur_module = 'mod1'
+	assert tc.current_file_module_source_root() or { '' } == os.real_path(project)
+	assert !tc.current_file_uses_nested_module_path()
+	assert tc.current_file_module_path_identity() or { '' } == 'mod1'
+}
