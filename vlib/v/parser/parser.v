@@ -8300,7 +8300,7 @@ fn (mut p Parser) if_stmt() flat.NodeId {
 	}
 	for lid in guard_lhs_ids {
 		lhs := p.a.node(lid)
-		if lhs.kind == .ident && p.is_local_binding(lhs.value) {
+		if !p.prefs.is_fmt && lhs.kind == .ident && p.is_local_binding(lhs.value) {
 			p.record_diagnostic_span('redefinition of `${lhs.value}`', lhs.pos.offset, lhs.pos.end)
 		}
 	}
