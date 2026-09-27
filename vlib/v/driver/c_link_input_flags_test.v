@@ -31,7 +31,7 @@ fn test_positional_native_inputs_and_link_options_keep_their_roles() {
 		assert c_object_compile_flags([input]).len == 0, input
 	}
 	for input in ['lib.a', 'lib.so', 'lib.so.1', 'lib.dylib', 'lib.dll', 'lib.lib', 'lib.tbd',
-		'-lfoo', '-Llibrary.a', '-Wl,-rpath,library.so', '-shared'] {
+		'-lfoo', '-Llibrary.a', '-Wl,-rpath,library.so', '-T/path/script.so', '-shared'] {
 		assert c_flag_token_is_link_only(input), input
 		assert c_object_compile_flags([input]).len == 0, input
 		assert c_dylib_link_flags([input]) == [input], input

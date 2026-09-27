@@ -1215,10 +1215,13 @@ fn c_flag_token_is_link_only(token string) bool {
 			'-pie', '-no-pie'] {
 		return true
 	}
-	// A joined compiler option can end in a library suffix without being a
-	// linker input, for example -Iinclude.a or -DPLUGIN=module.so.
-	if clean.starts_with('-') {
-		return false
+	// Joined compiler operands are not linker inputs even when they end in a
+	// library suffix. Other options, such as -Tscript.so, still go to the linker.
+	for prefix in ['-I', '-isystem', '-iquote', '-D', '-U', '-F', '-include', '-imacros',
+		'-idirafter', '-iprefix', '-iwithprefix', '-iwithprefixbefore', '-isysroot', '--sysroot='] {
+		if clean.starts_with(prefix) && clean.len > prefix.len {
+			return false
+		}
 	}
 	return clean.ends_with('.a') || clean.ends_with('.so') || clean.contains('.so.')
 		|| clean.ends_with('.dylib') || clean.ends_with('.dll') || clean.ends_with('.lib')
