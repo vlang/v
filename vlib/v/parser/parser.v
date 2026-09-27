@@ -4138,7 +4138,9 @@ fn (mut p Parser) parse_comptime_if() flat.NodeId {
 	p.next() // skip 'if'
 	cond_start := p.tok_pos
 	mut cond := p.parse_comptime_cond()
-	p.record_unknown_bare_comptime_flag(cond, cond_start)
+	if !p.prefs.is_fmt {
+		p.record_unknown_bare_comptime_flag(cond, cond_start)
+	}
 	if p.prefs.preserve_comptime_conditionals {
 		then_block := p.block_stmt()
 		else_block := p.parse_comptime_else()
