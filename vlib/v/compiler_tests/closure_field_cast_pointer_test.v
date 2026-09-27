@@ -46,3 +46,29 @@ fn test_scope_owned_pointer_field_callback() {
 		assert holder.callback() == i
 	}
 }
+
+fn set_reassigned_closure_field_callback(caller &ClosureFieldHolder, value int) {
+	mut holder := &ClosureFieldHolder{}
+	holder = caller
+	holder.callback = fn [value] () int {
+		return value
+	}
+}
+
+fn test_reassigned_pointer_field_callback_survives_setter() {
+	mut holder := &ClosureFieldHolder{}
+	set_reassigned_closure_field_callback(holder, 44)
+	assert holder.callback() == 44
+}
+
+fn test_scope_owned_nested_pointer_field_callback() {
+	for i in 0 .. 3 {
+		mut wrapper := ClosureNestedHolder{
+			holder: &ClosureFieldHolder{}
+		}
+		wrapper.holder.callback = fn [i] () int {
+			return i
+		}
+		assert wrapper.holder.callback() == i
+	}
+}

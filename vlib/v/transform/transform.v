@@ -7161,15 +7161,14 @@ fn (mut t Transformer) mark_local_closure_cleanup_decls(body_ids []flat.NodeId) 
 			t.local_closure_binding_decl_in_scope(body_ids, candidate) or { continue }
 		}
 		decl := t.a.nodes[int(decl_id)]
-		// Only fields reached through caller-backed pointers outlive this scope.
-		// Fresh pointer aggregates remain eligible for cleanup after escape analysis.
-		if t.local_closure_field_crosses_caller_pointer(candidate, decl) {
-			continue
-		}
 		if candidate.aggregate_scope < 0 {
 			t.collect_local_closure_binding_uses(body_ids, candidate.aggregate_name, decl_id, false, mut bound_uses, mut bound_assigns)
 		} else {
 			t.collect_local_closure_binding_uses_in_scope(flat.NodeId(candidate.aggregate_scope), candidate.aggregate_name, decl_id, false, mut bound_uses, mut bound_assigns)
+		}
+		// A fresh pointer can be replaced with caller-owned storage before the field write.
+		if t.local_closure_field_crosses_caller_pointer(candidate, decl, bound_assigns, body_ids) {
+			continue
 		}
 		mut scope_owned_field_reads := map[int]bool{}
 		aliases_escape := t.collect_scope_owned_local_closure_field_aliases(body_ids, bound_uses, candidate.field_key, mut scope_owned_field_reads)
@@ -7191,7 +7190,7 @@ fn (mut t Transformer) mark_local_closure_cleanup_decls(body_ids []flat.NodeId) 
 	}
 }
 
-fn (t &Transformer) local_closure_field_crosses_caller_pointer(candidate LocalClosureFieldCandidate, decl flat.Node) bool {
+fn (t &Transformer) local_closure_field_crosses_caller_pointer(candidate LocalClosureFieldCandidate, decl flat.Node, bound_assigns map[int]bool, body_ids []flat.NodeId) bool {
 	owner := t.a.nodes[candidate.owner_id]
 	if owner.kind !in [.assign, .selector_assign, .index_assign] || owner.children_count < 2 {
 		return false
@@ -7208,9 +7207,10 @@ fn (t &Transformer) local_closure_field_crosses_caller_pointer(candidate LocalCl
 		}
 		base_id := t.a.child(&node, 0)
 		if t.normalize_type_alias(t.node_type(base_id)).starts_with('&') {
-			base := t.a.nodes[int(base_id)]
-			if base.kind != .ident || base.value != candidate.aggregate_name
-				|| !t.local_closure_decl_has_fresh_pointer(decl, candidate.aggregate_name) {
+			base_key := t.expr_key(base_id)
+			if bound_assigns.len > 0 || !t.local_closure_decl_has_fresh_pointer(decl,
+				candidate.aggregate_name, base_key) || (base_key != candidate.aggregate_name
+				&& t.local_closure_pointer_path_reassigned(body_ids, base_key)) {
 				return true
 			}
 		}
@@ -7219,23 +7219,86 @@ fn (t &Transformer) local_closure_field_crosses_caller_pointer(candidate LocalCl
 	return false
 }
 
-fn (t &Transformer) local_closure_decl_has_fresh_pointer(decl flat.Node, name string) bool {
+fn (t &Transformer) local_closure_decl_has_fresh_pointer(decl flat.Node, name string, path string) bool {
 	if decl.kind != .decl_assign {
 		return false
 	}
+	if path != name && !path.starts_with('${name}.') {
+		return false
+	}
+	fields := if path == name { []string{} } else { path[name.len + 1..].split('.') }
 	for i in 0 .. t.multi_assign_lhs_count(decl) {
 		lhs := t.a.nodes[int(t.multi_assign_lhs_id(decl, i))]
 		if lhs.kind != .ident || lhs.value != name || i >= t.multi_assign_rhs_count(decl) {
 			continue
 		}
-		mut rhs_id := t.multi_assign_rhs_id(decl, i)
-		mut rhs := t.a.nodes[int(rhs_id)]
-		for rhs.kind in [.paren, .expr_stmt] && rhs.children_count > 0 {
-			rhs_id = t.a.child(&rhs, 0)
-			rhs = t.a.nodes[int(rhs_id)]
+		return t.local_closure_expr_has_fresh_pointer(t.multi_assign_rhs_id(decl, i), fields)
+	}
+	return false
+}
+
+fn (t &Transformer) local_closure_expr_has_fresh_pointer(id flat.NodeId, fields []string) bool {
+	if int(id) < 0 || int(id) >= t.a.nodes.len {
+		return false
+	}
+	mut value_id := id
+	mut value := t.a.nodes[int(value_id)]
+	for value.kind in [.paren, .expr_stmt] && value.children_count > 0 {
+		value_id = t.a.child(&value, 0)
+		value = t.a.nodes[int(value_id)]
+	}
+	if fields.len == 0 {
+		return value.kind == .prefix && value.op == .amp && value.children_count > 0
+			&& t.a.child_node(&value, 0).kind == .struct_init
+	}
+	if value.kind != .struct_init {
+		return false
+	}
+	info := t.lookup_struct_info(value.value) or { StructInfo{} }
+	for i in 0 .. value.children_count {
+		field_id := t.a.child(&value, i)
+		if int(field_id) < 0 || int(field_id) >= t.a.nodes.len {
+			continue
 		}
-		if rhs.kind == .prefix && rhs.op == .amp && rhs.children_count > 0 {
-			return t.a.child_node(&rhs, 0).kind == .struct_init
+		field := t.a.nodes[int(field_id)]
+		if field.kind != .field_init || field.children_count == 0 {
+			continue
+		}
+		field_name := if field.value.len > 0 {
+			field.value
+		} else if i < info.fields.len {
+			info.fields[i].name
+		} else {
+			''
+		}
+		if field_name == fields[0] {
+			return t.local_closure_expr_has_fresh_pointer(t.a.child(&field, 0), fields[1..])
+		}
+	}
+	return false
+}
+
+fn (t &Transformer) local_closure_pointer_path_reassigned(ids []flat.NodeId, path string) bool {
+	for id in ids {
+		if t.local_closure_pointer_path_reassigned_in_node(id, path) {
+			return true
+		}
+	}
+	return false
+}
+
+fn (t &Transformer) local_closure_pointer_path_reassigned_in_node(id flat.NodeId, path string) bool {
+	if int(id) < 0 || int(id) >= t.a.nodes.len {
+		return false
+	}
+	node := t.a.nodes[int(id)]
+	if node.kind in [.assign, .selector_assign, .index_assign]
+		&& node.children_count >= 2 && t.expr_key(t.a.child(&node, 0)) == path {
+		return true
+	}
+	for i in 0 .. node.children_count {
+		if t.local_closure_pointer_path_reassigned_in_node(t.a.child(&node, i), path) {
+			return true
 		}
 	}
 	return false
