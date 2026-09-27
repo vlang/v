@@ -13344,7 +13344,13 @@ fn (mut t Transformer) transform_expr_for_type(id flat.NodeId, target_type strin
 		if node.kind == .block && target_type.starts_with('!')
 			&& t.return_expr_is_propagated_err(id, t.optional_base_type(t.qualify_optional_type(target_type))) {
 			payload_type := t.optional_base_type(t.qualify_optional_type(target_type))
-			error_value := t.transform_expr_for_type(id, payload_type)
+			error_type := if !isnil(t.tc)
+				&& t.tc.slot_value_compatible(t.tc.parse_type('IError'), t.tc.parse_type(payload_type)) {
+				'IError'
+			} else {
+				payload_type
+			}
+			error_value := t.transform_expr_for_type(id, error_type)
 			return t.make_optional_none_with_err(t.qualify_optional_type(target_type), error_value)
 		}
 		if node.kind == .enum_val {

@@ -129,6 +129,26 @@ fn test_match_tuple_value_block_error_is_result_failure() {
 	}
 }
 
+interface Any {}
+
+fn wrapped_any_pair() (int, !Any) {
+	return 1, Any('ok')
+}
+
+fn test_match_tuple_value_block_error_with_interface_payload() {
+	for flag in [true, false] {
+		_, item := match flag {
+			true { wrapped_any_pair() }
+			else { 2, unsafe { error('boom') } }
+		}
+		if _ := item {
+			assert flag
+		} else {
+			assert !flag
+		}
+	}
+}
+
 fn test_match_tuple_error_promotes_to_optional_slot() {
 	for flag in [true, false] {
 		value, text := match flag {
