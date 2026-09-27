@@ -788,7 +788,7 @@ fn canonical_annotation_leaf(typ string) string {
 @[inline]
 fn (g &FlatGen) parse_node_type(node &flat.Node) types.Type {
 	if canonical_annotation_leaf(node.typ).contains('.') {
-		return g.tc.parse_canonical_type(node.typ)
+		return g.tc.parse_canonical_type_cached(node.typ)
 	}
 	return g.tc.parse_type_ref(node.typ, node.type_text_id())
 }

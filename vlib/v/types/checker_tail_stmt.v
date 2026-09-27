@@ -14163,6 +14163,55 @@ pub fn (tc &TypeChecker) parse_type_ref(typ string, text_id u16) Type {
 	return result
 }
 
+// parse_canonical_type_cached is parse_canonical_type memoized per parse
+// context, like parse_type's own cache.
+pub fn (tc &TypeChecker) parse_canonical_type_cached(typ string) Type {
+	if typ.len == 0 || !tc.fast_type_text_refs || tc.type_cache == unsafe { nil }
+		|| !tc.type_cache.parse_enabled || tc.type_cache.alias_parse_stack.len > 0 {
+		return tc.parse_canonical_type(typ)
+	}
+	mut cache := unsafe { tc.type_cache }
+	if cache.canonical_texts.len == 0 {
+		cache.canonical_texts = []string{len: canonical_type_cache_slots}
+		cache.canonical_contexts = []u64{len: canonical_type_cache_slots}
+		cache.canonical_values = unsafe { []Type{len: canonical_type_cache_slots} }
+	}
+	context_hash := parse_type_cache_context_hash(mut cache, tc.cur_file, tc.cur_module, tc.fn_context.generic_params, tc.resolution_type_mode)
+	slot := canonical_type_cache_slot(typ, context_hash)
+	if cache.canonical_contexts[slot] == context_hash
+		&& parse_type_cache_string_matches(cache.canonical_texts[slot], typ) {
+		return cache.canonical_values[slot]
+	}
+	// Like parse_type: typeof(...) resolves against the current scope, which the
+	// context hash does not cover, so such texts are never stored and cannot hit.
+	if type_text_contains_typeof(typ) {
+		return tc.parse_canonical_type(typ)
+	}
+	result := tc.parse_canonical_type(typ)
+	// Unknowns can be provisional; parse them again next time.
+	if !type_contains_unknown(result) {
+		cache.canonical_texts[slot] = typ
+		cache.canonical_contexts[slot] = context_hash
+		cache.canonical_values[slot] = result
+	}
+	return result
+}
+
+const canonical_type_cache_slots = 4096
+
+// canonical_type_cache_slot samples the text like the transform's alias caches:
+// separately allocated copies of one spelling share a slot, and every hit still
+// compares the complete text.
+@[direct_array_access; inline]
+fn canonical_type_cache_slot(typ string, context_hash u64) int {
+	mut hash := u64(typ.len)
+	hash = (hash * 1_099_511_628_211) ^ u64(typ[0])
+	hash = (hash * 1_099_511_628_211) ^ u64(typ[typ.len / 2])
+	hash = (hash * 1_099_511_628_211) ^ u64(typ[typ.len - 1])
+	hash = (hash * 1_099_511_628_211) ^ context_hash
+	return int((hash ^ (hash >> 29)) & u64(canonical_type_cache_slots - 1))
+}
+
 fn (tc &TypeChecker) recursive_alias_reference(typ string) ?Type {
 	if isnil(tc.type_cache) || tc.type_cache.alias_parse_stack.len == 0 {
 		return none
