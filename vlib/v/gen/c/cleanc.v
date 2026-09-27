@@ -14077,7 +14077,8 @@ fn (g &FlatGen) const_ref_name_from_node(node flat.Node) string {
 	if node.kind == .selector && node.children_count > 0 {
 		base := g.a.child_node(&node, 0)
 		if base.kind == .ident {
-			return g.const_ref_name('${base.value}.${node.value}')
+			resolved_base := g.selector_base_module(base.value) or { base.value }
+			return g.const_ref_name('${resolved_base}.${node.value}')
 		}
 	}
 	return ''
@@ -14154,7 +14155,7 @@ fn (g &FlatGen) const_ref_name_from_node_cached_for_collect(node flat.Node, uniq
 		if cache_key in cache {
 			return cache[cache_key]
 		}
-		resolved_base := g.import_alias_module(base.value) or { base.value }
+		resolved_base := g.selector_base_module(base.value) or { base.value }
 		const_name := g.const_ref_name_fast_for_collect('${resolved_base}.${node.value}', unique_index)
 		cache[cache_key] = const_name
 		return const_name
