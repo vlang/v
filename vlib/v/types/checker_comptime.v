@@ -8014,6 +8014,13 @@ fn (mut tc TypeChecker) check_ordered_comparison(id flat.NodeId, node flat.Node,
 	if lhs_type is Unknown || rhs_type is Unknown || tc.translated_files[tc.cur_file] {
 		return
 	}
+	// A type that declares `<` gets `>`, `<=` and `>=` from it, as a struct
+	// does in check_infix: an alias of a fixed array, `type Addr =
+	// [4]u8`, compared with another `Addr`.
+	if tc.type_has_infix_operator_method(lhs_type, .lt)
+		&& tc.type_name(unwrap_pointer(lhs_type)) == tc.type_name(unwrap_pointer(rhs_type)) {
+		return
+	}
 	lhs_clean := unalias_type(lhs_type)
 	rhs_clean := unalias_type(rhs_type)
 	// Numbers compare across their types, as V1 has it: most comparisons end here.
