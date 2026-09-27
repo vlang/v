@@ -8,10 +8,16 @@ struct Record {
 	label string
 }
 
+type RecordAlias = Record
+
 fn (r &Record) name() string { return r.label }
 
 fn recover_record(item Named) ?&Record {
 	return if item is Record { item } else { none }
+}
+
+fn recover_record_alias(item Named) ?&RecordAlias {
+	return if item is RecordAlias { item } else { none }
 }
 
 fn recover_record_match(item Named) ?&Record {
@@ -90,6 +96,9 @@ fn (_ OtherRecord) name() string {
 
 fn test_interface_struct_smartcast_copies_wrapped_values() {
 	for item in [Named(&Record{ label: 'pointer' }), Named(Record{ label: 'value' })] {
+		if item is Record {
+			assert item == item
+		}
 		assert optional_value_record_if(item)?.label == item.name()
 		assert optional_value_record_match(item)?.label == item.name()
 		assert result_value_record_if(item)!.label == item.name()
@@ -108,6 +117,8 @@ fn test_interface_struct_smartcast_copies_wrapped_values() {
 	} else {
 		assert err.msg() == 'missing record'
 	}
+	alias_item := Named(RecordAlias(Record{ label: 'alias' }))
+	assert recover_record_alias(alias_item)?.label == 'alias'
 }
 
 fn test_interface_struct_smartcast_retains_object_reference() {
@@ -158,5 +169,19 @@ fn test_invalid_explicit_pointer_branches_in_wrapped_returns_stay_rejected() {
 		result := os.execute('${os.quoted_path(@VEXE)} -check ${os.quoted_path(path)}')
 		assert result.exit_code != 0, result.output
 		assert result.output.contains('&Item'), result.output
+	}
+}
+
+fn test_explicit_interface_pointer_smartcast_requires_dereference() {
+	path := os.join_path(os.vtmp_dir(), 'interface_explicit_pointer_return_${os.getpid()}.v')
+	defer { os.rm(path) or {} }
+	for body in [
+		'if item is &Record { return item } return Record{}',
+		'return if item is &Record { item } else { Record{} }',
+	] {
+		os.write_file(path, 'interface Named { name() string }\nstruct Record {}\nfn (_ &Record) name() string { return "record" }\nfn invalid(item Named) Record { ${body} }\nfn main() {}\n')!
+		result := os.execute('${os.quoted_path(@VEXE)} -check ${os.quoted_path(path)}')
+		assert result.exit_code != 0, result.output
+		assert result.output.contains('non reference type'), result.output
 	}
 }

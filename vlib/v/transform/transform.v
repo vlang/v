@@ -22717,7 +22717,6 @@ fn (mut t Transformer) apply_smartcast_contexts(base flat.NodeId, typ string, co
 			continue
 		}
 		if t.is_interface_type_name(sc.sum_type_name) {
-			pointer_target := sc.variant_name.starts_with('&')
 			variant_name := t.trim_all_pointer_type(sc.variant_name)
 			if target_iface := t.resolve_interface_pattern_interface(variant_name) {
 				if converted := t.convert_interface_expr_to_interface(current, current_type, target_iface) {
@@ -22727,6 +22726,8 @@ fn (mut t Transformer) apply_smartcast_contexts(base flat.NodeId, typ string, co
 				}
 			}
 			qv := t.interface_variant_type(variant_name)
+			pointer_target := sc.variant_name.starts_with('&')
+				|| types.unalias_type(t.tc.parse_type(qv)) is types.Struct
 			for current_type.starts_with('&&') {
 				current = t.make_prefix(.mul, current)
 				current_type = current_type[1..]

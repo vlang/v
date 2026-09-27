@@ -2670,7 +2670,8 @@ fn (tc &TypeChecker) tuple_tail_return_error(expr_id flat.NodeId, expected []Typ
 
 fn (tc &TypeChecker) expr_has_interface_smartcast_reference(id flat.NodeId) bool {
 	if declared := tc.declared_smartcast_receiver_type(id) {
-		if unalias_and_unwrap_pointer_type(declared) is Interface {
+		if unalias_and_unwrap_pointer_type(declared) is Interface
+			&& !tc.explicit_interface_pointer_smartcast(id) {
 			return true
 		}
 	}
@@ -2698,6 +2699,52 @@ fn (tc &TypeChecker) expr_has_interface_smartcast_reference(id flat.NodeId) bool
 		}
 	}
 	return has_reference
+}
+
+fn (tc &TypeChecker) explicit_interface_pointer_smartcast(id flat.NodeId) bool {
+	key := tc.expr_key(id)
+	if key == '' {
+		return false
+	}
+	mut current := id
+	mut parent_id := tc.direct_parent_id(current)
+	for tc.valid_node_id(parent_id) {
+		parent := tc.a.node(parent_id)
+		if parent.kind == .if_expr && parent.children_count > 1
+			&& tc.a.child(parent, 1) == current {
+			if explicit := tc.condition_interface_pointer_pattern(tc.a.child(parent, 0), key) {
+				return explicit
+			}
+		}
+		if parent.kind in [.fn_decl, .fn_literal, .lambda_expr] {
+			break
+		}
+		current = parent_id
+		parent_id = tc.direct_parent_id(current)
+	}
+	return false
+}
+
+fn (tc &TypeChecker) condition_interface_pointer_pattern(id flat.NodeId, key string) ?bool {
+	if !tc.valid_node_id(id) {
+		return none
+	}
+	node := tc.a.node(id)
+	if node.kind == .is_expr && node.children_count > 0 {
+		if tc.expr_key(tc.a.child(node, 0)) == key {
+			return node.value.starts_with('&')
+		}
+	}
+	if node.kind == .paren && node.children_count > 0 {
+		return tc.condition_interface_pointer_pattern(tc.a.child(node, 0), key)
+	}
+	if node.kind == .infix && node.op == .logical_and && node.children_count == 2 {
+		if explicit := tc.condition_interface_pointer_pattern(tc.a.child(node, 0), key) {
+			return explicit
+		}
+		return tc.condition_interface_pointer_pattern(tc.a.child(node, 1), key)
+	}
+	return none
 }
 
 fn (mut tc TypeChecker) return_type_compatible(expr_id flat.NodeId, actual Type, expected Type) bool {
