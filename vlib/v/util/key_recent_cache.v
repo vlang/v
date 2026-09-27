@@ -3,9 +3,9 @@ module util
 const key_recent_slots = 128
 
 // KeyRecentCache is a lossy front cache for lookups keyed by up to three
-// strings. A hit compares the parts directly (pointer and length first), so the
-// caller can skip building the composite key its backing map is keyed by. Only
-// use it in front of maps that are not cleared while the cache is alive.
+// strings. A hit compares the parts directly, so the caller can skip building
+// the composite key its backing map is keyed by. Only use it in front of maps
+// that are not cleared while the cache is alive.
 @[heap]
 pub struct KeyRecentCache {
 mut:
@@ -40,15 +40,11 @@ pub fn (mut c KeyRecentCache) put(a string, b string, cc string, state i8, value
 	c.states[slot] = state
 }
 
+// key_part_matches compares contents, not just addresses: arenas that are
+// rewound between batches can place a different string at a cached address.
 @[inline]
 fn key_part_matches(a string, b string) bool {
-	if a.len != b.len {
-		return false
-	}
-	if unsafe { a.str == b.str } {
-		return true
-	}
-	return a == b
+	return a.len == b.len && a == b
 }
 
 // key_part_hash samples a key part so that separately allocated copies of one
