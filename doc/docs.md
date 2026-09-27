@@ -2495,6 +2495,8 @@ outer: for i := 4; true; i++ {
 ```
 
 The label must immediately precede the outer loop.
+A labelled loop can iterate over a `filter` or `map` result; `break` and `continue`
+refer to that loop after its iterable has been evaluated.
 The above code prints:
 
 ```

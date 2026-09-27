@@ -9632,11 +9632,16 @@ fn (mut t Transformer) transform_labeled_loop(label string, loop_id flat.NodeId,
 	mut result := []flat.NodeId{}
 	result << t.a.add_val(.label_stmt, label)
 	transformed_loop := t.transform_stmt(new_loop)
-	mut marked_loop := false
-	for item_id in transformed_loop {
-		if !marked_loop && t.a.nodes[int(item_id)].kind in [.for_stmt, .for_in_stmt] {
+	// Iterable evaluation can emit filter/map loops before the user's loop.
+	mut labelled_index := -1
+	for index, item_id in transformed_loop {
+		if t.a.nodes[int(item_id)].kind in [.for_stmt, .for_in_stmt] {
+			labelled_index = index
+		}
+	}
+	for index, item_id in transformed_loop {
+		if index == labelled_index {
 			result << t.a.add_val(.label_stmt, pending_loop_label_marker + label)
-			marked_loop = true
 		}
 		result << item_id
 	}
