@@ -57,3 +57,13 @@ fn test_fixed_array_map_retains_element_address() {
 	refs := fixed_array_element_refs([42]!)
 	assert *refs[0] == 42
 }
+
+fn identity_fixed_map_result[T](value T) T {
+	return value
+}
+
+fn test_fixed_array_map_keeps_shape_during_generic_inference() {
+	result := identity_fixed_map_result([1, 2]!.map(it * 2))
+	assert typeof(result).name == '[2]int'
+	assert result == [2, 4]!
+}

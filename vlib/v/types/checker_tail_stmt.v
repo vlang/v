@@ -16449,11 +16449,9 @@ fn (tc &TypeChecker) resolve_type_uncached(id flat.NodeId) Type {
 						return Type(string_)
 					}
 					if fn_node.value == 'map' {
-						return Type(Array{
-							elem_type: Type(Unknown{
-								reason: 'array.map'
-							})
-						})
+						return tc.array_map_result_type_from_receiver(clean_type, Type(Unknown{
+							reason: 'array.map'
+						}))
 					}
 					if fn_node.value == 'wait' {
 						// `[]thread T`.wait() joins all threads and returns `[]T`. A bare
