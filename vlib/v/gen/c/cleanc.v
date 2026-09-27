@@ -3609,6 +3609,10 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	g.unique_struct_ct_cache = &StringLookupCache{}
 	g.alias_method_cache = &StringLookupCache{}
 	g.import_alias_cache = &ContextStringLookupCache{}
+	// The import front caches memoize the previous program's import tables,
+	// including misses; the serial path never resets them otherwise.
+	g.import_key_cache = &util.KeyRecentCache{}
+	g.selective_import_key_cache = &util.KeyRecentCache{}
 	g.enum_selector_cache = &ContextStringLookupCache{}
 	g.enum_method_cache = &ContextStringLookupCache{}
 	g.qualified_enum_method_cache = &ContextStringLookupCache{}
