@@ -447,6 +447,18 @@ fn test_c_struct_declared_in_platform_binding_stays_header_owned() {
 	g.preinclude_directives << '#include <Cocoa/Cocoa.h>'
 	assert !g.header_c_struct_needs_compat_typedef('C.NSFont')
 	g.preinclude_directives.clear()
+	g.preinclude_directives << '#define UI_HEADER <Cocoa/Cocoa.h>\n#include UI_HEADER'
+	assert !g.header_c_struct_needs_compat_typedef('C.NSFont')
+	g.preinclude_directives.clear()
+	g.preinclude_directives << '#if 0\n#define UI_HEADER <Cocoa/Cocoa.h>\n#endif\n#include UI_HEADER'
+	assert g.header_c_struct_needs_compat_typedef('C.NSFont')
+	g.preinclude_directives.clear()
+	g.preinclude_directives << '#include "/project/Cocoa/types.h"'
+	assert g.header_c_struct_needs_compat_typedef('C.NSFont')
+	g.preinclude_directives.clear()
+	g.preinclude_directives << '#include <MyCocoa/types.h>'
+	assert g.header_c_struct_needs_compat_typedef('C.NSFont')
+	g.preinclude_directives.clear()
 	g.c_directives << CDirective{ module: 'uiold', text: '#if 0' }
 	g.c_directives << CDirective{ module: 'uiold', text: '#include <Cocoa/Cocoa.h>' }
 	g.c_directives << CDirective{ module: 'uiold', text: '#endif' }

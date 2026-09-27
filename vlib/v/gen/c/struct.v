@@ -6580,6 +6580,16 @@ fn (g &FlatGen) header_c_struct_needs_compat_typedef(name string) bool {
 	return false
 }
 
+fn cocoa_nsfont_framework_include(arg string) bool {
+	clean := arg.trim_space()
+	if clean.len < 3 || !((clean[0] == `<` && clean[clean.len - 1] == `>`)
+		|| (clean[0] == `"` && clean[clean.len - 1] == `"`)) {
+		return false
+	}
+	path := clean[1..clean.len - 1]
+	return path.starts_with('Cocoa/') || path.starts_with('AppKit/')
+}
+
 fn (g &FlatGen) cocoa_nsfont_class(name string) bool {
 	if name != 'C.NSFont' || (g.target.os != 'macos' && !g.output_cross_c) {
 		return false
@@ -6588,6 +6598,7 @@ fn (g &FlatGen) cocoa_nsfont_class(name string) bool {
 		return false
 	}
 	mut directives := []string{}
+	mut include_macros := map[string]string{}
 	mut directive_lines := []string{}
 	for preinclude in g.preinclude_directives {
 		directive_lines << preinclude.split_into_lines()
@@ -6600,10 +6611,24 @@ fn (g &FlatGen) cocoa_nsfont_class(name string) bool {
 	}
 	for raw_line in directive_lines {
 		line := raw_line.trim_space()
-		if line.starts_with('#include') || line.starts_with('#import') {
+		directive_name := c_directive_name(line)
+		if directive_name == 'define' {
+			parts := c_directive_arg(line).fields()
+			if parts.len >= 2 && !parts[0].contains('(') {
+				include_macros[parts[0]] = parts[1]
+			}
+		} else if directive_name == 'undef' {
+			include_macros.delete(c_directive_arg(line).trim_space())
+		}
+		if directive_name in ['include', 'import'] {
 			// Reuse the C preprocessor guard evaluator to decide whether the header is active.
-			if line.contains('Cocoa/') || line.contains('AppKit/') {
+			arg := c_directive_arg(line).trim_space()
+			if cocoa_nsfont_framework_include(arg) {
 				directives << '@class NSFont;'
+			} else if cocoa_nsfont_framework_include(include_macros[arg]) {
+				directives << '#ifdef ${arg}'
+				directives << '@class NSFont;'
+				directives << '#endif'
 			}
 		} else if line.starts_with('#') {
 			directives << line
