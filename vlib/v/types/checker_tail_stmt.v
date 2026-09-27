@@ -7461,7 +7461,9 @@ fn (mut tc TypeChecker) check_index(id flat.NodeId, node flat.Node) {
 			// The JavaScript backend requires explicit narrowing to its `int` index type.
 		} else if node.op != .gated_index {
 			if value := tc.index_literal_value(index_id) {
-				if value < 0 {
+				translated_pointer := base_type_raw is Pointer && !implicit_mut_param_pointer
+					&& tc.node_is_in_translated_file(id)
+				if value < 0 && !translated_pointer {
 					tc.record_error(.cannot_index, 'negative index `${value}`', index_id)
 				} else if base_type is ArrayFixed {
 					if length := tc.fixed_array_len_value(base_type) {
