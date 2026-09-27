@@ -1573,6 +1573,7 @@ fn run_binary(bin_file string, args []string) int {
 	mut environment := pref.macos_v3_caller_environment()
 	environment.delete(macos_v3_vhash_env)
 	environment.delete(macos_v3_vcurrent_hash_env)
+	environment.delete(v3_cache_recovery_env)
 	process.set_environment(environment)
 	// `v3 run` is interactive: leave all three standard streams inherited so
 	// prompts are visible immediately and the program can read the caller's stdin.
@@ -12531,11 +12532,10 @@ fn v3_is_tcc_compilation_failure(c_compiler string, output string) bool {
 	return false
 }
 
-// v3_cache_artifact_dir_names are the persistent caches a build links artifacts
-// out of. The live build directory is deliberately absent: a diagnostic naming
-// a file there describes generated or user source, not a stale cache entry.
-const v3_cache_artifact_dir_names = ['v3_module_cache_', 'v3_thirdparty_objs', 'v3_fastc_unit_cache',
-	'v3_fastc_link_cache', 'v3_crun_cache']
+// v3_cache_artifact_dir_names are the fixed-name persistent caches a build links
+// artifacts out of. Module caches have a hexadecimal root key suffix.
+const v3_cache_artifact_dir_names = ['v3_thirdparty_objs', 'v3_fastc_unit_cache', 'v3_fastc_link_cache',
+	'v3_crun_cache']
 
 // v3_cache_failure_markers are whole-file rejections: the toolchain could not
 // read or find an input, or saw the same symbol twice. Line-scoped diagnostics
@@ -12548,21 +12548,109 @@ const v3_cache_failure_markers = ['unrecognized file type', 'file format not rec
 
 const v3_cache_recovery_env = 'V3_INTERNAL_CACHE_RECOVERY'
 
-fn v3_cache_artifact_prefixes() []string {
+fn v3_cache_artifact_dir_name(name string) bool {
+	if name in v3_cache_artifact_dir_names {
+		return true
+	}
+	if !name.starts_with('v3_module_cache_') {
+		return false
+	}
+	suffix := name['v3_module_cache_'.len..]
+	return suffix.len > 0 && suffix.bytes().all(it.is_hex_digit())
+}
+
+fn v3_cache_artifact_directories() []string {
 	mut roots := [os.vtmp_dir()]
 	if configured := os.getenv_opt('V3CACHE') {
-		root := os.abs_path(configured)
+		root := os.real_path(os.abs_path(configured))
 		if root !in roots {
 			roots << root
 		}
 	}
-	mut prefixes := []string{cap: roots.len * v3_cache_artifact_dir_names.len}
-	for root in roots {
-		for name in v3_cache_artifact_dir_names {
-			prefixes << os.join_path_single(root, name)
+	mut directories := []string{}
+	for raw_root in roots {
+		root := os.real_path(os.abs_path(raw_root))
+		if !os.is_dir(root) {
+			continue
+		}
+		for name in os.ls(root) or { []string{} } {
+			if !v3_cache_artifact_dir_name(name) {
+				continue
+			}
+			candidate := os.join_path_single(root, name)
+			if !os.is_dir(candidate) {
+				continue
+			}
+			canonical := os.real_path(candidate)
+			if canonical != root && v3_path_is_within(canonical, root)
+				&& canonical !in directories {
+				directories << canonical
+			}
 		}
 	}
-	return prefixes
+	return directories
+}
+
+fn v3_cache_error_path_tokens(output string) []string {
+	mut tokens := []string{}
+	mut current := []u8{}
+	mut quote := u8(0)
+	for ch in output.bytes() {
+		if quote != 0 {
+			if ch == quote {
+				quote = 0
+				if current.len > 0 {
+					tokens << current.bytestr()
+					current.clear()
+				}
+			} else {
+				current << ch
+			}
+			continue
+		}
+		if ch in [`'`, `"`, `\``] {
+			if current.len > 0 {
+				tokens << current.bytestr()
+				current.clear()
+			}
+			quote = ch
+			continue
+		}
+		if ch.is_space() || ch in [`,`, `;`, `(`, `)`] {
+			if current.len > 0 {
+				tokens << current.bytestr()
+				current.clear()
+			}
+			continue
+		}
+		current << ch
+	}
+	if current.len > 0 {
+		tokens << current.bytestr()
+	}
+	return tokens
+}
+
+fn v3_canonical_cache_artifact(path string, directories []string) ?string {
+	if !os.is_abs_path(path) {
+		return none
+	}
+	clean := os.abs_path(path)
+	parent := os.dir(clean)
+	if !os.is_dir(parent) {
+		return none
+	}
+	canonical := if os.exists(clean) {
+		os.real_path(clean)
+	} else {
+		os.join_path_single(os.real_path(parent), os.base(clean))
+	}
+	for dir in directories {
+		if canonical != dir && v3_path_is_within(canonical, dir) {
+			return canonical
+		}
+	}
+	return none
 }
 
 // v3_cache_error_artifacts returns the cached artifacts named by a C toolchain
@@ -12572,17 +12660,16 @@ fn v3_cache_error_artifacts(output string) []string {
 	if output.len == 0 {
 		return []
 	}
-	prefixes := v3_cache_artifact_prefixes()
+	directories := v3_cache_artifact_directories()
 	mut artifacts := []string{}
-	for raw in output.fields() {
+	for raw in v3_cache_error_path_tokens(output) {
 		token := raw.trim('\'"`()[],;:')
-		if token.len == 0 || token in artifacts {
+		if token.len == 0 {
 			continue
 		}
-		for prefix in prefixes {
-			if token.starts_with(prefix) {
-				artifacts << token
-				break
+		if artifact := v3_canonical_cache_artifact(token, directories) {
+			if artifact !in artifacts {
+				artifacts << artifact
 			}
 		}
 	}
@@ -12615,7 +12702,9 @@ fn v3_cache_failure_artifacts(output string) []string {
 fn v3_discard_cache_artifacts(artifacts []string) int {
 	mut discarded := 0
 	mut object_dirs := []string{}
-	for artifact in artifacts {
+	directories := v3_cache_artifact_directories()
+	for raw_artifact in artifacts {
+		artifact := v3_canonical_cache_artifact(raw_artifact, directories) or { continue }
 		for path in [artifact, '${artifact}.stamp', '${artifact}.deps', '${artifact}.deps.stamp'] {
 			if !os.exists(path) {
 				continue

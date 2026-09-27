@@ -524,9 +524,11 @@ fn test_add_c_language_runtime_link_flags() {
 
 fn test_v3_cache_failure_artifacts_needs_a_cached_path_and_a_whole_file_failure() {
 	cache_dir := os.join_path(os.vtmp_dir(), 'v3_thirdparty_objs')
+	os.mkdir_all(cache_dir)!
 	object := os.join_path(cache_dir, 'atomic_deadbeef_cafe.o')
 	rejected := 'tcc: error: ${object}: unrecognized file type'
-	assert v3_cache_failure_artifacts(rejected) == [object]
+	assert v3_cache_failure_artifacts(rejected) == [os.join_path_single(os.real_path(cache_dir),
+		os.base(object))]
 
 	// A line-scoped diagnostic in a cached unit is a real compile error, not a
 	// poisoned entry; spending a rebuild on it would only reproduce it.
@@ -547,13 +549,73 @@ fn test_v3_cache_failure_artifacts_needs_a_cached_path_and_a_whole_file_failure(
 
 fn test_v3_cache_error_artifacts_reads_paths_out_of_toolchain_diagnostics() {
 	cache_dir := os.join_path(os.vtmp_dir(), 'v3_fastc_unit_cache')
+	os.mkdir_all(cache_dir)!
 	first := os.join_path(cache_dir, 'unit_1.o')
 	second := os.join_path(cache_dir, 'unit_2.o')
 	output := "ld: warning: ignoring file '${first}', building for macOS-arm64\n" + 'ld: ${second}: file format not recognized\n' + 'ld: ${first}: not an object file\n'
 	// Quoting and punctuation differ per toolchain, and one path can be blamed
 	// more than once.
-	assert v3_cache_error_artifacts(output) == [first, second]
+	canonical_dir := os.real_path(cache_dir)
+	assert v3_cache_error_artifacts(output) == [
+		os.join_path_single(canonical_dir, os.base(first)),
+		os.join_path_single(canonical_dir, os.base(second)),
+	]
 	assert v3_cache_error_artifacts('') == []
+}
+
+fn test_v3_cache_artifact_detection_rejects_paths_outside_owned_directories() {
+	root := os.join_path(os.vtmp_dir(), 'v3_cache_recovery_guard_${os.getpid()}')
+	cache_dir := os.join_path(root, 'v3_thirdparty_objs')
+	outside_dir := os.join_path(root, 'v3_thirdparty_objs_backup')
+	os.mkdir_all(cache_dir)!
+	os.mkdir_all(outside_dir)!
+	previous := os.getenv_opt('V3CACHE')
+	os.setenv('V3CACHE', root, true)
+	defer {
+		if value := previous {
+			os.setenv('V3CACHE', value, true)
+		} else {
+			os.unsetenv('V3CACHE')
+		}
+		os.rmdir_all(root) or {}
+	}
+	outside := os.join_path(outside_dir, 'user.o')
+	os.write_file(outside, 'keep')!
+	traversal := '${cache_dir}/../v3_thirdparty_objs_backup/user.o'
+	for path in [outside, traversal] {
+		assert v3_cache_failure_artifacts('ld: ${path}: file format not recognized') == []
+	}
+	$if !windows {
+		link := os.join_path(cache_dir, 'linked-user.o')
+		os.symlink(outside, link)!
+		assert v3_cache_failure_artifacts('ld: ${link}: file format not recognized') == []
+	}
+	assert v3_discard_cache_artifacts([outside, traversal]) == 0
+	assert os.read_file(outside)! == 'keep'
+}
+
+fn test_v3_cache_artifact_detection_accepts_quoted_paths_with_spaces() {
+	root := os.join_path(os.vtmp_dir(), 'v3 cache recovery ${os.getpid()}')
+	cache_dir := os.join_path(root, 'v3_fastc_unit_cache')
+	os.mkdir_all(cache_dir)!
+	previous := os.getenv_opt('V3CACHE')
+	os.setenv('V3CACHE', root, true)
+	defer {
+		if value := previous {
+			os.setenv('V3CACHE', value, true)
+		} else {
+			os.unsetenv('V3CACHE')
+		}
+		os.rmdir_all(root) or {}
+	}
+	object := os.join_path(cache_dir, 'cached object.o')
+	os.write_file(object, 'broken')!
+	assert v3_cache_failure_artifacts("ld: '${object}': file format not recognized") == [os.real_path(object)]
+	module_dir := os.join_path(root, 'v3_module_cache_ab12', 'config')
+	os.mkdir_all(module_dir)!
+	module_object := os.join_path(module_dir, 'module.o')
+	os.write_file(module_object, 'broken')!
+	assert v3_cache_failure_artifacts("ld: '${module_object}': file format not recognized") == [os.real_path(module_object)]
 }
 
 fn test_v3_discard_cache_artifacts_drops_sidecars_and_link_plans() {
