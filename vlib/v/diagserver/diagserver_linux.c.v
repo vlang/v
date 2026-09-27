@@ -4,7 +4,8 @@ import crypto.sha256
 import hash
 import os
 import time
-import v.token
+// The requests carry tokens of their own.
+import v.token as vtoken
 import v.workers
 
 #include <errno.h>
@@ -487,7 +488,7 @@ fn (i &Inputs) changed(mut buffer []u8) bool {
 }
 
 fn quick_sum(buffer []u8, size int) u64 {
-	return token.quick_sum(unsafe { &u8(buffer.data) }, size)
+	return vtoken.quick_sum(unsafe { &u8(buffer.data) }, size)
 }
 
 // read_whole reads the file `path` into `buffer`, which it makes larger than
