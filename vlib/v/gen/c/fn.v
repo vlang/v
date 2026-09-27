@@ -1934,7 +1934,7 @@ fn (g &FlatGen) import_alias_module_for_file(alias string, file string) ?string 
 		return none
 	}
 	if file.len > 0 {
-		if mod := g.tc.file_imports['${file}\n${alias}'] {
+		if mod := g.cached_file_import(file, alias) {
 			return mod
 		}
 	}
@@ -2913,7 +2913,7 @@ fn (g &FlatGen) static_method_fn_name(type_ident string, method string) ?string 
 	qtype := g.tc.qualify_name(type_ident)
 	mut type_candidates := []string{cap: 4}
 	if !type_ident.contains('.') {
-		for candidate in g.tc.file_selective_imports['${g.tc.cur_file}\n${type_ident}'] or {
+		for candidate in g.file_selective_import_candidates(g.tc.cur_file, type_ident) or {
 			[]string{}
 		} {
 			if candidate !in type_candidates {
@@ -13193,7 +13193,7 @@ fn (g &FlatGen) selective_import_call_key_in_file(name string, file string) ?str
 		return none
 	}
 	mut resolved := ''
-	for candidate in g.tc.file_selective_imports['${file}\n${name}'] or { return none } {
+	for candidate in g.file_selective_import_candidates(file, name) or { return none } {
 		if candidate !in g.tc.fn_param_types && candidate !in g.tc.fn_ret_types {
 			continue
 		}
@@ -13362,7 +13362,7 @@ fn (g &FlatGen) import_resolved_fn_decl_variadic(name string) ?bool {
 		if g.tc.cur_file.len == 0 {
 			return none
 		}
-		g.tc.file_imports['${g.tc.cur_file}\n${alias}'] or { return none }
+		g.cached_file_import(g.tc.cur_file, alias) or { return none }
 	} else {
 		g.import_alias_module(alias) or { return none }
 	}

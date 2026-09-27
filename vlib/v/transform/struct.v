@@ -1129,7 +1129,7 @@ fn (t &Transformer) resolve_imported_type_name(name string) ?string {
 		return none
 	}
 	alias := name[..dot]
-	if mod := t.tc.file_imports[file_import_key(t.cur_file, alias)] {
+	if mod := t.file_import_module(t.cur_file, alias) {
 		if mod != alias {
 			return mod + name[dot..]
 		}

@@ -620,7 +620,7 @@ fn (t &Transformer) explicit_generic_fn_value_decl_candidates(id flat.NodeId, ba
 		return []string{}
 	}
 	file_name := t.node_file_or(int(id), t.node_file_or(int(base_id), t.cur_file))
-	imported_module := if mod := t.tc.file_imports[file_import_key(file_name, qualifier.value)] {
+	imported_module := if mod := t.file_import_module(file_name, qualifier.value) {
 		mod
 	} else if mod := t.tc.imports[qualifier.value] {
 		mod
@@ -4381,7 +4381,7 @@ fn (mut t Transformer) generated_fn_value_name_for_used(id flat.NodeId, node fla
 			return full
 		}
 		if !isnil(t.tc) && t.cur_file.len > 0 {
-			if mod := t.tc.file_imports[file_import_key(t.cur_file, base.value)] {
+			if mod := t.file_import_module(t.cur_file, base.value) {
 				resolved := '${mod}.${node.value}'
 				if t.generated_used_name_is_known_fn(resolved) {
 					return resolved
@@ -14574,14 +14574,14 @@ fn (t &Transformer) ident_is_import_alias(name string) bool {
 	if isnil(t.tc) {
 		return false
 	}
-	return name in t.tc.imports || file_import_key(t.tc.cur_file, name) in t.tc.file_imports
+	return name in t.tc.imports || t.has_file_import(t.tc.cur_file, name)
 }
 
 fn (t &Transformer) import_alias_module(name string) string {
 	if isnil(t.tc) {
 		return name
 	}
-	if mod := t.tc.file_imports[file_import_key(t.tc.cur_file, name)] {
+	if mod := t.file_import_module(t.tc.cur_file, name) {
 		return mod
 	}
 	return t.tc.imports[name] or { name }
@@ -14589,4 +14589,46 @@ fn (t &Transformer) import_alias_module(name string) string {
 
 fn file_import_key(file string, alias string) string {
 	return '${file}\n${alias}'
+}
+
+// has_file_import reports whether `alias` is an import alias in `file`.
+fn (t &Transformer) has_file_import(file string, alias string) bool {
+	if _ := t.file_import_module(file, alias) {
+		return true
+	}
+	return false
+}
+
+// qualified_name_equals reports whether `name` is `owner.member`, without
+// building that string.
+@[inline]
+fn qualified_name_equals(name string, owner string, member string) bool {
+	return name.len == owner.len + 1 + member.len && name[owner.len] == `.`
+		&& name.starts_with(owner) && name.ends_with(member)
+}
+
+// file_import_module returns the module that `alias` names through the imports
+// of `file`. The checker's import table is complete before transform starts, so
+// answers, including misses, are memoized by the parts of the table's key.
+fn (t &Transformer) file_import_module(file string, alias string) ?string {
+	if isnil(t.tc) {
+		return none
+	}
+	if isnil(t.file_import_cache) {
+		return t.tc.file_imports[file_import_key(file, alias)] or { return none }
+	}
+	mut cache := t.file_import_cache
+	state, cached := cache.get(file, alias, '')
+	if state > 0 {
+		return cached
+	}
+	if state < 0 {
+		return none
+	}
+	module_name := t.tc.file_imports[file_import_key(file, alias)] or {
+		cache.put(file, alias, '', -1, '')
+		return none
+	}
+	cache.put(file, alias, '', 1, module_name)
+	return module_name
 }

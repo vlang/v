@@ -3315,7 +3315,7 @@ fn (g &FlatGen) shared_qualify_leaf_type_text(name string, module_name string) s
 		clean = name[prefix.len..]
 	}
 	mut imported := ''
-	for candidate in g.tc.file_selective_imports['${g.tc.cur_file}\n${clean}'] or { []string{} } {
+	for candidate in g.file_selective_import_candidates(g.tc.cur_file, clean) or { []string{} } {
 		if candidate !in g.tc.structs && candidate !in g.tc.type_aliases && candidate !in g.tc.interface_names && candidate !in g.tc.sum_types && candidate !in g.tc.enum_names && candidate !in g.tc.flag_enums {
 			continue
 		}
@@ -4248,7 +4248,7 @@ fn (g &FlatGen) struct_init_import_alias_type_name(type_name string) string {
 	if is_generic && args.len > 0 && !base.contains('.') {
 		mut resolved := []string{}
 		if g.tc.cur_file.len > 0 {
-			if candidates := g.tc.file_selective_imports['${g.tc.cur_file}\n${base}'] {
+			if candidates := g.file_selective_import_candidates(g.tc.cur_file, base) {
 				for candidate in candidates {
 					if candidate.len > 0 && candidate !in resolved {
 						resolved << candidate
@@ -4464,8 +4464,9 @@ fn (g &FlatGen) find_struct_decl(type_name string) ?StructDeclInfo {
 	// leak into this file's literals. Checked before the per-module cache below,
 	// because two files of one module can import different homonyms.
 	if !type_name.contains('.') && g.tc.cur_file.len > 0 {
-		selective_key := '${g.tc.cur_file}\n${type_name}'
-		for candidate in g.tc.file_selective_imports[selective_key] or { []string{} } {
+		for candidate in g.file_selective_import_candidates(g.tc.cur_file, type_name) or {
+			[]string{}
+		} {
 			if info := g.struct_decl_infos[candidate] {
 				return info
 			}

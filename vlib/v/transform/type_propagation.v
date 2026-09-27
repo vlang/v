@@ -917,6 +917,28 @@ fn (t &Transformer) qualified_enum_type_selector_name_from_selector_name(base st
 
 // lookup_struct_field_type resolves lookup struct field type information for transform.
 fn (t &Transformer) lookup_struct_field_type(type_name string, field_name string) ?string {
+	if type_name == '' || field_name == '' || isnil(t.struct_field_type_cache) {
+		return t.lookup_struct_field_type_keyed(type_name, field_name)
+	}
+	// Answer repeated lookups before building the memo's composite key.
+	mut cache := t.struct_field_type_cache
+	mut recent := cache.recent_cache()
+	state, cached := recent.get(t.cur_module, type_name, field_name)
+	if state > 0 {
+		return cached
+	}
+	if state < 0 {
+		return none
+	}
+	if resolved := t.lookup_struct_field_type_keyed(type_name, field_name) {
+		recent.put(t.cur_module, type_name, field_name, 1, resolved)
+		return resolved
+	}
+	recent.put(t.cur_module, type_name, field_name, -1, '')
+	return none
+}
+
+fn (t &Transformer) lookup_struct_field_type_keyed(type_name string, field_name string) ?string {
 	if type_name == '' || field_name == '' {
 		return none
 	}
