@@ -117,6 +117,20 @@ const scoped_serial_user_cgen_node_threshold = 2_000_000
 const scoped_large_cold_cache_node_limit = 500_000
 const v3_large_cold_cache_marker_version = 'v3-large-cold-cache-bypass-v1'
 const scoped_linux_user_job_limit = 4
+const diagnostics_server_job_limit = 8
+
+// scoped_linux_job_limit is how many jobs a compilation with scoped arenas
+// runs at once. A diagnostics server's check keeps no arena past its semantic
+// check, and the editor waits on it: it takes more of the pool (p200: 197 ->
+// 169 ms, peak memory 111 -> 135 MB).
+fn scoped_linux_job_limit(check_only bool, diagnostics_server bool) int {
+	return if check_only && diagnostics_server {
+		diagnostics_server_job_limit
+	} else {
+		scoped_linux_user_job_limit
+	}
+}
+
 const scoped_transform_signature_headroom = 2048
 const v3_vvmrc_file_name = '.vvmrc'
 const v3_vvmrc_skip_env = 'V_SKIP_VVMRC'
@@ -10467,7 +10481,10 @@ pub fn run(args []string) {
 		// Bound Linux pools to the configuration used for the scoped-memory path;
 		// high VJOBS values otherwise multiply both RSS and shared-cache pressure.
 		if !building_v && scope_prealloc_stages && runtime.nr_jobs() > scoped_linux_user_job_limit {
-			workers.limit_pool_size(scoped_linux_user_job_limit - 1)
+			job_limit := scoped_linux_job_limit(check_only, os.getenv('V_DIAGNOSTICS_SERVER') != '')
+			if runtime.nr_jobs() > job_limit {
+				workers.limit_pool_size(job_limit - 1)
+			}
 		}
 	}
 	if building_v || cmd_v_build {
