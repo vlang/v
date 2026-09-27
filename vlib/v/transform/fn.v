@@ -14173,7 +14173,7 @@ fn (mut t Transformer) resolved_receiver_arg_compatible(arg_id flat.NodeId, actu
 		return true
 	}
 	if !isnil(t.tc) && actual.starts_with('fn') && expected.starts_with('fn') {
-		if !callback_fn_type_modes_compatible(actual, expected) {
+		if !t.callback_fn_type_modes_compatible(actual, expected) {
 			return false
 		}
 		actual_fn := transform_fn_type(t.tc.parse_type(actual)) or { return false }
@@ -14273,7 +14273,7 @@ fn callback_param_shared_atomic_mode(param string) string {
 	return ''
 }
 
-fn callback_nested_fn_type(param string) ?string {
+fn (t &Transformer) callback_nested_fn_type(param string) ?string {
 	mut payload := generic_fn_type_param_payload(param)
 	for {
 		if payload.starts_with('?') || payload.starts_with('!') || payload.starts_with('&') {
@@ -14307,13 +14307,14 @@ fn callback_nested_fn_type(param string) ?string {
 			break
 		}
 	}
+	payload = t.normalize_type_alias(payload)
 	if payload.starts_with('fn(') || payload.starts_with('fn (') {
 		return payload
 	}
 	return none
 }
 
-fn callback_fn_type_modes_compatible(actual string, expected string) bool {
+fn (t &Transformer) callback_fn_type_modes_compatible(actual string, expected string) bool {
 	actual_params, actual_return := fn_type_text_parts(actual) or { return false }
 	expected_params, expected_return := fn_type_text_parts(expected) or { return false }
 	if actual_params.len != expected_params.len {
@@ -14323,19 +14324,19 @@ fn callback_fn_type_modes_compatible(actual string, expected string) bool {
 		if callback_param_shared_atomic_mode(actual_param) != callback_param_shared_atomic_mode(expected_params[i]) {
 			return false
 		}
-		if nested_actual := callback_nested_fn_type(actual_param) {
-			nested_expected := callback_nested_fn_type(expected_params[i]) or { return false }
-			if !callback_fn_type_modes_compatible(nested_actual, nested_expected) {
+		if nested_actual := t.callback_nested_fn_type(actual_param) {
+			nested_expected := t.callback_nested_fn_type(expected_params[i]) or { return false }
+			if !t.callback_fn_type_modes_compatible(nested_actual, nested_expected) {
 				return false
 			}
-		} else if _ := callback_nested_fn_type(expected_params[i]) {
+		} else if _ := t.callback_nested_fn_type(expected_params[i]) {
 			return false
 		}
 	}
-	if nested_actual := callback_nested_fn_type(actual_return) {
-		nested_expected := callback_nested_fn_type(expected_return) or { return false }
-		return callback_fn_type_modes_compatible(nested_actual, nested_expected)
-	} else if _ := callback_nested_fn_type(expected_return) {
+	if nested_actual := t.callback_nested_fn_type(actual_return) {
+		nested_expected := t.callback_nested_fn_type(expected_return) or { return false }
+		return t.callback_fn_type_modes_compatible(nested_actual, nested_expected)
+	} else if _ := t.callback_nested_fn_type(expected_return) {
 		return false
 	}
 	return true
