@@ -641,8 +641,9 @@ fn (mut t Transformer) rebuild_for_in_stmt(_id flat.NodeId, node flat.Node) []fl
 	} else if iter_type.starts_with('[]') || t.is_fixed_array_type(iter_type) {
 		element_type_text = t.infer_for_in_elem_type(iter_type, node)
 	}
-	element_value_is_indirect := t.normalize_type_alias(element_type_text).starts_with('&')
-		|| t.is_optional_type_name(element_type_text)
+	normalized_element_type := t.normalize_type_alias(element_type_text)
+	element_value_is_indirect := normalized_element_type.starts_with('&')
+		|| t.is_optional_type_name(normalized_element_type)
 	if node.op == .amp && (!container_yields_ref || element_value_is_indirect) {
 		bind_id := if has_index { val_id } else { key_id }
 		if int(bind_id) >= 0 {
