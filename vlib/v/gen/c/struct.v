@@ -653,7 +653,9 @@ fn (mut g FlatGen) gen_struct_init(id flat.NodeId) {
 		raw_init_value
 	}
 	if init_value.starts_with('chan ') {
-		g.gen_channel_init(node)
+		mut channel_node := node
+		channel_node.value = g.generic_default_type_text(init_value)
+		g.gen_channel_init(channel_node)
 		return
 	}
 	// A generic `T{}` can specialize to `&Struct`. The literal must then escape
@@ -2508,9 +2510,6 @@ fn (mut g FlatGen) struct_default_field_type_text(
 	info StructDeclInfo,
 	field_type string
 ) types.Type {
-	if exact := g.exact_known_import_type_text(field_type) {
-		return exact
-	}
 	if field_type.len > 0 && !field_type.contains('.') && info.module.len > 0 && info.module != 'main'
 		&& info.module != 'builtin' {
 		qtyp := '${info.module}.${field_type}'
@@ -2518,6 +2517,9 @@ fn (mut g FlatGen) struct_default_field_type_text(
 			|| qtyp in g.tc.interface_names {
 			return g.tc.parse_type(qtyp)
 		}
+	}
+	if exact := g.exact_known_import_type_text(field_type) {
+		return exact
 	}
 	return g.tc.parse_type(field_type)
 }
