@@ -37,6 +37,22 @@ fn test_translated_fixed_array_typed_pointer_assignments() {
 	mut aliased := unsafe { TranslatedVoidPtr(nil) }
 	aliased = [20, 22]!
 	assert unsafe { (&int(aliased))[0] } == 20
+	mut bytes := unsafe { &u8(nil) }
+	bytes = [char(65), char(66)]!
+	assert first_byte(bytes) == 65
+	mut byte_row := unsafe { &[2]u8(nil) }
+	byte_row = [[char(65), char(66)]!, [char(67), char(68)]!]!
+	assert first_byte_row(byte_row) == 65
+}
+
+fn make_runtime_row(value int) [2]int {
+	return [value, value + 1]!
+}
+
+fn test_translated_nested_literal_pointer_storage_survives_assignment() {
+	mut row := unsafe { &[2]int(nil) }
+	row = [make_runtime_row(20), make_runtime_row(30)]!
+	assert sum_row(row) == 41
 }
 
 fn test_translated_fixed_array_comparisons() {

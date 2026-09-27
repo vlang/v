@@ -322,14 +322,7 @@ fn (mut g FlatGen) gen_fixed_array_data_arg(id flat.NodeId, arr types.ArrayFixed
 	}
 	if node.kind == .array_literal {
 		if elem_fixed := array_fixed_type(arr.elem_type) {
-			mut needs_runtime_copy := false
-			for i in 0 .. node.children_count {
-				if g.fixed_array_initializer_string(g.a.child(&node, i), elem_fixed).len == 0 {
-					needs_runtime_copy = true
-					break
-				}
-			}
-			if needs_runtime_copy {
+			if g.fixed_array_literal_needs_runtime_copy(node, elem_fixed) {
 				g.gen_nested_fixed_array_literal_copy(node, arr, elem_fixed)
 				return
 			}
@@ -407,6 +400,15 @@ fn (mut g FlatGen) gen_fixed_array_data_arg(id flat.NodeId, arr types.ArrayFixed
 		return
 	}
 	g.gen_expr(id)
+}
+
+fn (g &FlatGen) fixed_array_literal_needs_runtime_copy(node flat.Node, elem_fixed types.ArrayFixed) bool {
+	for i in 0 .. node.children_count {
+		if g.fixed_array_initializer_string(g.a.child(&node, i), elem_fixed).len == 0 {
+			return true
+		}
+	}
+	return false
 }
 
 // gen_cabi_fixed_array_data_arg materializes fixed arrays whose V element storage
