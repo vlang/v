@@ -9017,6 +9017,8 @@ fn (mut tc TypeChecker) insert_mut_loop_var_with_source(id flat.NodeId, typ Type
 	tc.fn_context.mut_local_owners[v.value] = owner
 	if typ is Pointer && !source_yields_ref {
 		tc.fn_context.mut_param_base_types[v.value] = typ.base_type
+	} else {
+		tc.fn_context.mut_param_base_types.delete(v.value)
 	}
 }
 
