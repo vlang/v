@@ -1616,3 +1616,46 @@ fn test_a_prepared_server_checks_as_a_one_shot_check_does_once_a_module_shadows_
 	assert checked == one_shot_check(dir)
 	assert trace.contains('one-shot check: the prepared module strings resolves to another directory'), trace
 }
+
+const shadowed_program = 'module main
+
+fn twice(x int) int {
+	return x * 2
+}
+
+fn main() {
+	y := twice(3)
+	println(y)
+}
+'
+
+fn test_a_prepared_server_answers_a_question_once_a_module_shadows_a_prepared_one() {
+	$if !linux {
+		return
+	}
+	dir := os.join_path(work_dir, 'prepared_shadow_query')
+	os.mkdir_all(dir)!
+	os.write_file(os.join_path(dir, 'main.v'), shadowed_program)!
+	trace := os.join_path(dir, 'trace.txt')
+	mut p := start_server(dir, {
+		'V_DIAGNOSTICS_PREPARE': '1'
+		'V_DIAGNOSTICS_TRACE':   trace
+	})
+	defer {
+		p.close()
+	}
+	// A module of the project named like one builtin imports, after the server
+	// prepared the one of vlib: the child checks as a one-shot run does, and
+	// still answers the questions, not with the diagnostics of a check.
+	os.mkdir_all(os.join_path(dir, 'strings'))!
+	os.write_file(os.join_path(dir, 'strings', 'strings.v'), 'module strings\n\npub fn shadow() {}\n')!
+	questions := ['9:hv^10', '8:gd^7']
+	expected := ask_once(dir, questions)
+	assert expected.all(it != ''), expected.str()
+	_, answer := query(mut p, 'a', questions.map('main.v:${it}').join('\t'))
+	assert answer.split('\n').map(it.all_after('\t')) == expected
+	assert (os.read_file(trace) or { '' }).contains('one-shot check: the prepared module strings resolves to another directory')
+	p.stdin_write('quit\n')
+	p.wait()
+	assert p.code == 0
+}

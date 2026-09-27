@@ -11368,7 +11368,7 @@ pub fn run(args []string) {
 	}
 	prefs.is_test = user_files.any(is_v3_test_file(it, backend, prefs.target))
 	if prepared_imports.ready && prefs.is_test != prepared_imports.is_test {
-		rerun_as_one_shot_check('a test file came or went since the preparation')
+		rerun_as_one_shot_check('a test file came or went since the preparation', served.question)
 	}
 	parse_files_dispatch_profiled(mut p, user_files, !current_no_parallel, mut parse_timing)
 	if is_linux_wayland_only_session(target.os, os.getenv('DISPLAY'), os.getenv('WAYLAND_DISPLAY'), os.getenv('XDG_SESSION_TYPE'))
@@ -11407,12 +11407,12 @@ pub fn run(args []string) {
 	resolve_imports(mut a, mut p, prefs, user_files, !current_no_parallel, skip_closure_runtime,
 		check_overflow, mut cache_state, mut parse_timing, mut implicit_imports, mut prepared_imports)
 	if prepared_imports.diverged != '' {
-		rerun_as_one_shot_check(prepared_imports.diverged)
+		rerun_as_one_shot_check(prepared_imports.diverged, served.question)
 	}
 	mut logical_file_order := []int{}
 	if prepared_imports.ready {
 		logical_file_order = prepared_imports.logical_file_order(a, &cache_state) or {
-			rerun_as_one_shot_check('a parsed file has no place in the order of a one-shot check')
+			rerun_as_one_shot_check('a parsed file has no place in the order of a one-shot check', served.question)
 			[]int{}
 		}
 	}
@@ -11979,7 +11979,7 @@ pub fn run(args []string) {
 		mut cvsw := time.new_stopwatch()
 		if continue_collect {
 			if !pre_tc.collect_continue(a) {
-				rerun_as_one_shot_check('the prepared declarations cannot be continued')
+				rerun_as_one_shot_check('the prepared declarations cannot be continued', served.question)
 			}
 		} else {
 			if prepared_imports.ready {
@@ -18976,9 +18976,15 @@ fn trace_diagnostics_server(message string) {
 
 // rerun_as_one_shot_check replaces a diagnostics server's child with the
 // one-shot check of the same command line, whose output a check that relies on
-// a preparation cannot guarantee to match.
-fn rerun_as_one_shot_check(reason string) {
+// a preparation cannot guarantee to match. A child that was to answer
+// `question` answers it there, as `-line-info` does.
+fn rerun_as_one_shot_check(reason string, question string) {
 	trace_diagnostics_server('one-shot check: ${reason}')
+	mut args := os.args[1..].clone()
+	if question != '' && args.len > 0 {
+		// Before the input, which the command line ends with.
+		args.insert(args.len - 1, ['-line-info', question])
+	}
 	mut envs := []string{}
 	for name, value in os.environ() {
 		if name in ['V_DIAGNOSTICS_SERVER', 'V_DIAGNOSTICS_PREPARE'] {
@@ -18988,7 +18994,7 @@ fn rerun_as_one_shot_check(reason string) {
 	}
 	flush_stdout()
 	flush_stderr()
-	os.execve(os.executable(), os.args[1..], envs) or {
+	os.execve(os.executable(), args, envs) or {
 		eprintln('v-diagnostics-server: cannot run the one-shot check: ${err}')
 		exit(2)
 	}
