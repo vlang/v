@@ -328,12 +328,27 @@ fn read_from_start(fd int) string {
 // the child answers a next question only while they hold it, no file was added
 // next to one of them or removed, and `imports_hold` finds each import
 // resolving to the directory it was read from. It notes the names in their
-// directories already, and reads the files again once its first answer is
-// out, as the client does not wait for that: one may have changed meanwhile.
+// directories already. A quick sum is what the check read: the file is read
+// again only for the next question. A file known by its SHA-256 is read again
+// once the first answer is out, as the client does not wait for that.
 pub fn (mut r Request) keep_inputs(digests map[string]string, imports_hold fn () bool) {
 	r.inputs.imports_hold = imports_hold
 	r.current = r.inputs.note_dirs(digests, mut r.buffer)
-	r.digests = digests.clone()
+	for path, digest in digests {
+		if sum, size := quick_sum_of(digest) {
+			r.inputs.files << InputFile{
+				path: path
+				size: size
+				sum:  sum
+			}
+			// Reading a file again takes one byte more than it held.
+			if r.buffer.len <= size {
+				r.buffer = []u8{len: size * 2 + 4096}
+			}
+		} else {
+			r.digests[path] = digest
+		}
+	}
 }
 
 // next_question tells the server that the answer is complete, with the exit
@@ -610,7 +625,7 @@ fn (mut i Inputs) note_files(digests map[string]string, mut buffer []u8) bool {
 	for path, digest in digests {
 		size := read_whole(path, mut buffer) or { return false }
 		held := if digest.starts_with(quick_digest_prefix) {
-			quick_sum_digest(quick_sum(buffer, size))
+			quick_sum_digest(quick_sum(buffer, size), size)
 		} else {
 			sha256.sum(buffer[..size]).hex()
 		}

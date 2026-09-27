@@ -11295,6 +11295,13 @@ pub fn run(args []string) {
 			}}')
 		}
 	}
+	// What the server parsed itself is the same for all its children: a child
+	// that answers again does not watch it.
+	server_file_ids := if os.getenv('V_DIAGNOSTICS_SERVER') != '' {
+		p.a.source_files.keys()
+	} else {
+		[]int{}
+	}
 	// A diagnostics server's child may have a question to answer instead.
 	mut served := diagserver.serve()
 	if served.question != '' {
@@ -12115,7 +12122,7 @@ pub fn run(args []string) {
 			// program it checked, while the server finds the files it read
 			// unchanged.
 			if served.answers_again() {
-				if digests := v3_input_digests(a, cache_state.cached_source_digests) {
+				if digests := v3_input_digests(a, cache_state.cached_source_digests, server_file_ids) {
 					project_root := cache_state.import_resolutions.project_root
 					resolved_imports := v3_imports_to_resolve(a, cache_state.import_resolutions)
 					served.keep_inputs(digests, fn [prefs, project_root, resolved_imports] () bool {
@@ -16209,15 +16216,18 @@ fn print_vls_answers(mut tc types.TypeChecker, queries []types.VlsQuery) {
 
 // v3_input_digests returns the SHA-256 of what this compilation read in each V
 // source, in hexadecimal and by absolute path, or the quick sum the parser took
-// of it instead: the files it parsed, and those behind a module header it
-// loaded from the cache. None when it read a file twice with different
-// contents, or read none.
-fn v3_input_digests(a &flat.FlatAst, cached_source_digests map[string]string) ?map[string]string {
+// of it instead: the files it parsed, but those of `skipped_ids`, and those
+// behind a module header it loaded from the cache. None when it read a file
+// twice with different contents, or read none.
+fn v3_input_digests(a &flat.FlatAst, cached_source_digests map[string]string, skipped_ids []int) ?map[string]string {
 	mut digests := map[string]string{}
-	for _, file in a.source_files {
+	for id, file in a.source_files {
+		if id in skipped_ids {
+			continue
+		}
 		mut digest := ''
 		if file.has_source_quick_sum() {
-			digest = diagserver.quick_sum_digest(file.source_quick_sum())
+			digest = diagserver.quick_sum_digest(file.source_quick_sum(), file.size)
 		} else if file.has_source_sha256() {
 			source_digest := file.source_sha256()
 			digest = source_digest[..].hex()
