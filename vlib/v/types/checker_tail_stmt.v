@@ -12766,11 +12766,39 @@ fn (tc &TypeChecker) method_param_signature_compatible(actual Type, expected Typ
 
 // fn_type_callconv_compatible checks calling conventions recursively for function types.
 pub fn (tc &TypeChecker) fn_type_callconv_compatible(actual Type, expected Type) bool {
+	if actual is Pointer && expected is Pointer {
+		return tc.fn_type_callconv_compatible(actual.base_type, expected.base_type)
+	}
 	if actual is OptionType && expected is OptionType {
 		return tc.fn_type_callconv_compatible(actual.base_type, expected.base_type)
 	}
 	if actual is ResultType && expected is ResultType {
 		return tc.fn_type_callconv_compatible(actual.base_type, expected.base_type)
+	}
+	if actual is Array && expected is Array {
+		return tc.fn_type_callconv_compatible(actual.elem_type, expected.elem_type)
+	}
+	if actual is ArrayFixed && expected is ArrayFixed {
+		return actual.len == expected.len
+			&& tc.fn_type_callconv_compatible(actual.elem_type, expected.elem_type)
+	}
+	if actual is Map && expected is Map {
+		return tc.fn_type_callconv_compatible(actual.key_type, expected.key_type)
+			&& tc.fn_type_callconv_compatible(actual.value_type, expected.value_type)
+	}
+	if actual is Channel && expected is Channel {
+		return tc.fn_type_callconv_compatible(actual.elem_type, expected.elem_type)
+	}
+	if actual is MultiReturn && expected is MultiReturn {
+		if actual.types.len != expected.types.len {
+			return false
+		}
+		for i, typ in actual.types {
+			if !tc.fn_type_callconv_compatible(typ, expected.types[i]) {
+				return false
+			}
+		}
+		return true
 	}
 	if actual is Alias && fn_type_from_type(actual) == none {
 		return tc.fn_type_callconv_compatible(actual.base_type, expected)

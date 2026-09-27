@@ -46,6 +46,12 @@ fn test_specialized_receiver_callback_uses_function_type_compatibility() {
 		'fn (map[string]fn (int))')
 	assert !t.resolved_receiver_arg_compatible(id, 'fn (SharedCb)', 'fn (PlainCb)')
 	assert !t.resolved_receiver_arg_compatible(id, 'fn (FastFn)', 'fn (CdeclFn)')
+	assert !t.resolved_receiver_arg_compatible(id, 'fn ([]FastFn)', 'fn ([]CdeclFn)')
+	assert !t.resolved_receiver_arg_compatible(id, 'fn ([2]FastFn)', 'fn ([2]CdeclFn)')
+	assert !t.resolved_receiver_arg_compatible(id, 'fn (map[string]FastFn)',
+		'fn (map[string]CdeclFn)')
+	assert !t.resolved_receiver_arg_compatible(id, 'fn (chan FastFn)', 'fn (chan CdeclFn)')
+	assert !t.resolved_receiver_arg_compatible(id, 'fn (&FastFn)', 'fn (&CdeclFn)')
 	assert t.resolved_receiver_arg_compatible(id, 'fn (FastFn)', 'fn (FastFn)')
 	assert !t.resolved_receiver_arg_compatible(id, 'fn () SharedCb', 'fn () PlainCb')
 	assert !t.resolved_receiver_arg_compatible(id, 'fn (SharedHandlers)',
