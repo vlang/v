@@ -127,6 +127,9 @@ fn (mut tc TypeChecker) vls_answer_type_word(q VlsQuery, file_id int, source str
 	for word in vls_type_words_at(source, offset) {
 		match q.method {
 			.hover {
+				if text := tc.vls_type_param_hover_at(file_id, offset, word) {
+					return vls_hover_json(text, '')
+				}
 				if declaration := tc.vls_type_declaration(word) {
 					return vls_hover_json(declaration, '')
 				}
@@ -142,6 +145,68 @@ fn (mut tc TypeChecker) vls_answer_type_word(q VlsQuery, file_id int, source str
 		}
 	}
 	return ''
+}
+
+// vls_type_param_hover_at is the hover of the type parameter `word` written at
+// `offset` of `file_id`, where no node of its own stands for it: in
+// `[T Named]`, in a type, `[]T`, or in the condition of a `$if` (see
+// vls_type_param_hover). No node spans a signature: there, the declaration
+// that it starts.
+fn (tc &TypeChecker) vls_type_param_hover_at(file_id int, offset int, word string) ?string {
+	if id := tc.vls_node_around(file_id, offset) {
+		if text := tc.vls_type_param_hover(id, word) {
+			return text
+		}
+	}
+	decl_id := tc.vls_decl_before(file_id, offset)?
+	return tc.vls_type_param_hover(decl_id, word)
+}
+
+// vls_decl_before returns the last declaration of a function or a type of
+// `file_id` that starts before `offset`.
+fn (tc &TypeChecker) vls_decl_before(file_id int, offset int) ?flat.NodeId {
+	mut best := -1
+	mut best_start := -1
+	for idx in tc.a.user_code_start .. tc.a.nodes.len {
+		node := tc.a.nodes[idx]
+		if node.pos.id != file_id
+			|| node.kind !in [.fn_decl, .struct_decl, .interface_decl, .type_decl] {
+			continue
+		}
+		start := int(node.pos.offset)
+		if start <= offset && start > best_start {
+			best = idx
+			best_start = start
+		}
+	}
+	if best < 0 {
+		return none
+	}
+	return flat.NodeId(best)
+}
+
+// vls_node_around returns the innermost node of `file_id` whose span holds
+// `offset`.
+fn (tc &TypeChecker) vls_node_around(file_id int, offset int) ?flat.NodeId {
+	mut best := -1
+	mut best_len := max_int
+	for idx in tc.a.user_code_start .. tc.a.nodes.len {
+		node := tc.a.nodes[idx]
+		if node.pos.id != file_id {
+			continue
+		}
+		start := int(node.pos.offset)
+		end := int(node.pos.end)
+		if offset < start || offset > end || end - start >= best_len {
+			continue
+		}
+		best = idx
+		best_len = end - start
+	}
+	if best < 0 {
+		return none
+	}
+	return flat.NodeId(best)
 }
 
 // vls_type_words_at returns the names a type written at `offset` may have:

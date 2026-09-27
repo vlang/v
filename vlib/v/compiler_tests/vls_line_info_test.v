@@ -1103,9 +1103,9 @@ fn test_the_implicit_variables_and_lambdas_of_a_constrained_body_have_its_member
 	assert closure_completion(18, 19) == named
 	assert closure_completion(19, 20) == named
 	assert closure_completion(21, 21) == named
-	assert closure('hv^', 20, 'it', 0) == hover_of('it T')
-	assert closure('hv^', 19, 'a', 0) == hover_of('a T')
-	assert closure('hv^', 21, 'x', 1) == hover_of('x T')
+	assert closure('hv^', 20, 'it', 0) == hover_of('it T\\nT: implements main.Named')
+	assert closure('hv^', 19, 'a', 0) == hover_of('a T\\nT: implements main.Named')
+	assert closure('hv^', 21, 'x', 1) == hover_of('x T\\nT: implements main.Named')
 	// The parameter of a lambda is where its uses are declared, in any body.
 	assert closure('gd^', 21, 'x', 1) == 'main.v:21:16'
 	assert closure('gd^', 26, 'u', 1) == 'main.v:26:20'
@@ -1271,11 +1271,11 @@ fn test_the_callee_of_a_call_through_a_value_is_that_value() {
 	assert function('hv^', '\treturn f(x)', 'f', 0) == hover_of('f fn (int) int')
 	// A generic function called with its type arguments is that function.
 	longest := functions_line('fn longest[T Named](a T, b T) T {')
-	assert function('hv^', '\tprintln(longest[User](u, u).name)', 'longest', 0) == hover_of('fn longest(a T, b T) T')
+	assert function('hv^', '\tprintln(longest[User](u, u).name)', 'longest', 0) == hover_of('fn longest[T Named](a T, b T) T')
 	assert function('gd^', '\tprintln(longest[User](u, u).name)', 'longest', 0) == 'main.v:${longest}:3'
 	// A function literal in a generic body takes a `T`, written by its name.
-	assert function('hv^', '\tprintln(xs.map(count))', 'count', 0) == hover_of('count fn (T) int')
-	assert function('hv^', '\tcount := fn (x T) int {', 'count', 0) == hover_of('count fn (T) int')
+	assert function('hv^', '\tprintln(xs.map(count))', 'count', 0) == hover_of('count fn (T) int\\nT: implements main.Named')
+	assert function('hv^', '\tcount := fn (x T) int {', 'count', 0) == hover_of('count fn (T) int\\nT: implements main.Named')
 }
 
 fn test_a_static_method_is_declared_by_its_name() {
@@ -1327,8 +1327,8 @@ fn test_a_local_of_a_generic_body_has_the_type_of_its_value() {
 		'\tlengths := xs.map(it.name.len)': 'lengths []int'
 		'\tfor n in lengths {':             'n int'
 		'\tlabel := x.name':                'label string'
-		'\tsame := x':                      'same T'
-		'\tfirst := xs[0]':                 'first T'
+		'\tsame := x':                      'same T\\nT: implements main.Named'
+		'\tfirst := xs[0]':                 'first T\\nT: implements main.Named'
 		'\tone, two := x.name, 2':          'one string'
 		'\tword, size := pair(x)':          'word string'
 		'\tfor i, item in xs {':            'i int'
@@ -1344,8 +1344,8 @@ fn test_a_local_of_a_generic_body_has_the_type_of_its_value() {
 		'\tfor n in lengths {':    'lengths []int'
 		'\tone, two := x.name, 2': 'two int'
 		'\tword, size := pair(x)': 'size int'
-		'\tfor i, item in xs {':   'item T'
-		'\tfor key, value in m {': 'value T'
+		'\tfor i, item in xs {':   'item T\\nT: implements main.Named'
+		'\tfor key, value in m {': 'value T\\nT: implements main.Named'
 	} {
 		name := want.all_before(' ')
 		assert local('hv^', text, name) == hover_of(want), '${text}: ${local('hv^', text, name)}'
@@ -1932,4 +1932,172 @@ fn test_a_shared_server_sends_the_errors_of_a_long_check_before_its_end() {
 		code := rest.all_after('v-diagnostics-server: end ').all_before(' ')
 		assert 'exit ${code}\n' + rest.all_before('v-diagnostics-server: end ').trim_space() == expected
 	}
+}
+
+const narrowing_program = "module main
+
+interface Named {
+	name string
+}
+
+struct User {
+	name string
+	age  int
+}
+
+type Number3 = int | i64 | f64
+
+struct Circle {
+	r f64
+}
+
+struct Square {
+	side f64
+}
+
+type Shape = Circle | Square
+
+fn half[T Number3](x T, y T, xs []T) f64 {
+	same := x
+	\$if T is f64 {
+		println(xs)
+		zero := T(0)
+		return x + y + same + zero
+	} \$else {
+		return f64(x)
+	}
+}
+
+fn tested[T Number3](x T) f64 {
+	\$if x is f64 {
+		return x
+	}
+	return 0.0
+}
+
+fn named[T Named](a T) int {
+	\$if a is User {
+		return a.age
+	}
+	return a.name.len
+}
+
+fn family[T User](u T) string {
+	return u.name
+}
+
+fn locals[T Named](x T) int {
+	y := x
+	mut all := []T{}
+	all << y
+	\$if y is User {
+		mine := []T{}
+		return y.age + mine.len + all.len
+	}
+	return all.len
+}
+
+fn area(s Shape) f64 {
+	if s is Circle {
+		return s.r
+	}
+	return match s {
+		Square { s.side }
+		else { 0.0 }
+	}
+}
+
+fn age_of(n Named) int {
+	if n is User {
+		return n.age
+	}
+	return 0
+}
+
+fn main() {
+	println(half(1.0, 2.0, [3.0]))
+	println(tested(1))
+	println(named(User{'ana', 3}))
+	println(family(User{'bo', 1}))
+	println(locals(User{'cy', 2}))
+	println(area(Circle{1.0}))
+	println(age_of(User{'eva', 4}))
+}
+"
+
+// narrowed asks about the `nth` `word` of the line of narrowing_program that
+// reads `text`.
+fn narrowed(code string, text string, word string, nth int) string {
+	dir := os.join_path(work_dir, 'narrowing')
+	if !os.exists(dir) {
+		os.mkdir_all(dir) or { panic(err) }
+		os.write_file(os.join_path(dir, 'main.v'), narrowing_program) or { panic(err) }
+	}
+	line := narrowing_program.split('\n').index(text) + 1
+	assert line > 0, '`${text}` is not a line of narrowing_program'
+	return ask(dir, code, line, word, nth)
+}
+
+fn test_a_value_of_a_type_parameter_shows_what_the_type_parameter_is_there() {
+	// Outside the `$if`s that decide it, a type parameter stays, with what it
+	// can be on a line of its own.
+	number3 := 'T: int | i64 | f64'
+	assert narrowed('hv^', 'fn half[T Number3](x T, y T, xs []T) f64 {', 'x', 0) == hover_of('x T\\n${number3}')
+	assert narrowed('hv^', '\tsame := x', 'same', 0) == hover_of('same T\\n${number3}')
+	// In the branch of `$if T is f64 {` it is `f64`, for every value of it.
+	assert narrowed('hv^', '\t\tprintln(xs)', 'xs', 0) == hover_of('xs []f64')
+	for word in ['x', 'y', 'same', 'zero'] {
+		assert narrowed('hv^', '\t\treturn x + y + same + zero', word, 0) == hover_of('${word} f64')
+	}
+	// Its `$else` leaves the rest of the set.
+	assert narrowed('hv^', '\t\treturn f64(x)', 'x', 0) == hover_of('x T\\nT: int | i64')
+	// `$if x is f64 {` asks the same of a value.
+	assert narrowed('hv^', '\t\treturn x', 'x', 0) == hover_of('x f64')
+	// An interface: what implements it; in the branch of `$if a is User {`, `User`.
+	assert narrowed('hv^', '\t\treturn a.age', 'a', 0) == hover_of('a main.User')
+	assert narrowed('hv^', '\treturn a.name.len', 'a', 0) == hover_of('a T\\nT: implements main.Named')
+	// A struct as the constraint stands for itself and the structs that embed it.
+	assert narrowed('hv^', '\treturn u.name', 'u', 0) == hover_of('u T\\nT: main.User or a struct that embeds it')
+	// A local that holds a `T`: a `$if` on it decides `T`, and a literal that
+	// writes its type, `[]T{}`, has it.
+	named := 'T: implements main.Named'
+	assert narrowed('hv^', '\tmut all := []T{}', 'all', 0) == hover_of('all []T\\n${named}')
+	assert narrowed('hv^', '\t\treturn y.age + mine.len + all.len', 'y', 0) == hover_of('y main.User')
+	assert narrowed('hv^', '\t\treturn y.age + mine.len + all.len', 'age', 0) == hover_of('age int')
+	assert narrowed('hv^', '\t\treturn y.age + mine.len + all.len', 'mine', 0) == hover_of('mine []main.User')
+	assert narrowed('hv^', '\treturn all.len', 'all', 0) == hover_of('all []T\\n${named}')
+}
+
+fn test_a_type_parameter_of_an_unknown_constraint_says_nothing_more() {
+	// `[T Nope]` is reported: its hover does not tell what `T` can be.
+	dir := os.join_path(work_dir, 'unknown_constraint')
+	os.mkdir_all(dir) or { panic(err) }
+	os.write_file(os.join_path(dir, 'main.v'), 'module main\n\nfn wrong[T Nope](a T) T {\n\treturn a\n}\n\nfn main() {}\n') or {
+		panic(err)
+	}
+	assert ask(dir, 'hv^', 3, 'T', 0) == hover_of('[T Nope]')
+	assert ask(dir, 'hv^', 4, 'a', 0) == hover_of('a T')
+}
+
+fn test_a_type_parameter_shows_its_constraint_and_what_it_is_there() {
+	half := 'fn half[T Number3](x T, y T, xs []T) f64 {'
+	all := '[T Number3]\\nT: int | i64 | f64'
+	// Where it is declared, in the types of the parameters and in a `$if`.
+	assert narrowed('hv^', half, 'T', 0) == hover_of(all)
+	assert narrowed('hv^', half, 'T', 3) == hover_of(all)
+	assert narrowed('hv^', '\t\$if T is f64 {', 'T', 0) == hover_of(all)
+	// In the branch of that `$if`, `f64`.
+	assert narrowed('hv^', '\t\tzero := T(0)', 'T', 0) == hover_of('[T Number3]\\nT: f64')
+	// A function writes its type parameters, with their constraints.
+	assert narrowed('hv^', '\tprintln(half(1.0, 2.0, [3.0]))', 'half', 0) == hover_of('fn half[T Number3](x T, y T, xs []T) f64')
+}
+
+fn test_a_parameter_is_the_type_that_is_or_match_makes_it() {
+	// As a local is: `if s is Circle {` and a branch of `match s {`.
+	assert narrowed('hv^', '\t\treturn s.r', 's', 0) == hover_of('s main.Circle')
+	assert narrowed('hv^', '\t\tSquare { s.side }', 's', 0) == hover_of('s main.Square')
+	assert narrowed('hv^', '\t\treturn n.age', 'n', 0) == hover_of('n main.User')
+	// Where it is declared, and outside those branches, its declared type.
+	assert narrowed('hv^', 'fn area(s Shape) f64 {', 's', 0) == hover_of('s main.Shape')
+	assert narrowed('hv^', '\treturn match s {', 's', 0) == hover_of('s main.Shape')
 }
