@@ -22,6 +22,7 @@ fn test_joined_compile_flags_are_not_native_input_files() {
 fn test_sysroot_flags_reach_both_compile_and_link_steps() {
 	for flags in [['--sysroot=/opt/cross-sdk.a'], ['--sysroot', '/opt/cross-sdk.a']] {
 		assert c_object_compile_flags(flags) == flags
+		assert tcc_cached_main_flags(flags) == flags
 		assert c_dylib_link_flags(flags) == flags
 	}
 }
@@ -64,6 +65,7 @@ fn test_joined_isysroot_reaches_cached_dylib_link() {
 	for flags in [['-isysroot/opt/MacSDK.a'], ['-isysroot', '/opt/MacSDK.a']] {
 		assert c_dylib_link_flags(flags) == flags
 		assert c_object_compile_flags(flags) == flags
+		assert tcc_cached_main_flags(flags) == flags
 	}
 }
 

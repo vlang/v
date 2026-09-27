@@ -1057,7 +1057,8 @@ fn tcc_cached_main_flags(flags []string) []string {
 		}
 		if clean.starts_with('-I') || clean.starts_with('-D') || clean.starts_with('-U')
 			|| clean.starts_with('-isystem') || clean.starts_with('-iquote')
-			|| clean.starts_with('--sysroot=') {
+			|| clean.starts_with('--sysroot=')
+			|| (clean.starts_with('-isysroot') && clean.len > '-isysroot'.len) {
 			compile_flags << flag
 		}
 		i++
@@ -1408,8 +1409,8 @@ fn c_flag_token_is_link_only(token string) bool {
 	}
 	// Joined compiler operands are not linker inputs even when they end in a
 	// library suffix. Other options, such as -Tscript.so, still go to the linker.
-	for prefix in ['-I', '-isystem', '-iquote', '-D', '-U', '-F', '-include', '-imacros',
-		'-idirafter', '-iprefix', '-iwithprefix', '-iwithprefixbefore', '-isysroot', '--sysroot='] {
+	for prefix in ['-I', '-isystem', '-iquote', '-D', '-U', '-F', '-include', '-imacros', '-idirafter',
+		'-iprefix', '-iwithprefix', '-iwithprefixbefore', '-isysroot', '--sysroot='] {
 		if clean.starts_with(prefix) && clean.len > prefix.len {
 			return false
 		}
