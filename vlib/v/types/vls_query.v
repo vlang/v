@@ -103,8 +103,8 @@ pub fn (mut tc TypeChecker) vls_answer(q VlsQuery) string {
 	}
 	offset := line_start + q.col
 	// A question in the body of a generic function types that body first (see
-	// vls_type_generic_body).
-	if q.method in [.hover, .completion, .signature_help] {
+	// vls_type_generic_body); a hover, once it has found what it is about.
+	if q.method in [.completion, .signature_help] {
 		if id := tc.vls_node_around(file_id, offset) {
 			tc.vls_type_generic_body(id)
 		}
@@ -129,6 +129,9 @@ pub fn (mut tc TypeChecker) vls_answer(q VlsQuery) string {
 	if int(target.id) < 0 {
 		return tc.vls_answer_type_word(q, file_id, source, offset)
 	}
+	if q.method == .hover {
+		tc.vls_type_generic_body(target.id)
+	}
 	return match q.method {
 		.hover { tc.vls_hover(target) }
 		.definition { tc.vls_definition(target, q.target) }
@@ -140,6 +143,11 @@ pub fn (mut tc TypeChecker) vls_answer(q VlsQuery) string {
 // of a field or of a parameter, a return type, a receiver's type. The parser
 // keeps those as text, without nodes of their own.
 fn (mut tc TypeChecker) vls_answer_type_word(q VlsQuery, file_id int, source string, offset int) string {
+	if q.method == .hover {
+		if id := tc.vls_node_around(file_id, offset) {
+			tc.vls_type_generic_body(id)
+		}
+	}
 	tc.vls_enter_file(file_id)
 	for word in vls_type_words_at(source, offset) {
 		match q.method {

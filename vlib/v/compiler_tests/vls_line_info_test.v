@@ -2267,6 +2267,9 @@ fn format[T Number](number T, sep string) string {
 		} }
 	}
 	local := sep + '!'
+	\$if js {
+		return separator.integer + local
+	}
 	same := number
 	return number.str() + separator.integer + local + same.str()
 }
@@ -2307,6 +2310,10 @@ fn test_a_local_of_a_generic_body_that_no_type_parameter_decides_has_its_type() 
 	assert generic_local(ret, 'local', 0) == hover_of('local string')
 	assert generic_local("\tlocal := sep + '?'", 'local', 0) == hover_of('local string')
 	assert generic_local('\tcount := local.len', 'count', 0) == hover_of('count int')
+	// Also in a branch that the parse left out, asked alone.
+	js := '\t\treturn separator.integer + local'
+	assert generic_local(js, 'separator', 0) == hover_of('separator main.Separator')
+	assert generic_local(js, 'local', 0) == hover_of('local string')
 	// One that depends on them stays as it was.
 	assert generic_local('\tsame := number', 'same', 0) == hover_of('same T\\nT: int | f64')
 }

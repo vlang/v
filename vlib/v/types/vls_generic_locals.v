@@ -22,8 +22,20 @@ fn (mut tc TypeChecker) vls_type_generic_body(id flat.NodeId) {
 		fn_id = tc.vls_parent_id(fn_id)
 	}
 	// A function that the nodes added for a left-out branch parse again is
-	// typed as the one that was checked.
+	// typed as the one that was checked: its twin, or the one that starts where
+	// it starts, as the checked tree may name it otherwise, with its module.
 	fn_id = tc.vls_twins[int(fn_id)] or { fn_id }
+	if int(fn_id) >= tc.vls_added_start {
+		added := tc.a.node(fn_id)
+		for idx in tc.a.user_code_start .. tc.vls_added_start {
+			node := tc.a.nodes[idx]
+			if node.kind == .fn_decl && node.pos.id == added.pos.id
+				&& node.pos.offset == added.pos.offset {
+				fn_id = flat.NodeId(idx)
+				break
+			}
+		}
+	}
 	if !tc.valid_node_id(fn_id) || int(fn_id) >= tc.vls_added_start
 		|| tc.vls_typed_bodies[int(fn_id)] {
 		return
