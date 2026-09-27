@@ -37,3 +37,25 @@ fn test_index_literal_and_identifier_conditions_are_distinct() {
 	}
 	assert choose_indexed(lookup, 'other') == 2
 }
+
+struct CastFoo {
+	x int
+}
+
+struct CastBar {
+	x int
+}
+
+type CastChoice = CastBar | CastFoo
+
+fn choose_cast_selector(value CastChoice) int {
+	return match true {
+		(value as CastFoo).x > 0 { 1 }
+		(value as CastBar).x > 0 { 2 }
+		else { 0 }
+	}
+}
+
+fn test_cast_target_distinguishes_selector_conditions() {
+	assert choose_cast_selector(CastFoo{ x: 1 }) == 1
+}

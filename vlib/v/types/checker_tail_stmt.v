@@ -2488,8 +2488,12 @@ fn (tc &TypeChecker) match_selector_condition_key(id flat.NodeId) string {
 		return ''
 	}
 	node := tc.a.node(id)
-	if node.kind in [.paren, .as_expr] && node.children_count > 0 {
+	if node.kind == .paren && node.children_count > 0 {
 		return tc.match_selector_condition_key(tc.a.child(node, 0))
+	}
+	if node.kind == .as_expr && node.children_count > 0 {
+		base := tc.match_selector_condition_key(tc.a.child(node, 0))
+		return if base.len > 0 { '${base} as ${node.value}' } else { '' }
 	}
 	if node.kind == .selector && node.children_count > 0 {
 		base := tc.match_selector_condition_key(tc.a.child(node, 0))
