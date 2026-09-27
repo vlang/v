@@ -21,7 +21,7 @@ fn run_vsh_script(name string, source string) os.Result {
 	script := os.join_path(root, '${name}.vsh')
 	os.write_file(script, source) or { panic(err) }
 	// `-silent` keeps the driver's benchmark report out of the script's output.
-	return os.execute('${v3_bin} -silent ${script}')
+	return os.execute('${v3_bin} -gc none -silent ${script}')
 }
 
 // A `.vsh` script gets `import os` implicitly, and every `os` function, generic
@@ -62,15 +62,20 @@ fn test_vsh_script_can_import_local_module_without_explicit_main() {
 pub fn message() string {
 	return 'from helper'
 }
+
+pub fn ls(path string) ![]string {
+	return [path]
+}
 ") or { panic(err) }
 	script := os.join_path(root, 'import_module.vsh')
-	os.write_file(script, 'import helper
+	os.write_file(script, 'import helper { ls }
 
 println(helper.message())
+println(ls("custom")!.filter(it.len > 0).join(","))
 ') or { panic(err) }
-	result := os.execute('${v3_bin} -silent ${script}')
+	result := os.execute('${v3_bin} -gc none -silent ${script}')
 	assert result.exit_code == 0, result.output
-	assert result.output.trim_space() == 'from helper', result.output
+	assert result.output.split_into_lines() == ['from helper', 'custom'], result.output
 }
 
 // Script mode is a last resort: a declaration in the script itself keeps its

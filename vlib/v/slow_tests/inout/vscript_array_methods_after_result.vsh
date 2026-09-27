@@ -9,3 +9,4 @@ println(ls(dir)!.filter(it.ends_with('.v')).sorted())
 println(ls(dir)!.any(it == 'two.txt'))
 println(ls(dir)!.all(it.len > 0))
 println(ls(dir)!.map(it.to_upper()).sorted())
+assert (ls(dir)!).filter(it.ends_with('.v')).len == 1
