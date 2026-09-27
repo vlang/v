@@ -3,6 +3,11 @@ module c
 import v.flat
 import v.types
 
+struct LoopBodyNodeResult {
+	emitted_continue_label bool
+	reachable              bool
+}
+
 fn (mut g FlatGen) take_pending_loop_label() string {
 	label := g.pending_loop_label
 	g.pending_loop_label = ''
@@ -103,13 +108,28 @@ fn (g &FlatGen) is_loop_continue_label(id flat.NodeId, label string) bool {
 	return node.kind == .label_stmt && node.value == '${label}_continue'
 }
 
-fn (mut g FlatGen) gen_loop_body_node(id flat.NodeId, label string) bool {
+fn (mut g FlatGen) gen_loop_body_node(id flat.NodeId, label string, was_reachable bool, has_following bool) LoopBodyNodeResult {
 	if g.is_loop_continue_label(id, label) {
-		g.gen_loop_continue_label(label)
-		return true
+		emit_here := label.starts_with('__for_post_') || has_following
+		if emit_here {
+			g.gen_loop_continue_label(label)
+		}
+		return LoopBodyNodeResult{
+			emitted_continue_label: emit_here
+			reachable:              true
+		}
 	}
+	node := g.a.node(id)
+	defer_start := g.defers.len
 	g.gen_node(id)
-	return false
+	if !was_reachable {
+		// Ordinary defers have no runtime activation counter. Do not let a defer
+		// after an unconditional transfer leak into the enclosing loop cleanup.
+		g.trim_defers(defer_start)
+	}
+	return LoopBodyNodeResult{
+		reachable: node.kind == .label_stmt || (was_reachable && !g.stmt_tail_exits(id))
+	}
 }
 
 fn (mut g FlatGen) gen_loop_continue_label(label string) {
@@ -168,9 +188,12 @@ fn (mut g FlatGen) gen_for(node flat.Node) {
 	g.gen_labelled_continue_skip_drops_var(label_state.label)
 	g.loop_depth++
 	mut emitted_continue_label := false
+	mut body_reachable := true
 	for i in 3 .. node.children_count {
-		emitted_continue_label = g.gen_loop_body_node(g.a.child(&node, i), label_state.label)
-			|| emitted_continue_label
+		result := g.gen_loop_body_node(g.a.child(&node, i), label_state.label,
+			body_reachable, i + 1 < node.children_count)
+		emitted_continue_label = result.emitted_continue_label || emitted_continue_label
+		body_reachable = result.reachable
 	}
 	g.loop_depth--
 	g.gen_defers_from(defer_start)
@@ -184,15 +207,15 @@ fn (mut g FlatGen) gen_for(node flat.Node) {
 	g.indent--
 	g.writeln('}')
 	if wrap_init {
-		if g.tc.autofree_mode && label_state.label.len > 0 {
-			g.writeln('${g.loop_control_c_label(label_state.label, false)}: {}')
-			g.emitted_loop_break_labels[label_state.label] = true
-		}
 		if !node.skip_ownership_drops() {
 			g.gen_scope_ownership_drops()
 		}
 		g.indent--
 		g.writeln('}')
+		if g.tc.autofree_mode && label_state.label.len > 0 {
+			g.writeln('${g.loop_control_c_label(label_state.label, false)}: {}')
+			g.emitted_loop_break_labels[label_state.label] = true
+		}
 	}
 	g.pop_scope()
 	g.loop_defer_starts.delete_last()
@@ -271,10 +294,21 @@ fn (mut g FlatGen) gen_for_in(node flat.Node) {
 			if clean_container_type is types.Map {
 				c_key := g.map_key_temp_c_type(clean_container_type.key_type)
 				c_val := g.value_c_type(clean_container_type.value_type)
-				map_value_by_ref := node.op == .amp
 				container_str := g.expr_to_string(g.a.child(&node, 2))
 				storage_container_type := g.usable_expr_type(g.a.child(&node, 2))
 				container_storage_is_pointer := storage_container_type is types.Pointer
+				container_node := g.a.child_node(&node, 2)
+				container_is_mut_param_storage := container_node.kind == .ident
+					&& g.current_param_is_mut_pointer(container_node.value)
+				mut clean_value_type := clean_container_type.value_type
+				for clean_value_type is types.Alias {
+					clean_value_type = clean_value_type.base_type
+				}
+				ref_container_keeps_value := clean_value_type is types.Pointer
+					|| clean_value_type is types.OptionType
+				map_value_by_ref := node.op == .amp
+					|| (container_storage_is_pointer && !container_is_mut_param_storage
+						&& !ref_container_keeps_value)
 				original_map_ref := if container_storage_is_pointer {
 					container_str
 				} else {
@@ -354,6 +388,9 @@ fn (mut g FlatGen) gen_for_in(node flat.Node) {
 				}
 				val_owner := g.tc.cur_scope.insert_with_owner(elem_binding_name, val_scope_type)
 				g.track_shadowed_global_local(elem_binding_name, val_owner)
+				if map_value_by_ref && !val_is_fixed_copy {
+					g.declare_local_indirect_value_type(val_owner, clean_container_type.value_type)
+				}
 				g.declare_local_pointer_storage(val_owner, val_scope_type is types.Pointer
 					|| (!val_is_fixed_copy && clean_container_type.value_type is types.Pointer)
 					|| c_type_is_pointer_storage(c_val))
@@ -420,6 +457,9 @@ fn (mut g FlatGen) gen_for_in(node flat.Node) {
 				}
 				elem_owner := g.tc.cur_scope.insert_with_owner(elem_binding_name, elem_scope_type)
 				g.track_shadowed_global_local(elem_binding_name, elem_owner)
+				if node.op == .amp {
+					g.declare_local_indirect_value_type(elem_owner, container_type.elem_type)
+				}
 				g.declare_local_pointer_storage(elem_owner, elem_scope_type is types.Pointer
 					|| c_type_is_pointer_storage(c_elem))
 				g.declare_ierror_pointer_alias(elem_var, g.for_in_array_literal_element_needs_ierror_copy(container_node))
@@ -453,6 +493,9 @@ fn (mut g FlatGen) gen_for_in(node flat.Node) {
 				}
 				elem_owner := g.tc.cur_scope.insert_with_owner(elem_binding_name, elem_scope_type)
 				g.track_shadowed_global_local(elem_binding_name, elem_owner)
+				if node.op == .amp {
+					g.declare_local_indirect_value_type(elem_owner, af.elem_type)
+				}
 				g.declare_local_pointer_storage(elem_owner, elem_scope_type is types.Pointer
 					|| c_type_is_pointer_storage(c_elem))
 			} else {
@@ -483,10 +526,13 @@ fn (mut g FlatGen) gen_for_in(node flat.Node) {
 				}
 			}
 			mut emitted_continue_label := false
+			mut body_reachable := true
 			for i in body_start .. node.children_count {
-				emitted_continue_label =
-					g.gen_loop_body_node(g.a.child(&node, i), label_state.label)
-						|| emitted_continue_label
+				result := g.gen_loop_body_node(g.a.child(&node, i), label_state.label,
+					body_reachable, i + 1 < node.children_count)
+				emitted_continue_label = result.emitted_continue_label
+					|| emitted_continue_label
+				body_reachable = result.reachable
 			}
 			if map_copyback_guard.dirty_var.len > 0 {
 				g.map_loop_copyback_guards.delete_last()
@@ -520,9 +566,12 @@ fn (mut g FlatGen) gen_for_in(node flat.Node) {
 	g.gen_labelled_continue_skip_drops_var(label_state.label)
 	g.loop_depth++
 	mut emitted_continue_label := false
+	mut body_reachable := true
 	for i in body_start .. node.children_count {
-		emitted_continue_label = g.gen_loop_body_node(g.a.child(&node, i), label_state.label)
-			|| emitted_continue_label
+		result := g.gen_loop_body_node(g.a.child(&node, i), label_state.label, body_reachable,
+			i + 1 < node.children_count)
+		emitted_continue_label = result.emitted_continue_label || emitted_continue_label
+		body_reachable = result.reachable
 	}
 	g.gen_defers_from(defer_start)
 	if !emitted_continue_label {
@@ -595,9 +644,12 @@ fn (mut g FlatGen) gen_range_for_in(node flat.Node, key_id flat.NodeId, low_id f
 	g.gen_labelled_continue_skip_drops_var(label)
 	g.loop_depth++
 	mut emitted_continue_label := false
+	mut body_reachable := true
 	for i in body_start .. node.children_count {
-		emitted_continue_label = g.gen_loop_body_node(g.a.child(&node, i), label)
-			|| emitted_continue_label
+		result := g.gen_loop_body_node(g.a.child(&node, i), label, body_reachable,
+			i + 1 < node.children_count)
+		emitted_continue_label = result.emitted_continue_label || emitted_continue_label
+		body_reachable = result.reachable
 	}
 	defer_start := if g.loop_defer_starts.len > 0 {
 		g.loop_defer_starts.last()

@@ -1,6 +1,7 @@
 module main
 
 import os
+import v.pref
 
 fn test_compiler_selection_flags_are_not_forwarded() {
 	assert clean_compiler_selection_flags(['-silent', '-new-compiler', 'main.v']) == [
@@ -14,19 +15,32 @@ fn test_compiler_selection_flags_are_not_forwarded() {
 }
 
 fn test_external_tool_build_args_drop_non_binary_modes() {
-	assert external_tool_build_args('vfmt', ['-silent', '-N', '-W', '-check']) == ['-silent',
-		'-N', '-W']
-	assert external_tool_build_args('vfmt', ['-new-compiler', '-c', '-cc', 'clang']) == ['-cc',
-		'clang']
+	assert external_tool_build_args('vfmt', ['-silent', '-N', '-W', '-check']) == [
+		'-silent',
+		'-N',
+		'-W',
+	]
+	assert external_tool_build_args('vfmt', ['-new-compiler', '-c', '-cc', 'clang']) == [
+		'-cc',
+		'clang',
+	]
 }
 
 fn test_diagnostic_external_tool_build_args_disable_gc() {
 	for tool_name in ['vself', 'vup', 'vdoctor', 'vsymlink'] {
 		assert external_tool_compile_args(tool_name, ['-prod']) == ['-prod', '-g', '-gc', 'none']
-		assert external_tool_compile_args(tool_name, ['-gc', 'boehm', '-prod']) == ['-prod',
-			'-g', '-gc', 'none']
-		assert external_tool_compile_args(tool_name, ['-gc=boehm', '-prod']) == ['-prod', '-g',
-			'-gc', 'none']
+		assert external_tool_compile_args(tool_name, ['-gc', 'boehm', '-prod']) == [
+			'-prod',
+			'-g',
+			'-gc',
+			'none',
+		]
+		assert external_tool_compile_args(tool_name, ['-gc=boehm', '-prod']) == [
+			'-prod',
+			'-g',
+			'-gc',
+			'none',
+		]
 	}
 	assert external_tool_compile_args('vfmt', ['-prod']) == ['-prod']
 }
@@ -40,7 +54,15 @@ fn test_tools_that_consume_prefix_compiler_options_receive_them() {
 		'-check',
 		'build-tools',
 	]
+	assert external_tool_runtime_args('build-examples', ['-no-memory-limit'], ['build-examples']) == [
+		'-no-memory-limit',
+		'build-examples',
+	]
 	assert external_tool_runtime_args('self', ['-prod'], ['self']) == ['-prod', 'self']
+	assert external_tool_runtime_args('test-self', ['-no-memory-limit', '-silent'], [
+		'test-self',
+		'vlib',
+	]) == ['-no-memory-limit', '-silent', 'test-self', 'vlib']
 	assert external_tool_runtime_args('fmt', prefix, ['fmt', '-verify', 'file.v']) == [
 		'fmt',
 		'-verify',
@@ -71,8 +93,10 @@ fn test_launcher_finds_the_source_root() {
 fn test_windows_makev_keeps_the_v3_tcc_root_absolute() {
 	root := find_vroot(@FILE) or { panic(err) }
 	source := os.read_file(os.join_path(root, 'makev.bat'))!
-	assert source.contains('set V_FALLBACK_CC_ARGS=-cc "!tcc_exe!"')
+	assert source.contains('set tcc_dir=%~dp0thirdparty\\tcc')
+	assert source.contains('set tcc_exe=%tcc_dir%\\tcc.exe')
 	assert source.contains('"%V_BOOTSTRAP%" %V_BOOTSTRAP_VFLAGS% -keepc -g -showcc -cc "!tcc_exe!" -o "%V_STAGE%" cmd/v')
+	assert source.contains('"%V_STAGE%" %V_BOOTSTRAP_VFLAGS% -keepc -g -showcc -cc "!tcc_exe!" -o "%V_UPDATED%" cmd/v')
 	assert source.contains('if !ERRORLEVEL! EQU 0 set stage_vflags=-cc "!tcc_exe!"')
 	assert !source.contains('-cflags -Bthirdparty/tcc')
 }
@@ -432,6 +456,8 @@ fn test_fallback_exit_classifies_compile_only_commands() {
 	assert !v1_fallback_exit_identifies_compiler_failure(['-b', 'js', 'example_test.js.v'])
 	assert !v1_fallback_exit_identifies_compiler_failure(['-b', 'js_node', 'example_test.js.v'])
 	assert !v1_fallback_exit_identifies_compiler_failure(['-backend=js_browser', 'example_test.js.v'])
+	assert v1_fallback_exit_identifies_compiler_failure(['-b', 'c', 'example_test.js.v'])
+	assert !pref.is_test_file_for_backend('example_test.js.v', 'js')
 	assert !v1_fallback_exit_identifies_compiler_failure(['-backend=wasm', 'example_test.wasm.v'])
 	assert !v1_fallback_exit_identifies_compiler_failure(['script.vsh'])
 	assert !v1_fallback_exit_identifies_compiler_failure(['-e', 'exit(1)'])
@@ -489,4 +515,35 @@ fn test_fallback_installer_writes_a_native_windows_root() {
 	assert writer.contains('cygpath -w')
 	assert writer.contains('pwd -W')
 	assert source.count('write_candidate_root || return 1') == 2
+}
+
+fn test_build_module_uses_the_compatibility_compilers_own_vlib() {
+	root := os.join_path(os.vtmp_dir(), 'v_build_module_args_${os.getpid()}')
+	current := os.join_path(root, 'current')
+	fallback := os.join_path(root, 'fallback')
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	for dir in [
+		os.join_path(current, 'vlib', 'v', 'parser'),
+		os.join_path(current, 'vlib', 'only_current'),
+		os.join_path(current, 'mymod'),
+		os.join_path(fallback, 'vlib', 'v', 'parser'),
+	] {
+		os.mkdir_all(dir) or { panic(err) }
+	}
+	parser := os.join_path(current, 'vlib', 'v', 'parser')
+	only_current := os.join_path(current, 'vlib', 'only_current')
+	mymod := os.join_path(current, 'mymod')
+	mapped := v1_build_module_args(['-keepc', 'build-module', parser], current, fallback)
+	assert mapped == ['-keepc', 'build-module', os.join_path(fallback, 'vlib', 'v', 'parser')]
+	// Modules the compatibility tree lacks, and code outside vlib, stay as given.
+	assert v1_build_module_args(['build-module', only_current], current, fallback) == [
+		'build-module',
+		only_current,
+	]
+	assert v1_build_module_args(['build-module', mymod], current, fallback) == [
+		'build-module',
+		mymod,
+	]
 }

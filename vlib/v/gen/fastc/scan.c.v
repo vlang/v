@@ -8,7 +8,7 @@ fn fastc_next_underscore(text string, start int, end int) int {
 		return end
 	}
 	unsafe {
-		found := C.memchr(text.str + start, `_`, end - start)
+		found := C.memchr(text.str + start, `_`, usize(end - start))
 		if found == voidptr(0) {
 			return end
 		}

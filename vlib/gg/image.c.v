@@ -116,7 +116,7 @@ fn sokol_mipmap(mut simg_desc gfx.ImageDesc, max_mipmaps int) {
 	mut src_width := width
 	mut src_height := height
 	for level in 1 .. levels {
-		src := &u8(simg_desc.data.subimage[0][level - 1].ptr)
+		src := unsafe { &u8(simg_desc.data.subimage[0][level - 1].ptr) }
 		target_width := src_width / 2
 		target_height := src_height / 2
 		for x in 0 .. target_width {

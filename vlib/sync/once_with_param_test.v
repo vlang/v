@@ -18,7 +18,7 @@ fn (mut o One) add(i int) {
 fn run(mut once sync.Once, mut o One, c chan bool) {
 	once.do_with_param(fn (mut o One) {
 		o.add(5)
-	}, o)
+	}, &o)
 	c <- true
 }
 

@@ -1639,10 +1639,17 @@ fn (mut g Parser) render_expression_stream_token(mut expression_tokens []FastcEx
 	mut next_token_is_mut_argument := input_next_token_is_mut_argument
 	mut source_token_count := input_source_token_count
 	source_token_count++
+	keyword_module_alias := if g.tok.is_keyword() && g.lit in g.imports {
+		mut lookahead := g.s
+		lookahead.scan() == .dot
+	} else {
+		false
+	}
 	// A word that is also a keyword (`conn.select(...)`, `x.lock`) is a member
 	// name, not a keyword, once it follows `.`; store it as a plain name so the
 	// method-call and inference paths recognize it like any other member.
-	stored_tok := if (previous_token == .dot && g.tok.is_keyword()) || shared_is_struct_field || spawn_is_field_name || keyword_is_field_name {
+	stored_tok := if (previous_token == .dot && g.tok.is_keyword()) || keyword_module_alias
+		|| shared_is_struct_field || spawn_is_field_name || keyword_is_field_name {
 		token.Token.name
 	} else {
 		g.tok
@@ -1663,7 +1670,9 @@ fn (mut g Parser) render_expression_stream_token(mut expression_tokens []FastcEx
 		''
 	}
 	selfhost_bare_name := g.selfhost && g.tok == .name && previous_token != .dot
-	mut piece := if selfhost_bare_name {
+	mut piece := if keyword_module_alias {
+		g.expression_name(previous_token, qualified_name_owner)!
+	} else if selfhost_bare_name {
 		fastc_c_identifier(g.lit)
 	} else {
 		g.expression_token(previous_token, previous_lit, qualified_name_owner, module_separator)!

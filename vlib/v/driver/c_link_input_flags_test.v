@@ -6,8 +6,8 @@ import v.pref
 
 fn test_joined_compile_flags_are_not_native_input_files() {
 	for prefix in ['-I', '-isystem', '-iquote', '-DPLUGIN=', '-U'] {
-		for suffix in ['.o', '.obj', '.c', '.cc', '.cpp', '.m', '.mm', '.a', '.so', '.so.1',
-			'.dylib', '.dll', '.lib', '.tbd'] {
+		for suffix in ['.o', '.obj', '.c', '.cc', '.cpp', '.m', '.mm', '.a', '.so', '.so.1', '.dylib',
+			'.dll', '.lib', '.tbd'] {
 			flag := '${prefix}folder with spaces/input${suffix}'
 			assert !c_flag_is_object_file(flag), flag
 			assert !c_flag_is_c_source_file(flag), flag
@@ -45,15 +45,19 @@ fn test_positional_native_inputs_and_link_options_keep_their_roles() {
 	}
 	assert tcc_native_c_source_flags(['-DNAME=not_a_source.c', 'real.c']) == ['real.c']
 	assert tcc_native_c_source_flags(['-x', 'c', '-Iinclude.c', 'extensionless', '-x', 'none']) == [
-		'-x', 'c', 'extensionless', '-x', 'none',
+		'-x',
+		'c',
+		'extensionless',
+		'-x',
+		'none',
 	]
 }
 
 fn c_link_operand_options() []string {
-	return ['-I', '-L', '-F', '-D', '-U', '-include', '-imacros', '-isystem', '-iquote',
-		'-idirafter', '-iprefix', '-iwithprefix', '-iwithprefixbefore', '-isysroot', '--sysroot',
-		'-target', '-arch', '-framework', '-weak_framework', '-Xlinker', '-force_load', '-o', '-MF',
-		'-MT', '-MQ', '-l', '-weak_library', '-x']
+	return ['-I', '-L', '-F', '-D', '-U', '-include', '-imacros', '-isystem', '-iquote', '-idirafter',
+		'-iprefix', '-iwithprefix', '-iwithprefixbefore', '-isysroot', '--sysroot', '-target',
+		'-arch', '-framework', '-weak_framework', '-Xlinker', '-force_load', '-o', '-MF', '-MT',
+		'-MQ', '-l', '-weak_library', '-x']
 }
 
 fn test_joined_isysroot_reaches_cached_dylib_link() {
@@ -71,8 +75,8 @@ fn test_native_input_selection_consumes_option_operands_once() {
 		}
 		assert c_link_input_indices([option]).len == 0, option
 	}
-	assert c_link_input_indices(['main.c', '-I', 'include.o', '-x', 'c++', 'unit.cpp', '-x',
-		'none', 'support.o', '-l', 'library.mm', '-DNAME=macro.obj', '']) == [0, 5, 8]
+	assert c_link_input_indices(['main.c', '-I', 'include.o', '-x', 'c++', 'unit.cpp', '-x', 'none',
+		'support.o', '-l', 'library.mm', '-DNAME=macro.obj', '']) == [0, 5, 8]
 	assert !c_link_flags_use_cpp_language(['-l', 'library.cpp'])
 	assert !c_link_flags_use_objective_c_language(['-weak_library', 'library.mm'])
 }
@@ -82,7 +86,8 @@ fn test_option_only_link_preparation_does_not_probe_or_compile() {
 		for operand in ['missing.o', 'missing.mm', 'missing path.obj', '-x', ''] {
 			flags := [option, operand]
 			mut stats := CObjectCacheStats{}
-			prepared := prepare_c_flags_for_link(flags, [], [], false, '', [], pref.host_target(),
+			prepared := prepare_c_flags_for_link(flags, [], [], [], false, false, '', [],
+				pref.host_target(),
 				'v_c_link_flags_nonexistent_compiler', false, '', mut stats)!
 			assert prepared == flags, flags.str()
 			assert stats.requests == 0, flags.str()
@@ -92,7 +97,8 @@ fn test_option_only_link_preparation_does_not_probe_or_compile() {
 	}
 	for flag in ['-DNAME=missing.o', '-DNAME=missing.obj', '-DNAME=missing.mm', '-Iinclude.mm'] {
 		mut stats := CObjectCacheStats{}
-		assert prepare_c_flags_for_link([flag], [], [], false, '', [], pref.host_target(),
+		assert prepare_c_flags_for_link([flag], [], [], [], false, false, '', [],
+			pref.host_target(),
 			'v_c_link_flags_nonexistent_compiler', false, '', mut stats)! == [flag]
 		assert stats.requests == 0
 		assert stats.compiler_versions.len == 0
@@ -156,13 +162,17 @@ fn test_link_preparation_preserves_option_pairs_beside_real_objects() {
 	}
 	target := pref.host_target()
 	cache_dir := os.join_path(os.vtmp_dir(), 'v3_thirdparty_objs')
-	manifest := c_link_plan_path(cache_dir, flags, c_object_compile_support_flags(flags), false,
-		'', [], target, compiler, false, mut stats)
+	object_flags := CObjectFlagPlan{
+		primary_compiler: compiler
+		common_flags:     c_object_compile_support_flags(flags)
+	}
+	manifest := c_link_plan_path(cache_dir, flags, &object_flags, false, false, '', [],
+		target, compiler, false, mut stats)
 	defer {
 		os.rm(manifest) or {}
 	}
-	prepared := prepare_c_flags_for_link(flags, [], [], false, '', [], target, compiler, false,
-		root, mut stats)!
+	prepared := prepare_c_flags_for_link(flags, [], [], [], false, false, '', [], target,
+		compiler, false, root, mut stats)!
 	assert prepared == flags
 	assert stats.requests == 1
 	assert stats.direct_objects == 1

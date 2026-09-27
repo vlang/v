@@ -40,6 +40,80 @@ fn assert_driver_cli_failure(v3_bin string, args []string, message string) {
 	assert result.output.contains(message), result.output
 }
 
+fn assert_driver_n_diagnostics(result os.Result, hidden bool) {
+	assert result.exit_code == 0, result.output
+	assert result.output.contains('warning:'), result.output
+	assert result.output.contains('notice flag warning'), result.output
+	assert result.output.contains('notice:') == !hidden, result.output
+	assert result.output.contains('unused variable: `notice_only`') == !hidden, result.output
+}
+
+fn test_driver_n_hides_notices() {
+	root := os.join_path(os.vtmp_dir(), 'v3_driver_no_notices_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root)!
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	v3_bin := build_driver_cli_v3(root)
+	source_dir := os.join_path(root, 'input')
+	os.mkdir_all(source_dir)!
+	source := os.join_path(source_dir, 'main.v')
+	os.write_file(source, r'module main
+
+import os
+
+fn main() {
+	notice_only := 1
+	$compile_warn("notice flag warning")
+	println(os.args[1..].join("|"))
+}
+')!
+	output := os.join_path(root, 'program')
+	args := ['-nocolor', '-o', output, source]
+
+	// Populate the cache, hide notices on repeated builds, then show them
+	// again. Suppression must not discard diagnostics from the cache.
+	assert_driver_n_diagnostics(cmdexec.run(v3_bin, args), false)
+	for _ in 0 .. 2 {
+		mut hidden_args := ['-n']
+		hidden_args << args
+		assert_driver_n_diagnostics(cmdexec.run(v3_bin, hidden_args), true)
+	}
+	assert_driver_n_diagnostics(cmdexec.run(v3_bin, args), false)
+
+	assert_driver_n_diagnostics(cmdexec.run(v3_bin, ['-n', '-nocolor', '-check', source]), true)
+
+	// Reproduce the reported directory build without treating the dot as
+	// an option value, or changing the test process's working directory.
+	directory := cmdexec.run_in(v3_bin, ['-n', '-nocolor', '-o', output, '.'], source_dir)
+	assert_driver_n_diagnostics(directory, true)
+
+	mut environment := os.environ()
+	environment['VFLAGS'] = '-n'
+	assert_driver_n_diagnostics(run_driver_with_environment(v3_bin, args, environment), true)
+
+	// A second -n after the run target belongs to the program, not V.
+	run := cmdexec.run(v3_bin, ['-n', '-nocolor', 'run', source, '-n'])
+	assert_driver_n_diagnostics(run, true)
+	assert '-n' in run.output.split_into_lines(), run.output
+
+	error_source := os.join_path(root, 'error.v')
+	os.write_file(error_source, 'fn main() {
+	notice_only := 1
+	println(missing_value)
+}
+')!
+	// A hidden notice must not consume the one diagnostic slot and
+	// prevent the actual error from being printed.
+	failed := cmdexec.run(v3_bin, ['-n', '-nocolor', '-check', '-message-limit', '1', error_source])
+	assert failed.exit_code != 0, failed.output
+	assert failed.output.contains('error:'), failed.output
+	assert failed.output.contains('missing_value'), failed.output
+	assert !failed.output.contains('notice:'), failed.output
+	assert !failed.output.contains('unknown option'), failed.output
+}
+
 fn v3_profile_counter(profile_output string, fn_name string) int {
 	for line in profile_output.split_into_lines() {
 		fields := line.fields()
@@ -281,8 +355,7 @@ fn main() {
 	selective_binary := os.join_path(root, 'profile_selective')
 	selective_profile := os.join_path(root, 'profile_selective.txt')
 	selective_compile := cmdexec.run(v3_bin, ['-silent', '-profile-fns', 'main__selected',
-		'-profile-no-inline', '-profile', selective_profile, '-o', selective_binary,
-		selective_source])
+		'-profile-no-inline', '-profile', selective_profile, '-o', selective_binary, selective_source])
 	assert selective_compile.exit_code == 0, selective_compile.output
 	selective_run := cmdexec.run(selective_binary, [])
 	assert selective_run.exit_code == 0, selective_run.output
@@ -390,8 +463,7 @@ fn test_v3_garbage_collector_modes() {
 		'none':           []string{}
 		'vgc':            ['vgc']
 	}
-	markers := ['gcboehm', 'gcboehm_full', 'gcboehm_incr', 'gcboehm_opt', 'gcboehm_leak',
-		'vgc']
+	markers := ['gcboehm', 'gcboehm_full', 'gcboehm_incr', 'gcboehm_opt', 'gcboehm_leak', 'vgc']
 	for mode, expected in cases {
 		output := os.join_path(root, 'gc_${mode}.c')
 		mut args := ['-silent']
@@ -402,10 +474,13 @@ fn test_v3_garbage_collector_modes() {
 		result := cmdexec.run(v3_bin, args)
 		assert result.exit_code == 0, '${mode}: ${result.output}'
 		generated := os.read_file(output)!
+		if mode == 'default' {
+			assert generated.contains('GC_set_pages_executable(0);')
+			assert generated.contains('void _vinit() {\n\tgc_runtime_init();')
+		}
 		for marker in markers {
 			selected := marker in expected
-			assert generated.contains('v3_gc_marker_${marker}_28636') == selected,
-				'${mode}: marker ${marker}, expected ${selected}'
+			assert generated.contains('v3_gc_marker_${marker}_28636') == selected, '${mode}: marker ${marker}, expected ${selected}'
 		}
 	}
 
@@ -424,8 +499,7 @@ fn test_v3_garbage_collector_modes() {
 		assert result.exit_code == 0, '${mode}: ${result.output}'
 		generated := os.read_file(output)!
 		for marker in markers {
-			assert !generated.contains('v3_gc_marker_${marker}_28636'),
-				'cross ${mode}: marker ${marker} must be disabled'
+			assert !generated.contains('v3_gc_marker_${marker}_28636'), 'cross ${mode}: marker ${marker} must be disabled'
 		}
 	}
 }
@@ -640,8 +714,8 @@ fn main() {
 	warm_run := cmdexec.run(v3_bin, ['-silent', 'run', source])
 	assert warm_run.exit_code == 0, warm_run.output
 	assert warm_run.output.trim_space() == '73'
-	cached_missing := cmdexec.run(v3_bin, ['-silent', '-ldflags', '-lv3_missing_link_library', 'run',
-		source])
+	cached_missing := cmdexec.run(v3_bin, ['-silent', '-ldflags', '-lv3_missing_link_library',
+		'run', source])
 	assert cached_missing.exit_code != 0, cached_missing.output
 
 	assert_driver_cli_failure(v3_bin, ['-ldflags'], 'option `-ldflags` requires a value')
@@ -667,7 +741,7 @@ fn collect_driver_process_result(mut process os.Process) os.Result {
 	process.close()
 	return os.Result{
 		exit_code: exit_code
-		output: output
+		output:    output
 	}
 }
 
@@ -889,8 +963,8 @@ fn main() {
 	assert project_run.output == '42\n', project_run.output
 
 	backslash_project_dir := os.join_path(root, r'project\backslash')
-	backslash_generate := cmdexec.run(v3_bin, ['-silent', '-generate-c-project',
-		backslash_project_dir, source])
+	backslash_generate := cmdexec.run(v3_bin, ['-silent', '-generate-c-project', backslash_project_dir,
+		source])
 	assert backslash_generate.exit_code == 0, backslash_generate.output
 	backslash_build := cmdexec.run('sh', [
 		os.join_path(backslash_project_dir, 'build.sh'),
@@ -1016,8 +1090,8 @@ fn test_driver_no_skip_unused_bypasses_warm_cgen_cache() {
 	assert !os.read_file(stripped_c_path)!.contains('unused_value(')
 
 	no_skip_c_path := os.join_path(root, 'no_skip.c')
-	no_skip_c := run_driver_with_environment(v3_bin, ['-no-parallel', '-no-skip-unused', '-b', 'c',
-		'-o', no_skip_c_path, source], environment)
+	no_skip_c := run_driver_with_environment(v3_bin, ['-no-parallel', '-no-skip-unused', '-b',
+		'c', '-o', no_skip_c_path, source], environment)
 	assert no_skip_c.exit_code == 0, no_skip_c.output
 	assert os.read_file(no_skip_c_path)!.contains('unused_value(')
 }
@@ -1667,6 +1741,73 @@ fn test_explicit_c_backend_retains_complete_cached_translation_unit() {
 	}
 }
 
+fn test_cached_module_keeps_synthesized_default_clone_helper() {
+	$if windows {
+		return
+	}
+	root := os.join_path(os.vtmp_dir(), 'v3_driver_cached_default_clone_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	v3_bin := build_driver_cli_v3(root)
+	module_dir := os.join_path(root, 'cachedclone')
+	os.mkdir_all(module_dir) or { panic(err) }
+	os.write_file(os.join_path(root, 'v.mod'), "Module { name: 'cached_default_clone' }\n")!
+	os.write_file(os.join_path(module_dir, 'cachedclone.v'), 'module cachedclone
+
+pub struct Node {
+pub:
+	children []Node
+}
+
+pub fn (node Node) flatten() []Node {
+	mut result := []Node{}
+	for i in 0 .. node.children.len {
+		result << node.children[i]
+		result << node.children[i].flatten()
+	}
+	return result
+}
+
+pub fn marker() int {
+	return 42
+}
+')!
+	first_source := os.join_path(root, 'first.v')
+	second_source := os.join_path(root, 'second.v')
+	os.write_file(first_source, 'module main
+
+import cachedclone
+
+fn main() {
+	println(cachedclone.marker())
+}
+')!
+	os.write_file(second_source, 'module main
+
+import cachedclone
+
+fn main() {
+	println(cachedclone.marker() + 1 - 1)
+}
+')!
+	mut environment := os.environ()
+	environment['V3CACHE'] = os.join_path(root, 'cache')
+	first_output := os.join_path(root, 'first')
+	first := run_driver_with_environment(v3_bin, ['-silent', '-no-parallel', '-cc', 'cc',
+		'-skip-running', '-o', first_output, first_source], environment)
+	assert first.exit_code == 0, first.output
+	second_output := os.join_path(root, 'second')
+	second := run_driver_with_environment(v3_bin, ['-silent', '-no-parallel', '-cc', 'cc',
+		'-skip-running', '-o', second_output, second_source], environment)
+	assert second.exit_code == 0, second.output
+	run := cmdexec.run(second_output, [])
+	assert run.exit_code == 0, run.output
+	assert run.output == '42\n', run.output
+}
+
 fn test_driver_accepts_dispatcher_arguments_and_runs_vsh_files() {
 	root := os.join_path(os.vtmp_dir(), 'v3_driver_vsh_${os.getpid()}')
 	os.rmdir_all(root) or {}
@@ -1971,8 +2112,8 @@ fn main() {
 	os.write_file(os.join_path(explicit_dir, 'main.v'), 'module main\n\nfn main() { host_os_selected() }\n') or { panic(err) }
 	os.write_file(os.join_path(explicit_dir, 'target_${host.os}.v'), 'module main\n\nfn host_os_selected() {}\n') or { panic(err) }
 	explicit_output := os.join_path(root, 'explicit_target.wasm')
-	explicit_compile := cmdexec.run(v3_bin, ['-b', 'wasm', '-os', host.os, '-arch', host.arch, '-o',
-		explicit_output, explicit_dir])
+	explicit_compile := cmdexec.run(v3_bin, ['-b', 'wasm', '-os', host.os, '-arch', host.arch,
+		'-o', explicit_output, explicit_dir])
 	assert explicit_compile.exit_code == 0, explicit_compile.output
 	assert_driver_wasm_output(explicit_output)
 }

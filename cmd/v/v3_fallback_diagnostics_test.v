@@ -119,8 +119,7 @@ fn test_v3_diagnostics_output_compiles_programs_and_scripts_without_running_them
 		marker := source + '.ran'
 		for explicit_run in [false, true] {
 			binary := os.join_path(root, 'compiled_${suffix}_${explicit_run}${extension}')
-			mut args := ['-nocache', '-no-parallel', '-gc', 'none', '-cc', @CCOMPILER,
-				'-o', binary]
+			mut args := ['-nocache', '-no-parallel', '-gc', 'none', '-cc', @CCOMPILER, '-o', binary]
 			if explicit_run {
 				args << 'run'
 			}
@@ -157,8 +156,8 @@ fn test_v3_diagnostics_output_still_runs_the_native_compiler() {
 	os.write_file(header, '#error V3_DIAGNOSTIC_NATIVE_ERROR\n')!
 	source := os.join_path(root, 'bad_native.v')
 	os.write_file(source, '#include "${header}"\nfn main() {}\n')!
-	diagnostics := v3_diagnostics_output(dispatcher, ['-nocache', '-no-parallel', '-gc',
-		'none', '-cc', @CCOMPILER, '-no-retry-compilation', 'run', source])
+	diagnostics := v3_diagnostics_output(dispatcher, ['-nocache', '-no-parallel', '-gc', 'none',
+		'-cc', @CCOMPILER, '-no-retry-compilation', 'run', source])
 	// -check would prevent execution too, but would lose this C diagnostic.
 	assert diagnostics.contains('V3_DIAGNOSTIC_NATIVE_ERROR'), diagnostics
 	assert !diagnostics.contains('retrying with'), diagnostics

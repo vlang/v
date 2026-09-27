@@ -177,6 +177,7 @@ fn test_builtin_gettid_preseeds_parallel_compat_helper() {
 
 fn test_parallel_tail_worker_preserves_runtime_init_module_order() {
 	mut g, _ := parallel_worker_test_gen(true)
+	g.compile_defines = ['gcboehm']
 	g.const_runtime_inits = ['\tmoda__runtime_const = moda__make_const();']
 	g.const_runtime_init_modules = ['moda']
 	g.runtime_inits = ['\tmoda__runtime_global = moda__make_global();']
@@ -187,10 +188,12 @@ fn test_parallel_tail_worker_preserves_runtime_init_module_order() {
 	mut tail := g.new_parallel_tail_worker(max_flat_cgen_jobs + 1)
 	tail.gen_vinit()
 	output := tail.sb.str()
+	gc_pos := output.index('gc_runtime_init();') or { -1 }
 	const_pos := output.index('moda__runtime_const = moda__make_const();') or { -1 }
 	global_pos := output.index('moda__runtime_global = moda__make_global();') or { -1 }
 	init_pos := output.index('moda__init();') or { -1 }
-	assert const_pos >= 0
+	assert gc_pos >= 0
+	assert const_pos > gc_pos
 	assert global_pos > const_pos
 	assert init_pos > global_pos
 }
@@ -260,6 +263,25 @@ fn test_scoped_cgen_batch_preserves_worker_interned_literals() {
 	assert g.str_lits == ['source', 'generated_a', 'generated_b']
 }
 
+fn test_scoped_cgen_batch_remaps_colliding_worker_literals() {
+	mut g, _ := parallel_worker_test_gen(true)
+	assert g.intern_string('source') == 0
+
+	mut batch := g.new_parallel_worker(0)
+	assert batch.intern_string('shared') == 1
+	assert batch.intern_string('generated') == 2
+	batch.sb.write_string('use(_str_1, _str_2);')
+	batch.add_spawn_wrapper_def('spawn(_str_2);')
+
+	assert g.intern_string('shared') == 1
+	assert g.intern_string('master') == 2
+	g.absorb_scoped_cgen_batch(batch, false)
+
+	assert g.str_lits == ['source', 'shared', 'master', 'generated']
+	assert g.fn_segs == ['use(_str_1, _str_3);']
+	assert g.spawn_wrapper_defs == ['spawn(_str_3);']
+}
+
 fn test_scoped_cgen_worker_merge_publishes_generated_literals() {
 	mut g, _ := parallel_worker_test_gen(true)
 	assert g.intern_string('source') == 0
@@ -325,6 +347,90 @@ fn test_serial_prep_interns_ast_string_literals_in_source_order() {
 	assert g.str_lits == ['first', 'second']
 	assert g.str_lit_ids['first'] == 0
 	assert g.str_lit_ids['second'] == 1
+}
+
+fn test_type_metadata_scan_preserves_order_across_worker_shards() {
+	mut g, _ := parallel_worker_test_gen(false)
+	g.a.worker_pool = workers.new(4)
+	defer { g.a.worker_pool.close() }
+	g.a.nodes = []flat.Node{len: 65_540, init: flat.Node{ kind: .int_literal, value: '1' }}
+	// Place context markers and type sources on both sides of shard boundaries.
+	indices := [i32(0), 13_107, 13_108, 26_215, 26_216, 39_323, 39_324, 52_431, 52_432, 65_538,
+		65_539]
+	nodes := [
+		flat.Node{ kind: .file, value: 'first.v' },
+		flat.Node{ kind: .module_decl, value: 'first' },
+		flat.Node{ kind: .fn_decl, value: 'run' },
+		flat.Node{ kind: .param, typ: 'Map_string_int' },
+		flat.Node{ kind: .call, typ: '?int' },
+		flat.Node{ kind: .decl_assign, value: 'shared' },
+		flat.Node{ kind: .ident, typ: '[4]int' },
+		flat.Node{ kind: .file, value: 'second.v' },
+		flat.Node{ kind: .module_decl, value: 'second' },
+		flat.Node{ kind: .cast_expr, value: '[2]string' },
+		flat.Node{ kind: .fn_literal, typ: 'Map_string_string' },
+	]
+	for i, id in indices {
+		g.a.nodes[id] = nodes[i]
+	}
+	assert g.type_metadata_nodes() == indices
+	serial := g.scan_collect_gen_info(true)
+	assert g.type_metadata_nodes_ready
+	assert g.type_metadata_nodes() == indices
+	parallel := g.scan_collect_gen_info(false)
+	assert parallel == serial
+	assert g.type_metadata_nodes() == indices
+	w := g.new_parallel_worker(0)
+	assert w.type_metadata_nodes_ready
+	assert w.type_metadata_nodes() == indices
+	assert w.type_metadata_node_ids.data == g.type_metadata_node_ids.data
+}
+
+fn test_type_metadata_scan_handles_empty_index_and_rebuild() {
+	mut g, _ := parallel_worker_test_gen(false)
+	g.a.nodes = [flat.Node{ kind: .int_literal, value: '1' }]
+	g.scan_collect_gen_info(true)
+	assert g.type_metadata_nodes_ready
+	assert g.type_metadata_nodes().len == 0
+	g.a.add_node(flat.Node{ kind: .sizeof_expr, value: '[3]u8' })
+	g.scan_collect_gen_info(true)
+	assert g.type_metadata_nodes() == [i32(1)]
+}
+
+fn test_type_metadata_keeps_interface_boxes_without_array_scratch_types() {
+	mut g, _ := parallel_worker_test_gen(false)
+	// Interface dispatch examines struct initializers, but their temporary type
+	// text must not be treated as an authoritative fixed-array declaration.
+	g.a.nodes = [flat.Node{ kind: .struct_init, typ: '[8]int' }]
+	g.scan_collect_gen_info(true)
+	assert g.type_metadata_nodes() == [i32(0)]
+	assert g.collect_fixed_array_typedefs_needed().len == 0
+}
+
+fn test_type_metadata_text_cache_preserves_colliding_classifications() {
+	mut cache := &TypeMetadataTextCache{}
+	for text, expected in {
+		'':                  false
+		'[':                 false
+		'int':               false
+		'module.Type[':      false
+		'[]':                true
+		'map[string][4]int': true
+	} {
+		assert cache.may_need_array_typedef(text) == expected
+		assert cache.may_need_array_typedef(text) == expected
+	}
+	// Keep more distinct spellings live than the cache has slots, mixing hits
+	// and misses so collisions cannot retain another type's classification.
+	mut texts := []string{cap: 8192}
+	for i in 0 .. 8192 {
+		texts << if i % 2 == 0 { '[${i + 1}]int' } else { 'module.Type${i}' }
+	}
+	for _ in 0 .. 2 {
+		for i, text in texts {
+			assert cache.may_need_array_typedef(text) == (i % 2 == 0)
+		}
+	}
 }
 
 fn test_scoped_pre_dispatch_preserves_direct_array_access_flag() {
@@ -406,8 +512,8 @@ fn test_open_generic_receiver_template_bypasses_stale_generic_app_cache() {
 		kind:  .fn_decl
 		value: 'AtomicVal[T].load'
 	}
-	assert g.fn_node_is_open_generic_template(node, 'stdatomic')
-	assert !g.should_emit_fn_node_in_module_known(node, 'stdatomic', 'atomic.v', 'stdatomic__AtomicVal_T__load', true)
+	assert g.fn_node_is_open_generic_template(node, -1, 'stdatomic')
+	assert !g.should_emit_fn_node_in_module_known(node, -1, 'stdatomic', 'atomic.v', 'stdatomic__AtomicVal_T__load', true)
 }
 
 fn test_parallel_type_declarations_include_body_discovered_fn_ptr_types() {

@@ -105,6 +105,7 @@ fn automatic_test_jobs(cpu_jobs int, total_memory u64, configured_jobs int) int 
 	return jobs
 }
 
+@[markused]
 fn cgroup_memory_limit_from_contents(cgroups string, mountinfo string) !u64 {
 	mut v2_path := ''
 	mut v1_memory_path := ''
@@ -219,6 +220,7 @@ fn cgroup_memory_limit_value(content string) !u64 {
 	return limit
 }
 
+@[markused]
 fn effective_test_memory(physical_memory u64, cgroup_memory_limit u64) u64 {
 	if cgroup_memory_limit > 0 && cgroup_memory_limit < physical_memory {
 		return cgroup_memory_limit
@@ -319,6 +321,7 @@ pub mut:
 	custom_defines    []string                     // for adding custom defines, known only to the individual runners
 mut:
 	benchmark_mu &sync.Mutex = sync.new_mutex()
+	resume_dir   string
 }
 
 pub fn (mut ts TestSession) add_failed_cmd(cmd string) {
@@ -578,6 +581,7 @@ pub fn new_test_session(_vargs string, will_compile bool) TestSession {
 		hash:          hash
 		silent_mode:   _vargs.contains('-silent')
 		progress_mode: _vargs.contains('-progress')
+		resume_dir:    test_resume_dir()
 	}
 	if keep_session {
 		ts.rm_binaries = false
@@ -646,8 +650,10 @@ pub fn (mut ts TestSession) add(file string) {
 	ts.files << file
 }
 
+// test processes the selected files, matching exclusions by their resolved paths.
 pub fn (mut ts TestSession) test() {
 	unbuffer_stdout()
+	ts.skip_files = ts.skip_files.map(os.real_path)
 	// Ensure that .tmp.c files generated from compiling _test.v files,
 	// are easy to delete at the end, *without* affecting the existing ones.
 	current_wd := os.getwd()
@@ -696,7 +702,7 @@ pub fn (mut ts TestSession) test() {
 	ts.nmessages = chan LogMessage{cap: 10000}
 	ts.nmessage_idx = 0
 	printing_thread := spawn ts.print_messages()
-	pool_of_test_runners.set_shared_context(ts)
+	pool_of_test_runners.set_shared_context(&ts)
 	ts.reporter.worker_threads_start(remaining_files, mut ts)
 
 	ts.setup_build_environment()
@@ -717,6 +723,7 @@ pub fn (mut ts TestSession) test() {
 			os.rmdir_all(ts.vtmp_dir) or {}
 		}
 	}
+	os.rm(os.join_path(ts.vtmp_dir, '.v.mod.stop')) or {}
 	if os.ls(ts.vtmp_dir) or { [] }.len == 0 {
 		os.rmdir_all(ts.vtmp_dir) or {}
 	}
@@ -853,7 +860,10 @@ fn worker_trunner(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
 
 	ts.benchmark_step()
 	tls_bench.step()
-	if produces_file_output && !ts.build_tools && (!should_be_built || abs_path in ts.skip_files) {
+	// Keep JS tests disabled for every session caller, including v test-self.
+	// Formatting and vetting still process these sources without compiling them.
+	if produces_file_output && !ts.build_tools
+		&& (!should_be_built || abs_path in ts.skip_files || abs_path.ends_with('_test.js.v')) {
 		ts.benchmark_skip()
 		tls_bench.skip()
 		if !hide_skips {
@@ -864,6 +874,23 @@ fn worker_trunner(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
 		}
 		return pool.no_result
 	}
+	resume := ts.test_resume(file) or {
+		tls_bench.fail()
+		ts.fail_test_resume(err, reproduce_cmd, mtc)
+		return pool.no_result
+	}
+	if resume.passed {
+		ts.benchmark_skip()
+		tls_bench.skip()
+		if !hide_skips {
+			ts.append_message(.skip, tls_bench.step_message_with_label_and_duration(benchmark.b_skip,
+				'${normalised_relative_file} (already passed)', 0,
+				preparation: 1 * time.microsecond
+			), mtc)
+		}
+		return pool.no_result
+	}
+	mut test_succeeded := true
 	mut compile_cmd_duration := time.Duration(0)
 	mut cmd_duration := time.Duration(0)
 	if ts.show_stats {
@@ -906,6 +933,7 @@ fn worker_trunner(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
 				time.sleep(fail_retry_delay_ms)
 			}
 			if details.flaky && !fail_flaky {
+				test_succeeded = false
 				ts.append_message(.info, '   *FAILURE* of the known flaky test file ${relative_file} is ignored, since VTEST_FAIL_FLAKY is 0 . Retry count: ${details.retry} .\ncmd: ${cmd}', mtc)
 				unsafe {
 					goto test_passed_system
@@ -999,6 +1027,7 @@ fn worker_trunner(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
 			}
 			full_failure_output := failure_output.str().trim_space()
 			if details.flaky && !fail_flaky {
+				test_succeeded = false
 				ts.append_message(.info, '>>> flaky failures so far:', mtc)
 				for line in full_failure_output.split_into_lines() {
 					ts.append_message(.info, '>>>>>> ${line}', mtc)
@@ -1021,6 +1050,13 @@ fn worker_trunner(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
 	}
 	test_passed_system:
 	test_passed_execute:
+	if test_succeeded {
+		resume.save() or {
+			tls_bench.fail()
+			ts.fail_test_resume(err, reproduce_cmd, mtc)
+			return pool.no_result
+		}
+	}
 	ts.benchmark_ok()
 	tls_bench.ok()
 	if !hide_oks {
@@ -1162,6 +1198,10 @@ pub fn h_divider() {
 pub fn setup_new_vtmp_folder(hash string) string {
 	new_vtmp_dir := os.join_path(os.vtmp_dir(), 'tsession_${hash}')
 	os.mkdir_all(new_vtmp_dir) or { panic(err) }
+	// A test session must not inherit an unrelated `v.mod` from the shared temp
+	// directory, or from whatever contains it. The explicit project-boundary
+	// marker ends the upward search there.
+	os.write_file(os.join_path(new_vtmp_dir, '.v.mod.stop'), '') or { panic(err) }
 	os.setenv('VTMP', new_vtmp_dir, true)
 	return new_vtmp_dir
 }

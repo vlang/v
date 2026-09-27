@@ -27,6 +27,16 @@ fn test_comptime_field_type_id_keeps_custom_types_above_builtin_range() {
 	assert type_id & (0xff << 16) == 0
 }
 
+fn test_comptime_field_type_id_keeps_specialized_main_type_provenance() {
+	mut a := flat.FlatAst.new()
+	mut t := Transformer{
+		a: &a
+	}
+	t.active_specialization_main_types['MyParams'] = true
+	assert t.comptime_field_type_id_key('MyParams', 'reflection') == 'main.MyParams'
+	assert t.comptime_field_type_id('MyParams', 'reflection') == comptime_type_id_hash('main.MyParams') & ~(0xff << 16)
+}
+
 fn test_comptime_for_base_type_unwraps_storage_indirections() {
 	mut a := flat.FlatAst.new()
 	t := Transformer{

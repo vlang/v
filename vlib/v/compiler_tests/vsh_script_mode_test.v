@@ -64,10 +64,10 @@ pub fn message() string {
 }
 ") or { panic(err) }
 	script := os.join_path(root, 'import_module.vsh')
-	os.write_file(script, "import helper
+	os.write_file(script, 'import helper
 
 println(helper.message())
-") or { panic(err) }
+') or { panic(err) }
 	result := os.execute('${v3_bin} -silent ${script}')
 	assert result.exit_code == 0, result.output
 	assert result.output.trim_space() == 'from helper', result.output
@@ -85,4 +85,15 @@ println(os.exists(temp_dir()))
 ")
 	assert result.exit_code == 0, result.output
 	assert result.output.split_into_lines() == ['local exists', 'true'], result.output
+}
+
+fn test_vsh_script_closure_captures_preceding_top_level_local() {
+	result := run_vsh_script('closure_capture', "message := 'captured'
+callback := fn [message] () {
+	println(message)
+}
+callback()
+")
+	assert result.exit_code == 0, result.output
+	assert result.output.trim_space() == 'captured', result.output
 }

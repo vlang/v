@@ -1,6 +1,7 @@
 module util
 
 import os
+import v.pref
 import strings
 import v.ansi
 
@@ -137,12 +138,34 @@ pub fn nearest_vmod_root(path string) ?string {
 		if os.is_file(os.join_path_single(dir, 'v.mod')) {
 			return dir
 		}
+		// A checkout or an explicit `.v.mod.stop` marker is the edge of a project:
+		// a `v.mod` above it belongs to something else (an unrelated project that
+		// happens to contain this one, or the shared temp directory tests run in),
+		// and must not become this project's root.
+		if is_project_boundary_dir(dir) {
+			return none
+		}
 		// `os.dir` answers `.` for a bare Windows drive (`os.dir('S:') == '.'`),
 		// which would continue the walk against the current directory and report
 		// an unrelated project root. `os.parent_dir` stops at the root instead.
 		dir = os.parent_dir(dir)
 	}
 	return none
+}
+
+// project_boundary_markers are the entries that mark a directory as the root of
+// a checkout or, with pref.module_search_stop_marker, as an explicit end of the
+// module search. The `v.mod` lookup stops here, so an unrelated project above
+// the boundary is never mistaken for the one being compiled. Only the explicit
+// marker also ends the search for modules in the directories above it (see
+// pref.is_module_search_stop_dir): a checkout marker does not, because a project
+// may be built against a module checked out next to it.
+pub const project_boundary_markers = ['.git', '.hg', '.svn', pref.module_search_stop_marker]
+
+// is_project_boundary_dir reports whether `dir` carries one of the
+// project_boundary_markers (a `.git` file counts too: git worktrees use one).
+pub fn is_project_boundary_dir(dir string) bool {
+	return project_boundary_markers.any(os.exists(os.join_path_single(dir, it)))
 }
 
 fn git_reference_root(git_dir string) !string {

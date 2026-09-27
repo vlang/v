@@ -143,8 +143,7 @@ fn test_run_with_timeout_keeps_deadline_after_an_early_leader_exit() {
 			os.rm(marker) or {}
 		}
 		sw := time.new_stopwatch()
-		result := run_in_mode(os.executable(), [timeout_pipe_probe, 'leader-success', marker,
-			'2500'], '', merge_output, 500)
+		result := run_in_mode(os.executable(), [timeout_pipe_probe, 'leader-success', marker, '2500'], '', merge_output, 500)
 		elapsed := sw.elapsed().milliseconds()
 		// Let the finite writer finish even on platforms where process-group
 		// termination is cooperative, before the test executable is removed.

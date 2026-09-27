@@ -1022,7 +1022,7 @@ fn (mut backend AppKitBackend) service_monitor_snapshot(app_instance u64) ![]Ser
 			if name_length > 0 {
 				mut name := []u8{len: int(name_length) + 1}
 				if C.v_multiwindow_appkit_service_copy_monitor_name(index,
-					unsafe { &char(name.data) }, name.len) <= 0 {
+					unsafe { &char(name.data) }, usize(name.len)) <= 0 {
 					return error(err_capability_unsupported)
 				}
 				monitor_name = name[..int(name_length)].bytestr()
@@ -1084,7 +1084,7 @@ fn (mut backend AppKitBackend) service_request_clipboard_text(id WindowId, reque
 		}
 		mut text := []u8{len: int(text_length) + 1}
 		copy_status := C.v_multiwindow_appkit_service_copy_clipboard_text(backend.windows[index].state,
-			unsafe { &char(text.data) }, text.len)
+			unsafe { &char(text.data) }, usize(text.len))
 		appkit_require_clipboard_result(copy_status)!
 		return BackendClipboardStart{
 			completed: true

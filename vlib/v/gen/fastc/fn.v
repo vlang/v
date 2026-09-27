@@ -277,14 +277,12 @@ fn fastc_c_flag_args(raw string, vroot string, source_file string) ![]string {
 }
 
 fn fastc_pkgconfig_flags(raw string) ![]string {
-	packages := cmdexec.split_args(raw) or {
+	args := pref.pkgconfig_flags_args(raw) or {
 		return error('fastc parser cannot split `#pkgconfig ${raw}`')
 	}
-	if packages.len == 0 {
+	if args.len == 0 {
 		return error('fastc parser requires a package name after `#pkgconfig`')
 	}
-	mut args := ['--cflags', '--libs']
-	args << packages
 	result := cmdexec.run('pkg-config', args)
 	if result.exit_code != 0 {
 		return error('fastc parser cannot resolve `#pkgconfig ${raw}`: ${result.output.trim_space()}')
@@ -542,7 +540,7 @@ fn (mut g Parser) expect(expected token.Token) ! {
 
 fn (mut g Parser) parse_module() ! {
 	g.next()
-	if g.tok != .name {
+	if (g.tok != .name && !g.tok.is_keyword()) || g.lit.starts_with('@') {
 		return g.unsupported('module declaration')
 	}
 	if g.lit != g.module_name.all_after_last('.') {
@@ -585,7 +583,12 @@ fn (mut g Parser) skip_import() ! {
 			}
 			selective_depth--
 		}
+		previous_end := g.s.offset
 		g.next()
+		if selective_depth == 0 && g.s.pos > previous_end
+			&& g.s.src[previous_end..g.s.pos].contains('\n') {
+			return
+		}
 	}
 }
 

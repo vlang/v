@@ -52,6 +52,9 @@ of memory. On Linux it uses the lower of physical memory and the active cgroup m
 Set `VJOBS` to a positive value to explicitly choose a different worker count when your test
 workload and machine capacity are known.
 
+Skipped test paths are resolved before comparison, so selecting a file through a symlink
+does not bypass its platform or architecture exclusion.
+
 ## `v test vlib/v/tests`:
 
 This folder contains _test.v files, testing the different features of the V
@@ -78,6 +81,12 @@ for checking that errors and panics are printed.
 The C backend has focused unit and integration tests beside its implementation.
 Many tests compile a small V source to C and assert on the generated declarations,
 expressions, ABI, linker inputs, or runtime behavior.
+
+## Line coverage
+
+Collect coverage with `v -coverage coverage_dir path/to/file_test.v`, then inspect it with
+`v cover coverage_dir`. Add `-no-skip-unused` when compiling to include uncalled functions
+in the report as well as executed code.
 
 ## REPL tests
 
@@ -152,6 +161,11 @@ Note: if that command finds formatting errors, they can be fixed with:
 
 Run `vlib` module tests, *including* the compiler tests.
 
+To run the same suite across separate machines, set `VTEST_SELF_SHARD_COUNT` to the number of
+machines and set `VTEST_SELF_SHARD_INDEX` to a different zero-based index on each one. For example,
+`VTEST_SELF_SHARD_COUNT=5 VTEST_SELF_SHARD_INDEX=0 ./v test-self vlib` runs the first shard.
+Every test file belongs to exactly one shard. Leave both variables unset for the full suite.
+
 ## `v vlib/v/compiler_errors_test.v`
 
 This runs tests for:
@@ -190,6 +204,10 @@ NB 5: To show only *the currently running test*, use:
 In this mode, the output lines will be limited, no matter how many `_test.v`
 files there are. The output will contain the total stats and the output of
 the failing tests too.
+
+NB 6: Set `VTEST_SKIP_OWNERSHIP=1` to omit ownership and autofree tests from
+`v test`, `v test-self`, and `vlib/v/test_all.vsh`. GitHub Actions enables this
+behavior automatically while ownership/autofree coverage is disabled there.
 
 ## `.github/workflows/ci.yml`
 

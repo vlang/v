@@ -166,8 +166,9 @@ pub mut:
 
 // SSLListener listens on a TCP port and accepts connection secured with TLS
 pub struct SSLListener {
-	saddr  string
-	config SSLConnectConfig
+	saddr   string
+	config  SSLConnectConfig
+	options SSLListenerOptions
 mut:
 	server_fd C.mbedtls_net_context
 	ssl       C.mbedtls_ssl_context
@@ -185,11 +186,19 @@ mut:
 	// duration	time.Duration
 }
 
-// create a new SSLListener binding to `saddr`
-pub fn new_ssl_listener(saddr string, config SSLConnectConfig) !&SSLListener {
+// SSLListenerOptions configures the TCP listener used by an SSLListener.
+@[params]
+pub struct SSLListenerOptions {
+pub:
+	family net.AddrFamily = .unspec
+}
+
+// new_ssl_listener creates a new SSLListener binding to `saddr`.
+pub fn new_ssl_listener(saddr string, config SSLConnectConfig, options SSLListenerOptions) !&SSLListener {
 	mut listener := &SSLListener{
-		saddr:  saddr
-		config: config
+		saddr:   saddr
+		config:  config
+		options: options
 	}
 	listener.init()!
 	listener.opened = true
@@ -218,13 +227,41 @@ pub fn (mut l SSLListener) shutdown() ! {
 	}
 }
 
+fn listen_ssl_tcp(saddr string, family net.AddrFamily, options net.ListenOptions) !&net.TcpListener {
+	if family != .unspec {
+		return net.listen_tcp(family, saddr, options)
+	}
+	address, _ := net.split_address(saddr)!
+	if address == '' || address == '::' {
+		return net.listen_tcp(.ip6, saddr, options)
+	}
+	addrs := net.resolve_addrs(saddr, .unspec, .tcp)!
+	mut attempted := []net.AddrFamily{}
+	mut errors := []IError{}
+	for addr in addrs {
+		candidate := addr.family()
+		if candidate in attempted {
+			continue
+		}
+		attempted << candidate
+		listener := net.listen_tcp(candidate, saddr, options) or {
+			errors << err
+			continue
+		}
+		return listener
+	}
+	if errors.len > 0 {
+		return errors[errors.len - 1]
+	}
+	return error('net.mbedtls SSLListener.init, no addresses resolved for ${saddr}')
+}
+
 // internal function to init and bind the listener
 fn (mut l SSLListener) init() ! {
 	$if trace_ssl ? {
 		eprintln(@METHOD)
 	}
 
-	lhost, lport := net.split_address(l.saddr)!
 	if l.config.cert == '' || l.config.cert_key == '' {
 		return error('net.mbedtls SSLListener.init, no certificate or key provided')
 	}
@@ -240,7 +277,7 @@ fn (mut l SSLListener) init() ! {
 	C.mbedtls_pk_init(&l.certs.client_key)
 
 	unsafe {
-		C.mbedtls_ssl_conf_rng(&l.conf, tls_listener_rng, l)
+		C.mbedtls_ssl_conf_rng(&l.conf, tls_listener_rng, &l)
 	}
 
 	mut ret := 0
@@ -261,22 +298,20 @@ fn (mut l SSLListener) init() ! {
 		C.mbedtls_ssl_conf_authmode(&l.conf, C.MBEDTLS_SSL_VERIFY_REQUIRED)
 	}
 
-	mut bind_ip := unsafe { nil }
-	if lhost != '' {
-		bind_ip = voidptr(lhost.str)
-	}
-	bind_port := lport.str()
-
-	ret = C.mbedtls_net_bind(&l.server_fd, bind_ip, voidptr(bind_port.str), C.MBEDTLS_NET_PROTO_TCP)
-
-	if ret != 0 {
-		return error_with_code("net.mbedtls SSLListener.init, mbedtls_net_bind can't bind to ${l.saddr} error ret: ${ret}",
-			ret)
+	tcp_listener := listen_ssl_tcp(l.saddr, l.options.family, net.ListenOptions{
+		backlog: C.MBEDTLS_NET_LISTEN_BACKLOG
+	}) or { return error('net.mbedtls SSLListener.init, listen_tcp failed for ${l.saddr}: ${err}') }
+	l.server_fd.fd = tcp_listener.sock.handle
+	l.opened = true
+	net.set_blocking(l.server_fd.fd, true) or {
+		l.shutdown() or {}
+		return error('net.mbedtls SSLListener.init, could not make listener socket blocking: ${err}')
 	}
 
 	ret = C.mbedtls_ssl_config_defaults(&l.conf, C.MBEDTLS_SSL_IS_SERVER,
 		C.MBEDTLS_SSL_TRANSPORT_STREAM, C.MBEDTLS_SSL_PRESET_DEFAULT)
 	if ret != 0 {
+		l.shutdown() or {}
 		return error_with_code("net.mbedtls SSLListener.init, mbedtls_ssl_config_defaults can't set config defaults ret: ${ret}",
 			ret)
 	}
@@ -289,6 +324,7 @@ fn (mut l SSLListener) init() ! {
 	C.mbedtls_ssl_conf_ca_chain(&l.conf, &l.certs.cacert, unsafe { nil })
 	ret = C.mbedtls_ssl_conf_own_cert(&l.conf, &l.certs.client_cert, &l.certs.client_key)
 	if ret != 0 {
+		l.shutdown() or {}
 		return error_with_code("net.mbedtls SSLListener.init, mbedtls_ssl_conf_own_cert can't load certificate ret: ${ret}",
 			ret)
 	}
@@ -299,6 +335,7 @@ fn (mut l SSLListener) init() ! {
 		n := l.config.alpn_protocols.len
 		l.alpn_list = unsafe { &&char(C.malloc(isize((n + 1) * int(sizeof(voidptr))))) }
 		if l.alpn_list == unsafe { nil } {
+			l.shutdown() or {}
 			return error('net.mbedtls SSLListener.init, failed to allocate ALPN list')
 		}
 		unsafe {
@@ -309,6 +346,7 @@ fn (mut l SSLListener) init() ! {
 		}
 		ret = C.mbedtls_ssl_conf_alpn_protocols(&l.conf, voidptr(l.alpn_list))
 		if ret != 0 {
+			l.shutdown() or {}
 			return error_with_code('net.mbedtls SSLListener.init, mbedtls_ssl_conf_alpn_protocols failed ret: ${ret}',
 				ret)
 		}
@@ -316,6 +354,7 @@ fn (mut l SSLListener) init() ! {
 
 	ret = C.mbedtls_ssl_setup(&l.ssl, &l.conf)
 	if ret != 0 {
+		l.shutdown() or {}
 		return error_with_code("net.mbedtls SSLListener.init, mbedtls_ssl_setup can't setup ssl ret: ${ret}",
 			ret)
 	}
@@ -611,7 +650,7 @@ pub fn (mut s SSLConn) shutdown() ! {
 pub fn (s &SSLConn) negotiated_alpn() string {
 	// mbedtls_ssl_get_alpn_protocol returns a `const char *`; cast away const
 	// for V, since we only read from it (and copy it below).
-	p := &char(C.mbedtls_ssl_get_alpn_protocol(&s.ssl))
+	p := unsafe { &char(C.mbedtls_ssl_get_alpn_protocol(&s.ssl)) }
 	if p == unsafe { nil } {
 		return ''
 	}
@@ -926,7 +965,8 @@ pub fn (mut s SSLConn) read(mut buffer []u8) !int {
 	$if trace_ssl ? {
 		eprintln('${@METHOD} buffer.len: ${buffer.len}')
 	}
-	return s.socket_read_into_ptr(&u8(buffer.data), buffer.len)
+	ptr := unsafe { &u8(buffer.data) }
+	return s.socket_read_into_ptr(ptr, buffer.len)
 }
 
 // write_ptr writes `len` bytes from `bytes` to the ssl connection
@@ -941,7 +981,7 @@ pub fn (mut s SSLConn) write_ptr(bytes &u8, len int) !int {
 	s.last_write_sent = 0
 	deadline := ssl_timeout_deadline(s.duration)
 	unsafe {
-		mut ptr_base := bytes
+		ptr_base := bytes
 		for total_sent < len {
 			ptr := ptr_base + total_sent
 			remaining := len - total_sent
@@ -979,7 +1019,8 @@ pub fn (mut s SSLConn) write_ptr(bytes &u8, len int) !int {
 
 // write writes data from `bytes` to the ssl connection
 pub fn (mut s SSLConn) write(bytes []u8) !int {
-	return s.write_ptr(&u8(bytes.data), bytes.len)
+	ptr := unsafe { &u8(bytes.data) }
+	return s.write_ptr(ptr, bytes.len)
 }
 
 // write_string writes a string to the ssl connection
@@ -1021,13 +1062,13 @@ fn select(handle int, test Select, timeout time.Duration) !bool {
 		mut res := -1
 		match test {
 			.read {
-				res = C.select(handle + 1, &set, C.NULL, C.NULL, timeval_timeout)
+				res = C.select(handle + 1, &set, unsafe { nil }, unsafe { nil }, timeval_timeout)
 			}
 			.write {
-				res = C.select(handle + 1, C.NULL, &set, C.NULL, timeval_timeout)
+				res = C.select(handle + 1, unsafe { nil }, &set, unsafe { nil }, timeval_timeout)
 			}
 			.except {
-				res = C.select(handle + 1, C.NULL, C.NULL, &set, timeval_timeout)
+				res = C.select(handle + 1, unsafe { nil }, unsafe { nil }, &set, timeval_timeout)
 			}
 		}
 
