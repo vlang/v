@@ -11010,7 +11010,12 @@ fn (mut t Transformer) retarget_cloned_generic_call(node flat.Node, mut children
 		} else {
 			if inferred.len < param_names.len && t.cur_fn_ret_type.len > 0 {
 				mut return_inferred := map[string]string{}
-				infer_generic_type_args(decl.node.typ, t.generic_inference_expected_type(t.cur_fn_ret_type), mut return_inferred)
+				receiver_params := if is_receiver {
+					t.generic_receiver_param_names(decl)
+				} else {
+					[]string{}
+				}
+				t.infer_generic_return_type_args(decl, t.generic_inference_expected_type(t.cur_fn_ret_type), mut return_inferred, receiver_params)
 				for name, inferred_type in return_inferred {
 					if name !in inferred {
 						inferred[name] = inferred_type
