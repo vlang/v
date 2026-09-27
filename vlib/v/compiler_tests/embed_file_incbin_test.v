@@ -103,3 +103,51 @@ fn test_keepc_and_dumped_flags_do_not_use_temporary_incbin_objects() {
 	flags := os.read_file(flags_file) or { panic(err) }
 	assert !flags.contains('_v_embed_blob_'), flags
 }
+
+fn test_dump_flags_after_cached_incbin_build_uses_arrays() {
+	cache_dir := os.join_path(os.vtmp_dir(), 'embed_file_incbin_cache_${os.getpid()}')
+	os.rmdir_all(cache_dir) or {}
+	old_cache := os.getenv_opt('V3CACHE')
+	os.setenv('V3CACHE', cache_dir, true)
+	defer {
+		if value := old_cache {
+			os.setenv('V3CACHE', value, true)
+		} else {
+			os.unsetenv('V3CACHE')
+		}
+		os.rmdir_all(cache_dir) or {}
+	}
+	seed_build, seed_output := build_and_run('app_cache_seed', '')
+	assert seed_output == expected_output()
+	assert seed_build.output.contains('_v_embed_blob_') && seed_build.output.contains('.S'), seed_build.output
+	mut cached_incbin_plan := false
+	for path in os.walk_ext(cache_dir, '.c') {
+		if os.base(path).starts_with('program_') {
+			source := os.read_file(path) or { panic(err) }
+			if source.contains('extern const unsigned char _v_embed_blob_') {
+				cached_incbin_plan = true
+				break
+			}
+		}
+	}
+	assert cached_incbin_plan, 'the seed build did not cache its incbin C plan'
+	flags_file := os.join_path(incbin_workspace, 'cached_flags.txt')
+	dump_build, dump_output := build_and_run('app_cache_dump',
+		'-dump-c-flags ${os.quoted_path(flags_file)}')
+	assert dump_output == expected_output()
+	assert !dump_build.output.contains('.S -o'), dump_build.output
+	flags := os.read_file(flags_file) or { panic(err) }
+	assert !flags.contains('_v_embed_blob_'), flags
+}
+
+fn test_macos_tcc_build_keeps_the_array_form() {
+	$if macos {
+		bundled_tcc := os.join_path(@VEXEROOT, 'thirdparty', 'tcc', 'tcc.exe')
+		if !os.is_file(bundled_tcc) {
+			return
+		}
+		build, output := build_and_run('app_tcc', '-cc tcc -no-retry-compilation')
+		assert output == expected_output()
+		assert !build.output.contains('.S -o'), build.output
+	}
+}

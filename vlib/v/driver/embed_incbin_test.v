@@ -7,8 +7,10 @@ import v.pref
 fn test_v3_embed_incbin_supported_keeps_the_array_form_where_no_object_is_linked() {
 	assert v3_embed_incbin_supported('linux', 'linux', 'gcc', 'c', false, false, false, false,
 		[])
-	assert v3_embed_incbin_supported('macos', 'macos', 'tinyc', 'c', false, false, false, false,
+	assert v3_embed_incbin_supported('macos', 'macos', 'clang', 'c', false, false, false, false,
 		[])
+	assert !v3_embed_incbin_supported('macos', 'macos', 'tinyc', 'c', false, false, false,
+		false, [])
 	assert v3_embed_incbin_supported('windows', 'windows', 'gcc', 'c', false, false, false, false,
 		[])
 	// generated C and object output are linked elsewhere
