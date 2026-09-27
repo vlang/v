@@ -232,6 +232,7 @@ mut:
 	addr_lvalue_pointer_locals          map[string]bool
 	orm_initialized_fields              map[string][]string
 	sql_query_data_aliases              map[string][]string
+	sql_array_it_name                   string
 	bound_method_arrays                 map[string]BoundMethodArrayInfo
 	temp_counter                        int
 	global_temp_counter                 int
