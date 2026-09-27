@@ -28,6 +28,10 @@ fn updated_settings_nested_array(value int) []&&ReferenceSettings {
 	return [ReferenceSettings{ ...original, value: value }]
 }
 
+fn updated_settings_parenthesized_array(base ReferenceSettings, value int) []&ReferenceSettings {
+	return [(ReferenceSettings{ ...base, value: value })]
+}
+
 fn test_struct_updates_stored_as_pointers_keep_distinct_storage() {
 	mut values := []&ReferenceSettings{}
 	for value in 0 .. 8 {
@@ -55,5 +59,17 @@ fn test_struct_updates_stored_as_nested_pointers_keep_distinct_storage() {
 		if i > 0 {
 			assert value != values[i - 1]
 		}
+	}
+}
+
+fn test_parenthesized_struct_updates_stored_as_pointers() {
+	mut values := []&ReferenceSettings{}
+	base := ReferenceSettings{ value: -1, label: 'parenthesized' }
+	for value in 0 .. 8 {
+		values << updated_settings_parenthesized_array(base, value)
+	}
+	for i, value in values {
+		assert value.value == i
+		assert value.label == 'parenthesized'
 	}
 }
