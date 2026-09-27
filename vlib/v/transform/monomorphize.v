@@ -11012,12 +11012,16 @@ fn (mut t Transformer) retarget_cloned_generic_call(node flat.Node, mut children
 		} else {
 			if inferred.len < param_names.len && t.cur_fn_ret_type.len > 0 {
 				mut return_inferred := map[string]string{}
-				receiver_params := if is_receiver {
-					t.generic_receiver_param_names(decl)
-				} else {
-					[]string{}
+				mut expected_return := t.generic_inference_expected_type(t.cur_fn_ret_type)
+				for expected_return.starts_with('?') || expected_return.starts_with('!') {
+					expected_return = expected_return[1..].trim_space()
 				}
-				t.infer_generic_return_type_args(decl, t.generic_inference_expected_type(t.cur_fn_ret_type), mut return_inferred, receiver_params)
+				// An enclosing tuple result cannot infer a scalar method's receiver.
+				// A scalar contextual result can still recover a missing receiver bind.
+				if !expected_return.starts_with('(') || decl.node.typ.trim_space().starts_with('(') {
+					t.infer_generic_return_type_args(decl, expected_return, mut return_inferred,
+						[]string{})
+				}
 				for name, inferred_type in return_inferred {
 					if name !in inferred {
 						inferred[name] = inferred_type

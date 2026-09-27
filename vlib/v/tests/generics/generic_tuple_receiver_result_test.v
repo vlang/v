@@ -20,3 +20,18 @@ fn test_generic_tuple_receiver() {
 	assert a == 42
 	assert b == 42
 }
+
+fn split_plain[T](m &Matrix[T]) (&Matrix[T], &Matrix[T]) {
+	return m, m
+}
+
+fn select_second[A, B](first A, second B) B {
+	_ = first
+	m := &Matrix[B]{ data: [second] }
+	q, _ := split_plain(m)
+	return q.get()
+}
+
+fn test_generic_tuple_receiver_uses_second_generic_argument() {
+	assert select_second(1, 'okay') == 'okay'
+}
