@@ -880,7 +880,8 @@ fn (mut g FlatGen) gen_struct_init(id flat.NodeId) {
 				continue
 			}
 		}
-		if field.value.len > 0 && allowed_fields.len > 0 && field.value !in allowed_fields {
+		if field.value.len > 0 && allowed_fields.len > 0 && field.value !in allowed_fields
+			&& !g.struct_has_direct_named_field(lookup_name, field.value) {
 			promoted = g.promoted_struct_init_field(lookup_name, field.value) or { continue }
 		}
 		if has_field {
@@ -1326,7 +1327,8 @@ fn (mut g FlatGen) gen_struct_init_with_fixed_array_fields_impl(node flat.Node, 
 				continue
 			}
 		}
-		if field.value.len > 0 && allowed_fields.len > 0 && field.value !in allowed_fields {
+		if field.value.len > 0 && allowed_fields.len > 0 && field.value !in allowed_fields
+			&& !g.struct_has_direct_named_field(lookup_name, field.value) {
 			continue
 		}
 		value_id := g.a.child(field, 0)

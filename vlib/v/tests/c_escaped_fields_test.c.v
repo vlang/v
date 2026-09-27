@@ -38,6 +38,15 @@ mut:
 	@type int
 }
 
+enum EscapedDefault {
+	@none = -10
+	other
+}
+
+struct EscapedDefaultHolder {
+	state EscapedDefault
+}
+
 fn read_escaped_event_type(event &C.EscapedFieldEvent) u32 {
 	return unsafe { event.@type }
 }
@@ -125,4 +134,9 @@ fn test_direct_escaped_v_field_shadows_promoted_c_field() {
 	assert value.@type == 59
 	value.@type = 61
 	assert value.@type == 61
+}
+
+fn test_escaped_first_enum_member_is_used_for_default() {
+	holder := EscapedDefaultHolder{}
+	assert int(holder.state) == -10
 }

@@ -11520,6 +11520,15 @@ fn (g &FlatGen) enum_value_expr_for_key(key string) ?string {
 			return '${val}'
 		}
 	}
+	if !field_name.starts_with('@') && token.Token.from_string_tinyv(field_name).is_keyword() {
+		escaped_key := key[..key.len - field_name.len] + '@' + field_name
+		if expr := g.enum_value_exprs[escaped_key] {
+			return expr
+		}
+		if val := g.enum_vals[escaped_key] {
+			return '${val}'
+		}
+	}
 	return none
 }
 
@@ -11556,6 +11565,9 @@ fn (g &FlatGen) enum_value_expr_for_type(type_name string, field_name string) ?s
 	}
 	if val := g.enum_value_for_type(type_name, field_name) {
 		return '${val}'
+	}
+	if !field_name.starts_with('@') && token.Token.from_string_tinyv(field_name).is_keyword() {
+		return g.enum_value_expr_for_type(type_name, '@${field_name}')
 	}
 	return none
 }

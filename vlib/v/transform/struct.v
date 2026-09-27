@@ -78,7 +78,7 @@ fn (mut t Transformer) transform_struct_fields(id flat.NodeId, node flat.Node) f
 			} else {
 				''
 			}
-			if child.value.starts_with('@') {
+			if child.value.starts_with('@') && !info.fields.any(it.name == child.value) {
 				plain_name := child.value[1..]
 				if info.fields.any(it.name == plain_name) {
 					field_name = plain_name
