@@ -3708,18 +3708,21 @@ fn (mut tc TypeChecker) check_prefix_expr(id flat.NodeId, node flat.Node) {
 		return
 	}
 	if node.op in [.plus, .minus] && !infix_power_type_is_numeric(child_type)
-		&& !tc.prefix_wraps_numeric_literal_str_call(child) {
+		&& !tc.prefix_wraps_numeric_literal_str_call(child)
+		&& !(tc.node_is_in_translated_file(child_id) && translated_numeric_type(child_type)) {
 		op := if node.op == .minus { '-' } else { '+' }
 		tc.record_error_at(.assignment_mismatch, 'operator `${op}` can only be used with numeric types, but the value after `${op}` is of type `${child_type.name()}` instead', id, tc.prefix_operator_pos(id, op))
 		return
 	}
-	if node.op == .bit_not && child_type is Enum {
+	if node.op == .bit_not && child_type is Enum
+		&& !tc.node_is_in_translated_file(child_id) {
 		if !child_type.is_flag {
 			tc.record_error_at(.assignment_mismatch, 'operator `~` can only be used with `@[flag]` tagged enums', id, tc.prefix_operator_pos(id, '~'))
 		}
 		return
 	}
-	if node.op == .bit_not && !child_type.is_integer() {
+	if node.op == .bit_not && !child_type.is_integer()
+		&& !(tc.node_is_in_translated_file(child_id) && translated_integer_type(child_type)) {
 		tc.record_error_at(.assignment_mismatch, 'operator `~` can only be used with integer types, but the value after `~` is of type `${tc.diagnostic_expr_type_name(child_id, child_type)}` instead', id, tc.prefix_operator_pos(id, '~'))
 		return
 	}
@@ -7682,12 +7685,15 @@ fn (mut tc TypeChecker) check_infix(id flat.NodeId, node flat.Node) {
 		}
 	}
 	if node.op in [.left_shift, .right_shift, .right_shift_unsigned] {
-		if !unalias_type(lhs_type).is_integer() {
+		translated := tc.node_is_in_translated_file(id)
+		if !unalias_type(lhs_type).is_integer()
+			&& !(translated && translated_integer_type(lhs_type)) {
 			tc.record_error_at(.assignment_mismatch, 'invalid operation: shift on type `${tc.diagnostic_expr_type_name(lhs_id, lhs_type)}`', lhs_id, lhs_node.pos)
 			tc.register_synth_type(id, Type(void_))
 			return
 		}
-		if !unalias_type(rhs_type).is_integer() {
+		if !unalias_type(rhs_type).is_integer()
+			&& !(translated && translated_integer_type(rhs_type)) {
 			tc.record_error_at(.assignment_mismatch, 'cannot shift non-integer type `${tc.diagnostic_expr_type_name(rhs_id, rhs_type)}` into type `${tc.diagnostic_expr_type_name(lhs_id, lhs_type)}`', rhs_id, tc.a.node(rhs_id).pos)
 			tc.register_synth_type(id, Type(void_))
 			return

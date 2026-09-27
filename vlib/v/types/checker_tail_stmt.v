@@ -16654,7 +16654,9 @@ fn (tc &TypeChecker) resolve_type_uncached(id flat.NodeId) Type {
 				return Type(void_)
 			}
 			if node.op in [.left_shift, .right_shift, .right_shift_unsigned]
-				&& (!unalias_type(lt).is_integer() || !unalias_type(rt).is_integer()) {
+				&& (!unalias_type(lt).is_integer() || !unalias_type(rt).is_integer())
+				&& !(tc.node_is_in_translated_file(id) && translated_integer_type(lt)
+					&& translated_integer_type(rt)) {
 				return Type(void_)
 			}
 			if node.op == .left_shift && array_type_from_receiver(lt) != none {

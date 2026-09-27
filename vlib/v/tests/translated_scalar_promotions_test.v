@@ -114,3 +114,28 @@ fn test_translated_mixed_fixed_width_and_enum_branches() {
 	reversed := if !flag { TranslatedScalarKind.value } else { true }
 	assert int(reversed) == 42
 }
+
+fn translated_float_return(value f64) int {
+	return value
+}
+
+fn translated_negative_unsigned_return() u64 {
+	return -1
+}
+
+fn test_translated_scalar_return_conversions() {
+	assert translated_float_return(4.75) == 4
+	assert translated_negative_unsigned_return() == u64(0xffffffffffffffff)
+}
+
+fn test_translated_unary_and_shift_integral_promotions() {
+	kind := TranslatedScalarKind.value
+	character := char(2)
+	assert int(~kind) == -43
+	assert int(-kind) == -42
+	assert int(~character) == -3
+	assert int(-character) == -2
+	assert int(kind << 1) == 84
+	assert int(character >> 1) == 1
+	assert int(1 << true) == 2
+}

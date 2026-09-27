@@ -2218,7 +2218,7 @@ fn (mut tc TypeChecker) check_return(id flat.NodeId, node flat.Node) {
 			return
 		}
 	}
-	if type_is_unsigned_integer(expected) {
+	if type_is_unsigned_integer(expected) && !tc.node_is_in_translated_file(child_id) {
 		if literal := tc.integer_literal_source(child_id) {
 			if literal.starts_with('-') {
 				tc.record_notice_at(.return_mismatch, 'cannot use a negative value as value of type `${expected.name()}` in return argument', child_id, tc.a.node(child_id).pos)
@@ -2233,6 +2233,7 @@ fn (mut tc TypeChecker) check_return(id flat.NodeId, node flat.Node) {
 		&& unalias_type(actual).is_integer() != unalias_type(expected).is_integer()
 		&& tc.integer_literal_source(child_id) == none && tc.a.node(child_id).kind != .float_literal
 		&& !implicit_integer_to_float_compatible(actual, expected)
+		&& !tc.translated_numeric_expr_compatible(child_id, actual, expected)
 	clean_expected_for_reference := unalias_type(expected)
 	expected_accepts_pointer_value := clean_expected_for_reference is Interface
 		|| (clean_expected_for_reference is OptionType

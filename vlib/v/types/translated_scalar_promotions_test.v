@@ -33,6 +33,8 @@ fn test_translated_indices_and_shifts_still_reject_invalid_operands() {
 	cases := [
 		['values := [11,22]!; _ = values[1.5]', 'non-integer index'],
 		['value := u16(2); _ = value << 32', 'shift count'],
+		['value := f64(2.5); _ = value << 1', 'invalid operation: shift'],
+		['value := f64(2.5); _ = ~value', 'can only be used with integer types'],
 		['flag := false; _ = if flag { true } else { "text" }', 'mismatched types'],
 	]
 	for case in cases {
