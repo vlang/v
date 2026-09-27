@@ -1003,8 +1003,16 @@ fn (t &Transformer) raw_const_type_name_for_expr(id flat.NodeId) ?string {
 	if t.selector_const_base_is_value(node) {
 		return none
 	}
-	if node.kind == .ident && t.raw_var_type(node.value).len > 0 {
-		return none
+	if node.kind == .ident {
+		if t.raw_var_type(node.value).len > 0 {
+			return none
+		}
+		// A `__global` shadows a homonymous const from another module (the
+		// unique-const fallback sees every transitive module). Skip only when
+		// this ident compiles to the global's C symbol.
+		if t.ident_compiles_to_global_symbol(node.value) {
+			return none
+		}
 	}
 	name := t.expr_key(id)
 	if name.len == 0 {
@@ -4167,6 +4175,22 @@ fn (t &Transformer) imported_global_name(name string) ?string {
 		return candidates[0]
 	}
 	return none
+}
+
+// ident_compiles_to_global_symbol reports whether an ident emits a global's C
+// symbol, so method resolution must use the global's type instead of a
+// homonymous const. `t.globals` also stores every module's global under the
+// bare name, so a hit from `main`/`builtin` is not enough — a local const there
+// still owns the symbol.
+fn (t &Transformer) ident_compiles_to_global_symbol(name string) bool {
+	if t.current_module_global_type(name) == none {
+		// transform_ident_expr rewrites the ident to the imported global's name.
+		return t.imported_global_name(name) != none
+	}
+	if t.cur_module.len > 0 && t.cur_module != 'main' && t.cur_module != 'builtin' {
+		return true
+	}
+	return name !in t.tc.const_types
 }
 
 fn (mut t Transformer) lift_lambda_expr_for_fn_param(_id flat.NodeId, node flat.Node, param_type string) ?flat.NodeId {
