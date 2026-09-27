@@ -4,6 +4,11 @@ import json2
 
 pub struct Writer {}
 
+// accept accepts a generic value for the selective-import specialization test.
+pub fn accept[T](value T) {
+	_ = value
+}
+
 struct Response[T] {
 	result T
 }
