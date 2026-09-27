@@ -129,7 +129,7 @@ fn (mut p Parser) parse_module(m string, mut selector VpmInstallServerSelector) 
 				exit(1)
 			}
 		}
-		tmp_path := get_tmp_path(os.join_path(publisher, name, version)) or {
+		tmp_path := get_tmp_path(settings.tmp_path, os.join_path(publisher, name, version)) or {
 			vpm_error('failed to get temporary directory for `${ident}`.', details: err.msg())
 			p.errors++
 			return
@@ -192,7 +192,7 @@ fn (mut p Parser) parse_module(m string, mut selector VpmInstallServerSelector) 
 			return
 		}
 		mod_path := normalize_mod_path(info.name.replace('.', os.path_separator))
-		tmp_path := get_tmp_path(os.join_path(mod_path, version)) or {
+		tmp_path := get_tmp_path(settings.tmp_path, os.join_path(mod_path, version)) or {
 			vpm_error('failed to get temporary directory for `${ident}`.', details: err.msg())
 			p.errors++
 			return
@@ -345,12 +345,60 @@ fn normalized_clone_source(raw_source string) string {
 	return normalize_clone_source_url(raw) or { raw.trim_string_right('.git') }
 }
 
-fn get_tmp_path(relative_path string) !string {
-	tmp_path := os.real_path(os.join_path(settings.tmp_path, relative_path))
-	if os.exists(tmp_path) {
-		// It's unlikely that the tmp_path already exists, but it might
-		// occur if vpm was canceled during an installation or update.
-		rmdir_all(tmp_path)!
+fn get_tmp_path(unresolved_tmp_root string, relative_path string) !string {
+	if os.is_abs_path(relative_path) {
+		return error('temporary path `${relative_path}` is absolute')
 	}
-	return tmp_path
+	if relative_path_has_parent_segment(relative_path) {
+		return error('temporary path `${relative_path}` contains a `..` segment')
+	}
+	joined := os.join_path(unresolved_tmp_root, relative_path)
+	if !nearest_tmp_ancestor_is_inside(unresolved_tmp_root, joined) {
+		return error('temporary path `${joined}` is outside `${os.real_path(unresolved_tmp_root)}`')
+	}
+	candidate := os.real_path(joined)
+	if !os.exists(candidate) {
+		return candidate
+	}
+	tmp_root := os.real_path(unresolved_tmp_root)
+	if !path_is_below(candidate, tmp_root) {
+		return error('temporary path `${candidate}` is outside `${tmp_root}`')
+	}
+	// It's unlikely that the tmp_path already exists, but it might
+	// occur if vpm was canceled during an installation or update.
+	rmdir_all(candidate)!
+	return candidate
+}
+
+// The nearest existing directory at or below the temp root. A missing final
+// component does not hide a symlink in the parent: real_path of that full
+// path fails and returns the unresolved string.
+fn nearest_tmp_ancestor_is_inside(unresolved_tmp_root string, path string) bool {
+	tmp_root := os.real_path(unresolved_tmp_root)
+	mut current := path
+	for current != unresolved_tmp_root && current != tmp_root {
+		if os.exists(current) {
+			resolved := os.real_path(current)
+			return resolved == tmp_root || path_is_below(resolved, tmp_root)
+		}
+		parent := os.dir(current)
+		if parent == current {
+			return false
+		}
+		current = parent
+	}
+	if !os.exists(current) {
+		return true
+	}
+	resolved := os.real_path(current)
+	return resolved == tmp_root || path_is_below(resolved, tmp_root)
+}
+
+fn relative_path_has_parent_segment(relative_path string) bool {
+	for segment in relative_path.split_any('/\\') {
+		if segment == '..' {
+			return true
+		}
+	}
+	return false
 }

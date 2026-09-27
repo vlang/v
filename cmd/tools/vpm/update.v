@@ -41,6 +41,12 @@ fn update_module(mut pp pool.PoolProcessor, idx int, _wid int) &UpdateResult {
 		vpm_error('failed to find path for `${fallback_name}`.', verbose: true)
 		return &UpdateResult{}
 	}
+	if !install_path_is_in_vmodules(install_path, settings.vmodules_path) {
+		vpm_error('refusing to update `${ident}`: `${fmt_mod_path(install_path)}` is outside the modules directory.',
+			details: 'Run `v unlink` first to replace it.'
+		)
+		return &UpdateResult{}
+	}
 	// Derive the canonical module name from the install path so URL-based
 	// updates report the registered name (e.g. `spytheman.vtray` for
 	// `<vmodules>/spytheman/vtray`) instead of the bare URL-derived `vtray`.
