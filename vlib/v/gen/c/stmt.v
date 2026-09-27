@@ -9477,7 +9477,8 @@ fn (g &FlatGen) local_name_shadows_c_function(name string) bool {
 
 fn local_name_shadows_c_runtime(name string) bool {
 	return match name {
-		'array_get', 'array_slice', 'int_str', 'new_map', 'string__eq', 'string__lt', 'string__plus' {
+		'argc', 'argv', 'array_get', 'array_slice', 'int_str', 'new_map', 'string__eq', 'string__lt',
+		'string__plus' {
 			true
 		}
 		else {
