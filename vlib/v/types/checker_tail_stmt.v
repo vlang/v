@@ -2517,9 +2517,23 @@ fn (tc &TypeChecker) match_condition_pattern_key(id flat.NodeId) (string, string
 		return 'bool:${node.value}', node.value
 	}
 	if node.kind == .selector {
-		key := tc.expr_key(id)
+		key := tc.match_selector_condition_key(id)
 		if key.len > 0 {
 			return 'selector:${key}', key
+		}
+	}
+	if node.kind in [.cast_expr, .as_expr] && node.children_count == 1 {
+		operand, _ := tc.match_condition_pattern_key(tc.a.child(node, 0))
+		if operand.len > 0 {
+			return '${node.kind}:${node.value.len}:${node.value}${operand}', tc.source_text_for_node(id)
+		}
+	}
+	if node.kind == .infix && node.children_count == 2 {
+		left, _ := tc.match_condition_pattern_key(tc.a.child(node, 0))
+		right, _ := tc.match_condition_pattern_key(tc.a.child(node, 1))
+		if left.len > 0 && right.len > 0 {
+			// Selector spans can start at the final field; keep the full operands in the key.
+			return 'infix:${node.op}:${left.len}:${left}${right}', tc.source_text_for_node(id)
 		}
 	}
 	text := tc.source_text_for_node(id)
@@ -2527,6 +2541,43 @@ fn (tc &TypeChecker) match_condition_pattern_key(id flat.NodeId) (string, string
 		return '', ''
 	}
 	return '${node.kind}:${text}', text
+}
+
+fn (tc &TypeChecker) match_selector_condition_key(id flat.NodeId) string {
+	if !tc.valid_node_id(id) {
+		return ''
+	}
+	node := tc.a.node(id)
+	if node.kind == .paren && node.children_count > 0 {
+		return tc.match_selector_condition_key(tc.a.child(node, 0))
+	}
+	if node.kind == .as_expr && node.children_count > 0 {
+		base := tc.match_selector_condition_key(tc.a.child(node, 0))
+		return if base.len > 0 { '${base} as ${node.value}' } else { '' }
+	}
+	if node.kind == .selector && node.children_count > 0 {
+		base := tc.match_selector_condition_key(tc.a.child(node, 0))
+		return if base.len > 0 { '${base}.${node.value}' } else { '' }
+	}
+	if node.kind == .index && node.children_count >= 2 {
+		base := tc.match_selector_condition_key(tc.a.child(node, 0))
+		mut part_id := tc.a.child(node, 1)
+		mut part_node := tc.a.node(part_id)
+		for part_node.kind == .paren && part_node.children_count > 0 {
+			part_id = tc.a.child(part_node, 0)
+			part_node = tc.a.node(part_id)
+		}
+		part := if part_node.kind in [.selector, .index, .as_expr] {
+			tc.match_selector_condition_key(part_id)
+		} else {
+			tc.expr_key_part(part_id)
+		}
+		if base.len > 0 && part.len > 0 {
+			return '${base}[${part_node.kind}:${part.len}:${part}]'
+		}
+		return ''
+	}
+	return tc.expr_key(id)
 }
 
 fn (tc &TypeChecker) match_condition_int_value(id flat.NodeId) ?int {
