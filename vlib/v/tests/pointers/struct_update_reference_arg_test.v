@@ -17,3 +17,23 @@ fn test_struct_update_as_reference_argument() {
 	assert read_nested_reference_settings(ReferenceSettings{ ...original, label: 'copy' }) == 'copy:3'
 	assert read_reference_settings(original) == 'original:3'
 }
+
+fn updated_settings_array(value int) []&ReferenceSettings {
+	original := ReferenceSettings{ value: -1, label: 'array' }
+	return [ReferenceSettings{ ...original, value: value }]
+}
+
+fn test_struct_updates_stored_as_pointers_keep_distinct_storage() {
+	mut values := []&ReferenceSettings{}
+	for value in 0 .. 8 {
+		values << updated_settings_array(value)
+	}
+	assert values.len == 8
+	for i, value in values {
+		assert value.value == i
+		assert value.label == 'array'
+		if i > 0 {
+			assert value != values[i - 1]
+		}
+	}
+}

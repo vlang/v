@@ -14053,6 +14053,13 @@ fn (mut t Transformer) coerce_transformed_expr_to_type(expr flat.NodeId, source_
 			if expr_type.starts_with('&') {
 				return expr
 			}
+			if int(source_id) >= 0 && t.a.nodes[int(source_id)].kind == .assoc {
+				// A contextual reference to a struct update can escape in a container.
+				// Preserve its storage just like an explicit `&Type{...base}` update.
+				addr := t.make_prefix(.amp, expr)
+				dup := t.make_memdup_call_for_type(addr, expr_value_type)
+				return t.make_cast(target, dup, target)
+			}
 			if t.expr_can_take_address(expr) {
 				addr := t.make_prefix(.amp, expr)
 				t.set_node_typ(int(addr), target)
