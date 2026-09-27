@@ -14,6 +14,7 @@ fn test_compiler_selection_flags_are_not_forwarded() {
 }
 
 fn test_external_tool_build_args_drop_non_binary_modes() {
+	assert external_tool_build_args('vfmt', ['-cross', '-os', 'windows', '-arch', 'x64']) == []string{}
 	assert external_tool_build_args('vfmt', ['-silent', '-N', '-W', '-check']) == [
 		'-silent',
 		'-N',

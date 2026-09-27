@@ -10505,7 +10505,7 @@ fn (mut p Parser) expr_with_lhs_context(first flat.NodeId, min_bp token.BindingP
 		// postfix `!` error propagation: expr!
 		if p.tok == .not {
 			prop_start := p.span_start()
-			if p.defer_depth > 0 {
+			if p.defer_depth > 0 && !p.prefs.is_fmt {
 				p.record_diagnostic_span('error propagation not allowed inside `defer` blocks',
 					p.tok_pos, p.tok_end)
 			}
@@ -10537,7 +10537,7 @@ fn (mut p Parser) expr_with_lhs_context(first flat.NodeId, min_bp token.BindingP
 				p.record_diagnostic_span('`?` for propagating errors from index expressions is no longer supported, use `!` instead of `?`',
 					p.tok_pos, p.tok_end)
 			}
-			if p.defer_depth > 0 {
+			if p.defer_depth > 0 && !p.prefs.is_fmt {
 				p.record_diagnostic_span('error propagation not allowed inside `defer` blocks',
 					p.tok_pos, p.tok_end)
 			}

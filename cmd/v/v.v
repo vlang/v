@@ -441,7 +441,7 @@ fn external_tool_args_without_target(args []string) []string {
 			skip_target_value = true
 			continue
 		}
-		if arg.starts_with('-os=') || arg.starts_with('-arch=') {
+		if arg in ['-cross'] || arg.starts_with('-os=') || arg.starts_with('-arch=') {
 			continue
 		}
 		result << arg
