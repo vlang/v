@@ -67,6 +67,11 @@ struct Foo {
 - `[comment: 'field_comment']` set comment
 - `[index]` creates index
 
+## Queries in array callbacks
+
+`sql` expressions inside array callbacks can use the current `it`, including fields
+such as `it.id`. Nested callbacks use their own `it` binding.
+
 ## Usage
 > [!NOTE]
 > For using the Function Call API for `orm`, please check [`Function Call API`](#function-call-api).

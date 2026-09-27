@@ -2741,6 +2741,7 @@ fn (mut t Transformer) transform_array_predicate(predicate_id flat.NodeId, defau
 	} else {
 		t.substitute_ident(predicate_expr_id, 'it', elem_name)
 	}
+	saved_sql_it_name := t.bind_sql_array_it(lambda_param, elem_name)
 	saved_pending := t.pending_stmts.clone()
 	t.pending_stmts.clear()
 	mut callback_setup := []flat.NodeId{}
@@ -2760,6 +2761,7 @@ fn (mut t Transformer) transform_array_predicate(predicate_id flat.NodeId, defau
 	}
 	predicate_pending := t.pending_stmts.clone()
 	t.pending_stmts = saved_pending
+	t.sql_array_it_name = saved_sql_it_name
 	if old_elem.len > 0 {
 		t.set_var_type(elem_name, old_elem)
 	} else {
@@ -2851,6 +2853,7 @@ fn (mut t Transformer) lower_array_filter_call(node flat.Node, fn_node flat.Node
 	} else {
 		t.substitute_ident(predicate_expr_id, 'it', elem_name)
 	}
+	saved_sql_it_name := t.bind_sql_array_it(lambda_param, elem_name)
 	saved_pending := t.pending_stmts.clone()
 	t.pending_stmts.clear()
 	mut callback_setup := []flat.NodeId{}
@@ -2870,6 +2873,7 @@ fn (mut t Transformer) lower_array_filter_call(node flat.Node, fn_node flat.Node
 	}
 	predicate_pending := t.pending_stmts.clone()
 	t.pending_stmts = saved_pending
+	t.sql_array_it_name = saved_sql_it_name
 	if old_elem.len > 0 {
 		t.set_var_type(elem_name, old_elem)
 	} else {
@@ -3002,6 +3006,7 @@ fn (mut t Transformer) lower_array_map_call(node flat.Node, fn_node flat.Node, b
 	}
 	bound_method_info := t.array_map_bound_method_info(mapped_source_node, elem_name, elem_type, result_elem_type) or { BoundMethodArrayInfo{} }
 	has_bound_method_array := bound_method_info.receiver_type.len > 0
+	saved_sql_it_name := t.bind_sql_array_it(lambda_param, elem_name)
 	saved_pending := t.pending_stmts.clone()
 	t.pending_stmts.clear()
 	mut callback_setup := []flat.NodeId{}
@@ -3048,6 +3053,7 @@ fn (mut t Transformer) lower_array_map_call(node flat.Node, fn_node flat.Node, b
 	}
 	mapped_pending := t.pending_stmts.clone()
 	t.pending_stmts = saved_pending
+	t.sql_array_it_name = saved_sql_it_name
 	if old_elem.len > 0 {
 		t.set_var_type(elem_name, old_elem)
 	} else {
