@@ -672,7 +672,10 @@ fn check_not_empty[T](val T) ?bool {
 		}
 		return false
 	} $else $if T is $option {
-		return !struct_field_is_none(val)
+		if struct_field_is_none(val) {
+			return false
+		}
+		return check_not_empty(get_value_from_optional(val)) or { true }
 	} $else $if T.indirections != 0 {
 		return val != unsafe { nil }
 	} $else $if T.unaliased_typ is bool {
