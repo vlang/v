@@ -1,6 +1,7 @@
 module main
 
 import os
+import v.pref
 
 fn test_compiler_selection_flags_are_not_forwarded() {
 	assert clean_compiler_selection_flags(['-silent', '-new-compiler', 'main.v']) == [
@@ -92,8 +93,10 @@ fn test_launcher_finds_the_source_root() {
 fn test_windows_makev_keeps_the_v3_tcc_root_absolute() {
 	root := find_vroot(@FILE) or { panic(err) }
 	source := os.read_file(os.join_path(root, 'makev.bat'))!
-	assert source.contains('set V_FALLBACK_CC_ARGS=-cc "!tcc_exe!"')
+	assert source.contains('set tcc_dir=%~dp0thirdparty\\tcc')
+	assert source.contains('set tcc_exe=%tcc_dir%\\tcc.exe')
 	assert source.contains('"%V_BOOTSTRAP%" %V_BOOTSTRAP_VFLAGS% -keepc -g -showcc -cc "!tcc_exe!" -o "%V_STAGE%" cmd/v')
+	assert source.contains('"%V_STAGE%" %V_BOOTSTRAP_VFLAGS% -keepc -g -showcc -cc "!tcc_exe!" -o "%V_UPDATED%" cmd/v')
 	assert source.contains('if !ERRORLEVEL! EQU 0 set stage_vflags=-cc "!tcc_exe!"')
 	assert !source.contains('-cflags -Bthirdparty/tcc')
 }
@@ -453,6 +456,8 @@ fn test_fallback_exit_classifies_compile_only_commands() {
 	assert !v1_fallback_exit_identifies_compiler_failure(['-b', 'js', 'example_test.js.v'])
 	assert !v1_fallback_exit_identifies_compiler_failure(['-b', 'js_node', 'example_test.js.v'])
 	assert !v1_fallback_exit_identifies_compiler_failure(['-backend=js_browser', 'example_test.js.v'])
+	assert v1_fallback_exit_identifies_compiler_failure(['-b', 'c', 'example_test.js.v'])
+	assert !pref.is_test_file_for_backend('example_test.js.v', 'js')
 	assert !v1_fallback_exit_identifies_compiler_failure(['-backend=wasm', 'example_test.wasm.v'])
 	assert !v1_fallback_exit_identifies_compiler_failure(['script.vsh'])
 	assert !v1_fallback_exit_identifies_compiler_failure(['-e', 'exit(1)'])
