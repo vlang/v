@@ -1157,9 +1157,7 @@ fn (mut tc TypeChecker) check_postfix(id flat.NodeId, node flat.Node) {
 				&& !is_implicitly_dereferenced_mut_param {
 				tc.record_warning_at(.assignment_mismatch, 'pointer arithmetic is only allowed in `unsafe` blocks', id, tc.prefix_operator_pos(id, op))
 			}
-			if !postfix_is_translated {
-				tc.check_lvalue_mutability(child_id)
-			}
+			tc.check_postfix_lvalue_mutability(child_id, postfix_is_translated)
 			return
 		}
 		if !infix_power_type_is_numeric(child_type) {
@@ -1167,9 +1165,7 @@ fn (mut tc TypeChecker) check_postfix(id flat.NodeId, node flat.Node) {
 			tc.record_error_at(.assignment_mismatch, 'invalid operation: ${op} (non-numeric type `${type_name}`)', id, tc.prefix_operator_pos(id, op))
 			return
 		}
-		if !postfix_is_translated {
-			tc.check_lvalue_mutability(child_id)
-		}
+		tc.check_postfix_lvalue_mutability(child_id, postfix_is_translated)
 	}
 	if node.op == .not && child.kind == .array_literal {
 		fixed_type := if child.typ.len > 0 {
@@ -1217,6 +1213,17 @@ fn (mut tc TypeChecker) check_postfix(id flat.NodeId, node flat.Node) {
 				tc.record_error(.assignment_mismatch, 'postfix mutation is not supported for overloaded index expressions', id)
 			}
 		}
+	}
+}
+
+fn (mut tc TypeChecker) check_postfix_lvalue_mutability(id flat.NodeId, translated bool) {
+	if translated {
+		// Translated code permits ordinary writes; shared storage still requires a lock.
+		tc.unsafe_depth++
+	}
+	tc.check_lvalue_mutability(id)
+	if translated {
+		tc.unsafe_depth--
 	}
 }
 
