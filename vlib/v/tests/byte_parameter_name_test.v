@@ -6,13 +6,15 @@ fn byte_after_another_parameter(prefix int, byte u8) int {
 	return prefix + int(byte)
 }
 
-fn byte_in_grouped_parameters(byte u8, other u8) int {
+// vfmt off
+fn byte_in_grouped_parameters(byte, other u8) int {
 	return int(byte) + int(other)
 }
 
-fn byte_after_grouped_parameter(other u8, byte u8) int {
+fn byte_after_grouped_parameter(other, byte u8) int {
 	return int(other) + int(byte)
 }
+// vfmt on
 
 fn increment_byte_parameter(mut byte []u8) {
 	byte[0]++
