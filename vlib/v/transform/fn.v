@@ -14422,7 +14422,19 @@ fn (t &Transformer) callback_payload_type_compatible(actual types.Type, expected
 		return t.callback_payload_type_compatible(a.elem_type, e.elem_type, true)
 	}
 	if a is types.ArrayFixed && e is types.ArrayFixed {
-		return a.len == e.len && t.callback_payload_type_compatible(a.elem_type, e.elem_type,
+		actual_len := t.tc.fixed_array_len_value(a) or {
+			if a.len_expr != e.len_expr {
+				return false
+			}
+			return t.callback_payload_type_compatible(a.elem_type, e.elem_type, true)
+		}
+		expected_len := t.tc.fixed_array_len_value(e) or {
+			if a.len_expr != e.len_expr {
+				return false
+			}
+			return t.callback_payload_type_compatible(a.elem_type, e.elem_type, true)
+		}
+		return actual_len == expected_len && t.callback_payload_type_compatible(a.elem_type, e.elem_type,
 			true)
 	}
 	if a is types.Map && e is types.Map {
@@ -14430,7 +14442,8 @@ fn (t &Transformer) callback_payload_type_compatible(actual types.Type, expected
 			&& t.callback_payload_type_compatible(a.value_type, e.value_type, true)
 	}
 	if a is types.Channel && e is types.Channel {
-		return t.callback_payload_type_compatible(a.elem_type, e.elem_type, true)
+		return a.is_mut == e.is_mut
+			&& t.callback_payload_type_compatible(a.elem_type, e.elem_type, true)
 	}
 	if a is types.Pointer && e is types.Pointer {
 		return t.callback_payload_type_compatible(a.base_type, e.base_type, true)

@@ -3,6 +3,34 @@ module transform
 import v.flat
 import v.types
 
+fn test_callback_payload_checks_symbolic_fixed_array_lengths() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	tc.const_exprs['two'] = a.add_node(flat.Node{ kind: .int_literal, value: '2' })
+	tc.const_exprs['three'] = a.add_node(flat.Node{ kind: .int_literal, value: '3' })
+	t := new_transformer(mut a, &tc, map[string]bool{})
+	int_type := types.Type(types.int_)
+	two := types.Type(types.Array{
+		elem_type: types.Type(types.ArrayFixed{ elem_type: int_type, len_expr: 'two' })
+	})
+	three := types.Type(types.Array{
+		elem_type: types.Type(types.ArrayFixed{ elem_type: int_type, len_expr: 'three' })
+	})
+	assert t.callback_payload_type_compatible(two, two, false)
+	assert !t.callback_payload_type_compatible(two, three, false)
+}
+
+fn test_callback_payload_checks_channel_mutability() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	t := new_transformer(mut a, &tc, map[string]bool{})
+	elem_type := types.Type(types.Pointer{ base_type: types.Type(types.int_) })
+	mutable := types.Type(types.Channel{ elem_type: elem_type, is_mut: true })
+	read_only := types.Type(types.Channel{ elem_type: elem_type })
+	assert t.callback_payload_type_compatible(mutable, mutable, false)
+	assert !t.callback_payload_type_compatible(mutable, read_only, false)
+}
+
 fn test_zeroed_staging_values_keep_heap_structs_on_the_stack() {
 	mut a := flat.FlatAst.new()
 	decl := a.add_node(flat.Node{ kind: .struct_decl, value: 'HeapValue' })
