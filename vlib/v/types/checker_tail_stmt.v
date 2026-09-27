@@ -14182,6 +14182,11 @@ pub fn (tc &TypeChecker) parse_canonical_type_cached(typ string) Type {
 		&& parse_type_cache_string_matches(cache.canonical_texts[slot], typ) {
 		return cache.canonical_values[slot]
 	}
+	// Like parse_type: typeof(...) resolves against the current scope, which the
+	// context hash does not cover, so such texts are never stored and cannot hit.
+	if type_text_contains_typeof(typ) {
+		return tc.parse_canonical_type(typ)
+	}
 	result := tc.parse_canonical_type(typ)
 	// Unknowns can be provisional; parse them again next time.
 	if !type_contains_unknown(result) {
