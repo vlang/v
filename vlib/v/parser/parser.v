@@ -99,6 +99,7 @@ mut:
 	cur_file_id                  int
 	next_file_id                 int = 1
 	cur_module                   string
+	is_translated                bool
 	cur_fn                       string
 	cur_fn_offset                int = -1
 	cur_fn_generic_params        []string
@@ -315,6 +316,7 @@ pub fn (mut p Parser) release_source_storage() {
 	p.lit = ''
 	p.peek_lit = ''
 	p.cur_module = ''
+	p.is_translated = false
 	p.cur_fn = ''
 	p.cur_struct = ''
 	p.pending_export = ''
@@ -358,6 +360,7 @@ pub fn (mut p Parser) parse_into(path string) {
 	p.peek_pos = 0
 	p.peek_end = 0
 	p.cur_module = ''
+	p.is_translated = false
 	p.cur_fn = ''
 	p.defer_depth = 0
 	p.defer_result_allowed = false
@@ -1307,6 +1310,9 @@ fn (mut p Parser) apply_decl_attrs(id flat.NodeId) {
 		p.pending_decl_attr_kinds.clear()
 		p.pending_decl_attr_sources.clear()
 		return
+	}
+	if p.a.node(id).kind == .module_decl && 'translated' in p.pending_decl_attrs {
+		p.is_translated = true
 	}
 	attr_id := p.add_node(flat.Node{
 		kind:    .directive
@@ -8233,7 +8239,7 @@ fn (mut p Parser) if_stmt() flat.NodeId {
 	p.next() // skip 'if'
 	if p.tok == .key_match {
 		p.record_diagnostic_span('cannot use `match` with `if` statements', p.tok_pos, p.tok_end)
-	} else if p.tok == .key_if {
+	} else if p.tok == .key_if && !p.is_translated {
 		p.record_diagnostic_span('the condition of an `if` should be a boolean expression, not another `if` statement; did you write `if` twice by mistake?',
 			p.tok_pos, p.tok_end)
 		p.next()
@@ -10313,6 +10319,13 @@ fn (mut p Parser) stmt_expr() flat.NodeId {
 fn (mut p Parser) expr_with_lhs_context(first flat.NodeId, min_bp token.BindingPower, is_stmt_ident bool, stop_before_or bool, stop_at_array_element bool) flat.NodeId {
 	mut lhs := first
 	for {
+		// C translations can start a dereference assignment immediately after a
+		// postfix increment. Keep the next line out of the previous expression.
+		if p.is_translated && p.prev_tok_end >= 2
+			&& p.s.src[p.prev_tok_end - 2..p.prev_tok_end] in ['++', '--']
+			&& p.line_nr_for_pos(p.prev_tok_end - 1) < p.line_nr_for_pos(p.tok_pos) {
+			break
+		}
 		if p.in_struct_init_value > 0 && (p.tok == .name || p.tok.is_keyword())
 			&& p.peek() == .colon {
 			break
@@ -11433,7 +11446,7 @@ fn (mut p Parser) prefix_expr() flat.NodeId {
 				preceding_minuses++
 				previous--
 			}
-			if preceding_minuses == 1 && !preceding_minus_is_arrow {
+			if preceding_minuses == 1 && !preceding_minus_is_arrow && !p.is_translated {
 				p.record_diagnostic_span('invalid expression: unexpected token `-`', p.tok_pos,
 					p.tok_end)
 			}
@@ -14434,7 +14447,12 @@ fn (mut p Parser) sizeof_expr() flat.NodeId {
 		})
 	}
 	p.check(.lpar)
-	if !p.can_start_type_name() {
+	if !p.can_start_type_name()
+		|| (p.is_translated && p.tok == .name
+			&& (p.is_local_binding(p.lit)
+				|| p.global_names[p.lit]
+				|| p.a.nodes.any(it.kind == .const_field && it.value == p.lit)
+				|| (p.peek() == .lsbr && !type_name_can_init(p.lit)))) {
 		inner := p.expr(.lowest)
 		p.check(.rpar)
 		return p.a.add_node(flat.Node{

@@ -98,8 +98,11 @@ fn (tc &TypeChecker) expression_node_used_as_value(id flat.NodeId) bool {
 			continue
 		}
 		if parent.kind in [.if_expr, .match_stmt, .comptime_if] {
-			if parent.children_count == 0 || tc.a.child(parent, 0) == current {
+			if parent.children_count == 0 {
 				return false
+			}
+			if tc.a.child(parent, 0) == current {
+				return parent.kind in [.if_expr, .match_stmt]
 			}
 			current = parent_id
 			continue
@@ -284,7 +287,7 @@ fn (tc &TypeChecker) unreachable_statement_diagnostic_pos(id flat.NodeId) token.
 }
 
 fn (mut tc TypeChecker) check_unused_expression_statement(id flat.NodeId) {
-	if !tc.valid_node_id(id) {
+	if !tc.valid_node_id(id) || tc.node_is_in_translated_file(id) {
 		return
 	}
 	stmt := tc.a.node(id)
