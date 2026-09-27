@@ -3049,6 +3049,9 @@ but a short, preferably one letter long, name.
 
 ### Embedded structs
 
+Promoted fields from different nested embeds can be initialized together. Their shared parent
+is initialized once, retaining the explicitly supplied fields and defaults for omitted fields.
+
 V supports embedded structs.
 
 ```v
