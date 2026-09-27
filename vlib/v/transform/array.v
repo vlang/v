@@ -2741,7 +2741,12 @@ fn (mut t Transformer) transform_array_predicate(predicate_id flat.NodeId, defau
 	} else {
 		t.substitute_ident(predicate_expr_id, 'it', elem_name)
 	}
-	saved_sql_it_name := t.bind_sql_array_it(lambda_param, elem_name)
+	saved_sql_it_name := if predicate_fn_name.len == 0 && !predicate_is_fn_value
+		&& !predicate_allocates_closure {
+		t.bind_sql_array_it(lambda_param, elem_name)
+	} else {
+		t.sql_array_it_name
+	}
 	saved_pending := t.pending_stmts.clone()
 	t.pending_stmts.clear()
 	mut callback_setup := []flat.NodeId{}
@@ -2853,7 +2858,12 @@ fn (mut t Transformer) lower_array_filter_call(node flat.Node, fn_node flat.Node
 	} else {
 		t.substitute_ident(predicate_expr_id, 'it', elem_name)
 	}
-	saved_sql_it_name := t.bind_sql_array_it(lambda_param, elem_name)
+	saved_sql_it_name := if predicate_fn_name.len == 0 && !predicate_is_fn_value
+		&& !predicate_allocates_closure {
+		t.bind_sql_array_it(lambda_param, elem_name)
+	} else {
+		t.sql_array_it_name
+	}
 	saved_pending := t.pending_stmts.clone()
 	t.pending_stmts.clear()
 	mut callback_setup := []flat.NodeId{}
@@ -3006,7 +3016,12 @@ fn (mut t Transformer) lower_array_map_call(node flat.Node, fn_node flat.Node, b
 	}
 	bound_method_info := t.array_map_bound_method_info(mapped_source_node, elem_name, elem_type, result_elem_type) or { BoundMethodArrayInfo{} }
 	has_bound_method_array := bound_method_info.receiver_type.len > 0
-	saved_sql_it_name := t.bind_sql_array_it(lambda_param, elem_name)
+	saved_sql_it_name := if map_fn_name.len == 0 && !map_expr_is_fn_value
+		&& !map_callback_allocates_closure {
+		t.bind_sql_array_it(lambda_param, elem_name)
+	} else {
+		t.sql_array_it_name
+	}
 	saved_pending := t.pending_stmts.clone()
 	t.pending_stmts.clear()
 	mut callback_setup := []flat.NodeId{}

@@ -50,6 +50,16 @@ fn test_sql_select_inside_array_map_uses_current_element() ! {
 	assert nested[0][0][0].name == 'third'
 	assert nested[0][1][0].name == 'first'
 	assert nested[1][0][0].name == 'second'
+	first := fn (value int) bool { return value == 1 }
+	second := fn (value int) bool { return false }
+	outer_selected := [1, 2].map([1].filter(if (sql db {
+		select count from MapSqlRow where id == it
+	}!) > 0 {
+		first
+	} else {
+		second
+	}))
+	assert outer_selected == [[1], [1]]
 
 	it := 2
 	after := sql db { select from MapSqlRow where id == it }!
