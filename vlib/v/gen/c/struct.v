@@ -607,7 +607,7 @@ fn (mut g FlatGen) gen_unset_struct_field_default(struct_name string, field_name
 		if has {
 			g.write(', ')
 		}
-		g.write('.${field_c_name} = sync__new_channel_st((u32)(0), (u32)(sizeof(${g.tc.c_type(clean_type.elem_type)})))')
+		g.write('.${field_c_name} = sync__new_channel_st((u32)(0), (u32)(sizeof(${g.value_sizeof_target(clean_type.elem_type)})))')
 		return true
 	}
 	if clean_type is types.String {
@@ -1787,7 +1787,7 @@ fn (mut g FlatGen) gen_lowered_sum_field_value(sum_name string, field &flat.Node
 // gen_channel_init emits channel init output for c.
 fn (mut g FlatGen) gen_channel_init(node flat.Node) {
 	elem_type := g.tc.parse_type(node.value[5..])
-	elem_ct := g.tc.c_type(elem_type)
+	elem_ct := g.value_sizeof_target(elem_type)
 	g.write('sync__new_channel_st((u32)(')
 	if cap_id := channel_init_field(node, g.a, 'cap') {
 		g.gen_expr(cap_id)
@@ -2368,7 +2368,7 @@ fn (mut g FlatGen) gen_default_value_for_clean_type(clean_typ types.Type) {
 		return
 	}
 	if clean_typ is types.Channel {
-		g.write('sync__new_channel_st((u32)(0), (u32)(sizeof(${g.tc.c_type(clean_typ.elem_type)})))')
+		g.write('sync__new_channel_st((u32)(0), (u32)(sizeof(${g.value_sizeof_target(clean_typ.elem_type)})))')
 		return
 	}
 	if clean_typ is types.String {

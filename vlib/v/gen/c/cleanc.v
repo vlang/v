@@ -15813,7 +15813,7 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 				child_type0 := g.usable_expr_type(child_id)
 				child_type := concrete_receiver_type(child_type0)
 				if child_type is types.Channel {
-					elem_ct := g.tc.c_type(child_type.elem_type)
+					elem_ct := g.value_c_type(child_type.elem_type)
 					tmp := g.tmp_name()
 					g.write('({${elem_ct} ${tmp} = (${elem_ct}){0}; sync__Channel__pop(')
 					if child_type0 is types.Pointer {
@@ -22784,7 +22784,7 @@ fn (mut g FlatGen) emit_global_inits() {
 					continue
 				}
 				if clean_type is types.Channel {
-					elem_ct := g.tc.c_type(clean_type.elem_type)
+					elem_ct := g.value_sizeof_target(clean_type.elem_type)
 					g.queue_runtime_init('\t${g.global_c_name(qname)} = sync__new_channel_st((u32)(0), (u32)(sizeof(${elem_ct})));')
 					continue
 				}
