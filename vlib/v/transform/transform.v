@@ -272,6 +272,7 @@ mut:
 	resolved_call_return_cache    &ResolvedCallReturnCache = unsafe { nil }
 	variant_match_cache           &VariantMatchCache       = unsafe { nil }
 	interface_type_cache          &ContextLookupCache      = unsafe { nil }
+	alias_equivalent_names_cache  &EquivalentNamesCache    = unsafe { nil }
 	enum_expected_cache           &LookupCache             = unsafe { nil }
 	type_alias_name_cache         &ContextBoolLookupCache  = unsafe { nil }
 	raw_return_alias_cache        &ContextBoolLookupCache  = unsafe { nil }
@@ -283,6 +284,7 @@ mut:
 	str_alias_cache               &LookupCache             = unsafe { nil }
 	generic_alias_names           map[string]bool
 	type_alias_suffixes           map[string]string
+	type_alias_short_index        &TypeAliasShortIndex = unsafe { nil }
 	local_decl_nodes_by_name      map[string][]int
 	fn_decl_offsets_by_file       map[int][]int
 	if_expr_nodes_by_file         map[int][]int
@@ -630,6 +632,15 @@ mut:
 	file    string
 	entries map[string]string
 	misses  map[string]bool
+}
+
+// EquivalentNamesCache memoizes interface_alias_equivalent_names for one
+// module and file, whose imports decide how the names normalize.
+struct EquivalentNamesCache {
+mut:
+	module  string
+	file    string
+	entries map[string][]string
 }
 
 struct SelectorTypeCache {
@@ -1940,6 +1951,7 @@ fn (mut t Transformer) prepare() {
 		entries: map[string]string{}
 		misses:  map[string]bool{}
 	}
+	t.alias_equivalent_names_cache = &EquivalentNamesCache{}
 	t.enum_expected_cache = &LookupCache{
 		entries: map[string]string{}
 		misses:  map[string]bool{}
@@ -4026,6 +4038,7 @@ fn (t &Transformer) fork_worker_config(ast &flat.FlatAst, wtc &types.TypeChecker
 		entries: map[string]string{}
 		misses:  map[string]bool{}
 	}
+	w.alias_equivalent_names_cache = &EquivalentNamesCache{}
 	w.enum_expected_cache = &LookupCache{
 		entries: map[string]string{}
 		misses:  map[string]bool{}
@@ -4167,6 +4180,7 @@ fn (t &Transformer) fork_scan_worker(wtc &types.TypeChecker) &Transformer {
 		entries: map[string]string{}
 		misses:  map[string]bool{}
 	}
+	w.alias_equivalent_names_cache = &EquivalentNamesCache{}
 	w.enum_expected_cache = &LookupCache{
 		entries: map[string]string{}
 		misses:  map[string]bool{}
@@ -4277,6 +4291,7 @@ fn (t &Transformer) fork_program_view(ast &flat.FlatAst, wtc &types.TypeChecker,
 		runtime_type_indexes:                t.runtime_type_indexes
 		generic_alias_names:                 t.generic_alias_names
 		type_alias_suffixes:                 t.type_alias_suffixes
+		type_alias_short_index:              t.type_alias_short_index
 		local_decl_nodes_by_name:            t.local_decl_nodes_by_name
 		fn_decl_offsets_by_file:             t.fn_decl_offsets_by_file
 		if_expr_nodes_by_file:               t.if_expr_nodes_by_file

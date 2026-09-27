@@ -9926,6 +9926,11 @@ pub fn (tc &TypeChecker) const_int_value_in_module(name string, module_name stri
 	if const_expr_paren_wraps_whole(expr) {
 		return tc.const_int_value(trimmed_space(expr[1..expr.len - 1]), seen)
 	}
+	// Without an operator character neither the split below nor a leading sign can
+	// apply. Most texts that get here are plain names; skip the per-character scan.
+	if !const_int_text_has_operator(expr) {
+		return none
+	}
 	// Operators are grouped by the same precedence levels as token.left_binding_power:
 	// `+ - | ^` share sum, while `* / % << >> >>> &` share product. Scanning the
 	// rightmost operator at a level preserves left associativity. Power scans its first
@@ -10034,6 +10039,18 @@ pub fn (tc &TypeChecker) const_int_value_in_module(name string, module_name stri
 		return if expr[0] == `-` { -value } else { value }
 	}
 	return none
+}
+
+// const_int_text_has_operator reports whether `expr` contains a character of an
+// operator that const_int_value_in_module can split on or apply as a sign.
+fn const_int_text_has_operator(expr string) bool {
+	for ch in expr {
+		match ch {
+			`+`, `-`, `|`, `^`, `*`, `/`, `%`, `&`, `<`, `>` { return true }
+			else {}
+		}
+	}
+	return false
 }
 
 fn (tc &TypeChecker) const_int_cast_text_value(text string, module_name string, seen []string) ?int {
