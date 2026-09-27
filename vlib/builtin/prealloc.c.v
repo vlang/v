@@ -163,8 +163,12 @@ mut:
 @[heap]
 struct VPreallocScope {
 mut:
-	previous    &VMemoryBlock = 0
-	first       &VMemoryBlock = 0
+	previous &VMemoryBlock = 0
+	first    &VMemoryBlock = 0
+	// saved_next holds the blocks that followed `previous` when this scope was
+	// linked after it: a reentered parent scope keeps rewound blocks there.
+	// Unlinking the scope restores them instead of dropping them from the chain.
+	saved_next  &VMemoryBlock = 0
 	min_address usize
 	max_address usize
 	ranges      &VPreallocRange = 0
@@ -728,6 +732,7 @@ pub fn prealloc_scope_begin() voidptr {
 		scope := &VPreallocScope(C.calloc(1, sizeof(VPreallocScope)))
 		vmemory_abort_on_nil(scope, sizeof(VPreallocScope))
 		scope.previous = vmemory_block_current_or_new()
+		scope.saved_next = scope.previous.next
 		scope.first = vmemory_block_new_sized(scope.previous, isize(prealloc_scope_block_size), 0, isize(prealloc_scope_block_size))
 		scope.first.is_scope = true
 		scope.first.scope = scope
@@ -775,7 +780,7 @@ fn prealloc_scope_free_blocks(scope &VPreallocScope) {
 	}
 	unsafe {
 		if scope.previous != 0 {
-			scope.previous.next = nil
+			prealloc_scope_unlink(scope)
 		}
 		vmemory_block_free_chain(scope.first)
 	}
@@ -818,6 +823,21 @@ fn prealloc_scope_finish_if_ready(scope &VPreallocScope) {
 	}
 }
 
+// prealloc_scope_unlink detaches the scope's blocks from the block it was
+// linked after, and reattaches the blocks that followed that block before.
+@[unsafe]
+fn prealloc_scope_unlink(scope &VPreallocScope) {
+	unsafe {
+		previous := scope.previous
+		saved_next := scope.saved_next
+		previous.next = saved_next
+		if saved_next != 0 {
+			saved_next.previous = previous
+		}
+		scope.saved_next = nil
+	}
+}
+
 @[unsafe]
 fn prealloc_scope_detach_current(scope &VPreallocScope) {
 	if scope == unsafe { nil } {
@@ -826,7 +846,7 @@ fn prealloc_scope_detach_current(scope &VPreallocScope) {
 	unsafe {
 		previous := scope.previous
 		if previous != 0 {
-			previous.next = nil
+			prealloc_scope_unlink(scope)
 		}
 		if g_memory_block != 0 && g_memory_block.is_scope && g_memory_block.scope == scope {
 			g_memory_block = previous
@@ -952,6 +972,7 @@ pub fn prealloc_scope_reenter(scope_ptr voidptr, keep_bytes isize) bool {
 			}
 			parent := vmemory_block_current_or_new()
 			scope.previous = parent
+			scope.saved_next = parent.next
 			parent.next = scope.first
 			scope.first.previous = parent
 			g_memory_block = scope.first
