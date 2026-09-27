@@ -61,6 +61,14 @@ fn (t &Transformer) resolve_call_name(node flat.Node) string {
 					return qname
 				}
 			}
+			// Top-level script expressions may not have a recorded checker call.
+			if !isnil(t.tc) && t.a.has_vsh_source && t.cur_file.ends_with('.vsh')
+				&& name !in t.tc.v_fn_semantic_names {
+				qualified := 'os.${name}'
+				if t.is_known_fn_name(qualified) {
+					return qualified
+				}
+			}
 			// Try unqualified name after current-module authority.
 			if t.is_known_fn_name(name) {
 				return name
@@ -10543,6 +10551,13 @@ fn (mut t Transformer) try_lower_array_method_call(call_id flat.NodeId, node fla
 		}
 	}
 	base_node := t.a.nodes[int(base_id)]
+	if base_node.kind == .or_expr {
+		if unwrapped := t.or_expr_receiver_unwrapped_type(base_id) {
+			if unwrapped.starts_with('[]') || t.is_fixed_array_type(unwrapped) {
+				base_type = unwrapped
+			}
+		}
+	}
 	if base_node.kind == .call {
 		concrete_base_type := t.concrete_generic_call_return_type(base_id, base_node)
 		if concrete_base_type.starts_with('[]') {
