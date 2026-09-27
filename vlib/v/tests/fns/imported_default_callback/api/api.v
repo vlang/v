@@ -25,6 +25,9 @@ pub:
 	make_event fn () Event = fn () Event {
 		return Event{ value: 42 }
 	}
+	make_pair  fn () (Event, int) = fn () (Event, int) {
+		return Event{ value: 43 }, 1
+	}
 }
 
 // window initializes a window and preserves its default callback.

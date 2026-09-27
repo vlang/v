@@ -3193,6 +3193,16 @@ fn (t &Transformer) decl_param_type_in_scope(typ string, module_name string, fil
 		}
 		return clean
 	}
+	if clean.starts_with('(') && clean.ends_with(')') {
+		parts := split_generic_args(clean[1..clean.len - 1])
+		if parts.len > 1 {
+			mut scoped_parts := []string{cap: parts.len}
+			for part in parts {
+				scoped_parts << t.decl_param_type_in_scope(part, module_name, file_name)
+			}
+			return '(' + scoped_parts.join(', ') + ')'
+		}
+	}
 	base, args, ok := generic_app_parts(clean)
 	if ok {
 		mut scoped_args := []string{}
