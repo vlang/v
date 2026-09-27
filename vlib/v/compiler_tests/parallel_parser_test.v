@@ -196,7 +196,10 @@ fn test_parallel_parse_falls_back_when_workers_cannot_start() {
 			assert got.kind == node.kind
 			assert got.value == node.value
 			assert got.typ == node.typ
-			assert got.pos == node.pos
+			// Pos.meta holds an interned type-text id, which can differ by parse order.
+			assert got.pos.offset == node.pos.offset
+			assert got.pos.end == node.pos.end
+			assert got.pos.id == node.pos.id
 			assert got.children_count == node.children_count
 			if node.children_count != 0 {
 				assert got.children_start == node.children_start
@@ -417,7 +420,16 @@ fn test_parallel_parser_compiles_multi_module_project() {
 	v3_bin := build_parallel_parser_v3()
 	main_path := write_parallel_parser_project('parallel_parser_project')
 	bin_out := os.join_path(os.temp_dir(), 'v3_parallel_parser_project_out_${os.getpid()}')
-	compile := os.execute('VJOBS=4 ${v3_bin} ${main_path} -b c -o ${bin_out}')
+	old_vjobs := os.getenv_opt('VJOBS')
+	os.setenv('VJOBS', '4', true)
+	defer {
+		if value := old_vjobs {
+			os.setenv('VJOBS', value, true)
+		} else {
+			os.unsetenv('VJOBS')
+		}
+	}
+	compile := os.execute('${v3_bin} -v -b c -o ${bin_out} ${main_path}')
 	assert compile.exit_code == 0, compile.output
 	$if !windows {
 		assert compile.output.contains('parse .v (parallel)'), compile.output
