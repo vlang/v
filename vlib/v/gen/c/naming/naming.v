@@ -93,6 +93,7 @@ const libc_collisions = {
 	'memcpy':   true
 	'memmove':  true
 	'memset':   true
+	'mktemp':   true
 	'open':     true
 	'pipe':     true
 	'pow':      true
@@ -115,6 +116,7 @@ const libc_collisions = {
 	'strncpy':  true
 	'strrchr':  true
 	'strstr':   true
+	'truncate': true
 	'wait':     true
 	'y0':       true
 	'y1':       true
@@ -146,6 +148,9 @@ pub fn c_name(name string) string {
 		return 'v_exit'
 	}
 	n := sanitize(name)
+	if n in ['mktemp', 'truncate'] {
+		return '${internal_symbol_c_prefix}libc_${n}'
+	}
 	mut result := n
 	if n in reserved_words || n in libc_collisions || is_string_literal_symbol(n) {
 		if name.contains('@') {
