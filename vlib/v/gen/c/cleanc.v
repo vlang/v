@@ -23507,7 +23507,12 @@ fn (mut g FlatGen) emit_const(name string, val_id flat.NodeId) {
 		return
 	}
 	mut expr_str := if fixed := array_fixed_type(default_init_unalias_type(v_type)) {
-		g.fixed_array_initializer_string(val_id, fixed)
+		initializer := g.fixed_array_initializer_string(val_id, fixed)
+		if initializer.len > 0 {
+			initializer
+		} else {
+			g.fixed_array_copy_source_string(val_id, types.Type(fixed))
+		}
 	} else if ct == 'Array' {
 		arr := array_like_type(default_init_unalias_type(v_type)) or {
 			types.Array{
@@ -23558,10 +23563,10 @@ fn (mut g FlatGen) emit_const(name string, val_id flat.NodeId) {
 		is_static_const = false
 	}
 	if !is_static_const {
-		if v_type is types.ArrayFixed {
-			c_elem, dims := g.fixed_array_decl_parts(v_type)
+		if fixed := array_fixed_type(default_init_unalias_type(v_type)) {
+			c_elem, dims := g.fixed_array_decl_parts(fixed)
 			g.writeln('${c_elem} ${qname}${dims};')
-			g.queue_const_fixed_array_runtime_init(qname, val_id, v_type)
+			g.queue_const_fixed_array_runtime_init(qname, val_id, fixed)
 		} else if ct != 'void' {
 			g.writeln('${ct} ${qname};')
 			// The initializer is not a compile-time constant (e.g. `os.args =

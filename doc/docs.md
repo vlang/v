@@ -3534,6 +3534,9 @@ To dereference a reference, use the `*` operator, just like in C.
 
 ## Constants
 
+A fixed array constant can be initialized by a function call; the call runs during initialization.
+
+
 ```v
 const pi = 3.14
 const world = '世界'
