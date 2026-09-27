@@ -13,8 +13,8 @@ const primes_b = u64(29) * 31 * 41 * 43 * 47 * 53
 const deterministic_bases = [u64(2), 3, 5, 7, 11, 13, 17, 19, 23, 29, 31, 37, 41]!
 
 const deterministic_limit = Integer{
-	digits: [u64(120970133908792829), 2877077]
-	signum: 1
+	digits:   [u64(120970133908792829), 2877077]
+	signum:   1
 	is_const: true
 }
 

@@ -15,8 +15,10 @@ pub fn parse(text string) DocumentObjectModel {
 // Note: this function converts tags to lowercase.
 // E.g. <MyTag>content</MyTag> is parsed as <mytag>content</mytag>.
 pub fn parse_file(filename string) DocumentObjectModel {
-	content := os.read_file(filename) or { return DocumentObjectModel{
-		root: &Tag{}
-	} }
+	content := os.read_file(filename) or {
+		return DocumentObjectModel{
+			root: &Tag{}
+		}
+	}
 	return parse(content)
 }

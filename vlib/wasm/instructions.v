@@ -211,8 +211,9 @@ pub fn (mut func Function) add(typ NumType) {
 		.i32_t { func.code << 0x6A } // i32.add
 		.i64_t { func.code << 0x7C } // i64.add
 		.f32_t { func.code << 0x92 } // f32.add
-		.f64_t { func.code << 0xA0 } // f64.add
+		.f64_t { func.code << 0xA0 }
 	}
+	// f64.add
 }
 
 // sub subtracts two values on the stack with type `typ`.
@@ -222,8 +223,9 @@ pub fn (mut func Function) sub(typ NumType) {
 		.i32_t { func.code << 0x6B } // i32.sub
 		.i64_t { func.code << 0x7D } // i64.sub
 		.f32_t { func.code << 0x93 } // f32.sub
-		.f64_t { func.code << 0xA1 } // f64.sub
+		.f64_t { func.code << 0xA1 }
 	}
+	// f64.sub
 }
 
 // mul multiplies two values on the stack with type `typ`.
@@ -233,8 +235,9 @@ pub fn (mut func Function) mul(typ NumType) {
 		.i32_t { func.code << 0x6C } // i32.mul
 		.i64_t { func.code << 0x7E } // i64.mul
 		.f32_t { func.code << 0x94 } // f32.mul
-		.f64_t { func.code << 0xA2 } // f64.mul
+		.f64_t { func.code << 0xA2 }
 	}
+	// f64.mul
 }
 
 // div divides two values on the stack with type `typ`, with respect to `is_signed`.
@@ -559,8 +562,9 @@ pub fn (mut func Function) eq(typ NumType) {
 		.i32_t { func.code << 0x46 } // i32.eq
 		.i64_t { func.code << 0x51 } // i64.eq
 		.f32_t { func.code << 0x5B } // f32.eq
-		.f64_t { func.code << 0x61 } // f64.eq
+		.f64_t { func.code << 0x61 }
 	}
+	// f64.eq
 }
 
 // ne checks if two values with type `typ` are not equal, places an i32 boolean value on the stack.
@@ -570,8 +574,9 @@ pub fn (mut func Function) ne(typ NumType) {
 		.i32_t { func.code << 0x47 } // i32.ne
 		.i64_t { func.code << 0x52 } // i64.ne
 		.f32_t { func.code << 0x5C } // f32.ne
-		.f64_t { func.code << 0x62 } // f64.ne
+		.f64_t { func.code << 0x62 }
 	}
+	// f64.ne
 }
 
 // lt checks if two values with type `typ` with respect to `is_signed` are less than another, places an i32 boolean value on the stack.
@@ -896,8 +901,9 @@ pub fn (mut func Function) reinterpret(a NumType) {
 		.f32_t { func.code << 0xBC } // i32.reinterpret_f32
 		.i32_t { func.code << 0xBE } // f32.reinterpret_i32
 		.f64_t { func.code << 0xBD } // i64.reinterpret_f64
-		.i64_t { func.code << 0xBF } // f64.reinterpret_i64
+		.i64_t { func.code << 0xBF }
 	}
+	// f64.reinterpret_i64
 }
 
 // unreachable denotes a point in code that should not be reachable, it is an unconditional trap.
@@ -1014,8 +1020,10 @@ pub fn (mut func Function) load(typ NumType, align int, offset int) {
 		.i32_t { func.code << 0x28 } // i32.load
 		.i64_t { func.code << 0x29 } // i64.load
 		.f32_t { func.code << 0x2A } // f32.load
-		.f64_t { func.code << 0x2B } // f64.load
+		.f64_t { func.code << 0x2B }
 	}
+
+	// f64.load
 
 	func.u32(u32(align))
 	func.u32(u32(offset))
@@ -1094,8 +1102,10 @@ pub fn (mut func Function) store(typ NumType, align int, offset int) {
 		.i32_t { func.code << 0x36 } // i32.store
 		.i64_t { func.code << 0x37 } // i64.store
 		.f32_t { func.code << 0x38 } // f32.store
-		.f64_t { func.code << 0x39 } // f64.store
+		.f64_t { func.code << 0x39 }
 	}
+
+	// f64.store
 
 	func.u32(u32(align))
 	func.u32(u32(offset))

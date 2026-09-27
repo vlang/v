@@ -9,6 +9,9 @@ fn test_digest_implements_hash() {
 	get_digest := fn () hash.Hash {
 		return sha512.new()
 	}
+	mut digest := get_digest()
+	assert digest.size() == sha512.size
+	digest.free()
 }
 
 const final_result = '4143e55fcba7e39b20f62a1368e5eb28f64a8859458886117ac66027832e0f9f5263daec688c439d2d0fa07059334668d39e59543039703dbb7e03ec9da7f8d7'

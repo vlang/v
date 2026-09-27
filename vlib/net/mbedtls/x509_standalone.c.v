@@ -1,5 +1,10 @@
 module mbedtls
 
+// Keep the static C shims in the same generated translation unit as these
+// standalone wrappers. Module files can be emitted as separate C translation
+// units, so the insert in mbedtls.c.v alone is not visible here.
+#insert "@VEXEROOT/vlib/net/mbedtls/mbedtls_helpers.h"
+
 // build_certificate_chain parses a list of DER-encoded certificates
 // (leaf-first, as TLS 1.3's Certificate message orders them — RFC 8446
 // §4.4.2: "The sender's certificate MUST come in the first

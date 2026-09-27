@@ -259,7 +259,7 @@ fn (mut app App) run_render_batch(legacy bool, frame_fn AppFrameFn) !int {
 				errors << err.msg()
 			}
 			$if linux {
-				$if x_multiwindow_x11 ? || sokol_wayland ? {
+				$if x_multiwindow_x11 ?|| sokol_wayland ? {
 					app.fail_linux_gl_image_readbacks_for_batch(app.active_batch_epoch, batch_error) or {
 						errors << err.msg()
 					}
@@ -278,7 +278,7 @@ fn (mut app App) run_render_batch(legacy bool, frame_fn AppFrameFn) !int {
 				errors << err.msg()
 			}
 			$if linux {
-				$if x_multiwindow_x11 ? || sokol_wayland ? {
+				$if x_multiwindow_x11 ?|| sokol_wayland ? {
 					app.fail_linux_gl_image_readbacks_for_batch(app.active_batch_epoch, batch_error) or {
 						errors << err.msg()
 					}
@@ -293,7 +293,7 @@ fn (mut app App) run_render_batch(legacy bool, frame_fn AppFrameFn) !int {
 	mut terminal_errors := []string{}
 	app.finish_managed_window_captures(outcome) or { terminal_errors << err.msg() }
 	$if linux {
-		$if x_multiwindow_x11 ? || sokol_wayland ? {
+		$if x_multiwindow_x11 ?|| sokol_wayland ? {
 			app.finish_linux_gl_image_readbacks(outcome) or { terminal_errors << err.msg() }
 		}
 	}

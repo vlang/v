@@ -8,6 +8,7 @@ fn test_channel_try_unbuffered() {
 		panic('push on non-ready channel not detected')
 	}
 	mut obj := -17
-	for ch.try_pop(mut obj) == .success {}
+	for ch.try_pop(mut obj) == .success {
+	}
 	assert obj == -17
 }

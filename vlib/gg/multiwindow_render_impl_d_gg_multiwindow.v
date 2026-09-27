@@ -5,7 +5,7 @@ import sokol.sgl
 import x.multiwindow
 
 $if linux {
-	$if x_multiwindow_x11 ? || sokol_wayland ? {
+	$if x_multiwindow_x11 ?|| sokol_wayland ? {
 		#insert "@VMODROOT/vlib/gg/multiwindow_gl_readback_helpers.h"
 
 		fn C.v_gg_multiwindow_gl_readback_image_rgba8(image_id u32, image_height int, x int, y int, width int, height int, pixels &u8, pixels_len usize) int
@@ -138,7 +138,7 @@ fn (app &App) window_readback_capabilities_managed(id WindowId) !WindowReadbackC
 	window := app.window_operation_capability(id, .window_capture)!
 	mut offscreen_image := false
 	$if linux {
-		$if x_multiwindow_x11 ? || sokol_wayland ? {
+		$if x_multiwindow_x11 ?|| sokol_wayland ? {
 			offscreen_image = app.capabilities().backend in [.x11, .wayland]
 				&& app.core.renderer_device_available_for_gg()
 				&& gfx.query_backend() in [.glcore33, .gles3] && image.support == .available
@@ -351,7 +351,7 @@ fn (mut app App) stage_managed_window_captures(id WindowId, target_submitted_fra
 		return
 	}
 	$if linux {
-		$if x_multiwindow_x11 ? || sokol_wayland ? {
+		$if x_multiwindow_x11 ?|| sokol_wayland ? {
 			mut index := 0
 			for index < app.pending_window_captures.len {
 				capture := app.pending_window_captures[index]
@@ -829,7 +829,7 @@ fn (mut context WindowContext) request_image_readback_managed(id WindowImageId, 
 		}
 	}
 	$if linux {
-		$if x_multiwindow_x11 ? || sokol_wayland ? {
+		$if x_multiwindow_x11 ?|| sokol_wayland ? {
 			if gfx.query_backend() !in [.glcore33, .gles3] {
 				return error(err_multiwindow_render_readback_unsupported)
 			}

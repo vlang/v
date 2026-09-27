@@ -105,11 +105,11 @@ fn test_subscribe_method() {
 	// given
 	mut eb := eventbus.new[string]()
 	r := FakeReceiver{}
-	assert !eb.subscriber.is_subscribed_method('on_test_with_receiver', r)
+	assert !eb.subscriber.is_subscribed_method('on_test_with_receiver', &r)
 	// when
-	eb.subscriber.subscribe_method('on_test_with_receiver', on_test_with_receiver, r)
+	eb.subscriber.subscribe_method('on_test_with_receiver', on_test_with_receiver, &r)
 	// then
-	assert eb.subscriber.is_subscribed_method('on_test_with_receiver', r)
+	assert eb.subscriber.is_subscribed_method('on_test_with_receiver', &r)
 
 	assert calls_of_on_test_without_receiver == 0
 	assert call_of_on_test_with_receiver == 0
@@ -122,12 +122,12 @@ fn test_unsubscribe_method() {
 	r := FakeReceiver{}
 	r2 := FakeReceiver{}
 	// when
-	eb.subscriber.subscribe_method('on_test_with_receiver', on_test_with_receiver, r)
-	eb.subscriber.subscribe_method('on_test_with_receiver', on_test_with_receiver, r2)
-	eb.subscriber.unsubscribe_method('on_test_with_receiver', r)
+	eb.subscriber.subscribe_method('on_test_with_receiver', on_test_with_receiver, &r)
+	eb.subscriber.subscribe_method('on_test_with_receiver', on_test_with_receiver, &r2)
+	eb.subscriber.unsubscribe_method('on_test_with_receiver', &r)
 	// then
-	assert !eb.subscriber.is_subscribed_method('on_test_with_receiver', r)
-	assert eb.subscriber.is_subscribed_method('on_test_with_receiver', r2)
+	assert !eb.subscriber.is_subscribed_method('on_test_with_receiver', &r)
+	assert eb.subscriber.is_subscribed_method('on_test_with_receiver', &r2)
 
 	assert calls_of_on_test_without_receiver == 0
 	assert call_of_on_test_with_receiver == 0
@@ -148,12 +148,12 @@ fn test_publish() {
 	assert !eb.subscriber.is_subscribed('on_test')
 	assert calls_of_on_test_without_receiver == 1
 
-	eb.subscriber.subscribe_method('on_test', on_test_with_receiver, r1) // subscribe r1 3 times
-	eb.subscriber.subscribe_method('on_test', on_test_with_receiver, r1)
-	eb.subscriber.subscribe_method('on_test', on_test_with_receiver, r1)
-	eb.subscriber.subscribe_method('on_test', on_test_with_receiver, r2) // subscribe r2 3 times
-	eb.subscriber.subscribe_method('on_test', on_test_with_receiver, r2)
-	eb.subscriber.subscribe_method('on_test', on_test_with_receiver, r2)
+	eb.subscriber.subscribe_method('on_test', on_test_with_receiver, &r1) // subscribe r1 3 times
+	eb.subscriber.subscribe_method('on_test', on_test_with_receiver, &r1)
+	eb.subscriber.subscribe_method('on_test', on_test_with_receiver, &r1)
+	eb.subscriber.subscribe_method('on_test', on_test_with_receiver, &r2) // subscribe r2 3 times
+	eb.subscriber.subscribe_method('on_test', on_test_with_receiver, &r2)
+	eb.subscriber.subscribe_method('on_test', on_test_with_receiver, &r2)
 	eb.publish('on_test', eb, &EventData{'hello', 123})
 
 	assert calls_of_on_test_without_receiver == 1 // this should not change, since the subscription was done through subscribe_once.
@@ -167,7 +167,7 @@ fn test_publish_with_receiver() {
 	ev_data := &EventData{'hello', 1}
 	r := FakeReceiver{}
 	// when
-	eb.subscriber.subscribe_method('on_test_with_receiver', on_test_with_receiver, r)
+	eb.subscriber.subscribe_method('on_test_with_receiver', on_test_with_receiver, &r)
 	eb.publish('on_test_with_receiver', eb, ev_data)
 
 	assert calls_of_on_test_without_receiver == 0

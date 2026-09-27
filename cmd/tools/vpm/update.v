@@ -45,6 +45,12 @@ fn update_module(mut pp pool.PoolProcessor, idx int, _wid int) &UpdateResult {
 	// updates report the registered name (e.g. `spytheman.vtray` for
 	// `<vmodules>/spytheman/vtray`) instead of the bare URL-derived `vtray`.
 	name := import_path_of(install_path)
+	if !vpm_owns_module_dir(install_path) {
+		vpm_error('refusing to update `${name}`: `${fmt_mod_path(install_path)}` was not installed by VPM.',
+			details: not_installed_by_vpm_details()
+		)
+		return &UpdateResult{}
+	}
 	vcs := vcs_used_in_dir(install_path) or {
 		vpm_error('failed to find version control system for `${name}`.', verbose: true)
 		return &UpdateResult{}

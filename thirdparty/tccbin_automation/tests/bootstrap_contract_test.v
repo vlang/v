@@ -185,8 +185,8 @@ fn test_bootstrap_rejects_invalid_arguments_and_injected_environments_before_che
 	missing := os.exec(['bash', script_path])
 	assert missing.exit_code == 2
 	assert missing.output.contains('usage: bootstrap.sh')
-	invalid_repository := os.exec(['bash', script_path, '.', 'evil/v', 'a'.repeat(40),
-		'.', os.join_path(os.temp_dir(), 'must-not-be-created')])
+	invalid_repository := os.exec(['bash', script_path, '.', 'evil/v', 'a'.repeat(40), '.',
+		os.join_path(os.temp_dir(), 'must-not-be-created')])
 	assert invalid_repository.exit_code == 1
 	assert invalid_repository.output.contains('contract repository is not allowlisted')
 	for name in bootstrap_blocked_git_environment {
@@ -233,9 +233,8 @@ fn bootstrap_test_git(args []string) os.Result {
 fn prepare_contract_bootstrap_checkout(source_root string, destination string, remote string) string {
 	template_root := '${destination}.empty-template'
 	os.mkdir_all(template_root) or { panic(err) }
-	clone := bootstrap_test_git(['-c', 'protocol.file.allow=always', 'clone', '--quiet',
-		'--no-checkout', '--no-local', '--no-hardlinks', '--template=${template_root}', source_root,
-		destination])
+	clone := bootstrap_test_git(['-c', 'protocol.file.allow=always', 'clone', '--quiet', '--no-checkout',
+		'--no-local', '--no-hardlinks', '--template=${template_root}', source_root, destination])
 	assert clone.exit_code == 0, clone.output
 	os.rmdir_all(template_root) or { panic(err) }
 	for args in [
@@ -317,8 +316,8 @@ fn prepare_locked_vc_capsule(source_root string, destination string, remote stri
 	defer {
 		os.rm(commit_object_path) or {}
 	}
-	commit := bootstrap_test_git(['-C', destination, 'hash-object', '-t', 'commit', '-w',
-		'--no-filters', '--', commit_object_path])
+	commit := bootstrap_test_git(['-C', destination, 'hash-object', '-t', 'commit', '-w', '--no-filters',
+		'--', commit_object_path])
 	assert commit.exit_code == 0, commit.output
 	assert commit.output.trim_space() == vc_lock.commit
 	for args in [
@@ -328,8 +327,8 @@ fn prepare_locked_vc_capsule(source_root string, destination string, remote stri
 		result := bootstrap_test_git(args)
 		assert result.exit_code == 0, result.output
 	}
-	status := bootstrap_test_git(['-C', destination, 'status', '--porcelain=v1',
-		'--untracked-files=all', '--ignored=matching'])
+	status := bootstrap_test_git(['-C', destination, 'status', '--porcelain=v1', '--untracked-files=all',
+		'--ignored=matching'])
 	assert status.exit_code == 0, status.output
 	assert status.output == ''
 	count := bootstrap_test_git(['-C', destination, 'count-objects', '-v'])
@@ -400,8 +399,7 @@ fn test_bootstrap_compiles_the_real_local_contract_without_network_or_moving_inp
 				expected: 'false'
 			},
 			BootstrapGitExpectation{
-				args:     ['-C', vc_source_root, 'rev-parse', '--verify',
-					'${vc_lock.commit}^{commit}']
+				args:     ['-C', vc_source_root, 'rev-parse', '--verify', '${vc_lock.commit}^{commit}']
 				expected: vc_lock.commit
 			},
 			BootstrapGitExpectation{

@@ -260,9 +260,11 @@ fn concurrent_large_response_worker(mut pp pool.PoolProcessor, idx int, _wid int
 		method:   .get
 		url:      url
 		validate: false
-	) or { return &ConcurrentLargeResponseResult{
-		err: '${err}'
-	} }
+	) or {
+		return &ConcurrentLargeResponseResult{
+			err: '${err}'
+		}
+	}
 	doc := html.parse(resp.body)
 	return &ConcurrentLargeResponseResult{
 		status_code:  resp.status_code

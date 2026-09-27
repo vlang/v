@@ -114,7 +114,7 @@ fn test_parse_response_with_gzip_content_encoding() {
 	compressed_body := gzip.compress(expected_body.bytes())!
 	content :=
 		'HTTP/1.1 200 OK\r\nContent-Encoding: gzip\r\nContent-Length: ${compressed_body.len}\r\n\r\n' +
-		compressed_body.bytestr()
+			compressed_body.bytestr()
 	resp := parse_response(content)!
 	assert resp.body == expected_body
 }
@@ -124,7 +124,7 @@ fn test_parse_response_with_deflate_content_encoding() {
 	compressed_body := zlib.compress(expected_body.bytes())!
 	content :=
 		'HTTP/1.1 200 OK\r\nContent-Encoding: deflate\r\nContent-Length: ${compressed_body.len}\r\n\r\n' +
-		compressed_body.bytestr()
+			compressed_body.bytestr()
 	resp := parse_response(content)!
 	assert resp.body == expected_body
 }
@@ -138,7 +138,7 @@ fn test_parse_response_with_brotli_content_encoding() {
 	compressed_body := brotli.compress(expected_body.bytes(), mode: .text)!
 	content :=
 		'HTTP/1.1 200 OK\r\nContent-Encoding: br\r\nContent-Length: ${compressed_body.len}\r\n\r\n' +
-		compressed_body.bytestr()
+			compressed_body.bytestr()
 	resp := parse_response(content)!
 	assert resp.body == expected_body
 }

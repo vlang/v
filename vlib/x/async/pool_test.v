@@ -36,7 +36,8 @@ fn test_pool_respects_worker_count() {
 		_ := <-started {
 			assert false, 'pool started more jobs than worker count before release'
 		}
-		100 * time.millisecond {}
+		100 * time.millisecond {
+		}
 	}
 
 	for _ in 0 .. 4 {
@@ -101,7 +102,8 @@ fn test_pool_submit_with_context_waits_until_capacity_is_available() {
 		_ := <-accepted {
 			assert false, 'bounded submit returned while pool was full'
 		}
-		50 * time.millisecond {}
+		50 * time.millisecond {
+		}
 	}
 
 	release <- true
@@ -190,7 +192,8 @@ fn test_pool_submit_with_context_parent_cancel_does_not_accept_job() {
 		msg := <-result {
 			assert false, 'bounded submit returned before parent cancellation: ${msg}'
 		}
-		50 * time.millisecond {}
+		50 * time.millisecond {
+		}
 	}
 
 	cancel()
@@ -243,7 +246,8 @@ fn test_pool_close_wakes_waiting_submitter_without_accepting_job() {
 		msg := <-result {
 			assert false, 'bounded submit returned before close: ${msg}'
 		}
-		50 * time.millisecond {}
+		50 * time.millisecond {
+		}
 	}
 
 	close_thread := spawn fn [mut pool, closed] () {
@@ -337,7 +341,8 @@ fn test_pool_close_waits_for_accepted_jobs() {
 		_ := <-closed {
 			assert false, 'pool close returned before accepted job completed'
 		}
-		100 * time.millisecond {}
+		100 * time.millisecond {
+		}
 	}
 	release <- true
 	select {
@@ -440,7 +445,7 @@ fn test_pool_concurrent_errors_return_one_error_and_drain_accepted_jobs() {
 fn test_pool_close_drains_many_accepted_jobs_while_finishing() {
 	mut jobs := 12
 	mut workers := 3
-	$if windows && (tinyc || gcc) {
+	$if windows && ( tinyc || gcc ) {
 		jobs = 6
 		workers = 2
 	}
@@ -755,7 +760,8 @@ fn assert_no_bool_signal(signal chan bool, message string) {
 		_ := <-signal {
 			assert false, message
 		}
-		else {}
+		else {
+		}
 	}
 }
 

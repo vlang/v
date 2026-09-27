@@ -24,7 +24,7 @@ struct Config {
 	mix           bool
 	linker_option string   @[only: m]
 	mix_hard      bool     @[json: muh] // Test that no other attributes get picked up
-	def_test      string = 'def'   @[long: test; short: t]
+	def_test      string = 'def'     @[long: test; short: t]
 	device        []string @[short: d]
 	paths         []string @[tail]
 	amount        int = 1
@@ -36,14 +36,14 @@ struct Config {
 struct LongConfig {
 	f            f32
 	mix          bool
-	some_test    string = 'abc' @[long: test]
+	some_test    string = 'abc'   @[long: test]
 	path         string @[tail]
 	amount       int = 1
 	show_version bool @[long: version]
 }
 
 struct IgnoreConfig {
-	some_test    string = 'abc' @[ignore]
+	some_test    string = 'abc'   @[ignore]
 	path         string @[tail]
 	amount       int = 1
 	show_version bool

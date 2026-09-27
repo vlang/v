@@ -207,7 +207,7 @@ fn main() {
 
 ## Enabling ownership checking
 
-Ownership checking is compiled into a separate `v3_ownership` binary using V's
+Ownership checking is compiled into a separate `v_ownership` binary using V's
 compile-time defines so there is no ownership-checking overhead in the normal compiler.
 
 ```
@@ -220,5 +220,5 @@ enables the target compile-time checks described above and selects ownership-spe
 To build the ownership-enabled compiler manually:
 
 ```
-v -d ownership -o v3_ownership vlib/v3/v3.v
+v -d ownership -o v_ownership vlib/v/v.v
 ```

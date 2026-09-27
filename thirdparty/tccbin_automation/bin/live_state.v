@@ -665,9 +665,9 @@ pub fn resolve_live_receiver_request(automation_root string, state_root string,
 		|| request.current_run_attempt != 0 || request.current_head_sha != ''
 		|| request.current_run_name != '')) || (entry.state == 'dispatched'
 		&& (request.current_run_id != entry.selected_run_id
-		|| request.current_run_attempt != entry.selected_run_attempt
-		|| request.current_head_sha != entry.receiver_master_sha
-		|| request.current_run_name != entry.run_name)) {
+			|| request.current_run_attempt != entry.selected_run_attempt
+			|| request.current_head_sha != entry.receiver_master_sha
+			|| request.current_run_name != entry.run_name)) {
 		return LiveReceiverDecision{
 			status: 'dark_no_op'
 		}
@@ -921,7 +921,11 @@ fn validate_live_native_owner(root JsonValue, subject NativeGateSubjectModel) !s
 		return error('live native intent identity or candidate ref is invalid')
 	}
 	if subject.consumer_kind in ['publish_post', 'rollback_post'] {
-		expected_type := if subject.consumer_kind == 'publish_post' { 'publish' } else { 'rollback' }
+		expected_type := if subject.consumer_kind == 'publish_post' {
+			'publish'
+		} else {
+			'rollback'
+		}
 		if intent_type != expected_type || subject.consumer_id != subject.intent_or_operation_id
 			|| post_validation_operation_id != subject.consumer_id
 			|| require_string_member(intent_value, 'input_fingerprint')! != subject.input_fingerprint
@@ -982,7 +986,7 @@ fn validate_live_subject_artifact_tuple(value JsonValue, subject NativeGateSubje
 		|| require_string_member(value, 'artifact_fingerprint')! != subject.artifact_fingerprint
 		|| require_string_member(value, 'manifest_hash')! != subject.manifest_hash
 		|| (includes_input
-		&& require_string_member(value, 'input_fingerprint')! != subject.input_fingerprint)
+			&& require_string_member(value, 'input_fingerprint')! != subject.input_fingerprint)
 		|| parse_live_digests(require_array_member(value, 'digests')!)! != subject.digests {
 		return error('live native subject differs from its durable artifact tuple')
 	}
@@ -1023,12 +1027,12 @@ fn parse_live_string_array(values []JsonValue) ![]string {
 
 fn parse_live_native_gate(value JsonValue, expected_subject NativeGateSubjectModel) !NativeGateModel {
 	require_exact_keys(value, ['subject', 'subject_hash', 'subject_sha', 'subject_generation',
-		'repository', 'workflow_id', 'workflow_path', 'original_actor',
-		'original_actor_integration_id', 'rerun_triggering_actor', 'rerun_triggering_integration_id',
-		'expected_ledger_generation', 'active_gate_epoch', 'gate_epochs', 'gate_runs',
-		'ack_operation_ids', 'completion_operation_ids', 'epoch_close_operation_ids',
-		'selected_run_id', 'selected_run_attempt', 'selected_check_suite_id', 'selected_conclusion',
-		'infra_retry_count', 'source_recovery_operation_id'])!
+		'repository', 'workflow_id', 'workflow_path', 'original_actor', 'original_actor_integration_id',
+		'rerun_triggering_actor', 'rerun_triggering_integration_id', 'expected_ledger_generation',
+		'active_gate_epoch', 'gate_epochs', 'gate_runs', 'ack_operation_ids', 'completion_operation_ids',
+		'epoch_close_operation_ids', 'selected_run_id', 'selected_run_attempt',
+		'selected_check_suite_id', 'selected_conclusion', 'infra_retry_count',
+		'source_recovery_operation_id'])!
 	nested_subject := native_subject_from_recovery(parse_receiver_subject(require_object_member(value,
 		'subject')!)!)
 	if nested_subject != expected_subject {
@@ -1416,10 +1420,9 @@ fn durable_git_closed_environment_from_entries(entries []string) ![]string {
 	mut seen := map[string]bool{}
 	mut path := ''
 	redirecting := ['git_dir', 'git_work_tree', 'git_common_dir', 'git_object_directory',
-		'git_alternate_object_directories', 'git_replace_ref_base', 'git_graft_file',
-		'git_shallow_file', 'git_namespace', 'git_index_file', 'git_exec_path', 'git_config',
-		'git_config_parameters', 'git_config_count', 'git_config_system', 'git_config_global',
-		'git_config_nosystem']
+		'git_alternate_object_directories', 'git_replace_ref_base', 'git_graft_file', 'git_shallow_file',
+		'git_namespace', 'git_index_file', 'git_exec_path', 'git_config', 'git_config_parameters',
+		'git_config_count', 'git_config_system', 'git_config_global', 'git_config_nosystem']
 	for entry in entries {
 		equals := entry.index('=') or {
 			return error('durable Git runner inherited environment framing is invalid')
@@ -2228,8 +2231,8 @@ fn durable_git_build_argv(git_path string, state_git_dir string, command []strin
 	}
 	if command[0] == 'log' {
 		argv << ['log', '--no-show-signature', '--no-ext-diff', '--no-textconv', '--no-renames',
-			'--no-color', '--no-decorate', '--no-notes', '--no-use-mailmap',
-			'--ignore-submodules=none', '-O', os.path_devnull]
+			'--no-color', '--no-decorate', '--no-notes', '--no-use-mailmap', '--ignore-submodules=none',
+			'-O', os.path_devnull]
 		argv << command[1..]
 	} else {
 		argv << command
@@ -2346,8 +2349,8 @@ fn durable_git_capture_inner(mut session DurableGitRunnerSession, command []stri
 				return error('durable Git runner pipe or descriptor setup failed closed')
 			}
 		}
-		all_fds := [devnull, stdout_pipe[0], stdout_pipe[1], stderr_pipe[0], stderr_pipe[1], gate_pipe[0],
-			gate_pipe[1]]
+		all_fds := [devnull, stdout_pipe[0], stdout_pipe[1], stderr_pipe[0], stderr_pipe[1],
+			gate_pipe[0], gate_pipe[1]]
 		if !durable_git_fd_tuple_is_valid(all_fds) || !durable_git_set_nonblocking(stdout_pipe[0]) {
 			durable_git_close_acquired(mut acquired_fds)
 			return error('durable Git runner pipe or descriptor setup failed closed')
@@ -2890,9 +2893,9 @@ fn validate_live_git_preflight(state_git_dir string) ! {
 	}
 	environment := os.environ()
 	redirecting_names := ['GIT_DIR', 'GIT_WORK_TREE', 'GIT_COMMON_DIR', 'GIT_OBJECT_DIRECTORY',
-		'GIT_ALTERNATE_OBJECT_DIRECTORIES', 'GIT_REPLACE_REF_BASE', 'GIT_GRAFT_FILE',
-		'GIT_SHALLOW_FILE', 'GIT_NAMESPACE', 'GIT_INDEX_FILE', 'GIT_EXEC_PATH',
-		'GIT_CONFIG_PARAMETERS', 'GIT_CONFIG_COUNT', 'GIT_CONFIG_SYSTEM', 'GIT_CONFIG_GLOBAL']
+		'GIT_ALTERNATE_OBJECT_DIRECTORIES', 'GIT_REPLACE_REF_BASE', 'GIT_GRAFT_FILE', 'GIT_SHALLOW_FILE',
+		'GIT_NAMESPACE', 'GIT_INDEX_FILE', 'GIT_EXEC_PATH', 'GIT_CONFIG_PARAMETERS', 'GIT_CONFIG_COUNT',
+		'GIT_CONFIG_SYSTEM', 'GIT_CONFIG_GLOBAL']
 	for name in redirecting_names {
 		if name in environment {
 			return error('live state Git environment contains a repository or object redirection')
@@ -3013,8 +3016,7 @@ fn live_source_terminal_bindings(inventory LiveStateInventory) ![]LiveSourceTerm
 				return error('live source terminal handoff lacks its unique target business evidence')
 			}
 			business_evidence := parse_strict_json(inventory.blobs[business_path])!
-			expected_business_transition := 'source_unreachable_${require_string_member(require_object_member(proof,
-				'source_refetch')!, 'evidence_digest')!}'
+			expected_business_transition := 'source_unreachable_${require_string_member(require_object_member(proof, 'source_refetch')!, 'evidence_digest')!}'
 			if key in used_business_keys
 				|| require_string_member(business_evidence, 'transition')! != expected_business_transition {
 				return error('live source terminal handoff and business evidence are not bijective')
@@ -3429,8 +3431,7 @@ fn validate_live_source_target_operations(binding LiveSourceTerminalBinding,
 	expected_ids := [smoke_id, business_id, completion_id]
 	expected_transitions := [
 		'v-smoke-complete-${require_integer_member(selected_attempt, 'attempt_index')!}_${smoke_digest}',
-		'source_unreachable_${require_string_member(require_object_member(proof, 'source_refetch')!,
-			'evidence_digest')!}',
+		'source_unreachable_${require_string_member(require_object_member(proof, 'source_refetch')!, 'evidence_digest')!}',
 		'handoff_complete_${require_string_member(proof, 'facts_digest')!}',
 	]
 	for offset in 0 .. 3 {
@@ -3942,7 +3943,7 @@ $if test {
 	}
 
 	pub fn durable_git_planner_failure_flow_for_test(nested_runner string, core string,
-	cleanup string) string {
+		cleanup string) string {
 		mut session := &DurableGitRunnerSession{}
 		durable_git_record_first_failure(mut session, nested_runner)
 		if core != '' {
@@ -4064,14 +4065,14 @@ $if test {
 	}
 
 	pub fn join_durable_git_config_for_test(physical_source string,
-	git_output string) ![]string {
+		git_output string) ![]string {
 		return durable_git_join_config_keys(durable_git_parse_physical_config(physical_source)!,
 			git_output)
 	}
 
 	pub fn durable_git_abort_reducer_for_test(group_required bool, group_secured bool,
-	pid_secured bool, checkpoint_failure string, hard_failure string, now u64,
-	observe_at u64) DurableGitAbortStateForTest {
+		pid_secured bool, checkpoint_failure string, hard_failure string, now u64,
+		observe_at u64) DurableGitAbortStateForTest {
 		attempt := DurableGitTerminationAttempt{
 			group_required:     group_required
 			group_secured:      group_secured && checkpoint_failure == ''
@@ -4154,7 +4155,7 @@ $if test {
 	}
 
 	pub fn durable_git_argv_for_test(git_path string, state_git_dir string, command []string,
-	repository bool) ![]string {
+		repository bool) ![]string {
 		return durable_git_build_argv(git_path, state_git_dir, command, repository)
 	}
 
@@ -4173,7 +4174,7 @@ $if test {
 	}
 
 	pub fn durable_git_runner_trace_for_test(state_git_dir string,
-	command []string) ![]string {
+		command []string) ![]string {
 		mut session := durable_git_runner_begin(state_git_dir)!
 		mut failure := ''
 		mut trace := []string{}
@@ -4196,7 +4197,7 @@ $if test {
 	}
 
 	pub fn durable_git_authority_adapter_rejection_for_test(state_git_dir string,
-	arguments string) !string {
+		arguments string) !string {
 		mut session := durable_git_runner_begin(state_git_dir)!
 		result := live_git(state_git_dir, arguments)
 		durable_git_runner_end(mut session)!

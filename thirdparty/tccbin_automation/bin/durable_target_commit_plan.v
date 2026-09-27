@@ -13,9 +13,8 @@ const durable_plan_schema_max_bytes = 256 * 1024
 
 const durable_plan_schema_paths = ['active-intent.schema.json', 'common.schema.json',
 	'evidence.schema.json', 'lane-result.schema.json', 'native-gate-execution.schema.json',
-	'native-gate-subject.schema.json', 'native-lane-matrix.schema.json',
-	'recovery-handoff.schema.json', 'source-state.schema.json', 'target-state.schema.json',
-	'toolchain-observation.schema.json']
+	'native-gate-subject.schema.json', 'native-lane-matrix.schema.json', 'recovery-handoff.schema.json',
+	'source-state.schema.json', 'target-state.schema.json', 'toolchain-observation.schema.json']
 
 const durable_plan_schema_roots = ['target-state.schema.json', 'evidence.schema.json',
 	'source-state.schema.json']
@@ -1035,8 +1034,8 @@ fn durable_plan_subject(physical DurablePlanPhysicalSnapshot,
 	result := if event == .ledger_repaired_with_blockers { 'blocked' } else { 'passed' }
 	identity_template := object_value_from_pairs(['audience', 'run_id', 'run_attempt', 'ordinal',
 		'cas_attempt', 'subject_id', 'transition', 'expected_generation', 'expected_canonical_head',
-		'source_ref', 'source_sha', 'subject_fingerprint', 'input_fingerprint',
-		'artifact_fingerprint', 'manifest_hash', 'native_subject_hash', 'intent_id'], [
+		'source_ref', 'source_sha', 'subject_fingerprint', 'input_fingerprint', 'artifact_fingerprint',
+		'manifest_hash', 'native_subject_hash', 'intent_id'], [
 		durable_json_string(durable_plan_audience),
 		durable_json_integer(invocation.run_id),
 		durable_json_integer(i64(invocation.run_attempt)),
@@ -1059,9 +1058,8 @@ fn durable_plan_subject(physical DurablePlanPhysicalSnapshot,
 		durable_json_string('$operation_id'),
 	])!
 	transition := object_value_from_pairs(['event', 'result', 'lane', 'operation_identity_template',
-		'normalized_context'], [durable_json_string(event.str()),
-		durable_json_string(result), durable_json_string(event.str()), identity_template,
-		normalized_context])!
+		'normalized_context'], [durable_json_string(event.str()), durable_json_string(result),
+		durable_json_string(event.str()), identity_template, normalized_context])!
 	postimage_policy := object_value_from_pairs(['target_replace_path', 'evidence_create_only',
 		'evidence_exact20_member_names', 'evidence_path_grammar', 'changed_path_count',
 		'preserve_all_other_entries'], [durable_json_string(authenticated.entry.path),
@@ -1165,7 +1163,8 @@ fn durable_collision_identity_key(key string) bool {
 		|| key == 'incident_id' || key == 'incident_ids' || key == 'handoff_id'
 		|| key == 'active_recovery_handoff_id' || key == 'active_remediation_id'
 		|| key == 'created_by_operation_id' || key == 'waiting_consumers'
-		|| key in ['consumer_ids', 'intent_ids', 'handoff_ids', 'active_intent_id', 'predecessor_handoff_id', 'successor_handoff_id']
+		|| key in ['consumer_ids', 'intent_ids', 'handoff_ids', 'active_intent_id',
+			'predecessor_handoff_id', 'successor_handoff_id']
 }
 
 fn durable_plan_postimage_entries(entries []DurablePlanInventoryRecord,
@@ -1523,7 +1522,7 @@ $if test {
 	}
 
 	pub fn reduce_durable_commit_outcome_for_test(attempt int,
-	outcome string) !DurableCommitRetryDecisionForTest {
+		outcome string) !DurableCommitRetryDecisionForTest {
 		decision := reduce_durable_commit_outcome(attempt, outcome)!
 		return DurableCommitRetryDecisionForTest{
 			verdict:       decision.verdict
@@ -1586,7 +1585,7 @@ $if test {
 	}
 
 	pub fn durable_plan_exact2_change_cap_for_test(paths []string, target_path string,
-	evidence_path string) !int {
+		evidence_path string) !int {
 		mut changes := DurablePlanExact2Changes{}
 		for path in paths {
 			durable_plan_record_exact2_change(path, target_path, evidence_path, mut changes)!
@@ -1595,8 +1594,8 @@ $if test {
 	}
 
 	pub fn validate_durable_plan_comparator_mutations_for_test(automation_root string,
-	state_git_dir string, trust LiveStateTrust, proof_bundle_dir string, target_id string,
-	event TransitionEvent, invocation DurableTargetPlanInvocation) ![]string {
+		state_git_dir string, trust LiveStateTrust, proof_bundle_dir string, target_id string,
+		event TransitionEvent, invocation DurableTargetPlanInvocation) ![]string {
 		mut session := durable_git_runner_begin(state_git_dir)!
 		mut failure := ''
 		rejected := validate_durable_plan_comparator_mutations_with_session_for_test(automation_root,
@@ -1613,8 +1612,8 @@ $if test {
 	}
 
 	fn validate_durable_plan_comparator_mutations_with_session_for_test(automation_root string,
-	state_git_dir string, trust LiveStateTrust, proof_bundle_dir string, target_id string,
-	event TransitionEvent, invocation DurableTargetPlanInvocation) ![]string {
+		state_git_dir string, trust LiveStateTrust, proof_bundle_dir string, target_id string,
+		event TransitionEvent, invocation DurableTargetPlanInvocation) ![]string {
 		first := prepare_durable_target_commit_plan_pass(automation_root, state_git_dir, trust,
 			proof_bundle_dir, target_id, event, invocation)!
 		second := prepare_durable_target_commit_plan_pass(automation_root, state_git_dir, trust,
@@ -1634,9 +1633,9 @@ $if test {
 	}
 
 	pub fn durable_plan_between_pass_physical_mutation_for_test(automation_root string,
-	state_git_dir string, trust LiveStateTrust, proof_bundle_dir string, target_id string,
-	event TransitionEvent, invocation DurableTargetPlanInvocation,
-	mutated_head_source string) !string {
+		state_git_dir string, trust LiveStateTrust, proof_bundle_dir string, target_id string,
+		event TransitionEvent, invocation DurableTargetPlanInvocation,
+		mutated_head_source string) !string {
 		mut session := durable_git_runner_begin(state_git_dir)!
 		head_path := os.join_path(proof_bundle_dir, 'head.json')
 		original := os.read_file(head_path) or {
@@ -1671,7 +1670,7 @@ $if test {
 	}
 
 	pub fn durable_semantic_collision_for_test(source string, operation_id string,
-	planned_path string) !bool {
+		planned_path string) !bool {
 		if !is_lower_hex_64(operation_id) || !contract_relative_path_is_safe(planned_path) {
 			return error('durable target collision test identity is malformed')
 		}
@@ -1711,7 +1710,7 @@ $if test {
 	}
 
 	fn mutate_durable_plan_pass_for_test(value DurablePlanPass,
-	mutation string) !DurablePlanPass {
+		mutation string) !DurablePlanPass {
 		if mutation == '' {
 			return value
 		}

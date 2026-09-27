@@ -3,8 +3,8 @@ import flag
 
 const exe_and_v_flag_parser_args = ['/path/to/exe', '--version', '-p', 'ident=val', '--o', '/path/to',
 	'--test', 'abc', '--done', '--pop', 'two', '--live']
-const exe_and_v_flag_parser_args_with_tail = ['/path/to/exe', '--version', '-p', 'ident=val',
-	'--test', 'abc', '--done', '-p', 'two', '--live', 'run', '/path/to', 'platforms;android-21']
+const exe_and_v_flag_parser_args_with_tail = ['/path/to/exe', '--version', '-p', 'ident=val', '--test',
+	'abc', '--done', '-p', 'two', '--live', 'run', '/path/to', 'platforms;android-21']
 const error_wrong_assignment_flags = ['--o=error']
 
 struct Prefs {

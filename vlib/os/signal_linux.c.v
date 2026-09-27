@@ -17,7 +17,7 @@ pub fn is_main_thread() bool {
 }
 
 @[typedef]
-struct C.sigset_t {}
+pub struct C.sigset_t {}
 
 fn C.sigaddset(set &C.sigset_t, signum i32) i32
 fn C.sigemptyset(set &C.sigset_t)

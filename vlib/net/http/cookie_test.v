@@ -251,11 +251,10 @@ const add_cookies_tests = [
 		}, &http.Cookie{
 			name:  'cookie-2'
 			value: 'v2'
-		},
-			&http.Cookie{
-				name:  'cookie-3'
-				value: 'v3'
-			}]
+		}, &http.Cookie{
+			name:  'cookie-3'
+			value: 'v3'
+		}]
 		raw:    'cookie-1=v1; cookie-2=v2; cookie-3=v3'
 	},
 ]

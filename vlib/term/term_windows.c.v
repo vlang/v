@@ -127,7 +127,7 @@ pub fn clear() bool {
 	fill.Attributes = csbi.wAttributes
 
 	// Do the scroll
-	C.ScrollConsoleScreenBuffer(hconsole, &scrollrect, C.NULL, scrolltarget, &fill)
+	C.ScrollConsoleScreenBuffer(hconsole, &scrollrect, unsafe { nil }, scrolltarget, &fill)
 
 	// Move the cursor to the top left corner too.
 	csbi.dwCursorPosition.X = 0

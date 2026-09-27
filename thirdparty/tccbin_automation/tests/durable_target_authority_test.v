@@ -286,8 +286,8 @@ fn test_durable_target_authority_reauthenticates_twice_and_returns_only_copies()
 	declaration :=
 		source.all_after('pub struct ReauthenticatedPreparedTargetStateWrite {').all_before('}')
 	assert !declaration.contains('pub:')
-	for forbidden in ['net.http', 'createCommitOnBranch(', 'os.write_file', 'update-ref',
-		'commit-tree', 'write-tree', 'mktree', 'hash-object -w'] {
+	for forbidden in ['net.http', 'createCommitOnBranch(', 'os.write_file', 'update-ref', 'commit-tree',
+		'write-tree', 'mktree', 'hash-object -w'] {
 		assert !source.contains(forbidden)
 	}
 }

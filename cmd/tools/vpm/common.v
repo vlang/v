@@ -356,6 +356,12 @@ fn normalize_clone_source_url(raw_url string) !string {
 }
 
 fn get_installed_modules() []string {
+	if settings.is_local {
+		// The local root is the project itself. What VPM installed there is what
+		// its records name, and finding it by walking the project would mean
+		// walking all of it.
+		return local_installed_modules(settings.vmodules_path)
+	}
 	return get_installed_modules_in(settings.vmodules_path)
 }
 
@@ -626,11 +632,6 @@ fn at_version(version string) string {
 	return if version != '' { '@${version}' } else { '' }
 }
 
-// FIXME: Workaround for failing `rmdir` commands on Windows.
 fn rmdir_all(path string) ! {
-	$if windows {
-		os.execute_opt('rd /s /q ${path}')!
-	} $else {
-		os.rmdir_all(path)!
-	}
+	os.rmdir_all(path)!
 }

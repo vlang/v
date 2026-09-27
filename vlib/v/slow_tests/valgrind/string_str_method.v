@@ -1,4 +1,4 @@
 fn main() {
-	a := 'Y'.str()
+	a := c'Y'()
 	println(a)
 }

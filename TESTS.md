@@ -52,6 +52,9 @@ of memory. On Linux it uses the lower of physical memory and the active cgroup m
 Set `VJOBS` to a positive value to explicitly choose a different worker count when your test
 workload and machine capacity are known.
 
+Skipped test paths are resolved before comparison, so selecting a file through a symlink
+does not bypass its platform or architecture exclusion.
+
 ## `v test vlib/v/tests`:
 
 This folder contains _test.v files, testing the different features of the V
@@ -73,17 +76,11 @@ The test runner will run each `.vv` file, and will check that its output, matche
 the contents of the `.out` file with the same base name. This is particularly useful
 for checking that errors and panics are printed.
 
-## `v vlib/v/gen/c/coutput_test.v`
+## `v test vlib/v/gen/c/`
 
-coutput_test.v is a *test runner*, that checks whether the generated C source
-code matches *all* expectations, specified in *.c.must_have files, in the
-folder vlib/v/gen/c/testdata/ .
-
-Each `.c.must_have` file, *has* to have a corresponding `.vv` file.
-
-Each `.c.must_have` file, consists of multiple lines. Each of these
-lines, *should* be present *at least once* in the output, when the .vv
-file is compiled with `-o -` .
+The C backend has focused unit and integration tests beside its implementation.
+Many tests compile a small V source to C and assert on the generated declarations,
+expressions, ABI, linker inputs, or runtime behavior.
 
 ## REPL tests
 
@@ -130,23 +127,9 @@ the `vlib/v/tests/known_errors/testdata/` folder.
 
 ## Formatting tests
 
-In `vlib/v/fmt/` there are:
-
-* `v vlib/v/fmt/fmt_test.v`
-
-This checks `.out` tests.
-
-* `v vlib/v/fmt/fmt_keep_test.v`
-
-This verifies that all `_keep.vv` files in the `vlib/v/fmt/tests/` folder,
-would be unchanged by `v fmt -w`, i.e. that the v source code formatter,
-generates a stable source output, that does not change, once it is already
-formatted once.
-
-* `v vlib/v/fmt/fmt_vlib_test.v`
-
-This checks that all V source files are formatted, and prints a summary.
-This is not required.
+`cmd/tools/vfmt_test.v` checks the formatter command, while
+`vlib/v/gen/v/gen_test.v` and the other tests in `vlib/v/gen/v/` check
+flat-AST-to-V formatting and round trips.
 
 * `v test-cleancode`
 
@@ -171,6 +154,11 @@ Note: if that command finds formatting errors, they can be fixed with:
 ## `v test-self`
 
 Run `vlib` module tests, *including* the compiler tests.
+
+To run the same suite across separate machines, set `VTEST_SELF_SHARD_COUNT` to the number of
+machines and set `VTEST_SELF_SHARD_INDEX` to a different zero-based index on each one. For example,
+`VTEST_SELF_SHARD_COUNT=5 VTEST_SELF_SHARD_INDEX=0 ./v test-self vlib` runs the first shard.
+Every test file belongs to exactly one shard. Leave both variables unset for the full suite.
 
 ## `v vlib/v/compiler_errors_test.v`
 
@@ -198,7 +186,7 @@ NB 3: To run only some of the tests, use:
 `VTEST_ONLY=mismatch ./v vlib/v/compiler_errors_test.v`
 This will check only the .vv files, whose paths match the given filter.
 
-NB 4: To run tests, but without printing status lines for all the successfull
+NB 4: To run tests, but without printing status lines for all the successful
 ones, use:
 `VTEST_HIDE_OK=1 ./v test vlib/math/`
 This will print only the total stats, and the failing tests, but otherwise
@@ -210,6 +198,10 @@ NB 5: To show only *the currently running test*, use:
 In this mode, the output lines will be limited, no matter how many `_test.v`
 files there are. The output will contain the total stats and the output of
 the failing tests too.
+
+NB 6: Set `VTEST_SKIP_OWNERSHIP=1` to omit ownership and autofree tests from
+`v test`, `v test-self`, and `vlib/v/test_all.vsh`. GitHub Actions enables this
+behavior automatically while ownership/autofree coverage is disabled there.
 
 ## `.github/workflows/ci.yml`
 

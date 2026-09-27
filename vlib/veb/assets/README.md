@@ -88,7 +88,7 @@ minified_file := app.am.combine(.css)!
 
 ### Handle folders
 
-You can use the asset manger in combination with veb's `StaticHandler` to serve
+You can use the asset manager in combination with veb's `StaticHandler` to serve
 assets in a folder as static assets.
 
 **Example:**

@@ -78,7 +78,7 @@ pub:
 // str returns the `string` representation of the `Comment` type.
 pub fn (c Comment) str() string {
 	mut s := typeof(c).name + '{\n'
-	s += '  text:  \'${c.text}\'\n'
+	s += "  text:  '${c.text}'\n"
 	s += '  pos:  ${c.pos}\n'
 	s += '}'
 	return s
@@ -110,10 +110,10 @@ pub:
 // str returns the `string` representation of the `Quoted` type.
 pub fn (q Quoted) str() string {
 	mut str := typeof(q).name + '{\n'
-	str += '  text:  \'${q.text}\'\n'
+	str += "  text:  '${q.text}'\n"
 	str += '  pos:  ${q.pos}\n'
 	str += '  is_multiline:  ${q.is_multiline}\n'
-	str += '  quote: \'${q.quote}\'\n'
+	str += "  quote: '${q.quote}'\n"
 	str += '}'
 	return str
 }
@@ -130,7 +130,7 @@ pub:
 // str returns the `string` representation of the `Bare` type.
 pub fn (b Bare) str() string {
 	mut str := typeof(b).name + '{\n'
-	str += '  text:  \'${b.text}\'\n'
+	str += "  text:  '${b.text}'\n"
 	str += '  pos:  ${b.pos}\n'
 	str += '}'
 	return str
@@ -148,7 +148,7 @@ pub:
 // str returns the `string` representation of the `Bool` type.
 pub fn (b Bool) str() string {
 	mut str := typeof(b).name + '{\n'
-	str += '  text:  \'${b.text}\'\n'
+	str += "  text:  '${b.text}'\n"
 	str += '  pos:  ${b.pos}\n'
 	str += '}'
 	return str
@@ -167,7 +167,7 @@ pub mut:
 // str returns the `string` representation of the `Number` type.
 pub fn (n Number) str() string {
 	mut str := typeof(n).name + '{\n'
-	str += '  text:  \'${n.text}\'\n'
+	str += "  text:  '${n.text}'\n"
 	str += '  pos:  ${n.pos}\n'
 	str += '}'
 	return str
@@ -205,7 +205,7 @@ pub:
 // str returns the `string` representation of the `Date` type.
 pub fn (d Date) str() string {
 	mut str := typeof(d).name + '{\n'
-	str += '  text:  \'${d.text}\'\n'
+	str += "  text:  '${d.text}'\n"
 	str += '  pos:  ${d.pos}\n'
 	str += '}'
 	return str
@@ -223,8 +223,8 @@ pub:
 // str returns the `string` representation of the `Time` type.
 pub fn (t Time) str() string {
 	mut str := typeof(t).name + '{\n'
-	str += '  text:  \'${t.text}\'\n'
-	str += '  offset:  \'${t.offset}\'\n'
+	str += "  text:  '${t.text}'\n"
+	str += "  offset:  '${t.offset}'\n"
 	str += '  pos:  ${t.pos}\n'
 	str += '}'
 	return str
@@ -244,9 +244,9 @@ pub:
 // str returns the `string` representation of the `DateTime` type.
 pub fn (dt DateTime) str() string {
 	mut str := typeof(dt).name + '{\n'
-	str += '  text:  \'${dt.text}\'\n'
-	str += '  date:  \'${dt.date}\'\n'
-	str += '  time:  \'${dt.time}\'\n'
+	str += "  text:  '${dt.text}'\n"
+	str += "  date:  '${dt.date}'\n"
+	str += "  time:  '${dt.time}'\n"
 	str += '  pos:  ${dt.pos}\n'
 	str += '}'
 	return str

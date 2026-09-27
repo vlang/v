@@ -491,8 +491,7 @@ fn state_native_capsule_for_run(target bin.TargetModel, manifest bin.Authenticat
 
 fn state_native_capsule(target bin.TargetModel, manifest bin.AuthenticatedManifestModel,
 	outcome string) StateNativeCapsule {
-	native_run := target.active_native_gate.gate_runs.filter(
-		it.run_id == target.active_native_gate.selected_run_id
+	native_run := target.active_native_gate.gate_runs.filter(it.run_id == target.active_native_gate.selected_run_id
 		&& it.run_attempt == target.active_native_gate.selected_run_attempt)[0]
 	return state_native_capsule_for_run(target, manifest, outcome, native_run.run_id,
 		native_run.run_attempt, native_run.check_suite_id)
@@ -502,8 +501,7 @@ fn persisted_gate_proofs(target bin.TargetModel,
 	matrix_digest string) (bin.PersistedGateRunModel, bin.PersistedGateRunModel) {
 	subject := target.active_native_subject
 	subject_hash := bin.native_gate_subject_hash(subject) or { panic(err) }
-	native_run := target.active_native_gate.gate_runs.filter(
-		it.run_id == target.active_native_gate.selected_run_id
+	native_run := target.active_native_gate.gate_runs.filter(it.run_id == target.active_native_gate.selected_run_id
 		&& it.run_attempt == target.active_native_gate.selected_run_attempt)[0]
 	native_job_id := i64(5000 + target.generation)
 	native_check_run_id := i64(6000 + target.generation)
@@ -1476,8 +1474,7 @@ fn test_adoption_kinds_cannot_enter_the_preserved_publisher_class() {
 		green_proof:  green_proof(initial)
 	}) or { panic(err) }
 	for checked in [checked_adopt_current(), initial] {
-		assert checked.active_native_subject.consumer_kind in ['adopt_current',
-			'initial_adopt_current']
+		assert checked.active_native_subject.consumer_kind in ['adopt_current', 'initial_adopt_current']
 		mut rejected := ''
 		bin.transition_target(checked, .promotion_failed, bin.TransitionContext{
 			operation_id: labelled_operation('publisher-class-${checked.active_native_subject.consumer_kind}-blocked')
@@ -1915,10 +1912,10 @@ fn test_source_refetch_is_bound_to_source_state_intent_and_operation() {
 	resolution_operation := unique_operation(`d`, `3`)
 	source_outage := bin.resolve_source(source_base, source_base.generation, resolution_operation,
 		100, '2026-08-02T03:47:00Z', [intent_id], [
-		transient_source_attempt(1, 0),
-		transient_source_attempt(2, 15),
-		transient_source_attempt(3, 45),
-	]) or { panic(err) }
+			transient_source_attempt(1, 0),
+			transient_source_attempt(2, 15),
+			transient_source_attempt(3, 45),
+		]) or { panic(err) }
 	transition_operation := unique_operation(`d`, `4`)
 	refetch := bin.SourceRefetchModel{
 		target_id:               target.target_id
@@ -1968,15 +1965,15 @@ fn test_source_refetch_is_bound_to_source_state_intent_and_operation() {
 	resolved_operation := unique_operation(`d`, `7`)
 	source_resolved := bin.resolve_source(source_outage.state, source_outage.state.generation,
 		resolved_operation, 100, '2026-08-03T03:47:00Z', [intent_id], [
-		bin.SourceResolutionAttempt{
-			ordinal:                 1
-			backoff_seconds:         0
-			connect_timeout_seconds: bin.source_connect_timeout_seconds
-			total_timeout_seconds:   bin.source_total_timeout_seconds
-			resolved_sha:            state_source_sha
-			resolved_tree:           state_source_tree
-		},
-	]) or { panic(err) }
+			bin.SourceResolutionAttempt{
+				ordinal:                 1
+				backoff_seconds:         0
+				connect_timeout_seconds: bin.source_connect_timeout_seconds
+				total_timeout_seconds:   bin.source_total_timeout_seconds
+				resolved_sha:            state_source_sha
+				resolved_tree:           state_source_tree
+			},
+		]) or { panic(err) }
 	restore_operation := unique_operation(`d`, `8`)
 	restored := bin.transition_target(waiting, .source_restored, bin.TransitionContext{
 		operation_id:   restore_operation

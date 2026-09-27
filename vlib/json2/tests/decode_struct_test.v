@@ -204,7 +204,7 @@ fn test_error_conditions() {
 
 	mut error_count := 0
 	for case in invalid_cases {
-		result := json.decode[JsonU8](case) or {
+		_ := json.decode[JsonU8](case) or {
 			error_count++
 			continue // Expected failure, error handling works correctly
 		}

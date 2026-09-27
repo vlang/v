@@ -11,8 +11,9 @@ fn (myt MyT) to_s() string {
 	return match myt {
 		string { myt }
 		rune { rune(myt).str() }
-		int, u32, i64, u64, f32, f64 { myt.str() } // FAIL compilation
+		int, u32, i64, u64, f32, f64 { myt.str() }
 	}
+	// FAIL compilation
 }
 
 fn test_match_expr_with_last_branch_aggregate() {

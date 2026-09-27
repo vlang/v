@@ -5,7 +5,7 @@ const vroot = os.dir(vexe)
 
 fn assert_vself_preserves_full_cli(output string) {
 	assert !output.contains('-selfhost'), output
-	assert !output.contains('vlib/v3/v3.v'), output
+	assert !output.contains('vlib/v/v.v'), output
 	assert output.contains('cmd/v'), output
 }
 
@@ -177,22 +177,25 @@ fn test_bsd_self_build_uses_system_cc_and_v3_safeguards() {
 	}
 	build := os.execute('${os.quoted_path(vexe)} -d vself_test_bsd_transition -o ${os.quoted_path(tool)} ${os.quoted_path(os.join_path(vroot, 'cmd', 'tools', 'vself.v'))}')
 	assert build.exit_code == 0, build.output
-	default_result := os.execute('env -u CC VFLAGS="" VEXE=${os.quoted_path(noop)} ${os.quoted_path(tool)} self -o /tmp/vself_bsd_defaults_test')
+	default_result :=
+		os.execute('env -u CC VFLAGS="" VEXE=${os.quoted_path(noop)} ${os.quoted_path(tool)} self -o /tmp/vself_bsd_defaults_test')
 	assert default_result.exit_code == 0, default_result.output
 	assert default_result.output.contains('-cc cc'), default_result.output
 	assert default_result.output.contains('-prealloc'), default_result.output
 	assert_vself_preserves_full_cli(default_result.output)
-	prod_result := os.execute('env -u CC VFLAGS="" VEXE=${os.quoted_path(noop)} ${os.quoted_path(tool)} self -prod -o /tmp/vself_bsd_prod_test')
+	prod_result :=
+		os.execute('env -u CC VFLAGS="" VEXE=${os.quoted_path(noop)} ${os.quoted_path(tool)} self -prod -o /tmp/vself_bsd_prod_test')
 	assert prod_result.exit_code == 0, prod_result.output
 	assert prod_result.output.contains('-parallel-cc'), prod_result.output
 	assert_vself_uses_single_prod_build(prod_result.output)
-	tinyc_result := os.execute('VFLAGS="" VEXE=${os.quoted_path(noop)} ${os.quoted_path(tool)} self -cc tcc -o /tmp/vself_bsd_tinyc_test')
+	tinyc_result :=
+		os.execute('VFLAGS="" VEXE=${os.quoted_path(noop)} ${os.quoted_path(tool)} self -cc tcc -o /tmp/vself_bsd_tinyc_test')
 	assert tinyc_result.exit_code == 0, tinyc_result.output
 	assert tinyc_result.output.contains('-prealloc'), tinyc_result.output
 	assert_vself_preserves_full_cli(tinyc_result.output)
 }
 
-fn test_other_native_host_self_replacement_preserves_cli_and_embedded_v3() {
+fn test_other_native_host_self_replacement_preserves_cli() {
 	$if windows {
 		return
 	}
@@ -207,43 +210,47 @@ fn test_other_native_host_self_replacement_preserves_cli_and_embedded_v3() {
 	}
 
 	// The stub keeps this test fast, but only emits a replacement when vself asks
-	// for cmd/v. Targeting standalone v3.v makes the replacement fail.
+	// for cmd/v. Targeting standalone v.v makes the replacement fail.
 	mock_source := os.join_path(root, 'mock_compiler.v')
 	os.write_file(mock_source, vself_mock_compiler_source()) or { panic(err) }
 	isolated_vexe := os.join_path(root, 'v')
-	mock_build := os.execute('${os.quoted_path(vexe)} -o ${os.quoted_path(isolated_vexe)} ${os.quoted_path(mock_source)}')
+	mock_build :=
+		os.execute('${os.quoted_path(vexe)} -o ${os.quoted_path(isolated_vexe)} ${os.quoted_path(mock_source)}')
 	assert mock_build.exit_code == 0, mock_build.output
 	vself_tool := os.join_path(root, 'vself')
 	vself_build := os.execute('${os.quoted_path(vexe)} -nocache -d vself_test_other_transition -o ${os.quoted_path(vself_tool)} ${os.quoted_path(os.join_path(vroot, 'cmd', 'tools', 'vself.v'))}')
 	assert vself_build.exit_code == 0, vself_build.output
 
-	self_result := os.execute('env -u CC VFLAGS="" VOSARGS="" VSELF_TEST_FULL_CLI=${os.quoted_path(vexe)} VEXE=${os.quoted_path(isolated_vexe)} ${os.quoted_path(vself_tool)} self -silent')
+	self_result :=
+		os.execute('env -u CC VFLAGS="" VOSARGS="" VSELF_TEST_FULL_CLI=${os.quoted_path(vexe)} VEXE=${os.quoted_path(isolated_vexe)} ${os.quoted_path(vself_tool)} self -silent')
 	assert self_result.exit_code == 0, self_result.output
 	assert self_result.output.contains('cmd/v'), self_result.output
-	assert self_result.output.contains('V1 compatibility compiler'), self_result.output
-	assert !self_result.output.contains('vlib/v3/v3.v'), self_result.output
+	assert !self_result.output.contains('vlib/v/v.v'), self_result.output
 	assert os.is_executable(isolated_vexe)
 	assert os.is_executable(os.join_path(root, 'v_old'))
-	assert os.is_executable(os.join_path(root, 'v1_fallback'))
+	assert !os.exists(os.join_path(root, 'v1_fallback'))
 
-	version_result := os.execute('VFLAGS="" VOSARGS="" VEXE=${os.quoted_path(isolated_vexe)} ${os.quoted_path(isolated_vexe)} version')
+	version_result :=
+		os.execute('VFLAGS="" VOSARGS="" VEXE=${os.quoted_path(isolated_vexe)} ${os.quoted_path(isolated_vexe)} version')
 	assert version_result.exit_code == 0, version_result.output
 	assert version_result.output.starts_with('V '), version_result.output
-	help_result := os.execute('VFLAGS="" VOSARGS="" VEXE=${os.quoted_path(isolated_vexe)} ${os.quoted_path(isolated_vexe)} help self')
+	help_result :=
+		os.execute('VFLAGS="" VOSARGS="" VEXE=${os.quoted_path(isolated_vexe)} ${os.quoted_path(isolated_vexe)} help self')
 	assert help_result.exit_code == 0, help_result.output
 	assert help_result.output.contains('Rebuild V with the passed options.'), help_result.output
 
 	program_source := os.join_path(root, 'main.v')
 	os.write_file(program_source, 'fn main() { println(42) }\n') or { panic(err) }
 	program := os.join_path(root, 'program')
-	v3_build := os.execute('VFLAGS="" VOSARGS="" VEXE=${os.quoted_path(isolated_vexe)} ${os.quoted_path(isolated_vexe)} -new-compiler -gc none -silent -o ${os.quoted_path(program)} ${os.quoted_path(program_source)}')
+	v3_build :=
+		os.execute('VFLAGS="" VOSARGS="" VEXE=${os.quoted_path(isolated_vexe)} ${os.quoted_path(isolated_vexe)} -new-compiler -gc none -silent -o ${os.quoted_path(program)} ${os.quoted_path(program_source)}')
 	assert v3_build.exit_code == 0, v3_build.output
 	program_result := os.execute(os.quoted_path(program))
 	assert program_result.exit_code == 0, program_result.output
 	assert program_result.output.trim_space() == '42', program_result.output
 }
 
-fn test_windows_plain_self_transition_installs_exe_fallback() {
+fn test_windows_plain_self_transition_does_not_install_fallback() {
 	$if windows {
 		return
 	}
@@ -260,15 +267,16 @@ fn test_windows_plain_self_transition_installs_exe_fallback() {
 	mock_source := os.join_path(root, 'mock_compiler.v')
 	os.write_file(mock_source, vself_mock_compiler_source()) or { panic(err) }
 	isolated_vexe := os.join_path(root, 'v')
-	mock_build := os.execute('${os.quoted_path(vexe)} -o ${os.quoted_path(isolated_vexe)} ${os.quoted_path(mock_source)}')
+	mock_build :=
+		os.execute('${os.quoted_path(vexe)} -o ${os.quoted_path(isolated_vexe)} ${os.quoted_path(mock_source)}')
 	assert mock_build.exit_code == 0, mock_build.output
 	vself_tool := os.join_path(root, 'vself')
 	vself_build := os.execute('${os.quoted_path(vexe)} -nocache -d vself_test_windows_transition -o ${os.quoted_path(vself_tool)} ${os.quoted_path(os.join_path(vroot, 'cmd', 'tools', 'vself.v'))}')
 	assert vself_build.exit_code == 0, vself_build.output
 
-	self_result := os.execute('env -u CC VFLAGS="" VOSARGS="" VSELF_TEST_FULL_CLI=${os.quoted_path(vexe)} VEXE=${os.quoted_path(isolated_vexe)} ${os.quoted_path(vself_tool)} self -silent')
+	self_result :=
+		os.execute('env -u CC VFLAGS="" VOSARGS="" VSELF_TEST_FULL_CLI=${os.quoted_path(vexe)} VEXE=${os.quoted_path(isolated_vexe)} ${os.quoted_path(vself_tool)} self -silent')
 	assert self_result.exit_code == 0, self_result.output
-	assert self_result.output.contains('V1 compatibility compiler'), self_result.output
 	assert !self_result.output.contains('-prealloc'), self_result.output
-	assert os.is_executable(os.join_path(root, 'v1_fallback.exe'))
+	assert !os.exists(os.join_path(root, 'v1_fallback.exe'))
 }

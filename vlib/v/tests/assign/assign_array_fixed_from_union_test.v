@@ -13,14 +13,14 @@ fn test_main() {
 	assert a == [1, 2, 3, 4, 5]!
 	assert p != 0
 	$if little_endian {
-		$if new_int ? && x64 {
+		$if new_int ?&& x64 {
 			assert c == [u8(1), 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0]!
 		} $else {
 			assert c == [u8(1), 0, 0, 0, 2, 0, 0, 0, 3, 0, 0, 0, 4, 0, 0, 0, 5, 0, 0, 0]!
 		}
 	}
 	$if big_endian {
-		$if new_int ? && x64 {
+		$if new_int ?&& x64 {
 			assert c == [u8(0), 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 0]!
 		} $else {
 			assert c == [u8(0), 0, 0, 1, 0, 0, 0, 2, 0, 0, 0, 3, 0, 0, 0, 4, 0, 0, 0, 5]!

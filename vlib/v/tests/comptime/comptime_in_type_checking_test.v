@@ -7,7 +7,6 @@ struct Test {
 	d Abc
 	e map[string]string
 	f struct {}
-
 }
 
 fn check[T](val T) string {

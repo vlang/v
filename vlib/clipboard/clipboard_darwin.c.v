@@ -31,7 +31,7 @@ fn new_clipboard() &Clipboard {
 
 // check_availability returns true if the clipboard is ready to be used.
 pub fn (cb &Clipboard) check_availability() bool {
-	return cb.pb != C.NULL
+	return cb.pb != unsafe { nil }
 }
 
 // clear empties the clipboard contents.

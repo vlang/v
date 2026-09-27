@@ -1,6 +1,9 @@
-import time
-import context
 import net.mbedtls
+
+$if network ? {
+	import context
+	import time
+}
 
 fn server() ! {
 	cfg := mbedtls.SSLConnectConfig{

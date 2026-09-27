@@ -5,7 +5,7 @@ print_info(a)
 a = 11
 print_info(a)
 ===output===
-error: `aaa` evaluated but not used
+error: unexpected name `aaa`
     6 | 
     7 | fn test() {
     8 |  aaa 

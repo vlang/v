@@ -285,12 +285,13 @@ fn test_array_of_map_with_len_no_default() {
 }
 
 fn empty_array_from_generic_typ[T]() []T {
-	return []T.typ{}
+	return []T{}
 }
 
 fn test_array_init_from_typeof() {
 	fixed := [1, 2, 3]!
 	dyn := []typeof(fixed[0]){}
+	assert fixed == [1, 2, 3]!
 	assert typeof(dyn).name == '[]int'
 	assert dyn.len == 0
 }

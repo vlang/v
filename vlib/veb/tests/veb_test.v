@@ -57,6 +57,16 @@ fn test_a_simple_veb_app_runs_in_the_background() {
 	} $else {
 		time.sleep(100 * time.millisecond)
 	}
+	// A freshly built server can need much longer than the fixed pause to start
+	// listening on a slow or emulated machine; wait for its port to accept.
+	for _ in 0 .. 100 {
+		mut probe := net.dial_tcp(localserver) or {
+			time.sleep(100 * time.millisecond)
+			continue
+		}
+		probe.close() or {}
+		break
+	}
 }
 
 // web client tests follow

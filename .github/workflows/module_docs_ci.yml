@@ -5,7 +5,6 @@ on:
     paths:
       - 'vlib/**.v'
       - 'vlib/**.md'
-      - '!vlib/v3/**'
       - 'cmd/tools/vdoc/**.v'
       - 'cmd/tools/vdoc/theme/**.js'
       - 'cmd/tools/vdoc/theme/**.css'
@@ -18,7 +17,6 @@ on:
     paths:
       - 'vlib/**.v'
       - 'vlib/**.md'
-      - '!vlib/v3/**'
       - 'cmd/tools/vdoc/**.v'
       - 'cmd/tools/vdoc/theme/**.js'
       - 'cmd/tools/vdoc/theme/**.css'
@@ -44,11 +42,12 @@ jobs:
       - name: Update packages, before running apt install
         run: .github/workflows/disable_azure_mirror.sh && v retry -- sudo apt update -y -qq
       - name: Install dependencies (some modules wrap C libs)
-        run: v retry -- sudo apt install --quiet -y libpq-dev
-          libsodium-dev libasound2-dev libssl-dev \
-          sqlite3 libsqlite3-dev libfreetype6-dev \
-          libx11-dev libxi-dev freeglut3-dev \
-          libgl1-mesa-dri libxcursor-dev libgl-dev libxrandr-dev libegl-dev
+        run: |
+          v retry -- sudo apt install --quiet -y libpq-dev \
+            libsodium-dev libasound2-dev libssl-dev \
+            sqlite3 libsqlite3-dev libfreetype6-dev \
+            libx11-dev libxi-dev freeglut3-dev \
+            libgl1-mesa-dri libxcursor-dev libgl-dev libxrandr-dev libegl-dev
       - name: Install markdown from vpm
         run: v retry -- v install markdown
       - name: Test v doc

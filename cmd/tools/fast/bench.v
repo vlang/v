@@ -159,12 +159,12 @@ fn run_measurements(dir string, commit string, message string, date time.Time, a
 	self_c_cmd := if stage_v == '' {
 		'${os.quoted_path(vprod)} ${voptions} -o v.c cmd/v'
 	} else {
-		'${os.quoted_path(stage_v)} -selfhost -no-memory-limit -show-timings -stats -o v.c vlib/v3/v3.v'
+		'${os.quoted_path(stage_v)} -selfhost -no-memory-limit -show-timings -stats -o v.c vlib/v/v.v'
 	}
 	self_bin_cmd := if stage_v == '' {
 		'${os.quoted_path(vprod)} ${voptions} -cc ${ccompiler} -o v2 cmd/v'
 	} else {
-		'${os.quoted_path(stage_v)} -selfhost -no-memory-limit -show-timings -stats -cc ${ccompiler} -o v2 vlib/v3/v3.v'
+		'${os.quoted_path(stage_v)} -selfhost -no-memory-limit -show-timings -stats -cc ${ccompiler} -o v2 vlib/v/v.v'
 	}
 	hello_cmd := if stage_v == '' {
 		'${os.quoted_path(vprod)} ${voptions} -cc ${ccompiler} examples/hello_world.v'
@@ -230,7 +230,7 @@ fn run_measurements(dir string, commit string, message string, date time.Time, a
 }
 
 // build_v3_stage_compiler builds the standalone v3 driver used to self-compile
-// vlib/v3/v3.v after the phase-RSS rollout. Older rows deliberately keep zeroes
+// vlib/v/v.v after the phase-RSS rollout. Older rows deliberately keep zeroes
 // for these new fields, preserving the historical phase series.
 fn build_v3_stage_compiler(dir string, date time.Time, args []string) !string {
 	// 2026-07-30 00:00 Europe/Moscow, the day v3 became the macOS default.
@@ -244,7 +244,7 @@ fn build_v3_stage_compiler(dir string, date time.Time, args []string) !string {
 	stage_v := os.join_path(dir, exe_name('fastv3'))
 	os.rm(stage_v) or {}
 	prod := if args.contains('-noprod') { '' } else { '-prod' }
-	cmd := '${os.quoted_path(vprod)} -gc none ${prod} -d skip_fastc -o ${os.quoted_path(stage_v)} vlib/v3/v3.v'
+	cmd := '${os.quoted_path(vprod)} -gc none ${prod} -d skip_fastc -o ${os.quoted_path(stage_v)} vlib/v/v.v'
 	elog('  building standalone v3 self-compiler ...')
 	res := os.execute(cmd)
 	if res.exit_code != 0 || !os.is_executable(stage_v) {
@@ -414,7 +414,7 @@ fn measure_steps_one_sample(vprod string, stage_v string) !StageMeasurements {
 	cmd := if stage_v == '' {
 		'${os.quoted_path(vprod)} ${voptions} -o v.c cmd/v'
 	} else {
-		'${os.quoted_path(stage_v)} -selfhost -no-memory-limit -show-timings -stats -o v.c vlib/v3/v3.v'
+		'${os.quoted_path(stage_v)} -selfhost -no-memory-limit -show-timings -stats -o v.c vlib/v/v.v'
 	}
 	resp := os.execute(cmd)
 	if resp.exit_code != 0 {

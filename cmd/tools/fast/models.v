@@ -18,7 +18,7 @@ mut:
 	message      string    // commit subject line
 	commit_date  time.Time // committer date (%ct); monotonic along first-parent
 	created_at   time.Time // when this benchmark was actually run
-	v_c_ms       int       // self compile to C (`cmd/v` historically, `vlib/v3/v3.v` now)
+	v_c_ms       int       // self compile to C (`cmd/v` historically, `vlib/v/v.v` now)
 	v_self_ms    int       // self compile to a binary (same source selection as v_c_ms)
 	hello_ms     int       // `v hello_world.v`  : compile a tiny program
 	vc_size_kb   int       // size of the generated v.c, in KB
@@ -109,9 +109,8 @@ fn migrate_schema(mut db sqlite.DB) ! {
 
 fn apply_migration(mut db sqlite.DB, existing map[string]bool) ! {
 	rss_columns := ['self_rss_min_kb', 'self_rss_q1_kb', 'self_rss_med_kb', 'self_rss_q3_kb',
-		'self_rss_max_kb', 'hello_rss_min_kb', 'hello_rss_q1_kb', 'hello_rss_med_kb',
-		'hello_rss_q3_kb', 'hello_rss_max_kb', 'scan_rss_kb', 'parse_rss_kb', 'check_rss_kb',
-		'cgen_rss_kb']
+		'self_rss_max_kb', 'hello_rss_min_kb', 'hello_rss_q1_kb', 'hello_rss_med_kb', 'hello_rss_q3_kb',
+		'hello_rss_max_kb', 'scan_rss_kb', 'parse_rss_kb', 'check_rss_kb', 'cgen_rss_kb']
 	for c in rss_columns {
 		if c !in existing {
 			migrate_exec(mut db,

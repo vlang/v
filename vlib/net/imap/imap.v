@@ -727,17 +727,17 @@ fn (mut c Client) open_mailbox(verb string, name string) !Mailbox {
 	c.exists = res.exists
 	c.recent = res.recent
 	return Mailbox{
-		name: name
-		exists: res.exists
-		recent: res.recent
-		unseen: res.unseen
-		flags: res.flags
+		name:            name
+		exists:          res.exists
+		recent:          res.recent
+		unseen:          res.unseen
+		flags:           res.flags
 		permanent_flags: res.permanent_flags
-		uid_validity: res.uid_validity
-		uid_next: res.uid_next
+		uid_validity:    res.uid_validity
+		uid_next:        res.uid_next
 		// EXAMINE is read-only by definition, and a server may hand back a
 		// read-only mailbox to a SELECT as well.
-		read_only: res.read_only || verb == 'EXAMINE'
+		read_only:       res.read_only || verb == 'EXAMINE'
 	}
 }
 
@@ -770,10 +770,10 @@ fn (c &Client) effective_port() int {
 // it.
 fn (mut c Client) upgrade_to_tls() ! {
 	c.ssl_conn = ssl.new_ssl_conn(
-		validate: c.validate
-		verify: c.verify
-		cert: c.cert
-		cert_key: c.cert_key
+		validate:               c.validate
+		verify:                 c.verify
+		cert:                   c.cert
+		cert_key:               c.cert_key
 		in_memory_verification: c.in_memory_verification
 	)!
 	tls_hostname := normalize_tls_hostname(c.server)

@@ -25,14 +25,16 @@ fn write_local_module_submodules_project() {
 	os.rmdir_all(basepath) or {}
 	os.mkdir_all(os.join_path(basepath, 'confy', 'marshalers')) or { panic(err) }
 	os.write_file(os.join_path(basepath, 'main.v'),
-		['module main', '', 'import confy', 'import confy.marshalers', '', 'fn main() {', '\tmut marshaler := marshalers.JSON{}', '\tload(mut marshaler)', '}', '', 'fn load(mut marshaler confy.Marshaler) {', '\tmarshaler.load()', '}'].join('\n') +
-		'\n') or { panic(err) }
+		['module main', '', 'import confy', 'import confy.marshalers', '', 'fn main() {',
+			'\tmut marshaler := marshalers.JSON{}', '\tload(mut marshaler)', '}', '',
+			'fn load(mut marshaler confy.Marshaler) {', '\tmarshaler.load()', '}'].join('\n') +
+			'\n') or { panic(err) }
 	os.write_file(os.join_path(basepath, 'confy', 'confy.v'),
 		['module confy', '', 'pub interface Marshaler {', '\tmut:', '\t\tload()', '}'].join('\n') +
-		'\n') or { panic(err) }
+			'\n') or { panic(err) }
 	os.write_file(os.join_path(basepath, 'confy', 'marshalers', 'json.v'),
 		['module marshalers', '', 'pub struct JSON {}', '', 'pub fn (mut j JSON) load() {}'].join('\n') +
-		'\n') or { panic(err) }
+			'\n') or { panic(err) }
 }
 
 fn write_issue_24649_project() {
@@ -40,16 +42,19 @@ fn write_issue_24649_project() {
 	os.rmdir_all(basepath) or {}
 	os.mkdir_all(os.join_path(basepath, 'my_math', 'my_integer')) or { panic(err) }
 	os.write_file(os.join_path(basepath, 'running_my_math.v'),
-		['module main', '', 'import my_math', 'import my_math.my_integer', '', 'fn main() {', '\ta := 34.5', '\tb := 13.2', '', "\tprintln('La suma de a y b es \${my_math.addition(a, b)}')", '', "\tprintln('La suma entera de a y b es \${my_integer.addition(a, b)}')", '}'].join('\n') +
-		'\n') or { panic(err) }
+		['module main', '', 'import my_math', 'import my_math.my_integer', '', 'fn main() {',
+			'\ta := 34.5', '\tb := 13.2', '',
+			"\tprintln('La suma de a y b es \${my_math.addition(a, b)}')", '',
+			"\tprintln('La suma entera de a y b es \${my_integer.addition(a, b)}')", '}'].join('\n') +
+			'\n') or { panic(err) }
 	os.write_file(os.join_path(basepath, 'my_math', 'floating.v'),
 		['module my_math', '', 'pub fn addition(x f64, y f64) f64 {', '\treturn x +
 		y', '}'].join('\n') +
-		'\n') or { panic(err) }
+			'\n') or { panic(err) }
 	os.write_file(os.join_path(basepath, 'my_math', 'my_integer', 'integer.v'),
 		['module my_integer', '', 'pub fn addition(x f64, y f64) int {', '\treturn int(x +
 		y)', '}'].join('\n') +
-		'\n') or { panic(err) }
+			'\n') or { panic(err) }
 }
 
 fn compile_local_module_submodules(target string, out_name string) os.Result {

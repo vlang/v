@@ -177,7 +177,7 @@ fn (seed NativeOperationSeed) without_target_identity() NativeOperationSeed {
 	}
 }
 
-$if gg_multiwindow ? || x_multiwindow_render ? {
+$if gg_multiwindow ?|| x_multiwindow_render ? {
 	fn native_seed_for_frame(frame RenderFrame, call_site NativeRenderCallSite) NativeOperationSeed {
 		return NativeOperationSeed{
 			presence_mask:      native_context_window_target_fields & ~native_context_has_target_identity
@@ -553,9 +553,9 @@ fn native_egl_evidence_disposition(context NativeOperationContext, evidence Nati
 	}
 	succeeded :=
 		(context.operation in [.current_draw_query, .current_read_query, .current_context_query]
-		&& evidence.has(native_valid_handle))
-		|| (evidence.has(native_valid_return_value) && evidence.return_value == 1)
-		|| (evidence.has(native_valid_handle) && evidence.handle != 0)
+			&& evidence.has(native_valid_handle))
+			|| (evidence.has(native_valid_return_value) && evidence.return_value == 1)
+			|| (evidence.has(native_valid_handle) && evidence.handle != 0)
 	if succeeded {
 		return .ok
 	}
@@ -600,10 +600,10 @@ fn native_result_from_dxgi(context NativeOperationContext, capture NativePrimiti
 		&& dxgi_hresult_is_direct_loss(capture.actual.return_value)
 	actual_fatal := actual_direct_loss
 		|| (capture.actual.has(native_valid_dxgi_removal_reason)
-		&& dxgi_removal_reason_is_loss(capture.actual.dxgi_removal_reason))
+			&& dxgi_removal_reason_is_loss(capture.actual.dxgi_removal_reason))
 	effective_fatal := dxgi_hresult_is_direct_loss(evidence.return_value)
 		|| (evidence.has(native_valid_dxgi_removal_reason)
-		&& dxgi_removal_reason_is_loss(evidence.dxgi_removal_reason))
+			&& dxgi_removal_reason_is_loss(evidence.dxgi_removal_reason))
 	mut disposition := native_local_validation_disposition(validation, context.scope)
 	if actual_fatal {
 		disposition = .renderer_lost
@@ -723,7 +723,8 @@ fn native_result_from_metal(context NativeOperationContext, capture NativePrimit
 		disposition = .transient
 	}
 	if disposition == .none {
-		if context.operation in [.device_create, .window_surface_create, .anchor_surface_create, .render_batch_begin]
+		if context.operation in [.device_create, .window_surface_create, .anchor_surface_create,
+			.render_batch_begin]
 			&& evidence.has(native_valid_handle) && evidence.handle != 0 {
 			disposition = .ok
 		} else if context.operation == .drawable_acquire && evidence.has(native_valid_handle)

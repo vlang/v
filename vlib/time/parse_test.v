@@ -12,12 +12,12 @@ fn test_parse() {
 }
 
 fn test_parse_invalid() {
-	if x := time.parse('Invalid time string') {
+	if _ := time.parse('Invalid time string') {
 		assert false
 	}
 	assert true
 
-	if x := time.parse('2020-02-02 02.20.02') {
+	if _ := time.parse('2020-02-02 02.20.02') {
 		assert false
 	}
 	assert true
@@ -69,10 +69,14 @@ fn test_parse_iso8601() {
 		[2020, 11, 5, 15, 38, 6, 15959000],
 	]
 	for i, format in formats {
-		t := time.parse_iso8601(format) or {
+		parsed := time.parse_iso8601(format) or {
 			assert false, '>>> failing format: ${format} | err: ${err}'
 			continue
 		}
+		// the calendar fields keep the wall clock as written ...
+		assert parsed.format_ss() == format[..10] + ' ' + format[11..19]
+		// ... while `times` holds the UTC instant
+		t := parsed.local_to_utc()
 		year := times[i][0]
 		assert t.year == year
 		month := times[i][1]
@@ -206,7 +210,9 @@ fn test_parse_rfc3339() {
 			assert false, '>>> failing input: ${input} | err: ${err}'
 			return
 		}
-		output := res.format_ss_micro()
+		// the calendar fields keep the wall clock as written, `expected` is the UTC instant
+		assert res.format_ss() == input[..10] + ' ' + input[11..19]
+		output := res.local_to_utc().format_ss_micro()
 		assert expected == output
 	}
 	assert invalid_rfc3339('22:47:08Z') == 'missing date part of RFC 3339'
@@ -239,7 +245,99 @@ fn test_parse_rfc3339_offset() {
 	for pair in pairs {
 		input, expected := pair[0], pair[1]
 		res := time.parse_rfc3339(input)!
-		assert res.str() == expected
+		assert res.str() == input[..10] + ' ' + input[11..19]
+		assert res.local_to_utc().str() == expected
+	}
+}
+
+// https://github.com/vlang/v/issues/28820
+fn test_parse_rfc3339_keeps_negative_utc_offset() {
+	t := time.parse_rfc3339('2024-07-15T18:30:45-05:00')!
+	assert t.year == 2024 && t.month == 7 && t.day == 15
+	assert t.hour == 18 && t.minute == 30 && t.second == 45 && t.nanosecond == 0
+	assert t.str() == '2024-07-15 18:30:45'
+	zone := t.zone()!
+	assert zone.offset == -18_000
+	assert zone.name == ''
+	assert !zone.is_dst
+	assert t.location() != none
+	assert !t.is_utc()
+	assert !t.is_local
+	// the absolute instant is the same as before, when the result was converted to UTC
+	assert t.unix() == 1_721_086_245
+	assert t.local_unix() == 1_721_086_245 - 18_000
+	assert t.format_rfc3339() == '2024-07-15T23:30:45.000Z'
+	assert t.local_to_utc() == time.parse_rfc3339('2024-07-15T23:30:45Z')!
+	assert t.local_to_utc().str() == '2024-07-15 23:30:45'
+	assert t.custom_format('YYYY-MM-DDTHH:mm:ssZZZ') == '2024-07-15T18:30:45-05:00'
+	// arithmetic keeps the fixed offset
+	later := t.add(7 * time.hour)
+	assert later.str() == '2024-07-16 01:30:45'
+	assert later.zone()!.offset == -18_000
+	assert later.unix() == t.unix() + 7 * 3600
+}
+
+fn test_parse_rfc3339_keeps_positive_utc_offset() {
+	t := time.parse_rfc3339('2024-01-01T01:15:30.123456+05:30')!
+	assert t.format_ss_micro() == '2024-01-01 01:15:30.123456'
+	assert t.zone()!.offset == 19_800
+	assert t.unix() == time.parse_rfc3339('2023-12-31T19:45:30Z')!.unix()
+	assert t.format_rfc3339_micro() == '2023-12-31T19:45:30.123456Z'
+	assert t.custom_format('YYYY-MM-DDTHH:mm:ssZZZ') == '2024-01-01T01:15:30+05:30'
+}
+
+fn test_parse_rfc3339_utc_inputs_have_no_location() {
+	for input in ['2024-07-15T23:30:45Z', '2024-07-15t23:30:45z', '2024-07-15T23:30:45+00:00',
+		'2024-07-15T23:30:45-00:00'] {
+		t := time.parse_rfc3339(input)!
+		assert t.location() == none, input
+		assert t.is_utc(), input
+		assert t.str() == '2024-07-15 23:30:45', input
+		assert t.unix() == 1_721_086_245, input
+		assert t == time.unix(1_721_086_245), input
+		if zone := t.zone() {
+			assert false, '${input} should have no zone, got: ${zone}'
+		}
+	}
+}
+
+fn test_parse_rfc3339_equality_with_offsets() {
+	west := time.parse_rfc3339('2024-07-15T18:30:45-05:00')!
+	east := time.parse_rfc3339('2024-07-16T05:00:45+05:30')!
+	utc := time.parse_rfc3339('2024-07-15T23:30:45Z')!
+	// times with an offset are equal when they are the same instant, whatever their offsets
+	assert west == east
+	assert west - east == 0
+	assert !(west < east) && !(east < west)
+	assert west < time.parse_rfc3339('2024-07-15T18:30:46-05:00')!
+	// like other zoned times (see `Time.in`), they never compare `==` to plain UTC times;
+	// compare their `unix()` values or their `local_to_utc()` instead
+	assert west != utc
+	assert west - utc == 0
+	assert west.unix() == utc.unix()
+	assert west.local_to_utc() == utc
+	assert east.local_to_utc() == utc
+}
+
+fn test_parse_iso8601_keeps_utc_offset() {
+	t := time.parse_iso8601('2024-07-15T18:30:45.123456-05:00')!
+	assert t.format_ss_micro() == '2024-07-15 18:30:45.123456'
+	assert t.zone()!.offset == -18_000
+	assert t.unix() == 1_721_086_245
+	assert t.format_rfc3339_micro() == '2024-07-15T23:30:45.123456Z'
+	assert t == time.parse_rfc3339('2024-07-15T18:30:45.123456-05:00')!
+
+	p := time.parse_iso8601('2020-06-05T15:38:06+02:00')!
+	assert p.str() == '2020-06-05 15:38:06'
+	assert p.zone()!.offset == 7_200
+	assert p.local_to_utc().str() == '2020-06-05 13:38:06'
+
+	for input in ['2020-06-05T15:38:06Z', '2020-06-05T15:38:06.015959+00:00',
+		'2020-06-05T15:38:06.015959-00:00'] {
+		u := time.parse_iso8601(input)!
+		assert u.location() == none, input
+		assert u.is_utc(), input
+		assert u.str() == '2020-06-05 15:38:06', input
 	}
 }
 

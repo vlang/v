@@ -1,4 +1,5 @@
 // vtest retry: 3
+// vtest vflags: -w
 import orm
 import db.sqlite
 

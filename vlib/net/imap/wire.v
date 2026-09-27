@@ -36,7 +36,7 @@ const decoder_chunk = 8192
 fn decoder_over(s string) &Decoder {
 	bytes := s.bytes()
 	return &Decoder{
-		buf: bytes
+		buf:    bytes
 		filled: bytes.len
 	}
 }
@@ -44,7 +44,7 @@ fn decoder_over(s string) &Decoder {
 fn decoder_on(reader &io.BufferedReader) &Decoder {
 	return &Decoder{
 		reader: unsafe { reader }
-		buf: []u8{len: decoder_chunk}
+		buf:    []u8{len: decoder_chunk}
 	}
 }
 

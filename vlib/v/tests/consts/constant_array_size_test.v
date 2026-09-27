@@ -20,8 +20,7 @@ fn test_const_below_at_struct_fixed_array_fields() {
 	assert foo.arr.len == 2
 	assert foo.arr[0].len == 2
 	assert foo.arr[0][0].len == 3
-	assert foo.arr == [[[0.0, 0.0, 0.0]!, [0.0, 0.0, 0.0]!]!,
-		[[0.0, 0.0, 0.0]!, [0.0, 0.0, 0.0]!]!]!
+	assert foo.arr == [[[0.0, 0.0, 0.0]!, [0.0, 0.0, 0.0]!]!, [[0.0, 0.0, 0.0]!, [0.0, 0.0, 0.0]!]!]!
 }
 
 // for issue 20311
@@ -32,8 +31,7 @@ fn test_const_below_at_fixed_array() {
 	assert arr.len == 2
 	assert arr[0].len == 2
 	assert arr[0][0].len == 3
-	assert arr == [[[0.0, 0.0, 0.0]!, [0.0, 0.0, 0.0]!]!, [[0.0, 0.0, 0.0]!,
-		[0.0, 0.0, 0.0]!]!]!
+	assert arr == [[[0.0, 0.0, 0.0]!, [0.0, 0.0, 0.0]!]!, [[0.0, 0.0, 0.0]!, [0.0, 0.0, 0.0]!]!]!
 }
 
 // do not move this definition,

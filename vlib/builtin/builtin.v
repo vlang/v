@@ -29,19 +29,9 @@ pub:
 	has_high bool
 }
 
-@[direct_array_access]
-fn __as_cast(obj voidptr, obj_type int, expected_type int) voidptr {
+@[direct_array_access; markused]
+fn __as_cast(obj voidptr, obj_type int, expected_type int, obj_name string, expected_name string) voidptr {
 	if obj_type != expected_type {
-		mut obj_name := as_cast_type_indexes[0].tname.clone()
-		mut expected_name := as_cast_type_indexes[0].tname.clone()
-		for x in as_cast_type_indexes {
-			if x.tindex == obj_type {
-				obj_name = x.tname.clone()
-			}
-			if x.tindex == expected_type {
-				expected_name = x.tname.clone()
-			}
-		}
 		panic('as cast: cannot cast `' + obj_name + '` to `' + expected_name + '`')
 	}
 	return obj

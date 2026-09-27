@@ -16,7 +16,7 @@ nobj .... number of objects to pass thru the channel
 
 ## AMD Ryzen 7 3800X, Ubuntu-20.04 x86_64
 
-10000000 Objects transfered, results in Objects/µs
+10000000 Objects transferred, results in Objects/µs
 
 | nsend | nrec | buflen | **V (gcc -O2)** | **V (clang)** | **V (tcc)** | **Go (golang)** | **Go (gccgo -O2)** |
 | :---: | :---:| :---:  |      :---:      |    :---:      |    :---:    |     :---:      |      :---:         |
@@ -36,7 +36,7 @@ nobj .... number of objects to pass thru the channel
 
 ## Raspberry Pi 3B+, Void Linux musl 32 bit
 
-10000000 Objects transfered, results in Objects/µs
+10000000 Objects transferred, results in Objects/µs
 
 | nsend | nrec | buflen | **V (gcc -O2)** | **Go (golang)** |
 | :---: | :---:| :---:  |      :---:      |     :---:      |

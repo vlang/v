@@ -7,7 +7,7 @@ $if freebsd || openbsd {
 $if tinyc {
 	#flag -DSQLITE_DISABLE_INTRINSIC
 }
-$if $pkgconfig('sqlite3') {
+$if $pkgconfig ( 'sqlite3' ) {
 	#pkgconfig sqlite3
 	#include "sqlite3.h" # The SQLite header file is missing. Please install the corresponding development package.
 } $else $if windows {

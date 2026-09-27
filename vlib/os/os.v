@@ -647,8 +647,23 @@ fn error_failed_to_find_executable() IError {
 	return &ExecutableNotFoundError{}
 }
 
+// executable_suffixes_for returns the suffixes to try for `exe_name`, in order.
+// A name that already carries an executable extension (`cmd.exe`, `tool.bat`,
+// `prog.com`) is tried exactly and nothing else, so that a `cmd.exe.exe` in a
+// directory searched earlier cannot shadow the spelling that was asked for -
+// `CreateProcessW` never appends an extension to such a name. Any other name,
+// including one with a dot that is not an extension (`python3.12`), gets the
+// usual suffixes.
+fn executable_suffixes_for(exe_name string) []string {
+	ext := file_ext(exe_name).to_lower_ascii()
+	if ext != '' && ext in executable_suffixes {
+		return ['']
+	}
+	return executable_suffixes
+}
+
 fn find_abs_path_of_executable_in_path_env(exe_name string, env_path string) !string {
-	for suffix in executable_suffixes {
+	for suffix in executable_suffixes_for(exe_name) {
 		fexepath := exe_name + suffix
 		if is_abs_path(fexepath) {
 			return fexepath

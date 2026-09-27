@@ -119,8 +119,7 @@ pub fn (c &TripleDesCipher) encrypt(mut dst []u8, src []u8) {
 		left, right = feistel(left, right, c.cipher1.subkeys[2 * i], c.cipher1.subkeys[2 * i + 1])
 	}
 	for i := 0; i < 8; i++ {
-		right, left = feistel(right, left, c.cipher2.subkeys[15 - 2 * i], c.cipher2.subkeys[15 - (
-			2 * i + 1)])
+		right, left = feistel(right, left, c.cipher2.subkeys[15 - 2 * i], c.cipher2.subkeys[15 - (2 * i + 1)])
 	}
 	for i := 0; i < 8; i++ {
 		left, right = feistel(left, right, c.cipher3.subkeys[2 * i], c.cipher3.subkeys[2 * i + 1])
@@ -154,15 +153,13 @@ pub fn (c &TripleDesCipher) decrypt(mut dst []u8, src []u8) {
 	right = (right << 1) | (right >> 31)
 
 	for i := 0; i < 8; i++ {
-		left, right = feistel(left, right, c.cipher3.subkeys[15 - 2 * i], c.cipher3.subkeys[15 - (
-			2 * i + 1)])
+		left, right = feistel(left, right, c.cipher3.subkeys[15 - 2 * i], c.cipher3.subkeys[15 - (2 * i + 1)])
 	}
 	for i := 0; i < 8; i++ {
 		right, left = feistel(right, left, c.cipher2.subkeys[2 * i], c.cipher2.subkeys[2 * i + 1])
 	}
 	for i := 0; i < 8; i++ {
-		left, right = feistel(left, right, c.cipher1.subkeys[15 - 2 * i], c.cipher1.subkeys[15 - (
-			2 * i + 1)])
+		left, right = feistel(left, right, c.cipher1.subkeys[15 - 2 * i], c.cipher1.subkeys[15 - (2 * i + 1)])
 	}
 
 	left = (left << 31) | (left >> 1)

@@ -234,7 +234,9 @@ fn stop_h2_pool_srv(mut listener mbedtls.SSLListener, th thread) {
 }
 
 fn h2t_fetch_worker(port int, path string) int {
-	resp := fetch(url: 'https://127.0.0.1:${port}${path}', validate: false) or { return -1 }
+	resp := fetch(url: 'https://127.0.0.1:${port}${path}', validate: false, enable_http2: true) or {
+		return -1
+	}
 	if resp.body != h2t_body {
 		return -2
 	}
@@ -442,6 +444,7 @@ fn test_h2_pool_respects_request_read_timeout() {
 	resp := fetch(
 		url:          'https://127.0.0.1:${port}/slow'
 		validate:     false
+		enable_http2: true
 		read_timeout: 300 * time.millisecond
 	) or {
 		elapsed := sw.elapsed()
@@ -545,7 +548,7 @@ fn test_h2_pool_respects_max_idle_conns_cap() {
 	}
 
 	for port in [port1, port2, port3] {
-		req := prepare(url: 'https://127.0.0.1:${port}/x', validate: false) or {
+		req := prepare(url: 'https://127.0.0.1:${port}/x', validate: false, enable_http2: true) or {
 			assert false, 'prepare: ${err}'
 			return
 		}
@@ -599,7 +602,11 @@ fn test_h2_pool_does_not_evict_its_own_new_connection() {
 		assert false, 'h2 server: ${err}'
 		return
 	}
-	h2_req := prepare(url: 'https://127.0.0.1:${h2_port}/fresh', validate: false, enable_http2: true) or {
+	h2_req := prepare(
+		url:          'https://127.0.0.1:${h2_port}/fresh'
+		validate:     false
+		enable_http2: true
+	) or {
 		assert false, 'prepare h2: ${err}'
 		return
 	}
@@ -650,7 +657,11 @@ fn test_h2_pool_evicts_h1_idle_to_make_room_for_h2() {
 		assert false, 'h2 server: ${err}'
 		return
 	}
-	h2_req := prepare(url: 'https://127.0.0.1:${h2_port}/fresh', validate: false, enable_http2: true) or {
+	h2_req := prepare(
+		url:          'https://127.0.0.1:${h2_port}/fresh'
+		validate:     false
+		enable_http2: true
+	) or {
 		assert false, 'prepare h2: ${err}'
 		return
 	}
@@ -867,7 +878,7 @@ fn test_h2_pool_sequential_reuse() {
 		return
 	}
 	for i in 0 .. 3 {
-		resp := fetch(url: 'https://127.0.0.1:${port}/seq${i}', validate: false) or {
+		resp := fetch(url: 'https://127.0.0.1:${port}/seq${i}', validate: false, enable_http2: true) or {
 			assert false, 'fetch ${i}: ${err}'
 			return
 		}
@@ -894,13 +905,13 @@ fn test_h2_pool_goaway_redial() {
 		assert false, 'server: ${err}'
 		return
 	}
-	r1 := fetch(url: 'https://127.0.0.1:${port}/first', validate: false) or {
+	r1 := fetch(url: 'https://127.0.0.1:${port}/first', validate: false, enable_http2: true) or {
 		assert false, 'fetch 1: ${err}'
 		return
 	}
 	assert r1.status_code == 200
 	assert r1.body == h2t_body
-	r2 := fetch(url: 'https://127.0.0.1:${port}/second', validate: false) or {
+	r2 := fetch(url: 'https://127.0.0.1:${port}/second', validate: false, enable_http2: true) or {
 		assert false, 'fetch 2: ${err}'
 		return
 	}
@@ -932,7 +943,7 @@ fn test_h2_pool_dial_failure_preserves_error_code() {
 	}
 	port_listener.close() or {}
 
-	req := prepare(url: 'https://127.0.0.1:${port}/x', validate: false) or {
+	req := prepare(url: 'https://127.0.0.1:${port}/x', validate: false, enable_http2: true) or {
 		assert false, 'prepare: ${err}'
 		return
 	}
@@ -1034,7 +1045,7 @@ fn test_h2_pool_close_idle_flushes() {
 		assert false, 'server: ${err}'
 		return
 	}
-	r1 := fetch(url: 'https://127.0.0.1:${port}/one', validate: false) or {
+	r1 := fetch(url: 'https://127.0.0.1:${port}/one', validate: false, enable_http2: true) or {
 		assert false, 'fetch 1: ${err}'
 		return
 	}
@@ -1053,7 +1064,7 @@ fn test_h2_pool_close_idle_flushes() {
 	}
 	assert flushed, 'server serve thread did not exit after close_idle_connections()'
 	// The pool must remain functional afterwards: a fresh dial, not an error.
-	r2 := fetch(url: 'https://127.0.0.1:${port}/two', validate: false) or {
+	r2 := fetch(url: 'https://127.0.0.1:${port}/two', validate: false, enable_http2: true) or {
 		assert false, 'fetch 2: ${err}'
 		return
 	}
@@ -1074,6 +1085,7 @@ fn test_h2_pool_disable_reuse_opt_out() {
 		resp := fetch(
 			url:                      'https://127.0.0.1:${port}/noreuse${i}'
 			validate:                 false
+			enable_http2:             true
 			disable_connection_reuse: true
 		) or {
 			assert false, 'fetch ${i}: ${err}'

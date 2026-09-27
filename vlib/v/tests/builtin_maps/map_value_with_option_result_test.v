@@ -20,6 +20,7 @@ struct Foo {
 
 fn bar() {
 	map1 := map[string]?string{}
+	assert map1.len == 0
 }
 
 fn baz(arg map[string]?string) ?string {

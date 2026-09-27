@@ -1,4 +1,5 @@
 import time
+
 // 41s.
 
 struct Node[T] {

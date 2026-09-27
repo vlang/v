@@ -730,7 +730,7 @@ pub fn str_intp_sq(in_str string) string {
 
 @[inline]
 pub fn str_intp_rune(in_str string) string {
-	return 'builtin__str_intp(2, _MOV((StrIntpData[]){{_S("\`"), ${si_s_code}, {.d_s = ${in_str}}, 0, 0, 0},{_S("\`"), 0, {0}, 0, 0, 0}}))'
+	return 'builtin__str_intp(2, _MOV((StrIntpData[]){{_S("\\`"), ${si_s_code}, {.d_s = ${in_str}}, 0, 0, 0},{_S("\\`"), 0, {0}, 0, 0, 0}}))'
 }
 
 @[inline]

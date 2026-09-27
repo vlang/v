@@ -364,7 +364,7 @@ fn win32_w4_settle_window_setup(mut app App, window WindowId, label string, mut 
 		for event in batch {
 			if event.kind == .lifecycle && event.lifecycle.window_id == window
 				&& (event.lifecycle.kind == .window_close_requested
-				|| event.lifecycle.kind == .window_destroyed) {
+					|| event.lifecycle.kind == .window_destroyed) {
 				issues << '${label}: target window emitted close/destroy during setup'
 				return false
 			}
@@ -1061,19 +1061,19 @@ fn win32_w2_native_modal_fault_path_regressions(mut issues []string) ! {
 		attempted_hwnd := C.v_multiwindow_win32_test_modal_trace_window_value()
 		win32_red_add(mut issues, 'create show/release fault suppressed rollback failure',
 			create_error.contains(err_win32_create_window_failed)
-			&& create_error.contains('modal rollback failed:'))
+				&& create_error.contains('modal rollback failed:'))
 		win32_red_add(mut issues, 'create show/release fault left a backend record',
 			create_app.backend.win32.windows.len == before_create_records)
 		win32_red_add(mut issues, 'create show/release fault left a native HWND',
 			attempted_hwnd != unsafe { nil }
-			&& C.v_multiwindow_test_win32_is_window(attempted_hwnd) == 0)
+				&& C.v_multiwindow_test_win32_is_window(attempted_hwnd) == 0)
 		win32_red_add(mut issues, 'create show/release fault left owner disabled',
 			C.v_multiwindow_test_win32_is_enabled(create_owner_hwnd) == 1)
 		win32_red_add(mut issues, 'create show/release recovery violated release-before-destroy',
 			C.v_multiwindow_win32_test_modal_owner_enable_count_value() == 1
-			&& C.v_multiwindow_win32_test_modal_destroy_count_value() == 1
-			&& C.v_multiwindow_win32_test_modal_owner_enable_sequence_value() > 0
-			&& C.v_multiwindow_win32_test_modal_owner_enable_sequence_value() < C.v_multiwindow_win32_test_modal_destroy_sequence_value())
+				&& C.v_multiwindow_win32_test_modal_destroy_count_value() == 1
+				&& C.v_multiwindow_win32_test_modal_owner_enable_sequence_value() > 0
+				&& C.v_multiwindow_win32_test_modal_owner_enable_sequence_value() < C.v_multiwindow_win32_test_modal_destroy_sequence_value())
 		create_app.destroy_window(create_owner) or {
 			issues << 'create-fault owner cleanup failed: ${err.msg()}'
 		}
@@ -1120,10 +1120,10 @@ fn win32_w2_native_modal_fault_path_regressions(mut issues []string) ! {
 				win32_red_add(mut issues,
 					'DestroyWindow fault did not retain complete released child debt',
 					destroy_record.hwnd == destroy_modal_hwnd
-					&& destroy_record.service_state != unsafe { nil } && retained_owner_matches
-					&& !destroy_record.modal_active
-					&& destroy_app.backend.win32.windows[destroy_owner_index].modal_child_count == 0
-					&& !destroy_app.backend.win32.windows[destroy_owner_index].modal_restore_enabled)
+						&& destroy_record.service_state != unsafe { nil } && retained_owner_matches
+						&& !destroy_record.modal_active
+						&& destroy_app.backend.win32.windows[destroy_owner_index].modal_child_count == 0
+						&& !destroy_app.backend.win32.windows[destroy_owner_index].modal_restore_enabled)
 			} else {
 				issues << 'DestroyWindow fault removed the owner record'
 			}
@@ -1132,12 +1132,12 @@ fn win32_w2_native_modal_fault_path_regressions(mut issues []string) ! {
 		}
 		win32_red_add(mut issues, 'DestroyWindow fault did not retain released child HWND',
 			C.v_multiwindow_test_win32_is_window(destroy_modal_hwnd) == 1
-			&& C.v_multiwindow_test_win32_is_enabled(destroy_owner_hwnd) == 1)
+				&& C.v_multiwindow_test_win32_is_enabled(destroy_owner_hwnd) == 1)
 		win32_red_add(mut issues, 'DestroyWindow fault reactivated native modality',
 			C.v_multiwindow_win32_test_modal_owner_enable_count_value() == 1
-			&& C.v_multiwindow_win32_test_modal_owner_disable_count_value() == 0
-			&& C.v_multiwindow_win32_test_modal_destroy_count_value() == 0
-			&& C.v_multiwindow_win32_test_modal_destroy_attempt_count_value() == 1)
+				&& C.v_multiwindow_win32_test_modal_owner_disable_count_value() == 0
+				&& C.v_multiwindow_win32_test_modal_destroy_count_value() == 0
+				&& C.v_multiwindow_win32_test_modal_destroy_attempt_count_value() == 1)
 		mut retained_child_records := 0
 		for retained_record in destroy_app.backend.win32.windows {
 			if retained_record.id == destroy_modal {
@@ -1160,13 +1160,13 @@ fn win32_w2_native_modal_fault_path_regressions(mut issues []string) ! {
 			replay_error == destroy_error)
 		win32_red_add(mut issues, 'second child destroy retried HWND or emitted another event',
 			C.v_multiwindow_win32_test_modal_destroy_attempt_count_value() == 1
-			&& replay_destroy_events == 0)
+				&& replay_destroy_events == 0)
 		mut owner_destroy_error := ''
 		destroy_app.destroy_window(destroy_owner) or { owner_destroy_error = err.msg() }
 		expected_owner_destroy_error := 'multiwindow: terminal lifecycle failed: multiwindow: window owner relation is invalid'
 		win32_red_add(mut issues, 'retained child debt did not reject owner destroy',
 			owner_destroy_error == expected_owner_destroy_error
-			&& destroy_app.window_destroy_finished(destroy_owner))
+				&& destroy_app.window_destroy_finished(destroy_owner))
 		mut owner_destroy_events := 0
 		for event in destroy_app.drain_queued_events()! {
 			if event.kind == .lifecycle && event.lifecycle.kind == .window_destroyed
@@ -1178,12 +1178,12 @@ fn win32_w2_native_modal_fault_path_regressions(mut issues []string) ! {
 			owner_destroy_events == 1)
 		win32_red_add(mut issues, 'rejected owner destroy reached native DestroyWindow',
 			C.v_multiwindow_test_win32_is_window(destroy_owner_hwnd) == 1
-			&& C.v_multiwindow_test_win32_is_window(destroy_modal_hwnd) == 1
-			&& C.v_multiwindow_win32_test_modal_owner_destroy_attempt_count_value() == 0)
+				&& C.v_multiwindow_test_win32_is_window(destroy_modal_hwnd) == 1
+				&& C.v_multiwindow_win32_test_modal_owner_destroy_attempt_count_value() == 0)
 		win32_red_add(mut issues, 'rejected owner destroy changed released modality',
 			C.v_multiwindow_test_win32_is_enabled(destroy_owner_hwnd) == 1
-			&& C.v_multiwindow_win32_test_modal_owner_enable_count_value() == 1
-			&& C.v_multiwindow_win32_test_modal_owner_disable_count_value() == 0)
+				&& C.v_multiwindow_win32_test_modal_owner_enable_count_value() == 1
+				&& C.v_multiwindow_win32_test_modal_owner_disable_count_value() == 0)
 		mut owner_replay_error := ''
 		destroy_app.destroy_window(destroy_owner) or { owner_replay_error = err.msg() }
 		mut owner_replay_destroy_events := 0
@@ -1197,20 +1197,20 @@ fn win32_w2_native_modal_fault_path_regressions(mut issues []string) ! {
 			owner_replay_error == expected_owner_destroy_error)
 		win32_red_add(mut issues, 'second owner destroy retried HWND or emitted another event',
 			C.v_multiwindow_win32_test_modal_owner_destroy_attempt_count_value() == 0
-			&& owner_replay_destroy_events == 0)
+				&& owner_replay_destroy_events == 0)
 		destroy_app.stop() or { issues << 'retained child debt stop cleanup failed: ${err.msg()}' }
 		win32_red_add(mut issues, 'one stop left retained Win32 records',
 			destroy_app.backend.win32.windows.len == 0)
 		win32_red_add(mut issues, 'one stop left native owner/modal HWNDs alive',
 			C.v_multiwindow_test_win32_is_window(destroy_owner_hwnd) == 0
-			&& C.v_multiwindow_test_win32_is_window(destroy_modal_hwnd) == 0)
+				&& C.v_multiwindow_test_win32_is_window(destroy_modal_hwnd) == 0)
 		win32_red_add(mut issues, 'stop did not retry retained child before owner',
 			C.v_multiwindow_win32_test_modal_destroy_attempt_count_value() == 2
-			&& C.v_multiwindow_win32_test_modal_owner_destroy_attempt_count_value() == 1
-			&& C.v_multiwindow_win32_test_modal_destroy_count_value() == 1
-			&& C.v_multiwindow_win32_test_modal_owner_destroy_count_value() == 1
-			&& C.v_multiwindow_win32_test_modal_destroy_sequence_value() > 0
-			&& C.v_multiwindow_win32_test_modal_destroy_sequence_value() < C.v_multiwindow_win32_test_modal_owner_destroy_sequence_value())
+				&& C.v_multiwindow_win32_test_modal_owner_destroy_attempt_count_value() == 1
+				&& C.v_multiwindow_win32_test_modal_destroy_count_value() == 1
+				&& C.v_multiwindow_win32_test_modal_owner_destroy_count_value() == 1
+				&& C.v_multiwindow_win32_test_modal_destroy_sequence_value() > 0
+				&& C.v_multiwindow_win32_test_modal_destroy_sequence_value() < C.v_multiwindow_win32_test_modal_owner_destroy_sequence_value())
 	}
 }
 
@@ -1307,9 +1307,9 @@ fn test_win32_native_modal_reenable_and_child_first_hwnd_destruction_red() {
 			C.v_multiwindow_test_win32_is_window(grandchild_hwnd) == 0)
 		win32_red_add(mut issues, 'modal owner was not re-enabled exactly once before destroy',
 			C.v_multiwindow_win32_test_modal_owner_enable_count_value() == 1
-			&& C.v_multiwindow_win32_test_modal_destroy_count_value() == 1
-			&& C.v_multiwindow_win32_test_modal_owner_enable_sequence_value() > 0
-			&& C.v_multiwindow_win32_test_modal_owner_enable_sequence_value() < C.v_multiwindow_win32_test_modal_destroy_sequence_value())
+				&& C.v_multiwindow_win32_test_modal_destroy_count_value() == 1
+				&& C.v_multiwindow_win32_test_modal_owner_enable_sequence_value() > 0
+				&& C.v_multiwindow_win32_test_modal_owner_enable_sequence_value() < C.v_multiwindow_win32_test_modal_destroy_sequence_value())
 		win32_red_add(mut issues, 'canonical lifecycle queue is not child-first',
 
 			destroyed_ids.len == 2 && destroyed_ids[0] == grandchild && destroyed_ids[1] == child)
@@ -1327,9 +1327,9 @@ fn test_win32_native_modal_reenable_and_child_first_hwnd_destruction_red() {
 			C.v_multiwindow_test_win32_is_enabled(owner_hwnd) == 0)
 		win32_red_add(mut issues, 'initial modal became visible before disabling its owner',
 			C.v_multiwindow_win32_test_modal_owner_disable_count_value() == 1
-			&& C.v_multiwindow_win32_test_modal_show_count_value() == 1
-			&& C.v_multiwindow_win32_test_modal_owner_disable_sequence_value() > 0
-			&& C.v_multiwindow_win32_test_modal_owner_disable_sequence_value() < C.v_multiwindow_win32_test_modal_show_sequence_value())
+				&& C.v_multiwindow_win32_test_modal_show_count_value() == 1
+				&& C.v_multiwindow_win32_test_modal_owner_disable_sequence_value() > 0
+				&& C.v_multiwindow_win32_test_modal_owner_disable_sequence_value() < C.v_multiwindow_win32_test_modal_show_sequence_value())
 		app.service_hide_window(initial_modal) or {
 			issues << 'initially visible modal hide failed: ${err.msg()}'
 		}
@@ -1379,7 +1379,7 @@ fn test_win32_native_modal_reenable_and_child_first_hwnd_destruction_red() {
 		if rollback_index := app.backend.win32.window_record_index(rollback_modal) {
 			win32_red_add(mut issues, 'failed modal rollback announced inactive state',
 				app.backend.win32.windows[rollback_index].modal_active
-				&& C.v_multiwindow_test_win32_is_enabled(rollback_owner_hwnd) == 0)
+					&& C.v_multiwindow_test_win32_is_enabled(rollback_owner_hwnd) == 0)
 		} else {
 			issues << 'failed modal rollback removed the native record'
 		}
@@ -1408,8 +1408,8 @@ fn test_win32_native_modal_reenable_and_child_first_hwnd_destruction_red() {
 		if teardown_index := app.backend.win32.window_record_index(teardown_modal) {
 			win32_red_add(mut issues, 'failed modal release partially destroyed native state',
 				app.backend.win32.windows[teardown_index].modal_active
-				&& C.v_multiwindow_test_win32_is_window(teardown_modal_hwnd) == 1
-				&& C.v_multiwindow_test_win32_is_enabled(teardown_owner_hwnd) == 0)
+					&& C.v_multiwindow_test_win32_is_window(teardown_modal_hwnd) == 1
+					&& C.v_multiwindow_test_win32_is_enabled(teardown_owner_hwnd) == 0)
 		} else {
 			issues << 'failed modal release removed the native teardown record'
 		}
@@ -1441,13 +1441,13 @@ fn test_win32_native_modal_reenable_and_child_first_hwnd_destruction_red() {
 		win32_red_add(mut issues,
 			'stop did not restore owner exactly once before final modal destroy',
 			C.v_multiwindow_win32_test_modal_owner_enable_count_value() == 1
-			&& C.v_multiwindow_win32_test_modal_destroy_count_value() == 1
-			&& C.v_multiwindow_win32_test_modal_owner_enable_sequence_value() > 0
-			&& C.v_multiwindow_win32_test_modal_owner_enable_sequence_value() < C.v_multiwindow_win32_test_modal_destroy_sequence_value())
+				&& C.v_multiwindow_win32_test_modal_destroy_count_value() == 1
+				&& C.v_multiwindow_win32_test_modal_owner_enable_sequence_value() > 0
+				&& C.v_multiwindow_win32_test_modal_owner_enable_sequence_value() < C.v_multiwindow_win32_test_modal_destroy_sequence_value())
 		win32_red_add(mut issues, 'stop left native owner/modal HWNDs alive',
 			C.v_multiwindow_test_win32_is_window(stop_owner_hwnd) == 0
-			&& C.v_multiwindow_test_win32_is_window(stop_modal_a_hwnd) == 0
-			&& C.v_multiwindow_test_win32_is_window(stop_modal_b_hwnd) == 0)
+				&& C.v_multiwindow_test_win32_is_window(stop_modal_a_hwnd) == 0
+				&& C.v_multiwindow_test_win32_is_window(stop_modal_b_hwnd) == 0)
 		if issues.len > 0 {
 			eprintln('PACKAGE2_RED_TERMINAL=behavioral_red:modal_child_first')
 		}
@@ -1695,24 +1695,24 @@ fn test_win32_native_monitor_dpi_display_change_and_generation_red() {
 					info.available)
 				win32_red_add(mut issues,
 					'native monitor ${native_name} geometry differs publicly', info.geometry.known && info.geometry.value == ServiceRect{
-					x:      x
-					y:      y
-					width:  width
-					height: height
-				})
+						x:      x
+						y:      y
+						width:  width
+						height: height
+					})
 				win32_red_add(mut issues,
 					'native monitor ${native_name} work area differs publicly', info.work_area.known && info.work_area.value == ServiceRect{
-					x:      work_x
-					y:      work_y
-					width:  work_width
-					height: work_height
-				})
+						x:      work_x
+						y:      work_y
+						width:  work_width
+						height: work_height
+					})
 				win32_red_add(mut issues,
 					'native monitor ${native_name} primary projection differs publicly', info.primary == if primary != 0 {
-					ServiceObservedBool.on
-				} else {
-					ServiceObservedBool.off
-				})
+						ServiceObservedBool.on
+					} else {
+						ServiceObservedBool.off
+					})
 			} else {
 				issues << 'native monitor ${native_name} has no matching public snapshot'
 			}
@@ -1739,7 +1739,7 @@ fn test_win32_native_monitor_dpi_display_change_and_generation_red() {
 		native_scale := f32(native_dpi) / 96.0
 		win32_red_add(mut issues, 'window DPI differs from native GetDpiForWindow',
 			dpi_monitor.scale.known && dpi_monitor.scale.value > native_scale - 0.01
-			&& dpi_monitor.scale.value < native_scale + 0.01)
+				&& dpi_monitor.scale.value < native_scale + 0.01)
 
 		mut before_left := 0
 		mut before_top := 0
@@ -1794,8 +1794,8 @@ fn test_win32_native_monitor_dpi_display_change_and_generation_red() {
 		assert C.v_multiwindow_test_win32_rect(hwnd, &dpi_left, &dpi_top, &dpi_right, &dpi_bottom) == 1
 		win32_red_add(mut issues, 'WM_DPICHANGED ignored the suggested RECT',
 			dpi_left == suggested_left && dpi_top == suggested_top
-			&& dpi_right == suggested_left + suggested_width
-			&& dpi_bottom == suggested_top + suggested_height)
+				&& dpi_right == suggested_left + suggested_width
+				&& dpi_bottom == suggested_top + suggested_height)
 		applied := ServiceRect{
 			x:      dpi_left
 			y:      dpi_top
@@ -1815,12 +1815,12 @@ fn test_win32_native_monitor_dpi_display_change_and_generation_red() {
 			metrics_event := dpi_metrics[0]
 			win32_red_add(mut issues, 'WM_DPICHANGED metrics sequence is not canonical',
 				metrics_event.sequence == metrics_event.service.sequence
-				&& metrics_event.service.sequence == metrics_event.service.metrics.metrics_sequence
-				&& metrics_event.service.state.sequence == metrics_event.sequence
-				&& metrics_event.sequence > before_dpi_state.sequence)
+					&& metrics_event.service.sequence == metrics_event.service.metrics.metrics_sequence
+					&& metrics_event.service.state.sequence == metrics_event.sequence
+					&& metrics_event.sequence > before_dpi_state.sequence)
 			win32_red_add(mut issues, 'WM_DPICHANGED metrics DPI differs from GetDpiForWindow',
 				metrics_event.service.metrics.dpi_scale > native_scale - 0.01
-				&& metrics_event.service.metrics.dpi_scale < native_scale + 0.01)
+					&& metrics_event.service.metrics.dpi_scale < native_scale + 0.01)
 			win32_red_add(mut issues, 'same-DPI WM_DPICHANGED changed event monitor membership',
 				metrics_event.service.state.monitor_ids == before_dpi_state.monitor_ids)
 		}
@@ -1855,8 +1855,8 @@ fn test_win32_native_monitor_dpi_display_change_and_generation_red() {
 			metrics_event := display_metrics[0]
 			win32_red_add(mut issues, 'WM_DISPLAYCHANGE metrics sequence is not canonical',
 				metrics_event.sequence == metrics_event.service.sequence
-				&& metrics_event.service.sequence == metrics_event.service.metrics.metrics_sequence
-				&& metrics_event.service.state.sequence == metrics_event.sequence)
+					&& metrics_event.service.sequence == metrics_event.service.metrics.metrics_sequence
+					&& metrics_event.service.state.sequence == metrics_event.sequence)
 		}
 		if display_monitors.len == 1 && display_metrics.len == 1 {
 			win32_red_add(mut issues, 'WM_DISPLAYCHANGE metrics preceded the monitor snapshot',
@@ -1945,10 +1945,9 @@ fn test_win32_native_monitor_dpi_display_change_and_generation_red() {
 				app.backend.win32.service_monitors == growth_backend_before)
 			win32_red_add(mut issues, 'raw snapshot growth mutated the public monitor registry',
 				app.services.monitors == growth_registry_before
-				&& app.service_monitor_ids()! == growth_ids_before)
+					&& app.service_monitor_ids()! == growth_ids_before)
 			growth_delivery := app.drain_queued_events()!
-			win32_red_add(mut issues, 'raw snapshot growth published a monitor event', growth_delivery.all(
-				it.kind != .service || it.service.kind != .monitor))
+			win32_red_add(mut issues, 'raw snapshot growth published a monitor event', growth_delivery.all(it.kind != .service || it.service.kind != .monitor))
 
 			refresh_backend_before := app.backend.win32.service_monitors.clone()
 			refresh_registry_before := app.services.monitors.clone()
@@ -1986,19 +1985,18 @@ fn test_win32_native_monitor_dpi_display_change_and_generation_red() {
 				app.backend.win32.service_monitors == refresh_backend_before)
 			win32_red_add(mut issues, 'failed display observation mutated the public registry',
 				app.services.monitors == refresh_registry_before
-				&& app.service_monitor_ids()! == refresh_ids_before)
+					&& app.service_monitor_ids()! == refresh_ids_before)
 			refresh_after_failure := app.backend.win32.windows[refresh_index]
 			win32_red_add(mut issues, 'failed display observation consumed pending retry state',
 				refresh_after_failure.pending_display_refresh
-				&& refresh_after_failure.service_refresh_sequence == pending_sequence)
+					&& refresh_after_failure.service_refresh_sequence == pending_sequence)
 			state_after_failure := app.service_window_state(window)!
 			win32_red_add(mut issues, 'failed display observation changed window membership',
 				state_after_failure.monitor_ids == refresh_state_before.monitor_ids)
 			failed_delivery := app.drain_queued_events()!
 			win32_red_add(mut issues,
-				'failed display observation published a partial monitor/metrics batch', failed_delivery.all(
-				it.kind != .service
-				|| (it.service.kind != .monitor && it.service.kind != .metrics)))
+				'failed display observation published a partial monitor/metrics batch', failed_delivery.all(it.kind != .service
+					|| (it.service.kind != .monitor && it.service.kind != .metrics)))
 			win32_red_poll(mut app, 4)!
 			win32_red_add(mut issues, 'Win32 service did not consume empty enumeration seam',
 				C.v_multiwindow_test_win32_monitor_enumeration_empty_calls() > 0)
@@ -2012,7 +2010,7 @@ fn test_win32_native_monitor_dpi_display_change_and_generation_red() {
 				empty_monitors.len == 1 && empty_monitors[0].service.monitors.len == 0)
 			win32_red_add(mut issues, 'unplug metrics payload retained window monitor membership',
 				empty_metrics.len == 1 && empty_metrics[0].service.state.monitor_ids.len == 0
-				&& empty_metrics[0].service.state.monitor_membership_observed)
+					&& empty_metrics[0].service.state.monitor_membership_observed)
 			win32_red_add(mut issues, 'unplug snapshot left available monitor ids',
 				app.service_monitor_ids()!.len == 0)
 			unplug_state := app.service_window_state(window)!
@@ -2040,7 +2038,7 @@ fn test_win32_native_monitor_dpi_display_change_and_generation_red() {
 				&& it.service.kind == .metrics && it.service.window == window)
 			win32_red_add(mut issues, 'native replay enumeration was not delivered exactly once',
 				replug_monitors.len == 1
-				&& replug_monitors[0].service.monitors.len == replug_snapshot.len)
+					&& replug_monitors[0].service.monitors.len == replug_snapshot.len)
 			replugged_ids := app.service_monitor_ids()!
 			mut replacement := ServiceMonitorInfo{}
 			mut replacement_found := false
@@ -2077,11 +2075,11 @@ fn test_win32_native_monitor_dpi_display_change_and_generation_red() {
 				win32_red_add(mut issues,
 					'replug metrics payload does not contain the replacement monitor id',
 					replug_metrics.len == 1
-					&& replacement.id in replug_metrics[0].service.state.monitor_ids)
+						&& replacement.id in replug_metrics[0].service.state.monitor_ids)
 			}
 			win32_red_add(mut issues, 'replug metrics payload retained the stale monitor id',
 				replug_metrics.len == 1
-				&& stale_target.id !in replug_metrics[0].service.state.monitor_ids)
+					&& stale_target.id !in replug_metrics[0].service.state.monitor_ids)
 			mut stale_id_rejected := false
 			_ = app.service_monitor_info(stale_target.id) or {
 				stale_id_rejected = err.msg() == err_service_request_stale
@@ -2107,26 +2105,25 @@ fn test_win32_native_monitor_dpi_display_change_and_generation_red() {
 			}
 			win32_red_add(mut issues, 'GetMonitorInfoW fault did not fail the whole snapshot',
 				snapshot_error != ''
-				&& C.v_multiwindow_test_win32_monitor_enumeration_info_failure_calls() == 1)
+					&& C.v_multiwindow_test_win32_monitor_enumeration_info_failure_calls() == 1)
 			win32_red_add(mut issues,
 				'GetMonitorInfoW failure mutated backend generations/availability',
 				app.backend.win32.service_monitors == info_failure_backend_before)
 			win32_red_add(mut issues, 'GetMonitorInfoW failure mutated the public registry',
 				app.services.monitors == info_failure_registry_before
-				&& app.service_monitor_ids()! == info_failure_ids_before)
+					&& app.service_monitor_ids()! == info_failure_ids_before)
 			info_failure_after := app.backend.win32.windows[refresh_index]
 			win32_red_add(mut issues, 'GetMonitorInfoW failure consumed pending retry state',
 				info_failure_after.pending_display_refresh
-				&& info_failure_after.service_refresh_sequence == info_failure_sequence)
+					&& info_failure_after.service_refresh_sequence == info_failure_sequence)
 			info_failure_state_after := app.service_window_state(window)!
 			win32_red_add(mut issues,
 				'GetMonitorInfoW failure falsely unplugged window membership',
 				info_failure_state_after.monitor_ids == info_failure_state_before.monitor_ids)
 			info_failure_delivery := app.drain_queued_events()!
 			win32_red_add(mut issues,
-				'GetMonitorInfoW failure published a partial unplug/metrics batch', info_failure_delivery.all(
-				it.kind != .service
-				|| (it.service.kind != .monitor && it.service.kind != .metrics)))
+				'GetMonitorInfoW failure published a partial unplug/metrics batch', info_failure_delivery.all(it.kind != .service
+					|| (it.service.kind != .monitor && it.service.kind != .metrics)))
 
 			replay_calls_before_retry :=
 				C.v_multiwindow_test_win32_monitor_enumeration_replay_calls()
@@ -2170,10 +2167,10 @@ fn test_win32_native_monitor_dpi_display_change_and_generation_red() {
 		win32_red_add(mut issues,
 			'zero-window raw geometry/workarea/DPI/primary change did not publish once',
 			zero_changed_monitors.len == 1 && zero_ids_after_change == zero_ids_before_change
-			&& zero_info_after_change.geometry != zero_info_before_change.geometry
-			&& zero_info_after_change.work_area != zero_info_before_change.work_area
-			&& zero_info_after_change.scale != zero_info_before_change.scale
-			&& zero_info_after_change.primary != zero_info_before_change.primary)
+				&& zero_info_after_change.geometry != zero_info_before_change.geometry
+				&& zero_info_after_change.work_area != zero_info_before_change.work_area
+				&& zero_info_after_change.scale != zero_info_before_change.scale
+				&& zero_info_after_change.primary != zero_info_before_change.primary)
 		_ = app.poll_events()!
 		zero_changed_no_spam := app.drain_queued_events()!.filter(it.kind == .service
 			&& it.service.kind == .monitor)
@@ -2186,7 +2183,7 @@ fn test_win32_native_monitor_dpi_display_change_and_generation_red() {
 		zero_monitors := zero_delivery.filter(it.kind == .service && it.service.kind == .monitor)
 		win32_red_add(mut issues, 'zero-window polling did not publish one unplug snapshot',
 			zero_monitors.len == 1 && zero_monitors[0].service.monitors.len == 0
-			&& app.service_monitor_ids()!.len == 0)
+				&& app.service_monitor_ids()!.len == 0)
 		zero_backend_before_failure := app.backend.win32.service_monitors.clone()
 		zero_raw_before_failure := app.backend.win32.service_monitor_raw.clone()
 		zero_registry_before_failure := app.services.monitors.clone()
@@ -2199,10 +2196,10 @@ fn test_win32_native_monitor_dpi_display_change_and_generation_red() {
 			app.backend.win32.service_monitor_poll_dirty)
 		win32_red_add(mut issues, 'zero-window monitor failure mutated backend state',
 			app.backend.win32.service_monitors == zero_backend_before_failure
-			&& win32_service_raw_monitor_snapshots_equal(app.backend.win32.service_monitor_raw, zero_raw_before_failure))
+				&& win32_service_raw_monitor_snapshots_equal(app.backend.win32.service_monitor_raw, zero_raw_before_failure))
 		win32_red_add(mut issues, 'zero-window monitor failure mutated public state',
 			app.services.monitors == zero_registry_before_failure
-			&& app.service_monitor_ids()!.len == 0)
+				&& app.service_monitor_ids()!.len == 0)
 
 		assert C.v_multiwindow_test_win32_monitor_enumeration_use_replay() == 1
 		_ = app.poll_events()!
@@ -2211,7 +2208,7 @@ fn test_win32_native_monitor_dpi_display_change_and_generation_red() {
 			&& it.service.kind == .monitor)
 		win32_red_add(mut issues, 'zero-window retry did not publish one complete snapshot',
 			zero_retry_monitors.len == 1 && app.service_monitor_ids()!.len == captured_zero_window
-			&& !app.backend.win32.service_monitor_poll_dirty)
+				&& !app.backend.win32.service_monitor_poll_dirty)
 		_ = app.poll_events()!
 		zero_no_spam := app.drain_queued_events()!.filter(it.kind == .service
 			&& it.service.kind == .monitor)
@@ -2231,18 +2228,18 @@ fn test_win32_native_monitor_dpi_display_change_and_generation_red() {
 		app.backend.win32.refresh_service_monitors_before_first_window()!
 		win32_red_add(mut issues, 'repeated pre-create refresh replaced the earliest sequence',
 			reverted_sequence != 0
-			&& app.backend.win32.service_monitor_pending_sequence == reverted_sequence
-			&& win32_service_raw_monitor_snapshots_equal(app.backend.win32.service_monitor_pending_raw, reverted_pending_raw))
+				&& app.backend.win32.service_monitor_pending_sequence == reverted_sequence
+				&& win32_service_raw_monitor_snapshots_equal(app.backend.win32.service_monitor_pending_raw, reverted_pending_raw))
 		C.v_multiwindow_test_win32_monitor_enumeration_use_empty()
 		app.backend.win32.refresh_service_monitors_before_first_window()!
 		win32_red_add(mut issues, 'pre-create refresh revert retained a duplicate staged plan',
 			app.backend.win32.service_monitor_pending_sequence == 0
-			&& app.backend.win32.service_monitor_pending.len == 0
-			&& app.backend.win32.service_monitor_pending_records.len == 0
-			&& app.backend.win32.service_monitor_pending_raw.len == 0
-			&& app.backend.win32.service_monitors == precreate_backend_before
-			&& win32_service_raw_monitor_snapshots_equal(app.backend.win32.service_monitor_raw, precreate_raw_before)
-			&& !app.backend.win32.service_monitor_poll_dirty)
+				&& app.backend.win32.service_monitor_pending.len == 0
+				&& app.backend.win32.service_monitor_pending_records.len == 0
+				&& app.backend.win32.service_monitor_pending_raw.len == 0
+				&& app.backend.win32.service_monitors == precreate_backend_before
+				&& win32_service_raw_monitor_snapshots_equal(app.backend.win32.service_monitor_raw, precreate_raw_before)
+				&& !app.backend.win32.service_monitor_poll_dirty)
 		precreate_revert_events := app.drain_queued_events()!.filter(it.kind == .service
 			&& (it.service.kind == .monitor || it.service.kind == .metrics))
 		win32_red_add(mut issues, 'pre-create refresh revert emitted a duplicate event',
@@ -2257,11 +2254,11 @@ fn test_win32_native_monitor_dpi_display_change_and_generation_red() {
 		app.backend.win32.refresh_service_monitors_before_first_window()!
 		win32_red_add(mut issues, 'restaged pre-create refresh replaced the earliest sequence',
 			precreate_sequence != 0
-			&& app.backend.win32.service_monitor_pending_sequence == precreate_sequence)
+				&& app.backend.win32.service_monitor_pending_sequence == precreate_sequence)
 		win32_red_add(mut issues, 'restaged pre-create refresh changed the staged snapshot',
 			app.backend.win32.service_monitor_pending == precreate_pending_before
-			&& app.backend.win32.service_monitor_pending_records == precreate_pending_records_before
-			&& win32_service_raw_monitor_snapshots_equal(app.backend.win32.service_monitor_pending_raw, precreate_pending_raw_before))
+				&& app.backend.win32.service_monitor_pending_records == precreate_pending_records_before
+				&& win32_service_raw_monitor_snapshots_equal(app.backend.win32.service_monitor_pending_raw, precreate_pending_raw_before))
 		recreated := app.create_window(title: 'Win32 monitor pre-create refresh')!
 		recreated_index := app.backend.win32.window_record_index(recreated) or {
 			assert false, 'pre-create refresh window has no backend record'
@@ -2269,18 +2266,18 @@ fn test_win32_native_monitor_dpi_display_change_and_generation_red() {
 		}
 		win32_red_add(mut issues, 'pre-create refresh mutated the published backend snapshot',
 			app.backend.win32.service_monitors == precreate_backend_before
-			&& win32_service_raw_monitor_snapshots_equal(app.backend.win32.service_monitor_raw, precreate_raw_before))
+				&& win32_service_raw_monitor_snapshots_equal(app.backend.win32.service_monitor_raw, precreate_raw_before))
 		win32_red_add(mut issues, 'pre-create refresh did not retain the complete staged plan',
 			app.backend.win32.service_monitor_pending_records.any(it.available)
-			&& app.backend.win32.service_monitor_pending_raw.len > 0)
+				&& app.backend.win32.service_monitor_pending_raw.len > 0)
 		win32_red_add(mut issues, 'pre-create refresh published before native polling',
 			app.service_monitor_ids()!.len == 0
-			&& app.backend.win32.service_monitor_pending_sequence == precreate_sequence)
+				&& app.backend.win32.service_monitor_pending_sequence == precreate_sequence)
 		precreate_state := app.service_window_state(recreated)!
 		win32_red_add(mut issues, 'pre-create state exposed unresolved monitor membership',
 			win32_red_monitor_membership_is_public(app, precreate_state)
-			&& precreate_state.monitor_ids.len == 0
-			&& app.backend.win32.windows[recreated_index].service_monitor_ids.len == 0)
+				&& precreate_state.monitor_ids.len == 0
+				&& app.backend.win32.windows[recreated_index].service_monitor_ids.len == 0)
 		assert C.v_multiwindow_test_win32_monitor_enumeration_use_info_failure() == 1
 		mut precreate_snapshot_error := ''
 		if _ := app.backend.win32.collect_service_refresh_events() {
@@ -2292,12 +2289,12 @@ fn test_win32_native_monitor_dpi_display_change_and_generation_red() {
 			precreate_snapshot_error != '')
 		win32_red_add(mut issues, 'failed staged snapshot consumed pending retry state',
 			app.backend.win32.service_monitor_pending_sequence == precreate_sequence
-			&& app.backend.win32.service_monitor_pending == precreate_pending_before
-			&& app.backend.win32.service_monitor_pending_records == precreate_pending_records_before
-			&& win32_service_raw_monitor_snapshots_equal(app.backend.win32.service_monitor_pending_raw, precreate_pending_raw_before)
-			&& app.backend.win32.service_monitors == precreate_backend_before
-			&& win32_service_raw_monitor_snapshots_equal(app.backend.win32.service_monitor_raw, precreate_raw_before)
-			&& app.backend.win32.service_monitor_poll_dirty)
+				&& app.backend.win32.service_monitor_pending == precreate_pending_before
+				&& app.backend.win32.service_monitor_pending_records == precreate_pending_records_before
+				&& win32_service_raw_monitor_snapshots_equal(app.backend.win32.service_monitor_pending_raw, precreate_pending_raw_before)
+				&& app.backend.win32.service_monitors == precreate_backend_before
+				&& win32_service_raw_monitor_snapshots_equal(app.backend.win32.service_monitor_raw, precreate_raw_before)
+				&& app.backend.win32.service_monitor_poll_dirty)
 		assert C.v_multiwindow_test_win32_monitor_enumeration_use_replay() == 1
 
 		precreate_record := app.backend.win32.windows[recreated_index]
@@ -2316,26 +2313,26 @@ fn test_win32_native_monitor_dpi_display_change_and_generation_red() {
 		win32_red_add(mut issues,
 			'pre-create staged observation fault did not reach native authority',
 			precreate_observation_error != '' && precreate_original_data == precreate_expected_data
-			&& precreate_replaced_data == precreate_replacement_data)
+				&& precreate_replaced_data == precreate_replacement_data)
 		win32_red_add(mut issues, 'failed staged observation mutated published backend state',
 			app.backend.win32.service_monitors == precreate_backend_before
-			&& win32_service_raw_monitor_snapshots_equal(app.backend.win32.service_monitor_raw, precreate_raw_before))
+				&& win32_service_raw_monitor_snapshots_equal(app.backend.win32.service_monitor_raw, precreate_raw_before))
 		win32_red_add(mut issues, 'failed staged observation consumed pending retry state',
 			app.backend.win32.service_monitor_pending_sequence == precreate_sequence
-			&& app.backend.win32.service_monitor_pending == precreate_pending_before
-			&& app.backend.win32.service_monitor_pending_records == precreate_pending_records_before
-			&& win32_service_raw_monitor_snapshots_equal(app.backend.win32.service_monitor_pending_raw, precreate_pending_raw_before)
-			&& app.backend.win32.service_monitor_poll_dirty)
+				&& app.backend.win32.service_monitor_pending == precreate_pending_before
+				&& app.backend.win32.service_monitor_pending_records == precreate_pending_records_before
+				&& win32_service_raw_monitor_snapshots_equal(app.backend.win32.service_monitor_pending_raw, precreate_pending_raw_before)
+				&& app.backend.win32.service_monitor_poll_dirty)
 		precreate_state_after_failure := app.service_window_state(recreated)!
 		win32_red_add(mut issues, 'failed staged observation exposed unresolved membership',
 			win32_red_monitor_membership_is_public(app, precreate_state_after_failure)
-			&& precreate_state_after_failure.monitor_ids == precreate_state.monitor_ids)
+				&& precreate_state_after_failure.monitor_ids == precreate_state.monitor_ids)
 		assert C.v_multiwindow_test_win32_monitor_enumeration_use_changed() == 1
 		assert C.v_multiwindow_test_win32_emit_display_change(precreate_record.hwnd) == 1
 		precreate_interleave_sequence := precreate_record.service_refresh_sequence
 		win32_red_add(mut issues, 'post-stage display refresh did not retain a later sequence',
 			precreate_record.pending_display_refresh
-			&& precreate_interleave_sequence > precreate_sequence)
+				&& precreate_interleave_sequence > precreate_sequence)
 		_ = app.poll_events()!
 		precreate_delivery := app.drain_queued_events()!
 		precreate_monitors := precreate_delivery.filter(it.kind == .service
@@ -2354,37 +2351,37 @@ fn test_win32_native_monitor_dpi_display_change_and_generation_red() {
 		}
 		win32_red_add(mut issues, 'pre-create refresh did not publish exactly once',
 			precreate_monitors.len == 1 && app.service_monitor_ids()!.len == captured_zero_window
-			&& app.backend.win32.service_monitor_pending_sequence == 0
-			&& app.backend.win32.service_monitor_pending.len == 0
-			&& app.backend.win32.service_monitor_pending_records.len == 0
-			&& app.backend.win32.service_monitor_pending_raw.len == 0)
+				&& app.backend.win32.service_monitor_pending_sequence == 0
+				&& app.backend.win32.service_monitor_pending.len == 0
+				&& app.backend.win32.service_monitor_pending_records.len == 0
+				&& app.backend.win32.service_monitor_pending_raw.len == 0)
 		win32_red_add(mut issues, 'pre-create monitor and metrics did not publish atomically',
 			precreate_metrics.len == 1 && precreate_monitor_position >= 0
-			&& precreate_metrics_position > precreate_monitor_position
-			&& precreate_monitors[0].service.sequence < precreate_metrics[0].service.sequence
-			&& precreate_pending_before.len > 0
-			&& precreate_monitors[0].service.monitors.len == precreate_pending_before.len
-			&& precreate_monitors[0].service.monitors[0].geometry != precreate_pending_before[0].geometry)
+				&& precreate_metrics_position > precreate_monitor_position
+				&& precreate_monitors[0].service.sequence < precreate_metrics[0].service.sequence
+				&& precreate_pending_before.len > 0
+				&& precreate_monitors[0].service.monitors.len == precreate_pending_before.len
+				&& precreate_monitors[0].service.monitors[0].geometry != precreate_pending_before[0].geometry)
 		precreate_record_after_stage := app.backend.win32.windows[recreated_index]
 		win32_red_add(mut issues, 'coalesced staged commit retained display refresh debt',
 			!precreate_record_after_stage.pending_display_refresh
-			&& precreate_record_after_stage.service_refresh_sequence == 0)
+				&& precreate_record_after_stage.service_refresh_sequence == 0)
 		precreate_state_after_poll := app.service_window_state(recreated)!
 		win32_red_add(mut issues, 'pre-create poll did not publish resolvable fresh membership',
 			precreate_state_after_poll.monitor_ids.len > 0
-			&& win32_red_monitor_membership_is_public(app, precreate_state_after_poll)
-			&& precreate_state_after_poll.monitor_ids == app.backend.win32.windows[recreated_index].service_monitor_ids)
+				&& win32_red_monitor_membership_is_public(app, precreate_state_after_poll)
+				&& precreate_state_after_poll.monitor_ids == app.backend.win32.windows[recreated_index].service_monitor_ids)
 		changed_info := app.service_monitor_info(app.service_monitor_ids()![0])!
 		win32_red_add(mut issues, 'later display refresh was not coalesced into the first batch',
 			precreate_pending_before.len > 0
-			&& changed_info.geometry != precreate_pending_before[0].geometry
-			&& changed_info.work_area != precreate_pending_before[0].work_area
-			&& changed_info.scale != precreate_pending_before[0].scale
-			&& changed_info.primary != precreate_pending_before[0].primary)
+				&& changed_info.geometry != precreate_pending_before[0].geometry
+				&& changed_info.work_area != precreate_pending_before[0].work_area
+				&& changed_info.scale != precreate_pending_before[0].scale
+				&& changed_info.primary != precreate_pending_before[0].primary)
 		_ = app.poll_events()!
 		precreate_no_spam := app.drain_queued_events()!.filter(it.kind == .service
 			&& (it.service.kind == .monitor || (it.service.kind == .metrics
-			&& it.service.window == recreated)))
+				&& it.service.window == recreated)))
 		win32_red_add(mut issues,
 			'unchanged pre-create snapshot emitted duplicate monitor/metrics events',
 			precreate_no_spam.len == 0)
@@ -2414,8 +2411,8 @@ fn test_win32_native_monitor_dpi_display_change_and_generation_red() {
 		}))
 		win32_red_add(mut issues, 'net-zero fixture did not preserve native sequence order',
 			net_zero_sequence != 0 && net_zero_refresh_sequence > net_zero_sequence
-			&& net_zero_later_sequence > net_zero_refresh_sequence
-			&& net_zero_record.pending_display_refresh && net_zero_record.pending_dpi_refresh)
+				&& net_zero_later_sequence > net_zero_refresh_sequence
+				&& net_zero_record.pending_display_refresh && net_zero_record.pending_dpi_refresh)
 		net_zero_replacement_data := unsafe { voidptr(&app.backend.win32) }
 		net_zero_expected_data := unsafe { voidptr(net_zero_record) }
 		net_zero_original_data := C.v_multiwindow_test_win32_swap_user_data(net_zero_record.hwnd,
@@ -2430,20 +2427,20 @@ fn test_win32_native_monitor_dpi_display_change_and_generation_red() {
 			net_zero_original_data)
 		win32_red_add(mut issues, 'net-zero observation fault did not reach native authority',
 			net_zero_observation_error != '' && net_zero_original_data == net_zero_expected_data
-			&& net_zero_replaced_data == net_zero_replacement_data)
+				&& net_zero_replaced_data == net_zero_replacement_data)
 		net_zero_record_after_failure := app.backend.win32.windows[net_zero_index]
 		win32_red_add(mut issues, 'net-zero observation fault consumed retry authority',
 			app.backend.win32.service_monitor_pending_sequence == net_zero_sequence
-			&& app.backend.win32.service_monitor_pending.len > 0
-			&& app.backend.win32.service_monitor_pending_records.len > 0
-			&& app.backend.win32.service_monitor_pending_raw.len > 0
-			&& net_zero_record_after_failure.pending_display_refresh
-			&& net_zero_record_after_failure.pending_dpi_refresh
-			&& net_zero_record_after_failure.service_refresh_sequence == net_zero_refresh_sequence
-			&& app.backend.win32.service_monitor_poll_dirty)
+				&& app.backend.win32.service_monitor_pending.len > 0
+				&& app.backend.win32.service_monitor_pending_records.len > 0
+				&& app.backend.win32.service_monitor_pending_raw.len > 0
+				&& net_zero_record_after_failure.pending_display_refresh
+				&& net_zero_record_after_failure.pending_dpi_refresh
+				&& net_zero_record_after_failure.service_refresh_sequence == net_zero_refresh_sequence
+				&& app.backend.win32.service_monitor_poll_dirty)
 		net_zero_failure_delivery := app.drain_queued_events()!.filter(it.kind == .service
 			&& (it.service.kind == .monitor || (it.service.kind == .metrics
-			&& it.service.window == net_zero_window)))
+				&& it.service.window == net_zero_window)))
 		win32_red_add(mut issues, 'net-zero observation fault published a partial batch',
 			net_zero_failure_delivery.len == 0)
 		_ = app.poll_events()!
@@ -2469,24 +2466,24 @@ fn test_win32_native_monitor_dpi_display_change_and_generation_red() {
 		win32_red_add(mut issues,
 			'net-zero staged refresh emitted a monitor event or lost the metrics debt',
 			net_zero_monitors.len == 0 && net_zero_metrics.len == 1 && net_zero_later.len == 1
-			&& net_zero_metrics_position >= 0 && net_zero_later_position > net_zero_metrics_position)
+				&& net_zero_metrics_position >= 0 && net_zero_later_position > net_zero_metrics_position)
 		net_zero_record_after_poll := app.backend.win32.windows[net_zero_index]
 		win32_red_add(mut issues, 'net-zero staged refresh retained native refresh debt',
 			app.backend.win32.service_monitor_pending_sequence == 0
-			&& app.backend.win32.service_monitor_pending.len == 0
-			&& app.backend.win32.service_monitor_pending_records.len == 0
-			&& app.backend.win32.service_monitor_pending_raw.len == 0
-			&& !net_zero_record_after_poll.pending_display_refresh
-			&& !net_zero_record_after_poll.pending_dpi_refresh
-			&& !net_zero_record_after_poll.pending_membership_refresh
-			&& net_zero_record_after_poll.service_refresh_sequence == 0)
+				&& app.backend.win32.service_monitor_pending.len == 0
+				&& app.backend.win32.service_monitor_pending_records.len == 0
+				&& app.backend.win32.service_monitor_pending_raw.len == 0
+				&& !net_zero_record_after_poll.pending_display_refresh
+				&& !net_zero_record_after_poll.pending_dpi_refresh
+				&& !net_zero_record_after_poll.pending_membership_refresh
+				&& net_zero_record_after_poll.service_refresh_sequence == 0)
 		net_zero_state := app.service_window_state(net_zero_window)!
 		win32_red_add(mut issues, 'net-zero refresh exposed unresolved monitor membership', win32_red_monitor_membership_is_public(app,
 			net_zero_state))
 		_ = app.poll_events()!
 		net_zero_no_spam := app.drain_queued_events()!.filter(it.kind == .service
 			&& (it.service.kind == .monitor || (it.service.kind == .metrics
-			&& it.service.window == net_zero_window)))
+				&& it.service.window == net_zero_window)))
 		win32_red_add(mut issues, 'net-zero staged refresh emitted duplicate service events',
 			net_zero_no_spam.len == 0)
 		if issues.len > 0 {
@@ -2516,7 +2513,7 @@ fn test_win32_native_cf_unicodetext_roundtrip_exact_limit_and_terminal_queue_red
 			}
 			win32_red_add(mut issues, '${operation} capability is not available asynchronous',
 				capability.support == .available && capability.asynchronous
-				&& !capability.requires_user_action && !capability.state_observable)
+					&& !capability.requires_user_action && !capability.state_observable)
 		}
 		mut last_sequence := u64(0)
 
@@ -2540,8 +2537,8 @@ fn test_win32_native_cf_unicodetext_roundtrip_exact_limit_and_terminal_queue_red
 				win32_red_add(mut issues,
 					'external-to-native clipboard did not produce one exact ready envelope',
 					terminals.len == 1
-					&& win32_red_clipboard_envelope_matches(terminals[0], read_request, window, .clipboard_read, .ready)
-					&& terminals[0].service.clipboard.text == external)
+						&& win32_red_clipboard_envelope_matches(terminals[0], read_request, window, .clipboard_read, .ready)
+						&& terminals[0].service.clipboard.text == external)
 				if terminals.len == 1 {
 					last_sequence = terminals[0].sequence
 				}
@@ -2568,8 +2565,8 @@ fn test_win32_native_cf_unicodetext_roundtrip_exact_limit_and_terminal_queue_red
 			win32_red_add(mut issues,
 				'native-to-external clipboard did not produce one exact ready envelope',
 				terminals.len == 1
-				&& win32_red_clipboard_envelope_matches(terminals[0], write_request, window, .clipboard_write, .ready)
-				&& terminals[0].sequence > last_sequence)
+					&& win32_red_clipboard_envelope_matches(terminals[0], write_request, window, .clipboard_write, .ready)
+					&& terminals[0].sequence > last_sequence)
 			win32_red_add(mut issues, 'CF_UNICODETEXT does not equal the public UTF-16 payload', C.v_multiwindow_test_win32_clipboard_equals(written.to_wide(),
 				written_units) == 1)
 			if terminals.len == 1 {
@@ -2590,7 +2587,7 @@ fn test_win32_native_cf_unicodetext_roundtrip_exact_limit_and_terminal_queue_red
 			exact_units * 2 == usize(win32_red_clipboard_max_bytes))
 		win32_red_add(mut issues, 'exact mixed payload exceeds the independent UTF-8 bound',
 			exact.len + 1 <= win32_red_clipboard_max_bytes && exact.contains('漢')
-			&& exact.contains('🙂'))
+				&& exact.contains('🙂'))
 		exact_request := app.service_set_clipboard_text(window, exact) or {
 			issues << 'exact clipboard limit failed: ${err.msg()}'
 			ServiceRequestId{}
@@ -2601,8 +2598,8 @@ fn test_win32_native_cf_unicodetext_roundtrip_exact_limit_and_terminal_queue_red
 			terminals := win32_red_clipboard_events(delivered, exact_request)
 			win32_red_add(mut issues, 'exact clipboard limit lacks one ordered ready envelope',
 				terminals.len == 1
-				&& win32_red_clipboard_envelope_matches(terminals[0], exact_request, window, .clipboard_write, .ready)
-				&& terminals[0].sequence > last_sequence)
+					&& win32_red_clipboard_envelope_matches(terminals[0], exact_request, window, .clipboard_write, .ready)
+					&& terminals[0].sequence > last_sequence)
 			win32_red_add(mut issues, 'exact mixed BMP/astral payload lost integrity', C.v_multiwindow_test_win32_clipboard_equals(exact.to_wide(),
 				exact_units) == 1)
 			if terminals.len == 1 {
@@ -2627,9 +2624,9 @@ fn test_win32_native_cf_unicodetext_roundtrip_exact_limit_and_terminal_queue_red
 			win32_red_add(mut issues,
 				'exact 16 MiB NUL-at-boundary payload did not parse with full integrity',
 				terminals.len == 1
-				&& win32_red_clipboard_envelope_matches(terminals[0], exact_read_request, window, .clipboard_read, .ready)
-				&& terminals[0].sequence > last_sequence
-				&& terminals[0].service.clipboard.text == exact)
+					&& win32_red_clipboard_envelope_matches(terminals[0], exact_read_request, window, .clipboard_read, .ready)
+					&& terminals[0].sequence > last_sequence
+					&& terminals[0].service.clipboard.text == exact)
 			if terminals.len == 1 {
 				last_sequence = terminals[0].sequence
 			}
@@ -2641,8 +2638,7 @@ fn test_win32_native_cf_unicodetext_roundtrip_exact_limit_and_terminal_queue_red
 				win32_red_events_are_globally_ordered(late_delivery))
 		}
 		oversized := exact + 'A'
-		win32_red_add(mut issues, 'one-unit-over payload is not exactly one UTF-16 unit over', win32_red_utf16_units(oversized) * 2 == usize(
-			win32_red_clipboard_max_bytes + 2))
+		win32_red_add(mut issues, 'one-unit-over payload is not exactly one UTF-16 unit over', win32_red_utf16_units(oversized) * 2 == usize(win32_red_clipboard_max_bytes + 2))
 		win32_red_add(mut issues, 'one-unit-over payload does not isolate the UTF-16 bound',
 
 			oversized.len + 1 <= win32_red_clipboard_max_bytes)
@@ -2654,7 +2650,7 @@ fn test_win32_native_cf_unicodetext_roundtrip_exact_limit_and_terminal_queue_red
 			oversized_error == err_clipboard_capacity)
 		win32_red_add(mut issues, 'over-limit write admitted a core or native pending request',
 			app.services.pending.len == core_pending_before
-			&& C.v_multiwindow_win32_service_test_clipboard_pending_count(backend) == native_pending_before)
+				&& C.v_multiwindow_win32_service_test_clipboard_pending_count(backend) == native_pending_before)
 		app.poll_events() or {
 			win32_w4_add_infra(mut issues, 'over-limit adjacent poll failed: ${err.msg()}')
 		}
@@ -2715,9 +2711,9 @@ fn test_win32_native_clipboard_malformed_read_bounds_red() {
 			win32_red_add(mut issues,
 				'malformed fixture ${kind}: public path did not publish one empty failed envelope',
 				terminals.len == 1
-				&& win32_red_clipboard_envelope_matches(terminals[0], request, window, .clipboard_read, .failed)
-				&& terminals[0].service.clipboard.text == ''
-				&& terminals[0].service.clipboard.error != '')
+					&& win32_red_clipboard_envelope_matches(terminals[0], request, window, .clipboard_read, .failed)
+					&& terminals[0].service.clipboard.text == ''
+					&& terminals[0].service.clipboard.error != '')
 			win32_red_add(mut issues,
 				'malformed fixture ${kind}: native request survived terminal',
 				C.v_multiwindow_win32_service_test_clipboard_pending_count(backend) == 0)
@@ -2729,7 +2725,7 @@ fn test_win32_native_clipboard_malformed_read_bounds_red() {
 				issues)
 			win32_red_add(mut issues,
 				'malformed fixture ${kind}: duplicate late clipboard terminal', win32_red_clipboard_events(late_delivery,
-				request).len == 0)
+					request).len == 0)
 			win32_red_add(mut issues,
 				'malformed fixture ${kind}: late events lost global ordering',
 				win32_red_events_are_globally_ordered(late_delivery))
@@ -2775,9 +2771,9 @@ fn test_win32_native_clipboard_exact_utf8_limit_and_over_red() {
 			exact_terminals := win32_red_clipboard_events(exact_delivery, exact_request)
 			win32_red_add(mut issues, 'exact UTF-8 write did not publish one ready envelope',
 				exact_terminals.len == 1
-				&& win32_red_clipboard_envelope_matches(exact_terminals[0], exact_request, window, .clipboard_write, .ready)
-				&& exact_terminals[0].service.clipboard.text == ''
-				&& exact_terminals[0].service.clipboard.error == '')
+					&& win32_red_clipboard_envelope_matches(exact_terminals[0], exact_request, window, .clipboard_write, .ready)
+					&& exact_terminals[0].service.clipboard.text == ''
+					&& exact_terminals[0].service.clipboard.error == '')
 			win32_red_add(mut issues, 'exact UTF-8 write lost global ordering',
 				win32_red_events_are_globally_ordered(exact_delivery))
 			win32_red_add(mut issues, 'exact UTF-8 write lost CF_UNICODETEXT integrity', C.v_multiwindow_test_win32_clipboard_equals(exact.to_wide(),
@@ -2933,7 +2929,7 @@ fn test_win32_native_clipboard_contention_retry_success_red() {
 			terminals := win32_red_clipboard_events(delivered, request)
 			win32_red_add(mut issues, 'contention success did not publish one ready envelope',
 				terminals.len == 1
-				&& win32_red_clipboard_envelope_matches(terminals[0], request, window, .clipboard_write, .ready))
+					&& win32_red_clipboard_envelope_matches(terminals[0], request, window, .clipboard_write, .ready))
 			win32_red_add(mut issues, 'contention success lost clipboard payload integrity', C.v_multiwindow_test_win32_clipboard_equals(expected_wide,
 				expected_units) == 1)
 			attempts_after_success := C.v_multiwindow_win32_service_test_clipboard_attempts(backend)
@@ -2968,7 +2964,7 @@ fn test_win32_native_clipboard_contention_retry_success_red() {
 				fault_terminals := win32_red_clipboard_events(fault_delivery, fault_request)
 				win32_red_add(mut issues, 'pre-transfer fault did not publish one failed envelope',
 					fault_terminals.len == 1
-					&& win32_red_clipboard_envelope_matches(fault_terminals[0], fault_request, window, .clipboard_write, .failed))
+						&& win32_red_clipboard_envelope_matches(fault_terminals[0], fault_request, window, .clipboard_write, .failed))
 				win32_red_add(mut issues, 'pre-transfer fault did not attempt exactly once',
 					C.v_multiwindow_win32_service_test_clipboard_attempts(backend) == 1)
 				win32_red_add(mut issues,
@@ -2999,13 +2995,13 @@ fn test_win32_native_clipboard_contention_retry_success_red() {
 				win32_red_add(mut issues,
 					'pre-transfer fault changed allocation/free/transfer counters after terminal',
 					C.v_multiwindow_win32_service_test_clipboard_global_allocations(backend) == 1
-					&& C.v_multiwindow_win32_service_test_clipboard_global_frees(backend) == 1
-					&& C.v_multiwindow_win32_service_test_clipboard_global_transfers(backend) == 0
-					&& C.v_multiwindow_win32_service_test_clipboard_owned_globals(backend) == 0
-					&& C.v_multiwindow_win32_service_test_clipboard_sequence_allocations(backend) == 1)
+						&& C.v_multiwindow_win32_service_test_clipboard_global_frees(backend) == 1
+						&& C.v_multiwindow_win32_service_test_clipboard_global_transfers(backend) == 0
+						&& C.v_multiwindow_win32_service_test_clipboard_owned_globals(backend) == 0
+						&& C.v_multiwindow_win32_service_test_clipboard_sequence_allocations(backend) == 1)
 				win32_red_add(mut issues,
 					'pre-transfer late poll mutated the real clipboard sentinel', C.v_multiwindow_test_win32_clipboard_equals(fault_sentinel_wide,
-					win32_red_utf16_units(fault_sentinel)) == 1)
+						win32_red_utf16_units(fault_sentinel)) == 1)
 			}
 		}
 		win32_w4_epilogue('clipboard_contention_retry', 'Win32 clipboard contention/HGLOBAL RED',
@@ -3105,7 +3101,7 @@ fn test_win32_native_clipboard_fifo_head_only_red() {
 				C.v_multiwindow_win32_service_test_clipboard_pending_deadline_ns(backend, 0)
 			win32_red_add(mut issues, 'FIFO tail deadline did not start at activation',
 				second_deadline == activation_now_ns + i64(2_000_000_000)
-				&& second_deadline > first_deadline)
+					&& second_deadline > first_deadline)
 			win32_red_add(mut issues, 'FIFO head did not queue exactly one terminal', win32_red_clipboard_events(app.events,
 				first).len == 1)
 			win32_red_add(mut issues, 'FIFO tail queued a terminal before its first attempt', win32_red_clipboard_events(app.events,
@@ -3284,14 +3280,14 @@ fn test_win32_native_clipboard_real_wm_close_global_order_red() {
 						first, window, .clipboard_write, .ready))
 					win32_red_add(mut issues, 'real WM_CLOSE lifecycle event was not second',
 						delivered[1].kind == .lifecycle
-						&& delivered[1].lifecycle.kind == .window_close_requested
-						&& delivered[1].lifecycle.window_id == window)
+							&& delivered[1].lifecycle.kind == .window_close_requested
+							&& delivered[1].lifecycle.window_id == window)
 					win32_red_add(mut issues, 'post-WM_CLOSE clipboard terminal was not third', win32_red_clipboard_envelope_matches(delivered[2],
 						second, window, .clipboard_write, .ready))
 					win32_red_add(mut issues,
 						'clipboard/lifecycle/clipboard sequences were not strictly increasing',
 						delivered[0].sequence < delivered[1].sequence
-						&& delivered[1].sequence < delivered[2].sequence)
+							&& delivered[1].sequence < delivered[2].sequence)
 				}
 				win32_red_add(mut issues, 'pre-WM_CLOSE core terminal survived delivery', win32_red_core_pending(app,
 					first).len == 0)
@@ -3354,7 +3350,7 @@ fn win32_w4_clipboard_timeout_case(test_now_ns i64) ![]string {
 			attempts_after_retry := C.v_multiwindow_win32_service_test_clipboard_attempts(backend)
 			win32_red_add(mut issues, 'occupied read poll performed more than one attempt',
 				attempts_after_retry - attempts_before_retry >= 0
-				&& attempts_after_retry - attempts_before_retry <= 1)
+					&& attempts_after_retry - attempts_before_retry <= 1)
 			win32_red_add(mut issues, 'occupied read used a non-window clipboard owner',
 				C.v_multiwindow_win32_service_test_clipboard_last_open_owner(backend) == hwnd)
 			win32_red_add(mut issues, 'occupied read retry changed its deadline', C.v_multiwindow_win32_service_test_clipboard_pending_deadline_ns(backend,
@@ -3396,8 +3392,8 @@ fn win32_w4_clipboard_timeout_case(test_now_ns i64) ![]string {
 			timeout_events := win32_red_clipboard_events(timeout_delivery, request)
 			win32_red_add(mut issues, 'timeout did not publish one exact failed envelope',
 				timeout_events.len == 1
-				&& win32_red_clipboard_envelope_matches(timeout_events[0], request, window, .clipboard_read, .failed)
-				&& timeout_events[0].service.clipboard.error == err_clipboard_timeout)
+					&& win32_red_clipboard_envelope_matches(timeout_events[0], request, window, .clipboard_read, .failed)
+					&& timeout_events[0].service.clipboard.error == err_clipboard_timeout)
 			late_timeout := win32_w4_poll_collect(mut app, 4, 'timeout late', mut issues)
 			win32_red_add(mut issues, 'timed-out read was attempted again', C.v_multiwindow_win32_service_test_clipboard_attempts(backend) ==
 				attempts_before_timeout + 1)
@@ -3465,7 +3461,7 @@ fn win32_w4_clipboard_ready_storage_case(test_now_ns i64) ![]string {
 		win32_red_add(mut issues,
 			'window teardown released an undrained ready-read storage charge',
 			app.backend.win32.clipboard_pending_bytes == read_charge
-			&& win32_red_core_pending(app, read).len == 1)
+				&& win32_red_core_pending(app, read).len == 1)
 
 		request_before_capacity := app.services.next_request
 		token_before_capacity := app.next_event_delivery_token
@@ -3476,10 +3472,10 @@ fn win32_w4_clipboard_ready_storage_case(test_now_ns i64) ![]string {
 		win32_red_add(mut issues,
 			'capacity rejection rewound its safe request-id gap or mutated delivery authority',
 			app.services.next_request == request_before_capacity + 1
-			&& app.next_event_delivery_token == token_before_capacity)
+				&& app.next_event_delivery_token == token_before_capacity)
 		win32_red_add(mut issues, 'capacity rejection changed native/core queue cardinality',
 			C.v_multiwindow_win32_service_test_clipboard_pending_count(backend) == 0
-			&& win32_red_core_pending(app, read).len == 1)
+				&& win32_red_core_pending(app, read).len == 1)
 
 		write_text := 'small FIFO write'
 		write_bytes := win32_red_utf16_units(write_text) * usize(2)
@@ -3507,8 +3503,8 @@ fn win32_w4_clipboard_ready_storage_case(test_now_ns i64) ![]string {
 			clipboard := delivered.filter(it.kind == .service && it.service.kind == .clipboard)
 			win32_red_add(mut issues, 'retained-ready delivery lost global FIFO order',
 				clipboard.len == 2 && clipboard[0].service.clipboard.id == read
-				&& clipboard[1].service.clipboard.id == write
-				&& clipboard[0].sequence < clipboard[1].sequence)
+					&& clipboard[1].service.clipboard.id == write
+					&& clipboard[0].sequence < clipboard[1].sequence)
 			win32_red_add(mut issues, 'core drain did not release retained read capacity',
 				app.backend.win32.clipboard_pending_bytes == 0)
 		}
@@ -3526,7 +3522,7 @@ fn win32_w4_clipboard_ready_storage_case(test_now_ns i64) ![]string {
 			win32_red_add(mut issues,
 				'destroy-before-poll did not release the native read reservation',
 				app.backend.win32.clipboard_pending_bytes == 0
-				&& C.v_multiwindow_win32_service_test_clipboard_pending_count(backend) == 0)
+					&& C.v_multiwindow_win32_service_test_clipboard_pending_count(backend) == 0)
 			cancellation := win32_red_core_pending(app, retry)
 			win32_red_add(mut issues,
 				'destroy-before-poll did not retain one undrained core cancellation',
@@ -3589,8 +3585,8 @@ fn win32_w4_clipboard_late_first_attempt_case(test_now_ns i64) ![]string {
 				win32_red_add(mut issues,
 					'late available read did not complete ready exactly once',
 					read_terminals.len == 1
-					&& win32_red_clipboard_envelope_matches(read_terminals[0], read_request, window, .clipboard_read, .ready)
-					&& read_terminals[0].service.clipboard.text == read_text)
+						&& win32_red_clipboard_envelope_matches(read_terminals[0], read_request, window, .clipboard_read, .ready)
+						&& read_terminals[0].service.clipboard.text == read_text)
 			}
 		}
 
@@ -3618,7 +3614,7 @@ fn win32_w4_clipboard_late_first_attempt_case(test_now_ns i64) ![]string {
 			write_wide := write_text.to_wide()
 			win32_red_add(mut issues, 'late available write did not complete ready exactly once',
 				write_terminals.len == 1
-				&& win32_red_clipboard_envelope_matches(write_terminals[0], write_request, window, .clipboard_write, .ready))
+					&& win32_red_clipboard_envelope_matches(write_terminals[0], write_request, window, .clipboard_write, .ready))
 			win32_red_add(mut issues, 'late available write lost clipboard payload integrity', C.v_multiwindow_test_win32_clipboard_equals(write_wide,
 				win32_red_utf16_units(write_text)) == 1)
 		}
@@ -3655,11 +3651,11 @@ fn win32_w4_clipboard_late_first_attempt_case(test_now_ns i64) ![]string {
 			first_terminals := win32_red_clipboard_events(first_events, first)
 			win32_red_add(mut issues, 'late retry FIFO head did not timeout exactly once',
 				first_terminals.len == 1
-				&& win32_red_clipboard_envelope_matches(first_terminals[0], first, window, .clipboard_write, .failed)
-				&& first_terminals[0].service.clipboard.error == err_clipboard_timeout)
+					&& win32_red_clipboard_envelope_matches(first_terminals[0], first, window, .clipboard_write, .failed)
+					&& first_terminals[0].service.clipboard.error == err_clipboard_timeout)
 			win32_red_add(mut issues, 'late retry FIFO tail became terminal before an attempt',
 				win32_red_core_pending(app, second).len == 1
-				&& !win32_red_core_pending(app, second)[0].terminal)
+					&& !win32_red_core_pending(app, second)[0].terminal)
 		}
 		return issues
 	} $else {
@@ -3719,8 +3715,8 @@ fn win32_w4_clipboard_destroy_cancel_case(test_now_ns i64) ![]string {
 					request, window, .clipboard_write, .cancelled))
 				win32_red_add(mut issues, 'ordinary destroy lifecycle event was not second',
 					events[1].kind == .lifecycle && events[1].lifecycle.kind == .window_destroyed
-					&& events[1].lifecycle.window_id == window && events[0].sequence > 0
-					&& events[1].sequence > events[0].sequence)
+						&& events[1].lifecycle.window_id == window && events[0].sequence > 0
+						&& events[1].sequence > events[0].sequence)
 			}
 			win32_red_add(mut issues, 'ordinary destroy left a core pending request',
 				app.services.pending.len == 0)
@@ -3795,13 +3791,13 @@ fn win32_w4_clipboard_purge_fault_case(test_now_ns i64) ![]string {
 				win32_red_add(mut issues,
 					'fallible teardown attempted or sequenced the purged native request',
 					C.v_multiwindow_win32_service_test_clipboard_attempts(backend) == attempts
-					&& C.v_multiwindow_win32_service_test_clipboard_sequence_allocations(backend) == sequences)
+						&& C.v_multiwindow_win32_service_test_clipboard_sequence_allocations(backend) == sequences)
 				win32_red_add(mut issues,
 					'fallible teardown allocated, transferred, or freed an HGLOBAL',
 					C.v_multiwindow_win32_service_test_clipboard_global_allocations(backend) == allocations
-					&& C.v_multiwindow_win32_service_test_clipboard_global_transfers(backend) == transfers
-					&& C.v_multiwindow_win32_service_test_clipboard_global_frees(backend) == frees
-					&& C.v_multiwindow_win32_service_test_clipboard_owned_globals(backend) == 0)
+						&& C.v_multiwindow_win32_service_test_clipboard_global_transfers(backend) == transfers
+						&& C.v_multiwindow_win32_service_test_clipboard_global_frees(backend) == frees
+						&& C.v_multiwindow_win32_service_test_clipboard_owned_globals(backend) == 0)
 				win32_red_add(mut issues, 'fallible teardown mutated the real clipboard sentinel', C.v_multiwindow_test_win32_clipboard_equals(sentinel_wide,
 					win32_red_utf16_units(sentinel)) == 1)
 				core_terminal := win32_red_core_pending(app, request)
@@ -3820,7 +3816,7 @@ fn win32_w4_clipboard_purge_fault_case(test_now_ns i64) ![]string {
 					&& it.lifecycle.kind == .window_destroyed && it.lifecycle.window_id == modal)
 				win32_red_add(mut issues, 'purge-fault did not publish one cancellation',
 					terminals.len == 1
-					&& win32_red_clipboard_envelope_matches(terminals[0], request, modal, .clipboard_write, .cancelled))
+						&& win32_red_clipboard_envelope_matches(terminals[0], request, modal, .clipboard_write, .cancelled))
 				win32_red_add(mut issues, 'purge-fault did not publish one destroy lifecycle',
 					destroyed.len == 1)
 				if terminals.len == 1 && destroyed.len == 1 {
@@ -3838,14 +3834,14 @@ fn win32_w4_clipboard_purge_fault_case(test_now_ns i64) ![]string {
 				win32_red_add(mut issues,
 					'late poll attempted or sequenced the purged native request',
 					C.v_multiwindow_win32_service_test_clipboard_pending_count(backend) == 0
-					&& C.v_multiwindow_win32_service_test_clipboard_attempts(backend) == attempts
-					&& C.v_multiwindow_win32_service_test_clipboard_sequence_allocations(backend) == sequences)
+						&& C.v_multiwindow_win32_service_test_clipboard_attempts(backend) == attempts
+						&& C.v_multiwindow_win32_service_test_clipboard_sequence_allocations(backend) == sequences)
 				win32_red_add(mut issues,
 					'late poll changed HGLOBAL allocation/transfer/free ownership',
 					C.v_multiwindow_win32_service_test_clipboard_global_allocations(backend) == allocations
-					&& C.v_multiwindow_win32_service_test_clipboard_global_transfers(backend) == transfers
-					&& C.v_multiwindow_win32_service_test_clipboard_global_frees(backend) == frees
-					&& C.v_multiwindow_win32_service_test_clipboard_owned_globals(backend) == 0)
+						&& C.v_multiwindow_win32_service_test_clipboard_global_transfers(backend) == transfers
+						&& C.v_multiwindow_win32_service_test_clipboard_global_frees(backend) == frees
+						&& C.v_multiwindow_win32_service_test_clipboard_owned_globals(backend) == 0)
 				win32_red_add(mut issues, 'late poll mutated the real clipboard sentinel', C.v_multiwindow_test_win32_clipboard_equals(sentinel_wide,
 					win32_red_utf16_units(sentinel)) == 1)
 			}
@@ -3984,7 +3980,7 @@ fn win32_red_mouse_release_case(cause string) ![]string {
 	win32_red_poll(mut app, 3)!
 	win32_red_add(mut issues, 'Raw Input target is not the locked HWND',
 		C.v_multiwindow_test_win32_raw_mouse_registered_for(first_hwnd) == 1
-		&& C.v_multiwindow_test_win32_raw_mouse_target() == first_hwnd)
+			&& C.v_multiwindow_test_win32_raw_mouse_target() == first_hwnd)
 	win32_red_add(mut issues, 'ClipCursor is not bounded to the locked client',
 		C.v_multiwindow_test_win32_clip_matches_client(first_hwnd) == 1)
 	win32_red_add(mut issues, 'second window inherited first-window mouse lock',
@@ -4065,7 +4061,7 @@ fn win32_mouse_focus_cleanup_retry_case() ![]string {
 		first_record.mouse_focus_cleanup_pending && first_record.mouse_focus_cleanup_reported)
 	win32_red_add(mut issues, 'focus cleanup failure was not retained',
 		app.backend.win32.native_input_release_terminal() == err_capability_unsupported
-		&& app.backend.win32.take_poll_error() == err_capability_unsupported)
+			&& app.backend.win32.take_poll_error() == err_capability_unsupported)
 	mut falsely_off := false
 	if failed_state := app.service_window_state(first) {
 		falsely_off = failed_state.mouse_locked == .off
@@ -4077,15 +4073,15 @@ fn win32_mouse_focus_cleanup_retry_case() ![]string {
 		!falsely_off)
 	win32_red_add(mut issues, 'failed focus cleanup partially released native ownership',
 		C.v_multiwindow_test_win32_raw_mouse_registered_for(first_hwnd) == 1
-		&& C.v_multiwindow_test_win32_clip_matches_client(first_hwnd) == 1)
+			&& C.v_multiwindow_test_win32_clip_matches_client(first_hwnd) == 1)
 
 	assert C.v_multiwindow_test_win32_emit_focus_loss(first_hwnd, second_hwnd) == 1
 	win32_red_add(mut issues, 'repeated WM_KILLFOCUS cleared the pending cleanup debt',
 		first_record.mouse_focus_cleanup_pending && first_record.mouse_focus_cleanup_reported
-		&& app.backend.win32.native_input_release_terminal() == err_capability_unsupported)
+			&& app.backend.win32.native_input_release_terminal() == err_capability_unsupported)
 	win32_red_add(mut issues, 'repeated WM_KILLFOCUS bypassed the owner-thread retry',
 		C.v_multiwindow_test_win32_raw_mouse_registered_for(first_hwnd) == 1
-		&& C.v_multiwindow_test_win32_clip_matches_client(first_hwnd) == 1)
+			&& C.v_multiwindow_test_win32_clip_matches_client(first_hwnd) == 1)
 	assert C.v_multiwindow_test_win32_monitor_enumeration_use_info_failure() == 1
 	assert C.v_multiwindow_test_win32_emit_display_change(first_hwnd) == 1
 	mut monitor_error := ''
@@ -4097,10 +4093,10 @@ fn win32_mouse_focus_cleanup_retry_case() ![]string {
 	win32_red_add(mut issues, 'monitor failure did not reach the retry poll', monitor_error != '')
 	win32_red_add(mut issues, 'focus cleanup retry did not resolve the retained error',
 		!first_record.mouse_focus_cleanup_pending
-		&& app.backend.win32.native_input_release_terminal() == '')
+			&& app.backend.win32.native_input_release_terminal() == '')
 	win32_red_add(mut issues, 'focus cleanup retry left native mouse ownership',
 		C.v_multiwindow_test_win32_raw_mouse_registered_for(first_hwnd) == 0
-		&& C.v_multiwindow_test_win32_clip_is_virtual_screen() == 1)
+			&& C.v_multiwindow_test_win32_clip_is_virtual_screen() == 1)
 	win32_red_add(mut issues, 'focus cleanup retry did not publish mouse_locked=off',
 		app.service_window_state(first)!.mouse_locked == .off)
 	C.v_multiwindow_test_win32_monitor_enumeration_reset()
@@ -4110,19 +4106,19 @@ fn win32_mouse_focus_cleanup_retry_case() ![]string {
 	_ = app.backend.win32.poll_queued_events()!
 	win32_red_add(mut issues, 'idempotent focus cleanup created a retained error',
 		app.backend.win32.native_input_release_terminal() == ''
-		&& app.backend.win32.take_poll_error() == '')
+			&& app.backend.win32.take_poll_error() == '')
 	win32_red_add(mut issues, 'retry fixture could not refocus the first HWND',
 		C.v_multiwindow_test_win32_establish_foreground_focus(first_hwnd) == 1)
 	app.service_set_mouse_lock(first, true) or { issues << 'reacquire failed: ${err.msg()}' }
 	win32_red_add(mut issues, 'mouse lock could not be reacquired after cleanup',
 		C.v_multiwindow_test_win32_raw_mouse_registered_for(first_hwnd) == 1
-		&& C.v_multiwindow_test_win32_clip_matches_client(first_hwnd) == 1)
+			&& C.v_multiwindow_test_win32_clip_matches_client(first_hwnd) == 1)
 	assert C.v_multiwindow_test_win32_emit_focus_loss(first_hwnd, second_hwnd) == 1
 	_ = app.backend.win32.poll_queued_events()!
 	win32_red_add(mut issues, 'reacquired mouse lock was not released exactly once',
 		C.v_multiwindow_test_win32_raw_mouse_registered_for(first_hwnd) == 0
-		&& C.v_multiwindow_test_win32_clip_is_virtual_screen() == 1
-		&& app.service_window_state(first)!.mouse_locked == .off)
+			&& C.v_multiwindow_test_win32_clip_is_virtual_screen() == 1
+			&& app.service_window_state(first)!.mouse_locked == .off)
 	return issues
 }
 

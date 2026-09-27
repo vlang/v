@@ -8,6 +8,7 @@ import toml.ast.walker
 import toml.token
 import toml.scanner
 import strconv
+import strings
 
 // utf8_max is the largest inclusive value of the Unicodes scalar value ranges.
 const utf8_max = 0x10FFFF
@@ -75,12 +76,14 @@ fn (d Decoder) decode_number(mut n ast.Number) ! {
 pub fn decode_quoted_escapes(mut q ast.Quoted) ! {
 	// Setup a scanner in stack memory for easier navigation.
 	mut eat_whitespace := false
-	// TODO: use string builder
-	mut decoded_s := ''
 	// See https://toml.io/en/v1.0.0#string for more info on string types.
 	is_basic := q.quote == `\"`
 	if !is_basic {
 		return
+	}
+	mut decoded_s := strings.new_builder(q.text.len)
+	defer {
+		unsafe { decoded_s.free() }
 	}
 
 	mut s := scanner.new_simple_text(q.text)!
@@ -105,32 +108,32 @@ pub fn decode_quoted_escapes(mut q ast.Quoted) ! {
 			}
 			match rune(ch_next) {
 				`\\`, `"` {
-					decoded_s += ch_next_byte.ascii_str()
+					decoded_s.write_u8(ch_next_byte)
 					s.next()
 					continue
 				}
 				`n` {
-					decoded_s += '\n'
+					decoded_s.write_string('\n')
 					s.next()
 					continue
 				}
 				`t` {
-					decoded_s += '\t'
+					decoded_s.write_string('\t')
 					s.next()
 					continue
 				}
 				`b` {
-					decoded_s += '\b'
+					decoded_s.write_string('\b')
 					s.next()
 					continue
 				}
 				`r` {
-					decoded_s += '\r'
+					decoded_s.write_string('\r')
 					s.next()
 					continue
 				}
 				`f` {
-					decoded_s += '\f'
+					decoded_s.write_string('\f')
 					s.next()
 					continue
 				}
@@ -158,20 +161,20 @@ pub fn decode_quoted_escapes(mut q ast.Quoted) ! {
 						pos := s.state().pos
 						sequence := s.text#[pos..pos + slen + 1]
 						decoded, unicode_val, sequence_length = decode_unicode_escape(sequence) or {
-							decoded_s += escape
+							decoded_s.write_string(escape)
 							continue
 						}
 						if unicode_val > utf8_max || unicode_val < 0 {
-							decoded_s += escape
+							decoded_s.write_string(escape)
 							continue
 						}
 						// Check if the Unicode value is actually in the valid Unicode scalar value ranges.
 						if !((unicode_val >= 0x0000 && unicode_val <= 0xD7FF)
 							|| (unicode_val >= 0xE000 && unicode_val <= utf8_max)) {
-							decoded_s += escape
+							decoded_s.write_string(escape)
 							continue
 						}
-						decoded_s += decoded
+						decoded_s.write_string(decoded)
 						replacement := s.text[pos..pos + sequence_length + 1]
 						s.skip_n(replacement.len)
 						continue
@@ -179,19 +182,19 @@ pub fn decode_quoted_escapes(mut q ast.Quoted) ! {
 						pos := s.state().pos
 						sequence := s.text[pos..]
 						decoded, _, _ = decode_unicode_escape(sequence) or {
-							decoded_s += escape
+							decoded_s.write_string(escape)
 							continue
 						}
-						decoded_s += decoded
+						decoded_s.write_string(decoded)
 						s.skip_n(s.text[pos..].len)
 						continue
 					}
 				}
 			}
 		}
-		decoded_s += ch_byte.ascii_str()
+		decoded_s.write_u8(ch_byte)
 	}
-	q.text = decoded_s
+	q.text = decoded_s.str()
 }
 
 // decode_unicode_escape decodes the Unicode escape sequence `esc_unicode`.

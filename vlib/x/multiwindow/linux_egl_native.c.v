@@ -1,7 +1,7 @@
 module multiwindow
 
 $if linux {
-	$if x_multiwindow_x11 ? || sokol_wayland ? {
+	$if x_multiwindow_x11 ?|| sokol_wayland ? {
 		#insert "@VMODROOT/vlib/x/multiwindow/linux_egl_native_helpers.h"
 	}
 }
@@ -35,7 +35,7 @@ fn C.v_multiwindow_linux_egl_release_thread(result &C.VMultiwindowNativePrimitiv
 
 fn (mut authority NativeOperationAuthority) capture_egl_call(context NativeOperationContext, mut ordinals NativeOrdinalRange, seed NativeOperationSeed, raw C.VMultiwindowNativePrimitive) !NativePrimitiveCapture {
 	$if linux {
-		$if x_multiwindow_x11 ? || sokol_wayland ? {
+		$if x_multiwindow_x11 ?|| sokol_wayland ? {
 			primary := authority.capture_call(context, raw)
 			if !egl_capture_requires_error(context, primary) {
 				ordinals.skip(1)!
@@ -57,7 +57,7 @@ fn (mut authority NativeOperationAuthority) capture_egl_call(context NativeOpera
 
 fn (mut authority NativeOperationAuthority) reserve_linux_egl_lifetime_ticket(mut cleanup NativeOrdinalRange, release_kind NativeLifetimeReleaseKind, seed NativeOperationSeed) !u64 {
 	$if linux {
-		$if x_multiwindow_x11 ? || sokol_wayland ? {
+		$if x_multiwindow_x11 ?|| sokol_wayland ? {
 			if release_kind !in [.egl_surface, .egl_context, .egl_display, .egl_thread] {
 				return error(err_render_native_renderer_unavailable)
 			}
@@ -75,7 +75,7 @@ fn (mut authority NativeOperationAuthority) reserve_linux_egl_lifetime_ticket(mu
 
 fn (mut authority NativeOperationAuthority) reserve_linux_egl_renderer_lifetime_tickets(mut cleanup NativeOrdinalRange, seed NativeOperationSeed) !LinuxEglRendererLifetimeTickets {
 	$if linux {
-		$if x_multiwindow_x11 ? || sokol_wayland ? {
+		$if x_multiwindow_x11 ?|| sokol_wayland ? {
 			display_ticket := authority.reserve_linux_egl_lifetime_ticket(mut cleanup,
 				.egl_display, seed)!
 			context_ticket := authority.reserve_linux_egl_lifetime_ticket(mut cleanup,
@@ -103,7 +103,7 @@ fn (mut authority NativeOperationAuthority) reserve_linux_egl_renderer_lifetime_
 
 fn (mut authority NativeOperationAuthority) bind_linux_egl_thread_lifetime_ticket(ticket_id u64) {
 	$if linux {
-		$if x_multiwindow_x11 ? || sokol_wayland ? {
+		$if x_multiwindow_x11 ?|| sokol_wayland ? {
 			authority.bind_lifetime_ticket(ticket_id, authority.owner_thread_identity, 0)
 		} $else {
 			return
@@ -115,7 +115,7 @@ fn (mut authority NativeOperationAuthority) bind_linux_egl_thread_lifetime_ticke
 
 fn (mut authority NativeOperationAuthority) release_linux_egl_thread_lifetime_ticket(ticket_id u64, health NativeRendererHealth) NativeLifetimeReleaseAttempt {
 	$if linux {
-		$if x_multiwindow_x11 ? || sokol_wayland ? {
+		$if x_multiwindow_x11 ?|| sokol_wayland ? {
 			if ticket_id == 0 || !authority.owner_thread_is_current() {
 				return NativeLifetimeReleaseAttempt{}
 			}
@@ -136,13 +136,13 @@ fn (mut authority NativeOperationAuthority) release_linux_egl_thread_lifetime_ti
 
 fn (mut authority NativeOperationAuthority) release_linux_egl_lifetime_ticket(ticket_id u64, release_kind NativeLifetimeReleaseKind, native_object_identity u64, display_identity u64, health NativeRendererHealth) NativeLifetimeReleaseAttempt {
 	$if linux {
-		$if x_multiwindow_x11 ? || sokol_wayland ? {
+		$if x_multiwindow_x11 ?|| sokol_wayland ? {
 			if !authority.owner_thread_is_current()
 				|| release_kind !in [.egl_surface, .egl_context, .egl_display, .egl_thread]
 				|| native_object_identity == 0
 				|| (release_kind == .egl_display && display_identity != native_object_identity)
 				|| (release_kind == .egl_thread && (display_identity != 0
-				|| native_object_identity != authority.owner_thread_identity)) {
+					|| native_object_identity != authority.owner_thread_identity)) {
 				return NativeLifetimeReleaseAttempt{}
 			}
 			parent_identity := if release_kind in [.egl_surface, .egl_context] {

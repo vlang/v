@@ -157,7 +157,11 @@ fn test_go_call_closure() {
 fn test_closures_with_ifstmt() {
 	a := 1
 	f := fn [a] (x int) int {
-		if a > x { return 1 } else { return -1 }
+		if a > x {
+			return 1
+		} else {
+			return -1
+		}
 	}
 	g := fn [a] () int {
 		if true {
@@ -268,7 +272,7 @@ fn test_cross_var_assign_with_inherited() {
 // test array / string / map as closure params with -autofree
 fn get_func_that_contains_closure() fn () {
 	arr := [1, 2, 3]
-	str := '${'a'}bcabc' // alloc on heap
+	str := 'abcabc' // alloc on heap
 	m := {
 		'key1': 'abcabc'
 		'key2': 'abcabc'

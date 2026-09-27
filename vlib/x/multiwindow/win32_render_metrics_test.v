@@ -7,7 +7,7 @@ $if windows {
 	fn C.v_multiwindow_test_win32_reset_render_fixture()
 }
 
-$if gg_multiwindow ? || x_multiwindow_render ? {
+$if gg_multiwindow ?|| x_multiwindow_render ? {
 	$if windows && sokol_d3d11 ? {
 		fn win32_logical_conversion_error_for_test(backend &Win32Backend, id WindowId) string {
 			backend.logical_to_pixel_rect(id, 1, 2, 3, 4) or { return err.msg() }
@@ -41,7 +41,7 @@ $if gg_multiwindow ? || x_multiwindow_render ? {
 }
 
 fn test_win32_render_readiness_does_not_depend_on_coordinate_conversion() {
-	$if gg_multiwindow ? || x_multiwindow_render ? {
+	$if gg_multiwindow ?|| x_multiwindow_render ? {
 		$if windows && sokol_d3d11 ? {
 			id := WindowId{
 				app_instance: 1
@@ -107,8 +107,7 @@ fn test_win32_render_readiness_does_not_depend_on_coordinate_conversion() {
 }
 
 fn test_win32_observed_framebuffer_change_resizes_target_once() {
-	$if windows && sokol_d3d11 ? && (gg_multiwindow ? || x_multiwindow_render ?)
-		&& (multiwindow_d3d11_warp ? || gg_multiwindow_d3d11_warp ?) {
+	$if windows && sokol_d3d11 ?&& ( gg_multiwindow ?|| x_multiwindow_render ?) && ( multiwindow_d3d11_warp ?|| gg_multiwindow_d3d11_warp ?) {
 		mut app := new_app(
 			backend:          .win32
 			queue_size:       8
@@ -224,7 +223,7 @@ fn test_win32_observed_framebuffer_change_resizes_target_once() {
 }
 
 fn test_win32_observed_framebuffer_change_does_not_advance_pending_resize() {
-	$if windows && sokol_d3d11 ? && (gg_multiwindow ? || x_multiwindow_render ?) {
+	$if windows && sokol_d3d11 ?&& ( gg_multiwindow ?|| x_multiwindow_render ?) {
 		mut native_window_sentinel := 0
 		record := &Win32WindowRecord{
 			hwnd:                     voidptr(&native_window_sentinel)
@@ -252,7 +251,7 @@ fn test_win32_observed_framebuffer_change_does_not_advance_pending_resize() {
 }
 
 fn test_win32_uninitialized_renderer_preserves_pending_resize() {
-	$if windows && sokol_d3d11 ? && (gg_multiwindow ? || x_multiwindow_render ?) {
+	$if windows && sokol_d3d11 ?&& ( gg_multiwindow ?|| x_multiwindow_render ?) {
 		id := WindowId{
 			app_instance: 1
 			slot:         0

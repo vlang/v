@@ -204,7 +204,8 @@ pub fn validate_source_state(state SourceStateModel) ! {
 		|| source_state_path(state.source_id)! == ''
 		|| !canonical_source_url_is_valid(state.canonical_url)
 		|| !source_ref_matches_identity(state.source_id, state.ref)
-		|| state.status !in ['resolved', 'source_unreachable', 'invalid_configuration', 'integrity_failed']
+		|| state.status !in ['resolved', 'source_unreachable', 'invalid_configuration',
+			'integrity_failed']
 		|| !is_lower_hex_64(state.source_fingerprint) || !timestamp_is_exact(state.last_attempt_at)
 		|| state.originating_run_id < 0 || state.applied_operation_ids.len > 128 {
 		return error('source state identity, status, timestamp, or bounds are invalid')

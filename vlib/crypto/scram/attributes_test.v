@@ -188,8 +188,8 @@ fn test_parse_positive_int_refuses_anything_lenient() {
 fn test_decode_base64_refuses_non_canonical_encodings() {
 	assert decode_base64('', 'x')! == []u8{}
 	assert decode_base64('dGVzdA==', 'x')! == 'test'.bytes()
-	for value in ['dGVzdA', 'dGVzdA=', 'dGVzdA===', 'not!base64', 'dGVz dA==', '====', '{AAA', 'AAA{',
-		'=AAA', 'AA=A'] {
+	for value in ['dGVzdA', 'dGVzdA=', 'dGVzdA===', 'not!base64', 'dGVz dA==', '====', '{AAA',
+		'AAA{', '=AAA', 'AA=A'] {
 		decode_base64(value, 'the salt') or {
 			assert err.msg() == 'scram: malformed message: the salt is not valid base64'
 			assert err is MalformedMessage, value

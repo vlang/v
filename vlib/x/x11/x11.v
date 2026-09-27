@@ -22,7 +22,7 @@ pub mut:
 	selection Atom
 	target    Atom
 	property  Atom
-	time      int
+	time      Time
 }
 
 @[typedef]
@@ -34,7 +34,7 @@ pub mut:
 	selection Atom
 	target    Atom
 	property  Atom
-	time      int
+	time      Time
 }
 
 @[typedef]

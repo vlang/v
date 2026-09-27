@@ -52,7 +52,7 @@ fn (mut ctx AdmissionProbeContext) err() IError {
 fn test_many_producers_submit_bounded_work() {
 	queue_size := 4
 	mut producer_count := 8
-	$if windows && (gcc || msvc) {
+	$if windows && ( gcc || msvc ) {
 		producer_count = queue_size + 1
 	}
 	mut ex := new(queue_size: queue_size)!
@@ -188,6 +188,7 @@ fn assert_no_bool(signal chan bool, message string) {
 		_ := <-signal {
 			assert false, message
 		}
-		50 * time.millisecond {}
+		50 * time.millisecond {
+		}
 	}
 }

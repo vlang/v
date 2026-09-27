@@ -10,7 +10,7 @@ struct Config {
 	f           f32
 	f2          f64
 	mix         bool
-	some_test   string = 'abc' @[long: test]
+	some_test   string = 'abc'   @[long: test]
 	path        string @[tail]
 	amount      int = 1
 	version_str string @[long: version]

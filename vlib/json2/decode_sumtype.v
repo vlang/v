@@ -12,7 +12,7 @@ fn sumtype_variant_name(type_name string) string {
 }
 
 fn (mut decoder Decoder) get_decoded_sumtype_workaround[T](initialized_sumtype T) !T {
-	$if initialized_sumtype is $sumtype || (T is $alias && T.unaliased_typ is $sumtype) {
+	$if initialized_sumtype is $sumtype || ( T is $alias && T.unaliased_typ is $sumtype ) {
 		resolved_sumtype := initialized_sumtype
 		$for v in T.variants {
 			if initialized_sumtype is v {
@@ -117,7 +117,7 @@ fn (mut decoder Decoder) check_array_type_valid[T](arr []T, current_node &Node[V
 }
 
 fn (mut decoder Decoder) get_array_type_workaround[T](initialized_sumtype T) bool {
-	$if initialized_sumtype is $sumtype || (T is $alias && T.unaliased_typ is $sumtype) {
+	$if initialized_sumtype is $sumtype || ( T is $alias && T.unaliased_typ is $sumtype ) {
 		$for v in T.variants {
 			if initialized_sumtype is v {
 				$if initialized_sumtype is $array {
@@ -145,7 +145,7 @@ fn (mut decoder Decoder) check_map_empty_valid[T](m T) bool {
 }
 
 fn (mut decoder Decoder) get_map_type_workaround[T](initialized_sumtype T) bool {
-	$if initialized_sumtype is $sumtype || (T is $alias && T.unaliased_typ is $sumtype) {
+	$if initialized_sumtype is $sumtype || ( T is $alias && T.unaliased_typ is $sumtype ) {
 		$for v in T.variants {
 			if initialized_sumtype is v {
 				$if initialized_sumtype is $map {
@@ -229,7 +229,7 @@ fn (mut decoder Decoder) check_struct_type_valid[T](s T, current_node &Node[Valu
 }
 
 fn (mut decoder Decoder) get_struct_type_workaround[T](initialized_sumtype T) bool {
-	$if initialized_sumtype is $sumtype || (T is $alias && T.unaliased_typ is $sumtype) {
+	$if initialized_sumtype is $sumtype || ( T is $alias && T.unaliased_typ is $sumtype ) {
 		$for v in T.variants {
 			if initialized_sumtype is v {
 				$if initialized_sumtype is $struct {
@@ -243,7 +243,7 @@ fn (mut decoder Decoder) get_struct_type_workaround[T](initialized_sumtype T) bo
 }
 
 fn (mut decoder Decoder) get_time_type_workaround[T](initialized_sumtype T) bool {
-	$if initialized_sumtype is $sumtype || (T is $alias && T.unaliased_typ is $sumtype) {
+	$if initialized_sumtype is $sumtype || ( T is $alias && T.unaliased_typ is $sumtype ) {
 		$for v in T.variants {
 			if initialized_sumtype is v {
 				$if initialized_sumtype is time.Time {

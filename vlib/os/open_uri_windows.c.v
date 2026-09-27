@@ -18,6 +18,6 @@ pub fn open_uri(uri string) ! {
 	// https://docs.microsoft.com/en-us/windows/win32/api/shellapi/nf-shellapi-shellexecutew
 	func := ShellExecuteWin(dl.sym_opt(handle, 'ShellExecuteW')!)
 	// 1 is SW_SHOWNORMAL, but it avoids including winuser.h, and in turn windows.h, which conflicts with raylib
-	func(C.NULL, 'open'.to_wide(), uri.to_wide(), C.NULL, C.NULL, 1)
+	func(unsafe { nil }, 'open'.to_wide(), uri.to_wide(), unsafe { nil }, unsafe { nil }, 1)
 	dl.close(handle)
 }

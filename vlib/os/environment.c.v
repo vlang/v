@@ -104,7 +104,7 @@ pub fn environ() map[string]string {
 		}
 		C.FreeEnvironmentStringsW(estrings)
 	} $else {
-		start := &&char(voidptr(C.environ))
+		start := unsafe { &&char(voidptr(C.environ)) }
 		mut i := 0
 		for {
 			x := unsafe { start[i] }

@@ -105,6 +105,7 @@ a,"b,c,d",,#,3,"pippo"
 // dataset 3/4
 const txt3 = 'a,b,c,d\r\n0,1,2,3\r\n4,5,6,7\r\n'
 const txt4 = 'a,b,c,d\n0,1,2,3\n4,5,6,7\n'
+
 /******************************************************************************
 *
 * Test Sequential Functions
@@ -360,7 +361,7 @@ fn create_csv(file_path string, size int) !i64 {
 	f.write_string(csv_txt + '\n')!
 	mut count := i64(0)
 	for i in 0 .. size {
-		tmp := "${rand.int()}, ${i}, 3, \"txt1${i}\", \"txt2${i}\", ${f32(rand.u32()) / 1000.0}\n"
+		tmp := '${rand.int()}, ${i}, 3, "txt1${i}", "txt2${i}", ${f32(rand.u32()) / 1000.0}\n'
 		f.write_string(tmp)!
 		// if i % 1_000_000 == 0 {
 		//	 println(i)

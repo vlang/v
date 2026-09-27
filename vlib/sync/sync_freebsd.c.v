@@ -17,6 +17,7 @@ fn C.pthread_getthreadid_np() i32
 
 @[trusted]
 fn C.pthread_mutex_init(voidptr, voidptr) i32
+
 fn C.pthread_mutex_lock(voidptr) i32
 fn C.pthread_mutex_trylock(voidptr) i32
 fn C.pthread_mutex_unlock(voidptr) i32
@@ -81,7 +82,7 @@ pub fn new_mutex() &Mutex {
 // since it creates the associated resources needed for the mutex to work properly.
 @[inline]
 pub fn (mut m Mutex) init() {
-	C.pthread_mutex_init(&m.mutex, C.NULL)
+	C.pthread_mutex_init(&m.mutex, unsafe { nil })
 }
 
 // new_rwmutex creates a new read/write mutex instance on the heap, and returns a pointer to it.

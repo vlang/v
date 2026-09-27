@@ -85,17 +85,7 @@ pub fn dial_tcp(oaddress string) !&TcpConn {
 
 	// Once we've failed now try and explain why we failed to connect
 	// to any of these addresses
-	mut err_builder := strings.new_builder(1024)
-	err_builder.write_string('dial_tcp failed for address ${address}\n')
-	err_builder.write_string('tried addrs:\n')
-	for i := 0; i < errs.len; i++ {
-		addr := addrs[i]
-		why := errs[i]
-		err_builder.write_string('\t${addr}: ${why}\n')
-	}
-
-	// failed
-	return error(err_builder.str())
+	return dial_error(addrs, errs, 'dial_tcp failed for address ${address}')
 }
 
 // dial_tcp_with_bind will bind the given local address `laddr` and dial.
@@ -104,16 +94,21 @@ pub fn dial_tcp_with_bind(saddr string, laddr string) !&TcpConn {
 		return error('${err.msg()}; could not resolve address ${saddr} in dial_tcp_with_bind')
 	}
 
+	// Keep track of dialing errors that take place
+	mut errs := []IError{}
+
 	// Very simple dialer
 	for addr in addrs {
 		mut s := new_tcp_socket(addr.family()) or {
 			return error('${err.msg()}; could not create new tcp socket in dial_tcp_with_bind')
 		}
 		s.bind(laddr) or {
+			errs << err
 			s.close() or { continue }
 			continue
 		}
 		s.connect(addr) or {
+			errs << err
 			// Connection failed
 			s.close() or { continue }
 			continue
@@ -131,7 +126,42 @@ pub fn dial_tcp_with_bind(saddr string, laddr string) !&TcpConn {
 		return conn
 	}
 	// failed
-	return error('dial_tcp_with_bind failed for address ${saddr}')
+	return dial_error(addrs, errs, 'dial_tcp_with_bind failed for address ${saddr}')
+}
+
+// dial_error produces the error that a dial returns, when every candidate
+// address of a host failed. The message lists each tried address with its own
+// error, while the code of the returned error is the *last* non 0 per address
+// code (it is 0, only if no attempt reported a code at all).
+//
+// Rationale for using the last code: a host can resolve to several addresses,
+// that fail differently (on a dual stack machine, the IPv6 candidate often
+// fails with ENETUNREACH, while the IPv4 one fails with ECONNREFUSED), so a
+// single code can not describe all of them. The last attempt is the one, that
+// the dialer finally gave up on, so its code is the most useful one for a
+// caller, that wants to classify the failure; the other codes are still
+// visible in the message. When all attempts failed with the same code (the
+// common case, for example a single resolved address), that code is propagated
+// unchanged.
+//
+// Without a code here, callers like net.http's retry loop, and
+// net.openssl.SSLConn.dial (which returns dial_tcp's error verbatim), would see
+// err.code() == 0, and could not distinguish a hopeless failure from a
+// retryable one. See https://github.com/vlang/v/issues/28510 .
+fn dial_error(addrs []Addr, errs []IError, header string) IError {
+	mut err_builder := strings.new_builder(1024)
+	err_builder.write_string('${header}\n')
+	err_builder.write_string('tried addrs:\n')
+	mut last_code := 0
+	for i := 0; i < errs.len && i < addrs.len; i++ {
+		addr := addrs[i]
+		why := errs[i]
+		err_builder.write_string('\t${addr}: ${why}\n')
+		if why.code() != 0 {
+			last_code = why.code()
+		}
+	}
+	return error_with_code(err_builder.str(), last_code)
 }
 
 // close closes the tcp connection
@@ -166,13 +196,11 @@ pub fn (c TcpConn) read_ptr(buf_ptr &u8, len int) !int {
 	}
 	if res > 0 {
 		$if trace_tcp ? {
-			eprintln(
-				'<<< TcpConn.read_ptr  | c.sock.handle: ${c.sock.handle} | buf_ptr: ${ptr_str(buf_ptr)} | len: ${len} | res: ${res} |\n' +
+			eprintln('<<< TcpConn.read_ptr  | c.sock.handle: ${c.sock.handle} | buf_ptr: ${ptr_str(buf_ptr)} | len: ${len} | res: ${res} |\n' +
 				unsafe { buf_ptr.vstring_with_len(len) })
 		}
 		$if trace_tcp_data_read ? {
-			eprintln(
-				'<<< TcpConn.read_ptr  | 1 data.len: ${res:6} | hex: ${unsafe { buf_ptr.vbytes(res) }.hex()} | data: ' +
+			eprintln('<<< TcpConn.read_ptr  | 1 data.len: ${res:6} | hex: ${unsafe { buf_ptr.vbytes(res) }.hex()} | data: ' +
 				unsafe { buf_ptr.vstring_with_len(res) })
 		}
 		return res
@@ -192,14 +220,12 @@ pub fn (c TcpConn) read_ptr(buf_ptr &u8, len int) !int {
 			return io.Eof{}
 		}
 		$if trace_tcp ? {
-			eprintln(
-				'<<< TcpConn.read_ptr  | c.sock.handle: ${c.sock.handle} | buf_ptr: ${ptr_str(buf_ptr)} | len: ${len} | res: ${res} | code: ${ecode} |\n' +
+			eprintln('<<< TcpConn.read_ptr  | c.sock.handle: ${c.sock.handle} | buf_ptr: ${ptr_str(buf_ptr)} | len: ${len} | res: ${res} | code: ${ecode} |\n' +
 				unsafe { buf_ptr.vstring_with_len(len) })
 		}
 		$if trace_tcp_data_read ? {
 			if res > 0 {
-				eprintln(
-					'<<< TcpConn.read_ptr  | 2 data.len: ${res:6} | hex: ${unsafe { buf_ptr.vbytes(res) }.hex()} | data: ' +
+				eprintln('<<< TcpConn.read_ptr  | 2 data.len: ${res:6} | hex: ${unsafe { buf_ptr.vbytes(res) }.hex()} | data: ' +
 					unsafe { buf_ptr.vstring_with_len(res) })
 			}
 		}
@@ -230,13 +256,11 @@ pub fn (mut c TcpConn) write_ptr(b &u8, len int) !int {
 		eprintln('>>> TcpConn.write_ptr | c: ${ptr_str(c)} | c.sock.handle: ${c.sock.handle} | b: ${ptr_str(b)} | len: ${len}')
 	}
 	$if trace_tcp ? {
-		eprintln(
-			'>>> TcpConn.write_ptr | c.sock.handle: ${c.sock.handle} | b: ${ptr_str(b)} len: ${len} |\n' +
+		eprintln('>>> TcpConn.write_ptr | c.sock.handle: ${c.sock.handle} | b: ${ptr_str(b)} len: ${len} |\n' +
 			unsafe { b.vstring_with_len(len) })
 	}
 	$if trace_tcp_data_write ? {
-		eprintln(
-			'>>> TcpConn.write_ptr | data.len: ${len:6} | hex: ${unsafe { b.vbytes(len) }.hex()} | data: ' +
+		eprintln('>>> TcpConn.write_ptr | data.len: ${len:6} | hex: ${unsafe { b.vbytes(len) }.hex()} | data: ' +
 			unsafe { b.vstring_with_len(len) })
 	}
 	c.last_write_sent = 0
@@ -419,20 +443,45 @@ fn ipv4_fallback_listen_addr(saddr string) !string {
 }
 
 fn listen_tcp_with_family(family AddrFamily, saddr string, options ListenOptions) !&TcpListener {
-	mut s := new_tcp_socket(family) or { return error('${err.msg()}; could not create new socket') }
-	s.set_dualstack(options.dualstack) or {}
-
 	addrs := resolve_addrs(saddr, family, .tcp) or {
 		return error('${err.msg()}; could not resolve address ${saddr}')
 	}
-	// TODO(logic to pick here)
-	addr := addrs[0]
+	return listen_tcp_with_addresses(addrs, saddr, options)
+}
+
+fn listen_tcp_with_addresses(addrs []Addr, saddr string, options ListenOptions) !&TcpListener {
+	mut errors := []IError{}
+	for addr in addrs {
+		listener := listen_tcp_addr(addr, saddr, options) or {
+			errors << err
+			continue
+		}
+		return listener
+	}
+	if errors.len > 0 {
+		return errors[errors.len - 1]
+	}
+	return error('no addresses resolved for ${saddr}')
+}
+
+fn listen_tcp_addr(addr Addr, saddr string, options ListenOptions) !&TcpListener {
+	mut s := new_tcp_socket(addr.family()) or {
+		return error('${err.msg()}; could not create new socket')
+	}
+	mut keep_socket := false
+	defer {
+		if !keep_socket {
+			s.close() or {}
+		}
+	}
+	s.set_dualstack(options.dualstack) or {}
 
 	// cast to the correct type
 	alen := addr.len()
 	socket_error_message(C.bind(s.handle, voidptr(&addr), alen), 'binding to ${saddr} failed')!
 	mut res := C.listen(s.handle, options.backlog)
 	if res == 0 {
+		keep_socket = true
 		mut listener := &TcpListener{
 			sock:            s
 			accept_deadline: no_deadline
@@ -474,6 +523,7 @@ fn listen_tcp_with_family(family AddrFamily, saddr string, options ListenOptions
 		$if net_nonblocking_sockets ? {
 			listener.is_blocking = false
 		}
+		keep_socket = true
 		return listener
 	}
 }
@@ -635,7 +685,7 @@ pub fn tcp_socket_from_handle_raw(sockfd int) TcpSocket {
 
 fn (mut s TcpSocket) set_option(level int, opt int, value int) ! {
 	v := i32(value) // C socket options are 4-byte `int`; pass i32 storage (sizeof 4)
-	socket_error(C.setsockopt(s.handle, level, opt, &v, sizeof(v)))!
+	socket_error(C.setsockopt(s.handle, level, opt, voidptr(&v), sizeof(v)))!
 }
 
 pub fn (mut s TcpSocket) set_option_bool(opt SocketOption, value bool) ! {

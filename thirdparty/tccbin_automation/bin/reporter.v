@@ -142,9 +142,9 @@ pub fn project_issue_ledger(source string) !IssueProjectionModel {
 
 fn parse_issue_diagnostic(value JsonValue) !DiagnosticRecord {
 	require_exact_keys(value, ['schema_version', 'repository', 'os', 'target_id', 'architecture',
-		'component', 'failure_class', 'test_id', 'lane', 'expected', 'observed_summary',
-		'subject_sha', 'input_fingerprint', 'artifact_fingerprint', 'run_url', 'job_url',
-		'artifact_url', 'human_action'])!
+		'component', 'failure_class', 'test_id', 'lane', 'expected', 'observed_summary', 'subject_sha',
+		'input_fingerprint', 'artifact_fingerprint', 'run_url', 'job_url', 'artifact_url',
+		'human_action'])!
 	artifact_fingerprint := require_nullable_string_member(value, 'artifact_fingerprint')!
 	artifact_url_value := require_member(value, 'artifact_url')!
 	if artifact_url_value.kind != .null_value && artifact_url_value.kind != .string_value {
@@ -252,8 +252,7 @@ pub fn project_issue(owner_repository string, os_family string,
 		if incident.diagnostic.repository != owner_repository || incident.diagnostic.os != os_family {
 			return error('diagnostic crossed its owner repository or OS issue boundary')
 		}
-		if incident.status !in ['active', 'validating', 'waiting_for_source', 'resolved_bot',
-			'waived'] {
+		if incident.status !in ['active', 'validating', 'waiting_for_source', 'resolved_bot', 'waived'] {
 			return error('incident projection status is outside the ledger vocabulary')
 		}
 		diagnostic := DiagnosticRecord{
@@ -309,7 +308,9 @@ pub fn validate_diagnostic_record(diagnostic DiagnosticRecord) ! {
 		|| diagnostic.os !in issue_os_allowlist
 		|| diagnostic.target_id !in managed_target_ids
 		|| diagnostic.architecture !in ['amd64', 'arm64', 'x64', 'i386']
-		|| diagnostic.failure_class !in ['patch-probe-failed', 'payload-review-required', 'manifest-invalid', 'native-build-failed', 'v-smoke-failed', 'required-lane-missing', 'ci-infrastructure-exhausted', 'control-plane-failed', 'ownership-ambiguous']
+		|| diagnostic.failure_class !in ['patch-probe-failed', 'payload-review-required',
+			'manifest-invalid', 'native-build-failed', 'v-smoke-failed', 'required-lane-missing',
+			'ci-infrastructure-exhausted', 'control-plane-failed', 'ownership-ambiguous']
 		|| diagnostic.component.runes().len < 1
 		|| diagnostic.component.runes().len > 128
 		|| diagnostic.test_id.runes().len < 1 || diagnostic.test_id.runes().len > 128
@@ -321,11 +322,12 @@ pub fn validate_diagnostic_record(diagnostic DiagnosticRecord) ! {
 		|| !is_lower_hex_40(diagnostic.subject_sha)
 		|| !is_lower_hex_64(diagnostic.input_fingerprint)
 		|| (diagnostic.artifact_fingerprint != ''
-		&& !is_lower_hex_64(diagnostic.artifact_fingerprint))
+			&& !is_lower_hex_64(diagnostic.artifact_fingerprint))
 		|| !github_url_is_safe(diagnostic.run_url)
 		|| !github_url_is_safe(diagnostic.job_url)
 		|| (artifact_url != '' && !github_url_is_safe(artifact_url))
-		|| diagnostic.human_action !in ['keep', 'rebase', 'split', 'retire', 'fix-recipe', 'review-change'] {
+		|| diagnostic.human_action !in ['keep', 'rebase', 'split', 'retire', 'fix-recipe',
+			'review-change'] {
 		return error('diagnostic record is outside the exact schema vocabulary or bounds')
 	}
 	if target_os(diagnostic.target_id)! != diagnostic.os {

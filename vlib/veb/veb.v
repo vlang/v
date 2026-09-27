@@ -349,6 +349,8 @@ fn handle_route[A, X](mut app A, mut user_context X, url urllib.URL, host string
 				if !user_context.Context.done {
 					validate_middleware[X](mut user_context, get_handlers_for_method(route.after_middlewares,
 						user_context.Context.req.method))
+					// Preserve an after-middleware response, or restore the handler response state.
+					user_context.Context.done = user_context.Context.done || was_done
 				}
 			}
 		}
@@ -788,10 +790,10 @@ fn serve_if_static[X](app StaticHandler, mut user_context X, url urllib.URL, hos
 	// Configure static file compression settings
 	user_context.set_static_compression_config(static_handler.enable_static_gzip,
 		static_handler.enable_static_zstd, static_handler.enable_static_compression, if static_handler.static_compression_max_size >= 0 {
-		static_handler.static_compression_max_size
-	} else {
-		1048576 // Default: 1MB
-	}, static_handler.static_compression_mime_types)
+			static_handler.static_compression_max_size
+		} else {
+			1048576 // Default: 1MB
+		}, static_handler.static_compression_mime_types)
 
 	user_context.send_file(mime_type, static_file)
 	return true

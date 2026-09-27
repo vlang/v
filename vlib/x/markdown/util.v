@@ -143,6 +143,7 @@ fn is_ascii_punct(c rune) bool {
 }
 
 const digits = [`0`, `1`, `2`, `3`, `4`, `5`, `6`, `7`, `8`, `9`]!
+
 // is_digit returns true if c is an ASCII decimal digit.
 @[inline]
 fn is_digit(c u8) bool {

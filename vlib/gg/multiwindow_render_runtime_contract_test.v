@@ -30,11 +30,9 @@ fn test_multiwindow_render_runtime_manifest_discovers_every_public_source() {
 		assert path in disabled_paths, 'disabled manifest omitted shared public file `${required_shared}`'
 	}
 	for required_enabled in ['multiwindow_d_gg_multiwindow.v',
-		'multiwindow_render_impl_d_gg_multiwindow.v',
-		'multiwindow_render_lifecycle_d_gg_multiwindow.v',
+		'multiwindow_render_impl_d_gg_multiwindow.v', 'multiwindow_render_lifecycle_d_gg_multiwindow.v',
 		'multiwindow_render_state_d_gg_multiwindow.v', 'multiwindow_render_stub_d_gg_multiwindow.v',
-		'multiwindow_resource_impl_d_gg_multiwindow.v',
-		'multiwindow_resource_state_d_gg_multiwindow.v'] {
+		'multiwindow_resource_impl_d_gg_multiwindow.v', 'multiwindow_resource_state_d_gg_multiwindow.v'] {
 		path := os.join_path(@DIR, required_enabled)
 		assert path in enabled_paths, 'enabled manifest omitted flag source `${required_enabled}`'
 		assert path !in disabled_paths

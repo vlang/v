@@ -3,7 +3,7 @@ import os
 const vexe = @VEXE
 const tfolder = os.to_slash(os.join_path(os.vtmp_dir(), 'fmt_hook_test'))
 const unformatted_content = '   fn main() {\nprintln(   "hi" )\n println ( 123 )\n   }'
-const formatted_content = 'fn main() {\n\tprintln("hi")\n\tprintln(123)\n}\n'
+const formatted_content = "fn main() {\n\tprintln('hi')\n\tprintln(123)\n}\n"
 const hook_file = '.git/hooks/pre-commit'
 
 // 'env -S' not supported on OpenBSD
@@ -142,7 +142,7 @@ fn test_run_git_fmt_hook_install() {
 	// dump(dres)
 	assert dres.exit_code == 0
 	assert dres.output.contains('+fn main() {')
-	assert dres.output.contains('+\tprintln("hi")')
+	assert dres.output.contains("+\tprintln('hi')")
 	second := os.execute_or_exit('${os.quoted_path(vexe)} git-fmt-hook install')
 	assert second.exit_code == 0
 }

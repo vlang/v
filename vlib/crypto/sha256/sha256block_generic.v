@@ -118,7 +118,7 @@ fn block_generic(mut dig Digest, p_ []u8) {
 					((e & f) ^ (~e & g)) + u32(_k[i]) + w[i]
 				t2 :=
 					((bits.rotate_left_32(a, -2)) ^ (bits.rotate_left_32(a, -13)) ^ (bits.rotate_left_32(a, -22))) +
-					((a & b) ^ (a & c) ^ (b & c))
+						((a & b) ^ (a & c) ^ (b & c))
 				h = g
 				g = f
 				f = e

@@ -117,5 +117,6 @@ fn test_decode_missing_comma() {
 					"telnr": "+32333"
 				}
 			}'
-	user := json.decode[User](data) or { return }
+	_ := json.decode[User](data) or { return }
+	assert false
 }

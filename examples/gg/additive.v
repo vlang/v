@@ -116,8 +116,8 @@ fn main() {
 		user_data:    window
 		bg_color:     gg.gray
 		// FNs
-		init_fn:  window.init
-		frame_fn: window.draw
+		init_fn:      window.init
+		frame_fn:     window.draw
 	)
 
 	window.ctx.run()

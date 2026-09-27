@@ -32,76 +32,25 @@ fn new_dense_array_noscan(key_bytes int, key_noscan bool, value_bytes int, value
 fn new_map_noscan_key(key_bytes int, value_bytes int, hash_fn MapHashFn, key_eq_fn MapEqFn, clone_fn MapCloneFn,
 	free_fn MapFreeFn) map {
 	metasize := int(sizeof(u32) * (init_capicity + extra_metas_inc))
-	// for now assume anything bigger than a pointer is a string
-	has_string_keys := key_bytes > sizeof(voidptr)
-	return map{
-		data: &VMapData{
-			key_bytes:       key_bytes
-			value_bytes:     value_bytes
-			even_index:      init_even_index
-			cached_hashbits: max_cached_hashbits
-			shift:           init_log_capicity
-			key_values:      new_dense_array_noscan(key_bytes, true, value_bytes, false)
-			metas:           unsafe { &u32(vcalloc_noscan(metasize)) }
-			extra_metas:     extra_metas_inc
-			count:           0
-			has_string_keys: has_string_keys
-			hash_fn:         hash_fn
-			key_eq_fn:       key_eq_fn
-			clone_fn:        clone_fn
-			free_fn:         free_fn
-		}
-	}
+	return new_map_with_dense_array(key_bytes, value_bytes, hash_fn, key_eq_fn, clone_fn,
+		free_fn, new_dense_array_noscan(key_bytes, true, value_bytes, false),
+		unsafe { &u32(vcalloc_noscan(metasize)) })
 }
 
 fn new_map_noscan_value(key_bytes int, value_bytes int, hash_fn MapHashFn, key_eq_fn MapEqFn, clone_fn MapCloneFn,
 	free_fn MapFreeFn) map {
 	metasize := int(sizeof(u32) * (init_capicity + extra_metas_inc))
-	// for now assume anything bigger than a pointer is a string
-	has_string_keys := key_bytes > sizeof(voidptr)
-	return map{
-		data: &VMapData{
-			key_bytes:       key_bytes
-			value_bytes:     value_bytes
-			even_index:      init_even_index
-			cached_hashbits: max_cached_hashbits
-			shift:           init_log_capicity
-			key_values:      new_dense_array_noscan(key_bytes, false, value_bytes, true)
-			metas:           unsafe { &u32(vcalloc_noscan(metasize)) }
-			extra_metas:     extra_metas_inc
-			count:           0
-			has_string_keys: has_string_keys
-			hash_fn:         hash_fn
-			key_eq_fn:       key_eq_fn
-			clone_fn:        clone_fn
-			free_fn:         free_fn
-		}
-	}
+	return new_map_with_dense_array(key_bytes, value_bytes, hash_fn, key_eq_fn, clone_fn,
+		free_fn, new_dense_array_noscan(key_bytes, false, value_bytes, true),
+		unsafe { &u32(vcalloc_noscan(metasize)) })
 }
 
 fn new_map_noscan_key_value(key_bytes int, value_bytes int, hash_fn MapHashFn, key_eq_fn MapEqFn, clone_fn MapCloneFn,
 	free_fn MapFreeFn) map {
 	metasize := int(sizeof(u32) * (init_capicity + extra_metas_inc))
-	// for now assume anything bigger than a pointer is a string
-	has_string_keys := key_bytes > sizeof(voidptr)
-	return map{
-		data: &VMapData{
-			key_bytes:       key_bytes
-			value_bytes:     value_bytes
-			even_index:      init_even_index
-			cached_hashbits: max_cached_hashbits
-			shift:           init_log_capicity
-			key_values:      new_dense_array_noscan(key_bytes, true, value_bytes, true)
-			metas:           unsafe { &u32(vcalloc_noscan(metasize)) }
-			extra_metas:     extra_metas_inc
-			count:           0
-			has_string_keys: has_string_keys
-			hash_fn:         hash_fn
-			key_eq_fn:       key_eq_fn
-			clone_fn:        clone_fn
-			free_fn:         free_fn
-		}
-	}
+	return new_map_with_dense_array(key_bytes, value_bytes, hash_fn, key_eq_fn, clone_fn,
+		free_fn, new_dense_array_noscan(key_bytes, true, value_bytes, true),
+		unsafe { &u32(vcalloc_noscan(metasize)) })
 }
 
 fn new_map_init_noscan_key(hash_fn MapHashFn, key_eq_fn MapEqFn, clone_fn MapCloneFn, free_fn MapFreeFn,

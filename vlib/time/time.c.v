@@ -136,7 +136,7 @@ fn convert_ctime(t C.tm, nanosecond int) Time {
 		// for the actual code base when we
 		// call convert_ctime, it is always
 		// when we manage the local time.
-		is_local: true
+		is_local:   true
 	}
 }
 

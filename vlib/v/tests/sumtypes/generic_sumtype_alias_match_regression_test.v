@@ -30,7 +30,7 @@ fn test_generic_sumtype_alias_match_expands_nested_sumtype_variants() {
 	assert generic_sumtype_alias_match_nested_variants[bool](true) == 3
 }
 
-type GenericSumtypeAliasFnBox[T] = fn (int) int | T
+type GenericSumtypeAliasFnBox[T] = fn(int) int | T
 
 fn generic_sumtype_alias_match_increment(value int) int {
 	return value + 1
@@ -38,7 +38,7 @@ fn generic_sumtype_alias_match_increment(value int) int {
 
 fn generic_sumtype_alias_match_fn_variant[T](value GenericSumtypeAliasFnBox[T]) int {
 	return match value {
-		fn (int) int { value(41) }
+		fn(int) int { value(41) }
 		T { 0 }
 	}
 }

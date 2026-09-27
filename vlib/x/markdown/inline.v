@@ -314,7 +314,7 @@ fn can_open_emphasis(delim u8, before rune, after rune) bool {
 		|| is_ascii_punct(before))
 	right_flanking := !is_unicode_space(before)
 		&& (!is_ascii_punct(before) || is_unicode_space(after)
-		|| is_ascii_punct(after))
+			|| is_ascii_punct(after))
 	if delim == `*` {
 		return left_flanking
 	}
@@ -330,7 +330,7 @@ fn can_close_emphasis(delim u8, before rune, after rune) bool {
 		|| is_ascii_punct(before))
 	right_flanking := !is_unicode_space(before)
 		&& (!is_ascii_punct(before) || is_unicode_space(after)
-		|| is_ascii_punct(after))
+			|| is_ascii_punct(after))
 	if delim == `*` {
 		return right_flanking
 	}

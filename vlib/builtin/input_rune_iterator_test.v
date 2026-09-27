@@ -3,9 +3,26 @@
 import os
 import time
 
-fn test_input_rune_iterator_with_unicode_input() {
-	mut p := os.new_process(@VEXE)
-	p.set_args(['-e', 'for i, r in input_rune_iterator() { println("> i: \${i:04} | r: `\${r}`") }'])
+const input_rune_iterator_program = '
+fn main() {
+	for i, r in input_rune_iterator() {
+		println("> i: \${i:04} | r: `\${r}`")
+	}
+}
+'
+
+fn test_input_rune_iterator_with_unicode_input() ! {
+	fixture_name := 'input_rune_iterator_${os.getpid()}'
+	fixture_path := os.join_path(os.vtmp_dir(), '${fixture_name}.v')
+	fixture_exe := os.join_path(os.vtmp_dir(), fixture_name)
+	defer {
+		os.rm(fixture_path) or {}
+		os.rm(fixture_exe) or {}
+	}
+	os.write_file(fixture_path, input_rune_iterator_program)!
+	compile_result := os.execute('${os.quoted_path(@VEXE)} -o ${os.quoted_path(fixture_exe)} ${os.quoted_path(fixture_path)}')
+	assert compile_result.exit_code == 0, compile_result.output
+	mut p := os.new_process(fixture_exe)
 	p.set_redirect_stdio()
 	p.run()
 	spawn fn [mut p] () {

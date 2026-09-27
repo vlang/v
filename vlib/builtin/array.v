@@ -405,6 +405,9 @@ pub fn (mut a array) ensure_cap(required int) {
 		// TODO: the old data may be leaked when no GC is used (ref-counting?)
 		if a.flags.has(.noslices) && !a.flags.has(.is_slice) && !a.buffer_has_slices() {
 			unsafe {
+				$if prealloc {
+					prealloc_discard_pages(a.data, usize(a.cap) * usize(a.element_size))
+				}
 				if a.flags.has(.managed) {
 					free(&u8(a.data) - u64(array_data_header_size()))
 				} else {
@@ -959,8 +962,7 @@ fn (a array) slice(start int, _end int) array {
 	end := if _end == max_i64 || _end == max_i32 { a.len } else { _end } // max_int
 	$if !no_bounds_checking {
 		if start > end {
-			panic(
-				'array.slice: invalid slice index (start>end):' + impl_i64_to_string(i64(start)) +
+			panic('array.slice: invalid slice index (start>end):' + impl_i64_to_string(i64(start)) +
 				', ' + impl_i64_to_string(end))
 		}
 		if end > a.len {
@@ -1069,10 +1071,21 @@ pub fn (a &array) clone() array {
 pub fn (a &array) clone_to_depth(depth int) array {
 	source_capacity_in_bytes := u64(a.cap) * u64(a.element_size)
 	use_noscan_data := depth == 0 && a.uses_noscan_data()
+	// Unless nested arrays/strings are cloned element by element below, the
+	// whole capacity is copied from `a`, so zeroing the new buffer first is wasted.
+	clones_elements := depth > 0 && a.len >= 0 && a.cap >= a.len
+		&& (a.element_size == sizeof(array) || a.element_size == sizeof(string))
+	copies_capacity := !clones_elements && a.data != 0 && source_capacity_in_bytes > 0
 	mut data := unsafe { nil }
 	if a.cap > 0 {
 		if use_noscan_data {
-			data = a.alloc_array_data_like(source_capacity_in_bytes)
+			if copies_capacity {
+				data = a.alloc_array_data_like_uninit(source_capacity_in_bytes)
+			} else {
+				data = a.alloc_array_data_like(source_capacity_in_bytes)
+			}
+		} else if copies_capacity {
+			data = alloc_array_data_uninit(source_capacity_in_bytes)
 		} else {
 			data = alloc_array_data(source_capacity_in_bytes)
 		}
@@ -1122,6 +1135,16 @@ fn (mut a array) set(i int, val voidptr) {
 		}
 	}
 	unsafe { vmemcpy(&u8(a.data) + u64(a.element_size) * u64(i), val, a.element_size) }
+}
+
+// array_sort_move copies `count` elements of `element_size` bytes from index `si`
+// of `src` to index `di` of `dst`. The compiler's lowered stable sort calls it
+// with indexes it has already bounded, so it skips the per-element range checks
+// of `array.set`.
+@[inline; markused; unsafe]
+fn array_sort_move(dst voidptr, di int, src voidptr, si int, count int, element_size usize) {
+	vmemcpy(&u8(dst) + usize(di) * element_size, &u8(src) + usize(si) * element_size,
+		isize(usize(count) * element_size))
 }
 
 @[markused]
@@ -1271,6 +1294,9 @@ pub fn (a array) reverse() array {
 @[unsafe]
 pub fn (a &array) free() {
 	$if prealloc {
+		if !a.flags.has(.is_slice) && !a.flags.has(.nofree) {
+			unsafe { prealloc_discard_pages(a.data, usize(a.cap) * usize(a.element_size)) }
+		}
 		return
 	}
 	// A slice is a borrowed view into another array's buffer; its `.data` points

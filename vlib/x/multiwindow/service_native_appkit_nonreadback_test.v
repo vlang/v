@@ -423,8 +423,7 @@ fn test_appkit_oversized_clipboard_is_capacity_not_unsupported() {
 			title:   'AppKit clipboard capacity'
 			visible: false
 		)!
-		assert C.v_multiwindow_appkit_test_set_clipboard_ascii_payload(
-			usize(service_appkit_clipboard_max_bytes) + 1) == 1
+		assert C.v_multiwindow_appkit_test_set_clipboard_ascii_payload(usize(service_appkit_clipboard_max_bytes) + 1) == 1
 		app.service_request_clipboard_text(window) or {
 			assert err.msg() == err_clipboard_capacity
 			return

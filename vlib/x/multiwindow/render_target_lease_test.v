@@ -1,11 +1,11 @@
 module multiwindow
 
-$if gg_multiwindow ? || x_multiwindow_render ? {
+$if gg_multiwindow ?|| x_multiwindow_render ? {
 	import sokol.gfx
 }
 
 fn test_render_target_lease_validates_app_batch_target_window_epoch_generation_and_release() {
-	$if gg_multiwindow ? || x_multiwindow_render ? {
+	$if gg_multiwindow ?|| x_multiwindow_render ? {
 		mut app := new_app()!
 		window := app.create_window(title: 'target lease')!
 		lease := RenderTargetLease{
@@ -94,7 +94,7 @@ fn test_render_target_lease_validates_app_batch_target_window_epoch_generation_a
 	}
 }
 
-$if gg_multiwindow ? || x_multiwindow_render ? {
+$if gg_multiwindow ?|| x_multiwindow_render ? {
 	fn test_render_target_pass_rejects_foreign_thread_before_renderer_or_lease_access() {
 		mut app := new_app()!
 		result := chan string{cap: 1}
@@ -111,7 +111,7 @@ $if gg_multiwindow ? || x_multiwindow_render ? {
 	}
 }
 
-$if gg_multiwindow ? || x_multiwindow_render ? {
+$if gg_multiwindow ?|| x_multiwindow_render ? {
 	fn assert_target_lease_error(state &RenderBackendState, app_instance u64, lease RenderTargetLease, expected string) {
 		mut actual := ''
 		validate_target_lease(state, app_instance, lease) or { actual = err.msg() }
