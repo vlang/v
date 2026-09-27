@@ -480,9 +480,7 @@ fn (mut t Transformer) explicit_generic_fn_value_specialization(id flat.NodeId, 
 	}
 	base_id := t.a.child(&node, 0)
 	base := t.a.nodes[int(base_id)]
-	if t.index_callee_is_value_index(node) {
-		return none
-	}
+	// Empty for a value index too.
 	type_arg_text := t.generic_call_type_args_name(node)
 	if type_arg_text.len == 0 {
 		return none
