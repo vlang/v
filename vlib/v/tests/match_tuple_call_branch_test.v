@@ -75,6 +75,30 @@ fn wrapped_result_pair() (int, !string) {
 	return 1, 'ok'
 }
 
+fn ierror_value() IError {
+	return error('payload')
+}
+
+fn wrapped_ierror_pair() (int, !IError) {
+	return 1, ierror_value()
+}
+
+fn test_match_tuple_explicit_error_is_result_failure() {
+	for flag in [true, false] {
+		value, item := match flag {
+			true { wrapped_ierror_pair() }
+			else { 2, error('boom') }
+		}
+		assert value == if flag { 1 } else { 2 }
+		if got := item {
+			assert flag
+			assert got.msg() == 'payload'
+		} else {
+			assert !flag
+		}
+	}
+}
+
 fn test_match_tuple_error_promotes_to_optional_slot() {
 	for flag in [true, false] {
 		value, text := match flag {
