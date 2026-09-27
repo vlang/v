@@ -9909,6 +9909,9 @@ fn (tc &TypeChecker) expr_can_take_address(id flat.NodeId) bool {
 				if base_type is Map {
 					return false
 				}
+				if unalias_type(tc.resolve_type(base_id)) is Pointer {
+					return true
+				}
 			}
 			return node.children_count > 0 && tc.expr_can_take_address(tc.a.child(&node, 0))
 		}
