@@ -15632,7 +15632,7 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 				return
 			}
 			if node.op in [.left_shift, .right_shift, .right_shift_unsigned] {
-				shift_type := if node.op == .right_shift_unsigned {
+				shift_type := if node.op == .right_shift_unsigned || g.expr_is_in_translated_file(id) {
 					g.usable_expr_type(id)
 				} else {
 					lhs_type
@@ -15688,6 +15688,17 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 			}
 			lhs_node := g.a.nodes[int(lhs_id)]
 			rhs_node := g.a.nodes[int(rhs_id)]
+			if node.op in [.eq, .ne] && g.expr_is_in_translated_file(id)
+				&& ((fn_type_from(lhs_type) != none && cgen_unalias_type(rhs_type).is_integer())
+					|| (fn_type_from(rhs_type) != none && cgen_unalias_type(lhs_type).is_integer())) {
+				g.write('((uintptr_t)(')
+				g.gen_expr(lhs_id)
+				g.write(') ${g.op_str(node.op)} (uintptr_t)(')
+				g.gen_expr(rhs_id)
+				g.write('))')
+				g.expected_enum = old_expected_enum
+				return
+			}
 			if node.op in [.eq, .ne, .lt, .gt, .le, .ge] && g.gen_mixed_sign_integer_comparison(lhs_id, rhs_id, lhs_type, rhs_type, node.op) {
 				g.expected_enum = old_expected_enum
 				return
@@ -24653,7 +24664,18 @@ fn (mut g FlatGen) gen_safe_integer_division(node flat.Node, lhs_id flat.NodeId,
 	return true
 }
 
+fn (g &FlatGen) expr_is_in_translated_file(id flat.NodeId) bool {
+	if isnil(g.tc) || int(id) < 0 || int(id) >= g.a.nodes.len {
+		return false
+	}
+	file := g.a.source_files[g.a.node(id).pos.id] or { return false }
+	return g.tc.translated_files[file.name]
+}
+
 fn (mut g FlatGen) gen_mixed_sign_integer_comparison(lhs_id flat.NodeId, rhs_id flat.NodeId, lhs_type types.Type, rhs_type types.Type, op flat.Op) bool {
+	if g.expr_is_in_translated_file(lhs_id) {
+		return false
+	}
 	lhs_sign := integer_sign_kind(lhs_type)
 	rhs_sign := integer_sign_kind(rhs_type)
 	if lhs_sign == 0 || rhs_sign == 0 || lhs_sign == rhs_sign {

@@ -7494,6 +7494,9 @@ fn (mut tc TypeChecker) check_infix(id flat.NodeId, node flat.Node) {
 				&& tc.zero_literal_expr_id(rhs_id) != none)
 				|| (rhs_clean is Pointer && lhs_clean.is_integer()
 					&& tc.zero_literal_expr_id(lhs_id) != none)
+		translated_callback_comparison := tc.node_is_in_translated_file(id)
+			&& ((fn_type_from_type(lhs_type) != none && rhs_clean.is_integer())
+				|| (fn_type_from_type(rhs_type) != none && lhs_clean.is_integer()))
 		compatible := if lhs_is_sum != rhs_is_sum {
 			false
 		} else {
@@ -7501,6 +7504,7 @@ fn (mut tc TypeChecker) check_infix(id flat.NodeId, node flat.Node) {
 				|| tc.expr_compatible(lhs_id, lhs_type, rhs_type)
 				|| tc.expr_compatible(rhs_id, rhs_type, lhs_type)
 				|| pointer_value_comparison_allowed || pointer_integer_zero_comparison
+				|| translated_callback_comparison
 				|| c_literal_scalar_comparison
 		}
 		unsafe_zero_struct_comparison :=
@@ -7689,7 +7693,11 @@ fn (mut tc TypeChecker) check_infix(id flat.NodeId, node flat.Node) {
 			return
 		}
 		skip_inactive_compact_else := tc.shift_is_in_inactive_compact_else(id)
-		bit_size := tc.integer_shift_bit_size(lhs_type)
+		bit_size := if tc.node_is_in_translated_file(id) {
+			int_max(32, tc.integer_shift_bit_size(lhs_type))
+		} else {
+			tc.integer_shift_bit_size(lhs_type)
+		}
 		if !skip_inactive_compact_else && node.op != .right_shift_unsigned && bit_size > 0
 			&& lhs_node.kind != .int_literal && rhs_node.kind == .int_literal {
 			if shift_count := v_int_literal_value(rhs_node.value) {
@@ -8009,6 +8017,9 @@ fn (tc &TypeChecker) expr_is_inside_unsafe_block(id flat.NodeId) bool {
 }
 
 fn (mut tc TypeChecker) check_signed_unsigned_comparison(op flat.Op, lhs_id flat.NodeId, lhs_type Type, rhs_id flat.NodeId, rhs_type Type) bool {
+	if tc.translated_numeric_expr_compatible(lhs_id, lhs_type, rhs_type) {
+		return false
+	}
 	lhs_unsigned := type_is_unsigned_integer(lhs_type)
 	rhs_unsigned := type_is_unsigned_integer(rhs_type)
 	lhs_node := tc.a.node(lhs_id)
@@ -16900,7 +16911,8 @@ fn (mut tc TypeChecker) check_assign(id flat.NodeId, node flat.Node) {
 				continue
 			}
 		}
-		if type_is_unsigned_integer(expected_type) && tc.expr_is_negative_integer_literal(rhs_id) {
+		if !tc.node_is_in_translated_file(rhs_id) && type_is_unsigned_integer(expected_type)
+			&& tc.expr_is_negative_integer_literal(rhs_id) {
 			tc.record_error_at(.assignment_mismatch, 'cannot assign negative value to unsigned integer type', rhs_id, rhs_node.pos)
 			i += 2
 			continue
@@ -17942,6 +17954,10 @@ fn (mut tc TypeChecker) record_compound_assignment_operand_errors(op flat.Op, lh
 		return
 	}
 	if tc.node_is_in_translated_file(lhs_id) {
+		if op in [.plus_assign, .minus_assign] && unalias_type(lhs_type) is Pointer
+			&& translated_integer_type(rhs_type) {
+			return
+		}
 		if op in [.plus_assign, .minus_assign, .mul_assign, .div_assign]
 			&& translated_numeric_type(lhs_type) && translated_numeric_type(rhs_type) {
 			return

@@ -3127,12 +3127,12 @@ fn (tc &TypeChecker) if_expr_tail_type(id flat.NodeId) Type {
 	for tc.valid_node_id(cur_id) {
 		node := tc.a.nodes[int(cur_id)]
 		if node.kind != .if_expr {
-			return tc.choose_if_tail_type(result, tc.branch_tail_type(cur_id))
+			return tc.choose_translated_if_tail_type(id, result, tc.branch_tail_type(cur_id))
 		}
 		if node.children_count > 1 {
 			smartcasts := tc.extract_smartcasts(tc.a.child(&node, 0))
 			then_type := tc.branch_tail_type_with_smartcasts(tc.a.child(&node, 1), smartcasts)
-			result = tc.choose_if_tail_type(result, then_type)
+			result = tc.choose_translated_if_tail_type(id, result, then_type)
 		}
 		if node.children_count <= 2 {
 			return result
@@ -3147,9 +3147,21 @@ fn (tc &TypeChecker) if_expr_tail_type(id flat.NodeId) Type {
 			continue
 		}
 		else_type := tc.branch_tail_type(else_id)
-		return tc.choose_if_tail_type(result, else_type)
+		return tc.choose_translated_if_tail_type(id, result, else_type)
 	}
 	return result
+}
+
+fn (tc &TypeChecker) choose_translated_if_tail_type(id flat.NodeId, current Type, next Type) Type {
+	if tc.translated_numeric_expr_compatible(id, current, next) {
+		if unalias_type(current) == Type(bool_) && unalias_type(next) != Type(bool_) {
+			return next
+		}
+		if unalias_type(next) == Type(bool_) && unalias_type(current) != Type(bool_) {
+			return current
+		}
+	}
+	return tc.choose_if_tail_type(current, next)
 }
 
 // match_expr_tail_type supports match expression value type handling for TypeChecker.
@@ -4029,7 +4041,8 @@ fn (mut tc TypeChecker) check_struct_init(id flat.NodeId, node flat.Node) {
 					tc.ownership_consume_expr(value_id, 'struct field', value_id)
 				}
 			}
-			if type_is_unsigned_integer(expected) && tc.expr_is_negative_integer_literal(value_id) {
+			if !tc.node_is_in_translated_file(value_id) && type_is_unsigned_integer(expected)
+				&& tc.expr_is_negative_integer_literal(value_id) {
 				tc.record_error_at(.assignment_mismatch, 'cannot assign negative value to unsigned integer type', value_id, value_node.pos)
 			}
 			if tc.unsafe_depth == 0 && !tc.translated_files[tc.cur_file]
@@ -7331,7 +7344,8 @@ fn (mut tc TypeChecker) check_index(id flat.NodeId, node flat.Node) {
 		if index_type is Unknown && tc.new_error_kind_since(index_error_count, .unknown_ident)
 			&& (base_type is Array || base_type is ArrayFixed) {
 			tc.type_mismatch(.cannot_index, 'non-integer index `void` (array type `${base_type.name()}`)', index_id)
-		} else if index_type !is Unknown && index_type !is Enum && !index_type.is_integer() {
+		} else if index_type !is Unknown && index_type !is Enum && !index_type.is_integer()
+			&& !(tc.node_is_in_translated_file(index_id) && translated_integer_type(index_type)) {
 			if index_type is OptionType || index_type is ResultType {
 				tc.type_mismatch(.cannot_index, 'cannot use Option or Result as index (array type `${base_type.name()}`)', index_id)
 			} else {
@@ -16669,6 +16683,9 @@ fn (tc &TypeChecker) resolve_type_uncached(id flat.NodeId) Type {
 				return unsigned_shift_result_type(lt)
 			}
 			if node.op in [.left_shift, .right_shift] {
+				if tc.node_is_in_translated_file(id) && tc.integer_shift_bit_size(lt) < 32 {
+					return Type(i32_)
+				}
 				return lt_raw
 			}
 			if node.op == .plus {

@@ -766,7 +766,7 @@ fn (t &Transformer) if_expr_branch_result_type(node flat.Node) string {
 			t.smartcast_contexts_from_is_exprs(t.extract_all_is_exprs(t.a.child(&node, 0)))
 		then_type := t.stmt_value_type_with_smartcasts(t.a.child(&node, 1), then_smartcasts)
 		if then_type.len > 0 {
-			result = t.merge_if_expr_types(result, t.normalize_type_alias(then_type))
+			result = t.merge_translated_if_expr_types(node, result, t.normalize_type_alias(then_type))
 		}
 	}
 	if node.children_count >= 3 {
@@ -778,10 +778,30 @@ fn (t &Transformer) if_expr_branch_result_type(node flat.Node) string {
 			t.stmt_value_type(else_id)
 		}
 		if else_type.len > 0 {
-			result = t.merge_if_expr_types(result, t.normalize_type_alias(else_type))
+			result = t.merge_translated_if_expr_types(node, result, t.normalize_type_alias(else_type))
 		}
 	}
 	return result
+}
+
+fn (t &Transformer) translated_if_numeric_type(name string) bool {
+	return is_numeric_type_name(name) || name in ['i32', 'char'] || name in t.enum_types
+}
+
+fn (t &Transformer) merge_translated_if_expr_types(node flat.Node, current string, next string) string {
+	if !isnil(t.tc) {
+		if file := t.a.source_files[node.pos.id] {
+			if t.tc.translated_files[file.name] {
+				if current == 'bool' && t.translated_if_numeric_type(next) {
+					return next
+				}
+				if next == 'bool' && t.translated_if_numeric_type(current) {
+					return current
+				}
+			}
+		}
+	}
+	return t.merge_if_expr_types(current, next)
 }
 
 // smartcast_contexts_from_is_exprs converts smartcast contexts from is exprs data for transform.

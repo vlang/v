@@ -552,7 +552,9 @@ fn assignment_op_reads_lhs(op flat.Op) bool {
 }
 
 fn (tc &TypeChecker) assignment_types_compatible(rhs_id flat.NodeId, rhs_type Type, expected_type Type, op flat.Op) bool {
-	if tc.translated_numeric_expr_compatible(rhs_id, rhs_type, expected_type) {
+	if tc.translated_numeric_expr_compatible(rhs_id, rhs_type, expected_type)
+		|| (tc.node_is_in_translated_file(rhs_id) && op in [.plus_assign, .minus_assign]
+			&& unalias_type(expected_type) is Pointer && translated_integer_type(rhs_type)) {
 		return true
 	}
 	if op == .assign && tc.fn_storage_voidptr_mismatch(rhs_id, rhs_type, expected_type) {
@@ -654,6 +656,7 @@ fn (tc &TypeChecker) assignment_integer_literal_operand(id flat.NodeId) ?flat.No
 fn (tc &TypeChecker) fn_storage_voidptr_mismatch(expr_id flat.NodeId, actual Type, expected Type) bool {
 	return is_fn_pointer_type(expected) && fn_param_is_voidptr_type(actual) && tc.unsafe_depth == 0
 		&& !tc.current_fn_declared_unsafe() && !tc.expr_is_unsafe_nil(expr_id)
+		&& !tc.node_is_in_translated_file(expr_id)
 }
 
 fn (tc &TypeChecker) direct_sum_assignment_variant_matches(actual Type, expected SumType) bool {
@@ -14210,10 +14213,11 @@ fn (mut tc TypeChecker) check_call_arg_types(id flat.NodeId, node flat.Node, inf
 		resolved_arg_type := tc.resolve_type(arg_id)
 		constant_integer_value := tc.implicit_integer_constant_value(arg_id,
 			resolved_arg_type)
-		negative_unsigned_literal := type_is_unsigned_integer(expected)
+		negative_unsigned_literal := !tc.node_is_in_translated_file(arg_id)
+			&& type_is_unsigned_integer(expected)
 			&& (tc.expr_is_negative_integer_literal(arg_id)
 				|| (constant_integer_value or { 0 }) < 0)
-		if !negative_unsigned_literal {
+		if !negative_unsigned_literal && !tc.node_is_in_translated_file(arg_id) {
 			tc.warn_if_integer_literal_outside_known_type_range(arg_id, expected, tc.a.nodes[int(arg_id)].pos)
 		}
 		if !call_param_is_shared(info, param_idx) && !tc.expr_is_explicit_shared_arg(arg_id)
@@ -19292,7 +19296,8 @@ fn (mut tc TypeChecker) check_if_expr(id flat.NodeId, node flat.Node) {
 		else_id := tc.a.child(&node, 2)
 		if tc.branch_has_value_tail(then_id) && tc.branch_has_value_tail(else_id)
 			&& !tc.if_branch_types_compatible(then_type, else_type, tc.branch_tail_is_array_literal(then_id), tc.branch_tail_is_array_literal(else_id))
-			&& !tc.if_branch_multi_return_compatible(then_type, then_id, else_type, else_id) {
+			&& !tc.if_branch_multi_return_compatible(then_type, then_id, else_type, else_id)
+			&& !tc.translated_numeric_expr_compatible(id, then_type, else_type) {
 			if tc.if_branch_empty_array_compatible(then_type, then_id, else_type, else_id) {
 				return
 			}

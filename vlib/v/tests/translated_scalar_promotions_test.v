@@ -1,0 +1,116 @@
+@[translated]
+module main
+
+type TranslatedAddress = u64
+
+struct SentinelFields {
+	default_address TranslatedAddress = -1
+	address         TranslatedAddress
+}
+
+fn translated_address(value TranslatedAddress) TranslatedAddress {
+	return value
+}
+
+fn test_translated_unsigned_sentinels() {
+	mut address := TranslatedAddress(0)
+	address = -1
+	assert address == u64(0xffffffffffffffff)
+	assert address == -1
+	assert -1 == address
+	negative := i64(-1)
+	assert address == negative
+	assert negative == address
+	assert !(negative < address)
+	assert translated_address(-1) == address
+	fields := SentinelFields{ address: -1 }
+	assert fields.address == address
+	assert fields.default_address == address
+}
+
+fn test_translated_boolean_indices_and_pointer_offsets() {
+	values := [11, 22, 33]!
+	index := true
+	assert values[index] == 22
+	text := c'ab'
+	assert text[index] == `b`
+	mut ptr := unsafe { &values[0] }
+	ptr += true
+	assert *ptr == 22
+	ptr -= true
+	assert *ptr == 11
+	mut raw := voidptr(ptr)
+	raw += 1
+	assert usize(raw) == usize(ptr) + 1
+	raw -= 1
+	assert raw == voidptr(ptr)
+}
+
+fn translated_mixed_branch(flag bool) int {
+	value := if flag { flag } else { 42 }
+	return value
+}
+
+fn test_translated_mixed_scalar_branches() {
+	assert translated_mixed_branch(true) == 1
+	assert translated_mixed_branch(false) == 42
+	flag := false
+	value := if flag { 42 } else { flag }
+	assert value == 0
+	floating := if flag { true } else { 2.5 }
+	assert floating == 2.5
+	chained := if flag {
+		true
+	} else if !flag {
+		42
+	} else {
+		false
+	}
+	assert chained == 42
+}
+
+fn test_translated_narrow_integer_shift() {
+	value := u16(2)
+	assert int(value << 16) == 131072
+	shifted := value << 16
+	assert shifted == 131072
+}
+
+type TranslatedHandler = fn (int) int
+
+fn translated_increment(value int) int {
+	return value + 1
+}
+
+fn translated_handler_address() voidptr {
+	return voidptr(translated_increment)
+}
+
+fn test_translated_callback_address_assignment() {
+	mut callback := TranslatedHandler(unsafe { nil })
+	assert callback == 0
+	assert 0 == callback
+	assert callback != -1
+	assert -1 != callback
+	callback = translated_handler_address()
+	assert callback(41) == 42
+	assert callback != 0
+	assert callback != -1
+}
+
+enum TranslatedScalarKind {
+	zero
+	value = 42
+}
+
+fn test_translated_mixed_fixed_width_and_enum_branches() {
+	flag := false
+	fixed := if flag { true } else { i32(42) }
+	assert fixed == 42
+	kind := if flag { true } else { TranslatedScalarKind.value }
+	assert int(kind) == 42
+	character := if flag { true } else { char(42) }
+	assert int(character) == 42
+	reversed := if !flag { TranslatedScalarKind.value } else { true }
+	assert int(reversed) == 42
+}
