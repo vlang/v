@@ -25,6 +25,27 @@ fn span_text(src string, node flat.Node) string {
 	return src[node.pos.offset..node.pos.end]
 }
 
+fn test_escaped_module_import_keeps_source_alias() {
+	ast, _ := parse_span_source('escaped_module_imports', 'import @type\nimport pkg.@type\nimport @type.bar\nimport foo as @type\n')
+	imports := ast.nodes.filter(it.kind == .import_decl)
+	assert imports.len == 4
+	assert imports[0].value == 'type'
+	assert imports[0].typ == '@type'
+	assert imports[1].value == 'pkg.type'
+	assert imports[1].typ == '@type'
+	assert imports[2].value == 'type.bar'
+	assert imports[2].typ == 'bar'
+	assert imports[3].value == 'foo'
+	assert imports[3].typ == '@type'
+}
+
+fn test_escaped_top_level_module_declaration_uses_resolved_name() {
+	ast, _ := parse_span_source('escaped_module_declaration', 'module @type\npub fn value() int { return 1 }\n')
+	modules := ast.nodes.filter(it.kind == .module_decl)
+	assert modules.len == 1
+	assert modules[0].value == 'type'
+}
+
 fn test_parenthesized_match_statement_accepts_newline_before_block() {
 	path := os.join_path(os.temp_dir(), 'v3_parenthesized_match_${os.getpid()}.v')
 	os.write_file(path, 'fn main() {\n\tmatch (2)\n\t{\n\t\t2 {}\n\t\telse {}\n\t}\n}\n') or {

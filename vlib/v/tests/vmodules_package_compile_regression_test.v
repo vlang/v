@@ -681,3 +681,22 @@ fn test_issue_27281_marker_bounded_escaped_keyword_module_keeps_prefix() {
 	res := os.execute('${os.quoted_path(issue_20147_vexe)} test ${os.quoted_path(type_dir)}')
 	assert res.exit_code == 0, res.output
 }
+
+fn test_issue_27281_escaped_keyword_module_is_usable_through_default_alias() {
+	workspace := os.join_path(os.vtmp_dir(), 'issue_27281_escaped_default_alias')
+	defer {
+		os.rmdir_all(workspace) or {}
+	}
+	project_dir := os.join_path(workspace, 'project')
+	type_dir := os.join_path(project_dir, 'type')
+	os.rmdir_all(workspace) or {}
+	os.mkdir_all(type_dir) or { panic(err) }
+	issue_20147_write_file(os.join_path(project_dir, '.v.mod.stop'), '')
+	issue_20147_write_file(os.join_path(type_dir, 'type.v'),
+		'module @type\npub fn value() int { return 1 }\n')
+	main_file := os.join_path(project_dir, 'main.v')
+	issue_20147_write_file(main_file,
+		'module main\nimport @type\nfn main() { assert @type.value() == 1 }\n')
+	res := os.execute('${os.quoted_path(issue_20147_vexe)} run ${os.quoted_path(main_file)}')
+	assert res.exit_code == 0, res.output
+}

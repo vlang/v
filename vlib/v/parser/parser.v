@@ -466,11 +466,11 @@ pub fn (mut p Parser) parse_into(path string) {
 				&& p.s.src[module_end..p.tok_pos].contains('\n') {
 				p.record_diagnostic_span('`module` and `${p.lit}` must be at same line', p.tok_pos, p.tok_end)
 			}
-			p.cur_module = p.lit
+			p.cur_module = p.module_name_for_resolution(p.lit)
 			module_name_end := p.tok_end
 			mod_id := p.add_node(flat.Node{
 				kind:  .module_decl
-				value: p.lit
+				value: p.cur_module
 			})
 			ids << mod_id
 			p.next()
@@ -1068,10 +1068,13 @@ fn (mut p Parser) expect_name() string {
 
 // expect_module_name reads one segment of a module path. A keyword used as a
 // module name is written with the `@` escape (`module @type`, `import @type.bar`);
-// the escape is spelling only, so the segment is the bare name everywhere but in
-// vfmt, which must write the source back as it was.
+// the escape is spelling only for module resolution, so the path segment is
+// the bare name. Import aliases and vfmt retain the source spelling.
 fn (mut p Parser) expect_module_name() string {
-	name := p.expect_name()
+	return p.module_name_for_resolution(p.expect_name())
+}
+
+fn (p &Parser) module_name_for_resolution(name string) string {
 	if !p.prefs.is_fmt && name.len > 1 && name[0] == `@` {
 		return name[1..]
 	}
@@ -3547,17 +3550,17 @@ fn (mut p Parser) interface_decl() flat.NodeId {
 fn (mut p Parser) import_stmt() flat.NodeId {
 	import_start := p.span_start()
 	p.next() // skip 'import'
+	mut alias := p.lit
 	mut name := p.expect_module_name()
-	mut alias := name
 	mut selective_ids := []flat.NodeId{}
 	for p.tok == .dot {
 		p.next()
-		alias = p.expect_module_name()
-		name += '.' + alias
+		alias = p.lit
+		name += '.' + p.expect_module_name()
 	}
 	if p.tok == .key_as {
 		p.next()
-		alias = p.expect_module_name()
+		alias = p.expect_name()
 	}
 	// Record the module's in-file alias (the identifier used as a `mod.symbol` base) so
 	// an inlined template closure does not try to capture it as if it were a local.
