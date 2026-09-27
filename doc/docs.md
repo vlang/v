@@ -1531,6 +1531,9 @@ filtered := files.filter(it#[-4..].to_lower() == '.jpg').map(it.to_upper())
 
 ### Fixed size arrays
 
+Mapping a fixed size array preserves its length and uses the mapping expression or function
+return type as its element type. Filtering still produces a dynamic array.
+
 V also supports arrays with fixed size. Unlike ordinary arrays, their
 length is constant. You cannot append elements to them, nor shrink them.
 You can only modify their elements in place.

@@ -2915,10 +2915,11 @@ fn (mut t Transformer) lower_array_filter_call(node flat.Node, fn_node flat.Node
 
 // lower_array_map_call builds lower array map call data for transform.
 fn (mut t Transformer) lower_array_map_call(node flat.Node, fn_node flat.Node, base_type string) ?flat.NodeId {
-	if node.children_count < 2 || !base_type.starts_with('[]') {
+	fixed := t.is_fixed_array_type(base_type)
+	if node.children_count < 2 || (!fixed && !base_type.starts_with('[]')) {
 		return none
 	}
-	elem_type := base_type[2..]
+	elem_type := if fixed { fixed_array_elem_type(base_type) } else { base_type[2..] }
 	map_expr_id := t.a.child(&node, 1)
 	map_expr := t.a.nodes[int(map_expr_id)]
 	map_expr_is_dsl_bound_method := t.array_map_is_dsl_bound_method(map_expr)
@@ -3087,7 +3088,11 @@ fn (mut t Transformer) lower_array_map_call(node flat.Node, fn_node flat.Node, b
 			return t.make_empty()
 		}
 	}
-	out_type := '[]${result_elem_type}'
+	out_type := if fixed {
+		'[${fixed_array_len_text(base_type)}]${result_elem_type}'
+	} else {
+		'[]${result_elem_type}'
+	}
 	base_id := t.a.child(&fn_node, 0)
 	map_result_retains_elem_address := mapper_takes_elem_address && t.array_map_result_can_retain_element_address(result_elem_type) && t.array_map_expr_result_retains_element_address(map_source_id, 'it')
 	map_side_effect_retains_elem_address := mapper_takes_elem_address && t.array_map_expr_side_effect_retains_element_address(map_source_id, 'it')
@@ -3100,7 +3105,17 @@ fn (mut t Transformer) lower_array_map_call(node flat.Node, fn_node flat.Node, b
 	}
 	out_name := t.new_temp('map')
 	idx_name := t.new_temp('map_idx')
-	prefix << t.make_decl_assign_typed(out_name, t.make_array_new_call(result_elem_type, t.make_int_literal(0), t.make_selector(base, 'len', 'int')), out_type)
+	length := if fixed {
+		t.make_fixed_array_len_expr(base_type)
+	} else {
+		t.make_selector(base, 'len', 'int')
+	}
+	out_init := if fixed {
+		t.make_fixed_array_init(out_type)
+	} else {
+		t.make_array_new_call(result_elem_type, t.make_int_literal(0), length)
+	}
+	prefix << t.make_decl_assign_typed(out_name, out_init, out_type)
 	mut cleanup_guard_name := ''
 	if source_needs_drop {
 		cleanup_guard_name = t.new_temp('map_values_live')
@@ -3122,7 +3137,7 @@ fn (mut t Transformer) lower_array_map_call(node flat.Node, fn_node flat.Node, b
 		})
 	}
 	init := t.make_decl_assign_typed(idx_name, t.make_int_literal(0), 'int')
-	cond := t.make_infix(.lt, t.make_ident(idx_name), t.make_selector(base, 'len', 'int'))
+	cond := t.make_infix(.lt, t.make_ident(idx_name), length)
 	post := t.make_expr_stmt(t.make_postfix(t.make_ident(idx_name), .inc))
 	elem_expr := if mapper_takes_elem_address {
 		t.array_get_ptr(base, t.make_ident(idx_name), elem_type)
@@ -3150,10 +3165,14 @@ fn (mut t Transformer) lower_array_map_call(node flat.Node, fn_node flat.Node, b
 		pushed_name = t.new_temp('map_cloned_val')
 		loop_body << t.make_decl_assign_typed(pushed_name, cloned_value, result_elem_type)
 	}
-	loop_body << t.make_expr_stmt(t.make_call_typed('array_push', [
-		t.make_prefix(.amp, t.make_ident(out_name)),
-		t.make_prefix(.amp, t.make_ident(pushed_name)),
-	], 'void'))
+	if fixed {
+		loop_body << t.make_assign(t.make_index(t.make_ident(out_name), t.make_ident(idx_name), result_elem_type), t.make_ident(pushed_name))
+	} else {
+		loop_body << t.make_expr_stmt(t.make_call_typed('array_push', [
+			t.make_prefix(.amp, t.make_ident(out_name)),
+			t.make_prefix(.amp, t.make_ident(pushed_name)),
+		], 'void'))
+	}
 	prefix << t.make_for_stmt(init, cond, post, loop_body, flat.Node{
 		flags: flat.node_flag_skip_ownership_drops
 	})
