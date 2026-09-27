@@ -60,7 +60,7 @@ fn (mut tc TypeChecker) check_generic_fn_body(node flat.Node, fn_idx int, params
 		independent[type_error_key(err)] = true
 	}
 	mut positions := map[string]bool{}
-	for combination in type_param_combinations(texts, generic_body_instance_budget) {
+	for combination in tc.generic_body_combinations(node, texts, constraints) {
 		instance := tc.check_generic_fn_body_as(node, fn_idx, closed_type_param_texts(combination))
 		for err in instance.errors {
 			statement := tc.enclosing_body_statement(err.node, fn_idx) or { continue }
@@ -303,13 +303,53 @@ fn (tc &TypeChecker) type_param_instance_texts(node flat.Node, params map[string
 // parameter, `y := x` and `$if y is User`; `!is` and `!in` too, whose `$else`
 // is those types. `names` are the type parameters of `node`.
 fn (tc &TypeChecker) comptime_tested_types(node flat.Node, param string, names []string) []string {
+	mut found := []string{}
+	for cond in tc.comptime_conditions_on(node, param, names) {
+		for alternative in cond.split('||') {
+			for part in alternative.split('&&') {
+				mut term := part.trim_space()
+				for term.starts_with('(') && term.ends_with(')') {
+					term = term[1..term.len - 1].trim_space()
+				}
+				if in_term := comptime_in_term(term) {
+					if in_term.left == param {
+						for item in in_term.items {
+							if !item.starts_with('$') && item !in found {
+								found << item
+							}
+						}
+					}
+					continue
+				}
+				for op in [' !is ', ' is '] {
+					idx := term.index(op) or { continue }
+					left := term[..idx].trim_space()
+					right := term[idx + op.len..].trim_space()
+					if left == param && right.len > 0 && !right.starts_with('$')
+						&& right !in found {
+						found << right
+					}
+					break
+				}
+			}
+		}
+	}
+	return found
+}
+
+// comptime_conditions_on returns the conditions of the `$if`s of the body of
+// the generic function `node`, each value that they test written as its type
+// parameter, `$if x is User` as `$if T is User`: the one of `names`, the type
+// parameters of `node`, that a parameter is declared with, and `param` for a
+// local whose value comes from any of them, `y := x`.
+fn (tc &TypeChecker) comptime_conditions_on(node flat.Node, param string, names []string) []string {
 	mut name_set := map[string]bool{}
 	for name in names {
 		name_set[name] = true
 	}
 	// The locals whose values come from the type parameters, `y := x`.
 	dependent := tc.type_param_dependent_names(node, name_set)
-	mut found := []string{}
+	mut conditions := []string{}
 	mut stack := []flat.NodeId{}
 	for i in 0 .. node.children_count {
 		stack << tc.a.child(&node, i)
@@ -328,48 +368,145 @@ fn (tc &TypeChecker) comptime_tested_types(node flat.Node, param string, names [
 					tested[tested_name] = param
 				}
 			}
-			cond := comptime_condition_on_type_params(current.value, tested)
-			for alternative in cond.split('||') {
-				for part in alternative.split('&&') {
-					mut term := part.trim_space()
-					for term.starts_with('(') && term.ends_with(')') {
-						term = term[1..term.len - 1].trim_space()
-					}
-					if in_term := comptime_in_term(term) {
-						if in_term.left == param {
-							for item in in_term.items {
-								if !item.starts_with('$') && item !in found {
-									found << item
-								}
-							}
-						}
-						continue
-					}
-					for op in [' !is ', ' is '] {
-						idx := term.index(op) or { continue }
-						left := term[..idx].trim_space()
-						right := term[idx + op.len..].trim_space()
-						if left == param && right.len > 0 && !right.starts_with('$')
-							&& right !in found {
-							found << right
-						}
-						break
-					}
-				}
-			}
+			conditions << comptime_condition_on_type_params(current.value, tested)
 		}
 		for i in 0 .. current.children_count {
 			stack << tc.a.child(current, i)
 		}
 	}
-	return found
+	return conditions
+}
+
+// comptime_condition_terms returns the terms of the condition `cond` of `$if`
+// that test `name`, `T is f64`, `T !is $float` or `T in [f32, f64]`, however
+// the condition joins them.
+fn comptime_condition_terms(cond string, name string) []string {
+	mut terms := []string{}
+	mut i := 0
+	for i < cond.len {
+		end := comptime_condition_name_end(cond, i)
+		if end == i {
+			i++
+			continue
+		}
+		if cond[i..end] != name || !comptime_test_at(cond, end) {
+			i = end
+			continue
+		}
+		// What it is tested against ends at the `)`, `&&` or `||` that closes the
+		// term: a list and a type argument have brackets of their own.
+		mut j := end
+		mut depth := 0
+		for j < cond.len {
+			c := cond[j]
+			if c in [`[`, `(`] {
+				depth++
+			} else if c in [`]`, `)`] {
+				if depth == 0 {
+					break
+				}
+				depth--
+			} else if depth == 0 && j + 1 < cond.len && c in [`&`, `|`] && cond[j + 1] == c {
+				break
+			}
+			j++
+		}
+		terms << cond[i..j].trim_space()
+		i = j
+	}
+	return terms
+}
+
+// type_param_branch_texts gives each type parameter of `texts` a type of its
+// list for each way that the `$if`s of the body of `node` can go with it: the
+// terms of their conditions on it, `T is f64`, `x in [f32, f64]` or
+// `T !is $float`, split its types into groups that no term tells apart, and the
+// first type of each group stands for the group. A combination of these types
+// takes each combination of the branches of the `$if`s, their `$else`s too.
+fn (tc &TypeChecker) type_param_branch_texts(node flat.Node, texts map[string][]string, constraints map[string]GenericConstraint) map[string][]string {
+	names := texts.keys()
+	mut branches := map[string][]string{}
+	for name, options in texts {
+		constraint := constraints[name] or {
+			branches[name] = [options[0]]
+			continue
+		}
+		mut option_names := []string{cap: options.len}
+		for option in options {
+			option_names << tc.parse_type(option).name()
+		}
+		// The terms that each type meets, a mark for each term.
+		mut marks := []string{len: options.len}
+		for cond in tc.comptime_conditions_on(node, name, names) {
+			for term in comptime_condition_terms(cond, name) {
+				met := tc.constraint_condition_term_types(term, name, constraint) or { continue }
+				for i, option_name in option_names {
+					marks[i] += if met.any(it.name() == option_name) { '1' } else { '0' }
+				}
+			}
+		}
+		mut groups := map[string]bool{}
+		mut picked := []string{}
+		for i, option in options {
+			if marks[i] !in groups {
+				groups[marks[i]] = true
+				picked << option
+			}
+		}
+		branches[name] = picked
+	}
+	return branches
 }
 
 // generic_body_instance_budget is how many checks of a generic body with types
 // for its type parameters check_generic_fn_body makes before it stops checking
-// every combination of their types (see type_param_combinations): each check
+// every combination of their types (see generic_body_combinations): each check
 // costs what a check of a function with that body does.
 const generic_body_instance_budget = 256
+
+// generic_body_combinations gives the combinations of the types of `texts` to
+// check the body of `node` with: those of type_param_combinations and, when
+// they are not all of them, one for each way that the `$if`s of the body can go
+// (see type_param_branch_texts). A branch that `$if`s on three type parameters
+// lead to needs three types at once, which the combinations of every two of
+// them may not give.
+fn (tc &TypeChecker) generic_body_combinations(node flat.Node, texts map[string][]string, constraints map[string]GenericConstraint) []map[string]string {
+	mut combinations := type_param_combinations(texts, generic_body_instance_budget)
+	mut count := 1
+	for _, options in texts {
+		count *= options.len
+		if count > combinations.len {
+			break
+		}
+	}
+	if count <= combinations.len {
+		return combinations
+	}
+	names := texts.keys()
+	mut seen := map[string]bool{}
+	for combination in combinations {
+		seen[type_param_combination_key(names, combination)] = true
+	}
+	branches := tc.type_param_branch_texts(node, texts, constraints)
+	for combination in type_param_combinations(branches, generic_body_instance_budget) {
+		key := type_param_combination_key(names, combination)
+		if key !in seen {
+			seen[key] = true
+			combinations << combination
+		}
+	}
+	return combinations
+}
+
+// type_param_combination_key is `combination` as a text, with its types in the
+// order of `names`.
+fn type_param_combination_key(names []string, combination map[string]string) string {
+	mut key := []string{cap: names.len}
+	for name in names {
+		key << combination[name]
+	}
+	return key.join('\n')
+}
 
 // type_param_combinations gives each type parameter of `texts` one of its
 // types, in every combination while they are at most `budget`; past it, in

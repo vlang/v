@@ -347,6 +347,66 @@ fn main() {
 	assert errors[0].contains('when `U` is `string`'), errors[0]
 }
 
+fn test_past_the_budget_every_way_the_compile_time_ifs_can_go_is_checked() {
+	// 10 * 10 * 10 = 1000 combinations, past the budget: every two type
+	// parameters meet with every two of their types, but a branch that `$if`s on
+	// three of them lead to needs three types at once. Each way that the `$if`s
+	// can go is checked too: through an `$else`, a group, a list or a `&&`.
+	errors := check('branches', 'module main
+
+type Number = i8 | i16 | i32 | int | i64 | u8 | u16 | u32 | f32 | f64
+
+fn nested[A Number, B Number, C Number](a A, b B, c C) int {
+	\$if A is f64 {
+		\$if B is f64 {
+			\$if C is f64 {
+				return a
+			}
+		}
+	}
+	return 0
+}
+
+fn in_else[A Number, B Number, C Number](a A, b B, c C) int {
+	\$if A is i8 {
+		return 1
+	} \$else {
+		\$if B is f64 {
+			\$if C is f64 {
+				return b
+			}
+		}
+	}
+	return 0
+}
+
+fn groups[A Number, B Number, C Number](a A, b B, c C) int {
+	\$if A is \$float {
+		\$if B in [f32, f64] {
+			\$if c is \$float {
+				return c
+			}
+		}
+	}
+	return 0
+}
+
+fn joined[A Number, B Number, C Number](a A, b B, c C) int {
+	\$if a is f64 && b is f64 && c is f64 {
+		return a
+	}
+	return 0
+}
+
+fn main() {}
+')
+	assert errors.len == 4, errors.str()
+	assert errors[0] == 'main.v:9:12: error: cannot use `f64` as type `int` in return argument: when `A` is `f64`, in its constraint `Number`, and when `B` is `f64`, in its constraint `Number`, and when `C` is `f64`, in its constraint `Number`', errors[0]
+	assert errors[1] == 'main.v:22:12: error: cannot use `f64` as type `int` in return argument: when `A` is `i16`, in its constraint `Number`, and when `B` is `f64`, in its constraint `Number`, and when `C` is `f64`, in its constraint `Number`', errors[1]
+	assert errors[2] == 'main.v:33:12: error: cannot use `f32` as type `int` in return argument: when `A` is `f32`, in its constraint `Number`, and when `B` is `f32`, in its constraint `Number`, and when `C` is `f32`, in its constraint `Number`', errors[2]
+	assert errors[3] == 'main.v:42:10: error: cannot use `f64` as type `int` in return argument: when `A` is `f64`, in its constraint `Number`, and when `B` is `f64`, in its constraint `Number`, and when `C` is `f64`, in its constraint `Number`', errors[3]
+}
+
 fn test_a_generic_body_with_a_type_parameter_without_a_constraint_is_not_checked() {
 	// As before: V checks such a body in each of its instances.
 	errors := check('unconstrained', "module main
