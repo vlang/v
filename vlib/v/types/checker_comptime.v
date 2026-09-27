@@ -8168,6 +8168,11 @@ fn (mut tc TypeChecker) record_invalid_enum_infix(id flat.NodeId, node flat.Node
 fn (tc &TypeChecker) expr_is_inside_unsafe_block(id flat.NodeId) bool {
 	mut current := id
 	for _ in 0 .. 32 {
+		// No block holds a function declaration. The parent of a specialized
+		// one, which nothing holds, is a scan of the whole node arena.
+		if tc.valid_node_id(current) && tc.a.node(current).kind == .fn_decl {
+			return false
+		}
 		parent_id := tc.direct_parent_id(current)
 		if !tc.valid_node_id(parent_id) {
 			return false
