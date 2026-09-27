@@ -457,6 +457,16 @@ fn test_c_struct_declared_in_platform_binding_stays_header_owned() {
 	}
 	g.target = pref.target_from('linux', 'arm64') or { panic(err) }
 	assert g.header_c_struct_needs_compat_typedef('C.NSFont')
+	g.set_output_cross_c(true)
+	assert !g.header_c_struct_needs_compat_typedef('C.NSFont')
+	g.c_directives.clear()
+	g.c_directives << CDirective{ module: 'uiother', text: '#if 0' }
+	g.c_directives << CDirective{ module: 'uiother', text: '#include <AppKit/AppKit.h>' }
+	g.c_directives << CDirective{ module: 'uiother', text: '#endif' }
+	assert g.header_c_struct_needs_compat_typedef('C.NSFont')
+	g.c_directives << CDirective{ module: 'uiother', text: '#include <AppKit/AppKit.h>' }
+	assert !g.header_c_struct_needs_compat_typedef('C.NSFont')
+	g.set_output_cross_c(false)
 
 	g.register_struct_decl_info('C.HeaderOwned', 'C.HeaderOwned', 'main', header_backed_file, flat.Node{})
 	assert g.skip_builtin_struct('C.HeaderOwned')

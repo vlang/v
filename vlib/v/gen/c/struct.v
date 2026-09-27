@@ -3,6 +3,7 @@ module c
 import os
 import v.flat
 import v.gen.c.naming
+import v.pref
 import v.types
 
 struct PromotedStructInitField {
@@ -6580,13 +6581,15 @@ fn (g &FlatGen) header_c_struct_needs_compat_typedef(name string) bool {
 }
 
 fn (g &FlatGen) cocoa_nsfont_class(name string) bool {
-	if name != 'C.NSFont' || g.target.os != 'macos' {
+	if name != 'C.NSFont' || (g.target.os != 'macos' && !g.output_cross_c) {
 		return false
 	}
-	info := g.struct_decl_infos[name] or { return false }
+	if name !in g.struct_decl_infos {
+		return false
+	}
 	mut directives := []string{}
 	for directive in g.c_directives {
-		if directive.module != info.module {
+		if directive.late {
 			continue
 		}
 		line := directive.text.trim_space()
@@ -6599,8 +6602,13 @@ fn (g &FlatGen) cocoa_nsfont_class(name string) bool {
 			directives << line
 		}
 	}
+	target := if g.output_cross_c {
+		pref.target_from('macos', g.target.arch) or { g.target }
+	} else {
+		g.target
+	}
 	return c_header_text_needs_objective_c_for_target(directives.join('\n'), g.c_flags,
-		g.c99_mode, g.target)
+		g.c99_mode, target)
 }
 
 fn (g &FlatGen) soa_companion_name(struct_name string) string {
