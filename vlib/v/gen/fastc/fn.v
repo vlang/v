@@ -540,10 +540,10 @@ fn (mut g Parser) expect(expected token.Token) ! {
 
 fn (mut g Parser) parse_module() ! {
 	g.next()
-	if g.tok != .name {
+	if g.tok != .name && !g.tok.is_keyword() {
 		return g.unsupported('module declaration')
 	}
-	if fastc_resolved_module_segment(g.lit) != g.module_name.all_after_last('.') {
+	if g.lit != g.module_name.all_after_last('.') {
 		return g.unsupported('module `${g.lit}` in `${g.module_name}` source')
 	}
 	g.next()
@@ -583,7 +583,12 @@ fn (mut g Parser) skip_import() ! {
 			}
 			selective_depth--
 		}
+		previous_end := g.s.offset
 		g.next()
+		if selective_depth == 0 && g.s.pos > previous_end
+			&& g.s.src[previous_end..g.s.pos].contains('\n') {
+			return
+		}
 	}
 }
 

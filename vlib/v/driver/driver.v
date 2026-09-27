@@ -15868,13 +15868,7 @@ fn append_declared_import(mut imports []string, line string) {
 	if end == 0 {
 		return
 	}
-	mut parts := line[..end].split('.')
-	for i, part in parts {
-		if part.len > 1 && part[0] == `@` {
-			parts[i] = part[1..]
-		}
-	}
-	name := parts.join('.')
+	name := line[..end]
 	if name !in imports {
 		imports << name
 	}
@@ -15936,11 +15930,6 @@ fn declared_module_in_file(path string) string {
 				module_name = module_name[..comment]
 			}
 			module_name = module_name.trim_space()
-			// `module @type` is the keyword `type` used as a module name; the
-			// escape is spelling, not part of the name.
-			if module_name.len > 1 && module_name[0] == `@` {
-				module_name = module_name[1..]
-			}
 			return module_name
 		}
 		return ''

@@ -2077,31 +2077,32 @@ fn test_colliding_import_aliases_are_rejected() {
 	}
 }
 
-fn test_escaped_keyword_module_names_resolve_with_source_aliases() {
+fn test_bare_keyword_module_names_resolve_without_escapes() {
 	mut prefs := pref.new_preferences()
-	header := fastc_scan_source_header('module @type\nimport @type.bar\nimport foo.@type\n',
-		'escaped_imports.v', prefs) or { panic(err) }
+	header := fastc_scan_source_header('module type\nimport type.bar\nimport foo.type\n',
+		'bare_keyword_imports.v', prefs) or { panic(err) }
 	assert header.module_name == 'type'
 	assert header.import_order == ['type.bar', 'foo.type']
 	assert header.imports['bar'] == 'type.bar'
-	assert header.imports['@type'] == 'foo.type'
+	assert header.imports['type'] == 'foo.type'
 
-	root := os.join_path(os.vtmp_dir(), 'v3_fastc_escaped_module_${os.getpid()}')
+	root := os.join_path(os.vtmp_dir(), 'v3_fastc_bare_keyword_module_${os.getpid()}')
 	os.rmdir_all(root) or {}
 	os.mkdir_all(os.join_path(root, 'type')) or { panic(err) }
+	os.mkdir_all(os.join_path(root, 'if')) or { panic(err) }
 	defer {
 		os.rmdir_all(root) or {}
 	}
 	main_file := os.join_path(root, 'main.v')
-	os.write_file(main_file, 'module main\nimport @type\nfn main() { println(@type.value()) }\n') or {
+	os.write_file(main_file,
+		'module main\nimport if as conditionals\nimport type\nfn main() { println(type.value() + conditionals.value()) }\n') or {
 		panic(err)
 	}
 	os.write_file(os.join_path(root, 'type', 'type.v'),
-		'module @type\npub fn value() int { return 42 }\n') or { panic(err) }
+		'module type\npub fn value() int { return 40 }\n') or { panic(err) }
+	os.write_file(os.join_path(root, 'if', 'if.v'),
+		'module if\npub fn value() int { return 2 }\n') or { panic(err) }
 	prefs.module_search_paths = [root]
-	main_header := fastc_scan_source_header(os.read_file(main_file) or { panic(err) }, main_file,
-		prefs) or { panic(err) }
-	assert main_header.imports['@type'] == 'type'
 	c_source := generate_files([main_file], prefs) or { panic(err) }
 	assert c_source.contains('type__value()'), c_source
 	c_file := os.join_path(root, 'program.c')

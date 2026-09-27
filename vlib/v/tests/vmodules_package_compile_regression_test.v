@@ -658,8 +658,8 @@ fn test_issue_27281_marker_bounded_symlinked_module_root_keeps_logical_name() {
 	assert res.exit_code == 0, res.output
 }
 
-fn test_issue_27281_marker_bounded_escaped_keyword_module_keeps_prefix() {
-	workspace := os.join_path(os.vtmp_dir(), 'issue_27281_escaped_keyword_module')
+fn test_issue_27281_marker_bounded_bare_keyword_module_keeps_prefix() {
+	workspace := os.join_path(os.vtmp_dir(), 'issue_27281_bare_keyword_module_prefix')
 	defer {
 		os.rmdir_all(workspace) or {}
 	}
@@ -669,7 +669,7 @@ fn test_issue_27281_marker_bounded_escaped_keyword_module_keeps_prefix() {
 	os.rmdir_all(workspace) or {}
 	os.mkdir_all(bar_dir) or { panic(err) }
 	type_test_source :=
-		['module @type', '', 'import @type.bar', '', 'fn test_nested_module_name() {',
+		['module type', '', 'import type.bar', '', 'fn test_nested_module_name() {',
 			"\tassert bar.module_name() in ['bar', 'type.bar']", '}'].join_lines() +
 			'\n'
 	bar_source :=
@@ -682,21 +682,24 @@ fn test_issue_27281_marker_bounded_escaped_keyword_module_keeps_prefix() {
 	assert res.exit_code == 0, res.output
 }
 
-fn test_issue_27281_escaped_keyword_module_is_usable_through_default_alias() {
-	workspace := os.join_path(os.vtmp_dir(), 'issue_27281_escaped_default_alias')
+fn test_issue_27281_bare_keyword_module_names_resolve() {
+	workspace := os.join_path(os.vtmp_dir(), 'issue_27281_bare_keyword_modules')
 	defer {
 		os.rmdir_all(workspace) or {}
 	}
 	project_dir := os.join_path(workspace, 'project')
 	type_dir := os.join_path(project_dir, 'type')
+	bar_dir := os.join_path(type_dir, 'bar')
 	os.rmdir_all(workspace) or {}
-	os.mkdir_all(type_dir) or { panic(err) }
+	os.mkdir_all(bar_dir) or { panic(err) }
 	issue_20147_write_file(os.join_path(project_dir, '.v.mod.stop'), '')
 	issue_20147_write_file(os.join_path(type_dir, 'type.v'),
-		'module @type\npub fn value() int { return 1 }\n')
+		'module type\npub fn value() int { return 1 }\n')
+	issue_20147_write_file(os.join_path(bar_dir, 'bar.v'),
+		'module bar\npub fn value() int { return 2 }\n')
 	main_file := os.join_path(project_dir, 'main.v')
 	issue_20147_write_file(main_file,
-		'module main\nimport @type\nfn main() { assert @type.value() == 1 }\n')
+		'module main\nimport type.bar\nimport type\nfn main() { assert type.value() == 1; assert bar.value() == 2 }\n')
 	res := os.execute('${os.quoted_path(issue_20147_vexe)} run ${os.quoted_path(main_file)}')
 	assert res.exit_code == 0, res.output
 }

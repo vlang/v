@@ -462,11 +462,11 @@ pub fn (mut p Parser) parse_into(path string) {
 			if p.tok == .semicolon {
 				p.next()
 			}
-			if p.tok == .name && module_end <= p.tok_pos
+			if (p.tok == .name || p.tok.is_keyword()) && module_end <= p.tok_pos
 				&& p.s.src[module_end..p.tok_pos].contains('\n') {
 				p.record_diagnostic_span('`module` and `${p.lit}` must be at same line', p.tok_pos, p.tok_end)
 			}
-			p.cur_module = p.module_name_for_resolution(p.lit)
+			p.cur_module = p.lit
 			module_name_end := p.tok_end
 			mod_id := p.add_node(flat.Node{
 				kind:  .module_decl
@@ -1066,19 +1066,9 @@ fn (mut p Parser) expect_name() string {
 	return name
 }
 
-// expect_module_name reads one segment of a module path. A keyword used as a
-// module name is written with the `@` escape (`module @type`, `import @type.bar`);
-// the escape is spelling only for module resolution, so the path segment is
-// the bare name. Import aliases and vfmt retain the source spelling.
+// expect_module_name reads a module path segment, including keyword names.
 fn (mut p Parser) expect_module_name() string {
-	return p.module_name_for_resolution(p.expect_name())
-}
-
-fn (p &Parser) module_name_for_resolution(name string) string {
-	if !p.prefs.is_fmt && name.len > 1 && name[0] == `@` {
-		return name[1..]
-	}
-	return name
+	return p.expect_name_or_keyword()
 }
 
 fn (mut p Parser) expect_name_or_keyword() string {
@@ -3594,7 +3584,8 @@ fn (mut p Parser) import_stmt() flat.NodeId {
 		}
 		p.check(.rcbr)
 	}
-	if p.tok !in [.semicolon, .eof, .key_import] {
+	if p.tok !in [.semicolon, .eof, .key_import] && (p.prev_tok_end >= p.tok_pos
+		|| !p.s.src[p.prev_tok_end..p.tok_pos].contains('\n')) {
 		p.record_diagnostic_span('cannot import multiple modules at a time', p.tok_pos,
 			p.tok_end)
 		for p.tok !in [.semicolon, .eof] {

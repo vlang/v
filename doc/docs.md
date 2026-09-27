@@ -3805,10 +3805,10 @@ fn main() {
 * You can create modules anywhere under a valid V module lookup root.
 * All modules are compiled statically into a single executable.
 
-If a module name is a reserved keyword, prefix that segment with `@` in its declaration and
-in imports. For example, `type/type.v` can declare `module @type`; another file can use
-`import @type` and call `@type.value()`. The directory and resolved module name remain `type`.
-The escape also works in longer paths, such as `import @type.bar`.
+Reserved keywords can be module names without escaping. For example, `type/type.v` can declare
+`module type`; another file can use `import type` and call `type.value()`. Keywords also work in
+longer import paths, such as `import type.bar`. If a keyword cannot be used as an expression
+qualifier, give the import an alias with `as`.
 
 In normal projects, the nearest `v.mod` file is that lookup root.
 Besides package metadata, `v.mod` also acts as a relative module anchor:
