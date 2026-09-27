@@ -10907,6 +10907,21 @@ fn main() {
 	println(naked_fn())
 }
 ')
+	// This test's whole scenario depends on an assumption it never used to
+	// assert: that `memdup_noscan` is really generated (a) with
+	// profile_fn_restore_enabled active and (b) immediately before naked_fn,
+	// so profile_fn_active/profile_fn_restore_enabled are genuinely stale-true
+	// going into naked_fn's own generation. An adversarial review caught that,
+	// unasserted, a future change to used-function generation order could
+	// silently stop exercising the leak (e.g. naked_fn generated before any
+	// profiled function ever ran) while every assertion below kept passing
+	// vacuously. Assert the precondition directly instead of only its absence
+	// of symptoms, so a future break in the assumption fails loudly here
+	// rather than silently losing coverage.
+	preceding_body := c_fn_body(c_source, 'memdup_noscan(void* src, ptrdiff_t sz) {')
+	assert preceding_body != '', c_source
+	assert preceding_body.contains('bool _prev_v__profile_enabled ='), preceding_body
+	assert c_source.index(preceding_body) or { -1 } < c_source.index('naked_fn(void) {') or { -1 }, c_source
 	naked_body := c_fn_body(c_source, 'i64 naked_fn(void) {')
 	assert naked_body != '', c_source
 	assert !naked_body.contains('_PROF_FN_START'), naked_body
