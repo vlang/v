@@ -5602,10 +5602,9 @@ fn (mut t Transformer) wrap_string_conversion(expr flat.NodeId, typ string) flat
 			}
 		}
 		if !clean_typ.contains('.') && !local_struct_shadows_alias {
-			for aname, target in t.tc.type_aliases {
-				if short_name_view(aname) == clean_typ {
-					return t.alias_str_wrap(expr, clean_typ, target, is_ref)
-				}
+			aliases := t.type_aliases_with_short_name(clean_typ)
+			if aliases.len > 0 {
+				return t.alias_str_wrap(expr, clean_typ, aliases[0].target, is_ref)
 			}
 		}
 		if !local_struct_shadows_alias {

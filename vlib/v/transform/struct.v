@@ -1171,12 +1171,8 @@ fn (t &Transformer) lookup_struct_info_direct(name string) ?StructInfo {
 
 // struct_field_type supports struct field type handling for Transformer.
 fn (t &Transformer) struct_field_type(info StructInfo, field_name string) ?string {
-	for field in info.fields {
-		if field.name == field_name {
-			return field.typ
-		}
-	}
-	return none
+	field := info.field(field_name) or { return none }
+	return field.typ
 }
 
 // embedded_field_for_promoted_field

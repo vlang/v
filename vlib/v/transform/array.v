@@ -2577,10 +2577,9 @@ fn (t &Transformer) array_append_elem_c_type(typ string) string {
 		return clean
 	}
 	if !clean.contains('.') {
-		for alias, target in t.tc.type_aliases {
-			if alias.all_after_last('.') == clean {
-				return t.tc.c_type(t.tc.parse_type(target))
-			}
+		aliases := t.type_aliases_with_short_name(clean)
+		if aliases.len > 0 {
+			return t.tc.c_type(t.tc.parse_type(aliases[0].target))
 		}
 	}
 	return t.tc.c_type(t.tc.parse_type(clean))
