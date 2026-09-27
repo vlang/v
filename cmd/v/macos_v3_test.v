@@ -123,7 +123,7 @@ fn test_macos_v3_build_help_without_target() {
 	for flag in ['-h', '--help'] {
 		result := run_macos_v3_test_process(vexe, ['build', flag], macos_v3_test_vroot, {})
 		assert result.exit_code == 0, result.output
-		assert result.output.contains('Usage:'), result.output
+		assert result.output.contains('usage:'), result.output
 	}
 }
 
