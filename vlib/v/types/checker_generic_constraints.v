@@ -1227,6 +1227,120 @@ fn (mut tc TypeChecker) constraint_walk_infer(param_text string, actual Type, na
 	tc.infer_generic_type_value_from_type(clean, actual, names, mut inferred)
 }
 
+// infer_type_params_from_constraints binds in `inferred` each type parameter
+// of the generic function `decl` that no argument of a call decides, from the
+// constraint of a bound one that names it: `T` of `[C Container[T], T Named]`
+// is what `Container[T]` makes of the type of `C`, `User` for `Box[User]`,
+// whose `get()` returns a `User`.
+pub fn (mut tc TypeChecker) infer_type_params_from_constraints(decl flat.Node, mut inferred map[string]string) {
+	names := decl.generic_params().map(it.trim_space())
+	texts := decl.generic_constraints()
+	if texts.len != names.len {
+		return
+	}
+	// A type parameter bound this way can bind another one in turn.
+	for _ in 0 .. names.len {
+		mut bound := false
+		for i, name in names {
+			actual_text := inferred[name] or { continue }
+			text := texts[i].trim_space()
+			if text.len == 0 {
+				continue
+			}
+			mut missing := []string{}
+			for other in names {
+				mut one := map[string]bool{}
+				one[other] = true
+				if other !in inferred && type_text_names_any(text, one) {
+					missing << other
+				}
+			}
+			if missing.len == 0 {
+				continue
+			}
+			before := inferred.len
+			tc.infer_from_constraint(text, tc.parse_type(actual_text), missing, mut inferred)
+			bound = bound || inferred.len > before
+		}
+		if !bound {
+			break
+		}
+	}
+}
+
+// infer_from_constraint binds the type parameters `missing` that the
+// constraint `text` names from `actual`, the type bound to the type parameter
+// that it constrains: the type arguments of the same generic type, `Pair[T]`
+// against `Pair[int]`, or the types of the members of a generic interface,
+// `get() T` of `Container[T]` against the `get` of `actual`.
+fn (mut tc TypeChecker) infer_from_constraint(text string, actual Type, missing []string, mut inferred map[string]string) {
+	base, args, is_generic := generic_type_application_parts(text)
+	if !is_generic {
+		return
+	}
+	clean := unwrap_pointer(actual)
+	decl := tc.generic_type_decl(base) or { return }
+	if decl.kind != .interface_decl {
+		tc.infer_generic_type_text_from_type(text, clean, missing, mut inferred)
+		return
+	}
+	params := decl.generic_params().map(it.trim_space())
+	concrete := method_type_name(clean)
+	if params.len != args.len || concrete.len == 0 {
+		return
+	}
+	bound_args := args.map(it.trim_space())
+	for i in 0 .. decl.children_count {
+		member := tc.a.child_node(&decl, i)
+		if member.kind != .interface_field || member.value.len == 0 {
+			continue
+		}
+		if member.op != .dot {
+			if member.typ.len > 0 {
+				field := tc.struct_field_type(concrete, member.value) or { continue }
+				tc.infer_generic_type_text_from_type(subst_generic_text(member.typ, bound_args,
+					params), field, missing, mut inferred)
+			}
+			continue
+		}
+		ret, method_params := tc.concrete_method_types(concrete, member.value) or { continue }
+		if member.typ.len > 0 {
+			tc.infer_generic_type_text_from_type(subst_generic_text(member.typ, bound_args,
+				params), ret, missing, mut inferred)
+		}
+		mut k := 0
+		for j in 0 .. member.children_count {
+			param := tc.a.child_node(member, j)
+			if param.kind != .param || param.typ.len == 0 {
+				continue
+			}
+			if k < method_params.len {
+				tc.infer_generic_type_text_from_type(subst_generic_text(param.typ, bound_args,
+					params), method_params[k], missing, mut inferred)
+			}
+			k++
+		}
+	}
+}
+
+// concrete_method_types is what the method `method` of the type `concrete`
+// returns, and the types of its parameters after its receiver.
+fn (tc &TypeChecker) concrete_method_types(concrete string, method string) ?(Type, []Type) {
+	if info := tc.resolve_generic_struct_method(concrete, method) {
+		if info.has_receiver && info.params.len > 0 {
+			return info.return_type, info.params[1..]
+		}
+		return info.return_type, info.params
+	}
+	key := tc.concrete_method_signature_key(concrete, method)?
+	ret := tc.fn_ret_types[key] or { return none }
+	params := tc.fn_param_types[key] or { []Type{} }
+	if params.len > 0 {
+		return ret, params[1..]
+	}
+	return ret, params
+}
+
 // program_declares_constraints reports whether a declaration of the program names
 // a constraint, `[T Named]`. The checks that walk every generic body and sweep
 // every written type run only then: a program without constraints is checked

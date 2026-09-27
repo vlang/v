@@ -8106,6 +8106,11 @@ fn (mut t Transformer) infer_generic_call_args_seeded(decl GenericFnDecl, _id fl
 	for name, typ in pinned {
 		inferred[name] = typ
 	}
+	// A type parameter that only the constraint of another one names, `T` of
+	// `[C Container[T], T Named]`, from the type bound to that one.
+	if param_names.any(it !in inferred) {
+		t.tc.infer_type_params_from_constraints(decl.node, mut inferred)
+	}
 	mut args := []string{cap: param_names.len}
 	for name in param_names {
 		arg := inferred[name] or { return none }

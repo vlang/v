@@ -4981,6 +4981,9 @@ fn (mut tc TypeChecker) generic_compile_error_instantiation(call flat.Node, info
 		source_param_index++
 	}
 	if concrete_args.len == 0 {
+		// A type parameter that only the constraint of another one names, `T` of
+		// `[C Container[T], T Named]`, from the type bound to that one.
+		tc.infer_type_params_from_constraints(*fn_node, mut inferred)
 		for param in generic_params {
 			arg := inferred[param] or { return none }
 			concrete_args << arg
