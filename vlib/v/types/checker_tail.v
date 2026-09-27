@@ -4528,7 +4528,8 @@ fn (mut tc TypeChecker) check_call_privacy(id flat.NodeId, node flat.Node, info 
 					has_direct_method = direct_info.name == info.name
 				}
 			}
-			if !has_direct_method && !selected_is_private {
+			if !has_direct_method && !selected_is_private
+				&& !(callee.value == 'str' && direct_type is Struct) {
 				if embedded_info := tc.embedded_method_call_info(receiver_name, callee.value) {
 					declaration_name = embedded_info.name
 				}
