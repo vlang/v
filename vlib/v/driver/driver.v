@@ -2552,6 +2552,15 @@ fn (mut cache V3MacosSdkRootCache) get() string {
 	return cache.root
 }
 
+fn v3_shared_object_compile_flags(flags []string, target_os string, is_shared bool, is_liveshared bool) []string {
+	mut result := flags.clone()
+	if is_shared && !is_liveshared && target_os in ['linux', 'macos']
+		&& '-fvisibility=hidden' !in result {
+		result << '-fvisibility=hidden'
+	}
+	return result
+}
+
 fn v3_c_compiler_flag_plan(options V3CCompilerFlagOptions) V3CCompilerFlagPlan {
 	mut before_inputs := options.environment_c_flags.clone()
 	before_inputs << options.target_args
@@ -12150,6 +12159,8 @@ pub fn run(args []string) {
 			}
 			b.step('C object cache')
 		}
+		resolved_c_flags = v3_shared_object_compile_flags(resolved_c_flags, prefs.normalized_target_os(),
+			is_shared, is_liveshared)
 		flag_plan_sdk_root := if effective_tcc && prefs.normalized_target_os() == 'macos' {
 			macos_sdk_root_cache.get()
 		} else {

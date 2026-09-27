@@ -1,5 +1,21 @@
 module driver
 
+fn test_shared_visibility_is_in_cached_object_flags_and_signature() {
+	base := ['-Iexample']
+	for target_os in ['linux', 'macos'] {
+		flags := v3_shared_object_compile_flags(base, target_os, true, false)
+		assert flags == ['-Iexample', '-fvisibility=hidden']
+		assert v3_cached_object_compile_signature('c11', '', '', '', flags, false, '') !=
+			v3_cached_object_compile_signature('c11', '', '', '', base, false, '')
+	}
+	for target_os in ['linux', 'macos', 'windows'] {
+		assert v3_shared_object_compile_flags(base, target_os, true, true) == base
+		assert v3_shared_object_compile_flags(base, target_os, false, false) == base
+	}
+	assert v3_shared_object_compile_flags(base, 'windows', true, false) == base
+	assert base == ['-Iexample']
+}
+
 fn test_shared_flag_plan_hides_symbols_on_linux_and_macos() {
 	for target_os in ['linux', 'macos'] {
 		for is_prod in [false, true] {
