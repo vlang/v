@@ -1945,14 +1945,17 @@ fn (g &FlatGen) selector_base_module(name string) ?string {
 	if name.len == 0 {
 		return none
 	}
+	if g.tc != unsafe { nil } {
+		current := if g.tc.cur_module.len > 0 { g.tc.cur_module } else { 'main' }
+		if name == current || name == current.all_after_last('.') {
+			return current
+		}
+	}
 	if g.tc != unsafe { nil } && g.tc.cur_file.len > 0 {
 		key := g.tc.cur_file + '\n' + name
 		if mod := g.tc.file_imports[key] {
 			return mod
 		}
-	}
-	if g.tc != unsafe { nil } && name == g.tc.cur_module {
-		return g.tc.cur_module
 	}
 	if mod := g.modules[name] {
 		return mod

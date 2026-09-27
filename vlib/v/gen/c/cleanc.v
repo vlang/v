@@ -16362,7 +16362,11 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 				// (e.g. `v.gen.wasm`), matching its function naming. Reference it by that
 				// exact storage name rather than the short alias, otherwise we'd emit an
 				// undeclared `wasm__x` for a const defined as `v3__gen__wasm__x`.
-				full_qname := g.const_storage_name(mod, node.value)
+				full_qname := if mod == 'main' {
+					'main.${node.value}'
+				} else {
+					g.const_storage_name(mod, node.value)
+				}
 				if full_qname in g.const_vals {
 					g.write(g.cname(full_qname))
 				} else {

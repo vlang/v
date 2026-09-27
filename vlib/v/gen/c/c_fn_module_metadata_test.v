@@ -34,3 +34,17 @@ fn test_c_fn_call_metadata_is_module_scoped() {
 	assert g.module_c_fn_variadic('C.probe', 'probe') or { false }
 	assert g.c_fn_abi_variadic_prefix('C.probe', 'probe', variadic_params) == 2
 }
+
+fn test_selector_base_uses_current_module_identity_before_imports() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	mut g := FlatGen.new()
+	g.tc = &tc
+	tc.cur_file = 'source.v'
+	tc.file_imports['source.v\nmain'] = 'elsewhere.main'
+	assert g.selector_base_module('main') or { '' } == 'main'
+	tc.cur_module = 'a.types'
+	tc.file_imports['source.v\ntypes'] = 'elsewhere.types'
+	assert g.selector_base_module('types') or { '' } == 'a.types'
+	assert g.selector_base_module('a.types') or { '' } == 'a.types'
+}
