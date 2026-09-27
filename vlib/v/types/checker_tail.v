@@ -383,6 +383,11 @@ fn (tc &TypeChecker) current_file_uses_nested_module_path() bool {
 	if dir == '' || tc.cur_module != dir.all_after_last('/') {
 		return false
 	}
+	project_root := checker_vmod_root_for_file(tc.cur_file).replace('\\', '/').trim_right('/')
+	project_dir := os.real_path(dir).replace('\\', '/').trim_right('/')
+	if project_root.len > 0 && project_dir.starts_with(project_root + '/') {
+		return project_dir[project_root.len + 1..].contains('/')
+	}
 	root := tc.module_diagnostic_root.replace('\\', '/').trim_right('/')
 	if root != '' {
 		if dir.starts_with(root + '/') {
@@ -395,11 +400,6 @@ fn (tc &TypeChecker) current_file_uses_nested_module_path() bool {
 		}
 	}
 	mut relative := normalized
-	project_root := checker_vmod_root_for_file(tc.cur_file).replace('\\', '/').trim_right('/')
-	project_dir := os.real_path(dir).replace('\\', '/').trim_right('/')
-	if project_root.len > 0 && project_dir.starts_with(project_root + '/') {
-		return project_dir[project_root.len + 1..].contains('/')
-	}
 	if marker := normalized.last_index('/vlib/') {
 		relative = normalized[marker + '/vlib/'.len..]
 	} else if normalized.starts_with('vlib/') {

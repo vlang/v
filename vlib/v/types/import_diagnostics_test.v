@@ -91,9 +91,12 @@ fn test_nested_module_can_import_another_module_with_the_same_basename() {
 	os.write_file(path, 'module layers\nimport project.nn.gates.layers\n')!
 	mut p := parser.Parser.new(pref.new_preferences())
 	a := p.parse_file(path)
-	mut tc := TypeChecker.new(a)
-	tc.module_diagnostic_root = os.join_path(root, 'nn', 'models')
-	tc.collect(a)
-	tc.check_import_diagnostics()
-	assert tc.errors.len == 0, tc.errors.str()
+	for diagnostic_root in [root, os.join_path(root, 'nn'), os.join_path(root, 'nn', 'models'),
+		os.join_path(root, 'nn', 'layers')] {
+		mut tc := TypeChecker.new(a)
+		tc.module_diagnostic_root = diagnostic_root
+		tc.collect(a)
+		tc.check_import_diagnostics()
+		assert tc.errors.len == 0, '${diagnostic_root}: ${tc.errors}'
+	}
 }
