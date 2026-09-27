@@ -190,6 +190,9 @@ fn (mut t Transformer) transform_infix_array_ops(_id flat.NodeId, node flat.Node
 	if node.children_count < 2 || node.op !in [.eq, .ne] {
 		return none
 	}
+	if comparison := t.transform_translated_array_pointer_comparison(node) {
+		return comparison
+	}
 	lhs_id := t.a.children[node.children_start]
 	rhs_id := t.a.children[node.children_start + 1]
 	lhs_raw_type := t.node_type(lhs_id)
@@ -388,6 +391,28 @@ fn (mut t Transformer) transform_infix_array_ops(_id flat.NodeId, node flat.Node
 		return t.make_prefix(.not, eq_call)
 	}
 	return eq_call
+}
+
+fn (mut t Transformer) transform_translated_array_pointer_comparison(node flat.Node) ?flat.NodeId {
+	if isnil(t.tc) {
+		return none
+	}
+	file := t.a.source_files[node.pos.id] or { return none }
+	if !t.tc.translated_files[file.name] {
+		return none
+	}
+	lhs_id := t.a.child(&node, 0)
+	rhs_id := t.a.child(&node, 1)
+	lhs_type := types.unalias_type(t.tc.resolve_type(lhs_id))
+	rhs_type := types.unalias_type(t.tc.resolve_type(rhs_id))
+	if !((lhs_type is types.ArrayFixed && rhs_type is types.Pointer)
+		|| (rhs_type is types.ArrayFixed && lhs_type is types.Pointer)) {
+		return none
+	}
+	// C array decay compares addresses, including pointers to nested fixed arrays.
+	lhs := t.make_cast('voidptr', t.transform_expr_preserving_pointer_value(lhs_id), 'voidptr')
+	rhs := t.make_cast('voidptr', t.transform_expr_preserving_pointer_value(rhs_id), 'voidptr')
+	return t.make_infix(node.op, lhs, rhs)
 }
 
 fn (t &Transformer) array_comparison_literal_elem_type(id flat.NodeId) ?string {

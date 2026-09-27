@@ -22,7 +22,10 @@ fn test_translated_array_decay_keeps_element_and_container_checks() {
 	defer { os.rmdir_all(root) or {} }
 	os.write_file(os.join_path(root, 'main.v'), '@[translated]
 module main
+type Narrow = i16
 fn pointer_arg(values &int) {}
+fn row_pointer_arg(values &[2]int) {}
+fn pointer_pointer_arg(values &&int) {}
 fn main() {
 	strings := ["first", "second"]!
 	dynamic := [1, 2]
@@ -30,6 +33,12 @@ fn main() {
 	pointer_arg(strings)
 	pointer_arg(dynamic)
 	pointer_arg(narrow)
+	narrow_rows := [[Narrow(1), 2]!, [Narrow(3), 4]!]!
+	row_pointer_arg(narrow_rows)
+	wide_rows := [[1, 2, 3]!, [4, 5, 6]!]!
+	row_pointer_arg(wide_rows)
+	narrow_value := Narrow(1)
+	pointer_pointer_arg([&narrow_value]!)
 	pointer := unsafe { &narrow[0] }
 	_ = pointer == [1, 2]!
 }
@@ -39,5 +48,8 @@ fn main() {
 	assert result.output.contains('cannot use `[2]string` as `&int`'), result.output
 	assert result.output.contains('cannot use `[]int` as `&int`'), result.output
 	assert result.output.contains('cannot use `[2]i16` as `&int`'), result.output
+	assert result.output.contains('cannot use `[2][2]Narrow` as `&[2]int`'), result.output
+	assert result.output.contains('cannot use `[2][3]int` as `&[2]int`'), result.output
+	assert result.output.contains('cannot use `[1]&Narrow` as `&&int`'), result.output
 	assert result.output.contains('infix expr:'), result.output
 }

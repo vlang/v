@@ -5,5 +5,10 @@ The pointer addresses the first element. Its element type must match the paramet
 except that `voidptr` accepts any element type and C byte types (`char`, `i8`, and `u8`)
 can be used interchangeably. The same compatibility rules apply to pointer assignments
 and equality or inequality comparisons with pointers.
+Aliases inside nested fixed arrays and pointers resolve to their underlying types;
+array lengths and integer widths must still match.
+When a later call argument contains an `if` or `match` expression, the pointer still
+addresses the original array. Indexed array arguments retain the index evaluated
+before that later argument. Arrays passed by value keep their value-copy semantics.
 Dynamic arrays retain their V representation and do not decay to element pointers.
 Ordinary V files retain their usual argument checks.

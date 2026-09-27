@@ -767,8 +767,20 @@ fn (tc &TypeChecker) translated_fixed_array_pointer_compatible(expr_id flat.Node
 		return false
 	}
 	pointee := unalias_type(clean_expected.base_type)
-	element := unalias_type(clean_actual.elem_type)
-	return pointee is Void || semantic_types_equal(element, pointee)
+	return pointee is Void || translated_array_element_types_match(clean_actual.elem_type, pointee)
+}
+
+fn translated_array_element_types_match(actual Type, expected Type) bool {
+	element := unalias_type(actual)
+	pointee := unalias_type(expected)
+	if element is ArrayFixed && pointee is ArrayFixed {
+		return element.len == pointee.len && element.len_expr == pointee.len_expr
+			&& translated_array_element_types_match(element.elem_type, pointee.elem_type)
+	}
+	if element is Pointer && pointee is Pointer {
+		return translated_array_element_types_match(element.base_type, pointee.base_type)
+	}
+	return semantic_types_equal(element, pointee)
 		|| (element.name() in ['char', 'i8', 'u8'] && pointee.name() in ['char', 'i8', 'u8'])
 }
 
