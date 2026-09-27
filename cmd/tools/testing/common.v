@@ -652,8 +652,10 @@ pub fn (mut ts TestSession) add(file string) {
 	ts.files << file
 }
 
+// test processes the selected files, matching exclusions by their resolved paths.
 pub fn (mut ts TestSession) test() {
 	unbuffer_stdout()
+	ts.skip_files = ts.skip_files.map(os.real_path)
 	// Ensure that .tmp.c files generated from compiling _test.v files,
 	// are easy to delete at the end, *without* affecting the existing ones.
 	current_wd := os.getwd()
