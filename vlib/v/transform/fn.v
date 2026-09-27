@@ -14304,6 +14304,8 @@ fn (t &Transformer) collect_callback_nested_fn_types(param string, mut signature
 			payload = payload[7..].trim_space()
 		} else if payload.starts_with('[]') {
 			payload = payload[2..].trim_space()
+		} else if payload.starts_with('...') {
+			payload = payload[3..].trim_space()
 		} else if payload.starts_with('chan ') || payload.starts_with('thread ') {
 			prefix_len := if payload.starts_with('chan ') { 5 } else { 7 }
 			payload = payload[prefix_len..].trim_space()
