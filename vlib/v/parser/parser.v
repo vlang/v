@@ -3217,12 +3217,13 @@ fn (mut p Parser) type_decl() flat.NodeId {
 	// check for sum type: type T = A | B | C
 	// skip auto-semicolon before pipe
 	if is_sum_type {
-		if language_prefix.len == 0 && name.len == 1 && name[0] >= `A` && name[0] <= `Z` {
+		if !p.prefs.is_fmt && language_prefix.len == 0 && name.len == 1 && name[0] >= `A`
+			&& name[0] <= `Z` {
 			p.record_diagnostic_span('single letter capital names are reserved for generic template types',
 				name_pos.offset, name_pos.end)
 		}
 		mut variants := []flat.NodeId{}
-		if first_type == 'none' {
+		if !p.prefs.is_fmt && first_type == 'none' {
 			p.record_diagnostic_span('named sum type cannot have none as its variant', type_start,
 				p.prev_tok_end)
 		}
@@ -3238,7 +3239,7 @@ fn (mut p Parser) type_decl() flat.NodeId {
 			p.next() // skip |
 			variant_start := p.span_start()
 			variant_type := p.parse_type_name()
-			if variant_type == 'none' {
+			if !p.prefs.is_fmt && variant_type == 'none' {
 				p.record_diagnostic_span('named sum type cannot have none as its variant', variant_start,
 					p.prev_tok_end)
 			}

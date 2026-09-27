@@ -83,8 +83,11 @@ fn test_fmt_preferences_respect_vflags() {
 }
 
 fn test_fmt_accepts_semantic_duplicate_operator_and_recursive_alias() {
-	for source in ['struct Number {}\nfn (n Number) + (other Number) Number { return n }\nfn (n Number) + (other Number) Number { return n }\n',
-		'type Node = Node\n'] {
+	for source in [
+		'struct Number {}\nfn (n Number) + (other Number) Number { return n }\nfn (n Number) + (other Number) Number { return n }\n',
+		'type Node = Node\n',
+		'type Maybe = int | none\n',
+	] {
 		path := os.join_path(vfmt_test_tdir, 'semantic_editing_buffer.v')
 		os.write_file(path, source)!
 		res := os.execute('${os.quoted_path(vexe)} fmt ${os.quoted_path(path)}')
