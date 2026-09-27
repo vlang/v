@@ -1340,8 +1340,13 @@ fn (mut p Parser) parse_stmts_from_source(src string, template_path string, call
 	mut file_set := token.FileSet.new()
 	mut file := file_set.add_file('<veb-template>', stable_src.len)
 	file.index_lines(stable_src)
+	generated_file_id := p.next_file_id
+	p.next_file_id++
+	p.a.source_files[generated_file_id] = file
+	p.a.template_call_sites[generated_file_id] = token.new_pos(call_pos.id, call_pos.offset)
 
 	saved_s := p.s
+	saved_file_id := p.cur_file_id
 	saved_tok := p.tok
 	saved_lit := p.lit
 	saved_tok_pos := p.tok_pos
@@ -1355,6 +1360,7 @@ fn (mut p Parser) parse_stmts_from_source(src string, template_path string, call
 
 	p.s = scanner.new_scanner(p.prefs, .normal)
 	p.s.init(file, stable_src)
+	p.cur_file_id = generated_file_id
 	p.has_peek = false
 	p.next()
 	// Isolate any bindings the re-parsed builder declares (e.g. its `mut <builder> := ''`)
@@ -1375,6 +1381,7 @@ fn (mut p Parser) parse_stmts_from_source(src string, template_path string, call
 	p.remap_template_source(first_node, first_diagnostic, file, stable_src, template_path, call_pos, source_lines)
 
 	p.s = saved_s
+	p.cur_file_id = saved_file_id
 	p.tok = saved_tok
 	p.lit = saved_lit
 	p.tok_pos = saved_tok_pos
