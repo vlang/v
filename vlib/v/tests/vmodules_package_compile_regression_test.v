@@ -420,7 +420,7 @@ fn test_issue_27281_test_lookup_rejects_sibling_above_boundary() {
 	explicit_lookup := '@vlib|${project}'
 	explicit_test_file := os.join_path(foo_dir, 'foo_test.v')
 	explicit_res :=
-		os.execute("${os.quoted_path(issue_20147_vexe)} -path '${explicit_lookup}' -check ${os.quoted_path(explicit_test_file)}")
+		os.execute('${os.quoted_path(issue_20147_vexe)} -path ${os.quoted_path(explicit_lookup)} -check ${os.quoted_path(explicit_test_file)}')
 	assert explicit_res.exit_code == 0, explicit_res.output
 }
 
