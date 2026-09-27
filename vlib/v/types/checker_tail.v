@@ -14254,7 +14254,12 @@ fn (mut tc TypeChecker) check_call_arg_types(id flat.NodeId, node flat.Node, inf
 			&& (unalias_type(expected) is Pointer || cast_target_interface(expected) != none) {
 			continue
 		}
-		clean_expected_for_interface := unalias_type(expected)
+		expected_value := unalias_type(expected)
+		clean_expected_for_interface := if expected_value is OptionType && actual is Pointer {
+			unalias_type(expected_value.base_type)
+		} else {
+			expected_value
+		}
 		if clean_expected_for_interface is Interface && unalias_type(actual) !is Interface
 			&& tc.private_declaration(clean_expected_for_interface.name) != none {
 			actual_name := tc.diagnostic_expr_type_name(arg_id, actual)
@@ -14441,7 +14446,7 @@ fn (mut tc TypeChecker) check_call_arg_types(id flat.NodeId, node flat.Node, inf
 			continue
 		}
 		if expected is OptionType && actual is Pointer
-			&& unalias_type(expected.base_type) !is Pointer {
+			&& unalias_type(expected.base_type) !is Pointer && !compatible_interface_value_arg {
 			tc.record_error_at(.call_arg_mismatch, 'cannot use `&${actual.base_type.name()}` as `?${expected.base_type.name()}` in argument ${argument_number} to `${target_name}`', arg_id, tc.call_argument_diagnostic_pos(arg_id))
 			continue
 		}
