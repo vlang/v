@@ -3404,6 +3404,8 @@ println(c()) // 3
 ```
 
 If you need the value to be modified outside the function, use a reference.
+Capturing a `mut` parameter preserves its reference to the caller's value, including when the
+closure passes it to a spawned function.
 
 ```v oksyntax
 mut i := 0

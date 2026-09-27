@@ -11485,12 +11485,18 @@ fn (mut tc TypeChecker) check_fn_literal(id flat.NodeId, node flat.Node) {
 	}
 	saved_fn_context := tc.fn_context
 	mut captured_pointer_values := map[string][]string{}
+	mut captured_mut_params := map[string]Type{}
 	for i in 0 .. node.children_count {
 		capture := tc.a.child_node(&node, i)
 		if capture.kind != .ident || capture.value.len == 0 {
 			continue
 		}
 		capture_type := tc.cur_scope.lookup(capture.value) or { continue }
+		if capture.is_mut {
+			if base := tc.mut_param_base_for_current_ident(capture.value, capture_type) {
+				captured_mut_params[capture.value] = base
+			}
+		}
 		if unalias_type(capture_type) !is Pointer {
 			continue
 		}
@@ -11528,6 +11534,11 @@ fn (mut tc TypeChecker) check_fn_literal(id flat.NodeId, node flat.Node) {
 		if child.kind == .ident && (child.is_mut || child.typ == 'atomic') && child.value.len > 0 {
 			if owner := tc.cur_scope.lookup_owner(child.value) {
 				tc.fn_context.mut_local_owners[child.value] = owner
+				if base := captured_mut_params[child.value] {
+					// A captured mutable parameter retains its caller-owned reference.
+					tc.fn_context.mut_param_base_types[child.value] = base
+					tc.fn_context.mut_param_owners[child.value] = owner
+				}
 			}
 		}
 		if child.kind == .ident && child.typ == 'shared' && child.value.len > 0 {
