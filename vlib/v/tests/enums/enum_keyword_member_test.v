@@ -4,6 +4,11 @@ enum Alignment {
 	@type
 }
 
+enum PlainKeywordMember {
+	left
+	struct
+}
+
 struct Layout {
 	alignment Alignment = .@none
 }
@@ -36,4 +41,10 @@ fn test_escaped_enum_members_keep_their_type_and_value() {
 	assert [Alignment.@none, .left, .@type].map(alignment_name(it)) == ['unset', 'left', 'type']
 	assert alignment_score(.@none) == 0
 	assert alignment_score(.@type) == 2
+}
+
+fn test_escaped_reference_to_plain_keyword_member() {
+	assert int(PlainKeywordMember.@struct) == 1
+	value := PlainKeywordMember.@struct
+	assert value == .@struct
 }

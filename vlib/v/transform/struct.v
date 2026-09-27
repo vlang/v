@@ -71,15 +71,20 @@ fn (mut t Transformer) transform_struct_fields(id flat.NodeId, node flat.Node) f
 		if child.kind == .field_init && child.children_count > 0 {
 			val_id := t.a.child(&child, 0)
 			val_node := t.a.nodes[int(val_id)]
-			field_name := if child.value.starts_with('@')
-				&& info.fields.any(it.name == child.value[1..]) {
-				child.value[1..]
-			} else if child.value.len > 0 {
+			mut field_name := if child.value.len > 0 {
 				child.value
 			} else if i < info.fields.len {
 				info.fields[i].name
 			} else {
 				''
+			}
+			if child.value.starts_with('@') {
+				plain_name := child.value[1..]
+				if info.fields.any(it.name == plain_name) {
+					field_name = plain_name
+				} else if _ := t.struct_field_path_for_field(node.value, plain_name) {
+					field_name = plain_name
+				}
 			}
 			mut target_field_name := field_name
 			mut field_type := if t.lean_struct_init_fields {

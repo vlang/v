@@ -8,6 +8,10 @@ pub mut:
 
 type KeywordRecord = C.EscapedFieldRecord
 
+struct EmbeddedKeywordRecord {
+	C.EscapedFieldRecord
+}
+
 fn test_escaped_keyword_matches_a_native_field_declared_without_escape() {
 	mut value := C.EscapedFieldRecord{ @type: 42 }
 	assert value.@type == 42
@@ -15,4 +19,9 @@ fn test_escaped_keyword_matches_a_native_field_declared_without_escape() {
 	assert value.@type == 7
 	alias := KeywordRecord{ @type: 9 }
 	assert alias.@type == 9
+}
+
+fn test_escaped_keyword_initializes_promoted_native_field() {
+	value := EmbeddedKeywordRecord{ @type: 42 }
+	assert value.EscapedFieldRecord.@type == 42
 }
