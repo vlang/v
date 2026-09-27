@@ -1573,10 +1573,29 @@ fn test_a_prepared_server_checks_as_a_one_shot_check_does() {
 	checked, trace := check_as_prepared_server(dir, fn (_ string) {})
 	assert checked == one_shot_check(dir)
 	assert checked.contains('error: '), checked
-	// The server parsed the modules builtin imports once, and the check used them.
+	// The server parsed the modules builtin imports once, and collected their
+	// declarations: the check continued from them.
 	assert trace.contains('v-diagnostics-server: prepared '), trace
 	assert trace.contains(' strconv'), trace
+	assert trace.contains(', collected'), trace
+	assert !trace.contains('anew'), trace
 	assert !trace.contains('one-shot check'), trace
+}
+
+fn test_a_prepared_server_collects_anew_a_program_that_declares_a_name_of_a_prepared_module() {
+	$if !linux {
+		return
+	}
+	dir := os.join_path(work_dir, 'prepared_names')
+	os.mkdir_all(dir)!
+	// strconv declares `f64_from_bits` too: collected after strconv, as the
+	// prepared declarations would have it, the function of the program would
+	// lose the entries whose first declaration wins.
+	os.write_file(os.join_path(dir, 'main.v'), prepared_program +
+		'\nfn f64_from_bits(b u64) f64 {\n\treturn f64(b)\n}\n')!
+	checked, trace := check_as_prepared_server(dir, fn (_ string) {})
+	assert checked == one_shot_check(dir)
+	assert trace.contains('collecting every declaration anew: the name `f64_from_bits`'), trace
 }
 
 fn test_a_prepared_server_checks_as_a_one_shot_check_does_once_a_module_shadows_a_prepared_one() {

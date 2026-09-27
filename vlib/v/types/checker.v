@@ -742,6 +742,7 @@ pub mut:
 	building_v_fast                  bool
 	parallel_check_min_items         int = min_parallel_check_items // the fewest function bodies a check splits among the worker pool
 	logical_file_order               []int // the `.file` markers in the order to collect them, when not the node order
+	prepared_collect                 &PreparedCollect = unsafe { nil } // what collect_continue continues from
 	valid_diagnostic_fast            bool
 	valid_resolution_fast            bool
 	defer_fn_ancillary               bool
@@ -939,6 +940,7 @@ pub mut:
 	shadow_explicit_roots         []string
 	shadow_dependency_roots       []string
 	multiple_module_import_lines  map[u64]bool
+	import_line_indexed_files     map[int]bool
 	source_texts_by_file          map[string]string
 	ct_update_pos                 map[int]token.Pos
 	ct_update_indexed             bool
@@ -2100,9 +2102,15 @@ pub fn (mut tc TypeChecker) index_rewritten_parents_after(start int) {
 fn (mut tc TypeChecker) build_type_declaration_index(a &flat.FlatAst) {
 	tc.type_declaration_ids = map[string][]int{}
 	tc.first_type_declaration_ids = map[string]int{}
-	mut module_name := ''
+	tc.index_type_declarations(a, tc.top_level_idx, '')
+}
+
+// index_type_declarations adds the type declarations of `entries`, whose code
+// starts in module `start_module`, to the indexes of type declarations.
+fn (mut tc TypeChecker) index_type_declarations(a &flat.FlatAst, entries []i32, start_module string) {
+	mut module_name := start_module
 	mut conflict_module_name := ''
-	for index in tc.top_level_idx {
+	for index in entries {
 		node := a.nodes[index]
 		if node.kind == .file {
 			conflict_module_name = ''
@@ -2146,8 +2154,12 @@ fn (mut tc TypeChecker) build_fn_declaration_indexes(a &flat.FlatAst) {
 // builders below each own their maps, so collection runs them on separate lanes.
 fn (mut tc TypeChecker) build_declaration_param_mutability_index(a &flat.FlatAst) {
 	tc.declaration_param_mutability = map[string][]bool{}
-	mut module_name := ''
-	for index in tc.top_level_idx {
+	tc.index_declaration_param_mutability(a, tc.top_level_idx, '')
+}
+
+fn (mut tc TypeChecker) index_declaration_param_mutability(a &flat.FlatAst, entries []i32, start_module string) {
+	mut module_name := start_module
+	for index in entries {
 		node := a.nodes[index]
 		if node.kind == .module_decl {
 			module_name = node.value
@@ -2223,8 +2235,12 @@ fn (mut tc TypeChecker) build_fn_name_indexes(a &flat.FlatAst) {
 	tc.static_associated_fn_keys = map[string]bool{}
 	tc.fn_decl_short_name_ids = map[string]int{}
 	tc.file_bare_fn_names = map[string]bool{}
-	mut module_name := ''
-	for index in tc.top_level_idx {
+	tc.index_fn_names(a, tc.top_level_idx, '')
+}
+
+fn (mut tc TypeChecker) index_fn_names(a &flat.FlatAst, entries []i32, start_module string) {
+	mut module_name := start_module
+	for index in entries {
 		node := a.nodes[index]
 		if node.kind == .module_decl {
 			module_name = node.value
@@ -2259,8 +2275,12 @@ fn (mut tc TypeChecker) build_file_declaration_indexes(a &flat.FlatAst) {
 	tc.strict_map_index_files = map[string]bool{}
 	tc.file_import_alias_paths = map[string]string{}
 	tc.file_import_suffix_paths = map[string]string{}
+	tc.index_file_declarations(a, tc.top_level_idx)
+}
+
+fn (mut tc TypeChecker) index_file_declarations(a &flat.FlatAst, entries []i32) {
 	mut file_name := ''
-	for index in tc.top_level_idx {
+	for index in entries {
 		node := a.nodes[index]
 		if node.kind == .file {
 			file_name = node.value
@@ -2317,8 +2337,12 @@ pub fn (tc &TypeChecker) has_fn_decl_short_name(name string) bool {
 fn (mut tc TypeChecker) build_enclosing_generic_param_index(a &flat.FlatAst) {
 	tc.enclosing_generic_params_by_node = map[int][]string{}
 	tc.enclosing_generic_param_masks = []u32{len: a.nodes.len}
+	tc.index_enclosing_generic_params(a, tc.top_level_idx)
+}
+
+fn (mut tc TypeChecker) index_enclosing_generic_params(a &flat.FlatAst, entries []i32) {
 	mut previous_top_level_idx := -1
-	for idx in tc.top_level_idx {
+	for idx in entries {
 		node := a.nodes[idx]
 		if node.kind != .fn_decl || node.generic_params().len == 0 {
 			previous_top_level_idx = idx
@@ -2337,8 +2361,12 @@ fn (mut tc TypeChecker) build_enclosing_generic_param_index(a &flat.FlatAst) {
 }
 
 fn (mut tc TypeChecker) cache_fn_generic_params(a &flat.FlatAst) {
+	tc.cache_fn_generic_params_of(a, tc.top_level_idx)
+}
+
+fn (mut tc TypeChecker) cache_fn_generic_params_of(a &flat.FlatAst, entries []i32) {
 	mut previous_top_level_idx := -1
-	for idx in tc.top_level_idx {
+	for idx in entries {
 		node := a.nodes[idx]
 		if node.kind != .fn_decl {
 			previous_top_level_idx = idx
@@ -2998,6 +3026,13 @@ fn file_index_usable(a &flat.FlatAst) bool {
 // which matches ascending node-id order). Output must stay identical to the
 // full scan in collect().
 fn (mut tc TypeChecker) collect_top_level_idx_fast(a &flat.FlatAst, inactive []bool) {
+	tc.collect_top_level_idx_fast_from(a, inactive, 0, -1, '', '')
+}
+
+// collect_top_level_idx_fast_from indexes the file pairs from the `first_pair`th
+// entry of a.file_node_ids on, after the file whose trailing node is
+// `previous_trailing`, of file `previous_file` and module `previous_module`.
+fn (mut tc TypeChecker) collect_top_level_idx_fast_from(a &flat.FlatAst, inactive []bool, first_pair int, previous_trailing_start int, previous_file_start string, previous_module_start string) {
 	if inactive.len > 0 {
 		// The scan records every flagged id (whole inactive subtrees, consumed
 		// by prune_inactive_top_level_comptime).
@@ -3008,10 +3043,14 @@ fn (mut tc TypeChecker) collect_top_level_idx_fast(a &flat.FlatAst, inactive []b
 		}
 	}
 	mut synthetic_pos := 0
-	mut previous_trailing := -1
-	mut previous_file := ''
-	mut previous_module := ''
-	for k := 0; k + 1 < a.file_node_ids.len; k += 2 {
+	for synthetic_pos < tc.synthetic_top_level_type_ids.len
+		&& tc.synthetic_top_level_type_ids[synthetic_pos] <= previous_trailing_start {
+		synthetic_pos++
+	}
+	mut previous_trailing := previous_trailing_start
+	mut previous_file := previous_file_start
+	mut previous_module := previous_module_start
+	for k := first_pair; k + 1 < a.file_node_ids.len; k += 2 {
 		marker := a.file_node_ids[k]
 		trailing := a.file_node_ids[k + 1]
 		// Implicit imports live between file pairs. Preserve the context that a
@@ -3062,6 +3101,12 @@ fn (mut tc TypeChecker) collect_top_level_idx_fast(a &flat.FlatAst, inactive []b
 		previous_trailing = trailing
 		previous_file = idx_file
 		previous_module = idx_module
+	}
+	if !isnil(tc.prepared_collect) {
+		mut prepared := tc.prepared_collect
+		prepared.last_trailing = previous_trailing
+		prepared.last_file = previous_file
+		prepared.last_module = previous_module
 	}
 	// Anything past the last indexed pair belongs to no later file pair.
 	_, _ = tc.collect_index_gap(a, previous_trailing + 1, a.nodes.len, previous_file, previous_module, inactive)
@@ -3433,10 +3478,14 @@ fn (mut tc TypeChecker) reserve_collect_maps() {
 }
 
 fn (mut tc TypeChecker) check_alias_declaration_cycles() {
-	mut module_name := ''
+	tc.check_alias_declaration_cycles_of(tc.top_level_idx, '')
+}
+
+fn (mut tc TypeChecker) check_alias_declaration_cycles_of(entries []i32, start_module string) {
+	mut module_name := start_module
 	mut seen_types := map[string]bool{}
 	mut invalid_aliases := []string{}
-	for index in tc.top_level_idx {
+	for index in entries {
 		node := tc.a.nodes[index]
 		if node.kind == .module_decl {
 			module_name = node.value
@@ -3650,7 +3699,99 @@ fn (mut tc TypeChecker) collect_after_index(a &flat.FlatAst) {
 		tc.index_multiple_module_import_lines(a)
 	}
 	// Pass 1: collect type-level names (aliases, enums, sum types)
-	for tl_idx in tc.top_level_idx {
+	tc.collect_pass1(a, tc.top_level_idx, parallel_declaration_indexes)
+	tc.check_alias_declaration_cycles()
+	tc.cache_fn_generic_params(a)
+	// Pass 1 can parse callback aliases before later modules with same-named
+	// types have been indexed. Rebuild name-derived caches from the complete
+	// declaration table before collecting concrete signatures in pass 2.
+	tc.type_cache.clear_c_type_entries()
+	tc.invalidate_short_type_name_index()
+	if isnil(tc.prepared_collect) {
+		tc.check_c_struct_redeclarations(a)
+		tc.check_c_fn_redeclarations(a)
+	} else {
+		// A preparation keeps what the checks saw, for the code collected after it.
+		mut prepared := tc.prepared_collect
+		tc.check_c_struct_redeclarations_of(a, tc.top_level_idx, mut prepared.c_structs)
+		tc.check_c_fn_redeclarations_of(a, tc.top_level_idx, mut prepared.c_fns)
+	}
+	tc.timing_profile('  [ttime]     ck c pass1     ${f64(ck_c_sw.elapsed().microseconds()) / 1000.0:7.2f} ms')
+	ck_c_sw.restart()
+	// Pass 2: collect struct fields, function signatures (type aliases now available)
+	// The native backend does not yet preserve large aggregate arguments reliably
+	// through the parse-cache helpers. Parsing uncached keeps native self-hosts
+	// correct while the C-hosted compiler retains the full memoization path.
+	$if 'c' == 'arm64' {
+		tc.type_cache.parse_enabled = false
+	} $else {
+		tc.type_cache.parse_enabled = true
+	}
+	tc.cur_module = ''
+	p2_profile := tc.verbose
+	// The parse-heavy per-declaration computation fans out over the worker
+	// pool; this serial walk then only replays the order-sensitive table
+	// registrations. Empty when the pool is unavailable — then each fn_decl
+	// computes inline exactly as before.
+	pass2_preps := tc.collect_pass2_fn_preps_parallel()
+	fast_pass2_registration := os.getenv('V3_NO_FAST_PASS2_REGISTRATION') == ''
+	parallel_pass2_ancillary := fast_pass2_registration && tc.building_v_fast
+		&& os.getenv('V3_NO_PAR_PASS2_REGISTRATION') == ''
+	if parallel_pass2_ancillary {
+		tc.defer_fn_ancillary = true
+		tc.fn_ancillary_registrations = []FnAncillaryRegistration{cap: tc.top_level_idx.len * 2}
+		tc.fn_c_variadic_registrations = []FnNamePairRegistration{cap: 64}
+		tc.fn_mut_receiver_registrations = []FnNamePairRegistration{cap: tc.top_level_idx.len / 2}
+		tc.fn_ret_text_registrations = []FnTextRegistration{cap: tc.top_level_idx.len * 2}
+		tc.visible_mutation_registrations = []VisibleMutationRegistration{cap: tc.top_level_idx.len}
+	}
+	mut public_c_structs := map[string]bool{}
+	p2_fn_ns, p2_struct_ns := tc.collect_pass2(a, tc.top_level_idx, pass2_preps, fast_pass2_registration, mut
+		public_c_structs)
+	if !isnil(tc.prepared_collect) {
+		mut prepared := tc.prepared_collect
+		prepared.public_c_structs = public_c_structs.clone()
+	}
+	if parallel_pass2_ancillary {
+		tc.defer_fn_ancillary = false
+		tc.finish_pass2_ancillary_registrations()
+	}
+	tc.collect_deprecated_symbols()
+	if p2_profile {
+		tc.timing_profile('  [ttime]       p2 fns ${f64(p2_fn_ns) / 1000000.0:.2f} ms, structs ${f64(p2_struct_ns) / 1000000.0:.2f} ms')
+	}
+	tc.timing_profile('  [ttime]     ck c pass2     ${f64(ck_c_sw.elapsed().microseconds()) / 1000.0:7.2f} ms')
+	ck_c_sw.restart()
+	tc.resolve_inferred_global_types(a)
+	tc.resolve_const_types()
+	// Globals may depend on constants whose initializer types were still pending.
+	tc.resolve_inferred_global_types(a)
+	tc.static_associated_method_names = map[string]bool{}
+	for name, _ in tc.fn_ret_types {
+		if _, method := flat.decode_static_type_method_name(name) {
+			tc.static_associated_method_names[method] = true
+		}
+	}
+	tc.static_associated_signature_count = tc.fn_ret_types.len
+	tc.build_const_suffixes()
+	tc.build_struct_embed_index()
+	if tc.building_v_fast {
+		tc.cache_direct_struct_field_types()
+	}
+	tc.timing_profile('  [ttime]     ck c resolve   ${f64(ck_c_sw.elapsed().microseconds()) / 1000.0:7.2f} ms')
+	if !isnil(tc.visible_mutation_cache) {
+		mut visible_mutation_cache := tc.visible_mutation_cache
+		visible_mutation_cache.decl_index_ready = true
+	}
+	$if ownership ? {
+		tc.ownership_after_collect()
+	}
+}
+
+// collect_pass1 collects the type-level names (aliases, enums, sum types) of
+// the top-level declarations `entries`, in their order.
+fn (mut tc TypeChecker) collect_pass1(a &flat.FlatAst, entries []i32, parallel_declaration_indexes bool) {
+	for tl_idx in entries {
 		node := a.nodes[tl_idx]
 		node_ref := a.node(flat.NodeId(tl_idx))
 		if !parallel_declaration_indexes {
@@ -3803,49 +3944,18 @@ fn (mut tc TypeChecker) collect_after_index(a &flat.FlatAst) {
 			else {}
 		}
 	}
-	tc.check_alias_declaration_cycles()
-	tc.cache_fn_generic_params(a)
-	// Pass 1 can parse callback aliases before later modules with same-named
-	// types have been indexed. Rebuild name-derived caches from the complete
-	// declaration table before collecting concrete signatures in pass 2.
-	tc.type_cache.clear_c_type_entries()
-	tc.invalidate_short_type_name_index()
-	tc.check_c_struct_redeclarations(a)
-	tc.check_c_fn_redeclarations(a)
-	tc.timing_profile('  [ttime]     ck c pass1     ${f64(ck_c_sw.elapsed().microseconds()) / 1000.0:7.2f} ms')
-	ck_c_sw.restart()
-	// Pass 2: collect struct fields, function signatures (type aliases now available)
-	// The native backend does not yet preserve large aggregate arguments reliably
-	// through the parse-cache helpers. Parsing uncached keeps native self-hosts
-	// correct while the C-hosted compiler retains the full memoization path.
-	$if 'c' == 'arm64' {
-		tc.type_cache.parse_enabled = false
-	} $else {
-		tc.type_cache.parse_enabled = true
-	}
-	tc.cur_module = ''
+}
+
+// collect_pass2 collects the struct fields and function signatures of the
+// top-level declarations `entries`, in their order, and returns the time it
+// took on functions and on structs when the checker is verbose. `pass2_preps`
+// holds the precomputed work of each entry, or nothing.
+fn (mut tc TypeChecker) collect_pass2(a &flat.FlatAst, entries []i32, pass2_preps []Pass2FnPrep, fast_pass2_registration bool, mut public_c_structs map[string]bool) (u64, u64) {
 	p2_profile := tc.verbose
 	mut p2_fn_ns := u64(0)
 	mut p2_struct_ns := u64(0)
 	mut p2_t0 := u64(0)
-	// The parse-heavy per-declaration computation fans out over the worker
-	// pool; this serial walk then only replays the order-sensitive table
-	// registrations. Empty when the pool is unavailable — then each fn_decl
-	// computes inline exactly as before.
-	pass2_preps := tc.collect_pass2_fn_preps_parallel()
-	fast_pass2_registration := os.getenv('V3_NO_FAST_PASS2_REGISTRATION') == ''
-	parallel_pass2_ancillary := fast_pass2_registration && tc.building_v_fast
-		&& os.getenv('V3_NO_PAR_PASS2_REGISTRATION') == ''
-	if parallel_pass2_ancillary {
-		tc.defer_fn_ancillary = true
-		tc.fn_ancillary_registrations = []FnAncillaryRegistration{cap: tc.top_level_idx.len * 2}
-		tc.fn_c_variadic_registrations = []FnNamePairRegistration{cap: 64}
-		tc.fn_mut_receiver_registrations = []FnNamePairRegistration{cap: tc.top_level_idx.len / 2}
-		tc.fn_ret_text_registrations = []FnTextRegistration{cap: tc.top_level_idx.len * 2}
-		tc.visible_mutation_registrations = []VisibleMutationRegistration{cap: tc.top_level_idx.len}
-	}
-	mut public_c_structs := map[string]bool{}
-	for pi, tl_idx in tc.top_level_idx {
+	for pi, tl_idx in entries {
 		node := a.nodes[tl_idx]
 		node_ref := a.node(flat.NodeId(tl_idx))
 		if p2_profile {
@@ -4230,40 +4340,7 @@ fn (mut tc TypeChecker) collect_after_index(a &flat.FlatAst) {
 			}
 		}
 	}
-	if parallel_pass2_ancillary {
-		tc.defer_fn_ancillary = false
-		tc.finish_pass2_ancillary_registrations()
-	}
-	tc.collect_deprecated_symbols()
-	if p2_profile {
-		tc.timing_profile('  [ttime]       p2 fns ${f64(p2_fn_ns) / 1000000.0:.2f} ms, structs ${f64(p2_struct_ns) / 1000000.0:.2f} ms')
-	}
-	tc.timing_profile('  [ttime]     ck c pass2     ${f64(ck_c_sw.elapsed().microseconds()) / 1000.0:7.2f} ms')
-	ck_c_sw.restart()
-	tc.resolve_inferred_global_types(a)
-	tc.resolve_const_types()
-	// Globals may depend on constants whose initializer types were still pending.
-	tc.resolve_inferred_global_types(a)
-	tc.static_associated_method_names = map[string]bool{}
-	for name, _ in tc.fn_ret_types {
-		if _, method := flat.decode_static_type_method_name(name) {
-			tc.static_associated_method_names[method] = true
-		}
-	}
-	tc.static_associated_signature_count = tc.fn_ret_types.len
-	tc.build_const_suffixes()
-	tc.build_struct_embed_index()
-	if tc.building_v_fast {
-		tc.cache_direct_struct_field_types()
-	}
-	tc.timing_profile('  [ttime]     ck c resolve   ${f64(ck_c_sw.elapsed().microseconds()) / 1000.0:7.2f} ms')
-	if !isnil(tc.visible_mutation_cache) {
-		mut visible_mutation_cache := tc.visible_mutation_cache
-		visible_mutation_cache.decl_index_ready = true
-	}
-	$if ownership ? {
-		tc.ownership_after_collect()
-	}
+	return p2_fn_ns, p2_struct_ns
 }
 
 fn (mut tc TypeChecker) set_struct_fields(name string, fields []StructField, shared_field_names []string, shared_element_field_names []string, field_c_abi_fns map[string]string, shadows_builtin_error_embed bool) {
@@ -4336,9 +4413,13 @@ fn (mut tc TypeChecker) collect_deprecated_symbols() {
 	tc.deprecated_symbols.clear()
 	tc.deprecated_modules.clear()
 	tc.unsafe_fns.clear()
+	tc.collect_deprecated_symbols_of(tc.top_level_idx)
+}
+
+fn (mut tc TypeChecker) collect_deprecated_symbols_of(entries []i32) {
 	mut module_name := ''
 	mut file_name := ''
-	for decl_id in tc.top_level_idx {
+	for decl_id in entries {
 		node := tc.a.nodes[decl_id]
 		if node.kind == .file {
 			module_name = ''
@@ -4472,9 +4553,13 @@ pub fn (mut tc TypeChecker) rebind_ast(a &flat.FlatAst) {
 }
 
 fn (mut tc TypeChecker) resolve_inferred_global_types(a &flat.FlatAst) {
+	tc.resolve_inferred_global_types_of(a, tc.top_level_idx)
+}
+
+fn (mut tc TypeChecker) resolve_inferred_global_types_of(a &flat.FlatAst, entries []i32) {
 	tc.cur_module = ''
 	tc.cur_file = ''
-	for tl_idx in tc.top_level_idx {
+	for tl_idx in entries {
 		node := a.nodes[tl_idx]
 		match node.kind {
 			.file {
@@ -4538,10 +4623,21 @@ struct CStructDeclRecord {
 	module_   string
 }
 
+// CStructRedeclarations is what check_c_struct_redeclarations has seen of the
+// C structs so far: per module, and the public ones.
+struct CStructRedeclarations {
+mut:
+	module_decls map[string]CStructDeclRecord
+	public_decls map[string]CStructDeclRecord
+}
+
 fn (mut tc TypeChecker) check_c_struct_redeclarations(a &flat.FlatAst) {
-	mut module_decls := map[string]CStructDeclRecord{}
-	mut public_decls := map[string]CStructDeclRecord{}
-	for node_idx in tc.top_level_idx {
+	mut seen := CStructRedeclarations{}
+	tc.check_c_struct_redeclarations_of(a, tc.top_level_idx, mut seen)
+}
+
+fn (mut tc TypeChecker) check_c_struct_redeclarations_of(a &flat.FlatAst, entries []i32, mut seen CStructRedeclarations) {
+	for node_idx in entries {
 		node := a.nodes[node_idx]
 		match node.kind {
 			.file {
@@ -4561,29 +4657,29 @@ fn (mut tc TypeChecker) check_c_struct_redeclarations(a &flat.FlatAst) {
 					module_:   tc.cur_module
 				}
 				module_key := '${tc.cur_module}\x00${qname}'
-				if existing := module_decls[module_key] {
+				if existing := seen.module_decls[module_key] {
 					if !c_struct_decl_signatures_compatible(existing.signature, current.signature)
 						&& !tc.c_struct_redeclaration_allowed(qname, existing.file, current.file,
 							existing.module_, current.module_) {
 						tc.record_c_struct_redeclaration(node_idx, node, qname)
 					}
-					module_decls[module_key] = preferred_c_struct_decl(existing, current)
+					seen.module_decls[module_key] = preferred_c_struct_decl(existing, current)
 				} else {
-					module_decls[module_key] = current
+					seen.module_decls[module_key] = current
 				}
 				if node.op != .arrow {
 					continue
 				}
-				if existing := public_decls[qname] {
+				if existing := seen.public_decls[qname] {
 					if existing.module_ != current.module_
 						&& !c_struct_decl_signatures_compatible(existing.signature, current.signature)
 						&& !tc.c_struct_redeclaration_allowed(qname, existing.file, current.file,
 							existing.module_, current.module_) {
 						tc.record_c_struct_redeclaration(node_idx, node, qname)
 					}
-					public_decls[qname] = preferred_c_struct_decl(existing, current)
+					seen.public_decls[qname] = preferred_c_struct_decl(existing, current)
 				} else {
-					public_decls[qname] = current
+					seen.public_decls[qname] = current
 				}
 			}
 			else {}
@@ -4611,13 +4707,24 @@ struct CFnDeclSignature {
 	is_variadic bool
 }
 
+// CFnRedeclarations is what check_c_fn_redeclarations has seen of the C
+// functions so far: the signature each has, and where it was declared.
+struct CFnRedeclarations {
+mut:
+	signatures map[string]CFnDeclSignature
+	modules    map[string]string
+	positions  map[string]string
+}
+
 fn (mut tc TypeChecker) check_c_fn_redeclarations(a &flat.FlatAst) {
-	mut signatures := map[string]CFnDeclSignature{}
-	mut modules := map[string]string{}
-	mut positions := map[string]string{}
+	mut seen := CFnRedeclarations{}
+	tc.check_c_fn_redeclarations_of(a, tc.top_level_idx, mut seen)
+}
+
+fn (mut tc TypeChecker) check_c_fn_redeclarations_of(a &flat.FlatAst, entries []i32, mut seen CFnRedeclarations) {
 	tc.cur_module = ''
 	tc.cur_file = ''
-	for node_idx in tc.top_level_idx {
+	for node_idx in entries {
 		node := a.nodes[node_idx]
 		match node.kind {
 			.file {
@@ -4649,22 +4756,22 @@ fn (mut tc TypeChecker) check_c_fn_redeclarations(a &flat.FlatAst) {
 					params:      params
 					is_variadic: is_variadic
 				}
-				if existing := signatures[name] {
-					existing_module := modules[name] or { '' }
+				if existing := seen.signatures[name] {
+					existing_module := seen.modules[name] or { '' }
 					if existing_module == 'builtin' || existing_module == tc.cur_module {
-						signatures[name] = signature
-						modules[name] = tc.cur_module
-						positions[name] = tc.node_position_string(flat.NodeId(node_idx))
+						seen.signatures[name] = signature
+						seen.modules[name] = tc.cur_module
+						seen.positions[name] = tc.node_position_string(flat.NodeId(node_idx))
 					} else if tc.cur_module != 'builtin'
 						&& !c_fn_decl_signatures_compatible(existing, signature) {
-						existing_pos := positions[name] or { '' }
+						existing_pos := seen.positions[name] or { '' }
 						location := if existing_pos.len > 0 { ' at ${existing_pos}' } else { '' }
 						tc.record_error_unfiltered(.duplicate_decl, 'C function `${name}` was already declared with a different signature in module `${existing_module}`${location}', flat.NodeId(node_idx))
 					}
 				} else {
-					signatures[name] = signature
-					modules[name] = tc.cur_module
-					positions[name] = tc.node_position_string(flat.NodeId(node_idx))
+					seen.signatures[name] = signature
+					seen.modules[name] = tc.cur_module
+					seen.positions[name] = tc.node_position_string(flat.NodeId(node_idx))
 				}
 			}
 			else {}
@@ -4894,7 +5001,13 @@ fn (tc &TypeChecker) const_key_for_suffix(name string) ?string {
 
 // resolve_const_types resolves resolve const types information for types.
 fn (mut tc TypeChecker) resolve_const_types() {
-	if tc.const_exprs.len == 0 {
+	tc.resolve_const_types_of(tc.const_exprs)
+}
+
+// resolve_const_types_of resolves the types of the constants of `const_exprs`,
+// which the others do not depend on.
+fn (mut tc TypeChecker) resolve_const_types_of(const_exprs map[string]flat.NodeId) {
+	if const_exprs.len == 0 {
 		return
 	}
 	saved_module := tc.cur_module
@@ -4902,16 +5015,16 @@ fn (mut tc TypeChecker) resolve_const_types() {
 	// Fixed-array constants have a complete storage type from their outer
 	// literal shape. Publish that type before resolving their element values so
 	// addressed references such as `&a[0]` can type-check inside `a` itself.
-	for name, expr_id in tc.const_exprs {
+	for name, expr_id in const_exprs {
 		tc.cur_module = tc.const_modules[name] or { '' }
 		tc.cur_file = tc.const_files[name] or { '' }
 		if fixed_type := tc.syntactic_fixed_array_const_type(expr_id) {
 			tc.const_types[name] = fixed_type
 		}
 	}
-	for _ in 0 .. tc.const_exprs.len {
+	for _ in 0 .. const_exprs.len {
 		mut changed := false
-		for name, expr_id in tc.const_exprs {
+		for name, expr_id in const_exprs {
 			tc.cur_module = tc.const_modules[name] or { '' }
 			tc.cur_file = tc.const_files[name] or { '' }
 			// Const dependencies are not guaranteed to be visited in declaration order.

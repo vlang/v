@@ -7484,7 +7484,18 @@ fn source_line_has_multiple_module_imports(raw_line string) bool {
 fn (mut tc TypeChecker) index_multiple_module_import_lines(a &flat.FlatAst) {
 	tc.multiple_module_import_lines = map[u64]bool{}
 	tc.source_texts_by_file = map[string]string{}
+	tc.import_line_indexed_files = map[int]bool{}
+	tc.index_module_import_lines_of_new_files(a)
+}
+
+// index_module_import_lines_of_new_files indexes the files the checker has
+// not indexed yet.
+fn (mut tc TypeChecker) index_module_import_lines_of_new_files(a &flat.FlatAst) {
 	for file_id, file in a.source_files {
+		if tc.import_line_indexed_files[file_id] {
+			continue
+		}
+		tc.import_line_indexed_files[file_id] = true
 		source := os.read_file(file.name) or { continue }
 		tc.source_texts_by_file[file.name] = source
 		for line in module_import_lines(source) {

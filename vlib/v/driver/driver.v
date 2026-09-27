@@ -11205,6 +11205,8 @@ pub fn run(args []string) {
 	// A diagnostics server parses the modules builtin imports once, before its
 	// first request, when its client asks it to (see PreparedImports).
 	mut prepared_imports := PreparedImports{}
+	mut prepared_checker := ?types.TypeChecker(none)
+	mut prepared_checker_key := ''
 	if os.getenv('V_DIAGNOSTICS_SERVER') != '' && os.getenv('V_DIAGNOSTICS_PREPARE') != ''
 		&& check_only && vls_line_info == '' && !no_builtin && !minimal_literal_output
 		&& !cache_state.manager.enabled && file_list.len == 0 && !is_prof && !is_trace_calls
@@ -11230,7 +11232,38 @@ pub fn run(args []string) {
 			prepared_imports.capturing = false
 			prepared_imports.ready = true
 			prepared_imports.user_start = prepared_ast.nodes.len
-			trace_diagnostics_server('prepared ${prepared_imports.regions.map(it.path).join(' ')}')
+			// The declarations of builtin and of those modules, collected once too.
+			prepared_config := TypeCheckerConfig{
+				user_files:                  prepared_user_files
+				input_file:                  input_file
+				backend:                     backend
+				enable_globals:              enable_globals_compat
+				disable_explicit_mutability: disable_explicit_mutability
+				checker_fixture_mode:        is_checker_fixture
+				pool_checks_small_programs:  true
+				warns_are_errors:            effective_warns_are_errors
+				notes_are_errors:            notes_are_errors
+				building_v:                  building_v
+				missing_imports:             prepared_ast.missing_imports.len
+			}
+			mut tc_to_prepare := types.TypeChecker.new(prepared_ast)
+			configure_type_checker(mut tc_to_prepare, prefs, prepared_config)
+			tc_to_prepare.verbose = prefs.verbose
+			if scope_prealloc_check && prepared_ast.missing_imports.len == 0 {
+				tc_to_prepare.enable_scoped_parallel_workers()
+			}
+			tc_to_prepare.reject_unsupported_generics = is_selfhost
+			set_diagnostic_files(mut tc_to_prepare, prepared_user_files)
+			collected := tc_to_prepare.prepare_collect(prepared_ast)
+			if collected {
+				prepared_checker = tc_to_prepare
+				prepared_checker_key = type_checker_config_key(prefs, prepared_config)
+			}
+			trace_diagnostics_server('prepared ${prepared_imports.regions.map(it.path).join(' ')}${if collected {
+				', collected'
+			} else {
+				''
+			}}')
 		}
 	}
 	// A diagnostics server's child may have a question to answer instead.
@@ -11849,43 +11882,33 @@ pub fn run(args []string) {
 	mut checker_notice_count := 0
 	mut checker_warning_count := 0
 	mut cached_checker_diagnostics := []V3CachedTypeDiagnostic{}
-	pre_tc.compiler_vroot = prefs.vroot
-	// Which files the shadowing check may blame. Use the same nearest-v.mod root
-	// as import resolution, so a nested entry directory still owns sibling modules.
-	pre_tc.shadow_diagnostic_root = os.real_path(project_root_for_files(user_files))
-	pre_tc.shadow_dependency_roots = shadow_dependency_roots_for(prefs)
-	pre_tc.shadow_explicit_roots = shadow_explicit_roots_for(prefs, pre_tc.shadow_dependency_roots)
-	pre_tc.enable_globals = enable_globals_compat
-	pre_tc.disable_explicit_mutability = disable_explicit_mutability
-	pre_tc.checker_fixture_mode = is_checker_fixture
+	checker_config := TypeCheckerConfig{
+		user_files:                  user_files
+		input_file:                  input_file
+		backend:                     backend
+		enable_globals:              enable_globals_compat
+		disable_explicit_mutability: disable_explicit_mutability
+		checker_fixture_mode:        is_checker_fixture
+		pool_checks_small_programs:  served.from_server && vls_line_info == ''
+		warns_are_errors:            effective_warns_are_errors
+		notes_are_errors:            notes_are_errors
+		building_v:                  building_v
+		missing_imports:             a.missing_imports.len
+	}
+	// A diagnostics server collected builtin and the modules it imports before
+	// its first check (TypeChecker.prepare_collect): its check continues from
+	// there when the program allows it.
+	mut continue_collect := false
+	if prepared_tc := prepared_checker {
+		if prepared_imports.ready && !prepared_imports.shifted
+			&& prepared_checker_key == type_checker_config_key(prefs, checker_config)
+			&& prepared_tc.can_continue_collect(a, logical_file_order) {
+			pre_tc = prepared_tc
+			continue_collect = true
+		}
+	}
+	configure_type_checker(mut pre_tc, prefs, checker_config)
 	pre_tc.logical_file_order = logical_file_order
-	// A diagnostics server's check waits on its bodies: the pool checks a few
-	// of them sooner than one thread, as it does many (p20, 201 functions: 31 ms
-	// on one thread, 13 ms on the pool). A query stays on one thread.
-	if served.from_server && vls_line_info == '' {
-		pre_tc.parallel_check_min_items = 2
-	}
-	pre_tc.is_test = prefs.is_test
-	pre_tc.module_diagnostic_root = if os.is_dir(input_file) {
-		os.real_path(input_file)
-	} else {
-		os.real_path(os.dir(input_file))
-	}
-	pre_tc.autofree_mode = 'autofree' in prefs.user_defines
-	pre_tc.no_main = 'no_main' in prefs.user_defines
-	pre_tc.nofloat = 'nofloat' in prefs.user_defines
-	pre_tc.is_js_backend = backend == 'js'
-	pre_tc.warn_about_allocs = prefs.warn_about_allocs
-	pre_tc.warns_are_errors = effective_warns_are_errors
-	pre_tc.notes_are_errors = notes_are_errors
-	pre_tc.is_prod = prefs.is_prod
-	pre_tc.building_v_fast = building_v && os.getenv('V3_NO_BUILDING_V_FAST_CHECK') == ''
-	// Missing imports are rare error paths and need the authoritative serial
-	// diagnostic pass, even for an otherwise-fast parallel self-host build.
-	pre_tc.valid_diagnostic_fast = building_v && a.missing_imports.len == 0
-		&& os.getenv('V3_NO_VALID_DIAGNOSTIC_FAST') == ''
-	pre_tc.valid_resolution_fast = building_v && os.getenv('V3_NO_VALID_RESOLUTION_FAST') == ''
-	pre_tc.suppress_dump_output = 'nop_dump' in prefs.user_defines
 	mut used_fns := map[string]bool{}
 	mut program_used_fns := map[string]bool{}
 	mut incremental_stage_used_fns := map[string]bool{}
@@ -11899,11 +11922,18 @@ pub fn run(args []string) {
 	mut trivial_literal_output := false
 	if !cgen_cache_hit {
 		pre_tc.verbose = prefs.verbose
+		if continue_collect {
+			// The preparation had no missing import; this program may.
+			pre_tc.scope_parallel_check_workers = false
+		}
 		if scope_prealloc_check && a.missing_imports.len == 0 {
 			pre_tc.enable_scoped_parallel_workers()
 		}
 		pre_tc.reject_unsupported_generics = is_selfhost
 		mut ckpre_sw := time.new_stopwatch()
+		if continue_collect {
+			pre_tc.diagnostic_files = map[string]bool{}
+		}
 		set_diagnostic_files(mut pre_tc, user_files)
 		// The C generator has a dedicated literal-output path. The SSA/native backend
 		// still builds ordinary builtin bodies, so it needs their full dependency set.
@@ -11916,7 +11946,21 @@ pub fn run(args []string) {
 			eprintln('  [ttime]   ck trivial gate  ${f64(ckpre_sw.elapsed().microseconds()) / 1000.0:7.2f} ms')
 		}
 		mut cvsw := time.new_stopwatch()
-		pre_tc.collect(a)
+		if continue_collect {
+			if !pre_tc.collect_continue(a) {
+				rerun_as_one_shot_check('the prepared declarations cannot be continued')
+			}
+		} else {
+			if prepared_imports.ready {
+				reason := if pc := prepared_checker {
+					pc.continue_collect_conflict(a, logical_file_order)
+				} else {
+					''
+				}
+				trace_diagnostics_server('collecting every declaration anew: ${reason}')
+			}
+			pre_tc.collect(a)
+		}
 		if native_inputs_overlap {
 			_ := <-native_inputs_done
 			// A spawned prealloc worker owns its base arena until it exits. Promote the
@@ -18811,6 +18855,67 @@ fn server_user_files(mut a flat.FlatAst, input_file string, prefs &pref.Preferen
 	return none
 }
 
+// TypeCheckerConfig is what configures the checker of a compilation besides
+// its preferences.
+struct TypeCheckerConfig {
+	user_files                  []string
+	input_file                  string
+	backend                     string
+	enable_globals              bool
+	disable_explicit_mutability bool
+	checker_fixture_mode        bool
+	pool_checks_small_programs  bool
+	warns_are_errors            bool
+	notes_are_errors            bool
+	building_v                  bool
+	missing_imports             int
+}
+
+fn configure_type_checker(mut tc types.TypeChecker, prefs &pref.Preferences, cfg TypeCheckerConfig) {
+	tc.compiler_vroot = prefs.vroot
+	// Which files the shadowing check may blame. Use the same nearest-v.mod root
+	// as import resolution, so a nested entry directory still owns sibling modules.
+	tc.shadow_diagnostic_root = os.real_path(project_root_for_files(cfg.user_files))
+	tc.shadow_dependency_roots = shadow_dependency_roots_for(prefs)
+	tc.shadow_explicit_roots = shadow_explicit_roots_for(prefs, tc.shadow_dependency_roots)
+	tc.enable_globals = cfg.enable_globals
+	tc.disable_explicit_mutability = cfg.disable_explicit_mutability
+	tc.checker_fixture_mode = cfg.checker_fixture_mode
+	// A diagnostics server's check waits on its bodies: the pool checks a few
+	// of them sooner than one thread, as it does many (p20, 201 functions: 31 ms
+	// on one thread, 13 ms on the pool). A query stays on one thread.
+	if cfg.pool_checks_small_programs {
+		tc.parallel_check_min_items = 2
+	}
+	tc.is_test = prefs.is_test
+	tc.module_diagnostic_root = if os.is_dir(cfg.input_file) {
+		os.real_path(cfg.input_file)
+	} else {
+		os.real_path(os.dir(cfg.input_file))
+	}
+	tc.autofree_mode = 'autofree' in prefs.user_defines
+	tc.no_main = 'no_main' in prefs.user_defines
+	tc.nofloat = 'nofloat' in prefs.user_defines
+	tc.is_js_backend = cfg.backend == 'js'
+	tc.warn_about_allocs = prefs.warn_about_allocs
+	tc.warns_are_errors = cfg.warns_are_errors
+	tc.notes_are_errors = cfg.notes_are_errors
+	tc.is_prod = prefs.is_prod
+	tc.building_v_fast = cfg.building_v && os.getenv('V3_NO_BUILDING_V_FAST_CHECK') == ''
+	// Missing imports are rare error paths and need the authoritative serial
+	// diagnostic pass, even for an otherwise-fast parallel self-host build.
+	tc.valid_diagnostic_fast = cfg.building_v && cfg.missing_imports == 0
+		&& os.getenv('V3_NO_VALID_DIAGNOSTIC_FAST') == ''
+	tc.valid_resolution_fast = cfg.building_v && os.getenv('V3_NO_VALID_RESOLUTION_FAST') == ''
+	tc.suppress_dump_output = 'nop_dump' in prefs.user_defines
+}
+
+// type_checker_config_key tells apart the configurations under which a
+// prepared collection of declarations would not be the one of the check.
+fn type_checker_config_key(prefs &pref.Preferences, cfg TypeCheckerConfig) string {
+	return '${prefs.vroot}\n${project_root_for_files(cfg.user_files)}\n${cfg.input_file}\n${cfg.backend}\n${cfg.enable_globals}\n${cfg.disable_explicit_mutability}\n${cfg.checker_fixture_mode}\n${cfg.warns_are_errors}\n${cfg.notes_are_errors}\n${cfg.building_v}\n${prefs.is_test}\n${prefs.is_prod}\n${prefs.warn_about_allocs}\n${prefs.user_defines}\n${prefs.verbose}'
+}
+
 // trace_diagnostics_server tells what a diagnostics server did, when
 // V_DIAGNOSTICS_TRACE asks: on stderr, or at the end of the file it names by
 // an absolute path, which leaves the output of a check what it would be.
@@ -18855,6 +18960,7 @@ mut:
 	capturing bool
 	ready     bool
 	diverged  string
+	shifted   bool
 	// Where the user's code starts, after the prepared modules.
 	user_start int
 	// Whether the user's files held a test when the modules were prepared.
@@ -19612,9 +19718,9 @@ fn resolve_imports(mut a flat.FlatAst, mut p parser.Parser, prefs &pref.Preferen
 		}
 		implicit_imports.node_idx = scan_end
 		implicit_imports.field_index_node_idx = scan_end
-		if insertions.len > 0 {
-			prepared.diverged = 'a prepared module needs an implicit import'
-		}
+		// An import spliced into the prepared modules moves their nodes: the
+		// check collects the whole program anew.
+		prepared.shifted = insertions.len > 0
 		insert_synthetic_imports(mut a, insertions)
 		implicit_imports.node_idx += insertions.len
 		implicit_imports.field_index_node_idx += insertions.len
