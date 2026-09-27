@@ -13137,10 +13137,19 @@ fn (t &Transformer) struct_field_path_for_field_inner(struct_type string, field 
 		if !t.is_embedded_field(f) {
 			continue
 		}
-		embedded_type := t.trim_pointer_type(f.typ)
+		owner_type := if clean.contains('.') || info.module in ['', 'main', 'builtin'] {
+			clean
+		} else {
+			'${info.module}.${clean}'
+		}
+		embedded_field_type := t.normalize_field_type(f.typ, owner_type)
+		embedded_type := t.trim_pointer_type(embedded_field_type)
 		if path := t.struct_field_path_for_field_inner(embedded_type, field, mut seen) {
 			mut result := []FieldInfo{cap: path.len + 1}
-			result << f
+			result << FieldInfo{
+				...f
+				typ: embedded_field_type
+			}
 			result << path
 			return result
 		}
@@ -21308,6 +21317,13 @@ fn (t &Transformer) raw_selector_type_without_smartcast(id flat.NodeId) string {
 			if ftyp := t.sum_shared_field_type_name(base_target, node.value) {
 				return ftyp
 			}
+			if path := t.struct_field_path_for_field(base_target, node.value) {
+				if path.len > 0 {
+					if ftyp := t.lookup_struct_field_type(path.last().typ, node.value) {
+						return ftyp
+					}
+				}
+			}
 		}
 	}
 	mut base_type := t.raw_expr_type_without_smartcast(base_id)
@@ -21327,9 +21343,9 @@ fn (t &Transformer) raw_selector_type_without_smartcast(id flat.NodeId) string {
 	if ftyp := t.sum_shared_field_type_name(clean_base_type, node.value) {
 		return ftyp
 	}
-	if info := t.lookup_struct_info(clean_base_type) {
-		if embedded := t.embedded_field_for_promoted_field(info, node.value) {
-			if ftyp := t.lookup_struct_field_type(embedded.typ, node.value) {
+	if path := t.struct_field_path_for_field(clean_base_type, node.value) {
+		if path.len > 0 {
+			if ftyp := t.lookup_struct_field_type(path.last().typ, node.value) {
 				return ftyp
 			}
 		}
