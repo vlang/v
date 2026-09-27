@@ -4502,7 +4502,11 @@ fn (mut tc TypeChecker) check_call_privacy(id flat.NodeId, node flat.Node, info 
 		callee := tc.a.child_node(&node, 0)
 		if callee.kind == .selector && callee.children_count > 0 {
 			receiver_type := tc.resolve_type(tc.a.child(callee, 0))
-			receiver_name := method_type_name(unwrap_pointer(receiver_type))
+			mut direct_type := receiver_type
+			for direct_type is Pointer {
+				direct_type = direct_type.base_type
+			}
+			receiver_name := method_type_name(direct_type)
 			mut has_direct_method := '${receiver_name}.${callee.value}' in tc.fn_ret_types
 			mut selected_is_private := false
 			if _ := tc.private_declaration(info.name) {
@@ -4526,7 +4530,11 @@ fn (mut tc TypeChecker) check_call_privacy(id flat.NodeId, node flat.Node, info 
 			receiver_id := tc.a.child(callee, 0)
 			name_pos := tc.method_call_name_pos(node, callee)
 			receiver_type := tc.resolve_type(receiver_id)
-			receiver_name := method_type_name(unalias_type(unwrap_pointer(receiver_type)))
+			mut clean_receiver_type := receiver_type
+			for clean_receiver_type is Pointer {
+				clean_receiver_type = clean_receiver_type.base_type
+			}
+			receiver_name := method_type_name(unalias_type(clean_receiver_type))
 			receiver_module := tc.struct_module_for_type(receiver_name)
 			if receiver_module == tc.cur_module
 				|| (receiver_module in ['', 'main'] && tc.cur_module in ['', 'main']) {
