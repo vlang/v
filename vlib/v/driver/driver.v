@@ -537,8 +537,8 @@ fn prepare_c_flags_for_link(flags []string, environment_c_flags []string, primar
 	// plan adds no value, and preparing it costs a compiler-identity probe
 	// (subprocess) plus plan-file signatures on every build.
 	mut has_cacheable_flag := false
-	for flag in flags {
-		clean := flag.trim_space()
+	for index in c_link_input_indices(flags) {
+		clean := flags[index].trim_space()
 		if c_flag_is_object_file(clean) || clean.ends_with('.mm') {
 			has_cacheable_flag = true
 			break
@@ -594,6 +594,16 @@ fn prepare_c_flags_for_link(flags []string, environment_c_flags []string, primar
 			i += 2
 			continue
 		}
+		// An operand can look like an input or even another option (e.g. -D -x).
+		// Preserve the pair before classifying positional native inputs.
+		if c_flag_consumes_next_operand(clean) {
+			prepared << flag
+			if i + 1 < flags.len {
+				prepared << flags[i + 1]
+			}
+			i += 2
+			continue
+		}
 		if c_flag_is_object_file(clean) {
 			stats.requests++
 			adjacent_language := if !os.exists(clean) {
@@ -610,7 +620,7 @@ fn prepare_c_flags_for_link(flags []string, environment_c_flags []string, primar
 				uncached_dir, mut stats)!
 			append_c_link_object(mut prepared, object_path, active_language)
 			add_c_language_runtime_link_flags(mut prepared, flags, adjacent_language, target)
-		} else if clean.ends_with('.mm') {
+		} else if !clean.starts_with('-') && clean.ends_with('.mm') {
 			stats.requests++
 			language := c_source_language(clean, active_language)
 			object_path := ensure_c_source_object(clean, active_language, &object_flag_plan, c99,
@@ -644,7 +654,7 @@ fn prepare_c_flags_for_link(flags []string, environment_c_flags []string, primar
 fn c_link_plan_path(cache_dir string, flags []string, object_flags &CObjectFlagPlan, c99 bool, no_std bool, pic_flag string, target_args []string, target pref.Target, compiler string, use_platform_non_c_compiler bool, mut stats CObjectCacheStats) string {
 	compiler_path, compiler_version := c_object_compiler_identity(compiler, mut stats)
 	mut hash := u64(1469598103934665603)
-	for identity in ['v3-c-link-plan-v3', os.getwd(), flags.join('\x00'),
+	for identity in ['v3-c-link-plan-v4', os.getwd(), flags.join('\x00'),
 		object_flags.environment_flags.join('\x00'), object_flags.primary_compiler,
 		object_flags.primary_compiler_flags.join('\x00'), object_flags.common_flags.join('\x00'),
 		c99.str(), no_std.str(), pic_flag, target_args.join('\x00'), compiler_path, compiler_version,
@@ -659,7 +669,7 @@ fn c_link_plan_path(cache_dir string, flags []string, object_flags &CObjectFlagP
 fn valid_c_link_plan(plan_path string, mut stats CObjectCacheStats) ?CLinkPlan {
 	content := os.read_file(plan_path) or { return none }
 	lines := content.split_into_lines()
-	if lines.len < 5 || lines[0] != 'format=v3-c-link-plan-v3' {
+	if lines.len < 5 || lines[0] != 'format=v3-c-link-plan-v4' {
 		return none
 	}
 	mut plan := CLinkPlan{}
@@ -723,14 +733,17 @@ fn valid_c_link_plan(plan_path string, mut stats CObjectCacheStats) ?CLinkPlan {
 
 fn write_c_link_plan(plan_path string, flags []string, stats &CObjectCacheStats) ! {
 	mut out := strings.new_builder(256 + flags.len * 64 + stats.file_signatures.len * 96)
-	out.writeln('format=v3-c-link-plan-v3')
+	out.writeln('format=v3-c-link-plan-v4')
 	out.writeln('requests=${stats.requests}')
 	out.writeln('direct_objects=${stats.direct_objects}')
 	out.writeln('dependency_files=${stats.dependency_files}')
 	for flag in flags {
 		out.writeln('flag=${flag}')
-		if c_flag_is_object_file(flag.trim_space()) && os.is_file(flag.trim_space()) {
-			out.writeln('object=${flag.trim_space()}')
+	}
+	for index in c_link_input_indices(flags) {
+		flag := flags[index].trim_space()
+		if c_flag_is_object_file(flag) && os.is_file(flag) {
+			out.writeln('object=${flag}')
 		}
 	}
 	mut dependencies := stats.file_signatures.keys()
@@ -852,7 +865,7 @@ fn c_flag_consumes_next_operand(flag string) bool {
 	return flag in ['-I', '-L', '-F', '-D', '-U', '-include', '-imacros', '-isystem', '-iquote',
 		'-idirafter', '-iprefix', '-iwithprefix', '-iwithprefixbefore', '-isysroot', '--sysroot',
 		'-target', '-arch', '-framework', '-weak_framework', '-Xlinker', '-force_load', '-o', '-MF',
-		'-MT', '-MQ']
+		'-MT', '-MQ', '-l', '-weak_library']
 }
 
 fn c_flag_is_existing_file(flag string) bool {
@@ -923,7 +936,7 @@ fn c_dylib_link_flags(flags []string) []string {
 			continue
 		}
 		if clean in ['-l', '-L', '-F', '-framework', '-weak_framework', '-weak_library', '-Xlinker',
-			'-force_load'] {
+			'-force_load', '--sysroot', '-isysroot'] {
 			link_flags << flag
 			if i + 1 < flags.len {
 				link_flags << flags[i + 1]
@@ -935,7 +948,8 @@ fn c_dylib_link_flags(flags []string) []string {
 			i += 2
 			continue
 		}
-		if clean == '-pthread' || clean.starts_with('-F')
+		if clean == '-pthread' || clean.starts_with('-F') || clean.starts_with('--sysroot=')
+			|| (clean.starts_with('-isysroot') && clean.len > '-isysroot'.len)
 			|| c_flag_token_is_link_only(clean) || c_flag_is_object_file(clean)
 			|| (c_flag_is_existing_file(clean) && !c_flag_is_c_source_file(clean)
 				&& language != 'c') {
@@ -1043,7 +1057,8 @@ fn tcc_cached_main_flags(flags []string) []string {
 		}
 		if clean.starts_with('-I') || clean.starts_with('-D') || clean.starts_with('-U')
 			|| clean.starts_with('-isystem') || clean.starts_with('-iquote')
-			|| clean.starts_with('--sysroot=') {
+			|| clean.starts_with('--sysroot=')
+			|| (clean.starts_with('-isysroot') && clean.len > '-isysroot'.len) {
 			compile_flags << flag
 		}
 		i++
@@ -1098,7 +1113,7 @@ fn tcc_native_c_source_flags(flags []string) []string {
 			i += 2
 			continue
 		}
-		if clean.ends_with('.c') {
+		if !clean.starts_with('-') && clean.ends_with('.c') {
 			sources << flag
 		} else if language == 'c' && clean.len > 0 && !clean.starts_with('-') {
 			// Preserve explicit language selection for extensionless inputs, then
@@ -1391,6 +1406,14 @@ fn c_flag_token_is_link_only(token string) bool {
 		|| clean in ['-ObjC', '-all_load', '-bundle', '-dynamiclib', '-shared', '-static', '-rdynamic',
 			'-pie', '-no-pie'] {
 		return true
+	}
+	// Joined compiler operands are not linker inputs even when they end in a
+	// library suffix. Other options, such as -Tscript.so, still go to the linker.
+	for prefix in ['-I', '-isystem', '-iquote', '-D', '-U', '-F', '-include', '-imacros', '-idirafter',
+		'-iprefix', '-iwithprefix', '-iwithprefixbefore', '-isysroot', '--sysroot='] {
+		if clean.starts_with(prefix) && clean.len > prefix.len {
+			return false
+		}
 	}
 	return clean.ends_with('.a') || clean.ends_with('.so') || clean.contains('.so.')
 		|| clean.ends_with('.dylib') || clean.ends_with('.dll') || clean.ends_with('.lib')
@@ -1777,12 +1800,12 @@ fn c_hash_bytes(initial u64, data []u8) u64 {
 }
 
 fn c_flag_is_object_file(flag string) bool {
-	return flag.ends_with('.o') || flag.ends_with('.obj')
+	return !flag.starts_with('-') && (flag.ends_with('.o') || flag.ends_with('.obj'))
 }
 
 fn c_flag_is_c_source_file(flag string) bool {
-	return flag.ends_with('.c') || flag.ends_with('.cc') || flag.ends_with('.cpp')
-		|| flag.ends_with('.m') || flag.ends_with('.mm')
+	return !flag.starts_with('-') && (flag.ends_with('.c') || flag.ends_with('.cc')
+		|| flag.ends_with('.cpp') || flag.ends_with('.m') || flag.ends_with('.mm'))
 }
 
 fn c_standard_flag(c99 bool, no_std bool) string {
