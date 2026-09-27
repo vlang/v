@@ -556,7 +556,7 @@ fn (tc &TypeChecker) assignment_types_compatible(rhs_id flat.NodeId, rhs_type Ty
 		return false
 	}
 	if op == .assign
-		&& tc.translated_fixed_array_pointer_assignment_compatible(rhs_id, rhs_type,
+		&& tc.translated_fixed_array_pointer_compatible(rhs_id, rhs_type,
 			expected_type) {
 		return true
 	}
@@ -754,7 +754,7 @@ fn (tc &TypeChecker) fixed_array_address_to_byte_pointer_compatible(expr_id flat
 	return node.kind == .prefix && node.op == .amp && node.children_count > 0
 }
 
-fn (tc &TypeChecker) translated_fixed_array_pointer_assignment_compatible(expr_id flat.NodeId, actual Type, expected Type) bool {
+fn (tc &TypeChecker) translated_fixed_array_pointer_compatible(expr_id flat.NodeId, actual Type, expected Type) bool {
 	if !tc.node_is_in_translated_file(expr_id) {
 		return false
 	}
@@ -766,7 +766,10 @@ fn (tc &TypeChecker) translated_fixed_array_pointer_assignment_compatible(expr_i
 	if clean_expected !is Pointer {
 		return false
 	}
-	return tc.type_compatible(clean_actual.elem_type, clean_expected.base_type)
+	pointee := unalias_type(clean_expected.base_type)
+	element := unalias_type(clean_actual.elem_type)
+	return pointee is Void || semantic_types_equal(element, pointee)
+		|| (element.name() in ['char', 'i8', 'u8'] && pointee.name() in ['char', 'i8', 'u8'])
 }
 
 fn (tc &TypeChecker) assignment_preserves_smartcast(lhs_id flat.NodeId, rhs_id flat.NodeId, rhs_type Type) bool {
@@ -14399,7 +14402,9 @@ fn (mut tc TypeChecker) check_call_arg_types(id flat.NodeId, node flat.Node, inf
 			&& !tc.call_arg_is_lowered_method_receiver(node, info, param_idx, expected)
 		optional_pointer_arg := tc.optional_pointer_expr_compatible(arg_id, pointer_check_actual,
 			expected)
+		translated_array_arg := tc.translated_fixed_array_pointer_compatible(arg_id, actual, expected)
 		pointer_depth_mismatch := !compatible_interface_value_arg && !optional_pointer_arg
+			&& !translated_array_arg
 			&& (explicit_address_depth_mismatch
 				|| (actual_pointer_depth != expected_pointer_depth
 					&& expected.name() !in ['voidptr', 'byteptr', 'charptr']
@@ -14479,6 +14484,7 @@ fn (mut tc TypeChecker) check_call_arg_types(id flat.NodeId, node flat.Node, inf
 		}
 		if !mutable_interface_impl_arg && !tc.expr_receiver_compatible(arg_id, actual, expected)
 			&& !tc.expr_compatible(arg_id, actual, expected)
+			&& !translated_array_arg
 			&& !tc.pointer_value_compatible(actual, expected)
 			&& !(info.name.starts_with('C.')
 				&& c_pointer_to_voidptr_arg_compatible(actual, expected)) {
