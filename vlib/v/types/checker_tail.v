@@ -7664,6 +7664,11 @@ fn (mut tc TypeChecker) resolve_call_info_uncached(id flat.NodeId, node flat.Nod
 					|| !tc.method_can_be_called_on_receiver(base_type, fn_node.value, method_name) {
 					continue
 				}
+				if method_name == 'array.map' {
+					// The builtin signature does not contain the mapper's result type.
+					// Let the array-specific path below infer it in the DSL scope.
+					continue
+				}
 				return tc.call_info(method_name, true)
 			}
 		}

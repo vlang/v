@@ -4399,6 +4399,8 @@ pub interface ReaderWriter {
 
 ### Sum types
 
+Mapping an array variant inside a `match` branch infers the result element type from the mapper.
+
 A sum type instance can hold a value of several different types. Use the `type`
 keyword to declare a sum type:
 
