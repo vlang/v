@@ -4,6 +4,34 @@ import v.flat
 import v.gen.c.naming
 import v.types
 
+fn (mut t Transformer) transform_translated_array_arithmetic(id flat.NodeId, node flat.Node) ?flat.NodeId {
+	if isnil(t.tc) || node.op !in [.plus, .minus] || node.children_count != 2 {
+		return none
+	}
+	file := t.a.source_files[node.pos.id] or { return none }
+	if !t.tc.translated_files[file.name] {
+		return none
+	}
+	lhs_id := t.a.child(&node, 0)
+	rhs_id := t.a.child(&node, 1)
+	lhs_type := types.unalias_type(t.tc.resolve_type(lhs_id))
+	rhs_type := types.unalias_type(t.tc.resolve_type(rhs_id))
+	if lhs_type !is types.ArrayFixed && rhs_type !is types.ArrayFixed {
+		return none
+	}
+	mut lhs := t.transform_expr(lhs_id)
+	if lhs_type is types.ArrayFixed {
+		lhs = t.make_prefix(.amp, t.make_index(lhs, t.make_int_literal(0), lhs_type.elem_type.name()))
+	}
+	mut rhs := t.transform_expr(rhs_id)
+	if rhs_type is types.ArrayFixed {
+		rhs = t.make_prefix(.amp, t.make_index(rhs, t.make_int_literal(0), rhs_type.elem_type.name()))
+	}
+	result := t.make_infix(node.op, lhs, rhs)
+	t.set_node_typ(int(result), t.tc.type_name(t.tc.resolve_type(id)))
+	return result
+}
+
 // transform_infix_string_ops transforms transform infix string ops data for transform.
 fn (mut t Transformer) transform_infix_string_ops(_id flat.NodeId, node flat.Node) ?flat.NodeId {
 	if node.children_count < 2 {

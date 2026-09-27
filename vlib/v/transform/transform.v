@@ -18141,6 +18141,9 @@ fn (mut t Transformer) transform_infix_expr(id flat.NodeId, node flat.Node) flat
 	if node.children_count < 2 {
 		return id
 	}
+	if arithmetic := t.transform_translated_array_arithmetic(id, node) {
+		return arithmetic
+	}
 	if node.op == .arrow {
 		rhs_id := t.a.child(&node, 1)
 		rhs := t.a.nodes[int(rhs_id)]

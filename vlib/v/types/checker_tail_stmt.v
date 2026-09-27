@@ -16695,9 +16695,9 @@ fn (tc &TypeChecker) resolve_type_uncached(id flat.NodeId) Type {
 			}
 			lhs_id := tc.a.child(&node, 0)
 			rhs_id := tc.a.child(&node, 1)
-			lt := tc.infix_read_type(lhs_id)
+			lt := tc.translated_array_arithmetic_operand(id, node.op, tc.infix_read_type(lhs_id))
 			lt_raw := lt
-			rt := tc.infix_read_type(rhs_id)
+			rt := tc.translated_array_arithmetic_operand(id, node.op, tc.infix_read_type(rhs_id))
 			rt_raw := rt
 			if lt is Void || rt is Void {
 				return Type(void_)
