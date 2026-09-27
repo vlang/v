@@ -3,6 +3,37 @@ module markused
 import v.flat
 import v.types
 
+fn test_explicit_generic_factory_return_type_retains_receiver_methods() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	tc.fn_generic_params['gates.make_gate'] = ['T']
+	tc.fn_ret_types['gates.make_gate'] = types.Type(types.Pointer{
+		base_type: types.Type(types.Struct{ name: 'gates.Gate[T]' })
+	})
+	arg := a.add_val(.ident, 'T')
+	for imported in [false, true] {
+		base := if imported {
+			module_id := a.add_val(.ident, 'g')
+			call_helper_node(mut a, flat.Node{ kind: .selector, value: 'make_gate' }, [module_id])
+		} else {
+			a.add_val(.ident, 'make_gate')
+		}
+		indexed := call_helper_node(mut a, flat.Node{ kind: .index }, [base, arg])
+		call := call_helper_node(mut a, flat.Node{ kind: .call }, [indexed])
+		collector := CallCollector{ a: &a, tc: &tc }
+		imports := {
+			'g': 'gates'
+		}
+		assert collector.top_level_call_return_type_name(call, 'gates', imports, map[string]bool{},
+			map[string]string{}, false) == 'gates.Gate[T]'
+		shadowed := if imported { 'g' } else { 'make_gate' }
+		assert collector.top_level_call_return_type_name(call, 'gates', imports, {
+			shadowed: true
+		},
+			map[string]string{}, false) == ''
+	}
+}
+
 fn call_helper_node(mut a flat.FlatAst, node flat.Node, children []flat.NodeId) flat.NodeId {
 	start := a.children.len
 	for child in children {

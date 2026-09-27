@@ -6676,7 +6676,16 @@ fn (c &CallCollector) top_level_call_return_type_name(call_id flat.NodeId, cur_m
 	if int(callee_id) < 0 {
 		return ''
 	}
-	callee := c.a.node(callee_id)
+	mut callee := c.a.node(callee_id)
+	if callee.kind == .index && callee.value != 'range' && callee.children_count > 0 {
+		base_id := c.a.child(callee, 0)
+		name := c.qualified_expr_name(base_id)
+		resolved := markused_resolve_imported_type_name(name, imports)
+		if name.all_before('.') !in local_values
+			&& c.generic_fn_name_is_known(resolved, cur_module) {
+			callee = c.a.node(base_id)
+		}
+	}
 	if callee.kind == .selector && callee.value.len > 0 && callee.children_count > 0 {
 		base_id := c.a.child(callee, 0)
 		base := c.a.node(base_id)

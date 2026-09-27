@@ -4819,6 +4819,9 @@ fn main() {
 
 ### Generics
 
+Methods called on a generic factory result retain their dependencies in the compiled program.
+
+
 ```v wip
 
 struct Repo[T] {
