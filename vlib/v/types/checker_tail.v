@@ -7215,7 +7215,7 @@ fn (mut tc TypeChecker) record_global_shadow_error_at(id flat.NodeId, name strin
 		return
 	}
 	file := tc.a.source_files[pos.id] or { return }
-	if !tc.shadow_check_owns_file(file.name) {
+	if tc.translated_files[file.name] || !tc.shadow_check_owns_file(file.name) {
 		return
 	}
 	if tc.checker_fixture_mode && tc.global_decl_infers_type(name) {

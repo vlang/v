@@ -8,3 +8,7 @@ same allocation. Arrays still reject negative indexes.
 These compatibility rules apply to expressions in the translated file. Ordinary
 V files keep their usual field mutability and indexing checks, including when
 using types declared by a translated file.
+
+Translated code may also write through pointers returned by functions, including
+pointers that alias another value. Its parameter and local names may shadow global
+variables, as in C. Ordinary V files retain the alias and global-shadowing checks.
