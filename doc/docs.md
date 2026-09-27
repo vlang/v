@@ -9092,6 +9092,9 @@ Another example, demonstrating passing structs from C to V and back again:
 
 ### C types
 
+V methods declared on a C struct can be called through imported fields and local copies of that
+struct. The method retains the visibility of its declaring V module.
+
 Ordinary zero terminated C strings can be converted to V strings with
 `unsafe { &char(cstring).vstring() }` or if you know their length already with
 `unsafe { &char(cstring).vstring_with_len(len) }`.

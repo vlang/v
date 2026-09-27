@@ -8507,6 +8507,9 @@ fn (mut tc TypeChecker) resolve_call_info_uncached(id flat.NodeId, node flat.Nod
 		}
 		type_name := resolve_type_name_for_method(clean)
 		if type_name.len > 0 {
+			if method_name := tc.c_struct_receiver_method_name(clean, fn_node.value) {
+				return tc.call_info(method_name, true)
+			}
 			if fn_node.value == 'str' && (clean is Primitive || clean is Char || clean is Rune) {
 				return CallInfo{
 					name:         ''
@@ -8931,6 +8934,29 @@ fn (tc &TypeChecker) builtin_receiver_method_call_info(base_type Type, method st
 		has_receiver: true
 		params_known: true
 	}
+}
+
+fn (tc &TypeChecker) c_struct_receiver_method_name(receiver Type, method string) ?string {
+	clean := unalias_type(unwrap_all_pointers(receiver))
+	if clean !is Struct {
+		return none
+	}
+	receiver_name := (clean as Struct).name
+	if !receiver_name.starts_with('C.') {
+		return none
+	}
+	key := '${receiver_name}.${method}'
+	local_key := checker_qualified_fn_name(tc.cur_module, key)
+	if local_key in tc.fn_ret_types {
+		return local_key
+	}
+	// C type names do not include the V module declaring their methods.
+	// Only an unambiguous complete receiver name can cross that boundary.
+	name := tc.receiver_method_suffix_index[key] or { return none }
+	if name == receiver_method_suffix_ambiguous || name !in tc.fn_ret_types {
+		return none
+	}
+	return name
 }
 
 fn builtin_receiver_method_type_name(clean Type) string {
