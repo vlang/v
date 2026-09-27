@@ -15,6 +15,8 @@ fn test_formatter_preserves_syntax_without_semantic_diagnostics() {
 		'interface Abc { fun(); fun() }':                                     'duplicate method `fun`'
 		'fn loops(values []int) { val := 1; for val in values { _ = val } }': 'redefinition of value iteration variable `val`, use `for (val in array) {` if you want to check for a condition instead'
 		'fn closure() { x := 1; callback := fn [x] (x int) {} }':             'the parameter name `x` conflicts with the captured value name'
+		'interface Reader { read[T, T](value T) T }':                         'duplicated generic parameter `T`'
+		'fn many[A, B, C, D, E, F, G, H, I, J]() {}':                         'cannot have more than 9 generic parameters'
 	}
 	for source, expected in cases {
 		os.write_file(path, source + '\n')!

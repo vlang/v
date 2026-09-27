@@ -7037,16 +7037,16 @@ fn (mut p Parser) parse_generic_param_names() []string {
 				expect_name = false
 			} else if expect_name && p.tok == .name {
 				name := p.lit
-				if name in names {
+				if !p.prefs.is_fmt && name in names {
 					p.record_diagnostic_span('duplicated generic parameter `${name}`', p.tok_pos,
 						p.tok_end)
-				} else if names.len >= 9 {
+				} else if !p.prefs.is_fmt && names.len >= 9 {
 					p.record_diagnostic_span('cannot have more than 9 generic parameters', p.tok_pos,
 						p.tok_end)
-				} else if name.len != 1 {
+				} else if !p.prefs.is_fmt && name.len != 1 {
 					p.record_diagnostic_span('generic parameter name needs to be exactly one char',
 						p.tok_pos, p.tok_end)
-				} else if name[0] >= `a` && name[0] <= `z` {
+				} else if !p.prefs.is_fmt && name[0] >= `a` && name[0] <= `z` {
 					p.record_diagnostic_span('generic parameter needs to be uppercase', p.tok_pos,
 						p.tok_end)
 				}
