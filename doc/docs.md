@@ -3454,6 +3454,7 @@ This *may* change in V 1.0 .
 
 Pointers to concrete values can be passed to optional interface parameters when their types
 implement the interface. The option contains an interface value referring to the original object.
+Additional pointer layers, such as `&&Record`, must be dereferenced before passing the object.
 
 ```v
 struct Foo {}
