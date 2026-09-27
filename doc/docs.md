@@ -1029,6 +1029,9 @@ f2 := 456e+2 // 45600
 
 ### Arrays
 
+Returning a new array through helper calls preserves each helper's parameter scope.
+
+
 An array is a collection of data elements of the same type. An array literal is a
 list of expressions surrounded by square brackets. An individual element can be
 accessed using an *index* expression. Indexing starts from `0`.
