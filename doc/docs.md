@@ -8786,6 +8786,9 @@ For example, if a struct has 3 fields on the C side, but you want to only
 refer to 1 of them, you can declare it like this:
 
 **Example of C struct redeclaration**
+
+On macOS, an opaque `C.NSFont` declaration refers to Cocoa's Objective-C class.
+It does not introduce a C struct with the same name.
 ```v oksyntax
 struct C.NameOfTheStruct {
 	a_field int

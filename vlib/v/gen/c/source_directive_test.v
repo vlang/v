@@ -433,9 +433,15 @@ fn test_c_struct_declared_in_platform_binding_stays_header_owned() {
 	g.tc = &tc
 	g.register_struct_decl_info('C.NSFont', 'C.NSFont', 'uiold', 'ui_darwin.c.v', flat.Node{})
 	assert g.skip_builtin_struct('C.NSFont')
+	assert !g.header_c_struct_needs_compat_typedef('C.NSFont')
 
 	g.register_struct_decl_info('C.HeaderOwned', 'C.HeaderOwned', 'main', header_backed_file, flat.Node{})
 	assert g.skip_builtin_struct('C.HeaderOwned')
+	assert g.header_c_struct_needs_compat_typedef('C.HeaderOwned')
+	g.inlined_c_structs['HeaderOwned'] = true
+	assert g.header_c_struct_needs_compat_typedef('C.HeaderOwned')
+	g.inlined_c_typedef_names['HeaderOwned'] = true
+	assert !g.header_c_struct_needs_compat_typedef('C.HeaderOwned')
 
 	g.register_struct_decl_info('C.Local', 'C.Local', 'main', headerless_file, flat.Node{})
 	assert !g.skip_builtin_struct('C.Local')

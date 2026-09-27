@@ -5840,6 +5840,8 @@ const c_system_header_struct_names = {
 const c_preamble_defined_structs = {
 	'C.DIR':                        true
 	'C.FILE':                       true
+	// Cocoa supplies NSFont as an Objective-C class, not a C struct tag.
+	'C.NSFont':                     true
 	'C.CONDITION_VARIABLE':         true
 	'C.IError':                     true
 	'C.SRWLOCK':                    true
