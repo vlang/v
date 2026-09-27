@@ -57,8 +57,13 @@ fn test_fn_ptr_encoded_round_trips_nested_keys() {
 }
 
 fn test_file_function_names_do_not_collide_with_libc() {
-	assert c_name('mktemp') == 'v_mktemp'
-	assert c_name('truncate') == 'v_truncate'
+	assert c_name('mktemp') == '${internal_symbol_c_prefix}libc_mktemp'
+	assert c_name('truncate') == '${internal_symbol_c_prefix}libc_truncate'
+	assert c_name('v_mktemp') == 'v_mktemp'
+	assert c_name('v_truncate') == 'v_truncate'
+	assert c_name('mktemp') != c_name('v_mktemp')
+	assert c_name('truncate') != c_name('v_truncate')
+	assert c_name('mktemp') != c_name('${internal_symbol_c_prefix}libc_mktemp')
 	assert c_name('C.mktemp') == 'mktemp'
 	assert c_name('C.truncate') == 'truncate'
 }

@@ -148,6 +148,9 @@ pub fn c_name(name string) string {
 		return 'v_exit'
 	}
 	n := sanitize(name)
+	if n in ['mktemp', 'truncate'] {
+		return '${internal_symbol_c_prefix}libc_${n}'
+	}
 	mut result := n
 	if n in reserved_words || n in libc_collisions || is_string_literal_symbol(n) {
 		if name.contains('@') {
