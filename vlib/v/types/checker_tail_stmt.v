@@ -12030,8 +12030,12 @@ pub fn (tc &TypeChecker) struct_fields_for_type(struct_name string) []StructFiel
 fn (tc &TypeChecker) struct_field_type(struct_name string, field_name string) ?Type {
 	if field_name.starts_with('@') && field_name.len > 1
 		&& token.Token.from_string_tinyv(field_name[1..]).is_keyword() {
-		if typ := tc.struct_field_type(struct_name, escaped_identifier_name(field_name)) {
-			return typ
+		plain_name := escaped_identifier_name(field_name)
+		mut seen := map[string]bool{}
+		if tc.c_struct_owns_plain_keyword_field(struct_name, plain_name, mut seen) {
+			if typ := tc.struct_field_type(struct_name, plain_name) {
+				return typ
+			}
 		}
 	}
 	if !isnil(tc.type_cache) {
@@ -12097,6 +12101,30 @@ fn (tc &TypeChecker) struct_field_type(struct_name string, field_name string) ?T
 	}
 	tc.remember_struct_field_type(struct_name, field_name, Type(void_), false)
 	return none
+}
+
+fn (tc &TypeChecker) c_struct_owns_plain_keyword_field(struct_name string, field_name string, mut seen map[string]bool) bool {
+	owner := unalias_and_unwrap_pointer_type(tc.parse_type(struct_name))
+	if owner !is Struct {
+		return false
+	}
+	if seen[owner.name] {
+		return false
+	}
+	seen[owner.name] = true
+	fields := tc.structs[owner.name] or { tc.structs[owner.name.all_after_last('.')] or { return false } }
+	for field in fields {
+		if field.name == field_name {
+			return owner.name.starts_with('C.')
+		}
+	}
+	for field in fields {
+		if field.is_embed
+			&& tc.c_struct_owns_plain_keyword_field(field.typ.name(), field_name, mut seen) {
+			return true
+		}
+	}
+	return false
 }
 
 // Sample both spellings; every cache hit compares the full names.

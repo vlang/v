@@ -7803,9 +7803,12 @@ fn (mut b Builder) build_enum_val(id flat.NodeId, node flat.Node) ValueID {
 			return b.m.get_or_add_const(b.i64_type, value.str())
 		}
 	}
-	clean_member0 := normalized_enum_member_lookup_key(node.value).trim_left('.')
-	if value := b.enum_values[clean_member0] {
-		return b.m.get_or_add_const(b.i64_type, value.str())
+	raw_member := node.value.trim_left('.')
+	clean_member0 := normalized_enum_member_lookup_key(raw_member)
+	for key in [raw_member, clean_member0] {
+		if value := b.enum_values[key] {
+			return b.m.get_or_add_const(b.i64_type, value.str())
+		}
 	}
 	if b.tc != unsafe { nil } {
 		if typ := b.tc.expr_type(id) {
@@ -7815,10 +7818,12 @@ fn (mut b Builder) build_enum_val(id flat.NodeId, node flat.Node) ValueID {
 			}
 		}
 	}
-	member_name := clean_member0.all_after_last('.')
-	if !b.enum_member_dupes[member_name] {
-		if value := b.enum_member_values[member_name] {
-			return b.m.get_or_add_const(b.i64_type, value.str())
+	for key in [raw_member, clean_member0] {
+		member_name := key.all_after_last('.')
+		if !b.enum_member_dupes[member_name] {
+			if value := b.enum_member_values[member_name] {
+				return b.m.get_or_add_const(b.i64_type, value.str())
+			}
 		}
 	}
 	return b.m.get_or_add_const(b.i64_type, '0')
@@ -7837,22 +7842,25 @@ fn (b &Builder) enum_value_for_type(type_name string, member string) ?int {
 	if type_name.len == 0 || type_name in ['int', 'unknown'] {
 		return none
 	}
-	clean_member0 := normalized_enum_member_lookup_key(member).trim_left('.')
-	if value := b.enum_values[clean_member0] {
-		enum_name := clean_member0.all_before_last('.')
-		return if b.is_flag_enum_type_name(enum_name) { 1 << value } else { value }
-	}
-	clean_member := clean_member0.all_after_last('.')
+	raw_member := member.trim_left('.')
+	clean_member0 := normalized_enum_member_lookup_key(raw_member)
 	mut names := []string{}
 	names << type_name
 	short_type := type_name.all_after('.')
 	if short_type != type_name {
 		names << short_type
 	}
-	for name in names {
-		key := name + '.' + clean_member
-		if value := b.enum_values[key] {
-			return if b.is_flag_enum_type_name(name) { 1 << value } else { value }
+	for candidate in [raw_member, clean_member0] {
+		if value := b.enum_values[candidate] {
+			enum_name := candidate.all_before_last('.')
+			return if b.is_flag_enum_type_name(enum_name) { 1 << value } else { value }
+		}
+		clean_member := candidate.all_after_last('.')
+		for name in names {
+			key := name + '.' + clean_member
+			if value := b.enum_values[key] {
+				return if b.is_flag_enum_type_name(name) { 1 << value } else { value }
+			}
 		}
 	}
 	return none

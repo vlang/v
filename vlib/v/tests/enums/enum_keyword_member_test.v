@@ -59,3 +59,13 @@ fn test_non_keyword_enum_member_cannot_be_escaped() {
 	assert result.exit_code != 0, result.output
 	assert result.output.contains('only escape keyword enum members'), result.output
 }
+
+fn test_native_backend_preserves_escaped_enum_declaration() {
+	$if arm64 {
+		path := os.join_path(os.vtmp_dir(), 'v3_native_escaped_enum_${os.getpid()}.v')
+		defer { os.rm(path) or {} }
+		os.write_file(path, 'enum Kind { @none = -10 struct }\nfn main() { assert int(Kind.@none) == -10; assert int(Kind.@struct) == -9 }\n')!
+		result := os.execute('${os.quoted_path(@VEXE)} -b arm64 -gc none run ${os.quoted_path(path)}')
+		assert result.exit_code == 0, result.output
+	}
+}
