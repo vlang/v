@@ -3534,6 +3534,8 @@ To dereference a reference, use the `*` operator, just like in C.
 
 ## Constants
 
+A constant can be qualified with its module name inside that module, including in module tests.
+
 ```v
 const pi = 3.14
 const world = '世界'

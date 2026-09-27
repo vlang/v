@@ -1951,6 +1951,9 @@ fn (g &FlatGen) selector_base_module(name string) ?string {
 			return mod
 		}
 	}
+	if g.tc != unsafe { nil } && name == g.tc.cur_module {
+		return g.tc.cur_module
+	}
 	if mod := g.modules[name] {
 		return mod
 	}
