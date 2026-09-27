@@ -1926,6 +1926,9 @@ the enum operand supplies the type for shorthand values such as `.red` in the br
 This works with the enum operand on either side of the comparison.
 Branch-local values keep their declared types; unrelated enum types cannot be compared this way.
 
+Appending an `if` or `match` expression to an enum array also supplies the element type
+for shorthand values in its branches. Every branch must produce a compatible enum value.
+
 #### `If` unwrapping
 Anywhere you can use `or {}`, you can also use "if unwrapping". This binds the unwrapped value
 of an expression to a variable when that expression is not none nor an error.

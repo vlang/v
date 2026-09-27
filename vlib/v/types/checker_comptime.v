@@ -2196,6 +2196,15 @@ fn (mut tc TypeChecker) check_node(id flat.NodeId) {
 				}
 			}
 		}
+		if node.kind == .infix && node.op == .left_shift && i == 1
+			&& tc.a.node(tc.unwrap_paren_expr_id(child_id)).kind in [.if_expr, .match_stmt] {
+			if lhs_array := array_type_from_receiver(tc.infix_read_type(tc.a.child(&node, 0))) {
+				if unalias_type(lhs_array.elem_type) is Enum {
+					infix_expected = lhs_array.elem_type
+					has_infix_expected = true
+				}
+			}
+		}
 		if node.kind == .infix && node.op in [.eq, .ne] && i == 1 {
 			lhs_type := unalias_type(tc.resolve_type(tc.a.child(&node, 0)))
 			if lhs_type is Array || lhs_type is ArrayFixed {
