@@ -3814,7 +3814,7 @@ To keep module lookup inside a project, place an empty `.v.mod.stop` file in
 its root. When V walks upward from a source file, it searches that directory
 but not its parents. The marker also prevents V from selecting a `v.mod` above
 it as the project's root. An explicit `-path` can still name modules outside
-the boundary.
+the boundary. `v doc` follows the same boundary when resolving a module name.
 
 A `.git`, `.hg`, or `.svn` entry also prevents V from selecting a parent
 directory's `v.mod`. These repository markers do not stop the upward module
