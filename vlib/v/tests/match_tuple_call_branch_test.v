@@ -89,6 +89,23 @@ fn test_match_tuple_error_promotes_to_optional_slot() {
 	}
 }
 
+fn test_match_tuple_none_promotes_to_optional_slot_in_both_orders() {
+	for flag in [true, false] {
+		first_value, first_text := match flag {
+			true { wrapped_pair() }
+			else { 2, none }
+		}
+		second_value, second_text := match flag {
+			true { 2, none }
+			else { wrapped_pair() }
+		}
+		assert first_value == if flag { 1 } else { 2 }
+		assert second_value == if flag { 2 } else { 1 }
+		assert (first_text or { 'missing' }) == if flag { 'ok' } else { 'missing' }
+		assert (second_text or { 'missing' }) == if flag { 'missing' } else { 'ok' }
+	}
+}
+
 fn test_match_tuple_error_promotes_to_result_slot() {
 	for flag in [true, false] {
 		value, text := match flag {

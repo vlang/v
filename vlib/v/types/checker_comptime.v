@@ -15949,8 +15949,12 @@ fn (tc &TypeChecker) multi_expr_branch_tail_type_groups(branch_id flat.NodeId, c
 		for group in groups {
 			mut tail_types := []Type{cap: group.len}
 			for value_id in group {
-				typ := tc.expr_type(value_id) or { tc.resolve_type(value_id) }
-				if !type_has_runtime_value(typ) {
+				typ := if tc.a.nodes[int(value_id)].kind == .none_expr {
+					Type(none_)
+				} else {
+					tc.expr_type(value_id) or { tc.resolve_type(value_id) }
+				}
+				if !type_has_runtime_value(typ) && typ !is None {
 					return none
 				}
 				tail_types << typ
@@ -15976,7 +15980,7 @@ fn (tc &TypeChecker) multi_expr_branch_tail_type_groups(branch_id flat.NodeId, c
 		return none
 	}
 	for typ in multi.types {
-		if !type_has_runtime_value(typ) {
+		if !type_has_runtime_value(typ) && typ !is None {
 			return none
 		}
 	}
@@ -16225,6 +16229,12 @@ fn multi_tail_wrappers_match(current Type, actual Type) bool {
 	if clean_current is Nil || clean_actual is Nil {
 		return true
 	}
+	if clean_current is None && clean_actual is OptionType {
+		return true
+	}
+	if clean_actual is None && clean_current is OptionType {
+		return true
+	}
 	if is_ierror_type(current) && (clean_actual is OptionType || clean_actual is ResultType) {
 		return true
 	}
@@ -16238,6 +16248,12 @@ fn multi_tail_wrappers_match(current Type, actual Type) bool {
 fn (tc &TypeChecker) promoted_multi_tail_type(current Type, actual Type) ?Type {
 	if !multi_tail_wrappers_match(current, actual) {
 		return none
+	}
+	if unalias_type(current) is None && unalias_type(actual) is OptionType {
+		return actual
+	}
+	if unalias_type(actual) is None && unalias_type(current) is OptionType {
+		return current
 	}
 	if is_ierror_type(actual) && (unalias_type(current) is OptionType
 		|| unalias_type(current) is ResultType) {
