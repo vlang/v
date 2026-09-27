@@ -14362,6 +14362,9 @@ fn (t &Transformer) callback_fn_type_modes_compatible(actual string, expected st
 		return false
 	}
 	for i, actual_param in actual_params {
+		if generic_fn_type_param_payload(actual_param).starts_with('...') != generic_fn_type_param_payload(expected_params[i]).starts_with('...') {
+			return false
+		}
 		if callback_param_shared_atomic_mode(actual_param) != callback_param_shared_atomic_mode(expected_params[i]) {
 			return false
 		}
