@@ -4053,7 +4053,11 @@ fn prepare_v3_checker_native_inputs_thread(args &PrepareV3CheckerNativeInputsArg
 }
 
 fn ast_has_native_source_include(a &flat.FlatAst) bool {
-	for node in a.nodes {
+	return ast_has_native_source_include_from(a, 0)
+}
+
+fn ast_has_native_source_include_from(a &flat.FlatAst, first int) bool {
+	for node in a.nodes[first..] {
 		if node.kind != .directive
 			|| node.value !in ['include', 'insert', 'preinclude', 'postinclude'] {
 			continue
@@ -11232,6 +11236,9 @@ pub fn run(args []string) {
 			prepared_imports.capturing = false
 			prepared_imports.ready = true
 			prepared_imports.user_start = prepared_ast.nodes.len
+			prepared_imports.native_include = ast_has_native_source_include(prepared_ast)
+			implicit_field_scan_index_append(prepared_ast, 0, prepared_ast.user_code_start, mut
+				prepared_imports.builtin_field_index)
 			// The declarations of builtin and of those modules, collected once too.
 			prepared_config := TypeCheckerConfig{
 				user_files:                  prepared_user_files
@@ -11368,8 +11375,8 @@ pub fn run(args []string) {
 	}
 	if !no_builtin {
 		implicit_imports = if prepared_imports.ready {
-			seed_implicit_imports_from(mut a, prepared_imports.user_start, skip_closure_runtime,
-				check_overflow)
+			seed_implicit_imports_from(mut a, prepared_imports.user_start, prepared_imports.builtin_field_index,
+				skip_closure_runtime, check_overflow)
 		} else {
 			seed_implicit_imports(mut a, skip_closure_runtime, check_overflow)
 		}
@@ -11838,7 +11845,13 @@ pub fn run(args []string) {
 	// literals before Cgen sees the included translation unit. Resolve those rare
 	// inputs before checking so the type is available to semantic lookup.
 	mut ck_stage_sw := time.new_stopwatch()
-	native_inputs_needed := !cache_state.external_inputs_ready && ast_has_native_source_include(a)
+	native_inputs_needed := !cache_state.external_inputs_ready && if prepared_imports.ready
+		&& !prepared_imports.shifted {
+		prepared_imports.native_include
+			|| ast_has_native_source_include_from(a, prepared_imports.user_start)
+	} else {
+		ast_has_native_source_include(a)
+	}
 	// Large cache-disabled C builds still have to resolve native inputs before
 	// Cgen. When the source does not expose native typedefs to semantic collection,
 	// overlap that independent work with the checker's declaration pass.
@@ -17558,6 +17571,17 @@ mut:
 	globals     map[string]string
 }
 
+fn (index &ImplicitFieldScanIndex) clone() ImplicitFieldScanIndex {
+	return ImplicitFieldScanIndex{
+		aliases:     index.aliases.clone()
+		imports:     index.imports.clone()
+		fields:      index.fields.clone()
+		enum_fields: index.enum_fields.clone()
+		fn_returns:  index.fn_returns.clone()
+		globals:     index.globals.clone()
+	}
+}
+
 struct ImplicitImportScan {
 mut:
 	node_idx             int
@@ -17580,13 +17604,13 @@ const closure_runtime_import_alias = '__v3_builtin_closure_runtime'
 // parsed code needs, and returns the scan that found them: resolve_imports
 // continues it rather than scanning the code again.
 fn seed_implicit_imports(mut a flat.FlatAst, skip_closure_runtime bool, check_overflow bool) ImplicitImportScan {
-	return seed_implicit_imports_from(mut a, a.user_code_start, skip_closure_runtime,
-		check_overflow)
+	return seed_implicit_imports_from(mut a, a.user_code_start, ImplicitFieldScanIndex{},
+		skip_closure_runtime, check_overflow)
 }
 
 // seed_implicit_imports_from scans the code from `scan_start`: the user's files
 // start after builtin, or after the modules a diagnostics server prepared.
-fn seed_implicit_imports_from(mut a flat.FlatAst, scan_start int, skip_closure_runtime bool, check_overflow bool) ImplicitImportScan {
+fn seed_implicit_imports_from(mut a flat.FlatAst, scan_start int, builtin_field_index ImplicitFieldScanIndex, skip_closure_runtime bool, check_overflow bool) ImplicitImportScan {
 	start := a.nodes.len
 	// Builtin declares the channel ABI even when a program never uses channels.
 	// Start at user code so that declaration alone does not pull the whole sync
@@ -17596,8 +17620,8 @@ fn seed_implicit_imports_from(mut a flat.FlatAst, scan_start int, skip_closure_r
 	}
 	if scan_start != a.user_code_start {
 		// The field index of a program's own code holds builtin too, and not the
-		// modules prepared between the two.
-		implicit_field_scan_index_append(a, 0, a.user_code_start, mut scan.field_index)
+		// modules prepared between the two: the server indexed builtin once.
+		scan.field_index = builtin_field_index.clone()
 		scan.field_index_node_idx = scan_start
 	}
 	scan_implicit_imports(a, a.nodes.len, mut scan)
@@ -18913,7 +18937,7 @@ fn configure_type_checker(mut tc types.TypeChecker, prefs &pref.Preferences, cfg
 // type_checker_config_key tells apart the configurations under which a
 // prepared collection of declarations would not be the one of the check.
 fn type_checker_config_key(prefs &pref.Preferences, cfg TypeCheckerConfig) string {
-	return '${prefs.vroot}\n${project_root_for_files(cfg.user_files)}\n${cfg.input_file}\n${cfg.backend}\n${cfg.enable_globals}\n${cfg.disable_explicit_mutability}\n${cfg.checker_fixture_mode}\n${cfg.warns_are_errors}\n${cfg.notes_are_errors}\n${cfg.building_v}\n${prefs.is_test}\n${prefs.is_prod}\n${prefs.warn_about_allocs}\n${prefs.user_defines}\n${prefs.verbose}'
+	return '${prefs.vroot}\n${project_root_for_files(cfg.user_files)}\n${cfg.input_file}\n${cfg.backend}\n${cfg.enable_globals}\n${cfg.disable_explicit_mutability}\n${cfg.checker_fixture_mode}\n${cfg.warns_are_errors}\n${cfg.notes_are_errors}\n${cfg.building_v}\n${prefs.is_test}\n${prefs.is_prod}\n${prefs.warn_about_allocs}\n${prefs.user_defines}'
 }
 
 // trace_diagnostics_server tells what a diagnostics server did, when
@@ -18965,6 +18989,11 @@ mut:
 	user_start int
 	// Whether the user's files held a test when the modules were prepared.
 	is_test bool
+	// Whether the prepared code includes a C or Objective-C source.
+	native_include bool
+	// The field index of the implicit-import scan over builtin, which the scan
+	// of the user's code starts from.
+	builtin_field_index ImplicitFieldScanIndex
 	// The project root the user's files give, which resolves module paths.
 	project_root string
 	// The prepared modules, in the order they were parsed.
@@ -19547,7 +19576,12 @@ fn resolve_imports(mut a flat.FlatAst, mut p parser.Parser, prefs &pref.Preferen
 	mut parsed_modules := map[string]bool{}
 	parsed_modules['builtin'] = true
 	parsed_modules['main'] = true
-	initial_file_nodes := selected_file_node_ids(a, initial_files)
+	// The user's files are parsed after the modules a server prepared.
+	initial_file_nodes := selected_file_node_ids_from(a, initial_files, if prepared.ready {
+		prepared.user_start
+	} else {
+		a.user_code_start
+	})
 	explicit_initial_imports := imports_from_file_nodes(a, initial_file_nodes)
 	canonicalize_colliding_initial_modules(mut a, prefs, initial_file_nodes, explicit_initial_imports)
 	seed_initial_modules(a, initial_file_nodes, explicit_initial_imports, mut parsed_modules)
@@ -20224,6 +20258,12 @@ fn record_cache_module_dependency(mut state V3ModuleCacheState, owner string, de
 // selected_file_node_ids returns the `.file` nodes of user code that hold the
 // declarations of `files`, named as given or by their real path.
 fn selected_file_node_ids(a &flat.FlatAst, files []string) []int {
+	return selected_file_node_ids_from(a, files, a.user_code_start)
+}
+
+// selected_file_node_ids_from is selected_file_node_ids for files parsed from
+// node `first` on.
+fn selected_file_node_ids_from(a &flat.FlatAst, files []string, first int) []int {
 	mut ids := []int{}
 	if files.len == 0 {
 		return ids
@@ -20235,9 +20275,9 @@ fn selected_file_node_ids(a &flat.FlatAst, files []string) []int {
 	}
 	// A file has two `.file` nodes; the declarations hang from the second.
 	mut real_paths := map[string]string{}
-	for file_idx, file_node in a.nodes {
-		if file_idx < a.user_code_start || file_node.kind != .file || file_node.value.len == 0
-			|| file_node.children_count == 0 {
+	for file_idx in first .. a.nodes.len {
+		file_node := a.nodes[file_idx]
+		if file_node.kind != .file || file_node.value.len == 0 || file_node.children_count == 0 {
 			continue
 		}
 		if !selected_files[file_node.value] {
