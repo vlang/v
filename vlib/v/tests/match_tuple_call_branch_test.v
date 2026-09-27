@@ -49,3 +49,18 @@ fn test_match_tuple_call_order_and_element_types() {
 	assert n == 8 && text == 'eight'
 	assert other_n == 7 && other_text == 'seven'
 }
+
+fn test_match_tuple_comma_tail_promotes_one_component() {
+	for flag in [true, false] {
+		a, b := match flag {
+			true { 1, 0 }
+			else { 1.5, 0 }
+		}
+		if flag {
+			assert a == 1.0
+		} else {
+			assert a == 1.5
+		}
+		assert b == 0
+	}
+}

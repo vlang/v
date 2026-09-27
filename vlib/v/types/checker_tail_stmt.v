@@ -2125,6 +2125,19 @@ fn (mut tc TypeChecker) check_general_match_branch_tail_types(id flat.NodeId, no
 	for i in 1 .. tails.len {
 		tail_id := tails[i]
 		actual := tail_types[i]
+		clean_expected := unalias_type(expected)
+		clean_actual := unalias_type(actual)
+		if clean_expected is MultiReturn && clean_actual is MultiReturn
+			&& clean_expected.types.len == clean_actual.types.len {
+			mut promoted := []Type{cap: clean_expected.types.len}
+			for j, current in clean_expected.types {
+				promoted << tc.promoted_multi_tail_type(current, clean_actual.types[j]) or { break }
+			}
+			if promoted.len == clean_expected.types.len {
+				expected = Type(MultiReturn{ types: promoted })
+				continue
+			}
+		}
 		if inferred := inferred_contextual_if_type(expected, actual) {
 			expected = inferred
 			continue
