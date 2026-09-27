@@ -778,6 +778,9 @@ fn module_parent_for_docs(base_path string, module_name string) string {
 	}
 	mut boundary := normalized
 	for {
+		if pref.is_module_search_stop_dir(boundary) {
+			break
+		}
 		parent := os.dir(boundary)
 		if parent == boundary {
 			break

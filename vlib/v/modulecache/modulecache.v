@@ -835,18 +835,10 @@ fn source_digest_map(source_files []string, digests []string) map[string]string 
 }
 
 fn signature_vmod_root(source_file string) (string, string) {
-	mut dir := os.dir(os.real_path(source_file))
-	original_dir := dir
-	for dir.len > 0 {
-		vmod_file := os.join_path_single(dir, 'v.mod')
-		if os.exists(vmod_file) {
-			return os.real_path(dir), os.real_path(vmod_file)
-		}
-		// `os.parent_dir` stops at a filesystem root; `os.dir` would escape a bare
-		// Windows drive into the relative `.` and match the current directory.
-		dir = os.parent_dir(dir)
+	if root := util.nearest_vmod_root(source_file) {
+		return root, os.real_path(os.join_path_single(root, 'v.mod'))
 	}
-	return os.real_path(original_dir), ''
+	return os.dir(os.real_path(source_file)), ''
 }
 
 fn signature_vmod_hash(root string, vmod_file string) string {
@@ -6155,14 +6147,8 @@ fn cached_flag_path_is_relative(path string) bool {
 }
 
 fn cached_vmod_root(source_file string) string {
-	mut dir := os.dir(os.real_path(source_file))
-	for dir.len > 0 {
-		if os.is_file(os.join_path_single(dir, 'v.mod')) {
-			return dir
-		}
-		// `os.parent_dir` stops at a filesystem root; `os.dir` would escape a bare
-		// Windows drive into the relative `.` and match the current directory.
-		dir = os.parent_dir(dir)
+	if root := util.nearest_vmod_root(source_file) {
+		return root
 	}
 	return os.dir(os.real_path(source_file))
 }

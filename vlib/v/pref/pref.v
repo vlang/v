@@ -627,6 +627,10 @@ fn vmod_root_for_dir(start string) ?string {
 		if os.is_file(os.join_path_single(dir, 'v.mod')) {
 			return dir
 		}
+		if is_module_search_stop_dir(dir) || ['.git', '.hg', '.svn'].any(os.exists(os.join_path_single(dir,
+			it))) {
+			return none
+		}
 		dir = os.parent_dir(dir)
 	}
 	return none

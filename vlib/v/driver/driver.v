@@ -15868,7 +15868,13 @@ fn append_declared_import(mut imports []string, line string) {
 	if end == 0 {
 		return
 	}
-	name := line[..end]
+	mut parts := line[..end].split('.')
+	for i, part in parts {
+		if part.len > 1 && part[0] == `@` {
+			parts[i] = part[1..]
+		}
+	}
+	name := parts.join('.')
 	if name !in imports {
 		imports << name
 	}
