@@ -18,6 +18,7 @@ fn test_translated_fixed_array_arguments() {
 	assert values == [0, 0]!
 	chars := [char(65), char(66)]!
 	assert first_byte(chars) == 65
+	assert first_byte([char(65), char(66)]!) == 65
 	rows := [[char(65), char(66)]!, [char(67), char(68)]!]!
 	assert first_byte_row(rows) == 65
 }
@@ -79,6 +80,10 @@ fn test_translated_fixed_array_comparisons() {
 
 type DecayedCell = int
 
+type Row = [2]int
+
+type RowAlias = Row
+
 const row_len = 2
 
 fn sum_row(values &[2]int) int {
@@ -112,6 +117,12 @@ fn test_translated_array_decay_resolves_nested_aliases() {
 	plain_rows := [[20, 22]!, [3, 5]!]!
 	assert sum_alias_row(plain_rows) == 42
 	assert sum_named_row(plain_rows) == 42
+	mut alias_rows := [2]RowAlias{}
+	alias_rows[0][0] = 20
+	alias_rows[0][1] = 22
+	alias_rows[1][0] = 3
+	alias_rows[1][1] = 5
+	assert sum_row(alias_rows) == 42
 	mut named_pointer := unsafe { &[row_len]int(nil) }
 	named_pointer = plain_rows
 	assert named_pointer == plain_rows

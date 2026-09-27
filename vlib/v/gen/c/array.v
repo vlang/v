@@ -530,11 +530,8 @@ fn (mut g FlatGen) gen_fixed_array_pointer_lvalue_arg(id flat.NodeId, expected t
 		return false
 	}
 	if actual_fixed := array_fixed_type(actual) {
-		if !g.expr_is_addressable(id) {
-			return false
-		}
 		if fixed := expected_fixed {
-			if inner_fixed := array_fixed_type(actual_fixed.elem_type) {
+			if inner_fixed := array_fixed_type(cgen_unalias_type(actual_fixed.elem_type)) {
 				if g.fixed_array_len_value(inner_fixed) == g.fixed_array_len_value(fixed) {
 					if cgen_types_equal_after_alias_erasure(inner_fixed.elem_type, fixed.elem_type) {
 						g.gen_expr(id)
@@ -546,6 +543,9 @@ fn (mut g FlatGen) gen_fixed_array_pointer_lvalue_arg(id flat.NodeId, expected t
 						return true
 					}
 				}
+			}
+			if !g.expr_is_addressable(id) {
+				return false
 			}
 			g.write('&')
 			g.gen_expr(id)
