@@ -1501,7 +1501,7 @@ fn (mut g Parser) parse_simple_statement() ! {
 		g.write_line('{ ${g.last_expression_type} ${handle} = ${expression}; pthread_detach(${handle}.handle); }')
 		return
 	}
-	if g.selfhost && g.last_expression_is_statement() {
+	if (g.selfhost || g.translated) && g.last_expression_is_statement() {
 		g.consume_statement_end()
 		g.write_line('${expression};')
 		return

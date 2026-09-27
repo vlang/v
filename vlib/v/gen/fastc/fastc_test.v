@@ -3092,6 +3092,9 @@ fn test_translated_pointer_writes_accept_immutable_roots() {
 	pointer_increment := generate('@[translated]\nmodule main\nfn advance(p &int) { p++ }\nfn main() {}\n',
 		'translated_pointer_increment.v', prefs) or { panic(err) }
 	assert pointer_increment.contains('p++;'), pointer_increment
+	dereference_write := generate('@[translated]\nmodule main\nfn store(target &int, value int) { *target = value }\nfn main() {}\n',
+		'translated_dereference_write.v', prefs) or { panic(err) }
+	assert dereference_write.contains('*target=value;'), dereference_write
 }
 
 fn test_duplicate_global_declarations_are_rejected() {
