@@ -6349,7 +6349,7 @@ fn (mut tc TypeChecker) reject_nonkeyword_enum_selector_escape(id flat.NodeId, n
 	if base.kind == .ident {
 		enum_name = tc.resolve_enum_name(base.value) or { '' }
 	} else if base.kind == .selector && base.children_count > 0 {
-		module_node := tc.a.child_node(&base, 0)
+		module_node := tc.a.child_node(base, 0)
 		if module_node.kind == .ident && tc.has_active_import(module_node.value) {
 			module_name := tc.resolve_import_alias(module_node.value) or { module_node.value }
 			enum_name = tc.resolve_enum_name('${module_name}.${base.value}') or { '' }
