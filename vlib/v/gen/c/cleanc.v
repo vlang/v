@@ -16352,8 +16352,9 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 						g.write('.len')
 					}
 				}
-			} else if base.kind == .ident && !base_is_local && g.selector_base_is_module(base.value) {
-				mod := g.selector_base_module(base.value) or { '' }
+			} else if base.kind == .ident && !g.selector_base_is_local_value(base.value)
+				&& g.selector_base_is_module(base.value, node.value) {
+				mod := g.selector_base_module_for_member(base.value, node.value) or { '' }
 				short_mod := if mod.contains('.') {
 					mod.all_after_last('.')
 				} else {

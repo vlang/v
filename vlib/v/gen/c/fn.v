@@ -1947,8 +1947,10 @@ fn (g &FlatGen) selector_base_module(name string) ?string {
 	}
 	if g.tc != unsafe { nil } {
 		current := if g.tc.cur_module.len > 0 { g.tc.cur_module } else { 'main' }
-		if name == current || name == current.all_after_last('.') {
-			if _ := g.current_module_const_ref_name(name) {
+		short := current.all_after_last('.')
+		if name == current || name == short || name == g.const_storage_name(current, short) {
+			if name == g.const_storage_name(current, short)
+				|| g.current_module_const_ref_name(short) != none {
 				return none
 			}
 			return current
@@ -1969,11 +1971,32 @@ fn (g &FlatGen) selector_base_module(name string) ?string {
 	return none
 }
 
-fn (g &FlatGen) selector_base_is_module(name string) bool {
-	if _ := g.selector_base_module(name) {
+fn (g &FlatGen) selector_base_is_module(name string, member string) bool {
+	if _ := g.selector_base_module_for_member(name, member) {
 		return true
 	}
 	return false
+}
+
+fn (g &FlatGen) selector_base_module_for_member(name string, member string) ?string {
+	if g.tc != unsafe { nil } {
+		current := if g.tc.cur_module.len > 0 { g.tc.cur_module } else { 'main' }
+		short := current.all_after_last('.')
+		if name == current || name == short || name == g.const_storage_name(current, short) {
+			if name == g.const_storage_name(current, short)
+				|| g.current_module_const_ref_name(short) != none {
+				storage := if current == 'main' {
+					'main.${member}'
+				} else {
+					g.const_storage_name(current, member)
+				}
+				if storage in g.const_vals || storage in g.tc.const_types {
+					return current
+				}
+			}
+		}
+	}
+	return g.selector_base_module(name)
 }
 
 fn (g &FlatGen) selector_base_is_value(name string) bool {
