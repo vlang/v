@@ -2250,3 +2250,63 @@ fn test_a_branch_that_the_parse_left_out_answers_as_the_others_do() {
 	both := '${lines.index(then_line) + 1}:hv^14\tmain.v:${lines.index(live_line) + 1}:hv^13'
 	assert ask_at(os.join_path(work_dir, 'skipped_branches'), both) == '0\t${hover_of('number T\\nT: f32 | f64')}\n1\t${live}'
 }
+
+const generic_locals_program = "module main
+
+type Number = int | f64
+
+struct Separator {
+	integer string
+}
+
+fn format[T Number](number T, sep string) string {
+	separator := match sep {
+		'' { Separator{} }
+		else { Separator{
+			integer: sep
+		} }
+	}
+	local := sep + '!'
+	same := number
+	return number.str() + separator.integer + local + same.str()
+}
+
+fn plain[T](x T, sep string) string {
+	local := sep + '?'
+	count := local.len
+	return '\${x}' + local + count.str()
+}
+
+fn main() {
+	println(format(1.5, ','))
+	println(plain(2, ';'))
+}
+"
+
+// generic_local asks about the `nth` `word` of the line of
+// generic_locals_program that reads `text`.
+fn generic_local(text string, word string, nth int) string {
+	dir := os.join_path(work_dir, 'generic_locals')
+	if !os.exists(dir) {
+		os.mkdir_all(dir) or { panic(err) }
+		os.write_file(os.join_path(dir, 'main.v'), generic_locals_program) or { panic(err) }
+	}
+	line := generic_locals_program.split('\n').index(text) + 1
+	assert line > 0, '`${text}` is not a line of generic_locals_program'
+	return ask(dir, 'hv^', line, word, nth)
+}
+
+fn test_a_local_of_a_generic_body_that_no_type_parameter_decides_has_its_type() {
+	// The check leaves the body of a generic function to its instances: a local
+	// whose value does not depend on the type parameters has the type that
+	// every instance gives it, with or without constraints.
+	ret := '\treturn number.str() + separator.integer + local + same.str()'
+	assert generic_local('\tseparator := match sep {', 'separator', 0) == hover_of('separator main.Separator')
+	assert generic_local(ret, 'separator', 0) == hover_of('separator main.Separator')
+	assert generic_local("\tlocal := sep + '!'", 'local', 0) == hover_of('local string')
+	assert generic_local(ret, 'local', 0) == hover_of('local string')
+	assert generic_local("\tlocal := sep + '?'", 'local', 0) == hover_of('local string')
+	assert generic_local('\tcount := local.len', 'count', 0) == hover_of('count int')
+	// One that depends on them stays as it was.
+	assert generic_local('\tsame := number', 'same', 0) == hover_of('same T\\nT: int | f64')
+}

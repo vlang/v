@@ -129,6 +129,16 @@ struct GenericBodyDiagnostics {
 // fork of the checker, with each type parameter that `texts` names as the type
 // written there, or with its type parameters open when it names none.
 fn (tc &TypeChecker) check_generic_fn_body_as(node flat.Node, fn_idx int, texts map[string]string) GenericBodyDiagnostics {
+	w := tc.checked_generic_fn_body(node, fn_idx, texts)
+	return GenericBodyDiagnostics{
+		errors:  w.errors
+		notices: w.notices
+	}
+}
+
+// checked_generic_fn_body returns the fork of the checker that checked the body
+// of the generic function `node` (see check_generic_fn_body_as).
+fn (tc &TypeChecker) checked_generic_fn_body(node flat.Node, fn_idx int, texts map[string]string) &TypeChecker {
 	mut w := tc.fork_for_parallel_check()
 	w.fn_context.node_id = fn_idx
 	w.fn_context.concrete_generic_receiver_specialization =
@@ -166,10 +176,7 @@ fn (tc &TypeChecker) check_generic_fn_body_as(node flat.Node, fn_idx int, texts 
 	$if ownership ? {
 		w.ownership_end_fn()
 	}
-	return GenericBodyDiagnostics{
-		errors:  w.errors
-		notices: w.notices
-	}
+	return w
 }
 
 // parse_type_as_instance parses `typ` in a fork that checks a generic body with

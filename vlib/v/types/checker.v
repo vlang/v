@@ -746,6 +746,9 @@ pub mut:
 	vls_prefs                        &pref.Preferences = unsafe { nil } // what a question parses a file again with (see vls_add_skipped_branches)
 	vls_reparsed_files               map[int]bool        // the files whose left-out branches have nodes
 	vls_twins                        map[int]flat.NodeId // a node added for a left-out branch's file, to the checked node it parses again
+	vls_added_start                  int = max_int       // the first of the nodes that questions added
+	vls_body_types                   map[int]Type        // the types that a generic body gives its nodes in every instance (see vls_type_generic_body)
+	vls_typed_bodies                 map[int]bool        // the generic functions whose bodies were typed so
 	valid_diagnostic_fast            bool
 	valid_resolution_fast            bool
 	defer_fn_ancillary               bool

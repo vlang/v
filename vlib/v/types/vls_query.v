@@ -102,6 +102,13 @@ pub fn (mut tc TypeChecker) vls_answer(q VlsQuery) string {
 		return ''
 	}
 	offset := line_start + q.col
+	// A question in the body of a generic function types that body first (see
+	// vls_type_generic_body).
+	if q.method in [.hover, .completion, .signature_help] {
+		if id := tc.vls_node_around(file_id, offset) {
+			tc.vls_type_generic_body(id)
+		}
+	}
 	// Signature help is about the call the cursor is in, not a name under it.
 	if q.method == .signature_help {
 		return tc.vls_signature_help(file_id, offset)

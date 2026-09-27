@@ -185,6 +185,10 @@ fn (tc &TypeChecker) vls_expr_type(id flat.NodeId) ?Type {
 	if typ := tc.expr_type(id) {
 		return tc.vls_constrained_type(id, typ) or { typ }
 	}
+	// In the body of a generic function, what no type parameter decides.
+	if typ := tc.vls_body_types[int(id)] {
+		return typ
+	}
 	node := tc.a.node(id)
 	if node.kind == .call {
 		if resolved := tc.resolved_call_name(id) {
@@ -693,6 +697,9 @@ fn (tc &TypeChecker) vls_local_type(id flat.NodeId) ?Type {
 	if typ := tc.expr_type(id) {
 		return typ
 	}
+	if typ := tc.vls_body_types[int(id)] {
+		return typ
+	}
 	decl_id := tc.vls_parent_id(id)
 	if !tc.valid_node_id(decl_id) {
 		return none
@@ -796,6 +803,10 @@ fn (tc &TypeChecker) vls_loop_variable_type(loop flat.Node, id flat.NodeId) ?Typ
 // with a type parameter kept as one: `T` for `x` of `x T`, which vls_expr_type
 // gives as the constraint of `T`, whose members it has.
 fn (tc &TypeChecker) vls_unconstrained_type(id flat.NodeId) ?Type {
+	// What no type parameter decides has the type that every instance gives it.
+	if typ := tc.vls_body_types[int(id)] {
+		return typ
+	}
 	node := tc.a.node(id)
 	if node.kind == .ident {
 		if binding := tc.vls_local_binding(id) {

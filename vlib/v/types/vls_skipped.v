@@ -51,6 +51,7 @@ fn (mut tc TypeChecker) vls_add_skipped_branches(file_id int) bool {
 	}
 	mut a := tc.a
 	start := a.nodes.len
+	tc.vls_added_start = int_min(tc.vls_added_start, start)
 	child_shift := i32(a.children.len)
 	for child in reparsed.children {
 		a.children << if int(child) >= 0 { flat.NodeId(int(child) + start) } else { child }
