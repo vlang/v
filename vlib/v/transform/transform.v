@@ -13911,8 +13911,11 @@ fn (mut t Transformer) coerce_transformed_expr_to_type(expr flat.NodeId, source_
 		target
 	}
 	optional_target = t.infer_typed_optional_target(optional_target, expr_type)
+	optional_payload := t.optional_base_type(optional_target)
 	if t.is_optional_type_name(optional_target) && t.is_ierror_type(expr_type)
-		&& !t.is_ierror_type(t.optional_base_type(optional_target)) {
+		&& !t.is_ierror_type(optional_payload)
+		&& (isnil(t.tc) || !t.tc.slot_value_compatible(t.tc.parse_type(expr_type),
+			t.tc.parse_type(optional_payload))) {
 		return t.make_optional_none_with_err(optional_target, expr)
 	}
 	if t.is_optional_type_name(optional_target) && int(expr) >= 0 && int(expr) < t.a.nodes.len {

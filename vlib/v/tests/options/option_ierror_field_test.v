@@ -3,6 +3,15 @@ mut:
 	err ?IError
 }
 
+interface Any {}
+
+fn test_error_is_successful_optional_interface_payload() {
+	mut value := ?Any(none)
+	value = error('boom')
+	got := value or { panic('expected payload') }
+	assert got is IError
+}
+
 fn (mut h Holder) set_err(e IError) {
 	h.err = e
 }
