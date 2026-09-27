@@ -22855,12 +22855,8 @@ fn (mut g FlatGen) emit_global_inits() {
 					if child.kind in [.array_init, .array_literal]
 						|| (child.kind == .postfix && child.op == .not) {
 						if fixed := array_fixed_type(clean_type.base_type) {
-							source := g.fixed_array_compound_literal_expr(child_id, fixed)
-							if source.len > 0 {
-								target := g.global_c_name(qname)
-								ct := g.tc.c_type(typ)
-								// Keep the literal's storage alive after global initialization.
-								g.queue_runtime_init('\t${target} = (${ct})memdup(${source}, sizeof(*${target}));')
+							if g.queue_global_fixed_array_pointer_init(g.global_c_name(qname),
+								child_id, fixed, typ) {
 								continue
 							}
 						}
@@ -22901,6 +22897,73 @@ fn (mut g FlatGen) emit_global_inits() {
 		}
 	}
 	g.tc.cur_module = old_module
+}
+
+fn (g &FlatGen) global_fixed_array_pointer_alignment(fixed types.ArrayFixed) ?string {
+	clean_elem := default_init_unalias_type(fixed.elem_type)
+	if clean_elem is types.ArrayFixed {
+		return g.global_fixed_array_pointer_alignment(clean_elem)
+	}
+	if clean_elem is types.Struct {
+		for name in [fixed.elem_type.name(), clean_elem.name] {
+			if align := g.struct_decl_alignment_for_name(name) {
+				align_ct := g.struct_decl_alignment_c_type(clean_elem.name, g.value_c_type(clean_elem))
+				return struct_decl_alignment_memdup_arg(align, align_ct)
+			}
+		}
+	}
+	return none
+}
+
+fn (mut g FlatGen) queue_global_fixed_array_pointer_init(target string, val_id flat.NodeId, fixed types.ArrayFixed, typ types.Type) bool {
+	ct := g.tc.c_type(typ)
+	mut source := g.fixed_array_compound_literal_expr(val_id, fixed)
+	copy_fn := if alignment := g.global_fixed_array_pointer_alignment(fixed) {
+		'v3_aligned_memdup'
+	} else {
+		'memdup'
+	}
+	mut alignment_arg := ''
+	if alignment := g.global_fixed_array_pointer_alignment(fixed) {
+		alignment_arg = ', ${alignment}'
+	}
+	if source.len > 0 {
+		// Keep the literal's storage alive after global initialization.
+		g.queue_runtime_init('\t${target} = (${ct})${copy_fn}(${source}, sizeof(*${target})${alignment_arg});')
+		return true
+	}
+	node := g.a.node(val_id)
+	if node.kind != .array_init {
+		return false
+	}
+	init_id := g.array_init_field_value(node, 'init') or { return false }
+	c_elem, dims := g.fixed_array_decl_parts(fixed)
+	array_tmp := g.tmp_name()
+	index_tmp := g.tmp_name()
+	int_ct := g.value_c_type(types.Type(types.int_))
+	mut bindings := ''
+	for name in ['index', 'it'] {
+		if g.node_contains_ident(init_id, name) {
+			bindings += '${int_ct} ${g.local_decl_cname(name)} = ${index_tmp}; '
+		}
+	}
+	mut assignment := ''
+	if inner := array_fixed_type(fixed.elem_type) {
+		init_source := g.fixed_array_runtime_copy_source_expr(init_id, inner)
+		if trimmed_space(init_source).len == 0 {
+			return false
+		}
+		assignment = 'memmove(${array_tmp}[${index_tmp}], ${init_source}, sizeof(${array_tmp}[${index_tmp}]));'
+	} else {
+		init_expr := g.expr_to_string_with_expected_type(init_id, fixed.elem_type)
+		if trimmed_space(init_expr).len == 0 {
+			return false
+		}
+		assignment = '${array_tmp}[${index_tmp}] = ${init_expr};'
+	}
+	source = array_tmp
+	g.queue_runtime_init('\t{ ${c_elem} ${array_tmp}${dims} = {0}; for (${int_ct} ${index_tmp} = 0; ${index_tmp} < sizeof(${array_tmp}) / sizeof(${array_tmp}[0]); ${index_tmp}++) { ${bindings}${assignment} } ${target} = (${ct})${copy_fn}(${source}, sizeof(${array_tmp})${alignment_arg}); }')
+	return true
 }
 
 fn (mut g FlatGen) queue_global_array_init(target string, val_id flat.NodeId, typ types.Array) bool {
