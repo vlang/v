@@ -8366,12 +8366,16 @@ fn (mut tc TypeChecker) resolve_call_info_uncached(id flat.NodeId, node flat.Nod
 							tc.record_error(.call_arg_mismatch, 'cannot clone borrowed array.map result: `${bad_type}` requires ownership destruction but has no `clone()` method', id)
 						}
 					}
+					fixed := unalias_type(clean)
+					map_ret := if fixed is ArrayFixed {
+						Type(ArrayFixed{ elem_type: elem_type, len: fixed.len, len_expr: fixed.len_expr })
+					} else {
+						Type(Array{ elem_type: elem_type })
+					}
 					return CallInfo{
 						name:         'array.map'
 						params:       tarr2(base_type, elem_type)
-						return_type:  Type(Array{
-							elem_type: elem_type
-						})
+						return_type:  map_ret
 						has_receiver: true
 						params_known: true
 					}
@@ -16430,9 +16434,9 @@ fn (mut tc TypeChecker) resolve_generic_call_arg_type(id flat.NodeId) Type {
 			if callee.kind == .selector && callee.value == 'map' {
 				elem_type := tc.array_map_return_elem_type(node)
 				if elem_type !is Unknown && elem_type !is Void {
-					typ = Type(Array{
-						elem_type: elem_type
-					})
+					base_id := tc.a.child(&callee, 0)
+					base_type := tc.selector_fn_base_type(base_id) or { tc.resolve_type(base_id) }
+					typ = tc.array_map_result_type_from_receiver(base_type, elem_type)
 					tc.remember_expr_type(id, typ)
 					return typ
 				}
@@ -16444,6 +16448,17 @@ fn (mut tc TypeChecker) resolve_generic_call_arg_type(id flat.NodeId) Type {
 		}
 	}
 	return typ
+}
+
+fn (tc &TypeChecker) array_map_result_type_from_receiver(receiver Type, elem_type Type) Type {
+	if fixed := tc.fixed_array_type_from_receiver(unwrap_pointer(receiver)) {
+		return Type(ArrayFixed{
+			elem_type: elem_type
+			len:       fixed.len
+			len_expr:  fixed.len_expr
+		})
+	}
+	return Type(Array{ elem_type: elem_type })
 }
 
 // contextual_generic_lambda_type resolves a concise lambda body after generic
