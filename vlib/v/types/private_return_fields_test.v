@@ -61,6 +61,18 @@ fn test_public_outer_implicit_str_over_embedded_private_str() {
 	assert result.exit_code == 0, result.output
 }
 
+fn test_private_return_type_rejects_embedded_str_override() {
+	root := os.join_path(os.vtmp_dir(), 'v3_private_embedded_str_${os.getpid()}')
+	os.mkdir_all(os.join_path(root, 'opaque'))!
+	defer { os.rmdir_all(root) or {} }
+	os.write_file(os.join_path(root, 'opaque', 'opaque.v'), 'module opaque\nstruct Inner {}\npub fn (i Inner) str() string { return "inner" }\nstruct Outer { Inner; secret int }\npub fn make_outer() Outer { return Outer{secret: 7} }\n')!
+	path := os.join_path(root, 'main.v')
+	os.write_file(path, 'import opaque\nfn main() { println(opaque.make_outer().str()) }\n')!
+	result := os.execute('${os.quoted_path(@VEXE)} -new-compiler -check ${os.quoted_path(path)}')
+	assert result.exit_code != 0, result.output
+	assert result.output.contains('cannot stringify private type'), result.output
+}
+
 fn test_private_alias_method_value_through_double_pointer_is_rejected() {
 	root := os.join_path(os.vtmp_dir(), 'v3_private_alias_double_pointer_${os.getpid()}')
 	os.mkdir_all(os.join_path(root, 'opaque'))!

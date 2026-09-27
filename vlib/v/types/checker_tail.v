@@ -4508,7 +4508,12 @@ fn (mut tc TypeChecker) check_call_privacy(id flat.NodeId, node flat.Node, info 
 			}
 			if callee.value == 'str' && direct_type is Struct {
 				if visibility := tc.private_declaration(direct_type.name) {
-					if tc.concrete_method_signature_key(direct_type.name, 'str') == none {
+					receiver_name := method_type_name(direct_type)
+					mut has_direct_str := '${receiver_name}.str' in tc.fn_ret_types
+					if !has_direct_str {
+						has_direct_str = tc.resolve_generic_struct_method(receiver_name, 'str') != none
+					}
+					if !has_direct_str {
 						type_name := tc.diagnostic_type_name(Type(direct_type))
 						name_pos := tc.method_call_name_pos(node, callee)
 						tc.record_error_at(.assignment_mismatch, 'cannot stringify private type `${type_name}` outside module `${visibility.module_name}` without an explicit `str()` method', id,
