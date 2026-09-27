@@ -1,5 +1,10 @@
 module fields
 
+pub struct RefEntry {
+pub mut:
+	value string
+}
+
 @[minify]
 struct Field {
 mut:
