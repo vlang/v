@@ -4266,6 +4266,15 @@ fn (mut t Transformer) collect_generated_fn_body_call_names(id flat.NodeId, cand
 		return
 	}
 	node := t.a.nodes[int(id)]
+	if node.kind == .block {
+		saved_vars := t.var_types.clone()
+		for i in 0 .. node.children_count {
+			t.collect_generated_fn_body_call_names(t.a.child(&node, i), candidate_names,
+				filter_candidates, mut names, mut seen)
+		}
+		t.restore_var_types(saved_vars)
+		return
+	}
 	if node.kind == .decl_assign {
 		for i in 1 .. node.children_count {
 			t.collect_generated_fn_body_call_names(t.a.child(&node, i), candidate_names, filter_candidates, mut names, mut seen)

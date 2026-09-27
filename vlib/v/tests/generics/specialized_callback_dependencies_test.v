@@ -44,3 +44,19 @@ fn test_lifted_callback_initializer_keeps_global_callee() {
 	})
 	assert result.data == [f64(2)]
 }
+
+fn callback_scope_global(value f64) f64 {
+	return value + 1
+}
+
+fn test_lifted_callback_keeps_global_after_nested_local_scope() {
+	t := &Tensor[f64]{ data: [f64(1)] }
+	result := t.apply(fn (value f64) f64 {
+		if value > 0 {
+			callback_scope_global := 1
+			_ = callback_scope_global
+		}
+		return callback_scope_global(value)
+	})
+	assert result.data == [f64(2)]
+}
