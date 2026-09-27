@@ -22071,6 +22071,11 @@ fn (mut t Transformer) transform_typeof_expr_mode(id flat.NodeId, node flat.Node
 	if expr.kind == .call {
 		if concrete := t.explicit_generic_call_return_type_for_typeof(expr_id, expr) {
 			typ = concrete
+		} else if checked := t.checker_expr_type_name(expr_id) {
+			// An inferred method call can still have an open declaration return type.
+			if !t.generic_arg_is_unresolved(checked) {
+				typ = checked
+			}
 		}
 	}
 	if typ.len == 0 {
