@@ -49,3 +49,24 @@ fn main() {
 	assert result.exit_code != 0, result.output
 	assert result.output.contains('Record.private_method` is private'), result.output
 }
+
+fn test_private_generic_method_value_on_private_return_type_is_rejected() {
+	root := os.join_path(os.vtmp_dir(), 'v3_private_generic_return_method_${os.getpid()}')
+	os.mkdir_all(os.join_path(root, 'opaque'))!
+	defer { os.rmdir_all(root) or {} }
+	os.write_file(os.join_path(root, 'opaque', 'opaque.v'), 'module opaque
+struct Record[T] { value T }
+pub fn make_record[T](value T) Record[T] { return Record[T]{value: value} }
+fn (r Record[T]) private_method() T { return r.value }
+')!
+	path := os.join_path(root, 'main.v')
+	os.write_file(path, 'import opaque
+fn main() {
+ callback := opaque.make_record[int](1).private_method
+ println(callback())
+}
+')!
+	result := os.execute('${os.quoted_path(@VEXE)} -check ${os.quoted_path(path)}')
+	assert result.exit_code != 0, result.output
+	assert result.output.contains('Record[int].private_method` is private'), result.output
+}
