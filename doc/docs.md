@@ -3572,8 +3572,9 @@ To dereference a reference, use the `*` operator, just like in C.
 
 ## Constants
 
-A fixed array constant can be initialized by a function call; the call runs during initialization.
+A constant can be qualified with its module name inside that module, including in module tests.
 
+A fixed array constant can be initialized by a function call; the call runs during initialization.
 
 ```v
 const pi = 3.14

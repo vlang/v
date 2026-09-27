@@ -1945,6 +1945,16 @@ fn (g &FlatGen) selector_base_module(name string) ?string {
 	if name.len == 0 {
 		return none
 	}
+	if g.tc != unsafe { nil } {
+		current := if g.tc.cur_module.len > 0 { g.tc.cur_module } else { 'main' }
+		short := current.all_after_last('.')
+		if name == current || name == short || name == g.const_storage_name(current, short) {
+			if g.current_module_const_ref_name(short) != none {
+				return none
+			}
+			return current
+		}
+	}
 	if g.tc != unsafe { nil } && g.tc.cur_file.len > 0 {
 		key := g.tc.cur_file + '\n' + name
 		if mod := g.tc.file_imports[key] {
@@ -1960,11 +1970,59 @@ fn (g &FlatGen) selector_base_module(name string) ?string {
 	return none
 }
 
-fn (g &FlatGen) selector_base_is_module(name string) bool {
-	if _ := g.selector_base_module(name) {
+fn (g &FlatGen) selector_base_is_module(name string, member string) bool {
+	if _ := g.selector_base_module_for_member(name, member) {
 		return true
 	}
 	return false
+}
+
+fn (g &FlatGen) selector_base_module_for_member(name string, member string) ?string {
+	if g.tc != unsafe { nil } {
+		current := if g.tc.cur_module.len > 0 { g.tc.cur_module } else { 'main' }
+		short := current.all_after_last('.')
+		if name == current || name == short || name == g.const_storage_name(current, short)
+			|| name == '${current}.${short}' {
+			if g.current_module_const_ref_name(short) != none {
+				storage := g.const_storage_name(current, member)
+				if storage in g.const_vals || storage in g.tc.const_types {
+					return current
+				}
+			}
+		}
+	}
+	return g.selector_base_module(name)
+}
+
+fn (g &FlatGen) current_module_selector_const_name(base string, member string) ?string {
+	current := if g.tc.cur_module.len > 0 { g.tc.cur_module } else { 'main' }
+	short := current.all_after_last('.')
+	if base != current && base != short && base != '${current}.${short}' {
+		return none
+	}
+	if g.selector_base_is_local_value(base) || g.current_module_global_type_for_ident(base) != none {
+		return none
+	}
+	mod := g.selector_base_module_for_member(base, member) or { return none }
+	if mod != current {
+		return none
+	}
+	storage := g.const_storage_name(mod, member)
+	if storage !in g.const_vals {
+		return none
+	}
+	return storage
+}
+
+fn (g &FlatGen) current_module_global_type_for_ident(name string) ?types.Type {
+	current := if g.tc.cur_module.len > 0 { g.tc.cur_module } else { 'main' }
+	qualified := qualify_name_in_module(current, name)
+	// main and builtin use bare global keys; an imported global can overwrite
+	// their bare owner entry without replacing the direct global type.
+	if current !in ['main', 'builtin'] && (g.global_modules[qualified] or { '' }) != current {
+		return none
+	}
+	return g.global_types[qualified] or { none }
 }
 
 fn (g &FlatGen) selector_base_is_value(name string) bool {
