@@ -88,3 +88,20 @@ fn test_module_parent_for_docs_stops_at_module_search_boundary() {
 	doc_after := generate(mod_dir, false, true, .auto) or { panic(err) }
 	assert doc_after.head.name == 'foo'
 }
+
+fn test_module_parent_for_docs_vlib_shortcut_stops_at_module_search_boundary() {
+	tmp_dir := os.join_path(os.vtmp_dir(), 'vdoc_vlib_module_name_boundary_${os.getpid()}')
+	os.rmdir_all(tmp_dir) or {}
+	defer {
+		os.rmdir_all(tmp_dir) or {}
+	}
+	project_dir := os.join_path(tmp_dir, 'vlib', 'project')
+	mod_dir := os.join_path(project_dir, 'foo')
+	os.mkdir_all(mod_dir)!
+	os.write_file(os.join_path(mod_dir, 'foo.v'), 'module foo\npub fn value() int { return 1 }\n')!
+	assert module_parent_for_docs(mod_dir, 'foo') == 'project'
+	os.write_file(os.join_path(project_dir, '.v.mod.stop'), '')!
+	assert module_parent_for_docs(mod_dir, 'foo') == ''
+	doc := generate(mod_dir, false, true, .auto) or { panic(err) }
+	assert doc.head.name == 'foo'
+}

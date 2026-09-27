@@ -773,8 +773,15 @@ fn module_parent_for_docs(base_path string, module_name string) string {
 	normalized := os.real_path(base_path)
 	vlib_marker := os.path_separator + 'vlib' + os.path_separator
 	if normalized.contains(vlib_marker) {
-		parts := normalized.all_after(vlib_marker).split(os.path_separator)
-		return if parts.len > 1 { parts[..parts.len - 1].join('.') } else { '' }
+		vlib_dir := normalized.all_before(vlib_marker) + os.path_separator + 'vlib'
+		mut current := normalized
+		for current != vlib_dir && !pref.is_module_search_stop_dir(current) {
+			current = os.dir(current)
+		}
+		if current == vlib_dir {
+			parts := normalized.all_after(vlib_marker).split(os.path_separator)
+			return if parts.len > 1 { parts[..parts.len - 1].join('.') } else { '' }
+		}
 	}
 	mut boundary := normalized
 	for {
