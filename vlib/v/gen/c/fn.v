@@ -2017,7 +2017,9 @@ fn (g &FlatGen) current_module_selector_const_name(base string, member string) ?
 fn (g &FlatGen) current_module_global_type_for_ident(name string) ?types.Type {
 	current := if g.tc.cur_module.len > 0 { g.tc.cur_module } else { 'main' }
 	qualified := qualify_name_in_module(current, name)
-	if (g.global_modules[qualified] or { '' }) != current {
+	// main and builtin use bare global keys; an imported global can overwrite
+	// their bare owner entry without replacing the direct global type.
+	if current !in ['main', 'builtin'] && (g.global_modules[qualified] or { '' }) != current {
 		return none
 	}
 	return g.global_types[qualified] or { none }
