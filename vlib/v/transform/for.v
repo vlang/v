@@ -635,7 +635,15 @@ fn (mut t Transformer) rebuild_for_in_stmt(_id flat.NodeId, node flat.Node) []fl
 	mut transformed_body := []flat.NodeId{}
 	mut pointer_value_name := ''
 	mut fixed_array_value_name := ''
-	if node.op == .amp {
+	mut element_type_text := ''
+	if map_iter_type.starts_with('map[') {
+		element_type_text = t.map_value_type(map_iter_type)
+	} else if iter_type.starts_with('[]') || t.is_fixed_array_type(iter_type) {
+		element_type_text = t.infer_for_in_elem_type(iter_type, node)
+	}
+	element_value_is_indirect := t.normalize_type_alias(element_type_text).starts_with('&')
+		|| t.is_optional_type_name(element_type_text)
+	if node.op == .amp && (!container_yields_ref || element_value_is_indirect) {
 		bind_id := if has_index { val_id } else { key_id }
 		if int(bind_id) >= 0 {
 			bind := t.a.nodes[int(bind_id)]

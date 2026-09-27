@@ -15,6 +15,11 @@ fn test_imported_map_reference_alias() {
 		alias := value
 		references << alias
 	}
+	for _, mut value in &entries {
+		alias := value
+		references << alias
+	}
 	entries['first'].value = 'after'
 	assert references[0].value == 'after'
+	assert references[1].value == 'after'
 }

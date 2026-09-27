@@ -8660,19 +8660,20 @@ fn (mut tc TypeChecker) annotate_for_in(_id flat.NodeId, node flat.Node) {
 		tc.annotate_node(tc.a.child(&node, 3))
 	} else {
 		clean := tc.for_in_iterable_type(container_id)
-		yields_ref := node.op == .amp || tc.for_in_iterable_yields_ref(container_id)
+		source_yields_ref := tc.for_in_iterable_yields_ref(container_id)
+		yields_ref := node.op == .amp || source_yields_ref
 		if clean is Array {
 			elem_type := for_in_ref_binding_type(clean.elem_type, yields_ref)
 			if has_val {
 				tc.insert_loop_var(key_id, Type(int_))
 				if node.op == .amp {
-					tc.insert_mut_loop_var(val_id, elem_type)
+					tc.insert_mut_loop_var_with_source(val_id, elem_type, source_yields_ref)
 				} else {
 					tc.insert_loop_var(val_id, elem_type)
 				}
 			} else {
 				if node.op == .amp {
-					tc.insert_mut_loop_var(key_id, elem_type)
+					tc.insert_mut_loop_var_with_source(key_id, elem_type, source_yields_ref)
 				} else {
 					tc.insert_loop_var(key_id, elem_type)
 				}
@@ -8682,13 +8683,13 @@ fn (mut tc TypeChecker) annotate_for_in(_id flat.NodeId, node flat.Node) {
 			if has_val {
 				tc.insert_loop_var(key_id, Type(int_))
 				if node.op == .amp {
-					tc.insert_mut_loop_var(val_id, elem_type)
+					tc.insert_mut_loop_var_with_source(val_id, elem_type, source_yields_ref)
 				} else {
 					tc.insert_loop_var(val_id, elem_type)
 				}
 			} else {
 				if node.op == .amp {
-					tc.insert_mut_loop_var(key_id, elem_type)
+					tc.insert_mut_loop_var_with_source(key_id, elem_type, source_yields_ref)
 				} else {
 					tc.insert_loop_var(key_id, elem_type)
 				}
@@ -8698,13 +8699,13 @@ fn (mut tc TypeChecker) annotate_for_in(_id flat.NodeId, node flat.Node) {
 			if has_val {
 				tc.insert_loop_var(key_id, clean.key_type)
 				if node.op == .amp {
-					tc.insert_mut_loop_var(val_id, value_type)
+					tc.insert_mut_loop_var_with_source(val_id, value_type, source_yields_ref)
 				} else {
 					tc.insert_loop_var(val_id, value_type)
 				}
 			} else {
 				if node.op == .amp {
-					tc.insert_mut_loop_var(key_id, value_type)
+					tc.insert_mut_loop_var_with_source(key_id, value_type, source_yields_ref)
 				} else {
 					tc.insert_loop_var(key_id, value_type)
 				}
@@ -9001,6 +9002,10 @@ fn (mut tc TypeChecker) insert_loop_var(id flat.NodeId, typ Type) ScopeBindingOw
 }
 
 fn (mut tc TypeChecker) insert_mut_loop_var(id flat.NodeId, typ Type) {
+	tc.insert_mut_loop_var_with_source(id, typ, false)
+}
+
+fn (mut tc TypeChecker) insert_mut_loop_var_with_source(id flat.NodeId, typ Type, source_yields_ref bool) {
 	owner := tc.insert_loop_var(id, typ)
 	if int(id) < 0 || int(id) >= tc.a.nodes.len {
 		return
@@ -9010,7 +9015,7 @@ fn (mut tc TypeChecker) insert_mut_loop_var(id flat.NodeId, typ Type) {
 		return
 	}
 	tc.fn_context.mut_local_owners[v.value] = owner
-	if typ is Pointer {
+	if typ is Pointer && !source_yields_ref {
 		tc.fn_context.mut_param_base_types[v.value] = typ.base_type
 	}
 }

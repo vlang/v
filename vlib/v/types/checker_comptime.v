@@ -12959,7 +12959,8 @@ fn (mut tc TypeChecker) check_for_in_stmt(node flat.Node) {
 			}
 			clean = option_base
 		}
-		yields_ref := node.op == .amp || tc.for_in_iterable_yields_ref(container_id)
+		source_yields_ref := tc.for_in_iterable_yields_ref(container_id)
+		yields_ref := node.op == .amp || source_yields_ref
 		if same_low && container_node.kind == .range {
 			tc.insert_loop_var(key_id, Type(int_))
 		} else if same_low {
@@ -12976,13 +12977,13 @@ fn (mut tc TypeChecker) check_for_in_stmt(node flat.Node) {
 			if has_val {
 				tc.insert_loop_var(key_id, Type(int_))
 				if node.op == .amp {
-					tc.insert_mut_loop_var(val_id, elem_type)
+					tc.insert_mut_loop_var_with_source(val_id, elem_type, source_yields_ref)
 				} else {
 					tc.insert_loop_var(val_id, elem_type)
 				}
 			} else {
 				if node.op == .amp {
-					tc.insert_mut_loop_var(key_id, elem_type)
+					tc.insert_mut_loop_var_with_source(key_id, elem_type, source_yields_ref)
 				} else {
 					tc.insert_loop_var(key_id, elem_type)
 				}
@@ -12993,13 +12994,13 @@ fn (mut tc TypeChecker) check_for_in_stmt(node flat.Node) {
 			if has_val {
 				tc.insert_loop_var(key_id, Type(int_))
 				if node.op == .amp {
-					tc.insert_mut_loop_var(val_id, elem_type)
+					tc.insert_mut_loop_var_with_source(val_id, elem_type, source_yields_ref)
 				} else {
 					tc.insert_loop_var(val_id, elem_type)
 				}
 			} else {
 				if node.op == .amp {
-					tc.insert_mut_loop_var(key_id, elem_type)
+					tc.insert_mut_loop_var_with_source(key_id, elem_type, source_yields_ref)
 				} else {
 					tc.insert_loop_var(key_id, elem_type)
 				}
@@ -13013,13 +13014,13 @@ fn (mut tc TypeChecker) check_for_in_stmt(node flat.Node) {
 			if has_val {
 				tc.insert_loop_var(key_id, clean.key_type)
 				if node.op == .amp {
-					tc.insert_mut_loop_var(val_id, value_type)
+					tc.insert_mut_loop_var_with_source(val_id, value_type, source_yields_ref)
 				} else {
 					tc.insert_loop_var(val_id, value_type)
 				}
 			} else {
 				if node.op == .amp {
-					tc.insert_mut_loop_var(key_id, value_type)
+					tc.insert_mut_loop_var_with_source(key_id, value_type, source_yields_ref)
 				} else {
 					tc.insert_loop_var(key_id, value_type)
 				}

@@ -388,7 +388,9 @@ fn (mut g FlatGen) gen_for_in(node flat.Node) {
 				}
 				val_owner := g.tc.cur_scope.insert_with_owner(elem_binding_name, val_scope_type)
 				g.track_shadowed_global_local(elem_binding_name, val_owner)
-				g.declare_local_mutability(val_owner, node.op == .amp)
+				g.declare_local_mutability(val_owner, node.op == .amp
+					&& !(container_storage_is_pointer && !container_is_mut_param_storage
+						&& !ref_container_keeps_value))
 				if map_value_by_ref && !val_is_fixed_copy {
 					g.declare_local_indirect_value_type(val_owner, clean_container_type.value_type)
 				}
