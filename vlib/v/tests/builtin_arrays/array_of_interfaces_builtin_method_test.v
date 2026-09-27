@@ -79,6 +79,11 @@ fn component_values_after_change(mut needle IsControlledByPlayerTag, values []IC
 	return values
 }
 
+fn component_values_after_direct_change(mut needle IsControlledByPlayerTag, values []IComponent) []IComponent {
+	needle = IsControlledByPlayerTag{true}
+	return values
+}
+
 fn test_interface_membership_captures_needle_before_container_branch() {
 	mut needle := IsControlledByPlayerTag{}
 	values := [IComponent(IsControlledByPlayerTag{})]
@@ -88,4 +93,7 @@ fn test_interface_membership_captures_needle_before_container_branch() {
 	})
 	assert needle.hollow
 	assert needle !in values
+	needle = IsControlledByPlayerTag{}
+	assert needle in component_values_after_direct_change(mut needle, values)
+	assert needle.hollow
 }

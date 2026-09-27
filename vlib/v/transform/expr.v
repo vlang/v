@@ -2980,7 +2980,7 @@ fn (mut t Transformer) lower_array_membership_expr(base_id flat.NodeId, needle_i
 		// needle (`x in (match node { First { change(mut x)! } ... })`), snapshot the needle's
 		// source-order value so the membership loop reads it before that prelude runs.
 		needle = t.stable_membership_needle(needle_id, elem_type, 'contains_needle',
-			t.operand_hoists_value_branch(base_id))
+			base_pending.len > 0 || t.operand_hoists_value_branch(base_id))
 		t.drain_pending(mut prefix)
 		prefix << base_pending
 	}
