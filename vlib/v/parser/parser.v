@@ -3195,7 +3195,7 @@ fn (mut p Parser) type_decl() flat.NodeId {
 	type_start := p.span_start()
 	first_type := p.parse_type_name()
 	is_sum_type := p.tok == .pipe || (p.tok == .semicolon && p.peek_is(token.Token.pipe))
-	if first_type.starts_with('fn(') && !is_sum_type {
+	if !p.prefs.is_fmt && first_type.starts_with('fn(') && !is_sum_type {
 		close := first_type.index(')') or { -1 }
 		if close > 3 {
 			params := first_type[3..close]
@@ -3343,7 +3343,7 @@ fn (mut p Parser) interface_decl() flat.NodeId {
 		name += '.' + p.expect(.name)
 	}
 	short_name := name.all_after_last('.')
-	if short_name.len == 1 && short_name[0] >= `A` && short_name[0] <= `Z` {
+	if !p.prefs.is_fmt && short_name.len == 1 && short_name[0] >= `A` && short_name[0] <= `Z` {
 		p.record_diagnostic_span('single letter capital names are reserved for generic template types.',
 			name_start, name_start + 1)
 	}
@@ -3929,7 +3929,7 @@ fn (mut p Parser) parse_field_attrs_with_kinds_mode(single_group bool, check_pen
 			piece_start := p.tok_pos
 			piece_end := p.tok_end
 			piece_name := attr_unquote(p.lit).all_before(':').trim_space()
-			if piece_name.len > 0
+			if !p.prefs.is_fmt && piece_name.len > 0
 				&& (attrs.any(it.all_before(':').trim_space() == piece_name)
 					|| (check_pending_decl_attrs
 						&& p.pending_decl_attrs.any(it.all_before(':').trim_space() == piece_name))) {
