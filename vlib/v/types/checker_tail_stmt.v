@@ -2468,6 +2468,12 @@ fn (tc &TypeChecker) match_condition_pattern_key(id flat.NodeId) (string, string
 			return 'selector:${key}', key
 		}
 	}
+	if node.kind in [.cast_expr, .as_expr] && node.children_count == 1 {
+		operand, _ := tc.match_condition_pattern_key(tc.a.child(node, 0))
+		if operand.len > 0 {
+			return '${node.kind}:${node.value.len}:${node.value}${operand}', tc.source_text_for_node(id)
+		}
+	}
 	if node.kind == .infix && node.children_count == 2 {
 		left, _ := tc.match_condition_pattern_key(tc.a.child(node, 0))
 		right, _ := tc.match_condition_pattern_key(tc.a.child(node, 1))

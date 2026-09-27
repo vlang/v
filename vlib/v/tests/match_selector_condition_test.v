@@ -59,3 +59,25 @@ fn choose_cast_selector(value CastChoice) int {
 fn test_cast_target_distinguishes_selector_conditions() {
 	assert choose_cast_selector(CastFoo{ x: 1 }) == 1
 }
+
+enum MatchChoice {
+	first
+	second
+	third
+}
+
+fn choose_optional_cast(value ?MatchChoice) int {
+	return match true {
+		value == ?MatchChoice(.first) { 1 }
+		value == ?MatchChoice(.second) { 2 }
+		value == ?MatchChoice(.third) { 3 }
+		else { 0 }
+	}
+}
+
+fn test_optional_cast_operands_distinguish_match_conditions() {
+	assert choose_optional_cast(.first) == 1
+	assert choose_optional_cast(.second) == 2
+	assert choose_optional_cast(.third) == 3
+	assert choose_optional_cast(none) == 0
+}
