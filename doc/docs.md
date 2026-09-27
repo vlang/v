@@ -1564,6 +1564,8 @@ the newly created ordinary array.
 
 ### Maps
 
+Methods and references on map iteration values address the stored element, including nested maps.
+
 ```v
 mut m := map[string]int{} // a map with `string` keys and `int` values
 m['one'] = 1
