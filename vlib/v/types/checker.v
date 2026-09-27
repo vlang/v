@@ -16279,7 +16279,10 @@ fn (tc &TypeChecker) find_const_self_reference(id flat.NodeId, name string) ?fla
 	}
 	mut start := 0
 	if node.kind == .call && node.children_count > 0 {
-		callee := tc.a.child_node(&node, 0)
+		mut callee := tc.a.child_node(&node, 0)
+		if callee.kind == .index && callee.children_count > 0 {
+			callee = tc.a.child_node(callee, 0)
+		}
 		if callee.kind == .ident && callee.value == name
 			&& tc.fn_signature_known(tc.qualify_name(name)) {
 			// A direct function call does not read the same-named constant.
