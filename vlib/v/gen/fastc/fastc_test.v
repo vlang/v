@@ -3092,6 +3092,12 @@ fn test_translated_pointer_writes_accept_immutable_roots() {
 	pointer_increment := generate('@[translated]\nmodule main\nfn advance(p &int) { p++ }\nfn main() {}\n',
 		'translated_pointer_increment.v', prefs) or { panic(err) }
 	assert pointer_increment.contains('p++;'), pointer_increment
+	alias_increment := generate('@[translated]\nmodule main\ntype Cursor = &int\nfn advance(p Cursor) { p++ }\nfn main() {}\n',
+		'translated_alias_pointer_increment.v', prefs) or { panic(err) }
+	assert alias_increment.contains('p++;'), alias_increment
+	alias_selector := generate('@[translated]\nmodule main\nstruct State {\nmut:\n count int\n}\ntype StateRef = &State\nfn bump(state StateRef) { state.count = 1 }\nfn main() {}\n',
+		'translated_alias_pointer_selector.v', prefs) or { panic(err) }
+	assert alias_selector.contains('state->count=1;'), alias_selector
 	dereference_write := generate('@[translated]\nmodule main\nfn store(target &int, value int) { *target = value }\nfn main() {}\n',
 		'translated_dereference_write.v', prefs) or { panic(err) }
 	assert dereference_write.contains('*target=value;'), dereference_write

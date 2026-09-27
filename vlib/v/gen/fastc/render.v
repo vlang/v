@@ -1477,7 +1477,8 @@ fn (g &Parser) render_pointer_member_access_expression(tokens []FastcExpressionT
 		}
 		root_type := g.infer_expression_type(tokens[start..start + 1]) or { continue }
 		root_is_reference := if local := g.locals[item.lit] { local.is_reference } else { false }
-		root_is_pointer := root_type.ends_with('*') || root_is_reference
+		root_is_pointer := fastc_is_pointer_type(g.underlying_alias_type(root_type))
+			|| root_is_reference
 		mut end := start + 1
 		for end + 1 < tokens.len && tokens[end].tok == .dot && tokens[end + 1].tok == .name {
 			if end + 2 < tokens.len && tokens[end + 2].tok == .lpar {
@@ -4858,7 +4859,11 @@ fn (g &Parser) render_member_receiver(tokens []FastcExpressionToken) ?string {
 			index_source := g.render_membership_candidate(tokens[i + 1..close], 'int') or {
 				return none
 			}
-			data_separator := if current_type.ends_with('*') { '->' } else { '.' }
+			data_separator := if fastc_is_pointer_type(g.underlying_alias_type(current_type)) {
+				'->'
+			} else {
+				'.'
+			}
 			source = '((${element_type} *)(${source})${data_separator}data)[${index_source}]'
 			current_type = element_type
 			member_path += '[]'
@@ -4910,7 +4915,11 @@ fn (g &Parser) render_member_receiver(tokens []FastcExpressionToken) ?string {
 			}
 		}
 		if tokens[i + 1].lit == 'len' && g.is_map_type(current_type) {
-			separator := if current_type.ends_with('*') { '->' } else { '.' }
+			separator := if fastc_is_pointer_type(g.underlying_alias_type(current_type)) {
+				'->'
+			} else {
+				'.'
+			}
 			source += '${separator}data->count'
 			current_type = 'int'
 			member_path += '.len'
@@ -4919,14 +4928,22 @@ fn (g &Parser) render_member_receiver(tokens []FastcExpressionToken) ?string {
 		}
 		field := g.struct_field_metadata(current_type, tokens[i + 1].lit) or { return none }
 		for storage_name in field.storage_path {
-			separator := if current_type.ends_with('*') { '->' } else { '.' }
+			separator := if fastc_is_pointer_type(g.underlying_alias_type(current_type)) {
+				'->'
+			} else {
+				'.'
+			}
 			source += separator + fastc_c_identifier(storage_name)
 			current_type = g.struct_direct_member_type(current_type, storage_name)
 			if current_type == '' {
 				return none
 			}
 		}
-		separator := if current_type.ends_with('*') { '->' } else { '.' }
+		separator := if fastc_is_pointer_type(g.underlying_alias_type(current_type)) {
+			'->'
+		} else {
+			'.'
+		}
 		field_source := source + separator + fastc_c_identifier(field.name)
 		source = if field.is_shared_pointer { '*(${field_source})' } else { field_source }
 		current_type = field.typ

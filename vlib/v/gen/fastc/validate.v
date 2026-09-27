@@ -785,7 +785,8 @@ fn (g &Parser) validate_expression_mutation_lvalue(tokens []FastcExpressionToken
 	global_key := fastc_global_key(g.module_name, root_name)
 	mut selfhost_pointer_root := false
 	if local := g.locals[root_name] {
-		selfhost_pointer_root = (g.selfhost || g.translated) && fastc_is_pointer_type(local.typ)
+		selfhost_pointer_root = (g.selfhost || g.translated)
+			&& fastc_is_pointer_type(g.underlying_alias_type(local.typ))
 		if !local.is_mut && lvalue[0].unsafe_depth == 0 && !selfhost_pointer_root {
 			return g.unsupported('mutation of immutable or unknown name `${root_name}`')
 		}
