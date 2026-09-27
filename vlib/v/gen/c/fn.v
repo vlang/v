@@ -1948,6 +1948,9 @@ fn (g &FlatGen) selector_base_module(name string) ?string {
 	if g.tc != unsafe { nil } {
 		current := if g.tc.cur_module.len > 0 { g.tc.cur_module } else { 'main' }
 		if name == current || name == current.all_after_last('.') {
+			if _ := g.current_module_const_ref_name(name) {
+				return none
+			}
 			return current
 		}
 	}
