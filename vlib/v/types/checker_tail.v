@@ -4497,18 +4497,23 @@ fn (mut tc TypeChecker) check_call_privacy(id flat.NodeId, node flat.Node, info 
 	if info.name in ['error', 'error_with_code'] {
 		return false
 	}
-	if _ := tc.private_declaration(info.name) {
+	mut declaration_name := info.name
+	if info.has_receiver {
+		callee := tc.a.child_node(&node, 0)
+		if callee.kind == .selector && callee.children_count > 0 {
+			receiver_type := tc.resolve_type(tc.a.child(callee, 0))
+			receiver_name := method_type_name(unalias_and_unwrap_pointer_type(receiver_type))
+			if embedded_info := tc.embedded_method_call_info(receiver_name, callee.value) {
+				declaration_name = embedded_info.name
+			}
+		}
+	}
+	if _ := tc.private_declaration(declaration_name) {
 		callee := tc.a.child_node(&node, 0)
 		if info.has_receiver && callee.kind == .selector && callee.children_count > 0 {
 			receiver_id := tc.a.child(callee, 0)
 			name_pos := tc.method_call_name_pos(node, callee)
 			receiver_type := tc.resolve_type(receiver_id)
-			receiver_name := method_type_name(unalias_and_unwrap_pointer_type(receiver_type))
-			if embedded_info := tc.embedded_method_call_info(receiver_name, callee.value) {
-				if embedded_info.name == info.name {
-					return false
-				}
-			}
 			if callee.value == 'slice' && unalias_type(receiver_type) is Array {
 				tc.record_error_at(.unknown_fn, '.slice() is a private method, use `x[start..end]` instead', id, token.new_span(name_pos.id, name_pos.offset, node.pos.end))
 				tc.register_synth_type(id, Type(void_))
