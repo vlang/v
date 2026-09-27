@@ -2083,6 +2083,9 @@ match mut x {
 
 ### Match
 
+A match expression can return multiple values. A branch ending with comma-separated values can
+be combined with a branch ending in a call that returns the same types.
+
 ```v
 os := 'windows'
 print('V is running on ')

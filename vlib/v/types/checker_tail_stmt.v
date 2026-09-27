@@ -2047,7 +2047,11 @@ fn (mut tc TypeChecker) check_general_match_branch_tail_types(id flat.NodeId, no
 		}
 		tail_id := tc.branch_tail_expr_id(branch_id)
 		if tc.valid_node_id(tail_id) {
-			tail_types << tc.match_branch_tail_diagnostic_type(subject_key, subject_type, branch, tail_id)
+			if comma_types := tc.branch_explicit_comma_tail_types(branch_id) {
+				tail_types << Type(MultiReturn{ types: comma_types })
+			} else {
+				tail_types << tc.match_branch_tail_diagnostic_type(subject_key, subject_type, branch, tail_id)
+			}
 		}
 	}
 	if tail_types.len != tails.len {
