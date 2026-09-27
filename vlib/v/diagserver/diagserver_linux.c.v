@@ -35,8 +35,11 @@ mut:
 	inputs    Inputs // the files the check read
 	buffer    []u8   // where the child reads them again
 	current   bool   // they held what the check read when the child looked
-	base_kb   i64    // the child's resident memory after its first answer
-	work_dir  string // the input directory, which the child enters by name
+	// digests are what the check read in each file, which the child reads
+	// again once its first answer is out (see keep_inputs).
+	digests  map[string]string
+	base_kb  i64    // the child's resident memory after its first answer
+	work_dir string // the input directory, which the child enters by name
 }
 
 // serve turns this compilation into a diagnostics server when the environment
@@ -194,11 +197,13 @@ pub fn (r &Request) answers_again() bool {
 // SHA-256 of what it read in each, in hexadecimal, or its quick_sum_digest:
 // the child answers a next question only while they hold it, no file was added
 // next to one of them or removed, and `imports_hold` finds each import
-// resolving to the directory it was read from. It reads them again already, as
-// one may have changed meanwhile.
+// resolving to the directory it was read from. It notes the names in their
+// directories already, and reads the files again once its first answer is
+// out, as the client does not wait for that: one may have changed meanwhile.
 pub fn (mut r Request) keep_inputs(digests map[string]string, imports_hold fn () bool) {
 	r.inputs.imports_hold = imports_hold
-	r.current = r.inputs.prepare(digests, mut r.buffer) && imports_hold()
+	r.current = r.inputs.note_dirs(digests, mut r.buffer)
+	r.digests = digests.clone()
 }
 
 // next_question tells the server that the answer is complete, with the exit
@@ -211,7 +216,7 @@ pub fn (mut r Request) next_question(code int) ?string {
 	flush_stdout()
 	flush_stderr()
 	resident := resident_kb()
-	mut last := !r.current
+	mut last := false
 	if r.base_kb == 0 {
 		r.base_kb = resident
 	} else if resident - r.base_kb >= retire_growth_kb() {
@@ -222,7 +227,22 @@ pub fn (mut r Request) next_question(code int) ?string {
 		return none
 	}
 	os.fd_write(r.status_fd, 'done ${code}\n')
+	// The answer is out: the files the check read are read again now. One that
+	// the client is writing again, with what it held or not, is read again when
+	// the next question comes.
+	if r.current && r.digests.len > 0 && r.inputs.note_files(r.digests, mut r.buffer) {
+		r.digests = map[string]string{}
+	}
 	question := r.questions.read_line()?
+	if r.current && r.digests.len > 0 {
+		r.current = r.inputs.note_files(r.digests, mut r.buffer)
+		r.digests = map[string]string{}
+	}
+	// A child whose files held something else already answers no more.
+	if !r.current {
+		os.fd_write(r.status_fd, 'stale\n')
+		return none
+	}
 	// The client may have written the input directory again, with the same
 	// files: the child enters it by name again, as a new child does, or it would
 	// read the relative paths of its next answer from the directory it replaced.
@@ -417,29 +437,14 @@ struct InputDir {
 	sum     u64
 }
 
-// prepare reads every file of `digests` again, and keeps a quick sum of those
-// that hold what the check read, and of the names in their directories. False
-// when one holds something else already, or when there is no file to watch.
-fn (mut i Inputs) prepare(digests map[string]string, mut buffer []u8) bool {
+// note_dirs keeps a sum of the names in the directories of the files of
+// `digests`. False when there is no file to watch.
+fn (mut i Inputs) note_dirs(digests map[string]string, mut buffer []u8) bool {
 	if digests.len == 0 {
 		return false
 	}
 	mut dirs := map[string]bool{}
-	for path, digest in digests {
-		size := read_whole(path, mut buffer) or { return false }
-		held := if digest.starts_with(quick_digest_prefix) {
-			quick_sum_digest(quick_sum(buffer, size))
-		} else {
-			sha256.sum(buffer[..size]).hex()
-		}
-		if held != digest {
-			return false
-		}
-		i.files << InputFile{
-			path: path
-			size: size
-			sum:  quick_sum(buffer, size)
-		}
+	for path, _ in digests {
 		dirs[os.dir(path)] = true
 	}
 	for dir, _ in dirs {
@@ -462,6 +467,31 @@ fn (mut i Inputs) prepare(digests map[string]string, mut buffer []u8) bool {
 			}
 		}
 	}
+	return true
+}
+
+// note_files reads every file of `digests` again, and keeps a quick sum of
+// them when they all hold what the check read. False when one holds something
+// else, or cannot be read.
+fn (mut i Inputs) note_files(digests map[string]string, mut buffer []u8) bool {
+	mut files := []InputFile{cap: digests.len}
+	for path, digest in digests {
+		size := read_whole(path, mut buffer) or { return false }
+		held := if digest.starts_with(quick_digest_prefix) {
+			quick_sum_digest(quick_sum(buffer, size))
+		} else {
+			sha256.sum(buffer[..size]).hex()
+		}
+		if held != digest {
+			return false
+		}
+		files << InputFile{
+			path: path
+			size: size
+			sum:  quick_sum(buffer, size)
+		}
+	}
+	i.files << files
 	return true
 }
 
