@@ -4087,11 +4087,16 @@ fn ast_has_native_source_include_from(a &flat.FlatAst, first int) bool {
 // should_overlap_v3_native_inputs reports whether native-input resolution can
 // safely run alongside the checker's declaration pass. A `v3_no_parallel` build
 // resolves them on the main thread, before or after checking.
-fn should_overlap_v3_native_inputs(backend string, external_inputs_ready bool, module_cache_enabled bool, native_inputs_needed bool, building_v bool, scope_prealloc_stages bool) bool {
+fn should_overlap_v3_native_inputs(backend string, external_inputs_ready bool, module_cache_enabled bool, native_inputs_needed bool, building_v bool, scope_prealloc_stages bool, check_only bool) bool {
 	$if v3_no_parallel ? {
 		return false
 	}
 	if backend != 'c' || external_inputs_ready || module_cache_enabled {
+		return false
+	}
+	// Only Cgen reads native inputs the checker does not need, and a check runs
+	// no Cgen.
+	if check_only && !native_inputs_needed {
 		return false
 	}
 	return (native_inputs_needed && building_v) || (!native_inputs_needed && scope_prealloc_stages)
@@ -11880,7 +11885,7 @@ pub fn run(args []string) {
 	// Large cache-disabled C builds still have to resolve native inputs before
 	// Cgen. When the source does not expose native typedefs to semantic collection,
 	// overlap that independent work with the checker's declaration pass.
-	native_inputs_overlap := should_overlap_v3_native_inputs(backend, cache_state.external_inputs_ready, cache_state.manager.enabled, native_inputs_needed, building_v, scope_prealloc_stages)
+	native_inputs_overlap := should_overlap_v3_native_inputs(backend, cache_state.external_inputs_ready, cache_state.manager.enabled, native_inputs_needed, building_v, scope_prealloc_stages, check_only)
 	native_inputs_done := chan bool{cap: 1}
 	native_inputs_release := chan bool{cap: 1}
 	native_inputs_args := PrepareV3CheckerNativeInputsArgs{
