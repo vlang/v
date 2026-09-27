@@ -56,6 +56,13 @@ fn c_link_operand_options() []string {
 		'-MT', '-MQ', '-l', '-weak_library', '-x']
 }
 
+fn test_joined_isysroot_reaches_cached_dylib_link() {
+	for flags in [['-isysroot/opt/MacSDK.a'], ['-isysroot', '/opt/MacSDK.a']] {
+		assert c_dylib_link_flags(flags) == flags
+		assert c_object_compile_flags(flags) == flags
+	}
+}
+
 fn test_native_input_selection_consumes_option_operands_once() {
 	for option in c_link_operand_options() {
 		for operand in ['value.o', 'value.mm', 'folder with spaces/value.obj', '-x', ''] {

@@ -756,7 +756,7 @@ fn c_dylib_link_flags(flags []string) []string {
 			continue
 		}
 		if clean in ['-l', '-L', '-F', '-framework', '-weak_framework', '-weak_library', '-Xlinker',
-			'-force_load', '--sysroot'] {
+			'-force_load', '--sysroot', '-isysroot'] {
 			link_flags << flag
 			if i + 1 < flags.len {
 				link_flags << flags[i + 1]
@@ -769,6 +769,7 @@ fn c_dylib_link_flags(flags []string) []string {
 			continue
 		}
 		if clean == '-pthread' || clean.starts_with('-F') || clean.starts_with('--sysroot=')
+			|| (clean.starts_with('-isysroot') && clean.len > '-isysroot'.len)
 			|| c_flag_token_is_link_only(clean) || c_flag_is_object_file(clean)
 			|| (c_flag_is_existing_file(clean) && !c_flag_is_c_source_file(clean)
 				&& language != 'c') {
