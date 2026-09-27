@@ -3399,7 +3399,7 @@ fn (mut p Parser) interface_decl() flat.NodeId {
 			field_name += '[${method_generic_params.join(', ')}]'
 		}
 		if p.tok == .lpar {
-			if method_names[field_name] {
+			if !p.prefs.is_fmt && method_names[field_name] {
 				p.record_diagnostic_span('duplicate method `${field_name}`', method_start,
 					method_start + field_name.len)
 			}
@@ -8861,7 +8861,8 @@ fn (mut p Parser) for_in_parts(key_id flat.NodeId, val_id flat.NodeId, first_is_
 	}
 	if int(val_id) < 0 {
 		key := p.a.node(key_id)
-		if key.kind == .ident && key.value != '_' && p.is_local_binding(key.value) {
+		if !p.prefs.is_fmt && key.kind == .ident && key.value != '_'
+			&& p.is_local_binding(key.value) {
 			p.record_diagnostic_span('redefinition of value iteration variable `${key.value}`, use `for (${key.value} in array) {` if you want to check for a condition instead',
 				key.pos.offset, key.pos.end)
 		}
@@ -14103,7 +14104,7 @@ fn (mut p Parser) fn_literal() flat.NodeId {
 	}
 	for param_id in param_ids {
 		param := p.a.node(param_id)
-		if param.kind == .param && capture_names[param.value] {
+		if !p.prefs.is_fmt && param.kind == .param && capture_names[param.value] {
 			p.record_diagnostic_span('the parameter name `${param.value}` conflicts with the captured value name',
 				param.pos.offset, param.pos.offset + param.value.len)
 		}
