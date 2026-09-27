@@ -42,6 +42,14 @@ fn test_specialized_receiver_callback_uses_function_type_compatibility() {
 		'fn (chan fn (int))')
 	assert !t.resolved_receiver_arg_compatible(id, 'fn (thread fn (shared int))',
 		'fn (thread fn (int))')
+	assert !t.resolved_receiver_arg_compatible(id, 'fn (Box[fn (shared int)])',
+		'fn (Box[fn (int)])')
+	assert !t.resolved_receiver_arg_compatible(id, 'fn (Pair[fn (int), fn (shared int)])',
+		'fn (Pair[fn (int), fn (int)])')
+	assert !t.resolved_receiver_arg_compatible(id, 'fn (shared handlers []fn (shared int))',
+		'fn (shared handlers []fn (int))')
+	assert t.resolved_receiver_arg_compatible(id, 'fn (shared handlers []fn (shared int))',
+		'fn (shared handlers []fn (shared int))')
 	assert !t.resolved_receiver_arg_compatible(id, 'fn () shared int', 'fn () int')
 	assert !t.resolved_receiver_arg_compatible(id, 'fn () int', 'fn () atomic int')
 }

@@ -14273,9 +14273,24 @@ fn callback_param_shared_atomic_mode(param string) string {
 	return ''
 }
 
-fn (t &Transformer) callback_nested_fn_type(param string) ?string {
+fn (t &Transformer) callback_nested_fn_types(param string) []string {
+	mut signatures := []string{}
+	t.collect_callback_nested_fn_types(param, mut signatures)
+	return signatures
+}
+
+fn (t &Transformer) collect_callback_nested_fn_types(param string, mut signatures []string) {
 	mut payload := generic_fn_type_param_payload(param)
 	for {
+		unnamed := if payload.starts_with('map[') {
+			payload
+		} else {
+			generic_fn_type_param_payload(payload)
+		}
+		if unnamed != payload {
+			payload = unnamed
+			continue
+		}
 		normalized := t.normalize_type_alias(payload).trim_space()
 		if normalized != payload {
 			payload = normalized
@@ -14308,17 +14323,23 @@ fn (t &Transformer) callback_nested_fn_type(param string) ?string {
 				}
 			}
 			if end < 0 || end + 1 >= payload.len {
-				return none
+				return
 			}
 			payload = payload[end + 1..].trim_space()
 		} else {
+			_, args, is_generic := generic_app_parts(payload)
+			if is_generic {
+				for arg in args {
+					t.collect_callback_nested_fn_types(arg, mut signatures)
+				}
+				return
+			}
 			break
 		}
 	}
 	if payload.starts_with('fn(') || payload.starts_with('fn (') {
-		return payload
+		signatures << payload
 	}
-	return none
 }
 
 fn (t &Transformer) callback_fn_type_modes_compatible(actual string, expected string) bool {
@@ -14331,23 +14352,29 @@ fn (t &Transformer) callback_fn_type_modes_compatible(actual string, expected st
 		if callback_param_shared_atomic_mode(actual_param) != callback_param_shared_atomic_mode(expected_params[i]) {
 			return false
 		}
-		if nested_actual := t.callback_nested_fn_type(actual_param) {
-			nested_expected := t.callback_nested_fn_type(expected_params[i]) or { return false }
-			if !t.callback_fn_type_modes_compatible(nested_actual, nested_expected) {
+		actual_nested := t.callback_nested_fn_types(actual_param)
+		expected_nested := t.callback_nested_fn_types(expected_params[i])
+		if actual_nested.len != expected_nested.len {
+			return false
+		}
+		for j, nested_actual in actual_nested {
+			if !t.callback_fn_type_modes_compatible(nested_actual, expected_nested[j]) {
 				return false
 			}
-		} else if _ := t.callback_nested_fn_type(expected_params[i]) {
-			return false
 		}
 	}
 	if callback_param_shared_atomic_mode(actual_return) != callback_param_shared_atomic_mode(expected_return) {
 		return false
 	}
-	if nested_actual := t.callback_nested_fn_type(actual_return) {
-		nested_expected := t.callback_nested_fn_type(expected_return) or { return false }
-		return t.callback_fn_type_modes_compatible(nested_actual, nested_expected)
-	} else if _ := t.callback_nested_fn_type(expected_return) {
+	actual_nested := t.callback_nested_fn_types(actual_return)
+	expected_nested := t.callback_nested_fn_types(expected_return)
+	if actual_nested.len != expected_nested.len {
 		return false
+	}
+	for i, nested_actual in actual_nested {
+		if !t.callback_fn_type_modes_compatible(nested_actual, expected_nested[i]) {
+			return false
+		}
 	}
 	return true
 }
