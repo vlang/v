@@ -1494,6 +1494,10 @@ fn (mut g FlatGen) gen_fn_chunks_scoped_dynamic(
 		g.begin_usable_expr_type_memo()
 		g.end_usable_expr_type_memo()
 	}
+	// Chunks reuse one scratch arena: each chunk's output is absorbed into the
+	// result arena before the next chunk starts, so the arena is rewound instead
+	// of being freed and faulted in again for every chunk.
+	mut scratch_scope := unsafe { nil }
 	for {
 		chunk_idx := <-chunk_queue or { break }
 		n_chunks++
@@ -1501,7 +1505,10 @@ fn (mut g FlatGen) gen_fn_chunks_scoped_dynamic(
 		for item in chunks[chunk_idx] {
 			chunk_cost += item.cost
 		}
-		scratch_scope := cgen_worker_scope_begin(true)
+		if scratch_scope == unsafe { nil } || !cgen_worker_scope_reenter(scratch_scope) {
+			cgen_worker_scope_free(scratch_scope)
+			scratch_scope = cgen_worker_scope_begin(true)
+		}
 		mut batch := g.new_parallel_worker(chunk_idx)
 		if reuse_expr_type_memo {
 			batch.usable_expr_type_memo = g.usable_expr_type_memo
@@ -1519,8 +1526,8 @@ fn (mut g FlatGen) gen_fn_chunks_scoped_dynamic(
 		if g.fn_segs.len > segment_start {
 			g.fn_seg_chunk_indexes << chunk_idx
 		}
-		cgen_worker_scope_free(scratch_scope)
 	}
+	cgen_worker_scope_free(scratch_scope)
 	g.timing_profile('  [ttime]     cg wkr busy    ${f64(wsw.elapsed().microseconds()) / 1000.0:7.2f} ms (chunks: ${n_chunks})')
 	g.worker_scope = result_scope
 	cgen_worker_scope_leave(result_scope)

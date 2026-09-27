@@ -213,6 +213,32 @@ fn prealloc_scope_add_block(scope &VPreallocScope, block &VMemoryBlock) {
 	}
 }
 
+// prealloc_scope_remove_block forgets `block`'s address range, before the
+// block is freed while its scope lives on.
+@[unsafe]
+fn prealloc_scope_remove_block(scope &VPreallocScope, block &VMemoryBlock) {
+	if scope == unsafe { nil } || block == unsafe { nil } {
+		return
+	}
+	unsafe {
+		start := usize(block.start)
+		for i in 0 .. scope.ranges_len {
+			if scope.ranges[i].start == start {
+				for j := i; j + 1 < scope.ranges_len; j++ {
+					scope.ranges[j] = scope.ranges[j + 1]
+				}
+				scope.ranges_len--
+				break
+			}
+		}
+		// Ranges are sorted by start and never overlap.
+		if scope.ranges_len > 0 {
+			scope.min_address = scope.ranges[0].start
+			scope.max_address = scope.ranges[scope.ranges_len - 1].stop
+		}
+	}
+}
+
 fn vmemory_abort_on_nil(p voidptr, bytes isize) {
 	if unsafe { p == 0 } {
 		C.fprintf(C.stderr, c'could not allocate %td bytes\n', bytes)
@@ -416,6 +442,21 @@ fn vmemory_block_grow(previous &VMemoryBlock, n isize, align isize) &VMemoryBloc
 	unsafe {
 		was_scope := previous.is_scope
 		scope := previous.scope
+		// A scope reentered by prealloc_scope_reenter keeps the blocks it grew into
+		// before, rewound. Continue in the next one that fits instead of mapping and
+		// faulting in a fresh block.
+		old_next := previous.next
+		if was_scope && scope != 0 {
+			mut candidate := old_next
+			for candidate != 0 && candidate.is_scope && candidate.scope == scope {
+				aligned := vmemory_align_up(candidate.current, align)
+				if i64(candidate.stop) - i64(aligned) >= n {
+					g_memory_block = candidate
+					return candidate
+				}
+				candidate = candidate.next
+			}
+		}
 		mut min_block_size := if previous.min_block_size > 0 {
 			previous.min_block_size
 		} else {
@@ -430,6 +471,11 @@ fn vmemory_block_grow(previous &VMemoryBlock, n isize, align isize) &VMemoryBloc
 		mut mb := vmemory_block_new_sized(previous, n, align, min_block_size)
 		mb.is_scope = was_scope
 		mb.scope = scope
+		// Keep any reusable blocks after the new one: the scope frees its chain.
+		if old_next != 0 && was_scope && old_next.is_scope && old_next.scope == scope {
+			mb.next = old_next
+			old_next.previous = mb
+		}
 		if scope != 0 {
 			prealloc_scope_add_block(scope, mb)
 		}
@@ -856,6 +902,64 @@ pub fn prealloc_scope_leave(scope_ptr voidptr) {
 		prealloc_trace_scope(c'leave', scope)
 		prealloc_scope_detach_current(scope)
 	}
+}
+
+// prealloc_scope_reenter makes a scope that was left (see
+// `prealloc_scope_leave`) current again with all of its blocks rewound, so a
+// caller that processes a sequence of batches can reuse memory that is already
+// mapped instead of freeing the scope and faulting in a new one for every batch.
+// Blocks beyond the first `keep_bytes` are freed. Everything allocated in the
+// scope before is invalidated. It returns false,
+// leaving the scope untouched, when the scope is still current, retained by
+// another owner, or already being freed; the caller then starts a new scope.
+@[unsafe]
+pub fn prealloc_scope_reenter(scope_ptr voidptr, keep_bytes isize) bool {
+	$if prealloc {
+		if scope_ptr == unsafe { nil } {
+			return false
+		}
+		unsafe {
+			mut scope := &VPreallocScope(scope_ptr)
+			if scope.previous != 0 || scope.first == 0
+				|| C.v_prealloc_atomic_load_i32(&scope.refs) != 0
+				|| C.v_prealloc_atomic_load_i32(&scope.free_requested) != 0
+				|| C.v_prealloc_atomic_load_i32(&scope.abandoned) != 0
+				|| C.v_prealloc_atomic_load_i32(&scope.finalized) != 0 {
+				return false
+			}
+			// Keep the first blocks, up to `keep_bytes`, for reuse; free the rest.
+			mut kept := isize(0)
+			mut last_kept := &VMemoryBlock(nil)
+			mut mb := scope.first
+			for mb != 0 && mb.is_scope && mb.scope == scope {
+				size := isize(vmemory_block_size(mb))
+				if last_kept != 0 && kept + size > keep_bytes {
+					break
+				}
+				mb.current = mb.start
+				kept += size
+				last_kept = mb
+				mb = mb.next
+			}
+			if mb != 0 {
+				last_kept.next = nil
+				for mb != 0 && mb.is_scope && mb.scope == scope {
+					next := mb.next
+					prealloc_scope_remove_block(scope, mb)
+					vmemory_block_free(mb)
+					mb = next
+				}
+			}
+			parent := vmemory_block_current_or_new()
+			scope.previous = parent
+			parent.next = scope.first
+			scope.first.previous = parent
+			g_memory_block = scope.first
+			prealloc_trace_scope(c'reenter', scope)
+			return true
+		}
+	}
+	return false
 }
 
 // prealloc_scope_suspend temporarily makes the parent of the active nested

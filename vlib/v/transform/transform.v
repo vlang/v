@@ -283,8 +283,11 @@ mut:
 	promote_text_cache            &PromoteTextCache        = unsafe { nil }
 	call_variadic_cache           &BoolLookupCache         = unsafe { nil }
 	str_alias_cache               &LookupCache             = unsafe { nil }
+	file_import_cache             &KeyRecentCache          = unsafe { nil }
 	generic_alias_names           map[string]bool
 	type_alias_suffixes           map[string]string
+	static_method_names           map[string]bool
+	static_method_names_ready     bool
 	type_alias_short_index        &TypeAliasShortIndex = unsafe { nil }
 	local_decl_nodes_by_name      map[string][]int
 	fn_decl_offsets_by_file       map[int][]int
@@ -625,6 +628,15 @@ struct LookupCache {
 mut:
 	entries map[string]string
 	misses  map[string]bool
+	recent  &KeyRecentCache = unsafe { nil }
+}
+
+// recent_cache returns this cache's front cache, allocating it on first use.
+fn (mut c LookupCache) recent_cache() &KeyRecentCache {
+	if isnil(c.recent) {
+		c.recent = &KeyRecentCache{}
+	}
+	return c.recent
 }
 
 struct ContextLookupCache {
@@ -682,6 +694,59 @@ mut:
 	entries    map[string]i8 // 1 = true, -1 = false
 	last_name  string
 	last_value i8
+	recent     &KeyRecentCache = unsafe { nil }
+}
+
+const key_recent_slots = 128
+
+// KeyRecentCache is a lossy front cache for lookups keyed by up to three
+// strings. A hit compares the parts directly (pointer and length first), so the
+// caller skips building the composite key its backing map is keyed by. The
+// maps it fronts are never cleared, so a cached answer cannot go stale.
+@[heap]
+struct KeyRecentCache {
+mut:
+	a      [key_recent_slots]string
+	b      [key_recent_slots]string
+	c      [key_recent_slots]string
+	values [key_recent_slots]string
+	states [key_recent_slots]i8 // 1 = found, -1 = known miss, 0 = empty
+}
+
+@[inline]
+fn key_recent_slot(a string, b string, c string) int {
+	return (alias_cache_slot(a) * 31 + alias_cache_slot(b) * 7 + alias_cache_slot(c)) & (key_recent_slots - 1)
+}
+
+// get returns 1 and the cached value for a hit, -1 for a cached miss, and 0
+// when the key is not cached.
+@[direct_array_access]
+fn (c &KeyRecentCache) get(a string, b string, cc string) (i8, string) {
+	slot := key_recent_slot(a, b, cc)
+	state := c.states[slot]
+	if state != 0 && same_transform_text(c.a[slot], a) && same_transform_text(c.b[slot], b)
+		&& same_transform_text(c.c[slot], cc) {
+		return state, c.values[slot]
+	}
+	return 0, ''
+}
+
+@[direct_array_access]
+fn (mut c KeyRecentCache) put(a string, b string, cc string, state i8, value string) {
+	slot := key_recent_slot(a, b, cc)
+	c.a[slot] = a
+	c.b[slot] = b
+	c.c[slot] = cc
+	c.values[slot] = value
+	c.states[slot] = state
+}
+
+// recent_cache returns this cache's front cache, allocating it on first use.
+fn (mut c BoolLookupCache) recent_cache() &KeyRecentCache {
+	if isnil(c.recent) {
+		c.recent = &KeyRecentCache{}
+	}
+	return c.recent
 }
 
 struct ContextBoolLookupCache {
@@ -1414,6 +1479,21 @@ fn transform_worker_scope_begin(enabled bool) voidptr {
 	return unsafe { nil }
 }
 
+// transform_batch_arena_keep_bytes bounds how much of a helper's batch arena stays
+// mapped between batches (see prealloc_scope_reenter).
+const transform_batch_arena_keep_bytes = isize($d('transform_batch_arena_keep_mb', 4)) * 1024 * 1024
+
+// transform_worker_scope_reenter makes a helper arena that was left current
+// again, rewound, for the next batch. False means the caller needs a new arena.
+fn transform_worker_scope_reenter(scope voidptr) bool {
+	$if prealloc {
+		if scope != unsafe { nil } {
+			return unsafe { prealloc_scope_reenter(scope, transform_batch_arena_keep_bytes) }
+		}
+	}
+	return false
+}
+
 fn transform_worker_scope_leave(scope voidptr) {
 	$if prealloc {
 		if scope != unsafe { nil } {
@@ -1774,6 +1854,7 @@ fn new_transformer_view(a &flat.FlatAst, tc &types.TypeChecker, used_fns map[str
 			entries: map[string]string{}
 			misses:  map[string]bool{}
 		}
+		file_import_cache:           &KeyRecentCache{}
 	}
 }
 
@@ -1922,6 +2003,7 @@ fn (mut t Transformer) prepare() {
 	}
 	t.build_generic_alias_name_index()
 	t.build_type_alias_suffix_index()
+	t.build_static_method_names()
 	t.build_struct_field_decl_metas_cache()
 	t.timing_profile('  [ttime]   prep suffix+decl   ${f64(psw.elapsed().microseconds()) / 1000.0:7.2f} ms')
 	psw.restart()
@@ -4062,6 +4144,7 @@ fn (t &Transformer) fork_worker_config(ast &flat.FlatAst, wtc &types.TypeChecker
 		entries: map[string]string{}
 		misses:  map[string]bool{}
 	}
+	w.file_import_cache = &KeyRecentCache{}
 	w.generic_fn_decls_cache = map[string]GenericFnDecl{}
 	w.generic_fn_decls_ready = false
 	w.generic_call_spec_cache = map[int]GenericCallSpec{}
@@ -4204,6 +4287,7 @@ fn (t &Transformer) fork_scan_worker(wtc &types.TypeChecker) &Transformer {
 		entries: map[string]string{}
 		misses:  map[string]bool{}
 	}
+	w.file_import_cache = &KeyRecentCache{}
 	w.generic_fn_decls_cache = map[string]GenericFnDecl{}
 	w.generic_fn_decls_ready = false
 	w.generic_call_spec_cache = map[int]GenericCallSpec{}
@@ -4292,6 +4376,8 @@ fn (t &Transformer) fork_program_view(ast &flat.FlatAst, wtc &types.TypeChecker,
 		runtime_type_indexes:                t.runtime_type_indexes
 		generic_alias_names:                 t.generic_alias_names
 		type_alias_suffixes:                 t.type_alias_suffixes
+		static_method_names:                 t.static_method_names
+		static_method_names_ready:           t.static_method_names_ready
 		type_alias_short_index:              t.type_alias_short_index
 		local_decl_nodes_by_name:            t.local_decl_nodes_by_name
 		fn_decl_offsets_by_file:             t.fn_decl_offsets_by_file
@@ -11671,7 +11757,7 @@ fn (t &Transformer) const_ref_matches_key_in_context(id flat.NodeId, module_name
 	}
 	base := name.all_before_last('.')
 	field := short_name_view(name)
-	resolved_base := t.tc.file_imports[file_import_key(file, base)] or { base }
+	resolved_base := t.file_import_module(file, base) or { base }
 	if qualified_const_key_matches(key, resolved_base, field) {
 		return true
 	}
@@ -11711,7 +11797,7 @@ fn (t &Transformer) const_ref_may_match_key(id flat.NodeId, key string, key_shor
 	// the comparison above. Avoid hashing nearly every identifier in the AST here.
 	if node.kind == .ident && !isnil(t.tc) {
 		base := node.value.all_before_last('.')
-		if resolved_base := t.tc.file_imports[file_import_key(file, base)] {
+		if resolved_base := t.file_import_module(file, base) {
 			return qualified_const_key_matches(key, resolved_base, short_name_view(node.value))
 		}
 	}
@@ -22712,7 +22798,7 @@ fn (mut t Transformer) transform_ident_expr(id flat.NodeId, node flat.Node) flat
 				}
 			}
 			is_file_import_selector_base := t.in_selector_base
-				&& file_import_key(t.cur_file, node.value) in t.tc.file_imports
+				&& t.has_file_import(t.cur_file, node.value)
 			if typ.len == 0 && !is_global && !is_file_import_selector_base
 				&& (!t.in_call_callee || !t.ident_is_direct_function_callee(node.value)) {
 				if key := t.const_type_key_in_context(node.value, t.cur_module, t.cur_file) {
@@ -24901,7 +24987,7 @@ fn (t &Transformer) const_type_key_in_context(name string, module_name string, f
 	}
 	base := name.all_before_last('.')
 	field := short_name_view(name)
-	resolved_base := if mod := t.tc.file_imports[file_import_key(file, base)] {
+	resolved_base := if mod := t.file_import_module(file, base) {
 		mod
 	} else {
 		base
@@ -25971,7 +26057,7 @@ fn (t &Transformer) resolve_import_alias_pattern(pattern string) ?string {
 		return none
 	}
 	alias := pattern[..dot]
-	resolved := t.tc.file_imports[file_import_key(t.cur_file, alias)] or { return none }
+	resolved := t.file_import_module(t.cur_file, alias) or { return none }
 	return '${resolved}.${pattern[dot + 1..]}'
 }
 
