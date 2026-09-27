@@ -17928,9 +17928,9 @@ fn (tc &TypeChecker) expr_can_be_implicit_ref_arg(expr_id flat.NodeId) bool {
 	}
 	// V materializes non-addressable value expressions into stable temporaries
 	// when they are passed to non-mut reference parameters.
-	return node.kind in [.struct_init, .call, .or_expr, .cast_expr, .as_expr, .if_expr, .match_stmt,
-		.index, .selector, .int_literal, .float_literal, .bool_literal, .char_literal, .string_literal,
-		.string_interp]
+	return node.kind in [.struct_init, .assoc, .call, .or_expr, .cast_expr, .as_expr, .if_expr,
+		.match_stmt, .index, .selector, .int_literal, .float_literal, .bool_literal, .char_literal,
+		.string_literal, .string_interp]
 }
 
 fn type_pointer_depth_and_base(typ Type) (int, Type) {
