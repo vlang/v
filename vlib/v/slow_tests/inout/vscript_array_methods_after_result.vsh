@@ -1,3 +1,9 @@
+fn exists(path string) string {
+	return 'local ${path}'
+}
+
+assert exists('sentinel') == 'local sentinel'
+
 dir := join_path(temp_dir(), 'v_script_array_methods_${getpid()}')
 mkdir_all(dir)!
 defer {
