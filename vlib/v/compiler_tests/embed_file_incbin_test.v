@@ -57,6 +57,8 @@ fn test_prod_build_assembles_the_payload_and_links_it() {
 	// the assembler ran on the generated source of the payload; the array form
 	// has no such step
 	assert build.output.contains('_v_embed_blob_') && build.output.contains('.S'), build.output
+	entries := os.ls(incbin_workspace) or { panic(err) }
+	assert !entries.any(it.starts_with('.app.v3cc.')), 'the incbin build directory was retained'
 }
 
 fn test_a_second_build_with_a_warm_module_cache_links_the_payload_again() {
