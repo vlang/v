@@ -2383,6 +2383,10 @@ for key, value in m {
 }
 ```
 
+A mutable map iteration value still has the map's element type. Assigning it to a map entry copies
+that element, including when its struct type comes from another module.
+
+
 Either key or value can be ignored by using a single underscore as the identifier.
 
 ```v

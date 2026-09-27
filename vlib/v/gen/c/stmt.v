@@ -7672,7 +7672,13 @@ fn (mut g FlatGen) gen_decl_assign(node flat.Node) {
 			if rhs.kind in [.call, .ident] {
 				// Unwrapped results are copied from temporaries. Keep their concrete
 				// module identity just as for a direct call's return type.
-				rhs_type := g.usable_expr_type(rhs_id)
+				mut rhs_type := g.usable_expr_type(rhs_id)
+				if rhs.kind == .ident {
+					if value_type := g.local_indirect_value_type(rhs.value) {
+						// Loop references carry a value type despite their pointer storage.
+						rhs_type = value_type
+					}
+				}
 				current_value := default_init_unalias_type(types.unwrap_pointer(v_type))
 				rhs_value := default_init_unalias_type(types.unwrap_pointer(rhs_type))
 				if current_value is types.Struct && rhs_value is types.Struct
