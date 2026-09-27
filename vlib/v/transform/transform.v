@@ -13911,7 +13911,7 @@ fn (mut t Transformer) coerce_transformed_expr_to_type(expr flat.NodeId, source_
 		target
 	}
 	optional_target = t.infer_typed_optional_target(optional_target, expr_type)
-	if optional_target.starts_with('!') && t.is_ierror_type(expr_type) {
+	if t.is_optional_type_name(optional_target) && t.is_ierror_type(expr_type) {
 		return t.make_optional_none_with_err(optional_target, expr)
 	}
 	if t.is_optional_type_name(optional_target) && int(expr) >= 0 && int(expr) < t.a.nodes.len {

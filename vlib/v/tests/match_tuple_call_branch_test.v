@@ -64,3 +64,43 @@ fn test_match_tuple_comma_tail_promotes_one_component() {
 		assert b == 0
 	}
 }
+
+fn wrapped_pair() (int, ?string) {
+	return 1, 'ok'
+}
+
+fn wrapped_result_pair() (int, !string) {
+	return 1, 'ok'
+}
+
+fn test_match_tuple_error_promotes_to_optional_slot() {
+	for flag in [true, false] {
+		value, text := match flag {
+			true { wrapped_pair() }
+			else { 2, error('x') }
+		}
+		if flag {
+			assert value == 1
+			assert (text or { '' }) == 'ok'
+		} else {
+			assert value == 2
+			assert (text or { 'failed' }) == 'failed'
+		}
+	}
+}
+
+fn test_match_tuple_error_promotes_to_result_slot() {
+	for flag in [true, false] {
+		value, text := match flag {
+			true { wrapped_result_pair() }
+			else { 2, error('x') }
+		}
+		if flag {
+			assert value == 1
+			assert (text or { '' }) == 'ok'
+		} else {
+			assert value == 2
+			assert (text or { 'failed' }) == 'failed'
+		}
+	}
+}

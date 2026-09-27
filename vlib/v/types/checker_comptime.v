@@ -16225,6 +16225,12 @@ fn multi_tail_wrappers_match(current Type, actual Type) bool {
 	if clean_current is Nil || clean_actual is Nil {
 		return true
 	}
+	if is_ierror_type(current) && (clean_actual is OptionType || clean_actual is ResultType) {
+		return true
+	}
+	if is_ierror_type(actual) && (clean_current is OptionType || clean_current is ResultType) {
+		return true
+	}
 	return (clean_current is OptionType) == (clean_actual is OptionType)
 		&& (clean_current is ResultType) == (clean_actual is ResultType)
 }
@@ -16232,6 +16238,14 @@ fn multi_tail_wrappers_match(current Type, actual Type) bool {
 fn (tc &TypeChecker) promoted_multi_tail_type(current Type, actual Type) ?Type {
 	if !multi_tail_wrappers_match(current, actual) {
 		return none
+	}
+	if is_ierror_type(actual) && (unalias_type(current) is OptionType
+		|| unalias_type(current) is ResultType) {
+		return current
+	}
+	if is_ierror_type(current) && (unalias_type(actual) is OptionType
+		|| unalias_type(actual) is ResultType) {
+		return actual
 	}
 	if (current.name() == 'voidptr' || unalias_type(current) is Nil)
 		&& unalias_type(actual) is Pointer {
