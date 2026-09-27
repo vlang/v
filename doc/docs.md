@@ -4126,7 +4126,7 @@ You can see the complete
 ### Interfaces
 
 A mutable interface alias can use `mut value as OtherInterface` when its source is mutable.
-A narrowed interface value can be cast for an immediate read-only method call.
+A narrowed interface value can be cast for an immediate scalar getter that only reads fields.
 Type tests joined by `||` do not narrow the value in the true branch; they do not require `mut`
 unless a nested condition itself narrows the value.
 A negative type guard whose body exits also narrows the value after the guard and requires `mut`.
