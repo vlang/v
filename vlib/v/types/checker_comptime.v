@@ -16775,7 +16775,7 @@ fn (mut tc TypeChecker) check_assign(id flat.NodeId, node flat.Node) {
 			if deref_child.kind == .call {
 				tc.record_error_at(.assignment_mismatch, 'cannot dereference a function call on the left side of an assignment, use a temporary variable', effective_lhs_id, tc.prefix_operator_pos(effective_lhs_id, '*'))
 			}
-			if tc.unsafe_depth == 0 {
+			if tc.unsafe_depth == 0 && !assignment_is_translated {
 				tc.record_error_at(.assignment_mismatch, 'modifying variables via dereferencing can only be done in `unsafe` blocks', id, tc.assignment_operator_pos(node, lhs_id, rhs_id))
 			}
 		}
