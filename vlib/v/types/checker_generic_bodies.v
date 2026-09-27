@@ -42,9 +42,9 @@ fn (mut tc TypeChecker) check_generic_fn_body(node flat.Node, fn_idx int, params
 		}
 	}
 	texts := tc.type_param_instance_texts(node, params, constraints) or {
-		// A constraint that names a type parameter, `[T Comparable[T]]`, gives
-		// no type to check the body with: its statements that do not depend on
-		// the type parameters are what can be told.
+		// A constraint that gives no type to check the body with: its
+		// statements that do not depend on the type parameters are what can be
+		// told.
 		for open_error in open.errors {
 			if !tc.diagnostic_depends_on_type_params(open_error.node, fn_idx, dependent,
 				params, mut statements)
@@ -61,7 +61,7 @@ fn (mut tc TypeChecker) check_generic_fn_body(node flat.Node, fn_idx int, params
 	}
 	mut positions := map[string]bool{}
 	for combination in type_param_combinations(texts, 32) {
-		instance := tc.check_generic_fn_body_as(node, fn_idx, combination)
+		instance := tc.check_generic_fn_body_as(node, fn_idx, closed_type_param_texts(combination))
 		for err in instance.errors {
 			statement := tc.enclosing_body_statement(err.node, fn_idx) or { continue }
 			if reported[int(statement)] {
@@ -157,15 +157,16 @@ fn (tc &TypeChecker) parse_type_as_instance(typ string) Type {
 		_, result := tc.intern_type(tc.parse_type_uncached(typ))
 		return result
 	}
-	// A type parameter whose type names it, `T` of `[T Comparable[T]]`, is open
-	// inside that type: `T` is `Comparable[T]`, not `Comparable[Comparable[...]]`.
-	// Only this fork parses with these texts, on one thread.
+	// A type parameter that the texts put in still name, `T` of
+	// `[T Comparable[T]]` (see closed_type_param_texts), is open inside them: `T`
+	// is `Comparable[T]`, not `Comparable[Comparable[...]]`. Only this fork
+	// parses with these texts, on one thread.
 	mut fork := unsafe { tc }
 	mut expanding := []string{}
-	for i, name in names {
-		mut own := map[string]bool{}
-		own[name] = true
-		if type_text_names_any(args[i], own) {
+	for name, _ in tc.type_param_texts {
+		mut one := map[string]bool{}
+		one[name] = true
+		if !tc.type_params_expanding[name] && args.any(type_text_names_any(it, one)) {
 			fork.type_params_expanding[name] = true
 			expanding << name
 		}
@@ -263,8 +264,8 @@ fn (tc &TypeChecker) instance_comptime_in_value(term ComptimeInTerm) ?bool {
 // of the set; or the interface, which stands for any type that implements it,
 // and each type that implements it that a `$if` of the body tests the type
 // parameter against, `$if x is User`, whose branch the interface does not take.
-// An interface may name its own type parameter, `[T Comparable[T]]` (see
-// parse_type_as_instance). None when a type names another type parameter.
+// A type may name a type parameter, its own, `[T Comparable[T]]`, or another,
+// `[C Container[T], T Named]` (see closed_type_param_texts).
 fn (tc &TypeChecker) type_param_instance_texts(node flat.Node, params map[string]bool, constraints map[string]GenericConstraint) ?map[string][]string {
 	mut names := []string{}
 	for name, _ in params {
@@ -287,17 +288,8 @@ fn (tc &TypeChecker) type_param_instance_texts(node flat.Node, params map[string
 				options << typ.name()
 			}
 		}
-		if options.len == 0 {
+		if options.len == 0 || options.any(it.len == 0) {
 			return none
-		}
-		mut others := params.clone()
-		if constraint.is_interface {
-			others.delete(name)
-		}
-		for option in options {
-			if option.len == 0 || type_text_names_any(option, others) {
-				return none
-			}
 		}
 		texts[name] = options
 	}
@@ -396,6 +388,43 @@ fn type_param_combinations(texts map[string][]string, limit int) []map[string]st
 		}
 	}
 	return combinations
+}
+
+// closed_type_param_texts gives each type parameter of `combination` its type
+// with the types of the other type parameters put into it: `C` of
+// `[C Container[T], T Named]` is `Container[Named]`. A type parameter that its
+// own type reaches again, `T` of `[T Comparable[T]]`, stays in it, open (see
+// parse_type_as_instance).
+fn closed_type_param_texts(combination map[string]string) map[string]string {
+	mut closed := map[string]string{}
+	for name, text in combination {
+		mut path := map[string]bool{}
+		path[name] = true
+		closed[name] = close_type_param_text(text, combination, mut path)
+	}
+	return closed
+}
+
+// close_type_param_text puts into `text` the types of the type parameters of
+// `combination` that it names, but those on `path`, the ones being put in.
+fn close_type_param_text(text string, combination map[string]string, mut path map[string]bool) string {
+	mut names := []string{}
+	mut args := []string{}
+	for name, other in combination {
+		mut one := map[string]bool{}
+		one[name] = true
+		if name in path || !type_text_names_any(text, one) {
+			continue
+		}
+		path[name] = true
+		names << name
+		args << close_type_param_text(other, combination, mut path)
+		path.delete(name)
+	}
+	if names.len == 0 {
+		return text
+	}
+	return subst_generic_text(text, args, names)
 }
 
 // type_param_instance_reason says why an error of a check with the types

@@ -259,6 +259,33 @@ fn main() {
 	assert errors[0].contains('`T` is any type that implements `Comparable[T]`'), errors[0]
 }
 
+fn test_a_constraint_that_names_another_type_parameter_is_checked_too() {
+	// `[C Container[T], T Named]`: `C` is checked as `Container[Named]`, the
+	// type of `T` put into the type of `C`.
+	errors := check('cross_constraint', 'module main
+
+interface Named {
+	name string
+}
+
+interface Container[T] {
+	get() T
+}
+
+fn unwrap_name[C Container[T], T Named](c C) string {
+	return c.get().name
+}
+
+fn unwrap_length[C Container[T], T Named](c C) string {
+	return c.get().name.len
+}
+
+fn main() {}
+')
+	assert errors.len == 1, errors.str()
+	assert errors[0].starts_with('main.v:16:9: error: cannot use `int` as type `string` in return argument'), errors[0]
+}
+
 fn test_a_generic_body_with_a_type_parameter_without_a_constraint_is_not_checked() {
 	// As before: V checks such a body in each of its instances.
 	errors := check('unconstrained', "module main
