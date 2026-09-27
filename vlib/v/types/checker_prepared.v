@@ -21,6 +21,9 @@ mut:
 	last_module   string
 	// The state of the collection steps that carry what they saw to the next
 	// declaration.
+	// Whether a check continued from the preparation, so that its nodes are
+	// the prepared ones followed by its own.
+	continued        bool
 	c_structs        CStructRedeclarations
 	c_fns            CFnRedeclarations
 	public_c_structs map[string]bool
@@ -31,6 +34,13 @@ mut:
 	keys           map[string][]int
 	import_aliases map[string][]AliasUse
 	modules        map[string]bool
+	// What the scans for unused declarations look for in the prepared nodes,
+	// which each check would otherwise walk again: the identifiers and
+	// selectors (their names and last segments), the callees (the same), and
+	// the functions the prepared nodes name as values.
+	named          map[string]bool
+	called         map[string]bool
+	function_named map[string]bool
 }
 
 // AliasUse is an import alias of a file: the module it names, and the file.
@@ -83,7 +93,49 @@ pub fn (mut tc TypeChecker) prepare_collect(a &flat.FlatAst) bool {
 	}
 	prepared.import_aliases = after.aliases.clone()
 	prepared.modules = after.modules.clone()
+	tc.index_prepared_names(a)
 	return true
+}
+
+// index_prepared_names records what the scans for unused declarations look for
+// in the prepared nodes, leaving out those a check prunes as inactive
+// compile-time branches before it scans.
+fn (mut tc TypeChecker) index_prepared_names(a &flat.FlatAst) {
+	mut prepared := tc.prepared_collect
+	mut pruned := map[int]bool{}
+	for id in tc.inactive_top_level_node_ids {
+		pruned[id] = true
+	}
+	for i in 0 .. prepared.nodes_len {
+		if pruned[i] {
+			continue
+		}
+		node := a.nodes[i]
+		if node.kind in [.ident, .selector] && node.value.len > 0 {
+			prepared.named[node.value] = true
+			prepared.named[short_name_view(node.value)] = true
+			if name := tc.resolved_fn_value_name(flat.NodeId(i)) {
+				prepared.function_named[name] = true
+			}
+		}
+		if node.kind == .call && node.children_count > 0 {
+			callee := a.child_node(&node, 0)
+			if callee.value.len > 0 {
+				prepared.called[callee.value] = true
+				prepared.called[short_name_view(callee.value)] = true
+			}
+		}
+	}
+}
+
+// prepared_names_start returns where the nodes that the scans for unused
+// declarations still walk start: after the prepared ones, whose names
+// index_prepared_names recorded, or at the first node.
+fn (tc &TypeChecker) prepared_names_start() int {
+	if isnil(tc.prepared_collect) || !tc.prepared_collect.continued {
+		return 0
+	}
+	return tc.prepared_collect.nodes_len
 }
 
 // declaration_keys_of_files returns the keys that the declarations of the
@@ -290,6 +342,7 @@ pub fn (mut tc TypeChecker) collect_continue(a &flat.FlatAst) bool {
 	tc.top_level_idx_nodes_len = n
 	tc.order_top_level_idx_by_files()
 	tc.enter_last_top_level_file()
+	prepared.continued = true
 	return true
 }
 

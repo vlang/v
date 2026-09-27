@@ -1002,9 +1002,28 @@ fn (tc &TypeChecker) scan_unused_alive_range(fn_keys map[string][]int, const_key
 // to the serial scan regardless of shard boundaries.
 fn (mut tc TypeChecker) scan_unused_candidate_references(fn_keys map[string][]int, const_keys map[string][]int, mut alive []bool) {
 	n_nodes := tc.a.nodes.len
+	start := tc.prepared_names_start()
+	if start > 0 {
+		// The prepared nodes were scanned once, before the first check.
+		prepared := tc.prepared_collect
+		for key, hits in const_keys {
+			if key in prepared.named {
+				for cand_idx in hits {
+					alive[cand_idx] = true
+				}
+			}
+		}
+		for key, hits in fn_keys {
+			if key in prepared.called || key in prepared.function_named {
+				for cand_idx in hits {
+					alive[cand_idx] = true
+				}
+			}
+		}
+	}
 	pool := checker_worker_pool(tc.a)
-	if isnil(pool) || pool.size() == 0 || n_nodes < 262_144 {
-		tc.scan_unused_alive_range(fn_keys, const_keys, 0, n_nodes, mut alive)
+	if isnil(pool) || pool.size() == 0 || n_nodes - start < 262_144 {
+		tc.scan_unused_alive_range(fn_keys, const_keys, start, n_nodes, mut alive)
 		return
 	}
 	mut n_jobs := pool.size() + 1
@@ -1018,8 +1037,8 @@ fn (mut tc TypeChecker) scan_unused_candidate_references(fn_keys map[string][]in
 			tc:         voidptr(tc)
 			fn_keys:    fn_keys
 			const_keys: const_keys
-			start:      n_nodes * job / n_jobs
-			end:        n_nodes * (job + 1) / n_jobs
+			start:      start + (n_nodes - start) * job / n_jobs
+			end:        start + (n_nodes - start) * (job + 1) / n_jobs
 			alive:      []bool{len: alive.len}
 		}
 	}

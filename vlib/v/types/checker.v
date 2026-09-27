@@ -8003,7 +8003,17 @@ fn (mut tc TypeChecker) named_private_fns() (map[string]bool, bool) {
 		return used, true
 	}
 	mut named := []bool{len: uncalled.len}
-	for node in tc.a.nodes {
+	names_start := tc.prepared_names_start()
+	if names_start > 0 {
+		for key, hits in keys {
+			if key in tc.prepared_collect.named {
+				for idx in hits {
+					named[idx] = true
+				}
+			}
+		}
+	}
+	for node in tc.a.nodes[names_start..] {
 		if node.kind !in [.ident, .selector] || node.value.len == 0 {
 			continue
 		}
