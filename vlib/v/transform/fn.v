@@ -14172,6 +14172,11 @@ fn (mut t Transformer) resolved_receiver_arg_compatible(arg_id flat.NodeId, actu
 	if actual == expected {
 		return true
 	}
+	if !isnil(t.tc) && actual.starts_with('fn') && expected.starts_with('fn') {
+		actual_fn := transform_fn_type(t.tc.parse_type(actual)) or { return false }
+		expected_fn := transform_fn_type(t.tc.parse_type(expected)) or { return false }
+		return t.tc.slot_value_compatible(actual_fn, expected_fn)
+	}
 	if t.expr_is_nil_like(arg_id)
 		&& (expected.starts_with('&') || expected in ['voidptr', 'byteptr', 'charptr']) {
 		return true

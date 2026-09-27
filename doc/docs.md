@@ -3351,6 +3351,9 @@ fn f(cb fn (a int) int) int {
 println(f(|x| x + 4)) // prints 14
 ```
 
+Function values passed to generic methods are checked by their parameter and return types.
+Parameter names and whitespace do not affect function type compatibility.
+
 ### Closures
 
 V supports closures too.
