@@ -3669,6 +3669,9 @@ See also [String interpolation](#string-interpolation).
 
 ### Printing custom types
 
+Automatic string conversion also works for values whose local name was used for a reference in
+an earlier scope.
+
 If you want to define a custom print value for your type, simply define a
 `str() string` method:
 

@@ -6911,7 +6911,8 @@ fn (mut t Transformer) lower_struct_str(expr flat.NodeId, struct_type string) ?f
 	if guard_root_address {
 		mut address_source := t.make_prefix(.amp, base)
 		if expr_node.kind == .ident
-			&& (t.pointer_value_rvalues[expr_node.value] || t.mut_param_values[expr_node.value]) {
+			&& ((t.pointer_value_rvalues[expr_node.value]
+				&& t.var_type(expr_node.value).starts_with('&')) || t.mut_param_values[expr_node.value]) {
 			address_source = t.transform_expr_preserving_pointer_value(expr)
 		} else if int(deref_address_source) >= 0 {
 			address_source = deref_address_source
