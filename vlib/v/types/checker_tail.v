@@ -716,10 +716,12 @@ fn (tc &TypeChecker) expr_is_negative_integer_literal(id flat.NodeId) bool {
 	if !tc.valid_node_id(id) {
 		return false
 	}
-	if unalias_type(tc.resolve_type(id)).is_integer() && tc.node_source_starts_with(id, '-') {
-		return true
+	node := tc.a.node(id)
+	if node.kind == .int_literal {
+		return node.value.starts_with('-')
 	}
-	return false
+	return node.kind == .prefix && node.op == .minus && node.children_count == 1
+		&& tc.a.child_node(node, 0).kind == .int_literal
 }
 
 fn (tc &TypeChecker) fixed_array_address_to_byte_pointer_compatible(expr_id flat.NodeId, actual Type, expected Type) bool {
