@@ -4790,6 +4790,13 @@ fn (mut t Transformer) specialized_signature_type_text(decl GenericFnDecl, typ s
 	if parsed is types.Unknown {
 		return qualified
 	}
+	// Parsing a variadic parameter produces an Array and loses the call convention.
+	if qualified.trim_space().starts_with('...') {
+		if parsed is types.Array {
+			return '...' + specialized_signature_storage_type_name(parsed.elem_type)
+		}
+		return qualified
+	}
 	if is_shared {
 		return qualified
 	}

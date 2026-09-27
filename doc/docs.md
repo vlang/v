@@ -3297,6 +3297,10 @@ V supports functions that receive an arbitrary, variable amounts of arguments, d
 Below, `a ...int` refers to an arbitrary amount of parameters that will be collected
 into an array named `a`.
 
+Methods on generic structs can also accept these arguments. The receiver type determines
+the specialization, and the arguments are collected into the parameter array.
+The element type keeps its declaring module when the method is called from another module.
+
 ```v
 fn sum(a ...int) int {
 	mut total := 0
