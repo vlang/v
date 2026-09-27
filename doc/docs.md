@@ -4462,6 +4462,8 @@ pub interface ReaderWriter {
 
 ### Sum types
 
+Mapping an array variant inside a `match` branch infers the result element type from the mapper.
+
 Assignments to common struct fields also work through sum type array elements, including
 compound assignments after filtering or smart casting other elements.
 
