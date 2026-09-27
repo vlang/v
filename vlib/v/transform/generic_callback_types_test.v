@@ -13,4 +13,8 @@ fn test_specialized_receiver_callback_uses_function_type_compatibility() {
 	assert !t.resolved_receiver_arg_compatible(id, 'fn ([]int) int', 'fn([]int, []int) int')
 	assert !t.resolved_receiver_arg_compatible(id, 'fn ([]int, []int) string', 'fn([]int, []int) int')
 	assert !t.resolved_receiver_arg_compatible(id, 'fn (mut []int) int', 'fn([]int) int')
+	assert !t.resolved_receiver_arg_compatible(id, 'fn (shared int)', 'fn (int)')
+	assert !t.resolved_receiver_arg_compatible(id, 'fn (int)', 'fn (shared int)')
+	assert !t.resolved_receiver_arg_compatible(id, 'fn (atomic int)', 'fn (int)')
+	assert t.resolved_receiver_arg_compatible(id, 'fn (shared int)', 'fn (shared int)')
 }

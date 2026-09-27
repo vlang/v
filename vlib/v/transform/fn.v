@@ -14173,6 +14173,16 @@ fn (mut t Transformer) resolved_receiver_arg_compatible(arg_id flat.NodeId, actu
 		return true
 	}
 	if !isnil(t.tc) && actual.starts_with('fn') && expected.starts_with('fn') {
+		actual_params, _ := fn_type_text_parts(actual) or { return false }
+		expected_params, _ := fn_type_text_parts(expected) or { return false }
+		if actual_params.len != expected_params.len {
+			return false
+		}
+		for i, actual_param in actual_params {
+			if callback_param_shared_atomic_mode(actual_param) != callback_param_shared_atomic_mode(expected_params[i]) {
+				return false
+			}
+		}
 		actual_fn := transform_fn_type(t.tc.parse_type(actual)) or { return false }
 		expected_fn := transform_fn_type(t.tc.parse_type(expected)) or { return false }
 		return t.tc.slot_value_compatible(actual_fn, expected_fn)
@@ -14257,6 +14267,17 @@ fn (mut t Transformer) resolved_receiver_arg_compatible(arg_id flat.NodeId, actu
 		return true
 	}
 	return false
+}
+
+fn callback_param_shared_atomic_mode(param string) string {
+	payload := generic_fn_type_param_payload(param)
+	if payload.starts_with('shared ') {
+		return 'shared'
+	}
+	if payload.starts_with('atomic ') {
+		return 'atomic'
+	}
+	return ''
 }
 
 struct SpecializedIntLiteral {
