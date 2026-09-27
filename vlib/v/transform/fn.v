@@ -3173,6 +3173,15 @@ fn (t &Transformer) decl_param_type_in_scope(typ string, module_name string, fil
 	if clean.starts_with('[]') {
 		return '[]' + t.decl_param_type_in_scope(clean[2..], module_name, file_name)
 	}
+	if clean.starts_with('chan mut ') {
+		return 'chan mut ' + t.decl_param_type_in_scope(clean[9..], module_name, file_name)
+	}
+	if clean.starts_with('chan ') {
+		return 'chan ' + t.decl_param_type_in_scope(clean[5..], module_name, file_name)
+	}
+	if clean.starts_with('thread ') {
+		return 'thread ' + t.decl_param_type_in_scope(clean[7..], module_name, file_name)
+	}
 	if clean.starts_with('map[') {
 		bracket_end := generic_matching_bracket(clean, 3)
 		if bracket_end < clean.len {

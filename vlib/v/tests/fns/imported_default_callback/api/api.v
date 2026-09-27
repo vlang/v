@@ -28,6 +28,7 @@ pub:
 	make_pair  fn () (Event, int) = fn () (Event, int) {
 		return Event{ value: 43 }, 1
 	}
+	on_channel fn (chan Event) = fn (events chan Event) {}
 }
 
 // window initializes a window and preserves its default callback.

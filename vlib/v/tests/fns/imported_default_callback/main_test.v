@@ -18,6 +18,8 @@ fn test_imported_callback_return_and_selective_parameter_types() {
 	local_defaults := api.ResultDefaults{}
 	assert local_defaults.make_event().value == 42
 	local_defaults.make_pair()
+	events := chan api.Event{cap: 1}
+	local_defaults.on_channel(events)
 	imported_defaults := selected.ImportedDefaults{}
 	assert imported_defaults.on_event(&foreign.Event{ value: 91 }) == 91
 	assert imported_defaults.make_event().value == 73
