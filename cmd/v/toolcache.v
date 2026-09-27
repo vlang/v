@@ -7,7 +7,7 @@ import crypto.sha256
 import os
 import os.filelock
 import time
-import v.pref
+import v.util
 import v.vmod
 
 // The external `cmd/tools/*` programs are compiled once and then cached, so that
@@ -24,7 +24,7 @@ import v.vmod
 //
 // The cache lives under the user's V cache directory, never inside the source tree.
 
-const tool_cache_manifest_version = 'v3-tool-cache-2'
+const tool_cache_manifest_version = 'v3-tool-cache-3'
 const tool_cache_disable_env = 'VTOOLS_NO_CACHE'
 const tool_cache_dir_env = 'VTOOLS_CACHE_DIR'
 const tool_cache_verbose_env = 'VTOOLS_CACHE_VERBOSE'
@@ -873,7 +873,9 @@ fn encode_tool_cache_manifest(source_files []string, started i64) string {
 		directories[os.dir(file)] = true
 		mut directory := os.real_path(os.dir(file))
 		for {
-			boundaries[os.join_path(directory, pref.module_search_stop_marker)] = true
+			for marker in util.project_boundary_markers {
+				boundaries[os.join_path(directory, marker)] = true
+			}
 			parent := os.dir(directory)
 			if parent == directory {
 				break

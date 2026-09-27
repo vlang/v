@@ -5,7 +5,7 @@ module main
 
 import os
 import time
-import v.pref
+import v.util
 
 // `vtimeout` is used as the probe tool: it is small enough to compile quickly, and
 // `v timeout <seconds> <command>` both succeeds and terminates on its own.
@@ -186,17 +186,27 @@ fn test_a_new_file_in_an_imported_module_invalidates_the_cache() {
 	assert !tool_cache_is_fresh(entry), 'a new module source must force a rebuild'
 }
 
-fn test_module_search_boundary_marker_invalidates_the_cache() {
-	entry, dependency := fresh_cache_fixture('boundary_marker')
-	defer { os.rmdir_all(os.dir(entry.binary)) or {} }
-	marker := os.join_path(os.dir(dependency), pref.module_search_stop_marker)
-	os.write_file(marker, '')!
-	assert !tool_cache_is_fresh(entry), 'adding a module boundary must force a rebuild'
-	time.sleep(1100 * time.millisecond)
-	os.write_file(entry.manifest, encode_tool_cache_manifest([dependency], time.now().unix()))!
-	assert tool_cache_is_fresh(entry)
-	os.rm(marker)!
-	assert !tool_cache_is_fresh(entry), 'removing a module boundary must force a rebuild'
+fn test_project_boundary_markers_invalidate_the_cache() {
+	for marker_name in util.project_boundary_markers {
+		entry, dependency := fresh_cache_fixture('boundary_${marker_name}')
+		defer { os.rmdir_all(os.dir(entry.binary)) or {} }
+		marker := os.join_path(os.dir(os.dir(dependency)), marker_name)
+		if marker_name == '.v.mod.stop' {
+			os.write_file(marker, '')!
+		} else {
+			os.mkdir(marker)!
+		}
+		assert !tool_cache_is_fresh(entry), 'adding ${marker_name} must force a rebuild'
+		time.sleep(1100 * time.millisecond)
+		os.write_file(entry.manifest, encode_tool_cache_manifest([dependency], time.now().unix()))!
+		assert tool_cache_is_fresh(entry)
+		if marker_name == '.v.mod.stop' {
+			os.rm(marker)!
+		} else {
+			os.rmdir(marker)!
+		}
+		assert !tool_cache_is_fresh(entry), 'removing ${marker_name} must force a rebuild'
+	}
 }
 
 fn test_a_missing_or_damaged_manifest_invalidates_the_cache() {
