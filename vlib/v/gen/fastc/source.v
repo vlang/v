@@ -1427,7 +1427,7 @@ fn fastc_scan_source_header(source string, path string, prefs &pref.Preferences)
 			mut attribute_depth := 1
 			tok = scan.scan()
 			for attribute_depth > 0 && tok != .eof {
-				if tok == .name && scan.lit == 'has_globals' {
+				if tok == .name && scan.lit in ['has_globals', 'translated'] {
 					has_globals = true
 				}
 				if tok == .lsbr {

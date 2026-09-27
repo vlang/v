@@ -3066,6 +3066,9 @@ fn test_global_declarations_require_enable_globals_or_module_attribute() {
 
 	attributed_source := generate('@[has_globals]\nmodule main\n__global answer = 42\nfn main() {}\n', 'attributed_global.v', prefs) or { panic(err) }
 	assert attributed_source.contains('static int answer;'), attributed_source
+	translated_source := generate('@[translated]\nmodule main\n__global answer = 42\nfn main() {}\n',
+		'translated_global.v', prefs) or { panic(err) }
+	assert translated_source.contains('static int answer;'), translated_source
 
 	mut enabled_prefs := pref.new_preferences()
 	enabled_prefs.enable_globals = true
