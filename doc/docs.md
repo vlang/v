@@ -3551,6 +3551,9 @@ constant separately:
 const e = 2.71828
 ```
 
+A constant initializer may call a function with the same name, such as `const answer = answer()`.
+Reading the constant itself in its initializer is still a cycle.
+
 V constants are more flexible than in most languages. You can assign more complex values:
 
 ```v
