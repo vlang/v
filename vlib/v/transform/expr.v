@@ -3185,7 +3185,7 @@ fn (mut t Transformer) stable_array_expr_for_membership(id flat.NodeId, raw_type
 	}
 	mut storage_type := clean_type
 	transformed_type := t.membership_container_type(t.node_type(expr))
-	if t.generic_arg_is_unresolved(storage_type) && decl_type_is_usable(transformed_type)
+	if transformed_type != storage_type && decl_type_is_usable(transformed_type)
 		&& !t.generic_arg_is_unresolved(transformed_type) {
 		storage_type = transformed_type
 	}
@@ -3193,11 +3193,10 @@ fn (mut t Transformer) stable_array_expr_for_membership(id flat.NodeId, raw_type
 }
 
 fn (t &Transformer) resolved_membership_element_type(base flat.NodeId, fallback string) string {
-	if t.generic_arg_is_unresolved(fallback) {
-		base_type := t.membership_container_type(t.node_type(base))
-		if base_type.starts_with('[]') && !t.generic_arg_is_unresolved(base_type) {
-			return base_type[2..]
-		}
+	base_type := t.membership_container_type(t.node_type(base))
+	if base_type.starts_with('[]') && decl_type_is_usable(base_type)
+		&& !t.generic_arg_is_unresolved(base_type) && base_type[2..] != fallback {
+		return base_type[2..]
 	}
 	return fallback
 }
