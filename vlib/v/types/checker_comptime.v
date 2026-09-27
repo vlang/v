@@ -14627,6 +14627,7 @@ fn (mut tc TypeChecker) call_returned_alias_arguments(id flat.NodeId, mut visiti
 	// a chained call can check its receiver, which must not see caller locals.
 	file := if source := tc.a.source_files[fn_node.pos.id] { source.name } else { tc.cur_file }
 	mut callee_view := tc.fork_type_parse_view(file, decl.mod)
+	callee_view.smartcasts = map[string]Type{}
 	callee_view.begin_sparse_transform_node_caches(0)
 	callee_view.fn_context.node_id = decl.idx
 	callee_view.fn_context.generic_params = fn_node.generic_params().clone()
