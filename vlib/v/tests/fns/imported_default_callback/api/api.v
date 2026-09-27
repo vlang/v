@@ -1,0 +1,28 @@
+module api
+
+import foreign
+
+pub struct Event {
+pub:
+	value int
+}
+
+pub struct Window {
+pub mut:
+	count int
+pub:
+	on_event fn (e &Event, mut w Window) = fn (_ &Event, mut _ Window) {}
+}
+
+pub struct WindowCfg {
+pub:
+	on_init  fn (mut Window)             = fn (mut _ Window) {}
+	on_event fn (e &Event, mut w Window) = fn (_ &Event, mut _ Window) {}
+}
+
+// window initializes a window and preserves its default callback.
+pub fn window(cfg WindowCfg) Window {
+	mut result := Window{ count: foreign.event_value(), on_event: cfg.on_event }
+	cfg.on_init(mut result)
+	return result
+}
