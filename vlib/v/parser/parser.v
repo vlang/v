@@ -1442,7 +1442,9 @@ fn (mut p Parser) fn_decl() flat.NodeId {
 				} else {
 					'cannot overload `${assignment_op}`, overload `${base_op}` and `${assignment_op}` will be automatically generated'
 				}
-				p.record_diagnostic_span(message, p.tok_pos, p.tok_end)
+				if !p.prefs.is_fmt {
+					p.record_diagnostic_span(message, p.tok_pos, p.tok_end)
+				}
 				p.next()
 				return p.fn_operator_overload(receiver_name, receiver_type, receiver_is_mut,
 					assignment_op, name_pos)
@@ -1785,7 +1787,7 @@ fn (mut p Parser) fn_decl_body(name string, receiver_name string, receiver_type 
 	if p.tok == .semicolon && p.peek() == .lcbr {
 		p.next()
 	}
-	if p.tok == .lcbr
+	if !p.prefs.is_fmt && p.tok == .lcbr
 		&& param_ids.any(p.a.node(it).kind == .param && p.a.node(it).typ.len == 0
 			&& p.a.node(it).value.len > 0) {
 		p.record_diagnostic_span('functions with type only params can not have bodies', p.tok_pos,

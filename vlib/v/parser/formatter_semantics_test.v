@@ -20,6 +20,8 @@ fn test_formatter_preserves_syntax_without_semantic_diagnostics() {
 		'fn main() { if x := 1 { _ = x } }':                                                         'if guard condition expression is illegal, it should return an Option'
 		'fn maybe_value() ?int { return 1 }\nfn main() { x := 1; if x := maybe_value() { _ = x } }': 'redefinition of `x`'
 		'struct B {}\nstruct A { B; B }':                                                            'cannot embed `B` more than once'
+		'struct Number {}\nfn (n Number) += (other Number) Number { return n }':                     'cannot overload `+=`, overload `+` and `+=` will be automatically generated'
+		'fn handle(int) {}':                                                                         'functions with type only params can not have bodies'
 	}
 	for source, expected in cases {
 		os.write_file(path, source + '\n')!
