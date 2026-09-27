@@ -4819,6 +4819,9 @@ fn main() {
 
 ### Generics
 
+Omitted fields of a generic struct use their declared defaults, including in nested structs.
+
+
 ```v wip
 
 struct Repo[T] {

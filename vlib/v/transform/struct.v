@@ -716,9 +716,27 @@ fn (mut t Transformer) specialize_struct_default_expr(struct_type string, defaul
 	return clone_id
 }
 
-// add_missing_struct_defaults checks if any fields with default values are missing
-// from the struct initialization. This is a hook point for future default-fill logic.
-// Currently returns the node unchanged because StructInfo does not yet store default values.
+// nested_generic_defaults_need_lowering finds omitted value fields whose generic defaults
+// need specialization before the backend emits the enclosing struct's default value.
+fn (t &Transformer) nested_generic_defaults_need_lowering(type_name string, mut visited map[string]bool) bool {
+	if type_name.len == 0 || type_name[0] in [`&`, `?`, `!`, `[`] || type_name.starts_with('map[') || type_name in visited {
+		return false
+	}
+	visited[type_name] = true
+	info := t.lookup_struct_info(type_name) or { return false }
+	_, args, generic := generic_app_parts(type_name)
+	for field in info.fields {
+		if int(field.default_expr) >= 0 {
+			if generic && args.len > 0 { return true }
+			continue
+		}
+		field_type := t.lookup_struct_field_type(type_name, field.name) or { field.typ }
+		if t.nested_generic_defaults_need_lowering(field_type, mut visited) { return true }
+	}
+	return false
+}
+
+// add_missing_struct_defaults lowers omitted defaults, including nested generic fields.
 fn (mut t Transformer) add_missing_struct_defaults(id flat.NodeId, node flat.Node) flat.NodeId {
 	if node.value.len == 0 {
 		return id
@@ -736,14 +754,28 @@ fn (mut t Transformer) add_missing_struct_defaults(id flat.NodeId, node flat.Nod
 		}
 		field_ids << child_id
 	}
-	mut has_missing_default := false
+	mut missing_defaults := map[string]flat.NodeId{}
+	_, generic_args, generic_init := generic_app_parts(node.value)
+	mut lower_generic_defaults := generic_init && generic_args.len > 0
 	for field in info.fields {
-		if field.name !in provided && int(field.default_expr) >= 0 {
-			has_missing_default = true
-			break
+		if field.name in provided { continue }
+		if int(field.default_expr) >= 0 {
+			missing_defaults[field.name] = field.default_expr
+			continue
+		}
+		field_type := t.lookup_struct_field_type(node.value, field.name) or { field.typ }
+		mut visited := map[string]bool{}
+		if t.nested_generic_defaults_need_lowering(field_type, mut visited) {
+			missing_defaults[field.name] = t.a.add_node(flat.Node{
+				kind:  .struct_init
+				value: field_type
+				typ:   field_type
+				pos:   node.pos
+			})
+			lower_generic_defaults = true
 		}
 	}
-	if !has_missing_default {
+	if missing_defaults.len == 0 {
 		for stmt in prelude {
 			t.pending_stmts << stmt
 		}
@@ -773,7 +805,7 @@ fn (mut t Transformer) add_missing_struct_defaults(id flat.NodeId, node flat.Nod
 			}
 		}
 	}
-	if imported_decl && !has_missing_callable_default {
+	if imported_decl && !has_missing_callable_default && !lower_generic_defaults {
 		for stmt in prelude {
 			t.pending_stmts << stmt
 		}
@@ -796,13 +828,16 @@ fn (mut t Transformer) add_missing_struct_defaults(id flat.NodeId, node flat.Nod
 	t.reset_var_types()
 	mut added := false
 	for field in info.fields {
-		if field.name in provided || int(field.default_expr) < 0 {
+		if field.name !in missing_defaults {
 			continue
 		}
 		field_type := t.lookup_struct_field_type(node.value, field.name) or { field.typ }
-		default_id := t.specialize_struct_default_expr(node.value, field.default_expr)
+		default_id := t.specialize_struct_default_expr(node.value, missing_defaults[field.name])
 		default_node := t.a.nodes[int(default_id)]
-		if imported_decl && default_node.kind !in [.fn_literal, .lambda_expr] {
+		if imported_decl && !lower_generic_defaults && default_node.kind !in [
+			.fn_literal,
+			.lambda_expr,
+		] {
 			continue
 		}
 		enum_field_type := t.enum_type_name_for_expected(field_type, info.module)
