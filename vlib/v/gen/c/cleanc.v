@@ -16104,6 +16104,12 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 		.selector {
 			base_id := g.a.child(node, 0)
 			base := g.a.nodes[int(base_id)]
+			if base.kind == .ident {
+				if storage := g.current_module_selector_const_name(base.value, node.value) {
+					g.write(g.const_ident_c_name(storage))
+					return
+				}
+			}
 			if base.kind == .typeof_expr {
 				if node.value == 'name' {
 					g.gen_typeof_name(base)
@@ -16343,19 +16349,6 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 					g.write('.')
 				}
 				g.write(g.field_c_name(base_type0, node.value))
-			} else if node.value == 'len' && base.kind == .ident {
-				base_type := g.tc.resolve_type(base_id)
-				if fixed := array_fixed_type(types.unwrap_pointer(base_type)) {
-					g.write(g.fixed_array_len_value(fixed))
-				} else {
-					raw_type := g.tc.cur_scope.lookup(base.value) or { base_type }
-					g.gen_expr(base_id)
-					if raw_type is types.Pointer {
-						g.write('->len')
-					} else {
-						g.write('.len')
-					}
-				}
 			} else if base.kind == .ident && !g.selector_base_is_local_value(base.value)
 				&& g.selector_base_is_module(base.value, node.value) {
 				mod := g.selector_base_module_for_member(base.value, node.value) or { '' }
@@ -16377,6 +16370,19 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 					g.write(g.cname(full_qname))
 				} else {
 					g.write(g.cname('${short_mod}.${node.value}'))
+				}
+			} else if node.value == 'len' && base.kind == .ident {
+				base_type := g.tc.resolve_type(base_id)
+				if fixed := array_fixed_type(types.unwrap_pointer(base_type)) {
+					g.write(g.fixed_array_len_value(fixed))
+				} else {
+					raw_type := g.tc.cur_scope.lookup(base.value) or { base_type }
+					g.gen_expr(base_id)
+					if raw_type is types.Pointer {
+						g.write('->len')
+					} else {
+						g.write('.len')
+					}
 				}
 			} else if base.kind == .selector && base.children_count > 0 && g.is_module_qualified_enum(base) {
 				inner_base := g.a.child_node(&base, 0)

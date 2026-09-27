@@ -6,6 +6,7 @@ struct Record {
 
 fn test_current_module_qualified_constant() {
 	assert answer.value == 42
+	assert answer.len == 7
 	assert cached_value() == 42
 }
 
