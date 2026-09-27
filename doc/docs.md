@@ -7255,7 +7255,8 @@ directive: V writes the bytes to a file, assembles a small `.S` source that
 includes it, and links the resulting object next to the generated C, so the C
 compiler never has to parse the bytes as an array initializer. That happens when
 the build links natively with GCC, Clang or MinGW, or with TCC for non-macOS
-targets when a GCC or Clang compatible compiler is installed. Generated C or
+targets when a GCC or Clang compatible compiler is installed. On ELF targets,
+the payload object marks its stack as non-executable. Generated C or
 object output (`-o file.c`, `-o file.o`, `-generate-c-project`), MSVC, iOS and
 WebAssembly targets, and a Windows target built on another OS keep the array form.
 `-keepc`, an explicit `-b c`, and `-dump-c-flags` also keep the array form so
