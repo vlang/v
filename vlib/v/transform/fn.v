@@ -61,6 +61,30 @@ fn (t &Transformer) resolve_call_name(node flat.Node) string {
 					return qname
 				}
 			}
+			// Top-level script expressions may not have a recorded checker call.
+			if !isnil(t.tc) && t.a.has_vsh_source && t.cur_module == 'main'
+				&& t.cur_file.ends_with('.vsh') {
+				if declared_file := t.tc.fn_type_files[name] {
+					if source_file := t.a.source_files[node.pos.id] {
+						if declared_file == source_file.name {
+							return name
+						}
+					}
+				}
+				for imported in t.tc.file_selective_imports[file_import_key(t.cur_file, name)] or {
+					[]string{}
+				} {
+					if t.is_known_fn_name(imported) {
+						return imported
+					}
+				}
+				if name !in t.tc.v_fn_semantic_names {
+					qualified := 'os.${name}'
+					if t.is_known_fn_name(qualified) {
+						return qualified
+					}
+				}
+			}
 			// Try unqualified name after current-module authority.
 			if t.is_known_fn_name(name) {
 				return name
@@ -10544,6 +10568,11 @@ fn (mut t Transformer) try_lower_array_method_call(call_id flat.NodeId, node fla
 		}
 	}
 	base_node := t.a.nodes[int(base_id)]
+	if unwrapped := t.or_expr_receiver_unwrapped_type(base_id) {
+		if unwrapped.starts_with('[]') || t.is_fixed_array_type(unwrapped) {
+			base_type = unwrapped
+		}
+	}
 	if base_node.kind == .call {
 		concrete_base_type := t.concrete_generic_call_return_type(base_id, base_node)
 		if concrete_base_type.starts_with('[]') {
@@ -16014,6 +16043,19 @@ fn (mut t Transformer) is_method_call(node flat.Node) bool {
 fn (t &Transformer) get_call_return_type(id flat.NodeId, node flat.Node) string {
 	if ret := t.fn_value_call_return_type(node) {
 		return t.call_return_type_name(ret, node)
+	}
+	if !isnil(t.tc) && t.a.has_vsh_source && t.cur_module == 'main'
+		&& t.cur_file.ends_with('.vsh')
+		&& node.children_count > 0 {
+		callee := t.a.child_node(&node, 0)
+		if callee.kind == .ident {
+			selected := t.resolve_call_name(node)
+			if selected != callee.value {
+				if ret := t.tc.fn_ret_types[selected] {
+					return t.call_return_type_name(t.semantic_type_name(ret), node)
+				}
+			}
+		}
 	}
 	if ret := t.current_generic_receiver_call_return_type(node) {
 		return ret

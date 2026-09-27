@@ -3435,7 +3435,8 @@ fn (mut tc TypeChecker) check_call(id flat.NodeId, node flat.Node) {
 		}
 		callee_id := tc.a.child(&node, 0)
 		callee := tc.a.child_node(&node, 0)
-		if callee.kind == .ident && tc.source_file_declares_bare_fn(callee.value, node.pos.id) {
+		if callee.kind == .ident && !tc.vsh_script_file()
+			&& tc.source_file_declares_bare_fn(callee.value, node.pos.id) {
 			if _ := tc.selective_import_candidates(callee.value) {
 				for i in 1 .. node.children_count {
 					tc.check_node(tc.call_arg_value(tc.a.child(&node, i)))
