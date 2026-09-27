@@ -19,3 +19,29 @@ fn test_generic_array_call_membership() {
 	assert arrays.flatten(app.rows).index('÷') == 3
 	assert arrays.flatten(app.rows).index('x') == -1
 }
+
+fn membership_operator(mut calls []string) string {
+	calls << 'needle'
+	return '+'
+}
+
+fn membership_rows[T](mut calls []string, rows [][]T) [][]T {
+	calls << 'rows'
+	return rows
+}
+
+fn test_generic_array_membership_stages_concrete_needles_in_source_order() {
+	app := MembershipCalculator{}
+	mut calls := []string{}
+	assert membership_operator(mut calls) in arrays.flatten(app.rows)
+	assert calls == ['needle']
+	calls.clear()
+	assert membership_operator(mut calls) in arrays.flatten(membership_rows(mut calls, app.rows))
+	assert calls == ['needle', 'rows']
+	calls.clear()
+	assert membership_operator(mut calls) !in arrays.flatten(membership_rows(mut calls, [['x']]))
+	assert calls == ['needle', 'rows']
+	calls.clear()
+	assert arrays.flatten(membership_rows(mut calls, app.rows)).contains(membership_operator(mut calls))
+	assert calls == ['rows', 'needle']
+}
