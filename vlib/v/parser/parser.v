@@ -8851,7 +8851,7 @@ fn (mut p Parser) for_in_parts(key_id flat.NodeId, val_id flat.NodeId, first_is_
 			p.record_for_mut_diagnostic(key_id, 'variable in range `for` cannot be mut')
 		} else if second_is_mut {
 			p.record_for_mut_diagnostic(val_id, 'variable in range `for` cannot be mut')
-		} else if int(val_id) >= 0 {
+		} else if int(val_id) >= 0 && !p.prefs.is_fmt {
 			key := p.a.node(key_id)
 			p.record_diagnostic_span('cannot declare index variable with range `for`', key.pos.offset,
 				key.pos.end)

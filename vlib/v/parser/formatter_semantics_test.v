@@ -11,6 +11,7 @@ fn test_formatter_preserves_syntax_without_semantic_diagnostics() {
 		'interface Reader { read[T](value T) T }':                           'non-generic interface `Reader` cannot define a generic method'
 		'fn loops(values []int) { for mut index, _ in values { index++ } }': 'index of array or key of map cannot be mutated'
 		'fn loops() { for mut index in 0 .. 3 { index++ } }':                'variable in range `for` cannot be mut'
+		'fn loops() { for index, value in 0 .. 3 { _ = value } }':           'cannot declare index variable with range `for`'
 	}
 	for source, expected in cases {
 		os.write_file(path, source + '\n')!
