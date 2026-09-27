@@ -14678,9 +14678,20 @@ fn (mut tc TypeChecker) collect_returned_alias_sources_in_scope(id flat.NodeId, 
 		}
 		return
 	}
-	has_nested_scope := node.kind in [.block, .for_stmt, .for_in_stmt, .match_branch]
+	has_nested_scope := node.kind in [.block, .for_stmt, .for_in_stmt, .match_branch, .select_branch]
 	if has_nested_scope {
 		tc.push_scope()
+	}
+	if node.kind == .select_branch && node.value == 'recv' && node.children_count >= 2 {
+		binding_id := tc.a.child(node, 0)
+		binding := tc.a.node(binding_id)
+		if binding.kind == .ident && binding.value != '_' {
+			if typ := tc.cached_expr_type(binding_id) {
+				if fn_type_from_type(typ) != none {
+					tc.cur_scope.insert(binding.value, typ)
+				}
+			}
+		}
 	}
 	if node.kind == .for_in_stmt && node.children_count >= 2 {
 		for i in 0 .. 2 {
