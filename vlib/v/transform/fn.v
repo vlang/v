@@ -62,8 +62,8 @@ fn (t &Transformer) resolve_call_name(node flat.Node) string {
 				}
 			}
 			// Top-level script expressions may not have a recorded checker call.
-			if !isnil(t.tc) && t.a.has_vsh_source && t.cur_file.ends_with('.vsh')
-				&& name !in t.tc.v_fn_semantic_names {
+			if !isnil(t.tc) && t.a.has_vsh_source && t.cur_module == 'main'
+				&& t.cur_file.ends_with('.vsh') {
 				for imported in t.tc.file_selective_imports[file_import_key(t.cur_file, name)] or {
 					[]string{}
 				} {
@@ -71,9 +71,11 @@ fn (t &Transformer) resolve_call_name(node flat.Node) string {
 						return imported
 					}
 				}
-				qualified := 'os.${name}'
-				if t.is_known_fn_name(qualified) {
-					return qualified
+				if name !in t.tc.v_fn_semantic_names {
+					qualified := 'os.${name}'
+					if t.is_known_fn_name(qualified) {
+						return qualified
+					}
 				}
 			}
 			// Try unqualified name after current-module authority.
@@ -16030,6 +16032,19 @@ fn (mut t Transformer) is_method_call(node flat.Node) bool {
 fn (t &Transformer) get_call_return_type(id flat.NodeId, node flat.Node) string {
 	if ret := t.fn_value_call_return_type(node) {
 		return t.call_return_type_name(ret, node)
+	}
+	if !isnil(t.tc) && t.a.has_vsh_source && t.cur_module == 'main'
+		&& t.cur_file.ends_with('.vsh')
+		&& node.children_count > 0 {
+		callee := t.a.child_node(&node, 0)
+		if callee.kind == .ident {
+			selected := t.resolve_call_name(node)
+			if selected != callee.value {
+				if ret := t.tc.fn_ret_types[selected] {
+					return t.call_return_type_name(t.semantic_type_name(ret), node)
+				}
+			}
+		}
 	}
 	if ret := t.current_generic_receiver_call_return_type(node) {
 		return ret

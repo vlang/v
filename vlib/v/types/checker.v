@@ -6882,6 +6882,9 @@ fn (tc &TypeChecker) resolve_selective_import_symbol(name string) ?string {
 			if !key.ends_with(suffix) {
 				continue
 			}
+			if tc.file_modules[key.all_before_last('\n')] != tc.cur_module {
+				continue
+			}
 			for candidate in fallback_candidates {
 				if !tc.fn_signature_known(candidate) && candidate !in tc.fn_ret_types && candidate !in tc.fn_param_types {
 					continue
@@ -6913,6 +6916,9 @@ pub fn (tc &TypeChecker) resolve_any_selective_import_fn(name string) ?string {
 	suffix := '\n${name}'
 	for key, candidates in tc.file_selective_imports {
 		if !key.ends_with(suffix) {
+			continue
+		}
+		if tc.file_modules[key.all_before_last('\n')] != tc.cur_module {
 			continue
 		}
 		for candidate in candidates {

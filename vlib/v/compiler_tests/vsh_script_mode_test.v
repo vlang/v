@@ -66,16 +66,21 @@ pub fn message() string {
 pub fn ls(path string) ![]string {
 	return [path]
 }
+
+pub fn free(values []int) ![]string {
+	return values.map(it.str())
+}
 ") or { panic(err) }
 	script := os.join_path(root, 'import_module.vsh')
-	os.write_file(script, 'import helper { ls }
+	os.write_file(script, 'import helper { ls, free }
 
 println(helper.message())
 println(ls("custom")!.filter(it.len > 0).join(","))
+println(free([2, 3])!.filter(it == "3"))
 ') or { panic(err) }
 	result := os.execute('${v3_bin} -gc none -silent ${script}')
 	assert result.exit_code == 0, result.output
-	assert result.output.split_into_lines() == ['from helper', 'custom'], result.output
+	assert result.output.split_into_lines() == ['from helper', 'custom', "['3']"], result.output
 }
 
 // Script mode is a last resort: a declaration in the script itself keeps its
