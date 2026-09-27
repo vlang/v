@@ -52,6 +52,9 @@ of memory. On Linux it uses the lower of physical memory and the active cgroup m
 Set `VJOBS` to a positive value to explicitly choose a different worker count when your test
 workload and machine capacity are known.
 
+Skipped test paths are resolved before comparison, so selecting a file through a symlink
+does not bypass its platform or architecture exclusion.
+
 ## `v test vlib/v/tests`:
 
 This folder contains _test.v files, testing the different features of the V

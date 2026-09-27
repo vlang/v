@@ -105,6 +105,7 @@ fn automatic_test_jobs(cpu_jobs int, total_memory u64, configured_jobs int) int 
 	return jobs
 }
 
+@[markused]
 fn cgroup_memory_limit_from_contents(cgroups string, mountinfo string) !u64 {
 	mut v2_path := ''
 	mut v1_memory_path := ''
@@ -219,6 +220,7 @@ fn cgroup_memory_limit_value(content string) !u64 {
 	return limit
 }
 
+@[markused]
 fn effective_test_memory(physical_memory u64, cgroup_memory_limit u64) u64 {
 	if cgroup_memory_limit > 0 && cgroup_memory_limit < physical_memory {
 		return cgroup_memory_limit
@@ -648,8 +650,10 @@ pub fn (mut ts TestSession) add(file string) {
 	ts.files << file
 }
 
+// test processes the selected files, matching exclusions by their resolved paths.
 pub fn (mut ts TestSession) test() {
 	unbuffer_stdout()
+	ts.skip_files = ts.skip_files.map(os.real_path)
 	// Ensure that .tmp.c files generated from compiling _test.v files,
 	// are easy to delete at the end, *without* affecting the existing ones.
 	current_wd := os.getwd()
