@@ -2970,8 +2970,7 @@ fn (mut t Transformer) lower_array_membership_expr(base_id flat.NodeId, needle_i
 	}
 	elem_type = t.resolved_membership_element_type(base, elem_type)
 	if receiver_first {
-		transformed_needle := t.transform_expr_for_type(needle_id, elem_type)
-		needle = t.stable_transformed_expr_for_reuse(transformed_needle, elem_type, 'contains_needle')
+		needle = t.stable_membership_needle(needle_id, elem_type, 'contains_needle', false)
 		t.drain_pending(mut prefix)
 	} else {
 		mut base_pending := []flat.NodeId{}
@@ -2980,12 +2979,8 @@ fn (mut t Transformer) lower_array_membership_expr(base_id flat.NodeId, needle_i
 		// If the container hoists a value branch whose prelude can mutate a syntactically stable
 		// needle (`x in (match node { First { change(mut x)! } ... })`), snapshot the needle's
 		// source-order value so the membership loop reads it before that prelude runs.
-		transformed_needle := t.transform_expr_for_type(needle_id, elem_type)
-		needle = if t.operand_hoists_value_branch(base_id) {
-			t.snapshot_transformed_expr_for_reuse(transformed_needle, elem_type, 'contains_needle')
-		} else {
-			t.stable_transformed_expr_for_reuse(transformed_needle, elem_type, 'contains_needle')
-		}
+		needle = t.stable_membership_needle(needle_id, elem_type, 'contains_needle',
+			t.operand_hoists_value_branch(base_id))
 		t.drain_pending(mut prefix)
 		prefix << base_pending
 	}
@@ -3054,12 +3049,8 @@ fn (mut t Transformer) lower_array_index_expr(base_id flat.NodeId, needle_id fla
 		t.drain_pending(mut base_pending)
 	}
 	elem_type = t.resolved_membership_element_type(base, elem_type)
-	transformed_needle := t.transform_expr_for_type(needle_id, elem_type)
-	needle = if !receiver_first && t.operand_hoists_value_branch(base_id) {
-		t.snapshot_transformed_expr_for_reuse(transformed_needle, elem_type, 'index_needle')
-	} else {
-		t.stable_transformed_expr_for_reuse(transformed_needle, elem_type, 'index_needle')
-	}
+	needle = t.stable_membership_needle(needle_id, elem_type, 'index_needle',
+		!receiver_first && t.operand_hoists_value_branch(base_id))
 	t.drain_pending(mut prefix)
 	if !receiver_first {
 		// The base was transformed first for its element type, but runs after the needle.
@@ -3131,12 +3122,8 @@ fn (mut t Transformer) lower_array_last_index_expr(base_id flat.NodeId, needle_i
 		t.drain_pending(mut base_pending)
 	}
 	elem_type = t.resolved_membership_element_type(base, elem_type)
-	transformed_needle := t.transform_expr_for_type(needle_id, elem_type)
-	needle = if !receiver_first && t.operand_hoists_value_branch(base_id) {
-		t.snapshot_transformed_expr_for_reuse(transformed_needle, elem_type, 'last_index_needle')
-	} else {
-		t.stable_transformed_expr_for_reuse(transformed_needle, elem_type, 'last_index_needle')
-	}
+	needle = t.stable_membership_needle(needle_id, elem_type, 'last_index_needle',
+		!receiver_first && t.operand_hoists_value_branch(base_id))
 	t.drain_pending(mut prefix)
 	if !receiver_first {
 		prefix << base_pending
@@ -3190,6 +3177,24 @@ fn (mut t Transformer) stable_array_expr_for_membership(id flat.NodeId, raw_type
 		storage_type = transformed_type
 	}
 	return t.stable_transformed_expr_for_reuse(expr, storage_type, 'in_arr')
+}
+
+fn (mut t Transformer) stable_membership_needle(id flat.NodeId, elem_type string, prefix string, snapshot bool) flat.NodeId {
+	if t.is_interface_type(elem_type) && !t.membership_type_is_pointer(elem_type) {
+		// Resolve a generic needle's concrete type before equality boxes it as an interface.
+		// Boxing the original expression can retain an unresolved generic payload type.
+		return if snapshot {
+			t.snapshot_expr_for_reuse(id)
+		} else {
+			t.stable_expr_for_reuse(id)
+		}
+	}
+	expr := t.transform_expr_for_type(id, elem_type)
+	return if snapshot {
+		t.snapshot_transformed_expr_for_reuse(expr, elem_type, prefix)
+	} else {
+		t.stable_transformed_expr_for_reuse(expr, elem_type, prefix)
+	}
 }
 
 fn (t &Transformer) resolved_membership_element_type(base flat.NodeId, fallback string) string {
