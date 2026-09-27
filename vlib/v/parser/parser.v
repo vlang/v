@@ -12701,17 +12701,33 @@ fn (mut p Parser) call_args(fn_expr flat.NodeId) flat.NodeId {
 
 fn (p &Parser) is_json_decode_call(id flat.NodeId) bool {
 	callee := p.a.node(id)
-	if callee.kind != .selector || callee.value != 'decode' || callee.children_count == 0 {
+	if callee.value != 'decode' {
 		return false
 	}
-	base := p.a.child_node(callee, 0)
-	if base.kind != .ident || p.is_local_binding(base.value) {
+	mut alias := ''
+	if callee.kind == .selector && callee.children_count > 0 {
+		base := p.a.child_node(callee, 0)
+		if base.kind != .ident || p.is_local_binding(base.value) {
+			return false
+		}
+		alias = base.value
+	} else if callee.kind != .ident || p.is_local_binding('decode') {
 		return false
 	}
 	for node in p.a.nodes {
-		if node.kind == .import_decl && node.pos.id == p.cur_file_id
-			&& node.value == 'json' && node.typ == base.value {
-			return true
+		if node.kind != .import_decl || node.pos.id != p.cur_file_id || node.value != 'json' {
+			continue
+		}
+		if alias != '' {
+			if node.typ == alias {
+				return true
+			}
+			continue
+		}
+		for i in 0 .. node.children_count {
+			if p.a.child_node(&node, i).value == 'decode' {
+				return true
+			}
 		}
 	}
 	return false

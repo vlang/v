@@ -9,6 +9,7 @@ fn test_json_array_type_arguments_are_not_array_values() {
 	for source in [
 		'import json\nfn main() { _ := json.decode([]string, "[]") or { []string{} } }',
 		'import json as codec\nfn main() { _ := codec.decode([][]int, "[]") or { [][]int{} } }',
+		'import json { decode }\nfn main() { _ := decode([]string, "[]") or { []string{} } }',
 	] {
 		os.write_file(path, source)!
 		mut p := Parser.new(pref.new_preferences())
@@ -19,6 +20,7 @@ fn test_json_array_type_arguments_are_not_array_values() {
 		'fn decode(a []int) {}\nfn main() { decode([]int) }',
 		'import json\nfn main() { json := Decoder{}\n json.decode([]int) }',
 		'import json\nfn main() { _ := json.decode([]int, []string) }',
+		'import json { decode }\nfn main() { decode := fn (a []int) {}; decode([]int) }',
 	] {
 		os.write_file(path, source)!
 		mut p := Parser.new(pref.new_preferences())
