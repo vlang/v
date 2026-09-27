@@ -3943,6 +3943,9 @@ This ensures that if a new enum field is added, it's handled everywhere in the c
 
 Enum fields can re-use reserved keywords:
 
+The `@` escape is also accepted in qualified and shorthand member references, including
+comparisons, assignments, struct defaults, and `match` branches.
+
 ```v
 enum Color {
 	none
@@ -8780,6 +8783,8 @@ Note that such redeclarations only need to have enough details about the
 functions/structs that you want to use.
 Note also that they *do not have* to be complete, unlike the ones in the .h files.
 
+
+An escaped C field name such as `@type` also matches a binding declared with the plain name `type`.
 
 **C. struct redeclarations**
 For example, if a struct has 3 fields on the C side, but you want to only

@@ -9075,7 +9075,7 @@ fn (tc &TypeChecker) enum_value_matches(value string, enum_name string) bool {
 // enum_has_field converts enum has field data for types.
 fn (tc &TypeChecker) enum_has_field(enum_name string, field string) bool {
 	fields := tc.enum_fields[enum_name] or { return false }
-	return field in fields
+	return escaped_identifier_name(field) in fields
 }
 
 // resolve_enum_name resolves resolve enum name information for types.
@@ -11997,6 +11997,11 @@ pub fn (tc &TypeChecker) struct_fields_for_type(struct_name string) []StructFiel
 
 @[direct_array_access]
 fn (tc &TypeChecker) struct_field_type(struct_name string, field_name string) ?Type {
+	if field_name.starts_with('@') {
+		if typ := tc.struct_field_type(struct_name, escaped_identifier_name(field_name)) {
+			return typ
+		}
+	}
 	if !isnil(tc.type_cache) {
 		cache := tc.type_cache
 		slot := struct_field_cache_slot(struct_name, field_name)
