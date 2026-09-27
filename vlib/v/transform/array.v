@@ -3097,7 +3097,16 @@ fn (mut t Transformer) lower_array_map_call(node flat.Node, fn_node flat.Node, b
 	map_result_retains_elem_address := mapper_takes_elem_address && t.array_map_result_can_retain_element_address(result_elem_type) && t.array_map_expr_result_retains_element_address(map_source_id, 'it')
 	map_side_effect_retains_elem_address := mapper_takes_elem_address && t.array_map_expr_side_effect_retains_element_address(map_source_id, 'it')
 	source_needs_drop := !map_result_retains_elem_address && !map_side_effect_retains_elem_address && !t.expr_can_take_address(base_id) && !isnil(t.tc) && t.tc.ownership_type_requires_destruction(t.tc.parse_type(base_type))
-	base := t.stable_transformed_expr_for_reuse(t.transform_expr(base_id), base_type, 'map_source')
+	// Element pointers that escape a fixed map need storage beyond the source frame.
+	// Keep the result fixed, but copy the source to heap-backed array data.
+	heap_backed_source := fixed && (map_result_retains_elem_address || map_side_effect_retains_elem_address)
+	source_type := if heap_backed_source { '[]${elem_type}' } else { base_type }
+	source_expr := if heap_backed_source {
+		t.fixed_array_value_to_array(base_id, base_type, source_type)
+	} else {
+		t.transform_expr(base_id)
+	}
+	base := t.stable_transformed_expr_for_reuse(source_expr, source_type, 'map_source')
 	mut prefix := []flat.NodeId{}
 	t.drain_pending(mut prefix)
 	for stmt in callback_setup {

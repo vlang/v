@@ -48,3 +48,12 @@ fn test_fixed_array_map_evaluates_source_once() {
 	assert values == [15, 16]!
 	assert factory.calls == 1
 }
+
+fn fixed_array_element_refs(source [1]int) [1]&int {
+	return source.map(&it)
+}
+
+fn test_fixed_array_map_retains_element_address() {
+	refs := fixed_array_element_refs([42]!)
+	assert *refs[0] == 42
+}
