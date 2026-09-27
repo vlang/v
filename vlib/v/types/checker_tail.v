@@ -4735,7 +4735,7 @@ fn (mut tc TypeChecker) record_uninferred_generic_method_type(id flat.NodeId, no
 	}
 	if callee.kind == .selector && callee.children_count > 0 && param_texts.len > 0 {
 		receiver_id := tc.a.child(callee, 0)
-		mut receiver_type := tc.resolve_type(receiver_id)
+		mut receiver_type := tc.resolve_generic_call_arg_type(receiver_id)
 		if type_contains_unknown(receiver_type) {
 			// A nested receiver can be visited before its selector has recorded a
 			// contextual type. Give it a chance to resolve, but do not diagnose failed
@@ -16211,7 +16211,8 @@ fn (mut tc TypeChecker) specialized_plain_generic_call_info(node flat.Node, info
 	}
 	generic_params := tc.fn_generic_params[info.name] or { return info }
 	param_texts := tc.fn_param_type_texts[info.name] or { return info }
-	if generic_params.len == 0 || node.children_count <= 1
+	if generic_params.len == 0 || node.children_count == 0
+		|| (node.children_count == 1 && !info.has_receiver)
 		|| tc.call_has_explicit_generic_args(node) {
 		return info
 	}
@@ -16227,13 +16228,14 @@ fn (mut tc TypeChecker) specialized_plain_generic_call_info(node flat.Node, info
 		fn_node := tc.a.child_node(&node, 0)
 		if fn_node.kind == .selector && fn_node.children_count > 0 {
 			recv_id := tc.a.child(fn_node, 0)
-			resolved_receiver := tc.resolve_type(recv_id)
+			resolved_receiver := tc.resolve_generic_call_arg_type(recv_id)
 			// resolve_generic_struct_method has already substituted receiver type
 			// arguments. Keep that declared specialization for aliases such as
 			// `type Vec4 = vec.Vec4[f32]`; a short struct initializer can otherwise
 			// make the expression cache look like `Vec4[int]` from its literal fields.
 			actual := if info.name.contains('[') && info.params.len > 0
-				&& !generic_semantic_type_has_placeholder(info.params[0]) {
+				&& !generic_semantic_type_has_placeholder(info.params[0])
+				&& !tc.type_text_has_generic_placeholder(info.params[0].name()) {
 				info.params[0]
 			} else {
 				resolved_receiver
@@ -16377,6 +16379,20 @@ fn (mut tc TypeChecker) specialized_plain_generic_call_info(node flat.Node, info
 
 fn (mut tc TypeChecker) resolve_generic_call_arg_type(id flat.NodeId) Type {
 	node := tc.a.node(id)
+	if node.kind == .or_expr && node.children_count > 0 {
+		inner := tc.resolve_generic_call_arg_type(tc.a.child(node, 0))
+		unwrapped := if inner is ResultType {
+			inner.base_type
+		} else if inner is OptionType {
+			inner.base_type
+		} else {
+			inner
+		}
+		if !type_contains_unknown(unwrapped) && !generic_semantic_type_has_placeholder(unwrapped) {
+			tc.remember_expr_type(id, unwrapped)
+			return unwrapped
+		}
+	}
 	if node.kind in [.paren, .expr_stmt] && node.children_count > 0 {
 		child_id := tc.a.child(node, 0)
 		child_type := tc.resolve_generic_call_arg_type(child_id)
@@ -16591,14 +16607,23 @@ pub fn (tc &TypeChecker) fn_signature_type(name string, typ string) Type {
 	return tc.parse_fn_signature_type(name, typ)
 }
 
-// generic_param_type_text resolves an import alias in declared generic parameter
-// text through the imports of the declaring file, which can bind the alias
-// (`import genstream as csv`) differently from the calling file.
+// generic_param_type_text resolves a declared type base in the declaration's
+// module and imports, which can differ from those at the generic call site.
 fn (tc &TypeChecker) generic_param_type_text(text string) string {
-	if tc.generic_decl_file.len > 0 && tc.generic_decl_file != tc.cur_file {
-		return tc.resolve_imported_type_text_in_file(text, tc.generic_decl_file)
+	file := if tc.generic_decl_file.len > 0 { tc.generic_decl_file } else { tc.cur_file }
+	resolved := tc.resolve_imported_type_text_in_file(text, file)
+	if resolved.contains('.') {
+		return resolved
 	}
-	return tc.resolve_imported_type_text(text)
+	if selected := tc.resolve_selective_import_type_symbol_in_file(resolved, file) {
+		return selected
+	}
+	module_name := tc.file_modules[file] or { tc.cur_module }
+	qualified := qualify_decl_name_in_module(resolved, module_name)
+	if tc.type_symbol_known(qualified) {
+		return qualified
+	}
+	return resolved
 }
 
 fn (mut tc TypeChecker) infer_generic_type_text_from_type(param_text string, actual Type, generic_params []string, mut inferred map[string]string) {
@@ -16945,8 +16970,9 @@ fn (tc &TypeChecker) infer_generic_type_text_from_text(param_text string, actual
 	param_base, param_args, param_is_generic := generic_type_application_parts(clean)
 	actual_base, actual_args, actual_is_generic := generic_type_application_parts(actual)
 	if param_is_generic || actual_is_generic {
+		decl_base := tc.generic_param_type_text(param_base)
 		if !param_is_generic || !actual_is_generic || param_args.len != actual_args.len
-			|| !tc.generic_type_base_matches(param_base, actual_base) {
+			|| !tc.generic_type_base_matches(decl_base, actual_base) {
 			return
 		}
 		for i in 0 .. param_args.len {
