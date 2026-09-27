@@ -660,7 +660,7 @@ pub fn readlink(path string) !string {
 }
 
 pub fn link(origin string, target string) ! {
-	res := C.CreateHardLinkW(target.to_wide(), origin.to_wide(), C.NULL)
+	res := C.CreateHardLinkW(target.to_wide(), origin.to_wide(), unsafe { nil })
 	// 1 = success, != 1 failure => https://stackoverflow.com/questions/33010440/createsymboliclink-on-windows-10
 	if res != 1 {
 		return error(get_error_msg(int(C.GetLastError())))

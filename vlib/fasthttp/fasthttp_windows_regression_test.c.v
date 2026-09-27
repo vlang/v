@@ -18,6 +18,50 @@ fn test_accept_wrapper_preserves_pointer_sized_socket() {
 	assert sizeof(client_fd) == sizeof(usize)
 }
 
+fn iocp_timeout_sweep_closes_connection(read_start u64, write_start u64, active bool) bool {
+	mut conn := &IocpConn{
+		server: &Server{}
+		// The closing flag records the timeout decision without a real socket.
+		fd:     iocp_invalid_socket
+	}
+	conn.read_start.store(read_start)
+	conn.write_start.store(write_start)
+	conn.request_active.store(active)
+	mut registry := IocpConnRegistry{}
+	registry.add(conn)
+	registry.sweep_timed_out_io(1)
+	closing := conn.is_closing()
+	registry.remove(conn)
+	free_conn_storage(mut conn)
+	return closing
+}
+
+fn test_timeout_sweep_keeps_newer_read_timestamp() {
+	// Model a worker updating its timestamp after the sweep samples the clock.
+	future := time.sys_mono_now() + u64(time.hour)
+	assert !iocp_timeout_sweep_closes_connection(future, 0, false)
+}
+
+fn test_timeout_sweep_keeps_newer_write_timestamp() {
+	future := time.sys_mono_now() + u64(time.hour)
+	assert !iocp_timeout_sweep_closes_connection(0, future, false)
+}
+
+fn test_timeout_sweep_still_closes_expired_io() {
+	future := time.sys_mono_now() + u64(time.hour)
+	// A nonzero timestamp of 1 has expired against the one-nanosecond timeout.
+	assert iocp_timeout_sweep_closes_connection(1, 0, false)
+	assert iocp_timeout_sweep_closes_connection(0, 1, false)
+	assert iocp_timeout_sweep_closes_connection(1, future, false)
+	assert iocp_timeout_sweep_closes_connection(future, 1, false)
+}
+
+fn test_timeout_sweep_preserves_inactive_io_and_active_requests() {
+	assert !iocp_timeout_sweep_closes_connection(0, 0, false)
+	assert !iocp_timeout_sweep_closes_connection(1, 0, true)
+	assert iocp_timeout_sweep_closes_connection(0, 1, true)
+}
+
 const iocp_gc_large_body_size = 8 * 1024 * 1024
 const iocp_gc_max_response_header_size = 8192
 const iocp_gc_write_payload_size = 4096

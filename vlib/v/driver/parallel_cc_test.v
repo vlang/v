@@ -32,6 +32,47 @@ fn test_split_v3_parallel_c_source_uses_safe_unit_markers() {
 	assert units[1].contains('void second(void) {}')
 }
 
+fn test_v3_parallel_c_cache_source_identity_tracks_generated_content() {
+	cache_root := os.join_path(os.vtmp_dir(), 'parallel_cc_identity_test')
+	body := 'void body(void) {}\n'
+	first := v3_parallel_c_cached_source_path(cache_root, body, false)
+	assert first == v3_parallel_c_cached_source_path(cache_root, body, false)
+	assert first != v3_parallel_c_cached_source_path(cache_root, body + '// changed\n', false)
+	assert first != v3_parallel_c_cached_source_path(cache_root, body, true)
+}
+
+fn test_v3_parallel_c_cached_unit_includes_stable_header_path() {
+	header_path := '/cache/headers/shared.h'
+	body := 'void body(void) {}\n'
+	unit := v3_parallel_c_unit_source(header_path, body, false, false)
+	assert unit.contains('#include "${header_path}"')
+	assert unit.ends_with(body)
+	owner := v3_parallel_c_unit_source(header_path, body, true, false)
+	assert owner.contains('#define V_PARALLEL_CC_OUT_0 1')
+	assert !owner.contains('#include "${header_path}"')
+	assert !v3_parallel_c_unit_source('', body, false, false).contains('#include')
+}
+
+fn test_publish_v3_parallel_c_cache_object_copies_before_replacing() {
+	root := os.join_path(os.vtmp_dir(), 'parallel_cc_publish_test_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	build_dir := os.join_path_single(root, 'build')
+	cache_dir := os.join_path_single(root, 'cache')
+	os.mkdir_all(build_dir)!
+	os.mkdir_all(cache_dir)!
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	local_object := os.join_path_single(build_dir, 'unit.o')
+	cache_object := os.join_path_single(cache_dir, 'cached.o')
+	os.write_file(local_object, 'complete object')!
+	os.write_file(cache_object, 'old object')!
+	publish_v3_parallel_c_cache_object(local_object, cache_object)!
+	assert os.read_file(cache_object)! == 'complete object'
+	assert os.read_file(local_object)! == 'complete object'
+	assert os.ls(cache_dir)! == ['cached.o']
+}
+
 fn test_v3_parallel_cc_compiles_and_runs_multiple_c_units() {
 	$if bsd || linux {
 		root := os.join_path(os.vtmp_dir(), 'v3_parallel_cc_${os.getpid()}')
@@ -45,8 +86,8 @@ fn test_v3_parallel_cc_compiles_and_runs_multiple_c_units() {
 		output := os.join_path_single(root, 'main')
 		os.write_file(header, 'int v3_parallel_implementation(void) { return 21; }\n')!
 		os.write_file(source, '#insert "@DIR/implementation.h"\n\nfn C.v3_parallel_implementation() int\n\nfn twice(value int) int { return value * 2 }\nfn main() { println(twice(C.v3_parallel_implementation())) }\n')!
-		build := cmdexec.run(v3_parallel_cc_test_compiler(), ['-parallel-cc', '-nocache', '-showcc',
-			'-o', output, source])
+		build := cmdexec.run(v3_parallel_cc_test_compiler(), ['-parallel-cc', '-cc', 'cc', '-nocache',
+			'-showcc', '-o', output, source])
 		assert build.exit_code == 0, build.output
 		assert build.output.contains('unit_0.c')
 		assert build.output.contains('unit_1.c')
@@ -70,8 +111,8 @@ fn test_v3_parallel_cc_keeps_test_binaries_in_one_unit() {
 		// The harness counters `assert` writes are `static` definitions inside the
 		// program body, so a split unit that only references them would not
 		// compile. The build has to stay in one translation unit.
-		build := cmdexec.run(v3_parallel_cc_test_compiler(), ['-parallel-cc', '-nocache', '-showcc',
-			'-o', output, source])
+		build := cmdexec.run(v3_parallel_cc_test_compiler(), ['-parallel-cc', '-cc', 'cc', '-nocache',
+			'-showcc', '-o', output, source])
 		assert build.exit_code == 0, build.output
 		assert !build.output.contains('unit_1.c'), build.output
 		run_result := cmdexec.run(output, [])
@@ -92,8 +133,8 @@ fn test_v3_parallel_cc_does_not_shadow_user_parallel_header() {
 		output := os.join_path_single(root, 'main')
 		os.write_file(header, '#ifndef V3_USER_PARALLEL_H\n#define V3_USER_PARALLEL_H\nstatic inline int v3_user_parallel_header_value(void) { return 42; }\n#endif\n')!
 		os.write_file(source, '#flag -I @DIR\n#include "parallel.h"\n\nfn C.v3_user_parallel_header_value() int\n\nfn main() { println(C.v3_user_parallel_header_value()) }\n')!
-		build := cmdexec.run(v3_parallel_cc_test_compiler(), ['-parallel-cc', '-nocache', '-showcc',
-			'-o', output, source])
+		build := cmdexec.run(v3_parallel_cc_test_compiler(), ['-parallel-cc', '-cc', 'cc', '-nocache',
+			'-showcc', '-o', output, source])
 		assert build.exit_code == 0, build.output
 		assert build.output.contains('unit_0.c')
 		run_result := cmdexec.run(output, [])
@@ -115,8 +156,8 @@ fn test_v3_parallel_cc_falls_back_for_native_static_state() {
 		output := os.join_path_single(root, 'main')
 		os.write_file(header, 'static int v3_parallel_state;\nstatic inline int v3_parallel_next(void) { return ++v3_parallel_state; }\n')!
 		os.write_file(source, '#flag -I @DIR\n#include "state.h"\n\nfn C.v3_parallel_next() int\n\nfn first() int { return C.v3_parallel_next() }\nfn second() int { return C.v3_parallel_next() }\nfn main() { println(first())\nprintln(second()) }\n')!
-		build := cmdexec.run(v3_parallel_cc_test_compiler(), ['-parallel-cc', '-nocache', '-showcc',
-			'-o', output, source])
+		build := cmdexec.run(v3_parallel_cc_test_compiler(), ['-parallel-cc', '-cc', 'cc', '-nocache',
+			'-showcc', '-o', output, source])
 		assert build.exit_code == 0, build.output
 		assert !build.output.contains('unit_0.c'), build.output
 		assert build.output.contains('src.c'), build.output
@@ -139,8 +180,8 @@ fn test_v3_parallel_cc_falls_back_for_native_function_local_static_state() {
 		output := os.join_path_single(root, 'main')
 		os.write_file(header, 'static inline int v3_parallel_local_next(void) {\n\tstatic int state;\n\treturn ++state;\n}\n')!
 		os.write_file(source, '#flag -I @DIR\n#include "state.h"\n\nfn C.v3_parallel_local_next() int\n\nfn first() int { return C.v3_parallel_local_next() }\nfn second() int { return C.v3_parallel_local_next() }\nfn main() { println(first())\nprintln(second()) }\n')!
-		build := cmdexec.run(v3_parallel_cc_test_compiler(), ['-parallel-cc', '-nocache', '-showcc',
-			'-o', output, source])
+		build := cmdexec.run(v3_parallel_cc_test_compiler(), ['-parallel-cc', '-cc', 'cc', '-nocache',
+			'-showcc', '-o', output, source])
 		assert build.exit_code == 0, build.output
 		assert !build.output.contains('unit_0.c'), build.output
 		assert build.output.contains('src.c'), build.output
@@ -169,8 +210,8 @@ fn test_v3_parallel_cc_falls_back_for_macro_generated_function_local_static_stat
 DEF(v3_parallel_macro_next)
 ')!
 		os.write_file(source, '#flag -I @DIR\n#include "state.h"\n\nfn C.v3_parallel_macro_next() int\n\nfn first() int { return C.v3_parallel_macro_next() }\nfn second() int { return C.v3_parallel_macro_next() }\nfn main() { println(first())\nprintln(second()) }\n')!
-		build := cmdexec.run(v3_parallel_cc_test_compiler(), ['-parallel-cc', '-nocache', '-showcc',
-			'-o', output, source])
+		build := cmdexec.run(v3_parallel_cc_test_compiler(), ['-parallel-cc', '-cc', 'cc', '-nocache',
+			'-showcc', '-o', output, source])
 		assert build.exit_code == 0, build.output
 		assert !build.output.contains('unit_0.c'), build.output
 		assert build.output.contains('src.c'), build.output
@@ -194,8 +235,8 @@ fn test_v3_parallel_cc_falls_back_for_coverage_and_profile_state() {
 			output := os.join_path_single(root, 'main_${mode}')
 			state_path := os.join_path_single(root, mode)
 			option := if mode == 'coverage' { '-coverage' } else { '-profile' }
-			build := cmdexec.run(v3_parallel_cc_test_compiler(), ['-parallel-cc', option, state_path,
-				'-nocache', '-showcc', '-o', output, source])
+			build := cmdexec.run(v3_parallel_cc_test_compiler(), ['-parallel-cc', '-cc', 'cc',
+				option, state_path, '-nocache', '-showcc', '-o', output, source])
 			assert build.exit_code == 0, build.output
 			assert !build.output.contains('unit_0.c'), build.output
 			assert build.output.contains('src.c'), build.output

@@ -109,20 +109,43 @@ fn check_fail(cmd string) MyResult {
 	return res.output
 }
 
+fn is_expected_compile_output(output string) bool {
+	trimmed := output.trim_space()
+	if trimmed == '' {
+		return true
+	}
+	if trimmed.contains('\n') {
+		return false
+	}
+	prefix := 'Hint: cached '
+	suffix := ' modules. They will not be recompiled on the next run unless they change.'
+	if !trimmed.starts_with(prefix) || !trimmed.ends_with(suffix) {
+		return false
+	}
+	count_text := trimmed[prefix.len..trimmed.len - suffix.len]
+	count := count_text.int()
+	return count > 0 && count_text == count.str()
+}
+
 fn main() {
 	defer {
 		os.chdir(os.wd_at_startup) or {}
 	}
+	// This smoke test deliberately runs the same file through several `v test`
+	// entry points and needs to observe each invocation, not a resumed success.
+	os.unsetenv('VTEST_RESUME_DIR')
+	os.unsetenv('VTEST_RESUME_OWNER')
 	unbuffer_stdout()
 	spawn fn () {
-		time.sleep(120 * time.second)
+		// V3's cold module cache and clang builds can make this matrix take several minutes.
+		time.sleep(10 * time.minute)
 		eprintln('>>> exiting due to an expired watchdog timer <<<')
 		exit(1)
 	}()
 	println('> vroot: ${vroot} | vexe: ${vexe} | tdir: ${tdir}')
 	os.setenv('VTEST_HIDE_OK', '0', true)
 	ok_fpath := create_test('a_single_ok_test.v', 'fn test_ok(){ assert true }')!
-	if check_ok('${vexe} ${ok_fpath}') != '' {
+	if !is_expected_compile_output(check_ok('${vexe} ${ok_fpath}')) {
 		exit(1)
 	}
 	check_ok('${vexe} test ${ok_fpath}').matches('*OK*a_single_ok_test.v*')

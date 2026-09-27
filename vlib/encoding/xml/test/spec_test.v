@@ -9,7 +9,7 @@ const spec_files = os.walk_ext(os.join_path(os.dir(@FILE), 'local'), 'xml')
 fn test_can_parse_all_files() ! {
 	assert spec_files.len > 0, 'No XML files found in the spec directory'
 	for file in spec_files {
-		doc := xml.XMLDocument.from_file(file) or {
+		_ := xml.XMLDocument.from_file(file) or {
 			// Parsing failed. Check if this was an expected error.
 			parent := os.dir(file)
 			error_file := os.join_path(parent, 'expected_error.txt')

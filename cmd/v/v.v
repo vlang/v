@@ -122,6 +122,14 @@ fn main() {
 		launch_v1(clean_compiler_selection_flags(args), '`build-module` requires the compatibility compiler',
 			RetryState{})
 	}
+	// The mini-VLS protocol is implemented by the compatibility compiler's AST
+	// parser and checker. Select it before entering V3 instead of treating the
+	// request as a failed V3 compilation; `V_MACOS_V3_NO_FALLBACK` must continue
+	// to disable only retries, not explicit compatibility command modes.
+	if '-vls-mode' in args && '-new-compiler' !in args {
+		launch_v1(clean_compiler_selection_flags(args), '`-vls-mode` requires the compatibility compiler',
+			RetryState{})
+	}
 	if '-new-compiler' in args {
 		os.setenv(v3_no_fallback_env, '1', true)
 	}
@@ -312,7 +320,25 @@ fn run_external_tool(args []string, command_index int, command string) {
 	if command_index >= 0 {
 		tool_args = external_tool_runtime_args(command, prefix_args, args[command_index..])
 	}
+	if command in test_session_commands {
+		export_vtest_build_environment(vroot, prefix_args)
+	}
 	launch_external_tool(vroot, tool_name, tool_source, prefix_args, tool_args)
+}
+
+// test_session_commands start a `cmd/tools/` program that evaluates the
+// `// vtest build:` constraints of the files it compiles, through
+// `cmd/tools/testing`, against the `VBUILD_FACTS`/`VBUILD_DEFINES` environment.
+const test_session_commands = ['test', 'test-self', 'test-cleancode', 'test-fmt', 'build-examples',
+	'build-tools', 'build-vbinaries']
+
+// export_vtest_build_environment records the facts and defines of the
+// compilation that the prefix compiler options describe, as the compiler itself
+// resolves them, so that the test runner skips and builds the same files that
+// `v file_test.v` would.
+fn export_vtest_build_environment(vroot string, prefix_args []string) {
+	environment := driver.vtest_build_environment(vroot, prefix_args)
+	pref.set_build_flags_and_defines(environment.facts, environment.defines)
 }
 
 fn external_tool_runtime_args(command string, prefix_args []string, command_args []string) []string {
@@ -322,7 +348,7 @@ fn external_tool_runtime_args(command string, prefix_args []string, command_args
 	// options for the replacement compiler, not just for the launcher helper.
 	// `v test` needs them for each test compilation and its failure reproduction command.
 	// Keep those options visible after the launcher has built the cached executable.
-	if command in ['build-tools', 'self', 'test'] {
+	if command in ['build-examples', 'build-tools', 'self', 'test', 'test-self'] {
 		tool_args << prefix_args
 	}
 	tool_args << command_args
@@ -490,7 +516,9 @@ fn retry_with_v1_at_exit() {
 @[noreturn]
 fn launch_v1(args []string, reason string, report_state RetryState) {
 	legacy_module_fixture := v3_fixture_expects_legacy_compiler_modules(args)
-	transparent_fixture_fallback := v3_fixture_requires_compatibility_compiler(args)
+	vls_mode := '-vls-mode' in args
+	transparent_fixture_fallback := vls_mode
+		|| v3_fixture_requires_compatibility_compiler(args)
 		|| (report_state.fallback_file != '' && v3_exact_output_fixture_args(args))
 	diagnostics := if transparent_fixture_fallback {
 		''
@@ -521,13 +549,19 @@ fn launch_v1(args []string, reason string, report_state RetryState) {
 	os.unsetenv(v3_fallback_file_env)
 	os.unsetenv(v3_c_error_dir_env)
 	mut launch_args := args.clone()
+	_, launched_command := find_command(args)
+	if launched_command == 'build-module' {
+		if current_root := find_vroot(os.real_path(os.executable())) {
+			launch_args = v1_build_module_args(launch_args, current_root, os.dir(fallback))
+		}
+	}
 	if transparent_fixture_fallback && '-nocache' !in launch_args {
 		launch_args.prepend('-nocache')
 	}
 	mut process := os.new_process(fallback)
 	process.set_args(launch_args)
 	mut compatibility_output := ''
-	if legacy_module_fixture {
+	if legacy_module_fixture || vls_mode {
 		process.set_redirect_stdio_merged()
 		process.run()
 		compatibility_output = process.stdout_slurp()
@@ -542,8 +576,12 @@ fn launch_v1(args []string, reason string, report_state RetryState) {
 	}
 	code := process.code
 	process.close()
-	if compatibility_output != '' {
+	if legacy_module_fixture && compatibility_output != '' {
 		eprint(v3_rewrite_legacy_compiler_module_diagnostics(compatibility_output))
+	} else if vls_mode && compatibility_output != '' {
+		fallback_root := os.dir(fallback)
+		current_root := find_vroot(os.real_path(os.executable())) or { fallback_root }
+		eprint(compatibility_output.replace(fallback_root, current_root))
 	}
 	if code == 0 && report_state.fallback_file != '' && !transparent_fixture_fallback {
 		submit_v3_fallback_report(fallback, report_state)
@@ -555,6 +593,31 @@ fn launch_v1(args []string, reason string, report_state RetryState) {
 	os.rm(report_state.fallback_file) or {}
 	os.rmdir_all(report_state.c_error_dir) or {}
 	exit(code)
+}
+
+// v1_build_module_args points `build-module` at the compatibility compiler's own
+// copy of a `vlib` module. That compiler resolves imports from its own V 0.5.2
+// tree and its `-usecache` builds use those modules, while the modules in this
+// checkout target the current compiler and need newer APIs.
+fn v1_build_module_args(args []string, current_root string, fallback_root string) []string {
+	current_vlib := os.join_path(os.real_path(current_root), 'vlib')
+	command_index, _ := find_command(args)
+	mut mapped := args.clone()
+	for i in command_index + 1 .. args.len {
+		arg := args[i]
+		if arg.starts_with('-') || !os.is_dir(arg) {
+			continue
+		}
+		module_dir := os.real_path(arg)
+		if module_dir != current_vlib && !module_dir.starts_with(current_vlib + os.path_separator) {
+			continue
+		}
+		fallback_module := os.join_path(fallback_root, 'vlib', module_dir[current_vlib.len..].trim_left(os.path_separator))
+		if os.is_dir(fallback_module) {
+			mapped[i] = fallback_module
+		}
+	}
+	return mapped
 }
 
 // v1_fallback_exit_identifies_compiler_failure reports whether a nonzero exit
@@ -605,7 +668,10 @@ fn v1_fallback_exit_identifies_compiler_failure(args []string) bool {
 			return skip_running
 		}
 		if !arg.starts_with('-') {
-			is_test := pref.is_test_file_for_backend(arg, backend) || arg.ends_with('_test.vv')
+			// The compatibility compiler runs JavaScript tests even though V3's
+			// test discovery disables them until its JavaScript backend is available.
+			is_test := pref.is_test_file_for_backend(arg, backend)
+				|| (backend == 'js' && arg.ends_with('_test.js.v')) || arg.ends_with('_test.vv')
 			if is_test {
 				direct_test = true
 				continue

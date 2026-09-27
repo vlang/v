@@ -1,3 +1,4 @@
+// vtest vflags: -w
 import strings
 import v.reflection
 import json

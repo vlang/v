@@ -58,23 +58,14 @@ fn (mut dom DocumentObjectModel) where_is(item_name string, attribute_name strin
 }
 
 fn (mut dom DocumentObjectModel) add_tag_attribute(tag &Tag) {
-	for attribute_name, _ in tag.attributes {
-		attribute_value := tag.attributes[attribute_name]
+	for attribute_name, attribute_value in tag.attributes {
 		location := dom.where_is(attribute_value, attribute_name)
-		if attribute_name !in dom.tag_attributes {
-			dom.tag_attributes[attribute_name] = []
+		mut attribute_tags := dom.tag_attributes[attribute_name] or { [][]&Tag{} }
+		for attribute_tags.len <= location {
+			attribute_tags << []&Tag{}
 		}
-		for {
-			mut temp_array := unsafe { dom.tag_attributes[attribute_name] }
-			temp_array << []&Tag{}
-			dom.tag_attributes[attribute_name] = temp_array
-			if location < unsafe { dom.tag_attributes[attribute_name].len } + 1 {
-				break
-			}
-		}
-		mut temp_array := unsafe { dom.tag_attributes[attribute_name][location] }
-		temp_array << tag
-		dom.tag_attributes[attribute_name][location] = temp_array
+		attribute_tags[location] << tag
+		dom.tag_attributes[attribute_name] = attribute_tags
 	}
 }
 

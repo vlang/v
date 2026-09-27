@@ -316,6 +316,8 @@ fn test_target_libc_preamble_emits_pthread_runtime_when_threads_are_used() {
 	assert c_code.contains('static __v_thread __v_thread_spawn(')
 	assert c_code.contains('static void* __v_thread_join(')
 	assert c_code.contains('pthread_equal(a.handle, b.handle) != 0')
+	assert c_code.contains('void* p = GC_MALLOC_UNCOLLECTABLE(size);')
+	assert c_code.contains('GC_FREE(ptr);')
 }
 
 fn test_vinix_target_libc_thread_runtime_uses_freestanding_pthread_abi() {
@@ -423,7 +425,7 @@ fn test_builtin_abi_decls_reuse_tcc_x64_stdatomic_fence_declaration() {
 	mut g := FlatGen.new()
 	g.atomic_thread_fence_compat_decls()
 	c_code := g.sb.str()
-	assert c_code.contains('#if defined(_WIN32) && defined(__TINYC__)\n/* V atomic.h supplies atomic_thread_fence on Windows TCC. */')
+	assert c_code.contains('#if defined(_WIN32) && (defined(__TINYC__) || (defined(_MSC_VER) && !defined(__clang__)))\n/* V atomic.h supplies atomic_thread_fence on Windows TCC and MSVC. */')
 	assert c_code.contains('#define atomic_thread_fence(order) __atomic_thread_fence(order)')
 	assert !c_code.contains('extern void __atomic_thread_fence(int order);')
 }
@@ -452,7 +454,8 @@ fn test_system_libc_headers_make_stdatomic_compatible_with_gnu_objective_c() {
 	mut g := FlatGen.new()
 	g.system_libc_headers()
 	c_code := g.sb.str()
-	assert c_code.contains('#if defined(_WIN32) && defined(__TINYC__)')
+	assert c_code.contains('#if defined(__has_include)\n#if __has_include(<wchar.h>)\n#include <wchar.h>\n#endif\n#else\n#include <wchar.h>\n#endif')
+	assert c_code.contains('#if defined(_WIN32) && (defined(__TINYC__) || (defined(_MSC_VER) && !defined(__clang__)))')
 	assert c_code.contains('thirdparty/stdatomic/win/atomic.h"\n#else')
 	compat_guard := '#if defined(__OBJC__) && defined(__GNUC__) && !defined(__clang__)'
 	assert c_code.contains('${compat_guard}\n#define _Atomic volatile\n#endif\n#include <stdatomic.h>')

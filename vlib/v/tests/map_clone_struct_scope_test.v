@@ -43,8 +43,8 @@ fn check_aliased_map_clone_scope(scope MapCloneScope) {
 fn test_cloned_recursive_map_scope_can_insert_and_replace_entries() {
 	scope := {
 		'root': MapCloneScopeValue{
-			text: 'original'
-			items: [MapCloneScopeValue{
+			text:   'original'
+			items:  [MapCloneScopeValue{
 				text: 'nested item'
 			}]
 			fields: {

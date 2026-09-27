@@ -40,6 +40,80 @@ fn assert_driver_cli_failure(v3_bin string, args []string, message string) {
 	assert result.output.contains(message), result.output
 }
 
+fn assert_driver_n_diagnostics(result os.Result, hidden bool) {
+	assert result.exit_code == 0, result.output
+	assert result.output.contains('warning:'), result.output
+	assert result.output.contains('notice flag warning'), result.output
+	assert result.output.contains('notice:') == !hidden, result.output
+	assert result.output.contains('unused variable: `notice_only`') == !hidden, result.output
+}
+
+fn test_driver_n_hides_notices() {
+	root := os.join_path(os.vtmp_dir(), 'v3_driver_no_notices_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root)!
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	v3_bin := build_driver_cli_v3(root)
+	source_dir := os.join_path(root, 'input')
+	os.mkdir_all(source_dir)!
+	source := os.join_path(source_dir, 'main.v')
+	os.write_file(source, r'module main
+
+import os
+
+fn main() {
+	notice_only := 1
+	$compile_warn("notice flag warning")
+	println(os.args[1..].join("|"))
+}
+')!
+	output := os.join_path(root, 'program')
+	args := ['-nocolor', '-o', output, source]
+
+	// Populate the cache, hide notices on repeated builds, then show them
+	// again. Suppression must not discard diagnostics from the cache.
+	assert_driver_n_diagnostics(cmdexec.run(v3_bin, args), false)
+	for _ in 0 .. 2 {
+		mut hidden_args := ['-n']
+		hidden_args << args
+		assert_driver_n_diagnostics(cmdexec.run(v3_bin, hidden_args), true)
+	}
+	assert_driver_n_diagnostics(cmdexec.run(v3_bin, args), false)
+
+	assert_driver_n_diagnostics(cmdexec.run(v3_bin, ['-n', '-nocolor', '-check', source]), true)
+
+	// Reproduce the reported directory build without treating the dot as
+	// an option value, or changing the test process's working directory.
+	directory := cmdexec.run_in(v3_bin, ['-n', '-nocolor', '-o', output, '.'], source_dir)
+	assert_driver_n_diagnostics(directory, true)
+
+	mut environment := os.environ()
+	environment['VFLAGS'] = '-n'
+	assert_driver_n_diagnostics(run_driver_with_environment(v3_bin, args, environment), true)
+
+	// A second -n after the run target belongs to the program, not V.
+	run := cmdexec.run(v3_bin, ['-n', '-nocolor', 'run', source, '-n'])
+	assert_driver_n_diagnostics(run, true)
+	assert '-n' in run.output.split_into_lines(), run.output
+
+	error_source := os.join_path(root, 'error.v')
+	os.write_file(error_source, 'fn main() {
+	notice_only := 1
+	println(missing_value)
+}
+')!
+	// A hidden notice must not consume the one diagnostic slot and
+	// prevent the actual error from being printed.
+	failed := cmdexec.run(v3_bin, ['-n', '-nocolor', '-check', '-message-limit', '1', error_source])
+	assert failed.exit_code != 0, failed.output
+	assert failed.output.contains('error:'), failed.output
+	assert failed.output.contains('missing_value'), failed.output
+	assert !failed.output.contains('notice:'), failed.output
+	assert !failed.output.contains('unknown option'), failed.output
+}
+
 fn v3_profile_counter(profile_output string, fn_name string) int {
 	for line in profile_output.split_into_lines() {
 		fields := line.fields()
@@ -1665,6 +1739,73 @@ fn test_explicit_c_backend_retains_complete_cached_translation_unit() {
 		assert run.exit_code == 0, run.output
 		assert run.output == 'complete cached translation unit\n', run.output
 	}
+}
+
+fn test_cached_module_keeps_synthesized_default_clone_helper() {
+	$if windows {
+		return
+	}
+	root := os.join_path(os.vtmp_dir(), 'v3_driver_cached_default_clone_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	v3_bin := build_driver_cli_v3(root)
+	module_dir := os.join_path(root, 'cachedclone')
+	os.mkdir_all(module_dir) or { panic(err) }
+	os.write_file(os.join_path(root, 'v.mod'), "Module { name: 'cached_default_clone' }\n")!
+	os.write_file(os.join_path(module_dir, 'cachedclone.v'), 'module cachedclone
+
+pub struct Node {
+pub:
+	children []Node
+}
+
+pub fn (node Node) flatten() []Node {
+	mut result := []Node{}
+	for i in 0 .. node.children.len {
+		result << node.children[i]
+		result << node.children[i].flatten()
+	}
+	return result
+}
+
+pub fn marker() int {
+	return 42
+}
+')!
+	first_source := os.join_path(root, 'first.v')
+	second_source := os.join_path(root, 'second.v')
+	os.write_file(first_source, 'module main
+
+import cachedclone
+
+fn main() {
+	println(cachedclone.marker())
+}
+')!
+	os.write_file(second_source, 'module main
+
+import cachedclone
+
+fn main() {
+	println(cachedclone.marker() + 1 - 1)
+}
+')!
+	mut environment := os.environ()
+	environment['V3CACHE'] = os.join_path(root, 'cache')
+	first_output := os.join_path(root, 'first')
+	first := run_driver_with_environment(v3_bin, ['-silent', '-no-parallel', '-cc', 'cc',
+		'-skip-running', '-o', first_output, first_source], environment)
+	assert first.exit_code == 0, first.output
+	second_output := os.join_path(root, 'second')
+	second := run_driver_with_environment(v3_bin, ['-silent', '-no-parallel', '-cc', 'cc',
+		'-skip-running', '-o', second_output, second_source], environment)
+	assert second.exit_code == 0, second.output
+	run := cmdexec.run(second_output, [])
+	assert run.exit_code == 0, run.output
+	assert run.output == '42\n', run.output
 }
 
 fn test_driver_accepts_dispatcher_arguments_and_runs_vsh_files() {

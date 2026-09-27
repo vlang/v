@@ -1,6 +1,7 @@
 module types
 
 import os
+import v.flat
 import v.parser
 import v.pref
 
@@ -18,6 +19,25 @@ fn test_synthetic_vsh_import_has_no_source_diagnostics() {
 	tc.check_unused_import_diagnostics()
 	assert tc.errors.len == 0, tc.errors.str()
 	assert tc.notices.len == 0, tc.notices.str()
+}
+
+fn test_synthetic_runtime_import_may_match_current_module() {
+	path := os.join_path(os.vtmp_dir(), 'v3_synthetic_self_import_${os.getpid()}.v')
+	os.write_file(path, 'module sync\n')!
+	defer {
+		os.rm(path) or {}
+	}
+	mut p := parser.Parser.new(pref.new_preferences())
+	a := p.parse_file(path)
+	a.add_node(flat.Node{
+		kind:  .import_decl
+		value: 'sync'
+		typ:   'sync'
+	})
+	mut tc := TypeChecker.new(a)
+	tc.collect(a)
+	tc.check_import_diagnostics()
+	assert tc.errors.len == 0, tc.errors.str()
 }
 
 fn test_explicit_import_keeps_source_diagnostics() {

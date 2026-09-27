@@ -187,7 +187,30 @@ fn remove_consecutive_spaces(s string) string {
 	return r
 }
 
+// fixed_offset_time returns `wall`, whose calendar fields are the wall clock at
+// `offset` seconds east of UTC, as a Time in a fixed-offset location (a single
+// unnamed zone, like Go's `time.FixedZone("", offset)`). The calendar fields stay
+// as written, `zone()` reports `offset`, and `unix()` is the absolute instant.
+// `wall` must come from `new`, so its `unix` holds the fields read as UTC.
+fn fixed_offset_time(wall Time, offset int) Time {
+	return Time{
+		...wall
+		loc:  &Location{
+			zones: [Zone{
+				offset: offset
+			}]
+		}
+		unix: wall.unix - i64(offset)
+	}
+}
+
 // parse_rfc3339 returns the time from a date string in RFC 3339 datetime format.
+// A `Z`, `+00:00` or `-00:00` suffix returns a UTC time. Any other numeric offset
+// is kept: the result has the calendar fields as written, in a fixed-offset
+// location whose `zone()` reports that offset, while `unix()` and the
+// `format_rfc3339*()` methods give the same absolute (UTC) instant.
+// For example, `2024-07-15T18:30:45-05:00` gives hour 18, `zone()!.offset == -18000`,
+// and `format_rfc3339()` returns `2024-07-15T23:30:45.000Z`.
 // See also https://ijmacd.github.io/rfc3339-iso8601/ for a visual reference of
 // the differences between ISO-8601 and RFC 3339.
 pub fn parse_rfc3339(s string) !Time {
@@ -304,7 +327,7 @@ pub fn parse_rfc3339(s string) !Time {
 
 			is_negative := s[s.len - 6] == u8(`-`)
 
-			// To local time using the offset to add_seconds
+			// Keep the wall clock as written, and record the offset in a fixed zone
 			mut offset_in_minutes := 0
 			mut offset_in_hours := 0
 			// offset hours
@@ -319,11 +342,11 @@ pub fn parse_rfc3339(s string) !Time {
 
 			offset_in_minutes += offset_in_hours * 60
 
-			if !is_negative {
+			if is_negative {
 				offset_in_minutes *= -1
 			}
 
-			mut time_to_be_returned := new(Time{
+			wall_time := new(Time{
 				year:       year
 				month:      month
 				day:        day
@@ -334,9 +357,7 @@ pub fn parse_rfc3339(s string) !Time {
 				is_local:   false
 			})
 
-			time_to_be_returned = time_to_be_returned.add_seconds(offset_in_minutes * 60)
-
-			return time_to_be_returned
+			return fixed_offset_time(wall_time, offset_in_minutes * seconds_per_minute)
 		}
 	}
 
@@ -455,6 +476,9 @@ pub fn parse_format(s string, format string) !Time {
 // parse_iso8601 parses the ISO 8601 time format yyyy-MM-ddTHH:mm:ss.dddddd+dd:dd as local time.
 // The fraction part is difference in milli seconds, and the last part is offset from UTC time.
 // Both can be +/- HH:mm .
+// A `Z`, `+00:00` or `-00:00` suffix returns a UTC time. Any other offset is kept, as in
+// `parse_rfc3339`: the calendar fields stay as written, `zone()` reports the offset,
+// and `unix()` is the absolute instant.
 // See https://en.wikipedia.org/wiki/ISO_8601 .
 // Remarks: not all of ISO 8601 is supported; checks and support for leapseconds should be added.
 pub fn parse_iso8601(s string) !Time {
@@ -467,12 +491,12 @@ pub fn parse_iso8601(s string) !Time {
 		return error_invalid_time(12, 'malformed date')
 	}
 	year, month, day := parse_iso8601_date(parts[0])!
-	mut hour_, mut minute_, mut second_, mut microsecond_, mut nanosecond_, mut unix_offset, mut is_local_time := 0, 0, 0, 0, 0, i64(0), true
+	mut hour_, mut minute_, mut second_, mut nanosecond_, mut unix_offset, mut is_local_time := 0, 0, 0, 0, i64(0), true
 	if parts.len == 2 {
-		hour_, minute_, second_, microsecond_, nanosecond_, unix_offset, is_local_time =
+		hour_, minute_, second_, _, nanosecond_, unix_offset, is_local_time =
 			parse_iso8601_time(parts[1])!
 	}
-	mut t := new(
+	t := new(
 		year:       year
 		month:      month
 		day:        day
@@ -484,14 +508,11 @@ pub fn parse_iso8601(s string) !Time {
 	if is_local_time {
 		return t // Time already local time
 	}
-	mut unix_time := t.unix
-	if unix_offset < 0 {
-		unix_time -= (-unix_offset)
-	} else if unix_offset > 0 {
-		unix_time += unix_offset
+	if unix_offset != 0 {
+		// `unix_offset` is the correction to UTC, i.e. minus the offset east of UTC
+		return fixed_offset_time(t, int(-unix_offset))
 	}
-	t = unix_nanosecond(i64(unix_time), t.nanosecond)
-	return t
+	return unix_nanosecond(t.unix, t.nanosecond)
 }
 
 // parse_rfc2822 returns the time from a date string in RFC 2822 datetime format.
