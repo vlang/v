@@ -2670,9 +2670,8 @@ fn (tc &TypeChecker) tuple_tail_return_error(expr_id flat.NodeId, expected []Typ
 
 fn (tc &TypeChecker) expr_has_interface_smartcast_reference(id flat.NodeId) bool {
 	if declared := tc.declared_smartcast_receiver_type(id) {
-		if unalias_and_unwrap_pointer_type(declared) is Interface
-			&& !tc.explicit_interface_pointer_smartcast(id) {
-			return true
+		if unalias_and_unwrap_pointer_type(declared) is Interface {
+			return tc.interface_smartcast_uses_value_pattern(id)
 		}
 	}
 	if !tc.valid_node_id(id) {
@@ -2701,23 +2700,99 @@ fn (tc &TypeChecker) expr_has_interface_smartcast_reference(id flat.NodeId) bool
 	return has_reference
 }
 
-fn (tc &TypeChecker) explicit_interface_pointer_smartcast(id flat.NodeId) bool {
-	key := tc.expr_key(id)
-	if key == '' {
+fn (tc &TypeChecker) expr_has_explicit_interface_smartcast_reference(id flat.NodeId) bool {
+	if declared := tc.declared_smartcast_receiver_type(id) {
+		if unalias_and_unwrap_pointer_type(declared) is Interface {
+			return !tc.interface_smartcast_uses_value_pattern(id)
+		}
+	}
+	if !tc.valid_node_id(id) {
 		return false
 	}
+	node := tc.a.node(id)
+	if node.kind in [.paren, .expr_stmt] && node.children_count > 0 {
+		return tc.expr_has_explicit_interface_smartcast_reference(tc.a.child(node, 0))
+	}
+	if node.kind in [.if_expr, .match_stmt] {
+		for i in 1 .. node.children_count {
+			branch_id := tc.a.child(node, i)
+			if !tc.branch_tail_never_returns(branch_id)
+				&& tc.expr_has_explicit_interface_smartcast_reference(tc.branch_tail_expr_id(branch_id)) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// Only an implicit reference introduced by a value pattern may be copied without `*`.
+// The narrowed type alone cannot distinguish `item is Record` from `item is &Record`.
+fn (tc &TypeChecker) interface_smartcast_uses_value_pattern(id flat.NodeId) bool {
+	return tc.interface_smartcast_uses_value_pattern_for_key(id, tc.expr_key(id))
+}
+
+fn (tc &TypeChecker) interface_smartcast_uses_value_pattern_for_key(id flat.NodeId, key string) bool {
 	mut current := id
 	mut parent_id := tc.direct_parent_id(current)
 	for tc.valid_node_id(parent_id) {
 		parent := tc.a.node(parent_id)
-		if parent.kind == .if_expr && parent.children_count > 1
-			&& tc.a.child(parent, 1) == current {
-			if explicit := tc.condition_interface_pointer_pattern(tc.a.child(parent, 0), key) {
-				return explicit
+		if parent.kind in [.block, .match_branch, .select_branch, .for_stmt, .for_in_stmt, .fn_decl,
+			.fn_literal, .lambda_expr] {
+			mut preceding := -1
+			for i in 0 .. parent.children_count {
+				if tc.a.child(parent, i) == current {
+					preceding = i - 1
+					break
+				}
+			}
+			for i := preceding; i >= 0; i-- {
+				stmt := tc.a.child_node(parent, i)
+				if stmt.kind == .assert_stmt && stmt.children_count > 0 {
+					if implicit := tc.condition_uses_value_smartcast_pattern(tc.a.child(stmt, 0), key, true) {
+						return implicit
+					}
+				} else if stmt.kind == .if_expr && stmt.children_count >= 2 {
+					cond_id := tc.a.child(stmt, 0)
+					if tc.stmt_definitely_returns(tc.a.child(stmt, 1)) {
+						if implicit := tc.condition_uses_value_smartcast_pattern(cond_id, key, false) {
+							return implicit
+						}
+					}
+					if stmt.children_count >= 3 && tc.stmt_definitely_returns(tc.a.child(stmt, 2)) {
+						if implicit := tc.condition_uses_value_smartcast_pattern(cond_id, key, true) {
+							return implicit
+						}
+					}
+				}
+			}
+		}
+		if parent.kind == .if_expr && parent.children_count >= 2 {
+			for i in 1 .. parent.children_count {
+				if tc.a.child(parent, i) == current {
+					if implicit := tc.condition_uses_value_smartcast_pattern(tc.a.child(parent, 0), key, i == 1) {
+						return implicit
+					}
+				}
+			}
+		} else if parent.kind == .for_stmt && parent.children_count > 3 {
+			for i in 3 .. parent.children_count {
+				if tc.a.child(parent, i) == current {
+					if implicit := tc.condition_uses_value_smartcast_pattern(tc.a.child(parent, 1), key, true) {
+						return implicit
+					}
+				}
+			}
+		} else if parent.kind == .match_stmt && parent.children_count > 0
+			&& tc.expr_key(tc.a.child(parent, 0)) == key {
+			branch := tc.a.node(current)
+			if branch.kind == .match_branch && branch.value == '1' && branch.children_count > 0 {
+				if pattern := tc.match_type_pattern(tc.a.child_node(branch, 0)) {
+					return unalias_type(tc.parse_type(pattern)) !is Pointer
+				}
 			}
 		}
 		if parent.kind in [.fn_decl, .fn_literal, .lambda_expr] {
-			break
+			return tc.fn_context.captured_interface_value_patterns[key]
 		}
 		current = parent_id
 		parent_id = tc.direct_parent_id(current)
@@ -2725,29 +2800,53 @@ fn (tc &TypeChecker) explicit_interface_pointer_smartcast(id flat.NodeId) bool {
 	return false
 }
 
-fn (tc &TypeChecker) condition_interface_pointer_pattern(id flat.NodeId, key string) ?bool {
-	if !tc.valid_node_id(id) {
+fn (tc &TypeChecker) condition_uses_value_smartcast_pattern(id flat.NodeId, key string, when_true bool) ?bool {
+	bindings := if when_true {
+		tc.extract_smartcasts(id)
+	} else {
+		tc.extract_else_branch_smartcasts(id)
+	}
+	if !bindings.any(it.name == key) {
 		return none
 	}
 	node := tc.a.node(id)
-	if node.kind == .is_expr && node.children_count > 0 {
-		if tc.expr_key(tc.a.child(node, 0)) == key {
-			return node.value.starts_with('&')
+	if node.kind == .is_expr && node.children_count > 0 && tc.expr_key(tc.a.child(node, 0)) == key {
+		return unalias_type(tc.parse_type(node.value)) !is Pointer
+	}
+	if node.kind == .ident {
+		if storage_key := tc.visible_binding_storage_key(node.value) {
+			if source_id := tc.fn_context.bool_condition_exprs[storage_key] {
+				if source_id != id {
+					return tc.condition_uses_value_smartcast_pattern(source_id, key, when_true)
+				}
+			}
 		}
 	}
-	if node.kind == .paren && node.children_count > 0 {
-		return tc.condition_interface_pointer_pattern(tc.a.child(node, 0), key)
+	if node.kind in [.paren, .prefix] && node.children_count > 0 {
+		return tc.condition_uses_value_smartcast_pattern(tc.a.child(node, 0), key,
+			if node.kind == .prefix && node.op == .not { !when_true } else { when_true })
 	}
-	if node.kind == .infix && node.op == .logical_and && node.children_count == 2 {
-		if explicit := tc.condition_interface_pointer_pattern(tc.a.child(node, 0), key) {
-			return explicit
+	if node.kind == .infix && node.op in [.logical_and, .logical_or] {
+		for i := int(node.children_count) - 1; i >= 0; i-- {
+			if implicit := tc.condition_uses_value_smartcast_pattern(tc.a.child(node, i), key, when_true) {
+				return implicit
+			}
 		}
-		return tc.condition_interface_pointer_pattern(tc.a.child(node, 1), key)
 	}
 	return none
 }
 
 fn (mut tc TypeChecker) return_type_compatible(expr_id flat.NodeId, actual Type, expected Type) bool {
+	return_type := unalias_type(expected)
+	expected_value := match return_type {
+		OptionType { unalias_type(return_type.base_type) }
+		ResultType { unalias_type(return_type.base_type) }
+		else { return_type }
+	}
+	// Option/Result conversions must not copy an explicit pointer smartcast either.
+	if expected_value is Struct && tc.expr_has_explicit_interface_smartcast_reference(expr_id) {
+		return false
+	}
 	if expected is Pointer && actual !is Pointer {
 		clean_expected := fn_param_unalias_type(expected.base_type)
 		if clean_expected is Interface || clean_expected is SumType {

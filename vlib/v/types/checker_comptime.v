@@ -11484,6 +11484,15 @@ fn (mut tc TypeChecker) check_fn_literal(id flat.NodeId, node flat.Node) {
 		forbidden_captures.delete(name)
 	}
 	saved_fn_context := tc.fn_context
+	// Keep the pattern before the closure switches to its own condition bindings.
+	mut captured_interface_value_patterns := map[string]bool{}
+	for name, _ in explicit_captures {
+		for key, _ in tc.smartcasts {
+			if key == name || key.starts_with('${name}.') || key.starts_with('${name}[') {
+				captured_interface_value_patterns[key] = tc.interface_smartcast_uses_value_pattern_for_key(id, key)
+			}
+		}
+	}
 	mut captured_pointer_values := map[string][]string{}
 	for i in 0 .. node.children_count {
 		capture := tc.a.child_node(&node, i)
@@ -11511,6 +11520,7 @@ fn (mut tc TypeChecker) check_fn_literal(id flat.NodeId, node flat.Node) {
 		clone_scope_binding_owner_map(saved_fn_context.method_value_local_owners)
 	tc.fn_context.method_value_local_depth = saved_fn_context.method_value_local_depth.clone()
 	tc.fn_context.closure_copy_owners = closure_copy_owners.clone()
+	tc.fn_context.captured_interface_value_patterns = captured_interface_value_patterns
 	tc.fn_context.closure_forbidden_captures = forbidden_captures.clone()
 	tc.fn_context.method_value_stack_mut_owners =
 		saved_fn_context.method_value_stack_mut_owners.clone()

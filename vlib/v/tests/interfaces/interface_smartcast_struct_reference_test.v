@@ -185,3 +185,69 @@ fn test_explicit_interface_pointer_smartcast_requires_dereference() {
 		assert result.output.contains('non reference type'), result.output
 	}
 }
+
+fn test_explicit_pointer_patterns_require_dereferencing_for_value_returns() {
+	path := os.join_path(os.vtmp_dir(), 'interface_pointer_pattern_return_${os.getpid()}.v')
+	defer { os.rm(path) or {} }
+	preamble := 'interface Named { name() string }\nstruct Record { label string }\nfn (r &Record) name() string { return r.label }\nstruct Holder { item Named }\n'
+	for body in [
+		'Record { if item is PATTERN { return VALUE }; return Record{} }',
+		'Record { return if item is PATTERN { VALUE } else { Record{} } }',
+		'?Record { if item is PATTERN { return VALUE }; return none }',
+		"!Record { if item is PATTERN { return VALUE }; return error('missing') }",
+		'?Record { return if item is PATTERN { VALUE } else { none } }',
+		"!Record { return if item is PATTERN { VALUE } else { error('missing') } }",
+		'Record { if item is PATTERN { return match flag { true { VALUE } else { Record{} } } }; return Record{} }',
+		'?Record { if item is PATTERN { return match flag { true { VALUE } else { none } } }; return none }',
+		"!Record { if item is PATTERN { return match flag { true { VALUE } else { error('missing') } } }; return error('missing') }",
+		'Record { assert item is PATTERN; return VALUE }',
+		'Record { for flag { assert item is PATTERN; return VALUE }; return Record{} }',
+		'Record { for _ in [flag] { assert item is PATTERN; return VALUE }; return Record{} }',
+		'Record { select { else { assert item is PATTERN; return VALUE } }; return Record{} }',
+		'Record { if item !is PATTERN { return Record{} }; return VALUE }',
+		'Record { if item !is PATTERN { return Record{} } else { return VALUE } }',
+		'Record { for item is PATTERN { return VALUE }; return Record{} }',
+		'Record { if item is PATTERN && flag { return VALUE }; return Record{} }',
+		'Record { is_record := item is PATTERN; if is_record { return VALUE }; return Record{} }',
+		'Record { if item !is PATTERN || !flag { return Record{} }; return VALUE }',
+		'Record { if item is PATTERN { if flag { return VALUE } }; return Record{} }',
+		'Record { if item is PATTERN { reader := fn [item] () Record { return VALUE }; return reader() }; return Record{} }',
+		'Record { assert item is PATTERN; reader := fn [item] () Record { return VALUE }; return reader() }',
+		'Record { is_record := item is PATTERN; if is_record { reader := fn [item] () Record { return VALUE }; return reader() }; return Record{} }',
+		'Record { if item !is PATTERN { return Record{} }; reader := fn [item] () Record { return VALUE }; return reader() }',
+		'Record { if item is PATTERN { reader := fn [item] () Record { nested := fn [item] () Record { return VALUE }; return nested() }; return reader() }; return Record{} }',
+	] {
+		for mode in 0 .. 3 {
+			pattern := if mode == 2 { 'Record' } else { '&Record' }
+			value := if mode == 1 { '*item' } else { 'item' }
+			declaration := body.replace('PATTERN', pattern).replace('VALUE', value)
+			os.write_file(path, '${preamble}\nfn value(item Named, flag bool) ${declaration}\nfn main() {}\n')!
+			result := os.execute('${os.quoted_path(@VEXE)} -check ${os.quoted_path(path)}')
+			if mode == 0 {
+				assert result.exit_code != 0, declaration
+				assert result.output.contains('&Record')
+					&& (result.output.contains('non reference type')
+						|| result.output.contains('return type mismatch')
+						|| result.output.contains('cannot use')), result.output
+			} else {
+				assert result.exit_code == 0, '${declaration}\n${result.output}'
+			}
+		}
+	}
+	for receiver in ['holder.item', 'items[0]'] {
+		capture := receiver.all_before('.').all_before('[')
+		for tail in [
+			'if ${receiver} is PATTERN { return VALUE }; return Record{}',
+			'if ${receiver} is PATTERN { reader := fn [${capture}] () Record { return VALUE }; return reader() }; return Record{}',
+		] {
+			for mode in 0 .. 3 {
+				pattern := if mode == 2 { 'Record' } else { '&Record' }
+				value := if mode == 1 { '*${receiver}' } else { receiver }
+				body := 'holder := Holder{item}\nitems := [item]\n${tail.replace('PATTERN', pattern).replace('VALUE', value)}'
+				os.write_file(path, '${preamble}\nfn value(item Named) Record { ${body} }\nfn main() {}\n')!
+				result := os.execute('${os.quoted_path(@VEXE)} -check ${os.quoted_path(path)}')
+				assert (result.exit_code == 0) == (mode != 0), '${body}\n${result.output}'
+			}
+		}
+	}
+}

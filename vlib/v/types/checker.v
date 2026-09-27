@@ -583,6 +583,7 @@ mut:
 	mut_param_owners                         map[string]ScopeBindingOwner
 	mut_local_owners                         map[string]ScopeBindingOwner
 	closure_copy_owners                      map[string]ScopeBindingOwner
+	captured_interface_value_patterns        map[string]bool
 	shared_owners                            map[string][]ScopeBindingOwner
 	shared_array_owners                      map[string][]ScopeBindingOwner
 	locked_shared_names                      map[string]int
@@ -634,6 +635,7 @@ fn clone_function_check_context(src FunctionCheckContext) FunctionCheckContext {
 		mut_param_owners:                         src.mut_param_owners.clone()
 		mut_local_owners:                         src.mut_local_owners.clone()
 		closure_copy_owners:                      src.closure_copy_owners.clone()
+		captured_interface_value_patterns:        src.captured_interface_value_patterns.clone()
 		shared_owners:                            src.shared_owners.clone()
 		shared_array_owners:                      src.shared_array_owners.clone()
 		locked_shared_names:                      src.locked_shared_names.clone()
