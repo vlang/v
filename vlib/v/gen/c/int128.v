@@ -39,14 +39,6 @@ fn (mut g FlatGen) emit_int128_preamble() {
 	g.writeln(str_helpers)
 }
 
-// int128_decimal_helper returns the C helper that renders a 128-bit value as
-// decimal text, or none for every other type. The assert and panic printers use
-// it because `long long` cannot carry a 128-bit value on the struct path.
-fn int128_decimal_helper(t types.Type) ?string {
-	signed := int128_signedness(t) or { return none }
-	return if signed { '__v_i128_str' } else { '__v_u128_str' }
-}
-
 // int128_signedness returns none unless t is one of the 128-bit integer
 // primitives. `true` means signed (`i128`), `false` means `u128`.
 fn int128_signedness(t types.Type) ?bool {
