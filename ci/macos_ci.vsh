@@ -1,6 +1,7 @@
 import common { Task, exec }
 import crypto.sha256
 import os
+import runtime
 
 fn test_symlink() {
 	exec('v symlink')
@@ -58,8 +59,12 @@ fn self_tests() {
 	// test the release's own standard library instead of this repository's.
 	// Individual files still fall back to it when the default compiler cannot
 	// build them.
+	// V3 needs several seconds per test file on the macOS runners, so a single job
+	// cannot get through vlib before the job timeout. The automatic job count
+	// allows one job per 8 GB of RAM, which is still one job on these 7 GB
+	// runners, while a V3 test build peaks well below 2 GB; use every core.
 	if common.is_github_job {
-		exec('VJOBS=1 v -no-memory-limit -silent test-self vlib')
+		exec('VJOBS=${runtime.nr_cpus()} v -no-memory-limit -silent test-self vlib')
 	} else {
 		vjobs := os.getenv_opt('VJOBS') or { '1' }
 		exec('VJOBS=${vjobs} v -no-memory-limit -progress test-self vlib')

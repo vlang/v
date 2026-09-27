@@ -305,3 +305,104 @@ fn test_batches_in_disposable_scopes_outlive_their_completion_pushes() {
 	assert pool.tasks_run() == u64(rounds * args.len)
 	pool.close()
 }
+
+fn open_pool_is_registered(pool &Pool) bool {
+	for i in 0 .. v3_open_pools_len {
+		if v3_open_pools[i] == voidptr(pool) {
+			return true
+		}
+	}
+	return false
+}
+
+fn test_exit_hook_closes_pools_left_open() {
+	mut closed := new(1)
+	mut left_open := new(1)
+	assert open_pool_is_registered(closed)
+	assert open_pool_is_registered(left_open)
+	closed.close()
+	assert !open_pool_is_registered(closed)
+	// `exit()` skips deferred Pool.close calls; the exit hook must still join the
+	// workers before the arena holding their job channel is freed.
+	close_open_pools_at_exit()
+	assert left_open.is_closed
+	assert left_open.threads.len == 0
+	assert !open_pool_is_registered(left_open)
+}
+
+struct CurrentWorkerProbe {
+mut:
+	pool    &Pool = unsafe { nil }
+	matches int
+}
+
+fn current_worker_probe_task(arg voidptr) voidptr {
+	mut probe := unsafe { &CurrentWorkerProbe(arg) }
+	// Hold each task long enough that the caller cannot steal the whole batch.
+	time.sleep(20 * time.millisecond)
+	for worker in probe.pool.threads {
+		if worker_thread_is_current(worker) {
+			probe.matches++
+		}
+	}
+	return unsafe { nil }
+}
+
+// worker_thread_is_current holds on a worker for exactly its own entry, and
+// never on the caller.
+fn test_worker_thread_is_current_matches_only_the_running_worker() {
+	mut pool := new(2)
+	defer {
+		pool.close()
+	}
+	mut probes := []&CurrentWorkerProbe{cap: 8}
+	mut tasks := []Task{cap: 8}
+	for idx in 0 .. 8 {
+		probes << &CurrentWorkerProbe{
+			pool: pool
+		}
+		tasks << Task{
+			run:        current_worker_probe_task
+			arg:        voidptr(probes[idx])
+			force_sync: idx == 0
+		}
+	}
+	assert pool.run(tasks)
+	for worker in pool.threads {
+		assert !worker_thread_is_current(worker)
+	}
+	// The forced-sync task runs on the caller, which is no worker.
+	assert probes[0].matches == 0
+	for probe in probes {
+		assert probe.matches in [0, 1]
+	}
+	assert probes.any(it.matches == 1)
+}
+
+// A program using the pool must link with the tcc bundled for Windows, whose
+// kernel32 import list lacks some newer Win32 functions. A failed tcc build is
+// retried with another C compiler, even under `-cc tcc`, so turn the retry off
+// to see the failure itself.
+fn test_pool_links_with_the_bundled_tcc_on_windows() {
+	$if !windows {
+		return
+	}
+	vexe := @VEXE
+	if !os.exists(os.join_path(os.dir(vexe), 'thirdparty', 'tcc', 'tcc.exe')) {
+		eprintln('skipping: ${vexe} has no bundled tcc')
+		return
+	}
+	dir := os.join_path(os.vtmp_dir(), 'v_workers_tcc_link_${os.getpid()}')
+	os.mkdir_all(dir) or { panic(err) }
+	defer {
+		os.rmdir_all(dir) or {}
+	}
+	source := os.join_path(dir, 'pool_main.v')
+	os.write_file(source, "import v.workers\n\nfn main() {\n\tmut pool := workers.new(1)\n\tpool.close()\n\tprintln('pool closed')\n}\n")!
+	exe := os.join_path(dir, 'pool_main.exe')
+	build := os.execute('${os.quoted_path(vexe)} -cc tcc -no-retry-compilation -o ${os.quoted_path(exe)} ${os.quoted_path(source)}')
+	assert build.exit_code == 0, build.output
+	run := os.execute(os.quoted_path(exe))
+	assert run.exit_code == 0, run.output
+	assert run.output.trim_space() == 'pool closed'
+}

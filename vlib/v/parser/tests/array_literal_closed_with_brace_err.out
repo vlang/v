@@ -1,0 +1,7 @@
+vlib/v/parser/tests/array_literal_closed_with_brace_err.vv:6:1: error: unexpected token `}`, expecting `]`
+    4 |     'as',
+    5 |     'asm',
+    6 | }
+      | ^
+    7 | 
+    8 | fn main() {

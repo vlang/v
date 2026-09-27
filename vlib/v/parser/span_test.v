@@ -483,6 +483,21 @@ fn test_shared_keyword_identifier_as_parameter_name() {
 	assert grouped_ast.nodes.any(it.kind == .param && it.value == 'other' && it.typ == 'int' && !it.is_mut)
 }
 
+fn test_grouped_struct_fields_start_at_their_own_names() {
+	ast, src := parse_span_source('grouped_struct_fields', 'struct Pair {
+	first, second, byte u8
+	inner struct {
+		x, y int
+	}
+}
+')
+	for name in ['first', 'second', 'byte', 'x', 'y'] {
+		fields := ast.nodes.filter(it.kind == .field_decl && it.value == name)
+		assert fields.len == 1, name
+		assert src[fields[0].pos.offset..].starts_with(name), '${name}: ${span_text(src, fields[0])}'
+	}
+}
+
 fn test_multiline_shared_call_argument_stays_a_modifier() {
 	ast, _ := parse_span_source('multiline_shared_argument', 'struct Box {}
 

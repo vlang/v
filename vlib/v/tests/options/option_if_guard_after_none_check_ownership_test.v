@@ -84,6 +84,15 @@ fn owned_shared_statement_guard(mut item OwnedSharedGuard) int {
 	return result
 }
 
+fn owned_parenthesized_shared_value_guard(mut item OwnedSharedGuard) int {
+	if item.data == none {
+		return 0
+	}
+	result := if data := (item.data) { data.len } else { 0 }
+	assert owned_shared_guard_source_is_none(item)
+	return result
+}
+
 fn test_owned_optional_field_guards_after_none_check() {
 	mut statement_item := OwnedOptionalGuard{ data: [u8(1), 2, 3] }
 	mut value_item := OwnedOptionalGuard{ data: [u8(4), 5, 6] }
@@ -94,9 +103,11 @@ fn test_owned_optional_field_guards_after_none_check() {
 	}
 	mut shared_item := OwnedSharedGuard(OwnedSharedGuardA{ data: [u8(10), 11, 12] })
 	mut shared_statement_item := OwnedSharedGuard(OwnedSharedGuardB{ data: [u8(13), 14, 15] })
+	mut parenthesized_item := OwnedSharedGuard(OwnedSharedGuardA{ data: [u8(16), 17, 18] })
 	assert owned_statement_guard(mut statement_item) == 3
 	assert owned_value_guard(mut value_item) == 3
 	assert owned_promoted_value_guard(mut promoted_item) == 3
 	assert owned_shared_value_guard(mut shared_item) == 3
 	assert owned_shared_statement_guard(mut shared_statement_item) == 3
+	assert owned_parenthesized_shared_value_guard(mut parenthesized_item) == 3
 }

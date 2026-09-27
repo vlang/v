@@ -29,6 +29,16 @@ fn C.cpu_relax()
 
 __global v3_pool_size_limit int
 
+// Pools that are still running when the process exits. `exit()` skips the
+// deferred Pool.close calls, and the exit handlers then free the -prealloc arena
+// that holds the pools' job channels while the idle workers still wait on them.
+// Fixed storage keeps the registry itself out of any (possibly disposable) arena.
+const max_open_pools = 64
+
+__global v3_open_pools [64]voidptr
+__global v3_open_pools_len int
+__global v3_open_pools_hook_registered bool
+
 // limit_pool_size caps pools created after this call to at most `size` workers.
 pub fn limit_pool_size(size int) {
 	if size > 0 && (v3_pool_size_limit == 0 || size < v3_pool_size_limit) {
@@ -239,7 +249,57 @@ pub fn new(size int) &Pool {
 		}
 	}
 	pool.launched_thread_count = u64(pool.threads.len)
+	if pool.threads.len > 0 {
+		register_open_pool(pool)
+	}
 	return pool
+}
+
+fn register_open_pool(pool &Pool) {
+	if !v3_open_pools_hook_registered {
+		v3_open_pools_hook_registered = true
+		// Exit handlers run in reverse registration order, so this runs before the
+		// prealloc cleanup that builtin registered at startup.
+		at_exit(close_open_pools_at_exit) or {}
+	}
+	if v3_open_pools_len < max_open_pools {
+		v3_open_pools[v3_open_pools_len] = voidptr(pool)
+		v3_open_pools_len++
+	}
+}
+
+fn unregister_open_pool(pool &Pool) {
+	for i in 0 .. v3_open_pools_len {
+		if v3_open_pools[i] == voidptr(pool) {
+			v3_open_pools_len--
+			v3_open_pools[i] = v3_open_pools[v3_open_pools_len]
+			v3_open_pools[v3_open_pools_len] = unsafe { nil }
+			return
+		}
+	}
+}
+
+// close_open_pools_at_exit stops and joins the workers of every pool that is
+// still open when the process exits. A pool whose own worker called exit() is
+// left alone: joining it from that worker would never return.
+fn close_open_pools_at_exit() {
+	// Pool.close unregisters the pool, so walk the registry from its end.
+	for i := v3_open_pools_len - 1; i >= 0; i-- {
+		mut pool := unsafe { &Pool(v3_open_pools[i]) }
+		if pool.is_closed || pool.has_current_worker() {
+			continue
+		}
+		pool.close()
+	}
+}
+
+fn (p &Pool) has_current_worker() bool {
+	for worker in p.threads {
+		if worker_thread_is_current(worker) {
+			return true
+		}
+	}
+	return false
 }
 
 // size reports the number of successfully launched persistent workers.
@@ -411,6 +471,7 @@ pub fn (mut p Pool) close() {
 		return
 	}
 	p.is_closed = true
+	unregister_open_pool(p)
 	for _ in p.threads {
 		p.jobs <- Task{
 			stop: true

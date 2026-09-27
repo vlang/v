@@ -472,6 +472,58 @@ fn boehm_leak_clean_lifetime_source() string {
 	].join('\n')
 }
 
+// gc_no_interior_pointers_header turns off Boehm's recognition of interior pointers
+// before V calls `GC_INIT()`, like in the bundled Windows tcc libgc, which is built
+// without `ALL_INTERIOR_POINTERS`. Then only the registered displacements keep objects alive.
+fn gc_no_interior_pointers_header() string {
+	return [
+		'#if defined(__GNUC__) || defined(__clang__) || defined(__TINYC__)',
+		'extern void GC_set_all_interior_pointers(int);',
+		'__attribute__((constructor)) static void v_test_gc_no_interior_pointers(void) {',
+		'\tGC_set_all_interior_pointers(0);',
+		'}',
+		'#endif',
+	].join('\n')
+}
+
+// boehm_leak_no_interior_pointers_source collects, while the lifetime bookkeeping
+// arrays are only referenced from the heap, with `gc_no_interior_pointers_header`.
+fn boehm_leak_no_interior_pointers_source(header_path string) string {
+	c_header_path := header_path.replace('\\', '/')
+	return [
+		'module main',
+		'import builtin.closure',
+		'',
+		'#include "${c_header_path}"',
+		'',
+		'fn make_cb(value int) fn () int {',
+		'\treturn fn [value] () int {',
+		'\t\treturn value + 1',
+		'\t}',
+		'}',
+		'',
+		'fn run() ! {',
+		'\tmut lifetime := closure.new_lifetime()',
+		'\tfor n in 0 .. 128 {',
+		'\t\tlifetime.frame(fn [n] () {',
+		'\t\t\tcb := make_cb(n)',
+		'\t\t\tassert cb() == n + 1',
+		'\t\t})!',
+		'\t\tif n % 16 == 0 {',
+		'\t\t\tgc_collect()',
+		'\t\t}',
+		'\t\tlifetime.reclaim_all()!',
+		'\t}',
+		'\tlifetime.dispose()!',
+		'}',
+		'',
+		'fn main() {',
+		'\trun() or { panic(err) }',
+		"\tprintln('lifetime done')",
+		'}',
+	].join('\n')
+}
+
 fn gc_none_lifetime_reclaim_memory_source() string {
 	return [
 		'module main',
@@ -669,6 +721,33 @@ fn test_closure_lifetime_boehm_leak_runtime_without_persistent_callbacks() {
 		os.rmdir_all(tmp_dir) or {}
 	}
 	assert_boehm_leak_runtime_or_compile_only(tmp_dir, 'closure_lifetime_boehm_leak_clean', boehm_leak_clean_lifetime_source())
+}
+
+// Regression test for https://github.com/vlang/v/issues/28896 . `-gc boehm_leak` puts
+// a debug header in front of every object, so V's array data pointers need that
+// displacement registered too, or the leak detector frees live array buffers.
+fn test_closure_lifetime_boehm_leak_runtime_without_interior_pointers() {
+	$if gcboehm_leak ? {
+		return
+	}
+	tmp_dir := os.join_path(os.vtmp_dir(), 'v_closure_lifetime_boehm_leak_no_interior_${os.getpid()}')
+	os.mkdir_all(tmp_dir) or { panic(err) }
+	defer {
+		os.rmdir_all(tmp_dir) or {}
+	}
+	header_path := os.join_path(tmp_dir, 'gc_no_interior_pointers.h')
+	os.write_file(header_path, gc_no_interior_pointers_header()) or { panic(err) }
+	res := run_program_with_gc(tmp_dir, 'closure_lifetime_boehm_leak_no_interior',
+		boehm_leak_no_interior_pointers_source(header_path), 'boehm_leak')
+	if res.exit_code != 0 && missing_boehm_lib(res.output) {
+		eprintln('skipping boehm_leak runtime without interior pointers: missing libgc')
+		return
+	}
+	assert res.exit_code == 0, res.output
+	for gc_error in ['Invalid pointer', 'smashed', 'deallocated', 'Fatal error in GC'] {
+		assert !res.output.contains(gc_error), res.output
+	}
+	assert res.output.contains('lifetime done'), res.output
 }
 
 fn test_closure_lifetime_gc_none_does_not_leak_frame_callback_or_bookkeeping() {

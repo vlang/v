@@ -126,3 +126,52 @@ fn main() {
 	assert g.fn_param_is_shared('read', 0)
 	assert c_source.contains('selected_read'), c_source
 }
+
+fn test_shared_library_exports_its_interface_dispatchers() {
+	source_path := os.join_path(os.temp_dir(), 'v3_shared_interface_exports.v')
+	os.write_file(source_path, 'module main
+
+interface Speaker {
+	speak() string
+}
+
+struct Cat {}
+
+fn (cat Cat) speak() string {
+	_ = cat
+	return "cat"
+}
+
+@[export: "make_speaker"]
+fn make_speaker() Speaker {
+	return Cat{}
+}
+') or {
+		panic(err)
+	}
+	defer {
+		os.rm(source_path) or {}
+	}
+	mut prefs := pref.new_preferences()
+	prefs.is_shared = true
+	mut p := parser.Parser.new(prefs)
+	mut a := p.parse_file(source_path)
+	mut tc := types.TypeChecker.new(a)
+	tc.collect(a)
+	tc.diagnose_unknown_calls = true
+	tc.diagnostic_files[source_path] = true
+	tc.check_semantics()
+	assert tc.errors.len == 0, tc.errors.str()
+	transform.transform(mut a, &tc)
+	tc.annotate_types()
+	used_fns := markused.mark_used(a, tc)
+	mut g := FlatGen.new()
+	g.set_shared(true)
+	c_source := g.gen_with_used_options(a, used_fns, &tc, true)
+	// A program that loads this library cannot dispatch `Cat` itself, so the
+	// library exports its dispatcher, keyed by the type tag it boxed `Cat` with.
+	id := g.iface_type_id('Speaker', 'Cat')
+	assert id > 0
+	assert c_source.contains('_v_interface_exports[] = {'), c_source
+	assert c_source.contains('{"Speaker", "speak", ${id}u, (void*)Speaker__speak},'), c_source
+}

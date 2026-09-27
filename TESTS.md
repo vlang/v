@@ -152,6 +152,11 @@ Note: if that command finds formatting errors, they can be fixed with:
 
 Run `vlib` module tests, *including* the compiler tests.
 
+To run the same suite across separate machines, set `VTEST_SELF_SHARD_COUNT` to the number of
+machines and set `VTEST_SELF_SHARD_INDEX` to a different zero-based index on each one. For example,
+`VTEST_SELF_SHARD_COUNT=5 VTEST_SELF_SHARD_INDEX=0 ./v test-self vlib` runs the first shard.
+Every test file belongs to exactly one shard. Leave both variables unset for the full suite.
+
 ## `v vlib/v/compiler_errors_test.v`
 
 This runs tests for:

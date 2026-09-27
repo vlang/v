@@ -1795,10 +1795,9 @@ fn (mut t Transformer) preserve_or_expr_for_codegen(id flat.NodeId, node flat.No
 		t.pending_stmts << stmt
 	}
 
-	saved_var_types := t.var_types.clone()
-	t.set_implicit_err_var_type()
+	err_scope := t.enter_implicit_err_scope()
 	new_body := t.transform_or_body_for_codegen(body_id)
-	t.restore_var_types(saved_var_types)
+	t.leave_implicit_err_scope(err_scope)
 
 	start := t.a.children.len
 	t.a.children << new_expr
@@ -2235,6 +2234,22 @@ fn (mut t Transformer) optional_source_value_expr(source_id flat.NodeId, expr fl
 	return value
 }
 
+// append_implicit_err_decl binds the implicit `err` of an `or {}` block or an
+// if-guard `else` branch to `err_expr`, or to a zero `IError` when there is no
+// source error. Without `IError` (`-no-builtin`) the option/result wrappers have
+// no `err` field, so no binding is emitted.
+fn (mut t Transformer) append_implicit_err_decl(mut stmts []flat.NodeId, err_expr flat.NodeId) {
+	if !t.has_ierror_interface() {
+		return
+	}
+	err_value := if int(err_expr) >= 0 {
+		err_expr
+	} else {
+		t.make_struct_init('IError')
+	}
+	stmts << t.make_decl_assign_typed('err', err_value, 'IError')
+}
+
 // lower_or_body_to_stmts converts lower or body to stmts data for transform.
 fn (mut t Transformer) lower_or_body_to_stmts(body_id flat.NodeId, target_name string, target_type string, mode string, err_source string) []flat.NodeId {
 	err_expr := if err_source != '' {
@@ -2267,28 +2282,22 @@ fn (mut t Transformer) lower_or_body_to_multi_return_stmts_with_err_expr(body_id
 			err_expr)
 	}
 	body := t.a.nodes[int(body_id)]
-	saved_var_types := t.var_types.clone()
-	t.set_implicit_err_var_type()
-	err_value := if int(err_expr) >= 0 {
-		err_expr
-	} else {
-		t.make_struct_init('IError')
-	}
+	err_scope := t.enter_implicit_err_scope()
 	mut result := []flat.NodeId{}
-	result << t.make_decl_assign_typed('err', err_value, 'IError')
+	t.append_implicit_err_decl(mut result, err_expr)
 	if t.stmt_tail_exits(body_id) {
-		t.restore_var_types(saved_var_types)
+		t.leave_implicit_err_scope(err_scope)
 		return t.lower_or_body_to_stmts_with_err_expr(body_id, '', '', mode, err_expr)
 	}
 	if lowered := t.lower_or_multi_return_tail(body_id, target_name, target_type, field_types) {
 		for stmt in lowered {
 			result << stmt
 		}
-		t.restore_var_types(saved_var_types)
+		t.leave_implicit_err_scope(err_scope)
 		return result
 	}
 	_ = body
-	t.restore_var_types(saved_var_types)
+	t.leave_implicit_err_scope(err_scope)
 	return t.lower_or_body_to_stmts_with_err_expr(body_id, target_name, target_type, mode, err_expr)
 }
 
@@ -2526,14 +2535,8 @@ fn (mut t Transformer) lower_or_body_to_stmts_with_err_expr(body_id flat.NodeId,
 	// for its lowering and restored afterwards, so the previous binding (e.g. an outer
 	// `err := 1`) survives and a subsequent `${err}` is not mis-typed as `IError`.
 	// Mirrors transform_if_guard_else_block.
-	saved_var_types := t.var_types.clone()
-	t.set_implicit_err_var_type()
-	err_value := if int(err_expr) >= 0 {
-		err_expr
-	} else {
-		t.make_struct_init('IError')
-	}
-	result << t.make_decl_assign_typed('err', err_value, 'IError')
+	err_scope := t.enter_implicit_err_scope()
+	t.append_implicit_err_decl(mut result, err_expr)
 	for i in 0 .. body.children_count {
 		child_id := t.a.child(&body, i)
 		child := t.a.nodes[int(child_id)]
@@ -2608,7 +2611,7 @@ fn (mut t Transformer) lower_or_body_to_stmts_with_err_expr(body_id flat.NodeId,
 		}
 	}
 	_ = target_type
-	t.restore_var_types(saved_var_types)
+	t.leave_implicit_err_scope(err_scope)
 	return result
 }
 

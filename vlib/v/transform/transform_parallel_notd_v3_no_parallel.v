@@ -2215,6 +2215,7 @@ fn (mut t Transformer) absorb_scoped_batch(batch &Transformer, scope voidptr, ne
 		t.scoped_owned_base_log << flat.NodeId(idx)
 	}
 	t.scoped_owned_base_log << batch.scoped_owned_base_log
+	t.clone_base_write_log << batch.clone_base_write_log
 	t.inplace_child_log << batch.inplace_child_log
 	for name in batch.used_fns_log {
 		t.mark_used_fn_key(t.promote_scoped_result_text(name))
@@ -2350,6 +2351,7 @@ fn (mut t Transformer) transform_scoped_helper_batches(items []FnWorkItem, max_b
 		// Nodes appended by an earlier batch are base nodes for this batch too.
 		// Record rewrites to them so their scratch-owned payloads are promoted.
 		batch.scoped_base_nodes = new_node_start
+		batch.clone_base_nodes = t.clone_base_nodes
 		batch.transform_pure_items_serial(items[start..end])
 		transform_worker_scope_leave(scratch_scope)
 		publication_state := transform_stage_scope_suspend(t.merge_scratch_scope)
@@ -2617,7 +2619,8 @@ fn (mut t Transformer) run_parallel_transform(items []FnWorkItem, base_nodes int
 	t.a.worker_pool.run(copy_tasks)
 	for ci, wast in worker_asts {
 		wtc := t.tc.fork_for_parallel_transform(wast)
-		ww := t.fork_worker(wast, wtc)
+		mut ww := t.fork_worker(wast, wtc)
+		ww.clone_base_nodes = base_nodes
 		transform_workers << voidptr(ww)
 		args << TransformChunkArgs{
 			worker:    voidptr(ww)

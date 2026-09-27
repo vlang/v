@@ -290,7 +290,10 @@ fn (mut m Module) get_installed() {
 	if m.url != '' && !m.existing_checkout_matches_source() {
 		return
 	}
-	refs := os.execute_opt('git ls-remote --refs ${m.install_path}') or { return }
+	refs := os.exec(['git', 'ls-remote', '--refs', m.install_path])
+	if refs.exit_code != 0 {
+		return
+	}
 	vpm_log(@FILE_LINE, @FN, 'refs: ${refs}')
 	m.is_installed = true
 	// In case the head just temporarily matches a tag, make sure that there

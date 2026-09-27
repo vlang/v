@@ -12,8 +12,8 @@ enum VCS {
 struct VCSInfo {
 	dir  string @[required]
 	args struct {
-		install  string   @[required]
-		version  string   @[required] // flag to specify a version, added to install.
+		install  []string @[required]
+		version  string   @[required] // flag name; passed as one `--flag=<version>` element.
 		path     string   @[required] // flag to specify a path. E.g., used to explicitly work on a path during multithreaded updating.
 		update   string   @[required]
 		outdated []string @[required]
@@ -29,25 +29,25 @@ fn init_vcs_info() !map[VCS]VCSInfo {
 	git_installed_raw_ver := parse_git_version(os.execute_opt('git --version')!.output) or { '' }
 	git_installed_ver := semver.from(git_installed_raw_ver)!
 	git_submod_filter_ver := semver.from('2.36.0')!
-	mut git_install_cmd := 'clone --recursive'
+	mut git_install_args := ['clone', '--recursive']
 	if os.user_os() != 'windows' {
 		// The variation of environment factors on windows is too high;
 		// the following options are known to work well on != windows,
 		// but can sometimes cause failures on windows for yet unknown reasons,
 		// see https://discord.com/channels/592103645835821068/665558664949530644/1345422482974310440
 		// for more details, about why this is now allowed only on != windows platforms.
-		git_install_cmd += ' --filter=blob:none'
+		git_install_args << '--filter=blob:none'
 		if git_installed_ver >= git_submod_filter_ver {
-			git_install_cmd += ' --shallow-submodules'
-			git_install_cmd += ' --also-filter-submodules'
+			git_install_args << '--shallow-submodules'
+			git_install_args << '--also-filter-submodules'
 		}
 	}
 	return {
 		VCS.git: VCSInfo{
 			dir:  '.git'
 			args: struct {
-				install:  git_install_cmd
-				version:  '--single-branch -b'
+				install:  git_install_args
+				version:  '--branch'
 				update:   'pull --recurse-submodules' // pulling with `--depth=1` leads to conflicts when the upstream has more than 1 new commits.
 				path:     '-C'
 				outdated: ['fetch', 'rev-parse @', 'rev-parse @{u}']
@@ -56,7 +56,7 @@ fn init_vcs_info() !map[VCS]VCSInfo {
 		VCS.hg:  VCSInfo{
 			dir:  '.hg'
 			args: struct {
-				install:  'clone'
+				install:  ['clone']
 				version:  '--rev'
 				update:   'pull --update'
 				path:     '-R'
@@ -66,12 +66,30 @@ fn init_vcs_info() !map[VCS]VCSInfo {
 	}
 }
 
+fn (vcs VCS) clone_args(url string, version string, path string) ![]string {
+	if version.contains('\0') || version.contains('\r') || version.contains('\n') {
+		return error('version contains NUL, CR, or LF')
+	}
+	info := vcs_info[vcs]
+	mut args := [vcs.str()]
+	args << info.args.install
+	if version != '' {
+		if vcs == .git {
+			args << '--single-branch'
+		}
+		args << '${info.args.version}=${version}'
+	}
+	args << [url, path]
+	return args
+}
+
 fn (vcs VCS) clone(url string, version string, path string) ! {
-	args := vcs_info[vcs].args
-	version_opt := if version != '' { '${args.version} ${version}' } else { '' }
-	cmd := [vcs.str(), args.install, version_opt, os.quoted_path(url), os.quoted_path(path)].join(' ')
-	vpm_log(@FILE_LINE, @FN, 'cmd: ${cmd}')
-	res := os.execute_opt(cmd)!
+	args := vcs.clone_args(url, version, path)!
+	vpm_log(@FILE_LINE, @FN, 'cmd: ${args}')
+	res := os.exec(args)
+	if res.exit_code != 0 {
+		return error(res.output)
+	}
 	vpm_log(@FILE_LINE, @FN, 'cmd output: ${res.output}')
 }
 

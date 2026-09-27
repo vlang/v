@@ -777,7 +777,7 @@ fn (mut g FlatGen) gen_struct_init(id flat.NodeId) {
 			return
 		}
 		if g.optional_struct_init_is_none(node) {
-			g.write('(${name}){.ok = false, .err = builtin__none__}')
+			g.write('(${name}){.ok = false${g.optional_none_err_field()}}')
 			return
 		}
 		if g.gen_optional_fixed_array_struct_init(node, name, init_type) {
@@ -1519,6 +1519,18 @@ fn (mut g FlatGen) gen_fixed_array_copy_source(value_id flat.NodeId, field_type 
 	}
 	if val_node.kind == .paren && val_node.children_count > 0 {
 		g.gen_fixed_array_copy_source(g.a.child(val_node, 0), field_type)
+		return
+	}
+	// `unsafe { [1]map[string]int{} }` yields its only expression. gen_expr emits that
+	// expression bare, which for a fixed-array literal is an untyped `{...}` list, so
+	// peel the block like a paren (keeping its unsafe context) to get a compound literal.
+	if val_node.kind in [.block, .expr_stmt] && val_node.children_count == 1 {
+		old_unsafe_depth := g.unsafe_depth
+		if val_node.kind == .block && val_node.value == 'unsafe' {
+			g.unsafe_depth++
+		}
+		g.gen_fixed_array_copy_source(g.a.child(val_node, 0), field_type)
+		g.unsafe_depth = old_unsafe_depth
 		return
 	}
 	if val_node.kind == .prefix && val_node.op == .mul && val_node.children_count > 0 {
@@ -2409,7 +2421,7 @@ fn (mut g FlatGen) gen_default_value_for_clean_type(clean_typ types.Type) {
 	raw_typ := clean_typ
 	if clean_typ is types.OptionType || clean_typ is types.ResultType {
 		ct := g.optional_type_name(clean_typ)
-		g.write('(${ct}){.ok = false, .err = builtin__none__}')
+		g.write('(${ct}){.ok = false${g.optional_none_err_field()}}')
 		return
 	}
 	if clean_typ is types.Struct

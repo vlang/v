@@ -2845,6 +2845,7 @@ fn (g &FlatGen) new_parallel_worker_config(worker_id int, result_only bool) &Fla
 		compiler_vexe:                      g.compiler_vexe
 		compiler_vexe_env_setup:            g.compiler_vexe_env_setup
 		ccompiler:                          g.ccompiler
+		is_shared:                          g.is_shared
 		target:                             g.target
 		// `int_ct` is derived from the target by set_target, which a worker never
 		// calls. Without copying it a worker keeps the 64-bit default and emits an
