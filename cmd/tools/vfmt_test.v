@@ -61,6 +61,12 @@ fn test_fmt_preferences_respect_vflags() {
 			assert !res.output.contains("x := c'abc'"), '${backend_flag} ${backend}: ${res.output}'
 		}
 	}
+	for backend in ['native', 'go'] {
+		os.unsetenv('VFLAGS')
+		res := os.execute('${os.quoted_path(vexe)} -b ${backend} fmt ${os.quoted_path(source_path)}')
+		assert res.exit_code == 0, '${backend}: ${res.output}'
+		assert res.output.contains("x := c'abc'"), '${backend}: ${res.output}'
+	}
 
 	for backend_flag in ['-b', '-backend'] {
 		os.setenv('VFLAGS', '${backend_flag} jss', true)
@@ -73,6 +79,16 @@ fn test_fmt_preferences_respect_vflags() {
 			os.execute('${os.quoted_path(vexe)} fmt ${backend_flag} jss ${os.quoted_path(source_path)}')
 		assert cli_res.exit_code != 0, '${backend_flag} jss: ${cli_res.output}'
 		assert cli_res.output.contains('Unknown V backend: jss'), cli_res.output
+	}
+}
+
+fn test_fmt_accepts_semantic_duplicate_operator_and_recursive_alias() {
+	for source in ['struct Number {}\nfn (n Number) + (other Number) Number { return n }\nfn (n Number) + (other Number) Number { return n }\n',
+		'type Node = Node\n'] {
+		path := os.join_path(vfmt_test_tdir, 'semantic_editing_buffer.v')
+		os.write_file(path, source)!
+		res := os.execute('${os.quoted_path(vexe)} fmt ${os.quoted_path(path)}')
+		assert res.exit_code == 0, res.output
 	}
 }
 

@@ -1462,7 +1462,8 @@ fn (mut p Parser) fn_decl() flat.NodeId {
 				name_pos = p.tok_pos
 				op_name := overload_token_name(p.tok)
 				clean_type := method_receiver_type_name(receiver_type)
-				if p.a.nodes.any(it.kind == .fn_decl && it.value == '${clean_type}.${op_name}') {
+				if !p.prefs.is_fmt
+					&& p.a.nodes.any(it.kind == .fn_decl && it.value == '${clean_type}.${op_name}') {
 					p.record_diagnostic_span('cannot duplicate operator overload `${op_name}`',
 						p.tok_pos, p.tok_end)
 				}
@@ -3261,7 +3262,8 @@ fn (mut p Parser) type_decl() flat.NodeId {
 			pos:            p.span_to(type_start)
 		})
 	}
-	if language_prefix.len == 0 && first_type == name && !p.has_prior_type_declaration(name) {
+	if !p.prefs.is_fmt && language_prefix.len == 0 && first_type == name
+		&& !p.has_prior_type_declaration(name) {
 		p.record_diagnostic_span('a type alias can not refer to itself: ${name}', decl_start,
 			p.prev_tok_end)
 	}

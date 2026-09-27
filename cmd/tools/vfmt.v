@@ -50,8 +50,11 @@ fn formatter_backend(args []string) !string {
 				'js', 'js_node', 'js_browser', 'js_freestanding' {
 					'js'
 				}
+				'native', 'go' {
+					'c'
+				}
 				else {
-					return error('Unknown V backend: ${args[i + 1]}\nValid -backend choices are: c, fastc, js, js_node, js_browser, js_freestanding, wasm')
+					return error('Unknown V backend: ${args[i + 1]}\nValid -backend choices are: c, fastc, go, js, js_node, js_browser, js_freestanding, native, wasm')
 				}
 			}
 		}
