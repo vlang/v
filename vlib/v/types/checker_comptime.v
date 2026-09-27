@@ -7420,7 +7420,8 @@ fn (mut tc TypeChecker) check_infix(id flat.NodeId, node flat.Node) {
 		return
 	}
 	invalid_enum_op := enum_operands && node.op !in [.eq, .ne]
-	if invalid_enum_op && node.op !in [.logical_and, .logical_or] {
+	if invalid_enum_op && node.op !in [.logical_and, .logical_or]
+		&& !tc.translated_numeric_expr_compatible(id, lhs_type, rhs_type) {
 		tc.record_invalid_enum_infix(id, node, lhs_clean)
 		return
 	}
@@ -7623,11 +7624,14 @@ fn (mut tc TypeChecker) check_infix(id flat.NodeId, node flat.Node) {
 	}
 	if node.op in [.amp, .pipe, .xor] {
 		op := infix_operator_name(node.op) or { '' }
-		if !unalias_type(lhs_type).is_integer() {
+		translated := tc.node_is_in_translated_file(id)
+		if !unalias_type(lhs_type).is_integer()
+			&& !(translated && translated_integer_type(lhs_type)) {
 			tc.record_error_at(.assignment_mismatch, 'left type of `${op}` cannot be non-integer type `${tc.diagnostic_expr_type_name(lhs_id, lhs_type)}`', lhs_id, lhs_node.pos)
 			return
 		}
-		if !unalias_type(rhs_type).is_integer() {
+		if !unalias_type(rhs_type).is_integer()
+			&& !(translated && translated_integer_type(rhs_type)) {
 			tc.record_error_at(.assignment_mismatch, 'right type of `${op}` cannot be non-integer type `${tc.diagnostic_expr_type_name(rhs_id, rhs_type)}`', rhs_id, tc.a.node(rhs_id).pos)
 			return
 		}
@@ -17936,6 +17940,17 @@ fn (mut tc TypeChecker) record_compound_assignment_operand_errors(op flat.Op, lh
 			tc.record_error(.assignment_mismatch, 'operator ${op_text} not defined on right operand type `${rhs_type.name()}`', rhs_id)
 		}
 		return
+	}
+	if tc.node_is_in_translated_file(lhs_id) {
+		if op in [.plus_assign, .minus_assign, .mul_assign, .div_assign]
+			&& translated_numeric_type(lhs_type) && translated_numeric_type(rhs_type) {
+			return
+		}
+		if op in [.mod_assign, .amp_assign, .pipe_assign, .xor_assign, .left_shift_assign,
+			.right_shift_assign, .right_shift_unsigned_assign]
+			&& translated_integer_type(lhs_type) && translated_integer_type(rhs_type) {
+			return
+		}
 	}
 	if op == .minus_assign && (array_type_from_receiver(lhs_type) != none
 		|| map_type_from_receiver(unalias_type(lhs_type)) != none) {

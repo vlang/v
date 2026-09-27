@@ -65,3 +65,25 @@ fn test_translated_enum_arithmetic() {
 	assert f64(2.5) + TranslatedCode.one == 3.5
 	assert char(2) + value == 13
 }
+
+type TranslatedCallback = fn ()
+
+struct TranslatedCallbacks {
+	callback TranslatedCallback = unsafe { nil }
+}
+
+fn test_translated_compound_and_bitwise_operators() {
+	mut value := 10
+	value += true
+	value -= TranslatedCode.one
+	value *= TranslatedCode.one
+	assert value == 10
+	value ^= true
+	assert value == 11
+	assert (3 ^ true) == 2
+	masked := char(3) & 1
+	assert int(masked) == 1
+	assert int(TranslatedCode.one | TranslatedCode.zero) == 1
+	callbacks := TranslatedCallbacks{}
+	assert (if !callbacks.callback { 1 } else { 0 }) == 1
+}

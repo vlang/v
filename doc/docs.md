@@ -9218,9 +9218,10 @@ is `DLL_PROCESS_DETACH`.
 ### Translating C to V
 
 Files marked `@[translated]` retain C scalar conversions between numbers, enums, and booleans.
-These scalars can be mixed in arithmetic expressions, and scalar values and pointers can serve
-as conditions. Ordinary V files retain V's type and condition checks, even when compiled
-together with translated files.
+These scalars can be mixed in arithmetic expressions and compound assignments. Integral scalars
+can be used in bitwise expressions. Scalar values and pointers, including function pointers,
+can serve as conditions. Ordinary V files retain V's type and condition checks, even when
+compiled together with translated files.
 
 V can translate your C code to human readable V code, and generating V wrappers
 on top of C libraries.

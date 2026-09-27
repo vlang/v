@@ -2872,6 +2872,11 @@ fn translated_numeric_type(typ Type) bool {
 		|| clean == Type(bool_)
 }
 
+fn translated_integer_type(typ Type) bool {
+	clean := unalias_type(typ)
+	return clean.is_integer() || clean is Char || clean is Enum || clean == Type(bool_)
+}
+
 fn (tc &TypeChecker) translated_numeric_expr_compatible(id flat.NodeId, actual Type, expected Type) bool {
 	return tc.node_is_in_translated_file(id) && translated_numeric_type(actual)
 		&& translated_numeric_type(expected)
@@ -2879,7 +2884,8 @@ fn (tc &TypeChecker) translated_numeric_expr_compatible(id flat.NodeId, actual T
 
 fn (tc &TypeChecker) translated_condition_compatible(id flat.NodeId, typ Type) bool {
 	return tc.node_is_in_translated_file(id)
-		&& (translated_numeric_type(typ) || unalias_type(typ) is Pointer)
+		&& (translated_numeric_type(typ) || unalias_type(typ) is Pointer
+			|| fn_type_from_type(typ) != none)
 }
 
 fn (tc &TypeChecker) interface_expr_compatible(actual Type, expected Type) bool {

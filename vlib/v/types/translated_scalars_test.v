@@ -20,6 +20,9 @@ fn main() {
 	_ = numeric(Code.one)
 	_ = 4 - Code.one
 	_ = 4 + Code.one
+	value += true
+	value -= Code.one
+	_ = 3 ^ true
 	translated()
 }
 ')!
@@ -32,7 +35,20 @@ fn main() {
 		assert result.output.contains('left operand for `&&` is not a boolean'), result.output
 		assert result.output.contains('cannot use `Code` as `int` in argument'), result.output
 		assert result.output.contains('infix expr: cannot use `Code` (right expression) as `int literal`'), result.output
+		assert result.output.contains('invalid right operand: int += bool'), result.output
+		assert result.output.contains('invalid right operand: int -= Code'), result.output
+		assert result.output.contains('right type of `^` cannot be non-integer type `bool`'), result.output
 	}
+}
+
+fn test_translated_bitwise_operators_still_require_integral_operands() {
+	root := os.join_path(os.vtmp_dir(), 'v3_translated_bitwise_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+	os.write_file(os.join_path(root, 'main.v'), '@[translated]\nmodule main\nfn main() { _ = 3 ^ 1.5 }\n')!
+	result := os.execute('${os.quoted_path(@VEXE)} -check ${os.quoted_path(root)}')
+	assert result.exit_code != 0, result.output
+	assert result.output.contains('right type of `^` cannot be non-integer'), result.output
 }
 
 fn test_translated_arithmetic_preserves_division_by_zero_error() {
