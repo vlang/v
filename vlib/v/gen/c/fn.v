@@ -5031,11 +5031,16 @@ fn (mut g FlatGen) gen_fn_in_module(node_id flat.NodeId, node flat.Node, module_
 	// unwind through, so nothing may run before the user's hand-written code:
 	// entry tracing's call, and profiling's timer read and two `double` locals,
 	// both write to stack slots relative to a frame that does not exist yet.
+	// `gen_profile_fn_begin` is called regardless of `is_naked_fn` -- it is the
+	// only place that resets `profile_fn_active`/`profile_fn_restore_enabled`,
+	// and those must not keep leaking a PRECEDING function's profiled state
+	// into a later naked function's explicit `return` (handled independently
+	// by `gen_return_cleanup` in stmt.v, via `gen_profile_fn_exit`).
 	if !is_naked_fn {
 		g.gen_trace_fn_begin(node, module_name)
-		g.gen_profile_fn_begin(generated_fn_name, module_name, node.value,
-			g.tc.declaration_has_attribute(node_id, 'inline'))
 	}
+	g.gen_profile_fn_begin(generated_fn_name, module_name, node.value,
+		g.tc.declaration_has_attribute(node_id, 'inline'), is_naked_fn)
 
 	for i in 0 .. node.children_count {
 		id := g.a.child(&node, i)
@@ -5442,7 +5447,7 @@ fn (mut g FlatGen) gen_top_level_main(stmts []TopLevelStmt) {
 	g.indent++
 	g.gen_function_defer_prelude()
 	g.gen_trace_call('main main.main/0', 'main', 'main.main')
-	g.gen_profile_fn_begin('main', 'main', 'main', false)
+	g.gen_profile_fn_begin('main', 'main', 'main', false, false)
 	for stmt in stmts {
 		g.tc.cur_file = stmt.file
 		g.tc.cur_module = stmt.module

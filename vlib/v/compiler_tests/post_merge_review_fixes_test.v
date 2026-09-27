@@ -10859,3 +10859,57 @@ fn main() {
 	assert naked_body != '', c_source
 	assert !naked_body.contains('_PROF_FN_START'), naked_body
 }
+
+// `gen_profile_fn_begin` is the only place that resets `profile_fn_active` and
+// `profile_fn_restore_enabled`; skipping the whole call for a naked function (as
+// above) left both fields holding whatever the PRECEDING profiled function left
+// them at. A non-void naked function still needs an explicit V `return` to
+// satisfy the checker's tail-return analysis (its own `asm` `ret` is invisible to
+// it), and that `return` goes through `gen_return_cleanup` in stmt.v, which calls
+// `gen_profile_fn_exit()` unconditionally -- not gated on naked-ness at all. With
+// a stale `profile_fn_active == true`, that emits cleanup referencing
+// `_PROF_FN_START`/`_PROF_PREV_MEASURED_TIME`, undeclared in this body because
+// `gen_profile_fn_begin` never ran to declare them. Found by @medvednikov's
+// review of 141e8274fc.
+//
+// `-profile-fns builtin__memdup_noscan` targets the actual function V3 generates
+// immediately before `naked_fn` in this program (verified empirically -- codegen
+// order is not source order, and builtin runtime functions get interspersed).
+// Without a name in `-profile-fns` matching that PRECEDING function,
+// `profile_fn_restore_enabled` is false regardless of whether its own reset
+// works, and `_prev_v__profile_enabled` can never appear either way -- a plain
+// `-profile` run alone cannot exercise this half of the leak at all (an
+// adversarial review of this test caught that gap: an earlier version of this
+// test asserted its absence but could never have failed either version of the
+// fix). Confirmed both directions on the exact scenario below: the true pre-fix
+// binary (commit 141e8274fc, unmodified) emits
+// `profile__v__profile_enabled = _prev_v__profile_enabled;` in `naked_fn`'s body
+// with these flags; the fixed binary does not.
+fn test_naked_attribute_resets_profiling_state_for_a_later_explicit_return() {
+	v3_bin := build_v3()
+	profile_path := tmp_test_path('naked_attribute_explicit_return_profile_out')
+	c_source := gen_c_with_flags(v3_bin, 'naked_attribute_explicit_return_profile', '-profile ${profile_path} -profile-fns builtin__memdup_noscan',
+		'
+fn profiled_fn() {
+}
+
+@[_naked]
+fn naked_fn() int {
+	asm amd64 {
+		mov eax, 42
+		ret
+	}
+	return 0
+}
+
+fn main() {
+	profiled_fn()
+	println(naked_fn())
+}
+')
+	naked_body := c_fn_body(c_source, 'i64 naked_fn(void) {')
+	assert naked_body != '', c_source
+	assert !naked_body.contains('_PROF_FN_START'), naked_body
+	assert !naked_body.contains('_PROF_PREV_MEASURED_TIME'), naked_body
+	assert !naked_body.contains('_prev_v__profile_enabled'), naked_body
+}
