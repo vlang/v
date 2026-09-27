@@ -6,6 +6,7 @@ import v.flat
 import v.gen.c.naming
 import v.pref
 import v.types
+import v.util
 
 @[inline]
 fn same_transform_text(a string, b string) bool {
@@ -283,7 +284,7 @@ mut:
 	promote_text_cache            &PromoteTextCache        = unsafe { nil }
 	call_variadic_cache           &BoolLookupCache         = unsafe { nil }
 	str_alias_cache               &LookupCache             = unsafe { nil }
-	file_import_cache             &KeyRecentCache          = unsafe { nil }
+	file_import_cache             &util.KeyRecentCache     = unsafe { nil }
 	generic_alias_names           map[string]bool
 	type_alias_suffixes           map[string]string
 	static_method_names           map[string]bool
@@ -628,13 +629,13 @@ struct LookupCache {
 mut:
 	entries map[string]string
 	misses  map[string]bool
-	recent  &KeyRecentCache = unsafe { nil }
+	recent  &util.KeyRecentCache = unsafe { nil }
 }
 
 // recent_cache returns this cache's front cache, allocating it on first use.
-fn (mut c LookupCache) recent_cache() &KeyRecentCache {
+fn (mut c LookupCache) recent_cache() &util.KeyRecentCache {
 	if isnil(c.recent) {
-		c.recent = &KeyRecentCache{}
+		c.recent = &util.KeyRecentCache{}
 	}
 	return c.recent
 }
@@ -694,57 +695,13 @@ mut:
 	entries    map[string]i8 // 1 = true, -1 = false
 	last_name  string
 	last_value i8
-	recent     &KeyRecentCache = unsafe { nil }
-}
-
-const key_recent_slots = 128
-
-// KeyRecentCache is a lossy front cache for lookups keyed by up to three
-// strings. A hit compares the parts directly (pointer and length first), so the
-// caller skips building the composite key its backing map is keyed by. The
-// maps it fronts are never cleared, so a cached answer cannot go stale.
-@[heap]
-struct KeyRecentCache {
-mut:
-	a      [key_recent_slots]string
-	b      [key_recent_slots]string
-	c      [key_recent_slots]string
-	values [key_recent_slots]string
-	states [key_recent_slots]i8 // 1 = found, -1 = known miss, 0 = empty
-}
-
-@[inline]
-fn key_recent_slot(a string, b string, c string) int {
-	return (alias_cache_slot(a) * 31 + alias_cache_slot(b) * 7 + alias_cache_slot(c)) & (key_recent_slots - 1)
-}
-
-// get returns 1 and the cached value for a hit, -1 for a cached miss, and 0
-// when the key is not cached.
-@[direct_array_access]
-fn (c &KeyRecentCache) get(a string, b string, cc string) (i8, string) {
-	slot := key_recent_slot(a, b, cc)
-	state := c.states[slot]
-	if state != 0 && same_transform_text(c.a[slot], a) && same_transform_text(c.b[slot], b)
-		&& same_transform_text(c.c[slot], cc) {
-		return state, c.values[slot]
-	}
-	return 0, ''
-}
-
-@[direct_array_access]
-fn (mut c KeyRecentCache) put(a string, b string, cc string, state i8, value string) {
-	slot := key_recent_slot(a, b, cc)
-	c.a[slot] = a
-	c.b[slot] = b
-	c.c[slot] = cc
-	c.values[slot] = value
-	c.states[slot] = state
+	recent     &util.KeyRecentCache = unsafe { nil }
 }
 
 // recent_cache returns this cache's front cache, allocating it on first use.
-fn (mut c BoolLookupCache) recent_cache() &KeyRecentCache {
+fn (mut c BoolLookupCache) recent_cache() &util.KeyRecentCache {
 	if isnil(c.recent) {
-		c.recent = &KeyRecentCache{}
+		c.recent = &util.KeyRecentCache{}
 	}
 	return c.recent
 }
@@ -1854,7 +1811,7 @@ fn new_transformer_view(a &flat.FlatAst, tc &types.TypeChecker, used_fns map[str
 			entries: map[string]string{}
 			misses:  map[string]bool{}
 		}
-		file_import_cache:           &KeyRecentCache{}
+		file_import_cache:           &util.KeyRecentCache{}
 	}
 }
 
@@ -4144,7 +4101,7 @@ fn (t &Transformer) fork_worker_config(ast &flat.FlatAst, wtc &types.TypeChecker
 		entries: map[string]string{}
 		misses:  map[string]bool{}
 	}
-	w.file_import_cache = &KeyRecentCache{}
+	w.file_import_cache = &util.KeyRecentCache{}
 	w.generic_fn_decls_cache = map[string]GenericFnDecl{}
 	w.generic_fn_decls_ready = false
 	w.generic_call_spec_cache = map[int]GenericCallSpec{}
@@ -4287,7 +4244,7 @@ fn (t &Transformer) fork_scan_worker(wtc &types.TypeChecker) &Transformer {
 		entries: map[string]string{}
 		misses:  map[string]bool{}
 	}
-	w.file_import_cache = &KeyRecentCache{}
+	w.file_import_cache = &util.KeyRecentCache{}
 	w.generic_fn_decls_cache = map[string]GenericFnDecl{}
 	w.generic_fn_decls_ready = false
 	w.generic_call_spec_cache = map[int]GenericCallSpec{}

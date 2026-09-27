@@ -7,6 +7,7 @@ import time
 import v.flat
 import v.gen.c.naming
 import v.types
+import v.util
 import v.workers
 
 const max_flat_cgen_jobs = 18
@@ -2911,6 +2912,8 @@ fn (g &FlatGen) new_parallel_worker_config(worker_id int, result_only bool) &Fla
 		cur_fn_ret_is_optional:             g.cur_fn_ret_is_optional
 		cur_fn_ret_base:                    g.cur_fn_ret_base
 		memo_usable_expr_types:             g.memo_usable_expr_types
+		import_key_cache:                   &util.KeyRecentCache{}
+		selective_import_key_cache:         &util.KeyRecentCache{}
 		cache_struct_fields:                g.cache_struct_fields
 		dedup_fn_decl_aliases:              g.dedup_fn_decl_aliases
 		prefix_param_scan:                  g.prefix_param_scan
