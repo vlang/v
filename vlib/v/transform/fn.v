@@ -12154,6 +12154,11 @@ fn (mut t Transformer) lift_fn_literal(_id flat.NodeId, node flat.Node) flat.Nod
 	// declarations. Root the generated declaration explicitly so module-local
 	// callbacks are not referenced without a prototype/body in the C output.
 	t.mark_fn_used_name(name)
+	// Specialization can lift a literal after markused scanned its source body.
+	// Its callees are no longer children of the enclosing generated function.
+	for callee in t.generated_fn_body_call_names(fn_decl) {
+		t.mark_fn_used_name(callee)
+	}
 	mut fn_value_param_type_texts := []string{cap: param_types.len}
 	for i, param_type in param_types {
 		raw_type := if i < param_type_texts.len { param_type_texts[i] } else { '' }
