@@ -162,6 +162,53 @@ fn main() {
 	assert errors[1].starts_with('main.v:18:23: error: cannot use `int` as `string` in argument 1 to `takes_string`: when `T` is `int`, in its constraint `Number`'), errors[1]
 }
 
+fn test_a_constraint_that_names_its_type_parameter_is_checked_too() {
+	// `[T Comparable[T]]`: `T` is any type that implements `Comparable` of
+	// itself; the body is checked with that interface, `T` open inside it.
+	errors := check('self_constraint', 'module main
+
+interface Comparable[T] {
+	less(other T) bool
+}
+
+struct Version {
+	major int
+}
+
+fn (a Version) less(b Version) bool {
+	return a.major < b.major
+}
+
+fn smallest_index[T Comparable[T]](items []T) int {
+	mut best := 0
+	for item in items {
+		if item.less(items[best]) {
+			best = item
+		}
+	}
+	return best
+}
+
+fn smallest[T Comparable[T]](items []T) T {
+	mut min := items[0]
+	for item in items {
+		if item.less(min) {
+			min = item
+		}
+	}
+	return min
+}
+
+fn main() {
+	println(smallest_index([Version{2}, Version{1}]))
+	println(smallest([Version{2}, Version{1}]))
+}
+')
+	assert errors.len == 1, errors.str()
+	assert errors[0].starts_with('main.v:19:11: error: cannot assign to `best`: expected `int`'), errors[0]
+	assert errors[0].contains('`T` is any type that implements `Comparable[T]`'), errors[0]
+}
+
 fn test_a_generic_body_with_a_type_parameter_without_a_constraint_is_not_checked() {
 	// As before: V checks such a body in each of its instances.
 	errors := check('unconstrained', "module main

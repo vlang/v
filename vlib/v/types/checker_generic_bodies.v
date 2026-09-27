@@ -146,16 +146,34 @@ fn (tc &TypeChecker) parse_type_as_instance(typ string) Type {
 	mut args := []string{cap: tc.type_param_texts.len}
 	mut name_set := map[string]bool{}
 	for name, text in tc.type_param_texts {
+		if tc.type_params_expanding[name] {
+			continue
+		}
 		names << name
 		args << text
 		name_set[name] = true
 	}
-	text := if type_text_names_any(typ, name_set) {
-		subst_generic_text(typ, args, names)
-	} else {
-		typ
+	if names.len == 0 || !type_text_names_any(typ, name_set) {
+		_, result := tc.intern_type(tc.parse_type_uncached(typ))
+		return result
 	}
-	_, result := tc.intern_type(tc.parse_type_uncached(text))
+	// A type parameter whose type names it, `T` of `[T Comparable[T]]`, is open
+	// inside that type: `T` is `Comparable[T]`, not `Comparable[Comparable[...]]`.
+	// Only this fork parses with these texts, on one thread.
+	mut fork := unsafe { tc }
+	mut expanding := []string{}
+	for i, name in names {
+		mut own := map[string]bool{}
+		own[name] = true
+		if type_text_names_any(args[i], own) {
+			fork.type_params_expanding[name] = true
+			expanding << name
+		}
+	}
+	_, result := tc.intern_type(tc.parse_type_uncached(subst_generic_text(typ, args, names)))
+	for name in expanding {
+		fork.type_params_expanding.delete(name)
+	}
 	return result
 }
 
@@ -242,7 +260,9 @@ fn (tc &TypeChecker) instance_comptime_in_value(term ComptimeInTerm) ?bool {
 
 // type_param_instance_texts gives each type parameter of `params` the texts of
 // the types its constraint admits for a check of the body: the interface, or
-// the types of the set. None when a type there names a type parameter.
+// the types of the set. An interface may name its own type parameter,
+// `[T Comparable[T]]` (see parse_type_as_instance). None when a type names
+// another type parameter.
 fn (tc &TypeChecker) type_param_instance_texts(params map[string]bool, constraints map[string]GenericConstraint) ?map[string][]string {
 	mut texts := map[string][]string{}
 	for name, _ in params {
@@ -258,8 +278,12 @@ fn (tc &TypeChecker) type_param_instance_texts(params map[string]bool, constrain
 		if options.len == 0 {
 			return none
 		}
+		mut others := params.clone()
+		if constraint.is_interface {
+			others.delete(name)
+		}
 		for option in options {
-			if option.len == 0 || type_text_names_any(option, params) {
+			if option.len == 0 || type_text_names_any(option, others) {
 				return none
 			}
 		}
