@@ -207,8 +207,8 @@ fn test_single_moduleless_test_keeps_an_unresolvable_same_dir_fixture_module() {
 	assert same_dir_module_source_files(mut a, test_file, '', prefs) == [module_file]
 }
 
-fn test_single_moduleless_test_keeps_an_escaped_same_dir_fixture_module() {
-	root := os.join_path(os.temp_dir(), 'v3_same_dir_escaped_fixture_${os.getpid()}')
+fn test_single_moduleless_test_keeps_a_keyword_same_dir_fixture_module() {
+	root := os.join_path(os.temp_dir(), 'v3_same_dir_keyword_fixture_${os.getpid()}')
 	os.rmdir_all(root) or {}
 	os.mkdir_all(root)!
 	defer {
@@ -216,16 +216,16 @@ fn test_single_moduleless_test_keeps_an_escaped_same_dir_fixture_module() {
 	}
 	test_file := os.join_path(root, 'fixture_test.v')
 	module_file := os.join_path(root, 'helper.v')
-	os.write_file(test_file, 'import @type\n\nfn test_helper() {}\n')!
-	os.write_file(module_file, 'module @type\n\npub fn value() int { return 1 }\n')!
+	os.write_file(test_file, 'import type\n\nfn test_helper() {}\n')!
+	os.write_file(module_file, 'module type\n\npub fn value() int { return 1 }\n')!
 	mut prefs := pref.new_preferences()
 	prefs.vroot = os.join_path(root, 'toolchain')
 	mut a := flat.FlatAst.new()
 	assert same_dir_module_source_files(mut a, test_file, '', prefs) == [module_file]
 
 	mut imports := []string{}
-	append_declared_import(mut imports, 'outer.@type')
 	append_declared_import(mut imports, 'outer.type')
+	append_declared_import(mut imports, 'outer.type { value }')
 	assert imports == ['outer.type']
 }
 
