@@ -96,6 +96,7 @@ fn test_fmt_accepts_semantic_duplicate_operator_and_recursive_alias() {
 		'fn main() { defer { return } }\n',
 		'fn f() ! { defer { f()! } }\n',
 		'fn f() ?int { defer { f()? }; return 1 }\n',
+		'fn main() { println($res()) }\n',
 	] {
 		path := os.join_path(vfmt_test_tdir, 'semantic_editing_buffer.v')
 		os.write_file(path, source)!

@@ -7195,9 +7195,9 @@ fn (mut p Parser) parse_comptime_expr() flat.NodeId {
 			}
 		}
 		res_pos := p.span_to(dollar_pos)
-		if p.defer_depth == 0 {
+		if p.defer_depth == 0 && !p.prefs.is_fmt {
 			p.record_diagnostic_span('`res` can only be used in defer blocks', res_pos.offset, res_pos.end)
-		} else if !p.defer_result_allowed {
+		} else if p.defer_depth > 0 && !p.defer_result_allowed && !p.prefs.is_fmt {
 			p.record_diagnostic_span('`res` can only be used in function-exit defer blocks', res_pos.offset, res_pos.end)
 		}
 		return p.add_node(flat.Node{
