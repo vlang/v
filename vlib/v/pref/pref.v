@@ -1144,6 +1144,45 @@ pub fn normalized_arch(target_arch string) string {
 }
 
 // normalized_target_os supports normalized target os handling for Preferences.
+// ccompiler_can_assemble reports whether `ccompiler` is a GCC or Clang compatible
+// driver, one that preprocesses and assembles a `.S` file with `-c`. tcc and MSVC
+// cannot; a `cc` or `gcc` name is trusted only after its version output rules
+// out an alias for tcc.
+pub fn ccompiler_can_assemble(ccompiler string) bool {
+	real_name := os.file_name(os.real_path(ccompiler)).to_lower_ascii()
+	if real_name.contains('tcc') || real_name.contains('tinyc') || real_name.contains('msvc')
+		|| real_name in ['cl', 'cl.exe'] {
+		return false
+	}
+	quoted_ccompiler := os.quoted_path(ccompiler)
+	for version_flag in ['--version', '-v'] {
+		res := os.execute('${quoted_ccompiler} ${version_flag} 2>&1')
+		output := res.output.to_lower_ascii()
+		if output.contains('tiny c compiler') || output.contains('tinycc')
+			|| output.contains('\ntcc') || output.starts_with('tcc')
+			|| output.contains('microsoft c/c++') || output.contains('msvc') {
+			return false
+		}
+		if output.contains('clang') || output.contains('gcc version') || output.contains('(gcc)')
+			|| output.contains('free software foundation') || output.contains('gcc ') {
+			return true
+		}
+	}
+	return false
+}
+
+// find_system_assembler returns a GCC or Clang compatible compiler driver found
+// on PATH, one that can assemble a preprocessed `.S` file, or none.
+pub fn find_system_assembler() ?string {
+	for candidate in ['clang', 'gcc', 'cc'] {
+		path := os.find_abs_path_of_executable(candidate) or { continue }
+		if ccompiler_can_assemble(path) {
+			return path
+		}
+	}
+	return none
+}
+
 pub fn (p &Preferences) normalized_target_os() string {
 	return p.target.os
 }
