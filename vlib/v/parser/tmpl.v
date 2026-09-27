@@ -15,6 +15,7 @@ import strings
 import v.flat
 import v.scanner
 import v.token
+import v.util
 
 enum TmplState {
 	simple // no special interpretation of tags
@@ -1257,7 +1258,7 @@ fn (p &Parser) resolve_tmpl_path_arg(id flat.NodeId) string {
 // resolves `controller/get/all/task.html` in addition to the flat filename.
 fn (p &Parser) resolve_veb_template_path(is_html bool, arg string) string {
 	dir := os.dir(os.real_path(p.cur_file))
-	vmod_dir := nearest_vmod_dir(dir)
+	vmod_dir := util.nearest_vmod_root(dir)
 	if is_html && arg.len == 0 {
 		fn_name := p.cur_fn.all_after_last('.')
 		split_name := fn_name.split('_').join(os.path_separator)
@@ -1309,23 +1310,6 @@ fn (p &Parser) resolve_veb_template_path(is_html bool, arg string) string {
 		}
 	}
 	return direct
-}
-
-// nearest_vmod_dir walks up from `start_dir` to the closest directory that contains a
-// `v.mod` file (the module root), or returns none when there is none.
-fn nearest_vmod_dir(start_dir string) ?string {
-	mut d := start_dir
-	for d.len > 0 {
-		if os.exists(os.join_path_single(d, 'v.mod')) {
-			return d
-		}
-		parent := os.dir(d)
-		if parent == d {
-			break
-		}
-		d = parent
-	}
-	return none
 }
 
 // parse_stmts_from_source parses `src` as a statement sequence using a temporary
