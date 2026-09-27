@@ -17,4 +17,11 @@ fn test_specialized_receiver_callback_uses_function_type_compatibility() {
 	assert !t.resolved_receiver_arg_compatible(id, 'fn (int)', 'fn (shared int)')
 	assert !t.resolved_receiver_arg_compatible(id, 'fn (atomic int)', 'fn (int)')
 	assert t.resolved_receiver_arg_compatible(id, 'fn (shared int)', 'fn (shared int)')
+	assert !t.resolved_receiver_arg_compatible(id, 'fn (fn (shared int))',
+		'fn (fn (int))')
+	assert !t.resolved_receiver_arg_compatible(id, 'fn (fn (int))', 'fn (fn (atomic int))')
+	assert !t.resolved_receiver_arg_compatible(id, 'fn () fn (shared int)',
+		'fn () fn (int)')
+	assert t.resolved_receiver_arg_compatible(id, 'fn (fn (shared int))',
+		'fn (fn (shared int))')
 }

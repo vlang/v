@@ -14173,15 +14173,8 @@ fn (mut t Transformer) resolved_receiver_arg_compatible(arg_id flat.NodeId, actu
 		return true
 	}
 	if !isnil(t.tc) && actual.starts_with('fn') && expected.starts_with('fn') {
-		actual_params, _ := fn_type_text_parts(actual) or { return false }
-		expected_params, _ := fn_type_text_parts(expected) or { return false }
-		if actual_params.len != expected_params.len {
+		if !callback_fn_type_modes_compatible(actual, expected) {
 			return false
-		}
-		for i, actual_param in actual_params {
-			if callback_param_shared_atomic_mode(actual_param) != callback_param_shared_atomic_mode(expected_params[i]) {
-				return false
-			}
 		}
 		actual_fn := transform_fn_type(t.tc.parse_type(actual)) or { return false }
 		expected_fn := transform_fn_type(t.tc.parse_type(expected)) or { return false }
@@ -14278,6 +14271,50 @@ fn callback_param_shared_atomic_mode(param string) string {
 		return 'atomic'
 	}
 	return ''
+}
+
+fn callback_nested_fn_type(param string) ?string {
+	mut payload := generic_fn_type_param_payload(param)
+	for payload.starts_with('?') || payload.starts_with('!') || payload.starts_with('&') {
+		payload = payload[1..].trim_space()
+	}
+	if payload.starts_with('shared ') {
+		payload = payload[7..].trim_space()
+	} else if payload.starts_with('atomic ') {
+		payload = payload[7..].trim_space()
+	}
+	if payload.starts_with('fn(') || payload.starts_with('fn (') {
+		return payload
+	}
+	return none
+}
+
+fn callback_fn_type_modes_compatible(actual string, expected string) bool {
+	actual_params, actual_return := fn_type_text_parts(actual) or { return false }
+	expected_params, expected_return := fn_type_text_parts(expected) or { return false }
+	if actual_params.len != expected_params.len {
+		return false
+	}
+	for i, actual_param in actual_params {
+		if callback_param_shared_atomic_mode(actual_param) != callback_param_shared_atomic_mode(expected_params[i]) {
+			return false
+		}
+		if nested_actual := callback_nested_fn_type(actual_param) {
+			nested_expected := callback_nested_fn_type(expected_params[i]) or { return false }
+			if !callback_fn_type_modes_compatible(nested_actual, nested_expected) {
+				return false
+			}
+		} else if _ := callback_nested_fn_type(expected_params[i]) {
+			return false
+		}
+	}
+	if nested_actual := callback_nested_fn_type(actual_return) {
+		nested_expected := callback_nested_fn_type(expected_return) or { return false }
+		return callback_fn_type_modes_compatible(nested_actual, nested_expected)
+	} else if _ := callback_nested_fn_type(expected_return) {
+		return false
+	}
+	return true
 }
 
 struct SpecializedIntLiteral {
