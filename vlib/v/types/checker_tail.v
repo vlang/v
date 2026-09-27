@@ -4526,6 +4526,17 @@ fn (mut tc TypeChecker) check_call_privacy(id flat.NodeId, node flat.Node, info 
 			receiver_id := tc.a.child(callee, 0)
 			name_pos := tc.method_call_name_pos(node, callee)
 			receiver_type := tc.resolve_type(receiver_id)
+			receiver_name := method_type_name(unwrap_pointer(receiver_type))
+			receiver_module := tc.struct_module_for_type(receiver_name)
+			if receiver_module == tc.cur_module
+				|| (receiver_module in ['', 'main'] && tc.cur_module in ['', 'main']) {
+				// Promoted methods remain accessible in the embedding struct's module.
+				if embedded_info := tc.embedded_method_call_info(receiver_name, callee.value) {
+					if embedded_info.name == info.name {
+						return false
+					}
+				}
+			}
 			if callee.value == 'slice' && unalias_type(receiver_type) is Array {
 				tc.record_error_at(.unknown_fn, '.slice() is a private method, use `x[start..end]` instead', id, token.new_span(name_pos.id, name_pos.offset, node.pos.end))
 				tc.register_synth_type(id, Type(void_))
