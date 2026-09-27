@@ -419,7 +419,8 @@ fn v3_embed_incbin_assembly_flags(flags []string) []string {
 			i += 2
 			continue
 		}
-		if flag in ['-m32', '-m64', '-mx32', '-mthumb', '-marm']
+		if flag in ['-m32', '-m64', '-mx32', '-mthumb', '-marm', '-mlittle-endian', '-mbig-endian',
+			'-EL', '-EB']
 			|| flag.starts_with('-mabi=') || flag.starts_with('-march=')
 			|| flag.starts_with('-mcpu=') || flag.starts_with('--target=') {
 			assembly_flags << flag
@@ -13942,8 +13943,7 @@ Please install the corresponding development package/libraries and make sure the
 		os.rm(tcc_main_file) or {}
 		os.rm(cache_full_tcc_source) or {}
 		os.rm(retained_full_c_source) or {}
-		os.rm(cc_src) or {}
-		os.rmdir(cc_dir) or {}
+		cleanup_c_build_dir(cc_dir)
 		for scope_free_thread in scope_free_threads {
 			scope_free_thread.wait()
 		}

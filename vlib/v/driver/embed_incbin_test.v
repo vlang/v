@@ -41,7 +41,8 @@ fn test_v3_embed_incbin_supported_keeps_the_array_form_where_no_object_is_linked
 fn test_v3_embed_incbin_assembly_flags_keep_object_abi_options() {
 	assert v3_embed_incbin_assembly_flags(['-O2', '-m32', '-Wl,-z,relro', '-target',
 		'x86_64-unknown-linux-gnu', '-DNAME=value', '--target=aarch64-linux-gnu', '-arch', 'x86_64',
-		'-mabi=lp64', '-march=armv8-a', '-mcpu=generic', '-fPIC', 'source.o']) == [
+		'-mabi=lp64', '-march=armv8-a', '-mcpu=generic', '-mlittle-endian', '-mbig-endian', '-EL',
+		'-EB', '-fPIC', 'source.o']) == [
 		'-m32',
 		'-target',
 		'x86_64-unknown-linux-gnu',
@@ -51,6 +52,10 @@ fn test_v3_embed_incbin_assembly_flags_keep_object_abi_options() {
 		'-mabi=lp64',
 		'-march=armv8-a',
 		'-mcpu=generic',
+		'-mlittle-endian',
+		'-mbig-endian',
+		'-EL',
+		'-EB',
 	]
 }
 
