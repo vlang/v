@@ -99,7 +99,8 @@ paths moved after 0.5.2. Fallback roots missing these compatibility modules are
 not used. If a fallback command exits unsuccessfully, V notes where the default
 compiler stopped and how to show its suppressed diagnostics. For a command
 that may have run user code, the note preserves the child's status without
-mislabeling it as a compiler failure. Re-run the command with `-new-compiler`
+mislabeling it as a compiler failure, including JavaScript tests run by the compatibility compiler.
+Re-run the command with `-new-compiler`
 to see the default-compiler diagnostics without a fallback retry.
 
 ## Packaging V for distribution
