@@ -1208,6 +1208,7 @@ fn (mut tc TypeChecker) check_top_level_declarations_filtered(do_values bool, al
 	selected_files_only := tc.selected_files_only()
 	mut skip_file_semantics := false
 	mut do_signatures := all_signatures
+	mut file_values := do_values
 	for i in tc.top_level_idx {
 		node := tc.a.nodes[i]
 		if node.kind == .file {
@@ -1215,13 +1216,20 @@ fn (mut tc TypeChecker) check_top_level_declarations_filtered(do_values bool, al
 			// A signature check only reports on its own declaration.
 			do_signatures = all_signatures
 				&& (!selected_files_only || tc.diagnostic_files[node.value])
+			// So does a value check, as the bodies of the other files, which
+			// such a check leaves unchecked too.
+			file_values = do_values && (!selected_files_only || tc.diagnostic_files[node.value])
 		} else if skip_file_semantics && node.kind != .module_decl {
 			continue
+		}
+		if do_signatures && node.kind in [.fn_decl, .struct_decl, .interface_decl, .type_decl,
+			.global_decl, .const_decl] {
+			tc.check_written_generic_types(flat.NodeId(i))
 		}
 		match node.kind {
 			.file {
 				tc.enter_file(node.value)
-				if do_values {
+				if file_values {
 					tc.check_top_level_file_statements(node)
 				}
 			}
@@ -1250,7 +1258,7 @@ fn (mut tc TypeChecker) check_top_level_declarations_filtered(do_values bool, al
 					tc.check_decl_type_strings(flat.NodeId(i), node)
 					tc.check_struct_implements(flat.NodeId(i), node)
 				}
-				if do_values {
+				if file_values {
 					tc.check_struct_field_defaults(node_id, node)
 				}
 			}
@@ -1290,13 +1298,13 @@ fn (mut tc TypeChecker) check_top_level_declarations_filtered(do_values bool, al
 						tc.check_pascal_case_name(node_id, node.value, 'enum name', tc.declaration_keyword_name_pos(node_id, 'enum'))
 					}
 				}
-				if do_values {
+				if file_values {
 					tc.check_enum_backing_type(flat.NodeId(i), node)
 					tc.check_enum_field_values(flat.NodeId(i), node)
 				}
 			}
 			.const_decl {
-				if do_values {
+				if file_values {
 					tc.check_const_field_values(node)
 				}
 			}
@@ -1304,7 +1312,7 @@ fn (mut tc TypeChecker) check_top_level_declarations_filtered(do_values bool, al
 				if do_signatures {
 					tc.check_global_decl_semantics(flat.NodeId(i), node)
 				}
-				if do_values {
+				if file_values {
 					if !tc.enable_globals && !tc.has_globals_files[tc.cur_file] {
 						tc.record_error_at(.duplicate_decl, 'use `v -enable-globals ...` to enable globals', flat.NodeId(i), tc.source_line_declaration_pos(flat.NodeId(i)))
 					}
@@ -2638,6 +2646,47 @@ pub fn (mut tc TypeChecker) check_concrete_fn_semantics(fn_idx int, file string,
 	tc.check_fn_decl_semantics(fn_idx, node, file, module_name)
 }
 
+// check_concrete_instance_members checks a concrete clone of one of the
+// program's generic functions for what only its concrete types decide: a field
+// or a method that such a type lacks, as when `show(1)` reads `x.name`. Every
+// other error and warning of the clone is dropped: checked before the clone is
+// lowered, only these are reliable outside checker fixtures, where many valid
+// generic programs would fail.
+pub fn (mut tc TypeChecker) check_concrete_instance_members(fn_idx int, file string, module_name string) {
+	errors_start := tc.errors.len
+	notices_start := tc.notices.len
+	// The clone was appended after the parent index was built; without its edges
+	// every parent query of the check scans the whole tree.
+	if tc.concrete_parents_indexed == 0 {
+		tc.refresh_rewritten_parent_index(tc.a)
+	} else {
+		tc.index_rewritten_parents_after(tc.concrete_parents_indexed)
+	}
+	tc.concrete_parents_indexed = tc.a.nodes.len
+	tc.check_concrete_fn_semantics(fn_idx, file, module_name)
+	mut kept := []TypeError{}
+	for err in tc.errors[errors_start..] {
+		if is_concrete_member_error(err.msg) {
+			kept << err
+		}
+	}
+	tc.errors.trim(errors_start)
+	tc.errors << kept
+	tc.notices.trim(notices_start)
+}
+
+// is_concrete_member_error reports whether `msg` says that a concrete type
+// lacks a field or a method. A `voidptr` receiver is a type the clone did not
+// resolve, not one the program uses.
+fn is_concrete_member_error(msg string) bool {
+	if msg.starts_with('`voidptr`') || msg.contains('`voidptr.') {
+		return false
+	}
+	return msg.contains(' has no property `') || msg.contains(' has no field named `')
+		|| msg.contains(' has no field or method `')
+		|| msg.starts_with('unknown method or field: `')
+}
+
 fn (mut tc TypeChecker) check_fn_decl_semantics(fn_idx int, node flat.Node, file string, module_name string) {
 	fast_valid_build := tc.building_v_fast
 	saved_fn_context := tc.fn_context
@@ -2783,6 +2832,7 @@ fn (mut tc TypeChecker) check_fn_decl_semantics(fn_idx int, node flat.Node, file
 		tc.check_generic_fn_literal_capture_types(node)
 		tc.check_generic_fn_chained_bare_struct_method_inference(node)
 		tc.check_generic_fn_struct_init_type_args(node)
+		tc.check_generic_fn_constraint_members(node)
 	}
 	signature_has_bare_generic_type := tc.fn_decl_has_bare_generic_signature_type(node)
 	should_check_generic_body := generic_params.len == 0

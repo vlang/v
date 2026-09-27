@@ -7138,11 +7138,21 @@ fn promote_scoped_node(mut node flat.Node, scope voidptr) {
 	if old_params.len == 0 {
 		return
 	}
+	old_constraints := node.generic_constraints()
 	mut needs_promotion := scoped_value_owned(scope, node.payload_ptr())
 		|| scoped_value_owned(scope, old_params.data)
+		|| (old_constraints.len > 0 && scoped_value_owned(scope, old_constraints.data))
 	if !needs_promotion {
 		for param in old_params {
 			if param.len > 0 && scoped_value_owned(scope, param.str) {
+				needs_promotion = true
+				break
+			}
+		}
+	}
+	if !needs_promotion {
+		for constraint in old_constraints {
+			if constraint.len > 0 && scoped_value_owned(scope, constraint.str) {
 				needs_promotion = true
 				break
 			}
@@ -7159,7 +7169,15 @@ fn promote_scoped_node(mut node flat.Node, scope voidptr) {
 			param
 		}
 	}
-	node.set_generic_params(params)
+	mut constraints := []string{cap: old_constraints.len}
+	for constraint in old_constraints {
+		constraints << if constraint.len > 0 && scoped_value_owned(scope, constraint.str) {
+			constraint.clone()
+		} else {
+			constraint
+		}
+	}
+	node.set_generic_params_and_constraints(params, constraints)
 }
 
 // promote_scoped_ast_nodes_flagged is the scoped-node promotion walk with an optional
@@ -7252,17 +7270,8 @@ fn canonicalize_scoped_node_cached(mut ast flat.FlatAst, idx int, scope voidptr,
 	if old_params.len == 0 {
 		return
 	}
-	mut needs_params := scoped_value_owned(scope, node.payload_ptr())
-		|| scoped_value_owned(scope, old_params.data)
-	if !needs_params {
-		for param in old_params {
-			if param.len > 0 && scoped_value_owned(scope, param.str) {
-				needs_params = true
-				break
-			}
-		}
-	}
-	if !needs_params {
+	old_constraints := node.generic_constraints()
+	if !scoped_generic_payload_owned(node, old_params, old_constraints, scope) {
 		return
 	}
 	mut params := []string{cap: old_params.len}
@@ -7273,7 +7282,15 @@ fn canonicalize_scoped_node_cached(mut ast flat.FlatAst, idx int, scope voidptr,
 			params << param
 		}
 	}
-	node.set_generic_params(params)
+	mut constraints := []string{cap: old_constraints.len}
+	for constraint in old_constraints {
+		if constraint.len > 0 && scoped_value_owned(scope, constraint.str) {
+			constraints << ast.intern_text_ptr_cached(constraint, mut cache_ptrs, mut cache_vals)
+		} else {
+			constraints << constraint
+		}
+	}
+	node.set_generic_params_and_constraints(params, constraints)
 }
 
 fn canonicalize_scoped_node(mut ast flat.FlatAst, idx int, scope voidptr) {
@@ -7294,17 +7311,8 @@ fn canonicalize_scoped_node(mut ast flat.FlatAst, idx int, scope voidptr) {
 	if old_params.len == 0 {
 		return
 	}
-	mut needs_params := scoped_value_owned(scope, node.payload_ptr())
-		|| scoped_value_owned(scope, old_params.data)
-	if !needs_params {
-		for param in old_params {
-			if param.len > 0 && scoped_value_owned(scope, param.str) {
-				needs_params = true
-				break
-			}
-		}
-	}
-	if !needs_params {
+	old_constraints := node.generic_constraints()
+	if !scoped_generic_payload_owned(node, old_params, old_constraints, scope) {
 		return
 	}
 	mut params := []string{cap: old_params.len}
@@ -7316,7 +7324,37 @@ fn canonicalize_scoped_node(mut ast flat.FlatAst, idx int, scope voidptr) {
 			params << param
 		}
 	}
-	node.set_generic_params(params)
+	mut constraints := []string{cap: old_constraints.len}
+	for constraint in old_constraints {
+		if constraint.len > 0 && scoped_value_owned(scope, constraint.str) {
+			_, canonical := ast.intern_text(constraint)
+			constraints << canonical
+		} else {
+			constraints << constraint
+		}
+	}
+	node.set_generic_params_and_constraints(params, constraints)
+}
+
+// scoped_generic_payload_owned reports whether the generic params of `node`, or
+// the constraints they name, live in the scope's memory: its payload, their
+// arrays or their strings.
+fn scoped_generic_payload_owned(node &flat.Node, params []string, constraints []string, scope voidptr) bool {
+	if scoped_value_owned(scope, node.payload_ptr()) || scoped_value_owned(scope, params.data)
+		|| (constraints.len > 0 && scoped_value_owned(scope, constraints.data)) {
+		return true
+	}
+	for param in params {
+		if param.len > 0 && scoped_value_owned(scope, param.str) {
+			return true
+		}
+	}
+	for constraint in constraints {
+		if constraint.len > 0 && scoped_value_owned(scope, constraint.str) {
+			return true
+		}
+	}
+	return false
 }
 
 fn canonicalize_scoped_transform_region(mut ast flat.FlatAst, region transform.ScopedTransformRegion) {
@@ -11252,8 +11290,11 @@ pub fn run(args []string) {
 	}
 
 	skip_closure_runtime := minimal_literal_output || no_closures
+	mut implicit_imports := ImplicitImportScan{
+		node_idx: a.user_code_start
+	}
 	if !no_builtin {
-		seed_implicit_imports(mut a, skip_closure_runtime, check_overflow)
+		implicit_imports = seed_implicit_imports(mut a, skip_closure_runtime, check_overflow)
 	}
 	seed_cached_builtin_bundle_imports(mut a, cache_state.manager.enabled, builtin_dir)
 
@@ -11261,7 +11302,7 @@ pub fn run(args []string) {
 	resolve_imports_started_us := b.current_step_time_us()
 	resolve_imports_parse_started_us := parse_timing.header_us + parse_timing.source_us
 	resolve_imports(mut a, mut p, prefs, user_files, !current_no_parallel, skip_closure_runtime,
-		check_overflow, mut cache_state, mut parse_timing)
+		check_overflow, mut cache_state, mut parse_timing, mut implicit_imports)
 	// Later stages resolve the same source paths many times, on several threads
 	// and inside disposable arenas. Resolve them once here, on the main thread and
 	// in the build's own arena, before any of those stages start.
@@ -12053,7 +12094,9 @@ pub fn run(args []string) {
 			// Before the monomorphization below rewrites the tree, as in a build.
 			report_unused_declarations_of_check(a, mut pre_tc, no_skip_unused, test_files,
 				input_file.ends_with('.vsh') || is_checker_fixture)
-			if pre_tc.global_names.len > 0 && os.getenv('V_CHECK_SELECTED_FILES_ONLY') == '' {
+			monomorphized := check_concrete_generic_bodies_of_check(mut a, mut pre_tc)
+			if !monomorphized && pre_tc.global_names.len > 0
+				&& os.getenv('V_CHECK_SELECTED_FILES_ONLY') == '' {
 				check_used_fns, check_uses_generics := markused.mark_used_with_generic_usage(a, &pre_tc)
 				if check_uses_generics {
 					_, _ = transform.monomorphize_with_used_checked_config(mut a, &pre_tc, check_used_fns, false)
@@ -17272,6 +17315,25 @@ fn report_unused_declarations_of_check(a &flat.FlatAst, mut tc types.TypeChecker
 	tc.diagnose_unused_private_declarations(used_fns)
 }
 
+// check_concrete_generic_bodies_of_check checks each concrete instance of the
+// program's generic functions, as the monomorphization of a fixture does:
+// `show(1)` has to fail where `show` reads `x.name`, not in the C compiler. It
+// runs only when a diagnosed file declares a generic function, and reports
+// whether it monomorphized the tree.
+fn check_concrete_generic_bodies_of_check(mut a flat.FlatAst, mut tc types.TypeChecker) bool {
+	if tc.errors.len > 0 || tc.checker_fixture_mode || !tc.diagnosed_files_declare_generics() {
+		return false
+	}
+	// The program's own functions are the roots, reachable or not, as V1 checked
+	// every instance a call asks for.
+	used_fns := tc.diagnosed_fn_keys()
+	tc.refresh_direct_parent_index(a)
+	tc.check_concrete_generic_bodies = true
+	_, _ = transform.monomorphize_with_used_checked_config(mut a, tc, used_fns, false)
+	tc.check_concrete_generic_bodies = false
+	return true
+}
+
 // check_markused returns what markused finds used, asked for the way a build
 // of the same input asks for it.
 fn check_markused(a &flat.FlatAst, mut tc types.TypeChecker, no_skip_unused bool, test_files []string, full_runtime bool) map[string]bool {
@@ -17405,7 +17467,10 @@ mut:
 
 const closure_runtime_import_alias = '__v3_builtin_closure_runtime'
 
-fn seed_implicit_imports(mut a flat.FlatAst, skip_closure_runtime bool, check_overflow bool) {
+// seed_implicit_imports adds the imports of the compiler-provided modules that the
+// parsed code needs, and returns the scan that found them: resolve_imports
+// continues it rather than scanning the code again.
+fn seed_implicit_imports(mut a flat.FlatAst, skip_closure_runtime bool, check_overflow bool) ImplicitImportScan {
 	start := a.nodes.len
 	// Builtin declares the channel ABI even when a program never uses channels.
 	// Start at user code so that declaration alone does not pull the whole sync
@@ -17416,9 +17481,11 @@ fn seed_implicit_imports(mut a flat.FlatAst, skip_closure_runtime bool, check_ov
 	scan_implicit_imports(a, a.nodes.len, mut scan)
 	if scan.needs_sync && !scan.has_sync {
 		a.add_node(sync_import_node())
+		scan.has_sync = true
 	}
 	if scan.needs_embed && !scan.has_embed_import {
 		a.add_node(embed_file_import_node())
+		scan.has_embed_import = true
 	}
 	// Bound method values, lambdas, and captured fn literals are materialized during
 	// transform, after import resolution. Seed the runtime only when parsed syntax can
@@ -17426,14 +17493,20 @@ fn seed_implicit_imports(mut a flat.FlatAst, skip_closure_runtime bool, check_ov
 	// `closure`.
 	if !skip_closure_runtime && scan.needs_closure && !scan.has_closure {
 		a.add_node(closure_import_node())
+		scan.has_closure = true
 	}
 	if scan.needs_debugger && !scan.has_debugger {
 		a.add_node(debugger_import_node())
+		scan.has_debugger = true
 	}
 	if check_overflow && !scan.has_overflow {
 		a.add_node(overflow_import_node())
+		scan.has_overflow = true
 	}
 	a.intern_node_texts_from(start)
+	// The scan stops before the imports added here: the one that continues it
+	// reads them, as it reads any other import.
+	return scan
 }
 
 fn sync_import_node() flat.Node {
@@ -19052,7 +19125,9 @@ fn discover_eager_selfhost_modules(a &flat.FlatAst, prefs &pref.Preferences, fir
 	return modules
 }
 
-fn resolve_imports(mut a flat.FlatAst, mut p parser.Parser, prefs &pref.Preferences, initial_files []string, allow_parallel bool, skip_closure_runtime bool, check_overflow bool, mut cache_state V3ModuleCacheState, mut parse_timing V3ParseTiming) bool {
+// resolve_imports parses the modules that the parsed code imports, wave by wave.
+// It continues `implicit_imports`, the scan of seed_implicit_imports.
+fn resolve_imports(mut a flat.FlatAst, mut p parser.Parser, prefs &pref.Preferences, initial_files []string, allow_parallel bool, skip_closure_runtime bool, check_overflow bool, mut cache_state V3ModuleCacheState, mut parse_timing V3ParseTiming, mut implicit_imports ImplicitImportScan) bool {
 	mut parsed_modules := map[string]bool{}
 	parsed_modules['builtin'] = true
 	parsed_modules['main'] = true
@@ -19165,7 +19240,7 @@ fn resolve_imports(mut a flat.FlatAst, mut p parser.Parser, prefs &pref.Preferen
 			// Imported code can be the first user of embed/channel/closure syntax.
 			// Seed those compiler-provided modules before the authoritative resolver
 			// scans the now-complete AST.
-			seed_implicit_imports(mut a, skip_closure_runtime, check_overflow)
+			implicit_imports = seed_implicit_imports(mut a, skip_closure_runtime, check_overflow)
 		}
 	}
 
@@ -19178,9 +19253,6 @@ fn resolve_imports(mut a flat.FlatAst, mut p parser.Parser, prefs &pref.Preferen
 	// wave the synthetic nodes are only spliced in after every boundary has been
 	// checked, so a later module's bounded already-imported scan cannot yet see an
 	// earlier module's pending seed; the flags stand in for it.
-	mut implicit_imports := ImplicitImportScan{
-		node_idx: a.user_code_start
-	}
 	scan_implicit_imports(a, a.nodes.len, mut implicit_imports)
 	mut synthetic_sync_added := implicit_imports.has_sync
 	mut synthetic_embed_file_added := implicit_imports.has_embed_import

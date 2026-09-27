@@ -85,6 +85,62 @@ enum Perm {
 }
 "
 
+// Generic functions whose type parameters name a constraint: an interface, or
+// a sum type, for its variants. A client asks after a dot with a placeholder
+// name, `a.zz`.
+const constraints_program = "module main
+
+interface Named {
+	name string
+	greet() string
+}
+
+struct User {
+	name string
+	age  int
+}
+
+fn (u User) greet() string {
+	return u.name
+}
+
+type Number = int | f64
+
+fn longest[T Named](a T, b T) T {
+	if a.name.len >= b.name.len {
+		return a
+	}
+	println(a.zz)
+	return b
+}
+
+fn describe[T Number](x T) string {
+	println(x.zz)
+	return x.str()
+}
+
+fn main() {
+	println(longest(User{ name: 'a' }, User{ name: 'bb' }).age)
+	println(describe(1))
+}
+
+fn half[T Number](x T) T {
+	\$if T is f64 {
+		return x / 2.0
+	} \$else {
+		return x / 2
+	}
+}
+
+struct Box[T Named] {
+	item T
+}
+
+fn (b Box[T]) label() string {
+	return b.item.name + b.item.zz
+}
+"
+
 // A client asks for completion right after a dot with a placeholder name there,
 // `p.zz`, as the code has to parse.
 const completion_program = 'module main
@@ -249,8 +305,186 @@ fn main() {
 }
 "
 
+// The implicit variables of array methods and the parameters of lambdas, in a
+// constrained body and outside one.
+const closures_program = "module main
+
+interface Named {
+	name string
+	greet() string
+}
+
+struct User {
+	name string
+	age  int
+}
+
+fn (u User) greet() string {
+	return u.name
+}
+
+fn names[T Named](mut xs []T) []string {
+	println(xs.map(it.zz))
+	xs.sort(a.name < b.zz)
+	println(xs.filter(it.name.len > 0))
+	return xs.map(|x| x.zz)
+}
+
+fn main() {
+	users := [User{ name: 'a' }]
+	println(users.map(|u| u.name))
+	mut people := users.clone()
+	println(names(mut people))
+}
+
+fn fails() !int {
+	return error('x')
+}
+
+fn guarded[T Named](x T) int {
+	return fails() or {
+		println(err.zz)
+		x.name.len
+	}
+}
+"
+
+// Functions and methods named where they are declared and where they are
+// called, by name or through a value that holds one.
+const functions_program = "module main
+
+interface Named {
+	name string
+}
+
+struct User {
+	name string
+}
+
+struct Box[T Named] {
+	item T
+}
+
+fn (b Box[T]) label() string {
+	return b.item.name
+}
+
+fn User.new(name string) User {
+	return User{
+		name: name
+	}
+}
+
+fn (u User) greet() string {
+	return u.name
+}
+
+fn longest[T Named](a T, b T) T {
+	return if a.name.len >= b.name.len { a } else { b }
+}
+
+fn apply(f fn (int) int, x int) int {
+	return f(x)
+}
+
+fn lengths[T Named](xs []T) []int {
+	count := fn (x T) int {
+		return x.name.len
+	}
+	println(xs.map(count))
+	return xs.map(count)
+}
+
+fn shouted[T Named](mut xs []T) []string {
+	println(xs.filter(it.name.len > 1))
+	xs.sort(a.name < b.name)
+	return xs.map(|x| x.name.to_upper())
+}
+
+fn tag[T Named](b Box[T]) string {
+	return b.label()
+}
+
+fn main() {
+	nums := [1, 2]
+	println(nums.map(it * 2))
+	println(nums.filter(it > 1))
+	println([3, 4].map(it + 1))
+	mut sorted := nums.clone()
+	sorted.sort(a < b)
+	double := fn (x int) int {
+		return x * 2
+	}
+	println(double(4))
+	println(apply(double, 5))
+	u := User.new('eva')
+	g := u.greet
+	println(g())
+	f := longest[User]
+	println(f(u, User{ name: 'bo' }).name)
+	println(longest[User](u, u).name)
+	println(tag(Box[User]{ item: u }))
+	mut people := [u]
+	println(lengths(people))
+	println(shouted(mut people))
+}
+"
+
+// The locals of a generic body, which the checker does not type: each one of
+// the ways a local is declared.
+const locals_program = "module main
+
+interface Named {
+	name string
+}
+
+struct User {
+	name string
+}
+
+fn pair[T Named](x T) (string, int) {
+	return x.name, x.name.len
+}
+
+fn locals[T Named](x T, xs []T, m map[string]T) int {
+	lengths := xs.map(it.name.len)
+	mut total := 0
+	for n in lengths {
+		total += n
+	}
+	label := x.name
+	same := x
+	first := xs[0]
+	one, two := x.name, 2
+	word, size := pair(x)
+	for i, item in xs {
+		println('\${i} \${item.name}')
+	}
+	for key, value in m {
+		println('\${key} \${value.name}')
+	}
+	for c in label {
+		println(c)
+	}
+	for k in 0 .. 3 {
+		println(k)
+	}
+	println('\${same.name} \${first.name} \${one} \${two} \${word} \${size}')
+	return total
+}
+
+fn main() {
+	u := User{
+		name: 'eva'
+	}
+	println(locals(u, [u], {
+		'a': u
+	}))
+}
+"
+
 fn testsuite_begin() {
-	res := os.execute('${os.quoted_path(vexe)} -gc none -path ${os.quoted_path('${vlib_dir}|@vlib|@vmodules')} -o ${os.quoted_path(line_info_v3_bin)} ${os.quoted_path(v3_src)}')
+	res := os.execute('${os.quoted_path(vexe)} -gc none -prealloc -path ${os.quoted_path('${vlib_dir}|@vlib|@vmodules')} -o ${os.quoted_path(line_info_v3_bin)} ${os.quoted_path(v3_src)}')
 	assert res.exit_code == 0, res.output
 	os.mkdir_all(os.join_path(work_dir, 'completion')) or { panic(err) }
 	os.mkdir_all(os.join_path(work_dir, 'declarations')) or { panic(err) }
@@ -258,11 +492,25 @@ fn testsuite_begin() {
 	os.write_file(os.join_path(work_dir, 'shadowing', 'main.v'), shadowing_program) or {
 		panic(err)
 	}
+	os.mkdir_all(os.join_path(work_dir, 'constraints')) or { panic(err) }
+	os.mkdir_all(os.join_path(work_dir, 'closures')) or { panic(err) }
+	os.write_file(os.join_path(work_dir, 'closures', 'main.v'), closures_program) or {
+		panic(err)
+	}
+	os.mkdir_all(os.join_path(work_dir, 'functions')) or { panic(err) }
+	os.mkdir_all(os.join_path(work_dir, 'locals')) or { panic(err) }
+	os.write_file(os.join_path(work_dir, 'locals', 'main.v'), locals_program) or { panic(err) }
+	os.write_file(os.join_path(work_dir, 'functions', 'main.v'), functions_program) or {
+		panic(err)
+	}
 	os.write_file(os.join_path(work_dir, 'main.v'), program) or { panic(err) }
 	os.write_file(os.join_path(work_dir, 'completion', 'main.v'), completion_program) or {
 		panic(err)
 	}
 	os.write_file(os.join_path(work_dir, 'declarations', 'main.v'), declarations_program) or {
+		panic(err)
+	}
+	os.write_file(os.join_path(work_dir, 'constraints', 'main.v'), constraints_program) or {
 		panic(err)
 	}
 }
@@ -807,165 +1055,183 @@ fn test_a_server_child_that_grew_answers_its_last_question_and_leaves() {
 	assert p.code == 0
 }
 
-// Functions and methods named where they are declared and where they are
-// called, by name or through a value that holds one.
-const functions_program = "module main
-
-struct User {
-	name string
+fn constrained(code string, line int, word string, nth int) string {
+	return ask(os.join_path(work_dir, 'constraints'), code, line, word, nth)
 }
 
-struct Box[T] {
-	item T
-}
-
-fn (b Box[T]) label() string {
-	return b.item.name
-}
-
-fn User.new(name string) User {
-	return User{
-		name: name
+fn constrained_completion(line int, col int) []Detail {
+	answer := ask_at(os.join_path(work_dir, 'constraints'), '${line}:${col}')
+	if answer == '' {
+		return []
 	}
+	return (json2.decode[Details](answer) or { panic('${err}: ${answer}') }).details
 }
 
-fn (u User) greet() string {
-	return u.name
+fn test_a_constrained_value_has_the_members_of_its_constraint() {
+	// `a.zz` in `longest[T Named]`: what `Named` declares.
+	members := constrained_completion(23, 11).map('${it.kind} ${it.label} ${it.detail}')
+	assert members == ['2 greet string', '5 name string'], members.str()
+	assert constrained('hv^', 20, 'name', 0) == '{"contents":{"kind":"markdown","value":"```v\\nname string\\n```"}}'
+	// The field of the interface that declares it.
+	assert constrained('gd^', 20, 'name', 0) == 'main.v:4:1'
+	// `x.zz` in `describe[T Number]`: what `int` and `f64` both have.
+	labels := constrained_completion(28, 11).map(it.label)
+	assert 'str' in labels, labels.str()
+	assert 'hex' !in labels, labels.str()
 }
 
-fn longest[T](a T, b T) T {
-	return if a.name.len >= b.name.len { a } else { b }
+fn closure(code string, line int, word string, nth int) string {
+	return ask(os.join_path(work_dir, 'closures'), code, line, word, nth)
 }
 
-fn apply(f fn (int) int, x int) int {
-	return f(x)
-}
-
-fn lengths[T](xs []T) []int {
-	count := fn (x T) int {
-		return x.name.len
+fn closure_completion(line int, col int) []string {
+	answer := ask_at(os.join_path(work_dir, 'closures'), '${line}:${col}')
+	if answer == '' {
+		return []
 	}
-	println(xs.map(count))
-	return xs.map(count)
+	return (json2.decode[Details](answer) or { panic('${err}: ${answer}') }).details.map('${it.kind} ${it.label} ${it.detail}')
 }
-
-fn shouted[T](mut xs []T) []string {
-	println(xs.filter(it.name.len > 1))
-	xs.sort(a.name < b.name)
-	return xs.map(|x| x.name.to_upper())
-}
-
-fn tag[T](b Box[T]) string {
-	return b.label()
-}
-
-fn main() {
-	nums := [1, 2]
-	println(nums.map(it * 2))
-	println(nums.filter(it > 1))
-	println([3, 4].map(it + 1))
-	mut sorted := nums.clone()
-	sorted.sort(a < b)
-	double := fn (x int) int {
-		return x * 2
-	}
-	println(double(4))
-	println(apply(double, 5))
-	u := User.new('eva')
-	g := u.greet
-	println(g())
-	f := longest[User]
-	println(f(u, User{ name: 'bo' }).name)
-	println(longest[User](u, u).name)
-	println(tag(Box[User]{ item: u }))
-	mut people := [u]
-	println(lengths(people))
-	println(shouted(mut people))
-}
-"
-
-// The locals of a generic body, which the checker does not type: each one of
-// the ways a local is declared.
-const locals_program = "module main
-
-struct User {
-	name string
-}
-
-fn pair[T](x T) (T, int) {
-	return x, 1
-}
-
-fn locals[T](x T, xs []T, m map[string]T) int {
-	lengths := xs.map(1)
-	mut total := 0
-	for n in lengths {
-		total += n
-	}
-	same := x
-	first := xs[0]
-	one, two := x, 2
-	word, size := pair(x)
-	for i, item in xs {
-		println(i)
-		println(item)
-	}
-	for key, value in m {
-		println(key)
-		println(value)
-	}
-	for c in 'abc' {
-		println(c)
-	}
-	for k in 0 .. 3 {
-		println(k)
-	}
-	println(same)
-	println(first)
-	println(one)
-	println(two)
-	println(word)
-	println(size)
-	return total
-}
-
-fn main() {
-	u := User{
-		name: 'eva'
-	}
-	println(locals(u, [u], {
-		'a': u
-	}))
-}
-"
 
 fn hover_of(text string) string {
 	return '{"contents":{"kind":"markdown","value":"```v\\n${text}\\n```"}}'
 }
 
-// program_dir writes `source` as the main.v of the directory `name` of the
-// work directory, once, and returns that directory.
-fn program_dir(name string, source string) string {
-	dir := os.join_path(work_dir, name)
-	if !os.exists(os.join_path(dir, 'main.v')) {
-		os.mkdir_all(dir) or { panic(err) }
-		os.write_file(os.join_path(dir, 'main.v'), source) or { panic(err) }
-	}
-	return dir
+fn test_the_implicit_variables_and_lambdas_of_a_constrained_body_have_its_members() {
+	// `it`, `a` and `b` of an array method over a `[]T`, and the parameter of a
+	// lambda there, are values of `T`: they have what `Named` declares.
+	named := ['2 greet string', '5 name string']
+	assert closure_completion(18, 19) == named
+	assert closure_completion(19, 20) == named
+	assert closure_completion(21, 21) == named
+	assert closure('hv^', 20, 'it', 0) == hover_of('it T')
+	assert closure('hv^', 19, 'a', 0) == hover_of('a T')
+	assert closure('hv^', 21, 'x', 1) == hover_of('x T')
+	// The parameter of a lambda is where its uses are declared, in any body.
+	assert closure('gd^', 21, 'x', 1) == 'main.v:21:16'
+	assert closure('gd^', 26, 'u', 1) == 'main.v:26:20'
+	assert closure('hv^', 26, 'u', 1) == hover_of('u main.User')
+	// `err` of an `or {}` in a generic body: an `IError`.
+	errs := closure_completion(37, 14).map(it.all_after(' ').all_before(' '))
+	assert 'msg' in errs && 'code' in errs, errs.str()
 }
 
-// line_of is the 1-based number of the line of `source` that reads `text`.
-fn line_of(source string, text string) int {
-	line := source.split('\n').index(text) + 1
-	assert line > 0, '`${text}` is not a line'
-	return line
+fn test_a_field_of_a_constrained_type_has_the_members_of_its_constraint() {
+	// `b.item.name` in `fn (b Box[T]) label()`, `item T` of `Box[T Named]`.
+	assert constrained('hv^', 50, 'name', 0) == '{"contents":{"kind":"markdown","value":"```v\\nname string\\n```"}}'
+	assert constrained('gd^', 50, 'name', 0) == 'main.v:4:1'
+	members := constrained_completion(50, 29).map('${it.kind} ${it.label} ${it.detail}')
+	assert members == ['2 greet string', '5 name string'], members.str()
+}
+
+fn test_a_constraint_name_has_a_definition_and_a_hover() {
+	// `Number` in `describe[T Number]`: the sum type, `type Number = int | f64`.
+	assert constrained('gd^', 27, 'Number', 0) == 'main.v:17:5'
+	assert constrained('hv^', 27, 'Number', 0) == '{"contents":{"kind":"markdown","value":"```v\\ntype Number = int | f64\\n```"}}'
+	// On the name it declares: that declaration.
+	assert constrained('gd^', 17, 'Number', 0) == 'main.v:17:5'
+	// `Named` in `longest[T Named]`: the interface, as any type written there.
+	assert constrained('gd^', 19, 'Named', 0) == 'main.v:3:10'
+}
+
+fn test_a_compile_time_branch_in_a_constrained_body_leaves_the_queries_working() {
+	// `$if T is f64 {` in `half[T Number]`: the walk of the body narrows `T` in
+	// each branch, and the program still answers the editor's queries.
+	assert constrained('hv^', 37, 'Number', 0) == '{"contents":{"kind":"markdown","value":"```v\\ntype Number = int | f64\\n```"}}'
+	assert constrained('gd^', 39, 'x', 0) == 'main.v:37:18'
+}
+
+fn test_many_compile_time_branches_in_constrained_bodies_leave_the_queries_working() {
+	// A dozen `$if T is ...` chains: the walk narrows `T` in each branch without
+	// closures, which fail in the runtime of the compiler once there are enough.
+	dir := os.join_path(work_dir, 'comptime_many')
+	os.mkdir_all(dir) or { panic(err) }
+	mut src := 'module main\n\ntype Number = int | i8 | i64 | f32 | f64\n\n'
+	for i in 0 .. 12 {
+		src += "fn f${i}[T Number](x T) string {\n\t\$if T is f64 {\n\t\treturn 'f64'\n\t} \$else \$if T is f32 || T is i8 {\n\t\treturn 'f32'\n\t} \$else \$if T in [int, i64] {\n\t\treturn 'int'\n\t} \$else {\n\t\treturn x.str()\n\t}\n}\n\n"
+	}
+	src += 'fn main() {}\n'
+	os.write_file(os.join_path(dir, 'main.v'), src) or { panic(err) }
+	assert ask_at(dir, '3:hv^6') == '{"contents":{"kind":"markdown","value":"```v\\ntype Number = int | i8 | i64 | f32 | f64\\n```"}}'
+}
+
+fn test_a_compile_time_is_narrows_what_a_constrained_value_offers() {
+	// In `$if T is f32 || T is f64 {`, a `T` offers what `f32` and `f64` both
+	// have, not only what every type of its set has; `$if value is f64 {` asks the
+	// same of `value T`, and its `$else` has the rest. With an interface, `$if a is
+	// User {` makes `a` a `User`: its members, and its field on F12.
+	dir := os.join_path(work_dir, 'comptime_members')
+	os.mkdir_all(dir) or { panic(err) }
+	os.write_file(os.join_path(dir, 'main.v'), 'module main
+
+interface Named {
+	name string
+}
+
+struct User {
+	name string
+	age  int
+}
+
+type Numeric = int | i8 | f32 | f64
+
+fn test[T Numeric](value T) string {
+	\$if T is f32 || T is f64 {
+		println(value.zz)
+	} \$else {
+		println(value.zz)
+	}
+	\$if value is f64 {
+		println(value.zz)
+	} \$else \$if value is int {
+		println(value.zz)
+	}
+	return value.str()
+}
+
+fn named[T Named](a T) {
+	\$if a is User {
+		println(a.zz)
+		println(a.name)
+	} \$else {
+		println(a.zz)
+		println(a.name)
+	}
+}
+
+fn main() {}
+') or {
+		panic(err)
+	}
+	labels := fn [dir] (line int, col int) []string {
+		answer := ask_at(dir, '${line}:${col}')
+		assert answer != '', '${line}:${col}'
+		return (json2.decode[Details](answer) or { panic('${err}: ${answer}') }).details.map(it.label)
+	}
+	floats := ['eq_epsilon', 'str', 'strg', 'strlong', 'strsci']
+	assert labels(16, 16) == floats
+	assert labels(18, 16) == ['hex', 'hex_full', 'str']
+	assert labels(21, 16) == floats
+	assert labels(23, 16) == ['hex', 'hex2', 'hex_full', 'str']
+	assert labels(30, 12) == ['age', 'name']
+	assert labels(33, 12) == ['name']
+	assert ask(dir, 'gd^', 31, 'name', 0) == 'main.v:8:1'
+	assert ask(dir, 'gd^', 34, 'name', 0) == 'main.v:4:1'
 }
 
 // function asks about the `nth` `word` of the line of functions_program that
 // reads `text`.
 fn function(code string, text string, word string, nth int) string {
-	return ask(program_dir('functions', functions_program), code, line_of(functions_program,
-		text), word, nth)
+	dir := os.join_path(work_dir, 'functions')
+	line := functions_line(text)
+	return ask(dir, code, line, word, nth)
+}
+
+// functions_line is the 1-based number of the line of functions_program that
+// reads `text`.
+fn functions_line(text string) int {
+	line := functions_program.split('\n').index(text) + 1
+	assert line > 0, '`${text}` is not a line of functions_program'
+	return line
 }
 
 fn test_a_member_of_a_generic_value_is_the_member_of_its_type() {
@@ -988,7 +1254,7 @@ fn test_a_member_of_a_generic_value_is_the_member_of_its_type() {
 	assert sort_decl.contains('builtin/array.v:'), sort_decl
 	assert function('gd^', '\txs.sort(a.name < b.name)', 'sort', 0) == sort_decl
 	// A method of a generic struct, called on a `Box[T]`.
-	label := line_of(functions_program, 'fn (b Box[T]) label() string {')
+	label := functions_line('fn (b Box[T]) label() string {')
 	assert function('gd^', '\treturn b.label()', 'label', 0) == 'main.v:${label}:14'
 	assert function('hv^', '\treturn b.label()', 'label', 0) == hover_of('fn label() string')
 }
@@ -1004,7 +1270,7 @@ fn test_the_callee_of_a_call_through_a_value_is_that_value() {
 	assert function('hv^', "\tprintln(f(u, User{ name: 'bo' }).name)", 'f', 0) == instance
 	assert function('hv^', '\treturn f(x)', 'f', 0) == hover_of('f fn (int) int')
 	// A generic function called with its type arguments is that function.
-	longest := line_of(functions_program, 'fn longest[T](a T, b T) T {')
+	longest := functions_line('fn longest[T Named](a T, b T) T {')
 	assert function('hv^', '\tprintln(longest[User](u, u).name)', 'longest', 0) == hover_of('fn longest(a T, b T) T')
 	assert function('gd^', '\tprintln(longest[User](u, u).name)', 'longest', 0) == 'main.v:${longest}:3'
 	// A function literal in a generic body takes a `T`, written by its name.
@@ -1013,15 +1279,18 @@ fn test_the_callee_of_a_call_through_a_value_is_that_value() {
 }
 
 fn test_a_static_method_is_declared_by_its_name() {
-	new := line_of(functions_program, 'fn User.new(name string) User {')
+	new := functions_line('fn User.new(name string) User {')
 	assert function('gd^', 'fn User.new(name string) User {', 'new', 0) == 'main.v:${new}:8'
 	assert function('gd^', "\tu := User.new('eva')", 'new', 0) == 'main.v:${new}:8'
 }
 
-fn test_a_chain_of_array_methods_in_a_generic_body_keeps_its_array() {
-	// In a body the checker does not type, `xs.filter()` gives a `[]T`, whose
-	// `map` is that of every array.
-	dir := program_dir('chains', 'module main
+fn test_a_chain_of_array_methods_in_a_generic_body_keeps_its_elements() {
+	// In a body without constraints, which the checker does not type:
+	// `xs.filter()` gives a `[]T`, whose `map` is that of every array, and whose
+	// elements are the `it` of that `map`.
+	dir := os.join_path(work_dir, 'chains')
+	os.mkdir_all(dir) or { panic(err) }
+	os.write_file(os.join_path(dir, 'main.v'), 'module main
 
 fn plain[T](xs []T) int {
 	kept := xs.filter(true).map(it)
@@ -1034,51 +1303,101 @@ fn main() {
 	println(nums.map(it * 2))
 	println(plain(nums))
 }
-')
+') or {
+		panic(err)
+	}
 	map_decl := ask(dir, 'gd^', 11, 'map', 0)
 	assert map_decl.contains('builtin/array.v:'), map_decl
 	assert ask(dir, 'gd^', 4, 'map', 0) == map_decl
+	assert ask(dir, 'hv^', 4, 'it', 0) == hover_of('it T')
+}
+
+// local asks about the first `word` of the line of locals_program that reads
+// `text`.
+fn local(code string, text string, word string) string {
+	line := locals_program.split('\n').index(text) + 1
+	assert line > 0, '`${text}` is not a line of locals_program'
+	return ask(os.join_path(work_dir, 'locals'), code, line, word, 0)
 }
 
 fn test_a_local_of_a_generic_body_has_the_type_of_its_value() {
 	// The type its value has, with a type parameter by its name; a variable of
 	// a `for ... in` loop has what its container holds.
-	dir := program_dir('locals', locals_program)
-	for text, wants in {
-		'\tlengths := xs.map(1)':  ['lengths []int']
-		'\tfor n in lengths {':    ['n int', 'lengths []int']
-		'\t\ttotal += n':          ['total int']
-		'\tsame := x':             ['same T']
-		'\tfirst := xs[0]':        ['first T']
-		'\tone, two := x, 2':      ['one T', 'two int']
-		'\tword, size := pair(x)': ['word T', 'size int']
-		'\tfor i, item in xs {':   ['i int', 'item T']
-		'\tfor key, value in m {': ['key string', 'value T']
-		"\tfor c in 'abc' {":      ['c u8']
-		'\tfor k in 0 .. 3 {':     ['k int']
+	for text, want in {
+		'\tlengths := xs.map(it.name.len)': 'lengths []int'
+		'\tfor n in lengths {':             'n int'
+		'\tlabel := x.name':                'label string'
+		'\tsame := x':                      'same T'
+		'\tfirst := xs[0]':                 'first T'
+		'\tone, two := x.name, 2':          'one string'
+		'\tword, size := pair(x)':          'word string'
+		'\tfor i, item in xs {':            'i int'
+		'\tfor key, value in m {':          'key string'
+		'\tfor c in label {':               'c u8'
+		'\tfor k in 0 .. 3 {':              'k int'
+		'\t\ttotal += n':                   'total int'
 	} {
-		for want in wants {
-			name := want.all_before(' ')
-			got := ask(dir, 'hv^', line_of(locals_program, text), name, 0)
-			assert got == hover_of(want), '${text}: ${got}'
-		}
+		name := want.all_before(' ')
+		assert local('hv^', text, name) == hover_of(want), '${text}: ${local('hv^', text, name)}'
+	}
+	for text, want in {
+		'\tfor n in lengths {':    'lengths []int'
+		'\tone, two := x.name, 2': 'two int'
+		'\tword, size := pair(x)': 'size int'
+		'\tfor i, item in xs {':   'item T'
+		'\tfor key, value in m {': 'value T'
+	} {
+		name := want.all_before(' ')
+		assert local('hv^', text, name) == hover_of(want), '${text}: ${local('hv^', text, name)}'
+	}
+	// A local that holds a `T` has what its constraint declares, as the `T` does.
+	line := locals_program.split('\n').index("\tprintln('\${same.name} \${first.name} \${one} \${two} \${word} \${size}')") + 1
+	assert line > 0
+	text := locals_program.split('\n')[line - 1]
+	for receiver in ['same', 'first'] {
+		col := text.index('${receiver}.') or { -1 } + receiver.len + 2
+		answer := ask_at(os.join_path(work_dir, 'locals'), '${line}:${col}')
+		labels := (json2.decode[Details](answer) or { panic('${err}: ${answer}') }).details.map(it.label)
+		assert labels == ['name'], '${receiver}: ${labels}'
 	}
 }
 
 fn test_a_local_of_no_known_type_has_no_hover() {
 	// The value of a call of a function that does not exist yet, as one is being
 	// written: the checker gives it no type, which is no answer, not `()`.
-	dir := program_dir('unknown_local', 'module main
+	dir := os.join_path(work_dir, 'unknown_local')
+	os.mkdir_all(dir) or { panic(err) }
+	os.write_file(os.join_path(dir, 'main.v'), 'module main
 
 fn main() {
 	value := missing_function(1)
 	println(value)
 }
-')
+') or {
+		panic(err)
+	}
 	assert ask(dir, 'hv^', 4, 'value', 0) == ''
 	assert ask(dir, 'hv^', 5, 'value', 0) == ''
 	// Where it is declared still is.
 	assert ask(dir, 'gd^', 5, 'value', 0) == 'main.v:4:1'
+}
+
+// program_dir writes `source` as the main.v of the directory `name` of the
+// work directory, once, and returns that directory.
+fn program_dir(name string, source string) string {
+	dir := os.join_path(work_dir, name)
+	if !os.exists(os.join_path(dir, 'main.v')) {
+		os.mkdir_all(dir) or { panic(err) }
+		os.write_file(os.join_path(dir, 'main.v'), source) or { panic(err) }
+	}
+	return dir
+}
+
+// line_of is the 1-based number of the line of `source` that reads `text`.
+fn line_of(source string, text string) int {
+	line := source.split('\n').index(text) + 1
+	assert line > 0, '`${text}` is not a line'
+	return line
 }
 
 // not_array_methods_program calls methods of a struct named like the array
@@ -1169,4 +1488,26 @@ fn test_a_warm_child_reads_the_directory_the_client_writes_again() {
 	p.stdin_write('quit\n')
 	p.wait()
 	assert p.code == 0
+}
+
+fn test_a_chain_of_array_methods_in_a_generic_body_keeps_its_array() {
+	// In a body the checker does not type, `xs.filter()` gives a `[]T`, whose
+	// `map` is that of every array.
+	dir := program_dir('chains', 'module main
+
+fn plain[T](xs []T) int {
+	kept := xs.filter(true).map(it)
+	println(kept)
+	return kept.len
+}
+
+fn main() {
+	nums := [1, 2]
+	println(nums.map(it * 2))
+	println(plain(nums))
+}
+')
+	map_decl := ask(dir, 'gd^', 11, 'map', 0)
+	assert map_decl.contains('builtin/array.v:'), map_decl
+	assert ask(dir, 'gd^', 4, 'map', 0) == map_decl
 }

@@ -1001,9 +1001,20 @@ fn parse_merge_copy_thread(arg voidptr) voidptr {
 				canonical_params << canonical
 				params_hit = params_hit && item_hit
 			}
+			constraints := node.generic_constraints()
+			mut canonical_constraints := []string{cap: constraints.len}
+			for item in constraints {
+				if item.len == 0 {
+					canonical_constraints << ''
+					continue
+				}
+				canonical, item_hit := p.a.probe_text_ptr_cached(item, mut value_cache.ptrs, mut value_cache.values)
+				canonical_constraints << canonical
+				params_hit = params_hit && item_hit
+			}
 			if params_hit {
 				// The rebuilt array persists: pool-thread arenas outlive the merge.
-				node.set_generic_params(canonical_params)
+				node.set_generic_params_and_constraints(canonical_params, canonical_constraints)
 			} else {
 				all_hit = false
 			}

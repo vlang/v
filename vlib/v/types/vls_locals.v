@@ -9,6 +9,9 @@ struct VlsBinding {
 	decl_id  flat.NodeId
 	implicit bool
 	at       VlsPos
+	// The node that declares an implicit one: the call of the array method
+	// for `it`, `a` and `b`, the block for `err`.
+	site flat.NodeId
 }
 
 // vls_local_declaration finds the node that declares the local name the
@@ -111,6 +114,14 @@ fn (tc &TypeChecker) vls_local_binding(id flat.NodeId) ?VlsBinding {
 							decl_id: c
 						}
 					}
+					// The parameters of a short lambda, `|x|`, are names before
+					// its body.
+					if p.kind == .lambda_expr && i < p.children_count - 1 && cn.kind == .ident
+						&& cn.value == name {
+						return VlsBinding{
+							decl_id: c
+						}
+					}
 				}
 				// A closure's capture list names a variable of the enclosing
 				// function: the search goes on there, as V1's did.
@@ -136,6 +147,7 @@ fn (tc &TypeChecker) vls_local_binding(id flat.NodeId) ?VlsBinding {
 			return VlsBinding{
 				implicit: true
 				at:       at
+				site:     parent
 			}
 		}
 		child = parent

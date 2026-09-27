@@ -182,7 +182,7 @@ fn (tc &TypeChecker) vls_call_target(call_id flat.NodeId, callee_id flat.NodeId)
 // call it kept no type for, the return type of the function it calls.
 fn (tc &TypeChecker) vls_expr_type(id flat.NodeId) ?Type {
 	if typ := tc.expr_type(id) {
-		return typ
+		return tc.vls_constrained_type(id, typ) or { typ }
 	}
 	node := tc.a.node(id)
 	if node.kind == .call {
@@ -209,8 +209,11 @@ fn (tc &TypeChecker) vls_expr_type(id flat.NodeId) ?Type {
 	// A field the checker did not reach, as it stops typing a function after
 	// some errors: the field's type, from the type of its receiver.
 	if node.kind == .selector && node.children_count > 0 {
-		receiver_type := tc.vls_expr_type(tc.a.child(node, 0))?
-		return tc.vls_field_type(receiver_type, node.value)
+		// With the type parameters of the receiver: `b.item` of `b Box[T]` is a
+		// `T`, which its constraint makes a value with members.
+		receiver_type := tc.vls_value_type(tc.a.child(node, 0))?
+		field_type := tc.vls_field_type(receiver_type, node.value)?
+		return tc.vls_constrained_type(id, field_type) or { field_type }
 	}
 	// Literals the checker keeps no type for, as the receivers of the builtin
 	// methods it handles itself: `[a, b].filter()`, `'abc'.to_upper()`.
@@ -234,43 +237,40 @@ fn (tc &TypeChecker) vls_expr_type(id flat.NodeId) ?Type {
 	// The receiver of a builtin method, which the checker handles without
 	// typing it: the type of the local it names, from its declaration.
 	if node.kind == .ident {
-		decl_id := tc.vls_local_declaration(id) or { return none }
+		binding := tc.vls_local_binding(id) or { return none }
+		// `it`, `a`, `b` or `err` in a body the checker did not type, as that
+		// of a generic function.
+		if binding.implicit {
+			typ := tc.vls_implicit_type(binding) or { return none }
+			if constrained := tc.vls_constrained_type(id, typ) {
+				return constrained
+			}
+			return if type_contains_unknown(typ) { none } else { typ }
+		}
+		decl_id := binding.decl_id
 		decl := tc.a.node(decl_id)
 		if decl.kind == .param {
 			declared := tc.parse_type(decl.typ)
+			if constrained := tc.vls_constrained_type(id, declared) {
+				return constrained
+			}
 			return if type_contains_unknown(declared) { none } else { declared }
 		}
-		// A local of a generic body that holds a type parameter, `first :=
-		// xs[0]`: vls_value_type keeps it.
+		if elem := tc.vls_lambda_param_type(decl_id) {
+			if constrained := tc.vls_constrained_type(id, elem) {
+				return constrained
+			}
+			return if type_contains_unknown(elem) { none } else { elem }
+		}
+		// A local that holds a `T` has what the constraint of `T` declares.
 		typ := tc.vls_local_type(decl_id)?
-		return if type_contains_unknown(typ) { none } else { typ }
+		return tc.vls_constrained_type(id, typ) or { typ }
 	}
-	// An element of an array or a map that the checker kept no type for.
+	// An element of an array or a map the checker kept no type for: `xs[0]` of
+	// `xs []T` is a `T`, which has what its constraint declares.
 	if node.kind == .index {
 		elem := tc.vls_element_type(node)?
-		return if type_contains_unknown(elem) { none } else { elem }
-	}
-	return none
-}
-
-// vls_value_type is the type of the value `id` with the type parameters it
-// holds: `xs` of `fn f[T](xs []T)` is a `[]T`, and `xs[0]` a `T`, which
-// vls_expr_type leaves out.
-fn (tc &TypeChecker) vls_value_type(id flat.NodeId) ?Type {
-	if typ := tc.vls_expr_type(id) {
-		return typ
-	}
-	node := tc.a.node(id)
-	if node.kind == .index {
-		return tc.vls_element_type(*node)
-	}
-	if node.kind == .ident {
-		decl_id := tc.vls_local_declaration(id)?
-		decl := tc.a.node(decl_id)
-		if decl.kind == .param && decl.typ.len > 0 {
-			return tc.parse_type(decl.typ)
-		}
-		return tc.vls_local_type(decl_id)
+		return tc.vls_constrained_type(id, elem) or { elem }
 	}
 	return none
 }
@@ -307,7 +307,7 @@ fn (tc &TypeChecker) vls_array_method_call_type(call flat.Node) ?Type {
 			arg := tc.a.node(arg_id)
 			// A lambda gives what its body does, a function value what it returns.
 			elem := if arg.kind == .lambda_expr && arg.children_count > 0 {
-				tc.vls_value_type(tc.a.child(arg, int(arg.children_count) - 1))?
+				tc.vls_expr_type(tc.a.child(arg, int(arg.children_count) - 1))?
 			} else {
 				value := tc.vls_value_type(arg_id)?
 				if value is FnType { value.return_type } else { value }
@@ -323,6 +323,146 @@ fn (tc &TypeChecker) vls_array_method_call_type(call flat.Node) ?Type {
 			return none
 		}
 	}
+}
+
+// vls_implicit_type is the type of a variable the language declares, from the
+// node that declares it (see VlsBinding): the elements of the array that an
+// array method is called on for its `it`, `a` and `b`, and `IError` for `err`.
+fn (tc &TypeChecker) vls_implicit_type(binding VlsBinding) ?Type {
+	if !tc.valid_node_id(binding.site) {
+		return none
+	}
+	site := tc.a.node(binding.site)
+	if site.kind == .block {
+		return tc.parse_type('IError')
+	}
+	return tc.vls_array_method_elem(*site)
+}
+
+// vls_lambda_param_type is the type of a parameter of a short lambda that is an
+// argument of an array method, `|x| x.name` in `xs.map()`: its elements.
+fn (tc &TypeChecker) vls_lambda_param_type(decl_id flat.NodeId) ?Type {
+	lambda_id := tc.vls_parent_id(decl_id)
+	if !tc.valid_node_id(lambda_id) || tc.a.node(lambda_id).kind != .lambda_expr {
+		return none
+	}
+	call_id := tc.vls_parent_id(lambda_id)
+	if !tc.valid_node_id(call_id) {
+		return none
+	}
+	call := tc.a.node(call_id)
+	if call.kind != .call || call.children_count == 0 || tc.a.child(call, 0) == lambda_id {
+		return none
+	}
+	return tc.vls_array_method_elem(*call)
+}
+
+// vls_array_method_elem is the type of the elements of the array that `call`,
+// an array method such as `xs.map(...)`, is called on: a `T` in the body of a
+// generic function where `xs` is a `[]T`.
+fn (tc &TypeChecker) vls_array_method_elem(call flat.Node) ?Type {
+	if call.kind != .call || call.children_count == 0 || tc.unresolved_array_dsl_call_name(call) == '' {
+		return none
+	}
+	callee := tc.a.child_node(&call, 0)
+	if callee.kind != .selector || callee.children_count == 0 {
+		return none
+	}
+	receiver := unalias_type(unwrap_pointer(tc.vls_value_type(tc.a.child(callee, 0))?))
+	return if receiver is Array { receiver.elem_type } else { none }
+}
+
+// vls_value_type is the type of the value `id` with the type parameters it
+// holds: `xs` of `fn f[T](xs []T)` is a `[]T`, which vls_expr_type leaves out.
+fn (tc &TypeChecker) vls_value_type(id flat.NodeId) ?Type {
+	if typ := tc.vls_expr_type(id) {
+		return typ
+	}
+	if tc.a.node(id).kind == .ident {
+		decl_id := tc.vls_local_declaration(id)?
+		decl := tc.a.node(decl_id)
+		if decl.kind == .param && decl.typ.len > 0 {
+			return tc.parse_type(decl.typ)
+		}
+	}
+	return none
+}
+
+// vls_value_type_text writes the type of a value for a hover, a type parameter
+// by its name: `it T`.
+fn (tc &TypeChecker) vls_value_type_text(typ Type) string {
+	if typ is Unknown {
+		if param := generic_placeholder_from_unknown(typ) {
+			return param
+		}
+	}
+	return tc.vls_type_text(typ)
+}
+
+// vls_constrained_type is the interface that stands for `typ` when it is a type
+// parameter of the generic function around `id` that names that interface as
+// its constraint: a value of it has the members of the interface.
+fn (tc &TypeChecker) vls_constrained_type(id flat.NodeId, typ Type) ?Type {
+	constraint := tc.vls_type_constraint(id, typ)?
+	if constraint.is_interface {
+		return Type(constraint.iface)
+	}
+	// `$if a is User {` leaves it one type: a value of it is one.
+	if constraint.types.len == 1 {
+		return constraint.types[0]
+	}
+	return none
+}
+
+// vls_type_constraint is the constraint of `typ` when it is a type parameter of
+// the generic function around `id` that names one, where `id` is: in `$if T is
+// f64 {` it is `f64`, as the check of the body takes it.
+fn (tc &TypeChecker) vls_type_constraint(id flat.NodeId, typ Type) ?GenericConstraint {
+	clean := unwrap_pointer(typ)
+	if clean !is Unknown {
+		return none
+	}
+	param := generic_placeholder_from_unknown(clean as Unknown)?
+	// The nodes from `id` up to the function, each a child of the next.
+	mut path := [id]
+	mut cur := id
+	for _ in 0 .. 4096 {
+		cur = tc.vls_parent_id(cur)
+		if !tc.valid_node_id(cur) {
+			return none
+		}
+		node := tc.a.node(cur)
+		if node.kind == .fn_decl {
+			return tc.vls_narrowed_constraints(*node, path)[param] or { return none }
+		}
+		path << cur
+	}
+	return none
+}
+
+// vls_narrowed_constraints are the constraints of the type parameters of
+// `fn_node` at the end of `path`, the nodes from there up to the body: each
+// `$if` on the way narrows them in the branch that holds the path, as the check
+// of the body does (see constraint_comptime_branches). A branch the check
+// cannot follow leaves them as they are.
+fn (tc &TypeChecker) vls_narrowed_constraints(fn_node flat.Node, path []flat.NodeId) map[string]GenericConstraint {
+	scope := tc.type_param_scope(fn_node)
+	mut constraints := scope.constraints.clone()
+	for i := path.len - 1; i >= 1; i-- {
+		node := tc.a.node(path[i])
+		if node.kind != .comptime_if {
+			continue
+		}
+		cond := comptime_condition_on_type_params(node.value, tc.comptime_tested_params(node.value,
+			fn_node, scope.names, false))
+		for branch in tc.constraint_comptime_branches(*node, cond, constraints) {
+			if branch.id == path[i - 1] {
+				constraints = branch.constraints.clone()
+				break
+			}
+		}
+	}
+	return constraints
 }
 
 // vls_local_type is the type of the variable the ident `id` declares: the one
@@ -365,8 +505,8 @@ fn (tc &TypeChecker) vls_local_type(id flat.NodeId) ?Type {
 		return if lhs_ids.len == 1 { base } else { none }
 	}
 	// A local of a body the checker did not type, as the body of a generic
-	// function: the type of its value, with a type parameter kept as one, `T`
-	// for `first := xs[0]` of `xs []T`.
+	// function: the type of its value, `[]int` for `xs.map(it.name.len)`, with a
+	// type parameter kept as one, `T` for `x` of `x T`.
 	if rhs_count == lhs_ids.len {
 		value_id := tc.multi_assign_rhs_id(decl, i)
 		value := tc.a.node(value_id)
@@ -374,11 +514,11 @@ fn (tc &TypeChecker) vls_local_type(id flat.NodeId) ?Type {
 		if value.kind == .fn_literal {
 			return tc.vls_fn_literal_type(value)
 		}
-		return tc.vls_value_type(value_id)
+		return tc.vls_unconstrained_type(value_id)
 	}
 	// `x, y := f()`: the values of a call that returns several.
 	if rhs_count == 1 {
-		values := unalias_type(tc.vls_value_type(tc.multi_assign_rhs_id(decl, 0))?)
+		values := unalias_type(tc.vls_unconstrained_type(tc.multi_assign_rhs_id(decl, 0))?)
 		if values is MultiReturn && i < values.types.len {
 			return values.types[i]
 		}
@@ -404,7 +544,7 @@ fn (tc &TypeChecker) vls_loop_variable_type(loop flat.Node, id flat.NodeId) ?Typ
 	if header == 4 || tc.a.node(container_id).kind == .range {
 		return if id == key_id { Type(int_) } else { none }
 	}
-	container := unalias_type(unwrap_pointer(tc.vls_value_type(container_id)?))
+	container := unalias_type(unwrap_pointer(tc.vls_unconstrained_type(container_id)?))
 	mut key := Type(int_)
 	mut value := Type(u8_)
 	match container {
@@ -423,11 +563,38 @@ fn (tc &TypeChecker) vls_loop_variable_type(loop flat.Node, id flat.NodeId) ?Typ
 			return none
 		}
 	}
-	// `for x in c` names the value alone; V ranges a map with a key and a value.
+	// `for x in c` names one variable, `for k, x in c` two: as the check of the
+	// body binds them (see bind_constraint_walk_loop).
 	if int(val_id) < 0 {
-		return if container is Map { none } else { value }
+		return if container is Map { key } else { value }
 	}
 	return if id == key_id { key } else { value }
+}
+
+// vls_unconstrained_type is the type of the value `id` as the code writes it,
+// with a type parameter kept as one: `T` for `x` of `x T`, which vls_expr_type
+// gives as the constraint of `T`, whose members it has.
+fn (tc &TypeChecker) vls_unconstrained_type(id flat.NodeId) ?Type {
+	node := tc.a.node(id)
+	if node.kind == .ident {
+		if binding := tc.vls_local_binding(id) {
+			if binding.implicit {
+				return tc.vls_implicit_type(binding)
+			}
+			decl := tc.a.node(binding.decl_id)
+			if decl.kind == .param && decl.typ.len > 0 {
+				return tc.parse_type(decl.typ)
+			}
+			if elem := tc.vls_lambda_param_type(binding.decl_id) {
+				return elem
+			}
+			return tc.vls_local_type(binding.decl_id)
+		}
+	}
+	if node.kind == .index {
+		return tc.vls_element_type(*node)
+	}
+	return tc.vls_value_type(id)
 }
 
 // vls_element_type is the type of `node`, an index, where the checker kept
@@ -437,7 +604,7 @@ fn (tc &TypeChecker) vls_element_type(node flat.Node) ?Type {
 	if node.children_count == 0 {
 		return none
 	}
-	container := tc.vls_value_type(tc.a.child(&node, 0))?
+	container := tc.vls_unconstrained_type(tc.a.child(&node, 0))?
 	if node.value == 'range' {
 		return container
 	}
@@ -533,6 +700,11 @@ fn (mut tc TypeChecker) vls_hover_ident(id flat.NodeId, node flat.Node) string {
 		if typ := tc.vls_local_type(decl_id) {
 			return if vls_holds_a_value(typ) { '${name} ${tc.vls_type_text(typ)}' } else { '' }
 		}
+		// A parameter of a lambda that the checker did not type, in the body
+		// of a generic function.
+		if typ := tc.vls_lambda_param_type(decl_id) {
+			return '${name} ${tc.vls_value_type_text(typ)}'
+		}
 	}
 	if typ := tc.vls_const_type(name) {
 		return 'const ${name.all_after_last('.')} ${tc.vls_type_text(typ)}'
@@ -544,6 +716,15 @@ fn (mut tc TypeChecker) vls_hover_ident(id flat.NodeId, node flat.Node) string {
 	// A variable where it is declared, `if v := f() {` too.
 	if typ := tc.vls_local_type(id) {
 		return if vls_holds_a_value(typ) { '${name} ${tc.vls_type_text(typ)}' } else { '' }
+	}
+	// `it`, `a`, `b` or `err` that the checker did not type, in the body of a
+	// generic function.
+	if binding := tc.vls_local_binding(id) {
+		if binding.implicit {
+			if typ := tc.vls_implicit_type(binding) {
+				return '${name} ${tc.vls_value_type_text(typ)}'
+			}
+		}
 	}
 	if declaration := tc.vls_type_declaration(name) {
 		return declaration
@@ -649,6 +830,36 @@ fn (tc &TypeChecker) vls_module_receiver_member(id flat.NodeId) ?string {
 // behind `typ`, through pointers and aliases.
 fn (tc &TypeChecker) vls_field_type(typ Type, name string) ?Type {
 	type_name := tc.vls_member_owner(typ) or { return none }
+	if declared := tc.vls_declared_field_type(type_name, name) {
+		return declared
+	}
+	// A generic type applied to type arguments, `Box[T]` or `Box[User]`: the
+	// field of `Box`, with its type parameters bound to them. A type parameter
+	// given stays one, for its constraint.
+	base, args, is_generic := generic_type_application_parts(type_name)
+	if !is_generic {
+		return none
+	}
+	declared := tc.vls_declared_field_type(base, name)?
+	decl := tc.generic_type_decl(base) or { return declared }
+	params := decl.generic_params().map(it.trim_space())
+	if params.len != args.len {
+		return declared
+	}
+	mut values := []Type{cap: args.len}
+	for arg in args {
+		values << if is_bare_generic_param(arg) {
+			unknown_type('generic placeholder `${arg}`')
+		} else {
+			tc.parse_type(arg)
+		}
+	}
+	return tc.substitute_generic_type_values(declared, values, params)
+}
+
+// vls_declared_field_type is the type of the field `name` as the struct or the
+// interface `type_name` declares it.
+fn (tc &TypeChecker) vls_declared_field_type(type_name string, name string) ?Type {
 	fields := tc.structs[type_name] or { tc.interface_fields[type_name] or { return none } }
 	for field in fields {
 		if field.name == name {

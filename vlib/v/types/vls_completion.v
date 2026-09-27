@@ -26,7 +26,9 @@ fn (mut tc TypeChecker) vls_completion(file_id int, offset int, source string) s
 	receiver_id := tc.a.child(selector, 0)
 	receiver := tc.a.node(receiver_id)
 	mut details := []VlsDetail{}
-	if receiver.kind == .ident && tc.vls_expr_type(receiver_id) == none {
+	if types := tc.vls_constraint_set_types(receiver_id) {
+		details = tc.vls_common_details(types)
+	} else if receiver.kind == .ident && tc.vls_expr_type(receiver_id) == none {
 		module_name := tc.imports[receiver.value] or { receiver.value }
 		details = tc.vls_module_details(module_name)
 	} else {
@@ -35,6 +37,40 @@ fn (mut tc TypeChecker) vls_completion(file_id int, offset int, source string) s
 	}
 	details.sort(a.label < b.label)
 	return vls_details_json(details)
+}
+
+// vls_constraint_set_types are the types of the set that the type of the value
+// `id` names as its constraint, when its type is such a type parameter.
+fn (tc &TypeChecker) vls_constraint_set_types(id flat.NodeId) ?[]Type {
+	mut typ := tc.expr_type(id) or { Type(Unknown{}) }
+	node := tc.a.node(id)
+	if node.kind == .ident {
+		if decl_id := tc.vls_local_declaration(id) {
+			decl := tc.a.node(decl_id)
+			if decl.kind == .param {
+				typ = tc.parse_type(decl.typ)
+			}
+		}
+	}
+	constraint := tc.vls_type_constraint(id, typ)?
+	if constraint.is_interface {
+		return none
+	}
+	return constraint.types
+}
+
+// vls_common_details are the members that every one of `types` has, as the
+// first of them describes them.
+fn (mut tc TypeChecker) vls_common_details(types []Type) []VlsDetail {
+	if types.len == 0 {
+		return []VlsDetail{}
+	}
+	mut common := tc.vls_type_details(types[0])
+	for typ in types[1..] {
+		labels := tc.vls_type_details(typ).map(it.label)
+		common = common.filter(it.label in labels)
+	}
+	return common
 }
 
 // vls_call_name_completion answers for the name of a called function, as V1
