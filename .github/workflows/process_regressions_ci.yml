@@ -57,6 +57,11 @@ jobs:
       - name: Check diagnostic replay
         if: ${{ !cancelled() && steps.build.outcome == 'success' }}
         run: ${{ matrix.v }} -new-compiler cmd/v/v3_fallback_diagnostics_test.v
+      - name: Check build help and compatibility fallback
+        if: ${{ !cancelled() && steps.build.outcome == 'success' && matrix.os == 'macos-14' }}
+        run: |
+          make v1
+          ${{ matrix.v }} -new-compiler -gc none test -run-only test_build_help_without_target_uses_the_dispatcher,test_c_compilation_failure_uses_the_compatibility_compiler cmd/v/launcher_test.v
       - name: Check deadlines and inherited output pipes
         if: ${{ !cancelled() && steps.build.outcome == 'success' }}
         run: ${{ matrix.v }} -new-compiler vlib/v/cmdexec/cmdexec_timeout_test.v

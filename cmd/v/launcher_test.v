@@ -363,6 +363,69 @@ fn run_launcher_test_process(executable string, args []string, work_dir string,
 	return result
 }
 
+fn test_build_help_without_target_uses_the_dispatcher() {
+	dispatcher := if os.base(@VEXE) in ['v1_fallback', 'v1_fallback.exe'] {
+		os.join_path(os.dir(@VEXE), 'v' + $if windows { '.exe' } $else { '' })
+	} else {
+		@VEXE
+	}
+	if !os.is_executable(dispatcher) {
+		return
+	}
+	mut environment := os.environ()
+	environment.delete('VEXE')
+	environment['VFLAGS'] = ''
+	environment['VOSARGS'] = ''
+	for flag in ['-h', '--help'] {
+		result := run_launcher_test_process(dispatcher, ['build', flag], os.dir(dispatcher),
+			environment)
+		assert result.exit_code == 0, result.output
+		assert result.output.contains('usage:'), result.output
+	}
+}
+
+fn test_c_compilation_failure_uses_the_compatibility_compiler() {
+	$if !windows {
+		dispatcher := if os.base(@VEXE) in ['v1_fallback', 'v1_fallback.exe'] {
+			os.join_path(os.dir(@VEXE), 'v')
+		} else {
+			@VEXE
+		}
+		fallback := os.join_path(os.dir(dispatcher), v1_fallback_binary)
+		if !os.is_executable(dispatcher) || !os.is_executable(fallback) {
+			return
+		}
+		root := os.join_path(os.vtmp_dir(), 'v3_c_fallback_active_${os.getpid()}')
+		os.rmdir_all(root) or {}
+		os.mkdir_all(root)!
+		defer {
+			os.rmdir_all(root) or {}
+		}
+		source := os.join_path(root, 'main.v')
+		os.write_file(source, 'fn main() { println(10) }\n')!
+		compiler := os.join_path(root, 'reject-v3-cc')
+		os.write_file(compiler, '#!/bin/sh\ncase "\$VEXE" in\n *v1-fallback*|*v1_fallback*) exec cc "\$@" ;;\nesac\nexit 1\n')!
+		os.chmod(compiler, 0o700)!
+		mut environment := os.environ()
+		environment.delete('VEXE')
+		environment['VFLAGS'] = ''
+		environment['VOSARGS'] = ''
+		environment['V_MACOS_V3_NO_FALLBACK'] = ''
+		output := os.join_path(root, 'main')
+		result := run_launcher_test_process(dispatcher, ['-silent', '-nocache', '-no-parallel',
+			'-cc', compiler, '-o', output, source], os.dir(dispatcher), environment)
+		assert result.exit_code == 0, result.output
+		assert os.is_executable(output)
+		assert os.execute(os.quoted_path(output)).output.trim_space() == '10'
+		environment['V_MACOS_V3_NO_FALLBACK'] = '1'
+		strict_output := os.join_path(root, 'strict')
+		strict := run_launcher_test_process(dispatcher, ['-silent', '-nocache', '-no-parallel',
+			'-cc', compiler, '-o', strict_output, source], os.dir(dispatcher), environment)
+		assert strict.exit_code != 0, strict.output
+		assert !os.exists(strict_output)
+	}
+}
+
 fn test_external_tools_do_not_use_the_v1_fallback() {
 	$if !windows {
 		false_executable := os.find_abs_path_of_executable('false') or { return }
