@@ -3750,6 +3750,7 @@ the expression itself, and the expression value.
 
 Every file in the root of a folder is part of the same module.
 Simple programs don't need to specify module name, in which case it defaults to 'main'.
+This also applies to scripts with top-level statements that import other modules.
 
 See [symbol visibility](#symbol-visibility), [Access modifiers](#access-modifiers).
 
