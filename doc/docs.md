@@ -3913,6 +3913,9 @@ amount := Decimal(0.0)
 
 ### Enums
 
+Methods on an ordinary enum keep their definitions even when another module declares a
+flag enum with the same type name.
+
 An enum is a group of constant integer values, each having its own name,
 whose values start at 0 and increase by 1 for each name listed.
 For example:

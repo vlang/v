@@ -9579,6 +9579,8 @@ fn (t &Transformer) resolve_flag_enum_type_name(typ string) ?string {
 			if parsed.is_flag {
 				return parsed.name
 			}
+			// A known ordinary enum must not inherit another module's flag methods.
+			return none
 		}
 		if clean in t.tc.flag_enums {
 			return clean
