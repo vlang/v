@@ -2979,6 +2979,7 @@ fn (mut t Transformer) lower_array_membership_expr(base_id flat.NodeId, needle_i
 		base = t.stable_array_expr_for_membership(base_id, base_type, clean_base_type)
 		t.drain_pending(mut prefix)
 	}
+	elem_type = t.resolved_membership_element_type(base, elem_type)
 	result_name := t.new_temp('contains')
 	idx_name := t.new_temp('contains_idx')
 	prefix << t.make_decl_assign_typed(result_name, t.make_bool_literal(false), 'bool')
@@ -3043,6 +3044,7 @@ fn (mut t Transformer) lower_array_index_expr(base_id flat.NodeId, needle_id fla
 		base = t.stable_array_expr_for_membership(base_id, base_type, clean_base_type)
 		t.drain_pending(mut prefix)
 	}
+	elem_type = t.resolved_membership_element_type(base, elem_type)
 	result_name := t.new_temp('index')
 	idx_name := t.new_temp('index_idx')
 	prefix << t.make_decl_assign_typed(result_name, t.make_int_literal(-1), 'int')
@@ -3150,7 +3152,23 @@ fn (mut t Transformer) stable_array_expr_for_membership(id flat.NodeId, raw_type
 	if t.membership_container_is_pointer_array(raw_type) {
 		expr = t.make_prefix(.mul, expr)
 	}
-	return t.stable_transformed_expr_for_reuse(expr, clean_type, 'in_arr')
+	mut storage_type := clean_type
+	transformed_type := t.membership_container_type(t.node_type(expr))
+	if t.generic_arg_is_unresolved(storage_type) && decl_type_is_usable(transformed_type)
+		&& !t.generic_arg_is_unresolved(transformed_type) {
+		storage_type = transformed_type
+	}
+	return t.stable_transformed_expr_for_reuse(expr, storage_type, 'in_arr')
+}
+
+fn (t &Transformer) resolved_membership_element_type(base flat.NodeId, fallback string) string {
+	if t.generic_arg_is_unresolved(fallback) {
+		base_type := t.membership_container_type(t.node_type(base))
+		if base_type.starts_with('[]') && !t.generic_arg_is_unresolved(base_type) {
+			return base_type[2..]
+		}
+	}
+	return fallback
 }
 
 // make_membership_eq_expr builds make membership eq expr data for transform.
