@@ -8035,7 +8035,11 @@ fn (mut t Transformer) infer_generic_call_args_seeded(decl GenericFnDecl, _id fl
 	mut args := []string{cap: param_names.len}
 	for name in param_names {
 		arg := inferred[name] or { return none }
-		args << t.generic_arg_for_call_and_decl_module(arg, call_module, decl.module)
+		// Preserve selective imports while the original call file is still known.
+		qualified_arg := t.qualify_specialized_signature_type_text(arg, GenericFnDecl{
+			file: t.node_file_or(int(_id), t.cur_file)
+		})
+		args << t.generic_arg_for_call_and_decl_module(qualified_arg, call_module, decl.module)
 	}
 	return args
 }
