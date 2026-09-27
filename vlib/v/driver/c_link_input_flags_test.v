@@ -19,6 +19,13 @@ fn test_joined_compile_flags_are_not_native_input_files() {
 	}
 }
 
+fn test_sysroot_flags_reach_both_compile_and_link_steps() {
+	for flags in [['--sysroot=/opt/cross-sdk.a'], ['--sysroot', '/opt/cross-sdk.a']] {
+		assert c_object_compile_flags(flags) == flags
+		assert c_dylib_link_flags(flags) == flags
+	}
+}
+
 fn test_positional_native_inputs_and_link_options_keep_their_roles() {
 	for input in ['unit.o', 'folder with spaces/unit.obj', './-unit.o'] {
 		assert c_flag_is_object_file(input), input
