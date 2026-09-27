@@ -3991,7 +3991,7 @@ fn (mut tc TypeChecker) check_struct_init(id flat.NodeId, node flat.Node) {
 		// Match V1's generic recheck behavior: a concrete generic struct literal can
 		// acquire pointer fields only after substituting its type arguments, so those
 		// fields retain their zero/default initialization unless explicitly supplied.
-		if !init_type_text.contains('[') {
+		if !init_type_text.contains('[') && !tc.node_is_in_translated_file(id) {
 			for diagnostic_index, missing in tc.missing_reference_struct_fields(init_name, supplied_fields, []string{}) {
 				if seen_missing_references[missing.path] {
 					continue
@@ -4277,7 +4277,8 @@ fn (mut tc TypeChecker) check_struct_init(id flat.NodeId, node flat.Node) {
 		}
 		return
 	}
-	if clean_init_type is SumType && node.children_count == 0 {
+	if clean_init_type is SumType && node.children_count == 0
+		&& !tc.node_is_in_translated_file(id) {
 		base := tc.sum_base_name(clean_init_type.name)
 		variants := tc.sum_types[base] or { []string{} }
 		if variants.len > 0 {
