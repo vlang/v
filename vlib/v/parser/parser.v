@@ -2156,7 +2156,7 @@ fn (mut p Parser) parse_param_group(is_c_decl bool) []flat.NodeId {
 	}
 	type_start := p.span_start()
 	mut typ := p.parse_type_name()
-	if typ.len > 0 {
+	if !p.prefs.is_fmt && typ.len > 0 {
 		for i, name in names {
 			if name.len > 0 && name[0] >= `A` && name[0] <= `Z` {
 				p.record_diagnostic_span('parameter name must not begin with upper case letter (`${name[0].ascii_str()}`)',
