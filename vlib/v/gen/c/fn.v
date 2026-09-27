@@ -2000,7 +2000,7 @@ fn (g &FlatGen) current_module_selector_const_name(base string, member string) ?
 	if base != current && base != short && base != '${current}.${short}' {
 		return none
 	}
-	if g.selector_base_is_local_value(base) || g.global_type_for_ident(base) != none {
+	if g.selector_base_is_local_value(base) || g.current_module_global_type_for_ident(base) != none {
 		return none
 	}
 	mod := g.selector_base_module_for_member(base, member) or { return none }
@@ -2012,6 +2012,15 @@ fn (g &FlatGen) current_module_selector_const_name(base string, member string) ?
 		return none
 	}
 	return storage
+}
+
+fn (g &FlatGen) current_module_global_type_for_ident(name string) ?types.Type {
+	current := if g.tc.cur_module.len > 0 { g.tc.cur_module } else { 'main' }
+	qualified := qualify_name_in_module(current, name)
+	if (g.global_modules[qualified] or { '' }) != current {
+		return none
+	}
+	return g.global_types[qualified] or { none }
 }
 
 fn (g &FlatGen) selector_base_is_value(name string) bool {
