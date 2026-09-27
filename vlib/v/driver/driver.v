@@ -322,6 +322,151 @@ fn tcc_atomic_arg(prefs &pref.Preferences, tcc_path string, tcc_includes string)
 	return object_path
 }
 
+// v3_embed_incbin_supported reports whether this build can store long
+// `$embed_file` payloads through the assembler's `.incbin` directive: the bytes
+// go into an object assembled from a generated `.S` file and linked next to the
+// generated C, instead of being spelled out as a C array initializer, which is
+// what makes a large embedded file cheap to compile. That needs a final native
+// link of this build's objects, so generated C and object output, MSVC, iOS,
+// WebAssembly, a Windows target built elsewhere, and the sysroot link of a Linux
+// build on macOS keep the array form. Retained C and dumped C flags must stay
+// reusable after the temporary build directory is removed. `-d no_incbin`
+// keeps the array form everywhere.
+fn v3_embed_incbin_supported(target_os string, host_os string, effective_c_compiler string, backend string, c_only bool, is_o bool, macos_linux_cross bool, reusable_c_output bool, user_defines []string) bool {
+	if backend != 'c' || c_only || is_o || macos_linux_cross || reusable_c_output {
+		return false
+	}
+	if 'no_incbin' in user_defines {
+		return false
+	}
+	if effective_c_compiler == 'msvc' {
+		return false
+	}
+	// macOS TCC emits ELF objects and cannot link the Mach-O object from Clang.
+	if target_os == 'macos' && effective_c_compiler == 'tinyc' {
+		return false
+	}
+	if target_os in ['ios', 'wasm32', 'wasm32_emscripten', 'wasm32_wasi'] {
+		return false
+	}
+	if target_os == 'windows' && host_os != 'windows' {
+		return false
+	}
+	return true
+}
+
+// v3_embed_incbin_assembler picks the driver that assembles the payload objects:
+// the C compiler itself when it is GCC or Clang compatible, otherwise (tcc does
+// not preprocess and assemble a `.S` file) a GCC or Clang found on PATH. A
+// cross-target TCC may encode its target without flags, so the host assembler
+// cannot safely produce an object for it.
+fn v3_embed_incbin_assembler(c_compiler string, effective_tcc bool, target pref.Target, host pref.Target) ?string {
+	if effective_tcc {
+		if target.os != host.os || target.arch != host.arch {
+			return none
+		}
+		return pref.find_system_assembler()
+	}
+	if pref.ccompiler_can_assemble(c_compiler) {
+		return c_compiler
+	}
+	return none
+}
+
+// v3_embed_incbin_assembly is the assembler source that defines the read-only
+// object `_v_embed_blob_<symbol>` as the bytes of the file at `bin_path`. The
+// preprocessor conditionals select the section and symbol spelling of the
+// target's object format, so one source serves every assembler the build can
+// use. The object is not exported from a shared library.
+fn v3_embed_incbin_assembly(symbol string, bin_path string, size int) string {
+	mut sb := strings.new_builder(640)
+	sb.writeln('// V embedded file, ${size} bytes')
+	sb.writeln('#if defined(__APPLE__)')
+	sb.writeln('\t.section __TEXT,__const')
+	sb.writeln('\t.globl __v_embed_blob_${symbol}')
+	sb.writeln('\t.private_extern __v_embed_blob_${symbol}')
+	sb.writeln('__v_embed_blob_${symbol}:')
+	sb.writeln('#elif defined(_WIN32) && (defined(__i386__) || defined(_M_IX86))')
+	sb.writeln('\t.section .rdata')
+	sb.writeln('\t.globl __v_embed_blob_${symbol}')
+	sb.writeln('__v_embed_blob_${symbol}:')
+	sb.writeln('#elif defined(_WIN32)')
+	sb.writeln('\t.section .rdata')
+	sb.writeln('\t.globl _v_embed_blob_${symbol}')
+	sb.writeln('_v_embed_blob_${symbol}:')
+	sb.writeln('#else')
+	sb.writeln('\t.section .rodata')
+	sb.writeln('\t.globl _v_embed_blob_${symbol}')
+	sb.writeln('\t.hidden _v_embed_blob_${symbol}')
+	sb.writeln('\t.type _v_embed_blob_${symbol}, %object')
+	sb.writeln('_v_embed_blob_${symbol}:')
+	sb.writeln('#endif')
+	sb.writeln('\t.incbin "${v3_asm_string_escape(bin_path)}"')
+	sb.writeln('#if !defined(__APPLE__) && !defined(_WIN32)')
+	sb.writeln('\t.size _v_embed_blob_${symbol}, ${size}')
+	sb.writeln('\t.section .note.GNU-stack,"",%progbits')
+	sb.writeln('#endif')
+	return sb.str()
+}
+
+// v3_asm_string_escape spells `s` as the body of an assembler string literal.
+fn v3_asm_string_escape(s string) string {
+	return s.replace('\\', '\\\\').replace('"', '\\"')
+}
+
+// v3_embed_incbin_assembly_flags carries object ABI and target options from
+// the C compile/link plan to the compiler used to assemble the payload.
+fn v3_embed_incbin_assembly_flags(flags []string) []string {
+	mut assembly_flags := []string{}
+	mut i := 0
+	for i < flags.len {
+		flag := flags[i]
+		if flag in ['-target', '--target', '-arch'] && i + 1 < flags.len {
+			assembly_flags << [flag, flags[i + 1]]
+			i += 2
+			continue
+		}
+		if flag in ['-m32', '-m64', '-mx32', '-mthumb', '-marm', '-mlittle-endian', '-mbig-endian',
+			'-EL', '-EB']
+			|| flag.starts_with('-mabi=') || flag.starts_with('-march=')
+			|| flag.starts_with('-mcpu=') || flag.starts_with('--target=') {
+			assembly_flags << flag
+		}
+		i++
+	}
+	return assembly_flags
+}
+
+// assemble_v3_embed_incbin_objects writes each payload to `build_dir` next to
+// the assembler source that includes it, assembles that source with `assembler`
+// for the link target, and returns the object paths for the link. The build
+// directory is removed with the rest of the C build, so nothing is left behind.
+fn assemble_v3_embed_incbin_objects(payloads []cgen.EmbedIncbinPayload, assembler string, assembly_flags []string, build_dir string, show_command bool) ![]string {
+	mut objects := []string{}
+	for entry in payloads {
+		bin_path := os.join_path_single(build_dir, '_v_embed_blob_${entry.symbol}.bin')
+		asm_path := os.join_path_single(build_dir, '_v_embed_blob_${entry.symbol}.S')
+		obj_path := os.join_path_single(build_dir, '_v_embed_blob_${entry.symbol}.o')
+		os.write_file_array(bin_path, entry.payload.bytes()) or {
+			return error('cannot write the embedded file payload ${bin_path}: ${err.msg()}')
+		}
+		os.write_file(asm_path, v3_embed_incbin_assembly(entry.symbol, bin_path, entry.payload.len)) or {
+			return error('cannot write the embedded file assembly ${asm_path}: ${err.msg()}')
+		}
+		mut args := assembly_flags.clone()
+		args << ['-c', asm_path, '-o', obj_path]
+		if show_command {
+			println('  > ${cmdexec.display(assembler, args)}')
+		}
+		result := cmdexec.run_in(assembler, args, build_dir)
+		if result.exit_code != 0 || !os.is_file(obj_path) {
+			return error('failed to assemble the embedded file object ${obj_path}:\n${result.output}')
+		}
+		objects << obj_path
+	}
+	return objects
+}
+
 struct CObjectCacheStats {
 mut:
 	requests                  int
@@ -10801,6 +10946,7 @@ pub fn run(args []string) {
 		''
 	}
 	effective_warns_are_errors := v3_effective_warns_are_errors(warns_are_errors, is_prod)
+	reusable_c_output := keep_c || backend_explicit || dump_c_flags.len > 0
 	cache_salt := [
 		'compiler=${compiler_signature}',
 		'cc=${cc_identity}',
@@ -10833,6 +10979,7 @@ pub fn run(args []string) {
 		'test=${is_test_command || is_v3_test_file(input_file, backend, target)}',
 		'show_test_stats=${show_test_stats}',
 		'run_only=${v3_run_only_cache_identity(run_only)}',
+		'reusable_c_output=${reusable_c_output}',
 		'defines=${prefs.user_defines.join(',')}',
 		'exclude=${prefs.exclude.join(',')}',
 	].join('\n')
@@ -12680,6 +12827,27 @@ pub fn run(args []string) {
 		c_standard := c_standard_flag(prefs.c99, no_std)
 		use_cached_dev_dylib := cache_state.manager.enabled && remove_binary_after_run && !is_prod
 			&& !is_shared && !is_selfhost && prefs.normalized_target_os() == 'macos'
+		// Long `$embed_file` payloads go into objects assembled from the bytes with
+		// `.incbin` when the link allows it and an assembler is at hand; cgen then
+		// refers to those objects instead of spelling out the bytes, see
+		// cgen.embed_incbin_payloads. The payloads are known before cgen runs, so
+		// a build without any pays nothing here.
+		mut embed_incbin_payloads := []cgen.EmbedIncbinPayload{}
+		mut embed_incbin_assembler := ''
+		if v3_embed_incbin_supported(prefs.normalized_target_os(), host_os, effective_c_compiler,
+			backend, c_only, is_o, macos_linux_cross_compile, reusable_c_output,
+			prefs.user_defines) {
+			candidates := cgen.embed_incbin_payloads(a, cgen.cache_program_file_set(a, user_files),
+				cache_state.manager.enabled)
+			if candidates.len > 0 {
+				if assembler := v3_embed_incbin_assembler(c_compiler, effective_tcc, prefs.target,
+					host_target) {
+					embed_incbin_payloads = candidates.clone()
+					embed_incbin_assembler = assembler
+				}
+			}
+		}
+		use_embed_incbin := embed_incbin_payloads.len > 0
 		mut cc_dir := ''
 		mut cc_src := output_file
 		mut cc_out := ''
@@ -12786,6 +12954,7 @@ pub fn run(args []string) {
 			g.set_cache_split(cache_state.manager.enabled || use_parallel_c_compilation)
 			g.set_cache_stable_symbols(cache_state.manager.enabled)
 			g.set_parallel_cc(use_parallel_c_compilation)
+			g.set_embed_incbin(use_embed_incbin)
 			g.set_cache_native_input_paths(cache_scoped_native_input_paths(cache_state))
 			g.set_program_body_only(generic_cache_hit)
 			g.set_cache_program_files(a, user_files)
@@ -12855,6 +13024,7 @@ pub fn run(args []string) {
 			g.set_cache_split(cache_state.manager.enabled || use_parallel_c_compilation)
 			g.set_cache_stable_symbols(cache_state.manager.enabled)
 			g.set_parallel_cc(use_parallel_c_compilation)
+			g.set_embed_incbin(use_embed_incbin)
 			g.set_cache_native_input_paths(cache_scoped_native_input_paths(cache_state))
 			g.set_program_body_only(generic_cache_hit)
 			g.set_cache_program_files(a, user_files)
@@ -13055,6 +13225,19 @@ pub fn run(args []string) {
 			if atomic_input.len > 0 {
 				native_support_inputs << atomic_input
 			}
+		}
+		mut embed_incbin_objects := []string{}
+		if use_embed_incbin {
+			mut assembly_flag_candidates := c_flag_plan.before_inputs.clone()
+			assembly_flag_candidates << c_flag_plan.after_inputs
+			assembly_flags := v3_embed_incbin_assembly_flags(assembly_flag_candidates)
+			embed_incbin_objects = assemble_v3_embed_incbin_objects(embed_incbin_payloads,
+				embed_incbin_assembler, assembly_flags, cc_dir, verbose || show_cc) or {
+				eprintln(err.msg())
+				cleanup_c_build_dir(cc_dir)
+				exit(1)
+			}
+			native_support_inputs << embed_incbin_objects
 		}
 		if dump_c_flags.len > 0 {
 			mut dump_support_flags := v3_c_source_mode_flags(needs_objective_c)
@@ -13518,6 +13701,7 @@ pub fn run(args []string) {
 				if atomic_s.len > 0 {
 					tcc_args << atomic_s
 				}
+				tcc_args << embed_incbin_objects
 				tcc_args << tcc_native_c_source_flags(resolved_c_flags)
 				tcc_args << cached_dev_dylib
 				tcc_args << tcc_dynamic_link_flags(resolved_c_flags)
@@ -13614,6 +13798,7 @@ pub fn run(args []string) {
 				if atomic_s.len > 0 {
 					tcc_args << atomic_s
 				}
+				tcc_args << embed_incbin_objects
 			}
 			tcc_args << tcc_monolithic_dependency_flags(resolved_c_flags, is_o)
 			add_v3_default_linker_flags(mut tcc_args, prefs.normalized_target_os(), is_o)
@@ -13768,8 +13953,7 @@ Please install the corresponding development package/libraries and make sure the
 		os.rm(tcc_main_file) or {}
 		os.rm(cache_full_tcc_source) or {}
 		os.rm(retained_full_c_source) or {}
-		os.rm(cc_src) or {}
-		os.rmdir(cc_dir) or {}
+		cleanup_c_build_dir(cc_dir)
 		for scope_free_thread in scope_free_threads {
 			scope_free_thread.wait()
 		}
