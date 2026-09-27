@@ -19967,6 +19967,10 @@ fn (mut t Transformer) transform_selector_expr(id flat.NodeId, node flat.Node) f
 		} else {
 			t.transformed_selector_type(node)
 		}
+		if selector := t.struct_field_selector_for_type(new_base, clean_variant_type, node.value,
+			sel_typ, variant_type.starts_with('&')) {
+			return selector
+		}
 		return t.make_selector_op(new_base, node.value, sel_typ, if variant_type.starts_with('&') {
 			.arrow
 		} else {
@@ -20020,14 +20024,18 @@ fn (mut t Transformer) transform_selector_expr(id flat.NodeId, node flat.Node) f
 			if shared_typ := t.sum_shared_field_type_name(variant_type, node.value) {
 				return t.lower_sum_shared_field_selector(variant_sel, variant_type, node.value, shared_typ)
 			}
-			sel_start := t.a.children.len
-			t.a.children << variant_sel
 			clean_variant_type := t.trim_pointer_type(variant_type)
 			sel_typ := if ftyp := t.lookup_struct_field_type(clean_variant_type, node.value) {
 				ftyp
 			} else {
 				t.transformed_selector_type(node)
 			}
+			if selector := t.struct_field_selector_for_type(variant_sel, clean_variant_type,
+				node.value, sel_typ, variant_type.starts_with('&')) {
+				return selector
+			}
+			sel_start := t.a.children.len
+			t.a.children << variant_sel
 			return t.a.add_node(flat.Node{
 				kind:           .selector
 				op:             if node.op == .arrow || variant_type.starts_with('&') {
