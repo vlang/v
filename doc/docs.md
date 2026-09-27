@@ -3452,6 +3452,9 @@ This *may* change in V 1.0 .
 
 ## References
 
+Returning a stored pointer field returns that pointer value. It does not borrow the storage of
+the containing struct, unlike taking the address of one of its fields.
+
 ```v
 struct Foo {}
 
