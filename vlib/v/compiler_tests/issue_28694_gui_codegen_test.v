@@ -10,10 +10,14 @@ fn run_issue_28694_probe(name string, source string, files map[string]string) {
 	defer {
 		os.rmdir_all(temp_dir) or {}
 	}
-	old_report_disabled := os.getenv('V_C_ERROR_BUG_REPORT_DISABLED')
+	old_report_disabled := os.getenv_opt('V_C_ERROR_BUG_REPORT_DISABLED')
 	os.setenv('V_C_ERROR_BUG_REPORT_DISABLED', '1', true)
 	defer {
-		os.setenv('V_C_ERROR_BUG_REPORT_DISABLED', old_report_disabled, true)
+		if value := old_report_disabled {
+			os.setenv('V_C_ERROR_BUG_REPORT_DISABLED', value, true)
+		} else {
+			os.unsetenv('V_C_ERROR_BUG_REPORT_DISABLED')
+		}
 	}
 	os.write_file(os.join_path(temp_dir, 'v.mod'), "Module { name: 'issue_28694' }\n") or {
 		panic(err)
