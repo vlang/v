@@ -70,3 +70,21 @@ fn test_lifted_callback_keeps_global_after_c_style_loop_scope() {
 	})
 	assert result.data == [f64(2)]
 }
+
+fn test_lifted_callback_keeps_global_after_select_branch_scope() {
+	t := &Tensor[f64]{ data: [f64(1)] }
+	result := t.apply(fn (value f64) f64 {
+		ch := chan f64{cap: 1}
+		ch <- value
+		select {
+			got := <-ch {
+				callback_scope_global := got
+				_ = callback_scope_global
+			}
+			0 * time.millisecond {
+			}
+		}
+		return callback_scope_global(value)
+	})
+	assert result.data == [f64(2)]
+}
