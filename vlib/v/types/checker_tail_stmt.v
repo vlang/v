@@ -5911,6 +5911,9 @@ fn (mut tc TypeChecker) check_selector(id flat.NodeId, node flat.Node) {
 	if node.children_count == 0 {
 		return
 	}
+	if tc.reject_nonkeyword_enum_selector_escape(id, node) {
+		return
+	}
 	if tc.valid_resolution_fast {
 		tc.check_valid_selector(id, node)
 		return
@@ -6334,6 +6337,31 @@ fn (mut tc TypeChecker) check_selector(id flat.NodeId, node flat.Node) {
 		}
 		tc.register_synth_type(id, Type(void_))
 	}
+}
+
+fn (mut tc TypeChecker) reject_nonkeyword_enum_selector_escape(id flat.NodeId, node flat.Node) bool {
+	if !node.value.starts_with('@')
+		|| token.Token.from_string_tinyv(node.value[1..]).is_keyword() {
+		return false
+	}
+	base := tc.a.child_node(&node, 0)
+	mut enum_name := ''
+	if base.kind == .ident {
+		enum_name = tc.resolve_enum_name(base.value) or { '' }
+	} else if base.kind == .selector && base.children_count > 0 {
+		module_node := tc.a.child_node(&base, 0)
+		if module_node.kind == .ident && tc.has_active_import(module_node.value) {
+			module_name := tc.resolve_import_alias(module_node.value) or { module_node.value }
+			enum_name = tc.resolve_enum_name('${module_name}.${base.value}') or { '' }
+		}
+	}
+	if enum_name == '' {
+		return false
+	}
+	tc.record_error_at(.unknown_field, '`@` can only escape keyword enum members', id,
+		tc.node_value_diagnostic_pos(id))
+	tc.register_synth_type(id, Type(void_))
+	return true
 }
 
 fn ascii_name_has_upper(name string) bool {
@@ -9075,6 +9103,9 @@ fn (tc &TypeChecker) enum_value_matches(value string, enum_name string) bool {
 // enum_has_field converts enum has field data for types.
 fn (tc &TypeChecker) enum_has_field(enum_name string, field string) bool {
 	fields := tc.enum_fields[enum_name] or { return false }
+	if field.starts_with('@') && !token.Token.from_string_tinyv(field[1..]).is_keyword() {
+		return false
+	}
 	return escaped_identifier_name(field) in fields
 }
 

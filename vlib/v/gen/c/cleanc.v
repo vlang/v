@@ -9,6 +9,7 @@ import v.flat
 import v.gen.c.naming
 import v.modulecache
 import v.pref
+import v.token
 import v.types
 import v.util
 
@@ -11509,7 +11510,8 @@ fn (g &FlatGen) enum_value_expr_for_key(key string) ?string {
 		return '${val}'
 	}
 	field_name := key.all_after_last('.')
-	if field_name.starts_with('@') {
+	if field_name.starts_with('@')
+		&& token.Token.from_string_tinyv(field_name[1..]).is_keyword() {
 		plain_key := key[..key.len - field_name.len] + field_name[1..]
 		if expr := g.enum_value_exprs[plain_key] {
 			return expr
