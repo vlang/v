@@ -16350,6 +16350,7 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 				}
 				g.write(g.field_c_name(base_type0, node.value))
 			} else if base.kind == .ident && !g.selector_base_is_local_value(base.value)
+				&& g.global_type_for_ident(base.value) == none
 				&& g.selector_base_is_module(base.value, node.value) {
 				mod := g.selector_base_module_for_member(base.value, node.value) or { '' }
 				short_mod := if mod.contains('.') {
