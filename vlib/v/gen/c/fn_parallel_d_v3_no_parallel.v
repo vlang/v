@@ -70,3 +70,8 @@ fn (mut g FlatGen) fn_item_cost_and_prep(node_id flat.NodeId, mut _stack []flat.
 fn (mut g FlatGen) fn_item_cost_and_c_extern_prep(node_id flat.NodeId, mut _stack []flat.NodeId) int {
 	return flat_fn_gen_item_cost(g.a, node_id)
 }
+
+fn (g &FlatGen) interface_boxing_candidate_nodes() []i32 {
+	ids := g.type_metadata_nodes()
+	return interface_boxing_candidates_in(g.a, ids, 0, ids.len)
+}

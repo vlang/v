@@ -379,6 +379,9 @@ pub fn unsigned_shift_result_type(t Type) Type {
 		return match t.size {
 			8 { Type(u8_) }
 			16 { Type(u16_) }
+			0 {
+				if platform_int_bits() == 64 { Type(u64_) } else { Type(u32_) }
+			}
 			64 { Type(u64_) }
 			else { Type(u32_) }
 		}

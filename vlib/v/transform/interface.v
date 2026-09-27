@@ -8,6 +8,13 @@ fn (t &Transformer) is_interface_type(name string) bool {
 	return t.resolve_interface_type_name(name).len > 0
 }
 
+// has_ierror_interface reports whether option/result wrappers carry an `err`
+// field. cgen omits it when `IError` is not declared (`-no-builtin`), so lowering
+// must neither bind the implicit `err` nor copy `.err` between wrappers then.
+fn (t &Transformer) has_ierror_interface() bool {
+	return isnil(t.tc) || t.tc.has_ierror_interface()
+}
+
 fn (t &Transformer) is_builtin_ierror_interface_name(name string) bool {
 	clean := t.trim_pointer_type(t.normalize_type_alias(name))
 	return clean == 'IError' || clean == 'builtin.IError'
@@ -1080,7 +1087,10 @@ fn (mut t Transformer) transform_interface_method_call(id flat.NodeId, node flat
 	} else {
 		base_node
 	}
-	typed_receiver := if t.interface_receiver_has_variant_projection(base) {
+	typed_receiver := if t.interface_receiver_has_variant_projection(base)
+		|| (original_base.kind == .selector && original_base.children_count > 0
+			&& t.expr_or_selector_base_has_smartcast(t.a.child(&original_base, 0))) {
+		// Keep the containing object's projection when calling through an interface field.
 		t.retype_interface_receiver(base, interface_receiver_type)
 	} else if original_base.kind == .selector && original_base.children_count > 0
 		&& t.a.child_node(&original_base, 0).kind == .ident {

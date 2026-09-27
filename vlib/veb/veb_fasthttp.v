@@ -77,8 +77,8 @@ pub fn run_new[A, X](mut global_app A, params RunParams) ! {
 	if params.port <= 0 || params.port > 65535 {
 		return error('invalid port number `${params.port}`, it should be between 1 and 65535')
 	}
-	prompt_to_kill_processes_listening_on_port(params.port)
 	if ssl_enabled(params) {
+		prompt_to_kill_processes_listening_on_port(params.port)
 		maybe_init_server[A](mut global_app, new_server_without_lifecycle())
 		run_at_with_ssl[A, X](mut global_app, params)!
 		return
@@ -87,6 +87,7 @@ pub fn run_new[A, X](mut global_app A, params RunParams) ! {
 	// Generate routes and controllers just like the original run() function.
 	routes := generate_routes[A, X](global_app)!
 	controllers_sorted := check_duplicate_routes_in_controllers[A](global_app, routes)!
+	prompt_to_kill_processes_listening_on_port(params.port)
 
 	// Allocate params on the heap to keep it valid for the server lifetime
 	request_params := &RequestParams{

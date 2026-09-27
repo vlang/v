@@ -171,6 +171,22 @@ NB: the build flags are shared with the run command too:
     Allow ordinary variables and mutable call arguments in user code to omit explicit `mut`.
     `mut`/`shared`/`atomic` in function and method signatures remain unchanged.
 
+  -trace-calls
+    Log entries to generated V functions on stderr (C backend only).
+    Each record contains the thread id, elapsed timer value, stack delta in bytes,
+    and module/function name with its parameter count (including method receivers).
+    Startup (C.main and _vinit) and cleanup (_vcleanup) are also traced.
+    Tracing disables the module cache so imported functions are instrumented too.
+    Stack deltas are relative to the startup frame, not individual frame sizes;
+    they are only meaningful for the startup thread.
+    Example: v -trace-calls run examples/hello_world.v
+
+  -trace-fns <patterns>
+    Restrict -trace-calls to comma-separated function or module names/glob patterns.
+    This selects entries, not their callees. The trace header is still printed
+    when no function matches. Quote wildcard patterns to avoid shell expansion.
+    Example: v -trace-calls -trace-fns 'main.*,println,_vcleanup' run program.v
+
   -prof, -profile <file.txt>
     Compile the executable with all functions profiled.
     The profile results will be stored in `file.txt`.

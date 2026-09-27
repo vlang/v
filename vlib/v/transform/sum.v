@@ -30,14 +30,27 @@ fn interface_pattern_is_collapsed_container_type(name string) bool {
 }
 
 fn (mut t Transformer) pointer_sum_access_expr(expr_id flat.NodeId, expr_type string) (flat.NodeId, string, flat.Op) {
-	mut access := t.transform_selector_base_expr(expr_id)
+	has_smartcast := t.expr_has_smartcast(expr_id)
+	mut access := if has_smartcast {
+		// A runtime tag check always starts from the stored sum/interface value.
+		// Applying an active smartcast here would inspect the extracted variant.
+		t.make_plain_expr_for_smartcast(expr_id)
+	} else {
+		t.transform_selector_base_expr(expr_id)
+	}
 	mut access_type := expr_type
+	if has_smartcast {
+		raw_type := t.raw_expr_type_without_smartcast(expr_id)
+		if raw_type.len > 0 {
+			access_type = raw_type
+		}
+	}
 	for access_type.starts_with('&&') {
 		access = t.make_prefix(.mul, access)
 		access_type = access_type[1..]
 		t.set_node_typ(int(access), access_type)
 	}
-	mut value_type := t.node_type(access)
+	mut value_type := if has_smartcast { access_type } else { t.node_type(access) }
 	if value_type.len == 0 {
 		value_type = access_type
 	}
@@ -594,7 +607,12 @@ fn (t &Transformer) sum_type_index(sum_name string, variant string) int {
 	if variants.len == 0 {
 		return 0
 	}
-	return t.sum_type_index_in_variants(variants, variant)
+	concrete_variant := if t.active_specialization_args.len > 0 {
+		t.subst_type(variant, t.active_specialization_args)
+	} else {
+		variant
+	}
+	return t.sum_type_index_in_variants(variants, concrete_variant)
 }
 
 fn (t &Transformer) sum_type_variants_for_index(sum_name string) []string {
@@ -834,28 +852,44 @@ fn (t &Transformer) sum_alias_equivalent_variants(sum_name string, pattern strin
 	if variants.len == 0 {
 		return []string{}
 	}
-	pattern_names := t.interface_alias_equivalent_names(pattern)
+	mut pattern_forms := []AliasEquivalentForms{}
+	for name in t.interface_alias_equivalent_names(pattern) {
+		pattern_forms << t.alias_equivalent_forms(name)
+	}
 	mut result := []string{}
 	for variant in variants {
-		if t.type_name_matches_any_alias_equivalent(variant, pattern_names) {
+		if t.type_name_matches_any_alias_equivalent(variant, pattern_forms) {
 			result << variant
 		}
 	}
 	return result
 }
 
-fn (t &Transformer) type_name_matches_any_alias_equivalent(name string, candidates []string) bool {
+// AliasEquivalentForms holds a type name, its spelling normalized in the current
+// module, and the short names of both.
+struct AliasEquivalentForms {
+	name             string
+	normalized       string
+	short            string
+	normalized_short string
+}
+
+fn (t &Transformer) alias_equivalent_forms(name string) AliasEquivalentForms {
 	normalized := t.normalize_type_in_module(name, t.cur_module)
-	short := t.variant_short_name(name)
-	normalized_short := t.variant_short_name(normalized)
-	for candidate in candidates {
-		candidate_normalized := t.normalize_type_in_module(candidate, t.cur_module)
-		candidate_short := t.variant_short_name(candidate)
-		candidate_normalized_short := t.variant_short_name(candidate_normalized)
-		if name == candidate || name == candidate_normalized || normalized == candidate
-			|| normalized == candidate_normalized || short == candidate_short
-			|| short == candidate_normalized_short || normalized_short == candidate_short
-			|| normalized_short == candidate_normalized_short {
+	return AliasEquivalentForms{
+		name:             name
+		normalized:       normalized
+		short:            t.variant_short_name(name)
+		normalized_short: t.variant_short_name(normalized)
+	}
+}
+
+fn (t &Transformer) type_name_matches_any_alias_equivalent(name string, candidates []AliasEquivalentForms) bool {
+	n := t.alias_equivalent_forms(name)
+	for c in candidates {
+		if n.name == c.name || n.name == c.normalized || n.normalized == c.name
+			|| n.normalized == c.normalized || n.short == c.short || n.short == c.normalized_short
+			|| n.normalized_short == c.short || n.normalized_short == c.normalized_short {
 			return true
 		}
 	}
@@ -1074,7 +1108,28 @@ fn (t &Transformer) interface_impl_type_ids(iface_name string, concrete_name str
 	return ids
 }
 
+// interface_alias_equivalent_names returns `name`, its normalized spelling and the
+// aliases equivalent to either, memoized for the current module and file.
 fn (t &Transformer) interface_alias_equivalent_names(name string) []string {
+	if isnil(t.alias_equivalent_names_cache) {
+		return t.interface_alias_equivalent_names_uncached(name)
+	}
+	mut cache := t.alias_equivalent_names_cache
+	if !same_transform_text(cache.module, t.cur_module)
+		|| !same_transform_text(cache.file, t.cur_file) {
+		cache.module = t.cur_module
+		cache.file = t.cur_file
+		cache.entries.clear()
+	}
+	if names := cache.entries[name] {
+		return names
+	}
+	names := t.interface_alias_equivalent_names_uncached(name)
+	cache.entries[name] = names
+	return names
+}
+
+fn (t &Transformer) interface_alias_equivalent_names_uncached(name string) []string {
 	mut names := []string{}
 	mut seen := map[string]bool{}
 	t.push_interface_alias_equivalent_name(mut names, mut seen, name)
@@ -1675,6 +1730,27 @@ fn (t &Transformer) fixed_array_sum_literal_elem_unknown(literal_elem string) bo
 	return literal_elem == '' || literal_elem in ['unknown', 'void', 'array']
 }
 
+fn (t &Transformer) single_pointer_sum_nil_variant(expr_id flat.NodeId, sum_name string) ?string {
+	if !t.expr_is_nil_like(expr_id) {
+		return none
+	}
+	_, variants := t.concrete_sum_name_and_variants(sum_name)
+	mut pointer_variant := ''
+	for variant in variants {
+		if !t.sum_variant_is_direct_pointer(variant) {
+			continue
+		}
+		if pointer_variant.len > 0 {
+			return none
+		}
+		pointer_variant = variant
+	}
+	if pointer_variant.len == 0 {
+		return none
+	}
+	return pointer_variant
+}
+
 // wrap_sum_value transforms wrap sum value data for transform.
 fn (mut t Transformer) wrap_sum_value(expr_id flat.NodeId, target_sum string) flat.NodeId {
 	resolved_sum := t.resolve_sum_name(target_sum)
@@ -1682,6 +1758,10 @@ fn (mut t Transformer) wrap_sum_value(expr_id flat.NodeId, target_sum string) fl
 		return t.transform_expr(expr_id)
 	}
 	storage_sum := t.sum_literal_type_name(target_sum, resolved_sum)
+	if nil_variant := t.single_pointer_sum_nil_variant(expr_id, resolved_sum) {
+		value := t.transform_expr_for_type(expr_id, nil_variant)
+		return t.make_sum_literal(storage_sum, nil_variant, value)
+	}
 	expr := t.a.nodes[int(expr_id)]
 	if expr.kind == .if_expr {
 		branch_type := t.if_expr_branch_result_type(expr)

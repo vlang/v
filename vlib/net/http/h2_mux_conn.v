@@ -71,8 +71,12 @@ fn all_digits(s string) bool {
 
 // h2_conn_specific_headers are connection-specific header fields that MUST NOT
 // appear in any HTTP/2 message (RFC 9113 §8.2.2). A received response or trailer
-// carrying one is malformed. (TE is the request-only exception and is handled on
-// the send side, so it is not listed here.)
+// carrying one is malformed. TE is deliberately NOT listed: it is the request-only
+// exception (allowed in a request as exactly "trailers" -- h2_request_field_error
+// enforces that), so a list that rejected it everywhere would break requests. The
+// server's outbound RESPONSE filters must therefore add TE themselves --
+// h2_server.v's h2_response_field_is_forbidden does; do not rely on this const
+// alone for a response-side filter.
 const h2_conn_specific_headers = ['connection', 'keep-alive', 'proxy-connection', 'transfer-encoding',
 	'upgrade']
 

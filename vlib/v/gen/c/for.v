@@ -388,6 +388,9 @@ fn (mut g FlatGen) gen_for_in(node flat.Node) {
 				}
 				val_owner := g.tc.cur_scope.insert_with_owner(elem_binding_name, val_scope_type)
 				g.track_shadowed_global_local(elem_binding_name, val_owner)
+				if map_value_by_ref && !val_is_fixed_copy {
+					g.declare_local_indirect_value_type(val_owner, clean_container_type.value_type)
+				}
 				g.declare_local_pointer_storage(val_owner, val_scope_type is types.Pointer
 					|| (!val_is_fixed_copy && clean_container_type.value_type is types.Pointer)
 					|| c_type_is_pointer_storage(c_val))
@@ -454,6 +457,9 @@ fn (mut g FlatGen) gen_for_in(node flat.Node) {
 				}
 				elem_owner := g.tc.cur_scope.insert_with_owner(elem_binding_name, elem_scope_type)
 				g.track_shadowed_global_local(elem_binding_name, elem_owner)
+				if node.op == .amp {
+					g.declare_local_indirect_value_type(elem_owner, container_type.elem_type)
+				}
 				g.declare_local_pointer_storage(elem_owner, elem_scope_type is types.Pointer
 					|| c_type_is_pointer_storage(c_elem))
 				g.declare_ierror_pointer_alias(elem_var, g.for_in_array_literal_element_needs_ierror_copy(container_node))
@@ -487,6 +493,9 @@ fn (mut g FlatGen) gen_for_in(node flat.Node) {
 				}
 				elem_owner := g.tc.cur_scope.insert_with_owner(elem_binding_name, elem_scope_type)
 				g.track_shadowed_global_local(elem_binding_name, elem_owner)
+				if node.op == .amp {
+					g.declare_local_indirect_value_type(elem_owner, af.elem_type)
+				}
 				g.declare_local_pointer_storage(elem_owner, elem_scope_type is types.Pointer
 					|| c_type_is_pointer_storage(c_elem))
 			} else {

@@ -127,6 +127,9 @@ pub fn lookup_module_with_path(mod string, base_path string) !string {
 	}
 	mut current_dir := compile_dir
 	for {
+		if pref.is_module_search_stop_dir(current_dir) {
+			break
+		}
 		parent_dir := os.dir(current_dir)
 		if parent_dir == current_dir {
 			break

@@ -15,15 +15,15 @@ enum DuplicateFnCheckMode {
 }
 
 struct DuplicateFnCase {
-	name   string
-	source string
+	name    string
+	sources []string
 }
 
 fn duplicate_fn_check_modes() []DuplicateFnCheckMode {
 	return [.serial, .scoped_serial, .parallel, .scoped_parallel, .selected, .reachable]
 }
 
-fn check_duplicate_fn_source(source string, mode DuplicateFnCheckMode, padding int) ![]TypeError {
+fn check_duplicate_fn_source(sources []string, mode DuplicateFnCheckMode, padding int) ![]TypeError {
 	old_vjobs := os.getenv_opt('VJOBS')
 	os.setenv('VJOBS', '2', true)
 	defer {
@@ -38,15 +38,22 @@ fn check_duplicate_fn_source(source string, mode DuplicateFnCheckMode, padding i
 	defer {
 		os.rmdir_all(root) or { panic(err) }
 	}
-	path := os.join_path(root, 'input.v')
-	mut input := 'module duplicates\n' + source + '\nfn entry() {}\n'
-	// Exercise both the small-input fallback and actual worker dispatch.
-	for i in 0 .. padding {
-		input += 'fn padding_${i}(value int) int { return value }\n'
+	mut paths := []string{cap: sources.len}
+	for source_idx, source in sources {
+		path := os.join_path(root, 'input_${source_idx}.v')
+		mut input := 'module duplicates\n' + source + '\n'
+		if source_idx == 0 {
+			input += 'fn entry() {}\n'
+			// Exercise both the small-input fallback and actual worker dispatch.
+			for i in 0 .. padding {
+				input += 'fn padding_${i}(value int) int { return value }\n'
+			}
+		}
+		os.write_file(path, input)!
+		paths << path
 	}
-	os.write_file(path, input)!
 	mut p := parser.Parser.new(pref.new_preferences())
-	a := p.parse_file(path)
+	a := p.parse_files(paths)
 	assert p.diagnostics.len == 0, p.diagnostics.str()
 	mut tc := TypeChecker.new(a)
 	tc.collect(a)
@@ -80,22 +87,25 @@ fn check_duplicate_fn_source(source string, mode DuplicateFnCheckMode, padding i
 fn test_duplicate_functions_are_rejected_by_all_semantic_paths() {
 	cases := [
 		DuplicateFnCase{
-			name:   'lighten'
-			source: 'fn lighten(value int) int { return value + 1 }\nfn lighten(value int) int { return value + 2 }\n'
+			name:    'lighten'
+			sources: ['fn lighten(value int) int { return value + 1 }\nfn lighten(value int) int { return value + 2 }\n']
 		},
 		DuplicateFnCase{
-			name:   'lighten'
-			source: 'fn lighten(value int) int { return value }\nfn lighten(value string) string { return value }\n'
+			name:    'lighten'
+			sources: ['fn lighten(value int) int { return value }\nfn lighten(value string) string { return value }\n']
 		},
 		DuplicateFnCase{
-			name:   'Shade.lighten'
-			source: 'struct Shade {}\nfn (s Shade) lighten(value int) int { return value + 1 }\nfn (s Shade) lighten(value int) int { return value + 2 }\n'
+			name:    'Shade.lighten'
+			sources: [
+				'struct Shade {}\nfn (s Shade) lighten(value int) int { return value + 1 }\n',
+				'fn (s Shade) lighten(value int) int { return value + 2 }\n',
+			]
 		},
 	]
 	for test_case in cases {
 		for mode in duplicate_fn_check_modes() {
 			for padding in [0, min_parallel_check_items + 8] {
-				errors := check_duplicate_fn_source(test_case.source, mode, padding)!
+				errors := check_duplicate_fn_source(test_case.sources, mode, padding)!
 				context := '${test_case.name}, ${mode}, padding=${padding}: ${errors}'
 				builders := errors.filter(it.severity == 'builder error:')
 				assert builders.len == 1, context
@@ -104,7 +114,11 @@ fn test_duplicate_functions_are_rejected_by_all_semantic_paths() {
 				conflicts := errors.filter(it.severity == 'conflicting declaration:')
 				assert conflicts.len == 2, context
 				assert conflicts.all(it.node_value == test_case.name), context
-				assert conflicts[0].pos.id == conflicts[1].pos.id, context
+				if test_case.sources.len == 1 {
+					assert conflicts[0].pos.id == conflicts[1].pos.id, context
+				} else {
+					assert conflicts[0].pos.id != conflicts[1].pos.id, context
+				}
 				assert conflicts[0].pos.offset != conflicts[1].pos.offset, context
 				assert errors.len == 3, context
 			}
@@ -115,7 +129,7 @@ fn test_duplicate_functions_are_rejected_by_all_semantic_paths() {
 fn test_duplicate_fn_check_keeps_distinct_receivers_and_c_declarations_valid() {
 	source := 'struct Shade {}\nstruct OtherShade {}\nfn lighten(value int) int { return value }\nfn (s Shade) lighten(value int) int { return value }\nfn (s OtherShade) lighten(value int) int { return value }\nfn C.duplicate_fn_probe(value int) int\nfn C.duplicate_fn_probe(value int) int\n'
 	for mode in duplicate_fn_check_modes() {
-		errors := check_duplicate_fn_source(source, mode, min_parallel_check_items + 8)!
+		errors := check_duplicate_fn_source([source], mode, min_parallel_check_items + 8)!
 		assert errors.len == 0, '${mode}: ${errors}'
 	}
 }

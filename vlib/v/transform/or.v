@@ -949,6 +949,12 @@ fn (mut t Transformer) or_expr_types(expr_id flat.NodeId, fallback_type string) 
 	}
 	if !isnil(t.tc) {
 		if expr_node.kind == .call {
+			// `json.decode(Type, text)` is declared as returning `!voidptr`; recover
+			// its compiler-magic payload before generic/declaration fallbacks accept
+			// that erased signature.
+			if decode_ret := t.json_decode_or_expr_type(expr_id, expr_node) {
+				return t.canonical_or_expr_types(decode_ret)
+			}
 			if specialized_ret := t.specialized_interface_method_call_return_type(expr_id,
 				expr_node)
 			{
@@ -965,13 +971,6 @@ fn (mut t Transformer) or_expr_types(expr_id flat.NodeId, fallback_type string) 
 				&& !t.generic_arg_is_unresolved(expr_node.typ) {
 				return t.specialized_or_expr_types(expr_node.typ)
 			}
-			if expr_node.children_count > 0 {
-				callee := t.a.child_node(&expr_node, 0)
-				if callee.kind == .ident && t.generic_callee_is_specialization(callee.value)
-					&& t.is_optional_type_name(expr_node.typ) {
-					return t.specialized_or_expr_types(expr_node.typ)
-				}
-			}
 			if current_ret := t.current_generic_receiver_call_return_type(expr_node) {
 				if t.is_optional_type_name(current_ret) && !t.generic_arg_is_unresolved(current_ret) {
 					return t.canonical_or_expr_types(current_ret)
@@ -981,13 +980,17 @@ fn (mut t Transformer) or_expr_types(expr_id flat.NodeId, fallback_type string) 
 			if t.is_optional_type_name(concrete_ret) && !t.generic_arg_is_unresolved(concrete_ret) {
 				return t.specialized_or_expr_types(concrete_ret)
 			}
-			if decode_ret := t.json_decode_or_expr_type(expr_id, expr_node) {
-				return t.canonical_or_expr_types(decode_ret)
-			}
 			if declared_ret := t.call_declared_return_type_text(expr_id) {
 				if t.is_optional_type_name(declared_ret)
 					&& !t.generic_arg_is_unresolved(declared_ret) {
 					return t.canonical_or_expr_types(declared_ret)
+				}
+			}
+			if expr_node.children_count > 0 {
+				callee := t.a.child_node(&expr_node, 0)
+				if callee.kind == .ident && t.generic_callee_is_specialization(callee.value)
+					&& t.is_optional_type_name(expr_node.typ) {
+					return t.specialized_or_expr_types(expr_node.typ)
 				}
 			}
 			if typ := t.tc.expr_type(expr_id) {
@@ -1221,6 +1224,10 @@ fn (t &Transformer) call_declared_return_type_text(id flat.NodeId) ?string {
 		return none
 	}
 	name := t.tc.resolved_call_name(id) or { return none }
+	if name == 'json.decode' && int(id) < t.a.nodes.len {
+		// The magic `json.decode(T, s)` returns `!T`, not its `!voidptr` stub declaration.
+		return t.json_decode_or_expr_type(id, t.a.nodes[int(id)])
+	}
 	if ret := t.tc.fn_ret_type_texts[name] {
 		resolved := t.tc.fn_signature_type(name, ret)
 		if resolved !is types.Unknown && resolved !is types.Void {
@@ -1328,6 +1335,17 @@ fn (t &Transformer) json_decode_or_expr_type(expr_id flat.NodeId, expr_node flat
 	}
 	if !is_decode {
 		return none
+	}
+	// Pure-V `json2.decode[T](text)` can gain a synthesized default-options
+	// argument, so its first value argument must not be mistaken for the legacy
+	// `json.decode(Type, text)` type argument.
+	if !t.is_cgen_magic_json_call(expr_id, expr_node) {
+		if args := t.explicit_generic_call_args(expr_node, t.cur_module) {
+			if args.len == 1 && args[0].len > 0 {
+				return t.specialized_json_decode_result_type(args[0])
+			}
+			return none
+		}
 	}
 	// The established `json.decode(Type, text)` form keeps its type argument as
 	// the first call argument. Its synthetic generic metadata is erased to
@@ -1777,10 +1795,9 @@ fn (mut t Transformer) preserve_or_expr_for_codegen(id flat.NodeId, node flat.No
 		t.pending_stmts << stmt
 	}
 
-	saved_var_types := t.var_types.clone()
-	t.set_implicit_err_var_type()
+	err_scope := t.enter_implicit_err_scope()
 	new_body := t.transform_or_body_for_codegen(body_id)
-	t.restore_var_types(saved_var_types)
+	t.leave_implicit_err_scope(err_scope)
 
 	start := t.a.children.len
 	t.a.children << new_expr
@@ -2091,14 +2108,13 @@ fn (t &Transformer) shared_alias_storage_type(typ string) string {
 	}
 	if !clean.contains('.') {
 		mut found := ''
-		for name, target in t.tc.type_aliases {
-			if name == clean || name.ends_with('.${clean}') {
-				inner := shared_alias_inner_type_text(target) or { continue }
-				if found != '' && found != inner {
-					return typ
-				}
-				found = inner
+		// `name == clean || name.ends_with('.${clean}')`, for a dot-free `clean`.
+		for alias in t.type_aliases_with_short_name(clean) {
+			inner := shared_alias_inner_type_text(alias.target) or { continue }
+			if found != '' && found != inner {
+				return typ
 			}
+			found = inner
 		}
 		if found.len > 0 {
 			return '&${found}'
@@ -2217,6 +2233,22 @@ fn (mut t Transformer) optional_source_value_expr(source_id flat.NodeId, expr fl
 	return value
 }
 
+// append_implicit_err_decl binds the implicit `err` of an `or {}` block or an
+// if-guard `else` branch to `err_expr`, or to a zero `IError` when there is no
+// source error. Without `IError` (`-no-builtin`) the option/result wrappers have
+// no `err` field, so no binding is emitted.
+fn (mut t Transformer) append_implicit_err_decl(mut stmts []flat.NodeId, err_expr flat.NodeId) {
+	if !t.has_ierror_interface() {
+		return
+	}
+	err_value := if int(err_expr) >= 0 {
+		err_expr
+	} else {
+		t.make_struct_init('IError')
+	}
+	stmts << t.make_decl_assign_typed('err', err_value, 'IError')
+}
+
 // lower_or_body_to_stmts converts lower or body to stmts data for transform.
 fn (mut t Transformer) lower_or_body_to_stmts(body_id flat.NodeId, target_name string, target_type string, mode string, err_source string) []flat.NodeId {
 	err_expr := if err_source != '' {
@@ -2249,28 +2281,22 @@ fn (mut t Transformer) lower_or_body_to_multi_return_stmts_with_err_expr(body_id
 			err_expr)
 	}
 	body := t.a.nodes[int(body_id)]
-	saved_var_types := t.var_types.clone()
-	t.set_implicit_err_var_type()
-	err_value := if int(err_expr) >= 0 {
-		err_expr
-	} else {
-		t.make_struct_init('IError')
-	}
+	err_scope := t.enter_implicit_err_scope()
 	mut result := []flat.NodeId{}
-	result << t.make_decl_assign_typed('err', err_value, 'IError')
+	t.append_implicit_err_decl(mut result, err_expr)
 	if t.stmt_tail_exits(body_id) {
-		t.restore_var_types(saved_var_types)
+		t.leave_implicit_err_scope(err_scope)
 		return t.lower_or_body_to_stmts_with_err_expr(body_id, '', '', mode, err_expr)
 	}
 	if lowered := t.lower_or_multi_return_tail(body_id, target_name, target_type, field_types) {
 		for stmt in lowered {
 			result << stmt
 		}
-		t.restore_var_types(saved_var_types)
+		t.leave_implicit_err_scope(err_scope)
 		return result
 	}
 	_ = body
-	t.restore_var_types(saved_var_types)
+	t.leave_implicit_err_scope(err_scope)
 	return t.lower_or_body_to_stmts_with_err_expr(body_id, target_name, target_type, mode, err_expr)
 }
 
@@ -2461,10 +2487,6 @@ fn (mut t Transformer) lower_or_multi_return_expr(expr_id flat.NodeId, target_na
 }
 
 fn (mut t Transformer) lower_or_body_to_stmts_with_err_expr(body_id flat.NodeId, target_name string, target_type string, mode string, err_expr flat.NodeId) []flat.NodeId {
-	saved_in_string_interp_part := t.in_string_interp_part
-	defer {
-		t.in_string_interp_part = saved_in_string_interp_part
-	}
 	if mode == '!' || mode == '?' {
 		if t.is_optional_type_name(t.cur_fn_ret_type) {
 			return [t.make_none_return_stmt_with_err_expr(err_expr)]
@@ -2512,14 +2534,8 @@ fn (mut t Transformer) lower_or_body_to_stmts_with_err_expr(body_id flat.NodeId,
 	// for its lowering and restored afterwards, so the previous binding (e.g. an outer
 	// `err := 1`) survives and a subsequent `${err}` is not mis-typed as `IError`.
 	// Mirrors transform_if_guard_else_block.
-	saved_var_types := t.var_types.clone()
-	t.set_implicit_err_var_type()
-	err_value := if int(err_expr) >= 0 {
-		err_expr
-	} else {
-		t.make_struct_init('IError')
-	}
-	result << t.make_decl_assign_typed('err', err_value, 'IError')
+	err_scope := t.enter_implicit_err_scope()
+	t.append_implicit_err_decl(mut result, err_expr)
 	for i in 0 .. body.children_count {
 		child_id := t.a.child(&body, i)
 		child := t.a.nodes[int(child_id)]
@@ -2594,11 +2610,24 @@ fn (mut t Transformer) lower_or_body_to_stmts_with_err_expr(body_id flat.NodeId,
 		}
 	}
 	_ = target_type
-	t.restore_var_types(saved_var_types)
+	t.leave_implicit_err_scope(err_scope)
 	return result
 }
 
 fn (mut t Transformer) lower_or_comptime_if_value(node flat.Node, target_name string, target_type string) flat.NodeId {
+	if take_then := t.comptime_type_condition_value(node.value) {
+		branch_index := if take_then { 0 } else { 1 }
+		for i in 0 .. node.children_count {
+			if i != branch_index {
+				t.ignore_comptime_for_subtree(t.a.child(&node, i))
+			}
+		}
+		if branch_index >= node.children_count {
+			return t.make_block([]flat.NodeId{})
+		}
+		return t.if_value_branch_block(t.a.child(&node, branch_index), target_name,
+			target_type)
+	}
 	mut branches := []flat.NodeId{cap: int(node.children_count)}
 	for i in 0 .. node.children_count {
 		branches << t.if_value_branch_block(t.a.child(&node, i), target_name, target_type)

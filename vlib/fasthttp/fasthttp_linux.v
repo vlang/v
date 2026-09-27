@@ -232,7 +232,7 @@ fn mod_fd_in_epoll(epoll_fd int, fd int, events u32) int {
 
 // remove_fd_from_epoll removes a file descriptor from the epoll instance
 fn remove_fd_from_epoll(epoll_fd int, fd int) bool {
-	ret := C.epoll_ctl(epoll_fd, C.EPOLL_CTL_DEL, fd, C.NULL)
+	ret := C.epoll_ctl(epoll_fd, C.EPOLL_CTL_DEL, fd, unsafe { nil })
 	if ret == -1 {
 		eprintln('ERROR: epoll_ctl(DEL, fd=${fd}) failed with errno=${C.errno}')
 		return false
@@ -924,7 +924,7 @@ fn handle_writable(mut w Worker, fd int) {
 // registers each with this worker's epoll for readability.
 fn handle_accept_loop(mut w Worker) {
 	for {
-		client_fd := C.accept4(w.listen_fd, C.NULL, C.NULL, C.SOCK_NONBLOCK)
+		client_fd := C.accept4(w.listen_fd, unsafe { nil }, unsafe { nil }, C.SOCK_NONBLOCK)
 		if client_fd < 0 {
 			if C.errno == C.EAGAIN {
 				break // no more incoming connections

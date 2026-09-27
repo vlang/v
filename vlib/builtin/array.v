@@ -1071,10 +1071,21 @@ pub fn (a &array) clone() array {
 pub fn (a &array) clone_to_depth(depth int) array {
 	source_capacity_in_bytes := u64(a.cap) * u64(a.element_size)
 	use_noscan_data := depth == 0 && a.uses_noscan_data()
+	// Unless nested arrays/strings are cloned element by element below, the
+	// whole capacity is copied from `a`, so zeroing the new buffer first is wasted.
+	clones_elements := depth > 0 && a.len >= 0 && a.cap >= a.len
+		&& (a.element_size == sizeof(array) || a.element_size == sizeof(string))
+	copies_capacity := !clones_elements && a.data != 0 && source_capacity_in_bytes > 0
 	mut data := unsafe { nil }
 	if a.cap > 0 {
 		if use_noscan_data {
-			data = a.alloc_array_data_like(source_capacity_in_bytes)
+			if copies_capacity {
+				data = a.alloc_array_data_like_uninit(source_capacity_in_bytes)
+			} else {
+				data = a.alloc_array_data_like(source_capacity_in_bytes)
+			}
+		} else if copies_capacity {
+			data = alloc_array_data_uninit(source_capacity_in_bytes)
 		} else {
 			data = alloc_array_data(source_capacity_in_bytes)
 		}
@@ -1124,6 +1135,16 @@ fn (mut a array) set(i int, val voidptr) {
 		}
 	}
 	unsafe { vmemcpy(&u8(a.data) + u64(a.element_size) * u64(i), val, a.element_size) }
+}
+
+// array_sort_move copies `count` elements of `element_size` bytes from index `si`
+// of `src` to index `di` of `dst`. The compiler's lowered stable sort calls it
+// with indexes it has already bounded, so it skips the per-element range checks
+// of `array.set`.
+@[inline; markused; unsafe]
+fn array_sort_move(dst voidptr, di int, src voidptr, si int, count int, element_size usize) {
+	vmemcpy(&u8(dst) + usize(di) * element_size, &u8(src) + usize(si) * element_size,
+		isize(usize(count) * element_size))
 }
 
 @[markused]

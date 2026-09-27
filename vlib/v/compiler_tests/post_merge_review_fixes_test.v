@@ -238,6 +238,18 @@ fn main() {
 ')
 }
 
+fn test_c_integer_parameters_accept_other_integer_variable_types() {
+	check_good('c_integer_variable_arguments', 'fn C.integer_probe(usize, isize, u64) int
+
+fn main() {
+	signed := isize(1)
+	unsigned := usize(2)
+	word := int(3)
+	_ = C.integer_probe(signed, unsigned, word)
+}
+')
+}
+
 fn test_filelock_helpers_are_inlined_in_generated_c() {
 	v3_bin := build_v3()
 	c_source := gen_c(v3_bin, 'filelock_helpers_inline', 'import os.filelock\n\nfn C.v_filelock_lock(i32, i32, i32, u64, u64) i32\nfn C.v_filelock_unlock(i32, u64, u64) i32\n\nfn main() {\n\t_ = filelock.LockMode.exclusive\n\t_ = C.v_filelock_lock(i32(-1), 1, 1, u64(0), u64(0))\n\t_ = C.v_filelock_unlock(i32(-1), u64(0), u64(0))\n}\n')

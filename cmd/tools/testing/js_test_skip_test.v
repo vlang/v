@@ -16,12 +16,12 @@ fn test_session_skips_js_tests_without_an_explicit_skip_list() {
 			files:        [source]
 			will_compile: true
 			// Any attempted compilation fails; a skip must not invoke this executable.
-			vexe:       os.join_path(root, 'missing-compiler')
-			vroot:      os.dir(@VEXE)
-			vtmp_dir:   os.join_path(root, 'session_${index}')
-			vargs:      if stats { '-stats' } else { '' }
-			show_stats: stats
-			exec_mode:  .compile_and_run
+			vexe:         os.join_path(root, 'missing-compiler')
+			vroot:        os.dir(@VEXE)
+			vtmp_dir:     os.join_path(root, 'session_${index}')
+			vargs:        if stats { '-stats' } else { '' }
+			show_stats:   stats
+			exec_mode:    .compile_and_run
 		}
 		assert session.skip_files.len == 0
 		session.test()

@@ -86,3 +86,14 @@ println(os.exists(temp_dir()))
 	assert result.exit_code == 0, result.output
 	assert result.output.split_into_lines() == ['local exists', 'true'], result.output
 }
+
+fn test_vsh_script_closure_captures_preceding_top_level_local() {
+	result := run_vsh_script('closure_capture', "message := 'captured'
+callback := fn [message] () {
+	println(message)
+}
+callback()
+")
+	assert result.exit_code == 0, result.output
+	assert result.output.trim_space() == 'captured', result.output
+}
