@@ -18586,15 +18586,25 @@ fn implicit_selector_is_interop_symbol(a &flat.FlatAst, node flat.Node) bool {
 
 fn implicit_known_field_selectors(a &flat.FlatAst, start int, end int, index ImplicitFieldScanIndex) map[int]bool {
 	mut selectors := map[int]bool{}
+	// The maps and lists of one function, emptied for the next: a program has
+	// thousands of functions.
+	mut bindings := map[string]string{}
+	mut ambiguous := map[string]bool{}
+	mut local_names := map[string]bool{}
+	mut candidates := []flat.NodeId{}
+	mut declarations := []flat.NodeId{}
+	mut stack := []flat.NodeId{}
 	for fn_idx in start .. end {
 		fn_node := a.nodes[fn_idx]
 		if fn_node.kind != .fn_decl {
 			continue
 		}
-		mut bindings := map[string]string{}
-		mut ambiguous := map[string]bool{}
-		mut local_names := map[string]bool{}
-		mut body_roots := []flat.NodeId{cap: int(fn_node.children_count)}
+		bindings.clear()
+		ambiguous.clear()
+		local_names.clear()
+		candidates.clear()
+		declarations.clear()
+		stack.clear()
 		for child_idx in 0 .. fn_node.children_count {
 			child_id := a.child(&fn_node, child_idx)
 			child := a.node(child_id)
@@ -18606,12 +18616,9 @@ fn implicit_known_field_selectors(a &flat.FlatAst, start int, end int, index Imp
 					bindings[child.value] = implicit_normalize_type(child.typ, index)
 				}
 			} else {
-				body_roots << child_id
+				stack << child_id
 			}
 		}
-		mut candidates := []flat.NodeId{}
-		mut declarations := []flat.NodeId{}
-		mut stack := body_roots.clone()
 		for stack.len > 0 {
 			id := stack.pop()
 			if int(id) < 0 {
@@ -19024,19 +19031,21 @@ fn implicit_field_type(raw_type string, field string, index ImplicitFieldScanInd
 	return ''
 }
 
+const implicit_type_prefixes = ['mut ', 'shared ', '&', '?', '!']
+
 fn implicit_normalize_type(raw string, index ImplicitFieldScanIndex) string {
-	mut typ := raw.trim_space()
+	mut typ := implicit_trim_space(raw)
 	for _ in 0 .. 12 {
 		mut changed := false
-		for prefix in ['mut ', 'shared ', '&', '?', '!'] {
+		for prefix in implicit_type_prefixes {
 			if typ.starts_with(prefix) {
-				typ = typ[prefix.len..].trim_space()
+				typ = implicit_trim_space(typ[prefix.len..])
 				changed = true
 			}
 		}
 		index.read('a:', typ)
 		if target := index.aliases[typ] {
-			typ = target.trim_space()
+			typ = implicit_trim_space(target)
 			changed = true
 		}
 		if !changed {
@@ -19046,15 +19055,25 @@ fn implicit_normalize_type(raw string, index ImplicitFieldScanIndex) string {
 	return typ
 }
 
+// implicit_trim_space is `text.trim_space()` without the copy of a text that
+// has no space to trim: the scans below normalize every type text they meet.
+@[inline]
+fn implicit_trim_space(text string) string {
+	if text.len > 0 && !text[0].is_space() && !text[text.len - 1].is_space() {
+		return text
+	}
+	return text.trim_space()
+}
+
 fn type_text_is_channel(typ string) bool {
-	mut clean := typ.trim_space()
+	mut clean := implicit_trim_space(typ)
 	for {
 		if clean.starts_with('&') {
-			clean = clean[1..].trim_space()
+			clean = implicit_trim_space(clean[1..])
 			continue
 		}
 		if clean.starts_with('mut ') {
-			clean = clean[4..].trim_space()
+			clean = implicit_trim_space(clean[4..])
 			continue
 		}
 		break
@@ -19063,7 +19082,7 @@ fn type_text_is_channel(typ string) bool {
 }
 
 fn type_text_is_shared(raw string) bool {
-	return raw.trim_space().starts_with('shared ')
+	return implicit_trim_space(raw).starts_with('shared ')
 }
 
 fn decl_assign_value_is_shared(value string) bool {
