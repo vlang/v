@@ -14631,7 +14631,9 @@ fn (mut tc TypeChecker) call_returned_alias_arguments(id flat.NodeId, mut visiti
 	file := if source := tc.a.source_files[fn_node.pos.id] { source.name } else { tc.cur_file }
 	mut callee_view := tc.fork_type_parse_view(file, decl.mod)
 	callee_view.smartcasts = map[string]Type{}
-	callee_view.begin_sparse_transform_node_caches(0)
+	// The return body belongs to the already checked program. Preserve its
+	// expression and call resolution, including receivers bound as callee locals.
+	callee_view.begin_sparse_transform_node_caches(tc.a.nodes.len)
 	callee_view.fn_context.node_id = decl.idx
 	callee_view.fn_context.generic_params = fn_node.generic_params().clone()
 	callee_view.fn_context.return_type = info.return_type
