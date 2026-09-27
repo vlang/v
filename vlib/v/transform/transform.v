@@ -13089,9 +13089,12 @@ fn (t &Transformer) struct_field_path_for_field_inner(struct_type string, field 
 		if !t.is_embedded_field(f) {
 			continue
 		}
-		embedded_field_type := t.lookup_struct_field_type(clean, f.name) or {
-			t.normalize_field_type(f.typ, clean)
+		owner_type := if clean.contains('.') || info.module in ['', 'main', 'builtin'] {
+			clean
+		} else {
+			'${info.module}.${clean}'
 		}
+		embedded_field_type := t.normalize_field_type(f.typ, owner_type)
 		embedded_type := t.trim_pointer_type(embedded_field_type)
 		if path := t.struct_field_path_for_field_inner(embedded_type, field, mut seen) {
 			mut result := []FieldInfo{cap: path.len + 1}

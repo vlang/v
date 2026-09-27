@@ -420,6 +420,35 @@ fn test_embedded_field_path_specializes_each_owner() {
 	assert t.lookup_struct_field_type(path.last().typ, 'payload') or { '' } == 'Choice'
 }
 
+fn test_embedded_field_path_uses_selected_struct_owner() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	tc.file_selective_imports['main.v\nOuter'] = ['pkg.Outer']
+	tc.struct_generic_params['pkg.Outer'] = ['T']
+	tc.struct_generic_params['pkg.Middle'] = ['T']
+	mut t := new_transformer(mut a, &tc, map[string]bool{})
+	t.cur_file = 'main.v'
+	t.cur_module = 'main'
+	t.structs['Outer'] = StructInfo{
+		name:   'Outer'
+		module: 'main'
+		fields: [FieldInfo{ name: 'Middle', typ: 'other.Middle[int]', is_embedded: true }]
+	}
+	t.structs['pkg.Outer'] = StructInfo{
+		name:   'Outer'
+		module: 'pkg'
+		fields: [FieldInfo{ name: 'Middle', typ: 'pkg.Middle[T]', is_embedded: true }]
+	}
+	t.structs['pkg.Middle'] = StructInfo{
+		name:   'Middle'
+		module: 'pkg'
+		fields: [FieldInfo{ name: 'payload', typ: 'T' }]
+	}
+	path := t.struct_field_path_for_field('Outer[Choice]', 'payload') or { panic('missing selected embed path') }
+	assert path.len == 1
+	assert path[0].typ == 'pkg.Middle[Choice]'
+}
+
 fn test_sql_table_name_keeps_main_lock_outside_main_module() {
 	t := Transformer{
 		cur_module: 'orm'
