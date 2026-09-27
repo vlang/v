@@ -69,3 +69,15 @@ fn test_explicit_unused_import_keeps_source_diagnostics() {
 	assert tc.errors.len == 0, tc.errors.str()
 	assert tc.notices.any(it.msg.contains("module 'os' is imported but never used")), tc.notices.str()
 }
+
+fn test_aliased_import_may_have_the_same_basename() {
+	path := os.join_path(os.vtmp_dir(), 'v3_same_basename_import_${os.getpid()}.v')
+	os.write_file(path, 'module html\n\nimport net.html as net_html\n')!
+	defer { os.rm(path) or {} }
+	mut p := parser.Parser.new(pref.new_preferences())
+	a := p.parse_file(path)
+	mut tc := TypeChecker.new(a)
+	tc.collect(a)
+	tc.check_import_diagnostics()
+	assert tc.errors.len == 0, tc.errors.str()
+}
