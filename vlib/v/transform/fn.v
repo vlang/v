@@ -710,6 +710,28 @@ fn (t &Transformer) resolve_specialized_generic_receiver_method(receiver_type st
 
 // resolve_alias_receiver_method converts resolve alias receiver method data for transform.
 fn (t &Transformer) resolve_alias_receiver_method(base_type string, method string) ?string {
+	if isnil(t.tc) || base_type == '' || method == '' || isnil(t.alias_receiver_method_cache) {
+		return t.resolve_alias_receiver_method_keyed(base_type, method)
+	}
+	// Answer repeated lookups before building the memo's composite key.
+	mut cache := t.alias_receiver_method_cache
+	mut recent := cache.recent_cache()
+	state, cached := recent.get(t.cur_module, base_type, method)
+	if state > 0 {
+		return cached
+	}
+	if state < 0 {
+		return none
+	}
+	if resolved := t.resolve_alias_receiver_method_keyed(base_type, method) {
+		recent.put(t.cur_module, base_type, method, 1, resolved)
+		return resolved
+	}
+	recent.put(t.cur_module, base_type, method, -1, '')
+	return none
+}
+
+fn (t &Transformer) resolve_alias_receiver_method_keyed(base_type string, method string) ?string {
 	if isnil(t.tc) || base_type == '' || method == '' {
 		return none
 	}
@@ -2652,6 +2674,11 @@ fn (t &Transformer) static_assoc_fn_name(base_id flat.NodeId, method string) ?st
 	if method == '' {
 		return none
 	}
+	// Most selector calls name instance methods: skip building candidate types
+	// when no static method anywhere has this name.
+	if t.static_method_names_ready && method !in t.static_method_names {
+		return none
+	}
 	base := t.a.nodes[int(base_id)]
 	if base.kind == .ident {
 		if base.value == 'C' || t.is_import_alias_ident(base_id) {
@@ -2687,6 +2714,31 @@ fn (t &Transformer) static_assoc_fn_name(base_id flat.NodeId, method string) ?st
 	return none
 }
 
+// build_static_method_names records the method part of every static type
+// method (`fn Type.method()`) the checker registered. Functions that transform
+// adds later, such as generic specializations, reuse the method name of a source
+// declaration, so the set stays complete for static_assoc_fn_name.
+fn (mut t Transformer) build_static_method_names() {
+	t.static_method_names = map[string]bool{}
+	for name, _ in t.fn_ret_types {
+		t.add_static_method_name(name)
+	}
+	if !isnil(t.tc) {
+		for name, _ in t.tc.fn_ret_types {
+			t.add_static_method_name(name)
+		}
+		for name, _ in t.tc.fn_param_types {
+			t.add_static_method_name(name)
+		}
+	}
+	t.static_method_names_ready = true
+}
+
+fn (mut t Transformer) add_static_method_name(name string) {
+	_, method := flat.decode_static_type_method_name(name) or { return }
+	t.static_method_names[method] = true
+}
+
 fn (t &Transformer) selector_is_lexical_module_call(base_id flat.NodeId, method string, call_name string) bool {
 	if int(base_id) < 0 || int(base_id) >= t.a.nodes.len || isnil(t.tc) {
 		return false
@@ -2696,8 +2748,8 @@ fn (t &Transformer) selector_is_lexical_module_call(base_id flat.NodeId, method 
 		return false
 	}
 	file := t.a.source_files[base.pos.id] or { return false }
-	module_name := t.tc.file_imports[file.name + '\n' + base.value] or { return false }
-	return call_name == '${module_name}.${method}'
+	module_name := t.file_import_module(file.name, base.value) or { return false }
+	return qualified_name_equals(call_name, module_name, method)
 }
 
 // call_selector_base_is_namespace reports whether the base of a selector callee names a
@@ -2738,7 +2790,7 @@ fn (t &Transformer) is_import_alias_ident(id flat.NodeId) bool {
 	// alias (`import core.flags`, where that module also exports `flags`). In a
 	// selector callee such as `flags.parse()`, the file import remains the
 	// syntactic namespace unless a local value shadows it.
-	if _ := t.tc.file_imports[file_import_key(t.cur_file, node.value)] {
+	if _ := t.file_import_module(t.cur_file, node.value) {
 		return t.raw_var_type(node.value).len == 0
 	}
 	if node.value !in t.tc.imports {
@@ -3263,6 +3315,23 @@ fn (t &Transformer) decl_fn_type_param_in_module(param string, module_name strin
 
 // call_is_variadic updates call is variadic state for Transformer.
 fn (t &Transformer) call_is_variadic(call_name string) bool {
+	// Generic specializations are re-checked on every call (see below).
+	if isnil(t.call_variadic_cache) || call_name.contains('_T_') {
+		return t.call_is_variadic_keyed(call_name)
+	}
+	// Answer repeated lookups before building the memo's composite key.
+	mut cache := t.call_variadic_cache
+	mut recent := cache.recent_cache()
+	state, _ := recent.get(t.cur_file, call_name, '')
+	if state != 0 {
+		return state > 0
+	}
+	result := t.call_is_variadic_keyed(call_name)
+	recent.put(t.cur_file, call_name, '', if result { i8(1) } else { i8(-1) }, '')
+	return result
+}
+
+fn (t &Transformer) call_is_variadic_keyed(call_name string) bool {
 	// Generic signatures are registered after some early transform probes. Do not
 	// let an earlier negative cache entry hide the template's variadic marker.
 	if !isnil(t.tc) && call_name.contains('_T_') && t.tc.specialized_generic_fns[call_name]
@@ -4047,7 +4116,7 @@ fn (t &Transformer) imported_global_name(name string) ?string {
 	for candidate in t.global_qualified_names[name] or { []string{} } {
 		owner := candidate.all_before_last('.')
 		alias := owner.all_after_last('.')
-		resolved := t.tc.file_imports[file_import_key(t.cur_file, alias)] or {
+		resolved := t.file_import_module(t.cur_file, alias) or {
 			t.tc.imports[alias] or { '' }
 		}
 		if resolved == owner {
@@ -5491,7 +5560,7 @@ fn (t &Transformer) source_enum_type_name(file string, spelling string) ?string 
 		return none
 	}
 	resolved := if spelling.contains('.') {
-		module_name := t.tc.file_imports[file_import_key(file, spelling.all_before('.'))] or {
+		module_name := t.file_import_module(file, spelling.all_before('.')) or {
 			return none
 		}
 		'${module_name}.${spelling.all_after('.')}'
@@ -6708,6 +6777,28 @@ fn (mut t Transformer) alias_custom_str_method_name(alias_name string) ?string {
 // lookup_str_alias resolves a type name to `(alias_name, base_type)` when it names a type
 // alias, mirroring the direct/module-qualified/suffix lookups of wrap_string_conversion.
 fn (t &Transformer) lookup_str_alias(clean_typ string) ?(string, string) {
+	if isnil(t.tc) || clean_typ == '' || isnil(t.str_alias_cache) {
+		return t.lookup_str_alias_keyed(clean_typ)
+	}
+	// Answer repeated lookups before building the memo's composite key.
+	mut cache := t.str_alias_cache
+	mut recent := cache.recent_cache()
+	state, cached := recent.get(t.cur_module, clean_typ, '')
+	if state > 0 {
+		return clean_typ, cached
+	}
+	if state < 0 {
+		return none
+	}
+	if name, target := t.lookup_str_alias_keyed(clean_typ) {
+		recent.put(t.cur_module, clean_typ, '', 1, target)
+		return name, target
+	}
+	recent.put(t.cur_module, clean_typ, '', -1, '')
+	return none
+}
+
+fn (t &Transformer) lookup_str_alias_keyed(clean_typ string) ?(string, string) {
 	if isnil(t.tc) || clean_typ == '' {
 		return none
 	}
@@ -13335,7 +13426,7 @@ fn (mut t Transformer) try_lower_receiver_method_call(id flat.NodeId, node flat.
 		return none
 	}
 	if base_node.kind == .ident && !isnil(t.tc) {
-		imported_module := t.tc.file_imports[file_import_key(t.cur_file, base_node.value)] or {
+		imported_module := t.file_import_module(t.cur_file, base_node.value) or {
 			t.tc.imports[base_node.value] or { '' }
 		}
 		if imported_module.len > 0 {
