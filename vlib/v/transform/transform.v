@@ -21279,9 +21279,9 @@ fn (t &Transformer) raw_selector_type_without_smartcast(id flat.NodeId) string {
 	if ftyp := t.sum_shared_field_type_name(clean_base_type, node.value) {
 		return ftyp
 	}
-	if info := t.lookup_struct_info(clean_base_type) {
-		if embedded := t.embedded_field_for_promoted_field(info, node.value) {
-			if ftyp := t.lookup_struct_field_type(embedded.typ, node.value) {
+	if path := t.struct_field_path_for_field(clean_base_type, node.value) {
+		if path.len > 0 {
+			if ftyp := t.lookup_struct_field_type(path.last().typ, node.value) {
 				return ftyp
 			}
 		}

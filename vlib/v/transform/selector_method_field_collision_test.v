@@ -41,7 +41,7 @@ fn test_known_struct_selector_does_not_inherit_unrelated_field_type() {
 fn test_known_struct_selector_resolves_nested_promoted_fields_without_checker() {
 	for receiver_type in ['Baz', '&Baz'] {
 		for prefix in ['', '&'] {
-			for field_type in ['int', '[]int'] {
+			for field_type in ['int', '[]int', '?string'] {
 				mut a := flat.FlatAst.new()
 				receiver := a.add_val(.ident, 'baz')
 				start := a.children.len
@@ -95,6 +95,7 @@ fn test_known_struct_selector_resolves_nested_promoted_fields_without_checker() 
 				// No checker or node annotations: Baz -> Bar -> Foo.x must resolve
 				// through its owner, not the unrelated field-name fallback.
 				assert t.resolve_selector_type(a.nodes[int(selector)]) == field_type
+				assert t.raw_expr_type_without_smartcast(selector) == field_type
 
 				// A nearer declaration shadows the field in a deeper embed.
 				t.structs['Bar'] = StructInfo{
@@ -105,6 +106,7 @@ fn test_known_struct_selector_resolves_nested_promoted_fields_without_checker() 
 					}]
 				}
 				assert t.resolve_selector_type(a.nodes[int(selector)]) == 'string'
+				assert t.raw_expr_type_without_smartcast(selector) == 'string'
 
 				// The receiver's own field still wins over all promoted fields.
 				t.structs['Baz'] = StructInfo{
@@ -115,6 +117,7 @@ fn test_known_struct_selector_resolves_nested_promoted_fields_without_checker() 
 					}]
 				}
 				assert t.resolve_selector_type(a.nodes[int(selector)]) == 'bool'
+				assert t.raw_expr_type_without_smartcast(selector) == 'bool'
 			}
 		}
 	}

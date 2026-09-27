@@ -3100,6 +3100,9 @@ Unlike inheritance, you cannot type cast between structs and embedded structs
 
 If you need to access embedded structs directly, use an explicit reference like `button.Size`.
 
+Optional fields keep their optional type when accessed through multiple embedded structs.
+You can unwrap them with an `if` guard, including after an earlier check against `none`.
+
 Conceptually, embedded structs are similar to [mixin](https://en.wikipedia.org/wiki/Mixin)s
 in OOP, *NOT* base classes.
 
