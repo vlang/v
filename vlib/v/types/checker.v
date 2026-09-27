@@ -10436,6 +10436,7 @@ fn (mut tc TypeChecker) check_selective_builtin_import_diagnostics() {
 fn (mut tc TypeChecker) check_c_js_generic_declarations() {
 	// Each report is on the declaration itself: trusted library files have none.
 	selected_files_only := tc.selected_files_only()
+	mut c_js_fn_files := map[int]bool{}
 	for declaration_kind in [flat.NodeKind.struct_decl, flat.NodeKind.fn_decl] {
 		tc.cur_module = ''
 		tc.cur_file = ''
@@ -10457,6 +10458,16 @@ fn (mut tc TypeChecker) check_c_js_generic_declarations() {
 			is_function := declaration_kind == .fn_decl
 			if (is_function && node.kind !in [.fn_decl, .c_fn_decl])
 				|| (!is_function && node.kind != .struct_decl) {
+				continue
+			}
+			// Finding the source line of a declaration searches the text around
+			// it, which cost ~115 ms per check over the libraries: only look at
+			// a declaration that can be reported, and at a file that can hold one.
+			if !tc.should_diagnose(flat.NodeId(index)) {
+				continue
+			}
+			if !node.value.starts_with('C.') && !node.value.starts_with('JS.')
+				&& !tc.file_declares_c_js_fn(node.pos.id, mut c_js_fn_files) {
 				continue
 			}
 			namespace := tc.c_js_declaration_namespace(flat.NodeId(index), node) or { continue }
@@ -10514,6 +10525,20 @@ fn (tc &TypeChecker) c_js_declaration_namespace(id flat.NodeId, node &flat.Node)
 		return 'JS'
 	}
 	return none
+}
+
+// file_declares_c_js_fn reports whether the source of the file `file_id` has a
+// `fn C.` or `fn JS.` in it: without one, no line of the file starts with them
+// (see c_js_declaration_namespace). `files` keeps the answers.
+fn (tc &TypeChecker) file_declares_c_js_fn(file_id int, mut files map[int]bool) bool {
+	if declares := files[file_id] {
+		return declares
+	}
+	file := tc.a.source_files[file_id] or { return false }
+	source := tc.source_texts_by_file[file.name] or { '' }
+	declares := source.contains('fn C.') || source.contains('fn JS.')
+	files[file_id] = declares
+	return declares
 }
 
 fn (tc &TypeChecker) generic_declaration_head_pos(id flat.NodeId) token.Pos {
@@ -14795,8 +14820,11 @@ fn closest_identifier_span(source string, name string, anchor int, file_id int) 
 	}
 	left_limit := if right_start < 0 { 0 } else { int_max(anchor - (right_start - anchor), 0) }
 	mut left_start := -1
+	first := name[0]
 	for i := int_min(anchor, source.len - name.len); i >= left_limit; i-- {
-		if !identifier_word_match_at(source, name, i) {
+		// Without a right match this walks to the start of the file: most
+		// bytes are told apart by the first one of the name alone.
+		if source[i] != first || !identifier_word_match_at(source, name, i) {
 			continue
 		}
 		left_start = i
