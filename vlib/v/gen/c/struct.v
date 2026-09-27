@@ -5829,7 +5829,7 @@ fn (g &FlatGen) skip_builtin_struct(name string) bool {
 			return true
 		}
 	}
-	return name in c_preamble_defined_structs
+	return name in c_preamble_defined_structs || g.cocoa_nsfont_class(name)
 }
 
 const c_system_header_struct_names = {
@@ -5840,8 +5840,6 @@ const c_system_header_struct_names = {
 const c_preamble_defined_structs = {
 	'C.DIR':                        true
 	'C.FILE':                       true
-	// Cocoa supplies NSFont as an Objective-C class, not a C struct tag.
-	'C.NSFont':                     true
 	'C.CONDITION_VARIABLE':         true
 	'C.IError':                     true
 	'C.SRWLOCK':                    true
@@ -6566,7 +6564,7 @@ fn (mut g FlatGen) soa_companion_decls() {
 }
 
 fn (g &FlatGen) header_c_struct_needs_compat_typedef(name string) bool {
-	if !name.starts_with('C.') || name in c_preamble_defined_structs
+	if !name.starts_with('C.') || name in c_preamble_defined_structs || g.cocoa_nsfont_class(name)
 		|| name[2..] in c_system_header_struct_names || !c_struct_needs_typedef(name)
 		|| name in g.tc.c_typedef_structs || name[2..] in g.inlined_c_typedef_names
 		|| (g.cache_split && name[2..] in c_cache_system_header_struct_names) {
@@ -6577,6 +6575,20 @@ fn (g &FlatGen) header_c_struct_needs_compat_typedef(name string) bool {
 	}
 	if info := g.struct_decl_infos[name] {
 		return info.file.ends_with('.c.v') || c_source_looks_header_backed(info.file)
+	}
+	return false
+}
+
+fn (g &FlatGen) cocoa_nsfont_class(name string) bool {
+	if name != 'C.NSFont' || g.target.os != 'macos' {
+		return false
+	}
+	info := g.struct_decl_infos[name] or { return false }
+	for directive in g.c_directives {
+		if directive.module == info.module && (directive.text.contains('Cocoa/')
+			|| directive.text.contains('AppKit/')) {
+			return true
+		}
 	}
 	return false
 }
