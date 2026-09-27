@@ -17007,7 +17007,8 @@ fn (mut tc TypeChecker) array_map_return_elem_type(node flat.Node) Type {
 	}
 	tc.pop_scope()
 	if fn_typ := fn_type_from_type(elem_type) {
-		if !tc.expr_uses_ident(arg_id, 'it') {
+		// A literal's body has its own parameters and nested DSL bindings.
+		if tc.direct_fn_literal_expr(arg_id) || !tc.expr_uses_ident(arg_id, 'it') {
 			return fn_typ.return_type
 		}
 	}

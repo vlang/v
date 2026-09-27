@@ -1264,6 +1264,9 @@ println(a) // [[[0, 0], [0, 2], [0, 0]], [[0, 0], [0, 0], [0, 0]]]
 
 #### Array methods
 
+A function literal passed to `map` uses its return type for the output elements. Its parameters
+and nested array expressions have their own scope, including parameters named `it`.
+
 All arrays can be easily printed with `println(arr)` and converted to a string
 with `s := arr.str()`.
 
