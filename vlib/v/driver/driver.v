@@ -342,6 +342,10 @@ fn v3_embed_incbin_supported(target_os string, host_os string, effective_c_compi
 	if effective_c_compiler == 'msvc' {
 		return false
 	}
+	// macOS TCC emits ELF objects and cannot link the Mach-O object from Clang.
+	if target_os == 'macos' && effective_c_compiler == 'tinyc' {
+		return false
+	}
 	if target_os in ['ios', 'wasm32', 'wasm32_emscripten', 'wasm32_wasi'] {
 		return false
 	}
@@ -10939,6 +10943,7 @@ pub fn run(args []string) {
 		''
 	}
 	effective_warns_are_errors := v3_effective_warns_are_errors(warns_are_errors, is_prod)
+	reusable_c_output := keep_c || backend_explicit || dump_c_flags.len > 0
 	cache_salt := [
 		'compiler=${compiler_signature}',
 		'cc=${cc_identity}',
@@ -10971,6 +10976,7 @@ pub fn run(args []string) {
 		'test=${is_test_command || is_v3_test_file(input_file, backend, target)}',
 		'show_test_stats=${show_test_stats}',
 		'run_only=${v3_run_only_cache_identity(run_only)}',
+		'reusable_c_output=${reusable_c_output}',
 		'defines=${prefs.user_defines.join(',')}',
 		'exclude=${prefs.exclude.join(',')}',
 	].join('\n')
@@ -12826,8 +12832,8 @@ pub fn run(args []string) {
 		mut embed_incbin_payloads := []cgen.EmbedIncbinPayload{}
 		mut embed_incbin_assembler := ''
 		if v3_embed_incbin_supported(prefs.normalized_target_os(), host_os, effective_c_compiler,
-			backend, c_only, is_o, macos_linux_cross_compile, keep_c || backend_explicit
-				|| dump_c_flags.len > 0, prefs.user_defines) {
+			backend, c_only, is_o, macos_linux_cross_compile, reusable_c_output,
+			prefs.user_defines) {
 			candidates := cgen.embed_incbin_payloads(a, cgen.cache_program_file_set(a, user_files),
 				cache_state.manager.enabled)
 			if candidates.len > 0 {
