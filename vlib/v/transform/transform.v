@@ -13120,6 +13120,7 @@ fn (mut t Transformer) build_sum_shared_field_assign_chain(base flat.NodeId, sum
 	} else {
 		.dot
 	})
+	t.mark_generated_variant_access(variant_base, qv)
 	mut then_stmt := t.make_empty()
 	if nested_field_type := t.sum_shared_field_type_name(qv, field) {
 		nested_sum := t.resolve_sum_name(qv)
@@ -20376,6 +20377,7 @@ fn (mut t Transformer) build_sum_shared_field_chain(base flat.NodeId, sum_type s
 	} else {
 		.dot
 	})
+	t.mark_generated_variant_access(variant_base, qv)
 	value := if _ := t.sum_shared_field_type_name(qv, field) {
 		nested_base_type := if use_ptr { '&${qv}' } else { qv }
 		t.lower_sum_shared_field_selector(variant_base, nested_base_type, field, field_type)

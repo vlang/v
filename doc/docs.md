@@ -4399,6 +4399,9 @@ pub interface ReaderWriter {
 
 ### Sum types
 
+Assignments to common struct fields also work through sum type array elements, including
+compound assignments after filtering or smart casting other elements.
+
 A sum type instance can hold a value of several different types. Use the `type`
 keyword to declare a sum type:
 
