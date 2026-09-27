@@ -11,6 +11,7 @@ import v.workers
 #include <errno.h>
 #include <signal.h>
 #include <sys/prctl.h>
+#include <sys/syscall.h>
 #include <sys/wait.h>
 #include <unistd.h>
 
@@ -19,11 +20,13 @@ fn C.dup2(oldfd int, newfd int) int
 fn C._exit(code int)
 fn C.kill(pid int, sig int) int
 fn C.prctl(option int, arg2 voidptr, arg3 u64, arg4 u64, arg5 u64) int
+fn C.lseek(fd int, offset i64, whence int) i64
 
 // Request is what a child of the diagnostics server was made for: answering
 // `question`, the questions of a `query` line, or checking the program when it
 // is empty. A child that answered can answer the next questions too, while the
-// files it read hold what they held (see next_question).
+// files it read hold what they held (see next_question). In a server that
+// shares its children, it answers the next checks too.
 pub struct Request {
 pub:
 	question string
@@ -40,6 +43,26 @@ mut:
 	digests  map[string]string
 	base_kb  i64    // the child's resident memory after its first answer
 	work_dir string // the input directory, which the child enters by name
+	// shared is set in a server whose checks and questions share their children.
+	shared      bool
+	diagnostics Diagnostics
+}
+
+// check_question is what the server sends a child that answers checks, for
+// the diagnostics of its program. A question names a file and a line.
+const check_question = 'check'
+
+// Diagnostics are what a grandchild of a shared child printed for the program:
+// the rest of the check, which rewrites the tree that the child answers its
+// questions from (see diagnose_in_grandchild).
+struct Diagnostics {
+mut:
+	pid    int = -1 // the grandchild, until its output is read
+	fd     int = -1 // the file it prints into
+	ready  bool // output and code hold what it printed, and its exit code
+	failed bool // no grandchild could be made
+	output string
+	code   int
 }
 
 // serve turns this compilation into a diagnostics server when the environment
@@ -62,6 +85,11 @@ mut:
 // removed, and each import resolves to the directory it was read from, and to a
 // new child that checks the program otherwise.
 //
+// With V_DIAGNOSTICS_SHARED set, checks and queries share their children: the
+// child of a check stays too, and the next check or query goes to the child
+// that checked the program, while its files hold (see diagnose_in_grandchild).
+// A client that asks both of each version of a program checks it once.
+//
 // A request carries nothing else: the command line fixes the input, and with
 // it every setting the driver derived from the input before this point.
 // Between requests the client changes the files on disk, and it only shows the
@@ -70,6 +98,7 @@ pub fn serve() Request {
 	if os.getenv('V_DIAGNOSTICS_SERVER') == '' {
 		return Request{}
 	}
+	shared := os.getenv('V_DIAGNOSTICS_SHARED') != ''
 	// fork() keeps only the calling thread. The child gives the worker pools new
 	// threads, and no other thread may be running.
 	others := threads_besides_pool_workers()
@@ -118,8 +147,8 @@ pub fn serve() Request {
 			answered(2, '')
 			continue
 		}
-		if question != '' && warm.pid > 0 {
-			if warm.accepts(question) {
+		if (question != '' || shared) && warm.pid > 0 {
+			if warm.accepts(if question != '' { question } else { check_question }) {
 				println('v-diagnostics-server: child ${warm.pid} ${token}')
 				flush_stdout()
 				answered(warm.answer(), token)
@@ -130,7 +159,7 @@ pub fn serve() Request {
 		// The child of a query reads its next questions from one pipe and tells
 		// the server on another that it answered.
 		mut channel := Channel{}
-		if question != '' {
+		if question != '' || shared {
 			channel = new_channel()
 		}
 		pid := os.fork()
@@ -149,7 +178,7 @@ pub fn serve() Request {
 			// The server runs without the compiler's memory watchdog, which is a
 			// thread of its own; the child, which may start threads, keeps one.
 			spawn watch_memory(memory_limit_kb())
-			return channel.child_request(question, work_dir)
+			return channel.child_request(question, work_dir, shared)
 		}
 		if pid < 0 {
 			channel.close_all()
@@ -191,6 +220,107 @@ pub fn serve() Request {
 // its first ones: the server gave it a way to receive them.
 pub fn (r &Request) answers_again() bool {
 	return r.status_fd >= 0
+}
+
+// shares_checks reports whether this child answers the checks of its program
+// too, besides its questions.
+pub fn (r &Request) shares_checks() bool {
+	return r.shared && r.status_fd >= 0
+}
+
+// asks_for_diagnostics reports whether `question`, which next_question
+// returned, asks for the diagnostics of the program (see print_diagnostics).
+pub fn (r &Request) asks_for_diagnostics(question string) bool {
+	return question == check_question
+}
+
+// diagnose_in_grandchild makes a grandchild that goes on with the check, and
+// prints the diagnostics of the program into a file, as a one-shot check prints
+// them: the rest of the check rewrites the tree that the child answers its
+// questions from. It returns true in the grandchild, which ends with the check.
+// In the child it returns false, unless no grandchild can be made and the child
+// was made for a check: it then goes on with the check itself, answers nothing
+// more, and ends with it.
+pub fn (mut r Request) diagnose_in_grandchild() bool {
+	flush_stdout()
+	flush_stderr()
+	fd := unsafe { int(C.syscall(C.SYS_memfd_create, c'v-diagnostics', voidptr(0))) }
+	pid := if fd >= 0 { os.fork() } else { -1 }
+	if pid == 0 {
+		// What it prints goes to its file only: a grandchild that outlives the
+		// child cannot write into an answer. It does not outlive it for long.
+		C.prctl(C.PR_SET_PDEATHSIG, voidptr(usize(C.SIGKILL)), 0, 0, 0)
+		C.dup2(fd, 1)
+		C.dup2(fd, 2)
+		os.fd_close(fd)
+		r.close_channel()
+		workers.note_fork()
+		spawn watch_memory(memory_limit_kb())
+		return true
+	}
+	if pid < 0 {
+		if fd >= 0 {
+			os.fd_close(fd)
+		}
+		r.diagnostics = Diagnostics{
+			failed: true
+		}
+		if r.question == '' {
+			r.close_channel()
+			return true
+		}
+		return false
+	}
+	r.diagnostics = Diagnostics{
+		pid: pid
+		fd:  fd
+	}
+	return false
+}
+
+// print_diagnostics prints what the grandchild printed for the program, once it
+// ended, and returns its exit code, that of a one-shot check.
+pub fn (mut r Request) print_diagnostics() int {
+	if !r.diagnostics.ready {
+		code := wait_exit_code(r.diagnostics.pid)
+		output := read_from_start(r.diagnostics.fd)
+		os.fd_close(r.diagnostics.fd)
+		r.diagnostics = Diagnostics{
+			ready:  true
+			output: output
+			code:   code
+		}
+	}
+	flush_stdout()
+	os.fd_write(1, r.diagnostics.output)
+	return r.diagnostics.code
+}
+
+fn (mut r Request) close_channel() {
+	os.fd_close(r.questions.fd)
+	os.fd_close(r.status_fd)
+	r.questions.fd = -1
+	r.status_fd = -1
+}
+
+// read_from_start reads the file open as `fd` from its start to its end.
+fn read_from_start(fd int) string {
+	if C.lseek(fd, 0, C.SEEK_SET) != 0 {
+		return ''
+	}
+	mut out := []u8{}
+	mut chunk := []u8{len: 65536}
+	for {
+		got := C.read(fd, unsafe { &u8(chunk.data) }, usize(chunk.len))
+		if got < 0 && C.errno == C.EINTR {
+			continue
+		}
+		if got <= 0 {
+			break
+		}
+		out << chunk[..int(got)]
+	}
+	return out.bytestr()
 }
 
 // keep_inputs takes the files the check read, by absolute path, with the
@@ -238,8 +368,9 @@ pub fn (mut r Request) next_question(code int) ?string {
 		r.current = r.inputs.note_files(r.digests, mut r.buffer)
 		r.digests = map[string]string{}
 	}
-	// A child whose files held something else already answers no more.
-	if !r.current {
+	// A child whose files held something else already answers no more, nor does
+	// one whose grandchild could not take the diagnostics, for a check.
+	if !r.current || (question == check_question && (!r.shared || r.diagnostics.failed)) {
 		os.fd_write(r.status_fd, 'stale\n')
 		return none
 	}
@@ -305,7 +436,7 @@ fn new_channel() Channel {
 }
 
 // child_request closes the server's ends in the child, which keeps its own.
-fn (mut c Channel) child_request(question string, work_dir string) Request {
+fn (mut c Channel) child_request(question string, work_dir string, shared bool) Request {
 	os.fd_close(c.questions_fd)
 	os.fd_close(c.status_fd)
 	return Request{
@@ -316,6 +447,7 @@ fn (mut c Channel) child_request(question string, work_dir string) Request {
 		}
 		status_fd:   c.child_status_fd
 		work_dir:    work_dir
+		shared:      shared
 	}
 }
 

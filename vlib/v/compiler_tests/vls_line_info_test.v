@@ -1659,3 +1659,101 @@ fn test_a_prepared_server_answers_a_question_once_a_module_shadows_a_prepared_on
 	p.wait()
 	assert p.code == 0
 }
+
+// server_check asks the server to check its program, and returns the pid of the
+// child that answered, and what it answered, as one_shot_check writes it.
+fn server_check(mut p os.Process, token string) (int, string) {
+	p.stdin_write('check ${token}\n')
+	out := read_until(mut p, 'v-diagnostics-server: end ')
+	marker := 'v-diagnostics-server: child '
+	start := out.index(marker) or { panic(out) }
+	child := out[start + marker.len..].all_before(' ').int()
+	mut lines := []string{}
+	for line in out.split_into_lines() {
+		if !line.starts_with('v-diagnostics-server: ') {
+			lines << line
+		}
+	}
+	code := out.all_after('v-diagnostics-server: end ').all_before(' ')
+	assert out.contains('v-diagnostics-server: end ${code} ${token}'), out
+	return child, 'exit ${code}\n' + lines.join('\n').trim_space()
+}
+
+const shared_program = "module main
+
+fn unused() {}
+
+fn twice(x int) int {
+	return x * 2
+}
+
+fn main() {
+	y := twice(3) + 'a'
+	println(y)
+}
+"
+
+fn test_a_shared_server_child_answers_the_checks_and_the_questions_of_its_program() {
+	$if !linux {
+		return
+	}
+	dir := os.join_path(work_dir, 'shared')
+	os.mkdir_all(dir)!
+	os.write_file(os.join_path(dir, 'main.v'), shared_program)!
+	expected := one_shot_check(dir)
+	assert expected.contains('error: '), expected
+	questions := ['10:hv^2', '10:gd^8']
+	answers := ask_once(dir, questions)
+	mut p := start_server(dir, {
+		'V_DIAGNOSTICS_SHARED': '1'
+	})
+	defer {
+		p.close()
+	}
+	// The child of the check answers the questions, and the next checks, from
+	// the program it checked.
+	first, checked := server_check(mut p, 'a')
+	assert checked == expected
+	child, answer := query(mut p, 'b', questions.map('main.v:${it}').join('\t'))
+	assert child == first
+	assert answer.split('\n').map(it.all_after('\t')) == answers
+	again, rechecked := server_check(mut p, 'c')
+	assert again == first
+	assert rechecked == expected
+	// Another content: a new child checks it.
+	os.write_file(os.join_path(dir, 'main.v'), shared_program.replace(" + 'a'", ''))!
+	changed, fixed := server_check(mut p, 'd')
+	assert changed != first
+	assert fixed == one_shot_check(dir)
+	assert !fixed.contains('error: '), fixed
+	p.stdin_write('quit\n')
+	p.wait()
+	assert p.code == 0
+}
+
+fn test_a_shared_server_child_made_for_a_question_answers_the_checks() {
+	$if !linux {
+		return
+	}
+	dir := os.join_path(work_dir, 'shared_question')
+	os.mkdir_all(dir)!
+	os.write_file(os.join_path(dir, 'main.v'), shared_program)!
+	expected := one_shot_check(dir)
+	mut p := start_server(dir, {
+		'V_DIAGNOSTICS_SHARED':  '1'
+		'V_DIAGNOSTICS_PREPARE': '1'
+	})
+	defer {
+		p.close()
+	}
+	first, answer := query(mut p, 'a', 'main.v:10:hv^2')
+	assert answer == ask_once(dir, ['10:hv^2'])[0]
+	for token in ['b', 'c'] {
+		child, checked := server_check(mut p, token)
+		assert child == first
+		assert checked == expected
+	}
+	p.stdin_write('quit\n')
+	p.wait()
+	assert p.code == 0
+}

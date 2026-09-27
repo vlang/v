@@ -28,3 +28,23 @@ pub fn (mut r Request) keep_inputs(digests map[string]string, imports_hold fn ()
 pub fn (mut r Request) next_question(code int) ?string {
 	return none
 }
+
+// shares_checks reports false: without a server, no child answers checks.
+pub fn (r &Request) shares_checks() bool {
+	return false
+}
+
+// asks_for_diagnostics reports false: without a server, no question comes.
+pub fn (r &Request) asks_for_diagnostics(question string) bool {
+	return false
+}
+
+// diagnose_in_grandchild returns true: the check goes on in this process.
+pub fn (mut r Request) diagnose_in_grandchild() bool {
+	return true
+}
+
+// print_diagnostics prints nothing: without a server, the check prints them.
+pub fn (mut r Request) print_diagnostics() int {
+	return 0
+}

@@ -12079,9 +12079,10 @@ pub fn run(args []string) {
 			// retaining one semantic-check accumulator per worker.
 			// A query reads the checker's per-node types: a check with scoped workers
 			// promotes those of each worker into the program's, as a serial one
-			// leaves them.
+			// leaves them. A child that shares checks may answer queries later.
 			parallel_semantic_check := !current_no_parallel && a.missing_imports.len == 0
-				&& (vls_line_info == '' || pre_tc.scope_parallel_check_workers)
+				&& ((vls_line_info == '' && !served.shares_checks())
+					|| pre_tc.scope_parallel_check_workers)
 				&& (building_v || !scope_prealloc_check
 					|| a.nodes.len < scoped_serial_user_check_node_threshold)
 			check_was_parallel = pre_tc.check_semantics_opt(parallel_semantic_check)
@@ -12089,10 +12090,27 @@ pub fn run(args []string) {
 				eprintln('  [ttime]   ck semantics     ${f64(ck_stage_sw.elapsed().microseconds()) / 1000.0:7.2f} ms')
 			}
 		}
-		if vls_line_info != '' {
-			// The answer, if any, is all a query prints: the program's
-			// diagnostics are not its business, and code being written has some.
-			print_vls_answers(mut pre_tc, vls_queries)
+		// A child that shares checks answers them too: a grandchild goes on with
+		// the check, into the diagnostics, and the child prints what it printed.
+		// The rest of the check rewrites the tree the answers come from.
+		shares_checks := served.shares_checks()
+		mut waited_markused := ?&markused.PreparedMarkusedDecls(none)
+		if shares_checks {
+			// No thread of this process but the worker pools' goes into the
+			// grandchild.
+			waited_markused = prepared_markused_thread.wait()
+		}
+		if (vls_line_info != '' || shares_checks)
+			&& (!shares_checks || !served.diagnose_in_grandchild()) {
+			mut code := 0
+			if vls_line_info != '' {
+				// The answer, if any, is all a query prints: the program's
+				// diagnostics are not its business, and code being written has
+				// some.
+				print_vls_answers(mut pre_tc, vls_queries)
+			} else {
+				code = served.print_diagnostics()
+			}
 			// A diagnostics server's child answers the next questions from the
 			// program it checked, while the server finds the files it read
 			// unchanged.
@@ -12103,9 +12121,12 @@ pub fn run(args []string) {
 					served.keep_inputs(digests, fn [prefs, project_root, resolved_imports] () bool {
 						return v3_imports_resolve_as_before(prefs, project_root, resolved_imports)
 					})
-					mut code := 0
 					for {
 						next := served.next_question(code) or { break }
+						if served.asks_for_diagnostics(next) {
+							code = served.print_diagnostics()
+							continue
+						}
 						queries := types.parse_vls_line_infos(next, input_file) or {
 							eprintln(err.msg())
 							code = 1
@@ -12116,10 +12137,14 @@ pub fn run(args []string) {
 					}
 				}
 			}
-			exit(0)
+			exit(code)
 		}
 		ck_stage_sw.restart()
-		mut prepared_markused := prepared_markused_thread.wait()
+		mut prepared_markused := if waited := waited_markused {
+			waited
+		} else {
+			prepared_markused_thread.wait()
+		}
 		if verbose {
 			eprintln('  [ttime]   ck mkused wait   ${f64(ck_stage_sw.elapsed().microseconds()) / 1000.0:7.2f} ms')
 		}
