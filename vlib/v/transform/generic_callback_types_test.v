@@ -24,9 +24,14 @@ fn test_specialized_receiver_callback_uses_function_type_compatibility() {
 	assert t.resolved_receiver_arg_compatible(id, 'fn (values []f64, indices []int) f64', 'fn([]f64, []int) f64')
 	assert !t.resolved_receiver_arg_compatible(id, 'fn ([]int) int', 'fn([]int, []int) int')
 	assert !t.resolved_receiver_arg_compatible(id, 'fn ([]string)', 'fn ([]int)')
+	assert !t.resolved_receiver_arg_compatible(id, 'fn ([]i32)', 'fn ([]i64)')
+	assert !t.resolved_receiver_arg_compatible(id, 'fn ([][]i32)', 'fn ([][]i64)')
 	assert !t.resolved_receiver_arg_compatible(id, 'fn (map[string]string)',
 		'fn (map[string]int)')
+	assert !t.resolved_receiver_arg_compatible(id, 'fn (map[string]i32)',
+		'fn (map[string]i64)')
 	assert !t.resolved_receiver_arg_compatible(id, 'fn (chan string)', 'fn (chan int)')
+	assert !t.resolved_receiver_arg_compatible(id, 'fn (chan i32)', 'fn (chan i64)')
 	assert !t.resolved_receiver_arg_compatible(id, 'fn (?string)', 'fn (?int)')
 	assert !t.resolved_receiver_arg_compatible(id, 'fn (!string)', 'fn (!int)')
 	assert !t.resolved_receiver_arg_compatible(id, 'fn (...int)', 'fn ([]int)')

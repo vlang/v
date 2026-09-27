@@ -14188,7 +14188,7 @@ fn (mut t Transformer) resolved_receiver_arg_compatible(arg_id flat.NodeId, actu
 		}
 		actual_fn := transform_fn_type(t.tc.parse_type(actual)) or { return false }
 		expected_fn := transform_fn_type(t.tc.parse_type(expected)) or { return false }
-		if !t.callback_fn_type_payloads_compatible(actual_fn, expected_fn) {
+		if !t.callback_fn_type_payloads_compatible(actual_fn, expected_fn, false) {
 			return false
 		}
 		return t.tc.slot_value_compatible(actual_fn, expected_fn)
@@ -14402,47 +14402,49 @@ fn (t &Transformer) callback_fn_type_modes_compatible(actual string, expected st
 	return true
 }
 
-fn (t &Transformer) callback_fn_type_payloads_compatible(actual types.FnType, expected types.FnType) bool {
+fn (t &Transformer) callback_fn_type_payloads_compatible(actual types.FnType, expected types.FnType, inside_container bool) bool {
 	if actual.params.len != expected.params.len {
 		return false
 	}
 	for i, param in actual.params {
-		if !t.callback_payload_type_compatible(param, expected.params[i]) {
+		if !t.callback_payload_type_compatible(param, expected.params[i], inside_container) {
 			return false
 		}
 	}
-	return t.callback_payload_type_compatible(actual.return_type, expected.return_type)
+	return t.callback_payload_type_compatible(actual.return_type, expected.return_type,
+		inside_container)
 }
 
-fn (t &Transformer) callback_payload_type_compatible(actual types.Type, expected types.Type) bool {
+fn (t &Transformer) callback_payload_type_compatible(actual types.Type, expected types.Type, inside_container bool) bool {
 	a := types.unalias_type(actual)
 	e := types.unalias_type(expected)
 	if a is types.Array && e is types.Array {
-		return t.callback_payload_type_compatible(a.elem_type, e.elem_type)
+		return t.callback_payload_type_compatible(a.elem_type, e.elem_type, true)
 	}
 	if a is types.ArrayFixed && e is types.ArrayFixed {
-		return a.len == e.len && t.callback_payload_type_compatible(a.elem_type, e.elem_type)
+		return a.len == e.len && t.callback_payload_type_compatible(a.elem_type, e.elem_type,
+			true)
 	}
 	if a is types.Map && e is types.Map {
-		return t.callback_payload_type_compatible(a.key_type, e.key_type)
-			&& t.callback_payload_type_compatible(a.value_type, e.value_type)
+		return t.callback_payload_type_compatible(a.key_type, e.key_type, true)
+			&& t.callback_payload_type_compatible(a.value_type, e.value_type, true)
 	}
 	if a is types.Channel && e is types.Channel {
-		return t.callback_payload_type_compatible(a.elem_type, e.elem_type)
+		return t.callback_payload_type_compatible(a.elem_type, e.elem_type, true)
 	}
 	if a is types.Pointer && e is types.Pointer {
-		return t.callback_payload_type_compatible(a.base_type, e.base_type)
+		return t.callback_payload_type_compatible(a.base_type, e.base_type, true)
 	}
 	if a is types.OptionType && e is types.OptionType {
-		return t.callback_payload_type_compatible(a.base_type, e.base_type)
+		return t.callback_payload_type_compatible(a.base_type, e.base_type, true)
 	}
 	if a is types.ResultType && e is types.ResultType {
-		return t.callback_payload_type_compatible(a.base_type, e.base_type)
+		return t.callback_payload_type_compatible(a.base_type, e.base_type, true)
 	}
 	if a is types.FnType && e is types.FnType {
-		return t.callback_fn_type_payloads_compatible(a, e)
+		return t.callback_fn_type_payloads_compatible(a, e, inside_container)
 	}
-	return a.name() == e.name() || (t.tc.slot_value_compatible(a, e)
+	return a.name() == e.name() || (!inside_container && t.tc.slot_value_compatible(a, e)
 		&& t.tc.slot_value_compatible(e, a))
 }
 
