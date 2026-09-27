@@ -2697,7 +2697,13 @@ fn (mut t Transformer) collect_generic_struct_decls() map[string]GenericStructDe
 	t.ensure_node_module_map()
 	mut cur_file := ''
 	mut cur_module := ''
-	for i, node in t.a.nodes {
+	for i in 0 .. t.a.nodes.len {
+		// Only these kinds matter: copy just their nodes out of the arena.
+		kind := t.a.nodes[i].kind
+		if kind != .file && kind != .module_decl && kind != .struct_decl {
+			continue
+		}
+		node := t.a.nodes[i]
 		match node.kind {
 			.file {
 				cur_file = node.value
@@ -2739,7 +2745,12 @@ fn (mut t Transformer) collect_generic_sum_decls() map[string]GenericSumDecl {
 	t.ensure_node_module_map()
 	mut cur_file := ''
 	mut cur_module := ''
-	for i, node in t.a.nodes {
+	for i in 0 .. t.a.nodes.len {
+		kind := t.a.nodes[i].kind
+		if kind != .file && kind != .module_decl && kind != .type_decl {
+			continue
+		}
+		node := t.a.nodes[i]
 		match node.kind {
 			.file {
 				cur_file = node.value
@@ -3617,7 +3628,12 @@ fn (mut t Transformer) collect_generic_fn_decls() map[string]GenericFnDecl {
 	t.ensure_node_module_map()
 	mut cur_file := ''
 	mut cur_module := ''
-	for i, node in t.a.nodes {
+	for i in 0 .. t.a.nodes.len {
+		kind := t.a.nodes[i].kind
+		if kind != .file && kind != .module_decl && kind != .fn_decl {
+			continue
+		}
+		node := t.a.nodes[i]
 		match node.kind {
 			.file {
 				cur_file = node.value
@@ -3657,7 +3673,12 @@ fn (mut t Transformer) monomorphize_ignored_nodes(decls map[string]GenericFnDecl
 	}
 	old_module := t.cur_module
 	t.cur_module = ''
-	for i, node in t.a.nodes {
+	for i in 0 .. t.a.nodes.len {
+		kind := t.a.nodes[i].kind
+		if kind != .module_decl && kind != .fn_decl {
+			continue
+		}
+		node := t.a.nodes[i]
 		match node.kind {
 			.module_decl {
 				t.cur_module = node.value
