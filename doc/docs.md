@@ -1264,6 +1264,9 @@ println(a) // [[[0, 0], [0, 2], [0, 0]], [[0, 0], [0, 0], [0, 0]]]
 
 #### Array methods
 
+A function literal passed to `map` uses its return type for the output elements. Its parameters
+and nested array expressions have their own scope, including parameters named `it`.
+
 All arrays can be easily printed with `println(arr)` and converted to a string
 with `s := arr.str()`.
 
@@ -4886,6 +4889,10 @@ println(compare(1.1, 1.1)) //          0
 println(compare(1.1, 1.2)) //         -1
 ```
 
+V can also infer a generic callback's return type from an unbound instance
+method passed as an argument, such as `item.call(Item.value)` when `call[T]`
+accepts a `fn (mut Item) T` callback.
+
 #### Structured generic receiver patterns
 
 Generic methods can constrain their receiver to a *structured* shape of the
@@ -7258,9 +7265,11 @@ the build links natively with GCC, Clang or MinGW, or with TCC for non-macOS
 targets when a GCC or Clang compatible compiler is installed. Generated C or
 object output (`-o file.c`, `-o file.o`, `-generate-c-project`), MSVC, iOS and
 WebAssembly targets, and a Windows target built on another OS keep the array form.
-`-keepc`, an explicit `-b c`, and `-dump-c-flags` also keep the array form so
-their retained output does not depend on temporary object files. `-d no_incbin`
-selects it everywhere.
+Payloads referenced by cached modules also keep the array form so their objects
+remain self-contained. On ELF targets, the payload object marks its stack as
+non-executable. `-keepc`, an explicit `-b c`, and `-dump-c-flags` also keep the
+array form so retained output does not depend on temporary object files.
+`-d no_incbin` selects the array form everywhere.
 
 `$embed_file` supports compression of the embedded file when compiling with `-prod`.
 Currently only one compression type is supported: `zlib`.
@@ -7336,6 +7345,7 @@ See more [details](https://github.com/vlang/v/blob/master/vlib/v/TEMPLATES.md)
 The compiler can compile a VML file directly into an `ui2.Element` expression with
 `$vml(path)`. The VML is parsed while the application is compiled; the resulting program
 constructs UI2 elements directly and does not parse the VML file at runtime.
+Diagnostics from compiled VML include the `$vml` call site in the V source file.
 
 ```v ignore
 import ui2

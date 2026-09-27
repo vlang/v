@@ -399,8 +399,6 @@ fn v3_embed_incbin_assembly(symbol string, bin_path string, size int) string {
 	sb.writeln('\t.incbin "${v3_asm_string_escape(bin_path)}"')
 	sb.writeln('#if !defined(__APPLE__) && !defined(_WIN32)')
 	sb.writeln('\t.size _v_embed_blob_${symbol}, ${size}')
-	sb.writeln('#endif')
-	sb.writeln('#if defined(__linux__)')
 	sb.writeln('\t.section .note.GNU-stack,"",%progbits')
 	sb.writeln('#endif')
 	return sb.str()
