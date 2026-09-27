@@ -9037,7 +9037,8 @@ fn v3_driver_option_requires_value(option string) bool {
 	return option in ['-o', '-output', '-b', '-backend', '-os', '-arch', '-compile-backend',
 		'--compile-backend', '-d', '-define', '-gc', '-cc', '-thread-stack-size', '-path', '-cov',
 		'-coverage', '-file-list', '-message-limit', '-printfn', '-generate-c-project', '-test-runner',
-		'-run-only', '-profile-fns', '-trace-fns', '-subsystem', '-exclude', '-dump-files']
+		'-run-only', '-profile-fns', '-trace-fns', '-subsystem', '-exclude', '-dump-files', '-icon',
+		'--icon', '-seticon', '--seticon']
 }
 
 fn v3_driver_option_consumes_value(option string) bool {
@@ -9472,6 +9473,7 @@ pub fn run(args []string) {
 	mut is_livemain := false
 	mut is_liveshared := false
 	mut subsystem := pref.Subsystem.auto
+	mut icon_path := ''
 	mut is_strict := false
 	mut is_selfhost := false
 	mut no_builtin := false
@@ -9645,6 +9647,18 @@ pub fn run(args []string) {
 			}
 
 			i += 2
+		} else if args[i] in ['-icon', '--icon', '-seticon', '--seticon'] {
+			icon_path = os.real_path(args[i + 1])
+			no_cache = true
+			i += 2
+		} else if inline_icon_path := windows_icon_inline_option_value(args[i]) {
+			if inline_icon_path == '' {
+				eprintln('option `${args[i].all_before('=')}` requires a value')
+				exit(1)
+			}
+			icon_path = os.real_path(inline_icon_path)
+			no_cache = true
+			i++
 		} else if args[i] == '-live' {
 			is_livemain = true
 			// Live builds need every module in the reloadable source artifact. A
@@ -10421,6 +10435,11 @@ pub fn run(args []string) {
 			bin_file = target_bin_file
 			output_file = bin_file + '.c'
 		}
+	}
+	validate_windows_icon_option(icon_path, target.os, backend, is_shared, is_o, c_only,
+		generate_c_project) or {
+		eprintln(err.msg())
+		exit(1)
 	}
 	binary_existed_before := os.exists(bin_file)
 	remove_binary_after_run := should_run && !is_crun && !is_direct_vsh && !explicit_output && !keep_c
@@ -13216,6 +13235,15 @@ pub fn run(args []string) {
 		}
 		large_c_flag_plan := v3_c_compiler_flag_plan(large_c_flag_options)
 		mut native_support_inputs := []string{}
+		if icon_path != '' && os.user_os() != 'windows' {
+			icon_object := prepare_cross_windows_icon_resource(icon_path, cc_dir, c_compiler,
+				verbose || show_cc) or {
+				eprintln(err.msg())
+				cleanup_c_build_dir(cc_dir)
+				exit(1)
+			}
+			native_support_inputs << icon_object
+		}
 		if effective_tcc && !is_o {
 			atomic_input := if generate_c_project.len > 0 {
 				tcc_atomic_s_arg(prefs)
@@ -13940,6 +13968,20 @@ Please install the corresponding development package/libraries and make sure the
 			eprintln('failed to finalize ${bin_file}: ${err}')
 			cleanup_c_build_dir(cc_dir)
 			exit(1)
+		}
+		$if windows {
+			if icon_path != '' {
+				ico_path := prepare_windows_icon_ico_path(icon_path, cc_dir) or {
+					eprintln(err.msg())
+					cleanup_c_build_dir(cc_dir)
+					exit(1)
+				}
+				apply_windows_icon_to_executable(bin_file, ico_path) or {
+					eprintln(err.msg())
+					cleanup_c_build_dir(cc_dir)
+					exit(1)
+				}
+			}
 		}
 		for temporary_object in c_object_cache_stats.temporary_objects {
 			os.rm(temporary_object) or {}
