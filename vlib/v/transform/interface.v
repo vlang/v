@@ -820,8 +820,14 @@ fn (mut t Transformer) make_interface_literal_from_expr(id flat.NodeId, iface_na
 		t.pending_stmts << t.make_decl_assign_typed(tmp_name, copied, source_type)
 		source = t.make_ident(tmp_name)
 	}
-	is_ptr := source_type.starts_with('&')
-	concrete_type := if is_ptr { source_type[1..] } else { source_type }
+	is_ptr := source_type.starts_with('&') || source_is_pointer_alias
+	concrete_type := if source_is_pointer_alias {
+		normalized_source_type[1..]
+	} else if is_ptr {
+		source_type[1..]
+	} else {
+		source_type
+	}
 	t.mark_interface_boxed_type(iface_name, concrete_type)
 	if impl_name := t.interface_concrete_impl_name(concrete_type) {
 		if impl_name != concrete_type {

@@ -45,3 +45,22 @@ fn main() {
 	_ = tc.check_semantics_opt(false)
 	assert tc.errors.filter(it.msg.contains('&&Record') && it.msg.contains('Named')).len == 2, tc.errors.str()
 }
+
+fn test_optional_interface_argument_accepts_pointer_alias() {
+	path := os.join_path(os.vtmp_dir(), 'optional_interface_pointer_alias_${os.getpid()}.v')
+	os.write_file(path, 'interface Named { name() string }
+struct Record {}
+fn (r Record) name() string { return "record" }
+type RecordPtr = &Record
+fn accept(value ?Named) {}
+fn main() { accept(RecordPtr(&Record{})) }
+')!
+	defer { os.rm(path) or {} }
+	mut p := parser.Parser.new(pref.new_preferences())
+	a := p.parse_file(path)
+	assert p.diagnostics.len == 0, p.diagnostics.str()
+	mut tc := TypeChecker.new(a)
+	tc.collect(a)
+	_ = tc.check_semantics_opt(false)
+	assert tc.errors.len == 0, tc.errors.str()
+}

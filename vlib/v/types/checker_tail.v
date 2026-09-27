@@ -14255,8 +14255,9 @@ fn (mut tc TypeChecker) check_call_arg_types(id flat.NodeId, node flat.Node, inf
 			continue
 		}
 		expected_value := unalias_type(expected)
-		clean_expected_for_interface := if expected_value is OptionType && actual is Pointer
-			&& unalias_type(actual.base_type) !is Pointer {
+		actual_value := unalias_type(actual)
+		clean_expected_for_interface := if expected_value is OptionType && actual_value is Pointer
+			&& unalias_type(actual_value.base_type) !is Pointer {
 			unalias_type(expected_value.base_type)
 		} else {
 			expected_value
@@ -14279,7 +14280,11 @@ fn (mut tc TypeChecker) check_call_arg_types(id flat.NodeId, node flat.Node, inf
 			// A raw pointer is an explicit escape hatch for interface reference
 			// parameters; it does not describe a concrete interface implementer.
 			if !fn_param_is_voidptr_type(actual) {
-				interface_actual := if actual is Pointer { actual.base_type } else { actual }
+				interface_actual := if actual_value is Pointer {
+					actual_value.base_type
+				} else {
+					actual
+				}
 				if tc.record_interface_implementation_error_with_mut_receiver(.call_arg_mismatch,
 					interface_actual, expected_interface, arg_id, tc.call_argument_diagnostic_pos(arg_id),
 					allow_mut_receiver) {
