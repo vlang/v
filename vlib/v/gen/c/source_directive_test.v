@@ -441,6 +441,13 @@ fn test_c_struct_declared_in_platform_binding_stays_header_owned() {
 	assert !g.header_c_struct_needs_compat_typedef('C.NSFont')
 	g.c_directives.clear()
 	assert g.header_c_struct_needs_compat_typedef('C.NSFont')
+	g.c_directives << CDirective{ module: 'uiold', text: '#if 0' }
+	g.c_directives << CDirective{ module: 'uiold', text: '#include <Cocoa/Cocoa.h>' }
+	g.c_directives << CDirective{ module: 'uiold', text: '#endif' }
+	assert g.header_c_struct_needs_compat_typedef('C.NSFont')
+	g.c_directives << CDirective{ module: 'uiold', text: '#include <Cocoa/Cocoa.h>' }
+	assert !g.header_c_struct_needs_compat_typedef('C.NSFont')
+	g.c_directives.clear()
 	g.register_struct_decl_info('C.NSFont', 'C.NSFont', 'uiold', headerless_file, flat.Node{})
 	assert !g.skip_builtin_struct('C.NSFont')
 	g.register_struct_decl_info('C.NSFont', 'C.NSFont', 'uiold', 'ui_darwin.c.v', flat.Node{})

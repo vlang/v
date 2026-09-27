@@ -6584,13 +6584,23 @@ fn (g &FlatGen) cocoa_nsfont_class(name string) bool {
 		return false
 	}
 	info := g.struct_decl_infos[name] or { return false }
+	mut directives := []string{}
 	for directive in g.c_directives {
-		if directive.module == info.module && (directive.text.contains('Cocoa/')
-			|| directive.text.contains('AppKit/')) {
-			return true
+		if directive.module != info.module {
+			continue
+		}
+		line := directive.text.trim_space()
+		if line.starts_with('#include') || line.starts_with('#import') {
+			// Reuse the C preprocessor guard evaluator to decide whether the header is active.
+			if line.contains('Cocoa/') || line.contains('AppKit/') {
+				directives << '@class NSFont;'
+			}
+		} else if line.starts_with('#') {
+			directives << line
 		}
 	}
-	return false
+	return c_header_text_needs_objective_c_for_target(directives.join('\n'), g.c_flags,
+		g.c99_mode, g.target)
 }
 
 fn (g &FlatGen) soa_companion_name(struct_name string) string {
