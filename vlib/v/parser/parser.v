@@ -3805,7 +3805,7 @@ fn (mut p Parser) validate_struct_embed(field_type string, start int, end int, p
 	has_prior_line_diagnostic := p.diagnostics.any(it.file == p.cur_file && it.line == line)
 	// A malformed field can leave type fragments for recovery. Do not report those
 	// fragments as additional embedded fields on the same line.
-	if !has_prior_line_diagnostic {
+	if !p.prefs.is_fmt && !has_prior_line_diagnostic {
 		if attr_start >= 0 {
 			p.record_diagnostic_span('cannot use attributes on embedded structs', attr_start,
 				attr_start + 1)

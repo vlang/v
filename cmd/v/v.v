@@ -417,7 +417,7 @@ fn external_tool_compile_args(tool_name string, prefix_args []string) []string {
 	if tool_name == 'vfmt' {
 		// Backend options select formatting rules, not the formatter executable's target.
 		_, native_args := split_tool_backend_args(compile_args)
-		compile_args = native_args.clone()
+		compile_args = external_tool_args_without_target(native_args)
 	}
 	if tool_name in ['vself', 'vup', 'vdoctor', 'vsymlink'] {
 		compile_args = external_tool_args_without_gc(compile_args)
@@ -427,6 +427,26 @@ fn external_tool_compile_args(tool_name string, prefix_args []string) []string {
 		compile_args << ['-gc', 'none']
 	}
 	return compile_args
+}
+
+fn external_tool_args_without_target(args []string) []string {
+	mut result := []string{cap: args.len}
+	mut skip_target_value := false
+	for arg in args {
+		if skip_target_value {
+			skip_target_value = false
+			continue
+		}
+		if arg == '-os' {
+			skip_target_value = true
+			continue
+		}
+		if arg.starts_with('-os=') {
+			continue
+		}
+		result << arg
+	}
+	return result
 }
 
 fn split_tool_backend_args(args []string) ([]string, []string) {
