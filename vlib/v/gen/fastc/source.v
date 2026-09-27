@@ -267,6 +267,7 @@ fn fastc_resolve_source_files_deferring_memo(paths []string, prefs &pref.Prefere
 					import_order:            header.import_order
 					blank_imports:           header.blank_imports
 					has_globals:             header.has_globals
+					translated:              header.translated
 					has_constants:           header.has_constants
 					has_global_declarations: header.has_global_declarations
 					has_interfaces:          header.has_interfaces
@@ -1206,6 +1207,7 @@ fn fastc_canonicalize_header_imports(header FastcSourceHeader, module_aliases ma
 		import_order:            header.import_order
 		blank_imports:           header.blank_imports
 		has_globals:             header.has_globals
+		translated:              header.translated
 		has_constants:           header.has_constants
 		has_global_declarations: header.has_global_declarations
 		has_interfaces:          header.has_interfaces
@@ -1420,6 +1422,7 @@ fn fastc_scan_source_header(source string, path string, prefs &pref.Preferences)
 	mut import_order := []string{}
 	mut blank_imports := []string{}
 	mut has_globals := false
+	mut translated := false
 	mut brace_depth := 0
 	mut tok := scan.scan()
 	for tok != .eof {
@@ -1429,6 +1432,9 @@ fn fastc_scan_source_header(source string, path string, prefs &pref.Preferences)
 			for attribute_depth > 0 && tok != .eof {
 				if tok == .name && scan.lit in ['has_globals', 'translated'] {
 					has_globals = true
+					if scan.lit == 'translated' {
+						translated = true
+					}
 				}
 				if tok == .lsbr {
 					attribute_depth++
@@ -1536,6 +1542,7 @@ fn fastc_scan_source_header(source string, path string, prefs &pref.Preferences)
 		import_order:  import_order
 		blank_imports: blank_imports
 		has_globals:   has_globals
+		translated:    translated
 	}
 }
 
@@ -1562,6 +1569,7 @@ fn fastc_header_with_scan_flags(header FastcSourceHeader, flags FastcSourceScanF
 		import_order:            header.import_order
 		blank_imports:           header.blank_imports
 		has_globals:             header.has_globals
+		translated:              header.translated
 		has_constants:           flags.has_constants
 		has_global_declarations: flags.has_global_declarations
 		has_interfaces:          flags.has_interfaces
@@ -1582,6 +1590,7 @@ fn fastc_header_with_body_spans(header FastcSourceHeader, body_spans []int) Fast
 		import_order:            header.import_order
 		blank_imports:           header.blank_imports
 		has_globals:             header.has_globals
+		translated:              header.translated
 		has_constants:           header.has_constants
 		has_global_declarations: header.has_global_declarations
 		has_interfaces:          header.has_interfaces

@@ -1476,6 +1476,13 @@ fn (mut g Parser) parse_simple_statement() ! {
 			return g.unsupported('value-only expression statement')
 		}
 		g.consume_statement_end()
+		if g.translated {
+			if pointer_member := g.render_pointer_member_access_expression(g.last_expression,
+				expression) {
+				g.write_line('${pointer_member.source};')
+				return
+			}
+		}
 		g.write_line('${expression};')
 		return
 	}
@@ -2306,7 +2313,7 @@ fn (g &Parser) expression_tokens_are_statement(expression_tokens []FastcExpressi
 			}
 		}
 	}
-	if g.selfhost && fastc_expression_tokens_contain_assignment_or_mutation(tokens) {
+	if (g.selfhost || g.translated) && fastc_expression_tokens_contain_assignment_or_mutation(tokens) {
 		return true
 	}
 	if g.selfhost && fastc_expression_tokens_contain(tokens, .left_shift) {

@@ -3076,6 +3076,21 @@ fn test_global_declarations_require_enable_globals_or_module_attribute() {
 	assert enabled_source.contains('static int answer;'), enabled_source
 }
 
+fn test_translated_pointer_writes_accept_immutable_roots() {
+	prefs := pref.new_preferences()
+	source := 'module main\nstruct State {\nmut:\n count int\n}\nfn bump(state &State) { state.count = 1 }\nfn main() {}\n'
+	mut message := ''
+	_ := generate(source, 'plain_pointer_write.v', prefs) or {
+		message = err.msg()
+		''
+	}
+	assert message.contains('mutation of immutable or unknown name'), message
+	translated := generate('@[translated]\n${source}', 'translated_pointer_write.v', prefs) or {
+		panic(err)
+	}
+	assert translated.contains('state->count=1;'), translated
+}
+
 fn test_duplicate_global_declarations_are_rejected() {
 	mut prefs := pref.new_preferences()
 	prefs.enable_globals = true
