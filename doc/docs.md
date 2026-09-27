@@ -3379,6 +3379,9 @@ println(f(|x| x + 4)) // prints 14
 
 ### Closures
 
+Callbacks in specialized generic functions retain the functions they call, including imported
+functions referenced only from the callback body.
+
 V supports closures too.
 This means that anonymous functions can inherit variables from the scope they were created in.
 They must do so explicitly by listing all variables that are inherited.
