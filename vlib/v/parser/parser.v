@@ -8193,7 +8193,7 @@ fn (mut p Parser) static_decl_stmt() flat.NodeId {
 
 fn (mut p Parser) return_stmt() flat.NodeId {
 	return_pos := p.tok_pos
-	if p.defer_depth > 0 {
+	if p.defer_depth > 0 && !p.prefs.is_fmt {
 		p.record_diagnostic_span('`return` not allowed inside `defer` block', p.tok_pos, p.tok_end)
 	}
 	p.next() // skip 'return'
@@ -9980,7 +9980,7 @@ fn (mut p Parser) for_post_block_from_exprs(exprs []flat.NodeId, ends []int) fla
 
 fn (mut p Parser) defer_stmt() flat.NodeId {
 	defer_start := p.span_start()
-	if p.defer_depth > 0 {
+	if p.defer_depth > 0 && !p.prefs.is_fmt {
 		p.record_diagnostic_span('`defer` blocks cannot be nested', p.tok_pos, p.tok_end)
 	}
 	p.next() // skip 'defer'
