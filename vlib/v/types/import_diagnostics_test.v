@@ -100,3 +100,19 @@ fn test_nested_module_can_import_another_module_with_the_same_basename() {
 		assert tc.errors.len == 0, '${diagnostic_root}: ${tc.errors}'
 	}
 }
+
+fn test_nested_module_rejects_its_canonical_self_import() {
+	root := os.join_path(os.vtmp_dir(), 'v3_nested_self_import_${os.getpid()}')
+	path := os.join_path(root, 'nn', 'layers', 'layer.v')
+	os.mkdir_all(os.dir(path))!
+	os.mkdir_all(os.join_path(root, 'layers'))!
+	defer { os.rmdir_all(root) or {} }
+	os.write_file(os.join_path(root, 'v.mod'), "Module { name: 'project' }")!
+	os.write_file(path, 'module layers\nimport nn.layers as own\n')!
+	mut p := parser.Parser.new(pref.new_preferences())
+	a := p.parse_file(path)
+	mut tc := TypeChecker.new(a)
+	tc.collect(a)
+	tc.check_import_diagnostics()
+	assert tc.errors.any(it.msg.contains('cannot import `nn.layers` into a module with the same name')), tc.errors.str()
+}

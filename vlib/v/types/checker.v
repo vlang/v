@@ -5901,7 +5901,8 @@ fn (mut tc TypeChecker) check_import_diagnostics() {
 		// Compiler-injected runtime imports have no source span and may name the
 		// current module (for example channel support while compiling `sync`).
 		// Self-import diagnostics only apply to imports written by the user.
-		if has_source && node.value == tc.cur_module {
+		if has_source && (node.value == tc.cur_module
+			|| node.value == (tc.current_file_module_path_identity() or { '' })) {
 			tc.record_error_at(.duplicate_decl, 'cannot import `${module_path}` into a module with the same name', flat.NodeId(idx), tc.import_module_path_pos(node))
 		}
 		if has_source && node.typ == tc.cur_module && !tc.current_file_uses_nested_module_path() {

@@ -416,6 +416,21 @@ fn (tc &TypeChecker) current_file_uses_nested_module_path() bool {
 	return relative.all_before_last('/').contains('/')
 }
 
+fn (tc &TypeChecker) current_file_module_path_identity() ?string {
+	directory := os.real_path(os.dir(tc.cur_file)).replace('\\', '/').trim_right('/')
+	vmod_root := checker_vmod_root_for_file(tc.cur_file)
+	manifest := vmod.from_file(os.join_path(vmod_root, 'v.mod')) or { return none }
+	source_root := os.real_path(manifest.source_root(vmod_root)).replace('\\', '/').trim_right('/')
+	if source_root == '' || !directory.starts_with(source_root + '/') {
+		return none
+	}
+	relative := directory[source_root.len + 1..]
+	if relative.all_after_last('/') != tc.cur_module {
+		return none
+	}
+	return relative.replace('/', '.')
+}
+
 fn (tc &TypeChecker) imported_module_prefix(id flat.NodeId, name string) ?string {
 	if !tc.valid_node_id(id) || !name.contains('__') {
 		return none
