@@ -16113,7 +16113,8 @@ fn declared_module_in_file(path string) string {
 			if comment := module_name.index('/*') {
 				module_name = module_name[..comment]
 			}
-			return module_name.trim_space()
+			module_name = module_name.trim_space()
+			return module_name
 		}
 		return ''
 	}
@@ -19715,6 +19716,13 @@ fn resolve_ancestor_module_path(prefs &pref.Preferences, mod_name string, mod_pa
 				return candidate
 			}
 		}
+		// An explicit `.v.mod.stop` ends the walk: the directories above it are
+		// not part of this project, so a module up there is not what the import
+		// means. A checkout marker is not a stop here, since a neighbour checked
+		// out next to the project is exactly what this walk exists to find.
+		if pref.is_module_search_stop_dir(current) {
+			break
+		}
 		parent := os.dir(current)
 		if parent == current {
 			break
@@ -19872,6 +19880,9 @@ fn removed_modules_layout_hint(prefs &pref.Preferences, mod_name string, importi
 			}
 			command := modules_layout_move_command(current, relative, top_name)
 			return '\nthe virtual `modules/` directory is no longer searched for modules.\nMove it up beside the v.mod it belongs to, which keeps the import path the same:\n\t${command}'
+		}
+		if pref.is_module_search_stop_dir(current) {
+			break
 		}
 		parent := os.dir(current)
 		if parent == current {
