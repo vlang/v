@@ -2000,7 +2000,7 @@ fn (g &FlatGen) current_module_selector_const_name(base string, member string) ?
 	if base != current && base != short && base != '${current}.${short}' {
 		return none
 	}
-	if g.selector_base_is_local_value(base) {
+	if g.selector_base_is_local_value(base) || g.global_type_for_ident(base) != none {
 		return none
 	}
 	mod := g.selector_base_module_for_member(base, member) or { return none }
