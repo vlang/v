@@ -319,6 +319,34 @@ fn main() {
 	assert errors[0].starts_with('main.v:19:20: error: cannot use `string` as `int` in argument 1 to `takes_int`: when `T` is `User`, which implements `Named`'), errors[0]
 }
 
+fn test_every_combination_of_the_types_of_the_constraints_is_checked() {
+	// 6 x 6 combinations: the error is there only when `T` is `f64` and `U`
+	// is `string`, and neither of them is the first type of its set.
+	errors := check('combinations', 'module main
+
+type Num6 = int | i8 | i16 | i32 | i64 | f64
+
+type Val6 = int | i8 | i16 | i32 | i64 | string
+
+fn mix[T Num6, U Val6](a T, b U) string {
+	\$if T is f64 {
+		\$if U is string {
+			return a
+		}
+	}
+	return ""
+}
+
+fn main() {
+	println(mix(1.5, "b"))
+}
+')
+	assert errors.len == 1, errors.str()
+	assert errors[0].starts_with('main.v:10:11: error: cannot use `f64` as type `string` in return argument'), errors[0]
+	assert errors[0].contains('when `T` is `f64`'), errors[0]
+	assert errors[0].contains('when `U` is `string`'), errors[0]
+}
+
 fn test_a_generic_body_with_a_type_parameter_without_a_constraint_is_not_checked() {
 	// As before: V checks such a body in each of its instances.
 	errors := check('unconstrained', "module main

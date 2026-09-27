@@ -60,7 +60,7 @@ fn (mut tc TypeChecker) check_generic_fn_body(node flat.Node, fn_idx int, params
 		independent[type_error_key(err)] = true
 	}
 	mut positions := map[string]bool{}
-	for combination in type_param_combinations(texts, 32) {
+	for combination in type_param_combinations(texts, generic_body_instance_budget) {
 		instance := tc.check_generic_fn_body_as(node, fn_idx, closed_type_param_texts(combination))
 		for err in instance.errors {
 			statement := tc.enclosing_body_statement(err.node, fn_idx) or { continue }
@@ -365,42 +365,160 @@ fn (tc &TypeChecker) comptime_tested_types(node flat.Node, param string, names [
 	return found
 }
 
+// generic_body_instance_budget is how many checks of a generic body with types
+// for its type parameters check_generic_fn_body makes before it stops checking
+// every combination of their types (see type_param_combinations): each check
+// costs what a check of a function with that body does.
+const generic_body_instance_budget = 256
+
 // type_param_combinations gives each type parameter of `texts` one of its
-// types, in every combination, or, past `limit`, one type parameter at a time
-// through all of its types while the others keep their first.
-fn type_param_combinations(texts map[string][]string, limit int) []map[string]string {
-	mut combinations := [map[string]string{}]
+// types, in every combination while they are at most `budget`; past it, in
+// combinations where every two type parameters meet with every two of their
+// types (see pairwise_index_rows), what an operation between two of them
+// needs; and when even those are past it, one type parameter at a time through
+// all of its types while the others keep their first.
+fn type_param_combinations(texts map[string][]string, budget int) []map[string]string {
+	mut names := []string{cap: texts.len}
+	mut sizes := []int{cap: texts.len}
 	mut count := 1
-	for _, options in texts {
-		count *= options.len
-	}
-	if count <= limit {
-		for name, options in texts {
-			mut next := []map[string]string{cap: combinations.len * options.len}
-			for combination in combinations {
-				for option in options {
-					mut with := combination.clone()
-					with[name] = option
-					next << with
-				}
-			}
-			combinations = next.clone()
-		}
-		return combinations
-	}
-	mut first := map[string]string{}
 	for name, options in texts {
-		first[name] = options[0]
-	}
-	combinations = [first]
-	for name, options in texts {
-		for option in options[1..] {
-			mut with := first.clone()
-			with[name] = option
-			combinations << with
+		names << name
+		sizes << options.len
+		if count <= budget {
+			count *= options.len
 		}
+	}
+	mut rows := [][]int{}
+	if count <= budget || names.len < 2 {
+		rows = all_index_rows(sizes)
+	} else {
+		rows = pairwise_index_rows(sizes)
+		if rows.len > budget {
+			rows = one_at_a_time_index_rows(sizes)
+		}
+	}
+	mut combinations := []map[string]string{cap: rows.len}
+	for row in rows {
+		mut combination := map[string]string{}
+		for i, name in names {
+			combination[name] = texts[name][row[i]]
+		}
+		combinations << combination
 	}
 	return combinations
+}
+
+// all_index_rows returns every row of indexes into lists of `sizes` values, the
+// first list the slowest to change.
+fn all_index_rows(sizes []int) [][]int {
+	mut rows := [][]int{}
+	mut row := []int{len: sizes.len}
+	mut done := false
+	for !done {
+		rows << row.clone()
+		done = true
+		for i := sizes.len - 1; i >= 0; i-- {
+			row[i]++
+			if row[i] < sizes[i] {
+				done = false
+				break
+			}
+			row[i] = 0
+		}
+	}
+	return rows
+}
+
+// pairwise_index_rows returns rows of indexes into two or more lists of `sizes`
+// values where every two lists meet with every two of their values, in far
+// fewer rows than all of them: the rows of all the pairs of the first two
+// lists, to which each next list adds, row by row, the value that meets the
+// most values of the others that it has yet to meet, and then rows for what it
+// still has to meet (the IPO strategy of combinatorial testing).
+fn pairwise_index_rows(sizes []int) [][]int {
+	mut rows := [][]int{}
+	for a in 0 .. sizes[0] {
+		for b in 0 .. sizes[1] {
+			rows << [a, b]
+		}
+	}
+	for i in 2 .. sizes.len {
+		// unmet[j][a * sizes[i] + b]: value `a` of list `j` has yet to meet
+		// value `b` of list `i`.
+		mut unmet := [][]bool{}
+		for j in 0 .. i {
+			unmet << []bool{len: sizes[j] * sizes[i], init: true}
+		}
+		for mut row in rows {
+			mut best := 0
+			mut best_count := -1
+			for b in 0 .. sizes[i] {
+				mut count := 0
+				for j in 0 .. i {
+					if unmet[j][row[j] * sizes[i] + b] {
+						count++
+					}
+				}
+				if count > best_count {
+					best = b
+					best_count = count
+				}
+			}
+			row << best
+			for j in 0 .. i {
+				unmet[j][row[j] * sizes[i] + best] = false
+			}
+		}
+		// A new row leaves each list open, -1, until a pair takes it.
+		first_new := rows.len
+		for j in 0 .. i {
+			for a in 0 .. sizes[j] {
+				for b in 0 .. sizes[i] {
+					if !unmet[j][a * sizes[i] + b] {
+						continue
+					}
+					mut placed := false
+					for r in first_new .. rows.len {
+						if rows[r][i] == b && rows[r][j] == -1 {
+							rows[r][j] = a
+							placed = true
+							break
+						}
+					}
+					if !placed {
+						mut row := []int{len: i + 1, init: -1}
+						row[j] = a
+						row[i] = b
+						rows << row
+					}
+					unmet[j][a * sizes[i] + b] = false
+				}
+			}
+		}
+		for r in first_new .. rows.len {
+			for j in 0 .. i {
+				if rows[r][j] == -1 {
+					rows[r][j] = 0
+				}
+			}
+		}
+	}
+	return rows
+}
+
+// one_at_a_time_index_rows returns the row of the first value of every list of
+// `sizes` values, and a row for each other value of each list, where the others
+// keep their first.
+fn one_at_a_time_index_rows(sizes []int) [][]int {
+	mut rows := [[]int{len: sizes.len}]
+	for i, size in sizes {
+		for value in 1 .. size {
+			mut row := []int{len: sizes.len}
+			row[i] = value
+			rows << row
+		}
+	}
+	return rows
 }
 
 // closed_type_param_texts gives each type parameter of `combination` its type
