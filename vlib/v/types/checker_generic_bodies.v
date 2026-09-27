@@ -59,7 +59,10 @@ fn (mut tc TypeChecker) check_generic_fn_body(node flat.Node, fn_idx int, params
 	for err in open.errors {
 		independent[type_error_key(err)] = true
 	}
-	mut positions := map[string]bool{}
+	// The first error at each place, and the types that each type parameter had
+	// in every check that found it there.
+	mut at_position := map[string]int{}
+	mut found := []GenericBodyError{}
 	for combination in tc.generic_body_combinations(node, texts, constraints) {
 		instance := tc.check_generic_fn_body_as(node, fn_idx, closed_type_param_texts(combination))
 		for err in instance.errors {
@@ -68,18 +71,50 @@ fn (mut tc TypeChecker) check_generic_fn_body(node flat.Node, fn_idx int, params
 				continue
 			}
 			position := '${err.pos.id}:${err.pos.offset}:${err.pos.end}'
-			if position in positions {
+			if i := at_position[position] {
+				if found[i].err.msg == err.msg {
+					found[i].add_types(combination)
+				}
 				continue
 			}
-			positions[position] = true
-			if type_error_key(err) in independent {
-				tc.errors << err
-			} else {
-				tc.errors << TypeError{
-					...err
-					msg: '${err.msg}: ${type_param_instance_reason(combination, constraints)}'
-				}
+			at_position[position] = found.len
+			mut first := GenericBodyError{
+				err: err
 			}
+			first.add_types(combination)
+			found << first
+		}
+	}
+	for f in found {
+		if type_error_key(f.err) in independent {
+			tc.errors << f.err
+			continue
+		}
+		msg := fold_type_param_expansions(f.err.msg, constraints)
+		reason := type_param_occurrence_reason(f.types, texts, constraints)
+		tc.errors << TypeError{
+			...f.err
+			msg: if reason == '' { msg } else { '${msg}: ${reason}' }
+		}
+	}
+}
+
+// GenericBodyError is an error that the checks of a generic body found at one
+// place, with the types that each type parameter had in the checks that found
+// it there with the same words.
+struct GenericBodyError {
+	err TypeError
+mut:
+	types map[string][]string
+}
+
+// add_types notes the types of `combination`, a check that found the error.
+fn (mut e GenericBodyError) add_types(combination map[string]string) {
+	for name, text in combination {
+		mut taken := e.types[name] or { []string{} }
+		if text !in taken {
+			taken << text
+			e.types[name] = taken
 		}
 	}
 }
@@ -764,22 +799,105 @@ fn close_type_param_text(text string, combination map[string]string, mut path ma
 	return subst_generic_text(text, args, names)
 }
 
-// type_param_instance_reason says why an error of a check with the types
-// `combination` is an error of the generic function: what each type parameter
-// can be.
-fn type_param_instance_reason(combination map[string]string, constraints map[string]GenericConstraint) string {
+// type_param_occurrence_reason says why an error that the checks found, with
+// the types `types` for each type parameter, is an error of the generic
+// function: what the type parameters that decide it were. One that had every
+// type of `texts`, more than one, does not decide it, and is left out; one that
+// has only its interface is any type that implements it.
+fn type_param_occurrence_reason(types map[string][]string, texts map[string][]string, constraints map[string]GenericConstraint) string {
 	mut parts := []string{}
-	for name, text in combination {
+	for name, options in texts {
+		taken := types[name] or { continue }
 		constraint := constraints[name] or { continue }
-		if constraint.is_interface && text == constraint.iface.name {
-			parts << '`${name}` is any type that implements `${constraint.name}`'
-		} else if constraint.is_interface {
-			parts << 'when `${name}` is `${text.all_after_last('.')}`, which implements `${constraint.name}`'
-		} else {
-			parts << 'when `${name}` is `${text.all_after_last('.')}`, in its constraint `${constraint.name}`'
+		if options.len > 1 && taken.len >= options.len {
+			continue
 		}
+		if constraint.is_interface {
+			implementers := taken.filter(it != constraint.iface.name)
+			if implementers.len == 0 || implementers.len < taken.len {
+				parts << '`${name}` is any type that implements `${constraint.name}`'
+			} else {
+				verb := if implementers.len == 1 { 'implements' } else { 'implement' }
+				parts << 'when `${name}` is ${type_names_text(implementers, 'or')}, which ${verb} `${constraint.name}`'
+			}
+			continue
+		}
+		// The shorter side: the types it had, or the ones it did not.
+		missing := options.filter(it !in taken)
+		what := if missing.len > 0 && missing.len < taken.len {
+			if missing.len == 1 {
+				'not `${missing[0].all_after_last('.')}`'
+			} else {
+				'none of ${type_names_text(missing, 'and')}'
+			}
+		} else {
+			type_names_text(taken, 'or')
+		}
+		parts << 'when `${name}` is ${what}, in its constraint `${constraint.name}`'
 	}
 	return parts.join(', and ')
+}
+
+// type_names_text writes `names`, types, as a list joined with `word` before
+// the last one, `f32` or `f64`: past three, the first three and how many more.
+fn type_names_text(names []string, word string) string {
+	mut shown := []string{}
+	for name in names#[..3] {
+		shown << '`${name.all_after_last('.')}`'
+	}
+	if names.len > 3 {
+		return '${shown.join(', ')} ${word} ${names.len - 3} more'
+	}
+	if shown.len == 1 {
+		return shown[0]
+	}
+	return '${shown#[..-1].join(', ')} ${word} ${shown.last()}'
+}
+
+// fold_type_param_expansions writes, in the message `msg`, a type in backticks
+// that nests the constraints of type parameters that name each other,
+// `Wrapper[Container[Wrapper[C]]]` of `[C Container[T], T Wrapper[C]]`, as the
+// type parameter that it unfolds, `T`. A type that nests none, `Comparable[T]`,
+// stays.
+fn fold_type_param_expansions(msg string, constraints map[string]GenericConstraint) string {
+	mut names := map[string]bool{}
+	for name, _ in constraints {
+		names[name] = true
+	}
+	mut folds := map[string]string{}
+	for name, constraint in constraints {
+		if type_text_names_any(constraint.name, names) {
+			folds[constraint.name] = name
+		}
+	}
+	if folds.len == 0 || !msg.contains('`') {
+		return msg
+	}
+	parts := msg.split('`')
+	mut out := []string{cap: parts.len}
+	for i, part in parts {
+		if i % 2 == 0 {
+			out << part
+			continue
+		}
+		mut text := part
+		mut steps := 0
+		for _ in 0 .. 32 {
+			mut changed := false
+			for from, to in folds {
+				if text.contains(from) {
+					text = text.replace(from, to)
+					steps++
+					changed = true
+				}
+			}
+			if !changed {
+				break
+			}
+		}
+		out << if steps > 1 && text in names { text } else { part }
+	}
+	return out.join('`')
 }
 
 // type_error_key tells two errors apart by what they say and where.

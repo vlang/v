@@ -402,8 +402,8 @@ fn main() {}
 ')
 	assert errors.len == 4, errors.str()
 	assert errors[0] == 'main.v:9:12: error: cannot use `f64` as type `int` in return argument: when `A` is `f64`, in its constraint `Number`, and when `B` is `f64`, in its constraint `Number`, and when `C` is `f64`, in its constraint `Number`', errors[0]
-	assert errors[1] == 'main.v:22:12: error: cannot use `f64` as type `int` in return argument: when `A` is `i16`, in its constraint `Number`, and when `B` is `f64`, in its constraint `Number`, and when `C` is `f64`, in its constraint `Number`', errors[1]
-	assert errors[2] == 'main.v:33:12: error: cannot use `f32` as type `int` in return argument: when `A` is `f32`, in its constraint `Number`, and when `B` is `f32`, in its constraint `Number`, and when `C` is `f32`, in its constraint `Number`', errors[2]
+	assert errors[1] == 'main.v:22:12: error: cannot use `f64` as type `int` in return argument: when `A` is not `i8`, in its constraint `Number`, and when `B` is `f64`, in its constraint `Number`, and when `C` is `f64`, in its constraint `Number`', errors[1]
+	assert errors[2] == 'main.v:33:12: error: cannot use `f32` as type `int` in return argument: when `A` is `f32` or `f64`, in its constraint `Number`, and when `B` is `f32` or `f64`, in its constraint `Number`, and when `C` is `f32`, in its constraint `Number`', errors[2]
 	assert errors[3] == 'main.v:42:10: error: cannot use `f64` as type `int` in return argument: when `A` is `f64`, in its constraint `Number`, and when `B` is `f64`, in its constraint `Number`, and when `C` is `f64`, in its constraint `Number`', errors[3]
 }
 
@@ -472,6 +472,51 @@ fn main() {}
 ')
 	assert errors.len == 1, errors.str()
 	assert errors[0].starts_with('main.v:12:21: error: cannot use `f32` as `i64` in argument 1 to `takes_i64`: '), errors[0]
+}
+
+fn test_an_error_names_only_the_type_parameters_that_decide_it() {
+	// `return a` fails whatever `C` is: the error does not name it.
+	errors := check('deciders', 'module main
+
+type Number = i8 | i16 | i32 | int | i64 | u8 | u16 | u32 | f32 | f64
+
+fn two[A Number, B Number, C Number](a A, b B, c C) int {
+	\$if A is f64 {
+		\$if B is f64 {
+			return a
+		}
+	}
+	return 0
+}
+
+fn main() {}
+')
+	assert errors == ['main.v:8:11: error: cannot use `f64` as type `int` in return argument: when `A` is `f64`, in its constraint `Number`, and when `B` is `f64`, in its constraint `Number`'], errors.str()
+}
+
+fn test_a_type_that_constraints_unfold_into_is_named_by_its_type_parameter() {
+	// `[C Container[T], T Wrapper[C]]`: `z` is a `T`, not the unfolding of what
+	// `T` and `C` name of each other.
+	errors := check('unfolded', 'module main
+
+interface Wrapper[C] {
+	inner() C
+}
+
+interface Container[T] {
+	get() T
+}
+
+fn loop_types[C Container[T], T Wrapper[C]](c C) int {
+	x := c.get()
+	y := x.inner()
+	z := y.get()
+	return z
+}
+
+fn main() {}
+')
+	assert errors == ['main.v:15:9: error: cannot use `T` as type `int` in return argument: `C` is any type that implements `Container[T]`, and `T` is any type that implements `Wrapper[C]`'], errors.str()
 }
 
 fn test_a_generic_body_with_a_type_parameter_without_a_constraint_is_not_checked() {
