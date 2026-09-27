@@ -2895,6 +2895,12 @@ fn (mut tc TypeChecker) check_fn_decl_semantics(fn_idx int, node flat.Node, file
 		&& tc.should_diagnose(flat.NodeId(fn_idx)) {
 		tc.check_deferred_generic_receiver_comparisons(node)
 	}
+	// A check tells what the body of a generic function does wrong without its
+	// type parameters (see check_generic_fn_body).
+	if has_body && generic_params.len > 0 && tc.check_generic_bodies && !fast_valid_build
+		&& !signature_has_bare_generic_type && tc.should_diagnose(flat.NodeId(fn_idx)) {
+		tc.check_generic_fn_body(node, fn_idx, generic_params)
+	}
 	if !fast_valid_build {
 		if has_body {
 			qname := checker_qualified_fn_name(module_name, node.value)

@@ -12060,6 +12060,9 @@ pub fn run(args []string) {
 			cvsw.restart()
 		}
 		pre_tc.diagnose_unknown_calls = true
+		// A check reports what the body of a generic function does wrong without
+		// its type parameters; a build leaves those bodies to their instances.
+		pre_tc.check_generic_bodies = check_only && !is_checker_fixture
 		pre_tc.prepare_threads_condition()
 		set_unsupported_generic_files(mut pre_tc, a, is_selfhost, diagnostic_root)
 		if verbose {

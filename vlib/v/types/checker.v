@@ -924,6 +924,7 @@ pub mut:
 	checker_fixture_mode          bool
 	is_test                       bool
 	check_concrete_generic_bodies bool // `-check` checks the concrete clones of the program's generics for fields and methods their types lack
+	check_generic_bodies          bool // `-check` checks the bodies of generic functions for what does not depend on their type parameters
 	concrete_parents_indexed      int  // nodes the parent index covered when the last concrete clone was checked
 	module_diagnostic_root        string
 	autofree_mode                 bool
@@ -1372,6 +1373,7 @@ fn (tc &TypeChecker) fork_program_view(ast &flat.FlatAst, direct_dependencies_by
 		checker_fixture_mode:                  tc.checker_fixture_mode
 		is_test:                               tc.is_test
 		check_concrete_generic_bodies:         tc.check_concrete_generic_bodies
+		check_generic_bodies:                  tc.check_generic_bodies
 		module_diagnostic_root:                tc.module_diagnostic_root
 		autofree_mode:                         tc.autofree_mode
 		no_main:                               tc.no_main
