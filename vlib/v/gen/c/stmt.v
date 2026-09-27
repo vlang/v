@@ -8856,7 +8856,7 @@ fn (mut g FlatGen) gen_assign(node flat.Node) {
 			if rhs_node.kind == .array_literal {
 				lhs_raw_type := g.usable_expr_type(lhs_id)
 				lhs_type := types.unwrap_pointer(lhs_raw_type)
-				if node.op == .assign && lhs_raw_type.name() in ['voidptr', 'builtin.voidptr'] {
+				if node.op == .assign && cgen_unalias_type(lhs_raw_type) is types.Pointer {
 					if rhs_fixed := array_fixed_type(g.usable_expr_type(rhs_id)) {
 						g.gen_expr(lhs_id)
 						g.write(' = ')

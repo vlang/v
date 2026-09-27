@@ -9,6 +9,8 @@ fn sum(values &int) int { return unsafe { values[0] + values[1] } }
 
 fn first_byte(values &u8) u8 { return unsafe { values[0] } }
 
+fn first_byte_row(values &[2]u8) u8 { return unsafe { values[0] } }
+
 fn test_translated_fixed_array_arguments() {
 	mut values := [20, 22]!
 	assert sum(values) == 42
@@ -16,12 +18,25 @@ fn test_translated_fixed_array_arguments() {
 	assert values == [0, 0]!
 	chars := [char(65), char(66)]!
 	assert first_byte(chars) == 65
+	rows := [[char(65), char(66)]!, [char(67), char(68)]!]!
+	assert first_byte_row(rows) == 65
 }
 
 fn test_translated_fixed_array_voidptr_assignment() {
 	mut pointer := unsafe { voidptr(nil) }
 	pointer = [20, 22]!
 	assert unsafe { (&int(pointer))[0] } == 20
+}
+
+type TranslatedVoidPtr = voidptr
+
+fn test_translated_fixed_array_typed_pointer_assignments() {
+	mut typed := unsafe { &int(nil) }
+	typed = [20, 22]!
+	assert unsafe { typed[0] } == 20
+	mut aliased := unsafe { TranslatedVoidPtr(nil) }
+	aliased = [20, 22]!
+	assert unsafe { (&int(aliased))[0] } == 20
 }
 
 fn test_translated_fixed_array_comparisons() {

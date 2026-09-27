@@ -41,6 +41,18 @@ fn fixed_array_pointer_type(t types.Type) ?types.ArrayFixed {
 	return none
 }
 
+fn fixed_array_decay_byte_compatible(actual types.Type, expected types.Type) bool {
+	a := cgen_unalias_type(actual)
+	e := cgen_unalias_type(expected)
+	if a is types.ArrayFixed && e is types.ArrayFixed {
+		return a.len == e.len && fixed_array_decay_byte_compatible(a.elem_type, e.elem_type)
+	}
+	if a is types.Pointer && e is types.Pointer {
+		return fixed_array_decay_byte_compatible(a.base_type, e.base_type)
+	}
+	return a.name() in ['char', 'i8', 'u8'] && e.name() in ['char', 'i8', 'u8']
+}
+
 fn fixed_array_index_info(t types.Type) (bool, bool, types.ArrayFixed) {
 	if fixed := array_fixed_type(t) {
 		return true, false, fixed
@@ -497,7 +509,11 @@ fn (g &FlatGen) array_init_field_value(node flat.Node, field_name string) ?flat.
 }
 
 fn (mut g FlatGen) gen_fixed_array_pointer_lvalue_arg(id flat.NodeId, expected types.Type) bool {
-	expected_fixed := fixed_array_pointer_type(expected) or { return false }
+	expected_ptr := cgen_unalias_type(expected)
+	if expected_ptr !is types.Pointer {
+		return false
+	}
+	expected_fixed := fixed_array_pointer_type(expected)
 	if int(id) < 0 || int(id) >= g.a.nodes.len {
 		return false
 	}
@@ -515,16 +531,30 @@ fn (mut g FlatGen) gen_fixed_array_pointer_lvalue_arg(id flat.NodeId, expected t
 		if !g.expr_is_addressable(id) {
 			return false
 		}
-		if inner_fixed := array_fixed_type(actual_fixed.elem_type) {
-			if g.fixed_array_len_value(inner_fixed) == g.fixed_array_len_value(expected_fixed)
-				&& cgen_types_equal_after_alias_erasure(inner_fixed.elem_type, expected_fixed.elem_type) {
-				g.gen_expr(id)
-				return true
+		if fixed := expected_fixed {
+			if inner_fixed := array_fixed_type(actual_fixed.elem_type) {
+				if g.fixed_array_len_value(inner_fixed) == g.fixed_array_len_value(fixed) {
+					if cgen_types_equal_after_alias_erasure(inner_fixed.elem_type, fixed.elem_type) {
+						g.gen_expr(id)
+						return true
+					}
+					if fixed_array_decay_byte_compatible(inner_fixed.elem_type, fixed.elem_type) {
+						g.write('(${g.cast_c_type(expected_ptr)})')
+						g.gen_expr(id)
+						return true
+					}
+				}
 			}
+			g.write('&')
+			g.gen_expr(id)
+			return true
 		}
-		g.write('&')
-		g.gen_expr(id)
-		return true
+		if fixed_array_decay_byte_compatible(actual_fixed.elem_type, expected_ptr.base_type)
+			&& !cgen_types_equal_after_alias_erasure(actual_fixed.elem_type, expected_ptr.base_type) {
+			g.write('(${g.cast_c_type(expected_ptr)})')
+			g.gen_fixed_array_data_arg(id, actual_fixed)
+			return true
+		}
 	}
 	return false
 }
