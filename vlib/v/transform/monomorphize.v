@@ -9909,16 +9909,21 @@ fn (mut t Transformer) generic_const_string_value(id flat.NodeId, args []string)
 }
 
 fn (mut t Transformer) clone_generic_fn_node(node flat.Node, args []string) flat.NodeId {
-	return t.clone_generic_node_from(node, args, true)
+	return t.clone_generic_node_from(node, args, true, false)
 }
 
 @[direct_array_access]
 fn (mut t Transformer) clone_generic_node(id flat.NodeId, args []string) flat.NodeId {
+	return t.clone_generic_node_with_return_context(id, args, false)
+}
+
+@[direct_array_access]
+fn (mut t Transformer) clone_generic_node_with_return_context(id flat.NodeId, args []string, direct_return_value bool) flat.NodeId {
 	if int(id) < 0 || int(id) >= t.a.nodes.len {
 		return id
 	}
 	node := t.a.nodes[int(id)]
-	clone_id := t.clone_generic_node_from(node, args, false)
+	clone_id := t.clone_generic_node_from(node, args, false, direct_return_value)
 	t.copy_cloned_resolution(id, clone_id)
 	if node.kind == .call {
 		cloned_call := t.a.nodes[int(clone_id)]
@@ -9994,7 +9999,7 @@ fn (mut t Transformer) clone_specialized_comptime_new_marker(node flat.Node, tar
 }
 
 @[direct_array_access]
-fn (mut t Transformer) clone_generic_node_from(node flat.Node, args []string, is_root bool) flat.NodeId {
+fn (mut t Transformer) clone_generic_node_from(node flat.Node, args []string, is_root bool, direct_return_value bool) flat.NodeId {
 	if node.kind == .string_literal && node.children_count == 1
 		&& node.value in ['__v3_comptime_zero', '__v3_comptime_new'] {
 		if target := t.generic_comptime_type_expr(t.a.child(&node, 0), args) {
@@ -10130,7 +10135,12 @@ fn (mut t Transformer) clone_generic_node_from(node flat.Node, args []string, is
 				match_smartcasts++
 			}
 		}
-		child := t.clone_generic_node(t.a.child(&node, i), args)
+		child_is_return_value := (node.kind == .return_stmt && node.children_count == 1 && i == 0)
+			|| (direct_return_value && node.kind in [.paren, .postfix, .expr_stmt]
+				&& node.children_count == 1 && i == 0)
+			|| (direct_return_value && node.kind == .or_expr && node.value == '!' && i == 0)
+		child := t.clone_generic_node_with_return_context(t.a.child(&node, i), args,
+			child_is_return_value)
 		for _ in 0 .. match_smartcasts {
 			t.pop_smartcast()
 		}
@@ -10381,7 +10391,7 @@ fn (mut t Transformer) clone_generic_node_from(node flat.Node, args []string, is
 	t.retarget_cloned_new_map_call(node, mut children, cloned_typ)
 	t.retarget_cloned_fn_value_generic_call(node, mut children)
 	static_assoc_typ := t.retarget_cloned_static_assoc_call(node, mut children, args)
-	retargeted_typ := t.retarget_cloned_generic_call(node, mut children, args)
+	retargeted_typ := t.retarget_cloned_generic_call(node, mut children, args, direct_return_value)
 	final_typ := if retargeted_typ.len > 0 {
 		retargeted_typ
 	} else if static_assoc_typ.len > 0 {
@@ -10910,7 +10920,7 @@ fn is_lowered_map_key_temp_name(name string) bool {
 	return name.starts_with('__map_key_') || name.starts_with('__map_eq_key_')
 }
 
-fn (mut t Transformer) retarget_cloned_generic_call(node flat.Node, mut children []flat.NodeId, args []string) string {
+fn (mut t Transformer) retarget_cloned_generic_call(node flat.Node, mut children []flat.NodeId, args []string, direct_return_value bool) string {
 	if node.kind != .call || children.len == 0 || t.skip_generics {
 		return ''
 	}
@@ -11021,7 +11031,7 @@ fn (mut t Transformer) retarget_cloned_generic_call(node flat.Node, mut children
 			}
 			call_args = preserved.clone()
 		} else {
-			if inferred.len < param_names.len && t.cur_fn_ret_type.len > 0 {
+			if inferred.len < param_names.len && direct_return_value && t.cur_fn_ret_type.len > 0 {
 				mut return_inferred := map[string]string{}
 				mut expected_return := t.generic_inference_expected_type(t.cur_fn_ret_type)
 				for expected_return.starts_with('?') || expected_return.starts_with('!') {

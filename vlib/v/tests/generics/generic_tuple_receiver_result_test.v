@@ -52,3 +52,18 @@ fn test_generic_result_tuple_method_uses_second_generic_argument() {
 	assert a == 'okay'
 	assert b == 'okay'
 }
+
+fn pair_local_from_first[A, B](first A, second B) !(B, B) {
+	m := &Matrix[A]{ data: [first] }
+	q, _ := split_plain(m)
+	x, y := q.pair()!
+	_ = x
+	_ = y
+	return second, second
+}
+
+fn test_generic_result_tuple_method_local_does_not_use_enclosing_return() {
+	a, b := pair_local_from_first(1, 'okay')!
+	assert a == 'okay'
+	assert b == 'okay'
+}
