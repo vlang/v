@@ -232,6 +232,7 @@ mut:
 	addr_lvalue_pointer_locals          map[string]bool
 	orm_initialized_fields              map[string][]string
 	sql_query_data_aliases              map[string][]string
+	sql_array_it_name                   string
 	bound_method_arrays                 map[string]BoundMethodArrayInfo
 	temp_counter                        int
 	global_temp_counter                 int
@@ -272,6 +273,7 @@ mut:
 	resolved_call_return_cache    &ResolvedCallReturnCache = unsafe { nil }
 	variant_match_cache           &VariantMatchCache       = unsafe { nil }
 	interface_type_cache          &ContextLookupCache      = unsafe { nil }
+	alias_equivalent_names_cache  &EquivalentNamesCache    = unsafe { nil }
 	enum_expected_cache           &LookupCache             = unsafe { nil }
 	type_alias_name_cache         &ContextBoolLookupCache  = unsafe { nil }
 	raw_return_alias_cache        &ContextBoolLookupCache  = unsafe { nil }
@@ -283,6 +285,7 @@ mut:
 	str_alias_cache               &LookupCache             = unsafe { nil }
 	generic_alias_names           map[string]bool
 	type_alias_suffixes           map[string]string
+	type_alias_short_index        &TypeAliasShortIndex = unsafe { nil }
 	local_decl_nodes_by_name      map[string][]int
 	fn_decl_offsets_by_file       map[int][]int
 	if_expr_nodes_by_file         map[int][]int
@@ -630,6 +633,15 @@ mut:
 	file    string
 	entries map[string]string
 	misses  map[string]bool
+}
+
+// EquivalentNamesCache memoizes interface_alias_equivalent_names for one
+// module and file, whose imports decide how the names normalize.
+struct EquivalentNamesCache {
+mut:
+	module  string
+	file    string
+	entries map[string][]string
 }
 
 struct SelectorTypeCache {
@@ -1940,6 +1952,7 @@ fn (mut t Transformer) prepare() {
 		entries: map[string]string{}
 		misses:  map[string]bool{}
 	}
+	t.alias_equivalent_names_cache = &EquivalentNamesCache{}
 	t.enum_expected_cache = &LookupCache{
 		entries: map[string]string{}
 		misses:  map[string]bool{}
@@ -4026,6 +4039,7 @@ fn (t &Transformer) fork_worker_config(ast &flat.FlatAst, wtc &types.TypeChecker
 		entries: map[string]string{}
 		misses:  map[string]bool{}
 	}
+	w.alias_equivalent_names_cache = &EquivalentNamesCache{}
 	w.enum_expected_cache = &LookupCache{
 		entries: map[string]string{}
 		misses:  map[string]bool{}
@@ -4167,6 +4181,7 @@ fn (t &Transformer) fork_scan_worker(wtc &types.TypeChecker) &Transformer {
 		entries: map[string]string{}
 		misses:  map[string]bool{}
 	}
+	w.alias_equivalent_names_cache = &EquivalentNamesCache{}
 	w.enum_expected_cache = &LookupCache{
 		entries: map[string]string{}
 		misses:  map[string]bool{}
@@ -4277,6 +4292,7 @@ fn (t &Transformer) fork_program_view(ast &flat.FlatAst, wtc &types.TypeChecker,
 		runtime_type_indexes:                t.runtime_type_indexes
 		generic_alias_names:                 t.generic_alias_names
 		type_alias_suffixes:                 t.type_alias_suffixes
+		type_alias_short_index:              t.type_alias_short_index
 		local_decl_nodes_by_name:            t.local_decl_nodes_by_name
 		fn_decl_offsets_by_file:             t.fn_decl_offsets_by_file
 		if_expr_nodes_by_file:               t.if_expr_nodes_by_file
@@ -5730,10 +5746,37 @@ fn (mut t Transformer) transform_const_decl(node flat.Node) {
 				// Overwrite the field's value slot in place (each const_field owns
 				// its own single-element child range, so this is safe).
 				t.a.children[cf.children_start] = new_val
+			} else if t.expr_has_if_guard(val_id) {
+				// `if x := opt { x } else { y }` must unwrap `opt` into `x` in a
+				// statement; it has no plain C expression form.
+				new_val := t.transform_const_expr_no_pending(val_id)
+				t.a.children[cf.children_start] = new_val
 			}
 		}
 	}
 	t.in_const_init = old_in_const_init
+}
+
+// expr_has_if_guard reports whether the expression `id` contains an
+// `if x := opt { ... }` guard outside of nested function bodies.
+fn (t &Transformer) expr_has_if_guard(id flat.NodeId) bool {
+	if int(id) < 0 || int(id) >= t.a.nodes.len {
+		return false
+	}
+	node := t.a.nodes[int(id)]
+	if node.kind in [.fn_literal, .lambda_expr] {
+		return false
+	}
+	if node.kind == .if_expr && node.children_count > 0
+		&& t.a.child_node(&node, 0).kind == .decl_assign {
+		return true
+	}
+	for i in 0 .. node.children_count {
+		if t.expr_has_if_guard(t.a.child(&node, i)) {
+			return true
+		}
+	}
+	return false
 }
 
 // const_field_type_name supports const field type name handling for Transformer.
@@ -5836,6 +5879,12 @@ fn (mut t Transformer) transform_global_decl(node flat.Node) {
 			}
 			if preserved := t.transform_global_amp_initializer(val_id, val) {
 				t.a.children[gf.children_start] = preserved
+				continue
+			}
+			if t.expr_has_if_guard(val_id) {
+				// Keep the guard's unwrap statements with the value (see
+				// transform_const_decl); the runtime init renders the block.
+				t.a.children[gf.children_start] = t.transform_const_expr_no_pending(val_id)
 				continue
 			}
 			old_pending := t.pending_stmts.clone()
@@ -5961,6 +6010,10 @@ fn (mut t Transformer) transform_nested_if_string_interp_node(node flat.Node) ?f
 		|| last.kind != .string_literal {
 		return none
 	}
+	if first.has_literal_interpolation_text() || middle.has_literal_interpolation_text()
+		|| last.has_literal_interpolation_text() {
+		return none
+	}
 	cond_text := nested_if_interp_prefix_condition(first.value) or { return none }
 	if !middle.value.contains('} else {') || !last.value.trim_space().ends_with('}}') {
 		return none
@@ -6022,6 +6075,10 @@ fn (mut t Transformer) transform_nested_match_string_interp_node(node flat.Node)
 	last := t.a.nodes[int(last_id)]
 	if first.kind != .string_literal || middle.kind != .string_literal
 		|| last.kind != .string_literal {
+		return none
+	}
+	if first.has_literal_interpolation_text() || middle.has_literal_interpolation_text()
+		|| last.has_literal_interpolation_text() {
 		return none
 	}
 	subject_text, label_text := nested_match_interp_prefix(first.value) or { return none }
@@ -9632,11 +9689,16 @@ fn (mut t Transformer) transform_labeled_loop(label string, loop_id flat.NodeId,
 	mut result := []flat.NodeId{}
 	result << t.a.add_val(.label_stmt, label)
 	transformed_loop := t.transform_stmt(new_loop)
-	mut marked_loop := false
-	for item_id in transformed_loop {
-		if !marked_loop && t.a.nodes[int(item_id)].kind in [.for_stmt, .for_in_stmt] {
+	// Iterable evaluation can emit filter/map loops before the user's loop.
+	mut labelled_index := -1
+	for index, item_id in transformed_loop {
+		if t.a.nodes[int(item_id)].kind in [.for_stmt, .for_in_stmt] {
+			labelled_index = index
+		}
+	}
+	for index, item_id in transformed_loop {
+		if index == labelled_index {
 			result << t.a.add_val(.label_stmt, pending_loop_label_marker + label)
-			marked_loop = true
 		}
 		result << item_id
 	}
@@ -13089,10 +13151,19 @@ fn (t &Transformer) struct_field_path_for_field_inner(struct_type string, field 
 		if !t.is_embedded_field(f) {
 			continue
 		}
-		embedded_type := t.trim_pointer_type(f.typ)
+		owner_type := if clean.contains('.') || info.module in ['', 'main', 'builtin'] {
+			clean
+		} else {
+			'${info.module}.${clean}'
+		}
+		embedded_field_type := t.normalize_field_type(f.typ, owner_type)
+		embedded_type := t.trim_pointer_type(embedded_field_type)
 		if path := t.struct_field_path_for_field_inner(embedded_type, field, mut seen) {
 			mut result := []FieldInfo{cap: path.len + 1}
-			result << f
+			result << FieldInfo{
+				...f
+				typ: embedded_field_type
+			}
 			result << path
 			return result
 		}
@@ -13120,6 +13191,7 @@ fn (mut t Transformer) build_sum_shared_field_assign_chain(base flat.NodeId, sum
 	} else {
 		.dot
 	})
+	t.mark_generated_variant_access(variant_base, qv)
 	mut then_stmt := t.make_empty()
 	if nested_field_type := t.sum_shared_field_type_name(qv, field) {
 		nested_sum := t.resolve_sum_name(qv)
@@ -15008,7 +15080,7 @@ fn (t &Transformer) concrete_generic_type_refines(current string, refined string
 }
 
 fn (t &Transformer) decl_should_adopt_lowered_rhs_type(rhs_id flat.NodeId, inferred_typ string, rhs_typ string) bool {
-	if inferred_typ == '' || rhs_typ == '' || inferred_typ == rhs_typ {
+	if inferred_typ == '' || rhs_typ == '' {
 		return false
 	}
 	if int(rhs_id) < 0 || int(rhs_id) >= t.a.nodes.len {
@@ -15016,7 +15088,7 @@ fn (t &Transformer) decl_should_adopt_lowered_rhs_type(rhs_id flat.NodeId, infer
 	}
 	rhs := t.a.nodes[int(rhs_id)]
 	if rhs.kind == .map_init {
-		return rhs_typ.starts_with('map[')
+		return inferred_typ != rhs_typ && rhs_typ.starts_with('map[')
 	}
 	if rhs.kind == .array_literal && inferred_typ == '[]voidptr' && rhs_typ.starts_with('[]')
 		&& rhs_typ != '[]voidptr' {
@@ -15026,7 +15098,9 @@ fn (t &Transformer) decl_should_adopt_lowered_rhs_type(rhs_id flat.NodeId, infer
 		return false
 	}
 	callee := t.a.child_node(&rhs, 0)
+	// Preserve the fixed shape in checker metadata restored by cached compilation too.
 	return callee.kind == .selector && callee.value == 'map'
+		&& (inferred_typ != rhs_typ || t.is_fixed_array_type(rhs_typ))
 }
 
 fn (t &Transformer) array_map_decl_type_needs_refinement(rhs_id flat.NodeId, typ string) bool {
@@ -20376,6 +20450,7 @@ fn (mut t Transformer) build_sum_shared_field_chain(base flat.NodeId, sum_type s
 	} else {
 		.dot
 	})
+	t.mark_generated_variant_access(variant_base, qv)
 	value := if _ := t.sum_shared_field_type_name(qv, field) {
 		nested_base_type := if use_ptr { '&${qv}' } else { qv }
 		t.lower_sum_shared_field_selector(variant_base, nested_base_type, field, field_type)
@@ -21260,6 +21335,13 @@ fn (t &Transformer) raw_selector_type_without_smartcast(id flat.NodeId) string {
 			if ftyp := t.sum_shared_field_type_name(base_target, node.value) {
 				return ftyp
 			}
+			if path := t.struct_field_path_for_field(base_target, node.value) {
+				if path.len > 0 {
+					if ftyp := t.lookup_struct_field_type(path.last().typ, node.value) {
+						return ftyp
+					}
+				}
+			}
 		}
 	}
 	mut base_type := t.raw_expr_type_without_smartcast(base_id)
@@ -21279,9 +21361,9 @@ fn (t &Transformer) raw_selector_type_without_smartcast(id flat.NodeId) string {
 	if ftyp := t.sum_shared_field_type_name(clean_base_type, node.value) {
 		return ftyp
 	}
-	if info := t.lookup_struct_info(clean_base_type) {
-		if embedded := t.embedded_field_for_promoted_field(info, node.value) {
-			if ftyp := t.lookup_struct_field_type(embedded.typ, node.value) {
+	if path := t.struct_field_path_for_field(clean_base_type, node.value) {
+		if path.len > 0 {
+			if ftyp := t.lookup_struct_field_type(path.last().typ, node.value) {
 				return ftyp
 			}
 		}
@@ -22071,6 +22153,13 @@ fn (mut t Transformer) transform_typeof_expr_mode(id flat.NodeId, node flat.Node
 	if expr.kind == .call {
 		if concrete := t.explicit_generic_call_return_type_for_typeof(expr_id, expr) {
 			typ = concrete
+		} else if !isnil(t.tc) {
+			// Preserve the checked alias spelling for `typeof`, while replacing an open
+			// generic declaration return type with the inferred call result.
+			checked := t.tc.type_name(t.tc.expr_type(expr_id) or { t.tc.resolve_type(expr_id) })
+			if decl_type_is_usable(checked) && !t.generic_arg_is_unresolved(checked) {
+				typ = checked
+			}
 		}
 	}
 	if typ.len == 0 {
