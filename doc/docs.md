@@ -4894,6 +4894,9 @@ fn main() {
 
 ### Generics
 
+Generic types brought into scope by a selective import retain their declaring module when
+passed to generic functions and methods in other modules.
+
 ```v wip
 
 struct Repo[T] {

@@ -4869,6 +4869,11 @@ fn (t &Transformer) qualify_specialized_signature_type_text(typ string, decl Gen
 	if clean.starts_with('shared ') {
 		return 'shared ' + t.qualify_specialized_signature_type_text(clean[7..], decl)
 	}
+	for prefix in ['atomic ', 'chan ', 'thread '] {
+		if clean.starts_with(prefix) {
+			return prefix + t.qualify_specialized_signature_type_text(clean[prefix.len..], decl)
+		}
+	}
 	if clean.starts_with('[]') {
 		return '[]' + t.qualify_specialized_signature_type_text(clean[2..], decl)
 	}
@@ -5559,7 +5564,10 @@ fn (mut t Transformer) infer_generic_call_args_from_params(decl GenericFnDecl, c
 	mut args := []string{cap: param_names.len}
 	for name in param_names {
 		arg := inferred[name] or { return none }
-		args << t.generic_arg_for_call_and_decl_module(arg, call_module, decl.module)
+		qualified_arg := t.qualify_specialized_signature_type_text(arg, GenericFnDecl{
+			file: t.node_file_or(int(call_id), t.cur_file)
+		})
+		args << t.generic_arg_for_call_and_decl_module(qualified_arg, call_module, decl.module)
 	}
 	return args
 }
@@ -8069,7 +8077,11 @@ fn (mut t Transformer) infer_generic_call_args_seeded(decl GenericFnDecl, _id fl
 	mut args := []string{cap: param_names.len}
 	for name in param_names {
 		arg := inferred[name] or { return none }
-		args << t.generic_arg_for_call_and_decl_module(arg, call_module, decl.module)
+		// Preserve selective imports while the original call file is still known.
+		qualified_arg := t.qualify_specialized_signature_type_text(arg, GenericFnDecl{
+			file: t.node_file_or(int(_id), t.cur_file)
+		})
+		args << t.generic_arg_for_call_and_decl_module(qualified_arg, call_module, decl.module)
 	}
 	return args
 }
