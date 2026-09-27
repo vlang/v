@@ -3308,14 +3308,14 @@ fn (g &FlatGen) cleanup_scoped_output_files(stream_path string, fn_stream_path s
 
 // gen_with_used_options emits with used options output for c.
 pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[string]bool, tc &types.TypeChecker, no_parallel bool) string {
-	effective_no_parallel := no_parallel || g.profile_file.len > 0
+	effective_no_parallel := no_parallel || g.profile_file.len > 0 || g.coverage_dir.len > 0
 	// The preparation choices below must agree with the dispatch mode the stages
 	// actually run in: a parallel dispatch expects prepare_pre_dispatch_master,
 	// a serial one expects prepare_serial_fn_tables. Keying both off the same
 	// flag keeps function selection on the master instead of inside one of the
 	// forked scoped preseed helpers.
 	mut parallel_cgen := !effective_no_parallel
-	if g.profile_file.len > 0 {
+	if g.profile_file.len > 0 || g.coverage_dir.len > 0 {
 		// Counter metadata and numbering are accumulated by one serial generator.
 		g.scope_parallel_workers = false
 	}

@@ -79,6 +79,12 @@ The C backend has focused unit and integration tests beside its implementation.
 Many tests compile a small V source to C and assert on the generated declarations,
 expressions, ABI, linker inputs, or runtime behavior.
 
+## Line coverage
+
+Collect coverage with `v -coverage coverage_dir path/to/file_test.v`, then inspect it with
+`v cover coverage_dir`. Add `-no-skip-unused` when compiling to include uncalled functions
+in the report as well as executed code.
+
 ## REPL tests
 
 The test runner for these is `vlib/v/slow_tests/repl/repl_test.v`.
