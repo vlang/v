@@ -12008,6 +12008,11 @@ fn (mut tc TypeChecker) check_export_attrs() {
 	if tc.valid_diagnostic_fast {
 		return
 	}
+	// Every error below needs an exported function or an `export` attribute:
+	// without one, the walks over every declaration find nothing.
+	if tc.a.export_fn_names.len == 0 && !tc.has_export_attribute() {
+		return
+	}
 	mut natural_symbols := map[string]string{}
 	mut natural_symbol_modules := map[string]string{}
 	synthetic_main_reserved := tc.has_synthetic_c_entry_main()
@@ -12197,6 +12202,20 @@ fn (tc &TypeChecker) declaration_attribute_without_value_pos(node_id flat.NodeId
 		return token.new_span(node.pos.id, relative, relative + needle.len)
 	}
 	return none
+}
+
+// has_export_attribute reports whether a declaration has an `export`
+// attribute, with a value or without one.
+fn (tc &TypeChecker) has_export_attribute() bool {
+	for _, attrs in tc.declaration_attributes {
+		for raw in attrs {
+			if raw.trim_left(' \t').starts_with('export')
+				&& raw.all_before(':').trim_space() == 'export' {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 fn (tc &TypeChecker) declaration_attribute_value(node_id flat.NodeId, name string) ?string {
