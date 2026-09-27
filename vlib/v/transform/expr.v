@@ -410,9 +410,19 @@ fn (mut t Transformer) transform_translated_array_pointer_comparison(node flat.N
 		return none
 	}
 	// C array decay compares addresses, including pointers to nested fixed arrays.
-	lhs := t.make_cast('voidptr', t.transform_expr_preserving_pointer_value(lhs_id), 'voidptr')
-	rhs := t.make_cast('voidptr', t.transform_expr_preserving_pointer_value(rhs_id), 'voidptr')
+	lhs := t.translated_array_pointer_comparison_operand(lhs_id, lhs_type)
+	rhs := t.translated_array_pointer_comparison_operand(rhs_id, rhs_type)
 	return t.make_infix(node.op, lhs, rhs)
+}
+
+fn (mut t Transformer) translated_array_pointer_comparison_operand(id flat.NodeId, typ types.Type) flat.NodeId {
+	mut value := t.transform_expr_preserving_pointer_value(id)
+	if typ is types.ArrayFixed && t.expr_can_be_fixed_array_literal(id) {
+		// Keep the literal's element type while C lowers it to a compound literal.
+		elem_ptr_type := '&${typ.elem_type.name()}'
+		value = t.make_cast(elem_ptr_type, value, elem_ptr_type)
+	}
+	return t.make_cast('voidptr', value, 'voidptr')
 }
 
 fn (t &Transformer) array_comparison_literal_elem_type(id flat.NodeId) ?string {

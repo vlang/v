@@ -26,6 +26,8 @@ fn test_translated_fixed_array_comparisons() {
 	assert values == pointer
 	assert end != values
 	assert values != end
+	assert pointer != [char(3), char(5)]!
+	assert [char(3), char(5)]! != pointer
 }
 
 type DecayedCell = int
@@ -50,6 +52,7 @@ fn test_translated_array_decay_resolves_nested_aliases() {
 	assert sum_row(pointer) == 42
 	assert pointer == rows
 	assert rows == pointer
+	assert pointer != [[20, 22]!, [3, 5]!]!
 	copy := rows
 	assert pointer != copy
 	assert copy != pointer
