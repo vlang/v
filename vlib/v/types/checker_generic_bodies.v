@@ -240,7 +240,7 @@ fn comptime_in_term(cond string) ?ComptimeInTerm {
 	return ComptimeInTerm{
 		left:    cond[..end]
 		negated: negated
-		items:   split_params(rest[1..rest.len - 1])
+		items:   split_params(rest[1..rest.len - 1]).map(it.trim_space())
 	}
 }
 

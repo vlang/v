@@ -1759,7 +1759,9 @@ fn (tc &TypeChecker) constraint_condition_term_types(term_text string, name stri
 		if !rest.starts_with('[') || !rest.ends_with(']') {
 			return none
 		}
-		for part in split_params(rest[1..rest.len - 1]) {
+		for item in split_params(rest[1..rest.len - 1]) {
+			// `[f32, f64]`: each type but the first comes after a blank.
+			part := item.trim_space()
 			if part.starts_with('$') {
 				groups << part
 			} else {

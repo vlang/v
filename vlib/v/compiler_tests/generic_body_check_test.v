@@ -407,6 +407,46 @@ fn main() {}
 	assert errors[3] == 'main.v:42:10: error: cannot use `f64` as type `int` in return argument: when `A` is `f64`, in its constraint `Number`, and when `B` is `f64`, in its constraint `Number`, and when `C` is `f64`, in its constraint `Number`', errors[3]
 }
 
+fn test_each_type_of_a_compile_time_in_list_checks_its_branch() {
+	// `$if x in [User, Admin] {` with an interface: the body is checked with
+	// each type of the list, the second one too.
+	errors := check('in_list', 'module main
+
+interface Named {
+	name string
+}
+
+struct User {
+	name string
+}
+
+struct Admin {
+	name string
+}
+
+fn (u User) label() string {
+	return u.name
+}
+
+fn (a Admin) label() int {
+	return a.name.len
+}
+
+fn tag[T Named](x T) string {
+	\$if x in [User, Admin] {
+		return x.label()
+	}
+	return x.name
+}
+
+fn main() {
+	println(tag(User{"ana"}))
+}
+')
+	assert errors.len == 1, errors.str()
+	assert errors[0].starts_with('main.v:25:10: error: cannot use `int` as type `string` in return argument: when `T` is `Admin`, which implements `Named`'), errors[0]
+}
+
 fn test_a_generic_body_with_a_type_parameter_without_a_constraint_is_not_checked() {
 	// As before: V checks such a body in each of its instances.
 	errors := check('unconstrained', "module main

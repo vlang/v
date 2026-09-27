@@ -1968,6 +1968,13 @@ fn half[T Number3](x T, y T, xs []T) f64 {
 	}
 }
 
+fn listed[T Number3](x T) f64 {
+	\$if T in [i64, f64] {
+		return f64(x) * 2.0
+	}
+	return 0.0
+}
+
 fn tested[T Number3](x T) f64 {
 	\$if x is f64 {
 		return x
@@ -2017,6 +2024,7 @@ fn age_of(n Named) int {
 fn main() {
 	println(half(1.0, 2.0, [3.0]))
 	println(tested(1))
+	println(listed(2))
 	println(named(User{'ana', 3}))
 	println(family(User{'bo', 1}))
 	println(locals(User{'cy', 2}))
@@ -2051,8 +2059,10 @@ fn test_a_value_of_a_type_parameter_shows_what_the_type_parameter_is_there() {
 	}
 	// Its `$else` leaves the rest of the set.
 	assert narrowed('hv^', '\t\treturn f64(x)', 'x', 0) == hover_of('x T\\nT: int | i64')
-	// `$if x is f64 {` asks the same of a value.
+	// `$if x is f64 {` asks the same of a value; `$if T in [i64, f64] {` leaves
+	// each type of its list.
 	assert narrowed('hv^', '\t\treturn x', 'x', 0) == hover_of('x f64')
+	assert narrowed('hv^', '\t\treturn f64(x) * 2.0', 'x', 0) == hover_of('x T\\nT: i64 | f64')
 	// An interface: what implements it; in the branch of `$if a is User {`, `User`.
 	assert narrowed('hv^', '\t\treturn a.age', 'a', 0) == hover_of('a main.User')
 	assert narrowed('hv^', '\treturn a.name.len', 'a', 0) == hover_of('a T\\nT: implements main.Named')
