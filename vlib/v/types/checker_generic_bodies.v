@@ -417,18 +417,17 @@ fn comptime_condition_terms(cond string, name string) []string {
 	return terms
 }
 
-// type_param_branch_texts gives each type parameter of `texts` a type of its
-// list for each way that the `$if`s of the body of `node` can go with it: the
-// terms of their conditions on it, `T is f64`, `x in [f32, f64]` or
-// `T !is $float`, split its types into groups that no term tells apart, and the
-// first type of each group stands for the group. A combination of these types
-// takes each combination of the branches of the `$if`s, their `$else`s too.
-fn (tc &TypeChecker) type_param_branch_texts(node flat.Node, texts map[string][]string, constraints map[string]GenericConstraint) map[string][]string {
+// type_param_branch_classes gives each type parameter of `texts` its types in
+// groups, one for each way that the `$if`s of the body of `node` can go with
+// it: the terms of their conditions on it, `T is f64`, `x in [f32, f64]` or
+// `T !is $float`, split its types into groups that no term tells apart. A group
+// for each type parameter takes a way through every `$if`, its `$else` too.
+fn (tc &TypeChecker) type_param_branch_classes(node flat.Node, texts map[string][]string, constraints map[string]GenericConstraint) map[string][][]string {
 	names := texts.keys()
-	mut branches := map[string][]string{}
+	mut classes := map[string][][]string{}
 	for name, options in texts {
 		constraint := constraints[name] or {
-			branches[name] = [options[0]]
+			classes[name] = [options.clone()]
 			continue
 		}
 		mut option_names := []string{cap: options.len}
@@ -445,17 +444,19 @@ fn (tc &TypeChecker) type_param_branch_texts(node flat.Node, texts map[string][]
 				}
 			}
 		}
-		mut groups := map[string]bool{}
-		mut picked := []string{}
+		mut group_of := map[string]int{}
+		mut groups := [][]string{}
 		for i, option in options {
-			if marks[i] !in groups {
-				groups[marks[i]] = true
-				picked << option
+			if at := group_of[marks[i]] {
+				groups[at] << option
+			} else {
+				group_of[marks[i]] = groups.len
+				groups << [option]
 			}
 		}
-		branches[name] = picked
+		classes[name] = groups
 	}
-	return branches
+	return classes
 }
 
 // generic_body_instance_budget is how many checks of a generic body with types
@@ -464,12 +465,18 @@ fn (tc &TypeChecker) type_param_branch_texts(node flat.Node, texts map[string][]
 // costs what a check of a function with that body does.
 const generic_body_instance_budget = 256
 
+// generic_body_branch_budget is how many more checks the ways that the `$if`s of
+// a generic body can go take, together, when not every combination is checked
+// (see type_param_way_combinations).
+const generic_body_branch_budget = 4 * generic_body_instance_budget
+
 // generic_body_combinations gives the combinations of the types of `texts` to
 // check the body of `node` with: those of type_param_combinations and, when
-// they are not all of them, one for each way that the `$if`s of the body can go
-// (see type_param_branch_texts). A branch that `$if`s on three type parameters
-// lead to needs three types at once, which the combinations of every two of
-// them may not give.
+// they are not all of them, those of each way that the `$if`s of the body can
+// go (see type_param_way_combinations). A branch that `$if`s on three type
+// parameters lead to needs three types at once, which the combinations of every
+// two of them may not give; and in it, the other type parameters need their
+// types as well.
 fn (tc &TypeChecker) generic_body_combinations(node flat.Node, texts map[string][]string, constraints map[string]GenericConstraint) []map[string]string {
 	mut combinations := type_param_combinations(texts, generic_body_instance_budget)
 	mut count := 1
@@ -487,8 +494,9 @@ fn (tc &TypeChecker) generic_body_combinations(node flat.Node, texts map[string]
 	for combination in combinations {
 		seen[type_param_combination_key(names, combination)] = true
 	}
-	branches := tc.type_param_branch_texts(node, texts, constraints)
-	for combination in type_param_combinations(branches, generic_body_instance_budget) {
+	classes := tc.type_param_branch_classes(node, texts, constraints)
+	for combination in type_param_way_combinations(names, classes, generic_body_instance_budget,
+		generic_body_branch_budget) {
 		key := type_param_combination_key(names, combination)
 		if key !in seen {
 			seen[key] = true
@@ -506,6 +514,61 @@ fn type_param_combination_key(names []string, combination map[string]string) str
 		key << combination[name]
 	}
 	return key.join('\n')
+}
+
+// type_param_way_combinations gives the combinations of the types of each way
+// that the `$if`s can go, a group of `classes` for each type parameter of
+// `names`: those of type_param_combinations over the groups of each way, while
+// they come to at most `branch_budget` all together; else each type of each
+// group one at a time, in each way. Past `budget` ways, the first type of each
+// group stands for it, which takes every way but checks no other type.
+fn type_param_way_combinations(names []string, classes map[string][][]string, budget int, branch_budget int) []map[string]string {
+	mut sizes := []int{cap: names.len}
+	mut ways := 1
+	for name in names {
+		sizes << classes[name].len
+		if ways <= budget {
+			ways *= classes[name].len
+		}
+	}
+	if ways > budget {
+		mut firsts := map[string][]string{}
+		for name in names {
+			mut first := []string{cap: classes[name].len}
+			for group in classes[name] {
+				first << group[0]
+			}
+			firsts[name] = first
+		}
+		return type_param_combinations(firsts, budget)
+	}
+	mut way_texts := []map[string][]string{}
+	for way in all_index_rows(sizes) {
+		mut texts := map[string][]string{}
+		for i, name in names {
+			texts[name] = classes[name][way[i]]
+		}
+		way_texts << texts
+	}
+	mut combinations := []map[string]string{}
+	for texts in way_texts {
+		combinations << type_param_combinations(texts, budget)
+		if combinations.len > branch_budget {
+			break
+		}
+	}
+	if combinations.len <= branch_budget {
+		return combinations
+	}
+	combinations = []map[string]string{}
+	for texts in way_texts {
+		mut way_sizes := []int{cap: names.len}
+		for name in names {
+			way_sizes << texts[name].len
+		}
+		combinations << index_rows_combinations(names, texts, one_at_a_time_index_rows(way_sizes))
+	}
+	return combinations
 }
 
 // type_param_combinations gives each type parameter of `texts` one of its
@@ -534,6 +597,12 @@ fn type_param_combinations(texts map[string][]string, budget int) []map[string]s
 			rows = one_at_a_time_index_rows(sizes)
 		}
 	}
+	return index_rows_combinations(names, texts, rows)
+}
+
+// index_rows_combinations turns each row of `rows`, an index into the types of
+// each type parameter of `names` in `texts`, into a combination.
+fn index_rows_combinations(names []string, texts map[string][]string, rows [][]int) []map[string]string {
 	mut combinations := []map[string]string{cap: rows.len}
 	for row in rows {
 		mut combination := map[string]string{}

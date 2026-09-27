@@ -447,6 +447,33 @@ fn main() {
 	assert errors[0].starts_with('main.v:25:10: error: cannot use `int` as type `string` in return argument: when `T` is `Admin`, which implements `Named`'), errors[0]
 }
 
+fn test_in_each_way_the_compile_time_ifs_go_every_type_is_checked() {
+	// Past the budget, a branch that `$if`s on `A` and `B` lead to is checked with
+	// each type of `C` too, which no `$if` tests: `takes_i64(c)` fails only when
+	// `C` is `f32` or `f64`, neither the first type of `Number`.
+	errors := check('untested', 'module main
+
+type Number = i8 | i16 | i32 | int | i64 | u8 | u16 | u32 | f32 | f64
+
+fn takes_i64(n i64) i64 {
+	return n
+}
+
+fn wide[A Number, B Number, C Number](a A, b B, c C) i64 {
+	\$if A is f64 {
+		\$if B is f64 {
+			return takes_i64(c)
+		}
+	}
+	return 0
+}
+
+fn main() {}
+')
+	assert errors.len == 1, errors.str()
+	assert errors[0].starts_with('main.v:12:21: error: cannot use `f32` as `i64` in argument 1 to `takes_i64`: '), errors[0]
+}
+
 fn test_a_generic_body_with_a_type_parameter_without_a_constraint_is_not_checked() {
 	// As before: V checks such a body in each of its instances.
 	errors := check('unconstrained', "module main
