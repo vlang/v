@@ -6931,6 +6931,11 @@ fn (tc &TypeChecker) comptime_type_condition_value(cond string) ?bool {
 		}
 		return tc.comptime_type_condition_value(clean[and_idx + 2..])
 	}
+	if tc.type_param_texts.len > 0 {
+		if term := comptime_in_term(clean) {
+			return tc.instance_comptime_in_value(term)
+		}
+	}
 	for op in [' !is ', ' is '] {
 		op_idx := comptime_condition_top_level_index(clean, op)
 		if op_idx >= 0 {

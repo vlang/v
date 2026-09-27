@@ -185,6 +185,61 @@ fn (tc &TypeChecker) instance_type_text(text string) string {
 	return text
 }
 
+// ComptimeInTerm is a term `x in [int, $float]` or `T !in [f64]` of a `$if`.
+struct ComptimeInTerm {
+	left    string
+	negated bool
+	items   []string
+}
+
+// comptime_in_term reads the term `cond` of a `$if` as an `in` or a `!in` of a
+// name, or none: the parser writes the list right after `in`, `T in[int]`.
+fn comptime_in_term(cond string) ?ComptimeInTerm {
+	if cond.len == 0 {
+		return none
+	}
+	end := comptime_condition_name_end(cond, 0)
+	if end == 0 {
+		return none
+	}
+	mut rest := cond[end..].trim_space()
+	negated := rest.starts_with('!in')
+	if negated {
+		rest = rest[3..]
+	} else if rest.starts_with('in') {
+		rest = rest[2..]
+	} else {
+		return none
+	}
+	if rest.len == 0 || rest[0] !in [` `, `\t`, `[`] {
+		return none
+	}
+	rest = rest.trim_space()
+	if !rest.starts_with('[') || !rest.ends_with(']') {
+		return none
+	}
+	return ComptimeInTerm{
+		left:    cond[..end]
+		negated: negated
+		items:   split_params(rest[1..rest.len - 1])
+	}
+}
+
+// instance_comptime_in_value decides the term `term` of a `$if` in a generic
+// body checked with types for its type parameters (see check_generic_fn_body_as)
+// as `is` decides one: whether the type of its name is one of its list. None
+// when a type of the list cannot be told apart.
+fn (tc &TypeChecker) instance_comptime_in_value(term ComptimeInTerm) ?bool {
+	mut matched := false
+	for item in term.items {
+		if tc.comptime_type_matches(term.left, item)? {
+			matched = true
+			break
+		}
+	}
+	return if term.negated { !matched } else { matched }
+}
+
 // type_param_instance_texts gives each type parameter of `params` the texts of
 // the types its constraint admits for a check of the body: the interface, or
 // the types of the set. None when a type there names a type parameter.

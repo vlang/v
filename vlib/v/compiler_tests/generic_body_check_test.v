@@ -119,6 +119,49 @@ fn main() {
 	assert errors[2].starts_with('main.v:30:9: error: cannot use `int literal` as type `string` in return argument'), errors[2]
 }
 
+fn test_a_compile_time_in_decides_the_branch_that_a_type_checks() {
+	// `$if x in [int]` and `$if T !in [f64]` choose code by the type, as `is`
+	// does: each check of the body takes the branch that its type takes.
+	errors := check('comptime_in', 'module main
+
+type Number = int | f64
+
+fn takes_string(s string) int {
+	return s.len
+}
+
+fn with_in[T Number](x T) int {
+	\$if x in [int] {
+		return takes_string(x)
+	}
+	return 0
+}
+
+fn with_type_not_in[T Number](x T) int {
+	\$if T !in [f64] {
+		return takes_string(x)
+	}
+	return 0
+}
+
+fn describe[T Number](x T) string {
+	\$if T in [int] {
+		return x.hex()
+	}
+	return x.str()
+}
+
+fn main() {
+	println(with_in(1))
+	println(with_type_not_in(2))
+	println(describe(3))
+}
+')
+	assert errors.len == 2, errors.str()
+	assert errors[0].starts_with('main.v:11:23: error: cannot use `int` as `string` in argument 1 to `takes_string`: when `T` is `int`, in its constraint `Number`'), errors[0]
+	assert errors[1].starts_with('main.v:18:23: error: cannot use `int` as `string` in argument 1 to `takes_string`: when `T` is `int`, in its constraint `Number`'), errors[1]
+}
+
 fn test_a_generic_body_with_a_type_parameter_without_a_constraint_is_not_checked() {
 	// As before: V checks such a body in each of its instances.
 	errors := check('unconstrained', "module main
