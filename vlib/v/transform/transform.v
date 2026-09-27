@@ -14011,6 +14011,24 @@ fn (mut t Transformer) coerce_transformed_expr_to_type(expr flat.NodeId, source_
 		if expr_type in ['voidptr', '&void', 'byteptr', 'charptr'] {
 			return t.make_cast(target, expr, target)
 		}
+		if int(source_id) >= 0 && t.a.nodes[int(source_id)].kind == .assoc {
+			actual_depth, actual_base := pointer_type_depth_and_base(expr_type)
+			target_depth, target_base := pointer_type_depth_and_base(target)
+			if target_depth > actual_depth
+				&& t.normalize_type_alias(actual_base) == t.normalize_type_alias(target_base) {
+				mut current := expr
+				mut current_type := expr_type
+				for _ in actual_depth .. target_depth {
+					tmp_name := t.new_temp('assoc_ref')
+					t.pending_stmts << t.make_decl_assign_typed(tmp_name, current, current_type)
+					addr := t.make_prefix(.amp, t.make_ident(tmp_name))
+					current_type = '&${current_type}'
+					dup := t.make_memdup_call_for_type(addr, current_type[1..])
+					current = t.make_cast(current_type, dup, current_type)
+				}
+				return current
+			}
+		}
 		target_value_type := t.normalize_type_alias(target[1..])
 		expr_value_type := if expr_type.starts_with('&') {
 			t.normalize_type_alias(expr_type[1..])
@@ -14052,13 +14070,6 @@ fn (mut t Transformer) coerce_transformed_expr_to_type(expr flat.NodeId, source_
 			|| t.type_alias_targets_type(target[1..], expr_value_type) {
 			if expr_type.starts_with('&') {
 				return expr
-			}
-			if int(source_id) >= 0 && t.a.nodes[int(source_id)].kind == .assoc {
-				// A contextual reference to a struct update can escape in a container.
-				// Preserve its storage just like an explicit `&Type{...base}` update.
-				addr := t.make_prefix(.amp, expr)
-				dup := t.make_memdup_call_for_type(addr, expr_value_type)
-				return t.make_cast(target, dup, target)
 			}
 			if t.expr_can_take_address(expr) {
 				addr := t.make_prefix(.amp, expr)
