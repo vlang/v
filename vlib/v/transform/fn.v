@@ -14276,6 +14276,11 @@ fn callback_param_shared_atomic_mode(param string) string {
 fn (t &Transformer) callback_nested_fn_type(param string) ?string {
 	mut payload := generic_fn_type_param_payload(param)
 	for {
+		normalized := t.normalize_type_alias(payload).trim_space()
+		if normalized != payload {
+			payload = normalized
+			continue
+		}
 		if payload.starts_with('?') || payload.starts_with('!') || payload.starts_with('&') {
 			payload = payload[1..].trim_space()
 		} else if payload.starts_with('shared ') {
@@ -14284,6 +14289,8 @@ fn (t &Transformer) callback_nested_fn_type(param string) ?string {
 			payload = payload[7..].trim_space()
 		} else if payload.starts_with('[]') {
 			payload = payload[2..].trim_space()
+		} else if payload.starts_with('chan ') {
+			payload = payload[5..].trim_space()
 		} else if payload.starts_with('map[') || payload.starts_with('[') {
 			open := if payload.starts_with('map[') { 3 } else { 0 }
 			mut depth := 0
@@ -14307,7 +14314,6 @@ fn (t &Transformer) callback_nested_fn_type(param string) ?string {
 			break
 		}
 	}
-	payload = t.normalize_type_alias(payload)
 	if payload.starts_with('fn(') || payload.starts_with('fn (') {
 		return payload
 	}
