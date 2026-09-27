@@ -3273,6 +3273,7 @@ into an array named `a`.
 
 Methods on generic structs can also accept these arguments. The receiver type determines
 the specialization, and the arguments are collected into the parameter array.
+The element type keeps its declaring module when the method is called from another module.
 
 ```v
 fn sum(a ...int) int {
