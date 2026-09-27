@@ -6,3 +6,7 @@ structs. Those fields are initialized to null, matching C aggregate initializati
 Explicit `@[required]` fields and incompatible field values are still checked.
 Ordinary V files retain their reference initialization checks, even when they use types
 from a translated file.
+
+An empty enum initializer, such as `Mode{}`, is also accepted in translated files
+and initializes the enum storage to zero. Enum initializers with explicit fields
+or values remain invalid.

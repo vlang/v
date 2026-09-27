@@ -23,3 +23,20 @@ fn test_translated_reference_defaults() {
 		assert false
 	}
 }
+
+enum TranslatedMode {
+	first
+	second
+}
+
+enum NonzeroTranslatedMode {
+	first = 7
+	second
+}
+
+fn test_translated_empty_enum_initializers() {
+	mode := TranslatedMode{}
+	assert mode == .first
+	nonzero := NonzeroTranslatedMode{}
+	assert int(nonzero) == 0
+}
