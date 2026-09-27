@@ -143,3 +143,20 @@ fn test_vlib_is_the_module_search_root_for_identity() {
 	checked.check_import_diagnostics()
 	assert checked.errors.any(it.msg.contains('cannot import `v.gen.v` into a module with the same name')), checked.errors.str()
 }
+
+fn test_explicit_module_search_root_defines_self_import_identity() {
+	root := os.join_path(os.vtmp_dir(), 'v3_path_module_identity_${os.getpid()}')
+	module_file := os.join_path(root, 'nn', 'layers', 'layer.v')
+	os.mkdir_all(os.dir(module_file))!
+	os.mkdir_all(os.join_path(root, 'layers'))!
+	defer { os.rmdir_all(root) or {} }
+	os.write_file(module_file, 'module layers\nimport nn.layers as self\n')!
+	mut p := parser.Parser.new(pref.new_preferences())
+	a := p.parse_file(module_file)
+	mut tc := TypeChecker.new(a)
+	tc.module_search_paths = [root]
+	tc.collect(a)
+	assert tc.current_file_module_path_identity() or { '' } == 'nn.layers'
+	tc.check_import_diagnostics()
+	assert tc.errors.any(it.msg.contains('cannot import `nn.layers` into a module with the same name')), tc.errors.str()
+}

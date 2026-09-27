@@ -11529,6 +11529,7 @@ pub fn run(args []string) {
 	mut checker_warning_count := 0
 	mut cached_checker_diagnostics := []V3CachedTypeDiagnostic{}
 	pre_tc.compiler_vroot = prefs.vroot
+	pre_tc.module_search_paths = prefs.module_search_paths.clone()
 	// Which files the shadowing check may blame. Use the same nearest-v.mod root
 	// as import resolution, so a nested entry directory still owns sibling modules.
 	pre_tc.shadow_diagnostic_root = os.real_path(project_root_for_files(user_files))

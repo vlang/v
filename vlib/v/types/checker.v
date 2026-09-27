@@ -725,6 +725,7 @@ pub struct TypeChecker {
 pub mut:
 	a                                &flat.FlatAst = unsafe { nil }
 	compiler_vroot                   string
+	module_search_paths              []string
 	verbose                          bool
 	raw_type_equality                bool
 	fast_parse_recent                bool
@@ -1233,6 +1234,7 @@ fn (tc &TypeChecker) fork_program_view(ast &flat.FlatAst, direct_dependencies_by
 	return &TypeChecker{
 		a:                                     ast
 		compiler_vroot:                        tc.compiler_vroot
+		module_search_paths:                   tc.module_search_paths
 		raw_type_equality:                     tc.raw_type_equality
 		fast_parse_recent:                     tc.fast_parse_recent
 		fast_type_text_refs:                   tc.fast_type_text_refs

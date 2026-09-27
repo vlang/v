@@ -429,6 +429,12 @@ fn (tc &TypeChecker) current_file_module_path_identity() ?string {
 
 fn (tc &TypeChecker) current_file_module_source_root() ?string {
 	directory := os.real_path(os.dir(tc.cur_file)).replace('\\', '/').trim_right('/')
+	for root in tc.module_search_paths {
+		search_root := os.real_path(root).replace('\\', '/').trim_right('/')
+		if search_root.len > 0 && directory.starts_with(search_root + '/') {
+			return search_root
+		}
+	}
 	if tc.compiler_vroot.len > 0 {
 		vlib_root := os.real_path(os.join_path(tc.compiler_vroot, 'vlib')).replace('\\', '/').trim_right('/')
 		if directory.starts_with(vlib_root + '/') {
