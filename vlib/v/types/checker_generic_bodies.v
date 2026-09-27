@@ -41,7 +41,7 @@ fn (mut tc TypeChecker) check_generic_fn_body(node flat.Node, fn_idx int, params
 			tc.notices << notice
 		}
 	}
-	texts := tc.type_param_instance_texts(params, constraints) or {
+	texts := tc.type_param_instance_texts(node, params, constraints) or {
 		// A constraint that names a type parameter, `[T Comparable[T]]`, gives
 		// no type to check the body with: its statements that do not depend on
 		// the type parameters are what can be told.
@@ -259,17 +259,29 @@ fn (tc &TypeChecker) instance_comptime_in_value(term ComptimeInTerm) ?bool {
 }
 
 // type_param_instance_texts gives each type parameter of `params` the texts of
-// the types its constraint admits for a check of the body: the interface, or
-// the types of the set. An interface may name its own type parameter,
-// `[T Comparable[T]]` (see parse_type_as_instance). None when a type names
-// another type parameter.
-fn (tc &TypeChecker) type_param_instance_texts(params map[string]bool, constraints map[string]GenericConstraint) ?map[string][]string {
+// the types its constraint admits for a check of the body of `node`: the types
+// of the set; or the interface, which stands for any type that implements it,
+// and each type that implements it that a `$if` of the body tests the type
+// parameter against, `$if x is User`, whose branch the interface does not take.
+// An interface may name its own type parameter, `[T Comparable[T]]` (see
+// parse_type_as_instance). None when a type names another type parameter.
+fn (tc &TypeChecker) type_param_instance_texts(node flat.Node, params map[string]bool, constraints map[string]GenericConstraint) ?map[string][]string {
+	mut names := []string{}
+	for name, _ in params {
+		names << name
+	}
 	mut texts := map[string][]string{}
 	for name, _ in params {
 		constraint := constraints[name] or { return none }
 		mut options := []string{}
 		if constraint.is_interface {
 			options << constraint.iface.name
+			for tested in tc.comptime_tested_types(node, name, names) {
+				if tested !in options
+					&& tc.generic_constraint_accepts(constraint, tc.parse_type(tested)) {
+					options << tested
+				}
+			}
 		} else {
 			for typ in constraint.types {
 				options << typ.name()
@@ -290,6 +302,62 @@ fn (tc &TypeChecker) type_param_instance_texts(params map[string]bool, constrain
 		texts[name] = options
 	}
 	return texts
+}
+
+// comptime_tested_types returns the types that a `$if` of the body of the
+// generic function `node` tests its type parameter `param` against: itself,
+// `$if T is User`, or through a parameter declared with it, `$if x is User`,
+// `$if x in [User, Admin]`; `!is` and `!in` too, whose `$else` is those types.
+// `names` are the type parameters of `node`.
+fn (tc &TypeChecker) comptime_tested_types(node flat.Node, param string, names []string) []string {
+	mut found := []string{}
+	mut stack := []flat.NodeId{}
+	for i in 0 .. node.children_count {
+		stack << tc.a.child(&node, i)
+	}
+	for stack.len > 0 {
+		id := stack.pop()
+		if !tc.valid_node_id(id) {
+			continue
+		}
+		current := tc.a.node(id)
+		if current.kind == .comptime_if {
+			cond := comptime_condition_on_type_params(current.value, tc.comptime_tested_params(current.value,
+				node, names, false))
+			for alternative in cond.split('||') {
+				for part in alternative.split('&&') {
+					mut term := part.trim_space()
+					for term.starts_with('(') && term.ends_with(')') {
+						term = term[1..term.len - 1].trim_space()
+					}
+					if in_term := comptime_in_term(term) {
+						if in_term.left == param {
+							for item in in_term.items {
+								if !item.starts_with('$') && item !in found {
+									found << item
+								}
+							}
+						}
+						continue
+					}
+					for op in [' !is ', ' is '] {
+						idx := term.index(op) or { continue }
+						left := term[..idx].trim_space()
+						right := term[idx + op.len..].trim_space()
+						if left == param && right.len > 0 && !right.starts_with('$')
+							&& right !in found {
+							found << right
+						}
+						break
+					}
+				}
+			}
+		}
+		for i in 0 .. current.children_count {
+			stack << tc.a.child(current, i)
+		}
+	}
+	return found
 }
 
 // type_param_combinations gives each type parameter of `texts` one of its
@@ -337,8 +405,10 @@ fn type_param_instance_reason(combination map[string]string, constraints map[str
 	mut parts := []string{}
 	for name, text in combination {
 		constraint := constraints[name] or { continue }
-		if constraint.is_interface {
+		if constraint.is_interface && text == constraint.iface.name {
 			parts << '`${name}` is any type that implements `${constraint.name}`'
+		} else if constraint.is_interface {
+			parts << 'when `${name}` is `${text.all_after_last('.')}`, which implements `${constraint.name}`'
 		} else {
 			parts << 'when `${name}` is `${text.all_after_last('.')}`, in its constraint `${constraint.name}`'
 		}

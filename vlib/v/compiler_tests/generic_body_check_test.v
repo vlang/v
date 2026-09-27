@@ -162,6 +162,56 @@ fn main() {
 	assert errors[1].starts_with('main.v:18:23: error: cannot use `int` as `string` in argument 1 to `takes_string`: when `T` is `int`, in its constraint `Number`'), errors[1]
 }
 
+fn test_an_interface_constraint_checks_the_branch_of_a_type_that_implements_it() {
+	// With an interface as its constraint, the body is checked with the interface,
+	// where `x is User` is false: the branch of each type that a `$if` tests and
+	// that implements the interface is checked with that type as well.
+	errors := check('iface_branch', 'module main
+
+interface Named {
+	name string
+}
+
+struct User {
+	name string
+	age  int
+}
+
+struct Admin {
+	name  string
+	level int
+}
+
+fn takes_int(n int) int {
+	return n
+}
+
+fn describe[T Named](x T) int {
+	\$if x is User {
+		return takes_int(x.name)
+	}
+	return 0
+}
+
+fn level_of[T Named](x T) int {
+	\$if T is Admin {
+		return x.level
+	}
+	\$if x is User {
+		return x.age
+	}
+	return 0
+}
+
+fn main() {
+	println(describe(User{"ana", 30}))
+	println(level_of(Admin{"bob", 2}))
+}
+')
+	assert errors.len == 1, errors.str()
+	assert errors[0].starts_with('main.v:23:20: error: cannot use `string` as `int` in argument 1 to `takes_int`: when `T` is `User`, which implements `Named`'), errors[0]
+}
+
 fn test_a_constraint_that_names_its_type_parameter_is_checked_too() {
 	// `[T Comparable[T]]`: `T` is any type that implements `Comparable` of
 	// itself; the body is checked with that interface, `T` open inside it.
