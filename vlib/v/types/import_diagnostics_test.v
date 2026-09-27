@@ -116,3 +116,30 @@ fn test_nested_module_rejects_its_canonical_self_import() {
 	tc.check_import_diagnostics()
 	assert tc.errors.any(it.msg.contains('cannot import `nn.layers` into a module with the same name')), tc.errors.str()
 }
+
+fn test_vlib_is_the_module_search_root_for_identity() {
+	root := os.join_path(os.vtmp_dir(), 'v3_vlib_module_identity_${os.getpid()}')
+	time_file := os.join_path(root, 'vlib', 'time', 'time.v')
+	module_file := os.join_path(root, 'vlib', 'v', 'gen', 'v', 'module.v')
+	os.mkdir_all(os.dir(time_file))!
+	os.mkdir_all(os.dir(module_file))!
+	defer { os.rmdir_all(root) or {} }
+	os.write_file(os.join_path(root, 'v.mod'), "Module { name: 'compiler' }")!
+	os.write_file(time_file, 'module time\n')!
+	os.write_file(module_file, 'module v\nimport v.gen.v as self\n')!
+	mut tc := TypeChecker.new(&flat.FlatAst{})
+	tc.compiler_vroot = root
+	tc.cur_file = time_file
+	tc.cur_module = 'time'
+	assert !tc.current_file_uses_nested_module_path()
+	tc.cur_file = module_file
+	tc.cur_module = 'v'
+	assert tc.current_file_module_path_identity() or { '' } == 'v.gen.v'
+	mut p := parser.Parser.new(pref.new_preferences())
+	a := p.parse_file(module_file)
+	mut checked := TypeChecker.new(a)
+	checked.compiler_vroot = root
+	checked.collect(a)
+	checked.check_import_diagnostics()
+	assert checked.errors.any(it.msg.contains('cannot import `v.gen.v` into a module with the same name')), checked.errors.str()
+}

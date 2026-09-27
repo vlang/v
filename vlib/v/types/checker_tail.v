@@ -381,18 +381,15 @@ fn (mut tc TypeChecker) check_module_name_conflict(id flat.NodeId, name string) 
 fn (tc &TypeChecker) current_file_uses_nested_module_path() bool {
 	normalized := tc.cur_file.replace('\\', '/')
 	dir := normalized.all_before_last('/')
-	if dir == '' || tc.cur_module != dir.all_after_last('/') {
+	if dir == '' || (tc.cur_module != dir.all_after_last('/')
+		&& tc.cur_module.all_after_last('.') != dir.all_after_last('/')) {
 		return false
 	}
-	vmod_root := checker_vmod_root_for_file(tc.cur_file)
-	mut project_root := vmod_root
-	if manifest := vmod.from_file(os.join_path(vmod_root, 'v.mod')) {
-		project_root = manifest.source_root(vmod_root)
-	}
-	project_root = project_root.replace('\\', '/').trim_right('/')
 	project_dir := os.real_path(dir).replace('\\', '/').trim_right('/')
-	if project_root.len > 0 && project_dir.starts_with(project_root + '/') {
-		return project_dir[project_root.len + 1..].contains('/')
+	if source_root := tc.current_file_module_source_root() {
+		if project_dir.starts_with(source_root + '/') {
+			return project_dir[source_root.len + 1..].contains('/')
+		}
 	}
 	root := tc.module_diagnostic_root.replace('\\', '/').trim_right('/')
 	if root != '' {
@@ -418,17 +415,33 @@ fn (tc &TypeChecker) current_file_uses_nested_module_path() bool {
 
 fn (tc &TypeChecker) current_file_module_path_identity() ?string {
 	directory := os.real_path(os.dir(tc.cur_file)).replace('\\', '/').trim_right('/')
+	source_root := tc.current_file_module_source_root() or { return none }
+	if source_root == '' || !directory.starts_with(source_root + '/') {
+		return none
+	}
+	relative := directory[source_root.len + 1..]
+	identity := relative.replace('/', '.')
+	if relative.all_after_last('/') != tc.cur_module && identity != tc.cur_module {
+		return none
+	}
+	return identity
+}
+
+fn (tc &TypeChecker) current_file_module_source_root() ?string {
+	directory := os.real_path(os.dir(tc.cur_file)).replace('\\', '/').trim_right('/')
+	if tc.compiler_vroot.len > 0 {
+		vlib_root := os.real_path(os.join_path(tc.compiler_vroot, 'vlib')).replace('\\', '/').trim_right('/')
+		if directory.starts_with(vlib_root + '/') {
+			return vlib_root
+		}
+	}
 	vmod_root := checker_vmod_root_for_file(tc.cur_file)
 	manifest := vmod.from_file(os.join_path(vmod_root, 'v.mod')) or { return none }
 	source_root := os.real_path(manifest.source_root(vmod_root)).replace('\\', '/').trim_right('/')
 	if source_root == '' || !directory.starts_with(source_root + '/') {
 		return none
 	}
-	relative := directory[source_root.len + 1..]
-	if relative.all_after_last('/') != tc.cur_module {
-		return none
-	}
-	return relative.replace('/', '.')
+	return source_root
 }
 
 fn (tc &TypeChecker) imported_module_prefix(id flat.NodeId, name string) ?string {
