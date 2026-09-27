@@ -6711,7 +6711,7 @@ fn (mut g FlatGen) gen_call(id flat.NodeId, node flat.Node) {
 	mut resolved_target_name := g.tc.resolved_call_name(id) or { '' }
 	if fn_node.kind == .ident && node.pos.is_valid() && g.tc.cur_module == 'main'
 		&& g.tc.cur_file.ends_with('.vsh') {
-		if g.tc.file_bare_fn_names['${node.pos.id}\x00${fn_node.value}'] {
+		if g.file_declares_fn(id, fn_node.value) {
 			target_name = fn_node.value
 			resolved_target_name = fn_node.value
 		} else if selected := g.selective_import_call_key_in_file(fn_node.value, g.tc.cur_file) {
@@ -13080,10 +13080,16 @@ fn (mut g FlatGen) gen_fn_field_call(node flat.Node, fn_node &flat.Node, base_ty
 	return true
 }
 
+fn (g &FlatGen) file_declares_fn(id flat.NodeId, name string) bool {
+	declared_file := g.tc.fn_type_files[name] or { return false }
+	source_file := g.a.source_files[g.a.node(id).pos.id] or { return false }
+	return declared_file == source_file.name
+}
+
 // call_key updates call key state for FlatGen.
 fn (g &FlatGen) call_key(id flat.NodeId, name string) string {
 	if !name.contains('.') && g.tc.cur_file.ends_with('.vsh')
-		&& g.tc.file_bare_fn_names['${g.a.node(id).pos.id}\x00${name}'] {
+		&& g.file_declares_fn(id, name) {
 		return name
 	}
 	if name.contains('.') {
