@@ -5,6 +5,7 @@ module main
 
 import os
 import time
+import v.pref
 
 // `vtimeout` is used as the probe tool: it is small enough to compile quickly, and
 // `v timeout <seconds> <command>` both succeeds and terminates on its own.
@@ -183,6 +184,19 @@ fn test_a_new_file_in_an_imported_module_invalidates_the_cache() {
 	}
 	os.write_file(os.join_path(os.dir(dependency), 'extra.v'), 'module demomod\n')!
 	assert !tool_cache_is_fresh(entry), 'a new module source must force a rebuild'
+}
+
+fn test_module_search_boundary_marker_invalidates_the_cache() {
+	entry, dependency := fresh_cache_fixture('boundary_marker')
+	defer { os.rmdir_all(os.dir(entry.binary)) or {} }
+	marker := os.join_path(os.dir(dependency), pref.module_search_stop_marker)
+	os.write_file(marker, '')!
+	assert !tool_cache_is_fresh(entry), 'adding a module boundary must force a rebuild'
+	time.sleep(1100 * time.millisecond)
+	os.write_file(entry.manifest, encode_tool_cache_manifest([dependency], time.now().unix()))!
+	assert tool_cache_is_fresh(entry)
+	os.rm(marker)!
+	assert !tool_cache_is_fresh(entry), 'removing a module boundary must force a rebuild'
 }
 
 fn test_a_missing_or_damaged_manifest_invalidates_the_cache() {

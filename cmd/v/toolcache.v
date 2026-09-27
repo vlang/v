@@ -7,6 +7,7 @@ import crypto.sha256
 import os
 import os.filelock
 import time
+import v.pref
 import v.vmod
 
 // The external `cmd/tools/*` programs are compiled once and then cached, so that
@@ -23,7 +24,7 @@ import v.vmod
 //
 // The cache lives under the user's V cache directory, never inside the source tree.
 
-const tool_cache_manifest_version = 'v3-tool-cache-1'
+const tool_cache_manifest_version = 'v3-tool-cache-2'
 const tool_cache_disable_env = 'VTOOLS_NO_CACHE'
 const tool_cache_dir_env = 'VTOOLS_CACHE_DIR'
 const tool_cache_verbose_env = 'VTOOLS_CACHE_VERBOSE'
@@ -863,17 +864,32 @@ fn encode_tool_cache_manifest(source_files []string, started i64) string {
 	lines << tool_cache_manifest_version
 	lines << 'started${tool_cache_field_separator}${started}'
 	mut directories := map[string]bool{}
+	mut boundaries := map[string]bool{}
 	for file in source_files {
 		if file == '' {
 			continue
 		}
 		lines << 'f${tool_cache_field_separator}${file}${tool_cache_field_separator}${file_stamp(file)}'
 		directories[os.dir(file)] = true
+		mut directory := os.real_path(os.dir(file))
+		for {
+			boundaries[os.join_path(directory, pref.module_search_stop_marker)] = true
+			parent := os.dir(directory)
+			if parent == directory {
+				break
+			}
+			directory = parent
+		}
 	}
 	mut names := directories.keys()
 	names.sort()
 	for name in names {
 		lines << 'd${tool_cache_field_separator}${name}${tool_cache_field_separator}${dir_stamp(name)}'
+	}
+	mut marker_paths := boundaries.keys()
+	marker_paths.sort()
+	for path in marker_paths {
+		lines << 'f${tool_cache_field_separator}${path}${tool_cache_field_separator}${file_stamp(path)}'
 	}
 	return lines.join('\n') + '\n'
 }
