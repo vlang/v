@@ -4170,6 +4170,8 @@ fn (mut tc TypeChecker) collect_after_index(a &flat.FlatAst) {
 	ck_c_sw.restart()
 	tc.resolve_inferred_global_types(a)
 	tc.resolve_const_types()
+	// Globals may depend on constants whose initializer types were still pending.
+	tc.resolve_inferred_global_types(a)
 	tc.static_associated_method_names = map[string]bool{}
 	for name, _ in tc.fn_ret_types {
 		if _, method := flat.decode_static_type_method_name(name) {
@@ -4426,6 +4428,7 @@ fn (mut tc TypeChecker) resolve_inferred_global_types(a &flat.FlatAst) {
 					}
 					initializer_id := a.child(f, 0)
 					initializer := a.node(initializer_id)
+					tc.invalidate_const_initializer_type(initializer_id)
 					mut ft := tc.resolve_type(initializer_id)
 					// Function bodies are checked after globals are collected. Infer an
 					// implicit generic call here so methods used on the global receiver see
