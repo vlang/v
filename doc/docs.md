@@ -4397,6 +4397,9 @@ pub interface ReaderWriter {
 }
 ```
 
+An interface value smart cast to a struct refers to the concrete object stored in the interface.
+It can be dereferenced to copy the struct or returned through a struct reference.
+
 ### Sum types
 
 A sum type instance can hold a value of several different types. Use the `type`

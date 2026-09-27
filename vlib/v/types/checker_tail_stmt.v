@@ -13889,7 +13889,8 @@ fn (tc &TypeChecker) smartcast_target_type_for_is_expr(expr_id flat.NodeId, patt
 	if subject is Interface {
 		if variant := tc.resolve_interface_match_pattern(pattern) {
 			variant_type := tc.parse_type(variant)
-			if tc.expr_has_explicit_mut_marker(expr_id) && raw_subject is Pointer {
+			if variant_type is Struct
+				|| (tc.expr_has_explicit_mut_marker(expr_id) && raw_subject is Pointer) {
 				return Type(Pointer{
 					base_type: variant_type
 				})
