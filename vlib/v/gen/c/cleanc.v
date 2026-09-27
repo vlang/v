@@ -22846,6 +22846,27 @@ fn (mut g FlatGen) emit_global_inits() {
 		}
 		if typ := g.global_types[qname] {
 			clean_type := default_init_unalias_type(typ)
+			if clean_type is types.Pointer {
+				initializer := g.a.node(val_id)
+				if initializer.kind == .prefix && initializer.op == .amp
+					&& initializer.children_count == 1 {
+					child_id := g.a.child(initializer, 0)
+					child := g.a.node(child_id)
+					if child.kind in [.array_init, .array_literal]
+						|| (child.kind == .postfix && child.op == .not) {
+						if fixed := array_fixed_type(clean_type.base_type) {
+							source := g.fixed_array_compound_literal_expr(child_id, fixed)
+							if source.len > 0 {
+								target := g.global_c_name(qname)
+								ct := g.tc.c_type(typ)
+								// Keep the literal's storage alive after global initialization.
+								g.queue_runtime_init('\t${target} = (${ct})memdup(${source}, sizeof(*${target}));')
+								continue
+							}
+						}
+					}
+				}
+			}
 			if clean_type is types.ArrayFixed {
 				target := g.global_c_name(qname)
 				g.queue_fixed_array_runtime_init(target, val_id, clean_type)
