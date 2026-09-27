@@ -43,6 +43,12 @@ fn test_translated_fixed_array_typed_pointer_assignments() {
 	mut byte_row := unsafe { &[2]u8(nil) }
 	byte_row = [[char(65), char(66)]!, [char(67), char(68)]!]!
 	assert first_byte_row(byte_row) == 65
+	chars := [char(67), char(68)]!
+	bytes = chars
+	assert first_byte(bytes) == 67
+	char_rows := [[char(69), char(70)]!, [char(71), char(72)]!]!
+	byte_row = char_rows
+	assert first_byte_row(byte_row) == 69
 }
 
 fn make_runtime_row(value int) [2]int {
@@ -53,6 +59,10 @@ fn test_translated_nested_literal_pointer_storage_survives_assignment() {
 	mut row := unsafe { &[2]int(nil) }
 	row = [make_runtime_row(20), make_runtime_row(30)]!
 	assert sum_row(row) == 41
+	assert row != [make_runtime_row(1), make_runtime_row(2)]!
+	mut single_row := unsafe { &int(nil) }
+	single_row = make_runtime_row(10)
+	assert sum(single_row) == 21
 }
 
 fn test_translated_fixed_array_comparisons() {
