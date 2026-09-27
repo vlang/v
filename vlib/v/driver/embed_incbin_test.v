@@ -5,25 +5,53 @@ import v.gen.c as cgen
 import v.pref
 
 fn test_v3_embed_incbin_supported_keeps_the_array_form_where_no_object_is_linked() {
-	assert v3_embed_incbin_supported('linux', 'linux', 'gcc', 'c', false, false, false, [])
-	assert v3_embed_incbin_supported('macos', 'macos', 'tinyc', 'c', false, false, false, [])
-	assert v3_embed_incbin_supported('windows', 'windows', 'gcc', 'c', false, false, false, [])
+	assert v3_embed_incbin_supported('linux', 'linux', 'gcc', 'c', false, false, false, false,
+		[])
+	assert v3_embed_incbin_supported('macos', 'macos', 'tinyc', 'c', false, false, false, false,
+		[])
+	assert v3_embed_incbin_supported('windows', 'windows', 'gcc', 'c', false, false, false, false,
+		[])
 	// generated C and object output are linked elsewhere
-	assert !v3_embed_incbin_supported('linux', 'linux', 'gcc', 'c', true, false, false, [])
-	assert !v3_embed_incbin_supported('linux', 'linux', 'gcc', 'c', false, true, false, [])
+	assert !v3_embed_incbin_supported('linux', 'linux', 'gcc', 'c', true, false, false, false,
+		[])
+	assert !v3_embed_incbin_supported('linux', 'linux', 'gcc', 'c', false, true, false, false,
+		[])
+	assert !v3_embed_incbin_supported('linux', 'linux', 'gcc', 'c', false, false, false, true,
+		[])
 	// other backends, MSVC, and targets whose object format the host assembler
 	// does not produce
-	assert !v3_embed_incbin_supported('linux', 'linux', 'gcc', 'fastc', false, false, false, [])
-	assert !v3_embed_incbin_supported('windows', 'windows', 'msvc', 'c', false, false, false, [])
-	assert !v3_embed_incbin_supported('windows', 'linux', 'gcc', 'c', false, false, false, [])
-	assert !v3_embed_incbin_supported('ios', 'macos', 'clang', 'c', false, false, false, [])
-	assert !v3_embed_incbin_supported('wasm32_emscripten', 'linux', 'emcc', 'c', false, false,
+	assert !v3_embed_incbin_supported('linux', 'linux', 'gcc', 'fastc', false, false, false,
 		false, [])
-	assert !v3_embed_incbin_supported('linux', 'macos', 'cc', 'c', false, false, true, [])
+	assert !v3_embed_incbin_supported('windows', 'windows', 'msvc', 'c', false, false, false,
+		false, [])
+	assert !v3_embed_incbin_supported('windows', 'linux', 'gcc', 'c', false, false, false,
+		false, [])
+	assert !v3_embed_incbin_supported('ios', 'macos', 'clang', 'c', false, false, false,
+		false, [])
+	assert !v3_embed_incbin_supported('wasm32_emscripten', 'linux', 'emcc', 'c', false, false,
+		false, false, [])
+	assert !v3_embed_incbin_supported('linux', 'macos', 'cc', 'c', false, false, true, false,
+		[])
 	// the explicit escape hatch
-	assert !v3_embed_incbin_supported('linux', 'linux', 'gcc', 'c', false, false, false, [
+	assert !v3_embed_incbin_supported('linux', 'linux', 'gcc', 'c', false, false, false, false, [
 		'no_incbin',
 	])
+}
+
+fn test_v3_embed_incbin_assembly_flags_keep_object_abi_options() {
+	assert v3_embed_incbin_assembly_flags(['-O2', '-m32', '-Wl,-z,relro', '-target',
+		'x86_64-unknown-linux-gnu', '-DNAME=value', '--target=aarch64-linux-gnu', '-arch', 'x86_64',
+		'-mabi=lp64', '-march=armv8-a', '-mcpu=generic', '-fPIC', 'source.o']) == [
+		'-m32',
+		'-target',
+		'x86_64-unknown-linux-gnu',
+		'--target=aarch64-linux-gnu',
+		'-arch',
+		'x86_64',
+		'-mabi=lp64',
+		'-march=armv8-a',
+		'-mcpu=generic',
+	]
 }
 
 fn test_v3_embed_incbin_assembly_names_the_object_and_the_payload_file() {
