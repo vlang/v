@@ -12114,6 +12114,18 @@ pub fn run(args []string) {
 			// grandchild.
 			waited_markused = prepared_markused_thread.wait()
 		}
+		if shares_checks {
+			// What the check found so far, for a client that shows it while the
+			// grandchild takes long: its unused declarations and the instances of
+			// its generic functions (see diagserver.Request.print_diagnostics).
+			found_notices := pre_tc.notices.clone()
+			found_errors := pre_tc.errors.clone()
+			served.print_partial_with(fn [a, found_notices, found_errors, is_checker_fixture, fatal_errors, check_only, message_limit, skip_notices] () int {
+				print_type_diagnostics(a, found_notices, found_errors, is_checker_fixture,
+					fatal_errors, check_only, message_limit, skip_notices)
+				return if found_errors.len > 0 { 1 } else { 0 }
+			})
+		}
 		if (vls_line_info != '' || shares_checks)
 			&& (!shares_checks || !served.diagnose_in_grandchild()) {
 			mut code := 0

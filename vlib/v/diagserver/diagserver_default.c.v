@@ -48,3 +48,7 @@ pub fn (mut r Request) diagnose_in_grandchild() bool {
 pub fn (mut r Request) print_diagnostics() int {
 	return 0
 }
+
+// print_partial_with does nothing: without a server, the check prints all its
+// diagnostics at once.
+pub fn (mut r Request) print_partial_with(print fn () int) {}

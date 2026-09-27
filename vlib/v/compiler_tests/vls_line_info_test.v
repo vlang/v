@@ -1878,3 +1878,58 @@ fn test_a_prepared_server_scans_the_prepared_modules_anew_for_a_program_that_cha
 	assert checked == one_shot_check(dir)
 	assert trace.contains('scanning the prepared modules anew: the program writes `r:tos`'), trace
 }
+
+// generic_heavy_program has many instances of generic functions, which the end
+// of a check checks after the rest, and an error the rest finds.
+fn generic_heavy_program() string {
+	mut source := 'module main\n\nstruct Box[T] {\n\tvalue T\n}\n'
+	for i in 0 .. 40 {
+		source += '\nfn wrap_${i}[T](x T) Box[T] {\n\treturn Box[T]{\n\t\tvalue: x\n\t}\n}\n'
+		source += '\nfn unwrap_${i}[T](b Box[T]) T {\n\treturn b.value\n}\n'
+	}
+	source += "\nfn main() {\n\tbroken := 1 + 'a'\n\tprintln(broken)\n"
+	for i in 0 .. 40 {
+		for typ in ['1', "'s'", '1.5', 'true', 'u8(1)'] {
+			source += '\tprintln(unwrap_${i}(wrap_${i}(${typ})))\n'
+		}
+	}
+	return source + '}\n'
+}
+
+fn test_a_shared_server_sends_the_errors_of_a_long_check_before_its_end() {
+	$if !linux {
+		return
+	}
+	dir := os.join_path(work_dir, 'partial')
+	os.mkdir_all(dir)!
+	os.write_file(os.join_path(dir, 'main.v'), generic_heavy_program())!
+	expected := one_shot_check(dir)
+	assert expected.contains('error: '), expected
+	for vars in [{
+		'V_DIAGNOSTICS_SHARED': '1'
+	}, {
+		'V_DIAGNOSTICS_SHARED':  '1'
+		'V_DIAGNOSTICS_PARTIAL': '1'
+	}] {
+		mut p := start_server(dir, vars)
+		p.stdin_write('check t\n')
+		out := read_until(mut p, 'v-diagnostics-server: end ')
+		p.stdin_write('quit\n')
+		p.wait()
+		p.close()
+		marker := 'v-diagnostics-server: partial 1 t\n'
+		if 'V_DIAGNOSTICS_PARTIAL' !in vars {
+			// A client that takes no partial answers gets none.
+			assert !out.contains('v-diagnostics-server: partial'), out
+			continue
+		}
+		assert out.contains(marker), out
+		// The error the rest of the check found comes first, and the whole
+		// answer after it.
+		first := out.all_before(marker)
+		assert first.contains('cannot use `string`') || first.contains('error: '), first
+		rest := out.all_after(marker)
+		code := rest.all_after('v-diagnostics-server: end ').all_before(' ')
+		assert 'exit ${code}\n' + rest.all_before('v-diagnostics-server: end ').trim_space() == expected
+	}
+}

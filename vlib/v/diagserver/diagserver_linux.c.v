@@ -46,11 +46,24 @@ mut:
 	// shared is set in a server whose checks and questions share their children.
 	shared      bool
 	diagnostics Diagnostics
+	// token is the one of the check the child answers, which ends its partial
+	// answer (see print_diagnostics), when the client takes partial answers
+	// (V_DIAGNOSTICS_PARTIAL).
+	token    string
+	partials bool
+	// partial prints what the check found before the grandchild went on, and
+	// returns the exit code it gives.
+	partial fn () int = unsafe { nil }
 }
 
 // check_question is what the server sends a child that answers checks, for
-// the diagnostics of its program. A question names a file and a line.
+// the diagnostics of its program, with the token of the check after it. A
+// question names a file and a line.
 const check_question = 'check'
+
+// partial_answer_ms is how long a check waits for its grandchild before it
+// sends the diagnostics it found so far (see print_diagnostics).
+const partial_answer_ms = 3
 
 // Diagnostics are what a grandchild of a shared child printed for the program:
 // the rest of the check, which rewrites the tree that the child answers its
@@ -156,7 +169,12 @@ pub fn serve() Request {
 			continue
 		}
 		if (question != '' || shared) && warm.len > 0 {
-			if i := holding_child(mut warm, if question != '' { question } else { check_question }) {
+			if i := holding_child(mut warm, if question != '' {
+				question
+			} else {
+				'${check_question} ${token}'
+			})
+			{
 				mut child := warm[i]
 				warm.delete(i)
 				println('v-diagnostics-server: child ${child.pid} ${token}')
@@ -193,7 +211,7 @@ pub fn serve() Request {
 			// The server runs without the compiler's memory watchdog, which is a
 			// thread of its own; the child, which may start threads, keeps one.
 			spawn watch_memory(memory_limit_kb())
-			return channel.child_request(question, work_dir, shared)
+			return channel.child_request(question, work_dir, shared, token)
 		}
 		if pid < 0 {
 			channel.close_all()
@@ -247,10 +265,17 @@ pub fn (r &Request) shares_checks() bool {
 	return r.shared && r.status_fd >= 0
 }
 
+// print_partial_with sets what prints the diagnostics the check found before
+// the grandchild went on, and returns the exit code they give: a check whose
+// grandchild takes long sends them first (see print_diagnostics).
+pub fn (mut r Request) print_partial_with(print fn () int) {
+	r.partial = print
+}
+
 // asks_for_diagnostics reports whether `question`, which next_question
 // returned, asks for the diagnostics of the program (see print_diagnostics).
 pub fn (r &Request) asks_for_diagnostics(question string) bool {
-	return question == check_question
+	return question == check_question || question.starts_with('${check_question} ')
 }
 
 // diagnose_in_grandchild makes a grandchild that goes on with the check, and
@@ -298,10 +323,27 @@ pub fn (mut r Request) diagnose_in_grandchild() bool {
 }
 
 // print_diagnostics prints what the grandchild printed for the program, once it
-// ended, and returns its exit code, that of a one-shot check.
+// ended, and returns its exit code, that of a one-shot check. For a client that
+// takes partial answers (V_DIAGNOSTICS_PARTIAL), a grandchild that takes longer
+// than partial_answer_ms has the child print the diagnostics it found before
+// first (see print_partial_with), and end them on a line of their own,
+// `v-diagnostics-server: partial <code> <token>`: the client can show the
+// errors of the program while the rest of the check runs, the instances of its
+// generic functions above all.
 pub fn (mut r Request) print_diagnostics() int {
 	if !r.diagnostics.ready {
-		code := wait_exit_code(r.diagnostics.pid)
+		mut code := 0
+		if r.partials && r.partial != unsafe { nil } && r.token != '' {
+			code = exit_code_within(r.diagnostics.pid, partial_answer_ms) or {
+				partial_code := r.partial()
+				flush_stdout()
+				flush_stderr()
+				os.fd_write(1, '\nv-diagnostics-server: partial ${partial_code} ${r.token}\n')
+				wait_exit_code(r.diagnostics.pid)
+			}
+		} else {
+			code = wait_exit_code(r.diagnostics.pid)
+		}
 		output := read_from_start(r.diagnostics.fd)
 		os.fd_close(r.diagnostics.fd)
 		r.diagnostics = Diagnostics{
@@ -313,6 +355,23 @@ pub fn (mut r Request) print_diagnostics() int {
 	flush_stdout()
 	os.fd_write(1, r.diagnostics.output)
 	return r.diagnostics.code
+}
+
+// exit_code_within waits `ms` milliseconds at most for the child `pid`, and
+// returns its exit code as wait_exit_code does, or none when it still runs.
+fn exit_code_within(pid int, ms int) ?int {
+	for _ in 0 .. ms * 4 {
+		mut status := 0
+		got := C.waitpid(pid, &status, C.WNOHANG)
+		if got == pid {
+			return exit_code_of(status)
+		}
+		if got < 0 && C.errno != C.EINTR {
+			return 2
+		}
+		time.sleep(250 * time.microsecond)
+	}
+	return none
 }
 
 fn (mut r Request) close_channel() {
@@ -405,7 +464,7 @@ pub fn (mut r Request) next_question(code int) ?string {
 		}
 		// A child whose files held something else already answers no more, nor
 		// does one whose grandchild could not take the diagnostics, for a check.
-		if !r.current || (question == check_question && (!r.shared || r.diagnostics.failed)) {
+		if !r.current || (r.asks_for_diagnostics(question) && (!r.shared || r.diagnostics.failed)) {
 			os.fd_write(r.status_fd, 'stale\n')
 			return none
 		}
@@ -428,6 +487,9 @@ pub fn (mut r Request) next_question(code int) ?string {
 		// for `go`, or another child answers.
 		os.fd_write(r.status_fd, 'current\n')
 		if r.questions.read_line()? == 'go' {
+			if r.asks_for_diagnostics(question) {
+				r.token = question.all_after(' ').trim_space()
+			}
 			return question
 		}
 	}
@@ -474,7 +536,7 @@ fn new_channel() Channel {
 }
 
 // child_request closes the server's ends in the child, which keeps its own.
-fn (mut c Channel) child_request(question string, work_dir string, shared bool) Request {
+fn (mut c Channel) child_request(question string, work_dir string, shared bool, token string) Request {
 	os.fd_close(c.questions_fd)
 	os.fd_close(c.status_fd)
 	return Request{
@@ -486,6 +548,8 @@ fn (mut c Channel) child_request(question string, work_dir string, shared bool) 
 		status_fd:   c.child_status_fd
 		work_dir:    work_dir
 		shared:      shared
+		token:       token
+		partials:    os.getenv('V_DIAGNOSTICS_PARTIAL') != ''
 	}
 }
 
@@ -906,6 +970,12 @@ fn wait_exit_code(pid int) int {
 			return 2
 		}
 	}
+	return exit_code_of(status)
+}
+
+// exit_code_of is the exit code of a wait status, or 128 plus the number of
+// the signal that killed the child.
+fn exit_code_of(status int) int {
 	if status & 0x7f == 0 {
 		return (status >> 8) & 0xff
 	}
