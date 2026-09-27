@@ -82,14 +82,14 @@ fn int128_infix_helper(op flat.Op, signed bool) ?string {
 
 // int128_arith_ops are the infix operators whose operand and result are the same
 // 128-bit type.
-const int128_arith_ops = [.plus, .minus, .mul, .div, .mod, .amp, .pipe, .xor]
+const int128_arith_ops = [flat.Op.plus, .minus, .mul, .div, .mod, .amp, .pipe, .xor]
 
 // int128_comparison_ops are the infix operators with a 128-bit operand and a
 // `bool` result.
-const int128_comparison_ops = [.eq, .ne, .lt, .gt, .le, .ge]
+const int128_comparison_ops = [flat.Op.eq, .ne, .lt, .gt, .le, .ge]
 
 // int128_shift_ops are the shifts, whose right operand is a count.
-const int128_shift_ops = [.left_shift, .right_shift, .right_shift_unsigned]
+const int128_shift_ops = [flat.Op.left_shift, .right_shift, .right_shift_unsigned]
 
 // gen_int128_infix emits the helper call for an infix node with a 128-bit
 // operand. It returns false for everything it does not own, so the caller keeps
@@ -319,15 +319,15 @@ fn (mut g FlatGen) gen_int128_cast(node flat.Node, target_type types.Type, sourc
 		}
 	}
 	if target != none {
-		to_signed := target?
+		to_signed := target
 		// Every helper call wraps the source in a C cast, so two parens close it
 		// (the cast and the call) while a plain reinterpretation closes one.
 		mut prefix := ''
 		mut open_count := 1
 		if source != none {
-			if to_signed && !source? {
+			if to_signed && !source {
 				prefix = '__v_i128_from_u128('
-			} else if !to_signed && source? {
+			} else if !to_signed && source {
 				prefix = '__v_u128_from_i128('
 			} else {
 				prefix = '('
