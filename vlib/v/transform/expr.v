@@ -2959,12 +2959,23 @@ fn (mut t Transformer) lower_array_membership_expr(base_id flat.NodeId, needle_i
 	mut base := flat.empty_node
 	mut needle := flat.empty_node
 	mut prefix := []flat.NodeId{}
+	t.drain_pending(mut prefix)
 	if receiver_first {
 		base = t.stable_array_expr_for_membership(base_id, base_type, clean_base_type)
 		t.drain_pending(mut prefix)
-		needle = t.stable_expr_for_reuse(needle_id)
+	} else {
+		// Resolve the container's concrete generic element before staging the needle,
+		// while keeping the needle's pending statements first in source order.
+		base = t.stable_array_expr_for_membership(base_id, base_type, clean_base_type)
+	}
+	elem_type = t.resolved_membership_element_type(base, elem_type)
+	if receiver_first {
+		transformed_needle := t.transform_expr_for_type(needle_id, elem_type)
+		needle = t.stable_transformed_expr_for_reuse(transformed_needle, elem_type, 'contains_needle')
 		t.drain_pending(mut prefix)
 	} else {
+		mut base_pending := []flat.NodeId{}
+		t.drain_pending(mut base_pending)
 		// `needle in container`: the needle is evaluated before the container in source order.
 		// If the container hoists a value branch whose prelude can mutate a syntactically stable
 		// needle (`x in (match node { First { change(mut x)! } ... })`), snapshot the needle's
@@ -2976,10 +2987,8 @@ fn (mut t Transformer) lower_array_membership_expr(base_id flat.NodeId, needle_i
 			t.stable_transformed_expr_for_reuse(transformed_needle, elem_type, 'contains_needle')
 		}
 		t.drain_pending(mut prefix)
-		base = t.stable_array_expr_for_membership(base_id, base_type, clean_base_type)
-		t.drain_pending(mut prefix)
+		prefix << base_pending
 	}
-	elem_type = t.resolved_membership_element_type(base, elem_type)
 	result_name := t.new_temp('contains')
 	idx_name := t.new_temp('contains_idx')
 	prefix << t.make_decl_assign_typed(result_name, t.make_bool_literal(false), 'bool')
@@ -3033,18 +3042,29 @@ fn (mut t Transformer) lower_array_index_expr(base_id flat.NodeId, needle_id fla
 	mut base := flat.empty_node
 	mut needle := flat.empty_node
 	mut prefix := []flat.NodeId{}
+	t.drain_pending(mut prefix)
 	if receiver_first {
 		base = t.stable_array_expr_for_membership(base_id, base_type, clean_base_type)
 		t.drain_pending(mut prefix)
-		needle = t.stable_expr_for_reuse(needle_id)
-		t.drain_pending(mut prefix)
 	} else {
-		needle = t.stable_expr_for_reuse(needle_id)
-		t.drain_pending(mut prefix)
 		base = t.stable_array_expr_for_membership(base_id, base_type, clean_base_type)
-		t.drain_pending(mut prefix)
+	}
+	mut base_pending := []flat.NodeId{}
+	if !receiver_first {
+		t.drain_pending(mut base_pending)
 	}
 	elem_type = t.resolved_membership_element_type(base, elem_type)
+	transformed_needle := t.transform_expr_for_type(needle_id, elem_type)
+	needle = if !receiver_first && t.operand_hoists_value_branch(base_id) {
+		t.snapshot_transformed_expr_for_reuse(transformed_needle, elem_type, 'index_needle')
+	} else {
+		t.stable_transformed_expr_for_reuse(transformed_needle, elem_type, 'index_needle')
+	}
+	t.drain_pending(mut prefix)
+	if !receiver_first {
+		// The base was transformed first for its element type, but runs after the needle.
+		prefix << base_pending
+	}
 	result_name := t.new_temp('index')
 	idx_name := t.new_temp('index_idx')
 	prefix << t.make_decl_assign_typed(result_name, t.make_int_literal(-1), 'int')
@@ -3099,16 +3119,27 @@ fn (mut t Transformer) lower_array_last_index_expr(base_id flat.NodeId, needle_i
 	mut base := flat.empty_node
 	mut needle := flat.empty_node
 	mut prefix := []flat.NodeId{}
+	t.drain_pending(mut prefix)
 	if receiver_first {
 		base = t.stable_array_expr_for_membership(base_id, base_type, clean_base_type)
 		t.drain_pending(mut prefix)
-		needle = t.stable_expr_for_reuse(needle_id)
-		t.drain_pending(mut prefix)
 	} else {
-		needle = t.stable_expr_for_reuse(needle_id)
-		t.drain_pending(mut prefix)
 		base = t.stable_array_expr_for_membership(base_id, base_type, clean_base_type)
-		t.drain_pending(mut prefix)
+	}
+	mut base_pending := []flat.NodeId{}
+	if !receiver_first {
+		t.drain_pending(mut base_pending)
+	}
+	elem_type = t.resolved_membership_element_type(base, elem_type)
+	transformed_needle := t.transform_expr_for_type(needle_id, elem_type)
+	needle = if !receiver_first && t.operand_hoists_value_branch(base_id) {
+		t.snapshot_transformed_expr_for_reuse(transformed_needle, elem_type, 'last_index_needle')
+	} else {
+		t.stable_transformed_expr_for_reuse(transformed_needle, elem_type, 'last_index_needle')
+	}
+	t.drain_pending(mut prefix)
+	if !receiver_first {
+		prefix << base_pending
 	}
 	result_name := t.new_temp('last_index')
 	idx_name := t.new_temp('last_index_idx')

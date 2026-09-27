@@ -4,6 +4,11 @@ struct MembershipCalculator {
 	rows [][]string = [['+', '-'], ['*', '÷']]
 }
 
+enum MembershipSign {
+	plus
+	minus
+}
+
 fn (app &MembershipCalculator) has_operator(op string) bool {
 	return op in arrays.flatten(app.rows)
 }
@@ -44,4 +49,11 @@ fn test_generic_array_membership_stages_concrete_needles_in_source_order() {
 	calls.clear()
 	assert arrays.flatten(membership_rows(mut calls, app.rows)).contains(membership_operator(mut calls))
 	assert calls == ['rows', 'needle']
+}
+
+fn test_generic_enum_array_membership_uses_concrete_element_type() {
+	rows := [[MembershipSign.plus], [MembershipSign.minus, MembershipSign.plus]]
+	assert arrays.flatten(rows).contains(.minus)
+	assert arrays.flatten(rows).index(.plus) == 0
+	assert arrays.flatten(rows).last_index(.plus) == 2
 }
