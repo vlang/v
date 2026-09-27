@@ -8339,6 +8339,9 @@ fn (mut p Parser) if_stmt() flat.NodeId {
 }
 
 fn (mut p Parser) validate_if_guard_rhs(rhs_id flat.NodeId, assign_end int) {
+	if p.prefs.is_fmt {
+		return
+	}
 	if int(rhs_id) < 0 || int(rhs_id) >= p.a.nodes.len {
 		return
 	}

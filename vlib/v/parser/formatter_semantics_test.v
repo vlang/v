@@ -17,6 +17,7 @@ fn test_formatter_preserves_syntax_without_semantic_diagnostics() {
 		'fn closure() { x := 1; callback := fn [x] (x int) {} }':             'the parameter name `x` conflicts with the captured value name'
 		'interface Reader { read[T, T](value T) T }':                         'duplicated generic parameter `T`'
 		'fn many[A, B, C, D, E, F, G, H, I, J]() {}':                         'cannot have more than 9 generic parameters'
+		'fn main() { if x := 1 { _ = x } }':                                  'if guard condition expression is illegal, it should return an Option'
 	}
 	for source, expected in cases {
 		os.write_file(path, source + '\n')!
