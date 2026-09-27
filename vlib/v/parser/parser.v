@@ -12608,6 +12608,10 @@ fn (mut p Parser) call_args(fn_expr flat.NodeId) flat.NodeId {
 			ids << p.pipe_lambda_expr()
 		} else {
 			mut arg := p.expr(.lowest)
+			if ids.len == 1 && p.is_json_decode_call(fn_expr) {
+				// The first argument names a type, rather than an empty array value.
+				p.discard_generic_type_array_init_warnings(p.a.node(arg).pos)
+			}
 			if p.tok == .name && p.lit in ['like', 'ilike'] {
 				p.record_diagnostic_span('unexpected name `${p.lit}`, expecting `)`', p.tok_pos, p.tok_end)
 				for p.tok != .rpar && p.tok != .eof {
@@ -12706,6 +12710,40 @@ fn (mut p Parser) call_args(fn_expr flat.NodeId) flat.NodeId {
 		}
 	}
 	return id
+}
+
+fn (p &Parser) is_json_decode_call(id flat.NodeId) bool {
+	callee := p.a.node(id)
+	if callee.value != 'decode' {
+		return false
+	}
+	mut alias := ''
+	if callee.kind == .selector && callee.children_count > 0 {
+		base := p.a.child_node(callee, 0)
+		if base.kind != .ident || p.is_local_binding(base.value) {
+			return false
+		}
+		alias = base.value
+	} else if callee.kind != .ident || p.is_local_binding('decode') {
+		return false
+	}
+	for node in p.a.nodes {
+		if node.kind != .import_decl || node.pos.id != p.cur_file_id || node.value != 'json' {
+			continue
+		}
+		if alias != '' {
+			if node.typ == alias {
+				return true
+			}
+			continue
+		}
+		for i in 0 .. node.children_count {
+			if p.a.child_node(&node, i).value == 'decode' {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 fn (p &Parser) declared_call_param_count(fn_expr flat.NodeId) ?int {
