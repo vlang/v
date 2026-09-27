@@ -32,11 +32,17 @@ fn test_translated_fixed_array_comparisons() {
 
 type DecayedCell = int
 
+const row_len = 2
+
 fn sum_row(values &[2]int) int {
 	return unsafe { values[0] + values[1] }
 }
 
 fn sum_alias_row(values &[2]DecayedCell) int {
+	return unsafe { values[0] + values[1] }
+}
+
+fn sum_named_row(values &[row_len]int) int {
 	return unsafe { values[0] + values[1] }
 }
 
@@ -58,6 +64,10 @@ fn test_translated_array_decay_resolves_nested_aliases() {
 	assert copy != pointer
 	plain_rows := [[20, 22]!, [3, 5]!]!
 	assert sum_alias_row(plain_rows) == 42
+	assert sum_named_row(plain_rows) == 42
+	mut named_pointer := unsafe { &[row_len]int(nil) }
+	named_pointer = plain_rows
+	assert named_pointer == plain_rows
 	cell := DecayedCell(42)
 	pointers := [&cell]!
 	assert first_pointer_value(pointers) == 42

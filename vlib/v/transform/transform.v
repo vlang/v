@@ -18313,7 +18313,14 @@ fn (mut t Transformer) transform_infix_expr(id flat.NodeId, node flat.Node) flat
 		new_lhs := if lhs_is_value_branch {
 			t.materialize_value_branch_operand(infix_lhs_id)
 		} else if rhs_is_value_branch && t.operand_needs_ordering_snapshot(infix_lhs_id) {
-			t.snapshot_expr_for_reuse(infix_lhs_id)
+			if node.op in [.eq, .ne]
+				&& t.translated_fixed_array_pointer_lvalue(infix_lhs_id, infix_rhs_id) {
+				t.stabilize_original_lvalue_receiver(infix_lhs_id) or {
+					t.snapshot_expr_for_reuse(infix_lhs_id)
+				}
+			} else {
+				t.snapshot_expr_for_reuse(infix_lhs_id)
+			}
 		} else {
 			infix_lhs_id
 		}
@@ -18325,7 +18332,14 @@ fn (mut t Transformer) transform_infix_expr(id flat.NodeId, node flat.Node) flat
 		new_rhs := if rhs_is_value_branch {
 			t.materialize_value_branch_operand(infix_rhs_id)
 		} else if lhs_is_value_branch && !t.is_stable_expr_for_reuse(infix_rhs_id) {
-			t.stable_expr_for_reuse(infix_rhs_id)
+			if node.op in [.eq, .ne]
+				&& t.translated_fixed_array_pointer_lvalue(infix_rhs_id, infix_lhs_id) {
+				t.stabilize_original_lvalue_receiver(infix_rhs_id) or {
+					t.stable_expr_for_reuse(infix_rhs_id)
+				}
+			} else {
+				t.stable_expr_for_reuse(infix_rhs_id)
+			}
 		} else {
 			infix_rhs_id
 		}

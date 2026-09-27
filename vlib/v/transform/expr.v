@@ -415,6 +415,18 @@ fn (mut t Transformer) transform_translated_array_pointer_comparison(node flat.N
 	return t.make_infix(node.op, lhs, rhs)
 }
 
+fn (t &Transformer) translated_fixed_array_pointer_lvalue(id flat.NodeId, other_id flat.NodeId) bool {
+	if isnil(t.tc) || int(id) < 0 || int(id) >= t.a.nodes.len {
+		return false
+	}
+	file := t.a.source_files[t.a.nodes[int(id)].pos.id] or { return false }
+	if !t.tc.translated_files[file.name] {
+		return false
+	}
+	return types.unalias_type(t.tc.resolve_type(id)) is types.ArrayFixed
+		&& types.unalias_type(t.tc.resolve_type(other_id)) is types.Pointer
+}
+
 fn (mut t Transformer) translated_array_pointer_comparison_operand(id flat.NodeId, typ types.Type) flat.NodeId {
 	mut value := t.transform_expr_preserving_pointer_value(id)
 	if typ is types.ArrayFixed && t.expr_can_be_fixed_array_literal(id) {
