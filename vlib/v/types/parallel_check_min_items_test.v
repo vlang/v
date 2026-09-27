@@ -31,7 +31,24 @@ fn main() {
 }
 '
 
+// larger_program repeats the functions of small_program `copies` times, under
+// names of their own: enough work for several workers of the pool.
+fn larger_program(copies int) string {
+	mut source := small_program
+	for i in 0 .. copies {
+		for name in ['double', 'label', 'total'] {
+			body := small_program.all_after('fn ${name}(').all_before('\n}\n')
+			source += '\nfn ${name}_${i}(${body.replace('double(', 'double_${i}(')}\n}\n'
+		}
+	}
+	return source
+}
+
 fn check_small_program(min_items int) !(bool, []string) {
+	return check_program(small_program, min_items)
+}
+
+fn check_program(source string, min_items int) !(bool, []string) {
 	old_vjobs := os.getenv_opt('VJOBS')
 	os.setenv('VJOBS', '4', true)
 	defer {
@@ -47,7 +64,7 @@ fn check_small_program(min_items int) !(bool, []string) {
 		os.rmdir_all(root) or { panic(err) }
 	}
 	path := os.join_path(root, 'main.v')
-	os.write_file(path, small_program)!
+	os.write_file(path, source)!
 	mut p := parser.Parser.new(pref.new_preferences())
 	a := p.parse_files([path])
 	assert p.diagnostics.len == 0, p.diagnostics.str()
@@ -65,13 +82,35 @@ fn test_a_small_program_is_checked_on_one_thread_by_default() {
 	assert errors.any(it.contains('return')), errors.str()
 }
 
-fn test_a_lower_minimum_checks_a_small_program_on_the_pool_with_the_same_errors() {
-	_, serial_errors := check_small_program(min_parallel_check_items)!
-	was_parallel, errors := check_small_program(2)!
+fn test_a_lower_minimum_checks_a_program_on_the_pool_with_the_same_errors() {
+	source := larger_program(40)
+	_, serial_errors := check_program(source, min_parallel_check_items)!
+	was_parallel, errors := check_program(source, 2)!
 	$if windows {
 		assert !was_parallel
 	} $else {
 		assert was_parallel
 	}
 	assert errors == serial_errors
+}
+
+fn test_a_program_with_little_work_is_checked_on_one_thread_even_with_a_lower_minimum() {
+	was_parallel, errors := check_small_program(2)!
+	assert !was_parallel
+	assert errors.any(it.contains('return')), errors.str()
+}
+
+fn test_the_jobs_of_a_parallel_check_are_bounded_by_its_work() {
+	items := []CheckWorkItem{len: 10, init: CheckWorkItem{
+		cost: 50
+	}}
+	// 500 pays for one worker.
+	assert parallel_check_jobs_for_cost(8, items) == 1
+	assert parallel_check_jobs_for_cost(8, []CheckWorkItem{len: 10, init: CheckWorkItem{
+		cost: 256
+	}}) == 8
+	assert parallel_check_jobs_for_cost(4, []CheckWorkItem{len: 3, init: CheckWorkItem{
+		cost: 256
+	}}) == 3
+	assert parallel_check_jobs_for_cost(8, []CheckWorkItem{}) == 1
 }

@@ -12,6 +12,10 @@ const max_parallel_check_jobs = 26
 // Scoped workers use bounded arena batches, so let self-host checks occupy all
 // of the worker pool's cores without retaining one large arena per core.
 const max_scoped_check_jobs = 18
+// min_parallel_check_job_cost is the work, in CheckWorkItem.cost, that pays for
+// a worker of the parallel check (see parallel_check_jobs_for_cost): a program
+// of 11 small functions costs 216, one of 201 costs 4,282.
+const min_parallel_check_job_cost = 256
 // The historical 96-batch limit remains the low-memory fallback. Prealloc
 // self-host checks default to one twelfth as many batches below, amortizing
 // checker fork/promotion setup while keeping each worker's scratch bounded.
@@ -1396,6 +1400,7 @@ fn (mut tc TypeChecker) run_parallel_check(items []CheckWorkItem) bool {
 	if tc.scope_parallel_check_workers && n_jobs > max_scoped_check_jobs {
 		n_jobs = max_scoped_check_jobs
 	}
+	n_jobs = parallel_check_jobs_for_cost(n_jobs, items)
 	if items.len < tc.parallel_check_min_items || n_jobs <= 1 {
 		tc.check_top_level_declarations()
 		if tc.scope_parallel_check_workers {
@@ -2522,6 +2527,19 @@ fn type_errors_equal(a TypeError, b TypeError) bool {
 
 fn is_inline_asm_instruction_error(message string) bool {
 	return message.contains('structured `intel`') || message.contains('`raw intel` block')
+}
+
+// parallel_check_jobs_for_cost bounds `n_jobs` by the work of `items`: each
+// worker costs a copy of the checker and a merge, which a few small bodies do
+// not pay back. A program that costs less than min_parallel_check_job_cost gets
+// one job: the serial check.
+fn parallel_check_jobs_for_cost(n_jobs int, items []CheckWorkItem) int {
+	mut total_cost := i64(0)
+	for item in items {
+		total_cost += item.cost
+	}
+	by_cost := total_cost / min_parallel_check_job_cost
+	return if by_cost < i64(n_jobs) { int_max(int(by_cost), 1) } else { n_jobs }
 }
 
 fn check_job_count(n_runtime_jobs int, n_items int) int {
