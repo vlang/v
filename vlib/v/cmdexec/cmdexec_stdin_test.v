@@ -3,17 +3,13 @@ module cmdexec
 import os
 import time
 
-#include <stdlib.h>
-
-fn C._Exit(code int)
-
 const stdin_eof_probe = 'v-cmdexec-stdin-eof-probe'
 const stdin_eof_caller_input = 'only the caller may read this input'
 
 // Bound unbounded entry points too, without relying on the collector under test.
 fn stdin_eof_watchdog() {
 	time.sleep(10 * time.second)
-	C._Exit(91)
+	stdin_eof_watchdog_exit(91)
 }
 
 fn stdin_eof_entries() []string {
