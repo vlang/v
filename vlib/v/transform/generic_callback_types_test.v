@@ -23,6 +23,12 @@ fn test_specialized_receiver_callback_uses_function_type_compatibility() {
 	assert t.resolved_receiver_arg_compatible(id, 'fn ([]int, []int) int', 'fn([]int, []int) int')
 	assert t.resolved_receiver_arg_compatible(id, 'fn (values []f64, indices []int) f64', 'fn([]f64, []int) f64')
 	assert !t.resolved_receiver_arg_compatible(id, 'fn ([]int) int', 'fn([]int, []int) int')
+	assert !t.resolved_receiver_arg_compatible(id, 'fn ([]string)', 'fn ([]int)')
+	assert !t.resolved_receiver_arg_compatible(id, 'fn (map[string]string)',
+		'fn (map[string]int)')
+	assert !t.resolved_receiver_arg_compatible(id, 'fn (chan string)', 'fn (chan int)')
+	assert !t.resolved_receiver_arg_compatible(id, 'fn (?string)', 'fn (?int)')
+	assert !t.resolved_receiver_arg_compatible(id, 'fn (!string)', 'fn (!int)')
 	assert !t.resolved_receiver_arg_compatible(id, 'fn (...int)', 'fn ([]int)')
 	assert !t.resolved_receiver_arg_compatible(id, 'fn ([]int)', 'fn (...int)')
 	assert !t.resolved_receiver_arg_compatible(id, 'fn (fn (...int))', 'fn (fn ([]int))')
@@ -54,6 +60,7 @@ fn test_specialized_receiver_callback_uses_function_type_compatibility() {
 	assert !t.resolved_receiver_arg_compatible(id, 'fn (map[string]FastFn)',
 		'fn (map[string]CdeclFn)')
 	assert !t.resolved_receiver_arg_compatible(id, 'fn (chan FastFn)', 'fn (chan CdeclFn)')
+	assert !t.resolved_receiver_arg_compatible(id, 'fn (thread FastFn)', 'fn (thread CdeclFn)')
 	assert !t.resolved_receiver_arg_compatible(id, 'fn (&FastFn)', 'fn (&CdeclFn)')
 	assert t.resolved_receiver_arg_compatible(id, 'fn (FastFn)', 'fn (FastFn)')
 	assert !t.resolved_receiver_arg_compatible(id, 'fn () SharedCb', 'fn () PlainCb')

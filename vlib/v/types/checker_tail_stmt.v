@@ -12766,6 +12766,10 @@ fn (tc &TypeChecker) method_param_signature_compatible(actual Type, expected Typ
 
 // fn_type_callconv_compatible checks calling conventions recursively for function types.
 pub fn (tc &TypeChecker) fn_type_callconv_compatible(actual Type, expected Type) bool {
+	if actual.name().starts_with('thread ') && expected.name().starts_with('thread ') {
+		return tc.fn_type_callconv_compatible(tc.parse_type(actual.name()[7..]),
+			tc.parse_type(expected.name()[7..]))
+	}
 	if actual is Pointer && expected is Pointer {
 		return tc.fn_type_callconv_compatible(actual.base_type, expected.base_type)
 	}
