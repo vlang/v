@@ -18626,10 +18626,17 @@ fn (tc &TypeChecker) if_branch_type_compatible_with_context(actual Type, tail_id
 	if tc.expr_never_returns(tail_id) {
 		return true
 	}
-	if actual is Pointer && unalias_type(expected) is Struct
-		&& tc.type_compatible(actual.base_type, expected)
-		&& tc.expr_has_interface_smartcast_reference(tail_id) {
-		return true
+	if actual is Pointer {
+		clean_expected := unalias_type(expected)
+		expected_value := match clean_expected {
+			OptionType { unalias_type(clean_expected.base_type) }
+			ResultType { unalias_type(clean_expected.base_type) }
+			else { clean_expected }
+		}
+		if expected_value is Struct && tc.type_compatible(actual.base_type, expected_value)
+			&& tc.expr_has_interface_smartcast_reference(tail_id) {
+			return true
+		}
 	}
 	if actual is None {
 		return (expected is OptionType || is_ierror_type(expected))
