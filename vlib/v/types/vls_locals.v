@@ -22,12 +22,29 @@ fn (tc &TypeChecker) vls_local_declaration(id flat.NodeId) ?flat.NodeId {
 }
 
 // vls_local_binding finds what the local name the identifier `id` uses stands
+// for (see vls_tree_binding). A use in a branch that the parse left out finds
+// its declaration among the nodes added for that branch's file: where the
+// declaration is checked code, the checked node stands for it, with the type
+// the check gave it.
+fn (tc &TypeChecker) vls_local_binding(id flat.NodeId) ?VlsBinding {
+	binding := tc.vls_tree_binding(id)?
+	if tc.vls_twins.len == 0 {
+		return binding
+	}
+	return VlsBinding{
+		...binding
+		decl_id: tc.vls_twins[int(binding.decl_id)] or { binding.decl_id }
+		site:    tc.vls_twins[int(binding.site)] or { binding.site }
+	}
+}
+
+// vls_tree_binding finds what the local name the identifier `id` uses stands
 // for: the identifier on the left of a `:=`, a variable of a `for ... in`, of
 // an `if x := ...` guard or of a closure's capture list, a parameter, or a
 // variable the language declares, `err`, `it`, `a` or `b`. It walks out from
 // the use, through the statements before it in each enclosing block, as the
 // scopes of the checker did while checking: the nearest one is the one.
-fn (tc &TypeChecker) vls_local_binding(id flat.NodeId) ?VlsBinding {
+fn (tc &TypeChecker) vls_tree_binding(id flat.NodeId) ?VlsBinding {
 	name := tc.a.nodes[int(id)].value
 	use_offset := int(tc.a.nodes[int(id)].pos.offset)
 	mut child := id

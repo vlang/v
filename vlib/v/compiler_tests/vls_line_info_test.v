@@ -2152,3 +2152,101 @@ fn test_a_parameter_is_the_type_that_is_or_match_makes_it() {
 	assert narrowed('hv^', 'fn area(s Shape) f64 {', 's', 0) == hover_of('s main.Shape')
 	assert narrowed('hv^', '\treturn match s {', 's', 0) == hover_of('s main.Shape')
 }
+
+const skipped_branches_program = "module main
+
+type Number = int | i64 | f32 | f64
+
+struct Separator {
+	integer string
+}
+
+fn format[T Number](number T, sep string) string {
+	\$if js {
+		\$if T is f32 || T is f64 {
+			return number.str() + sep
+		} \$else {
+			return number.str() + sep + '.'
+		}
+	} \$else \$if T is f64 {
+		return number.str()
+	} \$else {
+		return number.str() + sep + ','
+	}
+}
+
+fn joined(parts []string, sep string) string {
+	separator := Separator{
+		integer: sep
+	}
+	\$if js {
+		return parts.join(separator.integer)
+	}
+	return parts.join(sep)
+}
+
+fn flagged(count int) int {
+	total := count * 2
+	\$if vls_extra ? {
+		doubled := total * 2
+		return doubled + count
+	}
+	return total
+}
+
+fn main() {
+	println(format(1.5, ','))
+	println(joined(['a', 'b'], ','))
+	println(flagged(2))
+}
+"
+
+// skipped asks about the `nth` `word` of the line of skipped_branches_program
+// that reads `text`.
+fn skipped(code string, text string, word string, nth int) string {
+	dir := os.join_path(work_dir, 'skipped_branches')
+	if !os.exists(dir) {
+		os.mkdir_all(dir) or { panic(err) }
+		os.write_file(os.join_path(dir, 'main.v'), skipped_branches_program) or { panic(err) }
+	}
+	line := skipped_branches_program.split('\n').index(text) + 1
+	assert line > 0, '`${text}` is not a line of skipped_branches_program'
+	return ask(dir, code, line, word, nth)
+}
+
+fn test_a_branch_that_the_parse_left_out_answers_as_the_others_do() {
+	// The branch of `$if js {` of a check for C, where a `$if` on `T` decides
+	// what the value of `T` is, as in the branches that are checked.
+	then_line := '\t\t\treturn number.str() + sep'
+	else_line := "\t\t\treturn number.str() + sep + '.'"
+	assert skipped('hv^', then_line, 'number', 0) == hover_of('number T\\nT: f32 | f64')
+	assert skipped('hv^', else_line, 'number', 0) == hover_of('number T\\nT: int | i64')
+	assert skipped('gd^', then_line, 'number', 0) == 'main.v:9:20'
+	// A type parameter in the condition of a `$if` of that branch.
+	condition := '\t\t\$if T is f32 || T is f64 {'
+	assert skipped('hv^', condition, 'T', 0) == hover_of('[T Number]\\nT: int | i64 | f32 | f64')
+	assert skipped('gd^', condition, 'T', 0) == 'main.v:9:10'
+	// A local of the code that is checked, a field of its type, and a parameter.
+	joined_line := '\t\treturn parts.join(separator.integer)'
+	assert skipped('hv^', joined_line, 'separator', 0) == hover_of('separator main.Separator')
+	assert skipped('hv^', joined_line, 'integer', 0) == hover_of('integer string')
+	assert skipped('hv^', joined_line, 'parts', 0) == hover_of('parts []string')
+	assert skipped('gd^', joined_line, 'separator', 0) == 'main.v:24:1'
+	// The branch of a flag that is not defined: a parameter, a local declared
+	// before it, and one declared in it.
+	flag_line := '\t\treturn doubled + count'
+	assert skipped('hv^', flag_line, 'count', 0) == hover_of('count int')
+	assert skipped('hv^', '\t\tdoubled := total * 2', 'total', 0) == hover_of('total int')
+	assert skipped('gd^', '\t\tdoubled := total * 2', 'total', 0) == 'main.v:34:1'
+	assert skipped('gd^', flag_line, 'doubled', 0) == 'main.v:36:2'
+	// The code that is checked answers as before, also in a process that added
+	// the nodes of the left-out branches for an earlier question: its own nodes
+	// come first.
+	live_line := "\t\treturn number.str() + sep + ','"
+	live := hover_of('number T\\nT: int | i64 | f32')
+	assert skipped('hv^', live_line, 'number', 0) == live
+	assert skipped('hv^', '\ttotal := count * 2', 'total', 0) == hover_of('total int')
+	lines := skipped_branches_program.split('\n')
+	both := '${lines.index(then_line) + 1}:hv^14\tmain.v:${lines.index(live_line) + 1}:hv^13'
+	assert ask_at(os.join_path(work_dir, 'skipped_branches'), both) == '0\t${hover_of('number T\\nT: f32 | f64')}\n1\t${live}'
+}

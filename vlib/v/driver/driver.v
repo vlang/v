@@ -12137,7 +12137,7 @@ pub fn run(args []string) {
 				// The answer, if any, is all a query prints: the program's
 				// diagnostics are not its business, and code being written has
 				// some.
-				print_vls_answers(mut pre_tc, vls_queries)
+				print_vls_answers(mut pre_tc, vls_queries, prefs)
 			} else {
 				code = served.print_diagnostics()
 			}
@@ -12163,7 +12163,7 @@ pub fn run(args []string) {
 							continue
 						}
 						code = 0
-						print_vls_answers(mut pre_tc, queries)
+						print_vls_answers(mut pre_tc, queries, prefs)
 					}
 				}
 			}
@@ -16223,8 +16223,10 @@ fn vmod_subdirs(dir string) ![]string {
 
 // print_vls_answers prints the answer to each question of the mini-VLS
 // protocol: the only one alone, if there is one, and several each on a line of
-// its own after its index, empty when there is none.
-fn print_vls_answers(mut tc types.TypeChecker, queries []types.VlsQuery) {
+// its own after its index, empty when there is none. A question about a branch
+// that the parse left out parses its file again with `prefs`.
+fn print_vls_answers(mut tc types.TypeChecker, queries []types.VlsQuery, prefs &pref.Preferences) {
+	tc.vls_prefs = prefs
 	if queries.len == 1 {
 		answer := tc.vls_answer(queries[0])
 		if answer != '' {

@@ -109,7 +109,17 @@ pub fn (mut tc TypeChecker) vls_answer(q VlsQuery) string {
 	if q.method == .completion {
 		return tc.vls_completion(file_id, offset, source)
 	}
-	target := tc.vls_target_at(file_id, offset, source) or {
+	// A name in a branch that the parse left out has a node once the file is
+	// parsed again with every branch (see vls_add_skipped_branches).
+	mut target := tc.vls_target_at(file_id, offset, source) or {
+		VlsTarget{
+			id: flat.NodeId(-1)
+		}
+	}
+	if int(target.id) < 0 && source.contains('\$if') && tc.vls_add_skipped_branches(file_id) {
+		target = tc.vls_target_at(file_id, offset, source) or { target }
+	}
+	if int(target.id) < 0 {
 		return tc.vls_answer_type_word(q, file_id, source, offset)
 	}
 	return match q.method {

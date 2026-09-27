@@ -743,6 +743,9 @@ pub mut:
 	parallel_check_min_items         int = min_parallel_check_items // the fewest function bodies a check splits among the worker pool
 	logical_file_order               []int // the `.file` markers in the order to collect them, when not the node order
 	prepared_collect                 &PreparedCollect = unsafe { nil } // what collect_continue continues from
+	vls_prefs                        &pref.Preferences = unsafe { nil } // what a question parses a file again with (see vls_add_skipped_branches)
+	vls_reparsed_files               map[int]bool        // the files whose left-out branches have nodes
+	vls_twins                        map[int]flat.NodeId // a node added for a left-out branch's file, to the checked node it parses again
 	valid_diagnostic_fast            bool
 	valid_resolution_fast            bool
 	defer_fn_ancillary               bool
