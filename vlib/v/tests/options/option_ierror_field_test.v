@@ -5,6 +5,19 @@ mut:
 
 interface Any {}
 
+type ErrorOrText = IError | string
+
+fn make_payload_error() IError {
+	return error('sum payload')
+}
+
+fn test_error_is_successful_optional_sum_payload() {
+	mut value := ?ErrorOrText(none)
+	value = make_payload_error()
+	got := value or { panic('expected sum payload') }
+	assert got is IError
+}
+
 fn test_error_is_successful_optional_interface_payload() {
 	mut value := ?Any(none)
 	value = error('boom')
