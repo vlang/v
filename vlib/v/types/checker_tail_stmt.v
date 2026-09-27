@@ -12030,6 +12030,10 @@ pub fn (tc &TypeChecker) struct_fields_for_type(struct_name string) []StructFiel
 fn (tc &TypeChecker) struct_field_type(struct_name string, field_name string) ?Type {
 	if field_name.starts_with('@') && field_name.len > 1
 		&& token.Token.from_string_tinyv(field_name[1..]).is_keyword() {
+		mut exact_seen := map[string]bool{}
+		if exact := tc.struct_field_type_inner(struct_name, field_name, mut exact_seen) {
+			return exact
+		}
 		plain_name := escaped_identifier_name(field_name)
 		mut seen := map[string]bool{}
 		if tc.c_struct_owns_plain_keyword_field(struct_name, plain_name, mut seen) {

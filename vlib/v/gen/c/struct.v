@@ -5139,7 +5139,18 @@ fn (g &FlatGen) embedded_field_path_for_promoted_selector(base_type types.Type, 
 	if g.direct_struct_field_exists(type_name, field_name) {
 		return none
 	}
-	return g.embedded_field_path_for_promoted_field(type_name, field_name)
+	if path := g.embedded_field_path_for_promoted_field(type_name, field_name) {
+		return path
+	}
+	if field_name.starts_with('@') && field_name.len > 1 {
+		if path := g.embedded_field_path_for_promoted_field(type_name, field_name[1..]) {
+			owner := g.embedded_field_type_name(path[path.len - 1])
+			if owner.starts_with('C.') {
+				return path
+			}
+		}
+	}
+	return none
 }
 
 // concrete_bare_struct_selector_name recovers the declaration identity of a bare
