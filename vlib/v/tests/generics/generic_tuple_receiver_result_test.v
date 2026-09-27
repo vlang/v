@@ -35,3 +35,20 @@ fn select_second[A, B](first A, second B) B {
 fn test_generic_tuple_receiver_uses_second_generic_argument() {
 	assert select_second(1, 'okay') == 'okay'
 }
+
+fn (m &Matrix[T]) pair() !(T, T) {
+	return m.data[0], m.data[0]
+}
+
+fn pair_from_second[A, B](first A, second B) !(B, B) {
+	_ = first
+	m := &Matrix[B]{ data: [second] }
+	q, _ := split_plain(m)
+	return q.pair()!
+}
+
+fn test_generic_result_tuple_method_uses_second_generic_argument() {
+	a, b := pair_from_second(1, 'okay')!
+	assert a == 'okay'
+	assert b == 'okay'
+}

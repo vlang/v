@@ -9700,6 +9700,17 @@ fn infer_generic_type_args(param_type string, arg_type string, mut inferred map[
 		infer_generic_type_args(param[1..], arg_inner, mut inferred)
 		return
 	}
+	if param.starts_with('(') && param.ends_with(')') && arg.starts_with('(')
+		&& arg.ends_with(')') && param.contains(',') && arg.contains(',') {
+		param_parts := split_generic_args(param[1..param.len - 1])
+		arg_parts := split_generic_args(arg[1..arg.len - 1])
+		if param_parts.len == arg_parts.len {
+			for i, part in param_parts {
+				infer_generic_type_args(part, arg_parts[i], mut inferred)
+			}
+		}
+		return
+	}
 	if param.starts_with('fn') && arg.starts_with('fn') {
 		infer_generic_fn_type_args(param, arg, mut inferred)
 		return
@@ -11016,10 +11027,21 @@ fn (mut t Transformer) retarget_cloned_generic_call(node flat.Node, mut children
 				for expected_return.starts_with('?') || expected_return.starts_with('!') {
 					expected_return = expected_return[1..].trim_space()
 				}
+				mut declared_return := decl.node.typ.trim_space()
+				for declared_return.starts_with('?') || declared_return.starts_with('!') {
+					declared_return = declared_return[1..].trim_space()
+				}
 				// An enclosing tuple result cannot infer a scalar method's receiver.
 				// A scalar contextual result can still recover a missing receiver bind.
-				if !expected_return.starts_with('(') || decl.node.typ.trim_space().starts_with('(') {
-					t.infer_generic_return_type_args(decl, expected_return, mut return_inferred,
+				if !expected_return.starts_with('(') || declared_return.starts_with('(') {
+					inference_return := if decl.node.typ.trim_space().starts_with('!') {
+						'!' + expected_return
+					} else if decl.node.typ.trim_space().starts_with('?') {
+						'?' + expected_return
+					} else {
+						expected_return
+					}
+					t.infer_generic_return_type_args(decl, inference_return, mut return_inferred,
 						[]string{})
 				}
 				for name, inferred_type in return_inferred {
