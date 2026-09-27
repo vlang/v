@@ -64,3 +64,21 @@ fn test_nested_function_value_does_not_shadow_later_top_level_helper() {
 	result := os.execute('${os.quoted_path(@VEXE)} -check ${os.quoted_path(path)}')
 	assert result.exit_code == 0, result.output
 }
+
+fn test_for_in_function_value_shadows_fresh_top_level_helper() {
+	path := os.join_path(os.vtmp_dir(), 'v3_return_alias_loop_fn_${os.getpid()}.v')
+	os.write_file(path, 'fn helper(values []int) []int { return values.clone() }\nfn passthrough(values []int) []int { return values }\nfn nested(values []int, helpers []fn ([]int) []int) []int { for helper in helpers { return helper(values) }; return values.clone() }\nfn main() { original := [1, 2]; mut alias := nested(original, [passthrough]); alias[0] = 9 }\n')!
+	defer { os.rm(path) or {} }
+	result := os.execute('${os.quoted_path(@VEXE)} -check ${os.quoted_path(path)}')
+	assert result.exit_code != 0, result.output
+	assert result.output.contains('immutable'), result.output
+}
+
+fn test_multi_return_function_value_shadows_fresh_top_level_helper() {
+	path := os.join_path(os.vtmp_dir(), 'v3_return_alias_multi_fn_${os.getpid()}.v')
+	os.write_file(path, 'fn helper(values []int) []int { return values.clone() }\nfn passthrough(values []int) []int { return values }\nfn make_helpers() (int, fn ([]int) []int) { return 0, passthrough }\nfn nested(values []int) []int { _, helper := make_helpers(); return helper(values) }\nfn main() { original := [1, 2]; mut alias := nested(original); alias[0] = 9 }\n')!
+	defer { os.rm(path) or {} }
+	result := os.execute('${os.quoted_path(@VEXE)} -check ${os.quoted_path(path)}')
+	assert result.exit_code != 0, result.output
+	assert result.output.contains('immutable'), result.output
+}

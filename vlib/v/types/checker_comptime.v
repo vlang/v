@@ -14682,13 +14682,28 @@ fn (mut tc TypeChecker) collect_returned_alias_sources_in_scope(id flat.NodeId, 
 	if has_nested_scope {
 		tc.push_scope()
 	}
+	if node.kind == .for_in_stmt && node.children_count >= 2 {
+		for i in 0 .. 2 {
+			binding_id := tc.a.child(node, i)
+			if !tc.valid_node_id(binding_id) {
+				continue
+			}
+			binding := tc.a.node(binding_id)
+			if binding.kind == .ident && binding.value != '_' {
+				if typ := tc.cached_expr_type(binding_id) {
+					if fn_type_from_type(typ) != none {
+						tc.cur_scope.insert(binding.value, typ)
+					}
+				}
+			}
+		}
+	}
 	for i in 0 .. node.children_count {
 		tc.collect_returned_alias_sources_in_scope(tc.a.child(node, i), args_by_param,
 			mut visiting, mut sources)
 	}
 	if node.kind == .decl_assign {
-		for i in 0 .. int(node.children_count) / 2 {
-			lhs_id := tc.a.child(node, i * 2)
+		for lhs_id in tc.multi_assign_lhs_ids(*node) {
 			lhs := tc.a.node(lhs_id)
 			if lhs.kind == .ident {
 				if typ := tc.cached_expr_type(lhs_id) {
