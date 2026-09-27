@@ -929,7 +929,9 @@ pub fn prealloc_scope_leave(scope_ptr voidptr) {
 // caller that processes a sequence of batches can reuse memory that is already
 // mapped instead of freeing the scope and faulting in a new one for every batch.
 // Blocks beyond the first `keep_bytes` are freed. Everything allocated in the
-// scope before is invalidated. It returns false,
+// scope before is invalidated. The calling thread may differ from the one that
+// left the scope; the scope then grows through the calling thread's arena
+// caches. It returns false,
 // leaving the scope untouched, when the scope is still current, retained by
 // another owner, or already being freed; the caller then starts a new scope.
 @[unsafe]
@@ -947,6 +949,7 @@ pub fn prealloc_scope_reenter(scope_ptr voidptr, keep_bytes isize) bool {
 				|| C.v_prealloc_atomic_load_i32(&scope.finalized) != 0 {
 				return false
 			}
+			parent := vmemory_block_current_or_new()
 			// Keep the first blocks, up to `keep_bytes`, for reuse; free the rest.
 			mut kept := isize(0)
 			mut last_kept := &VMemoryBlock(nil)
@@ -957,6 +960,10 @@ pub fn prealloc_scope_reenter(scope_ptr voidptr, keep_bytes isize) bool {
 					break
 				}
 				mb.current = mb.start
+				// The scope may have been left on another thread. Blocks it grows
+				// into from here inherit this cache, and recycle caches are
+				// thread-local: the other thread may be using or freeing its own.
+				mb.recycle_cache = parent.recycle_cache
 				kept += size
 				last_kept = mb
 				mb = mb.next
@@ -970,7 +977,6 @@ pub fn prealloc_scope_reenter(scope_ptr voidptr, keep_bytes isize) bool {
 					mb = next
 				}
 			}
-			parent := vmemory_block_current_or_new()
 			scope.previous = parent
 			scope.saved_next = parent.next
 			parent.next = scope.first

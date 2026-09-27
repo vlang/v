@@ -19,7 +19,8 @@ With `-prealloc`, `prealloc_scope_begin()` starts a nested arena and returns its
 Call `prealloc_scope_leave(scope)` to restore the previous arena without freeing that scope.
 After its allocations are no longer in use, `prealloc_scope_reenter(scope, keep_bytes)` makes it
 current again and rewinds its blocks. Every pointer into the scope from before a successful
-reentry is invalid, including pointers into blocks kept for reuse.
+reentry is invalid, including pointers into blocks kept for reuse. A scope left on one thread
+may be reentered on another.
 
 `keep_bytes` limits how much mapped block storage is retained for the next batch. The first block
 is always kept, even when it exceeds the limit; later blocks beyond the limit are freed.

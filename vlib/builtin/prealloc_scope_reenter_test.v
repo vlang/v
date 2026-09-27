@@ -87,3 +87,52 @@ fn test_prealloc_nested_scope_keeps_the_rewound_blocks_of_its_parent() {
 		unsafe { prealloc_scope_free_after(scope) }
 	}
 }
+
+struct ReenterWorkerResult {
+	scope    voidptr
+	recycled voidptr
+}
+
+// fill_scope_on_worker fills a scope with two blocks (256 KB, then 512 KB)
+// and leaves it. It also frees a nested scope of the same shape, so its 512 KB
+// block waits in this thread's recycle cache, which outlives the thread.
+fn fill_scope_on_worker() ReenterWorkerResult {
+	$if prealloc {
+		scope := unsafe { prealloc_scope_begin() }
+		first := []u8{len: reenter_alloc_size, init: 1}
+		second := []u8{len: reenter_alloc_size, init: 2}
+		assert first[0] + second[0] == 3
+		unsafe { prealloc_scope_leave(scope) }
+		temporary := unsafe { prealloc_scope_begin() }
+		_ := []u8{len: reenter_alloc_size}
+		recycled := []u8{len: reenter_alloc_size}
+		recycled_ptr := recycled.data
+		unsafe { prealloc_scope_leave(temporary) }
+		unsafe { prealloc_scope_free_after(temporary) }
+		return ReenterWorkerResult{
+			scope:    scope
+			recycled: recycled_ptr
+		}
+	}
+	return ReenterWorkerResult{}
+}
+
+fn test_prealloc_scope_reenter_on_another_thread_grows_from_its_own_cache() {
+	$if prealloc {
+		worker := spawn fill_scope_on_worker()
+		result := worker.wait()
+		scope := result.scope
+		// Keep only the first, 256 KB block.
+		assert unsafe { prealloc_scope_reenter(scope, 1) }
+		first := []u8{len: reenter_alloc_size}
+		// This needs a new 512 KB block. It must come from this thread's recycle
+		// cache, not from the worker's, which holds exactly such a block.
+		second := []u8{len: reenter_alloc_size, init: 5}
+		assert second.data != result.recycled
+		assert second[reenter_alloc_size - 1] == 5
+		assert unsafe { prealloc_scope_owns(scope, first.data) }
+		assert unsafe { prealloc_scope_owns(scope, second.data) }
+		unsafe { prealloc_scope_leave(scope) }
+		unsafe { prealloc_scope_free_after(scope) }
+	}
+}
