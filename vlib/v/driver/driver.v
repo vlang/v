@@ -11133,6 +11133,11 @@ pub fn run(args []string) {
 	stage_macos_v3_compiler_error_fallback(macos_v3_fallback_file, 'source parsing')
 	mut p := parser.Parser.new(prefs)
 	p.enable_import_diagnostics()
+	// A diagnostics server only asks of its sources whether they still hold what
+	// it read (see token.File.index_lines_with_quick_sum): builtin too.
+	if os.getenv('V_DIAGNOSTICS_SERVER') != '' {
+		p.quick_source_sums = true
+	}
 	if building_v || cmd_v_build {
 		p.reserve_selfhost_ast()
 	}
@@ -11292,10 +11297,6 @@ pub fn run(args []string) {
 	}
 	// A diagnostics server's child may have a question to answer instead.
 	mut served := diagserver.serve()
-	// Its child only asks of its sources whether they still hold what it read.
-	if served.from_server {
-		p.quick_source_sums = true
-	}
 	if served.question != '' {
 		vls_line_info = served.question
 		vls_queries = types.parse_vls_line_infos(served.question, input_file) or {
