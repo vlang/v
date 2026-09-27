@@ -552,6 +552,9 @@ fn assignment_op_reads_lhs(op flat.Op) bool {
 }
 
 fn (tc &TypeChecker) assignment_types_compatible(rhs_id flat.NodeId, rhs_type Type, expected_type Type, op flat.Op) bool {
+	if tc.translated_numeric_expr_compatible(rhs_id, rhs_type, expected_type) {
+		return true
+	}
 	if op == .assign && tc.fn_storage_voidptr_mismatch(rhs_id, rhs_type, expected_type) {
 		return false
 	}
@@ -2851,6 +2854,7 @@ fn return_numeric_alias_compatible(actual Type, expected Type) bool {
 
 fn (tc &TypeChecker) expr_compatible(expr_id flat.NodeId, actual Type, expected Type) bool {
 	return tc.type_compatible(actual, expected) || tc.zero_literal_can_be_pointer(expr_id, expected)
+		|| tc.translated_numeric_expr_compatible(expr_id, actual, expected)
 		|| tc.int_literal_can_be_char(expr_id, expected)
 		|| tc.interface_expr_compatible(actual, expected)
 		|| tc.fn_voidptr_expr_compatible(actual, expected)
@@ -2860,6 +2864,22 @@ fn (tc &TypeChecker) expr_compatible(expr_id flat.NodeId, actual Type, expected 
 		|| tc.failure_literal_expr_compatible(expr_id, actual, expected)
 		|| tc.fn_literal_omitted_params_compatible(expr_id, actual, expected)
 		|| tc.fn_decl_value_mut_ref_slot_compatible(expr_id, actual, expected)
+}
+
+fn translated_numeric_type(typ Type) bool {
+	clean := unalias_type(typ)
+	return clean.is_integer() || clean.is_float() || clean is Char || clean is Enum
+		|| clean == Type(bool_)
+}
+
+fn (tc &TypeChecker) translated_numeric_expr_compatible(id flat.NodeId, actual Type, expected Type) bool {
+	return tc.node_is_in_translated_file(id) && translated_numeric_type(actual)
+		&& translated_numeric_type(expected)
+}
+
+fn (tc &TypeChecker) translated_condition_compatible(id flat.NodeId, typ Type) bool {
+	return tc.node_is_in_translated_file(id)
+		&& (translated_numeric_type(typ) || unalias_type(typ) is Pointer)
 }
 
 fn (tc &TypeChecker) interface_expr_compatible(actual Type, expected Type) bool {
@@ -14356,6 +14376,7 @@ fn (mut tc TypeChecker) check_call_arg_types(id flat.NodeId, node flat.Node, inf
 			&& actual.base_type.name() == expected.name())
 			&& !implicit_integer_to_float_compatible(actual, expected)
 			&& !tc.c_call_arg_compatible(info.name, arg_id, expected, actual)
+			&& !tc.translated_numeric_expr_compatible(arg_id, actual, expected)
 			&& (tc.mut_param_expr_base(arg_id, actual) or {
 				actual
 			}).name() != expected.name() {

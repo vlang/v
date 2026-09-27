@@ -949,7 +949,8 @@ fn (mut tc TypeChecker) check_bool_condition(cond_id flat.NodeId) {
 		tc.record_error(.condition_mismatch, 'non-bool type `void` used as if condition', cond_id)
 		return
 	}
-	if !tc.condition_type_is_bool_like(cond_type) && tc.should_diagnose(cond_id) {
+	if !tc.condition_type_is_bool_like(cond_type)
+		&& !tc.translated_condition_compatible(cond_id, cond_type) && tc.should_diagnose(cond_id) {
 		cond_name := tc.diagnostic_expr_type_name(cond_id, cond_type)
 		tc.record_error(.condition_mismatch, 'non-bool type `${cond_name}` used as if condition', cond_id)
 	}
@@ -1012,7 +1013,8 @@ fn (mut tc TypeChecker) check_for_condition(cond_id flat.NodeId, _node flat.Node
 	}
 	tc.check_node(cond_id)
 	cond_type := tc.resolve_type(cond_id)
-	if tc.condition_type_is_bool_like(cond_type) {
+	if tc.condition_type_is_bool_like(cond_type)
+		|| tc.translated_condition_compatible(cond_id, cond_type) {
 		return
 	}
 	if _node.value == 'c_style' && unalias_type(cond_type) is Pointer {

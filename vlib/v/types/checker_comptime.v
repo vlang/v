@@ -3725,7 +3725,8 @@ fn (mut tc TypeChecker) check_prefix_expr(id flat.NodeId, node flat.Node) {
 	}
 	implicit_bool_pointer := child_type is Pointer
 		&& tc.type_compatible(child_type.base_type, Type(bool_))
-	if node.op == .not && !tc.type_compatible(child_type, Type(bool_)) && !implicit_bool_pointer {
+	if node.op == .not && !tc.type_compatible(child_type, Type(bool_)) && !implicit_bool_pointer
+		&& !tc.translated_condition_compatible(child_id, child_type) {
 		tc.record_error_at(.assignment_mismatch, 'operator `!` can only be used with bool types, but the value after `!` is of type `${tc.diagnostic_expr_type_name(child_id, child_type)}` instead', id, tc.prefix_operator_pos(id, '!'))
 		return
 	}
@@ -7433,9 +7434,11 @@ fn (mut tc TypeChecker) check_infix(id flat.NodeId, node flat.Node) {
 	}
 	if node.op in [.logical_and, .logical_or] {
 		bool_type := Type(bool_)
-		lhs_is_bool := tc.type_compatible(lhs_type, bool_type)
+		lhs_is_bool := (tc.type_compatible(lhs_type, bool_type)
+			|| tc.translated_condition_compatible(lhs_id, lhs_type))
 			&& !tc.expr_has_unresolved_generic_name_ident(lhs_id)
-		rhs_is_bool := tc.type_compatible(rhs_type, bool_type)
+		rhs_is_bool := (tc.type_compatible(rhs_type, bool_type)
+			|| tc.translated_condition_compatible(rhs_id, rhs_type))
 			&& !tc.expr_has_unresolved_generic_name_ident(rhs_id)
 		op := if node.op == .logical_and { '&&' } else { '||' }
 		if !lhs_is_bool {
@@ -7450,7 +7453,7 @@ fn (mut tc TypeChecker) check_infix(id flat.NodeId, node flat.Node) {
 		if node.op == .logical_or && lhs_node.kind == .infix && lhs_node.op == .logical_and {
 			tc.record_error_at(.condition_mismatch, 'ambiguous boolean expression. use `()` to ensure correct order of operations', id, tc.infix_operator_pos(node, '||'))
 		}
-		if invalid_enum_op {
+		if invalid_enum_op && !tc.node_is_in_translated_file(id) {
 			tc.record_invalid_enum_infix(id, node, lhs_clean)
 		}
 		if !lhs_is_bool || !rhs_is_bool {
@@ -7740,6 +7743,7 @@ fn (mut tc TypeChecker) check_infix(id flat.NodeId, node flat.Node) {
 			return
 		}
 		if (infix_power_type_is_numeric(lhs_type) && infix_power_type_is_numeric(rhs_type))
+			|| tc.translated_numeric_expr_compatible(id, lhs_type, rhs_type)
 			|| tc.infix_operator_return_type(node.op, lhs_type, rhs_type) != none {
 			return
 		}
@@ -7810,6 +7814,7 @@ fn (mut tc TypeChecker) check_infix(id flat.NodeId, node flat.Node) {
 		return
 	}
 	if (infix_power_type_is_numeric(lhs_type) && infix_power_type_is_numeric(rhs_type))
+		|| tc.translated_numeric_expr_compatible(id, lhs_type, rhs_type)
 		|| tc.infix_operator_return_type(node.op, lhs_type, rhs_type) != none
 		|| (lhs_type is Pointer && rhs_type.is_integer())
 		|| (rhs_type is Pointer && lhs_type.is_integer()) {
