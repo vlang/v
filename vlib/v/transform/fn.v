@@ -14289,8 +14289,9 @@ fn (t &Transformer) callback_nested_fn_type(param string) ?string {
 			payload = payload[7..].trim_space()
 		} else if payload.starts_with('[]') {
 			payload = payload[2..].trim_space()
-		} else if payload.starts_with('chan ') {
-			payload = payload[5..].trim_space()
+		} else if payload.starts_with('chan ') || payload.starts_with('thread ') {
+			prefix_len := if payload.starts_with('chan ') { 5 } else { 7 }
+			payload = payload[prefix_len..].trim_space()
 		} else if payload.starts_with('map[') || payload.starts_with('[') {
 			open := if payload.starts_with('map[') { 3 } else { 0 }
 			mut depth := 0
@@ -14338,6 +14339,9 @@ fn (t &Transformer) callback_fn_type_modes_compatible(actual string, expected st
 		} else if _ := t.callback_nested_fn_type(expected_params[i]) {
 			return false
 		}
+	}
+	if callback_param_shared_atomic_mode(actual_return) != callback_param_shared_atomic_mode(expected_return) {
+		return false
 	}
 	if nested_actual := t.callback_nested_fn_type(actual_return) {
 		nested_expected := t.callback_nested_fn_type(expected_return) or { return false }
