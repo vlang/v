@@ -10937,9 +10937,13 @@ fn (tc &TypeChecker) should_check_source_name(id flat.NodeId) bool {
 	if tc.translated_files[file.name] {
 		return false
 	}
-	normalized := file.name.replace('\\', '/')
-	if normalized.contains('/v3_module_cache_') && normalized.ends_with('.vh') {
-		return false
+	// Only a `.vh` can be a cached module header: the check runs for every name
+	// the program declares, so the path is normalized for those alone.
+	if file.name.ends_with('.vh') {
+		normalized := file.name.replace('\\', '/')
+		if normalized.contains('/v3_module_cache_') {
+			return false
+		}
 	}
 	return tc.diagnostic_files.len == 0 || file.name in tc.diagnostic_files
 }
