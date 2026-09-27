@@ -1949,8 +1949,7 @@ fn (g &FlatGen) selector_base_module(name string) ?string {
 		current := if g.tc.cur_module.len > 0 { g.tc.cur_module } else { 'main' }
 		short := current.all_after_last('.')
 		if name == current || name == short || name == g.const_storage_name(current, short) {
-			if name == g.const_storage_name(current, short)
-				|| g.current_module_const_ref_name(short) != none {
+			if g.current_module_const_ref_name(short) != none {
 				return none
 			}
 			return current
@@ -1983,8 +1982,7 @@ fn (g &FlatGen) selector_base_module_for_member(name string, member string) ?str
 		current := if g.tc.cur_module.len > 0 { g.tc.cur_module } else { 'main' }
 		short := current.all_after_last('.')
 		if name == current || name == short || name == g.const_storage_name(current, short) {
-			if name == g.const_storage_name(current, short)
-				|| g.current_module_const_ref_name(short) != none {
+			if g.current_module_const_ref_name(short) != none {
 				storage := if current == 'main' {
 					'main.${member}'
 				} else {
