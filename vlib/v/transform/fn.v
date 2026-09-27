@@ -14159,6 +14159,12 @@ fn (mut t Transformer) resolved_receiver_arg_compatible(arg_id flat.NodeId, actu
 	if expected_type.contains('unknown') {
 		return true
 	}
+	if !isnil(t.tc) && actual_type.trim_space().starts_with('fn')
+		&& expected_type.trim_space().starts_with('fn')
+		&& !t.tc.fn_type_callconv_compatible(t.tc.parse_type(actual_type),
+			t.tc.parse_type(expected_type)) {
+		return false
+	}
 	actual := t.normalize_type_alias(actual_type)
 	expected := t.normalize_type_alias(expected_type)
 	if t.is_integer_type_name(expected) {

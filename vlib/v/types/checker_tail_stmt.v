@@ -12764,7 +12764,8 @@ fn (tc &TypeChecker) method_param_signature_compatible(actual Type, expected Typ
 	return tc.type_compatible(actual, expected) && tc.type_compatible(expected, actual)
 }
 
-fn (tc &TypeChecker) fn_type_callconv_compatible(actual Type, expected Type) bool {
+// fn_type_callconv_compatible checks calling conventions recursively for function types.
+pub fn (tc &TypeChecker) fn_type_callconv_compatible(actual Type, expected Type) bool {
 	if actual is OptionType && expected is OptionType {
 		return tc.fn_type_callconv_compatible(actual.base_type, expected.base_type)
 	}
