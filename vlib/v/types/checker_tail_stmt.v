@@ -11997,7 +11997,8 @@ pub fn (tc &TypeChecker) struct_fields_for_type(struct_name string) []StructFiel
 
 @[direct_array_access]
 fn (tc &TypeChecker) struct_field_type(struct_name string, field_name string) ?Type {
-	if field_name.starts_with('@') {
+	if field_name.starts_with('@') && field_name.len > 1
+		&& token.Token.from_string_tinyv(field_name[1..]).is_keyword() {
 		if typ := tc.struct_field_type(struct_name, escaped_identifier_name(field_name)) {
 			return typ
 		}

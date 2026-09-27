@@ -17079,7 +17079,7 @@ fn (tc &TypeChecker) match_enum_condition_field(cond &flat.Node, enum_name strin
 		.enum_val {
 			field := cond.value.all_after_last('.')
 			if tc.enum_value_matches(cond.value, enum_name) {
-				return field
+				return escaped_identifier_name(field)
 			}
 		}
 		.selector {
@@ -17087,7 +17087,7 @@ fn (tc &TypeChecker) match_enum_condition_field(cond &flat.Node, enum_name strin
 				if typ is Enum {
 					cond_enum_name := tc.resolve_enum_name(typ.name) or { typ.name }
 					if cond_enum_name == enum_name && tc.enum_has_field(enum_name, cond.value) {
-						return cond.value
+						return escaped_identifier_name(cond.value)
 					}
 				}
 			}

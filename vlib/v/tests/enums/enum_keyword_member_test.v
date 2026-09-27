@@ -16,6 +16,14 @@ fn alignment_name(value Alignment) string {
 	}
 }
 
+fn alignment_score(value Alignment) int {
+	match value {
+		.@none { return 0 }
+		.left { return 1 }
+		.@type { return 2 }
+	}
+}
+
 fn test_escaped_enum_members_keep_their_type_and_value() {
 	assert Layout{}.alignment == .@none
 	assert int(Alignment.@none) == -10
@@ -26,4 +34,6 @@ fn test_escaped_enum_members_keep_their_type_and_value() {
 	value = .@none
 	assert alignment_name(value) == 'unset'
 	assert [Alignment.@none, .left, .@type].map(alignment_name(it)) == ['unset', 'left', 'type']
+	assert alignment_score(.@none) == 0
+	assert alignment_score(.@type) == 2
 }
