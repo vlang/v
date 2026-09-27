@@ -5682,10 +5682,9 @@ fn (mut t Transformer) wrap_string_conversion(expr flat.NodeId, typ string) flat
 			}
 		}
 		if !clean_typ.contains('.') && !local_struct_shadows_alias {
-			for aname, target in t.tc.type_aliases {
-				if short_name_view(aname) == clean_typ {
-					return t.alias_str_wrap(expr, clean_typ, target, is_ref)
-				}
+			aliases := t.type_aliases_with_short_name(clean_typ)
+			if aliases.len > 0 {
+				return t.alias_str_wrap(expr, clean_typ, aliases[0].target, is_ref)
 			}
 		}
 		if !local_struct_shadows_alias {
@@ -9727,6 +9726,8 @@ fn (t &Transformer) resolve_flag_enum_type_name(typ string) ?string {
 			if parsed.is_flag {
 				return parsed.name
 			}
+			// A known ordinary enum must not inherit another module's flag methods.
+			return none
 		}
 		if clean in t.tc.flag_enums {
 			return clean
@@ -10811,6 +10812,9 @@ fn (mut t Transformer) try_lower_array_method_call(call_id flat.NodeId, node fla
 		// fixed array to a dynamic array for builtin lowering.
 		if exact_call := t.lower_checker_selected_receiver_method(call_id, node, base_id, array_builtin_method) {
 			return exact_call
+		}
+		if fn_node.value == 'map' {
+			return t.lower_array_map_call(node, fn_node, clean_base_type)
 		}
 		elem_type := fixed_array_elem_type(clean_base_type)
 		array_type := '[]${elem_type}'

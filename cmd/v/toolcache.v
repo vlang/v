@@ -7,6 +7,7 @@ import crypto.sha256
 import os
 import os.filelock
 import time
+import v.util
 import v.vmod
 
 // The external `cmd/tools/*` programs are compiled once and then cached, so that
@@ -23,7 +24,7 @@ import v.vmod
 //
 // The cache lives under the user's V cache directory, never inside the source tree.
 
-const tool_cache_manifest_version = 'v3-tool-cache-1'
+const tool_cache_manifest_version = 'v3-tool-cache-4'
 const tool_cache_disable_env = 'VTOOLS_NO_CACHE'
 const tool_cache_dir_env = 'VTOOLS_CACHE_DIR'
 const tool_cache_verbose_env = 'VTOOLS_CACHE_VERBOSE'
@@ -152,6 +153,12 @@ fn collect_tool_key_sources(directory string, mut files []string) {
 fn file_stamp(path string) string {
 	attributes := os.stat(path) or { return file_stamp_missing }
 	return '${attributes.mtime}${tool_cache_field_separator}${attributes.size}'
+}
+
+// boundary_marker_stamp records only whether a marker exists; its contents and directory
+// metadata do not change module resolution.
+fn boundary_marker_stamp(path string) string {
+	return if os.exists(path) { 'present' } else { 'missing' }
 }
 
 // file_stamp_missing is the stamp of a path that does not exist. A build input can legitimately
@@ -333,6 +340,7 @@ fn recorded_inputs_changed(manifest_path string) string {
 		kind, path, recorded := fields[0], fields[1], fields[2..].join(tool_cache_field_separator)
 		current := match kind {
 			'd' { dir_stamp(path) }
+			'e' { boundary_marker_stamp(path) }
 			'm' { module_root_stamp(path) }
 			'p' { module_directory_stamp(path) }
 			'b' { binary_identity(path) }
@@ -863,17 +871,34 @@ fn encode_tool_cache_manifest(source_files []string, started i64) string {
 	lines << tool_cache_manifest_version
 	lines << 'started${tool_cache_field_separator}${started}'
 	mut directories := map[string]bool{}
+	mut boundaries := map[string]bool{}
 	for file in source_files {
 		if file == '' {
 			continue
 		}
 		lines << 'f${tool_cache_field_separator}${file}${tool_cache_field_separator}${file_stamp(file)}'
 		directories[os.dir(file)] = true
+		mut directory := os.real_path(os.dir(file))
+		for {
+			for marker in util.project_boundary_markers {
+				boundaries[os.join_path(directory, marker)] = true
+			}
+			parent := os.dir(directory)
+			if parent == directory {
+				break
+			}
+			directory = parent
+		}
 	}
 	mut names := directories.keys()
 	names.sort()
 	for name in names {
 		lines << 'd${tool_cache_field_separator}${name}${tool_cache_field_separator}${dir_stamp(name)}'
+	}
+	mut marker_paths := boundaries.keys()
+	marker_paths.sort()
+	for path in marker_paths {
+		lines << 'e${tool_cache_field_separator}${path}${tool_cache_field_separator}${boundary_marker_stamp(path)}'
 	}
 	return lines.join('\n') + '\n'
 }

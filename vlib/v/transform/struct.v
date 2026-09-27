@@ -205,6 +205,34 @@ fn (mut t Transformer) transform_struct_fields(id flat.NodeId, node flat.Node) f
 		}
 		prelude.clear()
 	}
+	// Merge sibling paths before wrapping their shared parent. Emitting a whole
+	// parent for each path would overwrite fields initialized through other paths.
+	for {
+		mut depth := 1
+		for _, path in promoted_paths {
+			if path.len > depth {
+				depth = path.len
+			}
+		}
+		if depth == 1 {
+			break
+		}
+		for key in promoted_paths.keys() {
+			path := promoted_paths[key]
+			if path.len != depth {
+				continue
+			}
+			parent_path := path[..depth - 1].clone()
+			parent_key := promoted_field_path_key(parent_path)
+			field := t.make_promoted_struct_field_init(path[depth - 1..], promoted_fields[key])
+			mut siblings := promoted_fields[parent_key] or { []flat.NodeId{} }
+			siblings << field
+			promoted_fields[parent_key] = siblings
+			promoted_paths[parent_key] = parent_path
+			promoted_fields.delete(key)
+			promoted_paths.delete(key)
+		}
+	}
 	for key, promoted in promoted_fields {
 		path := promoted_paths[key] or { []FieldInfo{} }
 		if path.len == 0 {
@@ -1171,12 +1199,8 @@ fn (t &Transformer) lookup_struct_info_direct(name string) ?StructInfo {
 
 // struct_field_type supports struct field type handling for Transformer.
 fn (t &Transformer) struct_field_type(info StructInfo, field_name string) ?string {
-	for field in info.fields {
-		if field.name == field_name {
-			return field.typ
-		}
-	}
-	return none
+	field := info.field(field_name) or { return none }
+	return field.typ
 }
 
 // embedded_field_for_promoted_field

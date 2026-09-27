@@ -1565,11 +1565,11 @@ fn (t &Transformer) map_key_backing_type(key_type string) ?string {
 	if !isnil(t.tc) && !clean.contains('.') && clean !in t.tc.structs {
 		mut alias_target := t.tc.type_aliases[clean] or { '' }
 		if alias_target.len == 0 {
-			suffix := '.${clean}'
 			mut matches := 0
-			for aname, target in t.tc.type_aliases {
-				if aname.ends_with(suffix) {
-					alias_target = target
+			// Only module-qualified aliases, i.e. those ending in `.${clean}`.
+			for alias in t.type_aliases_with_short_name(clean) {
+				if alias.name.contains('.') {
+					alias_target = alias.target
 					matches++
 					if matches > 1 {
 						alias_target = ''
