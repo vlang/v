@@ -60,13 +60,20 @@ pub fn make_record[T](value T) Record[T] { return Record[T]{value: value} }
 fn (r Record[T]) private_method() T { return r.value }
 ')!
 	path := os.join_path(root, 'main.v')
-	os.write_file(path, 'import opaque
-fn main() {
- callback := opaque.make_record[int](1).private_method
- println(callback())
-}
-')!
+	os.write_file(path, 'import opaque\nfn main() {\n callback := opaque.make_record[int](1).private_method\n println(callback())\n}\n')!
 	result := os.execute('${os.quoted_path(@VEXE)} -check ${os.quoted_path(path)}')
 	assert result.exit_code != 0, result.output
 	assert result.output.contains('Record[int].private_method` is private'), result.output
+}
+
+fn test_private_method_value_through_double_pointer_is_rejected() {
+	root := os.join_path(os.vtmp_dir(), 'v3_private_double_pointer_method_${os.getpid()}')
+	os.mkdir_all(os.join_path(root, 'opaque'))!
+	defer { os.rmdir_all(root) or {} }
+	os.write_file(os.join_path(root, 'opaque', 'opaque.v'), 'module opaque\nstruct Record {}\npub fn make_record() Record { return Record{} }\nfn (r Record) private_method() int { return 1 }\n')!
+	path := os.join_path(root, 'main.v')
+	os.write_file(path, 'import opaque\nfn main() {\n record := opaque.make_record()\n p := &record\n pp := &p\n callback := pp.private_method\n println(callback())\n}\n')!
+	result := os.execute('${os.quoted_path(@VEXE)} -check ${os.quoted_path(path)}')
+	assert result.exit_code != 0, result.output
+	assert result.output.contains('Record.private_method` is private'), result.output
 }
