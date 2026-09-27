@@ -19,3 +19,22 @@ fn main() { println(choose(Params{})) }
 	assert result.exit_code != 0, result.output
 	assert result.output.contains('handled more than once'), result.output
 }
+
+fn test_cast_target_in_index_selector_distinguishes_match_conditions() {
+	path := os.join_path(os.vtmp_dir(), 'v3_cast_index_pattern_identity_${os.getpid()}.v')
+	defer { os.rm(path) or {} }
+	os.write_file(path, 'struct A { x int }
+struct B { x int }
+type Choice = A | B
+struct Entry { values []int }
+fn choose(value Choice, lookup map[int]Entry) int {
+ return match true {
+  lookup[(value as A).x].values.len > 0 { 1 }
+  lookup[(value as B).x].values.len > 0 { 2 }
+  else { 0 }
+ }
+}
+')!
+	result := os.execute('${os.quoted_path(@VEXE)} -check ${os.quoted_path(path)}')
+	assert result.exit_code == 0, result.output
+}

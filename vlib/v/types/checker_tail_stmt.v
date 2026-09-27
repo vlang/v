@@ -2503,11 +2503,15 @@ fn (tc &TypeChecker) match_selector_condition_key(id flat.NodeId) string {
 		base := tc.match_selector_condition_key(tc.a.child(node, 0))
 		mut part_id := tc.a.child(node, 1)
 		mut part_node := tc.a.node(part_id)
-		for part_node.kind in [.paren, .as_expr] && part_node.children_count > 0 {
+		for part_node.kind == .paren && part_node.children_count > 0 {
 			part_id = tc.a.child(part_node, 0)
 			part_node = tc.a.node(part_id)
 		}
-		part := tc.expr_key_part(part_id)
+		part := if part_node.kind in [.selector, .index, .as_expr] {
+			tc.match_selector_condition_key(part_id)
+		} else {
+			tc.expr_key_part(part_id)
+		}
 		if base.len > 0 && part.len > 0 {
 			return '${base}[${part_node.kind}:${part.len}:${part}]'
 		}
