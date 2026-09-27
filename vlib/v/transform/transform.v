@@ -13919,7 +13919,7 @@ fn (mut t Transformer) coerce_transformed_expr_to_type(expr flat.NodeId, source_
 	optional_target = t.infer_typed_optional_target(optional_target, expr_type)
 	if t.is_optional_type_name(optional_target) && t.is_ierror_type(expr_type) {
 		optional_payload := t.optional_base_type(optional_target)
-		payload_accepts_ierror := t.is_ierror_type(optional_payload)
+		payload_accepts_ierror := optional_payload in ['IError', 'builtin.IError']
 			|| (!isnil(t.tc)
 				&& (types.unalias_type(t.tc.parse_type(optional_payload)) is types.Interface
 					|| types.unalias_type(t.tc.parse_type(optional_payload)) is types.SumType)
