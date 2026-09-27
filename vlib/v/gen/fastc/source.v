@@ -1444,7 +1444,7 @@ fn fastc_scan_source_header(source string, path string, prefs &pref.Preferences)
 			if tok != .name {
 				return error('fastc parser does not support module declaration in ${path}')
 			}
-			module_name = scan.lit
+			module_name = fastc_resolved_module_segment(scan.lit)
 			tok = scan.scan()
 			continue
 		}
@@ -1869,22 +1869,30 @@ fn fastc_register_import_alias(import_path string, alias string, path string, mu
 	imports[alias] = import_path
 }
 
+fn fastc_resolved_module_segment(name string) string {
+	if name.len > 1 && name[0] == `@` {
+		return name[1..]
+	}
+	return name
+}
+
 fn fastc_scan_import(mut scan scanner.Scanner, first token.Token, path string) !(string, string, []string, token.Token) {
 	mut tok := first
 	if tok != .name {
 		return error('fastc parser does not support import `${tok.str()}` in ${path}')
 	}
-	mut parts := [scan.lit]
+	mut alias := scan.lit
+	mut parts := [fastc_resolved_module_segment(alias)]
 	tok = scan.scan()
 	for tok == .dot {
 		tok = scan.scan()
 		if tok != .name {
 			return error('fastc parser does not support import path in ${path}')
 		}
-		parts << scan.lit
+		alias = scan.lit
+		parts << fastc_resolved_module_segment(alias)
 		tok = scan.scan()
 	}
-	mut alias := parts.last()
 	if tok == .key_as {
 		tok = scan.scan()
 		if tok != .name {

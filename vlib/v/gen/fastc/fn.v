@@ -543,7 +543,7 @@ fn (mut g Parser) parse_module() ! {
 	if g.tok != .name {
 		return g.unsupported('module declaration')
 	}
-	if g.lit != g.module_name.all_after_last('.') {
+	if fastc_resolved_module_segment(g.lit) != g.module_name.all_after_last('.') {
 		return g.unsupported('module `${g.lit}` in `${g.module_name}` source')
 	}
 	g.next()
