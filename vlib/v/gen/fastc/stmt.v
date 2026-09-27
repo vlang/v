@@ -1310,7 +1310,9 @@ fn (mut g Parser) parse_simple_statement() ! {
 			}
 			return
 		}
-		if !g.selfhost && (g.tok.is_assignment() || g.tok in [.inc, .dec]) && !is_global && (!is_known_local || !statement_local.is_mut) {
+		if !g.selfhost && (g.tok.is_assignment() || g.tok in [.inc, .dec]) && !is_global
+			&& (!is_known_local || !statement_local.is_mut)
+			&& !(g.translated && is_known_local && fastc_is_pointer_type(statement_local.typ)) {
 			return g.unsupported('mutation of immutable or unknown name `${name}`')
 		}
 		g.validate_expression_name(name, .unknown)!

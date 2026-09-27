@@ -3089,6 +3089,9 @@ fn test_translated_pointer_writes_accept_immutable_roots() {
 		panic(err)
 	}
 	assert translated.contains('state->count=1;'), translated
+	pointer_increment := generate('@[translated]\nmodule main\nfn advance(p &int) { p++ }\nfn main() {}\n',
+		'translated_pointer_increment.v', prefs) or { panic(err) }
+	assert pointer_increment.contains('p++;'), pointer_increment
 }
 
 fn test_duplicate_global_declarations_are_rejected() {
