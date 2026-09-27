@@ -38,3 +38,17 @@ fn test_match_tuple_branches_reject_optional_slot_mismatch_in_both_orders() {
 		assert tc.errors.any(it.msg.contains('return type mismatch')), tc.errors.str()
 	}
 }
+
+fn test_invalid_all_none_match_slot_keeps_other_bindings() {
+	path := os.join_path(os.vtmp_dir(), 'v3_match_all_none_slot_${os.getpid()}.v')
+	defer { os.rm(path) or {} }
+	os.write_file(path, 'fn pick(flag bool) { a, b := match flag { true { none, 1 } else { none, 2 } }; _ = a; _ = b }\n')!
+	mut p := parser.Parser.new(pref.new_preferences())
+	a := p.parse_file(path)
+	assert p.diagnostics.len == 0, p.diagnostics.str()
+	mut tc := TypeChecker.new(a)
+	tc.collect(a)
+	_ = tc.check_semantics_opt(false)
+	assert tc.errors.any(it.msg.contains('cannot assign a `none` value')), tc.errors.str()
+	assert !tc.errors.any(it.msg.contains('undefined')), tc.errors.str()
+}

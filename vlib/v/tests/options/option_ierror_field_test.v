@@ -43,6 +43,13 @@ fn test_error_is_optional_failure_for_concrete_error_payload() {
 	}
 }
 
+fn test_concrete_error_is_successful_optional_payload() {
+	mut value := ?ConcreteError(none)
+	value = ConcreteError{ reason: 'ok' }
+	got := value or { panic('expected concrete payload') }
+	assert got.msg() == 'ok'
+}
+
 fn test_error_is_optional_failure_for_pointer_interface_payload() {
 	mut value := ?&IError(none)
 	value = error('boom')
