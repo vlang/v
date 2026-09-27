@@ -13275,7 +13275,7 @@ fn (mut p Parser) string_literal() flat.NodeId {
 		return p.add_node(flat.Node{
 			kind:  .string_literal
 			value: val
-			flags: string_literal_flags(lit)
+			flags: string_literal_flags(val)
 			typ:   if lit.len > 2 && lit.starts_with('js') {
 				'js:${lit[2].ascii_str()}'
 			} else if lit.len > 1 && lit[0] == `r` {
@@ -13288,7 +13288,7 @@ fn (mut p Parser) string_literal() flat.NodeId {
 	}
 	// string interpolation
 	val := strip_interp_start_quotes(lit)
-	id := p.string_interp(val, q, start_pos, string_literal_flags(lit))
+	id := p.string_interp(val, q, start_pos, string_literal_flags(val))
 	if lit.len > 2 && lit.starts_with('js') {
 		p.a.nodes[int(id)].typ = 'js:${lit[2].ascii_str()}'
 	}
@@ -13364,7 +13364,7 @@ fn (mut p Parser) string_interp(first_part string, quote u8, start_pos token.Pos
 				ids << p.add_node(flat.Node{
 					kind:  .string_literal
 					value: part
-					flags: string_literal_flags(part_lit)
+					flags: string_literal_flags(part)
 				})
 			}
 			// check for more interpolation after this string part
@@ -16225,8 +16225,8 @@ fn strip_quotes(s string) string {
 	return unescape_string(raw)
 }
 
-fn string_literal_flags(source string) u8 {
-	return if source.contains(r'${') { flat.node_flag_literal_interpolation_text } else { 0 }
+fn string_literal_flags(value string) u8 {
+	return if value.contains(r'${') { flat.node_flag_literal_interpolation_text } else { 0 }
 }
 
 fn strip_interp_start_quotes(s string) string {
