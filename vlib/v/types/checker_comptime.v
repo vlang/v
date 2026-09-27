@@ -16269,6 +16269,14 @@ fn (tc &TypeChecker) promoted_multi_tail_type(current Type, actual Type) ?Type {
 	if !multi_tail_wrappers_match(current, actual) {
 		return none
 	}
+	// `none` still requires an Option when paired with a bare error; keep that
+	// constraint until a later branch provides a concrete wrapped type.
+	if unalias_type(current) is None && is_ierror_type(actual) {
+		return current
+	}
+	if is_ierror_type(current) && unalias_type(actual) is None {
+		return actual
+	}
 	if unalias_type(current) is None && unalias_type(actual) is OptionType {
 		return actual
 	}

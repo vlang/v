@@ -1,8 +1,24 @@
 module types
 
 import os
+import v.flat
 import v.parser
 import v.pref
+
+fn test_none_error_pair_keeps_option_constraint_until_concrete_type() {
+	tc := TypeChecker.new(&flat.FlatAst{})
+	none_type := Type(None{})
+	error_type := Type(Interface{ name: 'IError' })
+	partial := tc.promoted_multi_tail_type(none_type, error_type) or { panic('missing promotion') }
+	assert partial is None
+	result_type := Type(ResultType{ base_type: Type(string_) })
+	if _ := tc.promoted_multi_tail_type(partial, result_type) {
+		assert false
+	}
+	option_type := Type(OptionType{ base_type: Type(string_) })
+	promoted_option := tc.promoted_multi_tail_type(partial, option_type) or { panic('missing option') }
+	assert promoted_option == option_type
+}
 
 fn test_match_tuple_branches_reject_optional_slot_mismatch_in_both_orders() {
 	path := os.join_path(os.vtmp_dir(), 'v3_match_tuple_wrapper_${os.getpid()}.v')
