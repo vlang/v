@@ -132,3 +132,15 @@ fn test_match_tuple_error_promotes_to_result_slot() {
 		}
 	}
 }
+
+fn test_if_tuple_error_promotes_to_wrapped_slot() {
+	for flag in [true, false] {
+		value, text := if flag { wrapped_pair() } else { 2, error('x') }
+		assert value == if flag { 1 } else { 2 }
+		assert (text or { 'failed' }) == if flag { 'ok' } else { 'failed' }
+
+		result_value, result_text := if flag { wrapped_result_pair() } else { 3, error('x') }
+		assert result_value == if flag { 1 } else { 3 }
+		assert (result_text or { 'failed' }) == if flag { 'ok' } else { 'failed' }
+	}
+}

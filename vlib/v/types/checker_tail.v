@@ -18573,7 +18573,11 @@ fn multi_return_wrapper_shapes_match(a []Type, b []Type) bool {
 	for i, typ in a {
 		other := b[i]
 		if (unalias_type(typ) is None && unalias_type(other) is OptionType)
-			|| (unalias_type(other) is None && unalias_type(typ) is OptionType) {
+			|| (unalias_type(other) is None && unalias_type(typ) is OptionType)
+			|| (is_ierror_type(typ) && (unalias_type(other) is OptionType
+				|| unalias_type(other) is ResultType))
+			|| (is_ierror_type(other) && (unalias_type(typ) is OptionType
+				|| unalias_type(typ) is ResultType)) {
 			continue
 		}
 		if (unalias_type(typ) is OptionType) != (unalias_type(other) is OptionType)
