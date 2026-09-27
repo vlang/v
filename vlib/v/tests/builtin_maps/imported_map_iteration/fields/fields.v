@@ -15,9 +15,11 @@ mut:
 }
 
 fn new_state() State {
-	return State{ fields: {
-		'email': Field{ value: 'bad', initial_value: 'seed', dirty: true }
-	} }
+	return State{
+		fields: {
+			'email': Field{ value: 'bad', initial_value: 'seed', dirty: true }
+		}
+	}
 }
 
 fn reset() State {
@@ -52,4 +54,27 @@ pub fn validate_pointer_values() {
 		entries[key] = value
 	}
 	assert entries['first'] == first
+}
+
+// validate_reference_iteration checks that copies of explicit map references still alias entries.
+pub fn validate_reference_iteration() {
+	mut entries := {
+		'first': Field{ value: 'before' }
+	}
+	mut references := []&Field{}
+	for _, value in &entries {
+		alias := value
+		references << alias
+	}
+	view := &entries
+	for _, value in view {
+		alias := value
+		references << alias
+	}
+	entries['first'].value = 'after'
+	assert references.len == 2
+	assert references[0] == references[1]
+	for reference in references {
+		assert reference.value == 'after'
+	}
 }

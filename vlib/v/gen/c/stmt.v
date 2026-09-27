@@ -7673,9 +7673,10 @@ fn (mut g FlatGen) gen_decl_assign(node flat.Node) {
 				// Unwrapped results are copied from temporaries. Keep their concrete
 				// module identity just as for a direct call's return type.
 				mut rhs_type := g.usable_expr_type(rhs_id)
-				if rhs.kind == .ident {
+				if rhs.kind == .ident && default_init_unalias_type(v_type) !is types.Pointer {
 					if value_type := g.local_indirect_value_type(rhs.value) {
-						// Loop references carry a value type despite their pointer storage.
+						// Mutable value iteration borrows storage but copies the value.
+						// Explicit reference iteration keeps the declared pointer type.
 						rhs_type = value_type
 					}
 				}

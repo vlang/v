@@ -2385,7 +2385,8 @@ for key, value in m {
 
 A mutable map iteration value still has the map's element type. Assigning it to a map entry copies
 that element, including when its struct type comes from another module.
-
+When iterating a reference to a map (`for key, value in &m`), the value is a pointer to the entry.
+Assigning that pointer to another variable preserves its reference to the same entry.
 
 Either key or value can be ignored by using a single underscore as the identifier.
 
