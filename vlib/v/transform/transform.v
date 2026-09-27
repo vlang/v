@@ -21260,6 +21260,13 @@ fn (t &Transformer) raw_selector_type_without_smartcast(id flat.NodeId) string {
 			if ftyp := t.sum_shared_field_type_name(base_target, node.value) {
 				return ftyp
 			}
+			if path := t.struct_field_path_for_field(base_target, node.value) {
+				if path.len > 0 {
+					if ftyp := t.lookup_struct_field_type(path.last().typ, node.value) {
+						return ftyp
+					}
+				}
+			}
 		}
 	}
 	mut base_type := t.raw_expr_type_without_smartcast(base_id)
