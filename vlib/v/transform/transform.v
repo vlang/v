@@ -5514,6 +5514,13 @@ fn (mut t Transformer) transform_late_candidates_for(name string, candidate_inde
 // the call names that became used during that transform.
 fn (mut t Transformer) transform_late_candidate(ci int, mut candidates []LateFnCandidate, mut late map[string]bool, mut pending []string, mut queued map[string]bool) {
 	candidates[ci].processed = true
+	// A check only looks at the instances that the program's own code asks for:
+	// a library function without type parameters, lowered, asks for none of
+	// them, as a library clone does not (see check_skips_body).
+	if !isnil(t.tc) && t.tc.check_concrete_generic_bodies
+		&& candidates[ci].file !in t.tc.diagnostic_files {
+		return
+	}
 	idx := candidates[ci].idx
 	t.cur_file = candidates[ci].file
 	t.cur_module = candidates[ci].module
