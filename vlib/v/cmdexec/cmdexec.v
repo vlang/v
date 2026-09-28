@@ -13,11 +13,12 @@ const timeout_drain_ms = i64(200)
 
 // run executes program with an exact argument vector and captures its output.
 // Both output pipes are drained until EOF, including writers inherited by descendants.
+// Standard input is empty (the null device); the caller's input is not inherited.
 pub fn run(program string, args []string) os.Result {
 	return run_in(program, args, '')
 }
 
-// run_in executes program in work_folder with an exact argument vector.
+// run_in executes program in work_folder with an exact argument vector and empty stdin.
 pub fn run_in(program string, args []string, work_folder string) os.Result {
 	return run_in_mode(program, args, work_folder, false, no_timeout)
 }
@@ -49,6 +50,13 @@ fn run_in_mode(program string, args []string, work_folder string, merge_output b
 	}
 	mut process := os.new_process(executable)
 	process.set_args(args)
+	// These capture-only helpers expose no stdin writer. Give the child EOF
+	// instead of an open pipe that nobody will ever write to or close.
+	$if windows {
+		process.set_stdin_path('NUL')
+	} $else {
+		process.set_stdin_path('/dev/null')
+	}
 	if work_folder.len > 0 {
 		process.set_work_folder(work_folder)
 	}
@@ -160,7 +168,7 @@ fn run_in_mode(program string, args []string, work_folder string, merge_output b
 }
 
 // run_in_merged executes a command with an exact argument vector and captures
-// both stdout and stderr.
+// both stdout and stderr. Standard input is empty, as with run.
 pub fn run_in_merged(program string, args []string, work_folder string) os.Result {
 	return run_in_mode(program, args, work_folder, true, no_timeout)
 }

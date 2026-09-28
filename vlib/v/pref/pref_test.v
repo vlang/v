@@ -43,6 +43,37 @@ fn test_get_module_path_resolves_alias_and_submodule() {
 		'sub'))
 }
 
+fn test_alias_vmod_root_stops_at_project_boundaries() {
+	root := os.join_path(os.vtmp_dir(), 'v3_pref_alias_boundary_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	parent := os.join_path(root, 'parent')
+	project := os.join_path(parent, 'project')
+	alias_dir := os.join_path(project, 'legacy')
+	target_dir := os.join_path(parent, 'canonical')
+	os.mkdir_all(alias_dir)!
+	os.mkdir_all(target_dir)!
+	os.write_file(os.join_path(parent, 'v.mod'), "Module { name: 'parent' }\n")!
+	os.write_file(os.join_path(target_dir, 'canonical.v'), 'module canonical\n')!
+	os.write_file(os.join_path(alias_dir, 'alias.v'),
+		"@[alias: '@VMODROOT/canonical'] module legacy\n")!
+	resolved_before := resolve_module_alias_path(project, 'legacy') or {
+		panic('alias did not resolve before the boundary was added')
+	}
+	assert resolved_before == os.real_path(target_dir)
+
+	for marker in [module_search_stop_marker, '.git', '.hg', '.svn'] {
+		marker_path := os.join_path(project, marker)
+		os.write_file(marker_path, '')!
+		if resolved := resolve_module_alias_path(project, 'legacy') {
+			assert false, 'alias escaped ${marker}: ${resolved}'
+		}
+		os.rm(marker_path)!
+	}
+}
+
 // test_detect_vroot_from_outside_a_checkout pins the twin of the driver walk in
 // https://github.com/vlang/v/issues/28583: the walk must reach a filesystem
 // root rather than the relative `.` that `os.dir` returns for a bare Windows

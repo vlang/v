@@ -2228,6 +2228,14 @@ fn test_formatter_aligns_struct_field_defaults_and_comments() {
 	assert vfmt('struct_field_suffix_alignment_twice', out) == out
 }
 
+fn test_formatter_aligns_struct_field_attributes_with_defaults() {
+	source := 'struct Foo {\n\ta    int    @[some_attr]\n\tbeta string @[another]\n\tpi   f32 = 3.14    @[yet_another]\n\td    f64 = 2.9999999    @[yet_another]\n}\n\nfn main() {}\n'
+	want := 'struct Foo {\n\ta    int        @[some_attr]\n\tbeta string     @[another]\n\tpi   f32 = 3.14      @[yet_another]\n\td    f64 = 2.9999999 @[yet_another]\n}\n\nfn main() {}\n'
+	out := vfmt('struct_field_attribute_alignment', source)
+	assert out == want, out
+	assert vfmt('struct_field_attribute_alignment_twice', out) == want
+}
+
 // Enum members and interface members align their trailing comments the same way.
 fn test_formatter_aligns_enum_and_interface_trailing_comments() {
 	source := 'enum Stage {\n\tcompile_begin // before\n\tcompile_end   // after\n\tcmd_begin     // before run\n}\n\ninterface Reporter {\n\tsession_start(message string) // at the start\n\tstop()                        // at the end\n}\n'

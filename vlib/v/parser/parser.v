@@ -463,15 +463,19 @@ pub fn (mut p Parser) parse_into(path string) {
 			if p.tok == .semicolon {
 				p.next()
 			}
-			if p.tok == .name && module_end <= p.tok_pos
+			if (p.tok == .name || p.tok.is_keyword()) && module_end <= p.tok_pos
 				&& p.s.src[module_end..p.tok_pos].contains('\n') {
 				p.record_diagnostic_span('`module` and `${p.lit}` must be at same line', p.tok_pos, p.tok_end)
+			}
+			if p.lit.starts_with('@') {
+				p.record_diagnostic_span('module names cannot use `@` escapes', p.tok_pos,
+					p.tok_end)
 			}
 			p.cur_module = p.lit
 			module_name_end := p.tok_end
 			mod_id := p.add_node(flat.Node{
 				kind:  .module_decl
-				value: p.lit
+				value: p.cur_module
 			})
 			ids << mod_id
 			p.next()
@@ -1067,6 +1071,14 @@ fn (mut p Parser) expect_name() string {
 	return name
 }
 
+// expect_module_name reads a module path segment, including keyword names.
+fn (mut p Parser) expect_module_name() string {
+	if p.lit.starts_with('@') {
+		p.record_diagnostic_span('module names cannot use `@` escapes', p.tok_pos, p.tok_end)
+	}
+	return p.expect_name_or_keyword()
+}
+
 fn (mut p Parser) expect_name_or_keyword() string {
 	name := if p.lit.len > 0 {
 		p.lit
@@ -1436,8 +1448,7 @@ fn (mut p Parser) fn_decl() flat.NodeId {
 					else { '' }
 				}
 				clean_type := method_receiver_type_name(receiver_type)
-				has_base_overload := p.a.nodes.any(it.kind == .fn_decl
-					&& it.value == '${clean_type}.${base_op}')
+				has_base_overload := '${clean_type}.${base_op}' in p.file_method_names
 				message := if has_base_overload {
 					'cannot overload `${assignment_op}`, operator is implicitly overloaded because the `${base_op}` operator is overloaded'
 				} else {
@@ -1463,7 +1474,7 @@ fn (mut p Parser) fn_decl() flat.NodeId {
 				name_pos = p.tok_pos
 				op_name := overload_token_name(p.tok)
 				clean_type := method_receiver_type_name(receiver_type)
-				if p.a.nodes.any(it.kind == .fn_decl && it.value == '${clean_type}.${op_name}') {
+				if '${clean_type}.${op_name}' in p.file_method_names {
 					p.record_diagnostic_span('cannot duplicate operator overload `${op_name}`',
 						p.tok_pos, p.tok_end)
 				}
@@ -1606,6 +1617,7 @@ fn (mut p Parser) fn_operator_overload(receiver_name string, receiver_type strin
 
 	clean_type := method_receiver_type_name(receiver_type)
 	name := '${clean_type}.${op_name}'
+	p.file_method_names[name] = true
 
 	// Match the bodyless-header marker used by ordinary functions and methods.
 	is_v_header_decl := p.cur_file.ends_with('.vh') && p.tok != .lcbr
@@ -2156,7 +2168,7 @@ fn (mut p Parser) parse_param_group(is_c_decl bool) []flat.NodeId {
 	}
 	type_start := p.span_start()
 	mut typ := p.parse_type_name()
-	if typ.len > 0 {
+	if typ.len > 0 && !is_c_decl && !p.prefs.is_fmt {
 		for i, name in names {
 			if name.len > 0 && name[0] >= `A` && name[0] <= `Z` {
 				p.record_diagnostic_span('parameter name must not begin with upper case letter (`${name[0].ascii_str()}`)',
@@ -2496,9 +2508,12 @@ fn (mut p Parser) struct_decl() flat.NodeId {
 				}
 				continue
 			}
+			// `Size [json: size]` is the legacy embed attribute form, but a capitalized field
+			// name followed by a fixed array type (`Data4 [8]u8`) is a regular field.
 			if !p.parsing_c_struct_fields && p.tok == .lsbr && p.tok_pos > p.prev_tok_end
 				&& field_name.len > 0
-				&& field_name[0] >= `A` && field_name[0] <= `Z` && p.peek() != .rsbr {
+				&& field_name[0] >= `A` && field_name[0] <= `Z` && p.peek() != .rsbr
+				&& !p.current_lbr_starts_fixed_array_type() {
 				attr_start := p.tok_pos
 				mut embed_attrs := pending_attrs.clone()
 				embed_attrs << p.parse_field_attrs()
@@ -3536,13 +3551,13 @@ fn (mut p Parser) interface_decl() flat.NodeId {
 fn (mut p Parser) import_stmt() flat.NodeId {
 	import_start := p.span_start()
 	p.next() // skip 'import'
-	mut name := p.expect_name()
-	mut alias := name
+	mut alias := p.lit
+	mut name := p.expect_module_name()
 	mut selective_ids := []flat.NodeId{}
 	for p.tok == .dot {
 		p.next()
-		alias = p.expect_name()
-		name += '.' + alias
+		alias = p.lit
+		name += '.' + p.expect_module_name()
 	}
 	if p.tok == .key_as {
 		p.next()
@@ -3580,7 +3595,8 @@ fn (mut p Parser) import_stmt() flat.NodeId {
 		}
 		p.check(.rcbr)
 	}
-	if p.tok !in [.semicolon, .eof, .key_import] {
+	if p.tok !in [.semicolon, .eof, .key_import] && (p.prev_tok_end >= p.tok_pos
+		|| !p.s.src[p.prev_tok_end..p.tok_pos].contains('\n')) {
 		p.record_diagnostic_span('cannot import multiple modules at a time', p.tok_pos,
 			p.tok_end)
 		for p.tok !in [.semicolon, .eof] {
@@ -3608,7 +3624,7 @@ fn (mut p Parser) import_stmt() flat.NodeId {
 fn (mut p Parser) module_stmt() flat.NodeId {
 	module_start := p.span_start()
 	p.next() // skip 'module'
-	name := p.expect_name()
+	name := p.expect_module_name()
 	p.cur_module = name
 	if p.tok == .semicolon {
 		p.next()
@@ -12596,6 +12612,10 @@ fn (mut p Parser) call_args(fn_expr flat.NodeId) flat.NodeId {
 			ids << p.pipe_lambda_expr()
 		} else {
 			mut arg := p.expr(.lowest)
+			if ids.len == 1 && p.is_json_decode_call(fn_expr) {
+				// The first argument names a type, rather than an empty array value.
+				p.discard_generic_type_array_init_warnings(p.a.node(arg).pos)
+			}
 			if p.tok == .name && p.lit in ['like', 'ilike'] {
 				p.record_diagnostic_span('unexpected name `${p.lit}`, expecting `)`', p.tok_pos, p.tok_end)
 				for p.tok != .rpar && p.tok != .eof {
@@ -12694,6 +12714,40 @@ fn (mut p Parser) call_args(fn_expr flat.NodeId) flat.NodeId {
 		}
 	}
 	return id
+}
+
+fn (p &Parser) is_json_decode_call(id flat.NodeId) bool {
+	callee := p.a.node(id)
+	if callee.value != 'decode' {
+		return false
+	}
+	mut alias := ''
+	if callee.kind == .selector && callee.children_count > 0 {
+		base := p.a.child_node(callee, 0)
+		if base.kind != .ident || p.is_local_binding(base.value) {
+			return false
+		}
+		alias = base.value
+	} else if callee.kind != .ident || p.is_local_binding('decode') {
+		return false
+	}
+	for node in p.a.nodes {
+		if node.kind != .import_decl || node.pos.id != p.cur_file_id || node.value != 'json' {
+			continue
+		}
+		if alias != '' {
+			if node.typ == alias {
+				return true
+			}
+			continue
+		}
+		for i in 0 .. node.children_count {
+			if p.a.child_node(&node, i).value == 'decode' {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 fn (p &Parser) declared_call_param_count(fn_expr flat.NodeId) ?int {
@@ -13393,6 +13447,7 @@ fn (mut p Parser) string_literal() flat.NodeId {
 		return p.add_node(flat.Node{
 			kind:  .string_literal
 			value: val
+			flags: string_literal_flags(val)
 			typ:   if lit.len > 2 && lit.starts_with('js') {
 				'js:${lit[2].ascii_str()}'
 			} else if lit.len > 1 && lit[0] == `r` {
@@ -13405,7 +13460,7 @@ fn (mut p Parser) string_literal() flat.NodeId {
 	}
 	// string interpolation
 	val := strip_interp_start_quotes(lit)
-	id := p.string_interp(val, q, start_pos)
+	id := p.string_interp(val, q, start_pos, string_literal_flags(val))
 	if lit.len > 2 && lit.starts_with('js') {
 		p.a.nodes[int(id)].typ = 'js:${lit[2].ascii_str()}'
 	}
@@ -13413,10 +13468,14 @@ fn (mut p Parser) string_literal() flat.NodeId {
 }
 
 // string_interp supports string interp handling for Parser.
-fn (mut p Parser) string_interp(first_part string, quote u8, start_pos token.Pos) flat.NodeId {
+fn (mut p Parser) string_interp(first_part string, quote u8, start_pos token.Pos, first_part_flags u8) flat.NodeId {
 	mut ids := []flat.NodeId{}
 	if first_part.len > 0 {
-		ids << p.add_val_id(5, first_part)
+		ids << p.add_node(flat.Node{
+			kind:  .string_literal
+			value: first_part
+			flags: first_part_flags
+		})
 	}
 	for p.tok == .str_dollar {
 		p.next() // skip $
@@ -13470,10 +13529,15 @@ fn (mut p Parser) string_interp(first_part string, quote u8, start_pos token.Pos
 		ids << part_id
 		p.check(.rcbr) // skip }
 		if p.tok == .string {
-			part := strip_interp_quotes(p.lit, quote)
+			part_lit := p.lit
+			part := strip_interp_quotes(part_lit, quote)
 			p.next()
 			if part.len > 0 {
-				ids << p.add_val_id(5, part)
+				ids << p.add_node(flat.Node{
+					kind:  .string_literal
+					value: part
+					flags: string_literal_flags(part)
+				})
 			}
 			// check for more interpolation after this string part
 		}
@@ -16335,6 +16399,10 @@ fn strip_quotes(s string) string {
 		return raw
 	}
 	return unescape_string(raw)
+}
+
+fn string_literal_flags(value string) u8 {
+	return if value.contains(r'${') { flat.node_flag_literal_interpolation_text } else { 0 }
 }
 
 fn strip_interp_start_quotes(s string) string {

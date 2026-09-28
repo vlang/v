@@ -783,14 +783,45 @@ fn (g &Parser) validate_expression_mutation_lvalue(tokens []FastcExpressionToken
 		return
 	}
 	global_key := fastc_global_key(g.module_name, root_name)
-	mut selfhost_pointer_root := false
+	mut can_mutate_root := false
+	if g.selfhost || g.translated {
+		mut selector_depth := 0
+		for i, item in lvalue {
+			match item.tok {
+				.lpar, .lsbr, .lcbr {
+					selector_depth++
+					continue
+				}
+				.rpar, .rsbr, .rcbr {
+					selector_depth--
+					continue
+				}
+				else {}
+			}
+			if selector_depth != 0 || item.tok != .dot || i == 0 || i + 1 >= lvalue.len
+				|| lvalue[i + 1].tok != .name || g.expression_dot_is_module_separator(lvalue,
+				i) {
+				continue
+			}
+			receiver_start := fastc_method_receiver_start(lvalue, i)
+			receiver_type := g.infer_expression_type(lvalue[receiver_start..i]) or { continue }
+			if fastc_is_pointer_type(g.underlying_alias_type(receiver_type)) {
+				can_mutate_root = true
+				break
+			}
+		}
+	}
 	if local := g.locals[root_name] {
-		selfhost_pointer_root = g.selfhost && fastc_is_pointer_type(local.typ)
-		if !local.is_mut && lvalue[0].unsafe_depth == 0 && !selfhost_pointer_root {
+		can_mutate_root = can_mutate_root || g.translated || (g.selfhost
+			&& fastc_is_pointer_type(g.underlying_alias_type(local.typ)))
+		if !local.is_mut && lvalue[0].unsafe_depth == 0 && !can_mutate_root {
 			return g.unsupported('mutation of immutable or unknown name `${root_name}`')
 		}
-	} else if global_key !in g.globals {
+	} else if global_key !in g.globals && !can_mutate_root {
 		return g.unsupported('mutation of immutable or unknown name `${root_name}`')
+	} else if global_type := g.global_types[global_key] {
+		can_mutate_root = can_mutate_root || g.translated || (g.selfhost
+			&& fastc_is_pointer_type(g.underlying_alias_type(global_type)))
 	}
 	mut selector_depth := 0
 	for i, item in lvalue {
@@ -816,7 +847,7 @@ fn (g &Parser) validate_expression_mutation_lvalue(tokens []FastcExpressionToken
 		// that generated assignment even when the concrete field is not declared
 		// `mut`; the specialization therefore needs the same privilege as its private
 		// field access above.
-		if !field.is_mutable && item.unsafe_depth == 0 && !selfhost_pointer_root && !g.in_mono_drain {
+		if !field.is_mutable && item.unsafe_depth == 0 && !can_mutate_root && !g.in_mono_drain {
 			type_name := g.semantic_type_key(receiver_type).all_after_last('.')
 			return g.unsupported('mutation of immutable field `${type_name}.${field.name}`')
 		}
