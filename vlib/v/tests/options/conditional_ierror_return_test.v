@@ -75,3 +75,43 @@ fn test_nested_conditional_ierror_is_result_failure() {
 		assert err is io.Eof
 	}
 }
+
+struct ConditionalPayloadError {
+	value int
+}
+
+fn (e ConditionalPayloadError) msg() string { return 'payload' }
+
+fn (e ConditionalPayloadError) code() int { return e.value }
+
+fn narrowed_error_result(item IError) !ConditionalPayloadError {
+	return if item is ConditionalPayloadError { item } else { ConditionalPayloadError{ value: 2 } }
+}
+
+fn narrowed_error_option(item IError) ?ConditionalPayloadError {
+	return if item is ConditionalPayloadError { item } else { ConditionalPayloadError{ value: 2 } }
+}
+
+fn matched_error_result(item IError) !ConditionalPayloadError {
+	return match item {
+		ConditionalPayloadError { item }
+		else { ConditionalPayloadError{ value: 2 } }
+	}
+}
+
+fn matched_error_option(item IError) ?ConditionalPayloadError {
+	return match item {
+		ConditionalPayloadError { item }
+		else { ConditionalPayloadError{ value: 2 } }
+	}
+}
+
+fn test_smartcasted_ierror_is_successful_payload() {
+	for item in [IError(ConditionalPayloadError{ value: 41 }), IError(io.Eof{})] {
+		expected := if item is ConditionalPayloadError { 41 } else { 2 }
+		assert narrowed_error_result(item)!.value == expected
+		assert narrowed_error_option(item)?.value == expected
+		assert matched_error_result(item)!.value == expected
+		assert matched_error_option(item)?.value == expected
+	}
+}

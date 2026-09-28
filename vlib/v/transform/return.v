@@ -210,6 +210,9 @@ fn (t &Transformer) return_ierror_expr_type(id flat.NodeId) string {
 	if int(id) < 0 || int(id) >= t.a.nodes.len {
 		return ''
 	}
+	if sc := t.find_smartcast(t.expr_key(id)) {
+		return t.return_ierror_type_candidate(t.smartcast_target_type(sc)) or { '' }
+	}
 	node := t.a.nodes[int(id)]
 	primary_type := match node.kind {
 		.struct_init, .cast_expr, .as_expr {
