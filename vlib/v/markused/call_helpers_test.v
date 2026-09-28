@@ -695,6 +695,7 @@ fn test_unindexed_generic_factory_return_infers_nested_argument_types() {
 	for forms in [
 		['Box[U]', 'Box[T]'],
 		['[3]U', '[3]T'],
+		['?U', 'T'],
 	] {
 		tc.fn_param_type_texts[method] = [forms[0]]
 		inferred := collector.top_level_call_return_type_name(call, 'consumer', map[string]string{}, {
@@ -705,6 +706,41 @@ fn test_unindexed_generic_factory_return_infers_nested_argument_types() {
 		assert inferred == 'gates.Gate[T]'
 		assert collector.typed_receiver_method_name(inferred, 'backward', 'consumer')? == 'gates.Gate[T].backward'
 	}
+}
+
+fn test_unindexed_generic_factory_uses_prior_local_type() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	tc.parallel_check_sparse = true
+	method := 'gates.make_gate'
+	tc.fn_generic_params[method] = ['U']
+	tc.fn_param_type_texts[method] = ['U']
+	tc.fn_ret_types[method] = types.Type(types.Struct{ name: 'gates.Gate[U]' })
+	tc.structs['Payload'] = []types.StructField{}
+	payload_lhs := a.add_val(.ident, 'payload')
+	payload_rhs := a.add_val(.struct_init, 'Payload')
+	payload_decl := call_helper_node(mut a, flat.Node{ kind: .decl_assign }, [
+		payload_lhs,
+		payload_rhs,
+	])
+	gate_lhs := a.add_val(.ident, 'gate')
+	callee := a.add_val(.ident, 'make_gate')
+	payload_arg := a.add_val(.ident, 'payload')
+	factory_call := call_helper_node(mut a, flat.Node{ kind: .call }, [callee, payload_arg])
+	tc.sparse_resolved_call_names[int(factory_call)] = method
+	gate_decl := call_helper_node(mut a, flat.Node{ kind: .decl_assign }, [gate_lhs, factory_call])
+	body := call_helper_node(mut a, flat.Node{ kind: .block }, [payload_decl, gate_decl])
+	fn_id := call_helper_node(mut a, flat.Node{ kind: .fn_decl, value: 'use_gate' }, [body])
+	collector := CallCollector{
+		a:            &a
+		tc:           &tc
+		struct_decls: {
+			'Payload': StructDeclInfo{ module: 'main' }
+		}
+	}
+	_, local_types := collector.local_value_info(a.node(fn_id), 'main', map[string]string{})
+	assert local_types['payload'] == 'Payload'
+	assert local_types['gate'] == 'gates.Gate[Payload]'
 }
 
 fn test_unindexed_generic_factory_return_infers_callback_result() {

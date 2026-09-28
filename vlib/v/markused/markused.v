@@ -5361,6 +5361,9 @@ fn (c &CallCollector) local_value_info(node &flat.Node, cur_module string, impor
 			}
 		}
 	}
+	// The stack visits sibling statements last-first; infer a local before any
+	// later declaration that uses it as a factory argument.
+	declarations.reverse_in_place()
 	// Infer calls using the locals visible at each identifier, not declarations
 	// collected later in the body or in a different block.
 	scoped := CallCollector{
@@ -6257,6 +6260,8 @@ fn markused_infer_alias_generic_type(param_text string, actual types.Type, gener
 	if clean.starts_with('?') {
 		if actual is types.OptionType {
 			markused_infer_alias_generic_type(clean[1..], actual.base_type, generic_params, mut inferred)
+		} else {
+			markused_infer_alias_generic_type(clean[1..], actual, generic_params, mut inferred)
 		}
 		return
 	}
@@ -6300,6 +6305,8 @@ fn markused_infer_generic_type_text(pattern string, actual string, generic_param
 			if value.starts_with(prefix) {
 				markused_infer_generic_type_text(clean[prefix.len..], value[prefix.len..],
 					generic_params, mut inferred)
+			} else if prefix == '?' {
+				markused_infer_generic_type_text(clean[1..], value, generic_params, mut inferred)
 			}
 			return
 		}
@@ -6676,6 +6683,17 @@ fn (c &CallCollector) top_level_expr_type_name(id flat.NodeId, cur_module string
 	}
 	if alias_type := c.syntax_alias_expr_type(id, cur_module, imports) {
 		return alias_type.name()
+	}
+	if node.kind == .call {
+		if resolved := c.tc.resolved_call_name(id) {
+			if c.generic_fn_name_is_known(resolved, cur_module) {
+				specialized := c.top_level_call_return_type_name(id, cur_module, imports,
+					local_values, local_types, unwrap_optional_result)
+				if specialized.len > 0 {
+					return specialized
+				}
+			}
+		}
 	}
 	typ := c.node_type(id)
 	if type_name := markused_type_name(typ, unwrap_optional_result) {
