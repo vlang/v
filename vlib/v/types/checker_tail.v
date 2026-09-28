@@ -13764,8 +13764,8 @@ fn fn_type_has_platform_int(t FnType) bool {
 }
 
 fn (mut tc TypeChecker) check_call_arg_types(id flat.NodeId, node flat.Node, info0 CallInfo) {
-	info := tc.call_info_with_inferred_receiver(node, tc.specialized_plain_generic_call_info(node,
-		info0))
+	info := tc.builtin_copy_call_info(id, node, tc.call_info_with_inferred_receiver(node,
+		tc.specialized_plain_generic_call_info(node, info0)), true)
 	if node.children_count == 0 {
 		return
 	}
@@ -15563,6 +15563,79 @@ fn (mut tc TypeChecker) check_builtin_map_call_args(_id flat.NodeId, node flat.N
 		tc.check_builtin_array_mutable_receiver(receiver_id)
 	}
 	return true
+}
+
+// builtin_copy_call_info types a call to the builtin `copy(mut dst, src)` like Go's `copy`.
+// `dst` can be any dynamic or fixed size array, and `src` any dynamic or fixed size array
+// with the same element type, or a string when `dst` holds bytes. The declared `[]u8`
+// parameters only describe the byte case, so they are replaced by the argument types.
+// `report` records diagnostics for invalid arguments.
+fn (mut tc TypeChecker) builtin_copy_call_info(id flat.NodeId, node flat.Node, info CallInfo, report bool) CallInfo {
+	if info.name !in ['copy', 'builtin.copy'] || info.has_receiver || info.params.len != 2
+		|| node.children_count != 3 {
+		return info
+	}
+	diagnose := report && tc.should_diagnose(id)
+	dst_id := tc.call_arg_value(tc.a.child(&node, 1))
+	src_id := tc.call_arg_value(tc.a.child(&node, 2))
+	dst_type := tc.resolve_type(dst_id)
+	if dst_type is Void || dst_type is Unknown {
+		return info
+	}
+	dst_param := Type(Pointer{
+		base_type: if dst_type is Pointer { dst_type.base_type } else { dst_type }
+	})
+	dst_elem := copy_arg_elem_type(dst_type) or {
+		if diagnose {
+			tc.record_error_at(.call_arg_mismatch, '`copy` expects a dynamic or fixed size array as its destination, not `${tc.diagnostic_type_name(dst_type)}`',
+				dst_id, tc.call_argument_diagnostic_pos(dst_id))
+		}
+		return CallInfo{
+			...info
+			params: [dst_param, tc.resolve_type(src_id)]
+		}
+	}
+	// An array literal source takes its element type from the destination.
+	mut src_param := Type(Array{
+		elem_type: dst_elem
+	})
+	if tc.a.node(src_id).kind != .array_literal {
+		src_type := tc.resolve_type(src_id)
+		if src_type is Void || src_type is Unknown {
+			return info
+		}
+		src_param = src_type
+		if unalias_and_unwrap_pointer_type(src_type) is String {
+			if !semantic_types_equal(unalias_type(dst_elem), Type(u8_)) && diagnose {
+				tc.record_error_at(.call_arg_mismatch, 'cannot copy a string to `${tc.diagnostic_type_name(dst_type)}`, only to an array of bytes',
+					src_id, tc.call_argument_diagnostic_pos(src_id))
+			}
+		} else if src_elem := copy_arg_elem_type(src_type) {
+			if !semantic_types_equal(unalias_type(dst_elem), unalias_type(src_elem))
+				&& diagnose {
+				tc.record_error_at(.call_arg_mismatch, '`copy` arguments have different element types: `${tc.diagnostic_type_name(dst_type)}` and `${tc.diagnostic_type_name(src_type)}`',
+					src_id, tc.call_argument_diagnostic_pos(src_id))
+			}
+		} else if diagnose {
+			tc.record_error_at(.call_arg_mismatch, '`copy` expects a dynamic or fixed size array or a string as its source, not `${tc.diagnostic_type_name(src_type)}`',
+				src_id, tc.call_argument_diagnostic_pos(src_id))
+		}
+	}
+	return CallInfo{
+		...info
+		params: [dst_param, src_param]
+	}
+}
+
+fn copy_arg_elem_type(typ Type) ?Type {
+	clean := unalias_and_unwrap_pointer_type(typ)
+	if clean is Array {
+		return clean.elem_type
+	}
+	if clean is ArrayFixed {
+		return clean.elem_type
+	}
+	return none
 }
 
 fn (mut tc TypeChecker) check_builtin_array_call_args(id flat.NodeId, node flat.Node, info CallInfo) bool {

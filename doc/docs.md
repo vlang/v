@@ -1572,6 +1572,24 @@ println(typeof(anums).name) // => []int
 Note that slicing will cause the data of the fixed size array to be copied to
 the newly created ordinary array.
 
+To copy elements into an existing array instead, use the builtin `copy` function.
+Like Go's `copy`, it copies as many elements as both arguments have, returns that
+number, and handles overlapping arguments. The destination can be an ordinary array,
+a fixed size array, or a slice of either, and is updated in place. The source can
+also be a string, when the destination holds bytes:
+
+```v
+items := [1, 2, 3, 4, 5]
+mut fixed := [4]int{}
+println(copy(mut fixed, items)) // => 4
+println(fixed) // => [1, 2, 3, 4]
+copy(mut fixed[2..], [9, 9, 9])
+println(fixed) // => [1, 2, 9, 9]
+mut buf := []u8{len: 3}
+copy(mut buf, 'hello')
+println(buf.bytestr()) // => hel
+```
+
 ### Maps
 
 Methods and references on map iteration values address the stored element, including nested maps.
