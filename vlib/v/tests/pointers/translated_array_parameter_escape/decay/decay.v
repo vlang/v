@@ -18,6 +18,11 @@ pub fn (_ Picker) pick(values [3]int) &int {
 	return values + 1
 }
 
+// keep exercises retention through a void interface method.
+pub fn (_ Picker) keep(values [3]int) {
+	retained_pointer = values + 1
+}
+
 __global retained_pointer = unsafe { &int(nil) }
 
 // pick_after checks source ordering around a fixed-array argument.

@@ -2189,8 +2189,34 @@ fn (mut t Transformer) collect_translated_array_retaining_fns() {
 }
 
 fn (t &Transformer) array_call_target_is_indirect(call_name string) bool {
-	return call_name.len == 0 || t.is_fn_pointer_type_name(t.var_type(call_name))
-		|| !t.is_known_fn_name(call_name)
+	if call_name.len == 0 || t.is_fn_pointer_type_name(t.var_type(call_name))
+		|| !t.is_known_fn_name(call_name) {
+		return true
+	}
+	if !isnil(t.tc) {
+		if call_name.contains('.') {
+			iface_name := t.resolve_interface_type_name(call_name.all_before_last('.'))
+			if iface_name.len > 0
+				&& call_name.all_after_last('.') in t.tc.interface_abstract_method_names(iface_name) {
+				// Embedded methods can keep the parent interface's receiver signature.
+				return true
+			}
+		}
+		params := t.tc.fn_param_types[call_name]
+		if params.len > 0 {
+			receiver := types.unwrap_all_pointers(types.unalias_type(params[0]))
+			if receiver is types.Interface {
+				// Abstract interface signatures dispatch to runtime implementations.
+				for method in t.tc.interface_abstract_method_names(receiver.name) {
+					if t.translated_array_call_key(call_name) ==
+						t.translated_array_call_key('${receiver.name}.${method}') {
+						return true
+					}
+				}
+			}
+		}
+	}
+	return false
 }
 
 fn (mut t Transformer) fn_body_has_indirect_array_call(id flat.NodeId) bool {
@@ -3058,6 +3084,21 @@ fn (mut t Transformer) call_param_types_for_node(call_name string, node flat.Nod
 				'${t.normalize_type_in_module(base_type, t.cur_module)}.${fn_node.value}'] {
 				if params := t.call_param_types_from_decl(candidate) {
 					return params
+				}
+			}
+			iface_name := t.resolve_interface_type_name(base_type)
+			if iface_name.len > 0 {
+				if signature := t.tc.interface_method_signature_key(iface_name, fn_node.value) {
+					decl_params, _ := t.tc.specialized_interface_method_signature(iface_name, signature)
+					if decl_params.len > 0 {
+						mut params := decl_params.clone()
+						// An inherited signature keeps its parent's receiver. Dispatch
+						// still uses the child interface, with the same explicit formals.
+						params[0] = types.Type(types.Pointer{
+							base_type: types.Type(types.Interface{ name: iface_name })
+						})
+						return params
+					}
 				}
 			}
 		}

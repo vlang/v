@@ -19,3 +19,12 @@ pub struct Forwarder {}
 pub fn (_ Forwarder) forward(values [3]int) &int {
 	return forward(values)
 }
+
+pub interface ArrayPicker {
+	pick(values [3]int) &int
+}
+
+// forward_interface preserves retention through an imported interface signature.
+pub fn forward_interface(picker ArrayPicker, values [3]int) &int {
+	return picker.pick(values)
+}

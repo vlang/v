@@ -8,6 +8,8 @@ __global saved_parameter_pointer = decay.pick(make_values())
 __global saved_block_parameter_pointer = decay.pick(unsafe { make_values() })
 __global saved_forwarded_pointer = forward_twice(make_values())
 __global saved_indirect_pointer = selected_picker()(make_values())
+__global saved_interface_pointer = forward_interface_twice(decay.Picker{}, make_values())
+__global saved_imported_interface_pointer = wrappers.forward_interface(decay.Picker{}, make_values())
 
 fn make_values() [3]int {
 	return [3, 5, 7]!
@@ -297,4 +299,75 @@ fn test_translated_function_values_preserve_array_storage() {
 	assert decay.read_retained() == 61
 	retain_through_forwarded_callback()
 	assert decay.read_retained() == 71
+}
+
+interface ArrayPicker {
+	pick(values [3]int) &int
+	keep(values [3]int)
+}
+
+interface EmbeddedArrayPicker {
+	ArrayPicker
+}
+
+fn pick_interface_temporary(picker ArrayPicker) &int {
+	return picker.pick(make_values())
+}
+
+fn pick_interface_local(picker ArrayPicker) &int {
+	mut values := make_values()
+	pointer := picker.pick(values)
+	values[1] = 79
+	return pointer
+}
+
+fn forward_interface(picker ArrayPicker, values [3]int) &int {
+	return picker.pick(values)
+}
+
+fn forward_interface_twice(picker ArrayPicker, values [3]int) &int {
+	return forward_interface(picker, values)
+}
+
+fn pick_forwarded_interface(picker ArrayPicker) &int {
+	return forward_interface_twice(picker, make_values())
+}
+
+fn pick_forwarded_interface_local(picker ArrayPicker) &int {
+	mut values := make_values()
+	pointer := forward_interface_twice(picker, values)
+	values[1] = 83
+	return pointer
+}
+
+fn keep_interface(picker ArrayPicker, values [3]int) {
+	picker.keep(values)
+}
+
+fn keep_interface_local(picker ArrayPicker) {
+	mut values := make_values()
+	keep_interface(picker, values)
+	values[1] = 89
+}
+
+fn pick_embedded_interface(picker EmbeddedArrayPicker) &int {
+	return picker.pick(make_values())
+}
+
+fn pick_imported_interface(picker wrappers.ArrayPicker) &int {
+	return wrappers.forward_interface(picker, make_values())
+}
+
+fn test_interface_dispatch_preserves_translated_array_storage() {
+	picker := decay.Picker{}
+	assert read_pointer(pick_interface_temporary(picker)) == 5
+	assert read_pointer(pick_interface_local(picker)) == 79
+	assert read_pointer(pick_forwarded_interface(picker)) == 5
+	assert read_pointer(pick_forwarded_interface_local(picker)) == 83
+	assert read_pointer(saved_interface_pointer) == 5
+	assert read_pointer(pick_embedded_interface(picker)) == 5
+	assert read_pointer(pick_imported_interface(picker)) == 5
+	assert read_pointer(saved_imported_interface_pointer) == 5
+	keep_interface_local(picker)
+	assert decay.read_retained() == 89
 }

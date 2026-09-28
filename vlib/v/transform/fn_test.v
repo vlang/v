@@ -1482,3 +1482,61 @@ fn test_indirect_array_scan_preserves_unresolved_generic_callback_signatures() {
 		assert t.fn_body_has_indirect_array_call(call)
 	}
 }
+
+fn test_array_retention_treats_abstract_interface_methods_as_indirect() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	tc.interface_names['dispatch.Picker'] = true
+	tc.interface_abstract_methods['dispatch.Picker'] = ['pick']
+	tc.interface_names['dispatch.EmbeddedPicker'] = true
+	tc.interface_embeds['dispatch.EmbeddedPicker'] = ['dispatch.Picker']
+	tc.fn_ret_types['dispatch.EmbeddedPicker.pick'] = types.Type(types.Pointer{
+		base_type: types.int_
+	})
+	params := [types.Type(types.Pointer{
+		base_type: types.Type(types.Interface{ name: 'dispatch.Picker' })
+	}), types.Type(types.ArrayFixed{ elem_type: types.int_, len: 3 })]
+	for name in ['dispatch.Picker.pick', 'dispatch__Picker__pick', 'dispatch.Picker.default_pick',
+		'ordinary'] {
+		tc.fn_param_types[name] = params.clone()
+	}
+	mut t := new_transformer(mut a, &tc, map[string]bool{})
+	assert !t.call_uses_translated_array_parameters('dispatch.Picker.pick')
+	tc.translated_files['/translated.v'] = true
+	assert t.call_uses_translated_array_parameters('dispatch.Picker.pick')
+	assert t.call_uses_translated_array_parameters('dispatch__Picker__pick')
+	assert t.call_uses_translated_array_parameters('dispatch.EmbeddedPicker.pick')
+	assert !t.call_uses_translated_array_parameters('dispatch.Picker.default_pick')
+	assert !t.call_uses_translated_array_parameters('ordinary')
+}
+
+fn test_embedded_interface_call_recovers_parent_formals_with_child_receiver() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	tc.interface_names['dispatch.Picker'] = true
+	tc.interface_abstract_methods['dispatch.Picker'] = ['pick']
+	tc.interface_names['dispatch.EmbeddedPicker'] = true
+	tc.interface_embeds['dispatch.EmbeddedPicker'] = ['dispatch.Picker']
+	tc.fn_param_types['dispatch.Picker.pick'] = [types.Type(types.Pointer{
+		base_type: types.Type(types.Interface{ name: 'dispatch.Picker' })
+	}), types.Type(types.ArrayFixed{ elem_type: types.int_, len: 3 })]
+	mut t := new_transformer(mut a, &tc, map[string]bool{})
+	t.set_var_type('picker', 'dispatch.EmbeddedPicker')
+	receiver := a.add_node(flat.Node{ kind: .ident, value: 'picker', typ: 'dispatch.EmbeddedPicker' })
+	selector := t.make_selector(receiver, 'pick', '')
+	values := a.add_node(flat.Node{ kind: .ident, value: 'values', typ: '[3]int' })
+	start := a.children.len
+	a.children << selector
+	a.children << values
+	call := a.add_node(flat.Node{
+		kind:           .call
+		children_start: start
+		children_count: 2
+	})
+	params := t.call_param_types_for_node('dispatch.EmbeddedPicker.pick', a.node(call))
+	assert params.len == 2
+	assert t.semantic_type_name(params[0]) == '&dispatch.EmbeddedPicker'
+	assert params[1] == tc.fn_param_types['dispatch.Picker.pick'][1]
+	assert t.call_param_offset_for_node('dispatch.EmbeddedPicker.pick', a.node(call), params) == 1
+	assert t.semantic_type_name(tc.fn_param_types['dispatch.Picker.pick'][0]) == '&dispatch.Picker'
+}
