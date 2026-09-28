@@ -213,3 +213,46 @@ fn test_generic_contextual_returns_reach_lock_expression_body() {
 		assert guard.value == 1
 	}
 }
+
+fn contextual_dump[A, B](first A, second B) B {
+	_ = first
+	_ = second
+	return dump(contextual_zero())
+}
+
+fn test_generic_contextual_returns_reach_dump_value() {
+	assert contextual_dump(1, 'value') == ''
+}
+
+type ContextualVariantSum = int | string
+
+fn variant_contextual_zero[T]() T {
+	return T{}
+}
+
+fn contextual_variant[A, B](value ContextualVariantSum, first A, second B) B {
+	_ = first
+	$for variant in value.variants {
+		if value is variant {
+			return variant_contextual_zero()
+		}
+	}
+	return second
+}
+
+fn contextual_variant_dump[A, B](value ContextualVariantSum, first A, second B) B {
+	_ = first
+	$for variant in value.variants {
+		if value is variant {
+			return if true { dump(variant_contextual_zero()) } else { second }
+		}
+	}
+	return second
+}
+
+fn test_generic_contextual_returns_survive_variant_smartcast_clones() {
+	for value in [ContextualVariantSum(7), ContextualVariantSum('sum')] {
+		assert contextual_variant(value, 1, 'value') == ''
+		assert contextual_variant_dump(value, 1, 'value') == ''
+	}
+}

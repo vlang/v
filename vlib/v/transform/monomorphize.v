@@ -10012,6 +10012,17 @@ fn (mut t Transformer) clone_specialized_comptime_new_marker(node flat.Node, tar
 	return t.make_cast('&${target}', marker, '&${target}')
 }
 
+fn generic_clone_child_is_return_value(node flat.Node, child_index int, direct_return_value bool) bool {
+	return (node.kind == .return_stmt && node.children_count == 1 && child_index == 0)
+		|| (direct_return_value && node.kind in [.paren, .postfix, .expr_stmt, .dump_expr]
+			&& node.children_count == 1 && child_index == 0)
+		|| (direct_return_value && node.kind == .or_expr)
+		|| (direct_return_value && node.kind in [.if_expr, .match_stmt] && child_index > 0)
+		|| (direct_return_value && node.kind == .comptime_if)
+		|| (direct_return_value && node.kind in [.block, .match_branch, .lock_expr]
+			&& child_index == node.children_count - 1)
+}
+
 @[direct_array_access]
 fn (mut t Transformer) clone_generic_node_from(node flat.Node, args []string, is_root bool, direct_return_value bool) flat.NodeId {
 	if node.kind == .string_literal && node.children_count == 1
@@ -10149,14 +10160,7 @@ fn (mut t Transformer) clone_generic_node_from(node flat.Node, args []string, is
 				match_smartcasts++
 			}
 		}
-		child_is_return_value := (node.kind == .return_stmt && node.children_count == 1 && i == 0)
-			|| (direct_return_value && node.kind in [.paren, .postfix, .expr_stmt]
-				&& node.children_count == 1 && i == 0)
-			|| (direct_return_value && node.kind == .or_expr)
-			|| (direct_return_value && node.kind in [.if_expr, .match_stmt] && i > 0)
-			|| (direct_return_value && node.kind == .comptime_if)
-			|| (direct_return_value && node.kind in [.block, .match_branch, .lock_expr]
-				&& i == node.children_count - 1)
+		child_is_return_value := generic_clone_child_is_return_value(node, i, direct_return_value)
 		child := t.clone_generic_node_with_return_context(t.a.child(&node, i), args,
 			child_is_return_value)
 		for _ in 0 .. match_smartcasts {
