@@ -149,6 +149,48 @@ fn test_match_tuple_value_block_error_with_interface_payload() {
 	}
 }
 
+struct TupleConcreteError {
+	reason string
+}
+
+fn (err TupleConcreteError) msg() string { return err.reason }
+
+fn (_ TupleConcreteError) code() int { return 0 }
+
+fn wrapped_concrete_error_pair() (int, !TupleConcreteError) {
+	return 1, TupleConcreteError{'payload'}
+}
+
+fn test_tuple_value_block_failure_with_concrete_error_payload() {
+	for flag in [true, false] {
+		value, item := match flag {
+			true { wrapped_concrete_error_pair() }
+			else { 2, unsafe { error('match failure') } }
+		}
+		assert value == if flag { 1 } else { 2 }
+		if got := item {
+			assert flag
+			assert got.reason == 'payload'
+		} else {
+			assert !flag
+			assert err.msg() == 'match failure'
+		}
+		other_value, other_item := if flag {
+			wrapped_concrete_error_pair()
+		} else {
+			3, unsafe { error('if failure') }
+		}
+		assert other_value == if flag { 1 } else { 3 }
+		if got := other_item {
+			assert flag
+			assert got.reason == 'payload'
+		} else {
+			assert !flag
+			assert err.msg() == 'if failure'
+		}
+	}
+}
+
 fn test_match_tuple_error_promotes_to_optional_slot() {
 	for flag in [true, false] {
 		value, text := match flag {
