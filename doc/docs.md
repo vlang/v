@@ -4168,6 +4168,8 @@ fn main() {
 #### Implement an interface
 
 A type implements an interface by implementing its methods and fields.
+Equivalent fixed array lengths in method signatures may use different constant expressions.
+Callback userdata parameters may use `voidptr` or a concrete pointer type.
 
 An interface can have a `mut:` section. Implementing types will need
 to have a `mut` receiver, for methods declared in the `mut:` section

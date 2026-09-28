@@ -31,6 +31,21 @@ fn test_callback_payload_checks_channel_mutability() {
 	assert !t.callback_payload_type_compatible(mutable, read_only, false)
 }
 
+fn test_callback_payload_accepts_void_pointer_userdata() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	t := new_transformer(mut a, &tc, map[string]bool{})
+	int_ptr := types.Type(types.Pointer{ base_type: types.Type(types.int_) })
+	void_ptr := types.Type(types.Pointer{ base_type: types.Type(types.void_) })
+	float_ptr := types.Type(types.Pointer{ base_type: types.Type(types.f64_) })
+	int_callback := types.Type(types.FnType{ params: [int_ptr], return_type: types.Type(types.void_) })
+	void_callback := types.Type(types.FnType{ params: [void_ptr], return_type: types.Type(types.void_) })
+	float_callback := types.Type(types.FnType{ params: [float_ptr], return_type: types.Type(types.void_) })
+	assert t.callback_payload_type_compatible(int_callback, void_callback, false)
+	assert t.callback_payload_type_compatible(void_callback, int_callback, false)
+	assert !t.callback_payload_type_compatible(int_callback, float_callback, false)
+}
+
 fn test_zeroed_staging_values_keep_heap_structs_on_the_stack() {
 	mut a := flat.FlatAst.new()
 	decl := a.add_node(flat.Node{ kind: .struct_decl, value: 'HeapValue' })

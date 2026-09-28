@@ -12783,7 +12783,7 @@ pub fn (tc &TypeChecker) fn_type_callconv_compatible(actual Type, expected Type)
 		return tc.fn_type_callconv_compatible(actual.elem_type, expected.elem_type)
 	}
 	if actual is ArrayFixed && expected is ArrayFixed {
-		return actual.len == expected.len
+		return tc.fixed_array_lengths_compatible(actual, expected)
 			&& tc.fn_type_callconv_compatible(actual.elem_type, expected.elem_type)
 	}
 	if actual is Map && expected is Map {

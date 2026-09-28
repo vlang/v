@@ -14446,6 +14446,10 @@ fn (t &Transformer) callback_payload_type_compatible(actual types.Type, expected
 			&& t.callback_payload_type_compatible(a.elem_type, e.elem_type, true)
 	}
 	if a is types.Pointer && e is types.Pointer {
+		if types.unalias_type(a.base_type) is types.Void
+			|| types.unalias_type(e.base_type) is types.Void {
+			return true
+		}
 		return t.callback_payload_type_compatible(a.base_type, e.base_type, true)
 	}
 	if a is types.OptionType && e is types.OptionType {
