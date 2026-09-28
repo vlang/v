@@ -159,3 +159,38 @@ fn test_translated_array_decay_unwraps_outer_alias_chains() {
 	rows := [[char(65), char(66)]!, [char(67), char(68)]!]!
 	assert first_alias_byte_row(rows) == 65
 }
+
+type DecayedIntPtr = &int
+
+type DecayedIntPtrAlias = DecayedIntPtr
+
+type DecayedRowPtr = &[2]int
+
+type DecayedRowPtrAlias = DecayedRowPtr
+
+interface DecaySink {
+	sum(values DecayedIntPtrAlias) int
+	sum_row(values DecayedRowPtrAlias) int
+}
+
+struct FixedArrayDecaySink {}
+
+fn (sink FixedArrayDecaySink) sum(values DecayedIntPtrAlias) int {
+	return sum(&int(values))
+}
+
+fn (sink FixedArrayDecaySink) sum_row(values DecayedRowPtrAlias) int {
+	return sum_row(&[2]int(values))
+}
+
+fn test_translated_interface_pointer_alias_arguments_decay_fixed_arrays() {
+	sink := DecaySink(FixedArrayDecaySink{})
+	values := [20, 22]!
+	assert sink.sum(values) == 42
+	assert sink.sum([20, 22]!) == 42
+	assert sink.sum(make_runtime_row(20)) == 41
+	rows := [[20, 22]!, [3, 5]!]!
+	assert sink.sum_row(rows) == 42
+	assert sink.sum_row([[20, 22]!, [3, 5]!]!) == 42
+	assert sink.sum_row([make_runtime_row(20), make_runtime_row(3)]!) == 41
+}

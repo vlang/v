@@ -538,7 +538,7 @@ fn (mut g FlatGen) gen_fixed_array_pointer_lvalue_arg(id flat.NodeId, expected t
 	if expected_ptr !is types.Pointer {
 		return false
 	}
-	expected_fixed := fixed_array_pointer_type(expected)
+	expected_fixed := array_fixed_type(cgen_unalias_type(expected_ptr.base_type))
 	if int(id) < 0 || int(id) >= g.a.nodes.len {
 		return false
 	}
@@ -580,6 +580,10 @@ fn (mut g FlatGen) gen_fixed_array_pointer_lvalue_arg(id flat.NodeId, expected t
 			}
 			g.write('&')
 			g.gen_expr(id)
+			return true
+		}
+		if g.fixed_array_decay_shape_equal(actual_fixed.elem_type, expected_ptr.base_type, false) {
+			g.gen_fixed_array_data_arg(id, actual_fixed)
 			return true
 		}
 		if g.fixed_array_decay_byte_compatible(actual_fixed.elem_type, expected_ptr.base_type)
