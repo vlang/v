@@ -147,6 +147,20 @@ fn test_fmt_accepts_semantic_duplicate_operator_and_recursive_alias() {
 	}
 }
 
+fn test_fmt_preserves_index_propagation() {
+	for source in [
+		'fn f(values []?int) ?int { return values[0]? }\n',
+		'fn f(values map[string]?int) ?int { return values["key"]? }\n',
+	] {
+		res, formatted := run_vfmt_write('index_propagation', source, '')
+		assert res.exit_code == 0, res.output
+		assert formatted.contains(']?'), formatted
+		second, twice := run_vfmt_write('index_propagation_twice', formatted, '')
+		assert second.exit_code == 0, second.output
+		assert twice == formatted
+	}
+}
+
 fn test_fmt_preserves_multiple_attribute_groups() {
 	for source, expected in {
 		'@[inline] @[deprecated] fn f() {}\n':                        [

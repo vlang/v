@@ -10573,7 +10573,7 @@ fn (mut p Parser) expr_with_lhs_context(first flat.NodeId, min_bp token.BindingP
 				p.next()
 				p.next()
 				return lhs
-			} else if lhs_node.kind == .index {
+			} else if lhs_node.kind == .index && !p.prefs.is_fmt {
 				p.record_diagnostic_span('`?` for propagating errors from index expressions is no longer supported, use `!` instead of `?`',
 					p.tok_pos, p.tok_end)
 			}

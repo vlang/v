@@ -7,6 +7,7 @@ fn test_formatter_preserves_syntax_without_semantic_diagnostics() {
 	path := os.join_path(os.vtmp_dir(), 'formatter_semantics_${os.getpid()}.v')
 	defer { os.rm(path) or {} }
 	cases := {
+		'fn f(values []?int) ?int { return values[0]? }':                                            '`?` for propagating errors from index expressions is no longer supported, use `!` instead of `?`'
 		'@[inline] @[deprecated] fn f() {}':                                                         'multiple attributes should be in the same @[], with ; separators'
 		"struct Holder { value int @[required] @[json: 'value'] }":                                  'multiple attributes should be in the same @[], with ; separators'
 		'fn f[T]() { if T is int { println(1) } }':                                                  'use `$if` instead of `if`'
