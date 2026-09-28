@@ -1081,6 +1081,30 @@ fn main() {
 	assert ask(dir, 'gd^', 5, 'value', 0) == 'main.v:4:1'
 }
 
+fn test_a_type_name_in_a_comment_or_in_the_text_of_a_string_names_no_type() {
+	// Only code refers to a type: a word of a comment or of the text of a
+	// string that spells one is no reference; an interpolated expression is code.
+	dir := program_dir('type_words_in_text', "module main
+
+struct Marker {}
+
+fn main() {
+	println('Marker')
+	// Marker is just text.
+	println(Marker{})
+	println('\${Marker{}}')
+}
+")
+	for line in [6, 7] {
+		assert ask(dir, 'gd^', line, 'Marker', 0) == '', 'line ${line}'
+		assert ask(dir, 'hv^', line, 'Marker', 0) == '', 'line ${line}'
+	}
+	for line in [8, 9] {
+		assert ask(dir, 'gd^', line, 'Marker', 0) == 'main.v:3:7', 'line ${line}'
+		assert ask(dir, 'hv^', line, 'Marker', 0) == hover_of('struct Marker'), 'line ${line}'
+	}
+}
+
 // not_array_methods_program calls methods of a struct named like the array
 // methods whose argument declares `it`, `a` and `b`, with locals of those names.
 const not_array_methods_program = 'module main
