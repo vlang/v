@@ -14795,6 +14795,23 @@ fn (mut g FlatGen) const_expr_to_string(id flat.NodeId, seen []string) string {
 				g.power_expr_string(lhs, rhs, g.usable_expr_type(id))
 			} else if node.op == .left_shift && g.shift_needs_64bit_widening(&node) {
 				'((u64)(${lhs})) << (${rhs})'
+			} else if node.op in [.left_shift, .right_shift, .right_shift_unsigned]
+				&& g.expr_is_in_translated_file(id) {
+				lhs_id := g.a.child(&node, 0)
+				lhs_type := g.usable_expr_type(lhs_id)
+				shift_type := if unsigned_shift_unalias_type(lhs_type).name() == 'int' {
+					types.Type(types.i32_)
+				} else {
+					g.usable_expr_type(id)
+				}
+				ut, bits := g.unsigned_shift_type_parts(shift_type)
+				ct := if node.op == .right_shift_unsigned {
+					ut
+				} else {
+					g.value_c_type(unsigned_shift_unalias_type(shift_type))
+				}
+				op := if node.op == .left_shift { '<<' } else { '>>' }
+				'((u64)(${rhs}) >= ${bits} ? (${ct})0 : (${ct})((${ct})(${lhs}) ${op} (${rhs})))'
 			} else if node.op == .right_shift_unsigned {
 				// `>>>` must stay a logical shift in const initializers too;
 				// op_str would map it to a plain arithmetic `>>`. The operands
@@ -24372,8 +24389,9 @@ fn (g &FlatGen) shift_needs_64bit_widening(node &flat.Node) bool {
 	if node.children_count < 2 {
 		return false
 	}
-	lhs := g.a.child_node(node, 0)
-	if lhs.kind != .int_literal {
+	lhs_id := g.a.child(node, 0)
+	lhs := g.a.nodes[int(lhs_id)]
+	if lhs.kind != .int_literal || g.expr_is_in_translated_file(lhs_id) {
 		return false
 	}
 	rhs_value := g.shift_count_const_value(g.a.child(node, 1), []string{}) or { return false }

@@ -68,3 +68,13 @@ fn test_translated_int_alias_shift_count_uses_c_width() {
 	assert result.exit_code != 0, result.output
 	assert result.output.contains('shift count for type `ShiftAlias` too large'), result.output
 }
+
+fn test_ordinary_literal_shifts_still_widen() {
+	root := os.join_path(os.vtmp_dir(), 'v3_ordinary_literal_shift_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+	path := os.join_path(root, 'main.v')
+	os.write_file(path, 'module main\nconst wide = 1 << 40\nfn main() { value := 1 << 40; assert value == u64(1099511627776); assert wide == u64(1099511627776) }\n')!
+	result := os.execute('${os.quoted_path(@VEXE)} run ${os.quoted_path(path)}')
+	assert result.exit_code == 0, result.output
+}

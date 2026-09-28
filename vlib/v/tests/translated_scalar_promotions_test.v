@@ -348,3 +348,19 @@ fn test_translated_large_integer_literal_types() {
 	assert hex + int(1) == u32(0)
 	assert decimal + int(1) == i64(4294967296)
 }
+
+const translated_literal_shift = 1 << 40
+const translated_wide_literal_shift = 0x1_0000_0000 << 1
+
+fn test_translated_literal_shifts_keep_their_c_width() {
+	literal := 1 << 40
+	assert literal == 0
+	assert translated_literal_shift == 0
+	assert translated_wide_literal_shift == i64(0x2_0000_0000)
+	assert 0x1_0000_0000 << 1 == i64(0x2_0000_0000)
+	for count in [31, 32, 40, 64, -1] {
+		assert (1 << count) == (int(1) << count)
+		assert (1 >> count) == (int(1) >> count)
+		assert (1 >>> count) == (int(1) >>> count)
+	}
+}
