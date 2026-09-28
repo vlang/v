@@ -4693,6 +4693,9 @@ x := read() or {
 }
 ```
 
+A local `err` declared in a nested block shadows the implicit `or` error variable, including in
+result values.
+
 #### Options/results when returning multiple values
 
 Only one `Option` or `Result` is allowed to be returned from a function. It is

@@ -176,10 +176,24 @@ fn (mut t Transformer) return_expr_is_propagated_err(id flat.NodeId, payload_typ
 	}
 	mut expression_id := id
 	mut node := t.a.nodes[int(expression_id)]
+	mut shadows_implicit_err := false
 	for node.children_count > 0 {
 		if node.kind in [.paren, .expr_stmt] && node.children_count == 1 {
 			expression_id = t.a.child(&node, 0)
 		} else if node.kind == .block {
+			for i in 0 .. node.children_count - 1 {
+				statement := t.a.child_node(&node, i)
+				if statement.kind != .decl_assign {
+					continue
+				}
+				for j in 0 .. t.multi_assign_lhs_count(statement) {
+					binding := t.a.child_node(statement, j)
+					if binding.kind == .ident && binding.value == 'err' {
+						shadows_implicit_err = true
+						break
+					}
+				}
+			}
 			expression_id = t.a.child(&node, node.children_count - 1)
 		} else {
 			break
@@ -194,7 +208,8 @@ fn (mut t Transformer) return_expr_is_propagated_err(id flat.NodeId, payload_typ
 	// failure. Other IError-compatible values can instead be successful payloads
 	// when the surrounding result expects their type (for example `!IError`).
 	if t.is_error_call(node)
-		|| (node.kind == .ident && node.value == 'err' && t.implicit_err_binding_active()) {
+		|| (node.kind == .ident && node.value == 'err' && !shadows_implicit_err
+			&& t.implicit_err_binding_active()) {
 		return true
 	}
 	if payload_type == '' || payload_type == 'unknown' || payload_type.contains('unknown') {
