@@ -1007,6 +1007,36 @@ fn test_for_in_map_registers_key_and_value_types() {
 	assert type_names['value'] == 'T'
 }
 
+fn test_for_in_binding_does_not_change_iterable_type_during_inference() {
+	for has_second in [false, true] {
+		mut a := flat.FlatAst.new()
+		mut tc := types.TypeChecker.new(&a)
+		key := a.add_val(.ident, 'items')
+		value := if has_second { a.add_val(.ident, 'value') } else { flat.empty_node }
+		container := a.add_val(.ident, 'items')
+		loop := call_helper_node(mut a, flat.Node{ kind: .for_in_stmt, value: '3' }, [
+			key,
+			value,
+			container,
+		])
+		collector := CallCollector{ a: &a, tc: &tc }
+		mut names := {
+			'items': true
+		}
+		mut types_by_name := {
+			'items': 'map[string]T'
+		}
+		collector.register_top_level_for_in_vars(a.node(loop), 'main', map[string]string{},
+			mut names, mut types_by_name)
+		if has_second {
+			assert types_by_name['items'] == 'string'
+			assert types_by_name['value'] == 'T'
+		} else {
+			assert types_by_name['items'] == 'T'
+		}
+	}
+}
+
 fn test_generic_factory_multi_return_decl_uses_component_type() {
 	mut a := flat.FlatAst.new()
 	mut tc := types.TypeChecker.new(&a)

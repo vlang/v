@@ -7016,6 +7016,8 @@ fn (c &CallCollector) register_top_level_for_in_vars(node &flat.Node, cur_module
 	key_id := c.a.child(node, 0)
 	val_id := c.a.child(node, 1)
 	container_id := c.a.child(node, 2)
+	container_values := local_values.clone()
+	container_types := local_types.clone()
 	key_node := c.a.node(key_id)
 	has_second := int(val_id) >= 0 && c.a.node(val_id).kind == .ident
 		&& c.a.node(val_id).value.len > 0
@@ -7025,7 +7027,7 @@ fn (c &CallCollector) register_top_level_for_in_vars(node &flat.Node, cur_module
 		if key_node.kind == .ident && key_node.value.len > 0 && key_node.value != '_' {
 			local_values[key_node.value] = true
 			key_type := c.top_level_for_in_key_type_name(container_id, cur_module, imports,
-				local_values, local_types)
+				container_values, container_types)
 			if key_type.len > 0 {
 				local_types[key_node.value] = key_type
 			}
@@ -7053,12 +7055,13 @@ fn (c &CallCollector) register_top_level_for_in_vars(node &flat.Node, cur_module
 		}
 		low := if header == 4 { container_id } else { c.a.child(container, 0) }
 		high := if header == 4 { c.a.child(node, 3) } else { c.a.child(container, 1) }
-		low_literal := c.range_endpoint_is_literal(low, cur_module, imports, local_types, 0)
+		low_literal := c.range_endpoint_is_literal(low, cur_module, imports, container_types,
+			0)
 		candidates := if low_literal { [high, low] } else { [low, high] }
 		local_types[value_var] = 'int'
 		for candidate in candidates {
-			type_name := c.top_level_expr_type_name(candidate, cur_module, imports, local_values,
-				local_types, false)
+			type_name := c.top_level_expr_type_name(candidate, cur_module, imports,
+				container_values, container_types, false)
 			if types.unalias_type(c.tc.parse_canonical_type(type_name)).is_integer() {
 				local_types[value_var] = type_name
 				break
@@ -7067,14 +7070,14 @@ fn (c &CallCollector) register_top_level_for_in_vars(node &flat.Node, cur_module
 		return
 	}
 	if elem := c.top_level_for_in_elem_type_name(container_id, cur_module, imports,
-		local_values, local_types) {
+		container_values, container_types) {
 		if elem.len > 0 {
 			local_types[value_var] = elem
 		}
 		return
 	}
-	container_type := c.top_level_expr_type_name(container_id, cur_module, imports, local_values,
-		local_types, false)
+	container_type := c.top_level_expr_type_name(container_id, cur_module, imports,
+		container_values, container_types, false)
 	if container_type.len == 0 {
 		return
 	}
