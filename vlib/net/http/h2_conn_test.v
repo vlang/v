@@ -575,6 +575,24 @@ fn test_h2_conn_rejects_malformed_response_fields() {
 	} else {
 		assert err.msg().contains('uppercase'), 'unexpected error: ${err.msg()}'
 	}
+	// TE is connection-specific (RFC 9113 §8.2.2); only a REQUEST may carry it
+	// (as "trailers"), so a response carrying it -- even "te: trailers" -- is
+	// malformed.
+	inbound3 := build_server_stream([H2HeaderField{':status', '200'}, H2HeaderField{'te', 'trailers'}], [])
+	mut c3 := new_h2_conn(&MockTransport{ inbound: inbound3 })
+	if _ := c3.do(H2ClientRequest{ authority: 'h.example' }) {
+		assert false, 'TE response header was accepted'
+	} else {
+		assert err.msg().contains('only in requests'), 'unexpected error: ${err.msg()}'
+	}
+}
+
+// h2_response_field_error is the one predicate all four received-field sites
+// share (sync + mux, headers + trailers), so rejecting TE here covers each.
+fn test_h2_response_field_error_rejects_te() {
+	assert h2_response_field_error('te').contains('only in requests')
+	assert h2_response_field_error('trailer') == '', 'the Trailer field (not TE) is valid in a response'
+	assert h2_response_field_error('x-te') == ''
 }
 
 // RFC 9113 §6.5.2: the client honors the peer's advisory

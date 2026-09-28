@@ -2029,6 +2029,9 @@ fn test_mux_response_rejects_malformed_fields() {
 		H2HeaderField{'transfer-encoding', 'chunked'}], 'transfer-encoding')
 	mux_response_rejected([H2HeaderField{':status', '200'},
 		H2HeaderField{'Content-Type', 'text/plain'}], 'uppercase')
+	// TE is permitted only in requests (RFC 9113 §8.2.2).
+	mux_response_rejected([H2HeaderField{':status', '200'}, H2HeaderField{'te', 'trailers'}],
+		'only in requests')
 	// An undefined response pseudo-header is also malformed (§8.3.1).
 	mux_response_rejected([H2HeaderField{':status', '200'}, H2HeaderField{':custom', 'x'}],
 		'pseudo-header')

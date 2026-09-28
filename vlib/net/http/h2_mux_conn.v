@@ -74,16 +74,18 @@ fn all_digits(s string) bool {
 // carrying one is malformed. TE is deliberately NOT listed: it is the request-only
 // exception (allowed in a request as exactly "trailers" -- h2_request_field_error
 // enforces that), so a list that rejected it everywhere would break requests. The
-// server's outbound RESPONSE filters must therefore add TE themselves --
-// h2_server.v's h2_response_field_is_forbidden does; do not rely on this const
-// alone for a response-side filter.
+// response-side checks must therefore add TE themselves -- h2_server.v's
+// h2_response_field_is_forbidden (outbound) and h2_response_field_error below
+// (received) both do; do not rely on this const alone for a response-side check.
 const h2_conn_specific_headers = ['connection', 'keep-alive', 'proxy-connection', 'transfer-encoding',
 	'upgrade']
 
 // h2_response_field_error returns a non-empty reason when a regular (non-pseudo)
 // received header field is malformed per RFC 9113 §8.2, or '' when it is valid.
 // Field names must be non-empty and lowercase (§8.2.1), and connection-specific
-// fields are forbidden (§8.2.2). A malformed field makes the whole message
+// fields are forbidden (§8.2.2) -- TE included: §8.2.2 exempts it only in a
+// REQUEST, so a response or trailer carrying it is malformed even as "te:
+// trailers". A malformed field makes the whole message
 // malformed (§8.1.1); the mux path resets the stream and the sync path fails the
 // request rather than delivering it. Pseudo-header validity is checked at the
 // call site (the set of valid pseudo-headers differs between headers/trailers).
@@ -98,6 +100,9 @@ fn h2_response_field_error(name string) string {
 	}
 	if name in h2_conn_specific_headers {
 		return 'connection-specific header field "${name}"'
+	}
+	if name == 'te' {
+		return 'connection-specific header field "te" (TE is permitted only in requests)'
 	}
 	return ''
 }
