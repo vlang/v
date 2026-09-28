@@ -9102,11 +9102,28 @@ fn (tc &TypeChecker) enum_value_matches(value string, enum_name string) bool {
 
 // enum_has_field converts enum has field data for types.
 fn (tc &TypeChecker) enum_has_field(enum_name string, field string) bool {
-	fields := tc.enum_fields[enum_name] or { return false }
-	if field.starts_with('@') && !token.Token.from_string_tinyv(field[1..]).is_keyword() {
-		return false
+	if _ := tc.enum_field_name(enum_name, field) {
+		return true
 	}
-	return escaped_identifier_name(field) in fields
+	return false
+}
+
+fn (tc &TypeChecker) enum_field_name(enum_name string, field string) ?string {
+	fields := tc.enum_fields[enum_name] or { return none }
+	if field.starts_with('@') && !token.Token.from_string_tinyv(field[1..]).is_keyword() {
+		return none
+	}
+	if field in fields {
+		return field
+	}
+	plain := escaped_identifier_name(field)
+	if token.Token.from_string_tinyv(plain).is_keyword() {
+		alternate := if field.starts_with('@') { plain } else { '@' + field }
+		if alternate in fields {
+			return alternate
+		}
+	}
+	return none
 }
 
 // resolve_enum_name resolves resolve enum name information for types.
@@ -10033,23 +10050,15 @@ fn (tc &TypeChecker) const_int_enum_selector_value(text string) ?int {
 		return none
 	}
 	enum_name := tc.resolve_enum_name(trimmed_space(expr[..dot])) or { return none }
-	field := trimmed_space(expr[dot + 1..])
-	plain_field := escaped_identifier_name(field)
+	field := tc.enum_field_name(enum_name, trimmed_space(expr[dot + 1..])) or { return none }
 	for item in tc.comptime_static_enum_decl_value_cases(enum_name) {
 		if item.name == field && item.has_value {
 			return item.value
 		}
 	}
-	if plain_field != field {
-		for item in tc.comptime_static_enum_decl_value_cases(enum_name) {
-			if item.name == plain_field && item.has_value {
-				return item.value
-			}
-		}
-	}
 	fields := tc.enum_fields[enum_name] or { return none }
 	for idx, name in fields {
-		if name == plain_field {
+		if name == field {
 			return if enum_name in tc.flag_enums { 1 << idx } else { idx }
 		}
 	}
@@ -12122,7 +12131,7 @@ fn (tc &TypeChecker) c_struct_plain_keyword_field_type(struct_name string, field
 		return none
 	}
 	seen[owner.name] = true
-	fields := tc.structs[owner.name] or { tc.structs[owner.name.all_after_last('.')] or { return none } }
+	fields := tc.struct_fields_for_init(owner.name)
 	for field in fields {
 		if field.name == field_name && owner.name.starts_with('C.') {
 			return field.typ

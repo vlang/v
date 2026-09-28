@@ -78,18 +78,10 @@ fn (mut t Transformer) transform_struct_fields(id flat.NodeId, node flat.Node) f
 			} else {
 				''
 			}
-			mut exact_promoted_field := false
-			if child.value.starts_with('@') {
-				if _ := t.struct_field_path_for_field(node.value, child.value) {
-					exact_promoted_field = true
-				}
-			}
-			if child.value.starts_with('@') && !info.fields.any(it.name == child.value)
-				&& !exact_promoted_field {
+			if child.value.starts_with('@') && info.name.starts_with('C.')
+				&& !info.fields.any(it.name == child.value) {
 				plain_name := child.value[1..]
 				if info.fields.any(it.name == plain_name) {
-					field_name = plain_name
-				} else if _ := t.struct_field_path_for_field(node.value, plain_name) {
 					field_name = plain_name
 				}
 			}
@@ -123,7 +115,17 @@ fn (mut t Transformer) transform_struct_fields(id flat.NodeId, node flat.Node) f
 						promoted_key = promoted_field_path_key(path)
 						promoted_paths[promoted_key] = path
 						embedded_owner := path[path.len - 1].typ
-						field_type = t.lookup_struct_field_raw_type(embedded_owner, field_name) or {
+						if field_name.starts_with('@') {
+							if embedded_info := t.lookup_struct_info(embedded_owner) {
+								plain_name := field_name[1..]
+								if embedded_info.name.starts_with('C.')
+									&& !embedded_info.fields.any(it.name == field_name)
+									&& embedded_info.fields.any(it.name == plain_name) {
+									target_field_name = plain_name
+								}
+							}
+						}
+						field_type = t.lookup_struct_field_raw_type(embedded_owner, target_field_name) or {
 							t.checker_struct_field_type_name(node.value, field_name) or { '' }
 						}
 					}

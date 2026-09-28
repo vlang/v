@@ -20,6 +20,11 @@ struct KeywordSized {
 	data [int(PlainKeywordCount.@struct)]u8
 }
 
+enum DistinctKeywordMembers {
+	none  = 2
+	@none = 4
+}
+
 struct Layout {
 	alignment Alignment = .@none
 }
@@ -70,6 +75,26 @@ fn test_escaped_and_plain_enum_members_have_distinct_match_coverage() {
 	assert result.output.contains('missing return'), result.output
 }
 
+fn test_escaped_enum_members_in_constant_array_sizes() {
+	plain := [int(PlainKeywordCount.@struct)]u8{}
+	unescaped := [int(DistinctKeywordMembers.none)]u8{}
+	escaped := [int(DistinctKeywordMembers.@none)]u8{}
+	assert plain.len == 4
+	assert unescaped.len == 2
+	assert escaped.len == 4
+}
+
+fn test_escaped_enum_members_keep_distinct_match_coverage() {
+	path := os.join_path(os.vtmp_dir(), 'v3_distinct_enum_escape_${os.getpid()}.v')
+	defer { os.rm(path) or {} }
+	for condition in ['.@none', 'Kind.@none'] {
+		os.write_file(path, 'enum Kind { none = 2 @none = 4 }\nfn score(value Kind) int { match value { ${condition} { return 4 } } }\nfn main() { println(score(.none)) }\n')!
+		result := os.execute('${os.quoted_path(@VEXE)} -check ${os.quoted_path(path)}')
+		assert result.exit_code != 0, result.output
+		assert result.output.contains('missing return'), result.output
+	}
+}
+
 fn test_non_keyword_enum_member_cannot_be_escaped() {
 	path := os.join_path(os.vtmp_dir(), 'v3_invalid_enum_escape_${os.getpid()}.v')
 	os.write_file(path, 'enum Kind { left struct }\nfn main() { _ := Kind.@left }\n')!
@@ -87,4 +112,33 @@ fn test_native_backend_preserves_escaped_enum_declaration() {
 		result := os.execute('${os.quoted_path(@VEXE)} -b arm64 -gc none run ${os.quoted_path(path)}')
 		assert result.exit_code == 0, result.output
 	}
+}
+
+enum EscapedFirstDefault {
+	@none = -10
+	none  = 5
+}
+
+struct EscapedDefaultHolder {
+	value EscapedFirstDefault
+}
+
+fn test_enum_default_keeps_the_first_declaration_identity() {
+	assert int(EscapedDefaultHolder{}.value) == -10
+	assert int(EscapedDefaultHolder{ value: .none }.value) == 5
+	assert int(EscapedFirstDefault.@none) == -10
+	assert int(EscapedFirstDefault.none) == 5
+}
+
+fn alignment_score_plain_keyword(value Alignment) int {
+	match value {
+		.none { return 0 }
+		.left { return 1 }
+		.@type { return 2 }
+	}
+}
+
+fn test_plain_keyword_reference_resolves_an_escaped_only_declaration() {
+	assert alignment_score_plain_keyword(.@none) == 0
+	assert alignment_score_plain_keyword(.@type) == 2
 }

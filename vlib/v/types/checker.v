@@ -3603,7 +3603,7 @@ fn (mut tc TypeChecker) collect_after_index(a &flat.FlatAst) {
 				for i in 0 .. node.children_count {
 					f := a.child_node(node_ref, i)
 					if f.kind == .enum_field {
-						fields << escaped_identifier_name(f.value)
+						fields << f.value
 					}
 				}
 				tc.enum_fields[qn] = fields
@@ -16777,7 +16777,7 @@ fn (tc &TypeChecker) match_covers_all_enum_variants(node flat.Node) bool {
 		n_conds := branch.value.int()
 		for j in 0 .. n_conds {
 			cond := tc.a.child_node(branch, j)
-			if field := tc.match_enum_condition_field(cond, enum_name, all_fields) {
+			if field := tc.match_enum_condition_field(cond, enum_name) {
 				covered[field] = true
 			}
 		}
@@ -16909,7 +16909,7 @@ fn (tc &TypeChecker) match_without_else_exhaustive_enum_returns(node flat.Node) 
 			}
 			for j in 0 .. n_conds {
 				cond := tc.a.child_node(branch, j)
-				field := tc.match_enum_condition_field(cond, enum_name, fields) or { return false }
+				field := tc.match_enum_condition_field(cond, enum_name) or { return false }
 				covered[field] = true
 			}
 		}
@@ -17074,12 +17074,12 @@ fn unalias_and_unwrap_pointer_type(t Type) Type {
 	return cur
 }
 
-fn (tc &TypeChecker) match_enum_condition_field(cond &flat.Node, enum_name string, fields []string) ?string {
+fn (tc &TypeChecker) match_enum_condition_field(cond &flat.Node, enum_name string) ?string {
 	match cond.kind {
 		.enum_val {
 			field := cond.value.all_after_last('.')
 			if tc.enum_value_matches(cond.value, enum_name) {
-				return enum_coverage_field(field, fields)
+				return tc.enum_field_name(enum_name, field)
 			}
 		}
 		.selector {
@@ -17087,7 +17087,7 @@ fn (tc &TypeChecker) match_enum_condition_field(cond &flat.Node, enum_name strin
 				if typ is Enum {
 					cond_enum_name := tc.resolve_enum_name(typ.name) or { typ.name }
 					if cond_enum_name == enum_name && tc.enum_has_field(enum_name, cond.value) {
-						return enum_coverage_field(cond.value, fields)
+						return tc.enum_field_name(enum_name, cond.value)
 					}
 				}
 			}
@@ -17095,17 +17095,6 @@ fn (tc &TypeChecker) match_enum_condition_field(cond &flat.Node, enum_name strin
 		else {}
 	}
 
-	return none
-}
-
-fn enum_coverage_field(spelling string, fields []string) ?string {
-	if spelling in fields {
-		return spelling
-	}
-	plain := escaped_identifier_name(spelling)
-	if plain in fields {
-		return plain
-	}
 	return none
 }
 

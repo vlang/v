@@ -3944,10 +3944,9 @@ This ensures that if a new enum field is added, it's handled everywhere in the c
 Enum fields can re-use reserved keywords:
 
 The `@` escape is also accepted in qualified and shorthand member references, including
-comparisons, assignments, struct defaults, and `match` branches.
-A plain keyword member can be referenced with `@` without changing its value, including in
-compile-time integer expressions. If both `none` and `@none` are declared, they are distinct
-members and both must be covered by a `match` without `else`.
+comparisons, assignments, struct defaults, `match` branches, and constant integer expressions.
+These references also work with the eval backend. Exact declarations take precedence:
+if both `none` and `@none` are declared, they retain distinct values and match coverage.
 
 ```v
 enum Color {
@@ -8788,6 +8787,8 @@ Note also that they *do not have* to be complete, unlike the ones in the .h file
 
 
 An escaped C field name such as `@type` also matches a binding declared with the plain name `type`.
+An exact escaped V field takes precedence, including fields promoted from embedded structs.
+The C keyword fallback follows the C field's owning embed for both its type and its storage.
 
 **C. struct redeclarations**
 For example, if a struct has 3 fields on the C side, but you want to only

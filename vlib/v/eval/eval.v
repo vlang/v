@@ -6,6 +6,7 @@ import time
 import v.flat
 import v.parser
 import v.pref
+import v.token as vtoken
 
 pub type Value = ArrayValue
 	| EnumValue
@@ -2406,8 +2407,10 @@ fn (mut e Eval) eval_expr(id flat.NodeId) !Value {
 				}
 				return Value(e.value_as_bool(e.eval_expr(e.child(node, 1))!)!)
 			}
-			return e.apply_infix(node.op, e.eval_expr(e.child(node, 0))!, e.eval_expr(e.child(node,
-				1))!)
+			left := e.eval_expr(e.child(node, 0))!
+			expected_type := if left is EnumValue { left.type_name } else { '' }
+			right := e.eval_expr_expected(e.child(node, 1), expected_type)!
+			return e.apply_infix(node.op, left, right)
 		}
 		.call {
 			return flow_value(e.eval_call_flow(id, node)!)
@@ -2738,7 +2741,8 @@ fn (mut e Eval) eval_infix_flow(node &flat.Node) !FlowSignal {
 		}
 		return value_flow(Value(e.value_as_bool(flow_value(right_signal))!))
 	}
-	right_signal := e.eval_expr_flow(e.child(node, 1))!
+	expected_type := if left is EnumValue { left.type_name } else { '' }
+	right_signal := e.eval_expr_flow_expected(e.child(node, 1), expected_type)!
 	if right_signal.kind != .normal {
 		return right_signal
 	}
@@ -3574,18 +3578,11 @@ fn (mut e Eval) eval_selector_value(left Value, field string) !Value {
 				return Value(left.name)
 			}
 			mod := e.type_value_module_name(left)
-			enum_key := '${left.name.all_after_last('.')}.${field}'
-			if value := e.lookup_const(mod, enum_key) {
-				return e.enum_value(left.name, value)
+			if value := e.lookup_enum_value(e.qualify_type_name(mod, left.name), field) {
+				return value
 			}
 			if value := e.lookup_const(mod, field) {
 				return e.enum_value(left.name, value)
-			}
-			if field.starts_with('@') {
-				plain := field[1..]
-				if value := e.lookup_const(mod, '${left.name.all_after_last('.')}.${plain}') {
-					return e.enum_value(left.name, value)
-				}
 			}
 			return TypeValue{
 				name: '${left.name}.${field}'
@@ -4626,13 +4623,14 @@ fn (mut e Eval) lookup_enum_value(enum_type_name string, field string) ?Value {
 	} else {
 		e.current_module_name()
 	}
-	enum_key := '${enum_type_name.all_after_last('.')}.${field}'
-	if value := e.lookup_const(mod, enum_key) {
-		return e.enum_value(e.qualify_type_name(mod, enum_type_name), value)
+	mut fields := [field]
+	plain := if field.starts_with('@') { field[1..] } else { field }
+	if vtoken.Token.from_string_tinyv(plain).is_keyword() {
+		fields << if field.starts_with('@') { plain } else { '@' + field }
 	}
-	if field.starts_with('@') {
-		plain_key := '${enum_type_name.all_after_last('.')}.${field[1..]}'
-		if value := e.lookup_const(mod, plain_key) {
+	for name in fields {
+		enum_key := '${enum_type_name.all_after_last('.')}.${name}'
+		if value := e.lookup_const(mod, enum_key) {
 			return e.enum_value(e.qualify_type_name(mod, enum_type_name), value)
 		}
 	}
