@@ -4,7 +4,7 @@ In `@[translated]` files, boolean values can index arrays and pointers. Boolean,
 character, and enum values can offset pointers in arithmetic and compound assignments.
 Mixed boolean and numeric conditional branches
 retain the numeric branch type. Narrow integer shifts use C's minimum 32-bit
-operand width.
+operand width. Shifts of translated `int` values use C's 32-bit `int` width.
 
 Translated scalar return statements also use C conversions, including float to
 integer and negative integer sentinels returned as unsigned values. Unary numeric
@@ -18,5 +18,6 @@ using C's integer conversion rules. Function addresses supplied through `voidptr
 can be assigned to callback variables. Callbacks can be compared with integer
 sentinels such as `0` and `-1`. These rules apply only to translated files;
 ordinary V source keeps its existing checks and mixed-sign comparison behavior.
-Mixed-sign comparisons use C's promoted operand widths, and explicitly backed
-wide enums retain their backing type through arithmetic and bitwise operations.
+Mixed-sign comparisons use C's promoted operand widths, including the backing
+widths of explicitly backed enums. Wide backed enums retain their backing type
+through arithmetic and bitwise operations.

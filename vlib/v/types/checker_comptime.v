@@ -7854,7 +7854,7 @@ fn (mut tc TypeChecker) check_infix(id flat.NodeId, node flat.Node) {
 fn (tc &TypeChecker) integer_shift_bit_size(typ Type) int {
 	clean := unalias_type(typ)
 	if clean is Primitive {
-		if typ.name() == 'int' || clean.size == 0 {
+		if clean.name() == 'int' || clean.size == 0 {
 			return 32
 		}
 		return int(clean.size)

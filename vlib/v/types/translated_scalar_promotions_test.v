@@ -33,6 +33,7 @@ fn test_translated_indices_and_shifts_still_reject_invalid_operands() {
 	cases := [
 		['values := [11,22]!; _ = values[1.5]', 'non-integer index'],
 		['value := u16(2); _ = value << 32', 'shift count'],
+		['value := int(1); _ = value << 40', 'shift count'],
 		['value := f64(2.5); _ = value << 1', 'invalid operation: shift'],
 		['value := f64(2.5); _ = ~value', 'can only be used with integer types'],
 		['flag := false; _ = if flag { true } else { "text" }', 'mismatched types'],
@@ -43,4 +44,15 @@ fn test_translated_indices_and_shifts_still_reject_invalid_operands() {
 		assert result.exit_code != 0, result.output
 		assert result.output.contains(case[1]), result.output
 	}
+}
+
+fn test_translated_int_alias_shift_count_uses_c_width() {
+	root := os.join_path(os.vtmp_dir(), 'v3_translated_shift_alias_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+	path := os.join_path(root, 'main.v')
+	os.write_file(path, '@[translated]\nmodule main\ntype ShiftAlias = int\nfn main() { value := ShiftAlias(1); _ = value << 40 }\n')!
+	result := os.execute('${os.quoted_path(@VEXE)} -check ${os.quoted_path(path)}')
+	assert result.exit_code != 0, result.output
+	assert result.output.contains('shift count for type `ShiftAlias` too large'), result.output
 }

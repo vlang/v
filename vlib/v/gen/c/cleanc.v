@@ -15632,10 +15632,13 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 				return
 			}
 			if node.op in [.left_shift, .right_shift, .right_shift_unsigned] {
-				shift_type := if node.op == .right_shift_unsigned || g.expr_is_in_translated_file(id) {
+				mut shift_type := if node.op == .right_shift_unsigned || g.expr_is_in_translated_file(id) {
 					g.usable_expr_type(id)
 				} else {
 					lhs_type
+				}
+				if g.expr_is_in_translated_file(id) && unsigned_shift_unalias_type(lhs_type).name() == 'int' {
+					shift_type = types.Type(types.i32_)
 				}
 				g.gen_guarded_shift(lhs_id, rhs_id, shift_type, node.op)
 				g.expected_enum = old_expected_enum
@@ -24672,25 +24675,50 @@ fn (g &FlatGen) expr_is_in_translated_file(id flat.NodeId) bool {
 	return g.tc.translated_files[file.name]
 }
 
-fn translated_comparison_integer_width(typ types.Type) int {
+fn (g &FlatGen) translated_comparison_integer_width(typ types.Type) int {
 	clean := unsigned_shift_unalias_type(typ)
+	if clean is types.Enum {
+		width := fixed_integer_c_type_width(g.enum_storage_c_type(clean)) or { return 0 }
+		return if width < 32 { 32 } else { width }
+	}
 	if clean is types.Primitive && clean.props.has(.integer) {
 		return if clean.size == 0 || clean.size < 32 { 32 } else { int(clean.size) }
 	}
 	return 0
 }
 
-fn translated_comparison_integer_is_unsigned(typ types.Type) bool {
+fn (g &FlatGen) translated_comparison_integer_is_unsigned(typ types.Type) bool {
 	clean := unsigned_shift_unalias_type(typ)
+	if clean is types.Enum {
+		storage := g.enum_storage_c_type(clean)
+		width := fixed_integer_c_type_width(storage) or { return false }
+		return width >= 32 && enum_storage_c_type_is_unsigned(storage)
+	}
 	if clean is types.Primitive {
 		return clean.props.has(.unsigned) && clean.size >= 32
 	}
 	return false
 }
 
+fn (g &FlatGen) translated_comparison_integer_sign(typ types.Type) int {
+	if g.translated_comparison_integer_width(typ) == 0 {
+		return 0
+	}
+	return if g.translated_comparison_integer_is_unsigned(typ) { 1 } else { -1 }
+}
+
 fn (mut g FlatGen) gen_mixed_sign_integer_comparison(lhs_id flat.NodeId, rhs_id flat.NodeId, lhs_type types.Type, rhs_type types.Type, op flat.Op) bool {
-	lhs_sign := integer_sign_kind(lhs_type)
-	rhs_sign := integer_sign_kind(rhs_type)
+	translated := g.expr_is_in_translated_file(lhs_id)
+	lhs_sign := if translated {
+		g.translated_comparison_integer_sign(lhs_type)
+	} else {
+		integer_sign_kind(lhs_type)
+	}
+	rhs_sign := if translated {
+		g.translated_comparison_integer_sign(rhs_type)
+	} else {
+		integer_sign_kind(rhs_type)
+	}
 	if lhs_sign == 0 || rhs_sign == 0 || lhs_sign == rhs_sign {
 		return false
 	}
@@ -24700,14 +24728,14 @@ fn (mut g FlatGen) gen_mixed_sign_integer_comparison(lhs_id flat.NodeId, rhs_id 
 	if (lhs_sign < 0 && g.a.nodes[int(lhs_id)].kind == .int_literal) || (rhs_sign < 0 && g.a.nodes[int(rhs_id)].kind == .int_literal) {
 		return false
 	}
-	if g.expr_is_in_translated_file(lhs_id) {
-		lhs_width := translated_comparison_integer_width(lhs_type)
-		rhs_width := translated_comparison_integer_width(rhs_type)
+	if translated {
+		lhs_width := g.translated_comparison_integer_width(lhs_type)
+		rhs_width := g.translated_comparison_integer_width(rhs_type)
 		if lhs_width == 0 || rhs_width == 0 {
 			return false
 		}
-		lhs_unsigned := translated_comparison_integer_is_unsigned(lhs_type)
-		rhs_unsigned := translated_comparison_integer_is_unsigned(rhs_type)
+		lhs_unsigned := g.translated_comparison_integer_is_unsigned(lhs_type)
+		rhs_unsigned := g.translated_comparison_integer_is_unsigned(rhs_type)
 		common_width := if lhs_width > rhs_width { lhs_width } else { rhs_width }
 		common_unsigned := if lhs_unsigned == rhs_unsigned {
 			lhs_unsigned

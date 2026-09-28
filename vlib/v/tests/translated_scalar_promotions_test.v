@@ -50,6 +50,27 @@ fn test_translated_mixed_sign_comparisons_use_c_widths() {
 	assert small_signed < small_unsigned
 }
 
+enum TranslatedUnsigned32Enum as u32 {
+	high = 0xffff_ffff
+}
+
+fn test_translated_backed_enum_comparisons_use_c_widths() {
+	narrow_signed := int(-1)
+	assert !(narrow_signed < TranslatedUnsigned32Enum.high)
+	assert narrow_signed == TranslatedUnsigned32Enum.high
+	wide_signed := i64(-1)
+	assert wide_signed < TranslatedUnsigned32Enum.high
+}
+
+fn translated_int_shift(count int) int {
+	value := int(1)
+	return value << count
+}
+
+fn test_translated_int_shift_uses_c_width() {
+	assert translated_int_shift(40) == 0
+}
+
 enum TranslatedWideEnum as u64 {
 	zero = 0
 	high = 0x8000_0000_0000_0000
