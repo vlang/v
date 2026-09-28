@@ -21856,6 +21856,9 @@ fn (mut g FlatGen) fn_return_type_name_for_context(t types.Type, concrete_option
 	if g.tc.autofree_mode && t is types.Alias {
 		return g.tc.c_type(t)
 	}
+	if wide_ct := g.wide_enum_signature_c_type(t) {
+		return wide_ct
+	}
 	ct := g.optional_type_name_for_context(t, concrete_optional)
 	// A function/fn-ptr-valued return (`fn f() fn () int`) has the internal `fn_ptr:...`
 	// encoding for its C type; map it to the shared `_fn_ptr_N` typedef, since a C function

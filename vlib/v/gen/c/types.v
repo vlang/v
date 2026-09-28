@@ -54,6 +54,34 @@ fn (g &FlatGen) enum_backing_info(enum_name string) ?EnumBackingInfo {
 	return none
 }
 
+// wide_enum_signature_c_type returns the C type that function parameters and return
+// values need for an enum with a backing type (`enum E as u64`). Those pass other
+// enums as `int`. A narrower value round-trips through `int`, but a 64 bit value
+// would be truncated, and a pointer (`mut e E`) must address the real storage: an
+// `int*` to a `u8` field would overwrite the bytes after it.
+fn (g &FlatGen) wide_enum_signature_c_type(t types.Type) ?string {
+	if t is types.Pointer {
+		if t.base_type is types.Enum {
+			if info := g.enum_backing_info(t.base_type.name) {
+				if info.storage_c_type !in ['int', 'i32'] {
+					return info.c_name + '*'
+				}
+			}
+			return none
+		}
+		base := g.wide_enum_signature_c_type(t.base_type)?
+		return base + '*'
+	}
+	if t is types.Enum {
+		if info := g.enum_backing_info(t.name) {
+			if info.storage_c_type in ['i64', 'u64'] {
+				return info.c_name
+			}
+		}
+	}
+	return none
+}
+
 fn (g &FlatGen) enum_value_c_type(enum_type types.Enum) string {
 	if info := g.enum_backing_info(enum_type.name) {
 		return info.c_name

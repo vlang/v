@@ -17560,6 +17560,8 @@ fn (mut g FlatGen) write_fn_node_params(node flat.Node) {
 			'${g.fixed_array_elem_c_type(effective_pt.elem_type)}*'
 		} else if type_is_optional_result(effective_pt) {
 			g.optional_type_name(effective_pt)
+		} else if wide_ct := g.wide_enum_signature_c_type(effective_pt) {
+			wide_ct
 		} else {
 			g.tc.c_type(effective_pt)
 		}
