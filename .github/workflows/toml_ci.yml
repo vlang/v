@@ -29,6 +29,8 @@ jobs:
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
       - name: Cache V toolchain
         id: cache-v
         uses: actions/cache@v6

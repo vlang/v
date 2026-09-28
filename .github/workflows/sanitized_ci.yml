@@ -156,6 +156,8 @@ jobs:
       VTEST_SHOW_LONGEST_BY_TOTALTIME: 3
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
       - uses: ./.github/actions/cache-apt-packages-action
         with:
           profile: sanitizers
@@ -242,6 +244,8 @@ jobs:
       VTEST_SHOW_LONGEST_BY_TOTALTIME: 3
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
       - name: Build
         run: |
           echo %VFLAGS%

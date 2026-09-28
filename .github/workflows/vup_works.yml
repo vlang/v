@@ -47,6 +47,8 @@ jobs:
       VDIR: /tmp/v_from_release_zip
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
       - name: Build v
         run: make && ./v symlink && ./v version
 

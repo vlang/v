@@ -45,6 +45,8 @@ jobs:
           --health-retries=24
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
       - name: Build V
         run: make -j4 && ./v symlink
       - name: Install mysql client headers
@@ -72,6 +74,8 @@ jobs:
           --health-retries=24
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
       - name: Build V
         run: make -j4 && ./v symlink
       - name: Install postgres client headers
@@ -96,6 +100,8 @@ jobs:
           - 1433:1433
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
       - name: Build V
         run: make -j4 && ./v symlink
       - name: Install ODBC dependencies

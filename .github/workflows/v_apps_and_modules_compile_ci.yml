@@ -38,6 +38,8 @@ jobs:
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
 
       - name: Cache apt packages
         if: runner.os == 'Linux'
@@ -265,6 +267,8 @@ jobs:
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
       - name: Build V
         run: make && ./v symlink
       - name: Build vpm
@@ -291,6 +295,8 @@ jobs:
       GITLY_TEST_SKIP_REMOTE_REPO: '1'
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
       - name: Build V
         run: |
           .\makev.bat -gcc

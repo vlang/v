@@ -40,6 +40,8 @@ jobs:
       VTEST_SHOW_LONGEST_BY_TOTALTIME: 3
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
       - name: Install OpenSSL
         run: |
           $opensslBin = 'C:\Program Files\OpenSSL\bin'
@@ -203,6 +205,8 @@ jobs:
       VTEST_SHOW_LONGEST_BY_TOTALTIME: 3
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
       - name: Build with makev.bat -tcc
         run: |
           .\makev.bat -tcc

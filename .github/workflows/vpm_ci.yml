@@ -29,6 +29,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
+          persist-credentials: false
           path: vlang
       - name: Show git version
         run: git version

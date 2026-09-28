@@ -51,6 +51,8 @@ jobs:
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
       - name: Build and test in Termux
         run: |
           set -o xtrace
@@ -92,6 +94,8 @@ jobs:
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
       - name: Build in Termux (arm64, default tcc)
         run: |
           set -o xtrace

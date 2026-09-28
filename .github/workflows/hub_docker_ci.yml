@@ -28,6 +28,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
+          persist-credentials: false
           repository: 'vlang/docker'
 
       - name: Set up QEMU

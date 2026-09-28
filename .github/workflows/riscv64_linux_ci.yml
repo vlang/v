@@ -59,6 +59,8 @@ jobs:
     name: Build on ubuntu-24.04 riscv64
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
       - uses: uraimo/run-on-arch-action@v3
         name: Run commands
         id: runcmd

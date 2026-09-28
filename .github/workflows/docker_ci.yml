@@ -41,6 +41,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v7
+        with:
+          persist-credentials: false
       - name: Show Environment
         run: |
           echo "PWD:"
@@ -68,6 +70,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v7
+        with:
+          persist-credentials: false
       - name: Add dependencies
         run: apk add musl-dev libatomic_ops-dev libatomic openssl libc6-compat gcompat gc gc-dev binutils diffutils elfutils
       - name: Build V
@@ -90,6 +94,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v7
+        with:
+          persist-credentials: false
       - name: Build V
         run: echo "$VFLAGS" && make -j4 && ./v -cg -o v cmd/v
       - name: Verify `v test` works

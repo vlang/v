@@ -13,6 +13,8 @@ jobs:
       VFLAGS: -cc msvc
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
       - name: Build
         run: |
           echo %VFLAGS%

@@ -53,6 +53,8 @@ jobs:
       V_MACOS_MULTIWINDOW_TESTS: '0'
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
       - name: Cache Homebrew downloads
         uses: actions/cache@v6
         with:
@@ -337,6 +339,8 @@ jobs:
       V_MACOS_MULTIWINDOW_TESTS: '0'
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
       - name: Cache Homebrew downloads
         uses: actions/cache@v6
         with:

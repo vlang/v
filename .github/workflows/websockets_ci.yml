@@ -33,6 +33,8 @@ jobs:
       VFLAGS: -cc tcc -no-retry-compilation
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
       - uses: ./.github/actions/cache-apt-packages-action
       - name: Build v
         run: |

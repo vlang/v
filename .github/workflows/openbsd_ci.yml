@@ -86,6 +86,8 @@ jobs:
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
 
       - name: Start OpenBSD VM for tcc
         id: vm-openbsd-tcc
@@ -128,6 +130,8 @@ jobs:
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
 
       - name: Start OpenBSD VM for clang
         id: vm-openbsd-clang

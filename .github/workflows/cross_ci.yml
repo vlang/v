@@ -37,6 +37,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
+          persist-credentials: false
           fetch-depth: 10
       - name: Cache Homebrew downloads
         uses: actions/cache@v6
@@ -90,6 +91,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
+          persist-credentials: false
           fetch-depth: 10
       - uses: ./.github/actions/cache-apt-packages-action
       - name: Build v
@@ -137,6 +139,8 @@ jobs:
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
       - name: Build
         run: |
           echo %VFLAGS%
