@@ -3,6 +3,7 @@ module c
 import os
 import v.flat
 import v.gen.c.naming
+import v.pref
 import v.types
 
 struct PromotedStructInitField {
@@ -344,6 +345,12 @@ fn (mut g FlatGen) gen_embed_file_uncompressed_field(value_id flat.NodeId, struc
 	// and between the specializations of a generic that cloned the expression,
 	// and it keeps the externally linked joined buffer nameable by a separately
 	// generated translation unit, which is what the module cache produces.
+	if g.embed_payload_uses_incbin(embed_blob_symbol(data.value)) {
+		// The assembler puts the bytes in the object file; gen_embed_file_blobs
+		// declares the object, and the driver assembles and links it.
+		g.write('(u8*)_v_embed_blob_${embed_blob_symbol(data.value)}')
+		return true
+	}
 	if data.value.len > c_max_object_size {
 		// Split across several objects, which `_vinit` joins once into the buffer
 		// named here. Reading a pointer rather than joining at every evaluation is
@@ -400,6 +407,15 @@ fn (mut g FlatGen) gen_embed_file_blobs() {
 			continue
 		}
 		seen[sym] = true
+		if g.embed_payload_uses_incbin(sym) {
+			// Defined by the object the driver assembles from the payload with
+			// `.incbin`; see embed_incbin_payloads. No size split is needed there:
+			// the C object size limit is about initializers, which that object
+			// does not have.
+			g.writeln('extern const unsigned char _v_embed_blob_${sym}[];')
+			defined++
+			continue
+		}
 		if node.value.len <= c_max_object_size {
 			g.write('static const unsigned char _v_embed_blob_${sym}')
 			g.write_embed_blob_bytes(node.value, 0, node.value.len)
@@ -438,20 +454,91 @@ fn (mut g FlatGen) for_each_embed_blob_chunked(each fn (mut FlatGen, string, str
 			continue
 		}
 		seen[sym] = true
+		if g.embed_payload_uses_incbin(sym) {
+			continue
+		}
 		each(mut g, sym, node.value)
 	}
 }
 
 // has_chunked_embed_blobs reports whether `_vinit` has any payload to join.
-fn (g &FlatGen) has_chunked_embed_blobs() bool {
+fn (mut g FlatGen) has_chunked_embed_blobs() bool {
 	for i in 0 .. g.a.nodes.len {
 		node := unsafe { &g.a.nodes[i] }
 		if node.kind == .string_literal && node.is_embed_payload()
-			&& node.value.len > c_max_object_size {
+			&& node.value.len > c_max_object_size
+			&& !g.embed_payload_uses_incbin(embed_blob_symbol(node.value)) {
 			return true
 		}
 	}
 	return false
+}
+
+// EmbedIncbinPayload is one `$embed_file` payload that the C build stores through
+// the assembler's `.incbin` directive rather than a C array initializer.
+pub struct EmbedIncbinPayload {
+pub:
+	symbol  string // the suffix of the `_v_embed_blob_` object the generated C names
+	payload string // the bytes that object holds
+}
+
+// embed_incbin_payloads lists the payloads that take the `.incbin` path when the
+// driver has enabled it: every payload too long for a string literal, in AST
+// order, except, under the module cache, those that a cached module refers to.
+// A cached module is a file outside `program_files`; its object is reused by
+// later builds that do not assemble this build's objects, so its payloads stay
+// self contained C arrays. The same bytes referred to from both sides are one
+// symbol, and go the self contained way too. The driver and the generator
+// derive the list from the same inputs, so they agree on which objects exist.
+pub fn embed_incbin_payloads(a &flat.FlatAst, program_files map[string]bool, module_cache bool) []EmbedIncbinPayload {
+	mut candidates := []EmbedIncbinPayload{}
+	mut seen := map[string]bool{}
+	mut in_cached_module := map[string]bool{}
+	mut cur_file_is_program := true
+	mut program_file_memo := map[string]bool{}
+	for i in 0 .. a.nodes.len {
+		node := unsafe { &a.nodes[i] }
+		if node.kind == .file {
+			cur_file_is_program = !module_cache
+				|| cache_program_file_matches(a, program_files, node.value, mut program_file_memo)
+			continue
+		}
+		if node.kind != .string_literal || !node.is_embed_payload()
+			|| !embed_payload_needs_blob(node.value.len) {
+			continue
+		}
+		sym := embed_blob_symbol(node.value)
+		if !cur_file_is_program {
+			in_cached_module[sym] = true
+		}
+		if seen[sym] {
+			continue
+		}
+		seen[sym] = true
+		candidates << EmbedIncbinPayload{
+			symbol:  sym
+			payload: node.value
+		}
+	}
+	return candidates.filter(!in_cached_module[it.symbol])
+}
+
+// embed_payload_uses_incbin reports whether the object named `sym` is one the
+// driver assembles with `.incbin`, which decides how the generated C refers to
+// it. The set is derived once from the AST and kept; the AST does not change
+// under code generation.
+fn (mut g FlatGen) embed_payload_uses_incbin(sym string) bool {
+	if !g.embed_incbin {
+		return false
+	}
+	if !g.embed_incbin_syms_ready {
+		g.embed_incbin_syms = map[string]bool{}
+		for entry in embed_incbin_payloads(g.a, g.cache_program_files, g.cache_stable_symbols) {
+			g.embed_incbin_syms[entry.symbol] = true
+		}
+		g.embed_incbin_syms_ready = true
+	}
+	return g.embed_incbin_syms[sym]
 }
 
 // gen_embed_blob_joined defines the buffers that _vinit fills, and is emitted
@@ -609,7 +696,7 @@ fn (mut g FlatGen) gen_unset_struct_field_default(struct_name string, field_name
 		if has {
 			g.write(', ')
 		}
-		g.write('.${field_c_name} = sync__new_channel_st((u32)(0), (u32)(sizeof(${g.tc.c_type(clean_type.elem_type)})))')
+		g.write('.${field_c_name} = sync__new_channel_st((u32)(0), (u32)(sizeof(${g.value_sizeof_target(clean_type.elem_type)})))')
 		return true
 	}
 	if clean_type is types.String {
@@ -1789,7 +1876,7 @@ fn (mut g FlatGen) gen_lowered_sum_field_value(sum_name string, field &flat.Node
 // gen_channel_init emits channel init output for c.
 fn (mut g FlatGen) gen_channel_init(node flat.Node) {
 	elem_type := g.tc.parse_type(node.value[5..])
-	elem_ct := g.tc.c_type(elem_type)
+	elem_ct := g.value_sizeof_target(elem_type)
 	g.write('sync__new_channel_st((u32)(')
 	if cap_id := channel_init_field(node, g.a, 'cap') {
 		g.gen_expr(cap_id)
@@ -2370,7 +2457,7 @@ fn (mut g FlatGen) gen_default_value_for_clean_type(clean_typ types.Type) {
 		return
 	}
 	if clean_typ is types.Channel {
-		g.write('sync__new_channel_st((u32)(0), (u32)(sizeof(${g.tc.c_type(clean_typ.elem_type)})))')
+		g.write('sync__new_channel_st((u32)(0), (u32)(sizeof(${g.value_sizeof_target(clean_typ.elem_type)})))')
 		return
 	}
 	if clean_typ is types.String {
@@ -3231,7 +3318,7 @@ fn (g &FlatGen) shared_qualify_leaf_type_text(name string, module_name string) s
 		clean = name[prefix.len..]
 	}
 	mut imported := ''
-	for candidate in g.tc.file_selective_imports['${g.tc.cur_file}\n${clean}'] or { []string{} } {
+	for candidate in g.file_selective_import_candidates(g.tc.cur_file, clean) or { []string{} } {
 		if candidate !in g.tc.structs && candidate !in g.tc.type_aliases && candidate !in g.tc.interface_names && candidate !in g.tc.sum_types && candidate !in g.tc.enum_names && candidate !in g.tc.flag_enums {
 			continue
 		}
@@ -4164,7 +4251,7 @@ fn (g &FlatGen) struct_init_import_alias_type_name(type_name string) string {
 	if is_generic && args.len > 0 && !base.contains('.') {
 		mut resolved := []string{}
 		if g.tc.cur_file.len > 0 {
-			if candidates := g.tc.file_selective_imports['${g.tc.cur_file}\n${base}'] {
+			if candidates := g.file_selective_import_candidates(g.tc.cur_file, base) {
 				for candidate in candidates {
 					if candidate.len > 0 && candidate !in resolved {
 						resolved << candidate
@@ -4380,8 +4467,9 @@ fn (g &FlatGen) find_struct_decl(type_name string) ?StructDeclInfo {
 	// leak into this file's literals. Checked before the per-module cache below,
 	// because two files of one module can import different homonyms.
 	if !type_name.contains('.') && g.tc.cur_file.len > 0 {
-		selective_key := '${g.tc.cur_file}\n${type_name}'
-		for candidate in g.tc.file_selective_imports[selective_key] or { []string{} } {
+		for candidate in g.file_selective_import_candidates(g.tc.cur_file, type_name) or {
+			[]string{}
+		} {
 			if info := g.struct_decl_infos[candidate] {
 				return info
 			}
@@ -5831,7 +5919,7 @@ fn (g &FlatGen) skip_builtin_struct(name string) bool {
 			return true
 		}
 	}
-	return name in c_preamble_defined_structs
+	return name in c_preamble_defined_structs || g.cocoa_nsfont_class(name)
 }
 
 const c_system_header_struct_names = {
@@ -6566,7 +6654,7 @@ fn (mut g FlatGen) soa_companion_decls() {
 }
 
 fn (g &FlatGen) header_c_struct_needs_compat_typedef(name string) bool {
-	if !name.starts_with('C.') || name in c_preamble_defined_structs
+	if !name.starts_with('C.') || name in c_preamble_defined_structs || g.cocoa_nsfont_class(name)
 		|| name[2..] in c_system_header_struct_names || !c_struct_needs_typedef(name)
 		|| name in g.tc.c_typedef_structs || name[2..] in g.inlined_c_typedef_names
 		|| (g.cache_split && name[2..] in c_cache_system_header_struct_names) {
@@ -6579,6 +6667,42 @@ fn (g &FlatGen) header_c_struct_needs_compat_typedef(name string) bool {
 		return info.file.ends_with('.c.v') || c_source_looks_header_backed(info.file)
 	}
 	return false
+}
+
+fn cocoa_nsfont_framework_include(arg string) bool {
+	clean := arg.trim_space()
+	if clean.len < 3 || !((clean[0] == `<` && clean[clean.len - 1] == `>`)
+		|| (clean[0] == `"` && clean[clean.len - 1] == `"`)) {
+		return false
+	}
+	path := clean[1..clean.len - 1]
+	return path in ['Cocoa/Cocoa.h', 'AppKit/AppKit.h', 'AppKit/NSFont.h']
+}
+
+fn (g &FlatGen) cocoa_nsfont_class(name string) bool {
+	if name != 'C.NSFont' || (g.target.os != 'macos' && !g.output_cross_c) {
+		return false
+	}
+	if name !in g.struct_decl_infos {
+		return false
+	}
+	mut directives := []string{}
+	for preinclude in g.preinclude_directives {
+		directives << preinclude
+	}
+	directives << g.ordered_c_directives(false)
+	target := if g.output_cross_c {
+		pref.target_from('macos', g.target.arch) or { g.target }
+	} else {
+		g.target
+	}
+	native_language := if isnil(g.a) {
+		'c'
+	} else {
+		cache_native_inputs_language(g.a, g.compiler_vroot, g.c_flags, g.c99_mode, g.ccompiler, target)
+	}
+	return c_header_text_has_cocoa_nsfont_include_for_target(directives.join('\n'), g.c_flags,
+		g.c99_mode, target, g.compiler_vroot, g.struct_decl_infos[name].file, native_language, g.ccompiler)
 }
 
 fn (g &FlatGen) soa_companion_name(struct_name string) string {

@@ -40,7 +40,7 @@ jobs:
     env:
       VFLAGS: -cc clang
       VTEST_SELF_SHARD_INDEX: '0'
-      VTEST_SELF_SHARD_COUNT: '5'
+      VTEST_SELF_SHARD_COUNT: '3'
       VTEST_SHOW_LONGEST_BY_RUNTIME: 3
       VTEST_SHOW_LONGEST_BY_COMPTIME: 3
       VTEST_SHOW_LONGEST_BY_TOTALTIME: 3
@@ -319,14 +319,14 @@ jobs:
     strategy:
       matrix:
         os: [macos-14, macos-15, macos-26]
-        shard: [1, 2, 3, 4]
+        shard: [1, 2]
       fail-fast: false
     runs-on: ${{ matrix.os }}
     timeout-minutes: 90
     env:
       VFLAGS: -cc clang
       VTEST_SELF_SHARD_INDEX: ${{ matrix.shard }}
-      VTEST_SELF_SHARD_COUNT: '5'
+      VTEST_SELF_SHARD_COUNT: '3'
       VTEST_SHOW_LONGEST_BY_RUNTIME: 3
       VTEST_SHOW_LONGEST_BY_COMPTIME: 3
       VTEST_SHOW_LONGEST_BY_TOTALTIME: 3

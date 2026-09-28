@@ -52,6 +52,9 @@ of memory. On Linux it uses the lower of physical memory and the active cgroup m
 Set `VJOBS` to a positive value to explicitly choose a different worker count when your test
 workload and machine capacity are known.
 
+Skipped test paths are resolved before comparison, so selecting a file through a symlink
+does not bypass its platform or architecture exclusion.
+
 ## `v test vlib/v/tests`:
 
 This folder contains _test.v files, testing the different features of the V
@@ -78,6 +81,12 @@ for checking that errors and panics are printed.
 The C backend has focused unit and integration tests beside its implementation.
 Many tests compile a small V source to C and assert on the generated declarations,
 expressions, ABI, linker inputs, or runtime behavior.
+
+## Line coverage
+
+Collect coverage with `v -coverage coverage_dir path/to/file_test.v`, then inspect it with
+`v cover coverage_dir`. Add `-no-skip-unused` when compiling to include uncalled functions
+in the report as well as executed code.
 
 ## REPL tests
 
