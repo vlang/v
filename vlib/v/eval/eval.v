@@ -2407,6 +2407,13 @@ fn (mut e Eval) eval_expr(id flat.NodeId) !Value {
 				}
 				return Value(e.value_as_bool(e.eval_expr(e.child(node, 1))!)!)
 			}
+			if e.is_enum_shorthand_expr(e.child(node, 0)) {
+				// A shorthand has no side effects; resolve its type from the other value.
+				right := e.eval_expr(e.child(node, 1))!
+				expected_type := if right is EnumValue { right.type_name } else { '' }
+				left := e.eval_expr_expected(e.child(node, 0), expected_type)!
+				return e.apply_infix(node.op, left, right)
+			}
 			left := e.eval_expr(e.child(node, 0))!
 			expected_type := if left is EnumValue { left.type_name } else { '' }
 			right := e.eval_expr_expected(e.child(node, 1), expected_type)!
@@ -2706,7 +2713,31 @@ fn return_child_expected_type(return_type string, return_types []string, child_i
 	return ''
 }
 
+fn (e &Eval) is_enum_shorthand_expr(id flat.NodeId) bool {
+	if int(id) < 0 {
+		return false
+	}
+	node := e.node(id)
+	if node.kind == .paren && node.children_count > 0 {
+		return e.is_enum_shorthand_expr(e.child(node, 0))
+	}
+	return node.kind == .enum_val
+}
+
 fn (mut e Eval) eval_infix_flow(node &flat.Node) !FlowSignal {
+	if node.op !in [.logical_and, .logical_or] && e.is_enum_shorthand_expr(e.child(node, 0)) {
+		right_signal := e.eval_expr_flow(e.child(node, 1))!
+		if right_signal.kind != .normal {
+			return right_signal
+		}
+		right := flow_value(right_signal)
+		expected_type := if right is EnumValue { right.type_name } else { '' }
+		left_signal := e.eval_expr_flow_expected(e.child(node, 0), expected_type)!
+		if left_signal.kind != .normal {
+			return left_signal
+		}
+		return value_flow(e.apply_infix(node.op, flow_value(left_signal), right)!)
+	}
 	left_signal := e.eval_expr_flow(e.child(node, 0))!
 	if left_signal.kind != .normal {
 		return left_signal

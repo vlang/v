@@ -294,3 +294,20 @@ fn test_used_function_alias_lookups_are_precomputed() {
 		assert !b.fn_is_used(name), 'did not expect `${name}` to match a used function alias'
 	}
 }
+
+fn test_enum_lookup_keeps_exact_keyword_members_before_fallback() {
+	b := Builder{
+		enum_values: {
+			'Keyword.@none':  -10
+			'Plain.struct':   7
+			'Distinct.none':  2
+			'Distinct.@none': 4
+		}
+	}
+	for member in ['none', '@none', 'Keyword.none', 'Keyword.@none'] {
+		assert b.enum_value_for_type('Keyword', member) or { 0 } == -10
+	}
+	assert b.enum_value_for_type('Plain', '@struct') or { 0 } == 7
+	assert b.enum_value_for_type('Distinct', 'none') or { 0 } == 2
+	assert b.enum_value_for_type('Distinct', '@none') or { 0 } == 4
+}

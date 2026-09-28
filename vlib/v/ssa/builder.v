@@ -1,6 +1,7 @@
 module ssa
 
 import v.flat
+import v.token
 import v.types
 
 const arm64_force_external_syms = ['_malloc', '_free', '_calloc', '_realloc', '_exit', '_abort',
@@ -7804,8 +7805,8 @@ fn (mut b Builder) build_enum_val(id flat.NodeId, node flat.Node) ValueID {
 		}
 	}
 	raw_member := node.value.trim_left('.')
-	clean_member0 := normalized_enum_member_lookup_key(raw_member)
-	for key in [raw_member, clean_member0] {
+	member_keys := enum_member_lookup_keys(raw_member)
+	for key in member_keys {
 		if value := b.enum_values[key] {
 			return b.m.get_or_add_const(b.i64_type, value.str())
 		}
@@ -7818,7 +7819,7 @@ fn (mut b Builder) build_enum_val(id flat.NodeId, node flat.Node) ValueID {
 			}
 		}
 	}
-	for key in [raw_member, clean_member0] {
+	for key in member_keys {
 		member_name := key.all_after_last('.')
 		if !b.enum_member_dupes[member_name] {
 			if value := b.enum_member_values[member_name] {
@@ -7829,12 +7830,14 @@ fn (mut b Builder) build_enum_val(id flat.NodeId, node flat.Node) ValueID {
 	return b.m.get_or_add_const(b.i64_type, '0')
 }
 
-fn normalized_enum_member_lookup_key(member string) string {
+fn enum_member_lookup_keys(member string) []string {
 	field := member.all_after_last('.')
-	if field.starts_with('@') {
-		return member[..member.len - field.len] + field[1..]
+	plain := if field.starts_with('@') { field[1..] } else { field }
+	if token.Token.from_string_tinyv(plain).is_keyword() {
+		alternate := if field.starts_with('@') { plain } else { '@' + field }
+		return [member, member[..member.len - field.len] + alternate]
 	}
-	return member
+	return [member]
 }
 
 // enum_value_for_type supports enum value for type handling for Builder.
@@ -7843,14 +7846,14 @@ fn (b &Builder) enum_value_for_type(type_name string, member string) ?int {
 		return none
 	}
 	raw_member := member.trim_left('.')
-	clean_member0 := normalized_enum_member_lookup_key(raw_member)
+	member_keys := enum_member_lookup_keys(raw_member)
 	mut names := []string{}
 	names << type_name
 	short_type := type_name.all_after('.')
 	if short_type != type_name {
 		names << short_type
 	}
-	for candidate in [raw_member, clean_member0] {
+	for candidate in member_keys {
 		if value := b.enum_values[candidate] {
 			enum_name := candidate.all_before_last('.')
 			return if b.is_flag_enum_type_name(enum_name) { 1 << value } else { value }

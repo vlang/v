@@ -15667,7 +15667,10 @@ fn (mut tc TypeChecker) check_enum_field_values(node_id flat.NodeId, node flat.N
 		if field.children_count > 0 {
 			value_id := tc.a.child(field, 0)
 			value_pos = tc.a.node(value_id).pos
-			if referenced := tc.find_enum_value_in_node(value_id, node.value) {
+			if field_ref := tc.find_enum_value_in_node(value_id, node.value) {
+				referenced := tc.enum_field_name(tc.qualify_decl_name(node.value), field_ref) or {
+					field_ref
+				}
 				if referenced != field.value && !seen_names[referenced] {
 					tc.record_error_at(.unknown_ident, '`${node.value}.${referenced}` should be declared before using it', value_id, value_pos)
 					continue
@@ -15686,7 +15689,10 @@ fn (mut tc TypeChecker) check_enum_field_values(node_id flat.NodeId, node flat.N
 				if duplicate_name {
 					continue
 				}
-				if value_node.value == field.value {
+				referenced := tc.enum_field_name(tc.qualify_decl_name(node.value), value_node.value) or {
+					value_node.value
+				}
+				if referenced == field.value {
 					if !allow_multiple {
 						tc.record_error_with_details_at(.duplicate_decl, 'enum value `${field.value}` is not allowed to reference itself', field_id, value_pos, [
 							'use `@[_allow_multiple_values]` attribute to allow multiple enum values. Use only when needed',
@@ -15694,7 +15700,7 @@ fn (mut tc TypeChecker) check_enum_field_values(node_id flat.NodeId, node flat.N
 					}
 					continue
 				}
-				if !seen_names[value_node.value] {
+				if !seen_names[referenced] {
 					tc.record_error_at(.unknown_ident, '`${node.value}.${value_node.value}` should be declared before using it', field_id, value_pos)
 					continue
 				}

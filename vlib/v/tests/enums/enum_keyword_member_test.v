@@ -108,7 +108,7 @@ fn test_native_backend_preserves_escaped_enum_declaration() {
 	$if arm64 {
 		path := os.join_path(os.vtmp_dir(), 'v3_native_escaped_enum_${os.getpid()}.v')
 		defer { os.rm(path) or {} }
-		os.write_file(path, 'enum Kind { @none = -10 struct }\nfn main() { assert int(Kind.@none) == -10; assert int(Kind.@struct) == -9 }\n')!
+		os.write_file(path, 'enum Kind { @none = -10 struct }\nenum Distinct { none = 2 @none = 4 }\nfn main() { assert int(Kind.@none) == -10; assert int(Kind.none) == -10; assert int(Kind.@struct) == -9; value := Kind.none; assert value == .none; assert int(Distinct.none) == 2; assert int(Distinct.@none) == 4 }\n')!
 		result := os.execute('${os.quoted_path(@VEXE)} -b arm64 -gc none run ${os.quoted_path(path)}')
 		assert result.exit_code == 0, result.output
 	}
@@ -141,4 +141,28 @@ fn alignment_score_plain_keyword(value Alignment) int {
 fn test_plain_keyword_reference_resolves_an_escaped_only_declaration() {
 	assert alignment_score_plain_keyword(.@none) == 0
 	assert alignment_score_plain_keyword(.@type) == 2
+}
+
+enum KeywordInitializer {
+	struct        = 4
+	from_plain    = int(KeywordInitializer.@struct) + 6
+	@none         = 11
+	from_escaped  = int(KeywordInitializer.none) + 2
+	type          = 17
+	@type         = 23
+	plain_exact   = int(KeywordInitializer.type) + 3
+	escaped_exact = int(KeywordInitializer.@type) + 3
+}
+
+fn test_enum_initializers_keep_keyword_reference_identity_in_constant_sizes() {
+	from_plain := [int(KeywordInitializer.from_plain)]u8{}
+	from_escaped := [int(KeywordInitializer.from_escaped)]u8{}
+	plain_exact := [int(KeywordInitializer.plain_exact)]u8{}
+	escaped_exact := [int(KeywordInitializer.escaped_exact)]u8{}
+	assert from_plain.len == 10
+	assert from_escaped.len == 13
+	assert plain_exact.len == 20
+	assert escaped_exact.len == 26
+	assert from_plain.len == int(KeywordInitializer.from_plain)
+	assert from_escaped.len == int(KeywordInitializer.from_escaped)
 }

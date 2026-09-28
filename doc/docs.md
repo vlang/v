@@ -3945,8 +3945,10 @@ Enum fields can re-use reserved keywords:
 
 The `@` escape is also accepted in qualified and shorthand member references, including
 comparisons, assignments, struct defaults, `match` branches, and constant integer expressions.
-These references also work with the eval backend. Exact declarations take precedence:
-if both `none` and `@none` are declared, they retain distinct values and match coverage.
+These references also work with the eval backend, with shorthand on either side of a comparison.
+Enum initializers can refer to earlier keyword members, for example `next = int(Kind.@struct) + 1`.
+Exact declarations take precedence: if both `none` and `@none` are declared, they retain distinct
+values and match coverage.
 
 ```v
 enum Color {
