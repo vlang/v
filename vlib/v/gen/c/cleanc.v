@@ -21220,7 +21220,7 @@ fn (mut g FlatGen) builtin_abi_decls() {
 	g.writeln('void* memdup_align(void* src, ptrdiff_t sz, ptrdiff_t alignment);')
 	g.writeln('void v_free(void* p);')
 	g.writeln('static inline void* v3_aligned_memdup(void* src, ptrdiff_t sz, size_t alignment) {')
-	g.writeln('#if defined(CUSTOM_DEFINE_prealloc) || defined(_VGCBOEHM) || defined(CUSTOM_DEFINE_gcboehm)')
+	g.writeln('#if defined(CUSTOM_DEFINE_prealloc) || defined(CUSTOM_DEFINE_vgc) || defined(_VGCBOEHM) || defined(CUSTOM_DEFINE_gcboehm)')
 	g.writeln('return memdup_align(src, sz, (ptrdiff_t)alignment);')
 	g.writeln('#else')
 	g.writeln('void* p = NULL; if (alignment < sizeof(void*)) alignment = sizeof(void*);')
@@ -21233,7 +21233,7 @@ fn (mut g FlatGen) builtin_abi_decls() {
 	g.writeln('#endif')
 	g.writeln('}')
 	g.writeln('static inline void v3_aligned_free(void* p) {')
-	g.writeln('#if defined(CUSTOM_DEFINE_prealloc) || defined(_VGCBOEHM) || defined(CUSTOM_DEFINE_gcboehm)')
+	g.writeln('#if defined(CUSTOM_DEFINE_prealloc) || defined(CUSTOM_DEFINE_vgc) || defined(_VGCBOEHM) || defined(CUSTOM_DEFINE_gcboehm)')
 	g.writeln('v_free(p);')
 	g.writeln('#elif defined(_WIN32)')
 	g.writeln('_aligned_free(p);')
@@ -24036,14 +24036,15 @@ fn (mut g FlatGen) write_fixed_array_initializer(mut builder strings.Builder, va
 	if node.kind != .array_literal {
 		return false
 	}
+	clean_elem_type := default_init_unalias_type(fixed.elem_type)
 	builder.write_u8(`{`)
 	for i in 0 .. node.children_count {
 		if i > 0 {
 			builder.write_string(', ')
 		}
 		child_id := g.a.child(&node, i)
-		if fixed.elem_type is types.ArrayFixed {
-			if !g.write_fixed_array_initializer(mut builder, child_id, fixed.elem_type) {
+		if clean_elem_type is types.ArrayFixed {
+			if !g.write_fixed_array_initializer(mut builder, child_id, clean_elem_type) {
 				return false
 			}
 		} else {
@@ -24069,14 +24070,15 @@ fn (mut g FlatGen) write_fixed_array_value_initializer(mut builder strings.Build
 
 fn (mut g FlatGen) write_fixed_array_value_initializer_from_text(mut builder strings.Builder, base string, fixed types.ArrayFixed) {
 	len := trimmed_space(g.fixed_array_len_value(fixed)).int()
+	clean_elem_type := default_init_unalias_type(fixed.elem_type)
 	builder.write_u8(`{`)
 	for i in 0 .. len {
 		if i > 0 {
 			builder.write_string(', ')
 		}
 		elem := '${base}[${i}]'
-		if fixed.elem_type is types.ArrayFixed {
-			g.write_fixed_array_value_initializer_from_text(mut builder, elem, fixed.elem_type)
+		if clean_elem_type is types.ArrayFixed {
+			g.write_fixed_array_value_initializer_from_text(mut builder, elem, clean_elem_type)
 		} else {
 			builder.write_string(elem)
 		}

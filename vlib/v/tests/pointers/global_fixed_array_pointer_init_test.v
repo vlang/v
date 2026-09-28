@@ -30,6 +30,11 @@ fn make_global_array_pointer_row(index int) [3]int {
 	return [index * 10, index * 10 + 1, index * 10 + 2]!
 }
 
+fn make_global_array_pointer_aliased_row(index int) GlobalArrayPointerNestedRow {
+	global_row_calls++
+	return [index * 10, index * 10 + 1, index * 10 + 2]!
+}
+
 fn free_global_aligned_array_pointer(value &[2]GlobalAlignedArrayPointerCell) {
 	unsafe { free(value) }
 }
@@ -107,6 +112,12 @@ __global global_deep_literal_call_array = &[
 	[make_global_array_pointer_row(0), make_global_array_pointer_row(1)]!,
 	[make_global_array_pointer_row(2), make_global_array_pointer_row(3)]!,
 ]!
+__global global_literal_aliased_rows = &[make_global_array_pointer_aliased_row(2),
+	make_global_array_pointer_aliased_row(3)]!
+__global global_deep_literal_aliased_rows = &[
+	[make_global_array_pointer_aliased_row(4), make_global_array_pointer_aliased_row(5)]!,
+	[make_global_array_pointer_aliased_row(6), make_global_array_pointer_aliased_row(7)]!,
+]!
 __global global_aligned_array = &[2]GlobalAlignedArrayPointerCell{}
 __global global_optional_aligned_array = &[2]?GlobalAlignedArrayPointerCell{}
 __global global_nested_aligned_array = &[2][2]GlobalAlignedArrayPointerCell{}
@@ -135,7 +146,7 @@ fn test_global_fixed_array_pointers_are_initialized() {
 	assert u64(voidptr(global_inherited_aligned_array)) % 512 == 0
 	assert u64(voidptr(global_filled_aligned_array)) % 512 == 0
 	assert u64(voidptr(global_filled_aligned_alias_array)) % 512 == 0
-	assert global_row_calls == 14
+	assert global_row_calls == 20
 	// Indexing these pointer-backed arrays requires an unsafe block.
 	unsafe {
 		assert global_zero_array[0] == 0
@@ -195,6 +206,10 @@ fn test_global_fixed_array_pointers_are_initialized() {
 		assert global_nested_literal_call_array[1][2] == 12
 		assert global_deep_literal_call_array[0][1][2] == 12
 		assert global_deep_literal_call_array[1][1][2] == 32
+		assert global_literal_aliased_rows[0][1] == 21
+		assert global_literal_aliased_rows[1][2] == 32
+		assert global_deep_literal_aliased_rows[0][1][2] == 52
+		assert global_deep_literal_aliased_rows[1][1][2] == 72
 		assert global_aligned_array[1].value == 19
 		assert global_nested_aligned_array[1][1].value == 19
 		assert global_inherited_aligned_array[1].inner.value == 19
