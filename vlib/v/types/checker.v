@@ -8548,7 +8548,8 @@ fn (mut tc TypeChecker) annotate_call_expected_exprs(id flat.NodeId, node flat.N
 			tc.call_info(previous_call_name, true)
 		}
 	}
-	info := tc.specialized_plain_generic_call_info(node, info0)
+	info := tc.builtin_copy_call_info(id, node, tc.specialized_plain_generic_call_info(node,
+		info0), false)
 	if info.name.len > 0 && !is_array_dsl_call_name(info.name) {
 		tc.remember_resolved_call(id, info.name)
 	}
