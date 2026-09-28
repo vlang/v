@@ -9222,6 +9222,7 @@ These scalars can be mixed in arithmetic expressions and compound assignments. I
 can be used in bitwise expressions. Scalar values and pointers, including function pointers,
 can serve as conditions. Ordinary V files retain V's type and condition checks, even when
 compiled together with translated files.
+Conversions to translated `int` use the target C `int` width at assignments, calls, and returns.
 
 V can translate your C code to human readable V code, and generating V wrappers
 on top of C libraries.

@@ -70,6 +70,24 @@ fn test_translated_mixed_arithmetic_uses_common_c_type() {
 	assert (u32(0) - int(1)) > i64(0)
 	assert translated_wrapped_subtraction() == u32(0xffff_ffff)
 	assert (int(-1) + u32(1)) == u32(0)
+	assert u32(0xffff_ffff) + i64(1) == i64(0x1_0000_0000)
+}
+
+fn translated_narrow_return(value u32) int {
+	return value
+}
+
+fn translated_int_argument(value int) int {
+	return value
+}
+
+fn test_translated_int_conversion_boundaries_use_c_width() {
+	wide := u32(0xffff_ffff)
+	assert translated_narrow_return(wide) == -1
+	assert translated_int_argument(wide) == -1
+	mut assigned := int(0)
+	assigned = wide
+	assert assigned == -1
 }
 
 fn translated_int_shift(count int) int {

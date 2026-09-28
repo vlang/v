@@ -12222,8 +12222,24 @@ fn mut_optional_param_value_types_match(param_type types.Type, expected types.Ty
 }
 
 // gen_expr_with_expected_type emits expr with expected type output for c.
-@[direct_array_access]
 fn (mut g FlatGen) gen_expr_with_expected_type(id flat.NodeId, expected_type types.Type) {
+	actual := cgen_unalias_type(g.usable_expr_type(id))
+	expected := cgen_unalias_type(expected_type)
+	if g.expr_is_in_translated_file(id) && expected.name() == 'int'
+		&& (actual.is_integer() || actual.is_float() || actual is types.Char
+			|| actual is types.Enum || actual == types.Type(types.bool_)) {
+		// Translated int values cross C's 32-bit conversion boundary even though
+		// the V int used to store them is wider on 64-bit hosts.
+		g.write('((i32)(')
+		g.gen_expr_with_expected_type_inner(id, expected_type)
+		g.write('))')
+		return
+	}
+	g.gen_expr_with_expected_type_inner(id, expected_type)
+}
+
+@[direct_array_access]
+fn (mut g FlatGen) gen_expr_with_expected_type_inner(id flat.NodeId, expected_type types.Type) {
 	node := unsafe { &g.a.nodes[int(id)] }
 	expected := g.canonical_import_alias_type_for_node(expected_type, node)
 	has_known_actual := g.known_expr_type_id == int(id)
@@ -15685,7 +15701,7 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 				g.expected_enum = old_expected_enum
 				return
 			}
-			if g.gen_checked_integer_infix(node, lhs_id, rhs_id, lhs_type) {
+			if g.gen_checked_integer_infix(id, node, lhs_id, rhs_id, lhs_type, rhs_type) {
 				g.expected_enum = old_expected_enum
 				return
 			}
@@ -24596,15 +24612,41 @@ fn checked_integer_bounds(typ types.Type) ?CheckedIntegerBounds {
 	}
 }
 
-fn (mut g FlatGen) gen_checked_integer_infix(node flat.Node, lhs_id flat.NodeId, rhs_id flat.NodeId, lhs_type types.Type) bool {
+fn (mut g FlatGen) gen_checked_integer_infix(id flat.NodeId, node flat.Node, lhs_id flat.NodeId, rhs_id flat.NodeId, lhs_type types.Type, rhs_type types.Type) bool {
 	if !g.check_overflow || g.ignore_overflow || node.op !in [.plus, .minus, .mul] {
 		return false
 	}
-	helper := g.integer_overflow_helper(lhs_type, node.op) or { return false }
+	mut helper_type := lhs_type
+	mut translated_ct := ''
+	if g.expr_is_in_translated_file(id) && cgen_unalias_type(lhs_type).is_integer()
+		&& cgen_unalias_type(rhs_type).is_integer() {
+		result_type := cgen_unalias_type(g.usable_expr_type(id))
+		if result_type.is_integer() {
+			helper_type = if result_type.name() == 'int' {
+				g.tc.parse_type('i32')
+			} else {
+				result_type
+			}
+			translated_ct = g.translated_numeric_c_type(id, result_type)
+		}
+	}
+	helper := g.integer_overflow_helper(helper_type, node.op) or { return false }
 	g.write('${helper}(')
+	if translated_ct.len > 0 {
+		g.write('(${translated_ct})(')
+	}
 	g.gen_expr(lhs_id)
+	if translated_ct.len > 0 {
+		g.write(')')
+	}
 	g.write(', ')
+	if translated_ct.len > 0 {
+		g.write('(${translated_ct})(')
+	}
 	g.gen_expr(rhs_id)
+	if translated_ct.len > 0 {
+		g.write(')')
+	}
 	g.write(')')
 	return true
 }
