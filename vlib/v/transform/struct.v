@@ -78,7 +78,14 @@ fn (mut t Transformer) transform_struct_fields(id flat.NodeId, node flat.Node) f
 			} else {
 				''
 			}
-			if child.value.starts_with('@') && !info.fields.any(it.name == child.value) {
+			mut exact_promoted_field := false
+			if child.value.starts_with('@') {
+				if _ := t.struct_field_path_for_field(node.value, child.value) {
+					exact_promoted_field = true
+				}
+			}
+			if child.value.starts_with('@') && !info.fields.any(it.name == child.value)
+				&& !exact_promoted_field {
 				plain_name := child.value[1..]
 				if info.fields.any(it.name == plain_name) {
 					field_name = plain_name

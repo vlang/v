@@ -3945,6 +3945,9 @@ Enum fields can re-use reserved keywords:
 
 The `@` escape is also accepted in qualified and shorthand member references, including
 comparisons, assignments, struct defaults, and `match` branches.
+A plain keyword member can be referenced with `@` without changing its value, including in
+compile-time integer expressions. If both `none` and `@none` are declared, they are distinct
+members and both must be covered by a `match` without `else`.
 
 ```v
 enum Color {

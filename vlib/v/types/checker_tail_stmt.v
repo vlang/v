@@ -10034,14 +10034,22 @@ fn (tc &TypeChecker) const_int_enum_selector_value(text string) ?int {
 	}
 	enum_name := tc.resolve_enum_name(trimmed_space(expr[..dot])) or { return none }
 	field := trimmed_space(expr[dot + 1..])
+	plain_field := escaped_identifier_name(field)
 	for item in tc.comptime_static_enum_decl_value_cases(enum_name) {
 		if item.name == field && item.has_value {
 			return item.value
 		}
 	}
+	if plain_field != field {
+		for item in tc.comptime_static_enum_decl_value_cases(enum_name) {
+			if item.name == plain_field && item.has_value {
+				return item.value
+			}
+		}
+	}
 	fields := tc.enum_fields[enum_name] or { return none }
 	for idx, name in fields {
-		if name == field {
+		if name == plain_field {
 			return if enum_name in tc.flag_enums { 1 << idx } else { idx }
 		}
 	}
@@ -12036,10 +12044,8 @@ fn (tc &TypeChecker) struct_field_type(struct_name string, field_name string) ?T
 		}
 		plain_name := escaped_identifier_name(field_name)
 		mut seen := map[string]bool{}
-		if tc.c_struct_owns_plain_keyword_field(struct_name, plain_name, mut seen) {
-			if typ := tc.struct_field_type(struct_name, plain_name) {
-				return typ
-			}
+		if typ := tc.c_struct_plain_keyword_field_type(struct_name, plain_name, mut seen) {
+			return typ
 		}
 	}
 	if !isnil(tc.type_cache) {
@@ -12107,28 +12113,29 @@ fn (tc &TypeChecker) struct_field_type(struct_name string, field_name string) ?T
 	return none
 }
 
-fn (tc &TypeChecker) c_struct_owns_plain_keyword_field(struct_name string, field_name string, mut seen map[string]bool) bool {
+fn (tc &TypeChecker) c_struct_plain_keyword_field_type(struct_name string, field_name string, mut seen map[string]bool) ?Type {
 	owner := unalias_and_unwrap_pointer_type(tc.parse_type(struct_name))
 	if owner !is Struct {
-		return false
+		return none
 	}
 	if seen[owner.name] {
-		return false
+		return none
 	}
 	seen[owner.name] = true
-	fields := tc.structs[owner.name] or { tc.structs[owner.name.all_after_last('.')] or { return false } }
+	fields := tc.structs[owner.name] or { tc.structs[owner.name.all_after_last('.')] or { return none } }
 	for field in fields {
-		if field.name == field_name {
-			return owner.name.starts_with('C.')
+		if field.name == field_name && owner.name.starts_with('C.') {
+			return field.typ
 		}
 	}
 	for field in fields {
-		if field.is_embed
-			&& tc.c_struct_owns_plain_keyword_field(field.typ.name(), field_name, mut seen) {
-			return true
+		if field.is_embed {
+			if typ := tc.c_struct_plain_keyword_field_type(field.typ.name(), field_name, mut seen) {
+				return typ
+			}
 		}
 	}
-	return false
+	return none
 }
 
 // Sample both spellings; every cache hit compares the full names.

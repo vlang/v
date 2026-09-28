@@ -3581,6 +3581,12 @@ fn (mut e Eval) eval_selector_value(left Value, field string) !Value {
 			if value := e.lookup_const(mod, field) {
 				return e.enum_value(left.name, value)
 			}
+			if field.starts_with('@') {
+				plain := field[1..]
+				if value := e.lookup_const(mod, '${left.name.all_after_last('.')}.${plain}') {
+					return e.enum_value(left.name, value)
+				}
+			}
 			return TypeValue{
 				name: '${left.name}.${field}'
 			}
@@ -4623,6 +4629,12 @@ fn (mut e Eval) lookup_enum_value(enum_type_name string, field string) ?Value {
 	enum_key := '${enum_type_name.all_after_last('.')}.${field}'
 	if value := e.lookup_const(mod, enum_key) {
 		return e.enum_value(e.qualify_type_name(mod, enum_type_name), value)
+	}
+	if field.starts_with('@') {
+		plain_key := '${enum_type_name.all_after_last('.')}.${field[1..]}'
+		if value := e.lookup_const(mod, plain_key) {
+			return e.enum_value(e.qualify_type_name(mod, enum_type_name), value)
+		}
 	}
 	return none
 }
