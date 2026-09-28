@@ -28,7 +28,7 @@ const c_common_c_attributes = ['alias', 'aligned', 'always_inline', 'cold', 'con
 	'noreturn', 'packed', 'pure', 'returns_nonnull', 'section', 'sentinel', 'unused', 'used',
 	'visibility', 'warn_unused_result', 'weak']
 const c_has_attribute_predicate = '__has_attribute'
-const c_has_attribute_override_key = '@function:__has_attribute'
+const c_has_include_predicate = '__has_include'
 
 // c_short_name_view returns the suffix after the final dot without allocating.
 @[direct_array_access; inline]
@@ -6070,11 +6070,11 @@ fn c_header_text_needs_objective_c(text string) bool {
 }
 
 fn c_header_text_needs_objective_c_for_target(text string, flags []string, c99_mode bool, target pref.Target) bool {
-	return c_header_text_objective_c_scan_for_target(text, flags, c99_mode, target, false, '', '')
+	return c_header_text_objective_c_scan_for_target(text, flags, c99_mode, target, false, '', '', 'c')
 }
 
-fn c_header_text_has_cocoa_nsfont_include_for_target(text string, flags []string, c99_mode bool, target pref.Target, vroot string, source_file string) bool {
-	return c_header_text_objective_c_scan_for_target(text, flags, c99_mode, target, true, vroot, source_file)
+fn c_header_text_has_cocoa_nsfont_include_for_target(text string, flags []string, c99_mode bool, target pref.Target, vroot string, source_file string, native_language string) bool {
+	return c_header_text_objective_c_scan_for_target(text, flags, c99_mode, target, true, vroot, source_file, native_language)
 }
 
 struct CHeaderScanLine {
@@ -6172,13 +6172,35 @@ fn c_header_conditions_possibly_active(known []bool, active []bool) bool {
 	return true
 }
 
-fn c_header_text_objective_c_scan_for_target(text string, flags []string, c99_mode bool, target pref.Target, cocoa_include_only bool, vroot string, source_file string) bool {
-	mut defined := map[string]bool{}
+fn c_header_text_objective_c_scan_for_target(text string, flags []string, c99_mode bool, target pref.Target, cocoa_include_only bool, vroot string, source_file string, native_language string) bool {
+	mut defined := {
+		c_has_include_predicate: true
+	}
 	mut undefined := {
 		'__OBJC__': true
 	}
 	mut uncertain := map[string]bool{}
 	mut macro_values := map[string]string{}
+	mut need_objc := native_language in ['objective-c', 'objective-c++']
+	mut need_cpp := native_language in ['c++', 'objective-c++']
+	for index, flag in flags {
+		clean := flag.trim_space()
+		language := if clean == '-x' && index + 1 < flags.len {
+			flags[index + 1]
+		} else if clean.starts_with('-x') {
+			clean[2..]
+		} else {
+			''
+		}
+		need_objc = need_objc || language in ['objective-c', 'objective-c++'] || clean == '-ObjC' || clean.starts_with('-fobjc-')
+		need_cpp = need_cpp || language in ['c++', 'objective-c++']
+	}
+	if need_objc {
+		undefined.delete('__OBJC__')
+		defined['__OBJC__'] = true
+		macro_values['__OBJC__'] = '1'
+	}
+	if need_cpp { defined['__cplusplus'] = true }
 	mut objective_c_compatibility_macros := map[string]bool{}
 	mut i := 0
 	for i < flags.len {
@@ -6211,8 +6233,8 @@ fn c_header_text_objective_c_scan_for_target(text string, flags []string, c99_mo
 				defined.delete(macro_name)
 				undefined[macro_name] = true
 				macro_values.delete(macro_name)
-				if macro_name == c_has_attribute_predicate {
-					macro_values.delete(c_has_attribute_override_key)
+				if macro_name in [c_has_attribute_predicate, c_has_include_predicate] {
+					macro_values.delete('@function:${macro_name}')
 				}
 				if macro_name in c_objective_c_compatibility_qualifiers {
 					objective_c_compatibility_macros.delete(macro_name)
@@ -6229,16 +6251,16 @@ fn c_header_text_objective_c_scan_for_target(text string, flags []string, c99_mo
 				}
 				if is_function_like {
 					macro_values.delete(macro_name)
-					if macro_name == c_has_attribute_predicate {
-						macro_values[c_has_attribute_override_key] = if definition.contains('=') {
+					if macro_name in [c_has_attribute_predicate, c_has_include_predicate] {
+						macro_values['@function:${macro_name}'] = if definition.contains('=') {
 							definition.all_after('=').trim_space()
 						} else {
 							'1'
 						}
 					}
 				} else {
-					if macro_name == c_has_attribute_predicate {
-						macro_values.delete(c_has_attribute_override_key)
+					if macro_name in [c_has_attribute_predicate, c_has_include_predicate] {
+						macro_values.delete('@function:${macro_name}')
 					}
 					macro_values[macro_name] = if definition.contains('=') {
 						definition.all_after('=').trim_space()
@@ -6280,6 +6302,7 @@ fn c_header_text_objective_c_scan_for_target(text string, flags []string, c99_mo
 		clean, next_in_block_comment := c_preprocessor_directive_scan_line(line, in_block_comment)
 		in_block_comment = next_in_block_comment
 		name := c_directive_name(clean)
+		predicate_context := CHeaderPredicateContext{ flags: flags, vroot: vroot, source_file: scan_line.source_file }
 		mut directive_macro_name := ''
 		if cocoa_include_only {
 			if name in ['if', 'ifdef', 'ifndef'] {
@@ -6325,7 +6348,7 @@ fn c_header_text_objective_c_scan_for_target(text string, flags []string, c99_mo
 			condition_taken_known << known
 			condition_taken << (if known { active } else { true })
 		} else if name == 'if' {
-			known, active := c_header_objective_c_condition_state(c_directive_arg(clean), defined, undefined, uncertain, macro_values, strict_iso_mode, target)
+			known, active := c_header_objective_c_condition_state(c_directive_arg(clean), defined, undefined, uncertain, macro_values, strict_iso_mode, target, predicate_context)
 			condition_known << known
 			condition_active << (if known { active } else { true })
 			condition_taken_known << known
@@ -6334,7 +6357,7 @@ fn c_header_text_objective_c_scan_for_target(text string, flags []string, c99_mo
 			last := condition_known.len - 1
 			prior_known := condition_taken_known[last]
 			prior_taken := condition_taken[last]
-			known, active := c_header_objective_c_condition_state(c_directive_arg(clean), defined, undefined, uncertain, macro_values, strict_iso_mode, target)
+			known, active := c_header_objective_c_condition_state(c_directive_arg(clean), defined, undefined, uncertain, macro_values, strict_iso_mode, target, predicate_context)
 			if (prior_known && prior_taken) || (known && !active) {
 				condition_known[last] = true
 				condition_active[last] = false
@@ -6461,16 +6484,16 @@ fn c_header_text_objective_c_scan_for_target(text string, flags []string, c99_mo
 							}
 						}
 						if macro_token.contains('(') {
-							if macro_name == c_has_attribute_predicate {
-								macro_values[c_has_attribute_override_key] = if definition.len > macro_token.len {
+							if macro_name in [c_has_attribute_predicate, c_has_include_predicate] {
+								macro_values['@function:${macro_name}'] = if definition.len > macro_token.len {
 									definition[macro_token.len..].trim_space()
 								} else {
 									''
 								}
 							}
 						} else {
-							if macro_name == c_has_attribute_predicate {
-								macro_values.delete(c_has_attribute_override_key)
+							if macro_name in [c_has_attribute_predicate, c_has_include_predicate] {
+								macro_values.delete('@function:${macro_name}')
 							}
 							if definition.len > macro_token.len {
 								macro_values[macro_name] = definition[macro_token.len..].trim_space()
@@ -6480,8 +6503,8 @@ fn c_header_text_objective_c_scan_for_target(text string, flags []string, c99_mo
 						defined.delete(macro_name)
 						undefined[macro_name] = true
 						macro_values.delete(macro_name)
-						if macro_name == c_has_attribute_predicate {
-							macro_values.delete(c_has_attribute_override_key)
+						if macro_name in [c_has_attribute_predicate, c_has_include_predicate] {
+							macro_values.delete('@function:${macro_name}')
 						}
 						if macro_name in c_objective_c_compatibility_qualifiers {
 							objective_c_compatibility_macros.delete(macro_name)
@@ -6492,8 +6515,8 @@ fn c_header_text_objective_c_scan_for_target(text string, flags []string, c99_mo
 					undefined.delete(macro_name)
 					uncertain[macro_name] = true
 					macro_values.delete(macro_name)
-					if macro_name == c_has_attribute_predicate {
-						macro_values.delete(c_has_attribute_override_key)
+					if macro_name in [c_has_attribute_predicate, c_has_include_predicate] {
+						macro_values.delete('@function:${macro_name}')
 					}
 					if macro_name in c_objective_c_compatibility_qualifiers {
 						objective_c_compatibility_macros.delete(macro_name)
@@ -6579,24 +6602,24 @@ fn c_header_condition_without_comments(raw string) string {
 	return result.str().trim_space()
 }
 
-fn c_header_objective_c_condition_state(raw string, defined map[string]bool, undefined map[string]bool, uncertain map[string]bool, macro_values map[string]string, strict_iso_mode bool, target pref.Target) (bool, bool) {
+fn c_header_objective_c_condition_state(raw string, defined map[string]bool, undefined map[string]bool, uncertain map[string]bool, macro_values map[string]string, strict_iso_mode bool, target pref.Target, predicate_context CHeaderPredicateContext) (bool, bool) {
 	clean := c_header_condition_without_outer_parens(c_header_condition_without_comments(raw))
-	if active := c_header_objective_c_compiler_predicate_state(clean, defined, undefined, uncertain, macro_values, strict_iso_mode, target) {
+	if active := c_header_objective_c_compiler_predicate_state(clean, defined, undefined, uncertain, macro_values, strict_iso_mode, target, predicate_context) {
 		return true, active
 	}
 	has_conditional, condition, if_true, if_false := c_header_condition_top_level_conditional(clean)
 	if has_conditional {
-		known, active := c_header_objective_c_condition_state(condition, defined, undefined, uncertain, macro_values, strict_iso_mode, target)
+		known, active := c_header_objective_c_condition_state(condition, defined, undefined, uncertain, macro_values, strict_iso_mode, target, predicate_context)
 		if !known {
 			return false, true
 		}
-		return c_header_objective_c_condition_state(if active { if_true } else { if_false }, defined, undefined, uncertain, macro_values, strict_iso_mode, target)
+		return c_header_objective_c_condition_state(if active { if_true } else { if_false }, defined, undefined, uncertain, macro_values, strict_iso_mode, target, predicate_context)
 	}
 	or_parts := c_header_condition_top_level_parts(clean, '||')
 	if or_parts.len > 1 {
 		mut all_known := true
 		for part in or_parts {
-			known, active := c_header_objective_c_condition_state(part, defined, undefined, uncertain, macro_values, strict_iso_mode, target)
+			known, active := c_header_objective_c_condition_state(part, defined, undefined, uncertain, macro_values, strict_iso_mode, target, predicate_context)
 			if known && active {
 				return true, true
 			}
@@ -6608,7 +6631,7 @@ fn c_header_objective_c_condition_state(raw string, defined map[string]bool, und
 	if and_parts.len > 1 {
 		mut all_known := true
 		for part in and_parts {
-			known, active := c_header_objective_c_condition_state(part, defined, undefined, uncertain, macro_values, strict_iso_mode, target)
+			known, active := c_header_objective_c_condition_state(part, defined, undefined, uncertain, macro_values, strict_iso_mode, target, predicate_context)
 			if known && !active {
 				return true, false
 			}
@@ -6616,13 +6639,13 @@ fn c_header_objective_c_condition_state(raw string, defined map[string]bool, und
 		}
 		return if all_known { true, true } else { false, true }
 	}
-	if value := c_header_objective_c_integer_operand_value(clean, defined, undefined, uncertain, macro_values, strict_iso_mode, target) {
+	if value := c_header_objective_c_integer_operand_value(clean, defined, undefined, uncertain, macro_values, strict_iso_mode, target, predicate_context) {
 		return true, value != 0
 	}
 	has_comparison, left_text, operator, right_text := c_header_condition_top_level_comparison(clean)
 	if has_comparison {
-		left := c_header_objective_c_integer_operand_value(left_text, defined, undefined, uncertain, macro_values, strict_iso_mode, target) or { return false, true }
-		right := c_header_objective_c_integer_operand_value(right_text, defined, undefined, uncertain, macro_values, strict_iso_mode, target) or { return false, true }
+		left := c_header_objective_c_integer_operand_value(left_text, defined, undefined, uncertain, macro_values, strict_iso_mode, target, predicate_context) or { return false, true }
+		right := c_header_objective_c_integer_operand_value(right_text, defined, undefined, uncertain, macro_values, strict_iso_mode, target, predicate_context) or { return false, true }
 		if operator in ['<', '<=', '>', '>='] && (left < 0 || right < 0) {
 			// Signed/unsigned conversion rules can reverse ordered comparisons.
 			return false, true
@@ -6641,7 +6664,7 @@ fn c_header_objective_c_condition_state(raw string, defined map[string]bool, und
 		return true, active
 	}
 	if clean.starts_with('!') {
-		known, active := c_header_objective_c_condition_state(clean[1..], defined, undefined, uncertain, macro_values, strict_iso_mode, target)
+		known, active := c_header_objective_c_condition_state(clean[1..], defined, undefined, uncertain, macro_values, strict_iso_mode, target, predicate_context)
 		return known, !active
 	}
 	literal_known, literal_active := c_header_objective_c_integer_macro_state(clean)
@@ -6667,8 +6690,65 @@ fn c_header_objective_c_condition_state(raw string, defined map[string]bool, und
 	return known, active
 }
 
-fn c_header_objective_c_compiler_predicate_state(clean string, defined map[string]bool, undefined map[string]bool, uncertain map[string]bool, macro_values map[string]string, strict_iso_mode bool, target pref.Target) ?bool {
-	predicate := c_has_attribute_predicate
+struct CHeaderPredicateContext {
+	flags       []string
+	vroot       string
+	source_file string
+}
+
+fn c_header_include_available(include_arg string, context CHeaderPredicateContext, target pref.Target) ?bool {
+	clean := include_arg.trim_space()
+	if clean.len < 3 || !((clean[0] == `<` && clean[clean.len - 1] == `>`) || (clean[0] == `"` && clean[clean.len - 1] == `"`)) {
+		return none
+	}
+	for path in c_include_file_paths(clean, context.vroot, context.source_file, c_flag_include_dirs(context.flags)) {
+		if os.is_file(path) { return true }
+	}
+	path := clean[1..clean.len - 1]
+	if !path.contains('/') { return none }
+	mut sdk_root := ''
+	mut framework_dirs := []string{}
+	mut i := 0
+	for i < context.flags.len {
+		flag := context.flags[i]
+		if flag in ['-isysroot', '--sysroot', '-F', '-iframework'] && i + 1 < context.flags.len {
+			i++
+			if flag in ['-isysroot', '--sysroot'] {
+				sdk_root = context.flags[i]
+			} else {
+				framework_dirs << context.flags[i]
+			}
+		} else if flag.starts_with('--sysroot=') {
+			sdk_root = flag['--sysroot='.len..]
+		} else if flag.starts_with('-isysroot') && flag.len > '-isysroot'.len {
+			sdk_root = flag['-isysroot'.len..].trim_left('=')
+		} else if flag.starts_with('-F') && flag.len > 2 {
+			framework_dirs << flag[2..]
+		}
+		i++
+	}
+	if sdk_root.len > 0 { framework_dirs << os.join_path(sdk_root, 'System/Library/Frameworks') }
+	framework := path.all_before('/')
+	header := path.all_after('/')
+	for dir in framework_dirs {
+		if os.is_file(os.join_path(dir, '${framework}.framework', 'Headers', header)) {
+			return true
+		}
+	}
+	if target.os == 'macos' && path in ['Cocoa/Cocoa.h', 'AppKit/AppKit.h', 'AppKit/NSFont.h'] {
+		// These public headers are supplied by the default macOS SDK. Explicit
+		// SDKs and disabled standard search paths must prove availability above.
+		return sdk_root.len == 0 && '-nostdinc' !in context.flags && '-nostdlibinc' !in context.flags
+	}
+	return none
+}
+
+fn c_header_objective_c_compiler_predicate_state(clean string, defined map[string]bool, undefined map[string]bool, uncertain map[string]bool, macro_values map[string]string, strict_iso_mode bool, target pref.Target, predicate_context CHeaderPredicateContext) ?bool {
+	predicate := if clean.starts_with(c_has_include_predicate) {
+		c_has_include_predicate
+	} else {
+		c_has_attribute_predicate
+	}
 	if !clean.starts_with(predicate) {
 		return none
 	}
@@ -6677,14 +6757,15 @@ fn c_header_objective_c_compiler_predicate_state(clean string, defined map[strin
 		return none
 	}
 	attribute := rest[1..rest.len - 1].trim_space()
-	if attribute.len == 0 || c_header_struct_tag(attribute) != attribute {
+	if attribute.len == 0 || (predicate == c_has_attribute_predicate && c_header_struct_tag(attribute) != attribute) {
 		return none
 	}
 	if predicate in uncertain || predicate in undefined {
 		return none
 	}
-	if predicate in defined {
-		replacement := macro_values[c_has_attribute_override_key] or { return none }
+	override_key := '@function:${predicate}'
+	if predicate in defined && override_key in macro_values {
+		replacement := macro_values[override_key]
 		value := c_header_condition_without_outer_parens(c_header_condition_without_comments(replacement))
 		literal_known, literal_active := c_header_objective_c_integer_macro_state(value)
 		if literal_known {
@@ -6697,6 +6778,19 @@ fn c_header_objective_c_compiler_predicate_state(clean string, defined map[strin
 			}
 		}
 		return none
+	}
+	if predicate in defined && (predicate != c_has_include_predicate || predicate in macro_values) {
+		return none
+	}
+	if predicate == c_has_include_predicate {
+		mut include_arg := attribute
+		mut expanded := map[string]bool{}
+		for (include_arg in macro_values && include_arg !in expanded) {
+			if include_arg in uncertain || include_arg in undefined { return none }
+			expanded[include_arg] = true
+			include_arg = macro_values[include_arg].trim_space()
+		}
+		return c_header_include_available(include_arg, predicate_context, target)
 	}
 	return attribute.trim('_') in c_common_c_attributes
 }
@@ -6726,17 +6820,17 @@ fn c_header_defined_macro_name(clean string) ?string {
 	return macro_name
 }
 
-fn c_header_objective_c_integer_operand_value(raw string, defined map[string]bool, undefined map[string]bool, uncertain map[string]bool, macro_values map[string]string, strict_iso_mode bool, target pref.Target) ?i64 {
+fn c_header_objective_c_integer_operand_value(raw string, defined map[string]bool, undefined map[string]bool, uncertain map[string]bool, macro_values map[string]string, strict_iso_mode bool, target pref.Target, predicate_context CHeaderPredicateContext) ?i64 {
 	mut seen := map[string]bool{}
-	return c_header_objective_c_integer_expression_value(raw, defined, undefined, uncertain, macro_values, strict_iso_mode, target, mut seen, 0)
+	return c_header_objective_c_integer_expression_value(raw, defined, undefined, uncertain, macro_values, strict_iso_mode, target, predicate_context, mut seen, 0)
 }
 
-fn c_header_objective_c_integer_expression_value(raw string, defined map[string]bool, undefined map[string]bool, uncertain map[string]bool, macro_values map[string]string, strict_iso_mode bool, target pref.Target, mut seen map[string]bool, depth int) ?i64 {
+fn c_header_objective_c_integer_expression_value(raw string, defined map[string]bool, undefined map[string]bool, uncertain map[string]bool, macro_values map[string]string, strict_iso_mode bool, target pref.Target, predicate_context CHeaderPredicateContext, mut seen map[string]bool, depth int) ?i64 {
 	if depth >= 64 {
 		return none
 	}
 	clean := c_header_condition_without_outer_parens(c_header_condition_without_comments(raw))
-	if active := c_header_objective_c_compiler_predicate_state(clean, defined, undefined, uncertain, macro_values, strict_iso_mode, target) {
+	if active := c_header_objective_c_compiler_predicate_state(clean, defined, undefined, uncertain, macro_values, strict_iso_mode, target, predicate_context) {
 		return if active { i64(1) } else { i64(0) }
 	}
 	if value := c_header_objective_c_integer_value(clean) {
@@ -6744,11 +6838,11 @@ fn c_header_objective_c_integer_expression_value(raw string, defined map[string]
 	}
 	has_conditional, condition, if_true, if_false := c_header_condition_top_level_conditional(clean)
 	if has_conditional {
-		known, active := c_header_objective_c_condition_state(condition, defined, undefined, uncertain, macro_values, strict_iso_mode, target)
+		known, active := c_header_objective_c_condition_state(condition, defined, undefined, uncertain, macro_values, strict_iso_mode, target, predicate_context)
 		if !known {
 			return none
 		}
-		return c_header_objective_c_integer_expression_value(if active { if_true } else { if_false }, defined, undefined, uncertain, macro_values, strict_iso_mode, target, mut seen, depth + 1)
+		return c_header_objective_c_integer_expression_value(if active { if_true } else { if_false }, defined, undefined, uncertain, macro_values, strict_iso_mode, target, predicate_context, mut seen, depth + 1)
 	}
 	operator_groups := [
 		['|'],
@@ -6765,16 +6859,16 @@ fn c_header_objective_c_integer_expression_value(raw string, defined map[string]
 		if !has_operator {
 			continue
 		}
-		left := c_header_objective_c_integer_expression_value(left_text, defined, undefined, uncertain, macro_values, strict_iso_mode, target, mut seen, depth + 1) or {
+		left := c_header_objective_c_integer_expression_value(left_text, defined, undefined, uncertain, macro_values, strict_iso_mode, target, predicate_context, mut seen, depth + 1) or {
 			return none
 		}
-		right := c_header_objective_c_integer_expression_value(right_text, defined, undefined, uncertain, macro_values, strict_iso_mode, target, mut seen, depth + 1) or {
+		right := c_header_objective_c_integer_expression_value(right_text, defined, undefined, uncertain, macro_values, strict_iso_mode, target, predicate_context, mut seen, depth + 1) or {
 			return none
 		}
 		return c_header_objective_c_checked_integer_binary(left, right, operator)
 	}
 	if clean.len > 1 && clean[0] in [`+`, `-`, `!`, `~`] {
-		value := c_header_objective_c_integer_expression_value(clean[1..], defined, undefined, uncertain, macro_values, strict_iso_mode, target, mut seen, depth + 1) or {
+		value := c_header_objective_c_integer_expression_value(clean[1..], defined, undefined, uncertain, macro_values, strict_iso_mode, target, predicate_context, mut seen, depth + 1) or {
 			return none
 		}
 		if clean[0] == `+` {
@@ -6810,7 +6904,7 @@ fn c_header_objective_c_integer_expression_value(raw string, defined map[string]
 	}
 	replacement := macro_values[clean] or { return none }
 	seen[clean] = true
-	value := c_header_objective_c_integer_expression_value(replacement, defined, undefined, uncertain, macro_values, strict_iso_mode, target, mut seen, depth + 1)
+	value := c_header_objective_c_integer_expression_value(replacement, defined, undefined, uncertain, macro_values, strict_iso_mode, target, predicate_context, mut seen, depth + 1)
 	seen.delete(clean)
 	return value
 }

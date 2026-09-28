@@ -6607,8 +6607,13 @@ fn (g &FlatGen) cocoa_nsfont_class(name string) bool {
 	} else {
 		g.target
 	}
+	native_language := if isnil(g.a) {
+		'c'
+	} else {
+		cache_native_inputs_language(g.a, g.compiler_vroot, g.c_flags, g.c99_mode, g.ccompiler, target)
+	}
 	return c_header_text_has_cocoa_nsfont_include_for_target(directives.join('\n'), g.c_flags,
-		g.c99_mode, target, g.compiler_vroot, g.struct_decl_infos[name].file)
+		g.c99_mode, target, g.compiler_vroot, g.struct_decl_infos[name].file, native_language)
 }
 
 fn (g &FlatGen) soa_companion_name(struct_name string) string {

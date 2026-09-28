@@ -861,3 +861,57 @@ fn test_cocoa_declarations_merge_branch_include_macros() {
 		assert g.header_c_struct_needs_compat_typedef('C.NSFont') == needs_typedef
 	}
 }
+
+fn test_cocoa_declarations_use_translation_unit_language() {
+	mut ast := &flat.FlatAst{}
+	mut tc := types.TypeChecker.new(ast)
+	mut g := FlatGen.new()
+	g.a = ast
+	g.tc = &tc
+	g.target = pref.target_from('macos', 'arm64') or { panic(err) }
+	g.register_struct_decl_info('C.NSFont', 'C.NSFont', 'uiold', 'ui.c.v', flat.Node{})
+	g.preinclude_directives = ['#ifdef __OBJC__\n#include <Cocoa/Cocoa.h>\n#endif']
+	assert g.header_c_struct_needs_compat_typedef('C.NSFont')
+	for flags in [['-x', 'objective-c'], ['-xobjective-c'], ['-x', 'objective-c++'], ['-fobjc-arc'],
+		['-ObjC']] {
+		g.c_flags = flags
+		assert !g.header_c_struct_needs_compat_typedef('C.NSFont'), flags.str()
+	}
+	g.c_flags = ['-x', 'objective-c', '-U__OBJC__']
+	assert g.header_c_struct_needs_compat_typedef('C.NSFont')
+	g.c_flags = []string{}
+	ast.add_node(flat.Node{ kind: .directive, value: 'include', typ: '<Cocoa/Cocoa.h>' })
+	assert !g.header_c_struct_needs_compat_typedef('C.NSFont')
+}
+
+fn test_cocoa_declarations_evaluate_header_availability() {
+	mut ast := &flat.FlatAst{}
+	mut tc := types.TypeChecker.new(ast)
+	mut g := FlatGen.new()
+	g.a = ast
+	g.tc = &tc
+	g.target = pref.target_from('macos', 'arm64') or { panic(err) }
+	g.register_struct_decl_info('C.NSFont', 'C.NSFont', 'uiold', 'ui.c.v', flat.Node{})
+	for header, needs_typedef in {
+		'#if __has_include(<Cocoa/Cocoa.h>)\n#include <Cocoa/Cocoa.h>\n#endif':                                                   false
+		'#if defined(__has_include) && __has_include(<AppKit/NSFont.h>) == 1\n#include <AppKit/NSFont.h>\n#endif':                false
+		'#define UI_HEADER <AppKit/AppKit.h>\n#define HAVE_UI __has_include(UI_HEADER)\n#if HAVE_UI\n#include UI_HEADER\n#endif': false
+		'#if !__has_include(<Cocoa/Cocoa.h>)\n#include <Cocoa/Cocoa.h>\n#endif':                                                  true
+		'#define __has_include(x) 0\n#if __has_include(<Cocoa/Cocoa.h>)\n#include <Cocoa/Cocoa.h>\n#endif':                       true
+	} {
+		g.preinclude_directives = [header]
+		assert g.header_c_struct_needs_compat_typedef('C.NSFont') == needs_typedef, header
+	}
+	root := os.join_path(os.vtmp_dir(), 'v3_cocoa_has_include_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+	g.preinclude_directives = ['#if __has_include(<Cocoa/Cocoa.h>)\n#include <Cocoa/Cocoa.h>\n#endif']
+	g.c_flags = ['-isysroot', root]
+	assert g.header_c_struct_needs_compat_typedef('C.NSFont')
+	framework_dir := os.join_path(root, 'System/Library/Frameworks/Cocoa.framework/Headers')
+	os.mkdir_all(framework_dir)!
+	os.write_file(os.join_path(framework_dir, 'Cocoa.h'), '')!
+	assert !g.header_c_struct_needs_compat_typedef('C.NSFont')
+	g.c_flags = ['-nostdinc']
+	assert g.header_c_struct_needs_compat_typedef('C.NSFont')
+}
