@@ -71,6 +71,79 @@ const LaterRegs = [3, 12, 13]!
 	}
 }
 
+fn test_translated_sizeof_cross_output_matches_selected_declarations() {
+	root := os.join_path(os.vtmp_dir(), 'translated_sizeof_cross_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+	path := os.join_path(root, 'main.v')
+	os.write_file(path, '@[translated]
+module main
+fn main() {
+ assert sizeof(ConstOnLinux) == expected_const_linux
+ assert sizeof(ConstOnOther) == expected_const_other
+ assert sizeof(GlobalOnLinux) == expected_global_linux
+ assert sizeof(GlobalOnOther) == expected_global_other
+}
+$if linux {
+ const ConstOnLinux = [2]u64{}
+ type ConstOnOther = u8
+ __global GlobalOnLinux = [3]u64{}
+ type GlobalOnOther = u16
+ const expected_const_linux = 16
+ const expected_const_other = 1
+ const expected_global_linux = 24
+ const expected_global_other = 2
+} $else {
+ type ConstOnLinux = u8
+ const ConstOnOther = [2]u64{}
+ type GlobalOnLinux = u16
+ __global GlobalOnOther = [3]u64{}
+ const expected_const_linux = 1
+ const expected_const_other = 16
+ const expected_global_linux = 2
+ const expected_global_other = 24
+}
+')!
+	for target in ['macos', 'linux'] {
+		mut prefs := pref.new_preferences()
+		prefs.output_cross_c = true
+		prefs.target = pref.target_from(target, pref.host_arch())!
+		mut p := Parser.new(prefs)
+		a := p.parse_file(path)
+		assert p.diagnostics.len == 0, p.diagnostics.str()
+		// Portable output keeps target guards for directives and statements, but
+		// top-level declarations still select one branch before C generation.
+		assert !a.nodes.any(it.kind == .comptime_if)
+		sizes := a.nodes.filter(it.kind == .sizeof_expr)
+		assert sizes.len == 4
+		for i, name in ['ConstOnLinux', 'ConstOnOther', 'GlobalOnLinux', 'GlobalOnOther'] {
+			is_value := (target == 'linux') == (i % 2 == 0)
+			assert sizes[i].children_count == if is_value { 1 } else { 0 }
+			if is_value {
+				assert a.nodes[int(a.child(&sizes[i], 0))].value == name
+				assert !a.nodes.any(it.kind == .type_decl && it.value == name)
+			} else {
+				assert sizes[i].value == name
+				assert a.nodes.any(it.kind == .type_decl && it.value == name)
+			}
+		}
+		out := os.join_path(root, '${target}.c')
+		result := os.execute('${os.quoted_path(@VEXE)} -enable-globals -gc none -cross -os ${target} -o ${os.quoted_path(out)} ${os.quoted_path(path)}')
+		assert result.exit_code == 0, result.output
+		c_code := os.read_file(out)!
+		selected := if target == 'linux' { 'Linux' } else { 'Other' }
+		inactive := if target == 'linux' { 'Other' } else { 'Linux' }
+		assert c_code.contains('sizeof(main__ConstOn${selected})')
+		assert c_code.contains('(sizeof(GlobalOn${selected})')
+		assert !c_code.contains('sizeof(main__ConstOn${inactive})')
+		assert !c_code.contains('(sizeof(GlobalOn${inactive})')
+		assert c_code.contains('sizeof(u8)')
+		assert c_code.contains('sizeof(u16)')
+	}
+	result := os.execute('${os.quoted_path(@VEXE)} -enable-globals -gc none -os cross run ${os.quoted_path(path)}')
+	assert result.exit_code == 0, result.output
+}
+
 fn test_translated_sizeof_globals_declared_after_use() {
 	root := os.join_path(os.vtmp_dir(), 'translated_sizeof_globals_${os.getpid()}')
 	os.mkdir_all(root)!
