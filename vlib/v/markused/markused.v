@@ -6762,7 +6762,13 @@ fn (c &CallCollector) top_level_call_return_type_name(call_id flat.NodeId, cur_m
 fn (c &CallCollector) generic_factory_return_type_name(index &flat.Node, name string, cur_module string, imports map[string]string, unwrap_optional_result bool, receiver_type string) string {
 	for candidate in markused_fn_signature_name_candidates(name, cur_module) {
 		if candidate !in c.tc.fn_generic_params { continue }
-		return_type := c.fn_return_type_name(candidate, unwrap_optional_result)
+		mut return_type := c.fn_return_type_name(candidate, unwrap_optional_result)
+		if return_type.len == 0 {
+			return_type = c.tc.fn_ret_type_texts[candidate] or { '' }
+			if unwrap_optional_result && (return_type.starts_with('?') || return_type.starts_with('!')) {
+				return_type = return_type[1..]
+			}
+		}
 		if return_type.len == 0 { continue }
 		arg_count := int(index.children_count) - 1
 		if arg_count <= 0 { return return_type }

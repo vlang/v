@@ -464,3 +464,33 @@ fn test_promoted_generic_factory_return_substitutes_embedded_receiver() {
 	assert inferred == 'gates.Gate[int, string]'
 	assert collector.typed_receiver_method_name(inferred, 'backward', 'main')? == 'gates.Gate[int, string].backward'
 }
+
+fn test_generic_factory_return_uses_placeholder_signature_text() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	tc.structs['Payload'] = []types.StructField{}
+	tc.fn_generic_params['gates.identity'] = ['U']
+	tc.fn_ret_types['Payload.backward'] = types.Type(types.int_)
+	base := a.add_val(.ident, 'identity')
+	arg := a.add_val(.ident, 'Payload')
+	indexed := call_helper_node(mut a, flat.Node{ kind: .index }, [base, arg])
+	unknown := types.Type(types.Unknown{ reason: 'generic U' })
+	for form in ['U', '?U', '!U'] {
+		tc.fn_ret_type_texts['gates.identity'] = form
+		tc.fn_ret_types['gates.identity'] = match form[0] {
+			`?` { types.Type(types.OptionType{ base_type: unknown }) }
+			`!` { types.Type(types.ResultType{ base_type: unknown }) }
+			else { unknown }
+		}
+		collector := CallCollector{ a: &a, tc: &tc }
+		inferred := collector.generic_factory_return_type_name(a.node(indexed), 'gates.identity',
+			'main', map[string]string{}, true, '')
+		assert inferred == 'Payload'
+		assert collector.typed_receiver_method_name(inferred, 'backward', 'main')? == 'Payload.backward'
+		if form[0] in [`?`, `!`] {
+			wrapped := collector.generic_factory_return_type_name(a.node(indexed), 'gates.identity',
+				'main', map[string]string{}, false, '')
+			assert wrapped == '${form[..1]}Payload'
+		}
+	}
+}
