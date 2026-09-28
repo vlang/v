@@ -12007,6 +12007,9 @@ pub fn run(args []string) {
 				}
 				cached_dev_dylib = compile_v3_dev_dylib(prefix_object, prepared_cache.objects, resolved_c_flags, &cache_state.manager, target_args, prefs.target, c_compiler, cc_dir, !silent || show_cc, mut c_object_cache_stats) or {
 					message := err.msg()
+					if v3_recover_from_cache_failure(args, message, cc_dir) {
+						return
+					}
 					if request_macos_v3_c_error_fallback_from_message(macos_v3_fallback_file, macos_v3_c_error_dir, c_compiler, message, [
 						published_c_source,
 						cache_plan_file,
