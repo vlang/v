@@ -373,14 +373,6 @@ fn new_pointer_to[T](value T) &T {
 
 // decode_option_payload decodes the current value as the payload of an option.
 fn (mut decoder Decoder) decode_option_payload[P](_ ?P) !P {
-	$if P.unaliased_typ is time.Time {
-		// A time sum type variant is written as `{"_type":"Time","value":...}`.
-		if decoder.current_node.value.value_kind == .object {
-			mut decoded_time := time.Time{}
-			decoder.decode_sumtype_time(mut decoded_time)!
-			return P(decoded_time)
-		}
-	}
 	$if P is $pointer {
 		return decoder.decode_array_element(P{})!
 	} $else {
@@ -859,6 +851,12 @@ fn (mut decoder Decoder) decode_value[T](mut val T) ! {
 				}
 			} else if value_info.value_kind == .null && !decoder.strict {
 				// Outside of strict mode `null` is the zero time, like in the removed module.
+			} else if value_info.value_kind == .object {
+				// The removed module wrote a time in a sum type, also as an element of an
+				// array variant or an option payload, as `{"_type":"Time","value":...}`.
+				decoder.decode_sumtype_time(mut decoded_time)!
+				val = T(decoded_time)
+				return
 			} else {
 				decoder.decode_error('Expected string or number, but got ${value_info.value_kind}')!
 			}

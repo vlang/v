@@ -617,7 +617,8 @@ fn (mut encoder Encoder) encode_fixed_array_of_sumtype_variants[A](val A) {
 
 fn (mut encoder Encoder) encode_sumtype_array_item[T](item T) {
 	$if T.unaliased_typ is time.Time {
-		encoder.encode_value(item)
+		// Like a time variant, `{"_type":"Time","value":...}` as in the removed module.
+		encoder.encode_sumtype_time_variant(time.Time(item), 'Time')
 	} $else $if T is JsonEncoder {
 		encoder.encode_value(item)
 	} $else $if T is Encodable {

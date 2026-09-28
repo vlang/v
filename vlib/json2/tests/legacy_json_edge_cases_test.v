@@ -604,3 +604,21 @@ fn test_struct_alias_variants_use_the_struct_name() {
 	by_alias := json2.decode[ItemOrAlias]('{"a":8,"_type":"AliasItem"}')!
 	assert by_alias.type_name() == 'AliasItem'
 }
+
+type TimesValue = []time.Time | int
+
+type FixedTimesValue = [2]time.Time | int
+
+fn test_time_elements_of_array_variants_keep_the_time_wrapper() {
+	// Like the removed module, a time in an array variant is a `Time` object.
+	times := TimesValue([time.unix(123)])
+	encoded := json2.encode(times, time_as_unix: true)
+	assert encoded == '[{"_type":"Time","value":123}]'
+	decoded := json2.decode[TimesValue](encoded)!
+	decoded_times := decoded as []time.Time
+	assert decoded_times[0].unix() == 123
+	fixed := FixedTimesValue([time.unix(1), time.unix(2)]!)
+	assert json2.encode(fixed) == '[{"_type":"Time","value":1},{"_type":"Time","value":2}]'
+	// A time field also reads the wrapper written by the removed module.
+	assert json2.decode[time.Time]('{"_type":"Time","value":5}')!.unix() == 5
+}
