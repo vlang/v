@@ -7412,7 +7412,8 @@ fn (mut tc TypeChecker) check_infix(id flat.NodeId, node flat.Node) {
 	}
 	if pointer_arithmetic {
 		if node.op == .minus && lhs_clean is Pointer && rhs_clean is Pointer
-			&& (unalias_type(tc.infix_read_type(lhs_id)) is ArrayFixed
+			&& (tc.translated_files[tc.cur_file]
+				|| unalias_type(tc.infix_read_type(lhs_id)) is ArrayFixed
 				|| unalias_type(tc.infix_read_type(rhs_id)) is ArrayFixed) {
 			lhs_elem := unalias_type(lhs_clean.base_type)
 			rhs_elem := unalias_type(rhs_clean.base_type)
