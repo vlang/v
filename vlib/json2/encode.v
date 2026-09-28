@@ -470,8 +470,19 @@ fn (mut encoder Encoder) encode_sumtype[T](val T) {
 		$for variant in T.variants {
 			if val is variant {
 				variant_name := sumtype_variant_name(typeof(variant.typ).name)
-				// A `time.Time` alias variant (`type Timestamp = time.Time`) is a time too.
-				$if variant.typ.unaliased_typ is time.Time {
+				// An option variant comes first: the time and struct checks below also
+				// hold for an option of a time or a struct.
+				$if variant.typ is $option {
+					// Like the removed `json` module, a `none` option variant is `{}`.
+					variant_value := val
+					if variant_value == none {
+						encoder.output << `{`
+						encoder.output << `}`
+					} else {
+						encoder.encode_sumtype_option_payload(get_value_from_optional(variant_value))
+					}
+				} $else $if variant.typ.unaliased_typ is time.Time {
+					// A `time.Time` alias variant (`type Timestamp = time.Time`) is a time too.
 					if T.name in ['x.json2.Any', 'json2.Any', 'Any'] {
 						variant_value := val
 						encoder.encode_value(variant_value)
@@ -486,21 +497,6 @@ fn (mut encoder Encoder) encode_sumtype[T](val T) {
 						encoder.encode_value(variant_value)
 					} else {
 						encoder.encode_sumtype_struct_variant(val, variant_name)
-					}
-				} $else $if variant.typ is $option {
-					// Like the removed `json` module, a `none` option variant is `{}`.
-					variant_value := val
-					if variant_value == none {
-						encoder.output << `{`
-						encoder.output << `}`
-					} else {
-						payload := get_value_from_optional(variant_value)
-						$if payload is $struct {
-							// A struct payload carries its `_type`, like a struct variant.
-							encoder.encode_sumtype_struct_variant(payload, sumtype_variant_name(typeof(payload).name))
-						} $else {
-							encoder.encode_value(payload)
-						}
 					}
 				} $else $if variant.typ is $map {
 					encoder.encode_value(val)
@@ -522,6 +518,19 @@ fn (mut encoder Encoder) encode_sumtype[T](val T) {
 				return
 			}
 		}
+	}
+}
+
+// encode_sumtype_option_payload writes the value of a set option variant of a sum
+// type like the variant it holds, as the removed `json` module did: a time (also an
+// alias of one) as `{"_type":"Time","value":...}`, and a struct with its `_type`.
+fn (mut encoder Encoder) encode_sumtype_option_payload[P](payload P) {
+	$if P.unaliased_typ is time.Time {
+		encoder.encode_sumtype_time_variant(time.Time(payload), 'Time')
+	} $else $if P.unaliased_typ is $struct {
+		encoder.encode_sumtype_struct_variant(payload, sumtype_variant_name(typeof(payload).name))
+	} $else {
+		encoder.encode_value(payload)
 	}
 }
 
