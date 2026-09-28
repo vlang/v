@@ -13091,7 +13091,18 @@ fn (mut t Transformer) build_interface_field_assign_chain(base_ptr flat.NodeId, 
 	cond := t.make_infix(.eq, tag, t.make_int_literal(type_id))
 	object := t.make_selector_op(base_ptr, '_object', 'voidptr', .arrow)
 	object_ptr := t.make_cast('&${impl}', object, '&${impl}')
-	field_lhs := t.struct_field_selector_for_type(object_ptr, impl, field, field_type, true) or {
+	impl_base := t.normalize_type_alias(impl)
+	alias_is_pointer := !impl.starts_with('&') && impl_base.starts_with('&')
+	field_base := if alias_is_pointer {
+		alias_value := t.make_prefix(.mul, object_ptr)
+		t.set_node_typ(int(alias_value), impl)
+		alias_value
+	} else {
+		object_ptr
+	}
+	field_owner := if alias_is_pointer { impl_base[1..] } else { impl }
+	field_lhs := t.struct_field_selector_for_type(field_base, field_owner, field, field_type,
+		true) or {
 		return t.build_interface_field_assign_chain(base_ptr, impl_index, field, field_type, rhs, op, idx + 1)
 	}
 	then_stmt := t.make_assign_op(field_lhs, rhs, op)
@@ -13139,9 +13150,22 @@ fn (mut t Transformer) build_interface_field_selector_chain(base flat.NodeId, ba
 	object := t.make_selector_op(base, '_object', 'voidptr', base_op)
 	tag_matches := t.make_infix(.eq, tag, t.make_int_literal(type_id))
 	object_not_nil := t.make_infix(.ne, object, t.a.add(.nil_literal))
-	cond := t.make_infix(.logical_and, tag_matches, object_not_nil)
+	mut cond := t.make_infix(.logical_and, tag_matches, object_not_nil)
 	object_ptr := t.make_cast('&${impl}', object, '&${impl}')
-	value := t.struct_field_selector_for_type(object_ptr, impl, field, field_type, true) or {
+	impl_base := t.normalize_type_alias(impl)
+	alias_is_pointer := !impl.starts_with('&') && impl_base.starts_with('&')
+	field_base := if alias_is_pointer {
+		alias_value := t.make_prefix(.mul, object_ptr)
+		t.set_node_typ(int(alias_value), impl)
+		cond = t.make_infix(.logical_and, cond,
+			t.make_infix(.ne, alias_value, t.a.add(.nil_literal)))
+		alias_value
+	} else {
+		object_ptr
+	}
+	field_owner := if alias_is_pointer { impl_base[1..] } else { impl }
+	value := t.struct_field_selector_for_type(field_base, field_owner, field, field_type,
+		true) or {
 		return t.build_interface_field_selector_chain(base, base_type, iface_name, impl_index, field,
 			field_type, fallback, addressable, idx + 1)
 	}

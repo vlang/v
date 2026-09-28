@@ -14530,7 +14530,15 @@ fn (mut tc TypeChecker) check_call_arg_types(id flat.NodeId, node flat.Node, inf
 			&& (unalias_type(expected) is Pointer || cast_target_interface(expected) != none) {
 			continue
 		}
-		clean_expected_for_interface := unalias_type(expected)
+		expected_value := unalias_type(expected)
+		actual_value := unalias_type(actual)
+		clean_expected_for_interface := if expected_value is OptionType && actual_value is Pointer
+			&& unalias_type(actual_value.base_type) !is Pointer
+			&& unalias_type(actual_value.base_type) !is Interface {
+			unalias_type(expected_value.base_type)
+		} else {
+			expected_value
+		}
 		if clean_expected_for_interface is Interface && unalias_type(actual) !is Interface
 			&& tc.private_declaration(clean_expected_for_interface.name) != none {
 			actual_name := tc.diagnostic_expr_type_name(arg_id, actual)
@@ -14549,7 +14557,11 @@ fn (mut tc TypeChecker) check_call_arg_types(id flat.NodeId, node flat.Node, inf
 			// A raw pointer is an explicit escape hatch for interface reference
 			// parameters; it does not describe a concrete interface implementer.
 			if !fn_param_is_voidptr_type(actual) {
-				interface_actual := if actual is Pointer { actual.base_type } else { actual }
+				mut interface_actual := actual
+				if actual_value is Pointer
+					&& !(actual is Alias && tc.type_implements_interface(actual, expected_interface)) {
+					interface_actual = actual_value.base_type
+				}
 				if tc.record_interface_implementation_error_with_mut_receiver(.call_arg_mismatch,
 					interface_actual, expected_interface, arg_id, tc.call_argument_diagnostic_pos(arg_id),
 					allow_mut_receiver) {
@@ -14716,9 +14728,9 @@ fn (mut tc TypeChecker) check_call_arg_types(id flat.NodeId, node flat.Node, inf
 			tc.record_error_at(.call_arg_mismatch, 'cannot use `${actual_display}` as `${expected_display}` in argument ${argument_number} to `${target_name}`', arg_id, tc.call_argument_diagnostic_pos(arg_id))
 			continue
 		}
-		if expected is OptionType && actual is Pointer
-			&& unalias_type(expected.base_type) !is Pointer {
-			tc.record_error_at(.call_arg_mismatch, 'cannot use `&${actual.base_type.name()}` as `?${expected.base_type.name()}` in argument ${argument_number} to `${target_name}`', arg_id, tc.call_argument_diagnostic_pos(arg_id))
+		if expected_value is OptionType && actual is Pointer
+			&& unalias_type(expected_value.base_type) !is Pointer && !compatible_interface_value_arg {
+			tc.record_error_at(.call_arg_mismatch, 'cannot use `&${actual.base_type.name()}` as `?${expected_value.base_type.name()}` in argument ${argument_number} to `${target_name}`', arg_id, tc.call_argument_diagnostic_pos(arg_id))
 			continue
 		}
 		if tc.addressed_bare_generic_value_mismatch(arg_id, actual, expected) {
