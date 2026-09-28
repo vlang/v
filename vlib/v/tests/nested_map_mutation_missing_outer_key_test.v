@@ -73,6 +73,16 @@ fn test_fixed_array_assign_through_missing_outer_key() {
 	assert deep.str() == "{'a': {'b': {'c': [5, 0]}}}"
 }
 
+fn test_fixed_array_assign_clones_owned_inner_key() {
+	key := ['b'.clone(), 'c'.clone()]!
+	mut nested := map[string]map[[2]string][1]int{}
+	nested['a'][key][0] = 1
+	assert nested['a'][key] == [1]!
+	nested['a'][key][0] = 2
+	assert nested['a'][key] == [2]!
+	assert key == ['b', 'c']!
+}
+
 fn nested_map_set_x(mut m map[string]map[string]NestedMapPoint, k1 string, k2 string, x int) {
 	m[k1][k2].x = x
 }

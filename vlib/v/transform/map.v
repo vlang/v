@@ -2465,9 +2465,8 @@ fn (mut t Transformer) try_lower_map_index_assign(id flat.NodeId, node flat.Node
 }
 
 // prepare_owned_map_set_key_cleanup records whether map__set receives an independently
-// owned key. Non-string keys transfer into a new slot by byte copy, so
-// only an existing-key update leaves the incoming owner unused. String keys are cloned by
-// the runtime for new slots and therefore always leave a fresh incoming owner to destroy.
+// owned key. Keys copied into a new slot keep their incoming owner, while string keys and
+// fixed arrays of strings are cloned by the runtime and leave an owner to destroy.
 fn (mut t Transformer) prepare_owned_map_set_key_cleanup(key_is_owned bool, key_type_name string, map_expr flat.NodeId, map_type string, key_name string, mut result []flat.NodeId) (bool, string) {
 	if isnil(t.tc) || !key_is_owned {
 		return false, ''
@@ -2476,7 +2475,11 @@ fn (mut t Transformer) prepare_owned_map_set_key_cleanup(key_is_owned bool, key_
 	if !t.tc.ownership_type_requires_destruction(key_type) {
 		return false, ''
 	}
-	if t.normalize_type_alias(key_type_name).trim_space() == 'string' {
+	mut clean_key_type := t.normalize_type_alias(key_type_name).trim_space()
+	for t.is_fixed_array_type(clean_key_type) {
+		clean_key_type = t.normalize_type_alias(fixed_array_elem_type(t.resolved_fixed_array_canonical_type(clean_key_type))).trim_space()
+	}
+	if clean_key_type == 'string' {
 		return true, ''
 	}
 	existing_name := t.new_temp('map_key_existed')
@@ -2811,7 +2814,20 @@ fn (mut t Transformer) try_lower_map_index_fixed_array_assign(node flat.Node) ?[
 	key_name := t.new_temp('map_key')
 	mut result := []flat.NodeId{}
 	t.drain_pending(mut result)
-	key := t.transform_expr_for_type(path.map_info.key_id, path.map_info.key_type)
+	mut key := t.transform_expr_for_type(path.map_info.key_id, path.map_info.key_type)
+	mut key_is_owned := t.map_key_expr_creates_owned_value(path.map_info.key_id,
+		path.map_info.key_type)
+	if !key_is_owned && !isnil(t.tc)
+		&& t.normalize_type_alias(path.map_info.key_type).trim_space() != 'string' {
+		key_type := t.tc.parse_type(path.map_info.key_type)
+		if t.tc.ownership_type_requires_destruction(key_type) {
+			if _ := t.tc.ownership_default_clone_missing_method(key_type) {
+				return []flat.NodeId{}
+			}
+			key = t.make_compiler_default_clone_value(key, path.map_info.key_type, true)
+			key_is_owned = true
+		}
+	}
 	t.drain_pending(mut result)
 	result << t.make_decl_assign_typed(key_name, key, path.map_info.key_storage_type)
 	nested := t.map_index_yields_map(path.map_info.base_id)
@@ -2856,7 +2872,10 @@ fn (mut t Transformer) try_lower_map_index_fixed_array_assign(node flat.Node) ?[
 		result << t.make_assign(target, t.clone_borrowed_assignment_value(rhs_id, rhs,
 			path.elem_type))
 	}
+	cleanup_key, existing_key_name := t.prepare_owned_map_set_key_cleanup(key_is_owned,
+		path.map_info.key_type, map_expr, path.map_info.base_type, key_name, mut result)
 	result << t.make_map_set_stmt(map_expr, path.map_info.base_type, key_name, current_name)
+	t.append_owned_map_set_key_cleanup(key_name, cleanup_key, existing_key_name, mut result)
 	return result
 }
 
