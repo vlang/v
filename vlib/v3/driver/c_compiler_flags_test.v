@@ -677,6 +677,9 @@ fn test_v3_cache_artifact_detection_accepts_quoted_paths_with_spaces() {
 		os.real_path(object),
 	]
 	assert v3_cache_failure_artifacts("ld: empty file '${object}'") == [os.real_path(object)]
+	assert v3_cache_failure_artifacts("ld: i386 architecture of input file `${object}' is incompatible with i386:x86-64 output") == [
+		os.real_path(object),
+	]
 	$if windows {
 		assert v3_cache_failure_artifacts('link.exe: ${object}: file format not recognized') == [
 			os.real_path(object),
@@ -702,6 +705,32 @@ fn test_v3_cache_unquoted_windows_path_candidates_keep_spaces() {
 	unc := '\\\\server\\share\\First Last\\cached.o'
 	assert v3_cache_unquoted_path_candidates('link.exe: ${drive}') == [drive]
 	assert v3_cache_unquoted_path_candidates('link.exe: ${unc}') == [unc]
+}
+
+fn test_v3_cache_artifact_detection_includes_isolated_test_modules() {
+	root := os.join_path(os.vtmp_dir(), 'v3_test_cache_${os.getpid()}')
+	cache_dir := os.join_path(root, 'v3_module_cache_ab12')
+	os.mkdir_all(cache_dir)!
+	previous_cache := os.getenv_opt('V3CACHE')
+	previous_isolate := os.getenv_opt('V3_TEST_ISOLATE_CACHE')
+	os.unsetenv('V3CACHE')
+	os.setenv('V3_TEST_ISOLATE_CACHE', '1', true)
+	defer {
+		if value := previous_cache {
+			os.setenv('V3CACHE', value, true)
+		}
+		if value := previous_isolate {
+			os.setenv('V3_TEST_ISOLATE_CACHE', value, true)
+		} else {
+			os.unsetenv('V3_TEST_ISOLATE_CACHE')
+		}
+		os.rmdir_all(root) or {}
+	}
+	object := os.join_path(cache_dir, 'cached object.o')
+	os.write_file(object, 'broken')!
+	assert v3_cache_failure_artifacts("ld: '${object}': file format not recognized") == [
+		os.real_path(object),
+	]
 }
 
 fn test_v3_discard_cache_artifacts_drops_sidecars_and_link_plans() {

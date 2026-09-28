@@ -12565,7 +12565,7 @@ const v3_cache_failure_markers = ['unrecognized file type', 'file format not rec
 	'not an object file', 'no such file or directory', 'file not found', 'malformed object',
 	'truncated or malformed', 'file too small', 'empty file', 'archive has no index',
 	'duplicate symbol', 'multiple definition',
-	'defined twice', 'incompatible file format']
+	'defined twice', 'incompatible file format', 'architecture of input file']
 
 const v3_cache_recovery_env = 'V3_INTERNAL_CACHE_RECOVERY'
 
@@ -12587,6 +12587,25 @@ fn v3_cache_artifact_directories() []string {
 		root := os.real_path(os.abs_path(configured))
 		if root !in roots {
 			roots << root
+		}
+	} else if os.getenv('V3_TEST_ISOLATE_CACHE') == '1' {
+		for name in os.ls(temp_root) or { []string{} } {
+			if !name.starts_with('v3_test_cache_') {
+				continue
+			}
+			suffix := name['v3_test_cache_'.len..]
+			if suffix.len == 0 || !suffix.bytes().all(it.is_hex_digit()) {
+				continue
+			}
+			candidate := os.join_path_single(temp_root, name)
+			if !os.is_dir(candidate) {
+				continue
+			}
+			canonical := os.real_path(candidate)
+			if canonical != temp_root && v3_path_is_within(canonical, temp_root)
+				&& canonical !in roots {
+				roots << canonical
+			}
 		}
 	}
 	mut directories := []string{}
@@ -12620,7 +12639,7 @@ fn v3_cache_error_path_tokens(output string) []string {
 	bytes := output.bytes()
 	for i, ch in bytes {
 		if quote != 0 {
-			if ch == quote {
+			if ch == quote || (quote == `\`` && ch == `'`) {
 				quote = 0
 				if current.len > 0 {
 					tokens << current.bytestr()
@@ -12723,7 +12742,7 @@ fn v3_cache_error_artifacts(output string) []string {
 	// the artifact name. Try each absolute suffix before the diagnostic colon;
 	// canonical containment below rejects the linker executable and other paths.
 	for line in output.split_into_lines() {
-		end := line.last_index(':') or { continue }
+		end := line.last_index(': ') or { continue }
 		prefix := line[..end].trim_space()
 		for candidate in v3_cache_unquoted_path_candidates(prefix) {
 			if artifact := v3_canonical_cache_artifact(candidate, directories) {
