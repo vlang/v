@@ -6678,6 +6678,14 @@ fn (c &CallCollector) top_level_call_return_type_name(call_id flat.NodeId, cur_m
 	}
 	mut callee := c.a.node(callee_id)
 	if callee.kind == .index && callee.value != 'range' && callee.children_count > 0 {
+		if resolved := c.tc.resolved_call_name(call_id) {
+			if c.generic_fn_name_is_known(resolved, cur_module) {
+				return_type := c.fn_return_type_name(resolved, unwrap_optional_result)
+				if return_type.len > 0 {
+					return return_type
+				}
+			}
+		}
 		base_id := c.a.child(callee, 0)
 		name := c.qualified_expr_name(base_id)
 		resolved := markused_resolve_imported_type_name(name, imports)

@@ -34,6 +34,40 @@ fn test_explicit_generic_factory_return_type_retains_receiver_methods() {
 	}
 }
 
+fn test_checker_selected_generic_selector_factory_return_type() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	tc.parallel_check_sparse = true
+	arg := a.add_val(.ident, 'T')
+	for imported_static in [false, true] {
+		base := a.add_val(.ident, if imported_static { 'alias' } else { 'builder' })
+		receiver := if imported_static {
+			call_helper_node(mut a, flat.Node{ kind: .selector, value: 'Gate' }, [base])
+		} else {
+			base
+		}
+		factory := call_helper_node(mut a, flat.Node{ kind: .selector, value: 'make' }, [
+			receiver,
+		])
+		indexed := call_helper_node(mut a, flat.Node{ kind: .index }, [factory, arg])
+		call := call_helper_node(mut a, flat.Node{ kind: .call }, [indexed])
+		resolved := if imported_static { 'gates.Gate.make' } else { 'gates.Builder.make' }
+		tc.fn_generic_params[resolved] = ['T']
+		tc.fn_ret_types[resolved] = types.Type(types.Pointer{
+			base_type: types.Type(types.Struct{ name: 'gates.Gate[T]' })
+		})
+		tc.sparse_resolved_call_names[int(call)] = resolved
+		collector := CallCollector{ a: &a, tc: &tc }
+		assert collector.top_level_call_return_type_name(call, 'main', {
+			'alias': 'gates'
+		}, {
+			'builder': true
+		}, {
+			'builder': 'gates.Builder'
+		}, false) == 'gates.Gate[T]'
+	}
+}
+
 fn call_helper_node(mut a flat.FlatAst, node flat.Node, children []flat.NodeId) flat.NodeId {
 	start := a.children.len
 	for child in children {
