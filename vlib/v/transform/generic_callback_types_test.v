@@ -162,3 +162,29 @@ fn test_nested_callback_payloads_use_checker_parameter_modes() {
 	assert t.callback_fn_type_payloads_compatible(mutable, referenced, true)
 	assert t.callback_fn_type_payloads_compatible(referenced, mutable, true)
 }
+
+fn test_specialized_callbacks_keep_alias_modes_after_semantic_resolution() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	mut t := new_transformer(mut a, &tc, map[string]bool{})
+	for idx, forms in [
+		['fn (shared int)', 'fn (int)'],
+		['fn (atomic int)', 'fn (int)'],
+		['fn (...int)', 'fn ([]int)'],
+		['fn (fn (shared int))', 'fn (fn (int))'],
+	] {
+		alias := 'ModeCallback${idx}'
+		chain := 'ChainedCallback${idx}'
+		tc.type_aliases[alias] = forms[0]
+		tc.type_aliases[chain] = alias
+		for raw in [alias, chain] {
+			id := t.a.add_node(flat.Node{ kind: .ident, value: 'callback${idx}${raw}', typ: raw })
+			assert !t.resolved_receiver_arg_compatible(id, forms[1], forms[1]), raw
+			assert t.resolved_receiver_arg_compatible(id, forms[1], alias), raw
+			assert t.resolved_receiver_arg_compatible(id, forms[1], raw), raw
+		}
+	}
+	tc.type_aliases['UnrelatedCallback'] = 'fn (shared string)'
+	unrelated := t.a.add_node(flat.Node{ kind: .ident, value: 'unrelated', typ: 'UnrelatedCallback' })
+	assert t.resolved_receiver_arg_compatible(unrelated, 'fn (int)', 'fn (int)')
+}
