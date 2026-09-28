@@ -3966,8 +3966,11 @@ fn (mut t Transformer) comptime_zero_value(typ string) flat.NodeId {
 		}
 	}
 	zero_id := t.zero_value_for_type(zero_type)
+	// `nil` is a `voidptr` on its own, so a pointer zero is cast too: a generic call
+	// then infers `&&int` from `$zero(E.pointee_type)`, not `voidptr`.
 	if typ !in ['', 'void', 'int', 'f64', 'string', 'bool']
-		&& t.a.node(zero_id).kind in [.int_literal, .float_literal, .string_literal, .bool_literal] {
+		&& t.a.node(zero_id).kind in [.int_literal, .float_literal, .string_literal, .bool_literal,
+			.nil_literal] {
 		return t.make_cast(typ, zero_id, typ)
 	}
 	return zero_id
