@@ -6478,6 +6478,54 @@ struct CIntArrayStorage {
 	length  string
 }
 
+fn (mut g FlatGen) gen_c_int_array_storage(arrays []CIntArrayStorage) {
+	if arrays.len == 0 {
+		return
+	}
+	n := g.tmp_count
+	g.tmp_count++
+	storage := '_cabi_array_storage_${n}'
+	if arrays.len == 1 {
+		item := arrays[0]
+		g.write('int ${storage}[${item.length}]; int* ${item.values} = ${storage}; ')
+		g.write('for (i64 i = 0; i < ${item.length}; ++i) { ${storage}[i] = (int)${item.address}[i]; } ')
+		return
+	}
+	mut starts := []string{}
+	mut ends := []string{}
+	mut groups := []string{}
+	mut lengths := []string{}
+	for i, item in arrays {
+		starts << '(uintptr_t)${item.address}'
+		ends << '(uintptr_t)(${item.address} + ${item.length})'
+		groups << i.str()
+		lengths << item.length
+	}
+	prefix := '_cabi_array_${n}'
+	count := arrays.len
+	g.write('uintptr_t ${prefix}_starts[${count}] = {${starts.join(', ')}}; ')
+	g.write('uintptr_t ${prefix}_ends[${count}] = {${ends.join(', ')}}; ')
+	g.write('i64 ${prefix}_groups[${count}] = {${groups.join(', ')}}; ')
+	// Capture every argument before grouping overlapping source ranges. A later
+	// whole-array argument can join several earlier, disjoint row arguments.
+	g.write('for (i64 i = 0; i < ${count}; ++i) { for (i64 j = 0; j < i; ++j) { ')
+	g.write('if (${prefix}_starts[i] < ${prefix}_ends[j] && ${prefix}_starts[j] < ${prefix}_ends[i]) { ')
+	g.write('i64 from = ${prefix}_groups[i], to = ${prefix}_groups[j]; ')
+	g.write('for (i64 k = 0; k < ${count}; ++k) { if (${prefix}_groups[k] == from) ${prefix}_groups[k] = to; } } } } ')
+	g.write('for (i64 i = 0; i < ${count}; ++i) { i64 group = ${prefix}_groups[i]; ')
+	g.write('if (${prefix}_starts[i] < ${prefix}_starts[group]) ${prefix}_starts[group] = ${prefix}_starts[i]; ')
+	g.write('if (${prefix}_ends[i] > ${prefix}_ends[group]) ${prefix}_ends[group] = ${prefix}_ends[i]; } ')
+	// The union of the ranges never needs more space than their combined lengths.
+	g.write('int ${storage}[${lengths.join(' + ')}]; int* ${prefix}_values[${count}]; i64 ${prefix}_used = 0; ')
+	g.write('for (i64 i = 0; i < ${count}; ++i) { if (${prefix}_groups[i] != i) continue; ')
+	g.write('i64 length = (${prefix}_ends[i] - ${prefix}_starts[i]) / sizeof(i64); ')
+	g.write('${prefix}_values[i] = ${storage} + ${prefix}_used; ${prefix}_used += length; ')
+	g.write('for (i64 j = 0; j < length; ++j) { ${prefix}_values[i][j] = (int)((i64*)${prefix}_starts[i])[j]; } } ')
+	for i, item in arrays {
+		g.write('int* ${item.values} = ${prefix}_values[${prefix}_groups[${i}]] + ((uintptr_t)${item.address} - ${prefix}_starts[${prefix}_groups[${i}]]) / sizeof(i64); ')
+	}
+}
+
 // gen_c_call_int_out_wrap wraps a C call that passes the address of a V `int`
 // (`&someint`) into a fixed `&int` parameter or a C-variadic slot. A V `int` is
 // 64-bit while the C ABI expects a 32-bit `int*`, so casting the pointer would let C
@@ -6487,8 +6535,8 @@ struct CIntArrayStorage {
 // (sign-extended) result back after the call:
 //   ({ i64* _a = &x; int _v = (int)(*_a); C_fn(&_v); *_a = _v; })
 // The scalar path only rewrites `&<lvalue>` arguments (a bare pointer value may be
-// null). Fixed-array arguments retain all dimensions and reuse converted storage
-// when multiple arguments address the same array. Returns false — falling through to normal
+// null). Fixed-array arguments retain all dimensions and share converted storage
+// when their source ranges overlap. Returns false — falling through to normal
 // emission — when there is nothing to wrap, including the re-entrant emission where
 // the out-arguments are already scheduled.
 fn (mut g FlatGen) gen_c_call_int_out_wrap(id flat.NodeId, node flat.Node) bool {
@@ -6584,21 +6632,6 @@ fn (mut g FlatGen) gen_c_call_int_out_wrap(id flat.NodeId, node flat.Node) bool 
 				g.gen_fixed_array_data_arg(arg_id, fixed)
 				g.write(', sizeof(${addr_tmp})); ')
 			}
-			storage_tmp := '_cabi_out_storage_${n}'
-			owns_tmp := '_cabi_out_owns_${n}'
-			g.write('int ${storage_tmp}[${length}]; int* ${val_tmp} = ${storage_tmp}; ')
-			checks_aliases := addressable && fixed_array_storage.len > 0
-			if checks_aliases {
-				g.write('bool ${owns_tmp} = true; ')
-				for previous_idx, previous in fixed_array_storage {
-					if previous_idx > 0 {
-						g.write('else ')
-					}
-					g.write('if (${addr_tmp} == ${previous.address} && ${length} == ${previous.length}) { ${val_tmp} = ${previous.values}; ${owns_tmp} = false; } ')
-				}
-				g.write('if (${owns_tmp}) ')
-			}
-			g.write('for (i64 ${idx_tmp} = 0; ${idx_tmp} < ${length}; ++${idx_tmp}) { ${val_tmp}[${idx_tmp}] = (int)${addr_tmp}[${idx_tmp}]; } ')
 			mut row_dims := ''
 			for dimension in dimensions[1..] {
 				row_dims += '[${dimension}]'
@@ -6609,10 +6642,9 @@ fn (mut g FlatGen) gen_c_call_int_out_wrap(id flat.NodeId, node flat.Node) bool 
 				val_tmp
 			}
 			if addressable {
-				copyback_guard := if checks_aliases { 'if (${owns_tmp}) ' } else { '' }
-				copybacks << '${copyback_guard}for (i64 ${idx_tmp} = 0; ${idx_tmp} < ${length}; ++${idx_tmp}) { ${addr_tmp}[${idx_tmp}] = (${elem_ct})${val_tmp}[${idx_tmp}]; }'
-				fixed_array_storage << CIntArrayStorage{addr_tmp, val_tmp, length}
+				copybacks << 'for (i64 ${idx_tmp} = 0; ${idx_tmp} < ${length}; ++${idx_tmp}) { ${addr_tmp}[${idx_tmp}] = (${elem_ct})${val_tmp}[${idx_tmp}]; }'
 			}
+			fixed_array_storage << CIntArrayStorage{addr_tmp, val_tmp, length}
 			continue
 		}
 		base_id := g.c_call_int_array_data_base(arg_id) or { continue }
@@ -6623,6 +6655,7 @@ fn (mut g FlatGen) gen_c_call_int_out_wrap(id flat.NodeId, node flat.Node) bool 
 		g.cabi_int_out_args[arg_id] = val_tmp
 		copybacks << 'for (i64 ${idx_tmp} = 0; ${idx_tmp} < ${addr_tmp}->len; ++${idx_tmp}) { ((i64*)${addr_tmp}->data)[${idx_tmp}] = (i64)${val_tmp}[${idx_tmp}]; } free(${val_tmp});'
 	}
+	g.gen_c_int_array_storage(fixed_array_storage)
 	if ret_type is types.Void {
 		g.gen_call(id, node)
 		g.write('; ')

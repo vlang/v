@@ -254,6 +254,10 @@ fn C.translated_sum_int_rows(rows DecayedRowPtrAlias) int
 fn C.translated_mutate_int_rows(rows &[2]int)
 fn C.translated_alias_int_rows(left &[2]int, right DecayedRowPtrAlias) int
 fn C.translated_deep_int_rows(rows &[2][2]int) int
+fn C.translated_overlapping_int_rows(rows &[2]int, first &int, last &int) int
+fn C.translated_overlapping_int_rows_reversed(first &int, last &int, rows &[2]int) int
+fn C.translated_partial_int_views(left &int, right &int) int
+fn C.translated_partial_int_views_reversed(right &int, left &int) int
 
 fn test_translated_c_int_pointer_arguments_convert_array_storage() {
 	mut values := [20, 22]!
@@ -310,4 +314,27 @@ fn test_translated_c_int_row_pointer_arguments_convert_all_dimensions() {
 	mut deep := [[[1, 2]!, [3, 4]!]!, [[5, 6]!, [7, 8]!]!]!
 	assert C.translated_deep_int_rows(deep) == 9
 	assert deep[1][1] == [-11, 8]!
+}
+
+fn test_translated_c_int_array_views_keep_overlapping_storage() {
+	mut rows := [[1, 2]!, [3, 4]!, [5, 6]!]!
+	assert C.translated_overlapping_int_rows(rows, rows[0], rows[2]) == 1
+	assert rows == [[31, 2]!, [-7, 4]!, [5, 47]!]!
+	rows = [[1, 2]!, [3, 4]!, [5, 6]!]!
+	assert C.translated_overlapping_int_rows_reversed(rows[0], rows[2], rows) == 1
+	assert rows == [[31, 2]!, [-7, 4]!, [5, 47]!]!
+}
+
+type CIntArrayWindow = [3]int
+
+fn test_translated_c_int_array_views_keep_partial_overlap() {
+	mut values := [1, 2, 3, 4, 5]!
+	// Both windows stay within the live source array and overlap at values[2].
+	left := unsafe { &CIntArrayWindow(voidptr(&values[0])) }
+	right := unsafe { &CIntArrayWindow(voidptr(&values[2])) }
+	assert C.translated_partial_int_views(*left, *right) == 1
+	assert values == [1, 2, 31, 4, 47]!
+	values = [1, 2, 3, 4, 5]!
+	assert C.translated_partial_int_views_reversed(*right, *left) == 1
+	assert values == [1, 2, 31, 4, 47]!
 }
