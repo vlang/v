@@ -124,3 +124,41 @@ fn test_specialized_callbacks_preserve_abi_identical_scalar_payloads() {
 		assert !t.resolved_receiver_arg_compatible(id, actual, 'fn (${wrapper.replace('%s', 'u64')})')
 	}
 }
+
+fn test_nested_callback_parameter_modes_and_return_pointer_identity() {
+	mut a := flat.FlatAst.new()
+	id := a.add_val(.ident, 'callback')
+	mut tc := types.TypeChecker.new(&a)
+	mut t := new_transformer(mut a, &tc, map[string]bool{})
+	for wrapper in ['%s', '[]%s', 'map[string]%s', '?%s', '!%s'] {
+		mutable := 'fn (${wrapper.replace('%s', 'fn (mut int)')})'
+		immutable := 'fn (${wrapper.replace('%s', 'fn (int)')})'
+		assert !t.resolved_receiver_arg_compatible(id, mutable, immutable)
+		assert !t.resolved_receiver_arg_compatible(id, immutable, mutable)
+		assert t.resolved_receiver_arg_compatible(id, mutable, mutable)
+		referenced := 'fn (${wrapper.replace('%s', 'fn (&int)')})'
+		assert t.resolved_receiver_arg_compatible(id, mutable, referenced) == tc.slot_value_compatible(tc.parse_type(mutable), tc.parse_type(referenced))
+		assert t.resolved_receiver_arg_compatible(id, referenced, mutable) == tc.slot_value_compatible(tc.parse_type(referenced), tc.parse_type(mutable))
+		typed_return := 'fn (${wrapper.replace('%s', 'fn () &int')})'
+		void_return := 'fn (${wrapper.replace('%s', 'fn () voidptr')})'
+		assert !t.resolved_receiver_arg_compatible(id, typed_return, void_return)
+		assert !t.resolved_receiver_arg_compatible(id, void_return, typed_return)
+	}
+	assert t.resolved_receiver_arg_compatible(id, 'fn (&int)', 'fn (voidptr)')
+	assert t.resolved_receiver_arg_compatible(id, 'fn (voidptr)', 'fn (&int)')
+	assert t.resolved_receiver_arg_compatible(id, 'fn () &int', 'fn () voidptr')
+	assert !t.resolved_receiver_arg_compatible(id, 'fn () voidptr', 'fn () &int')
+}
+
+fn test_nested_callback_payloads_use_checker_parameter_modes() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	t := new_transformer(mut a, &tc, map[string]bool{})
+	mutable := types.FnType{ params: [types.Type(types.int_)], params_mut: [true], return_type: types.Type(types.void_) }
+	immutable := types.FnType{ params: [types.Type(types.int_)], return_type: types.Type(types.void_) }
+	referenced := types.FnType{ params: [types.Type(types.Pointer{ base_type: types.Type(types.int_) })], return_type: types.Type(types.void_) }
+	assert !t.callback_fn_type_payloads_compatible(mutable, immutable, true)
+	assert !t.callback_fn_type_payloads_compatible(immutable, mutable, true)
+	assert t.callback_fn_type_payloads_compatible(mutable, referenced, true)
+	assert t.callback_fn_type_payloads_compatible(referenced, mutable, true)
+}

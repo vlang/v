@@ -14406,10 +14406,28 @@ fn (t &Transformer) callback_fn_type_payloads_compatible(actual types.FnType, ex
 	if actual.params.len != expected.params.len {
 		return false
 	}
-	for i, param in actual.params {
-		if !t.callback_payload_type_compatible(param, expected.params[i], inside_container) {
+	for i in 0 .. actual.params.len {
+		if !types.fn_param_modes_compatible(actual, expected, i) {
 			return false
 		}
+		param := types.unalias_type(types.fn_compatible_param_type(actual, i))
+		expected_param := types.unalias_type(types.fn_compatible_param_type(expected, i))
+		// The userdata conversion applies to a callback parameter, never to a
+		// pointer buried in a parameter container or a nested callback return.
+		if param is types.Pointer && expected_param is types.Pointer {
+			if types.unalias_type(param.base_type) is types.Void
+				|| types.unalias_type(expected_param.base_type) is types.Void {
+				continue
+			}
+		}
+		if !t.callback_payload_type_compatible(param, expected_param, inside_container) {
+			return false
+		}
+	}
+	if !inside_container && types.unalias_type(actual.return_type) is types.Pointer
+		&& types.unalias_type(expected.return_type) is types.Pointer {
+		// The ordinary function checker validates direct return covariance.
+		return true
 	}
 	return t.callback_payload_type_compatible(actual.return_type, expected.return_type,
 		inside_container)
@@ -14446,10 +14464,6 @@ fn (t &Transformer) callback_payload_type_compatible(actual types.Type, expected
 			&& t.callback_payload_type_compatible(a.elem_type, e.elem_type, true)
 	}
 	if a is types.Pointer && e is types.Pointer {
-		if types.unalias_type(a.base_type) is types.Void
-			|| types.unalias_type(e.base_type) is types.Void {
-			return true
-		}
 		return t.callback_payload_type_compatible(a.base_type, e.base_type, true)
 	}
 	if a is types.OptionType && e is types.OptionType {
@@ -14459,7 +14473,7 @@ fn (t &Transformer) callback_payload_type_compatible(actual types.Type, expected
 		return t.callback_payload_type_compatible(a.base_type, e.base_type, true)
 	}
 	if a is types.FnType && e is types.FnType {
-		return t.callback_fn_type_payloads_compatible(a, e, inside_container)
+		return t.callback_fn_type_payloads_compatible(a, e, true)
 	}
 	if (a is types.Primitive || a is types.Rune || a is types.Char || a is types.ISize || a is types.USize)
 		&& (e is types.Primitive || e is types.Rune || e is types.Char || e is types.ISize || e is types.USize) {

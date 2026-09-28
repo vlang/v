@@ -18834,7 +18834,8 @@ fn fn_param_is_mut(f FnType, idx int) bool {
 	return idx >= 0 && idx < f.params_mut.len && f.params_mut[idx]
 }
 
-fn fn_compatible_param_type(f FnType, idx int) Type {
+// fn_compatible_param_type returns the pointer representation of a mutable parameter.
+pub fn fn_compatible_param_type(f FnType, idx int) Type {
 	typ := fn_param_type(f, idx)
 	if fn_param_is_mut(f, idx) && typ !is Pointer {
 		return Type(Pointer{
@@ -18844,7 +18845,8 @@ fn fn_compatible_param_type(f FnType, idx int) Type {
 	return typ
 }
 
-fn fn_param_modes_compatible(actual FnType, expected FnType, idx int) bool {
+// fn_param_modes_compatible checks whether callback parameter passing modes agree.
+pub fn fn_param_modes_compatible(actual FnType, expected FnType, idx int) bool {
 	return fn_param_modes_compatible_at(actual, idx, expected, idx)
 }
 
