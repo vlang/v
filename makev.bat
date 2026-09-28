@@ -297,7 +297,7 @@ if !ERRORLEVEL! EQU 0 (
 )
 if not defined stage_vflags (
 	echo Could not build a bootstrap compiler before compiling with MSVC
-	if exist %ObjFile% del %ObjFile%
+	call :try_delete "%ObjFile%"
 	goto :compile_error
 )
 
@@ -308,7 +308,7 @@ if !stage_with_clang! EQU 1 (
 	"%V_BOOTSTRAP%" %V_BOOTSTRAP_VFLAGS% -keepc -g -showcc !stage_vflags! -o "%V_STAGE%" cmd/v
 )
 if !ERRORLEVEL! NEQ 0 (
-	if exist %ObjFile% del %ObjFile%
+	call :try_delete "%ObjFile%"
 	call :try_delete "%V_STAGE%"
 	goto :compile_error
 )
@@ -316,7 +316,7 @@ if !ERRORLEVEL! NEQ 0 (
 echo  ^> Compiling "%V_EXE%" with "%V_STAGE%"
 "%V_STAGE%" %V_BOOTSTRAP_VFLAGS% -keepc -g -showcc -cc msvc -o "%V_UPDATED%" cmd/v
 set msvc_error=!ERRORLEVEL!
-if exist %ObjFile% del %ObjFile%
+call :try_delete "%ObjFile%"
 call :try_delete "%V_STAGE%"
 if %msvc_error% NEQ 0 goto :compile_error
 call :move_updated_to_v
@@ -502,7 +502,7 @@ if !ERRORLEVEL! NEQ 0 (
 echo  ^> Attempting to build "%V_BOOTSTRAP%" (from %V_C_FILE%) with MSVC
 cl /nologo %VC_BOOTSTRAP_DEFINE% /volatile:ms /bigobj /MD /we4013 /utf-8 /w /std:c11 /D_CRT_DECLARE_NONSTDC_NAMES=1 /Fe"%V_BOOTSTRAP%" "%V_C_FILE%" kernel32.lib user32.lib dbghelp.lib ws2_32.lib bcrypt.lib advapi32.lib /link /STACK:33554432
 set msvc_bootstrap_error=!ERRORLEVEL!
-if exist %ObjFile% del %ObjFile%
+call :try_delete "%ObjFile%"
 exit /b !msvc_bootstrap_error!
 
 :build_bootstrap_with_clang
@@ -532,7 +532,7 @@ if !stage_error! NEQ 0 exit /b !stage_error!
 echo  ^> Compiling "%V_STAGE%" from "%V_STAGE_C%" with Clang
 "!clang_exe!" --target=!clang_target! -std=gnu11 -municode -g -w -fwrapv -Wno-int-conversion -o "%V_STAGE%" "%V_STAGE_C%" -ldbghelp -lws2_32 -L"%~dp0vlib\crypto\rand\internal\libraries\bcrypt" -lbcrypt -I "%~dp0thirdparty\stdatomic\win" -ladvapi32 -Wl,--stack=33554432
 set stage_error=!ERRORLEVEL!
-if exist "%V_STAGE_C%" del "%V_STAGE_C%"
+call :try_delete "%V_STAGE_C%"
 exit /b !stage_error!
 
 :build_bootstrap_with_gcc
