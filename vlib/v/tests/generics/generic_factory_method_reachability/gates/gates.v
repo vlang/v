@@ -6,7 +6,7 @@ struct Gate[T] {
 	value T
 }
 
-fn make_gate[T](value T) &Gate[T] { return &Gate[T]{ value: value } }
+fn make_gate[U](value U) &Gate[U] { return &Gate[U]{ value: value } }
 
 fn (g &Gate[T]) backward() f64 { return math.cos(f64(g.value)) }
 

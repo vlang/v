@@ -6333,6 +6333,14 @@ fn markused_substitute_alias_generics(type_text string, inferred map[string]stri
 			return 'map[${key}]${value}'
 		}
 	}
+	base, args, is_generic := markused_generic_app_parts(clean)
+	if is_generic {
+		mut replaced := []string{cap: args.len}
+		for arg in args {
+			replaced << markused_substitute_alias_generics(arg, inferred)
+		}
+		return '${base}[${replaced.join(', ')}]'
+	}
 	return clean
 }
 
@@ -6706,7 +6714,7 @@ fn (c &CallCollector) top_level_call_return_type_name(call_id flat.NodeId, cur_m
 	if callee.kind == .index && callee.value != 'range' && callee.children_count > 0 {
 		if resolved := c.tc.resolved_call_name(call_id) {
 			if c.generic_fn_name_is_known(resolved, cur_module) {
-				return_type := c.fn_return_type_name(resolved, unwrap_optional_result)
+				return_type := c.generic_factory_return_type_name(callee, resolved, cur_module, imports, unwrap_optional_result)
 				if return_type.len > 0 {
 					return return_type
 				}
@@ -6725,7 +6733,7 @@ fn (c &CallCollector) top_level_call_return_type_name(call_id flat.NodeId, cur_m
 			name.all_before('.') in local_values
 		}
 		if !shadowed && c.generic_fn_name_is_known(resolved, cur_module) {
-			callee = c.a.node(base_id)
+			return c.generic_factory_return_type_name(callee, resolved, cur_module, imports, unwrap_optional_result)
 		}
 	}
 	if callee.kind == .selector && callee.value.len > 0 && callee.children_count > 0 {
@@ -6750,6 +6758,59 @@ fn (c &CallCollector) top_level_call_return_type_name(call_id flat.NodeId, cur_m
 		return c.fn_return_type_name(callee.value, unwrap_optional_result)
 	}
 	return ''
+}
+
+fn (c &CallCollector) generic_factory_return_type_name(index &flat.Node, name string, cur_module string, imports map[string]string, unwrap_optional_result bool) string {
+	for candidate in markused_fn_signature_name_candidates(name, cur_module) {
+		params := c.tc.fn_generic_params[candidate] or { continue }
+		return_type := c.fn_return_type_name(candidate, unwrap_optional_result)
+		if return_type.len == 0 { continue }
+		arg_count := int(index.children_count) - 1
+		if arg_count <= 0 || arg_count > params.len { return return_type }
+		mut inferred := map[string]string{}
+		for i in 0 .. arg_count {
+			arg := c.generic_factory_type_arg(c.a.child(index, i + 1))
+			if arg.len == 0 { return return_type }
+			inferred[params[params.len - arg_count + i]] = markused_resolve_imported_type_name(arg, imports)
+		}
+		return markused_substitute_alias_generics(return_type, inferred)
+	}
+	return ''
+}
+
+fn (c &CallCollector) generic_factory_type_arg(id flat.NodeId) string {
+	if int(id) < 0 { return '' }
+	node := c.a.node(id)
+	match node.kind {
+		.ident, .selector { return c.qualified_expr_name(id) }
+		.index {
+			if node.children_count < 2 || node.value == 'range' { return '' }
+			base := c.generic_factory_type_arg(c.a.child(node, 0))
+			mut args := []string{}
+			for i in 1 .. node.children_count {
+				arg := c.generic_factory_type_arg(c.a.child(node, i))
+				if arg.len == 0 { return '' }
+				args << arg
+			}
+			return '${base}[${args.join(', ')}]'
+		}
+		.array_init {
+			return if node.typ.len > 0 {
+				node.typ
+			} else if node.value.starts_with('[') {
+				node.value
+			} else {
+				'[]${node.value}'
+			}
+		}
+		.map_init, .struct_init, .struct_decl { return node.value }
+		.prefix {
+			if node.children_count == 0 { return '' }
+			inner := c.generic_factory_type_arg(c.a.child(node, 0))
+			return if node.op == .amp { '&${inner}' } else { inner }
+		}
+		else { return '' }
+	}
 }
 
 fn (c &CallCollector) top_level_or_expr_base_type_name(id flat.NodeId, cur_module string, imports map[string]string, local_values map[string]bool, local_types map[string]string) string {

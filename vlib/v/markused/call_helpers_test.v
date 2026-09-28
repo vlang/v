@@ -6,9 +6,9 @@ import v.types
 fn test_explicit_generic_factory_return_type_retains_receiver_methods() {
 	mut a := flat.FlatAst.new()
 	mut tc := types.TypeChecker.new(&a)
-	tc.fn_generic_params['gates.make_gate'] = ['T']
+	tc.fn_generic_params['gates.make_gate'] = ['U']
 	tc.fn_ret_types['gates.make_gate'] = types.Type(types.Pointer{
-		base_type: types.Type(types.Struct{ name: 'gates.Gate[T]' })
+		base_type: types.Type(types.Struct{ name: 'gates.Gate[U]' })
 	})
 	arg := a.add_val(.ident, 'T')
 	for imported in [false, true] {
@@ -39,9 +39,9 @@ fn test_generic_factory_inference_uses_call_site_shadowing() {
 		for placement in ['before', 'after', 'nested'] {
 			mut a := flat.FlatAst.new()
 			mut tc := types.TypeChecker.new(&a)
-			tc.fn_generic_params['gates.make_gate'] = ['T']
+			tc.fn_generic_params['gates.make_gate'] = ['U']
 			tc.fn_ret_types['gates.make_gate'] = types.Type(types.Pointer{
-				base_type: types.Type(types.Struct{ name: 'gates.Gate[T]' })
+				base_type: types.Type(types.Struct{ name: 'gates.Gate[U]' })
 			})
 			shadow_name := if imported { 'g' } else { 'make_gate' }
 			shadow_lhs := a.add_val(.ident, shadow_name)
@@ -99,9 +99,9 @@ fn test_checker_selected_generic_selector_factory_return_type() {
 		indexed := call_helper_node(mut a, flat.Node{ kind: .index }, [factory, arg])
 		call := call_helper_node(mut a, flat.Node{ kind: .call }, [indexed])
 		resolved := if imported_static { 'gates.Gate.make' } else { 'gates.Builder.make' }
-		tc.fn_generic_params[resolved] = ['T']
+		tc.fn_generic_params[resolved] = ['U']
 		tc.fn_ret_types[resolved] = types.Type(types.Pointer{
-			base_type: types.Type(types.Struct{ name: 'gates.Gate[T]' })
+			base_type: types.Type(types.Struct{ name: 'gates.Gate[U]' })
 		})
 		tc.sparse_resolved_call_names[int(call)] = resolved
 		collector := CallCollector{ a: &a, tc: &tc }
