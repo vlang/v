@@ -12,6 +12,10 @@
 > `\uXXXX`, `time.Time` values as Unix timestamps, and its tab based pretty layout.
 > One difference remains: a `@[raw]` field holds the JSON text exactly as written,
 > while the old module returned it without whitespace.
+>
+> `json.decode(?T, s)` has no direct counterpart, since V does not accept `?T` as a
+> type argument, and vfmt leaves such files unchanged: decode `T` with
+> `json2.decode[T](s)`, and handle a `null` input yourself.
 
 `json2` is an experimental JSON parser written from scratch on V.
 

@@ -10,6 +10,5 @@ fn main() {
 	}]('{}') or { return }
 	y := json2.decode[[]Foo]('[]') or { return }
 	z := json2.decode[map[string]Foo]('{}') or { return }
-	w := json2.decode[?Foo]('{}') or { return }
-	println('${x} ${y} ${z} ${w}')
+	println('${x} ${y} ${z}')
 }

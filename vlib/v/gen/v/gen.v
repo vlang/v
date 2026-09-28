@@ -419,9 +419,11 @@ fn (mut g Gen) setup_json_migration(fnode &flat.Node) {
 			&& (n.kind == .param || (n.kind == .ident && !called[i] && !import_symbols[i])) {
 			return
 		}
-		// A legacy `decode` needs both the type and the source argument to be rewritten.
-		if n.kind == .call && n.children_count > 0 && n.children_count < 3
-			&& g.is_json_decode_callee(g.a.child_node(n, 0), legacy.children_count > 0) {
+		// A legacy `decode` needs both the type and the source argument to be rewritten,
+		// and an option or result type (`json.decode(?T, s)`) cannot be a type argument.
+		if n.kind == .call && n.children_count > 0
+			&& g.is_json_decode_callee(g.a.child_node(n, 0), legacy.children_count > 0)
+			&& (n.children_count < 3 || g.json_decode_type_arg_is_option(n)) {
 			return
 		}
 		// Existing module selector receivers are safe; any other identifier with the
@@ -1674,8 +1676,16 @@ fn (mut g Gen) call_expr(id flat.NodeId) {
 	g.write('(')
 	if !g.migrate_json2 && g.is_legacy_json_decode(children[0]) && args.len > 0 {
 		first := g.a.node(args[0])
+		// The type argument is not an expression: `[]Foo` parses as an empty array
+		// literal, and `?Foo` as an empty node, which keeps only its source text.
+		mut type_text := ''
 		if first.kind == .array_init && first.children_count == 0 {
-			g.write(first.typ)
+			type_text = first.typ
+		} else if first.kind == .empty && args.len > 1 {
+			type_text = g.json_decode_type_arg_source(children[0], args[1]) or { '' }
+		}
+		if type_text.len > 0 {
+			g.write(type_text)
 			if args.len > 1 {
 				g.write(', ')
 				g.expr_list(args[1..], ', ')
@@ -1979,6 +1989,18 @@ fn (mut g Gen) json_migration_call(kind string, callee flat.NodeId, args []flat.
 // `json.decode(T, s)`: the text between the callee and the second argument, without
 // the surrounding `(` and `,`. The span of the type node itself does not always
 // cover the type (anonymous structs, option types).
+// json_decode_type_arg_is_option reports whether the type argument of the legacy
+// `json.decode(T, s)` call is an option or result type, which json2 cannot take:
+// V does not accept `?T` as a generic type argument.
+fn (g &Gen) json_decode_type_arg_is_option(call &flat.Node) bool {
+	type_arg := g.a.child_node(call, 1)
+	type_text := g.json_decode_type_arg_source(g.a.child(call, 0), g.a.child(call, 2)) or {
+		g.source_span(type_arg.pos.offset, type_arg.pos.end) or { return false }
+	}
+	return type_text.starts_with('?') || type_text.starts_with('!')
+		|| type_arg.value.starts_with('?') || type_arg.value.starts_with('!')
+}
+
 fn (g &Gen) json_decode_type_arg_source(callee flat.NodeId, second_arg flat.NodeId) ?string {
 	between := g.source_span(g.a.node(callee).pos.end, g.a.node(second_arg).pos.offset)?.trim_space()
 	if !between.starts_with('(') || !between.ends_with(',') {

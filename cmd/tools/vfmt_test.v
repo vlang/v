@@ -899,6 +899,30 @@ fn f() {
 	assert formatted_twice == formatted
 }
 
+fn test_fmt_json_decode_migration_runs_and_skips_option_targets_with_v3() {
+	// Migrated decode calls must still decode the same payloads.
+	migrated_source := 'import json\n\nstruct Foo {\n\ta int\n}\n\nfn main() {\n\tlist := json.decode([]Foo, \'[{"a":1}]\') or { panic(err) }\n\tby_key := json.decode(map[string]Foo, \'{"k":{"a":2}}\') or { panic(err) }\n\tprintln(\'\${list[0].a} \${by_key[\'k\'].a}\')\n}\n'
+	res, migrated := run_vfmt_write('json_decode_targets', migrated_source, '')
+	assert res.exit_code == 0, res.output
+	assert migrated.contains('json2.decode[[]Foo]('), migrated
+	assert migrated.contains('json2.decode[map[string]Foo]('), migrated
+	run_res := os.execute('${os.quoted_path(vexe)} run ${os.quoted_path(os.join_path(vfmt_test_tdir, 'json_decode_targets.v'))}')
+	assert run_res.exit_code == 0, run_res.output
+	assert run_res.output.trim_space() == '1 2', run_res.output
+	// V does not accept `?Foo` as a type argument, so `json.decode(?Foo, s)` has no
+	// json2 counterpart, and the file keeps its legacy source.
+	option_source := "import json\n\nstruct Foo {\n\ta int\n}\n\nfn main() {\n\tw := json.decode(?Foo, '{}') or { return }\n\tprintln(json.encode(w))\n}\n"
+	option_res, option_formatted := run_vfmt_write('json_decode_option_target', option_source,
+		'')
+	assert option_res.exit_code == 0, option_res.output
+	assert option_formatted == option_source
+	// Without migration, formatting keeps the option type argument too.
+	plain_res, plain_formatted := run_vfmt_write('json_decode_option_target_no_migrate',
+		option_source, '-no-migrate-json2')
+	assert plain_res.exit_code == 0, plain_res.output
+	assert plain_formatted == option_source
+}
+
 fn test_fmt_skips_json2_migration_for_shadowed_selective_imports_with_v3() {
 	header := 'import json { decode, encode }\n\nstruct User {\n\tname string\n}\n\n'
 	for name, body in {
