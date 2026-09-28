@@ -337,6 +337,57 @@ fn main() {
 	assert c_compact.contains('__v_thread__twthread0=t;'), c_code
 }
 
+fn test_discarded_spawn_cleans_nested_thread_and_closure_results() {
+	v3_bin := build_v3()
+	c_code := gen_c(v3_bin, 'v3_spawn_nested_result_cleanup', '
+struct Worker {
+	child thread int
+}
+
+struct ClosureHolder {
+	callback fn () int
+}
+
+fn answer() int {
+	return 42
+}
+
+fn make_array() []thread int {
+	return [spawn answer()]
+}
+
+fn make_optional() ?thread int {
+	return spawn answer()
+}
+
+fn make_struct() Worker {
+	return Worker{child: spawn answer()}
+}
+
+fn make_closure() ClosureHolder {
+	value := 42
+	return ClosureHolder{
+		callback: fn [value] () int {
+			return value
+		}
+	}
+}
+
+fn main() {
+	spawn make_array()
+	spawn make_optional()
+	spawn make_struct()
+	spawn make_closure()
+}
+	')
+	for name in ['make_array', 'make_optional', 'make_struct'] {
+		wrapper := c_code.all_after('static void* ${name}_thread_wrapper_detached').all_before('return NULL;')
+		assert wrapper.contains('__v_thread_join('), wrapper
+	}
+	closure_wrapper := c_code.all_after('static void* make_closure_thread_wrapper_detached').all_before('return NULL;')
+	assert closure_wrapper.contains('closure__closure_try_destroy('), closure_wrapper
+}
+
 fn test_discarded_aggregate_spawns_detach_threads() {
 	v3_bin := build_v3()
 	c_code := gen_c(v3_bin, 'v3_spawn_discarded_aggregate_detach', '

@@ -4056,6 +4056,11 @@ fn (mut g FlatGen) detached_spawn_result_cleanup(typ types.Type, expr string, de
 			return 'if ((${expr}).handle) { void* ${result} = __v_thread_join(${expr}); if (${result}) { ${cleanup} } } '
 		}
 	}
+	old_detached_spawn_drop := g.detached_spawn_drop
+	g.detached_spawn_drop = true
+	defer {
+		g.detached_spawn_drop = old_detached_spawn_drop
+	}
 	if g.ownership_type_requires_destruction(typ, 0) {
 		return g.ownership_drop_value_to_string(typ, expr)
 	}
@@ -4071,7 +4076,11 @@ fn (mut g FlatGen) spawn_wrapper_body_with_pre(call_expr string, ret_ct string, 
 		return '${pre}${call_expr}; ${post}return NULL;'
 	}
 	if g.spawn_detached {
-		if g.ownership_type_requires_destruction(g.spawn_return_type, 0)
+		old_detached_spawn_drop := g.detached_spawn_drop
+		g.detached_spawn_drop = true
+		needs_cleanup := g.ownership_type_requires_destruction(g.spawn_return_type, 0)
+		g.detached_spawn_drop = old_detached_spawn_drop
+		if needs_cleanup
 			|| default_init_unalias_type(g.spawn_return_type) is types.FnType
 			|| ret_ct == '__v_thread' {
 			clean_type := default_init_unalias_type(g.spawn_return_type)

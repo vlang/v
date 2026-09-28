@@ -8,9 +8,9 @@ fn (mut signal GenericSumDropSignal) drop() {
 	signal.done <- 1
 }
 
-type GenericDropOutcome[T] = GenericSumDropSignal | T
+type GenericDropOutcome[T] = T | int
 
-fn make_generic_drop_outcome(done chan int) GenericDropOutcome[string] {
+fn make_generic_drop_outcome(done chan int) GenericDropOutcome[GenericSumDropSignal] {
 	return GenericSumDropSignal{
 		done: done
 	}

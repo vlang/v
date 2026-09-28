@@ -1385,6 +1385,11 @@ fn (mut g FlatGen) gen_ownership_drop_value_inner(typ types.Type, expr string, d
 		types.String {
 			g.writeln('string__free(&(${expr}));')
 		}
+		types.FnType {
+			if g.detached_spawn_drop {
+				g.writeln('${g.cname('closure.closure_try_destroy')}((void*)(${expr}));')
+			}
+		}
 		types.Array {
 			g.writeln('if (((${expr}).flags & ArrayFlags__is_slice) == 0) {')
 			g.indent++
@@ -1439,6 +1444,12 @@ fn (mut g FlatGen) gen_ownership_drop_value_inner(typ types.Type, expr string, d
 			g.writeln('map__free(&(${expr}));')
 		}
 		types.Struct {
+			thread_name := trimmed_space(typ.name)
+			if g.detached_spawn_drop && (thread_name == 'thread'
+				|| thread_name.ends_with('.thread') || thread_name.starts_with('thread ')) {
+				g.writeln(g.detached_spawn_result_cleanup(typ, expr, depth))
+				return
+			}
 			method_name := g.ownership_destructor_method_name()
 			method := g.resolve_method_name(typ.name, method_name)
 			if method.len > 0 {
@@ -1684,7 +1695,15 @@ fn (g &FlatGen) ownership_type_requires_destruction(typ types.Type, depth int) b
 		types.ArrayFixed {
 			return g.ownership_type_requires_destruction(typ.elem_type, depth + 1)
 		}
+		types.FnType {
+			return g.detached_spawn_drop
+		}
 		types.Struct {
+			thread_name := trimmed_space(typ.name)
+			if g.detached_spawn_drop && (thread_name == 'thread'
+				|| thread_name.ends_with('.thread') || thread_name.starts_with('thread ')) {
+				return true
+			}
 			if g.resolve_method_name(typ.name, g.ownership_destructor_method_name()).len > 0 {
 				return true
 			}
