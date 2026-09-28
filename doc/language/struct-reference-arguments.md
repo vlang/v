@@ -9,6 +9,7 @@ an element of `[]&Settings`, the updated value receives its own heap allocation.
 The reference remains valid after the scope constructing the update returns.
 When the stored element is a pointer to an interface, each pointer layer receives
 its own storage after the updated struct is boxed as an interface.
+Aliases of interface pointer types retain the same pointer depth.
 For nested pointers to a sum type, the update is wrapped as the sum value before
 the pointer layers receive storage.
 Nested sum variants are wrapped from the innermost sum outward.

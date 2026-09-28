@@ -171,6 +171,8 @@ interface ReferenceReader {
 	read() int
 }
 
+type ReferenceReaderRefs = &&ReferenceReader
+
 struct ReferenceReaderImpl {
 	value int
 }
@@ -187,6 +189,10 @@ fn updated_triple_interface_array(base ReferenceReaderImpl) []&&&ReferenceReader
 	return [ReferenceReaderImpl{ ...base, value: base.value + 2 }]
 }
 
+fn updated_aliased_interface_array(base ReferenceReaderImpl) []ReferenceReaderRefs {
+	return [ReferenceReaderImpl{ ...base, value: base.value + 3 }]
+}
+
 fn test_struct_update_stored_as_nested_interface_pointer() {
 	values := updated_interface_array(ReferenceReaderImpl{ value: 41 })
 	assert values.len == 1
@@ -195,4 +201,7 @@ fn test_struct_update_stored_as_nested_interface_pointer() {
 	triple := updated_triple_interface_array(ReferenceReaderImpl{ value: 40 })
 	triple_reader := ***triple[0]
 	assert triple_reader.read() == 42
+	aliased := updated_aliased_interface_array(ReferenceReaderImpl{ value: 39 })
+	aliased_reader := **aliased[0]
+	assert aliased_reader.read() == 42
 }

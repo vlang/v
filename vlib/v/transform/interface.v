@@ -34,7 +34,7 @@ fn (t &Transformer) interface_cast_matches_target(cast_type string, iface_name s
 }
 
 fn (mut t Transformer) heap_copy_interface_expr(expr flat.NodeId, iface_name string, target_type string) flat.NodeId {
-	target_depth, _ := pointer_type_depth_and_base(target_type)
+	target_depth, _ := pointer_type_depth_and_base(t.normalize_type_alias(target_type))
 	if target_depth > 1 {
 		mut current := t.heap_copy_interface_expr(expr, iface_name, '&${iface_name}')
 		mut current_type := '&${iface_name}'
@@ -226,7 +226,7 @@ fn (mut t Transformer) transform_interface_value_for_type(id flat.NodeId, target
 	if int(id) < 0 || target_type == '' || isnil(t.tc) {
 		return none
 	}
-	target_is_ptr := target_type.starts_with('&')
+	target_is_ptr := t.normalize_type_alias(target_type).starts_with('&')
 	iface_name := t.resolve_interface_type_name(target_type)
 	if iface_name.len == 0 {
 		return none
