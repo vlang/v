@@ -3098,6 +3098,9 @@ fn test_translated_pointer_writes_accept_immutable_roots() {
 	alias_selector := generate('@[translated]\nmodule main\nstruct State {\nmut:\n count int\n}\ntype StateRef = &State\nfn bump(state StateRef) { state.count = 1 }\nfn main() {}\n',
 		'translated_alias_pointer_selector.v', prefs) or { panic(err) }
 	assert alias_selector.contains('state->count=1;'), alias_selector
+	global_pointer := generate('@[translated]\nmodule main\nstruct GlobalState { count int }\n__global state = &GlobalState(unsafe { nil })\nfn main() { state.count = 1 }\n',
+		'translated_global_pointer_selector.v', prefs) or { panic(err) }
+	assert global_pointer.contains('state->count=1;'), global_pointer
 	dereference_write := generate('@[translated]\nmodule main\nfn store(target &int, value int) { *target = value }\nfn main() {}\n',
 		'translated_dereference_write.v', prefs) or { panic(err) }
 	assert dereference_write.contains('*target=value;'), dereference_write
