@@ -3,6 +3,8 @@
 // that can be found in the LICENSE file.
 module term
 
+import os
+
 // Sources for ANSI Control Sequences
 // https://github.com/RajeshPatkarInstitute/Panim
 // https://www.gnu.org/software/screen/manual/html_node/Control-Sequences.html
@@ -128,4 +130,21 @@ pub fn hide_cursor() {
 pub fn clear_previous_line() {
 	print('\r\x1b[1A\x1b[2K')
 	flush_stdout()
+}
+
+// run show_cursor() on exit/termination.
+pub fn show_cursor_on_exit() {
+	at_exit(fn () {
+		term.show_cursor()
+	}) or {}
+
+	os.signal_opt(.int, fn (_ os.Signal) {
+		term.show_cursor()
+		exit(0)
+	}) or {}
+
+	os.signal_opt(.term, fn (_ os.Signal) {
+		term.show_cursor()
+		exit(0)
+	}) or {}
 }
