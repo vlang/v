@@ -9019,21 +9019,6 @@ fn append_v3_c_compile_mode_flags(mut args []string, c_standard string, opt_flag
 	}
 }
 
-fn expand_v3_module_search_paths(spec string, vroot string) []string {
-	if spec.len == 0 {
-		return []
-	}
-	mut expanded := []string{}
-	for path in spec.replace('|', os.path_delimiter).split(os.path_delimiter) {
-		match path {
-			'@vlib' { expanded << os.join_path_single(vroot, 'vlib') }
-			'@vmodules' { expanded << os.vmodules_paths() }
-			else { expanded << path.replace('@vroot', vroot) }
-		}
-	}
-	return expanded
-}
-
 // expand_v3_exclude_patterns resolves the `@vroot`, `@vlib` and `@vmodules`
 // placeholders of the `-exclude` glob patterns. `@vmodules` stands for a list of
 // directories, so a pattern that uses it expands to one pattern per directory.
@@ -10646,7 +10631,7 @@ pub fn run(args []string) {
 	prefs.enable_globals = enable_globals_compat
 	prefs.user_defines = user_defines
 	prefs.compile_values = compile_values.clone()
-	prefs.module_search_paths = expand_v3_module_search_paths(module_search_path_spec, prefs.vroot)
+	prefs.module_search_paths = pref.expand_module_search_paths(module_search_path_spec, prefs.vroot)
 	if is_checker_fixture {
 		fixture_modules := os.join_path(os.dir(os.real_path(input_file)), 'modules')
 		if os.is_dir(fixture_modules) {

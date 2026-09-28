@@ -17,20 +17,21 @@ import v.parser as compiler_parser
 import v.pref as compiler_pref
 
 struct FormatOptions {
-	is_l             bool
-	is_c             bool // Note: This refers to the '-c' fmt flag, NOT the C backend
-	is_w             bool
-	is_diff          bool
-	is_verbose       bool
-	is_debug         bool
-	is_noerror       bool
-	is_verify        bool // exit(1) if the file is not vfmt'ed
-	is_worker        bool // true *only* in the worker processes. Note: workers can crash.
-	is_backup        bool // make a `file.v.bak` copy *before* overwriting a `file.v` in place with `-w`
-	in_process       bool // do not fork a worker process; potentially faster, but more prone to crashes for invalid files
-	is_new_int       bool // rewrite int to i32 in translated modules and C declarations
-	no_migrate_json2 bool // opt out of the default rewrite of removed `json` usage to `json2` (`-no-migrate-json2`)
-	backend          string = 'c'
+	is_l                bool
+	is_c                bool // Note: This refers to the '-c' fmt flag, NOT the C backend
+	is_w                bool
+	is_diff             bool
+	is_verbose          bool
+	is_debug            bool
+	is_noerror          bool
+	is_verify           bool     // exit(1) if the file is not vfmt'ed
+	is_worker           bool     // true *only* in the worker processes. Note: workers can crash.
+	is_backup           bool     // make a `file.v.bak` copy *before* overwriting a `file.v` in place with `-w`
+	in_process          bool     // do not fork a worker process; potentially faster, but more prone to crashes for invalid files
+	is_new_int          bool     // rewrite int to i32 in translated modules and C declarations
+	no_migrate_json2    bool     // opt out of the default rewrite of removed `json` usage to `json2` (`-no-migrate-json2`)
+	module_search_paths []string // the expanded `-path` roots, where the compiler also looks for imported modules
+	backend             string = 'c'
 mut:
 	diff_cmd string // filled in when -diff or -verify is passed
 }
@@ -72,20 +73,22 @@ fn main() {
 		exit(1)
 	}
 	mut foptions := FormatOptions{
-		is_c:             '-c' in args
-		is_l:             '-l' in args
-		is_w:             '-w' in args
-		is_diff:          '-diff' in args
-		is_verbose:       '-verbose' in args || '--verbose' in args
-		is_worker:        '-worker' in args
-		is_debug:         '-debug' in args
-		is_noerror:       '-noerror' in args
-		is_verify:        '-verify' in args
-		is_backup:        '-backup' in args
-		in_process:       '-inprocess' in args
-		is_new_int:       '-new_int' in args
-		no_migrate_json2: '-no-migrate-json2' in args
-		backend:          backend
+		is_c:                '-c' in args
+		is_l:                '-l' in args
+		is_w:                '-w' in args
+		is_diff:             '-diff' in args
+		is_verbose:          '-verbose' in args || '--verbose' in args
+		is_worker:           '-worker' in args
+		is_debug:            '-debug' in args
+		is_noerror:          '-noerror' in args
+		is_verify:           '-verify' in args
+		is_backup:           '-backup' in args
+		in_process:          '-inprocess' in args
+		is_new_int:          '-new_int' in args
+		no_migrate_json2:    '-no-migrate-json2' in args
+		module_search_paths: compiler_pref.expand_module_search_paths(cmdline.option(args,
+			'-path', ''), os.dir(os.getenv('VEXE')))
+		backend:             backend
 	}
 	if term_colors {
 		os.setenv('VCOLORS', 'always', true)
@@ -223,13 +226,25 @@ fn imports_json(a &flat.FlatAst) bool {
 
 // resolves_project_json_module reports whether `import json` in `file` resolves to
 // an existing module. vlib has no `json` module anymore, so such a module belongs
-// to the project (beside the file, in a parent directory, or in ~/.vmodules). The
-// compiler keeps using it, so its calls must not be rewritten to `json2`.
-fn resolves_project_json_module(file string) bool {
-	lookup := &compiler_pref.Preferences{
-		vroot: os.dir(os.getenv('VEXE'))
+// to the project (beside the file, in a parent directory, in ~/.vmodules, or in a
+// `-path` root). The compiler keeps using it, so its calls must not be rewritten
+// to `json2`.
+fn (foptions &FormatOptions) resolves_project_json_module(file string) bool {
+	vroot := os.dir(os.getenv('VEXE'))
+	mut lookups := [[]string{}]
+	if foptions.module_search_paths.len > 0 {
+		lookups << foptions.module_search_paths
 	}
-	return lookup.get_module_path('json', file) != ''
+	for search_paths in lookups {
+		lookup := &compiler_pref.Preferences{
+			vroot:               vroot
+			module_search_paths: search_paths
+		}
+		if lookup.get_module_path('json', file) != '' {
+			return true
+		}
+	}
+	return false
 }
 
 fn (foptions &FormatOptions) formatted_content_from_file(file string, report_diagnostics bool) !string {
@@ -241,7 +256,7 @@ fn (foptions &FormatOptions) formatted_content_from_file(file string, report_dia
 	prefs.supports_inline_asm = true
 	mut p := compiler_parser.Parser.new(prefs)
 	mut a := p.parse_file(file)
-	if a.formatter_migrate_json2 && imports_json(a) && resolves_project_json_module(file) {
+	if a.formatter_migrate_json2 && imports_json(a) && foptions.resolves_project_json_module(file) {
 		a.formatter_migrate_json2 = false
 	}
 	if report_compiler_parser_diagnostics(p.diagnostics, a, report_diagnostics) {

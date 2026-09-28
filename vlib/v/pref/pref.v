@@ -393,6 +393,24 @@ fn detect_vroot_from(start string) string {
 	return ''
 }
 
+// expand_module_search_paths expands the value of `-path`: the search roots are
+// separated by `|` (or the OS path delimiter), `@vlib` and `@vmodules` stand for the
+// vlib folder and the global module folders, and `@vroot` for the V root folder.
+pub fn expand_module_search_paths(spec string, vroot string) []string {
+	if spec.len == 0 {
+		return []
+	}
+	mut expanded := []string{}
+	for path in spec.replace('|', os.path_delimiter).split(os.path_delimiter) {
+		match path {
+			'@vlib' { expanded << os.join_path_single(vroot, 'vlib') }
+			'@vmodules' { expanded << os.vmodules_paths() }
+			else { expanded << path.replace('@vroot', vroot) }
+		}
+	}
+	return expanded
+}
+
 // get_vlib_module_path returns get vlib module path data for Preferences.
 pub fn (p &Preferences) get_vlib_module_path(mod string) string {
 	mod_path := vlib_module_path(mod)

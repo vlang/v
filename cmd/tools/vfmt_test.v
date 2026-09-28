@@ -899,6 +899,27 @@ fn f() {
 	assert formatted_twice == formatted
 }
 
+fn test_fmt_keeps_json_module_found_through_path_flag_with_v3() {
+	path_root := os.join_path(vfmt_test_tdir, 'json_path_root')
+	os.mkdir_all(os.join_path(path_root, 'json'))!
+	os.write_file(os.join_path(path_root, 'json', 'json.v'),
+		"module json\n\npub fn encode[T](x T) string {\n\treturn 'path'\n}\n")!
+	source := 'import json\n\nfn main() {\n\tprintln(json.encode(1))\n}\n'
+	old_vflags := os.getenv('VFLAGS')
+	os.setenv('VFLAGS', '-path ${path_root}|@vlib|@vmodules', true)
+	res, formatted := run_vfmt_write('json_from_path_flag', source, '')
+	if old_vflags == '' {
+		os.unsetenv('VFLAGS')
+	} else {
+		os.setenv('VFLAGS', old_vflags, true)
+	}
+	assert res.exit_code == 0, res.output
+	assert formatted == source
+	// Without `-path`, the same import names the removed vlib module.
+	_, migrated := run_vfmt_write('json_without_path_flag', source, '')
+	assert migrated.contains('import json2\n'), migrated
+}
+
 fn test_fmt_keeps_project_owned_json_module_imports_with_v3() {
 	source := "import json
 
