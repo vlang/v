@@ -22847,30 +22847,12 @@ fn (mut g FlatGen) emit_global_inits() {
 		if typ := g.global_types[qname] {
 			clean_type := default_init_unalias_type(typ)
 			if clean_type is types.Pointer {
-				mut initializer_id := val_id
-				mut initializer := g.a.node(initializer_id)
-				for ((initializer.kind == .block && initializer.value == 'unsafe')
-					|| initializer.kind in [.expr_stmt, .paren]) && initializer.children_count == 1 {
-					initializer_id = g.a.child(initializer, 0)
-					initializer = g.a.node(initializer_id)
-				}
-				if initializer.kind == .prefix && initializer.op == .amp
-					&& initializer.children_count == 1 {
-					mut child_id := g.a.child(initializer, 0)
-					mut child := g.a.node(child_id)
-					for ((child.kind == .block && child.value == 'unsafe')
-						|| child.kind in [.expr_stmt, .paren]) && child.children_count == 1 {
-						child_id = g.a.child(child, 0)
-						child = g.a.node(child_id)
-					}
-					if child.kind in [.array_init, .array_literal, .struct_init]
-						|| (child.kind == .postfix && child.op == .not) {
-						if fixed := array_fixed_type(default_init_unalias_type(clean_type.base_type)) {
-							if g.queue_global_fixed_array_pointer_init(g.global_c_name(qname),
-								child_id, fixed, typ) {
-								continue
-							}
-						}
+				if fixed := array_fixed_type(default_init_unalias_type(clean_type.base_type)) {
+					init_stmt := g.global_fixed_array_pointer_init_stmt(g.global_c_name(qname),
+						val_id, fixed, typ, false)
+					if init_stmt.len > 0 {
+						g.queue_runtime_init(init_stmt)
+						continue
 					}
 				}
 			}
@@ -23022,7 +23004,61 @@ fn (mut g FlatGen) global_fixed_array_fill_stmt(dst string, val_id flat.NodeId, 
 	return 'for (${int_ct} ${index_tmp} = 0; ${index_tmp} < sizeof(${dst}) / sizeof(${dst}[0]); ${index_tmp}++) { ${bindings}${assignment} }'
 }
 
-fn (mut g FlatGen) queue_global_fixed_array_pointer_init(target string, val_id flat.NodeId, fixed types.ArrayFixed, typ types.Type) bool {
+fn (mut g FlatGen) global_fixed_array_pointer_init_stmt(target string, val_id flat.NodeId, fixed types.ArrayFixed, typ types.Type, addressed bool) string {
+	node := g.a.node(val_id)
+	if node.kind in [.expr_stmt, .paren] && node.children_count == 1 {
+		return g.global_fixed_array_pointer_init_stmt(target, g.a.child(node, 0), fixed,
+			typ, addressed)
+	}
+	if node.kind == .block && node.value == 'unsafe' && node.children_count > 0 {
+		orig := g.sb
+		orig_line_start := g.line_start
+		orig_indent := g.indent
+		g.sb = strings.new_builder(256)
+		g.line_start = true
+		g.indent = 1
+		g.push_scope()
+		g.unsafe_depth++
+		defer_start := g.defers.len
+		defer {
+			g.trim_defers(defer_start)
+			g.unsafe_depth--
+			g.pop_scope()
+			g.sb = orig
+			g.line_start = orig_line_start
+			g.indent = orig_indent
+		}
+		g.writeln('{')
+		g.indent++
+		for i in 0 .. int(node.children_count) - 1 {
+			g.gen_node(g.a.child(node, i))
+		}
+		last_id := g.a.child(node, int(node.children_count) - 1)
+		init_stmt := g.global_fixed_array_pointer_init_stmt(target, last_id, fixed, typ,
+			addressed)
+		if init_stmt.len == 0 {
+			return ''
+		}
+		g.writeln(init_stmt)
+		g.gen_defers_from(defer_start)
+		if g.block_consumes_scope_ownership_drops(*node) {
+			g.gen_scope_ownership_drops()
+		}
+		g.indent--
+		g.writeln('}')
+		return g.sb.str()
+	}
+	if !addressed && node.kind == .prefix && node.op == .amp && node.children_count == 1 {
+		return g.global_fixed_array_pointer_init_stmt(target, g.a.child(node, 0), fixed,
+			typ, true)
+	}
+	// Lowering can put the addressed literal in a local array inside `unsafe`.
+	// Copy that scoped storage too, while references to globals keep their identity.
+	local_array := node.kind == .ident && g.local_ident_type(node.value) != none
+	if !addressed || (node.kind !in [.array_init, .array_literal, .struct_init]
+		&& !(node.kind == .postfix && node.op == .not) && !local_array) {
+		return ''
+	}
 	ct := g.tc.c_type(typ)
 	source := g.fixed_array_compound_literal_expr(val_id, fixed)
 	alignment := g.global_fixed_array_pointer_alignment(fixed) or { '' }
@@ -23034,17 +23070,15 @@ fn (mut g FlatGen) queue_global_fixed_array_pointer_init(target string, val_id f
 	alignment_arg := if alignment.len > 0 { ', ${alignment}' } else { '' }
 	if source.len > 0 {
 		// Keep the literal's storage alive after global initialization.
-		g.queue_runtime_init('\t${target} = (${ct})${copy_fn}(${source}, sizeof(*${target})${alignment_arg});')
-		return true
+		return '\t${target} = (${ct})${copy_fn}(${source}, sizeof(*${target})${alignment_arg});'
 	}
 	c_elem, dims := g.fixed_array_decl_parts(fixed)
 	array_tmp := g.tmp_name()
 	fill := g.global_fixed_array_fill_stmt(array_tmp, val_id, fixed)
 	if fill.len == 0 {
-		return false
+		return ''
 	}
-	g.queue_runtime_init('\t{ ${c_elem} ${array_tmp}${dims} = {0}; ${fill} ${target} = (${ct})${copy_fn}(${array_tmp}, sizeof(${array_tmp})${alignment_arg}); }')
-	return true
+	return '\t{ ${c_elem} ${array_tmp}${dims} = {0}; ${fill} ${target} = (${ct})${copy_fn}(${array_tmp}, sizeof(${array_tmp})${alignment_arg}); }'
 }
 
 fn (mut g FlatGen) queue_global_array_init(target string, val_id flat.NodeId, typ types.Array) bool {

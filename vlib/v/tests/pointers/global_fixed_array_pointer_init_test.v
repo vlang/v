@@ -36,6 +36,37 @@ fn free_global_optional_aligned_array_pointer(value &[2]?GlobalAlignedArrayPoint
 	unsafe { free(value) }
 }
 
+__global global_wrapper_calls = 0
+
+fn global_array_wrapper_value(value int) int {
+	global_wrapper_calls++
+	return value
+}
+
+__global global_shared_array = [2]int{}
+__global global_shared_array_reference = unsafe {
+	global_array_wrapper_value(0)
+	&global_shared_array
+}
+
+__global global_statement_array = unsafe {
+	global_array_wrapper_value(0)
+	&[4]int{}
+}
+__global global_inner_statement_array = &(unsafe {
+	value := global_array_wrapper_value(13)
+	[4]int{init: value + index}
+})
+__global global_nested_statement_array = unsafe {
+	value := global_array_wrapper_value(20)
+	offset := global_array_wrapper_value(3)
+	&([value + offset, value + offset + 1]!)
+}
+__global global_statement_aligned_array = unsafe {
+	value := global_array_wrapper_value(30)
+	&[2]GlobalAlignedArrayPointerCell{init: GlobalAlignedArrayPointerCell{ value: value + index }}
+}
+
 __global global_zero_array = &[4]int{}
 __global global_unsafe_array = unsafe { &[4]int{} }
 __global global_parenthesized_array = &([4]int{})
@@ -146,4 +177,25 @@ fn test_global_fixed_array_pointers_are_initialized() {
 	}
 	free_global_aligned_array_pointer(global_aligned_array)
 	free_global_optional_aligned_array_pointer(global_optional_aligned_array)
+}
+
+fn test_global_fixed_array_pointer_unsafe_statements_keep_storage_and_scope() {
+	assert global_wrapper_calls == 6
+	assert voidptr(global_shared_array_reference) == voidptr(&global_shared_array)
+	assert u64(voidptr(global_statement_aligned_array)) % 512 == 0
+	unsafe {
+		assert global_statement_array[3] == 0
+		assert global_inner_statement_array[0] == 13
+		assert global_inner_statement_array[3] == 16
+		assert global_nested_statement_array[0] == 23
+		assert global_nested_statement_array[1] == 24
+		assert global_statement_aligned_array[1].value == 31
+		global_statement_array[3] = 45
+		assert global_statement_array[3] == 45
+		// All addressed literals own storage beyond the initializer's stack frame.
+		free(global_statement_array)
+		free(global_inner_statement_array)
+		free(global_nested_statement_array)
+	}
+	free_global_aligned_array_pointer(global_statement_aligned_array)
 }
