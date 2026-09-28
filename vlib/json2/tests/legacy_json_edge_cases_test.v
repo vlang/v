@@ -1,4 +1,5 @@
 import json2
+import time
 
 // Inputs that the removed `json` module accepted, and that json2 has to handle the
 // same way for migrated code.
@@ -133,4 +134,22 @@ fn test_null_decodes_to_the_zero_value() {
 fn test_multi_pointer_top_level_targets() {
 	assert **json2.decode[&&int]('5')! == 5
 	assert (***json2.decode[&&&Human]('{"name":"p"}')!).name == 'p'
+}
+
+type Timestamp = time.Time
+
+type TimeValue = Timestamp | int
+
+struct TimeValueHolder {
+	value TimeValue
+}
+
+fn test_time_alias_sumtype_variant() {
+	holder := TimeValueHolder{
+		value: TimeValue(Timestamp(time.unix(1608621780)))
+	}
+	encoded := json2.encode(holder, time_as_unix: true)
+	assert encoded == '{"value":{"_type":"Timestamp","value":1608621780}}'
+	decoded := json2.decode[TimeValueHolder](encoded)!
+	assert decoded.value.type_name() == 'Timestamp'
 }

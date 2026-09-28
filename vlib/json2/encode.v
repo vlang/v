@@ -470,12 +470,13 @@ fn (mut encoder Encoder) encode_sumtype[T](val T) {
 		$for variant in T.variants {
 			if val is variant {
 				variant_name := sumtype_variant_name(typeof(variant.typ).name)
-				$if variant.typ is time.Time {
+				// A `time.Time` alias variant (`type Timestamp = time.Time`) is a time too.
+				$if variant.typ.unaliased_typ is time.Time {
 					if T.name in ['x.json2.Any', 'json2.Any', 'Any'] {
 						variant_value := val
 						encoder.encode_value(variant_value)
 					} else {
-						encoder.encode_sumtype_time_variant(val, variant_name)
+						encoder.encode_sumtype_time_variant(time.Time(val), variant_name)
 					}
 				} $else $if variant.typ is $struct {
 					if T.name in ['x.json2.Any', 'json2.Any', 'Any'] {
