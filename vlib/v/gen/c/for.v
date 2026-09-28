@@ -423,6 +423,7 @@ fn (mut g FlatGen) gen_for_in(node flat.Node) {
 				}
 			} else if container_type is types.Array {
 				c_elem := g.value_c_type(container_type.elem_type)
+				container_is_mutable_value_storage := g.for_in_mutable_value_storage(container_id)
 				container_node := g.a.nodes[int(container_id)]
 				mut container_str := g.expr_to_string(container_id)
 				if container_node.kind == .ident {
@@ -463,7 +464,8 @@ fn (mut g FlatGen) gen_for_in(node flat.Node) {
 				elem_owner := g.tc.cur_scope.insert_with_owner(elem_binding_name, elem_scope_type)
 				g.track_shadowed_global_local(elem_binding_name, elem_owner)
 				g.declare_local_mutability(elem_owner, node.op == .amp
-					&& container_type !is types.Pointer)
+					&& (g.usable_expr_type(container_id) !is types.Pointer
+						|| container_is_mutable_value_storage))
 				if node.op == .amp {
 					g.declare_local_indirect_value_type(elem_owner, container_type.elem_type)
 				}
@@ -480,6 +482,7 @@ fn (mut g FlatGen) gen_for_in(node flat.Node) {
 				g.declare_local_pointer_storage(elem_owner, false)
 			} else if container_type is types.ArrayFixed {
 				af := container_type
+				container_is_mutable_value_storage := g.for_in_mutable_value_storage(container_id)
 				c_elem := g.value_c_type(af.elem_type)
 				arr_len := g.fixed_array_len_value(af)
 				g.writeln('for (int ${idx_var} = 0; ${idx_var} < ${arr_len}; ${idx_var}++) {')
@@ -501,7 +504,8 @@ fn (mut g FlatGen) gen_for_in(node flat.Node) {
 				elem_owner := g.tc.cur_scope.insert_with_owner(elem_binding_name, elem_scope_type)
 				g.track_shadowed_global_local(elem_binding_name, elem_owner)
 				g.declare_local_mutability(elem_owner, node.op == .amp
-					&& container_type !is types.Pointer)
+					&& (g.usable_expr_type(container_id) !is types.Pointer
+						|| container_is_mutable_value_storage))
 				if node.op == .amp {
 					g.declare_local_indirect_value_type(elem_owner, af.elem_type)
 				}
