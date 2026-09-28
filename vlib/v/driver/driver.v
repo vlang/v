@@ -13431,7 +13431,18 @@ pub fn run(args []string) {
 			if verbose || show_cc {
 				println('  > ${cmdexec.display(tcc_path, tcc_args)}')
 			}
-			result = cmdexec.run_in(tcc_path, tcc_args, cc_dir)
+			// A deterministic test seam: without it, coverage of a failed implicit
+			// tcc build regenerating with the platform C compiler depends on a
+			// specific missing symbol in the bundled tcc's import list, which a
+			// toolchain update can close and silently drop that coverage.
+			result = if injected_failure := os.getenv_opt('V3_TEST_FORCE_IMPLICIT_TCC_FAILURE') {
+				os.Result{
+					exit_code: 1
+					output:    injected_failure
+				}
+			} else {
+				cmdexec.run_in(tcc_path, tcc_args, cc_dir)
+			}
 			show_v3_c_compiler_output(show_c_output, tcc_path, result)
 			used_tcc = result.exit_code == 0
 		}

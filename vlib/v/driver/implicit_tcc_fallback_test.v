@@ -74,3 +74,70 @@ fn test_failed_implicit_tcc_build_reports_the_fallback() {
 	assert quiet.exit_code == 0, quiet.output
 	assert !quiet.output.contains('implicit tcc could not be used'), quiet.output
 }
+
+// A deterministic implicit-tcc failure, independent of any specific missing
+// symbol in the bundled tcc: unlike the GetThreadId-based test above, a
+// toolchain update can never make this one skip, so it stays as coverage of
+// the driver's own call site (and the -silent guard on it) on every platform.
+fn test_forced_implicit_tcc_failure_reports_the_fallback() {
+	vexe := if os.base(@VEXE) == 'v1_fallback.exe' {
+		os.join_path(os.dir(@VEXE), 'v.exe')
+	} else {
+		@VEXE
+	}
+	vroot := os.dir(vexe)
+	bundled_tcc := os.join_path(vroot, 'thirdparty', 'tcc', 'tcc.exe')
+	mut has_tcc := os.is_file(bundled_tcc)
+	if !has_tcc {
+		if _ := os.find_abs_path_of_executable('tcc') {
+			has_tcc = true
+		}
+	}
+	if !has_tcc {
+		eprintln('skipping: no bundled or system tcc available for implicit tcc selection')
+		return
+	}
+	fallback := v3_platform_c_compiler_command(os.user_os())
+	os.find_abs_path_of_executable(fallback) or {
+		eprintln('skipping: no ${fallback} to fall back to')
+		return
+	}
+	dir := os.join_path(os.vtmp_dir(), 'v_forced_implicit_tcc_failure_${os.getpid()}')
+	os.mkdir_all(dir)!
+	defer {
+		os.rmdir_all(dir) or {}
+	}
+	source := os.join_path(dir, 'hello.v')
+	os.write_file(source, "fn main() {\n\tprintln('ok')\n}\n")!
+	exe := os.join_path(dir, 'hello.exe')
+	old_vflags := os.getenv_opt('VFLAGS')
+	old_vosargs := os.getenv_opt('VOSARGS')
+	old_forced_failure := os.getenv_opt('V3_TEST_FORCE_IMPLICIT_TCC_FAILURE')
+	os.unsetenv('VFLAGS')
+	os.unsetenv('VOSARGS')
+	os.setenv('V3_TEST_FORCE_IMPLICIT_TCC_FAILURE', 'tcc: error: injected for test coverage',
+		true)
+	defer {
+		if value := old_vflags {
+			os.setenv('VFLAGS', value, true)
+		}
+		if value := old_vosargs {
+			os.setenv('VOSARGS', value, true)
+		}
+		if value := old_forced_failure {
+			os.setenv('V3_TEST_FORCE_IMPLICIT_TCC_FAILURE', value, true)
+		} else {
+			os.unsetenv('V3_TEST_FORCE_IMPLICIT_TCC_FAILURE')
+		}
+	}
+	build := cmdexec.run(vexe, ['-nocache', '-o', exe, source])
+	assert build.exit_code == 0, build.output
+	assert build.output.contains('warning: implicit tcc could not be used for this build (tcc: error: injected for test coverage)'), build.output
+	run := cmdexec.run(exe, [])
+	assert run.exit_code == 0, run.output
+	assert run.output.trim_space() == 'ok'
+	// -silent builds keep their output clean even for an injected failure.
+	quiet := cmdexec.run(vexe, ['-silent', '-nocache', '-o', exe, source])
+	assert quiet.exit_code == 0, quiet.output
+	assert !quiet.output.contains('implicit tcc could not be used'), quiet.output
+}
