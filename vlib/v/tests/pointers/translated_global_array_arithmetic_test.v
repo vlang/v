@@ -55,6 +55,7 @@ struct GlobalDecayAligned {
 }
 
 __global decay_returned_aligned = make_global_decay_aligned() + 1
+__global decay_saved = unsafe { &int(nil) }
 
 fn make_global_decay_values(start int) [3]int {
 	decay_value_calls++
@@ -108,4 +109,41 @@ fn test_translated_global_array_arithmetic() {
 	assert global_decay_read(decay_if_third) == 109
 	assert global_decay_read(decay_match_third) == 115
 	assert global_decay_read(decay_block_second) == 128
+}
+
+fn save_global_decay_pointer() {
+	mut values := [131, 137, 139]!
+	decay_saved = values + 1
+	values[1] = 149
+}
+
+fn save_global_decay_alias() {
+	mut values := [151, 157, 163]!
+	pointer := values + 1
+	decay_saved = pointer
+	values[1] = 167
+}
+
+fn save_mut_param_decay_pointer(mut pointer &int) {
+	mut values := [173, 179, 181]!
+	pointer = values + 1
+	values[1] = 191
+}
+
+fn save_indirect_decay_pointer(pointer &&int) {
+	mut values := [193, 197, 199]!
+	unsafe { *pointer = values + 1 }
+	values[1] = 211
+}
+
+fn test_translated_array_pointer_nonlocal_stores_keep_storage() {
+	save_global_decay_pointer()
+	assert global_decay_read(decay_saved) == 149
+	save_global_decay_alias()
+	assert global_decay_read(decay_saved) == 167
+	mut pointer := unsafe { &int(nil) }
+	save_mut_param_decay_pointer(mut pointer)
+	assert global_decay_read(pointer) == 191
+	save_indirect_decay_pointer(&pointer)
+	assert global_decay_read(pointer) == 211
 }

@@ -8516,14 +8516,16 @@ fn (mut t Transformer) scan_escape_pass(id flat.NodeId, mut amp_ptrs map[string]
 		&& node.children_count == 2 {
 		lhs_id := t.a.child(&node, 0)
 		rhs_id := t.a.child(&node, 1)
+		lhs := t.a.nodes[int(lhs_id)]
 		lhs_root := t.escape_address_root_name(lhs_id) or { '' }
-		// A translated decay stored in a field or element can outlive the source's
-		// block even when the container itself stays local to this function.
-		translated_container_store := !isnil(t.tc) && t.tc.translated_files[t.cur_file]
-			&& node.kind in [.selector_assign, .index_assign]
+		// Indirect writes and nonlocal bindings can retain a translated decay
+		// after its source's block or function exits.
+		translated_retaining_store := !isnil(t.tc) && t.tc.translated_files[t.cur_file]
+			&& (lhs.kind != .ident || lhs.value !in local_stack_names
+				|| t.mut_param_values[lhs.value])
 		for source_name in t.escape_aggregate_address_sources(rhs_id, amp_sources, ptr_aliases) {
 			if source_name in local_stack_names
-				&& (source_name == lhs_root || translated_container_store) {
+				&& (source_name == lhs_root || translated_retaining_store) {
 				t.escaping_amp_sources[source_name] = true
 			}
 		}
