@@ -34,9 +34,14 @@ fn (mut t Transformer) transform_translated_array_arithmetic(id flat.NodeId, nod
 		lhs = t.materialize_translated_array_decay_operand(lhs_id, lhs)
 		lhs = t.make_prefix(.amp, t.make_index(lhs, t.make_int_literal(0), lhs_type.elem_type.name()))
 	}
-	// Evaluate the LHS address or offset before the RHS, including indexed and
-	// dereferenced array lvalues whose address computation has side effects.
-	lhs = t.snapshot_transformed_expr_for_reuse(lhs, lhs_value_type, 'array_decay_left')
+	// Stable storage addresses need no temporary, including in global initializers.
+	// Otherwise preserve the LHS read before any effects of the RHS.
+	lhs_address_stable := lhs_type is types.ArrayFixed
+		&& t.translated_array_decay_address_stable(lhs_id)
+	if !lhs_address_stable
+		&& !(t.is_stable_expr_for_reuse(lhs_id) && t.is_stable_expr_for_reuse(rhs_id)) {
+		lhs = t.snapshot_transformed_expr_for_reuse(lhs, lhs_value_type, 'array_decay_left')
+	}
 	mut rhs := t.transform_value_operand(rhs_id)
 	if rhs_type is types.ArrayFixed {
 		rhs = t.materialize_translated_array_decay_operand(rhs_id, rhs)
@@ -46,6 +51,33 @@ fn (mut t Transformer) transform_translated_array_arithmetic(id flat.NodeId, nod
 	result_type := if node.typ.len > 0 { node.typ } else { t.tc.type_name(t.tc.resolve_type(id)) }
 	t.set_node_typ(int(result), result_type)
 	return result
+}
+
+fn (t &Transformer) translated_array_decay_address_stable(id flat.NodeId) bool {
+	node := t.a.node(id)
+	return match node.kind {
+		.ident { true }
+		.paren {
+			node.children_count == 1
+				&& t.translated_array_decay_address_stable(t.a.child(node, 0))
+		}
+		.selector, .index {
+			if node.children_count == 0 {
+				false
+			} else {
+				base := t.a.child(node, 0)
+				base_type := types.unalias_type(t.tc.parse_type(t.resolve_expr_type(base)))
+				if node.kind == .selector {
+					base_type !is types.Pointer && t.translated_array_decay_address_stable(base)
+				} else {
+					base_type is types.ArrayFixed && node.children_count == 2
+						&& t.is_pure_constant_expr(t.a.child(node, 1))
+						&& t.translated_array_decay_address_stable(base)
+				}
+			}
+		}
+		else { false }
+	}
 }
 
 fn (mut t Transformer) materialize_translated_array_decay_operand(source flat.NodeId, value flat.NodeId) flat.NodeId {

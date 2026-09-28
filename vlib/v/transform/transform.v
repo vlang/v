@@ -3111,7 +3111,25 @@ fn (mut t Transformer) collect_types() {
 					f := t.a.child_node(&node, i)
 					mut typ := t.normalize_type_in_module(f.typ, cur_mod)
 					if typ.len == 0 && f.children_count > 0 {
-						typ = t.normalize_type_in_module(t.node_type(t.a.child(f, 0)), cur_mod)
+						initializer := t.a.child(f, 0)
+						// Semantic inference includes translated fixed-array decay, which
+						// the syntactic infix fallback can otherwise mistake for an int.
+						global_name := if cur_mod in ['', 'main', 'builtin'] {
+							f.value
+						} else {
+							'${cur_mod}.${f.value}'
+						}
+						if !isnil(t.tc) {
+							if checked := t.tc.file_scope.lookup(global_name) {
+								checked_name := t.tc.type_name(checked)
+								if decl_type_is_usable(checked_name) && checked_name != 'void' {
+									typ = t.normalize_type_in_module(checked_name, cur_mod)
+								}
+							}
+						}
+						if typ.len == 0 {
+							typ = t.normalize_type_in_module(t.node_type(initializer), cur_mod)
+						}
 					}
 					t.globals[f.value] = typ
 					if cur_mod.len > 0 && cur_mod != 'main' && cur_mod != 'builtin' {
