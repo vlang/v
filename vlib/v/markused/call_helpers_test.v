@@ -749,6 +749,7 @@ fn test_nested_local_type_does_not_replace_outer_binding() {
 	mut tc := types.TypeChecker.new(&a)
 	tc.fn_ret_types['A.method'] = types.Type(types.int_)
 	tc.fn_ret_types['B.method'] = types.Type(types.int_)
+	tc.fn_ret_types['C.method'] = types.Type(types.int_)
 	outer_lhs := a.add_val(.ident, 'item')
 	outer_rhs := a.add_val(.struct_init, 'A')
 	outer_decl := call_helper_node(mut a, flat.Node{ kind: .decl_assign }, [outer_lhs, outer_rhs])
@@ -761,12 +762,21 @@ fn test_nested_local_type_does_not_replace_outer_binding() {
 	])
 	inner_call := call_helper_node(mut a, flat.Node{ kind: .call }, [inner_method])
 	inner_block := call_helper_node(mut a, flat.Node{ kind: .block }, [inner_decl, inner_call])
+	closure_param := a.add_node(flat.Node{ kind: .param, value: 'item', typ: 'C' })
+	closure_use := a.add_val(.ident, 'item')
+	closure_method := call_helper_node(mut a, flat.Node{ kind: .selector, value: 'method' }, [
+		closure_use,
+	])
+	closure_call := call_helper_node(mut a, flat.Node{ kind: .call }, [closure_method])
+	closure_body := call_helper_node(mut a, flat.Node{ kind: .block }, [closure_call])
+	closure := call_helper_node(mut a, flat.Node{ kind: .fn_literal }, [closure_param, closure_body])
 	outer_use := a.add_val(.ident, 'item')
 	outer_method := call_helper_node(mut a, flat.Node{ kind: .selector, value: 'method' }, [
 		outer_use,
 	])
 	outer_call := call_helper_node(mut a, flat.Node{ kind: .call }, [outer_method])
-	body := call_helper_node(mut a, flat.Node{ kind: .block }, [outer_decl, inner_block, outer_call])
+	body := call_helper_node(mut a, flat.Node{ kind: .block }, [outer_decl, inner_block, closure,
+		outer_call])
 	fn_id := call_helper_node(mut a, flat.Node{ kind: .fn_decl, value: 'use_item' }, [body])
 	collector := CallCollector{
 		a:               &a
@@ -774,6 +784,7 @@ fn test_nested_local_type_does_not_replace_outer_binding() {
 		struct_decls:    {
 			'A': StructDeclInfo{ module: 'main' }
 			'B': StructDeclInfo{ module: 'main' }
+			'C': StructDeclInfo{ module: 'main' }
 		}
 		import_contexts: [map[string]string{}]
 	}
@@ -781,6 +792,7 @@ fn test_nested_local_type_does_not_replace_outer_binding() {
 		map[string]string{})
 	assert local_types['item'] == 'A'
 	assert ident_types[int(inner_use)] == 'B'
+	assert ident_types[int(closure_use)] == 'C'
 	assert ident_types[int(outer_use)] == 'A'
 	scoped := CallCollector{
 		...collector
@@ -793,6 +805,7 @@ fn test_nested_local_type_does_not_replace_outer_binding() {
 	calls := collector.collect_body(a.node(fn_id), 'main', map[string]string{}).calls
 	assert 'A.method' in calls
 	assert 'B.method' in calls
+	assert 'C.method' in calls
 }
 
 fn test_unindexed_generic_factory_return_infers_callback_result() {

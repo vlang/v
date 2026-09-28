@@ -5337,6 +5337,12 @@ fn (c &CallCollector) local_value_info(node &flat.Node, cur_module string, impor
 	for i in 0 .. node.children_count {
 		child_id := c.a.child(node, i)
 		if int(child_id) >= 0 {
+			param := c.a.node(child_id)
+			if param.kind == .param && param.value.len > 0 && param.typ.len > 0 {
+				type_names[param.value] = param_types[param.value] or {
+					markused_resolve_imported_type_name(param.typ, imports)
+				}
+			}
 			stack << child_id
 		}
 	}
@@ -5345,11 +5351,6 @@ fn (c &CallCollector) local_value_info(node &flat.Node, cur_module string, impor
 		child := c.a.node(id)
 		if child.kind == .param && child.value.len > 0 {
 			names[child.value] = true
-			if child.typ.len > 0 {
-				type_names[child.value] = param_types[child.value] or {
-					markused_resolve_imported_type_name(child.typ, imports)
-				}
-			}
 		} else if child.kind == .decl_assign {
 			for i := 0; i < child.children_count; i += 2 {
 				lhs := c.a.child_node(child, i)
@@ -5400,7 +5401,7 @@ fn (c &CallCollector) infer_local_type_bindings(node &flat.Node, cur_module stri
 			continue
 		}
 		if child.kind == .param && child.value.len > 0 && child.typ.len > 0 {
-			if child.value !in type_names {
+			if !root || child.value !in type_names {
 				type_names[child.value] = markused_resolve_imported_type_name(child.typ, imports)
 			}
 			continue
