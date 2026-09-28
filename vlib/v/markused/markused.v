@@ -6067,11 +6067,13 @@ fn (c &CallCollector) infer_alias_generic_args(call &flat.Node, param_texts []st
 		arg_id := markused_generic_call_arg_value(c.a, c.a.child(call, arg_i))
 		if actual := c.alias_aware_expr_type(arg_id, cur_module, imports, local_values, local_types) {
 			markused_infer_alias_generic_type(param_texts[param_idx], actual, generic_params, mut inferred)
-		} else if param_texts[param_idx] in generic_params {
+		}
+		if inferred.len < generic_params.len {
 			actual_text := c.top_level_expr_type_name(arg_id, cur_module, imports, local_values,
 				local_types, false)
 			if actual_text.len > 0 && actual_text != 'unknown' {
-				inferred[param_texts[param_idx]] = actual_text
+				markused_infer_generic_type_text(param_texts[param_idx], actual_text,
+					generic_params, mut inferred)
 			}
 		}
 		param_idx++
@@ -6265,6 +6267,58 @@ fn markused_infer_alias_generic_type(param_text string, actual types.Type, gener
 		type_name := resolve_type_name(actual)
 		if type_name.len > 0 {
 			inferred[clean] = type_name
+		}
+	}
+}
+
+fn markused_infer_generic_type_text(pattern string, actual string, generic_params []string, mut inferred map[string]string) {
+	clean := pattern.trim_space()
+	value := actual.trim_space()
+	if clean.len == 0 || value.len == 0 {
+		return
+	}
+	if clean in generic_params {
+		if clean !in inferred {
+			inferred[clean] = value
+		}
+		return
+	}
+	for prefix in ['mut ', 'shared ', 'atomic ', '...', '[]', '?', '!', '&'] {
+		if clean.starts_with(prefix) {
+			if value.starts_with(prefix) {
+				markused_infer_generic_type_text(clean[prefix.len..], value[prefix.len..],
+					generic_params, mut inferred)
+			}
+			return
+		}
+	}
+	if clean.starts_with('map[') && value.starts_with('map[') {
+		pattern_end := markused_generic_matching_bracket(clean, 3)
+		actual_end := markused_generic_matching_bracket(value, 3)
+		if pattern_end < clean.len && actual_end < value.len {
+			markused_infer_generic_type_text(clean[4..pattern_end], value[4..actual_end],
+				generic_params, mut inferred)
+			markused_infer_generic_type_text(clean[pattern_end + 1..], value[actual_end + 1..],
+				generic_params, mut inferred)
+		}
+		return
+	}
+	if clean.starts_with('[') && value.starts_with('[') {
+		pattern_end := markused_generic_matching_bracket(clean, 0)
+		actual_end := markused_generic_matching_bracket(value, 0)
+		if pattern_end < clean.len && actual_end < value.len
+			&& clean[1..pattern_end] == value[1..actual_end] {
+			markused_infer_generic_type_text(clean[pattern_end + 1..], value[actual_end + 1..],
+				generic_params, mut inferred)
+		}
+		return
+	}
+	pattern_base, pattern_args, pattern_generic := markused_generic_app_parts(clean)
+	actual_base, actual_args, actual_generic := markused_generic_app_parts(value)
+	if pattern_generic && actual_generic && pattern_args.len == actual_args.len
+		&& pattern_base.all_after_last('.') == actual_base.all_after_last('.') {
+		for i, part in pattern_args {
+			markused_infer_generic_type_text(part, actual_args[i], generic_params, mut inferred)
 		}
 	}
 }
