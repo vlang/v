@@ -6241,10 +6241,24 @@ fn (tc &TypeChecker) import_is_used(import_id flat.NodeId, import_node flat.Node
 		if is_selective_import_child {
 			continue
 		}
-		if node.kind in [.call, .selector] {
+		if node.kind in [.call, .selector, .index] {
 			if resolved := tc.resolved_call_name(flat.NodeId(idx)) {
 				if resolved.starts_with('${module_path}.C.') {
 					return true
+				}
+			}
+		}
+		if node.kind == .index && node.children_count >= 2 {
+			parent_id := tc.direct_parent_id(flat.NodeId(idx))
+			if int(parent_id) >= 0 {
+				parent := tc.a.node(parent_id)
+				if parent.kind in [.assign, .index_assign] && parent.op != .assign
+					&& parent.children_count > 0 && tc.a.child(parent, 0) == flat.NodeId(idx) {
+					if base_type := tc.expr_type(tc.a.child(&node, 0)) {
+						if getter := tc.index_operator_call_info(base_type, '[]') {
+							if getter.name.starts_with('${module_path}.C.') { return true }
+						}
+					}
 				}
 			}
 		}
@@ -8954,6 +8968,20 @@ pub fn (tc &TypeChecker) index_overload_call_info(typ Type, setter bool) ?CallIn
 	clean := unwrap_pointer(typ)
 	type_name := resolve_type_name_for_method(clean)
 	if type_name.len == 0 {
+		return none
+	}
+	c_method_name, ambiguous := tc.lookup_c_struct_receiver_method(typ, method)
+	if ambiguous {
+		return none
+	}
+	if c_method_name.len > 0 {
+		if _ := tc.private_declaration(c_method_name) {
+			return none
+		}
+		info := tc.call_info(c_method_name, true)
+		if info.params.len == 0 || tc.method_receiver_compatible(typ, info.params[0], c_method_name) {
+			return info
+		}
 		return none
 	}
 	if info := tc.resolve_generic_struct_method(type_name, method) {

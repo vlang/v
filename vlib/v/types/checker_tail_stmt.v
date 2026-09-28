@@ -5620,7 +5620,8 @@ pub fn (tc &TypeChecker) expr_is_method_value(id flat.NodeId) bool {
 	if node.kind != .selector || node.children_count == 0 {
 		return false
 	}
-	receiver := unwrap_pointer(tc.resolve_type(tc.a.child(&node, 0)))
+	base_type := tc.resolve_type(tc.a.child(&node, 0))
+	receiver := unwrap_pointer(base_type)
 	clean := unalias_type(receiver)
 	if receiver is Alias {
 		underlying := unalias_type(receiver)
@@ -5635,7 +5636,7 @@ pub fn (tc &TypeChecker) expr_is_method_value(id flat.NodeId) bool {
 		if tc.struct_field_type(sname, node.value) != none {
 			return false
 		}
-		if _ := tc.c_struct_receiver_method_name(receiver, node.value) {
+		if _ := tc.c_struct_receiver_method_name(base_type, node.value) {
 			return true
 		}
 		if '${sname}.${node.value}' in tc.fn_param_types {
@@ -6162,6 +6163,13 @@ fn (mut tc TypeChecker) check_selector(id flat.NodeId, node flat.Node) {
 			tc.register_synth_type(id, Type(void_))
 			return
 		}
+		if method_name.len == 0 && method_receiver.name.starts_with('C.')
+			&& node.value == 'hex' && tc.type_is_pointer_receiver(base_type)
+			&& !tc.ident_is_call_callee_or_generic_base(id) {
+			tc.record_error_at(.unknown_field, 'unknown method `${node.value}` on `${base_type.name()}`', id, tc.node_value_diagnostic_pos(id))
+			tc.register_synth_type(id, Type(void_))
+			return
+		}
 		if method_name.len > 0 && !tc.ident_is_call_callee_or_generic_base(id) {
 			if _ := tc.private_declaration(method_name) {
 				tc.record_error_at(.unknown_field, 'method `${method_name}` is private', id, tc.node_value_diagnostic_pos(id))
@@ -6176,7 +6184,7 @@ fn (mut tc TypeChecker) check_selector(id flat.NodeId, node flat.Node) {
 		tc.check_pointer_receiver_method_value_safety(id, node, base_type)
 		receiver := unwrap_pointer(base_type)
 		mut generic_method_key := ''
-		if imported := tc.c_struct_receiver_method_name(receiver, node.value) {
+		if imported := tc.c_struct_receiver_method_name(base_type, node.value) {
 			generic_method_key = imported
 		} else if receiver is Alias {
 			generic_method_key = tc.alias_method_value_decl_key(receiver, node.value) or { '' }
@@ -7057,10 +7065,25 @@ fn option_result_selector_type(typ Type, field string) ?Type {
 	return none
 }
 
+// index_operator_call_info returns accessible index operator metadata for a compatible receiver.
 pub fn (tc &TypeChecker) index_operator_call_info(base_type Type, op string) ?CallInfo {
 	clean := unwrap_pointer(base_type)
 	type_name := resolve_type_name_for_method(clean)
 	if type_name.len == 0 {
+		return none
+	}
+	c_method_name, ambiguous := tc.lookup_c_struct_receiver_method(base_type, op)
+	if ambiguous {
+		return none
+	}
+	if c_method_name.len > 0 {
+		if _ := tc.private_declaration(c_method_name) {
+			return none
+		}
+		info := tc.call_info(c_method_name, true)
+		if info.params.len == 0 || tc.method_receiver_compatible(base_type, info.params[0], c_method_name) {
+			return info
+		}
 		return none
 	}
 	if info := tc.resolve_generic_struct_method(type_name, op) {
@@ -7230,6 +7253,7 @@ fn (mut tc TypeChecker) check_index(id flat.NodeId, node flat.Node) {
 		return
 	}
 	if info := tc.index_overload_call_info(base_type_raw, false) {
+		tc.remember_resolved_call(id, info.name)
 		tc.check_index_overload_args(id, node, info)
 		tc.register_synth_type(id, info.return_type)
 		return

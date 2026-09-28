@@ -1719,7 +1719,9 @@ fn (mut tc TypeChecker) resolve_index_lvalue_type(lhs_id flat.NodeId, op flat.Op
 	}
 	base_id := tc.a.child(&lhs, 0)
 	base_type := tc.resolve_type(base_id)
+	tc.remember_expr_type(base_id, base_type)
 	if setter := tc.index_operator_call_info(base_type, '[]=') {
+		tc.remember_resolved_call(lhs_id, setter.name)
 		if setter.params.len < 3 {
 			tc.register_synth_type(lhs_id, unknown_type('invalid overloaded index setter'))
 			return unknown_type('invalid overloaded index setter')
@@ -8507,7 +8509,7 @@ fn (mut tc TypeChecker) resolve_call_info_uncached(id flat.NodeId, node flat.Nod
 		}
 		type_name := resolve_type_name_for_method(clean)
 		if type_name.len > 0 {
-			method_name, ambiguous := tc.lookup_c_struct_receiver_method(clean, fn_node.value)
+			method_name, ambiguous := tc.lookup_c_struct_receiver_method(base_type, fn_node.value)
 			if ambiguous {
 				tc.record_error(.unknown_fn, 'ambiguous method `${fn_node.value}` on `${type_name}`', id)
 				return none
@@ -8951,6 +8953,10 @@ fn (tc &TypeChecker) c_struct_receiver_method_name(receiver Type, method string)
 }
 
 fn (tc &TypeChecker) lookup_c_struct_receiver_method(receiver Type, method string) (string, bool) {
+	return tc.lookup_c_struct_receiver_method_for_type(receiver, method, receiver)
+}
+
+fn (tc &TypeChecker) lookup_c_struct_receiver_method_for_type(receiver Type, method string, original_receiver Type) (string, bool) {
 	unwrapped := unwrap_all_pointers(receiver)
 	clean := unalias_type(unwrapped)
 	if clean !is Struct {
@@ -8962,16 +8968,18 @@ fn (tc &TypeChecker) lookup_c_struct_receiver_method(receiver Type, method strin
 	}
 	if unwrapped is Alias {
 		for alias_method in receiver_method_name_candidates(unwrapped, method, tc.cur_module) {
-			if alias_method in tc.fn_ret_types {
+			if alias_method in tc.fn_ret_types
+				&& tc.method_can_be_called_on_receiver(original_receiver, method, alias_method) {
 				return alias_method, false
 			}
 		}
-		return tc.lookup_c_struct_receiver_method(unwrapped.base_type, method)
+		return tc.lookup_c_struct_receiver_method_for_type(unwrapped.base_type, method, original_receiver)
 	}
 	keys := receiver_method_name_candidates(clean, method, tc.cur_module)
 	for key in keys {
 		local_key := checker_qualified_fn_name(tc.cur_module, key)
-		if local_key in tc.fn_ret_types {
+		if local_key in tc.fn_ret_types
+			&& tc.method_can_be_called_on_receiver(original_receiver, method, local_key) {
 			return local_key, false
 		}
 	}
@@ -8993,7 +9001,8 @@ fn (tc &TypeChecker) lookup_c_struct_receiver_method(receiver Type, method strin
 			candidates << name
 		}
 		for candidate in candidates {
-			if candidate !in tc.fn_ret_types || !tc.c_struct_method_module_visible(candidate) {
+			if candidate !in tc.fn_ret_types || !tc.c_struct_method_module_visible(candidate)
+				|| !tc.method_can_be_called_on_receiver(original_receiver, method, candidate) {
 				continue
 			}
 			module_name := candidate.all_before('.C.')
@@ -9180,7 +9189,7 @@ fn (mut tc TypeChecker) resolve_generic_call_info(id flat.NodeId, fn_node flat.N
 		clean := unwrap_pointer(base_type)
 		type_name := resolve_type_name_for_method(clean)
 		if type_name.len > 0 {
-			method_name, ambiguous := tc.lookup_c_struct_receiver_method(clean, base_node.value)
+			method_name, ambiguous := tc.lookup_c_struct_receiver_method(base_type, base_node.value)
 			if ambiguous {
 				tc.record_error(.unknown_fn, 'ambiguous method `${base_node.value}` on `${type_name}`', id)
 				return none
@@ -9193,6 +9202,12 @@ fn (mut tc TypeChecker) resolve_generic_call_info(id flat.NodeId, fn_node flat.N
 					return info
 				}
 				return tc.call_info(method_name, true)
+			}
+			// Imported lookup also filters local C methods; do not undo that filter
+			// through the generic method fallback below.
+			if base_node.value == 'hex' && tc.type_is_pointer_receiver(base_type) {
+				underlying := unalias_and_unwrap_pointer_type(base_type)
+				if underlying is Struct && underlying.name.starts_with('C.') { return none }
 			}
 			call_name := '${type_name}.${base_node.value}'
 			if call_name in tc.fn_ret_types {

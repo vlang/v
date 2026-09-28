@@ -7,9 +7,12 @@ An import used only to supply a resolved receiver method counts as used, includi
 the method is bound as a callback.
 Calls with `if` or `match` arguments preserve the original storage of indexed `mut` and
 reference receivers, and evaluate the receiver's index before those arguments.
-The same visibility rules apply to imported `next()` methods used by `for ... in` loops.
+The same visibility rules apply to imported `next()` methods used by `for ... in` loops
+and imported `[]` and `[]=` index operators. Compound index updates can use a getter and
+setter from separate imported modules.
 An imported value-receiver `hex()` method does not become a method on a pointer;
-an explicit pointer-receiver declaration is required for that call.
+an explicit pointer-receiver declaration is required for that call. Ineligible value methods
+do not make pointer calls ambiguous, including generic calls and method callbacks.
 
 Escaped method names such as `value.@union()` also work across imports, including generic
 methods. Multiple visible public extensions with the same method name remain ambiguous.

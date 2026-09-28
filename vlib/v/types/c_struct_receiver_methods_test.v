@@ -244,3 +244,125 @@ pub fn (c C.Counter) generic_read[T](marker T) int { return c.value }
 		assert result.output.contains(expected), result.output
 	}
 }
+
+fn test_imported_hex_filters_pointer_candidates_before_ambiguity() {
+	root := os.join_path(os.vtmp_dir(), 'v3_c_hex_candidates_${os.getpid()}')
+	for name in ['left', 'right'] { os.mkdir_all(os.join_path(root, name))! }
+	defer { os.rmdir_all(root) or {} }
+	os.write_file(os.join_path(root, 'v.mod'), "Module { name: 'c_hex_candidates' }\n")!
+	for generic in [false, true] {
+		signature := if generic { '[T](marker T)' } else { '()' }
+		os.write_file(os.join_path(root, 'left', 'counter.c.v'), 'module left
+pub struct C.Counter { value int }
+pub fn make() C.Counter { return C.Counter{} }
+pub fn (c C.Counter) hex${signature} string { return "value" }
+')!
+		for pointer in [true, false] {
+			receiver := if pointer { '&C.Counter' } else { 'C.Counter' }
+			os.write_file(os.join_path(root, 'right', 'counter.c.v'), 'module right
+pub struct C.Counter { value int }
+pub fn used() {}
+pub fn (c ${receiver}) hex${signature} string { return "pointer" }
+')!
+			bodies := if generic {
+				['println(ptr.hex[int](1))']
+			} else {
+				['println(ptr.hex())', 'unsafe { callback := ptr.hex; println(callback()) }']
+			}
+			for body in bodies {
+				os.write_file(os.join_path(root, 'main.v'), 'module main\nimport left\nimport right\nfn main() { right.used(); value := left.make(); ptr := &value; ${body} }\n')!
+				for flags in ['', '-no-parallel'] {
+					result := os.execute('${os.quoted_path(@VEXE)} ${flags} -check ${os.quoted_path(root)}')
+					if pointer {
+						assert result.exit_code == 0, result.output
+					} else {
+						assert result.exit_code != 0, result.output
+					}
+				}
+			}
+		}
+	}
+}
+
+fn test_imported_c_index_operators_keep_visibility_and_import_usage() {
+	root := os.join_path(os.vtmp_dir(), 'v3_c_index_operators_${os.getpid()}')
+	for name in ['provider', 'left', 'right'] { os.mkdir_all(os.join_path(root, name))! }
+	defer { os.rmdir_all(root) or {} }
+	os.write_file(os.join_path(root, 'v.mod'), "Module { name: 'c_index_operators' }\n")!
+	os.write_file(os.join_path(root, 'provider', 'buffer.c.v'), 'module provider
+pub struct C.Buffer { mut: value int }
+pub fn make() C.Buffer { return C.Buffer{} }
+')!
+	for visibility in ['pub ', ''] {
+		os.write_file(os.join_path(root, 'left', 'buffer.c.v'), 'module left
+pub struct C.Buffer { mut: value int }
+${visibility}fn (b C.Buffer) [](index int) int { return b.value + index }
+${visibility}fn (mut b C.Buffer) []= (index int, value int) { b.value = value - index }
+')!
+		for body in ['println(value[0])', 'value[0] = 7', 'value[0] += 3'] {
+			os.write_file(os.join_path(root, 'main.v'), 'module main\nimport provider\nimport left as extension\nfn main() { mut value := provider.make(); ${body} }\n')!
+			for flags in ['-W', '-W -no-parallel'] {
+				result := os.execute('${os.quoted_path(@VEXE)} ${flags} -check ${os.quoted_path(root)}')
+				if visibility.len > 0 {
+					assert result.exit_code == 0, result.output
+				} else {
+					assert result.exit_code != 0, result.output
+				}
+			}
+		}
+	}
+	// A compound update can select its getter and setter from different imports.
+	os.write_file(os.join_path(root, 'left', 'buffer.c.v'), 'module left
+pub struct C.Buffer { mut: value int }
+pub fn (b C.Buffer) [](index int) int { return b.value + index }
+')!
+	for visibility in ['pub ', ''] {
+		os.write_file(os.join_path(root, 'right', 'buffer.c.v'), 'module right
+pub struct C.Buffer { mut: value int }
+${visibility}fn (mut b C.Buffer) []= (index int, value int) { b.value = value - index }
+')!
+		os.write_file(os.join_path(root, 'main.v'), 'module main\nimport provider\nimport left\nimport right\nfn main() { mut value := provider.make(); value[0] += 3 }\n')!
+		result := os.execute('${os.quoted_path(@VEXE)} -W -check ${os.quoted_path(root)}')
+		if visibility.len > 0 {
+			assert result.exit_code == 0, result.output
+		} else {
+			assert result.exit_code != 0, result.output
+		}
+	}
+	for name in ['left', 'right'] {
+		os.write_file(os.join_path(root, name, 'buffer.c.v'), 'module ${name}
+pub struct C.Buffer { mut: value int }
+pub fn used() {}
+pub fn (b C.Buffer) [](index int) int { return b.value + index }
+pub fn (mut b C.Buffer) []= (index int, value int) { b.value = value - index }
+')!
+	}
+	for body in ['println(value[0])', 'value[0] = 7', 'value[0] += 3'] {
+		os.write_file(os.join_path(root, 'main.v'), 'module main\nimport provider\nimport left\nimport right\nfn main() { left.used(); right.used(); mut value := provider.make(); ${body} }\n')!
+		result := os.execute('${os.quoted_path(@VEXE)} -check ${os.quoted_path(root)}')
+		assert result.exit_code != 0, result.output
+	}
+}
+
+fn test_local_c_hex_pointer_fallbacks_keep_receiver_eligibility() {
+	path := os.join_path(os.vtmp_dir(), 'v3_local_c_hex_${os.getpid()}.c.v')
+	defer { os.rm(path) or {} }
+	for pointer in [true, false] {
+		receiver := if pointer { '&C.Counter' } else { 'C.Counter' }
+		for generic in [true, false] {
+			signature := if generic { '[T](marker T)' } else { '()' }
+			body := if generic {
+				'println(ptr.hex[int](1))'
+			} else {
+				'unsafe { callback := ptr.hex; println(callback()) }'
+			}
+			os.write_file(path, 'struct C.Counter { value int }\nfn (c ${receiver}) hex${signature} string { return "counter" }\nfn main() { value := C.Counter{}; ptr := &value; ${body} }\n')!
+			result := os.execute('${os.quoted_path(@VEXE)} -check ${os.quoted_path(path)}')
+			if pointer {
+				assert result.exit_code == 0, result.output
+			} else {
+				assert result.exit_code != 0, result.output
+			}
+		}
+	}
+}
