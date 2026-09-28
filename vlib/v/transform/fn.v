@@ -3647,6 +3647,13 @@ fn pointer_type_depth_and_base(typ string) (int, string) {
 // transform_call_arg_for_param transforms transform call arg for param data for transform.
 @[direct_array_access]
 fn (mut t Transformer) transform_call_arg_for_param(arg_id flat.NodeId, param_type string) flat.NodeId {
+	// Only the call result is returned. Argument conversions keep their call-site
+	// semantics even when the enclosing call is part of a return expression.
+	outer_return_expr := t.in_return_expr
+	t.in_return_expr = false
+	defer {
+		t.in_return_expr = outer_return_expr
+	}
 	// Keep prerequisites produced by earlier arguments outside this argument's
 	// expression. A later block argument (notably `unsafe { nil }`) transforms its
 	// statements eagerly and would otherwise drain an earlier sum-box temporary

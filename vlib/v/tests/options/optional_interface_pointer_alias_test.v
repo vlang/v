@@ -95,3 +95,31 @@ fn test_retained_inline_pointer_alias_preserves_original_address() {
 	assert values[0].address() == voidptr(&first)
 	assert values[1].address() == voidptr(&second)
 }
+
+fn return_inherited_alias_address(mut record Record) voidptr {
+	return optional_address(RecordPtr(&record))
+}
+
+fn return_alias_address(mut record AliasOnlyRecord) voidptr {
+	return optional_address(AliasOnlyPtr(&record))
+}
+
+fn retain_address_result(mut values []HasAddress, value ?HasAddress) bool {
+	retain_optional_address(mut values, value)
+	return true
+}
+
+@[noinline]
+fn return_retained_alias(mut values []HasAddress, mut record AliasOnlyRecord) bool {
+	return retain_address_result(mut values, AliasOnlyPtr(&record))
+}
+
+fn test_return_position_optional_interface_call_preserves_pointer_alias() {
+	mut record := Record{}
+	mut alias_record := AliasOnlyRecord{}
+	assert return_inherited_alias_address(mut record) == voidptr(&record)
+	assert return_alias_address(mut alias_record) == voidptr(&alias_record)
+	mut values := []HasAddress{}
+	assert return_retained_alias(mut values, mut alias_record)
+	assert values[0].address() == voidptr(&alias_record)
+}
