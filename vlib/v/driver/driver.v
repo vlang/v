@@ -2561,8 +2561,51 @@ fn v3_shared_object_compile_flags(flags []string, target_os string, is_shared bo
 	return result
 }
 
-fn v3_shared_exports_version_script(export_fn_names map[string]string) string {
+fn v3_exported_global_names(a &flat.FlatAst) []string {
+	mut names := map[string]bool{}
+	for node in a.nodes {
+		if node.kind != .directive || !node.value.starts_with('@attributes:') {
+			continue
+		}
+		target_idx := node.value['@attributes:'.len..].int()
+		if target_idx < 0 || target_idx >= a.nodes.len {
+			continue
+		}
+		target := a.nodes[target_idx]
+		if target.kind != .global_decl {
+			continue
+		}
+		mut exported := false
+		mut abi_name := ''
+		for raw_attr in node.generic_params() {
+			if raw_attr.all_before(':').trim_space() != 'export' {
+				continue
+			}
+			exported = true
+			if raw_attr.contains(':') {
+				abi_name = raw_attr.all_after(':').trim_space().trim('\'"')
+			}
+		}
+		if !exported {
+			continue
+		}
+		for i in 0 .. target.children_count {
+			field := a.child_node(&target, i)
+			raw_name := field.value.trim_string_left('C.')
+			name := if abi_name.len > 0 { abi_name } else { raw_name }
+			if name.len > 0 {
+				names[name] = true
+			}
+		}
+	}
+	mut result := names.keys()
+	result.sort()
+	return result
+}
+
+fn v3_shared_exports_version_script(export_fn_names map[string]string, export_global_names []string) string {
 	mut names := export_fn_names.values()
+	names << export_global_names
 	names.sort()
 	mut script := strings.new_builder(64 + names.len * 32)
 	script.writeln('{')
@@ -12205,7 +12248,8 @@ pub fn run(args []string) {
 		if is_shared && !is_liveshared && prefs.normalized_target_os() == 'linux'
 			&& !effective_tcc && !c_only {
 			exports_script := os.join_path_single(cc_dir, 'exports.map')
-			os.write_file(exports_script, v3_shared_exports_version_script(a.export_fn_names)) or {
+			os.write_file(exports_script, v3_shared_exports_version_script(a.export_fn_names,
+				v3_exported_global_names(&a))) or {
 				eprintln('failed to write shared exports script ${exports_script}: ${err.msg()}')
 				cleanup_c_build_dir(cc_dir)
 				exit(1)

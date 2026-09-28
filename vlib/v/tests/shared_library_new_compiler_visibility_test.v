@@ -36,6 +36,9 @@ fn test_new_compiler_shared_library_exports_only_tagged_functions() {
 		'',
 		'#flag ${dep_obj}',
 		'',
+		"@[export: 'mylib_counter']",
+		'__global counter = 7',
+		'',
 		'@[noinline]',
 		'fn helper(x int) int {',
 		'\treturn x * 2',
@@ -61,8 +64,9 @@ fn test_new_compiler_shared_library_exports_only_tagged_functions() {
 	os.write_file(host_src, [
 		'int mylib_compute(int);',
 		'int mylib_private_export(int);',
+		'extern long long mylib_counter;',
 		'int main(void) {',
-		'\treturn mylib_compute(21) != 43 || mylib_private_export(21) != 42;',
+		'\treturn mylib_compute(21) != 43 || mylib_private_export(21) != 42 || mylib_counter != 7;',
 		'}',
 		'',
 	].join('\n'))!
@@ -89,7 +93,7 @@ fn test_new_compiler_shared_library_exports_only_tagged_functions() {
 			}
 		}
 		symbols.sort()
-		assert symbols == ['mylib_compute', 'mylib_private_export'], '${mode}:\n${nm.output}'
+		assert symbols == ['mylib_compute', 'mylib_counter', 'mylib_private_export'], '${mode}:\n${nm.output}'
 		// Hidden implementation symbols must remain callable from the exported
 		// wrappers; checking nm alone would not verify the library's behavior.
 		host_bin := os.join_path(workdir, 'host_${mode}')
