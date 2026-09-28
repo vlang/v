@@ -8,8 +8,9 @@ Globals are recognized before their declarations, including grouped globals in o
 files, so an indexed expression such as `sizeof(Regs[0])` keeps its value interpretation.
 Qualified names through imported modules, including import aliases, are resolved after parsing
 so that both constants and type names retain their meaning.
-When deferred type-test branches declare a constant and a type with the same name, `sizeof`
-uses the constant's storage type only when the constant's branch is selected.
+When deferred type-test branches declare a constant or global and a type with the same name,
+`sizeof` uses the value's storage type only when its branch is selected. Compound operands such
+as `sizeof(Item + 0)` keep their expression interpretation when `Item` is a deferred constant.
 
 Known type names retain their type interpretation, including lowercase aliases and
 function-local types. Ordinary V files retain their existing `sizeof` parsing rules.

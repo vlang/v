@@ -456,3 +456,63 @@ $if ${condition} { ${then_decl} } $else { ${else_decl} }
 		}
 	}
 }
+
+fn test_translated_sizeof_deferred_constant_compound_operands() {
+	root := os.join_path(os.vtmp_dir(), 'translated_sizeof_compound_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+	path := os.join_path(root, 'main.v')
+	for condition in ['int is $int', 'int is $float'] {
+		then_decl := if condition == 'int is $int' {
+			'const Item = i64(1)'
+		} else {
+			'type Item = u8'
+		}
+		else_decl := if condition == 'int is $int' {
+			'type Item = u8'
+		} else {
+			'const Item = i64(1)'
+		}
+		os.write_file(path, '@[translated]
+module main
+fn main() {
+ assert sizeof(Item + 0) == sizeof(i64)
+ assert sizeof(Item * 2) == sizeof(i64)
+}
+$if ${condition} { ${then_decl} } $else { ${else_decl} }
+')!
+		for flags in ['', '-no-parallel'] {
+			result := os.execute('${os.quoted_path(@VEXE)} ${flags} run ${os.quoted_path(path)}')
+			assert result.exit_code == 0, result.output
+		}
+	}
+}
+
+fn test_translated_sizeof_selects_deferred_global_or_type() {
+	root := os.join_path(os.vtmp_dir(), 'translated_sizeof_global_kind_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+	path := os.join_path(root, 'main.v')
+	for condition in ['int is $int', 'int is $float'] {
+		for global_in_then in [true, false] {
+			then_decl := if global_in_then { '__global Item = [2]i64{}' } else { 'type Item = u8' }
+			else_decl := if global_in_then { 'type Item = u8' } else { '__global Item = [2]i64{}' }
+			expected := if (condition == 'int is $int') == global_in_then { '[2]i64' } else { 'u8' }
+			os.write_file(path, '@[translated]
+module main
+const chosen_size = sizeof(Item)
+fn check(int string) { assert sizeof(Item) == chosen_size; assert sizeof(int) == sizeof(string) }
+fn main() {
+ assert sizeof(Item) == sizeof(${expected})
+ assert chosen_size == sizeof(${expected})
+ check("")
+}
+$if ${condition} { ${then_decl} } $else { ${else_decl} }
+')!
+			for flags in ['', '-no-parallel'] {
+				result := os.execute('${os.quoted_path(@VEXE)} ${flags} -enable-globals run ${os.quoted_path(path)}')
+				assert result.exit_code == 0, result.output
+			}
+		}
+	}
+}

@@ -14493,10 +14493,10 @@ fn (mut p Parser) sizeof_expr() flat.NodeId {
 		})
 	}
 	p.check(.lpar)
-	if p.is_translated && p.tok == .name && !p.is_local_binding(p.lit) && !p.global_names[p.lit]
-		&& !p.translated_sizeof_name_is_global(p.lit)
-		&& ((p.peek() == .dot && p.imported_module_names[p.lit])
-			|| (p.peek() == .rpar && p.translated_sizeof_name_is_ambiguous(p.lit))) {
+	if p.is_translated && p.tok == .name && !p.is_local_binding(p.lit)
+		&& (p.translated_sizeof_name_is_ambiguous(p.lit)
+			|| (p.peek() == .dot && p.imported_module_names[p.lit] && !p.global_names[p.lit]
+				&& !p.translated_sizeof_name_is_global(p.lit))) {
 		// Imports and deferred branches are resolved after parsing. Preserve
 		// both interpretations until the selected declaration is known.
 		inner := p.expr(.lowest)
@@ -14599,7 +14599,8 @@ fn (mut p Parser) translated_sizeof_name_is_ambiguous(name string) bool {
 	}
 	p.scan_translated_sizeof_declarations()
 	key := p.translated_sizeof_declaration_key(name)
-	return p.translated_sizeof_const_names[key] && p.translated_sizeof_type_names[key]
+	return (p.translated_sizeof_const_names[key] || p.translated_sizeof_global_names[key])
+		&& p.translated_sizeof_type_names[key]
 }
 
 fn (mut p Parser) scan_translated_sizeof_declarations() {

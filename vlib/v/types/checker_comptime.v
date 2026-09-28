@@ -5962,9 +5962,42 @@ pub fn (tc &TypeChecker) sizeof_arg_is_type(node flat.Node) bool {
 	return node.value.len > 0 && tc.type_name_known(node.value)
 }
 
-// sizeof_const_conditions returns the original branch guards for a qualified constant.
-pub fn (tc &TypeChecker) sizeof_const_conditions(name string) []string {
-	mut child := tc.const_exprs[name] or { return []string{} }
+// sizeof_value_declaration finds a qualified constant's initializer or a global's declaration.
+pub fn (tc &TypeChecker) sizeof_value_declaration(name string) ?flat.NodeId {
+	if initializer := tc.const_exprs[name] {
+		return initializer
+	}
+	if !tc.global_names[name] {
+		return none
+	}
+	mut module_name := ''
+	for idx in tc.top_level_idx {
+		node := tc.a.nodes[idx]
+		if node.kind == .file {
+			module_name = ''
+		} else if node.kind == .module_decl {
+			module_name = node.value
+		} else if node.kind == .global_decl {
+			for i in 0 .. node.children_count {
+				field_id := tc.a.child(&node, i)
+				field := tc.a.node(field_id)
+				qualified := if module_name in ['', 'main', 'builtin'] {
+					field.value
+				} else {
+					'${module_name}.${field.value}'
+				}
+				if qualified == name {
+					return field_id
+				}
+			}
+		}
+	}
+	return none
+}
+
+// sizeof_value_conditions returns the original branch guards for a value declaration.
+pub fn (tc &TypeChecker) sizeof_value_conditions(declaration flat.NodeId) []string {
+	mut child := declaration
 	mut conditions := []string{}
 	for int(child) >= 0 && int(child) < tc.direct_parent_ids.len {
 		parent_id := tc.direct_parent_ids[int(child)]

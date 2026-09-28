@@ -9827,12 +9827,13 @@ fn (mut t Transformer) transform_debugger_stmt(node flat.Node) flat.NodeId {
 }
 
 // Resolve only sizeof's ambiguous name; declaration collection remains unchanged.
-fn (mut t Transformer) selected_sizeof_const_type(name string) ?string {
+fn (mut t Transformer) selected_sizeof_value_type(name string) ?string {
 	if name in t.active_generic_params {
 		return none
 	}
 	key := t.tc.qualify_name(name)
-	conditions := t.tc.sizeof_const_conditions(key)
+	declaration := t.tc.sizeof_value_declaration(key) or { return none }
+	conditions := t.tc.sizeof_value_conditions(declaration)
 	if conditions.len == 0 {
 		return none
 	}
@@ -9843,8 +9844,12 @@ fn (mut t Transformer) selected_sizeof_const_type(name string) ?string {
 	old_var_types := t.var_types.clone()
 	old_generic_params := t.active_generic_params.clone()
 	old_is_generic := t.cur_fn_is_generic
-	t.cur_module = t.tc.const_modules[key] or { t.cur_module }
-	t.cur_file = t.tc.const_files[key] or { t.cur_file }
+	if file := t.a.source_files[t.a.node(declaration).pos.id] {
+		t.cur_file = file.name
+	}
+	t.cur_module = t.tc.const_modules[key] or {
+		t.tc.file_modules[t.cur_file] or { t.cur_module }
+	}
 	t.tc.cur_module = t.cur_module
 	t.tc.cur_file = t.cur_file
 	// A declaration's type test must not see the caller's locals or generics.
@@ -9866,7 +9871,7 @@ fn (mut t Transformer) selected_sizeof_const_type(name string) ?string {
 			return none
 		}
 	}
-	typ := t.tc.const_types[key] or { return none }
+	typ := t.tc.const_types[key] or { t.tc.file_scope.lookup(key) or { return none } }
 	if typ is types.Unknown || typ is types.Void {
 		return none
 	}
@@ -9991,7 +9996,7 @@ pub fn (mut t Transformer) transform_expr(id flat.NodeId) flat.NodeId {
 		return t.transform_children_expr(id, node)
 	}
 	if node.kind == .sizeof_expr && node.value.len > 0 && node.children_count > 0 {
-		if selected_type := t.selected_sizeof_const_type(node.value) {
+		if selected_type := t.selected_sizeof_value_type(node.value) {
 			return t.a.add_node(flat.Node{ ...node, value: selected_type, children_count: 0 })
 		}
 		return t.a.add_node(if t.tc.sizeof_arg_is_type(node) {
