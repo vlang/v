@@ -120,6 +120,77 @@ fn test_translated_scalar_postfix_mutations() {
 	assert states['key'] == TranslatedCode.one
 }
 
+type TranslatedFlag = bool
+
+fn translated_flag_arg(value bool) bool { return value }
+
+fn translated_flag_return(value f64) bool { return value }
+
+struct TranslatedFlagHolder {
+mut:
+	flag bool
+}
+
+fn translated_flag_mut(mut value TranslatedFlagHolder) {
+	value.flag += 256
+}
+
+fn test_translated_boolean_destinations_normalize_nonzero_values() {
+	mut flag := false
+	flag = 256
+	assert flag == true
+	flag = 0.5
+	assert flag == true
+	flag = -0.5
+	assert flag == true
+	flag = 0
+	assert flag == false
+	assert translated_flag_arg(256) == true
+	assert translated_flag_arg(0.5) == true
+	assert translated_flag_return(0.5) == true
+	assert translated_flag_return(0.0) == false
+	// Explicit numeric-to-bool casts require unsafe even in translated code.
+	assert unsafe { bool(256) } == true
+	assert unsafe { bool(0.5) } == true
+	mut alias_flag := unsafe { TranslatedFlag(0.5) }
+	assert alias_flag == true
+	alias_flag = 256
+	assert alias_flag == true
+	flag += 256
+	assert flag == true
+	flag *= 0.5
+	assert flag == true
+	flag -= 1
+	assert flag == false
+	mut holder := TranslatedFlagHolder{ flag: 0.5 }
+	assert holder.flag == true
+	translated_flag_mut(mut holder)
+	assert holder.flag == true
+	flag = true
+	flag <<= 1
+	assert flag == true
+	flag >>= 1
+	assert flag == false
+	flag |= 256
+	assert flag == true
+	mut flags := [false, false]
+	mut evaluations := [0]
+	flags[translated_postfix_index(mut evaluations)] += 256
+	assert evaluations == [1]
+	assert flags[0] == true
+	flags[0] <<= 1
+	assert flags[0] == true
+	mut fixed := [false]!
+	fixed[0] = 256
+	fixed[0] <<= 1
+	assert fixed[0] == true
+	mut entries := {
+		'flag': false
+	}
+	entries['flag'] += 256
+	assert entries['flag'] == true
+}
+
 fn translated_postfix_index(mut evaluations []int) int {
 	evaluations[0]++
 	return 0

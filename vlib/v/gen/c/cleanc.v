@@ -12225,6 +12225,15 @@ fn mut_optional_param_value_types_match(param_type types.Type, expected types.Ty
 fn (mut g FlatGen) gen_expr_with_expected_type(id flat.NodeId, expected_type types.Type) {
 	actual := cgen_unalias_type(g.usable_expr_type(id))
 	expected := cgen_unalias_type(expected_type)
+	if g.translated_bool_destination(id, expected)
+		&& (translated_integer_scalar_type(actual) || actual.is_float()) {
+		// MSVC stores bool as an unsigned char, so normalize before storing it.
+		// Keep floating operands intact until the nonzero comparison.
+		g.write('((')
+		g.gen_expr_with_expected_type_inner(id, actual)
+		g.write(') != 0)')
+		return
+	}
 	if g.expr_is_in_translated_file(id) && expected.name() == 'int'
 		&& (actual.is_integer() || actual.is_float() || actual is types.Char
 			|| actual is types.Enum || actual == types.Type(types.bool_)) {
@@ -14847,6 +14856,10 @@ fn (mut g FlatGen) const_expr_to_string(id flat.NodeId, seen []string) string {
 		}
 		.cast_expr {
 			target_type := g.tc.parse_type(node.value)
+			if g.translated_bool_destination(id, target_type) {
+				child := g.const_expr_to_string(g.a.child(&node, 0), seen)
+				return '((${child}) != 0)'
+			}
 			mut ct := if node.value.starts_with('fn_ptr:') {
 				g.resolve_fn_ptr_type(node.value)
 			} else if g.expr_is_in_translated_file(id)
@@ -16779,7 +16792,12 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 				g.gen_default_value_for_type(target_type)
 				return
 			}
-			if semantic_target is types.Interface && cast_arg.kind == .none_expr && g.is_ierror_type_name(semantic_target.name) {
+			if g.translated_bool_destination(id, target_type)
+				&& (translated_integer_scalar_type(cast_arg_type) || cast_arg_type.is_float()) {
+				g.write('((')
+				g.gen_expr_with_expected_type_inner(cast_arg_id, cast_arg_type)
+				g.write(') != 0)')
+			} else if semantic_target is types.Interface && cast_arg.kind == .none_expr && g.is_ierror_type_name(semantic_target.name) {
 				g.write(g.ierror_none_literal_string())
 			} else if semantic_target is types.Interface {
 				if !g.gen_interface_value_expr(g.a.child(node, 0), semantic_target) {
@@ -17103,7 +17121,12 @@ fn (mut g FlatGen) gen_checked_integer_postfix(child_id flat.NodeId, op flat.Op)
 		return false
 	}
 	value_type := g.usable_expr_type(child_id)
-	helper := g.integer_overflow_helper(value_type, op) or { return false }
+	normalize_bool := g.translated_bool_destination(child_id, value_type)
+	helper := if normalize_bool {
+		''
+	} else {
+		g.integer_overflow_helper(value_type, op) or { return false }
+	}
 	c_type := g.value_c_type(value_type)
 	if c_type.len == 0 {
 		return false
@@ -17124,7 +17147,13 @@ fn (mut g FlatGen) gen_checked_integer_postfix(child_id flat.NodeId, op flat.Op)
 			gen_expr_lvalue(mut g, child_id)
 		}
 	}
-	g.write('); *${address} = ${helper}(*${address}, 1); *${address}; })')
+	if normalize_bool {
+		previous := g.tmp_name()
+		operator := if op == .inc { '+' } else { '-' }
+		g.write('); ${c_type} ${previous} = *${address}; *${address} = ((${previous} ${operator} 1) != 0); ${previous}; })')
+	} else {
+		g.write('); *${address} = ${helper}(*${address}, 1); *${address}; })')
+	}
 	return true
 }
 
@@ -22451,6 +22480,9 @@ fn (mut g FlatGen) global_scalar_static_initializer(id flat.NodeId, typ types.Ty
 	if g.expr_is_in_translated_file(value_id) && clean_type.name() == 'int' {
 		return '((i32)(${expr}))'
 	}
+	if g.translated_bool_destination(value_id, clean_type) {
+		return '((${expr}) != 0)'
+	}
 	return expr
 }
 
@@ -24513,6 +24545,13 @@ fn (g &FlatGen) compound_shift_operand_type(lhs_id flat.NodeId, lhs_type types.T
 	}
 }
 
+fn (mut g FlatGen) gen_compound_shift_value(lhs_text string, lhs_id flat.NodeId, rhs_id flat.NodeId, lhs_type types.Type, op flat.Op) {
+	normalize_bool := g.translated_bool_destination(lhs_id, lhs_type)
+	if normalize_bool { g.write('((') }
+	g.gen_guarded_shift_from_text(lhs_text, rhs_id, g.compound_shift_operand_type(lhs_id, lhs_type), op)
+	if normalize_bool { g.write(') != 0)') }
+}
+
 // gen_unsigned_right_shift_from_text is gen_unsigned_right_shift with the lhs
 // already rendered as a C expression (used by `>>>=` to shift through a
 // pointer temp so the lvalue is evaluated exactly once).
@@ -24659,6 +24698,10 @@ fn translated_integer_scalar_type(typ types.Type) bool {
 	clean := cgen_unalias_type(typ)
 	return clean.is_integer() || clean is types.Char || clean is types.Enum
 		|| clean == types.Type(types.bool_)
+}
+
+fn (g &FlatGen) translated_bool_destination(id flat.NodeId, typ types.Type) bool {
+	return cgen_unalias_type(typ) == types.Type(types.bool_) && g.expr_is_in_translated_file(id)
 }
 
 fn (mut g FlatGen) gen_checked_integer_infix(id flat.NodeId, node flat.Node, lhs_id flat.NodeId, rhs_id flat.NodeId, lhs_type types.Type, rhs_type types.Type) bool {

@@ -12,6 +12,9 @@ integer and negative integer sentinels returned as unsigned values. Unary numeri
 and bitwise operations, and shifts, accept enum, character, and boolean operands
 through C's integral promotion rules, including boolean shifts.
 Postfix `++` and `--` accept translated enum, character, and boolean scalars.
+Numeric conversions to boolean destinations produce `false` for zero and `true` for nonzero
+values, including fractional values. Assignments, arguments, returns, casts, and compound updates
+apply this normalization even on targets that store booleans as unsigned bytes.
 Static translated `int` globals narrow their initial values to C's 32-bit `int` width.
 This conversion also applies to `int` elements in static fixed-array globals, including nested
 arrays and aliases. Wider element types and ordinary V files keep their usual conversions.
