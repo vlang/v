@@ -6598,48 +6598,21 @@ fn (g &FlatGen) cocoa_nsfont_class(name string) bool {
 		return false
 	}
 	mut directives := []string{}
-	mut include_macros := map[string]string{}
-	mut directive_lines := []string{}
 	for preinclude in g.preinclude_directives {
-		directive_lines << preinclude.split_into_lines()
+		directives << preinclude
 	}
 	for directive in g.c_directives {
 		if directive.late {
 			continue
 		}
-		directive_lines << directive.text.split_into_lines()
-	}
-	for raw_line in directive_lines {
-		line := raw_line.trim_space()
-		directive_name := c_directive_name(line)
-		if directive_name == 'define' {
-			parts := c_directive_arg(line).fields()
-			if parts.len >= 2 && !parts[0].contains('(') {
-				include_macros[parts[0]] = parts[1]
-			}
-		} else if directive_name == 'undef' {
-			include_macros.delete(c_directive_arg(line).trim_space())
-		}
-		if directive_name in ['include', 'import'] {
-			// Reuse the C preprocessor guard evaluator to decide whether the header is active.
-			arg := c_directive_arg(line).trim_space()
-			if cocoa_nsfont_framework_include(arg) {
-				directives << '@class NSFont;'
-			} else if cocoa_nsfont_framework_include(include_macros[arg]) {
-				directives << '#ifdef ${arg}'
-				directives << '@class NSFont;'
-				directives << '#endif'
-			}
-		} else if line.starts_with('#') {
-			directives << line
-		}
+		directives << directive.text
 	}
 	target := if g.output_cross_c {
 		pref.target_from('macos', g.target.arch) or { g.target }
 	} else {
 		g.target
 	}
-	return c_header_text_needs_objective_c_for_target(directives.join('\n'), g.c_flags,
+	return c_header_text_has_cocoa_nsfont_include_for_target(directives.join('\n'), g.c_flags,
 		g.c99_mode, target)
 }
 

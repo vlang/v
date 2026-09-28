@@ -6061,6 +6061,14 @@ fn c_header_text_needs_objective_c(text string) bool {
 }
 
 fn c_header_text_needs_objective_c_for_target(text string, flags []string, c99_mode bool, target pref.Target) bool {
+	return c_header_text_objective_c_scan_for_target(text, flags, c99_mode, target, false)
+}
+
+fn c_header_text_has_cocoa_nsfont_include_for_target(text string, flags []string, c99_mode bool, target pref.Target) bool {
+	return c_header_text_objective_c_scan_for_target(text, flags, c99_mode, target, true)
+}
+
+fn c_header_text_objective_c_scan_for_target(text string, flags []string, c99_mode bool, target pref.Target, cocoa_include_only bool) bool {
 	mut defined := map[string]bool{}
 	mut undefined := {
 		'__OBJC__': true
@@ -6235,8 +6243,16 @@ fn c_header_text_needs_objective_c_for_target(text string, flags []string, c99_m
 			definite_text.writeln('')
 			continue
 		}
-		if name == 'import' && c_is_apple_framework_include(c_directive_arg(clean)) {
-			return true
+		if name in ['include', 'import'] {
+			arg := c_directive_arg(clean).trim_space()
+			include_arg := macro_values[arg] or { arg }
+			if cocoa_include_only && cocoa_nsfont_framework_include(include_arg) {
+				return true
+			}
+			if !cocoa_include_only && name == 'import'
+				&& c_is_apple_framework_include(include_arg) {
+				return true
+			}
 		}
 		if name in ['define', 'undef'] {
 			parts := c_directive_arg(clean).fields()
@@ -6310,7 +6326,7 @@ fn c_header_text_needs_objective_c_for_target(text string, flags []string, c99_m
 	}
 	possible_source := possible_text.str()
 	definite_typedefs := modulecache.c_source_typedef_identifiers(definite_text.str())
-	return c_header_text_has_objective_c_tokens(possible_source, definite_typedefs)
+	return !cocoa_include_only && c_header_text_has_objective_c_tokens(possible_source, definite_typedefs)
 }
 
 fn c_header_objective_c_macro_state(name string, defined map[string]bool, undefined map[string]bool, uncertain map[string]bool, strict_iso_mode bool, target pref.Target) (bool, bool) {
