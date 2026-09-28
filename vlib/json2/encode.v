@@ -134,7 +134,7 @@ fn (mut encoder Encoder) encode_value[T](val T) {
 		encoder.output << `}`
 	} $else $if T.unaliased_typ is $enum {
 		if encoder.enum_as_int || enum_uses_json_as_number[T]() {
-			encoder.encode_number(int(val))
+			encoder.encode_enum_number(val)
 		} else {
 			mut enum_val := 'unknown enum value'
 			$for member in T.values {
@@ -324,6 +324,24 @@ fn utf8_rune_at(val string, i int) (rune, int) {
 	return code_point, width
 }
 
+// encode_enum_number writes the backing value of an enum, like the removed `json`
+// module: `int(val)` would truncate a 64 bit backing value, and misread a large
+// unsigned one as negative.
+fn (mut encoder Encoder) encode_enum_number[T](val T) {
+	// The comparison happens in the enum's C type, which is unsigned for an unsigned
+	// backing type.
+	if unsafe { T(-1) } < unsafe { T(0) } {
+		encoder.encode_number(i64(val))
+	} else {
+		mut bits := u64(val)
+		if sizeof(T) < 8 {
+			// A narrow enum is passed as an `int`, which sign-extends large values.
+			bits &= (u64(1) << (sizeof(T) * 8)) - 1
+		}
+		encoder.encode_number(bits)
+	}
+}
+
 fn (mut encoder Encoder) encode_boolean(val bool) {
 	if val {
 		unsafe { encoder.output.push_many(true_string.str, true_string.len) }
@@ -427,7 +445,7 @@ fn (mut encoder Encoder) encode_map[K, T](val map[K]T) {
 
 fn (mut encoder Encoder) encode_enum[T](val T) {
 	if encoder.enum_as_int || enum_uses_json_as_number[T]() {
-		encoder.encode_number(int(val))
+		encoder.encode_enum_number(val)
 	} else {
 		mut enum_val := 'unknown enum value'
 		$for member in T.values {

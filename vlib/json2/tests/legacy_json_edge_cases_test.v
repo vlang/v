@@ -56,6 +56,17 @@ fn test_escaped_sumtype_discriminator() {
 	assert robot is Robot
 }
 
+@[json_as_number]
+enum Wide as u64 {
+	low  = 1
+	high = 9223372036854775808
+}
+
+@[json_as_number]
+enum WideSigned as i64 {
+	neg = -9000000000
+}
+
 struct OptionContainers {
 	fixed  [2]?int
 	by_key map[string]?int
@@ -74,4 +85,11 @@ fn test_option_elements_in_containers() {
 	first_human := containers.humans[0] or { panic('the first human should be set') }
 	assert first_human.name == 'h'
 	assert containers.humans[1] == none
+}
+
+fn test_json_as_number_enum_uses_the_backing_type() {
+	assert json2.decode[Wide]('9223372036854775808')! == .high
+	assert json2.encode(Wide.high) == '9223372036854775808'
+	assert json2.decode[WideSigned]('-9000000000')! == .neg
+	assert json2.encode(WideSigned.neg) == '-9000000000'
 }
