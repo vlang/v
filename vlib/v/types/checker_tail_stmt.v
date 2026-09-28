@@ -11787,7 +11787,9 @@ pub fn (tc &TypeChecker) qualify_type_name_at(name string, id flat.NodeId, modul
 	}
 	if module_name in ['', 'main'] && tc.type_symbol_known(name) {
 		owner := tc.struct_modules[name] or { tc.type_alias_modules[name] or { '' } }
-		if owner in ['', 'main'] { return 'main.${name}' }
+		if owner in ['', 'main'] && tc.main_type_name_has_non_main_collision(name) {
+			return 'main.${name}'
+		}
 	}
 	if module_name !in ['', 'main', 'builtin'] {
 		qualified := '${module_name}.${name}'
@@ -11796,26 +11798,58 @@ pub fn (tc &TypeChecker) qualify_type_name_at(name string, id flat.NodeId, modul
 	return name
 }
 
+fn (tc &TypeChecker) main_type_name_has_non_main_collision(name string) bool {
+	if _ := tc.unique_qualified_type_name(name) {
+		return false
+	}
+	for candidate, _ in tc.structs {
+		if type_name_collides_with_main(candidate, name) { return true }
+	}
+	for candidate, _ in tc.sum_types {
+		if type_name_collides_with_main(candidate, name) { return true }
+	}
+	for candidate, _ in tc.enum_names {
+		if type_name_collides_with_main(candidate, name) { return true }
+	}
+	for candidate, _ in tc.type_aliases {
+		if type_name_collides_with_main(candidate, name) { return true }
+	}
+	for candidate, _ in tc.interface_names {
+		if type_name_collides_with_main(candidate, name) { return true }
+	}
+	return false
+}
+
+fn type_name_collides_with_main(candidate string, name string) bool {
+	return candidate.contains('.') && candidate.all_after_last('.') == name
+		&& candidate.all_before_last('.') !in ['', 'main', 'builtin']
+}
+
 // specialize_generic_factory_return substitutes explicit method and receiver arguments
 // in one pass, preserving caller parameters that share a declaration parameter's name.
 pub fn (tc &TypeChecker) specialize_generic_factory_return(return_type string, name string, receiver_type string, explicit_args []string) string {
 	method_params := tc.fn_generic_params[name] or { return return_type }
-	actual_receiver := tc.generic_struct_method_alias_target(comptime_static_unwrap_type_text(receiver_type))
+	mut actual_receiver := tc.generic_struct_method_alias_target(comptime_static_unwrap_type_text(receiver_type))
+	mut receiver_pattern := name.all_before_last('.')
+	_, _, pattern_is_generic := generic_type_application_parts(receiver_pattern)
+	if !pattern_is_generic {
+		if texts := tc.fn_param_type_texts[name] {
+			if texts.len > 0 { receiver_pattern = comptime_static_unwrap_type_text(texts[0]) }
+		}
+	}
+	pattern_base, _, is_generic := generic_type_application_parts(receiver_pattern)
+	if is_generic {
+		if promoted := tc.promoted_generic_factory_receiver(actual_receiver, pattern_base) {
+			actual_receiver = promoted
+		}
+	}
 	method_args := tc.explicit_generic_receiver_method_args(actual_receiver, name, explicit_args)
 	if method_args.len == 0 || method_args.len > method_params.len { return return_type }
 	mut params := method_params[method_params.len - method_args.len..].clone()
 	mut args := method_args.clone()
-	actual_base, receiver_args, actual_is_generic := generic_type_application_parts(actual_receiver)
-	if actual_is_generic {
-		mut receiver_pattern := name.all_before_last('.')
-		_, _, pattern_is_generic := generic_type_application_parts(receiver_pattern)
-		if !pattern_is_generic {
-			if texts := tc.fn_param_type_texts[name] {
-				if texts.len > 0 { receiver_pattern = comptime_static_unwrap_type_text(texts[0]) }
-			}
-		}
-		pattern_base, _, is_generic := generic_type_application_parts(receiver_pattern)
-		if is_generic && tc.generic_type_base_matches(pattern_base, actual_base) {
+	if is_generic {
+		actual_base, receiver_args, actual_is_generic := generic_type_application_parts(actual_receiver)
+		if actual_is_generic && tc.generic_type_base_matches(pattern_base, actual_base) {
 			pattern_key := '${receiver_pattern}.${name.all_after_last('.')}'
 			if receiver_params, concrete_args := tc.generic_method_receiver_pattern_args(pattern_key, receiver_args) {
 				for i, param in receiver_params {
@@ -11828,6 +11862,34 @@ pub fn (tc &TypeChecker) specialize_generic_factory_return(return_type string, n
 		}
 	}
 	return subst_generic_text(return_type, args, params)
+}
+
+fn (tc &TypeChecker) promoted_generic_factory_receiver(receiver string, declaration_base string) ?string {
+	mut seen := map[string]bool{}
+	return tc.promoted_generic_factory_receiver_inner(receiver, declaration_base, mut seen)
+}
+
+fn (tc &TypeChecker) promoted_generic_factory_receiver_inner(receiver string, declaration_base string, mut seen map[string]bool) ?string {
+	base, _, is_generic := generic_type_application_parts(receiver)
+	if is_generic && tc.generic_type_base_matches(base, declaration_base) {
+		return receiver
+	}
+	if seen[receiver] {
+		return none
+	}
+	seen[receiver] = true
+	for field in tc.struct_fields_for_type(receiver) {
+		embedded := embedded_field_type(field) or { continue }
+		embedded_name := method_type_name(unwrap_pointer(unalias_type(embedded)))
+		if embedded_name.len == 0 {
+			continue
+		}
+		if found := tc.promoted_generic_factory_receiver_inner(embedded_name, declaration_base,
+			mut seen) {
+			return found
+		}
+	}
+	return none
 }
 
 fn (tc &TypeChecker) resolve_selective_import_type_symbol_in_file(name string, file string) ?string {

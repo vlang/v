@@ -411,3 +411,56 @@ fn test_generic_factory_return_locks_main_module_type_arguments() {
 	assert inferred == 'gates.Gate[main.Payload]'
 	assert collector.typed_receiver_method_name(inferred, 'backward', 'main')? == 'gates.Gate[main.Payload].backward'
 }
+
+fn test_generic_factory_return_keeps_noncolliding_main_type_spelling() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	tc.structs['Payload'] = []types.StructField{}
+	tc.structs['main.Payload'] = []types.StructField{}
+	tc.struct_modules['Payload'] = 'main'
+	tc.fn_generic_params['gates.make_gate'] = ['U']
+	tc.fn_ret_types['gates.make_gate'] = types.Type(types.Struct{ name: 'gates.Gate[U]' })
+	tc.fn_ret_types['gates.Gate[Payload].backward'] = types.Type(types.int_)
+	base := a.add_val(.ident, 'make_gate')
+	arg := a.add_val(.ident, 'Payload')
+	indexed := call_helper_node(mut a, flat.Node{ kind: .index }, [base, arg])
+	collector := CallCollector{ a: &a, tc: &tc }
+	inferred := collector.generic_factory_return_type_name(a.node(indexed), 'gates.make_gate',
+		'main', map[string]string{}, false, '')
+	assert inferred == 'gates.Gate[Payload]'
+	assert collector.typed_receiver_method_name(inferred, 'backward', 'main')? == 'gates.Gate[Payload].backward'
+}
+
+fn test_promoted_generic_factory_return_substitutes_embedded_receiver() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	tc.parallel_check_sparse = true
+	tc.structs['gates.Builder'] = []types.StructField{}
+	tc.struct_generic_params['gates.Builder'] = ['T']
+	tc.structs['gates.Outer'] = [
+		types.StructField{
+			name:     'Builder'
+			typ:      types.Type(types.Struct{ name: 'gates.Builder[V]' })
+			is_embed: true
+		},
+	]
+	tc.struct_generic_params['gates.Outer'] = ['V']
+	method := 'gates.Builder[T].make'
+	tc.fn_generic_params[method] = ['U']
+	tc.fn_ret_types[method] = types.Type(types.Struct{ name: 'gates.Gate[T, U]' })
+	tc.fn_ret_types['gates.Gate[int, string].backward'] = types.Type(types.int_)
+	base := a.add_val(.ident, 'outer')
+	selector := call_helper_node(mut a, flat.Node{ kind: .selector, value: 'make' }, [base])
+	arg := a.add_val(.ident, 'string')
+	indexed := call_helper_node(mut a, flat.Node{ kind: .index }, [selector, arg])
+	call := call_helper_node(mut a, flat.Node{ kind: .call }, [indexed])
+	tc.sparse_resolved_call_names[int(call)] = method
+	collector := CallCollector{ a: &a, tc: &tc }
+	inferred := collector.top_level_call_return_type_name(call, 'main', map[string]string{}, {
+		'outer': true
+	}, {
+		'outer': 'gates.Outer[int]'
+	}, false)
+	assert inferred == 'gates.Gate[int, string]'
+	assert collector.typed_receiver_method_name(inferred, 'backward', 'main')? == 'gates.Gate[int, string].backward'
+}
