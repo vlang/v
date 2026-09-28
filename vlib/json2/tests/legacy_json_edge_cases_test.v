@@ -389,3 +389,22 @@ fn test_option_time_and_struct_variants() {
 	foo := json2.decode[OptionStructs]('{"a":1,"_type":"OptionFooVariant"}')!
 	assert json2.encode(foo) == '{"a":1,"_type":"OptionFooVariant"}'
 }
+
+struct OmitemptyConfig {
+	retries int    = 3   @[omitempty]
+	name    string = 'x'   @[omitempty]
+	ratio   f64    = 1.5 @[omitempty]
+}
+
+fn test_omitempty_fields_decode_explicit_empty_values() {
+	// Like the removed module, `omitempty` only affects encoding.
+	config := json2.decode[OmitemptyConfig]('{"retries":0,"name":"","ratio":0.0}')!
+	assert config.retries == 0
+	assert config.name == ''
+	assert config.ratio == 0.0
+	defaults := json2.decode[OmitemptyConfig]('{}')!
+	assert defaults.retries == 3
+	assert defaults.name == 'x'
+	assert defaults.ratio == 1.5
+	assert json2.encode(OmitemptyConfig{ retries: 0, name: '', ratio: 0.0 }) == '{}'
+}

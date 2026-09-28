@@ -55,7 +55,8 @@ Enums encode as strings by default. Use `@[json_as_number]` on an enum to emit
 its integer value instead.
 
 Use `@[omitempty]` to omit empty struct fields. For boolean fields, including optional
-booleans, `false` is empty and `true` is encoded.
+booleans, `false` is empty and `true` is encoded. `@[omitempty]` only affects encoding:
+`decode` still assigns an explicit empty value such as `0` or `""` from the input.
 
 #### decode[T]
 

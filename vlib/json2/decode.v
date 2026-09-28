@@ -9,8 +9,6 @@ const true_in_string = 'true'
 
 const false_in_string = 'false'
 
-const float_zero_in_string = '0.0'
-
 const whitespace_chars = [` `, `\t`, `\n`, `\r`]!
 
 // DecodeNode represents a node in a linked list to store ValueInfo. It is not named
@@ -33,17 +31,15 @@ mut:
 struct DecoderFieldInfo {
 	key_name string
 
-	is_omitempty bool
-	is_skip      bool
-	is_required  bool
-	is_raw       bool
+	is_skip     bool
+	is_required bool
+	is_raw      bool
 }
 
 @[markused]
 struct StructFieldInfo {
 	json_name_ptr voidptr
 	json_name_len int
-	is_omitempty  bool
 	is_skip       bool
 	is_required   bool
 	is_raw        bool
@@ -73,7 +69,6 @@ fn struct_field_info(field_name string, attrs []string) StructFieldInfo {
 	return StructFieldInfo{
 		json_name_ptr: voidptr(json_name_str)
 		json_name_len: json_name_len
-		is_omitempty:  attrs.contains('omitempty')
 		is_skip:       attrs.contains('skip') || is_json_skip
 		is_required:   attrs.contains('required')
 		is_raw:        attrs.contains('raw')
@@ -424,11 +419,10 @@ fn decoder_field_infos[T]() []DecoderFieldInfo {
 			}
 		}
 		field_infos << DecoderFieldInfo{
-			key_name:     key_name
-			is_omitempty: field.attrs.contains('omitempty')
-			is_skip:      field.attrs.contains('skip') || is_json_skip
-			is_required:  field.attrs.contains('required')
-			is_raw:       field.attrs.contains('raw')
+			key_name:    key_name
+			is_skip:     field.attrs.contains('skip') || is_json_skip
+			is_required: field.attrs.contains('required')
+			is_raw:      field.attrs.contains('raw')
 		}
 	}
 	return field_infos
@@ -470,12 +464,13 @@ fn mark_struct_field_decoded(decoded_mask u64, mut decoded_fields []bool, field_
 
 // find_struct_field centralizes the runtime part of struct key matching. Keeping
 // this loop outside the comptime field loop avoids emitting the same skip,
-// omitempty, length, and memory-comparison checks once for every struct field.
+// length, and memory-comparison checks once for every struct field.
 @[noinline]
 fn (decoder &Decoder) find_struct_field(field_infos []StructFieldInfo, key_ptr voidptr, key_len int) int {
 	for field_idx, field_info in field_infos {
-		field_can_match := (!field_info.is_skip || field_info.is_required)
-			&& !(field_info.is_omitempty && decoder.is_empty_value(decoder.current_node.next.value))
+		// `@[omitempty]` only affects encoding: an explicit empty value (`0`, `""`) is
+		// decoded like any other, as in the removed `json` module.
+		field_can_match := !field_info.is_skip || field_info.is_required
 		field_name_matches := key_len == field_info.json_name_len && unsafe {
 			vmemcmp(key_ptr, field_info.json_name_ptr, field_info.json_name_len) == 0
 		}
@@ -509,34 +504,6 @@ fn (mut decoder Decoder) json_key_matches(key_info ValueInfo, key_name string) !
 	return unsafe {
 		vmemcmp(decoder.json.str + key_info.position + 1, key_name.str, key_name.len) == 0
 	}
-}
-
-@[inline; markused]
-fn (decoder &Decoder) is_empty_value(value_info ValueInfo) bool {
-	match value_info.value_kind {
-		.null {
-			return true
-		}
-		.string {
-			return value_info.length == 2
-		}
-		.number {
-			if decoder.json[value_info.position] == `0` {
-				if value_info.length == 1 {
-					return true
-				}
-				if value_info.length == 3 {
-					return unsafe {
-						vmemcmp(decoder.json.str + value_info.position, float_zero_in_string.str,
-							float_zero_in_string.len) == 0
-					}
-				}
-			}
-		}
-		else {}
-	}
-
-	return false
 }
 
 @[markused]
@@ -575,15 +542,6 @@ fn decode_struct_key[T](mut decoder Decoder, val T, key_info ValueInfo, prefix s
 				}
 
 				if !field.attrs.contains('skip') {
-					if field_info.is_omitempty && decoder.current_node != unsafe { nil }
-						&& decoder.is_empty_value(decoder.current_node.value) {
-						decoder.skip_current_value()
-						return StructKeyDecodeResult[T]{
-							matched: true
-							value:   new_val
-						}
-					}
-
 					if field_info.is_required {
 						seen_required << prefix + field.name
 					}
