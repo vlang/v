@@ -248,6 +248,12 @@ fn test_translated_interface_void_pointer_uses_source_array_type() {
 fn C.translated_sum_ints(values &int) int
 fn C.translated_mutate_ints(values DecayedIntPtrAlias)
 fn C.translated_increment_int(value &int)
+fn C.translated_alias_ints(left &int, right &int) int
+fn C.translated_distinct_ints(left &int, right &int) int
+fn C.translated_sum_int_rows(rows DecayedRowPtrAlias) int
+fn C.translated_mutate_int_rows(rows &[2]int)
+fn C.translated_alias_int_rows(left &[2]int, right DecayedRowPtrAlias) int
+fn C.translated_deep_int_rows(rows &[2][2]int) int
 
 fn test_translated_c_int_pointer_arguments_convert_array_storage() {
 	mut values := [20, 22]!
@@ -265,4 +271,43 @@ fn test_translated_c_int_pointer_arguments_convert_array_storage() {
 	mut dynamic := [1, 2]
 	C.translated_mutate_ints(dynamic.data)
 	assert dynamic == [-7, 42]
+}
+
+struct CIntArrayHolder {
+mut:
+	values [2]int
+}
+
+fn test_translated_c_int_array_arguments_keep_shared_storage() {
+	mut values := [1, 2]!
+	assert C.translated_alias_ints(values, values) == 1
+	assert values == [31, 47]!
+	mut rows := [[1, 2]!, [3, 4]!]!
+	index := 1
+	assert C.translated_alias_ints(rows[index], rows[1]) == 1
+	assert rows == [[1, 2]!, [31, 47]!]!
+	mut holder := CIntArrayHolder{ values: [1, 2]! }
+	pointer := &holder
+	assert C.translated_alias_ints(holder.values, pointer.values) == 1
+	assert holder.values == [31, 47]!
+	assert C.translated_distinct_ints(rows[0], rows[1]) == 1
+	assert rows == [[13, 2]!, [31, 17]!]!
+}
+
+fn make_c_int_rows() [2][2]int {
+	return [[10, 20]!, [30, 40]!]!
+}
+
+fn test_translated_c_int_row_pointer_arguments_convert_all_dimensions() {
+	mut rows := [[1, 2]!, [3, 4]!]!
+	assert C.translated_sum_int_rows(rows) == 5
+	assert C.translated_sum_int_rows([[10, 20]!, [30, 40]!]!) == 50
+	assert C.translated_sum_int_rows(make_c_int_rows()) == 50
+	C.translated_mutate_int_rows(rows)
+	assert rows == [[1, -7]!, [42, 4]!]!
+	assert C.translated_alias_int_rows(rows, rows) == 1
+	assert rows == [[31, -7]!, [42, 47]!]!
+	mut deep := [[[1, 2]!, [3, 4]!]!, [[5, 6]!, [7, 8]!]!]!
+	assert C.translated_deep_int_rows(deep) == 9
+	assert deep[1][1] == [-11, 8]!
 }

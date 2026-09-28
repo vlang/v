@@ -7,3 +7,7 @@ C's `int` can have different storage widths, so passing a fixed array of V `int`
 Changes made by the C function are copied back to an addressable source array, including a nested
 row. Array literals and arrays returned by functions are also converted before the call. The C
 temporary is valid for the duration of the call.
+
+Repeated arguments addressing the same source array share the converted buffer, so pointer equality
+and mutations remain visible across parameters. Nested fixed arrays are converted in full when a C
+parameter points to a fixed-size row, including aliases of that pointer type.

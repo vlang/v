@@ -6472,6 +6472,12 @@ fn (mut g FlatGen) gen_traced_call(id flat.NodeId, trace_name string) bool {
 	return true
 }
 
+struct CIntArrayStorage {
+	address string
+	values  string
+	length  string
+}
+
 // gen_c_call_int_out_wrap wraps a C call that passes the address of a V `int`
 // (`&someint`) into a fixed `&int` parameter or a C-variadic slot. A V `int` is
 // 64-bit while the C ABI expects a 32-bit `int*`, so casting the pointer would let C
@@ -6480,8 +6486,9 @@ fn (mut g FlatGen) gen_traced_call(id flat.NodeId, trace_name string) bool {
 // the value into a temporary C `int`, passes its address, and copies the
 // (sign-extended) result back after the call:
 //   ({ i64* _a = &x; int _v = (int)(*_a); C_fn(&_v); *_a = _v; })
-// It only rewrites `&<lvalue>` arguments (a bare pointer value may be null and must
-// not be dereferenced before the call). Returns false — falling through to normal
+// The scalar path only rewrites `&<lvalue>` arguments (a bare pointer value may be
+// null). Fixed-array arguments retain all dimensions and reuse converted storage
+// when multiple arguments address the same array. Returns false — falling through to normal
 // emission — when there is nothing to wrap, including the re-entrant emission where
 // the out-arguments are already scheduled.
 fn (mut g FlatGen) gen_c_call_int_out_wrap(id flat.NodeId, node flat.Node) bool {
@@ -6540,6 +6547,7 @@ fn (mut g FlatGen) gen_c_call_int_out_wrap(id flat.NodeId, node flat.Node) bool 
 	}
 	g.write('({ ')
 	mut copybacks := []string{}
+	mut fixed_array_storage := []CIntArrayStorage{}
 	for arg_id in out_args {
 		n := g.tmp_count
 		g.tmp_count++
@@ -6561,25 +6569,49 @@ fn (mut g FlatGen) gen_c_call_int_out_wrap(id flat.NodeId, node flat.Node) bool 
 		addr_tmp := '_cabi_out_array_${n}'
 		val_tmp := '_cabi_out_values_${n}'
 		idx_tmp := '_cabi_out_idx_${n}'
-		if fixed := array_fixed_type(cgen_unalias_type(g.usable_expr_type(arg_id))) {
-			length := g.fixed_array_len_value(fixed)
-			elem_ct := g.value_c_type(fixed.elem_type)
+		if fixed := g.c_call_fixed_array_arg_type(arg_id) {
+			dimensions := g.c_call_int_array_dimensions(types.Type(fixed))
+			length := '(' + dimensions.join(') * (') + ')'
+			elem_ct := g.value_c_type(types.Type(types.int_))
 			addressable := g.expr_is_addressable(arg_id)
 			if addressable {
-				g.write('${elem_ct}* ${addr_tmp} = ')
+				g.write('${elem_ct}* ${addr_tmp} = (${elem_ct}*)(')
 				g.gen_fixed_array_data_arg(arg_id, fixed)
-				g.write('; ')
+				g.write('); ')
 			} else {
 				// Copy a returned wrapper's array before its full expression ends.
 				g.write('${elem_ct} ${addr_tmp}[${length}]; memmove(${addr_tmp}, ')
 				g.gen_fixed_array_data_arg(arg_id, fixed)
 				g.write(', sizeof(${addr_tmp})); ')
 			}
-			g.write('int ${val_tmp}[${length}]; ')
+			storage_tmp := '_cabi_out_storage_${n}'
+			owns_tmp := '_cabi_out_owns_${n}'
+			g.write('int ${storage_tmp}[${length}]; int* ${val_tmp} = ${storage_tmp}; ')
+			checks_aliases := addressable && fixed_array_storage.len > 0
+			if checks_aliases {
+				g.write('bool ${owns_tmp} = true; ')
+				for previous_idx, previous in fixed_array_storage {
+					if previous_idx > 0 {
+						g.write('else ')
+					}
+					g.write('if (${addr_tmp} == ${previous.address} && ${length} == ${previous.length}) { ${val_tmp} = ${previous.values}; ${owns_tmp} = false; } ')
+				}
+				g.write('if (${owns_tmp}) ')
+			}
 			g.write('for (i64 ${idx_tmp} = 0; ${idx_tmp} < ${length}; ++${idx_tmp}) { ${val_tmp}[${idx_tmp}] = (int)${addr_tmp}[${idx_tmp}]; } ')
-			g.cabi_int_out_args[arg_id] = val_tmp
+			mut row_dims := ''
+			for dimension in dimensions[1..] {
+				row_dims += '[${dimension}]'
+			}
+			g.cabi_int_out_args[arg_id] = if row_dims.len > 0 {
+				'(int (*)${row_dims})${val_tmp}'
+			} else {
+				val_tmp
+			}
 			if addressable {
-				copybacks << 'for (i64 ${idx_tmp} = 0; ${idx_tmp} < ${length}; ++${idx_tmp}) { ${addr_tmp}[${idx_tmp}] = (${elem_ct})${val_tmp}[${idx_tmp}]; }'
+				copyback_guard := if checks_aliases { 'if (${owns_tmp}) ' } else { '' }
+				copybacks << '${copyback_guard}for (i64 ${idx_tmp} = 0; ${idx_tmp} < ${length}; ++${idx_tmp}) { ${addr_tmp}[${idx_tmp}] = (${elem_ct})${val_tmp}[${idx_tmp}]; }'
+				fixed_array_storage << CIntArrayStorage{addr_tmp, val_tmp, length}
 			}
 			continue
 		}
@@ -6654,17 +6686,62 @@ fn c_type_is_pointer_to_platform_int(t types.Type) bool {
 }
 
 fn (mut g FlatGen) c_call_is_int_fixed_array_arg(arg_id flat.NodeId, arg_idx int, param_types []types.Type, typed_param_count int) bool {
-	if arg_idx >= typed_param_count || arg_idx >= param_types.len
-		|| !c_type_is_pointer_to_platform_int(cgen_unalias_type(param_types[arg_idx])) {
+	if arg_idx >= typed_param_count || arg_idx >= param_types.len {
 		return false
 	}
-	fixed := array_fixed_type(cgen_unalias_type(g.usable_expr_type(arg_id))) or { return false }
-	elem_type := cgen_unalias_type(fixed.elem_type)
-	if elem_type !is types.Primitive || elem_type.size != 0 || !elem_type.props.has(.integer)
-		|| elem_type.props.has(.unsigned) {
+	expected := cgen_unalias_type(param_types[arg_idx])
+	if expected is types.Pointer {
+		if !c_type_is_platform_int_array_storage(expected.base_type) {
+			return false
+		}
+	} else {
 		return false
 	}
-	return g.value_c_type(elem_type) != 'int'
+	fixed := g.c_call_fixed_array_arg_type(arg_id) or { return false }
+	if !c_type_is_platform_int_array_storage(fixed.elem_type) {
+		return false
+	}
+	return g.value_c_type(types.Type(types.int_)) != 'int'
+}
+
+fn (mut g FlatGen) c_call_fixed_array_arg_type(arg_id flat.NodeId) ?types.ArrayFixed {
+	node := g.a.node(arg_id)
+	if node.kind in [.paren, .expr_stmt] && node.children_count == 1 {
+		return g.c_call_fixed_array_arg_type(g.a.child(node, 0))
+	}
+	if node.kind == .call {
+		// A pointer parameter can annotate the call with its contextual type;
+		// the declared return type still describes the array's source storage.
+		if fixed := array_fixed_type(cgen_unalias_type(g.declared_call_return_type(arg_id))) {
+			return fixed
+		}
+	}
+	return array_fixed_type(cgen_unalias_type(g.usable_expr_type(arg_id)))
+}
+
+fn c_type_is_platform_int_array_storage(typ types.Type) bool {
+	clean := cgen_unalias_type(typ)
+	if clean is types.ArrayFixed {
+		return c_type_is_platform_int_array_storage(clean.elem_type)
+	}
+	if clean is types.Primitive {
+		return clean.size == 0 && clean.props.has(.integer) && !clean.props.has(.unsigned)
+	}
+	return false
+}
+
+fn (mut g FlatGen) c_call_int_array_dimensions(typ types.Type) []string {
+	mut dimensions := []string{}
+	mut current := cgen_unalias_type(typ)
+	for {
+		if fixed := array_fixed_type(current) {
+			dimensions << g.fixed_array_len_value(fixed)
+			current = cgen_unalias_type(fixed.elem_type)
+		} else {
+			break
+		}
+	}
+	return dimensions
 }
 
 fn (g &FlatGen) c_call_int_array_data_base(arg_id flat.NodeId) ?flat.NodeId {
