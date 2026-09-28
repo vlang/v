@@ -597,6 +597,25 @@ REM exe right after the process running it exits, so retry a couple of times
 REM with short waits before giving up silently - a leftover intermediate
 REM binary here does not affect build success either way, and the noisy
 REM native "Access is denied." message is not worth surfacing to the user.
+REM
+REM CONTRACT for callers: this always `exit /b 0`, regardless of whether the
+REM delete actually succeeded. Every call site MUST capture the real
+REM compile/link step's !ERRORLEVEL! into a named variable BEFORE calling
+REM this (see the "set msvc_error=!ERRORLEVEL!" / "set stage_error=!ERRORLEVEL!"
+REM pattern at its call sites) and check that saved variable afterward, never
+REM !ERRORLEVEL! directly after a `call :try_delete` - this always succeeds
+REM and would silently swallow a real failure otherwise.
+REM
+REM KNOWN LIMITATION: cmd/tools/makev_test.py only unit-tests this routine in
+REM isolation (BatchExecutionTests.run_try_delete) and only statically greps
+REM for %VC_BOOTSTRAP_DEFINE% in build_bootstrap_with_msvc's source text - no
+REM test drives msvc_strap/build_bootstrap_with_msvc/build_stage_with_clang
+REM through cmd.exe with a real or stubbed failing compiler, so a future edit
+REM that violates the contract above would not be caught by the test suite.
+REM Found and empirically confirmed (by deliberately reintroducing the bug
+REM and observing the full suite still pass) via an adversarial review of
+REM vlang/v#29100; left undressed for now rather than adding a harder-to-get-
+REM right execution-level test or a build-script refactor.
 if not exist "%~1" exit /b 0
 del "%~1" >nul 2>&1
 if not exist "%~1" exit /b 0
