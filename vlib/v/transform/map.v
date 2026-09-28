@@ -3165,16 +3165,25 @@ fn (mut t Transformer) lower_map_index_append_with_info(info MapIndexInfo, map_e
 
 fn (mut t Transformer) lower_map_index_append_with_info_and_prelude(info MapIndexInfo, map_expr flat.NodeId, key_name string, rhs_id flat.NodeId, pre_append_stmts []flat.NodeId, existing_key_name string, mut result []flat.NodeId) bool {
 	mut append_rhs := rhs_id
+	mut staged_rhs_name := ''
+	mut staged_rhs_type := ''
+	mut staged_rhs_is_owned := false
 	if t.map_index_yields_map(info.base_id) {
 		// The RHS can replace or delete the outer entry. Save its value before
 		// reading the inner map, then use the current stored map for the append.
 		result << pre_append_stmts
+		staged_rhs_type = t.node_type(rhs_id)
+		rhs_node := t.a.nodes[int(t.unwrap_parens(rhs_id))]
+		staged_rhs_is_owned = rhs_node.kind == .array_literal
+			|| (!isnil(t.tc)
+				&& t.tc.ownership_type_requires_destruction(t.tc.parse_type(staged_rhs_type))
+				&& (t.tc.ownership_expr_creates_owned_value(rhs_id)
+					|| (rhs_node.kind == .call && !t.expr_can_take_address(rhs_id))))
 		rhs := t.transform_expr(rhs_id)
 		t.drain_pending(mut result)
-		rhs_name := t.new_temp('map_append_rhs')
-		rhs_type := t.node_type(rhs_id)
-		result << t.make_decl_assign_typed(rhs_name, rhs, rhs_type)
-		append_rhs = t.make_ident(rhs_name)
+		staged_rhs_name = t.new_temp('map_append_rhs')
+		result << t.make_decl_assign_typed(staged_rhs_name, rhs, staged_rhs_type)
+		append_rhs = t.make_ident(staged_rhs_name)
 		if existing_key_name.len > 0 {
 			result << t.make_assign(t.make_ident(existing_key_name), t.make_map_exists_expr(map_expr,
 				info.base_type, key_name))
@@ -3201,9 +3210,32 @@ fn (mut t Transformer) lower_map_index_append_with_info_and_prelude(info MapInde
 	}
 	append := t.make_infix(.left_shift, t.make_ident(working_name), append_rhs)
 	t.annotate_left_shift(append)
+	mut staged_scalar_was_cloned := false
+	if staged_rhs_is_owned && t.a.nodes[int(append)].value != 'push_many' {
+		array_type := t.clean_array_append_lhs_type(info.value_type)
+		if array_type.starts_with('[]') {
+			elem_type := array_type[2..]
+			staged_scalar_was_cloned = t.expr_can_take_address(append_rhs)
+				&& !t.tc.ownership_expr_moves_storage(append_rhs, append_rhs)
+				&& t.compiler_default_clone_type_needs_work(elem_type)
+		}
+	}
 	if lowered := t.try_lower_array_append_stmt(append) {
 		for stmt in lowered {
 			result << stmt
+		}
+		if staged_rhs_is_owned {
+			staged_rhs := t.make_ident(staged_rhs_name)
+			t.set_node_typ(int(staged_rhs), staged_rhs_type)
+			if t.a.nodes[int(append)].value == 'push_many' {
+				if staged_rhs_type.starts_with('[]') {
+					// The append copied the element bytes; only the old array buffer remains.
+					result << t.make_expr_stmt(t.make_method_call(staged_rhs, 'free', []flat.NodeId{}))
+				}
+			} else if staged_scalar_was_cloned {
+				// Scalar append clones the staged lvalue before inserting it.
+				result << t.make_expr_stmt(t.make_call_typed('drop_owned', [staged_rhs], 'void'))
+			}
 		}
 	} else {
 		result << t.make_expr_stmt(append)

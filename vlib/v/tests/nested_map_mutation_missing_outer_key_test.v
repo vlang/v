@@ -454,3 +454,27 @@ fn test_nested_map_append_array_sum_variant() {
 	inner := m['a']['b'][0] as []NestedMapVariant
 	assert inner.len == 2
 }
+
+fn make_nested_append_words() []string {
+	return ['alpha'.clone(), 'beta'.clone()]
+}
+
+fn make_nested_append_word() string {
+	return 'gamma'.clone()
+}
+
+fn make_nested_append_row() []int {
+	return [3, 4]
+}
+
+fn test_nested_append_releases_staged_owned_rhs() {
+	mut words := map[string]map[string][]string{}
+	words['a']['b'] << make_nested_append_words()
+	words['a']['b'] << make_nested_append_word()
+	words['a']['b'] << ['delta'.clone()]
+	assert words['a']['b'] == ['alpha', 'beta', 'gamma', 'delta']
+	mut rows := map[string]map[string][][]int{}
+	rows['a']['b'] << make_nested_append_row()
+	rows['a']['b'] << [5, 6]
+	assert rows['a']['b'] == [[3, 4], [5, 6]]
+}
