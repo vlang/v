@@ -2418,6 +2418,7 @@ A pointer to a nested array or map remains a reference container when iterated a
 including through parentheses or a closure capture.
 Fixed-array map values also refer to their entry storage, so changes through the reference update
 the map value.
+Aliases of array and map pointers preserve these reference semantics, including pointer rebinding.
 Parentheses around a mutable map container do not change whether assigning the loop value updates
 its entry.
 Mutable map parameters, including explicit pointer parameters (`mut m &map[K]V`),
