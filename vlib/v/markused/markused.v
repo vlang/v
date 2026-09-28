@@ -6084,8 +6084,7 @@ fn (c &CallCollector) infer_alias_generic_args(call &flat.Node, fn_name string, 
 			if actual := c.alias_aware_expr_type(arg_id, cur_module, imports, local_values, local_types) {
 				for generic, concrete in c.tc.infer_generic_reachability_type_args(fn_name,
 					param_texts[param_idx], actual, generic_params) {
-					if generic !in inferred && concrete != generic && concrete != 'unknown'
-						&& concrete != 'generic' {
+					if generic !in inferred && concrete !in ['unknown', 'generic'] {
 						inferred[generic] = concrete
 					}
 				}

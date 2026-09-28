@@ -799,3 +799,88 @@ fn test_unindexed_generic_factory_return_infers_interface_implementer() {
 	assert inferred == 'gates.Gate[int]'
 	assert collector.typed_receiver_method_name(inferred, 'backward', 'consumer')? == 'gates.Gate[int].backward'
 }
+
+fn test_inferred_factory_callback_arguments_keep_caller_generic_names() {
+	mut mismatches := []string{}
+	for caller in ['T', 'U'] {
+		for pattern in ['fn () U', 'fn (U) int', 'fn (U) U', 'fn (fn () U) int', 'fn () []U'] {
+			mut a := flat.FlatAst.new()
+			mut tc := types.TypeChecker.new(&a)
+			tc.parallel_check_sparse = true
+			method := 'gates.make_gate'
+			tc.fn_generic_params[method] = ['U']
+			tc.fn_param_type_texts[method] = [pattern]
+			tc.fn_ret_types[method] = types.Type(types.Struct{ name: 'gates.Gate[U]' })
+			expected := 'gates.Gate[${caller}]'
+			tc.fn_ret_types['${expected}.backward'] = types.Type(types.int_)
+			base := a.add_val(.ident, 'make_gate')
+			value := a.add_val(.ident, 'value')
+			call := call_helper_node(mut a, flat.Node{ kind: .call }, [base, value])
+			tc.sparse_resolved_call_names[int(call)] = method
+			collector := CallCollector{ a: &a, tc: &tc }
+			inferred := collector.top_level_call_return_type_name(call, 'consumer', map[string]string{}, {
+				'value': true
+			}, {
+				'value': pattern.replace('U', caller)
+			}, false)
+			if inferred != expected {
+				mismatches << '${pattern} / ${caller}: ${inferred}'
+			} else {
+				assert collector.typed_receiver_method_name(inferred, 'backward', 'consumer')? == '${expected}.backward'
+			}
+		}
+	}
+	assert mismatches.len == 0, mismatches.str()
+}
+
+fn test_inferred_factory_interface_arguments_keep_caller_generic_names() {
+	mut mismatches := []string{}
+	for pattern in ['Iterable[U]', 'iter.Iterable[U]'] {
+		for caller in ['int', 'T', 'U'] {
+			mut a := flat.FlatAst.new()
+			mut tc := types.TypeChecker.new(&a)
+			tc.parallel_check_sparse = true
+			tc.cur_module = 'consumer'
+			tc.structs['consumer.Iterable'] = []types.StructField{}
+			tc.structs['iter.Iterable'] = []types.StructField{}
+			method := 'gates.make_gate'
+			tc.fn_type_modules[method] = 'gates'
+			tc.fn_type_files[method] = 'gates.v'
+			tc.file_modules['gates.v'] = 'gates'
+			tc.file_imports['gates.v\niter'] = 'gates'
+			tc.fn_generic_params[method] = ['U']
+			tc.fn_param_type_texts[method] = [pattern]
+			tc.fn_ret_types[method] = types.Type(types.Struct{ name: 'gates.Gate[U]' })
+			expected := 'gates.Gate[${caller}]'
+			tc.fn_ret_types['${expected}.backward'] = types.Type(types.int_)
+			tc.interface_names['gates.Iterable'] = true
+			tc.interface_generic_params['gates.Iterable'] = ['E']
+			tc.interface_fields['gates.Iterable'] = [types.StructField{
+				name: 'item'
+				typ:  types.Type(types.Struct{ name: 'E' })
+			}]
+			tc.struct_generic_params['consumer.List'] = ['E']
+			tc.structs['consumer.List'] = [types.StructField{
+				name: 'item'
+				typ:  types.Type(types.Struct{ name: 'E' })
+			}]
+			base := a.add_val(.ident, 'make_gate')
+			value := a.add_val(.ident, 'value')
+			call := call_helper_node(mut a, flat.Node{ kind: .call }, [base, value])
+			tc.sparse_resolved_call_names[int(call)] = method
+			collector := CallCollector{ a: &a, tc: &tc }
+			inferred := collector.top_level_call_return_type_name(call, 'consumer', map[string]string{}, {
+				'value': true
+			}, {
+				'value': 'consumer.List[${caller}]'
+			}, false)
+			assert tc.cur_module == 'consumer'
+			if inferred != expected {
+				mismatches << '${pattern} / ${caller}: ${inferred}'
+			} else {
+				assert collector.typed_receiver_method_name(inferred, 'backward', 'consumer')? == '${expected}.backward'
+			}
+		}
+	}
+	assert mismatches.len == 0, mismatches.str()
+}

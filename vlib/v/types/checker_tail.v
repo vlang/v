@@ -17028,14 +17028,18 @@ pub fn (tc &TypeChecker) infer_generic_reachability_type_args(fn_name string, pa
 	mut inferred := map[string]string{}
 	clean := trimmed_space(param_text)
 	base, _, is_generic := generic_type_application_parts(clean)
-	if !clean.contains('fn(') && !clean.contains('fn (')
-		&& !(is_generic && tc.interface_metadata_name(base) in tc.interface_names) {
+	is_callback := clean.contains('fn(') || clean.contains('fn (')
+	if !is_callback && !is_generic {
 		return inferred
 	}
 	file := tc.fn_type_files[fn_name] or { tc.cur_file }
 	module_name := tc.fn_type_modules[fn_name] or { tc.cur_module }
 	mut view := tc.fork_type_parse_view(file, module_name)
 	view.generic_decl_file = file
+	if !is_callback
+		&& view.interface_metadata_name(view.generic_param_type_text(base)) !in view.interface_names {
+		return inferred
+	}
 	view.infer_generic_type_text_from_type(param_text, actual, generic_params, mut inferred)
 	return inferred
 }
