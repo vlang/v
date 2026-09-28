@@ -6704,9 +6704,16 @@ fn (c &CallCollector) top_level_call_return_type_name(call_id flat.NodeId, cur_m
 	}
 	mut callee := c.a.node(callee_id)
 	if callee.kind == .index && callee.value != 'range' && callee.children_count > 0 {
+		mut receiver_type := ''
+		factory := c.a.child_node(callee, 0)
+		if factory.kind == .selector && factory.children_count > 0 {
+			receiver_id := c.a.child(factory, 0)
+			raw_receiver := c.top_level_receiver_type_name(receiver_id, cur_module, imports, local_values, local_types)
+			receiver_type = c.generic_factory_qualified_type_text(raw_receiver, receiver_id, cur_module, imports)
+		}
 		if resolved := c.tc.resolved_call_name(call_id) {
 			if c.generic_fn_name_is_known(resolved, cur_module) {
-				return_type := c.generic_factory_return_type_name(callee, resolved, cur_module, imports, unwrap_optional_result)
+				return_type := c.generic_factory_return_type_name(callee, resolved, cur_module, imports, unwrap_optional_result, receiver_type)
 				if return_type.len > 0 {
 					return return_type
 				}
@@ -6725,7 +6732,7 @@ fn (c &CallCollector) top_level_call_return_type_name(call_id flat.NodeId, cur_m
 			name.all_before('.') in local_values
 		}
 		if !shadowed && c.generic_fn_name_is_known(resolved, cur_module) {
-			return c.generic_factory_return_type_name(callee, resolved, cur_module, imports, unwrap_optional_result)
+			return c.generic_factory_return_type_name(callee, resolved, cur_module, imports, unwrap_optional_result, receiver_type)
 		}
 	}
 	if callee.kind == .selector && callee.value.len > 0 && callee.children_count > 0 {
@@ -6752,13 +6759,13 @@ fn (c &CallCollector) top_level_call_return_type_name(call_id flat.NodeId, cur_m
 	return ''
 }
 
-fn (c &CallCollector) generic_factory_return_type_name(index &flat.Node, name string, cur_module string, imports map[string]string, unwrap_optional_result bool) string {
+fn (c &CallCollector) generic_factory_return_type_name(index &flat.Node, name string, cur_module string, imports map[string]string, unwrap_optional_result bool, receiver_type string) string {
 	for candidate in markused_fn_signature_name_candidates(name, cur_module) {
-		params := c.tc.fn_generic_params[candidate] or { continue }
+		if candidate !in c.tc.fn_generic_params { continue }
 		return_type := c.fn_return_type_name(candidate, unwrap_optional_result)
 		if return_type.len == 0 { continue }
 		arg_count := int(index.children_count) - 1
-		if arg_count <= 0 || arg_count > params.len { return return_type }
+		if arg_count <= 0 { return return_type }
 		mut args := []string{cap: arg_count}
 		for i in 0 .. arg_count {
 			arg_id := c.a.child(index, i + 1)
@@ -6766,7 +6773,7 @@ fn (c &CallCollector) generic_factory_return_type_name(index &flat.Node, name st
 			if arg.len == 0 { return return_type }
 			args << c.generic_factory_qualified_type_text(arg, arg_id, cur_module, imports)
 		}
-		return types.subst_generic_text(return_type, args, params[params.len - arg_count..])
+		return c.tc.specialize_generic_factory_return(return_type, candidate, receiver_type, args)
 	}
 	return ''
 }

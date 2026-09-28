@@ -11591,11 +11591,49 @@ pub fn (tc &TypeChecker) qualify_type_name_at(name string, id flat.NodeId, modul
 			}
 		}
 	}
+	if module_name in ['', 'main'] && tc.type_symbol_known(name) {
+		owner := tc.struct_modules[name] or { tc.type_alias_modules[name] or { '' } }
+		if owner in ['', 'main'] { return 'main.${name}' }
+	}
 	if module_name !in ['', 'main', 'builtin'] {
 		qualified := '${module_name}.${name}'
 		if tc.type_symbol_known(qualified) { return qualified }
 	}
 	return name
+}
+
+// specialize_generic_factory_return substitutes explicit method and receiver arguments
+// in one pass, preserving caller parameters that share a declaration parameter's name.
+pub fn (tc &TypeChecker) specialize_generic_factory_return(return_type string, name string, receiver_type string, explicit_args []string) string {
+	method_params := tc.fn_generic_params[name] or { return return_type }
+	actual_receiver := tc.generic_struct_method_alias_target(comptime_static_unwrap_type_text(receiver_type))
+	method_args := tc.explicit_generic_receiver_method_args(actual_receiver, name, explicit_args)
+	if method_args.len == 0 || method_args.len > method_params.len { return return_type }
+	mut params := method_params[method_params.len - method_args.len..].clone()
+	mut args := method_args.clone()
+	actual_base, receiver_args, actual_is_generic := generic_type_application_parts(actual_receiver)
+	if actual_is_generic {
+		mut receiver_pattern := name.all_before_last('.')
+		_, _, pattern_is_generic := generic_type_application_parts(receiver_pattern)
+		if !pattern_is_generic {
+			if texts := tc.fn_param_type_texts[name] {
+				if texts.len > 0 { receiver_pattern = comptime_static_unwrap_type_text(texts[0]) }
+			}
+		}
+		pattern_base, _, is_generic := generic_type_application_parts(receiver_pattern)
+		if is_generic && tc.generic_type_base_matches(pattern_base, actual_base) {
+			pattern_key := '${receiver_pattern}.${name.all_after_last('.')}'
+			if receiver_params, concrete_args := tc.generic_method_receiver_pattern_args(pattern_key, receiver_args) {
+				for i, param in receiver_params {
+					if param !in params {
+						params << param
+						args << concrete_args[i]
+					}
+				}
+			}
+		}
+	}
+	return subst_generic_text(return_type, args, params)
 }
 
 fn (tc &TypeChecker) resolve_selective_import_type_symbol_in_file(name string, file string) ?string {

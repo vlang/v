@@ -360,6 +360,54 @@ fn test_explicit_generic_factory_qualifies_caller_types_and_selective_imports() 
 		indexed := call_helper_node(mut a, flat.Node{ kind: .index }, [base, arg])
 		collector := CallCollector{ a: &a, tc: &tc }
 		assert collector.generic_factory_return_type_name(a.node(indexed), 'gates.make_gate',
-			'consumer', map[string]string{}, false) == 'gates.Gate[${expected}]'
+			'consumer', map[string]string{}, false, '') == 'gates.Gate[${expected}]'
 	}
+}
+
+fn test_generic_factory_return_substitutes_receiver_and_method_arguments_together() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	tc.parallel_check_sparse = true
+	for parts in [
+		['gates.Builder[T]', 'gates.Builder[V]', 'W', 'gates.Gate[V, W]'],
+		['gates.Builder[T]', '&gates.Builder[[]V]', 'W', 'gates.Gate[[]V, W]'],
+		['gates.Builder[T]', 'gates.Builder[U]', 'string', 'gates.Gate[U, string]'],
+		['gates.Builder[[]T]', 'gates.Builder[[]V]', 'W', 'gates.Gate[V, W]'],
+		['gates.Builder[T]', 'gates.Builder[V]', 'V, W', 'gates.Gate[V, W]'],
+	] {
+		method := '${parts[0]}.make'
+		tc.fn_generic_params[method] = ['U']
+		tc.fn_ret_types[method] = types.Type(types.Struct{ name: 'gates.Gate[T, U]' })
+		base := a.add_val(.ident, 'builder')
+		selector := call_helper_node(mut a, flat.Node{ kind: .selector, value: 'make' }, [base])
+		mut indexed_children := [selector]
+		for argument in parts[2].split(', ') { indexed_children << a.add_val(.ident, argument) }
+		indexed := call_helper_node(mut a, flat.Node{ kind: .index }, indexed_children)
+		call := call_helper_node(mut a, flat.Node{ kind: .call }, [indexed])
+		tc.sparse_resolved_call_names[int(call)] = method
+		collector := CallCollector{ a: &a, tc: &tc }
+		assert collector.top_level_call_return_type_name(call, 'main', map[string]string{}, {
+			'builder': true
+		}, {
+			'builder': parts[1]
+		}, false) == parts[3]
+	}
+}
+
+fn test_generic_factory_return_locks_main_module_type_arguments() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	tc.structs['Payload'] = []types.StructField{}
+	tc.struct_modules['Payload'] = 'main'
+	tc.structs['gates.Payload'] = []types.StructField{}
+	tc.fn_generic_params['gates.make_gate'] = ['U']
+	tc.fn_ret_types['gates.make_gate'] = types.Type(types.Struct{ name: 'gates.Gate[U]' })
+	tc.fn_ret_types['gates.Gate[main.Payload].backward'] = types.Type(types.int_)
+	base := a.add_val(.ident, 'make_gate')
+	arg := a.add_val(.ident, 'Payload')
+	indexed := call_helper_node(mut a, flat.Node{ kind: .index }, [base, arg])
+	collector := CallCollector{ a: &a, tc: &tc }
+	inferred := collector.generic_factory_return_type_name(a.node(indexed), 'gates.make_gate', 'main', map[string]string{}, false, '')
+	assert inferred == 'gates.Gate[main.Payload]'
+	assert collector.typed_receiver_method_name(inferred, 'backward', 'main')? == 'gates.Gate[main.Payload].backward'
 }
