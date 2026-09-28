@@ -212,23 +212,24 @@ fn (decoder &Decoder) get_sumtype_type_field_node(current_node &DecodeNode[Value
 }
 
 @[markused]
-fn (decoder &Decoder) sumtype_type_field_matches(type_field_node &DecodeNode[ValueInfo], expected string) bool {
+fn (mut decoder Decoder) sumtype_type_field_matches(type_field_node &DecodeNode[ValueInfo], expected string) bool {
 	if type_field_node == unsafe { nil } {
 		return false
 	}
-	if type_field_node.value.value_kind != .string {
+	value_info := type_field_node.value
+	if value_info.value_kind != .string {
 		return false
 	}
-	if type_field_node.value.length - 2 != expected.len {
-		return false
+	body := decoder.json[value_info.position + 1..value_info.position + value_info.length - 1]
+	if body.index_u8(`\\`) != -1 {
+		// An escaped discriminator (`"Hum\u0061n"`) names the variant after unescaping.
+		decoded := decoder.decode_string_value(value_info) or { return false }
+		return decoded == expected
 	}
-	return unsafe {
-		type_field_node.value.position + 1 + expected.len <= decoder.json.len
-			&& 0 == vmemcmp(decoder.json.str + type_field_node.value.position + 1, expected.str, expected.len)
-	}
+	return body == expected
 }
 
-fn (decoder &Decoder) check_sumtype_type_valid[T](value T, current_node &DecodeNode[ValueInfo]) bool {
+fn (mut decoder Decoder) check_sumtype_type_valid[T](value T, current_node &DecodeNode[ValueInfo]) bool {
 	type_field_node := decoder.get_sumtype_type_field_node(current_node)
 	return decoder.sumtype_type_field_matches(type_field_node,
 		sumtype_variant_name(typeof(value).name))

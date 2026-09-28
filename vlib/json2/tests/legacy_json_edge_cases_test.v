@@ -14,6 +14,16 @@ enum Plain {
 	two = 2
 }
 
+struct Human {
+	name string
+}
+
+struct Robot {
+	model string
+}
+
+type Being = Human | Robot
+
 fn test_encode_malformed_utf8_with_escape_unicode() {
 	// Every invalid or truncated byte becomes U+FFFD instead of slicing past the end.
 	assert json2.encode([u8(0xff)].bytestr(), escape_unicode: true) == '"\\ufffd"'
@@ -36,4 +46,12 @@ fn test_json_as_number_enum_keeps_undeclared_values() {
 	if _ := json2.decode[Plain]('99') {
 		assert false
 	}
+}
+
+fn test_escaped_sumtype_discriminator() {
+	being := json2.decode[Being]('{"_type":"Hum\\u0061n","name":"x"}')!
+	assert being is Human
+	assert (being as Human).name == 'x'
+	robot := json2.decode[Being]('{"_type":"Robot","model":"r2"}')!
+	assert robot is Robot
 }
