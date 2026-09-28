@@ -44,6 +44,31 @@ fn test_mutable_map_fixed_array_value_assignment_updates_entry() {
 	assert entries['a'] == [3, 4]!
 }
 
+fn update_parenthesized_mutable_map(mut entries map[string][2]int) {
+	// vfmt off
+	for _, mut value in (entries) {
+		value = [3, 4]!
+	}
+	// vfmt on
+}
+
+fn test_parenthesized_mutable_map_fixed_array_value_updates_entry() {
+	mut entries := {
+		'a': [1, 2]!
+	}
+	update_parenthesized_mutable_map(mut entries)
+	assert entries['a'] == [3, 4]!
+	mut maps := [entries]
+	for mut nested in maps {
+		// vfmt off
+		for _, mut value in (nested) {
+			value = [5, 6]!
+		}
+		// vfmt on
+	}
+	assert maps[0]['a'] == [5, 6]!
+}
+
 fn test_mutable_array_fixed_array_value_assignment_updates_entry() {
 	mut rows := [[1, 2]!]
 	for mut row in rows {

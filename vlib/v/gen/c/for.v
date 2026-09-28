@@ -297,9 +297,7 @@ fn (mut g FlatGen) gen_for_in(node flat.Node) {
 				container_str := g.expr_to_string(g.a.child(&node, 2))
 				storage_container_type := g.usable_expr_type(g.a.child(&node, 2))
 				container_storage_is_pointer := storage_container_type is types.Pointer
-				container_node := g.a.child_node(&node, 2)
-				container_is_mut_param_storage := container_node.kind == .ident
-					&& g.current_param_is_mut_pointer(container_node.value)
+				container_is_mut_param_storage := g.for_in_mutable_value_storage(container_id)
 				mut clean_value_type := clean_container_type.value_type
 				for clean_value_type is types.Alias {
 					clean_value_type = clean_value_type.base_type
@@ -464,6 +462,8 @@ fn (mut g FlatGen) gen_for_in(node flat.Node) {
 				}
 				elem_owner := g.tc.cur_scope.insert_with_owner(elem_binding_name, elem_scope_type)
 				g.track_shadowed_global_local(elem_binding_name, elem_owner)
+				g.declare_local_mutability(elem_owner, node.op == .amp
+					&& container_type !is types.Pointer)
 				if node.op == .amp {
 					g.declare_local_indirect_value_type(elem_owner, container_type.elem_type)
 				}
@@ -500,6 +500,8 @@ fn (mut g FlatGen) gen_for_in(node flat.Node) {
 				}
 				elem_owner := g.tc.cur_scope.insert_with_owner(elem_binding_name, elem_scope_type)
 				g.track_shadowed_global_local(elem_binding_name, elem_owner)
+				g.declare_local_mutability(elem_owner, node.op == .amp
+					&& container_type !is types.Pointer)
 				if node.op == .amp {
 					g.declare_local_indirect_value_type(elem_owner, af.elem_type)
 				}
@@ -740,6 +742,31 @@ fn (g &FlatGen) for_in_map_storage_key(id flat.NodeId) string {
 		return g.for_in_map_storage_key(g.a.child(&node, 0))
 	}
 	return g.expr_key(id)
+}
+
+fn (g &FlatGen) for_in_mutable_value_storage(container_id flat.NodeId) bool {
+	mut id := container_id
+	for int(id) >= 0 && int(id) < g.a.nodes.len {
+		node := g.a.nodes[int(id)]
+		if node.kind == .paren && node.children_count == 1 {
+			id = g.a.child(&node, 0)
+			continue
+		}
+		if node.kind != .ident {
+			return false
+		}
+		if g.current_param_is_mut(node.value)
+			&& !(g.cur_explicit_mut_pointer_params[node.value] or { false }) {
+			return true
+		}
+		if g.local_storage_is_mutable(node.value) {
+			if _ := g.local_indirect_value_type(node.value) {
+				return true
+			}
+		}
+		return false
+	}
+	return false
 }
 
 fn (g &FlatGen) c_loop_local_name(name string) string {

@@ -438,6 +438,19 @@ fn (t &Transformer) pool_get_results_iter_type(container_id flat.NodeId) ?string
 	return '[]${elem_type}'
 }
 
+fn (t &Transformer) for_in_container_is_pointer_storage(container_id flat.NodeId) bool {
+	mut id := container_id
+	for int(id) >= 0 {
+		node := t.a.nodes[int(id)]
+		if node.kind != .paren || node.children_count != 1 {
+			return node.kind == .ident
+				&& (t.mut_param_values[node.value] || t.pointer_value_rvalues[node.value])
+		}
+		id = t.a.child(&node, 0)
+	}
+	return false
+}
+
 // rebuild_for_in_stmt supports rebuild for in stmt handling for Transformer.
 fn (mut t Transformer) rebuild_for_in_stmt(_id flat.NodeId, node flat.Node) []flat.NodeId {
 	header_count := node.value.int()
@@ -448,9 +461,7 @@ fn (mut t Transformer) rebuild_for_in_stmt(_id flat.NodeId, node flat.Node) []fl
 	iter_type := t.normalize_type_alias(raw_iter_type)
 	iter_value_type := if iter_type.starts_with('&') { iter_type[1..] } else { iter_type }
 	map_iter_type := t.clean_map_type(iter_type)
-	container := t.a.nodes[int(container_id)]
-	container_is_pointer_storage := container.kind == .ident
-		&& (t.mut_param_values[container.value] || t.pointer_value_rvalues[container.value])
+	container_is_pointer_storage := t.for_in_container_is_pointer_storage(container_id)
 	container_yields_ref := raw_iter_type.starts_with('&') && !container_is_pointer_storage
 	body_ids := t.a.children_of(&node)[header_count..].clone()
 	source_is_owned_temporary := !raw_iter_type.starts_with('&')

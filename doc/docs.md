@@ -2391,6 +2391,8 @@ same entry. If the map element is already a pointer or an optional, the loop val
 element type instead.
 Fixed-array map values also refer to their entry storage, so changes through the reference update
 the map value.
+Parentheses around a mutable map container do not change whether assigning the loop value updates
+its entry.
 
 Either key or value can be ignored by using a single underscore as the identifier.
 
