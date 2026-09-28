@@ -3,6 +3,40 @@ module types
 import os
 import v.flat
 
+fn test_c_receiver_extension_only_imports_are_used() {
+	root := os.join_path(os.vtmp_dir(), 'v3_c_extension_import_${os.getpid()}')
+	os.mkdir_all(os.join_path(root, 'provider'))!
+	os.mkdir_all(os.join_path(root, 'extensions'))!
+	defer { os.rmdir_all(root) or {} }
+	os.write_file(os.join_path(root, 'v.mod'), "Module { name: 'c_extension_import' }\n")!
+	os.write_file(os.join_path(root, 'provider', 'counter.c.v'), 'module provider
+pub struct C.Counter { value int }
+pub struct Holder { pub: value C.Counter }
+pub fn make_holder() Holder { return Holder{} }
+')!
+	os.write_file(os.join_path(root, 'extensions', 'counter.c.v'), 'module extensions
+pub struct C.Counter { value int }
+pub fn (c C.Counter) read() int { return c.value }
+pub fn (c C.Counter) @select[T](marker T) int { return c.value }
+')!
+	path := os.join_path(root, 'main.v')
+	for body in [
+		'println(provider.make_holder().value.read())',
+		'println(provider.make_holder().value.@select[int](1))',
+		'callback := provider.make_holder().value.read; println(callback())',
+	] {
+		os.write_file(path, 'module main\nimport provider\nimport extensions as ext\nfn main() { ${body} }\n')!
+		for flags in ['-W', '-W -no-parallel', '-prod'] {
+			result := os.execute('${os.quoted_path(@VEXE)} ${flags} -check ${os.quoted_path(root)}')
+			assert result.exit_code == 0, result.output
+		}
+	}
+	os.write_file(path, 'module main\nimport provider\nimport extensions as ext\nfn main() { _ = provider.make_holder() }\n')!
+	unused := os.execute('${os.quoted_path(@VEXE)} -W -check ${os.quoted_path(root)}')
+	assert unused.exit_code != 0, unused.output
+	assert unused.output.contains('imported but never used'), unused.output
+}
+
 fn test_c_backed_alias_inherits_nearest_alias_method() {
 	mut tc := TypeChecker.new(&flat.FlatAst{})
 	base := Type(Struct{ name: 'C.Counter' })

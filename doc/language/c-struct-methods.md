@@ -3,6 +3,8 @@
 C struct receiver methods declared in directly imported V modules can be called through
 C-valued fields and local copies. Full import paths determine visibility. A private extension
 cannot hide an otherwise unambiguous public extension from another imported module.
+An import used only to supply a resolved receiver method counts as used, including when
+the method is bound as a callback.
 
 Escaped method names such as `value.@union()` also work across imports, including generic
 methods. Multiple visible public extensions with the same method name remain ambiguous.
