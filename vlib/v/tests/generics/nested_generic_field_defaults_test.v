@@ -62,3 +62,18 @@ fn test_nested_generic_field_defaults() {
 	aliased := AliasedNumbers{}
 	assert aliased.integer.value == 42
 }
+
+fn test_runtime_array_initializes_fixed_array_generic_fields() {
+	count := 2
+	values := []BoxArray{len: count}
+	assert values.len == count
+	for value in values {
+		assert value.boxes[0].value == 42
+		assert value.boxes[1].value == 42
+		assert value.grid[0][1].value == 42
+		assert value.grid[1][0].value == 42
+	}
+	direct := [][2]NumericBox[int]{len: count}
+	assert direct[0][0].value == 42
+	assert direct[1][1].value == 42
+}
