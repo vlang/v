@@ -41,3 +41,21 @@ fn test_aligned_array_cast_and_literal_share_the_v_allocation_family() {
 	release_v_aligned_cells(cells)
 	release_v_aligned_cells(&AllocatorAlignedCells{})
 }
+
+@[aligned: 64]
+struct AllocatorCacheLine {
+	value int
+}
+
+type AllocatorCacheLines = [2]AllocatorCacheLine
+
+fn test_aligned_literal_keeps_alignment_with_the_selected_allocator() {
+	mut cells := &AllocatorCacheLines{}
+	assert usize(voidptr(cells)) % 64 == 0
+	unsafe {
+		cells[0] = AllocatorCacheLine{ value: 43 }
+		cells[1] = AllocatorCacheLine{ value: 47 }
+	}
+	assert unsafe { cells[0].value + cells[1].value } == 90
+	unsafe { free(cells) }
+}

@@ -19,3 +19,5 @@ array pointers uses the matching aligned deallocator.
 
 Use `free` for V allocations and `C.free` for C allocations. Casting either allocation to an
 aligned fixed-array pointer does not change which allocator owns the memory.
+Boehm GC and preallocation builds retain their builtin allocation and cleanup semantics for
+aligned array pointers as well as ordinary allocations.
