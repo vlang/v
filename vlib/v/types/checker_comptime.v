@@ -14910,17 +14910,17 @@ fn (mut tc TypeChecker) collect_returned_alias_sources_in_scope(id flat.NodeId, 
 		saved_smartcasts = clone_smartcasts(tc.smartcasts)
 		tc.push_scope()
 	}
-	if node.kind == .select_branch && node.value == 'recv' && node.children_count >= 2 {
-		binding_id := tc.a.child(node, 0)
-		binding := tc.a.node(binding_id)
-		if binding.kind == .ident && binding.value != '_' {
-			typ := tc.cached_expr_type(binding_id) or {
-				tc.resolve_type(tc.a.child(node, 1))
-			}
-			tc.cur_scope.insert(binding.value, typ)
-		}
-	}
 	for i in 0 .. node.children_count {
+		if node.kind == .select_branch && node.value == 'recv' && i == 2 {
+			binding_id := tc.a.child(node, 0)
+			binding := tc.a.node(binding_id)
+			if binding.kind == .ident && binding.value != '_' {
+				typ := tc.cached_expr_type(binding_id) or {
+					tc.resolve_type(tc.a.child(node, 1))
+				}
+				tc.cur_scope.insert(binding.value, typ)
+			}
+		}
 		// Iterable and range-end handlers still see the enclosing scope.
 		if node.kind == .for_in_stmt && i == node.value.int() {
 			tc.restore_return_alias_for_in_bindings(*node)
