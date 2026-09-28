@@ -476,7 +476,9 @@ fn (mut encoder Encoder) encode_sumtype[T](val T) {
 						variant_value := val
 						encoder.encode_value(variant_value)
 					} else {
-						encoder.encode_sumtype_time_variant(time.Time(val), variant_name)
+						// Like the removed `json` module, every time variant is `Time`, also
+						// an alias such as `type Timestamp = time.Time`.
+						encoder.encode_sumtype_time_variant(time.Time(val), 'Time')
 					}
 				} $else $if variant.typ is $struct {
 					if T.name in ['x.json2.Any', 'json2.Any', 'Any'] {

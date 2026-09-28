@@ -243,9 +243,13 @@ fn (mut decoder Decoder) resolve_sumtype_from_type_field[T](mut val T) !bool {
 	$for v in T.variants {
 		$if v.typ is $struct {
 			has_discriminated_variant = true
-			if decoder.sumtype_type_field_matches(type_field_node,
+			mut matches := decoder.sumtype_type_field_matches(type_field_node,
 				sumtype_variant_name(typeof(v.typ).name))
-			{
+			$if v.typ.unaliased_typ is time.Time {
+				// A time alias variant is written as `Time`, like in the removed module.
+				matches = matches || decoder.sumtype_type_field_matches(type_field_node, 'Time')
+			}
+			if matches {
 				val = T(v)
 				return true
 			}

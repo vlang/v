@@ -149,9 +149,13 @@ fn test_time_alias_sumtype_variant() {
 		value: TimeValue(Timestamp(time.unix(1608621780)))
 	}
 	encoded := json2.encode(holder, time_as_unix: true)
-	assert encoded == '{"value":{"_type":"Timestamp","value":1608621780}}'
+	// Like the removed module, every time variant is written as `Time`.
+	assert encoded == '{"value":{"_type":"Time","value":1608621780}}'
 	decoded := json2.decode[TimeValueHolder](encoded)!
 	assert decoded.value.type_name() == 'Timestamp'
+	// The variant's own name is accepted as well.
+	by_name := json2.decode[TimeValueHolder]('{"value":{"_type":"Timestamp","value":7}}')!
+	assert by_name.value.type_name() == 'Timestamp'
 }
 
 struct NullInner {
