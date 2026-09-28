@@ -14,3 +14,7 @@ for the program lifetime and retains the element type's alignment.
 An inferred global keeps its checked type, so an array-plus-offset initializer remains a pointer
 when the global is read or passed to a function. This includes arithmetic within value-producing
 `if`, `match`, and `unsafe` blocks, even when the called function is declared later.
+
+Function-returned arrays and array literals used in pointer arithmetic receive owned, aligned
+backing storage, so the resulting pointers remain valid after leaving a function or inner block.
+Addressable array variables retain their original storage and aliasing behavior.

@@ -213,3 +213,45 @@ fn test_translated_array_alias_with_unmatched_operator_still_decays() {
 	summed := values + TranslatedVec3([1, 2, 3]!)
 	assert summed == TranslatedVec3([4, 21, 10]!)
 }
+
+fn translated_return_array_element() &int {
+	return translated_make_array() + 1
+}
+
+fn translated_return_reverse_array_element() &int {
+	return 2 + translated_make_array()
+}
+
+fn translated_return_branch_array_element(flag bool) &int {
+	return (if flag { translated_make_array() } else { [17, 19, 23]! }) + 1
+}
+
+@[aligned: 512]
+struct TranslatedEscapingAligned {
+	value int
+}
+
+fn translated_make_aligned_values() [2]TranslatedEscapingAligned {
+	return [TranslatedEscapingAligned{ value: 29 }, TranslatedEscapingAligned{ value: 31 }]!
+}
+
+fn translated_return_aligned_element() &TranslatedEscapingAligned {
+	return translated_make_aligned_values() + 1
+}
+
+fn test_translated_array_arithmetic_storage_survives_escape() {
+	second := translated_return_array_element()
+	third := translated_return_reverse_array_element()
+	assert read_translated_element(second) == 11
+	assert read_translated_element(third) == 13
+	assert read_translated_element(translated_return_branch_array_element(true)) == 11
+	assert read_translated_element(translated_return_branch_array_element(false)) == 19
+	mut outside := unsafe { &int(nil) }
+	if second != unsafe { nil } {
+		outside = translated_make_array() + 1
+	}
+	assert read_translated_element(outside) == 11
+	aligned := translated_return_aligned_element()
+	assert usize(voidptr(aligned)) % 512 == 0
+	assert aligned.value == 31
+}

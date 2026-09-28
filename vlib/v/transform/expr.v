@@ -29,9 +29,13 @@ fn (mut t Transformer) transform_translated_array_arithmetic(id flat.NodeId, nod
 	} else {
 		t.checker_expr_type_name(lhs_id) or { lhs_type.name() }
 	}
+	lhs_addressable := t.translated_array_decay_operand_addressable(lhs_id)
+	rhs_addressable := t.translated_array_decay_operand_addressable(rhs_id)
 	mut lhs := t.transform_value_operand(lhs_id)
 	if lhs_type is types.ArrayFixed {
-		lhs = t.materialize_translated_array_decay_operand(lhs_id, lhs)
+		if !lhs_addressable {
+			lhs = t.materialize_translated_array_decay_operand(lhs_id, lhs)
+		}
 		lhs = t.make_prefix(.amp, t.make_index(lhs, t.make_int_literal(0), lhs_type.elem_type.name()))
 	}
 	// Stable storage addresses need no temporary, including in global initializers.
@@ -44,7 +48,9 @@ fn (mut t Transformer) transform_translated_array_arithmetic(id flat.NodeId, nod
 	}
 	mut rhs := t.transform_value_operand(rhs_id)
 	if rhs_type is types.ArrayFixed {
-		rhs = t.materialize_translated_array_decay_operand(rhs_id, rhs)
+		if !rhs_addressable {
+			rhs = t.materialize_translated_array_decay_operand(rhs_id, rhs)
+		}
 		rhs = t.make_prefix(.amp, t.make_index(rhs, t.make_int_literal(0), rhs_type.elem_type.name()))
 	}
 	result := t.make_infix(node.op, lhs, rhs)
@@ -81,9 +87,6 @@ fn (t &Transformer) translated_array_decay_address_stable(id flat.NodeId) bool {
 }
 
 fn (mut t Transformer) materialize_translated_array_decay_operand(source flat.NodeId, value flat.NodeId) flat.NodeId {
-	if t.translated_array_decay_operand_addressable(value) {
-		return value
-	}
 	typ := t.resolve_expr_type(source)
 	tmp_name := t.new_temp('array_decay')
 	decl := t.make_decl_assign_typed(tmp_name, value, typ)
@@ -92,7 +95,21 @@ fn (mut t Transformer) materialize_translated_array_decay_operand(source flat.No
 		t.a.nodes[int(decl)].value = 'static'
 	}
 	t.pending_stmts << decl
-	return t.make_ident(tmp_name)
+	if t.in_global_init {
+		return t.make_ident(tmp_name)
+	}
+	// These synthetic addresses were not present during escape analysis. Give
+	// rvalue arrays owned backing storage before their pointers can escape.
+	addr := t.make_prefix(.amp, t.make_ident(tmp_name))
+	size := t.make_sizeof_type(typ)
+	alignment := t.make_call_typed('__alignof__', [t.make_ident(tmp_name)], 'usize')
+	copy := t.make_non_aliasing_allocation_call('memdup_align', [addr, size, alignment], 'voidptr')
+	heap_name := t.new_temp('array_decay_heap')
+	pointer_type := '&${typ}'
+	t.pending_stmts << t.make_decl_assign_typed(heap_name, t.make_cast(pointer_type, copy, pointer_type), pointer_type)
+	result := t.make_prefix(.mul, t.make_ident(heap_name))
+	t.set_node_typ(int(result), typ)
+	return result
 }
 
 fn (t &Transformer) translated_array_decay_operand_addressable(id flat.NodeId) bool {

@@ -18311,6 +18311,11 @@ fn (mut t Transformer) transform_infix_expr(id flat.NodeId, node flat.Node) flat
 		t.annotate_left_shift(new_id)
 		return new_id
 	}
+	// Array decay needs the original operand to distinguish lvalues from branch
+	// results whose generated storage may escape through the resulting pointer.
+	if arithmetic := t.transform_translated_array_arithmetic(id, node) {
+		return arithmetic
+	}
 	// A value-context `match`/`if` operand (e.g. `(match x { First { get_a()! }
 	// else { get_b()! } }) + suffix`) must be materialized as a value before the
 	// type-specialized handlers below dispatch on operand type. Those handlers
@@ -18383,9 +18388,6 @@ fn (mut t Transformer) transform_infix_expr(id flat.NodeId, node flat.Node) flat
 			})
 			return t.transform_infix_expr(new_id, t.a.nodes[int(new_id)])
 		}
-	}
-	if arithmetic := t.transform_translated_array_arithmetic(id, node) {
-		return arithmetic
 	}
 	if str_result := t.transform_infix_string_ops(id, node) {
 		return str_result
