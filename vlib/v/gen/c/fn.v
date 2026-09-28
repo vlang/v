@@ -3845,7 +3845,15 @@ fn (mut g FlatGen) gen_spawn_expr(node flat.Node) {
 	// return is `Optional_T` (not the generic `Optional`, whose payload is `int`) and a
 	// fixed-array return is its `_v_ret_*` wrapper struct. The wrapper mallocs and
 	// assigns this type, and `[]thread T.wait()` must read back the same layout.
-	ret_type := g.tc.resolve_type(call_id)
+	mut ret_type := g.tc.resolve_type(call_id)
+	// The call expression can lose the element type of `thread []T`; the
+	// registered callee return keeps the concrete thread result type.
+	if ret_type.name() == 'thread[]' {
+		call_name := g.tc.resolved_call_name(call_id) or { fn_node.value }
+		if declared := g.tc.fn_ret_types[call_name] {
+			ret_type = declared
+		}
+	}
 	outer_return_type := g.spawn_return_type
 	g.spawn_return_type = ret_type
 	defer {
@@ -4015,6 +4023,45 @@ fn (g &FlatGen) spawn_selector_fn_value_type(callee_id flat.NodeId, fn_node flat
 // call and returns its result as a `void*`. When the callee returns a value, the
 // result is heap-copied so `[]thread T .wait()` can recover it (the wait fn frees
 // it); a void callee returns NULL. `post` runs after the call (e.g. `free(p);`).
+fn (mut g FlatGen) detached_spawn_result_cleanup(typ types.Type, expr string, depth int) string {
+	if depth > 16 {
+		return ''
+	}
+	clean_type := default_init_unalias_type(typ)
+	if clean_type is types.FnType {
+		return '${g.cname('closure.closure_try_destroy')}((void*)(${expr})); '
+	}
+	if clean_type is types.Struct {
+		thread_name := trimmed_space(clean_type.name)
+		if thread_name == 'thread' || thread_name.ends_with('.thread')
+			|| thread_name.starts_with('thread ') {
+			idx := g.tmp_count
+			g.tmp_count++
+			result := '__tr_result${idx}'
+			mut cleanup := 'free(${result}); '
+			if thread_name.starts_with('thread ') {
+				inner_type := g.tc.parse_type(trimmed_space(thread_name[7..]))
+				inner_ct := g.fn_return_type_name(inner_type)
+				inner := '__tr_inner${idx}'
+				inner_value := if default_init_unalias_type(inner_type) is types.ArrayFixed {
+					'${inner}.ret_arr'
+				} else {
+					inner
+				}
+				inner_drop := g.detached_spawn_result_cleanup(inner_type, inner_value, depth + 1)
+				if inner_drop.len > 0 {
+					cleanup = '${inner_ct} ${inner} = *((${inner_ct}*)${result}); ${inner_drop}${cleanup}'
+				}
+			}
+			return 'if ((${expr}).handle) { void* ${result} = __v_thread_join(${expr}); if (${result}) { ${cleanup} } } '
+		}
+	}
+	if g.ownership_type_requires_destruction(typ, 0) {
+		return g.ownership_drop_value_to_string(typ, expr)
+	}
+	return ''
+}
+
 fn (mut g FlatGen) spawn_wrapper_body(call_expr string, ret_ct string, post string) string {
 	return g.spawn_wrapper_body_with_pre(call_expr, ret_ct, '', post)
 }
@@ -4024,10 +4071,12 @@ fn (mut g FlatGen) spawn_wrapper_body_with_pre(call_expr string, ret_ct string, 
 		return '${pre}${call_expr}; ${post}return NULL;'
 	}
 	if g.spawn_detached {
-		if g.ownership_type_requires_destruction(g.spawn_return_type, 0) {
+		if g.ownership_type_requires_destruction(g.spawn_return_type, 0)
+			|| default_init_unalias_type(g.spawn_return_type) is types.FnType
+			|| ret_ct == '__v_thread' {
 			clean_type := default_init_unalias_type(g.spawn_return_type)
 			value := if clean_type is types.ArrayFixed { '__tr.ret_arr' } else { '__tr' }
-			drop := g.ownership_drop_value_to_string(g.spawn_return_type, value)
+			drop := g.detached_spawn_result_cleanup(g.spawn_return_type, value, 0)
 			return '${pre}${ret_ct} __tr = ${call_expr}; ${drop}${post}return NULL;'
 		}
 		return '${pre}${call_expr}; ${post}return NULL;'

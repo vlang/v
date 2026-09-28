@@ -10581,7 +10581,15 @@ fn (mut t Transformer) mark_detached_spawn_result_drop(spawn_node flat.Node) {
 	}
 	call_id := t.a.child(&spawn_node, 0)
 	mut seen := map[string]bool{}
-	t.mark_detached_spawn_drop_type(t.tc.resolve_type(call_id), mut seen)
+	mut result_type := t.tc.resolve_type(call_id)
+	if result_type.name() == 'thread[]' {
+		if call_name := t.tc.resolved_call_name(call_id) {
+			if declared := t.tc.fn_ret_types[call_name] {
+				result_type = declared
+			}
+		}
+	}
+	t.mark_detached_spawn_drop_type(result_type, mut seen)
 }
 
 fn (mut t Transformer) mark_detached_spawn_drop_type(typ types.Type, mut seen map[string]bool) {
@@ -10627,6 +10635,10 @@ fn (mut t Transformer) mark_detached_spawn_drop_type(typ types.Type, mut seen ma
 			}
 		}
 		types.Struct {
+			if typ.name.starts_with('thread ') {
+				t.mark_detached_spawn_drop_type(t.tc.parse_type(typ.name[7..]), mut seen)
+				return
+			}
 			method := if t.tc.autofree_mode { 'free' } else { 'drop' }
 			module_name := t.tc.struct_module_for_type(typ.name)
 			for candidate in ['${typ.name}.${method}',
@@ -10644,6 +10656,9 @@ fn (mut t Transformer) mark_detached_spawn_drop_type(typ types.Type, mut seen ma
 			for variant in t.tc.sum_types[typ.name] or { []string{} } {
 				t.mark_detached_spawn_drop_type(t.tc.parse_type(variant), mut seen)
 			}
+		}
+		types.FnType {
+			t.mark_fn_used_name('closure.closure_try_destroy')
 		}
 		else {}
 	}

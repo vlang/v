@@ -272,6 +272,21 @@ fn make_owned() Owned {
 	return Owned{values: [4, 5]}
 }
 
+fn make_thread() thread int {
+	return spawn answer()
+}
+
+fn make_array_thread() thread []int {
+	return spawn make_array()
+}
+
+fn make_closure() fn () int {
+	value := 42
+	return fn [value] () int {
+		return value
+	}
+}
+
 fn add(a int, b int) int {
 	return a + b
 }
@@ -290,6 +305,9 @@ fn main() {
 	spawn answer()
 	spawn make_array()
 	spawn make_owned()
+	spawn make_thread()
+	spawn make_array_thread()
+	spawn make_closure()
 	spawn add(1, 2)
 	spawn wait_for(spawn answer())
 	t := spawn answer()
@@ -305,11 +323,17 @@ fn main() {
 	assert c_compact.contains('__v_thread_spawn_detached(add_args_thread_wrapper_detached,(void*)_sa'), c_code
 	// The spawn nested in the arguments is joined by `wait_for`, so it stays joinable.
 	assert c_compact.contains('__v_thread_spawn_detached(wait_for_args_thread_wrapper_detached,(void*)_sa'), c_code
-	assert c_compact.count('__v_thread_spawn(answer_thread_wrapper,') == 2, c_code
+	assert c_compact.count('__v_thread_spawn(answer_thread_wrapper,') == 3, c_code
 	assert c_compact.contains('__v_threadt=__v_thread_spawn(answer_thread_wrapper,'), c_code
 	assert c_code.contains('static void* make_array_thread_wrapper_detached(void* arg) { (void)arg; Array __tr = make_array();'), c_code
 	assert c_code.contains('array__free(&(__tr));'), c_code
 	assert c_code.contains('static void* make_array_thread_wrapper(void* arg) { (void)arg; Array* __tr = (Array*)__v_thread_alloc(sizeof(Array));'), c_code
+	assert c_code.contains('static void* make_thread_thread_wrapper_detached(void* arg) { (void)arg; __v_thread __tr = make_thread();'), c_code
+	assert c_code.contains('__v_thread_join(__tr);'), c_code
+	assert c_code.contains('static void* make_array_thread_thread_wrapper_detached(void* arg) { (void)arg; __v_thread __tr = make_array_thread();'), c_code
+	assert c_code.contains('array__free(&(__tr_inner'), c_code
+	assert c_code.contains('static void* make_closure_thread_wrapper_detached(void* arg) { (void)arg;'), c_code
+	assert c_code.contains('closure__closure_try_destroy((void*)(__tr));'), c_code
 	assert c_compact.contains('__v_thread__twthread0=t;'), c_code
 }
 
