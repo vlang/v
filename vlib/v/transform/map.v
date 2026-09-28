@@ -31,7 +31,8 @@ struct MapIndexInfo {
 }
 
 struct MapSelectorAncestor {
-	info                MapIndexInfo
+	info MapIndexInfo
+mut:
 	key_name            string
 	lookup_key_name     string
 	key_is_owned        bool
