@@ -14,6 +14,9 @@ fn (mut t Transformer) transform_translated_array_arithmetic(id flat.NodeId, nod
 	}
 	lhs_id := t.a.child(&node, 0)
 	rhs_id := t.a.child(&node, 1)
+	if _ := t.operator_alias_type_for_operand(lhs_id, node.op) {
+		return none
+	}
 	lhs_type := types.unalias_type(t.tc.parse_type(t.resolve_expr_type(lhs_id)))
 	rhs_type := types.unalias_type(t.tc.parse_type(t.resolve_expr_type(rhs_id)))
 	if lhs_type !is types.ArrayFixed && rhs_type !is types.ArrayFixed {

@@ -7160,6 +7160,9 @@ fn comptime_condition_top_level_index(s string, needle string) int {
 // as raw helper calls with incompatible arguments.
 fn (tc &TypeChecker) translated_array_arithmetic_operand(id flat.NodeId, op flat.Op, typ Type) Type {
 	if op in [.plus, .minus] && tc.node_is_in_translated_file(id) {
+		if typ is Alias && tc.type_has_infix_operator_method(typ, op) {
+			return typ
+		}
 		clean := unalias_type(typ)
 		if clean is ArrayFixed {
 			return Type(Pointer{

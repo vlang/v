@@ -39,3 +39,16 @@ fn test_translated_fixed_array_branch_offsets() {
 	assert translated_branch_array_offset(true)! == 5
 	assert translated_branch_array_offset(false)! == 7
 }
+
+type TranslatedVec3 = [3]int
+
+fn (left TranslatedVec3) + (right TranslatedVec3) TranslatedVec3 {
+	return TranslatedVec3([left[0] + right[0], left[1] + right[1], left[2] + right[2]]!)
+}
+
+fn test_translated_fixed_array_operator_overload() {
+	left := TranslatedVec3([1, 2, 3]!)
+	right := TranslatedVec3([4, 5, 6]!)
+	result := left + right
+	assert result == TranslatedVec3([5, 7, 9]!)
+}
