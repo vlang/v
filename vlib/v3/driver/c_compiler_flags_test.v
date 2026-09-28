@@ -673,6 +673,15 @@ fn test_v3_cache_artifact_detection_accepts_quoted_paths_with_spaces() {
 	assert v3_cache_failure_artifacts('/usr/bin/ld:${object}: file format not recognized') == [
 		os.real_path(object),
 	]
+	assert v3_cache_failure_artifacts("ld: file too small (length=0) in '${object}'") == [
+		os.real_path(object),
+	]
+	assert v3_cache_failure_artifacts("ld: empty file '${object}'") == [os.real_path(object)]
+	$if windows {
+		assert v3_cache_failure_artifacts('link.exe: ${object}: file format not recognized') == [
+			os.real_path(object),
+		]
+	}
 	assert !v3_cache_recovery_should_retry([object], 0)
 	module_dir := os.join_path(root, 'v3_module_cache_ab12', 'config')
 	os.mkdir_all(module_dir)!
@@ -686,6 +695,13 @@ fn test_v3_cache_artifact_detection_accepts_quoted_paths_with_spaces() {
 		os.join_path_single(os.real_path(module_dir), os.base(missing)),
 	]
 	assert v3_cache_recovery_should_retry([missing], 0)
+}
+
+fn test_v3_cache_unquoted_windows_path_candidates_keep_spaces() {
+	drive := 'C:\\Users\\First Last\\cached.o'
+	unc := '\\\\server\\share\\First Last\\cached.o'
+	assert v3_cache_unquoted_path_candidates('link.exe: ${drive}') == [drive]
+	assert v3_cache_unquoted_path_candidates('link.exe: ${unc}') == [unc]
 }
 
 fn test_v3_discard_cache_artifacts_drops_sidecars_and_link_plans() {

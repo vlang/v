@@ -12563,7 +12563,8 @@ const v3_cache_artifact_dir_names = ['v3_thirdparty_objs', 'v3_fastc_unit_cache'
 // to the user instead of costing a rebuild that reproduces it.
 const v3_cache_failure_markers = ['unrecognized file type', 'file format not recognized',
 	'not an object file', 'no such file or directory', 'file not found', 'malformed object',
-	'truncated or malformed', 'archive has no index', 'duplicate symbol', 'multiple definition',
+	'truncated or malformed', 'file too small', 'empty file', 'archive has no index',
+	'duplicate symbol', 'multiple definition',
 	'defined twice', 'incompatible file format']
 
 const v3_cache_recovery_env = 'V3_INTERNAL_CACHE_RECOVERY'
@@ -12682,6 +12683,22 @@ fn v3_canonical_cache_artifact(path string, directories []string) ?string {
 	return none
 }
 
+fn v3_cache_unquoted_path_candidates(prefix string) []string {
+	mut candidates := []string{}
+	bytes := prefix.bytes()
+	for i, ch in bytes {
+		is_drive := i + 2 < bytes.len && ((ch >= `A` && ch <= `Z`)
+			|| (ch >= `a` && ch <= `z`)) && bytes[i + 1] == `:`
+			&& (bytes[i + 2] == `\\` || bytes[i + 2] == `/`)
+		is_unc := ch == `\\` && i + 1 < bytes.len && bytes[i + 1] == `\\`
+			&& (i == 0 || bytes[i - 1] != `\\`)
+		if ch == `/` || is_drive || is_unc {
+			candidates << prefix[i..].trim('\'"`()[],;:')
+		}
+	}
+	return candidates
+}
+
 // v3_cache_error_artifacts returns the cached artifacts named by a C toolchain
 // error. The wording differs per toolchain, but each diagnostic names the
 // offending path, so the path is the portable signal.
@@ -12702,17 +12719,13 @@ fn v3_cache_error_artifacts(output string) []string {
 			}
 		}
 	}
-	// GNU ld also prints unquoted absolute paths, so whitespace can be part of
+	// Linkers also print unquoted absolute paths, so whitespace can be part of
 	// the artifact name. Try each absolute suffix before the diagnostic colon;
 	// canonical containment below rejects the linker executable and other paths.
 	for line in output.split_into_lines() {
 		end := line.last_index(':') or { continue }
 		prefix := line[..end].trim_space()
-		for i, ch in prefix.bytes() {
-			if ch != `/` {
-				continue
-			}
-			candidate := prefix[i..].trim('\'"`()[],;:')
+		for candidate in v3_cache_unquoted_path_candidates(prefix) {
 			if artifact := v3_canonical_cache_artifact(candidate, directories) {
 				if artifact !in artifacts {
 					artifacts << artifact
