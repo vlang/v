@@ -1129,6 +1129,11 @@ fn (g &FlatGen) ownership_collect_drop_struct_names(typ types.Type, depth int, m
 		types.ResultType {
 			g.ownership_collect_drop_struct_names(typ.base_type, depth + 1, mut names, mut seen)
 		}
+		types.MultiReturn {
+			for part in typ.types {
+				g.ownership_collect_drop_struct_names(part, depth + 1, mut names, mut seen)
+			}
+		}
 		types.Array {
 			g.ownership_collect_drop_struct_names(typ.elem_type, depth + 1, mut names, mut seen)
 		}

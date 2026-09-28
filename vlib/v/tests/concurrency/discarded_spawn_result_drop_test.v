@@ -56,3 +56,18 @@ fn test_discarded_spawn_drops_return_value() {
 		}
 	}
 }
+
+fn test_discarded_spawn_drops_results_under_prefix_expression() {
+	done := chan int{cap: 2}
+	_ := !((spawn make_drop_signal(done)) == (spawn make_drop_signal(done)))
+	for _ in 0 .. 2 {
+		select {
+			value := <-done {
+				assert value == 1
+			}
+			5 * time.second {
+				assert false
+			}
+		}
+	}
+}

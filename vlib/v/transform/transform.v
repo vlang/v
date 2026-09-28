@@ -12167,7 +12167,8 @@ fn (t &Transformer) collect_discarded_aggregate_spawns(id flat.NodeId, mut spawn
 				}
 			}
 		}
-		.paren, .dump_expr, .array_literal, .array_init, .struct_init, .field_init, .map_init,
+		.prefix, .paren, .dump_expr, .array_literal, .array_init, .struct_init, .field_init,
+		.map_init,
 		.assoc,
 		.cast_expr, .as_expr, .or_expr {
 			for i in 0 .. node.children_count {
