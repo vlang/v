@@ -1027,14 +1027,16 @@ fn (g &Parser) render_unsigned_right_shift_assignment(target string, value strin
 	unsigned_type, bits := match resolved_type {
 		'byte', 'char', 'i8', 'u8' { 'u8', '8' }
 		'i16', 'u16' { 'u16', '16' }
-		'i32', 'int', 'rune', 'u32', 'unsigned int' { 'u32', '32' }
+		'i32', 'rune', 'u32', 'unsigned int' { 'u32', '32' }
 		'i64', 'u64' { 'u64', '64' }
+		'int' { 'u${g.prefs.target.pointer_bits}', '${g.prefs.target.pointer_bits}' }
 		'isize', 'usize' { 'usize', '${g.prefs.target.pointer_bits}' }
 		else {
 			return none
 		}
 	}
-	return '({ ${target_type} *__vf_unsigned_shift_target = &(${target}); ${unsigned_type} __vf_unsigned_shift_value = (${unsigned_type})(*__vf_unsigned_shift_target); u64 __vf_unsigned_shift_count = (u64)(${value}); *__vf_unsigned_shift_target = (${target_type})(__vf_unsigned_shift_count >= ${bits} ? (${unsigned_type})0 : (__vf_unsigned_shift_value >> __vf_unsigned_shift_count)); })'
+	target_c_type := fastc_output_c_type(target_type)
+	return '({ ${target_c_type} *__vf_unsigned_shift_target = &(${target}); ${unsigned_type} __vf_unsigned_shift_value = (${unsigned_type})(*__vf_unsigned_shift_target); u64 __vf_unsigned_shift_count = (u64)(${value}); *__vf_unsigned_shift_target = (${target_c_type})(__vf_unsigned_shift_count >= ${bits} ? (${unsigned_type})0 : (__vf_unsigned_shift_value >> __vf_unsigned_shift_count)); })'
 }
 
 fn fastc_overloaded_binary_precedence(tok token.Token) int {

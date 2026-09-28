@@ -3166,6 +3166,70 @@ fn test_translated_scalar_mutations_accept_known_immutable_locals() {
 	assert message.contains('mutation of immutable or unknown name'), message
 }
 
+fn test_translated_mutation_operators_and_receiver_shapes() {
+	root := os.join_path(os.vtmp_dir(), 'translated_mutation_matrix_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+	operations := ['=7', '+=3', '-=3', '*=3', '/=2', '%=3', '&=3', '|=3', '^=3', '<<=1', '>>=1',
+		'>>>=1', '++', '--']
+	expected := [7, 15, 9, 36, 6, 0, 0, 15, 15, 24, 6, 6, 13, 11]
+	for selfhost in [false, true] {
+		mut prefs := pref.new_preferences()
+		prefs.building_v = selfhost
+		mut source := '@[translated]
+module main
+struct State { count int }
+type StateValue = State
+type StateRef = &State
+type StateRefAlias = StateRef
+__global global_state State
+fn copy_state(state StateValue) StateValue { return state }
+fn get_state(state &State) StateRefAlias { return state }
+fn (state &State) reference() StateRefAlias { return state }
+fn logical_shift(value int) int { value >>>= 1; return value }
+'
+		unsigned_type := if prefs.target.pointer_bits == 32 { 'u32' } else { 'u64' }
+		mut checks := ['if (logical_shift(-1) != ((${unsigned_type})-1 >> 1)) return 3;']
+		for i, operation in operations {
+			source += 'fn scalar_${i}(value int) int { value${operation}; return value }\n'
+			checks << 'if (scalar_${i}(12) != ${expected[i]}) return 1;'
+			for shape, target in ['state.count', 'copy.count', 'global_state.count',
+				'get_state(&state).count', 'state.reference().count', 'pointer.count'] {
+				name := 'mutate_${i}_${shape}'
+				source += 'fn ${name}(state StateValue) int {\n'
+				if shape == 1 { source += 'copy := copy_state(state)\n' }
+				if shape == 2 { source += 'global_state.count = state.count\n' }
+				if shape == 5 { source += 'pointer := StateRefAlias(&state)\n' }
+				result := if shape == 1 {
+					'copy.count'
+				} else if shape == 2 {
+					'global_state.count'
+				} else {
+					'state.count'
+				}
+				source += '${target}${operation}\nreturn ${result}\n}\n'
+				checks << 'if (${name}((State){.count=12}) != ${expected[i]}) return 2;'
+			}
+		}
+		generated := generate(source, 'translated_mutation_matrix.v', prefs) or { panic(err) }
+		assert !generated.contains('>>>='), generated
+		if selfhost {
+			// Selfhost output relies on real builtin definitions. The standalone
+			// preamble below also lets us execute every non-selfhost mutation.
+			continue
+		}
+		c_file := os.join_path(root, 'matrix.c')
+		bin_file := os.join_path(root, 'matrix')
+		os.write_file(c_file, '#define main unused_main\n' + generated +
+			'\n#undef main\nint main(void) {\n' + checks.join('\n') + '\nreturn 0;\n}\n')!
+		tcc := os.join_path(prefs.vroot, 'thirdparty', 'tcc', 'tcc.exe')
+		compiled := cmdexec.run(tcc, ['-std=gnu11', '-o', bin_file, c_file])
+		assert compiled.exit_code == 0, compiled.output + '\n' + generated
+		ran := cmdexec.run(bin_file, [])
+		assert ran.exit_code == 0, ran.output
+	}
+}
+
 fn test_duplicate_global_declarations_are_rejected() {
 	mut prefs := pref.new_preferences()
 	prefs.enable_globals = true

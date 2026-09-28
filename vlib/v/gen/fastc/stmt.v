@@ -1317,11 +1317,11 @@ fn (mut g Parser) parse_simple_statement() ! {
 		}
 		g.validate_expression_name(name, .unknown)!
 		if g.tok.is_assignment() {
-			if !g.selfhost && g.tok in [.left_shift_assign, .right_shift_assign,
+			if !g.selfhost && !g.translated && g.tok in [.left_shift_assign, .right_shift_assign,
 				.right_shift_unsigned_assign] {
 				return g.unsupported('shift expressions')
 			}
-			if !g.selfhost && g.tok in [.div_assign, .mod_assign] {
+			if !g.selfhost && !g.translated && g.tok in [.div_assign, .mod_assign] {
 				return g.unsupported('division or modulo expressions')
 			}
 			operator := g.tok
@@ -1480,6 +1480,9 @@ fn (mut g Parser) parse_simple_statement() ! {
 		g.consume_statement_end()
 		if g.translated {
 			mut translated_expression := expression
+			if assignment := g.render_assignment_expression(g.last_expression) {
+				translated_expression = assignment.source
+			}
 			if method_call := g.render_method_call_expression(g.last_expression, translated_expression) {
 				translated_expression = method_call.source
 			}
