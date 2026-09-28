@@ -17912,6 +17912,10 @@ fn (tc &TypeChecker) implicit_ref_arg_compatible(expr_id flat.NodeId, actual Typ
 	if expected_depth <= actual_depth {
 		return false
 	}
+	// Nested IError references cannot be boxed by the current interface lowering.
+	if expected_depth > 1 && is_ierror_type(expected_base) && !is_ierror_type(actual_base) {
+		return false
+	}
 	return tc.type_compatible(actual_base, expected_base)
 }
 
