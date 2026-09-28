@@ -112,8 +112,13 @@ fn raw_ghash_pmull_product(x &[2]u64, h &[2]u64) [4]u64 {
 		"ldr q1, [%[h]]\n\t"
 		"pmull v2.1q, v0.1d, v1.1d\n\t"
 		"pmull2 v3.1q, v0.2d, v1.2d\n\t"
-		"pmull v4.1q, v0.1d, v1.2d\n\t"
-		"pmull v5.1q, v0.2d, v1.1d\n\t"
+		// pmull/pmull2 only accept matching-arrangement operands (.1d/.1d or
+		// .2d/.2d): there is no mixed-lane form. For each cross term, rotate the
+		// operand's high lane down into a low lane with `ext ..., #8` first.
+		"ext v16.16b, v0.16b, v0.16b, #8\n\t"
+		"ext v17.16b, v1.16b, v1.16b, #8\n\t"
+		"pmull v4.1q, v0.1d, v17.1d\n\t"
+		"pmull v5.1q, v16.1d, v1.1d\n\t"
 		"eor v4.16b, v4.16b, v5.16b\n\t"
 		"movi v6.2d, #0\n\t"
 		"movi v7.2d, #0\n\t"
@@ -135,6 +140,8 @@ fn raw_ghash_pmull_product(x &[2]u64, h &[2]u64) [4]u64 {
 		  v5
 		  v6
 		  v7
+		  v16
+		  v17
 		  memory
 	}
 	return output
