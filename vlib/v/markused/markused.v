@@ -4158,11 +4158,21 @@ fn (c &CallCollector) selective_alias_uses_generics(name string, cur_module stri
 }
 
 fn (c &CallCollector) generic_fn_name_is_known(name string, cur_module string) bool {
-	if name in c.tc.fn_generic_params {
+	if name in c.tc.fn_generic_params || c.generic_receiver_method_name_is_known(name) {
 		return true
 	}
 	qname := qualify_fn(cur_module, name)
-	return qname != name && qname in c.tc.fn_generic_params
+	return qname != name && (qname in c.tc.fn_generic_params
+		|| c.generic_receiver_method_name_is_known(qname))
+}
+
+fn (c &CallCollector) generic_receiver_method_name_is_known(name string) bool {
+	if name !in c.tc.fn_ret_types && name !in c.tc.fn_ret_type_texts {
+		return false
+	}
+	receiver := name.all_before_last('.')
+	_, args, is_generic := markused_generic_app_parts(receiver)
+	return is_generic && receiver.ends_with(']') && args.len > 0
 }
 
 // enqueue_function_value_selectors supports enqueue function value selectors handling for markused.
@@ -6761,7 +6771,10 @@ fn (c &CallCollector) top_level_call_return_type_name(call_id flat.NodeId, cur_m
 
 fn (c &CallCollector) generic_factory_return_type_name(index &flat.Node, name string, cur_module string, imports map[string]string, unwrap_optional_result bool, receiver_type string) string {
 	for candidate in markused_fn_signature_name_candidates(name, cur_module) {
-		if candidate !in c.tc.fn_generic_params { continue }
+		if candidate !in c.tc.fn_generic_params
+			&& !c.generic_receiver_method_name_is_known(candidate) {
+			continue
+		}
 		mut return_type := c.fn_return_type_name(candidate, unwrap_optional_result)
 		semantic_has_placeholder := if semantic_type := c.fn_return_type_for_name(candidate) {
 			markused_type_has_unknown(semantic_type)

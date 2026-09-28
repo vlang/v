@@ -465,6 +465,30 @@ fn test_promoted_generic_factory_return_substitutes_embedded_receiver() {
 	assert collector.typed_receiver_method_name(inferred, 'backward', 'main')? == 'gates.Gate[int, string].backward'
 }
 
+fn test_receiver_only_generic_factory_return_substitutes_explicit_receiver_arg() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	tc.parallel_check_sparse = true
+	method := 'gates.Builder[T].make'
+	tc.fn_ret_types[method] = types.Type(types.Struct{ name: 'gates.Gate[T]' })
+	tc.fn_ret_types['gates.Gate[int].backward'] = types.Type(types.int_)
+	base := a.add_val(.ident, 'builder')
+	selector := call_helper_node(mut a, flat.Node{ kind: .selector, value: 'make' }, [base])
+	arg := a.add_val(.ident, 'int')
+	indexed := call_helper_node(mut a, flat.Node{ kind: .index }, [selector, arg])
+	call := call_helper_node(mut a, flat.Node{ kind: .call }, [indexed])
+	tc.sparse_resolved_call_names[int(call)] = method
+	collector := CallCollector{ a: &a, tc: &tc }
+	assert collector.generic_fn_name_is_known(method, 'main')
+	inferred := collector.top_level_call_return_type_name(call, 'main', map[string]string{}, {
+		'builder': true
+	}, {
+		'builder': 'gates.Builder[int]'
+	}, false)
+	assert inferred == 'gates.Gate[int]'
+	assert collector.typed_receiver_method_name(inferred, 'backward', 'main')? == 'gates.Gate[int].backward'
+}
+
 fn test_generic_factory_return_uses_placeholder_signature_text() {
 	mut a := flat.FlatAst.new()
 	mut tc := types.TypeChecker.new(&a)
