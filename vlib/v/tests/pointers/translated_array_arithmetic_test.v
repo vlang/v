@@ -161,3 +161,41 @@ fn test_translated_array_subtraction_compares_evaluated_lengths() {
 	rows := [[3, 5]!, [7, 11]!]!
 	assert translated_named_rows_difference(rows, rows) == 0
 }
+
+struct TranslatedArrayHolder {
+mut:
+	values [3]int
+}
+
+type TranslatedArrayHolderPtr = &TranslatedArrayHolder
+
+fn translated_ordered_holder(value &TranslatedArrayHolder, mut calls []int) TranslatedArrayHolderPtr {
+	calls << 1
+	return value
+}
+
+fn test_translated_pointer_backed_array_selectors_keep_original_storage() {
+	mut holder := TranslatedArrayHolder{ values: [3, 5, 7]! }
+	mut calls := []int{}
+	selected := translated_ordered_holder(&holder, mut calls).values + translated_result_rhs_offset(mut calls)!
+	assert calls == [1, 2]
+	assert unsafe { *selected } == 5
+	unsafe { *selected = 19 }
+	assert holder.values[1] == 19
+	calls.clear()
+	mut rows := [[3, 5, 7]!, [11, 13, 17]!]!
+	indexed := translated_ordered_rows(&rows, mut calls)[0] + translated_result_rhs_offset(mut calls)!
+	assert calls == [1, 2]
+	unsafe { *indexed = 23 }
+	assert rows[0][1] == 23
+	calls.clear()
+	reversed := translated_rhs_offset(mut calls) + translated_ordered_holder(&holder, mut calls).values
+	assert calls == [2, 1]
+	unsafe { *reversed = 29 }
+	assert holder.values[1] == 29
+}
+
+fn translated_ordered_rows(value &[2][3]int, mut calls []int) &[2][3]int {
+	calls << 1
+	return value
+}

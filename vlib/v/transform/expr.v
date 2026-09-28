@@ -63,7 +63,20 @@ fn (t &Transformer) translated_array_decay_operand_addressable(id flat.NodeId) b
 	node := t.a.node(id)
 	return match node.kind {
 		.ident { true }
-		.selector, .index, .paren {
+		.selector, .index {
+			if node.children_count == 0 {
+				false
+			} else {
+				base := t.a.child(node, 0)
+				base_type := types.unalias_type(t.tc.parse_type(t.resolve_expr_type(base)))
+				// A pointer receiver keeps its pointee's storage even when the
+				// receiver itself is a call. Dynamic-array indexes likewise
+				// address the backing allocation rather than the array value.
+				base_type is types.Pointer || (node.kind == .index && base_type is types.Array)
+					|| t.translated_array_decay_operand_addressable(base)
+			}
+		}
+		.paren {
 			node.children_count > 0
 				&& t.translated_array_decay_operand_addressable(t.a.child(node, 0))
 		}
