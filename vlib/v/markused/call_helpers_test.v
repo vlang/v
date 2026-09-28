@@ -1495,6 +1495,201 @@ fn test_unindexed_factory_infers_variadic_caller_types() {
 	}
 }
 
+fn test_factory_argument_inference_handles_spreads_modifiers_and_container_aliases() {
+	mut failures := []string{}
+	for form in [
+		['...U', '[]T', 'T', 'spread'],
+		['...U', '[2]T', 'T', 'spread'],
+		['...U', '[][]T', '[]T', 'spread'],
+		['...[]U', '[][]T', 'T', 'spread'],
+		['...[]U', '[2][]T', 'T', 'spread'],
+		['...U', 'Ints', 'int', 'spread'],
+		['...U', 'Pair', 'int', 'spread'],
+		['shared U', 'T', 'T', 'plain'],
+		['shared []U', '[]T', 'T', 'plain'],
+		['mut U', 'T', 'T', 'plain'],
+		['[]U', 'Ints', 'int', 'plain'],
+		['[2]U', 'Pair', 'int', 'plain'],
+		['map[string]U', 'Counts', 'int', 'plain'],
+		['[]U', '&Ints', 'int', 'plain'],
+		['[]U', 'Numbers', 'Number', 'plain'],
+		['...U', 'Numbers', 'Number', 'spread'],
+		['U', 'Ints', 'Ints', 'plain'],
+		['...U', 'Ints', 'Ints', 'plain'],
+	] {
+		mut a := flat.FlatAst.new()
+		mut tc := types.TypeChecker.new(&a)
+		tc.parallel_check_sparse = true
+		for name, actual in {
+			'Ints':    '[]int'
+			'Pair':    '[2]int'
+			'Counts':  'map[string]int'
+			'Number':  'int'
+			'Numbers': '[]Number'
+		} {
+			tc.type_aliases[name] = actual
+			tc.type_alias_modules[name] = 'main'
+		}
+		method := 'gates.make_gate'
+		tc.fn_generic_params[method] = ['U']
+		tc.fn_param_type_texts[method] = [form[0]]
+		tc.fn_ret_types[method] = types.Type(types.Struct{ name: 'gates.Gate[U]' })
+		expected := 'gates.Gate[${form[2]}]'
+		tc.fn_ret_types['${expected}.backward'] = types.Type(types.int_)
+		base := a.add_val(.ident, 'make_gate')
+		value := a.add_val(.ident, 'value')
+		arg := if form[3] == 'spread' {
+			call_helper_node(mut a, flat.Node{ kind: .prefix, value: '...' }, [value])
+		} else {
+			value
+		}
+		call := call_helper_node(mut a, flat.Node{ kind: .call }, [base, arg])
+		tc.sparse_resolved_call_names[int(call)] = method
+		collector := CallCollector{ a: &a, tc: &tc }
+		inferred := collector.top_level_call_return_type_name(call, 'main', map[string]string{}, {
+			'value': true
+		}, {
+			'value': form[1]
+		}, false)
+		if inferred != expected {
+			failures << '${form}: got ${inferred}, wanted ${expected}'
+		} else {
+			assert collector.typed_receiver_method_name(inferred, 'backward', 'main')? == '${expected}.backward'
+		}
+	}
+	assert failures.len == 0, failures.join('\n')
+}
+
+fn test_factory_calls_used_directly_as_receivers_keep_specialized_methods() {
+	for explicit in [false, true] {
+		for cached_placeholder in [false, true] {
+			mut a := flat.FlatAst.new()
+			mut tc := types.TypeChecker.new(&a)
+			tc.parallel_check_sparse = true
+			method := 'gates.make_gate'
+			tc.fn_generic_params[method] = ['U']
+			tc.fn_param_type_texts[method] = ['U']
+			tc.fn_ret_types[method] = types.Type(types.Struct{ name: 'gates.Gate[U]' })
+			tc.fn_ret_types['gates.Gate[T].backward'] = types.Type(types.int_)
+			param := a.add_node(flat.Node{ kind: .param, value: 'value', typ: 'T' })
+			base := a.add_val(.ident, 'make_gate')
+			callee := if explicit {
+				type_arg := a.add_val(.ident, 'T')
+				call_helper_node(mut a, flat.Node{ kind: .index }, [base, type_arg])
+			} else {
+				base
+			}
+			value := a.add_val(.ident, 'value')
+			factory := call_helper_node(mut a, flat.Node{ kind: .call }, [callee, value])
+			tc.sparse_resolved_call_names[int(factory)] = method
+			if cached_placeholder {
+				tc.sparse_expr_type_values[int(factory)] = types.Type(types.Struct{ name: 'gates.Gate[U]' })
+			}
+			selector := call_helper_node(mut a, flat.Node{ kind: .selector, value: 'backward' }, [factory])
+			method_call := call_helper_node(mut a, flat.Node{ kind: .call }, [selector])
+			body := call_helper_node(mut a, flat.Node{ kind: .block }, [method_call])
+			fn_id := call_helper_node(mut a, flat.Node{ kind: .fn_decl, value: 'use_gate' }, [
+				param,
+				body,
+			])
+			collector := CallCollector{ a: &a, tc: &tc, import_contexts: [map[string]string{}] }
+			assert collector.top_level_receiver_type_name(factory, 'main', map[string]string{}, {
+				'value': true
+			}, {
+				'value': 'T'
+			}) == 'gates.Gate[T]', 'explicit=${explicit}, cached_placeholder=${cached_placeholder}'
+			assert 'gates.Gate[T].backward' in collector.collect_body(a.node(fn_id), 'main', map[string]string{}).calls, 'explicit=${explicit}, cached_placeholder=${cached_placeholder}'
+		}
+	}
+}
+
+fn test_factory_loop_bindings_use_iterator_next_and_checked_variable_types() {
+	for form in [
+		['Iter[T]', 'T', 'signature'],
+		['&Iter[T]', 'T', 'signature'],
+		['Iter[[]T]', '[]T', 'signature'],
+		['IteratorAlias', 'int', 'signature'],
+		['OpaqueIterator', 'Payload', 'checked'],
+	] {
+		mut a := flat.FlatAst.new()
+		mut tc := types.TypeChecker.new(&a)
+		tc.parallel_check_sparse = true
+		tc.structs['Iter'] = []types.StructField{}
+		tc.struct_generic_params['Iter'] = ['U']
+		tc.fn_ret_types['Iter[U].next'] = types.Type(types.OptionType{ base_type: types.Type(types.Struct{ name: 'U' }) })
+		tc.fn_ret_type_texts['Iter[U].next'] = '?U'
+		tc.fn_param_type_texts['Iter[U].next'] = ['&Iter[U]']
+		tc.type_aliases['IteratorAlias'] = 'Iter[int]'
+		tc.type_alias_modules['IteratorAlias'] = 'main'
+		factory := 'gates.make_gate'
+		tc.fn_generic_params[factory] = ['U']
+		tc.fn_param_type_texts[factory] = ['U']
+		tc.fn_ret_types[factory] = types.Type(types.Struct{ name: 'gates.Gate[U]' })
+		expected := 'gates.Gate[${form[1]}]'
+		tc.fn_ret_types['${expected}.backward'] = types.Type(types.int_)
+		param := a.add_node(flat.Node{ kind: .param, value: 'iter', typ: form[0] })
+		binding := a.add_val(.ident, 'value')
+		container := a.add_val(.ident, 'iter')
+		value_arg := a.add_val(.ident, 'value')
+		callee := a.add_val(.ident, 'make_gate')
+		factory_call := call_helper_node(mut a, flat.Node{ kind: .call }, [callee, value_arg])
+		tc.sparse_resolved_call_names[int(factory_call)] = factory
+		lhs := a.add_val(.ident, 'gate')
+		decl := call_helper_node(mut a, flat.Node{ kind: .decl_assign }, [lhs, factory_call])
+		method_call := call_helper_method_call(mut a, 'gate', 'backward')
+		loop := call_helper_node(mut a, flat.Node{ kind: .for_in_stmt, value: '3' }, [
+			binding,
+			flat.empty_node,
+			container,
+			decl,
+			method_call,
+		])
+		body := call_helper_node(mut a, flat.Node{ kind: .block }, [loop])
+		fn_id := call_helper_node(mut a, flat.Node{ kind: .fn_decl, value: 'use_gate' }, [
+			param,
+			body,
+		])
+		if form[2] == 'checked' {
+			tc.sparse_expr_type_values[int(binding)] = types.Type(types.Struct{ name: 'Payload' })
+		}
+		collector := CallCollector{ a: &a, tc: &tc, import_contexts: [map[string]string{}] }
+		_, _, ident_types := collector.local_value_info(a.node(fn_id), 'main', map[string]string{})
+		assert ident_types[int(value_arg)] == form[1], form.str()
+		assert '${expected}.backward' in collector.collect_body(a.node(fn_id), 'main', map[string]string{}).calls, form.str()
+	}
+}
+
+fn test_factory_loop_bindings_resolve_the_iterable_before_shadowing_it() {
+	for form in [
+		['map[string]T', 'string', 'T'],
+		['[]T', 'int', 'T'],
+		['[2]T', 'int', 'T'],
+		['string', 'int', 'u8'],
+	] {
+		mut a := flat.FlatAst.new()
+		mut tc := types.TypeChecker.new(&a)
+		tc.parallel_check_sparse = true
+		key := a.add_val(.ident, 'items')
+		value := a.add_val(.ident, 'value')
+		container := a.add_val(.ident, 'items')
+		loop := call_helper_node(mut a, flat.Node{ kind: .for_in_stmt, value: '3' }, [
+			key,
+			value,
+			container,
+		])
+		collector := CallCollector{ a: &a, tc: &tc }
+		mut values := {
+			'items': true
+		}
+		mut local_types := {
+			'items': form[0]
+		}
+		collector.register_top_level_for_in_vars(a.node(loop), 'main', map[string]string{}, mut values, mut local_types)
+		assert local_types['items'] == form[1], form.str()
+		assert local_types['value'] == form[2], form.str()
+	}
+}
+
 fn test_factory_local_inference_uses_loop_bindings() {
 	for container_type, value_type in {
 		'[]T':            'T'

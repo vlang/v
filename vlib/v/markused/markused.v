@@ -6277,20 +6277,8 @@ fn (c &CallCollector) infer_alias_generic_argument(fn_name string, pattern strin
 	arg := c.a.node(arg_id)
 	if pattern.starts_with('...') && arg.kind == .prefix && arg.value == '...'
 		&& arg.children_count > 0 {
-		spread_id := c.a.child(arg, 0)
-		if actual := c.alias_aware_expr_type(spread_id, cur_module, imports, local_values,
-			local_types) {
-			actual_clean := types.unwrap_pointer(actual)
-			if actual_clean is types.Array {
-				markused_infer_alias_generic_type(pattern[3..], actual_clean.elem_type,
-					generic_params, mut inferred)
-			}
-		}
-		if actual_text := c.top_level_for_in_elem_type_name(spread_id, cur_module, imports,
-			local_values, local_types) {
-			markused_infer_generic_type_text(pattern[3..], actual_text, generic_params,
-				mut inferred)
-		}
+		c.infer_alias_generic_argument(fn_name, '[]' + pattern[3..], c.a.child(arg, 0),
+			generic_params, cur_module, imports, local_values, local_types, mut inferred)
 		return
 	}
 	if actual := c.alias_aware_expr_type(arg_id, cur_module, imports, local_values, local_types) {
@@ -6518,11 +6506,20 @@ fn markused_infer_alias_generic_type(param_text string, actual types.Type, gener
 		return
 	}
 	if clean.starts_with('[]') {
-		actual_clean := types.unwrap_pointer(actual)
+		actual_clean := types.unalias_type(types.unwrap_pointer(types.unalias_type(actual)))
 		if actual_clean is types.Array {
 			markused_infer_alias_generic_type(clean[2..], actual_clean.elem_type, generic_params, mut inferred)
 		} else if actual_clean is types.ArrayFixed {
 			markused_infer_alias_generic_type(clean[2..], actual_clean.elem_type, generic_params, mut inferred)
+		}
+		return
+	}
+	if clean.starts_with('[') {
+		bracket_end := markused_matching_bracket(clean, 0)
+		actual_clean := types.unalias_type(types.unwrap_pointer(types.unalias_type(actual)))
+		if bracket_end < clean.len && actual_clean is types.ArrayFixed {
+			markused_infer_alias_generic_type(clean[bracket_end + 1..], actual_clean.elem_type,
+				generic_params, mut inferred)
 		}
 		return
 	}
@@ -6554,7 +6551,7 @@ fn markused_infer_alias_generic_type(param_text string, actual types.Type, gener
 	}
 	if clean.starts_with('map[') {
 		bracket_end := markused_matching_bracket(clean, 3)
-		actual_clean := types.unwrap_pointer(actual)
+		actual_clean := types.unalias_type(types.unwrap_pointer(types.unalias_type(actual)))
 		if bracket_end < clean.len && actual_clean is types.Map {
 			markused_infer_alias_generic_type(clean[4..bracket_end], actual_clean.key_type, generic_params, mut inferred)
 			markused_infer_alias_generic_type(clean[bracket_end + 1..], actual_clean.value_type, generic_params, mut inferred)
@@ -6589,6 +6586,12 @@ fn markused_infer_generic_type_text(pattern string, actual string, generic_param
 			} else if prefix in ['?', '...', 'mut ', 'shared ', 'atomic '] {
 				markused_infer_generic_type_text(clean[prefix.len..], value, generic_params,
 					mut inferred)
+			} else if prefix == '[]' && value.starts_with('[') {
+				end := markused_generic_matching_bracket(value, 0)
+				if end < value.len {
+					markused_infer_generic_type_text(clean[2..], value[end + 1..],
+						generic_params, mut inferred)
+				}
 			}
 			return
 		}
@@ -6901,7 +6904,11 @@ fn (c &CallCollector) top_level_receiver_type_name(base_id flat.NodeId, cur_modu
 			return scoped_type
 		}
 	}
-	type_name := resolve_type_name(c.node_type(base_id))
+	type_name := if base.kind == .call {
+		c.top_level_expr_type_name(base_id, cur_module, imports, local_values, local_types, false)
+	} else {
+		resolve_type_name(c.node_type(base_id))
+	}
 	if type_name.len > 0 {
 		struct_type := c.struct_lookup_name(type_name, cur_module)
 		if struct_type.len > 0 {
@@ -7040,10 +7047,14 @@ fn (c &CallCollector) register_top_level_for_in_vars(node &flat.Node, cur_module
 	}
 	local_values[value_var] = true
 	value_id := if has_second { val_id } else { key_id }
-	if cached := markused_type_name(c.node_type(value_id), false) {
-		if cached != 'unknown' && cached != 'generic' {
-			local_types[value_var] = cached
-			return
+	if cached := c.tc.expr_type(value_id) {
+		if !markused_type_has_unknown(cached) {
+			if name := markused_type_name(cached, false) {
+				if name != 'generic' {
+					local_types[value_var] = name
+					return
+				}
+			}
 		}
 	}
 	container := c.a.node(container_id)
@@ -7082,6 +7093,13 @@ fn (c &CallCollector) register_top_level_for_in_vars(node &flat.Node, cur_module
 		return
 	}
 	if info := c.tc.iterator_for_in_next_call_info_text(container_type) {
+		return_text := c.generic_factory_return_type_text(info.name, cur_module, false)
+		specialized := c.tc.specialize_generic_factory_return(return_text, info.name,
+			container_type, []string{})
+		if specialized.starts_with('?') {
+			local_types[value_var] = specialized[1..]
+			return
+		}
 		if info.return_type is types.OptionType {
 			if elem := markused_type_name(info.return_type.base_type, false) {
 				local_types[value_var] = elem
