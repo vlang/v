@@ -775,8 +775,9 @@ fn (mut t Transformer) add_missing_struct_defaults(id flat.NodeId, node flat.Nod
 		field_type := t.lookup_struct_field_type(node.value, field.name) or { field.typ }
 		mut visited := map[string]bool{}
 		if t.nested_generic_defaults_need_lowering(field_type, mut visited) {
-			missing_defaults[field.name] = if t.is_fixed_array_type(field_type) {
-				t.make_fixed_array_init(field_type)
+			normalized_field_type := t.normalize_type_alias(field_type)
+			missing_defaults[field.name] = if t.is_fixed_array_type(normalized_field_type) {
+				t.make_fixed_array_init(normalized_field_type)
 			} else {
 				t.a.add_node(flat.Node{
 					kind:  .struct_init

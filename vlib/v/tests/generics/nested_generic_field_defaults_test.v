@@ -77,3 +77,24 @@ fn test_runtime_array_initializes_fixed_array_generic_fields() {
 	assert direct[0][0].value == 42
 	assert direct[1][1].value == 42
 }
+
+type NumericBoxes = [2]NumericBox[int]
+type NumericGrid = [2]NumericBoxes
+
+struct AliasedBoxArrays {
+	boxes NumericBoxes
+	grid  NumericGrid
+}
+
+fn test_aliased_fixed_array_fields_keep_generic_defaults() {
+	value := AliasedBoxArrays{}
+	assert value.boxes[0].value == 42
+	assert value.boxes[1].value == 42
+	assert value.grid[0][1].value == 42
+	assert value.grid[1][0].value == 42
+	values := []AliasedBoxArrays{len: 2}
+	for item in values {
+		assert item.boxes[1].value == 42
+		assert item.grid[1][1].value == 42
+	}
+}
