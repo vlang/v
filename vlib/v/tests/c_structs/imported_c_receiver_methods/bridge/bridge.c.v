@@ -50,3 +50,6 @@ pub fn (c C.Counter) @select[T](marker T) int { return c.value }
 
 // @union distinguishes an escaped alias method from its C backing type.
 pub fn (c Counter) @union(marker int) int { return c.value + marker + 100 }
+
+// increment mutates the receiver through a bound method value.
+pub fn (mut c C.Counter) increment() { c.value++ }

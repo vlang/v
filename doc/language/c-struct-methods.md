@@ -8,3 +8,8 @@ Escaped method names such as `value.@union()` also work across imports, includin
 methods. Multiple visible public extensions with the same method name remain ambiguous.
 Methods on V aliases take precedence over methods on their underlying C struct, including
 methods inherited through a chain of aliases.
+
+Visible receiver methods can also be bound as callbacks, for example `cb := value.read`.
+Callbacks retain the same alias precedence and visibility rules as direct calls. Ambiguous
+extensions are rejected even for method names such as `str`, `clone`, and `free` that have
+compiler-provided defaults.

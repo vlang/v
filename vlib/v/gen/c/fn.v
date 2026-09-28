@@ -3691,7 +3691,7 @@ fn (mut g FlatGen) gen_method_value_closure(selector_id flat.NodeId, base_id fla
 	method_key := if is_interface_receiver {
 		'${receiver_name}.${method}'
 	} else {
-		g.resolve_method_name(receiver_name, method)
+		g.tc.resolved_call_name(selector_id) or { g.resolve_method_name(receiver_name, method) }
 	}
 	mut params := []types.Type{}
 	mut ret := types.Type(types.void_)

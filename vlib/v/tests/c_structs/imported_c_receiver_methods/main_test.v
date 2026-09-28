@@ -31,3 +31,31 @@ fn test_methods_on_c_struct_fields_and_local_copies() {
 	outer_ref := &outer
 	assert outer_ref.read() == 417
 }
+
+fn call_bound_reader(reader fn () int) int {
+	return reader()
+}
+
+fn test_imported_c_receiver_method_values() {
+	read := bridge.make_holder().value.read
+	assert read() == 17
+	assert call_bound_reader(bridge.make_holder().value.read) == 17
+	value := bridge.make_holder().value
+	escaped := value.@union
+	assert escaped(2) == 19
+	inherited := InheritedCounter(value)
+	alias_read := inherited.read
+	alias_escaped := inherited.@union
+	assert alias_read() == 117
+	assert alias_escaped(2) == 119
+	outer := OuterCounter(value)
+	nearest := outer.read
+	assert nearest() == 417
+}
+
+fn test_imported_mutable_c_method_value_borrows_its_receiver() {
+	mut value := bridge.make_holder().value
+	increment := value.increment
+	increment()
+	assert value.value == 18
+}

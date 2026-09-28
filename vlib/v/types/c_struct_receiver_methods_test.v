@@ -59,7 +59,7 @@ fn main() { right.used(); println(left.make_holder().value.read()) }
 ')!
 	ambiguous := os.execute('${os.quoted_path(@VEXE)} -check ${os.quoted_path(root)}')
 	assert ambiguous.exit_code != 0, ambiguous.output
-	assert ambiguous.output.contains('unknown function') || ambiguous.output.contains('unknown method'), ambiguous.output
+	assert ambiguous.output.contains('ambiguous method'), ambiguous.output
 	for public_module in ['left', 'right'] {
 		for method_module in ['left', 'right'] {
 			visibility := if method_module == public_module { 'pub ' } else { '' }
@@ -91,7 +91,7 @@ fn main() { right.used(); println(left.make_holder().value.read()) }
 		escaped := os.execute('${os.quoted_path(@VEXE)} -check ${os.quoted_path(root)}')
 		if visibility.len > 0 {
 			assert escaped.exit_code != 0, escaped.output
-			assert escaped.output.contains('unknown function') || escaped.output.contains('unknown method'), escaped.output
+			assert escaped.output.contains('ambiguous method'), escaped.output
 		} else {
 			assert escaped.exit_code == 0, escaped.output
 		}
@@ -105,4 +105,55 @@ fn test_static_interop_generic_is_not_a_receiver_method() {
 	result := os.execute('${os.quoted_path(@VEXE)} -check ${os.quoted_path(path)}')
 	assert result.exit_code != 0, result.output
 	assert result.output.contains('JS functions cannot be declared as generic'), result.output
+}
+
+fn test_c_receiver_method_ambiguity_precedes_implicit_fallbacks() {
+	root := os.join_path(os.vtmp_dir(), 'v3_c_receiver_fallbacks_${os.getpid()}')
+	os.mkdir_all(os.join_path(root, 'left'))!
+	os.mkdir_all(os.join_path(root, 'right'))!
+	defer { os.rmdir_all(root) or {} }
+	os.write_file(os.join_path(root, 'v.mod'), "Module { name: 'c_receiver_fallbacks' }\n")!
+	for mod in ['left', 'right'] {
+		os.write_file(os.join_path(root, mod, 'counter.c.v'), 'module ${mod}
+pub struct C.Counter { value int }
+pub struct Holder { pub: value C.Counter }
+pub fn make_holder() Holder { return Holder{} }
+pub fn (c C.Counter) str() string { return "extension" }
+pub fn (c C.Counter) clone() C.Counter { return c }
+pub fn (c C.Counter) free() {}
+')!
+	}
+	for method in ['str', 'clone', 'free'] {
+		os.write_file(os.join_path(root, 'main.v'), 'module main\nimport left\nimport right\nfn main() { _ := right.make_holder(); left.make_holder().value.${method}() }\n')!
+		result := os.execute('${os.quoted_path(@VEXE)} -check ${os.quoted_path(root)}')
+		assert result.exit_code != 0, '${method}: ${result.output}'
+		assert result.output.contains('ambiguous method'), result.output
+	}
+}
+
+fn test_imported_c_method_values_keep_visibility_and_receiver_safety() {
+	root := os.join_path(os.vtmp_dir(), 'v3_c_method_value_safety_${os.getpid()}')
+	os.mkdir_all(os.join_path(root, 'bridge'))!
+	defer { os.rmdir_all(root) or {} }
+	os.write_file(os.join_path(root, 'v.mod'), "Module { name: 'c_method_value_safety' }\n")!
+	os.write_file(os.join_path(root, 'bridge', 'bridge.c.v'), 'module bridge
+pub struct C.Counter { value int }
+pub struct Holder { pub: value C.Counter }
+pub fn make_holder() Holder { return Holder{} }
+fn (c C.Counter) private_read() int { return c.value }
+pub fn (c &C.Counter) pointer_read() int { return c.value }
+pub fn (mut c C.Counter) increment() { c.value++ }
+pub fn (c C.Counter) generic_read[T](marker T) int { return c.value }
+')!
+	for source, expected in {
+		'fn main() { cb := bridge.make_holder().value.private_read; println(cb()) }':                                          'is private'
+		'fn main() { value := bridge.make_holder().value; cb := value.pointer_read; println(cb()) }':                          'cannot be used as a variable outside `unsafe`'
+		'fn escaped() fn () { mut value := bridge.make_holder().value; return value.increment } fn main() { _ := escaped() }': 'mutable local receiver cannot escape'
+		'fn main() { value := bridge.make_holder().value; cb := value.generic_read; println(cb(1)) }':                         'as a generic function value'
+	} {
+		os.write_file(os.join_path(root, 'main.v'), 'module main\nimport bridge\n${source}\n')!
+		result := os.execute('${os.quoted_path(@VEXE)} -check ${os.quoted_path(root)}')
+		assert result.exit_code != 0, result.output
+		assert result.output.contains(expected), result.output
+	}
 }

@@ -5635,6 +5635,9 @@ pub fn (tc &TypeChecker) expr_is_method_value(id flat.NodeId) bool {
 		if tc.struct_field_type(sname, node.value) != none {
 			return false
 		}
+		if _ := tc.c_struct_receiver_method_name(receiver, node.value) {
+			return true
+		}
 		if '${sname}.${node.value}' in tc.fn_param_types {
 			return true
 		}
@@ -5660,6 +5663,9 @@ pub fn (tc &TypeChecker) expr_is_method_value(id flat.NodeId) bool {
 }
 
 fn (tc &TypeChecker) alias_method_value_decl_key(alias Alias, method string) ?string {
+	if name := tc.c_struct_receiver_method_name(Type(alias), method) {
+		return name
+	}
 	for receiver in [Type(alias), alias.base_type] {
 		for candidate in receiver_method_name_candidates(receiver, method, tc.cur_module) {
 			if candidate in tc.fn_param_types || candidate in tc.fn_ret_types {
@@ -5707,6 +5713,9 @@ fn (tc &TypeChecker) method_value_has_stack_mut_receiver(id flat.NodeId) bool {
 		if tc.mut_receiver_methods[info.name] {
 			return true
 		}
+	}
+	if method_name := tc.c_struct_receiver_method_name(clean, node.value) {
+		return tc.mut_receiver_methods[method_name]
 	}
 	for method_name in receiver_method_name_candidates(clean, node.value, tc.cur_module) {
 		if tc.mut_receiver_methods[method_name] {
@@ -6145,11 +6154,31 @@ fn (mut tc TypeChecker) check_selector(id flat.NodeId, node flat.Node) {
 		tc.register_synth_type(id, smart_type)
 		return
 	}
+	method_receiver := unalias_and_unwrap_pointer_type(base_type)
+	if method_receiver is Struct && tc.struct_field_type(method_receiver.name, node.value) == none {
+		method_name, ambiguous := tc.lookup_c_struct_receiver_method(base_type, node.value)
+		if ambiguous {
+			tc.record_error_at(.unknown_field, 'ambiguous method `${node.value}` on `${method_receiver.name}`', id, tc.node_value_diagnostic_pos(id))
+			tc.register_synth_type(id, Type(void_))
+			return
+		}
+		if method_name.len > 0 && !tc.ident_is_call_callee_or_generic_base(id) {
+			if _ := tc.private_declaration(method_name) {
+				tc.record_error_at(.unknown_field, 'method `${method_name}` is private', id, tc.node_value_diagnostic_pos(id))
+			}
+			tc.remember_resolved_call(id, method_name)
+			if tc.fn_context.node_id >= 0 {
+				tc.method_values_by_fn[tc.fn_context.node_id] << method_name
+			}
+		}
+	}
 	if tc.expr_is_method_value(id) && !tc.ident_is_call_callee_or_generic_base(id) {
 		tc.check_pointer_receiver_method_value_safety(id, node, base_type)
 		receiver := unwrap_pointer(base_type)
 		mut generic_method_key := ''
-		if receiver is Alias {
+		if imported := tc.c_struct_receiver_method_name(receiver, node.value) {
+			generic_method_key = imported
+		} else if receiver is Alias {
 			generic_method_key = tc.alias_method_value_decl_key(receiver, node.value) or { '' }
 		} else {
 			clean_receiver := unalias_type(receiver)
@@ -6764,6 +6793,9 @@ fn (tc &TypeChecker) selector_type(_id flat.NodeId, node flat.Node) ?Type {
 	if clean is Struct {
 		if typ := tc.struct_field_type(clean_name, node.value) {
 			return typ
+		}
+		if method_name := tc.c_struct_receiver_method_name(base_type, node.value) {
+			return tc.method_value_type(method_name.all_before_last('.'), method_name.all_after_last('.'))
 		}
 		if typ := tc.method_value_type(clean_name, node.value) {
 			return typ

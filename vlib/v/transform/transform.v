@@ -8181,7 +8181,9 @@ fn (t &Transformer) method_value_has_pointer_receiver(id flat.NodeId) bool {
 		return false
 	}
 	base_id := t.a.child(&node, 0)
-	method_name := t.resolve_receiver_method_name(base_id, node.value)
+	method_name := t.tc.resolved_call_name(id) or {
+		t.resolve_receiver_method_name(base_id, node.value)
+	}
 	if params := t.tc.fn_param_types[method_name] {
 		return params.len > 0 && params[0] is types.Pointer
 	}
@@ -20104,7 +20106,9 @@ fn (mut t Transformer) transform_selector_expr(id flat.NodeId, node flat.Node) f
 	mut new_base := t.transform_selector_base_expr(base_id)
 	mut selector_generic_params := node.generic_params().clone()
 	if !isnil(t.tc) && t.tc.expr_is_method_value(id) {
-		method_value_name := t.resolve_receiver_method_name(new_base, node.value)
+		method_value_name := t.tc.resolved_call_name(id) or {
+			t.resolve_receiver_method_name(new_base, node.value)
+		}
 		if method_value_name.len > 0 {
 			// C generation emits the bound-method wrapper later. Keep its target
 			// live when reflection makes the enclosing body reachable late.
@@ -20168,7 +20172,7 @@ fn (mut t Transformer) transform_selector_expr(id flat.NodeId, node flat.Node) f
 	for nc in new_children {
 		t.a.children << nc
 	}
-	return t.a.add_node(flat.Node{
+	result := t.a.add_node(flat.Node{
 		kind:           .selector
 		op:             sel_op
 		children_start: start
@@ -20178,6 +20182,8 @@ fn (mut t Transformer) transform_selector_expr(id flat.NodeId, node flat.Node) f
 		typ:            sel_typ
 		payload:        flat.node_payload(selector_generic_params)
 	})
+	t.copy_cloned_resolution(id, result)
+	return result
 }
 
 // make_plain_selector_expr builds make plain selector expr data for transform.

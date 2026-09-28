@@ -8507,7 +8507,12 @@ fn (mut tc TypeChecker) resolve_call_info_uncached(id flat.NodeId, node flat.Nod
 		}
 		type_name := resolve_type_name_for_method(clean)
 		if type_name.len > 0 {
-			if method_name := tc.c_struct_receiver_method_name(clean, fn_node.value) {
+			method_name, ambiguous := tc.lookup_c_struct_receiver_method(clean, fn_node.value)
+			if ambiguous {
+				tc.record_error(.unknown_fn, 'ambiguous method `${fn_node.value}` on `${type_name}`', id)
+				return none
+			}
+			if method_name.len > 0 {
 				return tc.call_info(method_name, true)
 			}
 			if fn_node.value == 'str' && (clean is Primitive || clean is Char || clean is Rune) {
@@ -8937,28 +8942,36 @@ fn (tc &TypeChecker) builtin_receiver_method_call_info(base_type Type, method st
 }
 
 fn (tc &TypeChecker) c_struct_receiver_method_name(receiver Type, method string) ?string {
+	name, _ := tc.lookup_c_struct_receiver_method(receiver, method)
+	if name.len > 0 {
+		return name
+	}
+	return none
+}
+
+fn (tc &TypeChecker) lookup_c_struct_receiver_method(receiver Type, method string) (string, bool) {
 	unwrapped := unwrap_all_pointers(receiver)
 	clean := unalias_type(unwrapped)
 	if clean !is Struct {
-		return none
+		return '', false
 	}
 	receiver_name := (clean as Struct).name
 	if !receiver_name.starts_with('C.') {
-		return none
+		return '', false
 	}
 	if unwrapped is Alias {
 		for alias_method in receiver_method_name_candidates(unwrapped, method, tc.cur_module) {
 			if alias_method in tc.fn_ret_types {
-				return alias_method
+				return alias_method, false
 			}
 		}
-		return tc.c_struct_receiver_method_name(unwrapped.base_type, method)
+		return tc.lookup_c_struct_receiver_method(unwrapped.base_type, method)
 	}
 	keys := receiver_method_name_candidates(clean, method, tc.cur_module)
 	for key in keys {
 		local_key := checker_qualified_fn_name(tc.cur_module, key)
 		if local_key in tc.fn_ret_types {
-			return local_key
+			return local_key, false
 		}
 	}
 	// Escaped and plain spellings share the same visibility and ambiguity rules.
@@ -8997,12 +9010,12 @@ fn (tc &TypeChecker) c_struct_receiver_method_name(receiver Type, method string)
 		}
 	}
 	if visible.len == 1 {
-		return visible[0]
+		return visible[0], false
 	}
 	if visible.len == 0 && private_names.len == 1 {
-		return private_names[0]
+		return private_names[0], false
 	}
-	return none
+	return '', visible.len > 1
 }
 
 // c_backed_alias_method_name reports whether a resolved method belongs to a V alias of a C struct.
@@ -9166,7 +9179,12 @@ fn (mut tc TypeChecker) resolve_generic_call_info(id flat.NodeId, fn_node flat.N
 		clean := unwrap_pointer(base_type)
 		type_name := resolve_type_name_for_method(clean)
 		if type_name.len > 0 {
-			if method_name := tc.c_struct_receiver_method_name(clean, base_node.value) {
+			method_name, ambiguous := tc.lookup_c_struct_receiver_method(clean, base_node.value)
+			if ambiguous {
+				tc.record_error(.unknown_fn, 'ambiguous method `${base_node.value}` on `${type_name}`', id)
+				return none
+			}
+			if method_name.len > 0 {
 				if tc.explicit_generic_arg_count_mismatch(method_name, type_args, id) {
 					return tc.call_info(method_name, true)
 				}
@@ -18314,7 +18332,11 @@ fn (mut tc TypeChecker) check_pointer_receiver_method_value_safety(id flat.NodeI
 	if clean !is Struct || tc.type_has_declaration_attribute(clean, 'heap') {
 		return
 	}
-	for method_name in receiver_method_name_candidates(clean, node.value, tc.cur_module) {
+	mut method_names := receiver_method_name_candidates(clean, node.value, tc.cur_module)
+	if imported := tc.c_struct_receiver_method_name(base_type, node.value) {
+		method_names = [imported]
+	}
+	for method_name in method_names {
 		params := tc.fn_param_types[method_name] or { continue }
 		struct_name := method_name.all_before_last('.').all_after_last('.')
 		if params.len == 0 || unalias_type(params[0]) !is Pointer {
