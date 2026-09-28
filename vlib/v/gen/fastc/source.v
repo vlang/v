@@ -1428,17 +1428,22 @@ fn fastc_scan_source_header(source string, path string, prefs &pref.Preferences)
 	for tok != .eof {
 		if module_name == '' && tok == .attribute {
 			mut attribute_depth := 1
+			mut is_attribute_name := true
 			tok = scan.scan()
 			for attribute_depth > 0 && tok != .eof {
-				if tok == .name && scan.lit in ['has_globals', 'translated'] {
+				if attribute_depth == 1 && is_attribute_name && tok == .name
+					&& scan.lit in ['has_globals', 'translated'] {
 					has_globals = true
 					if scan.lit == 'translated' {
 						translated = true
 					}
 				}
-				if tok == .lsbr {
+				if attribute_depth == 1 {
+					is_attribute_name = tok == .semicolon
+				}
+				if tok in [.lsbr, .lpar, .lcbr, .attribute] {
 					attribute_depth++
-				} else if tok == .rsbr {
+				} else if tok in [.rsbr, .rpar, .rcbr] {
 					attribute_depth--
 				}
 				tok = scan.scan()

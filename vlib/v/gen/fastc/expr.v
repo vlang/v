@@ -1543,7 +1543,7 @@ fn (mut g Parser) validate_expression_stream_token(expression_tokens []FastcExpr
 		// undefined and may mask the count to the operand width instead.
 		return g.unsupported('shift expressions')
 	}
-	if !g.selfhost && !g.translated && g.tok in [.div, .div_assign, .mod, .mod_assign] {
+	if (!g.selfhost || g.translated) && g.tok in [.div, .div_assign, .mod, .mod_assign] {
 		// Integer division and modulo require V's runtime zero checks. This
 		// scanner-only lane has no type information to add them selectively.
 		return g.unsupported('division or modulo expressions')

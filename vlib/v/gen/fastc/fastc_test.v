@@ -3170,9 +3170,9 @@ fn test_translated_mutation_operators_and_receiver_shapes() {
 	root := os.join_path(os.vtmp_dir(), 'translated_mutation_matrix_${os.getpid()}')
 	os.mkdir_all(root)!
 	defer { os.rmdir_all(root) or {} }
-	operations := ['=7', '+=3', '-=3', '*=3', '/=2', '%=3', '&=3', '|=3', '^=3', '<<=1', '>>=1',
-		'>>>=1', '++', '--', '<<=64', '>>=64', '>>>=64']
-	expected := [7, 15, 9, 36, 6, 0, 0, 15, 15, 24, 6, 6, 13, 11, 0, 0, 0]
+	operations := ['=7', '+=3', '-=3', '*=3', '&=3', '|=3', '^=3', '<<=1', '>>=1', '>>>=1', '++',
+		'--', '<<=64', '>>=64', '>>>=64']
+	expected := [7, 15, 9, 36, 0, 15, 15, 24, 6, 6, 13, 11, 0, 0, 0]
 	for selfhost in [false, true] {
 		mut prefs := pref.new_preferences()
 		prefs.building_v = selfhost
@@ -13959,6 +13959,14 @@ fn write_pointer_call(value &i64) { *direct_pointer(value) = 7 }
 	checks << 'ShiftState state = {.value=4}; shift_calls=0; shift_once(&state); if (state.value != 0 || shift_calls != 2) return 3;'
 	checks << 'shift_calls=0; if (expression_once() != 0 || shift_calls != 2) return 4;'
 	checks << 'i64 cell = 0; write_pointer_call(&cell); if (cell != 7) return 5;'
+	for i, target in ['*value', '(*value)', '*direct_pointer(value)', '(*direct_pointer(value))'] {
+		for j, op in ['<<=', '>>=', '>>>='] {
+			name := 'deref_shift_${i}_${j}'
+			source += 'fn ${name}(value &i64, count int) { ${target} ${op} count }\n'
+			checks << 'cell=4; ${name}(&cell, 64); if (cell != 0) return 6;'
+			checks << 'cell=4; ${name}(&cell, 1); if (cell != ${if j == 0 { 8 } else { 2 }}) return 7;'
+		}
+	}
 	for selfhost in [false, true] {
 		prefs.building_v = selfhost
 		generated := generate(source, 'translated_shift_bounds.v', prefs) or { panic(err) }
@@ -13972,5 +13980,44 @@ fn write_pointer_call(value &i64) { *direct_pointer(value) = 7 }
 		assert compiled.exit_code == 0, compiled.output + '\n' + generated
 		ran := cmdexec.run(bin_file, [])
 		assert ran.exit_code == 0, ran.output
+	}
+}
+
+fn test_translated_fastc_division_keeps_checked_backend_fallback() {
+	for selfhost in [false, true] {
+		mut prefs := pref.new_preferences()
+		prefs.building_v = selfhost
+		for body in ['return value / count', 'return value % count', 'value /= count; return value',
+			'value %= count; return value', '*ptr /= count; return value',
+			'(*ptr) %= count; return value'] {
+			mut message := ''
+			_ := generate('@[translated]\nmodule main\nfn divide(value int, count int, ptr &int) int { ${body} }\n', 'translated_division.v', prefs) or {
+				message = err.msg()
+				''
+			}
+			assert message.contains('division or modulo expressions'), message
+		}
+	}
+}
+
+fn test_translated_header_marker_uses_attribute_names() {
+	prefs := pref.new_preferences()
+	for attribute in ['@[metadata: translated]', '@[metadata: has_globals]',
+		'@[metadata: [translated, has_globals]]', '@[metadata: "translated"]'] {
+		header := fastc_scan_source_header('${attribute}\nmodule main\n', 'attribute_values.v', prefs)!
+		assert !header.translated
+		assert !header.has_globals
+		mut message := ''
+		_ := generate('${attribute}\nmodule main\nfn main() { value := 1; value++ }\n', 'attribute_mutation.v', prefs) or {
+			message = err.msg()
+			''
+		}
+		assert message.contains('mutation of immutable'), message
+	}
+	for attribute in ['@[translated]', '@[metadata: "value"; translated]',
+		'@[metadata: [translated]; translated]'] {
+		header := fastc_scan_source_header('${attribute}\nmodule main\n', 'attribute_names.v', prefs)!
+		assert header.translated
+		assert header.has_globals
 	}
 }

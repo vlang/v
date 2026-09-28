@@ -1321,7 +1321,7 @@ fn (mut g Parser) parse_simple_statement() ! {
 				.right_shift_unsigned_assign] {
 				return g.unsupported('shift expressions')
 			}
-			if !g.selfhost && !g.translated && g.tok in [.div_assign, .mod_assign] {
+			if (!g.selfhost || g.translated) && g.tok in [.div_assign, .mod_assign] {
 				return g.unsupported('division or modulo expressions')
 			}
 			operator := g.tok
@@ -1486,18 +1486,7 @@ fn (mut g Parser) parse_simple_statement() ! {
 		}
 		g.consume_statement_end()
 		if g.translated {
-			mut translated_expression := expression
-			if assignment := g.render_assignment_expression(g.last_expression) {
-				translated_expression = assignment.source
-			}
-			if method_call := g.render_method_call_expression(g.last_expression, translated_expression) {
-				translated_expression = method_call.source
-			}
-			if pointer_member := g.render_pointer_member_access_expression(g.last_expression,
-				translated_expression) {
-				translated_expression = pointer_member.source
-			}
-			g.write_line('${translated_expression};')
+			g.write_line('${g.render_translated_statement_expression(g.last_expression, expression)};')
 			return
 		}
 		g.write_line('${expression};')
@@ -1518,7 +1507,11 @@ fn (mut g Parser) parse_simple_statement() ! {
 	}
 	if (g.selfhost || g.translated) && g.last_expression_is_statement() {
 		g.consume_statement_end()
-		g.write_line('${expression};')
+		if g.translated {
+			g.write_line('${g.render_translated_statement_expression(g.last_expression, expression)};')
+		} else {
+			g.write_line('${expression};')
+		}
 		return
 	}
 	if g.or_value_capture {
@@ -1527,6 +1520,20 @@ fn (mut g Parser) parse_simple_statement() ! {
 		return
 	}
 	return g.unsupported('value-only expression statement')
+}
+
+fn (g &Parser) render_translated_statement_expression(tokens []FastcExpressionToken, expression string) string {
+	mut rendered := expression
+	if assignment := g.render_assignment_expression(tokens) {
+		rendered = assignment.source
+	}
+	if method_call := g.render_method_call_expression(tokens, rendered) {
+		rendered = method_call.source
+	}
+	if pointer_member := g.render_pointer_member_access_expression(tokens, rendered) {
+		rendered = pointer_member.source
+	}
+	return rendered
 }
 
 fn (mut g Parser) parse_assert_statement() ! {
