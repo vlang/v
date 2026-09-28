@@ -194,7 +194,6 @@ const auto_complete_flags = [
 	'-trace-calls',
 	'-trace-fns',
 	'-manualfree',
-	'-skip-unused',
 	'-no-skip-unused',
 	'-compress',
 	'-freestanding',

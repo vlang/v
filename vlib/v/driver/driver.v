@@ -10057,9 +10057,6 @@ pub fn run(args []string) {
 			is_o = true
 			no_cache = true
 			i++
-		} else if args[i] == '-skip-unused' {
-			no_skip_unused = false
-			i++
 		} else if args[i] == '-no-memory-limit' || args[i] == '--no-memory-limit' {
 			no_memory_limit = true
 			i++
