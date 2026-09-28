@@ -2196,6 +2196,15 @@ fn (mut tc TypeChecker) check_node(id flat.NodeId) {
 				}
 			}
 		}
+		if node.kind == .infix && node.op == .left_shift && i == 1
+			&& tc.a.node(tc.unwrap_paren_expr_id(child_id)).kind in [.if_expr, .match_stmt] {
+			if lhs_array := array_type_from_receiver(tc.infix_read_type(tc.a.child(&node, 0))) {
+				if unalias_type(lhs_array.elem_type) is Enum {
+					infix_expected = lhs_array.elem_type
+					has_infix_expected = true
+				}
+			}
+		}
 		if node.kind == .infix && node.op in [.eq, .ne] && i == 1 {
 			lhs_type := unalias_type(tc.resolve_type(tc.a.child(&node, 0)))
 			if lhs_type is Array || lhs_type is ArrayFixed {
@@ -3643,6 +3652,12 @@ fn (mut tc TypeChecker) check_prefix_expr(id flat.NodeId, node flat.Node) {
 	if node.children_count == 0 {
 		return
 	}
+	if cast := tc.translated_pointer_cast_node(id, node) {
+		tc.check_cast_expr(id, cast)
+		tc.remember_expr_type(id, tc.parse_type(cast.value))
+		tc.remember_resolved_call(tc.a.child(&node, 0), cast.value)
+		return
+	}
 	child_id := tc.a.child(&node, 0)
 	child := tc.a.node(child_id)
 	if node.op == .minus && child.kind == .int_literal {
@@ -3687,10 +3702,10 @@ fn (mut tc TypeChecker) check_prefix_expr(id flat.NodeId, node flat.Node) {
 	if node.op == .amp && tc.node_source_starts_with(id, '&') && tc.unsafe_depth == 0
 		&& !tc.expr_is_inside_unsafe_block(id) && !tc.node_is_c_source(id) {
 		if fixed_array_id := tc.fixed_array_reference_ident(child_id) {
-			if tc.fixed_array_reference_is_const(fixed_array_id) {
-				// Fixed-array constants have static storage, so pointers to their
+			if tc.fixed_array_reference_has_static_storage(fixed_array_id) {
+				// Fixed-array globals and constants have static storage, so pointers to their
 				// elements do not escape a stack allocation.
-			} else if tc.expr_is_direct_call_argument(id) {
+			} else if tc.fixed_array_reference_is_call_borrow(id) {
 				// A pointer into a fixed array can be borrowed for the duration of
 				// a direct call; only storing or returning it risks escaping.
 			} else {
@@ -3871,11 +3886,38 @@ fn (mut tc TypeChecker) check_prefix_expr(id flat.NodeId, node flat.Node) {
 	tc.record_error_at(.assignment_mismatch, 'cannot take the address of ${display}', id, tc.address_operator_pos(id))
 }
 
-fn (tc &TypeChecker) fixed_array_reference_is_const(id flat.NodeId) bool {
+fn (tc &TypeChecker) fixed_array_reference_is_call_borrow(id flat.NodeId) bool {
+	mut current := id
+	for _ in 0 .. 64 {
+		if tc.expr_is_direct_call_argument(current) {
+			return true
+		}
+		parent_id := tc.direct_parent_id(current)
+		if !tc.valid_node_id(parent_id) {
+			return false
+		}
+		parent := tc.a.node(parent_id)
+		if parent.kind != .paren && !(parent.kind == .infix && parent.op in [.plus, .minus]) {
+			return false
+		}
+		current = parent_id
+	}
+	return false
+}
+
+fn (tc &TypeChecker) fixed_array_reference_has_static_storage(id flat.NodeId) bool {
 	if !tc.valid_node_id(id) {
 		return false
 	}
 	name := tc.a.node(id).value
+	if owner := tc.cur_scope.lookup_owner(name) {
+		if !tc.binding_owner_is_file_scope(owner) {
+			return false
+		}
+	}
+	if tc.ident_is_global_binding(name) {
+		return true
+	}
 	qname := tc.qualify_name(name)
 	typ := tc.const_types[qname] or { tc.const_types[name] or { return false } }
 	return typ is ArrayFixed
@@ -4117,6 +4159,25 @@ fn (mut tc TypeChecker) check_ownership_map_spread_clone(id flat.NodeId, node fl
 	}
 	if bad_type := tc.ownership_default_clone_missing_method(map_type.value_type) {
 		tc.record_error(.call_arg_mismatch, 'cannot clone map spread values: `${bad_type}` requires ownership destruction but has no `clone()` method', id)
+	}
+}
+
+fn (tc &TypeChecker) translated_pointer_cast_node(id flat.NodeId, node flat.Node) ?flat.Node {
+	if node.op != .amp || node.children_count != 1 {
+		return none
+	}
+	call_id := tc.a.child(&node, 0)
+	call := tc.a.node(call_id)
+	if call.kind != .call {
+		return none
+	}
+	type_name := tc.translated_named_cast_call_name(id, *call) or { return none }
+	return flat.Node{
+		...node
+		kind:           .cast_expr
+		value:          '&${type_name}'
+		children_start: call.children_start + 1
+		children_count: 1
 	}
 }
 
@@ -4463,7 +4524,8 @@ fn (mut tc TypeChecker) check_cast_expr(id flat.NodeId, node flat.Node) {
 		tc.record_error_at(.assignment_mismatch, 'cannot cast `${actual.name()}` to `${target.name()}`', id, node.pos)
 		return
 	}
-	if clean_target is Enum && infix_power_type_is_numeric(clean_actual) && tc.unsafe_depth == 0 {
+	if clean_target is Enum && infix_power_type_is_numeric(clean_actual) && tc.unsafe_depth == 0
+		&& !tc.node_is_in_translated_file(id) {
 		tc.record_error_at(.assignment_mismatch, 'casting numbers to enums, should be done inside `unsafe{}` blocks', id, node.pos)
 		return
 	}
@@ -4477,7 +4539,8 @@ fn (mut tc TypeChecker) check_cast_expr(id flat.NodeId, node flat.Node) {
 		return
 	}
 	if clean_target is Primitive && clean_target.props.has(.boolean) && !(clean_actual is Primitive
-		&& clean_actual.props.has(.boolean)) && tc.unsafe_depth == 0 {
+		&& clean_actual.props.has(.boolean)) && tc.unsafe_depth == 0
+		&& !(tc.node_is_in_translated_file(id) && infix_power_type_is_numeric(clean_actual)) {
 		tc.record_error_at(.assignment_mismatch, 'cannot cast to bool - use e.g. `some_int != 0` instead', id, node.pos)
 		return
 	}
@@ -4579,7 +4642,8 @@ fn (mut tc TypeChecker) check_cast_expr(id flat.NodeId, node flat.Node) {
 	}
 	if tc.interface_field_list(target_iface.name).any(it.is_mut) {
 		child := tc.a.node(child_id)
-		if actual !is Pointer && child.kind == .ident && !tc.ident_is_mutable_lvalue(child.value) {
+		if actual !is Pointer && child.kind == .ident && !tc.ident_is_mutable_lvalue(child.value)
+			&& !tc.interface_cast_is_readonly_receiver(id, child_id) {
 			tc.record_error_at(.assignment_mismatch, '`${child.value}` is immutable, declare it with `mut` to make it mutable', child_id, tc.node_value_diagnostic_pos(child_id))
 			return
 		}
@@ -4594,6 +4658,72 @@ fn (mut tc TypeChecker) check_cast_expr(id flat.NodeId, node flat.Node) {
 		|| tc.interface_pointer_target_cast_needs_heap_copy(target, actual, target_iface)) {
 		tc.warn_alloc('cast to interface', id, node.pos)
 	}
+}
+
+fn (tc &TypeChecker) interface_cast_is_readonly_receiver(id flat.NodeId, child_id flat.NodeId) bool {
+	_ := tc.smartcast_type(child_id) or { return false }
+	declared := tc.declared_receiver_expr_type(child_id) or { return false }
+	if unalias_and_unwrap_pointer_type(declared) !is Interface { return false }
+	mut receiver_id := id
+	mut selector_id := tc.direct_parent_id(receiver_id)
+	for tc.valid_node_id(selector_id) {
+		parent := tc.a.node(selector_id)
+		if parent.kind != .paren || parent.children_count != 1
+			|| tc.a.child(parent, 0) != receiver_id {
+			break
+		}
+		receiver_id = selector_id
+		selector_id = tc.direct_parent_id(receiver_id)
+	}
+	if !tc.valid_node_id(selector_id) { return false }
+	selector := tc.a.node(selector_id)
+	if selector.kind != .selector || selector.children_count == 0
+		|| tc.a.child(selector, 0) != receiver_id {
+		return false
+	}
+	call_id := tc.direct_parent_id(selector_id)
+	if !tc.valid_node_id(call_id) { return false }
+	call := tc.a.node(call_id)
+	if call.kind != .call || call.children_count == 0 || tc.a.child(call, 0) != selector_id {
+		return false
+	}
+	info := tc.resolve_call_info(call_id, *call) or { return false }
+	if !info.has_receiver || tc.call_param_is_mut(info, 0)
+		|| !readonly_interface_getter_scalar_type(info.return_type) {
+		return false
+	}
+	decl_module := tc.fn_type_modules[info.name] or { tc.cur_module }
+	decl := tc.visible_mutation_fn_decl(info.name, decl_module) or { return false }
+	fn_node := tc.a.node(flat.NodeId(decl.idx))
+	mut stack := []flat.NodeId{}
+	for i in 0 .. fn_node.children_count {
+		body_id := tc.a.child(fn_node, i)
+		if tc.a.node(body_id).kind != .param {
+			stack << body_id
+		}
+	}
+	mut returns := 0
+	for stack.len > 0 {
+		stmt_id := stack.pop()
+		stmt := tc.a.node(stmt_id)
+		if stmt.kind !in [.block, .return_stmt, .expr_stmt, .selector, .ident, .int_literal,
+			.float_literal, .char_literal] {
+			return false
+		}
+		if stmt.kind == .return_stmt {
+			returns++
+		}
+		for i in 0 .. stmt.children_count {
+			stack << tc.a.child(stmt, i)
+		}
+	}
+	return returns == 1
+}
+
+fn readonly_interface_getter_scalar_type(typ Type) bool {
+	clean := unalias_type(typ)
+	return clean is Primitive || clean is Char || clean is Rune || clean is ISize
+		|| clean is USize || clean is Enum
 }
 
 fn (tc &TypeChecker) smartcast_wrapper_cast_payload_compatible(child_id flat.NodeId, actual Type, target Type) bool {
@@ -5373,6 +5503,10 @@ fn (mut tc TypeChecker) check_cast_from_string(id flat.NodeId, node flat.Node, c
 	expr := tc.source_text_for_node(child_id)
 	clean_target := unalias_type(target)
 	target_name := if node.value.len > 0 { node.value } else { target.name() }
+	if clean_target is USize {
+		tc.record_error_at(.assignment_mismatch, 'cannot cast type `${actual.name()}` to `${target_name}`', id, node.pos)
+		return true
+	}
 	if clean_target is Primitive
 		&& (clean_target.props.has(.integer) || clean_target.props.has(.float)) {
 		if clean_target.props.has(.integer) && clean_target.props.has(.unsigned)
@@ -5815,6 +5949,9 @@ fn (mut tc TypeChecker) check_as_expr(id flat.NodeId, node flat.Node) {
 	}
 	child_id := tc.a.child(&node, 0)
 	tc.check_node(child_id)
+	if tc.expr_has_explicit_mut_marker(child_id) {
+		tc.check_lvalue_mutability(child_id)
+	}
 	child_type := tc.resolve_type(child_id)
 	if child_type is ResultType && tc.a.node(child_id).kind == .call {
 		tc.record_unhandled_result_call(child_id, child_type)
@@ -11484,13 +11621,28 @@ fn (mut tc TypeChecker) check_fn_literal(id flat.NodeId, node flat.Node) {
 		forbidden_captures.delete(name)
 	}
 	saved_fn_context := tc.fn_context
+	// Keep the pattern before the closure switches to its own condition bindings.
+	mut captured_interface_value_patterns := map[string]bool{}
+	for name, _ in explicit_captures {
+		for key, _ in tc.smartcasts {
+			if key == name || key.starts_with('${name}.') || key.starts_with('${name}[') {
+				captured_interface_value_patterns[key] = tc.interface_smartcast_uses_value_pattern_for_key(id, key)
+			}
+		}
+	}
 	mut captured_pointer_values := map[string][]string{}
+	mut captured_mut_params := map[string]Type{}
 	for i in 0 .. node.children_count {
 		capture := tc.a.child_node(&node, i)
 		if capture.kind != .ident || capture.value.len == 0 {
 			continue
 		}
 		capture_type := tc.cur_scope.lookup(capture.value) or { continue }
+		if capture.is_mut {
+			if base := tc.mut_param_base_for_current_ident(capture.value, capture_type) {
+				captured_mut_params[capture.value] = base
+			}
+		}
 		if unalias_type(capture_type) !is Pointer {
 			continue
 		}
@@ -11511,6 +11663,7 @@ fn (mut tc TypeChecker) check_fn_literal(id flat.NodeId, node flat.Node) {
 		clone_scope_binding_owner_map(saved_fn_context.method_value_local_owners)
 	tc.fn_context.method_value_local_depth = saved_fn_context.method_value_local_depth.clone()
 	tc.fn_context.closure_copy_owners = closure_copy_owners.clone()
+	tc.fn_context.captured_interface_value_patterns = captured_interface_value_patterns
 	tc.fn_context.closure_forbidden_captures = forbidden_captures.clone()
 	tc.fn_context.method_value_stack_mut_owners =
 		saved_fn_context.method_value_stack_mut_owners.clone()
@@ -11528,6 +11681,11 @@ fn (mut tc TypeChecker) check_fn_literal(id flat.NodeId, node flat.Node) {
 		if child.kind == .ident && (child.is_mut || child.typ == 'atomic') && child.value.len > 0 {
 			if owner := tc.cur_scope.lookup_owner(child.value) {
 				tc.fn_context.mut_local_owners[child.value] = owner
+				if base := captured_mut_params[child.value] {
+					// A captured mutable parameter retains its caller-owned reference.
+					tc.fn_context.mut_param_base_types[child.value] = base
+					tc.fn_context.mut_param_owners[child.value] = owner
+				}
 			}
 		}
 		if child.kind == .ident && child.typ == 'shared' && child.value.len > 0 {
@@ -14309,7 +14467,8 @@ fn (tc &TypeChecker) type_contains_mutable_reference_data(typ Type) bool {
 }
 
 fn (mut tc TypeChecker) check_mutable_alias_assignment_lhs(id flat.NodeId, rhs_id flat.NodeId) {
-	if tc.unsafe_depth > 0 || tc.expr_is_unsafe_reference_alias(rhs_id) || !tc.valid_node_id(id) {
+	if tc.unsafe_depth > 0 || tc.node_is_in_translated_file(id)
+		|| tc.expr_is_unsafe_reference_alias(rhs_id) || !tc.valid_node_id(id) {
 		return
 	}
 	node := tc.a.node(id)
@@ -14638,7 +14797,7 @@ fn (mut tc TypeChecker) call_returned_alias_arguments(id flat.NodeId, mut visiti
 		if node.kind == .return_stmt {
 			for i in 0 .. node.children_count {
 				returned_id := tc.a.child(node, i)
-				sources << tc.returned_alias_arguments(returned_id, args_by_param, mut visiting)
+				sources << tc.returned_alias_arguments(returned_id, args_by_param, false, mut visiting)
 			}
 			continue
 		}
@@ -14653,7 +14812,7 @@ fn (mut tc TypeChecker) call_returned_alias_arguments(id flat.NodeId, mut visiti
 	return sources
 }
 
-fn (mut tc TypeChecker) returned_alias_arguments(id flat.NodeId, args_by_param map[string]flat.NodeId, mut visiting map[int]bool) []flat.NodeId {
+fn (mut tc TypeChecker) returned_alias_arguments(id flat.NodeId, args_by_param map[string]flat.NodeId, addressed bool, mut visiting map[int]bool) []flat.NodeId {
 	if !tc.valid_node_id(id) {
 		return []flat.NodeId{}
 	}
@@ -14661,14 +14820,20 @@ fn (mut tc TypeChecker) returned_alias_arguments(id flat.NodeId, args_by_param m
 	if node.kind == .ident && node.value in args_by_param {
 		return [args_by_param[node.value]]
 	}
+	// Returning a stored pointer does not borrow the containing struct's storage.
+	// Taking the field's address still aliases that storage.
+	if node.kind == .selector && !addressed && unalias_type(tc.resolve_type(id)) is Pointer {
+		return []flat.NodeId{}
+	}
 	if node.kind in [.index, .selector, .prefix, .paren, .cast_expr, .as_expr, .expr_stmt]
 		&& node.children_count > 0 {
-		return tc.returned_alias_arguments(tc.a.child(node, 0), args_by_param, mut visiting)
+		return tc.returned_alias_arguments(tc.a.child(node, 0), args_by_param,
+			addressed || (node.kind == .prefix && node.op == .amp), mut visiting)
 	}
 	if node.kind == .call {
 		mut sources := []flat.NodeId{}
 		for source_id in tc.call_returned_alias_arguments(id, mut visiting) {
-			sources << tc.returned_alias_arguments(source_id, args_by_param, mut visiting)
+			sources << tc.returned_alias_arguments(source_id, args_by_param, addressed, mut visiting)
 		}
 		return sources
 	}
@@ -16904,10 +17069,10 @@ fn (mut tc TypeChecker) check_assign(id flat.NodeId, node flat.Node) {
 		if effective_lhs_node.kind == .prefix && effective_lhs_node.op == .mul
 			&& effective_lhs_node.children_count > 0 {
 			deref_child := tc.a.child_node(effective_lhs_node, 0)
-			if deref_child.kind == .call {
+			if deref_child.kind == .call && !assignment_is_translated {
 				tc.record_error_at(.assignment_mismatch, 'cannot dereference a function call on the left side of an assignment, use a temporary variable', effective_lhs_id, tc.prefix_operator_pos(effective_lhs_id, '*'))
 			}
-			if tc.unsafe_depth == 0 {
+			if tc.unsafe_depth == 0 && !assignment_is_translated {
 				tc.record_error_at(.assignment_mismatch, 'modifying variables via dereferencing can only be done in `unsafe` blocks', id, tc.assignment_operator_pos(node, lhs_id, rhs_id))
 			}
 		}
@@ -16937,8 +17102,8 @@ fn (mut tc TypeChecker) check_assign(id flat.NodeId, node flat.Node) {
 			tc.record_error_at(.assignment_mismatch, 'cannot mutate `${lhs_node.value}` in a non-mut smartcast, use `if mut ${lhs_node.value} ...`', lhs_id, tc.node_value_diagnostic_pos(lhs_id))
 		} else if unknown_assign_ident {
 			tc.record_error_at(.unknown_ident, 'undefined ident: `${lhs_node.value}` (use `:=` to declare a variable)', lhs_id, tc.node_value_diagnostic_pos(lhs_id))
-		} else if !assignment_is_translated {
-			tc.check_lvalue_mutability(lhs_id)
+		} else {
+			tc.check_lvalue_mutability_with_translated_rules(lhs_id, assignment_is_translated)
 		}
 		lhs_type := if unknown_assign_ident {
 			Type(void_)
