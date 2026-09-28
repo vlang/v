@@ -25,9 +25,16 @@ fn test_new_compiler_shared_library_exports_only_tagged_functions() {
 	defer {
 		os.rmdir_all(workdir) or {}
 	}
+	dep_src := os.join_path(workdir, 'dep.c')
+	dep_obj := os.join_path(workdir, 'dep.o')
+	os.write_file(dep_src, 'int mylib_direct_object_symbol(void) { return 7; }\n')!
+	dep_build := cmdexec.run('cc', ['-fPIC', '-c', dep_src, '-o', dep_obj])
+	assert dep_build.exit_code == 0, dep_build.output
 	lib_src := os.join_path(workdir, 'mylib.v')
 	os.write_file(lib_src, [
 		'module mylib',
+		'',
+		'#flag ${dep_obj}',
 		'',
 		'@[noinline]',
 		'fn helper(x int) int {',
@@ -63,9 +70,8 @@ fn test_new_compiler_shared_library_exports_only_tagged_functions() {
 		mode := if is_prod { 'prod' } else { 'debug' }
 		lib_out := os.join_path(workdir, 'libmylib_${mode}')
 		lib_so := '${lib_out}.so'
-		// Exercise native dependency objects and bundled archives with the default GC.
-		// TCC does not honor hidden visibility; exercise the system C compiler.
-		mut args := ['-new-compiler', '-nocache', '-cc', 'cc', '-shared']
+		// Exercise the default compiler choice and a directly linked native object.
+		mut args := ['-new-compiler', '-nocache', '-shared']
 		if is_prod {
 			args << '-prod'
 		}

@@ -2561,6 +2561,28 @@ fn v3_shared_object_compile_flags(flags []string, target_os string, is_shared bo
 	return result
 }
 
+fn v3_shared_exports_version_script(export_fn_names map[string]string) string {
+	mut names := export_fn_names.values()
+	names.sort()
+	mut script := strings.new_builder(64 + names.len * 32)
+	script.writeln('{')
+	if names.len > 0 {
+		script.writeln('  global:')
+		mut previous := ''
+		for name in names {
+			if name == previous {
+				continue
+			}
+			previous = name
+			escaped := name.replace('\\', '\\\\').replace('"', '\\"')
+			script.writeln('    "${escaped}";')
+		}
+	}
+	script.writeln('  local: *;')
+	script.writeln('};')
+	return script.str()
+}
+
 fn v3_c_compiler_flag_plan(options V3CCompilerFlagOptions) V3CCompilerFlagPlan {
 	mut before_inputs := options.environment_c_flags.clone()
 	before_inputs << options.target_args
@@ -6861,6 +6883,8 @@ struct V3BundledTccProbeOptions {
 	c_only              bool
 	is_prod             bool
 	is_c_debug          bool
+	is_shared           bool
+	is_liveshared       bool
 	c_compiler          string
 	c_compiler_explicit bool
 	dump_c_flags        bool
@@ -6884,6 +6908,9 @@ fn v3_should_probe_bundled_tcc(options V3BundledTccProbeOptions) bool {
 			options.c_compiler
 		}
 		return os.real_path(compiler_path) == os.real_path(options.bundled_tcc)
+	}
+	if options.is_shared && !options.is_liveshared && options.target.os == 'linux' {
+		return false
 	}
 	if options.dump_c_flags || (options.parallel_cc && options.target.os != 'windows') {
 		return false
@@ -9688,6 +9715,8 @@ pub fn run(args []string) {
 		c_only:              c_only
 		is_prod:             is_prod
 		is_c_debug:          is_c_debug
+		is_shared:           is_shared
+		is_liveshared:       is_liveshared
 		c_compiler:          c_compiler
 		c_compiler_explicit: c_compiler_explicit
 		dump_c_flags:        dump_c_flags.len > 0
@@ -9698,6 +9727,7 @@ pub fn run(args []string) {
 		bundled_tcc:         bundled_tcc
 	})
 	allow_system_tcc := backend == 'c' && !c_only && !is_prod && !is_c_debug && !c_compiler_explicit
+		&& !(is_shared && !is_liveshared && target.os == 'linux')
 		&& (!parallel_cc || target.os == 'windows') && target.os == host_target.os
 		&& target.arch == host_target.arch
 		&& v3_system_tcc_runtime_available(prefs.vroot, target.os)
@@ -12171,9 +12201,20 @@ pub fn run(args []string) {
 		} else {
 			''
 		}
+		mut shared_link_ld_flags := link_ld_flags.clone()
+		if is_shared && !is_liveshared && prefs.normalized_target_os() == 'linux'
+			&& !effective_tcc && !c_only {
+			exports_script := os.join_path_single(cc_dir, 'exports.map')
+			os.write_file(exports_script, v3_shared_exports_version_script(a.export_fn_names)) or {
+				eprintln('failed to write shared exports script ${exports_script}: ${err.msg()}')
+				cleanup_c_build_dir(cc_dir)
+				exit(1)
+			}
+			shared_link_ld_flags << '-Wl,--version-script,${exports_script}'
+		}
 		c_flag_options := V3CCompilerFlagOptions{
 			environment_c_flags: environment_c_flags
-			link_ld_flags:       link_ld_flags
+			link_ld_flags:       shared_link_ld_flags
 			target_args:         target_args
 			link_c_standard:     link_c_standard
 			dependencies:        resolved_c_flags

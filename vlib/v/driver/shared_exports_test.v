@@ -1,0 +1,41 @@
+module driver
+
+import v.pref
+
+fn test_linux_shared_build_skips_implicit_tcc() {
+	linux_target := pref.Target{
+		os:   'linux'
+		arch: 'amd64'
+	}
+	base := V3BundledTccProbeOptions{
+		backend:     'c'
+		c_compiler:  'cc'
+		host_os:     'linux'
+		host_target: linux_target
+		target:      linux_target
+		bundled_tcc: '/tmp/tcc.exe'
+		is_shared:   true
+	}
+	assert !v3_should_probe_bundled_tcc(base)
+	assert v3_should_probe_bundled_tcc(V3BundledTccProbeOptions{
+		...base
+		is_liveshared: true
+	})
+	assert v3_should_probe_bundled_tcc(V3BundledTccProbeOptions{
+		...base
+		c_compiler:          'tcc'
+		c_compiler_explicit: true
+	})
+}
+
+fn test_shared_exports_version_script_hides_unlisted_symbols() {
+	script := v3_shared_exports_version_script({
+		'mylib.compute':        'mylib_compute'
+		'mylib.private_export': 'mylib_private_export'
+	})
+	assert script.contains('"mylib_compute";')
+	assert script.contains('"mylib_private_export";')
+	assert script.contains('local: *;')
+	assert !script.contains('mylib.compute')
+	assert v3_shared_exports_version_script(map[string]string{}).contains('local: *;')
+}
