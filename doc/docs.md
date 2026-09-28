@@ -8791,7 +8791,7 @@ On macOS, including `Cocoa/Cocoa.h`, `AppKit/AppKit.h`, or `AppKit/NSFont.h` mak
 `C.NSFont` declaration refer to Cocoa's Objective-C class. Header availability checks and nested
 wrapper-header lookup use the compiler's include search paths, including its selected SDK.
 Wrapper headers can also declare `@class NSFont` directly. Function-like include macros are expanded
-before resolving their headers.
+before resolving their headers. Classes loaded by Clang's `-include-pch` are also recognized.
 
 ```v oksyntax
 struct C.NameOfTheStruct {

@@ -1,6 +1,7 @@
 module c
 
 import os
+import v.cmdexec
 import v.flat
 import v.pref
 import v.types
@@ -66,4 +67,37 @@ fn test_cocoa_wrappers_declare_nsfont_directly() {
 	g.c_flags = ['-x', 'objective-c', '-imacros', header]
 	g.preinclude_directives = []
 	assert g.header_c_struct_needs_compat_typedef('C.NSFont')
+}
+
+fn test_cocoa_precompiled_forced_headers_declare_nsfont() {
+	$if macos {
+		root := os.join_path(os.vtmp_dir(), 'v3_cocoa_pch_${os.getpid()}')
+		os.mkdir_all(root)!
+		defer { os.rmdir_all(root) or {} }
+		header := os.join_path(root, 'prefix header.h')
+		pch := os.join_path(root, 'prefix header.pch')
+		mut g := cocoa_declaration_test_gen()
+		g.target = pref.host_target()
+		g.ccompiler = 'clang'
+		g.c_flags = ['-x', 'objective-c', '-include-pch', pch]
+		for source, provides_font in {
+			'@class NSFont;':                          true
+			'#if ENABLE_FONT\n@class NSFont;\n#endif': true
+			'@interface NSFont
+@end':                  true
+			'@class NSFontDescriptor;':                false
+			'#if 0
+@class NSFont;
+#endif':             false
+		} {
+			os.write_file(header, source + '
+')!
+			compiled := cmdexec.run('clang', ['-DENABLE_FONT=1', '-x', 'objective-c-header', header,
+				'-o', pch])
+			assert compiled.exit_code == 0, compiled.output
+			assert g.header_c_struct_needs_compat_typedef('C.NSFont') == !provides_font, source
+		}
+		g.c_flags = ['-x', 'objective-c', '-include-pch', os.join_path(root, 'missing.pch')]
+		assert g.header_c_struct_needs_compat_typedef('C.NSFont')
+	}
 }

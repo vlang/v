@@ -6074,7 +6074,37 @@ fn c_header_text_needs_objective_c_for_target(text string, flags []string, c99_m
 }
 
 fn c_header_text_has_cocoa_nsfont_include_for_target(text string, flags []string, c99_mode bool, target pref.Target, vroot string, source_file string, native_language string, ccompiler string) bool {
+	if c_forced_precompiled_header_has_nsfont(flags, ccompiler) { return true }
 	return c_header_text_objective_c_scan_for_target(text, flags, c99_mode, target, true, vroot, source_file, native_language, ccompiler)
+}
+
+fn c_forced_precompiled_header_has_nsfont(flags []string, ccompiler string) bool {
+	mut inputs := []string{}
+	for i, flag in flags {
+		if flag == '-include-pch' && i + 1 < flags.len {
+			inputs << flags[i + 1].trim('"\'')
+		}
+	}
+	if inputs.len == 0 { return false }
+	compiler := if ccompiler.len > 0 { ccompiler } else { 'cc' }
+	parts := cmdexec.split_args(compiler) or { return false }
+	if parts.len == 0 { return false }
+	for path in inputs {
+		if !os.is_file(path) { continue }
+		mut args := parts[1..].clone()
+		// Read the serialized AST in its original language/target environment.
+		// Scanning the original source would reevaluate its guards with today's flags.
+		args << ['-fsyntax-only', '-fno-color-diagnostics', '-Xclang', '-ast-dump', '-Xclang',
+			'-ast-dump-filter=NSFont', '-x', 'ast', os.real_path(path)]
+		probe := cmdexec.run_with_timeout(parts[0], args, 5000)
+		if probe.exit_code != 0 { continue }
+		for line in probe.output.split_into_lines() {
+			if line.starts_with('ObjCInterfaceDecl ') && 'NSFont' in line.fields() {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 struct CHeaderScanLine {
