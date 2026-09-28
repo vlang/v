@@ -3211,6 +3211,121 @@ fn (mut cache V3MacosSdkRootCache) get() string {
 	return cache.root
 }
 
+fn v3_shared_object_compile_flags(flags []string, target_os string, is_shared bool, is_liveshared bool) []string {
+	mut result := flags.clone()
+	if is_shared && !is_liveshared && target_os in ['linux', 'macos']
+		&& '-fvisibility=hidden' !in result {
+		result << '-fvisibility=hidden'
+	}
+	return result
+}
+
+fn v3_exported_global_names(a &flat.FlatAst) []string {
+	mut names := map[string]bool{}
+	for node in a.nodes {
+		if node.kind != .directive || !node.value.starts_with('@attributes:') {
+			continue
+		}
+		target_idx := node.value['@attributes:'.len..].int()
+		if target_idx < 0 || target_idx >= a.nodes.len {
+			continue
+		}
+		target := a.nodes[target_idx]
+		if target.kind != .global_decl {
+			continue
+		}
+		mut exported := false
+		mut abi_name := ''
+		for raw_attr in node.generic_params() {
+			if raw_attr.all_before(':').trim_space() != 'export' {
+				continue
+			}
+			exported = true
+			if raw_attr.contains(':') {
+				abi_name = raw_attr.all_after(':').trim_space().trim('\'"')
+			}
+		}
+		if !exported {
+			continue
+		}
+		for i in 0 .. target.children_count {
+			field := a.child_node(&target, i)
+			raw_name := field.value.trim_string_left('C.')
+			name := if abi_name.len > 0 { abi_name } else { raw_name }
+			if name.len > 0 {
+				names[name] = true
+			}
+		}
+	}
+	mut result := names.keys()
+	result.sort()
+	return result
+}
+
+fn v3_shared_exports_version_script(export_fn_names map[string]string, export_global_names []string) string {
+	mut names := export_fn_names.values()
+	names << export_global_names
+	names.sort()
+	mut script := strings.new_builder(64 + names.len * 32)
+	script.writeln('{')
+	if names.len > 0 {
+		script.writeln('  global:')
+		mut previous := ''
+		for name in names {
+			if name == previous {
+				continue
+			}
+			previous = name
+			escaped := name.replace('\\', '\\\\').replace('"', '\\"')
+			script.writeln('    "${escaped}";')
+		}
+	}
+	script.writeln('  local: *;')
+	script.writeln('};')
+	return script.str()
+}
+
+fn v3_has_linker_version_script(flags []string) bool {
+	return flags.any(it.contains('--version-script'))
+}
+
+// v3_shared_library_exports_interface_table reports whether cgen emits the
+// `_v_interface_exports` table of a shared library (see
+// `FlatGen.shared_exports_interface_table`): it does for every interface other
+// than `IError`, and `dl.open` looks the table up in the loaded library.
+fn v3_shared_library_exports_interface_table(a &flat.FlatAst) bool {
+	mut cur_module := 'main'
+	for node in a.nodes {
+		match node.kind {
+			.file {
+				cur_module = 'main'
+			}
+			.module_decl {
+				cur_module = node.value
+			}
+			.interface_decl {
+				is_ierror := node.value == 'builtin.IError'
+					|| (node.value == 'IError' && cur_module in ['', 'main', 'builtin'])
+				if !is_ierror {
+					return true
+				}
+			}
+			else {}
+		}
+	}
+	return false
+}
+
+// v3_shared_exports_data_names returns the data symbols that a shared library
+// exports besides its `@[export]` functions.
+fn v3_shared_exports_data_names(a &flat.FlatAst) []string {
+	mut names := v3_exported_global_names(a)
+	if v3_shared_library_exports_interface_table(a) {
+		names << '_v_interface_exports'
+	}
+	return names
+}
+
 fn v3_c_compiler_flag_plan(options V3CCompilerFlagOptions) V3CCompilerFlagPlan {
 	mut before_inputs := options.environment_c_flags.clone()
 	before_inputs << options.target_args
@@ -7612,6 +7727,8 @@ struct V3BundledTccProbeOptions {
 	c_only              bool
 	is_prod             bool
 	is_c_debug          bool
+	is_shared           bool
+	is_liveshared       bool
 	c_compiler          string
 	c_compiler_explicit bool
 	dump_c_flags        bool
@@ -7635,6 +7752,9 @@ fn v3_should_probe_bundled_tcc(options V3BundledTccProbeOptions) bool {
 			options.c_compiler
 		}
 		return os.real_path(compiler_path) == os.real_path(options.bundled_tcc)
+	}
+	if options.is_shared && !options.is_liveshared && options.target.os == 'linux' {
+		return false
 	}
 	if options.dump_c_flags || (options.parallel_cc && options.target.os != 'windows') {
 		return false
@@ -7773,6 +7893,7 @@ fn v3_select_c_compiler(vroot string, requested V3BundledTccProbeOptions) V3CCom
 	bundled_tcc_available := v3_bundled_tcc_available(options)
 	allow_system_tcc := options.backend == 'c' && !options.c_only && !options.is_prod
 		&& !options.is_c_debug && !options.c_compiler_explicit
+		&& !(options.is_shared && !options.is_liveshared && options.target.os == 'linux')
 		&& (!options.parallel_cc || options.target.os == 'windows')
 		&& options.target.os == options.host_target.os
 		&& options.target.arch == options.host_target.arch
@@ -10594,6 +10715,8 @@ pub fn run(args []string) {
 		c_only:              c_only
 		is_prod:             is_prod
 		is_c_debug:          is_c_debug
+		is_shared:           is_shared
+		is_liveshared:       is_liveshared
 		c_compiler:          c_compiler
 		c_compiler_explicit: c_compiler_explicit
 		dump_c_flags:        dump_c_flags.len > 0
@@ -13180,7 +13303,9 @@ pub fn run(args []string) {
 			generated_c_flags.clone()
 		}
 		if !c_only || (dump_c_flags.len > 0 && generate_c_project.len == 0) {
-			object_optimization_flags := v3_prod_c_object_optimization_flags(is_prod, no_prod_options, is_shared, parallel_cc, effective_tcc)
+			object_optimization_flags := v3_shared_object_compile_flags(v3_prod_c_object_optimization_flags(is_prod,
+				no_prod_options, is_shared, parallel_cc, effective_tcc), prefs.normalized_target_os(),
+				is_shared, is_liveshared)
 			mut primary_object_compiler_flags := []string{}
 			if effective_tcc {
 				object_tcc_sdk_root := if prefs.normalized_target_os() == 'macos' {
@@ -13222,14 +13347,32 @@ pub fn run(args []string) {
 			}
 			b.step('C object cache')
 		}
+		resolved_c_flags = v3_shared_object_compile_flags(resolved_c_flags, prefs.normalized_target_os(),
+			is_shared, is_liveshared)
 		flag_plan_sdk_root := if effective_tcc && prefs.normalized_target_os() == 'macos' {
 			macos_sdk_root_cache.get()
 		} else {
 			''
 		}
+		mut shared_link_ld_flags := link_ld_flags.clone()
+		if is_shared && !is_liveshared && prefs.normalized_target_os() == 'linux'
+			&& !effective_tcc && (!c_only || generate_c_project.len > 0)
+			&& !v3_has_linker_version_script(resolved_c_flags)
+			&& !v3_has_linker_version_script(environment_c_flags)
+			&& !v3_has_linker_version_script(link_ld_flags) {
+			exports_dir := if generate_c_project.len > 0 { generate_c_project } else { cc_dir }
+			exports_script := os.join_path_single(exports_dir, 'exports.map')
+			os.write_file(exports_script, v3_shared_exports_version_script(a.export_fn_names,
+				v3_shared_exports_data_names(a))) or {
+				eprintln('failed to write shared exports script ${exports_script}: ${err.msg()}')
+				cleanup_c_build_dir(cc_dir)
+				exit(1)
+			}
+			shared_link_ld_flags << '-Wl,--version-script,${exports_script}'
+		}
 		c_flag_options := V3CCompilerFlagOptions{
 			environment_c_flags: environment_c_flags
-			link_ld_flags:       link_ld_flags
+			link_ld_flags:       shared_link_ld_flags
 			target_args:         target_args
 			link_c_standard:     link_c_standard
 			dependencies:        resolved_c_flags

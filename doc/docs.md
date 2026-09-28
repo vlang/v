@@ -9451,6 +9451,9 @@ fn foo() {
 }
 ```
 
+The same `@[export]` attribute exposes a `__global` variable from a shared library,
+including builds that hide other symbols by default.
+
 When compiling a Windows DLL with `-shared`, V generates a default `DllMain`
 that calls `_vinit_caller()` on `DLL_PROCESS_ATTACH` and `_vcleanup_caller()`
 on `DLL_PROCESS_DETACH`.
