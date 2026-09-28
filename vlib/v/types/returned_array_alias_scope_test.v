@@ -91,3 +91,30 @@ fn test_multi_return_function_value_shadows_fresh_top_level_helper() {
 	assert result.exit_code != 0, result.output
 	assert result.output.contains('immutable'), result.output
 }
+
+fn test_if_guard_function_value_shadows_fresh_top_level_helper() {
+	path := os.join_path(os.vtmp_dir(), 'v3_return_alias_if_guard_fn_${os.getpid()}.v')
+	os.write_file(path, 'type Mapper = fn ([]int) []int\nfn helper(values []int) []int { return values.clone() }\nfn passthrough(values []int) []int { return values }\nfn maybe_helper() ?Mapper { return passthrough }\nfn nested(values []int) []int { if helper := maybe_helper() { return helper(values) }; return values.clone() }\nfn main() { original := [1, 2]; mut alias := nested(original); alias[0] = 9 }\n')!
+	defer { os.rm(path) or {} }
+	result := os.execute('${os.quoted_path(@VEXE)} -new-compiler -check ${os.quoted_path(path)}')
+	assert result.exit_code != 0, result.output
+	assert result.output.contains('immutable'), result.output
+}
+
+fn test_if_smartcast_function_value_shadows_fresh_top_level_helper() {
+	path := os.join_path(os.vtmp_dir(), 'v3_return_alias_if_smartcast_fn_${os.getpid()}.v')
+	os.write_file(path, 'type Mapper = fn ([]int) []int\ntype MapperOrInt = Mapper | int\nfn helper(values []int) []int { return values.clone() }\nfn passthrough(values []int) []int { return values }\nfn nested(values []int, helper MapperOrInt) []int { if helper is Mapper { return helper(values) }; return values.clone() }\nfn main() { original := [1, 2]; mut alias := nested(original, MapperOrInt(passthrough)); alias[0] = 9 }\n')!
+	defer { os.rm(path) or {} }
+	result := os.execute('${os.quoted_path(@VEXE)} -new-compiler -check ${os.quoted_path(path)}')
+	assert result.exit_code != 0, result.output
+	assert result.output.contains('immutable'), result.output
+}
+
+fn test_match_smartcast_function_value_shadows_fresh_top_level_helper() {
+	path := os.join_path(os.vtmp_dir(), 'v3_return_alias_match_smartcast_fn_${os.getpid()}.v')
+	os.write_file(path, 'type Mapper = fn ([]int) []int\ntype MapperOrInt = Mapper | int\nfn helper(values []int) []int { return values.clone() }\nfn passthrough(values []int) []int { return values }\nfn nested(values []int, helper MapperOrInt) []int { match helper { Mapper { return helper(values) } else {} }; return values.clone() }\nfn main() { original := [1, 2]; mut alias := nested(original, MapperOrInt(passthrough)); alias[0] = 9 }\n')!
+	defer { os.rm(path) or {} }
+	result := os.execute('${os.quoted_path(@VEXE)} -new-compiler -check ${os.quoted_path(path)}')
+	assert result.exit_code != 0, result.output
+	assert result.output.contains('immutable'), result.output
+}

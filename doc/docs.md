@@ -3213,6 +3213,8 @@ are a function of their arguments only, and their evaluation has no side effects
 (unless the function uses I/O).
 
 Function arguments are immutable by default, even when [references](#references) are passed.
+An array returned from an immutable argument remains immutable, including when returned through
+a local function value or a narrowed `if` or `match` branch. Use `.clone()` for a mutable copy.
 
 > [!NOTE]
 > However, V is not a purely functional language.
