@@ -27,6 +27,11 @@ mut:
 type NestedMapVariant = int | []NestedMapVariant
 type NestedAppendWords = []string
 
+struct NestedAppendBorrowedHolder {
+mut:
+	words []string
+}
+
 fn (mut c NestedMapKeyCounter) key(k string) string {
 	c.n++
 	return k
@@ -505,4 +510,20 @@ fn test_nested_compound_releases_staged_owned_string_rhs() {
 	words['a']['b'] += make_nested_compound_word()
 	words['a']['b'] += make_nested_compound_word()
 	assert words['a']['b'] == 'suffixsuffix'
+}
+
+fn nested_append_borrowed_words(mut holder NestedAppendBorrowedHolder) map[string]map[string][]string {
+	mut nested := map[string]map[string][]string{}
+	nested['a']['b'] << holder.words
+	return nested
+}
+
+fn test_nested_append_clones_borrowed_projection() {
+	mut holder := NestedAppendBorrowedHolder{
+		words: ['borrowed-a'.clone(), 'borrowed-b'.clone()]
+	}
+	nested := nested_append_borrowed_words(mut holder)
+	holder.words[0] = 'source-changed'.clone()
+	assert holder.words == ['source-changed', 'borrowed-b']
+	assert nested['a']['b'] == ['borrowed-a', 'borrowed-b']
 }

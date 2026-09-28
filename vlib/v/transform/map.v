@@ -3217,7 +3217,14 @@ fn (mut t Transformer) lower_map_index_append_with_info_and_prelude(info MapInde
 				&& t.tc.ownership_type_requires_destruction(t.tc.parse_type(staged_rhs_type))
 				&& (t.tc.ownership_expr_creates_owned_value(rhs_id)
 					|| (rhs_node.kind == .call && !t.expr_can_take_address(rhs_id))))
-		rhs := t.transform_expr(rhs_id)
+		mut rhs := t.transform_expr(rhs_id)
+		rhs_array_type := t.normalize_type_alias(staged_rhs_type)
+		if rhs_array_type.starts_with('[]') {
+			cloned_rhs, borrowed_clone := t.clone_borrowed_array_append_many_value(rhs_id,
+				rhs, staged_rhs_type, rhs_array_type[2..])
+			rhs = cloned_rhs
+			staged_rhs_is_owned = staged_rhs_is_owned || borrowed_clone
+		}
 		t.drain_pending(mut result)
 		staged_rhs_name = t.new_temp('map_append_rhs')
 		result << t.make_decl_assign_typed(staged_rhs_name, rhs, staged_rhs_type)
