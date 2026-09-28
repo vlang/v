@@ -662,3 +662,18 @@ fn test_node_cache_reset_drops_stale_fn_values() {
 	tc.reset_node_caches(8)
 	assert tc.resolved_fn_value_name(3) == none
 }
+
+fn test_caller_type_name_qualification_preserves_enclosing_generic_parameters() {
+	mut a := flat.FlatAst.new()
+	id := a.add_val(.ident, 'T')
+	mut tc := TypeChecker.new(&a)
+	tc.structs['consumer.T'] = []StructField{}
+	tc.structs['consumer.Payload'] = []StructField{}
+	tc.cur_module = 'unrelated'
+	tc.enclosing_generic_param_masks = []u32{len: a.nodes.len, init: u32(1) << u32(`T` - `A`)}
+	assert tc.qualify_type_name_at('T', id, 'consumer') == 'T'
+	assert tc.qualify_type_name_at('Payload', id, 'consumer') == 'consumer.Payload'
+	assert tc.qualify_type_name_at('int', id, 'consumer') == 'int'
+	assert tc.qualify_type_name_at('UnknownName', id, 'consumer') == 'UnknownName'
+	assert tc.cur_module == 'unrelated'
+}

@@ -259,14 +259,27 @@ fn test_periodic_handle_stop_before_first_iteration() {
 }
 
 fn test_periodic_handle_stop_between_ticks() {
-	ticks := chan bool{cap: 2}
+	ticks := chan bool{cap: 1}
 	mut handle := xasync.start_every(context.background(), 5 * time.millisecond, fn [ticks] (mut ctx context.Context) ! {
 		_ = ctx
-		ticks <- true
+		// A blocking send would stall the loop, and so wait(), once ticks queue up.
+		select {
+			ticks <- true {
+			}
+			else {
+			}
+		}
 	})!
 	wait_for_periodic_entry(ticks)
 	handle.stop()
 	handle.wait()!
+	// A tick may land between reading the first one and stop(); only later ones count.
+	select {
+		_ := <-ticks {
+		}
+		else {
+		}
+	}
 	assert_no_periodic_signal(ticks, 'periodic handle ticked again after stop and wait')
 }
 

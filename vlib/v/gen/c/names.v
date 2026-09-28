@@ -3,6 +3,7 @@ module c
 import strings
 import v.gen.c.naming
 import v.types
+import v.util
 
 // c_name converts c name data for c.
 fn c_name(name string) string {
@@ -263,6 +264,8 @@ fn (mut c ContextStringLookupCache) select_context(file string, module_name stri
 }
 
 fn (mut g FlatGen) reset_context_lookup_caches() {
+	g.import_key_cache = &util.KeyRecentCache{}
+	g.selective_import_key_cache = &util.KeyRecentCache{}
 	g.import_alias_cache = &ContextStringLookupCache{}
 	g.enum_selector_cache = &ContextStringLookupCache{}
 	g.enum_method_cache = &ContextStringLookupCache{}
