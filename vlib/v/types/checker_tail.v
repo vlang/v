@@ -8951,12 +8951,44 @@ fn (tc &TypeChecker) c_struct_receiver_method_name(receiver Type, method string)
 		return local_key
 	}
 	// C type names do not include the V module declaring their methods.
-	// Only an unambiguous complete receiver name can cross that boundary.
+	// Only an unambiguous method visible from this file can cross that boundary.
 	name := tc.receiver_method_suffix_index[key] or { return none }
-	if name == receiver_method_suffix_ambiguous || name !in tc.fn_ret_types {
+	if name != receiver_method_suffix_ambiguous {
+		if name in tc.fn_ret_types && tc.c_struct_method_module_visible(name) {
+			return name
+		}
 		return none
 	}
-	return name
+	mut visible := ''
+	for candidate, _ in tc.fn_ret_types {
+		if candidate.ends_with('.${key}') && tc.c_struct_method_module_visible(candidate) {
+			if visible.len > 0 {
+				return none
+			}
+			visible = candidate
+		}
+	}
+	if visible.len > 0 {
+		return visible
+	}
+	return none
+}
+
+fn (tc &TypeChecker) c_struct_method_module_visible(name string) bool {
+	module_name := name.all_before('.C.')
+	if module_name in [tc.cur_module, 'builtin'] {
+		return true
+	}
+	info := tc.current_file_import_info()
+	if isnil(info) {
+		return false
+	}
+	for _, module_path in info.imports {
+		if module_name == module_path || module_name == module_path.all_after_last('.') {
+			return true
+		}
+	}
+	return false
 }
 
 fn builtin_receiver_method_type_name(clean Type) string {
@@ -9089,6 +9121,15 @@ fn (mut tc TypeChecker) resolve_generic_call_info(id flat.NodeId, fn_node flat.N
 		clean := unwrap_pointer(base_type)
 		type_name := resolve_type_name_for_method(clean)
 		if type_name.len > 0 {
+			if method_name := tc.c_struct_receiver_method_name(clean, base_node.value) {
+				if tc.explicit_generic_arg_count_mismatch(method_name, type_args, id) {
+					return tc.call_info(method_name, true)
+				}
+				if info := tc.explicit_generic_call_info(method_name, true, type_args) {
+					return info
+				}
+				return tc.call_info(method_name, true)
+			}
 			call_name := '${type_name}.${base_node.value}'
 			if call_name in tc.fn_ret_types {
 				if tc.explicit_generic_arg_count_mismatch(call_name, type_args, id) {

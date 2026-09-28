@@ -20,6 +20,9 @@ pub fn make_holder() Holder {
 // read returns the wrapped value.
 pub fn (c C.Counter) read() int { return c.value }
 
+// convert demonstrates explicit generic calls on an imported C receiver.
+pub fn (c C.Counter) convert[T](marker T) int { return c.value }
+
 // next returns the same C value through an option.
 pub fn (c C.Counter) next() ?C.Counter { return c }
 

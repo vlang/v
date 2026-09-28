@@ -6,6 +6,7 @@ fn test_c_receiver_method_lookup_keeps_module_visibility_and_ambiguity_checks() 
 	root := os.join_path(os.vtmp_dir(), 'v3_c_receiver_methods_${os.getpid()}')
 	os.mkdir_all(os.join_path(root, 'left'))!
 	os.mkdir_all(os.join_path(root, 'right'))!
+	os.mkdir_all(os.join_path(root, 'facade'))!
 	defer { os.rmdir_all(root) or {} }
 	os.write_file(os.join_path(root, 'v.mod'), "Module { name: 'c_receivers' }\n")!
 	os.write_file(os.join_path(root, 'left', 'left.c.v'), 'module left
@@ -25,6 +26,7 @@ fn main() { println(left.make_holder().value.private_read()) }
 	os.write_file(os.join_path(root, 'right', 'right.c.v'), 'module right
 pub struct C.Counter { value int }
 pub fn (c C.Counter) read() int { return 3 }
+pub fn (c C.Counter) secret_read() int { return 4 }
 pub fn used() {}
 ')!
 	os.write_file(os.join_path(root, 'main.v'), 'module main
@@ -35,4 +37,12 @@ fn main() { right.used(); println(left.make_holder().value.read()) }
 	ambiguous := os.execute('${os.quoted_path(@VEXE)} -check ${os.quoted_path(root)}')
 	assert ambiguous.exit_code != 0, ambiguous.output
 	assert ambiguous.output.contains('unknown function') || ambiguous.output.contains('unknown method'), ambiguous.output
+	os.write_file(os.join_path(root, 'facade', 'facade.v'), 'module facade\nimport right\npub fn used() { right.used() }\n')!
+	os.write_file(os.join_path(root, 'main.v'), 'module main\nimport left\nimport facade\nfn main() { facade.used(); println(left.make_holder().value.read()) }\n')!
+	visible := os.execute('${os.quoted_path(@VEXE)} -check ${os.quoted_path(root)}')
+	assert visible.exit_code == 0, visible.output
+	os.write_file(os.join_path(root, 'main.v'), 'module main\nimport left\nimport facade\nfn main() { facade.used(); println(left.make_holder().value.secret_read()) }\n')!
+	hidden := os.execute('${os.quoted_path(@VEXE)} -check ${os.quoted_path(root)}')
+	assert hidden.exit_code != 0, hidden.output
+	assert hidden.output.contains('unknown function') || hidden.output.contains('unknown method'), hidden.output
 }
