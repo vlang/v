@@ -113,8 +113,7 @@ pub fn compose_candidate_for_execution(automation_root string, request Candidate
 		request.target_id, manifest_hash)!
 	move_composed_candidate_head(candidate_root, request.base_sha, candidate_sha)!
 	validate_candidate_repository(candidate_root, request.base_sha, candidate_sha)!
-	observed_tree := successful_candidate_git(candidate_root, ['rev-parse',
-		'${candidate_sha}^{tree}'], 'composed candidate tree cannot be resolved')!.trim_space()
+	observed_tree := successful_candidate_git(candidate_root, ['rev-parse', '${candidate_sha}^{tree}'], 'composed candidate tree cannot be resolved')!.trim_space()
 	if observed_tree != desired_tree {
 		return error('composed candidate commit tree differs from the exact desired tree')
 	}
@@ -171,9 +170,8 @@ fn validate_candidate_composition_roots(automation_root string,
 		return error('candidate composition result root must not already exist')
 	}
 	contract_root := canonical_contract_root(os.join_path(automation_root, '..', '..'))!
-	for pair in [[base_root, raw_root], [base_root, result_root],
-		[raw_root, result_root], [contract_root, base_root], [contract_root, raw_root],
-		[contract_root, result_root]] {
+	for pair in [[base_root, raw_root], [base_root, result_root], [raw_root, result_root],
+		[contract_root, base_root], [contract_root, raw_root], [contract_root, result_root]] {
 		if roots_overlap(pair[0], pair[1]) {
 			return error('candidate composition roots must be physically separate')
 		}

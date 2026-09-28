@@ -6,23 +6,29 @@ import os
 import os.cmdline
 import v.pref
 import v.parser
-import v.ast
+import v.flat
 import v.help
+import v.token
 import term
 import arrays
 
+// Files are visited sequentially. Keep diagnostics and analysis state directly
+// reachable from this GC-managed object while later files are parsed.
 @[heap]
 struct Vet {
 mut:
 	opt            Options
-	errors         shared []VetError
-	warns          shared []VetError
-	notices        shared []VetError
+	errors         []VetError
+	warns          []VetError
+	notices        []VetError
 	file           string
 	mod            string
 	filtered_lines FilteredLines
 	analyze        VetAnalyze
 	regex_vars     map[string]bool
+	string_vars    map[string]bool
+	a              &flat.FlatAst = unsafe { nil }
+	source         string
 }
 
 struct Options {
@@ -106,10 +112,8 @@ fn main() {
 		eprintln(vt.e2string(err))
 	}
 	if vfmt_err_count > 0 {
-		rlock vt.errors {
-			filtered_out := arrays.distinct(vt.errors.map(it.file_path))
-			eprintln('Note: You can run `v fmt -w ${filtered_out.join(' ')}` to fix these errors automatically')
-		}
+		filtered_out := arrays.distinct(vt.errors.map(it.file_path))
+		eprintln('Note: You can run `v fmt -w ${filtered_out.join(' ')}` to fix these errors automatically')
 	}
 	if vt.errors.len > 0 {
 		exit(1)
@@ -120,14 +124,36 @@ fn main() {
 fn (mut vt Vet) vet_file(path string) {
 	vt.file = path
 	mut prefs := pref.new_preferences()
-	prefs.is_vet = true
-	prefs.is_vsh = path.ends_with('.vsh')
-	mut table := ast.new_table()
+	prefs.is_fmt = true
 	vt.vprintln("vetting file '${path}'...")
-	file := parser.parse_file(path, mut table, .parse_comments, prefs)
-	vt.mod = file.mod.name
+	vt.source = os.read_file(path) or { return }
+	mut p := parser.Parser.new(prefs)
+	vt.a = p.parse_file(path)
+	vt.mod = 'main'
+	vt.filtered_lines = {
+		.space_indent:   map[int]bool{}
+		.trailing_space: map[int]bool{}
+	}
+	for comment in vt.a.comments {
+		start, end := vt.span_lines(comment.pos)
+		is_multi := vt.source[int(comment.pos.offset)..int(comment.pos.end)].starts_with('/*')
+		vt.filtered_lines.comments(is_multi, start, end)
+	}
 	vt.regex_vars = map[string]bool{}
-	vt.stmts(file.stmts)
+	vt.string_vars = map[string]bool{}
+	for raw_id in vt.a.file_node_ids {
+		id := flat.NodeId(raw_id)
+		node := vt.a.node(id)
+		if node.kind != .file || node.children_count == 0 {
+			continue
+		}
+		for child in vt.a.children_of(node) {
+			if vt.a.node(child).kind == .module_decl {
+				vt.mod = vt.a.node(child).value
+			}
+			vt.visit(child)
+		}
+	}
 	source_lines := os.read_lines(vt.file) or { []string{} }
 	for ln, line in source_lines {
 		vt.vet_line(source_lines, line, ln)
@@ -226,8 +252,7 @@ fn (mut vt Vet) vet_fn_documentation(lines []string, line string, lnumber int) {
 		}
 		if grab {
 			clean_line := line.all_before_last('{').trim(' ')
-			vt.warn('Function documentation seems to be missing for "${clean_line}".', lnumber,
-				.doc)
+			vt.warn('Function documentation seems to be missing for "${clean_line}".', lnumber, .doc)
 		}
 	} else {
 		fn_name := ident_fn_name(line)
@@ -247,8 +272,7 @@ fn (mut vt Vet) vet_fn_documentation(lines []string, line string, lnumber int) {
 					&& !prev_prev_line.starts_with('//') {
 					grab = false
 					clean_line := line.all_before_last('{').trim(' ')
-					vt.warn('The documentation for "${clean_line}" seems incomplete.', lnumber,
-						.doc)
+					vt.warn('The documentation for "${clean_line}" seems incomplete.', lnumber, .doc)
 					break
 				}
 
@@ -264,242 +288,182 @@ fn (mut vt Vet) vet_fn_documentation(lines []string, line string, lnumber int) {
 		}
 		if grab {
 			clean_line := line.all_before_last('{').trim(' ')
-			vt.warn('A function name is missing from the documentation of "${clean_line}".',
-				lnumber, .doc)
+			vt.warn('A function name is missing from the documentation of "${clean_line}".', lnumber, .doc)
 		}
 	}
 }
 
-fn (mut vt Vet) stmts(stmts []ast.Stmt) {
-	for stmt in stmts {
-		vt.stmt(stmt)
-	}
-}
-
-fn (mut vt Vet) stmt(stmt ast.Stmt) {
-	match stmt {
-		ast.ConstDecl {
-			vt.const_decl(stmt)
-		}
-		ast.ExprStmt {
-			vt.expr(stmt.expr)
-		}
-		ast.Return {
-			vt.exprs(stmt.exprs)
-		}
-		ast.AssertStmt {
-			vt.expr(stmt.expr)
-			vt.expr(stmt.extra)
-		}
-		ast.AssignStmt {
-			vt.exprs(stmt.left)
-			vt.exprs(stmt.right)
-			vt.track_regex_assign(stmt)
-			vt.analyze.stmt(&vt, stmt)
-		}
-		ast.FnDecl {
-			old_fn_decl := vt.analyze.cur_fn
-			old_regex_vars := vt.regex_vars.clone()
-			vt.regex_vars = map[string]bool{}
-			vt.analyze.cur_fn = stmt
-			vt.stmts(stmt.stmts)
-			if vt.opt.fn_sizing {
-				vt.analyze.long_or_empty_fns(mut vt, stmt)
-			}
-			if vt.opt.fn_inlining {
-				vt.analyze.potential_non_inlined(mut vt, stmt)
-			}
-			vt.analyze.cur_fn = old_fn_decl
-			vt.regex_vars = old_regex_vars.clone()
-		}
-		ast.ForCStmt {
-			vt.stmt(stmt.init)
-			vt.expr(stmt.cond)
-			vt.stmts(stmt.stmts)
-			vt.stmt(stmt.inc)
-		}
-		ast.ForInStmt {
-			vt.expr(stmt.cond)
-			vt.expr(stmt.high)
-			vt.stmts(stmt.stmts)
-		}
-		ast.ForStmt {
-			vt.expr(stmt.cond)
-			vt.stmts(stmt.stmts)
-		}
-		ast.StructDecl {
-			vt.exprs(stmt.fields.map(it.default_expr))
-		}
-		else {}
-	}
-}
-
-fn (mut vt Vet) exprs(exprs []ast.Expr) {
-	for expr in exprs {
-		vt.expr(expr)
-	}
-}
-
-fn (mut vt Vet) expr(expr ast.Expr) {
-	match expr {
-		ast.Comment {
-			vt.filtered_lines.comments(expr.is_multi, expr.pos)
-		}
-		ast.StringLiteral {
-			vt.filtered_lines.assigns(expr.pos)
-			vt.analyze.expr(&vt, expr)
-		}
-		ast.StringInterLiteral {
-			vt.filtered_lines.assigns(expr.pos)
-			vt.analyze.expr(&vt, expr)
-		}
-		ast.ArrayInit {
-			vt.filtered_lines.assigns(expr.pos)
-			vt.expr(expr.len_expr)
-			vt.expr(expr.cap_expr)
-			vt.expr(expr.init_expr)
-			vt.exprs(expr.exprs)
-		}
-		ast.InfixExpr {
-			vt.vet_in_condition(expr)
-			vt.vet_empty_str(expr)
-			vt.expr(expr.left)
-			vt.expr(expr.right)
-			vt.analyze.expr(&vt, expr)
-		}
-		ast.ParExpr {
-			vt.expr(expr.expr)
-		}
-		ast.CallExpr {
-			vt.expr(expr.left)
-			vt.exprs(expr.args.map(it.expr))
-			vt.vet_confusing_regex(expr)
-			vt.analyze.expr(&vt, expr)
-		}
-		ast.MatchExpr {
-			vt.expr(expr.cond)
-			for b in expr.branches {
-				vt.exprs(b.exprs)
-				vt.stmts(b.stmts)
+fn (mut vt Vet) visit(id flat.NodeId) {
+	node := vt.a.node(id)
+	if node.kind == .fn_decl {
+		old_fn := vt.analyze.cur_fn
+		old_regex_vars := vt.regex_vars.clone()
+		old_string_vars := vt.string_vars.clone()
+		vt.analyze.cur_fn = if vt.mod == 'builtin' { node.value } else { '${vt.mod}.${node.value}' }
+		vt.regex_vars = map[string]bool{}
+		vt.string_vars = map[string]bool{}
+		for child in vt.a.children_of(node) {
+			parameter := vt.a.node(child)
+			if parameter.kind == .param && parameter.typ == 'string' {
+				vt.string_vars[parameter.value] = true
 			}
 		}
-		ast.IfExpr {
-			for b in expr.branches {
-				vt.expr(b.cond)
-				vt.stmts(b.stmts)
-			}
+		for child in vt.a.children_of(node) {
+			vt.visit(child)
 		}
-		ast.SelectorExpr {
-			vt.analyze.expr(&vt, expr)
+		if vt.opt.fn_sizing {
+			vt.analyze.long_or_empty_fn(mut vt, id)
 		}
-		ast.IndexExpr {
-			vt.analyze.expr(&vt, expr)
+		if vt.opt.fn_inlining {
+			vt.analyze.potential_non_inlined(mut vt, id)
 		}
-		ast.AsCast {
-			vt.analyze.expr(&vt, expr)
-			vt.expr(expr.expr)
-		}
-		ast.UnsafeExpr {
-			vt.expr(expr.expr)
-		}
-		ast.CastExpr {
-			vt.expr(expr.expr)
-		}
-		ast.StructInit {
-			vt.expr(expr.update_expr)
-			vt.exprs(expr.init_fields.map(it.expr))
-		}
-		ast.DumpExpr {
-			vt.expr(expr.expr)
-		}
-		else {}
-	}
-}
-
-fn (mut vt Vet) const_decl(stmt ast.ConstDecl) {
-	for field in stmt.fields {
-		if field.expr is ast.ArrayInit && !field.expr.is_fixed {
-			vt.notice('Use a fixed array instead of a dynamic one', field.expr.pos.line_nr,
-				.unknown)
-		}
-		vt.expr(field.expr)
-	}
-}
-
-fn (mut vt Vet) track_regex_assign(stmt ast.AssignStmt) {
-	for i, left in stmt.left {
-		if i >= stmt.right.len {
-			break
-		}
-		mut ident_name := ''
-		match left {
-			ast.Ident {
-				ident_name = left.name
-			}
-			else {
-				continue
-			}
-		}
-
-		if vt.is_regex_value_expr(stmt.right[i]) {
-			vt.regex_vars[ident_name] = true
-		} else {
-			vt.regex_vars.delete(ident_name)
-		}
-	}
-}
-
-fn (mut vt Vet) vet_confusing_regex(expr ast.CallExpr) {
-	if expr.args.len == 0 || !vt.is_regex_pattern_call(expr) {
+		vt.analyze.cur_fn = old_fn
+		vt.regex_vars = old_regex_vars
+		vt.string_vars = old_string_vars
 		return
 	}
-	pattern_expr := expr.args[0].expr
-	pattern := if pattern_expr is ast.StringLiteral { pattern_expr } else { return }
-	snippet, suggestion := confusing_regex_branch(pattern.val) or { return }
-	vt.warn('Confusing regex `|` in `${snippet}`: V regex applies `|` to adjacent tokens, not whole branches. Use `${suggestion}` if you intended alternation.',
-		pattern.pos.line_nr, .unknown)
-}
-
-fn (vt &Vet) is_regex_pattern_call(expr ast.CallExpr) bool {
-	short_name := expr.name.all_after_last('.')
-	if short_name in ['regex_opt', 'regex_base'] {
-		return vt.is_regex_fn_call(expr)
-	}
-	if expr.name == 'compile_opt' && expr.is_method {
-		return vt.is_regex_value_expr(expr.left)
-	}
-	return false
-}
-
-fn (vt &Vet) is_regex_value_expr(expr ast.Expr) bool {
-	match expr {
-		ast.CallExpr {
-			short_name := expr.name.all_after_last('.')
-			if short_name == 'new' {
-				return vt.is_regex_fn_call(expr)
+	match node.kind {
+		.decl_assign, .assign {
+			vt.track_assign(node)
+			vt.analyze.assignment(&vt, node)
+		}
+		.const_field {
+			if child := vt.first_child(node) {
+				value := vt.a.node(child)
+				if value.kind == .array_literal && !vt.node_source(value).ends_with(']!') {
+					vt.notice('Use a fixed array instead of a dynamic one', vt.node_line(value) - 1, .unknown)
+				}
 			}
-			if short_name == 'regex_opt' {
-				return vt.is_regex_fn_call(expr)
-			}
-			return false
 		}
-		ast.Ident {
-			return expr.name in vt.regex_vars
+		.string_literal, .string_interp, .array_literal, .array_init {
+			start, end := vt.span_lines(node.pos)
+			vt.filtered_lines.assigns(start, end)
+			vt.analyze.expression(&vt, node)
 		}
-		else {
-			return false
+		.infix {
+			vt.vet_empty_str(node)
+			vt.analyze.expression(&vt, node)
 		}
+		.in_expr {
+			vt.vet_in_condition(node)
+		}
+		.call {
+			vt.vet_confusing_regex(node)
+			vt.analyze.expression(&vt, node)
+		}
+		.selector, .index, .as_expr {
+			vt.analyze.expression(&vt, node)
+		}
+		else {}
+	}
+	if node.kind == .for_stmt && node.value == 'c_style' && node.children_count >= 4 {
+		children := vt.a.children_of(node)
+		vt.visit(children[0])
+		vt.visit(children[1])
+		for child in children[3..] {
+			vt.visit(child)
+		}
+		vt.visit(children[2])
+		return
+	}
+	for child in vt.a.children_of(node) {
+		vt.visit(child)
 	}
 }
 
-fn (vt &Vet) is_regex_fn_call(expr ast.CallExpr) bool {
-	if expr.name in ['regex.regex_opt', 'regex.regex_base', 'regex.new'] {
+fn (vt &Vet) first_child(node &flat.Node) ?flat.NodeId {
+	if node.children_count == 0 {
+		return none
+	}
+	return vt.a.child(node, 0)
+}
+
+fn (vt &Vet) node_source(node &flat.Node) string {
+	start := int(node.pos.offset)
+	end := int(node.pos.end)
+	if start < 0 || end <= start || end > vt.source.len {
+		return ''
+	}
+	return vt.source[start..end]
+}
+
+fn (vt &Vet) node_line(node &flat.Node) int {
+	position := vt.a.source_position(node.pos) or { return 1 }
+	return position.line
+}
+
+fn (vt &Vet) span_lines(pos token.Pos) (int, int) {
+	file := vt.a.source_files[pos.id] or { return 0, 0 }
+	start := file.position_at(pos.offset).line - 1
+	end := file.position_at(pos.end).line - 1
+	return start, end
+}
+
+fn (mut vt Vet) track_assign(node &flat.Node) {
+	if node.children_count < 2 {
+		return
+	}
+	left := vt.a.child_node(node, 0)
+	right := vt.a.child_node(node, node.children_count - 1)
+	if left.kind != .ident {
+		return
+	}
+	if vt.is_regex_value(right) {
+		vt.regex_vars[left.value] = true
+	} else {
+		vt.regex_vars.delete(left.value)
+	}
+	if right.kind in [.string_literal, .string_interp] {
+		vt.string_vars[left.value] = true
+	} else {
+		vt.string_vars.delete(left.value)
+	}
+}
+
+fn (mut vt Vet) vet_confusing_regex(call &flat.Node) {
+	if call.children_count < 2 || !vt.is_regex_pattern_call(call) {
+		return
+	}
+	pattern := vt.a.child_node(call, 1)
+	if pattern.kind != .string_literal {
+		return
+	}
+	snippet, suggestion := confusing_regex_branch(pattern.value) or { return }
+	vt.warn('Confusing regex `|` in `${snippet}`: V regex applies `|` to adjacent tokens, not whole branches. Use `${suggestion}` if you intended alternation.', vt.node_line(pattern) - 1, .unknown)
+}
+
+fn (vt &Vet) is_regex_pattern_call(call &flat.Node) bool {
+	callee := vt.a.child_node(call, 0)
+	if callee.kind == .ident {
+		return vt.mod == 'regex' && callee.value in ['regex_opt', 'regex_base']
+	}
+	if callee.kind != .selector {
+		return false
+	}
+	receiver := vt.a.child_node(callee, 0)
+	if receiver.kind == .ident && receiver.value == 'regex'
+		&& callee.value in ['regex_opt', 'regex_base'] {
 		return true
 	}
-	if vt.mod == 'regex' && expr.name in ['regex_opt', 'regex_base', 'new'] {
-		return true
+	return callee.value == 'compile_opt' && vt.is_regex_value(receiver)
+}
+
+fn (vt &Vet) is_regex_value(node &flat.Node) bool {
+	if node.kind == .ident {
+		return node.value in vt.regex_vars
 	}
-	return false
+	if node.kind != .call || node.children_count == 0 {
+		return false
+	}
+	callee := vt.a.child_node(node, 0)
+	if callee.kind == .ident {
+		return vt.mod == 'regex' && callee.value in ['new', 'regex_opt', 'regex_base']
+	}
+	if callee.kind != .selector || callee.value !in ['new', 'regex_opt', 'regex_base'] {
+		return false
+	}
+	receiver := vt.a.child_node(callee, 0)
+	return receiver.kind == .ident && receiver.value == 'regex'
 }
 
 fn confusing_regex_branch(pattern string) ?(string, string) {
@@ -554,37 +518,50 @@ fn is_regex_plain_letter(ch u8) bool {
 	return ch.is_letter()
 }
 
-fn (mut vt Vet) vet_empty_str(expr ast.InfixExpr) {
-	if expr.left is ast.SelectorExpr && expr.right is ast.IntegerLiteral {
-		operand := (expr.left as ast.SelectorExpr) // TODO: remove as-casts when multiple conds can be smart-casted.
-		if operand.expr is ast.Ident && operand.field_name == 'len'
-			&& operand.expr.info.typ == ast.string_type_idx {
-			if expr.op != .lt && expr.right.val == '0' {
-				// Case: `var.len > 0`, `var.len == 0`, `var.len != 0`
-				op := if expr.op == .gt { '!=' } else { expr.op.str() }
-				vt.notice("Use `${operand.expr.name} ${op} ''` instead of `${operand.expr.name}.len ${expr.op} 0`",
-					expr.pos.line_nr, .unknown)
-			} else if expr.op == .lt && expr.right.val == '1' {
-				// Case: `var.len < 1`
-				vt.notice("Use `${operand.expr.name} == ''` instead of `${operand.expr.name}.len ${expr.op} 1`",
-					expr.pos.line_nr, .unknown)
-			}
+fn (mut vt Vet) vet_empty_str(expr &flat.Node) {
+	if expr.children_count != 2 {
+		return
+	}
+	left := vt.a.child_node(expr, 0)
+	right := vt.a.child_node(expr, 1)
+	op := flat_op_string(expr.op)
+	if name := vt.string_len_name(left) {
+		if right.kind == .int_literal && right.value == '0' && expr.op != .lt {
+			replacement_op := if expr.op == .gt { '!=' } else { op }
+			vt.notice("Use `${name} ${replacement_op} ''` instead of `${name}.len ${op} 0`", vt.node_line(expr) - 1, .unknown)
+		} else if right.kind == .int_literal && right.value == '1' && expr.op == .lt {
+			vt.notice("Use `${name} == ''` instead of `${name}.len ${op} 1`", vt.node_line(expr) - 1, .unknown)
 		}
-	} else if expr.left is ast.IntegerLiteral && expr.right is ast.SelectorExpr {
-		operand := expr.right
-		if operand.expr is ast.Ident && operand.expr.info.typ == ast.string_type_idx
-			&& operand.field_name == 'len' {
-			if expr.op != .gt && (expr.left as ast.IntegerLiteral).val == '0' {
-				// Case: `0 < var.len`, `0 == var.len`, `0 != var.len`
-				op := if expr.op == .lt { '!=' } else { expr.op.str() }
-				vt.notice("Use `'' ${op} ${operand.expr.name}` instead of `0 ${expr.op} ${operand.expr.name}.len`",
-					expr.pos.line_nr, .unknown)
-			} else if expr.op == .gt && (expr.left as ast.IntegerLiteral).val == '1' {
-				// Case: `1 > var.len`
-				vt.notice("Use `'' == ${operand.expr.name}` instead of `1 ${expr.op} ${operand.expr.name}.len`",
-					expr.pos.line_nr, .unknown)
-			}
+		return
+	}
+	if name := vt.string_len_name(right) {
+		if left.kind == .int_literal && left.value == '0' && expr.op != .gt {
+			replacement_op := if expr.op == .lt { '!=' } else { op }
+			vt.notice("Use `'' ${replacement_op} ${name}` instead of `0 ${op} ${name}.len`", vt.node_line(expr) - 1, .unknown)
+		} else if left.kind == .int_literal && left.value == '1' && expr.op == .gt {
+			vt.notice("Use `'' == ${name}` instead of `1 ${op} ${name}.len`", vt.node_line(expr) - 1, .unknown)
 		}
+	}
+}
+
+fn (vt &Vet) string_len_name(node &flat.Node) ?string {
+	if node.kind != .selector || node.value != 'len' || node.children_count == 0 {
+		return none
+	}
+	receiver := vt.a.child_node(node, 0)
+	if receiver.kind == .ident && receiver.value in vt.string_vars {
+		return receiver.value
+	}
+	return none
+}
+
+fn flat_op_string(op flat.Op) string {
+	return match op {
+		.lt { '<' }
+		.gt { '>' }
+		.eq { '==' }
+		.ne { '!=' }
+		else { '${op}' }
 	}
 }
 
@@ -595,12 +572,19 @@ fn (vt &Vet) vprintln(s string) {
 	println(s)
 }
 
-fn (mut vt Vet) vet_in_condition(expr ast.InfixExpr) {
-	if expr.right is ast.ArrayInit && expr.right.exprs.len == 1 && expr.op in [.key_in, .not_in] {
-		left := expr.left.str()
-		right := expr.right.exprs[0].str()
-		eq := if expr.op == .key_in { '==' } else { '!=' }
-		vt.error('Use `${left} ${eq} ${right}` instead of `${left} ${expr.op} [${right}]`',
-			expr.pos.line_nr, .vfmt)
+fn (mut vt Vet) vet_in_condition(expr &flat.Node) {
+	if expr.children_count != 2 {
+		return
 	}
+	left := vt.a.child_node(expr, 0)
+	right := vt.a.child_node(expr, 1)
+	if right.kind != .array_literal || right.children_count != 1 {
+		return
+	}
+	left_source := vt.node_source(left)
+	right_source := vt.node_source(vt.a.child_node(right, 0))
+	is_not_in := vt.node_source(expr).contains('!in')
+	op := if is_not_in { '!in' } else { 'in' }
+	eq := if is_not_in { '!=' } else { '==' }
+	vt.error('Use `${left_source} ${eq} ${right_source}` instead of `${left_source} ${op} [${right_source}]`', vt.node_line(expr) - 1, .vfmt)
 }

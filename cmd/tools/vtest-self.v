@@ -1,7 +1,43 @@
 module main
 
 import os
+import crypto.sha256
 import testing
+import v.util.vtest
+
+struct SelfTestShard {
+	index int
+	count int = 1
+}
+
+fn self_test_shard_from_env() !SelfTestShard {
+	count_text := os.getenv('VTEST_SELF_SHARD_COUNT')
+	index_text := os.getenv('VTEST_SELF_SHARD_INDEX')
+	if count_text == '' && index_text == '' {
+		return SelfTestShard{}
+	}
+	count := count_text.int()
+	index := index_text.int()
+	if count < 1 || count.str() != count_text || index < 0 || index.str() != index_text
+		|| index >= count {
+		return error('VTEST_SELF_SHARD_INDEX and VTEST_SELF_SHARD_COUNT must be decimal integers with 0 <= index < count')
+	}
+	return SelfTestShard{
+		index: index
+		count: count
+	}
+}
+
+fn self_test_shard_for_file(path string, count int) int {
+	// Checkout-relative paths give every runner the same assignment.
+	relative_path := path[vroot.len + 1..].replace('\\', '/')
+	digest := sha256.sum256(relative_path.bytes())
+	mut hash := u64(0)
+	for byte in digest[..8] {
+		hash = (hash << 8) | u64(byte)
+	}
+	return int(hash % u64(count))
+}
 
 struct Config {
 	run_just_essential     bool   = '${os.getenv('VTEST_JUST_ESSENTIAL')}${os.getenv('VTEST_SANDBOXED_PACKAGING')}' != ''
@@ -23,7 +59,7 @@ mut:
 
 const vroot = os.dir(os.real_path(os.getenv_opt('VEXE') or { @VEXE }))
 
-const temporarily_disabled_self_test_vlib_dirs = ['v3']
+const temporarily_disabled_self_test_vlib_dirs = ['v/compiler_tests']
 
 const essential_list = [
 	'cmd/tools/vvet/vet_test.v',
@@ -87,11 +123,6 @@ const essential_list = [
 	'vlib/time/time_test.v',
 	'vlib/toml/tests/toml_test.v',
 	'vlib/v/compiler_errors_test.v',
-	'vlib/v/fmt/fmt_keep_test.v',
-	'vlib/v/fmt/fmt_test.v',
-	'vlib/v/gen/c/coutput_test.v',
-	'vlib/v/gen/js/program_test.v',
-	'vlib/v/pkgconfig/pkgconfig_test.v',
 	'vlib/v/slow_tests/inout/compiler_test.v',
 	'vlib/json2/tests/json2_test.v',
 ]
@@ -343,7 +374,9 @@ fn Config.init(vargs []string, targs []string) !Config {
 	mut cfg := Config{}
 	for arg in vargs {
 		match arg {
-			'-Werror', '-cstrict' { cfg.werror = true }
+			'-Werror', '-cstrict' {
+				cfg.werror = true
+			}
 			else {}
 		}
 
@@ -403,6 +436,10 @@ fn Config.init(vargs []string, targs []string) !Config {
 fn main() {
 	unbuffer_stdout()
 	os.chdir(vroot)!
+	shard := self_test_shard_from_env() or {
+		eprintln(err)
+		exit(1)
+	}
 	args_idx := os.args.index('test-self')
 	if args_idx < 0 {
 		eprintln('vtest-self: could not find `test-self` in os.args: ${os.args}')
@@ -415,7 +452,10 @@ fn main() {
 		exit(1)
 	}
 	// dump(cfg)
-	title := 'testing: ${cfg.test_dirs.join(', ')}'
+	mut title := 'testing: ${cfg.test_dirs.join(', ')}'
+	if shard.count > 1 {
+		title += ' (shard ${shard.index + 1}/${shard.count})'
+	}
 	mut tpaths := map[string]bool{}
 	mut tpaths_ref := &tpaths
 	for dir in cfg.test_dirs {
@@ -434,12 +474,15 @@ fn main() {
 	}
 	mut tsession := testing.new_test_session(vargs.join(' '), true)
 	tsession.exec_mode = .compile_and_run
-	tsession.files << all_test_files.filter(!it.contains('testdata' + os.path_separator))
-	// v2 and v3 have their own drivers and are still under heavy development,
-	// so their tests are excluded from `v test-self`.
+	tsession.files << all_test_files.filter(!it.contains('testdata' + os.path_separator)
+		&& (shard.count == 1 || self_test_shard_for_file(it, shard.count) == shard.index))
+	// The compiler tests have their own driver, so they are excluded from `v test-self`.
 	for test_dir in temporarily_disabled_self_test_vlib_dirs {
 		dir_fragment := '${os.path_separator}vlib${os.path_separator}${test_dir}${os.path_separator}'
 		tsession.skip_files << tsession.files.filter(it.contains(dir_fragment))
+	}
+	if vtest.skip_ownership_autofree_tests() {
+		tsession.skip_files << tsession.files.filter(vtest.is_ownership_autofree_test(it))
 	}
 	if cfg.werror {
 		tsession.custom_defines << 'self_werror'

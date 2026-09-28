@@ -7,6 +7,7 @@ module sync
 
 @[trusted]
 fn C.pthread_mutex_init(voidptr, voidptr) i32
+
 fn C.pthread_mutex_lock(voidptr) i32
 fn C.pthread_mutex_trylock(voidptr) i32
 fn C.pthread_mutex_unlock(voidptr) i32
@@ -98,11 +99,12 @@ fn (mut m Mutex) lazy_init() {
 	}
 	mut expected := u32(0)
 	if C.atomic_compare_exchange_strong_u32(&m.inited, &expected, 1) {
-		should_be_zero(C.pthread_mutex_init(&m.mutex, C.NULL))
+		should_be_zero(C.pthread_mutex_init(&m.mutex, unsafe { nil }))
 		C.atomic_store_u32(&m.inited, 2)
 		return
 	}
-	for C.atomic_load_u32(&m.inited) != 2 {}
+	for C.atomic_load_u32(&m.inited) != 2 {
+	}
 }
 
 // new_rwmutex creates a new read/write mutex instance on the heap, and returns a pointer to it.
@@ -164,7 +166,8 @@ pub fn (mut m Mutex) destroy() {
 	if C.atomic_load_u32(&m.inited) == 0 {
 		return
 	}
-	for C.atomic_load_u32(&m.inited) != 2 {}
+	for C.atomic_load_u32(&m.inited) != 2 {
+	}
 	should_be_zero(C.pthread_mutex_destroy(&m.mutex))
 	C.atomic_store_u32(&m.inited, 0)
 }
@@ -252,7 +255,7 @@ pub fn new_semaphore_init(n u32) &Semaphore {
 // resources needed for the semaphore to work properly.
 pub fn (mut sem Semaphore) init(n u32) {
 	C.atomic_store_u32(&sem.count, n)
-	should_be_zero(C.pthread_mutex_init(&sem.mtx, C.NULL))
+	should_be_zero(C.pthread_mutex_init(&sem.mtx, unsafe { nil }))
 	attr := CondAttr{}
 	should_be_zero(C.pthread_condattr_init(&attr.attr))
 	C.pthread_condattr_setpshared(&attr.attr, C.PTHREAD_PROCESS_PRIVATE)

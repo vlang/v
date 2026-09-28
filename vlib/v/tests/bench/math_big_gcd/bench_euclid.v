@@ -233,11 +233,15 @@ fn bench_euclid_vs_binary(test_config PrimeCfg, heap bool, predicate_fn fn (ps P
 	// here to avoid measuring string-parsing-cycles
 	// during later testing.
 	//
-	mut casted_sets := if heap { gcd_primes.map(unsafe {
+	mut casted_sets := if heap {
+		gcd_primes.map(unsafe {
 			DataI(&PrimeSet(&it)).cast[HeapData]()
-		}) } else { gcd_primes.map(unsafe {
+		})
+	} else {
+		gcd_primes.map(unsafe {
 			DataI(&PrimeSet(&it)).cast[StackData]()
-		}) }
+		})
+	}
 
 	// ready use the primes in the benchmark
 	//

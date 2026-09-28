@@ -876,8 +876,8 @@ fn validate_candidate_git_storage(root string) ! {
 }
 
 fn validate_candidate_local_git_config(root string) ! {
-	local_config := candidate_repository_git(root, ['config', '--local', '--name-only',
-		'--get-regexp', '.*'])!
+	local_config := candidate_repository_git(root, ['config', '--local', '--name-only', '--get-regexp',
+		'.*'])!
 	if local_config.exit_code !in [0, 1] {
 		return error('candidate repository local configuration cannot be inspected')
 	}
@@ -955,8 +955,8 @@ fn validate_independent_candidate_checkout(source_root string, candidate_sha str
 	if symbolic.exit_code != 1 || symbolic.output != '' {
 		return error('independent candidate checkout must be detached')
 	}
-	status := successful_candidate_git(source_root, ['status', '--porcelain=v1',
-		'--untracked-files=all', '--ignored=matching'],
+	status := successful_candidate_git(source_root, ['status', '--porcelain=v1', '--untracked-files=all',
+		'--ignored=matching'],
 		'independent candidate status cannot be inspected')!
 	if status != '' {
 		return error('independent candidate checkout must be clean, including ignored files')
@@ -1117,9 +1117,8 @@ fn read_candidate_transition_status(candidate_root string, base_sha string, cand
 	defer {
 		os.rm(output_path) or {}
 	}
-	result := candidate_repository_git(candidate_root, ['diff-tree', '--no-commit-id',
-		'--name-status', '-r', '-z', '--no-renames', '--output=${output_path}', base_sha,
-		candidate_sha, '--'])!
+	result := candidate_repository_git(candidate_root, ['diff-tree', '--no-commit-id', '--name-status',
+		'-r', '-z', '--no-renames', '--output=${output_path}', base_sha, candidate_sha, '--'])!
 	if result.exit_code != 0 || result.output != '' {
 		return error('candidate transition cannot be inspected')
 	}

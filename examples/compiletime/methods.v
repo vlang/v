@@ -12,7 +12,7 @@ fn (mut app App) method_three(s string) string {
 
 fn main() {
 	$for method in App.methods {
-		$if method.typ is fn (string) string {
+		$if method.typ is fn ( string ) string {
 			println('${method.name} IS `fn(string) string`')
 		} $else {
 			println('${method.name} is NOT `fn(string) string`')
@@ -28,7 +28,7 @@ fn main() {
 			println("${method.name}'s first arg IS `string`")
 		}
 		// TODO: Double inversion, should this even be allowed?
-		$if method.typ is fn () {
+		$if method.typ is fn ( ) {
 			println('${method.name} IS a void method')
 		} $else {
 			println('${method.name} is NOT a void method')

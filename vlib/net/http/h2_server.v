@@ -62,6 +62,18 @@ fn h2_field_value_has_forbidden_octet(value string) bool {
 	return false
 }
 
+// h2_response_field_is_forbidden reports whether a handler-authored field must
+// be dropped from a response's header or trailer section (`lkey` is already
+// lowercase): the connection-specific fields RFC 9113 §8.2.2 forbids in any
+// HTTP/2 message, plus TE, which §8.2.2 permits only in requests (and only as
+// "trailers") -- so in a response it is connection-specific and the message is
+// malformed. h2_conn_specific_headers alone is not enough here because that
+// list deliberately omits TE for the request side's benefit (see its doc
+// comment); the request-side rule lives in h2_request_field_error below.
+fn h2_response_field_is_forbidden(lkey string) bool {
+	return lkey == 'te' || lkey in h2_conn_specific_headers
+}
+
 // h2_request_field_error returns a non-empty reason when a regular (non-pseudo)
 // request header field is malformed per RFC 9113 §8.2: names must be lowercase
 // and non-empty, values must not contain NUL/CR/LF, connection-specific fields
@@ -234,6 +246,10 @@ mut:
 	closing                  bool
 	idle_conns               &TlsIdleConnTracker = unsafe { nil }
 	idle_handle              int
+	// remote_addr is the `ip:port` of this connection's peer, copied into every
+	// Request built from it (see Request.remote_addr). HTTP/2 multiplexes all
+	// streams over the one connection, so it is a per-connection value.
+	remote_addr string
 }
 
 // mark_locally_reset records that id has been RST_STREAM'd by the server so any
@@ -306,15 +322,16 @@ fn (c &H2ServerConn) classify_stream(stream_id u32) H2StreamState {
 // serve_h2_conn drives a single HTTP/2 server-side connection until the
 // transport closes or a protocol error forces a GOAWAY. `handler` is invoked
 // once per fully-received request stream.
-fn serve_h2_conn(mut transport H2Transport, mut handler Handler) ! {
-	serve_h2_conn_with_idle_tracker(mut transport, mut handler, unsafe { nil }, 0)!
+fn serve_h2_conn(mut transport H2Transport, mut handler Handler, remote_addr string) ! {
+	serve_h2_conn_with_idle_tracker(mut transport, mut handler, unsafe { nil }, 0, remote_addr)!
 }
 
-fn serve_h2_conn_with_idle_tracker(mut transport H2Transport, mut handler Handler, idle_conns &TlsIdleConnTracker, idle_handle int) ! {
+fn serve_h2_conn_with_idle_tracker(mut transport H2Transport, mut handler Handler, idle_conns &TlsIdleConnTracker, idle_handle int, remote_addr string) ! {
 	mut c := &H2ServerConn{
 		transport:   transport
 		idle_conns:  idle_conns
 		idle_handle: idle_handle
+		remote_addr: remote_addr
 	}
 	c.serve(mut handler) or {
 		// Best-effort GOAWAY before bailing. Skip if one was already sent by
@@ -948,6 +965,9 @@ fn (mut c H2ServerConn) build_request(s &H2ServerStream) !Request {
 	req.url = path
 	req.data = s.body.bytestr()
 	req.host = authority
+	// After the client's own fields are in, so a `remote-addr` field it sent
+	// is dropped rather than left shadowing the real address.
+	req.set_remote_addr(c.remote_addr)
 	return req
 }
 
@@ -957,7 +977,7 @@ fn (mut c H2ServerConn) send_response(stream_id u32, resp Response, mut handler 
 	for key in resp.header.keys() {
 		lkey := key.to_lower()
 		// Drop hop-by-hop headers; HTTP/2 forbids them (RFC 9113 §8.2.2).
-		if lkey in h2_conn_specific_headers {
+		if h2_response_field_is_forbidden(lkey) {
 			continue
 		}
 		for val in resp.header.custom_values(key) {
@@ -1011,7 +1031,7 @@ fn (c &H2ServerConn) h2_outbound_trailer_fields(trailers Header) []H2HeaderField
 	mut fields := []H2HeaderField{}
 	for key in trailers.keys() {
 		lkey := key.to_lower()
-		if lkey.starts_with(':') || lkey in h2_conn_specific_headers {
+		if lkey.starts_with(':') || h2_response_field_is_forbidden(lkey) {
 			continue
 		}
 		for val in trailers.custom_values(key) {

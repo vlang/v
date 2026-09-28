@@ -1,7 +1,7 @@
 # JSONRPC
 [JSON-RPC 2.0](https://www.jsonrpc.org/specification) client+server implementation in pure V.
 
-## Limitaions
+## Limitations
 - Request/Response use only string id
 - JSON-RPC 1.0 incompatible
 
@@ -38,10 +38,10 @@ println(resp.encode())
 ```
 To create a Notification, pass empty string as `Request.id` (`jsonrpc.Empty{}.str()` or 
 `jsonrpc.empty.str()` can be used) 
-(e.g. `jsonrpc.new_reponse('method', 'params', jsonrpc.empty.str())`).
-To omit Response.params in encoded json string pass `jsonrpc.Empty{}` or `jsonrpc.empty` as 
-value in constructor (e.g. `jsonrpc.new_reponse('method', jsonrpc.empty, 'id')`).
-For Response only result or error fields can exist at the same time and not both simultaniously.
+(e.g. `jsonrpc.new_request('method', 'params', jsonrpc.empty.str())`).
+To omit Request.params in encoded json string pass `jsonrpc.Empty{}` or `jsonrpc.empty` as 
+value in constructor (e.g. `jsonrpc.new_request('method', jsonrpc.empty, 'id')`).
+For Response only result or error fields can exist at the same time and not both simultaneously.
 If error passed to `jsonrpc.new_response()` the result value will be ignored on `Response.encode()`.
 The error field is not generated if `jsonrpc.ResponseError{}` provided as error into 
 `jsonrpc.new_response()` (e.g. `jsonrpc.new_response("result", jsonrpc.ResponseError{}, "id")`).
@@ -105,7 +105,7 @@ for {
 Server can work with any `io.ReaderWriter` provided into stream field value.
 Server requires `jsonrpc.Handler = fn(req &jsonrpc.Request, mut wr jsonrpc.ResponseWriter)`
 to pass decoded `jsonrpc.Request` and to write `jsonrpc.Response` into `jsonrpc.ResponseWriter`.
-On Notification Server does call `jsonrpc.Handler` but it ingores written `jsonrpc.Response`.
+On Notification Server does call `jsonrpc.Handler` but it ignores written `jsonrpc.Response`.
 
 ### Handler
 `jsonrpc.Handler = fn(req &jsonrpc.Request, mut wr jsonrpc.ResponseWriter)` is the function that

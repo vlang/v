@@ -396,27 +396,27 @@ fn test_orm_func_stmts() {
 			option_string: 'hello'
 		},
 		User{
-			name:        'Peter'
-			age:         29
-			role:        'employer'
-			status:      1
-			salary:      3500
-			title:       'doctor'
-			score:       80
-			created_at:  time.now()
-			updated_at:  time.now()
-			type_i8:     1
-			type_i16:    2
-			type_int:    3
-			type_i64:    4
-			type_u8:     5
-			type_u16:    6
-			type_u32:    7
-			type_u64:    8
-			type_f32:    1.1
-			type_f64:    2.2
-			type_bool:   true
-			type_string: 'hello'
+			name:          'Peter'
+			age:           29
+			role:          'employer'
+			status:        1
+			salary:        3500
+			title:         'doctor'
+			score:         80
+			created_at:    time.now()
+			updated_at:    time.now()
+			type_i8:       1
+			type_i16:      2
+			type_int:      3
+			type_i64:      4
+			type_u8:       5
+			type_u16:      6
+			type_u32:      7
+			type_u64:      8
+			type_f32:      1.1
+			type_f64:      2.2
+			type_bool:     true
+			type_string:   'hello'
 			// option_i8:     1	// option with default test
 			option_i16:    2
 			option_int:    3
@@ -638,11 +638,6 @@ struct InvalidIndexFieldName1 {
 }
 
 fn test_orm_func_invalid_index_field_name1() {
-	p := InvalidIndexFieldName1{
-		age_f32: 10.33
-		age_f64: 10.343
-	}
-
 	db := sqlite.connect(':memory:')!
 
 	mut qb := orm.new_query[InvalidIndexFieldName1](db)
@@ -661,11 +656,6 @@ struct InvalidIndexFieldName2 {
 }
 
 fn test_orm_func_invalid_index_field_name2() {
-	p := InvalidIndexFieldName2{
-		age_f32: 10.33
-		age_f64: 10.343
-	}
-
 	db := sqlite.connect(':memory:')!
 
 	mut qb := orm.new_query[InvalidIndexFieldName2](db)

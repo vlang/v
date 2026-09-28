@@ -286,7 +286,7 @@ fn get_all_commands() []Command {
 	}
 	////////////////////////////////////////////////////////////////////////
 	// Test compilation of a shared library (.so, .dll. .dylib) with -shared:
-	common_shared_flags := '-shared -skip-unused -d no_backtrace -o library examples/dynamic_library_loader/modules/library/library.v'
+	common_shared_flags := '-shared -skip-unused -d no_backtrace -o library examples/dynamic_library_loader/library/library.v'
 	$if macos {
 		res << Command{
 			line:   '${vexe} ${common_shared_flags}'

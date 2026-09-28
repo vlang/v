@@ -16,9 +16,11 @@ fn foo() ?string {
 }
 
 fn bar() !(string, int) {
-	a := foo() or { return Err{
-		msg: 'error test'
-	} }
+	a := foo() or {
+		return Err{
+			msg: 'error test'
+		}
+	}
 	return a, 1
 }
 

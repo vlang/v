@@ -1,0 +1,7 @@
+vlib/v/tests/no_closures/capturing_select_lambda.vv:11:17: cgen error: a closure was generated for function
+    9 |         value := <-ch {
+   10 |             // the received `value` is captured, so the lambda needs a closure
+   11 |             println(call(|| value))
+      |                          ~~~~~~~~
+   12 |         }
+   13 |     }

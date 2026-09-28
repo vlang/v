@@ -99,8 +99,8 @@ pub:
 	random               []u8 // exactly 32 bytes; caller supplies so callers can use a real CSPRNG while tests stay deterministic
 	server_name          string
 	transport_parameters QuicTransportParameters // this client's own offered set
-	ca_bundle_pem        string // trust anchor for the server's certificate chain
-	alpn_protocols       []string // offered application protocols, most preferred first (RFC 7301 §3.1) -- e.g. ['h3']
+	ca_bundle_pem        string                  // trust anchor for the server's certificate chain
+	alpn_protocols       []string                // offered application protocols, most preferred first (RFC 7301 §3.1) -- e.g. ['h3']
 }
 
 // Tls13ClientHandshake drives a single QUIC-scoped TLS 1.3 client
@@ -219,8 +219,8 @@ pub fn (h &Tls13ClientHandshake) application_secrets() ApplicationSecrets {
 pub fn (h &Tls13ClientHandshake) handshake_secrets() HandshakeSecrets {
 	return HandshakeSecrets{
 		handshake_secret: h.handshake_secrets.handshake_secret.clone()
-		client_secret: h.handshake_secrets.client_secret.clone()
-		server_secret: h.handshake_secrets.server_secret.clone()
+		client_secret:    h.handshake_secrets.client_secret.clone()
+		server_secret:    h.handshake_secrets.server_secret.clone()
 	}
 }
 
@@ -274,22 +274,22 @@ pub fn Tls13ClientHandshake.start(p ClientHandshakeParams) !(&Tls13ClientHandsha
 	}
 
 	client_hello := build_client_hello(ClientHelloParams{
-		random: p.random
-		server_name: p.server_name
-		ecdhe_public_key: ecdhe_public_bytes
+		random:               p.random
+		server_name:          p.server_name
+		ecdhe_public_key:     ecdhe_public_bytes
 		transport_parameters: p.transport_parameters
-		alpn_protocols: p.alpn_protocols
+		alpn_protocols:       p.alpn_protocols
 	}) or {
 		ecdhe_private.free()
 		return handshake_error(.handshake_failure, 'quic: failed to build ClientHello: ${err.msg()}')
 	}
 
 	mut h := &Tls13ClientHandshake{
-		state: .wait_server_hello
-		transcript: client_hello.clone()
-		ecdhe_private: ecdhe_private
-		ca_bundle_pem: p.ca_bundle_pem
-		server_name: p.server_name
+		state:          .wait_server_hello
+		transcript:     client_hello.clone()
+		ecdhe_private:  ecdhe_private
+		ca_bundle_pem:  p.ca_bundle_pem
+		server_name:    p.server_name
 		alpn_protocols: p.alpn_protocols
 	}
 	return h, client_hello

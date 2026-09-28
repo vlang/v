@@ -4,9 +4,9 @@ module ncurses
 pub type Window = voidptr
 
 $if !windows {
-	$if $pkgconfig('ncursesw') {
+	$if $pkgconfig ( 'ncursesw' ) {
 		#pkgconfig --cflags --libs ncursesw
-	} $else $if $pkgconfig('ncurses') {
+	} $else $if $pkgconfig ( 'ncurses' ) {
 		#pkgconfig --cflags --libs ncurses
 	} $else {
 		#flag darwin -D_DARWIN_C_SOURCE -lncurses

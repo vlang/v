@@ -5,7 +5,7 @@ module main
 
 import gg
 import os
-import v3.profiler
+import v.profiler
 
 // handle_event processes user input events
 pub fn handle_event(e &gg.Event, mut app App) {

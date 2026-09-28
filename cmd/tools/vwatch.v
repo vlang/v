@@ -356,8 +356,7 @@ fn (mut context Context) compilation_runner_loop() {
 		context.child_process.use_pgroup = true
 		context.child_process.set_args(context.opts)
 		context.child_process.run()
-		context.child_has_tty = vwatchtty.set_foreground_process_group(context.child_process.pid,
-			context.watcher_pgid)
+		context.child_has_tty = vwatchtty.set_foreground_process_group(context.child_process.pid, context.watcher_pgid)
 		if !context.silent {
 			eprintln('${timestamp}: ${cmd} | pid: ${context.child_process.pid:7d} | reload cycle: ${context.v_cycles:5d}')
 		}
@@ -432,6 +431,7 @@ fn main() {
 	watch_pos := os.args.index('watch')
 	all_args_before_watch_cmd := os.args#[1..watch_pos]
 	all_args_after_watch_cmd := os.args#[watch_pos + 1..]
+
 	// dump(os.getpid())
 	// dump(all_args_before_watch_cmd)
 	// dump(all_args_after_watch_cmd)

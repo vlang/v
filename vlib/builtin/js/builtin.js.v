@@ -14,6 +14,7 @@ pub fn js_throw(s any) {
 }
 
 #let globalPrint, globalWrite;
+
 $if js_freestanding {
 	#globalPrint = globalThis.print
 	#globalWrite = (typeof globalThis.write === 'function')? write: globalThis.print

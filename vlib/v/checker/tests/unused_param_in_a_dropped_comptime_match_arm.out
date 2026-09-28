@@ -1,0 +1,7 @@
+vlib/v/checker/tests/unused_param_in_a_dropped_comptime_match_arm.vv:38:20: notice: unused parameter: `p`
+   36 | }
+   37 | 
+   38 | fn never_mentioned(p int) {
+      |                    ^
+   39 |     $match @OS {
+   40 |         'windows' {

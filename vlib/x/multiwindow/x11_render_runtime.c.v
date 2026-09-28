@@ -1,16 +1,16 @@
 module multiwindow
 
-$if gg_multiwindow ? || x_multiwindow_render ? {
+$if gg_multiwindow ?|| x_multiwindow_render ? {
 	import sokol.gfx
 }
 
-$if gg_multiwindow ? || x_multiwindow_render ? {
+$if gg_multiwindow ?|| x_multiwindow_render ? {
 	$if linux && x_multiwindow_x11 ? {
 		fn C.v_multiwindow_x11_render_snapshot(connection voidptr, window X11NativeWindow, out_width &int, out_height &int, out_viewable &int) int
 	}
 }
 
-$if gg_multiwindow ? || x_multiwindow_render ? {
+$if gg_multiwindow ?|| x_multiwindow_render ? {
 	fn (mut backend X11Backend) create_renderer_anchor() ! {
 		$if linux && x_multiwindow_x11 ? {
 			if backend.anchor_surface != unsafe { nil } {
@@ -581,7 +581,7 @@ $if gg_multiwindow ? || x_multiwindow_render ? {
 
 fn (mut backend X11Backend) collect_render_updates() ![]BackendRenderUpdate {
 	mut updates := []BackendRenderUpdate{}
-	$if gg_multiwindow ? || x_multiwindow_render ? {
+	$if gg_multiwindow ?|| x_multiwindow_render ? {
 		$if linux && x_multiwindow_x11 ? {
 			for i in 0 .. backend.windows.len {
 				mut record := &backend.windows[i]

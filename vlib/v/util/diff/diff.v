@@ -56,7 +56,7 @@ pub:
 pub struct CompareTextOptions {
 	CompareOptions
 pub:
-	base_name   string = 'base' @[deprecated: 'use compare_files or compare_text'; deprecated_after: '2026-12-31']
+	base_name   string = 'base'   @[deprecated: 'use compare_files or compare_text'; deprecated_after: '2026-12-31']
 	target_name string = 'target' @[deprecated: 'use compare_files or compare_text'; deprecated_after: '2026-12-31']
 }
 

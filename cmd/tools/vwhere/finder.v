@@ -71,14 +71,24 @@ fn (mut fdr Finder) search_for_matches() {
 		}
 		paths_to_search << vmod_paths
 	} else if fdr.dirs.len == 0 && fdr.modul != '' {
-		paths_to_search << if fdr.modul == 'main' { current_dir } else { resolve_module(fdr.modul) or {
-				panic(err)} }
+		paths_to_search << if fdr.modul == 'main' {
+			current_dir
+		} else {
+			resolve_module(fdr.modul) or {
+				panic(err)
+			}
+		}
 	} else if fdr.dirs.len != 0 && fdr.modul == '' {
 		paths_to_search << fdr.dirs.map(resolve_module(it) or { panic(err) })
 	} else {
 		recursive = false
-		paths_to_search << if fdr.modul == 'main' { current_dir } else { resolve_module(fdr.modul) or {
-				panic(err)} }
+		paths_to_search << if fdr.modul == 'main' {
+			current_dir
+		} else {
+			resolve_module(fdr.modul) or {
+				panic(err)
+			}
+		}
 		paths_to_search << fdr.dirs.map(resolve_module(it) or { panic(err) })
 	}
 
@@ -109,8 +119,10 @@ fn (mut fdr Finder) search_for_matches() {
 		.var { '.*${na}${sp}:=.*' }
 		.const { '.*${na}${sp} = .*' }
 		.regexp { '${na}' }
-		else { '.*${sy}${sp}${na}${sp}.*' } // struct, enum, interface
+		else { '.*${sy}${sp}${na}${sp}.*' }
 	}
+
+	// struct, enum, interface
 
 	// dump(query)
 	for file in files_to_search {

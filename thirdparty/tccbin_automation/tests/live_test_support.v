@@ -41,8 +41,7 @@ fn with_pending_v_smoke(source string) string {
 	subject_sha := subject.object_value('sha') or { panic('subject SHA missing') }
 	subject_hash := root.object_value('active_subject_hash') or { panic('subject hash missing') }
 	generation := root.object_value('generation') or { panic('target generation missing') }
-	reservation_id := if consumer_kind.string_value in ['publish_post', 'rollback_post',
-		'remediation'] {
+	reservation_id := if consumer_kind.string_value in ['publish_post', 'rollback_post', 'remediation'] {
 		consumer_id.string_value
 	} else {
 		'eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee'
@@ -705,10 +704,8 @@ fn live_reserved_rollback_intent(pre_root bin.JsonValue) string {
 	previous_start := intent.index('"previous_last_known_good": null') or { panic(err) }
 	intent = intent[..validation_start] + '"validation_subject": null,\n  ' +
 		intent[previous_start..]
-	intent = intent.replace_once('"previous_last_known_good": null', '"previous_last_known_good": ${canonical_root_member(pre_root,
-		'last_known_good')}')
-	intent = intent.replace_once('"bad_provisional": null', '"bad_provisional": ${canonical_root_member(pre_root,
-		'provisional_published')}')
+	intent = intent.replace_once('"previous_last_known_good": null', '"previous_last_known_good": ${canonical_root_member(pre_root, 'last_known_good')}')
+	intent = intent.replace_once('"bad_provisional": null', '"bad_provisional": ${canonical_root_member(pre_root, 'provisional_published')}')
 	intent = intent.replace_once('"rollback_diff_fingerprint": null',
 		'"rollback_diff_fingerprint": "9797979797979797979797979797979797979797979797979797979797979797"')
 	pre_generation := pre_root.object_value('generation') or { panic('pre generation missing') }
@@ -797,8 +794,8 @@ fn live_recovery_h2_functional_source_for(consumer_kind string) string {
 			live_reserved_rollback_intent(pre_business_projection))
 		final_source = replace_canonical_root_member(final_source, green_root,
 			'last_head_observation', live_terminal_head_observation(pre_business_projection,
-			'exact_subject', 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
-			'9898989898989898989898989898989898989898989898989898989898989898'))
+				'exact_subject', 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+				'9898989898989898989898989898989898989898989898989898989898989898'))
 	} else if consumer_kind == 'rollback_post' {
 		blocked_intent := canonical_root_member(base_root, 'active_intent').replace_once('"stage":"post_checks_running"',
 			'"stage":"blocked"')
@@ -817,8 +814,7 @@ fn live_recovery_h2_functional_source_for(consumer_kind string) string {
 		}
 		current_native := bin.canonical_json(proof_native).replace_once('"expected_ledger_generation":10',
 			'"expected_ledger_generation":12')
-		mut current_smoke_wrapper := '{"v_smoke_execution":${bin.canonical_json(failed_smoke).replace_once('"expected_ledger_generation":10',
-			'"expected_ledger_generation":12')}}'
+		mut current_smoke_wrapper := '{"v_smoke_execution":${bin.canonical_json(failed_smoke).replace_once('"expected_ledger_generation":10', '"expected_ledger_generation":12')}}'
 		current_smoke_wrapper = refresh_v_smoke_facts_digests(current_smoke_wrapper)
 		current_smoke_root := bin.parse_strict_json(current_smoke_wrapper) or { panic(err) }
 		current_smoke := current_smoke_root.object_value('v_smoke_execution') or {
@@ -915,8 +911,7 @@ fn live_source_waiting_v_smoke_for(expected_generation i64, consumer_kind string
 	} else {
 		'target-state.v-smoke-terminal-check.schema-fixture.json'
 	}
-	mut source := '{"v_smoke_execution":${live_recovery_smoke_projection_for(fixture,
-		expected_generation, consumer_kind)}}'
+	mut source := '{"v_smoke_execution":${live_recovery_smoke_projection_for(fixture, expected_generation, consumer_kind)}}'
 	if with_infrastructure_retry {
 		source = source.replace('d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2',
 			live_h2_retry_dispatch_operation_id)
@@ -1000,8 +995,7 @@ fn live_source_evidence(waiting_consumer_ids []string, expected_target_generatio
 		manifest_hash:           not_applicable_digest
 		native_subject_hash:     not_applicable_digest
 	}) or { panic(err) }
-	post_state_seed := '{"schema_version":2,"generation":${resulting_generation},"source_id":"${source_state_id}","canonical_url":"${source_repository}","ref":"${source_ref}","status":"source_unreachable","resolved_sha":null,"source_fingerprint":"1111111111111111111111111111111111111111111111111111111111111111","last_attempt_at":"${observed_at}","mode":"upstream-recovery-daily","originating_run_id":${originating_run_id},"waiting_consumers":[${waiting_consumers}],"operation_count":${
-		pre_operation_count + 1},"operation_chain_digest":"${placeholder}","operation_window":{"start_count":${pre_operation_count},"anchor_digest":"${pre_chain_digest}","entries":[]}}'
+	post_state_seed := '{"schema_version":2,"generation":${resulting_generation},"source_id":"${source_state_id}","canonical_url":"${source_repository}","ref":"${source_ref}","status":"source_unreachable","resolved_sha":null,"source_fingerprint":"1111111111111111111111111111111111111111111111111111111111111111","last_attempt_at":"${observed_at}","mode":"upstream-recovery-daily","originating_run_id":${originating_run_id},"waiting_consumers":[${waiting_consumers}],"operation_count":${pre_operation_count + 1},"operation_chain_digest":"${placeholder}","operation_window":{"start_count":${pre_operation_count},"anchor_digest":"${pre_chain_digest}","entries":[]}}'
 	state_seed_value := bin.parse_strict_json(post_state_seed) or { panic(err) }
 	pre_state_digest := bin.source_state_snapshot_digest(pre_state_value) or { panic(err) }
 	post_state_digest := bin.source_state_snapshot_digest(state_seed_value) or { panic(err) }
@@ -1023,8 +1017,7 @@ fn live_source_evidence(waiting_consumer_ids []string, expected_target_generatio
 		'"operation_chain_digest":"${resulting_chain_digest}"').replace_once('"entries":[]',
 		'"entries":[${operation_entry}]')
 	state_value := bin.parse_strict_json(source_state) or { panic(err) }
-	mut transition := '{"schema_version":1,"source_id":"${source_state_id}","sequence":${
-		pre_operation_count + 1},"operation_id":"${operation_id}","transition":"resolve_source_unreachable","previous_generation":${previous_generation},"resulting_generation":${resulting_generation},"previous_state_digest":"${pre_state_digest}","resulting_state_digest":"${post_state_digest}","observed_at":"${observed_at}","originating_run_id":${originating_run_id},"expected_state_parent_sha":"${expected_head_oid}","universal_evidence":${universal_evidence},"universal_evidence_digest":"${universal_evidence_digest}","evidence_path":"${evidence_path}","previous_chain_digest":"${pre_chain_digest}","resulting_chain_digest":"${resulting_chain_digest}","evidence_digest":"${transition_placeholder}"}'
+	mut transition := '{"schema_version":1,"source_id":"${source_state_id}","sequence":${pre_operation_count + 1},"operation_id":"${operation_id}","transition":"resolve_source_unreachable","previous_generation":${previous_generation},"resulting_generation":${resulting_generation},"previous_state_digest":"${pre_state_digest}","resulting_state_digest":"${post_state_digest}","observed_at":"${observed_at}","originating_run_id":${originating_run_id},"expected_state_parent_sha":"${expected_head_oid}","universal_evidence":${universal_evidence},"universal_evidence_digest":"${universal_evidence_digest}","evidence_path":"${evidence_path}","previous_chain_digest":"${pre_chain_digest}","resulting_chain_digest":"${resulting_chain_digest}","evidence_digest":"${transition_placeholder}"}'
 	transition_digest := bin.source_state_transition_evidence_digest(bin.parse_strict_json(transition) or {
 		panic(err)
 	}) or { panic(err) }
@@ -1807,8 +1800,7 @@ fn live_publish_post_source() string {
 	previous_start := intent.index('"previous_last_known_good": null') or { panic(err) }
 	intent = intent[..validation_start] + '"validation_subject": null,\n  ' +
 		intent[previous_start..]
-	intent = intent.replace_once('"previous_last_known_good": null', '"previous_last_known_good": ${live_artifact_tuple('cccccccccccccccccccccccccccccccccccccccc',
-		'dddddddddddddddddddddddddddddddddddddddd')}')
+	intent = intent.replace_once('"previous_last_known_good": null', '"previous_last_known_good": ${live_artifact_tuple('cccccccccccccccccccccccccccccccccccccccc', 'dddddddddddddddddddddddddddddddddddddddd')}')
 
 	mut subject := os.read_file(os.join_path(fixture_root,
 		'native-gate-subject.schema-fixture.json')) or { panic(err) }
@@ -1839,10 +1831,8 @@ fn live_publish_post_source() string {
 	source = source.replace_once('"publication_state": "candidate_pending"',
 		'"publication_state": "post_publish_validating"')
 	source = source.replace_once('"bootstrap_required": true', '"bootstrap_required": false')
-	source = source.replace_once('"last_known_good": null', '"last_known_good": ${live_artifact_tuple('cccccccccccccccccccccccccccccccccccccccc',
-		'dddddddddddddddddddddddddddddddddddddddd')}')
-	source = source.replace_once('"provisional_published": null', '"provisional_published": ${live_artifact_tuple('aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
-		'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb')}')
+	source = source.replace_once('"last_known_good": null', '"last_known_good": ${live_artifact_tuple('cccccccccccccccccccccccccccccccccccccccc', 'dddddddddddddddddddddddddddddddddddddddd')}')
+	source = source.replace_once('"provisional_published": null', '"provisional_published": ${live_artifact_tuple('aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb')}')
 	source = source.replace_once('"resolved_inputs": null',
 		'"resolved_inputs": ${live_resolved_inputs()}')
 	source = source.replace_once('"post_validation_operation_id": null',
@@ -1876,8 +1866,7 @@ fn live_rollback_post_source() string {
 	source = source.replace_once('"publication_state": "post_publish_validating"',
 		'"publication_state": "rollback_pending"')
 	source = source.replace_once('"target_state": "validating"', '"target_state": "quarantined"')
-	source = source.replace_once('"bad_provisional": null', '"bad_provisional": ${live_artifact_tuple('aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
-		'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb')}')
+	source = source.replace_once('"bad_provisional": null', '"bad_provisional": ${live_artifact_tuple('aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb')}')
 	source = source.replace_once('"rollback_diff_fingerprint": null',
 		'"rollback_diff_fingerprint": "7979797979797979797979797979797979797979797979797979797979797979"')
 	source = source.replace_once('"rollback_provisional": null',

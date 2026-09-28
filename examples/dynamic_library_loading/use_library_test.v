@@ -22,7 +22,7 @@ fn test_vexe() {
 fn test_can_compile_library() {
 	os.chdir(cfolder) or {}
 	os.rm(library_file_name) or {}
-	v_compile('-d no_backtrace -o library -shared modules/library/library.v')
+	v_compile('-d no_backtrace -o library -shared library/library.v')
 	assert os.is_file(library_file_name)
 }
 
@@ -38,7 +38,7 @@ fn test_can_compile_main_program() {
 fn test_can_compile_and_use_library_with_skip_unused() {
 	os.chdir(cfolder) or {}
 	os.rm(library_file_name) or {}
-	v_compile('-skip-unused -d no_backtrace -o library -shared modules/library/library.v')
+	v_compile('-skip-unused -d no_backtrace -o library -shared library/library.v')
 	assert os.is_file(library_file_name)
 	result := v_compile('run use_dl_module.v')
 	assert result.output.contains('res: 4')
@@ -48,7 +48,7 @@ fn test_can_compile_and_use_library_with_skip_unused() {
 fn test_can_compile_and_use_library_with_prod() {
 	os.chdir(cfolder) or {}
 	os.rm(library_file_name) or {}
-	v_compile('-prod -d no_backtrace -o library -shared modules/library/library.v')
+	v_compile('-prod -d no_backtrace -o library -shared library/library.v')
 	assert os.is_file(library_file_name)
 	result := v_compile('run use_dl_module.v')
 	assert result.output.contains('res: 4')

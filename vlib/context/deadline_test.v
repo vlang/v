@@ -21,7 +21,8 @@ fn test_with_deadline() {
 
 	ctx_ch := ctx.done()
 	select {
-		_ := <-ctx_ch {}
+		_ := <-ctx_ch {
+		}
 		1 * time.second {
 			panic('This should not happen')
 		}
@@ -41,7 +42,8 @@ fn test_with_timeout() {
 
 	ctx_ch := ctx.done()
 	select {
-		_ := <-ctx_ch {}
+		_ := <-ctx_ch {
+		}
 		1 * time.second {
 			panic('This should not happen')
 		}

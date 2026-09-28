@@ -99,13 +99,13 @@ struct F64ArrayRoundtripPayload {
 }
 
 struct OmitFields {
-	a ?bool   @[omitempty]
-	b string  @[omitempty]
-	c int     @[omitempty]
-	d f64     @[omitempty]
-	e ?string = '' @[omitempty]
-	f ?int    = 0    @[omitempty]
-	g ?f64    = 0.0    @[omitempty]
+	a ?bool  @[omitempty]
+	b string @[omitempty]
+	c int    @[omitempty]
+	d f64    @[omitempty]
+	e ?string = ''      @[omitempty]
+	f ?int    = 0     @[omitempty]
+	g ?f64    = 0.0   @[omitempty]
 }
 
 type OmitFieldsAlias = OmitFields
@@ -118,7 +118,7 @@ struct OmitemptyRegressionNumber {
 struct OmitemptyRegressionResp {
 	options  []string                   @[omitempty]
 	metadata map[string]string          @[omitempty]
-	number   &OmitemptyRegressionNumber = unsafe { nil } @[omitempty]
+	number   &OmitemptyRegressionNumber = unsafe { nil }                  @[omitempty]
 	config   ?OmitemptyRegressionNumber @[omitempty]
 }
 

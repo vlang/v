@@ -238,8 +238,7 @@ u32(0xd55b5b8e), 0x924242d0, 0xeaa7a74d, 0xfdfbfb06, 0xcf3333fc, 0xe2878765,
 @[direct_array_access; inline]
 fn big_endian_u128_fixed(b [16]u8, mut u [4]u32) {
 	for i in 0 .. 4 {
-		u[i] = u32(b[i * 4 + 3]) | (u32(b[i * 4 + 2]) << u32(8)) | (u32(b[i * 4 + 1]) << u32(16)) | (u32(b[
-			i * 4 + 0]) << u32(24))
+		u[i] = u32(b[i * 4 + 3]) | (u32(b[i * 4 + 2]) << u32(8)) | (u32(b[i * 4 + 1]) << u32(16)) | (u32(b[i * 4 + 0]) << u32(24))
 	}
 }
 

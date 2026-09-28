@@ -4,7 +4,7 @@
 module main
 
 import gg
-import v3.profiler
+import v.profiler
 
 // Filter modes for allocation view
 pub enum FilterMode {

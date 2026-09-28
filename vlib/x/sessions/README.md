@@ -94,7 +94,7 @@ before your own route handlers and will verify the current session and fetch any
 session data and load it into `sessions.CurrentSession`, which is embedded on the Context struct.
 
 > **Note:**
-> It is recommended to use the middleware, so the sessions are always verfied
+> It is recommended to use the middleware, so the sessions are always verified
 > and loaded correctly.
 
 **Example:**

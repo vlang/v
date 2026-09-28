@@ -34,15 +34,15 @@ fn regex_match_core(src string, pat string, src_pos int, pat_pos int, mut memo [
 		}
 		first_bslash_and_match := first_is_bslash && ppos < pat.len
 			&& (((pat[ppos] == `d` && src[spos].is_digit())
-			|| (pat[ppos] == `D` && !src[spos].is_digit())
-			|| (pat[ppos] == `s` && src[spos].is_space())
-			|| (pat[ppos] == `S` && !src[spos].is_space())
-			|| (pat[ppos] == `w` && (src[spos].is_digit() || src[spos].is_letter()
-			|| src[spos] == `_`)) || (pat[ppos] == `W` && !(src[spos].is_digit()
-			|| src[spos].is_letter() || src[spos] == `_`)))
-			|| (pat[ppos] in [`d`, `D`, `s`, `S`, `w`, `W`] && ppos + 1 < pat.len
-			&& pat[ppos + 1] in [`*`, `?`, `+`])
-			|| (pat[ppos] !in [`d`, `D`, `s`, `S`, `w`, `W`] && src[spos] == pat[ppos]))
+				|| (pat[ppos] == `D` && !src[spos].is_digit())
+				|| (pat[ppos] == `s` && src[spos].is_space())
+				|| (pat[ppos] == `S` && !src[spos].is_space())
+				|| (pat[ppos] == `w` && (src[spos].is_digit() || src[spos].is_letter()
+					|| src[spos] == `_`)) || (pat[ppos] == `W` && !(src[spos].is_digit()
+				|| src[spos].is_letter() || src[spos] == `_`)))
+				|| (pat[ppos] in [`d`, `D`, `s`, `S`, `w`, `W`] && ppos + 1 < pat.len
+					&& pat[ppos + 1] in [`*`, `?`, `+`])
+				|| (pat[ppos] !in [`d`, `D`, `s`, `S`, `w`, `W`] && src[spos] == pat[ppos]))
 		if ppos + 1 < pat.len {
 			match pat[ppos + 1] {
 				`*` {

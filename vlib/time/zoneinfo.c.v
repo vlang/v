@@ -335,8 +335,7 @@ fn read_zip_u32(data []u8, offset int) u32 {
 	if offset < 0 || offset > data.len - 4 {
 		return 0
 	}
-	return u32(data[offset]) | (u32(data[offset + 1]) << 8) | (u32(data[offset + 2]) << 16) | (u32(data[
-		offset + 3]) << 24)
+	return u32(data[offset]) | (u32(data[offset + 1]) << 8) | (u32(data[offset + 2]) << 16) | (u32(data[offset + 3]) << 24)
 }
 
 fn parse_tzif_location(name string, data []u8) !&Location {

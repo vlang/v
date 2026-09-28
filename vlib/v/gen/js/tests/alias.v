@@ -1,8 +1,13 @@
 type Type0 = string
+
 type Type1 = int | string
+
 type Type2 = string | int
+
 type Type3 = Type0 | int
+
 type Type4 = Type3 | Type1 | f32
+
 type Type5 = Type4 | bool
 
 struct Foo {

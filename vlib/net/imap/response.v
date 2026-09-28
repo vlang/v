@@ -410,14 +410,14 @@ fn read_msg_att(mut d Decoder, seq u32) !Message {
 		}
 	}
 	return Message{
-		seq: seq
-		uid: uid
-		flags: flags
-		size: size
+		seq:           seq
+		uid:           uid
+		flags:         flags
+		size:          size
 		internal_date: internal_date
-		envelope: envelope
-		structure: structure
-		sections: sections
+		envelope:      envelope
+		structure:     structure
+		sections:      sections
 	}
 }
 
@@ -505,16 +505,16 @@ fn read_envelope(mut d Decoder) !Envelope {
 	message_id := d.nstring_text()!
 	d.expect(`)`)!
 	return Envelope{
-		date: date
-		subject: subject
-		from: from
-		sender: sender
-		reply_to: reply_to
-		to: to
-		cc: cc
-		bcc: bcc
+		date:        date
+		subject:     subject
+		from:        from
+		sender:      sender
+		reply_to:    reply_to
+		to:          to
+		cc:          cc
+		bcc:         bcc
 		in_reply_to: in_reply_to
-		message_id: message_id
+		message_id:  message_id
 	}
 }
 
@@ -549,9 +549,9 @@ fn read_address(mut d Decoder) !Address {
 	host := d.nstring_text()!
 	d.expect(`)`)!
 	return Address{
-		name: name
+		name:    name
 		mailbox: mailbox
-		host: host
+		host:    host
 	}
 }
 
@@ -594,16 +594,16 @@ fn read_body_structure(mut d Decoder) !BodyStructure {
 	}
 	skip_extensions(mut d)!
 	return BodyStructure{
-		media_type: media_type
-		media_subtype: media_subtype
-		params: params
-		id: id
-		description: description
-		encoding: encoding
-		message_envelope: message_envelope
+		media_type:        media_type
+		media_subtype:     media_subtype
+		params:            params
+		id:                id
+		description:       description
+		encoding:          encoding
+		message_envelope:  message_envelope
 		message_structure: message_structure
-		size: size
-		lines: lines
+		size:              size
+		lines:             lines
 	}
 }
 
@@ -620,10 +620,10 @@ fn read_multipart(mut d Decoder) !BodyStructure {
 	}
 	skip_extensions(mut d)!
 	return BodyStructure{
-		media_type: 'multipart'
+		media_type:    'multipart'
 		media_subtype: media_subtype
-		params: params
-		parts: parts
+		params:        params
+		parts:         parts
 	}
 }
 
@@ -687,8 +687,8 @@ fn read_mailbox_list(mut d Decoder) !MailboxInfo {
 		d.skip_value()!
 	}
 	return MailboxInfo{
-		name: name
-		delimiter: delimiter
+		name:       name
+		delimiter:  delimiter
 		attributes: attributes
 	}
 }
@@ -734,12 +734,12 @@ fn read_status_data(mut d Decoder) !MailboxStatus {
 		}
 	}
 	return MailboxStatus{
-		name: mailbox
-		messages: messages
-		recent: recent
-		uid_next: uid_next
+		name:         mailbox
+		messages:     messages
+		recent:       recent
+		uid_next:     uid_next
 		uid_validity: uid_validity
-		unseen: unseen
+		unseen:       unseen
 	}
 }
 
@@ -915,10 +915,10 @@ fn parse_internal_date(s string) !time.Time {
 		return error('imap: `${s}` has a time outside 00:00:00..23:59:59')
 	}
 	stamp := time.new(
-		year: year
-		month: month
-		day: day
-		hour: hour
+		year:   year
+		month:  month
+		day:    day
+		hour:   hour
 		minute: minute
 		second: second
 	)

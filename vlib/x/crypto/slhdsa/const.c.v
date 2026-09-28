@@ -37,6 +37,7 @@ pub const C.LN_SLH_DSA_SHAKE_192s int
 pub const C.LN_SLH_DSA_SHAKE_192f int
 pub const C.LN_SLH_DSA_SHAKE_256s int
 pub const C.LN_SLH_DSA_SHAKE_256f int // #define LN_SLH_DSA_SHA2_128s            "SLH-DSA-SHA2-128s"
+
 // #define NID_SLH_DSA_SHA2_128s           1460
 
 const nid_slhdsa_sha2_128s = C.NID_SLH_DSA_SHA2_128s

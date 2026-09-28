@@ -19,7 +19,7 @@ fn test_can_compile_library() {
 	os.chdir(cfolder) or {}
 	library_file_path := os.join_path(cfolder, dl.get_libname('library'))
 	os.rm(library_file_path) or {}
-	v_compile('-d no_backtrace -o library -shared modules/library/library.v')
+	v_compile('-d no_backtrace -o library -shared library/library.v')
 	assert os.is_file(library_file_path)
 }
 
@@ -38,7 +38,7 @@ fn test_can_compile_and_use_library_with_skip_unused_home_dir() {
 	os.chdir(cfolder) or {}
 	library_file_path := os.join_path(cfolder, dl.get_libname('library'))
 	os.rm(library_file_path) or {}
-	v_compile('-skip-unused -d no_backtrace -o library -shared modules/library/library.v')
+	v_compile('-skip-unused -d no_backtrace -o library -shared library/library.v')
 	assert os.is_file(library_file_path)
 	result := v_compile('run use_shared_library.v')
 	assert result.output.contains('res: 4')
@@ -50,7 +50,7 @@ fn test_can_compile_and_use_library_with_skip_unused_location1_dir() {
 	library_file_path := os.join_path(cfolder, 'location1', dl.get_libname('library'))
 	os.rm(library_file_path) or {}
 	os.mkdir('location1') or {}
-	v_compile('-skip-unused -d no_backtrace -o location1/library -shared modules/library/library.v')
+	v_compile('-skip-unused -d no_backtrace -o location1/library -shared library/library.v')
 	assert os.is_file(library_file_path)
 	result := v_compile('run use_shared_library.v')
 	assert result.output.contains('res: 4')

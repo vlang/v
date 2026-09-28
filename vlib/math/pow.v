@@ -174,8 +174,8 @@ pub fn pow(x f64, y f64) f64 {
 	mut x1, mut xe := frexp(x)
 
 	for i := i64(yi); i != 0; i >>= 1 {
-		// these series of casts is a little weird but we have to do them to prevent left shift of negative error
-		if xe < int(u32(u32(-1) << 12)) || 1 << 12 < xe {
+		// Negate a positive shift so the lower bound stays negative for any int width.
+		if xe < -(1 << 12) || 1 << 12 < xe {
 			// catch xe before it overflows the left shift below
 			// Since i !=0 it has at least one bit still set, so ae will accumulate xe
 			// on at least one more iteration, ae += xe is a lower bound on ae

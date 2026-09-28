@@ -264,7 +264,7 @@ fn (c DiffContext[T]) write_context(mut sb strings.Builder,
 		line := c.b[i].str()
 
 		if param.colorful {
-			sb.writeln('\033[37m${line}\033[0m')
+			sb.writeln('\x1b[37m${line}\x1b[0m')
 		} else {
 			sb.writeln(line)
 		}
@@ -278,7 +278,7 @@ fn (c DiffContext[T]) write_change(mut sb strings.Builder,
 	for i in change.a .. change.a + change.del {
 		line := c.a[i].str()
 		if param.colorful {
-			sb.writeln('\033[31m-${line}\033[0m')
+			sb.writeln('\x1b[31m-${line}\x1b[0m')
 		} else {
 			sb.writeln('-${line}')
 		}
@@ -287,7 +287,7 @@ fn (c DiffContext[T]) write_change(mut sb strings.Builder,
 	for i in change.b .. change.b + change.ins {
 		line := c.b[i].str()
 		if param.colorful {
-			sb.writeln('\033[32m+${line}\033[0m')
+			sb.writeln('\x1b[32m+${line}\x1b[0m')
 		} else {
 			sb.writeln('+${line}')
 		}

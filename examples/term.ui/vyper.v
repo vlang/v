@@ -467,7 +467,7 @@ type FrameFn = fn (voidptr)
 fn main() {
 	mut app := &App{}
 	app.termui = termui.init(
-		user_data: app
+		user_data:   app
 		// The tui callback slots are `voidptr`; these handlers (`event`, `frame`, `init`)
 		// instead take the typed app pointer that `user_data` hands back. `&T` and `voidptr`
 		// share a representation, so reinterpreting each fn pointer across that parameter is

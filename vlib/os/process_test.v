@@ -250,9 +250,6 @@ fn test_new_process_passes_spaced_path_args_on_windows() {
 }
 
 fn test_new_process_uses_path_for_bare_command_names() {
-	$if windows {
-		return
-	}
 	eprintln(@FN)
 	original_path := os.getenv('PATH')
 	defer {
@@ -264,12 +261,174 @@ fn test_new_process_uses_path_for_bare_command_names() {
 	path_exe := os.join_path(path_dir, 'process_from_path.exe')
 	os.cp(test_os_process, path_exe)!
 	os.setenv('PATH', '${path_dir}${os.path_delimiter}${original_path}', true)
-	mut p := os.new_process('process_from_path.exe')
+	// A bare name must be looked up in PATH, never resolved against the
+	// current directory; the work folder is deliberately one that does not
+	// contain the executable.
+	mut names := ['process_from_path.exe']
+	$if windows {
+		// Windows callers usually omit the extension, like `gcc` or `cl`.
+		names << 'process_from_path'
+	}
+	for name in names {
+		mut p := os.new_process(name)
+		p.set_args(['-exitcode', '7'])
+		p.set_work_folder(os.real_path(os.temp_dir()))
+		p.wait()
+		assert p.status == .exited, 'spawning `${name}` by bare name should succeed'
+		assert p.code == 7, 'spawning `${name}` by bare name gave exit code ${p.code}'
+		p.close()
+	}
+}
+
+fn test_new_process_prefers_the_current_directory_over_path_on_windows() {
+	$if !windows {
+		return
+	}
+	eprintln(@FN)
+	original_path := os.getenv('PATH')
+	original_wd := os.getwd()
+	defer {
+		os.setenv('PATH', original_path, true)
+		os.chdir(original_wd) or {}
+	}
+	// Windows resolves a bare name in the current directory before PATH, for
+	// every executable suffix: a `tool.cmd` in the cwd must win over a `tool.exe`
+	// found on PATH, even though `.exe` is tried before `.cmd`.
+	path_dir := os.join_path(tfolder, 'path_bin_exe')
+	cwd_dir := os.join_path(tfolder, 'cwd_bin_cmd')
+	os.rmdir_all(path_dir) or {}
+	os.rmdir_all(cwd_dir) or {}
+	os.mkdir_all(path_dir)!
+	os.mkdir_all(cwd_dir)!
+	os.cp(test_os_process, os.join_path(path_dir, 'preferred_tool.exe'))!
+	os.write_file(os.join_path(cwd_dir, 'preferred_tool.cmd'), '@exit /b 3\r\n')!
+	os.setenv('PATH', '${path_dir}${os.path_delimiter}${original_path}', true)
+	os.chdir(cwd_dir)!
+	mut p := os.new_process('preferred_tool')
 	p.set_args(['-exitcode', '7'])
-	p.set_work_folder(os.real_path(os.temp_dir()))
 	p.wait()
 	assert p.status == .exited
-	assert p.code == 7
+	assert p.code == 3, 'the cwd `preferred_tool.cmd` (exit 3) must win over PATH `preferred_tool.exe` (exit 7), got ${p.code}'
+	p.close()
+}
+
+fn test_new_process_prefers_the_system_directory_over_path_on_windows() {
+	$if !windows {
+		return
+	}
+	eprintln(@FN)
+	original_path := os.getenv('PATH')
+	defer {
+		os.setenv('PATH', original_path, true)
+	}
+	// CreateProcessW searches the system directories before PATH, so a bare
+	// `where` must run `%SystemRoot%\System32\where.exe`, even when a same-named
+	// program sits in the first PATH entry. The impostor ignores its arguments
+	// and exits with 0; the real `where /q <missing name>` exits with 1.
+	path_dir := os.join_path(tfolder, 'path_bin_where_impostor')
+	os.rmdir_all(path_dir) or {}
+	os.mkdir_all(path_dir)!
+	os.cp(test_os_process, os.join_path(path_dir, 'where.exe'))!
+	os.setenv('PATH', '${path_dir}${os.path_delimiter}${original_path}', true)
+	mut p := os.new_process('where')
+	p.set_args(['/q', 'definitely_missing_program_xyz'])
+	p.set_redirect_stdio()
+	p.wait()
+	assert p.status == .exited
+	assert p.code == 1, 'the system `where.exe` (exit 1) must win over the PATH impostor (exit 0), got ${p.code}'
+	p.close()
+}
+
+fn test_new_process_runs_the_exact_spelling_of_a_suffixed_name_on_windows() {
+	$if !windows {
+		return
+	}
+	eprintln(@FN)
+	original_path := os.getenv('PATH')
+	defer {
+		os.setenv('PATH', original_path, true)
+	}
+	// A name that already has an extension must be tried exactly, before any
+	// suffix is appended: `exact_tool.exe.exe` in the same directory must not
+	// shadow the requested `exact_tool.exe`. The shadow ignores its arguments
+	// and exits with 0; the requested program exits with the given 3.
+	path_dir := os.join_path(tfolder, 'path_bin_exact')
+	os.rmdir_all(path_dir) or {}
+	os.mkdir_all(path_dir)!
+	os.cp(test_os_process, os.join_path(path_dir, 'exact_tool.exe'))!
+	os.cp(delayed_output_exe_filename, os.join_path(path_dir, 'exact_tool.exe.exe'))!
+	os.setenv('PATH', '${path_dir}${os.path_delimiter}${original_path}', true)
+	mut p := os.new_process('exact_tool.exe')
+	p.set_args(['-exitcode', '3'])
+	p.set_redirect_stdio()
+	p.wait()
+	assert p.status == .exited
+	assert p.code == 3, 'the exact `exact_tool.exe` (exit 3) must win over `exact_tool.exe.exe` (exit 0), got ${p.code}'
+	p.close()
+}
+
+fn test_new_process_does_not_expand_a_suffixed_name_in_an_earlier_directory_on_windows() {
+	$if !windows {
+		return
+	}
+	eprintln(@FN)
+	original_path := os.getenv('PATH')
+	original_wd := os.getwd()
+	defer {
+		os.setenv('PATH', original_path, true)
+		os.chdir(original_wd) or {}
+	}
+	// A name that already has an executable extension is never expanded, in any
+	// directory: `exact_tool.exe.exe` in the current directory (searched first)
+	// must not shadow `exact_tool.exe` found later on PATH. The shadow ignores
+	// its arguments and exits with 0; the requested program exits with the given 3.
+	cwd_dir := os.join_path(tfolder, 'cwd_bin_exact_shadow')
+	path_dir := os.join_path(tfolder, 'path_bin_exact_later')
+	os.rmdir_all(cwd_dir) or {}
+	os.rmdir_all(path_dir) or {}
+	os.mkdir_all(cwd_dir)!
+	os.mkdir_all(path_dir)!
+	os.cp(delayed_output_exe_filename, os.join_path(cwd_dir, 'exact_tool.exe.exe'))!
+	os.cp(test_os_process, os.join_path(path_dir, 'exact_tool.exe'))!
+	os.setenv('PATH', '${path_dir}${os.path_delimiter}${original_path}', true)
+	os.chdir(cwd_dir)!
+	mut p := os.new_process('exact_tool.exe')
+	p.set_args(['-exitcode', '3'])
+	p.set_redirect_stdio()
+	p.wait()
+	assert p.status == .exited
+	assert p.code == 3, 'the PATH `exact_tool.exe` (exit 3) must win over the cwd `exact_tool.exe.exe` (exit 0), got ${p.code}'
+	p.close()
+}
+
+fn test_new_process_tries_the_suffixes_in_pathext_order_on_windows() {
+	$if !windows {
+		return
+	}
+	eprintln(@FN)
+	original_path := os.getenv('PATH')
+	defer {
+		os.setenv('PATH', original_path, true)
+	}
+	// For a bare name the suffixes are tried in the default PATHEXT order,
+	// `.COM;.EXE;.BAT;.CMD`, so `tool.com` must win over `tool.exe` in the same
+	// directory, as it does in cmd.exe. The `.com` is a PE image, which Windows
+	// runs regardless of the extension. It exits with the given 3; the `.exe`
+	// ignores its arguments and exits with 0.
+	path_dir := os.join_path(tfolder, 'path_bin_pathext')
+	os.rmdir_all(path_dir) or {}
+	os.mkdir_all(path_dir)!
+	com_path := os.join_path(path_dir, 'pathext_tool.com')
+	os.cp(test_os_process, com_path)!
+	os.cp(delayed_output_exe_filename, os.join_path(path_dir, 'pathext_tool.exe'))!
+	os.setenv('PATH', '${path_dir}${os.path_delimiter}${original_path}', true)
+	assert os.find_abs_path_of_executable('pathext_tool')! == com_path
+	mut p := os.new_process('pathext_tool')
+	p.set_args(['-exitcode', '3'])
+	p.set_redirect_stdio()
+	p.wait()
+	assert p.status == .exited
+	assert p.code == 3, 'the `pathext_tool.com` (exit 3) must win over `pathext_tool.exe` (exit 0), got ${p.code}'
 	p.close()
 }
 
@@ -361,8 +520,11 @@ fn echo(mut p os.Process, echo_string string) {
 
 fn test_stdin_write() {
 	eprintln(@FN)
-	echo_exe := $if windows { echo_process_exe_filename } $else { os.find_abs_path_of_executable('cat') or {
-			'/bin/cat'} }
+	echo_exe := $if windows { echo_process_exe_filename } $else {
+		os.find_abs_path_of_executable('cat') or {
+			'/bin/cat'
+		}
+	}
 	mut p := os.new_process(echo_exe)
 	p.set_redirect_stdio()
 	assert p.status != .exited

@@ -89,7 +89,10 @@ fn (mut encoder Encoder) encode_value[T](val T) {
 		encoder.encode_array(val)
 	} $else $if T.unaliased_typ is $map {
 		encoder.output << `{`
-		if encoder.prettify {
+		// An empty map is written as `{}`, for the same reason as in encode_map: the
+		// level raised here would never be lowered, because the lowering lives in the
+		// loop below.
+		if encoder.prettify && val.len > 0 {
 			encoder.increment_level()
 			encoder.add_indent()
 		}
@@ -243,8 +246,7 @@ fn (mut encoder Encoder) encode_string(val string) {
 							0
 						} - 0x10000
 
-						hex_string := '\\u${0xD800 + ((unicode_point_low >> 10) & 0x3FF):04X}\\u${
-							0xDC00 + (unicode_point_low & 0x3FF):04x}'
+						hex_string := '\\u${0xD800 + ((unicode_point_low >> 10) & 0x3FF):04X}\\u${0xDC00 + (unicode_point_low & 0x3FF):04x}'
 
 						buffer_end += 4
 						buffer_start = buffer_end
@@ -349,7 +351,10 @@ fn (mut encoder Encoder) encode_null() {
 
 fn (mut encoder Encoder) encode_array[T](val T) {
 	encoder.output << `[`
-	if encoder.prettify {
+	// An empty array is written as `[]`: there is no element to indent, and a level
+	// raised here would never be lowered, because the matching lowering happens in
+	// the loop below, which an empty array never enters.
+	if encoder.prettify && val.len > 0 {
 		encoder.increment_level()
 		encoder.add_indent()
 	}
@@ -387,7 +392,10 @@ fn (mut encoder Encoder) encode_pointer_array_item[T](item T) {
 
 fn (mut encoder Encoder) encode_map[K, T](val map[K]T) {
 	encoder.output << `{`
-	if encoder.prettify {
+	// An empty map is written as `{}`: there is no member to indent, and a level
+	// raised here would never be lowered, because the matching lowering happens in
+	// the loop below, which an empty map never enters.
+	if encoder.prettify && val.len > 0 {
 		encoder.increment_level()
 		encoder.add_indent()
 	}
@@ -519,7 +527,10 @@ fn (mut encoder Encoder) encode_sumtype_struct_variant[T](val T, variant_name st
 
 fn (mut encoder Encoder) encode_array_of_sumtype_variants[T](val []T) {
 	encoder.output << `[`
-	if encoder.prettify {
+	// An empty array is written as `[]`, for the same reason as in encode_array: the
+	// level raised here would never be lowered, because the lowering lives in the
+	// loop below.
+	if encoder.prettify && val.len > 0 {
 		encoder.increment_level()
 		encoder.add_indent()
 	}
@@ -636,6 +647,12 @@ fn check_not_empty[T](val T) ?bool {
 			return sval != ''
 		}
 		return false
+	} $else $if val is ?bool {
+		opt := ?bool(val)
+		if bval := opt {
+			return bval
+		}
+		return false
 	} $else $if val is ?int {
 		opt := ?int(val)
 		if ival := opt {
@@ -655,9 +672,14 @@ fn check_not_empty[T](val T) ?bool {
 		}
 		return false
 	} $else $if T is $option {
-		return !struct_field_is_none(val)
+		if struct_field_is_none(val) {
+			return false
+		}
+		return check_not_empty(get_value_from_optional(val)) or { true }
 	} $else $if T.indirections != 0 {
 		return val != unsafe { nil }
+	} $else $if T.unaliased_typ is bool {
+		return bool(val)
 	} $else $if T.unaliased_typ is string {
 		if val == '' {
 			return false

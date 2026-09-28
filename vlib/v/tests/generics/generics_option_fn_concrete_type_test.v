@@ -3,7 +3,7 @@ fn option_fn_type_name[T]() string {
 }
 
 fn is_option_fn[T]() bool {
-	$if T is ?fn (int) int {
+	$if T is ?fn ( int ) int {
 		return true
 	} $else {
 		return false

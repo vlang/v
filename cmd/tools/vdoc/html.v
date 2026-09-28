@@ -5,20 +5,20 @@ import net.urllib
 import encoding.html
 import strings
 import markdown
-import v.scanner
-import v.ast
-import v.token
 import document as doc
-import v.pref
-import v.util { tabs }
+import v.token
 
 const css_js_assets = ['doc.css', 'normalize.css', 'doc.js', 'dark-mode.js']
-const default_theme = os.resource_abs_path('theme')
+const default_theme = os.join_path(@VEXEROOT, 'cmd', 'tools', 'vdoc', 'theme')
 const link_svg = '<svg xmlns="http://www.w3.org/2000/svg" height="24" viewBox="0 0 24 24" width="24"><path d="M0 0h24v24H0z" fill="none"/><path d="M3.9 12c0-1.71 1.39-3.1 3.1-3.1h4V7H7c-2.76 0-5 2.24-5 5s2.24 5 5 5h4v-1.9H7c-1.71 0-3.1-1.39-3.1-3.1zM8 13h8v-2H8v2zm9-6h-4v1.9h4c1.71 0 3.1 1.39 3.1 3.1s-1.39 3.1-3.1 3.1h-4V17h4c2.76 0 5-2.24 5-5s-2.24-5-5-5z"/></svg>'
 
 const single_quote = "'"
 const double_quote = '"'
 const quote_escape_seq = [single_quote, '', double_quote, '']
+
+fn tabs(n int) string {
+	return '\t'.repeat(n)
+}
 
 enum HighlightTokenTyp {
 	unone
@@ -188,26 +188,20 @@ fn (vd &VDoc) get_repo_file_path_for_links(file_path string) string {
 	return file_path.replace('\\', '/')
 }
 
-fn (vd &VDoc) write_content(cn &doc.DocNode, d &doc.Doc, mut hw strings.Builder) {
+fn (vd &VDoc) write_content(cn &doc.DocNode, mut hw strings.Builder) {
 	cfg := vd.cfg
 	file_path_name := vd.get_repo_file_path_for_links(cn.file_path)
-	src_link := get_src_link(vd.manifest.repo_url, vd.manifest.repo_branch, file_path_name,
-
-		cn.pos.line_nr + 1)
+	src_link := get_src_link(vd.manifest.repo_url, vd.manifest.repo_branch, file_path_name, cn.pos.line_nr + 1)
 	md_link_base := get_src_dir_link(vd.manifest.repo_url, vd.manifest.repo_branch, file_path_name)
 	if cn.content.len != 0 || cn.name == 'Constants' {
-		hw.write_string(vd.doc_node_html(cn, src_link, md_link_base, false, cfg.include_examples,
-			d.table))
+		hw.write_string(vd.doc_node_html(cn, src_link, md_link_base, false, cfg.include_examples))
 		hw.write_string('\n')
 	}
 	for child in cn.children {
 		child_file_path_name := vd.get_repo_file_path_for_links(child.file_path)
-		child_src_link := get_src_link(vd.manifest.repo_url, vd.manifest.repo_branch,
-			child_file_path_name, child.pos.line_nr + 1)
-		child_md_link_base := get_src_dir_link(vd.manifest.repo_url, vd.manifest.repo_branch,
-			child_file_path_name)
-		hw.write_string(vd.doc_node_html(child, child_src_link, child_md_link_base, false,
-			cfg.include_examples, d.table))
+		child_src_link := get_src_link(vd.manifest.repo_url, vd.manifest.repo_branch, child_file_path_name, child.pos.line_nr + 1)
+		child_md_link_base := get_src_dir_link(vd.manifest.repo_url, vd.manifest.repo_branch, child_file_path_name)
+		hw.write_string(vd.doc_node_html(child, child_src_link, child_md_link_base, false, cfg.include_examples))
 		hw.write_string('\n')
 	}
 }
@@ -224,13 +218,12 @@ fn (vd &VDoc) gen_html(d doc.Doc) string {
 	} else {
 		''
 	}
-	contents.writeln(vd.doc_node_html(d.head, '', head_md_link_base, true, cfg.include_examples,
-		d.table))
+	contents.writeln(vd.doc_node_html(d.head, '', head_md_link_base, true, cfg.include_examples))
 	if is_module_readme(d.head) {
 		write_toc(d.head, mut symbols_toc)
 	}
 	for cn in dcs_contents {
-		vd.write_content(&cn, &d, mut contents)
+		vd.write_content(&cn, mut contents)
 		write_toc(cn, mut symbols_toc) // write head
 	}
 	if cfg.html_only_contents {
@@ -473,199 +466,66 @@ fn resolve_relative_markdown_link(base_url string, link string) string {
 	return parsed_base.str()
 }
 
-fn write_token(tok token.Token, typ HighlightTokenTyp, mut buf strings.Builder) {
-	mut token_content := ''
-	match typ {
-		.unone, .operator, .punctuation {
-			token_content = tok.kind.str()
+fn html_highlight(code string) string {
+	tokens := scan_code(code)
+	mut buf := strings.new_builder(code.len + 64)
+	mut offset := 0
+	for i, scanned in tokens {
+		if scanned.start > offset {
+			buf.write_string(escape_code(code[offset..scanned.start]))
 		}
-		.string_interp {
-			// tok.kind.str() for this returns $2 instead of $
-			token_content = '$'
-		}
-		.opening_string {
-			token_content = "'${tok.lit}"
-		}
-		.closing_string {
-			// A string as the next token of the expression
-			// inside the string interpolation indicates that
-			// this is the closing of string interpolation
-			token_content = "${tok.lit}'"
-		}
-		.string {
-			token_content = "'${tok.lit}'"
-		}
-		.char {
-			token_content = '`${tok.lit}`'
-		}
-		.comment {
-			if tok.lit != '' && tok.lit[0] == 1 {
-				token_content = '//${tok.lit[1..]}'
-			} else {
-				token_content = '//${tok.lit}'
-			}
-		}
-		else {
-			token_content = tok.lit
-		}
-	}
-
-	buf.write_string(html.escape(token_content))
-}
-
-fn html_highlight(code string, tb &ast.Table) string {
-	mut s := scanner.new_scanner(code, .parse_comments, &pref.Preferences{
-		output_mode: .silent
-	})
-	mut tok := s.scan()
-	mut prev_tok := tok
-	mut next_tok := s.scan()
-	mut buf := strings.new_builder(200)
-	mut i := 0
-	mut inside_string_interp := false
-	for i < code.len {
-		if i != tok.pos {
-			// All characters not detected by the scanner
-			// (mostly whitespaces) go here.
-			ch := code[i]
-			if ch == `<` {
-				buf.write_string('&lt;')
-			} else if ch == `>` {
-				buf.write_string('&gt;')
-			} else if ch == `&` {
-				buf.write_string('&amp;')
-			} else {
-				buf.write_u8(ch)
-			}
-			i++
-			continue
-		}
-
-		mut tok_typ := HighlightTokenTyp.unone
-		match tok.kind {
+		raw := code[scanned.start..scanned.end]
+		next_kind := if i + 1 < tokens.len { tokens[i + 1].kind } else { token.Token.eof }
+		typ := match scanned.kind {
+			.comment { HighlightTokenTyp.comment }
+			.string { HighlightTokenTyp.string }
+			.char { HighlightTokenTyp.char }
+			.number { HighlightTokenTyp.number }
+			.key_true, .key_false { HighlightTokenTyp.boolean }
+			.key_none { HighlightTokenTyp.none }
 			.name {
-				if tok.lit in highlight_builtin_types || tb.known_type(tok.lit) {
-					tok_typ = .builtin
-				} else if next_tok.kind == .lcbr {
-					tok_typ = .symbol
-				} else if next_tok.kind == .lpar || (!tok.lit[0].is_capital()
-					&& next_tok.kind == .lt && next_tok.pos == tok.pos + tok.lit.len) {
-					tok_typ = .function
+				if scanned.lit in highlight_builtin_types || scanned.lit == 'chan' {
+					HighlightTokenTyp.builtin
+				} else if next_kind == .lpar {
+					HighlightTokenTyp.function
 				} else {
-					tok_typ = .name
+					HighlightTokenTyp.name
 				}
-			}
-			.comment {
-				tok_typ = .comment
-			}
-			.chartoken {
-				tok_typ = .char
-			}
-			.str_dollar {
-				tok_typ = .string_interp
-				inside_string_interp = true
-			}
-			.string {
-				if inside_string_interp {
-					if next_tok.kind == .str_dollar {
-						// the " hello " in "${a} hello ${b} world"
-						tok_typ = .partial_string
-					} else {
-						// the " world" in "${a} hello ${b} world"
-						tok_typ = .closing_string
-					}
-
-					// NOTE: Do not switch inside_string_interp yet!
-					// It will be handy later when we do some special
-					// handling in generating code (see code below)
-				} else if next_tok.kind == .str_dollar {
-					tok_typ = .opening_string
-				} else {
-					tok_typ = .string
-				}
-			}
-			.number {
-				tok_typ = .number
-			}
-			.key_true, .key_false {
-				tok_typ = .boolean
-			}
-			.lpar, .lcbr, .rpar, .rcbr, .lsbr, .rsbr, .semicolon, .colon, .comma, .dot, .dotdot,
-			.ellipsis {
-				tok_typ = .punctuation
 			}
 			else {
-				if token.is_key(tok.lit) || token.is_decl(tok.kind) {
-					tok_typ = .keyword
-				} else if tok.kind.is_assign() || tok.is_unary() || tok.kind.is_relational()
-					|| tok.kind.is_infix() || tok.kind.is_postfix() {
-					tok_typ = .operator
+				if scanned.kind.is_keyword() {
+					HighlightTokenTyp.keyword
+				} else if scanned.kind == .question || scanned.kind.is_assignment()
+					|| scanned.kind.is_prefix()
+					|| scanned.kind.is_infix() || scanned.kind.is_postfix() {
+					HighlightTokenTyp.operator
+				} else {
+					HighlightTokenTyp.punctuation
 				}
 			}
 		}
-
-		if tok_typ in [.unone, .name] {
-			write_token(tok, tok_typ, mut buf)
+		if typ in [.unone, .name] {
+			buf.write_string(escape_code(raw))
 		} else {
-			// Special handling for "complex" string literals
-			if tok_typ in [.partial_string, .closing_string] && inside_string_interp {
-				// rcbr is not rendered when the string on the right
-				// side of the expr/string interpolation is not empty.
-				// e.g. "${a}.${b}${c}"
-				// expectation: "${a}.${b}${c}"
-				// reality: "${a.${b}${c}"
-				if tok.lit.len != 0 {
-					write_token(token.Token{ kind: .rcbr }, .unone, mut buf)
-				}
-
-				inside_string_interp = false
-			}
-
-			// Properly treat and highlight the "string"-related types
-			// as if they are "string" type.
-			final_tok_typ := match tok_typ {
-				.opening_string, .partial_string, .closing_string { HighlightTokenTyp.string }
-				else { tok_typ }
-			}
-
-			buf.write_string('<span class="token ${final_tok_typ}">')
-			if tok_typ == .string {
-				// Make sure to escape html in strings. Otherwise it will be rendered in the
-				// html documentation outputs / its style rules will affect the readme.
-				buf.write_string("'${html.escape(tok.lit.str())}'")
-			} else {
-				if final_tok_typ == .string && prev_tok.lit == 'return' {
-					buf.write_string(' ')
-				}
-				write_token(tok, tok_typ, mut buf)
-			}
-			buf.write_string('</span>')
+			buf.write_string('<span class="token ${typ}">${escape_code(raw)}</span>')
 		}
-
-		if next_tok.kind == .eof {
-			break
-		}
-
-		i = tok.pos + tok.len
-
-		// This is to avoid issues that skips any "unused" tokens
-		// For example: Call expr with complex string literals as arg
-		if i - 1 == next_tok.pos {
-			i--
-		}
-		prev_tok = tok
-		tok = next_tok
-		next_tok = s.scan()
+		offset = scanned.end
 	}
-	return buf.str()
+	if offset < code.len {
+		buf.write_string(escape_code(code[offset..]))
+	}
+	return buf.str().trim_string_right('\n')
 }
 
-fn (vd &VDoc) doc_node_html(dn doc.DocNode, link string, md_link_base string, head bool, include_examples bool, tb &ast.Table) string {
+fn escape_code(text string) string {
+	return text.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
+}
+
+fn (vd &VDoc) doc_node_html(dn doc.DocNode, link string, md_link_base string, head bool, include_examples bool) string {
 	mut dnw := strings.new_builder(200)
 	head_tag := if head { 'h1' } else { 'h2' }
 	mut renderer := markdown.HtmlRenderer{
 		transformer: &MdHtmlCodeHighlighter{
-			table:              tb
 			relative_link_base: md_link_base
 		}
 	}
@@ -673,7 +533,7 @@ fn (vd &VDoc) doc_node_html(dn doc.DocNode, link string, md_link_base string, he
 	md_content := markdown.render(prepare_markdown_for_html(only_comments_text), mut renderer) or {
 		''
 	}
-	highlighted_code := html_highlight(dn.content, tb)
+	highlighted_code := html_highlight(dn.content)
 	node_class := if dn.kind == .const_group { ' const' } else { '' }
 	sym_name := get_sym_name(dn)
 	mut deprecated_tags := dn.tags.filter(it.starts_with('deprecated'))
@@ -722,7 +582,7 @@ fn (vd &VDoc) doc_node_html(dn doc.DocNode, link string, md_link_base string, he
 		example_title := if examples.len > 1 { 'Examples' } else { 'Example' }
 		dnw.writeln('<section class="doc-node examples"><h4>${example_title}</h4>')
 		for example in examples {
-			hl_example := html_highlight(example, tb)
+			hl_example := html_highlight(example)
 			dnw.writeln('<pre>\n<code class="language-v">${hl_example}</code></pre>')
 		}
 		dnw.writeln('</section>')
@@ -915,7 +775,6 @@ fn write_toc(dn doc.DocNode, mut toc strings.Builder) {
 struct MdHtmlCodeHighlighter {
 mut:
 	language           string
-	table              &ast.Table
 	relative_link_base string
 }
 
@@ -932,7 +791,7 @@ fn (f &MdHtmlCodeHighlighter) transform_content(parent markdown.ParentType, text
 		if f.language == '' {
 			return html.escape(text)
 		}
-		output := html_highlight(text, f.table)
+		output := html_highlight(text)
 		// Reset the language, so that it will not persist between blocks,
 		// and will not be accidentally re-used for the next block, that may be lacking ```language :
 		unsafe {

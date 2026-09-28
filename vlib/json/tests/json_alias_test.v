@@ -15,7 +15,7 @@ const json_users = '{
 }'
 
 fn test_alias_with_map() {
-	a := json.decode(map[string]User, json_users)!
+	a := json.decode(map[string]User{}, json_users)!
 	b := json.decode(Users, json_users)!
 
 	assert Users(a) == b

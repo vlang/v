@@ -56,13 +56,13 @@ struct MDPathScanResult {
 
 fn (v1 CheckResult) + (v2 CheckResult) CheckResult {
 	return CheckResult{
-		files: v1.files + v2.files
-		lines: v1.lines + v2.lines
+		files:    v1.files + v2.files
+		lines:    v1.lines + v2.lines
 		examples: v1.examples + v2.examples
-		oks: v1.oks + v2.oks
+		oks:      v1.oks + v2.oks
 		warnings: v1.warnings + v2.warnings
-		ferrors: v1.ferrors + v2.ferrors
-		errors: v1.errors + v2.errors
+		ferrors:  v1.ferrors + v2.ferrors
+		errors:   v1.errors + v2.errors
 	}
 }
 
@@ -103,8 +103,8 @@ fn main() {
 		}
 		all_mdfiles << MDFile{
 			skip_line_length_check: skip_line_length_check
-			path: file_path
-			lines: lines
+			path:                   file_path
+			lines:                  lines
 		}
 	}
 	println('> Found: ${all_mdfiles.len} .md files. Skipped by .vcheckignore: ${skipped_mdfiles}.')
@@ -157,7 +157,7 @@ fn md_file_paths(dir string) MDPathScanResult {
 		files_to_check << file
 	}
 	return MDPathScanResult{
-		files: files_to_check
+		files:   files_to_check
 		skipped: skipped
 	}
 }
@@ -199,11 +199,11 @@ fn (ctx VCheckIgnoreContext) skip_match(file_path string) ?VCheckIgnoreMatch {
 				}
 				if matches_vcheckignore_rule(file, VCheckIgnoreRule{
 					base_dir: dir
-					pattern: pattern
+					pattern:  pattern
 				}) {
 					return VCheckIgnoreMatch{
 						ignore_file: ignore_path
-						pattern: pattern
+						pattern:     pattern
 					}
 				}
 			}
@@ -329,6 +329,12 @@ const default_command = 'compile'
 // fence languages that begin with `v` but hold something other than V source
 const non_v_fence_languages = ['vml']
 
+// fence_language returns the first token of a code fence's info string.
+fn fence_language(line string) string {
+	fields := line.replace('```', '').fields()
+	return if fields.len > 0 { fields[0] } else { '' }
+}
+
 struct VCodeExample {
 mut:
 	text    []string
@@ -423,18 +429,20 @@ fn (mut f MDFile) check() CheckResult {
 	f.check_link_target_match(anchor_data)
 	f.check_examples()
 	return CheckResult{
-		files: 1
-		lines: f.lines.len
+		files:    1
+		lines:    f.lines.len
 		examples: f.examples.len
-		oks: f.oks
+		oks:      f.oks
 		warnings: f.warnings
-		errors: f.errors
-		ferrors: f.ferrors
+		errors:   f.errors
+		ferrors:  f.ferrors
 	}
 }
 
 fn (mut f MDFile) parse_line(lnumber int, line string) {
-	if line.starts_with('```v') && line.replace('```', '').trim_space() !in non_v_fence_languages {
+	// Only the first word of a fence info string names the language; anything after it
+	// (e.g. `title=example`) is metadata and must not affect the decision.
+	if line.starts_with('```v') && fence_language(line) !in non_v_fence_languages {
 		if f.state == .markdown {
 			f.state = .vexample
 			mut command := line.replace('```v', '').trim_space()
@@ -444,7 +452,7 @@ fn (mut f MDFile) parse_line(lnumber int, line string) {
 				command += ' ${default_command}'
 			}
 			f.current = VCodeExample{
-				sline: lnumber
+				sline:   lnumber
 				command: command
 			}
 		}
@@ -509,7 +517,7 @@ fn (mut ad AnchorData) add_links(line_number int, line string) {
 			ad.links[link] = []AnchorLink{}
 		}
 		ad.links[link] << AnchorLink{
-			line: line_number
+			line:  line_number
 			label: re.get_group_by_name(elem, 'label')
 		}
 	}
@@ -524,7 +532,7 @@ fn (mut ad AnchorData) add_link_targets(line_number int, line string) {
 				ad.anchors[link] = []AnchorTarget{}
 			}
 			ad.anchors[link] << Headline{
-				line: line_number
+				line:  line_number
 				label: headline
 				level: headline_start_pos
 			}

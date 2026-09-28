@@ -196,13 +196,11 @@ pub fn (c TcpConn) read_ptr(buf_ptr &u8, len int) !int {
 	}
 	if res > 0 {
 		$if trace_tcp ? {
-			eprintln(
-				'<<< TcpConn.read_ptr  | c.sock.handle: ${c.sock.handle} | buf_ptr: ${ptr_str(buf_ptr)} | len: ${len} | res: ${res} |\n' +
+			eprintln('<<< TcpConn.read_ptr  | c.sock.handle: ${c.sock.handle} | buf_ptr: ${ptr_str(buf_ptr)} | len: ${len} | res: ${res} |\n' +
 				unsafe { buf_ptr.vstring_with_len(len) })
 		}
 		$if trace_tcp_data_read ? {
-			eprintln(
-				'<<< TcpConn.read_ptr  | 1 data.len: ${res:6} | hex: ${unsafe { buf_ptr.vbytes(res) }.hex()} | data: ' +
+			eprintln('<<< TcpConn.read_ptr  | 1 data.len: ${res:6} | hex: ${unsafe { buf_ptr.vbytes(res) }.hex()} | data: ' +
 				unsafe { buf_ptr.vstring_with_len(res) })
 		}
 		return res
@@ -222,14 +220,12 @@ pub fn (c TcpConn) read_ptr(buf_ptr &u8, len int) !int {
 			return io.Eof{}
 		}
 		$if trace_tcp ? {
-			eprintln(
-				'<<< TcpConn.read_ptr  | c.sock.handle: ${c.sock.handle} | buf_ptr: ${ptr_str(buf_ptr)} | len: ${len} | res: ${res} | code: ${ecode} |\n' +
+			eprintln('<<< TcpConn.read_ptr  | c.sock.handle: ${c.sock.handle} | buf_ptr: ${ptr_str(buf_ptr)} | len: ${len} | res: ${res} | code: ${ecode} |\n' +
 				unsafe { buf_ptr.vstring_with_len(len) })
 		}
 		$if trace_tcp_data_read ? {
 			if res > 0 {
-				eprintln(
-					'<<< TcpConn.read_ptr  | 2 data.len: ${res:6} | hex: ${unsafe { buf_ptr.vbytes(res) }.hex()} | data: ' +
+				eprintln('<<< TcpConn.read_ptr  | 2 data.len: ${res:6} | hex: ${unsafe { buf_ptr.vbytes(res) }.hex()} | data: ' +
 					unsafe { buf_ptr.vstring_with_len(res) })
 			}
 		}
@@ -260,13 +256,11 @@ pub fn (mut c TcpConn) write_ptr(b &u8, len int) !int {
 		eprintln('>>> TcpConn.write_ptr | c: ${ptr_str(c)} | c.sock.handle: ${c.sock.handle} | b: ${ptr_str(b)} | len: ${len}')
 	}
 	$if trace_tcp ? {
-		eprintln(
-			'>>> TcpConn.write_ptr | c.sock.handle: ${c.sock.handle} | b: ${ptr_str(b)} len: ${len} |\n' +
+		eprintln('>>> TcpConn.write_ptr | c.sock.handle: ${c.sock.handle} | b: ${ptr_str(b)} len: ${len} |\n' +
 			unsafe { b.vstring_with_len(len) })
 	}
 	$if trace_tcp_data_write ? {
-		eprintln(
-			'>>> TcpConn.write_ptr | data.len: ${len:6} | hex: ${unsafe { b.vbytes(len) }.hex()} | data: ' +
+		eprintln('>>> TcpConn.write_ptr | data.len: ${len:6} | hex: ${unsafe { b.vbytes(len) }.hex()} | data: ' +
 			unsafe { b.vstring_with_len(len) })
 	}
 	c.last_write_sent = 0
@@ -449,20 +443,45 @@ fn ipv4_fallback_listen_addr(saddr string) !string {
 }
 
 fn listen_tcp_with_family(family AddrFamily, saddr string, options ListenOptions) !&TcpListener {
-	mut s := new_tcp_socket(family) or { return error('${err.msg()}; could not create new socket') }
-	s.set_dualstack(options.dualstack) or {}
-
 	addrs := resolve_addrs(saddr, family, .tcp) or {
 		return error('${err.msg()}; could not resolve address ${saddr}')
 	}
-	// TODO(logic to pick here)
-	addr := addrs[0]
+	return listen_tcp_with_addresses(addrs, saddr, options)
+}
+
+fn listen_tcp_with_addresses(addrs []Addr, saddr string, options ListenOptions) !&TcpListener {
+	mut errors := []IError{}
+	for addr in addrs {
+		listener := listen_tcp_addr(addr, saddr, options) or {
+			errors << err
+			continue
+		}
+		return listener
+	}
+	if errors.len > 0 {
+		return errors[errors.len - 1]
+	}
+	return error('no addresses resolved for ${saddr}')
+}
+
+fn listen_tcp_addr(addr Addr, saddr string, options ListenOptions) !&TcpListener {
+	mut s := new_tcp_socket(addr.family()) or {
+		return error('${err.msg()}; could not create new socket')
+	}
+	mut keep_socket := false
+	defer {
+		if !keep_socket {
+			s.close() or {}
+		}
+	}
+	s.set_dualstack(options.dualstack) or {}
 
 	// cast to the correct type
 	alen := addr.len()
 	socket_error_message(C.bind(s.handle, voidptr(&addr), alen), 'binding to ${saddr} failed')!
 	mut res := C.listen(s.handle, options.backlog)
 	if res == 0 {
+		keep_socket = true
 		mut listener := &TcpListener{
 			sock:            s
 			accept_deadline: no_deadline
@@ -504,6 +523,7 @@ fn listen_tcp_with_family(family AddrFamily, saddr string, options ListenOptions
 		$if net_nonblocking_sockets ? {
 			listener.is_blocking = false
 		}
+		keep_socket = true
 		return listener
 	}
 }
@@ -665,7 +685,7 @@ pub fn tcp_socket_from_handle_raw(sockfd int) TcpSocket {
 
 fn (mut s TcpSocket) set_option(level int, opt int, value int) ! {
 	v := i32(value) // C socket options are 4-byte `int`; pass i32 storage (sizeof 4)
-	socket_error(C.setsockopt(s.handle, level, opt, &v, sizeof(v)))!
+	socket_error(C.setsockopt(s.handle, level, opt, voidptr(&v), sizeof(v)))!
 }
 
 pub fn (mut s TcpSocket) set_option_bool(opt SocketOption, value bool) ! {

@@ -11,10 +11,15 @@ $if !freestanding && !vinix {
 }
 
 fn C.v_prealloc_atomic_add_i32(ptr &i32, delta int) int
+
 fn C.v_prealloc_atomic_load_i32(ptr &i32) int
+
 fn C.v_prealloc_atomic_store_i32(ptr &i32, val int) int
+
 fn C.v_prealloc_atomic_cas_i32(ptr &i32, expected int, desired int) int
+
 fn C.v_prealloc_atomic_add_i64(ptr &i64, delta i64) i64
+
 fn C.v_prealloc_atomic_load_i64(ptr &i64) i64
 
 fn C.madvise(addr voidptr, length usize, advice int) int
@@ -158,8 +163,12 @@ mut:
 @[heap]
 struct VPreallocScope {
 mut:
-	previous    &VMemoryBlock = 0
-	first       &VMemoryBlock = 0
+	previous &VMemoryBlock = 0
+	first    &VMemoryBlock = 0
+	// saved_next holds the blocks that followed `previous` when this scope was
+	// linked after it: a reentered parent scope keeps rewound blocks there.
+	// Unlinking the scope restores them instead of dropping them from the chain.
+	saved_next  &VMemoryBlock = 0
 	min_address usize
 	max_address usize
 	ranges      &VPreallocRange = 0
@@ -182,8 +191,7 @@ fn prealloc_scope_add_block(scope &VPreallocScope, block &VMemoryBlock) {
 	unsafe {
 		if scope.ranges_len == scope.ranges_cap {
 			new_cap := if scope.ranges_cap == 0 { 8 } else { scope.ranges_cap * 2 }
-			ranges := &VPreallocRange(C.realloc(scope.ranges,
-				usize(new_cap) * sizeof(VPreallocRange)))
+			ranges := &VPreallocRange(C.realloc(scope.ranges, usize(new_cap) * sizeof(VPreallocRange)))
 			vmemory_abort_on_nil(ranges, isize(new_cap) * isize(sizeof(VPreallocRange)))
 			scope.ranges = ranges
 			scope.ranges_cap = new_cap
@@ -209,6 +217,32 @@ fn prealloc_scope_add_block(scope &VPreallocScope, block &VMemoryBlock) {
 	}
 }
 
+// prealloc_scope_remove_block forgets `block`'s address range, before the
+// block is freed while its scope lives on.
+@[unsafe]
+fn prealloc_scope_remove_block(scope &VPreallocScope, block &VMemoryBlock) {
+	if scope == unsafe { nil } || block == unsafe { nil } {
+		return
+	}
+	unsafe {
+		start := usize(block.start)
+		for i in 0 .. scope.ranges_len {
+			if scope.ranges[i].start == start {
+				for j := i; j + 1 < scope.ranges_len; j++ {
+					scope.ranges[j] = scope.ranges[j + 1]
+				}
+				scope.ranges_len--
+				break
+			}
+		}
+		// Ranges are sorted by start and never overlap.
+		if scope.ranges_len > 0 {
+			scope.min_address = scope.ranges[0].start
+			scope.max_address = scope.ranges[scope.ranges_len - 1].stop
+		}
+	}
+}
+
 fn vmemory_abort_on_nil(p voidptr, bytes isize) {
 	if unsafe { p == 0 } {
 		C.fprintf(C.stderr, c'could not allocate %td bytes\n', bytes)
@@ -216,6 +250,7 @@ fn vmemory_abort_on_nil(p voidptr, bytes isize) {
 	}
 }
 
+@[inline]
 fn vmemory_effective_align(align isize) isize {
 	default_align := isize(prealloc_default_align)
 	if align > default_align {
@@ -224,13 +259,16 @@ fn vmemory_effective_align(align isize) isize {
 	return default_align
 }
 
-@[unsafe]
+@[inline; unsafe]
 fn vmemory_align_up(ptr &u8, align isize) &u8 {
 	if align <= 1 {
 		return ptr
 	}
 	addr := u64(ptr)
 	alignment := u64(align)
+	if alignment & (alignment - 1) == 0 {
+		return unsafe { &u8((addr + alignment - 1) & ~(alignment - 1)) }
+	}
 	offset := addr % alignment
 	if offset == 0 {
 		return ptr
@@ -266,9 +304,7 @@ fn prealloc_trace_scope(action &char, scope &VPreallocScope) {
 				mallocs += mb.mallocs
 				mb = mb.next
 			}
-			C.fprintf(C.stderr,
-				c'[trace_prealloc] scope %s scope=%p previous=%p first=%p blocks=%d used=%lld size=%lld mallocs=%d\n',
-				action, scope, scope.previous, scope.first, blocks, used, size, mallocs)
+			C.fprintf(C.stderr, c'[trace_prealloc] scope %s scope=%p previous=%p first=%p blocks=%d used=%lld size=%lld mallocs=%d\n', action, scope, scope.previous, scope.first, blocks, used, size, mallocs)
 		}
 	}
 }
@@ -314,9 +350,7 @@ fn vmemory_block_new_sized(prev &VMemoryBlock, at_least isize, align isize, min_
 		base_block_size
 	}
 	$if prealloc_trace_malloc ? {
-		C.fprintf(C.stderr,
-			c'vmemory_block_new id: %d, block_size: %lld, at_least: %lld, align: %lld\n', v.id,
-			block_size, at_least, align)
+		C.fprintf(C.stderr, c'vmemory_block_new id: %d, block_size: %lld, at_least: %lld, align: %lld\n', v.id, block_size, at_least, align)
 	}
 
 	fixed_align := if align <= 1 { 1 } else { align }
@@ -339,8 +373,7 @@ fn vmemory_block_new_sized(prev &VMemoryBlock, at_least isize, align isize, min_
 										cache.starts[ci] = cache.starts[cache.count]
 										cache.sizes[ci] = cache.sizes[cache.count]
 										$if prealloc_memset ? {
-											C.memset(v.start, int($d('prealloc_memset_value', 0)),
-												block_size)
+											C.memset(v.start, int($d('prealloc_memset_value', 0)), block_size)
 										}
 										break
 									}
@@ -351,8 +384,7 @@ fn vmemory_block_new_sized(prev &VMemoryBlock, at_least isize, align isize, min_
 				}
 				if unsafe { v.start == 0 } {
 					mmap_ptr := unsafe {
-						C.mmap(0, usize(block_size), C.PROT_READ | C.PROT_WRITE,
-							C.MAP_ANONYMOUS | C.MAP_PRIVATE, -1, 0)
+						C.mmap(0, usize(block_size), C.PROT_READ | C.PROT_WRITE, C.MAP_ANONYMOUS | C.MAP_PRIVATE, -1, 0)
 					}
 					if mmap_ptr != C.MAP_FAILED {
 						v.start = &u8(mmap_ptr)
@@ -377,9 +409,7 @@ fn vmemory_block_new_sized(prev &VMemoryBlock, at_least isize, align isize, min_
 	v.current = v.start
 	$if trace_prealloc ? {
 		if v.is_scope {
-			C.fprintf(C.stderr,
-				c'[trace_prealloc] block alloc block=%p previous=%p id=%d size=%lld at_least=%lld align=%lld start=%p stop=%p\n',
-				v, prev, v.id, block_size, at_least, align, v.start, v.stop)
+			C.fprintf(C.stderr, c'[trace_prealloc] block alloc block=%p previous=%p id=%d size=%lld at_least=%lld align=%lld start=%p stop=%p\n', v, prev, v.id, block_size, at_least, align, v.start, v.stop)
 		}
 	}
 	return v
@@ -393,16 +423,72 @@ fn vmemory_block_current_or_new() &VMemoryBlock {
 		// blocks have a per-thread recycle cache after the scope is detached.
 		mut mb := g_memory_block
 		if _unlikely_(mb == nil) {
-			mb = vmemory_block_new(nil, isize(prealloc_block_size), 0)
-			mb.recycle_cache = &VPreallocBlockCache(C.calloc(1, sizeof(VPreallocBlockCache)))
-			vmemory_abort_on_nil(mb.recycle_cache, sizeof(VPreallocBlockCache))
-			g_memory_block = mb
+			mb = vmemory_block_init_thread()
 		}
 		return mb
 	}
 }
 
-@[unsafe]
+// Keep thread initialization and block growth out of the allocation fast path.
+@[noinline; unsafe]
+fn vmemory_block_init_thread() &VMemoryBlock {
+	unsafe {
+		mut mb := vmemory_block_new(nil, isize(prealloc_block_size), 0)
+		mb.recycle_cache = &VPreallocBlockCache(C.calloc(1, sizeof(VPreallocBlockCache)))
+		vmemory_abort_on_nil(mb.recycle_cache, sizeof(VPreallocBlockCache))
+		g_memory_block = mb
+		return mb
+	}
+}
+
+@[noinline; unsafe]
+fn vmemory_block_grow(previous &VMemoryBlock, n isize, align isize) &VMemoryBlock {
+	unsafe {
+		was_scope := previous.is_scope
+		scope := previous.scope
+		// A scope reentered by prealloc_scope_reenter keeps the blocks it grew into
+		// before, rewound. Continue in the next one that fits instead of mapping and
+		// faulting in a fresh block.
+		old_next := previous.next
+		if was_scope && scope != 0 {
+			mut candidate := old_next
+			for candidate != 0 && candidate.is_scope && candidate.scope == scope {
+				aligned := vmemory_align_up(candidate.current, align)
+				if i64(candidate.stop) - i64(aligned) >= n {
+					g_memory_block = candidate
+					return candidate
+				}
+				candidate = candidate.next
+			}
+		}
+		mut min_block_size := if previous.min_block_size > 0 {
+			previous.min_block_size
+		} else {
+			isize(prealloc_block_size)
+		}
+		if was_scope && min_block_size < isize(prealloc_scope_block_size) * 4 {
+			// Scopes that outgrow one block tend to keep growing: doubling
+			// the block size (256K..4M) turns a 100-block scope into ~10
+			// blocks, cutting refill and map/unmap churn per batch.
+			min_block_size *= 2
+		}
+		mut mb := vmemory_block_new_sized(previous, n, align, min_block_size)
+		mb.is_scope = was_scope
+		mb.scope = scope
+		// Keep any reusable blocks after the new one: the scope frees its chain.
+		if old_next != 0 && was_scope && old_next.is_scope && old_next.scope == scope {
+			mb.next = old_next
+			old_next.previous = mb
+		}
+		if scope != 0 {
+			prealloc_scope_add_block(scope, mb)
+		}
+		g_memory_block = mb
+		return mb
+	}
+}
+
+@[inline; unsafe]
 fn vmemory_block_malloc(n isize, align isize) &u8 {
 	unsafe {
 		// Read the thread-local block pointer ONCE per call: it only stores
@@ -411,33 +497,13 @@ fn vmemory_block_malloc(n isize, align isize) &u8 {
 		// pthread-key emulation), so the fast path must not repeat it.
 		mut mb := vmemory_block_current_or_new()
 		$if prealloc_trace_malloc ? {
-			C.fprintf(C.stderr, c'vmemory_block_malloc g_memory_block.id: %d, n: %lld align: %d\n',
-				mb.id, n, align)
+			C.fprintf(C.stderr, c'vmemory_block_malloc g_memory_block.id: %d, n: %lld align: %d\n', mb.id, n, align)
 		}
 		fixed_align := vmemory_effective_align(align)
 		mut current := vmemory_align_up(mb.current, fixed_align)
 		remaining := i64(mb.stop) - i64(current)
 		if _unlikely_(remaining < n) {
-			was_scope := mb.is_scope
-			scope := mb.scope
-			mut min_block_size := if mb.min_block_size > 0 {
-				mb.min_block_size
-			} else {
-				isize(prealloc_block_size)
-			}
-			if was_scope && min_block_size < isize(prealloc_scope_block_size) * 4 {
-				// Scopes that outgrow one block tend to keep growing: doubling
-				// the block size (256K..4M) turns a 100-block scope into ~10
-				// blocks, cutting refill and map/unmap churn per batch.
-				min_block_size *= 2
-			}
-			mb = vmemory_block_new_sized(mb, n, fixed_align, min_block_size)
-			mb.is_scope = was_scope
-			mb.scope = scope
-			if scope != 0 {
-				prealloc_scope_add_block(scope, mb)
-			}
-			g_memory_block = mb
+			mb = vmemory_block_grow(mb, n, fixed_align)
 			current = vmemory_align_up(mb.current, fixed_align)
 		}
 		res := &u8(current)
@@ -456,9 +522,7 @@ fn vmemory_block_malloc(n isize, align isize) &u8 {
 			if mb.is_scope {
 				used := vmemory_block_used(mb)
 				size := vmemory_block_size(mb)
-				C.fprintf(C.stderr,
-					c'[trace_prealloc] alloc block=%p ptr=%p size=%lld align=%lld used=%lld/%lld mallocs=%d\n',
-					mb, res, n, fixed_align, used, size, mb.mallocs)
+				C.fprintf(C.stderr, c'[trace_prealloc] alloc block=%p ptr=%p size=%lld align=%lld used=%lld/%lld mallocs=%d\n', mb, res, n, fixed_align, used, size, mb.mallocs)
 			}
 		}
 		return res
@@ -469,9 +533,7 @@ fn vmemory_block_malloc(n isize, align isize) &u8 {
 fn vmemory_block_free(mb &VMemoryBlock) {
 	$if trace_prealloc ? {
 		if mb.is_scope {
-			C.fprintf(C.stderr,
-				c'[trace_prealloc] block free block=%p id=%d start=%p used=%lld size=%lld mallocs=%d\n',
-				mb, mb.id, mb.start, vmemory_block_used(mb), vmemory_block_size(mb), mb.mallocs)
+			C.fprintf(C.stderr, c'[trace_prealloc] block free block=%p id=%d start=%p used=%lld size=%lld mallocs=%d\n', mb, mb.id, mb.start, vmemory_block_used(mb), vmemory_block_size(mb), mb.mallocs)
 		}
 	}
 	$if windows {
@@ -610,9 +672,7 @@ fn prealloc_vcleanup() {
 			total_used += used
 			remaining := i64(mb.stop) - i64(mb.current)
 			size := i64(mb.stop) - i64(mb.start)
-			C.fprintf(C.stderr,
-				c'> freeing mb: %16p, mb.id: %3d | size: %10lld | rem: %10lld | start: %16p | current: %16p | used: %10lld bytes | mallocs: %6d\n',
-				mb, mb.id, size, remaining, mb.start, mb.current, used, mb.mallocs)
+			C.fprintf(C.stderr, c'> freeing mb: %16p, mb.id: %3d | size: %10lld | rem: %10lld | start: %16p | current: %16p | used: %10lld bytes | mallocs: %6d\n', mb, mb.id, size, remaining, mb.start, mb.current, used, mb.mallocs)
 			mb = mb.previous
 		}
 		C.fprintf(C.stderr, c'> nr_mallocs: %lld, total_used: %lld bytes\n', nr_mallocs, total_used)
@@ -636,9 +696,7 @@ fn prealloc_vcleanup() {
 			for {
 				used := u64(mb.current) - u64(mb.start)
 				total_used += used
-				C.fprintf(C.stderr,
-					c'prealloc_vcleanup dumping mb: %p, mb.id: %d, used: %10lld bytes\n', mb,
-					mb.id, used)
+				C.fprintf(C.stderr, c'prealloc_vcleanup dumping mb: %p, mb.id: %d, used: %10lld bytes\n', mb, mb.id, used)
 
 				mut ptr := mb.start
 				mut remaining_bytes := isize(used)
@@ -674,8 +732,8 @@ pub fn prealloc_scope_begin() voidptr {
 		scope := &VPreallocScope(C.calloc(1, sizeof(VPreallocScope)))
 		vmemory_abort_on_nil(scope, sizeof(VPreallocScope))
 		scope.previous = vmemory_block_current_or_new()
-		scope.first = vmemory_block_new_sized(scope.previous, isize(prealloc_scope_block_size), 0,
-			isize(prealloc_scope_block_size))
+		scope.saved_next = scope.previous.next
+		scope.first = vmemory_block_new_sized(scope.previous, isize(prealloc_scope_block_size), 0, isize(prealloc_scope_block_size))
 		scope.first.is_scope = true
 		scope.first.scope = scope
 		scope.min_address = usize(scope.first.start)
@@ -710,9 +768,7 @@ pub fn prealloc_scope_checkpoint(label &char) {
 				mallocs += mb.mallocs
 				mb = mb.next
 			}
-			C.fprintf(C.stderr,
-				c'[trace_prealloc] checkpoint label=%s first=%p current=%p blocks=%d used=%lld size=%lld mallocs=%d\n',
-				label, first, g_memory_block, blocks, used, size, mallocs)
+			C.fprintf(C.stderr, c'[trace_prealloc] checkpoint label=%s first=%p current=%p blocks=%d used=%lld size=%lld mallocs=%d\n', label, first, g_memory_block, blocks, used, size, mallocs)
 		}
 	}
 }
@@ -724,7 +780,7 @@ fn prealloc_scope_free_blocks(scope &VPreallocScope) {
 	}
 	unsafe {
 		if scope.previous != 0 {
-			scope.previous.next = nil
+			prealloc_scope_unlink(scope)
 		}
 		vmemory_block_free_chain(scope.first)
 	}
@@ -767,6 +823,21 @@ fn prealloc_scope_finish_if_ready(scope &VPreallocScope) {
 	}
 }
 
+// prealloc_scope_unlink detaches the scope's blocks from the block it was
+// linked after, and reattaches the blocks that followed that block before.
+@[unsafe]
+fn prealloc_scope_unlink(scope &VPreallocScope) {
+	unsafe {
+		previous := scope.previous
+		saved_next := scope.saved_next
+		previous.next = saved_next
+		if saved_next != 0 {
+			saved_next.previous = previous
+		}
+		scope.saved_next = nil
+	}
+}
+
 @[unsafe]
 fn prealloc_scope_detach_current(scope &VPreallocScope) {
 	if scope == unsafe { nil } {
@@ -775,7 +846,7 @@ fn prealloc_scope_detach_current(scope &VPreallocScope) {
 	unsafe {
 		previous := scope.previous
 		if previous != 0 {
-			previous.next = nil
+			prealloc_scope_unlink(scope)
 		}
 		if g_memory_block != 0 && g_memory_block.is_scope && g_memory_block.scope == scope {
 			g_memory_block = previous
@@ -851,6 +922,71 @@ pub fn prealloc_scope_leave(scope_ptr voidptr) {
 		prealloc_trace_scope(c'leave', scope)
 		prealloc_scope_detach_current(scope)
 	}
+}
+
+// prealloc_scope_reenter makes a scope that was left (see
+// `prealloc_scope_leave`) current again with all of its blocks rewound, so a
+// caller that processes a sequence of batches can reuse memory that is already
+// mapped instead of freeing the scope and faulting in a new one for every batch.
+// Blocks beyond the first `keep_bytes` are freed. Everything allocated in the
+// scope before is invalidated. The calling thread may differ from the one that
+// left the scope; the scope then grows through the calling thread's arena
+// caches. It returns false,
+// leaving the scope untouched, when the scope is still current, retained by
+// another owner, or already being freed; the caller then starts a new scope.
+@[unsafe]
+pub fn prealloc_scope_reenter(scope_ptr voidptr, keep_bytes isize) bool {
+	$if prealloc {
+		if scope_ptr == unsafe { nil } {
+			return false
+		}
+		unsafe {
+			mut scope := &VPreallocScope(scope_ptr)
+			if scope.previous != 0 || scope.first == 0
+				|| C.v_prealloc_atomic_load_i32(&scope.refs) != 0
+				|| C.v_prealloc_atomic_load_i32(&scope.free_requested) != 0
+				|| C.v_prealloc_atomic_load_i32(&scope.abandoned) != 0
+				|| C.v_prealloc_atomic_load_i32(&scope.finalized) != 0 {
+				return false
+			}
+			parent := vmemory_block_current_or_new()
+			// Keep the first blocks, up to `keep_bytes`, for reuse; free the rest.
+			mut kept := isize(0)
+			mut last_kept := &VMemoryBlock(nil)
+			mut mb := scope.first
+			for mb != 0 && mb.is_scope && mb.scope == scope {
+				size := isize(vmemory_block_size(mb))
+				if last_kept != 0 && kept + size > keep_bytes {
+					break
+				}
+				mb.current = mb.start
+				// The scope may have been left on another thread. Blocks it grows
+				// into from here inherit this cache, and recycle caches are
+				// thread-local: the other thread may be using or freeing its own.
+				mb.recycle_cache = parent.recycle_cache
+				kept += size
+				last_kept = mb
+				mb = mb.next
+			}
+			if mb != 0 {
+				last_kept.next = nil
+				for mb != 0 && mb.is_scope && mb.scope == scope {
+					next := mb.next
+					prealloc_scope_remove_block(scope, mb)
+					vmemory_block_free(mb)
+					mb = next
+				}
+			}
+			scope.previous = parent
+			scope.saved_next = parent.next
+			parent.next = scope.first
+			scope.first.previous = parent
+			g_memory_block = scope.first
+			prealloc_trace_scope(c'reenter', scope)
+			return true
+		}
+	}
+	return false
 }
 
 // prealloc_scope_suspend temporarily makes the parent of the active nested
@@ -931,6 +1067,20 @@ pub fn prealloc_scope_owns(scope_ptr voidptr, ptr voidptr) bool {
 	}
 }
 
+// prealloc_scope_address_range returns the lowest and one-past-highest
+// addresses of the blocks owned by scope_ptr, so callers probing many pointers
+// can reject most of them before the per-block search in prealloc_scope_owns.
+@[inline; unsafe]
+pub fn prealloc_scope_address_range(scope_ptr voidptr) (usize, usize) {
+	if scope_ptr == unsafe { nil } {
+		return 0, 0
+	}
+	unsafe {
+		scope := &VPreallocScope(scope_ptr)
+		return scope.min_address, scope.max_address
+	}
+}
+
 // prealloc_scope_abandon restores the current thread arena and intentionally
 // leaks the scoped blocks. It is only for APIs that transfer request state to
 // user code without providing a close hook yet.
@@ -991,7 +1141,11 @@ fn prealloc_realloc(old_data &u8, old_size isize, new_size isize) &u8 {
 	}
 	new_ptr := unsafe { vmemory_block_malloc(new_size, 0) }
 	min_size := if old_size < new_size { old_size } else { new_size }
-	unsafe { C.memcpy(new_ptr, old_data, min_size) }
+	// Growing an empty buffer passes a nil `old_data`; memcpy requires a valid
+	// pointer even for a zero-length copy.
+	if old_data != unsafe { nil } && min_size > 0 {
+		unsafe { C.memcpy(new_ptr, old_data, min_size) }
+	}
 	// realloc invalidates the old buffer once its contents have been copied.
 	if old_size > 0 {
 		unsafe { prealloc_discard_pages(old_data, usize(old_size)) }

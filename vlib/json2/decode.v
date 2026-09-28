@@ -222,7 +222,7 @@ fn (mut checker Decoder) checker_error(message string) ! {
 		context += '...'
 	}
 	context += checker.json[context_start..position]
-	context += '\e[31m${checker.json[position].ascii_str()}\e[0m'
+	context += '\\e[31m${checker.json[position].ascii_str()}\\e[0m'
 	context += checker.json[position + 1..context_end]
 	context += '\n'
 
@@ -292,7 +292,7 @@ fn (mut decoder Decoder) decode_error(message string) ! {
 		context += '...'
 	}
 	context += decoder.json[context_start..start]
-	context += '\e[31m${decoder.json[start..end]}\e[0m'
+	context += '\\e[31m${decoder.json[start..end]}\\e[0m'
 	context += decoder.json[end..context_end]
 	context += '\n'
 
@@ -301,7 +301,7 @@ fn (mut decoder Decoder) decode_error(message string) ! {
 	} else {
 		context += ' '.repeat(character_number)
 	}
-	context += '\e[31m${'~'.repeat(error_info.length)}\e[0m'
+	context += '\\e[31m${'~'.repeat(error_info.length)}\\e[0m'
 
 	return JsonDecodeError{
 		context:   context
@@ -521,7 +521,7 @@ fn decode_struct_key[T](mut decoder Decoder, val T, key_info ValueInfo, prefix s
 		$if !field.is_embed {
 			if decoder.json_key_matches(key_info, field_info.key_name)!
 				|| (prefix != ''
-				&& decoder.json_key_matches(key_info, prefix + field_info.key_name)!) {
+					&& decoder.json_key_matches(key_info, prefix + field_info.key_name)!) {
 				decoder.current_node = decoder.current_node.next
 
 				if field_info.is_skip {
@@ -584,7 +584,9 @@ fn decode_struct_key[T](mut decoder Decoder, val T, key_info ValueInfo, prefix s
 							decoder.decode_error('`raw` attribute can only be used with string fields')!
 						}
 					} else {
-						$if field.typ is $option {
+						$if field.is_shared {
+							decoder.decode_error('shared fields cannot be decoded')!
+						} $else $if field.typ is $option {
 							if decoder.current_node.value.value_kind == .null {
 								new_val.$(field.name) = none
 
@@ -626,8 +628,7 @@ fn decode_struct_key[T](mut decoder Decoder, val T, key_info ValueInfo, prefix s
 						} $else $if field.unaliased_typ is string {
 							value_info := decoder.current_node.value
 							if value_info.value_kind == .object || value_info.value_kind == .array {
-								new_val.$(field.name) = decoder.json[value_info.position..
-									value_info.position + value_info.length]
+								new_val.$(field.name) = decoder.json[value_info.position..value_info.position + value_info.length]
 								decoder.skip_current_value()
 							} else if value_info.value_kind == .null && !field_info.is_required {
 								new_val.$(field.name) = ''
@@ -797,13 +798,11 @@ fn (mut decoder Decoder) decode_value[T](mut val T) ! {
 			value_info := decoder.current_node.value
 			mut decoded_time := time.Time{}
 			if value_info.value_kind == .string {
-				decoded_time.from_json_string(decoder.json[value_info.position + 1..
-					value_info.position + value_info.length - 1]) or {
+				decoded_time.from_json_string(decoder.json[value_info.position + 1..value_info.position + value_info.length - 1]) or {
 					decoder.decode_error('${typeof(val).name}: ${err.msg()}')!
 				}
 			} else if value_info.value_kind == .number {
-				decoded_time.from_json_number(decoder.json[value_info.position..
-					value_info.position + value_info.length]) or {
+				decoded_time.from_json_number(decoder.json[value_info.position..value_info.position + value_info.length]) or {
 					decoder.decode_error('${typeof(val).name}: ${err.msg()}')!
 				}
 			} else {
@@ -973,7 +972,9 @@ fn (mut decoder Decoder) decode_value[T](mut val T) ! {
 										decoder.decode_error('`raw` attribute can only be used with string fields')!
 									}
 								} else {
-									$if field.typ is $option {
+									$if field.is_shared {
+										decoder.decode_error('shared fields cannot be decoded')!
+									} $else $if field.typ is $option {
 										if decoder.current_node.value.value_kind == .null {
 											val.$(field.name) = none
 
@@ -1016,8 +1017,7 @@ fn (mut decoder Decoder) decode_value[T](mut val T) ! {
 										value_info := decoder.current_node.value
 										if value_info.value_kind == .object
 											|| value_info.value_kind == .array {
-											val.$(field.name) = decoder.json[value_info.position..
-												value_info.position + value_info.length]
+											val.$(field.name) = decoder.json[value_info.position..value_info.position + value_info.length]
 											decoder.skip_current_value()
 										} else if value_info.value_kind == .null
 											&& !field_info.is_required {
@@ -1194,8 +1194,7 @@ fn (mut decoder Decoder) decode_string_value(string_info ValueInfo) !string {
 
 						string_index += 2
 
-						unicode_point2 := rune(strconv.parse_uint(decoder.json[
-							string_info.position + string_index..string_info.position +
+						unicode_point2 := rune(strconv.parse_uint(decoder.json[string_info.position + string_index..string_info.position +
 							string_index + 4], 16, 32)!)
 
 						string_index += 4
@@ -1209,8 +1208,10 @@ fn (mut decoder Decoder) decode_string_value(string_info ValueInfo) !string {
 						string_buffer << final_unicode_point.bytes()
 					}
 				}
-				else {} // has already been checked
+				else {}
 			}
+
+			// has already been checked
 
 			buffer_index = string_index
 		} else {

@@ -120,7 +120,7 @@ fn (mut vd VDoc) write_plaintext_content(contents []doc.DocNode, mut pw strings.
 				write_location(cn, mut pw)
 			}
 			if cfg.is_color {
-				pw.writeln(color_highlight(cn.content, vd.docs[0].table))
+				pw.writeln(color_highlight(cn.content))
 			} else {
 				pw.writeln(cn.content)
 			}
@@ -138,7 +138,7 @@ fn (mut vd VDoc) write_plaintext_content(contents []doc.DocNode, mut pw strings.
 							fex = indent(ex)
 						}
 						if cfg.is_color {
-							fex = color_highlight(fex, vd.docs[0].table)
+							fex = color_highlight(fex)
 						}
 						pw.writeln(fex)
 					}
@@ -272,11 +272,25 @@ fn (vd &VDoc) emit_generate_err(err IError) {
 		mod_list := get_modules(cfg.input_path)
 		println('Available modules:\n==================')
 		for mod in mod_list {
-			println(mod.all_after('vlib/').all_after('modules/').replace('/', '.'))
+			println(module_display_name(mod, cfg.input_path))
 		}
 		err_msg += ' Use the `-m` flag when generating docs from a directory that has multiple modules.'
 	}
 	eprintln(err_msg)
+}
+
+// `get_modules` hands back directories, not names. What a reader needs is where
+// each one sits under the input root, read as a module path: an absolute input
+// would otherwise print the whole filesystem path with dots for separators. There
+// is no `modules/` to strip out of it either -- that is an ordinary directory
+// now, so a module under one really is `modules.<name>`.
+fn module_display_name(mod string, input_path string) string {
+	normalized := mod.replace('\\', '/').trim_right('/')
+	root := input_path.replace('\\', '/').trim_right('/')
+	if root != '' && normalized.starts_with(root + '/') {
+		return normalized[root.len + 1..].replace('/', '.')
+	}
+	return os.file_name(normalized)
 }
 
 fn (mut vd VDoc) generate_docs_from_file() {
@@ -360,8 +374,7 @@ fn (mut vd VDoc) generate_docs_from_file() {
 		mut dcs := doc.generate(dirpath, cfg.pub_only, true, cfg.platform, cfg.symbol_name) or {
 			// TODO: use a variable like `src_path := os.join_path(dirpath, 'src')` after `https://github.com/vlang/v/issues/21504`
 			if os.exists(os.join_path(dirpath, 'src')) {
-				doc.generate(os.join_path(dirpath, 'src'), cfg.pub_only, true, cfg.platform,
-					cfg.symbol_name) or {
+				doc.generate(os.join_path(dirpath, 'src'), cfg.pub_only, true, cfg.platform, cfg.symbol_name) or {
 					vd.emit_generate_err(err)
 					exit(1)
 				}

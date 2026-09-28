@@ -99,16 +99,16 @@ fn new_repl(folder string) Repl {
 	vstartup_source := os.read_file(vstartup) or { '' }.trim_right('\n\r').split_into_lines()
 	os.mkdir_all(folder) or {}
 	return Repl{
-		readline:       readline.Readline{
+		readline:        readline.Readline{
 			skip_empty: true
 		}
-		folder:         folder
-		modules:        {
+		folder:          folder
+		modules:         {
 			'os':   []
 			'time': []
 			'math': []
 		}
-		vstartup_lines: vstartup_source
+		vstartup_lines:  vstartup_source
 		// Test file used to check if a function as a void return or a value return.
 		eval_func_lines: vstartup_source
 	}
@@ -554,7 +554,8 @@ fn find_assignment_operator(line string) (int, string) {
 			}
 			`=` {
 				prev_is_assignment_op := i > 0
-					&& line[i - 1] in [`!`, `<`, `>`, `=`, `:`, `+`, `-`, `*`, `/`, `%`, `&`, `|`, `^`]
+					&& line[i - 1] in [`!`, `<`, `>`, `=`, `:`, `+`, `-`, `*`, `/`, `%`, `&`, `|`,
+						`^`]
 				next_is_assignment_op := i + 1 < line.len && line[i + 1] == `=`
 				if !inside_string && !prev_is_assignment_op && !next_is_assignment_op {
 					return i, '='
@@ -616,7 +617,7 @@ fn (mut r Repl) add_statement_lines(lines []string) {
 fn (r &Repl) capture_time_snapshot(source_code string, assignment SnapshotAssignment) ?TimeSnapshot {
 	marker := '__vrepl_time_snapshot__${rand.ulid()}'
 	mut probe_source := source_code
-	probe_source += '\nprintln(${repl_string_literal(marker)} + \'\\t\' + typeof(${assignment.name}).name + \'\\t\' + ${assignment.name}.unix().str() + \'\\t\' + ${assignment.name}.nanosecond.str() + \'\\t\' + ${assignment.name}.is_local.str())\n'
+	probe_source += "\nprintln(${repl_string_literal(marker)} + '\\t' + typeof(${assignment.name}).name + '\\t' + ${assignment.name}.unix().str() + '\\t' + ${assignment.name}.nanosecond.str() + '\\t' + ${assignment.name}.is_local.str())\n"
 	probe_file := os.join_path(r.folder, '${rand.ulid()}.vrepl.time_snapshot.v')
 	os.write_file(probe_file, probe_source) or { return none }
 	defer {

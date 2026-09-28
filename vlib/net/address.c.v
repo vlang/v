@@ -118,9 +118,23 @@ pub fn (a Ip) str() string {
 // of libc's inet_ntop, which historically emits the deprecated
 // IPv4-compatible mixed form (`::a.b.c.d`) for any address with the
 // upper 96 bits zero.
+//
+// A non-zero `scope_id` is appended as an RFC 4007 zone identifier, as in
+// `[fe80::1%3]:8080`. Without it, link-local peers reached over different
+// interfaces are indistinguishable, and the address cannot be dialled back:
+// a link-local address only identifies a host together with its zone. The
+// zone is the numeric interface index the kernel reported, which is what
+// `getaddrinfo` (and so `net.dial_tcp`/`split_address`) accepts here, since
+// V does not wrap `if_indextoname` to map it to a name.
+//
+// scope_id is zero for every global and loopback address, so ordinary IPv6
+// addresses render exactly as before.
 pub fn (a Ip6) str() string {
 	saddr := canonical_ipv6_from_bytes(a.addr[..]) or { return '<Unknown>' }
 	port := conv.ntoh16(a.port)
+	if a.scope_id != 0 {
+		return '[${saddr}%${a.scope_id}]:${port}'
+	}
 	return '[${saddr}]:${port}'
 }
 

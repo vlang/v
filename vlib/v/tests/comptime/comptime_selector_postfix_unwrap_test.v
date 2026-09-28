@@ -3,7 +3,7 @@ fn generic_unwrap[T](value T) []int {
 	$if T is $struct {
 		$for field in T.fields {
 			$if field.typ is ?int {
-				out << value.$(field.name) ?
+				out << value.$(field.name)?
 			}
 		}
 	}

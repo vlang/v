@@ -146,7 +146,7 @@ pub fn point(x f64, y f64) Point {
 pub fn range(location u64, length u64) Range {
 	return C.macos_range{
 		location: location
-		length: length
+		length:   length
 	}
 }
 

@@ -1107,8 +1107,7 @@ fn test_execute() {
 	defer {
 		os.rm(print0script) or {}
 	}
-	result :=
-		os.execute('${os.quoted_path(@VEXE)} -old-compiler run ${os.quoted_path(print0script)}')
+	result := os.execute('${os.quoted_path(@VEXE)} run ${os.quoted_path(print0script)}')
 	hexresult := result.output.hex()
 	// println('exit_code: ${result.exit_code}')
 	// println('output: |${result.output}|')
@@ -1191,7 +1190,7 @@ fn test_execute_pipe_into_vfmt() {
 	result :=
 		os.execute('${os.quoted_path(@VEXE)} run ${os.quoted_path(producer_script)} | ${os.quoted_path(@VEXE)} fmt')
 	assert result.exit_code == 0, result.output
-	assert result.output.replace('\r\n', '\n') == 'fn main() {\n\tprintln(1)\n}\n'
+	assert result.output.replace('\r\n', '\n') == 'fn main() { println(1) }\n'
 }
 
 fn test_execute_fc_get_output() {

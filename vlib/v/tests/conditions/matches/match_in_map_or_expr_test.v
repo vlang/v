@@ -8,8 +8,10 @@ fn test_match_in_map_or_expr() {
 		7 { '7' }
 		6 { '6' }
 		5 { '5' }
-		else { some_map[a] or { a.str() } } // here is the error
+		else { some_map[a] or { a.str() } }
 	}
+
+	// here is the error
 
 	println(something)
 	assert something == '5'

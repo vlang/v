@@ -42,8 +42,11 @@ fn compile_fake_c2v(vmodules_dir string) ! {
 	fake_c2v_path := os.join_path(c2v_dir, 'fake_c2v.v')
 	c2v_bin := os.join_path(c2v_dir, 'c2v' + exe_suffix())
 	fake_c2v_source :=
-		['import os', '', 'fn main() {', "\tout := os.getenv('C2V_ARGS_OUT')", "\tif out == '' {", "\t\teprintln('missing C2V_ARGS_OUT')", '\t\texit(1)', '\t}', "\tos.write_file(out, os.args[1..].join('\\n')) or {", '\t\teprintln(err)', '\t\texit(2)', '\t}', '}'].join('\n') +
-		'\n'
+		['import os', '', 'fn main() {', "\tout := os.getenv('C2V_ARGS_OUT')", "\tif out == '' {",
+			"\t\teprintln('missing C2V_ARGS_OUT')", '\t\texit(1)', '\t}',
+			"\tos.write_file(out, os.args[1..].join('\\n')) or {", '\t\teprintln(err)', '\t\texit(2)',
+			'\t}', '}'].join('\n') +
+			'\n'
 	os.write_file(fake_c2v_path, fake_c2v_source)!
 	res := os.execute('${qvexe} -o ${os.quoted_path(c2v_bin)} ${os.quoted_path(fake_c2v_path)}')
 	assert res.exit_code == 0, res.output

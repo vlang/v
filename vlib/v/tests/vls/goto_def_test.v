@@ -280,11 +280,7 @@ fn test_goto_definition() {
 			continue
 		}
 
-		res_output := $if windows {
-			res.output.replace('\r\n', '\n').trim_space()
-		} $else {
-			res.output.trim_space()
-		}
+		res_output := $if windows { res.output.replace('\r\n', '\n').trim_space() } $else { res.output.trim_space() }
 
 		if tc.expected != res_output {
 			println('${term.red('FAIL')} ${tc.name}')

@@ -5,6 +5,7 @@ import os
 $if tinyc {
 	#include <sys/resource.h>
 }
+
 struct C.rusage {
 	ru_maxrss int
 	ru_idrss  int
@@ -18,6 +19,7 @@ $if !tinyc {
 	#include <sys/user.h>
 	#include <libprocstat.h>
 }
+
 struct C.procstat {}
 
 struct C.kinfo_proc {

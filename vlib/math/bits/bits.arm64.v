@@ -12,7 +12,7 @@ module bits
 pub fn mul_64(x u64, y u64) (u64, u64) {
 	mut hi := u64(0)
 	mut lo := u64(0)
-	$if arm64 && !tinyc {
+	$if arm64 && !tinyc && !android {
 		asm arm64 {
 			mul lo, x, y
 			umulh hi, x, y
@@ -35,7 +35,7 @@ pub fn mul_64(x u64, y u64) (u64, u64) {
 pub fn mul_add_64(x u64, y u64, z u64) (u64, u64) {
 	mut hi := u64(0)
 	mut lo := u64(0)
-	$if arm64 && !tinyc {
+	$if arm64 && !tinyc && !android {
 		asm arm64 {
 			mul lo, x, y
 			umulh hi, x, y

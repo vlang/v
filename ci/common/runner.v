@@ -1,6 +1,7 @@
 module common
 
 import os
+import crypto.sha256
 import log
 import term
 import time
@@ -8,11 +9,30 @@ import time
 // exec is a helper function, to execute commands and exit early, if they fail.
 pub fn exec(command string) {
 	cmd := resolve_v_command(command)
+	progress_dir := ci_task_progress_dir()
+	previous_resume_dir := os.getenv_opt('VTEST_RESUME_DIR')
+	if progress_dir != '' {
+		// Keep the same file's results separate across tasks and command variants.
+		os.setenv('VTEST_RESUME_DIR', os.join_path(progress_dir, 'tests', sha256.hexhash(cmd)), true)
+	}
+	defer {
+		if progress_dir != '' {
+			if previous := previous_resume_dir {
+				os.setenv('VTEST_RESUME_DIR', previous, true)
+			} else {
+				os.unsetenv('VTEST_RESUME_DIR')
+			}
+		}
+	}
 	log.info('cmd: ${cmd}')
 	result := os.system(cmd)
 	if result != 0 {
 		exit(result)
 	}
+}
+
+fn ci_task_progress_dir() string {
+	return os.getenv_opt('V_CI_TASK_PROGRESS') or { os.getenv('V_MACOS_CI_TASK_PROGRESS') }
 }
 
 // resolve_v_command ensures that commands starting with `v ` use the V from @VEXEROOT,
@@ -48,8 +68,7 @@ pub fn file_size_greater_than(fpath string, min_fsize u64) {
 	}
 }
 
-const self_command =
-	os.quoted_path(os.getenv_opt('V_CI_VEXE') or {
+const self_command = os.quoted_path(os.getenv_opt('V_CI_VEXE') or {
 	os.join_path_single(@VEXEROOT, 'v')
 }) + ' ' +
 	os.real_path(os.executable()).replace_once(os.real_path(@VEXEROOT), '').trim_left('/\\') +

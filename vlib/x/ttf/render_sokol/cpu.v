@@ -127,9 +127,9 @@ pub fn (mut tf_skl TTF_render_Sokol) create_texture() {
 	h := tf_skl.bmp.height
 	sz := tf_skl.bmp.width * tf_skl.bmp.height * tf_skl.bmp.bp
 	mut img_desc := gfx.ImageDesc{
-		width:       w
-		height:      h
-		num_mipmaps: 0
+		width:         w
+		height:        h
+		num_mipmaps:   0
 		// usage: .dynamic
 		label:         &char(unsafe { nil })
 		d3d11_texture: 0

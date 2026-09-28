@@ -2,7 +2,7 @@
 Experimental module of NIST FIPS-205 Stateless Hash-Based Digital Signature Standard (SLH-DSA) in V
 
 ## About
-SLH-DSA was a quantum resistent cryptographic digital signature standard that was approved and publicly published by NIST at August, 2024. Its availables on [NIST FIPS 205](https://csrc.nist.gov/pubs/fips/205/final). <br>
+SLH-DSA was a quantum resistant cryptographic digital signature standard that was approved and publicly published by NIST at August, 2024. Its availables on [NIST FIPS 205](https://csrc.nist.gov/pubs/fips/205/final). <br>
 SLH-DSA allow builds relatively big signaturue size with small key (`16 - 32` bytes key).
 The signatures range from `±8K - ±50K` depending on the type chosen.
 

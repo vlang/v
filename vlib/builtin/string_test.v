@@ -958,7 +958,7 @@ fn test_hash() {
 	s3 := 'Content-Type'
 	assert s3.hash() == 949037134
 	s4 := 'bad_key'
-	assert s4.hash() == $if new_int ? && x64 {
+	assert s4.hash() == $if new_int ?&& x64 {
 		3948330789
 	} $else {
 		-346636507
@@ -1354,7 +1354,7 @@ fn test_raw_with_quotes() {
 
 fn test_escape() {
 	a := 10
-	assert "\"${a}" == '"10'
+	assert '"${a}' == '"10'
 }
 
 fn test_atoi() {
@@ -1370,6 +1370,7 @@ fn test_atoi() {
 fn test_raw_inter() {
 	world := 'world'
 	s := r'hello\n$world'
+	assert world == 'world'
 	assert s == r'hello\n$world'
 	assert s.contains('$')
 }
@@ -1380,6 +1381,8 @@ fn test_c_r() {
 	cs := '${c}'
 	r := 50
 	rs := '${r}'
+	assert cs == '42'
+	assert rs == '50'
 }
 
 fn test_inter_before_comptime_if() {

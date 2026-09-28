@@ -1,0 +1,14 @@
+vlib/v/checker/tests/unused_var_declared_in_a_taken_comptime_branch.vv:5:3: warning: unused variable: `x`
+    3 | fn main() {
+    4 |     $if true {
+    5 |         x := 1
+      |         ^
+    6 |         $if true {
+    7 |             y := 2
+vlib/v/checker/tests/unused_var_declared_in_a_taken_comptime_branch.vv:7:4: warning: unused variable: `y`
+    5 |         x := 1
+    6 |         $if true {
+    7 |             y := 2
+      |             ^
+    8 |         }
+    9 |     }

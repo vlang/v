@@ -4,7 +4,7 @@ import rand
 const vexe = @VEXE
 
 fn test_mbedtls_compiles_with_tcc_on_arm64_macos() {
-	$if !(macos && arm64) {
+	$if !( macos && arm64 ) {
 		return
 	}
 	workdir := os.join_path(os.vtmp_dir(), 'v_mbedtls_tcc_arm64_${rand.ulid()}')

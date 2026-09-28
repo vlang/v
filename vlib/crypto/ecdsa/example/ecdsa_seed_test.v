@@ -3,6 +3,7 @@
 import rand
 import crypto.ecdsa
 import encoding.hex
+
 // The test file placed on its own directory. Its for workaround for
 // module lookup problem, because there are two rand module availables,
 // between `crypto.rand` and `rand` module.

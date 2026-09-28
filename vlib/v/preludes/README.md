@@ -1,6 +1,6 @@
 # V preludes:
 
-The vlib/v/preludes/ contains small v code snippets, that V uses when 
+The vlib/v/preludes/ contains small V code snippets that V uses when
 compiling certain v programs. V adds the files below automatically itself.
 Each file is used in different situations (see below).
 
@@ -20,10 +20,10 @@ monitoring thread to work properly.
 Used when compiling live programs, for the shared library portion of the live 
 programs, that is reloaded each time the code is changed.
 
-### vlib/v/preludes/tests_assertions.v  
-Used when compiling `_test.v` programs. 
+### vlib/v/preludes/test_runner_normal.v
+Used when compiling `_test.v` programs.
 It specifies how failed assertions will look.
 
 ### vlib/v/preludes/tests_with_stats.v
-Used when compiling `_test.v` programs with -stats option. 
+Used when compiling `_test.v` programs with -stats option.
 It specifies how the result will appear ('assert' vs 'asserts' and so on).

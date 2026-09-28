@@ -2,7 +2,6 @@ module main
 
 import os
 import testing
-import v.util
 
 const known_failing_exceptions = [
 	// This file uses V3-only lifetime syntax, which the V1 formatter cannot parse.
@@ -16,7 +15,6 @@ fn main() {
 
 fn v_test_formatting(vargs string) {
 	all_v_files := v_files()
-	util.prepare_tool_when_needed('vfmt.v')
 	testing.eheader('Run "v fmt" over all .v files')
 	mut vfmt_test_session := testing.new_test_session('${vargs} fmt -worker', false)
 	exceptions := known_failing_exceptions.map(os.abs_path)
@@ -33,7 +31,7 @@ fn v_files() []string {
 	mut files_that_can_be_formatted := []string{}
 	all_test_files := os.walk_ext('.', '.v')
 	for tfile in all_test_files {
-		if tfile.starts_with('./vlib/v/cgen/tests') {
+		if tfile.starts_with('./vlib/v/gen/c/testdata') {
 			continue
 		}
 		if tfile.ends_with('graceful_shutdown_test.v') {

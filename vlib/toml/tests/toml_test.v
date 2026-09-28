@@ -2,8 +2,7 @@ import os
 import toml
 import toml.to
 
-const toml_text = os.read_file(
-	os.real_path(os.join_path(os.dir(@FILE), 'testdata', os.file_name(@FILE).all_before_last('.'))) +
+const toml_text = os.read_file(os.real_path(os.join_path(os.dir(@FILE), 'testdata', os.file_name(@FILE).all_before_last('.'))) +
 	'.toml') or { panic(err) }
 
 fn test_toml() {
@@ -17,8 +16,7 @@ fn test_toml() {
 	// println(toml_json)
 	// assert false
 
-	assert toml_json == os.read_file(
-		os.real_path(os.join_path(os.dir(@FILE), 'testdata', os.file_name(@FILE).all_before_last('.'))) +
+	assert toml_json == os.read_file(os.real_path(os.join_path(os.dir(@FILE), 'testdata', os.file_name(@FILE).all_before_last('.'))) +
 		'.out') or { panic(err) }
 
 	title := toml_doc.value('title')
@@ -84,23 +82,20 @@ fn test_toml_file() {
 	// println(toml_json)
 	// assert false
 
-	assert toml_json == os.read_file(
-		os.real_path(os.join_path(os.dir(@FILE), 'testdata', os.file_name(@FILE).all_before_last('.'))) +
+	assert toml_json == os.read_file(os.real_path(os.join_path(os.dir(@FILE), 'testdata', os.file_name(@FILE).all_before_last('.'))) +
 		'.out') or { panic(err) }
 }
 
 fn test_toml_parse_text() {
 	toml_doc := toml.parse_text(toml_text) or { panic(err) }
 	toml_json := to.json(toml_doc)
-	assert toml_json == os.read_file(
-		os.real_path(os.join_path(os.dir(@FILE), 'testdata', os.file_name(@FILE).all_before_last('.'))) +
+	assert toml_json == os.read_file(os.real_path(os.join_path(os.dir(@FILE), 'testdata', os.file_name(@FILE).all_before_last('.'))) +
 		'.out') or { panic(err) }
 }
 
 fn test_toml_parse() {
 	toml_doc := toml.parse_text(toml_text) or { panic(err) }
 	toml_json := to.json(toml_doc)
-	assert toml_json == os.read_file(
-		os.real_path(os.join_path(os.dir(@FILE), 'testdata', os.file_name(@FILE).all_before_last('.'))) +
+	assert toml_json == os.read_file(os.real_path(os.join_path(os.dir(@FILE), 'testdata', os.file_name(@FILE).all_before_last('.'))) +
 		'.out') or { panic(err) }
 }

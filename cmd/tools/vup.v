@@ -24,11 +24,11 @@ const args = arguments()
 
 fn new_app() App {
 	return App{
-		is_verbose: '-v' in args
-		is_prod: '-prod' in args
-		vexe: vexe
-		vroot: vroot
-		skip_v_self: '-skip_v_self' in args
+		is_verbose:   '-v' in args
+		is_prod:      '-prod' in args
+		vexe:         vexe
+		vroot:        vroot
+		skip_v_self:  '-skip_v_self' in args
 		skip_current: '-skip_current' in args
 	}
 }

@@ -358,7 +358,7 @@ fn pg_stmt_match(mut types []u32, mut vals []&char, mut lens []i32, mut formats 
 			formats << 1
 		}
 		int {
-			$if new_int ? && x64 {
+			$if new_int ?&& x64 {
 				types << u32(Oid.t_int8)
 				num := conv.hton64(u64(data))
 				vals << &char(&num)
@@ -476,7 +476,7 @@ fn pg_type_from_v(typ int) !string {
 			'BOOLEAN'
 		}
 		orm.type_idx['int'] {
-			$if new_int ? && x64 {
+			$if new_int ?&& x64 {
 				'BIGINT'
 			} $else {
 				'INT'

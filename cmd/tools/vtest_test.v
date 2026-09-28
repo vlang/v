@@ -57,6 +57,23 @@ import os
 fn test_compiler_flags_do_not_leak() { assert os.getenv("VFLAGS") == "" }
 -- strict_v3/backend_test.js.v --
 fn test_js_backend_only() { assert true }
+-- prefix_flags/passing/bug_test.v --
+__global g_counter = 0
+fn test_global() {
+	g_counter++
+	assert g_counter == 1
+	\$if vtest_prefix_flag ? {
+		assert true
+	} \$else {
+		assert false, "missing -d vtest_prefix_flag"
+	}
+}
+-- prefix_flags/failing/bug_test.v --
+__global g_counter = 0
+fn test_global() {
+	g_counter++
+	assert g_counter == 2
+}
 ').unpack_to(tpath)!
 	assert os.exists(os.join_path(tpath, 'passing/1_test.v'))
 	assert os.exists(os.join_path(tpath, 'passing/2_test.v'))
@@ -82,12 +99,21 @@ fn test_vtest_executable_compiles() {
 	assert os.exists(mytest_exe), 'executable file: `${mytest_exe}` should exist'
 }
 
+fn test_vtest_accepts_windows_path_separators() {
+	$if windows {
+		windows_path := tpath_passing.replace('/', '\\')
+		res := os.execute('${os.quoted_path(mytest_exe)} test ${os.quoted_path(windows_path)}')
+		assert res.exit_code == 0, res.output
+		assert res.output.contains('2 passed, 2 total'), res.output
+	}
+}
+
 fn test_strict_v3_flags_apply_only_to_top_level_test_compilation() {
 	$if !bsd && !linux {
 		// The embedded V3 compiler is currently available only on macOS, Linux, and BSD.
 		return
 	}
-	os.execute_or_exit('${os.quoted_path(vexe)} -old-compiler -nocache -o ${mytest_exe} cmd/tools/vtest.v')
+	os.execute_or_exit('${os.quoted_path(vexe)} -nocache -o ${mytest_exe} cmd/tools/vtest.v')
 	old_vflags := os.getenv_opt('VFLAGS')
 	old_test_only := os.getenv_opt('VTEST_ONLY_FN')
 	os.setenv('VFLAGS', '-new-compiler -gc none -cc clang', true)
@@ -165,19 +191,45 @@ fn test_wimpure_v_warnings_are_shown_for_test_files() {
 	assert res.output.contains('warning: C code will not be allowed in pure .v files'), res.output
 }
 
-fn test_js_runtime_errors_are_shown_for_js_tests() {
-	if @CCOMPILER.contains('musl') || os.getenv('VFLAGS').contains('musl')
-		|| os.getenv('V_CI_MUSL') == '1' {
-		return
+fn test_js_tests_are_skipped_without_strict_mode() {
+	// Exercise the ordinary runner, not its -new-compiler-only skip list.
+	keys := ['VFLAGS', 'VOSARGS', 'V_MACOS_V3_NO_FALLBACK', 'VTEST_HIDE_SKIP']
+	mut old_values := map[string]string{}
+	for key in keys {
+		if value := os.getenv_opt(key) {
+			old_values[key] = value
+		}
+		os.unsetenv(key)
 	}
-	if os.execute('node --version').exit_code != 0 {
-		return
+	defer {
+		for key in keys {
+			if value := old_values[key] {
+				os.setenv(key, value, true)
+			} else {
+				os.unsetenv(key)
+			}
+		}
 	}
-	res :=
-		os.execute('${os.quoted_path(mytest_exe)} test ${os.quoted_path(tpath_js_runtime_error)}')
-	assert res.exit_code == 1, res.output
-	assert res.output.contains('runtime_error_test.js.v'), res.output
-	assert res.output.contains('TypeError: boom'), res.output
+	os.setenv('VTEST_HIDE_SKIP', '0', true)
+	js_test := os.join_path(tpath_js_runtime_error, 'runtime_error_test.js.v')
+	for options in ['', '-stats', '-b js', '-stats -b js'] {
+		for target in [js_test, tpath_js_runtime_error] {
+			res := os.execute('${os.quoted_path(mytest_exe)} ${options} test ${os.quoted_path(target)}')
+			assert res.exit_code == 0, res.output
+			assert res.output.contains('1 skipped, 1 total'), res.output
+			assert res.output.contains('SKIP'), res.output
+			assert !res.output.contains('TypeError: boom'), res.output
+			assert !res.output.contains('compilation failed'), res.output
+		}
+	}
+	// Recursive discovery must still run native tests alongside disabled JS tests.
+	mixed := os.join_path(tpath, 'mixed_js_skip')
+	os.mkdir_all(mixed)!
+	os.write_file(os.join_path(mixed, 'native_test.v'), 'fn test_native() { assert true }\n')!
+	os.write_file(os.join_path(mixed, 'invalid_test.js.v'), 'deliberately invalid V source\n')!
+	res := os.execute('${os.quoted_path(mytest_exe)} test ${os.quoted_path(mixed)}')
+	assert res.exit_code == 0, res.output
+	assert res.output.contains('1 passed, 1 skipped, 2 total'), res.output
 }
 
 fn test_with_stats_and_partial_failure() {
@@ -186,4 +238,26 @@ fn test_with_stats_and_partial_failure() {
 	assert res.output.contains('assert 5 == 7'), res.output
 	assert res.output.contains(' 1 failed, 1 passed, 2 total'), res.output
 	assert res.output.contains('To reproduce just failure'), res.output
+}
+
+fn test_launcher_forwards_compiler_options_to_test_files() {
+	passing_dir := os.join_path(tpath, 'prefix_flags', 'passing')
+	// Exercise the compiler launcher, not the already-built vtest executable.
+	for target in [os.join_path(passing_dir, 'bug_test.v'), passing_dir] {
+		res := os.execute('${os.quoted_path(vexe)} -enable-globals -d vtest_prefix_flag test -run-only test_global ${os.quoted_path(target)}')
+		assert res.exit_code == 0, res.output
+		assert res.output.contains('1 passed, 1 total'), res.output
+	}
+}
+
+fn test_launcher_keeps_compiler_options_in_failure_reproduction() {
+	path := os.join_path(tpath, 'prefix_flags', 'failing', 'bug_test.v')
+	res := os.execute('${os.quoted_path(vexe)} -enable-globals -d vtest_prefix_flag test -run-only test_global ${os.quoted_path(path)}')
+	assert res.exit_code == 1, res.output
+	assert res.output.contains('assert g_counter == 2'), res.output
+	assert !res.output.contains('use `v -enable-globals'), res.output
+	hints := res.output.split_into_lines().filter(it.contains('To reproduce just failure'))
+	assert hints.len == 1, res.output
+	assert hints[0].contains('-enable-globals'), hints[0]
+	assert hints[0].contains('-d vtest_prefix_flag'), hints[0]
 }
