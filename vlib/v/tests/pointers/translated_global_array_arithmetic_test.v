@@ -1,7 +1,10 @@
 @[has_globals; translated]
 module main
 
+type GlobalDecayOffset = int
+
 __global decay_values = [3, 5, 7]!
+__global decay_aliased_offset_second = GlobalDecayOffset(1) + decay_values
 __global decay_second = decay_values + 1
 __global decay_third = 2 + decay_values
 __global decay_offset = 1
@@ -84,6 +87,7 @@ fn global_decay_read_row(value &[3]int) int {
 }
 
 fn test_translated_global_array_arithmetic() {
+	assert global_decay_read(decay_aliased_offset_second) == 5
 	assert global_decay_read(decay_second) == 5
 	assert global_decay_read(decay_third) == 7
 	assert global_decay_read(decay_offset_second) == 5

@@ -255,3 +255,20 @@ fn test_translated_array_arithmetic_storage_survives_escape() {
 	assert usize(voidptr(aligned)) % 512 == 0
 	assert aligned.value == 31
 }
+
+type TranslatedArrayOffset = int
+
+type TranslatedArrayOffsetAlias = TranslatedArrayOffset
+
+fn test_translated_array_arithmetic_accepts_aliased_offsets() {
+	values := [3, 5, 7]!
+	offset := TranslatedArrayOffset(1)
+	second := offset + values
+	third := values + TranslatedArrayOffsetAlias(2)
+	previous := third - offset
+	returned := TranslatedArrayOffsetAlias(2) + translated_make_array()
+	assert read_translated_element(second) == 5
+	assert read_translated_element(third) == 7
+	assert read_translated_element(previous) == 5
+	assert read_translated_element(returned) == 13
+}

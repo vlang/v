@@ -16716,10 +16716,10 @@ fn (tc &TypeChecker) resolve_type_uncached(id flat.NodeId) Type {
 				if node.op == .minus && lt is Pointer && rt is Pointer {
 					return Type(int_)
 				}
-				if lt is Pointer && rt.is_integer() {
+				if lt is Pointer && unalias_type(rt).is_integer() {
 					return lt_raw
 				}
-				if node.op == .plus && rt is Pointer && lt.is_integer() {
+				if node.op == .plus && rt is Pointer && unalias_type(lt).is_integer() {
 					return rt_raw
 				}
 			}

@@ -1,8 +1,9 @@
 # Translated fixed-array pointer arithmetic
 
 In `@[translated]` files, adding an integer offset to a fixed array yields a pointer to an element.
-The array may appear on either side of `+`. Global initializers can use this arithmetic with global
-fixed arrays, including fixed-array fields and nested rows.
+The array may appear on either side of `+`, including when the offset has an integer alias type.
+Global initializers can use this arithmetic with global fixed arrays, including fixed-array fields
+and nested rows.
 
 The pointer refers to the original array storage. Fixed-array addresses that cannot change during
 the expression remain inline. When evaluating the right operand can affect the left operand's value
