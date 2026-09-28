@@ -106,7 +106,7 @@ fn main() {
 	assert c_code.contains('pthread_create'), c_code
 	assert c_compact.contains('typedefstruct{main__Counter*a0;i64a1;}Counter__bump_thread_args;'), c_code
 	assert c_compact.contains('->a0=c;'), c_code
-	assert c_compact.contains('__v_thread_spawn(Counter__bump_args_thread_wrapper,(void*)_sa'), c_code
+	assert c_compact.contains('__v_thread_spawn_detached(Counter__bump_args_thread_wrapper_detached,(void*)_sa'), c_code
 
 	assert c_code.contains('Counter__bump(p->a0, p->a1)'), c_code
 }
@@ -136,7 +136,7 @@ fn main() {
 	assert c_compact.contains('typedefstruct{main__Greetera0;}Greeter__greet_thread_args;'), c_code
 	assert c_compact.contains('->a0=g;'), c_code
 	assert !c_compact.contains('->a0=&g;'), c_code
-	assert c_compact.contains('__v_thread_spawn(Greeter__greet_args_thread_wrapper,(void*)_sa'), c_code
+	assert c_compact.contains('__v_thread_spawn_detached(Greeter__greet_args_thread_wrapper_detached,(void*)_sa'), c_code
 
 	assert c_code.contains('Greeter__greet(p->a0)'), c_code
 	assert !c_code.contains('(Greeter)arg'), c_code
@@ -419,7 +419,9 @@ fn main() {
 }
 	')
 	c_compact := compact_c(c_code)
-	assert c_compact.count('__v_thread_spawn_detached(answer_thread_wrapper_detached,') == 10, c_code
+	assert c_compact.count('__v_thread_spawn_detached(answer_thread_wrapper_detached,') == 8, c_code
+	// Compared spawns keep their handles until the comparison finishes.
+	assert c_compact.count('__v_thread_spawn_comparable(answer_thread_wrapper_detached,') == 2, c_code
 	assert c_compact.count('__v_thread_spawn(answer_thread_wrapper,') == 2, c_code
 }
 
