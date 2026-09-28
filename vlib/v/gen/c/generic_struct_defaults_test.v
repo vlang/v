@@ -234,6 +234,9 @@ fn test_struct_default_generic_args_preserve_caller_module() {
 	})
 
 	assert g.struct_default_field_type_text(g.struct_decl_infos['lib.Local'], 'Local').name() == 'lib.Local'
+	assert g.struct_default_field_type_text(g.struct_decl_infos['lib.Local'], '[]Local').name() == '[]lib.Local'
+	assert g.struct_default_field_type_text(g.struct_decl_infos['lib.Local'], '[2]Local').name() == '[2]lib.Local'
+	assert g.struct_default_field_type_text(g.struct_decl_infos['lib.Local'], 'map[string]Local').name() == 'map[string]lib.Local'
 	args := g.struct_default_canonical_generic_args(['Local', '&Local', 'fn (Local) Local'])
 	assert args == ['main.Local', '&main.Local', 'fn (main.Local) main.Local']
 	resolved := g.struct_default_field_type_text(g.struct_decl_infos['lib.Local'], args[0])

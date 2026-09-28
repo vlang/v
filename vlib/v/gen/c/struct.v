@@ -2510,18 +2510,11 @@ fn (mut g FlatGen) struct_default_field_type_text(
 	info StructDeclInfo,
 	field_type string
 ) types.Type {
-	if field_type.len > 0 && !field_type.contains('.') && info.module.len > 0 && info.module != 'main'
-		&& info.module != 'builtin' {
-		qtyp := '${info.module}.${field_type}'
-		if qtyp in g.tc.enum_names || qtyp in g.tc.structs || qtyp in g.tc.sum_types
-			|| qtyp in g.tc.interface_names {
-			return g.tc.parse_type(qtyp)
-		}
-	}
-	if exact := g.exact_known_import_type_text(field_type) {
+	canonical := g.struct_default_canonical_type_text(field_type, info.module, info.file)
+	if exact := g.exact_known_import_type_text(canonical) {
 		return exact
 	}
-	return g.tc.parse_type(field_type)
+	return g.tc.parse_type(canonical)
 }
 
 fn (g &FlatGen) generic_default_type_text(type_text string) string {
