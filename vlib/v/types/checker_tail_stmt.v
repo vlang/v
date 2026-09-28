@@ -12810,6 +12810,20 @@ pub fn (tc &TypeChecker) fn_type_callconv_compatible(actual Type, expected Type)
 	if expected is Alias && fn_type_from_type(expected) == none {
 		return tc.fn_type_callconv_compatible(actual, expected.base_type)
 	}
+	if actual is Struct || actual is Interface || actual is SumType {
+		_, actual_args, actual_generic := generic_type_application_parts(actual.name())
+		_, expected_args, expected_generic := generic_type_application_parts(expected.name())
+		if actual_generic && expected_generic {
+			if actual_args.len != expected_args.len {
+				return false
+			}
+			for i, arg in actual_args {
+				if !tc.fn_type_callconv_compatible(tc.parse_type(arg), tc.parse_type(expected_args[i])) {
+					return false
+				}
+			}
+		}
+	}
 	actual_fn := fn_type_from_type(actual) or { return true }
 	expected_fn := fn_type_from_type(expected) or { return true }
 	if tc.fn_type_callconv(actual) != tc.fn_type_callconv(expected)

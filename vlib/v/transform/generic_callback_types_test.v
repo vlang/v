@@ -13,12 +13,18 @@ fn test_specialized_receiver_callback_uses_function_type_compatibility() {
 	tc.type_aliases['PlainHandlers'] = 'map[string]fn (int)'
 	tc.type_aliases['FastFn'] = 'fn (int)'
 	tc.type_aliases['CdeclFn'] = 'fn (int)'
+	tc.type_aliases['FastBox'] = 'Box[FastFn]'
+	tc.type_aliases['CdeclBox'] = 'Box[CdeclFn]'
 	fast_decl := a.add_node(flat.Node{ kind: .type_decl, value: 'FastFn' })
 	cdecl_decl := a.add_node(flat.Node{ kind: .type_decl, value: 'CdeclFn' })
 	tc.type_declaration_ids['FastFn'] = [int(fast_decl)]
 	tc.type_declaration_ids['CdeclFn'] = [int(cdecl_decl)]
 	tc.declaration_attributes[int(fast_decl)] = ['callconv: fastcall']
 	tc.declaration_attributes[int(cdecl_decl)] = ['callconv: cdecl']
+	tc.structs['Box'] = []types.StructField{}
+	tc.struct_generic_params['Box'] = ['T']
+	tc.structs['Pair'] = []types.StructField{}
+	tc.struct_generic_params['Pair'] = ['T', 'U']
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
 	assert t.resolved_receiver_arg_compatible(id, 'fn ([]int, []int) int', 'fn([]int, []int) int')
 	assert t.resolved_receiver_arg_compatible(id, 'fn (values []f64, indices []int) f64', 'fn([]f64, []int) f64')
@@ -60,6 +66,16 @@ fn test_specialized_receiver_callback_uses_function_type_compatibility() {
 		'fn (map[string]fn (int))')
 	assert !t.resolved_receiver_arg_compatible(id, 'fn (SharedCb)', 'fn (PlainCb)')
 	assert !t.resolved_receiver_arg_compatible(id, 'fn (FastFn)', 'fn (CdeclFn)')
+	for wrapper in ['Box[%s]', 'Pair[int, %s]', 'Box[[]%s]', '[]Box[%s]', '?Box[%s]',
+		'map[string]Box[%s]'] {
+		actual := wrapper.replace('%s', 'FastFn')
+		expected := wrapper.replace('%s', 'CdeclFn')
+		assert !tc.fn_type_callconv_compatible(tc.parse_type('fn (${actual})'), tc.parse_type('fn (${expected})'))
+		assert !t.resolved_receiver_arg_compatible(id, 'fn (${actual})', 'fn (${expected})')
+		assert !t.resolved_receiver_arg_compatible(id, 'fn () ${actual}', 'fn () ${expected}')
+		assert t.resolved_receiver_arg_compatible(id, 'fn (${actual})', 'fn (${actual})')
+	}
+	assert !t.resolved_receiver_arg_compatible(id, 'fn (FastBox)', 'fn (CdeclBox)')
 	assert !t.resolved_receiver_arg_compatible(id, 'fn ([]FastFn)', 'fn ([]CdeclFn)')
 	assert !t.resolved_receiver_arg_compatible(id, 'fn ([2]FastFn)', 'fn ([2]CdeclFn)')
 	assert !t.resolved_receiver_arg_compatible(id, 'fn (map[string]FastFn)',
