@@ -470,3 +470,40 @@ fn test_option_variants_of_aliases() {
 	decoded_stamp := (decoded as ?OptionTimestamp) or { panic('the time should be set') }
 	assert time.Time(decoded_stamp).unix() == 100
 }
+
+struct ArrayVariantItem {
+	a int
+}
+
+type NestedItems = [][]ArrayVariantItem | int
+
+type FixedItems = [2]ArrayVariantItem | int
+
+type NestedFixedItems = [][2]ArrayVariantItem | int
+
+fn test_nested_and_fixed_array_variants_tag_struct_elements() {
+	// Like the removed module, struct elements get their `_type` at every array level.
+	nested := NestedItems([[ArrayVariantItem{1}], [ArrayVariantItem{2}]])
+	nested_json := json2.encode(nested)
+	assert nested_json == '[[{"a":1,"_type":"ArrayVariantItem"}],[{"a":2,"_type":"ArrayVariantItem"}]]'
+	assert json2.decode[NestedItems](nested_json)! == nested
+	fixed := FixedItems([ArrayVariantItem{1}, ArrayVariantItem{2}]!)
+	fixed_json := json2.encode(fixed)
+	assert fixed_json == '[{"a":1,"_type":"ArrayVariantItem"},{"a":2,"_type":"ArrayVariantItem"}]'
+	assert json2.decode[FixedItems](fixed_json)! == fixed
+	nested_fixed := NestedFixedItems([[ArrayVariantItem{1}, ArrayVariantItem{2}]!])
+	nested_fixed_json := json2.encode(nested_fixed)
+	assert nested_fixed_json == '[[{"a":1,"_type":"ArrayVariantItem"},{"a":2,"_type":"ArrayVariantItem"}]]'
+	assert json2.decode[NestedFixedItems](nested_fixed_json)! == nested_fixed
+	assert json2.encode(nested, prettify: true, legacy_layout: true) == '[[{\n\t\t\t"a":\t1,\n\t\t\t"_type":\t"ArrayVariantItem"\n\t\t}], [{\n\t\t\t"a":\t2,\n\t\t\t"_type":\t"ArrayVariantItem"\n\t\t}]]'
+}
+
+struct RequiredRawBody {
+	body string @[raw; required]
+}
+
+fn test_required_raw_field_keeps_null_text() {
+	// The removed module kept a `null` of a `@[raw]` field as its text, also with
+	// `@[required]`.
+	assert json2.decode[RequiredRawBody]('{"body":null}')!.body == 'null'
+}

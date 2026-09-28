@@ -508,6 +508,9 @@ fn (mut encoder Encoder) encode_sumtype[T](val T) {
 						variant_value := val
 						encoder.encode_array_of_sumtype_variants(variant_value)
 					}
+				} $else $if variant.typ is $array_fixed {
+					variant_value := val
+					encoder.encode_fixed_array_of_sumtype_variants(variant_value)
 				} $else {
 					variant_value := val
 					encoder.encode_value(variant_value)
@@ -564,6 +567,9 @@ fn (mut encoder Encoder) encode_sumtype_struct_variant[T](val T, variant_name st
 	encoder.close_object(!is_first)
 }
 
+// encode_array_of_sumtype_variants writes an array held by a sum type variant. Like
+// the removed `json` module, its struct elements get their `_type`, also in nested
+// and fixed size arrays.
 fn (mut encoder Encoder) encode_array_of_sumtype_variants[T](val []T) {
 	encoder.output << `[`
 	encoder.open_items(val.len, true)
@@ -571,21 +577,53 @@ fn (mut encoder Encoder) encode_array_of_sumtype_variants[T](val []T) {
 		if i > 0 {
 			encoder.separate_items(true)
 		}
-		$if T.unaliased_typ is time.Time {
-			encoder.encode_value(item)
-		} $else $if T is JsonEncoder {
-			encoder.encode_value(item)
-		} $else $if T is Encodable {
-			encoder.encode_value(item)
-		} $else $if T is $struct {
-			elem_name := sumtype_variant_name(T.name)
-			encoder.encode_sumtype_struct_variant(item, elem_name)
-		} $else {
-			encoder.encode_value(item)
-		}
+		encoder.encode_sumtype_array_item(item)
 	}
 	encoder.close_items(val.len, true)
 	encoder.output << `]`
+}
+
+// encode_fixed_array_of_sumtype_variants writes a fixed size array held by a sum type
+// variant, laid out like `encode_value` lays out other fixed size arrays.
+fn (mut encoder Encoder) encode_fixed_array_of_sumtype_variants[A](val A) {
+	encoder.output << `[`
+	// Only the legacy layout spreads a fixed size array like a dynamic one.
+	spread := encoder.prettify && encoder.legacy_layout
+	if spread {
+		encoder.open_items(val.len, true)
+	}
+	for i in 0 .. val.len {
+		if i > 0 {
+			if spread {
+				encoder.separate_items(true)
+			} else {
+				encoder.output << `,`
+			}
+		}
+		encoder.encode_sumtype_array_item(val[i])
+	}
+	if spread {
+		encoder.close_items(val.len, true)
+	}
+	encoder.output << `]`
+}
+
+fn (mut encoder Encoder) encode_sumtype_array_item[T](item T) {
+	$if T.unaliased_typ is time.Time {
+		encoder.encode_value(item)
+	} $else $if T is JsonEncoder {
+		encoder.encode_value(item)
+	} $else $if T is Encodable {
+		encoder.encode_value(item)
+	} $else $if T is $struct {
+		encoder.encode_sumtype_struct_variant(item, sumtype_variant_name(T.name))
+	} $else $if T is $array_dynamic {
+		encoder.encode_array_of_sumtype_variants(item)
+	} $else $if T is $array_fixed {
+		encoder.encode_fixed_array_of_sumtype_variants(item)
+	} $else {
+		encoder.encode_value(item)
+	}
 }
 
 @[markused]
