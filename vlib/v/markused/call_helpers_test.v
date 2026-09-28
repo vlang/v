@@ -797,7 +797,13 @@ fn test_generic_factory_uses_for_in_element_type() {
 		map[string]string{}).calls
 }
 
-fn test_generic_factory_uses_pipe_lambda_map_element_type() {
+fn test_generic_factory_uses_pipe_lambda_array_element_type() {
+	for callback in ['map', 'filter', 'any', 'all', 'count'] {
+		assert_generic_factory_pipe_lambda_array_callback(callback)
+	}
+}
+
+fn assert_generic_factory_pipe_lambda_array_callback(callback string) {
 	mut a := flat.FlatAst.new()
 	mut tc := types.TypeChecker.new(&a)
 	tc.parallel_check_sparse = true
@@ -808,7 +814,9 @@ fn test_generic_factory_uses_pipe_lambda_map_element_type() {
 	tc.fn_ret_types['gates.Gate[T].backward'] = types.Type(types.int_)
 	param := a.add_node(flat.Node{ kind: .param, value: 'values', typ: '[]T' })
 	values := a.add_val(.ident, 'values')
-	map_selector := call_helper_node(mut a, flat.Node{ kind: .selector, value: 'map' }, [values])
+	array_selector := call_helper_node(mut a, flat.Node{ kind: .selector, value: callback }, [
+		values,
+	])
 	lambda_param := a.add_val(.ident, 'value')
 	gate_lhs := a.add_val(.ident, 'gate')
 	callee := a.add_val(.ident, 'make_gate')
@@ -823,8 +831,8 @@ fn test_generic_factory_uses_pipe_lambda_map_element_type() {
 	backward_call := call_helper_node(mut a, flat.Node{ kind: .call }, [backward])
 	lambda_body := call_helper_node(mut a, flat.Node{ kind: .block }, [gate_decl, backward_call])
 	lambda := call_helper_node(mut a, flat.Node{ kind: .lambda_expr }, [lambda_param, lambda_body])
-	map_call := call_helper_node(mut a, flat.Node{ kind: .call }, [map_selector, lambda])
-	body := call_helper_node(mut a, flat.Node{ kind: .block }, [map_call])
+	array_call := call_helper_node(mut a, flat.Node{ kind: .call }, [array_selector, lambda])
+	body := call_helper_node(mut a, flat.Node{ kind: .block }, [array_call])
 	fn_id := call_helper_node(mut a, flat.Node{ kind: .fn_decl, value: 'use_gates' }, [
 		param,
 		body,

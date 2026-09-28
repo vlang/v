@@ -5535,7 +5535,7 @@ fn (c &CallCollector) seed_lambda_param_types(id flat.NodeId, lambda &flat.Node,
 	}
 	if parent.kind == .call && parent.children_count > 1 {
 		callee := c.a.child_node(parent, 0)
-		if callee.kind == .selector && callee.value == 'map' && callee.children_count > 0 {
+		if callee.kind == .selector && callee.value in ['map', 'filter', 'any', 'all', 'count'] && callee.children_count > 0 {
 			receiver_id := c.a.child(callee, 0)
 			if elem := c.top_level_for_in_elem_type_name(receiver_id, cur_module, imports,
 				map[string]bool{}, outer_types) {
