@@ -247,12 +247,16 @@ fn (mut decoder Decoder) resolve_sumtype_from_type_field[T](mut val T) !bool {
 		$if v.typ is $option {
 			// An option of a struct or a time (`?Foo`, `?time.Time`) is tagged with its
 			// payload's name, like in the removed `json` module.
-			option_name := typeof(v.typ).name
-			if option_payload_fits(option_name, .object) {
+			option_value := $zero(v.typ)
+			if option_payload_fits(option_value, .object) {
 				has_discriminated_variant = true
-				if decoder.sumtype_type_field_matches(type_field_node,
-					sumtype_variant_name(option_name.trim_left('?')))
-				{
+				mut matches := decoder.sumtype_type_field_matches(type_field_node,
+					sumtype_variant_name(typeof(v.typ).name.trim_left('?')))
+				if option_payload_is_time(option_value) {
+					// An option of a time alias is written as `Time` too.
+					matches = matches || decoder.sumtype_type_field_matches(type_field_node, 'Time')
+				}
+				if matches {
 					val = T(v)
 					return true
 				}
@@ -426,8 +430,7 @@ fn (mut decoder Decoder) init_sumtype_by_value_kind[T](mut val T, value_info Val
 		for any_payload in [false, true] {
 			$for v in T.variants {
 				$if v.typ is $option {
-					if any_payload
-						|| option_payload_fits(typeof(v.typ).name, value_info.value_kind) {
+					if any_payload || option_payload_fits($zero(v.typ), value_info.value_kind) {
 						val = T(v)
 						return
 					}
@@ -439,21 +442,33 @@ fn (mut decoder Decoder) init_sumtype_by_value_kind[T](mut val T, value_info Val
 	decoder.decode_error('could not resolve sumtype `${T.name}`, got ${value_info.value_kind}.')!
 }
 
-// option_payload_fits reports whether the payload of the option type `type_name`
-// (`?int`) takes a JSON value of `kind`.
-fn option_payload_fits(type_name string, kind ValueKind) bool {
-	payload := type_name.trim_left('?')
-	numbers := ['int', 'i8', 'i16', 'i32', 'i64', 'isize', 'u8', 'u16', 'u32', 'u64', 'usize',
-		'f32', 'f64', 'rune']
-	return match kind {
-		.string { payload in ['string', 'time.Time'] }
-		.number { payload in numbers }
-		.boolean { payload == 'bool' }
-		.array { payload.starts_with('[') }
-		.object {
-			payload !in numbers && payload !in ['string', 'bool'] && !payload.starts_with('[')
-		}
-		else { false }
+// option_payload_fits reports whether the payload of an option (`?int`) takes a JSON
+// value of `kind`. Aliases are unwrapped, so `?Text` takes a string for `type Text = string`.
+fn option_payload_fits[P](_ ?P, kind ValueKind) bool {
+	$if P.unaliased_typ is time.Time {
+		return kind == .string || kind == .object
+	} $else $if P.unaliased_typ is string {
+		return kind == .string
+	} $else $if P.unaliased_typ is bool {
+		return kind == .boolean
+	} $else $if P.unaliased_typ is rune || P.unaliased_typ is $int || P.unaliased_typ is $float {
+		return kind == .number
+	} $else $if P.unaliased_typ is $enum {
+		return kind == .string || kind == .number
+	} $else $if P.unaliased_typ is $array || P.unaliased_typ is $array_fixed {
+		return kind == .array
+	} $else {
+		return kind == .object
+	}
+}
+
+// option_payload_is_time reports whether the payload of an option is a `time.Time`
+// or an alias of it.
+fn option_payload_is_time[P](_ ?P) bool {
+	$if P.unaliased_typ is time.Time {
+		return true
+	} $else {
+		return false
 	}
 }
 

@@ -438,3 +438,35 @@ fn test_custom_hooks_encode_through_to_json_and_decode_legacy_objects() {
 	assert json2.decode[HookedHolder]('{"value":{"a":2}}')!.value.a == 2
 	assert json2.decode[HookedValue]('"xyz"')!.a == 3
 }
+
+type OptionText = string
+
+type OptionTextValue = ?int | ?OptionText
+
+type OptionTimestamp = time.Time
+
+type OptionTimestampValue = ?OptionTimestamp | int
+
+type OptionNums = []int
+
+type OptionNumsValue = ?int | ?OptionNums
+
+fn test_option_variants_of_aliases() {
+	// The unaliased payload selects the option variant: a string goes to `?OptionText`.
+	text_value := json2.decode[OptionTextValue]('"hello"')!
+	text := (text_value as ?OptionText) or { panic('the text should be set') }
+	assert text == 'hello'
+	int_value := json2.decode[OptionTextValue]('5')!
+	number := (int_value as ?int) or { panic('the int should be set') }
+	assert number == 5
+	nums_value := json2.decode[OptionNumsValue]('[1,2]')!
+	nums := (nums_value as ?OptionNums) or { panic('the array should be set') }
+	assert nums == OptionNums([1, 2])
+	// An option of a time alias is written with the `Time` discriminator, and read back.
+	stamp := OptionTimestampValue(?OptionTimestamp(OptionTimestamp(time.unix(100))))
+	encoded := json2.encode(stamp, time_as_unix: true)
+	assert encoded == '{"_type":"Time","value":100}'
+	decoded := json2.decode[OptionTimestampValue](encoded)!
+	decoded_stamp := (decoded as ?OptionTimestamp) or { panic('the time should be set') }
+	assert time.Time(decoded_stamp).unix() == 100
+}
