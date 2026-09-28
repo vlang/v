@@ -10816,7 +10816,8 @@ fn (tc &TypeChecker) concrete_method_signature_key_seen(concrete_name string, me
 	return none
 }
 
-fn (tc &TypeChecker) concrete_generic_method_signature_candidates(concrete_name string, method string) []string {
+// concrete_generic_method_signature_candidates returns the registered spellings of a specialized method.
+pub fn (tc &TypeChecker) concrete_generic_method_signature_candidates(concrete_name string, method string) []string {
 	base, args, ok := generic_type_application_parts(concrete_name)
 	if !ok || args.len == 0 || method == '' {
 		return []string{}

@@ -26,13 +26,26 @@ fn make_drop_signal_tuple(done chan int) (DropSignal, []int) {
 	return DropSignal{ done: done }, [1, 2, 3]
 }
 
+struct GenericDropSignalBox[T] {
+	done chan int
+}
+
+fn (mut value GenericDropSignalBox[T]) drop() {
+	value.done <- 1
+}
+
+fn make_generic_drop_signal_box(done chan int) GenericDropSignalBox[int] {
+	return GenericDropSignalBox[int]{ done: done }
+}
+
 fn test_discarded_spawn_drops_return_value() {
-	done := chan int{cap: 4}
+	done := chan int{cap: 5}
 	spawn make_drop_signal(done)
 	spawn make_drop_signal_array(done)
 	spawn make_drop_signal_map(done)
 	spawn make_drop_signal_tuple(done)
-	for _ in 0 .. 4 {
+	spawn make_generic_drop_signal_box(done)
+	for _ in 0 .. 5 {
 		select {
 			value := <-done {
 				assert value == 1

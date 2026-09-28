@@ -10646,8 +10646,19 @@ fn (mut t Transformer) mark_detached_spawn_drop_type(typ types.Type, mut seen ma
 			}
 			method := if t.tc.autofree_mode { 'free' } else { 'drop' }
 			module_name := t.tc.struct_module_for_type(typ.name)
-			for candidate in ['${typ.name}.${method}',
-				'${module_name}.${typ.name.all_after_last('.')}.${method}'] {
+			if typ.name.contains('[') {
+				if _ := t.tc.resolve_generic_struct_method(typ.name, method) {
+					t.mark_fn_used_name('${typ.name}.${method}')
+					if module_name.len > 0 && !typ.name.starts_with('${module_name}.') {
+						t.mark_fn_used_name('${module_name}.${typ.name}.${method}')
+					}
+					return
+				}
+			}
+			mut candidates := ['${typ.name}.${method}',
+				'${module_name}.${typ.name.all_after_last('.')}.${method}']
+			candidates << t.tc.concrete_generic_method_signature_candidates(typ.name, method)
+			for candidate in candidates {
 				if candidate in t.tc.fn_param_types || candidate in t.tc.fn_ret_types {
 					t.mark_fn_used_name(candidate)
 					return
@@ -12147,6 +12158,13 @@ fn (t &Transformer) collect_discarded_aggregate_spawns(id flat.NodeId, mut spawn
 		.index, .selector {
 			if node.children_count > 0 {
 				t.collect_discarded_aggregate_spawns(t.a.child(&node, 0), mut spawns)
+			}
+		}
+		.infix {
+			if node.op in [.eq, .ne] {
+				for i in 0 .. node.children_count {
+					t.collect_discarded_aggregate_spawns(t.a.child(&node, i), mut spawns)
+				}
 			}
 		}
 		.paren, .dump_expr, .array_literal, .array_init, .struct_init, .field_init, .map_init,

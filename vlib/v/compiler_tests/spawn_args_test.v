@@ -408,6 +408,7 @@ fn main() {
 	_ := [spawn answer()][0]
 	_ := Holder{worker: spawn answer()}
 	_ := Holder{worker: spawn answer()}.worker
+	_ := (spawn answer()) == (spawn answer())
 	_ := [[spawn answer()]]
 	_ := {"worker": spawn answer()}
 	_ := dump(spawn answer())
@@ -418,7 +419,7 @@ fn main() {
 }
 	')
 	c_compact := compact_c(c_code)
-	assert c_compact.count('__v_thread_spawn_detached(answer_thread_wrapper_detached,') == 8, c_code
+	assert c_compact.count('__v_thread_spawn_detached(answer_thread_wrapper_detached,') == 10, c_code
 	assert c_compact.count('__v_thread_spawn(answer_thread_wrapper,') == 2, c_code
 }
 
