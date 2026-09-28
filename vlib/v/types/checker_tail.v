@@ -378,8 +378,17 @@ fn (mut tc TypeChecker) check_module_name_conflict(id flat.NodeId, name string) 
 	tc.check_imported_module_prefix(id, name, '')
 }
 
+fn (tc &TypeChecker) current_file_module_source_path() string {
+	if !isnil(tc.a) {
+		if source := tc.a.cached_header_sources[tc.cur_file] {
+			return source
+		}
+	}
+	return tc.cur_file
+}
+
 fn (tc &TypeChecker) current_file_uses_nested_module_path() bool {
-	normalized := tc.cur_file.replace('\\', '/')
+	normalized := tc.current_file_module_source_path().replace('\\', '/')
 	dir := normalized.all_before_last('/')
 	if dir == '' || (tc.cur_module != dir.all_after_last('/')
 		&& tc.cur_module.all_after_last('.') != dir.all_after_last('/')) {
@@ -414,7 +423,7 @@ fn (tc &TypeChecker) current_file_uses_nested_module_path() bool {
 }
 
 fn (tc &TypeChecker) current_file_module_path_identity() ?string {
-	directory := os.real_path(os.dir(tc.cur_file)).replace('\\', '/').trim_right('/')
+	directory := os.real_path(os.dir(tc.current_file_module_source_path())).replace('\\', '/').trim_right('/')
 	source_root := tc.current_file_module_source_root() or { return none }
 	if source_root == '' || !directory.starts_with(source_root + '/') {
 		return none
@@ -428,8 +437,9 @@ fn (tc &TypeChecker) current_file_module_path_identity() ?string {
 }
 
 fn (tc &TypeChecker) current_file_module_source_root() ?string {
-	directory := os.real_path(os.dir(tc.cur_file)).replace('\\', '/').trim_right('/')
-	vmod_root := checker_vmod_root_for_file(tc.cur_file)
+	source_file := tc.current_file_module_source_path()
+	directory := os.real_path(os.dir(source_file)).replace('\\', '/').trim_right('/')
+	vmod_root := checker_vmod_root_for_file(source_file)
 	mut source_root := ''
 	if manifest := vmod.from_file(os.join_path(vmod_root, 'v.mod')) {
 		source_root = os.real_path(manifest.source_root(vmod_root)).replace('\\', '/').trim_right('/')

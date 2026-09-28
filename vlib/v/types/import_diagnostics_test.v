@@ -5,6 +5,33 @@ import v.flat
 import v.parser
 import v.pref
 
+fn test_cached_module_header_uses_original_source_identity() {
+	root := os.join_path(os.vtmp_dir(), 'v3_cached_module_identity_${os.getpid()}')
+	source := os.join_path(root, 'app', 'html', 'html.v')
+	header := os.join_path(root, 'cache', 'html.vh')
+	os.mkdir_all(os.dir(source))!
+	os.mkdir_all(os.dir(header))!
+	defer { os.rmdir_all(root) or {} }
+	os.write_file(os.join_path(root, 'v.mod'), "Module { name: 'project' }")!
+	os.write_file(source, 'module html\n')!
+	for import_path in ['net.html', 'app.html as own'] {
+		os.write_file(header, 'module html\nimport ${import_path}\n')!
+		mut p := parser.Parser.new(pref.new_preferences())
+		mut a := p.parse_file(header)
+		a.cached_header_sources[header] = source
+		a.resolved_module_dirs['net.html'] = os.join_path(root, 'net', 'html')
+		a.resolved_module_dirs['app.html'] = os.dir(source)
+		mut tc := TypeChecker.new(a)
+		tc.collect(a)
+		tc.check_import_diagnostics()
+		if import_path == 'net.html' {
+			assert tc.errors.len == 0, tc.errors.str()
+		} else {
+			assert tc.errors.any(it.msg.contains('cannot import `app.html` into a module with the same name')), tc.errors.str()
+		}
+	}
+}
+
 fn test_synthetic_vsh_import_has_no_source_diagnostics() {
 	path := os.join_path(os.vtmp_dir(), 'v3_synthetic_vsh_import_${os.getpid()}.vsh')
 	os.write_file(path, '// a comment without it\nfn helper() {}\n')!

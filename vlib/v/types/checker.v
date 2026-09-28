@@ -5909,7 +5909,7 @@ fn (mut tc TypeChecker) check_import_diagnostics() {
 		// Self-import diagnostics only apply to imports written by the user.
 		if has_source && node.value != tc.cur_module && !module_path_identity_checked {
 			module_path_identity = tc.current_file_module_path_identity() or { '' }
-			module_directory = os.real_path(os.dir(tc.cur_file))
+			module_directory = os.real_path(os.dir(tc.current_file_module_source_path()))
 			module_path_identity_checked = true
 		}
 		resolved_directory := tc.a.resolved_module_dirs[node.value] or { module_directory }
