@@ -1934,6 +1934,272 @@ fn test_a_shared_server_sends_the_errors_of_a_long_check_before_its_end() {
 	}
 }
 
+const incremental_program = "module main
+
+import os { join_path }
+
+struct Point {
+	x int
+	y int
+}
+
+fn helper(p Point) int {
+	return p.x + p.y
+}
+
+fn callback(x int) int {
+	return x + 1
+}
+
+fn apply(f fn (int) int, x int) int {
+	return f(x)
+}
+
+fn fails() !int {
+	return error('no')
+}
+
+fn never() {}
+
+fn first() int {
+	mut unused_local := 1
+	return helper(Point{1, 2})
+}
+
+fn second() string {
+	fails()
+	return join_path('a', 'b')
+}
+
+fn third() int {
+	return apply(callback, 2) + 'x'
+}
+
+fn main() {
+	println(first())
+	println(second())
+	println(third())
+}
+"
+
+// IncrementalStep is an edit of the program of an incremental check, and what
+// the check that follows it does: `checked` function bodies of the program's
+// 9, or all of them, anew.
+struct IncrementalStep {
+	from    string
+	to      string
+	checked int = -1
+}
+
+// final_server_check checks with a server that may send a partial answer first,
+// and returns the child and the answer after it.
+fn final_server_check(mut p os.Process, token string) (int, string) {
+	p.stdin_write('check ${token}\n')
+	out := read_until(mut p, 'v-diagnostics-server: end ')
+	marker := 'v-diagnostics-server: child '
+	start := out.index(marker) or { panic(out) }
+	child := out[start + marker.len..].all_before(' ').int()
+	partial := out.index('v-diagnostics-server: partial ') or { -1 }
+	final := if partial >= 0 { out[partial..].all_after('\n') } else { out }
+	mut lines := []string{}
+	for line in final.split_into_lines() {
+		if !line.starts_with('v-diagnostics-server: ') {
+			lines << line
+		}
+	}
+	code := out.all_after('v-diagnostics-server: end ').all_before(' ')
+	assert out.contains('v-diagnostics-server: end ${code} ${token}'), out
+	return child, 'exit ${code}\n' + lines.join('\n').trim_space()
+}
+
+fn test_a_shared_server_checks_again_only_the_bodies_that_changed() {
+	$if !linux {
+		return
+	}
+	dir := os.join_path(work_dir, 'incremental')
+	os.mkdir_all(dir)!
+	path := os.join_path(dir, 'main.v')
+	os.write_file(path, incremental_program)!
+	trace := os.join_path(dir, 'trace.txt')
+	os.rm(trace) or {}
+	// The server leaves out the bodies of a program this small too.
+	mut p := start_server(dir, {
+		'V_DIAGNOSTICS_SHARED':                '1'
+		'V_DIAGNOSTICS_PREPARE':               '1'
+		'V_DIAGNOSTICS_PARTIAL':               '1'
+		'V_DIAGNOSTICS_TRACE':                 trace
+		'V_DIAGNOSTICS_INCREMENTAL_MIN_NODES': '0'
+	})
+	defer {
+		p.close()
+	}
+	steps := [
+		// The first check has no earlier one to take anything from.
+		IncrementalStep{},
+		// A line more in `first` moves the diagnostics of the bodies after it.
+		IncrementalStep{
+			from:    '\tmut unused_local := 1\n'
+			to:      "\tprintln('first')\n\tmut unused_local := 1\n"
+			checked: 1
+		},
+		// With no error left, the rest of the check needs the bodies it left out:
+		// markused looks for what uses `never`.
+		IncrementalStep{
+			from:    " + 'x'"
+			to:      ' + 1'
+			checked: 1
+		},
+		IncrementalStep{
+			from:    '\tfails()\n'
+			to:      ''
+			checked: 1
+		},
+		// A declaration changes what every body may report.
+		IncrementalStep{
+			from: '\ty int\n}'
+			to:   '\ty int\n\tz int\n}'
+		},
+		IncrementalStep{
+			from:    '\tprintln(third())\n'
+			to:      '\tprintln(third())\n\tprintln(helper(Point{}) + first())\n'
+			checked: 1
+		},
+		IncrementalStep{
+			from:    '\treturn helper(Point{1, 2})\n'
+			to:      "\treturn helper(Point{1, 2}) + 'y'\n"
+			checked: 1
+		},
+	]
+	mut source := incremental_program
+	for i, step in steps {
+		if step.from != '' {
+			assert source.contains(step.from), step.from
+			source = source.replace_once(step.from, step.to)
+			os.write_file(path, source)!
+		}
+		traced := (os.read_file(trace) or { '' }).len
+		_, checked := final_server_check(mut p, 's${i}')
+		assert checked == one_shot_check(dir), 'step ${i}'
+		said := (os.read_file(trace) or { '' })[traced..]
+		if step.checked < 0 {
+			assert said.contains('incremental: every body checked'), 'step ${i}: ${said}'
+		} else {
+			assert said.contains('incremental: ${step.checked} of 9 bodies checked'), 'step ${i}: ${said}'
+		}
+		if i == 1 {
+			// A body left out answers a question as a one-shot check does.
+			line := source.split_into_lines().index("\treturn apply(callback, 2) + 'x'") + 1
+			_, answer := query(mut p, 'q${i}', 'main.v:${line}:hv^10')
+			assert answer.all_after('\t') == ask_once(dir, ['${line}:hv^10'])[0]
+		}
+	}
+	p.stdin_write('quit\n')
+	p.wait()
+	assert p.code == 0
+}
+
+fn test_a_shared_server_checks_every_body_of_a_small_program() {
+	$if !linux {
+		return
+	}
+	dir := os.join_path(work_dir, 'incremental_small')
+	os.mkdir_all(dir)!
+	path := os.join_path(dir, 'main.v')
+	os.write_file(path, incremental_program)!
+	trace := os.join_path(dir, 'trace.txt')
+	os.rm(trace) or {}
+	mut p := start_server(dir, {
+		'V_DIAGNOSTICS_SHARED':  '1'
+		'V_DIAGNOSTICS_PREPARE': '1'
+		'V_DIAGNOSTICS_TRACE':   trace
+	})
+	defer {
+		p.close()
+	}
+	_, _ = final_server_check(mut p, 'a')
+	os.write_file(path, incremental_program.replace('\tfails()\n', ''))!
+	traced := (os.read_file(trace) or { '' }).len
+	_, checked := final_server_check(mut p, 'b')
+	assert checked == one_shot_check(dir)
+	// Leaving out its unchanged bodies would save less than it costs.
+	said := (os.read_file(trace) or { '' })[traced..]
+	assert said.contains('incremental: every body checked ('), said
+	assert said.contains(' nodes '), said
+	p.stdin_write('quit\n')
+	p.wait()
+	assert p.code == 0
+}
+
+const incremental_generic_program = "module main
+
+struct User {
+	name string
+}
+
+type Thing = User | int
+
+fn name_of[T](x T) string {
+	return x.name
+}
+
+fn first() string {
+	return name_of(User{'a'})
+}
+
+fn second(t Thing) int {
+	match t {
+		int { _ = name_of(t) }
+		User {}
+	}
+	return 2
+}
+
+fn main() {
+	println(first())
+	println(second(Thing(1)))
+}
+"
+
+fn test_an_incremental_check_checks_the_instances_that_the_bodies_it_left_out_ask_for() {
+	$if !linux {
+		return
+	}
+	dir := os.join_path(work_dir, 'incremental_generic')
+	os.mkdir_all(dir)!
+	path := os.join_path(dir, 'main.v')
+	os.write_file(path, incremental_generic_program)!
+	trace := os.join_path(dir, 'trace.txt')
+	os.rm(trace) or {}
+	// The server leaves out the bodies of a program this small too.
+	mut p := start_server(dir, {
+		'V_DIAGNOSTICS_SHARED':                '1'
+		'V_DIAGNOSTICS_PREPARE':               '1'
+		'V_DIAGNOSTICS_PARTIAL':               '1'
+		'V_DIAGNOSTICS_TRACE':                 trace
+		'V_DIAGNOSTICS_INCREMENTAL_MIN_NODES': '0'
+	})
+	defer {
+		p.close()
+	}
+	_, checked := final_server_check(mut p, 'g0')
+	expected := one_shot_check(dir)
+	assert checked == expected
+	// The instance `name_of[int]` comes from `t`, an `int` only in its branch of
+	// the `match`: the check of `second` tells, and the check of `first` leaves
+	// `second` out.
+	assert expected.contains('`int` has no property `name`'), expected
+	os.write_file(path, incremental_generic_program.replace("\treturn name_of(User{'a'})",
+		"\t// first\n\treturn name_of(User{'a'})"))!
+	traced := (os.read_file(trace) or { '' }).len
+	_, rechecked := final_server_check(mut p, 'g1')
+	assert rechecked == one_shot_check(dir)
+	said := (os.read_file(trace) or { '' })[traced..]
+	assert said.contains('incremental: 1 of 4 bodies checked'), said
+	p.stdin_write('quit\n')
+	p.wait()
+	assert p.code == 0
+}
+
 const narrowing_program = "module main
 
 interface Named {

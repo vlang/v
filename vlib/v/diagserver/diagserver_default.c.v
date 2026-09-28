@@ -52,3 +52,14 @@ pub fn (mut r Request) print_diagnostics() int {
 // print_partial_with does nothing: without a server, the check prints all its
 // diagnostics at once.
 pub fn (mut r Request) print_partial_with(print fn () int) {}
+
+// incremental_record returns '': without a server, no check left one.
+pub fn (r &Request) incremental_record() string {
+	return ''
+}
+
+// keep_incremental_record does nothing without a server.
+pub fn (r &Request) keep_incremental_record(text string) {}
+
+// keep_busy_with does nothing without a server: no question comes.
+pub fn (mut r Request) keep_busy_with(step fn () bool) {}

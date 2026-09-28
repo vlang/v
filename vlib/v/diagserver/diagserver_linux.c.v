@@ -10,6 +10,7 @@ import v.workers
 
 #include <errno.h>
 #include <signal.h>
+#include <sys/file.h>
 #include <sys/prctl.h>
 #include <sys/syscall.h>
 #include <sys/wait.h>
@@ -21,6 +22,9 @@ fn C._exit(code int)
 fn C.kill(pid int, sig int) int
 fn C.prctl(option int, arg2 voidptr, arg3 u64, arg4 u64, arg5 u64) int
 fn C.lseek(fd int, offset i64, whence int) i64
+fn C.flock(i32, i32) i32
+fn C.pread(fd int, buf voidptr, count usize, offset i64) isize
+fn C.pwrite(fd int, buf voidptr, count usize, offset i64) isize
 
 // Request is what a child of the diagnostics server was made for: answering
 // `question`, the questions of a `query` line, or checking the program when it
@@ -54,6 +58,12 @@ mut:
 	// partial prints what the check found before the grandchild went on, and
 	// returns the exit code it gives.
 	partial fn () int = unsafe { nil }
+	// record_fd holds what the last check that recorded one left for the next
+	// check of the program (see keep_incremental_record).
+	record_fd int = -1
+	// idle does part of the work the child can do while it waits for a question,
+	// and reports whether some remains (see keep_busy_with).
+	idle fn () bool = unsafe { nil }
 }
 
 // check_question is what the server sends a child that answers checks, for
@@ -103,6 +113,17 @@ mut:
 // that checked the program, while its files hold (see diagnose_in_grandchild).
 // A client that asks both of each version of a program checks it once.
 //
+// Such a check checks again only the bodies of the functions whose code changed
+// since the last check of the program, and takes what the others reported from
+// what that check left in a file of the server (see
+// types.start_incremental_check). The child checks the bodies it left out while
+// it waits for a question, as a question reads their types. It leaves out no
+// body unless those it would leave out hold V_DIAGNOSTICS_INCREMENTAL_MIN_NODES
+// nodes (2048 by default). V_DIAGNOSTICS_INCREMENTAL=0 checks every body; with
+// V_DIAGNOSTICS_INCREMENTAL_VERIFY set, the child checks them before it tells
+// the server it answered, and traces each body that reports otherwise than what
+// was put back for it (see V_DIAGNOSTICS_TRACE).
+//
 // The children of the last versions of the program stay, up to
 // V_DIAGNOSTICS_WARM_CHILDREN (3 by default): a child whose files changed waits
 // for them to hold what it read again, as when an edit is undone, and answers
@@ -136,6 +157,13 @@ pub fn serve() Request {
 	// A child that ended between two queries closed the pipe the server sends
 	// the next one to: writing there must not end the server.
 	C.signal(C.SIGPIPE, C.SIG_IGN)
+	// What a check leaves for the next check of the program, in a file that
+	// every child sees and that ends with the server.
+	record_fd := if shared {
+		unsafe { int(C.syscall(C.SYS_memfd_create, c'v-diagnostics-record', voidptr(0))) }
+	} else {
+		-1
+	}
 	println('v-diagnostics-server: ready')
 	flush_stdout()
 	// The children that stay, the one that answered last first.
@@ -211,7 +239,7 @@ pub fn serve() Request {
 			// The server runs without the compiler's memory watchdog, which is a
 			// thread of its own; the child, which may start threads, keeps one.
 			spawn watch_memory(memory_limit_kb())
-			return channel.child_request(question, work_dir, shared, token)
+			return channel.child_request(question, work_dir, shared, token, record_fd)
 		}
 		if pid < 0 {
 			channel.close_all()
@@ -322,6 +350,13 @@ pub fn (mut r Request) diagnose_in_grandchild() bool {
 	return false
 }
 
+// keep_busy_with has the child call `step` while it waits for its next
+// question, until `step` returns false or a question comes: the work its next
+// answers need, done before they are asked.
+pub fn (mut r Request) keep_busy_with(step fn () bool) {
+	r.idle = step
+}
+
 // print_diagnostics prints what the grandchild printed for the program, once it
 // ended, and returns its exit code, that of a one-shot check. For a client that
 // takes partial answers (V_DIAGNOSTICS_PARTIAL), a grandchild that takes longer
@@ -355,6 +390,55 @@ pub fn (mut r Request) print_diagnostics() int {
 	flush_stdout()
 	os.fd_write(1, r.diagnostics.output)
 	return r.diagnostics.code
+}
+
+// incremental_record returns what the last check of the program that recorded
+// something left for the next one (see keep_incremental_record), or ''.
+pub fn (r &Request) incremental_record() string {
+	if r.record_fd < 0 {
+		return ''
+	}
+	C.flock(r.record_fd, C.LOCK_SH)
+	mut out := []u8{}
+	mut chunk := []u8{len: 65536}
+	for {
+		got := C.pread(r.record_fd, unsafe { &u8(chunk.data) }, usize(chunk.len), i64(out.len))
+		if got < 0 && C.errno == C.EINTR {
+			continue
+		}
+		if got <= 0 {
+			break
+		}
+		out << chunk[..int(got)]
+	}
+	C.flock(r.record_fd, C.LOCK_UN)
+	return out.bytestr()
+}
+
+// keep_incremental_record keeps `text` for the next check of the program, in
+// place of what an earlier check kept: a check that checks again only the
+// function bodies that changed reads it (see types.start_incremental_check).
+pub fn (r &Request) keep_incremental_record(text string) {
+	if r.record_fd < 0 || text == '' {
+		return
+	}
+	C.flock(r.record_fd, C.LOCK_EX)
+	C.ftruncate(r.record_fd, u64(0))
+	mut written := 0
+	for written < text.len {
+		wrote := C.pwrite(r.record_fd, unsafe { text.str + written }, usize(text.len - written),
+			i64(written))
+		if wrote < 0 && C.errno == C.EINTR {
+			continue
+		}
+		if wrote <= 0 {
+			// A record cut short reads as none.
+			C.ftruncate(r.record_fd, u64(0))
+			break
+		}
+		written += int(wrote)
+	}
+	C.flock(r.record_fd, C.LOCK_UN)
 }
 
 // exit_code_within waits `ms` milliseconds at most for the child `pid`, and
@@ -456,6 +540,11 @@ pub fn (mut r Request) next_question(code int) ?string {
 	if r.current && r.digests.len > 0 && r.inputs.note_files(r.digests, mut r.buffer) {
 		r.digests = map[string]string{}
 	}
+	for r.idle != unsafe { nil } && !r.questions.has_input() {
+		if !r.idle() {
+			r.idle = unsafe { nil }
+		}
+	}
 	for {
 		question := r.questions.read_line()?
 		if r.current && r.digests.len > 0 {
@@ -536,7 +625,7 @@ fn new_channel() Channel {
 }
 
 // child_request closes the server's ends in the child, which keeps its own.
-fn (mut c Channel) child_request(question string, work_dir string, shared bool, token string) Request {
+fn (mut c Channel) child_request(question string, work_dir string, shared bool, token string, record_fd int) Request {
 	os.fd_close(c.questions_fd)
 	os.fd_close(c.status_fd)
 	return Request{
@@ -550,6 +639,7 @@ fn (mut c Channel) child_request(question string, work_dir string, shared bool, 
 		shared:      shared
 		token:       token
 		partials:    os.getenv('V_DIAGNOSTICS_PARTIAL') != ''
+		record_fd:   record_fd
 	}
 }
 
@@ -881,6 +971,11 @@ mut:
 	chunk []u8
 	start int // where the bytes read and not returned yet begin in `chunk`
 	end   int
+}
+
+// has_input reports whether a line, or a part of one, can be read at once.
+fn (r &LineReader) has_input() bool {
+	return r.start < r.end || os.fd_is_pending(r.fd)
 }
 
 // read_line returns the next line, without its newline, or none at the end.

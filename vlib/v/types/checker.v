@@ -749,6 +749,9 @@ pub mut:
 	vls_added_start                  int = max_int       // the first of the nodes that questions added
 	vls_body_types                   map[int]Type        // the types that a generic body gives its nodes in every instance (see vls_type_generic_body)
 	vls_typed_bodies                 map[int]bool        // the generic functions whose bodies were typed so
+	incremental                      &IncrementalCheck = unsafe { nil } // what an incremental check keeps (see start_incremental_check)
+	capture_items                    bool                  // each body checked notes where its diagnostics end (see incremental_capture)
+	item_marks                       []IncrementalItemMark // those notes
 	valid_diagnostic_fast            bool
 	valid_resolution_fast            bool
 	defer_fn_ancillary               bool
@@ -6482,7 +6485,11 @@ fn (tc &TypeChecker) import_is_used(import_id flat.NodeId, import_node flat.Node
 			return true
 		}
 		if node.kind == .call {
-			if resolved := tc.resolved_call_name(flat.NodeId(idx)) {
+			// A body an incremental check left out has its calls put back.
+			resolved := tc.resolved_call_name(flat.NodeId(idx)) or {
+				tc.incremental_call_name(idx)
+			}
+			if resolved != '' {
 				for name in selective_names {
 					if resolved == '${import_node.value}.${name}'
 						|| resolved.starts_with('${import_node.value}.${name}[') {

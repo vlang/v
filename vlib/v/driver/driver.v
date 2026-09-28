@@ -12092,6 +12092,24 @@ pub fn run(args []string) {
 		} else if incremental_cache_hit {
 			pre_tc.check_semantics_selected(incremental_changed_names)
 		} else {
+			// A child that shares checks checks again only the function bodies
+			// that changed since the last check of the program (see
+			// types.start_incremental_check).
+			if served.shares_checks() && served.question == ''
+				&& pre_tc.scoped_parallel_workers_enabled()
+				&& os.getenv('V_DIAGNOSTICS_INCREMENTAL') != '0' {
+				mut own_files := []string{}
+				for file_id, file in a.source_files {
+					if file_id !in server_file_ids {
+						own_files << file.name
+					}
+				}
+				min_left_out := os.getenv_opt('V_DIAGNOSTICS_INCREMENTAL_MIN_NODES') or {
+					'${types.incremental_min_left_out}'
+				}
+				pre_tc.start_incremental_check(served.incremental_record(), own_files,
+					os.getenv('V_DIAGNOSTICS_INCREMENTAL_VERIFY') != '', min_left_out.int())
+			}
 			ck_stage_sw.restart()
 			// On very large user import graphs, serial checking uses less memory than
 			// retaining one semantic-check accumulator per worker.
@@ -12107,6 +12125,7 @@ pub fn run(args []string) {
 			if verbose {
 				eprintln('  [ttime]   ck semantics     ${f64(ck_stage_sw.elapsed().microseconds()) / 1000.0:7.2f} ms')
 			}
+			trace_incremental_check(mut pre_tc)
 		}
 		// A child that shares checks answers them too: a grandchild goes on with
 		// the check, into the diagnostics, and the child prints what it printed.
@@ -12141,6 +12160,18 @@ pub fn run(args []string) {
 			} else {
 				code = served.print_diagnostics()
 			}
+			if os.getenv('V_DIAGNOSTICS_INCREMENTAL_VERIFY') != '' {
+				// What the check put back, compared with what the bodies report.
+				pre_tc.complete_incremental_check()
+				trace_incremental_check(mut pre_tc)
+			}
+			// The bodies the check left out are checked while no question comes:
+			// a question reads their types.
+			checker := pre_tc
+			served.keep_busy_with(fn [checker] () bool {
+				mut tc := checker
+				return tc.complete_incremental_check_step(incremental_completion_step)
+			})
 			// A diagnostics server's child answers the next questions from the
 			// program it checked, while the server finds the files it read
 			// unchanged.
@@ -12163,6 +12194,9 @@ pub fn run(args []string) {
 							continue
 						}
 						code = 0
+						// A question reads the types of the bodies the check left out.
+						pre_tc.complete_incremental_check()
+						trace_incremental_check(mut pre_tc)
 						print_vls_answers(mut pre_tc, queries, prefs)
 					}
 				}
@@ -12182,8 +12216,15 @@ pub fn run(args []string) {
 		pre_tc.check_main_module_requirement(is_shared || test_files.len > 0
 			|| a.export_fn_names.len > 0)
 		// A call whose Result nothing handles loses its error: a warning, in a
-		// check, a build and a run alike.
+		// check, a build and a run alike. Those of the bodies an incremental check
+		// left out are put back.
+		unhandled_start := pre_tc.put_back_incremental_unhandled()
 		pre_tc.warn_unhandled_result_calls()
+		pre_tc.sort_incremental_unhandled(unhandled_start)
+		if shares_checks {
+			// For the next check of the program (see types.start_incremental_check).
+			served.keep_incremental_record(pre_tc.incremental_record(unhandled_start))
+		}
 		if verbose {
 			eprintln('  [ttime]   ck main req      ${f64(ckpre_sw.elapsed().microseconds()) / 1000.0:7.2f} ms')
 		}
@@ -17530,6 +17571,9 @@ fn check_concrete_generic_bodies_of_check(mut a flat.FlatAst, mut tc types.TypeC
 	// every instance a call asks for.
 	used_fns := tc.diagnosed_fn_keys()
 	tc.refresh_direct_parent_index(a)
+	// The instances come from the types of the calls of every body.
+	tc.complete_incremental_check()
+	trace_incremental_check(mut tc)
 	tc.check_concrete_generic_bodies = true
 	_, _ = transform.monomorphize_with_used_checked_config(mut a, tc, used_fns, false)
 	tc.check_concrete_generic_bodies = false
@@ -17541,6 +17585,10 @@ fn check_concrete_generic_bodies_of_check(mut a flat.FlatAst, mut tc types.TypeC
 fn check_markused(a &flat.FlatAst, mut tc types.TypeChecker, no_skip_unused bool, test_files []string, full_runtime bool) map[string]bool {
 	// As a build does: checking and comptime pruning add and detach nodes.
 	tc.refresh_direct_parent_index(a)
+	// The bodies an incremental check left out need no check first: what is used
+	// only through them is called or named there, which keeps it from being
+	// reported as unused whatever markused finds (see
+	// types.unused_private_declarations).
 	if no_skip_unused {
 		used, _ := markused.mark_all_used_with_generic_usage(a, tc, test_files)
 		return used
@@ -19284,6 +19332,19 @@ fn configure_type_checker(mut tc types.TypeChecker, prefs &pref.Preferences, cfg
 // prepared collection of declarations would not be the one of the check.
 fn type_checker_config_key(prefs &pref.Preferences, cfg TypeCheckerConfig) string {
 	return '${prefs.vroot}\n${project_root_for_files(cfg.user_files)}\n${cfg.input_file}\n${cfg.backend}\n${cfg.enable_globals}\n${cfg.disable_explicit_mutability}\n${cfg.checker_fixture_mode}\n${cfg.warns_are_errors}\n${cfg.notes_are_errors}\n${cfg.building_v}\n${prefs.is_test}\n${prefs.is_prod}\n${prefs.warn_about_allocs}\n${prefs.user_defines}'
+}
+
+// incremental_completion_step is how many of the bodies an incremental check
+// left out a child of a diagnostics server checks at a time while it waits for
+// a question (see types.complete_incremental_check_step).
+const incremental_completion_step = 32
+
+// trace_incremental_check traces what an incremental check decided since the
+// last trace (see types.start_incremental_check).
+fn trace_incremental_check(mut tc types.TypeChecker) {
+	for line in tc.take_incremental_trace() {
+		trace_diagnostics_server(line)
+	}
 }
 
 // trace_diagnostics_server tells what a diagnostics server did, when

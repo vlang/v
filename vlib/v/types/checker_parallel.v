@@ -845,11 +845,16 @@ fn (mut tc TypeChecker) check_semantics_scoped_serial() {
 	tc.check_interface_reserved_parameter_names()
 	tc.check_goto_labels()
 	tc.check_labelled_loop_controls()
-	items := tc.collect_parallel_check_items()
+	items := tc.incremental_select(tc.collect_parallel_check_items())
 	tc.check_top_level_declarations()
 	final_file := tc.cur_file
 	final_module := tc.cur_module
-	tc.check_scoped_batches(items, scoped_check_serial_batches)
+	if tc.incremental_skipping() {
+		tc.check_incremental_items(items)
+	} else {
+		tc.check_scoped_batches(items, scoped_check_serial_batches)
+	}
+	tc.capture_items = false
 	tc.cur_file = final_file
 	tc.cur_module = final_module
 	if !tc.valid_diagnostic_fast {
@@ -1096,12 +1101,21 @@ fn (mut tc TypeChecker) check_semantics_parallel() bool {
 	// The work list only drives the dispatch below; keep it and its
 	// collection scratch out of the persistent arena.
 	items_scope := check_worker_scope_begin(tc.scope_parallel_check_workers)
-	items := tc.collect_parallel_check_items()
+	all_items := tc.collect_parallel_check_items()
 	check_worker_scope_leave(items_scope)
+	// What an incremental check keeps outlives the work list.
+	items := tc.incremental_select(all_items)
 	tc.timing_profile('  [ttime]   ck collect items ${f64(cksw.elapsed().microseconds()) / 1000.0:7.2f} ms (items: ${items.len})')
 	final_file := tc.cur_file
 	final_module := tc.cur_module
-	was_parallel := tc.run_parallel_check(items)
+	mut was_parallel := false
+	if tc.incremental_skipping() {
+		tc.check_top_level_declarations()
+		tc.check_incremental_items(items)
+	} else {
+		was_parallel = tc.run_parallel_check(items)
+	}
+	tc.capture_items = false
 	mut tailsw := time.new_stopwatch()
 	check_worker_scope_free(items_scope)
 	// Per-function check costs only schedule the parallel batches above.
@@ -2674,6 +2688,14 @@ fn (mut tc TypeChecker) check_fn_items_serial(items []CheckWorkItem) {
 		tc.check_range_hi = it.fn_idx
 		memo.begin(it.range_lo, it.fn_idx)
 		tc.check_fn_decl_semantics(it.fn_idx, node, it.file, it.module)
+		if tc.capture_items {
+			tc.item_marks << IncrementalItemMark{
+				fn_idx:  it.fn_idx
+				errors:  tc.errors.len
+				notices: tc.notices.len
+				pending: tc.pending_ierror_errors.len
+			}
+		}
 	}
 	memo.active = false
 	tc.check_range_lo = -1
@@ -4116,6 +4138,7 @@ fn (tc &TypeChecker) fork_for_parallel_check() &TypeChecker {
 		decl_index_ready: tc.visible_mutation_cache.decl_index_ready
 	}
 	w.scope_parallel_check_workers = tc.scope_parallel_check_workers
+	w.capture_items = tc.capture_items
 	// The node-indexed cache arrays are intentionally SHARED with the master
 	// (the fork copies the slice headers): each work item owns the disjoint
 	// node id range [range_lo, fn_idx], and while parallel_check_sparse is set
@@ -4405,6 +4428,9 @@ fn (mut tc TypeChecker) merge_parallel_check_worker(w &TypeChecker) {
 }
 
 fn (mut tc TypeChecker) merge_parallel_check_worker_scoped(w &TypeChecker, scoped bool) {
+	if w.item_marks.len > 0 && !isnil(tc.incremental) {
+		tc.incremental_capture(w, scoped)
+	}
 	// Scoped checkers use a private symbol interner. Translate each distinct
 	// spelling once per worker, then replay dependency edges with O(1) ids; the
 	// old per-edge name+intern path repeated the same locked hash probes across
