@@ -1113,7 +1113,7 @@ fn (mut tc TypeChecker) check_semantics_parallel() bool {
 		tc.check_top_level_declarations()
 		tc.check_incremental_items(items)
 	} else {
-		was_parallel = tc.run_parallel_check(items)
+		was_parallel = tc.run_parallel_check(items, false)
 	}
 	tc.capture_items = false
 	mut tailsw := time.new_stopwatch()
@@ -1406,7 +1406,11 @@ fn check_top_level_decl_signatures_thread(arg voidptr) voidptr {
 	return unsafe { nil }
 }
 
-fn (mut tc TypeChecker) run_parallel_check(items []CheckWorkItem) bool {
+// run_parallel_check checks the bodies of `items` on the worker pool, and the
+// top-level declarations along with them, unless `bodies_only`: then it leaves
+// the diagnostics in the order the bodies reported them, after those already
+// found (see complete_incremental_check).
+fn (mut tc TypeChecker) run_parallel_check(items []CheckWorkItem, bodies_only bool) bool {
 	mut ast := unsafe { tc.a }
 	pool := ensure_checker_worker_pool(mut ast)
 	// Without a pool every item is checked by the serial branch below.
@@ -1416,7 +1420,9 @@ fn (mut tc TypeChecker) run_parallel_check(items []CheckWorkItem) bool {
 	}
 	n_jobs = parallel_check_jobs_for_cost(n_jobs, items)
 	if items.len < tc.parallel_check_min_items || n_jobs <= 1 {
-		tc.check_top_level_declarations()
+		if !bodies_only {
+			tc.check_top_level_declarations()
+		}
 		if tc.scope_parallel_check_workers {
 			tc.check_scoped_batches(items, scoped_check_serial_batches)
 		} else {
@@ -1429,7 +1435,9 @@ fn (mut tc TypeChecker) run_parallel_check(items []CheckWorkItem) bool {
 	// tc.const_types), so they must complete before any chunk is
 	// submitted; only the read-only signature checks overlap the pool.
 	tlv_sw := time.new_stopwatch()
-	tc.check_top_level_declaration_values()
+	if !bodies_only {
+		tc.check_top_level_declaration_values()
+	}
 	tc.timing_profile('  [ttime]   ck tl values     ${f64(tlv_sw.elapsed().microseconds()) / 1000.0:7.2f} ms')
 	split_sw := time.new_stopwatch()
 	mut chunk_target := n_jobs
@@ -1514,10 +1522,12 @@ fn (mut tc TypeChecker) run_parallel_check(items []CheckWorkItem) bool {
 			force_sync: ci == 0 || fail == 'checker:all' || fail == 'checker:${helper_idx}'
 		}
 	}
-	tasks << workers.Task{
-		run:        check_top_level_decl_signatures_thread
-		arg:        voidptr(tc)
-		force_sync: true
+	if !bodies_only {
+		tasks << workers.Task{
+			run:        check_top_level_decl_signatures_thread
+			arg:        voidptr(tc)
+			force_sync: true
+		}
 	}
 	check_worker_scope_leave(setup_scope)
 	rpsw2 := time.new_stopwatch()
@@ -1586,6 +1596,9 @@ fn (mut tc TypeChecker) run_parallel_check(items []CheckWorkItem) bool {
 	tc.timing_profile('  [ttime]     ck mg clone    ${mg_clone_ms:7.2f} ms, merge ${mg_merge_ms:.2f} ms')
 	tc.timing_profile('  [ttime]   ck merge         ${f64(rpsw2.elapsed().microseconds()) / 1000.0:7.2f} ms (cumulative)')
 	check_worker_scope_free(setup_scope)
+	if bodies_only {
+		return any_started
+	}
 	sort_sw := time.new_stopwatch()
 	tc.sort_parallel_check_errors()
 	tc.timing_profile('  [ttime]   ck err sort      ${f64(sort_sw.elapsed().microseconds()) / 1000.0:7.2f} ms')

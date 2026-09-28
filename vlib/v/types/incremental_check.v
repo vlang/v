@@ -771,7 +771,12 @@ pub fn (mut tc TypeChecker) complete_incremental_check_step(limit int) bool {
 		items << state.functions[i].item
 	}
 	state.next = end
-	tc.check_scoped_batches(items, scoped_check_serial_batches)
+	if limit == max_int {
+		// What waits for them has them checked on the worker pool.
+		tc.run_parallel_check(items, true)
+	} else {
+		tc.check_scoped_batches(items, scoped_check_serial_batches)
+	}
 	if state.next < state.to_complete.len {
 		return true
 	}
