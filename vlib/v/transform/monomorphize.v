@@ -10016,6 +10016,8 @@ fn generic_clone_child_is_return_value(node flat.Node, child_index int, direct_r
 	return (node.kind == .return_stmt && node.children_count == 1 && child_index == 0)
 		|| (direct_return_value && node.kind in [.paren, .postfix, .expr_stmt, .dump_expr]
 			&& node.children_count == 1 && child_index == 0)
+		|| (direct_return_value && node.kind == .prefix && node.op in [.plus, .minus, .bit_not]
+			&& node.children_count == 1 && child_index == 0)
 		|| (direct_return_value && node.kind == .or_expr)
 		|| (direct_return_value && node.kind in [.if_expr, .match_stmt] && child_index > 0)
 		|| (direct_return_value && node.kind == .comptime_if)

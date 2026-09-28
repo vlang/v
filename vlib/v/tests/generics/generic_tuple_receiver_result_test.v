@@ -256,3 +256,37 @@ fn test_generic_contextual_returns_survive_variant_smartcast_clones() {
 		assert contextual_variant_dump(value, 1, 'value') == ''
 	}
 }
+
+fn contextual_prefix_value[T]() T {
+	$if T is f64 {
+		return T(1.5)
+	} $else $if T is u64 {
+		return T(0x1_0000_0007)
+	} $else {
+		return T(7)
+	}
+}
+
+fn contextual_negative[A, B](first A, second B) B {
+	_ = first
+	_ = second
+	return -contextual_prefix_value()
+}
+
+fn contextual_positive[A, B](first A, second B) B {
+	_ = first
+	_ = second
+	return +contextual_prefix_value()
+}
+
+fn contextual_complement[A, B](first A, second B) B {
+	_ = first
+	_ = second
+	return ~contextual_prefix_value()
+}
+
+fn test_generic_contextual_returns_reach_arithmetic_prefixes() {
+	assert contextual_negative(1, f64(0)) == -1.5
+	assert contextual_positive(1, f64(0)) == 1.5
+	assert contextual_complement(1, u64(0)) == ~u64(0x1_0000_0007)
+}
