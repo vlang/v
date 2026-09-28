@@ -6504,7 +6504,7 @@ fn markused_infer_alias_generic_type(param_text string, actual types.Type, gener
 		return
 	}
 	if clean.starts_with('chan ') {
-		actual_clean := types.unwrap_pointer(actual)
+		actual_clean := types.unalias_type(types.unwrap_pointer(types.unalias_type(actual)))
 		if actual_clean is types.Channel {
 			markused_infer_alias_generic_type(clean[5..], actual_clean.elem_type, generic_params,
 				mut inferred)

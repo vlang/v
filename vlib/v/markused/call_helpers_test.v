@@ -696,6 +696,13 @@ fn test_unindexed_generic_factory_return_infers_nested_argument_types() {
 		['Box[U]', 'Box[T]'],
 		['[3]U', '[3]T'],
 		['chan U', 'chan T'],
+		['chan []U', 'chan []T'],
+		['[]chan U', '[]chan T'],
+		['[2]chan U', '[2]chan T'],
+		['map[string]chan U', 'map[string]chan T'],
+		['?chan U', '?chan T'],
+		['&chan U', '&chan T'],
+		['chan map[string][]U', 'chan map[string][]T'],
 		['?U', 'T'],
 		['...U', 'T'],
 	] {
@@ -707,6 +714,64 @@ fn test_unindexed_generic_factory_return_infers_nested_argument_types() {
 		}, false)
 		assert inferred == 'gates.Gate[T]'
 		assert collector.typed_receiver_method_name(inferred, 'backward', 'consumer')? == 'gates.Gate[T].backward'
+	}
+}
+
+fn test_generic_factory_infers_semantic_channel_element_types() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	tc.structs['Payload'] = []types.StructField{}
+	for pattern in ['chan U', 'chan []U', '[]chan U', 'map[string]chan U', '?chan U', '&chan U',
+		'chan ?U', 'chan map[string][]U'] {
+		actual := tc.parse_type(pattern.replace('U', 'Payload'))
+		mut inferred := map[string]string{}
+		markused_infer_alias_generic_type(pattern, actual, ['U'], mut inferred)
+		assert inferred['U'] == 'Payload', pattern
+	}
+	channel := types.Type(types.Channel{ elem_type: types.Type(types.Struct{ name: 'Payload' }) })
+	for actual in [channel, types.Type(types.Pointer{ base_type: channel }),
+		types.Type(types.Alias{ name: 'Mailbox', base_type: channel })] {
+		mut inferred := map[string]string{}
+		markused_infer_alias_generic_type('chan U', actual, ['U'], mut inferred)
+		assert inferred['U'] == 'Payload', actual.name()
+	}
+	for actual in [
+		types.Type(types.Channel{ elem_type: types.Type(types.Unknown{}) }),
+		types.Type(types.Array{ elem_type: types.Type(types.Struct{ name: 'Payload' }) }),
+	] {
+		mut inferred := map[string]string{}
+		markused_infer_alias_generic_type('chan U', actual, ['U'], mut inferred)
+		assert inferred.len == 0
+	}
+}
+
+fn test_unindexed_factory_infers_aliased_channel_element_type() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	tc.parallel_check_sparse = true
+	tc.structs['Payload'] = []types.StructField{}
+	tc.type_aliases['Mailbox'] = 'chan Payload'
+	tc.type_alias_modules['Mailbox'] = 'main'
+	tc.type_aliases['MailboxRef'] = '&Mailbox'
+	tc.type_alias_modules['MailboxRef'] = 'main'
+	method := 'gates.make_gate'
+	tc.fn_generic_params[method] = ['U']
+	tc.fn_param_type_texts[method] = ['chan U']
+	tc.fn_ret_types[method] = types.Type(types.Struct{ name: 'gates.Gate[U]' })
+	tc.fn_ret_types['gates.Gate[Payload].backward'] = types.Type(types.int_)
+	base := a.add_val(.ident, 'make_gate')
+	value := a.add_val(.ident, 'value')
+	call := call_helper_node(mut a, flat.Node{ kind: .call }, [base, value])
+	tc.sparse_resolved_call_names[int(call)] = method
+	collector := CallCollector{ a: &a, tc: &tc }
+	for actual in ['Mailbox', '&Mailbox', 'MailboxRef'] {
+		inferred := collector.top_level_call_return_type_name(call, 'main', map[string]string{}, {
+			'value': true
+		}, {
+			'value': actual
+		}, false)
+		assert inferred == 'gates.Gate[Payload]', actual
+		assert collector.typed_receiver_method_name(inferred, 'backward', 'main')? == 'gates.Gate[Payload].backward'
 	}
 }
 
