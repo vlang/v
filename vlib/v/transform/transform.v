@@ -16998,13 +16998,25 @@ fn comptime_condition_top_level_index(s string, needle string) int {
 				&& (s[..i].trim_space().len == 0 || s[i + needle.len..].trim_space().len == 0) {
 				continue
 			}
-			if needle == '&&' && s[..i].trim_space().trim('&').len == 0 {
+			if needle == '&&' && (s[..i].trim_space().trim('&').len == 0
+				|| comptime_condition_and_is_type_prefix(s, i)) {
 				continue
 			}
 			return i
 		}
 	}
 	return -1
+}
+
+// comptime_condition_and_is_type_prefix reports whether the `&&` at `i` belongs to a
+// pointer type written after another type prefix (`?&&int`, `[]&&int`, `&&&string`),
+// which substituted generic conditions such as `?&&int is $enum` contain, rather
+// than being a logical AND.
+fn comptime_condition_and_is_type_prefix(s string, i int) bool {
+	if i == 0 || i + 2 >= s.len || s[i + 2] == ` ` {
+		return false
+	}
+	return s[i - 1] in [`?`, `!`, `&`, `]`]
 }
 
 fn (mut t Transformer) comptime_type_condition_value(cond string) ?bool {
