@@ -6070,11 +6070,11 @@ fn c_header_text_needs_objective_c(text string) bool {
 }
 
 fn c_header_text_needs_objective_c_for_target(text string, flags []string, c99_mode bool, target pref.Target) bool {
-	return c_header_text_objective_c_scan_for_target(text, flags, c99_mode, target, false, '', '', 'c')
+	return c_header_text_objective_c_scan_for_target(text, flags, c99_mode, target, false, '', '', 'c', '')
 }
 
-fn c_header_text_has_cocoa_nsfont_include_for_target(text string, flags []string, c99_mode bool, target pref.Target, vroot string, source_file string, native_language string) bool {
-	return c_header_text_objective_c_scan_for_target(text, flags, c99_mode, target, true, vroot, source_file, native_language)
+fn c_header_text_has_cocoa_nsfont_include_for_target(text string, flags []string, c99_mode bool, target pref.Target, vroot string, source_file string, native_language string, ccompiler string) bool {
+	return c_header_text_objective_c_scan_for_target(text, flags, c99_mode, target, true, vroot, source_file, native_language, ccompiler)
 }
 
 struct CHeaderScanLine {
@@ -6172,7 +6172,7 @@ fn c_header_conditions_possibly_active(known []bool, active []bool) bool {
 	return true
 }
 
-fn c_header_text_objective_c_scan_for_target(text string, flags []string, c99_mode bool, target pref.Target, cocoa_include_only bool, vroot string, source_file string, native_language string) bool {
+fn c_header_text_objective_c_scan_for_target(text string, flags []string, c99_mode bool, target pref.Target, cocoa_include_only bool, vroot string, source_file string, native_language string, ccompiler string) bool {
 	mut defined := {
 		c_has_include_predicate: true
 	}
@@ -6273,6 +6273,11 @@ fn c_header_text_objective_c_scan_for_target(text string, flags []string, c99_mo
 		i++
 	}
 	strict_iso_mode := c_effective_strict_iso_mode(flags, c99_mode)
+	search_paths := if cocoa_include_only {
+		c_header_compiler_search_paths(ccompiler, flags, c_native_language_from_features(need_objc, need_cpp), target)
+	} else {
+		CHeaderSearchPaths{}
+	}
 	mut condition_known := []bool{}
 	mut condition_active := []bool{}
 	mut condition_taken_known := []bool{}
@@ -6302,7 +6307,7 @@ fn c_header_text_objective_c_scan_for_target(text string, flags []string, c99_mo
 		clean, next_in_block_comment := c_preprocessor_directive_scan_line(line, in_block_comment)
 		in_block_comment = next_in_block_comment
 		name := c_directive_name(clean)
-		predicate_context := CHeaderPredicateContext{ flags: flags, vroot: vroot, source_file: scan_line.source_file }
+		predicate_context := CHeaderPredicateContext{ flags: flags, vroot: vroot, source_file: scan_line.source_file, search_paths: search_paths }
 		mut directive_macro_name := ''
 		if cocoa_include_only {
 			if name in ['if', 'ifdef', 'ifndef'] {
@@ -6690,13 +6695,78 @@ fn c_header_objective_c_condition_state(raw string, defined map[string]bool, und
 	return known, active
 }
 
-struct CHeaderPredicateContext {
-	flags       []string
-	vroot       string
-	source_file string
+struct CHeaderSearchPaths {
+mut:
+	quote_dirs     []string
+	include_dirs   []string
+	framework_dirs []string
+	complete       bool
 }
 
-fn c_header_include_available(include_arg string, context CHeaderPredicateContext, target pref.Target) ?bool {
+fn c_header_compiler_search_paths(ccompiler string, flags []string, language string, target pref.Target) CHeaderSearchPaths {
+	if target.os != pref.host_target().os {
+		return CHeaderSearchPaths{}
+	}
+	compiler := if ccompiler.len > 0 { ccompiler } else { 'cc' }
+	parts := cmdexec.split_args(compiler) or { return CHeaderSearchPaths{} }
+	if parts.len == 0 { return CHeaderSearchPaths{} }
+	mut args := parts[1..].clone()
+	path_flags := ['-I', '-isystem', '-iquote', '-idirafter', '-F', '-iframework', '-isysroot',
+		'--sysroot', '-resource-dir', '-target', '--target', '-arch', '-B']
+	mut i := 0
+	for i < flags.len {
+		flag := flags[i]
+		if flag in path_flags && i + 1 < flags.len {
+			args << [flag, flags[i + 1]]
+			i += 2
+			continue
+		}
+		if flag in ['-nostdinc', '-nostdlibinc', '-nostdinc++', '-nobuiltininc']
+			|| path_flags.any(flag.starts_with(it) && flag.len > it.len)
+			|| flag.starts_with('-stdlib=') {
+			args << flag
+		}
+		i++
+	}
+	null_path := $if windows { 'NUL' } $else { '/dev/null' }
+	args << ['-E', '-v', '-x', language, null_path]
+	probe := cmdexec.run_with_timeout(parts[0], args, 5000)
+	if probe.exit_code != 0 { return CHeaderSearchPaths{} }
+	mut result := CHeaderSearchPaths{}
+	mut reading := false
+	mut quotes_only := false
+	for raw in probe.output.split_into_lines() {
+		line := raw.trim_space()
+		if line == '#include "..." search starts here:' {
+			reading = true
+			quotes_only = true
+		} else if line == '#include <...> search starts here:' {
+			reading = true
+			quotes_only = false
+		} else if line == 'End of search list.' && reading {
+			result.complete = true
+			break
+		} else if reading {
+			if line.ends_with(' (framework directory)') {
+				result.framework_dirs << line[..line.len - ' (framework directory)'.len]
+			} else if quotes_only {
+				result.quote_dirs << line
+			} else {
+				result.include_dirs << line
+			}
+		}
+	}
+	return result
+}
+
+struct CHeaderPredicateContext {
+	flags        []string
+	vroot        string
+	source_file  string
+	search_paths CHeaderSearchPaths
+}
+
+fn c_header_include_available(include_arg string, context CHeaderPredicateContext) ?bool {
 	clean := include_arg.trim_space()
 	if clean.len < 3 || !((clean[0] == `<` && clean[clean.len - 1] == `>`) || (clean[0] == `"` && clean[clean.len - 1] == `"`)) {
 		return none
@@ -6705,9 +6775,16 @@ fn c_header_include_available(include_arg string, context CHeaderPredicateContex
 		if os.is_file(path) { return true }
 	}
 	path := clean[1..clean.len - 1]
-	if !path.contains('/') { return none }
+	for dir in context.search_paths.include_dirs {
+		if os.is_file(os.join_path(dir, path)) { return true }
+	}
+	if clean[0] == `"` {
+		for dir in context.search_paths.quote_dirs {
+			if os.is_file(os.join_path(dir, path)) { return true }
+		}
+	}
 	mut sdk_root := ''
-	mut framework_dirs := []string{}
+	mut framework_dirs := context.search_paths.framework_dirs.clone()
 	mut i := 0
 	for i < context.flags.len {
 		flag := context.flags[i]
@@ -6727,19 +6804,23 @@ fn c_header_include_available(include_arg string, context CHeaderPredicateContex
 		}
 		i++
 	}
-	if sdk_root.len > 0 { framework_dirs << os.join_path(sdk_root, 'System/Library/Frameworks') }
-	framework := path.all_before('/')
-	header := path.all_after('/')
-	for dir in framework_dirs {
-		if os.is_file(os.join_path(dir, '${framework}.framework', 'Headers', header)) {
-			return true
+	standard_paths := '-nostdinc' !in context.flags && '-nostdlibinc' !in context.flags
+	if sdk_root.len > 0 && standard_paths {
+		if os.is_file(os.join_path(sdk_root, 'usr/include', path)) { return true }
+		framework_dirs << os.join_path(sdk_root, 'System/Library/Frameworks')
+	}
+	if path.contains('/') {
+		framework := path.all_before('/')
+		header := path.all_after('/')
+		for dir in framework_dirs {
+			for headers in ['Headers', 'PrivateHeaders'] {
+				if os.is_file(os.join_path(dir, '${framework}.framework', headers, header)) {
+					return true
+				}
+			}
 		}
 	}
-	if target.os == 'macos' && path in ['Cocoa/Cocoa.h', 'AppKit/AppKit.h', 'AppKit/NSFont.h'] {
-		// These public headers are supplied by the default macOS SDK. Explicit
-		// SDKs and disabled standard search paths must prove availability above.
-		return sdk_root.len == 0 && '-nostdinc' !in context.flags && '-nostdlibinc' !in context.flags
-	}
+	if context.search_paths.complete || sdk_root.len > 0 || !standard_paths { return false }
 	return none
 }
 
@@ -6790,7 +6871,7 @@ fn c_header_objective_c_compiler_predicate_state(clean string, defined map[strin
 			expanded[include_arg] = true
 			include_arg = macro_values[include_arg].trim_space()
 		}
-		return c_header_include_available(include_arg, predicate_context, target)
+		return c_header_include_available(include_arg, predicate_context)
 	}
 	return attribute.trim('_') in c_common_c_attributes
 }

@@ -8787,8 +8787,10 @@ refer to 1 of them, you can declare it like this:
 
 **Example of C struct redeclaration**
 
-On macOS, an opaque `C.NSFont` declaration refers to Cocoa's Objective-C class.
-It does not introduce a C struct with the same name.
+On macOS, including `Cocoa/Cocoa.h`, `AppKit/AppKit.h`, or `AppKit/NSFont.h` makes an opaque
+`C.NSFont` declaration refer to Cocoa's Objective-C class. Header availability checks use the
+compiler's include search paths, including its selected SDK.
+
 ```v oksyntax
 struct C.NameOfTheStruct {
 	a_field int

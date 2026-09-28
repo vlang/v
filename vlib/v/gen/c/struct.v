@@ -6587,7 +6587,7 @@ fn cocoa_nsfont_framework_include(arg string) bool {
 		return false
 	}
 	path := clean[1..clean.len - 1]
-	return path.starts_with('Cocoa/') || path.starts_with('AppKit/')
+	return path in ['Cocoa/Cocoa.h', 'AppKit/AppKit.h', 'AppKit/NSFont.h']
 }
 
 fn (g &FlatGen) cocoa_nsfont_class(name string) bool {
@@ -6613,7 +6613,7 @@ fn (g &FlatGen) cocoa_nsfont_class(name string) bool {
 		cache_native_inputs_language(g.a, g.compiler_vroot, g.c_flags, g.c99_mode, g.ccompiler, target)
 	}
 	return c_header_text_has_cocoa_nsfont_include_for_target(directives.join('\n'), g.c_flags,
-		g.c99_mode, target, g.compiler_vroot, g.struct_decl_infos[name].file, native_language)
+		g.c99_mode, target, g.compiler_vroot, g.struct_decl_infos[name].file, native_language, g.ccompiler)
 }
 
 fn (g &FlatGen) soa_companion_name(struct_name string) string {
