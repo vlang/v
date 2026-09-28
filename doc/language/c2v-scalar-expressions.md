@@ -38,3 +38,5 @@ Compound shifts use the same promoted operand width as ordinary shifts, includin
 boolean and enum operands in scalar, array, and pointer lvalues. Logical right shifts (`>>>`)
 infer their unsigned result type after integral promotion. With `-check-overflow`, integer compound
 arithmetic checks the promoted common type before converting the result back to its destination.
+Checked postfix updates of translated `int` values use the same 32-bit bounds, including aliases
+and indexed elements. Explicitly wider integers and ordinary V files retain their usual bounds.

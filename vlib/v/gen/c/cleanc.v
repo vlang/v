@@ -17125,10 +17125,16 @@ fn (mut g FlatGen) gen_checked_integer_postfix(child_id flat.NodeId, op flat.Op)
 	}
 	value_type := g.usable_expr_type(child_id)
 	normalize_bool := g.translated_bool_destination(child_id, value_type)
+	helper_type := if g.expr_is_in_translated_file(child_id)
+		&& cgen_unalias_type(value_type).name() == 'int' {
+		g.tc.parse_type('i32')
+	} else {
+		value_type
+	}
 	helper := if normalize_bool {
 		''
 	} else {
-		g.integer_overflow_helper(value_type, op) or { return false }
+		g.integer_overflow_helper(helper_type, op) or { return false }
 	}
 	c_type := g.value_c_type(value_type)
 	if c_type.len == 0 {

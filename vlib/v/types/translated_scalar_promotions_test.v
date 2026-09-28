@@ -185,3 +185,48 @@ fn test_translated_compound_arithmetic_respects_overflow_checks() {
 	result := os.execute('${os.quoted_path(@VEXE)} -check-overflow run ${os.quoted_path(path)}')
 	assert result.exit_code == 0, result.output
 }
+
+fn test_translated_postfix_uses_c_int_overflow_width() {
+	root := os.join_path(os.vtmp_dir(), 'v3_translated_postfix_overflow_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+	path := os.join_path(root, 'main.v')
+	for body in [
+		'mut value := int(2147483647); value++',
+		'mut value := IntAlias(-2147483648); value--',
+		'mut value := Holder{2147483647}; value.number++',
+		'mut values := [int(-2147483648)]!; values[0]--',
+		'mut values := {"a": int(2147483647)}; values["a"]++',
+	] {
+		os.write_file(path, '@[translated]\nmodule main\ntype IntAlias = int\nstruct Holder { mut: number int }\nfn main() { ${body} }\n')!
+		result := os.execute('${os.quoted_path(@VEXE)} -check-overflow run ${os.quoted_path(path)}')
+		assert result.exit_code != 0, body + '\n' + result.output
+		assert result.output.contains('overflow(i32('), body + '\n' + result.output
+	}
+	os.write_file(path, '@[translated]
+module main
+fn translated() {
+ mut wide := i64(2147483647)
+ wide++
+ assert wide == i64(2147483648)
+ mut low := int(-2147483647)
+ low--
+ assert low == -2147483648
+ mut high := int(2147483646)
+ high++
+ assert high == 2147483647
+}
+')!
+	os.write_file(os.join_path(root, 'ordinary.v'), 'module main
+fn main() {
+ translated()
+ if sizeof(int) == 8 {
+  mut value := int(2147483647)
+  value++
+  assert i64(value) == 2147483648
+ }
+}
+')!
+	result := os.execute('${os.quoted_path(@VEXE)} -check-overflow run ${os.quoted_path(root)}')
+	assert result.exit_code == 0, result.output
+}
