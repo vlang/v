@@ -101,3 +101,54 @@ fn test_cocoa_precompiled_forced_headers_declare_nsfont() {
 		assert g.header_c_struct_needs_compat_typedef('C.NSFont')
 	}
 }
+
+fn test_cocoa_guards_use_compiler_predefined_macros() {
+	$if macos {
+		mut g := cocoa_declaration_test_gen()
+		g.target = pref.host_target()
+		g.ccompiler = 'clang'
+		for guard in ['defined(__clang__)', '__LP64__', '__SIZEOF_POINTER__ == 8',
+			'__STDC_VERSION__ >= 201112L'] {
+			g.c_flags = ['-std=c11', '-framework', 'Cocoa']
+			g.preinclude_directives = ['#if ${guard}\n#include <Cocoa/Cocoa.h>\n#endif']
+			assert !g.header_c_struct_needs_compat_typedef('C.NSFont'), guard
+		}
+		g.preinclude_directives = ['#ifdef __clang__\n#include <Cocoa/Cocoa.h>\n#endif']
+		g.c_flags = ['-U__clang__']
+		assert g.header_c_struct_needs_compat_typedef('C.NSFont')
+		g.preinclude_directives = ['#if __LP64__\n#include <Cocoa/Cocoa.h>\n#endif']
+		g.c_flags = ['-D__LP64__=0']
+		assert g.header_c_struct_needs_compat_typedef('C.NSFont')
+	}
+}
+
+fn test_cocoa_header_names_resolve_before_class_detection() {
+	root := os.join_path(os.vtmp_dir(), 'v3_cocoa_shadow_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+	mut g := cocoa_declaration_test_gen()
+	g.register_struct_decl_info('C.NSFont', 'C.NSFont', 'ui', os.join_path(root, 'ui.c.v'), flat.Node{})
+	for name in ['Cocoa/Cocoa.h', 'AppKit/AppKit.h', 'AppKit/NSFont.h'] {
+		path := os.join_path(root, name)
+		os.mkdir_all(os.dir(path))!
+		os.write_file(path, 'struct NSFont { int value; };\n')!
+		for include in ['"${name}"', '<${name}>'] {
+			g.c_flags = if include.starts_with('"') { []string{} } else { ['-I', root] }
+			g.preinclude_directives = ['#include ${include}']
+			assert g.header_c_struct_needs_compat_typedef('C.NSFont'), include
+		}
+		os.write_file(path, '@class NSFont;\n')!
+		assert !g.header_c_struct_needs_compat_typedef('C.NSFont'), name
+	}
+	os.write_file(os.join_path(root, 'AppKit/NSFont.h'), 'struct NSFont { int value; };\n')!
+	g.preinclude_directives = ['#if FEATURE\n#define UI_HEADER <Cocoa/Cocoa.h>\n#else\n#define UI_HEADER <AppKit/NSFont.h>\n#endif\n#include UI_HEADER']
+	assert g.header_c_struct_needs_compat_typedef('C.NSFont')
+	$if macos {
+		framework := os.join_path(root, 'Cocoa.framework/Headers')
+		os.mkdir_all(framework)!
+		os.write_file(os.join_path(framework, 'Cocoa.h'), 'struct NSFont { int value; };\n')!
+		g.c_flags = ['-F', root]
+		g.preinclude_directives = ['#include <Cocoa/Cocoa.h>']
+		assert g.header_c_struct_needs_compat_typedef('C.NSFont')
+	}
+}

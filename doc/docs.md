@@ -8790,6 +8790,8 @@ refer to 1 of them, you can declare it like this:
 On macOS, including `Cocoa/Cocoa.h`, `AppKit/AppKit.h`, or `AppKit/NSFont.h` makes an opaque
 `C.NSFont` declaration refer to Cocoa's Objective-C class. Header availability checks and nested
 wrapper-header lookup use the compiler's include search paths, including its selected SDK.
+Conditional guards use the selected compiler's predefined macros. Headers that shadow framework
+names are inspected for their actual declarations.
 Wrapper headers can also declare `@class NSFont` directly. Function-like include macros are expanded
 before resolving their headers. Classes loaded by Clang's `-include-pch` are also recognized.
 

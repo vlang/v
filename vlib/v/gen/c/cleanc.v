@@ -6396,11 +6396,11 @@ fn c_expand_header_macro(raw string, values map[string]string, overrides map[str
 	return c_expand_header_macro(replacement, values, overrides, overridden, depth + 1)
 }
 
-fn c_cocoa_include_macro(value string, values map[string]string, overrides map[string]string, overridden map[string]bool) bool {
-	return cocoa_nsfont_framework_include(c_expand_header_macro(value, values, overrides, overridden, 0))
+fn c_cocoa_include_macro(value string, values map[string]string, overrides map[string]string, overridden map[string]bool, context CHeaderPredicateContext) bool {
+	return c_header_nsfont_framework_include(c_expand_header_macro(value, values, overrides, overridden, 0), context)
 }
 
-fn (mut condition CHeaderCocoaCondition) merge_branch(cocoa_provided bool, class_state CHeaderClassState, once_paths map[string]bool, included_paths map[string]bool, defined map[string]bool, undefined map[string]bool, uncertain map[string]bool, values map[string]string) {
+fn (mut condition CHeaderCocoaCondition) merge_branch(cocoa_provided bool, class_state CHeaderClassState, once_paths map[string]bool, included_paths map[string]bool, defined map[string]bool, undefined map[string]bool, uncertain map[string]bool, values map[string]string, context CHeaderPredicateContext) {
 	condition.all_branches = condition.all_branches && cocoa_provided
 	if !condition.saw_branch {
 		condition.common_class = class_state
@@ -6432,7 +6432,7 @@ fn (mut condition CHeaderCocoaCondition) merge_branch(cocoa_provided bool, class
 	}
 	mut previous_cocoa_values := map[string]bool{}
 	for name, _ in condition.touched_macros {
-		previous_cocoa_values[name] = c_cocoa_include_macro(condition.common_values[name], values, condition.common_values, condition.touched_macros)
+		previous_cocoa_values[name] = c_cocoa_include_macro(condition.common_values[name], values, condition.common_values, condition.touched_macros, context)
 	}
 	for name, _ in condition.touched_macros {
 		value := condition.common_values[name]
@@ -6446,7 +6446,7 @@ fn (mut condition CHeaderCocoaCondition) merge_branch(cocoa_provided bool, class
 		} else if value != values[name] {
 			// Cocoa and AppKit include alternatives both provide the same NSFont declaration.
 			condition.common_values[name] = if previous_cocoa_values[name]
-				&& c_cocoa_include_macro(values[name], values, map[string]string{}, map[string]bool{}) {
+				&& c_cocoa_include_macro(values[name], values, map[string]string{}, map[string]bool{}, context) {
 				'<Cocoa/Cocoa.h>'
 			} else {
 				''
@@ -6554,6 +6554,17 @@ fn c_header_text_objective_c_scan_for_target(text string, flags []string, c99_mo
 		macro_values['__OBJC__'] = '1'
 	}
 	if need_cpp { defined['__cplusplus'] = true }
+	search_paths := if cocoa_include_only {
+		c_header_compiler_search_paths(ccompiler, flags, c_native_language_from_features(need_objc, need_cpp), target, c99_mode)
+	} else {
+		CHeaderSearchPaths{}
+	}
+	for definition in search_paths.predefined_macros {
+		macro_name := definition.fields()[0].all_before('(')
+		defined[macro_name] = true
+		undefined.delete(macro_name)
+		c_header_record_macro(definition, mut macro_values)
+	}
 	mut objective_c_compatibility_macros := map[string]bool{}
 	mut i := 0
 	for i < flags.len {
@@ -6610,11 +6621,6 @@ fn c_header_text_objective_c_scan_for_target(text string, flags []string, c99_mo
 		i++
 	}
 	strict_iso_mode := c_effective_strict_iso_mode(flags, c99_mode)
-	search_paths := if cocoa_include_only {
-		c_header_compiler_search_paths(ccompiler, flags, c_native_language_from_features(need_objc, need_cpp), target)
-	} else {
-		CHeaderSearchPaths{}
-	}
 	mut condition_known := []bool{}
 	mut condition_active := []bool{}
 	mut condition_taken_known := []bool{}
@@ -6654,7 +6660,7 @@ fn c_header_text_objective_c_scan_for_target(text string, flags []string, c99_mo
 				last := cocoa_conditions.len - 1
 				if cocoa_conditions[last].forked {
 					if c_header_conditions_possibly_active(condition_known, condition_active) {
-						cocoa_conditions[last].merge_branch(cocoa_provided, class_state, once_paths, included_paths, defined, undefined, uncertain, macro_values)
+						cocoa_conditions[last].merge_branch(cocoa_provided, class_state, once_paths, included_paths, defined, undefined, uncertain, macro_values, predicate_context)
 					}
 					cocoa_provided = cocoa_conditions[last].before
 					class_state = cocoa_conditions[last].before_class
@@ -6662,7 +6668,7 @@ fn c_header_text_objective_c_scan_for_target(text string, flags []string, c99_mo
 					if name == 'endif' {
 						// A non-exhaustive chain also has a path that executes no branch.
 						if !condition_taken_known[last] || !condition_taken[last] {
-							cocoa_conditions[last].merge_branch(cocoa_provided, class_state, once_paths, included_paths, defined, undefined, uncertain, macro_values)
+							cocoa_conditions[last].merge_branch(cocoa_provided, class_state, once_paths, included_paths, defined, undefined, uncertain, macro_values, predicate_context)
 						}
 						cocoa_provided = cocoa_provided || (cocoa_conditions[last].saw_branch && cocoa_conditions[last].all_branches)
 						if cocoa_conditions[last].saw_branch {
@@ -6787,7 +6793,7 @@ fn c_header_text_objective_c_scan_for_target(text string, flags []string, c99_mo
 					had_unchanged_branch := cocoa_conditions[depth].saw_branch
 					cocoa_conditions[depth] = CHeaderCocoaCondition{ forked: true, before: cocoa_provided, before_class: class_state }
 					if had_unchanged_branch {
-						cocoa_conditions[depth].merge_branch(cocoa_provided, class_state, once_paths, included_paths, defined, undefined, uncertain, macro_values)
+						cocoa_conditions[depth].merge_branch(cocoa_provided, class_state, once_paths, included_paths, defined, undefined, uncertain, macro_values, predicate_context)
 					}
 				}
 			}
@@ -6799,7 +6805,7 @@ fn c_header_text_objective_c_scan_for_target(text string, flags []string, c99_mo
 		if name in ['include', 'import'] {
 			include_arg := c_expand_header_macro(c_directive_arg(clean), macro_values, map[string]string{}, map[string]bool{}, 0)
 			if cocoa_include_only {
-				if cocoa_nsfont_framework_include(include_arg) {
+				if c_header_nsfont_framework_include(include_arg, predicate_context) {
 					cocoa_provided = cocoa_provided || !scan_line.macros_only
 				} else if c_include_arg_is_literal(include_arg) {
 					for path in c_header_include_file_paths(include_arg, predicate_context) {
@@ -7050,13 +7056,14 @@ fn c_header_objective_c_condition_state(raw string, defined map[string]bool, und
 
 struct CHeaderSearchPaths {
 mut:
-	quote_dirs     []string
-	include_dirs   []string
-	framework_dirs []string
-	complete       bool
+	quote_dirs        []string
+	include_dirs      []string
+	framework_dirs    []string
+	predefined_macros []string
+	complete          bool
 }
 
-fn c_header_compiler_search_paths(ccompiler string, flags []string, language string, target pref.Target) CHeaderSearchPaths {
+fn c_header_compiler_search_paths(ccompiler string, flags []string, language string, target pref.Target, c99_mode bool) CHeaderSearchPaths {
 	if target.os != pref.host_target().os {
 		return CHeaderSearchPaths{}
 	}
@@ -7064,25 +7071,40 @@ fn c_header_compiler_search_paths(ccompiler string, flags []string, language str
 	parts := cmdexec.split_args(compiler) or { return CHeaderSearchPaths{} }
 	if parts.len == 0 { return CHeaderSearchPaths{} }
 	mut args := parts[1..].clone()
+	if target.os == 'macos' && target.arch != pref.host_target().arch && target.arch in [
+		'amd64',
+		'arm64',
+	] {
+		args << ['-arch', if target.arch == 'amd64' { 'x86_64' } else { 'arm64' }]
+	}
+	if c99_mode { args << '-std=c99' }
 	path_flags := ['-I', '-isystem', '-iquote', '-idirafter', '-F', '-iframework', '-isysroot',
 		'--sysroot', '-resource-dir', '-target', '--target', '-arch', '-B']
 	mut i := 0
 	for i < flags.len {
 		flag := flags[i]
+		if flag in ['-framework', '-weak_framework', '-force_load', '-Xlinker', '-mllvm'] {
+			i += 2
+			continue
+		}
 		if flag in path_flags && i + 1 < flags.len {
 			args << [flag, flags[i + 1]]
 			i += 2
 			continue
 		}
-		if flag in ['-nostdinc', '-nostdlibinc', '-nostdinc++', '-nobuiltininc']
+		if flag in ['-nostdinc', '-nostdlibinc', '-nostdinc++', '-nobuiltininc', '-ansi', '-undef',
+			'-pthread']
 			|| path_flags.any(flag.starts_with(it) && flag.len > it.len)
-			|| flag.starts_with('-stdlib=') {
+			|| flag.starts_with('-std=') || flag.starts_with('-stdlib=')
+			|| flag.starts_with('-m') || flag.starts_with('-f') || flag.starts_with('-O') {
 			args << flag
 		}
 		i++
 	}
 	null_path := $if windows { 'NUL' } $else { '/dev/null' }
-	args << ['-E', '-v', '-x', language, null_path]
+	// One empty-input probe supplies both search paths and compiler-defined guards.
+	// Forced headers run later in source order and must not seed this baseline.
+	args << ['-E', '-v', '-dM', '-x', language, null_path]
 	probe := cmdexec.run_with_timeout(parts[0], args, 5000)
 	if probe.exit_code != 0 { return CHeaderSearchPaths{} }
 	mut result := CHeaderSearchPaths{}
@@ -7090,7 +7112,9 @@ fn c_header_compiler_search_paths(ccompiler string, flags []string, language str
 	mut quotes_only := false
 	for raw in probe.output.split_into_lines() {
 		line := raw.trim_space()
-		if line == '#include "..." search starts here:' {
+		if line.starts_with('#define ') {
+			result.predefined_macros << line['#define '.len..]
+		} else if line == '#include "..." search starts here:' {
 			reading = true
 			quotes_only = true
 		} else if line == '#include <...> search starts here:' {
@@ -7098,7 +7122,7 @@ fn c_header_compiler_search_paths(ccompiler string, flags []string, language str
 			quotes_only = false
 		} else if line == 'End of search list.' && reading {
 			result.complete = true
-			break
+			reading = false
 		} else if reading {
 			if line.ends_with(' (framework directory)') {
 				result.framework_dirs << line[..line.len - ' (framework directory)'.len]
@@ -7117,6 +7141,25 @@ struct CHeaderPredicateContext {
 	vroot        string
 	source_file  string
 	search_paths CHeaderSearchPaths
+}
+
+fn c_header_nsfont_framework_include(include_arg string, context CHeaderPredicateContext) bool {
+	if !cocoa_nsfont_framework_include(include_arg) { return false }
+	for path in c_header_include_file_paths(include_arg, context) {
+		if !os.is_file(path) { continue }
+		// Only the system framework has the known declaration. An earlier local,
+		// -I, or -F header with the same include spelling must be inspected instead.
+		clean := path.replace('\\', '/')
+		for name in ['Cocoa/Cocoa.h', 'AppKit/AppKit.h', 'AppKit/NSFont.h'] {
+			if clean.contains('/System/Library/Frameworks/${name.all_before('/')}.framework/')
+				&& clean.ends_with('/Headers/${name.all_after('/')}') {
+				return true
+			}
+		}
+		return false
+	}
+	// Portable C output may be generated without access to the target SDK.
+	return !context.search_paths.complete
 }
 
 fn c_header_include_available(include_arg string, context CHeaderPredicateContext) ?bool {
