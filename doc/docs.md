@@ -3469,6 +3469,9 @@ println(c()) // 2
 println(c()) // 3
 ```
 
+A callback's captured values remain available while the callback is stored in a
+struct field, including when that field is assigned through a pointer to the struct.
+
 If you need the value to be modified outside the function, use a reference.
 Capturing a `mut` parameter preserves its reference to the caller's value, including when the
 closure passes it to a spawned function.
