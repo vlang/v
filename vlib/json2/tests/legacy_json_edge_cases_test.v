@@ -191,3 +191,35 @@ fn test_null_containers_structs_and_times() {
 		assert false
 	}
 }
+
+struct NestedCat {
+	name string
+}
+
+struct NestedDog {
+	name string
+}
+
+type NestedPet = NestedCat | NestedDog
+
+struct NestedOwner {
+	pet NestedPet
+}
+
+struct NestedShop {
+	title string
+}
+
+type NestedPlace = NestedOwner | NestedShop
+
+fn test_nested_sumtype_round_trip() {
+	place := NestedPlace(NestedOwner{
+		pet: NestedPet(NestedDog{'rex'})
+	})
+	encoded := json2.encode(place)
+	// The inner `_type` comes first, and must not be taken for the outer one.
+	assert encoded == '{"pet":{"name":"rex","_type":"NestedDog"},"_type":"NestedOwner"}'
+	decoded := json2.decode[NestedPlace](encoded)!
+	owner := decoded as NestedOwner
+	assert (owner.pet as NestedDog).name == 'rex'
+}
