@@ -12363,7 +12363,10 @@ fn (mut g FlatGen) gen_expr_with_expected_type_inner(id flat.NodeId, expected_ty
 			g.expected_enum = old_expected_enum
 			return
 		}
-		if g.cast_alias_matches_expected_storage(node.value, expected) {
+		cast_target := g.canonical_import_alias_type_in_file(node.value, g.node_source_file(node))
+		translated_int_cast := g.expr_is_in_translated_file(id)
+			&& cgen_unalias_type(cast_target).name() == 'int'
+		if !translated_int_cast && g.cast_alias_matches_expected_storage(node.value, expected) {
 			g.gen_expr_with_expected_type(g.a.child(node, 0), expected)
 			g.expected_expr_type = old_expected
 			g.expected_enum = old_expected_enum
@@ -14846,6 +14849,9 @@ fn (mut g FlatGen) const_expr_to_string(id flat.NodeId, seen []string) string {
 			target_type := g.tc.parse_type(node.value)
 			mut ct := if node.value.starts_with('fn_ptr:') {
 				g.resolve_fn_ptr_type(node.value)
+			} else if g.expr_is_in_translated_file(id)
+				&& cgen_unalias_type(target_type).name() == 'int' {
+				'i32'
 			} else {
 				g.tc.c_type(target_type)
 			}
@@ -16756,6 +16762,8 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 			cast_arg_type := cgen_unalias_type(g.usable_expr_type(cast_arg_id))
 			mut ct := if node.value.starts_with('fn_ptr:') {
 				g.resolve_fn_ptr_type(node.value)
+			} else if g.expr_is_in_translated_file(id) && semantic_target.name() == 'int' {
+				'i32'
 			} else {
 				g.cast_c_type(target_type)
 			}

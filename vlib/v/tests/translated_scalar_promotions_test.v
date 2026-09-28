@@ -364,3 +364,29 @@ fn test_translated_literal_shifts_keep_their_c_width() {
 		assert (1 >>> count) == (int(1) >>> count)
 	}
 }
+
+type TranslatedInt = int
+type TranslatedIntAlias = TranslatedInt
+
+const translated_int_cast_constant = i64(int(u32(0xffff_ffff)))
+const translated_alias_cast_constant = i64(TranslatedIntAlias(u32(0xffff_ffff)))
+
+fn translated_explicit_int_cast(value u32) i64 {
+	return int(value)
+}
+
+fn translated_explicit_int_alias_cast(value u32) i64 {
+	return TranslatedIntAlias(value)
+}
+
+fn test_translated_explicit_int_casts_narrow_in_wider_contexts() {
+	value := u32(0xffff_ffff)
+	assert translated_explicit_int_cast(value) == -1
+	assert translated_explicit_int_alias_cast(value) == -1
+	assert (int(value) + i64(0)) == -1
+	assert (TranslatedIntAlias(value) + i64(0)) == -1
+	assert i64(int(value)) == -1
+	assert i64(TranslatedIntAlias(value)) == -1
+	assert translated_int_cast_constant == -1
+	assert translated_alias_cast_constant == -1
+}

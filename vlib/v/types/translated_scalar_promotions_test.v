@@ -78,3 +78,13 @@ fn test_ordinary_literal_shifts_still_widen() {
 	result := os.execute('${os.quoted_path(@VEXE)} run ${os.quoted_path(path)}')
 	assert result.exit_code == 0, result.output
 }
+
+fn test_ordinary_int_casts_keep_the_native_width() {
+	root := os.join_path(os.vtmp_dir(), 'v3_ordinary_int_cast_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+	os.write_file(os.join_path(root, 'translated.v'), '@[translated]\nmodule main\nfn translated() {}\n')!
+	os.write_file(os.join_path(root, 'main.v'), 'module main\ntype IntAlias = int\nfn main() { translated(); if sizeof(int) == 8 { value := u32(0xffff_ffff); assert i64(int(value)) == 4294967295; assert i64(IntAlias(value)) == 4294967295 } }\n')!
+	result := os.execute('${os.quoted_path(@VEXE)} run ${os.quoted_path(root)}')
+	assert result.exit_code == 0, result.output
+}
