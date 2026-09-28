@@ -13955,10 +13955,20 @@ fn shift_value() i64 { shift_calls++; return 4 }
 fn expression_once() i64 { return shift_value() >> shift_count() }
 fn direct_pointer(value &i64) &i64 { return value }
 fn write_pointer_call(value &i64) { *direct_pointer(value) = 7 }
+fn literal_left(count int) int { return 1 << count }
+fn literal_right(count int) int { return -1 >> count }
+fn literal_unsigned(count int) u64 { return -1 >>> count }
 '
 	checks << 'ShiftState state = {.value=4}; shift_calls=0; shift_once(&state); if (state.value != 0 || shift_calls != 2) return 3;'
 	checks << 'shift_calls=0; if (expression_once() != 0 || shift_calls != 2) return 4;'
 	checks << 'i64 cell = 0; write_pointer_call(&cell); if (cell != 7) return 5;'
+	checks << 'if (literal_left(40) != ${if prefs.target.pointer_bits == 64 {
+		'1099511627776LL'
+	} else {
+		'0'
+	}}) return 8;'
+	checks << 'if (literal_right(40) != ${if prefs.target.pointer_bits == 64 { '-1' } else { '0' }}) return 9;'
+	checks << 'if (literal_unsigned(40) != 0) return 10;'
 	for i, target in ['*value', '(*value)', '*direct_pointer(value)', '(*direct_pointer(value))'] {
 		for j, op in ['<<=', '>>=', '>>>='] {
 			name := 'deref_shift_${i}_${j}'

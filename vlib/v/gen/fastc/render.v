@@ -1043,7 +1043,7 @@ fn (g &Parser) shift_type_parts(operand_type string) ?(string, string) {
 
 fn (g &Parser) render_guarded_shift_expression(left string, right string, left_type string, operator token.Token) ?string {
 	operand_type := if left_type in ['integer literal', 'negative integer literal'] {
-		'i32'
+		if operator == .right_shift_unsigned { 'i32' } else { 'int' }
 	} else {
 		left_type
 	}

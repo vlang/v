@@ -28,3 +28,29 @@ fn test_ordinary_assignment_through_pointer_call_remains_rejected() {
 	assert result.exit_code != 0, result.output
 	assert result.output.contains('cannot dereference a function call on the left side'), result.output
 }
+
+fn test_translated_shared_mutations_still_require_write_locks() {
+	root := os.join_path(os.vtmp_dir(), 'v3_translated_shared_storage_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+	path := os.join_path(root, 'main.v')
+	prefix := '@[translated]\nmodule main\nstruct State { mut: count int }\nfn main() { shared state := State{}; '
+	for mutation in ['= 1', '+= 1', '-= 1', '*= 1', '/= 1', '%= 1', '<<= 1', '>>= 1', '>>>= 1',
+		'&= 1', '|= 1', '^= 1', '++', '--'] {
+		for mode in ['', 'rlock', 'lock'] {
+			body := if mode.len == 0 {
+				'state.count ${mutation}'
+			} else {
+				'${mode} state { state.count ${mutation} }'
+			}
+			os.write_file(path, prefix + body + ' }\n')!
+			result := os.execute('${os.quoted_path(@VEXE)} -check ${os.quoted_path(path)}')
+			if mode == 'lock' {
+				assert result.exit_code == 0, result.output
+			} else {
+				assert result.exit_code != 0, result.output
+				assert result.output.contains('lock'), result.output
+			}
+		}
+	}
+}
