@@ -4837,6 +4837,8 @@ runtime parameter types. This is why the `find_by_id(1)` calls above can omit `[
 because the receiver argument `r` in the method declaration, uses a generic type `T`.
 Generic struct field defaults use each instantiation's concrete type argument in calls such as
 `default_value[T]()`.
+They also specialize `T{}`, nested `Box[T]{}`, and `&T{}` defaults when the generic struct is
+declared in another module.
 
 Another example:
 

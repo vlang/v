@@ -645,16 +645,17 @@ fn (mut g FlatGen) gen_struct_init(id flat.NodeId) {
 	canonical_init_base := canonical_init_value.trim_left('&?!').all_before('[')
 	// Transforms also use dotted synthetic names that resemble imported source
 	// types. Only apply a file's import alias when it resolves to a declaration.
-	init_value := if canonical_init_value != raw_init_value
+	resolved_init_value := if canonical_init_value != raw_init_value
 		&& (canonical_init_base in g.tc.structs
 			|| g.exact_known_import_type_text(canonical_init_base) != none) {
 		canonical_init_value
 	} else {
 		raw_init_value
 	}
+	init_value := g.generic_default_type_text(resolved_init_value)
 	if init_value.starts_with('chan ') {
 		mut channel_node := node
-		channel_node.value = g.generic_default_type_text(init_value)
+		channel_node.value = init_value
 		g.gen_channel_init(channel_node)
 		return
 	}
@@ -1733,6 +1734,13 @@ fn channel_init_field(node flat.Node, a &flat.FlatAst, name string) ?flat.NodeId
 
 // gen_heap_struct_init emits heap struct init output for c.
 fn (mut g FlatGen) gen_heap_struct_init(node flat.Node) {
+	specialized_value := g.generic_default_type_text(node.value)
+	if specialized_value != node.value {
+		mut specialized_node := node
+		specialized_node.value = specialized_value
+		g.gen_heap_struct_init(specialized_node)
+		return
+	}
 	canonical_value := g.canonical_import_alias_type_text_in_file(node.value, g.node_source_file(&node))
 	canonical_base := canonical_value.trim_left('&?!').all_before('[')
 	if canonical_value != node.value && g.exact_known_import_type_text(canonical_base) != none {
