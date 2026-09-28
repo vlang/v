@@ -19,15 +19,14 @@ fn test_alias_to_primitive() {
 	}
 	mut encoded := json2.encode(test, escape_unicode: true)
 	assert dump(encoded) == '{"field":"foo"}'
-	// json2 decodes a JSON string into the first variant that accepts one.
-	assert json2.decode[Test]('{"field":	"foo"}')!.field == MySumType(MyString('foo'))
+	assert json2.decode[Test]('{"field":	"foo"}')!.field == MySumType('foo')
 
 	test = Test{
 		field: 'foo'
 	}
 	encoded = json2.encode(test, escape_unicode: true)
 	assert dump(encoded) == '{"field":"foo"}'
-	assert json2.decode[Test]('{"field":"foo"}')!.field == MySumType(MyString('foo'))
+	assert json2.decode[Test]('{"field":"foo"}')! == test
 
 	test = Test{
 		field: 1
@@ -51,6 +50,8 @@ fn test_encode_unicode_as_ascii_escape_sequences() {
 	assert decoded.emoji == '〇'
 	assert json2.encode(UnicodeString{
 		emoji: '〇'
-	}, escape_unicode: true) == valid_json
+	},
+		escape_unicode: true
+	) == valid_json
 	assert json2.encode('😀', escape_unicode: true) == r'"\uD83D\ude00"'
 }

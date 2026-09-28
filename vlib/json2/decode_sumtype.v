@@ -14,8 +14,18 @@ fn sumtype_variant_name(type_name string) string {
 fn (mut decoder Decoder) get_decoded_sumtype_workaround[T](initialized_sumtype T) !T {
 	$if initialized_sumtype is $sumtype || ( T is $alias && T.unaliased_typ is $sumtype ) {
 		resolved_sumtype := initialized_sumtype
+		// `is` does not tell an alias variant from its base type (`MyString | string`
+		// matches both), so prefer the variant with the exact type name.
+		variant_name := initialized_sumtype.type_name()
+		mut has_exact_variant := false
 		$for v in T.variants {
-			if initialized_sumtype is v {
+			if initialized_sumtype is v && variant_name == typeof(v.typ).name {
+				has_exact_variant = true
+			}
+		}
+		$for v in T.variants {
+			if initialized_sumtype is v
+				&& (!has_exact_variant || variant_name == typeof(v.typ).name) {
 				$if initialized_sumtype is time.Time {
 					mut val := $zero(v.typ)
 					decoder.decode_sumtype_time(mut val)!
@@ -270,46 +280,73 @@ fn (mut decoder Decoder) init_sumtype_by_value_kind[T](mut val T, value_info Val
 	mut failed_struct := false
 	mut struct_variant_count := 0
 
+	// For a string, number or boolean, a variant of the plain type wins over an alias
+	// of it (`MyString | string` selects `string`), like in the removed `json` module:
+	// aliases are only tried after all other variants.
 	match value_info.value_kind {
 		.string {
-			$for v in T.variants {
-				$if v.typ is string {
-					val = T(v)
-					return
-				} $else $if v.typ is time.Time {
-					val = T(v)
-					return
-				} $else $if v.typ is StringDecoder {
-					val = T(v)
-					return
+			for aliases in [false, true] {
+				$for v in T.variants {
+					mut is_alias := false
+					$if v.typ is $alias {
+						is_alias = true
+					}
+					if is_alias == aliases {
+						$if v.typ is string {
+							val = T(v)
+							return
+						} $else $if v.typ is time.Time {
+							val = T(v)
+							return
+						} $else $if v.typ is StringDecoder {
+							val = T(v)
+							return
+						}
+					}
 				}
 			}
 		}
 		.number {
-			$for v in T.variants {
-				$if v.typ is $float {
-					val = T(v)
-					return
-				} $else $if v.typ is $int {
-					val = T(v)
-					return
-				} $else $if v.typ is $enum {
-					val = T(v)
-					return
-				} $else $if v.typ is NumberDecoder {
-					val = T(v)
-					return
+			for aliases in [false, true] {
+				$for v in T.variants {
+					mut is_alias := false
+					$if v.typ is $alias {
+						is_alias = true
+					}
+					if is_alias == aliases {
+						$if v.typ is $float {
+							val = T(v)
+							return
+						} $else $if v.typ is $int {
+							val = T(v)
+							return
+						} $else $if v.typ is $enum {
+							val = T(v)
+							return
+						} $else $if v.typ is NumberDecoder {
+							val = T(v)
+							return
+						}
+					}
 				}
 			}
 		}
 		.boolean {
-			$for v in T.variants {
-				$if v.typ is bool {
-					val = T(v)
-					return
-				} $else $if v.typ is BooleanDecoder {
-					val = T(v)
-					return
+			for aliases in [false, true] {
+				$for v in T.variants {
+					mut is_alias := false
+					$if v.typ is $alias {
+						is_alias = true
+					}
+					if is_alias == aliases {
+						$if v.typ is bool {
+							val = T(v)
+							return
+						} $else $if v.typ is BooleanDecoder {
+							val = T(v)
+							return
+						}
+					}
 				}
 			}
 		}
