@@ -308,3 +308,43 @@ fn test_translated_conditional_uses_common_numeric_type() {
 	assert value == 2.5
 	assert typeof(value).name == 'f64'
 }
+
+fn translated_large_hex() i64 {
+	return 0xffff_ffff + int(0)
+}
+
+fn translated_large_decimal() i64 {
+	return 4294967295 + int(0)
+}
+
+fn translated_large_hex_conditional(flag bool) i64 {
+	return if flag { 0xffff_ffff } else { int(0) }
+}
+
+fn translated_large_decimal_conditional(flag bool) i64 {
+	return if flag { int(0) } else { 4294967295 }
+}
+
+fn test_translated_large_integer_literal_types() {
+	assert translated_large_hex() == i64(4294967295)
+	assert translated_large_decimal() == i64(4294967295)
+	assert translated_large_hex_conditional(true) == i64(4294967295)
+	assert translated_large_hex_conditional(false) == 0
+	assert translated_large_decimal_conditional(false) == i64(4294967295)
+	assert translated_large_decimal_conditional(true) == 0
+	assert (0xffff_ffff + int(1)) == u32(0)
+	assert (4294967295 + int(1)) == i64(4294967296)
+	assert (0o37777777777 + int(1)) == u32(0)
+	assert (0b11111111111111111111111111111111 + int(1)) == u32(0)
+	assert (0x1_0000_0000 + int(1)) == i64(4294967297)
+	assert (0x8000_0000_0000_0000 + int(1)) == u64(9223372036854775809)
+	assert (-0xffff_ffff) == u32(1)
+	assert (0xffff_ffff >> 31) == u32(1)
+	assert (0x1_0000_0000 >> 32) == i64(1)
+	hex := 0xffff_ffff
+	decimal := 4294967295
+	assert typeof(hex).name == 'u32'
+	assert typeof(decimal).name == 'i64'
+	assert hex + int(1) == u32(0)
+	assert decimal + int(1) == i64(4294967296)
+}

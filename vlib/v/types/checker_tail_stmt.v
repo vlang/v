@@ -1,6 +1,7 @@
 module types
 
 import os
+import strconv
 import strings
 import v.flat
 import v.gen.c.naming
@@ -3157,6 +3158,27 @@ fn (tc &TypeChecker) choose_translated_if_tail_type(id flat.NodeId, current Type
 		return tc.translated_common_numeric_type(current, next)
 	}
 	return tc.choose_if_tail_type(current, next)
+}
+
+fn (tc &TypeChecker) translated_integer_literal_type(id flat.NodeId) ?Type {
+	literal := (tc.integer_literal_source(id) or { return none }).replace('_', '').to_lower()
+	value, parse_error := strconv.common_parse_uint2(literal, 0, 64)
+	if parse_error != 0 {
+		return none
+	}
+	// C considers unsigned int before wider signed types for nondecimal literals.
+	// Decimal literals move directly from int to a wider signed type.
+	if value <= u64(0x7fff_ffff) {
+		return Type(int_)
+	}
+	if (literal.starts_with('0x') || literal.starts_with('0o') || literal.starts_with('0b'))
+		&& value <= u64(0xffff_ffff) {
+		return Type(u32_)
+	}
+	if value <= u64(0x7fff_ffff_ffff_ffff) {
+		return Type(i64_)
+	}
+	return Type(u64_)
 }
 
 fn (tc &TypeChecker) translated_promoted_numeric_type(typ Type) Type {
@@ -16095,6 +16117,11 @@ fn (tc &TypeChecker) resolve_type_uncached(id flat.NodeId) Type {
 	}
 	node_ref := tc.a.node(id)
 	node := tc.a.nodes[int(id)]
+	if node.kind == .int_literal && tc.node_is_in_translated_file(id) {
+		if typ := tc.translated_integer_literal_type(id) {
+			return typ
+		}
+	}
 	if node.kind == .ident && tc.errors.any(it.node == id && it.kind == .unknown_ident) {
 		return Type(void_)
 	}

@@ -25,6 +25,8 @@ fn test_translated_promotions_do_not_leak_into_ordinary_files() {
 		['flag := false; _ = if flag { flag } else { 42 }', 'mismatched types'],
 		['value := 1; mut p := &value; p += true', 'invalid right operand'],
 		['callback := fn () {}; _ = callback == 0', 'infix expr:'],
+		['value := 0xffff_ffff; _ = value', 'overflow in implicit type'],
+		['value := 4294967295; _ = value', 'overflow in implicit type'],
 	]
 	for case in cases {
 		os.write_file(os.join_path(root, 'main.v'), 'module main\nfn main() { ${case[0]}; translated() }\n')!
