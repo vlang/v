@@ -7707,8 +7707,17 @@ fn (mut tc TypeChecker) check_node_with_expected_context(id flat.NodeId, expecte
 	saved_type := tc.expected_expr_type
 	tc.expected_expr_id = int(id)
 	tc.expected_expr_type = expected
-	if tc.valid_node_id(id) && tc.a.nodes[int(id)].kind == .enum_val {
-		_ = tc.resolve_expr(id, expected)
+	mut value_id := id
+	for tc.valid_node_id(value_id) {
+		value := tc.a.nodes[int(value_id)]
+		if value.kind == .enum_val {
+			_ = tc.resolve_expr(id, expected)
+			break
+		}
+		if value.kind !in [.paren, .expr_stmt] || value.children_count != 1 {
+			break
+		}
+		value_id = tc.a.child(&value, 0)
 	}
 	tc.check_node(id)
 	tc.expected_expr_id = saved_id

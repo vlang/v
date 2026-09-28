@@ -74,6 +74,7 @@ pub fn confirm(title string, text string) bool {
 fn main() {
 	assert ui2.confirm("title", "text")
 	assert ui2.message_box(title: "title", text: "text", style: .question, buttons: .yes_no) == .yes
+	assert ui2.message_box(title: "title", text: "text", style: ((.question)), buttons: (.yes_no)) == .yes
 	assert ui2.message_box(buttons: .yes_no, style: .question, text: "text", title: "title") == .yes
 	assert ui2.message_box(title: "title", text: "text", style: ui2.MessageBoxStyle.question,
 		buttons: ui2.MessageBoxButtons.yes_no) == .yes
