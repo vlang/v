@@ -304,7 +304,9 @@ fn (mut g FlatGen) gen_for_in(node flat.Node) {
 				}
 				ref_container_keeps_value := clean_value_type is types.Pointer
 					|| clean_value_type is types.OptionType
-				map_value_by_ref := node.op == .amp
+				map_value_by_ref := (node.op == .amp
+					&& !(container_storage_is_pointer && !container_is_mutable_value_storage
+						&& ref_container_keeps_value))
 					|| (container_storage_is_pointer && !container_is_mutable_value_storage
 						&& !ref_container_keeps_value)
 				original_map_ref := if container_storage_is_pointer {

@@ -204,3 +204,17 @@ fn test_explicit_mutable_map_parameters_keep_value_iteration() {
 	mut number_pointer := &numbers
 	assert sum_explicit_mutable_map_values(mut number_pointer) == 7
 }
+
+fn test_nested_iteration_of_pointer_valued_referenced_map_keeps_references() {
+	mut numbers := [1, 2]
+	mut entries := {
+		'values': &numbers
+	}
+	for _, mut values in &entries {
+		for number in values {
+			unsafe {
+				assert *number > 0
+			}
+		}
+	}
+}

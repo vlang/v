@@ -54,3 +54,15 @@ fn test_mutable_array_parameter_still_updates_fixed_array_elements() {
 	assign_mutable_fixed_array_rows(mut rows)
 	assert rows[0] == [3, 4]!
 }
+
+fn test_nested_iteration_of_pointer_valued_referenced_array_keeps_references() {
+	mut numbers := [1, 2]
+	mut groups := [&numbers]
+	for mut values in &groups {
+		for number in values {
+			unsafe {
+				assert *number > 0
+			}
+		}
+	}
+}

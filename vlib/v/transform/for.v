@@ -657,7 +657,8 @@ fn (mut t Transformer) rebuild_for_in_stmt(_id flat.NodeId, node flat.Node) []fl
 	element_value_is_indirect := normalized_element_type.starts_with('&')
 		|| t.is_optional_type_name(normalized_element_type)
 		|| (map_iter_type.starts_with('map[') && t.is_fixed_array_type(normalized_element_type))
-	if node.op == .amp && (!container_yields_ref || element_value_is_indirect) {
+	if node.op == .amp && (!container_yields_ref
+		|| (element_value_is_indirect && !normalized_element_type.starts_with('&'))) {
 		bind_id := if has_index { val_id } else { key_id }
 		if int(bind_id) >= 0 {
 			bind := t.a.nodes[int(bind_id)]
@@ -1164,7 +1165,11 @@ fn (mut t Transformer) lower_indexed_for_in(id flat.NodeId, node flat.Node, key_
 	// direct interface smartcasts instead of silently copying the element.
 	interface_smartcast_ref := actual_iter_type.starts_with('[]')
 		&& t.for_in_container_is_interface_smartcast(container_id)
-	elem_needs_ref := elem_is_mut || interface_smartcast_ref
+	clean_elem_type := t.normalize_type_alias(elem_type)
+	elem_keeps_value := clean_elem_type.starts_with('&')
+		|| t.is_optional_type_name(clean_elem_type)
+	elem_needs_ref := (elem_is_mut || interface_smartcast_ref)
+		&& !(container_is_explicit_reference && elem_keeps_value)
 	elem_var_type := if elem_needs_ref { '&${elem_type}' } else { elem_type }
 	t.set_var_type(elem_name, elem_var_type)
 	if elem_needs_ref && t.is_fixed_array_type(actual_iter_type) {
@@ -1198,7 +1203,7 @@ fn (mut t Transformer) lower_indexed_for_in(id flat.NodeId, node flat.Node, key_
 	}
 	elem_decl := t.make_decl_assign_typed(elem_name, elem_expr, elem_var_type)
 	mut transformed_body := []flat.NodeId{}
-	if elem_is_mut {
+	if elem_is_mut && elem_needs_ref {
 		had_pointer_value_lvalue := t.pointer_value_lvalues[elem_name] or { false }
 		had_pointer_value_rvalue := t.pointer_value_rvalues[elem_name] or { false }
 		t.pointer_value_lvalues[elem_name] = true
