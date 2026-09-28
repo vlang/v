@@ -5034,6 +5034,9 @@ fn main() {
 }
 ```
 
+Discarding a spawned thread's handle, including through `dump(spawn ...)`, detaches the thread.
+Keep the handle when you need to call `.wait()`.
+
 If there is a large number of tasks, it might be easier to manage them
 using an array of threads.
 

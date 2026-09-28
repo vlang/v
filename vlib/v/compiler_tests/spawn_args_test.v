@@ -314,13 +314,15 @@ fn main() {
 	_ := Holder{worker: spawn answer()}
 	_ := [[spawn answer()]]
 	_ := {"worker": spawn answer()}
+	_ := dump(spawn answer())
+	dump(spawn answer())
 	_ := [wait_for(spawn answer())]
 	t := spawn answer()
 	println(t.wait())
 }
 	')
 	c_compact := compact_c(c_code)
-	assert c_compact.count('__v_thread_spawn_detached(answer_thread_wrapper,') == 4, c_code
+	assert c_compact.count('__v_thread_spawn_detached(answer_thread_wrapper,') == 6, c_code
 	assert c_compact.count('__v_thread_spawn(answer_thread_wrapper,') == 2, c_code
 }
 

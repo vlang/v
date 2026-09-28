@@ -12049,7 +12049,8 @@ fn (t &Transformer) collect_discarded_aggregate_spawns(id flat.NodeId, mut spawn
 		.spawn_expr {
 			spawns << id
 		}
-		.paren, .array_literal, .array_init, .struct_init, .field_init, .map_init, .assoc,
+		.paren, .dump_expr, .array_literal, .array_init, .struct_init, .field_init, .map_init,
+		.assoc,
 		.cast_expr, .as_expr, .or_expr {
 			for i in 0 .. node.children_count {
 				t.collect_discarded_aggregate_spawns(t.a.child(&node, i), mut spawns)
@@ -16542,6 +16543,9 @@ fn (mut t Transformer) transform_expr_stmt(id flat.NodeId, node flat.Node) []fla
 	spawn_id := t.skip_discarded_spawn_parens(child_id)
 	if t.a.nodes[int(spawn_id)].kind == .spawn_expr {
 		return t.transform_detached_spawn_stmt(node, spawn_id)
+	}
+	if discarded := t.lower_discarded_spawn_value(child_id) {
+		return discarded
 	}
 	if t.autolock_depth == 0 {
 		if lock_id := t.shared_postfix_autolock_target(child_id) {
