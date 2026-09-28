@@ -10323,7 +10323,8 @@ fn (mut p Parser) expr_with_lhs_context(first flat.NodeId, min_bp token.BindingP
 		// postfix increment. Keep the next line out of the previous expression.
 		if p.is_translated && p.prev_tok_end >= 2
 			&& p.s.src[p.prev_tok_end - 2..p.prev_tok_end] in ['++', '--']
-			&& p.line_nr_for_pos(p.prev_tok_end - 1) < p.line_nr_for_pos(p.tok_pos) {
+			&& p.line_nr_for_pos(p.prev_tok_end - 1) < p.line_nr_for_pos(p.tok_pos)
+			&& p.translated_postfix_line_starts_deref_assignment() {
 			break
 		}
 		if p.in_struct_init_value > 0 && (p.tok == .name || p.tok.is_keyword())
@@ -10791,6 +10792,18 @@ fn (mut p Parser) expr_with_lhs_context(first flat.NodeId, min_bp token.BindingP
 	}
 
 	return lhs
+}
+
+fn (mut p Parser) translated_postfix_line_starts_deref_assignment() bool {
+	if p.tok != .mul || p.peek() != .name {
+		return false
+	}
+	mut scan := p.s
+	mut next := scan.scan()
+	if next in [.inc, .dec] {
+		next = scan.scan()
+	}
+	return next == .assign && p.line_nr_for_pos(scan.pos) == p.line_nr_for_pos(p.tok_pos)
 }
 
 fn (p &Parser) is_comptime_type_accessor(id flat.NodeId) bool {
@@ -14452,6 +14465,7 @@ fn (mut p Parser) sizeof_expr() flat.NodeId {
 			&& (p.is_local_binding(p.lit)
 				|| p.global_names[p.lit]
 				|| p.a.nodes.any(it.kind == .const_field && it.value == p.lit)
+				|| (!isreftype_name_can_start_type(p.lit) && p.peek() != .dot)
 				|| (p.peek() == .lsbr && !type_name_can_init(p.lit)))) {
 		inner := p.expr(.lowest)
 		p.check(.rpar)

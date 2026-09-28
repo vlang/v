@@ -46,3 +46,15 @@ fn test_translated_if_expression_in_match_subject() {
 	}
 	assert result == 42
 }
+
+fn test_translated_sizeof_later_constant_and_postfix_continuation() {
+	assert sizeof(translated_later_regs) == sizeof(translated_regs)
+	mut current := 3
+	offset := 2
+	result := current++ +
+		offset
+	assert result == 5
+	assert current == 4
+}
+
+const translated_later_regs = [5, 8, 13]!

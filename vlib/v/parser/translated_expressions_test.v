@@ -23,6 +23,9 @@ fn main() {
  dst := &values[1]
  ch := *ptr++
  *dst++ = ch
+ result := i++
+  + 2
+ _ = result
 }
 '
 	translated := os.join_path(root, 'translated.v')
@@ -34,4 +37,22 @@ fn main() {
 	p.parse_file(ordinary)
 	assert p.diagnostics.any(it.message.contains('did you write `if` twice'))
 	assert p.diagnostics.any(it.message == 'invalid expression: unexpected token `-`')
+}
+
+fn test_translated_sizeof_constant_in_later_file() {
+	root := os.join_path(os.vtmp_dir(), 'translated_sizeof_later_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+	os.write_file(os.join_path(root, 'a.v'), '@[translated]
+module main
+fn main() { assert sizeof(later_regs) == sizeof([3]int) }
+')!
+	os.write_file(os.join_path(root, 'z.v'), '@[translated]
+module main
+const later_regs = [3, 12, 13]!
+')!
+	for flags in ['', '-no-parallel'] {
+		result := os.execute('${os.quoted_path(@VEXE)} ${flags} -check ${os.quoted_path(root)}')
+		assert result.exit_code == 0, result.output
+	}
 }
