@@ -784,6 +784,35 @@ fn test_channel_generic_reachability_inference() {
 	assert inferred['U'] == 'int'
 }
 
+fn test_unindexed_generic_factory_infers_spread_and_shared_arguments() {
+	for pattern in ['...U', 'shared U'] {
+		mut a := flat.FlatAst.new()
+		mut tc := types.TypeChecker.new(&a)
+		tc.parallel_check_sparse = true
+		method := 'gates.make_gate'
+		tc.fn_generic_params[method] = ['U']
+		tc.fn_param_type_texts[method] = [pattern]
+		tc.fn_ret_types[method] = types.Type(types.Struct{ name: 'gates.Gate[U]' })
+		callee := a.add_val(.ident, 'make_gate')
+		value := a.add_val(.ident, 'value')
+		arg := if pattern == '...U' {
+			call_helper_node(mut a, flat.Node{ kind: .prefix, value: '...' }, [value])
+		} else {
+			value
+		}
+		call := call_helper_node(mut a, flat.Node{ kind: .call }, [callee, arg])
+		tc.sparse_resolved_call_names[int(call)] = method
+		collector := CallCollector{ a: &a, tc: &tc }
+		actual := if pattern == '...U' { '[]T' } else { 'T' }
+		inferred := collector.top_level_call_return_type_name(call, 'main', map[string]string{}, {
+			'value': true
+		}, {
+			'value': actual
+		}, false)
+		assert inferred == 'gates.Gate[T]', pattern
+	}
+}
+
 fn test_unindexed_generic_factory_uses_prior_local_type() {
 	mut a := flat.FlatAst.new()
 	mut tc := types.TypeChecker.new(&a)
@@ -851,6 +880,53 @@ fn test_generic_factory_uses_for_in_element_type() {
 	])
 	body := call_helper_node(mut a, flat.Node{ kind: .block }, [loop])
 	fn_id := call_helper_node(mut a, flat.Node{ kind: .fn_decl, value: 'use_gates' }, [
+		param,
+		body,
+	])
+	collector := CallCollector{ a: &a, tc: &tc, import_contexts: [map[string]string{}] }
+	_, _, ident_types := collector.local_value_info(a.node(fn_id), 'main', map[string]string{})
+	assert ident_types[int(value_arg)] == 'T'
+	assert ident_types[int(gate_use)] == 'gates.Gate[T]'
+	assert 'gates.Gate[T].backward' in collector.collect_body(a.node(fn_id), 'main',
+		map[string]string{}).calls
+}
+
+fn test_generic_factory_uses_custom_iterator_element_type() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	tc.parallel_check_sparse = true
+	factory := 'gates.make_gate'
+	tc.fn_generic_params[factory] = ['U']
+	tc.fn_param_type_texts[factory] = ['U']
+	tc.fn_ret_types[factory] = types.Type(types.Struct{ name: 'gates.Gate[U]' })
+	tc.fn_ret_types['gates.Gate[T].backward'] = types.Type(types.int_)
+	tc.struct_generic_params['Iter'] = ['T']
+	tc.fn_ret_types['Iter[T].next'] = types.Type(types.OptionType{
+		base_type: types.Type(types.Struct{ name: 'T' })
+	})
+	param := a.add_node(flat.Node{ kind: .param, value: 'iter', typ: 'Iter[T]' })
+	loop_value := a.add_val(.ident, 'value')
+	container := a.add_val(.ident, 'iter')
+	callee := a.add_val(.ident, 'make_gate')
+	value_arg := a.add_val(.ident, 'value')
+	factory_call := call_helper_node(mut a, flat.Node{ kind: .call }, [callee, value_arg])
+	tc.sparse_resolved_call_names[int(factory_call)] = factory
+	gate_lhs := a.add_val(.ident, 'gate')
+	gate_decl := call_helper_node(mut a, flat.Node{ kind: .decl_assign }, [gate_lhs, factory_call])
+	gate_use := a.add_val(.ident, 'gate')
+	backward := call_helper_node(mut a, flat.Node{ kind: .selector, value: 'backward' }, [
+		gate_use,
+	])
+	backward_call := call_helper_node(mut a, flat.Node{ kind: .call }, [backward])
+	loop_body := call_helper_node(mut a, flat.Node{ kind: .block }, [gate_decl, backward_call])
+	loop := call_helper_node(mut a, flat.Node{ kind: .for_in_stmt, value: '3' }, [
+		loop_value,
+		flat.empty_node,
+		container,
+		loop_body,
+	])
+	body := call_helper_node(mut a, flat.Node{ kind: .block }, [loop])
+	fn_id := call_helper_node(mut a, flat.Node{ kind: .fn_decl, value: 'use_gate' }, [
 		param,
 		body,
 	])

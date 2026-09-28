@@ -6274,6 +6274,25 @@ fn (c &CallCollector) infer_alias_generic_args(call &flat.Node, fn_name string, 
 }
 
 fn (c &CallCollector) infer_alias_generic_argument(fn_name string, pattern string, arg_id flat.NodeId, generic_params []string, cur_module string, imports map[string]string, local_values map[string]bool, local_types map[string]string, mut inferred map[string]string) {
+	arg := c.a.node(arg_id)
+	if pattern.starts_with('...') && arg.kind == .prefix && arg.value == '...'
+		&& arg.children_count > 0 {
+		spread_id := c.a.child(arg, 0)
+		if actual := c.alias_aware_expr_type(spread_id, cur_module, imports, local_values,
+			local_types) {
+			actual_clean := types.unwrap_pointer(actual)
+			if actual_clean is types.Array {
+				markused_infer_alias_generic_type(pattern[3..], actual_clean.elem_type,
+					generic_params, mut inferred)
+			}
+		}
+		if actual_text := c.top_level_for_in_elem_type_name(spread_id, cur_module, imports,
+			local_values, local_types) {
+			markused_infer_generic_type_text(pattern[3..], actual_text, generic_params,
+				mut inferred)
+		}
+		return
+	}
 	if actual := c.alias_aware_expr_type(arg_id, cur_module, imports, local_values, local_types) {
 		markused_infer_alias_generic_type(pattern, actual, generic_params, mut inferred)
 	}
@@ -6486,6 +6505,10 @@ fn markused_infer_alias_generic_type(param_text string, actual types.Type, gener
 		markused_infer_alias_generic_type(clean[4..], actual, generic_params, mut inferred)
 		return
 	}
+	if clean.starts_with('shared ') {
+		markused_infer_alias_generic_type(clean[7..], actual, generic_params, mut inferred)
+		return
+	}
 	if clean.starts_with('&') {
 		if actual is types.Pointer {
 			markused_infer_alias_generic_type(clean[1..], actual.base_type, generic_params, mut inferred)
@@ -6563,7 +6586,7 @@ fn markused_infer_generic_type_text(pattern string, actual string, generic_param
 			if value.starts_with(prefix) {
 				markused_infer_generic_type_text(clean[prefix.len..], value[prefix.len..],
 					generic_params, mut inferred)
-			} else if prefix in ['?', '...'] {
+			} else if prefix in ['?', '...', 'mut ', 'shared ', 'atomic '] {
 				markused_infer_generic_type_text(clean[prefix.len..], value, generic_params,
 					mut inferred)
 			}
@@ -7014,6 +7037,13 @@ fn (c &CallCollector) register_top_level_for_in_vars(node &flat.Node, cur_module
 		return
 	}
 	local_values[value_var] = true
+	value_id := if has_second { val_id } else { key_id }
+	if cached := markused_type_name(c.node_type(value_id), false) {
+		if cached != 'unknown' && cached != 'generic' {
+			local_types[value_var] = cached
+			return
+		}
+	}
 	container := c.a.node(container_id)
 	if header == 4 || container.kind == .range {
 		cached := c.node_type(key_id)
@@ -7036,9 +7066,24 @@ fn (c &CallCollector) register_top_level_for_in_vars(node &flat.Node, cur_module
 		}
 		return
 	}
-	elem := c.top_level_for_in_elem_type_name(container_id, cur_module, imports, local_values, local_types) or { return }
-	if elem.len > 0 {
-		local_types[value_var] = elem
+	if elem := c.top_level_for_in_elem_type_name(container_id, cur_module, imports,
+		local_values, local_types) {
+		if elem.len > 0 {
+			local_types[value_var] = elem
+		}
+		return
+	}
+	container_type := c.top_level_expr_type_name(container_id, cur_module, imports, local_values,
+		local_types, false)
+	if container_type.len == 0 {
+		return
+	}
+	if info := c.tc.iterator_for_in_next_call_info_text(container_type) {
+		if info.return_type is types.OptionType {
+			if elem := markused_type_name(info.return_type.base_type, false) {
+				local_types[value_var] = elem
+			}
+		}
 	}
 }
 
