@@ -341,3 +341,24 @@ fn test_option_sumtype_variants_with_values() {
 	assert encoded == '{"a":2,"_type":"OptionFoo"}'
 	assert json2.encode(json2.decode[OptionStructVariant](encoded)!) == encoded
 }
+
+struct OptionRunes {
+	list  []?rune
+	fixed [2]?rune
+	by_id map[string]?rune
+}
+
+fn test_option_rune_elements() {
+	runes := json2.decode[OptionRunes]('{"list":["q",null],"fixed":[null,"d"],"by_id":{"k":"e"}}')!
+	first := runes.list[0] or { panic('the first rune should be set') }
+	assert first == `q`
+	assert runes.list[1] == none
+	assert runes.fixed[0] == none
+	second := runes.fixed[1] or { panic('the second rune should be set') }
+	assert second == `d`
+	by_id := runes.by_id['k'] or { panic('k should be set') }
+	assert by_id == `e`
+	top := json2.decode[[]?rune]('["z"]')!
+	z := top[0] or { panic('z should be set') }
+	assert z == `z`
+}
