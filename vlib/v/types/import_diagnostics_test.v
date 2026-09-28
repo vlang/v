@@ -117,6 +117,28 @@ fn test_nested_module_rejects_its_canonical_self_import() {
 	assert tc.errors.any(it.msg.contains('cannot import `nn.layers` into a module with the same name')), tc.errors.str()
 }
 
+fn test_self_import_identity_is_scoped_to_each_file() {
+	root := os.join_path(os.vtmp_dir(), 'v3_multiple_module_identities_${os.getpid()}')
+	defer { os.rmdir_all(root) or {} }
+	mut paths := []string{}
+	for parent in ['first', 'second', 'third'] {
+		path := os.join_path(root, parent, 'layers', 'layer.v')
+		os.mkdir_all(os.dir(path))!
+		import_path := if parent == 'second' { 'first.layers' } else { '${parent}.layers' }
+		os.write_file(path, 'module layers\nimport os\nimport time\nimport ${import_path} as other\n')!
+		paths << path
+	}
+	os.write_file(os.join_path(root, 'v.mod'), "Module { name: 'project' }")!
+	mut p := parser.Parser.new(pref.new_preferences())
+	a := p.parse_files(paths)
+	mut tc := TypeChecker.new(a)
+	tc.collect(a)
+	tc.check_import_diagnostics()
+	assert tc.errors.len == 2, tc.errors.str()
+	assert tc.errors[0].msg == 'cannot import `first.layers` into a module with the same name'
+	assert tc.errors[1].msg == 'cannot import `third.layers` into a module with the same name'
+}
+
 fn test_manifestless_nested_module_rejects_its_canonical_self_import() {
 	root := os.join_path(os.vtmp_dir(), 'v3_manifestless_self_import_${os.getpid()}')
 	path := os.join_path(root, 'nn', 'layers', 'layer.v')

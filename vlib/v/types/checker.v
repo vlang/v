@@ -5853,11 +5853,14 @@ fn (mut tc TypeChecker) register_file_import(alias string, module_name string) {
 fn (mut tc TypeChecker) check_import_diagnostics() {
 	mut first_imports := map[string]token.Pos{}
 	mut declaration_seen_in_file := false
+	mut module_path_identity := ''
+	mut module_path_identity_checked := false
 	for idx in tc.top_level_idx {
 		node := tc.a.nodes[idx]
 		if node.kind == .file {
 			tc.enter_file(node.value)
 			declaration_seen_in_file = false
+			module_path_identity_checked = false
 			continue
 		}
 		if node.kind == .module_decl {
@@ -5903,8 +5906,11 @@ fn (mut tc TypeChecker) check_import_diagnostics() {
 		// Compiler-injected runtime imports have no source span and may name the
 		// current module (for example channel support while compiling `sync`).
 		// Self-import diagnostics only apply to imports written by the user.
-		if has_source && (node.value == tc.cur_module
-			|| node.value == (tc.current_file_module_path_identity() or { '' })) {
+		if has_source && node.value != tc.cur_module && !module_path_identity_checked {
+			module_path_identity = tc.current_file_module_path_identity() or { '' }
+			module_path_identity_checked = true
+		}
+		if has_source && (node.value == tc.cur_module || node.value == module_path_identity) {
 			tc.record_error_at(.duplicate_decl, 'cannot import `${module_path}` into a module with the same name', flat.NodeId(idx), tc.import_module_path_pos(node))
 		}
 		if has_source && node.typ == tc.cur_module && !tc.current_file_uses_nested_module_path() {
