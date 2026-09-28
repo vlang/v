@@ -16756,7 +16756,7 @@ fn (tc &TypeChecker) resolve_type_uncached(id flat.NodeId) Type {
 			}
 			if node.op in [.plus, .minus] {
 				if node.op == .minus && lt is Pointer && rt is Pointer {
-					return Type(int_)
+					return if tc.node_is_in_translated_file(id) { Type(isize_) } else { Type(int_) }
 				}
 				if lt is Pointer && (rt.is_integer()
 					|| (tc.node_is_in_translated_file(id) && translated_integer_type(rt))) {

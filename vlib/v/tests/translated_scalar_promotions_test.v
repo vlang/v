@@ -208,6 +208,15 @@ fn test_translated_integral_pointer_expressions() {
 	assert *(end - true) == 22
 }
 
+fn test_translated_pointer_subtraction_retains_pointer_width() {
+	values := [u8(1), 2, 3, 4]!
+	start := unsafe { &values[0] }
+	end := unsafe { &values[3] }
+	delta := unsafe { end - start }
+	assert typeof(delta).name == 'isize'
+	assert delta == 3
+}
+
 fn translated_mixed_branch(flag bool) int {
 	value := if flag { flag } else { 42 }
 	return value

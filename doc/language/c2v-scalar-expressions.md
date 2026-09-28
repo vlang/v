@@ -2,6 +2,7 @@
 
 In `@[translated]` files, boolean values can index arrays and pointers. Boolean,
 character, and enum values can offset pointers in arithmetic and compound assignments.
+Subtracting two pointers produces a pointer-width `isize` difference.
 Mixed boolean and numeric conditional branches
 retain the numeric branch type. Narrow integer shifts use C's minimum 32-bit
 operand width. Shifts of translated `int` values use C's 32-bit `int` width.
