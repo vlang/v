@@ -296,7 +296,7 @@ fn (mut g FlatGen) gen_for_in(node flat.Node) {
 				c_val := g.value_c_type(clean_container_type.value_type)
 				container_str := g.expr_to_string(g.a.child(&node, 2))
 				storage_container_type := g.usable_expr_type(g.a.child(&node, 2))
-				container_storage_is_pointer := storage_container_type is types.Pointer
+				container_storage_is_pointer := cgen_unalias_type(storage_container_type) is types.Pointer
 				container_is_mutable_value_storage := g.for_in_mutable_value_storage(container_id)
 				mut clean_value_type := clean_container_type.value_type
 				for clean_value_type is types.Alias {

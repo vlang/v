@@ -17,6 +17,27 @@ fn test_referenced_map_fixed_array_values_retain_entry_storage() {
 	}
 }
 
+fn test_optional_map_value_through_reference_variable_stays_by_value() {
+	mut entries := {
+		'a': ?int(41)
+	}
+	mut ref := &entries
+	mut seen := false
+	for _, mut value in ref {
+		value = ?int(42)
+		if number := value {
+			assert number == 42
+			seen = true
+		}
+	}
+	assert seen
+	if number := entries['a'] {
+		assert number == 41
+	} else {
+		assert false
+	}
+}
+
 fn test_referenced_map_fixed_array_value_pointer_can_be_rebound() {
 	mut entries := {
 		'a': [1, 2]!
