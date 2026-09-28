@@ -297,7 +297,7 @@ fn (mut g FlatGen) gen_for_in(node flat.Node) {
 				container_str := g.expr_to_string(g.a.child(&node, 2))
 				storage_container_type := g.usable_expr_type(g.a.child(&node, 2))
 				container_storage_is_pointer := storage_container_type is types.Pointer
-				container_is_mut_param_storage := g.for_in_mutable_value_storage(container_id)
+				container_is_mutable_value_storage := g.for_in_mutable_value_storage(container_id)
 				mut clean_value_type := clean_container_type.value_type
 				for clean_value_type is types.Alias {
 					clean_value_type = clean_value_type.base_type
@@ -305,7 +305,7 @@ fn (mut g FlatGen) gen_for_in(node flat.Node) {
 				ref_container_keeps_value := clean_value_type is types.Pointer
 					|| clean_value_type is types.OptionType
 				map_value_by_ref := node.op == .amp
-					|| (container_storage_is_pointer && !container_is_mut_param_storage
+					|| (container_storage_is_pointer && !container_is_mutable_value_storage
 						&& !ref_container_keeps_value)
 				original_map_ref := if container_storage_is_pointer {
 					container_str
@@ -391,7 +391,7 @@ fn (mut g FlatGen) gen_for_in(node flat.Node) {
 				val_owner := g.tc.cur_scope.insert_with_owner(elem_binding_name, val_scope_type)
 				g.track_shadowed_global_local(elem_binding_name, val_owner)
 				g.declare_local_mutability(val_owner, node.op == .amp
-					&& !(container_storage_is_pointer && !container_is_mut_param_storage
+					&& !(container_storage_is_pointer && !container_is_mutable_value_storage
 						&& !ref_container_keeps_value))
 				if map_value_by_ref && !val_is_fixed_copy {
 					g.declare_local_indirect_value_type(val_owner, clean_container_type.value_type)
