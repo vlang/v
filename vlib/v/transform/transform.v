@@ -13497,7 +13497,7 @@ fn (mut t Transformer) transform_expr_for_type(id flat.NodeId, target_type strin
 	}
 	if int(id) >= 0 && target_type != '' {
 		node := t.a.nodes[int(id)]
-		if node.kind == .block && target_type.starts_with('!')
+		if target_type.starts_with('!')
 			&& t.return_expr_is_propagated_err(id, t.optional_base_type(t.qualify_optional_type(target_type))) {
 			error_value := t.transform_expr_for_type(id, 'IError')
 			return t.make_optional_none_with_err(t.qualify_optional_type(target_type), error_value)

@@ -149,6 +149,42 @@ fn test_match_tuple_value_block_error_with_interface_payload() {
 	}
 }
 
+fn test_match_tuple_direct_error_with_interface_payload() {
+	for flag in [true, false] {
+		_, item := match flag {
+			true { wrapped_any_pair() }
+			else { 2, error('boom') }
+		}
+		if _ := item {
+			assert flag
+		} else {
+			assert !flag
+			assert err.msg() == 'boom'
+		}
+	}
+}
+
+type ErrorOrText = IError | string
+
+fn wrapped_error_or_text_pair() (int, !ErrorOrText) {
+	return 1, ErrorOrText('ok')
+}
+
+fn test_match_tuple_direct_error_with_sum_payload() {
+	for flag in [true, false] {
+		_, item := match flag {
+			true { wrapped_error_or_text_pair() }
+			else { 2, error('boom') }
+		}
+		if _ := item {
+			assert flag
+		} else {
+			assert !flag
+			assert err.msg() == 'boom'
+		}
+	}
+}
+
 struct TupleConcreteError {
 	reason string
 }
