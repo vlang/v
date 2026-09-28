@@ -3120,7 +3120,7 @@ fn (mut t Transformer) clone_variant_subst_with_smartcast(id flat.NodeId, var_na
 		}
 	}
 	retargeted_call_type := if node.kind == .call && smartcast_name != '' {
-		t.retarget_cloned_generic_call(node, mut children, t.active_specialization_args)
+		t.retarget_cloned_generic_call(node, mut children, t.active_specialization_args, false)
 	} else {
 		''
 	}

@@ -67,3 +67,26 @@ fn test_generic_result_tuple_method_local_does_not_use_enclosing_return() {
 	assert a == 'okay'
 	assert b == 'okay'
 }
+
+interface Named {
+	name() string
+}
+
+struct NamedItem {
+	label string
+}
+
+fn (item NamedItem) name() string {
+	return item.label
+}
+
+fn widened_tuple_receiver[T](item T) !Named {
+	m := &Matrix[T]{ data: [item] }
+	q, _ := split(m)!
+	return q.get()
+}
+
+fn test_generic_result_tuple_receiver_keeps_type_for_interface_return() {
+	result := widened_tuple_receiver(NamedItem{ label: 'kept' })!
+	assert result.name() == 'kept'
+}

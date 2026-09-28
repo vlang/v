@@ -10992,6 +10992,23 @@ fn (mut t Transformer) retarget_cloned_generic_call(node flat.Node, mut children
 			inference_param_type := generic_inference_param_type(child)
 			arg_node := t.a.nodes[int(arg_id)]
 			mut raw_arg_type := t.generic_call_arg_type_for_inference(arg_id)
+			if is_receiver && param_idx == 0 && raw_arg_type.starts_with('(')
+				&& raw_arg_type.ends_with(')') {
+				// A destructured Result tuple may leave each receiver local with the
+				// whole tuple type. When every slot has the same concrete type, that
+				// type is still an exact receiver binding for any of its locals.
+				parts := split_generic_args(raw_arg_type[1..raw_arg_type.len - 1])
+				mut all_same := parts.len > 1
+				for part in parts[1..] {
+					if part != parts[0] {
+						all_same = false
+						break
+					}
+				}
+				if all_same && !t.generic_arg_is_unresolved(parts[0]) {
+					raw_arg_type = parts[0]
+				}
+			}
 			value_arg_id := if arg_node.kind == .prefix && arg_node.op == .amp
 				&& arg_node.children_count > 0 {
 				t.a.child(&arg_node, 0)
@@ -11042,7 +11059,8 @@ fn (mut t Transformer) retarget_cloned_generic_call(node flat.Node, mut children
 					declared_return = declared_return[1..].trim_space()
 				}
 				// An enclosing tuple result cannot infer a scalar method's receiver.
-				// A scalar contextual result can still recover a missing receiver bind.
+				// A scalar contextual result may infer method-level parameters, but a
+				// receiver parameter must come from the actual receiver type.
 				if !expected_return.starts_with('(') || declared_return.starts_with('(') {
 					inference_return := if decl.node.typ.trim_space().starts_with('!') {
 						'!' + expected_return
@@ -11051,8 +11069,13 @@ fn (mut t Transformer) retarget_cloned_generic_call(node flat.Node, mut children
 					} else {
 						expected_return
 					}
+					receiver_params := if is_receiver {
+						t.generic_receiver_param_names(decl)
+					} else {
+						[]string{}
+					}
 					t.infer_generic_return_type_args(decl, inference_return, mut return_inferred,
-						[]string{})
+						receiver_params)
 				}
 				for name, inferred_type in return_inferred {
 					if name !in inferred {
