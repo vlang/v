@@ -8967,7 +8967,7 @@ fn (tc &TypeChecker) lookup_c_struct_receiver_method(receiver Type, method strin
 
 fn (tc &TypeChecker) lookup_c_struct_receiver_method_for_type(receiver Type, method string, original_receiver Type) (string, bool) {
 	unwrapped := unwrap_all_pointers(receiver)
-	clean := unalias_type(unwrapped)
+	clean := unalias_and_unwrap_pointer_type(unwrapped)
 	if clean !is Struct {
 		return '', false
 	}

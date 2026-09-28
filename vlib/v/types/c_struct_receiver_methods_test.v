@@ -110,6 +110,25 @@ fn test_c_backed_alias_inherits_nearest_alias_method() {
 	assert tc.c_struct_receiver_method_name(outer, 'read') or { '' } == 'C.Counter.read'
 }
 
+fn test_c_pointer_alias_inherits_methods_without_losing_pointer_eligibility() {
+	mut tc := TypeChecker.new(&flat.FlatAst{})
+	base := Type(Struct{ name: 'C.Counter' })
+	pointer := Type(Pointer{ base_type: base })
+	inner := Type(Alias{ name: 'CounterRef', base_type: pointer })
+	outer := Type(Alias{ name: 'OuterRef', base_type: inner })
+	tc.fn_ret_types['C.Counter.read'] = Type(int_)
+	assert tc.c_struct_receiver_method_name(outer, 'read') or { '' } == 'C.Counter.read'
+	tc.fn_ret_types['CounterRef.read'] = Type(int_)
+	assert tc.c_struct_receiver_method_name(outer, 'read') or { '' } == 'CounterRef.read'
+	tc.fn_ret_types['OuterRef.read'] = Type(int_)
+	assert tc.c_struct_receiver_method_name(outer, 'read') or { '' } == 'OuterRef.read'
+	tc.fn_ret_types['C.Counter.hex'] = Type(string_)
+	tc.fn_param_types['C.Counter.hex'] = [base]
+	assert tc.c_struct_receiver_method_name(outer, 'hex') == none
+	tc.fn_param_types['C.Counter.hex'] = [pointer]
+	assert tc.c_struct_receiver_method_name(outer, 'hex') or { '' } == 'C.Counter.hex'
+}
+
 fn test_c_receiver_method_lookup_keeps_module_visibility_and_ambiguity_checks() {
 	root := os.join_path(os.vtmp_dir(), 'v3_c_receiver_methods_${os.getpid()}')
 	os.mkdir_all(os.join_path(root, 'left'))!

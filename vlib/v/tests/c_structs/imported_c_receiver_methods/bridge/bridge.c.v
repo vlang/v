@@ -62,6 +62,11 @@ pub fn (c &C.Counter) same_address(other &C.Counter) bool {
 	return voidptr(c) == voidptr(other)
 }
 
+// same_generic_address checks that generic reference receivers retain their storage.
+pub fn (c &C.Counter) same_generic_address[T](other &C.Counter, marker T) bool {
+	return voidptr(c) == voidptr(other)
+}
+
 pub struct C.CountingIterator {
 mut:
 	current int

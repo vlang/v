@@ -8,7 +8,48 @@ type MiddleCounter = InheritedCounter
 
 type OuterCounter = MiddleCounter
 
+type CounterRef = &C.Counter
+
+type MiddleCounterRef = CounterRef
+
+type OuterCounterRef = MiddleCounterRef
+
+type AliasedCounterRef = &bridge.Counter
+
+type PointerCounterRef = &C.PointerCounter
+
 fn (c MiddleCounter) read() int { return c.value + 400 }
+
+fn (c MiddleCounterRef) read() int { return c.value + 500 }
+
+fn (c MiddleCounterRef) convert[T](marker T) int { return c.value + 600 }
+
+fn test_pointer_aliases_keep_imported_and_nearest_alias_methods() {
+	value := bridge.make_holder().value
+	pointer := CounterRef(&value)
+	assert pointer.read() == 17
+	assert pointer.@union(2) == 19
+	assert pointer.convert[int](1) == 17
+	assert pointer.same_address(&value)
+	assert pointer.same_generic_address[int](&value, 1)
+	outer := OuterCounterRef(pointer)
+	assert outer.read() == 517
+	assert outer.convert[int](1) == 617
+	alias_value := bridge.Counter(value)
+	alias_pointer := AliasedCounterRef(&alias_value)
+	assert alias_pointer.read() == 117
+	assert alias_pointer.convert[int](1) == 217
+	// These borrowed receivers stay live until the callbacks finish.
+	unsafe {
+		read := pointer.read
+		nearest := outer.read
+		assert read() == 17
+		assert nearest() == 517
+	}
+	pointer_value := bridge.make_pointer_counter()
+	hex_pointer := PointerCounterRef(&pointer_value)
+	assert hex_pointer.hex() == 'pointer counter'
+}
 
 fn test_methods_on_c_struct_fields_and_local_copies() {
 	h := bridge.make_holder()

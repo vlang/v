@@ -12421,14 +12421,14 @@ fn (mut g FlatGen) gen_expr_with_expected_type(id flat.NodeId, expected_type typ
 			return
 		}
 	}
-	mut pointer_actual := actual
-	if node.kind == .call && actual !is types.Pointer {
-		declared := g.declared_call_return_type(id)
+	mut pointer_actual := semantic_actual
+	if node.kind == .call && pointer_actual !is types.Pointer {
+		declared := cgen_unalias_type(g.declared_call_return_type(id))
 		if declared is types.Pointer {
 			pointer_actual = declared
 		}
 	}
-	if !expected_is_shared_alias && expected !is types.Pointer && expected !is types.Void && expected !is types.OptionType && expected !is types.ResultType && pointer_actual is types.Pointer && (g.type_names_match(pointer_actual.base_type, expected) || g.type_names_match(pointer_actual.base_type, semantic_expected) || g.value_c_type(pointer_actual.base_type) == g.value_c_type(semantic_expected)) && !(node.kind == .ident && g.local_storage_is_shared(node.value)) && !(node.kind == .char_literal && node.value.starts_with('c:')) {
+	if !expected_is_shared_alias && semantic_expected !is types.Pointer && semantic_expected !is types.Void && semantic_expected !is types.OptionType && semantic_expected !is types.ResultType && pointer_actual is types.Pointer && (g.type_names_match(pointer_actual.base_type, expected) || g.type_names_match(pointer_actual.base_type, semantic_expected) || g.value_c_type(pointer_actual.base_type) == g.value_c_type(semantic_expected)) && !(node.kind == .ident && g.local_storage_is_shared(node.value)) && !(node.kind == .char_literal && node.value.starts_with('c:')) {
 		needs_paren := node.kind !in [.ident, .selector, .call, .index]
 		g.write('*')
 		if needs_paren {

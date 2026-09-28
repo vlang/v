@@ -19,7 +19,8 @@ do not make pointer calls ambiguous, including generic calls and method callback
 Escaped method names such as `value.@union()` also work across imports, including generic
 methods. Multiple visible public extensions with the same method name remain ambiguous.
 Methods on V aliases take precedence over methods on their underlying C struct, including
-methods inherited through a chain of aliases.
+methods inherited through a chain of aliases. Aliases of pointers to C structs retain the same
+lookup rules and pointer-receiver restrictions.
 
 Visible receiver methods can also be bound as callbacks, for example `cb := value.read`.
 Callbacks retain the same alias precedence and visibility rules as direct calls. Ambiguous
