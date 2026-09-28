@@ -61,6 +61,12 @@ fn test_fmt_preferences_respect_vflags() {
 			assert !res.output.contains("x := c'abc'"), '${backend_flag} ${backend}: ${res.output}'
 		}
 	}
+	for backend in ['native', 'go', 'arm64', 'eval'] {
+		os.unsetenv('VFLAGS')
+		res := os.execute('${os.quoted_path(vexe)} -b ${backend} fmt ${os.quoted_path(source_path)}')
+		assert res.exit_code == 0, '${backend}: ${res.output}'
+		assert res.output.contains("x := c'abc'"), '${backend}: ${res.output}'
+	}
 
 	for backend_flag in ['-b', '-backend'] {
 		os.setenv('VFLAGS', '${backend_flag} jss', true)
@@ -73,6 +79,285 @@ fn test_fmt_preferences_respect_vflags() {
 			os.execute('${os.quoted_path(vexe)} fmt ${backend_flag} jss ${os.quoted_path(source_path)}')
 		assert cli_res.exit_code != 0, '${backend_flag} jss: ${cli_res.output}'
 		assert cli_res.output.contains('Unknown V backend: jss'), cli_res.output
+	}
+}
+
+fn test_fmt_joined_backend_options() {
+	source_path := os.join_path(vfmt_test_tdir, 'joined_backend.v')
+	os.write_file(source_path, "fn main() { x := 'abc'.str }\n")!
+	old_vflags := os.getenv('VFLAGS')
+	defer {
+		if old_vflags == '' {
+			os.unsetenv('VFLAGS')
+		} else {
+			os.setenv('VFLAGS', old_vflags, true)
+		}
+	}
+	for flag in ['-b', '-backend'] {
+		for backend in ['js', 'js_browser', 'wasm', 'arm64', 'eval'] {
+			option := '${flag}=${backend}'
+			for placement in ['prefix', 'suffix', 'environment'] {
+				os.unsetenv('VFLAGS')
+				args := match placement {
+					'prefix' { '${option} fmt' }
+					'suffix' { 'fmt ${option}' }
+					else {
+						os.setenv('VFLAGS', option, true)
+						'fmt'
+					}
+				}
+				res := os.execute('${os.quoted_path(vexe)} ${args} ${os.quoted_path(source_path)}')
+				assert res.exit_code == 0, '${placement} ${option}: ${res.output}'
+				expected := if backend.starts_with('js') { "x := 'abc'.str" } else { "x := c'abc'" }
+				assert res.output.contains(expected), '${placement} ${option}: ${res.output}'
+			}
+		}
+		os.unsetenv('VFLAGS')
+		invalid := os.execute('${os.quoted_path(vexe)} ${flag}=jss fmt ${os.quoted_path(source_path)}')
+		assert invalid.exit_code != 0, invalid.output
+		assert invalid.output.contains('Unknown V backend: jss'), invalid.output
+	}
+}
+
+fn test_fmt_accepts_semantic_duplicate_operator_and_recursive_alias() {
+	for source in [
+		'struct Number {}\nfn (n Number) + (other Number) Number { return n }\nfn (n Number) + (other Number) Number { return n }\n',
+		'type Node = Node\n',
+		'type Maybe = int | none\n',
+		'interface T {}\n',
+		'type Callback = fn (Callback)\n',
+		'@[deprecated; deprecated] fn old() {}\n',
+		'fn run(Value int) {}\n',
+		'fn main() { $if myflag { println(1) } }\n',
+		'fn main() { defer { defer {} } }\n',
+		'fn main() { defer { return } }\n',
+		'fn f() ! { defer { f()! } }\n',
+		'fn f() ?int { defer { f()? }; return 1 }\n',
+		'fn main() { println($res()) }\n',
+		'struct Number {}\nfn (n Number) += (other Number) Number { return n }\n',
+		'fn handle(int) {}\n',
+		'fn main() { a := []int{init: 1}; _ = a }\n',
+		'fn main() { select { else {} else {} } }\n',
+		'fn main() { unsafe { unsafe { println(1) } } }\n',
+	] {
+		path := os.join_path(vfmt_test_tdir, 'semantic_editing_buffer.v')
+		os.write_file(path, source)!
+		res := os.execute('${os.quoted_path(vexe)} fmt ${os.quoted_path(path)}')
+		assert res.exit_code == 0, res.output
+	}
+}
+
+fn test_fmt_preserves_assembly_compatibility() {
+	for options in ['', '-b=wasm', '-b=arm64', '-b=eval'] {
+		for assembly in ['asm arm64 intel { nop }', 'asm amd64 raw { "nop" }', 'asm goto arm64 { nop }'] {
+			source := 'fn main() { ${assembly} }\n'
+			res, formatted := run_vfmt_write('assembly_compatibility', source, options)
+			assert res.exit_code == 0, res.output
+			assert formatted.contains(assembly), formatted
+			second, twice := run_vfmt_write('assembly_compatibility_twice', formatted, options)
+			assert second.exit_code == 0, second.output
+			assert twice == formatted
+		}
+	}
+}
+
+fn test_fmt_preserves_match_conditions() {
+	source := 'fn f(value int) { if match value { 0 { true } else { false } } { println(value) } }\n'
+	res, formatted := run_vfmt_write('match_condition', source, '')
+	assert res.exit_code == 0, res.output
+	assert formatted.contains('if match value {')
+	assert formatted.contains('true') && formatted.contains('false')
+	assert formatted.contains('println(value)')
+	second, twice := run_vfmt_write('match_condition_twice', formatted, '')
+	assert second.exit_code == 0, second.output
+	assert twice == formatted
+}
+
+fn test_fmt_preserves_index_propagation() {
+	for source in [
+		'fn f(values []?int) ?int { return values[0]? }\n',
+		'fn f(values map[string]?int) ?int { return values["key"]? }\n',
+	] {
+		res, formatted := run_vfmt_write('index_propagation', source, '')
+		assert res.exit_code == 0, res.output
+		assert formatted.contains(']?'), formatted
+		second, twice := run_vfmt_write('index_propagation_twice', formatted, '')
+		assert second.exit_code == 0, second.output
+		assert twice == formatted
+	}
+}
+
+fn test_fmt_preserves_multiple_attribute_groups() {
+	for source, expected in {
+		'@[inline] @[deprecated] fn f() {}\n':                        [
+			'@[deprecated; inline]',
+			'fn f() {}',
+		]
+		'@[inline]\n@[deprecated]\nfn f() {}\n':                      [
+			'@[deprecated; inline]',
+			'fn f() {}',
+		]
+		"struct Holder { value int @[required] @[json: 'value'] }\n": ['required', "json: 'value'",
+			'value int']
+	} {
+		res, formatted := run_vfmt_write('multiple_attribute_groups', source, '')
+		assert res.exit_code == 0, res.output
+		for part in expected {
+			assert formatted.contains(part), formatted
+		}
+		second, formatted_twice := run_vfmt_write('multiple_attribute_groups_twice', formatted, '')
+		assert second.exit_code == 0, second.output
+		assert formatted_twice == formatted
+	}
+	invalid := '@[inline]\n@[deprecated: ]\nfn f() {}\n'
+	res, unchanged := run_vfmt_write('invalid_attribute_group', invalid, '')
+	assert res.exit_code != 0, res.output
+	assert unchanged == invalid
+}
+
+fn test_fmt_preserves_duplicate_deprecated_message_arguments() {
+	source := "@[deprecated(msg: 'old', msg: 'new')] fn old() {}\n"
+	res, formatted := run_vfmt_write('duplicate_deprecated_messages', source, '')
+	assert res.exit_code == 0, res.output
+	assert formatted.contains("@[deprecated(msg: 'old', msg: 'new')]")
+	second, formatted_twice := run_vfmt_write('duplicate_deprecated_messages_twice', formatted, '')
+	assert second.exit_code == 0, second.output
+	assert formatted_twice == formatted
+}
+
+fn test_fmt_preserves_signature_and_comptime_semantic_errors() {
+	for source, expected in {
+		'fn f() { match sql { else {} } }\n':         'match sql'
+		'fn f(sql int) {}\n':                         'fn f(sql int)'
+		'fn f(value, sql int) {}\n':                  'fn f(value int, sql int)'
+		'fn f[T](value T) [T] { return value }\n':    'fn f[T](value T) [T]'
+		'fn f(xs ...int, y int) {}\n':                'fn f(xs ...int, y int)'
+		'fn f[T]() { $for field in T.unknown {} }\n': '$for field in T.unknown'
+	} {
+		res, formatted := run_vfmt_write('semantic_signature', source, '')
+		assert res.exit_code == 0, res.output
+		assert formatted.contains(expected), formatted
+		second, formatted_twice := run_vfmt_write('semantic_signature_twice', formatted, '')
+		assert second.exit_code == 0, second.output
+		assert formatted_twice == formatted
+	}
+	for suffix, prefix in {
+		'c':  'JS'
+		'js': 'C'
+	} {
+		res, formatted := run_vfmt_write('interop_placement.${suffix}', 'fn ${prefix}.alert()\n', '')
+		assert res.exit_code == 0, res.output
+		assert formatted.contains('fn ${prefix}.alert()'), formatted
+		second, formatted_twice := run_vfmt_write('interop_placement_twice.${suffix}', formatted, '')
+		assert second.exit_code == 0, second.output
+		assert formatted_twice == formatted
+	}
+}
+
+fn test_fmt_preserves_deep_assignment_expressions() {
+	mut expression := '1'
+	for _ in 0 .. 101 {
+		expression = '1 + (${expression})'
+	}
+	source := 'fn main() { value := ${expression}; _ = value }\n'
+	res, formatted := run_vfmt_write('deep_assignment', source, '')
+	assert res.exit_code == 0, res.output
+	assert formatted.contains('value := ${expression}'), formatted
+	second, twice := run_vfmt_write('deep_assignment_twice', formatted, '')
+	assert second.exit_code == 0, second.output
+	assert twice == formatted
+}
+
+fn test_fmt_preserves_bare_channel_types() {
+	for source, expected in {
+		'fn f(ch chan) {}\n':                   'fn f(ch chan)'
+		'fn main() { ch := chan{}; _ = ch }\n': 'ch := chan{}'
+		'struct Holder { ch chan }\n':          'ch chan'
+		'fn f() chan { return chan{} }\n':      'fn f() chan'
+	} {
+		res, formatted := run_vfmt_write('bare_channel', source, '')
+		assert res.exit_code == 0, res.output
+		assert formatted.contains(expected), formatted
+		second, twice := run_vfmt_write('bare_channel_twice', formatted, '')
+		assert second.exit_code == 0, second.output
+		assert twice == formatted
+	}
+}
+
+fn test_fmt_preserves_interop_qualifiers_on_receiver_declarations() {
+	for prefix, suffix in {
+		'C':  'c'
+		'JS': 'js'
+	} {
+		for method in ['foo', '@select', 'nested.foo'] {
+			for body in ['', ' {}'] {
+				signature := 'fn (value Example) ${prefix}.${method}()${body}'
+				source := 'struct Example {}\n\n${signature}\n'
+				res, formatted := run_vfmt_write('interop_receiver.${suffix}', source, '')
+				assert res.exit_code == 0, res.output
+				assert formatted.contains(signature), formatted
+				second, formatted_twice := run_vfmt_write('interop_receiver_twice.${suffix}', formatted, '')
+				assert second.exit_code == 0, second.output
+				assert formatted_twice == formatted
+			}
+		}
+	}
+}
+
+fn test_fmt_preserves_qualified_receiver_and_inclusive_range_syntax() {
+	for source, expected in {
+		'struct Example {}\nfn (value Example) Foo.bar() {}':  'fn (value Example) Foo.bar() {}'
+		'struct Example {}\nfn (value Example) Foo.@select()': 'fn (value Example) Foo.@select()'
+		'fn main() { for i in 0 ... 3 { println(i) } }':       'for i in 0 ... 3'
+	} {
+		res, formatted := run_vfmt_write('qualified_method_range', source + '\n', '')
+		assert res.exit_code == 0, res.output
+		assert formatted.contains(expected), formatted
+		second, twice := run_vfmt_write('qualified_method_range_twice', formatted, '')
+		assert second.exit_code == 0, second.output
+		assert twice == formatted
+	}
+}
+
+fn test_fmt_preserves_semantic_signature_and_collection_restrictions() {
+	for source, expected in {
+		'fn f(value array) {}':                               'value array'
+		'fn f(value map) {}':                                 'value map'
+		'fn main() { _ := [2]map{} }':                        '[2]map{}'
+		'fn main() { asm amd64 raw raw { nop } }':            'asm amd64 raw raw { nop }'
+		'fn main() { asm amd64 intel intel { nop } }':        'asm amd64 intel intel { nop }'
+		'fn main() { asm amd64 { lock nop } }':               'asm amd64 { lock nop }'
+		'struct Holder { value mut int }':                    'value mut int'
+		'fn f() mut int { return 1 }':                        'fn f() mut int'
+		'__global int int':                                   '__global int int'
+		'fn main() { mut _ := 1 }':                           'mut _ := 1'
+		'fn main() { shared _ := 1 }':                        'shared _ := 1'
+		'fn main() { atomic _ := 1 }':                        'atomic _ := 1'
+		'fn main() { mut x := 1; x = 2 @[freed; other] }':    '@[freed; other]'
+		'fn main() { mut x := 1; x = 2 @[freed: 1] }':        '@[freed: 1]'
+		'fn main() { println($res()) }':                      'println($res())'
+		'struct Holder { values &[]int }':                    'values &[]int'
+		'fn + (a int, b int) int { return a + b }':           'fn +('
+		"@[export: 'f'] fn f[T](value T) {}":                 "@[export: 'f']"
+		"@[export: 'f'] fn C.f()":                            'fn C.f()'
+		'fn C.foo() { println(1) }':                          'fn C.foo() { println(1) }'
+		'fn JS.foo() { println(1) }':                         'fn JS.foo() { println(1) }'
+		'fn f(mut values ...int) {}':                         'mut values ...int'
+		'fn f(shared values ...int) {}':                      'shared values ...int'
+		'fn f(atomic values ...int) {}':                      'atomic values ...int'
+		'type Callback = fn (mut ...int)':                    'fn (mut ...int)'
+		'fn main() { values := []!int{}; _ = values }':       '[]!int{}'
+		'fn main() { values := [2]!int{}; _ = values }':      '[2]!int{}'
+		'fn main() { values := [..]!int[1, 2]; _ = values }': '[..]!int[1, 2]'
+		'fn main() { values := chan !int{}; _ = values }':    'chan !int{}'
+		'fn main() { values := [2]int{len: 2}; _ = values }': '[2]int{len: 2}'
+	} {
+		res, formatted := run_vfmt_write('semantic_types', source + '\n', '')
+		assert res.exit_code == 0, res.output
+		assert formatted.contains(expected), formatted
+		second, formatted_twice := run_vfmt_write('semantic_types_twice', formatted, '')
+		assert second.exit_code == 0, second.output
+		assert formatted_twice == formatted
 	}
 }
 
@@ -1710,7 +1995,7 @@ fn test_fmt_demangles_function_local_aggregate_types_with_v3() {
 		value: 2
 	}
 	wrapper := Wrapper{
-		Tick: first
+		Tick:    first
 		numbers: {
 			'one': Number{
 				integer: 1
@@ -1729,4 +2014,26 @@ fn test_fmt_demangles_function_local_aggregate_types_with_v3() {
 	second_res, formatted_twice := run_vfmt_write('function_local_aggregate_types_twice', formatted, '')
 	assert second_res.exit_code == 0, second_res.output
 	assert formatted_twice == formatted
+}
+
+fn test_fmt_preserves_contextual_range_embed_and_position_restrictions() {
+	for source, expected in {
+		'fn main() { value := [2]field.typ{} }':                  '[2]field.typ{}'
+		'fn f[T]() { if T is int { println(1) } }':               'if T is int'
+		'struct Example { value field.typ }':                     'value field.typ'
+		'struct Example { value pkg.typ }':                       'value pkg.typ'
+		'fn f(a, mut b int) {}':                                  'fn f(a int, mut b int)'
+		'fn f(a, mut b &int) {}':                                 'fn f(a &int, mut b &int)'
+		'fn main() { for i := 0; i < 3; j := 1 { println(j) } }': 'j := 1'
+		'fn main() {}\n#!/usr/bin/env -S v run':                  '#!/usr/bin/env -S v run'
+		'fn f(x int) { match x { 0 .. 3 {} else {} } }':          '0 .. 3'
+		'struct Holder { pkg.lower }':                            'pkg.lower'
+	} {
+		res, formatted := run_vfmt_write('match_range_embed', source + '\n', '')
+		assert res.exit_code == 0, res.output
+		assert formatted.contains(expected), formatted
+		second, twice := run_vfmt_write('match_range_embed_twice', formatted, '')
+		assert second.exit_code == 0, second.output
+		assert twice == formatted
+	}
 }

@@ -3211,7 +3211,8 @@ fn (mut g Gen) for_in_stmt(id flat.NodeId) {
 	g.write(' in ')
 	g.expr(children[2])
 	if body_start == 4 {
-		g.write(' .. ')
+		range_op := g.a.formatter_sources[int(id)] or { '..' }
+		g.write(' ${range_op} ')
 		g.expr(children[3])
 	}
 	g.suppress_trailing_comments--
@@ -4073,13 +4074,19 @@ fn (mut g Gen) fn_decl(id flat.NodeId) {
 		g.write(' ')
 		g.write(receiver_type)
 		g.write(') ')
-		method_name := name.all_after_last('.')
+		method_name := g.a.formatter_sources[int(id)] or {
+			if name.starts_with('C:') || name.starts_with('JS:') {
+				name.replace(':', '.')
+			} else {
+				name.all_after_last('.')
+			}
+		}
 		g.write(method_name)
 		if method_name in ['+', '-', '*', '/', '%', '**', '==', '!=', '<', '<=', '>', '>=', '|',
 			'^', '[]', '[]='] {
 			g.write(' ')
 		}
-	} else if n.kind == .c_fn_decl {
+	} else if n.kind == .c_fn_decl || name.starts_with('C:') || name.starts_with('JS:') {
 		if name.starts_with('JS:') {
 			g.write('JS.${name[3..]}')
 		} else if name.starts_with('C:') {

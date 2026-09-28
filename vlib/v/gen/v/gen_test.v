@@ -79,6 +79,31 @@ pub fn (mut p Point) inc(dx int) int {
 '
 }
 
+fn test_formatter_preserves_contextually_invalid_method_and_range_syntax() {
+	for source in [
+		'struct Example {}\n\nfn (value Example) Foo.bar() {}\n',
+		'struct Example {}\n\nfn (value Example) Foo.@select()\n',
+		'fn main() {\n\tfor i in 0 ... 3 { println(i) }\n}\n',
+	] {
+		formatted := vfmt('contextual_method_range', source)
+		assert formatted == source, formatted
+		assert vfmt('contextual_method_range_twice', formatted) == formatted
+	}
+}
+
+fn test_formatter_preserves_interop_receiver_qualifiers() {
+	for source in [
+		'struct Native {}\n\nfn (value Native) C.foo() {}\n',
+		'struct Native {}\n\nfn (value &Native) JS.nested.foo() {}\n',
+		'struct C.Native {}\n\nfn (value C.Native) foo() {}\n',
+		'struct C.Native {}\n\nfn (value C.Native) C.foo()\n',
+	] {
+		formatted := vfmt('interop_receiver', source)
+		assert formatted == source, formatted
+		assert vfmt('interop_receiver_twice', formatted) == formatted
+	}
+}
+
 fn test_formatter_preserves_operator_method_spacing() {
 	source := 'struct Number {\n\tvalue int\n}\n\nfn (a Number) + (b Number) Number {\n\treturn Number{a.value + b.value}\n}\n\nfn (a Number) == (b Number) bool {\n\treturn a.value == b.value\n}\n\nfn (a Number) < (b Number) bool {\n\treturn a.value < b.value\n}\n\nfn (a Number) [] (index int) int {\n\treturn a.value + index\n}\n'
 	out := vfmt('operator_method_spacing', source)
