@@ -783,3 +783,60 @@ fn test_cross_os_target_include_is_guarded_for_the_c_compiler() {
 		'#if ${condition}\n#include <target_only.h>\n#endif',
 	], 'unexpected directives: ${directives}'
 }
+
+fn test_cocoa_declarations_scan_forced_inputs_before_source() {
+	root := os.join_path(os.vtmp_dir(), 'v3_cocoa_forced_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+	header := os.join_path(root, 'ui.h')
+	macros := os.join_path(root, 'defs.h')
+	os.write_file(header, '#if USE_COCOA\n#import <Cocoa/Cocoa.h>\n#endif\n')!
+	os.write_file(macros, '#define USE_COCOA 1\n')!
+	mut ast := &flat.FlatAst{}
+	mut tc := types.TypeChecker.new(ast)
+	mut g := FlatGen.new()
+	g.a = ast
+	g.tc = &tc
+	g.target = pref.target_from('macos', 'arm64') or { panic(err) }
+	g.register_struct_decl_info('C.NSFont', 'C.NSFont', 'uiold', 'ui.c.v', flat.Node{})
+	g.preinclude_directives = ['#undef USE_COCOA', '#define USE_COCOA 0']
+	for flags in [
+		['-DUSE_COCOA=1', '-include', header],
+		['-DUSE_COCOA=1', '-include=${header}'],
+		['-DUSE_COCOA=1', '-I', root, '-include', 'ui.h'],
+		['-include', header, '-imacros', macros],
+	] {
+		g.c_flags = flags
+		assert !g.header_c_struct_needs_compat_typedef('C.NSFont')
+	}
+	g.c_flags = ['-DUSE_COCOA=1', '-imacros', header]
+	assert g.header_c_struct_needs_compat_typedef('C.NSFont')
+}
+
+fn test_cocoa_declarations_preserve_once_only_header_state() {
+	root := os.join_path(os.vtmp_dir(), 'v3_cocoa_once_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+	header := os.join_path(root, 'ui.h')
+	mut ast := &flat.FlatAst{}
+	mut tc := types.TypeChecker.new(ast)
+	mut g := FlatGen.new()
+	g.a = ast
+	g.tc = &tc
+	g.target = pref.target_from('macos', 'arm64') or { panic(err) }
+	g.register_struct_decl_info('C.NSFont', 'C.NSFont', 'uiold', 'ui.c.v', flat.Node{})
+	for pragma in ['', '#pragma once\n'] {
+		os.write_file(header, pragma + '#if USE_COCOA\n#import <Cocoa/Cocoa.h>\n#endif\n')!
+		for first in ['include', 'import'] {
+			for second in ['include', 'import'] {
+				g.preinclude_directives = ['#define USE_COCOA 0', '#${first} "${header}"',
+					'#undef USE_COCOA', '#define USE_COCOA 1', '#${second} "${header}"']
+				needs_typedef := pragma.len > 0 || first == 'import' || second == 'import'
+				assert g.header_c_struct_needs_compat_typedef('C.NSFont') == needs_typedef
+			}
+		}
+		g.preinclude_directives = ['#define USE_COCOA 1', '#if FEATURE', '#include "${header}"',
+			'#else', '#include "${header}"', '#endif']
+		assert !g.header_c_struct_needs_compat_typedef('C.NSFont')
+	}
+}

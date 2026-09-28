@@ -2327,17 +2327,26 @@ fn cache_c_flag_input_files_with_status(flags []string, compiler_macros map[stri
 	return files, has_untracked_include, include_macros, dynamic_include_macros, resolution_dirs, missing_resolution_paths
 }
 
+struct CForcedIncludeInput {
+	path        string
+	macros_only bool
+}
+
 fn c_forced_include_inputs(flags []string) []string {
-	mut imacros_inputs := []string{}
-	mut include_inputs := []string{}
+	return c_forced_include_entries(flags).map(it.path)
+}
+
+fn c_forced_include_entries(flags []string) []CForcedIncludeInput {
+	mut imacros_inputs := []CForcedIncludeInput{}
+	mut include_inputs := []CForcedIncludeInput{}
 	mut expected_kind := ''
 	for flag in flags {
 		token := flag.trim_space()
 		if expected_kind.len > 0 {
 			if expected_kind == 'imacros' {
-				imacros_inputs << token.trim('"\'')
+				imacros_inputs << CForcedIncludeInput{ path: token.trim('"\''), macros_only: true }
 			} else {
-				include_inputs << token.trim('"\'')
+				include_inputs << CForcedIncludeInput{ path: token.trim('"\'') }
 			}
 			expected_kind = ''
 			continue
@@ -2351,9 +2360,9 @@ fn c_forced_include_inputs(flags []string) []string {
 			continue
 		}
 		if token.starts_with('-imacros=') && token.len > '-imacros='.len {
-			imacros_inputs << token['-imacros='.len..].trim('"\'')
+			imacros_inputs << CForcedIncludeInput{ path: token['-imacros='.len..].trim('"\''), macros_only: true }
 		} else if token.starts_with('-include=') && token.len > '-include='.len {
-			include_inputs << token['-include='.len..].trim('"\'')
+			include_inputs << CForcedIncludeInput{ path: token['-include='.len..].trim('"\'') }
 		}
 	}
 	// GCC and Clang process all `-imacros` files before all `-include` files,
@@ -6072,13 +6081,34 @@ struct CHeaderScanLine {
 	text        string
 	source_file string
 	ancestors   []string
+	macros_only bool
 }
 
 struct CHeaderCocoaCondition {
-	before bool
+	before          bool
+	before_once     map[string]bool
+	before_included map[string]bool
 mut:
-	all_branches bool = true
-	saw_branch   bool
+	all_branches    bool = true
+	saw_branch      bool
+	common_once     map[string]bool
+	common_included map[string]bool
+}
+
+fn (mut condition CHeaderCocoaCondition) merge_branch(cocoa_provided bool, once_paths map[string]bool, included_paths map[string]bool) {
+	condition.all_branches = condition.all_branches && cocoa_provided
+	if condition.saw_branch {
+		for path in condition.common_once.keys() {
+			if path !in once_paths { condition.common_once.delete(path) }
+		}
+		for path in condition.common_included.keys() {
+			if path !in included_paths { condition.common_included.delete(path) }
+		}
+	} else {
+		condition.common_once = once_paths.clone()
+		condition.common_included = included_paths.clone()
+	}
+	condition.saw_branch = true
 }
 
 fn c_header_conditions_possibly_active(known []bool, active []bool) bool {
@@ -6176,8 +6206,15 @@ fn c_header_text_objective_c_scan_for_target(text string, flags []string, c99_mo
 	mut in_block_comment := false
 	mut cocoa_provided := false
 	mut cocoa_conditions := []CHeaderCocoaCondition{}
+	mut once_paths := map[string]bool{}
+	mut included_paths := map[string]bool{}
 	include_dirs := c_flag_include_dirs(flags)
 	mut lines := []CHeaderScanLine{}
+	if cocoa_include_only {
+		for input in c_forced_include_entries(flags) {
+			lines << CHeaderScanLine{ text: '#include "${input.path}"', source_file: source_file, macros_only: input.macros_only }
+		}
+	}
 	for line in c_join_continued_lines(text) {
 		lines << CHeaderScanLine{ text: line, source_file: source_file }
 	}
@@ -6192,21 +6229,25 @@ fn c_header_text_objective_c_scan_for_target(text string, flags []string, c99_mo
 		mut directive_macro_name := ''
 		if cocoa_include_only {
 			if name in ['if', 'ifdef', 'ifndef'] {
-				cocoa_conditions << CHeaderCocoaCondition{ before: cocoa_provided }
+				cocoa_conditions << CHeaderCocoaCondition{ before: cocoa_provided, before_once: once_paths.clone(), before_included: included_paths.clone() }
 			} else if name in ['elif', 'else', 'endif'] && cocoa_conditions.len > 0 {
 				last := cocoa_conditions.len - 1
 				if c_header_conditions_possibly_active(condition_known, condition_active) {
-					cocoa_conditions[last].all_branches = cocoa_conditions[last].all_branches && cocoa_provided
-					cocoa_conditions[last].saw_branch = true
+					cocoa_conditions[last].merge_branch(cocoa_provided, once_paths, included_paths)
 				}
 				cocoa_provided = cocoa_conditions[last].before
+				once_paths = cocoa_conditions[last].before_once.clone()
+				included_paths = cocoa_conditions[last].before_included.clone()
 				if name == 'endif' {
 					// A non-exhaustive chain also has a path that executes no branch.
 					if !condition_taken_known[last] || !condition_taken[last] {
-						cocoa_conditions[last].all_branches = cocoa_conditions[last].all_branches && cocoa_provided
-						cocoa_conditions[last].saw_branch = true
+						cocoa_conditions[last].merge_branch(cocoa_provided, once_paths, included_paths)
 					}
 					cocoa_provided = cocoa_provided || (cocoa_conditions[last].saw_branch && cocoa_conditions[last].all_branches)
+					if cocoa_conditions[last].saw_branch {
+						once_paths = cocoa_conditions[last].common_once.clone()
+						included_paths = cocoa_conditions[last].common_included.clone()
+					}
 					cocoa_conditions.delete_last()
 				}
 			}
@@ -6295,6 +6336,9 @@ fn c_header_text_objective_c_scan_for_target(text string, flags []string, c99_mo
 			definite_text.writeln('')
 			continue
 		}
+		if cocoa_include_only && name == 'pragma' && c_directive_arg(clean).trim_space() == 'once' && scan_line.ancestors.len > 0 {
+			once_paths[scan_line.source_file] = true
+		}
 		if name in ['include', 'import'] {
 			mut include_arg := c_directive_arg(clean).trim_space()
 			mut expanded_macros := map[string]bool{}
@@ -6304,12 +6348,16 @@ fn c_header_text_objective_c_scan_for_target(text string, flags []string, c99_mo
 			}
 			if cocoa_include_only {
 				if cocoa_nsfont_framework_include(include_arg) {
-					cocoa_provided = true
+					cocoa_provided = cocoa_provided || !scan_line.macros_only
 				} else if c_include_arg_is_literal(include_arg) {
 					for path in c_include_file_paths(include_arg, vroot, scan_line.source_file, include_dirs) {
 						real_path := os.real_path(path)
-						if real_path in scan_line.ancestors { break }
+						if real_path in scan_line.ancestors || real_path in once_paths || (name == 'import' && real_path in included_paths) {
+							break
+						}
 						header := os.read_file(real_path) or { continue }
+						included_paths[real_path] = true
+						if name == 'import' { once_paths[real_path] = true }
 						guard := c_header_guard_name(header)
 						if guard.len > 0 && guard !in defined && guard !in uncertain && guard !in undefined {
 							undefined[guard] = true
@@ -6318,7 +6366,7 @@ fn c_header_text_objective_c_scan_for_target(text string, flags []string, c99_mo
 						ancestors << real_path
 						mut nested := []CHeaderScanLine{}
 						for header_line in c_join_continued_lines(header) {
-							nested << CHeaderScanLine{ text: header_line, source_file: real_path, ancestors: ancestors }
+							nested << CHeaderScanLine{ text: header_line, source_file: real_path, ancestors: ancestors, macros_only: scan_line.macros_only }
 						}
 						lines.insert(line_index, nested)
 						break
