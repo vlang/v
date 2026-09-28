@@ -2130,6 +2130,53 @@ fn test_a_shared_server_checks_every_body_of_a_small_program() {
 	assert p.code == 0
 }
 
+// incremental_many_program is incremental_program with 30 functions more: work
+// enough for a check that splits its bodies among threads.
+fn incremental_many_program() string {
+	mut source := incremental_program
+	for i in 0 .. 30 {
+		source += '\nfn filler_${i}(n int) int {\n\tmut total := 0\n\tfor j in 0 .. n {\n\t\tif j % 3 == ${i % 3} {\n\t\t\ttotal += j * ${i}\n\t\t}\n\t}\n\treturn total\n}\n'
+	}
+	return source
+}
+
+fn test_a_shared_server_that_checks_on_threads_checks_again_only_the_bodies_that_changed() {
+	$if !linux {
+		return
+	}
+	dir := os.join_path(work_dir, 'incremental_threads')
+	os.mkdir_all(dir)!
+	path := os.join_path(dir, 'main.v')
+	source := incremental_many_program()
+	os.write_file(path, source)!
+	trace := os.join_path(dir, 'trace.txt')
+	os.rm(trace) or {}
+	// Threads check the bodies in batches of their own.
+	mut p := start_server(dir, {
+		'V_DIAGNOSTICS_SHARED':                '1'
+		'V_DIAGNOSTICS_PREPARE':               '1'
+		'V_DIAGNOSTICS_PARTIAL':               '1'
+		'V_DIAGNOSTICS_TRACE':                 trace
+		'V_DIAGNOSTICS_INCREMENTAL_MIN_NODES': '0'
+		'VJOBS':                               '4'
+	})
+	defer {
+		p.close()
+	}
+	_, checked := final_server_check(mut p, 't0')
+	assert checked == one_shot_check(dir)
+	os.write_file(path, source.replace_once('\tfor j in 0 .. n {\n\t\tif j % 3 == 2 {',
+		'\tfor j in 1 .. n {\n\t\tif j % 3 == 2 {'))!
+	traced := (os.read_file(trace) or { '' }).len
+	_, rechecked := final_server_check(mut p, 't1')
+	assert rechecked == one_shot_check(dir)
+	said := (os.read_file(trace) or { '' })[traced..]
+	assert said.contains('incremental: 1 of 39 bodies checked'), said
+	p.stdin_write('quit\n')
+	p.wait()
+	assert p.code == 0
+}
+
 const incremental_generic_program = "module main
 
 struct User {

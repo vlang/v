@@ -4428,8 +4428,22 @@ fn (mut tc TypeChecker) merge_parallel_check_worker(w &TypeChecker) {
 }
 
 fn (mut tc TypeChecker) merge_parallel_check_worker_scoped(w &TypeChecker, scoped bool) {
-	if w.item_marks.len > 0 && !isnil(tc.incremental) {
-		tc.incremental_capture(w, scoped)
+	if w.item_marks.len > 0 {
+		if !isnil(tc.incremental) {
+			tc.incremental_capture(w, scoped)
+		} else if tc.capture_items {
+			// A thread of a parallel check merges the batches it checked: their
+			// marks go on, placed in its own lists, to the check that captures
+			// what each body reported.
+			for mark in w.item_marks {
+				tc.item_marks << IncrementalItemMark{
+					fn_idx:  mark.fn_idx
+					errors:  tc.errors.len + mark.errors
+					notices: tc.notices.len + mark.notices
+					pending: tc.pending_ierror_errors.len + mark.pending
+				}
+			}
+		}
 	}
 	// Scoped checkers use a private symbol interner. Translate each distinct
 	// spelling once per worker, then replay dependency edges with O(1) ids; the
