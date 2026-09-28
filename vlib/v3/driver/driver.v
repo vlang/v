@@ -9563,7 +9563,7 @@ pub fn run(args []string) {
 			}
 			if !fastc_result.success {
 				cache_failure_output := v3_fastc_cache_failure_output(fastc_result.output, fastc_result.cached_objects)
-				if v3_recover_from_cache_failure(args, cache_failure_output, '') {
+				if v3_recover_from_cache_failure(cache_failure_output, '') {
 					return
 				}
 				if fastc_result.command.len == 0 {
@@ -12007,7 +12007,7 @@ pub fn run(args []string) {
 				}
 				cached_dev_dylib = compile_v3_dev_dylib(prefix_object, prepared_cache.objects, resolved_c_flags, &cache_state.manager, target_args, prefs.target, c_compiler, cc_dir, !silent || show_cc, mut c_object_cache_stats) or {
 					message := err.msg()
-					if v3_recover_from_cache_failure(args, message, cc_dir) {
+					if v3_recover_from_cache_failure(message, cc_dir) {
 						return
 					}
 					if request_macos_v3_c_error_fallback_from_message(macos_v3_fallback_file, macos_v3_c_error_dir, c_compiler, message, [
@@ -12244,6 +12244,10 @@ pub fn run(args []string) {
 			show_v3_c_compiler_output(show_c_output, tcc_path, result)
 			used_tcc = result.exit_code == 0
 		}
+		if tried_tcc && result.exit_code != 0
+			&& v3_recover_from_cache_failure(result.output, cc_dir) {
+			return
+		}
 		if v3_should_regenerate_after_implicit_tcc(retry_compilation, use_implicit_tcc_semantics, tried_tcc, result.exit_code) {
 			v3_regenerate_after_implicit_tcc(args, c_compiler_arg_index, cc_dir, verbose, show_cc)
 			return
@@ -12317,7 +12321,7 @@ pub fn run(args []string) {
 			if result.exit_code != 0 {
 				// Before degrading to the fallback compiler: a stale cache entry
 				// is repairable, and falling back would hide it indefinitely.
-				if v3_recover_from_cache_failure(args, result.output, cc_dir) {
+				if v3_recover_from_cache_failure(result.output, cc_dir) {
 					return
 				}
 				if retry_compilation && v3_is_tcc_compilation_failure(c_compiler, result.output) {
@@ -12782,7 +12786,7 @@ fn v3_unrepaired_cache_failure_artifacts(output string) ?[]string {
 // permanent - it outlives the build that published it, and the only symptom is
 // a toolchain error about a file the user never named - so recovering here is
 // preferred over degrading the build to a fallback compiler.
-fn v3_recover_from_cache_failure(args []string, output string, cc_dir string) bool {
+fn v3_recover_from_cache_failure(output string, cc_dir string) bool {
 	if os.getenv(v3_cache_recovery_env) == '1' {
 		return false
 	}
@@ -12802,7 +12806,7 @@ fn v3_recover_from_cache_failure(args []string, output string, cc_dir string) bo
 	}
 	cleanup_c_build_dir(cc_dir)
 	os.setenv(v3_cache_recovery_env, '1', true)
-	os.execvp(os.executable(), args) or {
+	os.execvp(os.executable(), os.args[1..]) or {
 		eprintln('failed to restart the build after discarding stale cache entries: ${err.msg()}')
 		exit(1)
 	}
