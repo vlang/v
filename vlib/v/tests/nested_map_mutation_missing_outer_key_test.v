@@ -264,6 +264,18 @@ fn test_compound_refreshes_owned_inner_key_existence_after_rhs() {
 	assert replaced['a'][key] == 6
 }
 
+fn test_postfix_clones_borrowed_owned_inner_key() {
+	key := ['b', 'c']!
+	mut nested := map[string]map[[2]string]int{}
+	nested['a'][key]++
+	assert nested['a'][key] == 1
+	nested['a'][key]--
+	assert nested['a'][key] == 0
+	mut direct := map[[2]string]int{}
+	direct[key]++
+	assert direct[key] == 1
+}
+
 fn replace_nested_outer(mut m map[string]map[string][]int) string {
 	m['a'] = map[string][]int{
 		'fresh': [7]
