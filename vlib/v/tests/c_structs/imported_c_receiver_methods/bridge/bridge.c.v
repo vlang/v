@@ -53,3 +53,11 @@ pub fn (c Counter) @union(marker int) int { return c.value + marker + 100 }
 
 // increment mutates the receiver through a bound method value.
 pub fn (mut c C.Counter) increment() { c.value++ }
+
+// update mutates the original C receiver by the supplied amount.
+pub fn (mut c C.Counter) update(amount int) { c.value += amount }
+
+// same_address checks that a reference receiver retains the original storage.
+pub fn (c &C.Counter) same_address(other &C.Counter) bool {
+	return voidptr(c) == voidptr(other)
+}

@@ -59,3 +59,39 @@ fn test_imported_mutable_c_method_value_borrows_its_receiver() {
 	increment()
 	assert value.value == 18
 }
+
+fn next_counter_index(mut calls []int) int {
+	calls[0]++
+	return 0
+}
+
+fn test_imported_reference_receivers_keep_storage_before_branch_arguments() {
+	mut values := [bridge.make_holder().value, bridge.make_holder().value]
+	mut calls := [0]
+	condition := true
+	values[next_counter_index(mut calls)].update(if condition { 3 } else { 5 })
+	assert calls[0] == 1
+	assert values[0].value == 20
+	values[next_counter_index(mut calls)].update(match calls[0] {
+		2 { 7 }
+		else { 9 }
+	})
+	assert calls[0] == 2
+	assert values[0].value == 27
+	assert values[1].value == 17
+	// The array is not resized while these addresses are compared.
+	first := unsafe { &values[0] }
+	second := unsafe { &values[1] }
+	assert values[next_counter_index(mut calls)].same_address(if condition {
+		first
+	} else {
+		second
+	})
+	assert calls[0] == 3
+	assert values[next_counter_index(mut calls)].same_address(match calls[0] {
+		4 { first }
+		else { second }
+	})
+	assert calls[0] == 4
+	assert values[0].@union(if condition { 2 } else { 3 }) == 29
+}

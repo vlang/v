@@ -8196,11 +8196,13 @@ fn (t &Transformer) method_value_has_pointer_receiver(id flat.NodeId) bool {
 // call still mutates through the lvalue; an ordinary by-value receiver is spilled by value so
 // its value is read in source order — a later branch prelude that mutates its container cannot
 // then change the observed receiver value.
-fn (t &Transformer) method_receiver_is_reference(base_id flat.NodeId, method string) bool {
+fn (t &Transformer) method_receiver_is_reference(call_id flat.NodeId, base_id flat.NodeId, method string) bool {
 	if isnil(t.tc) {
 		return false
 	}
-	method_name := t.resolve_receiver_method_name(base_id, method)
+	method_name := t.tc.resolved_call_name(call_id) or {
+		t.resolve_receiver_method_name(base_id, method)
+	}
 	if method_name.len == 0 {
 		return false
 	}
@@ -18509,7 +18511,7 @@ fn (mut t Transformer) transform_call_expr(id flat.NodeId, node flat.Node) flat.
 					// read in source order — a later branch prelude that mutates its container
 					// (e.g. `items[next()].read(match ... { mutate(mut items)! } ...)`) cannot
 					// then change the observed receiver value.
-					r := if t.method_receiver_is_reference(recv_id, recv_fn.value) {
+					r := if t.method_receiver_is_reference(id, recv_id, recv_fn.value) {
 						if stabilized := t.stabilize_original_lvalue_receiver(recv_id) {
 							stabilized
 						} else {
@@ -18608,6 +18610,11 @@ fn (mut t Transformer) transform_call_expr(id flat.NodeId, node flat.Node) flat.
 					children_count: node.children_count
 					pos:            node.pos
 				})
+				if !isnil(t.tc) {
+					if resolved := t.tc.resolved_call_name(id) {
+						t.set_generated_resolved_call(new_call_id, resolved)
+					}
+				}
 				return t.transform_call_expr(new_call_id, t.a.nodes[int(new_call_id)])
 			}
 		}
