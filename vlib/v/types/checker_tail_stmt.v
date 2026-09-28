@@ -6334,6 +6334,8 @@ fn (mut tc TypeChecker) check_selector(id flat.NodeId, node flat.Node) {
 		return
 	}
 	method_receiver := unalias_and_unwrap_pointer_type(base_type)
+	// A method value resolved as a C receiver method has its privacy checked here already.
+	mut c_receiver_method_value := ''
 	if method_receiver is Struct && tc.struct_field_type(method_receiver.name, node.value) == none {
 		method_name, ambiguous := tc.lookup_c_struct_receiver_method(base_type, node.value)
 		if ambiguous {
@@ -6354,6 +6356,7 @@ fn (mut tc TypeChecker) check_selector(id flat.NodeId, node flat.Node) {
 			if _ := tc.private_declaration(method_name) {
 				tc.record_error_at(.unknown_field, 'method `${method_name}` is private', id, tc.node_value_diagnostic_pos(id))
 			}
+			c_receiver_method_value = method_name
 			tc.remember_resolved_call(id, method_name)
 			if tc.fn_context.node_id >= 0 {
 				tc.method_values_by_fn[tc.fn_context.node_id] << method_name
@@ -6457,7 +6460,7 @@ fn (mut tc TypeChecker) check_selector(id flat.NodeId, node flat.Node) {
 			}
 		}
 	}
-	if selector_is_method_value && clean_recv is Struct
+	if selector_is_method_value && c_receiver_method_value.len == 0 && clean_recv is Struct
 		&& tc.struct_field_type(clean_recv.name, node.value) == none {
 		mut declaration_key := '${clean_recv.name}.${node.value}'
 		if info := tc.resolve_generic_struct_method(clean_recv.name, node.value) {
@@ -6469,7 +6472,7 @@ fn (mut tc TypeChecker) check_selector(id flat.NodeId, node flat.Node) {
 				tc.node_value_diagnostic_pos(id))
 		}
 	}
-	if selector_is_method_value && clean_recv is Alias
+	if selector_is_method_value && c_receiver_method_value.len == 0 && clean_recv is Alias
 		&& tc.struct_field_type(clean_recv.name, node.value) == none {
 		if declaration_key := tc.concrete_method_signature_key(clean_recv.name, node.value) {
 			if tc.private_declaration(declaration_key) != none {

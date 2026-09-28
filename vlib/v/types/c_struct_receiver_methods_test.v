@@ -264,6 +264,23 @@ pub fn (c C.Counter) generic_read[T](marker T) int { return c.value }
 	}
 }
 
+fn test_imported_c_alias_private_method_values_are_reported_once() {
+	root := os.join_path(os.vtmp_dir(), 'v3_c_alias_private_method_value_${os.getpid()}')
+	os.mkdir_all(os.join_path(root, 'bridge'))!
+	defer { os.rmdir_all(root) or {} }
+	os.write_file(os.join_path(root, 'v.mod'), "Module { name: 'c_alias_private_method_value' }\n")!
+	os.write_file(os.join_path(root, 'bridge', 'bridge.c.v'), 'module bridge
+pub struct C.Counter { value int }
+pub type CounterAlias = C.Counter
+pub fn make_alias() CounterAlias { return CounterAlias{} }
+fn (c CounterAlias) private_read() int { return c.value }
+')!
+	os.write_file(os.join_path(root, 'main.v'), 'module main\nimport bridge\nfn main() { value := bridge.make_alias(); cb := value.private_read; println(cb()) }\n')!
+	result := os.execute('${os.quoted_path(@VEXE)} -check ${os.quoted_path(root)}')
+	assert result.exit_code != 0, result.output
+	assert result.output.count('is private') == 1, result.output
+}
+
 fn test_imported_hex_filters_pointer_candidates_before_ambiguity() {
 	root := os.join_path(os.vtmp_dir(), 'v3_c_hex_candidates_${os.getpid()}')
 	for name in ['left', 'right'] { os.mkdir_all(os.join_path(root, name))! }
