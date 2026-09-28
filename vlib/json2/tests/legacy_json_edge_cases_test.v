@@ -622,3 +622,17 @@ fn test_time_elements_of_array_variants_keep_the_time_wrapper() {
 	// A time field also reads the wrapper written by the removed module.
 	assert json2.decode[time.Time]('{"_type":"Time","value":5}')!.unix() == 5
 }
+
+fn test_time_wrapper_needs_the_time_discriminator() {
+	// Only the `Time` wrapper is a time; other objects are rejected, like before.
+	assert json2.decode[time.Time]('{"_type":"Ti\\u006de","value":7}')!.unix() == 7
+	if _ := json2.decode[time.Time]('{"_type":"Robot","value":123}') {
+		assert false, 'a mistagged object should not decode as a time'
+	}
+	if _ := json2.decode[time.Time]('{"value":123}') {
+		assert false, 'an untagged object should not decode as a time'
+	}
+	if _ := json2.decode[[]time.Time]('[{"_type":"Time","value":1},{"_type":"Robot","value":2}]') {
+		assert false, 'a mistagged element should not decode as a time'
+	}
+}

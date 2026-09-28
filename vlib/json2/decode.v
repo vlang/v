@@ -854,6 +854,12 @@ fn (mut decoder Decoder) decode_value[T](mut val T) ! {
 			} else if value_info.value_kind == .object {
 				// The removed module wrote a time in a sum type, also as an element of an
 				// array variant or an option payload, as `{"_type":"Time","value":...}`.
+				// Only that wrapper is a time: other objects are rejected, like before.
+				type_field_node := decoder.get_sumtype_type_field_node(decoder.current_node)
+				if !decoder.sumtype_type_field_matches(type_field_node, 'Time')
+					&& !decoder.sumtype_type_field_matches(type_field_node, sumtype_variant_name(T.name)) {
+					decoder.decode_error('Expected string, number or `Time` object, but got another object')!
+				}
 				decoder.decode_sumtype_time(mut decoded_time)!
 				val = T(decoded_time)
 				return
