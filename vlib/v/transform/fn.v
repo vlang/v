@@ -1392,9 +1392,6 @@ fn (mut t Transformer) transform_call_args(id flat.NodeId, node flat.Node) flat.
 		return addr
 	}
 	call_name := t.call_name_for_node(id, node)
-	if call_name in ['json.encode', 'json.encode_pretty', 'json.decode'] {
-		return t.transform_cgen_json_encode_call(id, node)
-	}
 	mut params := t.call_param_types_for_node(call_name, node)
 	mut param_type_names := t.call_param_type_names(params)
 	mut is_generic_variadic := false
@@ -2063,43 +2060,6 @@ fn (t &Transformer) closure_result_type_may_alias_capture(typ types.Type, mut se
 			false
 		}
 	}
-}
-
-fn (mut t Transformer) transform_cgen_json_encode_call(id flat.NodeId, node flat.Node) flat.NodeId {
-	mut children := []flat.NodeId{cap: int(node.children_count)}
-	call_name := t.call_name_for_node(id, node)
-	saved_in_call_callee := t.in_call_callee
-	t.in_call_callee = true
-	children << t.transform_expr(t.a.child(&node, 0))
-	t.in_call_callee = saved_in_call_callee
-	for i in 1 .. node.children_count {
-		child_id := t.a.child(&node, i)
-		if i == 1 && call_name in ['json.encode', 'json.encode_pretty']
-			&& t.expr_has_smartcast(child_id) {
-			original_type := t.trim_pointer_type(t.original_expr_type(child_id))
-			if t.is_sum_type_name(original_type) {
-				// JSON sum values need the runtime tag so the encoder can append `_type`.
-				// An earlier `assert value is Variant` may otherwise lower this argument
-				// to the bare payload and discard that tag before cgen sees it.
-				children << t.make_plain_expr_for_smartcast(child_id)
-				continue
-			}
-		}
-		children << t.transform_expr(child_id)
-	}
-	start := t.a.children.len
-	t.a.children << children
-	new_id := t.a.add_node(flat.Node{
-		kind:           .call
-		op:             node.op
-		children_start: start
-		children_count: flat.child_count(children.len)
-		pos:            node.pos
-		value:          node.value
-		typ:            node.typ
-	})
-	t.copy_cloned_resolution(id, new_id)
-	return new_id
 }
 
 fn (t &Transformer) call_param_type_names(params []types.Type) []string {

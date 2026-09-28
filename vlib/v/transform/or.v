@@ -949,9 +949,8 @@ fn (mut t Transformer) or_expr_types(expr_id flat.NodeId, fallback_type string) 
 	}
 	if !isnil(t.tc) {
 		if expr_node.kind == .call {
-			// `json.decode(Type, text)` is declared as returning `!voidptr`; recover
-			// its compiler-magic payload before generic/declaration fallbacks accept
-			// that erased signature.
+			// `json2.decode[T](text)` returns `!T`; take it from the type argument
+			// before generic/declaration fallbacks.
 			if decode_ret := t.json_decode_or_expr_type(expr_id, expr_node) {
 				return t.canonical_or_expr_types(decode_ret)
 			}
@@ -1224,10 +1223,6 @@ fn (t &Transformer) call_declared_return_type_text(id flat.NodeId) ?string {
 		return none
 	}
 	name := t.tc.resolved_call_name(id) or { return none }
-	if name == 'json.decode' && int(id) < t.a.nodes.len {
-		// The magic `json.decode(T, s)` returns `!T`, not its `!voidptr` stub declaration.
-		return t.json_decode_or_expr_type(id, t.a.nodes[int(id)])
-	}
 	if ret := t.tc.fn_ret_type_texts[name] {
 		resolved := t.tc.fn_signature_type(name, ret)
 		if resolved !is types.Unknown && resolved !is types.Void {
@@ -1315,61 +1310,36 @@ fn (t &Transformer) qualify_or_expr_generic_base(base string) string {
 	return base
 }
 
+// json_decode_or_expr_type returns `!T` for a `json2.decode[T](text)` call.
 fn (t &Transformer) json_decode_or_expr_type(expr_id flat.NodeId, expr_node flat.Node) ?string {
 	if isnil(t.tc) || expr_node.kind != .call {
 		return none
 	}
-	mut is_decode := t.call_name_for_node(expr_id, expr_node) in ['json.decode', 'json2.decode',
-		'x.json2.decode']
+	mut is_decode := t.call_name_for_node(expr_id, expr_node) in ['json2.decode', 'x.json2.decode']
 	if name := t.tc.resolved_call_name(expr_id) {
-		is_decode = ['json.decode', 'json2.decode', 'x.json2.decode'].any(name == it
+		is_decode = ['json2.decode', 'x.json2.decode'].any(name == it
 			|| name.starts_with('${it}[') || name.starts_with('${it}__'))
 	}
 	if !is_decode && expr_node.children_count > 0 {
 		callee := t.a.child_node(&expr_node, 0)
 		if callee.kind == .selector && callee.value == 'decode' && callee.children_count > 0 {
 			base := t.a.child_node(callee, 0)
-			is_decode = (base.kind == .ident && base.value in ['json', 'json2'])
-				|| (base.kind == .selector && base.value == 'json2')
+			is_decode = (base.kind == .selector && base.value == 'json2')
+				|| (base.kind == .ident && (base.value == 'json2'
+					|| (t.file_import_module(t.cur_file, base.value) or { '' }) in [
+						'json2',
+						'x.json2',
+					]))
 		}
 	}
 	if !is_decode {
 		return none
 	}
-	// Pure-V `json2.decode[T](text)` can gain a synthesized default-options
-	// argument, so its first value argument must not be mistaken for the legacy
-	// `json.decode(Type, text)` type argument.
-	if !t.is_cgen_magic_json_call(expr_id, expr_node) {
-		if args := t.explicit_generic_call_args(expr_node, t.cur_module) {
-			if args.len == 1 && args[0].len > 0 {
-				return t.specialized_json_decode_result_type(args[0])
-			}
-			return none
-		}
+	args := t.explicit_generic_call_args(expr_node, t.cur_module) or { return none }
+	if args.len == 1 && args[0].len > 0 {
+		return t.specialized_json_decode_result_type(args[0])
 	}
-	// The established `json.decode(Type, text)` form keeps its type argument as
-	// the first call argument. Its synthetic generic metadata is erased to
-	// `voidptr`, so prefer the source type node before inspecting that metadata.
-	if expr_node.children_count >= 3 {
-		type_arg := t.generic_call_type_arg_name(t.a.child(&expr_node, 1))
-		if type_arg.len > 0 {
-			return t.specialized_json_decode_result_type(type_arg)
-		}
-	}
-	if args := t.explicit_generic_call_args(expr_node, t.cur_module) {
-		if args.len == 1 && args[0].len > 0 {
-			return t.specialized_json_decode_result_type(args[0])
-		}
-		return none
-	}
-	if expr_node.children_count < 2 {
-		return none
-	}
-	type_arg := t.generic_call_type_arg_name(t.a.child(&expr_node, 1))
-	if type_arg.len == 0 {
-		return none
-	}
-	return t.specialized_json_decode_result_type(type_arg)
+	return none
 }
 
 fn (t &Transformer) specialized_json_decode_result_type(type_arg string) string {
@@ -2135,12 +2105,9 @@ fn (mut t Transformer) disabled_optional_call_or_none(expr_id flat.NodeId, expr_
 	if isnil(t.tc) || expr_node.kind != .call || !t.is_optional_type_name(expr_type) {
 		return none
 	}
-	if t.is_cgen_magic_json_call(expr_id, expr_node) {
-		return none
-	}
 	if _ := t.json_decode_or_expr_type(expr_id, expr_node) {
 		if name := t.tc.resolved_call_name(expr_id) {
-			if name in ['json.decode', 'json2.decode', 'x.json2.decode'] {
+			if name in ['json2.decode', 'x.json2.decode'] {
 				return none
 			}
 		}

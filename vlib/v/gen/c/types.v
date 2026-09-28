@@ -874,26 +874,14 @@ fn (mut g FlatGen) collect_optional_typedefs() {
 }
 
 fn (mut g FlatGen) collect_unresolved_call_optional_types() {
-	// Calls without a resolved expression type are normally the only optional-type
-	// source not covered by the shared declaration-signature scan. Legacy
-	// `json.decode(T, ...)` is also handled here because its declaration keeps an
-	// erased `!voidptr` return while cgen materializes a concrete `!T` wrapper.
-	// `json.decode` is declared by the C-magic `json` module, and the checker
-	// rejects the call without it. Resolving every call's target only to rule it
-	// out is the bulk of this scan, so skip that when the module is absent.
-	json_decode_possible := 'json.decode' in g.tc.fn_ret_types
-		|| 'json.decode' in g.tc.fn_param_types
+	// Calls without a resolved expression type are the only optional-type source
+	// not covered by the shared declaration-signature scan.
 	mut seen_type_ids := []bool{len: 65536}
 	mut seen_type_texts := map[string]bool{}
 	for idx in g.type_metadata_nodes() {
 		node := g.a.nodes[idx]
 		if node.kind != .call {
 			continue
-		}
-		if json_decode_possible {
-			if json_type := g.json_decode_call_expr_result_type(flat.NodeId(idx)) {
-				g.collect_optional_typedef_type(json_type)
-			}
 		}
 		// Only a complete type spelling that was not collected yet can add a
 		// typedef. Rule the rest out before the checker metadata below, which
@@ -915,9 +903,7 @@ fn (mut g FlatGen) collect_unresolved_call_optional_types() {
 		}
 		if idx < g.tc.resolved_call_set.len && g.tc.resolved_call_set[idx] {
 			name := g.tc.resolved_call_names[idx].value
-			// The compiler-magic `json.decode(T, s)` is declared as a `!voidptr`
-			// stub; its real `!T` return type only exists in the node spelling.
-			if name in g.tc.fn_ret_types && name != 'json.decode' {
+			if name in g.tc.fn_ret_types {
 				// collect_declaration_signature_types() already processed this exact
 				// return entry; only calls without checker return metadata need their
 				// transformed node spelling inspected below.

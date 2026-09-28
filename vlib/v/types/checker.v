@@ -4670,10 +4670,6 @@ fn (tc &TypeChecker) c_struct_redeclaration_allowed(qname string, first_file str
 		&& tc.c_struct_decl_is_vlib_winsize_shim(second_file, second_module) {
 		return true
 	}
-	if qname == 'C.cJSON' && tc.c_struct_decl_is_vlib_cjson(first_file, first_module)
-		&& tc.c_struct_decl_is_vlib_cjson(second_file, second_module) {
-		return true
-	}
 	return false
 }
 
@@ -4701,20 +4697,6 @@ fn (tc &TypeChecker) c_struct_decl_is_vlib_termios_shim(file string, module_name
 	base := normalized.all_after_last('/')
 	return (module_name == 'term' && base.starts_with('term_'))
 		|| (module_name in ['termios', 'term.termios'] && base.starts_with('termios_'))
-}
-
-fn (tc &TypeChecker) c_struct_decl_is_vlib_cjson(file string, module_name string) bool {
-	if module_name !in ['json', 'cjson', 'json.cjson'] {
-		return false
-	}
-	normalized := file.replace('\\', '/')
-	if normalized.contains('/vlib/json/json_primitives.c.v')
-		|| normalized.contains('/vlib/json/cjson/cjson_wrapper.c.v') {
-		return true
-	}
-	base := normalized.all_after_last('/')
-	return normalized.contains('/v3_module_cache_') && normalized.ends_with('.vh')
-		&& (base.starts_with('json_') || base.starts_with('cjson_'))
 }
 
 fn (tc &TypeChecker) c_struct_decl_signature(a &flat.FlatAst, node flat.Node) string {

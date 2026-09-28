@@ -18845,7 +18845,7 @@ fn (mut t Transformer) transform_call_expr(id flat.NodeId, node flat.Node) flat.
 	if sum_constructor_type.len > 0 && call_node.children_count == 2 {
 		return t.wrap_sum_value(t.a.child(&call_node, 1), sum_constructor_type)
 	}
-	if t.is_disabled_fn_call(call_id, call_node) && !t.is_cgen_magic_json_call(call_id, call_node) {
+	if t.is_disabled_fn_call(call_id, call_node) {
 		if resolved_typ.len == 0 || resolved_typ == 'void' {
 			return t.make_empty()
 		}
@@ -18962,10 +18962,6 @@ fn (mut t Transformer) record_selected_compile_error_call(node flat.Node) {
 		'compile-time error'
 	}
 	t.record_monomorph_error('compile-time error: ${message}')
-}
-
-fn (t &Transformer) is_cgen_magic_json_call(id flat.NodeId, node flat.Node) bool {
-	return t.call_name_for_node(id, node) in ['json.decode', 'json.encode']
 }
 
 // is_disabled_fn_name reports whether is disabled fn name applies in transform.

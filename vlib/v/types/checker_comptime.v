@@ -9543,11 +9543,6 @@ fn (mut tc TypeChecker) check_result_propagation(id flat.NodeId, source_id flat.
 		tc.record_error_at(.return_mismatch, 'to propagate a Result, the call must also return a Result type', id, tc.propagation_operator_pos(source_id, id, '!'))
 		return
 	}
-	if source.kind == .call && tc.call_display_name(*source) == 'json.decode'
-		&& source.children_count < 3 {
-		tc.record_error_at(.return_mismatch, 'unexpected `!`, the function `json.decode` does not return a Result', id, tc.propagation_operator_pos(source_id, id, '!'))
-		return
-	}
 	if source.kind == .call && clean_source_type !is ResultType && clean_source_type !is Unknown {
 		if clean_return_type !is ResultType && !tc.current_fn_is_main() && !tc.current_fn_is_test() {
 			tc.record_specific_propagation_return_error(id, source_id, 'Result', '!')
