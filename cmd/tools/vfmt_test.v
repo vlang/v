@@ -254,6 +254,20 @@ fn test_fmt_preserves_signature_and_comptime_semantic_errors() {
 	}
 }
 
+fn test_fmt_preserves_deep_assignment_expressions() {
+	mut expression := '1'
+	for _ in 0 .. 101 {
+		expression = '1 + (${expression})'
+	}
+	source := 'fn main() { value := ${expression}; _ = value }\n'
+	res, formatted := run_vfmt_write('deep_assignment', source, '')
+	assert res.exit_code == 0, res.output
+	assert formatted.contains('value := ${expression}'), formatted
+	second, twice := run_vfmt_write('deep_assignment_twice', formatted, '')
+	assert second.exit_code == 0, second.output
+	assert twice == formatted
+}
+
 fn test_fmt_preserves_bare_channel_types() {
 	for source, expected in {
 		'fn f(ch chan) {}\n':                   'fn f(ch chan)'

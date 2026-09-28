@@ -119,6 +119,24 @@ fn test_formatter_still_reports_invalid_syntax() {
 	assert formatter.diagnostics.len > 0
 }
 
+fn test_formatter_preserves_deep_assignment_expressions() {
+	path := os.join_path(os.vtmp_dir(), 'formatter_deep_assignment_${os.getpid()}.v')
+	defer { os.rm(path) or {} }
+	mut expression := '1'
+	for _ in 0 .. 101 {
+		expression = '1 + (${expression})'
+	}
+	os.write_file(path, 'fn main() { value := ${expression}; _ = value }\n')!
+	mut compiler := Parser.new(pref.new_preferences())
+	compiler.parse_file(path)
+	assert compiler.diagnostics.any(it.message == 'expr level > 100'), compiler.diagnostics.str()
+	mut prefs := pref.new_preferences()
+	prefs.is_fmt = true
+	mut formatter := Parser.new(prefs)
+	formatter.parse_file(path)
+	assert formatter.diagnostics.len == 0, formatter.diagnostics.str()
+}
+
 fn test_formatter_skips_assembly_backend_compatibility() {
 	path := os.join_path(os.vtmp_dir(), 'formatter_asm_backend_${os.getpid()}.v')
 	defer { os.rm(path) or {} }
