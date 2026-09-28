@@ -5413,7 +5413,8 @@ fn (c &CallCollector) infer_local_type_bindings(node &flat.Node, cur_module stri
 				mut nested_types, mut ident_types, false)
 			continue
 		}
-		if child.kind in [.block, .if_expr, .match_stmt, .for_stmt, .fn_literal, .lambda_expr] {
+		if child.kind in [.block, .if_expr, .match_stmt, .match_branch, .for_stmt, .fn_literal,
+			.lambda_expr] {
 			if root && child.kind == .block {
 				c.infer_local_type_bindings(child, cur_module, imports, names, mut type_names,
 					mut ident_types, false)
