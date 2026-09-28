@@ -1048,6 +1048,36 @@ fn test_for_in_binding_does_not_change_iterable_type_during_inference() {
 	}
 }
 
+fn test_for_in_reference_binding_preserves_pointer_type() {
+	for mode in ['plain', 'mut', 'borrow', 'pointer'] {
+		mut a := flat.FlatAst.new()
+		mut tc := types.TypeChecker.new(&a)
+		value := a.add_val(.ident, 'value')
+		values := a.add_val(.ident, 'values')
+		container := if mode == 'borrow' {
+			call_helper_node(mut a, flat.Node{ kind: .prefix, op: .amp }, [values])
+		} else {
+			values
+		}
+		loop := call_helper_node(mut a, flat.Node{
+			kind:  .for_in_stmt
+			value: '3'
+			op:    if mode == 'mut' { .amp } else { .none }
+		}, [value, flat.empty_node, container])
+		collector := CallCollector{ a: &a, tc: &tc }
+		mut names := {
+			'values': true
+		}
+		mut types_by_name := {
+			'values': if mode == 'pointer' { '&[]T' } else { '[]T' }
+		}
+		collector.register_top_level_for_in_vars(a.node(loop), 'main', map[string]string{},
+			mut names, mut types_by_name)
+		expected := if mode == 'plain' { 'T' } else { '&T' }
+		assert types_by_name['value'] == expected, mode
+	}
+}
+
 fn test_generic_factory_multi_return_decl_uses_component_type() {
 	mut a := flat.FlatAst.new()
 	mut tc := types.TypeChecker.new(&a)
@@ -1695,7 +1725,7 @@ fn test_factory_local_inference_uses_loop_bindings() {
 		'[]T':            'T'
 		'[2]T':           'T'
 		'map[string]T':   'T'
-		'&[]T':           'T'
+		'&[]T':           '&T'
 		'[]map[string]T': 'map[string]T'
 		'string':         'u8'
 	} {

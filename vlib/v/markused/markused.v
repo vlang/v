@@ -7080,15 +7080,30 @@ fn (c &CallCollector) register_top_level_for_in_vars(node &flat.Node, cur_module
 		}
 		return
 	}
-	if elem := c.top_level_for_in_elem_type_name(container_id, cur_module, imports,
+	container_is_ref := container.kind == .prefix && container.op == .amp
+	iterable_id := if container_is_ref && container.children_count > 0 {
+		c.a.child(container, 0)
+	} else {
+		container_id
+	}
+	container_type := c.top_level_expr_type_name(iterable_id, cur_module, imports,
+		container_values, container_types, false)
+	if elem := c.top_level_for_in_elem_type_name(iterable_id, cur_module, imports,
 		container_values, container_types) {
 		if elem.len > 0 {
-			local_types[value_var] = elem
+			mut value_type := elem
+			collection := types.unalias_type(types.unwrap_pointer(c.tc.parse_canonical_type(container_type)))
+			if (node.op == .amp || container_is_ref || container_type.starts_with('&'))
+				&& (collection is types.Array || collection is types.ArrayFixed || collection is types.Map) {
+				clean_elem := types.unalias_type(c.tc.parse_canonical_type(elem))
+				if clean_elem !is types.Pointer && clean_elem !is types.OptionType {
+					value_type = '&${elem}'
+				}
+			}
+			local_types[value_var] = value_type
 		}
 		return
 	}
-	container_type := c.top_level_expr_type_name(container_id, cur_module, imports,
-		container_values, container_types, false)
 	if container_type.len == 0 {
 		return
 	}
