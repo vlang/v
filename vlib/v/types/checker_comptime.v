@@ -7158,9 +7158,9 @@ fn comptime_condition_top_level_index(s string, needle string) int {
 
 // check_infix validates type-sensitive infix operations that would otherwise reach CGen
 // as raw helper calls with incompatible arguments.
-fn (tc &TypeChecker) translated_array_arithmetic_operand(id flat.NodeId, op flat.Op, typ Type) Type {
+fn (tc &TypeChecker) translated_array_arithmetic_operand(id flat.NodeId, op flat.Op, typ Type, receiver Type) Type {
 	if op in [.plus, .minus] && tc.node_is_in_translated_file(id) {
-		if typ is Alias && tc.type_has_infix_operator_method(typ, op) {
+		if receiver is Alias && tc.type_has_infix_operator_method(receiver, op) {
 			return typ
 		}
 		clean := unalias_type(typ)
@@ -7181,8 +7181,10 @@ fn (mut tc TypeChecker) check_infix(id flat.NodeId, node flat.Node) {
 	rhs_id := tc.a.child(&node, 1)
 	lhs_node := tc.a.node(lhs_id)
 	rhs_node := tc.a.node(rhs_id)
-	mut lhs_type := tc.translated_array_arithmetic_operand(id, node.op, tc.infix_read_type(lhs_id))
-	mut rhs_type := tc.translated_array_arithmetic_operand(id, node.op, tc.infix_read_type(rhs_id))
+	receiver := tc.infix_read_type(lhs_id)
+	mut lhs_type := tc.translated_array_arithmetic_operand(id, node.op, receiver, receiver)
+	mut rhs_type := tc.translated_array_arithmetic_operand(id, node.op, tc.infix_read_type(rhs_id),
+		receiver)
 	if node.op in [.pipe, .amp, .xor] {
 		if expected := tc.expected_context_for_expr(id) {
 			clean_expected := unalias_type(expected)

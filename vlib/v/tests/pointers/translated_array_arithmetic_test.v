@@ -62,6 +62,10 @@ fn test_translated_fixed_array_operator_overload() {
 	right := TranslatedVec3([4, 5, 6]!)
 	result := left + right
 	assert result == TranslatedVec3([5, 7, 9]!)
+	second := 1 + right
+	assert unsafe { *second } == 5
+	third := 2 + translated_make_vec()
+	assert unsafe { *third } == 13
 }
 
 fn translated_ordered_offset(mut calls []int) int {
@@ -101,4 +105,8 @@ fn test_translated_array_arithmetic_preserves_operand_order() {
 	first := state.offset + translated_array_after_offset_change(mut state)
 	assert state.offset == 2
 	assert unsafe { *first } == 7
+}
+
+fn translated_make_vec() TranslatedVec3 {
+	return TranslatedVec3([7, 11, 13]!)
 }
