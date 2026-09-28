@@ -240,6 +240,7 @@ mut:
 	monomorph_error_seen                map[string]bool
 	in_spawn_expr                       bool
 	has_spawn_expr                      bool
+	discarded_aggregate_spawns          map[int]bool
 	in_const_init                       bool
 	in_return_expr                      bool
 	in_string_interp_part               bool
@@ -10575,6 +10576,7 @@ fn is_simple_ident_name(name string) bool {
 }
 
 fn (mut t Transformer) transform_spawn_expr(id flat.NodeId, node flat.Node) flat.NodeId {
+	detach := t.discarded_aggregate_spawns[int(id)]
 	old_in_spawn_expr := t.in_spawn_expr
 	t.in_spawn_expr = true
 	spawn_id := t.rewrite_spawn_fn_value_alias(id, node)
@@ -10606,6 +10608,11 @@ fn (mut t Transformer) transform_spawn_expr(id flat.NodeId, node flat.Node) flat
 		}
 	}
 	t.in_spawn_expr = old_in_spawn_expr
+	if detach && result_node.kind == .spawn_expr {
+		detached := t.copy_node_with_children(result_node, t.a.children_of(result_node).clone())
+		t.a.nodes[int(detached)].flags = result_node.flags | flat.node_flag_detached_spawn
+		return detached
+	}
 	return result
 }
 
@@ -12012,10 +12019,70 @@ fn (mut t Transformer) lower_discarded_spawn_value(id flat.NodeId) ?[]flat.NodeI
 			kind: .expr_stmt
 		}, value_id)
 	}
-	if value.kind !in [.if_expr, .match_stmt] || !t.yields_fresh_spawn(value_id) {
-		return none
+	if value.kind in [.if_expr, .match_stmt] && t.yields_fresh_spawn(value_id) {
+		return t.transform_stmt(t.discard_conditional_branch_values(value_id))
 	}
-	return t.transform_stmt(t.discard_conditional_branch_values(value_id))
+	mut aggregate_spawns := []flat.NodeId{}
+	t.collect_discarded_aggregate_spawns(value_id, mut aggregate_spawns)
+	if aggregate_spawns.len > 0 {
+		for spawn_id in aggregate_spawns {
+			t.discarded_aggregate_spawns[int(spawn_id)] = true
+		}
+		transformed := t.transform_expr(value_id)
+		for spawn_id in aggregate_spawns {
+			t.discarded_aggregate_spawns.delete(int(spawn_id))
+		}
+		return t.with_pending_before(t.make_expr_stmt(transformed))
+	}
+	return none
+}
+
+// collect_discarded_aggregate_spawns finds fresh handles held only by a discarded
+// aggregate. Calls and spawns are boundaries: a nested spawn passed as an argument
+// still belongs to the callee or to the outer spawn.
+fn (t &Transformer) collect_discarded_aggregate_spawns(id flat.NodeId, mut spawns []flat.NodeId) {
+	if int(id) < 0 || int(id) >= t.a.nodes.len {
+		return
+	}
+	node := t.a.nodes[int(id)]
+	match node.kind {
+		.spawn_expr {
+			spawns << id
+		}
+		.paren, .array_literal, .array_init, .struct_init, .field_init, .map_init, .assoc,
+		.cast_expr, .as_expr, .or_expr {
+			for i in 0 .. node.children_count {
+				t.collect_discarded_aggregate_spawns(t.a.child(&node, i), mut spawns)
+			}
+		}
+		.if_expr {
+			if node.children_count >= 3 {
+				t.collect_discarded_aggregate_spawns(t.a.child(&node, 1), mut spawns)
+				t.collect_discarded_aggregate_spawns(t.a.child(&node, 2), mut spawns)
+			}
+		}
+		.match_stmt {
+			for i in 1 .. node.children_count {
+				branch := t.a.child_node(&node, i)
+				if branch.kind == .match_branch {
+					if value_idx := branch_value_index(branch) {
+						t.collect_discarded_aggregate_spawns(t.a.child(branch, value_idx), mut spawns)
+					}
+				}
+			}
+		}
+		.block {
+			if value_idx := branch_value_index(node) {
+				t.collect_discarded_aggregate_spawns(t.a.child(&node, value_idx), mut spawns)
+			}
+		}
+		.expr_stmt {
+			if node.children_count == 1 {
+				t.collect_discarded_aggregate_spawns(t.a.child(&node, 0), mut spawns)
+			}
+		}
+		else {}
+	}
 }
 
 // transform_detached_spawn_stmt transforms the expression statement `stmt`, whose

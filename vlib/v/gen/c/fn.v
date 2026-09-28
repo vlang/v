@@ -3813,9 +3813,9 @@ fn (g &FlatGen) spawn_start_fn() string {
 }
 
 // empty_spawn_value is emitted for a spawn that starts no thread, such as one of an
-// elided `@[if flag]` fn: an empty handle, or nothing when the handle is discarded.
+// elided `@[if flag]` fn. Discarded aggregates still need a typed empty handle.
 fn (g &FlatGen) empty_spawn_value() string {
-	return if g.spawn_detached { '(void)0' } else { '(__v_thread){0}' }
+	return '(__v_thread){0}'
 }
 
 fn (mut g FlatGen) gen_spawn_expr(node flat.Node) {

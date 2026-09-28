@@ -283,7 +283,7 @@ fn main() {
 }
 	')
 	c_compact := compact_c(c_code)
-	assert c_code.contains('static void __v_thread_spawn_detached(__v_thread_start_fn start, void* arg, void (*cleanup)(void*))'), c_code
+	assert c_code.contains('static __v_thread __v_thread_spawn_detached(__v_thread_start_fn start, void* arg, void (*cleanup)(void*))'), c_code
 	assert c_compact.count('__v_thread_spawn_detached(work_thread_wrapper,') == 4, c_code
 	assert c_compact.count('__v_thread_spawn_detached(answer_thread_wrapper,') == 1, c_code
 	assert c_compact.contains('__v_thread_spawn_detached(add_args_thread_wrapper,(void*)_sa'), c_code
@@ -292,6 +292,36 @@ fn main() {
 	assert c_compact.count('__v_thread_spawn(answer_thread_wrapper,') == 2, c_code
 	assert c_compact.contains('__v_threadt=__v_thread_spawn(answer_thread_wrapper,'), c_code
 	assert c_compact.contains('__v_thread__twthread0=t;'), c_code
+}
+
+fn test_discarded_aggregate_spawns_detach_threads() {
+	v3_bin := build_v3()
+	c_code := gen_c(v3_bin, 'v3_spawn_discarded_aggregate_detach', '
+struct Holder {
+	worker thread int
+}
+
+fn answer() int {
+	return 42
+}
+
+fn wait_for(t thread int) int {
+	return t.wait()
+}
+
+fn main() {
+	_ := [spawn answer()]
+	_ := Holder{worker: spawn answer()}
+	_ := [[spawn answer()]]
+	_ := {"worker": spawn answer()}
+	_ := [wait_for(spawn answer())]
+	t := spawn answer()
+	println(t.wait())
+}
+	')
+	c_compact := compact_c(c_code)
+	assert c_compact.count('__v_thread_spawn_detached(answer_thread_wrapper,') == 4, c_code
+	assert c_compact.count('__v_thread_spawn(answer_thread_wrapper,') == 2, c_code
 }
 
 // A discarded `if`/`match`, including one in a `_` slot of a multi-assignment, must

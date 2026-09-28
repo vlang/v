@@ -18295,12 +18295,13 @@ fn (mut g FlatGen) target_libc_thread_type() {
 // call returns; its handle is closed right away, since nothing can join it.
 fn (mut g FlatGen) windows_detached_thread_runtime() {
 	g.writeln('static DWORD WINAPI __v_windows_detached_thread_start(void* raw_context) { __v_windows_thread_context context = *(__v_windows_thread_context*)raw_context; free(raw_context); void* result = context.start(context.arg); if (result) free(result); return 0; }')
-	g.writeln('static void __v_thread_spawn_detached(__v_thread_start_fn start, void* arg, void (*cleanup)(void*)) {')
+	g.writeln('static __v_thread __v_thread_spawn_detached(__v_thread_start_fn start, void* arg, void (*cleanup)(void*)) {')
 	g.writeln('\t__v_windows_thread_context* context = (__v_windows_thread_context*)__v_thread_alloc(sizeof(__v_windows_thread_context));')
 	g.writeln('\tcontext->start = start; context->arg = arg; context->result = NULL;')
 	g.writeln('\tHANDLE handle = CreateThread(NULL, __v_thread_stack_size, __v_windows_detached_thread_start, context, 0, NULL);')
 	g.writeln('\tif (!handle) { DWORD error = GetLastError(); free(context); if (cleanup) cleanup(arg); fprintf(stderr, "V thread creation failed: %lu\\n", (unsigned long)error); abort(); }')
 	g.writeln('\tif (!CloseHandle(handle)) { fprintf(stderr, "V thread handle cleanup failed: %lu\\n", (unsigned long)GetLastError()); abort(); }')
+	g.writeln('\treturn (__v_thread){0};')
 	g.writeln('}')
 }
 
@@ -18310,7 +18311,7 @@ fn (mut g FlatGen) windows_detached_thread_runtime() {
 fn (mut g FlatGen) pthread_detached_thread_runtime() {
 	g.writeln('typedef struct { __v_thread_start_fn start; void* arg; } __v_detached_thread_context;')
 	g.writeln('static void* __v_detached_thread_start(void* raw_context) { __v_detached_thread_context context = *(__v_detached_thread_context*)raw_context; free(raw_context); void* result = context.start(context.arg); if (result) free(result); return NULL; }')
-	g.writeln('static void __v_thread_spawn_detached(__v_thread_start_fn start, void* arg, void (*cleanup)(void*)) {')
+	g.writeln('static __v_thread __v_thread_spawn_detached(__v_thread_start_fn start, void* arg, void (*cleanup)(void*)) {')
 	g.writeln('\t__v_detached_thread_context* context = (__v_detached_thread_context*)__v_thread_alloc(sizeof(__v_detached_thread_context));')
 	g.writeln('\tcontext->start = start; context->arg = arg;')
 	g.writeln('\tpthread_t handle;')
@@ -18324,6 +18325,7 @@ fn (mut g FlatGen) pthread_detached_thread_runtime() {
 	g.writeln('\tint attr_rc = pthread_attr_destroy(&attr);')
 	g.writeln('\tif (rc != 0) { free(context); if (cleanup) cleanup(arg); fprintf(stderr, "V thread creation failed: %d\\n", rc); abort(); }')
 	g.writeln('\tif (attr_rc != 0) { fprintf(stderr, "V thread attribute cleanup failed: %d\\n", attr_rc); abort(); }')
+	g.writeln('\treturn (__v_thread){0};')
 	g.writeln('}')
 }
 
@@ -18376,12 +18378,13 @@ fn (mut g FlatGen) target_libc_vinix_thread_runtime() {
 	g.writeln('static void* __v_thread_join(__v_thread thread) { void* result = NULL; int rc = pthread_join(thread.handle, &result); if (rc != 0) exit(1); return result; }')
 	g.writeln('typedef struct { __v_thread_start_fn start; void* arg; } __v_detached_thread_context;')
 	g.writeln('static void* __v_detached_thread_start(void* raw_context) { __v_detached_thread_context context = *(__v_detached_thread_context*)raw_context; free(raw_context); void* result = context.start(context.arg); if (result) free(result); return NULL; }')
-	g.writeln('static void __v_thread_spawn_detached(__v_thread_start_fn start, void* arg, void (*cleanup)(void*)) {')
+	g.writeln('static __v_thread __v_thread_spawn_detached(__v_thread_start_fn start, void* arg, void (*cleanup)(void*)) {')
 	g.writeln('\t__v_detached_thread_context* context = (__v_detached_thread_context*)__v_thread_alloc(sizeof(__v_detached_thread_context));')
 	g.writeln('\tcontext->start = start; context->arg = arg;')
 	g.writeln('\tpthread_t handle;')
 	g.writeln('\tif (pthread_create(&handle, NULL, (void*)__v_detached_thread_start, context) != 0) { free(context); if (cleanup) cleanup(arg); exit(1); }')
 	g.writeln('\tif (pthread_detach(handle) != 0) exit(1);')
+	g.writeln('\treturn (__v_thread){0};')
 	g.writeln('}')
 }
 

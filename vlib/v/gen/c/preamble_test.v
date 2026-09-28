@@ -203,7 +203,7 @@ fn test_system_libc_thread_preamble_uses_native_windows_api() {
 	assert windows_code.contains('WaitForSingleObject('), windows_code
 	assert windows_code.contains('CloseHandle('), windows_code
 	assert windows_code.contains('return a.handle == b.handle;'), windows_code
-	assert windows_code.contains('static void __v_thread_spawn_detached(__v_thread_start_fn start, void* arg, void (*cleanup)(void*)) {'), windows_code
+	assert windows_code.contains('static __v_thread __v_thread_spawn_detached(__v_thread_start_fn start, void* arg, void (*cleanup)(void*)) {'), windows_code
 	// The detached thread frees its own context and result; its handle is closed at once.
 	assert windows_code.contains('free(raw_context); void* result = context.start(context.arg); if (result) free(result); return 0; }'), windows_code
 	assert windows_code.contains('HANDLE handle = CreateThread(NULL, __v_thread_stack_size, __v_windows_detached_thread_start, context, 0, NULL);'), windows_code
