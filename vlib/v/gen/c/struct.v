@@ -681,7 +681,9 @@ fn (mut g FlatGen) gen_struct_init(id flat.NodeId) {
 	effective_type := default_init_unalias_type(types.unwrap_pointer(init_semantic_type))
 	// A specialized `T{}` may be a container rather than a struct. Its runtime
 	// metadata must be initialized by the corresponding default-value emitter.
-	if node.children_count == 0 && (effective_type is types.Array || effective_type is types.Map) {
+	if node.children_count == 0
+		&& (effective_type is types.Array || effective_type is types.Map
+			|| effective_type is types.Channel) {
 		g.gen_default_value_for_type(init_semantic_type)
 		return
 	}

@@ -48,7 +48,7 @@ fn test_generic_channel_default_uses_concrete_element_size() {
 }
 
 fn test_specialized_generic_container_struct_literal_uses_runtime_default() {
-	for concrete in ['[]string', 'map[string]int'] {
+	for concrete in ['[]string', 'map[string]int', 'Ch'] {
 		mut ast := flat.FlatAst.new()
 		init_id := ast.add_node(flat.Node{
 			kind:  .struct_init
@@ -56,6 +56,7 @@ fn test_specialized_generic_container_struct_literal_uses_runtime_default() {
 		})
 		mut tc := types.TypeChecker.new(&ast)
 		tc.cur_module = 'main'
+		tc.type_aliases['Ch'] = 'chan string'
 		mut g := FlatGen.new()
 		g.a = &ast
 		g.tc = &tc
@@ -65,8 +66,10 @@ fn test_specialized_generic_container_struct_literal_uses_runtime_default() {
 		generated := g.sb.str()
 		if concrete == '[]string' {
 			assert generated == 'array_new(sizeof(string), 0, 0)'
-		} else {
+		} else if concrete == 'map[string]int' {
 			assert generated.contains('new_map')
+		} else {
+			assert generated.contains('sync__new_channel_st')
 		}
 	}
 }
