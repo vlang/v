@@ -720,6 +720,22 @@ fn (mut g FlatGen) gen_unset_struct_field_default(struct_name string, field_name
 		g.gen_default_value_for_type(clean_type)
 		return true
 	}
+	if fixed := array_fixed_type(clean_type) {
+		if fixed.len > 0 && fixed_array_elem_needs_runtime_header(fixed.elem_type) {
+			if has {
+				g.write(', ')
+			}
+			g.write('.${field_c_name} = {')
+			for idx in 0 .. fixed.len {
+				if idx > 0 {
+					g.write(', ')
+				}
+				g.gen_default_value_for_type(fixed.elem_type)
+			}
+			g.write('}')
+			return true
+		}
+	}
 	if g.field_needs_default_init(clean_type) {
 		if has {
 			g.write(', ')
@@ -1332,7 +1348,7 @@ fn (mut g FlatGen) struct_init_has_fixed_array_field(node flat.Node, type_name s
 				// flat-literal path and emitted `.id = (u64[4]){...}`, which is a
 				// compound literal decaying to a pointer rather than an array
 				// initializer -- clang then initializes `id[0]` with it.
-				if field.has_default || g.field_needs_default_init(fixed.elem_type) {
+				if field.has_default || g.fixed_array_elem_needs_default_init(fixed.elem_type) {
 					return true
 				}
 			}
@@ -1534,7 +1550,7 @@ fn (mut g FlatGen) gen_struct_init_with_fixed_array_fields_impl(node flat.Node, 
 				continue
 			}
 			if fixed := array_fixed_type(field.typ) {
-				if g.field_needs_default_init(fixed.elem_type) {
+				if g.fixed_array_elem_needs_default_init(fixed.elem_type) {
 					cfield := g.init_field_c_name(lookup_name, field.name)
 					for idx in 0 .. fixed.len {
 						g.write(' ${tmp}.${cfield}[${idx}] = ')
@@ -2631,6 +2647,22 @@ fn (mut g FlatGen) field_needs_default_init(typ types.Type) bool {
 	return false
 }
 
+// fixed_array_elem_needs_runtime_header reports whether the elements of a fixed
+// array field are maps, dynamic arrays or channels, which are unusable when zero
+// filled: they need their runtime headers.
+fn fixed_array_elem_needs_runtime_header(elem_type types.Type) bool {
+	clean_type := default_init_unalias_type(elem_type)
+	return clean_type is types.Map || clean_type is types.Array || clean_type is types.Channel
+}
+
+// fixed_array_elem_needs_default_init reports whether a struct literal must
+// initialize the elements of a fixed array field explicitly: elements that need
+// a runtime header, or structs with defaults of their own.
+fn (mut g FlatGen) fixed_array_elem_needs_default_init(elem_type types.Type) bool {
+	return fixed_array_elem_needs_runtime_header(elem_type)
+		|| g.field_needs_default_init(elem_type)
+}
+
 // struct_needs_default_init reports whether building `type_name` as a struct
 // literal would set any field that C's `{0}` would not: a field with an explicit
 // default (`x int = 5`), an omitted dynamic array/map, or a by-value struct field
@@ -2684,6 +2716,12 @@ fn (mut g FlatGen) struct_needs_default_init_inner(type_name string, mut visited
 		if clean_ftyp is types.Struct
 			&& g.struct_needs_default_init_inner(clean_ftyp.name, mut visited) {
 			found = true
+			continue
+		}
+		if fixed := array_fixed_type(clean_ftyp) {
+			if fixed_array_elem_needs_runtime_header(fixed.elem_type) {
+				found = true
+			}
 		}
 	}
 	return found

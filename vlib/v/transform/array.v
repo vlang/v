@@ -623,6 +623,7 @@ fn (mut t Transformer) make_struct_runtime_default_value_guarded(struct_type str
 	}
 	info := t.lookup_struct_info(struct_type) or { return none }
 	mut field_ids := []flat.NodeId{}
+	mut needs_literal := false
 	old_module := t.cur_module
 	if info.module.len > 0 {
 		t.cur_module = info.module
@@ -661,6 +662,11 @@ fn (mut t Transformer) make_struct_runtime_default_value_guarded(struct_type str
 			}
 		} else if clean_type.starts_with('map[') || clean_type.starts_with('[]') {
 			value = t.zero_value_for_type(clean_type)
+		} else if t.fixed_array_needs_runtime_default(clean_type) {
+			// C generation initializes the elements of fixed-array fields that a
+			// struct literal leaves unset; the literal just has to exist.
+			needs_literal = true
+			continue
 		} else if nested := t.make_struct_runtime_default_value_guarded(clean_type, mut visited) {
 			value = nested
 		}
@@ -677,7 +683,7 @@ fn (mut t Transformer) make_struct_runtime_default_value_guarded(struct_type str
 			typ:            field_type
 		})
 	}
-	if field_ids.len == 0 {
+	if field_ids.len == 0 && !needs_literal {
 		return none
 	}
 	start := t.a.children.len
@@ -691,6 +697,20 @@ fn (mut t Transformer) make_struct_runtime_default_value_guarded(struct_type str
 		value:          struct_type
 		typ:            struct_type
 	})
+}
+
+// fixed_array_needs_runtime_default reports whether the elements of a `[N]T`
+// field are maps or dynamic arrays, which a zeroed element leaves unusable.
+fn (mut t Transformer) fixed_array_needs_runtime_default(field_type string) bool {
+	if !field_type.starts_with('[') || field_type.starts_with('[]') {
+		return false
+	}
+	close := field_type.index_u8(`]`)
+	if close < 0 {
+		return false
+	}
+	elem_type := t.normalize_type_alias(field_type[close + 1..])
+	return elem_type.starts_with('map[') || elem_type.starts_with('[]')
 }
 
 fn (mut t Transformer) transform_owned_array_literal_element(elem_id flat.NodeId, elem_type string) flat.NodeId {
