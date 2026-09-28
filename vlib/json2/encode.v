@@ -38,6 +38,14 @@ pub fn encode[T](val T, config EncoderOptions) string {
 fn (mut encoder Encoder) encode_value[T](val T) {
 	$if T is $interface {
 		encoder.encode_null()
+	} $else $if T is $option {
+		// Options outside of struct fields (sum type variants, array elements, map
+		// values, the top-level value) must still produce a JSON value.
+		if val == none {
+			encoder.encode_null()
+		} else {
+			encoder.encode_value(get_value_from_optional(val))
+		}
 	} $else $if T.unaliased_typ is voidptr {
 		encoder.encode_null()
 	} $else $if T.unaliased_typ is string {
