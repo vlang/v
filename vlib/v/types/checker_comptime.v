@@ -14681,10 +14681,10 @@ fn (mut tc TypeChecker) collect_returned_alias_sources_in_scope(id flat.NodeId, 
 	}
 	if node.kind == .if_expr && node.children_count >= 2 {
 		cond_id := tc.a.child(node, 0)
-		tc.collect_returned_alias_sources_in_scope(cond_id, args_by_param, mut visiting,
-			mut sources)
 		saved_smartcasts := clone_smartcasts(tc.smartcasts)
 		tc.push_scope()
+		tc.collect_returned_alias_sources_in_scope(cond_id, args_by_param, mut visiting,
+			mut sources)
 		tc.restore_return_alias_guard_bindings(cond_id)
 		for sc in tc.extract_smartcasts(cond_id) {
 			tc.smartcasts[sc.name] = sc.typ

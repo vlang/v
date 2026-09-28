@@ -1,6 +1,41 @@
 module types
 
 import os
+import v.flat
+
+fn test_cached_guard_binding_does_not_escape_alias_analysis_scope() {
+	mut a := flat.FlatAst.new()
+	lhs := a.add_val(.ident, 'helper')
+	rhs := a.add_val(.ident, 'optional_helper')
+	guard_start := a.begin_children()
+	a.add_child(lhs)
+	a.add_child(rhs)
+	guard := a.add_node(flat.Node{
+		kind:           .decl_assign
+		children_start: guard_start
+		children_count: 2
+	})
+	body := a.add_node(flat.Node{ kind: .block })
+	if_start := a.begin_children()
+	a.add_child(guard)
+	a.add_child(body)
+	if_expr := a.add_node(flat.Node{
+		kind:           .if_expr
+		children_start: if_start
+		children_count: 2
+	})
+	mut tc := TypeChecker.new(&a)
+	outer_type := Type(FnType{ return_type: Type(string_) })
+	guard_type := Type(FnType{ return_type: Type(int_) })
+	tc.cur_scope.insert('helper', outer_type)
+	tc.register_synth_type(lhs, guard_type)
+	tc.register_synth_type(rhs, Type(OptionType{ base_type: guard_type }))
+	mut visiting := map[int]bool{}
+	mut sources := []flat.NodeId{}
+	tc.collect_returned_alias_sources_in_scope(if_expr, map[string]flat.NodeId{}, mut visiting,
+		mut sources)
+	assert tc.cur_scope.lookup('helper') or { panic('missing outer helper') } == outer_type
+}
 
 fn test_returned_array_still_borrows_immutable_argument() {
 	path := os.join_path(os.vtmp_dir(), 'v3_return_alias_scope_${os.getpid()}.v')
@@ -99,6 +134,19 @@ fn test_if_guard_function_value_shadows_fresh_top_level_helper() {
 	result := os.execute('${os.quoted_path(@VEXE)} -new-compiler -check ${os.quoted_path(path)}')
 	assert result.exit_code != 0, result.output
 	assert result.output.contains('immutable'), result.output
+}
+
+fn test_if_guard_function_value_does_not_shadow_outer_helper() {
+	for index, body in [
+		'if helper := maybe_helper() { _ = helper }; return helper(values)',
+		'if helper := maybe_helper() { _ = helper } else { return helper(values) }; return helper(values)',
+	] {
+		path := os.join_path(os.vtmp_dir(), 'v3_return_alias_guard_scope_${os.getpid()}_${index}.v')
+		os.write_file(path, 'type Mapper = fn ([]int) []int\nfn helper(values []int) []int { return values.clone() }\nfn passthrough(values []int) []int { return values }\nfn maybe_helper() ?Mapper { return passthrough }\nfn nested(values []int) []int { ${body} }\nfn main() { original := [1, 2]; mut fresh := nested(original); fresh[0] = 9 }\n')!
+		defer { os.rm(path) or {} }
+		result := os.execute('${os.quoted_path(@VEXE)} -new-compiler -check ${os.quoted_path(path)}')
+		assert result.exit_code == 0, result.output
+	}
 }
 
 fn test_if_smartcast_function_value_shadows_fresh_top_level_helper() {
