@@ -828,6 +828,64 @@ fn test_a_server_child_answers_no_more_once_a_module_appears_at_the_project_root
 	assert p.code == 0
 }
 
+// release_child writes to `fifo` once a child reads it, without waiting for a
+// child that never does: a FIFO opened to write without a reader fails at once.
+fn release_child(fifo string) {
+	for _ in 0 .. 500 {
+		fd := C.open(&char(fifo.str), C.O_WRONLY | C.O_NONBLOCK)
+		if fd >= 0 {
+			C.write(fd, c'go', 2)
+			C.close(fd)
+			return
+		}
+		time.sleep(10 * time.millisecond)
+	}
+}
+
+fn test_a_child_whose_server_ended_before_the_child_followed_it_ends() {
+	$if !linux {
+		return
+	}
+	// Right after its fork, a child asks the kernel to end it with the server;
+	// a server that ended in between leaves it running, checking for nobody. A
+	// FIFO holds the child there while the test kills the server: the child has
+	// to end then, before it checks and prints the error of this program.
+	dir := program_dir('orphan_child', 'module main\n\nfn main() {\n\tprintln(missing)\n}\n')
+	fifo := os.join_path(work_dir, 'orphan_child.fifo')
+	assert os.execute('mkfifo ${os.quoted_path(fifo)}').exit_code == 0
+	mut p := start_server(dir, {
+		'V_DIAGNOSTICS_CHILD_PAUSE': fifo
+	})
+	defer {
+		p.close()
+	}
+	p.stdin_write('check t0\n')
+	started := read_until(mut p, ' t0\n')
+	assert started.contains('v-diagnostics-server: child '), started
+	child := started.all_after('v-diagnostics-server: child ').all_before(' ').int()
+	assert child > 0, started
+	p.signal_kill()
+	p.wait()
+	// Writing to the FIFO lets the child go on.
+	release_child(fifo)
+	for _ in 0 .. 1000 {
+		if !os.exists('/proc/${child}') {
+			break
+		}
+		time.sleep(10 * time.millisecond)
+	}
+	assert !os.exists('/proc/${child}'), 'the child ${child} is still running'
+	mut printed := ''
+	for {
+		chunk := p.stdout_read()
+		if chunk == '' {
+			break
+		}
+		printed += chunk
+	}
+	assert !printed.contains('missing'), printed
+}
+
 fn test_a_server_child_that_grew_answers_its_last_question_and_leaves() {
 	$if !linux {
 		return
