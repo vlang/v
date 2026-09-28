@@ -10147,6 +10147,9 @@ fn (p &Parser) inline_asm_source_gap_has_newline(start int, end int) bool {
 }
 
 fn (mut p Parser) validate_inline_asm_lock_instruction() {
+	if p.prefs.is_fmt {
+		return
+	}
 	p.peek()
 	if p.peek_tok == .eof {
 		p.record_diagnostic('The lock prefix cannot be used on this instruction', p.s.src.len)
@@ -10192,13 +10195,13 @@ fn (mut p Parser) asm_stmt() flat.NodeId {
 		modifier_pos := p.tok_pos
 		match p.lit {
 			'raw' {
-				if is_raw {
+				if is_raw && !p.prefs.is_fmt {
 					p.record_diagnostic('duplicate `raw` assembly modifier', modifier_pos)
 				}
 				is_raw = true
 			}
 			'intel' {
-				if is_intel {
+				if is_intel && !p.prefs.is_fmt {
 					p.record_diagnostic('duplicate `intel` assembly modifier', modifier_pos)
 				}
 				is_intel = true
@@ -10289,7 +10292,8 @@ fn (mut p Parser) asm_stmt() flat.NodeId {
 	can_lower := (!has_unsupported_content && has_memory_clobber)
 		|| (p.supports_c_inline_asm_lowering()
 			&& comptime_flag_is_target_arch(asm_arch, p.prefs.target.arch))
-	if !p.prefs.supports_inline_asm && !can_lower && (has_memory_clobber || has_unsupported_content) {
+	if !p.prefs.is_fmt && !p.prefs.supports_inline_asm && !can_lower
+		&& (has_memory_clobber || has_unsupported_content) {
 		p.record_diagnostic('inline assembly is not supported by the selected V3 backend', asm_pos)
 	}
 	id := p.add_node(flat.Node{
@@ -13838,8 +13842,10 @@ fn (mut p Parser) parse_fixed_array_literal_type_name() string {
 				val := p.parse_fixed_array_literal_type_name()
 				return 'map[${key}]${val}'
 			}
-			p.record_diagnostic_span('cannot use the map type without key and value definition',
-				name_start, name_end)
+			if !p.prefs.is_fmt {
+				p.record_diagnostic_span('cannot use the map type without key and value definition',
+					name_start, name_end)
+			}
 		}
 		if name == 'chan' {
 			if p.tok == .name || p.tok == .amp || p.tok == .lsbr || p.tok == .question
@@ -15548,12 +15554,12 @@ fn (mut p Parser) parse_type_name() string {
 				val := p.parse_type_name()
 				return 'map[${key}]${val}'
 			}
-			if !p.internal_collection_types_allowed() {
+			if !p.prefs.is_fmt && !p.internal_collection_types_allowed() {
 				p.record_diagnostic_span('cannot use the map type without key and value definition',
 					name_start, name_end)
 			}
 		}
-		if name == 'array' && !p.internal_collection_types_allowed() {
+		if name == 'array' && !p.prefs.is_fmt && !p.internal_collection_types_allowed() {
 			p.record_diagnostic_span('`array` is an internal type, it cannot be used directly. Use `[]int`, `[]Foo` etc',
 				name_start, name_end)
 		}

@@ -7,6 +7,12 @@ fn test_formatter_preserves_syntax_without_semantic_diagnostics() {
 	path := os.join_path(os.vtmp_dir(), 'formatter_semantics_${os.getpid()}.v')
 	defer { os.rm(path) or {} }
 	cases := {
+		'fn f(value array) {}':                                                                      '`array` is an internal type, it cannot be used directly. Use `[]int`, `[]Foo` etc'
+		'fn f(value map) {}':                                                                        'cannot use the map type without key and value definition'
+		'fn main() { _ := [2]map{} }':                                                               'cannot use the map type without key and value definition'
+		'fn main() { asm amd64 raw raw { nop } }':                                                   'duplicate `raw` assembly modifier'
+		'fn main() { asm amd64 intel intel { nop } }':                                               'duplicate `intel` assembly modifier'
+		'fn main() { asm amd64 { lock nop } }':                                                      'The lock prefix cannot be used on this instruction'
 		'struct Holder { value mut int }':                                                           'cannot use `mut` on struct field type'
 		'fn main() { callback := fn [missing] () {}; _ = callback }':                                'undefined ident: `missing`'
 		'interface Reader { read[T](value T) T }':                                                   'non-generic interface `Reader` cannot define a generic method'

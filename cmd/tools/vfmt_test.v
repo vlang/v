@@ -184,6 +184,12 @@ fn test_fmt_preserves_signature_and_comptime_semantic_errors() {
 
 fn test_fmt_preserves_semantic_signature_and_collection_restrictions() {
 	for source, expected in {
+		'fn f(value array) {}':                               'value array'
+		'fn f(value map) {}':                                 'value map'
+		'fn main() { _ := [2]map{} }':                        '[2]map{}'
+		'fn main() { asm amd64 raw raw { nop } }':            'asm amd64 raw raw { nop }'
+		'fn main() { asm amd64 intel intel { nop } }':        'asm amd64 intel intel { nop }'
+		'fn main() { asm amd64 { lock nop } }':               'asm amd64 { lock nop }'
 		'struct Holder { value mut int }':                    'value mut int'
 		'fn f() mut int { return 1 }':                        'fn f() mut int'
 		'__global int int':                                   '__global int int'
