@@ -129,8 +129,10 @@ pub fn (mut tc TypeChecker) vls_answer(q VlsQuery) string {
 		target = tc.vls_target_at(file_id, offset, source) or { target }
 	}
 	if int(target.id) < 0 {
-		// A word of a comment or of the text of a string names no type.
-		if !vls_offset_is_code(source, offset) {
+		// A word of a comment or of the text of a string names no type. The
+		// cursor can be just past the word it asks about, as at the end of a
+		// line comment: the first byte of the word tells where the word is.
+		if !vls_offset_is_code(source, vls_word_start(source, offset)) {
 			return ''
 		}
 		return tc.vls_answer_type_word(q, file_id, source, offset)
@@ -298,10 +300,7 @@ fn (tc &TypeChecker) vls_node_around(file_id int, offset int) ?flat.NodeId {
 // `User`, then the bare word.
 fn vls_type_words_at(source string, offset int) []string {
 	word := vls_word_at(source, offset) or { return [] }
-	mut start := offset
-	for start > 0 && vls_is_name_byte(source[start - 1]) {
-		start--
-	}
+	start := vls_word_start(source, offset)
 	end := start + word.len
 	mut words := []string{}
 	if start > 1 && source[start - 1] == `.` {
@@ -316,6 +315,17 @@ fn vls_type_words_at(source string, offset int) []string {
 	}
 	words << word
 	return words
+}
+
+// vls_word_start is the first byte of the word that the byte `offset` of
+// `source` is on or just past, as vls_word_at finds it; `offset` when no word
+// ends there.
+fn vls_word_start(source string, offset int) int {
+	mut start := offset
+	for start > 0 && vls_is_name_byte(source[start - 1]) {
+		start--
+	}
+	return start
 }
 
 // vls_offset_is_code reports whether the byte `offset` of `source` is code: not

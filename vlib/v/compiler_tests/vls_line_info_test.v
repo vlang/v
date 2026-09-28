@@ -1531,6 +1531,40 @@ fn main() {
 	}
 }
 
+fn test_a_cursor_right_after_a_type_name_that_ends_a_comment_names_no_type() {
+	// A cursor right after a name is on that name: after the last word of a
+	// line comment, before its newline or at the end of the file, it is still
+	// in the comment. In a declaration, the same cursor names the type.
+	before_newline := program_dir('type_word_ends_comment', 'module main
+
+struct Marker {}
+
+struct Holder {
+	m Marker
+}
+
+fn main() {
+// Marker
+}
+')
+	at_end := program_dir('type_word_ends_file', 'module main
+
+struct Marker {}
+
+fn main() {}
+
+// Marker')
+	for dir, line in {
+		before_newline: 10
+		at_end:         7
+	} {
+		assert ask_at(dir, '${line}:gd^9') == '', dir
+		assert ask_at(dir, '${line}:hv^9') == '', dir
+	}
+	assert ask_at(before_newline, '6:gd^9') == 'main.v:3:7'
+	assert ask_at(before_newline, '6:hv^9') == hover_of('struct Marker')
+}
+
 // not_array_methods_program calls methods of a struct named like the array
 // methods whose argument declares `it`, `a` and `b`, with locals of those names.
 const not_array_methods_program = 'module main
