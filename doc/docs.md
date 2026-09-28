@@ -2389,6 +2389,8 @@ When iterating a reference to a map (`for key, value in &m`), values with ordina
 are pointers to their entries. Assigning one to another variable preserves its reference to the
 same entry. If the map element is already a pointer or an optional, the loop value keeps that
 element type instead.
+Fixed-array map values also refer to their entry storage, so changes through the reference update
+the map value.
 
 Either key or value can be ignored by using a single underscore as the identifier.
 

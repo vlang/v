@@ -8861,6 +8861,18 @@ fn (mut g FlatGen) gen_assign(node flat.Node) {
 				i += 2
 				continue
 			}
+			if node.op == .assign && lhs.kind == .ident {
+				if indirect := g.local_indirect_value_type(lhs.value) {
+					if _ := array_fixed_type(indirect) {
+						dst := '*${g.expr_to_string(lhs_id)}'
+						g.write('memmove(${dst}, ')
+						g.gen_fixed_array_copy_source(rhs_id, indirect)
+						g.writeln(', sizeof(${dst}));')
+						i += 2
+						continue
+					}
+				}
+			}
 			if rhs_node.kind == .array_literal {
 				lhs_type := types.unwrap_pointer(g.usable_expr_type(lhs_id))
 				if lhs_type is types.ArrayFixed {

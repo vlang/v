@@ -365,9 +365,13 @@ fn (mut g FlatGen) gen_for_in(node flat.Node) {
 				}
 				if val_fixed := array_fixed_type(clean_container_type.value_type) {
 					c_elem, dims := g.fixed_array_decl_parts(val_fixed)
-					g.writeln('${c_elem} ${val_var_}${dims};')
-					g.writeln('memmove(${val_var_}, ${val_slot}, sizeof(${val_var_}));')
-					val_is_fixed_copy = true
+					if map_value_by_ref {
+						g.writeln('${c_elem} (*${val_var_})${dims} = (${c_elem} (*)${dims})(${val_slot});')
+					} else {
+						g.writeln('${c_elem} ${val_var_}${dims};')
+						g.writeln('memmove(${val_var_}, ${val_slot}, sizeof(${val_var_}));')
+						val_is_fixed_copy = true
+					}
 				} else if map_value_by_ref {
 					g.writeln('${c_val}* ${val_var_} = (${c_val}*)(${val_slot});')
 				} else {
