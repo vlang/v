@@ -223,3 +223,18 @@ fn test_nested_sumtype_round_trip() {
 	owner := decoded as NestedOwner
 	assert (owner.pet as NestedDog).name == 'rex'
 }
+
+struct InnerNilPointers {
+	a &&int
+	b &&&int
+}
+
+fn test_encode_inner_nil_pointers() {
+	inner := &int(unsafe { nil })
+	middle := &&int(unsafe { nil })
+	value := InnerNilPointers{
+		a: &inner
+		b: &middle
+	}
+	assert json2.encode(value) == '{"a":null,"b":null}'
+}

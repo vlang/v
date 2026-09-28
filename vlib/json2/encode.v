@@ -716,12 +716,10 @@ fn (mut encoder Encoder) encode_struct_field_value[T](val T) {
 		} else {
 			encoder.encode_value(get_value_from_optional(val))
 		}
-	} $else $if T.indirections == 1 {
-		encoder.encode_value(*val)
-	} $else $if T.indirections == 2 {
-		encoder.encode_value(**val)
-	} $else $if T.indirections == 3 {
-		encoder.encode_value(***val)
+	} $else $if T is $pointer {
+		// encode_value follows the pointer one level at a time, so a nil pointer at
+		// any level (`&&int` pointing to a nil `&int`) is written as `null`.
+		encoder.encode_value(val)
 	} $else {
 		encoder.encode_value(val)
 	}
