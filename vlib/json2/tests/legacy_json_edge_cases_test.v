@@ -302,3 +302,21 @@ fn test_objects_and_arrays_decode_into_strings() {
 	assert targets.ls == ['{"z":1}']
 	assert targets.ms['q'] == '[2]'
 }
+
+struct RequiredName {
+	name string @[required]
+}
+
+struct RequiredList {
+	list []int @[required]
+}
+
+fn test_required_fields_reject_null() {
+	if _ := json2.decode[RequiredName]('{"name":null}') {
+		assert false
+	}
+	if _ := json2.decode[RequiredList]('{"list":null}') {
+		assert false
+	}
+	assert json2.decode[RequiredName]('{"name":"x"}')!.name == 'x'
+}

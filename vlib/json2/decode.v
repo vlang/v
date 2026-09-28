@@ -615,6 +615,15 @@ fn decode_struct_key[T](mut decoder Decoder, val T, key_info ValueInfo, prefix s
 							decoder.decode_error('`raw` attribute can only be used with string fields')!
 						}
 					} else {
+						// A `@[required]` field needs a value: `null` is rejected like in the removed
+						// `json` module, before the value decoders treat it leniently.
+						$if field.typ is $option {
+						} $else {
+							if field_info.is_required
+								&& decoder.current_node.value.value_kind == .null {
+								decoder.decode_error('required field `${field.name}` cannot be null')!
+							}
+						}
 						$if field.is_shared {
 							decoder.decode_error('shared fields cannot be decoded')!
 						} $else $if field.typ is $option {
@@ -1036,6 +1045,15 @@ fn (mut decoder Decoder) decode_value[T](mut val T) ! {
 										decoder.decode_error('`raw` attribute can only be used with string fields')!
 									}
 								} else {
+									// A `@[required]` field needs a value: `null` is rejected like in the removed
+									// `json` module, before the value decoders treat it leniently.
+									$if field.typ is $option {
+									} $else {
+										if field_info.is_required
+											&& decoder.current_node.value.value_kind == .null {
+											decoder.decode_error('required field `${field.name}` cannot be null')!
+										}
+									}
 									$if field.is_shared {
 										decoder.decode_error('shared fields cannot be decoded')!
 									} $else $if field.typ is $option {

@@ -599,7 +599,7 @@ fn test_required() {
 	assert required_struct.lastname == 'Parker'
 
 	required_struct_err := json2.decode[RequiredStruct]('{"name": null, "lastname": "Parker"}') or {
-		assert err.msg().contains('Invalid json: Data: Expected string, but got null')
+		assert err.msg().contains('Invalid json: Data: required field `name` cannot be null')
 		RequiredStruct{
 			name:     'Peter'
 			lastname: 'Parker'
