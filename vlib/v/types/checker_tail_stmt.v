@@ -3197,6 +3197,12 @@ pub fn (tc &TypeChecker) translated_promoted_numeric_type(typ Type) Type {
 	return clean
 }
 
+// translated_promoted_shift_type applies integral promotion using C's int width.
+pub fn (tc &TypeChecker) translated_promoted_shift_type(typ Type) Type {
+	promoted := tc.translated_promoted_numeric_type(typ)
+	return if promoted == Type(int_) { Type(i32_) } else { promoted }
+}
+
 fn translated_integer_bit_width(typ Type) int {
 	if typ is Primitive {
 		return if typ.size == 0 { 32 } else { int(typ.size) }
@@ -16765,6 +16771,9 @@ fn (tc &TypeChecker) resolve_type_uncached(id flat.NodeId) Type {
 				return operator_ret
 			}
 			if node.op == .right_shift_unsigned {
+				if tc.node_is_in_translated_file(id) {
+					return unsigned_shift_result_type(tc.translated_promoted_shift_type(lt))
+				}
 				// Untyped integer literals retain the language's 32-bit default. An
 				// explicit `int(...)` uses the target-width `int` instead.
 				if tc.integer_literal_source(lhs_id) != none {

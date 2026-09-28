@@ -25,5 +25,6 @@ Mixed-width arithmetic is evaluated in the same C common type before its result
 is used by an enclosing expression or returned.
 
 Compound shifts use the same promoted operand width as ordinary shifts, including
-boolean and enum operands. With `-check-overflow`, integer compound arithmetic
-checks the promoted common type before converting the result back to its destination.
+boolean and enum operands in scalar, array, and pointer lvalues. Logical right shifts (`>>>`)
+infer their unsigned result type after integral promotion. With `-check-overflow`, integer compound
+arithmetic checks the promoted common type before converting the result back to its destination.

@@ -5199,7 +5199,7 @@ fn (t &Transformer) reliable_infix_stringify_type(node flat.Node) string {
 		}
 		.right_shift_unsigned {
 			if lhs_type.len > 0 {
-				return t.unsigned_shift_type_text(lhs_type)
+				return t.unsigned_shift_type_text(lhs_type, node)
 			}
 		}
 		.left_shift, .right_shift {
@@ -5225,10 +5225,25 @@ fn (t &Transformer) reliable_infix_stringify_type(node flat.Node) string {
 	return ''
 }
 
-fn (t &Transformer) unsigned_shift_type_text(typ string) string {
+fn (t &Transformer) unsigned_shift_type_text(typ string, node flat.Node) string {
 	clean := typ.trim_space()
 	if !isnil(t.tc) {
-		resolved := t.semantic_type_name(types.unsigned_shift_result_type(t.tc.parse_type(clean)))
+		mut operand := t.tc.parse_type(clean)
+		file := if source := t.a.source_files[node.pos.id] { source.name } else { t.cur_file }
+		if t.tc.translated_files[file] {
+			operand = t.tc.translated_promoted_shift_type(operand)
+			if node.children_count > 0 {
+				lhs_id := t.a.child(&node, 0)
+				checked := t.tc.expr_type(lhs_id) or { t.tc.resolve_type(lhs_id) }
+				promoted := t.tc.translated_promoted_shift_type(checked)
+				// A literal's spelling can require a wider C type than the
+				// transformer's generic `int` fallback.
+				if promoted.is_integer() {
+					operand = promoted
+				}
+			}
+		}
+		resolved := t.semantic_type_name(types.unsigned_shift_result_type(operand))
 		if resolved in ['u8', 'u16', 'u32', 'u64', 'usize'] {
 			return resolved
 		}

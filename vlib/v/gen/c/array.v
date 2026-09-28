@@ -1850,7 +1850,8 @@ fn (mut g FlatGen) gen_index_assign(node flat.Node) {
 				}
 
 				lhs_text := '*(${c_elem}*)array_get(*_a${tmp}, _i${tmp})'
-				g.gen_guarded_shift_from_text(lhs_text, g.a.child(&node, 1), arr_type.elem_type,
+				shift_type := g.compound_shift_operand_type(lhs_id, arr_type.elem_type)
+				g.gen_guarded_shift_from_text(lhs_text, g.a.child(&node, 1), shift_type,
 					shift_op)
 			} else if op := compound_assign_to_infix_op(node.op) {
 				rhs_id := g.a.child(&node, 1)
@@ -1890,6 +1891,18 @@ fn (mut g FlatGen) gen_index_assign(node flat.Node) {
 			rhs_id := g.a.child(&node, 1)
 			if g.gen_translated_numeric_compound_assign(g.a.child(&node, 0), rhs_id,
 				expected_type, g.usable_expr_type(rhs_id), node.op) {
+				return
+			}
+			if g.expr_is_in_translated_file(lhs_id)
+				&& node.op in [.left_shift_assign, .right_shift_assign, .right_shift_unsigned_assign] {
+				shift_op := compound_assign_to_infix_op(node.op) or { flat.Op.left_shift }
+				shift_type := g.compound_shift_operand_type(lhs_id, expected_type)
+				addr_tmp := g.tmp_name()
+				g.write('{ ${g.value_c_type(expected_type)}* ${addr_tmp} = &(')
+				g.gen_expr(lhs_id)
+				g.write('); *${addr_tmp} = ')
+				g.gen_guarded_shift_from_text('*${addr_tmp}', rhs_id, shift_type, shift_op)
+				g.writeln('; }')
 				return
 			}
 			if fixed := array_fixed_type(ptr_type.base_type) {

@@ -24496,6 +24496,14 @@ fn (mut g FlatGen) gen_guarded_shift(lhs_id flat.NodeId, rhs_id flat.NodeId, lhs
 	g.gen_guarded_shift_from_text(g.expr_to_string(lhs_id), rhs_id, lhs_type, op)
 }
 
+fn (g &FlatGen) compound_shift_operand_type(lhs_id flat.NodeId, lhs_type types.Type) types.Type {
+	return if g.expr_is_in_translated_file(lhs_id) {
+		g.tc.translated_promoted_shift_type(lhs_type)
+	} else {
+		lhs_type
+	}
+}
+
 // gen_unsigned_right_shift_from_text is gen_unsigned_right_shift with the lhs
 // already rendered as a C expression (used by `>>>=` to shift through a
 // pointer temp so the lvalue is evaluated exactly once).

@@ -432,3 +432,68 @@ fn test_translated_rune_shifts_keep_unsigned_width() {
 	too_far := int(32)
 	assert value >> too_far == 0
 }
+
+enum TranslatedNegativeEnum {
+	negative = -1
+}
+
+type TranslatedNegativeEnumAlias = TranslatedNegativeEnum
+
+fn test_translated_logical_shift_promotes_its_operand() {
+	value := TranslatedNegativeEnum.negative
+	count := int(1)
+	assert value >>> count == u64(0x7fffffff)
+	assert value >>> 1 == u64(0x7fffffff)
+	assert typeof(value >>> count).name == 'u32'
+	shifted := value >>> count
+	assert typeof(shifted).name == 'u32'
+	assert shifted == u64(0x7fffffff)
+	assert '${value >>> count}' == '2147483647'
+	alias_value := TranslatedNegativeEnumAlias(value)
+	assert alias_value >>> count == u64(0x7fffffff)
+	assert i8(-1) >>> count == u64(0x7fffffff)
+	assert typeof(i8(-1) >>> count).name == 'u32'
+	assert typeof(true >>> count).name == 'u32'
+	assert typeof(0x1_0000_0000 >>> count).name == 'u64'
+	assert 0x1_0000_0000 >>> count == u64(0x80000000)
+	assert typeof(i64(-1) >>> count).name == 'u64'
+	assert i64(-1) >>> count == u64(0x7fffffffffffffff)
+}
+
+fn translated_shift_count(mut evaluations []int) int {
+	evaluations << 2
+	return 40
+}
+
+fn translated_shift_index(mut evaluations []int) int {
+	evaluations << 1
+	return 0
+}
+
+fn test_translated_dynamic_array_compound_shifts_promote_elements() {
+	mut evaluations := []int{}
+	mut flags := [true, true, true]
+	flags[translated_shift_index(mut evaluations)] <<= translated_shift_count(mut evaluations)
+	assert evaluations == [1, 2]
+	flags[1] >>= 40
+	flags[2] >>>= 40
+	assert flags == [false, false, false]
+	mut small := [i8(-1)]
+	small[0] >>= 40
+	assert small == [i8(0)]
+	mut codes := [TranslatedNegativeEnum.negative]
+	codes[0] >>>= 1
+	assert int(codes[0]) == 0x7fffffff
+	mut aliases := [TranslatedNegativeEnumAlias(.negative)]
+	aliases[0] <<= 40
+	assert int(aliases[0]) == 0
+	mut backing := [true, true, true]!
+	// The element pointer is valid only while its stack array is alive.
+	unsafe {
+		mut pointer := &backing[0]
+		pointer[0] <<= 40
+		pointer[1] >>= 40
+		pointer[2] >>>= 40
+	}
+	assert backing == [false, false, false]!
+}

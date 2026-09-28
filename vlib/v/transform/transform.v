@@ -24417,7 +24417,7 @@ fn (t &Transformer) resolve_expr_type(id flat.NodeId) string {
 					return ret_type
 				}
 				if node.op == .right_shift_unsigned && lhs_type.len > 0 {
-					return t.unsigned_shift_type_text(lhs_type)
+					return t.unsigned_shift_type_text(lhs_type, node)
 				}
 				if node.op == .plus && lhs_type == 'string' {
 					return 'string'

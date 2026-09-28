@@ -9003,13 +9003,7 @@ fn (mut g FlatGen) gen_assign(node flat.Node) {
 					}
 
 					lhs_assign_id := g.a.child(&node, i)
-					mut shift_type := lhs_type
-					if g.expr_is_in_translated_file(lhs_assign_id) {
-						shift_type = g.tc.translated_promoted_numeric_type(lhs_type)
-						if shift_type.name() == 'int' {
-							shift_type = types.Type(types.i32_)
-						}
-					}
+					shift_type := g.compound_shift_operand_type(lhs_assign_id, lhs_type)
 					if g.a.nodes[int(lhs_assign_id)].kind == .ident {
 						mut lhs_text := g.expr_to_string(lhs_assign_id)
 						if g.assign_lhs_needs_deref(lhs_assign_id, lhs_type, rhs_type, node.op) {
