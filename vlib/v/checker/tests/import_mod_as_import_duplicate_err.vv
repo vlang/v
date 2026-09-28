@@ -1,12 +1,5 @@
-import x.json2 as json
-import json
+import json2 as strings
+import strings
 
-numbers := {
-	'one':   1
-	'two':   2
-	'three': 3
-	'four':  4
-}
-
-out := json.encode(numbers)
+out := strings.repeat(`a`, 3)
 println(out)

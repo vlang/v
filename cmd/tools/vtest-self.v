@@ -91,7 +91,7 @@ const essential_list = [
 	'vlib/encoding/utf8/validate/encoding_utf8_test.v',
 	'vlib/encoding/utf8/utf8_util_test.v',
 	'vlib/flag/flag_test.v',
-	'vlib/json/tests/json_decode_test.v',
+	'vlib/json2/tests/json_module_compatibility_test/json_decode_test.v',
 	'vlib/math/math_test.v',
 	'vlib/net/tcp_test.v',
 	'vlib/net/http/http_test.v',
@@ -210,7 +210,6 @@ const skip_with_fsanitize_address = [
 	'vlib/compress/zstd/zstd_test.v', // ASan reports leaks from zstd library
 	'vlib/crypto/argon2/argon2_test.v', // ASan flags large alloc on test setup
 	'vlib/gg/text_rendering_test.v', // depends on freetype/font assets not available under sanitize CI
-	'vlib/json/tests/json_decode_with_sumtype_test.v', // ASan flake on sumtype decode buffer reuse
 	'vlib/net/mbedtls/mbedtls_read_timeout_test.v', // network timing test, ASan-incompatible
 	'vlib/net/websocket/websocket_test.v',
 	'vlib/orm/orm_create_and_drop_test.v',

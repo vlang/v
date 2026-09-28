@@ -1,5 +1,6 @@
-> The name `json2` was chosen to avoid any unwanted potential conflicts with the
-> existing codegen tailored for the main `json` module which is powered by CJSON.
+> `json2` replaces the removed cJSON based `json` module. `v fmt -w file.v`
+> migrates code that still uses `json.decode(T, s)`, `json.encode(x)` and
+> `json.encode_pretty(x)` to `json2`.
 
 `json2` is an experimental JSON parser written from scratch on V.
 

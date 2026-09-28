@@ -104,13 +104,6 @@ fn test_c_struct_redeclaration_checks_field_signature() {
 
 	assert !cross_module_bad.output.contains('C compilation failed'), cross_module_bad.output
 
-	shared_header_good := run_v3_source_cgen(v3_bin, 'good_cjson_shared_header_redeclaration',
-		'import json\nimport json.cjson\n\nfn main() {\n\t_ := json.encode(unsafe { nil })\n\t_ := cjson.version()\n}\n')
-	assert shared_header_good.exit_code == 0, shared_header_good.output
-	assert !shared_header_good.output.contains('cannot redeclare C struct `C.cJSON`'), shared_header_good.output
-
-	assert !shared_header_good.output.contains('C compilation failed'), shared_header_good.output
-
 	cached_termios_good := run_v3_project(v3_bin, 'module_cache_termios_shims', {
 		'v.mod':                   'Module { name: "cached_termios_shims" }\n'
 		'term/term_cached.vh':     'module term\n\nstruct C.termios {\n\tc_iflag int\n}\n'

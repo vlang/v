@@ -5863,6 +5863,12 @@ fn (mut tc TypeChecker) register_file_import(alias string, module_name string) {
 	info.imports[alias] = module_name
 }
 
+// removed_json_module_message explains an unresolved `import json`: the cJSON based
+// `json` module was replaced by `json2`, and vfmt migrates code that uses it.
+fn removed_json_module_message(file string) string {
+	return 'the `json` module was removed, use `json2` instead.\nRun `v fmt -w ${file}` to migrate the code from `json` to `json2`.'
+}
+
 fn (mut tc TypeChecker) check_import_diagnostics() {
 	mut first_imports := map[string]token.Pos{}
 	mut declaration_seen_in_file := false
@@ -5888,10 +5894,14 @@ fn (mut tc TypeChecker) check_import_diagnostics() {
 		explicit_alias := tc.import_has_explicit_alias(node)
 		has_source := node.pos.end > node.pos.offset
 		if missing_path := tc.a.missing_imports[idx] {
-			// The resolver knows whether a `modules/` directory would have
-			// satisfied this import, and leaves the migration hint for it here.
-			layout_hint := tc.a.missing_import_hints[idx]
-			tc.record_error_severity_at(.unknown_ident, 'cannot import module "${missing_path}" (not found)${layout_hint}', flat.NodeId(idx), node.pos, 'builder error:')
+			if missing_path == 'json' {
+				tc.record_error_severity_at(.unknown_ident, removed_json_module_message(tc.cur_file), flat.NodeId(idx), node.pos, 'builder error:')
+			} else {
+				// The resolver knows whether a `modules/` directory would have
+				// satisfied this import, and leaves the migration hint for it here.
+				layout_hint := tc.a.missing_import_hints[idx]
+				tc.record_error_severity_at(.unknown_ident, 'cannot import module "${missing_path}" (not found)${layout_hint}', flat.NodeId(idx), node.pos, 'builder error:')
+			}
 		}
 		if has_source {
 			tc.check_import_source_syntax(flat.NodeId(idx), node)

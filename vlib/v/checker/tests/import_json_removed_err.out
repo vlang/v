@@ -1,0 +1,6 @@
+vlib/v/checker/tests/import_json_removed_err.vv:1:1: builder error: the `json` module was removed, use `json2` instead.
+Run `v fmt -w vlib/v/checker/tests/import_json_removed_err.vv` to migrate the code from `json` to `json2`.
+    1 | import json
+      | ~~~~~~~~~~~
+    2 | 
+    3 | struct User {
