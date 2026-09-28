@@ -11608,9 +11608,6 @@ fn (mut t Transformer) transform_assign_stmt(id flat.NodeId, node flat.Node) []f
 	if lowered := t.try_lower_pointer_value_assign(node) {
 		return lowered
 	}
-	if lowered := t.try_lower_nested_map_index_assign(node) {
-		return lowered
-	}
 	if lowered := t.try_lower_map_index_fixed_array_assign(node) {
 		return lowered
 	}
@@ -11618,6 +11615,9 @@ fn (mut t Transformer) transform_assign_stmt(id flat.NodeId, node flat.Node) []f
 		return lowered
 	}
 	if lowered := t.try_lower_map_index_assign(id, node) {
+		return lowered
+	}
+	if lowered := t.try_lower_nested_map_index_assign(node) {
 		return lowered
 	}
 	// string `s += x` on a plain ident -> `s = string__plus(s, x)` (only when detectable as string)
@@ -16205,10 +16205,10 @@ fn (mut t Transformer) transform_expr_stmt(id flat.NodeId, node flat.Node) []fla
 	if lowered := t.try_lower_map_index_append_stmt(child_id) {
 		return lowered
 	}
-	if lowered := t.try_lower_nested_map_index_postfix_stmt(child_id) {
+	if lowered := t.try_lower_map_index_postfix_stmt(child_id) {
 		return lowered
 	}
-	if lowered := t.try_lower_map_index_postfix_stmt(child_id) {
+	if lowered := t.try_lower_nested_map_index_postfix_stmt(child_id) {
 		return lowered
 	}
 	if lowered := t.try_lower_array_append_stmt(child_id) {

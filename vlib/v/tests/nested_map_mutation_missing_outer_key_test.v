@@ -24,6 +24,8 @@ mut:
 	n int
 }
 
+type NestedMapVariant = int | []NestedMapVariant
+
 fn (mut c NestedMapKeyCounter) key(k string) string {
 	c.n++
 	return k
@@ -166,4 +168,140 @@ fn test_field_assign_into_an_existing_empty_inner_map() {
 	points['a']['b'].x = 5
 	assert points['a']['b'].x == 5
 	assert points['a'].len == 1
+}
+
+fn replace_nested_outer(mut m map[string]map[string][]int) string {
+	m['a'] = map[string][]int{
+		'fresh': [7]
+	}
+	return 'k'
+}
+
+fn delete_nested_outer(mut m map[string]map[string][]int) string {
+	m.delete('a')
+	return 'k'
+}
+
+fn clear_nested_outer(mut m map[string]map[string][]int) string {
+	m.clear()
+	return 'k'
+}
+
+fn replace_nested_outer_rhs(mut m map[string]map[string][]int) int {
+	m['a'] = map[string][]int{
+		'fresh': [7]
+	}
+	return 3
+}
+
+fn test_mutation_after_later_operand_changes_outer_entry() {
+	mut replaced := map[string]map[string][]int{}
+	replaced['a']['old'] << 1
+	replaced['a'][replace_nested_outer(mut replaced)] << 2
+	assert replaced['a'].str() == "{'fresh': [7], 'k': [2]}"
+	mut deleted := map[string]map[string][]int{}
+	deleted['a']['old'] << 1
+	deleted['a'][delete_nested_outer(mut deleted)] << 2
+	assert deleted['a'].str() == "{'k': [2]}"
+	mut cleared := map[string]map[string][]int{}
+	cleared['a']['old'] << 1
+	cleared['a'][clear_nested_outer(mut cleared)] << 2
+	assert cleared['a'].str() == "{'k': [2]}"
+	assert cleared.len == 1
+}
+
+fn test_mutation_after_rhs_replaces_outer_entry() {
+	mut m := map[string]map[string][]int{}
+	m['a']['k'] << 1
+	m['a']['k'] << replace_nested_outer_rhs(mut m)
+	assert m['a'].str() == "{'fresh': [7], 'k': [3]}"
+}
+
+fn replace_nested_int_outer(mut m map[string]map[string]int) string {
+	m['a'] = map[string]int{
+		'fresh': 7
+	}
+	return 'k'
+}
+
+fn replace_nested_int_outer_rhs(mut m map[string]map[string]int) int {
+	m['a'] = map[string]int{
+		'fresh': 7
+	}
+	return 3
+}
+
+fn test_nested_assign_after_later_operands_replace_outer_entry() {
+	mut assigned := map[string]map[string]int{}
+	assigned['a']['old'] = 1
+	assigned['a'][replace_nested_int_outer(mut assigned)] = 2
+	assert assigned['a'].str() == "{'fresh': 7, 'k': 2}"
+	mut added := map[string]map[string]int{}
+	added['a']['old'] = 1
+	added['a'][replace_nested_int_outer(mut added)] += 2
+	assert added['a'].str() == "{'fresh': 7, 'k': 2}"
+	mut rhs := map[string]map[string]int{}
+	rhs['a']['k'] = 1
+	rhs['a']['k'] += replace_nested_int_outer_rhs(mut rhs)
+	assert rhs['a'].str() == "{'fresh': 7, 'k': 3}"
+}
+
+fn delete_nested_owned_outer_key(mut m map[[2]string]map[string][]int, key [2]string) string {
+	m.delete(key)
+	return 'k'
+}
+
+fn test_later_operand_deletes_owned_outer_key() {
+	mut m := map[[2]string]map[string][]int{}
+	key := ['a', 'b']!
+	m[key]['old'] << 1
+	m[key][delete_nested_owned_outer_key(mut m, key)] << 2
+	assert m[key]['k'] == [2]
+	assert m.len == 1
+}
+
+fn replace_three_level_outer(mut m map[string]map[string]map[string][]int) string {
+	m['a'] = map[string]map[string][]int{}
+	m['a']['b']['fresh'] << 7
+	return 'k'
+}
+
+fn test_three_level_mutation_after_outer_entry_is_replaced() {
+	mut m := map[string]map[string]map[string][]int{}
+	m['a']['b']['old'] << 1
+	m['a']['b'][replace_three_level_outer(mut m)] << 2
+	assert m['a']['b'].str() == "{'fresh': [7], 'k': [2]}"
+}
+
+fn replace_fixed_outer(mut m map[string]map[string][2]int) int {
+	m['a'] = map[string][2]int{
+		'fresh': [7, 0]!
+	}
+	return 1
+}
+
+fn replace_fixed_outer_rhs(mut m map[string]map[string][2]int) int {
+	m['a'] = map[string][2]int{
+		'fresh': [7, 0]!
+	}
+	return 9
+}
+
+fn test_fixed_array_assignment_after_outer_entry_replacement() {
+	mut indexed := map[string]map[string][2]int{}
+	indexed['a']['b'][0] = 1
+	indexed['a']['b'][replace_fixed_outer(mut indexed)] = 9
+	assert indexed['a'].str() == "{'fresh': [7, 0], 'b': [0, 9]}"
+	mut rhs := map[string]map[string][2]int{}
+	rhs['a']['b'][0] = 1
+	rhs['a']['b'][1] = replace_fixed_outer_rhs(mut rhs)
+	assert rhs['a'].str() == "{'fresh': [7, 0], 'b': [0, 9]}"
+}
+
+fn test_nested_map_append_array_sum_variant() {
+	mut m := map[string]map[string][]NestedMapVariant{}
+	m['a']['b'] << [NestedMapVariant(1), NestedMapVariant(2)]
+	assert m['a']['b'].len == 1
+	inner := m['a']['b'][0] as []NestedMapVariant
+	assert inner.len == 2
 }
