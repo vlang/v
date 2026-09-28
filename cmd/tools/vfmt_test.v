@@ -61,7 +61,7 @@ fn test_fmt_preferences_respect_vflags() {
 			assert !res.output.contains("x := c'abc'"), '${backend_flag} ${backend}: ${res.output}'
 		}
 	}
-	for backend in ['native', 'go'] {
+	for backend in ['native', 'go', 'arm64', 'eval'] {
 		os.unsetenv('VFLAGS')
 		res := os.execute('${os.quoted_path(vexe)} -b ${backend} fmt ${os.quoted_path(source_path)}')
 		assert res.exit_code == 0, '${backend}: ${res.output}'
@@ -94,7 +94,7 @@ fn test_fmt_joined_backend_options() {
 		}
 	}
 	for flag in ['-b', '-backend'] {
-		for backend in ['js', 'js_browser', 'wasm'] {
+		for backend in ['js', 'js_browser', 'wasm', 'arm64', 'eval'] {
 			option := '${flag}=${backend}'
 			for placement in ['prefix', 'suffix', 'environment'] {
 				os.unsetenv('VFLAGS')

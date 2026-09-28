@@ -6248,6 +6248,9 @@ The formatter checks syntax without requiring the code to pass semantic checks.
 For example, it preserves closure captures and loop binder mutability while you edit
 incomplete code.
 
+Backend options before `fmt`, such as `v -b arm64 fmt file.v`, or in `VFLAGS` are honored.
+The `arm64` and `eval` backends use the same source formatting rules as `c`.
+
 A function, loop, `if` branch or `match` branch whose body is a single statement
 stays on one line when you write it that way and it fits in 100 columns:
 
