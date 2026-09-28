@@ -9,6 +9,7 @@ fn incremental_test_entry(key string, hash u64) IncrementalEntry {
 		length:    120
 		range_len: 34
 		reusable:  true
+		generic:   hash % 2 == 1
 		details:   IncrementalDetails{
 			diagnostics: [
 				IncrementalDiagnostic{
@@ -59,7 +60,7 @@ fn incremental_test_record(files string, entries []IncrementalEntry) string {
 fn test_a_record_reads_back_what_it_was_written_with() {
 	files := 'first.v\nfile with a\ttab.v\n'
 	text := incremental_test_record(files, [
-		incremental_test_entry('0\tfirst', 0xabcdef),
+		incremental_test_entry('0\tfirst', 0xabcdee),
 		incremental_test_entry('1\tPoint.str', 0x1234567890abcdef),
 	])
 	record := decode_incremental_record(text) or { panic('the record reads as none') }
@@ -73,6 +74,9 @@ fn test_a_record_reads_back_what_it_was_written_with() {
 	assert stored.length == 120
 	assert stored.range_len == 34
 	assert stored.reusable
+	// Whether the check of the body found something generic in it.
+	assert stored.generic
+	assert !record.entries[0].generic
 	for i in 0 .. 2 {
 		details := record.details(i)
 		assert details == incremental_test_entry('', 0).details

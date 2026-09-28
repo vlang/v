@@ -17571,8 +17571,8 @@ fn check_concrete_generic_bodies_of_check(mut a flat.FlatAst, mut tc types.TypeC
 	// every instance a call asks for.
 	used_fns := tc.diagnosed_fn_keys()
 	tc.refresh_direct_parent_index(a)
-	// The instances come from the types of the calls of every body.
-	tc.complete_incremental_check()
+	// The instances come from the types of the bodies that ask for them.
+	tc.complete_incremental_check_for_instances()
 	trace_incremental_check(mut tc)
 	tc.check_concrete_generic_bodies = true
 	_, _ = transform.monomorphize_with_used_checked_config(mut a, tc, used_fns, false)

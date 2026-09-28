@@ -22,11 +22,12 @@ import v.token
 // What the rest of the check reads of the bodies left out is put back from the
 // record too: the functions they name as values (the unused declarations), the
 // functions they call (the unused imports), and their warnings about unhandled
-// Results. What needs their types, markused and the instances of generic
-// functions, checks them first (see complete_incremental_check), as a question
-// of the editor does.
+// Results. The instances of generic functions need the types of the bodies that
+// ask for them: those that the record notes as touching something generic are
+// checked first (see complete_incremental_check_for_instances), and a question
+// of the editor checks every body left out first.
 
-const incremental_record_header = 'v-incremental-check 2'
+const incremental_record_header = 'v-incremental-check 3'
 const incremental_seed = u64(0x9e3779b97f4a7c15)
 
 // incremental_min_left_out is the fewest nodes that the bodies a check leaves
@@ -57,6 +58,7 @@ mut:
 	skipped      []int                 // the indexes in functions of the bodies left out
 	completed    bool                  // they were checked since (see complete_incremental_check)
 	completing   bool                  // that check began
+	to_complete  []int                 // the indexes in functions of the bodies it checks
 	next         int                   // the first of them it did not check yet
 	// What that check changes, and puts back as it was.
 	saved_errors  int
@@ -122,6 +124,7 @@ struct IncrementalStored {
 	length        int
 	range_len     int
 	reusable      bool
+	generic       bool // its check found something generic (see incremental_touches_generics)
 	start         int
 	details_start int
 	end           int
@@ -135,6 +138,7 @@ mut:
 	length    int
 	range_len int
 	reusable  bool
+	generic   bool
 	details   IncrementalDetails
 }
 
@@ -733,6 +737,9 @@ pub fn (mut tc TypeChecker) complete_incremental_check_step(limit int) bool {
 	mut state := tc.incremental
 	if !state.completing {
 		state.completing = true
+		if state.to_complete.len == 0 {
+			state.to_complete = state.skipped.clone()
+		}
 		// What was put back: the check finds it again.
 		for idx in state.fn_values {
 			tc.clear_resolved_fn_value(flat.NodeId(idx))
@@ -754,18 +761,18 @@ pub fn (mut tc TypeChecker) complete_incremental_check_step(limit int) bool {
 		tc.resolution_type_mode = false
 		tc.install_type_cache_overlay()
 	}
-	end := if limit >= state.skipped.len - state.next {
-		state.skipped.len
+	end := if limit >= state.to_complete.len - state.next {
+		state.to_complete.len
 	} else {
 		state.next + limit
 	}
 	mut items := []CheckWorkItem{cap: end - state.next}
-	for i in state.skipped[state.next..end] {
+	for i in state.to_complete[state.next..end] {
 		items << state.functions[i].item
 	}
 	state.next = end
 	tc.check_scoped_batches(items, scoped_check_serial_batches)
-	if state.next < state.skipped.len {
+	if state.next < state.to_complete.len {
 		return true
 	}
 	tc.restore_type_cache_base()
@@ -784,12 +791,139 @@ pub fn (mut tc TypeChecker) complete_incremental_check_step(limit int) bool {
 	return false
 }
 
+// complete_incremental_check_for_instances checks, of the bodies the check left
+// out, those that can ask for an instance of a generic function: the generic
+// functions themselves, and the bodies whose last check found something
+// generic in them (see incremental_touches_generics). The instances are found
+// from the types of the bodies that ask for them; a body that touches nothing
+// generic asks for none.
+pub fn (mut tc TypeChecker) complete_incremental_check_for_instances() {
+	if !tc.incremental_skipping() || tc.incremental.completed || tc.incremental.completing {
+		tc.complete_incremental_check()
+		return
+	}
+	mut state := tc.incremental
+	for i in state.skipped {
+		f := state.functions[i]
+		if state.earlier.entries[f.earlier].generic
+			|| tc.infer_decl_generic_param_names(tc.a.nodes[f.item.fn_idx]).len > 0 {
+			state.to_complete << i
+		}
+	}
+	state.trace << 'incremental: ${state.to_complete.len} of ${state.skipped.len} bodies left out checked for the instances'
+	if state.to_complete.len == 0 {
+		state.completed = true
+		return
+	}
+	tc.complete_incremental_check()
+}
+
+// incremental_touches_generics reports whether the check of the body `f` found
+// something generic in it: a call or a value of a generic function (one of
+// `generic_fns`, or a name with type arguments), or a node whose type is, or
+// holds, an instance of a generic type, as the value of an operator, of an
+// interpolation (its `str()`) or of an interface does. Only such a body can ask
+// for an instance.
+fn (tc &TypeChecker) incremental_touches_generics(f IncrementalFunction, generic_fns map[string]bool) bool {
+	for idx in f.item.range_lo .. f.item.fn_idx + 1 {
+		node := tc.a.nodes[idx]
+		if node.kind in [.ident, .selector] && incremental_names_generic_fn(node.value, generic_fns) {
+			return true
+		}
+		if type_text_mentions_generic_application(node.typ) {
+			return true
+		}
+		id := flat.NodeId(idx)
+		if name := tc.resolved_call_name(id) {
+			if incremental_names_generic_fn(name, generic_fns) {
+				return true
+			}
+		}
+		if name := tc.resolved_fn_value_name(id) {
+			if incremental_names_generic_fn(name, generic_fns) {
+				return true
+			}
+		}
+		if typ := tc.cached_expr_type(id) {
+			if type_mentions_generic_application(typ) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// incremental_names_generic_fn reports whether `name` names a generic function:
+// one of `generic_fns`, by its whole name or its last part, or a name with type
+// arguments.
+fn incremental_names_generic_fn(name string, generic_fns map[string]bool) bool {
+	if name.len == 0 {
+		return false
+	}
+	if name.contains('[') || name in generic_fns {
+		return true
+	}
+	dot := name.last_index_u8(`.`)
+	return dot >= 0 && name[dot + 1..] in generic_fns
+}
+
+// type_mentions_generic_application reports whether `typ` is, or holds, an
+// instance of a generic type, as `Box[int]` and `[]Box[int]` do.
+fn type_mentions_generic_application(typ Type) bool {
+	return match typ {
+		Struct { typ.name.contains('[') }
+		Interface { typ.name.contains('[') }
+		SumType { typ.name.contains('[') }
+		Alias { typ.name.contains('[') || type_mentions_generic_application(typ.base_type) }
+		Array { type_mentions_generic_application(typ.elem_type) }
+		ArrayFixed { type_mentions_generic_application(typ.elem_type) }
+		Channel { type_mentions_generic_application(typ.elem_type) }
+		Map {
+			type_mentions_generic_application(typ.key_type)
+				|| type_mentions_generic_application(typ.value_type)
+		}
+		Pointer { type_mentions_generic_application(typ.base_type) }
+		OptionType { type_mentions_generic_application(typ.base_type) }
+		ResultType { type_mentions_generic_application(typ.base_type) }
+		FnType {
+			typ.params.any(type_mentions_generic_application(it))
+				|| type_mentions_generic_application(typ.return_type)
+		}
+		MultiReturn { typ.types.any(type_mentions_generic_application(it)) }
+		else { false }
+	}
+}
+
+// type_text_mentions_generic_application reports whether the type text `text`
+// applies a generic type, as `Box[int]` and `[]Box[int]` do and `[]int`, `[3]int`
+// and `map[string]int` do not: a `[` right after a name other than `map`.
+fn type_text_mentions_generic_application(text string) bool {
+	for i := 1; i < text.len; i++ {
+		if text[i] != `[` || !incremental_is_name_byte(text[i - 1]) {
+			continue
+		}
+		mut start := i - 1
+		for start > 0 && incremental_is_name_byte(text[start - 1]) {
+			start--
+		}
+		if !(i - start == 3 && text[start] == `m` && text[start + 1] == `a`
+			&& text[start + 2] == `p`) {
+			return true
+		}
+	}
+	return false
+}
+
+fn incremental_is_name_byte(c u8) bool {
+	return (c >= `a` && c <= `z`) || (c >= `A` && c <= `Z`) || (c >= `0` && c <= `9`) || c == `_`
+}
+
 // verify_incremental_check compares what the bodies left out reported once
 // checked with what was put back for them, and notes each difference in the
 // trace.
 fn (mut tc TypeChecker) verify_incremental_check() {
 	mut state := tc.incremental
-	for i in state.skipped {
+	for i in state.to_complete {
 		f := state.functions[i]
 		captured := state.captured[f.item.fn_idx] or {
 			state.trace << 'incremental: ${f.key}: not checked again'
@@ -853,6 +987,12 @@ pub fn (tc &TypeChecker) incremental_record(unhandled_start int) string {
 		}
 	}
 	selective := tc.incremental_selective_import_files()
+	mut generic_fns := map[string]bool{}
+	for name, params in tc.fn_generic_params {
+		if params.len > 0 {
+			generic_fns[name] = true
+		}
+	}
 	mut b := strings.new_builder(4096 + state.functions.len * 64)
 	b.writeln(incremental_record_header)
 	b.writeln('declarations\t${state.declarations.hex()}')
@@ -872,6 +1012,7 @@ pub fn (tc &TypeChecker) incremental_record(unhandled_start int) string {
 			length:    f.end - f.start
 			range_len: f.item.fn_idx - f.item.range_lo
 			reusable:  f.reusable && f.item.fn_idx in state.captured
+			generic:   tc.incremental_touches_generics(f, generic_fns)
 		}
 		captured := state.captured[f.item.fn_idx] or { IncrementalCaptured{} }
 		for err in captured.errors {
@@ -970,7 +1111,7 @@ fn (mut entry IncrementalEntry) add(f IncrementalFunction, list int, err TypeErr
 fn write_incremental_entry(mut b strings.Builder, entry IncrementalEntry) {
 	// A key is the place of a file and the name of a function, which holds no
 	// tab, newline or backslash.
-	b.writeln('f\t${entry.key}\t${entry.hash.hex()}\t${entry.length}\t${entry.range_len}\t${int(entry.reusable)}')
+	b.writeln('f\t${entry.key}\t${entry.hash.hex()}\t${entry.length}\t${entry.range_len}\t${int(entry.reusable)}\t${int(entry.generic)}')
 	for d in entry.details.diagnostics {
 		b.write_string('d\t${d.list}\t${d.kind}\t${d.back}\t${d.offset}\t${d.end}\t${d.meta}\t${d.order}\t${incremental_escape(d.severity)}\t${incremental_escape(d.msg)}\t${incremental_escape(d.fn_qname)}\t${d.details.len}')
 		for detail in d.details {
@@ -1011,14 +1152,14 @@ fn decode_incremental_record(text string) ?IncrementalRecord {
 						end: at
 					}
 				}
-				// f <file> <name> <hash> <length> <range> <reusable>
-				mut fields := [7]int{}
-				mut field_ends := [7]int{}
+				// f <file> <name> <hash> <length> <range> <reusable> <generic>
+				mut fields := [8]int{}
+				mut field_ends := [8]int{}
 				mut field := 0
 				mut field_start := at
 				for i in at .. line_end + 1 {
 					if i == line_end || text[i] == `\t` {
-						if field >= 7 {
+						if field >= 8 {
 							return none
 						}
 						fields[field] = field_start
@@ -1027,7 +1168,7 @@ fn decode_incremental_record(text string) ?IncrementalRecord {
 						field_start = i + 1
 					}
 				}
-				if field != 7 {
+				if field != 8 {
 					return none
 				}
 				key := text[fields[1]..field_ends[2]]
@@ -1038,6 +1179,7 @@ fn decode_incremental_record(text string) ?IncrementalRecord {
 					length:        incremental_int(text, fields[4], field_ends[4])
 					range_len:     incremental_int(text, fields[5], field_ends[5])
 					reusable:      text[fields[6]] == `1`
+					generic:       text[fields[7]] == `1`
 					start:         at
 					details_start: line_end + 1
 					end:           line_end + 1

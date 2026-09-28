@@ -2247,6 +2247,142 @@ fn test_an_incremental_check_checks_the_instances_that_the_bodies_it_left_out_as
 	assert p.code == 0
 }
 
+const incremental_instances_program = "module main
+
+struct User {
+	name string
+}
+
+struct Box[T] {
+	value T
+}
+
+interface Labeled {
+	label() string
+}
+
+fn name_of_call[T](x T) string {
+	return x.name
+}
+
+fn name_of_value[T](x T) string {
+	return x.name
+}
+
+fn (b Box[T]) get_name() string {
+	return b.value.name
+}
+
+fn (b Box[T]) str() string {
+	return b.value.name
+}
+
+fn (b Box[T]) label() string {
+	return b.value.name
+}
+
+fn int_box() Box[int] {
+	return Box[int]{
+		value: 1
+	}
+}
+
+fn by_call() string {
+	return name_of_call(3)
+}
+
+fn by_value() string {
+	f := name_of_value[int]
+	return f(1)
+}
+
+fn by_method() string {
+	return int_box().get_name()
+}
+
+fn by_str() string {
+	return '\${int_box()}'
+}
+
+fn by_interface() string {
+	l := Labeled(int_box())
+	return l.label()
+}
+
+fn filler_a() int {
+	mut t := 0
+	for i in 0 .. 10 {
+		t += i
+	}
+	return t
+}
+
+fn filler_b() string {
+	return 'b'
+}
+
+fn filler_c(xs []int) int {
+	return xs.len
+}
+
+fn filler_d(s string) string {
+	return s.to_upper()
+}
+
+fn main() {
+	println(by_call())
+	println(by_value())
+	println(by_method())
+	println(by_str())
+	println(by_interface())
+	println(filler_a())
+	println(filler_b())
+	println(filler_c([1]))
+	println(filler_d('d'))
+	println(name_of_call(User{'u'}))
+}
+"
+
+fn test_an_incremental_check_checks_for_the_instances_only_the_bodies_that_can_ask_for_one() {
+	$if !linux {
+		return
+	}
+	dir := os.join_path(work_dir, 'incremental_instances')
+	os.mkdir_all(dir)!
+	path := os.join_path(dir, 'main.v')
+	os.write_file(path, incremental_instances_program)!
+	trace := os.join_path(dir, 'trace.txt')
+	os.rm(trace) or {}
+	mut p := start_server(dir, {
+		'V_DIAGNOSTICS_SHARED':                '1'
+		'V_DIAGNOSTICS_PREPARE':               '1'
+		'V_DIAGNOSTICS_PARTIAL':               '1'
+		'V_DIAGNOSTICS_TRACE':                 trace
+		'V_DIAGNOSTICS_INCREMENTAL_MIN_NODES': '0'
+	})
+	defer {
+		p.close()
+	}
+	_, checked := final_server_check(mut p, 'i0')
+	expected := one_shot_check(dir)
+	assert checked == expected
+	// Each instance comes from one body: a call, a function value, a method, and
+	// the `str()` of an interpolation.
+	assert expected.count('`int` has no property `name`') == 4, expected
+	os.write_file(path, incremental_instances_program.replace('\tmut t := 0\n', '\tmut t := 1\n'))!
+	traced := (os.read_file(trace) or { '' }).len
+	_, rechecked := final_server_check(mut p, 'i1')
+	assert rechecked == one_shot_check(dir)
+	// The bodies left out that touch nothing generic are not checked again:
+	// `filler_b`, `filler_c` and `filler_d`.
+	said := (os.read_file(trace) or { '' })[traced..]
+	assert said.contains('incremental: 1 of 16 bodies checked'), said
+	assert said.contains('incremental: 12 of 15 bodies left out checked for the instances'), said
+	p.stdin_write('quit\n')
+	p.wait()
+	assert p.code == 0
+}
+
 const narrowing_program = "module main
 
 interface Named {
