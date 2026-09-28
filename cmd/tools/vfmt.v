@@ -264,6 +264,13 @@ fn importer_and_parent_dirs(file string) []string {
 }
 
 fn (foptions &FormatOptions) formatted_content_from_file(file string, report_diagnostics bool) !string {
+	return foptions.formatted_content_with_imports_from(file, report_diagnostics, file)
+}
+
+// formatted_content_with_imports_from formats `file`, resolving its imports as if it
+// were `import_file`: stdin is staged in a temporary folder, but its imports belong
+// to the caller's working directory.
+fn (foptions &FormatOptions) formatted_content_with_imports_from(file string, report_diagnostics bool, import_file string) !string {
 	foptions.vlog('vfmt running v.gen.v over file: ${file}')
 	mut prefs := compiler_pref.new_preferences()
 	prefs.is_fmt = true
@@ -272,7 +279,8 @@ fn (foptions &FormatOptions) formatted_content_from_file(file string, report_dia
 	prefs.supports_inline_asm = true
 	mut p := compiler_parser.Parser.new(prefs)
 	mut a := p.parse_file(file)
-	if a.formatter_migrate_json2 && imports_json(a) && foptions.resolves_project_json_module(file) {
+	if a.formatter_migrate_json2 && imports_json(a)
+		&& foptions.resolves_project_json_module(import_file) {
 		a.formatter_migrate_json2 = false
 	}
 	if report_compiler_parser_diagnostics(p.diagnostics, a, report_diagnostics) {
@@ -337,7 +345,8 @@ fn (foptions &FormatOptions) format_pipe() {
 	defer {
 		os.rm(stdin_path) or {}
 	}
-	formatted_content := foptions.formatted_content_from_file(stdin_path, true) or { exit(1) }
+	formatted_content := foptions.formatted_content_with_imports_from(stdin_path, true,
+		os.join_path(os.getwd(), 'vfmt_stdin.v')) or { exit(1) }
 	print(formatted_content)
 	flush_stdout()
 	foptions.vlog('vfmt wrote ${formatted_content.len} bytes to stdout.')

@@ -1002,6 +1002,24 @@ fn test_fmt_keeps_json_module_found_through_path_flag_with_v3() {
 	assert migrated.contains('import json2\n'), migrated
 }
 
+fn test_fmt_stdin_keeps_the_callers_project_json_module_with_v3() {
+	project_dir := os.join_path(vfmt_test_tdir, 'stdin_json_project')
+	os.mkdir_all(os.join_path(project_dir, 'json'))!
+	os.write_file(os.join_path(project_dir, 'json', 'json.v'),
+		"module json\n\npub fn encode[T](x T) string {\n\treturn 'own'\n}\n")!
+	source_path := os.join_path(project_dir, 'app.v')
+	os.write_file(source_path, 'import json\n\nfn main() {\n\tprintln(json.encode(1))\n}\n')!
+	// stdin is staged in a temporary folder, but its imports belong to the caller's
+	// working directory, which has its own `json` module here.
+	old_wd := os.getwd()
+	os.chdir(project_dir)!
+	res := os.execute('${os.quoted_path(vexe)} fmt < ${os.quoted_path(source_path)}')
+	os.chdir(old_wd)!
+	assert res.exit_code == 0, res.output
+	assert res.output.contains('import json\n'), res.output
+	assert !res.output.contains('json2'), res.output
+}
+
 fn test_fmt_json_lookup_with_path_flag_follows_the_compiler_with_v3() {
 	module_source := "module json\n\npub fn encode[T](x T) string {\n\treturn 'own'\n}\n"
 	source := 'import json\n\nfn main() {\n\tprintln(json.encode(1))\n}\n'
