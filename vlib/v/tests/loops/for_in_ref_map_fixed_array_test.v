@@ -152,3 +152,55 @@ fn test_parenthesized_explicit_map_reference_keeps_pointer_rebinding() {
 	assert entries['a'] == [1, 2]!
 	assert replacement == [3, 9]!
 }
+
+struct ExplicitMutableMapItem {
+mut:
+	number int
+}
+
+fn copy_explicit_mutable_map_value(mut entries &map[string]ExplicitMutableMapItem) ExplicitMutableMapItem {
+	// vfmt off
+	for _, value in (entries) {
+		mut copied := value
+		copied.number += 4
+		return copied
+	}
+	// vfmt on
+	return ExplicitMutableMapItem{}
+}
+
+fn assign_explicit_mutable_map_rows(mut entries &map[string][2]int) {
+	for _, mut row in entries {
+		row = [7, 8]!
+	}
+}
+
+fn sum_explicit_mutable_map_values(mut entries &map[string]int) int {
+	mut total := 0
+	for _, value in entries {
+		total += value
+	}
+	return total
+}
+
+fn test_explicit_mutable_map_parameters_keep_value_iteration() {
+	mut items := {
+		'a': ExplicitMutableMapItem{ number: 3 }
+	}
+	mut item_pointer := &items
+	copied := copy_explicit_mutable_map_value(mut item_pointer)
+	assert copied.number == 7
+	assert items['a'].number == 3
+	mut rows := {
+		'a': [1, 2]!
+	}
+	mut row_pointer := &rows
+	assign_explicit_mutable_map_rows(mut row_pointer)
+	assert rows['a'] == [7, 8]!
+	mut numbers := {
+		'a': 3
+		'b': 4
+	}
+	mut number_pointer := &numbers
+	assert sum_explicit_mutable_map_values(mut number_pointer) == 7
+}

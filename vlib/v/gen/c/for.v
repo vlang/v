@@ -752,11 +752,19 @@ fn (g &FlatGen) for_in_mutable_value_storage(container_id flat.NodeId) bool {
 			id = g.a.child(&node, 0)
 			continue
 		}
+		if node.kind == .prefix && node.op == .mul && node.children_count == 1
+			&& node.value != source_mut_pointer_deref_marker {
+			child := g.a.child_node(&node, 0)
+			// Lowering reads an explicit mutable pointer parameter through its slot.
+			// The resulting map still has the parameter's value-iteration semantics.
+			if child.kind == .ident && g.current_param_is_mut_pointer(child.value) {
+				return true
+			}
+		}
 		if node.kind != .ident {
 			return false
 		}
-		if g.current_param_is_mut(node.value)
-			&& !(g.cur_explicit_mut_pointer_params[node.value] or { false }) {
+		if g.current_param_is_mut(node.value) {
 			return true
 		}
 		if g.local_storage_is_mutable(node.value) {
