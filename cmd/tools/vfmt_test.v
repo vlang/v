@@ -923,6 +923,25 @@ fn test_fmt_json_decode_migration_runs_and_skips_option_targets_with_v3() {
 	assert plain_formatted == option_source
 }
 
+fn test_fmt_json_decode_migration_of_value_targets_with_v3() {
+	// A value target names its type with an empty initializer, which is dropped.
+	source := 'import json\n\nstruct Foo {\n\ta int\n}\n\nfn main() {\n\tm := json.decode(map[string]int{}, \'{"a":1}\') or { return }\n\tl := json.decode([]Foo{}, \'[{"a":2}]\') or { return }\n\tf := json.decode(Foo{}, \'{"a":3}\') or { return }\n\tprintln(\'\${m[\'a\']} \${l[0].a} \${f.a}\')\n}\n'
+	res, migrated := run_vfmt_write('json_decode_value_targets', source, '')
+	assert res.exit_code == 0, res.output
+	assert migrated.contains('json2.decode[map[string]int]('), migrated
+	assert migrated.contains('json2.decode[[]Foo]('), migrated
+	assert migrated.contains('json2.decode[Foo]('), migrated
+	run_res := os.execute('${os.quoted_path(vexe)} run ${os.quoted_path(os.join_path(vfmt_test_tdir, 'json_decode_value_targets.v'))}')
+	assert run_res.exit_code == 0, run_res.output
+	assert run_res.output.trim_space() == '1 2 3', run_res.output
+	// A target with a non-empty initializer names no type to spell back.
+	initialized := "import json\n\nfn main() {\n\tl := json.decode([]int{len: 2}, '[]') or { return }\n\tprintln(l)\n}\n"
+	init_res, init_formatted := run_vfmt_write('json_decode_initialized_target', initialized,
+		'')
+	assert init_res.exit_code == 0, init_res.output
+	assert init_formatted == initialized
+}
+
 fn test_fmt_skips_json2_migration_for_narrowed_sumtype_values_with_v3() {
 	header := 'import json\n\nstruct Cat {\n\tname string\n}\n\nstruct Dog {\n\tname string\n}\n\ntype Animal = Cat | Dog\n\n'
 	for name, body in {

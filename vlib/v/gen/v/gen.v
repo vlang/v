@@ -443,7 +443,8 @@ fn (mut g Gen) setup_json_migration(fnode &flat.Node) {
 		// and an option or result type (`json.decode(?T, s)`) cannot be a type argument.
 		if n.kind == .call && n.children_count > 0
 			&& g.is_json_decode_callee(g.a.child_node(n, 0), legacy.children_count > 0)
-			&& (n.children_count < 3 || g.json_decode_type_arg_is_option(n)) {
+			&& (n.children_count < 3 || g.json_decode_type_arg_is_option(n)
+				|| json_decode_target_has_initializer(g.json_decode_type_arg_text(n))) {
 			return
 		}
 		// Existing module selector receivers are safe; any other identifier with the
@@ -1989,11 +1990,11 @@ fn (mut g Gen) json_migration_call(kind string, callee flat.NodeId, args []flat.
 	if kind == 'decode' && args.len >= 2 {
 		g.write('${g.json_qualifier}.decode[')
 		if source_type := g.json_decode_type_arg_source(callee, args[1]) {
-			g.write(source_type)
+			g.write(json_decode_type_text(source_type))
 		} else {
 			type_arg := g.a.node(args[0])
 			if source_type := g.source_span(type_arg.pos.offset, type_arg.pos.end) {
-				g.write(source_type.trim_space())
+				g.write(json_decode_type_text(source_type))
 			} else {
 				g.expr(args[0])
 			}
@@ -2023,11 +2024,36 @@ fn (mut g Gen) json_migration_call(kind string, callee flat.NodeId, args []flat.
 // V does not accept `?T` as a generic type argument.
 fn (g &Gen) json_decode_type_arg_is_option(call &flat.Node) bool {
 	type_arg := g.a.child_node(call, 1)
-	type_text := g.json_decode_type_arg_source(g.a.child(call, 0), g.a.child(call, 2)) or {
-		g.source_span(type_arg.pos.offset, type_arg.pos.end) or { return false }
-	}
+	type_text := g.json_decode_type_arg_text(call)
 	return type_text.starts_with('?') || type_text.starts_with('!')
 		|| type_arg.value.starts_with('?') || type_arg.value.starts_with('!')
+}
+
+// json_decode_type_arg_text is the source of the type argument of a legacy
+// `json.decode(T, s)` call.
+fn (g &Gen) json_decode_type_arg_text(call &flat.Node) string {
+	type_arg := g.a.child_node(call, 1)
+	return g.json_decode_type_arg_source(g.a.child(call, 0), g.a.child(call, 2)) or {
+		g.source_span(type_arg.pos.offset, type_arg.pos.end) or { '' }.trim_space()
+	}
+}
+
+// json_decode_type_text turns a legacy decode target into a type argument: the value
+// form `map[string]int{}`, `[]Foo{}` or `Foo{}` names its type with an empty
+// initializer, which is not part of the type.
+fn json_decode_type_text(target string) string {
+	text := target.trim_space()
+	if text.ends_with('{}') && !text.starts_with('struct') {
+		return text[..text.len - 2].trim_space()
+	}
+	return text
+}
+
+// json_decode_target_has_initializer reports a value target with a non-empty
+// initializer (`[]int{len: 2}`), which names no type that can be spelled back.
+fn json_decode_target_has_initializer(target string) bool {
+	text := target.trim_space()
+	return text.ends_with('}') && !text.ends_with('{}') && !text.starts_with('struct')
 }
 
 fn (g &Gen) json_decode_type_arg_source(callee flat.NodeId, second_arg flat.NodeId) ?string {
