@@ -4638,6 +4638,12 @@ fn (mut t Transformer) transform_pointer_rvalue_arg(arg_id flat.NodeId, arg_node
 		|| is_pointer_like_type_name(arg_type) {
 		return none
 	}
+	if t.is_fixed_array_type(t.normalize_type_alias(arg_type))
+		&& t.normalize_type_alias(arg_type) != t.normalize_type_alias(value_type) {
+		// Array-to-element-pointer decay needs the whole array, not a scalar
+		// temporary of the pointer's base type. CGen handles its ABI storage.
+		return t.transform_expr(value_id)
+	}
 	value := t.transform_expr_for_type(value_id, value_type)
 	tmp_name := t.new_temp('ptr_arg')
 	t.pending_stmts << t.make_decl_assign_typed(tmp_name, value, value_type)

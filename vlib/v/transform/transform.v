@@ -18495,7 +18495,14 @@ fn (mut t Transformer) transform_infix_expr(id flat.NodeId, node flat.Node) flat
 		new_lhs := if lhs_is_value_branch {
 			t.materialize_value_branch_operand(infix_lhs_id)
 		} else if rhs_is_value_branch && t.operand_needs_ordering_snapshot(infix_lhs_id) {
-			t.snapshot_expr_for_reuse(infix_lhs_id)
+			if node.op in [.eq, .ne]
+				&& t.translated_fixed_array_pointer_lvalue(infix_lhs_id, infix_rhs_id) {
+				t.stabilize_original_lvalue_receiver(infix_lhs_id) or {
+					t.snapshot_expr_for_reuse(infix_lhs_id)
+				}
+			} else {
+				t.snapshot_expr_for_reuse(infix_lhs_id)
+			}
 		} else {
 			infix_lhs_id
 		}
@@ -18507,7 +18514,14 @@ fn (mut t Transformer) transform_infix_expr(id flat.NodeId, node flat.Node) flat
 		new_rhs := if rhs_is_value_branch {
 			t.materialize_value_branch_operand(infix_rhs_id)
 		} else if lhs_is_value_branch && !t.is_stable_expr_for_reuse(infix_rhs_id) {
-			t.stable_expr_for_reuse(infix_rhs_id)
+			if node.op in [.eq, .ne]
+				&& t.translated_fixed_array_pointer_lvalue(infix_rhs_id, infix_lhs_id) {
+				t.stabilize_original_lvalue_receiver(infix_rhs_id) or {
+					t.stable_expr_for_reuse(infix_rhs_id)
+				}
+			} else {
+				t.stable_expr_for_reuse(infix_rhs_id)
+			}
 		} else {
 			infix_rhs_id
 		}
@@ -18620,6 +18634,29 @@ fn (mut t Transformer) transform_infix_expr(id flat.NodeId, node flat.Node) flat
 		value:          node.value
 		typ:            node.typ
 	})
+}
+
+fn (mut t Transformer) call_argument_borrows_fixed_array(id flat.NodeId, node flat.Node, child_index int) bool {
+	arg_id := t.a.child(&node, child_index)
+	if !t.is_fixed_array_type(t.normalize_type_alias(t.node_type(arg_id))) {
+		return false
+	}
+	call_name := t.call_name_for_node(id, node)
+	mut params := t.call_param_types_for_node(call_name, node)
+	if concrete_params := t.concrete_generic_call_param_types(id, node) {
+		params = concrete_params.clone()
+	}
+	offset := if t.call_is_selector_form(node) && t.concrete_generic_call_is_method(id) {
+		1
+	} else {
+		t.call_param_offset_for_node(call_name, node, params)
+	}
+	param_index := child_index - 1 + offset
+	if param_index < 0 || param_index >= params.len {
+		return false
+	}
+	param_type := t.normalize_type_alias(t.semantic_type_name(params[param_index]))
+	return param_type.starts_with('&') || param_type in ['voidptr', 'byteptr', 'charptr']
 }
 
 // transform_call_expr transforms transform call expr data for transform.
@@ -18789,7 +18826,9 @@ fn (mut t Transformer) transform_call_expr(id flat.NodeId, node flat.Node) flat.
 					// Trailing `key: value` arguments are fields of one collapsed struct argument,
 					// not standalone call operands. Keep their wrappers intact: the struct lowering
 					// pass snapshots preceding field values before materializing a later branch.
-					if t.a.nodes[int(arg_id)].is_mut {
+					// Fixed arrays decaying to pointers also borrow their original storage.
+					if t.a.nodes[int(arg_id)].is_mut
+						|| t.call_argument_borrows_fixed_array(id, node, i) {
 						if stabilized := t.stabilize_original_lvalue_receiver(arg_id) {
 							stabilized
 						} else {

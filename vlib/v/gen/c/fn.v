@@ -6530,6 +6530,60 @@ fn (mut g FlatGen) gen_traced_call(id flat.NodeId, trace_name string) bool {
 	return true
 }
 
+struct CIntArrayStorage {
+	address string
+	values  string
+	length  string
+}
+
+fn (mut g FlatGen) gen_c_int_array_storage(arrays []CIntArrayStorage) {
+	if arrays.len == 0 {
+		return
+	}
+	n := g.tmp_count
+	g.tmp_count++
+	storage := '_cabi_array_storage_${n}'
+	if arrays.len == 1 {
+		item := arrays[0]
+		g.write('int ${storage}[${item.length}]; int* ${item.values} = ${storage}; ')
+		g.write('for (i64 i = 0; i < ${item.length}; ++i) { ${storage}[i] = (int)${item.address}[i]; } ')
+		return
+	}
+	mut starts := []string{}
+	mut ends := []string{}
+	mut groups := []string{}
+	mut lengths := []string{}
+	for i, item in arrays {
+		starts << '(uintptr_t)${item.address}'
+		ends << '(uintptr_t)(${item.address} + ${item.length})'
+		groups << i.str()
+		lengths << item.length
+	}
+	prefix := '_cabi_array_${n}'
+	count := arrays.len
+	g.write('uintptr_t ${prefix}_starts[${count}] = {${starts.join(', ')}}; ')
+	g.write('uintptr_t ${prefix}_ends[${count}] = {${ends.join(', ')}}; ')
+	g.write('i64 ${prefix}_groups[${count}] = {${groups.join(', ')}}; ')
+	// Capture every argument before grouping overlapping source ranges. A later
+	// whole-array argument can join several earlier, disjoint row arguments.
+	g.write('for (i64 i = 0; i < ${count}; ++i) { for (i64 j = 0; j < i; ++j) { ')
+	g.write('if (${prefix}_starts[i] < ${prefix}_ends[j] && ${prefix}_starts[j] < ${prefix}_ends[i]) { ')
+	g.write('i64 from = ${prefix}_groups[i], to = ${prefix}_groups[j]; ')
+	g.write('for (i64 k = 0; k < ${count}; ++k) { if (${prefix}_groups[k] == from) ${prefix}_groups[k] = to; } } } } ')
+	g.write('for (i64 i = 0; i < ${count}; ++i) { i64 group = ${prefix}_groups[i]; ')
+	g.write('if (${prefix}_starts[i] < ${prefix}_starts[group]) ${prefix}_starts[group] = ${prefix}_starts[i]; ')
+	g.write('if (${prefix}_ends[i] > ${prefix}_ends[group]) ${prefix}_ends[group] = ${prefix}_ends[i]; } ')
+	// The union of the ranges never needs more space than their combined lengths.
+	g.write('int ${storage}[${lengths.join(' + ')}]; int* ${prefix}_values[${count}]; i64 ${prefix}_used = 0; ')
+	g.write('for (i64 i = 0; i < ${count}; ++i) { if (${prefix}_groups[i] != i) continue; ')
+	g.write('i64 length = (${prefix}_ends[i] - ${prefix}_starts[i]) / sizeof(i64); ')
+	g.write('${prefix}_values[i] = ${storage} + ${prefix}_used; ${prefix}_used += length; ')
+	g.write('for (i64 j = 0; j < length; ++j) { ${prefix}_values[i][j] = (int)((i64*)${prefix}_starts[i])[j]; } } ')
+	for i, item in arrays {
+		g.write('int* ${item.values} = ${prefix}_values[${prefix}_groups[${i}]] + ((uintptr_t)${item.address} - ${prefix}_starts[${prefix}_groups[${i}]]) / sizeof(i64); ')
+	}
+}
+
 // gen_c_call_int_out_wrap wraps a C call that passes the address of a V `int`
 // (`&someint`) into a fixed `&int` parameter or a C-variadic slot. A V `int` is
 // 64-bit while the C ABI expects a 32-bit `int*`, so casting the pointer would let C
@@ -6538,8 +6592,9 @@ fn (mut g FlatGen) gen_traced_call(id flat.NodeId, trace_name string) bool {
 // the value into a temporary C `int`, passes its address, and copies the
 // (sign-extended) result back after the call:
 //   ({ i64* _a = &x; int _v = (int)(*_a); C_fn(&_v); *_a = _v; })
-// It only rewrites `&<lvalue>` arguments (a bare pointer value may be null and must
-// not be dereferenced before the call). Returns false — falling through to normal
+// The scalar path only rewrites `&<lvalue>` arguments (a bare pointer value may be
+// null). Fixed-array arguments retain all dimensions and share converted storage
+// when their source ranges overlap. Returns false — falling through to normal
 // emission — when there is nothing to wrap, including the re-entrant emission where
 // the out-arguments are already scheduled.
 fn (mut g FlatGen) gen_c_call_int_out_wrap(id flat.NodeId, node flat.Node) bool {
@@ -6578,7 +6633,8 @@ fn (mut g FlatGen) gen_c_call_int_out_wrap(id flat.NodeId, node flat.Node) bool 
 		}
 		if g.c_call_is_int_out_arg(arg_id, i - 1, param_types, typed_param_count, is_native_variadic) {
 			out_args << arg_id
-		} else if g.c_call_is_int_array_data_arg(arg_id, i - 1, param_types, typed_param_count, is_native_variadic) {
+		} else if g.c_call_is_int_array_data_arg(arg_id, i - 1, param_types, typed_param_count, is_native_variadic)
+			|| g.c_call_is_int_fixed_array_arg(arg_id, i - 1, param_types, typed_param_count) {
 			array_out_args << arg_id
 		}
 	}
@@ -6597,6 +6653,7 @@ fn (mut g FlatGen) gen_c_call_int_out_wrap(id flat.NodeId, node flat.Node) bool 
 	}
 	g.write('({ ')
 	mut copybacks := []string{}
+	mut fixed_array_storage := []CIntArrayStorage{}
 	for arg_id in out_args {
 		n := g.tmp_count
 		g.tmp_count++
@@ -6613,12 +6670,42 @@ fn (mut g FlatGen) gen_c_call_int_out_wrap(id flat.NodeId, node flat.Node) bool 
 		copybacks << '*${addr_tmp} = ${val_tmp};'
 	}
 	for arg_id in array_out_args {
-		base_id := g.c_call_int_array_data_base(arg_id) or { continue }
 		n := g.tmp_count
 		g.tmp_count++
 		addr_tmp := '_cabi_out_array_${n}'
 		val_tmp := '_cabi_out_values_${n}'
 		idx_tmp := '_cabi_out_idx_${n}'
+		if fixed := g.c_call_fixed_array_arg_type(arg_id) {
+			dimensions := g.c_call_int_array_dimensions(types.Type(fixed))
+			length := '(' + dimensions.join(') * (') + ')'
+			elem_ct := g.value_c_type(types.Type(types.int_))
+			addressable := g.expr_is_addressable(arg_id)
+			if addressable {
+				g.write('${elem_ct}* ${addr_tmp} = (${elem_ct}*)(')
+				g.gen_fixed_array_data_arg(arg_id, fixed)
+				g.write('); ')
+			} else {
+				// Copy a returned wrapper's array before its full expression ends.
+				g.write('${elem_ct} ${addr_tmp}[${length}]; memmove(${addr_tmp}, ')
+				g.gen_fixed_array_data_arg(arg_id, fixed)
+				g.write(', sizeof(${addr_tmp})); ')
+			}
+			mut row_dims := ''
+			for dimension in dimensions[1..] {
+				row_dims += '[${dimension}]'
+			}
+			g.cabi_int_out_args[arg_id] = if row_dims.len > 0 {
+				'(int (*)${row_dims})${val_tmp}'
+			} else {
+				val_tmp
+			}
+			if addressable {
+				copybacks << 'for (i64 ${idx_tmp} = 0; ${idx_tmp} < ${length}; ++${idx_tmp}) { ${addr_tmp}[${idx_tmp}] = (${elem_ct})${val_tmp}[${idx_tmp}]; }'
+			}
+			fixed_array_storage << CIntArrayStorage{addr_tmp, val_tmp, length}
+			continue
+		}
+		base_id := g.c_call_int_array_data_base(arg_id) or { continue }
 		g.write('Array* ${addr_tmp} = &(')
 		g.gen_expr(base_id)
 		g.write('); int* ${val_tmp} = (int*)calloc(${addr_tmp}->cap, sizeof(int)); ')
@@ -6626,6 +6713,7 @@ fn (mut g FlatGen) gen_c_call_int_out_wrap(id flat.NodeId, node flat.Node) bool 
 		g.cabi_int_out_args[arg_id] = val_tmp
 		copybacks << 'for (i64 ${idx_tmp} = 0; ${idx_tmp} < ${addr_tmp}->len; ++${idx_tmp}) { ((i64*)${addr_tmp}->data)[${idx_tmp}] = (i64)${val_tmp}[${idx_tmp}]; } free(${val_tmp});'
 	}
+	g.gen_c_int_array_storage(fixed_array_storage)
 	if ret_type is types.Void {
 		g.gen_call(id, node)
 		g.write('; ')
@@ -6686,6 +6774,65 @@ fn c_type_is_pointer_to_platform_int(t types.Type) bool {
 		}
 	}
 	return false
+}
+
+fn (mut g FlatGen) c_call_is_int_fixed_array_arg(arg_id flat.NodeId, arg_idx int, param_types []types.Type, typed_param_count int) bool {
+	if arg_idx >= typed_param_count || arg_idx >= param_types.len {
+		return false
+	}
+	expected := cgen_unalias_type(param_types[arg_idx])
+	if expected is types.Pointer {
+		if !c_type_is_platform_int_array_storage(expected.base_type) {
+			return false
+		}
+	} else {
+		return false
+	}
+	fixed := g.c_call_fixed_array_arg_type(arg_id) or { return false }
+	if !c_type_is_platform_int_array_storage(fixed.elem_type) {
+		return false
+	}
+	return g.value_c_type(types.Type(types.int_)) != 'int'
+}
+
+fn (mut g FlatGen) c_call_fixed_array_arg_type(arg_id flat.NodeId) ?types.ArrayFixed {
+	node := g.a.node(arg_id)
+	if node.kind in [.paren, .expr_stmt] && node.children_count == 1 {
+		return g.c_call_fixed_array_arg_type(g.a.child(node, 0))
+	}
+	if node.kind == .call {
+		// A pointer parameter can annotate the call with its contextual type;
+		// the declared return type still describes the array's source storage.
+		if fixed := array_fixed_type(cgen_unalias_type(g.declared_call_return_type(arg_id))) {
+			return fixed
+		}
+	}
+	return array_fixed_type(cgen_unalias_type(g.usable_expr_type(arg_id)))
+}
+
+fn c_type_is_platform_int_array_storage(typ types.Type) bool {
+	clean := cgen_unalias_type(typ)
+	if clean is types.ArrayFixed {
+		return c_type_is_platform_int_array_storage(clean.elem_type)
+	}
+	if clean is types.Primitive {
+		return clean.size == 0 && clean.props.has(.integer) && !clean.props.has(.unsigned)
+	}
+	return false
+}
+
+fn (mut g FlatGen) c_call_int_array_dimensions(typ types.Type) []string {
+	mut dimensions := []string{}
+	mut current := cgen_unalias_type(typ)
+	for {
+		if fixed := array_fixed_type(current) {
+			dimensions << g.fixed_array_len_value(fixed)
+			current = cgen_unalias_type(fixed.elem_type)
+		} else {
+			break
+		}
+	}
+	return dimensions
 }
 
 fn (g &FlatGen) c_call_int_array_data_base(arg_id flat.NodeId) ?flat.NodeId {
@@ -16345,6 +16492,13 @@ fn (mut g FlatGen) gen_call_args(fn_name string, node flat.Node, start int) {
 			&& g.gen_addressed_byvalue_arg(arg_node, param_types[arg_idx]) {
 			continue
 		}
+		if is_c_call {
+			// Use C-ABI temporaries before the general fixed-array decay path.
+			if sub := g.cabi_int_out_args[arg_id] {
+				g.write(sub)
+				continue
+			}
+		}
 		if arg_idx < typed_param_count
 			&& g.gen_fixed_array_pointer_lvalue_arg(arg_id, param_types[arg_idx]) {
 			continue
@@ -16390,14 +16544,6 @@ fn (mut g FlatGen) gen_call_args(fn_name string, node flat.Node, start int) {
 			param_types[arg_idx]
 		} else {
 			types.Type(types.void_)
-		}
-		if is_c_call {
-			// A `&int` out-argument has been rewritten to the address of a temporary C
-			// `int` by gen_c_call_int_out_wrap; emit that in the argument's place.
-			if sub := g.cabi_int_out_args[arg_id] {
-				g.write(sub)
-				continue
-			}
 		}
 		if is_c_call && g.gen_special_c_callback_arg(fn_name, arg_idx, arg_id, cb_param) {
 			continue

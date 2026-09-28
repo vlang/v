@@ -7631,6 +7631,8 @@ fn (mut tc TypeChecker) check_infix(id flat.NodeId, node flat.Node) {
 			false
 		} else {
 			tc.type_compatible(lhs_type, rhs_type) || tc.type_compatible(rhs_type, lhs_type)
+				|| tc.translated_fixed_array_pointer_compatible(lhs_id, lhs_type, rhs_type)
+				|| tc.translated_fixed_array_pointer_compatible(rhs_id, rhs_type, lhs_type)
 				|| tc.expr_compatible(lhs_id, lhs_type, rhs_type)
 				|| tc.expr_compatible(rhs_id, rhs_type, lhs_type)
 				|| pointer_value_comparison_allowed || pointer_integer_zero_comparison
@@ -17612,7 +17614,7 @@ fn (mut tc TypeChecker) check_assign(id flat.NodeId, node flat.Node) {
 			&& !invalid_comptime_selector_lhs
 		fixed_array_pointer_mismatch := node.op == .assign && clean_rhs_type is ArrayFixed
 			&& (clean_expected_type is Pointer || expected_type.name() == 'voidptr')
-			&& !tc.translated_fixed_array_pointer_assignment_compatible(rhs_id, rhs_type,
+			&& !tc.translated_fixed_array_pointer_compatible(rhs_id, rhs_type,
 				expected_type)
 		if fixed_array_pointer_mismatch {
 			tc.record_error_at(.assignment_mismatch, 'mismatched types `${expected_type.name()}` and `${rhs_type.name()}`', id, tc.assignment_operator_pos(node, lhs_id, rhs_id))
