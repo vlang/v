@@ -1762,11 +1762,17 @@ fn (mut g FlatGen) gen_heap_struct_init(node flat.Node) {
 	parsed_init_type := g.tc.parse_type(node.value)
 	clean_init_type := default_init_unalias_type(types.unwrap_all_pointers(parsed_init_type))
 	if node.children_count == 0
-		&& (clean_init_type is types.Array || clean_init_type is types.Map
-			|| clean_init_type is types.Channel) {
+		&& (clean_init_type is types.Array || clean_init_type is types.ArrayFixed
+			|| clean_init_type is types.Map || clean_init_type is types.Channel
+			|| clean_init_type is types.SumType) {
 		ct := g.value_c_type(parsed_init_type)
 		g.write('(${ct}*)memdup((${ct}[]){')
-		g.gen_default_value_for_type(parsed_init_type)
+		if clean_init_type is types.ArrayFixed {
+			// Nested array initializers need braces; an array expression decays to a pointer.
+			g.write(g.empty_fixed_array_initializer_string(clean_init_type))
+		} else {
+			g.gen_default_value_for_type(parsed_init_type)
+		}
 		g.write('}, sizeof(${ct}))')
 		return
 	}

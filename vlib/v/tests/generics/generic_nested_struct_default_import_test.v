@@ -48,3 +48,14 @@ fn test_imported_generic_fixed_array_default_preserves_elements() {
 	box := nesteddefaults.Box[[1]nesteddefaults.Foo]{}
 	assert box.value[0].a == 10
 }
+
+fn test_imported_generic_heap_sum_default_uses_first_variant() {
+	pointer := nesteddefaults.PointerBox[DefaultChoice]{}
+	assert pointer.value is int
+	assert pointer.value as int == 0
+}
+
+fn test_imported_generic_heap_fixed_array_default_preserves_elements() {
+	pointer := nesteddefaults.PointerBox[[1]nesteddefaults.Foo]{}
+	assert pointer.value[0].a == 10
+}
