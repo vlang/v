@@ -6173,8 +6173,10 @@ fn (mut t Transformer) transform_string_interp_part(child_id flat.NodeId) flat.N
 		typ = t.node_type(expr_id)
 	}
 	if ref_typ := t.string_interp_interface_smartcast_ref_type(expr_id) {
-		transformed = t.make_prefix(.amp, transformed)
-		t.set_node_typ(int(transformed), ref_typ)
+		if !t.node_type(transformed).starts_with('&') {
+			transformed = t.make_prefix(.amp, transformed)
+			t.set_node_typ(int(transformed), ref_typ)
+		}
 		typ = ref_typ
 	}
 	is_shared_ident := expr_node.kind == .ident
