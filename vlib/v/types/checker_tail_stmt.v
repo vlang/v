@@ -2106,7 +2106,11 @@ fn (mut tc TypeChecker) check_general_match_branch_tail_types(id flat.NodeId, no
 		}
 		tail_id := tc.branch_tail_expr_id(branch_id)
 		if tc.valid_node_id(tail_id) {
-			tail_types << tc.match_branch_tail_diagnostic_type(subject_key, subject_type, branch, tail_id)
+			if comma_types := tc.branch_explicit_comma_tail_types(branch_id) {
+				tail_types << Type(MultiReturn{ types: comma_types })
+			} else {
+				tail_types << tc.match_branch_tail_diagnostic_type(subject_key, subject_type, branch, tail_id)
+			}
 		}
 	}
 	if tail_types.len != tails.len {
@@ -2174,12 +2178,34 @@ fn (mut tc TypeChecker) check_general_match_branch_tail_types(id flat.NodeId, no
 		}
 	}
 	mut expected := tail_types[0]
+	if expected is MultiReturn {
+		if _ := tc.multi_expr_tail_types(id, expected.types.len) {
+			return
+		}
+	}
 	if expected is Void || expected is Unknown {
 		return
 	}
 	for i in 1 .. tails.len {
 		tail_id := tails[i]
 		actual := tail_types[i]
+		clean_expected := unalias_type(expected)
+		clean_actual := unalias_type(actual)
+		if clean_expected is MultiReturn && clean_actual is MultiReturn
+			&& clean_expected.types.len == clean_actual.types.len {
+			mut promoted := []Type{cap: clean_expected.types.len}
+			for j, current in clean_expected.types {
+				if !multi_tail_wrappers_match(current, clean_actual.types[j]) {
+					tc.record_match_branch_return_type_mismatch(tail_id, expected, actual)
+					return
+				}
+				promoted << tc.promoted_multi_tail_type(current, clean_actual.types[j]) or { break }
+			}
+			if promoted.len == clean_expected.types.len {
+				expected = Type(MultiReturn{ types: promoted })
+				continue
+			}
+		}
 		if inferred := inferred_contextual_if_type(expected, actual) {
 			expected = inferred
 			continue

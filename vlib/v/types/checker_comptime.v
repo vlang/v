@@ -15833,6 +15833,7 @@ fn (mut tc TypeChecker) check_multi_return_decl_assign(id flat.NodeId, node flat
 			if tc.should_diagnose(id) {
 				tc.record_error(.assignment_mismatch, 'match expression must be exhaustive for multi-return assignment', id)
 			}
+			tc.insert_match_multi_return_recovery_bindings(rhs, lhs_ids, node)
 			return true
 		}
 		if rhs_types := tc.match_multi_return_types(rhs_id, lhs_ids.len) {
@@ -15853,10 +15854,14 @@ fn (mut tc TypeChecker) check_multi_return_decl_assign(id flat.NodeId, node flat
 			if tc.should_diagnose(id) {
 				tc.record_error(.assignment_mismatch, 'multi-return assignment mismatch: expression branches must all produce ${lhs_ids.len} compatible values', id)
 			}
+			tc.insert_match_multi_return_recovery_bindings(rhs, lhs_ids, node)
 			return true
 		}
 		// Tuple tails (`.a { c, '.zst', 'zstd' }`) resolve like if-expr branches.
 		if rhs_types := tc.multi_expr_tail_types(rhs_id, lhs_ids.len) {
+			if tc.reject_all_none_multi_tail_slot(rhs_id, rhs_types, lhs_ids, node) {
+				return true
+			}
 			tc.register_synth_type(rhs_id, MultiReturn{
 				types: rhs_types
 			})
@@ -15877,11 +15882,15 @@ fn (mut tc TypeChecker) check_multi_return_decl_assign(id flat.NodeId, node flat
 				tc.record_error(.assignment_mismatch, 'multi-return assignment mismatch: expression branches must all produce ${lhs_ids.len} compatible values', id)
 			}
 		}
+		tc.insert_match_multi_return_recovery_bindings(rhs, lhs_ids, node)
 		return true
 	}
 	if rhs.kind == .if_expr {
 		tc.check_node(rhs_id)
 		if rhs_types := tc.multi_expr_tail_types(rhs_id, lhs_ids.len) {
+			if tc.reject_all_none_multi_tail_slot(rhs_id, rhs_types, lhs_ids, node) {
+				return true
+			}
 			tc.register_synth_type(rhs_id, MultiReturn{
 				types: rhs_types
 			})
@@ -15895,6 +15904,17 @@ fn (mut tc TypeChecker) check_multi_return_decl_assign(id flat.NodeId, node flat
 			}
 			return true
 		}
+		if tc.expr_subtree_has_error(rhs_id) {
+			// Keep bindings after a branch mismatch to avoid undefined-variable cascades.
+			if groups := tc.multi_expr_tail_type_groups(rhs_id, lhs_ids.len) {
+				if groups.len > 0 {
+					for i, lhs_id in lhs_ids {
+						tc.insert_decl_lhs(lhs_id, groups[0][i], tc.decl_lhs_is_mut(node, lhs_id))
+					}
+					return true
+				}
+			}
+		}
 		rhs_type := tc.resolve_type(rhs_id)
 		if rhs_type !is MultiReturn || tc.expr_has_tuple_tail_values(rhs_id, lhs_ids.len) {
 			if tc.should_diagnose(id) {
@@ -15906,6 +15926,9 @@ fn (mut tc TypeChecker) check_multi_return_decl_assign(id flat.NodeId, node flat
 	if rhs.kind == .lock_expr {
 		tc.check_node(rhs_id)
 		if rhs_types := tc.multi_expr_tail_types(rhs_id, lhs_ids.len) {
+			if tc.reject_all_none_multi_tail_slot(rhs_id, rhs_types, lhs_ids, node) {
+				return true
+			}
 			tc.register_synth_type(rhs_id, MultiReturn{
 				types: rhs_types
 			})
@@ -16020,26 +16043,74 @@ fn (mut tc TypeChecker) multi_assign_rhs_type(rhs_id flat.NodeId, rhs flat.Node)
 	return tc.resolve_type(rhs_id)
 }
 
+fn (mut tc TypeChecker) insert_match_multi_return_recovery_bindings(match_node flat.Node, lhs_ids []flat.NodeId, decl_node flat.Node) {
+	mut recovered_types := []Type{}
+	for i in 1 .. match_node.children_count {
+		branch_id := tc.a.child(&match_node, i)
+		if groups := tc.multi_expr_branch_tail_type_groups(branch_id, lhs_ids.len, true) {
+			if groups.len > 0 {
+				recovered_types = groups[0]
+				break
+			}
+		}
+	}
+	for i, lhs_id in lhs_ids {
+		typ := recovered_types[i] or { unknown_type('invalid variable') }
+		tc.insert_decl_lhs(lhs_id, typ, tc.decl_lhs_is_mut(decl_node, lhs_id))
+	}
+}
+
 fn (tc &TypeChecker) multi_expr_tail_types(expr_id flat.NodeId, count int) ?[]Type {
 	groups := tc.multi_expr_tail_type_groups(expr_id, count) or { return none }
 	if groups.len == 0 {
 		return none
 	}
-	mut tail_types := []Type{cap: count}
-	for typ in groups[0] {
-		tail_types << typ
-	}
-	for i in 1 .. groups.len {
-		group := groups[i]
-		if group.len != tail_types.len {
+	for group in groups {
+		if group.len != count {
 			return none
 		}
-		for j, actual in group {
-			promoted := tc.promoted_multi_tail_type(tail_types[j], actual) or { return none }
-			tail_types[j] = promoted
+	}
+	mut tail_types := []Type{cap: count}
+	for slot in 0 .. count {
+		mut promoted := Type(none_)
+		mut has_value := false
+		mut has_none := false
+		// Infer the payload across every value arm before applying `none`.
+		// An inferred Option must not look like an explicit wrapped-call mismatch
+		// when another plain value arm follows it.
+		for group in groups {
+			actual := group[slot]
+			if unalias_type(actual) is None {
+				has_none = true
+				continue
+			}
+			if has_value {
+				promoted = tc.promoted_multi_tail_type(promoted, actual) or { return none }
+			} else {
+				promoted = actual
+				has_value = true
+			}
 		}
+		if has_none {
+			promoted = tc.promoted_multi_tail_type(promoted, Type(none_)) or { return none }
+		}
+		tail_types << promoted
 	}
 	return tail_types
+}
+
+fn (mut tc TypeChecker) reject_all_none_multi_tail_slot(expr_id flat.NodeId, tail_types []Type, lhs_ids []flat.NodeId, decl_node flat.Node) bool {
+	for typ in tail_types {
+		if unalias_type(typ) is None {
+			tc.record_error_at(.assignment_mismatch, 'cannot assign a `none` value to a variable',
+				expr_id, tc.a.node(expr_id).pos)
+			for i, lhs_id in lhs_ids {
+				tc.insert_decl_lhs(lhs_id, tail_types[i], tc.decl_lhs_is_mut(decl_node, lhs_id))
+			}
+			return true
+		}
+	}
+	return false
 }
 
 fn (tc &TypeChecker) enclosing_multi_assign_value_count(expr_id flat.NodeId) int {
@@ -16114,8 +16185,12 @@ fn (tc &TypeChecker) multi_expr_branch_tail_type_groups(branch_id flat.NodeId, c
 		for group in groups {
 			mut tail_types := []Type{cap: group.len}
 			for value_id in group {
-				typ := tc.expr_type(value_id) or { tc.resolve_type(value_id) }
-				if !type_has_runtime_value(typ) {
+				typ := if tc.a.nodes[int(value_id)].kind == .none_expr {
+					Type(none_)
+				} else {
+					tc.expr_type(value_id) or { tc.resolve_type(value_id) }
+				}
+				if !type_has_runtime_value(typ) && typ !is None {
 					return none
 				}
 				tail_types << typ
@@ -16141,7 +16216,7 @@ fn (tc &TypeChecker) multi_expr_branch_tail_type_groups(branch_id flat.NodeId, c
 		return none
 	}
 	for typ in multi.types {
-		if !type_has_runtime_value(typ) {
+		if !type_has_runtime_value(typ) && typ !is None {
 			return none
 		}
 	}
@@ -16384,7 +16459,64 @@ pub fn (tc &TypeChecker) multi_expr_tail_types_for_transform(expr_id flat.NodeId
 	return tc.multi_expr_tail_types(expr_id, count)
 }
 
+fn multi_tail_wrappers_match(current Type, actual Type) bool {
+	clean_current := unalias_type(current)
+	clean_actual := unalias_type(actual)
+	if clean_current is Nil || clean_actual is Nil {
+		return true
+	}
+	if clean_current is None && clean_actual is OptionType {
+		return true
+	}
+	if clean_actual is None && clean_current is OptionType {
+		return true
+	}
+	if is_ierror_type(current) && (clean_actual is OptionType || clean_actual is ResultType) {
+		return true
+	}
+	if is_ierror_type(actual) && (clean_current is OptionType || clean_current is ResultType) {
+		return true
+	}
+	return (clean_current is OptionType) == (clean_actual is OptionType)
+		&& (clean_current is ResultType) == (clean_actual is ResultType)
+}
+
 fn (tc &TypeChecker) promoted_multi_tail_type(current Type, actual Type) ?Type {
+	if !multi_tail_wrappers_match(current, actual) {
+		return none
+	}
+	// `none` still requires an Option when paired with a bare error; keep that
+	// constraint until a later branch provides a concrete wrapped type.
+	if unalias_type(current) is None && is_ierror_type(actual) {
+		return current
+	}
+	if is_ierror_type(current) && unalias_type(actual) is None {
+		return actual
+	}
+	if unalias_type(current) is None && unalias_type(actual) is OptionType {
+		return actual
+	}
+	if unalias_type(actual) is None && unalias_type(current) is OptionType {
+		return current
+	}
+	if unalias_type(current) is None {
+		if inferred := optional_if_type_from_value(actual) {
+			return inferred
+		}
+	}
+	if unalias_type(actual) is None {
+		if inferred := optional_if_type_from_value(current) {
+			return inferred
+		}
+	}
+	if is_ierror_type(actual) && (unalias_type(current) is OptionType
+		|| unalias_type(current) is ResultType) {
+		return current
+	}
+	if is_ierror_type(current) && (unalias_type(actual) is OptionType
+		|| unalias_type(actual) is ResultType) {
+		return actual
+	}
 	if (current.name() == 'voidptr' || unalias_type(current) is Nil)
 		&& unalias_type(actual) is Pointer {
 		return Type(Pointer{

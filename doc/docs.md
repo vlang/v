@@ -2099,6 +2099,9 @@ match mut x {
 
 ### Match
 
+A match expression can return multiple values. A branch ending with comma-separated values can
+be combined with a branch ending in a call that returns the same types.
+
 Conditions that compare different nested fields remain distinct match cases, even when
 their final field names and comparison operators are the same.
 
@@ -4799,6 +4802,9 @@ x := read() or {
 	return
 }
 ```
+
+A local `err` declared in a nested block shadows the implicit `or` error variable, including in
+result values.
 
 #### Options/results when returning multiple values
 

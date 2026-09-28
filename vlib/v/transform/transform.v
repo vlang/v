@@ -13497,6 +13497,11 @@ fn (mut t Transformer) transform_expr_for_type(id flat.NodeId, target_type strin
 	}
 	if int(id) >= 0 && target_type != '' {
 		node := t.a.nodes[int(id)]
+		if target_type.starts_with('!')
+			&& t.return_expr_is_propagated_err(id, t.optional_base_type(t.qualify_optional_type(target_type))) {
+			error_value := t.transform_expr_for_type(id, 'IError')
+			return t.make_optional_none_with_err(t.qualify_optional_type(target_type), error_value)
+		}
 		if node.kind == .enum_val {
 			resolved := t.transform_enum_shorthand(id, node, target_type)
 			if resolved != id {
@@ -14067,8 +14072,17 @@ fn (mut t Transformer) coerce_transformed_expr_to_type(expr flat.NodeId, source_
 		target
 	}
 	optional_target = t.infer_typed_optional_target(optional_target, expr_type)
-	if optional_target.starts_with('!') && t.is_ierror_type(expr_type) {
-		return t.make_optional_none_with_err(optional_target, expr)
+	if t.is_optional_type_name(optional_target) && t.is_ierror_type(expr_type) {
+		optional_payload := t.optional_base_type(optional_target)
+		payload_accepts_ierror := optional_payload in ['IError', 'builtin.IError']
+			|| (t.normalize_type_alias(optional_payload) != 'string' && !isnil(t.tc)
+				&& t.tc.slot_value_compatible(t.tc.parse_type(expr_type),
+					t.tc.parse_type(optional_payload)))
+		if (optional_target.starts_with('!')
+			&& t.return_expr_is_propagated_err(source_id, optional_payload))
+			|| !payload_accepts_ierror {
+			return t.make_optional_none_with_err(optional_target, expr)
+		}
 	}
 	if t.is_optional_type_name(optional_target) && int(expr) >= 0 && int(expr) < t.a.nodes.len {
 		raw_expr_type := t.a.nodes[int(expr)].typ

@@ -188,8 +188,39 @@ fn (mut t Transformer) return_expr_is_propagated_err(id flat.NodeId, payload_typ
 	if int(id) < 0 || int(id) >= t.a.nodes.len {
 		return false
 	}
-	node := t.a.nodes[int(id)]
-	actual_type := t.return_ierror_expr_type(id)
+	mut expression_id := id
+	mut node := t.a.nodes[int(expression_id)]
+	mut shadows_implicit_err := false
+	mut shadowed_err_type := ''
+	for node.children_count > 0 {
+		if node.kind in [.paren, .expr_stmt] && node.children_count == 1 {
+			expression_id = t.a.child(&node, 0)
+		} else if node.kind == .block {
+			for i in 0 .. node.children_count - 1 {
+				statement := t.a.child_node(&node, i)
+				if statement.kind != .decl_assign {
+					continue
+				}
+				for j in 0 .. t.multi_assign_lhs_count(statement) {
+					binding := t.a.node(t.multi_assign_lhs_id(statement, j))
+					if binding.kind == .ident && binding.value == 'err' {
+						shadows_implicit_err = true
+						shadowed_err_type = t.return_decl_binding_type(*statement, j)
+						break
+					}
+				}
+			}
+			expression_id = t.a.child(&node, node.children_count - 1)
+		} else {
+			break
+		}
+		node = t.a.nodes[int(expression_id)]
+	}
+	actual_type := if node.kind == .ident && node.value == 'err' && shadows_implicit_err {
+		t.return_ierror_type_candidate(shadowed_err_type) or { '' }
+	} else {
+		t.return_ierror_expr_type(expression_id)
+	}
 	if actual_type.len == 0 {
 		return false
 	}
@@ -197,13 +228,41 @@ fn (mut t Transformer) return_expr_is_propagated_err(id flat.NodeId, payload_typ
 	// failure. Other IError-compatible values can instead be successful payloads
 	// when the surrounding result expects their type (for example `!IError`).
 	if t.is_error_call(node)
-		|| (node.kind == .ident && node.value == 'err' && t.implicit_err_binding_active()) {
+		|| (node.kind == .ident && node.value == 'err' && !shadows_implicit_err
+			&& t.implicit_err_binding_active()) {
 		return true
 	}
 	if payload_type == '' || payload_type == 'unknown' || payload_type.contains('unknown') {
 		return true
 	}
-	return !t.resolved_receiver_arg_compatible(id, actual_type, payload_type)
+	return !t.resolved_receiver_arg_compatible(expression_id, actual_type, payload_type)
+}
+
+fn (t &Transformer) return_decl_binding_type(decl flat.Node, index int) string {
+	lhs_count := t.multi_assign_lhs_count(decl)
+	if lhs_count == 1 {
+		return t.infer_decl_type(&decl)
+	}
+	lhs_id := t.multi_assign_lhs_id(decl, index)
+	if !isnil(t.tc) {
+		if typ := t.tc.expr_type(lhs_id) {
+			name := t.tc.type_name(typ)
+			if decl_type_is_usable(name) {
+				return name
+			}
+		}
+	}
+	lhs := t.a.node(lhs_id)
+	if decl_type_is_usable(lhs.typ) {
+		return lhs.typ
+	}
+	if t.multi_assign_rhs_count(decl) == lhs_count {
+		return t.decl_rhs_type(t.multi_assign_rhs_id(decl, index))
+	}
+	if items := t.multi_return_types_for_expr(t.a.child(&decl, 1), lhs_count) {
+		return t.semantic_type_name(items[index])
+	}
+	return ''
 }
 
 fn (t &Transformer) return_ierror_expr_type(id flat.NodeId) string {

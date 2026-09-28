@@ -6669,10 +6669,18 @@ fn (g &FlatGen) usable_expr_type_uncached(id flat.NodeId) types.Type {
 					return typ
 				}
 			}
-			// C generation is no longer walking the lexical checker scope. The
-			// checker's current scope can therefore contain a same-named local from a
+			// Lowering can replace the checked type with a concrete annotation for
+			// a shadowed local. Use it before consulting a checker scope that no
+			// longer follows the lexical scope of this identifier.
+			if node.typ.len > 0 {
+				annotated := g.parse_node_type(&node)
+				if !decl_annotation_is_unusable(annotated, node.typ)
+					&& !g.type_contains_generic_placeholder(annotated) {
+					return annotated
+				}
+			}
+			// The checker's current scope can contain a same-named local from a
 			// different function (`batch := []Request` versus `batch := []Response`).
-			// Prefer the semantic type recorded for this exact identifier node.
 			if typ := g.tc.cur_scope.lookup(node.value) {
 				if typ !is types.Void {
 					return typ
