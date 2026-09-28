@@ -14678,6 +14678,10 @@ fn (mut p Parser) scan_translated_sizeof_range(source string, tokens []InlineAsm
 			i = p.scan_translated_sizeof_comptime_if(source, tokens, i, end, true)
 			continue
 		}
+		if kind == .dollar && i + 1 < end && tokens[i + 1].kind == .key_match {
+			i = p.scan_translated_sizeof_comptime_match(source, tokens, i, end)
+			continue
+		}
 		if kind == .lcbr {
 			i = inline_asm_matching_close_brace(tokens, i, end) + 1
 			continue
@@ -14789,6 +14793,91 @@ fn (mut p Parser) scan_translated_sizeof_comptime_if(source string, tokens []Inl
 		p.scan_translated_sizeof_range(source, tokens, next + 1, else_close)
 	}
 	return if else_close < end { else_close + 1 } else { end }
+}
+
+fn (mut p Parser) scan_translated_sizeof_comptime_match(source string, tokens []InlineAsmScanToken, start int, end int) int {
+	open := inline_asm_comptime_open_brace(tokens, start + 2, end)
+	if open >= end || start + 2 >= open { return end }
+	close := inline_asm_matching_close_brace(tokens, open, end)
+	if close >= end { return end }
+	mut subject_end := open
+	for subject_end > start + 2 && tokens[subject_end - 1].kind == .semicolon { subject_end-- }
+	if subject_end <= start + 2 { return close + 1 }
+	subject := source[tokens[start + 2].pos..tokens[subject_end - 1].end].trim_space()
+	// A sibling source is indexed while another file or function is active.
+	// Leave location-sensitive matches to normal parsing in their own context.
+	mut needs_source_context := false
+	mut header_pos := start + 2
+	for header_pos < close {
+		if header_pos != open && tokens[header_pos].kind == .lcbr {
+			header_pos = inline_asm_matching_close_brace(tokens, header_pos, close) + 1
+			continue
+		}
+		t := tokens[header_pos]
+		if t.kind == .name && t.lit.starts_with('@')
+			&& t.lit !in ['@OS', '@CCOMPILER', '@BACKEND', '@PLATFORM', '@VEXE', '@VEXEROOT', '@VROOT',
+				'@VHASH', '@VCURRENTHASH', '@BUILD_DATE', '@BUILD_TIME', '@BUILD_TIMESTAMP'] {
+			needs_source_context = true
+			break
+		}
+		header_pos++
+	}
+	mut known := !needs_source_context
+		&& tokens[start + 2].kind in [.string, .char, .number, .key_true, .key_false]
+	mut value := subject
+	if !needs_source_context {
+		if subject.starts_with('@') {
+			known = true
+			value = p.resolve_comptime_at_values_at(subject, tokens[start + 2].pos)
+		} else if constant := p.comptime_value(subject) {
+			known = true
+			value = constant
+		}
+	}
+	mut saved_consts := if !known { p.comptime_const_values.clone() } else { map[string]string{} }
+	defer {
+		if !known { p.comptime_const_values = saved_consts.move() }
+	}
+	mut matched := false
+	mut i := open + 1
+	for i < close {
+		i = inline_asm_skip_semicolons(tokens, i, close)
+		if i >= close { break }
+		branch_open := inline_asm_comptime_open_brace(tokens, i, close)
+		if branch_open <= i || branch_open >= close { break }
+		branch_close := inline_asm_matching_close_brace(tokens, branch_open, close)
+		if branch_close >= close { break }
+		mut matches := tokens[i].kind == .key_else
+			|| (tokens[i].kind == .dollar && i + 1 < branch_open && tokens[i + 1].kind == .key_else)
+		if known && !matched && !matches {
+			mut pattern_start := i
+			mut depth := 0
+			for j := i; j <= branch_open; j++ {
+				kind := tokens[j].kind
+				if j == branch_open || (kind == .comma && depth == 0) {
+					pattern := source[tokens[pattern_start].pos..tokens[j - 1].end].trim_space()
+					pattern_value := p.comptime_value(pattern) or {
+						p.resolve_comptime_at_values_at(pattern, tokens[pattern_start].pos)
+					}
+					matches = matches || comptime_cond_value(pattern_value) == comptime_cond_value(value)
+					pattern_start = j + 1
+				}
+				if kind in [.lpar, .lsbr] { depth++ }
+				if kind in [.rpar, .rsbr] { depth-- }
+			}
+		}
+		if !known {
+			// Deferred arms contribute candidates, but none supplies known values
+			// to another arm or to declarations following the match.
+			p.comptime_const_values = saved_consts.clone()
+		}
+		if !known || (!matched && matches) {
+			p.scan_translated_sizeof_range(source, tokens, branch_open + 1, branch_close)
+		}
+		matched = matched || matches
+		i = branch_close + 1
+	}
+	return close + 1
 }
 
 fn (mut p Parser) isreftype_expr() flat.NodeId {

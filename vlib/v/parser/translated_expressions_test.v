@@ -236,6 +236,90 @@ $if feature ? {
 	}
 }
 
+fn test_translated_sizeof_top_level_comptime_matches() {
+	root := os.join_path(os.vtmp_dir(), 'translated_sizeof_match_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+	main_file := os.join_path(root, 'a.v')
+	source := '@[translated]
+module main
+fn main() {
+ assert sizeof(Regs) == sizeof([2]int)
+ assert sizeof(NestedRegs) == sizeof([3]int)
+ assert sizeof(Choice) == sizeof([1]int)
+ assert sizeof(Fallback) == sizeof([4]int)
+ assert sizeof(DeferredRegs) == sizeof([5]int)
+ assert sizeof(EnabledRegs) == sizeof([2]int)
+ assert sizeof(FileRegs) == sizeof([2]int)
+ assert sizeof(Item) == sizeof(int)
+}
+'
+	declarations := '
+type Item = int
+const chosen = "active"
+$match @OS {
+ "unsupported" { const Item = [1, 2]! }
+ @OS {
+  const enabled = true
+  const Regs = [1, 2]!
+  $if true {
+   $match "nested" {
+    "unused" { const Item = [1, 2]! }
+    "nested" { const NestedRegs = [1, 2, 3]! }
+   }
+  }
+ }
+ $else {
+  const Item = [1, 2]!
+  fn unused() { println(@FILE) }
+ }
+}
+$if enabled { const EnabledRegs = [1, 2]! }
+$match chosen {
+ "unused" { const Item = [1, 2]! }
+ "active", "also" { const Choice = [1]! }
+ $else { const Item = [1, 2]! }
+}
+$match false {
+ true { const Item = [1, 2]! }
+ $else { const Fallback = [1, 2, 3, 4]! }
+}
+$match int {
+ int { const DeferredRegs = [1, 2, 3, 4, 5]! }
+ $else { const OtherRegs = [6, 7]! }
+}
+$match @FILE {
+ "__DECL_FILE__" { const FileRegs = [1, 2]! }
+ $else { type FileRegs = int }
+}
+'
+	os.write_file(main_file, source + declarations.replace('__DECL_FILE__',
+		main_file.replace('\\', '\\\\').replace('"', '\\"')))!
+	mut p := Parser.new(pref.new_preferences())
+	p.parse_file(main_file)
+	assert !p.diagnostics.any(it.severity == 'error:'), p.diagnostics.str()
+	sizes := p.a.nodes.filter(it.kind == .sizeof_expr)
+	assert sizes.len == 16
+	for i in [0, 2, 4, 6, 8, 10] {
+		assert sizes[i].children_count == 1
+	}
+	assert !p.translated_sizeof_const_names[p.translated_sizeof_declaration_key('Item')]
+	assert p.translated_sizeof_const_names[p.translated_sizeof_declaration_key('OtherRegs')]
+	single := os.execute('${os.quoted_path(@VEXE)} run ${os.quoted_path(main_file)}')
+	assert single.exit_code == 0, single.output
+	os.write_file(main_file, source)!
+	later_file := os.join_path(root, 'z.v')
+	os.write_file(later_file, '@[translated]\nmodule main\n' + declarations.replace('__DECL_FILE__',
+		later_file.replace('\\', '\\\\').replace('"', '\\"')))!
+	for name in ['padding_a.v', 'padding_b.v'] {
+		os.write_file(os.join_path(root, name), 'module main\n//' + ' '.repeat(70000) + '\n')!
+	}
+	for flags in ['', '-no-parallel'] {
+		result := os.execute('${os.quoted_path(@VEXE)} ${flags} run ${os.quoted_path(root)}')
+		assert result.exit_code == 0, result.output
+	}
+}
+
 fn test_translated_sizeof_ignores_constants_from_other_modules() {
 	root := os.join_path(os.vtmp_dir(), 'translated_sizeof_modules_${os.getpid()}')
 	os.mkdir_all(root)!
