@@ -1,5 +1,4 @@
 import os
-import runtime
 import strings
 import v.parser
 import v.pref
@@ -32,6 +31,18 @@ fn parallel_parse_input_files() []string {
 // and same side tables. This pins the merge's id/offset shifting to the serial
 // layout byte for byte.
 fn test_parallel_parse_matches_serial() {
+	// Force nr_jobs() to a deterministic value > 1 regardless of the runner's
+	// actual core count, so `was_parallel` below is a real assertion rather
+	// than one that silently never runs on a single-core CI machine.
+	old_vjobs := os.getenv_opt('VJOBS')
+	os.setenv('VJOBS', '2', true)
+	defer {
+		if value := old_vjobs {
+			os.setenv('VJOBS', value, true)
+		} else {
+			os.unsetenv('VJOBS')
+		}
+	}
 	files := parallel_parse_input_files()
 	assert files.len >= 4
 	prefs := pref.new_preferences()
@@ -39,11 +50,10 @@ fn test_parallel_parse_matches_serial() {
 	serial_starts := ps.parse_files_with_starts(files)
 	mut pp := parser.Parser.new(prefs)
 	parallel_starts, was_parallel := pp.parse_files_dispatch(files, true)
-	$if !windows {
-		if runtime.nr_jobs() > 1 {
-			assert was_parallel
-		}
-	}
+	// Parallel dispatch used to abort under Boehm GC's interior-pointer scanning
+	// on Windows; fixed in feaac2e (fix #28896), so it now behaves like every
+	// other OS instead of being exempted here.
+	assert was_parallel
 	assert parallel_starts == serial_starts
 	assert pp.parsed_v_files == ps.parsed_v_files
 	assert pp.parsed_v_file_paths == ps.parsed_v_file_paths
@@ -80,11 +90,20 @@ fn test_parallel_parse_matches_serial() {
 }
 
 fn test_parallel_parser_preserves_template_metadata_and_warning_severity() {
-	$if windows {
-		return
-	}
-	if runtime.nr_jobs() <= 1 {
-		return
+	// Used to be skipped on Windows: parallel dispatch aborted under Boehm GC's
+	// interior-pointer scanning there. Fixed in feaac2e (fix #28896).
+	// Force nr_jobs() to a deterministic value > 1 regardless of the runner's
+	// actual core count, so the `was_parallel` assertion below is a real
+	// assertion rather than one that silently never runs on a single-core CI
+	// machine (the early-return this replaced would have masked that too).
+	old_vjobs := os.getenv_opt('VJOBS')
+	os.setenv('VJOBS', '2', true)
+	defer {
+		if value := old_vjobs {
+			os.setenv('VJOBS', value, true)
+		} else {
+			os.unsetenv('VJOBS')
+		}
 	}
 	dir := os.join_path(os.temp_dir(), 'v3_parallel_template_metadata_${os.getpid()}')
 	os.rmdir_all(dir) or {}
@@ -209,6 +228,19 @@ fn test_parallel_parse_falls_back_when_workers_cannot_start() {
 }
 
 fn test_parallel_parse_seeds_cross_file_comptime_consts() {
+	// Force nr_jobs() to a deterministic value > 1 regardless of the runner's
+	// actual core count, so the `was_parallel` assertion below is a real
+	// assertion rather than one that silently never runs on a single-core CI
+	// machine.
+	old_vjobs := os.getenv_opt('VJOBS')
+	os.setenv('VJOBS', '2', true)
+	defer {
+		if value := old_vjobs {
+			os.setenv('VJOBS', value, true)
+		} else {
+			os.unsetenv('VJOBS')
+		}
+	}
 	dir := os.join_path(os.temp_dir(), 'v3_parallel_const_seed_${os.getpid()}')
 	os.rmdir_all(dir) or {}
 	os.mkdir_all(dir) or { panic(err) }
@@ -331,11 +363,10 @@ fn test_parallel_parse_seeds_cross_file_comptime_consts() {
 	prefs.user_defines << 'v3_parallel_taken_const'
 	mut p := parser.Parser.new(prefs)
 	_, was_parallel := p.parse_files_dispatch(files, true)
-	$if !windows {
-		if runtime.nr_jobs() > 1 {
-			assert was_parallel
-		}
-	}
+	// Parallel dispatch used to abort under Boehm GC's interior-pointer scanning
+	// on Windows; fixed in feaac2e (fix #28896), so it now behaves like every
+	// other OS instead of being exempted here.
+	assert was_parallel
 	assert p.a.nodes.any(it.kind == .fn_decl && it.value == 'enabled_branch')
 	assert p.a.nodes.any(it.kind == .fn_decl && it.value == 'line_position_gate_enabled')
 	assert p.a.nodes.any(it.kind == .fn_decl && it.value == 'raw_string_gate_enabled')
