@@ -649,15 +649,16 @@ fn (mut t Transformer) make_struct_runtime_default_value_guarded(struct_type str
 			continue
 		}
 		if int(field.default_expr) >= 0 {
-			default_node := t.a.nodes[int(field.default_expr)]
+			default_id := t.specialize_struct_default_expr(struct_type, field.default_expr)
+			default_node := t.a.nodes[int(default_id)]
 			enum_field_type := t.enum_type_name_for_expected(field_type, info.module)
 			sum_field_type := t.struct_field_sum_type(field_type, info.module)
 			value = if default_node.kind == .enum_val && enum_field_type.len > 0 {
-				t.transform_enum_shorthand(field.default_expr, default_node, enum_field_type)
+				t.transform_enum_shorthand(default_id, default_node, enum_field_type)
 			} else if sum_field_type.len > 0 {
-				t.wrap_sum_value(field.default_expr, sum_field_type)
+				t.wrap_sum_value(default_id, sum_field_type)
 			} else {
-				t.transform_expr_for_type(field.default_expr, field_type)
+				t.transform_expr_for_type(default_id, field_type)
 			}
 		} else if clean_type.starts_with('map[') || clean_type.starts_with('[]') {
 			value = t.zero_value_for_type(clean_type)

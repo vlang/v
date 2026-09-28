@@ -719,10 +719,13 @@ fn (mut t Transformer) specialize_struct_default_expr(struct_type string, defaul
 // nested_generic_defaults_need_lowering finds omitted value fields whose generic defaults
 // need specialization before the backend emits the enclosing struct's default value.
 fn (t &Transformer) nested_generic_defaults_need_lowering(type_name string, mut visited map[string]bool) bool {
-	if type_name.len == 0 || type_name[0] in [`&`, `?`, `!`, `[`] || type_name.starts_with('map[') || type_name in visited {
+	if type_name.len == 0 || type_name[0] in [`&`, `?`, `!`] || type_name.starts_with('map[') || type_name.starts_with('[]') || type_name in visited {
 		return false
 	}
 	normalized := t.normalize_type_alias(type_name)
+	if t.is_fixed_array_type(normalized) {
+		return t.nested_generic_defaults_need_lowering(fixed_array_elem_type(normalized), mut visited)
+	}
 	if normalized in visited {
 		return false
 	}
@@ -772,12 +775,16 @@ fn (mut t Transformer) add_missing_struct_defaults(id flat.NodeId, node flat.Nod
 		field_type := t.lookup_struct_field_type(node.value, field.name) or { field.typ }
 		mut visited := map[string]bool{}
 		if t.nested_generic_defaults_need_lowering(field_type, mut visited) {
-			missing_defaults[field.name] = t.a.add_node(flat.Node{
-				kind:  .struct_init
-				value: field_type
-				typ:   field_type
-				pos:   node.pos
-			})
+			missing_defaults[field.name] = if t.is_fixed_array_type(field_type) {
+				t.make_fixed_array_init(field_type)
+			} else {
+				t.a.add_node(flat.Node{
+					kind:  .struct_init
+					value: field_type
+					typ:   field_type
+					pos:   node.pos
+				})
+			}
 			lower_generic_defaults = true
 		}
 	}

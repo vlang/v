@@ -23,6 +23,11 @@ struct Numbers {
 	floating NumericBox[f64]
 }
 
+struct BoxArray {
+	boxes [2]NumericBox[int]
+	grid  [2][2]NumericBox[int]
+}
+
 type NumericIntAlias = NumericBox[int]
 
 struct AliasedNumbers {
@@ -49,6 +54,11 @@ fn test_nested_generic_field_defaults() {
 	numbers := Numbers{}
 	assert numbers.integer.value == 42
 	assert numbers.floating.value == 42.0
+	arrays := BoxArray{}
+	assert arrays.boxes[0].value == 42
+	assert arrays.boxes[1].value == 42
+	assert arrays.grid[0][1].value == 42
+	assert arrays.grid[1][0].value == 42
 	aliased := AliasedNumbers{}
 	assert aliased.integer.value == 42
 }
