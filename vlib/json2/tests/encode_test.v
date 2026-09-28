@@ -411,3 +411,28 @@ fn test_pointer_fields() {
     "data": 1
 }'
 }
+
+struct TimeHolder {
+	at       time.Time
+	maybe    ?time.Time
+	ptr      &time.Time
+	list     []time.Time
+	by_label map[string]time.Time
+}
+
+fn test_time_as_unix() {
+	t := time.unix(1608621780)
+	holder := TimeHolder{
+		at:       t
+		maybe:    t
+		ptr:      &t
+		list:     [t]
+		by_label: {
+			'a': t
+		}
+	}
+	assert json.encode(t, time_as_unix: true) == '1608621780'
+	assert json.encode(holder, time_as_unix: true) == '{"at":1608621780,"maybe":1608621780,"ptr":1608621780,"list":[1608621780],"by_label":{"a":1608621780}}'
+	assert json.encode(t) == '"2020-12-22T07:23:00.000Z"'
+	assert json.decode[TimeHolder](json.encode(holder, time_as_unix: true))!.list == [t]
+}

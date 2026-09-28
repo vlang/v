@@ -11,8 +11,10 @@ directory, then prints their formatted source to stdout.
 By default, `v fmt` also migrates usage of the removed `json` module to the
 pure V `json2` module (`import json` -> `import json2`,
 `json.decode(T, s)` -> `json2.decode[T](s)`,
-`json.encode(x)` -> `json2.encode(x, escape_unicode: true)`,
-`json.encode_pretty(x)` -> `json2.encode(x, prettify: true, escape_unicode: true)`).
+`json.encode(x)` -> `json2.encode(x, escape_unicode: true, time_as_unix: true)`,
+`json.encode_pretty(x)` ->
+`json2.encode(x, prettify: true, escape_unicode: true, time_as_unix: true)`).
+The added options keep the output of the old module.
 vfmt fixtures (`.vv`) are left untouched, and so are files whose `import json`
 resolves to a project's own `json` module. Use `-no-migrate-json2` to disable
 the rewrite.

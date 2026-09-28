@@ -160,12 +160,15 @@ fn test_encode_decode_time() {
 		age:      25
 		reg_date: time.new(year: 2020, month: 12, day: 22, hour: 7, minute: 23)
 	}
-	s := json2.encode(user, escape_unicode: true)
+	s := json2.encode(user, escape_unicode: true, time_as_unix: true)
 	// println(s)
-	// json2 encodes time.Time as an RFC 3339 string.
-	assert s.contains('"reg_date":"2020-12-22T07:23:00.000Z"')
+	assert s.contains('"reg_date":1608621780')
 	user2 := json2.decode[User2](s)!
 	assert user2.reg_date.str() == '2020-12-22 07:23:00'
+	// Without `time_as_unix`, json2 encodes time.Time as an RFC 3339 string.
+	rfc := json2.encode(user, escape_unicode: true)
+	assert rfc.contains('"reg_date":"2020-12-22T07:23:00.000Z"')
+	assert json2.decode[User2](rfc)!.reg_date == user.reg_date
 	// println(user2)
 	// println(user2.reg_date)
 }
@@ -529,7 +532,9 @@ fn test_encode_alias_field() {
 		sub: Bb{
 			a: 1
 		}
-	}, escape_unicode: true)
+	},
+		escape_unicode: true
+	)
 	assert s == '{"sub":{"a":1}}'
 }
 

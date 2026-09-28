@@ -944,7 +944,7 @@ fn test_local() {
 	res, formatted := run_vfmt_write('removed_json_module_test', source, '')
 	assert res.exit_code == 0, res.output
 	assert formatted.contains('import json2\n'), formatted
-	assert formatted.contains('json2.encode(1, escape_unicode: true)'), formatted
+	assert formatted.contains('json2.encode(1, escape_unicode: true, time_as_unix: true)'), formatted
 }
 
 fn test_fmt_keeps_comments_before_expanded_const_fields_with_v3() {

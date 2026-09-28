@@ -13,6 +13,9 @@ pub:
 	enum_as_int bool
 
 	escape_unicode bool
+	// time_as_unix encodes a `time.Time` as its Unix timestamp in seconds, like the
+	// removed `json` module did, instead of an RFC 3339 string.
+	time_as_unix bool
 }
 
 struct Encoder {
@@ -146,6 +149,13 @@ fn (mut encoder Encoder) encode_value[T](val T) {
 		}
 	} $else $if T.unaliased_typ is $sumtype {
 		encoder.encode_sumtype[T](val)
+	} $else $if T is time.Time {
+		if encoder.time_as_unix {
+			encoder.encode_number(val.unix())
+		} else {
+			time_val := val.to_json()
+			unsafe { encoder.output.push_many(time_val.str, time_val.len) }
+		}
 	} $else $if T is JsonEncoder { // uses T, because alias could be implementing JsonEncoder, while the base type does not
 		integer_val := val.to_json()
 		unsafe { encoder.output.push_many(integer_val.str, integer_val.len) }

@@ -1954,7 +1954,7 @@ fn (mut g Gen) json_migration_call(kind string, callee flat.NodeId, args []flat.
 	if kind == 'encode_pretty' {
 		g.write('prettify: true, ')
 	}
-	g.write('escape_unicode: true)')
+	g.write('escape_unicode: true, time_as_unix: true)')
 }
 
 // json_decode_type_arg_source returns the source of the type argument of

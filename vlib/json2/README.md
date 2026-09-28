@@ -2,9 +2,11 @@
 > rewrites the usual `json.decode(T, s)`, `json.encode(x)` and
 > `json.encode_pretty(x)` calls to `json2`, and leaves code it cannot rewrite
 > safely unchanged. By hand, `json.decode(T, s)` becomes `json2.decode[T](s)`,
-> `json.encode(x)` becomes `json2.encode(x, escape_unicode: true)`, and
-> `json.encode_pretty(x)` becomes
-> `json2.encode(x, prettify: true, escape_unicode: true)`.
+> `json.encode(x)` becomes `json2.encode(x, escape_unicode: true, time_as_unix: true)`,
+> and `json.encode_pretty(x)` becomes
+> `json2.encode(x, prettify: true, escape_unicode: true, time_as_unix: true)`.
+> These options keep the output of the old module: non-ASCII characters escaped as
+> `\uXXXX`, and `time.Time` values as Unix timestamps instead of RFC 3339 strings.
 
 `json2` is an experimental JSON parser written from scratch on V.
 
