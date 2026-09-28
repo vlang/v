@@ -1103,25 +1103,27 @@ fn (mut t Transformer) normalize_generic_call_expr(id flat.NodeId, node flat.Nod
 	for child in children {
 		t.a.children << child
 	}
-	mut resolved_named_call := false
+	mut resolved_name := ''
 	if !isnil(t.tc) {
-		if _ := t.tc.resolved_call_name(id) {
-			resolved_named_call = true
-		}
+		resolved_name = t.tc.resolved_call_name(id) or { '' }
 	}
-	return t.a.add_node(flat.Node{
+	normalized_id := t.a.add_node(flat.Node{
 		kind:           .call
 		op:             node.op
 		children_start: start
 		children_count: flat.child_count(children.len)
 		pos:            node.pos
-		value:          if !resolved_named_call && t.generic_call_base_is_fn_value(base_id, base) {
+		value:          if resolved_name.len == 0 && t.generic_call_base_is_fn_value(base_id, base) {
 			''
 		} else {
 			type_arg
 		}
 		typ:            node.typ
 	})
+	if !isnil(t.tc) && t.tc.c_backed_alias_method_name(resolved_name) {
+		t.set_generated_resolved_call(normalized_id, resolved_name)
+	}
+	return normalized_id
 }
 
 fn (t &Transformer) generic_call_base_is_fn_value(base_id flat.NodeId, base flat.Node) bool {

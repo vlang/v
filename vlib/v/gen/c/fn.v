@@ -3750,7 +3750,7 @@ fn (mut g FlatGen) gen_method_value_closure(selector_id flat.NodeId, base_id fla
 	method_key := if is_interface_receiver {
 		'${receiver_name}.${method}'
 	} else {
-		g.resolve_method_name(receiver_name, method)
+		g.tc.resolved_call_name(selector_id) or { g.resolve_method_name(receiver_name, method) }
 	}
 	mut params := []types.Type{}
 	mut ret := types.Type(types.void_)
@@ -13466,7 +13466,8 @@ fn (g &FlatGen) selector_call_can_emit_direct(resolved string, node flat.Node) b
 }
 
 fn (g &FlatGen) resolved_receiver_method_for_call(resolved string, node flat.Node, method string) ?string {
-	if resolved.len == 0 || method.len == 0 || !resolved.ends_with('.${method}') {
+	if resolved.len == 0 || method.len == 0
+		|| !(resolved.ends_with('.${method}') || resolved.ends_with('.@${method}')) {
 		return none
 	}
 	params := g.tc.fn_param_types[resolved] or { return none }
@@ -13481,7 +13482,11 @@ fn (g &FlatGen) resolved_receiver_method_for_call(resolved string, node flat.Nod
 			base_name := g.type_lookup_name(types.unwrap_pointer(base_type))
 			expected_name := g.embedded_receiver_expected_name(params[0])
 			if base_name.len > 0 && expected_name.len > 0 && base_name != expected_name {
-				if _ := g.embedded_receiver_path_for_expected(base_type, params[0]) {
+				if g.tc.c_backed_alias_method_name(resolved)
+					&& base_name == g.type_lookup_name(params[0]) {
+					// C-backed alias methods retain their declared owner, while the
+					// receiver storage can already use the underlying C struct.
+				} else if _ := g.embedded_receiver_path_for_expected(base_type, params[0]) {
 				} else {
 					return none
 				}

@@ -11666,7 +11666,8 @@ fn (mut t Transformer) copy_cloned_resolution(src_id flat.NodeId, dst_id flat.No
 	}
 	if call_name := t.tc.resolved_call_name(src_id) {
 		if !t.cloned_call_has_exact_generic_callee(dst_idx)
-			&& !t.resolved_call_is_generic_fn(call_name) {
+			&& (!t.resolved_call_is_generic_fn(call_name)
+				|| t.tc.c_backed_alias_method_name(call_name)) {
 			t.set_resolved_call_entry(dst_idx, call_name)
 		}
 	}
@@ -11686,7 +11687,8 @@ fn (mut t Transformer) copy_cloned_resolution_forked(src_idx int, dst_idx int) {
 		call_name = t.tc.resolved_call_names[src_idx].value
 	}
 	if call_name.len > 0 && !t.cloned_call_has_exact_generic_callee(dst_idx)
-		&& !t.resolved_call_is_generic_fn(call_name) {
+		&& (!t.resolved_call_is_generic_fn(call_name)
+			|| t.tc.c_backed_alias_method_name(call_name)) {
 		overlay.resolved_call_names[dst_idx] = call_name
 	}
 	mut fn_value := if src_idx >= overlay.base_node_count {

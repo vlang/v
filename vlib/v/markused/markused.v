@@ -4853,6 +4853,9 @@ fn (c &CallCollector) collect_calls_with_locals_and_generics(node &flat.Node, cu
 				c.collect_index_overload_getter_method(child, cur_module, local_types, mut calls)
 			}
 			.assign, .selector_assign, .index_assign {
+				if resolved := c.tc.resolved_call_name(child_id) {
+					c.add_operator_call_name(resolved, mut calls)
+				}
 				if child.kind == .index_assign && child.children_count > 0 {
 					lhs_id := c.a.child(child, 0)
 					c.collect_index_operator_method(lhs_id, '[]=', cur_module, imports, local_values, local_types, mut calls)
@@ -4864,6 +4867,9 @@ fn (c &CallCollector) collect_calls_with_locals_and_generics(node &flat.Node, cu
 				c.collect_assign_operator_call(child, cur_module, local_types, mut calls)
 			}
 			.infix {
+				if resolved := c.tc.resolved_call_name(child_id) {
+					c.add_operator_call_name(resolved, mut calls)
+				}
 				if child.op == .plus {
 					calls << 'string__plus'
 				}

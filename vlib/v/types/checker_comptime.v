@@ -7344,6 +7344,9 @@ fn (mut tc TypeChecker) check_infix(id flat.NodeId, node flat.Node) {
 			rhs_type = rhs_wrapped.base_type
 		}
 	}
+	if info := tc.c_struct_infix_operator_call_info(node.op, lhs_type) {
+		tc.remember_resolved_call(id, info.name)
+	}
 	if (lhs_type is Void && tc.expr_subtree_has_undefined_variable_error(lhs_id))
 		|| (rhs_type is Void && tc.expr_subtree_has_undefined_variable_error(rhs_id)) {
 		tc.register_synth_type(id, Type(void_))
@@ -18512,6 +18515,12 @@ fn (mut tc TypeChecker) record_compound_assignment_operand_errors(op flat.Op, lh
 		return
 	}
 	if infix_op := compound_assignment_infix_op(op) {
+		if info := tc.c_struct_infix_operator_call_info(infix_op, lhs_type) {
+			parent_id := tc.direct_parent_id(lhs_id)
+			if tc.valid_node_id(parent_id) {
+				tc.remember_resolved_call(parent_id, info.name)
+			}
+		}
 		if signature := tc.infix_operator_signature(infix_op, lhs_type) {
 			lhs_name := unwrap_pointer(lhs_type).name()
 			if signature.param_count < 2 {
