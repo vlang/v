@@ -2594,9 +2594,6 @@ fn (mut g FlatGen) gen_node(id flat.NodeId) {
 				g.gen_select(child_id, child, false)
 				return
 			}
-			if g.is_runtime_array_flags_stmt(child_id) {
-				return
-			}
 			if child.kind == .or_expr {
 				g.gen_or_expr_stmt(child)
 				return
@@ -7111,28 +7108,6 @@ fn (g &FlatGen) call_constructs_type(id flat.NodeId, target types.Type) bool {
 	}
 	short_target := target_name.all_after_last('.')
 	return fn_node.value == target_name || fn_node.value == short_target
-}
-
-// is_runtime_array_flags_stmt reports whether is runtime array flags stmt applies in c.
-fn (g &FlatGen) is_runtime_array_flags_stmt(id flat.NodeId) bool {
-	if int(id) < 0 {
-		return false
-	}
-	node := g.a.nodes[int(id)]
-	if node.kind != .call || node.children_count == 0 {
-		return false
-	}
-	fn_node := g.a.child_node(&node, 0)
-	if fn_node.kind != .selector || fn_node.value !in ['set', 'clear'] || fn_node.children_count == 0 {
-		return false
-	}
-	flags_node := g.a.child_node(fn_node, 0)
-	if flags_node.kind != .selector || flags_node.value != 'flags' || flags_node.children_count == 0 {
-		return false
-	}
-	owner_id := g.a.child(flags_node, 0)
-	owner_type := types.unwrap_pointer(g.tc.resolve_type(owner_id))
-	return owner_type is types.Array || owner_type.name() == 'strings.Builder'
 }
 
 fn (g &FlatGen) multi_return_expr_type(id flat.NodeId) ?types.MultiReturn {
