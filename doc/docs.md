@@ -4835,6 +4835,8 @@ Currently generic function definitions must declare their type parameters, but i
 future versions, V will infer generic type parameters from single-letter type names in
 runtime parameter types. This is why the `find_by_id(1)` calls above can omit `[T]`,
 because the receiver argument `r` in the method declaration, uses a generic type `T`.
+Generic struct field defaults use each instantiation's concrete type argument in calls such as
+`default_value[T]()`.
 
 Another example:
 

@@ -14523,7 +14523,7 @@ fn (g &FlatGen) explicit_generic_call_type_arg_names(fn_node flat.Node) []string
 	}
 	mut args := []string{}
 	for i in 1 .. fn_node.children_count {
-		arg := g.generic_call_type_arg_name(g.a.child(&fn_node, i))
+		arg := g.generic_default_type_text(g.generic_call_type_arg_name(g.a.child(&fn_node, i)))
 		if arg.len == 0 {
 			return []string{}
 		}

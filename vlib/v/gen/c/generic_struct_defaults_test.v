@@ -3,6 +3,33 @@ module c
 import v.flat
 import v.types
 
+fn test_recovered_default_explicit_generic_call_uses_concrete_type_arg() {
+	mut ast := flat.FlatAst.new()
+	callee := ast.add_node(flat.Node{
+		kind:  .ident
+		value: 'type_size'
+	})
+	arg := ast.add_node(flat.Node{
+		kind:  .ident
+		value: 'T'
+	})
+	start := ast.children.len
+	ast.children << callee
+	ast.children << arg
+	indexed := ast.add_node(flat.Node{
+		kind:           .index
+		children_start: start
+		children_count: 2
+	})
+	mut g := FlatGen.new()
+	g.a = &ast
+	g.struct_default_generic_params = ['T']
+	g.struct_default_generic_args = ['string']
+	assert g.explicit_generic_call_type_arg_names(ast.node(indexed)) == ['string']
+	g.struct_default_generic_args = ['int']
+	assert g.explicit_generic_call_type_arg_names(ast.node(indexed)) == ['int']
+}
+
 fn test_generic_channel_default_uses_concrete_element_size() {
 	mut ast := flat.FlatAst.new()
 	init_id := ast.add_node(flat.Node{
