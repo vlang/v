@@ -2,6 +2,9 @@ module fasthttp
 
 import net
 
+// glibc declares `accept4` only with `_GNU_SOURCE`, which must be set before the
+// first system header; gcc and clang reject the implicit declaration otherwise.
+#flag linux -D_GNU_SOURCE
 #include <errno.h>
 #include <fcntl.h>
 #include <string.h>

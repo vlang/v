@@ -941,6 +941,7 @@ pub fn (mut s Server) run() ! {
 	}
 
 	s.poll_fd = s.poll_fds[0]
+	s.mark_starting()
 	for i := 0; i < bsd_thread_pool_size; i++ {
 		s.threads[i] = spawn process_events(s, s.poll_fds[i], s.socket_fd)
 	}
