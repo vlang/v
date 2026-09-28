@@ -3103,7 +3103,7 @@ fn (mut t Transformer) clone_variant_subst_with_smartcast(id flat.NodeId, var_na
 		} else {
 			smartcast_name
 		}
-		if child := t.clone_variant_subst_with_smartcast(t.a.child(&node, i), var_name, item, child_smartcast, generic_clone_child_is_return_value(node, i, direct_return_value)) {
+		if child := t.clone_variant_subst_with_smartcast(t.a.child(&node, i), var_name, item, child_smartcast, t.generic_clone_child_is_return_value(node, i, direct_return_value)) {
 			children << child
 		}
 	}

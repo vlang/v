@@ -10012,7 +10012,38 @@ fn (mut t Transformer) clone_specialized_comptime_new_marker(node flat.Node, tar
 	return t.make_cast('&${target}', marker, '&${target}')
 }
 
-fn generic_clone_child_is_return_value(node flat.Node, child_index int, direct_return_value bool) bool {
+fn (mut t Transformer) generic_clone_child_is_return_value(node flat.Node, child_index int, direct_return_value bool) bool {
+	if direct_return_value && node.kind == .infix && node.children_count == 2 {
+		mut expected := t.generic_inference_expected_type(t.cur_fn_ret_type)
+		for expected.starts_with('?') || expected.starts_with('!') {
+			expected = expected[1..].trim_space()
+		}
+		if !types.is_builtin_type_name(expected) {
+			if _ := t.struct_operator_call_info_any(expected, node.op) {
+				return false
+			}
+		}
+		for i in 0 .. node.children_count {
+			operand_name := t.node_type(t.a.child(&node, i))
+			operand_type := types.unalias_type(t.tc.parse_resolution_type(operand_name))
+			// Pointer arithmetic and overloaded operators need their operand types,
+			// which can differ from the enclosing return type.
+			if operand_type is types.Pointer || operand_type is types.Struct {
+				return false
+			}
+			if !types.is_builtin_type_name(operand_name) {
+				if _ := t.struct_operator_call_info_any(operand_name, node.op) {
+					return false
+				}
+			}
+		}
+		result_type := types.unalias_type(t.tc.parse_resolution_type(expected))
+		if result_type.is_integer() || result_type.is_float() {
+			return node.op in [.plus, .minus, .mul, .div, .mod, .amp, .pipe, .xor]
+				|| (child_index == 0 && node.op in [.left_shift, .right_shift])
+		}
+		return result_type.is_string() && node.op == .plus
+	}
 	return (node.kind == .return_stmt && node.children_count == 1 && child_index == 0)
 		|| (direct_return_value && node.kind in [.paren, .postfix, .expr_stmt, .dump_expr]
 			&& node.children_count == 1 && child_index == 0)
@@ -10162,7 +10193,7 @@ fn (mut t Transformer) clone_generic_node_from(node flat.Node, args []string, is
 				match_smartcasts++
 			}
 		}
-		child_is_return_value := generic_clone_child_is_return_value(node, i, direct_return_value)
+		child_is_return_value := t.generic_clone_child_is_return_value(node, i, direct_return_value)
 		child := t.clone_generic_node_with_return_context(t.a.child(&node, i), args,
 			child_is_return_value)
 		for _ in 0 .. match_smartcasts {

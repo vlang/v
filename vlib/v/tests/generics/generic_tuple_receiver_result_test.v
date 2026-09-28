@@ -290,3 +290,112 @@ fn test_generic_contextual_returns_reach_arithmetic_prefixes() {
 	assert contextual_positive(1, f64(0)) == 1.5
 	assert contextual_complement(1, u64(0)) == ~u64(0x1_0000_0007)
 }
+
+fn contextual_infix_value[T]() T {
+	$if T is f64 {
+		return T(1.5)
+	} $else $if T is u64 {
+		return T(0x1_0000_0007)
+	} $else $if T is string {
+		return T('c')
+	} $else {
+		return T(7)
+	}
+}
+
+fn contextual_infix_add[A, B](first A, second B) B {
+	_ = first
+	return contextual_infix_value() + second
+}
+
+fn contextual_infix_subtract[A, B](first A, second B) B {
+	_ = first
+	return contextual_infix_value() - second
+}
+
+fn contextual_infix_multiply[A, B](first A, second B) B {
+	_ = first
+	return contextual_infix_value() * second
+}
+
+fn contextual_infix_divide[A, B](first A, second B) B {
+	_ = first
+	return contextual_infix_value() / second
+}
+
+fn contextual_infix_modulo[A, B](first A, second B) B {
+	_ = first
+	return contextual_infix_value() % second
+}
+
+fn contextual_infix_and[A, B](first A, second B) B {
+	_ = first
+	return contextual_infix_value() & second
+}
+
+fn contextual_infix_or[A, B](first A, second B) B {
+	_ = first
+	return contextual_infix_value() | second
+}
+
+fn contextual_infix_xor[A, B](first A, second B) B {
+	_ = first
+	return contextual_infix_value() ^ second
+}
+
+fn contextual_infix_left_shift[A, B](first A, second B) B {
+	_ = first
+	return contextual_infix_value() << second
+}
+
+fn contextual_infix_right_shift[A, B](first A, second B) B {
+	_ = first
+	return contextual_infix_value() >> second
+}
+
+fn contextual_infix_rhs[A, B](first A, second B) B {
+	_ = first
+	return second - contextual_infix_value()
+}
+
+fn test_generic_contextual_returns_reach_numeric_infix_operands() {
+	assert contextual_infix_add(1, f64(2)) == 3.5
+	assert contextual_infix_add(1, 'b') == 'cb'
+	assert contextual_infix_subtract(1, f64(2)) == -0.5
+	assert contextual_infix_multiply(1, f64(2)) == 3.0
+	assert contextual_infix_divide(1, f64(2)) == 0.75
+	assert contextual_infix_rhs(1, f64(2)) == 0.5
+	assert contextual_infix_modulo(1, u64(0x2_0000_0000)) == 0x1_0000_0007
+	assert contextual_infix_and(1, u64(0x1_0000_0000)) == 0x1_0000_0000
+	assert contextual_infix_or(1, u64(8)) == 0x1_0000_000f
+	assert contextual_infix_xor(1, u64(1)) == 0x1_0000_0006
+	assert contextual_infix_left_shift(1, u64(1)) == 0x2_0000_000e
+	assert contextual_infix_right_shift(1, u64(1)) == 0x8000_0003
+}
+
+fn contextual_infix_shift_count[A, B](first A, second B) B {
+	_ = first
+	return second << contextual_infix_value()
+}
+
+fn contextual_infix_comparison[A, B](first A, second B) bool {
+	_ = second
+	return contextual_infix_value() < first
+}
+
+fn contextual_infix_pointer[A, B](first A, second B) B {
+	_ = first
+	// Keep the pointer arithmetic used to exercise an independent offset type.
+	unsafe {
+		return second + contextual_zero()
+	}
+}
+
+fn test_generic_infix_return_context_keeps_independent_operand_types() {
+	assert contextual_infix_shift_count(1, u64(1)) == 128
+	assert contextual_infix_comparison(8, '')
+	values := [11, 12]!
+	unsafe {
+		assert contextual_infix_pointer(1, &values[0]) == &values[0]
+	}
+}
