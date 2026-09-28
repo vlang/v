@@ -42,6 +42,12 @@ fn test_shared_exports_version_script_hides_unlisted_symbols() {
 	assert v3_shared_exports_version_script(map[string]string{}, []).contains('local: *;')
 }
 
+fn test_shared_exports_respects_user_version_scripts() {
+	assert v3_has_linker_version_script(['-Wl,--version-script,/tmp/user.map'])
+	assert v3_has_linker_version_script(['-Wl,--version-script=/tmp/user.map'])
+	assert !v3_has_linker_version_script(['-Wl,--exclude-libs,ALL', 'dep.o'])
+}
+
 fn test_shared_exports_collects_global_abi_names() {
 	mut ast := flat.FlatAst.new()
 	field_id := ast.add_node(flat.Node{ kind: .ident, value: 'counter' })

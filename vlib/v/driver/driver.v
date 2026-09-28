@@ -2626,6 +2626,10 @@ fn v3_shared_exports_version_script(export_fn_names map[string]string, export_gl
 	return script.str()
 }
 
+fn v3_has_linker_version_script(flags []string) bool {
+	return flags.any(it.contains('--version-script'))
+}
+
 fn v3_c_compiler_flag_plan(options V3CCompilerFlagOptions) V3CCompilerFlagPlan {
 	mut before_inputs := options.environment_c_flags.clone()
 	before_inputs << options.target_args
@@ -12245,9 +12249,13 @@ pub fn run(args []string) {
 			''
 		}
 		mut shared_link_ld_flags := link_ld_flags.clone()
+		mut exports_script := ''
 		if is_shared && !is_liveshared && prefs.normalized_target_os() == 'linux'
-			&& !effective_tcc && !c_only {
-			exports_script := os.join_path_single(cc_dir, 'exports.map')
+			&& !effective_tcc && (!c_only || generate_c_project.len > 0)
+			&& !v3_has_linker_version_script(resolved_c_flags)
+			&& !v3_has_linker_version_script(link_ld_flags) {
+			exports_dir := if generate_c_project.len > 0 { generate_c_project } else { cc_dir }
+			exports_script = os.join_path_single(exports_dir, 'exports.map')
 			os.write_file(exports_script, v3_shared_exports_version_script(a.export_fn_names,
 				v3_exported_global_names(&a))) or {
 				eprintln('failed to write shared exports script ${exports_script}: ${err.msg()}')
@@ -13000,6 +13008,9 @@ Please install the corresponding development package/libraries and make sure the
 		os.rm(cache_full_tcc_source) or {}
 		os.rm(retained_full_c_source) or {}
 		os.rm(cc_src) or {}
+		if exports_script.len > 0 {
+			os.rm(exports_script) or {}
+		}
 		os.rmdir(cc_dir) or {}
 		for scope_free_thread in scope_free_threads {
 			scope_free_thread.wait()

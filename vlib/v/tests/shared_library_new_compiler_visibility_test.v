@@ -83,6 +83,9 @@ fn test_new_compiler_shared_library_exports_only_tagged_functions() {
 		build := cmdexec.run(vexe, args)
 		assert build.exit_code == 0, build.output
 		assert os.is_file(lib_so)
+		for name in os.ls(workdir)! {
+			assert !name.starts_with('.libmylib_${mode}.so.v3cc.'), name
+		}
 		nm := cmdexec.run('nm', ['-D', '--defined-only', '--format=posix', lib_so])
 		assert nm.exit_code == 0, nm.output
 		mut symbols := []string{}
@@ -102,4 +105,28 @@ fn test_new_compiler_shared_library_exports_only_tagged_functions() {
 		run := cmdexec.run(host_bin, []string{})
 		assert run.exit_code == 0, run.output
 	}
+	project_dir := os.join_path(workdir, 'generated')
+	generated := cmdexec.run(vexe, ['-new-compiler', '-nocache', '-shared', '-generate-c-project',
+		project_dir, lib_src])
+	assert generated.exit_code == 0, generated.output
+	assert os.is_file(os.join_path(project_dir, 'exports.map'))
+	build_command := os.read_file(os.join_path(project_dir, 'build_command.txt'))!
+	assert build_command.contains('--version-script')
+	project_build := cmdexec.run('sh', [os.join_path(project_dir, 'build.sh')])
+	assert project_build.exit_code == 0, project_build.output
+	project_nm := cmdexec.run('nm', ['-D', '--defined-only', '--format=posix',
+		os.join_path(project_dir, 'mylib')])
+	assert project_nm.exit_code == 0, project_nm.output
+	assert project_nm.output.contains('mylib_compute'), project_nm.output
+	assert !project_nm.output.contains('mylib_direct_object_symbol'), project_nm.output
+	user_script := os.join_path(workdir, 'user.map')
+	os.write_file(user_script, 'V1 { global: mylib_compute; local: *; };\n')!
+	user_out := os.join_path(workdir, 'libmylib_user')
+	user_build := cmdexec.run(vexe, ['-new-compiler', '-nocache', '-shared', '-ldflags',
+		'-Wl,--version-script,${user_script}', '-o', user_out, lib_src])
+	assert user_build.exit_code == 0, user_build.output
+	user_nm := cmdexec.run('nm', ['-D', '--defined-only', '--format=posix', '${user_out}.so'])
+	assert user_nm.exit_code == 0, user_nm.output
+	assert user_nm.output.contains('mylib_compute'), user_nm.output
+	assert !user_nm.output.contains('mylib_counter'), user_nm.output
 }
