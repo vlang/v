@@ -12616,7 +12616,8 @@ fn v3_cache_error_path_tokens(output string) []string {
 	mut tokens := []string{}
 	mut current := []u8{}
 	mut quote := u8(0)
-	for ch in output.bytes() {
+	bytes := output.bytes()
+	for i, ch in bytes {
 		if quote != 0 {
 			if ch == quote {
 				quote = 0
@@ -12635,6 +12636,13 @@ fn v3_cache_error_path_tokens(output string) []string {
 				current.clear()
 			}
 			quote = ch
+			continue
+		}
+		if ch == `:` && i + 1 < bytes.len && bytes[i + 1] == `/`
+			&& current.len > 0 && current[0] == `/` {
+			// GNU ld can concatenate its executable path and the rejected object.
+			tokens << current.bytestr()
+			current.clear()
 			continue
 		}
 		if ch.is_space() || ch in [`,`, `;`, `(`, `)`] {
@@ -12675,8 +12683,8 @@ fn v3_canonical_cache_artifact(path string, directories []string) ?string {
 }
 
 // v3_cache_error_artifacts returns the cached artifacts named by a C toolchain
-// error. The wording differs per toolchain, but every such diagnostic quotes
-// the offending path, so the path is the portable signal.
+// error. The wording differs per toolchain, but each diagnostic names the
+// offending path, so the path is the portable signal.
 fn v3_cache_error_artifacts(output string) []string {
 	if output.len == 0 {
 		return []

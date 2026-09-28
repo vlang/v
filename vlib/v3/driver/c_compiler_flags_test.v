@@ -530,6 +530,9 @@ fn test_v3_cache_failure_artifacts_needs_a_cached_path_and_a_whole_file_failure(
 	assert v3_cache_failure_artifacts(rejected) == [
 		os.join_path_single(os.real_path(cache_dir), os.base(object)),
 	]
+	assert v3_cache_failure_artifacts('/usr/bin/ld:${object}: file format not recognized') == [
+		os.join_path_single(os.real_path(cache_dir), os.base(object)),
+	]
 
 	// A line-scoped diagnostic in a cached unit is a real compile error, not a
 	// poisoned entry; spending a rebuild on it would only reproduce it.
