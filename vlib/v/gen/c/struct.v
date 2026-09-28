@@ -6601,19 +6601,14 @@ fn (g &FlatGen) cocoa_nsfont_class(name string) bool {
 	for preinclude in g.preinclude_directives {
 		directives << preinclude
 	}
-	for directive in g.c_directives {
-		if directive.late {
-			continue
-		}
-		directives << directive.text
-	}
+	directives << g.ordered_c_directives(false)
 	target := if g.output_cross_c {
 		pref.target_from('macos', g.target.arch) or { g.target }
 	} else {
 		g.target
 	}
 	return c_header_text_has_cocoa_nsfont_include_for_target(directives.join('\n'), g.c_flags,
-		g.c99_mode, target)
+		g.c99_mode, target, g.compiler_vroot, g.struct_decl_infos[name].file)
 }
 
 fn (g &FlatGen) soa_companion_name(struct_name string) string {

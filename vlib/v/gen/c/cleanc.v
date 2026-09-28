@@ -6061,14 +6061,34 @@ fn c_header_text_needs_objective_c(text string) bool {
 }
 
 fn c_header_text_needs_objective_c_for_target(text string, flags []string, c99_mode bool, target pref.Target) bool {
-	return c_header_text_objective_c_scan_for_target(text, flags, c99_mode, target, false)
+	return c_header_text_objective_c_scan_for_target(text, flags, c99_mode, target, false, '', '')
 }
 
-fn c_header_text_has_cocoa_nsfont_include_for_target(text string, flags []string, c99_mode bool, target pref.Target) bool {
-	return c_header_text_objective_c_scan_for_target(text, flags, c99_mode, target, true)
+fn c_header_text_has_cocoa_nsfont_include_for_target(text string, flags []string, c99_mode bool, target pref.Target, vroot string, source_file string) bool {
+	return c_header_text_objective_c_scan_for_target(text, flags, c99_mode, target, true, vroot, source_file)
 }
 
-fn c_header_text_objective_c_scan_for_target(text string, flags []string, c99_mode bool, target pref.Target, cocoa_include_only bool) bool {
+struct CHeaderScanLine {
+	text        string
+	source_file string
+	ancestors   []string
+}
+
+struct CHeaderCocoaCondition {
+	before bool
+mut:
+	all_branches bool = true
+	saw_branch   bool
+}
+
+fn c_header_conditions_possibly_active(known []bool, active []bool) bool {
+	for i, is_known in known {
+		if is_known && !active[i] { return false }
+	}
+	return true
+}
+
+fn c_header_text_objective_c_scan_for_target(text string, flags []string, c99_mode bool, target pref.Target, cocoa_include_only bool, vroot string, source_file string) bool {
 	mut defined := map[string]bool{}
 	mut undefined := {
 		'__OBJC__': true
@@ -6154,11 +6174,43 @@ fn c_header_text_objective_c_scan_for_target(text string, flags []string, c99_mo
 	mut possible_text := strings.new_builder(text.len)
 	mut definite_text := strings.new_builder(text.len / 4)
 	mut in_block_comment := false
+	mut cocoa_provided := false
+	mut cocoa_conditions := []CHeaderCocoaCondition{}
+	include_dirs := c_flag_include_dirs(flags)
+	mut lines := []CHeaderScanLine{}
 	for line in c_join_continued_lines(text) {
+		lines << CHeaderScanLine{ text: line, source_file: source_file }
+	}
+	mut line_index := 0
+	for line_index < lines.len {
+		scan_line := lines[line_index]
+		line := scan_line.text
+		line_index++
 		clean, next_in_block_comment := c_preprocessor_directive_scan_line(line, in_block_comment)
 		in_block_comment = next_in_block_comment
 		name := c_directive_name(clean)
 		mut directive_macro_name := ''
+		if cocoa_include_only {
+			if name in ['if', 'ifdef', 'ifndef'] {
+				cocoa_conditions << CHeaderCocoaCondition{ before: cocoa_provided }
+			} else if name in ['elif', 'else', 'endif'] && cocoa_conditions.len > 0 {
+				last := cocoa_conditions.len - 1
+				if c_header_conditions_possibly_active(condition_known, condition_active) {
+					cocoa_conditions[last].all_branches = cocoa_conditions[last].all_branches && cocoa_provided
+					cocoa_conditions[last].saw_branch = true
+				}
+				cocoa_provided = cocoa_conditions[last].before
+				if name == 'endif' {
+					// A non-exhaustive chain also has a path that executes no branch.
+					if !condition_taken_known[last] || !condition_taken[last] {
+						cocoa_conditions[last].all_branches = cocoa_conditions[last].all_branches && cocoa_provided
+						cocoa_conditions[last].saw_branch = true
+					}
+					cocoa_provided = cocoa_provided || (cocoa_conditions[last].saw_branch && cocoa_conditions[last].all_branches)
+					cocoa_conditions.delete_last()
+				}
+			}
+		}
 		if name in ['ifdef', 'ifndef'] {
 			macro_name := c_directive_arg(clean).fields()[0] or { '' }
 			known, mut active := c_header_objective_c_macro_state(macro_name, defined, undefined, uncertain, strict_iso_mode, target)
@@ -6250,9 +6302,28 @@ fn c_header_text_objective_c_scan_for_target(text string, flags []string, c99_mo
 				expanded_macros[include_arg] = true
 				include_arg = macro_values[include_arg].trim_space()
 			}
-			if cocoa_include_only && definitely_active
-				&& cocoa_nsfont_framework_include(include_arg) {
-				return true
+			if cocoa_include_only {
+				if cocoa_nsfont_framework_include(include_arg) {
+					cocoa_provided = true
+				} else if c_include_arg_is_literal(include_arg) {
+					for path in c_include_file_paths(include_arg, vroot, scan_line.source_file, include_dirs) {
+						real_path := os.real_path(path)
+						if real_path in scan_line.ancestors { break }
+						header := os.read_file(real_path) or { continue }
+						guard := c_header_guard_name(header)
+						if guard.len > 0 && guard !in defined && guard !in uncertain && guard !in undefined {
+							undefined[guard] = true
+						}
+						mut ancestors := scan_line.ancestors.clone()
+						ancestors << real_path
+						mut nested := []CHeaderScanLine{}
+						for header_line in c_join_continued_lines(header) {
+							nested << CHeaderScanLine{ text: header_line, source_file: real_path, ancestors: ancestors }
+						}
+						lines.insert(line_index, nested)
+						break
+					}
+				}
 			}
 			if !cocoa_include_only && name == 'import'
 				&& c_is_apple_framework_include(include_arg) {
@@ -6331,7 +6402,10 @@ fn c_header_text_objective_c_scan_for_target(text string, flags []string, c99_mo
 	}
 	possible_source := possible_text.str()
 	definite_typedefs := modulecache.c_source_typedef_identifiers(definite_text.str())
-	return !cocoa_include_only && c_header_text_has_objective_c_tokens(possible_source, definite_typedefs)
+	if cocoa_include_only {
+		return cocoa_conditions.len == 0 && cocoa_provided
+	}
+	return c_header_text_has_objective_c_tokens(possible_source, definite_typedefs)
 }
 
 fn c_header_objective_c_macro_state(name string, defined map[string]bool, undefined map[string]bool, uncertain map[string]bool, strict_iso_mode bool, target pref.Target) (bool, bool) {
@@ -9955,7 +10029,7 @@ fn (g &FlatGen) visit_module_init(mod string, module_to_init map[string]string, 
 	}
 }
 
-fn (mut g FlatGen) ordered_c_directives(late bool) []string {
+fn (g &FlatGen) ordered_c_directives(late bool) []string {
 	mut directives_by_module := map[string][]CDirective{}
 	mut module_order := []string{}
 	for directive in g.c_directives {

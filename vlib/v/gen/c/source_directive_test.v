@@ -548,6 +548,82 @@ fn test_cocoa_includes_expand_object_macro_chains() {
 	}
 }
 
+fn test_cocoa_declarations_merge_exhaustive_branches() {
+	mut ast := &flat.FlatAst{}
+	mut tc := types.TypeChecker.new(ast)
+	mut g := FlatGen.new()
+	g.a = ast
+	g.tc = &tc
+	g.target = pref.target_from('macos', 'arm64') or { panic(err) }
+	g.register_struct_decl_info('C.NSFont', 'C.NSFont', 'uiold', 'ui_darwin.c.v', flat.Node{})
+	for header, needs_typedef in {
+		'#if FEATURE\n#include <Cocoa/Cocoa.h>\n#else\n#import <AppKit/AppKit.h>\n#endif':                                                      false
+		'#if FEATURE\n#include <Cocoa/Cocoa.h>\n#elif OTHER\n#import <AppKit/AppKit.h>\n#else\n#include <Cocoa/Cocoa.h>\n#endif':               false
+		'#if FEATURE\n#include <Cocoa/Cocoa.h>\n#elif 1\n#import <AppKit/AppKit.h>\n#endif':                                                    false
+		'#if FEATURE\n#if OTHER\n#include <Cocoa/Cocoa.h>\n#else\n#include <AppKit/AppKit.h>\n#endif\n#else\n#include <Cocoa/Cocoa.h>\n#endif': false
+		'#if FEATURE\n#include <Cocoa/Cocoa.h>\n#elif OTHER\n#import <AppKit/AppKit.h>\n#endif':                                                true
+		'#if FEATURE\n#include <Cocoa/Cocoa.h>\n#else\n#include <X11/Xlib.h>\n#endif':                                                          true
+		'#if 0\n#if FEATURE\n#include <Cocoa/Cocoa.h>\n#else\n#include <AppKit/AppKit.h>\n#endif\n#endif':                                      true
+	} {
+		g.preinclude_directives = [header]
+		assert g.header_c_struct_needs_compat_typedef('C.NSFont') == needs_typedef, header
+	}
+}
+
+fn test_cocoa_declarations_scan_local_wrapper_headers() {
+	dir := os.join_path(os.vtmp_dir(), 'v3_cocoa_wrapper_${os.getpid()}')
+	os.mkdir_all(dir)!
+	defer { os.rmdir_all(dir) or {} }
+	outer := os.join_path(dir, 'ui.h')
+	inner := os.join_path(dir, 'inner.h')
+	os.write_file(outer, '#pragma once\n#include "inner.h"\n')!
+	os.write_file(inner, '#pragma once\n#include "ui.h"\n#import <Cocoa/Cocoa.h>\n')!
+	mut ast := &flat.FlatAst{}
+	mut tc := types.TypeChecker.new(ast)
+	mut g := FlatGen.new()
+	g.a = ast
+	g.tc = &tc
+	g.target = pref.target_from('macos', 'arm64') or { panic(err) }
+	g.register_struct_decl_info('C.NSFont', 'C.NSFont', 'uiold', os.join_path(dir, 'ui.c.v'), flat.Node{})
+	g.preinclude_directives = ['#include "${outer}"']
+	assert !g.header_c_struct_needs_compat_typedef('C.NSFont')
+	g.preinclude_directives = ['#include <ui.h>']
+	g.c_flags = ['-I${dir}']
+	assert !g.header_c_struct_needs_compat_typedef('C.NSFont')
+	g.preinclude_directives = ['#if FEATURE\n#include "${outer}"\n#else\n#include <AppKit/AppKit.h>\n#endif']
+	assert !g.header_c_struct_needs_compat_typedef('C.NSFont')
+	os.write_file(outer, '#ifndef UI_HEADER_H\n#define UI_HEADER_H\n#include "inner.h"\n#endif\n')!
+	g.preinclude_directives = ['#include "${outer}"']
+	assert !g.header_c_struct_needs_compat_typedef('C.NSFont')
+	g.c_flags << '-DUI_HEADER_H'
+	assert g.header_c_struct_needs_compat_typedef('C.NSFont')
+	g.c_flags = ['-I${dir}']
+	os.write_file(inner, '#if 0\n#import <Cocoa/Cocoa.h>\n#endif\n')!
+	g.preinclude_directives = ['#include "${outer}"']
+	assert g.header_c_struct_needs_compat_typedef('C.NSFont')
+}
+
+fn test_cocoa_declarations_follow_emitted_module_order() {
+	mut ast := &flat.FlatAst{}
+	mut tc := types.TypeChecker.new(ast)
+	mut g := FlatGen.new()
+	g.a = ast
+	g.tc = &tc
+	g.target = pref.target_from('macos', 'arm64') or { panic(err) }
+	g.register_struct_decl_info('C.NSFont', 'C.NSFont', 'uiold', 'ui_darwin.c.v', flat.Node{})
+	g.module_imports['uiold'] = ['provider']
+	for provider_cocoa in [true, false] {
+		before_header := if provider_cocoa { '<X11/Xlib.h>' } else { '<Cocoa/Cocoa.h>' }
+		provider_header := if provider_cocoa { '<Cocoa/Cocoa.h>' } else { '<X11/Xlib.h>' }
+		g.c_directives = [
+			CDirective{ module: 'uiold', text: '#define UI_HEADER ${before_header}', before_import: true },
+			CDirective{ module: 'uiold', text: '#include UI_HEADER' },
+			CDirective{ module: 'provider', text: '#define UI_HEADER ${provider_header}' },
+		]
+		assert g.header_c_struct_needs_compat_typedef('C.NSFont') == !provider_cocoa
+	}
+}
+
 fn test_top_level_include_deduplication_resets_after_preprocessor_state_changes() {
 	macro_directives := dedupe_top_level_c_includes(['#include <types.h>', '#include <types.h>',
 		'#define FEATURE 1', '#include <types.h>'])
