@@ -796,15 +796,17 @@ fn test_fastc_unit_compile_order_starts_largest_cache_misses_first() {
 	assert fastc_unit_compile_order(paths, prepared) == [2, 3, 0]
 }
 
-fn test_fastc_prepared_units_report_only_restored_cache_objects() {
+fn test_fastc_prepared_units_map_restored_and_new_cache_objects() {
 	prepared := FastcPreparedUnits{
 		entries: [
 			FastcUnitCacheEntry{ object: '/build/hit.o', cache_object: '/cache/hit.o', hit: true },
 			FastcUnitCacheEntry{ object: '/build/miss.o', cache_object: '/cache/miss.o' },
+			FastcUnitCacheEntry{ object: '/build/uncached.o' },
 		]
 	}
-	assert prepared.restored_cache_objects() == {
-		'/build/hit.o': '/cache/hit.o'
+	assert prepared.cache_objects() == {
+		'/build/hit.o':  '/cache/hit.o'
+		'/build/miss.o': '/cache/miss.o'
 	}
 }
 

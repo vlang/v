@@ -2923,16 +2923,16 @@ pub:
 	cache_key string
 }
 
-// restored_cache_objects maps build-local objects restored from the FastC cache
-// to their persistent cache entries for reporting linker failures.
-pub fn (prepared &FastcPreparedUnits) restored_cache_objects() map[string]string {
-	mut restored := map[string]string{}
+// cache_objects maps build-local objects to their persistent cache entries for
+// reporting linker failures, including units published during this build.
+pub fn (prepared &FastcPreparedUnits) cache_objects() map[string]string {
+	mut cached := map[string]string{}
 	for entry in prepared.entries {
-		if entry.hit && entry.cache_object != '' {
-			restored[entry.object] = entry.cache_object
+		if entry.cache_object != '' {
+			cached[entry.object] = entry.cache_object
 		}
 	}
-	return restored
+	return cached
 }
 
 // fastc_unit_compile_order returns the indexes of uncached C units largest

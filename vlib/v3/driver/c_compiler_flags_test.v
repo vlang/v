@@ -553,10 +553,24 @@ fn test_v3_cache_failure_artifacts_needs_a_cached_path_and_a_whole_file_failure(
 	assert v3_cache_failure_artifacts(unrelated_failure) == []
 }
 
+fn test_v3_cache_failure_artifacts_reads_multiline_duplicate_symbols() {
+	cache_dir := os.join_path(os.vtmp_dir(), 'v3_fastc_unit_cache')
+	os.mkdir_all(cache_dir)!
+	object := os.join_path(cache_dir, 'duplicate_${os.getpid()}.o')
+	defer { os.rm(object) or {} }
+	os.write_file(object, 'broken')!
+	canonical := os.real_path(object)
+	lld := 'ld.lld: error: duplicate symbol: value\n>>> defined at src.c:4\n>>> ${object}\n'
+	assert v3_cache_failure_artifacts(lld) == [canonical]
+	ld64 := 'duplicate symbol _value in:\n    ${object}\nld: 1 duplicate symbols\n'
+	assert v3_cache_failure_artifacts(ld64) == [canonical]
+}
+
 fn test_v3_fastc_cache_failure_maps_restored_build_object_to_owned_entry() {
 	root := os.join_path(os.vtmp_dir(), 'v3_fastc_failure_map_${os.getpid()}')
-	cache_dir := os.join_path(root, 'v3_fastc_unit_cache')
+	cache_dir := os.join_path(os.vtmp_dir(), 'v3_fastc_unit_cache')
 	os.mkdir_all(cache_dir)!
+	cache_object := os.join_path(cache_dir, 'unit_${os.getpid()}.o')
 	previous := os.getenv_opt('V3CACHE')
 	os.setenv('V3CACHE', root, true)
 	defer {
@@ -565,9 +579,9 @@ fn test_v3_fastc_cache_failure_maps_restored_build_object_to_owned_entry() {
 		} else {
 			os.unsetenv('V3CACHE')
 		}
+		os.rm(cache_object) or {}
 		os.rmdir_all(root) or {}
 	}
-	cache_object := os.join_path(cache_dir, 'unit.o')
 	os.write_file(cache_object, 'broken')!
 	build_object := os.join_path(root, 'build', 'unit.o')
 	output := "ld: '${build_object}': file format not recognized"
@@ -596,7 +610,7 @@ fn test_v3_cache_error_artifacts_reads_paths_out_of_toolchain_diagnostics() {
 
 fn test_v3_cache_artifact_detection_rejects_paths_outside_owned_directories() {
 	root := os.join_path(os.vtmp_dir(), 'v3_cache_recovery_guard_${os.getpid()}')
-	cache_dir := os.join_path(root, 'v3_thirdparty_objs')
+	cache_dir := os.join_path(root, 'v3_module_cache_ab12')
 	outside_dir := os.join_path(root, 'v3_thirdparty_objs_backup')
 	os.mkdir_all(cache_dir)!
 	os.mkdir_all(outside_dir)!
@@ -623,11 +637,20 @@ fn test_v3_cache_artifact_detection_rejects_paths_outside_owned_directories() {
 	}
 	assert v3_discard_cache_artifacts([outside, traversal]) == 0
 	assert os.read_file(outside)! == 'keep'
+	for name in v3_cache_artifact_dir_names {
+		user_cache := os.join_path(root, name)
+		os.mkdir_all(user_cache)!
+		user_object := os.join_path(user_cache, 'user.o')
+		os.write_file(user_object, 'keep')!
+		assert v3_cache_failure_artifacts('ld: ${user_object}: file format not recognized') == []
+		assert v3_discard_cache_artifacts([user_object]) == 0
+		assert os.read_file(user_object)! == 'keep'
+	}
 }
 
 fn test_v3_cache_artifact_detection_accepts_quoted_paths_with_spaces() {
 	root := os.join_path(os.vtmp_dir(), 'v3 cache recovery ${os.getpid()}')
-	cache_dir := os.join_path(root, 'v3_fastc_unit_cache')
+	cache_dir := os.join_path(root, 'v3_module_cache_ab12')
 	os.mkdir_all(cache_dir)!
 	previous := os.getenv_opt('V3CACHE')
 	os.setenv('V3CACHE', root, true)

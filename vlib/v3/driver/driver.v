@@ -8188,7 +8188,7 @@ $if !skip_fastc ? {
 		mut link_cache_restored := false
 		if unit_paths.len > 1 {
 			prepared_units := fastc.fastc_prepare_c_units(tcc_path, compile_args, unit_paths, cache_enabled)
-			cached_objects = prepared_units.restored_cache_objects()
+			cached_objects = prepared_units.cache_objects()
 			link_inputs := prepared_units.objects.clone()
 			mut display_args := compile_base_args.clone()
 			display_args << ['-o', staged_binary]
@@ -12564,8 +12564,8 @@ const v3_cache_failure_markers = ['unrecognized file type', 'file format not rec
 
 const v3_cache_recovery_env = 'V3_INTERNAL_CACHE_RECOVERY'
 
-fn v3_cache_artifact_dir_name(name string) bool {
-	if name in v3_cache_artifact_dir_names {
+fn v3_cache_artifact_dir_name(name string, include_fixed_caches bool) bool {
+	if include_fixed_caches && name in v3_cache_artifact_dir_names {
 		return true
 	}
 	if !name.starts_with('v3_module_cache_') {
@@ -12576,7 +12576,8 @@ fn v3_cache_artifact_dir_name(name string) bool {
 }
 
 fn v3_cache_artifact_directories() []string {
-	mut roots := [os.vtmp_dir()]
+	temp_root := os.real_path(os.abs_path(os.vtmp_dir()))
+	mut roots := [temp_root]
 	if configured := os.getenv_opt('V3CACHE') {
 		root := os.real_path(os.abs_path(configured))
 		if root !in roots {
@@ -12590,7 +12591,7 @@ fn v3_cache_artifact_directories() []string {
 			continue
 		}
 		for name in os.ls(root) or { []string{} } {
-			if !v3_cache_artifact_dir_name(name) {
+			if !v3_cache_artifact_dir_name(name, root == temp_root) {
 				continue
 			}
 			candidate := os.join_path_single(root, name)
@@ -12698,7 +12699,8 @@ fn v3_cache_error_artifacts(output string) []string {
 // never mistaken for a poisoned cache.
 fn v3_cache_failure_artifacts(output string) []string {
 	mut artifacts := []string{}
-	for line in output.split_into_lines() {
+	lines := output.split_into_lines()
+	for i, line in lines {
 		lowered := line.to_lower_ascii()
 		mut has_marker := false
 		for marker in v3_cache_failure_markers {
@@ -12710,7 +12712,14 @@ fn v3_cache_failure_artifacts(output string) []string {
 		if !has_marker {
 			continue
 		}
-		for artifact in v3_cache_error_artifacts(line) {
+		mut diagnostic := line
+		for next in lines[i + 1..] {
+			if !next.starts_with('>>>') && (next.len == 0 || !next[0].is_space()) {
+				break
+			}
+			diagnostic += '\n${next}'
+		}
+		for artifact in v3_cache_error_artifacts(diagnostic) {
 			if artifact !in artifacts {
 				artifacts << artifact
 			}
