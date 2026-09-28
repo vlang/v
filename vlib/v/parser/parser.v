@@ -130,6 +130,7 @@ mut:
 	parse_batch_paths                 []string
 	translated_sizeof_type_names      map[string]bool
 	translated_sizeof_const_names     map[string]bool
+	translated_sizeof_global_names    map[string]bool
 	translated_sizeof_scanned_modules map[string]bool
 	local_binding_undos               []string
 	local_binding_scopes              []int
@@ -251,22 +252,23 @@ enum InlineAsmMnemonicState {
 // new creates a Parser value for parser.
 pub fn Parser.new(prefs &pref.Preferences) &Parser {
 	return &Parser{
-		prefs:                         unsafe { prefs }
-		s:                             scanner.new_scanner(prefs, .normal)
-		local_type_names:              map[string]string{}
-		translated_sizeof_type_names:  map[string]bool{}
-		translated_sizeof_const_names: map[string]bool{}
-		anonymous_struct_types:        map[string][]string{}
-		comptime_const_values:         map[string]string{}
-		comptime_local_values:         map[string]string{}
-		imported_module_names:         map[string]bool{}
-		file_method_names:             map[string]bool{}
-		local_binding_counts:          map[string]int{}
-		global_names:                  map[string]bool{}
-		active_lambda_param_counts:    map[string]int{}
-		unsupported_inline_asm_guards: map[int]bool{}
-		sql_query_data_aliases:        map[string]bool{}
-		a:                             &flat.FlatAst{
+		prefs:                          unsafe { prefs }
+		s:                              scanner.new_scanner(prefs, .normal)
+		local_type_names:               map[string]string{}
+		translated_sizeof_type_names:   map[string]bool{}
+		translated_sizeof_const_names:  map[string]bool{}
+		translated_sizeof_global_names: map[string]bool{}
+		anonymous_struct_types:         map[string][]string{}
+		comptime_const_values:          map[string]string{}
+		comptime_local_values:          map[string]string{}
+		imported_module_names:          map[string]bool{}
+		file_method_names:              map[string]bool{}
+		local_binding_counts:           map[string]int{}
+		global_names:                   map[string]bool{}
+		active_lambda_param_counts:     map[string]int{}
+		unsupported_inline_asm_guards:  map[int]bool{}
+		sql_query_data_aliases:         map[string]bool{}
+		a:                              &flat.FlatAst{
 			// Parallel-parse workers reserve for their chunk before parsing and
 			// the self-host reserves the whole AST, so start without capacity.
 			nodes:                         []flat.Node{}
@@ -14492,6 +14494,7 @@ fn (mut p Parser) sizeof_expr() flat.NodeId {
 	}
 	p.check(.lpar)
 	if p.is_translated && p.tok == .name && !p.is_local_binding(p.lit) && !p.global_names[p.lit]
+		&& !p.translated_sizeof_name_is_global(p.lit)
 		&& ((p.peek() == .dot && p.imported_module_names[p.lit])
 			|| (p.peek() == .rpar && p.translated_sizeof_name_is_ambiguous(p.lit))) {
 		// Imports and deferred branches are resolved after parsing. Preserve
@@ -14511,6 +14514,7 @@ fn (mut p Parser) sizeof_expr() flat.NodeId {
 		|| (p.is_translated && p.tok == .name
 			&& (p.is_local_binding(p.lit)
 				|| p.global_names[p.lit]
+				|| p.translated_sizeof_name_is_global(p.lit)
 				|| p.translated_sizeof_name_is_const(p.lit)
 				|| (!isreftype_name_can_start_type(p.lit)
 					&& !p.translated_sizeof_name_is_type(p.lit) && p.peek() != .dot)
@@ -14553,6 +14557,7 @@ fn (mut p Parser) sizeof_expr() flat.NodeId {
 fn (mut p Parser) reset_translated_sizeof_declarations() {
 	p.translated_sizeof_type_names.clear()
 	p.translated_sizeof_const_names.clear()
+	p.translated_sizeof_global_names.clear()
 	p.translated_sizeof_scanned_modules.clear()
 }
 
@@ -14578,6 +14583,14 @@ fn (mut p Parser) translated_sizeof_name_is_const(name string) bool {
 	// Deferred branches can declare both candidates. Retain the existing named
 	// type form when a type is possible; later phases resolve the bare spelling.
 	return p.translated_sizeof_const_names[key] && !p.translated_sizeof_type_names[key]
+}
+
+fn (mut p Parser) translated_sizeof_name_is_global(name string) bool {
+	if p.resolve_local_type_name(name) != name {
+		return false
+	}
+	p.scan_translated_sizeof_declarations()
+	return p.translated_sizeof_global_names[p.translated_sizeof_declaration_key(name)]
 }
 
 fn (mut p Parser) translated_sizeof_name_is_ambiguous(name string) bool {
@@ -14613,7 +14626,8 @@ fn (mut p Parser) scan_translated_sizeof_declarations() {
 
 fn (mut p Parser) scan_translated_sizeof_source(source string) {
 	if !source.contains('const') && !source.contains('type') && !source.contains('struct')
-		&& !source.contains('enum') && !source.contains('interface') && !source.contains('union') {
+		&& !source.contains('enum') && !source.contains('interface') && !source.contains('union')
+		&& !source.contains('__global') {
 		return
 	}
 	mut scan := scanner.new_scanner(p.prefs, .skip_interpolation)
@@ -14674,7 +14688,12 @@ fn (mut p Parser) scan_translated_sizeof_range(source string, tokens []InlineAsm
 			}
 			skip_decl = false
 		}
-		if kind == .key_fn || kind == .key_global {
+		if kind == .key_global {
+			i = p.scan_translated_sizeof_globals(tokens, i, end, !skip_decl)
+			skip_decl = false
+			continue
+		}
+		if kind == .key_fn {
 			skip_decl = false
 		}
 		if kind == .key_const {
@@ -14710,6 +14729,44 @@ fn (mut p Parser) scan_translated_sizeof_range(source string, tokens []InlineAsm
 		}
 		i++
 	}
+}
+
+fn (mut p Parser) scan_translated_sizeof_globals(tokens []InlineAsmScanToken, start int, end int, inspect bool) int {
+	mut i := start + 1
+	grouped := i < end && tokens[i].kind == .lpar
+	if grouped { i++ }
+	mut depth := 0
+	mut at_name := true
+	for i < end {
+		kind := tokens[i].kind
+		if depth == 0 {
+			if kind == .rpar && grouped { return i + 1 }
+			if kind == .rcbr { return i }
+			if kind == .semicolon {
+				if !grouped { return i + 1 }
+				at_name = true
+				i++
+				continue
+			}
+			if at_name {
+				if kind in [.key_pub, .key_mut, .key_const, .key_volatile] {
+					i++
+					continue
+				}
+				if inspect && (kind == .name || kind.is_keyword()) {
+					p.translated_sizeof_global_names[p.translated_sizeof_declaration_key(tokens[i].lit)] = true
+				}
+				at_name = false
+			}
+		}
+		match kind {
+			.lpar, .lsbr, .lcbr { depth++ }
+			.rpar, .rsbr, .rcbr { depth-- }
+			else {}
+		}
+		i++
+	}
+	return i
 }
 
 fn (mut p Parser) scan_translated_sizeof_comptime_if(source string, tokens []InlineAsmScanToken, start int, end int, inspect bool) int {

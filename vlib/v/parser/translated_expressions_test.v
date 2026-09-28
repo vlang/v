@@ -71,6 +71,51 @@ const LaterRegs = [3, 12, 13]!
 	}
 }
 
+fn test_translated_sizeof_globals_declared_after_use() {
+	root := os.join_path(os.vtmp_dir(), 'translated_sizeof_globals_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+	os.write_file(os.join_path(root, 'a.v'), '@[translated]
+module main
+fn main() {
+ assert sizeof(LocalRegs[0]) == sizeof(int)
+ assert sizeof(LocalRegs) == sizeof([2]int)
+ assert sizeof(LaterRegs[0]) == sizeof(int)
+ assert sizeof(LaterRegs) == sizeof([3]int)
+ assert sizeof(GroupedRegs[0][0]) == sizeof(int)
+ assert sizeof(GroupedRegs[0]) == sizeof([2]int)
+ assert sizeof(ConditionalRegs[0]) == sizeof(int)
+ assert sizeof(DisabledRegs) == sizeof(int)
+}
+__global LocalRegs = [1, 2]!
+type DisabledRegs = int
+@[if false]
+__global DisabledRegs = [1, 2]!
+')!
+	os.write_file(os.join_path(root, 'z.v'), '@[translated]
+module main
+__global LaterRegs = [1, 2, 3]!
+__global (
+ UnusedValue = 3
+ GroupedRegs [1][2]int = [[1, 2]!]!
+)
+$if feature ? {
+ __global ConditionalRegs = [1, 2]!
+} $else {
+ __global (
+  ConditionalRegs [3]int = [1, 2, 3]!
+ )
+}
+')!
+	for name in ['padding_a.v', 'padding_b.v'] {
+		os.write_file(os.join_path(root, name), 'module main\n//' + ' '.repeat(70000) + '\n')!
+	}
+	for flags in ['', '-d feature', '-no-parallel', '-no-parallel -d feature'] {
+		result := os.execute('${os.quoted_path(@VEXE)} ${flags} -enable-globals run ${os.quoted_path(root)}')
+		assert result.exit_code == 0, result.output
+	}
+}
+
 fn test_translated_sizeof_ignores_excluded_sibling_files() {
 	root := os.join_path(os.vtmp_dir(), 'translated_sizeof_selected_${os.getpid()}')
 	os.mkdir_all(root)!
