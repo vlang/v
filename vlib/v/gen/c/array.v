@@ -41,14 +41,15 @@ fn fixed_array_pointer_type(t types.Type) ?types.ArrayFixed {
 	return none
 }
 
-fn fixed_array_decay_byte_compatible(actual types.Type, expected types.Type) bool {
+fn (mut g FlatGen) fixed_array_decay_byte_compatible(actual types.Type, expected types.Type) bool {
 	a := cgen_unalias_type(actual)
 	e := cgen_unalias_type(expected)
 	if a is types.ArrayFixed && e is types.ArrayFixed {
-		return a.len == e.len && fixed_array_decay_byte_compatible(a.elem_type, e.elem_type)
+		return g.fixed_array_len_value(a) == g.fixed_array_len_value(e)
+			&& g.fixed_array_decay_byte_compatible(a.elem_type, e.elem_type)
 	}
 	if a is types.Pointer && e is types.Pointer {
-		return fixed_array_decay_byte_compatible(a.base_type, e.base_type)
+		return g.fixed_array_decay_byte_compatible(a.base_type, e.base_type)
 	}
 	return a.name() in ['char', 'i8', 'u8'] && e.name() in ['char', 'i8', 'u8']
 }
@@ -581,7 +582,7 @@ fn (mut g FlatGen) gen_fixed_array_pointer_lvalue_arg(id flat.NodeId, expected t
 			g.gen_expr(id)
 			return true
 		}
-		if fixed_array_decay_byte_compatible(actual_fixed.elem_type, expected_ptr.base_type)
+		if g.fixed_array_decay_byte_compatible(actual_fixed.elem_type, expected_ptr.base_type)
 			&& !cgen_types_equal_after_alias_erasure(actual_fixed.elem_type, expected_ptr.base_type) {
 			g.write('(${g.cast_c_type(expected_ptr)})')
 			g.gen_fixed_array_data_arg(id, actual_fixed)

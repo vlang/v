@@ -7,8 +7,9 @@ can be used interchangeably. The same compatibility rules apply to pointer assig
 and equality or inequality comparisons with pointers.
 Aliases inside nested fixed arrays and pointers resolve to their underlying types;
 array lengths and integer widths must still match.
-Nested lengths compare by value, including named constants, and nested rvalue literals
-are materialized before their first row is passed to a pointer parameter.
+Nested lengths compare by value, including named constants, for byte-compatible pointer
+assignments and calls. Nested rvalue literals are materialized before their first row is
+passed to a pointer parameter.
 When a later call argument contains an `if` or `match` expression, the pointer still
 addresses the original array. Indexed array arguments retain the index evaluated
 before that later argument. Arrays passed by value keep their value-copy semantics.

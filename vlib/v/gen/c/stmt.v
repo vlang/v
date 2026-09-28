@@ -8867,7 +8867,7 @@ fn (mut g FlatGen) gen_assign(node flat.Node) {
 								g.gen_fixed_array_copy_from_node(tmp, rhs_id, rhs_fixed)
 								g.gen_expr(lhs_id)
 								g.write(' = ')
-								if fixed_array_decay_byte_compatible(rhs_fixed.elem_type, lhs_ptr.base_type)
+								if g.fixed_array_decay_byte_compatible(rhs_fixed.elem_type, lhs_ptr.base_type)
 									&& !cgen_types_equal_after_alias_erasure(rhs_fixed.elem_type, lhs_ptr.base_type) {
 									g.write('(${g.cast_c_type(lhs_raw_type)})')
 								}
@@ -8878,7 +8878,7 @@ fn (mut g FlatGen) gen_assign(node flat.Node) {
 						}
 						g.gen_expr(lhs_id)
 						g.write(' = ')
-						if fixed_array_decay_byte_compatible(rhs_fixed.elem_type, lhs_ptr.base_type)
+						if g.fixed_array_decay_byte_compatible(rhs_fixed.elem_type, lhs_ptr.base_type)
 							&& !cgen_types_equal_after_alias_erasure(rhs_fixed.elem_type, lhs_ptr.base_type) {
 							g.write('(${g.cast_c_type(lhs_raw_type)})')
 						}
@@ -8928,7 +8928,7 @@ fn (mut g FlatGen) gen_assign(node flat.Node) {
 				if node.op == .assign && cgen_unalias_type(lhs_type) is types.Pointer {
 					if rhs_fixed := array_fixed_type(rhs_type) {
 						lhs_ptr := cgen_unalias_type(lhs_type) as types.Pointer
-						needs_byte_cast := fixed_array_decay_byte_compatible(rhs_fixed.elem_type,
+						needs_byte_cast := g.fixed_array_decay_byte_compatible(rhs_fixed.elem_type,
 							lhs_ptr.base_type)
 							&& !cgen_types_equal_after_alias_erasure(rhs_fixed.elem_type,
 								lhs_ptr.base_type)

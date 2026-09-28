@@ -50,6 +50,9 @@ fn test_translated_fixed_array_typed_pointer_assignments() {
 	char_rows := [[char(69), char(70)]!, [char(71), char(72)]!]!
 	byte_row = char_rows
 	assert first_byte_row(byte_row) == 69
+	mut named_byte_row := unsafe { &[row_len]u8(nil) }
+	named_byte_row = char_rows
+	assert first_byte_row(named_byte_row) == 69
 }
 
 fn make_runtime_row(value int) [2]int {
