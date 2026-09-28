@@ -30,6 +30,14 @@ struct MapIndexInfo {
 	value_type       string
 }
 
+struct MapSelectorAncestor {
+	info                MapIndexInfo
+	key_name            string
+	lookup_key_name     string
+	key_is_owned        bool
+	lookup_key_is_owned bool
+}
+
 struct MapFixedArrayIndexInfo {
 	map_info  MapIndexInfo
 	index_ids []flat.NodeId
@@ -2918,50 +2926,44 @@ fn (mut t Transformer) try_lower_map_index_selector_assign(node flat.Node) ?[]fl
 	if field_type.len == 0 {
 		return none
 	}
-	// A missing outer key must not be inserted by a field assignment. Save its
-	// key now, but read the stored inner map only after the later operands run.
-	nested := t.map_index_yields_map(info.base_id)
-	mut outer_info := MapIndexInfo{}
-	mut outer_map_expr := flat.empty_node
-	mut outer_key_name := ''
-	mut outer_lookup_key_name := ''
-	mut outer_key_is_owned := false
-	mut outer_lookup_key_is_owned := false
-	mut map_expr := flat.empty_node
+	// Field assignment must not insert missing ancestor keys. Save all keys in
+	// source order, then reacquire every map after the RHS changes are complete.
+	mut ancestors := []MapSelectorAncestor{}
+	mut root_base_id := info.base_id
+	for t.map_index_yields_map(root_base_id) {
+		ancestor_info := t.map_index_info(t.unwrap_parens(root_base_id)) or { return none }
+		ancestors.prepend(MapSelectorAncestor{
+			info: ancestor_info
+		})
+		root_base_id = ancestor_info.base_id
+	}
+	mut map_expr := t.stable_map_lvalue_for_reuse(root_base_id)
 	mut result := []flat.NodeId{}
-	if nested {
-		outer_info = t.map_index_info(t.unwrap_parens(info.base_id)) or { return none }
-		outer_map_expr = if t.map_index_yields_map(outer_info.base_id) {
-			t.stable_expr_for_reuse(outer_info.base_id)
-		} else {
-			t.stable_map_lvalue_for_reuse(outer_info.base_id)
-		}
+	t.drain_pending(mut result)
+	for mut ancestor in ancestors {
+		ancestor.key_name = t.new_temp('map_outer_key')
+		outer_key := t.transform_expr_for_type(ancestor.info.key_id, ancestor.info.key_type)
+		ancestor.key_is_owned = t.map_key_expr_creates_owned_value(ancestor.info.key_id,
+			ancestor.info.key_type)
 		t.drain_pending(mut result)
-		outer_key_name = t.new_temp('map_outer_key')
-		outer_key := t.transform_expr_for_type(outer_info.key_id, outer_info.key_type)
-		outer_key_is_owned = t.map_key_expr_creates_owned_value(outer_info.key_id,
-			outer_info.key_type)
-		t.drain_pending(mut result)
-		result << t.make_decl_assign_typed(outer_key_name, outer_key, outer_info.key_storage_type)
-		outer_lookup_key_name = outer_key_name
+		result << t.make_decl_assign_typed(ancestor.key_name, outer_key,
+			ancestor.info.key_storage_type)
+		ancestor.lookup_key_name = ancestor.key_name
 		if !isnil(t.tc)
-			&& t.tc.ownership_type_requires_destruction(t.tc.parse_type(outer_info.key_type)) {
-			if _ := t.tc.ownership_default_clone_missing_method(t.tc.parse_type(outer_info.key_type)) {
+			&& t.tc.ownership_type_requires_destruction(t.tc.parse_type(ancestor.info.key_type)) {
+			if _ := t.tc.ownership_default_clone_missing_method(t.tc.parse_type(ancestor.info.key_type)) {
 				return []flat.NodeId{}
 			}
-			outer_lookup_key_name = t.new_temp('map_outer_lookup_key')
-			lookup_key := t.make_compiler_default_clone_value(t.make_ident(outer_key_name),
-				outer_info.key_type, true)
+			ancestor.lookup_key_name = t.new_temp('map_outer_lookup_key')
+			lookup_key := t.make_compiler_default_clone_value(t.make_ident(ancestor.key_name),
+				ancestor.info.key_type, true)
 			t.drain_pending(mut result)
-			result << t.make_decl_assign_typed(outer_lookup_key_name, lookup_key,
-				outer_info.key_storage_type)
-			outer_lookup_key_is_owned = true
+			result << t.make_decl_assign_typed(ancestor.lookup_key_name, lookup_key,
+				ancestor.info.key_storage_type)
+			ancestor.lookup_key_is_owned = true
 		}
-	} else {
-		map_expr = t.stable_map_lvalue_for_reuse(info.base_id)
 	}
 	key_name := t.new_temp('map_key')
-	t.drain_pending(mut result)
 	mut key_value := t.transform_expr_for_type(info.key_id, info.key_type)
 	mut key_is_owned := t.map_key_expr_creates_owned_value(info.key_id, info.key_type)
 	if !key_is_owned && !isnil(t.tc)
@@ -2985,11 +2987,9 @@ fn (mut t Transformer) try_lower_map_index_selector_assign(node flat.Node) ?[]fl
 	}
 	rhs_name := t.new_temp('map_field_value')
 	result << t.make_decl_assign_typed(rhs_name, rhs, field_type)
-	if nested {
-		// Reacquire after the RHS: replacing or clearing the outer entry may
-		// invalidate both its slot and any earlier copy of its inner map.
-		outer_value_name := t.load_map_index_current(outer_info, outer_map_expr,
-			outer_lookup_key_name, mut result)
+	for ancestor in ancestors {
+		outer_value_name := t.load_map_index_current(ancestor.info, map_expr,
+			ancestor.lookup_key_name, mut result)
 		map_expr = t.make_ident(outer_value_name)
 	}
 	cleanup_key, existing_key_name := t.prepare_owned_map_set_key_cleanup(key_is_owned, info.key_type, map_expr, info.base_type, key_name, mut result)
@@ -3009,14 +3009,17 @@ fn (mut t Transformer) try_lower_map_index_selector_assign(node flat.Node) ?[]fl
 	result << t.make_assign_after_owned_drop(field, t.make_ident(rhs_name))
 	result << t.make_map_set_stmt(map_expr, info.base_type, key_name, current_name)
 	t.append_owned_map_set_key_cleanup(key_name, cleanup_key, existing_key_name, mut result)
-	if outer_lookup_key_is_owned {
-		result << t.make_expr_stmt(t.make_call_typed('drop_owned', [
-			t.make_ident(outer_lookup_key_name),
-		], 'void'))
-	}
-	if outer_key_is_owned {
-		result << t.make_expr_stmt(t.make_call_typed('drop_owned', [t.make_ident(outer_key_name)],
-			'void'))
+	for ancestor in ancestors {
+		if ancestor.lookup_key_is_owned {
+			result << t.make_expr_stmt(t.make_call_typed('drop_owned', [
+				t.make_ident(ancestor.lookup_key_name),
+			], 'void'))
+		}
+		if ancestor.key_is_owned {
+			result << t.make_expr_stmt(t.make_call_typed('drop_owned', [
+				t.make_ident(ancestor.key_name),
+			], 'void'))
+		}
 	}
 	return result
 }

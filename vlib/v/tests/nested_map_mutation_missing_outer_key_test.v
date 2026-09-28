@@ -186,6 +186,14 @@ fn grow_point_outer_rhs(mut m map[string]map[string]NestedMapPoint) int {
 	return 3
 }
 
+fn replace_deep_point_outer_rhs(mut m map[string]map[string]map[string]NestedMapPoint) int {
+	m['a'] = map[string]map[string]NestedMapPoint{}
+	m['a']['b']['fresh'] = NestedMapPoint{
+		x: 7
+	}
+	return 8
+}
+
 fn test_field_assign_after_rhs_changes_outer_map() {
 	mut replaced := map[string]map[string]NestedMapPoint{}
 	replaced['a'] = map[string]NestedMapPoint{}
@@ -204,6 +212,12 @@ fn test_field_assign_after_rhs_changes_outer_map() {
 	mut deep_missing := map[string]map[string]map[string]NestedMapPoint{}
 	deep_missing['a']['b']['c'].x = 4
 	assert deep_missing.len == 0
+	mut deep_replaced := map[string]map[string]map[string]NestedMapPoint{}
+	deep_replaced['a']['b']['old'].x = 1
+	deep_replaced['a']['b']['c'].x = replace_deep_point_outer_rhs(mut deep_replaced)
+	assert deep_replaced['a']['b']['fresh'].x == 7
+	assert deep_replaced['a']['b']['c'].x == 8
+	assert deep_replaced['a']['b'].len == 2
 }
 
 fn insert_owned_inner_key_rhs(mut m map[string]map[[2]string][]int, key [2]string) int {
