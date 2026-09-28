@@ -1356,6 +1356,13 @@ fn (mut g FlatGen) gen_ownership_drop_value_inner(typ types.Type, expr string, d
 		types.Alias {
 			g.gen_ownership_drop_value_inner(typ.base_type, expr, depth + 1, mut expanding)
 		}
+		types.MultiReturn {
+			for i, part in typ.types {
+				if g.ownership_type_requires_destruction(part, depth + 1) {
+					g.gen_ownership_drop_value_inner(part, '(${expr}).arg${i}', depth + 1, mut expanding)
+				}
+			}
+		}
 		types.OptionType {
 			g.writeln('if ((${expr}).ok) {')
 			g.indent++
@@ -1691,6 +1698,9 @@ fn (g &FlatGen) ownership_type_requires_destruction(typ types.Type, depth int) b
 		}
 		types.Alias {
 			return g.ownership_type_requires_destruction(typ.base_type, depth + 1)
+		}
+		types.MultiReturn {
+			return typ.types.any(g.ownership_type_requires_destruction(it, depth + 1))
 		}
 		types.ArrayFixed {
 			return g.ownership_type_requires_destruction(typ.elem_type, depth + 1)

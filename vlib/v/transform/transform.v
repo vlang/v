@@ -10613,6 +10613,11 @@ fn (mut t Transformer) mark_detached_spawn_drop_type(typ types.Type, mut seen ma
 			t.mark_detached_spawn_drop_type(typ.key_type, mut seen)
 			t.mark_detached_spawn_drop_type(typ.value_type, mut seen)
 		}
+		types.MultiReturn {
+			for part in typ.types {
+				t.mark_detached_spawn_drop_type(part, mut seen)
+			}
+		}
 		types.Interface {
 			mut iface_name := typ.name
 			if iface_name !in t.tc.interface_names {
@@ -12138,6 +12143,11 @@ fn (t &Transformer) collect_discarded_aggregate_spawns(id flat.NodeId, mut spawn
 	match node.kind {
 		.spawn_expr {
 			spawns << id
+		}
+		.index, .selector {
+			if node.children_count > 0 {
+				t.collect_discarded_aggregate_spawns(t.a.child(&node, 0), mut spawns)
+			}
 		}
 		.paren, .dump_expr, .array_literal, .array_init, .struct_init, .field_init, .map_init,
 		.assoc,
