@@ -12563,7 +12563,8 @@ const v3_cache_artifact_dir_names = ['v3_thirdparty_objs', 'v3_fastc_unit_cache'
 // to the user instead of costing a rebuild that reproduces it.
 const v3_cache_failure_markers = ['unrecognized file type', 'file format not recognized',
 	'not an object file', 'no such file or directory', 'file not found', 'malformed object',
-	'truncated or malformed', 'file too small', 'empty file', 'archive has no index',
+	'truncated or malformed', 'file too small', 'file too short', 'empty file',
+	'section table goes past the end of file', 'archive has no index',
 	'duplicate symbol', 'multiple definition',
 	'defined twice', 'incompatible file format', 'architecture of input file']
 

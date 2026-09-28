@@ -676,6 +676,10 @@ fn test_v3_cache_artifact_detection_accepts_quoted_paths_with_spaces() {
 	assert v3_cache_failure_artifacts("ld: file too small (length=0) in '${object}'") == [
 		os.real_path(object),
 	]
+	assert v3_cache_failure_artifacts("ld: file too short: '${object}'") == [os.real_path(object)]
+	assert v3_cache_failure_artifacts("ld.lld: ${object}: section table goes past the end of file") == [
+		os.real_path(object),
+	]
 	assert v3_cache_failure_artifacts("ld: empty file '${object}'") == [os.real_path(object)]
 	assert v3_cache_failure_artifacts("ld: i386 architecture of input file `${object}' is incompatible with i386:x86-64 output") == [
 		os.real_path(object),
