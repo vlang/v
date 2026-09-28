@@ -1,6 +1,7 @@
 // vtest build: !msvc && !tinyc
 // The tests here have constraints, that are not implemented yet in tcc, and msvc does not
-// support inline assembly at all (tracked for a MASM-based path: vlang/v#29105)
+// support inline assembly at all (tracked for a MASM-based path: vlang/v#29105).
+// This file is also never compiled on any Windows CI leg (tracked: vlang/v#29107).
 fn test_constraints() {
 	x := u64(100)
 	y := u64(200)
@@ -49,10 +50,13 @@ fn test_flag_output() {
 	}
 	assert out
 
-	// The `l` suffixes below are 32-bit instructions, so the operands have to be
-	// 32-bit too: V's `int` is platform width (64-bit here), and an `r` constraint
-	// on it is substituted with a 64-bit register that GNU as refuses to pair with
-	// an `l` suffix.
+	// The `l` suffixes below are 32-bit instructions. `four` is bound via the `+r`
+	// (register) constraint below, so it has to be 32-bit: V's `int` is platform
+	// width (64-bit here), and an `r` constraint on it is substituted with a
+	// 64-bit register that GNU as refuses to pair with an `l` suffix. `maybe_four`
+	// is bound via `+m` (memory) instead, so its width never reaches a register
+	// the assembler size-checks -- kept as `i32` for consistency with `four`, not
+	// because `+m` requires it.
 	mut maybe_four := i32(4)
 	mut four := i32(4)
 	asm amd64 {
