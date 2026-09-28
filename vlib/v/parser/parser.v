@@ -128,6 +128,7 @@ mut:
 	local_binding_counts              map[string]int
 	global_names                      map[string]bool
 	translated_sizeof_type_names      map[string]bool
+	translated_sizeof_const_names     map[string]bool
 	translated_sizeof_types_scanned   bool
 	local_binding_undos               []string
 	local_binding_scopes              []int
@@ -253,6 +254,7 @@ pub fn Parser.new(prefs &pref.Preferences) &Parser {
 		s:                             scanner.new_scanner(prefs, .normal)
 		local_type_names:              map[string]string{}
 		translated_sizeof_type_names:  map[string]bool{}
+		translated_sizeof_const_names: map[string]bool{}
 		anonymous_struct_types:        map[string][]string{}
 		comptime_const_values:         map[string]string{}
 		comptime_local_values:         map[string]string{}
@@ -397,6 +399,7 @@ pub fn (mut p Parser) parse_into(path string) {
 	}
 	p.local_binding_counts.clear()
 	p.translated_sizeof_type_names.clear()
+	p.translated_sizeof_const_names.clear()
 	p.translated_sizeof_types_scanned = false
 	p.local_binding_undos.clear()
 	p.local_binding_scopes.clear()
@@ -10808,7 +10811,7 @@ fn (mut p Parser) translated_postfix_line_starts_deref_assignment() bool {
 	if next in [.inc, .dec] {
 		next = scan.scan()
 	}
-	return next == .assign && p.line_nr_for_pos(scan.pos) == p.line_nr_for_pos(p.tok_pos)
+	return token_is_assignment(next) && p.line_nr_for_pos(scan.pos) == p.line_nr_for_pos(p.tok_pos)
 }
 
 fn (p &Parser) is_comptime_type_accessor(id flat.NodeId) bool {
@@ -14470,6 +14473,7 @@ fn (mut p Parser) sizeof_expr() flat.NodeId {
 			&& (p.is_local_binding(p.lit)
 				|| p.global_names[p.lit]
 				|| p.a.nodes.any(it.kind == .const_field && it.value == p.lit)
+				|| p.translated_sizeof_name_is_const(p.lit)
 				|| (!isreftype_name_can_start_type(p.lit)
 					&& !p.translated_sizeof_name_is_type(p.lit) && p.peek() != .dot)
 				|| (p.peek() == .lsbr && !type_name_can_init(p.lit)))) {
@@ -14509,33 +14513,90 @@ fn (mut p Parser) sizeof_expr() flat.NodeId {
 }
 
 fn (mut p Parser) translated_sizeof_name_is_type(name string) bool {
+	p.scan_translated_sizeof_declarations()
+	return p.translated_sizeof_type_names[name] || p.has_prior_type_declaration(name)
+}
+
+fn (mut p Parser) translated_sizeof_name_is_const(name string) bool {
+	p.scan_translated_sizeof_declarations()
+	return p.translated_sizeof_const_names[name]
+}
+
+fn (mut p Parser) scan_translated_sizeof_declarations() {
 	if !p.translated_sizeof_types_scanned {
 		p.translated_sizeof_types_scanned = true
-		mut scan := scanner.new_scanner(p.prefs, .normal)
-		scan.init(p.s.current_file(), p.s.src)
-		mut depth := 0
-		mut after_type := false
-		for {
-			tok := scan.scan()
-			if tok == .eof {
-				break
+		p.scan_translated_sizeof_source(p.s.src)
+		// Parsing sibling files can run in parallel. Read their declarations here
+		// so sizeof has the same meaning regardless of parse order.
+		for entry in os.ls(os.dir(p.cur_file)) or { []string{} } {
+			if entry.starts_with('.') || !entry.ends_with('.v') || entry == os.file_name(p.cur_file) {
+				continue
 			}
-			if after_type {
-				if tok == .name {
-					p.translated_sizeof_type_names[scan.lit] = true
+			path := os.join_path(os.dir(p.cur_file), entry)
+			source := os.read_file(path) or { continue }
+			p.scan_translated_sizeof_source(source)
+		}
+	}
+}
+
+fn (mut p Parser) scan_translated_sizeof_source(source string) {
+	if !source.contains('const') && !source.contains('type') {
+		return
+	}
+	mut scan := scanner.new_scanner(p.prefs, .normal)
+	scan.init(p.s.current_file(), source)
+	mut depth := 0
+	mut after_type := false
+	mut after_const := false
+	mut const_paren_depth := 0
+	for {
+		tok := scan.scan()
+		if tok == .eof {
+			break
+		}
+		if tok == .key_module {
+			mut module_scan := scan
+			if module_scan.scan() == .name && module_scan.lit != p.cur_module {
+				return
+			}
+		}
+		if after_type {
+			if tok == .name {
+				p.translated_sizeof_type_names[scan.lit] = true
+			}
+			after_type = false
+		}
+		if after_const {
+			if tok == .name {
+				p.translated_sizeof_const_names[scan.lit] = true
+			} else if tok == .lpar {
+				const_paren_depth = 1
+			}
+			after_const = false
+		} else if const_paren_depth > 0 {
+			if tok == .lpar {
+				const_paren_depth++
+			} else if tok == .rpar {
+				const_paren_depth--
+			} else if tok == .name && const_paren_depth == 1 {
+				mut lookahead := scan
+				if lookahead.scan() == .assign {
+					p.translated_sizeof_const_names[scan.lit] = true
 				}
-				after_type = false
 			}
-			if tok == .lcbr {
-				depth++
-			} else if tok == .rcbr {
-				depth--
-			} else if depth == 0 && tok == .key_type {
+		}
+		if tok == .lcbr {
+			depth++
+		} else if tok == .rcbr {
+			depth--
+		} else if depth == 0 && const_paren_depth == 0 {
+			if tok == .key_type {
 				after_type = true
+			} else if tok == .key_const {
+				after_const = true
 			}
 		}
 	}
-	return p.translated_sizeof_type_names[name] || p.has_prior_type_declaration(name)
 }
 
 fn (mut p Parser) isreftype_expr() flat.NodeId {

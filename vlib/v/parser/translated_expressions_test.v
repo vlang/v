@@ -23,6 +23,7 @@ fn main() {
  dst := &values[1]
  ch := *ptr++
  *dst++ = ch
+ *dst++ += ch
  result := i++
   + 2
  _ = result
@@ -47,13 +48,17 @@ fn test_translated_sizeof_constant_in_later_file() {
 module main
 fn main() {
  assert sizeof(later_regs) == sizeof([3]int)
+ assert sizeof(LaterRegs) == sizeof([3]int)
+ assert sizeof(LocalRegs) == sizeof([3]int)
  assert sizeof(my_type) == sizeof(int)
 }
 type my_type = int
+const LocalRegs = [3, 12, 13]!
 ')!
 	os.write_file(os.join_path(root, 'z.v'), '@[translated]
 module main
 const later_regs = [3, 12, 13]!
+const LaterRegs = [3, 12, 13]!
 ')!
 	for flags in ['', '-no-parallel'] {
 		result := os.execute('${os.quoted_path(@VEXE)} ${flags} -check ${os.quoted_path(root)}')
