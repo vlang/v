@@ -2594,6 +2594,9 @@ fn v3_c_compiler_flag_plan(options V3CCompilerFlagOptions) V3CCompilerFlagPlan {
 		before_inputs << '-shared'
 		if !options.is_liveshared && options.target_os in ['linux', 'macos'] {
 			before_inputs << '-fvisibility=hidden'
+			if options.target_os == 'linux' && !options.is_tcc {
+				before_inputs << '-Wl,--exclude-libs,ALL'
+			}
 		}
 	} else if options.is_o {
 		before_inputs << '-c'
@@ -12136,7 +12139,9 @@ pub fn run(args []string) {
 			generated_c_flags.clone()
 		}
 		if !c_only || (dump_c_flags.len > 0 && generate_c_project.len == 0) {
-			object_optimization_flags := v3_prod_c_object_optimization_flags(is_prod, no_prod_options, is_shared, parallel_cc, effective_tcc)
+			object_optimization_flags := v3_shared_object_compile_flags(v3_prod_c_object_optimization_flags(is_prod,
+				no_prod_options, is_shared, parallel_cc, effective_tcc), prefs.normalized_target_os(),
+				is_shared, is_liveshared)
 			resolved_c_flags = prepare_c_flags_for_link(generated_c_flags, environment_c_flags, object_optimization_flags, prefs.c99, pic_flag, target_args, prefs.target, c_compiler, use_implicit_tcc_semantics, cc_dir, mut c_object_cache_stats) or {
 				message := err.msg()
 				if v3_should_regenerate_after_implicit_tcc(retry_compilation, use_implicit_tcc_semantics, false, 0) {

@@ -63,9 +63,9 @@ fn test_new_compiler_shared_library_exports_only_tagged_functions() {
 		mode := if is_prod { 'prod' } else { 'debug' }
 		lib_out := os.join_path(workdir, 'libmylib_${mode}')
 		lib_so := '${lib_out}.so'
-		// Isolate the generated V symbols from any platform GC archive exports.
+		// Exercise native dependency objects and bundled archives with the default GC.
 		// TCC does not honor hidden visibility; exercise the system C compiler.
-		mut args := ['-new-compiler', '-nocache', '-cc', 'cc', '-gc', 'none', '-shared']
+		mut args := ['-new-compiler', '-nocache', '-cc', 'cc', '-shared']
 		if is_prod {
 			args << '-prod'
 		}

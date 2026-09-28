@@ -27,6 +27,7 @@ fn test_shared_flag_plan_hides_symbols_on_linux_and_macos() {
 			})
 			assert '-shared' in plan.before_inputs
 			assert '-fvisibility=hidden' in plan.before_inputs, '${target_os}, prod=${is_prod}'
+			assert ('-Wl,--exclude-libs,ALL' in plan.before_inputs) == (target_os == 'linux')
 		}
 	}
 }
@@ -41,6 +42,7 @@ fn test_live_shared_flag_plan_keeps_symbols_visible() {
 		})
 		assert '-shared' in plan.before_inputs
 		assert '-fvisibility=hidden' !in plan.before_inputs, target_os
+		assert '-Wl,--exclude-libs,ALL' !in plan.before_inputs, target_os
 	}
 }
 
