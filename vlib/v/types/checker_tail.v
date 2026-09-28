@@ -8967,8 +8967,17 @@ fn (tc &TypeChecker) c_struct_receiver_method_name(receiver Type, method string)
 		return none
 	}
 	mut visible := ''
+	mut private_name := ''
+	mut private_ambiguous := false
 	for candidate, _ in tc.fn_ret_types {
 		if candidate.ends_with('.${key}') && tc.c_struct_method_module_visible(candidate) {
+			if visibility := tc.declaration_visibility[candidate] {
+				if !visibility.is_pub {
+					private_ambiguous = private_ambiguous || private_name.len > 0
+					private_name = candidate
+					continue
+				}
+			}
 			if visible.len > 0 {
 				return none
 			}
@@ -8977,6 +8986,9 @@ fn (tc &TypeChecker) c_struct_receiver_method_name(receiver Type, method string)
 	}
 	if visible.len > 0 {
 		return visible
+	}
+	if private_name.len > 0 && !private_ambiguous {
+		return private_name
 	}
 	return none
 }

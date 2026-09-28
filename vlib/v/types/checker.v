@@ -10052,8 +10052,11 @@ fn (mut tc TypeChecker) check_c_js_generic_declarations() {
 				|| (!is_function && node.kind != .struct_decl) {
 				continue
 			}
-			if is_function && node.kind == .fn_decl && tc.fn_has_receiver_param(node) {
-				continue
+			if is_function && node.kind == .fn_decl && node.children_count > 0 {
+				receiver := tc.a.child_node(node, 0)
+				if receiver.kind == .param && receiver.op == .dot {
+					continue
+				}
 			}
 			namespace := tc.c_js_declaration_namespace(flat.NodeId(index), node) or { continue }
 			if node.generic_params().len == 0

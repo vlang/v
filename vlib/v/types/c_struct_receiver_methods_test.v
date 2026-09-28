@@ -37,6 +37,15 @@ fn main() { right.used(); println(left.make_holder().value.read()) }
 	ambiguous := os.execute('${os.quoted_path(@VEXE)} -check ${os.quoted_path(root)}')
 	assert ambiguous.exit_code != 0, ambiguous.output
 	assert ambiguous.output.contains('unknown function') || ambiguous.output.contains('unknown method'), ambiguous.output
+	for public_module in ['left', 'right'] {
+		for method_module in ['left', 'right'] {
+			visibility := if method_module == public_module { 'pub ' } else { '' }
+			os.write_file(os.join_path(root, method_module, 'choice.c.v'), 'module ${method_module}\n${visibility}fn (c C.Counter) choice() int { return 42 }\n')!
+		}
+		os.write_file(os.join_path(root, 'main.v'), 'module main\nimport left\nimport right\nfn main() { right.used(); println(left.make_holder().value.choice()) }\n')!
+		public_choice := os.execute('${os.quoted_path(@VEXE)} -check ${os.quoted_path(root)}')
+		assert public_choice.exit_code == 0, public_choice.output
+	}
 	os.write_file(os.join_path(root, 'facade', 'facade.v'), 'module facade\nimport right\npub fn used() { right.used() }\n')!
 	os.write_file(os.join_path(root, 'main.v'), 'module main\nimport left\nimport facade\nfn main() { facade.used(); println(left.make_holder().value.read()) }\n')!
 	visible := os.execute('${os.quoted_path(@VEXE)} -check ${os.quoted_path(root)}')
@@ -45,4 +54,13 @@ fn main() { right.used(); println(left.make_holder().value.read()) }
 	hidden := os.execute('${os.quoted_path(@VEXE)} -check ${os.quoted_path(root)}')
 	assert hidden.exit_code != 0, hidden.output
 	assert hidden.output.contains('unknown function') || hidden.output.contains('unknown method'), hidden.output
+}
+
+fn test_static_interop_generic_is_not_a_receiver_method() {
+	path := os.join_path(os.vtmp_dir(), 'v3_static_interop_generic_${os.getpid()}.v')
+	os.write_file(path, 'struct JS.DOMQuad {}\nfn JS.DOMQuad.fromQuad[T](other JS.DOMQuad) T\nfn main() {}\n')!
+	defer { os.rm(path) or {} }
+	result := os.execute('${os.quoted_path(@VEXE)} -check ${os.quoted_path(path)}')
+	assert result.exit_code != 0, result.output
+	assert result.output.contains('JS functions cannot be declared as generic'), result.output
 }
