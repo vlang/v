@@ -6761,9 +6761,10 @@ fn (c &CallCollector) generic_factory_return_type_name(index &flat.Node, name st
 		if arg_count <= 0 || arg_count > params.len { return return_type }
 		mut args := []string{cap: arg_count}
 		for i in 0 .. arg_count {
-			arg := c.generic_factory_type_arg(c.a.child(index, i + 1))
+			arg_id := c.a.child(index, i + 1)
+			arg := c.generic_factory_type_arg(arg_id)
 			if arg.len == 0 { return return_type }
-			args << markused_resolve_imported_type_text(arg, imports)
+			args << c.generic_factory_qualified_type_text(arg, arg_id, cur_module, imports)
 		}
 		return types.subst_generic_text(return_type, args, params[params.len - arg_count..])
 	}
@@ -8534,8 +8535,7 @@ fn (c &CallCollector) value_name_candidates(name string, cur_module string, impo
 }
 
 // Resolve qualified identifiers throughout a type without changing its container syntax.
-fn markused_resolve_imported_type_text(text string, imports map[string]string) string {
-	if !text.contains('.') || imports.len == 0 { return text }
+fn (c &CallCollector) generic_factory_qualified_type_text(text string, id flat.NodeId, cur_module string, imports map[string]string) string {
 	mut out := strings.new_builder(text.len)
 	mut i := 0
 	for i < text.len {
@@ -8546,7 +8546,8 @@ fn markused_resolve_imported_type_text(text string, imports map[string]string) s
 		}
 		start := i
 		for i < text.len && (text[i].is_alnum() || text[i] in [`_`, `.`]) { i++ }
-		out.write_string(markused_resolve_imported_type_name(text[start..i], imports))
+		name := markused_resolve_imported_type_name(text[start..i], imports)
+		out.write_string(c.tc.qualify_type_name_at(name, id, cur_module))
 	}
 	return out.str()
 }

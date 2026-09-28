@@ -11577,6 +11577,27 @@ fn scope_type_key(file string, mod_name string, name string) string {
 	return '${file}\x01${norm_mod}\x01${name}'
 }
 
+// qualify_type_name_at resolves a bare type identifier in a source node's caller scope,
+// preserving enclosing generic parameters and consulting only that file's selective imports.
+pub fn (tc &TypeChecker) qualify_type_name_at(name string, id flat.NodeId, module_name string) string {
+	if name.contains('.') || is_builtin_type_name(name) || tc.source_enclosing_fn_has_generic_param(id, name) {
+		return name
+	}
+	if tc.valid_node_id(id) {
+		node := tc.a.node(id)
+		if file := tc.a.source_files[node.pos.id] {
+			if resolved := tc.resolve_selective_import_type_symbol_in_file(name, file.name) {
+				return resolved
+			}
+		}
+	}
+	if module_name !in ['', 'main', 'builtin'] {
+		qualified := '${module_name}.${name}'
+		if tc.type_symbol_known(qualified) { return qualified }
+	}
+	return name
+}
+
 fn (tc &TypeChecker) resolve_selective_import_type_symbol_in_file(name string, file string) ?string {
 	candidates := tc.file_selective_imports[file_import_key(file, name)] or { return none }
 	for candidate in candidates {

@@ -2,6 +2,7 @@ module markused
 
 import v.flat
 import v.types
+import v.token
 
 fn test_explicit_generic_factory_return_type_retains_receiver_methods() {
 	mut a := flat.FlatAst.new()
@@ -324,5 +325,41 @@ fn test_explicit_generic_factory_resolves_nested_import_aliases() {
 		}
 		assert collector.top_level_call_return_type_name(call, 'gates', imports,
 			map[string]bool{}, map[string]string{}, false) == 'gates.Gate[${expected}]'
+	}
+}
+
+fn test_explicit_generic_factory_qualifies_caller_types_and_selective_imports() {
+	mut a := flat.FlatAst.new()
+	source_file := 'consumer/use.v'
+	a.source_files[3] = &token.File{ name: source_file }
+	mut tc := types.TypeChecker.new(&a)
+	tc.fn_generic_params['gates.make_gate'] = ['U']
+	tc.fn_ret_types['gates.make_gate'] = types.Type(types.Struct{ name: 'gates.Gate[U]' })
+	for name in ['consumer.Payload', 'consumer.Box', 'items.Selected'] {
+		tc.structs[name] = []types.StructField{}
+	}
+	tc.file_selective_imports[source_file + '\nSelected'] = ['items.Selected']
+	tc.file_selective_imports['other.v\nOtherOnly'] = ['items.Selected']
+	forms := {
+		'Payload':               'consumer.Payload'
+		'[]Payload':             '[]consumer.Payload'
+		'[2]Payload':            '[2]consumer.Payload'
+		'Box[Payload]':          'consumer.Box[consumer.Payload]'
+		'Box[T]':                'consumer.Box[T]'
+		'Selected':              'items.Selected'
+		'Box[[]Selected]':       'consumer.Box[[]items.Selected]'
+		'map[string]Payload':    'map[string]consumer.Payload'
+		'fn (Payload) Selected': 'fn (consumer.Payload) items.Selected'
+		'OtherOnly':             'OtherOnly'
+		'T':                     'T'
+		'int':                   'int'
+	}
+	for form, expected in forms {
+		base := a.add_val(.ident, 'make_gate')
+		arg := a.add_node(flat.Node{ kind: .struct_decl, value: form, pos: token.Pos{ id: 3 } })
+		indexed := call_helper_node(mut a, flat.Node{ kind: .index }, [base, arg])
+		collector := CallCollector{ a: &a, tc: &tc }
+		assert collector.generic_factory_return_type_name(a.node(indexed), 'gates.make_gate',
+			'consumer', map[string]string{}, false) == 'gates.Gate[${expected}]'
 	}
 }
