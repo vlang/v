@@ -17026,6 +17026,12 @@ fn (mut tc TypeChecker) infer_generic_type_text_from_type(param_text string, act
 // cache is unavailable to reachability analysis. It uses the declaration's type context.
 pub fn (tc &TypeChecker) infer_generic_reachability_type_args(fn_name string, param_text string, actual Type, generic_params []string) map[string]string {
 	mut inferred := map[string]string{}
+	clean := trimmed_space(param_text)
+	base, _, is_generic := generic_type_application_parts(clean)
+	if !clean.contains('fn(') && !clean.contains('fn (')
+		&& !(is_generic && tc.interface_metadata_name(base) in tc.interface_names) {
+		return inferred
+	}
 	file := tc.fn_type_files[fn_name] or { tc.cur_file }
 	module_name := tc.fn_type_modules[fn_name] or { tc.cur_module }
 	mut view := tc.fork_type_parse_view(file, module_name)
