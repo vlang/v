@@ -12126,7 +12126,18 @@ fn (mut t Transformer) lower_discarded_spawn_value(id flat.NodeId) ?[]flat.NodeI
 		}, value_id)
 	}
 	if value.kind in [.if_expr, .match_stmt] && t.yields_fresh_spawn(value_id) {
-		return t.transform_stmt(t.discard_conditional_branch_values(value_id))
+		mut condition_spawns := []flat.NodeId{}
+		if value.children_count > 0 {
+			t.collect_discarded_aggregate_spawns(t.a.child(&value, 0), mut condition_spawns)
+		}
+		for spawn_id in condition_spawns {
+			t.discarded_aggregate_spawns[int(spawn_id)] = true
+		}
+		transformed := t.transform_stmt(t.discard_conditional_branch_values(value_id))
+		for spawn_id in condition_spawns {
+			t.discarded_aggregate_spawns.delete(int(spawn_id))
+		}
+		return transformed
 	}
 	mut aggregate_spawns := []flat.NodeId{}
 	t.collect_discarded_aggregate_spawns(value_id, mut aggregate_spawns)
@@ -12161,7 +12172,7 @@ fn (t &Transformer) collect_discarded_aggregate_spawns(id flat.NodeId, mut spawn
 			}
 		}
 		.infix {
-			if node.op in [.eq, .ne] {
+			if node.op in [.eq, .ne, .logical_and, .logical_or] {
 				for i in 0 .. node.children_count {
 					t.collect_discarded_aggregate_spawns(t.a.child(&node, i), mut spawns)
 				}
@@ -12177,6 +12188,7 @@ fn (t &Transformer) collect_discarded_aggregate_spawns(id flat.NodeId, mut spawn
 		}
 		.if_expr {
 			if node.children_count >= 3 {
+				t.collect_discarded_aggregate_spawns(t.a.child(&node, 0), mut spawns)
 				t.collect_discarded_aggregate_spawns(t.a.child(&node, 1), mut spawns)
 				t.collect_discarded_aggregate_spawns(t.a.child(&node, 2), mut spawns)
 			}

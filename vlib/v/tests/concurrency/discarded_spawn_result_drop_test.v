@@ -71,3 +71,43 @@ fn test_discarded_spawn_drops_results_under_prefix_expression() {
 		}
 	}
 }
+
+fn test_discarded_spawn_drops_results_under_logical_expression() {
+	done := chan int{cap: 4}
+	_ := ((spawn make_drop_signal(done)) == (spawn make_drop_signal(done))) && true
+	_ := ((spawn make_drop_signal(done)) == (spawn make_drop_signal(done))) || false
+	for _ in 0 .. 4 {
+		select {
+			value := <-done {
+				assert value == 1
+			}
+			5 * time.second {
+				assert false
+			}
+		}
+	}
+}
+
+fn test_discarded_spawn_drops_results_in_conditional_condition() {
+	done := chan int{cap: 5}
+	_ := if (spawn make_drop_signal(done)) == (spawn make_drop_signal(done)) {
+		1
+	} else {
+		2
+	}
+	_ := if (spawn make_drop_signal(done)) == (spawn make_drop_signal(done)) {
+		spawn make_drop_signal(done)
+	} else {
+		spawn make_drop_signal(done)
+	}
+	for _ in 0 .. 5 {
+		select {
+			value := <-done {
+				assert value == 1
+			}
+			5 * time.second {
+				assert false
+			}
+		}
+	}
+}
