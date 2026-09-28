@@ -43,6 +43,21 @@ fn test_get_module_path_resolves_alias_and_submodule() {
 		'sub'))
 }
 
+fn test_cache_recovery_sentinel_is_hidden_from_compiled_programs() {
+	name := 'V3_INTERNAL_CACHE_RECOVERY'
+	previous := os.getenv_opt(name)
+	os.setenv(name, '1', true)
+	defer {
+		if value := previous {
+			os.setenv(name, value, true)
+		} else {
+			os.unsetenv(name)
+		}
+	}
+	assert macos_v3_caller_env_value(name) == ''
+	assert name !in macos_v3_caller_environment()
+}
+
 fn test_alias_vmod_root_stops_at_project_boundaries() {
 	root := os.join_path(os.vtmp_dir(), 'v3_pref_alias_boundary_${os.getpid()}')
 	os.rmdir_all(root) or {}
