@@ -20,6 +20,8 @@ type GlobalArrayPointerRow = [4]int
 type GlobalArrayPointerValues = GlobalArrayPointerRow
 type GlobalArrayPointerNestedRow = [3]int
 type GlobalArrayPointerNestedRowAlias = GlobalArrayPointerNestedRow
+type GlobalArrayPointerMatrix = [2]GlobalArrayPointerNestedRowAlias
+type GlobalArrayPointerAlignedCells = [2]GlobalAlignedArrayPointerCell
 
 __global global_row_calls = 0
 
@@ -80,8 +82,20 @@ __global global_cell_array = &[2]GlobalArrayPointerCell{}
 __global global_nested_array = &[2][3]int{}
 __global global_alias_array = &GlobalArrayPointerAddress{}
 __global global_chained_alias_array = &GlobalArrayPointerValues{}
-__global global_filled_alias_array = &GlobalArrayPointerRow{init: 7}
 __global global_filled_array = &[4]int{init: 7}
+__global global_filled_alias_array = &GlobalArrayPointerRow{ init: 7 }
+__global global_filled_chained_alias_array = &GlobalArrayPointerValues{ init: 8 }
+__global global_nested_filled_alias_array = &GlobalArrayPointerMatrix{
+	init: GlobalArrayPointerNestedRowAlias{
+		init: 11
+	}
+}
+__global global_alias_call_array = &GlobalArrayPointerMatrix{ init: make_global_array_pointer_row(4) }
+__global global_filled_aligned_alias_array = &GlobalArrayPointerAlignedCells{
+	init: GlobalAlignedArrayPointerCell{
+		value: 17
+	}
+}
 __global global_index_array = &[4]int{init: index * 2}
 __global global_nested_filled_array = &[2][3]int{init: [3]int{init: 7}}
 __global global_nested_index_array = &[2][3]int{init: [3]int{init: index + 5}}
@@ -120,7 +134,8 @@ fn test_global_fixed_array_pointers_are_initialized() {
 	assert u64(voidptr(global_nested_aligned_array)) % 512 == 0
 	assert u64(voidptr(global_inherited_aligned_array)) % 512 == 0
 	assert u64(voidptr(global_filled_aligned_array)) % 512 == 0
-	assert global_row_calls == 12
+	assert u64(voidptr(global_filled_aligned_alias_array)) % 512 == 0
+	assert global_row_calls == 14
 	// Indexing these pointer-backed arrays requires an unsafe block.
 	unsafe {
 		assert global_zero_array[0] == 0
@@ -156,6 +171,14 @@ fn test_global_fixed_array_pointers_are_initialized() {
 		assert global_filled_alias_array[3] == 7
 		assert global_filled_array[0] == 7
 		assert global_filled_array[3] == 7
+		assert global_filled_chained_alias_array[0][0] == 8
+		assert global_filled_chained_alias_array[0][3] == 8
+		assert global_nested_filled_alias_array[0][0] == 11
+		assert global_nested_filled_alias_array[1][2] == 11
+		assert global_alias_call_array[0][0] == 40
+		assert global_alias_call_array[1][2] == 42
+		assert global_filled_aligned_alias_array[0].value == 17
+		assert global_filled_aligned_alias_array[1].value == 17
 		assert global_index_array[0] == 0
 		assert global_index_array[3] == 6
 		assert global_nested_filled_array[0][0] == 7
