@@ -720,6 +720,17 @@ fn test_v3_cache_artifact_detection_accepts_quoted_paths_with_spaces() {
 		os.join_path_single(os.real_path(module_dir), os.base(missing)),
 	]
 	assert v3_cache_recovery_should_retry([missing], 0)
+	os.rmdir_all(cache_dir)!
+	recovered := v3_cache_failure_artifacts("ld: '${missing}': No such file or directory")
+	assert recovered == [
+		os.join_path(os.real_path(root), 'v3_module_cache_ab12', 'config', 'missing object.o'),
+	]
+	assert v3_cache_failure_artifacts("ld: '${source}': No such file or directory") == []
+	unowned := os.join_path(root, 'v3_module_cache_nothex', 'missing.o')
+	assert v3_cache_failure_artifacts("ld: '${unowned}': No such file or directory") == []
+	discarded := v3_discard_cache_artifacts([missing])
+	assert discarded == 0
+	assert v3_cache_recovery_should_retry([missing], discarded)
 }
 
 fn test_v3_cache_unquoted_windows_path_candidates_keep_spaces() {

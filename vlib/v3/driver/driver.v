@@ -12583,7 +12583,7 @@ fn v3_cache_artifact_dir_name(name string, include_fixed_caches bool) bool {
 	return suffix.len > 0 && suffix.bytes().all(it.is_hex_digit())
 }
 
-fn v3_cache_artifact_directories() []string {
+fn v3_cache_artifact_roots() []string {
 	temp_root := os.real_path(os.abs_path(os.vtmp_dir()))
 	mut roots := [temp_root]
 	if configured := os.getenv_opt('V3CACHE') {
@@ -12611,8 +12611,13 @@ fn v3_cache_artifact_directories() []string {
 			}
 		}
 	}
+	return roots
+}
+
+fn v3_cache_artifact_directories() []string {
+	temp_root := os.real_path(os.abs_path(os.vtmp_dir()))
 	mut directories := []string{}
-	for raw_root in roots {
+	for raw_root in v3_cache_artifact_roots() {
 		root := os.real_path(os.abs_path(raw_root))
 		if !os.is_dir(root) {
 			continue
@@ -12633,6 +12638,39 @@ fn v3_cache_artifact_directories() []string {
 		}
 	}
 	return directories
+}
+
+fn v3_missing_cache_artifact(path string) ?string {
+	if os.file_ext(path).to_lower() !in ['.o', '.obj', '.a', '.lib'] {
+		return none
+	}
+	temp_root := os.real_path(os.abs_path(os.vtmp_dir()))
+	for root in v3_cache_artifact_roots() {
+		if !os.is_dir(root) || !v3_path_is_within(path, root) {
+			continue
+		}
+		mut cache_dir := os.dir(path)
+		for os.dir(cache_dir) != root && v3_path_is_within(cache_dir, root) {
+			cache_dir = os.dir(cache_dir)
+		}
+		if os.dir(cache_dir) == root && !os.exists(cache_dir)
+			&& v3_cache_artifact_dir_name(os.base(cache_dir), root == temp_root) {
+			return path
+		}
+	}
+	return none
+}
+
+fn v3_canonical_missing_cache_path(path string) string {
+	mut existing := os.dir(path)
+	for !os.is_dir(existing) {
+		parent := os.dir(existing)
+		if parent == existing {
+			return path
+		}
+		existing = parent
+	}
+	return os.join_path_single(os.real_path(existing), path[existing.len..].trim_left(os.path_separator))
 }
 
 fn v3_cache_error_path_tokens(output string) []string {
@@ -12695,7 +12733,7 @@ fn v3_canonical_cache_artifact(path string, directories []string) ?string {
 	clean := os.abs_path(path)
 	parent := os.dir(clean)
 	if !os.is_dir(parent) {
-		return none
+		return v3_missing_cache_artifact(v3_canonical_missing_cache_path(clean))
 	}
 	canonical := if os.exists(clean) {
 		os.real_path(clean)
