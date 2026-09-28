@@ -117,6 +117,23 @@ fn test_nested_module_rejects_its_canonical_self_import() {
 	assert tc.errors.any(it.msg.contains('cannot import `nn.layers` into a module with the same name')), tc.errors.str()
 }
 
+fn test_manifestless_nested_module_rejects_its_canonical_self_import() {
+	root := os.join_path(os.vtmp_dir(), 'v3_manifestless_self_import_${os.getpid()}')
+	path := os.join_path(root, 'nn', 'layers', 'layer.v')
+	os.mkdir_all(os.dir(path))!
+	os.mkdir_all(os.join_path(root, 'layers'))!
+	defer { os.rmdir_all(root) or {} }
+	os.write_file(os.join_path(root, 'layers', 'plain.v'), 'module layers\n')!
+	os.write_file(path, 'module layers\nimport nn.layers as self\n')!
+	mut p := parser.Parser.new(pref.new_preferences())
+	a := p.parse_file(path)
+	mut tc := TypeChecker.new(a)
+	tc.collect(a)
+	assert tc.current_file_module_path_identity() or { '' } == 'nn.layers'
+	tc.check_import_diagnostics()
+	assert tc.errors.any(it.msg.contains('cannot import `nn.layers` into a module with the same name')), tc.errors.str()
+}
+
 fn test_vlib_is_the_module_search_root_for_identity() {
 	root := os.join_path(os.vtmp_dir(), 'v3_vlib_module_identity_${os.getpid()}')
 	time_file := os.join_path(root, 'vlib', 'time', 'time.v')

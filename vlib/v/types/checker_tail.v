@@ -449,10 +449,23 @@ fn (tc &TypeChecker) current_file_module_source_root() ?string {
 			return vlib_root
 		}
 	}
-	if source_root == '' || !directory.starts_with(source_root + '/') {
-		return none
+	if source_root != '' && directory.starts_with(source_root + '/') {
+		return source_root
 	}
-	return source_root
+	// Without a manifest or -path, the resolver can still find an import in an
+	// ancestor directory. A matching import path identifies that ancestor root.
+	if info := tc.file_imports_by_file[tc.cur_file] {
+		for _, module_path in info.imports {
+			if module_path.all_after_last('.') != tc.cur_module || !module_path.contains('.') {
+				continue
+			}
+			suffix := '/' + module_path.replace('.', '/')
+			if directory.ends_with(suffix) && directory.len > suffix.len {
+				return directory[..directory.len - suffix.len]
+			}
+		}
+	}
+	return none
 }
 
 fn (tc &TypeChecker) imported_module_prefix(id flat.NodeId, name string) ?string {
