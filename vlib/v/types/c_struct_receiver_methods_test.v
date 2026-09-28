@@ -84,6 +84,18 @@ fn main() { right.used(); println(left.make_holder().value.read()) }
 	hidden_by_path := os.execute('${os.quoted_path(@VEXE)} -check ${os.quoted_path(root)}')
 	assert hidden_by_path.exit_code != 0, hidden_by_path.output
 	assert hidden_by_path.output.contains('unknown function') || hidden_by_path.output.contains('unknown method'), hidden_by_path.output
+	for visibility in ['pub ', ''] {
+		os.write_file(os.join_path(root, 'left', 'escaped.c.v'), 'module left\npub fn (c C.Counter) @union() int { return 7 }\n')!
+		os.write_file(os.join_path(root, 'right', 'escaped.c.v'), 'module right\n${visibility}fn (c C.Counter) @union() int { return 8 }\n')!
+		os.write_file(os.join_path(root, 'main.v'), 'module main\nimport left\nimport right\nfn main() { right.used(); println(left.make_holder().value.@union()) }\n')!
+		escaped := os.execute('${os.quoted_path(@VEXE)} -check ${os.quoted_path(root)}')
+		if visibility.len > 0 {
+			assert escaped.exit_code != 0, escaped.output
+			assert escaped.output.contains('unknown function') || escaped.output.contains('unknown method'), escaped.output
+		} else {
+			assert escaped.exit_code == 0, escaped.output
+		}
+	}
 }
 
 fn test_static_interop_generic_is_not_a_receiver_method() {

@@ -41,3 +41,12 @@ pub fn (c C.Counter) read_again() int {
 	value = value.next() or { return 0 }
 	return value.read()
 }
+
+// @union exercises an escaped method on an imported C receiver.
+pub fn (c C.Counter) @union(marker int) int { return c.value + marker }
+
+// @select exercises explicit generic arguments on an escaped C receiver method.
+pub fn (c C.Counter) @select[T](marker T) int { return c.value }
+
+// @union distinguishes an escaped alias method from its C backing type.
+pub fn (c Counter) @union(marker int) int { return c.value + marker + 100 }

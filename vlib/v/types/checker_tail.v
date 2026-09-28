@@ -8947,49 +8947,60 @@ fn (tc &TypeChecker) c_struct_receiver_method_name(receiver Type, method string)
 		return none
 	}
 	if unwrapped is Alias {
-		alias_method := '${unwrapped.name}.${method}'
-		if alias_method in tc.fn_ret_types {
-			return alias_method
+		for alias_method in receiver_method_name_candidates(unwrapped, method, tc.cur_module) {
+			if alias_method in tc.fn_ret_types {
+				return alias_method
+			}
 		}
 		return tc.c_struct_receiver_method_name(unwrapped.base_type, method)
 	}
-	key := '${receiver_name}.${method}'
-	local_key := checker_qualified_fn_name(tc.cur_module, key)
-	if local_key in tc.fn_ret_types {
-		return local_key
-	}
-	// C type names do not include the V module declaring their methods.
-	// Only an unambiguous method visible from this file can cross that boundary.
-	name := tc.receiver_method_suffix_index[key] or { return none }
-	if name != receiver_method_suffix_ambiguous {
-		if name in tc.fn_ret_types && tc.c_struct_method_module_visible(name) {
-			return name
+	keys := receiver_method_name_candidates(clean, method, tc.cur_module)
+	for key in keys {
+		local_key := checker_qualified_fn_name(tc.cur_module, key)
+		if local_key in tc.fn_ret_types {
+			return local_key
 		}
-		return none
 	}
-	mut visible := ''
-	mut private_name := ''
-	mut private_ambiguous := false
-	for candidate, _ in tc.fn_ret_types {
-		if candidate.ends_with('.${key}') && tc.c_struct_method_module_visible(candidate) {
+	// Escaped and plain spellings share the same visibility and ambiguity rules.
+	// Within each module, retain the ordinary method candidate precedence.
+	mut seen_modules := map[string]bool{}
+	mut visible := []string{}
+	mut private_names := []string{}
+	for key in keys {
+		name := tc.receiver_method_suffix_index[key] or { continue }
+		mut candidates := []string{}
+		if name == receiver_method_suffix_ambiguous {
+			for candidate, _ in tc.fn_ret_types {
+				if candidate.ends_with('.${key}') {
+					candidates << candidate
+				}
+			}
+		} else {
+			candidates << name
+		}
+		for candidate in candidates {
+			if candidate !in tc.fn_ret_types || !tc.c_struct_method_module_visible(candidate) {
+				continue
+			}
+			module_name := candidate.all_before('.C.')
+			if seen_modules[module_name] {
+				continue
+			}
+			seen_modules[module_name] = true
 			if visibility := tc.declaration_visibility[candidate] {
 				if !visibility.is_pub {
-					private_ambiguous = private_ambiguous || private_name.len > 0
-					private_name = candidate
+					private_names << candidate
 					continue
 				}
 			}
-			if visible.len > 0 {
-				return none
-			}
-			visible = candidate
+			visible << candidate
 		}
 	}
-	if visible.len > 0 {
-		return visible
+	if visible.len == 1 {
+		return visible[0]
 	}
-	if private_name.len > 0 && !private_ambiguous {
-		return private_name
+	if visible.len == 0 && private_names.len == 1 {
+		return private_names[0]
 	}
 	return none
 }

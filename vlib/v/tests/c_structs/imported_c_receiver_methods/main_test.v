@@ -13,6 +13,8 @@ fn (c MiddleCounter) read() int { return c.value + 400 }
 fn test_methods_on_c_struct_fields_and_local_copies() {
 	h := bridge.make_holder()
 	assert h.value.read() == 17
+	assert h.value.@union(2) == 19
+	assert h.value.@select[int](1) == 17
 	assert h.value.convert[int](1) == 17
 	assert h.value.read_again() == 17
 	alias_value := bridge.Counter(h.value)
@@ -21,6 +23,7 @@ fn test_methods_on_c_struct_fields_and_local_copies() {
 	assert alias_value.alias_only[int](1) == 317
 	inherited := InheritedCounter(h.value)
 	assert inherited.read() == 117
+	assert inherited.@union(2) == 119
 	assert inherited.convert[int](1) == 217
 	assert inherited.alias_only[int](1) == 317
 	outer := OuterCounter(h.value)
