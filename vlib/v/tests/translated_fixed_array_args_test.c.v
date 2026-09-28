@@ -211,3 +211,36 @@ fn test_translated_c_calls_cast_byte_compatible_fixed_arrays() {
 	assert C.translated_first_byte_row(rows) == 73
 	assert C.translated_first_byte_row([[char(77), char(78)]!, [char(79), char(80)]!]!) == 77
 }
+
+interface VoidDecaySink {
+	sum(values voidptr) int
+	sum_alias(values TranslatedVoidPtr) int
+}
+
+struct FixedArrayVoidDecaySink {}
+
+fn (sink FixedArrayVoidDecaySink) sum(values voidptr) int {
+	return sum(unsafe { &int(values) })
+}
+
+fn (sink FixedArrayVoidDecaySink) sum_alias(values TranslatedVoidPtr) int {
+	return sum(unsafe { &int(values) })
+}
+
+fn test_translated_interface_void_pointer_uses_source_array_type() {
+	sink := VoidDecaySink(FixedArrayVoidDecaySink{})
+	assert sink.sum_alias([20, 22]!) == 42
+	assert sink.sum_alias(make_runtime_row(20)) == 41
+	values := [20, 22]!
+	assert sink.sum(values) == 42
+	assert sink.sum([20, 22]!) == 42
+	assert sink.sum(make_runtime_row(20)) == 41
+	rows := [[20, 22]!, [3, 5]!]!
+	assert sink.sum(rows) == 42
+	assert sink.sum([[20, 22]!, [3, 5]!]!) == 42
+	assert sink.sum([make_runtime_row(20), make_runtime_row(3)]!) == 41
+	assert sink.sum_alias(values) == 42
+	assert sink.sum_alias(rows) == 42
+	assert sink.sum_alias([[20, 22]!, [3, 5]!]!) == 42
+	assert sink.sum_alias([make_runtime_row(20), make_runtime_row(3)]!) == 41
+}
