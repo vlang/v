@@ -1503,11 +1503,11 @@ fn (mut p Parser) fn_decl() flat.NodeId {
 				// C.func or JS.func
 				interop_prefix := name
 				if (p.cur_file.ends_with('.c.v') || p.cur_file.ends_with('.c.vv'))
-					&& interop_prefix == 'JS' {
+					&& interop_prefix == 'JS' && !p.prefs.is_fmt {
 					p.record_diagnostic_span('JS code is not allowed in .c.v files, please move it to a .js.v file',
 						qualified_start, qualified_start + interop_prefix.len)
 				} else if (p.cur_file.ends_with('.js.v') || p.cur_file.ends_with('.js.vv'))
-					&& interop_prefix == 'C' {
+					&& interop_prefix == 'C' && !p.prefs.is_fmt {
 					p.record_diagnostic_span('C code is not allowed in .js.v files, please move it to a .c.v file',
 						qualified_start, qualified_start + interop_prefix.len)
 				}
@@ -2170,7 +2170,7 @@ fn (mut p Parser) parse_param_group(is_c_decl bool) []flat.NodeId {
 		if is_mut || is_shared || is_atomic {
 			p.record_variadic_modifier_diagnostic(typ, p.prev_tok_end)
 		}
-		if p.tok == .comma && names.len > 0 {
+		if p.tok == .comma && names.len > 0 && !p.prefs.is_fmt {
 			p.record_diagnostic_span('cannot use ...(variadic) with non-final parameter ${names[0]}',
 				name_positions[0].offset, name_positions[0].end)
 		}
@@ -4405,7 +4405,8 @@ fn (mut p Parser) parse_comptime_for(dollar_start int) flat.NodeId {
 	}
 	kind := if segs.len > 1 { segs.last() } else { 'fields' }
 	base := if segs.len > 1 { segs[..segs.len - 1].join('.') } else { segs.last() }
-	if segs.len > 1 && kind !in ['methods', 'fields', 'values', 'variants', 'attributes', 'params'] {
+	if segs.len > 1 && kind !in ['methods', 'fields', 'values', 'variants', 'attributes', 'params']
+		&& !p.prefs.is_fmt {
 		p.record_diagnostic_span('unknown kind `${kind}`, available are: `methods`, `fields`, `values`, `variants`, `attributes` or `params`',
 			kind_start, kind_start + kind.len)
 	}

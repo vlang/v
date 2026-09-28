@@ -26,6 +26,8 @@ fn test_formatter_preserves_syntax_without_semantic_diagnostics() {
 		'fn main() { select { else {} else {} } }':                                                  'at most one `else` branch allowed in `select` block'
 		'fn main() { unsafe { unsafe { println(1) } } }':                                            'already inside `unsafe` block'
 		"@[deprecated(msg: 'old', msg: 'new')] fn old() {}":                                         'duplicate `msg` argument for `@[deprecated(...)]` attribute'
+		'fn f(xs ...int, y int) {}':                                                                 'cannot use ...(variadic) with non-final parameter xs'
+		'fn f[T]() { $for field in T.unknown {} }':                                                  'unknown kind `unknown`, available are: `methods`, `fields`, `values`, `variants`, `attributes` or `params`'
 	}
 	for source, expected in cases {
 		os.write_file(path, source + '\n')!
@@ -33,6 +35,25 @@ fn test_formatter_preserves_syntax_without_semantic_diagnostics() {
 		compiler.parse_file(path)
 		assert compiler.diagnostics.any(it.message == expected), compiler.diagnostics.str()
 
+		mut prefs := pref.new_preferences()
+		prefs.is_fmt = true
+		mut formatter := Parser.new(prefs)
+		formatter.parse_file(path)
+		assert formatter.diagnostics.len == 0, formatter.diagnostics.str()
+	}
+}
+
+fn test_formatter_preserves_interop_declarations_in_other_backend_files() {
+	for suffix, prefix in {
+		'c':  'JS'
+		'js': 'C'
+	} {
+		path := os.join_path(os.vtmp_dir(), 'formatter_interop_${os.getpid()}.${suffix}.v')
+		defer { os.rm(path) or {} }
+		os.write_file(path, 'fn ${prefix}.alert()\n')!
+		mut compiler := Parser.new(pref.new_preferences())
+		compiler.parse_file(path)
+		assert compiler.diagnostics.any(it.message.contains('code is not allowed')), compiler.diagnostics.str()
 		mut prefs := pref.new_preferences()
 		prefs.is_fmt = true
 		mut formatter := Parser.new(prefs)

@@ -120,6 +120,31 @@ fn test_fmt_preserves_duplicate_deprecated_message_arguments() {
 	assert formatted_twice == formatted
 }
 
+fn test_fmt_preserves_signature_and_comptime_semantic_errors() {
+	for source, expected in {
+		'fn f(xs ...int, y int) {}\n':                'fn f(xs ...int, y int)'
+		'fn f[T]() { $for field in T.unknown {} }\n': '$for field in T.unknown'
+	} {
+		res, formatted := run_vfmt_write('semantic_signature', source, '')
+		assert res.exit_code == 0, res.output
+		assert formatted.contains(expected), formatted
+		second, formatted_twice := run_vfmt_write('semantic_signature_twice', formatted, '')
+		assert second.exit_code == 0, second.output
+		assert formatted_twice == formatted
+	}
+	for suffix, prefix in {
+		'c':  'JS'
+		'js': 'C'
+	} {
+		res, formatted := run_vfmt_write('interop_placement.${suffix}', 'fn ${prefix}.alert()\n', '')
+		assert res.exit_code == 0, res.output
+		assert formatted.contains('fn ${prefix}.alert()'), formatted
+		second, formatted_twice := run_vfmt_write('interop_placement_twice.${suffix}', formatted, '')
+		assert second.exit_code == 0, second.output
+		assert formatted_twice == formatted
+	}
+}
+
 fn test_fmt_uses_v3_formatter() {
 	source_path := os.join_path(vfmt_test_tdir, 'v3_formatter.v')
 	os.write_file(source_path, 'fn main(){println("v3")}\n')!
