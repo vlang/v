@@ -8951,6 +8951,7 @@ fn (tc &TypeChecker) c_struct_receiver_method_name(receiver Type, method string)
 		if alias_method in tc.fn_ret_types {
 			return alias_method
 		}
+		return tc.c_struct_receiver_method_name(unwrapped.base_type, method)
 	}
 	key := '${receiver_name}.${method}'
 	local_key := checker_qualified_fn_name(tc.cur_module, key)

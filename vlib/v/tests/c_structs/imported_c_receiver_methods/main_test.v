@@ -2,6 +2,14 @@ module main
 
 import bridge
 
+type InheritedCounter = bridge.Counter
+
+type MiddleCounter = InheritedCounter
+
+type OuterCounter = MiddleCounter
+
+fn (c MiddleCounter) read() int { return c.value + 400 }
+
 fn test_methods_on_c_struct_fields_and_local_copies() {
 	h := bridge.make_holder()
 	assert h.value.read() == 17
@@ -11,4 +19,12 @@ fn test_methods_on_c_struct_fields_and_local_copies() {
 	assert alias_value.read() == 117
 	assert alias_value.convert[int](1) == 217
 	assert alias_value.alias_only[int](1) == 317
+	inherited := InheritedCounter(h.value)
+	assert inherited.read() == 117
+	assert inherited.convert[int](1) == 217
+	assert inherited.alias_only[int](1) == 317
+	outer := OuterCounter(h.value)
+	assert outer.read() == 417
+	outer_ref := &outer
+	assert outer_ref.read() == 417
 }

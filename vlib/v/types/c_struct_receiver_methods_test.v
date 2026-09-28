@@ -1,6 +1,27 @@
 module types
 
 import os
+import v.flat
+
+fn test_c_backed_alias_inherits_nearest_alias_method() {
+	mut tc := TypeChecker.new(&flat.FlatAst{})
+	base := Type(Struct{ name: 'C.Counter' })
+	inner := Type(Alias{ name: 'Base', base_type: base })
+	middle := Type(Alias{ name: 'Middle', base_type: inner })
+	outer := Type(Alias{ name: 'Wrapped', base_type: middle })
+	tc.fn_ret_types['C.Counter.read'] = Type(int_)
+	tc.fn_ret_types['Base.read'] = Type(int_)
+	tc.fn_ret_types['Middle.read'] = Type(int_)
+	assert tc.c_struct_receiver_method_name(outer, 'read') or { '' } == 'Middle.read'
+	tc.fn_ret_types.delete('Middle.read')
+	assert tc.c_struct_receiver_method_name(outer, 'read') or { '' } == 'Base.read'
+	tc.fn_ret_types['Wrapped.read'] = Type(int_)
+	assert tc.c_struct_receiver_method_name(outer, 'read') or { '' } == 'Wrapped.read'
+	assert tc.c_struct_receiver_method_name(Type(Pointer{ base_type: outer }), 'read') or { '' } == 'Wrapped.read'
+	tc.fn_ret_types.delete('Wrapped.read')
+	tc.fn_ret_types.delete('Base.read')
+	assert tc.c_struct_receiver_method_name(outer, 'read') or { '' } == 'C.Counter.read'
+}
 
 fn test_c_receiver_method_lookup_keeps_module_visibility_and_ambiguity_checks() {
 	root := os.join_path(os.vtmp_dir(), 'v3_c_receiver_methods_${os.getpid()}')
