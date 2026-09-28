@@ -22,6 +22,13 @@
 > whole sum type, with its `_type` field, while `json2.encode(x)` writes the narrowed
 > variant. vfmt leaves such files unchanged as well: cast the value back to its sum
 > type, as in `json2.encode(Animal(x), escape_unicode: true, time_as_unix: true)`.
+>
+> A type with its own `to_json()` method (or the deprecated `json_str()`), such as
+> `big.Integer`, is written by `json2.encode` through that method, while the old module
+> ignored it and wrote the type's fields. vfmt migrates these calls too, since it does
+> not resolve types, so check the output of such types after migrating. Decoding is not
+> affected: the `from_json_*` methods only handle a JSON string, number, boolean or
+> `null`, so objects written by the old module still decode field by field.
 
 `json2` is an experimental JSON parser written from scratch on V.
 

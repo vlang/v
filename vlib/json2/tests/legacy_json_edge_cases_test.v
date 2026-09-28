@@ -408,3 +408,33 @@ fn test_omitempty_fields_decode_explicit_empty_values() {
 	assert defaults.ratio == 1.5
 	assert json2.encode(OmitemptyConfig{ retries: 0, name: '', ratio: 0.0 }) == '{}'
 }
+
+struct HookedValue {
+mut:
+	a int
+}
+
+fn (h HookedValue) to_json() string {
+	return '"custom"'
+}
+
+fn (mut h HookedValue) from_json_string(raw string) ! {
+	h.a = raw.len
+}
+
+struct HookedHolder {
+	value HookedValue
+}
+
+fn test_custom_hooks_encode_through_to_json_and_decode_legacy_objects() {
+	// Unlike the removed module, which wrote `{"value":{"a":1}}`, json2 encodes a type
+	// through its own `to_json()`; the json2 README documents this difference.
+	assert json2.encode(HookedHolder{ value: HookedValue{ a: 1 } },
+		escape_unicode: true
+		time_as_unix:   true
+	) == '{"value":"custom"}'
+	// Objects written by the removed module still decode field by field, since the
+	// `from_json_string` hook only handles JSON strings.
+	assert json2.decode[HookedHolder]('{"value":{"a":2}}')!.value.a == 2
+	assert json2.decode[HookedValue]('"xyz"')!.a == 3
+}
