@@ -95,3 +95,18 @@ fn test_imported_reference_receivers_keep_storage_before_branch_arguments() {
 	assert calls[0] == 4
 	assert values[0].@union(if condition { 2 } else { 3 }) == 29
 }
+
+fn test_imported_c_iterator_protocol() {
+	iterator := bridge.make_iterator(3)
+	mut values := []int{}
+	for value in iterator { values << value }
+	assert values == [1, 2, 3]
+}
+
+fn test_imported_hex_methods_respect_pointer_receivers() {
+	value := bridge.make_holder().value
+	assert value.hex() == 'counter'
+	pointer_value := bridge.make_pointer_counter()
+	pointer_receiver := &pointer_value
+	assert pointer_receiver.hex() == 'pointer counter'
+}

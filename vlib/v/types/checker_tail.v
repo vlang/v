@@ -8512,7 +8512,8 @@ fn (mut tc TypeChecker) resolve_call_info_uncached(id flat.NodeId, node flat.Nod
 				tc.record_error(.unknown_fn, 'ambiguous method `${fn_node.value}` on `${type_name}`', id)
 				return none
 			}
-			if method_name.len > 0 {
+			if method_name.len > 0
+				&& tc.method_can_be_called_on_receiver(base_type, fn_node.value, method_name) {
 				return tc.call_info(method_name, true)
 			}
 			if fn_node.value == 'str' && (clean is Primitive || clean is Char || clean is Rune) {

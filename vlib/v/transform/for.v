@@ -854,7 +854,9 @@ fn (t &Transformer) iterator_for_in_info(iter_type string) ?IteratorForInInfo {
 	generic_base, generic_args, is_generic := generic_app_parts(clean)
 	is_generic_interface := is_generic && (generic_base in t.tc.interface_names
 		|| t.tc.qualify_name(generic_base) in t.tc.interface_names)
-	if !is_generic_interface && !for_iter_type_has_generic_placeholder(clean)
+	// An imported C method's module qualifier is not part of the C receiver type.
+	if !is_generic_interface && !info.name.contains('.C.')
+		&& !for_iter_type_has_generic_placeholder(clean)
 		&& info.name.contains('.') {
 		info_receiver := info.name.all_before_last('.')
 		info_base, _, info_is_generic := generic_app_parts(info_receiver)

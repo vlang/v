@@ -3,6 +3,59 @@ module types
 import os
 import v.flat
 
+fn test_imported_value_hex_does_not_accept_pointer_receivers() {
+	root := os.join_path(os.vtmp_dir(), 'v3_c_hex_receiver_${os.getpid()}')
+	os.mkdir_all(os.join_path(root, 'bridge'))!
+	defer { os.rmdir_all(root) or {} }
+	os.write_file(os.join_path(root, 'v.mod'), "Module { name: 'c_hex_receiver' }\n")!
+	os.write_file(os.join_path(root, 'bridge', 'counter.c.v'), 'module bridge
+pub struct C.Counter { value int }
+pub fn make() C.Counter { return C.Counter{} }
+pub fn (c C.Counter) hex() string { return "value" }
+')!
+	os.write_file(os.join_path(root, 'main.v'), 'module main
+import bridge
+fn main() { value := bridge.make(); ptr := &value; println(ptr.hex()) }
+')!
+	result := os.execute('${os.quoted_path(@VEXE)} -check ${os.quoted_path(root)}')
+	assert result.exit_code != 0, result.output
+}
+
+fn test_imported_c_iterator_extension_visibility() {
+	root := os.join_path(os.vtmp_dir(), 'v3_c_iterator_visibility_${os.getpid()}')
+	os.mkdir_all(os.join_path(root, 'provider'))!
+	os.mkdir_all(os.join_path(root, 'extensions'))!
+	defer { os.rmdir_all(root) or {} }
+	os.write_file(os.join_path(root, 'v.mod'), "Module { name: 'c_iterator_visibility' }\n")!
+	os.write_file(os.join_path(root, 'provider', 'counter.c.v'), 'module provider
+pub struct C.Iterator { current int }
+pub fn make() C.Iterator { return C.Iterator{} }
+')!
+	os.write_file(os.join_path(root, 'main.v'), 'module main
+import provider
+import extensions as ext
+fn main() { iter := provider.make(); for item in iter { println(item) } }
+')!
+	for visibility in ['pub ', ''] {
+		os.write_file(os.join_path(root, 'extensions', 'counter.c.v'), 'module extensions
+pub struct C.Iterator { current int }
+${visibility}fn (mut c C.Iterator) next() ?int {
+ if c.current > 0 { return none }
+ c.current++
+ return c.current
+}
+')!
+		for flags in ['-W', '-W -no-parallel'] {
+			result := os.execute('${os.quoted_path(@VEXE)} ${flags} -check ${os.quoted_path(root)}')
+			if visibility.len > 0 {
+				assert result.exit_code == 0, result.output
+			} else {
+				assert result.exit_code != 0, result.output
+			}
+		}
+	}
+}
+
 fn test_c_receiver_extension_only_imports_are_used() {
 	root := os.join_path(os.vtmp_dir(), 'v3_c_extension_import_${os.getpid()}')
 	os.mkdir_all(os.join_path(root, 'provider'))!

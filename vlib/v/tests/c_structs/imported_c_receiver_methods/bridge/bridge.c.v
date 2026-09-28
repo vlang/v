@@ -61,3 +61,34 @@ pub fn (mut c C.Counter) update(amount int) { c.value += amount }
 pub fn (c &C.Counter) same_address(other &C.Counter) bool {
 	return voidptr(c) == voidptr(other)
 }
+
+pub struct C.CountingIterator {
+mut:
+	current int
+	end     int
+}
+
+// make_iterator constructs an iterator whose protocol method is an imported extension.
+pub fn make_iterator(end int) C.CountingIterator {
+	return C.CountingIterator{ end: end }
+}
+
+// next advances the imported C iterator.
+pub fn (mut c C.CountingIterator) next() ?int {
+	if c.current >= c.end { return none }
+	c.current++
+	return c.current
+}
+
+// hex formats a counter value, leaving pointer hex formatting unchanged.
+pub fn (c C.Counter) hex() string { return 'counter' }
+
+pub struct C.PointerCounter {
+	value int
+}
+
+// make_pointer_counter returns a value with an explicit pointer receiver method.
+pub fn make_pointer_counter() C.PointerCounter { return C.PointerCounter{} }
+
+// hex demonstrates that an imported pointer receiver remains eligible.
+pub fn (c &C.PointerCounter) hex() string { return 'pointer counter' }
