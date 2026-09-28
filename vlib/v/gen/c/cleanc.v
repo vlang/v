@@ -379,6 +379,7 @@ mut:
 	global_files                   map[string]string      // qualified global name -> declaring file (for import-alias type resolution)
 	global_inits                   map[string]flat.NodeId // qualified global name -> initializer value node
 	global_init_order              []string               // qualified global names, in declaration order
+	in_global_array_pointer_init   bool
 	enum_backing_infos             map[string]EnumBackingInfo
 	iface_impls                    map[string][]string // interface name -> implementing concrete type names
 	interface_dispatch_required    map[string]bool     // source/lowered concrete method names required by emitted interface dispatch
@@ -4184,7 +4185,31 @@ fn (mut g FlatGen) write_type_declaration_block() {
 	g.fn_ptr_typedefs()
 }
 
+fn (mut g FlatGen) gen_vgc_global_array_roots() {
+	if 'vgc' !in g.compile_defines {
+		return
+	}
+	g.writeln('void v3_vgc_mark_global_arrays(void) {')
+	for name, typ in g.global_types {
+		if name.starts_with('C.') || name in g.c_extern_global_names {
+			continue
+		}
+		clean := default_init_unalias_type(typ)
+		mut contains_array := clean is types.ArrayFixed
+		if clean is types.Pointer {
+			contains_array = default_init_unalias_type(clean.base_type) is types.ArrayFixed
+		}
+		if !contains_array {
+			continue
+		}
+		cname := g.global_c_name(name)
+		g.writeln('vgc_scan_range((size_t)&${cname}, (size_t)&${cname} + sizeof(${cname}));')
+	}
+	g.writeln('}')
+}
+
 fn (mut g FlatGen) gen_vinit() {
+	g.gen_vgc_global_array_roots()
 	needs_closure_init := g.needs_closure_runtime_init()
 	needs_gc_init := g.needs_gc_runtime_init()
 	has_embed_joins := g.has_chunked_embed_blobs()
@@ -15802,6 +15827,21 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 		.prefix {
 			child_id := g.a.child(node, 0)
 			child := g.a.nodes[int(child_id)]
+			if node.op == .amp && g.in_global_array_pointer_init {
+				// Guard/branch lowering can hide an addressed temporary in a nested
+				// assignment, so give it owned storage wherever it occurs in the initializer.
+				child_type := default_init_unalias_type(g.usable_expr_type(child_id))
+				if child_type is types.ArrayFixed {
+					pointer_type := types.Type(types.Pointer{ base_type: child_type })
+					tmp := g.tmp_name()
+					init_stmt := g.global_fixed_array_pointer_init_stmt(tmp, id, child_type,
+						pointer_type, false)
+					if init_stmt.len > 0 {
+						g.write('({ ${g.tc.c_type(pointer_type)} ${tmp}; ${init_stmt} ${tmp}; })')
+						return
+					}
+				}
+			}
 			fn_value_type := cgen_unalias_type(g.fn_value_candidate_type(child_id, child))
 			if node.op == .amp && fn_value_type is types.FnType {
 				// A function value is already a C pointer, so `&` on one is a no-op
@@ -22774,12 +22814,15 @@ fn (mut g FlatGen) test_failure_helpers() {
 // (`(T*)memdup(&(T){...}, sizeof(T))`), so it is safe. Other initializers that
 // need dropped temporaries are skipped, leaving the global zero/NULL.
 fn (mut g FlatGen) emit_global_inits() {
+	old_array_pointer_init := g.in_global_array_pointer_init
 	old_module := g.tc.cur_module
 	old_file := g.tc.cur_file
 	defer {
 		g.tc.cur_file = old_file
+		g.in_global_array_pointer_init = old_array_pointer_init
 	}
 	for qname in g.global_init_order {
+		g.in_global_array_pointer_init = false
 		if qname in g.global_cinit_names {
 			continue
 		}
@@ -22858,6 +22901,7 @@ fn (mut g FlatGen) emit_global_inits() {
 			clean_type := default_init_unalias_type(typ)
 			if clean_type is types.Pointer {
 				if fixed := array_fixed_type(default_init_unalias_type(clean_type.base_type)) {
+					g.in_global_array_pointer_init = true
 					init_stmt := g.global_fixed_array_pointer_init_stmt(g.global_c_name(qname),
 						val_id, fixed, typ, false)
 					if init_stmt.len > 0 {

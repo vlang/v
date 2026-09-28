@@ -24,3 +24,8 @@ aligned fixed-array pointer does not change which allocator owns the memory.
 Boehm GC, VGC, and preallocation builds retain their builtin allocation and cleanup semantics for
 aligned array pointers as well as ordinary allocations. VGC traces managed objects referenced
 by the elements of aligned arrays.
+
+Conditional `if` and `match` initializers allocate storage for the selected literal branch.
+A branch that refers to an existing global array preserves that array's identity.
+With VGC, global fixed arrays and fixed-array pointer slots are scanned as roots, so their
+managed contents remain reachable without copies of the pointers on thread stacks.

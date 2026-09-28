@@ -118,6 +118,50 @@ __global global_deep_literal_aliased_rows = &[
 	[make_global_array_pointer_aliased_row(4), make_global_array_pointer_aliased_row(5)]!,
 	[make_global_array_pointer_aliased_row(6), make_global_array_pointer_aliased_row(7)]!,
 ]!
+__global global_array_pick = 1
+__global global_if_zero_array = if global_array_pick == 1 {
+	&[4]int{}
+} else {
+	&[4]int{init: 7}
+}
+__global global_if_filled_array = if global_array_pick == 0 {
+	&[4]int{}
+} else {
+	&[4]int{init: 9}
+}
+__global global_match_array = match global_array_pick {
+	0 { &[4]int{} }
+	1 { &GlobalArrayPointerRow{ init: 11 } }
+	else { &[4]int{init: 13} }
+}
+__global global_conditional_shared_array = if global_array_pick == 1 {
+	&global_shared_array
+} else {
+	&[2]int{init: 15}
+}
+__global global_if_aligned_array = if global_array_pick == 1 {
+	&[2]GlobalAlignedArrayPointerCell{init: GlobalAlignedArrayPointerCell{ value: 17 }}
+} else {
+	&[2]GlobalAlignedArrayPointerCell{}
+}
+
+fn global_array_guard_value(success bool) ?int {
+	if !success {
+		return none
+	}
+	return 21
+}
+
+__global global_guard_array = if value := global_array_guard_value(true) {
+	&[4]int{init: value + index}
+} else {
+	&[4]int{}
+}
+__global global_failed_guard_array = if value := global_array_guard_value(false) {
+	&[4]int{init: value}
+} else {
+	&[4]int{init: 25}
+}
 __global global_aligned_array = &[2]GlobalAlignedArrayPointerCell{}
 __global global_optional_aligned_array = &[2]?GlobalAlignedArrayPointerCell{}
 __global global_nested_aligned_array = &[2][2]GlobalAlignedArrayPointerCell{}
@@ -147,8 +191,16 @@ fn test_global_fixed_array_pointers_are_initialized() {
 	assert u64(voidptr(global_filled_aligned_array)) % 512 == 0
 	assert u64(voidptr(global_filled_aligned_alias_array)) % 512 == 0
 	assert global_row_calls == 20
+	assert u64(voidptr(global_if_aligned_array)) % 512 == 0
+	assert voidptr(global_conditional_shared_array) == voidptr(&global_shared_array)
 	// Indexing these pointer-backed arrays requires an unsafe block.
 	unsafe {
+		assert global_guard_array[3] == 24
+		assert global_failed_guard_array[3] == 25
+		assert global_if_zero_array[3] == 0
+		assert global_if_filled_array[3] == 9
+		assert global_match_array[3] == 11
+		assert global_if_aligned_array[1].value == 17
 		assert global_zero_array[0] == 0
 		assert global_zero_array[3] == 0
 		global_zero_array[3] = 42
