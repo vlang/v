@@ -6,6 +6,7 @@ import v.flat
 import v.gen.c.naming
 import v.pref
 import v.types
+import v.util
 
 @[inline]
 fn same_transform_text(a string, b string) bool {
@@ -283,8 +284,11 @@ mut:
 	promote_text_cache            &PromoteTextCache        = unsafe { nil }
 	call_variadic_cache           &BoolLookupCache         = unsafe { nil }
 	str_alias_cache               &LookupCache             = unsafe { nil }
+	file_import_cache             &util.KeyRecentCache     = unsafe { nil }
 	generic_alias_names           map[string]bool
 	type_alias_suffixes           map[string]string
+	static_method_names           map[string]bool
+	static_method_names_ready     bool
 	type_alias_short_index        &TypeAliasShortIndex = unsafe { nil }
 	local_decl_nodes_by_name      map[string][]int
 	fn_decl_offsets_by_file       map[int][]int
@@ -625,6 +629,15 @@ struct LookupCache {
 mut:
 	entries map[string]string
 	misses  map[string]bool
+	recent  &util.KeyRecentCache = unsafe { nil }
+}
+
+// recent_cache returns this cache's front cache, allocating it on first use.
+fn (mut c LookupCache) recent_cache() &util.KeyRecentCache {
+	if isnil(c.recent) {
+		c.recent = &util.KeyRecentCache{}
+	}
+	return c.recent
 }
 
 struct ContextLookupCache {
@@ -682,6 +695,15 @@ mut:
 	entries    map[string]i8 // 1 = true, -1 = false
 	last_name  string
 	last_value i8
+	recent     &util.KeyRecentCache = unsafe { nil }
+}
+
+// recent_cache returns this cache's front cache, allocating it on first use.
+fn (mut c BoolLookupCache) recent_cache() &util.KeyRecentCache {
+	if isnil(c.recent) {
+		c.recent = &util.KeyRecentCache{}
+	}
+	return c.recent
 }
 
 struct ContextBoolLookupCache {
@@ -1414,6 +1436,21 @@ fn transform_worker_scope_begin(enabled bool) voidptr {
 	return unsafe { nil }
 }
 
+// transform_batch_arena_keep_bytes bounds how much of a helper's batch arena stays
+// mapped between batches (see prealloc_scope_reenter).
+const transform_batch_arena_keep_bytes = isize($d('transform_batch_arena_keep_mb', 4)) * 1024 * 1024
+
+// transform_worker_scope_reenter makes a helper arena that was left current
+// again, rewound, for the next batch. False means the caller needs a new arena.
+fn transform_worker_scope_reenter(scope voidptr) bool {
+	$if prealloc {
+		if scope != unsafe { nil } {
+			return unsafe { prealloc_scope_reenter(scope, transform_batch_arena_keep_bytes) }
+		}
+	}
+	return false
+}
+
 fn transform_worker_scope_leave(scope voidptr) {
 	$if prealloc {
 		if scope != unsafe { nil } {
@@ -1774,6 +1811,7 @@ fn new_transformer_view(a &flat.FlatAst, tc &types.TypeChecker, used_fns map[str
 			entries: map[string]string{}
 			misses:  map[string]bool{}
 		}
+		file_import_cache:           &util.KeyRecentCache{}
 	}
 }
 
@@ -1922,6 +1960,7 @@ fn (mut t Transformer) prepare() {
 	}
 	t.build_generic_alias_name_index()
 	t.build_type_alias_suffix_index()
+	t.build_static_method_names()
 	t.build_struct_field_decl_metas_cache()
 	t.timing_profile('  [ttime]   prep suffix+decl   ${f64(psw.elapsed().microseconds()) / 1000.0:7.2f} ms')
 	psw.restart()
@@ -4062,6 +4101,7 @@ fn (t &Transformer) fork_worker_config(ast &flat.FlatAst, wtc &types.TypeChecker
 		entries: map[string]string{}
 		misses:  map[string]bool{}
 	}
+	w.file_import_cache = &util.KeyRecentCache{}
 	w.generic_fn_decls_cache = map[string]GenericFnDecl{}
 	w.generic_fn_decls_ready = false
 	w.generic_call_spec_cache = map[int]GenericCallSpec{}
@@ -4204,6 +4244,7 @@ fn (t &Transformer) fork_scan_worker(wtc &types.TypeChecker) &Transformer {
 		entries: map[string]string{}
 		misses:  map[string]bool{}
 	}
+	w.file_import_cache = &util.KeyRecentCache{}
 	w.generic_fn_decls_cache = map[string]GenericFnDecl{}
 	w.generic_fn_decls_ready = false
 	w.generic_call_spec_cache = map[int]GenericCallSpec{}
@@ -4292,6 +4333,8 @@ fn (t &Transformer) fork_program_view(ast &flat.FlatAst, wtc &types.TypeChecker,
 		runtime_type_indexes:                t.runtime_type_indexes
 		generic_alias_names:                 t.generic_alias_names
 		type_alias_suffixes:                 t.type_alias_suffixes
+		static_method_names:                 t.static_method_names
+		static_method_names_ready:           t.static_method_names_ready
 		type_alias_short_index:              t.type_alias_short_index
 		local_decl_nodes_by_name:            t.local_decl_nodes_by_name
 		fn_decl_offsets_by_file:             t.fn_decl_offsets_by_file
@@ -6230,8 +6273,10 @@ fn (mut t Transformer) transform_string_interp_part(child_id flat.NodeId) flat.N
 		typ = t.node_type(expr_id)
 	}
 	if ref_typ := t.string_interp_interface_smartcast_ref_type(expr_id) {
-		transformed = t.make_prefix(.amp, transformed)
-		t.set_node_typ(int(transformed), ref_typ)
+		if !t.node_type(transformed).starts_with('&') {
+			transformed = t.make_prefix(.amp, transformed)
+			t.set_node_typ(int(transformed), ref_typ)
+		}
 		typ = ref_typ
 	}
 	is_shared_ident := expr_node.kind == .ident
@@ -10729,6 +10774,21 @@ fn (mut t Transformer) transform_pointer_optional_unwrap_lvalue(id flat.NodeId) 
 	return t.make_selector(wrapper, 'value', value_type)
 }
 
+fn (t &Transformer) translated_pointer_alias_slot(id flat.NodeId) bool {
+	if isnil(t.tc) || int(id) < 0 || int(id) >= t.a.nodes.len {
+		return false
+	}
+	node := t.a.node(id)
+	file := t.a.source_files[node.pos.id] or { return false }
+	if !t.tc.translated_files[file.name] || node.kind != .ident
+		|| !t.mut_param_values[node.value] {
+		return false
+	}
+	raw := t.raw_var_type(node.value)
+	return raw.starts_with('&') && !raw[1..].starts_with('&')
+		&& t.comptime_normalize_type_alias_chain(raw[1..]).starts_with('&')
+}
+
 // transform_lvalue transforms transform lvalue data for transform.
 pub fn (mut t Transformer) transform_lvalue(id flat.NodeId) flat.NodeId {
 	if int(id) < 0 {
@@ -10843,7 +10903,8 @@ pub fn (mut t Transformer) transform_lvalue(id flat.NodeId) flat.NodeId {
 					t.transform_expr(child_id)
 				}
 				if child_node.kind == .ident && t.mut_param_values[child_node.value]
-					&& t.var_type(child_node.value).starts_with('&&') {
+					&& t.var_type(child_node.value).starts_with('&&')
+					&& !t.translated_pointer_alias_slot(child_id) {
 					child = t.make_prefix(.mul, child)
 					t.set_node_typ(int(child), t.var_type(child_node.value)[1..])
 				}
@@ -10941,11 +11002,10 @@ fn (mut t Transformer) transform_return_stmt(id flat.NodeId, node flat.Node) []f
 	if expanded := t.try_expand_forwarded_multi_return(source_return_id, node) {
 		return expanded
 	}
-	if node.children_count == 1 {
+	if node.children_count == 1 && t.is_optional_type_name(t.cur_fn_ret_type) {
 		child_id := t.a.child(&node, 0)
 		payload_type := t.optional_base_type(t.qualify_optional_type(t.cur_fn_ret_type))
-		if t.is_optional_type_name(t.cur_fn_ret_type)
-			&& t.return_expr_is_propagated_err(child_id, payload_type) {
+		if t.return_expr_is_propagated_err(child_id, payload_type) {
 			err_expr := t.transform_expr(child_id)
 			ret := t.make_none_return_stmt_with_err_expr(err_expr)
 			t.mark_transformed_return(ret, source_return_id)
@@ -11671,7 +11731,7 @@ fn (t &Transformer) const_ref_matches_key_in_context(id flat.NodeId, module_name
 	}
 	base := name.all_before_last('.')
 	field := short_name_view(name)
-	resolved_base := t.tc.file_imports[file_import_key(file, base)] or { base }
+	resolved_base := t.file_import_module(file, base) or { base }
 	if qualified_const_key_matches(key, resolved_base, field) {
 		return true
 	}
@@ -11711,7 +11771,7 @@ fn (t &Transformer) const_ref_may_match_key(id flat.NodeId, key string, key_shor
 	// the comparison above. Avoid hashing nearly every identifier in the AST here.
 	if node.kind == .ident && !isnil(t.tc) {
 		base := node.value.all_before_last('.')
-		if resolved_base := t.tc.file_imports[file_import_key(file, base)] {
+		if resolved_base := t.file_import_module(file, base) {
 			return qualified_const_key_matches(key, resolved_base, short_name_view(node.value))
 		}
 	}
@@ -14049,6 +14109,49 @@ fn (mut t Transformer) coerce_transformed_expr_to_type(expr flat.NodeId, source_
 		}
 		if expr_type in ['voidptr', '&void', 'byteptr', 'charptr'] {
 			return t.make_cast(target, expr, target)
+		}
+		if int(source_id) >= 0 && t.a.nodes[int(source_id)].kind == .assoc {
+			actual_depth, actual_base := pointer_type_depth_and_base(expr_type)
+			target_depth, target_base := pointer_type_depth_and_base(target)
+			if actual_depth == 0 && target_depth > 1 && t.is_sum_type_name(target_base)
+				&& t.normalize_type_alias(actual_base) != t.normalize_type_alias(target_base) {
+				path := t.sum_variant_path(target_base, actual_base)
+				if path.len > 0 {
+					mut current := expr
+					for i := path.len - 1; i >= 0; i-- {
+						sum_name := if i == 0 {
+							target_base
+						} else {
+							t.resolve_sum_name(t.trim_pointer_type(path[i - 1]))
+						}
+						current = t.make_sum_literal(sum_name, path[i], current)
+					}
+					mut current_type := target_base
+					for _ in 0 .. target_depth {
+						tmp_name := t.new_temp('sum_ref')
+						t.pending_stmts << t.make_decl_assign_typed(tmp_name, current, current_type)
+						addr := t.make_prefix(.amp, t.make_ident(tmp_name))
+						dup := t.make_memdup_call_for_type(addr, current_type)
+						current_type = '&${current_type}'
+						current = t.make_cast(current_type, dup, current_type)
+					}
+					return current
+				}
+			}
+			if target_depth > actual_depth
+				&& t.normalize_type_alias(actual_base) == t.normalize_type_alias(target_base) {
+				mut current := expr
+				mut current_type := expr_type
+				for _ in actual_depth .. target_depth {
+					tmp_name := t.new_temp('assoc_ref')
+					t.pending_stmts << t.make_decl_assign_typed(tmp_name, current, current_type)
+					addr := t.make_prefix(.amp, t.make_ident(tmp_name))
+					current_type = '&${current_type}'
+					dup := t.make_memdup_call_for_type(addr, current_type[1..])
+					current = t.make_cast(current_type, dup, current_type)
+				}
+				return current
+			}
 		}
 		target_value_type := t.normalize_type_alias(target[1..])
 		expr_value_type := if expr_type.starts_with('&') {
@@ -20041,6 +20144,10 @@ fn (mut t Transformer) transform_selector_expr(id flat.NodeId, node flat.Node) f
 		} else {
 			t.transformed_selector_type(node)
 		}
+		if selector := t.struct_field_selector_for_type(new_base, clean_variant_type, node.value,
+			sel_typ, variant_type.starts_with('&')) {
+			return selector
+		}
 		return t.make_selector_op(new_base, node.value, sel_typ, if variant_type.starts_with('&') {
 			.arrow
 		} else {
@@ -20094,14 +20201,18 @@ fn (mut t Transformer) transform_selector_expr(id flat.NodeId, node flat.Node) f
 			if shared_typ := t.sum_shared_field_type_name(variant_type, node.value) {
 				return t.lower_sum_shared_field_selector(variant_sel, variant_type, node.value, shared_typ)
 			}
-			sel_start := t.a.children.len
-			t.a.children << variant_sel
 			clean_variant_type := t.trim_pointer_type(variant_type)
 			sel_typ := if ftyp := t.lookup_struct_field_type(clean_variant_type, node.value) {
 				ftyp
 			} else {
 				t.transformed_selector_type(node)
 			}
+			if selector := t.struct_field_selector_for_type(variant_sel, clean_variant_type,
+				node.value, sel_typ, variant_type.starts_with('&')) {
+				return selector
+			}
+			sel_start := t.a.children.len
+			t.a.children << variant_sel
 			return t.a.add_node(flat.Node{
 				kind:           .selector
 				op:             if node.op == .arrow || variant_type.starts_with('&') {
@@ -20651,6 +20762,17 @@ fn (t &Transformer) pointer_storage_amp_decl_type(rhs_id flat.NodeId) ?string {
 fn (mut t Transformer) transform_prefix_expr(id flat.NodeId, node flat.Node) flat.NodeId {
 	if node.children_count == 0 {
 		return id
+	}
+	if node.op == .amp && !isnil(t.tc) {
+		child_id := t.a.child(&node, 0)
+		child := t.a.node(child_id)
+		if child.kind == .call && child.children_count == 2 {
+			if target := t.tc.resolved_call_name(child_id) {
+				if target.starts_with('&') {
+					return t.make_cast(target, t.transform_expr(t.a.child(child, 1)), target)
+				}
+			}
+		}
 	}
 	// Smartcast payload accesses are fully lowered when they are built. Rewalking
 	// their dereference would smartcast the original sum receiver a second time
@@ -22726,7 +22848,7 @@ fn (mut t Transformer) transform_ident_expr(id flat.NodeId, node flat.Node) flat
 				}
 			}
 			is_file_import_selector_base := t.in_selector_base
-				&& file_import_key(t.cur_file, node.value) in t.tc.file_imports
+				&& t.has_file_import(t.cur_file, node.value)
 			if typ.len == 0 && !is_global && !is_file_import_selector_base
 				&& (!t.in_call_callee || !t.ident_is_direct_function_callee(node.value)) {
 				if key := t.const_type_key_in_context(node.value, t.cur_module, t.cur_file) {
@@ -22820,7 +22942,6 @@ fn (mut t Transformer) apply_smartcast_contexts(base flat.NodeId, typ string, co
 			continue
 		}
 		if t.is_interface_type_name(sc.sum_type_name) {
-			pointer_target := sc.variant_name.starts_with('&')
 			variant_name := t.trim_all_pointer_type(sc.variant_name)
 			if target_iface := t.resolve_interface_pattern_interface(variant_name) {
 				if converted := t.convert_interface_expr_to_interface(current, current_type, target_iface) {
@@ -22830,6 +22951,8 @@ fn (mut t Transformer) apply_smartcast_contexts(base flat.NodeId, typ string, co
 				}
 			}
 			qv := t.interface_variant_type(variant_name)
+			pointer_target := sc.variant_name.starts_with('&')
+				|| types.unalias_type(t.tc.parse_type(qv)) is types.Struct
 			for current_type.starts_with('&&') {
 				current = t.make_prefix(.mul, current)
 				current_type = current_type[1..]
@@ -24915,7 +25038,7 @@ fn (t &Transformer) const_type_key_in_context(name string, module_name string, f
 	}
 	base := name.all_before_last('.')
 	field := short_name_view(name)
-	resolved_base := if mod := t.tc.file_imports[file_import_key(file, base)] {
+	resolved_base := if mod := t.file_import_module(file, base) {
 		mod
 	} else {
 		base
@@ -25985,7 +26108,7 @@ fn (t &Transformer) resolve_import_alias_pattern(pattern string) ?string {
 		return none
 	}
 	alias := pattern[..dot]
-	resolved := t.tc.file_imports[file_import_key(t.cur_file, alias)] or { return none }
+	resolved := t.file_import_module(t.cur_file, alias) or { return none }
 	return '${resolved}.${pattern[dot + 1..]}'
 }
 

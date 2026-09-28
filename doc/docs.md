@@ -3028,6 +3028,8 @@ __global:
 Private fields are available only inside the same [module](#modules), any attempt
 to directly access them from another module will cause an error during compilation.
 Public immutable fields are readonly everywhere.
+A public function can return a value of a private struct type. The caller can read its public
+fields without naming the private type; its private fields remain inaccessible.
 
 ### Anonymous structs
 
@@ -3382,6 +3384,10 @@ V supports functions that receive an arbitrary, variable amounts of arguments, d
 Below, `a ...int` refers to an arbitrary amount of parameters that will be collected
 into an array named `a`.
 
+Methods on generic structs can also accept these arguments. The receiver type determines
+the specialization, and the arguments are collected into the parameter array.
+The element type keeps its declaring module when the method is called from another module.
+
 ```v
 fn sum(a ...int) int {
 	mut total := 0
@@ -3463,6 +3469,9 @@ println(f(|x| x + 4)) // prints 14
 ```
 
 ### Closures
+
+Callbacks in specialized generic functions retain the functions they call, including imported
+functions referenced only from the callback body.
 
 V supports closures too.
 This means that anonymous functions can inherit variables from the scope they were created in.
@@ -3650,8 +3659,9 @@ To dereference a reference, use the `*` operator, just like in C.
 
 ## Constants
 
-A fixed array constant can be initialized by a function call; the call runs during initialization.
+A constant can be qualified with its module name inside that module, including in module tests.
 
+A fixed array constant can be initialized by a function call; the call runs during initialization.
 
 ```v
 const pi = 3.14
@@ -4269,6 +4279,12 @@ You can see the complete
 
 ### Interfaces
 
+A mutable interface alias can use `mut value as OtherInterface` when its source is mutable.
+A narrowed interface value can be cast for an immediate scalar getter that only reads fields.
+Type tests joined by `||` do not narrow the value in the true branch; they do not require `mut`
+unless a nested condition itself narrows the value.
+A negative type guard whose body exits also narrows the value after the guard and requires `mut`.
+
 Casting a pointer to an interface can be used directly as the receiver of a method returning
 multiple values. Interface data fields retain their individual types during the conversion.
 
@@ -4477,6 +4493,9 @@ They are just a convenient way to write `i.some_function()` instead of
 `some_function(i)`, similar to how struct methods can be looked at, as
 a convenience for writing `s.xyz()` instead of `xyz(s)`.
 
+An immediate read-only interface method call on a smart-casted value can return
+a scalar, including `char`, `rune`, `isize`, `usize`, or an enum.
+
 > [!NOTE]
 > This feature is NOT a "default implementation" like in C#.
 
@@ -4544,6 +4563,13 @@ pub interface ReaderWriter {
 	Writer
 }
 ```
+
+An interface value smart cast to a struct refers to the concrete object stored in the interface.
+It can be dereferenced to copy the struct or returned through a struct reference.
+This applies to single-type `match` branches as well as `if` and `assert` smart casts.
+For a value pattern such as `item is T`, a function returning that struct by value can copy the
+smart-casted value directly, including through `?T` and `!T` returns and `if`/`match` expressions.
+An explicit pointer pattern such as `item is &T` requires `*item` to copy the struct by value.
 
 ### Sum types
 
@@ -4971,6 +4997,9 @@ fn main() {
 ```
 
 ### Generics
+
+Generic types brought into scope by a selective import retain their declaring module when
+passed to generic functions and methods in other modules.
 
 ```v wip
 
@@ -9706,6 +9735,8 @@ cross-platform support. "V scripts" run on Unix-like systems, as well as on Wind
 To use V's script mode, save your source file with the `.vsh` file extension.
 It will make all functions in the `os` module global (so that you can use `mkdir()` instead
 of `os.mkdir()`, for example).
+Array methods work on unwrapped results of these calls, for example
+`ls(path)!.filter(it.ends_with('.v'))`.
 
 V also knows to compile & run `.vsh` files immediately, so you do not need a separate
 step to compile them. V will also recompile an executable, produced by a `.vsh` file,

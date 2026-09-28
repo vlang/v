@@ -1934,7 +1934,7 @@ fn (g &FlatGen) import_alias_module_for_file(alias string, file string) ?string 
 		return none
 	}
 	if file.len > 0 {
-		if mod := g.tc.file_imports['${file}\n${alias}'] {
+		if mod := g.cached_file_import(file, alias) {
 			return mod
 		}
 	}
@@ -1944,6 +1944,16 @@ fn (g &FlatGen) import_alias_module_for_file(alias string, file string) ?string 
 fn (g &FlatGen) selector_base_module(name string) ?string {
 	if name.len == 0 {
 		return none
+	}
+	if g.tc != unsafe { nil } {
+		current := if g.tc.cur_module.len > 0 { g.tc.cur_module } else { 'main' }
+		short := current.all_after_last('.')
+		if name == current || name == short || name == g.const_storage_name(current, short) {
+			if g.current_module_const_ref_name(short) != none {
+				return none
+			}
+			return current
+		}
 	}
 	if g.tc != unsafe { nil } && g.tc.cur_file.len > 0 {
 		key := g.tc.cur_file + '\n' + name
@@ -1960,11 +1970,59 @@ fn (g &FlatGen) selector_base_module(name string) ?string {
 	return none
 }
 
-fn (g &FlatGen) selector_base_is_module(name string) bool {
-	if _ := g.selector_base_module(name) {
+fn (g &FlatGen) selector_base_is_module(name string, member string) bool {
+	if _ := g.selector_base_module_for_member(name, member) {
 		return true
 	}
 	return false
+}
+
+fn (g &FlatGen) selector_base_module_for_member(name string, member string) ?string {
+	if g.tc != unsafe { nil } {
+		current := if g.tc.cur_module.len > 0 { g.tc.cur_module } else { 'main' }
+		short := current.all_after_last('.')
+		if name == current || name == short || name == g.const_storage_name(current, short)
+			|| name == '${current}.${short}' {
+			if g.current_module_const_ref_name(short) != none {
+				storage := g.const_storage_name(current, member)
+				if storage in g.const_vals || storage in g.tc.const_types {
+					return current
+				}
+			}
+		}
+	}
+	return g.selector_base_module(name)
+}
+
+fn (g &FlatGen) current_module_selector_const_name(base string, member string) ?string {
+	current := if g.tc.cur_module.len > 0 { g.tc.cur_module } else { 'main' }
+	short := current.all_after_last('.')
+	if base != current && base != short && base != '${current}.${short}' {
+		return none
+	}
+	if g.selector_base_is_local_value(base) || g.current_module_global_type_for_ident(base) != none {
+		return none
+	}
+	mod := g.selector_base_module_for_member(base, member) or { return none }
+	if mod != current {
+		return none
+	}
+	storage := g.const_storage_name(mod, member)
+	if storage !in g.const_vals {
+		return none
+	}
+	return storage
+}
+
+fn (g &FlatGen) current_module_global_type_for_ident(name string) ?types.Type {
+	current := if g.tc.cur_module.len > 0 { g.tc.cur_module } else { 'main' }
+	qualified := qualify_name_in_module(current, name)
+	// main and builtin use bare global keys; an imported global can overwrite
+	// their bare owner entry without replacing the direct global type.
+	if current !in ['main', 'builtin'] && (g.global_modules[qualified] or { '' }) != current {
+		return none
+	}
+	return g.global_types[qualified] or { none }
 }
 
 fn (g &FlatGen) selector_base_is_value(name string) bool {
@@ -2913,7 +2971,7 @@ fn (g &FlatGen) static_method_fn_name(type_ident string, method string) ?string 
 	qtype := g.tc.qualify_name(type_ident)
 	mut type_candidates := []string{cap: 4}
 	if !type_ident.contains('.') {
-		for candidate in g.tc.file_selective_imports['${g.tc.cur_file}\n${type_ident}'] or {
+		for candidate in g.file_selective_import_candidates(g.tc.cur_file, type_ident) or {
 			[]string{}
 		} {
 			if candidate !in type_candidates {
@@ -6715,13 +6773,23 @@ fn (mut g FlatGen) gen_call(id flat.NodeId, node flat.Node) {
 		g.expected_expr_type = old_expected
 	}
 	mut fn_node := g.a.child_node(&node, 0)
-	target_name := g.call_target_name(g.a.child(&node, 0))
+	mut target_name := g.call_target_name(g.a.child(&node, 0))
+	mut resolved_target_name := g.tc.resolved_call_name(id) or { '' }
+	if fn_node.kind == .ident && node.pos.is_valid() && g.tc.cur_module == 'main'
+		&& g.tc.cur_file.ends_with('.vsh') {
+		if g.file_declares_fn(id, fn_node.value) {
+			target_name = fn_node.value
+			resolved_target_name = fn_node.value
+		} else if selected := g.selective_import_call_key_in_file(fn_node.value, g.tc.cur_file) {
+			target_name = selected
+			resolved_target_name = selected
+		}
+	}
 	fn_name := if fn_node.kind == .selector && fn_node.value in ['error', 'error_with_code'] {
 		target_name
 	} else {
 		fn_node.value
 	}
-	resolved_target_name := g.tc.resolved_call_name(id) or { '' }
 	callee_is_fn_value := g.fn_value_call_param_types(g.a.child(&node, 0)) != none
 	if fn_node.kind == .ident && !callee_is_fn_value
 		&& (fn_name == 'panic' || target_name == 'builtin.panic'
@@ -7716,11 +7784,13 @@ fn (mut g FlatGen) gen_call(id flat.NodeId, node flat.Node) {
 				fn_ident := g.a.nodes[int(fn_id)]
 				if fn_ident.kind == .ident {
 					qname := g.tc.qualify_name(fn_ident.value)
-					if fn_ident.value in g.tc.type_aliases || qname in g.tc.type_aliases
+					is_local_fn_value := g.current_param_type(fn_ident.value) != none
+						|| g.cur_scope_has_local_name(fn_ident.value)
+					if !is_local_fn_value && (fn_ident.value in g.tc.type_aliases || qname in g.tc.type_aliases
 						|| fn_ident.value in g.tc.structs || qname in g.tc.structs
 						|| fn_ident.value in g.tc.enum_names || qname in g.tc.enum_names
 						|| fn_ident.value in g.tc.sum_types || qname in g.tc.sum_types
-						|| fn_ident.value in g.tc.interface_names || qname in g.tc.interface_names {
+						|| fn_ident.value in g.tc.interface_names || qname in g.tc.interface_names) {
 						type_name := if fn_ident.value in g.tc.type_aliases
 							|| fn_ident.value in g.tc.structs || fn_ident.value in g.tc.enum_names
 							|| fn_ident.value in g.tc.sum_types
@@ -7754,8 +7824,6 @@ fn (mut g FlatGen) gen_call(id flat.NodeId, node flat.Node) {
 					looked_up := g.tc.cur_scope.lookup(fn_ident.value) or {
 						types.Type(types.void_)
 					}
-					is_local_fn_value := g.current_param_type(fn_ident.value) != none
-						|| g.cur_scope_has_local_name(fn_ident.value)
 					if !is_local_fn_value && fn_type_from(g.global_type_for_ident(fn_ident.value) or {
 						types.Type(types.void_)
 					}) != none {
@@ -13078,8 +13146,18 @@ fn (mut g FlatGen) gen_fn_field_call(node flat.Node, fn_node &flat.Node, base_ty
 	return true
 }
 
+fn (g &FlatGen) file_declares_fn(id flat.NodeId, name string) bool {
+	declared_file := g.tc.fn_type_files[name] or { return false }
+	source_file := g.a.source_files[g.a.node(id).pos.id] or { return false }
+	return declared_file == source_file.name
+}
+
 // call_key updates call key state for FlatGen.
 fn (g &FlatGen) call_key(id flat.NodeId, name string) string {
+	if !name.contains('.') && g.tc.cur_file.ends_with('.vsh')
+		&& g.file_declares_fn(id, name) {
+		return name
+	}
 	if name.contains('.') {
 		normalized := g.normalize_call_key(name)
 		if normalized in g.tc.fn_param_types || normalized in g.tc.fn_ret_types {
@@ -13155,9 +13233,6 @@ fn (g &FlatGen) normalize_call_key_uncached(name string) string {
 	if name in g.tc.fn_param_types || name in g.tc.fn_ret_types {
 		return name
 	}
-	if imported := g.selective_import_call_key(name) {
-		return imported
-	}
 	qname := g.tc.qualify_fn_name(name)
 	if qname in g.tc.fn_param_types || qname in g.tc.fn_ret_types {
 		return qname
@@ -13171,38 +13246,12 @@ fn (g &FlatGen) normalize_call_key_uncached(name string) string {
 	return qname
 }
 
-fn (g &FlatGen) selective_import_call_key(name string) ?string {
-	if name.contains('.') {
-		return none
-	}
-	if imported := g.selective_import_call_key_in_file(name, g.tc.cur_file) {
-		return imported
-	}
-	mut resolved := []string{}
-	suffix := '\n${name}'
-	for key, candidates in g.tc.file_selective_imports {
-		if !key.ends_with(suffix) {
-			continue
-		}
-		for candidate in candidates {
-			if (candidate in g.tc.fn_param_types || candidate in g.tc.fn_ret_types)
-				&& candidate !in resolved {
-				resolved << candidate
-			}
-		}
-	}
-	if resolved.len == 1 {
-		return resolved[0]
-	}
-	return none
-}
-
 fn (g &FlatGen) selective_import_call_key_in_file(name string, file string) ?string {
 	if name.contains('.') || file.len == 0 {
 		return none
 	}
 	mut resolved := ''
-	for candidate in g.tc.file_selective_imports['${file}\n${name}'] or { return none } {
+	for candidate in g.file_selective_import_candidates(file, name) or { return none } {
 		if candidate !in g.tc.fn_param_types && candidate !in g.tc.fn_ret_types {
 			continue
 		}
@@ -13371,7 +13420,7 @@ fn (g &FlatGen) import_resolved_fn_decl_variadic(name string) ?bool {
 		if g.tc.cur_file.len == 0 {
 			return none
 		}
-		g.tc.file_imports['${g.tc.cur_file}\n${alias}'] or { return none }
+		g.cached_file_import(g.tc.cur_file, alias) or { return none }
 	} else {
 		g.import_alias_module(alias) or { return none }
 	}

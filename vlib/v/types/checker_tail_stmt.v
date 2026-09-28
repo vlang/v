@@ -1619,7 +1619,12 @@ fn (mut tc TypeChecker) check_match_stmt(id flat.NodeId, node flat.Node) {
 				} else {
 					pattern
 				}
-				tc.smartcasts[subject_key] = tc.parse_type(smartcast_type)
+				variant_type := tc.parse_type(smartcast_type)
+				tc.smartcasts[subject_key] = if subject_type is Interface {
+					interface_smartcast_variant_type(variant_type)
+				} else {
+					variant_type
+				}
 			}
 		} else if subject_key.len > 0 && valid_string_data(subject_key) && n_conds > 1
 			&& subject_type is SumType {
@@ -3130,23 +3135,37 @@ fn (mut tc TypeChecker) check_is_expr(id flat.NodeId, node flat.Node) {
 
 fn (tc &TypeChecker) is_expr_used_for_branch_smartcast(id flat.NodeId) bool {
 	mut current := id
+	mut positive := true
 	for _ in 0 .. 128 {
 		parent_id := tc.direct_parent_id(current)
-		if !tc.valid_node_id(parent_id) {
-			return false
-		}
+		if !tc.valid_node_id(parent_id) { return false }
 		parent := tc.a.node(parent_id)
-		if parent.kind == .paren
-			|| (parent.kind == .prefix && parent.op == .not)
-			|| (parent.kind == .infix && parent.op in [.logical_and, .logical_or]) {
+		if parent.kind == .paren {
+			current = parent_id
+			continue
+		}
+		if parent.kind == .prefix && parent.op == .not {
+			positive = !positive
+			current = parent_id
+			continue
+		}
+		if parent.kind == .infix && parent.op in [.logical_and, .logical_or] {
+			// Only a true AND operand or a false OR operand can narrow the value.
+			if (parent.op == .logical_and) != positive { return false }
+			if parent.children_count > 0 && tc.a.child(parent, 0) == current {
+				return true
+			}
 			current = parent_id
 			continue
 		}
 		if parent.kind == .if_expr {
-			return parent.children_count > 0 && tc.a.child(parent, 0) == current
+			if parent.children_count == 0 || tc.a.child(parent, 0) != current { return false }
+			if positive { return true }
+			return (parent.children_count > 2 && tc.a.child_node(parent, 2).kind != .empty)
+				|| (parent.children_count > 1 && tc.stmt_definitely_returns(tc.a.child(parent, 1)))
 		}
 		if parent.kind == .for_stmt {
-			return parent.children_count > 1 && tc.a.child(parent, 1) == current
+			return positive && parent.children_count > 1 && tc.a.child(parent, 1) == current
 		}
 		return false
 	}
@@ -3481,7 +3500,12 @@ fn (mut tc TypeChecker) apply_match_branch_context_smartcasts(subject_key string
 	} else {
 		return
 	}
-	tc.smartcasts[subject_key] = tc.parse_type(smartcast_type)
+	variant_type := tc.parse_type(smartcast_type)
+	tc.smartcasts[subject_key] = if subject_type is Interface {
+		interface_smartcast_variant_type(variant_type)
+	} else {
+		variant_type
+	}
 }
 
 // extract_smartcasts supports extract smartcasts handling for TypeChecker.
@@ -3896,6 +3920,17 @@ fn (mut tc TypeChecker) check_struct_init(id flat.NodeId, node flat.Node) {
 		}))
 	}
 	if unalias_type(init_type) is Enum {
+		if tc.node_is_in_translated_file(id) && node.children_count == 0 {
+			if _ := tc.private_declaration(init_type.name()) {
+				tc.record_error_at(.unknown_type, 'type `${init_type.name()}` is private', id,
+					node.pos)
+				return
+			}
+			if !is_optional_init {
+				tc.remember_expr_type(id, init_type)
+			}
+			return
+		}
 		tc.record_error_at(.assignment_mismatch, 'cannot initialize enums', id, node.pos)
 		return
 	}
@@ -4042,7 +4077,7 @@ fn (mut tc TypeChecker) check_struct_init(id flat.NodeId, node flat.Node) {
 		// Match V1's generic recheck behavior: a concrete generic struct literal can
 		// acquire pointer fields only after substituting its type arguments, so those
 		// fields retain their zero/default initialization unless explicitly supplied.
-		if !init_type_text.contains('[') {
+		if !init_type_text.contains('[') && !tc.node_is_in_translated_file(id) {
 			for diagnostic_index, missing in tc.missing_reference_struct_fields(init_name, supplied_fields, []string{}) {
 				if seen_missing_references[missing.path] {
 					continue
@@ -4328,7 +4363,8 @@ fn (mut tc TypeChecker) check_struct_init(id flat.NodeId, node flat.Node) {
 		}
 		return
 	}
-	if clean_init_type is SumType && node.children_count == 0 {
+	if clean_init_type is SumType && node.children_count == 0
+		&& !tc.node_is_in_translated_file(id) {
 		base := tc.sum_base_name(clean_init_type.name)
 		variants := tc.sum_types[base] or { []string{} }
 		if variants.len > 0 {
@@ -5736,7 +5772,7 @@ pub fn (tc &TypeChecker) expr_is_method_value(id flat.NodeId) bool {
 	if node.kind != .selector || node.children_count == 0 {
 		return false
 	}
-	receiver := unwrap_pointer(tc.resolve_type(tc.a.child(&node, 0)))
+	receiver := unwrap_all_pointers(tc.resolve_type(tc.a.child(&node, 0)))
 	clean := unalias_type(receiver)
 	if receiver is Alias {
 		underlying := unalias_type(receiver)
@@ -6298,7 +6334,7 @@ fn (mut tc TypeChecker) check_selector(id flat.NodeId, node flat.Node) {
 		&& !tc.translated_files[tc.cur_file] && !tc.selector_is_assignment_lhs(id) {
 		tc.record_warning_at(.unknown_field, 'reading a union field (or its address) requires `unsafe`', id, tc.selector_field_diagnostic_pos(id, node.value))
 	}
-	clean_recv := unwrap_pointer(base_type)
+	clean_recv := unwrap_all_pointers(base_type)
 	selector_is_method_value := tc.expr_is_method_value(id)
 		&& !tc.ident_is_call_callee_or_generic_base(id)
 	// Selectors see through every pointer layer (`pp.field` with `pp` of type `&&Box`),
@@ -6341,7 +6377,8 @@ fn (mut tc TypeChecker) check_selector(id flat.NodeId, node flat.Node) {
 						tc.record_error_at(.unknown_field, 'field `${tc.source_text_for_node(base_id)}.${node.value}` is not public', id,
 							tc.node_value_diagnostic_pos(id))
 					}
-				} else {
+				} else if visibility_recv.name.starts_with('C.') || visibility_recv.name.starts_with('JS.')
+					|| tc.struct_field_is_private_outside_module(visibility_recv.name, node.value) {
 					display_name := tc.diagnostic_type_name(Type(visibility_recv))
 					decl_module := tc.diagnostic_module_display_name(visibility.module_name)
 					inside_module := if tc.cur_module.len > 0 { tc.cur_module } else { 'main' }
@@ -6351,6 +6388,28 @@ fn (mut tc TypeChecker) check_selector(id flat.NodeId, node flat.Node) {
 			} else if !tc.selector_is_call_callee(id)
 				&& tc.struct_field_is_private_outside_module(visibility_recv.name, node.value) {
 				tc.record_error_at(.unknown_field, 'field `${tc.diagnostic_type_name(Type(visibility_recv))}.${node.value}` is not public', id,
+					tc.node_value_diagnostic_pos(id))
+			}
+		}
+	}
+	if selector_is_method_value && clean_recv is Struct
+		&& tc.struct_field_type(clean_recv.name, node.value) == none {
+		mut declaration_key := '${clean_recv.name}.${node.value}'
+		if info := tc.resolve_generic_struct_method(clean_recv.name, node.value) {
+			declaration_key = info.name
+		}
+		if tc.private_declaration(declaration_key) != none {
+			method_name := '${tc.diagnostic_type_name(Type(clean_recv))}.${node.value}'
+			tc.record_error_at(.unknown_fn, 'method `${method_name}` is private', id,
+				tc.node_value_diagnostic_pos(id))
+		}
+	}
+	if selector_is_method_value && clean_recv is Alias
+		&& tc.struct_field_type(clean_recv.name, node.value) == none {
+		if declaration_key := tc.concrete_method_signature_key(clean_recv.name, node.value) {
+			if tc.private_declaration(declaration_key) != none {
+				method_name := '${tc.diagnostic_type_name(Type(clean_recv))}.${node.value}'
+				tc.record_error_at(.unknown_fn, 'method `${method_name}` is private', id,
 					tc.node_value_diagnostic_pos(id))
 			}
 		}
@@ -7892,7 +7951,7 @@ fn (mut tc TypeChecker) check_ident(id flat.NodeId, node flat.Node) {
 		mut explicit_mut_expr_id := id
 		mut selector_parent_id := parent_id
 		for tc.valid_node_id(selector_parent_id)
-			&& tc.a.node(selector_parent_id).kind in [.selector, .index, .paren] {
+			&& tc.a.node(selector_parent_id).kind in [.selector, .index, .paren, .as_expr] {
 			explicit_mut_expr_id = selector_parent_id
 			selector_parent_id = tc.direct_parent_id(selector_parent_id)
 		}
@@ -14034,10 +14093,17 @@ fn (tc &TypeChecker) smartcast_target_type_for_is_expr(expr_id flat.NodeId, patt
 					base_type: variant_type
 				})
 			}
-			return variant_type
+			return interface_smartcast_variant_type(variant_type)
 		}
 	}
 	return tc.parse_type(pattern)
+}
+
+fn interface_smartcast_variant_type(variant_type Type) Type {
+	if unalias_type(variant_type) is Struct {
+		return Type(Pointer{ base_type: variant_type })
+	}
+	return variant_type
 }
 
 fn (mut tc TypeChecker) invalidate_smartcasts_for_write_key(key string) {
@@ -16515,6 +16581,9 @@ fn (tc &TypeChecker) resolve_type_uncached(id flat.NodeId) Type {
 			return unknown_type('unknown identifier `${node.value}`')
 		}
 		.call {
+			if type_name := tc.translated_named_cast_call_name(id, node) {
+				return tc.parse_type(type_name)
+			}
 			fn_node := tc.a.child_node(node_ref, 0)
 			if _ := tc.builtin_isreftype_call_arg(node) {
 				return Type(bool_)
@@ -16935,6 +17004,9 @@ fn (tc &TypeChecker) resolve_type_uncached(id flat.NodeId) Type {
 		}
 		.prefix {
 			if node.op == .amp && node.children_count > 0 {
+				if cast := tc.translated_pointer_cast_node(id, node) {
+					return tc.parse_type(cast.value)
+				}
 				child_id := tc.a.child(&node, 0)
 				if inner := tc.smartcast_type(child_id) {
 					return Type(Pointer{

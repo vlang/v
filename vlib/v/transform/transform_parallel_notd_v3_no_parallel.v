@@ -2327,6 +2327,16 @@ fn (mut t Transformer) transform_scoped_helper_batches(items []FnWorkItem, max_b
 	} else {
 		i64(1)
 	}
+	// Batches run one at a time on this thread, and neither the batch absorb
+	// below nor this helper writes the prepared-signature cache in between.
+	// Share this helper's copy with every batch copy-on-write (see
+	// ensure_private_call_param_types_decl_cache): once it has been detached, a
+	// batch fork would otherwise clone the whole map.
+	t.call_param_types_decl_shared = true
+	// Batches reuse one scratch arena: each batch's results are published into
+	// longer-lived storage before the next batch starts, so the arena is rewound
+	// instead of being freed and faulted in again for every batch.
+	mut scratch_scope := unsafe { nil }
 	mut start := 0
 	mut batch_idx := 0
 	for start < items.len {
@@ -2341,7 +2351,10 @@ fn (mut t Transformer) transform_scoped_helper_batches(items []FnWorkItem, max_b
 		spec_nodes_len := t.a.specialized_fn_nodes.len
 		spec_modules_len := t.a.specialized_fn_modules.len
 		spec_files_len := t.a.specialized_fn_files.len
-		scratch_scope := transform_worker_scope_begin(true)
+		if scratch_scope == unsafe { nil } || !transform_worker_scope_reenter(scratch_scope) {
+			transform_worker_scope_free(scratch_scope)
+			scratch_scope = transform_worker_scope_begin(true)
+		}
 		batch_tc := t.tc.fork_for_parallel_transform(t.a)
 		mut batch := t.fork_scoped_batch_worker(t.a, batch_tc)
 		batch.used_fns_log_active = true
@@ -2371,10 +2384,10 @@ fn (mut t Transformer) transform_scoped_helper_batches(items []FnWorkItem, max_b
 		// absorb_scoped_batch publishes every appended node and every base-node
 		// mutation recorded by the batch. Avoid rescanning the continuously growing
 		// AST after each small batch; that makes scoped transform quadratic.
-		transform_worker_scope_free(scratch_scope)
 		start = end
 		batch_idx++
 	}
+	transform_worker_scope_free(scratch_scope)
 	// AST payloads outlive the helper. Merge bookkeeping is released after join.
 	transform_worker_scope_leave(t.merge_scratch_scope)
 	t.worker_scope = unsafe { nil }

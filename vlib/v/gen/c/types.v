@@ -788,7 +788,7 @@ fn (g &FlatGen) canonical_import_alias_type_text_in_file_uncached(typ string, fi
 	}
 	if clean.contains('.') {
 		alias := clean.all_before('.')
-		if module_name := g.tc.file_imports['${file}\n${alias}'] {
+		if module_name := g.cached_file_import(file, alias) {
 			return module_name + clean[alias.len..]
 		}
 	}
@@ -832,7 +832,7 @@ fn (g &FlatGen) current_file_import_alias_module(alias string) ?string {
 	if g.tc.cur_file.len == 0 {
 		return none
 	}
-	return g.tc.file_imports['${g.tc.cur_file}\n${alias}'] or { none }
+	return g.cached_file_import(g.tc.cur_file, alias) or { none }
 }
 
 fn optional_payload_is_bare_struct(t types.Type) bool {
