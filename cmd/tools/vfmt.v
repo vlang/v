@@ -234,7 +234,9 @@ fn (foptions &FormatOptions) resolves_project_json_module(file string) bool {
 	}
 	if foptions.module_search_paths.len > 0 {
 		// `-path` replaces vlib and ~/.vmodules as the module roots, but the compiler
-		// still looks beside the importing file and in its parent directories.
+		// still looks beside the importing file and in its parent directories first
+		// (`resolve_local_or_project_module_path` and `resolve_ancestor_module_path`
+		// in v.driver); `pref.get_module_path` is only its last fallback.
 		mut roots := foptions.module_search_paths.clone()
 		roots << importer_and_parent_dirs(file)
 		lookup.module_search_paths = roots
