@@ -6,6 +6,7 @@ import time
 import v.flat
 import v.token
 import v.util
+import v.vmod
 
 // last_index_between returns the last occurrence of needle that starts at or
 // after lo and ends at or before end, scanning by index: a substr copy of the
@@ -377,11 +378,27 @@ fn (mut tc TypeChecker) check_module_name_conflict(id flat.NodeId, name string) 
 	tc.check_imported_module_prefix(id, name, '')
 }
 
+fn (tc &TypeChecker) current_file_module_source_path() string {
+	if !isnil(tc.a) {
+		if source := tc.a.cached_header_sources[tc.cur_file] {
+			return source
+		}
+	}
+	return tc.cur_file
+}
+
 fn (tc &TypeChecker) current_file_uses_nested_module_path() bool {
-	normalized := tc.cur_file.replace('\\', '/')
+	normalized := tc.current_file_module_source_path().replace('\\', '/')
 	dir := normalized.all_before_last('/')
-	if dir == '' || tc.cur_module != dir.all_after_last('/') {
+	if dir == '' || (tc.cur_module != dir.all_after_last('/')
+		&& tc.cur_module.all_after_last('.') != dir.all_after_last('/')) {
 		return false
+	}
+	project_dir := os.real_path(dir).replace('\\', '/').trim_right('/')
+	if source_root := tc.current_file_module_source_root() {
+		if project_dir.starts_with(source_root + '/') {
+			return project_dir[source_root.len + 1..].contains('/')
+		}
 	}
 	root := tc.module_diagnostic_root.replace('\\', '/').trim_right('/')
 	if root != '' {
@@ -403,6 +420,70 @@ fn (tc &TypeChecker) current_file_uses_nested_module_path() bool {
 		return false
 	}
 	return relative.all_before_last('/').contains('/')
+}
+
+fn (tc &TypeChecker) current_file_module_path_identity() ?string {
+	directory := os.real_path(os.dir(tc.current_file_module_source_path())).replace('\\', '/').trim_right('/')
+	source_root := tc.current_file_module_source_root() or { return none }
+	if source_root == '' || !directory.starts_with(source_root + '/') {
+		return none
+	}
+	relative := directory[source_root.len + 1..]
+	identity := relative.replace('/', '.')
+	if relative.all_after_last('/') != tc.cur_module && identity != tc.cur_module {
+		return none
+	}
+	return identity
+}
+
+fn (tc &TypeChecker) current_file_module_source_root() ?string {
+	source_file := tc.current_file_module_source_path()
+	directory := os.real_path(os.dir(source_file)).replace('\\', '/').trim_right('/')
+	vmod_root := checker_vmod_root_for_file(source_file)
+	mut source_root := ''
+	if manifest := vmod.from_file(os.join_path(vmod_root, 'v.mod')) {
+		source_root = os.real_path(manifest.source_root(vmod_root)).replace('\\', '/').trim_right('/')
+	}
+	for root in tc.module_search_paths {
+		search_root := os.real_path(root).replace('\\', '/').trim_right('/')
+		if search_root.len > 0 && directory.starts_with(search_root + '/') {
+			if source_root.starts_with(search_root + '/') && directory.starts_with(source_root + '/') {
+				return source_root
+			}
+			return search_root
+		}
+	}
+	if tc.compiler_vroot.len > 0 {
+		vlib_root := os.real_path(os.join_path(tc.compiler_vroot, 'vlib')).replace('\\', '/').trim_right('/')
+		if directory.starts_with(vlib_root + '/') {
+			if source_root.starts_with(vlib_root + '/') && directory.starts_with(source_root + '/') {
+				return source_root
+			}
+			return vlib_root
+		}
+	}
+	if source_root != '' && directory.starts_with(source_root + '/') {
+		return source_root
+	}
+	// Without a manifest or -path, the resolver can still find an import in an
+	// ancestor directory. Only a resolved import of this directory establishes
+	// that identity; a same-named dependency in a global root takes precedence.
+	if info := tc.file_imports_by_file[tc.cur_file] {
+		for _, module_path in info.imports {
+			resolved_dir := tc.a.resolved_module_dirs[module_path] or { continue }
+			if resolved_dir.replace('\\', '/').trim_right('/') != directory {
+				continue
+			}
+			if module_path.all_after_last('.') != tc.cur_module || !module_path.contains('.') {
+				continue
+			}
+			suffix := '/' + module_path.replace('.', '/')
+			if directory.ends_with(suffix) && directory.len > suffix.len {
+				return directory[..directory.len - suffix.len]
+			}
+		}
+	}
+	return none
 }
 
 fn (tc &TypeChecker) imported_module_prefix(id flat.NodeId, name string) ?string {
