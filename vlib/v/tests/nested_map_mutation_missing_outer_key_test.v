@@ -170,6 +170,86 @@ fn test_field_assign_into_an_existing_empty_inner_map() {
 	assert points['a'].len == 1
 }
 
+fn replace_point_outer_rhs(mut m map[string]map[string]NestedMapPoint) int {
+	m['a'] = map[string]NestedMapPoint{
+		'fresh': NestedMapPoint{
+			x: 7
+		}
+	}
+	return 9
+}
+
+fn grow_point_outer_rhs(mut m map[string]map[string]NestedMapPoint) int {
+	for i in 0 .. 2000 {
+		m['grow${i}'] = map[string]NestedMapPoint{}
+	}
+	return 3
+}
+
+fn test_field_assign_after_rhs_changes_outer_map() {
+	mut replaced := map[string]map[string]NestedMapPoint{}
+	replaced['a'] = map[string]NestedMapPoint{}
+	replaced['a']['b'].x = replace_point_outer_rhs(mut replaced)
+	assert replaced['a']['fresh'].x == 7
+	assert replaced['a']['b'].x == 9
+	assert replaced['a'].len == 2
+	mut grown := map[string]map[string]NestedMapPoint{}
+	grown['a'] = map[string]NestedMapPoint{}
+	grown['a']['b'].x = grow_point_outer_rhs(mut grown)
+	assert grown['a']['b'].x == 3
+	assert grown.len == 2001
+	mut missing := map[string]map[string]NestedMapPoint{}
+	missing['a']['b'].x = 4
+	assert missing.len == 0
+	mut deep_missing := map[string]map[string]map[string]NestedMapPoint{}
+	deep_missing['a']['b']['c'].x = 4
+	assert deep_missing.len == 0
+}
+
+fn insert_owned_inner_key_rhs(mut m map[string]map[[2]string][]int, key [2]string) int {
+	m['a'][key] = [4]
+	return 5
+}
+
+fn replace_owned_inner_map_rhs(mut m map[string]map[[2]string][]int) int {
+	m['a'] = map[[2]string][]int{}
+	return 6
+}
+
+fn test_append_refreshes_owned_inner_key_existence_after_rhs() {
+	key := ['b', 'c']!
+	mut inserted := map[string]map[[2]string][]int{}
+	inserted['a'] = map[[2]string][]int{}
+	inserted['a'][key] << insert_owned_inner_key_rhs(mut inserted, key)
+	assert inserted['a'][key] == [4, 5]
+	mut replaced := map[string]map[[2]string][]int{}
+	replaced['a'][key] << 1
+	replaced['a'][key] << replace_owned_inner_map_rhs(mut replaced)
+	assert replaced['a'][key] == [6]
+}
+
+fn insert_owned_int_inner_key_rhs(mut m map[string]map[[2]string]int, key [2]string) int {
+	m['a'][key] = 4
+	return 5
+}
+
+fn replace_owned_int_inner_map_rhs(mut m map[string]map[[2]string]int) int {
+	m['a'] = map[[2]string]int{}
+	return 6
+}
+
+fn test_compound_refreshes_owned_inner_key_existence_after_rhs() {
+	key := ['b', 'c']!
+	mut inserted := map[string]map[[2]string]int{}
+	inserted['a'] = map[[2]string]int{}
+	inserted['a'][key] += insert_owned_int_inner_key_rhs(mut inserted, key)
+	assert inserted['a'][key] == 9
+	mut replaced := map[string]map[[2]string]int{}
+	replaced['a'][key] = 1
+	replaced['a'][key] += replace_owned_int_inner_map_rhs(mut replaced)
+	assert replaced['a'][key] == 6
+}
+
 fn replace_nested_outer(mut m map[string]map[string][]int) string {
 	m['a'] = map[string][]int{
 		'fresh': [7]
