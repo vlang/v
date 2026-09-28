@@ -6333,14 +6333,6 @@ fn markused_substitute_alias_generics(type_text string, inferred map[string]stri
 			return 'map[${key}]${value}'
 		}
 	}
-	base, args, is_generic := markused_generic_app_parts(clean)
-	if is_generic {
-		mut replaced := []string{cap: args.len}
-		for arg in args {
-			replaced << markused_substitute_alias_generics(arg, inferred)
-		}
-		return '${base}[${replaced.join(', ')}]'
-	}
 	return clean
 }
 
@@ -6767,13 +6759,13 @@ fn (c &CallCollector) generic_factory_return_type_name(index &flat.Node, name st
 		if return_type.len == 0 { continue }
 		arg_count := int(index.children_count) - 1
 		if arg_count <= 0 || arg_count > params.len { return return_type }
-		mut inferred := map[string]string{}
+		mut args := []string{cap: arg_count}
 		for i in 0 .. arg_count {
 			arg := c.generic_factory_type_arg(c.a.child(index, i + 1))
 			if arg.len == 0 { return return_type }
-			inferred[params[params.len - arg_count + i]] = markused_resolve_imported_type_name(arg, imports)
+			args << markused_resolve_imported_type_name(arg, imports)
 		}
-		return markused_substitute_alias_generics(return_type, inferred)
+		return types.subst_generic_text(return_type, args, params[params.len - arg_count..])
 	}
 	return ''
 }

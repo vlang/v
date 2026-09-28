@@ -34,6 +34,45 @@ fn test_explicit_generic_factory_return_type_retains_receiver_methods() {
 	}
 }
 
+fn test_explicit_generic_factory_substitution_covers_nested_type_forms() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	tc.fn_generic_params['gates.make_gate'] = ['U']
+	base := a.add_val(.ident, 'make_gate')
+	arg := a.add_val(.ident, 'T')
+	indexed := call_helper_node(mut a, flat.Node{ kind: .index }, [base, arg])
+	call := call_helper_node(mut a, flat.Node{ kind: .call }, [indexed])
+	forms := [
+		['U', 'T'],
+		['[]U', '[]T'],
+		['[4]U', '[4]T'],
+		['[2][3]U', '[2][3]T'],
+		['map[string]U', 'map[string]T'],
+		['map[U][]U', 'map[T][]T'],
+		['&U', '&T'],
+		['?U', '?T'],
+		['!U', '!T'],
+		['(U, []U)', '(T, []T)'],
+		['fn (U) U', 'fn(T) T'],
+		['fn (mut U) ![]U', 'fn(mut T) ![]T'],
+		['pkg.Box[U]', 'pkg.Box[T]'],
+		['chan U', 'chan T'],
+		['thread U', 'thread T'],
+		['shared U', 'shared T'],
+		['atomic U', 'atomic T'],
+		['pkg.U', 'pkg.U'],
+		['User', 'User'],
+	]
+	for form in forms {
+		tc.fn_ret_types['gates.make_gate'] = types.Type(types.Struct{
+			name: 'gates.Gate[${form[0]}]'
+		})
+		collector := CallCollector{ a: &a, tc: &tc }
+		assert collector.top_level_call_return_type_name(call, 'gates', map[string]string{},
+			map[string]bool{}, map[string]string{}, false) == 'gates.Gate[${form[1]}]'
+	}
+}
+
 fn test_generic_factory_inference_uses_call_site_shadowing() {
 	for imported in [false, true] {
 		for placement in ['before', 'after', 'nested'] {

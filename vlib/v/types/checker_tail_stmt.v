@@ -18255,7 +18255,7 @@ fn (tc &TypeChecker) generic_method_receiver_param(type_name string, param_text 
 // container forms (`&`, `mut`, `?`, `!`, `...`, `shared`, `atomic`, `chan`, `thread`, `[]`,
 // `map[`, `[N]`) recurse into the element type; a bare parameter name is replaced with its
 // argument.
-fn subst_generic_text(typ string, args []string, params []string) string {
+pub fn subst_generic_text(typ string, args []string, params []string) string {
 	clean := trimmed_space(typ)
 	if clean.len == 0 || args.len == 0 || params.len != args.len {
 		return clean
