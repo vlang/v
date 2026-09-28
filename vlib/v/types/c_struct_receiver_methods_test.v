@@ -28,6 +28,8 @@ fn test_c_receiver_method_lookup_keeps_module_visibility_and_ambiguity_checks() 
 	os.mkdir_all(os.join_path(root, 'left'))!
 	os.mkdir_all(os.join_path(root, 'right'))!
 	os.mkdir_all(os.join_path(root, 'facade'))!
+	os.mkdir_all(os.join_path(root, 'foo'))!
+	os.mkdir_all(os.join_path(root, 'bar', 'foo'))!
 	defer { os.rmdir_all(root) or {} }
 	os.write_file(os.join_path(root, 'v.mod'), "Module { name: 'c_receivers' }\n")!
 	os.write_file(os.join_path(root, 'left', 'left.c.v'), 'module left
@@ -75,6 +77,13 @@ fn main() { right.used(); println(left.make_holder().value.read()) }
 	hidden := os.execute('${os.quoted_path(@VEXE)} -check ${os.quoted_path(root)}')
 	assert hidden.exit_code != 0, hidden.output
 	assert hidden.output.contains('unknown function') || hidden.output.contains('unknown method'), hidden.output
+	os.write_file(os.join_path(root, 'foo', 'foo.c.v'), 'module foo\npub struct C.Counter { value int }\npub fn (c C.Counter) hidden_by_path() int { return 5 }\npub fn used() {}\n')!
+	os.write_file(os.join_path(root, 'bar', 'foo', 'foo.v'), 'module foo\npub fn used() {}\n')!
+	os.write_file(os.join_path(root, 'facade', 'facade.v'), 'module facade\nimport foo\npub fn used() { foo.used() }\n')!
+	os.write_file(os.join_path(root, 'main.v'), 'module main\nimport left\nimport facade\nimport bar.foo\nfn main() { facade.used(); foo.used(); println(left.make_holder().value.hidden_by_path()) }\n')!
+	hidden_by_path := os.execute('${os.quoted_path(@VEXE)} -check ${os.quoted_path(root)}')
+	assert hidden_by_path.exit_code != 0, hidden_by_path.output
+	assert hidden_by_path.output.contains('unknown function') || hidden_by_path.output.contains('unknown method'), hidden_by_path.output
 }
 
 fn test_static_interop_generic_is_not_a_receiver_method() {

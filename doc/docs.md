@@ -9094,6 +9094,7 @@ Another example, demonstrating passing structs from C to V and back again:
 
 V methods declared on a C struct can be called through imported fields and local copies of that
 struct. The method retains the visibility of its declaring V module.
+Calls see methods from directly imported modules by their full module path.
 If a V alias of that C struct declares the same method, calls on the alias use its own method.
 
 Ordinary zero terminated C strings can be converted to V strings with

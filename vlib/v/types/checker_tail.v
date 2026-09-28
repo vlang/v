@@ -9018,7 +9018,7 @@ fn (tc &TypeChecker) c_struct_method_module_visible(name string) bool {
 		return false
 	}
 	for _, module_path in info.imports {
-		if module_name == module_path || module_name == module_path.all_after_last('.') {
+		if module_name == module_path {
 			return true
 		}
 	}
