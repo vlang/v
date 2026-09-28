@@ -2,6 +2,7 @@
 module main
 
 #include <string.h>
+#include "@VMODROOT/vlib/v/tests/testdata/translated_fixed_array_args.h"
 
 fn C.memset(dest voidptr, value int, count usize) voidptr
 
@@ -193,4 +194,20 @@ fn test_translated_interface_pointer_alias_arguments_decay_fixed_arrays() {
 	assert sink.sum_row(rows) == 42
 	assert sink.sum_row([[20, 22]!, [3, 5]!]!) == 42
 	assert sink.sum_row([make_runtime_row(20), make_runtime_row(3)]!) == 41
+}
+
+fn C.translated_first_byte(values &u8) u8
+fn C.translated_first_char(values &char) char
+fn C.translated_first_byte_row(values &[2]u8) u8
+
+fn test_translated_c_calls_cast_byte_compatible_fixed_arrays() {
+	chars := [char(65), char(66)]!
+	assert C.translated_first_byte(chars) == 65
+	assert C.translated_first_byte([char(67), char(68)]!) == 67
+	bytes := [u8(69), 70]!
+	assert C.translated_first_char(bytes) == char(69)
+	assert C.translated_first_char([u8(71), 72]!) == char(71)
+	rows := [[char(73), char(74)]!, [char(75), char(76)]!]!
+	assert C.translated_first_byte_row(rows) == 73
+	assert C.translated_first_byte_row([[char(77), char(78)]!, [char(79), char(80)]!]!) == 77
 }
