@@ -14495,7 +14495,7 @@ fn (mut p Parser) sizeof_expr() flat.NodeId {
 	p.check(.lpar)
 	if p.is_translated && p.tok == .name && !p.is_local_binding(p.lit)
 		&& (p.translated_sizeof_name_is_ambiguous(p.lit)
-			|| (p.peek() == .dot && p.imported_module_names[p.lit] && !p.global_names[p.lit]
+			|| (p.peek() == .dot && p.imported_module_names[p.lit]
 				&& !p.translated_sizeof_name_is_global(p.lit))) {
 		// Imports and deferred branches are resolved after parsing. Preserve
 		// both interpretations until the selected declaration is known.
@@ -14513,7 +14513,6 @@ fn (mut p Parser) sizeof_expr() flat.NodeId {
 	if !p.can_start_type_name()
 		|| (p.is_translated && p.tok == .name
 			&& (p.is_local_binding(p.lit)
-				|| p.global_names[p.lit]
 				|| p.translated_sizeof_name_is_global(p.lit)
 				|| p.translated_sizeof_name_is_const(p.lit)
 				|| (!isreftype_name_can_start_type(p.lit)

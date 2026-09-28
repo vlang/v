@@ -195,6 +195,49 @@ fn test_translated_sizeof_ignores_constants_from_other_modules() {
 	assert sizes[0].children_count == 0
 }
 
+fn test_translated_sizeof_ignores_globals_from_other_modules() {
+	root := os.join_path(os.vtmp_dir(), 'translated_sizeof_global_modules_${os.getpid()}')
+	os.mkdir_all(os.join_path(root, 'dependency'))!
+	os.mkdir_all(os.join_path(root, 'values'))!
+	defer { os.rmdir_all(root) or {} }
+	os.write_file(os.join_path(root, 'v.mod'), "Module { name: 'sizeof_global_modules' }")!
+	dependency := os.join_path(root, 'dependency', 'dependency.v')
+	values := os.join_path(root, 'values', 'values.v')
+	main_file := os.join_path(root, 'main.v')
+	os.write_file(dependency, '@[translated]
+module dependency
+__global Item = [1, 2]!
+__global foo = 1
+pub fn touch() {}
+')!
+	os.write_file(values, 'module values\npub type Count = u32\n')!
+	os.write_file(main_file, '@[translated]
+module main
+import dependency
+import values as foo
+type Item = int
+fn main() {
+ dependency.touch()
+ assert sizeof(Item) == sizeof(int)
+ assert sizeof(foo.Count) == sizeof(u32)
+}
+')!
+	mut p := Parser.new(pref.new_preferences())
+	p.parse_file(dependency)
+	p.parse_file(values)
+	p.parse_file(main_file)
+	assert p.diagnostics.len == 0, p.diagnostics.str()
+	sizes := p.a.nodes.filter(it.kind == .sizeof_expr)
+	assert sizes.len == 4
+	assert sizes[0].value == 'Item'
+	assert sizes[0].children_count == 0
+	assert sizes[2].value == 'foo.Count'
+	for flags in ['', '-no-parallel'] {
+		result := os.execute('${os.quoted_path(@VEXE)} ${flags} -enable-globals run ${os.quoted_path(root)}')
+		assert result.exit_code == 0, result.output
+	}
+}
+
 fn test_translated_sizeof_later_lowercase_type_declarations() {
 	root := os.join_path(os.vtmp_dir(), 'translated_sizeof_lowercase_${os.getpid()}')
 	os.mkdir_all(root)!

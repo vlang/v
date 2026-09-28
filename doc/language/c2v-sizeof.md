@@ -6,6 +6,8 @@ compile-time type or size conditions. Declaration attributes such as `@[if featu
 exclude disabled candidates from the name lookup.
 Globals are recognized before their declarations, including grouped globals in other parsed
 files, so an indexed expression such as `sizeof(Regs[0])` keeps its value interpretation.
+Globals from another module do not force current-module or imported type names to be parsed
+as value operands.
 Qualified names through imported modules, including import aliases, are resolved after parsing
 so that both constants and type names retain their meaning.
 When deferred type-test branches declare a constant or global and a type with the same name,
