@@ -1,10 +1,10 @@
 module multiwindow
 
-$if gg_multiwindow ? || x_multiwindow_render ? {
+$if gg_multiwindow ?|| x_multiwindow_render ? {
 	import sokol.gfx
 }
 
-$if gg_multiwindow ? || x_multiwindow_render ? {
+$if gg_multiwindow ?|| x_multiwindow_render ? {
 	// RenderFrame never crosses the x.multiwindow module boundary.
 	struct RenderFrame {
 		window_id          WindowId
@@ -300,7 +300,7 @@ $if gg_multiwindow ? || x_multiwindow_render ? {
 }
 
 fn (mut backend Backend) render_updates() ![]BackendRenderUpdate {
-	$if gg_multiwindow ? || x_multiwindow_render ? {
+	$if gg_multiwindow ?|| x_multiwindow_render ? {
 		return match backend.kind {
 			.auto { error(err_backend_unsupported) }
 			.mock { []BackendRenderUpdate{} }

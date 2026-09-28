@@ -7,6 +7,36 @@ import v.parser
 import v.pref
 import v.types as vtypes
 
+fn test_cached_vmod_roots_stop_at_project_boundaries() {
+	root := os.join_path(os.vtmp_dir(), 'v3_modulecache_vmod_boundary_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	parent := os.join_path(root, 'parent')
+	project := os.join_path(parent, 'project')
+	source_dir := os.join_path(project, 'src')
+	os.mkdir_all(source_dir)!
+	parent_vmod := os.join_path(parent, 'v.mod')
+	os.write_file(parent_vmod, "Module { name: 'parent' }\n")!
+	source_file := os.join_path(source_dir, 'main.v')
+	os.write_file(source_file, 'module main\n')!
+	root_before, file_before := signature_vmod_root(source_file)
+	assert root_before == os.real_path(parent)
+	assert file_before == os.real_path(parent_vmod)
+	assert cached_vmod_root(source_file) == os.real_path(parent)
+
+	for marker in [pref.module_search_stop_marker, '.git', '.hg', '.svn'] {
+		marker_path := os.join_path(project, marker)
+		os.write_file(marker_path, '')!
+		bounded_root, bounded_file := signature_vmod_root(source_file)
+		assert bounded_root == os.real_path(source_dir)
+		assert bounded_file == ''
+		assert cached_vmod_root(source_file) == os.real_path(source_dir)
+		os.rm(marker_path)!
+	}
+}
+
 fn test_cached_relative_flag_paths_preserve_path_selection_expressions() {
 	base_dir := os.join_path(os.vtmp_dir(), 'v3_modulecache_flags')
 	value := r"darwin -I$when_first_existing('/opt/local/include','/opt/homebrew/include') -L$first_existing('/opt/local/lib','/opt/homebrew/lib')"
@@ -368,8 +398,8 @@ fn test_macro_identifiers_referencing_static_helpers() {
 fn test_source_signature_cache_content_requires_stable_metadata() {
 	expected_digest := 'a'.repeat(sha256.size * 2)
 	details := SourceSignatureDetails{
-		signature: 'content-signature'
-		validation: ['env=NAME\tvalue']
+		signature:      'content-signature'
+		validation:     ['env=NAME\tvalue']
 		source_digests: [expected_digest]
 	}
 	if _ := source_signature_cache_content('before', 'after', details) {
@@ -474,9 +504,9 @@ fn test_cached_source_signature_tracks_vml_inputs() {
 	assert literal_candidates.len == 0
 	assert literal_unresolved
 	manager := Manager{
-		dir: os.join_path(root, 'module-cache')
+		dir:     os.join_path(root, 'module-cache')
 		enabled: true
-		salt: 'dynamic-vml-test'
+		salt:    'dynamic-vml-test'
 	}
 	manager.write_header('dynamic_vml', [source], '// generated header')!
 	if _ := manager.valid_header('dynamic_vml', [source]) {
@@ -664,16 +694,16 @@ fn test_vmodhash_changes_cached_source_signature_without_source_edits() {
 
 fn global_qualifier_test_field(mut a flat.FlatAst, name string, type_text string, value string, qualifiers []string) flat.NodeId {
 	literal := a.add_node(flat.Node{
-		kind: .int_literal
+		kind:  .int_literal
 		value: value
 	})
 	start := a.children.len
 	a.children << literal
 	return a.add_node(flat.Node{
-		kind: .field_decl
-		value: name
-		typ: type_text
-		payload: flat.node_payload(qualifiers)
+		kind:           .field_decl
+		value:          name
+		typ:            type_text
+		payload:        flat.node_payload(qualifiers)
 		children_start: i32(start)
 		children_count: flat.child_count(1)
 	})
@@ -694,7 +724,7 @@ fn test_cached_global_text_round_trips_qualifiers() {
 	start := a.children.len
 	a.children << fields
 	node_id := a.add_node(flat.Node{
-		kind: .global_decl
+		kind:           .global_decl
 		children_start: i32(start)
 		children_count: flat.child_count(fields.len)
 	})
@@ -748,4 +778,28 @@ fn test_cached_global_text_round_trips_qualifiers() {
 		}
 	}
 	assert seen == 3, 'the reparsed header did not describe all three globals (${seen})'
+}
+
+fn test_module_header_preserves_module_attributes() {
+	mut a := flat.FlatAst.new()
+	module_id := a.add_node(flat.Node{
+		kind:  .module_decl
+		value: 'guarded'
+	})
+	a.add_node(flat.Node{
+		kind:    .directive
+		value:   '@attributes:${int(module_id)}'
+		payload: flat.node_payload(['has_globals'])
+	})
+	file_children := a.begin_children()
+	a.add_child(module_id)
+	a.add_node(flat.Node{
+		kind:           .file
+		value:          'guarded.v'
+		children_start: file_children
+		children_count: 1
+	})
+	tc := vtypes.TypeChecker.new(&a)
+	header := module_header(&a, &tc, 'guarded', '', map[string]string{})
+	assert header.starts_with('@[has_globals]\nmodule guarded\n'), header
 }

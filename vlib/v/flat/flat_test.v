@@ -87,15 +87,15 @@ fn test_node_uses_compact_header_and_uncommon_payload() {
 
 fn test_node_owned_clone_preserves_semantic_flags_and_payload() {
 	node := Node{
-		value: 'value'
-		typ: '[]string'
-		payload: node_payload(['T'])
+		value:          'value'
+		typ:            '[]string'
+		payload:        node_payload(['T'])
 		children_start: 12
 		children_count: 3
-		kind: .for_stmt
-		op: .plus
-		is_mut: true
-		flags: node_flags(true, true)
+		kind:           .for_stmt
+		op:             .plus
+		is_mut:         true
+		flags:          node_flags(true, true)
 	}
 	cloned := node.clone_owned()
 	assert cloned.value == node.value
@@ -156,8 +156,8 @@ fn test_text_intern_passes_detach_reused_source_storage() {
 			source[j] = name[j]
 		}
 		ast.add_node(Node{
-			value: borrowed
-			typ: borrowed
+			value:   borrowed
+			typ:     borrowed
 			payload: node_payload([borrowed])
 		})
 		if i % 2 == 0 {

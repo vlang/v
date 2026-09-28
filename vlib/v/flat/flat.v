@@ -240,18 +240,17 @@ pub fn node_payload(generic_params []string) u32 {
 		node_payload_unlock()
 		panic('v3: too many node payloads (${idx})')
 	}
-	if isnil(table.chunks[chunk_idx]) {
-		table.chunks[chunk_idx] = node_payload_new_chunk()
-		if isnil(table.chunks[chunk_idx]) {
+	mut chunk := C.v_flat_payload_ptr_get(voidptr(table), usize(chunk_idx))
+	if isnil(chunk) {
+		chunk = node_payload_new_chunk()
+		C.v_flat_payload_ptr_set(voidptr(table), usize(chunk_idx), chunk)
+		if isnil(chunk) {
 			node_payload_unlock()
 			panic('v3: could not allocate a node payload chunk')
 		}
 	}
-	unsafe {
-		mut chunk := &&NodePayload(table.chunks[chunk_idx])
-		chunk[idx & node_payload_chunk_mask] = payload
-	}
-	node_payload_count_publish(mut table, u32(idx + 1))
+	C.v_flat_payload_ptr_set(chunk, usize(idx & node_payload_chunk_mask), voidptr(payload))
+	node_payload_count_publish(table, u32(idx + 1))
 	node_payload_unlock()
 	return u32(idx + 1)
 }
@@ -266,10 +265,8 @@ pub fn node_payload_at(id u32) &NodePayload {
 	if isnil(table) || idx >= int(node_payload_count_load(table)) {
 		return &NodePayload(unsafe { nil })
 	}
-	unsafe {
-		chunk := &&NodePayload(table.chunks[idx >> node_payload_chunk_bits])
-		return chunk[idx & node_payload_chunk_mask]
-	}
+	chunk := C.v_flat_payload_ptr_get(voidptr(table), usize(idx >> node_payload_chunk_bits))
+	return unsafe { &NodePayload(C.v_flat_payload_ptr_get(chunk, usize(idx & node_payload_chunk_mask))) }
 }
 
 // node_flag_skip_ownership_drops marks a block/if/for/fn node whose scope must
@@ -277,8 +274,19 @@ pub fn node_payload_at(id u32) &NodePayload {
 pub const node_flag_skip_ownership_drops = u8(1)
 // node_flag_static_type_method marks a `fn Type.method()` declaration.
 pub const node_flag_static_type_method = u8(2)
+// node_flag_embed_payload marks the string literal holding the bytes that
+// `$embed_file` materialized (see Node.is_embed_payload()).
+pub const node_flag_embed_payload = u8(4)
+// node_flag_freed_assignment marks an assignment annotated with `@[freed]`.
+pub const node_flag_freed_assignment = u8(8)
+// node_flag_mut_builtin_pointer_param marks a source `mut p voidptr`/`byteptr`/`charptr`
+// parameter before the parser folds its mutable caller slot into the type text.
+pub const node_flag_mut_builtin_pointer_param = u8(16)
+// node_flag_literal_interpolation_text marks a string literal whose source token
+// contained `${...}` as literal text (for example, `\${name}` or a raw string).
+pub const node_flag_literal_interpolation_text = u8(32)
 
-// node_flags packs the two rare node bools into Node.flags.
+// node_flags packs rare node bools into Node.flags.
 @[inline]
 pub fn node_flags(skip_ownership_drops bool, is_static_type_method bool) u8 {
 	mut flags := u8(0)
@@ -288,6 +296,22 @@ pub fn node_flags(skip_ownership_drops bool, is_static_type_method bool) u8 {
 	if is_static_type_method {
 		flags |= node_flag_static_type_method
 	}
+	return flags
+}
+
+// clone_node_flags rebuilds the flags of a node copied from `source`.
+//
+// `skip_ownership_drops` describes the scope a node sits in, so a copy is given
+// whatever its new position calls for. The rest describe the node itself and
+// have to survive being copied: a generic specialization that dropped
+// node_flag_embed_payload would turn the payload back into an ordinary literal,
+// which the backend would then intern and spell out in full. Assignment
+// attributes likewise remain attached when a statement is specialized.
+@[inline]
+pub fn clone_node_flags(source &Node, skip_ownership_drops bool) u8 {
+	mut flags := node_flags(skip_ownership_drops, source.is_static_type_method())
+	flags |= source.flags & (node_flag_embed_payload | node_flag_freed_assignment |
+		node_flag_mut_builtin_pointer_param | node_flag_literal_interpolation_text)
 	return flags
 }
 
@@ -327,6 +351,46 @@ pub fn (mut n Node) set_skip_ownership_drops(value bool) {
 @[inline]
 pub fn (n &Node) is_static_type_method() bool {
 	return (n.flags & node_flag_static_type_method) != 0
+}
+
+// is_embed_payload reports whether this string literal holds the bytes that
+// `$embed_file` materialized. Such a literal is written out by the embed
+// codegen alone, so it must be kept out of the interned literal table: an
+// entry there is never referenced, and it repeats the whole payload on a
+// single source line.
+@[inline]
+pub fn (n &Node) is_embed_payload() bool {
+	return (n.flags & node_flag_embed_payload) != 0
+}
+
+// is_freed_assignment reports whether an assignment has the `@[freed]` attribute.
+@[inline]
+pub fn (n &Node) is_freed_assignment() bool {
+	return (n.flags & node_flag_freed_assignment) != 0
+}
+
+// has_literal_interpolation_text reports whether `${...}` in this string literal
+// was parsed as text and must not be reinterpreted by nested-interpolation lowering.
+@[inline]
+pub fn (n &Node) has_literal_interpolation_text() bool {
+	return (n.flags & node_flag_literal_interpolation_text) != 0
+}
+
+// is_mut_builtin_pointer_param reports whether this parameter was declared as
+// `mut p voidptr`, `mut p byteptr`, or `mut p charptr` in source.
+@[inline]
+pub fn (n &Node) is_mut_builtin_pointer_param() bool {
+	return (n.flags & node_flag_mut_builtin_pointer_param) != 0
+}
+
+// set_freed_assignment updates the assignment's `@[freed]` marker.
+@[inline]
+pub fn (mut n Node) set_freed_assignment(value bool) {
+	if value {
+		n.flags |= node_flag_freed_assignment
+	} else {
+		n.flags &= ~node_flag_freed_assignment
+	}
 }
 
 // set_is_static_type_method updates the static-type-method flag.
@@ -382,10 +446,26 @@ pub mut:
 	children        []NodeId
 	user_code_start int
 	disabled_fns    map[string]bool
-	export_fn_names map[string]string
-	noreturn_fns    map[string]bool
-	source_files    map[int]&token.File
-	comments        []Comment
+	// The names spelled inside a `$if`/`$match` body this build does not take,
+	// keyed by `<file>:<fn name offset>|<name>`. The body is never parsed, so
+	// nothing in the AST records its identifier occurrences or reads.
+	comptime_skipped_names      map[string]bool
+	comptime_skipped_read_names map[string]bool
+	// Every name spelled in such a skipped body, whatever it refers to, keyed by
+	// comptime_skipped_decl_key. A function or constant used only on another
+	// target is not unused.
+	comptime_skipped_decl_names map[string]bool
+	// Goto label operands use the same key format, but are not local-name uses.
+	comptime_skipped_goto_labels map[string]bool
+	export_fn_names              map[string]string
+	noreturn_fns                 map[string]bool
+	source_files                 map[int]&token.File
+	// resolved_source_paths maps source paths to their resolved form. The owning
+	// thread fills it through record_source_path and resolve_source_paths, which
+	// sets source_paths_frozen; from then on it is only read, see real_source_path.
+	resolved_source_paths map[string]string
+	source_paths_frozen   bool
+	comments              []Comment
 	// formatter_sources retains exact source spans or prefixes for constructs whose
 	// source syntax is intentionally opaque to compiler backends.
 	formatter_sources      map[int]string
@@ -412,6 +492,16 @@ pub mut:
 	template_actions    map[int]string
 	// missing_imports retains source import paths for unresolved import nodes.
 	missing_imports map[int]string
+	// missing_import_hints holds the migration hint the resolver produced for an
+	// unresolved import node, when it can explain the failure. Usually empty.
+	missing_import_hints map[int]string
+	// resolved_module_dirs maps canonical module identities to their resolved directories.
+	resolved_module_dirs map[string]string
+	// cached_header_sources maps each module cache header parsed in place of a
+	// module's sources to one of those sources, so diagnostics and ownership can
+	// judge a warm header by the code it stands for rather than by where the
+	// cache directory happens to be.
+	cached_header_sources map[string]string
 	// file_node_ids records every .file node the parser creates, in creation
 	// order: (marker, trailing) pairs per source file. The trailing node's
 	// children are the file's top-level declarations, letting collect build
@@ -434,6 +524,20 @@ pub mut:
 	text_values []string
 	text_ids    map[string]TextId
 	worker_pool &workers.Pool = unsafe { nil }
+	// contextual_anon_struct_types names the anonymous aggregates the parser
+	// synthesized to type a `struct { ... }` literal rather than to declare a field.
+	// Such a name only ever stands in for a literal whose type the context supplies, so
+	// the checker lets it initialize another module's anonymous field. The declarations
+	// themselves keep the visibility they were written with, so neither their generated
+	// names nor a type a user happened to call `AnonStruct_...` become reachable across
+	// module boundaries.
+	contextual_anon_struct_types map[string]bool
+	// synthesized_anon_struct_types names every anonymous aggregate the parser made up,
+	// for a declaration as well as for a literal. A name matching `AnonStruct_` proves
+	// nothing on its own - a user may declare a type so named - so this is what tells
+	// the checker that an expected type really is one it may adopt a bare
+	// `struct { ... }` literal into.
+	synthesized_anon_struct_types map[string]bool
 	// specialized_fn_nodes identifies program-specific monomorphized function
 	// declarations appended after parsing. Module-cache cgen keeps them with main.
 	specialized_fn_nodes   map[int]bool
@@ -493,30 +597,48 @@ pub fn (mut a FlatAst) set_node_is_mut(id NodeId, is_mut bool) {
 	}
 }
 
+// comptime_skipped_decl_key returns the comptime_skipped_decl_names key for
+// `name` spelled in `file`. A private function or constant is only usable from
+// its own module, so the checker only probes that module's files. Files, not
+// module names, key the record: the loader may later rename a module to its
+// import path, but it never renames a file.
+pub fn comptime_skipped_decl_key(file string, name string) string {
+	return '${file}|${name}'
+}
+
 // new creates a FlatAst value for flat.
 pub fn FlatAst.new() FlatAst {
 	return FlatAst{
-		nodes: []Node{cap: 256}
-		children: []NodeId{cap: 512}
-		disabled_fns: map[string]bool{}
-		export_fn_names: map[string]string{}
-		noreturn_fns: map[string]bool{}
-		source_files: map[int]&token.File{}
-		template_call_sites: map[int]token.Pos{}
-		template_actions: map[int]string{}
-		missing_imports: map[int]string{}
-		formatter_sources: map[int]string{}
-		formatter_file_sources: map[int]string{}
-		formatter_node_ends: map[int]int{}
-		formatter_expanded_calls: map[int]bool{}
-		formatter_assignment_ops: map[int]string{}
-		formatter_param_list_end: map[int]int{}
-		formatter_for_in_mut: map[int]u8{}
-		formatter_local_sels: map[int]bool{}
-		text_ids: map[string]TextId{}
-		specialized_fn_nodes: map[int]bool{}
-		specialized_fn_modules: map[int]string{}
-		specialized_fn_files: map[int]string{}
+		nodes:                         []Node{cap: 256}
+		children:                      []NodeId{cap: 512}
+		disabled_fns:                  map[string]bool{}
+		comptime_skipped_names:        map[string]bool{}
+		comptime_skipped_read_names:   map[string]bool{}
+		comptime_skipped_decl_names:   map[string]bool{}
+		comptime_skipped_goto_labels:  map[string]bool{}
+		export_fn_names:               map[string]string{}
+		noreturn_fns:                  map[string]bool{}
+		contextual_anon_struct_types:  map[string]bool{}
+		synthesized_anon_struct_types: map[string]bool{}
+		source_files:                  map[int]&token.File{}
+		template_call_sites:           map[int]token.Pos{}
+		template_actions:              map[int]string{}
+		missing_imports:               map[int]string{}
+		resolved_module_dirs:          map[string]string{}
+		cached_header_sources:         map[string]string{}
+		missing_import_hints:          map[int]string{}
+		formatter_sources:             map[int]string{}
+		formatter_file_sources:        map[int]string{}
+		formatter_node_ends:           map[int]int{}
+		formatter_expanded_calls:      map[int]bool{}
+		formatter_assignment_ops:      map[int]string{}
+		formatter_param_list_end:      map[int]int{}
+		formatter_for_in_mut:          map[int]u8{}
+		formatter_local_sels:          map[int]bool{}
+		text_ids:                      map[string]TextId{}
+		specialized_fn_nodes:          map[int]bool{}
+		specialized_fn_modules:        map[int]string{}
+		specialized_fn_files:          map[int]string{}
 	}
 }
 
@@ -853,7 +975,7 @@ pub fn node_kind_from_id(id int) NodeKind {
 pub fn (mut a FlatAst) add_val(kind NodeKind, value string) NodeId {
 	id := NodeId(a.nodes.len)
 	a.nodes << Node{
-		kind: kind
+		kind:  kind
 		value: value
 	}
 	return id
@@ -863,7 +985,7 @@ pub fn (mut a FlatAst) add_val(kind NodeKind, value string) NodeId {
 pub fn (mut a FlatAst) add_val_id(kind_id int, value string) NodeId {
 	id := NodeId(a.nodes.len)
 	a.nodes << Node{
-		kind: node_kind_from_id(kind_id)
+		kind:  node_kind_from_id(kind_id)
 		value: value
 	}
 	return id
@@ -875,32 +997,32 @@ pub fn (mut a FlatAst) add_val_id(kind_id int, value string) NodeId {
 // a fresh node instead of mutating in place.
 pub fn (n Node) with_shifted_children(shift i32) Node {
 	return Node{
-		value: n.value
-		typ: n.typ
-		payload: n.payload
-		pos: n.pos
+		value:          n.value
+		typ:            n.typ
+		payload:        n.payload
+		pos:            n.pos
 		children_start: n.children_start + shift
 		children_count: n.children_count
-		kind: n.kind
-		op: n.op
-		is_mut: n.is_mut
-		flags: n.flags
+		kind:           n.kind
+		op:             n.op
+		is_mut:         n.is_mut
+		flags:          n.flags
 	}
 }
 
 // with_pos returns a copy of the node with source position `pos`.
 pub fn (n Node) with_pos(pos token.Pos) Node {
 	return Node{
-		value: n.value
-		typ: n.typ
-		payload: n.payload
-		pos: pos.with_type_text_id(n.type_text_id())
+		value:          n.value
+		typ:            n.typ
+		payload:        n.payload
+		pos:            pos.with_type_text_id(n.type_text_id())
 		children_start: n.children_start
 		children_count: n.children_count
-		kind: n.kind
-		op: n.op
-		is_mut: n.is_mut
-		flags: n.flags
+		kind:           n.kind
+		op:             n.op
+		is_mut:         n.is_mut
+		flags:          n.flags
 	}
 }
 
@@ -911,16 +1033,16 @@ pub fn (n Node) clone_owned() Node {
 		params << param.clone()
 	}
 	return Node{
-		value: n.value.clone()
-		typ: n.typ.clone()
-		payload: node_payload(params)
-		pos: n.pos
+		value:          n.value.clone()
+		typ:            n.typ.clone()
+		payload:        node_payload(params)
+		pos:            n.pos
 		children_start: n.children_start
 		children_count: n.children_count
-		kind: n.kind
-		op: n.op
-		is_mut: n.is_mut
-		flags: n.flags
+		kind:           n.kind
+		op:             n.op
+		is_mut:         n.is_mut
+		flags:          n.flags
 	}
 }
 

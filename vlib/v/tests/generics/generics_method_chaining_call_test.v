@@ -17,15 +17,15 @@ fn (s Seq[T]) map[K](map_fn MapFn[T, K]) Seq[K] {
 fn test_generics_method_chaining_call() {
 	s := Seq[string]{['one', 'two']}
 		.map[int](fn (element string) int {
-			match element {
-				'one' { return 1 }
-				'two' { return 2 }
-				else { return -1 }
-			}
-		})
+		match element {
+			'one' { return 1 }
+			'two' { return 2 }
+			else { return -1 }
+		}
+	})
 		.map[int](fn (element int) int {
-			return element + 2
-		})
+		return element + 2
+	})
 
 	println(s)
 	assert s.ar == [3, 4]

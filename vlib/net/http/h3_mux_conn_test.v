@@ -320,7 +320,8 @@ fn test_driver_fails_a_pending_request_stranded_by_a_dying_transport() {
 	// scheduler.
 	spawn h3_test_do_worker(mut c, H3ClientRequest{ authority: 'example.com' }, mut outcome, done)
 	select {
-		_ := <-done {}
+		_ := <-done {
+		}
 		2 * time.second {
 			assert false, "do() never returned -- the request queued during the driver's blocked read() was stranded (the exact regression fail_conn.pending draining fixes)"
 			return
@@ -349,14 +350,16 @@ fn test_driver_fails_a_second_concurrent_pending_request_too() {
 	spawn h3_test_do_worker(mut c, H3ClientRequest{ authority: 'b.example.com' }, mut outcome2,
 		done2)
 	select {
-		_ := <-done1 {}
+		_ := <-done1 {
+		}
 		2 * time.second {
 			assert false, 'first concurrent request never returned'
 			return
 		}
 	}
 	select {
-		_ := <-done2 {}
+		_ := <-done2 {
+		}
 		2 * time.second {
 			assert false, 'second concurrent request never returned'
 			return

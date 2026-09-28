@@ -1,3 +1,5 @@
+// vtest build: false
+
 module fastcdriver
 
 import os

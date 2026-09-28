@@ -17,5 +17,5 @@ fn test_clone_of_array_returned_by_borrow_does_not_address_pointer_rvalue() {
 		"import sync.arc\n\nstruct Holder {\n\tvalues []string\n}\n\nfn (holder &^a Holder) get[^a]() &^a []string {\n\treturn &holder.values\n}\n\nfn main() {\n\tholder := Holder{values: ['one', 'two']}\n\tcloned := holder.get().clone()\n\tassert cloned == ['one', 'two']\n\towner := arc.new(['three', 'four'])\n\tshared_clone := owner.get().clone()\n\tassert shared_clone == ['three', 'four']\n\tprintln('ok')\n}\n")!
 	out := os.execute('${v3_bin} -ownership -d ownership -no-parallel run ${source}')
 	assert out.exit_code == 0, out.output
-	assert out.output.contains('\nok\n'), out.output
+	assert out.output.trim_space() == 'ok', out.output
 }

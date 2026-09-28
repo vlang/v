@@ -1,3 +1,8 @@
+// GCC-compatible compilers also define __GNUC__, so keep V's discriminator
+// in sync with the compiler that will consume a portable generated C file.
+#if defined(__GNUC__) && !defined(__TINYC__) && !defined(__cplusplus) && !defined(__clang__)
+	#define __V_GCC__
+#endif
 // c_headers
 typedef int (*qsort_callback_func)(const void*, const void*);
 #if defined(_MSC_VER) && !defined(__clang__)

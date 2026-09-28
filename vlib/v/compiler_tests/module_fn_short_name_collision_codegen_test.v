@@ -64,15 +64,62 @@ pub fn use_helper() int {
 pub fn run(command string, args []string) string {
 	return command + args.join("")
 }
+
+struct Item {
+	value string
+}
+
+fn load_item() !Item {
+	return Item{
+		value: "module"
+	}
+}
+
+pub fn read_item() !string {
+	item := load_item()!
+	return item.value
+}
 ') or {
 		panic(err)
 	}
 	os.write_file(os.join_path(root, 'main.v'), "module main
 
 import collisionmod
+import encoding.base64
 import localmod
 
 struct Runner {}
+
+struct Item {
+	value string
+}
+
+struct Author {
+	first  string
+	middle string
+	last   string
+}
+
+fn load_item() !Item {
+	return Item{
+		value: 'main'
+	}
+}
+
+fn encoded_authors(authors []Author) []string {
+	mut values := []string{}
+	for author in authors {
+		values << [author.first, author.middle, author.last].map(base64.encode(it.bytes())).join(',')
+	}
+	return values
+}
+
+fn load_pair(fail bool) !(string, bool) {
+	if fail {
+		return error('no pair')
+	}
+	return 'pair', true
+}
 
 fn (mut r Runner) run() {
 	_ = r
@@ -85,6 +132,19 @@ fn main() {
 	command := 'module-'
 	args := ['call']
 	assert localmod.run(command, args) == 'module-call'
+	assert (localmod.read_item() or { panic(err) }) == 'module'
+	assert (load_item() or { panic(err) }) == Item{
+		value: 'main'
+	}
+	assert encoded_authors([Author{
+		first: 'Ada'
+		last: 'Lovelace'
+	}]) == ['QWRh,,TG92ZWxhY2U=']
+	value, _ := load_pair(false) or {
+		eprintln(err.msg())
+		exit(1)
+	}
+	assert value == 'pair'
 	mut values := map[string]int{}
 	values['answer'] = 42
 	assert values['answer'] == 42
@@ -112,10 +172,12 @@ fn test_imported_module_fn_short_name_does_not_pollute_builtin_return_type() {
 
 	generated := os.read_file(out + '.c') or { panic(err) }
 	assert generated.contains('DenseArray new_dense_array(i64 key_bytes, i64 value_bytes);'), generated
-	assert generated.contains('.key_values = new_dense_array(key_bytes, value_bytes)'), generated
+	assert generated.contains('.key_values = new_dense_array(key_bytes, value_bytes)')
+		|| generated.contains('.key_values = (DenseArray){.key_bytes = key_bytes, .value_bytes = value_bytes'), generated
 	assert generated.contains('collisionmod__new_dense_array_T_v_int'), generated
 	assert generated.contains('localmod__helper()'), generated
 	assert generated.contains('localmod__run(command, args)'), generated
+	assert generated.contains('Optional_localmod__Item localmod__load_item(void);'), generated
 	assert !generated.contains('localmod__run(&command, args)'), generated
 	assert !generated.contains('collisionmod__Node_int* new_dense_array(int key_bytes'), generated
 	assert !generated.contains('Array_fixed_collisionmod__Node_int* new_dense_array(int key_bytes'), generated

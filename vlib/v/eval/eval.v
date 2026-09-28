@@ -4073,7 +4073,8 @@ fn (mut e Eval) eval_map_init(node &flat.Node) !Value {
 }
 
 fn (mut e Eval) eval_map_init_flow(node &flat.Node) !FlowSignal {
-	mut key_type, mut value_type := split_map_type(node.value)
+	map_type := if node.typ.len > 0 { node.typ } else { node.value }
+	mut key_type, mut value_type := split_map_type(map_type)
 	children := e.children(node)
 	mut keys := []Value{}
 	mut values := []Value{}
@@ -5419,7 +5420,12 @@ fn (e &Eval) map_set_value(receiver MapValue, key Value, value Value) MapValue {
 }
 
 fn (e &Eval) map_delete_value(receiver MapValue, key Value) MapValue {
-	mut m := receiver
+	mut m := MapValue{
+		key_type_name:   receiver.key_type_name
+		value_type_name: receiver.value_type_name
+		default_value:   receiver.default_value
+		entries:         receiver.entries.clone()
+	}
 	typed_key := e.adapt_value_to_type_name(key, receiver.key_type_name)
 	for i, entry in m.entries {
 		if e.value_eq(entry.key, typed_key) {
@@ -5591,8 +5597,7 @@ fn (e &Eval) qualify_nested_type_name(module_name string, type_name string) stri
 	}
 	if name.starts_with('map[') {
 		key_type, value_type := split_map_type(name)
-		return 'map[${e.qualify_nested_type_name(module_name, key_type)}]${e.qualify_nested_type_name(module_name,
-			value_type)}'
+		return 'map[${e.qualify_nested_type_name(module_name, key_type)}]${e.qualify_nested_type_name(module_name, value_type)}'
 	}
 	if name.starts_with('?') || name.starts_with('!') {
 		return '${name[..1]}${e.qualify_nested_type_name(module_name, name[1..])}'
@@ -5789,7 +5794,7 @@ fn (e &Eval) unwrap_sum_cast_value(value Value, type_name string) Value {
 	if value is SumValue {
 		if !e.type_name_matches(value.type_name, type_name)
 			&& (e.type_name_matches(value.variant_name, type_name)
-			|| e.value_matches_type_name(value.payload, type_name)) {
+				|| e.value_matches_type_name(value.payload, type_name)) {
 			return value.payload
 		}
 	}
@@ -5939,8 +5944,8 @@ fn (e &Eval) type_value_module_name(value TypeValue) string {
 
 fn is_builtin_type_name(name string) bool {
 	return name in ['bool', 'int', 'i8', 'i16', 'i32', 'i64', 'isize', 'u8', 'byte', 'u16', 'u32',
-		'u64', 'usize', 'f32', 'f64', 'rune', 'char', 'string', 'void', 'voidptr', 'charptr',
-		'byteptr', 'array']
+		'u64', 'usize', 'f32', 'f64', 'rune', 'char', 'string', 'void', 'voidptr', 'charptr', 'byteptr',
+		'array']
 }
 
 fn (e &Eval) qualify_type_name(module_name string, type_name string) string {

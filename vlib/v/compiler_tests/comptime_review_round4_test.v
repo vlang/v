@@ -2615,7 +2615,7 @@ import pkg
 
 fn main() {
 	mut rows := []string{}
-	\$if enabled {
+	\$if enabled == true {
 		rows << 'if'
 	} \$else {
 		rows << 'wrong-if'
@@ -2656,6 +2656,8 @@ struct C.SoaItem_SOA {
 }
 
 fn C.SoaItem_SOA_new(int, int) C.SoaItem_SOA
+fn C.SoaItem_SOA_push(&C.SoaItem_SOA, SoaItem)
+fn C.SoaItem_SOA_get(C.SoaItem_SOA, int) SoaItem
 fn C.SoaItem_SOA_free(&C.SoaItem_SOA)
 
 struct Foo {}
@@ -2672,7 +2674,9 @@ fn (foo Foo) run(value int) {
 fn main() {
 	mut rows := []string{}
 	mut soa := C.SoaItem_SOA_new(0, 3)
-	rows << soa.cap.str()
+	C.SoaItem_SOA_push(&soa, SoaItem{value: 3})
+	item := C.SoaItem_SOA_get(soa, 0)
+	rows << soa.cap.str() + ':' + soa.len.str() + ':' + item.value.str()
 	C.SoaItem_SOA_free(&soa)
 	\$for method in Foo.methods {
 		rows << method.name + ':' + method.params.len.str()
@@ -2680,7 +2684,76 @@ fn main() {
 	println(rows.join('|'))
 }
 ")
-	assert out == '3|run:1'
+	assert out == '3:1:3|run:1'
+}
+
+fn test_v_owned_matching_soa_companion_declaration_is_preserved() {
+	v3_bin := round4_build_v3()
+	out := round4_run_good(v3_bin, 'v_owned_matching_soa_companion', "@[soa]
+struct VOwnedSoaItem {
+	value int
+}
+
+struct C.VOwnedSoaItem_SOA {
+	len   int
+	cap   int
+	value &int
+}
+
+fn C.VOwnedSoaItem_SOA_new(int, int) C.VOwnedSoaItem_SOA
+fn C.VOwnedSoaItem_SOA_push(&C.VOwnedSoaItem_SOA, VOwnedSoaItem)
+fn C.VOwnedSoaItem_SOA_get(C.VOwnedSoaItem_SOA, int) VOwnedSoaItem
+fn C.VOwnedSoaItem_SOA_free(&C.VOwnedSoaItem_SOA)
+
+fn main() {
+	mut soa := C.VOwnedSoaItem_SOA_new(0, 2)
+	C.VOwnedSoaItem_SOA_push(&soa, VOwnedSoaItem{value: 5})
+	item := C.VOwnedSoaItem_SOA_get(soa, 0)
+	println(soa.cap.str() + ':' + soa.len.str() + ':' + item.value.str())
+	C.VOwnedSoaItem_SOA_free(&soa)
+}
+")
+	assert out == '2:1:5'
+}
+
+fn test_header_backed_soa_companion_uses_native_typedef() {
+	v3_bin := round4_build_v3()
+	out := round4_run_good_project(v3_bin, 'header_backed_soa_companion', {
+		'v.mod':           "Module { name: 'header_backed_soa_companion' }\n"
+		'soa.h':           '#ifndef HEADER_BACKED_SOA_H\n#define HEADER_BACKED_SOA_H\n#include <stdint.h>\ntypedef struct HeaderSoaItem_SOA {\n\tint len;\n\tint cap;\n\tint64_t* value;\n} HeaderSoaItem_SOA;\n#endif\n'
+		'soa_binding.c.v': 'module main
+
+#include "@VMODROOT/soa.h"
+
+@[typedef]
+struct C.HeaderSoaItem_SOA {
+	len   int
+	cap   int
+	value &int
+}
+
+fn C.HeaderSoaItem_SOA_new(int, int) C.HeaderSoaItem_SOA
+fn C.HeaderSoaItem_SOA_push(&C.HeaderSoaItem_SOA, HeaderSoaItem)
+fn C.HeaderSoaItem_SOA_get(C.HeaderSoaItem_SOA, int) HeaderSoaItem
+fn C.HeaderSoaItem_SOA_free(&C.HeaderSoaItem_SOA)
+'
+		'main.v':          'module main
+
+@[soa]
+struct HeaderSoaItem {
+	value int
+}
+
+fn main() {
+	mut soa := C.HeaderSoaItem_SOA_new(0, 2)
+	C.HeaderSoaItem_SOA_push(&soa, HeaderSoaItem{value: 7})
+	item := C.HeaderSoaItem_SOA_get(soa, 0)
+	println(soa.cap.str() + ":" + soa.len.str() + ":" + item.value.str())
+	C.HeaderSoaItem_SOA_free(&soa)
+}
+'
+	}, '')
+	assert out == '2:1:7'
 }
 
 fn test_param_and_attribute_guards_preserve_quoted_member_text() {

@@ -451,7 +451,7 @@ fn fastc_string_interpolation_width(format string) ?FastcInterpolationWidth {
 		width = width * 10 + int(format[i] - `0`)
 	}
 	return FastcInterpolationWidth{
-		width: width
+		width:      width
 		left_align: left_align
 	}
 }

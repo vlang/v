@@ -12,8 +12,7 @@ import math.bits
 
 @[direct_array_access; inline]
 fn get_le_u32(b []u8, start int) u32 {
-	return u32(b[start]) | (u32(b[1 + start]) << u32(8)) | (u32(b[2 + start]) << u32(16)) | (u32(b[
-		3 + start]) << u32(24))
+	return u32(b[start]) | (u32(b[1 + start]) << u32(8)) | (u32(b[2 + start]) << u32(16)) | (u32(b[3 + start]) << u32(24))
 }
 
 @[direct_array_access]

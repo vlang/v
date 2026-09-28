@@ -1,3 +1,5 @@
+// vtest build: false
+
 module fastc
 
 import os
@@ -13,7 +15,7 @@ fn test_parse_resolve_memo_round_trip() {
 	assert memo.dirs == ['/vlib/builtin', '/vlib/plain']
 	assert memo.dir_stamps.len == 2
 	assert memo.dir_stamps[0] == FastcFileStamp{
-		size: 100
+		size:  100
 		mtime: 200
 		ctime: 300
 		inode: 400
@@ -28,7 +30,7 @@ fn test_parse_resolve_memo_round_trip() {
 	assert memo.entry_files[0] == ['/abs/other.v']
 	assert memo.files == ['/vlib/builtin/a.v']
 	assert memo.stamps[0] == FastcFileStamp{
-		size: 5
+		size:  5
 		mtime: 6
 		ctime: 7
 		inode: 8
@@ -51,13 +53,13 @@ fn test_parse_resolve_memo_rejects_short_listings() {
 
 fn test_resolve_memo_unchanged_sources_use_preloaded_stamps() {
 	stamp := FastcFileStamp{
-		size: 12
+		size:  12
 		mtime: 20
 		ctime: 21
 		inode: 22
 	}
 	memo := FastcResolveMemo{
-		files: ['/tmp/a.v']
+		files:  ['/tmp/a.v']
 		stamps: [stamp]
 	}
 	sources := [FastcSourceFile{
@@ -65,16 +67,16 @@ fn test_resolve_memo_unchanged_sources_use_preloaded_stamps() {
 	}]
 	preloaded := {
 		'/tmp/a.v': FastcLoadedSource{
-			path: '/tmp/a.v'
+			path:  '/tmp/a.v'
 			stamp: stamp
 		}
 	}
 	assert fastc_resolve_memo_sources_unchanged(memo, sources, preloaded)
 	mut changed := preloaded.clone()
 	changed['/tmp/a.v'] = FastcLoadedSource{
-		path: '/tmp/a.v'
+		path:  '/tmp/a.v'
 		stamp: FastcFileStamp{
-			size: 13
+			size:  13
 			mtime: 20
 			ctime: 21
 			inode: 22
@@ -666,8 +668,8 @@ fn test_fastc_emits_explicit_c_extern_prototype() {
 	functions := {
 		'C.external_api': FastcFunctionSignature{
 			parameter_types: ['int', 'voidptr']
-			return_type: 'int'
-			is_c_extern: true
+			return_type:     'int'
+			is_c_extern:     true
 		}
 	}
 	assert fastc_c_extern_prototypes(functions) == '#ifndef external_api\nextern int external_api(int, voidptr);\n#endif\n'
@@ -756,17 +758,17 @@ fn test_fastc_rendered_units_match_temporary_files() {
 	}
 	pieces := ['ignored definition', 'ignored prototypes', 'solo\n', 'body_a\n', 'body_b\n']
 	units := FastcUnitLayout{
-		head_end: 2
-		solo_end: 3
-		prototype_start: 1
-		prototype_end: 2
-		unit_starts: [3, 4, 5]
-		extern_indexes: [0]
-		extern_texts: ['extern shared;\n']
-		define_texts: ['int shared;\n']
-		prototype_texts: ['void first(void);\n', 'void second(void);\n']
-		unit_ref_starts: [0, 1, 2]
-		unit_ref_ids: [0, 1]
+		head_end:           2
+		solo_end:           3
+		prototype_start:    1
+		prototype_end:      2
+		unit_starts:        [3, 4, 5]
+		extern_indexes:     [0]
+		extern_texts:       ['extern shared;\n']
+		define_texts:       ['int shared;\n']
+		prototype_texts:    ['void first(void);\n', 'void second(void);\n']
+		unit_ref_starts:    [0, 1, 2]
+		unit_ref_ids:       [0, 1]
 		solo_prototype_ids: [1]
 	}
 	prefix := os.join_path_single(root, 'unit')
@@ -825,8 +827,8 @@ fn test_fastc_link_cache_restores_an_independent_executable() {
 fn test_fastc_generation_link_cache_key_covers_generated_inputs() {
 	tcc := os.join_path(@VMODROOT, 'thirdparty', 'tcc', 'tcc.exe')
 	units := FastcUnitLayout{
-		head_end: 1
-		solo_end: 1
+		head_end:    1
+		solo_end:    1
 		unit_starts: [1, 2]
 	}
 	key := fastc_generation_link_cache_key(tcc, ['-c'], ['-lm'], ['head', 'body'], units, 2, true)
@@ -848,8 +850,8 @@ fn test_fastc_generation_link_cache_key_uses_tbd_contents() {
 	os.write_file(second, 'same stub') or { panic(err) }
 	tcc := os.join_path(@VMODROOT, 'thirdparty', 'tcc', 'tcc.exe')
 	units := FastcUnitLayout{
-		head_end: 1
-		solo_end: 1
+		head_end:    1
+		solo_end:    1
 		unit_starts: [1, 2]
 	}
 	first_key := fastc_generation_link_cache_key(tcc, [], [first], ['head', 'body'], units, 2, true)
@@ -876,43 +878,44 @@ fn test_parallel_constant_seed_preserves_constant_field_defaults() {
 	prefs.building_v = true
 	sources := [
 		FastcSourceFile{
-			path: 'constant_default.v'
+			path:   'constant_default.v'
 			source: 'module fastc\nconst default_retries = 3\nstruct Config {\n\tretries int = default_retries\n}\nfn main() { _ = Config{} }\n'
 			header: FastcSourceHeader{ module_name: 'v.gen.fastc' }
 		},
 		FastcSourceFile{
-			path: 'other_constant.v'
+			path:   'other_constant.v'
 			source: 'module fastc\nconst other_constant = 4\n'
 			header: FastcSourceHeader{ module_name: 'v.gen.fastc' }
 		},
 	]
 	c_source, _, _ := generate_source_files(sources, map[string]string{}, prefs) or { panic(err) }
-	assert c_source.contains('#define v3__gen__fastc__default_retries (3)'), c_source
-	assert c_source.contains('.retries=(v3__gen__fastc__default_retries)'), c_source
+	assert c_source.contains('#define v__gen__fastc__default_retries (3)'), c_source
+	assert c_source.contains('struct F__Config'), c_source
+	assert c_source.contains('.retries=(v__gen__fastc__default_retries)'), c_source
 }
 
 fn test_fastc_fragmented_generation_matches_serial_output() {
 	large_comment := '// ' + 'x'.repeat(fastc_generation_fragment_size + 1024)
 	sources := [
 		FastcSourceFile{
-			path: 'large.v'
+			path:   'large.v'
 			source: 'module fastc\nfn fastc_fragment_first() {\n${large_comment}\n}\nfn fastc_fragment_second() {\n\tprintln(@LINE)\n\tprintln(@COLUMN)\n\tprintln(@FILE_LINE)\n\tprintln(@LOCATION)\n}\n'
 			header: FastcSourceHeader{
 				module_name: 'v.gen.fastc'
 			}
 		},
 		FastcSourceFile{
-			path: 'small_1.v'
+			path:   'small_1.v'
 			source: 'module fastc\nfn fastc_fragment_small_1() {}\n'
 			header: FastcSourceHeader{ module_name: 'v.gen.fastc' }
 		},
 		FastcSourceFile{
-			path: 'small_2.v'
+			path:   'small_2.v'
 			source: 'module fastc\nfn fastc_fragment_small_2() {}\n'
 			header: FastcSourceHeader{ module_name: 'v.gen.fastc' }
 		},
 		FastcSourceFile{
-			path: 'small_3.v'
+			path:   'small_3.v'
 			source: 'module fastc\nfn fastc_fragment_small_3() {}\n'
 			header: FastcSourceHeader{ module_name: 'v.gen.fastc' }
 		},
@@ -943,7 +946,7 @@ fn test_fastc_generation_fragments_keep_top_level_comptime_chain_together() {
 	mut prefs := pref.new_preferences()
 	prefs.building_v = true
 	fragments := fastc_source_generation_fragments(FastcSourceFile{
-		path: 'large_comptime_chain.v'
+		path:   'large_comptime_chain.v'
 		source: source
 		header: FastcSourceHeader{
 			module_name: 'v.gen.fastc'
@@ -960,7 +963,7 @@ fn test_fastc_generation_fragments_keep_top_level_initializer_together() {
 	mut prefs := pref.new_preferences()
 	prefs.building_v = true
 	fragments := fastc_source_generation_fragments(FastcSourceFile{
-		path: 'large_top_level_initializer.v'
+		path:   'large_top_level_initializer.v'
 		source: source
 		header: FastcSourceHeader{
 			module_name: 'v.gen.fastc'
@@ -1043,28 +1046,28 @@ fn test_fastc_generic_source_collection_matches_serial_scan() {
 	mut prefs := pref.new_preferences()
 	sources := [
 		FastcSourceFile{
-			path: 'first.v'
+			path:   'first.v'
 			source: 'module sample\nfn pick[T](value T) T { return value }\n'
 			header: FastcSourceHeader{
 				module_name: 'sample'
 			}
 		},
 		FastcSourceFile{
-			path: 'second.v'
+			path:   'second.v'
 			source: 'module sample\nfn keep[T](value T) T { return value }\n'
 			header: FastcSourceHeader{
 				module_name: 'sample'
 			}
 		},
 		FastcSourceFile{
-			path: 'plain.v'
+			path:   'plain.v'
 			source: 'module sample\nfn plain() {}\n'
 			header: FastcSourceHeader{
 				module_name: 'sample'
 			}
 		},
 		FastcSourceFile{
-			path: 'last.v'
+			path:   'last.v'
 			source: 'module sample\nfn pick[T](other T) T { return other }\n'
 			header: FastcSourceHeader{
 				module_name: 'sample'
@@ -1803,14 +1806,14 @@ fn main() {
 '
 	c_source, _, _ := generate_source_files([
 		FastcSourceFile{
-			path: 'compare/compare.v'
+			path:   'compare/compare.v'
 			source: compare_source
 			header: fastc_scan_source_header(compare_source, 'compare/compare.v', prefs) or {
 				panic(err)
 			}
 		},
 		FastcSourceFile{
-			path: 'main.v'
+			path:   'main.v'
 			source: util_source
 			header: fastc_scan_source_header(util_source, 'main.v', prefs) or {
 				panic(err)
@@ -1850,14 +1853,14 @@ fn main() {
 '
 	c_source, _, _ := generate_source_files([
 		FastcSourceFile{
-			path: 'compare/compare.v'
+			path:   'compare/compare.v'
 			source: compare_source
 			header: fastc_scan_source_header(compare_source, 'compare/compare.v', prefs) or {
 				panic(err)
 			}
 		},
 		FastcSourceFile{
-			path: 'main.v'
+			path:   'main.v'
 			source: main_source
 			header: fastc_scan_source_header(main_source, 'main.v', prefs) or {
 				panic(err)
@@ -2074,6 +2077,58 @@ fn test_colliding_import_aliases_are_rejected() {
 	}
 }
 
+fn test_bare_keyword_module_names_resolve_without_escapes() {
+	mut prefs := pref.new_preferences()
+	header := fastc_scan_source_header('module type\nimport type.bar\nimport foo.type\n',
+		'bare_keyword_imports.v', prefs) or { panic(err) }
+	assert header.module_name == 'type'
+	assert header.import_order == ['type.bar', 'foo.type']
+	assert header.imports['bar'] == 'type.bar'
+	assert header.imports['type'] == 'foo.type'
+
+	root := os.join_path(os.vtmp_dir(), 'v3_fastc_bare_keyword_module_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(os.join_path(root, 'type')) or { panic(err) }
+	os.mkdir_all(os.join_path(root, 'if')) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	main_file := os.join_path(root, 'main.v')
+	os.write_file(main_file,
+		'module main\nimport if as conditionals\nimport type\nconst copied = type.value()\nfn main() { println(copied + conditionals.value()) }\n') or {
+		panic(err)
+	}
+	os.write_file(os.join_path(root, 'type', 'type.v'),
+		'module type\npub fn value() int { return 40 }\n') or { panic(err) }
+	os.write_file(os.join_path(root, 'if', 'if.v'),
+		'module if\npub fn value() int { return 2 }\n') or { panic(err) }
+	prefs.module_search_paths = [root]
+	c_source := generate_files([main_file], prefs) or { panic(err) }
+	assert c_source.contains('type__value()'), c_source
+	c_file := os.join_path(root, 'program.c')
+	bin_file := os.join_path(root, 'program')
+	os.write_file(c_file, c_source) or { panic(err) }
+	tcc := os.join_path(prefs.vroot, 'thirdparty', 'tcc', 'tcc.exe')
+	compile_result := cmdexec.run(tcc, ['-std=gnu11', '-o', bin_file, c_file])
+	assert compile_result.exit_code == 0, compile_result.output
+	run_result := cmdexec.run(bin_file, [])
+	assert run_result.exit_code == 0, run_result.output
+	assert run_result.output.trim_space() == '42'
+}
+
+fn test_module_paths_reject_at_escapes() {
+	prefs := pref.new_preferences()
+	for source in ['module @foo\n', 'module @type\n', 'module main\nimport @foo as foo\n',
+		'module main\nimport pkg.@FN\n'] {
+		mut message := ''
+		_ := fastc_scan_source_header(source, 'invalid_module_path.v', prefs) or {
+			message = err.msg()
+			FastcSourceHeader{}
+		}
+		assert message != '', 'FastC accepted `${source}`'
+	}
+}
+
 fn test_generate_files_resolves_modules_without_an_ast() {
 	root := os.join_path(os.vtmp_dir(), 'v3_fastc_modules_${os.getpid()}')
 	os.rmdir_all(root) or {}
@@ -2102,6 +2157,36 @@ fn test_generate_files_resolves_modules_without_an_ast() {
 	run_result := cmdexec.run(bin_file, [])
 	assert run_result.exit_code == 0, run_result.output
 	assert run_result.output.trim_space() == '42'
+}
+
+fn test_source_resolver_skips_a_manifestless_modules_namespace_from_a_nested_entry() {
+	root := os.join_path(os.vtmp_dir(), 'v3_fastc_nested_modules_${os.getpid()}')
+	entry_dir := os.join_path(root, 'src')
+	legacy_dir := os.join_path(root, 'modules', 'legacy_user_28575')
+	neighbour_dir := os.join_path(root, 'modules', 'legacy_peer_28575')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(entry_dir) or { panic(err) }
+	os.mkdir_all(legacy_dir) or { panic(err) }
+	os.mkdir_all(neighbour_dir) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	main_file := os.join_path(entry_dir, 'main.v')
+	os.write_file(main_file, 'module main\nimport modules.legacy_user_28575\nfn main() {}\n') or {
+		panic(err)
+	}
+	os.write_file(os.join_path(legacy_dir, 'legacy_user.v'), 'module legacy_user_28575\nimport legacy_peer_28575\n') or { panic(err) }
+	os.write_file(os.join_path(neighbour_dir, 'legacy_peer.v'), 'module legacy_peer_28575\n') or {
+		panic(err)
+	}
+
+	prefs := pref.new_preferences()
+	mut message := ''
+	_ := generate_files([main_file], prefs) or {
+		message = err.msg()
+		''
+	}
+	assert message.contains('cannot resolve imported module `legacy_peer_28575`'), message
 }
 
 fn test_source_resolver_preserves_aliases_for_scheduled_files() {
@@ -2243,10 +2328,12 @@ pub fn ping() {}
 	assert resolved_modules == ['main', 'alpha']
 	prefs.building_v = true
 	c_source, _, _ := generate_source_files(sources, aliases, prefs) or { panic(err) }
-	assert c_source.contains('\talpha__init();'), c_source
-	assert c_source.contains('\talpha__cleanup();'), c_source
-	assert !c_source.contains('beta__init'), c_source
-	assert !c_source.contains('beta__cleanup'), c_source
+	// Self-host generation compacts non-main C function names, so check the selected
+	// lifecycle bodies instead of their private symbol spelling.
+	assert c_source.contains('println(_S("alpha init"));'), c_source
+	assert c_source.contains('println(_S("alpha cleanup"));'), c_source
+	assert !c_source.contains('println(_S("beta init"));'), c_source
+	assert !c_source.contains('println(_S("beta cleanup"));'), c_source
 }
 
 fn test_generate_files_rejects_mismatched_imported_module_declarations() {
@@ -2287,17 +2374,17 @@ pub fn (d Duration) microseconds() i64 { return i64(d) / 1000 }
 '
 	c_source, _, _ := generate_source_files([
 		FastcSourceFile{
-			path: 'main.v'
+			path:   'main.v'
 			source: main_source
 			header: fastc_scan_source_header(main_source, 'main.v', prefs) or { panic(err) }
 		},
 		FastcSourceFile{
-			path: 'clock.v'
+			path:   'clock.v'
 			source: clock_source
 			header: fastc_scan_source_header(clock_source, 'clock.v', prefs) or { panic(err) }
 		},
 	], map[string]string{}, prefs) or { panic(err) }
-	assert c_source.contains('clock__Duration_microseconds(((clock__Duration)'), c_source
+	assert c_source.contains('v_f0(((clock__Duration)'), c_source
 }
 
 fn test_selfhost_module_qualified_pointer_cast() {
@@ -2308,19 +2395,21 @@ import transport
 fn convert(pointer voidptr) &transport.Conn {
 	return unsafe { &transport.Conn(pointer) }
 }
-fn main() {}
+fn main() {
+	_ = convert(voidptr(0))
+}
 '
 	transport_source := 'module transport
 pub struct Conn {}
 '
 	c_source, _, _ := generate_source_files([
 		FastcSourceFile{
-			path: 'main.v'
+			path:   'main.v'
 			source: main_source
 			header: fastc_scan_source_header(main_source, 'main.v', prefs) or { panic(err) }
 		},
 		FastcSourceFile{
-			path: 'transport.v'
+			path:   'transport.v'
 			source: transport_source
 			header: fastc_scan_source_header(transport_source, 'transport.v', prefs) or {
 				panic(err)
@@ -2345,7 +2434,10 @@ fn set_list(mut state State, pointer voidptr) {
 	state.list = unsafe { &&char(pointer) }
 }
 
-fn main() {}
+fn main() {
+	mut state := State{}
+	set_list(mut state, voidptr(0))
+}
 ', 'selfhost_double_pointer_cast_assignment.v', prefs) or { panic(err) }
 	assert c_source.contains('state->list=((char**)(pointer))'), c_source
 	assert !c_source.contains('state->list=)&&'), c_source
@@ -2432,9 +2524,12 @@ fn use() !int {
 	return Tool.run(1, kind: .two)
 }
 
-fn main() {}
+fn main() {
+	_ := use() or { 0 }
+}
 ', 'selfhost_static_named_options.v', prefs) or { panic(err) }
-	assert c_source.contains('Tool_run(1,(Options){.kind='), c_source
+	assert c_source.contains('return Tool_run(1,({ Kind'), c_source
+	assert c_source.contains('(Options){.kind='), c_source
 	assert c_source.contains('Kind__two'), c_source
 	assert !c_source.contains('kind:.two'), c_source
 }
@@ -2652,7 +2747,7 @@ fn test_selfhost_method_params_struct_named_args() {
 	mut prefs := pref.new_preferences()
 	prefs.building_v = true
 	source := generate('module main\n@[params]\nstruct Options {\n\tafter bool\n}\nstruct Service {}\nfn (mut service Service) use(options Options) {}\nfn (mut service Service) redirect(path string, options Options) {}\nfn main() {\n\tmut service := Service{}\n\tservice.use(after: true)\n\tservice.redirect("/next")\n}\n', 'method_params_struct.v', prefs) or { panic(err) }
-	assert source.contains('Service_use(&(service),(Options){'), source
+	assert source.contains('Service_use(&(service),({ bool'), source
 	assert source.contains('.after='), source
 	assert source.contains('Service_redirect(&(service),_S("/next"),(Options){0})'), source
 }
@@ -2704,7 +2799,10 @@ fn same_storage(left string, right string) bool {
 	return left.len == right.len && unsafe { left.str == right.str }
 }
 
-fn main() {}
+fn main() {
+	_ = accepts_str_method(Node{})
+	_ = same_storage("", "")
+}
 ', 'selector_after_binary.v', prefs) or { panic(err) }
 	assert !source.contains('&builtin__bool_str'), source
 	assert source.contains('Kind__str'), source
@@ -3020,11 +3118,168 @@ fn test_global_declarations_require_enable_globals_or_module_attribute() {
 
 	attributed_source := generate('@[has_globals]\nmodule main\n__global answer = 42\nfn main() {}\n', 'attributed_global.v', prefs) or { panic(err) }
 	assert attributed_source.contains('static int answer;'), attributed_source
+	translated_source := generate('@[translated]\nmodule main\n__global answer = 42\nfn main() {}\n',
+		'translated_global.v', prefs) or { panic(err) }
+	assert translated_source.contains('static int answer;'), translated_source
 
 	mut enabled_prefs := pref.new_preferences()
 	enabled_prefs.enable_globals = true
 	enabled_source := generate('module main\n__global answer = 42\nfn main() {}\n', 'enabled_global.v', enabled_prefs) or { panic(err) }
 	assert enabled_source.contains('static int answer;'), enabled_source
+}
+
+fn test_translated_pointer_writes_accept_immutable_roots() {
+	prefs := pref.new_preferences()
+	source := 'module main\nstruct State {\nmut:\n count int\n}\nfn bump(state &State) { state.count = 1 }\nfn main() {}\n'
+	mut message := ''
+	_ := generate(source, 'plain_pointer_write.v', prefs) or {
+		message = err.msg()
+		''
+	}
+	assert message.contains('mutation of immutable or unknown name'), message
+	translated := generate('@[translated]\n${source}', 'translated_pointer_write.v', prefs) or {
+		panic(err)
+	}
+	assert translated.contains('state->count=1;'), translated
+	pointer_increment := generate('@[translated]\nmodule main\nfn advance(p &int) { p++ }\nfn main() {}\n',
+		'translated_pointer_increment.v', prefs) or { panic(err) }
+	assert pointer_increment.contains('p++;'), pointer_increment
+	alias_increment := generate('@[translated]\nmodule main\ntype Cursor = &int\nfn advance(p Cursor) { p++ }\nfn main() {}\n',
+		'translated_alias_pointer_increment.v', prefs) or { panic(err) }
+	assert alias_increment.contains('p++;'), alias_increment
+	alias_selector := generate('@[translated]\nmodule main\nstruct State {\nmut:\n count int\n}\ntype StateRef = &State\nfn bump(state StateRef) { state.count = 1 }\nfn main() {}\n',
+		'translated_alias_pointer_selector.v', prefs) or { panic(err) }
+	assert alias_selector.contains('state->count=1;'), alias_selector
+	global_pointer := generate('@[translated]\nmodule main\nstruct GlobalState { count int }\n__global state = &GlobalState(unsafe { nil })\nfn main() { state.count = 1 }\n',
+		'translated_global_pointer_selector.v', prefs) or { panic(err) }
+	assert global_pointer.contains('state->count=1;'), global_pointer
+	pointer_call := generate('@[translated]\nmodule main\nstruct State { count int }\nfn get_state() &State { return unsafe { nil } }\nfn main() { get_state().count = 1 }\n',
+		'translated_pointer_call_selector.v', prefs) or { panic(err) }
+	assert pointer_call.contains('->count=1;'), pointer_call
+	dereference_write := generate('@[translated]\nmodule main\nfn store(target &int, value int) { *target = value }\nfn main() {}\n',
+		'translated_dereference_write.v', prefs) or { panic(err) }
+	assert dereference_write.contains('*target=value;'), dereference_write
+}
+
+fn test_translated_alias_pointer_call_field_writes() {
+	for selfhost in [false, true] {
+		mut prefs := pref.new_preferences()
+		prefs.building_v = selfhost
+		for receiver in ['get_state()', 'accessor.state()'] {
+			for operation in ['=1', '++', '--'] {
+				source := '@[translated]
+module main
+struct State { count int }
+type StateRef = &State
+type StateRefAlias = StateRef
+struct Accessor {}
+fn get_state() StateRefAlias { return unsafe { nil } }
+fn (a Accessor) state() StateRefAlias { return unsafe { nil } }
+fn write(accessor Accessor) {
+ ${receiver}.count${operation}
+}
+'
+				generated := generate(source, 'translated_alias_return.v', prefs) or { panic(err) }
+				assert generated.contains('->count${operation};'), generated
+			}
+		}
+	}
+}
+
+fn test_translated_scalar_mutations_accept_known_immutable_locals() {
+	prefs := pref.new_preferences()
+	for body in [
+		'fn advance(i int) { i++ }',
+		'fn advance(i int) { i-- }',
+		'fn advance(i int) { i += 2 }',
+		'fn advance(i int) { i = 2 }',
+		'fn advance() { i := 1; i++ }',
+		'fn advance() { i := 1; i-- }',
+		'fn advance() { i := 1; i += 2 }',
+		'fn advance() { i := 1; i = 2 }',
+	] {
+		source := 'module main\n${body}\nfn main() {}\n'
+		mut message := ''
+		_ := generate(source, 'immutable_scalar.v', prefs) or {
+			message = err.msg()
+			''
+		}
+		assert message.contains('mutation of immutable or unknown name'), message
+		_ := generate('@[translated]\n${source}', 'translated_scalar.v', prefs) or {
+			panic(err)
+		}
+	}
+	mut message := ''
+	_ := generate('@[translated]\nmodule main\nfn main() { missing++ }\n',
+		'translated_unknown.v', prefs) or {
+		message = err.msg()
+		''
+	}
+	assert message.contains('mutation of immutable or unknown name'), message
+}
+
+fn test_translated_mutation_operators_and_receiver_shapes() {
+	root := os.join_path(os.vtmp_dir(), 'translated_mutation_matrix_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+	operations := ['=7', '+=3', '-=3', '*=3', '&=3', '|=3', '^=3', '<<=1', '>>=1', '>>>=1', '++',
+		'--', '<<=64', '>>=64', '>>>=64']
+	expected := [7, 15, 9, 36, 0, 15, 15, 24, 6, 6, 13, 11, 0, 0, 0]
+	for selfhost in [false, true] {
+		mut prefs := pref.new_preferences()
+		prefs.building_v = selfhost
+		mut source := '@[translated]
+module main
+struct State { count int }
+type StateValue = State
+type StateRef = &State
+type StateRefAlias = StateRef
+__global global_state State
+fn copy_state(state StateValue) StateValue { return state }
+fn get_state(state &State) StateRefAlias { return state }
+fn (state &State) reference() StateRefAlias { return state }
+fn logical_shift(value int) int { value >>>= 1; return value }
+'
+		unsigned_type := if prefs.target.pointer_bits == 32 { 'u32' } else { 'u64' }
+		mut checks := ['if (logical_shift(-1) != ((${unsigned_type})-1 >> 1)) return 3;']
+		for i, operation in operations {
+			source += 'fn scalar_${i}(value int) int { value${operation}; return value }\n'
+			checks << 'if (scalar_${i}(12) != ${expected[i]}) return 1;'
+			for shape, target in ['state.count', 'copy.count', 'global_state.count',
+				'get_state(&state).count', 'state.reference().count', 'pointer.count'] {
+				name := 'mutate_${i}_${shape}'
+				source += 'fn ${name}(state StateValue) int {\n'
+				if shape == 1 { source += 'copy := copy_state(state)\n' }
+				if shape == 2 { source += 'global_state.count = state.count\n' }
+				if shape == 5 { source += 'pointer := StateRefAlias(&state)\n' }
+				result := if shape == 1 {
+					'copy.count'
+				} else if shape == 2 {
+					'global_state.count'
+				} else {
+					'state.count'
+				}
+				source += '${target}${operation}\nreturn ${result}\n}\n'
+				checks << 'if (${name}((State){.count=12}) != ${expected[i]}) return 2;'
+			}
+		}
+		generated := generate(source, 'translated_mutation_matrix.v', prefs) or { panic(err) }
+		assert !generated.contains('>>>='), generated
+		if selfhost {
+			// Selfhost output relies on real builtin definitions. The standalone
+			// preamble below also lets us execute every non-selfhost mutation.
+			continue
+		}
+		c_file := os.join_path(root, 'matrix.c')
+		bin_file := os.join_path(root, 'matrix')
+		os.write_file(c_file, '#define main unused_main\n' + generated +
+			'\n#undef main\nint main(void) {\n' + checks.join('\n') + '\nreturn 0;\n}\n')!
+		tcc := os.join_path(prefs.vroot, 'thirdparty', 'tcc', 'tcc.exe')
+		compiled := cmdexec.run(tcc, ['-std=gnu11', '-o', bin_file, c_file])
+		assert compiled.exit_code == 0, compiled.output + '\n' + generated
+		ran := cmdexec.run(bin_file, [])
+		assert ran.exit_code == 0, ran.output
+	}
 }
 
 fn test_duplicate_global_declarations_are_rejected() {
@@ -3185,7 +3440,7 @@ fn main() {
 	println(config.retries)
 }
 ', 'struct_field_default.v', prefs) or { panic(err) }
-	assert c_source.contains('int default_retries(void)'), c_source
+	assert c_source.contains('${fastc_platform_int_c_type} default_retries(void)'), c_source
 	assert c_source.contains('__vf_sd.retries=(default_retries());'), c_source
 }
 
@@ -3252,12 +3507,12 @@ pub fn make() Settings {
 		mut message := ''
 		if _, _, _ := generate_source_files([
 			FastcSourceFile{
-				path: main_file
+				path:   main_file
 				source: source
 				header: fastc_scan_source_header(source, main_file, prefs) or { panic(err) }
 			},
 			FastcSourceFile{
-				path: module_file
+				path:   module_file
 				source: module_source
 				header: fastc_scan_source_header(module_source, module_file, prefs) or {
 					panic(err)
@@ -3274,12 +3529,12 @@ pub fn make() Settings {
 	valid_source := 'module main\nimport records\nfn main() { value := records.Settings{visible: 2}; println(value.visible) }\n'
 	c_source, _, _ := generate_source_files([
 		FastcSourceFile{
-			path: main_file
+			path:   main_file
 			source: valid_source
 			header: fastc_scan_source_header(valid_source, main_file, prefs) or { panic(err) }
 		},
 		FastcSourceFile{
-			path: module_file
+			path:   module_file
 			source: module_source
 			header: fastc_scan_source_header(module_source, module_file, prefs) or { panic(err) }
 		},
@@ -3319,12 +3574,12 @@ fn main() {
 	mut message := ''
 	if _, _, _ := generate_source_files([
 		FastcSourceFile{
-			path: main_file
+			path:   main_file
 			source: invalid_source
 			header: fastc_scan_source_header(invalid_source, main_file, prefs) or { panic(err) }
 		},
 		FastcSourceFile{
-			path: module_file
+			path:   module_file
 			source: module_source
 			header: fastc_scan_source_header(module_source, module_file, prefs) or { panic(err) }
 		},
@@ -3346,12 +3601,12 @@ fn main() {
 '
 	c_source, _, _ := generate_source_files([
 		FastcSourceFile{
-			path: main_file
+			path:   main_file
 			source: valid_source
 			header: fastc_scan_source_header(valid_source, main_file, prefs) or { panic(err) }
 		},
 		FastcSourceFile{
-			path: module_file
+			path:   module_file
 			source: module_source
 			header: fastc_scan_source_header(module_source, module_file, prefs) or { panic(err) }
 		},
@@ -4691,14 +4946,14 @@ fn main() {
 	mut field_message := ''
 	if _, _, _ := generate_source_files([
 		FastcSourceFile{
-			path: 'immutable_flag_field.v'
+			path:   'immutable_flag_field.v'
 			source: main_source
 			header: fastc_scan_source_header(main_source, 'immutable_flag_field.v', prefs) or {
 				panic(err)
 			}
 		},
 		FastcSourceFile{
-			path: 'settings.v'
+			path:   'settings.v'
 			source: module_source
 			header: fastc_scan_source_header(module_source, 'settings.v', prefs) or { panic(err) }
 		},
@@ -5494,10 +5749,10 @@ fn fastc_test_expression_token(tok token.Token, lit string) FastcExpressionToken
 fn test_literal_membership_materializes_candidates_before_comparison() {
 	prefs := pref.new_preferences()
 	g := Parser{
-		prefs: prefs
+		prefs:    prefs
 		selfhost: true
-		s: scanner.new_scanner(prefs, .normal)
-		locals: {
+		s:        scanner.new_scanner(prefs, .normal)
+		locals:   {
 			'subject': FastcLocal{
 				typ: 'int'
 			}
@@ -6525,12 +6780,12 @@ fn main() {
 '
 	c_source, _, _ := generate_source_files([
 		FastcSourceFile{
-			path: 'main.v'
+			path:   'main.v'
 			source: main_source
 			header: fastc_scan_source_header(main_source, 'main.v', prefs) or { panic(err) }
 		},
 		FastcSourceFile{
-			path: 'sizes/sizes.v'
+			path:   'sizes/sizes.v'
 			source: sizes_source
 			header: fastc_scan_source_header(sizes_source, 'sizes/sizes.v', prefs) or { panic(err) }
 		},
@@ -7308,8 +7563,8 @@ fn main() {
 fn test_selfhost_fixed_array_elements_skip_dynamic_inner_array_initialization() {
 	prefs := pref.new_preferences()
 	g := Parser{
-		prefs: prefs
-		s: scanner.new_scanner(prefs, .normal)
+		prefs:         prefs
+		s:             scanner.new_scanner(prefs, .normal)
 		struct_fields: {
 			'array': {
 				'len': 'int'
@@ -8898,12 +9153,12 @@ pub fn run[A, B](mut app A, config Config) ! {
 '
 	c_source, _, _ := generate_source_files([
 		FastcSourceFile{
-			path: 'main.v'
+			path:   'main.v'
 			source: main_source
 			header: fastc_scan_source_header(main_source, 'main.v', prefs) or { panic(err) }
 		},
 		FastcSourceFile{
-			path: 'library.v'
+			path:   'library.v'
 			source: library_source
 			header: fastc_scan_source_header(library_source, 'library.v', prefs) or { panic(err) }
 		},
@@ -9684,7 +9939,7 @@ fn handler() string {
 	mut references := map[string]map[string]bool{}
 	mut top_level_references := map[string]bool{}
 	fastc_collect_file_references(FastcSourceFile{
-		path: main_path
+		path:   main_path
 		source: source
 	}, prefs, {
 		'template_only': true
@@ -10896,12 +11151,12 @@ pub type Conn = Base
 '
 	c_source, _, _ := generate_source_files([
 		FastcSourceFile{
-			path: 'main.v'
+			path:   'main.v'
 			source: main_source
 			header: fastc_scan_source_header(main_source, 'main.v', prefs) or { panic(err) }
 		},
 		FastcSourceFile{
-			path: 'transport/transport.v'
+			path:   'transport/transport.v'
 			source: transport_source
 			header: fastc_scan_source_header(transport_source, 'transport/transport.v', prefs) or {
 				panic(err)
@@ -11053,12 +11308,12 @@ pub fn (d Dog) sound() int {
 '
 	c_source, _, _ := generate_source_files([
 		FastcSourceFile{
-			path: 'main.v'
+			path:   'main.v'
 			source: main_source
 			header: fastc_scan_source_header(main_source, 'main.v', prefs) or { panic(err) }
 		},
 		FastcSourceFile{
-			path: 'animals/animals.v'
+			path:   'animals/animals.v'
 			source: animals_source
 			header: fastc_scan_source_header(animals_source, 'animals/animals.v', prefs) or {
 				panic(err)
@@ -12211,18 +12466,18 @@ fn test_failed_generic_placeholder_block_unwinds_local_scope() {
 	mut file := file_set.add_file('failed_generic_scope.v', source.len)
 	file.index_lines_without_digest(source)
 	mut g := Parser{
-		prefs: prefs
-		selfhost: true
+		prefs:                  prefs
+		selfhost:               true
 		in_generic_placeholder: true
-		locals: {
+		locals:                 {
 			'result': FastcLocal{
 				is_mut: true
-				typ: 'voidptr'
+				typ:    'voidptr'
 			}
 		}
-		s: scanner.new_scanner(prefs, .normal)
-		out: strings.new_builder(64)
-		statement_reachable: true
+		s:                      scanner.new_scanner(prefs, .normal)
+		out:                    strings.new_builder(64)
+		statement_reachable:    true
 	}
 	for _ in 0 .. 3 {
 		out_checkpoint := g.out.len
@@ -13323,17 +13578,17 @@ fn main() {
 '
 	c_source, _, _ := generate_source_files([
 		FastcSourceFile{
-			path: 'util/util.v'
+			path:   'util/util.v'
 			source: util_source
 			header: fastc_scan_source_header(util_source, 'util/util.v', prefs) or { panic(err) }
 		},
 		FastcSourceFile{
-			path: 'first/first.v'
+			path:   'first/first.v'
 			source: first_source
 			header: fastc_scan_source_header(first_source, 'first/first.v', prefs) or { panic(err) }
 		},
 		FastcSourceFile{
-			path: 'main.v'
+			path:   'main.v'
 			source: main_source
 			header: fastc_scan_source_header(main_source, 'main.v', prefs) or { panic(err) }
 		},
@@ -13392,12 +13647,12 @@ fn main() {
 '
 	c_source, _, _ := generate_source_files([
 		FastcSourceFile{
-			path: 'util/util.v'
+			path:   'util/util.v'
 			source: util_source
 			header: fastc_scan_source_header(util_source, 'util/util.v', prefs) or { panic(err) }
 		},
 		FastcSourceFile{
-			path: 'main.v'
+			path:   'main.v'
 			source: main_source
 			header: fastc_scan_source_header(main_source, 'main.v', prefs) or { panic(err) }
 		},
@@ -13440,12 +13695,12 @@ fn main() {
 '
 	c_source, _, _ := generate_source_files([
 		FastcSourceFile{
-			path: 'util/util.v'
+			path:   'util/util.v'
 			source: util_source
 			header: fastc_scan_source_header(util_source, 'util/util.v', prefs) or { panic(err) }
 		},
 		FastcSourceFile{
-			path: 'main.v'
+			path:   'main.v'
 			source: main_source
 			header: fastc_scan_source_header(main_source, 'main.v', prefs) or { panic(err) }
 		},
@@ -13477,12 +13732,12 @@ fn main() {
 '
 	c_source, _, _ := generate_source_files([
 		FastcSourceFile{
-			path: 'util/util.v'
+			path:   'util/util.v'
 			source: util_source
 			header: fastc_scan_source_header(util_source, 'util/util.v', prefs) or { panic(err) }
 		},
 		FastcSourceFile{
-			path: 'main.v'
+			path:   'main.v'
 			source: main_source
 			header: fastc_scan_source_header(main_source, 'main.v', prefs) or { panic(err) }
 		},
@@ -13563,12 +13818,12 @@ fn main() {
 '
 	c_source, _, _ := generate_source_files([
 		FastcSourceFile{
-			path: 'util/util.v'
+			path:   'util/util.v'
 			source: util_source
 			header: fastc_scan_source_header(util_source, 'util/util.v', prefs) or { panic(err) }
 		},
 		FastcSourceFile{
-			path: 'main.v'
+			path:   'main.v'
 			source: main_source
 			header: fastc_scan_source_header(main_source, 'main.v', prefs) or { panic(err) }
 		},
@@ -13704,4 +13959,127 @@ fn main() {
 ', 'address_of_mut_parameter.v', prefs) or { panic(err) }
 	assert c_source.contains('.program=(program)'), c_source
 	assert !c_source.contains('.program=(&program)'), c_source
+}
+
+fn test_translated_fastc_shifts_are_bounded_and_evaluate_once() {
+	root := os.join_path(os.vtmp_dir(), 'translated_shift_bounds_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+	mut prefs := pref.new_preferences()
+	mut source := '@[translated]\nmodule main\ntype ShiftAlias = i32\ntype ShiftAliasChain = ShiftAlias\n'
+	mut checks := []string{}
+	for i, typ in ['i8', 'u8', 'i16', 'u16', 'i32', 'u32', 'i64', 'u64', 'int', 'ShiftAliasChain'] {
+		bits := if i < 2 {
+			8
+		} else if i < 4 {
+			16
+		} else if i in [4, 5, 9] {
+			32
+		} else if i in [6, 7] {
+			64
+		} else {
+			prefs.target.pointer_bits
+		}
+		for j, op in ['<<', '>>', '>>>'] {
+			name := 'shift_${i}_${j}'
+			source += 'fn ${name}(value ${typ}, count int) ${typ} { return value ${op} count }\n'
+			source += 'fn assign_${name}(value ${typ}, count int) ${typ} { value ${op}= count; return value }\n'
+			for count in [0, 1, bits - 1, bits, bits + 1, -1] {
+				expected := if count == 0 {
+					4
+				} else if count == 1 {
+					if j == 0 { 8 } else { 2 }
+				} else {
+					0
+				}
+				checks << 'if (${name}(4, ${count}) != ${expected}) return 1;'
+				checks << 'if (assign_${name}(4, ${count}) != ${expected}) return 2;'
+			}
+		}
+	}
+	source += '
+struct ShiftState { value i64 }
+__global shift_calls = 0
+fn shift_target(state &ShiftState) &ShiftState { shift_calls++; return state }
+fn shift_count() int { shift_calls++; return 64 }
+fn shift_once(state &ShiftState) { shift_target(state).value <<= shift_count() }
+fn shift_value() i64 { shift_calls++; return 4 }
+fn expression_once() i64 { return shift_value() >> shift_count() }
+fn direct_pointer(value &i64) &i64 { return value }
+fn write_pointer_call(value &i64) { *direct_pointer(value) = 7 }
+fn literal_left(count int) int { return 1 << count }
+fn literal_right(count int) int { return -1 >> count }
+fn literal_unsigned(count int) u64 { return -1 >>> count }
+'
+	checks << 'ShiftState state = {.value=4}; shift_calls=0; shift_once(&state); if (state.value != 0 || shift_calls != 2) return 3;'
+	checks << 'shift_calls=0; if (expression_once() != 0 || shift_calls != 2) return 4;'
+	checks << 'i64 cell = 0; write_pointer_call(&cell); if (cell != 7) return 5;'
+	checks << 'if (literal_left(40) != ${if prefs.target.pointer_bits == 64 {
+		'1099511627776LL'
+	} else {
+		'0'
+	}}) return 8;'
+	checks << 'if (literal_right(40) != ${if prefs.target.pointer_bits == 64 { '-1' } else { '0' }}) return 9;'
+	checks << 'if (literal_unsigned(40) != 0) return 10;'
+	for i, target in ['*value', '(*value)', '*direct_pointer(value)', '(*direct_pointer(value))'] {
+		for j, op in ['<<=', '>>=', '>>>='] {
+			name := 'deref_shift_${i}_${j}'
+			source += 'fn ${name}(value &i64, count int) { ${target} ${op} count }\n'
+			checks << 'cell=4; ${name}(&cell, 64); if (cell != 0) return 6;'
+			checks << 'cell=4; ${name}(&cell, 1); if (cell != ${if j == 0 { 8 } else { 2 }}) return 7;'
+		}
+	}
+	for selfhost in [false, true] {
+		prefs.building_v = selfhost
+		generated := generate(source, 'translated_shift_bounds.v', prefs) or { panic(err) }
+		assert !generated.contains('>>>'), generated
+		if selfhost { continue }
+		c_file := os.join_path(root, 'shifts.c')
+		bin_file := os.join_path(root, 'shifts')
+		os.write_file(c_file, '#define main unused_main\n' + generated + '\n#undef main\nint main(void) {\n' + checks.join('\n') + '\nreturn 0;\n}\n')!
+		tcc := os.join_path(prefs.vroot, 'thirdparty', 'tcc', 'tcc.exe')
+		compiled := cmdexec.run(tcc, ['-std=gnu11', '-o', bin_file, c_file])
+		assert compiled.exit_code == 0, compiled.output + '\n' + generated
+		ran := cmdexec.run(bin_file, [])
+		assert ran.exit_code == 0, ran.output
+	}
+}
+
+fn test_translated_fastc_division_keeps_checked_backend_fallback() {
+	for selfhost in [false, true] {
+		mut prefs := pref.new_preferences()
+		prefs.building_v = selfhost
+		for body in ['return value / count', 'return value % count', 'value /= count; return value',
+			'value %= count; return value', '*ptr /= count; return value',
+			'(*ptr) %= count; return value'] {
+			mut message := ''
+			_ := generate('@[translated]\nmodule main\nfn divide(value int, count int, ptr &int) int { ${body} }\n', 'translated_division.v', prefs) or {
+				message = err.msg()
+				''
+			}
+			assert message.contains('division or modulo expressions'), message
+		}
+	}
+}
+
+fn test_translated_header_marker_uses_attribute_names() {
+	prefs := pref.new_preferences()
+	for attribute in ['@[metadata: translated]', '@[metadata: has_globals]',
+		'@[metadata: [translated, has_globals]]', '@[metadata: "translated"]'] {
+		header := fastc_scan_source_header('${attribute}\nmodule main\n', 'attribute_values.v', prefs)!
+		assert !header.translated
+		assert !header.has_globals
+		mut message := ''
+		_ := generate('${attribute}\nmodule main\nfn main() { value := 1; value++ }\n', 'attribute_mutation.v', prefs) or {
+			message = err.msg()
+			''
+		}
+		assert message.contains('mutation of immutable'), message
+	}
+	for attribute in ['@[translated]', '@[metadata: "value"; translated]',
+		'@[metadata: [translated]; translated]'] {
+		header := fastc_scan_source_header('${attribute}\nmodule main\n', 'attribute_names.v', prefs)!
+		assert header.translated
+		assert header.has_globals
+	}
 }

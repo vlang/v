@@ -25,6 +25,89 @@ fn span_text(src string, node flat.Node) string {
 	return src[node.pos.offset..node.pos.end]
 }
 
+fn test_keyword_module_import_keeps_source_alias() {
+	ast, _ := parse_span_source('keyword_module_imports', 'import type\nimport pkg.type\nimport type.bar\nimport foo as renamed\n')
+	imports := ast.nodes.filter(it.kind == .import_decl)
+	assert imports.len == 4
+	assert imports[0].value == 'type'
+	assert imports[0].typ == 'type'
+	assert imports[1].value == 'pkg.type'
+	assert imports[1].typ == 'type'
+	assert imports[2].value == 'type.bar'
+	assert imports[2].typ == 'bar'
+	assert imports[3].value == 'foo'
+	assert imports[3].typ == 'renamed'
+}
+
+fn test_keyword_top_level_module_declaration_uses_name() {
+	ast, _ := parse_span_source('keyword_module_declaration', 'module type\npub fn value() int { return 1 }\n')
+	modules := ast.nodes.filter(it.kind == .module_decl)
+	assert modules.len == 1
+	assert modules[0].value == 'type'
+}
+
+fn test_module_paths_reject_at_escapes() {
+	path := os.join_path(os.temp_dir(), 'v3_module_escapes_${os.getpid()}.v')
+	defer {
+		os.rm(path) or {}
+	}
+	for source in ['module @foo\n', 'module @type\n', 'module main\nimport @foo as foo\n',
+		'module main\nimport pkg.@FN\n'] {
+		os.write_file(path, source)!
+		mut p := Parser.new(pref.new_preferences())
+		_ := p.parse_file(path)
+		assert p.diagnostics.str().contains('module names cannot use `@` escapes'), p.diagnostics.str()
+	}
+}
+
+fn test_parenthesized_match_statement_accepts_newline_before_block() {
+	path := os.join_path(os.temp_dir(), 'v3_parenthesized_match_${os.getpid()}.v')
+	os.write_file(path, 'fn main() {\n\tmatch (2)\n\t{\n\t\t2 {}\n\t\telse {}\n\t}\n}\n') or {
+		panic(err)
+	}
+	defer {
+		os.rm(path) or {}
+	}
+	mut p := Parser.new(pref.new_preferences())
+	a := p.parse_file(path)
+	assert p.diagnostics.len == 0, p.diagnostics.str()
+	assert a.nodes.count(it.kind == .match_stmt) == 1
+}
+
+fn test_or_block_accepts_newline_after_result_expression() {
+	path := os.join_path(os.temp_dir(), 'v3_newline_or_block_${os.getpid()}.v')
+	os.write_file(path, 'fn result_value() !int {
+	return 42
+}
+
+fn main() {
+	value := result_value()
+		or { return }
+	result_value()
+		or { return }
+	match result_value() {
+		42 {}
+		else {}
+	}
+		or { return }
+	if true {
+		result_value()
+	} else {
+		result_value()
+	}
+		or { return }
+	assert value == 42
+}
+') or { panic(err) }
+	defer {
+		os.rm(path) or {}
+	}
+	mut p := Parser.new(pref.new_preferences())
+	a := p.parse_file(path)
+	assert p.diagnostics.len == 0, p.diagnostics.str()
+	assert a.nodes.count(it.kind == .or_expr) == 4
+}
+
 fn test_statement_map_literals_accept_compound_keys() {
 	ast, _ := parse_span_source('statement_map_compound_keys', "fn make_key() string {
 	return 'key'
@@ -212,6 +295,31 @@ fn test_c_style_for_post_clause_spans() {
 	assert 'i++' in stmt_spans
 	assert 'j++' in stmt_spans
 	assert stmt_spans.filter(it == 'i++, j++').len == 0
+}
+
+fn test_postfix_comment_newline_starts_next_parenthesized_statement() {
+	ast, src := parse_span_source('postfix_comment_newline', 'fn main() {
+	mut p := &int(0)
+	p++ // advance the pointer
+	(*p) += 2
+}
+')
+	mut saw_postfix := false
+	mut saw_assignment := false
+	for node in ast.nodes {
+		if node.kind == .postfix && node.op == .inc && span_text(src, node) == 'p++' {
+			saw_postfix = true
+		}
+		if node.kind == .assign && node.op == .plus_assign {
+			saw_assignment = true
+		}
+		if node.kind == .call && node.children_count > 0 {
+			callee := ast.child_node(&node, 0)
+			assert callee.kind != .postfix
+		}
+	}
+	assert saw_postfix
+	assert saw_assignment
 }
 
 // Array cast expressions (`[N]T(x)`, `[]T(x)`) are built after the `[N]T`/`[]T`
@@ -408,6 +516,21 @@ fn test_shared_keyword_identifier_as_parameter_name() {
 ')
 	assert grouped_ast.nodes.any(it.kind == .param && it.value == 'shared' && it.typ == 'int' && !it.is_mut)
 	assert grouped_ast.nodes.any(it.kind == .param && it.value == 'other' && it.typ == 'int' && !it.is_mut)
+}
+
+fn test_grouped_struct_fields_start_at_their_own_names() {
+	ast, src := parse_span_source('grouped_struct_fields', 'struct Pair {
+	first, second, byte u8
+	inner struct {
+		x, y int
+	}
+}
+')
+	for name in ['first', 'second', 'byte', 'x', 'y'] {
+		fields := ast.nodes.filter(it.kind == .field_decl && it.value == name)
+		assert fields.len == 1, name
+		assert src[fields[0].pos.offset..].starts_with(name), '${name}: ${span_text(src, fields[0])}'
+	}
 }
 
 fn test_multiline_shared_call_argument_stays_a_modifier() {

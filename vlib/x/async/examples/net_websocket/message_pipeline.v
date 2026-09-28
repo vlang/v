@@ -36,7 +36,8 @@ fn main() {
 				_ := <-done {
 					return ctx.err()
 				}
-				else {}
+				else {
+				}
 			}
 			processed <- describe_message(msg)!
 		})!

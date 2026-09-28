@@ -30,7 +30,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     env:
-      VFLAGS: -cc tcc -old-compiler
+      VFLAGS: -cc tcc
     steps:
       - uses: actions/checkout@v7
       - uses: ./.github/actions/cache-apt-packages-action

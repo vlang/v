@@ -23,13 +23,13 @@ fn (g &Parser) render_typeof_generic_expression(tokens []FastcExpressionToken) ?
 			idx := fastc_builtin_type_idx(type_name) or { return none }
 			return FastcRenderedExpression{
 				source: idx.str()
-				typ: 'int'
+				typ:    'int'
 			}
 		}
 		'name' {
 			return FastcRenderedExpression{
 				source: '_S("${type_name}")'
-				typ: 'string'
+				typ:    'string'
 			}
 		}
 		else {
@@ -60,7 +60,7 @@ fn (g &Parser) render_typeof_name_expression(tokens []FastcExpressionToken) ?Fas
 	}
 	return FastcRenderedExpression{
 		source: '_S("${type_name}")'
-		typ: 'string'
+		typ:    'string'
 	}
 }
 
@@ -99,7 +99,7 @@ fn (g &Parser) render_typeof_generic_comparison_expression(tokens []FastcExpress
 		}
 		return FastcRenderedExpression{
 			source: '((${left})${item.tok.str()}(${right}))'
-			typ: 'bool'
+			typ:    'bool'
 		}
 	}
 	return none
@@ -138,7 +138,7 @@ fn (g &Parser) render_disabled_call_expression(tokens []FastcExpressionToken) ?F
 	}
 	return FastcRenderedExpression{
 		source: fastc_disabled_call_expression(signature.return_type)
-		typ: signature.return_type
+		typ:    signature.return_type
 	}
 }
 
@@ -194,7 +194,7 @@ fn (g &Parser) render_cast_expression(tokens []FastcExpressionToken) ?FastcRende
 		if inner_tokens.len == 1 && inner_tokens[0].tok == .key_none {
 			return FastcRenderedExpression{
 				source: '(Option){.state=2}'
-				typ: 'Option'
+				typ:    'Option'
 			}
 		}
 		inner_type := g.infer_expression_type(inner_tokens) or { '' }
@@ -209,7 +209,7 @@ fn (g &Parser) render_cast_expression(tokens []FastcExpressionToken) ?FastcRende
 			} else {
 				fastc_option_success_expression(c_type, inner)
 			}
-			typ: 'Option'
+			typ:    'Option'
 		}
 	}
 	// A conversion into a boxed sum type (`Expr(EmptyExpr(0))`) is a box, not a C cast: the
@@ -235,7 +235,7 @@ fn (g &Parser) render_cast_expression(tokens []FastcExpressionToken) ?FastcRende
 			}
 			return FastcRenderedExpression{
 				source: '(${c_type}){._object=${object}, ._typ=__v_typeid_${variant}}'
-				typ: c_type
+				typ:    c_type
 			}
 		}
 	}
@@ -251,7 +251,7 @@ fn (g &Parser) render_cast_expression(tokens []FastcExpressionToken) ?FastcRende
 	inner := g.render_call_argument_expression(inner_tokens, inner_expected_type) or { return none }
 	return FastcRenderedExpression{
 		source: '((${fastc_output_c_type(c_type)})(${inner}))'
-		typ: c_type
+		typ:    c_type
 	}
 }
 
@@ -274,7 +274,7 @@ fn (g &Parser) render_c_interface_object_address(tokens []FastcExpressionToken) 
 	inner := g.render_call_argument_expression(tokens[5..6], '${c_type}*') or { return none }
 	return FastcRenderedExpression{
 		source: '&(((${c_type} *)(${inner}))->_object)'
-		typ: 'voidptr*'
+		typ:    'voidptr*'
 	}
 }
 
@@ -288,7 +288,7 @@ fn (g &Parser) render_c_struct_sizeof(tokens []FastcExpressionToken) ?FastcRende
 	}
 	return FastcRenderedExpression{
 		source: 'sizeof(struct ${c_name})'
-		typ: 'int'
+		typ:    'int'
 	}
 }
 
@@ -364,7 +364,7 @@ fn (g &Parser) render_flag_method_expression(tokens []FastcExpressionToken, rend
 			// render_member_receiver spells it correctly.
 			return FastcRenderedExpression{
 				source: replacement
-				typ: if method == 'has' { 'bool' } else { 'void' }
+				typ:    if method == 'has' { 'bool' } else { 'void' }
 			}
 		}
 		if !fastc_contains(rendered, needle) {
@@ -379,7 +379,7 @@ fn (g &Parser) render_flag_method_expression(tokens []FastcExpressionToken, rend
 	return if changed {
 		FastcRenderedExpression{
 			source: rendered
-			typ: result_type
+			typ:    result_type
 		}
 	} else {
 		none
@@ -403,7 +403,7 @@ fn (g &Parser) render_static_call_expression(tokens []FastcExpressionToken, rend
 			if call_start == 0 && call_end == tokens.len - 1 {
 				return FastcRenderedExpression{
 					source: disabled_call
-					typ: signature.return_type
+					typ:    signature.return_type
 				}
 			}
 			raw_call := g.render_raw_expression_tokens(tokens[call_start..call_end + 1]) or {
@@ -451,7 +451,7 @@ fn (g &Parser) render_static_call_expression(tokens []FastcExpressionToken, rend
 					if call_start == 0 && call_end == tokens.len - 1 {
 						return FastcRenderedExpression{
 							source: call_source
-							typ: signature.return_type
+							typ:    signature.return_type
 						}
 					}
 					raw_call := g.render_raw_expression_tokens(tokens[call_start..call_end + 1]) or {
@@ -482,7 +482,7 @@ fn (g &Parser) render_static_call_expression(tokens []FastcExpressionToken, rend
 				if call_start == 0 && call_end == tokens.len - 1 {
 					return FastcRenderedExpression{
 						source: call_source
-						typ: signature.return_type
+						typ:    signature.return_type
 					}
 				}
 				raw_call := g.render_raw_expression_tokens(tokens[call_start..call_end + 1]) or {
@@ -511,7 +511,7 @@ fn (g &Parser) render_static_call_expression(tokens []FastcExpressionToken, rend
 	return if changed {
 		FastcRenderedExpression{
 			source: rendered
-			typ: result_type
+			typ:    result_type
 		}
 	} else {
 		none
@@ -711,7 +711,7 @@ fn (g &Parser) render_interface_cast_expression(tokens []FastcExpressionToken, r
 	}
 	return FastcRenderedExpression{
 		source: g.interface_value_expression(interface_type, box_type, inner_source)
-		typ: interface_type
+		typ:    interface_type
 	}
 }
 
@@ -765,6 +765,6 @@ fn (g &Parser) render_mutable_map_value_pointer(tokens []FastcExpressionToken) ?
 	empty_value := g.map_lookup_missing_value_expression(value_type)
 	return FastcRenderedExpression{
 		source: '({ ${key_type} __vf_nested_map_key = (${key_source}); ${value_type} *__vf_nested_map_value = (${value_type} *)builtin__map_get_check((map *)(${map_address}), &__vf_nested_map_key); if (__vf_nested_map_value == NULL) { ${value_type} __vf_nested_map_empty = ${empty_value}; builtin__map_set((map *)(${map_address}), &__vf_nested_map_key, &__vf_nested_map_empty); __vf_nested_map_value = (${value_type} *)builtin__map_get_check((map *)(${map_address}), &__vf_nested_map_key); } __vf_nested_map_value; })'
-		typ: value_type
+		typ:    value_type
 	}
 }

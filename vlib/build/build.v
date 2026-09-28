@@ -99,7 +99,7 @@ pub fn (mut context BuildContext) artifact(config ArtifactParams) {
 pub fn (mut context BuildContext) get_task(name string) ?&Task {
 	for mut task in context.tasks {
 		if task.name == name {
-			return mut task
+			return task
 		}
 	}
 	return none

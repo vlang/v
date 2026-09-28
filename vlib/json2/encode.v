@@ -246,8 +246,7 @@ fn (mut encoder Encoder) encode_string(val string) {
 							0
 						} - 0x10000
 
-						hex_string := '\\u${0xD800 + ((unicode_point_low >> 10) & 0x3FF):04X}\\u${
-							0xDC00 + (unicode_point_low & 0x3FF):04x}'
+						hex_string := '\\u${0xD800 + ((unicode_point_low >> 10) & 0x3FF):04X}\\u${0xDC00 + (unicode_point_low & 0x3FF):04x}'
 
 						buffer_end += 4
 						buffer_start = buffer_end
@@ -648,6 +647,12 @@ fn check_not_empty[T](val T) ?bool {
 			return sval != ''
 		}
 		return false
+	} $else $if val is ?bool {
+		opt := ?bool(val)
+		if bval := opt {
+			return bval
+		}
+		return false
 	} $else $if val is ?int {
 		opt := ?int(val)
 		if ival := opt {
@@ -667,9 +672,14 @@ fn check_not_empty[T](val T) ?bool {
 		}
 		return false
 	} $else $if T is $option {
-		return !struct_field_is_none(val)
+		if struct_field_is_none(val) {
+			return false
+		}
+		return check_not_empty(get_value_from_optional(val)) or { true }
 	} $else $if T.indirections != 0 {
 		return val != unsafe { nil }
+	} $else $if T.unaliased_typ is bool {
+		return bool(val)
 	} $else $if T.unaliased_typ is string {
 		if val == '' {
 			return false

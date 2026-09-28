@@ -33,7 +33,7 @@ fn enum_storage_c_type_is_unsigned(storage_ct string) bool {
 
 fn (mut g FlatGen) register_enum_backing_info(enum_name string, backing string) {
 	info := EnumBackingInfo{
-		c_name: g.cname(enum_name)
+		c_name:         g.cname(enum_name)
 		storage_c_type: g.enum_backing_storage_c_type(backing)
 	}
 	g.enum_backing_infos[enum_name] = info
@@ -131,6 +131,10 @@ fn (mut g FlatGen) current_fn_optional_type_name(t types.Type) string {
 }
 
 fn (mut g FlatGen) value_c_type(t types.Type) string {
+	g.note_thread_type_usage(t)
+	if c_type := c_alias_value_c_type(t) {
+		return c_type
+	}
 	if shared_alias_ptr := g.shared_alias_pointer_type(t) {
 		return g.tc.c_type(shared_alias_ptr)
 	}
@@ -184,6 +188,114 @@ fn (mut g FlatGen) value_c_type(t types.Type) string {
 		return g.tc.c_type(cgen_unalias_type(g.tc.parse_type(target)))
 	}
 	return ct
+}
+
+fn type_references_thread(typ types.Type) bool {
+	return match typ {
+		types.Struct {
+			name := trimmed_space(typ.name)
+			short_name := name.all_after_last('.')
+			name == 'thread' || name.starts_with('thread ') || name.starts_with('thread[')
+				|| short_name == 'thread' || short_name.starts_with('thread ')
+				|| short_name.starts_with('thread[')
+		}
+		types.Array { type_references_thread(typ.elem_type) }
+		types.ArrayFixed { type_references_thread(typ.elem_type) }
+		types.Channel { type_references_thread(typ.elem_type) }
+		types.Map {
+			type_references_thread(typ.key_type) || type_references_thread(typ.value_type)
+		}
+		types.Pointer { type_references_thread(typ.base_type) }
+		types.FnType {
+			type_references_thread(typ.return_type) || typ.params.any(type_references_thread(it))
+		}
+		types.OptionType { type_references_thread(typ.base_type) }
+		types.ResultType { type_references_thread(typ.base_type) }
+		types.Alias { type_references_thread(typ.base_type) }
+		types.MultiReturn { typ.types.any(type_references_thread(it)) }
+		else { false }
+	}
+}
+
+fn type_references_pthread(typ types.Type) bool {
+	return match typ {
+		types.Struct {
+			name := trimmed_space(typ.name)
+			name.starts_with('C.pthread_') || name.all_after_last('.').starts_with('pthread_')
+		}
+		types.Array { type_references_pthread(typ.elem_type) }
+		types.ArrayFixed { type_references_pthread(typ.elem_type) }
+		types.Channel { type_references_pthread(typ.elem_type) }
+		types.Map {
+			type_references_pthread(typ.key_type) || type_references_pthread(typ.value_type)
+		}
+		types.Pointer { type_references_pthread(typ.base_type) }
+		types.FnType {
+			type_references_pthread(typ.return_type) || typ.params.any(type_references_pthread(it))
+		}
+		types.OptionType { type_references_pthread(typ.base_type) }
+		types.ResultType { type_references_pthread(typ.base_type) }
+		types.Alias {
+			name := trimmed_space(typ.name)
+			name.starts_with('C.pthread_') || name.all_after_last('.').starts_with('pthread_')
+				|| type_references_pthread(typ.base_type)
+		}
+		types.MultiReturn { typ.types.any(type_references_pthread(it)) }
+		else { false }
+	}
+}
+
+fn (mut g FlatGen) note_thread_type_usage(typ types.Type) {
+	if !g.target_libc_headers {
+		return
+	}
+	if !g.needs_thread_type && type_references_thread(typ) {
+		g.needs_thread_type = true
+	}
+	if !g.needs_pthread_header && type_references_pthread(typ) {
+		g.needs_pthread_header = true
+	}
+}
+
+fn (mut g FlatGen) precompute_thread_type_usage() {
+	for _, fields in g.tc.structs {
+		for field in fields {
+			g.note_thread_type_usage(field.typ)
+		}
+	}
+	for _, fields in g.tc.interface_fields {
+		for field in fields {
+			g.note_thread_type_usage(field.typ)
+		}
+	}
+	for _, typ in g.global_types {
+		g.note_thread_type_usage(typ)
+	}
+	for _, params in g.fn_decl_param_types {
+		for typ in params {
+			g.note_thread_type_usage(typ)
+		}
+	}
+	for _, typ in g.fn_decl_ret_types {
+		g.note_thread_type_usage(typ)
+	}
+	for _, variants in g.tc.sum_types {
+		for variant in variants {
+			g.note_thread_type_usage(g.tc.parse_type(variant))
+		}
+	}
+}
+
+fn c_alias_value_c_type(typ types.Type) ?string {
+	if typ is types.Alias && typ.name.starts_with('C.') {
+		return typ.name['C.'.len..]
+	}
+	if typ is types.Pointer {
+		if base := c_alias_value_c_type(typ.base_type) {
+			return '${base}*'
+		}
+	}
+	return none
 }
 
 fn (mut g FlatGen) value_unalias_type(typ types.Type) types.Type {
@@ -489,6 +601,12 @@ fn (g &FlatGen) canonical_import_alias_type_for_node(typ types.Type, node &flat.
 		return typ
 	}
 	source := typ.name()
+	// This function receives a semantic Type, not raw source text. Preserve an
+	// exact registered name before repairing stale alias-qualified spellings;
+	// otherwise a current file import can retarget a canonical type from a call.
+	if exact := g.exact_known_import_type_text(source) {
+		return exact
+	}
 	// Only dotted names can reference an import alias. Primitive and local
 	// type spellings do not need a walk through synthesized child nodes.
 	file := if source.contains('.') { g.node_source_file(node) } else { '' }
@@ -505,7 +623,8 @@ fn (g &FlatGen) canonical_import_alias_type_for_node(typ types.Type, node &flat.
 // directly instead of allocating type text merely to normalize it unchanged.
 fn type_has_import_alias_text(typ types.Type) bool {
 	return match typ {
-		types.Struct, types.Interface, types.Enum, types.SumType, types.Alias, types.FnType, types.MultiReturn, types.Channel {
+		types.Struct, types.Interface, types.Enum, types.SumType, types.Alias, types.FnType, types.MultiReturn,
+		types.Channel {
 			true
 		}
 		types.Pointer, types.OptionType, types.ResultType {
@@ -564,6 +683,9 @@ fn (g &FlatGen) exact_known_import_type_text(typ string) ?types.Type {
 			elem_type: g.exact_known_import_type_text(clean[2..])?
 		})
 	}
+	if clean in g.tc.type_aliases {
+		return g.tc.parse_canonical_type(clean)
+	}
 	if clean in g.tc.structs {
 		return types.Type(types.Struct{
 			name: clean
@@ -595,7 +717,7 @@ fn (g &FlatGen) exact_known_import_type_text(typ string) ?types.Type {
 	}
 	if clean in g.tc.enum_names {
 		return types.Type(types.Enum{
-			name: clean
+			name:    clean
 			is_flag: clean in g.tc.flag_enums
 		})
 	}
@@ -666,7 +788,7 @@ fn (g &FlatGen) canonical_import_alias_type_text_in_file_uncached(typ string, fi
 	}
 	if clean.contains('.') {
 		alias := clean.all_before('.')
-		if module_name := g.tc.file_imports['${file}\n${alias}'] {
+		if module_name := g.cached_file_import(file, alias) {
 			return module_name + clean[alias.len..]
 		}
 	}
@@ -674,8 +796,16 @@ fn (g &FlatGen) canonical_import_alias_type_text_in_file_uncached(typ string, fi
 }
 
 fn (g &FlatGen) node_source_file(node &flat.Node) string {
-	if source_file := g.a.source_files[node.pos.id] {
-		return source_file.name
+	// A synthesized node (a transform-created `sizeof`, a temporary, ...) carries no
+	// position, and `source_files` is keyed by file id where 0 is a real file. An
+	// unchecked lookup therefore resolves such a node against whichever file happens
+	// to be first, which qualified a bare `Type` against that file's imports (giving
+	// `io__Type` instead of `types__Type`). Fall through to the enclosing function's
+	// file instead.
+	if node.pos.is_valid() {
+		if source_file := g.a.source_files[node.pos.id] {
+			return source_file.name
+		}
 	}
 	mut pending := []flat.Node{cap: node.children_count}
 	for i in 0 .. node.children_count {
@@ -683,8 +813,10 @@ fn (g &FlatGen) node_source_file(node &flat.Node) string {
 	}
 	for pending.len > 0 {
 		child := pending.pop()
-		if source_file := g.a.source_files[child.pos.id] {
-			return source_file.name
+		if child.pos.is_valid() {
+			if source_file := g.a.source_files[child.pos.id] {
+				return source_file.name
+			}
 		}
 		for i in 0 .. child.children_count {
 			pending << g.a.child_node(&child, i)
@@ -700,7 +832,7 @@ fn (g &FlatGen) current_file_import_alias_module(alias string) ?string {
 	if g.tc.cur_file.len == 0 {
 		return none
 	}
-	return g.tc.file_imports['${g.tc.cur_file}\n${alias}'] or { none }
+	return g.cached_file_import(g.tc.cur_file, alias) or { none }
 }
 
 fn optional_payload_is_bare_struct(t types.Type) bool {
@@ -742,38 +874,62 @@ fn (mut g FlatGen) collect_optional_typedefs() {
 }
 
 fn (mut g FlatGen) collect_unresolved_call_optional_types() {
-	// Calls without a resolved expression type are the only optional-type source
-	// not covered by the shared declaration-signature scan.
+	// Calls without a resolved expression type are normally the only optional-type
+	// source not covered by the shared declaration-signature scan. Legacy
+	// `json.decode(T, ...)` is also handled here because its declaration keeps an
+	// erased `!voidptr` return while cgen materializes a concrete `!T` wrapper.
+	// `json.decode` is declared by the C-magic `json` module, and the checker
+	// rejects the call without it. Resolving every call's target only to rule it
+	// out is the bulk of this scan, so skip that when the module is absent.
+	json_decode_possible := 'json.decode' in g.tc.fn_ret_types
+		|| 'json.decode' in g.tc.fn_param_types
 	mut seen_type_ids := []bool{len: 65536}
 	mut seen_type_texts := map[string]bool{}
-	for idx, node in g.a.nodes {
-		if node.kind != .call || (idx < g.tc.expr_type_set.len && g.tc.expr_type_set[idx]) {
+	for idx in g.type_metadata_nodes() {
+		node := g.a.nodes[idx]
+		if node.kind != .call {
+			continue
+		}
+		if json_decode_possible {
+			if json_type := g.json_decode_call_expr_result_type(flat.NodeId(idx)) {
+				g.collect_optional_typedef_type(json_type)
+			}
+		}
+		// Only a complete type spelling that was not collected yet can add a
+		// typedef. Rule the rest out before the checker metadata below, which
+		// costs a map lookup per resolved call.
+		if node.typ.len == 0 || node.typ in ['int', 'array', 'map', 'unknown']
+			|| !cgen_type_text_is_complete(node.typ) {
+			continue
+		}
+		type_id := node.type_text_id()
+		if type_id != 0 {
+			if seen_type_ids[int(type_id)] {
+				continue
+			}
+		} else if node.typ in seen_type_texts {
+			continue
+		}
+		if idx < g.tc.expr_type_set.len && g.tc.expr_type_set[idx] {
 			continue
 		}
 		if idx < g.tc.resolved_call_set.len && g.tc.resolved_call_set[idx] {
 			name := g.tc.resolved_call_names[idx].value
-			if name in g.tc.fn_ret_types {
+			// The compiler-magic `json.decode(T, s)` is declared as a `!voidptr`
+			// stub; its real `!T` return type only exists in the node spelling.
+			if name in g.tc.fn_ret_types && name != 'json.decode' {
 				// collect_declaration_signature_types() already processed this exact
 				// return entry; only calls without checker return metadata need their
 				// transformed node spelling inspected below.
 				continue
 			}
 		}
-		if node.typ.len > 0 && node.typ !in ['int', 'array', 'map', 'unknown'] && cgen_type_text_is_complete(node.typ) {
-			type_id := node.type_text_id()
-			if type_id != 0 {
-				if seen_type_ids[int(type_id)] {
-					continue
-				}
-				seen_type_ids[int(type_id)] = true
-			} else {
-				if node.typ in seen_type_texts {
-					continue
-				}
-				seen_type_texts[node.typ] = true
-			}
-			g.collect_optional_typedef_type(g.parse_node_type(&node))
+		if type_id != 0 {
+			seen_type_ids[int(type_id)] = true
+		} else {
+			seen_type_texts[node.typ] = true
 		}
+		g.collect_optional_typedef_type(g.parse_node_type(&node))
 	}
 }
 
@@ -1285,9 +1441,10 @@ fn (mut g FlatGen) emit_optional_typedef(opt_name string, val_type string) bool 
 	interface_matches := g.qualified_interface_c_types(bare_val_type.all_after_last('__'))
 	is_known_interface := bare_val_type in interface_matches
 	is_known_sum_type := g.is_known_sum_c_type(bare_val_type)
+	is_known_builtin := types.is_builtin_type_name(bare_val_type)
 	// Multi-return names can contain a module-qualified field component, but the
 	// payload is the generated tuple struct rather than a stale source struct.
-	if bare_val_type != 'Array' && !is_known_interface && !is_known_sum_type
+	if bare_val_type != 'Array' && !is_known_builtin && !is_known_interface && !is_known_sum_type
 		&& !bare_val_type.starts_with('multi_return_')
 		&& (g.stale_ambiguous_qualified_struct_c_type(bare_val_type)
 			|| g.stale_missing_qualified_struct_c_type(bare_val_type)) {
@@ -1625,7 +1782,10 @@ fn (mut g FlatGen) enum_str_defs() {
 }
 
 fn (g &FlatGen) enum_autostr_is_used(cname string) bool {
-	return !g.has_used_fn_filter() || g.used_fn_contains('${cname}__autostr')
+	// Test assertion diagnostics stringify enum operands even when source code does
+	// not call `.str()`, so their synthesized helpers are outside markused's call graph.
+	return g.test_files.len > 0 || !g.has_used_fn_filter()
+		|| g.used_fn_contains('${cname}__autostr')
 }
 
 fn (g &FlatGen) enum_decl_type_name(node flat.Node, module_name string) string {

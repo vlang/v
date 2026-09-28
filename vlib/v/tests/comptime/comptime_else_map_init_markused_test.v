@@ -25,9 +25,9 @@ pub fn fire_call[T](mut app T, method_name string, message map[string]json2.Any)
 			} $else {
 				return new_error_detail_with_details(.invalid_method,
 					'Method should return string', {
-					'method':      method_name
-					'return_type': method.return_type
-				})
+						'method':      method_name
+						'return_type': method.return_type
+					})
 			}
 		}
 	}

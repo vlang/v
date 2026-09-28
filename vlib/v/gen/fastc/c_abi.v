@@ -58,7 +58,7 @@ struct FastcCAbiFunction {
 
 fn fastc_c_abi_fn(name string, prototype string, asm_label string) FastcCAbiFunction {
 	return FastcCAbiFunction{
-		name: name
+		name:      name
 		prototype: prototype
 		asm_label: asm_label
 	}

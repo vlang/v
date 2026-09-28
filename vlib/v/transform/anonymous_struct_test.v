@@ -7,27 +7,27 @@ import v.types
 fn add_inferred_anonymous_struct(mut a flat.FlatAst, file_id int) (flat.NodeId, flat.NodeId) {
 	pos := token.new_pos(file_id, 0)
 	value_id := a.add_node(flat.Node{
-		kind: .int_literal
+		kind:  .int_literal
 		value: '1'
-		pos: pos
+		pos:   pos
 	})
 	field_children_start := a.children.len
 	a.children << value_id
 	field_id := a.add_node(flat.Node{
-		kind: .field_init
-		value: 'item'
+		kind:           .field_init
+		value:          'item'
 		children_start: field_children_start
 		children_count: 1
-		pos: pos
+		pos:            pos
 	})
 	struct_children_start := a.children.len
 	a.children << field_id
 	struct_id := a.add_node(flat.Node{
-		kind: .struct_init
-		value: 'struct'
+		kind:           .struct_init
+		value:          'struct'
 		children_start: struct_children_start
 		children_count: 1
-		pos: pos
+		pos:            pos
 	})
 	return struct_id, value_id
 }
@@ -43,12 +43,12 @@ fn test_inferred_anonymous_struct_uses_position_source_file() {
 	// of either literal therefore cannot be inferred from allocation order.
 	dep_struct_id, dep_value_id := add_inferred_anonymous_struct(mut a, 1)
 	a.add_node(flat.Node{
-		kind: .file
+		kind:  .file
 		value: dep_file
 	})
 	main_struct_id, main_value_id := add_inferred_anonymous_struct(mut a, 2)
 	a.add_node(flat.Node{
-		kind: .file
+		kind:  .file
 		value: main_file
 	})
 
@@ -82,7 +82,7 @@ fn test_inferred_anonymous_structs_reuse_their_semantic_shape() {
 	a.nodes[int(second_value_id)].kind = .call
 	a.nodes[int(different_value_id)].kind = .call
 	a.add_node(flat.Node{
-		kind: .file
+		kind:  .file
 		value: main_file
 	})
 
@@ -114,18 +114,18 @@ fn test_inferred_anonymous_struct_name_does_not_replace_user_struct() {
 	struct_id, value_id := add_inferred_anonymous_struct(mut a, 1)
 	colliding_name := 'AnonStruct_v3_inferred_${struct_id}'
 	a.add_node(flat.Node{
-		kind: .struct_decl
+		kind:  .struct_decl
 		value: colliding_name
-		pos: token.new_pos(1, 0)
+		pos:   token.new_pos(1, 0)
 	})
 	a.add_node(flat.Node{
-		kind: .file
+		kind:  .file
 		value: main_file
 	})
 
 	user_fields := [types.StructField{
 		name: 'user_field'
-		typ: types.Type(types.string_)
+		typ:  types.Type(types.string_)
 	}]
 	mut tc := types.TypeChecker.new(&a)
 	tc.file_modules[main_file] = 'main'
@@ -146,7 +146,7 @@ fn test_prepared_selfhost_transform_materializes_before_preparing() {
 	a.source_files[1] = token.File.unindexed(main_file, 1)
 	struct_id, value_id := add_inferred_anonymous_struct(mut a, 1)
 	a.add_node(flat.Node{
-		kind: .file
+		kind:  .file
 		value: main_file
 	})
 

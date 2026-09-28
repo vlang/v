@@ -202,7 +202,8 @@ fn (mut checker Decoder) check_json_format(val string) ! {
 		return error('empty string')
 	}
 	if is_root_value {
-		for checker.checker_idx < checker_end && val[checker.checker_idx] in [` `, `\t`, `\n`, `\r`] {
+		for checker.checker_idx < checker_end && val[checker.checker_idx] in [` `, `\t`, `\n`,
+			`\r`] {
 			checker.checker_idx++
 		}
 		if checker.checker_idx >= checker_end {
@@ -235,8 +236,7 @@ fn (mut checker Decoder) check_json_format(val string) ! {
 			}
 
 			if is_not_ok != 0 {
-				return checker.error('invalid null value. Got `${checker.json[checker.checker_idx..
-					checker.checker_idx + 4]}` instead of `null`')
+				return checker.error('invalid null value. Got `${checker.json[checker.checker_idx..checker.checker_idx + 4]}` instead of `null`')
 			}
 			checker.checker_idx += 3
 		}
@@ -557,8 +557,7 @@ fn (mut checker Decoder) check_json_format(val string) ! {
 					}
 
 					if is_not_ok != 0 {
-						return checker.error('invalid boolean value. Got `${checker.json[checker.checker_idx..
-							checker.checker_idx + 4]}` instead of `true`')
+						return checker.error('invalid boolean value. Got `${checker.json[checker.checker_idx..checker.checker_idx + 4]}` instead of `true`')
 					}
 					checker.checker_idx += 3
 				}
@@ -572,8 +571,7 @@ fn (mut checker Decoder) check_json_format(val string) ! {
 					}
 
 					if is_not_ok != 0 {
-						return checker.error('invalid boolean value. Got `${checker.json[checker.checker_idx..
-							checker.checker_idx + 5]}` instead of `false`')
+						return checker.error('invalid boolean value. Got `${checker.json[checker.checker_idx..checker.checker_idx + 5]}` instead of `false`')
 					}
 
 					checker.checker_idx += 4

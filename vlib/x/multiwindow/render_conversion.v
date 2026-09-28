@@ -1,13 +1,13 @@
 module multiwindow
 
-$if gg_multiwindow ? || x_multiwindow_render ? {
+$if gg_multiwindow ?|| x_multiwindow_render ? {
 	import math
 }
 
 pub fn (app &App) logical_to_pixel_render_rect(id WindowId, metrics_sequence u64, x f32, y f32, width f32, height f32) !(int, int, int, int) {
 	app.assert_owner_thread()!
 	app.validate_render_conversion_snapshot(id, metrics_sequence)!
-	$if gg_multiwindow ? || x_multiwindow_render ? {
+	$if gg_multiwindow ?|| x_multiwindow_render ? {
 		return app.backend.logical_to_pixel_rect(id, x, y, width, height)
 	} $else {
 		return error(err_renderer_unsupported)
@@ -17,7 +17,7 @@ pub fn (app &App) logical_to_pixel_render_rect(id WindowId, metrics_sequence u64
 pub fn (app &App) pixel_to_logical_render_rect(id WindowId, metrics_sequence u64, x int, y int, width int, height int) !(f32, f32, f32, f32) {
 	app.assert_owner_thread()!
 	app.validate_render_conversion_snapshot(id, metrics_sequence)!
-	$if gg_multiwindow ? || x_multiwindow_render ? {
+	$if gg_multiwindow ?|| x_multiwindow_render ? {
 		return app.backend.pixel_to_logical_rect(id, x, y, width, height)
 	} $else {
 		return error(err_renderer_unsupported)
@@ -37,7 +37,7 @@ fn (app &App) validate_render_conversion_snapshot(id WindowId, metrics_sequence 
 	}
 }
 
-$if gg_multiwindow ? || x_multiwindow_render ? {
+$if gg_multiwindow ?|| x_multiwindow_render ? {
 	fn (backend &Backend) logical_to_pixel_rect(id WindowId, x f32, y f32, width f32, height f32) !(int, int, int, int) {
 		match backend.kind {
 			.x11, .wayland {

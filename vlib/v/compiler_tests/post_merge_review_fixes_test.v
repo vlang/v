@@ -170,7 +170,7 @@ fn run_good_project_result(v3_bin string, name string, flags string, files map[s
 	run := os.execute(good_bin)
 	assert run.exit_code == 0, run.output
 	return GoodProjectRun{
-		run_output: run.output.trim_space()
+		run_output:     run.output.trim_space()
 		compile_output: compile.output
 	}
 }
@@ -234,6 +234,18 @@ fn test_c_bool_parameter_accepts_integer_argument() {
 
 fn main() {
 	_ = C.bool_probe(0)
+}
+')
+}
+
+fn test_c_integer_parameters_accept_other_integer_variable_types() {
+	check_good('c_integer_variable_arguments', 'fn C.integer_probe(usize, isize, u64) int
+
+fn main() {
+	signed := isize(1)
+	unsigned := usize(2)
+	word := int(3)
+	_ = C.integer_probe(signed, unsigned, word)
 }
 ')
 }
@@ -2257,11 +2269,12 @@ fn test_context_dependent_if_branches_infer_wrapper_types() {
 	assert code_out == '6\n-1'
 	match_code_out := run_good(v3_bin, 'match_error_with_code_branch_infers_result', "fn maybe(n int) !int {\n\treturn match n {\n\t\t0 { error_with_code('bad', 2) }\n\t\telse { 7 }\n\t}\n}\n\nfn main() {\n\tprintln(int_str(maybe(1) or { -1 }))\n\tprintln(int_str(maybe(0) or { -1 }))\n}\n")
 	assert match_code_out == '7\n-1'
-	run_bad(v3_bin, 'if_none_branch_without_context_rejected', 'fn main() {\n\tx := if true { none } else { 1 }\n\tprintln(x)\n}\n', 'if-expression branch type mismatch')
+	inferred_decl_out := run_good(v3_bin, 'if_none_branch_infers_option_without_context', 'fn main() {\n\tx := if true { none } else { 1 }\n\ty := if false { none } else { 2 }\n\tprintln("\${x}")\n\tprintln("\${y}")\n}\n')
+	assert inferred_decl_out == 'Option(none)\nOption(2)'
 	run_bad(v3_bin, 'if_none_branch_rejected_for_result_without_context', 'fn fallible() !int {\n\treturn 2\n}\n\nfn main() {\n\tflag := true\n\tx := if flag { none } else { fallible() }\n\tprintln(int_str(x or { -1 }))\n}\n', 'if-expression branch type mismatch')
 	option_error_out := run_good(v3_bin, 'if_error_branch_infers_option', "fn f(ok bool) ?int {\n\treturn if ok { error('bad') } else { 1 }\n}\n\nfn main() {\n\tprintln(int_str(f(false) or { -1 }))\n\t_ := f(true) or {\n\t\tprintln(err.msg())\n\t\treturn\n\t}\n}\n")
 	assert option_error_out == '1\nbad'
-	run_bad(v3_bin, 'if_none_branch_rejected_for_result_payload', 'fn g(ok bool) !int {\n\treturn if ok { none } else { 1 }\n}\n\nfn main() {\n\t_ := g(false) or { 0 }\n}\n', 'if-expression branch type mismatch')
+	run_bad(v3_bin, 'if_none_branch_rejected_for_result_payload', 'fn g(ok bool) !int {\n\treturn if ok { none } else { 1 }\n}\n\nfn main() {\n\t_ := g(false) or { 0 }\n}\n', 'cannot return `?int` as `int`')
 	match_option_error_out := run_good(v3_bin, 'match_error_branch_infers_option', "fn f(n int) ?int {\n\treturn match n {\n\t\t0 { error('bad') }\n\t\telse { 1 }\n\t}\n}\n\nfn main() {\n\tprintln(int_str(f(1) or { -1 }))\n\t_ := f(0) or {\n\t\tprintln(err.msg())\n\t\treturn\n\t}\n}\n")
 	assert match_option_error_out == '1\nbad'
 	run_bad(v3_bin, 'match_none_branch_rejected_for_result_payload', 'fn g(n int) !int {\n\treturn match n {\n\t\t0 { none }\n\t\telse { 1 }\n\t}\n}\n\nfn main() {\n\t_ := g(1) or { 0 }\n}\n', 'cannot return')
@@ -2280,6 +2293,18 @@ fn test_pointer_arithmetic_deref_keeps_pointer_type() {
 	v3_bin := build_v3()
 	out := run_good(v3_bin, 'pointer_arithmetic_deref', 'fn main() {\n\tmut nums := [1, 2]!\n\tp := unsafe { &nums[0] }\n\tv := unsafe { *(p + 1) }\n\tprintln(int_str(v))\n}\n')
 	assert out == '2'
+}
+
+fn test_parenthesized_pointer_cast_deref_is_not_dropped() {
+	v3_bin := build_v3()
+	out := run_good(v3_bin, 'parenthesized_pointer_cast_deref', "fn load(s charptr, offset u64) u8 {\n\treturn u8(unsafe { *(charptr(u64(s) + offset)) })\n}\n\nfn main() {\n\ts := c'VinixV3!'\n\tmut result := ''\n\tfor i in u64(0) .. u64(8) {\n\t\tresult += rune(load(s, i)).str()\n\t}\n\tprintln(result)\n}\n")
+	assert out == 'VinixV3!'
+}
+
+fn test_generic_mut_pointer_cast_keeps_slot_address() {
+	v3_bin := build_v3()
+	out := run_good(v3_bin, 'generic_mut_pointer_cast_slot_address', 'fn address[T](mut value T) voidptr {\n\tif sizeof(T) == 8 {\n\t\treturn voidptr(value)\n\t}\n\treturn unsafe { nil }\n}\n\nfn main() {\n\tmut n := 7\n\tmut pointers := unsafe { [1]&int{} }\n\tpointers[0] = &n\n\tresult := address[&int](mut &pointers[0])\n\tprintln(result == voidptr(&pointers[0]))\n\tprintln(result == voidptr(pointers[0]))\n}\n')
+	assert out == 'true\nfalse'
 }
 
 fn test_builtin_addr_requires_unsafe_and_addresses_pointer_variables() {
@@ -3737,8 +3762,21 @@ fn test_formatted_interpolation_alias_uses_string_representation() {
 
 fn test_callback_pointer_return_is_compatible_with_voidptr_return() {
 	v3_bin := build_v3()
-	out := run_good(v3_bin, 'callback_pointer_return_to_voidptr', 'struct Item {\n\tvalue int\n}\n\nstruct Config {\n\tcallback fn () voidptr\n}\n\nfn make_item() &Item {\n\treturn &Item{value: 42}\n}\n\nfn main() {\n\tconfig := Config{callback: make_item}\n\titem := unsafe { &Item(config.callback()) }\n\tprintln(item.value)\n}\n')
+	source := 'struct Item {\n\tvalue int\n}\n\nstruct Config {\n\tcallback fn () voidptr\n}\n\nfn make_item() &Item {\n\treturn &Item{value: 42}\n}\n\nfn main() {\n\tconfig := Config{callback: make_item}\n\titem := unsafe { &Item(config.callback()) }\n\tprintln(item.value)\n}\n'
+	c_source := gen_c(v3_bin, 'callback_pointer_return_to_voidptr_c', source)
+	assert c_source.contains('.callback = make_item_callback_adapter_'), c_source
+	assert c_source.contains('return (void*)('), c_source
+	out := run_good(v3_bin, 'callback_pointer_return_to_voidptr', source)
 	assert out == '42'
+}
+
+fn test_enum_pointer_receiver_builtin_str_passes_enum_value() {
+	v3_bin := build_v3()
+	source := 'enum VCS {\n\tgit\n\thg\n}\n\nfn (vcs &VCS) text() string {\n\treturn vcs.str()\n}\n\nfn main() {\n\tvcs := VCS.hg\n\tprintln(vcs.text())\n}\n'
+	c_source := gen_c(v3_bin, 'enum_pointer_receiver_builtin_str_c', source)
+	assert c_source.contains('return VCS__autostr(*(vcs));'), c_source
+	out := run_good(v3_bin, 'enum_pointer_receiver_builtin_str', source)
+	assert out == 'hg'
 }
 
 fn test_stats_reports_failed_test_status_and_passed_total() {
@@ -5497,9 +5535,13 @@ fn main() {
 	run_bad(v3_bin, 'isreftype_unknown_bracket_type_arg', 'fn main() {\n\t_ := isreftype[OtherMissing]()\n}\n', 'unknown type `OtherMissing`')
 }
 
-fn test_shadowed_global_local_rename_is_scoped_to_binding() {
+// A local that shadows a global used to be allowed here, and this scoped it to
+// its block: `3` inside, the global's `1` after. V rejects the declaration now,
+// so what is left to pin down is that the rejection reaches a nested block and
+// names the local, not the global's own uses on the lines around it.
+fn test_shadowed_global_local_is_rejected_inside_a_block() {
 	v3_bin := build_v3()
-	out := run_good(v3_bin, 'shadowed_global_local_rename_scoped', '__global foo int
+	run_bad(v3_bin, 'shadowed_global_local_rename_scoped', '__global foo int
 
 fn main() {
 	foo = 1
@@ -5509,8 +5551,7 @@ fn main() {
 	}
 	println(int_str(foo))
 }
-')
-	assert out == '3\n1'
+', 'variable `foo` shadows a global variable')
 }
 
 fn test_capturing_fn_literal_aliases_are_scoped_to_lambda() {
@@ -5989,8 +6030,11 @@ fn main() {
 
 fn test_review_shadowed_global_pointer_str_and_setter_only_compound() {
 	v3_bin := build_v3()
-	shadow_out := run_good(v3_bin, 'review_shadowed_global_nested_scope', '__global score int\n\nfn main() {\n\tscore = 10\n\tif true {\n\t\tscore := 3\n\t\tprintln(int_str(score))\n\t}\n\tscore += 2\n\tprintln(int_str(score))\n}\n')
-	assert shadow_out == '3\n12'
+	// Was a success case asserting '3\n12', from when a local could shadow a
+	// global and be scoped to its block. The declaration is an error now; the
+	// compound assignment to the global after the block still has to parse for
+	// the error to be the only complaint.
+	run_bad(v3_bin, 'review_shadowed_global_nested_scope', '__global score int\n\nfn main() {\n\tscore = 10\n\tif true {\n\t\tscore := 3\n\t\tprintln(int_str(score))\n\t}\n\tscore += 2\n\tprintln(int_str(score))\n}\n', 'variable `score` shadows a global variable')
 	pointer_str_out := run_good(v3_bin, 'review_pointer_value_receiver_str', "struct Foo {\n\tx int\n}\n\nfn (f Foo) str() string {\n\treturn 'custom:' + int_str(f.x)\n}\n\nfn main() {\n\tfoo := Foo{\n\t\tx: 7\n\t}\n\tp := &foo\n\tprintln(p.str())\n}\n")
 	assert pointer_str_out == '&custom:7'
 	interface_smartcast_str_out := run_good(v3_bin, 'review_interface_smartcast_pointer_str', "interface Named {\n\tname() string\n}\n\nstruct Item {}\n\nfn (i Item) name() string {\n\treturn 'item'\n}\n\nfn (i Item) str() string {\n\treturn i.name()\n}\n\nfn describe(value Named) string {\n\treturn match value {\n\t\tItem { value.str() }\n\t\telse { 'unknown' }\n\t}\n}\n\nfn main() {\n\tvalue := Named(&Item{})\n\tprintln(describe(value))\n\tboxed := Named(Item{})\n\tprintln(describe(boxed))\n}\n")
@@ -10569,4 +10613,146 @@ fn main() {
 	run := os.execute(warm_bin)
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space() == 'ok'
+}
+
+fn test_global_beats_unrelated_same_named_const() {
+	v3_bin := build_v3()
+	out := run_good_project(v3_bin, 'imported_global_const_collision', {
+		'v.mod':               "Module { name: 'imported_global_const_collision' }\n"
+		'memory/memory.v':     'module memory\n\n@[has_globals]\n__global page_size = u64(4096)\n\npub fn value() u64 {\n\treturn page_size\n}\n'
+		'unrelated/value.v':   'module unrelated\n\npub const page_size = u64(16384)\n'
+		'consumer/consumer.v': 'module consumer\n\npub fn pages(bytes u64) u64 {\n\treturn bytes / page_size\n}\n'
+		'main.v':              'module main\n\nimport consumer\nimport memory\nimport unrelated\n\nfn main() {\n\t_ = memory.value()\n\tprintln(consumer.pages(unrelated.page_size))\n}\n'
+	}, 'main.v')
+	assert out == '4'
+}
+
+fn test_nested_interface_field_assignment_updates_boxed_object() {
+	v3_bin := build_v3()
+	out := run_good(v3_bin, 'nested_interface_field_assign', 'struct Metadata {
+mut:
+	links u64
+}
+
+interface Resource {
+mut:
+	metadata Metadata
+}
+
+struct FileResource {
+mut:
+	metadata Metadata
+}
+
+struct Node {
+mut:
+	resource Resource
+}
+
+fn main() {
+	mut file := &FileResource{
+		metadata: Metadata{links: 1}
+	}
+	mut node := Node{
+		resource: file
+	}
+	node.resource.metadata.links = 2
+	println(file.metadata.links)
+}
+')
+	assert out == '2'
+}
+
+fn test_smartcast_between_interfaces_preserves_object_identity() {
+	v3_bin := build_v3()
+	out := run_good(v3_bin, 'smartcast_interface_identity', 'interface Resource {
+mut:
+	set(int)
+	get() int
+}
+
+interface Socket {
+mut:
+	set(int)
+	get() int
+	extra() int
+}
+
+struct UnixSocket {
+mut:
+	n int
+}
+
+fn (mut socket UnixSocket) set(n int) {
+	socket.n = n
+}
+
+fn (socket UnixSocket) get() int {
+	return socket.n
+}
+
+fn (socket UnixSocket) extra() int {
+	return 9
+}
+
+fn as_socket(mut resource Resource) &Socket {
+	if mut resource is UnixSocket {
+		return &Socket(resource)
+	}
+	panic("not a socket")
+}
+
+fn main() {
+	mut concrete := &UnixSocket{n: 1}
+	mut resource := Resource(concrete)
+	mut socket := as_socket(mut resource)
+	socket.set(2)
+	println(concrete.n)
+	println(resource.get())
+	println(socket.get())
+}
+')
+	assert out == '2\n2\n2'
+}
+
+fn test_unsafe_block_pointer_to_interface_preserves_object_identity() {
+	v3_bin := build_v3()
+	out := run_good(v3_bin, 'unsafe_block_pointer_interface_identity', 'interface Resource {
+mut:
+	set(int)
+	get() int
+}
+
+struct Concrete {
+mut:
+	value int
+}
+
+fn (mut concrete Concrete) set(value int) {
+	concrete.value = value
+}
+
+fn (concrete Concrete) get() int {
+	return concrete.value
+}
+
+struct Node {
+mut:
+	resource &Resource = unsafe { nil }
+}
+
+fn (mut concrete Concrete) install(mut node Node) {
+	node.resource = unsafe { concrete }
+}
+
+fn main() {
+	mut concrete := &Concrete{value: 1}
+	mut node := Node{}
+	concrete.install(mut node)
+	concrete.set(2)
+	println(concrete.value)
+	println(node.resource.get())
+}
+')
+	assert out == '2\n2'
 }

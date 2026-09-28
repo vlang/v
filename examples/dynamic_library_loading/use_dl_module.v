@@ -1,7 +1,7 @@
 module main
 
 // Note: This program, requires that the shared library was already compiled.
-// To do so, run `v -d no_backtrace -o library -shared modules/library/library.v`
+// To do so, run `v -d no_backtrace -o library -shared library/library.v`
 // before running this program.
 import os
 import dl

@@ -70,7 +70,7 @@ fn (opt &Options) collect_undocumented_functions_in_file(nfile string) []Undocum
 			tags << collect_tags(line)
 		} else if line.starts_with('pub fn')
 			|| (opt.private && (line.starts_with('fn ') && !(line.starts_with('fn C.')
-			|| line.starts_with('fn main')))) {
+				|| line.starts_with('fn main')))) {
 			if comments.len == 0 {
 				clean_line := line.all_before_last(' {')
 				list << UndocumentedFN{

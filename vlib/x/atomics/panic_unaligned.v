@@ -1,6 +1,6 @@
 module atomics
 
-$if prod && (gcc || clang) {
+$if prod && ( gcc || clang ) {
 	#flag -Wl,--undefined=panicUnaligned
 }
 

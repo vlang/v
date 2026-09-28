@@ -57,9 +57,9 @@ $if test {
 	// This test-only seam mutates only the already authenticated second in-memory observation. It
 	// cannot inject bytes, paths, digests, generations, or preconditions into production.
 	pub fn prepare_reauthenticated_target_state_transition_with_mutation_for_test(automation_root string,
-	state_git_dir string, trust LiveStateTrust, proof_bundle_dir string, target_id string,
-	event TransitionEvent, context TransitionContext,
-	mutation string) !ReauthenticatedPreparedTargetStateWrite {
+		state_git_dir string, trust LiveStateTrust, proof_bundle_dir string, target_id string,
+		event TransitionEvent, context TransitionContext,
+		mutation string) !ReauthenticatedPreparedTargetStateWrite {
 		return prepare_reauthenticated_target_state_transition_core(automation_root, state_git_dir,
 			trust, proof_bundle_dir, target_id, event, context, mutation)
 	}
@@ -67,9 +67,9 @@ $if test {
 	// This seam loads two independently valid physical snapshots before applying the production
 	// comparator. comparison_focus only aligns earlier comparator fields after both fresh loads.
 	pub fn prepare_reauthenticated_target_state_transition_from_distinct_snapshots_for_test(automation_root string,
-	first_state_git_dir string, first_proof_bundle_dir string, second_state_git_dir string,
-	second_proof_bundle_dir string, trust LiveStateTrust, target_id string, event TransitionEvent,
-	context TransitionContext, comparison_focus string) !ReauthenticatedPreparedTargetStateWrite {
+		first_state_git_dir string, first_proof_bundle_dir string, second_state_git_dir string,
+		second_proof_bundle_dir string, trust LiveStateTrust, target_id string, event TransitionEvent,
+		context TransitionContext, comparison_focus string) !ReauthenticatedPreparedTargetStateWrite {
 		first := load_reauthenticated_target_state_observation(automation_root,
 			first_state_git_dir, trust, first_proof_bundle_dir, target_id)!
 		prepared := prepare_reauthenticated_target_state_write(first, automation_root, event,
@@ -84,9 +84,9 @@ $if test {
 
 	// This seam mutates one prepared observation only after both physical authentication passes.
 	pub fn prepare_reauthenticated_target_state_transition_with_prepared_mutation_for_test(automation_root string,
-	state_git_dir string, trust LiveStateTrust, proof_bundle_dir string, target_id string,
-	event TransitionEvent, context TransitionContext,
-	mutation string) !ReauthenticatedPreparedTargetStateWrite {
+		state_git_dir string, trust LiveStateTrust, proof_bundle_dir string, target_id string,
+		event TransitionEvent, context TransitionContext,
+		mutation string) !ReauthenticatedPreparedTargetStateWrite {
 		first := load_reauthenticated_target_state_observation(automation_root, state_git_dir,
 			trust, proof_bundle_dir, target_id)!
 		prepared_fresh := prepare_reauthenticated_target_state_write(first, automation_root, event,
@@ -100,7 +100,7 @@ $if test {
 
 	// This pure framing seam exposes no repository, bytes loader, or production capability.
 	pub fn parse_reauthenticated_target_tree_entry_for_test(source string,
-	target_path string) !string {
+		target_path string) !string {
 		entry := parse_reauthenticated_target_tree_entry(source, target_path)!
 		return '${entry.mode} ${entry.kind} ${entry.oid} ${entry.size}\t${entry.path}'
 	}
@@ -357,8 +357,8 @@ fn clone_prepared_target_state_write(value PreparedTargetStateWrite) PreparedTar
 
 $if test {
 	fn align_distinct_snapshot_comparison_for_test(first ReauthenticatedTargetStateObservation,
-	second ReauthenticatedTargetStateObservation,
-	comparison_focus string) !ReauthenticatedTargetStateObservation {
+		second ReauthenticatedTargetStateObservation,
+		comparison_focus string) !ReauthenticatedTargetStateObservation {
 		match comparison_focus {
 			'head' {
 				return second
@@ -386,7 +386,7 @@ $if test {
 	}
 
 	fn mutate_reauthenticated_prepared_write_for_test(value PreparedTargetStateWrite,
-	mutation string) !PreparedTargetStateWrite {
+		mutation string) !PreparedTargetStateWrite {
 		match mutation {
 			'prepared_target_id' {
 				return PreparedTargetStateWrite{

@@ -375,24 +375,24 @@ fn test_gate_epoch_retrigger_requires_expired_authenticated_proof() {
 	mut rejected := false
 	bin.close_and_open_gate_epoch(gate, .closed_timed_out, 'source-recovery', trigger_ref,
 		trigger_id, '2026-08-02T00:02:00Z', '2026-08-02T00:02:00Z', gate_recovery, target, bin.GateEpochCloseProof{
-		operation_id:        gate_operation(`c`)
-		expected_generation: target.generation
-		deadline:            '2026-08-02T00:03:00Z'
-		observed_at:         '2026-08-02T00:02:00Z'
-		evidence_digest:     gate_operation(`8`)
-	}) or { rejected = true }
+			operation_id:        gate_operation(`c`)
+			expected_generation: target.generation
+			deadline:            '2026-08-02T00:03:00Z'
+			observed_at:         '2026-08-02T00:02:00Z'
+			evidence_digest:     gate_operation(`8`)
+		}) or { rejected = true }
 	assert rejected
 	gate_epochs_before := gate.epochs.clone()
 	gate_close_ids_before := gate.epoch_close_operation_ids.clone()
 	advanced := bin.close_and_open_gate_epoch(gate, .closed_timed_out, 'source-recovery',
 		trigger_ref, trigger_id, '2026-08-02T00:02:00Z', '2026-08-02T00:02:00Z', gate_recovery,
 		target, bin.GateEpochCloseProof{
-		operation_id:        gate_operation(`c`)
-		expected_generation: target.generation
-		deadline:            '2026-08-02T00:01:00Z'
-		observed_at:         '2026-08-02T00:02:00Z'
-		evidence_digest:     gate_operation(`8`)
-	}) or { panic(err) }
+			operation_id:        gate_operation(`c`)
+			expected_generation: target.generation
+			deadline:            '2026-08-02T00:01:00Z'
+			observed_at:         '2026-08-02T00:02:00Z'
+			evidence_digest:     gate_operation(`8`)
+		}) or { panic(err) }
 	assert gate.epochs == gate_epochs_before
 	assert gate.epoch_close_operation_ids == gate_close_ids_before
 	assert target.active_native_gate.epochs == gate_epochs_before
@@ -409,12 +409,12 @@ fn test_gate_epoch_retrigger_requires_expired_authenticated_proof() {
 	after_missing := bin.close_and_open_gate_epoch(advanced.gate, .closed_timed_out,
 		'missing-run-retry', missing_ref, missing_trigger, '2026-08-02T00:04:00Z',
 		'2026-08-02T00:04:00Z', '', advanced.target, bin.GateEpochCloseProof{
-		operation_id:        gate_operation(`d`)
-		expected_generation: advanced.target.generation
-		deadline:            '2026-08-02T00:03:00Z'
-		observed_at:         '2026-08-02T00:04:00Z'
-		evidence_digest:     gate_operation(`a`)
-	}) or { panic(err) }
+			operation_id:        gate_operation(`d`)
+			expected_generation: advanced.target.generation
+			deadline:            '2026-08-02T00:03:00Z'
+			observed_at:         '2026-08-02T00:04:00Z'
+			evidence_digest:     gate_operation(`a`)
+		}) or { panic(err) }
 	assert after_missing.gate.infra_retry_count == 1
 	assert after_missing.target.resolved_inputs == target.resolved_inputs
 	assert after_missing.gate.source_recovery_operation_id == ''
@@ -427,12 +427,12 @@ fn test_gate_epoch_retrigger_requires_expired_authenticated_proof() {
 	after_recovery_b := bin.close_and_open_gate_epoch(after_missing.gate, .closed_timed_out,
 		'source-recovery', recovery_b_ref, recovery_b_trigger, '2026-08-02T00:06:00Z',
 		'2026-08-02T00:06:00Z', recovery_b, after_missing.target, bin.GateEpochCloseProof{
-		operation_id:        gate_operation(`e`)
-		expected_generation: after_missing.target.generation
-		deadline:            '2026-08-02T00:05:00Z'
-		observed_at:         '2026-08-02T00:06:00Z'
-		evidence_digest:     gate_operation(`b`)
-	}) or { panic(err) }
+			operation_id:        gate_operation(`e`)
+			expected_generation: after_missing.target.generation
+			deadline:            '2026-08-02T00:05:00Z'
+			observed_at:         '2026-08-02T00:06:00Z'
+			evidence_digest:     gate_operation(`b`)
+		}) or { panic(err) }
 	assert after_recovery_b.gate.epochs[1].source_recovery_operation_id == gate_recovery
 	assert after_recovery_b.gate.epochs[3].source_recovery_operation_id == recovery_b
 	assert after_recovery_b.gate.epochs[1].expected_ref != after_recovery_b.gate.epochs[3].expected_ref
@@ -564,12 +564,12 @@ fn test_source_machine_distinguishes_silent_outage_from_deterministic_defect() {
 	outage := bin.resolve_source(base, base.generation,
 		'2222222222222222222222222222222222222222222222222222222222222222', 100,
 		'2026-08-02T03:47:00Z', [
-		'3333333333333333333333333333333333333333333333333333333333333333',
-	], [
-		transient_source_attempt(1, 0),
-		transient_source_attempt(2, 15),
-		transient_source_attempt(3, 45),
-	]) or { panic(err) }
+			'3333333333333333333333333333333333333333333333333333333333333333',
+		], [
+			transient_source_attempt(1, 0),
+			transient_source_attempt(2, 15),
+			transient_source_attempt(3, 45),
+		]) or { panic(err) }
 	assert outage.external_outage
 	assert !outage.should_report
 	assert !outage.may_build
@@ -580,14 +580,14 @@ fn test_source_machine_distinguishes_silent_outage_from_deterministic_defect() {
 	deterministic := bin.resolve_source(base, base.generation,
 		'4444444444444444444444444444444444444444444444444444444444444444', 101,
 		'2026-08-02T04:00:00Z', [], [
-		bin.SourceResolutionAttempt{
-			ordinal:                 1
-			backoff_seconds:         0
-			connect_timeout_seconds: bin.source_connect_timeout_seconds
-			total_timeout_seconds:   bin.source_total_timeout_seconds
-			failure_kind:            .missing_ref
-		},
-	]) or { panic(err) }
+			bin.SourceResolutionAttempt{
+				ordinal:                 1
+				backoff_seconds:         0
+				connect_timeout_seconds: bin.source_connect_timeout_seconds
+				total_timeout_seconds:   bin.source_total_timeout_seconds
+				failure_kind:            .missing_ref
+			},
+		]) or { panic(err) }
 	assert deterministic.should_report
 	assert !deterministic.external_outage
 	assert deterministic.state.status == 'invalid_configuration'
@@ -602,22 +602,22 @@ fn test_source_machine_returns_monthly_only_after_functional_result() {
 	outage := bin.resolve_source(base, 0,
 		'2222222222222222222222222222222222222222222222222222222222222222', 100,
 		'2026-08-02T03:47:00Z', [], [
-		transient_source_attempt(1, 0),
-		transient_source_attempt(2, 15),
-		transient_source_attempt(3, 45),
-	]) or { panic(err) }
+			transient_source_attempt(1, 0),
+			transient_source_attempt(2, 15),
+			transient_source_attempt(3, 45),
+		]) or { panic(err) }
 	resolved := bin.resolve_source(outage.state, outage.state.generation,
 		'3333333333333333333333333333333333333333333333333333333333333333', 100,
 		'2026-08-03T03:47:00Z', [], [
-		bin.SourceResolutionAttempt{
-			ordinal:                 1
-			backoff_seconds:         0
-			connect_timeout_seconds: bin.source_connect_timeout_seconds
-			total_timeout_seconds:   bin.source_total_timeout_seconds
-			resolved_sha:            'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
-			resolved_tree:           'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb'
-		},
-	]) or { panic(err) }
+			bin.SourceResolutionAttempt{
+				ordinal:                 1
+				backoff_seconds:         0
+				connect_timeout_seconds: bin.source_connect_timeout_seconds
+				total_timeout_seconds:   bin.source_total_timeout_seconds
+				resolved_sha:            'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
+				resolved_tree:           'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb'
+			},
+		]) or { panic(err) }
 	assert resolved.may_build
 	assert resolved.state.mode == .upstream_recovery_daily
 	monthly := bin.complete_source_resolution(resolved.state, resolved.state.generation,

@@ -21,7 +21,7 @@ pub fn fastc_prepare_link(program string, tcc_lib string, base_args []string, fi
 		return fastc_prepare_libtcc_link(program, tcc_lib, base_args, final_args)
 	} $else {
 		return FastcPreparedLink{
-			program: program
+			program:   program
 			base_args: base_args.clone()
 		}
 	}

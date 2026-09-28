@@ -1,0 +1,24 @@
+import json
+
+struct Person {
+	name string
+	age  int
+}
+
+fn main() {
+	// The magic `json.decode(T, s)` returns `!T`; `!` in `main` must unwrap it
+	// as that type, not as the `!voidptr` declaration stub (issue #28828).
+	p := json.decode(Person, '{"name":"a","age":3}')!
+	println(p.name)
+	println(p.age)
+	mut q := json.decode(Person, '{"name":"b"}')!
+	q = Person{
+		...q
+		age: 4
+	}
+	println('${q.name} ${q.age}')
+	r := json.decode(Person, '{"name":"c"}') or { panic('unreachable') }
+	println(r.name)
+	people := json.decode([]Person, '[{"name":"d"},{"name":"e"}]')!
+	println(people.map(it.name))
+}

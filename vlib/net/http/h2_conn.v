@@ -544,8 +544,8 @@ fn (mut c H2Conn) apply_settings(settings []H2Setting) ! {
 			h2_settings_max_header_list_size {
 				c.peer.max_header_list_size = s.value
 			}
-			else {} // unknown settings are ignored (RFC 7540 §6.5.2)
-		}
+			else {}
+		} // unknown settings are ignored (RFC 7540 §6.5.2)
 	}
 }
 

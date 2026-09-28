@@ -5,7 +5,7 @@ pub struct Response {
 pub:
 	results []Result = []Result{len: 0} @[json: list]
 	tags    []string = []string{len: 0} @[json: tags]
-	kind    string   @[json: result_type]
+	kind    string            @[json: result_type]
 }
 
 pub struct Result {

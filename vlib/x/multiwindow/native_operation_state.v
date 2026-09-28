@@ -281,7 +281,7 @@ fn (mut reservation NativeOrdinalRange) materialize(authority &NativeOperationAu
 		|| !authority.authority_scope_is_current(reservation.authority_scope, reservation.authority_token)
 		|| (reservation.proof_generation == 0) != (authority.proof == unsafe { nil })
 		|| (reservation.proof_generation != 0
-		&& reservation.proof_generation != authority.proof.generation) {
+			&& reservation.proof_generation != authority.proof.generation) {
 		return error(err_render_native_renderer_unavailable)
 	}
 	ordinal := reservation.first + reservation.used
@@ -339,7 +339,9 @@ fn (mut reservation NativeOrdinalRange) split_tail(count u64) !NativeOrdinalRang
 
 fn native_lifetime_release_operation(kind NativeLifetimeReleaseKind) NativeRenderOperation {
 	return match kind {
-		.egl_surface, .wayland_egl_window, .wayland_surface, .wayland_frame_callback { .surface_destroy }
+		.egl_surface, .wayland_egl_window, .wayland_surface, .wayland_frame_callback {
+			.surface_destroy
+		}
 		.egl_context { .context_destroy }
 		.egl_display { .display_terminate }
 		.egl_thread { .release_thread }
@@ -368,7 +370,7 @@ fn (authority &NativeOperationAuthority) has_provisional_lifetime_acquisition() 
 	for ticket in authority.lifetime_tickets {
 		if ticket.state in [.acquiring, .provisional_bound]
 			|| (ticket.state in [.releasing, .native_released]
-			&& ticket.acquisition_context.ordinal != 0) {
+				&& ticket.acquisition_context.ordinal != 0) {
 			return true
 		}
 	}
@@ -444,7 +446,7 @@ fn (authority &NativeOperationAuthority) proof_accepts_context(context NativeOpe
 		|| context.app_identity != authority.app_identity
 		|| !authority.authority_scope_is_current(context.authority_scope, context.authority_token)
 		|| (context.authority_scope == .renderer_attempt
-		&& context.renderer_attempt_token != context.authority_token)
+			&& context.renderer_attempt_token != context.authority_token)
 		|| (context.authority_scope == .app_lifetime && context.renderer_attempt_token != 0) {
 		return false
 	}
@@ -981,7 +983,8 @@ fn (mut authority NativeOperationAuthority) claim_lifetime_release(ticket_id u64
 fn (authority &NativeOperationAuthority) lifetime_ticket_has_live_children(parent NativeLifetimeReleaseTicket) bool {
 	for ticket in authority.lifetime_tickets {
 		if ticket.ticket_id != parent.ticket_id
-			&& ticket.state in [.reserved, .acquiring, .provisional_bound, .bound, .releasing, .native_released]
+			&& ticket.state in [.reserved, .acquiring, .provisional_bound, .bound, .releasing,
+				.native_released]
 			&& ticket.required_parent_identity == parent.native_identity
 			&& ticket.parent_authority_scope == parent.authority_scope
 			&& ticket.parent_authority_token == parent.authority_token {

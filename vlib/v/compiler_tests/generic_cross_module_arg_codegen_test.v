@@ -147,6 +147,16 @@ fn test_nested_generic_return_infers_outer_static_method_arg() {
 	assert out == '9'
 }
 
+fn test_static_generic_call_uses_declared_module_name_for_nested_import_path() {
+	v3_bin := generic_cross_build_v3()
+	out := generic_cross_run_project(v3_bin, 'generic_static_nested_import_path', {
+		'vsl/la/matrix.v': 'module la\n\npub struct Matrix[T] {\npub:\n\tn int\n}\n\npub fn Matrix.new[T](n int) Matrix[T] {\n\treturn Matrix[T]{\n\t\tn: n\n\t}\n}\n'
+		'user/user.v':     'module user\n\nimport vsl.la\n\npub fn run() int {\n\tmatrix := la.Matrix.new[f64](37)\n\treturn matrix.n\n}\n'
+		'main.v':          'module main\n\nimport user\n\nfn main() {\n\tprintln(int_str(user.run()))\n}\n'
+	})
+	assert out == '37'
+}
+
 fn test_specialized_receiver_method_body_specializes_nested_generic_method_return() {
 	v3_bin := generic_cross_build_v3()
 	out := generic_cross_run_project(v3_bin, 'generic_nested_receiver_method_return', {

@@ -29,7 +29,7 @@ fn heap_attr_v3_bin_path() string {
 fn testsuite_begin() {
 	v3_bin := heap_attr_v3_bin_path()
 	os.rm(v3_bin) or {}
-	build := cmdexec.run(heap_attr_vexe, ['-old-compiler', '-gc', 'none', '-path',
+	build := cmdexec.run(heap_attr_vexe, ['-gc', 'none', '-path',
 		'${heap_attr_vlib_dir}|@vlib|@vmodules', '-o', v3_bin, heap_attr_v3_src])
 	assert build.exit_code == 0, build.output
 }

@@ -9,6 +9,11 @@ ARM64 backend via SSA IR with a built-in linker, and a direct
 flat-AST-to-WebAssembly backend. With `-prod`, the ARM64 backend runs SSA
 optimization, MIR lowering, and instruction selection.
 
+V3 does not yet have a full JavaScript backend. For now, `*_test.js.v` files are skipped on
+all operating systems, including `v test` and `v test-self`, direct `v`/`v run` commands,
+and explicit `-b js` invocations. The limited JavaScript compatibility generator remains
+available for non-test programs. JavaScript test sources are retained for future backend support.
+
 The `v fmt` command uses `v.parser` and `v.gen.v`. Formatter-mode parsing retains comments,
 compile-time branches, inline assembly, SQL bodies, and literal prefixes so they round-trip
 without a legacy formatter path.
@@ -49,8 +54,19 @@ in-process driver. The standard bootstrap does not build the sibling `v1_fallbac
 missing, V reports that it is running `make v1`. That target reuses or downloads the complete
 0.5.2 release under the user cache; if its release binary cannot be used, `oldv` clones the 0.5.2
 V sources and their matching `vc` snapshot and builds the fallback there. Run `make v1` explicitly
-to prepare it ahead of time. `-old-compiler` launches the fallback explicitly, and ordinary user
-builds and external tools retry through it after a compiler or C compilation failure.
+to prepare it ahead of time. Automatic provisioning keeps its launcher metadata in the user cache,
+so an older read-only sibling installation can remain untouched. The installer exposes
+`crypto.subtle` at its current public path in the fallback vlib, and fallback resolution reruns the
+installer when an older cached tree lacks that path. `-old-compiler` launches the fallback
+explicitly, and ordinary user builds and external tools retry through it after a compiler or C
+compilation failure.
+
+The installer supplements the cached fallback vlib with modules whose public paths moved after
+0.5.2. Fallback roots missing these compatibility modules are not used. If a fallback command exits
+unsuccessfully, V notes where the default compiler stopped and how to show its suppressed
+diagnostics. For a command that may have run user code, the note preserves the child's status
+without mislabeling it as a compiler failure. Re-run the command with `-new-compiler` to see the
+default-compiler diagnostics without a fallback retry.
 
 The in-process path supports the split module cache and uses parallel stages while the input
 remains within its scratch-memory safety limit.
@@ -81,10 +97,14 @@ suffixes, and third-party object-cache keys. Common aliases such as `darwin`, `x
 `aarch64` are normalized. Native linking currently supports the host target and macOS
 `amd64`/`arm64` cross-architecture builds through Clang's `-arch`; other cross targets can be
 emitted as C with `-o file.c` for compilation by an external target toolchain.
+For compatibility testing, `-os linux` on macOS with the host architecture and default C compiler
+also builds a macOS executable from portable host-target C; it is not a Linux binary. Pair it with
+`-os linux -o file.c` to validate Linux-selected sources.
 
 The command line rejects unknown options, missing option values, unsupported backends, and
-multiple input paths. `-cc <executable>` selects the C compiler and `-gc none` is the only
-currently supported collector mode. Directory builds read `subdirs` through the canonical
+multiple input paths. `-cc <executable>` selects the C compiler. V3 uses
+`-gc boehm_full_opt` by default and supports the V1 collector modes; compiler self-builds
+disable GC regardless of the requested mode. Directory builds read `subdirs` through the canonical
 `v.mod` parser, including when other manifest strings contain punctuation resembling fields.
 Native C compilation uses `-fwrapv` on supported targets so signed integer overflow retains V's
 two's-complement semantics. On macOS, `-cg` links executables with exported symbols for symbolic
@@ -117,7 +137,11 @@ for the user program being compiled does not disable the compiler's own job cap.
 
 BSD compiler and self-host builds normally keep their V stages at two jobs. Production builds
 using `-parallel-cc` allow one job per 2 GiB of physical memory, up to eight jobs, and use the same
-limit for the split C compilation. Other parallel C builds remain limited to two jobs.
+limit for the split C compilation. Cached builds divide the compiler across 32 C units and cache
+those production objects by content, compiler, flags, target, and included-file contents. Repeated
+production self-builds therefore compile only changed units. `-nocache` disables this reuse and
+uses one C unit per compiler job to avoid repeatedly parsing the shared declarations. Other
+parallel C builds remain limited to two jobs.
 
 ## Fast C backend
 

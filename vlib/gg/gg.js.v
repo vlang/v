@@ -118,10 +118,10 @@ pub enum DOMKeyCode {
 	x             = 88
 	y             = 89
 	z             = 90
-	left_bracket  = 91  //[
-	backslash     = 92  //\
-	right_bracket = 93  //]
-	grave_accent  = 96  //`
+	left_bracket  = 91 //[
+	backslash     = 92 //\
+	right_bracket = 93 //]
+	grave_accent  = 96 //`
 	world_1       = 161 // non-us #1
 	world_2       = 162 // non-us #2
 	escape        = 256
@@ -249,8 +249,8 @@ pub:
 	native_rendering  bool // Cocoa on macOS/iOS, GDI+ on Windows
 	// drag&drop
 	enable_dragndrop             bool // enable file dropping (drag'n'drop), default is false
-	max_dropped_files            int    = 1        // max number of dropped files to process (default: 1)
-	max_dropped_file_path_length int    = 2048     // max length in bytes of a dropped UTF-8 file path (default: 2048)
+	max_dropped_files            int    = 1      // max number of dropped files to process (default: 1)
+	max_dropped_file_path_length int    = 2048   // max length in bytes of a dropped UTF-8 file path (default: 2048)
 	html5_canvas_name            string = 'canvas' // the id/name of the canvas element, that will be used to render GG apps
 }
 

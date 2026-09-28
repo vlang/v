@@ -593,10 +593,11 @@ pub fn validate_handoff(handoff RecoveryHandoffModel) ! {
 		return error('complete handoff lacks its receiver conclusion, output, or terminal outcome')
 	}
 	if handoff.state == .complete
-		&& ((handoff.terminal_outcome in ['green', 'no_op', 'source_waiting', 'native_gate_green_successor']
-		&& handoff.receiver_conclusion != 'success')
-		|| (handoff.terminal_outcome == 'functional_defect_routed'
-		&& handoff.receiver_conclusion != 'failure')) {
+		&& ((handoff.terminal_outcome in ['green', 'no_op', 'source_waiting',
+			'native_gate_green_successor']
+			&& handoff.receiver_conclusion != 'success')
+			|| (handoff.terminal_outcome == 'functional_defect_routed'
+				&& handoff.receiver_conclusion != 'failure')) {
 		return error('complete handoff outcome contradicts its authenticated run conclusion')
 	}
 	if handoff.terminal_outcome == 'native_gate_green_successor' {
@@ -611,8 +612,7 @@ pub fn validate_handoff(handoff RecoveryHandoffModel) ! {
 // deterministic_handoff_id preserves identity across dispatch retries and CAS bumps.
 pub fn deterministic_handoff_id(audience string, recovery_operation_id string,
 	intent_or_operation_id string, subject_hash string, ordinal int) string {
-	material := [audience, recovery_operation_id, intent_or_operation_id, subject_hash,
-		ordinal.str()].join('\x1f')
+	material := [audience, recovery_operation_id, intent_or_operation_id, subject_hash, ordinal.str()].join('\x1f')
 	return sha256.sum256(material.bytes()).hex()
 }
 

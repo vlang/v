@@ -43,5 +43,5 @@ fn test_shared_library_boehm_emits_allow_register_threads() {
 	}
 	vinit_body := c_src[vinit_start..vinit_end]
 	assert vinit_body.contains('GC_allow_register_threads();'), 'expected `GC_allow_register_threads()` inside `_vinit`, got:\n${vinit_body}'
-	assert vinit_body.contains('#if defined(_VGCBOEHM) && defined(GC_THREADS)'), 'expected `GC_THREADS` guard around the call, got:\n${vinit_body}'
+	assert vinit_body.contains('#if (defined(_VGCBOEHM) || defined(CUSTOM_DEFINE_gcboehm)) && defined(GC_THREADS)'), 'expected `GC_THREADS` guard around the call, got:\n${vinit_body}'
 }

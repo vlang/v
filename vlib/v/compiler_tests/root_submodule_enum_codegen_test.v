@@ -45,11 +45,13 @@ fn test_v3_compiles_root_submodule_with_enum() {
 		panic(err)
 	}
 	os.write_file(os.join_path(project, 'main.v'),
-		['module main', '', 'import calculator', '', 'fn main() {', '\tprintln(calculator.evaluate(calculator.Op.add))', '}'].join('\n') +
-		'\n') or { panic(err) }
+		['module main', '', 'import calculator', '', 'fn main() {',
+			'\tprintln(calculator.evaluate(calculator.Op.add))', '}'].join('\n') +
+			'\n') or { panic(err) }
 	os.write_file(os.join_path(project, 'calculator.v'),
-		['module calculator', '', 'pub enum Op {', '\tadd', '\tsub', '}', '', 'pub fn evaluate(op Op) int {', '\treturn if op == .add { 1 } else { -1 }', '}'].join('\n') +
-		'\n') or { panic(err) }
+		['module calculator', '', 'pub enum Op {', '\tadd', '\tsub', '}', '',
+			'pub fn evaluate(op Op) int {', '\treturn if op == .add { 1 } else { -1 }', '}'].join('\n') +
+			'\n') or { panic(err) }
 	old_wd := os.getwd()
 	os.chdir(project) or { panic(err) }
 	defer {

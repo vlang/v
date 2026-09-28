@@ -17,6 +17,7 @@ $if openbsd {
 
 @[use_once]
 #define SOKOL_IMPL
+
 #include "sokol_audio.h"
 #flag linux -lasound -lpthread
 #flag darwin -framework AudioToolbox

@@ -115,7 +115,8 @@ fn fastc_or_operand_token_start(tokens []FastcExpressionToken) int {
 					nearest_comma = i
 				}
 			}
-			.plus, .minus, .mul, .div, .mod, .amp, .pipe, .xor, .left_shift, .right_shift, .right_shift_unsigned, .eq, .ne, .gt, .lt, .ge, .le, .and, .logical_or {
+			.plus, .minus, .mul, .div, .mod, .amp, .pipe, .xor, .left_shift, .right_shift,
+			.right_shift_unsigned, .eq, .ne, .gt, .lt, .ge, .le, .and, .logical_or {
 				if depth == 0 {
 					// A leading `&`, `*`, `+` or `-` belongs to the option-producing operand
 					// (`&m[k] or { nil }`); it is not the binary separator before it.
@@ -340,7 +341,7 @@ fn (mut g Parser) lower_higher_order_expression(mut result strings.Builder, mut 
 			it_c_name := fastc_c_identifier(it_name)
 			g.type_memo.clear()
 			g.locals[it_name] = FastcLocal{
-				typ: element_type
+				typ:    element_type
 				c_name: it_c_name
 			}
 			// The closure type is independent of the surrounding assignment type.
@@ -411,7 +412,7 @@ fn (mut g Parser) lower_higher_order_expression(mut result strings.Builder, mut 
 			}
 			return FastcHigherOrderExpression{
 				found: true
-				lit: lowered
+				lit:   lowered
 			}
 		}
 	}
@@ -482,14 +483,14 @@ fn (mut g Parser) lower_higher_order_expression(mut result strings.Builder, mut 
 			result.write_string(lowered)
 			expression_tokens = expression_tokens[..receiver_start].clone()
 			expression_tokens << FastcExpressionToken{
-				tok: .name
-				lit: lowered
-				typ: 'void'
+				tok:          .name
+				lit:          lowered
+				typ:          'void'
 				is_statement: true
 			}
 			return FastcHigherOrderExpression{
 				found: true
-				lit: lowered
+				lit:   lowered
 			}
 		}
 	}
@@ -834,20 +835,20 @@ fn (mut g Parser) lower_or_expression(mut result strings.Builder, mut expression
 		if in_struct_field {
 			expression_tokens = struct_field_prefix_tokens.clone()
 			expression_tokens << FastcExpressionToken{
-				tok: .name
-				lit: temporary
-				source: or_expr_body
-				typ: complex_value_type
+				tok:          .name
+				lit:          temporary
+				source:       or_expr_body
+				typ:          complex_value_type
 				is_statement: or_expression_is_statement
 			}
 		} else {
 			expression_tokens = [
 				FastcExpressionToken{
-					tok: .name
-					lit: temporary
+					tok:          .name
+					lit:          temporary
 					// Carry the rendered `({ ... })` so a trailing `.method()` binds to it.
-					source: or_expr_body
-					typ: complex_value_type
+					source:       or_expr_body
+					typ:          complex_value_type
 					is_statement: or_expression_is_statement
 				},
 			]
@@ -1019,10 +1020,10 @@ fn (mut g Parser) lower_or_expression(mut result strings.Builder, mut expression
 	if in_struct_field {
 		expression_tokens = struct_field_prefix_tokens.clone()
 		expression_tokens << FastcExpressionToken{
-			tok: .name
-			lit: temporary
-			source: or_expr_body
-			typ: value_type
+			tok:          .name
+			lit:          temporary
+			source:       or_expr_body
+			typ:          value_type
 			is_statement: or_expression_is_statement
 		}
 	} else {
@@ -1034,12 +1035,12 @@ fn (mut g Parser) lower_or_expression(mut result strings.Builder, mut expression
 			}
 		}
 		expression_tokens << FastcExpressionToken{
-			tok: .name
-			lit: temporary
+			tok:          .name
+			lit:          temporary
 			// Carry the rendered `({ ... })` so a trailing `.method()`
 			// (`expr or { v }.str()`) binds to it via render_method_receiver_expression.
-			source: or_expr_body
-			typ: value_type
+			source:       or_expr_body
+			typ:          value_type
 			is_statement: or_expression_is_statement
 		}
 		if value_type == 'void' {
@@ -1252,7 +1253,7 @@ fn (mut g Parser) rewrite_expression_initializer(mut result strings.Builder, exp
 		piece = '{'
 	}
 	return FastcInitializerRewrite{
-		piece: piece
+		piece:       piece
 		brace_depth: brace_depth
 	}
 }
@@ -1342,7 +1343,7 @@ fn (mut g Parser) rewrite_contextual_enum_shorthand(expression_tokens []FastcExp
 		enum_shorthand_type = contextual_type
 	}
 	return FastcEnumShorthandRewrite{
-		piece: piece
+		piece:               piece
 		enum_shorthand_type: enum_shorthand_type
 	}
 }
@@ -1390,9 +1391,9 @@ fn (mut g Parser) read_inline_comptime_expression(mut result strings.Builder, mu
 				typ: fastc_normalize_inferred_type(res_type)
 			}
 			return FastcInlineComptimeResult{
-				found: true
-				previous_token: .name
-				previous_lit: res_value
+				found:              true
+				previous_token:     .name
+				previous_lit:       res_value
 				previous_token_end: g.s.pos
 			}
 		}
@@ -1415,9 +1416,9 @@ fn (mut g Parser) read_inline_comptime_expression(mut result strings.Builder, mu
 				typ: value_type
 			}
 			return FastcInlineComptimeResult{
-				found: true
-				previous_token: .name
-				previous_lit: value
+				found:              true
+				previous_token:     .name
+				previous_lit:       value
 				previous_token_end: g.s.pos
 			}
 		}
@@ -1517,8 +1518,8 @@ fn (mut g Parser) read_compound_expression_atom(expression_tokens []FastcExpress
 	}
 	anon := g.parse_anonymous_function()!
 	return FastcExpressionToken{
-		tok: .name
-		lit: anon
+		tok:    .name
+		lit:    anon
 		source: anon
 	}
 }
@@ -1536,13 +1537,13 @@ mut:
 
 @[inline]
 fn (mut g Parser) validate_expression_stream_token(expression_tokens []FastcExpressionToken, stops []token.Token, allow_mutation_statement bool, allow_declaration_guard bool, paren_depth int, bracket_depth int, brace_depth int, unsafe_expression_depth int, source_token_count int, mut state FastcExpressionOperatorState) ! {
-	if !g.selfhost && g.tok in [.left_shift, .right_shift, .right_shift_unsigned, .left_shift_assign,
-		.right_shift_assign, .right_shift_unsigned_assign] {
+	if !g.selfhost && !g.translated && g.tok in [.left_shift, .right_shift, .right_shift_unsigned,
+		.left_shift_assign, .right_shift_assign, .right_shift_unsigned_assign] {
 		// V defines oversized shifts to produce zero. Raw C shifts are
 		// undefined and may mask the count to the operand width instead.
 		return g.unsupported('shift expressions')
 	}
-	if !g.selfhost && g.tok in [.div, .div_assign, .mod, .mod_assign] {
+	if (!g.selfhost || g.translated) && g.tok in [.div, .div_assign, .mod, .mod_assign] {
 		// Integer division and modulo require V's runtime zero checks. This
 		// scanner-only lane has no type information to add them selectively.
 		return g.unsupported('division or modulo expressions')
@@ -1638,18 +1639,25 @@ fn (mut g Parser) render_expression_stream_token(mut expression_tokens []FastcEx
 	mut next_token_is_mut_argument := input_next_token_is_mut_argument
 	mut source_token_count := input_source_token_count
 	source_token_count++
+	keyword_module_alias := if g.tok.is_keyword() && g.lit in g.imports {
+		mut lookahead := g.s
+		lookahead.scan() == .dot
+	} else {
+		false
+	}
 	// A word that is also a keyword (`conn.select(...)`, `x.lock`) is a member
 	// name, not a keyword, once it follows `.`; store it as a plain name so the
 	// method-call and inference paths recognize it like any other member.
-	stored_tok := if (previous_token == .dot && g.tok.is_keyword()) || shared_is_struct_field || spawn_is_field_name || keyword_is_field_name {
+	stored_tok := if (previous_token == .dot && g.tok.is_keyword()) || keyword_module_alias
+		|| shared_is_struct_field || spawn_is_field_name || keyword_is_field_name {
 		token.Token.name
 	} else {
 		g.tok
 	}
 	expression_tokens << FastcExpressionToken{
-		tok: stored_tok
-		lit: g.lit
-		unsafe_depth: g.unsafe_depth
+		tok:             stored_tok
+		lit:             g.lit
+		unsafe_depth:    g.unsafe_depth
 		is_mut_argument: next_token_is_mut_argument
 	}
 	next_token_is_mut_argument = false
@@ -1662,7 +1670,9 @@ fn (mut g Parser) render_expression_stream_token(mut expression_tokens []FastcEx
 		''
 	}
 	selfhost_bare_name := g.selfhost && g.tok == .name && previous_token != .dot
-	mut piece := if selfhost_bare_name {
+	mut piece := if keyword_module_alias {
+		g.expression_name(previous_token, qualified_name_owner)!
+	} else if selfhost_bare_name {
 		fastc_c_identifier(g.lit)
 	} else {
 		g.expression_token(previous_token, previous_lit, qualified_name_owner, module_separator)!
@@ -1720,10 +1730,10 @@ fn (mut g Parser) render_expression_stream_token(mut expression_tokens []FastcEx
 		piece = '->'
 	}
 	return FastcStreamedExpressionToken{
-		piece: piece
-		module_separator: module_separator
+		piece:                      piece
+		module_separator:           module_separator
 		next_token_is_mut_argument: next_token_is_mut_argument
-		source_token_count: source_token_count
+		source_token_count:         source_token_count
 	}
 }
 
@@ -1762,8 +1772,8 @@ fn (mut g Parser) read_expression_with_prefix_mode_impl(prefix string, stops []t
 	if prefix.len > 0 {
 		result.write_string(g.resolved_expression_name(prefix, .unknown))
 		expression_tokens << FastcExpressionToken{
-			tok: .name
-			lit: prefix
+			tok:          .name
+			lit:          prefix
 			unsafe_depth: g.unsafe_depth
 		}
 	}
@@ -1904,10 +1914,10 @@ fn (mut g Parser) read_expression_with_prefix_mode_impl(prefix string, stops []t
 			}
 			result.write_string(interpolation)
 			expression_tokens << FastcExpressionToken{
-				tok: .string
-				lit: literal
+				tok:    .string
+				lit:    literal
 				source: interpolation
-				typ: 'string'
+				typ:    'string'
 			}
 			previous_token = .string
 			previous_lit = literal
@@ -1942,9 +1952,9 @@ fn (mut g Parser) read_expression_with_prefix_mode_impl(prefix string, stops []t
 			// A `.shared` enum shorthand (member named with the `shared` keyword) is resolved
 			// against the pending `enum_shorthand_type` below, not treated as a `shared` local.
 			expression_tokens << FastcExpressionToken{
-				tok: .name
-				lit: g.lit
-				unsafe_depth: g.unsafe_depth
+				tok:             .name
+				lit:             g.lit
+				unsafe_depth:    g.unsafe_depth
 				is_mut_argument: next_token_is_mut_argument
 			}
 			next_token_is_mut_argument = false
@@ -2000,8 +2010,8 @@ fn (mut g Parser) read_expression_with_prefix_mode_impl(prefix string, stops []t
 			}
 			result.write_u8(`&`)
 			expression_tokens << FastcExpressionToken{
-				tok: .amp
-				lit: '&'
+				tok:             .amp
+				lit:             '&'
 				is_mut_argument: true
 			}
 			previous_token = .amp
@@ -2083,10 +2093,10 @@ fn (mut g Parser) read_expression_with_prefix_mode_impl(prefix string, stops []t
 			}
 			result.write_string(pseudo)
 			expression_tokens << FastcExpressionToken{
-				tok: .string
-				lit: pseudo_name
+				tok:    .string
+				lit:    pseudo_name
 				source: pseudo
-				typ: 'string'
+				typ:    'string'
 			}
 			previous_token = .string
 			previous_lit = pseudo_name
@@ -2251,13 +2261,13 @@ fn (mut g Parser) finish_read_expression(mut result strings.Builder, mut express
 		// handling used everywhere below.
 		last_token := expression_tokens.last()
 		expression_tokens[expression_tokens.len - 1] = FastcExpressionToken{
-			tok: .not
-			source: last_token.source
-			unsafe_depth: last_token.unsafe_depth
+			tok:             .not
+			source:          last_token.source
+			unsafe_depth:    last_token.unsafe_depth
 			is_mut_argument: last_token.is_mut_argument
-			is_statement: last_token.is_statement
-			lit: last_token.lit
-			typ: last_token.typ
+			is_statement:    last_token.is_statement
+			lit:             last_token.lit
+			typ:             last_token.typ
 		}
 	}
 	// A boolean `is` expression with a flow-sensitive `&&` narrowing is handled first, on the
@@ -2361,8 +2371,8 @@ fn fastc_shared_modifier_operand_start(tok token.Token) bool {
 	if tok in [.key_or, .key_in, .key_as, .key_is] {
 		return false
 	}
-	return tok == .name || (tok.is_keyword() && tok != .key_volatile) || tok in [.amp, .and,
-		.question, .not, .lpar, .lsbr]
+	return tok == .name || (tok.is_keyword() && tok != .key_volatile) || tok in [.amp, .and, .question,
+		.not, .lpar, .lsbr]
 }
 
 fn fastc_shared_modifier_may_cross_line(previous token.Token, next token.Token) bool {
@@ -2455,7 +2465,7 @@ fn (g &Parser) classify_shared_token(previous token.Token) FastcSharedTokenClass
 	}
 	if crossed_line && !fastc_shared_modifier_may_cross_line(previous, next) {
 		return FastcSharedTokenClassification{
-			is_identifier: true
+			is_identifier:   true
 			ends_expression: !fastc_token_continues_expression_after_operand(next)
 		}
 	}
@@ -3277,7 +3287,7 @@ fn (g &Parser) render_boolean_is_expression(tokens []FastcExpressionToken) ?Fast
 					}
 					return FastcRenderedExpression{
 						source: '((${left}) ${op} (${right}))'
-						typ: 'bool'
+						typ:    'bool'
 					}
 				}
 			}
@@ -3339,7 +3349,7 @@ fn (g &Parser) render_boolean_is_expression(tokens []FastcExpressionToken) ?Fast
 	operator := if inner[is_idx].tok == .key_is { '==' } else { '!=' }
 	return FastcRenderedExpression{
 		source: '(((${lhs_source})${access}_typ) ${operator} __v_typeid_${variant_c})'
-		typ: 'bool'
+		typ:    'bool'
 	}
 }
 
@@ -3416,7 +3426,7 @@ fn (g &Parser) render_call_is_narrowing(tokens []FastcExpressionToken) ?FastcCal
 	}
 	box := g.render_call_argument_expression(lhs_tokens, lhs_type) or { return none }
 	return FastcCallIsNarrowing{
-		box: box
+		box:     box
 		variant: variant_c
 	}
 }
@@ -3594,9 +3604,9 @@ fn (g &Parser) conjunction_narrowing(tokens []FastcExpressionToken) ?FastcConjun
 	}
 	access := if subject_type.ends_with('*') { '->' } else { '.' }
 	return FastcConjunctionNarrowing{
-		path: path
+		path:      path
 		smartcast: FastcMemberSmartcast{
-			typ: variant_c + '*'
+			typ:    variant_c + '*'
 			source: '((${variant_c} *)(${subject_source})${access}_object)'
 		}
 	}
@@ -3792,7 +3802,7 @@ fn (g &Parser) render_membership_expression(tokens []FastcExpressionToken, rende
 			if inner := g.render_special_expression(stripped, raw_stripped) {
 				return FastcRenderedExpression{
 					source: '(${inner.source})'
-					typ: inner.typ
+					typ:    inner.typ
 				}
 			}
 		}
@@ -3836,7 +3846,7 @@ fn (g &Parser) render_membership_expression(tokens []FastcExpressionToken, rende
 							}
 							return FastcRenderedExpression{
 								source: '({ ${left_boxed_type} ${subject_name} = (${subject}); ${predicate}; })'
-								typ: 'bool'
+								typ:    'bool'
 							}
 						}
 					}
@@ -3870,7 +3880,7 @@ fn (g &Parser) render_membership_expression(tokens []FastcExpressionToken, rende
 					predicate := if item.tok == .not_in { '!(${found})' } else { found }
 					return FastcRenderedExpression{
 						source: '({ string ${substring_name} = (${substring}); string ${value_name} = (${value}); ${predicate}; })'
-						typ: 'bool'
+						typ:    'bool'
 					}
 				}
 				if fastc_trim_pointer_suffix(right_type).starts_with('Map_') {
@@ -3889,7 +3899,7 @@ fn (g &Parser) render_membership_expression(tokens []FastcExpressionToken, rende
 					predicate := if item.tok == .not_in { '!(${found})' } else { found }
 					return FastcRenderedExpression{
 						source: '({ ${fastc_runtime_c_type(key_type)} ${key_name} = (${key_source}); ${predicate}; })'
-						typ: 'bool'
+						typ:    'bool'
 					}
 				}
 				right_layout := fastc_trim_pointer_suffix(right_type)
@@ -3940,7 +3950,7 @@ fn (g &Parser) render_membership_expression(tokens []FastcExpressionToken, rende
 					}
 					return FastcRenderedExpression{
 						source: '({ ${element_type} ${item_name} = (${candidate}); ${collection_c_type} ${collection_name} = (${collection}); bool ${found_name} = false; for (int ${index_name} = 0; ${index_name} < ${collection_length}; ${index_name}++) { if (${comparison}) { ${found_name} = true; break; } } ${predicate}; })'
-						typ: 'bool'
+						typ:    'bool'
 					}
 				}
 				array_end := if tokens.last().tok == .not { tokens.len - 1 } else { tokens.len }
@@ -3954,7 +3964,7 @@ fn (g &Parser) render_membership_expression(tokens []FastcExpressionToken, rende
 				if items.len == 0 {
 					return FastcRenderedExpression{
 						source: if item.tok == .key_in { 'false' } else { 'true' }
-						typ: 'bool'
+						typ:    'bool'
 					}
 				}
 				lhs_source := g.render_membership_candidate(tokens[..i], lhs_type) or {
@@ -3984,7 +3994,7 @@ fn (g &Parser) render_membership_expression(tokens []FastcExpressionToken, rende
 				joiner := if item.tok == .key_in { ' || ' } else { ' && ' }
 				return FastcRenderedExpression{
 					source: '({ ${value_type} ${lhs_name} = (${lhs_source}); ${initializers.join(' ')} (${comparisons.join(joiner)}); })'
-					typ: 'bool'
+					typ:    'bool'
 				}
 			}
 		}
@@ -4113,7 +4123,7 @@ fn (g &Parser) render_selfhost_special_expression(tokens []FastcExpressionToken,
 			inner := g.render_call_argument_expression(tokens[1..], 'bool') or { return none }
 			return FastcRenderedExpression{
 				source: '!(${inner})'
-				typ: 'bool'
+				typ:    'bool'
 			}
 		}
 		if has_comparison {
@@ -4143,7 +4153,7 @@ fn (g &Parser) render_selfhost_special_expression(tokens []FastcExpressionToken,
 				if guard := g.render_guard_comparison(tokens) {
 					return FastcRenderedExpression{
 						source: guard
-						typ: 'bool'
+						typ:    'bool'
 					}
 				}
 			}
@@ -4196,7 +4206,7 @@ fn (g &Parser) render_selfhost_special_expression(tokens []FastcExpressionToken,
 			}
 			return FastcRenderedExpression{
 				source: '({ Option ${temporary} = (${inner_source}); if (${temporary}.state) { ${failure} } ${value}; })'
-				typ: value_type
+				typ:    value_type
 			}
 		}
 		if membership := g.render_membership_expression(tokens, rendered_expression, has_membership) {
@@ -4234,7 +4244,7 @@ fn (g &Parser) render_selfhost_special_expression(tokens []FastcExpressionToken,
 				}
 				return FastcRenderedExpression{
 					source: nested_source
-					typ: nested_type
+					typ:    nested_type
 				}
 			}
 		}
@@ -4253,7 +4263,7 @@ fn (g &Parser) render_selfhost_special_expression(tokens []FastcExpressionToken,
 				if array_expression := g.render_nested_array_access_expression(tokens, method_expression.source) {
 					return FastcRenderedExpression{
 						source: array_expression.source
-						typ: method_expression.typ
+						typ:    method_expression.typ
 					}
 				}
 				if array_type := g.infer_expression_type(tokens) {
@@ -4327,7 +4337,7 @@ fn (g &Parser) render_special_expression_fallback(tokens []FastcExpressionToken,
 		subject := if is_synth_subject { tokens[0].source } else { tokens[0].lit }
 		return FastcRenderedExpression{
 			source: '((${subject}${access}_typ) ${operator} __v_typeid_${variant_c})'
-			typ: 'bool'
+			typ:    'bool'
 		}
 	}
 	if g.selfhost && has_as {
@@ -4346,7 +4356,7 @@ fn (g &Parser) render_special_expression_fallback(tokens []FastcExpressionToken,
 		if fastc_trim_pointer_suffix(fastc_normalize_inferred_type(receiver_type)) == 'chan' {
 			return FastcRenderedExpression{
 				source: if tokens.last().lit == 'closed' { 'false' } else { '0' }
-				typ: if tokens.last().lit == 'closed' { 'bool' } else { 'int' }
+				typ:    if tokens.last().lit == 'closed' { 'bool' } else { 'int' }
 			}
 		}
 	}
@@ -4368,12 +4378,12 @@ fn (g &Parser) render_special_expression_fallback(tokens []FastcExpressionToken,
 					value := rendered_expression[marker_index + marker.len..rendered_expression.len - 1]
 					return FastcRenderedExpression{
 						source: rendered_expression[..marker_index] + '{.data={ [0 ... ${length} -\n\t\t\t\t\t\t\t1] = ' + value + '}}'
-						typ: array_type
+						typ:    array_type
 					}
 				}
 				return FastcRenderedExpression{
 					source: rendered_expression
-					typ: array_type
+					typ:    array_type
 				}
 			}
 		}
@@ -4392,12 +4402,12 @@ fn (g &Parser) render_special_expression_fallback(tokens []FastcExpressionToken,
 			fastc_register_composite_type(array_type, mut w.composite_types)
 			return FastcRenderedExpression{
 				source: '((${array_type})builtin____new_array(0, 0, sizeof(${fastc_normalize_inferred_type(element_type)})))'
-				typ: g.expected_expression_type
+				typ:    g.expected_expression_type
 			}
 		}
 		return FastcRenderedExpression{
 			source: '(${g.expected_expression_type}){0}'
-			typ: g.expected_expression_type
+			typ:    g.expected_expression_type
 		}
 	}
 	if g.selfhost && array_end >= 2 && tokens[0].tok == .lsbr && tokens[array_end - 1].tok == .rsbr {
@@ -4420,7 +4430,7 @@ fn (g &Parser) render_special_expression_fallback(tokens []FastcExpressionToken,
 		}
 		return FastcRenderedExpression{
 			source: '((${array_type})builtin__new_array_from_c_array(${items.len}, ${items.len}, sizeof(${fastc_normalize_inferred_type(element_type)}), (${fastc_normalize_inferred_type(element_type)}[]){${rendered_items.join(',')}}))'
-			typ: array_type
+			typ:    array_type
 		}
 	}
 	if g.selfhost && tokens.len > 0 && tokens.len % 2 == 1 && (has_plus || (tokens.len == 1 && tokens[0].tok == .string)) {
@@ -4446,7 +4456,7 @@ fn (g &Parser) render_special_expression_fallback(tokens []FastcExpressionToken,
 			literal_source := fastc_take_string(mut literals)
 			return FastcRenderedExpression{
 				source: '_S(${literal_source})'
-				typ: 'string'
+				typ:    'string'
 			}
 		}
 	}
@@ -4486,7 +4496,7 @@ fn (g &Parser) render_special_expression_fallback(tokens []FastcExpressionToken,
 					}
 					return FastcRenderedExpression{
 						source: combined
-						typ: 'string'
+						typ:    'string'
 					}
 				}
 			}
@@ -4507,7 +4517,7 @@ fn (g &Parser) render_special_expression(tokens []FastcExpressionToken, rendered
 				// address of the temporary C parameter slot.
 				return FastcRenderedExpression{
 					source: g.resolved_root_expression_name(tokens[1].lit)
-					typ: local.typ
+					typ:    local.typ
 				}
 			}
 		}
@@ -4518,7 +4528,7 @@ fn (g &Parser) render_special_expression(tokens []FastcExpressionToken, rendered
 				if local.is_reference {
 					return FastcRenderedExpression{
 						source: '*(${rendered_expression})'
-						typ: local.typ.trim_right('*')
+						typ:    local.typ.trim_right('*')
 					}
 				}
 			}
@@ -4528,7 +4538,7 @@ fn (g &Parser) render_special_expression(tokens []FastcExpressionToken, rendered
 	if function_value := g.render_function_value_expression(tokens) {
 		return FastcRenderedExpression{
 			source: function_value
-			typ: g.expected_expression_type
+			typ:    g.expected_expression_type
 		}
 	}
 	if tokens.len == 6 && tokens[0].tok == .key_sizeof {
@@ -4607,12 +4617,12 @@ fn (g &Parser) render_special_expression(tokens []FastcExpressionToken, rendered
 			if member_type.ends_with('*') {
 				return FastcRenderedExpression{
 					source: member_source
-					typ: member_type
+					typ:    member_type
 				}
 			}
 			return FastcRenderedExpression{
 				source: '&(${member_source})'
-				typ: if member_type != '' { member_type + '*' } else { 'voidptr' }
+				typ:    if member_type != '' { member_type + '*' } else { 'voidptr' }
 			}
 		}
 	}
@@ -4622,7 +4632,7 @@ fn (g &Parser) render_special_expression(tokens []FastcExpressionToken, rendered
 			if typ := g.infer_member_access_type(tokens, 0, tokens.len) {
 				return FastcRenderedExpression{
 					source: source
-					typ: typ
+					typ:    typ
 				}
 			}
 		}
@@ -4676,7 +4686,7 @@ fn (g &Parser) render_special_expression(tokens []FastcExpressionToken, rendered
 			if guard := g.render_guard_comparison(tokens) {
 				return FastcRenderedExpression{
 					source: guard
-					typ: 'bool'
+					typ:    'bool'
 				}
 			}
 		}
@@ -4687,7 +4697,7 @@ fn (g &Parser) render_special_expression(tokens []FastcExpressionToken, rendered
 			if guard := g.render_guard_comparison(tokens) {
 				return FastcRenderedExpression{
 					source: guard
-					typ: 'bool'
+					typ:    'bool'
 				}
 			}
 		}
@@ -4697,7 +4707,7 @@ fn (g &Parser) render_special_expression(tokens []FastcExpressionToken, rendered
 			if guard := g.render_guard_comparison(tokens) {
 				return FastcRenderedExpression{
 					source: guard
-					typ: 'bool'
+					typ:    'bool'
 				}
 			}
 		}
@@ -4708,7 +4718,7 @@ fn (g &Parser) render_special_expression(tokens []FastcExpressionToken, rendered
 			if guard := g.render_guard_comparison(tokens) {
 				return FastcRenderedExpression{
 					source: guard
-					typ: 'bool'
+					typ:    'bool'
 				}
 			}
 		}

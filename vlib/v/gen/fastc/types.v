@@ -35,7 +35,8 @@ fn fastc_bare_as_cast_index(tokens []FastcExpressionToken, start int, end int) ?
 					as_index = i
 				}
 			}
-			.eq, .ne, .lt, .gt, .le, .ge, .and, .logical_or, .plus, .minus, .mul, .div, .mod, .pipe, .amp, .xor, .left_shift, .right_shift, .right_shift_unsigned {
+			.eq, .ne, .lt, .gt, .le, .ge, .and, .logical_or, .plus, .minus, .mul, .div, .mod,
+			.pipe, .amp, .xor, .left_shift, .right_shift, .right_shift_unsigned {
 				if depth == 0 && as_index < 0 {
 					// A binary operator before any `as` means the whole expression is not a
 					// cast (e.g. `a == b as T`).

@@ -12,7 +12,7 @@ import v.util
 pub const builtin_bundle_imports = ['strconv', 'strings', 'hash', 'math.bits']
 pub const builtin_bundle_modules = ['builtin', 'strconv', 'strings', 'hash', 'bits', 'math.bits']
 
-const cache_format = 'v3-module-cache-52'
+const cache_format = 'v3-module-cache-53'
 const c_body_begin = '/* V3CACHE_BODY_BEGIN */'
 const c_body_end = '/* V3CACHE_BODY_END */'
 const c_module_prefix = '/* V3CACHE_MODULE '
@@ -120,10 +120,10 @@ pub fn new_manager(vroot string, salt string, enabled bool, build_pseudo_values 
 		}
 	})
 	return Manager{
-		dir: os.join_path(base_dir, 'v3_module_cache_${root_key}', config_key)
-		enabled: enabled
-		salt: salt
-		build_pseudo_values: build_pseudo_values
+		dir:                   os.join_path(base_dir, 'v3_module_cache_${root_key}', config_key)
+		enabled:               enabled
+		salt:                  salt
+		build_pseudo_values:   build_pseudo_values
 		version_pseudo_values: version_pseudo_values
 	}
 }
@@ -147,11 +147,11 @@ pub fn (m &Manager) entry(module_name string, source_files []string) Entry {
 	}
 	id := '${sanitize_name(module_name)}_${hash_text(source_root)}'
 	return Entry{
-		header: os.join_path(m.dir, '${id}.vh')
-		object: os.join_path(m.dir, '${id}.o')
+		header:       os.join_path(m.dir, '${id}.vh')
+		object:       os.join_path(m.dir, '${id}.o')
 		header_stamp: os.join_path(m.dir, '${id}.vh.stamp')
 		object_stamp: os.join_path(m.dir, '${id}.body.stamp')
-		c_source: os.join_path(m.dir, '${id}.c')
+		c_source:     os.join_path(m.dir, '${id}.c')
 	}
 }
 
@@ -161,11 +161,11 @@ pub fn (m &Manager) object_entry(module_name string, source_files []string, comp
 	key := hash_text(compile_signature)
 	base := entry.object.all_before_last('.o')
 	return Entry{
-		header: entry.header
-		object: '${base}_${key}.o'
+		header:       entry.header
+		object:       '${base}_${key}.o'
 		header_stamp: entry.header_stamp
 		object_stamp: '${base}_${key}.o.stamp'
-		c_source: '${base}_${key}.c'
+		c_source:     '${base}_${key}.c'
 	}
 }
 
@@ -176,14 +176,14 @@ pub fn (m &Manager) cgen_entry(source_files []string) CgenEntry {
 	id := hash_text(paths.join('\n'))
 	base := os.join_path(m.dir, 'program_${id}')
 	return CgenEntry{
-		source: '${base}.c'
-		metadata: '${base}.cflags'
-		stamp: '${base}.c.stamp'
-		prepared_main: '${base}.main.c'
-		prepared_tcc: '${base}.tcc.c'
-		prepared_prefix: '${base}.prefix.c'
+		source:           '${base}.c'
+		metadata:         '${base}.cflags'
+		stamp:            '${base}.c.stamp'
+		prepared_main:    '${base}.main.c'
+		prepared_tcc:     '${base}.tcc.c'
+		prepared_prefix:  '${base}.prefix.c'
 		prepared_objects: '${base}.objects'
-		prepared_stamp: '${base}.prepared.stamp'
+		prepared_stamp:   '${base}.prepared.stamp'
 	}
 }
 
@@ -191,14 +191,14 @@ fn (m &Manager) generic_program_entry(source_files []string) GenericProgramEntry
 	cgen := m.cgen_entry(source_files)
 	base := cgen.source.all_before_last('.c')
 	return GenericProgramEntry{
-		specs: '${base}.generic.specs'
-		used: '${base}.generic.used'
-		prefix: '${base}.generic.prefix.c'
+		specs:        '${base}.generic.specs'
+		used:         '${base}.generic.used'
+		prefix:       '${base}.generic.prefix.c'
 		declarations: '${base}.generic.declarations.c'
-		body: '${base}.generic.body.c'
-		literals: '${base}.generic.literals'
-		metadata: '${base}.generic.metadata'
-		stamp: '${base}.generic.stamp'
+		body:         '${base}.generic.body.c'
+		literals:     '${base}.generic.literals'
+		metadata:     '${base}.generic.metadata'
+		stamp:        '${base}.generic.stamp'
 	}
 }
 
@@ -206,16 +206,16 @@ fn (m &Manager) incremental_program_entry(source_files []string) IncrementalProg
 	cgen := m.cgen_entry(source_files)
 	base := cgen.source.all_before_last('.c')
 	return IncrementalProgramEntry{
-		manifest: '${base}.incremental.manifest'
-		body: '${base}.incremental.body.c'
-		used: '${base}.incremental.used'
-		specs: '${base}.incremental.specs'
-		prefix: '${base}.incremental.prefix.c'
-		declarations: '${base}.incremental.declarations.c'
+		manifest:         '${base}.incremental.manifest'
+		body:             '${base}.incremental.body.c'
+		used:             '${base}.incremental.used'
+		specs:            '${base}.incremental.specs'
+		prefix:           '${base}.incremental.prefix.c'
+		declarations:     '${base}.incremental.declarations.c'
 		tcc_declarations: '${base}.incremental.tcc.declarations.c'
-		objects: '${base}.incremental.objects'
-		metadata: '${base}.incremental.metadata'
-		stamp: '${base}.incremental.stamp'
+		objects:          '${base}.incremental.objects'
+		metadata:         '${base}.incremental.metadata'
+		stamp:            '${base}.incremental.stamp'
 	}
 }
 
@@ -385,10 +385,10 @@ fn source_signature_details(source_files []string, build_pseudo_values string, v
 		hash = hash_bytes(hash, os.getpid().str().bytes())
 	}
 	return SourceSignatureDetails{
-		signature: hash.hex()
-		validation: validation
+		signature:      hash.hex()
+		validation:     validation
 		source_digests: source_digests
-		cacheable: cacheable
+		cacheable:      cacheable
 	}
 }
 
@@ -803,9 +803,9 @@ fn valid_cached_source_signature(content string, metadata string, build_pseudo_v
 		return none
 	}
 	return SourceSignatureDetails{
-		signature: signature
+		signature:      signature
 		source_digests: source_digests
-		cacheable: true
+		cacheable:      true
 	}
 }
 
@@ -835,20 +835,10 @@ fn source_digest_map(source_files []string, digests []string) map[string]string 
 }
 
 fn signature_vmod_root(source_file string) (string, string) {
-	mut dir := os.dir(os.real_path(source_file))
-	original_dir := dir
-	for dir.len > 0 {
-		vmod_file := os.join_path_single(dir, 'v.mod')
-		if os.exists(vmod_file) {
-			return os.real_path(dir), os.real_path(vmod_file)
-		}
-		parent := os.dir(dir)
-		if parent == dir {
-			break
-		}
-		dir = parent
+	if root := util.nearest_vmod_root(source_file) {
+		return root, os.real_path(os.join_path_single(root, 'v.mod'))
 	}
-	return os.real_path(original_dir), ''
+	return os.dir(os.real_path(source_file)), ''
 }
 
 fn signature_vmod_hash(root string, vmod_file string) string {
@@ -1190,9 +1180,9 @@ pub fn (m &Manager) valid_entry_with_metadata_cache(module_name string, source_f
 	}
 	return Entry{
 		...entry
-		source_bodies: source_bodies
+		source_bodies:       source_bodies
 		source_bodies_known: true
-		source_digests: source_digest_map(source_files, source_details.source_digests)
+		source_digests:      source_digest_map(source_files, source_details.source_digests)
 	}
 }
 
@@ -1220,9 +1210,9 @@ pub fn (m &Manager) valid_header(module_name string, source_files []string) ?Ent
 	source_bodies := header_stamp_source_bodies(stamp, expected) or { return none }
 	return Entry{
 		...entry
-		source_bodies: source_bodies
+		source_bodies:       source_bodies
 		source_bodies_known: true
-		source_digests: source_digest_map(source_files, source_details.source_digests)
+		source_digests:      source_digest_map(source_files, source_details.source_digests)
 	}
 }
 
@@ -1561,8 +1551,8 @@ pub fn (m &Manager) valid_cgen_prepared(entry CgenEntry) ?CgenPreparedEntry {
 		return none
 	}
 	return CgenPreparedEntry{
-		main: entry.prepared_main
-		tcc: entry.prepared_tcc
+		main:   entry.prepared_main
+		tcc:    entry.prepared_tcc
 		prefix: entry.prepared_prefix
 	}
 }
@@ -1742,9 +1732,9 @@ fn parse_object_stamp_dependency(line string) ?ObjectStampDependency {
 		return none
 	}
 	return ObjectStampDependency{
-		path: path_and_signature[..signature_tab]
+		path:      path_and_signature[..signature_tab]
 		signature: path_and_signature[signature_tab + 1..]
-		metadata: value[metadata_tab + 1..]
+		metadata:  value[metadata_tab + 1..]
 	}
 }
 
@@ -1853,7 +1843,7 @@ pub fn split_generated_c(source string) !CSplit {
 		modules[name] = segments.join('')
 	}
 	return CSplit{
-		prefix: prefix
+		prefix:  prefix
 		modules: modules
 	}
 }
@@ -1865,16 +1855,16 @@ pub fn declaration_header(prefix string) string {
 	sections := [
 		CDeclarationSection{
 			begin: c_native_directives_begin
-			end: c_native_directives_end
-			keep: true
+			end:   c_native_directives_end
+			keep:  true
 		},
 		CDeclarationSection{
 			begin: c_source_directives_begin
-			end: c_source_directives_end
+			end:   c_source_directives_end
 		},
 		CDeclarationSection{
 			begin: c_late_directives_begin
-			end: c_late_directives_end
+			end:   c_late_directives_end
 		},
 	]
 	mut out := strings.new_builder(prefix.len / 2)
@@ -2903,8 +2893,8 @@ fn c_function_declaration_identifier_with_parameter_macros(head string, paramete
 						name = previous_top_level_identifier
 						name_start = previous_top_level_identifier_start
 					}
-					if name !in ['__attribute', '__attribute__', '__declspec', '__declspec__', '__asm',
-						'__asm__', '_Alignas', 'alignas'] {
+					if name !in ['__attribute', '__attribute__', '__declspec', '__declspec__',
+						'__asm', '__asm__', '_Alignas', 'alignas'] {
 						is_suffix := candidate.len > 0 && candidate_tail_end >= 0
 							&& trim_leading_c_comments(head[candidate_tail_end + 1..i].trim_space()).trim_space() == name
 							&& c_function_candidate_has_return_type(head, candidate_start)
@@ -4057,8 +4047,8 @@ fn c_extern_c_block(item string) ?CExternBlock {
 	}
 	return CExternBlock{
 		before: item[..open + 1]
-		inner: item[open + 1..close]
-		after: item[close..]
+		inner:  item[open + 1..close]
+		after:  item[close..]
 	}
 }
 
@@ -4588,8 +4578,8 @@ fn module_header_const_replacements(a &flat.FlatAst, module_name string, const_o
 				}
 				files[int(id)] = file_node.value
 				declarations << ModuleHeaderConstDecl{
-					id: id
-					rank: rank
+					id:      id
+					rank:    rank
 					ordinal: declarations.len
 				}
 			}
@@ -4616,6 +4606,25 @@ fn module_header_const_replacements(a &flat.FlatAst, module_name string, const_o
 // constants whose helper bodies are intentionally omitted from warm headers.
 pub fn module_header_with_const_order(a &flat.FlatAst, tc &types.TypeChecker, module_name string, vroot string, import_paths map[string]string, const_order []string) string {
 	mut out := strings.new_builder(4096)
+	declaration_attrs := cached_declaration_attrs(a)
+	mut module_attr_lines := []string{}
+	mut seen_module_attrs := map[string]bool{}
+	for idx, node in a.nodes {
+		if node.kind != .module_decl || node.value != module_name {
+			continue
+		}
+		attrs := declaration_attrs[idx] or { continue }
+		for line in cached_declaration_attrs_text(attrs).split_into_lines() {
+			if line.len == 0 || seen_module_attrs[line] {
+				continue
+			}
+			seen_module_attrs[line] = true
+			module_attr_lines << line
+		}
+	}
+	if module_attr_lines.len > 0 {
+		out.writeln(module_attr_lines.join('\n'))
+	}
 	out.writeln('module ${module_name.all_after_last('.')}')
 	generic_specialization_callees := generic_specialization_callee_names(tc)
 	needs_source_bodies := module_needs_source_bodies(a, tc, module_name, generic_specialization_callees)
@@ -4644,7 +4653,6 @@ pub fn module_header_with_const_order(a &flat.FlatAst, tc &types.TypeChecker, mo
 		}
 	}
 	mut seen := map[string]bool{}
-	declaration_attrs := cached_declaration_attrs(a)
 	const_replacements, const_files := module_header_const_replacements(a, module_name, const_order)
 	for file_node in a.nodes {
 		if file_node.kind != .file || file_node.children_count == 0 {
@@ -5050,8 +5058,8 @@ fn cached_embedded_directive_edit(source string, start int, vroot string, source
 		return none
 	}
 	return CachedSourcePathEdit{
-		start: value_start
-		end: line_end
+		start:       value_start
+		end:         line_end
 		replacement: resolved
 	}
 }
@@ -5196,8 +5204,8 @@ fn cached_source_pseudo_edit(source string, start int, source_file string, line_
 		}
 	}
 	return CachedSourcePathEdit{
-		start: start
-		end: end
+		start:       start
+		end:         end
 		replacement: "'${escape_v_string(value)}'"
 	}
 }
@@ -5225,8 +5233,8 @@ fn cached_embed_file_path_edit(source string, start int, vroot string, source_fi
 		}
 		path := os.real_path(source_file)
 		return CachedSourcePathEdit{
-			start: argument_start
-			end: end
+			start:       argument_start
+			end:         end
 			replacement: "'${escape_v_string(path)}'"
 		}
 	}
@@ -5261,8 +5269,8 @@ fn cached_embed_file_path_edit(source string, start int, vroot string, source_fi
 	path_value := if is_raw { raw_path } else { cached_unescape_v_string(raw_path) }
 	path := cached_resolve_embedded_source_path(path_value, vroot, source_file) or { return none }
 	return CachedSourcePathEdit{
-		start: argument_start
-		end: content_end + 1
+		start:       argument_start
+		end:         content_end + 1
 		replacement: "'${escape_v_string(path)}'"
 	}
 }
@@ -6139,16 +6147,8 @@ fn cached_flag_path_is_relative(path string) bool {
 }
 
 fn cached_vmod_root(source_file string) string {
-	mut dir := os.dir(os.real_path(source_file))
-	for dir.len > 0 {
-		if os.is_file(os.join_path_single(dir, 'v.mod')) {
-			return dir
-		}
-		parent := os.dir(dir)
-		if parent == dir {
-			break
-		}
-		dir = parent
+	if root := util.nearest_vmod_root(source_file) {
+		return root
 	}
 	return os.dir(os.real_path(source_file))
 }
@@ -6747,7 +6747,8 @@ fn expr_can_serialize(a &flat.FlatAst, id flat.NodeId) bool {
 	}
 	node := a.nodes[int(id)]
 	return match node.kind {
-		.int_literal, .float_literal, .bool_literal, .ident, .char_literal, .string_literal, .nil_literal, .none_expr, .enum_val, .sizeof_expr {
+		.int_literal, .float_literal, .bool_literal, .ident, .char_literal, .string_literal,
+		.nil_literal, .none_expr, .enum_val, .sizeof_expr {
 			true
 		}
 		.paren, .prefix, .postfix, .typeof_expr {

@@ -1,0 +1,10 @@
+fn apply(f fn (int) int, v int) int {
+	return f(v)
+}
+
+fn main() {
+	it := 9
+	println(it)
+	// the transform captures the outer `it`, although `filter` shadows it
+	println(apply(|n| [1, 2].filter(it > n).len, 1))
+}

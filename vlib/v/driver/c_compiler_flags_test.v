@@ -38,6 +38,181 @@ fn test_v3_platform_c_compiler() {
 	assert v3_platform_c_compiler('macos') == 'cc'
 }
 
+fn test_v3_cache_accepts_default_cc_alias() {
+	assert v3_c_compiler_matches_default_cc('cc')
+	assert !v3_c_compiler_matches_default_cc('v3-definitely-missing-c-compiler')
+	$if macos {
+		assert v3_c_compiler_matches_default_cc('clang')
+	}
+}
+
+fn test_v3_cache_rejects_a_different_compiler_than_cc() {
+	// The bundled TCC is never the same program as a `cc` found on PATH. Windows
+	// reports no inode, so an identity based on `os.stat` alone equated them.
+	bundled_tcc := os.join_path(@VEXEROOT, 'thirdparty', 'tcc', 'tcc.exe')
+	default_cc := os.find_abs_path_of_executable('cc') or { return }
+	if !os.is_file(bundled_tcc) || os.real_path(default_cc) == os.real_path(bundled_tcc) {
+		return
+	}
+	assert !v3_c_compiler_matches_default_cc(bundled_tcc), '${bundled_tcc} must not be treated as ${default_cc}'
+}
+
+fn test_v3_same_c_compiler_executable_compares_files_not_drives() {
+	root := os.join_path(os.temp_dir(), 'v3_same_cc_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root)!
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	first := os.join_path(root, 'first_cc')
+	second := os.join_path(root, 'second_cc')
+	os.write_file(first, 'first')!
+	os.write_file(second, 'second')!
+	assert v3_same_c_compiler_executable(first, first)
+	assert v3_same_c_compiler_executable(first, os.join_path(root, '.', 'first_cc'))
+	assert !v3_same_c_compiler_executable(first, second)
+	assert !v3_same_c_compiler_executable(first, os.join_path(root, 'missing_cc'))
+	$if !windows {
+		link := os.join_path(root, 'link_cc')
+		os.symlink(first, link)!
+		assert v3_same_c_compiler_executable(first, link)
+		assert !v3_same_c_compiler_executable(second, link)
+		// A hard link keeps its own path, so only the device/inode fallback can
+		// recognise it as the same program.
+		hard_link := os.join_path(root, 'hard_link_cc')
+		os.link(first, hard_link)!
+		assert os.real_path(hard_link) != os.real_path(first)
+		assert v3_same_c_compiler_executable(first, hard_link)
+		assert !v3_same_c_compiler_executable(second, hard_link)
+	}
+}
+
+fn test_v3_windows_cross_compiler_replaces_host_tcc() {
+	linux := pref.Target{
+		os:   'linux'
+		arch: 'amd64'
+	}
+	windows_amd64 := pref.Target{
+		os:   'windows'
+		arch: 'amd64'
+	}
+	windows_x86 := pref.Target{
+		os:   'windows'
+		arch: 'x86'
+	}
+	assert v3_windows_cross_c_compiler('tcc', linux, windows_amd64) == 'x86_64-w64-mingw32-gcc'
+	assert v3_windows_cross_c_compiler('tinyc', linux, windows_x86) == 'i686-w64-mingw32-gcc'
+	assert v3_windows_cross_c_compiler('clang', linux, windows_amd64) == 'clang'
+	assert v3_windows_cross_c_compiler('tcc', windows_amd64, windows_amd64) == 'tcc'
+}
+
+fn test_v3_msvc_alias_selects_cl_on_windows() {
+	assert v3_c_compiler_command_alias('msvc', 'windows') == 'cl'
+	assert v3_c_compiler_command_alias('MSVC', 'windows') == 'cl'
+	assert v3_c_compiler_command_alias('msvc', 'linux') == 'msvc'
+	assert v3_c_compiler_command_alias('clang', 'windows') == 'clang'
+}
+
+fn test_v3_no_std_omits_default_c_and_cpp_standards() {
+	assert c_standard_flag(false, false) == '-std=gnu11'
+	assert c_standard_flag(true, false) == '-std=c99'
+	assert c_standard_flag(false, true) == ''
+	assert cxx_standard_flag(false, false) == '-std=gnu++11'
+	assert cxx_standard_flag(true, false) == '-std=c++11'
+	assert cxx_standard_flag(false, true) == ''
+}
+
+fn test_v3_no_std_command_keeps_the_user_standard_only() {
+	$if windows {
+		return
+	}
+	root := os.join_path(os.vtmp_dir(), 'v3_no_std_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root)!
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	source := os.join_path(root, 'main.v')
+	output := os.join_path(root, 'main.c')
+	os.write_file(source, 'fn main() {}\n')!
+	old_vflags := os.getenv_opt('VFLAGS')
+	os.unsetenv('VFLAGS')
+	defer {
+		if value := old_vflags {
+			os.setenv('VFLAGS', value, true)
+		}
+	}
+	build := cmdexec.run(v3_driver_test_executable(), ['-new-compiler', '-nocache', '-cc', 'c++',
+		'-no-std', '-cflags', '-std=c++11', '-dump-c-flags', '-', '-o', output, source])
+	assert build.exit_code == 0, build.output
+	assert '-std=c++11' in build.output.split_into_lines(), build.output
+	assert !build.output.contains('-std=gnu11'), build.output
+	assert !build.output.contains('-std=gnu++11'), build.output
+}
+
+fn test_v3_tcc_linux_output_declares_backtrace() {
+	root := os.join_path(os.vtmp_dir(), 'v3_tcc_backtrace_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root)!
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	source := os.join_path(root, 'main.v')
+	output := os.join_path(root, 'main.c')
+	os.write_file(source, 'fn main() {}\n')!
+	old_vflags := os.getenv_opt('VFLAGS')
+	os.unsetenv('VFLAGS')
+	defer {
+		if value := old_vflags {
+			os.setenv('VFLAGS', value, true)
+		}
+	}
+	build := cmdexec.run(v3_driver_test_executable(), ['-new-compiler', '-nocache', '-cc', 'tcc',
+		'-os', 'linux', '-arch', 'amd64', '-o', output, source])
+	assert build.exit_code == 0, build.output
+	c_source := os.read_file(output)!
+	assert c_source.contains('tcc_backtrace(char* fmt);')
+	assert c_source.contains('tcc_backtrace("Backtrace");')
+}
+
+fn test_macos_linux_cross_compile_uses_bundled_amd64_sysroot() {
+	host := pref.Target{
+		os:   'macos'
+		arch: 'arm64'
+	}
+	target := pref.Target{
+		os:   'linux'
+		arch: 'amd64'
+	}
+	assert v3_target_arch_for_request(host, 'linux', 'arm64', false) == 'amd64'
+	assert v3_target_arch_for_request(host, 'linux', 'arm64', true) == 'arm64'
+	assert v3_macos_linux_cross_compile(host, target, 'c', 'cc')
+	assert v3_macos_linux_cross_compile(host, target, 'c', 'clang')
+	assert v3_macos_linux_cross_compile(host, target, 'c', '/usr/bin/clang')
+	assert !v3_macos_linux_cross_compile(host, target, 'c', 'x86_64-linux-gnu-gcc')
+	assert !v3_macos_linux_cross_compile(host, target, 'fastc', 'clang')
+	$if macos {
+		assert c_compiler_target_args(target, 'clang', true, '/tmp/linuxroot')! == [
+			'-target',
+			'x86_64-linux-gnu',
+			'-I',
+			'/tmp/linuxroot/include',
+		]
+	}
+}
+
+fn test_linux_cross_link_flags_unwrap_clang_driver_flags() {
+	assert v3_linux_cross_link_flags(['-I/include', '-pthread', '-Wl,-z,relro', '-Xlinker',
+		'--as-needed', '-L/lib', '-lssl']) == [
+		'-lpthread',
+		'-z',
+		'relro',
+		'--as-needed',
+		'-L/lib',
+		'-lssl',
+	]
+}
+
 fn test_v3_implicit_tcc_uses_platform_compiler_for_non_c_objects() {
 	implicit_tcc := os.join_path(os.temp_dir(), 'bin', 'tcc')
 	assert c_source_object_compiler('', implicit_tcc, true, 'linux') == implicit_tcc
@@ -50,21 +225,39 @@ fn test_v3_implicit_tcc_uses_platform_compiler_for_non_c_objects() {
 	assert c_source_object_compiler('objective-c', 'clang', false, 'linux') == 'clang'
 	assert c_source_object_compiler('c++', 'clang', false, 'linux') == 'clang'
 	assert c_source_object_compiler('objective-c', 'tcc', false, 'linux') == 'tcc'
-	assert c_source_object_compiler('c++', 'tcc', false, 'linux') == 'tcc'
+	assert c_source_object_compiler('c++', 'tcc', false, 'linux') == 'c++'
+	assert c_source_object_compiler('c++', '/opt/toolchains/tcc', false, 'linux') == 'c++'
+	assert c_source_object_compiler('c++', 'tinyc', false, 'linux') == 'c++'
+}
+
+fn test_c_object_flag_plan_limits_primary_compiler_flags() {
+	plan := CObjectFlagPlan{
+		environment_flags:      ['-DENVIRONMENT']
+		primary_compiler:       '/v/thirdparty/tcc/tcc.exe'
+		primary_compiler_flags: ['-B/bundled/tcc', '-I/bundled/tcc/include']
+		common_flags:           ['-fPIC', '-I/module/include']
+	}
+	assert plan.flags_for_compiler('/v/thirdparty/tcc/tcc.exe') == ['-DENVIRONMENT', '-B/bundled/tcc',
+		'-I/bundled/tcc/include', '-fPIC', '-I/module/include']
+	assert plan.flags_for_compiler('c++') == [
+		'-DENVIRONMENT',
+		'-fPIC',
+		'-I/module/include',
+	]
 }
 
 fn test_v3_bundled_tcc_probe_eligibility() {
 	linux_target := pref.Target{
-		os: 'linux'
+		os:   'linux'
 		arch: 'amd64'
 	}
 	bundled_tcc := os.join_path(os.vtmp_dir(), 'v3_probe_eligibility', 'thirdparty', 'tcc', 'tcc.exe')
 	base := V3BundledTccProbeOptions{
-		backend: 'c'
-		c_compiler: 'cc'
-		host_os: 'linux'
+		backend:     'c'
+		c_compiler:  'cc'
+		host_os:     'linux'
 		host_target: linux_target
-		target: linux_target
+		target:      linux_target
 		bundled_tcc: bundled_tcc
 	}
 	assert v3_should_probe_bundled_tcc(base)
@@ -93,63 +286,63 @@ fn test_v3_bundled_tcc_probe_eligibility() {
 		parallel_cc: true
 	})
 	windows_target := pref.Target{
-		os: 'windows'
+		os:   'windows'
 		arch: 'amd64'
 	}
 	assert v3_should_probe_bundled_tcc(V3BundledTccProbeOptions{
 		...base
 		parallel_cc: true
-		host_os: 'windows'
+		host_os:     'windows'
 		host_target: windows_target
-		target: windows_target
+		target:      windows_target
 	})
 	assert v3_should_probe_bundled_tcc(V3BundledTccProbeOptions{
 		...base
-		c_compiler: 'tcc'
+		c_compiler:          'tcc'
 		c_compiler_explicit: true
-		dump_c_flags: true
+		dump_c_flags:        true
 	})
 	assert v3_should_probe_bundled_tcc(V3BundledTccProbeOptions{
 		...base
-		c_compiler: 'tcc'
+		c_compiler:          'tcc'
 		c_compiler_explicit: true
-		parallel_cc: true
+		parallel_cc:         true
 	})
 	assert !v3_should_probe_bundled_tcc(V3BundledTccProbeOptions{
 		...base
-		c_compiler: 'clang'
+		c_compiler:          'clang'
 		c_compiler_explicit: true
 	})
 	assert !v3_should_probe_bundled_tcc(V3BundledTccProbeOptions{
 		...base
 		target: pref.Target{
-			os: 'linux'
+			os:   'linux'
 			arch: 'arm64'
 		}
 	})
 	assert v3_should_probe_bundled_tcc(V3BundledTccProbeOptions{
 		...base
-		is_prod: true
-		c_compiler: 'tcc'
+		is_prod:             true
+		c_compiler:          'tcc'
 		c_compiler_explicit: true
 	})
 	assert v3_should_probe_bundled_tcc(V3BundledTccProbeOptions{
 		...base
-		c_compiler: bundled_tcc
+		c_compiler:          bundled_tcc
 		c_compiler_explicit: true
 	})
 	assert !v3_should_probe_bundled_tcc(V3BundledTccProbeOptions{
 		...base
-		c_compiler: os.join_path(os.vtmp_dir(), 'bin', 'tcc')
+		c_compiler:          os.join_path(os.vtmp_dir(), 'bin', 'tcc')
 		c_compiler_explicit: true
 	})
 	assert v3_should_probe_bundled_tcc(V3BundledTccProbeOptions{
 		...base
-		is_prod: true
-		is_c_debug: true
-		host_os: 'windows'
+		is_prod:     true
+		is_c_debug:  true
+		host_os:     'windows'
 		host_target: windows_target
-		target: windows_target
+		target:      windows_target
 	})
 }
 
@@ -167,15 +360,15 @@ fn test_v3_bundled_tcc_probe_does_not_run_when_ineligible() {
 		os.rmdir_all(test_root) or {}
 	}
 	linux_target := pref.Target{
-		os: 'linux'
+		os:   'linux'
 		arch: 'amd64'
 	}
 	base := V3BundledTccProbeOptions{
-		backend: 'c'
-		c_compiler: 'cc'
-		host_os: 'linux'
+		backend:     'c'
+		c_compiler:  'cc'
+		host_os:     'linux'
 		host_target: linux_target
-		target: linux_target
+		target:      linux_target
 		bundled_tcc: bundled_tcc
 	}
 	assert !v3_bundled_tcc_available(V3BundledTccProbeOptions{
@@ -242,8 +435,70 @@ fn test_v3_system_tcc_does_not_use_bundled_resources() {
 	system_tcc := os.join_path(os.path_separator, 'usr', 'bin', 'tcc')
 	resources := v3_tcc_resource_flags_for_compiler(vroot, system_tcc, bundled_tcc, false)
 	assert resources == V3TccResourceFlags{}
+	assert v3_tcc_object_compile_flags(vroot, system_tcc, bundled_tcc, false, 'linux', '') == []
 	bundled_resources := v3_tcc_resource_flags_for_compiler(vroot, bundled_tcc, bundled_tcc, true)
 	assert bundled_resources.base_arg.contains('thirdparty')
+	object_flags := v3_tcc_object_compile_flags(vroot, bundled_tcc, bundled_tcc, true, 'linux', '')
+	assert bundled_resources.base_arg in object_flags
+	assert bundled_resources.include_arg in object_flags
+	assert bundled_resources.library_arg !in object_flags
+}
+
+fn test_v3_bundled_tcc_native_object_build_is_cwd_independent() {
+	bundled_tcc := os.join_path(@VEXEROOT, 'thirdparty', 'tcc', 'tcc.exe')
+	if !os.is_executable(bundled_tcc) {
+		return
+	}
+	root := os.join_path(os.vtmp_dir(), 'v3_tcc_native_object_cwd_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root)!
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	c_source := os.join_path(root, 'native.c')
+	c_object := os.join_path(root, 'native.o')
+	v_source := os.join_path(root, 'main.v')
+	output := os.join_path(root, 'main' + $if windows { '.exe' } $else { '' })
+	os.write_file(c_source, '#include <stddef.h>\nsize_t v3_tcc_native_object_probe(void) { return sizeof(size_t); }\n')!
+	os.write_file(v_source, '#flag ${c_object}\n\nfn C.v3_tcc_native_object_probe() usize\n\nfn main() {\n\tassert C.v3_tcc_native_object_probe() > 0\n}\n')!
+	build := cmdexec.run_in(v3_driver_test_executable(), ['-new-compiler', '-nocache',
+		'-no-retry-compilation', '-cc', 'tcc', '-o', output, v_source], root)
+	assert build.exit_code == 0, build.output
+}
+
+fn test_v3_implicit_tcc_cpp_native_object_uses_platform_headers() {
+	$if windows {
+		return
+	}
+	bundled_tcc := os.join_path(@VEXEROOT, 'thirdparty', 'tcc', 'tcc.exe')
+	if !os.is_executable(bundled_tcc) {
+		return
+	}
+	os.find_abs_path_of_executable('c++') or { return }
+	root := os.join_path(os.vtmp_dir(), 'v3_tcc_cpp_object_headers_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root)!
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	cpp_source := os.join_path(root, 'native.cpp')
+	cpp_object := os.join_path(root, 'native.o')
+	v_source := os.join_path(root, 'main.v')
+	output := os.join_path(root, 'main')
+	os.write_file(cpp_source, '#include <cstddef>\nextern "C" size_t v3_cpp_object_probe(void) { return sizeof(std::max_align_t); }\n')!
+	os.write_file(v_source, '#flag ${cpp_object}\n\nfn C.v3_cpp_object_probe() usize\n\nfn main() {\n\tassert C.v3_cpp_object_probe() > 0\n}\n')!
+	old_vflags := os.getenv_opt('VFLAGS')
+	os.unsetenv('VFLAGS')
+	defer {
+		if value := old_vflags {
+			os.setenv('VFLAGS', value, true)
+		}
+	}
+	build := cmdexec.run_in(v3_driver_test_executable(), ['-new-compiler', '-nocache',
+		'-no-retry-compilation', '-o', output, v_source], root)
+	assert !build.output.contains('failed to build C object'), build.output
+	assert build.exit_code == 0
+		|| build.output.contains('implicit tcc could not be used for this build'), build.output
 }
 
 fn test_v3_system_tcc_runtime_requires_windows_openlibm() {
@@ -288,16 +543,63 @@ fn write_v3_test_tcc(tcc_path string, exit_code int) string {
 fn test_v3_tcc_flag_plan_skips_backtrace_on_macos_arm64() {
 	vroot := os.join_path(os.temp_dir(), 'v3_tcc_flag_plan')
 	plan := v3_c_compiler_flag_plan(V3CCompilerFlagOptions{
-		is_tcc: true
-		target_os: 'macos'
+		is_tcc:      true
+		target_os:   'macos'
 		target_arch: 'arm64'
-		vroot: vroot
+		vroot:       vroot
 	})
 	assert '-bt25' !in plan.before_inputs
 	tcc_install_dir := os.join_path(vroot, 'thirdparty', 'tcc', 'lib')
 	assert '-B${tcc_install_dir}' in plan.before_inputs
 	assert '-I${os.join_path_single(tcc_install_dir, 'include')}' in plan.before_inputs
 	assert '-L${tcc_install_dir}' in plan.before_inputs
+}
+
+fn test_v3_linux_shared_flag_plan_hides_static_archive_symbols() {
+	plan := v3_c_compiler_flag_plan(V3CCompilerFlagOptions{
+		is_shared:  true
+		target_os:  'linux'
+		c_compiler: 'cc'
+	})
+	assert '-fvisibility=hidden' in plan.before_inputs
+	assert '-Wl,--exclude-libs,ALL' in plan.before_inputs
+	tcc_plan := v3_c_compiler_flag_plan(V3CCompilerFlagOptions{
+		is_tcc:     true
+		is_shared:  true
+		target_os:  'linux'
+		c_compiler: 'tinyc'
+		vroot:      os.join_path(os.temp_dir(), 'v3_linux_shared_tcc_flag_plan')
+	})
+	assert '-Wl,--exclude-libs,ALL' !in tcc_plan.before_inputs
+}
+
+fn test_tcc_monolithic_dependency_flags_put_native_sources_before_archives() {
+	flags := ['-DGC_THREADS=1', '-I', '/tmp/include', '/tmp/libgc.a', '-ldl', '/tmp/native.c',
+		'-lm']
+	assert tcc_monolithic_dependency_flags(flags, false) == [
+		'-DGC_THREADS=1',
+		'-I',
+		'/tmp/include',
+		'/tmp/native.c',
+		'/tmp/libgc.a',
+		'-ldl',
+		'-lm',
+	]
+	assert tcc_monolithic_dependency_flags(flags, true) == [
+		'-DGC_THREADS=1',
+		'-I',
+		'/tmp/include',
+	]
+}
+
+fn test_v3_object_flag_plan_omits_link_inputs() {
+	plan := v3_c_compiler_flag_plan(V3CCompilerFlagOptions{
+		is_o:         true
+		target_os:    'linux'
+		dependencies: ['-DGC_THREADS=1', '-I', '/tmp/include', '/tmp/libgc.a', '-ldl', '/tmp/native.c',
+			'-lm']
+	})
+	assert plan.after_inputs == ['-DGC_THREADS=1', '-I', '/tmp/include']
 }
 
 fn test_v3_tcc_resource_flags_use_windows_bundle_root() {
@@ -329,12 +631,12 @@ fn test_v3_windows_tcc_prod_flag_plan_uses_tcc_resources() {
 		os.rmdir_all(vroot) or {}
 	}
 	plan := v3_c_compiler_flag_plan(V3CCompilerFlagOptions{
-		is_tcc: true
-		is_prod: true
-		target_os: 'windows'
+		is_tcc:      true
+		is_prod:     true
+		target_os:   'windows'
 		target_arch: 'amd64'
-		c_compiler: 'tinyc'
-		vroot: vroot
+		c_compiler:  'tinyc'
+		vroot:       vroot
 	})
 	assert '-O3' in plan.before_inputs
 	assert '-flto' !in plan.before_inputs
@@ -346,10 +648,10 @@ fn test_v3_windows_tcc_prod_flag_plan_uses_tcc_resources() {
 fn test_v3_tcc_flag_plan_restores_native_local_prefix() {
 	host_os := os.user_os()
 	plan := v3_c_compiler_flag_plan(V3CCompilerFlagOptions{
-		is_tcc: true
-		target_os: host_os
+		is_tcc:      true
+		target_os:   host_os
 		target_arch: 'amd64'
-		vroot: os.join_path(os.temp_dir(), 'v3_tcc_native_flag_plan')
+		vroot:       os.join_path(os.temp_dir(), 'v3_tcc_native_flag_plan')
 	})
 	if host_os == 'windows' {
 		assert '-I/usr/local/include' !in plan.before_inputs
@@ -406,8 +708,8 @@ fn test_v3_windows_auto_gui_build_uses_windows_subsystem() {
 	source := os.join_path(root, 'main.v')
 	output := os.join_path(root, 'main.exe')
 	os.write_file(source, '#flag windows -lgdi32\n\nfn main() {}\n')!
-	build := cmdexec.run(v3_driver_test_executable(), ['-new-compiler', '-nocache', '-showcc', '-o',
-		output, source])
+	build := cmdexec.run(v3_driver_test_executable(), ['-new-compiler', '-nocache', '-showcc',
+		'-o', output, source])
 	assert build.exit_code == 0, build.output
 	assert build.output.contains('-mwindows'), build.output
 }
@@ -474,8 +776,8 @@ fn test_v3_windows_executable_linker_flags() {
 	assert v3_windows_executable_linker_flags('windows', 'tinyc', false, true, .auto, true) == []
 	assert v3_windows_executable_linker_flags('linux', 'tinyc', false, false, .auto, true) == []
 	plan := v3_c_compiler_flag_plan(V3CCompilerFlagOptions{
-		target_os: 'windows'
-		c_compiler: 'tinyc'
+		target_os:       'windows'
+		c_compiler:      'tinyc'
 		windows_gui_app: true
 	})
 	assert '-municode' in plan.before_inputs
@@ -529,8 +831,8 @@ fn test_tcc_atomic_object_key_separates_compilers_targets_and_args() {
 		os.rmdir_all(root) or {}
 	}
 	target := pref.Target{
-		os: 'macos'
-		arch: 'arm64'
+		os:            'macos'
+		arch:          'arm64'
 		object_format: 'macho'
 	}
 	first_tcc := os.join_path(root, 'first_tcc')

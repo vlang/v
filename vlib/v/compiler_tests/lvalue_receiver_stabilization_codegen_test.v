@@ -10,7 +10,7 @@ fn test_lvalue_receiver_stabilization_finishes_after_one_redispatch() {
 	pid := os.getpid()
 	v3_bin := os.join_path(os.temp_dir(), 'v3_lvalue_stabilization_test_${pid}')
 	os.rm(v3_bin) or {}
-	build := os.execute('${os.quoted_path(lvalue_stabilization_vexe)} -old-compiler -gc none -no-parallel -path "${lvalue_stabilization_vlib_dir}|@vlib|@vmodules" -o ${os.quoted_path(v3_bin)} ${os.quoted_path(lvalue_stabilization_v3_src)}')
+	build := os.execute('${os.quoted_path(lvalue_stabilization_vexe)} -gc none -no-parallel -path "${lvalue_stabilization_vlib_dir}|@vlib|@vmodules" -o ${os.quoted_path(v3_bin)} ${os.quoted_path(lvalue_stabilization_v3_src)}')
 	assert build.exit_code == 0, build.output
 
 	src := os.join_path(os.temp_dir(), 'v3_lvalue_stabilization_${pid}.v')

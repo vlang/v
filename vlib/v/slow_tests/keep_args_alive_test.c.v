@@ -41,7 +41,7 @@ fn set_vals() voidptr {
 
 fn tt(mut sem sync.Semaphore) int {
 	waste_mem(10000, mut sem)
-	r := &voidptr(set_vals())
+	r := unsafe { &voidptr(set_vals()) }
 	g := unsafe { C.calc_expr_after_delay(r[456], 12, r[7932]) }
 	return g
 }
@@ -66,7 +66,7 @@ fn test_keep_args_alive_attribute() {
 		spawn waste_mem(-1, mut sem)
 		waste_mem(10000, mut sem)
 	}
-	r := &voidptr(set_vals())
+	r := unsafe { &voidptr(set_vals()) }
 	v := unsafe { C.calc_expr_after_delay(r[456], 12, r[7932]) }
 	$if gcboehm ? {
 		sem.post()

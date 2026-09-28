@@ -33,7 +33,8 @@ fn main() {
 				_ := <-done {
 					return ctx.err()
 				}
-				else {}
+				else {
+				}
 			}
 			resp := synthetic_http_handler(req)!
 			responses <- '${req.url} -> ${resp.status_code} ${resp.body}'

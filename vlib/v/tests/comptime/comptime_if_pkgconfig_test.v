@@ -1,5 +1,5 @@
 fn test_comptime_pkgconfig() {
-	$if $pkgconfig('mysqlclient') {
+	$if $pkgconfig ( 'mysqlclient' ) {
 		assert true
 		return
 	} $else {

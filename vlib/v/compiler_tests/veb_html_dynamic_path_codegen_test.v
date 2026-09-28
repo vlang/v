@@ -17,7 +17,7 @@ fn vhd_build_v3() string {
 }
 
 fn vhd_app_source(call string) string {
-	return 'module main\n\nimport veb\n\npub struct Context {\n\tveb.Context\n}\n\npub struct App {}\n\npub fn (app &App) index(mut ctx Context, name string) veb.Result {\n\treturn ${call}\n}\n\nfn main() {\n\tmut app := &App{}\n\tmut ctx := Context{}\n\t_ := app.index(mut ctx, \'x\')\n}\n'
+	return "module main\n\nimport veb\n\npub struct Context {\n\tveb.Context\n}\n\npub struct App {}\n\npub fn (app &App) index(mut ctx Context, name string) veb.Result {\n\treturn ${call}\n}\n\nfn main() {\n\tmut app := &App{}\n\tmut ctx := Context{}\n\t_ := app.index(mut ctx, 'x')\n}\n"
 }
 
 // A `$veb.html(expr)` whose argument is not a compile-time string (`$veb.html(name)`, a runtime

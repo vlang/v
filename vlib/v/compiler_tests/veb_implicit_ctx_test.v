@@ -16,7 +16,7 @@ fn build_v3() string {
 // called by another handler without passing ctx explicitly. The call must
 // type-check (not report a missing argument) and forward the enclosing `ctx`,
 // not a zero/default value.
-fn test_veb_implicit_ctx_forwarded_at_call_site() {
+fn test_veb_implicit_ctx_forwarded_at_direct_and_reflected_call_sites() {
 	v3_bin := build_v3()
 	src := '
 import veb
@@ -32,7 +32,12 @@ mut:
 
 pub fn (app &App) index() veb.Result {
 	app.show(5)
-	return app.helper()
+	$for method in App.methods {
+		if method.name == "helper" {
+			return app.$method()
+		}
+	}
+	return veb.Result{}
 }
 
 pub fn (app &App) helper() veb.Result {
@@ -55,11 +60,54 @@ fn main() {
 	compile := os.execute('${v3_bin} -no-memory-limit ${src_file} -o ${c_out}')
 	assert compile.exit_code == 0, compile.output
 	c_code := os.read_file(c_out) or { '' }
-	// No-arg delegation forwards the enclosing ctx in the ctx slot.
+	// No-arg reflected delegation forwards the enclosing ctx in the ctx slot.
 	assert c_code.contains('App__helper(app, ctx)'), c_code
 	// Delegation that also passes a real argument keeps ctx at its slot,
 	// so the explicit argument still lines up with its parameter.
 	assert c_code.contains('App__show(app, ctx, 5)'), c_code
+}
+
+// An explicitly named handler context is still the context forwarded to a handler
+// whose context is implicit. Its call-site spelling must match its parameter
+// declaration even when the source name shadows a runtime C type.
+fn test_veb_explicit_ctx_named_like_runtime_type_is_forwarded() {
+	v3_bin := build_v3()
+	root := os.join_path(os.vtmp_dir(), 'v3_veb_renamed_ctx_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	src_file := os.join_path(root, 'main.v')
+	os.write_file(src_file, 'module main
+
+import veb
+
+pub struct Context {
+	veb.Context
+}
+
+pub struct App {}
+
+pub fn (app &App) index(mut array Context) veb.Result {
+	return app.helper()
+}
+
+pub fn (app &App) helper() veb.Result {
+	return veb.Result{}
+}
+
+fn main() {
+	app := &App{}
+	mut ctx := Context{}
+	_ := app.index(mut ctx)
+}
+') or {
+		panic(err)
+	}
+	bin_out := os.join_path(root, 'app')
+	compile := os.execute('${v3_bin} -no-memory-limit -nocache ${src_file} -o ${bin_out}')
+	assert compile.exit_code == 0, compile.output
 }
 
 // Route handlers that omit their context parameter can still use the implicit
@@ -84,6 +132,12 @@ fn (mut ctx Context) coming_soon() veb.Result {
 pub fn (app App) bookmark(_ string, _ string) veb.Result {
 	_ = app
 	return ctx.coming_soon()
+}
+
+@["/change/:lang"; get]
+pub fn (mut app App) change_lang(lang string) veb.Result {
+	_ = app
+	return ctx.text(lang)
 }
 
 fn main() {
@@ -114,8 +168,7 @@ fn test_veb_imported_context_alias_param_still_gets_hidden_ctx() {
 	os.write_file(os.join_path(root, 'v.mod'), "Module { name: 'vebimportedctx' }\n") or {
 		panic(err)
 	}
-	os.write_file(os.join_path(root, 'other', 'other.v'),
-		'module other\n\npub type Context = string\n') or { panic(err) }
+	os.write_file(os.join_path(root, 'other', 'other.v'), 'module other\n\npub type Context = string\n') or { panic(err) }
 	main_src := "module main
 
 import veb
@@ -270,6 +323,11 @@ pub fn (mut app App) explicit(mut ctx Context) veb.Result {
 	return veb.Result{}
 }
 
+pub fn (mut app App) show(id string) veb.Result {
+	println(id)
+	return veb.Result{}
+}
+
 fn dispatch[A, X](mut app A, mut ctx X) {
 	$for method in A.methods {
 		$if method.return_type is veb.Result {
@@ -293,4 +351,146 @@ fn main() {
 	run := os.execute(bin_out)
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space().split_into_lines() == ['index called', 'explicit called'], run.output
+}
+
+// Arity decides whether a reflected argument occupies the hidden context slot.
+// A Context value can therefore bind to a declared interface route parameter
+// when that interface accepts Context; it must not be consumed as an explicit
+// copy of the hidden parameter merely because its concrete type is Context.
+fn test_veb_reflected_context_value_binds_to_declared_interface_param() {
+	v3_bin := build_v3()
+	src := '
+import veb
+
+pub interface RouteArg {}
+
+pub struct Context {
+	veb.Context
+}
+
+pub struct App {}
+
+pub fn (mut app App) accepts(value RouteArg) veb.Result {
+	_ = value
+	println("interface called")
+	return veb.Result{}
+}
+
+pub fn (mut app App) needs_string(value string) veb.Result {
+	println(value)
+	return veb.Result{}
+}
+
+fn dispatch[A](mut app A, ctx &Context) {
+	$for method in A.methods {
+		$if method.return_type is veb.Result {
+			app.$method(ctx)
+		}
+	}
+}
+
+fn main() {
+	mut app := App{}
+	ctx := &Context{}
+	dispatch(mut app, ctx)
+}
+'
+	src_file := os.join_path(os.temp_dir(), 'v3_veb_ctx_interface_arg.v')
+	os.write_file(src_file, src) or { panic(err) }
+	bin_out := os.join_path(os.temp_dir(), 'v3_veb_ctx_interface_arg')
+	os.rm(bin_out) or {}
+	compile := os.execute('${v3_bin} -no-memory-limit -b c ${src_file} -o ${bin_out}')
+	assert compile.exit_code == 0, compile.output
+	run := os.execute(bin_out)
+	assert run.exit_code == 0, run.output
+	assert run.output.trim_space() == 'interface called', run.output
+}
+
+// A reflected veb route can accept the framework Context while the dispatcher
+// carries a custom Context that embeds it. Pass the embedded field to the route,
+// rather than the incompatible address of the complete custom Context.
+fn test_veb_reflected_base_context_uses_embedded_field() {
+	v3_bin := build_v3()
+	src := '
+import veb
+
+pub struct Context {
+	marker int
+	veb.Context
+}
+
+pub struct App {}
+
+pub fn (mut app App) index(mut ctx veb.Context) veb.Result {
+	return ctx.text("hello")
+}
+
+fn dispatch[A, X](mut app A, mut ctx X) {
+	$for method in A.methods {
+		$if method.return_type is veb.Result {
+			app.$method(mut ctx)
+		}
+	}
+}
+
+fn main() {
+	mut app := App{}
+	mut ctx := Context{}
+	dispatch(mut app, mut ctx)
+}
+'
+	src_file := os.join_path(os.temp_dir(), 'v3_veb_embedded_base_ctx.v')
+	os.write_file(src_file, src) or { panic(err) }
+	c_out := os.join_path(os.temp_dir(), 'v3_veb_embedded_base_ctx.c')
+	os.rm(c_out) or {}
+	compile := os.execute('${v3_bin} -no-memory-limit -nocache ${src_file} -o ${c_out}')
+	assert compile.exit_code == 0, compile.output
+	c_code := os.read_file(c_out) or { '' }
+	assert c_code.contains('App__index(app, &ctx->veb__Context)'), c_code
+	assert !c_code.contains('App__index(app, ctx)'), c_code
+}
+
+// A route whose custom context embeds veb.Context must keep the complete custom
+// context at the reflected route call, while a promoted generic veb.Context
+// method called by that route must receive the embedded framework context.
+fn test_veb_custom_context_route_with_promoted_generic_method() {
+	v3_bin := build_v3()
+	src := '
+import veb
+
+pub struct Context {
+	veb.Context
+}
+
+pub struct App {}
+
+pub struct SomeData {
+	id string
+}
+
+fn (mut ctx Context) handle_ok[T](payload T) veb.Result {
+	ctx.res.set_status(.ok)
+	return ctx.json(payload)
+}
+
+@["/some_data"; get]
+pub fn (mut app App) some_data(mut ctx Context) veb.Result {
+	return ctx.handle_ok(SomeData{ id: "v3" })
+}
+
+fn main() {
+	mut app := App{}
+	veb.run[App, Context](mut app, 8080)
+}
+'
+	src_file := os.join_path(os.temp_dir(), 'v3_veb_custom_context_generic_method.v')
+	os.write_file(src_file, src) or { panic(err) }
+	c_out := os.join_path(os.temp_dir(), 'v3_veb_custom_context_generic_method.c')
+	os.rm(c_out) or {}
+	compile := os.execute('${v3_bin} -no-memory-limit -nocache ${src_file} -o ${c_out}')
+	assert compile.exit_code == 0, compile.output
+	c_code := os.read_file(c_out) or { '' }
+	assert c_code.contains('veb__Context_SomeData__json(&ctx->veb__Context, payload)'), c_code
+	assert c_code.contains('App__some_data(app, user_context)'), c_code
+	assert !c_code.contains('App__some_data(app, &user_context->veb__Context)'), c_code
 }

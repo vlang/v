@@ -172,8 +172,7 @@ pub fn (mut ctx Context) rename_table(from string, to string) ! {
 	if ctx.dialect in [.sqlite, .pg] && to.contains('.') {
 		return error('rename_table target `${to}` must be unqualified for PostgreSQL and SQLite')
 	}
-	ctx.execute('ALTER TABLE ${quote_identifier(ctx.dialect, from)} RENAME TO ${quote_identifier(ctx.dialect,
-		to)};')!
+	ctx.execute('ALTER TABLE ${quote_identifier(ctx.dialect, from)} RENAME TO ${quote_identifier(ctx.dialect, to)};')!
 }
 
 // add_column adds a column to an existing table.
@@ -190,8 +189,7 @@ pub fn (mut ctx Context) add_column(table string, column Column) ! {
 pub fn (mut ctx Context) remove_column(table string, column string) ! {
 	validate_identifier_for_dialect(ctx.dialect, table, 'table')!
 	validate_unqualified_identifier_for_dialect(ctx.dialect, column, 'column')!
-	ctx.execute('ALTER TABLE ${quote_identifier(ctx.dialect, table)} DROP COLUMN ${quote_identifier(ctx.dialect,
-		column)};')!
+	ctx.execute('ALTER TABLE ${quote_identifier(ctx.dialect, table)} DROP COLUMN ${quote_identifier(ctx.dialect, column)};')!
 }
 
 // rename_column renames a column.
@@ -199,8 +197,7 @@ pub fn (mut ctx Context) rename_column(table string, from string, to string) ! {
 	validate_identifier_for_dialect(ctx.dialect, table, 'table')!
 	validate_unqualified_identifier_for_dialect(ctx.dialect, from, 'column')!
 	validate_unqualified_identifier_for_dialect(ctx.dialect, to, 'column')!
-	ctx.execute('ALTER TABLE ${quote_identifier(ctx.dialect, table)} RENAME COLUMN ${quote_identifier(ctx.dialect,
-		from)} TO ${quote_identifier(ctx.dialect, to)};')!
+	ctx.execute('ALTER TABLE ${quote_identifier(ctx.dialect, table)} RENAME COLUMN ${quote_identifier(ctx.dialect, from)} TO ${quote_identifier(ctx.dialect, to)};')!
 }
 
 // change_column changes a column definition. SQLite requires a table rebuild.
@@ -221,8 +218,7 @@ pub fn (mut ctx Context) change_column(table string, column Column) ! {
 				return error('PostgreSQL change_column only supports type, limit, precision, and scale; unsupported options: ${unsupported.join(', ')}; use ctx.execute() for constraint changes')
 			}
 			column_sql(ctx.dialect, column)!
-			ctx.execute('ALTER TABLE ${quote_identifier(ctx.dialect, table)} ALTER COLUMN ${quote_identifier(ctx.dialect,
-				column.name)} TYPE ${column_type_sql(ctx.dialect, column)!};')!
+			ctx.execute('ALTER TABLE ${quote_identifier(ctx.dialect, table)} ALTER COLUMN ${quote_identifier(ctx.dialect, column.name)} TYPE ${column_type_sql(ctx.dialect, column)!};')!
 		}
 		.mysql {
 			validate_unqualified_identifier_for_dialect(.mysql, column.name, 'column')!
@@ -302,8 +298,7 @@ pub fn (mut ctx Context) add_index(index Index) ! {
 		create_name_sql = '${quote_identifier_component(.sqlite, schema)}.${quote_identifier_component(.sqlite, name)}'
 	}
 	unique := if index.unique { 'UNIQUE ' } else { '' }
-	ctx.execute('CREATE ${unique}INDEX ${create_name_sql} ON ${quote_identifier(ctx.dialect,
-		index.table)} (${columns});')!
+	ctx.execute('CREATE ${unique}INDEX ${create_name_sql} ON ${quote_identifier(ctx.dialect, index.table)} (${columns});')!
 }
 
 // remove_index removes an index by name. PostgreSQL and SQLite derive the index
@@ -317,8 +312,7 @@ pub fn (mut ctx Context) remove_index(table string, name string) ! {
 	}
 	match ctx.dialect {
 		.mysql {
-			ctx.execute('DROP INDEX ${quote_identifier(ctx.dialect, name)} ON ${quote_identifier(ctx.dialect,
-				table)};')!
+			ctx.execute('DROP INDEX ${quote_identifier(ctx.dialect, name)} ON ${quote_identifier(ctx.dialect, table)};')!
 		}
 		.pg {
 			drop_name_sql := if name.contains('.') {
@@ -345,8 +339,7 @@ fn (mut ctx Context) postgresql_table_schema(table string) !string {
 	if table.contains('.') {
 		return table.all_before('.')
 	}
-	rows := ctx.execute("SELECT n.nspname FROM pg_catalog.pg_class AS c JOIN pg_catalog.pg_namespace AS n ON n.oid = c.relnamespace WHERE c.relname = ${string_literal_sql(.pg,
-		table)} AND c.relkind IN ('r', 'p', 'v', 'm', 'f') AND pg_catalog.pg_table_is_visible(c.oid) LIMIT 1;")!
+	rows := ctx.execute("SELECT n.nspname FROM pg_catalog.pg_class AS c JOIN pg_catalog.pg_namespace AS n ON n.oid = c.relnamespace WHERE c.relname = ${string_literal_sql(.pg, table)} AND c.relkind IN ('r', 'p', 'v', 'm', 'f') AND pg_catalog.pg_table_is_visible(c.oid) LIMIT 1;")!
 	if rows.len != 1 || rows[0].vals.len == 0 || rows[0].vals[0] == '' {
 		return error('PostgreSQL remove_index could not resolve table `${table}` to a schema')
 	}
@@ -369,8 +362,7 @@ fn (mut ctx Context) sqlite_table_schema(table string) !string {
 		}
 	}
 	for schema in schemas {
-		rows := ctx.execute("SELECT 1 FROM ${quote_identifier_component(.sqlite, schema)}.sqlite_schema WHERE type = 'table' AND name = ${string_literal_sql(.sqlite,
-			table)} COLLATE NOCASE LIMIT 1;")!
+		rows := ctx.execute("SELECT 1 FROM ${quote_identifier_component(.sqlite, schema)}.sqlite_schema WHERE type = 'table' AND name = ${string_literal_sql(.sqlite, table)} COLLATE NOCASE LIMIT 1;")!
 		if rows.len > 0 {
 			return schema
 		}
@@ -404,12 +396,10 @@ pub fn (mut ctx Context) remove_foreign_key(table string, name string) ! {
 			return error('remove_foreign_key is not directly supported by SQLite; create a replacement table in the migration')
 		}
 		.pg {
-			ctx.execute('ALTER TABLE ${quote_identifier(ctx.dialect, table)} DROP CONSTRAINT ${quote_identifier(ctx.dialect,
-				name)};')!
+			ctx.execute('ALTER TABLE ${quote_identifier(ctx.dialect, table)} DROP CONSTRAINT ${quote_identifier(ctx.dialect, name)};')!
 		}
 		.mysql {
-			ctx.execute('ALTER TABLE ${quote_identifier(ctx.dialect, table)} DROP FOREIGN KEY ${quote_identifier(ctx.dialect,
-				name)};')!
+			ctx.execute('ALTER TABLE ${quote_identifier(ctx.dialect, table)} DROP FOREIGN KEY ${quote_identifier(ctx.dialect, name)};')!
 		}
 	}
 }
@@ -774,7 +764,10 @@ fn sqlite_is_literal_default(default_sql string) bool {
 		return sqlite_is_literal_default(literal[1..literal.len - 1])
 	}
 	numeric_literal := sqlite_numeric_literal_without_separators(literal) or { return false }
-	if numeric_literal.len > 2 && numeric_literal[0] == `0` && numeric_literal[1] in [u8(`x`), `X`]
+	if numeric_literal.len > 2 && numeric_literal[0] == `0` && numeric_literal[1] in [
+		u8(`x`),
+		`X`,
+	]
 		&& numeric_literal[2..].bytes().all(it.is_hex_digit()) {
 		return true
 	}
@@ -1168,9 +1161,7 @@ fn foreign_key_constraint_sql(dialect Dialect, key ForeignKey) !string {
 		return error('SQLite foreign-key target table `${key.to_table}` must be unqualified')
 	}
 	name := foreign_key_name(dialect, key)!
-	mut query := 'CONSTRAINT ${quote_identifier(dialect, name)} FOREIGN KEY (${quote_identifier(dialect,
-		key.column)}) REFERENCES ${quote_identifier(dialect, key.to_table)} (${quote_identifier(dialect,
-		key.primary_key)})'
+	mut query := 'CONSTRAINT ${quote_identifier(dialect, name)} FOREIGN KEY (${quote_identifier(dialect, key.column)}) REFERENCES ${quote_identifier(dialect, key.to_table)} (${quote_identifier(dialect, key.primary_key)})'
 	if key.on_delete != '' {
 		query += ' ON DELETE ${foreign_key_action(dialect, key.on_delete)!}'
 	}

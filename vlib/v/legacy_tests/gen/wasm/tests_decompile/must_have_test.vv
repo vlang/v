@@ -1,6 +1,7 @@
 import os
 import term
 import benchmark
+import v.util.vtest
 
 fn test_wasm_when_decompiled_must_have() {
 	vexe := @VEXE
@@ -23,6 +24,11 @@ fn test_wasm_when_decompiled_must_have() {
 
 	vv_files_loop: for vv_file in vv_files {
 		bench.step()
+		if vtest.skip_ownership_autofree_tests() && vtest.is_ownership_autofree_test(vv_file) {
+			bench.skip()
+			eprintln(bench.step_message_skip(vv_file))
+			continue
+		}
 		must_have_path := vv_file.replace('.vv', '.wasm.must_have')
 		must_not_have_path := vv_file.replace('.vv', '.wasm.must_not_have')
 		vv_file_name := os.file_name(vv_file).replace('.vv', '')

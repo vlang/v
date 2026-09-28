@@ -16,7 +16,7 @@ fn test_json_voidptr_autoref_keeps_value_equality_semantics() {
 		os.rm(bin) or {}
 	}
 	build :=
-		os.execute('"${json_pointer_value_vexe}" -old-compiler -gc none -prealloc -path "${json_pointer_value_vlib_dir}|@vlib|@vmodules" -o "${v3_bin}" "${json_pointer_value_v3_src}"')
+		os.execute('"${json_pointer_value_vexe}" -gc none -prealloc -path "${json_pointer_value_vlib_dir}|@vlib|@vmodules" -o "${v3_bin}" "${json_pointer_value_v3_src}"')
 	assert build.exit_code == 0, build.output
 
 	os.write_file(src, 'import json

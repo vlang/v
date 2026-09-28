@@ -90,21 +90,27 @@ pub fn (mut app App) request_window_capture(id WindowId, config WindowReadbackCo
 // window_id identifies the window that owns this initialization callback.
 pub fn (context &WindowInitContext) window_id() WindowId {
 	multiwindow_render_value_guard()
-	$if gg_multiwindow ? { context.validate_managed_or_panic() }
+	$if gg_multiwindow ? {
+		context.validate_managed_or_panic()
+	}
 	return context.info.window
 }
 
 // metrics returns the immutable window metrics admitted for initialization.
 pub fn (context &WindowInitContext) metrics() WindowMetrics {
 	multiwindow_render_value_guard()
-	$if gg_multiwindow ? { context.validate_managed_or_panic() }
+	$if gg_multiwindow ? {
+		context.validate_managed_or_panic()
+	}
 	return context.info.metrics
 }
 
 // render_target_info returns the render-target contract admitted for initialization.
 pub fn (context &WindowInitContext) render_target_info() WindowRenderTargetInfo {
 	multiwindow_render_value_guard()
-	$if gg_multiwindow ? { context.validate_managed_or_panic() }
+	$if gg_multiwindow ? {
+		context.validate_managed_or_panic()
+	}
 	return context.info.target
 }
 
@@ -122,14 +128,18 @@ pub fn (mut context WindowInitContext) with_resources(f WindowResourceFn) ! {
 // frame_info returns the immutable window and target snapshot bound to this frame callback.
 pub fn (context &WindowContext) frame_info() WindowFrameInfo {
 	multiwindow_render_value_guard()
-	$if gg_multiwindow ? { context.validate_managed_or_panic() }
+	$if gg_multiwindow ? {
+		context.validate_managed_or_panic()
+	}
 	return context.info
 }
 
 // logical_size returns the current drawable size in logical coordinates.
 pub fn (context &WindowContext) logical_size() WindowLogicalSize {
 	multiwindow_render_value_guard()
-	$if gg_multiwindow ? { context.validate_managed_or_panic() }
+	$if gg_multiwindow ? {
+		context.validate_managed_or_panic()
+	}
 	return context.info.metrics.logical_size
 }
 
@@ -145,7 +155,9 @@ pub fn (context &WindowContext) logical_bounds() WindowLogicalRect {
 // pixel_bounds returns the current framebuffer rectangle with an origin of zero.
 pub fn (context &WindowContext) pixel_bounds() WindowPixelRect {
 	multiwindow_render_value_guard()
-	$if gg_multiwindow ? { context.validate_managed_or_panic() }
+	$if gg_multiwindow ? {
+		context.validate_managed_or_panic()
+	}
 	return WindowPixelRect{
 		width:  context.info.metrics.framebuffer_size.width
 		height: context.info.metrics.framebuffer_size.height
@@ -250,35 +262,45 @@ pub fn (mut context WindowContext) request_image_readback(id WindowImageId, conf
 // window_id identifies the window that owns this cleanup callback.
 pub fn (context &WindowCleanupContext) window_id() WindowId {
 	multiwindow_render_value_guard()
-	$if gg_multiwindow ? { context.validate_managed_or_panic() }
+	$if gg_multiwindow ? {
+		context.validate_managed_or_panic()
+	}
 	return context.info.window
 }
 
 // metrics returns the final immutable metrics snapshot supplied to cleanup.
 pub fn (context &WindowCleanupContext) metrics() WindowMetrics {
 	multiwindow_render_value_guard()
-	$if gg_multiwindow ? { context.validate_managed_or_panic() }
+	$if gg_multiwindow ? {
+		context.validate_managed_or_panic()
+	}
 	return context.info.metrics
 }
 
 // render_target_info returns the final render-target contract supplied to cleanup.
 pub fn (context &WindowCleanupContext) render_target_info() WindowRenderTargetInfo {
 	multiwindow_render_value_guard()
-	$if gg_multiwindow ? { context.validate_managed_or_panic() }
+	$if gg_multiwindow ? {
+		context.validate_managed_or_panic()
+	}
 	return context.info.target
 }
 
 // reason identifies why the window's render lifetime is ending.
 pub fn (context &WindowCleanupContext) reason() WindowCleanupReason {
 	multiwindow_render_value_guard()
-	$if gg_multiwindow ? { context.validate_managed_or_panic() }
+	$if gg_multiwindow ? {
+		context.validate_managed_or_panic()
+	}
 	return context.cleanup_reason
 }
 
 // graphics_available reports whether managed graphics teardown is still permitted.
 pub fn (context &WindowCleanupContext) graphics_available() bool {
 	multiwindow_render_value_guard()
-	$if gg_multiwindow ? { context.validate_managed_or_panic() }
+	$if gg_multiwindow ? {
+		context.validate_managed_or_panic()
+	}
 	return context.has_graphics
 }
 

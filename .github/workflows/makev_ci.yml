@@ -1,0 +1,71 @@
+name: Windows bootstrap contracts
+
+on:
+  push:
+    branches: [master]
+    paths:
+      - 'makev.bat'
+      - 'cmd/tools/makev_test.py'
+      - 'cmd/tools/windows_ci_test.py'
+      - '.github/workflows/windows_ci_gcc.yml'
+      - '.github/workflows/windows_ci_msvc.yml'
+      - '.github/workflows/windows_ci_tcc.yml'
+      - '.github/workflows/run_multiwindow_win32_w3_green.ps1'
+      - '.github/workflows/run_multiwindow_win32_w4.ps1'
+      - 'cmd/tools/windows_w4_ci_test.py'
+      - 'vlib/x/multiwindow/testdata/win32_nonreadback_test_oracle.h'
+      - 'vlib/gg/testdata/multiwindow_win32_clipboard_no_optin_probe.v'
+      - 'vlib/x/multiwindow/service_backend.v'
+      - 'vlib/x/multiwindow/event_delivery.v'
+      - 'vlib/x/multiwindow/win32_backend.c.v'
+      - 'vlib/x/multiwindow/win32_service_backend.c.v'
+      - 'vlib/x/multiwindow/win32_service_native.h'
+      - 'vlib/x/multiwindow/service_native_win32_contract_red_test.v'
+      - 'vlib/gg/multiwindow_win32_public_services_contract_windows_test.v'
+      - 'vlib/x/multiwindow/event_sequence_exhaustion_test.v'
+      - '.github/workflows/makev_ci.yml'
+  pull_request:
+    paths:
+      - 'makev.bat'
+      - 'cmd/tools/makev_test.py'
+      - 'cmd/tools/windows_ci_test.py'
+      - '.github/workflows/windows_ci_gcc.yml'
+      - '.github/workflows/windows_ci_msvc.yml'
+      - '.github/workflows/windows_ci_tcc.yml'
+      - '.github/workflows/run_multiwindow_win32_w3_green.ps1'
+      - '.github/workflows/run_multiwindow_win32_w4.ps1'
+      - 'cmd/tools/windows_w4_ci_test.py'
+      - 'vlib/x/multiwindow/testdata/win32_nonreadback_test_oracle.h'
+      - 'vlib/gg/testdata/multiwindow_win32_clipboard_no_optin_probe.v'
+      - 'vlib/x/multiwindow/service_backend.v'
+      - 'vlib/x/multiwindow/event_delivery.v'
+      - 'vlib/x/multiwindow/win32_backend.c.v'
+      - 'vlib/x/multiwindow/win32_service_backend.c.v'
+      - 'vlib/x/multiwindow/win32_service_native.h'
+      - 'vlib/x/multiwindow/service_native_win32_contract_red_test.v'
+      - 'vlib/gg/multiwindow_win32_public_services_contract_windows_test.v'
+      - 'vlib/x/multiwindow/event_sequence_exhaustion_test.v'
+      - '.github/workflows/makev_ci.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  bootstrap-contracts:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+      - name: Test bootstrap configuration and batch error handling
+        run: python cmd/tools/makev_test.py
+      - name: Test Windows CI build failures and W3 integrity pins
+        if: ${{ !cancelled() }}
+        run: python cmd/tools/windows_ci_test.py
+      - name: Test Win32 W4 integrity pins and ordered manifests
+        if: ${{ !cancelled() }}
+        run: python cmd/tools/windows_w4_ci_test.py

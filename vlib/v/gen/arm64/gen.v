@@ -5,7 +5,7 @@ import v.ssa
 // Gen stores state for ARM64 code generation.
 pub struct Gen {
 mut:
-	m                    &ssa.Module = unsafe { nil }
+	m                    &ssa.Module  = unsafe { nil }
 	macho                &MachOObject = unsafe { nil }
 	text_words           []u32
 	stack_offsets        []i32
@@ -56,19 +56,19 @@ pub fn Gen.new(m &ssa.Module) &Gen {
 
 fn new_gen_with_text_capacity(m &ssa.Module, text_capacity int) &Gen {
 	return &Gen{
-		m: m
-		macho: MachOObject.new()
-		text_words: []u32{cap: text_capacity}
-		stack_offsets: []i32{}
-		alloca_offsets: []i32{}
-		alloca_sizes: []i32{}
-		alloca_alignments: []i32{}
-		slot_value_indices: []int{}
-		block_offsets: []i32{}
+		m:                    m
+		macho:                MachOObject.new()
+		text_words:           []u32{cap: text_capacity}
+		stack_offsets:        []i32{}
+		alloca_offsets:       []i32{}
+		alloca_sizes:         []i32{}
+		alloca_alignments:    []i32{}
+		slot_value_indices:   []int{}
+		block_offsets:        []i32{}
 		block_offset_indices: []int{}
-		pending_jmps: []PendingJmp{}
-		fn_offsets: map[string]int{}
-		string_cache: map[string]int{}
+		pending_jmps:         []PendingJmp{}
+		fn_offsets:           map[string]int{}
+		string_cache:         map[string]int{}
 	}
 }
 
@@ -142,8 +142,8 @@ fn arm64_function_ranges(m &ssa.Module, wanted int) []Arm64GenRange {
 			&& accumulated >= target {
 			ranges << Arm64GenRange{
 				start: start
-				end: fi + 1
-				cap: range_weight * 28 + 1024
+				end:   fi + 1
+				cap:   range_weight * 28 + 1024
 			}
 			start = fi + 1
 			range_weight = 0
@@ -152,8 +152,8 @@ fn arm64_function_ranges(m &ssa.Module, wanted int) []Arm64GenRange {
 	if start < m.funcs.len {
 		ranges << Arm64GenRange{
 			start: start
-			end: m.funcs.len
-			cap: range_weight * 28 + 1024
+			end:   m.funcs.len
+			cap:   range_weight * 28 + 1024
 		}
 	}
 	return ranges
@@ -665,7 +665,7 @@ fn (g &Gen) collect_homogeneous_float_elements(typ_id ssa.TypeID, base_offset in
 	typ := g.m.type_store.types[typ_id]
 	if typ.kind == .float_t {
 		elements << Arm64HfaElement{
-			typ: typ_id
+			typ:    typ_id
 			offset: base_offset
 		}
 		return elements.len <= 4

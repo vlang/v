@@ -3,9 +3,17 @@
 // that can be found in the LICENSE file.
 module internal
 
-#include <sys/syscall.h>
+// A portable `-os cross` compiler snapshot is generated on Linux, so it bakes
+// in this file even when its C source is later compiled on an Apple host.
+$if macos || ios || openbsd {
+	#include <sys/random.h>
+} $else {
+	#include <sys/syscall.h>
+}
 
 pub const C.SYS_getrandom int
+
+fn C.getentropy(buf voidptr, buflen usize) i32
 
 const read_batch_size = 256
 
@@ -33,5 +41,12 @@ fn getrandom(bytes_needed int, buffer voidptr) int {
 	if bytes_needed > read_batch_size {
 		panic('getrandom() dont request more than ${read_batch_size} bytes at once.')
 	}
-	return unsafe { C.syscall(C.SYS_getrandom, buffer, bytes_needed, 0) }
+	$if macos || ios || openbsd {
+		if C.getentropy(buffer, usize(bytes_needed)) != 0 {
+			return -1
+		}
+		return bytes_needed
+	} $else {
+		return unsafe { C.syscall(C.SYS_getrandom, buffer, bytes_needed, 0) }
+	}
 }

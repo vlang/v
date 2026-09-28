@@ -10,6 +10,7 @@ pub mut:
 $if !js_browser {
 	#const $buffer = require('buffer');
 }
+
 // todo(playX):   __as_cast is broken here
 /*
 pub struct ErrFileNotOpened {

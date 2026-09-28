@@ -20,8 +20,9 @@ fn test_inline_asm_lock_without_instruction_reports_error() {
 	diagnostics := parse_amd64_asm_diagnostics('lock_missing_instruction', 'fn main() {
 	asm amd64 {
 		lock')
-	assert diagnostics.len == 1, diagnostics.str()
-	assert diagnostics[0].message == 'The lock prefix cannot be used on this instruction'
+	// The fixture is deliberately truncated, so an `unexpected eof` diagnostic accompanies the
+	// one under test; assert on the message rather than on the count.
+	assert diagnostics.any(it.message == 'The lock prefix cannot be used on this instruction'), diagnostics.str()
 }
 
 fn test_inline_asm_lock_accepts_supported_suffixed_instruction() {

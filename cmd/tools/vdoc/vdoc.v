@@ -120,7 +120,7 @@ fn (mut vd VDoc) write_plaintext_content(contents []doc.DocNode, mut pw strings.
 				write_location(cn, mut pw)
 			}
 			if cfg.is_color {
-				pw.writeln(color_highlight(cn.content, vd.docs[0].table))
+				pw.writeln(color_highlight(cn.content))
 			} else {
 				pw.writeln(cn.content)
 			}
@@ -138,7 +138,7 @@ fn (mut vd VDoc) write_plaintext_content(contents []doc.DocNode, mut pw strings.
 							fex = indent(ex)
 						}
 						if cfg.is_color {
-							fex = color_highlight(fex, vd.docs[0].table)
+							fex = color_highlight(fex)
 						}
 						pw.writeln(fex)
 					}
@@ -200,7 +200,7 @@ fn (mut vd VDoc) work_processor(work chan ParallelDoc) {
 }
 
 fn (mut vd VDoc) render_parallel(out Output) {
-	mut work := chan ParallelDoc{ cap: vd.docs.len }
+	mut work := chan ParallelDoc{cap: vd.docs.len}
 	for i in 0 .. vd.docs.len {
 		work <- ParallelDoc{vd.docs[i], out}
 	}
@@ -260,8 +260,8 @@ fn (vd &VDoc) get_readme(path string) Readme {
 	}
 	return Readme{
 		frontmatter: readme_frontmatter
-		content: readme_contents
-		path: readme_path
+		content:     readme_contents
+		path:        readme_path
 	}
 }
 
@@ -272,11 +272,25 @@ fn (vd &VDoc) emit_generate_err(err IError) {
 		mod_list := get_modules(cfg.input_path)
 		println('Available modules:\n==================')
 		for mod in mod_list {
-			println(mod.all_after('vlib/').all_after('modules/').replace('/', '.'))
+			println(module_display_name(mod, cfg.input_path))
 		}
 		err_msg += ' Use the `-m` flag when generating docs from a directory that has multiple modules.'
 	}
 	eprintln(err_msg)
+}
+
+// `get_modules` hands back directories, not names. What a reader needs is where
+// each one sits under the input root, read as a module path: an absolute input
+// would otherwise print the whole filesystem path with dots for separators. There
+// is no `modules/` to strip out of it either -- that is an ordinary directory
+// now, so a module under one really is `modules.<name>`.
+fn module_display_name(mod string, input_path string) string {
+	normalized := mod.replace('\\', '/').trim_right('/')
+	root := input_path.replace('\\', '/').trim_right('/')
+	if root != '' && normalized.starts_with(root + '/') {
+		return normalized[root.len + 1..].replace('/', '.')
+	}
+	return os.file_name(normalized)
 }
 
 fn (mut vd VDoc) generate_docs_from_file() {
@@ -290,7 +304,7 @@ fn (mut vd VDoc) generate_docs_from_file() {
 	cfg := vd.cfg
 	mut out := Output{
 		path: cfg.output_path
-		typ: cfg.output_type
+		typ:  cfg.output_type
 	}
 	if out.path == '' {
 		if cfg.output_type == .unset {
@@ -335,20 +349,20 @@ fn (mut vd VDoc) generate_docs_from_file() {
 			readme_name = page
 		}
 		comment := doc.DocComment{
-			is_readme: true
+			is_readme:   true
 			frontmatter: readme.frontmatter
-			text: readme.content
+			text:        readme.content
 		}
 		if out.typ == .ansi {
 			println(markdown.to_plain(readme.content))
 		} else if out.typ == .html && cfg.is_multi {
 			vd.docs << doc.Doc{
-				head: doc.DocNode{
-					is_readme: true
-					name: readme_name
-					file_path: readme.path
+				head:           doc.DocNode{
+					is_readme:   true
+					name:        readme_name
+					file_path:   readme.path
 					frontmatter: readme.frontmatter
-					comments: [comment]
+					comments:    [comment]
 				}
 				time_generated: time.now()
 			}
@@ -380,9 +394,9 @@ fn (mut vd VDoc) generate_docs_from_file() {
 			readme := vd.get_readme(dirpath)
 			if readme.path != '' {
 				comment := doc.DocComment{
-					is_readme: true
+					is_readme:   true
 					frontmatter: readme.frontmatter
-					text: readme.content
+					text:        readme.content
 				}
 				dcs.head.comments = [comment]
 				dcs.head.file_path = readme.path

@@ -195,7 +195,7 @@ fn (mut g FlatGen) smartcast_is_expr(cond &flat.Node) {
 			variant_ct := g.tc.c_type(variant_type)
 			field_name := g.sum_field_name(variant_name)
 			is_ptr_variant := g.variant_references_sum(variant_name, clean_sum.name)
-			var_name := g.cname(expr_node.value)
+			var_name := g.local_cname(expr_node.value)
 			tmp := g.tmp_name()
 			if is_ptr_variant {
 				g.writeln('${variant_ct} ${tmp} = *${var_name}.${field_name};')
@@ -249,7 +249,7 @@ fn (mut g FlatGen) gen_if_guard(node flat.Node, cond flat.Node) {
 			}
 		}
 	}
-	var_name := g.cname(lhs.value)
+	var_name := g.local_decl_cname(lhs.value)
 	tmp := g.tmp_name()
 	defer_start := g.defers.len
 	if rhs.kind == .index {
@@ -259,7 +259,7 @@ fn (mut g FlatGen) gen_if_guard(node flat.Node, cond flat.Node) {
 			c_val_type := g.tc.c_type(base_type.value_type)
 			c_key_type := g.map_key_temp_c_type(base_type.key_type)
 			g.write('void* ${tmp} = map__get_check(&')
-			g.gen_expr(base_id)
+			g.gen_map_value_expr(base_id)
 			g.write(', &(${c_key_type}[]){')
 			g.gen_expr(g.a.child(rhs, 1))
 			g.writeln('});')
@@ -351,7 +351,7 @@ fn (mut g FlatGen) gen_if_guard_value_bindings(lhs_ids []flat.NodeId, val_type t
 				continue
 			}
 			field_type := val_type.types[i]
-			lhs_name := g.cname(lhs.value)
+			lhs_name := g.local_decl_cname(lhs.value)
 			if fixed := array_fixed_type(field_type) {
 				c_elem, dims := g.fixed_array_decl_parts(fixed)
 				g.writeln('${c_elem} ${lhs_name}${dims};')
@@ -374,7 +374,7 @@ fn (mut g FlatGen) gen_if_guard_value_bindings(lhs_ids []flat.NodeId, val_type t
 	if lhs.kind != .ident || lhs.value.len == 0 || lhs.value == '_' {
 		return
 	}
-	lhs_name := g.cname(lhs.value)
+	lhs_name := g.local_decl_cname(lhs.value)
 	if fixed := array_fixed_type(val_type) {
 		c_elem, dims := g.fixed_array_decl_parts(fixed)
 		g.writeln('${c_elem} ${lhs_name}${dims};')
@@ -564,7 +564,7 @@ fn (g &FlatGen) multi_return_tail_parts(block &flat.Node, count int) ?MultiRetur
 			if nested.prefix_count == 0 {
 				return MultiReturnTailParts{
 					prefix_count: int(block.children_count) - 1
-					values: nested.values.clone()
+					values:       nested.values.clone()
 				}
 			}
 		}
@@ -585,7 +585,7 @@ fn (g &FlatGen) multi_return_tail_parts(block &flat.Node, count int) ?MultiRetur
 		if values.len == count {
 			return MultiReturnTailParts{
 				prefix_count: i
-				values: values.clone()
+				values:       values.clone()
 			}
 		}
 	}
@@ -680,7 +680,12 @@ fn (mut g FlatGen) gen_multi_return_tail_temp(ct string, ret_types []types.Type,
 // is_expr_kind reports whether is expr kind applies in c.
 fn (g &FlatGen) is_expr_kind(kind flat.NodeKind) bool {
 	return match kind {
-		.int_literal, .float_literal, .bool_literal, .char_literal, .string_literal, .string_interp, .ident, .infix, .prefix, .postfix, .paren, .call, .selector, .index, .if_expr, .struct_init, .field_init, .array_literal, .array_init, .map_init, .fn_literal, .or_expr, .cast_expr, .as_expr, .enum_val, .assoc, .range, .nil_literal, .none_expr, .spawn_expr, .lock_expr, .lambda_expr, .sizeof_expr, .typeof_expr, .dump_expr, .offsetof_expr, .is_expr, .in_expr {
+		.int_literal, .float_literal, .bool_literal, .char_literal, .string_literal,
+		.string_interp, .ident, .infix, .prefix, .postfix, .paren, .call, .selector, .index,
+		.if_expr, .struct_init, .field_init, .array_literal, .array_init, .map_init, .fn_literal,
+		.or_expr, .cast_expr, .as_expr, .enum_val, .assoc, .range, .nil_literal, .none_expr,
+		.spawn_expr, .lock_expr, .lambda_expr, .sizeof_expr, .typeof_expr, .dump_expr,
+		.offsetof_expr, .is_expr, .in_expr {
 			true
 		}
 		else {
@@ -782,7 +787,9 @@ fn (mut g FlatGen) if_expr_type(node &flat.Node) types.Type {
 // gen_if_expr_stmt emits if expr stmt output for c.
 fn (mut g FlatGen) gen_if_expr_stmt(node flat.Node) {
 	inferred_type := g.if_expr_type(&node)
-	ret_type := if node.typ.len > 0 {
+	ret_type := if g.expected_expr_type is types.MultiReturn {
+		types.Type(g.expected_expr_type)
+	} else if node.typ.len > 0 {
 		annotated_type := g.parse_node_type(&node)
 		if annotated_type is types.Primitive && inferred_type !is types.Primitive {
 			inferred_type

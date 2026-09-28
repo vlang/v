@@ -243,7 +243,7 @@ struct FastcModuleListing {
 fn fastc_list_module_load(dir string, listed []string, prefs &pref.Preferences) FastcModuleListing {
 	files := if dir == '' { listed } else { fastc_list_module_sources(dir, prefs) }
 	return FastcModuleListing{
-		dir: dir
+		dir:   dir
 		files: files
 	}
 }
@@ -500,18 +500,18 @@ fn fastc_collect_index_worker(sources []FastcSourceFile, prefs &pref.Preferences
 		}
 		flagged := [
 			FastcSourceFile{
-				path: source_file.path
-				source: source_file.source
+				path:          source_file.path
+				source:        source_file.source
 				source_offset: source_file.source_offset
-				header: fastc_header_with_scan_flags(source_file.header, file_flags)
+				header:        fastc_header_with_scan_flags(source_file.header, file_flags)
 			},
 		]
 		partial := fastc_collect_declaration_chunk(flagged, prefs, 0, 1)
 		partials << FastcIndexedIndexPartial{
-			index: index
-			flags: file_flags
-			generics: generics
-			partial: partial
+			index:      index
+			flags:      file_flags
+			generics:   generics
+			partial:    partial
 			body_spans: partial.body_spans[source_file.path] or { []int{} }
 		}
 	}
@@ -554,10 +554,10 @@ fn fastc_collect_generic_and_declaration_indexes(mut sources []FastcSourceFile, 
 	for index, indexed in partials {
 		source_file := sources[index]
 		sources[index] = FastcSourceFile{
-			path: source_file.path
-			source: source_file.source
+			path:          source_file.path
+			source:        source_file.source
 			source_offset: source_file.source_offset
-			header: fastc_header_with_body_spans(fastc_header_with_scan_flags(source_file.header, indexed.flags), indexed.body_spans)
+			header:        fastc_header_with_body_spans(fastc_header_with_scan_flags(source_file.header, indexed.flags), indexed.body_spans)
 		}
 		for key, generic in indexed.generics {
 			generic_method_sources[key] = generic
@@ -643,7 +643,7 @@ fn fastc_generate_file_steal(ctx &FastcFileGenContext, sources []FastcSourceFile
 			fixed_array_types[name] = array_type
 		}
 		outputs << FastcIndexedFileGenOutput{
-			index: file_index
+			index:  file_index
 			output: output
 		}
 		if bench_files {
@@ -651,8 +651,8 @@ fn fastc_generate_file_steal(ctx &FastcFileGenContext, sources []FastcSourceFile
 		}
 	}
 	return FastcFileGenWorkerResult{
-		outputs: outputs
-		composite_types: composite_types
+		outputs:           outputs
+		composite_types:   composite_types
 		fixed_array_types: fixed_array_types
 	}
 }
@@ -746,18 +746,18 @@ fn fastc_source_generation_fragments(source_file FastcSourceFile, prefs &pref.Pr
 			position_offset++
 		}
 		fragments << FastcSourceFile{
-			path: source_file.path
+			path:                 source_file.path
 			// The original source array remains alive throughout generation; share
 			// its bytes instead of copying every fragment before the parallel pass.
-			source: unsafe { source_file.source[start..cuts[i + 1]] }
-			source_offset: source_file.source_offset + start
-			source_line_offset: source_file.source_line_offset + position_lines
+			source:               unsafe { source_file.source[start..cuts[i + 1]] }
+			source_offset:        source_file.source_offset + start
+			source_line_offset:   source_file.source_line_offset + position_lines
 			source_column_offset: if position_lines == 0 {
 				source_file.source_column_offset + position_column
 			} else {
 				position_column
 			}
-			header: source_file.header
+			header:               source_file.header
 		}
 	}
 	return fragments
@@ -776,7 +776,7 @@ fn fastc_generation_fragment_chunk(candidates []FastcSourceFile, candidate_indic
 	mut result := []FastcFragmentedSource{cap: end - start}
 	for i in start .. end {
 		result << FastcFragmentedSource{
-			index: candidate_indices[i]
+			index:     candidate_indices[i]
 			fragments: fastc_source_generation_fragments(candidates[i], prefs)
 		}
 	}
@@ -966,8 +966,8 @@ fn fastc_generate_file_outputs(ctx &FastcFileGenContext, sources []FastcSourceFi
 	}
 	timer.mark('file_outputs.wait_chunks')
 	return FastcFileGenResult{
-		outputs: outputs
-		composite_types: composite_types
+		outputs:           outputs
+		composite_types:   composite_types
 		fixed_array_types: fixed_array_types
 	}
 }
@@ -996,7 +996,7 @@ fn fastc_collect_reference_chunk(sources []FastcSourceFile, prefs &pref.Preferen
 		fastc_collect_file_references(sources[idx], prefs, available_names, mut references, mut top_level_references)
 	}
 	return FastcReferencePartial{
-		references: references
+		references:           references
 		top_level_references: top_level_references
 	}
 }
@@ -1060,7 +1060,7 @@ fn fastc_collect_declaration_worker(sources []FastcSourceFile, prefs &pref.Prefe
 		}
 		index := order[slot]
 		partials << FastcIndexedDeclarationPartial{
-			index: index
+			index:   index
 			partial: fastc_collect_declaration_chunk(sources, prefs, index, index + 1)
 		}
 	}
@@ -1116,7 +1116,7 @@ fn fastc_collect_signature_worker(sources []FastcSourceFile, prefs &pref.Prefere
 		}
 		index := order[slot]
 		partials << FastcIndexedSignaturePartial{
-			index: index
+			index:   index
 			partial: fastc_collect_signature_chunk(sources, prefs, declared_types, declared_type_c_names, params_structs, index, index + 1)
 		}
 	}
@@ -1172,7 +1172,7 @@ fn fastc_parse_constant_file_worker(ctx &FastcConstantGenContext, candidates []F
 		index := order[slot]
 		file_sw := time.new_stopwatch()
 		results << FastcIndexedConstantFileResult{
-			index: index
+			index:  index
 			result: fastc_parse_constant_file(ctx, candidates[index], seed.clone())
 		}
 		if bench_files {

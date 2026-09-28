@@ -304,8 +304,7 @@ fn synthetic_toolchain_profile_source(target_id string) string {
 		mut roles := []string{}
 		for strategy in strategies {
 			role_id := synthetic_toolchain_role_id(phase, strategy, strategies.len)
-			roles << '{"role_id":"${role_id}","identity_strategy":"${strategy}","identity_policy":${synthetic_toolchain_policy_facts(target_id,
-				strategy)}}'
+			roles << '{"role_id":"${role_id}","identity_strategy":"${strategy}","identity_policy":${synthetic_toolchain_policy_facts(target_id, strategy)}}'
 		}
 		phases[phase] = roles.join(',')
 	}
@@ -323,8 +322,7 @@ fn synthetic_toolchain_observation_source(target_id string, profile_sha256 strin
 		role_id := synthetic_toolchain_role_id(phase, strategy, strategies.len)
 		resolution_placeholder := if index == 0 { '8'.repeat(64) } else { '9'.repeat(64) }
 		evidence_sha256 := if index == 0 { 'e'.repeat(64) } else { 'f'.repeat(64) }
-		role_sources << '{"role_id":"${role_id}","identity_strategy":"${strategy}","resolved_identity":${synthetic_toolchain_resolved_facts(target_id,
-			strategy)},"resolution_digest":"${resolution_placeholder}","evidence_sha256":"${evidence_sha256}"}'
+		role_sources << '{"role_id":"${role_id}","identity_strategy":"${strategy}","resolved_identity":${synthetic_toolchain_resolved_facts(target_id, strategy)},"resolution_digest":"${resolution_placeholder}","evidence_sha256":"${evidence_sha256}"}'
 	}
 	observation_placeholder := '0'.repeat(64)
 	mut source := bin.canonical_json(bin.parse_strict_json('{"schema_version":1,"target_id":"${target_id}","profile_id":"${target_id}-synthetic-v1","profile_sha256":"${profile_sha256}","phase":"${phase}","roles":[${role_sources.join(',')}],"observation_digest":"${observation_placeholder}"}') or {
@@ -949,8 +947,7 @@ fn refresh_terminal_revalidation_smoke_digests(source string) string {
 	canonical_proof := bin.canonical_json(proof)
 	mut updated_proof := canonical_proof.replace_once('"v_smoke_execution":${bin.canonical_json(smoke)}',
 		'"v_smoke_execution":${bin.canonical_json(refreshed_smoke)}')
-	for projection_key in ['source_atomic_pre_projection', 'pre_business_projection',
-		'final_projection'] {
+	for projection_key in ['source_atomic_pre_projection', 'pre_business_projection', 'final_projection'] {
 		updated_proof_value := bin.parse_strict_json(updated_proof) or { panic(err) }
 		projection := updated_proof_value.object_value(projection_key) or {
 			panic('${projection_key} missing')
@@ -2916,10 +2913,9 @@ fn schema_v_smoke_execution(record bin.NativeValidationRecordModel, inputs bin.R
 		['subject_generation', (subject.object_value('subject_generation') or {
 			panic('subject generation missing')
 		}).int_value.str()],
-		['subject_ref',
-			bin.canonical_json(subject.object_value('original_ref') or {
-				panic('subject ref missing')
-			})],
+		['subject_ref', bin.canonical_json(subject.object_value('original_ref') or {
+			panic('subject ref missing')
+		})],
 		['subject_sha',
 			bin.canonical_json(subject.object_value('sha') or { panic('subject SHA missing') })],
 		['v_master_sha', '"${inputs.v_source_sha}"'],
@@ -2940,10 +2936,9 @@ fn schema_v_smoke_execution(record bin.NativeValidationRecordModel, inputs bin.R
 		['run_url', '"${record.v_smoke_gate.run_url}"'],
 		['job_url', '"${record.v_smoke_gate.job_url}"'],
 		['head_sha', '"${record.v_smoke_gate.workflow_head_sha}"'],
-		['subject_ref',
-			bin.canonical_json(subject.object_value('original_ref') or {
-				panic('subject ref missing')
-			})],
+		['subject_ref', bin.canonical_json(subject.object_value('original_ref') or {
+			panic('subject ref missing')
+		})],
 		['subject_sha', '"${record.v_smoke_gate.sha}"'],
 		['created_at', '"${record.v_smoke_gate.created_at}"'],
 		['check_run_id', record.v_smoke_gate.check_run_id.str()],
@@ -3068,10 +3063,9 @@ fn schema_blocked_red_source(authority SyntheticToolchainAuthority, consumer_kin
 		['manifest_hash', '"${case.fingerprints.manifest_hash}"'],
 		['provenance_status', '"complete"'],
 		['resolved_inputs', resolved_inputs_source_for_authority(case.inputs)],
-		['last_known_good',
-			bin.canonical_json(intent.object_value('previous_last_known_good') or {
-				panic('last good missing')
-			})],
+		['last_known_good', bin.canonical_json(intent.object_value('previous_last_known_good') or {
+			panic('last good missing')
+		})],
 		['provisional_published', if consumer_kind == 'publish_post' {
 			live_artifact_tuple_from_subject(subject)
 		} else if intent_type == 'rollback' {
@@ -4126,8 +4120,7 @@ fn test_target_owner_cas_dispatch_and_recovery_histories_are_closed() {
 		undispatched_terminal, 'recovery-h2-terminal-without-dispatch')
 	assert undispatched_terminal_issues.any(it.path == '$/recovery_handoffs/1/dispatch_generation'
 		&& it.message == 'integer is below 1'), '${undispatched_terminal_issues}'
-	assert undispatched_terminal_issues.any(
-		it.path == '$/recovery_handoffs/1/dispatch_operation_ids'
+	assert undispatched_terminal_issues.any(it.path == '$/recovery_handoffs/1/dispatch_operation_ids'
 		&& it.message == 'array has fewer than 1 items'), '${undispatched_terminal_issues}'
 
 	terminal_for_completion := bin.parse_strict_json(h2_terminal) or { panic(err) }
@@ -4179,19 +4172,16 @@ fn test_target_owner_cas_dispatch_and_recovery_histories_are_closed() {
 	wrong_business_issues := validate_schema_source('target-state.schema.json', wrong_business,
 		'recovery-h2-terminal-business-cas')
 	wrong_business_message := 'terminal H2 must follow the exact final revalidator business CAS'
-	assert wrong_business_issues.any(
-		it.path == '$/recovery_handoffs/1/terminal_revalidation/business_operation_id'
+	assert wrong_business_issues.any(it.path == '$/recovery_handoffs/1/terminal_revalidation/business_operation_id'
 		&& it.message == wrong_business_message), '${wrong_business_issues}'
-	assert !wrong_business_issues.any(
-		it.path == '$/recovery_handoffs/0/terminal_revalidation/business_operation_id'
+	assert !wrong_business_issues.any(it.path == '$/recovery_handoffs/0/terminal_revalidation/business_operation_id'
 		&& it.message == wrong_business_message), '${wrong_business_issues}'
 	terminal_without_proof := replace_recovery_successor_projection(h2_terminal,
 		'"terminal_revalidation":${bin.canonical_json(terminal_proof)}',
 		'"terminal_revalidation":null')
 	terminal_without_proof_issues := validate_schema_source('target-state.schema.json',
 		terminal_without_proof, 'recovery-h2-terminal-proof-required')
-	assert terminal_without_proof_issues.any(
-		it.path == '$/recovery_handoffs/1/terminal_revalidation'
+	assert terminal_without_proof_issues.any(it.path == '$/recovery_handoffs/1/terminal_revalidation'
 		&& it.message == 'expected type "object", got null_value'), '${terminal_without_proof_issues}'
 
 	remediation := live_remediation_source()
@@ -4322,11 +4312,9 @@ fn test_terminal_recovery_h2_rejects_every_independent_and_coordinated_drift() {
 	wrong_native_epoch_issues := validate_schema_source('target-state.schema.json',
 		wrong_native_epoch, 'native-active-epoch')
 	wrong_native_epoch_message := 'native recovery evidence must retain its exact latest contiguous selected epoch'
-	assert wrong_native_epoch_issues.any(
-		it.path == '$/recovery_handoffs/1/terminal_revalidation/native_gate_execution/active_gate_epoch'
+	assert wrong_native_epoch_issues.any(it.path == '$/recovery_handoffs/1/terminal_revalidation/native_gate_execution/active_gate_epoch'
 		&& it.message == wrong_native_epoch_message), '${wrong_native_epoch_issues}'
-	assert !wrong_native_epoch_issues.any(
-		it.path == '$/recovery_handoffs/0/terminal_revalidation/native_gate_execution/active_gate_epoch'
+	assert !wrong_native_epoch_issues.any(it.path == '$/recovery_handoffs/0/terminal_revalidation/native_gate_execution/active_gate_epoch'
 		&& it.message == wrong_native_epoch_message), '${wrong_native_epoch_issues}'
 	wrong_native_run := replace_terminal_native_evidence(h2_terminal, '"run_id":7002',
 		'"run_id":7999')
@@ -4338,21 +4326,17 @@ fn test_terminal_recovery_h2_rejects_every_independent_and_coordinated_drift() {
 		'native_gate_evidence_digest', wrong_evidence_digest)
 	predecessor_evidence_issues := validate_schema_source('target-state.schema.json',
 		predecessor_evidence_drift, 'native-predecessor-evidence-commitment')
-	assert predecessor_evidence_issues.any(
-		it.path == '$/recovery_handoffs/0/native_gate_evidence_digest'
+	assert predecessor_evidence_issues.any(it.path == '$/recovery_handoffs/0/native_gate_evidence_digest'
 		&& it.message == evidence_commitment_message), '${predecessor_evidence_issues}'
-	assert !predecessor_evidence_issues.any(
-		it.path == '$/recovery_handoffs/1/native_gate_evidence_digest'
+	assert !predecessor_evidence_issues.any(it.path == '$/recovery_handoffs/1/native_gate_evidence_digest'
 		&& it.message == evidence_commitment_message), '${predecessor_evidence_issues}'
 	successor_evidence_drift := replace_recovery_successor_root_member(h2_terminal,
 		'native_gate_evidence_digest', wrong_evidence_digest)
 	successor_evidence_issues := validate_schema_source('target-state.schema.json',
 		successor_evidence_drift, 'native-successor-evidence-commitment')
-	assert successor_evidence_issues.any(
-		it.path == '$/recovery_handoffs/1/native_gate_evidence_digest'
+	assert successor_evidence_issues.any(it.path == '$/recovery_handoffs/1/native_gate_evidence_digest'
 		&& it.message == evidence_commitment_message), '${successor_evidence_issues}'
-	assert !successor_evidence_issues.any(
-		it.path == '$/recovery_handoffs/0/native_gate_evidence_digest'
+	assert !successor_evidence_issues.any(it.path == '$/recovery_handoffs/0/native_gate_evidence_digest'
 		&& it.message == evidence_commitment_message), '${successor_evidence_issues}'
 
 	mut coordinated_native_actor := replace_recovery_successor_all(h2_terminal,
@@ -4601,7 +4585,7 @@ fn test_terminal_recovery_h2_review_regression_matrix_is_discriminating() {
 	] {
 		mut coordinated_source_drift := replace_terminal_proof_member(source_waiting,
 			'source_state_snapshot', bin.canonical_json(source_post_state).replace_once(source_case[1],
-			source_case[2]))
+				source_case[2]))
 		coordinated_source_drift =
 			refresh_terminal_source_evidence_digests(coordinated_source_drift)
 		assert_target_semantic_rejection(coordinated_source_drift,
@@ -4610,23 +4594,20 @@ fn test_terminal_recovery_h2_review_regression_matrix_is_discriminating() {
 	}
 	mut coordinated_mode_drift := replace_terminal_proof_member(source_waiting,
 		'source_state_snapshot', bin.canonical_json(source_post_state).replace_once('"mode":"upstream-recovery-daily"',
-		'"mode":"monthly"'))
+			'"mode":"monthly"'))
 	coordinated_mode_drift = refresh_terminal_source_evidence_digests(coordinated_mode_drift)
 	coordinated_mode_issues := validate_schema_source('target-state.schema.json',
 		coordinated_mode_drift, 'recovery-h2-source-coordinated-mode')
-	assert coordinated_mode_issues.any(
-		it.path == '$/recovery_handoffs/1/terminal_revalidation/source_state_snapshot'
+	assert coordinated_mode_issues.any(it.path == '$/recovery_handoffs/1/terminal_revalidation/source_state_snapshot'
 		&& it.message == 'expected exactly one oneOf branch, got 0'), '${coordinated_mode_issues}'
 	source_waiting_with_infrastructure_retry := live_recovery_h2_source_waiting_variant_for('publish_post',
 		true, false)
 	source_waiting_retry_issues := validate_schema_source('target-state.schema.json',
 		source_waiting_with_infrastructure_retry,
 		'recovery-h2-source-does-not-consume-infrastructure-retry')
-	assert source_waiting_retry_issues.any(
-		it.path == '$/recovery_handoffs/1/terminal_revalidation/v_smoke_execution'
+	assert source_waiting_retry_issues.any(it.path == '$/recovery_handoffs/1/terminal_revalidation/v_smoke_execution'
 		&& it.message == 'source waiting must stop after the first infrastructure observation without consuming the CI infrastructure retry'), '${source_waiting_retry_issues}'
-	assert !source_waiting_retry_issues.any(
-		it.path == '$/recovery_handoffs/0/terminal_revalidation/v_smoke_execution'
+	assert !source_waiting_retry_issues.any(it.path == '$/recovery_handoffs/0/terminal_revalidation/v_smoke_execution'
 		&& it.message == 'source waiting must stop after the first infrastructure observation without consuming the CI infrastructure retry'), '${source_waiting_retry_issues}'
 	assert !source_waiting_retry_issues.any(it.message == 'expected exactly one oneOf branch, got 0'), '${source_waiting_retry_issues}'
 	mut refetch_not_later := source_waiting.replace('2026-08-03T02:01:00Z', '2026-08-03T01:00:00Z')
@@ -4658,11 +4639,9 @@ fn test_terminal_recovery_h2_review_regression_matrix_is_discriminating() {
 	wrong_source = refresh_terminal_source_evidence_digests(wrong_source)
 	wrong_source_issues := validate_schema_source('target-state.schema.json', wrong_source,
 		'recovery-h2-source-waiting-unbound-source')
-	assert wrong_source_issues.any(
-		it.path == '$/recovery_handoffs/1/terminal_revalidation/source_refetch'
+	assert wrong_source_issues.any(it.path == '$/recovery_handoffs/1/terminal_revalidation/source_refetch'
 		&& it.message == 'source_waiting proof must identify one prior resolved input and a fresh append-only source CAS from the independent pre-state to the exact durable outage state'), '${wrong_source_issues}'
-	assert !wrong_source_issues.any(
-		it.path == '$/recovery_handoffs/0/terminal_revalidation/source_refetch'
+	assert !wrong_source_issues.any(it.path == '$/recovery_handoffs/0/terminal_revalidation/source_refetch'
 		&& it.message == 'source_waiting proof must identify one prior resolved input and a fresh append-only source CAS from the independent pre-state to the exact durable outage state'), '${wrong_source_issues}'
 	assert !wrong_source_issues.any(it.message == 'current terminal H2 snapshot differs from the authoritative current target root'), '${wrong_source_issues}'
 
@@ -4673,11 +4652,9 @@ fn test_terminal_recovery_h2_review_regression_matrix_is_discriminating() {
 		'terminal_completed_at', '"2026-08-03T02:01:02Z"')
 	infrastructure_as_source_issues := validate_schema_source('target-state.schema.json',
 		infrastructure_as_source, 'recovery-h2-infrastructure-is-not-source')
-	assert infrastructure_as_source_issues.any(
-		it.path == '$/recovery_handoffs/1/terminal_revalidation/business_operation_id'
+	assert infrastructure_as_source_issues.any(it.path == '$/recovery_handoffs/1/terminal_revalidation/business_operation_id'
 		&& it.message == 'terminal H2 must follow the exact final revalidator business CAS'), '${infrastructure_as_source_issues}'
-	assert !infrastructure_as_source_issues.any(
-		it.path == '$/recovery_handoffs/0/terminal_revalidation/business_operation_id'
+	assert !infrastructure_as_source_issues.any(it.path == '$/recovery_handoffs/0/terminal_revalidation/business_operation_id'
 		&& it.message == 'terminal H2 must follow the exact final revalidator business CAS'), '${infrastructure_as_source_issues}'
 	assert !infrastructure_as_source_issues.any(it.path == '$/recovery_handoffs/1/terminal_completed_at'), '${infrastructure_as_source_issues}'
 	assert !infrastructure_as_source_issues.any(it.message == 'expected exactly one oneOf branch, got 0'), '${infrastructure_as_source_issues}'
@@ -4687,21 +4664,17 @@ fn test_terminal_recovery_h2_review_regression_matrix_is_discriminating() {
 		'terminal_completed_at', 'null')
 	source_as_infrastructure_issues := validate_schema_source('target-state.schema.json',
 		source_as_infrastructure, 'recovery-h2-source-is-not-generic-infrastructure')
-	assert source_as_infrastructure_issues.any(
-		it.path == '$/recovery_handoffs/1/terminal_revalidation/source_refetch'
+	assert source_as_infrastructure_issues.any(it.path == '$/recovery_handoffs/1/terminal_revalidation/source_refetch'
 		&& it.message == 'non-source terminal outcomes cannot invent a refetch, source-state CAS history, or source outage replacement'), '${source_as_infrastructure_issues}'
-	assert !source_as_infrastructure_issues.any(
-		it.path == '$/recovery_handoffs/0/terminal_revalidation/source_refetch'
+	assert !source_as_infrastructure_issues.any(it.path == '$/recovery_handoffs/0/terminal_revalidation/source_refetch'
 		&& it.message == 'non-source terminal outcomes cannot invent a refetch, source-state CAS history, or source outage replacement'), '${source_as_infrastructure_issues}'
 	assert !source_as_infrastructure_issues.any(it.path == '$/recovery_handoffs/1/terminal_completed_at'), '${source_as_infrastructure_issues}'
 	assert !source_as_infrastructure_issues.any(it.message == 'expected exactly one oneOf branch, got 0'), '${source_as_infrastructure_issues}'
 	unexhausted_infrastructure_issues := validate_schema_source('target-state.schema.json',
 		source_as_infrastructure, 'recovery-h2-infrastructure-retry-not-exhausted')
-	assert unexhausted_infrastructure_issues.any(
-		it.path == '$/recovery_handoffs/1/terminal_revalidation/v_smoke_execution'
+	assert unexhausted_infrastructure_issues.any(it.path == '$/recovery_handoffs/1/terminal_revalidation/v_smoke_execution'
 		&& it.message == 'terminal infrastructure routing requires both bounded logical attempts to finish as infrastructure with the single retry consumed'), '${unexhausted_infrastructure_issues}'
-	assert !unexhausted_infrastructure_issues.any(
-		it.path == '$/recovery_handoffs/0/terminal_revalidation/v_smoke_execution'
+	assert !unexhausted_infrastructure_issues.any(it.path == '$/recovery_handoffs/0/terminal_revalidation/v_smoke_execution'
 		&& it.message == 'terminal infrastructure routing requires both bounded logical attempts to finish as infrastructure with the single retry consumed'), '${unexhausted_infrastructure_issues}'
 	assert !unexhausted_infrastructure_issues.any(it.message == 'expected exactly one oneOf branch, got 0'), '${unexhausted_infrastructure_issues}'
 
@@ -4805,8 +4778,7 @@ fn test_terminal_recovery_h2_review_regression_matrix_is_discriminating() {
 		unrelated_ancestry)
 	unrelated_ancestry_issues := validate_schema_source('target-state.schema.json',
 		unrelated_ancestry_source, 'recovery-h2-adopt-unrelated-relationship')
-	assert unrelated_ancestry_issues.any(
-		it.path == '$/recovery_handoffs/1/terminal_revalidation/git_ancestry_proof'
+	assert unrelated_ancestry_issues.any(it.path == '$/recovery_handoffs/1/terminal_revalidation/git_ancestry_proof'
 		&& it.message == 'expected exactly one oneOf branch, got 0'), '${unrelated_ancestry_issues}'
 }
 
@@ -4842,8 +4814,8 @@ fn test_gate_history_and_post_round_trip_keep_candidate_proofs_green() {
 		'green or retained historical gates require both run and check conclusions success')
 
 	for post_case in [
-		['publish', live_publish_post_source(), 'post_publish_validating',
-			'post_publish_waiting_source', 'post_publish_blocked'],
+		['publish', live_publish_post_source(), 'post_publish_validating', 'post_publish_waiting_source',
+			'post_publish_blocked'],
 		['rollback', live_rollback_post_source(), 'rollback_pending', 'rollback_waiting_source',
 			'rollback_blocked'],
 	] {
@@ -5294,10 +5266,10 @@ fn test_native_validation_record_shape_caps_and_terminal_versions_are_closed() {
 	required := record.object_value('required') or {
 		panic('native validation required set missing')
 	}
-	assert required.array_value.map(it.string_value) == ['schema_version', 'operation_id',
-		'transition', 'resulting_generation', 'verdict', 'manifest_source', 'manifest_hash',
-		'native_lane_matrix', 'matrix_digest', 'evidence', 'capsule_digest', 'native_gate',
-		'v_smoke_gate', 'validation_digest']
+	assert required.array_value.map(it.string_value) == ['schema_version', 'operation_id', 'transition',
+		'resulting_generation', 'verdict', 'manifest_source', 'manifest_hash', 'native_lane_matrix',
+		'matrix_digest', 'evidence', 'capsule_digest', 'native_gate', 'v_smoke_gate',
+		'validation_digest']
 	properties := record.object_value('properties') or {
 		panic('native validation properties missing')
 	}

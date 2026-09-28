@@ -12,6 +12,7 @@ $if freebsd {
 	#flag -I/usr/X11R6/include
 	#flag -L/usr/X11R6/lib
 }
+
 #flag -lX11
 
 // Include X11 headers BEFORE any type definitions to avoid incomplete type errors
@@ -42,7 +43,7 @@ pub mut:
 	selection Atom
 	target    Atom
 	property  Atom
-	time      int
+	time      Time
 }
 
 @[typedef]
@@ -61,7 +62,7 @@ pub mut:
 	selection Atom
 	target    Atom
 	property  Atom
-	time      int
+	time      Time
 }
 
 @[typedef]
@@ -141,8 +142,8 @@ pub mut:
 	xselection        C.XSelectionEvent
 }
 
-const atom_names = ['TARGETS', 'CLIPBOARD', 'PRIMARY', 'SECONDARY', 'TEXT', 'UTF8_STRING',
-	'text/plain', 'text/html']
+const atom_names = ['TARGETS', 'CLIPBOARD', 'PRIMARY', 'SECONDARY', 'TEXT', 'UTF8_STRING', 'text/plain',
+	'text/html']
 const atom_types = [AtomType.targets, .clipboard, .primary, .secondary, .text, .utf8_string,
 	.text_plain, .text_html]
 
@@ -204,7 +205,7 @@ fn new_x11_clipboard(selection AtomType) &Clipboard {
 
 	display := new_display()
 
-	if display == C.NULL {
+	if display == unsafe { nil } {
 		println('ERROR: No X Server running. Clipboard cannot be used.')
 		return &Clipboard{
 			display: unsafe { nil }
@@ -227,7 +228,7 @@ fn new_x11_clipboard(selection AtomType) &Clipboard {
 
 // check_availability returns `true` if the clipboard is available for use.
 pub fn (cb &Clipboard) check_availability() bool {
-	return cb.display != C.NULL
+	return cb.display != unsafe { nil }
 }
 
 // free releases the clipboard resources.
@@ -519,7 +520,7 @@ fn create_xwindow(display &C.Display) Window {
 }
 
 fn new_display() &C.Display {
-	return C.XOpenDisplay(C.NULL)
+	return C.XOpenDisplay(unsafe { nil })
 }
 
 // new_primary returns a new X11 `PRIMARY` type `Clipboard` instance allocated on the heap.

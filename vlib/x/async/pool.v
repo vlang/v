@@ -119,7 +119,8 @@ pub fn (mut p Pool) submit_with_context(parent context.Context, f JobFn) ! {
 			}
 			watch_done = false
 		}
-		else {}
+		else {
+		}
 	}
 	for {
 		p.mutex.lock()

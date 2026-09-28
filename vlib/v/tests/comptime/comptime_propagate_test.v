@@ -29,9 +29,9 @@ fn (e &Encoder) encode_struct[T](val T) {
 			}
 		} $else {
 			$if field.typ is ?int {
-				assert val.$(field.name) ?.str() == '789'
+				assert val.$(field.name)?.str() == '789'
 			} $else $if field.typ is ?string {
-				assert val.$(field.name) ?.int() == 321
+				assert val.$(field.name)?.int() == 321
 			}
 		}
 	}

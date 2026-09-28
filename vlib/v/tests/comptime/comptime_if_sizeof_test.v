@@ -25,52 +25,52 @@ fn test_comptime_if_sizeof() {
 }
 
 fn f[T]() {
-	$if sizeof(T) == 2 {
+	$if sizeof ( T ) == 2 {
 		assert true
 	} $else {
 		assert false
 	}
-	$if sizeof(T) != 2 {
+	$if sizeof ( T ) != 2 {
 		assert false
 	} $else {
 		assert true
 	}
-	$if sizeof(T) < 1 {
+	$if sizeof ( T ) < 1 {
 		assert false
 	} $else {
 		assert true
 	}
-	$if sizeof(T) < 3 {
+	$if sizeof ( T ) < 3 {
 		assert true
 	} $else {
 		assert false
 	}
-	$if sizeof(T) > 1 {
+	$if sizeof ( T ) > 1 {
 		assert true
 	} $else {
 		assert false
 	}
-	$if sizeof(T) > 2 {
+	$if sizeof ( T ) > 2 {
 		assert false
 	} $else {
 		assert true
 	}
-	$if sizeof(T) <= 2 {
+	$if sizeof ( T ) <= 2 {
 		assert true
 	} $else {
 		assert false
 	}
-	$if sizeof(T) <= 1 {
+	$if sizeof ( T ) <= 1 {
 		assert false
 	} $else {
 		assert true
 	}
-	$if sizeof(T) >= 2 {
+	$if sizeof ( T ) >= 2 {
 		assert true
 	} $else {
 		assert false
 	}
-	$if sizeof(T) >= 3 {
+	$if sizeof ( T ) >= 3 {
 		assert false
 	} $else {
 		assert true
@@ -78,52 +78,52 @@ fn f[T]() {
 }
 
 fn g[T]() {
-	$if sizeof(T) == 16 {
+	$if sizeof ( T ) == 16 {
 		assert true
 	} $else {
 		assert false
 	}
-	$if sizeof(T) != 16 {
+	$if sizeof ( T ) != 16 {
 		assert false
 	} $else {
 		assert true
 	}
-	$if sizeof(T) < 17 {
+	$if sizeof ( T ) < 17 {
 		assert true
 	} $else {
 		assert false
 	}
-	$if sizeof(T) < 15 {
+	$if sizeof ( T ) < 15 {
 		assert false
 	} $else {
 		assert true
 	}
-	$if sizeof(T) > 15 {
+	$if sizeof ( T ) > 15 {
 		assert true
 	} $else {
 		assert false
 	}
-	$if sizeof(T) > 16 {
+	$if sizeof ( T ) > 16 {
 		assert false
 	} $else {
 		assert true
 	}
-	$if sizeof(T) <= 16 {
+	$if sizeof ( T ) <= 16 {
 		assert true
 	} $else {
 		assert false
 	}
-	$if sizeof(T) <= 15 {
+	$if sizeof ( T ) <= 15 {
 		assert false
 	} $else {
 		assert true
 	}
-	$if sizeof(T) >= 16 {
+	$if sizeof ( T ) >= 16 {
 		assert true
 	} $else {
 		assert false
 	}
-	$if sizeof(T) >= 17 {
+	$if sizeof ( T ) >= 17 {
 		assert false
 	} $else {
 		assert true

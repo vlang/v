@@ -3,6 +3,21 @@ module driver
 import os
 import v.pref
 
+fn test_module_cache_compiler_identity_changes_when_executable_changes() {
+	root := os.join_path(os.vtmp_dir(), 'v3_cache_vexe_identity_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root)!
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	vexe := os.join_path(root, 'v')
+	os.write_file(vexe, 'old compiler')!
+	old_identity := v3_cache_compiler_executable_identity(vexe)
+	os.write_file(vexe, 'new compiler executable')!
+	new_identity := v3_cache_compiler_executable_identity(vexe)
+	assert old_identity != new_identity
+}
+
 fn test_large_cold_cache_restarts_without_cache() {
 	limit := scoped_large_cold_cache_node_limit
 	assert should_restart_v3_large_cold_cache(true, true, limit, false, false, false)
@@ -111,6 +126,31 @@ fn test_c_source_references_identifiers_ignores_comments_strings_and_longer_name
 		identifiers)
 }
 
+fn test_target_libc_cached_prefix_refreshes_when_thread_support_changes() {
+	no_threads := '#include <stdint.h>\n'
+	type_only := '#include <pthread.h>\ntypedef struct { pthread_t handle; } __v_thread;\n'
+	runtime := '${type_only}static __v_thread __v_thread_spawn(void);\n'
+	pthread_header := '#include <pthread.h>\n'
+	assert target_libc_cached_prefix_needs_thread_refresh(no_threads,
+		'void main__main(void) { pthread_self(); }')
+	assert !target_libc_cached_prefix_needs_thread_refresh(pthread_header,
+		'void main__main(void) { pthread_self(); }')
+	assert target_libc_cached_prefix_needs_thread_refresh(no_threads,
+		'void main__main(void) { sizeof(__v_thread); }')
+	assert !target_libc_cached_prefix_needs_thread_refresh(type_only,
+		'void main__main(void) { sizeof(__v_thread); }')
+	assert target_libc_cached_prefix_needs_thread_refresh(type_only,
+		'void main__main(void) { __v_thread_spawn(); }')
+	assert !target_libc_cached_prefix_needs_thread_refresh(runtime,
+		'void main__main(void) { __v_thread_spawn(); }')
+	assert target_libc_cached_prefix_needs_thread_refresh(runtime,
+		'void main__main(void) { sizeof(__v_thread); }')
+	assert target_libc_cached_prefix_needs_thread_refresh(runtime, 'void main__main(void) {}')
+	assert target_libc_cached_prefix_needs_thread_refresh(type_only, 'void main__main(void) {}')
+	assert !target_libc_cached_prefix_needs_thread_refresh(no_threads,
+		'// __v_thread pthread_self\nconst char *name = "__v_thread_spawn pthread_create";\n')
+}
+
 fn test_cache_native_public_include_strips_conventional_implementation_macros() {
 	include := cache_native_public_include('/tmp/native.h', [
 		'#define FEATURE 1',
@@ -215,8 +255,8 @@ int v3_unconditional_helper(void) { return 7; }
 	// still emit v3_unconditional_helper and duplicate the owner symbol.
 	assert cache_native_public_include_replays_external_definition(real_header, []string{},
 		map[string]bool{}, {
-		real_header: true
-	}, []string{}, 'cc', pref.host_target())
+			real_header: true
+		}, []string{}, 'cc', pref.host_target())
 }
 
 fn test_cache_native_public_include_keeps_static_definition_private() {
@@ -235,8 +275,8 @@ static int v3_private_helper(void) { return 7; }
 	// cannot collide; splitting stays safe.
 	assert !cache_native_public_include_replays_external_definition(real_header, []string{},
 		map[string]bool{}, {
-		real_header: true
-	}, []string{}, 'cc', pref.host_target())
+			real_header: true
+		}, []string{}, 'cc', pref.host_target())
 }
 
 fn test_cache_native_public_include_falls_back_when_isolated_preprocessing_fails() {
@@ -285,13 +325,14 @@ V3_LOCAL V3MacroStaticType v3_macro_static_make(void) {
 	// the helper recognizes the internal linkage and keeps splitting enabled.
 	assert !cache_native_public_include_replays_external_definition(real_header, []string{},
 		map[string]bool{}, {
-		real_header: true
-	}, []string{}, 'cc', pref.host_target())
+			real_header: true
+		}, []string{}, 'cc', pref.host_target())
 }
 
 fn test_cache_c_flags_without_forced_inputs_drops_forced_files() {
 	filtered := cache_c_flags_without_forced_inputs(['-DFEATURE=1', '-include', '/tmp/forced.h',
-		'-I/tmp/inc', '-imacros', '/tmp/macros.h', '-DOTHER'])
+		'-I/tmp/inc', '-imacros', '/tmp/macros.h', '-include=/tmp/joined.h',
+		'-imacros=/tmp/joined_macros.h', '-DOTHER'])
 	assert filtered == ['-DFEATURE=1', '-I/tmp/inc', '-DOTHER']
 }
 

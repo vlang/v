@@ -89,11 +89,15 @@ fn managed_baseline_evidence_fixture(manifest_source string) ManagedBaselineEvid
 			entries << bin.JsonValue{
 				kind:          .object
 				object_keys:   ['id', 'repository', 'ref', 'authority']
-				object_values: [source.object_value('id') or { panic('source ID missing') },
-					repository, reference, bin.JsonValue{
+				object_values: [
+					source.object_value('id') or { panic('source ID missing') },
+					repository,
+					reference,
+					bin.JsonValue{
 						kind:         .string_value
 						string_value: 'runtime-contract'
-					}]
+					},
+				]
 			}
 			continue
 		}
@@ -123,19 +127,25 @@ fn managed_baseline_evidence_fixture(manifest_source string) ManagedBaselineEvid
 		resolved_source = managed_baseline_resolve_manifest_source(resolved_source, id, sha, tree)
 		entries << bin.JsonValue{
 			kind:          .object
-			object_keys:   ['id', 'repository', 'ref', 'authority', 'sha', 'tree',
-				'raw_commit_base64']
-			object_values: [source.object_value('id') or { panic('source ID missing') },
-				repository, reference, bin.JsonValue{
+			object_keys:   ['id', 'repository', 'ref', 'authority', 'sha', 'tree', 'raw_commit_base64']
+			object_values: [
+				source.object_value('id') or { panic('source ID missing') },
+				repository,
+				reference,
+				bin.JsonValue{
 					kind:         .string_value
 					string_value: 'source-commit-object'
-				}, bin.JsonValue{
+				},
+				bin.JsonValue{
 					kind:         .string_value
 					string_value: sha
-				}, managed_baseline_string(tree), bin.JsonValue{
+				},
+				managed_baseline_string(tree),
+				bin.JsonValue{
 					kind:         .string_value
 					string_value: base64.encode(raw)
-				}]
+				},
+			]
 		}
 	}
 	return ManagedBaselineEvidenceFixture{
@@ -259,8 +269,7 @@ fn t2a_profile_source_with_id(target_id string, profile_id string) string {
 	for phase in ['producer', 'validator'] {
 		mut roles := []string{}
 		for strategy in strategies {
-			roles << '{"role_id":"${t2a_role_id(phase, strategy, strategies.len)}","identity_strategy":"${strategy}","identity_policy":${t2a_policy_facts(target_id,
-				strategy)}}'
+			roles << '{"role_id":"${t2a_role_id(phase, strategy, strategies.len)}","identity_strategy":"${strategy}","identity_policy":${t2a_policy_facts(target_id, strategy)}}'
 		}
 		phases[phase] = roles.join(',')
 	}
@@ -293,8 +302,7 @@ fn t2b_toolchain_observation_source_with_profile(target_id string, profile_id st
 		role_id := t2a_role_id(phase, strategy, strategies.len)
 		evidence_sha256 :=
 			sha256.sum256(t2c_toolchain_evidence_source(phase, role_id).bytes()).hex()
-		roles << '{"role_id":"${role_id}","identity_strategy":"${strategy}","resolved_identity":${t2a_resolved_facts(target_id,
-			strategy)},"resolution_digest":"${placeholder}","evidence_sha256":"${evidence_sha256}"}'
+		roles << '{"role_id":"${role_id}","identity_strategy":"${strategy}","resolved_identity":${t2a_resolved_facts(target_id, strategy)},"resolution_digest":"${placeholder}","evidence_sha256":"${evidence_sha256}"}'
 	}
 	observation_placeholder := '0'.repeat(64)
 	mut source := bin.canonical_json(bin.parse_strict_json('{"schema_version":1,"target_id":"${target_id}","profile_id":"${profile_id}","profile_sha256":"${profile_sha256}","phase":"${phase}","roles":[${roles.join(',')}],"observation_digest":"${observation_placeholder}"}') or {

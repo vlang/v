@@ -150,7 +150,8 @@ fn test_every_does_not_overlap_iterations() {
 	worker := spawn fn [parent_ctx, active, entered, release, overlap, result] () {
 		xasync.every(parent_ctx, 5 * time.millisecond, fn [active, entered, release, overlap] (mut ctx context.Context) ! {
 			select {
-				_ := <-active {}
+				_ := <-active {
+				}
 				else {
 					overlap <- true
 					return error('periodic overlap')
@@ -159,7 +160,8 @@ fn test_every_does_not_overlap_iterations() {
 			entered <- true
 			done := ctx.done()
 			select {
-				_ := <-release {}
+				_ := <-release {
+				}
 				_ := <-done {
 					active <- true
 					return ctx.err()
@@ -178,13 +180,15 @@ fn test_every_does_not_overlap_iterations() {
 		_ := <-entered {
 			assert false, 'periodic iterations overlapped while first job was still running'
 		}
-		50 * time.millisecond {}
+		50 * time.millisecond {
+		}
 	}
 	select {
 		did_overlap := <-overlap {
 			assert !did_overlap
 		}
-		else {}
+		else {
+		}
 	}
 
 	release <- true
@@ -255,14 +259,27 @@ fn test_periodic_handle_stop_before_first_iteration() {
 }
 
 fn test_periodic_handle_stop_between_ticks() {
-	ticks := chan bool{cap: 2}
+	ticks := chan bool{cap: 1}
 	mut handle := xasync.start_every(context.background(), 5 * time.millisecond, fn [ticks] (mut ctx context.Context) ! {
 		_ = ctx
-		ticks <- true
+		// A blocking send would stall the loop, and so wait(), once ticks queue up.
+		select {
+			ticks <- true {
+			}
+			else {
+			}
+		}
 	})!
 	wait_for_periodic_entry(ticks)
 	handle.stop()
 	handle.wait()!
+	// A tick may land between reading the first one and stop(); only later ones count.
+	select {
+		_ := <-ticks {
+		}
+		else {
+		}
+	}
 	assert_no_periodic_signal(ticks, 'periodic handle ticked again after stop and wait')
 }
 
@@ -357,7 +374,8 @@ fn test_periodic_handle_does_not_overlap_iterations() {
 	overlap := chan bool{cap: 1}
 	mut handle := xasync.start_every(context.background(), 5 * time.millisecond, fn [active, entered, release, overlap] (mut ctx context.Context) ! {
 		select {
-			_ := <-active {}
+			_ := <-active {
+			}
 			else {
 				overlap <- true
 				return error('periodic handle overlap')
@@ -376,7 +394,8 @@ fn test_periodic_handle_does_not_overlap_iterations() {
 		did_overlap := <-overlap {
 			assert !did_overlap
 		}
-		else {}
+		else {
+		}
 	}
 
 	release <- true
@@ -417,6 +436,7 @@ fn assert_no_periodic_signal(signal chan bool, message string) {
 		_ := <-signal {
 			assert false, message
 		}
-		50 * time.millisecond {}
+		50 * time.millisecond {
+		}
 	}
 }

@@ -232,8 +232,8 @@ pub fn PrivateKey.new(opt CurveOptions) !PrivateKey {
 		return error_with_code('crypto.ecdsa: mbedtls_ecdsa_genkey failed', ret)
 	}
 	return PrivateKey{
-		ctx: ctx
-		nid: opt.nid
+		ctx:     ctx
+		nid:     opt.nid
 		ks_flag: .fixed
 	}
 }
