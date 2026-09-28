@@ -145,7 +145,8 @@ fn test_flag_error_messages() {
 			assert false, 'flags should not have reached this assert'
 		} else {
 			if e_num == .short {
-				assert err.msg() == 'long delimiter `--` encountered in flag `--mix` in short (POSIX) style parsing mode'
+				// `-version` is a cluster of the short flags `-v -e -r -s -i -o -n` in POSIX style
+				assert err.msg() == 'unknown flag `-e` in short flag cluster `-version`'
 			} else if e_num == .long {
 				assert err.msg() == 'short delimiter `-` encountered in flag `-vv` in long (GNU) style parsing mode'
 			} else {

@@ -385,6 +385,12 @@ The pre-split main, TinyCC, and runtime-prefix sources are restored as `C module
 Source, imported-module, native-input, compiler, target, flag, or configuration changes invalidate
 the plan and run the complete diagnostic and generation pipeline normally.
 
+If the C toolchain rejects a cached V artifact as missing or malformed, V3 warns, removes the
+affected cache entry and its metadata, then restarts the build once. If the retry still fails, the
+warning names the rejected artifact; run `./v wipe-cache` to clear all caches before retrying.
+This recovery applies only to V-owned cache files. `-nocache` disables the module and FastC caches,
+but third-party object cache entries may still be repaired.
+
 ## Architecture
 
 ```

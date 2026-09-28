@@ -50,15 +50,15 @@ For a list of all features and fixes, check out the changelog.
 
 - [ ] Custom attributes
 - [ ] Contexts that are passed implicitly (e.g. for custom allocation/memory management)
-- [ ] 64/32 bit int depending on arch (will remove array.len limitation on 64 bit systems)
+- [x] 64/32 bit int depending on arch (will remove array.len limitation on 64 bit systems)
 - [ ] `copy()` builtin function (e.g. for easier conversion from `[]Foo` to `[4]Foo`)
-- [ ] Integrate the new parallel parser/checker/cc
-- [ ] Incremental compilation
+- [x] Integrate the new parallel parser/checker/cc
+- [x] Incremental compilation
 - [ ] Runtime race detector
 - [ ] [Thread safe maps](https://github.com/vlang/v/discussions/11729)
 - [ ] `recover()` from panics
-- [ ] -usecache on by default
-- [ ] ORM migrations
+- [x] -usecache on by default
+- [x] ORM migrations
 - [ ] Make ORM work without installing developer libs (libpq-dev etc)
 
 ## [Version 1.0]
@@ -74,15 +74,15 @@ For a list of all features and fixes, check out the changelog.
 
 ### Tooling
 
-- [ ] More stable VLS
+- [x] More stable VLS
 - [ ] Profiler improvements
   - [ ] Basic interactive shell with search, sort, filter, etc.
 - [ ] VPM
   - [x] New VPM site
   - [ ] Package versioning
-- [ ] A better documentation platform
+- [x] A better documentation platform
 
 ### Web
 
-- [ ] Site that brings everything together in a single style
+- [x] Site that brings everything together in a single style
 - [ ] Interactive educational platform (learning to program for beginners)

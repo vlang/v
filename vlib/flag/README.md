@@ -10,8 +10,8 @@ The module supports several flag "styles" like:
 
 * POSIX short style (`-v`)
 * POSIX short style repeats (`-vvvvv`)
-* GNU long style (`--long` / `--long=value`
-* Go `flag` module style (`-flag`, `-flag-name` and GNU long)
+* GNU long style (`--long` / `--long=value` / `--long value`)
+* Go `flag` module style (`-flag`, `-flag-name`, `-flag=value`, `-flag value` and GNU long)
 * V style (`-v`,`-version`)
 * V long style (`--v`,`--version`) as supported by `flag.FlagParser`
 

@@ -2197,7 +2197,7 @@ fn (mut tc TypeChecker) build_declaration_param_mutability_index(a &flat.FlatAst
 }
 
 // build_fn_name_indexes records the short names, per-file bare names and
-// static/associated keys of every V function declaration.
+// static/associated keys of V and interop function declarations.
 fn (mut tc TypeChecker) build_fn_name_indexes(a &flat.FlatAst) {
 	tc.static_associated_fn_keys = map[string]bool{}
 	tc.fn_decl_short_name_ids = map[string]int{}
@@ -2209,20 +2209,28 @@ fn (mut tc TypeChecker) build_fn_name_indexes(a &flat.FlatAst) {
 			module_name = node.value
 			continue
 		}
-		if node.kind != .fn_decl {
+		if node.kind !in [.fn_decl, .c_fn_decl] {
 			continue
 		}
-		short_name := node.value.all_after_last('.')
-		if short_name !in tc.fn_decl_short_name_ids {
-			tc.fn_decl_short_name_ids[short_name] = index
+		if node.kind == .fn_decl {
+			short_name := node.value.all_after_last('.')
+			if short_name !in tc.fn_decl_short_name_ids {
+				tc.fn_decl_short_name_ids[short_name] = index
+			}
+			tc.file_bare_fn_names['${node.pos.id}\x00${node.value}'] = true
 		}
-		tc.file_bare_fn_names['${node.pos.id}\x00${node.value}'] = true
-		if node.value.contains('.') || node.is_static_type_method() {
-			qname := checker_qualified_fn_name(module_name, node.value)
+		decl_name := if node.kind == .c_fn_decl && !node.value.starts_with('C.') {
+			'C.${node.value}'
+		} else {
+			node.value
+		}
+		if decl_name.contains('.') || node.is_static_type_method() {
+			qname := checker_qualified_fn_name(module_name, decl_name)
 			is_static := node.is_static_type_method() || node.children_count == 0
 				|| a.child_node(&node, 0).kind != .param || a.child_node(&node, 0).op != .dot
-			if node.value !in tc.static_associated_fn_keys {
-				tc.static_associated_fn_keys[node.value] = is_static
+			// A declaration's canonical key takes priority over another module's bare alias.
+			if qname == decl_name || decl_name !in tc.static_associated_fn_keys {
+				tc.static_associated_fn_keys[decl_name] = is_static
 			}
 			if qname !in tc.static_associated_fn_keys {
 				tc.static_associated_fn_keys[qname] = is_static
@@ -3617,7 +3625,7 @@ fn (mut tc TypeChecker) collect_after_index(a &flat.FlatAst) {
 				for i in 0 .. node.children_count {
 					f := a.child_node(node_ref, i)
 					if f.kind == .enum_field {
-						fields << escaped_identifier_name(f.value)
+						fields << f.value
 					}
 				}
 				tc.enum_fields[qn] = fields
@@ -4672,10 +4680,6 @@ fn (tc &TypeChecker) c_struct_redeclaration_allowed(qname string, first_file str
 		&& tc.c_struct_decl_is_vlib_winsize_shim(second_file, second_module) {
 		return true
 	}
-	if qname == 'C.cJSON' && tc.c_struct_decl_is_vlib_cjson(first_file, first_module)
-		&& tc.c_struct_decl_is_vlib_cjson(second_file, second_module) {
-		return true
-	}
 	return false
 }
 
@@ -4703,20 +4707,6 @@ fn (tc &TypeChecker) c_struct_decl_is_vlib_termios_shim(file string, module_name
 	base := normalized.all_after_last('/')
 	return (module_name == 'term' && base.starts_with('term_'))
 		|| (module_name in ['termios', 'term.termios'] && base.starts_with('termios_'))
-}
-
-fn (tc &TypeChecker) c_struct_decl_is_vlib_cjson(file string, module_name string) bool {
-	if module_name !in ['json', 'cjson', 'json.cjson'] {
-		return false
-	}
-	normalized := file.replace('\\', '/')
-	if normalized.contains('/vlib/json/json_primitives.c.v')
-		|| normalized.contains('/vlib/json/cjson/cjson_wrapper.c.v') {
-		return true
-	}
-	base := normalized.all_after_last('/')
-	return normalized.contains('/v3_module_cache_') && normalized.ends_with('.vh')
-		&& (base.starts_with('json_') || base.starts_with('cjson_'))
 }
 
 fn (tc &TypeChecker) c_struct_decl_signature(a &flat.FlatAst, node flat.Node) string {
@@ -5865,6 +5855,17 @@ fn (mut tc TypeChecker) register_file_import(alias string, module_name string) {
 	info.imports[alias] = module_name
 }
 
+// removed_json_module_message explains an unresolved `import json`: the cJSON based
+// `json` module was replaced by `json2`. vfmt migrates the usual calls, but leaves
+// files it cannot rewrite safely unchanged, so the manual replacements follow.
+fn removed_json_module_message(file string) string {
+	return 'the `json` module was removed, use `json2` instead.\n' +
+		'`v fmt -w ${file}` rewrites the usual `json` calls to `json2`, and leaves code it cannot rewrite safely unchanged.\n' +
+		'To migrate by hand, import `json2` and replace `json.decode(T, s)` with `json2.decode[T](s)`, ' +
+		'`json.encode(x)` with `json2.encode(x, escape_unicode: true, time_as_unix: true)`, and ' +
+		'`json.encode_pretty(x)` with `json2.encode(x, prettify: true, legacy_layout: true, escape_unicode: true, time_as_unix: true)`.'
+}
+
 fn (mut tc TypeChecker) check_import_diagnostics() {
 	mut first_imports := map[string]token.Pos{}
 	mut declaration_seen_in_file := false
@@ -5894,10 +5895,14 @@ fn (mut tc TypeChecker) check_import_diagnostics() {
 		explicit_alias := tc.import_has_explicit_alias(node)
 		has_source := node.pos.end > node.pos.offset
 		if missing_path := tc.a.missing_imports[idx] {
-			// The resolver knows whether a `modules/` directory would have
-			// satisfied this import, and leaves the migration hint for it here.
-			layout_hint := tc.a.missing_import_hints[idx]
-			tc.record_error_severity_at(.unknown_ident, 'cannot import module "${missing_path}" (not found)${layout_hint}', flat.NodeId(idx), node.pos, 'builder error:')
+			if missing_path == 'json' {
+				tc.record_error_severity_at(.unknown_ident, removed_json_module_message(tc.cur_file), flat.NodeId(idx), node.pos, 'builder error:')
+			} else {
+				// The resolver knows whether a `modules/` directory would have
+				// satisfied this import, and leaves the migration hint for it here.
+				layout_hint := tc.a.missing_import_hints[idx]
+				tc.record_error_severity_at(.unknown_ident, 'cannot import module "${missing_path}" (not found)${layout_hint}', flat.NodeId(idx), node.pos, 'builder error:')
+			}
 		}
 		if has_source {
 			tc.check_import_source_syntax(flat.NodeId(idx), node)
@@ -6269,6 +6274,36 @@ fn (tc &TypeChecker) import_is_used(import_id flat.NodeId, import_node flat.Node
 		}
 		if is_selective_import_child {
 			continue
+		}
+		if node.kind in [.call, .selector, .index, .infix, .assign, .selector_assign, .index_assign] {
+			if resolved := tc.resolved_call_name(flat.NodeId(idx)) {
+				if resolved.starts_with('${module_path}.C.') {
+					return true
+				}
+			}
+		}
+		if node.kind == .index && node.children_count >= 2 {
+			parent_id := tc.direct_parent_id(flat.NodeId(idx))
+			if int(parent_id) >= 0 {
+				parent := tc.a.node(parent_id)
+				if parent.kind in [.assign, .index_assign] && parent.op != .assign
+					&& parent.children_count > 0 && tc.a.child(parent, 0) == flat.NodeId(idx) {
+					if base_type := tc.expr_type(tc.a.child(&node, 0)) {
+						if getter := tc.index_operator_call_info(base_type, '[]') {
+							if getter.name.starts_with('${module_path}.C.') { return true }
+						}
+					}
+				}
+			}
+		}
+		if node.kind == .for_in_stmt && node.value == '3' && node.children_count >= 3 {
+			if container_type := tc.expr_type(tc.a.child(&node, 2)) {
+				if info := tc.iterator_for_in_next_call_info(container_type) {
+					if info.name.starts_with('${module_path}.C.') {
+						return true
+					}
+				}
+			}
 		}
 		if node.kind == .selector && node.children_count > 0 {
 			base := tc.a.child_node(&node, 0)
@@ -8502,7 +8537,17 @@ fn (mut tc TypeChecker) annotate_call_expected_exprs(id flat.NodeId, node flat.N
 			tc.annotate_expected_expr(tc.call_arg_value(tc.a.child(&node, i)), expected)
 		}
 	}
-	info0 := tc.resolve_call_info(id, node) or { return none }
+	previous_call_name := tc.cached_resolved_call(id) or { '' }
+	mut info0 := tc.resolve_call_info(id, node) or { return none }
+	if previous_call_name != info0.name && tc.c_backed_alias_method_name(previous_call_name) {
+		// The transformed receiver has the C ABI type, but its V alias selected this method.
+		info0 = if node.value.len > 0 {
+			tc.explicit_generic_call_info(previous_call_name, true,
+				split_generic_arg_list(node.value)) or { tc.call_info(previous_call_name, true) }
+		} else {
+			tc.call_info(previous_call_name, true)
+		}
+	}
 	info := tc.specialized_plain_generic_call_info(node, info0)
 	if info.name.len > 0 && !is_array_dsl_call_name(info.name) {
 		tc.remember_resolved_call(id, info.name)
@@ -8952,7 +8997,8 @@ fn (tc &TypeChecker) iterator_unbounded_next_generic(typ Type) ?string {
 	return none
 }
 
-// iterator_for_in_next_call_info returns call metadata for a compatible iterator `next` method.
+// iterator_for_in_next_call_info returns call metadata for a compatible iterator `next` method,
+// including visible methods on C structs declared in directly imported modules.
 pub fn (tc &TypeChecker) iterator_for_in_next_call_info(typ Type) ?CallInfo {
 	clean := unwrap_pointer(typ)
 	name := clean.name()
@@ -8978,6 +9024,20 @@ pub fn (tc &TypeChecker) iterator_for_in_next_call_info(typ Type) ?CallInfo {
 	}
 	type_name := resolve_type_name_for_method(clean)
 	if type_name.len == 0 {
+		return none
+	}
+	c_method_name, ambiguous := tc.lookup_c_struct_receiver_method(typ, 'next')
+	if ambiguous {
+		return none
+	}
+	if c_method_name.len > 0 {
+		if _ := tc.private_declaration(c_method_name) {
+			return none
+		}
+		info := tc.call_info(c_method_name, true)
+		if _ := iterator_for_in_elem_type_from_next_return(info.return_type) {
+			return tc.specialize_generic_interface_method(name, info)
+		}
 		return none
 	}
 	if info := tc.resolve_generic_struct_method(type_name, 'next') {
@@ -9035,6 +9095,20 @@ pub fn (tc &TypeChecker) index_overload_call_info(typ Type, setter bool) ?CallIn
 	clean := unwrap_pointer(typ)
 	type_name := resolve_type_name_for_method(clean)
 	if type_name.len == 0 {
+		return none
+	}
+	c_method_name, ambiguous := tc.lookup_c_struct_receiver_method(typ, method)
+	if ambiguous {
+		return none
+	}
+	if c_method_name.len > 0 {
+		if _ := tc.private_declaration(c_method_name) {
+			return none
+		}
+		info := tc.call_info(c_method_name, true)
+		if info.params.len == 0 || tc.method_receiver_compatible(typ, info.params[0], c_method_name) {
+			return info
+		}
 		return none
 	}
 	if info := tc.resolve_generic_struct_method(type_name, method) {
@@ -10170,6 +10244,12 @@ fn (mut tc TypeChecker) check_c_js_generic_declarations() {
 			if (is_function && node.kind !in [.fn_decl, .c_fn_decl])
 				|| (!is_function && node.kind != .struct_decl) {
 				continue
+			}
+			if is_function && node.kind == .fn_decl && node.children_count > 0 {
+				receiver := tc.a.child_node(node, 0)
+				if receiver.kind == .param && receiver.op == .dot {
+					continue
+				}
 			}
 			namespace := tc.c_js_declaration_namespace(flat.NodeId(index), node) or { continue }
 			if node.generic_params().len == 0
@@ -15263,7 +15343,8 @@ fn (mut tc TypeChecker) check_struct_field_defaults(node_id flat.NodeId, node fl
 		tc.annotate_expected_expr(default_id, expected)
 		tc.check_node_with_expected_context(default_id, expected)
 		actual := tc.resolve_expr(default_id, expected)
-		if type_is_unsigned_integer(expected) && tc.expr_is_negative_integer_literal(default_id) {
+		if !tc.node_is_in_translated_file(default_id) && type_is_unsigned_integer(expected)
+			&& tc.expr_is_negative_integer_literal(default_id) {
 			tc.record_error_at(.assignment_mismatch, 'cannot assign negative value to unsigned integer type', default_id, default_node.pos)
 		}
 		if clean_expected !is Pointer && clean_expected !is Interface
@@ -15799,7 +15880,10 @@ fn (mut tc TypeChecker) check_enum_field_values(node_id flat.NodeId, node flat.N
 		if field.children_count > 0 {
 			value_id := tc.a.child(field, 0)
 			value_pos = tc.a.node(value_id).pos
-			if referenced := tc.find_enum_value_in_node(value_id, node.value) {
+			if field_ref := tc.find_enum_value_in_node(value_id, node.value) {
+				referenced := tc.enum_field_name(tc.qualify_decl_name(node.value), field_ref) or {
+					field_ref
+				}
 				if referenced != field.value && !seen_names[referenced] {
 					tc.record_error_at(.unknown_ident, '`${node.value}.${referenced}` should be declared before using it', value_id, value_pos)
 					continue
@@ -15818,7 +15902,10 @@ fn (mut tc TypeChecker) check_enum_field_values(node_id flat.NodeId, node flat.N
 				if duplicate_name {
 					continue
 				}
-				if value_node.value == field.value {
+				referenced := tc.enum_field_name(tc.qualify_decl_name(node.value), value_node.value) or {
+					value_node.value
+				}
+				if referenced == field.value {
 					if !allow_multiple {
 						tc.record_error_with_details_at(.duplicate_decl, 'enum value `${field.value}` is not allowed to reference itself', field_id, value_pos, [
 							'use `@[_allow_multiple_values]` attribute to allow multiple enum values. Use only when needed',
@@ -15826,7 +15913,7 @@ fn (mut tc TypeChecker) check_enum_field_values(node_id flat.NodeId, node flat.N
 					}
 					continue
 				}
-				if !seen_names[value_node.value] {
+				if !seen_names[referenced] {
 					tc.record_error_at(.unknown_ident, '`${node.value}.${value_node.value}` should be declared before using it', field_id, value_pos)
 					continue
 				}
@@ -16921,7 +17008,7 @@ fn (tc &TypeChecker) match_covers_all_enum_variants(node flat.Node) bool {
 	if enum_name in tc.flag_enums {
 		return false
 	}
-	all_fields := tc.enum_fields[enum_name] or { return false }
+	all_fields := tc.comptime_static_enum_decl_value_cases(enum_name).map(it.name)
 	if all_fields.len == 0 {
 		return false
 	}
@@ -16937,8 +17024,8 @@ fn (tc &TypeChecker) match_covers_all_enum_variants(node flat.Node) bool {
 		n_conds := branch.value.int()
 		for j in 0 .. n_conds {
 			cond := tc.a.child_node(branch, j)
-			if cond.kind == .enum_val {
-				covered[cond.value.all_after_last('.')] = true
+			if field := tc.match_enum_condition_field(cond, enum_name) {
+				covered[field] = true
 			}
 		}
 	}
@@ -17053,7 +17140,7 @@ fn (tc &TypeChecker) match_without_else_exhaustive_enum_returns(node flat.Node) 
 		if subject_type.is_flag || enum_name in tc.flag_enums {
 			return false
 		}
-		fields := tc.enum_fields[enum_name] or { return false }
+		fields := tc.comptime_static_enum_decl_value_cases(enum_name).map(it.name)
 		if fields.len == 0 {
 			return false
 		}
@@ -17239,7 +17326,7 @@ fn (tc &TypeChecker) match_enum_condition_field(cond &flat.Node, enum_name strin
 		.enum_val {
 			field := cond.value.all_after_last('.')
 			if tc.enum_value_matches(cond.value, enum_name) {
-				return field
+				return tc.enum_field_name(enum_name, field)
 			}
 		}
 		.selector {
@@ -17247,7 +17334,7 @@ fn (tc &TypeChecker) match_enum_condition_field(cond &flat.Node, enum_name strin
 				if typ is Enum {
 					cond_enum_name := tc.resolve_enum_name(typ.name) or { typ.name }
 					if cond_enum_name == enum_name && tc.enum_has_field(enum_name, cond.value) {
-						return cond.value
+						return tc.enum_field_name(enum_name, cond.value)
 					}
 				}
 			}

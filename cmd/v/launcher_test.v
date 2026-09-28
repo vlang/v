@@ -15,6 +15,7 @@ fn test_compiler_selection_flags_are_not_forwarded() {
 }
 
 fn test_external_tool_build_args_drop_non_binary_modes() {
+	assert external_tool_build_args('vfmt', ['-cross', '-os', 'windows', '-arch', 'x64']) == []string{}
 	assert external_tool_build_args('vfmt', ['-silent', '-N', '-W', '-check']) == [
 		'-silent',
 		'-N',
@@ -67,6 +68,39 @@ fn test_tools_that_consume_prefix_compiler_options_receive_them() {
 		'fmt',
 		'-verify',
 		'file.v',
+	]
+}
+
+fn test_formatter_backend_options_are_runtime_preferences() {
+	for flag in ['-b', '-backend'] {
+		prefix := ['-cc', 'clang', flag, 'js', '-gc', 'none']
+		assert external_tool_compile_args('vfmt', prefix) == ['-cc', 'clang', '-gc', 'none']
+		assert external_tool_runtime_args('fmt', prefix, ['fmt', 'source.v']) == [
+			flag,
+			'js',
+			'fmt',
+			'source.v',
+		]
+		assert external_tool_compile_args('vtest', prefix) == prefix
+		joined_prefix := ['-cc', 'clang', '${flag}=js', '-gc', 'none']
+		assert external_tool_compile_args('vfmt', joined_prefix) == ['-cc', 'clang', '-gc', 'none']
+		assert external_tool_runtime_args('fmt', joined_prefix, ['fmt', 'source.v']) == [
+			'${flag}=js',
+			'fmt',
+			'source.v',
+		]
+		assert external_tool_compile_args('vtest', joined_prefix) == joined_prefix
+	}
+}
+
+fn test_formatter_target_options_do_not_target_its_executable() {
+	assert external_tool_compile_args('vfmt', ['-b', 'wasm', '-os', 'browser', '-arch', 'wasm32',
+		'-cc', 'clang']) == [
+		'-cc',
+		'clang',
+	]
+	assert external_tool_compile_args('vfmt', ['-os=browser', '-arch=wasm32', '-prod']) == [
+		'-prod',
 	]
 }
 

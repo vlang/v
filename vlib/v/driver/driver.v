@@ -1949,6 +1949,7 @@ fn run_binary(bin_file string, args []string) int {
 	mut environment := pref.macos_v3_caller_environment()
 	environment.delete(macos_v3_vhash_env)
 	environment.delete(macos_v3_vcurrent_hash_env)
+	environment.delete(v3_cache_recovery_env)
 	process.set_environment(environment)
 	// `v3 run` is interactive: leave all three standard streams inherited so
 	// prompts are visible immediately and the program can read the caller's stdin.
@@ -9140,21 +9141,6 @@ fn append_v3_c_compile_mode_flags(mut args []string, c_standard string, opt_flag
 	}
 }
 
-fn expand_v3_module_search_paths(spec string, vroot string) []string {
-	if spec.len == 0 {
-		return []
-	}
-	mut expanded := []string{}
-	for path in spec.replace('|', os.path_delimiter).split(os.path_delimiter) {
-		match path {
-			'@vlib' { expanded << os.join_path_single(vroot, 'vlib') }
-			'@vmodules' { expanded << os.vmodules_paths() }
-			else { expanded << path.replace('@vroot', vroot) }
-		}
-	}
-	return expanded
-}
-
 // expand_v3_exclude_patterns resolves the `@vroot`, `@vlib` and `@vmodules`
 // placeholders of the `-exclude` glob patterns. `@vmodules` stands for a list of
 // directories, so a pattern that uses it expands to one pattern per directory.
@@ -9233,11 +9219,20 @@ fn add_v3_profile_used_fns(mut used_fns map[string]bool) {
 	}
 }
 
+fn v3_fastc_cache_failure_output(output string, cached_objects map[string]string) string {
+	mut mapped := output
+	for build_object, cache_object in cached_objects {
+		mapped = mapped.replace(build_object, cache_object)
+	}
+	return mapped
+}
+
 $if !skip_fastc ? {
 	struct V3FastCCompileResult {
-		success bool
-		command string
-		output  string
+		success        bool
+		command        string
+		output         string
+		cached_objects map[string]string
 	}
 
 	fn publish_v3_fastc_c_source(pieces []string, output_file string, c_to_stdout bool) ! {
@@ -9415,10 +9410,12 @@ $if !skip_fastc ? {
 		mut result := os.Result{}
 		mut command := ''
 		mut sign_in_process := false
+		mut cached_objects := map[string]string{}
 		link_cache_key := generation_link_cache_key
 		mut link_cache_restored := false
 		if unit_paths.len > 1 {
 			prepared_units := fastc.fastc_prepare_c_units(tcc_path, compile_args, unit_paths, cache_enabled)
+			cached_objects = prepared_units.cache_objects()
 			link_inputs := prepared_units.objects.clone()
 			mut display_args := compile_base_args.clone()
 			display_args << ['-o', staged_binary]
@@ -9503,8 +9500,9 @@ $if !skip_fastc ? {
 				}
 			}
 			return V3FastCCompileResult{
-				command: command
-				output:  result.output
+				command:        command
+				output:         result.output
+				cached_objects: cached_objects
 			}
 		}
 		if sign_in_process {
@@ -10180,9 +10178,6 @@ pub fn run(args []string) {
 			is_o = true
 			no_cache = true
 			i++
-		} else if args[i] == '-skip-unused' {
-			no_skip_unused = false
-			i++
 		} else if args[i] == '-no-memory-limit' || args[i] == '--no-memory-limit' {
 			no_memory_limit = true
 			i++
@@ -10769,7 +10764,7 @@ pub fn run(args []string) {
 	prefs.enable_globals = enable_globals_compat
 	prefs.user_defines = user_defines
 	prefs.compile_values = compile_values.clone()
-	prefs.module_search_paths = expand_v3_module_search_paths(module_search_path_spec, prefs.vroot)
+	prefs.module_search_paths = pref.expand_module_search_paths(module_search_path_spec, prefs.vroot)
 	if is_checker_fixture {
 		fixture_modules := os.join_path(os.dir(os.real_path(input_file)), 'modules')
 		if os.is_dir(fixture_modules) {
@@ -11029,10 +11024,17 @@ pub fn run(args []string) {
 				os.rm(fastc_bin_file) or {}
 			}
 			if !fastc_result.success {
+				cache_failure_output := v3_fastc_cache_failure_output(fastc_result.output, fastc_result.cached_objects)
+				if v3_recover_from_cache_failure(cache_failure_output, '') {
+					return
+				}
 				if fastc_result.command.len == 0 {
 					eprintln('fastc requires the bundled TinyCC executable')
 				} else if !show_c_output && fastc_result.output.len > 0 {
 					eprintln(fastc_result.output.trim_space())
+				}
+				if v3_cache_failure_artifacts(cache_failure_output).len > 0 {
+					eprintln("Suggestion: the C toolchain keeps rejecting files from V's cache. Run `v wipe-cache`, then repeat your compilation.")
 				}
 				exit(1)
 			}
@@ -13767,6 +13769,9 @@ pub fn run(args []string) {
 				}
 				cached_dev_dylib = compile_v3_dev_dylib(prefix_object, prepared_cache.objects, resolved_c_flags, &cache_state.manager, target_args, prefs.target, c_compiler, cc_dir, verbose || show_cc, mut c_object_cache_stats) or {
 					message := err.msg()
+					if v3_recover_from_cache_failure(message, cc_dir) {
+						return
+					}
 					if request_macos_v3_c_error_fallback_from_message(macos_v3_fallback_file, macos_v3_c_error_dir, c_compiler, message, [
 						published_c_source,
 						cache_plan_file,
@@ -14018,6 +14023,10 @@ pub fn run(args []string) {
 			show_v3_c_compiler_output(show_c_output, tcc_path, result)
 			used_tcc = result.exit_code == 0
 		}
+		if tried_tcc && result.exit_code != 0
+			&& v3_recover_from_cache_failure(result.output, cc_dir) {
+			return
+		}
 		if v3_should_regenerate_after_implicit_tcc(retry_compilation, use_implicit_tcc_semantics, tried_tcc, result.exit_code) {
 			v3_regenerate_after_implicit_tcc(args, c_compiler_arg_index, cc_dir, verbose, show_cc,
 				silent, if !tried_tcc {
@@ -14107,9 +14116,24 @@ pub fn run(args []string) {
 			}
 			show_v3_c_compiler_output(show_c_output, c_compiler, result)
 			if result.exit_code != 0 {
+				// Before degrading to the fallback compiler: a stale cache entry
+				// is repairable, and falling back would hide it indefinitely.
+				if v3_recover_from_cache_failure(result.output, cc_dir) {
+					return
+				}
 				if retry_compilation && v3_is_tcc_compilation_failure(c_compiler, result.output) {
 					fallback := v3_platform_c_compiler_command(host_os)
 					eprintln('warning: tcc compilation failed, falling back to ${fallback}')
+					// Recovery above already declined, so discarding the entries
+					// did not help. Name them: the fallback still produces a
+					// working binary, which is what makes this easy to miss.
+					if artifacts := v3_unrepaired_cache_failure_artifacts(result.output) {
+						eprintln('warning: tcc rejected cached V build artifacts that a rebuild did not repair:')
+						for artifact in artifacts {
+							eprintln('  ${artifact}')
+						}
+						eprintln('Suggestion: run `v wipe-cache`, then repeat your compilation.')
+					}
 					retry_args := v3_retry_compilation_args(args, c_compiler_arg_index, fallback)
 					cleanup_c_build_dir(cc_dir)
 					retry_result := cmdexec.run(os.executable(), retry_args)
@@ -14144,6 +14168,11 @@ Please install the corresponding development package/libraries and make sure the
 				} else {
 					eprintln('C compilation failed:')
 					eprintln(result.output)
+				}
+				if v3_cache_failure_artifacts(result.output).len > 0 {
+					// Reached only after the automatic retry above already
+					// discarded these entries and the rebuild republished them.
+					eprintln("Suggestion: the C toolchain keeps rejecting files from V's cache. Run `v wipe-cache`, then repeat your compilation.")
 				}
 				cleanup_c_build_dir(cc_dir)
 				exit(1)
@@ -14332,6 +14361,457 @@ fn v3_is_tcc_compilation_failure(c_compiler string, output string) bool {
 		}
 	}
 	return false
+}
+
+// v3_cache_artifact_dir_names are the fixed-name persistent caches a build links
+// artifacts out of. Module caches have a hexadecimal root key suffix.
+const v3_cache_artifact_dir_names = ['v3_thirdparty_objs', 'v3_fastc_unit_cache', 'v3_fastc_link_cache',
+	'v3_crun_cache']
+
+// v3_cache_failure_markers are whole-file rejections: the toolchain could not
+// read or find an input, or saw the same symbol twice. Line-scoped diagnostics
+// are excluded on purpose, so a compile error inside a cached unit is reported
+// to the user instead of costing a rebuild that reproduces it.
+const v3_cache_failure_markers = ['unrecognized file type', 'file format not recognized',
+	'not an object file', 'no such file or directory', 'file not found', 'malformed object',
+	'truncated or malformed', 'file too small', 'file too short', 'empty file',
+	'section table goes past the end of file', 'archive has no index', 'duplicate symbol',
+	'multiple definition', 'defined twice', 'incompatible file format', 'architecture of input file',
+	'invalid or corrupt file', 'lnk1136', 'lnk1107', 'lnk1104',
+	'but attempting to link with file built for']
+
+const v3_cache_recovery_env = 'V3_INTERNAL_CACHE_RECOVERY'
+
+fn v3_cache_artifact_dir_name(name string, include_fixed_caches bool) bool {
+	if include_fixed_caches && name in v3_cache_artifact_dir_names {
+		return true
+	}
+	if !name.starts_with('v3_module_cache_') {
+		return false
+	}
+	suffix := name['v3_module_cache_'.len..]
+	return suffix.len > 0 && suffix.bytes().all(it.is_hex_digit())
+}
+
+fn v3_cache_artifact_roots() []string {
+	temp_root := os.real_path(os.abs_path(os.vtmp_dir()))
+	mut roots := [temp_root]
+	if configured := os.getenv_opt('V3CACHE') {
+		root := os.real_path(os.abs_path(configured))
+		if root !in roots {
+			roots << root
+		}
+	} else if os.getenv('V3_TEST_ISOLATE_CACHE') == '1' {
+		for name in os.ls(temp_root) or { []string{} } {
+			if !name.starts_with('v3_test_cache_') {
+				continue
+			}
+			suffix := name['v3_test_cache_'.len..]
+			if suffix.len == 0 || !suffix.bytes().all(it.is_hex_digit()) {
+				continue
+			}
+			candidate := os.join_path_single(temp_root, name)
+			if !os.is_dir(candidate) {
+				continue
+			}
+			canonical := os.real_path(candidate)
+			if canonical != temp_root && v3_path_is_within(canonical, temp_root)
+				&& canonical !in roots {
+				roots << canonical
+			}
+		}
+	}
+	return roots
+}
+
+fn v3_cache_artifact_directories() []string {
+	temp_root := os.real_path(os.abs_path(os.vtmp_dir()))
+	mut directories := []string{}
+	for raw_root in v3_cache_artifact_roots() {
+		root := os.real_path(os.abs_path(raw_root))
+		if !os.is_dir(root) {
+			continue
+		}
+		for name in os.ls(root) or { []string{} } {
+			if !v3_cache_artifact_dir_name(name, root == temp_root) {
+				continue
+			}
+			candidate := os.join_path_single(root, name)
+			if !os.is_dir(candidate) {
+				continue
+			}
+			canonical := os.real_path(candidate)
+			if canonical != root && v3_path_is_within(canonical, root)
+				&& canonical !in directories {
+				directories << canonical
+			}
+		}
+	}
+	return directories
+}
+
+fn v3_missing_cache_artifact(path string) ?string {
+	if os.file_ext(path).to_lower() !in ['.o', '.obj', '.a', '.lib', '.dylib'] {
+		return none
+	}
+	temp_root := os.real_path(os.abs_path(os.vtmp_dir()))
+	for root in v3_cache_artifact_roots() {
+		if !os.is_dir(root) || !v3_path_is_within(path, root) {
+			continue
+		}
+		mut cache_dir := os.dir(path)
+		for os.dir(cache_dir) != root && v3_path_is_within(cache_dir, root) {
+			cache_dir = os.dir(cache_dir)
+		}
+		if os.dir(cache_dir) == root && !os.exists(cache_dir)
+			&& v3_cache_artifact_dir_name(os.base(cache_dir), root == temp_root) {
+			return path
+		}
+	}
+	return none
+}
+
+fn v3_canonical_missing_cache_path(path string) string {
+	mut existing := os.dir(path)
+	for !os.is_dir(existing) {
+		parent := os.dir(existing)
+		if parent == existing {
+			return path
+		}
+		existing = parent
+	}
+	return os.join_path_single(os.real_path(existing), path[existing.len..].trim_left(os.path_separator))
+}
+
+fn v3_cache_error_path_tokens(output string) []string {
+	mut tokens := []string{}
+	mut current := []u8{}
+	mut quote := u8(0)
+	bytes := output.bytes()
+	for i, ch in bytes {
+		if quote != 0 {
+			if ch == quote || (quote == `\`` && ch == `'`) {
+				quote = 0
+				if current.len > 0 {
+					tokens << current.bytestr()
+					current.clear()
+				}
+			} else {
+				current << ch
+			}
+			continue
+		}
+		if ch in [`'`, `"`, `\``] {
+			if current.len > 0 {
+				tokens << current.bytestr()
+				current.clear()
+			}
+			quote = ch
+			continue
+		}
+		if ch == `:` && i + 1 < bytes.len && bytes[i + 1] == `/`
+			&& current.len > 0 && current[0] == `/` {
+			// GNU ld can concatenate its executable path and the rejected object.
+			tokens << current.bytestr()
+			current.clear()
+			continue
+		}
+		if ch.is_space() || ch in [`,`, `;`, `(`, `)`] {
+			if current.len > 0 {
+				tokens << current.bytestr()
+				current.clear()
+			}
+			continue
+		}
+		current << ch
+	}
+	if current.len > 0 {
+		tokens << current.bytestr()
+	}
+	return tokens
+}
+
+fn v3_canonical_cache_artifact(path string, directories []string) ?string {
+	if !os.is_abs_path(path) {
+		return none
+	}
+	// Compiler source locations name the reporting file, not the missing input.
+	location_suffix := path.all_after_last(':')
+	if location_suffix.len > 0 && location_suffix.bytes().all(it >= `0` && it <= `9`) {
+		return none
+	}
+	clean := os.abs_path(path)
+	parent := os.dir(clean)
+	if !os.is_dir(parent) {
+		return v3_missing_cache_artifact(v3_canonical_missing_cache_path(clean))
+	}
+	canonical := if os.exists(clean) {
+		os.real_path(clean)
+	} else {
+		os.join_path_single(os.real_path(parent), os.base(clean))
+	}
+	for dir in directories {
+		if canonical != dir && v3_path_is_within(canonical, dir) {
+			return canonical
+		}
+	}
+	return none
+}
+
+fn v3_cache_unquoted_path_candidates(prefix string) []string {
+	mut candidates := []string{}
+	bytes := prefix.bytes()
+	for i, ch in bytes {
+		is_drive := i + 2 < bytes.len && ((ch >= `A` && ch <= `Z`)
+			|| (ch >= `a` && ch <= `z`)) && bytes[i + 1] == `:`
+			&& (bytes[i + 2] == `\\` || bytes[i + 2] == `/`)
+		is_unc := ch == `\\` && i + 1 < bytes.len && bytes[i + 1] == `\\`
+			&& (i == 0 || bytes[i - 1] != `\\`)
+		if ch == `/` || is_drive || is_unc {
+			candidates << prefix[i..].trim('\'"`()[],;:')
+		}
+	}
+	return candidates
+}
+
+// v3_cache_error_artifacts returns the cached artifacts named by a C toolchain
+// error. The wording differs per toolchain, but each diagnostic names the
+// offending path, so the path is the portable signal.
+fn v3_cache_error_artifacts(output string) []string {
+	if output.len == 0 {
+		return []
+	}
+	directories := v3_cache_artifact_directories()
+	mut artifacts := []string{}
+	for raw in v3_cache_error_path_tokens(output) {
+		token := raw.trim('\'"`()[],;:')
+		if token.len == 0 {
+			continue
+		}
+		if artifact := v3_canonical_cache_artifact(token, directories) {
+			if artifact !in artifacts {
+				artifacts << artifact
+			}
+		}
+	}
+	// Linkers also print unquoted absolute paths, so whitespace can be part of
+	// the artifact name. Try each absolute suffix before the diagnostic colon;
+	// canonical containment below rejects the linker executable and other paths.
+	for line in output.split_into_lines() {
+		end := line.last_index(': ') or { continue }
+		prefix := line[..end].trim_space()
+		for candidate in v3_cache_unquoted_path_candidates(prefix) {
+			if artifact := v3_canonical_cache_artifact(candidate, directories) {
+				if artifact !in artifacts {
+					artifacts << artifact
+				}
+			}
+		}
+	}
+	return artifacts
+}
+
+fn v3_cache_diagnostic_has_source_position(line string) bool {
+	bytes := line.bytes()
+	for i, ch in bytes {
+		if ch != `:` {
+			continue
+		}
+		mut end := i + 1
+		for end < bytes.len && bytes[end] >= `0` && bytes[end] <= `9` {
+			end++
+		}
+		if end > i + 1 && end < bytes.len && bytes[end] == `:` {
+			return true
+		}
+	}
+	return false
+}
+
+fn v3_cache_lld_truncated_object_artifacts(line string) []string {
+	lowered := line.to_lower_ascii()
+	if !lowered.contains('ld.lld:')
+		|| (!lowered.contains('unexpected eof') && !lowered.contains('unknown directive')) {
+		return []
+	}
+	message_start := line.last_index(': ') or { return [] }
+	prefix := line[..message_start]
+	line_number := prefix.all_after_last(':')
+	if line_number.len == 0 || !line_number.bytes().all(it >= `0` && it <= `9`) {
+		return []
+	}
+	path_prefix := prefix.all_before_last(':')
+	directories := v3_cache_artifact_directories()
+	for candidate in v3_cache_unquoted_path_candidates(path_prefix) {
+		if os.file_ext(candidate).to_lower() !in ['.o', '.obj'] {
+			continue
+		}
+		if artifact := v3_canonical_cache_artifact(candidate, directories) {
+			if os.is_file(artifact) && os.file_size(artifact) <= 16 {
+				return [artifact]
+			}
+		}
+	}
+	return []
+}
+
+// v3_cache_failure_artifacts returns the cache entries to discard after a C
+// toolchain failure. Both signals are required: the output has to name a cached
+// artifact *and* report a whole-file failure, so an ordinary compile error is
+// never mistaken for a poisoned cache.
+fn v3_cache_failure_artifacts(output string) []string {
+	mut artifacts := []string{}
+	lines := output.split_into_lines()
+	for i, line in lines {
+		script_artifacts := v3_cache_lld_truncated_object_artifacts(line)
+		if script_artifacts.len > 0 {
+			for artifact in script_artifacts {
+				if artifact !in artifacts {
+					artifacts << artifact
+				}
+			}
+			continue
+		}
+		lowered := line.to_lower_ascii()
+		mut has_marker := false
+		for marker in v3_cache_failure_markers {
+			if lowered.contains(marker) {
+				has_marker = true
+				break
+			}
+		}
+		if !has_marker {
+			continue
+		}
+		missing_input := lowered.contains('no such file or directory')
+			|| lowered.contains('file not found')
+		if missing_input && v3_cache_diagnostic_has_source_position(line) {
+			continue
+		}
+		mut diagnostic := line
+		for next in lines[i + 1..] {
+			if !next.starts_with('>>>') && (next.len == 0 || !next[0].is_space()) {
+				break
+			}
+			diagnostic += '\n${next}'
+		}
+		for artifact in v3_cache_error_artifacts(diagnostic) {
+			if missing_input && (os.exists(artifact) || artifact.contains(': ')) {
+				continue
+			}
+			if artifact !in artifacts {
+				artifacts << artifact
+			}
+		}
+	}
+	return artifacts
+}
+
+// v3_discard_cache_artifacts removes the rejected entries together with the
+// sidecars that would otherwise keep certifying them: a stamp still validates a
+// deleted object, and a link plan replays the object path into the next link
+// even once the object is gone.
+fn v3_discard_cache_artifacts(artifacts []string) int {
+	mut discarded := 0
+	mut object_dirs := []string{}
+	directories := v3_cache_artifact_directories()
+	for raw_artifact in artifacts {
+		artifact := v3_canonical_cache_artifact(raw_artifact, directories) or { continue }
+		for path in [artifact, '${artifact}.stamp', '${artifact}.deps', '${artifact}.deps.stamp'] {
+			if !os.exists(path) {
+				continue
+			}
+			os.rm(path) or { continue }
+			discarded++
+		}
+		dir := os.dir(artifact)
+		if os.base(dir).starts_with('v3_thirdparty_objs') && dir !in object_dirs {
+			object_dirs << dir
+		}
+	}
+	for dir in object_dirs {
+		for name in os.ls(dir) or { []string{} } {
+			if !name.ends_with('.manifest') {
+				continue
+			}
+			os.rm(os.join_path_single(dir, name)) or { continue }
+			discarded++
+		}
+	}
+	return discarded
+}
+
+// v3_unrepaired_cache_failure_artifacts returns the cached artifacts a failure
+// blames once automatic recovery has already had its turn, so the caller can
+// report what discarding them did not fix. It yields nothing on a build that
+// never attempted recovery, where the retry is still pending.
+fn v3_unrepaired_cache_failure_artifacts(output string) ?[]string {
+	if os.getenv(v3_cache_recovery_env) != '1' {
+		return none
+	}
+	artifacts := v3_cache_failure_artifacts(output)
+	if artifacts.len == 0 {
+		return none
+	}
+	return artifacts
+}
+
+fn v3_cache_recovery_should_retry(artifacts []string, discarded int) bool {
+	if discarded > 0 {
+		return true
+	}
+	// A missing cache artifact has nothing to delete, but retrying can recreate it.
+	for artifact in artifacts {
+		if !os.exists(artifact) {
+			return true
+		}
+	}
+	return false
+}
+
+// v3_recover_from_cache_failure discards the cache entries a C toolchain
+// failure blamed and restarts the build once. Such an entry is otherwise
+// permanent - it outlives the build that published it, and the only symptom is
+// a toolchain error about a file the user never named - so recovering here is
+// preferred over degrading the build to a fallback compiler.
+fn v3_recover_from_cache_failure(output string, cc_dir string) bool {
+	if os.getenv(v3_cache_recovery_env) == '1' {
+		return false
+	}
+	artifacts := v3_cache_failure_artifacts(output)
+	if artifacts.len == 0 {
+		return false
+	}
+	if !v3_cache_recovery_should_retry(artifacts, v3_discard_cache_artifacts(artifacts)) {
+		return false
+	}
+	// Reported even under `-silent`, like the tcc fallback warning: a repair the
+	// user cannot see is indistinguishable from the silent degradation that
+	// makes a poisoned cache entry so hard to notice in the first place.
+	eprintln('warning: the C toolchain rejected cached V build artifacts; discarding them and retrying:')
+	for artifact in artifacts {
+		eprintln('  ${artifact}')
+	}
+	cleanup_c_build_dir(cc_dir)
+	os.setenv(v3_cache_recovery_env, '1', true)
+	executable := os.executable()
+	mut restart_args := []string{}
+	// The parser warnings were already shown by this process.
+	if v3_parser_diagnostics_printed(false)
+		&& v3_internal_parser_diagnostics_printed_flag !in os.args {
+		restart_args << v3_internal_parser_diagnostics_printed_flag
+	}
+	restart_args << os.args[1..]
+	$if windows {
+		// `_execvp` would exit this process with status 0 before the retried
+		// build finishes, so forward the retried build's status instead.
+		exit(os.system(v3_exec_command(executable, restart_args)))
+	}
+	os.execvp(executable, restart_args) or {
+		eprintln('failed to restart the build after discarding stale cache entries: ${err.msg()}')
+		exit(1)
+	}
+	return true
 }
 
 fn v3_retry_compilation_args(args []string, c_compiler_arg_index int, fallback string) []string {

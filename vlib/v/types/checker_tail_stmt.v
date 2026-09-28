@@ -1,6 +1,7 @@
 module types
 
 import os
+import strconv
 import strings
 import v.flat
 import v.gen.c.naming
@@ -949,7 +950,8 @@ fn (mut tc TypeChecker) check_bool_condition(cond_id flat.NodeId) {
 		tc.record_error(.condition_mismatch, 'non-bool type `void` used as if condition', cond_id)
 		return
 	}
-	if !tc.condition_type_is_bool_like(cond_type) && tc.should_diagnose(cond_id) {
+	if !tc.condition_type_is_bool_like(cond_type)
+		&& !tc.translated_condition_compatible(cond_id, cond_type) && tc.should_diagnose(cond_id) {
 		cond_name := tc.diagnostic_expr_type_name(cond_id, cond_type)
 		tc.record_error(.condition_mismatch, 'non-bool type `${cond_name}` used as if condition', cond_id)
 	}
@@ -1012,7 +1014,8 @@ fn (mut tc TypeChecker) check_for_condition(cond_id flat.NodeId, _node flat.Node
 	}
 	tc.check_node(cond_id)
 	cond_type := tc.resolve_type(cond_id)
-	if tc.condition_type_is_bool_like(cond_type) {
+	if tc.condition_type_is_bool_like(cond_type)
+		|| tc.translated_condition_compatible(cond_id, cond_type) {
 		return
 	}
 	if _node.value == 'c_style' && unalias_type(cond_type) is Pointer {
@@ -3275,7 +3278,7 @@ fn (tc &TypeChecker) if_expr_tail_type(id flat.NodeId) Type {
 	for tc.valid_node_id(cur_id) {
 		node := tc.a.nodes[int(cur_id)]
 		if node.kind != .if_expr {
-			return tc.choose_if_tail_type(result, tc.branch_tail_type(cur_id))
+			return tc.choose_translated_if_tail_type(id, result, tc.branch_tail_type(cur_id))
 		}
 		if node.children_count > 1 {
 			cond_id := tc.a.child(&node, 0)
@@ -3291,7 +3294,7 @@ fn (tc &TypeChecker) if_expr_tail_type(id flat.NodeId) Type {
 					then_type = tc.branch_tail_type_with_smartcasts(then_id, smartcasts)
 				}
 			}
-			result = tc.choose_if_tail_type(result, then_type)
+			result = tc.choose_translated_if_tail_type(id, result, then_type)
 		}
 		if node.children_count <= 2 {
 			return result
@@ -3306,9 +3309,105 @@ fn (tc &TypeChecker) if_expr_tail_type(id flat.NodeId) Type {
 			continue
 		}
 		else_type := tc.branch_tail_type(else_id)
-		return tc.choose_if_tail_type(result, else_type)
+		return tc.choose_translated_if_tail_type(id, result, else_type)
 	}
 	return result
+}
+
+fn (tc &TypeChecker) choose_translated_if_tail_type(id flat.NodeId, current Type, next Type) Type {
+	if tc.translated_numeric_expr_compatible(id, current, next) {
+		return tc.translated_common_numeric_type(current, next)
+	}
+	return tc.choose_if_tail_type(current, next)
+}
+
+fn (tc &TypeChecker) translated_integer_literal_type(id flat.NodeId) ?Type {
+	literal := (tc.integer_literal_source(id) or { return none }).replace('_', '').to_lower()
+	value, parse_error := strconv.common_parse_uint2(literal, 0, 64)
+	if parse_error != 0 {
+		return none
+	}
+	// C considers unsigned int before wider signed types for nondecimal literals.
+	// Decimal literals move directly from int to a wider signed type.
+	if value <= u64(0x7fff_ffff) {
+		return Type(int_)
+	}
+	if (literal.starts_with('0x') || literal.starts_with('0o') || literal.starts_with('0b'))
+		&& value <= u64(0xffff_ffff) {
+		return Type(u32_)
+	}
+	if value <= u64(0x7fff_ffff_ffff_ffff) {
+		return Type(i64_)
+	}
+	return Type(u64_)
+}
+
+// translated_promoted_numeric_type applies C integral promotions in translated code.
+pub fn (tc &TypeChecker) translated_promoted_numeric_type(typ Type) Type {
+	clean := unalias_type(typ)
+	if clean is Enum {
+		backing := unalias_type(tc.inline_asm_enum_backing_type(clean.name))
+		return if translated_integer_bit_width(backing) < 32 { Type(int_) } else { backing }
+	}
+	if clean is Char || clean == Type(bool_) {
+		return Type(int_)
+	}
+	if clean is Primitive && clean.props.has(.integer) && clean.size > 0 && clean.size < 32 {
+		return Type(int_)
+	}
+	return clean
+}
+
+// translated_promoted_shift_type applies integral promotion using C's int width.
+pub fn (tc &TypeChecker) translated_promoted_shift_type(typ Type) Type {
+	promoted := tc.translated_promoted_numeric_type(typ)
+	return if promoted == Type(int_) { Type(i32_) } else { promoted }
+}
+
+fn translated_integer_bit_width(typ Type) int {
+	if typ is Primitive {
+		return if typ.size == 0 { 32 } else { int(typ.size) }
+	}
+	if typ is ISize || typ is USize {
+		return platform_int_bits()
+	}
+	return 32
+}
+
+fn translated_integer_is_unsigned(typ Type) bool {
+	if typ is Primitive {
+		return typ.props.has(.unsigned)
+	}
+	return typ is USize || typ is Rune
+}
+
+// translated_common_numeric_type selects the arithmetic type after C numeric promotions.
+pub fn (tc &TypeChecker) translated_common_numeric_type(lhs Type, rhs Type) Type {
+	left := tc.translated_promoted_numeric_type(lhs)
+	right := tc.translated_promoted_numeric_type(rhs)
+	if left.is_float() || right.is_float() {
+		if left.is_float() && !type_is_f32(left) {
+			return Type(f64_)
+		}
+		if right.is_float() && !type_is_f32(right) {
+			return Type(f64_)
+		}
+		return Type(f32_)
+	}
+	left_bits := translated_integer_bit_width(left)
+	right_bits := translated_integer_bit_width(right)
+	left_unsigned := translated_integer_is_unsigned(left)
+	right_unsigned := translated_integer_is_unsigned(right)
+	if left_bits > right_bits {
+		return left
+	}
+	if right_bits > left_bits {
+		return right
+	}
+	if left_unsigned != right_unsigned {
+		return if left_unsigned { left } else { right }
+	}
+	return left
 }
 
 // match_expr_tail_type supports match expression value type handling for TypeChecker.
@@ -4194,7 +4293,9 @@ fn (mut tc TypeChecker) check_struct_init(id flat.NodeId, node flat.Node) {
 				} else {
 					tc.a.nodes[int(value_id)].pos
 				}
-				tc.warn_if_integer_literal_outside_known_type_range(value_id, expected, warning_pos)
+				if !tc.node_is_in_translated_file(value_id) {
+					tc.warn_if_integer_literal_outside_known_type_range(value_id, expected, warning_pos)
+				}
 				tc.check_node_with_expected_context(value_id, expected)
 			} else {
 				tc.check_node(value_id)
@@ -4204,7 +4305,8 @@ fn (mut tc TypeChecker) check_struct_init(id flat.NodeId, node flat.Node) {
 					tc.ownership_consume_expr(value_id, 'struct field', value_id)
 				}
 			}
-			if type_is_unsigned_integer(expected) && tc.expr_is_negative_integer_literal(value_id) {
+			if !tc.node_is_in_translated_file(value_id) && type_is_unsigned_integer(expected)
+				&& tc.expr_is_negative_integer_literal(value_id) {
 				tc.record_error_at(.assignment_mismatch, 'cannot assign negative value to unsigned integer type', value_id, value_node.pos)
 			}
 			if tc.unsafe_depth == 0 && !tc.translated_files[tc.cur_file]
@@ -5798,7 +5900,8 @@ pub fn (tc &TypeChecker) expr_is_method_value(id flat.NodeId) bool {
 	if node.kind != .selector || node.children_count == 0 {
 		return false
 	}
-	receiver := unwrap_all_pointers(tc.resolve_type(tc.a.child(&node, 0)))
+	base_type := tc.resolve_type(tc.a.child(&node, 0))
+	receiver := unwrap_all_pointers(base_type)
 	clean := unalias_type(receiver)
 	if receiver is Alias {
 		underlying := unalias_type(receiver)
@@ -5812,6 +5915,9 @@ pub fn (tc &TypeChecker) expr_is_method_value(id flat.NodeId) bool {
 		sname := clean.name
 		if tc.struct_field_type(sname, node.value) != none {
 			return false
+		}
+		if _ := tc.c_struct_receiver_method_name(base_type, node.value) {
+			return true
 		}
 		if '${sname}.${node.value}' in tc.fn_param_types {
 			return true
@@ -5838,6 +5944,9 @@ pub fn (tc &TypeChecker) expr_is_method_value(id flat.NodeId) bool {
 }
 
 fn (tc &TypeChecker) alias_method_value_decl_key(alias Alias, method string) ?string {
+	if name := tc.c_struct_receiver_method_name(Type(alias), method) {
+		return name
+	}
 	for receiver in [Type(alias), alias.base_type] {
 		for candidate in receiver_method_name_candidates(receiver, method, tc.cur_module) {
 			if candidate in tc.fn_param_types || candidate in tc.fn_ret_types {
@@ -5885,6 +5994,9 @@ fn (tc &TypeChecker) method_value_has_stack_mut_receiver(id flat.NodeId) bool {
 		if tc.mut_receiver_methods[info.name] {
 			return true
 		}
+	}
+	if method_name := tc.c_struct_receiver_method_name(clean, node.value) {
+		return tc.mut_receiver_methods[method_name]
 	}
 	for method_name in receiver_method_name_candidates(clean, node.value, tc.cur_module) {
 		if tc.mut_receiver_methods[method_name] {
@@ -6087,6 +6199,9 @@ fn (mut tc TypeChecker) reject_capturing_fn_literal_escape(id flat.NodeId, messa
 // check_selector validates check selector state for types.
 fn (mut tc TypeChecker) check_selector(id flat.NodeId, node flat.Node) {
 	if node.children_count == 0 {
+		return
+	}
+	if tc.reject_nonkeyword_enum_selector_escape(id, node) {
 		return
 	}
 	if tc.valid_resolution_fast {
@@ -6323,11 +6438,43 @@ fn (mut tc TypeChecker) check_selector(id flat.NodeId, node flat.Node) {
 		tc.register_synth_type(id, smart_type)
 		return
 	}
+	method_receiver := unalias_and_unwrap_pointer_type(base_type)
+	// A method value resolved as a C receiver method has its privacy checked here already.
+	mut c_receiver_method_value := ''
+	if method_receiver is Struct && tc.struct_field_type(method_receiver.name, node.value) == none {
+		method_name, ambiguous := tc.lookup_c_struct_receiver_method(base_type, node.value)
+		if ambiguous {
+			tc.record_error_at(.unknown_field, 'ambiguous method `${node.value}` on `${method_receiver.name}`', id, tc.node_value_diagnostic_pos(id))
+			tc.register_synth_type(id, Type(void_))
+			return
+		}
+		if method_name.len == 0 && method_receiver.name.starts_with('C.')
+			&& ((node.value == 'hex' && tc.type_is_pointer_receiver(base_type))
+				|| tc.fn_key_is_static_associated('${method_receiver.name}.${node.value}')
+				|| tc.fn_key_is_static_associated(checker_qualified_fn_name(tc.cur_module, '${method_receiver.name}.${node.value}')))
+			&& !tc.ident_is_call_callee_or_generic_base(id) {
+			tc.record_error_at(.unknown_field, 'unknown method `${node.value}` on `${base_type.name()}`', id, tc.node_value_diagnostic_pos(id))
+			tc.register_synth_type(id, Type(void_))
+			return
+		}
+		if method_name.len > 0 && !tc.ident_is_call_callee_or_generic_base(id) {
+			if _ := tc.private_declaration(method_name) {
+				tc.record_error_at(.unknown_field, 'method `${method_name}` is private', id, tc.node_value_diagnostic_pos(id))
+			}
+			c_receiver_method_value = method_name
+			tc.remember_resolved_call(id, method_name)
+			if tc.fn_context.node_id >= 0 {
+				tc.method_values_by_fn[tc.fn_context.node_id] << method_name
+			}
+		}
+	}
 	if tc.expr_is_method_value(id) && !tc.ident_is_call_callee_or_generic_base(id) {
 		tc.check_pointer_receiver_method_value_safety(id, node, base_type)
 		receiver := unwrap_pointer(base_type)
 		mut generic_method_key := ''
-		if receiver is Alias {
+		if imported := tc.c_struct_receiver_method_name(base_type, node.value) {
+			generic_method_key = imported
+		} else if receiver is Alias {
 			generic_method_key = tc.alias_method_value_decl_key(receiver, node.value) or { '' }
 		} else {
 			clean_receiver := unalias_type(receiver)
@@ -6418,7 +6565,7 @@ fn (mut tc TypeChecker) check_selector(id flat.NodeId, node flat.Node) {
 			}
 		}
 	}
-	if selector_is_method_value && clean_recv is Struct
+	if selector_is_method_value && c_receiver_method_value.len == 0 && clean_recv is Struct
 		&& tc.struct_field_type(clean_recv.name, node.value) == none {
 		mut declaration_key := '${clean_recv.name}.${node.value}'
 		if info := tc.resolve_generic_struct_method(clean_recv.name, node.value) {
@@ -6430,7 +6577,7 @@ fn (mut tc TypeChecker) check_selector(id flat.NodeId, node flat.Node) {
 				tc.node_value_diagnostic_pos(id))
 		}
 	}
-	if selector_is_method_value && clean_recv is Alias
+	if selector_is_method_value && c_receiver_method_value.len == 0 && clean_recv is Alias
 		&& tc.struct_field_type(clean_recv.name, node.value) == none {
 		if declaration_key := tc.concrete_method_signature_key(clean_recv.name, node.value) {
 			if tc.private_declaration(declaration_key) != none {
@@ -6535,6 +6682,31 @@ fn (mut tc TypeChecker) check_selector(id flat.NodeId, node flat.Node) {
 		}
 		tc.register_synth_type(id, Type(void_))
 	}
+}
+
+fn (mut tc TypeChecker) reject_nonkeyword_enum_selector_escape(id flat.NodeId, node flat.Node) bool {
+	if !node.value.starts_with('@')
+		|| token.Token.from_string_tinyv(node.value[1..]).is_keyword() {
+		return false
+	}
+	base := tc.a.child_node(&node, 0)
+	mut enum_name := ''
+	if base.kind == .ident {
+		enum_name = tc.resolve_enum_name(base.value) or { '' }
+	} else if base.kind == .selector && base.children_count > 0 {
+		module_node := tc.a.child_node(base, 0)
+		if module_node.kind == .ident && tc.has_active_import(module_node.value) {
+			module_name := tc.resolve_import_alias(module_node.value) or { module_node.value }
+			enum_name = tc.resolve_enum_name('${module_name}.${base.value}') or { '' }
+		}
+	}
+	if enum_name == '' {
+		return false
+	}
+	tc.record_error_at(.unknown_field, '`@` can only escape keyword enum members', id,
+		tc.node_value_diagnostic_pos(id))
+	tc.register_synth_type(id, Type(void_))
+	return true
 }
 
 fn ascii_name_has_upper(name string) bool {
@@ -6966,6 +7138,9 @@ fn (tc &TypeChecker) selector_type(_id flat.NodeId, node flat.Node) ?Type {
 		if typ := tc.struct_field_type(clean_name, node.value) {
 			return typ
 		}
+		if method_name := tc.c_struct_receiver_method_name(base_type, node.value) {
+			return tc.method_value_type(method_name.all_before_last('.'), method_name.all_after_last('.'))
+		}
 		if typ := tc.method_value_type(clean_name, node.value) {
 			return typ
 		}
@@ -7226,10 +7401,25 @@ fn option_result_selector_type(typ Type, field string) ?Type {
 	return none
 }
 
+// index_operator_call_info returns accessible index operator metadata for a compatible receiver.
 pub fn (tc &TypeChecker) index_operator_call_info(base_type Type, op string) ?CallInfo {
 	clean := unwrap_pointer(base_type)
 	type_name := resolve_type_name_for_method(clean)
 	if type_name.len == 0 {
+		return none
+	}
+	c_method_name, ambiguous := tc.lookup_c_struct_receiver_method(base_type, op)
+	if ambiguous {
+		return none
+	}
+	if c_method_name.len > 0 {
+		if _ := tc.private_declaration(c_method_name) {
+			return none
+		}
+		info := tc.call_info(c_method_name, true)
+		if info.params.len == 0 || tc.method_receiver_compatible(base_type, info.params[0], c_method_name) {
+			return info
+		}
 		return none
 	}
 	if info := tc.resolve_generic_struct_method(type_name, op) {
@@ -7399,6 +7589,7 @@ fn (mut tc TypeChecker) check_index(id flat.NodeId, node flat.Node) {
 		return
 	}
 	if info := tc.index_overload_call_info(base_type_raw, false) {
+		tc.remember_resolved_call(id, info.name)
 		tc.check_index_overload_args(id, node, info)
 		tc.register_synth_type(id, info.return_type)
 		return
@@ -7530,7 +7721,8 @@ fn (mut tc TypeChecker) check_index(id flat.NodeId, node flat.Node) {
 		if index_type is Unknown && tc.new_error_kind_since(index_error_count, .unknown_ident)
 			&& (base_type is Array || base_type is ArrayFixed) {
 			tc.type_mismatch(.cannot_index, 'non-integer index `void` (array type `${base_type.name()}`)', index_id)
-		} else if index_type !is Unknown && index_type !is Enum && !index_type.is_integer() {
+		} else if index_type !is Unknown && index_type !is Enum && !index_type.is_integer()
+			&& !(tc.node_is_in_translated_file(index_id) && translated_integer_type(index_type)) {
 			if index_type is OptionType || index_type is ResultType {
 				tc.type_mismatch(.cannot_index, 'cannot use Option or Result as index (array type `${base_type.name()}`)', index_id)
 			} else {
@@ -9277,8 +9469,28 @@ fn (tc &TypeChecker) enum_value_matches(value string, enum_name string) bool {
 
 // enum_has_field converts enum has field data for types.
 fn (tc &TypeChecker) enum_has_field(enum_name string, field string) bool {
-	fields := tc.enum_fields[enum_name] or { return false }
-	return field in fields
+	if _ := tc.enum_field_name(enum_name, field) {
+		return true
+	}
+	return false
+}
+
+fn (tc &TypeChecker) enum_field_name(enum_name string, field string) ?string {
+	fields := tc.enum_fields[enum_name] or { return none }
+	if field.starts_with('@') && !token.Token.from_string_tinyv(field[1..]).is_keyword() {
+		return none
+	}
+	if field in fields {
+		return field
+	}
+	plain := escaped_identifier_name(field)
+	if token.Token.from_string_tinyv(plain).is_keyword() {
+		alternate := if field.starts_with('@') { plain } else { '@' + field }
+		if alternate in fields {
+			return alternate
+		}
+	}
+	return none
 }
 
 // resolve_enum_name resolves resolve enum name information for types.
@@ -10223,7 +10435,7 @@ fn (tc &TypeChecker) const_int_enum_selector_value(text string) ?int {
 		return none
 	}
 	enum_name := tc.resolve_enum_name(trimmed_space(expr[..dot])) or { return none }
-	field := trimmed_space(expr[dot + 1..])
+	field := tc.enum_field_name(enum_name, trimmed_space(expr[dot + 1..])) or { return none }
 	for item in tc.comptime_static_enum_decl_value_cases(enum_name) {
 		if item.name == field && item.has_value {
 			return item.value
@@ -11313,7 +11525,8 @@ fn (tc &TypeChecker) concrete_method_signature_key_seen(concrete_name string, me
 	return none
 }
 
-fn (tc &TypeChecker) concrete_generic_method_signature_candidates(concrete_name string, method string) []string {
+// concrete_generic_method_signature_candidates returns the registered spellings of a specialized method.
+pub fn (tc &TypeChecker) concrete_generic_method_signature_candidates(concrete_name string, method string) []string {
 	base, args, ok := generic_type_application_parts(concrete_name)
 	if !ok || args.len == 0 || method == '' {
 		return []string{}
@@ -12388,6 +12601,18 @@ pub fn (tc &TypeChecker) struct_fields_for_type(struct_name string) []StructFiel
 
 @[direct_array_access]
 fn (tc &TypeChecker) struct_field_type(struct_name string, field_name string) ?Type {
+	if field_name.starts_with('@') && field_name.len > 1
+		&& token.Token.from_string_tinyv(field_name[1..]).is_keyword() {
+		mut exact_seen := map[string]bool{}
+		if exact := tc.struct_field_type_inner(struct_name, field_name, mut exact_seen) {
+			return exact
+		}
+		plain_name := escaped_identifier_name(field_name)
+		mut seen := map[string]bool{}
+		if typ := tc.c_struct_plain_keyword_field_type(struct_name, plain_name, mut seen) {
+			return typ
+		}
+	}
 	if !isnil(tc.type_cache) {
 		cache := tc.type_cache
 		slot := struct_field_cache_slot(struct_name, field_name)
@@ -12450,6 +12675,31 @@ fn (tc &TypeChecker) struct_field_type(struct_name string, field_name string) ?T
 		cache.struct_field_misses[cache_key] = true
 	}
 	tc.remember_struct_field_type(struct_name, field_name, Type(void_), false)
+	return none
+}
+
+fn (tc &TypeChecker) c_struct_plain_keyword_field_type(struct_name string, field_name string, mut seen map[string]bool) ?Type {
+	owner := unalias_and_unwrap_pointer_type(tc.parse_type(struct_name))
+	if owner !is Struct {
+		return none
+	}
+	if seen[owner.name] {
+		return none
+	}
+	seen[owner.name] = true
+	fields := tc.struct_fields_for_init(owner.name)
+	for field in fields {
+		if field.name == field_name && owner.name.starts_with('C.') {
+			return field.typ
+		}
+	}
+	for field in fields {
+		if field.is_embed {
+			if typ := tc.c_struct_plain_keyword_field_type(field.typ.name(), field_name, mut seen) {
+				return typ
+			}
+		}
+	}
 	return none
 }
 
@@ -16516,6 +16766,11 @@ fn (tc &TypeChecker) resolve_type_uncached(id flat.NodeId) Type {
 	}
 	node_ref := tc.a.node(id)
 	node := tc.a.nodes[int(id)]
+	if node.kind == .int_literal && tc.node_is_in_translated_file(id) {
+		if typ := tc.translated_integer_literal_type(id) {
+			return typ
+		}
+	}
 	if node.kind == .ident && tc.errors.any(it.node == id && it.kind == .unknown_ident) {
 		return Type(void_)
 	}
@@ -17133,7 +17388,9 @@ fn (tc &TypeChecker) resolve_type_uncached(id flat.NodeId) Type {
 				return Type(void_)
 			}
 			if node.op in [.left_shift, .right_shift, .right_shift_unsigned]
-				&& (!unalias_type(lt).is_integer() || !unalias_type(rt).is_integer()) {
+				&& (!unalias_type(lt).is_integer() || !unalias_type(rt).is_integer())
+				&& !(tc.node_is_in_translated_file(id) && translated_integer_type(lt)
+					&& translated_integer_type(rt)) {
 				return Type(void_)
 			}
 			if node.op == .left_shift && array_type_from_receiver(lt) != none {
@@ -17141,12 +17398,14 @@ fn (tc &TypeChecker) resolve_type_uncached(id flat.NodeId) Type {
 			}
 			if node.op in [.plus, .minus] {
 				if node.op == .minus && lt is Pointer && rt is Pointer {
-					return Type(int_)
+					return if tc.node_is_in_translated_file(id) { Type(isize_) } else { Type(int_) }
 				}
-				if lt is Pointer && rt.is_integer() {
+				if lt is Pointer && (rt.is_integer()
+					|| (tc.node_is_in_translated_file(id) && translated_integer_type(rt))) {
 					return lt_raw
 				}
-				if node.op == .plus && rt is Pointer && lt.is_integer() {
+				if node.op == .plus && rt is Pointer && (lt.is_integer()
+					|| (tc.node_is_in_translated_file(id) && translated_integer_type(lt))) {
 					return rt_raw
 				}
 			}
@@ -17154,6 +17413,9 @@ fn (tc &TypeChecker) resolve_type_uncached(id flat.NodeId) Type {
 				return operator_ret
 			}
 			if node.op == .right_shift_unsigned {
+				if tc.node_is_in_translated_file(id) {
+					return unsigned_shift_result_type(tc.translated_promoted_shift_type(lt))
+				}
 				// Untyped integer literals retain the language's 32-bit default. An
 				// explicit `int(...)` uses the target-width `int` instead.
 				if tc.integer_literal_source(lhs_id) != none {
@@ -17162,7 +17424,16 @@ fn (tc &TypeChecker) resolve_type_uncached(id flat.NodeId) Type {
 				return unsigned_shift_result_type(lt)
 			}
 			if node.op in [.left_shift, .right_shift] {
+				if tc.node_is_in_translated_file(id)
+					&& (tc.integer_shift_bit_size(lt) < 32 || unalias_type(lt) == Type(bool_)) {
+					return Type(i32_)
+				}
 				return lt_raw
+			}
+			if tc.node_is_in_translated_file(id) && translated_numeric_type(lt)
+				&& translated_numeric_type(rt)
+				&& node.op in [.plus, .minus, .mul, .div, .mod, .amp, .pipe, .xor] {
+				return tc.translated_common_numeric_type(lt, rt)
 			}
 			if node.op == .plus {
 				if lt is String && optional_payload_is_string(rt) {
@@ -17212,6 +17483,14 @@ fn (tc &TypeChecker) resolve_type_uncached(id flat.NodeId) Type {
 					return Type(Pointer{
 						base_type: inner
 					})
+				}
+			}
+			if node.children_count > 0 && tc.node_is_in_translated_file(id)
+				&& node.op in [.plus, .minus, .bit_not] {
+				child_type := tc.resolve_type(tc.a.child(&node, 0))
+				if (node.op == .bit_not && translated_integer_type(child_type))
+					|| (node.op in [.plus, .minus] && translated_numeric_type(child_type)) {
+					return tc.translated_promoted_numeric_type(child_type)
 				}
 			}
 			if node.typ.len > 0 {
@@ -19237,8 +19516,53 @@ struct InfixOperatorSignature {
 	param_count int
 }
 
+// c_struct_operator_call_info resolves a visible C receiver operator in its source context.
+pub fn (tc &TypeChecker) c_struct_operator_call_info(receiver Type, method string, file string, module_name string) ?CallInfo {
+	underlying := unalias_and_unwrap_pointer_type(receiver)
+	if underlying !is Struct || !(underlying as Struct).name.starts_with('C.') {
+		return none
+	}
+	view := if tc.cur_file == file && tc.cur_module == module_name {
+		tc
+	} else {
+		tc.fork_type_parse_view(file, module_name)
+	}
+	name, ambiguous := view.lookup_c_struct_receiver_method(receiver, method)
+	if ambiguous || name.len == 0 {
+		return none
+	}
+	if _ := view.private_declaration(name) { return none }
+	info := view.call_info(name, true)
+	if info.params.len == 0 || !view.method_receiver_compatible(receiver, info.params[0], name) {
+		return none
+	}
+	return info
+}
+
+fn (tc &TypeChecker) c_struct_infix_operator_call_info(op flat.Op, lhs Type) ?CallInfo {
+	op_name := infix_operator_name(op) or { return none }
+	if info := tc.c_struct_operator_call_info(lhs, op_name, tc.cur_file, tc.cur_module) {
+		return info
+	}
+	fallback := match op {
+		.gt, .ge, .le { '<' }
+		.ne { '==' }
+		else { return none }
+	}
+	return tc.c_struct_operator_call_info(lhs, fallback, tc.cur_file, tc.cur_module)
+}
+
 fn (tc &TypeChecker) infix_operator_signature(op flat.Op, lhs Type) ?InfixOperatorSignature {
 	op_name := infix_operator_name(op) or { return none }
+	underlying := unalias_and_unwrap_pointer_type(lhs)
+	if underlying is Struct && underlying.name.starts_with('C.') {
+		info := tc.c_struct_infix_operator_call_info(op, lhs) or { return none }
+		return InfixOperatorSignature{
+			return_type: info.return_type
+			param_type:  if info.params.len > 1 { info.params[1] } else { Type(void_) }
+			param_count: info.params.len
+		}
+	}
 	if lhs is Pointer && lhs.base_type !is Alias && unalias_type(lhs.base_type) !is Struct {
 		return none
 	}
@@ -19328,6 +19652,10 @@ fn (tc &TypeChecker) infix_operator_operand_compatible(actual Type, expected Typ
 
 fn (tc &TypeChecker) type_has_infix_operator_method(typ Type, op flat.Op) bool {
 	op_name := infix_operator_name(op) or { return false }
+	underlying := unalias_and_unwrap_pointer_type(typ)
+	if underlying is Struct && underlying.name.starts_with('C.') {
+		return tc.c_struct_infix_operator_call_info(op, typ) != none
+	}
 	type_name := resolve_type_name_for_method(unwrap_pointer(typ))
 	if type_name.len == 0 {
 		return false

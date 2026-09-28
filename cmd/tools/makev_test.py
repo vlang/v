@@ -41,6 +41,17 @@ class BootstrapConfigurationTests(unittest.TestCase):
                 self.assertEqual(len(commands), 1)
                 self.assertIn("%VC_BOOTSTRAP_DEFINE%", commands[0])
 
+    def test_msvc_bootstrap_selects_v1(self):
+        # MSVC's cl.exe is invoked directly (there is no "!msvc_exe!" variable
+        # the way the other three bootstraps have), so this needs its own
+        # assertion rather than joining the compiler loop above.
+        commands = [
+            line for line in routine("build_bootstrap_with_msvc").splitlines()
+            if line.startswith("cl ") and '"%V_C_FILE%"' in line
+        ]
+        self.assertEqual(len(commands), 1)
+        self.assertIn("%VC_BOOTSTRAP_DEFINE%", commands[0])
+
     def test_clang_generation_matches_the_stage_compiler(self):
         commands = routine("build_stage_with_clang").splitlines()
         generate = next(line for line in commands if line.startswith('"%V_BOOTSTRAP%" '))
@@ -173,6 +184,55 @@ class BatchExecutionTests(unittest.TestCase):
             self.assertEqual((workdir / "v.exe").read_text(), "new compiler")
             self.assertEqual((workdir / "v_old.exe").read_text(), "working compiler")
             self.assertFalse((workdir / "v_up.exe").exists())
+
+    def run_try_delete(self, workdir, target):
+        body = routine("try_delete")
+        for wait in ("ping 192.0.2.1 -n 1 -w 100 >nul", "ping 192.0.2.1 -n 1 -w 250 >nul"):
+            body = body.replace(wait, "rem No delay in tests")
+        script = "\n".join([
+            "@echo off",
+            "setlocal EnableExtensions EnableDelayedExpansion",
+            'call :try_delete "' + str(target) + '"',
+            "exit /b !ERRORLEVEL!",
+            body,
+        ])
+        harness = workdir / "try_delete harness.bat"
+        harness.write_bytes(script.replace("\n", "\r\n").encode("utf-8"))
+        return subprocess.run(
+            [os.environ.get("ComSpec", "cmd.exe"), "/d", "/c", str(harness)],
+            cwd=workdir,
+            capture_output=True,
+            text=True,
+            errors="replace",
+            timeout=15,
+            check=False,
+        )
+
+    def test_try_delete_removes_an_existing_unlocked_file(self):
+        with tempfile.TemporaryDirectory(prefix="makev tests ") as directory:
+            workdir = Path(directory)
+            target = workdir / "leftover.exe"
+            target.write_text("stale binary", encoding="utf-8")
+            result = self.run_try_delete(workdir, target)
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+            self.assertFalse(target.exists())
+
+    def test_try_delete_succeeds_when_the_file_never_existed(self):
+        with tempfile.TemporaryDirectory(prefix="makev tests ") as directory:
+            workdir = Path(directory)
+            target = workdir / "never_written.exe"
+            result = self.run_try_delete(workdir, target)
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
+    def test_try_delete_succeeds_even_when_the_file_stays_locked(self):
+        with tempfile.TemporaryDirectory(prefix="makev tests ") as directory:
+            workdir = Path(directory)
+            target = workdir / "locked.exe"
+            target.write_text("stale binary", encoding="utf-8")
+            with open(target, "rb"):
+                result = self.run_try_delete(workdir, target)
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+            self.assertTrue(target.exists())
 
 
 if __name__ == "__main__":

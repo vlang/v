@@ -19,6 +19,7 @@ const macos_v3_private_environment_names = [
 	'V_MACOS_V3_RETRY',
 	'V3_CRUN_BUILD_IDENTITY',
 	'V3_INTERNAL_RESTART',
+	'V3_INTERNAL_CACHE_RECOVERY',
 	macos_v3_caller_vexe_env,
 	macos_v3_caller_vexe_present_env,
 	macos_v3_caller_vchild_env,
@@ -391,6 +392,24 @@ fn detect_vroot_from(start string) string {
 		dir = parent
 	}
 	return ''
+}
+
+// expand_module_search_paths expands the value of `-path`: the search roots are
+// separated by `|` (or the OS path delimiter), `@vlib` and `@vmodules` stand for the
+// vlib folder and the global module folders, and `@vroot` for the V root folder.
+pub fn expand_module_search_paths(spec string, vroot string) []string {
+	if spec.len == 0 {
+		return []
+	}
+	mut expanded := []string{}
+	for path in spec.replace('|', os.path_delimiter).split(os.path_delimiter) {
+		match path {
+			'@vlib' { expanded << os.join_path_single(vroot, 'vlib') }
+			'@vmodules' { expanded << os.vmodules_paths() }
+			else { expanded << path.replace('@vroot', vroot) }
+		}
+	}
+	return expanded
 }
 
 // get_vlib_module_path returns get vlib module path data for Preferences.

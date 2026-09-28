@@ -2935,6 +2935,18 @@ pub:
 	cache_key string
 }
 
+// cache_objects maps build-local objects to their persistent cache entries for
+// reporting linker failures, including units published during this build.
+pub fn (prepared &FastcPreparedUnits) cache_objects() map[string]string {
+	mut cached := map[string]string{}
+	for entry in prepared.entries {
+		if entry.cache_object != '' {
+			cached[entry.object] = entry.cache_object
+		}
+	}
+	return cached
+}
+
 // fastc_unit_compile_order returns the indexes of uncached C units largest
 // first. TinyCC processes start one at a time, so launching longer jobs first
 // reduces the time spent waiting for the final unit.
