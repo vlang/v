@@ -187,7 +187,7 @@ fn (mut t Transformer) return_expr_is_propagated_err(id flat.NodeId, payload_typ
 					continue
 				}
 				for j in 0 .. t.multi_assign_lhs_count(statement) {
-					binding := t.a.child_node(statement, j)
+					binding := t.a.node(t.multi_assign_lhs_id(statement, j))
 					if binding.kind == .ident && binding.value == 'err' {
 						shadows_implicit_err = true
 						break
