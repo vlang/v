@@ -5205,8 +5205,12 @@ fn (mut t Transformer) stringify_expr(expr_id flat.NodeId) flat.NodeId {
 		// Interface payloads are exposed through their backing address while
 		// smartcasted. Preserve the reference marker used by V stringification,
 		// even when the concrete payload itself is stored in a boxed allocation.
+		// A reference-typed aggregate payload already carries that marker from its
+		// own `&Struct`/`&SumType` conversion, so prefixing it again prints `&&`.
 		if t.is_interface_type_name(sc.sum_type_name)
-			&& !t.smartcast_target_type(sc).trim_space().starts_with('&') {
+			&& !t.smartcast_target_type(sc).trim_space().starts_with('&')
+			&& !(typ.starts_with('&')
+				&& t.stringify_aggregate_type_name(t.trim_all_pointer_type(typ)) != none) {
 			return t.string_plus(t.make_string_literal('&'), converted)
 		}
 	}
