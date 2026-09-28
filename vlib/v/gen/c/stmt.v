@@ -7690,7 +7690,15 @@ fn (mut g FlatGen) gen_decl_assign(node flat.Node) {
 			if rhs.kind in [.call, .ident] {
 				// Unwrapped results are copied from temporaries. Keep their concrete
 				// module identity just as for a direct call's return type.
-				rhs_type := g.usable_expr_type(rhs_id)
+				mut rhs_type := g.usable_expr_type(rhs_id)
+				if rhs.kind == .ident && g.local_storage_is_mutable(rhs.value)
+					&& default_init_unalias_type(v_type) !is types.Pointer {
+					if value_type := g.local_indirect_value_type(rhs.value) {
+						// Mutable value iteration borrows storage but copies the value.
+						// Explicit reference iteration keeps the declared pointer type.
+						rhs_type = value_type
+					}
+				}
 				current_value := default_init_unalias_type(types.unwrap_pointer(v_type))
 				rhs_value := default_init_unalias_type(types.unwrap_pointer(rhs_type))
 				if current_value is types.Struct && rhs_value is types.Struct
@@ -8870,6 +8878,18 @@ fn (mut g FlatGen) gen_assign(node flat.Node) {
 				g.gen_assign_or_expr(node, i, rhs_node)
 				i += 2
 				continue
+			}
+			if node.op == .assign && lhs.kind == .ident && g.local_storage_is_mutable(lhs.value) {
+				if indirect := g.local_indirect_value_type(lhs.value) {
+					if _ := array_fixed_type(indirect) {
+						dst := '*${g.expr_to_string(lhs_id)}'
+						g.write('memmove(${dst}, ')
+						g.gen_fixed_array_copy_source(rhs_id, indirect)
+						g.writeln(', sizeof(${dst}));')
+						i += 2
+						continue
+					}
+				}
 			}
 			if rhs_node.kind == .array_literal {
 				lhs_type := types.unwrap_pointer(g.usable_expr_type(lhs_id))
