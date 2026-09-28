@@ -3652,6 +3652,12 @@ fn (mut tc TypeChecker) check_prefix_expr(id flat.NodeId, node flat.Node) {
 	if node.children_count == 0 {
 		return
 	}
+	if cast := tc.translated_pointer_cast_node(id, node) {
+		tc.check_cast_expr(id, cast)
+		tc.remember_expr_type(id, tc.parse_type(cast.value))
+		tc.remember_resolved_call(tc.a.child(&node, 0), cast.value)
+		return
+	}
 	child_id := tc.a.child(&node, 0)
 	child := tc.a.node(child_id)
 	if node.op == .minus && child.kind == .int_literal {
@@ -4156,6 +4162,25 @@ fn (mut tc TypeChecker) check_ownership_map_spread_clone(id flat.NodeId, node fl
 	}
 }
 
+fn (tc &TypeChecker) translated_pointer_cast_node(id flat.NodeId, node flat.Node) ?flat.Node {
+	if node.op != .amp || node.children_count != 1 {
+		return none
+	}
+	call_id := tc.a.child(&node, 0)
+	call := tc.a.node(call_id)
+	if call.kind != .call {
+		return none
+	}
+	type_name := tc.translated_named_cast_call_name(id, *call) or { return none }
+	return flat.Node{
+		...node
+		kind:           .cast_expr
+		value:          '&${type_name}'
+		children_start: call.children_start + 1
+		children_count: 1
+	}
+}
+
 fn (mut tc TypeChecker) check_cast_expr(id flat.NodeId, node flat.Node) {
 	if node.children_count == 0 {
 		return
@@ -4499,7 +4524,8 @@ fn (mut tc TypeChecker) check_cast_expr(id flat.NodeId, node flat.Node) {
 		tc.record_error_at(.assignment_mismatch, 'cannot cast `${actual.name()}` to `${target.name()}`', id, node.pos)
 		return
 	}
-	if clean_target is Enum && infix_power_type_is_numeric(clean_actual) && tc.unsafe_depth == 0 {
+	if clean_target is Enum && infix_power_type_is_numeric(clean_actual) && tc.unsafe_depth == 0
+		&& !tc.node_is_in_translated_file(id) {
 		tc.record_error_at(.assignment_mismatch, 'casting numbers to enums, should be done inside `unsafe{}` blocks', id, node.pos)
 		return
 	}
@@ -4513,7 +4539,8 @@ fn (mut tc TypeChecker) check_cast_expr(id flat.NodeId, node flat.Node) {
 		return
 	}
 	if clean_target is Primitive && clean_target.props.has(.boolean) && !(clean_actual is Primitive
-		&& clean_actual.props.has(.boolean)) && tc.unsafe_depth == 0 {
+		&& clean_actual.props.has(.boolean)) && tc.unsafe_depth == 0
+		&& !(tc.node_is_in_translated_file(id) && infix_power_type_is_numeric(clean_actual)) {
 		tc.record_error_at(.assignment_mismatch, 'cannot cast to bool - use e.g. `some_int != 0` instead', id, node.pos)
 		return
 	}
@@ -5476,6 +5503,10 @@ fn (mut tc TypeChecker) check_cast_from_string(id flat.NodeId, node flat.Node, c
 	expr := tc.source_text_for_node(child_id)
 	clean_target := unalias_type(target)
 	target_name := if node.value.len > 0 { node.value } else { target.name() }
+	if clean_target is USize {
+		tc.record_error_at(.assignment_mismatch, 'cannot cast type `${actual.name()}` to `${target_name}`', id, node.pos)
+		return true
+	}
 	if clean_target is Primitive
 		&& (clean_target.props.has(.integer) || clean_target.props.has(.float)) {
 		if clean_target.props.has(.integer) && clean_target.props.has(.unsigned)

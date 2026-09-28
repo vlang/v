@@ -20763,6 +20763,17 @@ fn (mut t Transformer) transform_prefix_expr(id flat.NodeId, node flat.Node) fla
 	if node.children_count == 0 {
 		return id
 	}
+	if node.op == .amp && !isnil(t.tc) {
+		child_id := t.a.child(&node, 0)
+		child := t.a.node(child_id)
+		if child.kind == .call && child.children_count == 2 {
+			if target := t.tc.resolved_call_name(child_id) {
+				if target.starts_with('&') {
+					return t.make_cast(target, t.transform_expr(t.a.child(child, 1)), target)
+				}
+			}
+		}
+	}
 	// Smartcast payload accesses are fully lowered when they are built. Rewalking
 	// their dereference would smartcast the original sum receiver a second time
 	// (for example `*a._int` becoming `*(*a._int)._int` in a nested match).
