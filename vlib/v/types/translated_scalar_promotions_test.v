@@ -2,6 +2,16 @@ module types
 
 import os
 
+fn test_translated_enum_arithmetic_with_overflow_checks() {
+	root := os.join_path(os.vtmp_dir(), 'v3_translated_enum_overflow_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+	path := os.join_path(root, 'main.v')
+	os.write_file(path, '@[translated]\nmodule main\nenum OverflowEnum as u32 {\n\tzero = 0\n}\nfn main() {\n\tassert (int(-1) + OverflowEnum.zero) > i64(0)\n\tassert (OverflowEnum.zero + int(-1)) > i64(0)\n}\n')!
+	result := os.execute('${os.quoted_path(@VEXE)} -check-overflow run ${os.quoted_path(path)}')
+	assert result.exit_code == 0, result.output
+}
+
 fn test_translated_promotions_do_not_leak_into_ordinary_files() {
 	root := os.join_path(os.vtmp_dir(), 'v3_translated_promotions_${os.getpid()}')
 	os.mkdir_all(root)!

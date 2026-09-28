@@ -24612,14 +24612,20 @@ fn checked_integer_bounds(typ types.Type) ?CheckedIntegerBounds {
 	}
 }
 
+fn translated_integer_scalar_type(typ types.Type) bool {
+	clean := cgen_unalias_type(typ)
+	return clean.is_integer() || clean is types.Char || clean is types.Enum
+		|| clean == types.Type(types.bool_)
+}
+
 fn (mut g FlatGen) gen_checked_integer_infix(id flat.NodeId, node flat.Node, lhs_id flat.NodeId, rhs_id flat.NodeId, lhs_type types.Type, rhs_type types.Type) bool {
 	if !g.check_overflow || g.ignore_overflow || node.op !in [.plus, .minus, .mul] {
 		return false
 	}
 	mut helper_type := lhs_type
 	mut translated_ct := ''
-	if g.expr_is_in_translated_file(id) && cgen_unalias_type(lhs_type).is_integer()
-		&& cgen_unalias_type(rhs_type).is_integer() {
+	if g.expr_is_in_translated_file(id) && translated_integer_scalar_type(lhs_type)
+		&& translated_integer_scalar_type(rhs_type) {
 		result_type := cgen_unalias_type(g.usable_expr_type(id))
 		if result_type.is_integer() {
 			helper_type = if result_type.name() == 'int' {
@@ -24757,6 +24763,9 @@ fn (g &FlatGen) expr_is_in_translated_file(id flat.NodeId) bool {
 
 fn (g &FlatGen) translated_comparison_integer_width(typ types.Type) int {
 	clean := unsigned_shift_unalias_type(typ)
+	if clean is types.Rune {
+		return 32
+	}
 	if clean is types.Enum {
 		width := fixed_integer_c_type_width(g.enum_storage_c_type(clean)) or { return 0 }
 		return if width < 32 { 32 } else { width }
@@ -24769,6 +24778,9 @@ fn (g &FlatGen) translated_comparison_integer_width(typ types.Type) int {
 
 fn (g &FlatGen) translated_comparison_integer_is_unsigned(typ types.Type) bool {
 	clean := unsigned_shift_unalias_type(typ)
+	if clean is types.Rune {
+		return true
+	}
 	if clean is types.Enum {
 		storage := g.enum_storage_c_type(clean)
 		width := fixed_integer_c_type_width(storage) or { return false }

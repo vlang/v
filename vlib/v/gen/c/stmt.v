@@ -9089,8 +9089,8 @@ fn (g &FlatGen) translated_numeric_compound_operator(lhs_id flat.NodeId, lhs_typ
 	}
 	lhs_clean := cgen_unalias_type(lhs_type)
 	rhs_clean := cgen_unalias_type(rhs_type)
-	if !(lhs_clean.is_integer() || lhs_clean.is_float())
-		|| !(rhs_clean.is_integer() || rhs_clean.is_float()) {
+	if !(translated_integer_scalar_type(lhs_clean) || lhs_clean.is_float())
+		|| !(translated_integer_scalar_type(rhs_clean) || rhs_clean.is_float()) {
 		return none
 	}
 	return match op {

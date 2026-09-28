@@ -48,9 +48,13 @@ fn test_translated_mixed_sign_comparisons_use_c_widths() {
 	small_signed := i8(-1)
 	small_unsigned := u16(1)
 	assert small_signed < small_unsigned
+	assert !(narrow_signed < rune(1))
+	assert narrow_signed == rune(0xffff_ffff)
 }
 
 enum TranslatedUnsigned32Enum as u32 {
+	zero = 0
+	two  = 2
 	high = 0xffff_ffff
 }
 
@@ -71,6 +75,8 @@ fn test_translated_mixed_arithmetic_uses_common_c_type() {
 	assert translated_wrapped_subtraction() == u32(0xffff_ffff)
 	assert (int(-1) + u32(1)) == u32(0)
 	assert u32(0xffff_ffff) + i64(1) == i64(0x1_0000_0000)
+	assert (int(-1) + rune(0)) > i64(0)
+	assert (rune(0) + int(-1)) > i64(0)
 }
 
 fn test_translated_mixed_compound_arithmetic_uses_common_c_type() {
@@ -102,6 +108,19 @@ fn test_translated_mixed_compound_arithmetic_uses_common_c_type() {
 	}
 	mapped['a'] /= u32(2)
 	assert mapped['a'] == 2147483646
+	mut with_enum := int(-3)
+	with_enum /= TranslatedUnsigned32Enum.two
+	assert with_enum == 2147483646
+	mut with_char := int(-3)
+	with_char /= char(2)
+	assert with_char == -1
+	mut with_bool := int(-3)
+	with_bool += true
+	assert with_bool == -2
+}
+
+fn test_translated_enum_arithmetic_uses_common_type() {
+	assert (int(-1) + TranslatedUnsigned32Enum.zero) > i64(0)
 }
 
 fn translated_compound_index(mut evaluations []int) int {

@@ -9224,6 +9224,7 @@ can serve as conditions. Ordinary V files retain V's type and condition checks, 
 compiled together with translated files.
 Conversions to translated `int` use the target C `int` width at assignments, calls, and returns.
 Mixed numeric compound assignments use C arithmetic conversions before storing their result.
+This includes `rune` as an unsigned 32-bit integer and enums with their declared backing types.
 
 V can translate your C code to human readable V code, and generating V wrappers
 on top of C libraries.

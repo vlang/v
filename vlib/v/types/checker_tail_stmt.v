@@ -3188,7 +3188,7 @@ fn translated_integer_is_unsigned(typ Type) bool {
 	if typ is Primitive {
 		return typ.props.has(.unsigned)
 	}
-	return typ is USize
+	return typ is USize || typ is Rune
 }
 
 fn (tc &TypeChecker) translated_common_numeric_type(lhs Type, rhs Type) Type {
