@@ -14104,8 +14104,11 @@ fn (g &FlatGen) const_ref_name_from_node(node flat.Node) string {
 	}
 	if node.kind == .selector && node.children_count > 0 {
 		base := g.a.child_node(&node, 0)
-		if base.kind == .ident {
-			return g.const_ref_name('${base.value}.${node.value}')
+		if base.kind == .ident && !g.ident_is_local_binding(base.value) {
+			module_name := g.import_alias_module_for_file(base.value, g.node_source_file(&node)) or {
+				base.value
+			}
+			return g.const_ref_name('${module_name}.${node.value}')
 		}
 	}
 	return ''

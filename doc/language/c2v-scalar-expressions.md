@@ -17,7 +17,9 @@ values, including fractional values. Assignments, arguments, returns, casts, and
 apply this normalization even on targets that store booleans as unsigned bytes.
 Static translated `int` globals narrow their initial values to C's 32-bit `int` width.
 This conversion also applies to `int` elements in static fixed-array globals, including nested
-arrays and aliases. Wider element types and ordinary V files keep their usual conversions.
+arrays and aliases, and constant struct fields in `@[cinit]` globals. Numeric boolean fields
+in these static structs use the same nonzero normalization. Wider destination types and ordinary
+V files keep their usual conversions.
 Mixed numeric arithmetic and conditional branches use C's usual arithmetic
 conversions when determining the expression type.
 

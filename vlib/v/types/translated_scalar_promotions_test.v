@@ -6,8 +6,14 @@ fn test_translated_static_globals_use_c_int_width() {
 	root := os.join_path(os.vtmp_dir(), 'v3_translated_static_globals_${os.getpid()}')
 	os.mkdir_all(root)!
 	defer { os.rmdir_all(root) or {} }
+	os.write_file(os.join_path(root, 'v.mod'), "Module { name: 'translated_static_globals' }")!
+	os.mkdir_all(os.join_path(root, 'values'))!
+	os.write_file(os.join_path(root, 'values', 'values.v'), 'module values\npub const unsigned = u32(0xffff_ffff)\n')!
+	os.mkdir_all(os.join_path(root, 'other'))!
+	os.write_file(os.join_path(root, 'other', 'other.v'), 'module other\npub const unsigned = u64(0x1_ffff_ffff)\n')!
 	os.write_file(os.join_path(root, 'translated.v'), '@[translated]
 module main
+import values as data
 type StaticInt = int
 type StaticRow = [2]StaticInt
 struct StaticHolder { value int }
@@ -24,10 +30,22 @@ __global (
 	translated_static_wide_array [1]i64 = [u32(0xffff_ffff)]!
 	translated_static_struct StaticHolder = StaticHolder{value: u32(0xffff_ffff)}
 )
+@[cinit]
+__global (
+	translated_static_constant StaticHolder = StaticHolder{value: static_unsigned}
+	translated_static_qualified StaticHolder = StaticHolder{value: data.unsigned}
+)
 ')!
 	os.write_file(os.join_path(root, 'main.v'), 'module main
+import other as data
 __global ordinary_static int = int(u32(0xffff_ffff))
 __global ordinary_static_array [1]int = [int(u32(0xffff_ffff))]!
+const ordinary_static_unsigned = int(u32(0xffff_ffff))
+const ordinary_static_qualified_unsigned = int(data.unsigned)
+@[cinit]
+__global ordinary_static_struct = StaticHolder{value: ordinary_static_unsigned}
+@[cinit]
+__global ordinary_static_qualified = StaticHolder{value: ordinary_static_qualified_unsigned}
 fn main() {
 	assert i64(translated_static) == -1
 	assert i64(translated_static_alias) == -1
@@ -42,9 +60,13 @@ fn main() {
 	assert i64(translated_static_row[1]) == -2147483648
 	assert translated_static_wide_array[0] == i64(4294967295)
 	assert i64(translated_static_struct.value) == -1
+	assert i64(translated_static_constant.value) == -1
+	assert i64(translated_static_qualified.value) == -1
 	if sizeof(int) == 8 {
 		assert i64(ordinary_static) == 4294967295
 		assert i64(ordinary_static_array[0]) == 4294967295
+		assert i64(ordinary_static_struct.value) == 4294967295
+		assert i64(ordinary_static_qualified.value) == 8589934591
 	}
 }
 ')!

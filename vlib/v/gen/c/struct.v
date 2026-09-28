@@ -282,7 +282,9 @@ fn (mut g FlatGen) gen_struct_field_expr_for_field(value_id flat.NodeId, struct_
 		}
 		value := g.a.node(value_id)
 		if value.kind in [.ident, .selector] {
-			constant := g.const_expr_to_string(value_id, []string{})
+			constant := g.global_scalar_static_initializer(value_id, expected) or {
+				g.const_expr_to_string(value_id, []string{})
+			}
 			if trimmed_space(constant).len > 0 {
 				g.write(constant)
 				return
