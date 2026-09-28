@@ -519,8 +519,10 @@ fn optional_support_selection_thread(arg voidptr) voidptr {
 
 fn unresolved_call_optional_thread(arg voidptr) voidptr {
 	mut w := unsafe { &FlatGen(arg) }
+	usw := time.new_stopwatch()
 	scope := cgen_worker_scope_begin(w.scope_parallel_workers)
 	w.collect_unresolved_call_optional_types()
+	w.timing_profile('  [ttime]       fs call opts   ${f64(usw.elapsed().microseconds()) / 1000.0:7.2f} ms')
 	w.worker_scope = scope
 	cgen_worker_scope_leave(scope)
 	return unsafe { nil }
@@ -3435,6 +3437,7 @@ fn (mut g FlatGen) run_pre_dispatch_parallel(no_parallel bool) bool {
 	optional_worker.c_name_cache = &CNameCache{}
 	optional_worker.generic_app_cache = &GenericAppCache{}
 	mut call_optional_worker := g.new_parallel_worker(3)
+	call_optional_worker.tc.verbose = g.tc.verbose
 	call_optional_worker.c_name_cache = &CNameCache{}
 	call_optional_worker.generic_app_cache = &GenericAppCache{}
 	fail := os.getenv('V3_TEST_PTHREAD_CREATE_FAIL')
