@@ -99,8 +99,11 @@ fn (tc &TypeChecker) expression_node_used_as_value(id flat.NodeId) bool {
 			continue
 		}
 		if parent.kind in [.if_expr, .match_stmt, .comptime_if] {
-			if parent.children_count == 0 || tc.a.child(parent, 0) == current {
+			if parent.children_count == 0 {
 				return false
+			}
+			if tc.a.child(parent, 0) == current {
+				return parent.kind in [.if_expr, .match_stmt]
 			}
 			current = parent_id
 			continue
@@ -322,6 +325,9 @@ fn (mut tc TypeChecker) check_unused_expression_statement(id flat.NodeId) {
 	}
 	if semantic.kind == .call {
 		tc.check_must_use_call(semantic_id, semantic)
+		return
+	}
+	if tc.node_is_in_translated_file(id) {
 		return
 	}
 	if semantic.kind == .or_expr {

@@ -16181,7 +16181,9 @@ fn (mut g FlatGen) const_expr_to_string(id flat.NodeId, seen []string) string {
 		}
 		.sizeof_expr {
 			if node.children_count > 0 {
-				'sizeof(${g.const_expr_to_string(g.a.child(&node, 0), seen)})'
+				// sizeof measures the operand's storage; inlining a const operand's
+				// value would turn a fixed array into a brace list C cannot measure.
+				'sizeof(${g.expr_to_string(g.a.child(&node, 0))})'
 			} else {
 				'sizeof(${g.sizeof_target(node.value)})'
 			}

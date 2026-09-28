@@ -99,6 +99,7 @@ mut:
 	cur_file_id                  int
 	next_file_id                 int = 1
 	cur_module                   string
+	is_translated                bool
 	cur_fn                       string
 	cur_fn_offset                int = -1
 	cur_fn_generic_params        []string
@@ -126,6 +127,11 @@ mut:
 	// comptime_value_*: a name is in scope when local_binding_counts[name] > 0.
 	local_binding_counts              map[string]int
 	global_names                      map[string]bool
+	parse_batch_paths                 []string
+	translated_sizeof_type_names      map[string]bool
+	translated_sizeof_const_names     map[string]bool
+	translated_sizeof_global_names    map[string]bool
+	translated_sizeof_scanned_modules map[string]bool
 	local_binding_undos               []string
 	local_binding_scopes              []int
 	active_lambda_param_counts        map[string]int
@@ -246,20 +252,23 @@ enum InlineAsmMnemonicState {
 // new creates a Parser value for parser.
 pub fn Parser.new(prefs &pref.Preferences) &Parser {
 	return &Parser{
-		prefs:                         unsafe { prefs }
-		s:                             scanner.new_scanner(prefs, .normal)
-		local_type_names:              map[string]string{}
-		anonymous_struct_types:        map[string][]string{}
-		comptime_const_values:         map[string]string{}
-		comptime_local_values:         map[string]string{}
-		imported_module_names:         map[string]bool{}
-		file_method_names:             map[string]bool{}
-		local_binding_counts:          map[string]int{}
-		global_names:                  map[string]bool{}
-		active_lambda_param_counts:    map[string]int{}
-		unsupported_inline_asm_guards: map[int]bool{}
-		sql_query_data_aliases:        map[string]bool{}
-		a:                             &flat.FlatAst{
+		prefs:                          unsafe { prefs }
+		s:                              scanner.new_scanner(prefs, .normal)
+		local_type_names:               map[string]string{}
+		translated_sizeof_type_names:   map[string]bool{}
+		translated_sizeof_const_names:  map[string]bool{}
+		translated_sizeof_global_names: map[string]bool{}
+		anonymous_struct_types:         map[string][]string{}
+		comptime_const_values:          map[string]string{}
+		comptime_local_values:          map[string]string{}
+		imported_module_names:          map[string]bool{}
+		file_method_names:              map[string]bool{}
+		local_binding_counts:           map[string]int{}
+		global_names:                   map[string]bool{}
+		active_lambda_param_counts:     map[string]int{}
+		unsupported_inline_asm_guards:  map[int]bool{}
+		sql_query_data_aliases:         map[string]bool{}
+		a:                              &flat.FlatAst{
 			// Parallel-parse workers reserve for their chunk before parsing and
 			// the self-host reserves the whole AST, so start without capacity.
 			nodes:                         []flat.Node{}
@@ -303,9 +312,7 @@ pub fn (mut p Parser) parse_file(path string) &flat.FlatAst {
 
 // parse_files reads parse files input for parser.
 pub fn (mut p Parser) parse_files(paths []string) &flat.FlatAst {
-	for path in paths {
-		p.parse_into(path)
-	}
+	p.parse_files_with_starts(paths)
 	return p.a
 }
 
@@ -317,6 +324,7 @@ pub fn (mut p Parser) release_source_storage() {
 	p.lit = ''
 	p.peek_lit = ''
 	p.cur_module = ''
+	p.is_translated = false
 	p.cur_fn = ''
 	p.cur_struct = ''
 	p.pending_export = ''
@@ -334,6 +342,10 @@ pub fn (mut p Parser) release_source_storage() {
 // bound per-file post-processing (module-name canonicalization) when files are
 // parsed in batches instead of one at a time.
 pub fn (mut p Parser) parse_files_with_starts(paths []string) []int {
+	previous_paths := p.parse_batch_paths
+	p.parse_batch_paths = paths.clone()
+	p.reset_translated_sizeof_declarations()
+	defer { p.parse_batch_paths = previous_paths }
 	mut starts := []int{cap: paths.len}
 	for path in paths {
 		starts << p.a.nodes.len
@@ -360,6 +372,7 @@ pub fn (mut p Parser) parse_into(path string) {
 	p.peek_pos = 0
 	p.peek_end = 0
 	p.cur_module = ''
+	p.is_translated = false
 	p.cur_fn = ''
 	p.defer_depth = 0
 	p.defer_result_allowed = false
@@ -392,6 +405,9 @@ pub fn (mut p Parser) parse_into(path string) {
 		p.imported_module_names['os'] = true
 	}
 	p.local_binding_counts.clear()
+	if p.parse_batch_paths.len == 0 {
+		p.reset_translated_sizeof_declarations()
+	}
 	p.local_binding_undos.clear()
 	p.local_binding_scopes.clear()
 	p.active_lambda_param_counts.clear()
@@ -1321,6 +1337,9 @@ fn (mut p Parser) apply_decl_attrs(id flat.NodeId) {
 		p.pending_decl_attr_kinds.clear()
 		p.pending_decl_attr_sources.clear()
 		return
+	}
+	if p.a.node(id).kind == .module_decl && 'translated' in p.pending_decl_attrs {
+		p.is_translated = true
 	}
 	attr_id := p.add_node(flat.Node{
 		kind:    .directive
@@ -8339,7 +8358,7 @@ fn (mut p Parser) if_stmt() flat.NodeId {
 	p.next() // skip 'if'
 	if p.tok == .key_match && !p.prefs.is_fmt {
 		p.record_diagnostic_span('cannot use `match` with `if` statements', p.tok_pos, p.tok_end)
-	} else if p.tok == .key_if {
+	} else if p.tok == .key_if && !p.is_translated {
 		p.record_diagnostic_span('the condition of an `if` should be a boolean expression, not another `if` statement; did you write `if` twice by mistake?',
 			p.tok_pos, p.tok_end)
 		p.next()
@@ -10442,6 +10461,14 @@ fn (mut p Parser) stmt_expr() flat.NodeId {
 fn (mut p Parser) expr_with_lhs_context(first flat.NodeId, min_bp token.BindingPower, is_stmt_ident bool, stop_before_or bool, stop_at_array_element bool) flat.NodeId {
 	mut lhs := first
 	for {
+		// C translations can start a dereference assignment immediately after a
+		// postfix increment. Keep the next line out of the previous expression.
+		if p.is_translated && p.prev_tok_end >= 2
+			&& p.s.src[p.prev_tok_end - 2..p.prev_tok_end] in ['++', '--']
+			&& p.line_nr_for_pos(p.prev_tok_end - 1) < p.line_nr_for_pos(p.tok_pos)
+			&& p.translated_postfix_line_starts_deref_assignment() {
+			break
+		}
 		if p.in_struct_init_value > 0 && (p.tok == .name || p.tok.is_keyword())
 			&& p.peek() == .colon {
 			break
@@ -10907,6 +10934,38 @@ fn (mut p Parser) expr_with_lhs_context(first flat.NodeId, min_bp token.BindingP
 	}
 
 	return lhs
+}
+
+fn (mut p Parser) translated_postfix_line_starts_deref_assignment() bool {
+	if p.tok != .mul || p.peek() !in [.name, .lpar, .mul] {
+		return false
+	}
+	mut scan := p.s
+	mut next := p.peek_tok
+	mut closing := []token.Token{}
+	for p.line_nr_for_pos(scan.pos) == p.line_nr_for_pos(p.tok_pos) {
+		if closing.len == 0 && token_is_assignment(next) {
+			return true
+		}
+		match next {
+			.eof, .semicolon, .lcbr, .rcbr { return false }
+			.lpar { closing << .rpar }
+			.lsbr { closing << .rsbr }
+			.rpar, .rsbr {
+				if closing.len == 0 || closing.last() != next {
+					return false
+				}
+				closing.delete_last()
+			}
+			else {
+				if closing.len == 0 && next !in [.name, .dot, .mul, .inc, .dec] {
+					return false
+				}
+			}
+		}
+		next = scan.scan()
+	}
+	return false
 }
 
 fn (p &Parser) is_comptime_type_accessor(id flat.NodeId) bool {
@@ -11562,7 +11621,7 @@ fn (mut p Parser) prefix_expr() flat.NodeId {
 				preceding_minuses++
 				previous--
 			}
-			if preceding_minuses == 1 && !preceding_minus_is_arrow {
+			if preceding_minuses == 1 && !preceding_minus_is_arrow && !p.is_translated {
 				p.record_diagnostic_span('invalid expression: unexpected token `-`', p.tok_pos,
 					p.tok_end)
 			}
@@ -14582,7 +14641,33 @@ fn (mut p Parser) sizeof_expr() flat.NodeId {
 		})
 	}
 	p.check(.lpar)
-	if !p.can_start_type_name() {
+	if p.is_translated && p.tok == .name && !p.is_local_binding(p.lit)
+		&& (p.translated_sizeof_name_is_ambiguous(p.lit)
+			|| (p.peek() == .dot
+				&& (p.imported_module_names[p.lit] || p.translated_sizeof_name_is_type(p.lit))
+				&& !p.translated_sizeof_name_is_global(p.lit))) {
+		// Imports, type members and deferred branches are resolved after parsing.
+		// Preserve both interpretations until the selected declaration is known.
+		inner := p.expr(.lowest)
+		name := p.type_expr_name(inner)
+		p.check(.rpar)
+		return p.a.add_node(flat.Node{
+			kind:           .sizeof_expr
+			value:          name
+			children_start: p.add_child(inner)
+			children_count: 1
+			pos:            p.span_to(sizeof_start)
+		})
+	}
+	if !p.can_start_type_name()
+		|| (p.is_translated && p.tok == .name
+			&& (p.is_local_binding(p.lit)
+				|| p.translated_sizeof_name_is_global(p.lit)
+				|| p.translated_sizeof_name_is_const(p.lit)
+				|| (!isreftype_name_can_start_type(p.lit)
+					&& !p.translated_sizeof_name_is_type(p.lit) && p.peek() != .dot)
+				|| (p.peek() == .lsbr && !type_name_can_init(p.lit)
+					&& !p.translated_sizeof_name_is_type(p.lit)))) {
 		inner := p.expr(.lowest)
 		p.check(.rpar)
 		return p.a.add_node(flat.Node{
@@ -14616,6 +14701,353 @@ fn (mut p Parser) sizeof_expr() flat.NodeId {
 		value: type_name
 		pos:   p.span_to(sizeof_start)
 	})
+}
+
+fn (mut p Parser) reset_translated_sizeof_declarations() {
+	p.translated_sizeof_type_names.clear()
+	p.translated_sizeof_const_names.clear()
+	p.translated_sizeof_global_names.clear()
+	p.translated_sizeof_scanned_modules.clear()
+}
+
+fn (p &Parser) translated_sizeof_declaration_key(name string) string {
+	return '${os.dir(p.cur_file)}\x00${p.cur_module}\x00${name}'
+}
+
+fn (mut p Parser) translated_sizeof_name_is_type(name string) bool {
+	if p.resolve_local_type_name(name) != name {
+		return true
+	}
+	p.scan_translated_sizeof_declarations()
+	return p.translated_sizeof_type_names[p.translated_sizeof_declaration_key(name)]
+		|| p.has_prior_type_declaration(name)
+}
+
+fn (mut p Parser) translated_sizeof_name_is_const(name string) bool {
+	if p.resolve_local_type_name(name) != name {
+		return false
+	}
+	p.scan_translated_sizeof_declarations()
+	key := p.translated_sizeof_declaration_key(name)
+	// Deferred branches can declare both candidates. Retain the existing named
+	// type form when a type is possible; later phases resolve the bare spelling.
+	return p.translated_sizeof_const_names[key] && !p.translated_sizeof_type_names[key]
+}
+
+fn (mut p Parser) translated_sizeof_name_is_global(name string) bool {
+	if p.resolve_local_type_name(name) != name {
+		return false
+	}
+	p.scan_translated_sizeof_declarations()
+	return p.translated_sizeof_global_names[p.translated_sizeof_declaration_key(name)]
+}
+
+fn (mut p Parser) translated_sizeof_name_is_ambiguous(name string) bool {
+	if p.resolve_local_type_name(name) != name {
+		return false
+	}
+	p.scan_translated_sizeof_declarations()
+	key := p.translated_sizeof_declaration_key(name)
+	return (p.translated_sizeof_const_names[key] || p.translated_sizeof_global_names[key])
+		&& p.translated_sizeof_type_names[key]
+}
+
+fn (mut p Parser) scan_translated_sizeof_declarations() {
+	key := p.translated_sizeof_declaration_key('')
+	if p.translated_sizeof_scanned_modules[key] {
+		return
+	}
+	p.translated_sizeof_scanned_modules[key] = true
+	p.scan_translated_sizeof_source(p.s.src)
+	// Each worker indexes a module once for the full batch, including files
+	// assigned to other workers. Never inspect siblings excluded from the build.
+	mut paths := p.parsed_v_file_paths.clone()
+	paths << p.parse_batch_paths
+	mut scanned := map[string]bool{}
+	for path in paths {
+		if path == p.cur_file || os.dir(path) != os.dir(p.cur_file) || scanned[path] {
+			continue
+		}
+		scanned[path] = true
+		source := os.read_file(path) or { continue }
+		p.scan_translated_sizeof_source(source)
+	}
+}
+
+fn (mut p Parser) scan_translated_sizeof_source(source string) {
+	if !source.contains('const') && !source.contains('type') && !source.contains('struct')
+		&& !source.contains('enum') && !source.contains('interface') && !source.contains('union')
+		&& !source.contains('__global') {
+		return
+	}
+	mut scan := scanner.new_scanner(p.prefs, .skip_interpolation)
+	scan.init(p.s.current_file(), source)
+	mut tokens := []InlineAsmScanToken{}
+	for {
+		kind := scan.scan()
+		if kind == .eof {
+			break
+		}
+		tokens << InlineAsmScanToken{
+			kind: kind
+			lit:  scan.lit
+			pos:  scan.pos
+			end:  scan.offset
+		}
+	}
+	mut saved_consts := p.comptime_const_values.clone()
+	defer { p.comptime_const_values = saved_consts.move() }
+	p.scan_translated_sizeof_range(source, tokens, 0, tokens.len)
+}
+
+fn (mut p Parser) scan_translated_sizeof_range(source string, tokens []InlineAsmScanToken, start int, end int) {
+	mut i := start
+	mut skip_decl := false
+	for i < end {
+		kind := tokens[i].kind
+		if kind == .attribute {
+			mut close := i + 1
+			mut depth := 1
+			for close < end && depth > 0 {
+				if tokens[close].kind in [.lsbr, .attribute] { depth++ }
+				if tokens[close].kind == .rsbr { depth-- }
+				if depth > 0 { close++ }
+			}
+			if close < end && i + 1 < close && tokens[i + 1].kind == .key_if {
+				condition := source[tokens[i + 1].end..tokens[close].pos]
+				skip_decl = skip_decl || !p.eval_attribute_comptime_cond(condition)
+			}
+			i = close + 1
+			continue
+		}
+		if kind == .key_module && i + 1 < end && tokens[i + 1].lit != p.cur_module {
+			return
+		}
+		if kind == .dollar && i + 1 < end && tokens[i + 1].kind == .key_if {
+			i = p.scan_translated_sizeof_comptime_if(source, tokens, i, end, true)
+			continue
+		}
+		if kind == .dollar && i + 1 < end && tokens[i + 1].kind == .key_match {
+			i = p.scan_translated_sizeof_comptime_match(source, tokens, i, end)
+			continue
+		}
+		if kind == .lcbr {
+			i = inline_asm_matching_close_brace(tokens, i, end) + 1
+			continue
+		}
+		if kind in [.key_type, .key_struct, .key_enum, .key_interface, .key_union]
+			&& i + 1 < end && tokens[i + 1].kind == .name {
+			if !skip_decl {
+				p.translated_sizeof_type_names[p.translated_sizeof_declaration_key(tokens[i + 1].lit)] = true
+			}
+			skip_decl = false
+		}
+		if kind == .key_global {
+			i = p.scan_translated_sizeof_values(tokens, i, end, !skip_decl)
+			skip_decl = false
+			continue
+		}
+		if kind == .key_fn {
+			skip_decl = false
+		}
+		if kind == .key_const {
+			mut saved_consts := if skip_decl {
+				p.comptime_const_values.clone()
+			} else {
+				map[string]string{}
+			}
+			p.inline_asm_collect_const_decl(tokens, i, end)
+			if skip_decl {
+				p.comptime_const_values = saved_consts.move()
+			}
+			i = p.scan_translated_sizeof_values(tokens, i, end, !skip_decl)
+			skip_decl = false
+			continue
+		}
+		i++
+	}
+}
+
+fn (mut p Parser) scan_translated_sizeof_values(tokens []InlineAsmScanToken, start int, end int, inspect bool) int {
+	is_const := tokens[start].kind == .key_const
+	mut i := start + 1
+	grouped := i < end && tokens[i].kind == .lpar
+	if grouped { i++ }
+	mut depth := 0
+	mut at_name := true
+	for i < end {
+		kind := tokens[i].kind
+		if depth == 0 {
+			if kind == .rpar && grouped { return i + 1 }
+			if kind == .rcbr { return i }
+			if kind == .semicolon {
+				if !grouped { return i + 1 }
+				at_name = true
+				i++
+				continue
+			}
+			if at_name {
+				if kind in [.key_pub, .key_mut, .key_const, .key_volatile] {
+					i++
+					continue
+				}
+				if inspect && (kind == .name || kind.is_keyword()) {
+					key := p.translated_sizeof_declaration_key(tokens[i].lit)
+					if is_const {
+						p.translated_sizeof_const_names[key] = true
+					} else {
+						p.translated_sizeof_global_names[key] = true
+					}
+				}
+				at_name = false
+			}
+		}
+		match kind {
+			.lpar, .lsbr, .lcbr { depth++ }
+			.rpar, .rsbr, .rcbr { depth-- }
+			else {}
+		}
+		i++
+	}
+	return i
+}
+
+fn (mut p Parser) scan_translated_sizeof_comptime_if(source string, tokens []InlineAsmScanToken, start int, end int, inspect bool) int {
+	open := inline_asm_comptime_open_brace(tokens, start + 2, end)
+	if open >= end { return end }
+	close := inline_asm_matching_close_brace(tokens, open, end)
+	if close >= end { return end }
+	condition := source[tokens[start + 1].end..tokens[open].pos]
+	mut known := false
+	mut taken := false
+	mut needs_context := false
+	for t in tokens[start + 2..open] {
+		// A deferred branch can introduce a constant used by a following
+		// condition. Its missing value must not select that condition's else arm.
+		if translated_sizeof_pseudo_needs_source_context(t)
+			|| (t.kind == .name
+				&& p.translated_sizeof_const_names[p.translated_sizeof_declaration_key(t.lit)]
+				&& p.comptime_value(t.lit) == none) {
+			needs_context = true
+			break
+		}
+	}
+	if !needs_context {
+		_, condition_known, condition_taken := p.inline_asm_comptime_condition(condition)
+		known = condition_known
+		taken = condition_taken
+	}
+	mut saved_consts := if !known { p.comptime_const_values.clone() } else { map[string]string{} }
+	defer {
+		if !known { p.comptime_const_values = saved_consts.move() }
+	}
+	if inspect && (!known || taken) {
+		p.scan_translated_sizeof_range(source, tokens, open + 1, close)
+	}
+	if !known { p.comptime_const_values = saved_consts.clone() }
+	mut next := inline_asm_skip_semicolons(tokens, close + 1, end)
+	if next + 1 >= end || tokens[next].kind != .dollar || tokens[next + 1].kind != .key_else {
+		return close + 1
+	}
+	next = inline_asm_skip_semicolons(tokens, next + 2, end)
+	inspect_else := inspect && (!known || !taken)
+	if next + 1 < end && tokens[next].kind == .dollar && tokens[next + 1].kind == .key_if {
+		return p.scan_translated_sizeof_comptime_if(source, tokens, next, end, inspect_else)
+	}
+	if next >= end || tokens[next].kind != .lcbr { return next }
+	else_close := inline_asm_matching_close_brace(tokens, next, end)
+	if inspect_else && else_close < end {
+		p.scan_translated_sizeof_range(source, tokens, next + 1, else_close)
+	}
+	return if else_close < end { else_close + 1 } else { end }
+}
+
+fn translated_sizeof_pseudo_needs_source_context(t InlineAsmScanToken) bool {
+	return t.kind == .name && t.lit.starts_with('@')
+		&& t.lit !in ['@OS', '@CCOMPILER', '@BACKEND', '@PLATFORM', '@VEXE', '@VEXEROOT', '@VROOT',
+			'@VHASH', '@VCURRENTHASH', '@BUILD_DATE', '@BUILD_TIME', '@BUILD_TIMESTAMP']
+}
+
+fn (mut p Parser) scan_translated_sizeof_comptime_match(source string, tokens []InlineAsmScanToken, start int, end int) int {
+	open := inline_asm_comptime_open_brace(tokens, start + 2, end)
+	if open >= end || start + 2 >= open { return end }
+	close := inline_asm_matching_close_brace(tokens, open, end)
+	if close >= end { return end }
+	mut subject_end := open
+	for subject_end > start + 2 && tokens[subject_end - 1].kind == .semicolon { subject_end-- }
+	if subject_end <= start + 2 { return close + 1 }
+	subject := source[tokens[start + 2].pos..tokens[subject_end - 1].end].trim_space()
+	// A sibling source is indexed while another file or function is active.
+	// Leave location-sensitive matches to normal parsing in their own context.
+	mut needs_source_context := false
+	mut header_pos := start + 2
+	for header_pos < close {
+		if header_pos != open && tokens[header_pos].kind == .lcbr {
+			header_pos = inline_asm_matching_close_brace(tokens, header_pos, close) + 1
+			continue
+		}
+		if translated_sizeof_pseudo_needs_source_context(tokens[header_pos]) {
+			needs_source_context = true
+			break
+		}
+		header_pos++
+	}
+	mut known := !needs_source_context
+		&& tokens[start + 2].kind in [.string, .char, .number, .key_true, .key_false]
+	mut value := subject
+	if !needs_source_context {
+		if subject.starts_with('@') {
+			known = true
+			value = p.resolve_comptime_at_values_at(subject, tokens[start + 2].pos)
+		} else if constant := p.comptime_value(subject) {
+			known = true
+			value = constant
+		}
+	}
+	mut saved_consts := if !known { p.comptime_const_values.clone() } else { map[string]string{} }
+	defer {
+		if !known { p.comptime_const_values = saved_consts.move() }
+	}
+	mut matched := false
+	mut i := open + 1
+	for i < close {
+		i = inline_asm_skip_semicolons(tokens, i, close)
+		if i >= close { break }
+		branch_open := inline_asm_comptime_open_brace(tokens, i, close)
+		if branch_open <= i || branch_open >= close { break }
+		branch_close := inline_asm_matching_close_brace(tokens, branch_open, close)
+		if branch_close >= close { break }
+		mut matches := tokens[i].kind == .key_else
+			|| (tokens[i].kind == .dollar && i + 1 < branch_open && tokens[i + 1].kind == .key_else)
+		if known && !matched && !matches {
+			mut pattern_start := i
+			mut depth := 0
+			for j := i; j <= branch_open; j++ {
+				kind := tokens[j].kind
+				if j == branch_open || (kind == .comma && depth == 0) {
+					pattern := source[tokens[pattern_start].pos..tokens[j - 1].end].trim_space()
+					pattern_value := p.comptime_value(pattern) or {
+						p.resolve_comptime_at_values_at(pattern, tokens[pattern_start].pos)
+					}
+					matches = matches || comptime_cond_value(pattern_value) == comptime_cond_value(value)
+					pattern_start = j + 1
+				}
+				if kind in [.lpar, .lsbr] { depth++ }
+				if kind in [.rpar, .rsbr] { depth-- }
+			}
+		}
+		if !known {
+			// Deferred arms contribute candidates, but none supplies known values
+			// to another arm or to declarations following the match.
+			p.comptime_const_values = saved_consts.clone()
+		}
+		if !known || (!matched && matches) {
+			p.scan_translated_sizeof_range(source, tokens, branch_open + 1, branch_close)
+		}
+		matched = matched || matches
+		i = branch_close + 1
+	}
+	return close + 1
 }
 
 fn (mut p Parser) isreftype_expr() flat.NodeId {

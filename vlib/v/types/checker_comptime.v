@@ -1940,6 +1940,9 @@ fn (mut tc TypeChecker) check_node(id flat.NodeId) {
 	}
 	if node.kind == .sizeof_expr {
 		if node.children_count > 0 {
+			if tc.sizeof_arg_is_type(node) {
+				return
+			}
 			tc.check_node(tc.a.child(&node, 0))
 			return
 		}
@@ -6099,6 +6102,66 @@ fn (tc &TypeChecker) sizeof_type_diagnostic_pos(id flat.NodeId, name string) tok
 		return token.new_span(span.id, span.offset, end)
 	}
 	return node.pos
+}
+
+// sizeof_arg_is_type resolves the type candidate of an ambiguous sizeof argument.
+pub fn (tc &TypeChecker) sizeof_arg_is_type(node flat.Node) bool {
+	return node.value.len > 0 && tc.type_name_known(node.value)
+}
+
+// sizeof_value_declaration finds a qualified constant's initializer or value declaration.
+pub fn (tc &TypeChecker) sizeof_value_declaration(name string) ?flat.NodeId {
+	if initializer := tc.const_exprs[name] {
+		return initializer
+	}
+	if name !in tc.const_types && !tc.global_names[name] {
+		return none
+	}
+	mut module_name := ''
+	for idx in tc.top_level_idx {
+		node := tc.a.nodes[idx]
+		if node.kind == .file {
+			module_name = ''
+		} else if node.kind == .module_decl {
+			module_name = node.value
+		} else if node.kind in [.global_decl, .const_decl] {
+			for i in 0 .. node.children_count {
+				field_id := tc.a.child(&node, i)
+				field := tc.a.node(field_id)
+				qualified := if module_name in ['', 'main', 'builtin'] {
+					field.value
+				} else {
+					'${module_name}.${field.value}'
+				}
+				if qualified == name {
+					return field_id
+				}
+			}
+		}
+	}
+	return none
+}
+
+// sizeof_value_conditions returns the original branch guards for a value declaration.
+pub fn (tc &TypeChecker) sizeof_value_conditions(declaration flat.NodeId) []string {
+	mut child := declaration
+	mut conditions := []string{}
+	for int(child) >= 0 && int(child) < tc.direct_parent_ids.len {
+		parent_id := tc.direct_parent_ids[int(child)]
+		if int(parent_id) < 0 || int(parent_id) >= tc.a.nodes.len || parent_id == child {
+			break
+		}
+		parent := tc.a.nodes[int(parent_id)]
+		if parent.kind == .comptime_if {
+			if parent.children_count > 0 && tc.a.child(&parent, 0) == child {
+				conditions << parent.value
+			} else if parent.children_count > 1 && tc.a.child(&parent, 1) == child {
+				conditions << '!(${parent.value})'
+			}
+		}
+		child = parent_id
+	}
+	return conditions
 }
 
 fn (tc &TypeChecker) sizeof_value_selector_known(value string) bool {
