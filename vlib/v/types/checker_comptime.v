@@ -7391,11 +7391,15 @@ fn (mut tc TypeChecker) check_infix(id flat.NodeId, node flat.Node) {
 	}
 	lhs_pointer_arithmetic := lhs_clean is Pointer && lhs_type.name() != 'voidptr'
 	rhs_pointer_arithmetic := rhs_clean is Pointer && rhs_type.name() != 'voidptr'
+	lhs_pointer_offset := lhs_clean.is_integer()
+		|| (tc.node_is_in_translated_file(id) && translated_integer_type(lhs_type))
+	rhs_pointer_offset := rhs_clean.is_integer()
+		|| (tc.node_is_in_translated_file(id) && translated_integer_type(rhs_type))
 	pointer_arithmetic := if node.op == .plus {
-		(lhs_pointer_arithmetic && rhs_clean.is_integer())
-			|| (rhs_pointer_arithmetic && lhs_clean.is_integer())
+		(lhs_pointer_arithmetic && rhs_pointer_offset)
+			|| (rhs_pointer_arithmetic && lhs_pointer_offset)
 	} else if node.op == .minus {
-		lhs_pointer_arithmetic && (rhs_clean.is_integer() || rhs_pointer_arithmetic)
+		lhs_pointer_arithmetic && (rhs_pointer_offset || rhs_pointer_arithmetic)
 	} else {
 		false
 	}
@@ -7802,7 +7806,7 @@ fn (mut tc TypeChecker) check_infix(id flat.NodeId, node flat.Node) {
 		tc.record_error(.assignment_mismatch, 'invalid operator `+` to `${lhs_type.name()}` and `${rhs_type.name()}`', id)
 		return
 	}
-	if (lhs_pointer && !rhs_type.is_integer()) || (rhs_pointer && !lhs_type.is_integer()) {
+	if (lhs_pointer && !rhs_pointer_offset) || (rhs_pointer && !lhs_pointer_offset) {
 		tc.record_error_at(.assignment_mismatch, 'mismatched types `${lhs_type.name()}` and `${rhs_type.name()}`', id, token.new_span(node.pos.id, node.pos.offset, int_max(node.pos.offset + 1, node.pos.end - 1)))
 		tc.register_synth_type(id, Type(void_))
 		return
@@ -7834,8 +7838,8 @@ fn (mut tc TypeChecker) check_infix(id flat.NodeId, node flat.Node) {
 	if (infix_power_type_is_numeric(lhs_type) && infix_power_type_is_numeric(rhs_type))
 		|| tc.translated_numeric_expr_compatible(id, lhs_type, rhs_type)
 		|| tc.infix_operator_return_type(node.op, lhs_type, rhs_type) != none
-		|| (lhs_type is Pointer && rhs_type.is_integer())
-		|| (rhs_type is Pointer && lhs_type.is_integer()) {
+		|| (lhs_type is Pointer && rhs_pointer_offset)
+		|| (rhs_type is Pointer && lhs_pointer_offset) {
 		return
 	}
 	lhs_name := tc.diagnostic_expr_type_name(lhs_id, lhs_type)

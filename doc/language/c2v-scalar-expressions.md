@@ -1,14 +1,15 @@
 # Scalar expressions in translated C
 
-In `@[translated]` files, boolean values can index arrays and pointers or offset
-pointers in compound assignments. Mixed boolean and numeric conditional branches
+In `@[translated]` files, boolean values can index arrays and pointers. Boolean,
+character, and enum values can offset pointers in arithmetic and compound assignments.
+Mixed boolean and numeric conditional branches
 retain the numeric branch type. Narrow integer shifts use C's minimum 32-bit
 operand width.
 
 Translated scalar return statements also use C conversions, including float to
 integer and negative integer sentinels returned as unsigned values. Unary numeric
 and bitwise operations, and shifts, accept enum, character, and boolean operands
-through C's integral promotion rules.
+through C's integral promotion rules, including boolean shifts.
 Mixed numeric arithmetic and conditional branches use C's usual arithmetic
 conversions when determining the expression type.
 

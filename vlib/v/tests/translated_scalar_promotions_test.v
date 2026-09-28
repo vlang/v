@@ -46,6 +46,21 @@ fn test_translated_boolean_indices_and_pointer_offsets() {
 	assert raw == voidptr(ptr)
 }
 
+enum TranslatedPointerOffset {
+	one = 1
+}
+
+fn test_translated_integral_pointer_expressions() {
+	values := [11, 22, 33]!
+	start := unsafe { &values[0] }
+	assert *(start + true) == 22
+	assert *(start + char(2)) == 33
+	assert *(start + TranslatedPointerOffset.one) == 22
+	assert *(true + start) == 22
+	end := unsafe { &values[2] }
+	assert *(end - true) == 22
+}
+
 fn translated_mixed_branch(flag bool) int {
 	value := if flag { flag } else { 42 }
 	return value
@@ -144,6 +159,9 @@ fn test_translated_unary_and_shift_integral_promotions() {
 	assert int(kind << 1) == 84
 	assert int(character >> 1) == 1
 	assert int(1 << true) == 2
+	bool_shifted := true << 1
+	assert bool_shifted == 2
+	assert typeof(bool_shifted).name == 'i32'
 }
 
 fn test_translated_conditional_uses_common_numeric_type() {

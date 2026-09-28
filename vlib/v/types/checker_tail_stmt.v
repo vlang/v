@@ -16717,10 +16717,12 @@ fn (tc &TypeChecker) resolve_type_uncached(id flat.NodeId) Type {
 				if node.op == .minus && lt is Pointer && rt is Pointer {
 					return Type(int_)
 				}
-				if lt is Pointer && rt.is_integer() {
+				if lt is Pointer && (rt.is_integer()
+					|| (tc.node_is_in_translated_file(id) && translated_integer_type(rt))) {
 					return lt_raw
 				}
-				if node.op == .plus && rt is Pointer && lt.is_integer() {
+				if node.op == .plus && rt is Pointer && (lt.is_integer()
+					|| (tc.node_is_in_translated_file(id) && translated_integer_type(lt))) {
 					return rt_raw
 				}
 			}
@@ -16736,7 +16738,8 @@ fn (tc &TypeChecker) resolve_type_uncached(id flat.NodeId) Type {
 				return unsigned_shift_result_type(lt)
 			}
 			if node.op in [.left_shift, .right_shift] {
-				if tc.node_is_in_translated_file(id) && tc.integer_shift_bit_size(lt) < 32 {
+				if tc.node_is_in_translated_file(id)
+					&& (tc.integer_shift_bit_size(lt) < 32 || unalias_type(lt) == Type(bool_)) {
 					return Type(i32_)
 				}
 				return lt_raw
