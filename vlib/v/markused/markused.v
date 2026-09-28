@@ -5965,7 +5965,8 @@ fn (c &CallCollector) collect_generic_alias_operator_usage(call &flat.Node, reso
 		fn_node := c.a.node(info.node_id)
 		generic_params := c.generic_fn_param_names(candidate, fn_node)
 		param_texts := c.generic_fn_param_type_texts(candidate, fn_node)
-		inferred := c.infer_alias_generic_args(call, param_texts, generic_params, cur_module, imports, local_values, local_types)
+		inferred := c.infer_alias_generic_args(call, candidate, param_texts, generic_params,
+			cur_module, imports, local_values, local_types)
 		if inferred.len == 0 {
 			continue
 		}
@@ -6047,7 +6048,7 @@ fn (c &CallCollector) generic_fn_param_type_texts(name string, fn_node &flat.Nod
 	return result
 }
 
-fn (c &CallCollector) infer_alias_generic_args(call &flat.Node, param_texts []string, generic_params []string, cur_module string, imports map[string]string, local_values map[string]bool, local_types map[string]string) map[string]string {
+fn (c &CallCollector) infer_alias_generic_args(call &flat.Node, fn_name string, param_texts []string, generic_params []string, cur_module string, imports map[string]string, local_values map[string]bool, local_types map[string]string) map[string]string {
 	mut inferred := map[string]string{}
 	if call.children_count == 0 || param_texts.len == 0 || generic_params.len == 0 {
 		return inferred
@@ -6074,6 +6075,17 @@ fn (c &CallCollector) infer_alias_generic_args(call &flat.Node, param_texts []st
 			if actual_text.len > 0 && actual_text != 'unknown' {
 				markused_infer_generic_type_text(param_texts[param_idx], actual_text,
 					generic_params, mut inferred)
+			}
+		}
+		if inferred.len < generic_params.len {
+			if actual := c.alias_aware_expr_type(arg_id, cur_module, imports, local_values, local_types) {
+				for generic, concrete in c.tc.infer_generic_reachability_type_args(fn_name,
+					param_texts[param_idx], actual, generic_params) {
+					if generic !in inferred && concrete != generic && concrete != 'unknown'
+						&& concrete != 'generic' {
+						inferred[generic] = concrete
+					}
+				}
 			}
 		}
 		param_idx++
@@ -6877,7 +6889,7 @@ fn (c &CallCollector) inferred_generic_factory_return_type_name(call_id flat.Nod
 		if param_texts.len == 0 {
 			continue
 		}
-		inferred := c.infer_alias_generic_args(call, param_texts, generic_params, cur_module,
+		inferred := c.infer_alias_generic_args(call, candidate, param_texts, generic_params, cur_module,
 			imports, local_values, local_types)
 		mut args := []string{cap: generic_params.len}
 		mut complete := true

@@ -17022,6 +17022,18 @@ fn (mut tc TypeChecker) infer_generic_type_text_from_type(param_text string, act
 	}
 }
 
+// infer_generic_reachability_type_args infers generic arguments for a call whose checked type
+// cache is unavailable to reachability analysis. It uses the declaration's type context.
+pub fn (tc &TypeChecker) infer_generic_reachability_type_args(fn_name string, param_text string, actual Type, generic_params []string) map[string]string {
+	mut inferred := map[string]string{}
+	file := tc.fn_type_files[fn_name] or { tc.cur_file }
+	module_name := tc.fn_type_modules[fn_name] or { tc.cur_module }
+	mut view := tc.fork_type_parse_view(file, module_name)
+	view.generic_decl_file = file
+	view.infer_generic_type_text_from_type(param_text, actual, generic_params, mut inferred)
+	return inferred
+}
+
 // infer_generic_type_value_from_type retains the resolved caller-side Type for
 // each generic placeholder. The text inference remains useful for reconstructing
 // named applications, but semantic substitution must not parse a caller-local or
