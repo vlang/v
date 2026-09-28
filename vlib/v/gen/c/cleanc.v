@@ -556,6 +556,10 @@ mut:
 	needs_pthread_header          bool
 	needs_thread_type             bool
 	needs_thread_runtime          bool
+	spawn_detached                bool // the spawn being emitted has its handle discarded
+	spawn_comparable              bool // keep a discarded spawn's handle until its comparison finishes
+	detached_spawn_drop           bool // ownership traversal also joins nested handles and destroys closures
+	spawn_return_type             types.Type = types.Type(types.void_)
 	const_runtime_inits           []string
 	const_runtime_init_modules    []string
 	runtime_inits                 []string
@@ -18998,6 +19002,17 @@ fn (mut g FlatGen) gen_string_infix_fallback(node flat.Node, lhs_id flat.NodeId,
 	return true
 }
 
+fn (g &FlatGen) thread_comparison_discarded_spawn(id flat.NodeId) bool {
+	node := g.a.node(id)
+	if node.kind == .spawn_expr {
+		return node.is_detached_spawn()
+	}
+	if node.kind in [.paren, .cast_expr, .as_expr] && node.children_count == 1 {
+		return g.thread_comparison_discarded_spawn(g.a.child(node, 0))
+	}
+	return false
+}
+
 fn (mut g FlatGen) gen_thread_infix_eq(node flat.Node, lhs_id flat.NodeId, rhs_id flat.NodeId, lhs_type types.Type, rhs_type types.Type) bool {
 	if node.op !in [.eq, .ne] || lhs_type is types.Pointer || rhs_type is types.Pointer || g.tc.c_type(lhs_type) != '__v_thread' || g.tc.c_type(rhs_type) != '__v_thread' {
 		return false
@@ -19005,15 +19020,26 @@ fn (mut g FlatGen) gen_thread_infix_eq(node flat.Node, lhs_id flat.NodeId, rhs_i
 	g.needs_thread_runtime = true
 	lhs_name := g.tmp_name()
 	rhs_name := g.tmp_name()
+	equal_name := g.tmp_name()
+	lhs_comparable := g.thread_comparison_discarded_spawn(lhs_id)
+	rhs_comparable := g.thread_comparison_discarded_spawn(rhs_id)
+	outer_comparable := g.spawn_comparable
 	g.write('({ __v_thread ${lhs_name} = ')
+	g.spawn_comparable = lhs_comparable
 	g.gen_expr(lhs_id)
 	g.write('; __v_thread ${rhs_name} = ')
+	g.spawn_comparable = rhs_comparable
 	g.gen_expr(rhs_id)
-	g.write('; ')
-	if node.op == .ne {
-		g.write('!')
+	g.spawn_comparable = outer_comparable
+	g.write('; bool ${equal_name} = __v_thread_equal(${lhs_name}, ${rhs_name}); ')
+	if lhs_comparable {
+		g.write('__v_thread_release_comparable(${lhs_name}); ')
 	}
-	g.write('__v_thread_equal(${lhs_name}, ${rhs_name}); })')
+	if rhs_comparable {
+		g.write('__v_thread_release_comparable(${rhs_name}); ')
+	}
+	result := if node.op == .ne { '!${equal_name}' } else { equal_name }
+	g.write('${result}; })')
 	return true
 }
 
@@ -19817,6 +19843,7 @@ fn (mut g FlatGen) system_libc_preamble() {
 	g.writeln('\t__v_thread_free(thread.context);')
 	g.writeln('\treturn result;')
 	g.writeln('}')
+	g.windows_detached_thread_runtime()
 	g.writeln('#else')
 	g.writeln('typedef struct { pthread_t handle; } __v_thread;')
 	g.writeln('static bool __v_thread_equal(__v_thread a, __v_thread b) { return pthread_equal(a.handle, b.handle) != 0; }')
@@ -19836,6 +19863,7 @@ fn (mut g FlatGen) system_libc_preamble() {
 	g.writeln('\treturn result;')
 	g.writeln('}')
 	g.writeln('static void* __v_thread_join(__v_thread thread) { void* result = NULL; int rc = pthread_join(thread.handle, &result); if (rc != 0) { fprintf(stderr, "V thread join failed: %d\\n", rc); abort(); } return result; }')
+	g.pthread_detached_thread_runtime()
 	g.writeln('#endif')
 }
 
@@ -19896,6 +19924,55 @@ fn (mut g FlatGen) target_libc_thread_type() {
 	g.writeln('typedef struct { pthread_t handle; } __v_thread;')
 }
 
+// windows_detached_thread_runtime writes `__v_thread_spawn_detached` for Windows. The
+// thread owns its context from the start and frees it, and its result, once the spawned
+// call returns; its handle is closed right away, since nothing can join it.
+fn (mut g FlatGen) windows_detached_thread_runtime() {
+	g.writeln('static DWORD WINAPI __v_windows_detached_thread_start(void* raw_context) { __v_windows_thread_context context = *(__v_windows_thread_context*)raw_context; __v_thread_free(raw_context); void* result = context.start(context.arg); if (result) __v_thread_free(result); return 0; }')
+	g.writeln('static __v_thread __v_thread_spawn_detached(__v_thread_start_fn start, void* arg, void (*cleanup)(void*)) {')
+	g.writeln('\t__v_windows_thread_context* context = (__v_windows_thread_context*)__v_thread_alloc(sizeof(__v_windows_thread_context));')
+	g.writeln('\tcontext->start = start; context->arg = arg; context->result = NULL;')
+	g.writeln('\tHANDLE handle = CreateThread(NULL, __v_thread_stack_size, __v_windows_detached_thread_start, context, 0, NULL);')
+	g.writeln('\tif (!handle) { DWORD error = GetLastError(); __v_thread_free(context); if (cleanup) cleanup(arg); fprintf(stderr, "V thread creation failed: %lu\\n", (unsigned long)error); abort(); }')
+	g.writeln('\tif (!CloseHandle(handle)) { fprintf(stderr, "V thread handle cleanup failed: %lu\\n", (unsigned long)GetLastError()); abort(); }')
+	g.writeln('\treturn (__v_thread){0};')
+	g.writeln('}')
+	g.writeln('static __v_thread __v_thread_spawn_comparable(__v_thread_start_fn start, void* arg, void (*cleanup)(void*)) {')
+	g.writeln('\t__v_windows_thread_context* context = (__v_windows_thread_context*)__v_thread_alloc(sizeof(__v_windows_thread_context));')
+	g.writeln('\tcontext->start = start; context->arg = arg; context->result = NULL;')
+	g.writeln('\tHANDLE handle = CreateThread(NULL, __v_thread_stack_size, __v_windows_detached_thread_start, context, 0, NULL);')
+	g.writeln('\tif (!handle) { DWORD error = GetLastError(); __v_thread_free(context); if (cleanup) cleanup(arg); fprintf(stderr, "V thread creation failed: %lu\\n", (unsigned long)error); abort(); }')
+	g.writeln('\treturn (__v_thread){.handle = handle, .context = NULL};')
+	g.writeln('}')
+	g.writeln('static void __v_thread_release_comparable(__v_thread thread) { if (thread.handle && !CloseHandle(thread.handle)) { fprintf(stderr, "V thread handle cleanup failed: %lu\\n", (unsigned long)GetLastError()); abort(); } }')
+}
+
+// pthread_detached_thread_runtime writes `__v_thread_spawn_detached` for pthreads. The
+// thread is created detached, so it never has a joinable window, and it frees its
+// context and result once the spawned call returns.
+fn (mut g FlatGen) pthread_detached_thread_runtime() {
+	g.writeln('typedef struct { __v_thread_start_fn start; void* arg; } __v_detached_thread_context;')
+	g.writeln('static void* __v_detached_thread_start(void* raw_context) { __v_detached_thread_context context = *(__v_detached_thread_context*)raw_context; __v_thread_free(raw_context); void* result = context.start(context.arg); if (result) __v_thread_free(result); return NULL; }')
+	g.writeln('static __v_thread __v_thread_spawn_detached(__v_thread_start_fn start, void* arg, void (*cleanup)(void*)) {')
+	g.writeln('\t__v_detached_thread_context* context = (__v_detached_thread_context*)__v_thread_alloc(sizeof(__v_detached_thread_context));')
+	g.writeln('\tcontext->start = start; context->arg = arg;')
+	g.writeln('\tpthread_t handle;')
+	g.writeln('\tpthread_attr_t attr;')
+	g.writeln('\tint rc = pthread_attr_init(&attr);')
+	g.writeln('\tif (rc != 0) { __v_thread_free(context); if (cleanup) cleanup(arg); fprintf(stderr, "V thread attribute initialization failed: %d\\n", rc); abort(); }')
+	g.writeln('\trc = pthread_attr_setstacksize(&attr, __v_thread_stack_size);')
+	g.writeln('\tif (rc == 0) rc = pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);')
+	g.writeln('\tif (rc != 0) { pthread_attr_destroy(&attr); __v_thread_free(context); if (cleanup) cleanup(arg); fprintf(stderr, "V thread attribute setup failed: %d\\n", rc); abort(); }')
+	g.writeln('\trc = pthread_create(&handle, &attr, (void*)__v_detached_thread_start, context);')
+	g.writeln('\tint attr_rc = pthread_attr_destroy(&attr);')
+	g.writeln('\tif (rc != 0) { __v_thread_free(context); if (cleanup) cleanup(arg); fprintf(stderr, "V thread creation failed: %d\\n", rc); abort(); }')
+	g.writeln('\tif (attr_rc != 0) { fprintf(stderr, "V thread attribute cleanup failed: %d\\n", attr_rc); abort(); }')
+	g.writeln('\treturn (__v_thread){0};')
+	g.writeln('}')
+	g.writeln('static __v_thread __v_thread_spawn_comparable(__v_thread_start_fn start, void* arg, void (*cleanup)(void*)) { return __v_thread_spawn(start, arg, cleanup); }')
+	g.writeln('static void __v_thread_release_comparable(__v_thread thread) { if (thread.handle) { int rc = pthread_detach(thread.handle); if (rc != 0) { fprintf(stderr, "V thread detach failed: %d\\n", rc); abort(); } } }')
+}
+
 // target_libc_thread_runtime writes the pthread-backed thread runtime. The hosted
 // and headerless preambles emit it inside a `#ifdef _WIN32` pair; a target that
 // supplies its own libc headers is not Windows, so only this half is needed, and
@@ -19924,6 +20001,7 @@ fn (mut g FlatGen) target_libc_thread_runtime() {
 	g.writeln('\treturn result;')
 	g.writeln('}')
 	g.writeln('static void* __v_thread_join(__v_thread thread) { void* result = NULL; int rc = pthread_join(thread.handle, &result); if (rc != 0) { fprintf(stderr, "V thread join failed: %d\\n", rc); abort(); } return result; }')
+	g.pthread_detached_thread_runtime()
 }
 
 // Vinix implements pthread creation through its kernel scheduler. It accepts a
@@ -19942,6 +20020,18 @@ fn (mut g FlatGen) target_libc_vinix_thread_runtime() {
 	g.writeln('\treturn result;')
 	g.writeln('}')
 	g.writeln('static void* __v_thread_join(__v_thread thread) { void* result = NULL; int rc = pthread_join(thread.handle, &result); if (rc != 0) exit(1); return result; }')
+	g.writeln('typedef struct { __v_thread_start_fn start; void* arg; } __v_detached_thread_context;')
+	g.writeln('static void* __v_detached_thread_start(void* raw_context) { __v_detached_thread_context context = *(__v_detached_thread_context*)raw_context; free(raw_context); void* result = context.start(context.arg); if (result) free(result); return NULL; }')
+	g.writeln('static __v_thread __v_thread_spawn_detached(__v_thread_start_fn start, void* arg, void (*cleanup)(void*)) {')
+	g.writeln('\t__v_detached_thread_context* context = (__v_detached_thread_context*)__v_thread_alloc(sizeof(__v_detached_thread_context));')
+	g.writeln('\tcontext->start = start; context->arg = arg;')
+	g.writeln('\tpthread_t handle;')
+	g.writeln('\tif (pthread_create(&handle, NULL, (void*)__v_detached_thread_start, context) != 0) { free(context); if (cleanup) cleanup(arg); exit(1); }')
+	g.writeln('\tif (pthread_detach(handle) != 0) exit(1);')
+	g.writeln('\treturn (__v_thread){0};')
+	g.writeln('}')
+	g.writeln('static __v_thread __v_thread_spawn_comparable(__v_thread_start_fn start, void* arg, void (*cleanup)(void*)) { return __v_thread_spawn(start, arg, cleanup); }')
+	g.writeln('static void __v_thread_release_comparable(__v_thread thread) { if (thread.handle && pthread_detach(thread.handle) != 0) exit(1); }')
 }
 
 fn (g &FlatGen) uses_pthread() bool {
@@ -20342,6 +20432,7 @@ fn (mut g FlatGen) headerless_libc_preamble() {
 	g.writeln('\t__v_thread_free(thread.context);')
 	g.writeln('\treturn result;')
 	g.writeln('}')
+	g.windows_detached_thread_runtime()
 	g.writeln('#else')
 	g.writeln('typedef struct { pthread_t handle; } __v_thread;')
 	g.writeln('static bool __v_thread_equal(__v_thread a, __v_thread b) { return pthread_equal(a.handle, b.handle) != 0; }')
@@ -20361,6 +20452,7 @@ fn (mut g FlatGen) headerless_libc_preamble() {
 	g.writeln('\treturn result;')
 	g.writeln('}')
 	g.writeln('static void* __v_thread_join(__v_thread thread) { void* result = NULL; int rc = pthread_join(thread.handle, &result); if (rc != 0) { fprintf(stderr, "V thread join failed: %d\\n", rc); abort(); } return result; }')
+	g.pthread_detached_thread_runtime()
 	g.writeln('#endif')
 	// Signature shape covers both the BSD (thunk before compar) and GNU
 	// (compar before arg) qsort_r orders; callers pass fn pointers as void*.

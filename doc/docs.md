@@ -5173,6 +5173,12 @@ fn main() {
 }
 ```
 
+If a spawned thread's handle is discarded, including inside a discarded array or struct,
+V detaches the thread. Keep its handle and call `wait()` when the result or completion matters.
+The detached thread releases an owned return value after its function finishes.
+If the return value is a thread handle, it joins that thread; a returned closure releases
+its captured context.
+
 > [!NOTE]
 > Threads rely on the machine's CPU (number of cores/threads).
 > Be aware that OS threads spawned with `spawn`
@@ -5219,6 +5225,9 @@ fn main() {
 	println('Results: ${h1}, ${h2}') //   prints `Results: 16.9, 54.1`
 }
 ```
+
+Discarding a spawned thread's handle, including through `dump(spawn ...)`, detaches the thread.
+Keep the handle when you need to call `.wait()`.
 
 If there is a large number of tasks, it might be easier to manage them
 using an array of threads.

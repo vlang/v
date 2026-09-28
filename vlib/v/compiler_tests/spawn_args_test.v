@@ -106,7 +106,7 @@ fn main() {
 	assert c_code.contains('pthread_create'), c_code
 	assert c_compact.contains('typedefstruct{main__Counter*a0;i64a1;}Counter__bump_thread_args;'), c_code
 	assert c_compact.contains('->a0=c;'), c_code
-	assert c_compact.contains('__v_thread_spawn(Counter__bump_args_thread_wrapper,(void*)_sa'), c_code
+	assert c_compact.contains('__v_thread_spawn_detached(Counter__bump_args_thread_wrapper_detached,(void*)_sa'), c_code
 
 	assert c_code.contains('Counter__bump(p->a0, p->a1)'), c_code
 }
@@ -136,7 +136,7 @@ fn main() {
 	assert c_compact.contains('typedefstruct{main__Greetera0;}Greeter__greet_thread_args;'), c_code
 	assert c_compact.contains('->a0=g;'), c_code
 	assert !c_compact.contains('->a0=&g;'), c_code
-	assert c_compact.contains('__v_thread_spawn(Greeter__greet_args_thread_wrapper,(void*)_sa'), c_code
+	assert c_compact.contains('__v_thread_spawn_detached(Greeter__greet_args_thread_wrapper_detached,(void*)_sa'), c_code
 
 	assert c_code.contains('Greeter__greet(p->a0)'), c_code
 	assert !c_code.contains('(Greeter)arg'), c_code
@@ -245,4 +245,231 @@ fn main() {
 	assert c_compact.contains('p->f()'), c_code
 	assert !c_compact.contains('closure__closure_try_destroy((void*)p->f);'), c_code
 	assert !c_compact.contains('closure__closure_try_destroy((void*)cb);'), c_code
+}
+
+// A `spawn` whose handle is discarded can never be joined, so its thread must be
+// detached. Left joinable, every such thread keeps its OS resources until exit
+// (under Boehm GC on macOS, one mach port each, until the kernel kills the
+// process). A handle that is kept must stay joinable for `.wait()`.
+fn test_discarded_spawn_detaches_thread() {
+	v3_bin := build_v3()
+	c_code := gen_c(v3_bin, 'v3_spawn_discarded_detach', '
+fn work() {}
+
+fn answer() int {
+	return 42
+}
+
+fn make_array() []int {
+	return [1, 2, 3]
+}
+
+struct Owned {
+	values []int
+}
+
+fn make_owned() Owned {
+	return Owned{values: [4, 5]}
+}
+
+fn make_thread() thread int {
+	return spawn answer()
+}
+
+fn make_array_thread() thread []int {
+	return spawn make_array()
+}
+
+fn make_closure() fn () int {
+	value := 42
+	return fn [value] () int {
+		return value
+	}
+}
+
+fn add(a int, b int) int {
+	return a + b
+}
+
+fn wait_for(t thread int) {
+	println(t.wait())
+}
+
+fn main() {
+	spawn work()
+	_ := spawn work()
+	_ = spawn work()
+	mut b := 0
+	b, _ = 2, spawn work()
+	println(b)
+	spawn answer()
+	spawn make_array()
+	spawn make_owned()
+	spawn make_thread()
+	spawn make_array_thread()
+	spawn make_closure()
+	spawn add(1, 2)
+	spawn wait_for(spawn answer())
+	t := spawn answer()
+	println(t.wait())
+	owned := spawn make_array()
+	println(owned.wait())
+}
+	')
+	c_compact := compact_c(c_code)
+	assert c_code.contains('static __v_thread __v_thread_spawn_detached(__v_thread_start_fn start, void* arg, void (*cleanup)(void*))'), c_code
+	assert c_compact.count('__v_thread_spawn_detached(work_thread_wrapper_detached,') == 4, c_code
+	assert c_compact.count('__v_thread_spawn_detached(answer_thread_wrapper_detached,') == 1, c_code
+	assert c_compact.contains('__v_thread_spawn_detached(add_args_thread_wrapper_detached,(void*)_sa'), c_code
+	// The spawn nested in the arguments is joined by `wait_for`, so it stays joinable.
+	assert c_compact.contains('__v_thread_spawn_detached(wait_for_args_thread_wrapper_detached,(void*)_sa'), c_code
+	assert c_compact.count('__v_thread_spawn(answer_thread_wrapper,') == 3, c_code
+	assert c_compact.contains('__v_threadt=__v_thread_spawn(answer_thread_wrapper,'), c_code
+	assert c_code.contains('static void* make_array_thread_wrapper_detached(void* arg) { (void)arg; Array __tr = make_array();'), c_code
+	assert c_code.contains('array__free(&(__tr));'), c_code
+	assert c_code.contains('static void* make_array_thread_wrapper(void* arg) { (void)arg; Array* __tr = (Array*)__v_thread_alloc(sizeof(Array));'), c_code
+	assert c_code.contains('static void* make_thread_thread_wrapper_detached(void* arg) { (void)arg; __v_thread __tr = make_thread();'), c_code
+	assert c_code.contains('__v_thread_join(__tr);'), c_code
+	assert c_code.contains('static void* make_array_thread_thread_wrapper_detached(void* arg) { (void)arg; __v_thread __tr = make_array_thread();'), c_code
+	assert c_code.contains('array__free(&(__tr_inner'), c_code
+	assert c_code.contains('static void* make_closure_thread_wrapper_detached(void* arg) { (void)arg;'), c_code
+	assert c_code.contains('closure__closure_try_destroy((void*)(__tr));'), c_code
+	assert c_compact.contains('__v_thread__twthread0=t;'), c_code
+}
+
+fn test_discarded_spawn_cleans_nested_thread_and_closure_results() {
+	v3_bin := build_v3()
+	c_code := gen_c(v3_bin, 'v3_spawn_nested_result_cleanup', '
+struct Worker {
+	child thread int
+}
+
+struct ClosureHolder {
+	callback fn () int
+}
+
+fn answer() int {
+	return 42
+}
+
+fn make_array() []thread int {
+	return [spawn answer()]
+}
+
+fn make_optional() ?thread int {
+	return spawn answer()
+}
+
+fn make_struct() Worker {
+	return Worker{child: spawn answer()}
+}
+
+fn make_closure() ClosureHolder {
+	value := 42
+	return ClosureHolder{
+		callback: fn [value] () int {
+			return value
+		}
+	}
+}
+
+fn main() {
+	spawn make_array()
+	spawn make_optional()
+	spawn make_struct()
+	spawn make_closure()
+}
+	')
+	for name in ['make_array', 'make_optional', 'make_struct'] {
+		wrapper := c_code.all_after('static void* ${name}_thread_wrapper_detached').all_before('return NULL;')
+		assert wrapper.contains('__v_thread_join('), wrapper
+	}
+	closure_wrapper := c_code.all_after('static void* make_closure_thread_wrapper_detached').all_before('return NULL;')
+	assert closure_wrapper.contains('closure__closure_try_destroy('), closure_wrapper
+}
+
+fn test_discarded_aggregate_spawns_detach_threads() {
+	v3_bin := build_v3()
+	c_code := gen_c(v3_bin, 'v3_spawn_discarded_aggregate_detach', '
+struct Holder {
+	worker thread int
+}
+
+fn answer() int {
+	return 42
+}
+
+fn wait_for(t thread int) int {
+	return t.wait()
+}
+
+fn main() {
+	_ := [spawn answer()]
+	_ := [spawn answer()][0]
+	_ := Holder{worker: spawn answer()}
+	_ := Holder{worker: spawn answer()}.worker
+	_ := (spawn answer()) == (spawn answer())
+	_ := [[spawn answer()]]
+	_ := {"worker": spawn answer()}
+	_ := dump(spawn answer())
+	dump(spawn answer())
+	_ := [wait_for(spawn answer())]
+	t := spawn answer()
+	println(t.wait())
+}
+	')
+	c_compact := compact_c(c_code)
+	assert c_compact.count('__v_thread_spawn_detached(answer_thread_wrapper_detached,') == 8, c_code
+	// Compared spawns keep their handles until the comparison finishes.
+	assert c_compact.count('__v_thread_spawn_comparable(answer_thread_wrapper_detached,') == 2, c_code
+	assert c_compact.count('__v_thread_spawn(answer_thread_wrapper,') == 2, c_code
+}
+
+// A discarded `if`/`match`, including one in a `_` slot of a multi-assignment, must
+// detach the spawn in each branch that ends in one.
+// The transformer would otherwise lower the value into a temporary that hides the
+// spawns from cgen. A branch that yields an existing handle only evaluates it, so
+// the handle stays joinable for its later `.wait()`.
+fn test_discarded_conditional_spawns_detach_threads() {
+	v3_bin := build_v3()
+	c_code := gen_c(v3_bin, 'v3_spawn_discarded_conditional_detach', "
+fn work() {}
+
+fn other() {}
+
+fn main() {
+	flag := true
+	n := 2
+	_ := if flag { spawn work() } else { spawn other() }
+	_ = if flag {
+		println('a')
+		spawn work()
+	} else if n > 1 {
+		spawn other()
+	} else {
+		spawn work()
+	}
+	_ := match n {
+		1 { spawn work() }
+		else { spawn other() }
+	}
+	_ := (spawn work())
+	mut a := 0
+	a, _ = 3, if flag { spawn work() } else { spawn other() }
+	println(a)
+	t := spawn work()
+	_ := if flag { t } else { spawn other() }
+	_ := match n {
+		1 { t }
+		else { spawn other() }
+	}
+	t.wait()
+}
+	")
+	c_compact := compact_c(c_code)
+	assert c_compact.count('__v_thread_spawn_detached(work_thread_wrapper_detached,') == 6, c_code
+	assert c_compact.count('__v_thread_spawn_detached(other_thread_wrapper_detached,') == 6, c_code
+	assert !c_compact.contains('__v_thread_spawn(other_thread_wrapper,'), c_code
+	assert c_compact.contains('__v_threadt=__v_thread_spawn(work_thread_wrapper,'), c_code
+	assert c_compact.count('(void)(t);') == 2, c_code
 }

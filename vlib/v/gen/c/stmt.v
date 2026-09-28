@@ -1056,7 +1056,12 @@ fn (g &FlatGen) ownership_destructor_method_name() string {
 }
 
 fn (g &FlatGen) ownership_recursive_drop_helper_name(type_name string) string {
-	return '__v3_ownership_drop_${g.cname(type_name)}'
+	prefix := if g.detached_spawn_drop {
+		'__v3_detached_ownership_drop_'
+	} else {
+		'__v3_ownership_drop_'
+	}
+	return '${prefix}${g.cname(type_name)}'
 }
 
 // ownership_recursive_drop_helper_types collapses the logical ownership type
@@ -1160,6 +1165,11 @@ fn (g &FlatGen) ownership_collect_drop_struct_names(typ types.Type, depth int, m
 		}
 		types.ResultType {
 			g.ownership_collect_drop_struct_names(typ.base_type, depth + 1, mut names, mut seen)
+		}
+		types.MultiReturn {
+			for part in typ.types {
+				g.ownership_collect_drop_struct_names(part, depth + 1, mut names, mut seen)
+			}
 		}
 		types.Array {
 			g.ownership_collect_drop_struct_names(typ.elem_type, depth + 1, mut names, mut seen)
@@ -1393,6 +1403,13 @@ fn (mut g FlatGen) gen_ownership_drop_value_inner(typ types.Type, expr string, d
 		types.Alias {
 			g.gen_ownership_drop_value_inner(typ.base_type, expr, depth + 1, mut expanding)
 		}
+		types.MultiReturn {
+			for i, part in typ.types {
+				if g.ownership_type_requires_destruction(part, depth + 1) {
+					g.gen_ownership_drop_value_inner(part, '(${expr}).arg${i}', depth + 1, mut expanding)
+				}
+			}
+		}
 		types.OptionType {
 			g.writeln('if ((${expr}).ok) {')
 			g.indent++
@@ -1421,6 +1438,11 @@ fn (mut g FlatGen) gen_ownership_drop_value_inner(typ types.Type, expr string, d
 		}
 		types.String {
 			g.writeln('string__free(&(${expr}));')
+		}
+		types.FnType {
+			if g.detached_spawn_drop {
+				g.writeln('${g.cname('closure.closure_try_destroy')}((void*)(${expr}));')
+			}
 		}
 		types.Array {
 			g.writeln('if (((${expr}).flags & ArrayFlags__is_slice) == 0) {')
@@ -1476,6 +1498,12 @@ fn (mut g FlatGen) gen_ownership_drop_value_inner(typ types.Type, expr string, d
 			g.writeln('map__free(&(${expr}));')
 		}
 		types.Struct {
+			thread_name := trimmed_space(typ.name)
+			if g.detached_spawn_drop && (thread_name == 'thread'
+				|| thread_name.ends_with('.thread') || thread_name.starts_with('thread ')) {
+				g.writeln(g.detached_spawn_result_cleanup(typ, expr, depth))
+				return
+			}
 			method_name := g.ownership_destructor_method_name()
 			method := g.resolve_method_name(typ.name, method_name)
 			if method.len > 0 {
@@ -1718,10 +1746,21 @@ fn (g &FlatGen) ownership_type_requires_destruction(typ types.Type, depth int) b
 		types.Alias {
 			return g.ownership_type_requires_destruction(typ.base_type, depth + 1)
 		}
+		types.MultiReturn {
+			return typ.types.any(g.ownership_type_requires_destruction(it, depth + 1))
+		}
 		types.ArrayFixed {
 			return g.ownership_type_requires_destruction(typ.elem_type, depth + 1)
 		}
+		types.FnType {
+			return g.detached_spawn_drop
+		}
 		types.Struct {
+			thread_name := trimmed_space(typ.name)
+			if g.detached_spawn_drop && (thread_name == 'thread'
+				|| thread_name.ends_with('.thread') || thread_name.starts_with('thread ')) {
+				return true
+			}
 			if g.resolve_method_name(typ.name, g.ownership_destructor_method_name()).len > 0 {
 				return true
 			}

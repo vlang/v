@@ -3957,16 +3957,43 @@ fn (mut g FlatGen) callback_wrapper_decls() {
 	}
 }
 
+// spawn_start_fn names the runtime call that starts the spawn being emitted. A detached
+// spawn goes through `__v_thread_spawn_detached`, which also frees the thread's context
+// and result when it exits; nothing can join it.
+fn (g &FlatGen) spawn_start_fn() string {
+	if g.spawn_comparable {
+		return '__v_thread_spawn_comparable'
+	}
+	return if g.spawn_detached { '__v_thread_spawn_detached' } else { '__v_thread_spawn' }
+}
+
+// empty_spawn_value is emitted for a spawn that starts no thread, such as one of an
+// elided `@[if flag]` fn. Discarded aggregates still need a typed empty handle.
+fn (g &FlatGen) empty_spawn_value() string {
+	return '(__v_thread){0}'
+}
+
 fn (mut g FlatGen) gen_spawn_expr(node flat.Node) {
 	g.needs_thread_runtime = true
+	// The transformer marks a spawn whose handle is discarded; start its thread
+	// detached. A spawn nested in its arguments has its own mode, so restore this one
+	// after emitting it.
+	outer_detached := g.spawn_detached
+	outer_comparable := g.spawn_comparable
+	g.spawn_detached = node.is_detached_spawn()
+	g.spawn_comparable = outer_comparable && g.spawn_detached
+	defer {
+		g.spawn_detached = outer_detached
+		g.spawn_comparable = outer_comparable
+	}
 	if node.children_count == 0 {
-		g.write('(__v_thread){0}')
+		g.write(g.empty_spawn_value())
 		return
 	}
 	call_id := g.a.child(&node, 0)
 	call_node := g.a.nodes[int(call_id)]
 	if call_node.kind != .call || call_node.children_count == 0 {
-		g.write('(__v_thread){0}')
+		g.write(g.empty_spawn_value())
 		return
 	}
 	fn_node := g.a.child_node(&call_node, 0)
@@ -3976,7 +4003,21 @@ fn (mut g FlatGen) gen_spawn_expr(node flat.Node) {
 	// return is `Optional_T` (not the generic `Optional`, whose payload is `int`) and a
 	// fixed-array return is its `_v_ret_*` wrapper struct. The wrapper mallocs and
 	// assigns this type, and `[]thread T.wait()` must read back the same layout.
-	ret_ct := g.fn_return_type_name(g.tc.resolve_type(call_id))
+	mut ret_type := g.tc.resolve_type(call_id)
+	// The call expression can lose the element type of `thread []T`; the
+	// registered callee return keeps the concrete thread result type.
+	if ret_type.name() == 'thread[]' {
+		call_name := g.tc.resolved_call_name(call_id) or { fn_node.value }
+		if declared := g.tc.fn_ret_types[call_name] {
+			ret_type = declared
+		}
+	}
+	outer_return_type := g.spawn_return_type
+	g.spawn_return_type = ret_type
+	defer {
+		g.spawn_return_type = outer_return_type
+	}
+	ret_ct := g.fn_return_type_name(ret_type)
 	mut wrapper := ''
 	mut arg_expr := 'NULL'
 	if fn_node.kind == .ident {
@@ -4122,10 +4163,10 @@ fn (mut g FlatGen) gen_spawn_expr(node flat.Node) {
 		}
 	}
 	if wrapper.len == 0 {
-		g.write('(__v_thread){0}')
+		g.write(g.empty_spawn_value())
 		return
 	}
-	g.write('__v_thread_spawn(${wrapper}, (void*)(${arg_expr}), NULL)')
+	g.write('${g.spawn_start_fn()}(${wrapper}, (void*)(${arg_expr}), NULL)')
 }
 
 fn (g &FlatGen) spawn_selector_fn_value_type(callee_id flat.NodeId, fn_node flat.Node) ?types.FnType {
@@ -4136,41 +4177,167 @@ fn (g &FlatGen) spawn_selector_fn_value_type(callee_id flat.NodeId, fn_node flat
 	return fn_type_from(declared)
 }
 
+// detached_spawn_aggregate_cleanup keeps recursive helpers separate from ordinary drops.
+fn (mut g FlatGen) detached_spawn_aggregate_cleanup(typ types.Type, expr string) string {
+	mut names := map[string]bool{}
+	mut seen := map[string]bool{}
+	g.ownership_collect_drop_struct_names(typ, 0, mut names, mut seen)
+	mut helpers := map[string]string{}
+	mut sorted_names := names.keys()
+	sorted_names.sort()
+	for name in sorted_names {
+		parsed := g.tc.parse_type(name)
+		if name.starts_with('C.') || name in g.tc.unions || name == 'thread'
+			|| name.ends_with('.thread') || name.starts_with('thread ')
+			|| g.is_generic_struct(name) || g.type_contains_generic_placeholder(parsed)
+			|| g.type_name_contains_generic_placeholder(name) || g.skip_builtin_struct(name)
+			|| g.resolve_method_name(name, g.ownership_destructor_method_name()).len > 0 {
+			continue
+		}
+		key := ownership_drop_expansion_key(types.Type(types.Struct{
+			name: name
+		}))
+		helpers[key] = name
+	}
+	old_helpers := g.recursive_drop_helpers
+	g.recursive_drop_helpers = helpers
+	defer {
+		g.recursive_drop_helpers = old_helpers
+	}
+	representatives := g.ownership_recursive_drop_helper_types()
+	mut helper_names := representatives.keys()
+	helper_names.sort()
+	mut new_names := []string{}
+	for helper_name in helper_names {
+		registry_key := 'detached_drop|${helper_name}'
+		if registry_key !in g.spawn_wrapper_names {
+			g.spawn_wrapper_names[registry_key] = helper_name
+			new_names << representatives[helper_name]
+		}
+	}
+	if new_names.len > 0 {
+		g.add_spawn_wrapper_def('extern IError builtin__none__;')
+		g.add_spawn_wrapper_def('extern IError builtin__error_sentinel;')
+	}
+	for name in new_names {
+		helper_name := g.ownership_recursive_drop_helper_name(name)
+		g.add_spawn_wrapper_def('static void ${helper_name}(${g.struct_cname(name)}* _value);')
+	}
+	for name in new_names {
+		old_module := g.tc.cur_module
+		old_file := g.tc.cur_file
+		old_tmp_count := g.tmp_count
+		g.tc.cur_module = g.tc.struct_modules[name] or { old_module }
+		g.tc.cur_file = g.tc.struct_files[name] or { old_file }
+		g.tmp_count = 0
+		body := g.ownership_drop_value_to_string(types.Type(types.Struct{
+			name: name
+		}), '*_value')
+		g.tmp_count = old_tmp_count
+		g.tc.cur_module = old_module
+		g.tc.cur_file = old_file
+		helper_name := g.ownership_recursive_drop_helper_name(name)
+		g.add_spawn_wrapper_def('static void ${helper_name}(${g.struct_cname(name)}* _value) { ${body} }')
+	}
+	return g.ownership_drop_value_to_string(typ, expr)
+}
+
+fn (mut g FlatGen) detached_spawn_result_cleanup(typ types.Type, expr string, depth int) string {
+	if depth > 64 {
+		return ''
+	}
+	clean_type := default_init_unalias_type(typ)
+	if clean_type is types.FnType {
+		return '${g.cname('closure.closure_try_destroy')}((void*)(${expr})); '
+	}
+	if clean_type is types.Struct {
+		thread_name := trimmed_space(clean_type.name)
+		if thread_name == 'thread' || thread_name.ends_with('.thread')
+			|| thread_name.starts_with('thread ') {
+			idx := g.tmp_count
+			g.tmp_count++
+			result := '__tr_result${idx}'
+			mut cleanup := '__v_thread_free(${result}); '
+			if thread_name.starts_with('thread ') {
+				inner_type := g.tc.parse_type(trimmed_space(thread_name[7..]))
+				inner_ct := g.fn_return_type_name(inner_type)
+				inner := '__tr_inner${idx}'
+				inner_value := if default_init_unalias_type(inner_type) is types.ArrayFixed {
+					'${inner}.ret_arr'
+				} else {
+					inner
+				}
+				inner_drop := g.detached_spawn_result_cleanup(inner_type, inner_value, depth + 1)
+				if inner_drop.len > 0 {
+					cleanup = '${inner_ct} ${inner} = *((${inner_ct}*)${result}); ${inner_drop}${cleanup}'
+				}
+			}
+			return 'if ((${expr}).handle) { void* ${result} = __v_thread_join(${expr}); if (${result}) { ${cleanup} } } '
+		}
+	}
+	old_detached_spawn_drop := g.detached_spawn_drop
+	g.detached_spawn_drop = true
+	defer {
+		g.detached_spawn_drop = old_detached_spawn_drop
+	}
+	if g.ownership_type_requires_destruction(typ, 0) {
+		return g.detached_spawn_aggregate_cleanup(typ, expr)
+	}
+	return ''
+}
+
 // spawn_wrapper_body builds the thread-wrapper statement that invokes the spawned
 // call and returns its result as a `void*`. When the callee returns a value, the
 // result is heap-copied so `[]thread T .wait()` can recover it (the wait fn frees
 // it); a void callee returns NULL. `post` runs after the call.
-fn spawn_wrapper_body(call_expr string, ret_ct string, post string) string {
-	return spawn_wrapper_body_with_pre(call_expr, ret_ct, '', post)
+fn (mut g FlatGen) spawn_wrapper_body(call_expr string, ret_ct string, post string) string {
+	return g.spawn_wrapper_body_with_pre(call_expr, ret_ct, '', post)
 }
 
-fn spawn_wrapper_body_with_pre(call_expr string, ret_ct string, pre string, post string) string {
+fn (mut g FlatGen) spawn_wrapper_body_with_pre(call_expr string, ret_ct string, pre string, post string) string {
 	if ret_ct == 'void' || ret_ct.len == 0 {
+		return '${pre}${call_expr}; ${post}return NULL;'
+	}
+	if g.spawn_detached {
+		old_detached_spawn_drop := g.detached_spawn_drop
+		g.detached_spawn_drop = true
+		needs_cleanup := g.ownership_type_requires_destruction(g.spawn_return_type, 0)
+		g.detached_spawn_drop = old_detached_spawn_drop
+		if needs_cleanup
+			|| default_init_unalias_type(g.spawn_return_type) is types.FnType
+			|| ret_ct == '__v_thread' {
+			clean_type := default_init_unalias_type(g.spawn_return_type)
+			value := if clean_type is types.ArrayFixed { '__tr.ret_arr' } else { '__tr' }
+			drop := g.detached_spawn_result_cleanup(g.spawn_return_type, value, 0)
+			return '${pre}${ret_ct} __tr = ${call_expr}; ${drop}${post}return NULL;'
+		}
 		return '${pre}${call_expr}; ${post}return NULL;'
 	}
 	return '${pre}${ret_ct}* __tr = (${ret_ct}*)__v_thread_alloc(sizeof(${ret_ct})); *__tr = ${call_expr}; ${post}return (void*)__tr;'
 }
 
 fn (mut g FlatGen) ensure_noarg_spawn_wrapper(cfn string, ret_ct string) string {
-	key := 'noarg|${cfn}'
+	key := 'noarg|${cfn}|detached:${g.spawn_detached}'
 	if name := g.spawn_wrapper_names[key] {
 		return name
 	}
-	name := g.cname('${cfn}_thread_wrapper')
+	suffix := if g.spawn_detached { '_detached' } else { '' }
+	name := g.cname('${cfn}_thread_wrapper${suffix}')
 	g.spawn_wrapper_names[key] = name
-	body := spawn_wrapper_body('${cfn}()', ret_ct, '')
+	body := g.spawn_wrapper_body('${cfn}()', ret_ct, '')
 	g.add_spawn_wrapper_def('static void* ${name}(void* arg) { (void)arg; ${body} }')
 	return name
 }
 
 fn (mut g FlatGen) ensure_receiver_spawn_wrapper(cfn string, receiver_ct string, ret_ct string) string {
-	key := 'receiver|${cfn}|${receiver_ct}'
+	key := 'receiver|${cfn}|${receiver_ct}|detached:${g.spawn_detached}'
 	if name := g.spawn_wrapper_names[key] {
 		return name
 	}
-	name := g.cname('${cfn}_thread_wrapper')
+	suffix := if g.spawn_detached { '_detached' } else { '' }
+	name := g.cname('${cfn}_thread_wrapper${suffix}')
 	g.spawn_wrapper_names[key] = name
-	body := spawn_wrapper_body('${cfn}((${receiver_ct})arg)', ret_ct, '')
+	body := g.spawn_wrapper_body('${cfn}((${receiver_ct})arg)', ret_ct, '')
 	g.add_spawn_wrapper_def('static void* ${name}(void* arg) { ${body} }')
 	return name
 }
@@ -4183,14 +4350,15 @@ fn (mut g FlatGen) ensure_args_spawn_wrapper(cfn string, args []SpawnPackedArg, 
 	signature := spawn_packed_args_signature(args)
 	captures := g.spawn_fn_literal_captures(cfn)
 	capture_signature := spawn_closure_capture_signature(captures)
+	detached_suffix := if g.spawn_detached { '_detached' } else { '' }
 	mut struct_name := g.cname('${cfn}_thread_args')
-	mut wrapper_name := g.cname('${cfn}_args_thread_wrapper')
+	mut wrapper_name := g.cname('${cfn}_args_thread_wrapper${detached_suffix}')
 	if !spawn_packed_args_are_direct(args) {
 		suffix := spawn_packed_args_name_suffix(args)
 		struct_name = g.cname('${cfn}_thread_args_${suffix}')
-		wrapper_name = g.cname('${cfn}_args_thread_wrapper_${suffix}')
+		wrapper_name = g.cname('${cfn}_args_thread_wrapper_${suffix}${detached_suffix}')
 	}
-	key := 'args|${cfn}|${signature}|captures:${capture_signature}'
+	key := 'args|${cfn}|${signature}|captures:${capture_signature}|detached:${g.spawn_detached}'
 	if name := g.spawn_wrapper_names[key] {
 		return name, struct_name
 	}
@@ -4215,7 +4383,7 @@ fn (mut g FlatGen) ensure_args_spawn_wrapper(cfn string, args []SpawnPackedArg, 
 			pre += '${capture.global_cname} = __v3_spawn_args->c${i}; '
 		}
 	}
-	body := spawn_wrapper_body_with_pre('${cfn}(${call_args.join(', ')})', ret_ct, pre,
+	body := g.spawn_wrapper_body_with_pre('${cfn}(${call_args.join(', ')})', ret_ct, pre,
 		'__v_thread_free(__v3_spawn_args); ')
 	g.add_spawn_wrapper_def('static void* ${wrapper_name}(void* arg) { ${struct_name}* __v3_spawn_args = (${struct_name}*)arg; ${body} }')
 	return wrapper_name, struct_name
@@ -4235,7 +4403,7 @@ fn (mut g FlatGen) emit_args_spawn_expr(cfn string, args []SpawnPackedArg, ret_c
 	for i, capture in captures {
 		g.write_spawn_capture_init(tmp, i, capture)
 	}
-	g.write('__v_thread_spawn(${wrapper}, (void*)_sa${tmp}, __v_thread_free); })')
+	g.write('${g.spawn_start_fn()}(${wrapper}, (void*)_sa${tmp}, __v_thread_free); })')
 }
 
 fn (mut g FlatGen) ensure_fn_value_spawn_wrapper(fn_ct string, args []SpawnPackedArg, ret_ct string, captures []SpawnClosureCapture, destroys_fn bool) (string, string) {
@@ -4247,13 +4415,14 @@ fn (mut g FlatGen) ensure_fn_value_spawn_wrapper(fn_ct string, args []SpawnPacke
 		suffix += '_captures_${capture_suffix}'
 	}
 	suffix = suffix.replace('*', 'ptr').replace(' ', '_')
+	detached_suffix := if g.spawn_detached { '_detached' } else { '' }
 	struct_name := g.cname('fn_value_thread_args_${suffix}')
 	wrapper_name := g.cname('fn_value_args_thread_wrapper_${suffix}${if destroys_fn {
 		'_destroy'
 	} else {
 		''
-	}}')
-	key := 'fnvalue|${fn_ct}|${ret_ct}|${signature}|captures:${capture_signature}|destroy:${destroys_fn}'
+	}}${detached_suffix}')
+	key := 'fnvalue|${fn_ct}|${ret_ct}|${signature}|captures:${capture_signature}|destroy:${destroys_fn}|detached:${g.spawn_detached}'
 	if name := g.spawn_wrapper_names[key] {
 		return name, struct_name
 	}
@@ -4281,8 +4450,8 @@ fn (mut g FlatGen) ensure_fn_value_spawn_wrapper(fn_ct string, args []SpawnPacke
 	} else {
 		''
 	}
-	body := spawn_wrapper_body_with_pre('__v3_spawn_args->f(${call_args.join(', ')})', ret_ct,
-		pre, '${destroy}__v_thread_free(__v3_spawn_args); ')
+	body := g.spawn_wrapper_body_with_pre('__v3_spawn_args->f(${call_args.join(', ')})',
+		ret_ct, pre, '${destroy}__v_thread_free(__v3_spawn_args); ')
 	g.add_spawn_wrapper_def('static void* ${wrapper_name}(void* arg) { ${struct_name}* __v3_spawn_args = (${struct_name}*)arg; ${body} }')
 	return wrapper_name, struct_name
 }
@@ -4310,7 +4479,7 @@ fn (mut g FlatGen) emit_fn_value_spawn_expr(call_id flat.NodeId, fn_node flat.No
 	for i, capture in captures {
 		g.write_spawn_capture_init(tmp, i, capture)
 	}
-	g.write('__v_thread_spawn(${wrapper}, (void*)_sa${tmp}, __v_thread_free); })')
+	g.write('${g.spawn_start_fn()}(${wrapper}, (void*)_sa${tmp}, __v_thread_free); })')
 }
 
 fn (mut g FlatGen) write_spawn_packed_arg_init(tmp int, idx int, arg SpawnPackedArg) {
