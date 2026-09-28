@@ -152,9 +152,11 @@ fn (mut encoder Encoder) encode_value[T](val T) {
 		}
 	} $else $if T.unaliased_typ is $sumtype {
 		encoder.encode_sumtype[T](val)
-	} $else $if T is time.Time {
+	} $else $if T.unaliased_typ is time.Time {
+		// `time_as_unix` covers aliases of `time.Time` too, like the removed module;
+		// otherwise the value's own (or inherited) `to_json` applies.
 		if encoder.time_as_unix {
-			encoder.encode_number(val.unix())
+			encoder.encode_number(time.Time(val).unix())
 		} else {
 			time_val := val.to_json()
 			unsafe { encoder.output.push_many(time_val.str, time_val.len) }
@@ -524,7 +526,7 @@ fn (mut encoder Encoder) encode_array_of_sumtype_variants[T](val []T) {
 		if i > 0 {
 			encoder.separate_items(true)
 		}
-		$if T is time.Time {
+		$if T.unaliased_typ is time.Time {
 			encoder.encode_value(item)
 		} $else $if T is JsonEncoder {
 			encoder.encode_value(item)

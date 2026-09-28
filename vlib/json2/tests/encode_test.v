@@ -420,6 +420,30 @@ struct TimeHolder {
 	by_label map[string]time.Time
 }
 
+type UnixTimeAlias = time.Time
+
+struct TimeAliasHolder {
+	at   UnixTimeAlias
+	list []UnixTimeAlias
+	opt  ?UnixTimeAlias
+	m    map[string]UnixTimeAlias
+}
+
+fn test_time_as_unix_covers_time_aliases() {
+	t := UnixTimeAlias(time.unix(1608621780))
+	assert json.encode(t, time_as_unix: true) == '1608621780'
+	holder := TimeAliasHolder{
+		at:   t
+		list: [t]
+		opt:  t
+		m:    {
+			'k': t
+		}
+	}
+	assert json.encode(holder, time_as_unix: true) == '{"at":1608621780,"list":[1608621780],"opt":1608621780,"m":{"k":1608621780}}'
+	assert json.encode(t) == '"2020-12-22T07:23:00.000Z"'
+}
+
 fn test_time_as_unix() {
 	t := time.unix(1608621780)
 	holder := TimeHolder{
