@@ -14355,6 +14355,16 @@ fn (t &Transformer) resolved_receiver_call_display_name(node flat.Node, base_id 
 	return '${base_name}.${method}'
 }
 
+fn (t &Transformer) callback_declared_type_text(raw string) string {
+	mut declared := t.normalize_type_alias(raw)
+	for _ in 0 .. 16 {
+		next := t.normalize_type_alias(declared)
+		if next == declared { break }
+		declared = next
+	}
+	return declared
+}
+
 fn (mut t Transformer) resolved_receiver_arg_compatible(arg_id flat.NodeId, actual_type string, expected_type string) bool {
 	if actual_type == '' || actual_type == 'unknown' || expected_type == '' {
 		return true
@@ -14365,8 +14375,29 @@ fn (mut t Transformer) resolved_receiver_arg_compatible(arg_id flat.NodeId, actu
 	if expected_type.contains('unknown') {
 		return true
 	}
-	actual := t.normalize_type_alias(actual_type)
-	expected := t.normalize_type_alias(expected_type)
+	mut actual := t.callback_declared_type_text(actual_type)
+	mut actual_callconv_type := actual_type
+	if raw := t.raw_var_type_for_expr(arg_id) {
+		declared := t.callback_declared_type_text(raw)
+		mut corresponds := declared == actual
+		if !corresponds && !isnil(t.tc) {
+			raw_type := types.unalias_type(t.tc.parse_type(raw))
+			resolved_type := types.unalias_type(t.tc.parse_type(actual_type))
+			// Semantic function names omit shared, atomic and variadic syntax.
+			// Keep the declaration's modes when the remaining payload agrees.
+			corresponds = raw_type is types.FnType && resolved_type is types.FnType
+				&& raw_type.name() == resolved_type.name()
+		}
+		if corresponds {
+			actual_callconv_type = raw
+			actual = declared
+		}
+	}
+	if !isnil(t.tc) && !t.tc.fn_type_callconv_compatible(t.tc.parse_type(actual_callconv_type),
+		t.tc.parse_type(expected_type)) {
+		return false
+	}
+	expected := t.callback_declared_type_text(expected_type)
 	if t.is_integer_type_name(expected) {
 		if literal := t.specialized_int_literal(arg_id) {
 			return specialized_int_literal_fits_type(literal, expected)
@@ -14377,6 +14408,17 @@ fn (mut t Transformer) resolved_receiver_arg_compatible(arg_id flat.NodeId, actu
 	}
 	if actual == expected {
 		return true
+	}
+	if !isnil(t.tc) && actual.starts_with('fn') && expected.starts_with('fn') {
+		if !t.callback_fn_type_modes_compatible(actual, expected) {
+			return false
+		}
+		actual_fn := transform_fn_type(t.tc.parse_type(actual)) or { return false }
+		expected_fn := transform_fn_type(t.tc.parse_type(expected)) or { return false }
+		if !t.callback_fn_type_payloads_compatible(actual_fn, expected_fn, false) {
+			return false
+		}
+		return t.tc.slot_value_compatible(actual_fn, expected_fn)
 	}
 	if t.expr_is_nil_like(arg_id)
 		&& (expected.starts_with('&') || expected in ['voidptr', 'byteptr', 'charptr']) {
@@ -14458,6 +14500,214 @@ fn (mut t Transformer) resolved_receiver_arg_compatible(arg_id flat.NodeId, actu
 		return true
 	}
 	return false
+}
+
+fn callback_param_shared_atomic_mode(param string) string {
+	payload := generic_fn_type_param_payload(param)
+	if payload.starts_with('shared ') {
+		return 'shared'
+	}
+	if payload.starts_with('atomic ') {
+		return 'atomic'
+	}
+	return ''
+}
+
+fn (t &Transformer) callback_nested_fn_types(param string) []string {
+	mut signatures := []string{}
+	t.collect_callback_nested_fn_types(param, mut signatures)
+	return signatures
+}
+
+fn (t &Transformer) collect_callback_nested_fn_types(param string, mut signatures []string) {
+	mut payload := generic_fn_type_param_payload(param)
+	for {
+		unnamed := if payload.starts_with('map[') {
+			payload
+		} else {
+			generic_fn_type_param_payload(payload)
+		}
+		if unnamed != payload {
+			payload = unnamed
+			continue
+		}
+		normalized := t.normalize_type_alias(payload).trim_space()
+		if normalized != payload {
+			payload = normalized
+			continue
+		}
+		if payload.starts_with('?') || payload.starts_with('!') || payload.starts_with('&') {
+			payload = payload[1..].trim_space()
+		} else if payload.starts_with('shared ') {
+			payload = payload[7..].trim_space()
+		} else if payload.starts_with('atomic ') {
+			payload = payload[7..].trim_space()
+		} else if payload.starts_with('[]') {
+			payload = payload[2..].trim_space()
+		} else if payload.starts_with('...') {
+			payload = payload[3..].trim_space()
+		} else if payload.starts_with('chan ') || payload.starts_with('thread ') {
+			prefix_len := if payload.starts_with('chan ') { 5 } else { 7 }
+			payload = payload[prefix_len..].trim_space()
+		} else if payload.starts_with('map[') || payload.starts_with('[') {
+			open := if payload.starts_with('map[') { 3 } else { 0 }
+			mut depth := 0
+			mut end := -1
+			for i := open; i < payload.len; i++ {
+				if payload[i] == `[` {
+					depth++
+				} else if payload[i] == `]` {
+					depth--
+					if depth == 0 {
+						end = i
+						break
+					}
+				}
+			}
+			if end < 0 || end + 1 >= payload.len {
+				return
+			}
+			payload = payload[end + 1..].trim_space()
+		} else if payload.starts_with('(') && payload.ends_with(')') {
+			for part in split_generic_args(payload[1..payload.len - 1]) {
+				t.collect_callback_nested_fn_types(part, mut signatures)
+			}
+			return
+		} else {
+			_, args, is_generic := generic_app_parts(payload)
+			if is_generic {
+				for arg in args {
+					t.collect_callback_nested_fn_types(arg, mut signatures)
+				}
+				return
+			}
+			break
+		}
+	}
+	if payload.starts_with('fn(') || payload.starts_with('fn (') {
+		signatures << payload
+	}
+}
+
+fn (t &Transformer) callback_fn_type_modes_compatible(actual string, expected string) bool {
+	actual_params, actual_return := fn_type_text_parts(actual) or { return false }
+	expected_params, expected_return := fn_type_text_parts(expected) or { return false }
+	if actual_params.len != expected_params.len {
+		return false
+	}
+	for i, actual_param in actual_params {
+		if generic_fn_type_param_payload(actual_param).starts_with('...') != generic_fn_type_param_payload(expected_params[i]).starts_with('...') {
+			return false
+		}
+		if callback_param_shared_atomic_mode(actual_param) != callback_param_shared_atomic_mode(expected_params[i]) {
+			return false
+		}
+		actual_nested := t.callback_nested_fn_types(actual_param)
+		expected_nested := t.callback_nested_fn_types(expected_params[i])
+		if actual_nested.len != expected_nested.len {
+			return false
+		}
+		for j, nested_actual in actual_nested {
+			if !t.callback_fn_type_modes_compatible(nested_actual, expected_nested[j]) {
+				return false
+			}
+		}
+	}
+	if callback_param_shared_atomic_mode(actual_return) != callback_param_shared_atomic_mode(expected_return) {
+		return false
+	}
+	actual_nested := t.callback_nested_fn_types(actual_return)
+	expected_nested := t.callback_nested_fn_types(expected_return)
+	if actual_nested.len != expected_nested.len {
+		return false
+	}
+	for i, nested_actual in actual_nested {
+		if !t.callback_fn_type_modes_compatible(nested_actual, expected_nested[i]) {
+			return false
+		}
+	}
+	return true
+}
+
+fn (t &Transformer) callback_fn_type_payloads_compatible(actual types.FnType, expected types.FnType, inside_container bool) bool {
+	if actual.params.len != expected.params.len {
+		return false
+	}
+	for i in 0 .. actual.params.len {
+		if !types.fn_param_modes_compatible(actual, expected, i) {
+			return false
+		}
+		param := types.unalias_type(types.fn_compatible_param_type(actual, i))
+		expected_param := types.unalias_type(types.fn_compatible_param_type(expected, i))
+		// The userdata conversion applies to a callback parameter, never to a
+		// pointer buried in a parameter container or a nested callback return.
+		if param is types.Pointer && expected_param is types.Pointer {
+			if types.unalias_type(param.base_type) is types.Void
+				|| types.unalias_type(expected_param.base_type) is types.Void {
+				continue
+			}
+		}
+		if !t.callback_payload_type_compatible(param, expected_param, inside_container) {
+			return false
+		}
+	}
+	if !inside_container && types.unalias_type(actual.return_type) is types.Pointer
+		&& types.unalias_type(expected.return_type) is types.Pointer {
+		// The ordinary function checker validates direct return covariance.
+		return true
+	}
+	return t.callback_payload_type_compatible(actual.return_type, expected.return_type,
+		inside_container)
+}
+
+fn (t &Transformer) callback_payload_type_compatible(actual types.Type, expected types.Type, inside_container bool) bool {
+	a := types.unalias_type(actual)
+	e := types.unalias_type(expected)
+	if a is types.Array && e is types.Array {
+		return t.callback_payload_type_compatible(a.elem_type, e.elem_type, true)
+	}
+	if a is types.ArrayFixed && e is types.ArrayFixed {
+		actual_len := t.tc.fixed_array_len_value(a) or {
+			if a.len_expr != e.len_expr {
+				return false
+			}
+			return t.callback_payload_type_compatible(a.elem_type, e.elem_type, true)
+		}
+		expected_len := t.tc.fixed_array_len_value(e) or {
+			if a.len_expr != e.len_expr {
+				return false
+			}
+			return t.callback_payload_type_compatible(a.elem_type, e.elem_type, true)
+		}
+		return actual_len == expected_len && t.callback_payload_type_compatible(a.elem_type, e.elem_type,
+			true)
+	}
+	if a is types.Map && e is types.Map {
+		return t.callback_payload_type_compatible(a.key_type, e.key_type, true)
+			&& t.callback_payload_type_compatible(a.value_type, e.value_type, true)
+	}
+	if a is types.Channel && e is types.Channel {
+		return a.is_mut == e.is_mut
+			&& t.callback_payload_type_compatible(a.elem_type, e.elem_type, true)
+	}
+	if a is types.Pointer && e is types.Pointer {
+		return t.callback_payload_type_compatible(a.base_type, e.base_type, true)
+	}
+	if a is types.OptionType && e is types.OptionType {
+		return t.callback_payload_type_compatible(a.base_type, e.base_type, true)
+	}
+	if a is types.ResultType && e is types.ResultType {
+		return t.callback_payload_type_compatible(a.base_type, e.base_type, true)
+	}
+	if a is types.FnType && e is types.FnType {
+		return t.callback_fn_type_payloads_compatible(a, e, true)
+	}
+	if (a is types.Primitive || a is types.Rune || a is types.Char || a is types.ISize || a is types.USize)
+		&& (e is types.Primitive || e is types.Rune || e is types.Char || e is types.ISize || e is types.USize) {
+		return t.tc.fn_param_compatible(a, e)
+	}
+	return a.name() == e.name() || (!inside_container && t.tc.slot_value_compatible(a, e)
+		&& t.tc.slot_value_compatible(e, a))
 }
 
 struct SpecializedIntLiteral {

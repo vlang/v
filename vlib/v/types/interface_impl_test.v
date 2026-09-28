@@ -2,6 +2,19 @@ module types
 
 import v.flat
 
+fn test_interface_fixed_array_callback_lengths_resolve_constants() {
+	mut a := flat.FlatAst.new()
+	mut tc := TypeChecker.new(&a)
+	tc.const_exprs['n'] = a.add_node(flat.Node{ kind: .int_literal, value: '2' })
+	int_type := Type(int_)
+	symbolic := Type(ArrayFixed{ elem_type: int_type, len_expr: 'n' })
+	concrete := Type(ArrayFixed{ elem_type: int_type, len: 2 })
+	different := Type(ArrayFixed{ elem_type: int_type, len: 3 })
+	assert tc.fn_type_callconv_compatible(symbolic, concrete)
+	assert tc.fn_type_callconv_compatible(concrete, symbolic)
+	assert !tc.fn_type_callconv_compatible(symbolic, different)
+}
+
 fn test_empty_interface_impl_names_deduplicate_builtin_aliases() {
 	mut a := flat.FlatAst.new()
 	mut tc := TypeChecker.new(&a)

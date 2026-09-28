@@ -9685,7 +9685,8 @@ fn type_contains_unknown(typ Type) bool {
 	return false
 }
 
-fn (tc &TypeChecker) fn_param_compatible(actual Type, expected Type) bool {
+// fn_param_compatible compares parameter representations, preserving source-level integer distinctions.
+pub fn (tc &TypeChecker) fn_param_compatible(actual Type, expected Type) bool {
 	if actual is Unknown || expected is Unknown {
 		return false
 	}
@@ -12958,18 +12959,65 @@ fn (tc &TypeChecker) method_param_signature_compatible(actual Type, expected Typ
 	return tc.type_compatible(actual, expected) && tc.type_compatible(expected, actual)
 }
 
-fn (tc &TypeChecker) fn_type_callconv_compatible(actual Type, expected Type) bool {
+// fn_type_callconv_compatible checks calling conventions recursively for function types.
+pub fn (tc &TypeChecker) fn_type_callconv_compatible(actual Type, expected Type) bool {
+	if actual.name().starts_with('thread ') && expected.name().starts_with('thread ') {
+		return tc.fn_type_callconv_compatible(tc.parse_type(actual.name()[7..]),
+			tc.parse_type(expected.name()[7..]))
+	}
+	if actual is Pointer && expected is Pointer {
+		return tc.fn_type_callconv_compatible(actual.base_type, expected.base_type)
+	}
 	if actual is OptionType && expected is OptionType {
 		return tc.fn_type_callconv_compatible(actual.base_type, expected.base_type)
 	}
 	if actual is ResultType && expected is ResultType {
 		return tc.fn_type_callconv_compatible(actual.base_type, expected.base_type)
 	}
+	if actual is Array && expected is Array {
+		return tc.fn_type_callconv_compatible(actual.elem_type, expected.elem_type)
+	}
+	if actual is ArrayFixed && expected is ArrayFixed {
+		return tc.fixed_array_lengths_compatible(actual, expected)
+			&& tc.fn_type_callconv_compatible(actual.elem_type, expected.elem_type)
+	}
+	if actual is Map && expected is Map {
+		return tc.fn_type_callconv_compatible(actual.key_type, expected.key_type)
+			&& tc.fn_type_callconv_compatible(actual.value_type, expected.value_type)
+	}
+	if actual is Channel && expected is Channel {
+		return tc.fn_type_callconv_compatible(actual.elem_type, expected.elem_type)
+	}
+	if actual is MultiReturn && expected is MultiReturn {
+		if actual.types.len != expected.types.len {
+			return false
+		}
+		for i, typ in actual.types {
+			if !tc.fn_type_callconv_compatible(typ, expected.types[i]) {
+				return false
+			}
+		}
+		return true
+	}
 	if actual is Alias && fn_type_from_type(actual) == none {
 		return tc.fn_type_callconv_compatible(actual.base_type, expected)
 	}
 	if expected is Alias && fn_type_from_type(expected) == none {
 		return tc.fn_type_callconv_compatible(actual, expected.base_type)
+	}
+	if actual is Struct || actual is Interface || actual is SumType {
+		_, actual_args, actual_generic := generic_type_application_parts(actual.name())
+		_, expected_args, expected_generic := generic_type_application_parts(expected.name())
+		if actual_generic && expected_generic {
+			if actual_args.len != expected_args.len {
+				return false
+			}
+			for i, arg in actual_args {
+				if !tc.fn_type_callconv_compatible(tc.parse_type(arg), tc.parse_type(expected_args[i])) {
+					return false
+				}
+			}
+		}
 	}
 	actual_fn := fn_type_from_type(actual) or { return true }
 	expected_fn := fn_type_from_type(expected) or { return true }
