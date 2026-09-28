@@ -540,8 +540,39 @@ fn h3_test_wait_response_error(headers []quic.QpackFieldLine, trailers []quic.Qp
 	s.resp_headers << headers
 	s.resp_trailers = trailers
 	s.ended = true
-	c.wait_response(mut s, H3ClientRequest{}) or { return err.msg() }
+	c.wait_response(mut s, H3ClientRequest{}) or {
+		msg := err.msg()
+		// Every rejection returns with s.mu still in hand unless it unlocks
+		// first; a leak would deadlock the real caller, do() -> finish_stream,
+		// which re-locks s.mu while holding qmu.
+		assert h3_test_mutex_is_free(mut s.mu), 'wait_response returned "${msg}" with s.mu still held'
+		return msg
+	}
+	assert h3_test_mutex_is_free(mut s.mu), 'wait_response succeeded with s.mu still held'
 	return ''
+}
+
+// h3_test_mutex_is_free reports whether `mu` can be acquired from another
+// thread within 500ms. Deliberately not try_lock(): on Windows that always
+// fails unless built with -d windows_7.
+fn h3_test_mutex_is_free(mut mu sync.Mutex) bool {
+	done := chan bool{cap: 1}
+	spawn h3_test_lock_then_unlock(mut mu, done)
+	select {
+		_ := <-done {
+			return true
+		}
+		500 * time.millisecond {
+			return false
+		}
+	}
+	return false
+}
+
+fn h3_test_lock_then_unlock(mut mu sync.Mutex, done chan bool) {
+	mu.lock()
+	mu.unlock()
+	done <- true
 }
 
 fn h3_test_field(name string, value string) quic.QpackFieldLine {
@@ -582,18 +613,31 @@ fn test_wait_response_rejects_malformed_response_fields() {
 	assert pseudo_err.contains('malformed'), 'a pseudo-header in trailers must be rejected, got "${pseudo_err}"'
 }
 
+struct H3ContentLengthCase {
+	values []string
+	reason string // the specific rejection this case must hit
+}
+
 // A non-numeric Content-Length, or two differing ones, makes the response
-// malformed (RFC 9110 §8.6, RFC 9114 §4.1.2) -- it must not be silently
-// ignored, which would skip the body-length check entirely.
+// malformed (RFC 9110 §8.6: Content-Length = 1*DIGIT; RFC 9114 §4.1.2) -- it
+// must not be silently ignored, which would skip the body-length check
+// entirely. Each case asserts its OWN reason, so a later check cannot mask a
+// removed earlier one: strconv.parse_uint alone rejects 'abc' too, but accepts
+// '1_0' as 10, so the digits-only guard must be what rejects these.
 fn test_wait_response_rejects_malformed_or_conflicting_content_length() {
-	for headers in [
-		[h3_test_field('content-length', 'abc')],
-		[h3_test_field('content-length', '12junk')],
-		[h3_test_field('content-length', '99999999999999999999999')],
-		[h3_test_field('content-length', '0'), h3_test_field('content-length', '5')],
-	] {
+	cases := [
+		H3ContentLengthCase{['abc'], 'invalid content-length'},
+		H3ContentLengthCase{['12junk'], 'invalid content-length'},
+		H3ContentLengthCase{['1_0'], 'invalid content-length'},
+		H3ContentLengthCase{['+5'], 'invalid content-length'},
+		H3ContentLengthCase{['0x10'], 'invalid content-length'},
+		H3ContentLengthCase{['99999999999999999999999'], 'out of range'},
+		H3ContentLengthCase{['0', '5'], 'conflicting content-length'},
+	]
+	for tc in cases {
+		headers := tc.values.map(h3_test_field('content-length', it))
 		msg := h3_test_wait_response_error(headers, [])
-		assert msg.contains('malformed'), 'content-length ${headers} must be rejected, got "${msg}"'
+		assert msg.contains(tc.reason), 'content-length ${tc.values} must be rejected with "${tc.reason}", got "${msg}"'
 	}
 }
 
@@ -604,7 +648,9 @@ fn test_wait_response_accepts_well_formed_fields_and_trailers() {
 	s.resp_headers = [
 		h3_test_field(':status', '200'),
 		h3_test_field('content-length', '3'),
-		h3_test_field('content-length', '3'),
+		// Duplicates are compared as NUMBERS: '03' equals '3' (RFC 9110 §8.6
+		// 1*DIGIT), so this pair is consistent, not conflicting.
+		h3_test_field('content-length', '03'),
 		h3_test_field('x-ok', 'value with spaces'),
 		h3_test_field('x-empty', ''),
 		h3_test_field('x-tab', 'a\tb'),
