@@ -7,3 +7,5 @@ address. Updating the temporary does not change the original struct.
 When an expected pointer type converts an update into a stored reference, such as
 an element of `[]&Settings`, the updated value receives its own heap allocation.
 The reference remains valid after the scope constructing the update returns.
+When the stored element is a pointer to an interface, each pointer layer receives
+its own storage after the updated struct is boxed as an interface.

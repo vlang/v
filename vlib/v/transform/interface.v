@@ -34,6 +34,20 @@ fn (t &Transformer) interface_cast_matches_target(cast_type string, iface_name s
 }
 
 fn (mut t Transformer) heap_copy_interface_expr(expr flat.NodeId, iface_name string, target_type string) flat.NodeId {
+	target_depth, _ := pointer_type_depth_and_base(target_type)
+	if target_depth > 1 {
+		mut current := t.heap_copy_interface_expr(expr, iface_name, '&${iface_name}')
+		mut current_type := '&${iface_name}'
+		for _ in 1 .. target_depth {
+			tmp_name := t.new_temp('iface_ref')
+			t.pending_stmts << t.make_decl_assign_typed(tmp_name, current, current_type)
+			addr := t.make_prefix(.amp, t.make_ident(tmp_name))
+			dup := t.make_memdup_call_for_type(addr, current_type)
+			current_type = '&${current_type}'
+			current = t.make_cast(current_type, dup, current_type)
+		}
+		return t.make_cast(target_type, current, target_type)
+	}
 	if t.a.nodes[int(expr)].kind == .struct_init {
 		addr := t.make_prefix(.amp, expr)
 		cast := t.make_cast(target_type, addr, target_type)
@@ -153,7 +167,7 @@ fn (t &Transformer) resolve_interface_type_name(name string) string {
 }
 
 fn (t &Transformer) resolve_interface_type_name_uncached(name string) string {
-	raw_clean := t.trim_pointer_type(name)
+	raw_clean := t.trim_all_pointer_type(name)
 	raw_base, raw_args, raw_is_generic := generic_app_parts(raw_clean)
 	if raw_is_generic && raw_base in t.tc.interface_names {
 		return '${raw_base}[${raw_args.join(', ')}]'
@@ -161,7 +175,7 @@ fn (t &Transformer) resolve_interface_type_name_uncached(name string) string {
 	if raw_clean in t.tc.interface_names {
 		return raw_clean
 	}
-	mut clean := t.trim_pointer_type(t.normalize_type_alias(name))
+	mut clean := t.trim_all_pointer_type(t.normalize_type_alias(name))
 	base, args, is_generic := generic_app_parts(clean)
 	if is_generic {
 		clean = base

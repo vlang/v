@@ -106,3 +106,33 @@ fn test_struct_update_stored_as_sum_pointer() {
 		}
 	}
 }
+
+interface ReferenceReader {
+	read() int
+}
+
+struct ReferenceReaderImpl {
+	value int
+}
+
+fn (value ReferenceReaderImpl) read() int {
+	return value.value
+}
+
+fn updated_interface_array(base ReferenceReaderImpl) []&&ReferenceReader {
+	return [ReferenceReaderImpl{ ...base, value: base.value + 1 }]
+}
+
+fn updated_triple_interface_array(base ReferenceReaderImpl) []&&&ReferenceReader {
+	return [ReferenceReaderImpl{ ...base, value: base.value + 2 }]
+}
+
+fn test_struct_update_stored_as_nested_interface_pointer() {
+	values := updated_interface_array(ReferenceReaderImpl{ value: 41 })
+	assert values.len == 1
+	reader := **values[0]
+	assert reader.read() == 42
+	triple := updated_triple_interface_array(ReferenceReaderImpl{ value: 40 })
+	triple_reader := ***triple[0]
+	assert triple_reader.read() == 42
+}
