@@ -457,3 +457,127 @@ fn test_generic_return_context_covers_boolean_power_unsigned_shift_and_flags() {
 	assert contextual_unsigned_shift_count(1, u64(256)) == 2
 	assert contextual_infix_or(1, ContextualFlags.second) == ContextualFlags.first | .second
 }
+
+fn contextual_nested_zero[T](flag bool) T {
+	_ = flag
+	return T{}
+}
+
+fn contextual_identity[T](value T) T { return value }
+
+fn contextual_list[T](value T) []T { return [value] }
+
+fn contextual_second[T](first T, second T) T {
+	_ = first
+	return second
+}
+
+fn contextual_from_int[T](value int) T {
+	assert value == 0
+	return T{}
+}
+
+fn contextual_nested[A, B](first A, second B) B {
+	_ = first
+	_ = second
+	return contextual_identity(contextual_identity(contextual_nested_zero(false)))
+}
+
+fn contextual_nested_list[A, B](first A, second B) []B {
+	_ = first
+	_ = second
+	return contextual_list(contextual_nested_zero(false))
+}
+
+fn contextual_nested_explicit[A, B](first A, second B) B {
+	_ = first
+	_ = second
+	return contextual_identity[B](contextual_zero())
+}
+
+fn contextual_nested_argument[A, B](first A, second B) B {
+	_ = second
+	return contextual_identity(contextual_identity(first))
+}
+
+fn contextual_nested_concrete_parameter[A, B](first A, second B) B {
+	_ = first
+	_ = second
+	return contextual_from_int(contextual_nested_zero(false))
+}
+
+fn contextual_nested_result[A, B](first A, second B) !B {
+	_ = first
+	_ = second
+	return contextual_identity(contextual_result_zero(false)!)
+}
+
+fn contextual_nested_option_zero[T](fail bool) ?T {
+	if fail { return none }
+	return T{}
+}
+
+fn contextual_nested_option[A, B](first A, second B) ?B {
+	_ = first
+	_ = second
+	return contextual_identity(contextual_nested_option_zero(false)?)
+}
+
+fn contextual_nested_fallback[A, B](first A, second B) B {
+	_ = first
+	_ = second
+	return contextual_identity(contextual_result_zero(false) or { B{} })
+}
+
+fn contextual_nested_sibling[T, U](first T, second U) U {
+	_ = first
+	return contextual_second(contextual_identity(second), contextual_nested_zero(false))
+}
+
+fn contextual_nested_leading[T, U](first T, second U) U {
+	_ = first
+	return contextual_second(contextual_nested_zero(false), second)
+}
+
+fn (factory TupleFactory[T]) identity[U](value U) U { return value }
+
+fn contextual_nested_method[A, B](first A, second B) B {
+	_ = first
+	_ = second
+	factory := TupleFactory[A]{}
+	return factory.identity(contextual_nested_zero(false))
+}
+
+fn contextual_nested_method_explicit[A, B](first A, second B) B {
+	_ = first
+	_ = second
+	factory := TupleFactory[A]{}
+	return factory.identity[B](contextual_nested_zero(false))
+}
+
+fn contextual_nested_variant[A, B](value ContextualVariantSum, first A, second B) B {
+	_ = first
+	$for variant in value.variants {
+		if value is variant { return contextual_identity(variant_contextual_zero()) }
+	}
+	return second
+}
+
+fn test_nested_generic_call_arguments_use_the_callee_parameter_context() {
+	assert contextual_nested(1, 'second') == ''
+	assert contextual_nested_list(1, 'second') == ['']
+	assert contextual_nested_explicit(1, 'second') == ''
+	named := contextual_nested_argument(NamedItem{ label: 'kept' }, Named(NamedItem{}))
+	assert named.name() == 'kept'
+	assert contextual_nested_concrete_parameter('first', 'second') == ''
+	assert contextual_nested_result(1, 'second') or { panic(err) } == ''
+	assert contextual_nested_option(1, 'second') or { panic('missing value') } == ''
+	assert contextual_nested_fallback(1, 'second') == ''
+	assert contextual_nested_sibling(1, 'second') == ''
+	assert contextual_nested_leading(1, 'second') == 'second'
+	assert contextual_nested_method(1, 'second') == ''
+	assert contextual_nested_method_explicit(1, 'second') == ''
+	for value in [ContextualVariantSum(7), ContextualVariantSum('sum')] {
+		assert contextual_nested_variant(value, 1, 'second') == ''
+	}
+}
