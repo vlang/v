@@ -1,12 +1,17 @@
 > `json2` replaces the removed cJSON based `json` module. `v fmt -w file.v`
 > rewrites the usual `json.decode(T, s)`, `json.encode(x)` and
 > `json.encode_pretty(x)` calls to `json2`, and leaves code it cannot rewrite
-> safely unchanged. By hand, `json.decode(T, s)` becomes `json2.decode[T](s)`,
-> `json.encode(x)` becomes `json2.encode(x, escape_unicode: true, time_as_unix: true)`,
-> and `json.encode_pretty(x)` becomes
-> `json2.encode(x, prettify: true, escape_unicode: true, time_as_unix: true)`.
+> safely unchanged. By hand:
+>
+> - `json.decode(T, s)` becomes `json2.decode[T](s)`
+> - `json.encode(x)` becomes `json2.encode(x, escape_unicode: true, time_as_unix: true)`
+> - `json.encode_pretty(x)` becomes `json2.encode(x, prettify: true, legacy_layout: true,
+>   escape_unicode: true, time_as_unix: true)`
+>
 > These options keep the output of the old module: non-ASCII characters escaped as
-> `\uXXXX`, and `time.Time` values as Unix timestamps instead of RFC 3339 strings.
+> `\uXXXX`, `time.Time` values as Unix timestamps, and its tab based pretty layout.
+> One difference remains: a `@[raw]` field holds the JSON text exactly as written,
+> while the old module returned it without whitespace.
 
 `json2` is an experimental JSON parser written from scratch on V.
 

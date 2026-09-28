@@ -1970,7 +1970,7 @@ fn (mut g Gen) json_migration_call(kind string, callee flat.NodeId, args []flat.
 		g.write(', ')
 	}
 	if kind == 'encode_pretty' {
-		g.write('prettify: true, ')
+		g.write('prettify: true, legacy_layout: true, ')
 	}
 	g.write('escape_unicode: true, time_as_unix: true)')
 }

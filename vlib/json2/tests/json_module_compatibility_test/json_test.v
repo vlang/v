@@ -251,11 +251,11 @@ fn test_encode_map() {
 	out := json2.encode(numbers, escape_unicode: true)
 	// println(out)
 	assert out == expected
-	assert json2.encode(numbers, prettify: true, escape_unicode: true) == '{
-    "one": 1,
-    "two": 2,
-    "three": 3,
-    "four": 4
+	assert json2.encode(numbers, prettify: true, legacy_layout: true, escape_unicode: true) == '{
+	"one":	1,
+	"two":	2,
+	"three":	3,
+	"four":	4
 }'
 }
 
@@ -459,8 +459,8 @@ struct Foo2 {
 
 fn test_pretty() {
 	foo := Foo2{'Bob'}
-	assert json2.encode(foo, prettify: true, escape_unicode: true) == '{
-    "name": "Bob"
+	assert json2.encode(foo, prettify: true, legacy_layout: true, escape_unicode: true) == '{
+	"name":	"Bob"
 }'
 }
 
@@ -471,8 +471,8 @@ struct Foo3 {
 
 fn test_omit_empty() {
 	foo := Foo3{'Bob', 0}
-	assert json2.encode(foo, prettify: true, escape_unicode: true) == '{
-    "name": "Bob"
+	assert json2.encode(foo, prettify: true, legacy_layout: true, escape_unicode: true) == '{
+	"name":	"Bob"
 }'
 	// println('omitempty:')
 	// println(json.encode_pretty(foo))
@@ -480,8 +480,8 @@ fn test_omit_empty() {
 
 fn test_encode_struct_expression() {
 	assert json2.encode(Foo2{'Foo'}, escape_unicode: true) == '{"name":"Foo"}'
-	assert json2.encode(Foo2{'Bar'}, prettify: true, escape_unicode: true) == '{
-    "name": "Bar"
+	assert json2.encode(Foo2{'Bar'}, prettify: true, legacy_layout: true, escape_unicode: true) == '{
+	"name":	"Bar"
 }'
 }
 

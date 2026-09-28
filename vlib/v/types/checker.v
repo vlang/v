@@ -5853,7 +5853,7 @@ fn removed_json_module_message(file string) string {
 		'`v fmt -w ${file}` rewrites the usual `json` calls to `json2`, and leaves code it cannot rewrite safely unchanged.\n' +
 		'To migrate by hand, import `json2` and replace `json.decode(T, s)` with `json2.decode[T](s)`, ' +
 		'`json.encode(x)` with `json2.encode(x, escape_unicode: true, time_as_unix: true)`, and ' +
-		'`json.encode_pretty(x)` with `json2.encode(x, prettify: true, escape_unicode: true, time_as_unix: true)`.'
+		'`json.encode_pretty(x)` with `json2.encode(x, prettify: true, legacy_layout: true, escape_unicode: true, time_as_unix: true)`.'
 }
 
 fn (mut tc TypeChecker) check_import_diagnostics() {
