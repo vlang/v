@@ -9446,8 +9446,48 @@ fn (mut tc TypeChecker) check_missing_concrete_generic_call_type_args(index_node
 			&& name !in tc.type_alias_generic_params && qualified !in tc.type_alias_generic_params {
 			continue
 		}
+		// Generic structs are also indexed by their short name, so another module's
+		// `Node[T]` makes a plain `Node` of this module look generic here.
+		if tc.current_module_declares_plain_struct(name) {
+			continue
+		}
 		tc.record_error_at(.unknown_type, 'missing concrete type on generic type', arg_id, arg.pos)
 	}
+}
+
+// current_module_declares_plain_struct reports whether the module being checked
+// declares a non-generic struct named `name`.
+fn (tc &TypeChecker) current_module_declares_plain_struct(name string) bool {
+	return tc.module_declares_plain_struct(tc.cur_module, name)
+}
+
+// module_declares_plain_struct reports whether `module_name` declares a non-generic
+// struct named `name`. Generic structs are also indexed by their short name, so a
+// same-named generic struct of another module can make such a struct look generic.
+// It scans the declarations and is only meant for those rare collision paths.
+fn (tc &TypeChecker) module_declares_plain_struct(module_name string, name string) bool {
+	// The main module is spelled both `main` and ``.
+	wanted_module := if module_name == 'main' { '' } else { module_name }
+	mut decl_module := ''
+	for idx in tc.top_level_idx {
+		node := tc.a.nodes[idx]
+		match node.kind {
+			.file {
+				decl_module = ''
+			}
+			.module_decl {
+				decl_module = if node.value == 'main' { '' } else { node.value }
+			}
+			.struct_decl {
+				if node.value == name && decl_module == wanted_module
+					&& node.generic_params().len == 0 {
+					return true
+				}
+			}
+			else {}
+		}
+	}
+	return false
 }
 
 fn (mut tc TypeChecker) specialize_explicit_generic_receiver_call(info CallInfo, type_args []string) CallInfo {
