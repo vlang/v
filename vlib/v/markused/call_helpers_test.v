@@ -884,13 +884,32 @@ fn test_nested_local_type_does_not_replace_outer_binding() {
 	later_arm_call := call_helper_node(mut a, flat.Node{ kind: .call }, [later_arm_method])
 	second_arm := call_helper_node(mut a, flat.Node{ kind: .match_branch }, [later_arm_call])
 	match_stmt := call_helper_node(mut a, flat.Node{ kind: .match_stmt }, [first_arm, second_arm])
+	select_lhs := a.add_val(.ident, 'item')
+	select_rhs := a.add_val(.struct_init, 'B')
+	select_decl := call_helper_node(mut a, flat.Node{ kind: .decl_assign }, [
+		select_lhs,
+		select_rhs,
+	])
+	first_select_arm := call_helper_node(mut a, flat.Node{ kind: .select_branch }, [select_decl])
+	later_select_use := a.add_val(.ident, 'item')
+	later_select_method := call_helper_node(mut a, flat.Node{ kind: .selector, value: 'method' }, [
+		later_select_use,
+	])
+	later_select_call := call_helper_node(mut a, flat.Node{ kind: .call }, [later_select_method])
+	second_select_arm := call_helper_node(mut a, flat.Node{ kind: .select_branch }, [
+		later_select_call,
+	])
+	select_stmt := call_helper_node(mut a, flat.Node{ kind: .select_stmt }, [
+		first_select_arm,
+		second_select_arm,
+	])
 	outer_use := a.add_val(.ident, 'item')
 	outer_method := call_helper_node(mut a, flat.Node{ kind: .selector, value: 'method' }, [
 		outer_use,
 	])
 	outer_call := call_helper_node(mut a, flat.Node{ kind: .call }, [outer_method])
 	body := call_helper_node(mut a, flat.Node{ kind: .block }, [outer_decl, inner_block, closure,
-		match_stmt, outer_call])
+		match_stmt, select_stmt, outer_call])
 	fn_id := call_helper_node(mut a, flat.Node{ kind: .fn_decl, value: 'use_item' }, [body])
 	collector := CallCollector{
 		a:               &a
@@ -908,6 +927,7 @@ fn test_nested_local_type_does_not_replace_outer_binding() {
 	assert ident_types[int(inner_use)] == 'B'
 	assert ident_types[int(closure_use)] == 'C'
 	assert ident_types[int(later_arm_use)] == 'A'
+	assert ident_types[int(later_select_use)] == 'A'
 	assert ident_types[int(outer_use)] == 'A'
 	scoped := CallCollector{
 		...collector
@@ -918,6 +938,8 @@ fn test_nested_local_type_does_not_replace_outer_binding() {
 	assert scoped.top_level_receiver_type_name(outer_use, 'main', map[string]string{},
 		local_values, local_types) == 'A'
 	assert scoped.top_level_receiver_type_name(later_arm_use, 'main', map[string]string{},
+		local_values, local_types) == 'A'
+	assert scoped.top_level_receiver_type_name(later_select_use, 'main', map[string]string{},
 		local_values, local_types) == 'A'
 	calls := collector.collect_body(a.node(fn_id), 'main', map[string]string{}).calls
 	assert 'A.method' in calls
