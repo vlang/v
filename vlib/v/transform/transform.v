@@ -5883,9 +5883,9 @@ fn (mut t Transformer) transform_global_decl(node flat.Node) {
 				t.a.children[gf.children_start] = preserved
 				continue
 			}
-			if t.expr_has_if_guard(val_id) {
-				// Keep the guard's unwrap statements with the value (see
-				// transform_const_decl); the runtime init renders the block.
+			if t.expr_has_if_guard(val_id) || t.tc.translated_files[t.cur_file] {
+				// Keep guard unwraps and translated expression temporaries with
+				// their value; the runtime initializer renders the block.
 				t.a.children[gf.children_start] = t.transform_const_expr_no_pending(val_id)
 				continue
 			}
