@@ -44,6 +44,9 @@ fn test_flow_smartcast_callables_preserve_returned_aliases() {
 		'assert helper is MapperA; return helper(values)',
 		'for helper is MapperA { return helper(values) }; return values.clone()',
 		'match helper { MapperA, MapperB { return helper(values) } else {} }; return values.clone()',
+		'is_mapper := helper is MapperA; if is_mapper { return helper(values) }; return values.clone()',
+		'is_mapper := helper is MapperA; assert is_mapper; return helper(values)',
+		'is_mapper, unused := helper is MapperA, 1; _ = unused; for is_mapper { return helper(values) }; return values.clone()',
 	] {
 		path := os.join_path(os.vtmp_dir(), 'v3_return_alias_flow_${os.getpid()}_${index}.v')
 		os.write_file(path, 'type MapperA = fn ([]int) []int

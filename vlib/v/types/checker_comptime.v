@@ -14794,12 +14794,17 @@ fn (mut tc TypeChecker) collect_returned_alias_sources_in_scope(id flat.NodeId, 
 		tc.apply_post_assert_smartcasts(child_id)
 	}
 	if node.kind == .decl_assign {
-		for lhs_id in tc.multi_assign_lhs_ids(*node) {
+		for i, lhs_id in tc.multi_assign_lhs_ids(*node) {
 			lhs := tc.a.node(lhs_id)
 			if lhs.kind == .ident {
 				if typ := tc.cached_expr_type(lhs_id) {
 					if fn_type_from_type(typ) != none {
 						tc.cur_scope.insert(lhs.value, typ)
+					} else if tc.condition_type_is_bool_like(typ)
+						&& i < tc.multi_assign_rhs_count(*node) {
+						owner := tc.cur_scope.insert_with_owner(lhs.value, typ)
+						tc.record_bool_condition_binding(owner, tc.multi_assign_rhs_id(*node, i),
+							typ, tc.decl_lhs_is_mut(*node, lhs_id))
 					}
 				}
 			}
