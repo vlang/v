@@ -790,7 +790,7 @@ fn (mut t Transformer) compiler_call_expands_from_type_metadata(id flat.NodeId, 
 }
 
 fn (mut t Transformer) disabled_call_zero_value_expansion_estimate(id flat.NodeId, node flat.Node) int {
-	if node.kind != .call || !t.is_disabled_fn_call(id, node) || t.is_cgen_magic_json_call(id, node) {
+	if node.kind != .call || !t.is_disabled_fn_call(id, node) {
 		return 0
 	}
 	mut result_type := t.node_type(id)

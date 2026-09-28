@@ -3651,9 +3651,6 @@ fn (mut tc TypeChecker) check_valid_call_preamble(id flat.NodeId, node flat.Node
 	if tc.check_c_va_macro_call(id, node) {
 		return true
 	}
-	if tc.check_json_magic_call(id, node) {
-		return true
-	}
 	callee_id := tc.a.child(&node, 0)
 	callee := tc.a.node(callee_id)
 	if callee.kind in [.call, .fn_literal, .lambda_expr] {
@@ -3726,9 +3723,6 @@ fn (mut tc TypeChecker) check_call(id flat.NodeId, node flat.Node) {
 		}
 	} else if node.children_count > 0 {
 		if tc.check_c_va_macro_call(id, node) {
-			return
-		}
-		if tc.check_json_magic_call(id, node) {
 			return
 		}
 		if tc.check_js_call_on_non_js_backend(id, node) {
@@ -4661,123 +4655,6 @@ fn (tc &TypeChecker) unresolved_local_method_call(id flat.NodeId) bool {
 		return false
 	}
 	return true
-}
-
-fn (mut tc TypeChecker) check_json_magic_call(id flat.NodeId, node flat.Node) bool {
-	name := tc.call_display_name(node)
-	if name in ['json.encode', 'json.encode_pretty'] && node.children_count > 1 {
-		arg_id := tc.call_arg_value(tc.a.child(&node, 1))
-		if tc.expr_is_shared_arg(arg_id) {
-			tc.check_node(arg_id)
-			tc.record_error_at(.call_arg_mismatch, 'json.encode cannot handle shared data', id, tc.magic_call_diagnostic_pos(node))
-			tc.register_synth_type(id, Type(void_))
-			tc.record_enclosing_print_void(id)
-			return true
-		}
-		return false
-	}
-	if name != 'json.decode' || node.children_count < 2 {
-		return false
-	}
-	type_arg_id := tc.a.child(&node, 1)
-	mut type_name := tc.generic_call_type_arg_name(type_arg_id)
-	if type_name.len == 0 {
-		type_name = tc.json_decode_type_arg_text(id)
-	}
-	if type_name.len == 0 {
-		return false
-	}
-	call_pos := tc.magic_call_diagnostic_pos(node)
-	if node.children_count != 3 {
-		tc.record_error_at(.call_arg_mismatch, "json.decode expects 2 arguments, a type and a string (e.g `json.decode(T, '')`)", id, call_pos)
-		tc.register_synth_type(id, Type(void_))
-		return true
-	}
-	if should_check_named_type(type_name) && !tc.type_name_known(type_name) {
-		tc.record_error_at(.unknown_type, 'json.decode: unknown type `${type_name}`', id, call_pos)
-		tc.register_synth_type(id, unknown_type('unknown json.decode target'))
-		return true
-	}
-	target_type := tc.parse_type(type_name)
-	if target_type is Pointer {
-		pointer_pos := tc.type_diagnostic_pos(type_arg_id, '&')
-		tc.record_error_at(.unknown_type, 'json.decode: cannot decode into a pointer type', type_arg_id, token.new_span(pointer_pos.id, pointer_pos.offset + 1, pointer_pos.offset + 2))
-		tc.register_synth_type(id, Type(ResultType{
-			base_type: target_type
-		}))
-		return true
-	}
-	if target_type is Unknown || type_contains_unknown(target_type) {
-		tc.record_error_at(.unknown_type, 'json.decode: unknown type `${type_name}`', id, call_pos)
-		tc.register_synth_type(id, unknown_type('unknown json.decode target'))
-		return true
-	}
-	clean_target := unalias_type(target_type)
-	if clean_target !is Struct && clean_target !is SumType && clean_target !is Map
-		&& clean_target !is Array && clean_target !is ArrayFixed {
-		tc.record_error_at(.unknown_type, 'json.decode: expected sum type, struct, map or array, found ${clean_target.name()}', type_arg_id, tc.a.node(type_arg_id).pos)
-		tc.register_synth_type(id, Type(ResultType{
-			base_type: target_type
-		}))
-		return true
-	}
-	value_id := tc.call_arg_value(tc.a.child(&node, 2))
-	tc.check_node(value_id)
-	if unalias_type(tc.resolve_type(value_id)) !is String {
-		tc.record_error_at(.call_arg_mismatch, 'json.decode: second argument needs to be a string', id, call_pos)
-		tc.register_synth_type(id, Type(ResultType{
-			base_type: target_type
-		}))
-		return true
-	}
-	tc.remember_resolved_call(id, 'json.decode')
-	tc.register_synth_type(id, Type(ResultType{
-		base_type: target_type
-	}))
-	parent_id := tc.direct_parent_id(id)
-	if tc.valid_node_id(parent_id) {
-		parent := tc.a.node(parent_id)
-		if parent.kind == .or_expr && parent.children_count > 0 && tc.a.child(parent, 0) == id {
-			// Assignment checking may resolve the wrapper before it checks this
-			// magic call. Replace that provisional `voidptr` payload too.
-			tc.register_synth_type(parent_id, target_type)
-		}
-	}
-	return true
-}
-
-fn (tc &TypeChecker) json_decode_type_arg_text(id flat.NodeId) string {
-	source := tc.source_text_for_node(id)
-	open_paren := source.index_u8(`(`)
-	if open_paren < 0 {
-		return ''
-	}
-	mut depth := 0
-	for i := open_paren + 1; i < source.len; i++ {
-		match source[i] {
-			`(`, `[`, `{` {
-				depth++
-			}
-			`)` {
-				if depth == 0 {
-					return source[open_paren + 1..i].trim_space()
-				}
-				depth--
-			}
-			`]`, `}` {
-				if depth > 0 {
-					depth--
-				}
-			}
-			`,` {
-				if depth == 0 {
-					return source[open_paren + 1..i].trim_space()
-				}
-			}
-			else {}
-		}
-	}
-	return ''
 }
 
 fn (tc &TypeChecker) magic_call_diagnostic_pos(node flat.Node) token.Pos {
@@ -7943,13 +7820,10 @@ fn (mut tc TypeChecker) resolve_call_info(id flat.NodeId, node flat.Node) ?CallI
 	}
 	idx := int(id)
 	mut memo := tc.body_resolve_memo
-	json_decode_or_receiver := tc.check_json_decode_or_method_receiver(node)
 	// A grouped type-pattern match checks the same branch body once for each
 	// smartcast variant. Receiver call resolution is therefore contextual for
-	// calls on that subject and must not reuse the first variant's CallInfo. A
-	// JSON decode propagation receiver is likewise contextual until its magic
-	// call has replaced the provisional `voidptr` result type.
-	context_stable := !tc.call_has_smartcast_receiver(node) && !json_decode_or_receiver
+	// calls on that subject and must not reuse the first variant's CallInfo.
+	context_stable := !tc.call_has_smartcast_receiver(node)
 	if context_stable && tc.memo_call_info && !isnil(memo) && memo.active && idx >= memo.lo
 		&& idx <= memo.hi {
 		slot := idx & 2047
@@ -7974,30 +7848,6 @@ fn (mut tc TypeChecker) resolve_call_info(id flat.NodeId, node flat.Node) ?CallI
 		return info
 	}
 	return tc.resolve_call_info_uncached(id, node)
-}
-
-fn (mut tc TypeChecker) check_json_decode_or_method_receiver(node flat.Node) bool {
-	if node.children_count == 0 {
-		return false
-	}
-	callee := tc.a.child_node(&node, 0)
-	if callee.kind != .selector || callee.children_count == 0 {
-		return false
-	}
-	receiver_id := tc.a.child(callee, 0)
-	receiver := tc.a.node(receiver_id)
-	if receiver.kind != .or_expr || receiver.children_count == 0 {
-		return false
-	}
-	source_id := tc.a.child(receiver, 0)
-	source := tc.a.node(source_id)
-	if source.kind != .call || tc.call_display_name(source) != 'json.decode' {
-		return false
-	}
-	// Resolve compiler-magic JSON decode before selecting a method on the
-	// propagated payload; otherwise the declared `!voidptr` ABI wins here.
-	tc.check_node(receiver_id)
-	return true
 }
 
 fn (tc &TypeChecker) call_has_smartcast_receiver(node flat.Node) bool {
@@ -8142,8 +7992,8 @@ fn (mut tc TypeChecker) resolve_call_info_uncached(id flat.NodeId, node flat.Nod
 			&& tc.resolve_import_alias(base_node.value) != none
 		// A selector on an imported module is a direct module function before it is
 		// considered as a function-valued field/constant. Keeping the qualified
-		// CallInfo is also required by compiler-magic calls such as json.decode,
-		// whose result type is inferred from the leading type argument.
+		// CallInfo is also required by decode calls whose result type is inferred
+		// from the leading type argument.
 		if base_is_imported_module {
 			if resolved_mod := tc.resolve_import_alias(base_node.value) {
 				if imported_name := tc.imported_fn_key(resolved_mod, fn_node.value) {
@@ -9556,8 +9406,48 @@ fn (mut tc TypeChecker) check_missing_concrete_generic_call_type_args(index_node
 			&& name !in tc.type_alias_generic_params && qualified !in tc.type_alias_generic_params {
 			continue
 		}
+		// Generic structs are also indexed by their short name, so another module's
+		// `Node[T]` makes a plain `Node` of this module look generic here.
+		if tc.current_module_declares_plain_struct(name) {
+			continue
+		}
 		tc.record_error_at(.unknown_type, 'missing concrete type on generic type', arg_id, arg.pos)
 	}
+}
+
+// current_module_declares_plain_struct reports whether the module being checked
+// declares a non-generic struct named `name`.
+fn (tc &TypeChecker) current_module_declares_plain_struct(name string) bool {
+	return tc.module_declares_plain_struct(tc.cur_module, name)
+}
+
+// module_declares_plain_struct reports whether `module_name` declares a non-generic
+// struct named `name`. Generic structs are also indexed by their short name, so a
+// same-named generic struct of another module can make such a struct look generic.
+// It scans the declarations and is only meant for those rare collision paths.
+fn (tc &TypeChecker) module_declares_plain_struct(module_name string, name string) bool {
+	// The main module is spelled both `main` and ``.
+	wanted_module := if module_name == 'main' { '' } else { module_name }
+	mut decl_module := ''
+	for idx in tc.top_level_idx {
+		node := tc.a.nodes[idx]
+		match node.kind {
+			.file {
+				decl_module = ''
+			}
+			.module_decl {
+				decl_module = if node.value == 'main' { '' } else { node.value }
+			}
+			.struct_decl {
+				if node.value == name && decl_module == wanted_module
+					&& node.generic_params().len == 0 {
+					return true
+				}
+			}
+			else {}
+		}
+	}
+	return false
 }
 
 fn (mut tc TypeChecker) specialize_explicit_generic_receiver_call(info CallInfo, type_args []string) CallInfo {
@@ -9760,7 +9650,7 @@ fn (tc &TypeChecker) generic_call_base_type_name(base_node flat.Node) ?string {
 }
 
 fn is_decode_call_name(name string) bool {
-	return name in ['json.decode', 'json2.decode', 'x.json2.decode']
+	return name in ['json2.decode', 'x.json2.decode']
 }
 
 fn (tc &TypeChecker) decode_call_info_from_type_arg(node flat.Node, name string, has_receiver bool) ?CallInfo {
@@ -14629,8 +14519,7 @@ fn (mut tc TypeChecker) check_call_arg_types(id flat.NodeId, node flat.Node, inf
 		arg_is_mut_receiver := voidptr_arg_node.kind == .ident
 			&& tc.current_fn_param_is_mut_receiver(voidptr_arg_node.value)
 		if fn_param_is_voidptr_type(expected) && unalias_type(actual) is Struct
-			&& !arg_is_mut_receiver
-			&& !json_runtime_voidptr_accepts_arg(info.name, param_idx, expected, actual) {
+			&& !arg_is_mut_receiver {
 			tc.record_warning_at(.call_arg_mismatch, 'automatic ${unalias_type(actual).name()} referencing/dereferencing into voidptr is deprecated and will be removed soon; use `foo(&x)` instead of `foo(x)`', arg_id, tc.call_argument_diagnostic_pos(arg_id))
 		}
 		// An untyped nil local retains Nil/voidptr until its call context is known.
@@ -14710,7 +14599,6 @@ fn (mut tc TypeChecker) check_call_arg_types(id flat.NodeId, node flat.Node, inf
 			|| tc.raw_string_literal_pointer_compatible(arg_id, expected)
 		if fn_param_is_voidptr_type(expected) && !is_c_string_literal
 			&& !info.name.ends_with('Channel.push')
-			&& !json_runtime_voidptr_accepts_arg(target_name, param_idx, expected, actual)
 			&& tc.a.node(arg_id).kind in [.int_literal, .float_literal, .bool_literal, .char_literal,
 				.string_literal, .string_interp] {
 			if tc.is_zero_literal(arg_id) {
@@ -14930,9 +14818,6 @@ fn (mut tc TypeChecker) check_call_arg_types(id flat.NodeId, node flat.Node, inf
 				continue
 			}
 			if param_is_shared && tc.shared_arg_pointer_compatible(actual, expected) {
-				continue
-			}
-			if json_runtime_voidptr_accepts_arg(call_name, param_idx, expected, actual) {
 				continue
 			}
 			if free_array_arg_compatible(info.name, param_idx, expected, actual) {
@@ -16277,15 +16162,6 @@ fn (tc &TypeChecker) chan_try_pop_destination_is_valid(arg_id flat.NodeId, actua
 		return true
 	}
 	return tc.expr_can_take_address(arg_id) && tc.expr_root_is_mutable_lvalue(arg_id)
-}
-
-fn json_runtime_voidptr_accepts_arg(name string, param_idx int, expected Type, actual Type) bool {
-	if param_idx != 0 || (name != 'json.decode'
-		&& name !in ['json.encode', 'json__encode', 'encode', 'json.encode_pretty',
-			'json__encode_pretty', 'encode_pretty']) {
-		return false
-	}
-	return fn_param_is_voidptr_type(expected) && type_has_runtime_value(actual)
 }
 
 fn free_array_arg_compatible(name string, param_idx int, expected Type, actual Type) bool {

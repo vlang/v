@@ -2,7 +2,7 @@
 
 module main
 
-import json
+import json2
 
 struct Definition {
 	version u8
@@ -15,7 +15,7 @@ struct Logic {
 fn test_main() {
 	logic := Logic{
 		run: fn () i8 {
-			json.encode_pretty(Definition{})
+			json2.encode(Definition{}, prettify: true, escape_unicode: true)
 			return 0
 		}
 	}

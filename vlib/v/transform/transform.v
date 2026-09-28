@@ -10192,7 +10192,7 @@ pub fn (mut t Transformer) transform_expr(id flat.NodeId) flat.NodeId {
 			return if node.value == '__v3_comptime_new' {
 				t.comptime_new_value(target)
 			} else {
-				t.zero_value_for_type(target)
+				t.comptime_zero_value(target)
 			}
 		}
 	}
@@ -17277,13 +17277,25 @@ fn comptime_condition_top_level_index(s string, needle string) int {
 				&& (s[..i].trim_space().len == 0 || s[i + needle.len..].trim_space().len == 0) {
 				continue
 			}
-			if needle == '&&' && s[..i].trim_space().trim('&').len == 0 {
+			if needle == '&&' && (s[..i].trim_space().trim('&').len == 0
+				|| comptime_condition_and_is_type_prefix(s, i)) {
 				continue
 			}
 			return i
 		}
 	}
 	return -1
+}
+
+// comptime_condition_and_is_type_prefix reports whether the `&&` at `i` belongs to a
+// pointer type written after another type prefix (`?&&int`, `[]&&int`, `&&&string`),
+// which substituted generic conditions such as `?&&int is $enum` contain, rather
+// than being a logical AND.
+fn comptime_condition_and_is_type_prefix(s string, i int) bool {
+	if i == 0 || i + 2 >= s.len || s[i + 2] == ` ` {
+		return false
+	}
+	return s[i - 1] in [`?`, `!`, `&`, `]`]
 }
 
 fn (mut t Transformer) comptime_type_condition_value(cond string) ?bool {
@@ -19151,7 +19163,7 @@ fn (mut t Transformer) transform_call_expr(id flat.NodeId, node flat.Node) flat.
 	if sum_constructor_type.len > 0 && call_node.children_count == 2 {
 		return t.wrap_sum_value(t.a.child(&call_node, 1), sum_constructor_type)
 	}
-	if t.is_disabled_fn_call(call_id, call_node) && !t.is_cgen_magic_json_call(call_id, call_node) {
+	if t.is_disabled_fn_call(call_id, call_node) {
 		if resolved_typ.len == 0 || resolved_typ == 'void' {
 			return t.make_empty()
 		}
@@ -19268,10 +19280,6 @@ fn (mut t Transformer) record_selected_compile_error_call(node flat.Node) {
 		'compile-time error'
 	}
 	t.record_monomorph_error('compile-time error: ${message}')
-}
-
-fn (t &Transformer) is_cgen_magic_json_call(id flat.NodeId, node flat.Node) bool {
-	return t.call_name_for_node(id, node) in ['json.decode', 'json.encode']
 }
 
 // is_disabled_fn_name reports whether is disabled fn name applies in transform.

@@ -5712,15 +5712,9 @@ fn (mut g FlatGen) optional_forward_return_abi_wrap_expr(source_ct string, expec
 // for a directly forwarded option/result expression.
 fn (mut g FlatGen) optional_forward_return_abi_expr(ret_id flat.NodeId, expected_ct string) ?string {
 	mut source_type := g.usable_expr_type(ret_id)
-	if json_type := g.json_decode_call_expr_result_type(ret_id) {
-		// The legacy declaration is `!voidptr`; the source type argument is the
-		// authoritative ABI for compiler-magic JSON calls.
-		source_type = json_type
-	} else {
-		declared := g.declared_call_return_type(ret_id)
-		if type_is_optional_result(declared) {
-			source_type = declared
-		}
+	declared := g.declared_call_return_type(ret_id)
+	if type_is_optional_result(declared) {
+		source_type = declared
 	}
 	if !type_is_optional_result(source_type) {
 		return none
@@ -9793,25 +9787,6 @@ fn (mut g FlatGen) gen_decl_or_map_index(lhs flat.Node, expr_node flat.Node, m t
 	g.writeln('}')
 }
 
-fn (g &FlatGen) is_json_decode_call_expr(id flat.NodeId) bool {
-	if int(id) < 0 || int(id) >= g.a.nodes.len {
-		return false
-	}
-	node := g.a.nodes[int(id)]
-	if node.kind == .call && node.children_count > 0 {
-		target := g.call_target_name(g.a.child(&node, 0))
-		if g.is_json_decode_call(id, target) {
-			return true
-		}
-	}
-	for i in 0 .. node.children_count {
-		if g.is_json_decode_call_expr(g.a.child(&node, i)) {
-			return true
-		}
-	}
-	return false
-}
-
 fn (g &FlatGen) noreturn_call_id(id flat.NodeId) ?flat.NodeId {
 	if int(id) < 0 || int(id) >= g.a.nodes.len {
 		return none
@@ -10051,9 +10026,6 @@ fn (g &FlatGen) optional_payload_c_type_for_optional_ct(opt_ct string, fallback 
 }
 
 fn (g &FlatGen) or_expr_source_type(expr_id flat.NodeId, expr_node flat.Node) types.Type {
-	if ret_type := g.json_decode_call_expr_result_type(expr_id) {
-		return ret_type
-	}
 	if expr_node.kind in [.paren, .expr_stmt] && expr_node.children_count > 0 {
 		inner_id := g.a.child(&expr_node, 0)
 		return g.or_expr_source_type(inner_id, g.a.nodes[int(inner_id)])
@@ -10144,25 +10116,6 @@ fn (g &FlatGen) thread_wait_expr_return_type(call flat.Node) ?types.Type {
 	return types.Type(types.Array{
 		elem_type: payload
 	})
-}
-
-fn (g &FlatGen) json_decode_call_expr_result_type(id flat.NodeId) ?types.Type {
-	if int(id) < 0 || int(id) >= g.a.nodes.len {
-		return none
-	}
-	node := g.a.nodes[int(id)]
-	if node.kind == .paren && node.children_count == 1 {
-		return g.json_decode_call_expr_result_type(g.a.child(&node, 0))
-	}
-	if node.kind != .call || node.children_count == 0 {
-		return none
-	}
-	callee_id := g.a.child(&node, 0)
-	target := g.call_target_name(callee_id)
-	if !g.is_json_decode_call(id, target) {
-		return none
-	}
-	return g.json_decode_result_type_for_call(node)
 }
 
 // gen_or_body emits or body output for c.

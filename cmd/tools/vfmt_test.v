@@ -899,6 +899,239 @@ fn f() {
 	assert formatted_twice == formatted
 }
 
+fn test_fmt_json_decode_migration_runs_and_skips_option_targets_with_v3() {
+	// Migrated decode calls must still decode the same payloads.
+	migrated_source := 'import json\n\nstruct Foo {\n\ta int\n}\n\nfn main() {\n\tlist := json.decode([]Foo, \'[{"a":1}]\') or { panic(err) }\n\tby_key := json.decode(map[string]Foo, \'{"k":{"a":2}}\') or { panic(err) }\n\tprintln(\'\${list[0].a} \${by_key[\'k\'].a}\')\n}\n'
+	res, migrated := run_vfmt_write('json_decode_targets', migrated_source, '')
+	assert res.exit_code == 0, res.output
+	assert migrated.contains('json2.decode[[]Foo]('), migrated
+	assert migrated.contains('json2.decode[map[string]Foo]('), migrated
+	run_res := os.execute('${os.quoted_path(vexe)} run ${os.quoted_path(os.join_path(vfmt_test_tdir, 'json_decode_targets.v'))}')
+	assert run_res.exit_code == 0, run_res.output
+	assert run_res.output.trim_space() == '1 2', run_res.output
+	// V does not accept `?Foo` as a type argument, so `json.decode(?Foo, s)` has no
+	// json2 counterpart, and the file keeps its legacy source.
+	option_source := "import json\n\nstruct Foo {\n\ta int\n}\n\nfn main() {\n\tw := json.decode(?Foo, '{}') or { return }\n\tprintln(json.encode(w))\n}\n"
+	option_res, option_formatted := run_vfmt_write('json_decode_option_target', option_source,
+		'')
+	assert option_res.exit_code == 0, option_res.output
+	assert option_formatted == option_source
+	// Without migration, formatting keeps the option type argument too.
+	plain_res, plain_formatted := run_vfmt_write('json_decode_option_target_no_migrate',
+		option_source, '-no-migrate-json2')
+	assert plain_res.exit_code == 0, plain_res.output
+	assert plain_formatted == option_source
+}
+
+fn test_fmt_json_decode_migration_of_value_targets_with_v3() {
+	// A value target names its type with an empty initializer, which is dropped.
+	source := 'import json\n\nstruct Foo {\n\ta int\n}\n\nfn main() {\n\tm := json.decode(map[string]int{}, \'{"a":1}\') or { return }\n\tl := json.decode([]Foo{}, \'[{"a":2}]\') or { return }\n\tf := json.decode(Foo{}, \'{"a":3}\') or { return }\n\tprintln(\'\${m[\'a\']} \${l[0].a} \${f.a}\')\n}\n'
+	res, migrated := run_vfmt_write('json_decode_value_targets', source, '')
+	assert res.exit_code == 0, res.output
+	assert migrated.contains('json2.decode[map[string]int]('), migrated
+	assert migrated.contains('json2.decode[[]Foo]('), migrated
+	assert migrated.contains('json2.decode[Foo]('), migrated
+	run_res := os.execute('${os.quoted_path(vexe)} run ${os.quoted_path(os.join_path(vfmt_test_tdir, 'json_decode_value_targets.v'))}')
+	assert run_res.exit_code == 0, run_res.output
+	assert run_res.output.trim_space() == '1 2 3', run_res.output
+	// A target with a non-empty initializer names no type to spell back.
+	initialized := "import json\n\nfn main() {\n\tl := json.decode([]int{len: 2}, '[]') or { return }\n\tprintln(l)\n}\n"
+	init_res, init_formatted := run_vfmt_write('json_decode_initialized_target', initialized,
+		'')
+	assert init_res.exit_code == 0, init_res.output
+	assert init_formatted == initialized
+}
+
+fn test_fmt_skips_json2_migration_for_narrowed_sumtype_values_with_v3() {
+	header := 'import json\n\nstruct Cat {\n\tname string\n}\n\nstruct Dog {\n\tname string\n}\n\ntype Animal = Cat | Dog\n\n'
+	for name, body in {
+		'if_is':       'fn f(x Animal) {\n\tif x is Cat {\n\t\tprintln(json.encode(x))\n\t}\n}\n'
+		'assert_is':   'fn f(animals []Animal) {\n\tassert animals[0] is Cat\n\tprintln(json.encode(animals[0]))\n}\n'
+		'match_arm':   'fn f(x Animal) {\n\tmatch x {\n\t\tCat { println(json.encode(x)) }\n\t\telse {}\n\t}\n}\n'
+		'not_is_exit': 'fn f(x Animal) {\n\tif x !is Cat {\n\t\treturn\n\t}\n\tprintln(json.encode(x))\n}\n'
+	} {
+		source := header + body
+		res, formatted := run_vfmt_write('narrowed_${name}', source, '')
+		assert res.exit_code == 0, res.output
+		assert formatted == source, name
+	}
+	// Encoding a value that is not narrowed is migrated as usual.
+	plain := header + 'fn f(x Animal) {\n\tprintln(json.encode(x))\n}\n'
+	_, migrated := run_vfmt_write('not_narrowed', plain, '')
+	assert migrated.contains('json2.encode(x, escape_unicode: true, time_as_unix: true)'), migrated
+}
+
+fn test_fmt_skips_json2_migration_for_shadowed_selective_imports_with_v3() {
+	header := 'import json { decode, encode }\n\nstruct User {\n\tname string\n}\n\n'
+	for name, body in {
+		'param':    "fn use(decode fn (string) string) string {\n\treturn decode('{}')\n}\n"
+		'local':    "fn f() {\n\tdecode := fn (s string) string {\n\t\treturn s\n\t}\n\tprintln(decode('{}'))\n\tprintln(encode(User{}))\n}\n"
+		'for_var':  "fn f() {\n\tfor decode in [fn (s string) string {\n\t\treturn s\n\t}] {\n\t\tprintln(decode('{}'))\n\t}\n}\n"
+		'as_value': 'fn f() {\n\tg := encode[User]\n\t_ = g\n}\n'
+	} {
+		source := header + body
+		res, formatted := run_vfmt_write('shadowed_selective_${name}_test', source, '')
+		assert res.exit_code == 0, res.output
+		assert formatted == source, name
+	}
+	// A legacy decode call without both arguments cannot be rewritten either.
+	one_arg := "import json\n\nfn f() {\n\tprintln(json.decode('{}'))\n\tprintln(json.encode(1))\n}\n"
+	res, formatted := run_vfmt_write('one_argument_decode', one_arg, '')
+	assert res.exit_code == 0, res.output
+	assert formatted == one_arg
+}
+
+fn test_fmt_keeps_json_module_found_through_path_flag_with_v3() {
+	path_root := os.join_path(vfmt_test_tdir, 'json_path_root')
+	os.mkdir_all(os.join_path(path_root, 'json'))!
+	os.write_file(os.join_path(path_root, 'json', 'json.v'),
+		"module json\n\npub fn encode[T](x T) string {\n\treturn 'path'\n}\n")!
+	source := 'import json\n\nfn main() {\n\tprintln(json.encode(1))\n}\n'
+	old_vflags := os.getenv('VFLAGS')
+	os.setenv('VFLAGS', '-path ${path_root}|@vlib|@vmodules', true)
+	res, formatted := run_vfmt_write('json_from_path_flag', source, '')
+	if old_vflags == '' {
+		os.unsetenv('VFLAGS')
+	} else {
+		os.setenv('VFLAGS', old_vflags, true)
+	}
+	assert res.exit_code == 0, res.output
+	assert formatted == source
+	// Without `-path`, the same import names the removed vlib module.
+	_, migrated := run_vfmt_write('json_without_path_flag', source, '')
+	assert migrated.contains('import json2\n'), migrated
+}
+
+fn test_fmt_stdin_keeps_the_callers_project_json_module_with_v3() {
+	project_dir := os.join_path(vfmt_test_tdir, 'stdin_json_project')
+	os.mkdir_all(os.join_path(project_dir, 'json'))!
+	os.write_file(os.join_path(project_dir, 'json', 'json.v'),
+		"module json\n\npub fn encode[T](x T) string {\n\treturn 'own'\n}\n")!
+	source_path := os.join_path(project_dir, 'app.v')
+	os.write_file(source_path, 'import json\n\nfn main() {\n\tprintln(json.encode(1))\n}\n')!
+	// stdin is staged in a temporary folder, but its imports belong to the caller's
+	// working directory, which has its own `json` module here.
+	old_wd := os.getwd()
+	os.chdir(project_dir)!
+	res := os.execute('${os.quoted_path(vexe)} fmt < ${os.quoted_path(source_path)}')
+	os.chdir(old_wd)!
+	assert res.exit_code == 0, res.output
+	assert res.output.contains('import json\n'), res.output
+	assert !res.output.contains('json2'), res.output
+}
+
+fn test_fmt_json_lookup_with_path_flag_follows_the_compiler_with_v3() {
+	module_source := "module json\n\npub fn encode[T](x T) string {\n\treturn 'own'\n}\n"
+	source := 'import json\n\nfn main() {\n\tprintln(json.encode(1))\n}\n'
+	root := os.join_path(vfmt_test_tdir, 'json_path_lookup')
+	// A module in ~/.vmodules is not searched when `-path` leaves out `@vmodules`.
+	vmodules := os.join_path(root, 'vmodules')
+	os.mkdir_all(os.join_path(vmodules, 'json'))!
+	os.write_file(os.join_path(vmodules, 'json', 'json.v'), module_source)!
+	os.mkdir_all(os.join_path(root, 'app'))!
+	app_file := os.join_path(root, 'app', 'main.v')
+	os.write_file(app_file, source)!
+	// A sibling of the importing file's directory is still found through `-path`.
+	os.mkdir_all(os.join_path(root, 'project', 'src'))!
+	os.mkdir_all(os.join_path(root, 'project', 'json'))!
+	os.write_file(os.join_path(root, 'project', 'json', 'json.v'), module_source)!
+	project_file := os.join_path(root, 'project', 'src', 'main.v')
+	os.write_file(project_file, source)!
+	old_vflags := os.getenv('VFLAGS')
+	old_vmodules := os.getenv('VMODULES')
+	os.setenv('VMODULES', vmodules, true)
+	os.setenv('VFLAGS', '-path @vlib', true)
+	app_res := os.execute('${os.quoted_path(vexe)} fmt -w ${os.quoted_path(app_file)}')
+	project_res := os.execute('${os.quoted_path(vexe)} fmt -w ${os.quoted_path(project_file)}')
+	os.unsetenv('VFLAGS')
+	app_copy := os.join_path(root, 'app', 'copy.v')
+	os.write_file(app_copy, source)!
+	with_vmodules_res := os.execute('${os.quoted_path(vexe)} fmt ${os.quoted_path(app_copy)}')
+	for name, value in {
+		'VFLAGS':   old_vflags
+		'VMODULES': old_vmodules
+	} {
+		if value == '' {
+			os.unsetenv(name)
+		} else {
+			os.setenv(name, value, true)
+		}
+	}
+	assert app_res.exit_code == 0, app_res.output
+	assert os.read_file(app_file)!.contains('import json2\n')
+	assert project_res.exit_code == 0, project_res.output
+	assert os.read_file(project_file)! == source
+	// Without `-path`, ~/.vmodules is searched, so a file importing that module keeps it.
+	assert with_vmodules_res.exit_code == 0, with_vmodules_res.output
+	assert with_vmodules_res.output.contains('import json\n'), with_vmodules_res.output
+	// A `json` folder above another `v.mod` project is not the imported module with
+	// `-path` (the compiler's `module_dir_belongs_to_other_project`).
+	outer := os.join_path(root, 'outer')
+	os.mkdir_all(os.join_path(outer, 'app', 'src'))!
+	os.mkdir_all(os.join_path(outer, 'json'))!
+	os.write_file(os.join_path(outer, 'json', 'json.v'), module_source)!
+	os.write_file(os.join_path(outer, 'app', 'v.mod'), "Module {\n\tname: 'app'\n}\n")!
+	outer_file := os.join_path(outer, 'app', 'src', 'main.v')
+	os.write_file(outer_file, source)!
+	os.setenv('VFLAGS', '-path @vlib', true)
+	outer_res := os.execute('${os.quoted_path(vexe)} fmt ${os.quoted_path(outer_file)}')
+	if old_vflags == '' {
+		os.unsetenv('VFLAGS')
+	} else {
+		os.setenv('VFLAGS', old_vflags, true)
+	}
+	assert outer_res.exit_code == 0, outer_res.output
+	assert outer_res.output.contains('import json2\n'), outer_res.output
+}
+
+fn test_fmt_keeps_project_owned_json_module_imports_with_v3() {
+	source := "import json
+
+fn test_own() {
+	assert json.encode(1) == 'own 1'
+}
+"
+	project_dir := os.join_path(vfmt_test_tdir, 'own_json_project')
+	os.mkdir_all(os.join_path(project_dir, 'json'))!
+	os.write_file(os.join_path(project_dir, 'json', 'json.v'),
+		"module json\n\npub fn encode[T](x T) string {\n\treturn 'own \${x}'\n}\n")!
+	for name in ['own_json_test.v', 'own_json_consumer.v'] {
+		source_path := os.join_path(project_dir, name)
+		os.write_file(source_path, source)!
+		res := os.execute('${os.quoted_path(vexe)} fmt -w ${os.quoted_path(source_path)}')
+		assert res.exit_code == 0, res.output
+		assert os.read_file(source_path)! == source
+	}
+	// Without a project `json` module, the import names the removed vlib module, and
+	// test files are migrated like other code. A file with a local `json` binding
+	// keeps the legacy source, since its method calls are not module calls.
+	for name, local_source in {
+		'local_var': 'json := Encoder{}\n\tassert json.encode() == 0'
+		'param':     'f := fn (json Encoder) int {\n\t\treturn json.encode()\n\t}\n\tassert f(Encoder{}) == 0'
+		'for_var':   'for json in [Encoder{}] {\n\t\tassert json.encode() == 0\n\t}'
+	} {
+		local_json := 'import json
+
+struct Encoder {}
+
+fn (e Encoder) encode() int {
+	return 0
+}
+
+fn test_local() {
+	${local_source}
+}
+'
+		local_res, local_formatted := run_vfmt_write('local_json_${name}_test', local_json, '')
+		assert local_res.exit_code == 0, local_res.output
+		assert local_formatted == local_json
+	}
+	res, formatted := run_vfmt_write('removed_json_module_test', source, '')
+	assert res.exit_code == 0, res.output
+	assert formatted.contains('import json2\n'), formatted
+	assert formatted.contains('json2.encode(1, escape_unicode: true, time_as_unix: true)'), formatted
+}
+
 fn test_fmt_keeps_comments_before_expanded_const_fields_with_v3() {
 	source := 'const (
 	// pi documents pi
