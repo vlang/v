@@ -9940,6 +9940,20 @@ fn (mut t Transformer) clone_generic_node_with_return_context(id flat.NodeId, ar
 		}
 	} else if node.kind == .decl_assign {
 		cloned_decl := t.a.nodes[int(clone_id)]
+		if cloned_decl.children_count > 2 && t.multi_assign_rhs_count(cloned_decl) == 1 {
+			lhs_ids := t.multi_assign_lhs_ids(cloned_decl)
+			rhs_id := t.a.child(&cloned_decl, 1)
+			if value_types := t.multi_return_types_for_expr(rhs_id, lhs_ids.len) {
+				for i, lhs_id in lhs_ids {
+					lhs := t.a.nodes[int(lhs_id)]
+					value_type := value_types[i].name()
+					if lhs.kind == .ident && lhs.value != '_' && !t.generic_arg_is_unresolved(value_type) {
+						t.set_node_typ(int(lhs_id), value_type)
+						t.set_var_type_with_raw(lhs.value, t.normalize_type_alias(value_type), value_type)
+					}
+				}
+			}
+		}
 		if cloned_decl.children_count == 2 {
 			lhs_id := t.a.child(&cloned_decl, 0)
 			rhs_id := t.a.child(&cloned_decl, 1)
@@ -10138,7 +10152,7 @@ fn (mut t Transformer) clone_generic_node_from(node flat.Node, args []string, is
 		child_is_return_value := (node.kind == .return_stmt && node.children_count == 1 && i == 0)
 			|| (direct_return_value && node.kind in [.paren, .postfix, .expr_stmt]
 				&& node.children_count == 1 && i == 0)
-			|| (direct_return_value && node.kind == .or_expr && node.value == '!' && i == 0)
+			|| (direct_return_value && node.kind == .or_expr && node.value in ['!', '?'] && i == 0)
 		child := t.clone_generic_node_with_return_context(t.a.child(&node, i), args,
 			child_is_return_value)
 		for _ in 0 .. match_smartcasts {
@@ -10992,23 +11006,7 @@ fn (mut t Transformer) retarget_cloned_generic_call(node flat.Node, mut children
 			inference_param_type := generic_inference_param_type(child)
 			arg_node := t.a.nodes[int(arg_id)]
 			mut raw_arg_type := t.generic_call_arg_type_for_inference(arg_id)
-			if is_receiver && param_idx == 0 && raw_arg_type.starts_with('(')
-				&& raw_arg_type.ends_with(')') {
-				// A destructured Result tuple may leave each receiver local with the
-				// whole tuple type. When every slot has the same concrete type, that
-				// type is still an exact receiver binding for any of its locals.
-				parts := split_generic_args(raw_arg_type[1..raw_arg_type.len - 1])
-				mut all_same := parts.len > 1
-				for part in parts[1..] {
-					if part != parts[0] {
-						all_same = false
-						break
-					}
-				}
-				if all_same && !t.generic_arg_is_unresolved(parts[0]) {
-					raw_arg_type = parts[0]
-				}
-			}
+
 			value_arg_id := if arg_node.kind == .prefix && arg_node.op == .amp
 				&& arg_node.children_count > 0 {
 				t.a.child(&arg_node, 0)

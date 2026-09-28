@@ -90,3 +90,48 @@ fn test_generic_result_tuple_receiver_keeps_type_for_interface_return() {
 	result := widened_tuple_receiver(NamedItem{ label: 'kept' })!
 	assert result.name() == 'kept'
 }
+
+fn split_heterogeneous[T](m &Matrix[T]) !(&Matrix[T], int) {
+	return m, 7
+}
+
+fn split_heterogeneous_last[T](m &Matrix[T]) !(int, &Matrix[T]) {
+	return 7, m
+}
+
+fn heterogeneous_first[A, B](first A, second B) !B {
+	_ = first
+	m := &Matrix[B]{ data: [second] }
+	q, _ := split_heterogeneous(m)!
+	return q.get()
+}
+
+fn heterogeneous_last[A, B](first A, second B) !B {
+	_ = first
+	m := &Matrix[B]{ data: [second] }
+	_, q := split_heterogeneous_last(m)!
+	return q.get()
+}
+
+fn test_heterogeneous_result_tuple_receiver_preserves_slot_type() {
+	assert heterogeneous_first(1, 'first')! == 'first'
+	assert heterogeneous_last(1, 'last')! == 'last'
+}
+
+struct TupleFactory[T] {}
+
+fn (f TupleFactory[T]) make[U]() ?U {
+	return U{}
+}
+
+fn option_from_third[A, B, C](first A, second B, third C) ?C {
+	_ = first
+	_ = second
+	_ = third
+	factory := TupleFactory[A]{}
+	return factory.make()?
+}
+
+fn test_generic_option_method_uses_enclosing_return_context() {
+	assert option_from_third(1, true, 'value')? == ''
+}
