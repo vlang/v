@@ -9222,6 +9222,7 @@ updates followed by a dereference assignment on the next line end the current st
 including compound assignments.
 Other arithmetic continues across the newline. A translated `sizeof` recognizes constant
 operands even when their declarations appear later in the module.
+Only source files selected for the target and compile-time defines contribute declarations.
 Lowercase type aliases declared in the same file remain type operands of `sizeof`.
 Translated local C variables can be updated without an explicit `mut` declaration.
 

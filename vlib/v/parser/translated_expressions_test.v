@@ -52,6 +52,7 @@ fn main() {
  assert sizeof(LocalRegs) == sizeof([3]int)
  assert sizeof(my_type) == sizeof(int)
 }
+
 type my_type = int
 const LocalRegs = [3, 12, 13]!
 ')!
@@ -62,6 +63,19 @@ const LaterRegs = [3, 12, 13]!
 ')!
 	for flags in ['', '-no-parallel'] {
 		result := os.execute('${os.quoted_path(@VEXE)} ${flags} -check ${os.quoted_path(root)}')
+		assert result.exit_code == 0, result.output
+	}
+}
+
+fn test_translated_sizeof_ignores_excluded_sibling_files() {
+	root := os.join_path(os.vtmp_dir(), 'translated_sizeof_selected_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+	os.write_file(os.join_path(root, 'main.v'), '@[translated]\nmodule main\nfn main() { assert sizeof(Item) > 0 }\n')!
+	os.write_file(os.join_path(root, 'item_notd_feature.v'), '@[translated]\nmodule main\ntype Item = int\n')!
+	os.write_file(os.join_path(root, 'item_d_feature.v'), '@[translated]\nmodule main\nconst Item = [3, 4]!\n')!
+	for flags in ['', '-d feature'] {
+		result := os.execute('${os.quoted_path(@VEXE)} ${flags} run ${os.quoted_path(root)}')
 		assert result.exit_code == 0, result.output
 	}
 }

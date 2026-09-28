@@ -14528,11 +14528,12 @@ fn (mut p Parser) scan_translated_sizeof_declarations() {
 		p.scan_translated_sizeof_source(p.s.src)
 		// Parsing sibling files can run in parallel. Read their declarations here
 		// so sizeof has the same meaning regardless of parse order.
-		for entry in os.ls(os.dir(p.cur_file)) or { []string{} } {
-			if entry.starts_with('.') || !entry.ends_with('.v') || entry == os.file_name(p.cur_file) {
+		for path in p.prefs.without_excluded(pref.get_v_files_from_dir_for_target(os.dir(p.cur_file),
+			p.prefs.user_defines, p.prefs.target)) {
+			if os.file_name(path) == os.file_name(p.cur_file)
+				|| (p.prefs.backend != 'c' && path.ends_with('.c.v')) {
 				continue
 			}
-			path := os.join_path(os.dir(p.cur_file), entry)
 			source := os.read_file(path) or { continue }
 			p.scan_translated_sizeof_source(source)
 		}
