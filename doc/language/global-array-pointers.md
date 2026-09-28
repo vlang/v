@@ -16,3 +16,6 @@ including `&(unsafe { [4]int{} })`. Statements before the final literal run in o
 bindings keep their scope, as in `unsafe { value := 7; &[4]int{init: value} }`.
 Optional or result elements retain inherited alignment, and freeing aligned
 array pointers uses the matching aligned deallocator.
+
+Use `free` for V allocations and `C.free` for C allocations. Casting either allocation to an
+aligned fixed-array pointer does not change which allocator owns the memory.
