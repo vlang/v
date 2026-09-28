@@ -82,6 +82,43 @@ fn test_fmt_preferences_respect_vflags() {
 	}
 }
 
+fn test_fmt_joined_backend_options() {
+	source_path := os.join_path(vfmt_test_tdir, 'joined_backend.v')
+	os.write_file(source_path, "fn main() { x := 'abc'.str }\n")!
+	old_vflags := os.getenv('VFLAGS')
+	defer {
+		if old_vflags == '' {
+			os.unsetenv('VFLAGS')
+		} else {
+			os.setenv('VFLAGS', old_vflags, true)
+		}
+	}
+	for flag in ['-b', '-backend'] {
+		for backend in ['js', 'js_browser', 'wasm'] {
+			option := '${flag}=${backend}'
+			for placement in ['prefix', 'suffix', 'environment'] {
+				os.unsetenv('VFLAGS')
+				args := match placement {
+					'prefix' { '${option} fmt' }
+					'suffix' { 'fmt ${option}' }
+					else {
+						os.setenv('VFLAGS', option, true)
+						'fmt'
+					}
+				}
+				res := os.execute('${os.quoted_path(vexe)} ${args} ${os.quoted_path(source_path)}')
+				assert res.exit_code == 0, '${placement} ${option}: ${res.output}'
+				expected := if backend.starts_with('js') { "x := 'abc'.str" } else { "x := c'abc'" }
+				assert res.output.contains(expected), '${placement} ${option}: ${res.output}'
+			}
+		}
+		os.unsetenv('VFLAGS')
+		invalid := os.execute('${os.quoted_path(vexe)} ${flag}=jss fmt ${os.quoted_path(source_path)}')
+		assert invalid.exit_code != 0, invalid.output
+		assert invalid.output.contains('Unknown V backend: jss'), invalid.output
+	}
+}
+
 fn test_fmt_accepts_semantic_duplicate_operator_and_recursive_alias() {
 	for source in [
 		'struct Number {}\nfn (n Number) + (other Number) Number { return n }\nfn (n Number) + (other Number) Number { return n }\n',
@@ -147,6 +184,7 @@ fn test_fmt_preserves_signature_and_comptime_semantic_errors() {
 
 fn test_fmt_preserves_semantic_signature_and_collection_restrictions() {
 	for source, expected in {
+		'struct Holder { value mut int }':                    'value mut int'
 		'fn f() mut int { return 1 }':                        'fn f() mut int'
 		'__global int int':                                   '__global int int'
 		'fn main() { mut _ := 1 }':                           'mut _ := 1'

@@ -42,20 +42,25 @@ const term_colors = term.can_show_color_on_stderr()
 fn formatter_backend(args []string) !string {
 	mut backend := 'c'
 	for i, arg in args {
-		if arg in ['-b', '-backend'] && i + 1 < args.len {
-			backend = match args[i + 1] {
-				'c', 'fastc', 'wasm' {
-					args[i + 1]
-				}
-				'js', 'js_node', 'js_browser', 'js_freestanding' {
-					'js'
-				}
-				'native', 'go' {
-					'c'
-				}
-				else {
-					return error('Unknown V backend: ${args[i + 1]}\nValid -backend choices are: c, fastc, go, js, js_node, js_browser, js_freestanding, native, wasm')
-				}
+		requested := if arg in ['-b', '-backend'] && i + 1 < args.len {
+			args[i + 1]
+		} else if arg.starts_with('-b=') || arg.starts_with('-backend=') {
+			arg.all_after('=')
+		} else {
+			continue
+		}
+		backend = match requested {
+			'c', 'fastc', 'wasm' {
+				requested
+			}
+			'js', 'js_node', 'js_browser', 'js_freestanding' {
+				'js'
+			}
+			'native', 'go' {
+				'c'
+			}
+			else {
+				return error('Unknown V backend: ${requested}\nValid -backend choices are: c, fastc, go, js, js_node, js_browser, js_freestanding, native, wasm')
 			}
 		}
 	}

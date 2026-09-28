@@ -7,6 +7,7 @@ fn test_formatter_preserves_syntax_without_semantic_diagnostics() {
 	path := os.join_path(os.vtmp_dir(), 'formatter_semantics_${os.getpid()}.v')
 	defer { os.rm(path) or {} }
 	cases := {
+		'struct Holder { value mut int }':                                                           'cannot use `mut` on struct field type'
 		'fn main() { callback := fn [missing] () {}; _ = callback }':                                'undefined ident: `missing`'
 		'interface Reader { read[T](value T) T }':                                                   'non-generic interface `Reader` cannot define a generic method'
 		'fn loops(values []int) { for mut index, _ in values { index++ } }':                         'index of array or key of map cannot be mutated'

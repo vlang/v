@@ -81,6 +81,14 @@ fn test_formatter_backend_options_are_runtime_preferences() {
 			'source.v',
 		]
 		assert external_tool_compile_args('vtest', prefix) == prefix
+		joined_prefix := ['-cc', 'clang', '${flag}=js', '-gc', 'none']
+		assert external_tool_compile_args('vfmt', joined_prefix) == ['-cc', 'clang', '-gc', 'none']
+		assert external_tool_runtime_args('fmt', joined_prefix, ['fmt', 'source.v']) == [
+			'${flag}=js',
+			'fmt',
+			'source.v',
+		]
+		assert external_tool_compile_args('vtest', joined_prefix) == joined_prefix
 	}
 }
 

@@ -460,6 +460,8 @@ fn split_tool_backend_args(args []string) ([]string, []string) {
 		} else if arg in ['-b', '-backend'] {
 			backend_args << arg
 			backend_value_follows = true
+		} else if arg.starts_with('-b=') || arg.starts_with('-backend=') {
+			backend_args << arg
 		} else {
 			other_args << arg
 		}
