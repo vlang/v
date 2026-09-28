@@ -12,4 +12,5 @@ When a global initializer decays a returned array or an array literal, its backi
 for the program lifetime and retains the element type's alignment.
 
 An inferred global keeps its checked type, so an array-plus-offset initializer remains a pointer
-when the global is read or passed to a function.
+when the global is read or passed to a function. This includes arithmetic within value-producing
+`if`, `match`, and `unsafe` blocks, even when the called function is declared later.

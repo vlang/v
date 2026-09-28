@@ -4397,6 +4397,22 @@ pub fn (mut tc TypeChecker) rebind_ast(a &flat.FlatAst) {
 	tc.a = a
 }
 
+fn global_initializer_contains_arithmetic(a &flat.FlatAst, id flat.NodeId) bool {
+	node := a.node(id)
+	if node.kind == .fn_literal {
+		return false
+	}
+	if node.kind == .infix && node.op in [.plus, .minus] {
+		return true
+	}
+	for i in 0 .. node.children_count {
+		if global_initializer_contains_arithmetic(a, a.child(node, i)) {
+			return true
+		}
+	}
+	return false
+}
+
 fn (mut tc TypeChecker) resolve_inferred_global_types(a &flat.FlatAst) {
 	tc.cur_module = ''
 	tc.cur_file = ''
@@ -4420,14 +4436,11 @@ fn (mut tc TypeChecker) resolve_inferred_global_types(a &flat.FlatAst) {
 					existing := tc.file_scope.lookup(qname) or { Type(void_) }
 					initializer_id := a.child(f, 0)
 					initializer := a.node(initializer_id)
-					mut arithmetic := initializer
-					for arithmetic.kind in [.paren, .expr_stmt] && arithmetic.children_count == 1 {
-						arithmetic = a.child_node(arithmetic, 0)
-					}
 					// Before later function declarations are registered, offset + array()
-					// can provisionally resolve to the offset's scalar type.
+					// can provisionally resolve to the offset's scalar type, including
+					// when nested in a value-producing if, match, or block.
 					recheck_arithmetic := tc.translated_files[tc.cur_file]
-						&& arithmetic.kind == .infix && arithmetic.op in [.plus, .minus]
+						&& global_initializer_contains_arithmetic(a, initializer_id)
 					if existing !is Unknown && existing !is Void
 						&& !type_contains_unknown(existing)
 						&& !generic_semantic_type_has_placeholder(existing)
@@ -4455,6 +4468,9 @@ fn (mut tc TypeChecker) resolve_inferred_global_types(a &flat.FlatAst) {
 						|| generic_semantic_type_has_placeholder(ft)
 						|| tc.type_text_has_generic_placeholder(ft.name()) {
 						continue
+					}
+					if recheck_arithmetic {
+						tc.remember_expr_type(initializer_id, ft)
 					}
 					tc.file_scope.insert(f.value, ft)
 					tc.file_scope.insert(qname, ft)

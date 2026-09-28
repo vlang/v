@@ -24,6 +24,27 @@ __global decay_returned_second = make_global_decay_values(43) + 1
 __global decay_returned_third = 2 + make_global_decay_values(47)
 __global decay_literal_second = [53, 59, 61]! + 1
 __global decay_returned_row = make_global_decay_rows() + 1
+__global decay_if_second = if decay_offset == 1 {
+	1 + make_global_decay_values(103)
+} else {
+	2 + make_global_decay_values(103)
+}
+__global decay_if_third = if decay_offset == 2 {
+	1 + make_global_decay_values(107)
+} else {
+	2 + make_global_decay_values(107)
+}
+__global decay_match_third = match decay_offset {
+	1 { 2 + make_global_decay_values(113) }
+	else { 1 + make_global_decay_values(113) }
+}
+__global decay_block_second = unsafe {
+	if decay_offset == 1 {
+		1 + make_global_decay_values(127)
+	} else {
+		2 + make_global_decay_values(127)
+	}
+}
 
 @[aligned: 512]
 struct GlobalDecayAligned {
@@ -72,11 +93,15 @@ fn test_translated_global_array_arithmetic() {
 	assert global_decay_read(decay_left_call_second) == 5
 	assert decay_selected_row == 1
 	assert global_decay_read(decay_ordered_second) == 37
-	assert decay_value_calls == 2
+	assert decay_value_calls == 6
 	assert global_decay_read(decay_returned_second) == 44
 	assert global_decay_read(decay_returned_third) == 49
 	assert global_decay_read(decay_literal_second) == 59
 	assert global_decay_read_row(decay_returned_row) == 79
 	assert u64(voidptr(decay_returned_aligned)) % 512 == 0
 	assert decay_returned_aligned.value == 101
+	assert global_decay_read(decay_if_second) == 104
+	assert global_decay_read(decay_if_third) == 109
+	assert global_decay_read(decay_match_third) == 115
+	assert global_decay_read(decay_block_second) == 128
 }
