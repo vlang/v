@@ -227,6 +227,10 @@ fn test_fmt_preserves_duplicate_deprecated_message_arguments() {
 
 fn test_fmt_preserves_signature_and_comptime_semantic_errors() {
 	for source, expected in {
+		'fn f() { match sql { else {} } }\n':         'match sql'
+		'fn f(sql int) {}\n':                         'fn f(sql int)'
+		'fn f(value, sql int) {}\n':                  'fn f(value int, sql int)'
+		'fn f[T](value T) [T] { return value }\n':    'fn f[T](value T) [T]'
 		'fn f(xs ...int, y int) {}\n':                'fn f(xs ...int, y int)'
 		'fn f[T]() { $for field in T.unknown {} }\n': '$for field in T.unknown'
 	} {

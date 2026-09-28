@@ -7,6 +7,10 @@ fn test_formatter_preserves_syntax_without_semantic_diagnostics() {
 	path := os.join_path(os.vtmp_dir(), 'formatter_semantics_${os.getpid()}.v')
 	defer { os.rm(path) or {} }
 	cases := {
+		'fn f() { match sql { else {} } }':                                                          'unexpected keyword `sql`, expecting name'
+		'fn f(sql int) {}':                                                                          'unexpected keyword `sql`, expecting name'
+		'fn f(value, sql int) {}':                                                                   'unexpected keyword `sql`, expecting name'
+		'fn f[T](value T) [T] { return value }':                                                     'invalid generic return, use `T` instead'
 		'fn main() { asm arm64 intel { nop } }':                                                     'the `intel` assembly modifier is only supported for i386 and amd64'
 		'fn f(value int) { if match value { 0 { true } else { false } } {} }':                       'cannot use `match` with `if` statements'
 		'fn f(values []?int) ?int { return values[0]? }':                                            '`?` for propagating errors from index expressions is no longer supported, use `!` instead of `?`'

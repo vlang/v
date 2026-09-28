@@ -1780,7 +1780,7 @@ fn (mut p Parser) fn_decl_body(name string, receiver_name string, receiver_type 
 		ret_type = p.parse_type_name()
 		ret_type = p.validate_fn_return_type(ret_type, ret_type_start)
 		for generic_name in generic_params {
-			if ret_type == '[${generic_name}]' {
+			if ret_type == '[${generic_name}]' && !p.prefs.is_fmt {
 				p.record_diagnostic_span('invalid generic return, use `${generic_name}` instead',
 					ret_type_start, p.prev_tok_end)
 				break
@@ -2145,7 +2145,7 @@ fn (mut p Parser) parse_param_group(is_c_decl bool) []flat.NodeId {
 		}
 		return ids
 	}
-	if p.tok == .name && p.lit == 'sql' {
+	if p.tok == .name && p.lit == 'sql' && !p.prefs.is_fmt {
 		p.record_diagnostic_span('unexpected keyword `sql`, expecting name', p.tok_pos, p.tok_end)
 	}
 	name_positions << p.current_pos()
@@ -2159,7 +2159,7 @@ fn (mut p Parser) parse_param_group(is_c_decl bool) []flat.NodeId {
 			p.next()
 		}
 		if p.tok_can_be_decl_name() {
-			if p.tok == .name && p.lit == 'sql' {
+			if p.tok == .name && p.lit == 'sql' && !p.prefs.is_fmt {
 				p.record_diagnostic_span('unexpected keyword `sql`, expecting name', p.tok_pos,
 					p.tok_end)
 			}
@@ -8962,7 +8962,7 @@ fn (mut p Parser) record_for_mut_diagnostic(id flat.NodeId, message string) {
 fn (mut p Parser) match_stmt() flat.NodeId {
 	match_start := p.span_start()
 	p.next() // skip 'match'
-	if p.tok == .name && p.lit == 'sql' {
+	if p.tok == .name && p.lit == 'sql' && !p.prefs.is_fmt {
 		p.record_diagnostic_span('unexpected keyword `sql`, expecting name', p.tok_pos, p.tok_end)
 	}
 	match_expr := p.control_header_expr(.lowest)
