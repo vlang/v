@@ -1019,7 +1019,12 @@ fn (g &FlatGen) ownership_destructor_method_name() string {
 }
 
 fn (g &FlatGen) ownership_recursive_drop_helper_name(type_name string) string {
-	return '__v3_ownership_drop_${g.cname(type_name)}'
+	prefix := if g.detached_spawn_drop {
+		'__v3_detached_ownership_drop_'
+	} else {
+		'__v3_ownership_drop_'
+	}
+	return '${prefix}${g.cname(type_name)}'
 }
 
 // ownership_recursive_drop_helper_types collapses the logical ownership type

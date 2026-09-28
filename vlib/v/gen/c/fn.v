@@ -4019,12 +4019,73 @@ fn (g &FlatGen) spawn_selector_fn_value_type(callee_id flat.NodeId, fn_node flat
 	return fn_type_from(declared)
 }
 
-// spawn_wrapper_body builds the thread-wrapper statement that invokes the spawned
-// call and returns its result as a `void*`. When the callee returns a value, the
-// result is heap-copied so `[]thread T .wait()` can recover it (the wait fn frees
-// it); a void callee returns NULL. `post` runs after the call (e.g. `free(p);`).
+// detached_spawn_aggregate_cleanup keeps recursive helpers separate from ordinary drops.
+fn (mut g FlatGen) detached_spawn_aggregate_cleanup(typ types.Type, expr string) string {
+	mut names := map[string]bool{}
+	mut seen := map[string]bool{}
+	g.ownership_collect_drop_struct_names(typ, 0, mut names, mut seen)
+	mut helpers := map[string]string{}
+	mut sorted_names := names.keys()
+	sorted_names.sort()
+	for name in sorted_names {
+		parsed := g.tc.parse_type(name)
+		if name.starts_with('C.') || name in g.tc.unions || name == 'thread'
+			|| name.ends_with('.thread') || name.starts_with('thread ')
+			|| g.is_generic_struct(name) || g.type_contains_generic_placeholder(parsed)
+			|| g.type_name_contains_generic_placeholder(name) || g.skip_builtin_struct(name)
+			|| g.resolve_method_name(name, g.ownership_destructor_method_name()).len > 0 {
+			continue
+		}
+		key := ownership_drop_expansion_key(types.Type(types.Struct{
+			name: name
+		}))
+		helpers[key] = name
+	}
+	old_helpers := g.recursive_drop_helpers
+	g.recursive_drop_helpers = helpers
+	defer {
+		g.recursive_drop_helpers = old_helpers
+	}
+	representatives := g.ownership_recursive_drop_helper_types()
+	mut helper_names := representatives.keys()
+	helper_names.sort()
+	mut new_names := []string{}
+	for helper_name in helper_names {
+		registry_key := 'detached_drop|${helper_name}'
+		if registry_key !in g.spawn_wrapper_names {
+			g.spawn_wrapper_names[registry_key] = helper_name
+			new_names << representatives[helper_name]
+		}
+	}
+	if new_names.len > 0 {
+		g.add_spawn_wrapper_def('extern IError builtin__none__;')
+		g.add_spawn_wrapper_def('extern IError builtin__error_sentinel;')
+	}
+	for name in new_names {
+		helper_name := g.ownership_recursive_drop_helper_name(name)
+		g.add_spawn_wrapper_def('static void ${helper_name}(${g.struct_cname(name)}* _value);')
+	}
+	for name in new_names {
+		old_module := g.tc.cur_module
+		old_file := g.tc.cur_file
+		old_tmp_count := g.tmp_count
+		g.tc.cur_module = g.tc.struct_modules[name] or { old_module }
+		g.tc.cur_file = g.tc.struct_files[name] or { old_file }
+		g.tmp_count = 0
+		body := g.ownership_drop_value_to_string(types.Type(types.Struct{
+			name: name
+		}), '*_value')
+		g.tmp_count = old_tmp_count
+		g.tc.cur_module = old_module
+		g.tc.cur_file = old_file
+		helper_name := g.ownership_recursive_drop_helper_name(name)
+		g.add_spawn_wrapper_def('static void ${helper_name}(${g.struct_cname(name)}* _value) { ${body} }')
+	}
+	return g.ownership_drop_value_to_string(typ, expr)
+}
+
 fn (mut g FlatGen) detached_spawn_result_cleanup(typ types.Type, expr string, depth int) string {
-	if depth > 16 {
+	if depth > 64 {
 		return ''
 	}
 	clean_type := default_init_unalias_type(typ)
@@ -4062,11 +4123,15 @@ fn (mut g FlatGen) detached_spawn_result_cleanup(typ types.Type, expr string, de
 		g.detached_spawn_drop = old_detached_spawn_drop
 	}
 	if g.ownership_type_requires_destruction(typ, 0) {
-		return g.ownership_drop_value_to_string(typ, expr)
+		return g.detached_spawn_aggregate_cleanup(typ, expr)
 	}
 	return ''
 }
 
+// spawn_wrapper_body builds the thread-wrapper statement that invokes the spawned
+// call and returns its result as a `void*`. When the callee returns a value, the
+// result is heap-copied so `[]thread T .wait()` can recover it (the wait fn frees
+// it); a void callee returns NULL. `post` runs after the call (e.g. `free(p);`).
 fn (mut g FlatGen) spawn_wrapper_body(call_expr string, ret_ct string, post string) string {
 	return g.spawn_wrapper_body_with_pre(call_expr, ret_ct, '', post)
 }
