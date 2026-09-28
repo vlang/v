@@ -2,6 +2,7 @@
 
 import os
 import time
+import v.util.vtest
 
 const total_steps = 8
 const temp_prefix = 'v3_test_all'
@@ -168,7 +169,11 @@ fn main() {
 	run('${host_v_cmd(cfg)} -o ${q(v3_bin)} ${q(cfg.v3_src)}')
 	// The unlocked example oracle includes an `-autofree` case. Keep its optional
 	// ownership checker out of the compiler used by ordinary compatibility cases.
-	run('${host_v_cmd(cfg)} -d ownership -o ${q(v3_ownership_bin)} ${q(cfg.v3_src)}')
+	if vtest.skip_ownership_autofree_tests() {
+		println('  SKIP ownership-enabled V3 compiler (ownership/autofree tests disabled)')
+	} else {
+		run('${host_v_cmd(cfg)} -d ownership -o ${q(v3_ownership_bin)} ${q(cfg.v3_src)}')
+	}
 
 	section(3, 'Requested vlib tests')
 	for rel_path in requested_vlib_tests {
@@ -356,6 +361,10 @@ fn enabled_unit_tests(cfg Config, paths []string) []string {
 		}
 		if disabled[relative_path] {
 			println('  Skipping ${relative_path} (temporarily disabled)')
+			continue
+		}
+		if vtest.skip_ownership_autofree_tests() && vtest.is_ownership_autofree_test(path) {
+			println('  Skipping ${relative_path} (ownership/autofree tests disabled)')
 			continue
 		}
 		enabled << path
@@ -656,6 +665,10 @@ fn run_unlocked_examples(cfg Config, v3_bin string, v3_ownership_bin string) {
 	examples := unlocked_examples()
 	mut ran := 0
 	for i, example_case in examples {
+		if vtest.skip_ownership_autofree_tests() && '-autofree' in example_case.compile_flags {
+			println('  SKIP ${example_case.path} (ownership/autofree tests disabled)')
+			continue
+		}
 		compiler := if '-autofree' in example_case.compile_flags {
 			v3_ownership_bin
 		} else {

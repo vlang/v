@@ -45,10 +45,23 @@ fn test_sizeof_in_assert() {
 	assert res.exit_code == 1
 	// dump(res)
 	assert res.output.contains('sizeof_used_in_assert_test.v:11: fn test_assert_offsetof')
-	assert res.output.contains('assert __offsetof(main.Abc, y) == 1')
+	assert res.output.contains('assert __offsetof(Abc, y) == 1')
 
 	assert res.output.contains('sizeof_used_in_assert_test.v:15: fn test_assert_sizeof')
-	assert res.output.contains('assert sizeof(main.Abc) == sizeof(main.Xyz)')
+	assert res.output.contains('assert sizeof(Abc) == sizeof(Xyz)')
+}
+
+fn test_assert_failure_preserves_builtin_source_spelling() {
+	res := vexecute('vlib/v/tests/testdata/assert_builtin_source_spelling_failing_test.v')
+	assert res.exit_code == 1, res.output
+	for expression in [
+		"assert 'sizeof(AssertSourceType)' == 'sizeof(int)'",
+		"assert '__offsetof(AssertSourceType, value)' == 'offsetof(AssertSourceType, value)'",
+		'assert sizeof(&AssertSourceType) == 0',
+		'assert sizeof([2]AssertSourceType) == 0',
+	] {
+		assert res.output.contains(expression), res.output
+	}
 }
 
 fn test_assert_failure_runs_scoped_defer_cleanup() {

@@ -3,7 +3,7 @@ fn test_main() {
 	assert a.count(it % 2) == 5
 
 	b := [10]int{init: index}
-	assert a.count(it % 2) == 5
+	assert b.count(it % 2) == 5
 }
 
 fn test_zero() {
@@ -11,7 +11,7 @@ fn test_zero() {
 	assert a.count(it == 1000) == 0
 
 	b := [10]int{init: index}
-	assert a.count(it == 1000) == 0
+	assert b.count(it == 1000) == 0
 }
 
 fn test_struct() {
@@ -33,4 +33,13 @@ fn test_struct() {
 	assert dump(sa.count(it.len < 3)) == 2
 	assert dump(sa.count(it == 'aa')) == 1
 	assert dump(sa.count(it.len == 3)) == 1
+}
+
+fn test_prefix_predicate() {
+	struct Cell {
+		is_open bool
+	}
+
+	cells := [Cell{}, Cell{ is_open: true }, Cell{}]
+	assert cells.count(!it.is_open) == 2
 }

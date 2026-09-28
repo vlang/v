@@ -26,7 +26,7 @@ fn test_vstring_to_encoding() {
 	// Linux LOCAL: UTF-8 encoding
 	assert abc_local == [u8(97), 98, 99]
 
-	if abc_not_exist := iconv.vstring_to_encoding('abc', 'encoding_not_exist') {
+	if _ := iconv.vstring_to_encoding('abc', 'encoding_not_exist') {
 		assert false, 'encoding_not_exist'
 	}
 
@@ -64,7 +64,7 @@ fn test_encoding_to_vstring() {
 	// Linux LOCAL: UTF-8 encoding
 	assert abc_local == 'abc'
 
-	if abc_not_exist := iconv.encoding_to_vstring([u8(97), 98, 99], 'encoding_not_exist') {
+	if _ := iconv.encoding_to_vstring([u8(97), 98, 99], 'encoding_not_exist') {
 		assert false, 'encoding_not_exist'
 	}
 

@@ -27,6 +27,28 @@ fn formatted_u8_interp_c_expr(format string) string {
 	return g.sb.str()
 }
 
+fn test_voidptr_function_value_detection_prefers_explicit_node_type() {
+	mut a := flat.FlatAst.new()
+	stale_id := a.add_node(flat.Node{
+		kind:  .ident
+		value: 'callback'
+		typ:   'fn ()'
+	})
+	mut tc := types.TypeChecker.new(&a)
+	tc.structs['gg.WindowReadbackId'] = []types.StructField{}
+	tc.struct_modules['gg.WindowReadbackId'] = 'gg'
+	mut g := FlatGen.new()
+	g.a = &a
+	g.tc = &tc
+	value_node := flat.Node{
+		kind:  .ident
+		value: 'request'
+		typ:   'gg.WindowReadbackId'
+	}
+	assert type_is_fn_value(g.usable_expr_type(stale_id))
+	assert !g.node_is_fn_value_for_voidptr(stale_id, value_node)
+}
+
 fn test_string_literal_table_has_internal_const_linkage() {
 	mut g := FlatGen.new()
 	g.intern_string('literal')

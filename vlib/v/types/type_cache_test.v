@@ -581,6 +581,23 @@ fn test_generic_text_substitution_recurses_through_wrappers() {
 	assert subst_generic_text('chan ?[]T', ['i16'], ['T']) == 'chan ?[]i16'
 }
 
+fn test_generic_type_substitution_updates_fixed_array_length_expr() {
+	a := flat.FlatAst.new()
+	tc := TypeChecker.new(&a)
+	typ := tc.parse_type('[cache_line_size - sizeof(T)]u8')
+	assert typ is ArrayFixed
+
+	text_substituted := tc.substitute_generic_type(typ, ['int'], ['T'])
+	assert text_substituted is ArrayFixed
+	assert (text_substituted as ArrayFixed).len_expr == 'cache_line_size - sizeof(int)'
+
+	value_substituted := tc.substitute_generic_type_values(typ, [Type(int_)], ['T'])
+	assert value_substituted is ArrayFixed
+	assert (value_substituted as ArrayFixed).len_expr == 'cache_line_size - sizeof(int)'
+	assert subst_generic_const_expr('sizeof(T) + T_SIZE', ['u64'], ['T']) ==
+		'sizeof(u64) + T_SIZE'
+}
+
 fn test_generic_text_substitution_preserves_mut_fn_pointer_params() {
 	substituted := subst_generic_text('fn (mut T) string', ['&Dog'], ['T'])
 	assert substituted == 'fn(mut &Dog) string'
@@ -644,4 +661,19 @@ fn test_node_cache_reset_drops_stale_fn_values() {
 	// previous program's targets.
 	tc.reset_node_caches(8)
 	assert tc.resolved_fn_value_name(3) == none
+}
+
+fn test_caller_type_name_qualification_preserves_enclosing_generic_parameters() {
+	mut a := flat.FlatAst.new()
+	id := a.add_val(.ident, 'T')
+	mut tc := TypeChecker.new(&a)
+	tc.structs['consumer.T'] = []StructField{}
+	tc.structs['consumer.Payload'] = []StructField{}
+	tc.cur_module = 'unrelated'
+	tc.enclosing_generic_param_masks = []u32{len: a.nodes.len, init: u32(1) << u32(`T` - `A`)}
+	assert tc.qualify_type_name_at('T', id, 'consumer') == 'T'
+	assert tc.qualify_type_name_at('Payload', id, 'consumer') == 'consumer.Payload'
+	assert tc.qualify_type_name_at('int', id, 'consumer') == 'int'
+	assert tc.qualify_type_name_at('UnknownName', id, 'consumer') == 'UnknownName'
+	assert tc.cur_module == 'unrelated'
 }

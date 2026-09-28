@@ -3,6 +3,21 @@ module driver
 import os
 import v.pref
 
+fn test_module_cache_compiler_identity_changes_when_executable_changes() {
+	root := os.join_path(os.vtmp_dir(), 'v3_cache_vexe_identity_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root)!
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	vexe := os.join_path(root, 'v')
+	os.write_file(vexe, 'old compiler')!
+	old_identity := v3_cache_compiler_executable_identity(vexe)
+	os.write_file(vexe, 'new compiler executable')!
+	new_identity := v3_cache_compiler_executable_identity(vexe)
+	assert old_identity != new_identity
+}
+
 fn test_large_cold_cache_restarts_without_cache() {
 	limit := scoped_large_cold_cache_node_limit
 	assert should_restart_v3_large_cold_cache(true, true, limit, false, false, false)

@@ -159,8 +159,8 @@ fn test_ws_connection_through_proxy() ! {
 		proxy_url: 'http://user:pass@127.0.0.1:${proxy_ws_port}'
 	})!
 	client.on_open(proxy_open_cb)
-	client.on_error_ref(proxy_error_cb, results)
-	client.on_message_ref(proxy_message_cb, results)
+	client.on_error_ref(proxy_error_cb, &results)
+	client.on_message_ref(proxy_message_cb, &results)
 	client.connect()!
 	spawn client.listen()
 	for msg in ['a', 'a'] {

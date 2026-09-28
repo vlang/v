@@ -277,18 +277,21 @@ fn test_emscripten_source_and_test_selection_is_target_specific() {
 	defer {
 		os.rmdir_all(dir) or {}
 	}
-	for name in ['runtime_default.c.v', 'runtime_wasm32_emscripten.c.v'] {
+	for name in ['feature_d_wasm32_emscripten.c.v', 'feature_notd_wasm32_emscripten.c.v',
+		'runtime_default.c.v', 'runtime_wasm32_emscripten.c.v'] {
 		os.write_file(os.join_path(dir, name), 'module sample\n') or { panic(err) }
 	}
 
 	wasm := target_from('wasm32_emscripten', 'wasm32') or { panic(err) }
-	assert get_v_files_from_dir_for_target(dir, [], wasm).map(os.base(it)) == [
+	assert get_v_files_from_dir_for_target(dir, ['wasm32_emscripten'], wasm).map(os.base(it)) == [
+		'feature_d_wasm32_emscripten.c.v',
 		'runtime_wasm32_emscripten.c.v',
 	]
 	assert is_test_file_for_platform('/tmp/runtime_wasm32_emscripten_test.v', 'c', wasm)
 
 	linux := target_from('linux', 'amd64') or { panic(err) }
 	assert get_v_files_from_dir_for_target(dir, [], linux).map(os.base(it)) == [
+		'feature_notd_wasm32_emscripten.c.v',
 		'runtime_default.c.v',
 	]
 	assert !is_test_file_for_platform('/tmp/runtime_wasm32_emscripten_test.v', 'c', linux)

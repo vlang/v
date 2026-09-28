@@ -2264,7 +2264,7 @@ fn test_mux_upload_permanently_stalled_eventually_times_out() {
 		}, mut out)
 		done <- true
 	}()
-	peer_thread := spawn fn [body_len] (mut peer MuxTestPeer) {
+	peer_thread := spawn fn (mut peer MuxTestPeer) {
 		peer.read_preface() or {
 			peer.fail('preface: ${err.msg()}')
 			return
