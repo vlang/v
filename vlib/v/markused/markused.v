@@ -6763,7 +6763,12 @@ fn (c &CallCollector) generic_factory_return_type_name(index &flat.Node, name st
 	for candidate in markused_fn_signature_name_candidates(name, cur_module) {
 		if candidate !in c.tc.fn_generic_params { continue }
 		mut return_type := c.fn_return_type_name(candidate, unwrap_optional_result)
-		if return_type.len == 0 || return_type.contains('unknown') {
+		semantic_has_placeholder := if semantic_type := c.fn_return_type_for_name(candidate) {
+			markused_type_has_unknown(semantic_type)
+		} else {
+			false
+		}
+		if return_type.len == 0 || semantic_has_placeholder {
 			if signature_text := c.tc.fn_ret_type_texts[candidate] {
 				return_type = signature_text
 				if unwrap_optional_result && (return_type.starts_with('?') || return_type.starts_with('!')) {
@@ -6784,6 +6789,34 @@ fn (c &CallCollector) generic_factory_return_type_name(index &flat.Node, name st
 		return c.tc.specialize_generic_factory_return(return_type, candidate, receiver_type, args)
 	}
 	return ''
+}
+
+fn markused_type_has_unknown(typ types.Type) bool {
+	return match typ {
+		types.Unknown { true }
+		types.Array, types.ArrayFixed, types.Channel { markused_type_has_unknown(typ.elem_type) }
+		types.Pointer, types.OptionType, types.ResultType, types.Alias {
+			markused_type_has_unknown(typ.base_type)
+		}
+		types.Map {
+			markused_type_has_unknown(typ.key_type) || markused_type_has_unknown(typ.value_type)
+		}
+		types.FnType {
+			mut found := markused_type_has_unknown(typ.return_type)
+			for param in typ.params {
+				found = found || markused_type_has_unknown(param)
+			}
+			found
+		}
+		types.MultiReturn {
+			mut found := false
+			for part in typ.types {
+				found = found || markused_type_has_unknown(part)
+			}
+			found
+		}
+		else { false }
+	}
 }
 
 fn (c &CallCollector) generic_factory_type_arg(id flat.NodeId) string {

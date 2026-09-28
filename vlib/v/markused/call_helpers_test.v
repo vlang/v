@@ -525,3 +525,22 @@ fn test_generic_factory_return_uses_nested_placeholder_signature_text() {
 		}
 	}
 }
+
+fn test_generic_factory_return_keeps_qualified_unknown_module_name() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	tc.fn_generic_params['unknown_factory.make'] = ['U']
+	tc.fn_ret_types['unknown_factory.make'] = types.Type(types.Struct{
+		name: 'unknown_factory.Gate'
+	})
+	tc.fn_ret_type_texts['unknown_factory.make'] = 'Gate'
+	tc.fn_ret_types['unknown_factory.Gate.backward'] = types.Type(types.int_)
+	base := a.add_val(.ident, 'make')
+	arg := a.add_val(.ident, 'int')
+	indexed := call_helper_node(mut a, flat.Node{ kind: .index }, [base, arg])
+	collector := CallCollector{ a: &a, tc: &tc }
+	inferred := collector.generic_factory_return_type_name(a.node(indexed), 'unknown_factory.make',
+		'main', map[string]string{}, false, '')
+	assert inferred == 'unknown_factory.Gate'
+	assert collector.typed_receiver_method_name(inferred, 'backward', 'main')? == 'unknown_factory.Gate.backward'
+}
