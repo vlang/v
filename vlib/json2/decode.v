@@ -343,16 +343,9 @@ pub fn decode[T](val string, params DecoderOptions) !T {
 		decoder.decode_array(mut result)!
 	} $else $if T.unaliased_typ is $map {
 		decoder.decode_map(mut result)!
-	} $else $if T.indirections == 1 {
-		if decoder.current_node.value.value_kind == .null {
-			if decoder.current_node != unsafe { nil } {
-				decoder.current_node = decoder.current_node.next
-			}
-		} else {
-			mut decoded_ptr := create_decoded_ptr(result)
-			decoder.decode_value(mut decoded_ptr)!
-			result = decoded_ptr
-		}
+	} $else $if T is $pointer {
+		// `&T`, `&&T` and `&&&T` point to a newly decoded value; `null` keeps `result`.
+		result = decoder.decode_array_element(result)!
 	} $else {
 		decoder.decode_value(mut result)!
 	}

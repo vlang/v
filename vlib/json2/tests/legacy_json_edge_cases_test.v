@@ -129,3 +129,8 @@ fn test_null_decodes_to_the_zero_value() {
 		assert false
 	}
 }
+
+fn test_multi_pointer_top_level_targets() {
+	assert **json2.decode[&&int]('5')! == 5
+	assert (***json2.decode[&&&Human]('{"name":"p"}')!).name == 'p'
+}
