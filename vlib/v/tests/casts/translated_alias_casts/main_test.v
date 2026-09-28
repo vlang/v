@@ -19,9 +19,16 @@ enum Token {
 	one
 }
 
+enum token {
+	zero
+	one
+}
+
 fn test_translated_numeric_casts() {
 	value := 1
 	assert Token(value) == .one
+	assert token(value) == .one
+	assert token(0) == .zero
 	assert bool(value)
 	assert !bool(0)
 	assert bool(1.5)

@@ -4153,7 +4153,7 @@ fn (tc &TypeChecker) translated_named_cast_call_name(id flat.NodeId, node flat.N
 	if callee.value in tc.fn_ret_types || qualified in tc.fn_ret_types {
 		return none
 	}
-	if qualified in tc.type_aliases || qualified in tc.structs {
+	if qualified in tc.type_aliases || qualified in tc.structs || qualified in tc.enum_names {
 		return qualified
 	}
 	return none

@@ -12947,7 +12947,7 @@ fn (mut t Transformer) try_lower_resolved_named_cast_call(id flat.NodeId, node f
 		return none
 	}
 	target := t.tc.resolved_call_name(id) or { return none }
-	if target !in t.tc.type_aliases && target !in t.tc.structs {
+	if target !in t.tc.type_aliases && target !in t.tc.structs && target !in t.tc.enum_names {
 		return none
 	}
 	return t.make_cast(target, t.transform_expr(t.a.child(&node, 1)), target)

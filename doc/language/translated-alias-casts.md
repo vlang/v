@@ -7,6 +7,7 @@ Local function values with the same name still resolve as function calls.
 Pointer casts also accept lowercase struct and typedef names, such as
 `&debug_info(pointer)` and `&uintptr_t(pointer)`.
 
-Translated files can also cast numeric values to enums and booleans directly,
-matching C conversions. Ordinary V files retain their explicit `unsafe` requirements
+Translated files can also cast numeric values to enums, including lowercase enum names,
+and to booleans directly, matching C conversions. Ordinary V files retain their explicit
+`unsafe` requirements
 for these casts, even when another file in their module is translated.
