@@ -857,6 +857,16 @@ fn (mut decoder Decoder) decode_value[T](mut val T) ! {
 			}
 			return
 		} $else $if T.unaliased_typ is string {
+			value_info := decoder.current_node.value
+			if (value_info.value_kind == .object || value_info.value_kind == .array)
+				&& decoder.current_node != decoder.values_info.head {
+				// Like a string field (and the removed `json` module), an object or array
+				// decodes into a string as its JSON text, also as an element or map value.
+				// The removed module had no string root, which stays an error.
+				val = T(decoder.json[value_info.position..value_info.position + value_info.length])
+				decoder.skip_current_value()
+				return
+			}
 			decoder.decode_string(mut val)!
 		} $else $if T.unaliased_typ is time.Time {
 			value_info := decoder.current_node.value

@@ -275,3 +275,26 @@ fn test_omitempty_of_enums_structs_and_sumtypes() {
 	}) == '{"c":"green","i":{"a":1},"w":{"a":0},"v":5}'
 	assert json2.encode(OmitHolder{ v: OmitValue(0) }) == '{"v":0}'
 }
+
+struct StringTargets {
+	s  string
+	os ?string
+	ls []string
+	ms map[string]string
+}
+
+fn test_objects_and_arrays_decode_into_strings() {
+	assert json2.decode[[]string]('[{"a":1},[1,2],"x"]')! == ['{"a":1}', '[1,2]', 'x']
+	assert json2.decode[map[string]string]('{"a":{"b":2}}')! == {
+		'a': '{"b":2}'
+	}
+	// A string root still has to be a JSON string, as the old module had no string root.
+	if _ := json2.decode[string]('[1]') {
+		assert false
+	}
+	targets := json2.decode[StringTargets]('{"s":{"k":1},"os":[1],"ls":[{"z":1}],"ms":{"q":[2]}}')!
+	assert targets.s == '{"k":1}'
+	assert targets.os? == '[1]'
+	assert targets.ls == ['{"z":1}']
+	assert targets.ms['q'] == '[2]'
+}

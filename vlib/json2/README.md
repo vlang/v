@@ -10,8 +10,9 @@
 >
 > These options keep the output of the old module: non-ASCII characters escaped as
 > `\uXXXX`, `time.Time` values as Unix timestamps, and its tab based pretty layout.
-> One difference remains: a `@[raw]` field holds the JSON text exactly as written,
-> while the old module returned it without whitespace.
+> One difference remains: a `@[raw]` field, or a string that receives a JSON object
+> or array, holds the JSON text exactly as written, while the old module returned it
+> without whitespace.
 >
 > `json.decode(?T, s)` has no direct counterpart, since V does not accept `?T` as a
 > type argument, and vfmt leaves such files unchanged: decode `T` with
