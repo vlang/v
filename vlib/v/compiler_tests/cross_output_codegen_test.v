@@ -224,6 +224,13 @@ fn test_cross_output_lets_the_target_libc_pick_the_poll_header() {
 	assert fallback.contains('#else\n#include <poll.h>'), 'musl and the other targets lost <poll.h>: ${fallback}'
 }
 
+fn test_top_level_asm_is_emitted_with_its_reference() {
+	c_code := cross_generate_with('-os linux -arch amd64 -gc none', 'top_level_asm', 'module main\n\nfn main() {\n\tmut value := int(0)\n\tasm amd64 {\n\t\tmov value, [rip + word_sequence]\n\t\t; =r (value)\n\t}\n\tassert value == 0x480f3527\n}\n\nasm amd64 {\n\t.global word_sequence\n\tword_sequence:\n\t.long 0x480f3527\n}\n')
+	assert c_code.contains('".global word_sequence\\n\\t"'), 'the top-level asm block is missing'
+	assert c_code.contains('"word_sequence:\\n\\t"'), 'the top-level asm label is missing'
+	assert c_code.contains('"mov word_sequence(%%rip), %[value]\\n\\t"'), 'the reference to the asm label is missing'
+}
+
 // function_body returns the source of the C function that `signature` opens.
 fn function_body(c_code string, signature string) string {
 	at := c_code.index(signature) or {

@@ -56,3 +56,9 @@ For the text and ansi modes:
   -comments       Includes comments in the output.
 
 Note: set the environment variable `VDOC_SORT` to `false`, to avoid sorting the output.
+
+Note: `v doc` needs the `markdown` module. When V first compiles the doc tool, and
+`markdown` is not found in vlib/, in a VMODULES folder, or next to the tool, V clones
+it from https://github.com/vlang/markdown into the first VMODULES folder, which needs
+network access. On offline or sandboxed machines, run `v install markdown` beforehand.
+With `-path`, V does not install anything, and just compiles the tool.

@@ -448,6 +448,14 @@
 #  define NDEBUG 1
 #endif
 
+// __v_: `gc/gc.h` includes the platform `windows.h` file before the
+// `ANY_MSWIN` block below asks for `WIN32_LEAN_AND_MEAN`. The full header pulls
+// in the OLE headers, which need `LPMSG` from `winuser.h`, so C flags of a V
+// program such as `-DNOUSER` or `-DNOMSG` broke the collector build.
+#if defined(_WIN32) && !defined(WIN32_LEAN_AND_MEAN)
+#  define WIN32_LEAN_AND_MEAN 1
+#endif
+
 #ifndef GC_H
 #  include "gc/gc.h"
 #endif
