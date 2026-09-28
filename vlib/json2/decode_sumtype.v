@@ -39,7 +39,10 @@ fn (mut decoder Decoder) get_decoded_sumtype_workaround[T](initialized_sumtype T
 						decoder.current_node = decoder.current_node.next
 						return resolved_sumtype
 					} else {
-						decoder.decode_error('sumtype option only support decoding null->none (for now)')!
+						// The payload of an option variant, like in the removed `json` module.
+						mut option_value := $zero(v.typ)
+						option_value = decoder.decode_option_payload(option_value)!
+						return T(option_value)
 					}
 				}
 			}
@@ -403,8 +406,42 @@ fn (mut decoder Decoder) init_sumtype_by_value_kind[T](mut val T, value_info Val
 		}
 		decoder.decode_error('could not resolve sumtype `${T.name}`, missing "_type" field?')!
 	}
+	// A value no other variant takes goes to an option variant, whose payload has to
+	// decode it (`5` for `?int | string`), like in the removed `json` module: first one
+	// whose payload fits the JSON value (`?string` for a string), then any.
+	if value_info.value_kind != .null {
+		for any_payload in [false, true] {
+			$for v in T.variants {
+				$if v.typ is $option {
+					if any_payload
+						|| option_payload_fits(typeof(v.typ).name, value_info.value_kind) {
+						val = T(v)
+						return
+					}
+				}
+			}
+		}
+	}
 
 	decoder.decode_error('could not resolve sumtype `${T.name}`, got ${value_info.value_kind}.')!
+}
+
+// option_payload_fits reports whether the payload of the option type `type_name`
+// (`?int`) takes a JSON value of `kind`.
+fn option_payload_fits(type_name string, kind ValueKind) bool {
+	payload := type_name.trim_left('?')
+	numbers := ['int', 'i8', 'i16', 'i32', 'i64', 'isize', 'u8', 'u16', 'u32', 'u64', 'usize',
+		'f32', 'f64', 'rune']
+	return match kind {
+		.string { payload in ['string', 'time.Time'] }
+		.number { payload in numbers }
+		.boolean { payload == 'bool' }
+		.array { payload.starts_with('[') }
+		.object {
+			payload !in numbers && payload !in ['string', 'bool'] && !payload.starts_with('[')
+		}
+		else { false }
+	}
 }
 
 fn (mut decoder Decoder) decode_sumtype[T](mut val T) ! {
