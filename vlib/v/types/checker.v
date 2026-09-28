@@ -7495,7 +7495,14 @@ fn (mut tc TypeChecker) insert_fn_param_binding(id flat.NodeId, p flat.Node) {
 	}
 	tc.check_local_binding_global_shadowing(id)
 	parsed_type := tc.parse_scope_param_type(p.typ)
-	typ := mut_param_binding_type(parsed_type, p.is_mut, p.op == .amp)
+	translated_pointer_alias := p.is_mut && p.op != .amp && tc.node_is_in_translated_file(id)
+		&& parsed_type is Pointer && parsed_type.base_type is Alias
+		&& unalias_type(parsed_type.base_type) is Pointer
+	typ := if translated_pointer_alias {
+		parsed_type
+	} else {
+		mut_param_binding_type(parsed_type, p.is_mut, p.op == .amp)
+	}
 	owner := tc.cur_scope.insert_with_owner(p.value, typ)
 	tc.initialize_pointer_parameter_binding(owner, typ)
 	if p.is_mut {

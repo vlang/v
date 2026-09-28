@@ -10772,6 +10772,21 @@ fn (mut t Transformer) transform_pointer_optional_unwrap_lvalue(id flat.NodeId) 
 	return t.make_selector(wrapper, 'value', value_type)
 }
 
+fn (t &Transformer) translated_pointer_alias_slot(id flat.NodeId) bool {
+	if isnil(t.tc) || int(id) < 0 || int(id) >= t.a.nodes.len {
+		return false
+	}
+	node := t.a.node(id)
+	file := t.a.source_files[node.pos.id] or { return false }
+	if !t.tc.translated_files[file.name] || node.kind != .ident
+		|| !t.mut_param_values[node.value] {
+		return false
+	}
+	raw := t.raw_var_type(node.value)
+	return raw.starts_with('&') && !raw[1..].starts_with('&')
+		&& t.comptime_normalize_type_alias_chain(raw[1..]).starts_with('&')
+}
+
 // transform_lvalue transforms transform lvalue data for transform.
 pub fn (mut t Transformer) transform_lvalue(id flat.NodeId) flat.NodeId {
 	if int(id) < 0 {
@@ -10886,7 +10901,8 @@ pub fn (mut t Transformer) transform_lvalue(id flat.NodeId) flat.NodeId {
 					t.transform_expr(child_id)
 				}
 				if child_node.kind == .ident && t.mut_param_values[child_node.value]
-					&& t.var_type(child_node.value).starts_with('&&') {
+					&& t.var_type(child_node.value).starts_with('&&')
+					&& !t.translated_pointer_alias_slot(child_id) {
 					child = t.make_prefix(.mul, child)
 					t.set_node_typ(int(child), t.var_type(child_node.value)[1..])
 				}
