@@ -336,7 +336,8 @@ fn (mut c H3MuxConn) finish_stream(mut s H3MuxStream) {
 // h3_response_field_error returns a non-empty reason when a regular (non-pseudo)
 // received response or trailer field is malformed per RFC 9114 §4.1.2/§4.2, or
 // '' when it is valid: the name must be a non-empty, lowercase token, the value
-// must not contain NUL/CR/LF, and connection-specific fields are forbidden --
+// must contain only field-content characters (h3_field_value_has_invalid_char,
+// RFC 9114 §10.3), and connection-specific fields are forbidden --
 // TE included, since §4.2 permits it only in requests. Stricter than
 // h2_response_field_error (reused here for the name rules), which checks
 // neither TE nor field values.
@@ -349,10 +350,26 @@ fn h3_response_field_error(name string, value string) string {
 	if name == 'te' {
 		return 'TE header field in a response'
 	}
-	if h2_field_value_has_forbidden_octet(value) {
-		return 'forbidden NUL/CR/LF octet in value of "${name}"'
+	if h3_field_value_has_invalid_char(value) {
+		return 'invalid character in value of "${name}"'
 	}
 	return ''
+}
+
+// h3_field_value_has_invalid_char reports whether `value` contains a character
+// RFC 9110 §5.5's field-content rule does not permit (only VCHAR, obs-text,
+// SP and HTAB are allowed): any other control byte, i.e. 0x00-0x1F except
+// HTAB, plus DEL (0x7F). RFC 9114 §10.3 makes such a message malformed -- a
+// wider set than HTTP/2's NUL/CR/LF-only rule (h2_field_value_has_forbidden_octet).
+// Empty values and non-ASCII (obs-text) bytes are valid. Leading/trailing SP/HTAB
+// are permitted characters, so they are deliberately not rejected here.
+fn h3_field_value_has_invalid_char(value string) bool {
+	for ch in value {
+		if (ch < 0x20 && ch != `\t`) || ch == 0x7f {
+			return true
+		}
+	}
+	return false
 }
 
 // wait_response blocks until `s` has a complete response or a terminal

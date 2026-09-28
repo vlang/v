@@ -566,6 +566,11 @@ fn test_wait_response_rejects_malformed_response_fields() {
 		h3_test_field('te', 'trailers'),
 		h3_test_field('x-bad', 'a\nb'),
 		h3_test_field('x-bad', 'a\x00b'),
+		// RFC 9114 §10.3: any character outside RFC 9110 §5.5 field-content
+		// (VCHAR, obs-text, SP, HTAB) is invalid, not only NUL/CR/LF.
+		h3_test_field('x-bad', 'a\x01b'),
+		h3_test_field('x-bad', 'a\x1fb'),
+		h3_test_field('x-bad', 'a\x7fb'),
 	]
 	for f in malformed {
 		header_err := h3_test_wait_response_error([f], [])
@@ -601,15 +606,41 @@ fn test_wait_response_accepts_well_formed_fields_and_trailers() {
 		h3_test_field('content-length', '3'),
 		h3_test_field('content-length', '3'),
 		h3_test_field('x-ok', 'value with spaces'),
+		h3_test_field('x-empty', ''),
+		h3_test_field('x-tab', 'a\tb'),
+		h3_test_field('x-utf8', 'caf\xc3\xa9'),
 	]
 	s.chunks << 'abc'.bytes()
-	s.resp_trailers = [h3_test_field('x-checksum', 'ok')]
+	s.resp_trailers = [h3_test_field('x-checksum', 'ok'), h3_test_field('x-trailer-tab', 'a\tb')]
 	s.ended = true
 	resp := c.wait_response(mut s, H3ClientRequest{})!
 	assert resp.status == 200
 	assert resp.body == 'abc'.bytes()
 	assert resp.headers.any(it.name == 'x-ok')
 	assert resp.headers.any(it.name == 'x-checksum' && it.value == 'ok')
+	assert resp.headers.any(it.name == 'x-empty' && it.value == '')
+	assert resp.headers.any(it.name == 'x-tab' && it.value == 'a\tb')
+	assert resp.headers.any(it.name == 'x-utf8' && it.value == 'caf\xc3\xa9')
+	assert resp.headers.any(it.name == 'x-trailer-tab')
+}
+
+// A malformed trailer must never mask a retryable terminal stream failure:
+// wait_response reports the trailer verdict only after the stream-error checks,
+// so the caller still sees h3_err_retryable_code and can redial.
+fn test_wait_response_malformed_trailer_does_not_mask_retryable_error() {
+	mut c := new_test_h3_mux_conn_no_driver()
+	mut s := new_h3_mux_stream()
+	s.headers_done = true
+	s.resp_headers = [h3_test_field(':status', '200')]
+	s.resp_trailers = [h3_test_field('connection', 'close')]
+	s.err = 'request not processed (GOAWAY)'
+	s.retryable = true
+	s.ended = true
+	c.wait_response(mut s, H3ClientRequest{}) or {
+		assert err.code() == h3_err_retryable_code, 'got "${err.msg()}" (code ${err.code()})'
+		return
+	}
+	assert false, 'expected the retryable stream error'
 }
 
 fn test_wait_response_rejects_unknown_pseudo_header() {
