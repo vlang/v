@@ -252,55 +252,23 @@ fn (mut encoder Encoder) encode_string(val string) {
 
 					continue
 				}
-				if encoder.escape_unicode {
-					if character >= 0b1111_0000 { // four bytes
-						unsafe {
-							encoder.output.push_many(val.str + buffer_start,
-								buffer_end - buffer_start)
-						}
-						unicode_point_low := val[buffer_end..buffer_end + 4].bytes().byterune() or {
-							0
-						} - 0x10000
-
-						hex_string := '\\u${0xD800 + ((unicode_point_low >> 10) & 0x3FF):04X}\\u${0xDC00 + (unicode_point_low & 0x3FF):04x}'
-
-						buffer_end += 4
-						buffer_start = buffer_end
-
-						unsafe { encoder.output.push_many(hex_string.str, 12) }
-
-						continue
-					} else if character >= 0b1110_0000 { // three bytes
-						unsafe {
-							encoder.output.push_many(val.str + buffer_start,
-								buffer_end - buffer_start)
-						}
-						hex_string := '\\u${val[buffer_end..buffer_end + 3].bytes().byterune() or {
-							0
-						}:04x}'
-
-						buffer_end += 3
-						buffer_start = buffer_end
-
-						unsafe { encoder.output.push_many(hex_string.str, 6) }
-
-						continue
-					} else if character >= 0b1100_0000 { // two bytes
-						unsafe {
-							encoder.output.push_many(val.str + buffer_start,
-								buffer_end - buffer_start)
-						}
-						hex_string := '\\u${val[buffer_end..buffer_end + 2].bytes().byterune() or {
-							0
-						}:04x}'
-
-						buffer_end += 2
-						buffer_start = buffer_end
-
-						unsafe { encoder.output.push_many(hex_string.str, 6) }
-
-						continue
+				if encoder.escape_unicode && character >= 0x80 {
+					unsafe {
+						encoder.output.push_many(val.str + buffer_start, buffer_end - buffer_start)
 					}
+					code_point, width := utf8_rune_at(val, buffer_end)
+					hex_string := if code_point > 0xffff {
+						unicode_point_low := u32(code_point) - 0x10000
+						'\\u${0xD800 + ((unicode_point_low >> 10) & 0x3FF):04X}\\u${0xDC00 + (unicode_point_low & 0x3FF):04x}'
+					} else {
+						'\\u${u32(code_point):04x}'
+					}
+					buffer_end += width
+					buffer_start = buffer_end
+
+					unsafe { encoder.output.push_many(hex_string.str, hex_string.len) }
+
+					continue
 				}
 
 				buffer_end++
@@ -310,6 +278,48 @@ fn (mut encoder Encoder) encode_string(val string) {
 	unsafe { encoder.output.push_many(val.str + buffer_start, buffer_end - buffer_start) }
 
 	encoder.output << `"`
+}
+
+// utf8_rune_at decodes the UTF-8 sequence at `val[i]` like `string.runes()` does: an
+// invalid or truncated sequence (arbitrary bytes such as `0xff`) is U+FFFD with a
+// width of 1, like in the removed `json` module, so every byte is consumed once.
+@[direct_array_access]
+fn utf8_rune_at(val string, i int) (rune, int) {
+	b0 := val[i]
+	if b0 < 0x80 {
+		return rune(b0), 1
+	}
+	if b0 < 0xc2 || b0 >= 0xf5 {
+		return 0xfffd, 1
+	}
+	width := if b0 < 0xe0 {
+		2
+	} else if b0 < 0xf0 {
+		3
+	} else {
+		4
+	}
+	if i + width > val.len {
+		return 0xfffd, 1
+	}
+	for j in 1 .. width {
+		if val[i + j] & 0xc0 != 0x80 {
+			return 0xfffd, 1
+		}
+	}
+	b1 := val[i + 1]
+	if (b0 == 0xe0 && b1 < 0xa0) || (b0 == 0xed && b1 >= 0xa0)
+		|| (b0 == 0xf0 && b1 < 0x90) || (b0 == 0xf4 && b1 > 0x8f) {
+		return 0xfffd, 1
+	}
+	code_point := match width {
+		2 { ((rune(b0) & 0x1f) << 6) | (rune(b1) & 0x3f) }
+		3 { ((rune(b0) & 0x0f) << 12) | ((rune(b1) & 0x3f) << 6) | (rune(val[i + 2]) & 0x3f) }
+		else {
+			((rune(b0) & 0x07) << 18) | ((rune(b1) & 0x3f) << 12) | ((rune(val[i + 2]) & 0x3f) << 6) | (rune(val[i + 3]) & 0x3f)
+		}
+	}
+	return code_point, width
 }
 
 fn (mut encoder Encoder) encode_boolean(val bool) {
