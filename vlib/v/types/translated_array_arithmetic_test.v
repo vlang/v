@@ -19,3 +19,14 @@ fn test_translated_array_arithmetic_rejects_invalid_operands() {
 		os.rm(path)!
 	}
 }
+
+fn test_translated_array_subtraction_rejects_incompatible_elements() {
+	root := os.join_path(os.vtmp_dir(), 'translated_array_difference_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+	path := os.join_path(root, 'incompatible.v')
+	os.write_file(path, '@[translated]\nmodule main\nfn main() { ints := [1, 2]!; floats := [1.0, 2.0]!; _ = ints - floats }\n')!
+	result := os.execute('${os.quoted_path(@VEXE)} -check ${os.quoted_path(path)}')
+	assert result.exit_code != 0, result.output
+	assert result.output.contains('cannot subtract pointers to different element types'), result.output
+}

@@ -7408,6 +7408,16 @@ fn (mut tc TypeChecker) check_infix(id flat.NodeId, node flat.Node) {
 		false
 	}
 	if pointer_arithmetic {
+		if node.op == .minus && lhs_clean is Pointer && rhs_clean is Pointer
+			&& (unalias_type(tc.infix_read_type(lhs_id)) is ArrayFixed
+				|| unalias_type(tc.infix_read_type(rhs_id)) is ArrayFixed) {
+			lhs_elem := unalias_type(lhs_clean.base_type)
+			rhs_elem := unalias_type(rhs_clean.base_type)
+			if lhs_elem.name() != rhs_elem.name() {
+				tc.record_error_at(.assignment_mismatch, 'cannot subtract pointers to different element types `${lhs_elem.name()}` and `${rhs_elem.name()}`', id, node.pos)
+				return
+			}
+		}
 		if tc.unsafe_depth == 0 && !tc.translated_files[tc.cur_file] {
 			tc.record_warning_at(.assignment_mismatch, 'pointer arithmetic is only allowed in `unsafe` blocks', id, node.pos)
 		}

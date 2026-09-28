@@ -14,21 +14,22 @@ fn (mut t Transformer) transform_translated_array_arithmetic(id flat.NodeId, nod
 	}
 	lhs_id := t.a.child(&node, 0)
 	rhs_id := t.a.child(&node, 1)
-	lhs_type := types.unalias_type(t.tc.resolve_type(lhs_id))
-	rhs_type := types.unalias_type(t.tc.resolve_type(rhs_id))
+	lhs_type := types.unalias_type(t.tc.parse_type(t.resolve_expr_type(lhs_id)))
+	rhs_type := types.unalias_type(t.tc.parse_type(t.resolve_expr_type(rhs_id)))
 	if lhs_type !is types.ArrayFixed && rhs_type !is types.ArrayFixed {
 		return none
 	}
-	mut lhs := t.transform_expr(lhs_id)
+	mut lhs := t.transform_value_operand(lhs_id)
 	if lhs_type is types.ArrayFixed {
 		lhs = t.make_prefix(.amp, t.make_index(lhs, t.make_int_literal(0), lhs_type.elem_type.name()))
 	}
-	mut rhs := t.transform_expr(rhs_id)
+	mut rhs := t.transform_value_operand(rhs_id)
 	if rhs_type is types.ArrayFixed {
 		rhs = t.make_prefix(.amp, t.make_index(rhs, t.make_int_literal(0), rhs_type.elem_type.name()))
 	}
 	result := t.make_infix(node.op, lhs, rhs)
-	t.set_node_typ(int(result), t.tc.type_name(t.tc.resolve_type(id)))
+	result_type := if node.typ.len > 0 { node.typ } else { t.tc.type_name(t.tc.resolve_type(id)) }
+	t.set_node_typ(int(result), result_type)
 	return result
 }
 
