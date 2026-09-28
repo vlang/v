@@ -1519,7 +1519,7 @@ fn (mut p Parser) fn_decl() flat.NodeId {
 					p.next()
 					name += '.' + p.expect_name_or_keyword()
 				}
-				if is_method {
+				if is_method && !p.prefs.is_fmt {
 					clean_type := method_receiver_type_name(receiver_type)
 					name = '${clean_type}.${name}'
 				}
@@ -1924,7 +1924,7 @@ fn (mut p Parser) fn_decl_body(name string, receiver_name string, receiver_type 
 	id := p.add_node(flat.Node{
 		kind:           .fn_decl
 		op:             if is_pub { .arrow } else { .none }
-		value:          if p.prefs.is_fmt && is_c_decl { '${interop_prefix}.${name}' } else { name }
+		value:          if p.prefs.is_fmt && is_c_decl { '${interop_prefix}:${name}' } else { name }
 		typ:            ret_type
 		pos:            token.new_pos(p.cur_file_id, name_pos)
 		payload:        flat.node_payload(generic_params)

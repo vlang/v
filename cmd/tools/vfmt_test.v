@@ -182,6 +182,26 @@ fn test_fmt_preserves_signature_and_comptime_semantic_errors() {
 	}
 }
 
+fn test_fmt_preserves_interop_qualifiers_on_receiver_declarations() {
+	for prefix, suffix in {
+		'C':  'c'
+		'JS': 'js'
+	} {
+		for method in ['foo', '@select', 'nested.foo'] {
+			for body in ['', ' {}'] {
+				signature := 'fn (value Example) ${prefix}.${method}()${body}'
+				source := 'struct Example {}\n\n${signature}\n'
+				res, formatted := run_vfmt_write('interop_receiver.${suffix}', source, '')
+				assert res.exit_code == 0, res.output
+				assert formatted.contains(signature), formatted
+				second, formatted_twice := run_vfmt_write('interop_receiver_twice.${suffix}', formatted, '')
+				assert second.exit_code == 0, second.output
+				assert formatted_twice == formatted
+			}
+		}
+	}
+}
+
 fn test_fmt_preserves_semantic_signature_and_collection_restrictions() {
 	for source, expected in {
 		'fn f(value array) {}':                               'value array'
