@@ -6244,9 +6244,14 @@ fn c_header_text_objective_c_scan_for_target(text string, flags []string, c99_mo
 			continue
 		}
 		if name in ['include', 'import'] {
-			arg := c_directive_arg(clean).trim_space()
-			include_arg := macro_values[arg] or { arg }
-			if cocoa_include_only && cocoa_nsfont_framework_include(include_arg) {
+			mut include_arg := c_directive_arg(clean).trim_space()
+			mut expanded_macros := map[string]bool{}
+			for (include_arg in macro_values && include_arg !in expanded_macros) {
+				expanded_macros[include_arg] = true
+				include_arg = macro_values[include_arg].trim_space()
+			}
+			if cocoa_include_only && definitely_active
+				&& cocoa_nsfont_framework_include(include_arg) {
 				return true
 			}
 			if !cocoa_include_only && name == 'import'

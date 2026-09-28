@@ -508,6 +508,46 @@ fn test_c_struct_declared_in_platform_binding_stays_header_owned() {
 	assert g.skip_builtin_struct('C.Alias')
 }
 
+fn test_cocoa_declarations_require_definitely_active_includes() {
+	mut ast := &flat.FlatAst{}
+	mut tc := types.TypeChecker.new(ast)
+	mut g := FlatGen.new()
+	g.a = ast
+	g.tc = &tc
+	g.target = pref.target_from('macos', 'arm64') or { panic(err) }
+	g.register_struct_decl_info('C.NSFont', 'C.NSFont', 'uiold', 'ui_darwin.c.v', flat.Node{})
+	for header, needs_typedef in {
+		'#if FEATURE\n#include <Cocoa/Cocoa.h>\n#endif':                                  true
+		'#if FEATURE\n#else\n#include <Cocoa/Cocoa.h>\n#endif':                           true
+		'#if defined(__APPLE__)\n#if FEATURE\n#import <AppKit/AppKit.h>\n#endif\n#endif': true
+		'#define FEATURE 1\n#if FEATURE\n#include <Cocoa/Cocoa.h>\n#endif':               false
+		'#if FEATURE\n#endif\n#include <Cocoa/Cocoa.h>':                                  false
+	} {
+		g.preinclude_directives = [header]
+		assert g.header_c_struct_needs_compat_typedef('C.NSFont') == needs_typedef, header
+	}
+}
+
+fn test_cocoa_includes_expand_object_macro_chains() {
+	mut ast := &flat.FlatAst{}
+	mut tc := types.TypeChecker.new(ast)
+	mut g := FlatGen.new()
+	g.a = ast
+	g.tc = &tc
+	g.target = pref.target_from('macos', 'arm64') or { panic(err) }
+	g.register_struct_decl_info('C.NSFont', 'C.NSFont', 'uiold', 'ui_darwin.c.v', flat.Node{})
+	for header, needs_typedef in {
+		'#define COCOA_HEADER <Cocoa/Cocoa.h>\n#define UI_HEADER COCOA_HEADER\n#include UI_HEADER':                                           false
+		'#define UI_HEADER PLATFORM_HEADER\n#define PLATFORM_HEADER COCOA_HEADER\n#define COCOA_HEADER <AppKit/AppKit.h>\n#import UI_HEADER': false
+		'#define COCOA_HEADER UI_HEADER\n#define UI_HEADER COCOA_HEADER\n#include UI_HEADER':                                                 true
+		'#define UI_HEADER UI_HEADER\n#include UI_HEADER':                                                                                    true
+		'#define UI_HEADER COCOA_HEADER\n#if FEATURE\n#define COCOA_HEADER <Cocoa/Cocoa.h>\n#endif\n#include UI_HEADER':                      true
+	} {
+		g.preinclude_directives = [header]
+		assert g.header_c_struct_needs_compat_typedef('C.NSFont') == needs_typedef, header
+	}
+}
+
 fn test_top_level_include_deduplication_resets_after_preprocessor_state_changes() {
 	macro_directives := dedupe_top_level_c_includes(['#include <types.h>', '#include <types.h>',
 		'#define FEATURE 1', '#include <types.h>'])
