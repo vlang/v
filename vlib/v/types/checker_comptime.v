@@ -14659,6 +14659,7 @@ fn (mut tc TypeChecker) call_returned_alias_arguments(id flat.NodeId, mut visiti
 			callee_view.collect_returned_alias_sources_in_scope(child_id, args_by_param, mut visiting,
 				mut sources)
 			callee_view.apply_post_if_exit_smartcasts(child_id)
+			callee_view.apply_post_assert_smartcasts(child_id)
 		}
 	}
 	visiting.delete(decl.idx)
@@ -14714,9 +14715,28 @@ fn (mut tc TypeChecker) collect_returned_alias_sources_in_scope(id flat.NodeId, 
 		saved_smartcasts := clone_smartcasts(tc.smartcasts)
 		for i in 1 .. node.children_count {
 			branch_id := tc.a.child(node, i)
+			branch := tc.a.node(branch_id)
+			n_conds := if branch.value == 'else' { 0 } else { branch.value.int() }
+			if subject_key.len > 0 && valid_string_data(subject_key) && n_conds > 1
+				&& subject_type is SumType
+				&& tc.match_branch_all_sum_type_patterns(subject_type, branch, n_conds) {
+				for j in 0 .. n_conds {
+					cond := tc.a.node(tc.a.child(branch, j))
+					pattern := tc.match_type_pattern(cond) or { continue }
+					smartcast_type := tc.sum_variant_type_for_pattern(subject_type.name, pattern) or {
+						continue
+					}
+					tc.smartcasts = clone_smartcasts(saved_smartcasts)
+					tc.smartcasts[subject_key] = tc.parse_type(smartcast_type)
+					tc.collect_returned_alias_sources_in_scope(branch_id, args_by_param,
+						mut visiting, mut sources)
+				}
+				tc.smartcasts = clone_smartcasts(saved_smartcasts)
+				continue
+			}
 			tc.push_scope()
 			tc.apply_match_branch_context_smartcasts(subject_key, subject_type,
-				tc.a.node(branch_id))
+				branch)
 			tc.collect_returned_alias_sources_in_scope(branch_id, args_by_param, mut visiting,
 				mut sources)
 			tc.pop_scope()
@@ -14725,7 +14745,9 @@ fn (mut tc TypeChecker) collect_returned_alias_sources_in_scope(id flat.NodeId, 
 		return
 	}
 	has_nested_scope := node.kind in [.block, .for_stmt, .for_in_stmt, .match_branch, .select_branch]
+	mut saved_smartcasts := map[string]Type{}
 	if has_nested_scope {
+		saved_smartcasts = clone_smartcasts(tc.smartcasts)
 		tc.push_scope()
 	}
 	if node.kind == .select_branch && node.value == 'recv' && node.children_count >= 2 {
@@ -14756,10 +14778,20 @@ fn (mut tc TypeChecker) collect_returned_alias_sources_in_scope(id flat.NodeId, 
 		}
 	}
 	for i in 0 .. node.children_count {
+		// The first three loop children are init, condition, and post. Narrow
+		// only the body, matching check_for_stmt's condition scope.
+		if node.kind == .for_stmt && i == 3 {
+			for sc in tc.extract_smartcasts(tc.a.child(node, 1)) {
+				if valid_string_data(sc.name) {
+					tc.smartcasts[sc.name] = sc.typ
+				}
+			}
+		}
 		child_id := tc.a.child(node, i)
 		tc.collect_returned_alias_sources_in_scope(child_id, args_by_param,
 			mut visiting, mut sources)
 		tc.apply_post_if_exit_smartcasts(child_id)
+		tc.apply_post_assert_smartcasts(child_id)
 	}
 	if node.kind == .decl_assign {
 		for lhs_id in tc.multi_assign_lhs_ids(*node) {
@@ -14775,6 +14807,7 @@ fn (mut tc TypeChecker) collect_returned_alias_sources_in_scope(id flat.NodeId, 
 	}
 	if has_nested_scope {
 		tc.pop_scope()
+		tc.smartcasts = saved_smartcasts
 	}
 }
 
