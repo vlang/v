@@ -14669,7 +14669,20 @@ fn v3_recover_from_cache_failure(output string, cc_dir string) bool {
 	}
 	cleanup_c_build_dir(cc_dir)
 	os.setenv(v3_cache_recovery_env, '1', true)
-	os.execvp(os.executable(), os.args[1..]) or {
+	executable := os.executable()
+	mut restart_args := []string{}
+	// The parser warnings were already shown by this process.
+	if v3_parser_diagnostics_printed(false)
+		&& v3_internal_parser_diagnostics_printed_flag !in os.args {
+		restart_args << v3_internal_parser_diagnostics_printed_flag
+	}
+	restart_args << os.args[1..]
+	$if windows {
+		// `_execvp` would exit this process with status 0 before the retried
+		// build finishes, so forward the retried build's status instead.
+		exit(os.system(v3_exec_command(executable, restart_args)))
+	}
+	os.execvp(executable, restart_args) or {
 		eprintln('failed to restart the build after discarding stale cache entries: ${err.msg()}')
 		exit(1)
 	}
