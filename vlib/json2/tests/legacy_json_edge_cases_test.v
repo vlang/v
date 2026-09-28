@@ -93,3 +93,39 @@ fn test_json_as_number_enum_uses_the_backing_type() {
 	assert json2.decode[WideSigned]('-9000000000')! == .neg
 	assert json2.encode(WideSigned.neg) == '-9000000000'
 }
+
+enum NullColor {
+	red
+	green
+}
+
+struct NullFields {
+	i int
+	d int = 5
+	b bool
+	t bool      = true
+	f f64       = 1.5
+	s string    = 'x'
+	c NullColor = .green
+}
+
+fn test_null_decodes_to_the_zero_value() {
+	fields := json2.decode[NullFields]('{"i":null,"d":null,"b":null,"t":null,"f":null,"s":null,"c":null}')!
+	assert fields == NullFields{
+		i: 0
+		d: 0
+		b: false
+		t: false
+		f: 0.0
+		s: ''
+		c: .red
+	}
+	assert json2.decode[[]int]('[1,null,3]')! == [1, 0, 3]
+	assert json2.decode[map[string]bool]('{"a":null}')! == {
+		'a': false
+	}
+	// Strict mode keeps rejecting `null` for a value that is not an option.
+	if _ := json2.decode[[]int]('[null]', strict: true) {
+		assert false
+	}
+}

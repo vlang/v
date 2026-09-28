@@ -96,6 +96,8 @@ pub:
 	// Strict mode also requires a fixed size array to get a JSON array with exactly
 	// as many elements. By default, `null` or missing trailing elements keep their
 	// default values, and extra elements are ignored.
+	// Strict mode also rejects `null` for a number, bool, string or enum, which is
+	// its zero value by default.
 	strict bool
 }
 
@@ -103,7 +105,7 @@ pub:
 @[markused]
 struct Decoder {
 	json   string // json is the JSON data to be decoded.
-	strict bool   // strict mode rejects quoted strings as numbers, and fixed arrays of another length
+	strict bool   // strict mode rejects quoted strings as numbers, fixed arrays of another length, and null scalars
 mut:
 	values_info  DecodeList[ValueInfo] // A linked list to store ValueInfo.
 	checker_idx  int                   // checker_idx is the current index of the decoder.
@@ -846,6 +848,15 @@ fn (mut decoder Decoder) decode_value[T](mut val T) ! {
 					decoder.current_node = decoder.current_node.next
 				}
 
+				return
+			}
+		}
+		$if T.unaliased_typ is $int || T.unaliased_typ is $float || T.unaliased_typ is bool || T.unaliased_typ is string || T.unaliased_typ is $enum {
+			if decoder.current_node.value.value_kind == .null && !decoder.strict {
+				// Outside of strict mode, `null` is the zero value, like in the removed
+				// `json` module: `[1, null]` decodes into `[]int` as `[1, 0]`.
+				val = $zero(T)
+				decoder.current_node = decoder.current_node.next
 				return
 			}
 		}
