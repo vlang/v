@@ -310,7 +310,8 @@ $if feature ? {
 }
 
 fn test_translated_sizeof_top_level_comptime_matches() {
-	root := os.join_path(os.vtmp_dir(), 'translated_sizeof_match_${os.getpid()}')
+	// `@FILE` is the resolved path, e.g. /private/tmp instead of /tmp on macOS.
+	root := os.join_path(os.real_path(os.vtmp_dir()), 'translated_sizeof_match_${os.getpid()}')
 	os.mkdir_all(root)!
 	defer { os.rmdir_all(root) or {} }
 	main_file := os.join_path(root, 'a.v')
@@ -394,7 +395,8 @@ $match @FILE {
 }
 
 fn test_translated_sizeof_location_dependent_comptime_conditions() {
-	root := os.join_path(os.vtmp_dir(), 'translated_sizeof_location_${os.getpid()}')
+	// `@FILE` is the resolved path, e.g. /private/tmp instead of /tmp on macOS.
+	root := os.join_path(os.real_path(os.vtmp_dir()), 'translated_sizeof_location_${os.getpid()}')
 	os.mkdir_all(root)!
 	defer { os.rmdir_all(root) or {} }
 	main_file := os.join_path(root, 'a.v')
