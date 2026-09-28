@@ -899,6 +899,32 @@ fn f() {
 	assert formatted_twice == formatted
 }
 
+fn test_fmt_keeps_project_owned_json_module_imports_with_v3() {
+	source := "import json
+
+fn test_own() {
+	assert json.encode(1) == 'own 1'
+}
+"
+	project_dir := os.join_path(vfmt_test_tdir, 'own_json_project')
+	os.mkdir_all(os.join_path(project_dir, 'json'))!
+	os.write_file(os.join_path(project_dir, 'json', 'json.v'),
+		"module json\n\npub fn encode[T](x T) string {\n\treturn 'own \${x}'\n}\n")!
+	for name in ['own_json_test.v', 'own_json_consumer.v'] {
+		source_path := os.join_path(project_dir, name)
+		os.write_file(source_path, source)!
+		res := os.execute('${os.quoted_path(vexe)} fmt -w ${os.quoted_path(source_path)}')
+		assert res.exit_code == 0, res.output
+		assert os.read_file(source_path)! == source
+	}
+	// Without a project `json` module, the import names the removed vlib module, and
+	// test files are migrated like other code.
+	res, formatted := run_vfmt_write('removed_json_module_test', source, '')
+	assert res.exit_code == 0, res.output
+	assert formatted.contains('import json2\n'), formatted
+	assert formatted.contains('json2.encode(1, escape_unicode: true)'), formatted
+}
+
 fn test_fmt_keeps_comments_before_expanded_const_fields_with_v3() {
 	source := 'const (
 	// pi documents pi

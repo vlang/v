@@ -217,6 +217,21 @@ fn (foptions &FormatOptions) should_migrate_json2(file string) bool {
 	return !file.ends_with('.vv')
 }
 
+fn imports_json(a &flat.FlatAst) bool {
+	return a.nodes.any(it.kind == .import_decl && it.value == 'json')
+}
+
+// resolves_project_json_module reports whether `import json` in `file` resolves to
+// an existing module. vlib has no `json` module anymore, so such a module belongs
+// to the project (beside the file, in a parent directory, or in ~/.vmodules). The
+// compiler keeps using it, so its calls must not be rewritten to `json2`.
+fn resolves_project_json_module(file string) bool {
+	lookup := &compiler_pref.Preferences{
+		vroot: os.dir(os.getenv('VEXE'))
+	}
+	return lookup.get_module_path('json', file) != ''
+}
+
 fn (foptions &FormatOptions) formatted_content_from_file(file string, report_diagnostics bool) !string {
 	foptions.vlog('vfmt running v.gen.v over file: ${file}')
 	mut prefs := compiler_pref.new_preferences()
@@ -225,7 +240,10 @@ fn (foptions &FormatOptions) formatted_content_from_file(file string, report_dia
 	prefs.preserve_comptime_conditionals = true
 	prefs.supports_inline_asm = true
 	mut p := compiler_parser.Parser.new(prefs)
-	a := p.parse_file(file)
+	mut a := p.parse_file(file)
+	if a.formatter_migrate_json2 && imports_json(a) && resolves_project_json_module(file) {
+		a.formatter_migrate_json2 = false
+	}
 	if report_compiler_parser_diagnostics(p.diagnostics, a, report_diagnostics) {
 		return error('the file contains parser errors')
 	}
