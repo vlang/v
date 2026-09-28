@@ -4177,6 +4177,34 @@ fn (t &Transformer) imported_global_name(name string) ?string {
 	return none
 }
 
+// current_module_declares_const reports whether the current module declares a
+// const named `name`. Such a const owns the bare name and its C symbol inside
+// the declaring module (docs.md:3645-3653). `name` may be the bare name or the
+// `mod.name` spelling transform_ident_expr writes after the const path. Exact
+// keys only: the const_suffixes fallback sees every transitive module and must
+// not decide ownership.
+fn (t &Transformer) current_module_declares_const(name string) bool {
+	if name == '' || isnil(t.tc) {
+		return false
+	}
+	if name.contains('.') {
+		base := name.all_before_last('.')
+		if base in ['main', 'builtin'] {
+			// main/builtin consts keep a bare key; `main.name` is only their
+			// C-symbol spelling.
+			field := short_name_view(name)
+			return field in t.tc.const_types
+				&& t.tc.const_owner_module(field) in ['', 'main', 'builtin']
+		}
+		return name in t.tc.const_types && t.tc.const_owner_module(name) == t.cur_module
+	}
+	if t.cur_module.len > 0 && t.cur_module != 'main' && t.cur_module != 'builtin' {
+		return '${t.cur_module}.${name}' in t.tc.const_types
+	}
+	// main/builtin consts are stored under bare keys.
+	return name in t.tc.const_types
+}
+
 // ident_compiles_to_global_symbol reports whether an ident emits a global's C
 // symbol, so method resolution must use the global's type instead of a
 // homonymous const. `t.globals` also stores every module's global under the
@@ -4184,6 +4212,14 @@ fn (t &Transformer) imported_global_name(name string) ?string {
 // still owns the symbol.
 fn (t &Transformer) ident_compiles_to_global_symbol(name string) bool {
 	if t.current_module_global_type(name) == none {
+		// Trap: the foreign-global fallback must not steal the bare name from a
+		// const of the declaring module. Both halves have to agree —
+		// transform_ident_expr keeps the const's symbol only in this case, so
+		// answering true here would pair the global's method with the const's
+		// symbol (or vice versa) and read garbage.
+		if t.current_module_declares_const(name) {
+			return false
+		}
 		// transform_ident_expr rewrites the ident to the imported global's name.
 		return t.imported_global_name(name) != none
 	}

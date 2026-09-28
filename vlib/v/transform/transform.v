@@ -22343,6 +22343,11 @@ fn (t &Transformer) raw_expr_type_without_smartcast(id flat.NodeId) string {
 			if typ.len > 0 {
 				return typ
 			}
+			if t.current_module_declares_const(node.value) {
+				// A foreign `__global` must not type a name the current module's
+				// const owns: its method would then pair with the const's symbol.
+				return t.const_owned_expr_type(node.value, node.typ)
+			}
 			if global_type := t.current_module_global_type(node.value) {
 				return t.normalize_type_alias(global_type)
 			}
@@ -23764,6 +23769,11 @@ fn (mut t Transformer) transform_ident_expr(id flat.NodeId, node flat.Node) flat
 				if global_type := t.current_module_global_type(node.value) {
 					typ = global_type
 					is_global = true
+				} else if t.current_module_declares_const(node.value) {
+					// A const of the declaring module owns the bare name and its C
+					// symbol (docs.md:3645-3653). Leave typ empty so the const path
+					// below keeps `mod.name`. Trap: rewriting to the foreign global's
+					// symbol here pairs the const's method with the global's symbol.
 				} else if global_name := t.imported_global_name(node.value) {
 					typ = t.globals[global_name]
 					is_global = true
@@ -25312,6 +25322,11 @@ fn (t &Transformer) resolve_expr_type(id flat.NodeId) string {
 			if local_type.len > 0 {
 				return local_type
 			}
+			if t.current_module_declares_const(node.value) {
+				// A foreign `__global` must not type a name the current module's
+				// const owns: its method would then pair with the const's symbol.
+				return t.const_owned_expr_type(node.value, '')
+			}
 			if global_type := t.current_module_global_type(node.value) {
 				return t.normalize_type_alias(global_type)
 			}
@@ -25917,6 +25932,18 @@ fn (t &Transformer) const_type_name(name string) ?string {
 		return tname
 	}
 	return none
+}
+
+// const_owned_expr_type returns the declaring module's const type for `name`,
+// falling back to the node's own type. Used where a foreign `__global` must not
+// supply the type of a name the const owns.
+fn (t &Transformer) const_owned_expr_type(name string, node_typ string) string {
+	if key := t.const_type_key_in_context(name, t.cur_module, t.cur_file) {
+		if const_type := t.const_type_name(key) {
+			return t.normalize_type_alias(const_type)
+		}
+	}
+	return t.normalize_type_alias(node_typ)
 }
 
 // const_type_key supports const type key handling for Transformer.
