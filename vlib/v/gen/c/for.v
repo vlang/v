@@ -466,7 +466,7 @@ fn (mut g FlatGen) gen_for_in(node flat.Node) {
 				elem_owner := g.tc.cur_scope.insert_with_owner(elem_binding_name, elem_scope_type)
 				g.track_shadowed_global_local(elem_binding_name, elem_owner)
 				g.declare_local_mutability(elem_owner, node.op == .amp
-					&& (g.usable_expr_type(container_id) !is types.Pointer
+					&& (cgen_unalias_type(g.usable_expr_type(container_id)) !is types.Pointer
 						|| container_is_mutable_value_storage))
 				if node.op == .amp {
 					g.declare_local_indirect_value_type(elem_owner, container_type.elem_type)
@@ -506,7 +506,7 @@ fn (mut g FlatGen) gen_for_in(node flat.Node) {
 				elem_owner := g.tc.cur_scope.insert_with_owner(elem_binding_name, elem_scope_type)
 				g.track_shadowed_global_local(elem_binding_name, elem_owner)
 				g.declare_local_mutability(elem_owner, node.op == .amp
-					&& (g.usable_expr_type(container_id) !is types.Pointer
+					&& (cgen_unalias_type(g.usable_expr_type(container_id)) !is types.Pointer
 						|| container_is_mutable_value_storage))
 				if node.op == .amp {
 					g.declare_local_indirect_value_type(elem_owner, af.elem_type)
