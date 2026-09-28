@@ -3109,6 +3109,38 @@ fn test_translated_pointer_writes_accept_immutable_roots() {
 	assert dereference_write.contains('*target=value;'), dereference_write
 }
 
+fn test_translated_scalar_mutations_accept_known_immutable_locals() {
+	prefs := pref.new_preferences()
+	for body in [
+		'fn advance(i int) { i++ }',
+		'fn advance(i int) { i-- }',
+		'fn advance(i int) { i += 2 }',
+		'fn advance(i int) { i = 2 }',
+		'fn advance() { i := 1; i++ }',
+		'fn advance() { i := 1; i-- }',
+		'fn advance() { i := 1; i += 2 }',
+		'fn advance() { i := 1; i = 2 }',
+	] {
+		source := 'module main\n${body}\nfn main() {}\n'
+		mut message := ''
+		_ := generate(source, 'immutable_scalar.v', prefs) or {
+			message = err.msg()
+			''
+		}
+		assert message.contains('mutation of immutable or unknown name'), message
+		_ := generate('@[translated]\n${source}', 'translated_scalar.v', prefs) or {
+			panic(err)
+		}
+	}
+	mut message := ''
+	_ := generate('@[translated]\nmodule main\nfn main() { missing++ }\n',
+		'translated_unknown.v', prefs) or {
+		message = err.msg()
+		''
+	}
+	assert message.contains('mutation of immutable or unknown name'), message
+}
+
 fn test_duplicate_global_declarations_are_rejected() {
 	mut prefs := pref.new_preferences()
 	prefs.enable_globals = true
