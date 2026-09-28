@@ -6964,7 +6964,13 @@ fn (mut t Transformer) heap_escaping_source_decl(node flat.Node, var_name string
 		tmp := t.new_temp('esc')
 		stmts << t.make_stack_value_decl_assign_typed(tmp, transformed_init, elem_typ)
 		addr := t.make_prefix(.amp, t.make_ident(tmp))
-		dup := t.make_memdup_call_for_type(addr, elem_typ)
+		dup := if t.is_fixed_array_type(elem_typ) {
+			size := t.make_sizeof_type(elem_typ)
+			alignment := t.make_call_typed('__alignof__', [t.make_ident(tmp)], 'usize')
+			t.make_non_aliasing_allocation_call('memdup_align', [addr, size, alignment], 'voidptr')
+		} else {
+			t.make_memdup_call_for_type(addr, elem_typ)
+		}
 		heap_rhs = t.make_cast(ptr_typ, dup, ptr_typ)
 	}
 	t.heaped_amp_locals[var_name] = true
@@ -6985,7 +6991,9 @@ fn (mut t Transformer) heap_escaping_source_decl(node flat.Node, var_name string
 // from fields; the source type is checked at rewrite time when `v`'s type is known.
 fn (mut t Transformer) mark_escaping_amp_ptrs(body_ids []flat.NodeId) {
 	t.reset_escaping_amp_state()
-	if t.fast_escape_precheck {
+	// Translated array decay synthesizes address-taking after this scan. The
+	// generic fast flags only recognize addresses already present in the AST.
+	if t.fast_escape_precheck && (isnil(t.tc) || !t.tc.translated_files[t.cur_file]) {
 		if t.item_escape_scan_known {
 			if !t.item_escape_scan_needed {
 				return
@@ -8389,6 +8397,21 @@ fn (mut t Transformer) scan_escape_pass(id flat.NodeId, mut amp_ptrs map[string]
 		for i in 0 .. node.children_count {
 			t.scan_escape_pass(t.a.child(&node, i), mut amp_ptrs, mut amp_sources, mut ptr_aliases, mut method_value_receivers, mut closure_capture_aliases, mut interface_boxes, mut returned, mut local_stack_names, mut local_stack_added, can_clear_interface_boxes)
 		}
+		if !isnil(t.tc) && t.tc.translated_files[t.cur_file] {
+			// An outer pointer can retain a decayed local after this block exits,
+			// even when that pointer is consumed before the function returns.
+			block_locals := local_stack_added[scope_mark..]
+			for alias, _ in amp_sources {
+				if alias !in local_stack_names || alias in block_locals {
+					continue
+				}
+				for source in escape_alias_sources(alias, amp_sources, ptr_aliases) {
+					if source in block_locals {
+						t.escaping_amp_sources[source] = true
+					}
+				}
+			}
+		}
 		pop_escape_local_stack_names(scope_mark, mut local_stack_names, mut local_stack_added)
 		return
 	}
@@ -8494,8 +8517,13 @@ fn (mut t Transformer) scan_escape_pass(id flat.NodeId, mut amp_ptrs map[string]
 		lhs_id := t.a.child(&node, 0)
 		rhs_id := t.a.child(&node, 1)
 		lhs_root := t.escape_address_root_name(lhs_id) or { '' }
+		// A translated decay stored in a field or element can outlive the source's
+		// block even when the container itself stays local to this function.
+		translated_container_store := !isnil(t.tc) && t.tc.translated_files[t.cur_file]
+			&& node.kind in [.selector_assign, .index_assign]
 		for source_name in t.escape_aggregate_address_sources(rhs_id, amp_sources, ptr_aliases) {
-			if source_name == lhs_root && source_name in local_stack_names {
+			if source_name in local_stack_names
+				&& (source_name == lhs_root || translated_container_store) {
 				t.escaping_amp_sources[source_name] = true
 			}
 		}
@@ -8713,6 +8741,53 @@ fn (t &Transformer) escape_aggregate_address_sources(id flat.NodeId, amp_sources
 	}
 	node := t.a.nodes[int(id)]
 	match node.kind {
+		.infix {
+			if node.op !in [.plus, .minus] || node.children_count != 2 || isnil(t.tc)
+				|| !t.tc.translated_files[t.cur_file]
+				|| !escape_type_is_pointer(t.tc.resolve_type(id)) {
+				return []string{}
+			}
+			lhs_type := t.tc.resolve_type(t.a.child(&node, 0))
+			rhs_type := t.tc.resolve_type(t.a.child(&node, 1))
+			if t.tc.translated_array_operator_applies(node.op, lhs_type, rhs_type) {
+				return []string{}
+			}
+			mut sources := []string{}
+			for i, operand_type in [lhs_type, rhs_type] {
+				operand := t.a.child(&node, i)
+				operand_sources := if types.unalias_type(operand_type) is types.ArrayFixed {
+					t.escape_address_sources(operand, amp_sources, ptr_aliases)
+				} else {
+					t.escape_aggregate_address_sources(operand, amp_sources, ptr_aliases)
+				}
+				for source in operand_sources {
+					if source !in sources {
+						sources << source
+					}
+				}
+			}
+			return sources
+		}
+		.if_expr, .match_stmt {
+			if isnil(t.tc) || !t.tc.translated_files[t.cur_file] {
+				return []string{}
+			}
+			mut sources := []string{}
+			for i in 1 .. node.children_count {
+				for source in t.escape_aggregate_address_sources(t.a.child(&node, i), amp_sources, ptr_aliases) {
+					if source !in sources {
+						sources << source
+					}
+				}
+			}
+			return sources
+		}
+		.block, .match_branch, .expr_stmt {
+			if !isnil(t.tc) && t.tc.translated_files[t.cur_file] && node.children_count > 0 {
+				return t.escape_aggregate_address_sources(t.a.child(&node, node.children_count - 1), amp_sources, ptr_aliases)
+			}
+			return []string{}
+		}
 		.prefix {
 			if node.op == .amp && node.children_count > 0 {
 				return t.escape_address_sources(t.a.child(&node, 0), amp_sources, ptr_aliases)
@@ -14746,7 +14821,10 @@ fn (mut t Transformer) transform_decl_assign_stmt(id flat.NodeId, node flat.Node
 			return t.heap_escaping_source_decl(node, src.value, inferred_typ)
 		}
 		if src.kind == .ident && src.value in t.escaping_amp_sources
-			&& src.value !in t.heaped_amp_locals && t.heapable_value_type(inferred_typ) {
+			&& src.value !in t.heaped_amp_locals
+			&& (t.heapable_value_type(inferred_typ)
+				|| (!isnil(t.tc) && t.tc.translated_files[t.cur_file]
+					&& t.is_fixed_array_type(inferred_typ))) {
 			return t.heap_escaping_source_decl(node, src.value, inferred_typ)
 		}
 		// A struct declared `@[heap]` is always heap-allocated at its own declaration,

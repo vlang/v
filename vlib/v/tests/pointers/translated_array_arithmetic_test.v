@@ -272,3 +272,83 @@ fn test_translated_array_arithmetic_accepts_aliased_offsets() {
 	assert read_translated_element(previous) == 5
 	assert read_translated_element(returned) == 13
 }
+
+fn translated_return_local_array_element() &int {
+	mut values := [3, 5, 7]!
+	pointer := values + 1
+	values[1] = 37
+	return pointer
+}
+
+struct TranslatedEscapingArrayHolder {
+mut:
+	values [3]int
+}
+
+fn translated_return_local_array_field() &int {
+	mut holder := TranslatedEscapingArrayHolder{ values: [3, 5, 7]! }
+	pointer := 1 + holder.values
+	holder.values[1] = 41
+	return pointer + 0
+}
+
+fn translated_return_direct_local_array() &int {
+	values := [3, 43, 7]!
+	return values + 1
+}
+
+fn translated_return_local_aligned_array() &TranslatedEscapingAligned {
+	values := [TranslatedEscapingAligned{ value: 47 }, TranslatedEscapingAligned{ value: 53 }]!
+	return values + 1
+}
+
+fn translated_return_local_array_branch(flag bool) &int {
+	values := [61, 67, 71]!
+	return if flag { values + 1 } else { values + 2 }
+}
+
+fn translated_return_local_array_match(flag bool) &int {
+	values := [73, 79, 83]!
+	return match flag {
+		true { values + 1 }
+		else { values + 2 }
+	}
+}
+
+struct TranslatedEscapingPointerHolder {
+mut:
+	pointer &int = unsafe { nil }
+}
+
+fn translated_return_retained_array_pointer() TranslatedEscapingPointerHolder {
+	mut holder := TranslatedEscapingPointerHolder{}
+	values := [89, 97, 101]!
+	holder.pointer = values + 1
+	return holder
+}
+
+fn test_translated_addressable_array_storage_survives_escape() {
+	assert read_translated_element(translated_return_local_array_element()) == 37
+	assert read_translated_element(translated_return_local_array_field()) == 41
+	assert read_translated_element(translated_return_direct_local_array()) == 43
+	assert read_translated_element(translated_return_local_array_branch(true)) == 67
+	assert read_translated_element(translated_return_local_array_branch(false)) == 71
+	assert read_translated_element(translated_return_local_array_match(true)) == 79
+	assert read_translated_element(translated_return_local_array_match(false)) == 83
+	assert read_translated_element(translated_return_retained_array_pointer().pointer) == 97
+	mut outer := unsafe { &int(nil) }
+	mut holder := TranslatedEscapingPointerHolder{}
+	if outer == unsafe { nil } {
+		mut values := [3, 5, 7]!
+		outer = values + 1
+		values[1] = 59
+		mut retained := [103, 107, 109]!
+		holder.pointer = retained + 1
+		retained[1] = 113
+	}
+	assert read_translated_element(outer) == 59
+	assert read_translated_element(holder.pointer) == 113
+	aligned := translated_return_local_aligned_array()
+	assert usize(voidptr(aligned)) % 512 == 0
+	assert aligned.value == 53
+}
