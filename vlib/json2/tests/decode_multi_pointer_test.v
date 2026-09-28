@@ -49,3 +49,21 @@ fn test_multi_pointer_container_elements() {
 	top := json2.decode[[]&&int]('[3]')!
 	assert **top[0] == 3
 }
+
+struct DeepPointers {
+	value &&&&int
+	opt   ?&&&&&string
+	list  []&&&&int
+	by_id map[string]&&&&int
+}
+
+fn test_pointers_of_any_depth() {
+	assert ****json2.decode[&&&&int]('5')! == 5
+	deep := json2.decode[DeepPointers]('{"value":1,"opt":"x","list":[2],"by_id":{"k":3}}')!
+	assert ****deep.value == 1
+	opt := deep.opt or { panic('opt should be set') }
+	assert *****opt == 'x'
+	assert ****deep.list[0] == 2
+	by_id := deep.by_id['k'] or { panic('k should be set') }
+	assert ****by_id == 3
+}
