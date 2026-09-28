@@ -679,11 +679,12 @@ fn (mut g FlatGen) gen_struct_init(id flat.NodeId) {
 	}
 	init_semantic_type := g.tc.parse_type(init_value)
 	effective_type := default_init_unalias_type(types.unwrap_pointer(init_semantic_type))
-	// A specialized `T{}` may be a container or enum rather than a struct.
+	// A specialized `T{}` may be a container, enum, or sum rather than a struct.
 	// Dispatch its semantic default before the struct-literal path.
 	if node.children_count == 0
-		&& (effective_type is types.Array || effective_type is types.Map
-			|| effective_type is types.Channel || effective_type is types.Enum) {
+		&& (effective_type is types.Array || effective_type is types.ArrayFixed
+			|| effective_type is types.Map || effective_type is types.Channel
+			|| effective_type is types.Enum || effective_type is types.SumType) {
 		g.gen_default_value_for_type(init_semantic_type)
 		return
 	}
@@ -2583,6 +2584,11 @@ fn (mut g FlatGen) gen_default_value_for_clean_type(clean_typ types.Type) {
 	if clean_typ is types.Array {
 		c_elem := g.value_c_type(clean_typ.elem_type)
 		g.write('array_new(sizeof(${c_elem}), 0, 0)')
+		return
+	}
+	if clean_typ is types.ArrayFixed {
+		c_elem, dims := g.fixed_array_decl_parts(clean_typ)
+		g.write('(${c_elem}${dims})${g.empty_fixed_array_initializer_string(clean_typ)}')
 		return
 	}
 	if clean_typ is types.Channel {

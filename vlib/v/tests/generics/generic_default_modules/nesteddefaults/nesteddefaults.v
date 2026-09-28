@@ -1,5 +1,10 @@
 module nesteddefaults
 
+pub struct Foo {
+pub:
+	a int = 10
+}
+
 pub struct Box[T] {
 pub:
 	value T = T{}

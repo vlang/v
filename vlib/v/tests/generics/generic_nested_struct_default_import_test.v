@@ -11,6 +11,8 @@ enum DefaultMode {
 	second
 }
 
+type DefaultChoice = int | string
+
 struct LocalPointerBox[T] {
 	value &T = &T{}
 }
@@ -34,4 +36,15 @@ fn test_imported_generic_heap_array_default_initializes_metadata() {
 fn test_imported_generic_enum_default_uses_first_member() {
 	box := nesteddefaults.Box[DefaultMode]{}
 	assert box.value == .first
+}
+
+fn test_imported_generic_sum_default_uses_first_variant() {
+	box := nesteddefaults.Box[DefaultChoice]{}
+	assert box.value is int
+	assert box.value as int == 0
+}
+
+fn test_imported_generic_fixed_array_default_preserves_elements() {
+	box := nesteddefaults.Box[[1]nesteddefaults.Foo]{}
+	assert box.value[0].a == 10
 }

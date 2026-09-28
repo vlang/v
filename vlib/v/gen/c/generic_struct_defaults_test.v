@@ -79,6 +79,31 @@ fn test_specialized_generic_container_struct_literal_uses_runtime_default() {
 	}
 }
 
+fn test_specialized_generic_sum_and_fixed_array_literals_use_semantic_defaults() {
+	for concrete in ['Choice', '[1][]int'] {
+		mut ast := flat.FlatAst.new()
+		init_id := ast.add_node(flat.Node{
+			kind:  .struct_init
+			value: 'T'
+		})
+		mut tc := types.TypeChecker.new(&ast)
+		tc.cur_module = 'main'
+		tc.sum_types['Choice'] = ['int', 'string']
+		mut g := FlatGen.new()
+		g.a = &ast
+		g.tc = &tc
+		g.struct_default_generic_params = ['T']
+		g.struct_default_generic_args = [concrete]
+		g.gen_struct_init(init_id)
+		generated := g.sb.str()
+		if concrete == 'Choice' {
+			assert generated.contains('.typ = 1'), generated
+		} else {
+			assert generated.contains('array_new(sizeof(i64), 0, 0)'), generated
+		}
+	}
+}
+
 fn test_specialized_generic_heap_container_literal_initializes_metadata() {
 	for concrete in ['[]string', 'map[string]int'] {
 		mut ast := flat.FlatAst.new()
