@@ -135,3 +135,50 @@ fn option_from_third[A, B, C](first A, second B, third C) ?C {
 fn test_generic_option_method_uses_enclosing_return_context() {
 	assert option_from_third(1, true, 'value')? == ''
 }
+
+fn contextual_zero[T]() T {
+	return T{}
+}
+
+fn contextual_result_zero[T](fail bool) !T {
+	if fail { return error('fallback') }
+	return T{}
+}
+
+fn contextual_if[A, B](flag bool, first A, second B) B {
+	_ = first
+	return if flag { contextual_zero() } else { second }
+}
+
+fn contextual_match[A, B](choice int, first A, second B) B {
+	_ = first
+	return match choice {
+		0 { contextual_zero() }
+		1 {
+			if true { contextual_zero() } else { second }
+		}
+		else { second }
+	}
+}
+
+fn contextual_folded_if[A, B](first A, second B) B {
+	_ = first
+	return if B.name == 'string' { contextual_zero() } else { second }
+}
+
+fn contextual_or[A, B](fail bool, first A, second B) B {
+	_ = first
+	_ = second
+	return contextual_result_zero(fail) or { contextual_zero() }
+}
+
+fn test_generic_contextual_returns_reach_branch_tails_and_or_values() {
+	assert contextual_if(true, 1, 'value') == ''
+	assert contextual_if(false, 1, 'value') == 'value'
+	assert contextual_match(0, 1, 'value') == ''
+	assert contextual_match(1, 1, 'value') == ''
+	assert contextual_match(2, 1, 'value') == 'value'
+	assert contextual_folded_if(1, 'value') == ''
+	assert contextual_or(false, 1, 'value') == ''
+	assert contextual_or(true, 1, 'value') == ''
+}

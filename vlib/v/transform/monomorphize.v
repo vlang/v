@@ -10084,7 +10084,7 @@ fn (mut t Transformer) clone_generic_node_from(node flat.Node, args []string, is
 			if branch_index >= int(node.children_count) {
 				return t.make_empty()
 			}
-			return t.clone_generic_node(t.a.child(&node, branch_index), args)
+			return t.clone_generic_node_with_return_context(t.a.child(&node, branch_index), args, direct_return_value)
 		}
 	}
 	if node.kind == .comptime_if && t.cloning_comptime_for_depth == 0 {
@@ -10098,7 +10098,7 @@ fn (mut t Transformer) clone_generic_node_from(node flat.Node, args []string, is
 			t.active_generic_params << binding
 			mut bound_args := args.clone()
 			bound_args << pointee
-			result := t.clone_generic_node(t.a.child(&node, branch_index), bound_args)
+			result := t.clone_generic_node_with_return_context(t.a.child(&node, branch_index), bound_args, direct_return_value)
 			t.active_generic_params = old_params
 			return result
 		}
@@ -10107,7 +10107,7 @@ fn (mut t Transformer) clone_generic_node_from(node flat.Node, args []string, is
 			if branch_index >= int(node.children_count) {
 				return t.make_empty()
 			}
-			return t.clone_generic_node(t.a.child(&node, branch_index), args)
+			return t.clone_generic_node_with_return_context(t.a.child(&node, branch_index), args, direct_return_value)
 		}
 	}
 	if node.kind == .typeof_expr {
@@ -10152,7 +10152,11 @@ fn (mut t Transformer) clone_generic_node_from(node flat.Node, args []string, is
 		child_is_return_value := (node.kind == .return_stmt && node.children_count == 1 && i == 0)
 			|| (direct_return_value && node.kind in [.paren, .postfix, .expr_stmt]
 				&& node.children_count == 1 && i == 0)
-			|| (direct_return_value && node.kind == .or_expr && node.value in ['!', '?'] && i == 0)
+			|| (direct_return_value && node.kind == .or_expr)
+			|| (direct_return_value && node.kind in [.if_expr, .match_stmt] && i > 0)
+			|| (direct_return_value && node.kind == .comptime_if)
+			|| (direct_return_value && node.kind in [.block, .match_branch]
+				&& i == node.children_count - 1)
 		child := t.clone_generic_node_with_return_context(t.a.child(&node, i), args,
 			child_is_return_value)
 		for _ in 0 .. match_smartcasts {
