@@ -7707,6 +7707,9 @@ fn (mut tc TypeChecker) check_node_with_expected_context(id flat.NodeId, expecte
 	saved_type := tc.expected_expr_type
 	tc.expected_expr_id = int(id)
 	tc.expected_expr_type = expected
+	if tc.valid_node_id(id) && tc.a.nodes[int(id)].kind == .enum_val {
+		_ = tc.resolve_expr(id, expected)
+	}
 	tc.check_node(id)
 	tc.expected_expr_id = saved_id
 	tc.expected_expr_type = saved_type
