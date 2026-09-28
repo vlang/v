@@ -14754,30 +14754,17 @@ fn (mut tc TypeChecker) collect_returned_alias_sources_in_scope(id flat.NodeId, 
 		binding_id := tc.a.child(node, 0)
 		binding := tc.a.node(binding_id)
 		if binding.kind == .ident && binding.value != '_' {
-			if typ := tc.cached_expr_type(binding_id) {
-				if fn_type_from_type(typ) != none {
-					tc.cur_scope.insert(binding.value, typ)
-				}
+			typ := tc.cached_expr_type(binding_id) or {
+				tc.resolve_type(tc.a.child(node, 1))
 			}
-		}
-	}
-	if node.kind == .for_in_stmt && node.children_count >= 2 {
-		for i in 0 .. 2 {
-			binding_id := tc.a.child(node, i)
-			if !tc.valid_node_id(binding_id) {
-				continue
-			}
-			binding := tc.a.node(binding_id)
-			if binding.kind == .ident && binding.value != '_' {
-				if typ := tc.cached_expr_type(binding_id) {
-					if fn_type_from_type(typ) != none {
-						tc.cur_scope.insert(binding.value, typ)
-					}
-				}
-			}
+			tc.cur_scope.insert(binding.value, typ)
 		}
 	}
 	for i in 0 .. node.children_count {
+		// Iterable and range-end handlers still see the enclosing scope.
+		if node.kind == .for_in_stmt && i == node.value.int() {
+			tc.restore_return_alias_for_in_bindings(*node)
+		}
 		// The first three loop children are init, condition, and post. Narrow
 		// only the body, matching check_for_stmt's condition scope.
 		if node.kind == .for_stmt && i == 3 {
@@ -14797,15 +14784,11 @@ fn (mut tc TypeChecker) collect_returned_alias_sources_in_scope(id flat.NodeId, 
 		for i, lhs_id in tc.multi_assign_lhs_ids(*node) {
 			lhs := tc.a.node(lhs_id)
 			if lhs.kind == .ident {
-				if typ := tc.cached_expr_type(lhs_id) {
-					if fn_type_from_type(typ) != none {
-						tc.cur_scope.insert(lhs.value, typ)
-					} else if tc.condition_type_is_bool_like(typ)
-						&& i < tc.multi_assign_rhs_count(*node) {
-						owner := tc.cur_scope.insert_with_owner(lhs.value, typ)
-						tc.record_bool_condition_binding(owner, tc.multi_assign_rhs_id(*node, i),
-							typ, tc.decl_lhs_is_mut(*node, lhs_id))
-					}
+				typ := tc.return_alias_decl_binding_type(*node, i)
+				owner := tc.cur_scope.insert_with_owner(lhs.value, typ)
+				if tc.condition_type_is_bool_like(typ) && i < tc.multi_assign_rhs_count(*node) {
+					tc.record_bool_condition_binding(owner, tc.multi_assign_rhs_id(*node, i),
+						typ, tc.decl_lhs_is_mut(*node, lhs_id))
 				}
 			}
 		}
@@ -14814,6 +14797,82 @@ fn (mut tc TypeChecker) collect_returned_alias_sources_in_scope(id flat.NodeId, 
 		tc.pop_scope()
 		tc.smartcasts = saved_smartcasts
 	}
+}
+
+// Reconstruct lexical bindings without annotating the callee's shared AST caches.
+fn (mut tc TypeChecker) restore_return_alias_for_in_bindings(node flat.Node) {
+	header := node.value.int()
+	if header < 3 || node.children_count < 3 {
+		return
+	}
+	key_id := tc.a.child(&node, 0)
+	val_id := tc.a.child(&node, 1)
+	container_id := tc.a.child(&node, 2)
+	mut key_type := Type(int_)
+	mut value_type := unknown_type('unresolved return alias iterator')
+	if header == 4 {
+		key_type = tc.range_loop_var_type(container_id, tc.a.child(&node, 3))
+	} else {
+		container := tc.for_in_iterable_type(container_id)
+		yields_ref := node.op == .amp || tc.for_in_iterable_yields_ref(container_id)
+		match container {
+			Array, ArrayFixed {
+				value_type = for_in_ref_binding_type(container.elem_type, yields_ref)
+			}
+			Map {
+				key_type = container.key_type
+				value_type = for_in_ref_binding_type(container.value_type, yields_ref)
+			}
+			String {
+				value_type = Type(u8_)
+			}
+			else {
+				value_type = tc.iterator_for_in_elem_type(container) or { value_type }
+			}
+		}
+		if !tc.valid_node_id(val_id) {
+			key_type = value_type
+		}
+	}
+	for i, binding_id in [key_id, val_id] {
+		if !tc.valid_node_id(binding_id) {
+			continue
+		}
+		binding := tc.a.node(binding_id)
+		if binding.kind == .ident && binding.value != '_' {
+			typ := tc.cached_expr_type(binding_id) or {
+				if i == 0 { key_type } else { value_type }
+			}
+			tc.cur_scope.insert(binding.value, typ)
+		}
+	}
+}
+
+fn (mut tc TypeChecker) return_alias_decl_binding_type(node flat.Node, index int) Type {
+	lhs_id := tc.multi_assign_lhs_id(node, index)
+	if typ := tc.cached_expr_type(lhs_id) {
+		if typ !is Unknown && typ !is Void {
+			return typ
+		}
+	}
+	lhs_count := tc.multi_assign_lhs_count(node)
+	rhs_count := tc.multi_assign_rhs_count(node)
+	if rhs_count == lhs_count {
+		if lhs_count == 1 && node.typ.len > 0 {
+			return tc.parse_type(node.typ)
+		}
+		return tc.resolve_type(tc.multi_assign_rhs_id(node, index))
+	}
+	if rhs_count == 1 {
+		rhs_id := tc.multi_assign_rhs_id(node, 0)
+		rhs_type := tc.resolve_type(rhs_id)
+		if multi := tc.multi_return_assignment_type(rhs_id, rhs_type) {
+			if index < multi.types.len {
+				return multi.types[index]
+			}
+		}
+	}
+	return unknown_type('unresolved return alias binding')
 }
 
 fn (mut tc TypeChecker) restore_return_alias_guard_bindings(cond_id flat.NodeId) {
@@ -14849,7 +14908,7 @@ fn (mut tc TypeChecker) restore_return_alias_guard_bindings(cond_id flat.NodeId)
 		} else {
 			Type(void_)
 		}
-		if fn_type_from_type(binding_type) != none {
+		if binding_type !is Void {
 			tc.cur_scope.insert(lhs.value, binding_type)
 		}
 	}

@@ -3,6 +3,26 @@ module types
 import os
 import v.flat
 
+fn test_module_named_local_receiver_preserves_returned_alias() {
+	root := os.join_path(os.vtmp_dir(), 'v3_return_alias_module_receiver_${os.getpid()}')
+	module_dir := os.join_path(root, 'nested', 'foo')
+	os.mkdir_all(module_dir)!
+	defer { os.rmdir_all(root) or {} }
+	os.write_file(os.join_path(root, 'v.mod'), "Module { name: 'alias_scope' }")!
+	os.write_file(os.join_path(module_dir, 'foo.v'), 'module foo
+struct Passthrough {}
+pub fn borrow(values []int) []int { return values.clone() }
+fn (receiver Passthrough) borrow(values []int) []int { return values }
+pub fn nested(values []int) []int { foo := Passthrough{}; return foo.borrow(values) }
+')!
+	os.write_file(os.join_path(root, 'main.v'), 'import nested.foo
+fn main() { original := [1, 2]; mut alias := foo.nested(original); alias[0] = 9 }
+')!
+	result := os.execute('${os.quoted_path(@VEXE)} -new-compiler -check ${os.quoted_path(root)}')
+	assert result.exit_code != 0, result.output
+	assert result.output.contains('immutable'), result.output
+}
+
 fn test_return_alias_assertion_smartcast_stays_in_its_block() {
 	mut a := flat.FlatAst.new()
 	helper := a.add_val(.ident, 'helper')
@@ -62,4 +82,20 @@ fn main() { original := [1, 2]; mut alias := nested(original, MapperOrInt(Mapper
 		assert result.exit_code != 0, 'case ${index}: ${result.output}'
 		assert result.output.contains('immutable'), 'case ${index}: ${result.output}'
 	}
+}
+
+fn test_for_in_header_handler_sees_outer_function() {
+	path := os.join_path(os.vtmp_dir(), 'v3_return_alias_loop_header_${os.getpid()}.v')
+	os.write_file(path, 'type Mapper = fn ([]int) []int
+fn helper(values []int) []int { return values.clone() }
+fn make_helpers() ![]Mapper { return error("no helpers") }
+fn nested(values []int) []int {
+	for helper in make_helpers() or { return helper(values) } { _ = helper }
+	return values.clone()
+}
+fn main() { original := [1, 2]; mut fresh := nested(original); fresh[0] = 9 }
+')!
+	defer { os.rm(path) or {} }
+	result := os.execute('${os.quoted_path(@VEXE)} -new-compiler -check ${os.quoted_path(path)}')
+	assert result.exit_code == 0, result.output
 }
