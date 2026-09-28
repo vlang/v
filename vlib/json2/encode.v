@@ -133,9 +133,8 @@ fn (mut encoder Encoder) encode_value[T](val T) {
 					}
 				}
 			}
-			encoder.output << `"`
-			unsafe { encoder.output.push_many(enum_val.str, enum_val.len) }
-			encoder.output << `"`
+			// A `@[json: '...']` name is arbitrary text; escape it like any string.
+			encoder.encode_string(enum_val)
 		}
 	} $else $if T.unaliased_typ is $sumtype {
 		encoder.encode_sumtype[T](val)
@@ -441,9 +440,7 @@ fn (mut encoder Encoder) encode_enum[T](val T) {
 				}
 			}
 		}
-		encoder.output << `"`
-		unsafe { encoder.output.push_many(enum_val.str, enum_val.len) }
-		encoder.output << `"`
+		encoder.encode_string(enum_val)
 	}
 }
 
@@ -483,6 +480,10 @@ fn (mut encoder Encoder) encode_sumtype[T](val T) {
 					variant_value := val
 					encoder.encode_value(variant_value)
 				}
+				// An alias variant and its base type both match `is`
+				// (`type MyString = string` in `MyString | string`); encode the
+				// value once.
+				return
 			}
 		}
 	}
