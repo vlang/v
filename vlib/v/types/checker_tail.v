@@ -8937,13 +8937,20 @@ fn (tc &TypeChecker) builtin_receiver_method_call_info(base_type Type, method st
 }
 
 fn (tc &TypeChecker) c_struct_receiver_method_name(receiver Type, method string) ?string {
-	clean := unalias_type(unwrap_all_pointers(receiver))
+	unwrapped := unwrap_all_pointers(receiver)
+	clean := unalias_type(unwrapped)
 	if clean !is Struct {
 		return none
 	}
 	receiver_name := (clean as Struct).name
 	if !receiver_name.starts_with('C.') {
 		return none
+	}
+	if unwrapped is Alias {
+		alias_method := '${unwrapped.name}.${method}'
+		if alias_method in tc.fn_ret_types {
+			return alias_method
+		}
 	}
 	key := '${receiver_name}.${method}'
 	local_key := checker_qualified_fn_name(tc.cur_module, key)
@@ -8972,6 +8979,20 @@ fn (tc &TypeChecker) c_struct_receiver_method_name(receiver Type, method string)
 		return visible
 	}
 	return none
+}
+
+// c_backed_alias_method_name reports whether a resolved method belongs to a V alias of a C struct.
+pub fn (tc &TypeChecker) c_backed_alias_method_name(name string) bool {
+	receiver_name := name.all_before_last('.')
+	if receiver_name.len == 0 {
+		return false
+	}
+	receiver := tc.parse_type(receiver_name)
+	if receiver !is Alias {
+		return false
+	}
+	base := unalias_type(receiver)
+	return base is Struct && base.name.starts_with('C.')
 }
 
 fn (tc &TypeChecker) c_struct_method_module_visible(name string) bool {
