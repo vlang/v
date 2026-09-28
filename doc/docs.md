@@ -1030,6 +1030,9 @@ f2 := 456e+2 // 45600
 
 ### Arrays
 
+Returning a new array through helper calls preserves each helper's parameter scope.
+
+
 An array is a collection of data elements of the same type. An array literal is a
 list of expressions surrounded by square brackets. An individual element can be
 accessed using an *index* expression. Indexing starts from `0`.
@@ -3245,6 +3248,9 @@ are a function of their arguments only, and their evaluation has no side effects
 (unless the function uses I/O).
 
 Function arguments are immutable by default, even when [references](#references) are passed.
+An array returned from an immutable argument remains immutable, including when returned through
+a local function value, a narrowed `if` or `match` branch, or after an exiting `if` guard.
+Use `.clone()` for a mutable copy.
 
 > [!NOTE]
 > However, V is not a purely functional language.
