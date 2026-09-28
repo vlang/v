@@ -16473,7 +16473,7 @@ fn (mut tc TypeChecker) resolve_generic_call_arg_type(id flat.NodeId) Type {
 			if callee.kind == .selector && callee.value == 'map' {
 				elem_type := tc.array_map_return_elem_type(node)
 				if elem_type !is Unknown && elem_type !is Void {
-					base_id := tc.a.child(&callee, 0)
+					base_id := tc.a.child(callee, 0)
 					base_type := tc.selector_fn_base_type(base_id) or { tc.resolve_type(base_id) }
 					typ = tc.array_map_result_type_from_receiver(base_type, elem_type)
 					tc.remember_expr_type(id, typ)
