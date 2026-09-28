@@ -32,7 +32,6 @@ on:
       - 'vlib/encoding/**'
       - 'vlib/flag/**'
       - 'vlib/io/**'
-      - 'vlib/json/**'
       - 'vlib/json2/**'
       - 'vlib/math/**'
       - 'vlib/net/**'
