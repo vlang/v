@@ -61,7 +61,7 @@ jobs:
       - uses: actions/checkout@v7
         with:
           persist-credentials: false
-      - uses: uraimo/run-on-arch-action@v3
+      - uses: uraimo/run-on-arch-action@1e2c619f81e6d8609845ea1d2f443a778df1ac68 # v3
         name: Run commands
         id: runcmd
         with:

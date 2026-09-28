@@ -80,7 +80,7 @@ jobs:
         run: ./v retry -- sudo apt install wabt
 
       - name: Setup Wasmer
-        uses: wasmerio/setup-wasmer@v3.1
+        uses: wasmerio/setup-wasmer@24b15c95293d23f89c68bd40dac76338f773e924 # v3.1
         with:
           version: v4.4.0
 
