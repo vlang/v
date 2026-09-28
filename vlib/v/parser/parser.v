@@ -14491,6 +14491,22 @@ fn (mut p Parser) sizeof_expr() flat.NodeId {
 		})
 	}
 	p.check(.lpar)
+	if p.is_translated && p.tok == .name && !p.is_local_binding(p.lit) && !p.global_names[p.lit]
+		&& ((p.peek() == .dot && p.imported_module_names[p.lit])
+			|| (p.peek() == .rpar && p.translated_sizeof_name_is_ambiguous(p.lit))) {
+		// Imports and deferred branches are resolved after parsing. Preserve
+		// both interpretations until the selected declaration is known.
+		inner := p.expr(.lowest)
+		name := p.type_expr_name(inner)
+		p.check(.rpar)
+		return p.a.add_node(flat.Node{
+			kind:           .sizeof_expr
+			value:          name
+			children_start: p.add_child(inner)
+			children_count: 1
+			pos:            p.span_to(sizeof_start)
+		})
+	}
 	if !p.can_start_type_name()
 		|| (p.is_translated && p.tok == .name
 			&& (p.is_local_binding(p.lit)
@@ -14562,6 +14578,15 @@ fn (mut p Parser) translated_sizeof_name_is_const(name string) bool {
 	// Deferred branches can declare both candidates. Retain the existing named
 	// type form when a type is possible; later phases resolve the bare spelling.
 	return p.translated_sizeof_const_names[key] && !p.translated_sizeof_type_names[key]
+}
+
+fn (mut p Parser) translated_sizeof_name_is_ambiguous(name string) bool {
+	if p.resolve_local_type_name(name) != name {
+		return false
+	}
+	p.scan_translated_sizeof_declarations()
+	key := p.translated_sizeof_declaration_key(name)
+	return p.translated_sizeof_const_names[key] && p.translated_sizeof_type_names[key]
 }
 
 fn (mut p Parser) scan_translated_sizeof_declarations() {

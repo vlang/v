@@ -1934,6 +1934,9 @@ fn (mut tc TypeChecker) check_node(id flat.NodeId) {
 	}
 	if node.kind == .sizeof_expr {
 		if node.children_count > 0 {
+			if tc.sizeof_arg_is_type(node) {
+				return
+			}
 			tc.check_node(tc.a.child(&node, 0))
 			return
 		}
@@ -5952,6 +5955,33 @@ fn (tc &TypeChecker) sizeof_type_diagnostic_pos(id flat.NodeId, name string) tok
 		return token.new_span(span.id, span.offset, end)
 	}
 	return node.pos
+}
+
+// sizeof_arg_is_type resolves the type candidate of an ambiguous sizeof argument.
+pub fn (tc &TypeChecker) sizeof_arg_is_type(node flat.Node) bool {
+	return node.value.len > 0 && tc.type_name_known(node.value)
+}
+
+// sizeof_const_conditions returns the original branch guards for a qualified constant.
+pub fn (tc &TypeChecker) sizeof_const_conditions(name string) []string {
+	mut child := tc.const_exprs[name] or { return []string{} }
+	mut conditions := []string{}
+	for int(child) >= 0 && int(child) < tc.direct_parent_ids.len {
+		parent_id := tc.direct_parent_ids[int(child)]
+		if int(parent_id) < 0 || int(parent_id) >= tc.a.nodes.len || parent_id == child {
+			break
+		}
+		parent := tc.a.nodes[int(parent_id)]
+		if parent.kind == .comptime_if {
+			if parent.children_count > 0 && tc.a.child(&parent, 0) == child {
+				conditions << parent.value
+			} else if parent.children_count > 1 && tc.a.child(&parent, 1) == child {
+				conditions << '!(${parent.value})'
+			}
+		}
+		child = parent_id
+	}
+	return conditions
 }
 
 fn (tc &TypeChecker) sizeof_value_selector_known(value string) bool {

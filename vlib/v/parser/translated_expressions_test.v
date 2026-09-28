@@ -339,3 +339,75 @@ $if sizeof(int) == 0 {
 	result := os.execute('${os.quoted_path(@VEXE)} run ${os.quoted_path(path)}')
 	assert result.exit_code == 0, result.output
 }
+
+fn test_translated_sizeof_qualified_constants_and_types() {
+	root := os.join_path(os.vtmp_dir(), 'translated_sizeof_qualified_${os.getpid()}')
+	os.mkdir_all(os.join_path(root, 'values'))!
+	defer { os.rmdir_all(root) or {} }
+	os.write_file(os.join_path(root, 'v.mod'), "Module { name: 'sizeof_qualified' }")!
+	os.write_file(os.join_path(root, 'values', 'values.v'), '@[translated]
+module values
+pub const regs = [1, 2]!
+pub const Regs = [1, 2, 3]!
+pub type count = u16
+pub type Count = u32
+pub struct Box[T] { value T }
+$if int is $int { pub const Chosen = [1, 2]! } $else { pub type Chosen = int }
+')!
+	os.write_file(os.join_path(root, 'main.v'), '@[translated]
+module main
+import values as foo
+const count_bytes = sizeof(foo.Count)
+const regs_bytes = sizeof(foo.regs)
+fn main() {
+	_ = foo.Box[u64]{}
+ assert sizeof(foo.regs) == sizeof([2]int)
+ assert sizeof(foo.Regs) == sizeof([3]int)
+ assert sizeof(foo.Chosen) == sizeof([2]int)
+ assert sizeof(foo.regs[0]) == sizeof(int)
+ assert sizeof(foo.count) == sizeof(u16)
+ assert sizeof(foo.Count) == sizeof(u32)
+ assert sizeof(foo.Box[u64]) == sizeof(u64)
+ assert count_bytes == sizeof(u32)
+ assert regs_bytes == sizeof([2]int)
+}
+
+')!
+	for flags in ['', '-no-parallel'] {
+		result := os.execute('${os.quoted_path(@VEXE)} ${flags} run ${os.quoted_path(root)}')
+		assert result.exit_code == 0, result.output
+	}
+}
+
+fn test_translated_sizeof_selects_deferred_constant_or_type() {
+	root := os.join_path(os.vtmp_dir(), 'translated_sizeof_selected_kind_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+	path := os.join_path(root, 'main.v')
+	for condition in ['int is $int', 'int is $float'] {
+		for const_in_then in [true, false] {
+			then_decl := if const_in_then { 'const Item = [1, 2]!' } else { 'type Item = int' }
+			else_decl := if const_in_then { 'type Item = int' } else { 'const Item = [1, 2]!' }
+			expected := if (condition == 'int is $int') == const_in_then {
+				'[2]int'
+			} else {
+				'int'
+			}
+			os.write_file(path, '@[translated]
+module main
+const chosen_size = sizeof(Item)
+fn check(int string) { assert sizeof(Item) == chosen_size; assert sizeof(int) == sizeof(string) }
+fn main() {
+ assert sizeof(Item) == sizeof(${expected})
+ assert chosen_size == sizeof(${expected})
+ check("")
+}
+$if ${condition} { ${then_decl} } $else { ${else_decl} }
+')!
+			for flags in ['', '-no-parallel'] {
+				result := os.execute('${os.quoted_path(@VEXE)} ${flags} run ${os.quoted_path(path)}')
+				assert result.exit_code == 0, result.output
+			}
+		}
+	}
+}

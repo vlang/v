@@ -5722,7 +5722,7 @@ fn (mut t Transformer) transform_const_decl(node flat.Node) {
 				new_val := t.transform_const_or_expr(val_id, val, const_typ)
 				t.a.children[cf.children_start] = new_val
 			} else if val.kind in [.struct_init, .cast_expr, .call, .array_literal, .array_init,
-				.map_init, .fn_literal, .lambda_expr] {
+				.map_init, .fn_literal, .lambda_expr, .sizeof_expr] {
 				new_val := t.transform_const_expr_no_pending(val_id)
 				t.a.children[cf.children_start] = new_val
 			} else if val.kind == .infix && val.children_count >= 2 {
@@ -9826,6 +9826,53 @@ fn (mut t Transformer) transform_debugger_stmt(node flat.Node) flat.NodeId {
 	})
 }
 
+// Resolve only sizeof's ambiguous name; declaration collection remains unchanged.
+fn (mut t Transformer) selected_sizeof_const_type(name string) ?string {
+	if name in t.active_generic_params {
+		return none
+	}
+	key := t.tc.qualify_name(name)
+	conditions := t.tc.sizeof_const_conditions(key)
+	if conditions.len == 0 {
+		return none
+	}
+	old_module := t.cur_module
+	old_file := t.cur_file
+	old_tc_module := t.tc.cur_module
+	old_tc_file := t.tc.cur_file
+	old_var_types := t.var_types.clone()
+	old_generic_params := t.active_generic_params.clone()
+	old_is_generic := t.cur_fn_is_generic
+	t.cur_module = t.tc.const_modules[key] or { t.cur_module }
+	t.cur_file = t.tc.const_files[key] or { t.cur_file }
+	t.tc.cur_module = t.cur_module
+	t.tc.cur_file = t.cur_file
+	// A declaration's type test must not see the caller's locals or generics.
+	t.restore_var_types([]VarTypeBinding{})
+	t.active_generic_params = []string{}
+	t.cur_fn_is_generic = false
+	defer {
+		t.cur_module = old_module
+		t.cur_file = old_file
+		t.tc.cur_module = old_tc_module
+		t.tc.cur_file = old_tc_file
+		t.restore_var_types(old_var_types)
+		t.active_generic_params = old_generic_params
+		t.cur_fn_is_generic = old_is_generic
+	}
+	for raw in conditions {
+		condition := t.subst_comptime_type_condition(raw, []string{})
+		if !(t.comptime_type_condition_value(condition) or { return none }) {
+			return none
+		}
+	}
+	typ := t.tc.const_types[key] or { return none }
+	if typ is types.Unknown || typ is types.Void {
+		return none
+	}
+	return t.tc.type_name(typ)
+}
+
 // transform_expr transforms transform expr data for transform.
 @[direct_array_access]
 pub fn (mut t Transformer) transform_expr(id flat.NodeId) flat.NodeId {
@@ -9942,6 +9989,16 @@ pub fn (mut t Transformer) transform_expr(id flat.NodeId) flat.NodeId {
 	}
 	if kind_id == 30 || kind_id == 27 || kind_id == 57 {
 		return t.transform_children_expr(id, node)
+	}
+	if node.kind == .sizeof_expr && node.value.len > 0 && node.children_count > 0 {
+		if selected_type := t.selected_sizeof_const_type(node.value) {
+			return t.a.add_node(flat.Node{ ...node, value: selected_type, children_count: 0 })
+		}
+		return t.a.add_node(if t.tc.sizeof_arg_is_type(node) {
+			flat.Node{ ...node, value: t.tc.qualify_name(node.value), children_count: 0 }
+		} else {
+			flat.Node{ ...node, value: '' }
+		})
 	}
 	if kind_id == 1 || kind_id == 2 || kind_id == 3 || kind_id == 4 || kind_id == 5 || kind_id == 28
 		|| kind_id == 29 || kind_id == 25 || kind_id == 33 || kind_id == 36 {
