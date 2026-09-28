@@ -10596,6 +10596,7 @@ fn (mut t Transformer) mark_detached_spawn_drop_type(typ types.Type, mut seen ma
 		}
 		types.OptionType, types.ResultType {
 			t.mark_detached_spawn_drop_type(typ.base_type, mut seen)
+			t.mark_detached_spawn_drop_type(t.tc.parse_type('IError'), mut seen)
 		}
 		types.Array, types.ArrayFixed {
 			t.mark_detached_spawn_drop_type(typ.elem_type, mut seen)
@@ -10603,6 +10604,27 @@ fn (mut t Transformer) mark_detached_spawn_drop_type(typ types.Type, mut seen ma
 		types.Map {
 			t.mark_detached_spawn_drop_type(typ.key_type, mut seen)
 			t.mark_detached_spawn_drop_type(typ.value_type, mut seen)
+		}
+		types.Interface {
+			mut iface_name := typ.name
+			if iface_name !in t.tc.interface_names {
+				qualified := t.tc.qualify_name(iface_name)
+				if qualified in t.tc.interface_names {
+					iface_name = qualified
+				}
+			}
+			if iface_name != name && seen[iface_name] {
+				return
+			}
+			seen[iface_name] = true
+			implementers := if iface_name in ['IError', 'builtin.IError'] {
+				t.tc.ierror_impl_names()
+			} else {
+				t.tc.interface_impl_names(iface_name)
+			}
+			for concrete in implementers {
+				t.mark_detached_spawn_drop_type(t.tc.parse_type(concrete), mut seen)
+			}
 		}
 		types.Struct {
 			method := if t.tc.autofree_mode { 'free' } else { 'drop' }
