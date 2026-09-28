@@ -49,7 +49,7 @@ fn (mut decoder Decoder) get_decoded_sumtype_workaround[T](initialized_sumtype T
 	return initialized_sumtype // suppress compiler error
 }
 
-fn (mut decoder Decoder) check_element_type_valid[T](element T, current_node &Node[ValueInfo]) bool {
+fn (mut decoder Decoder) check_element_type_valid[T](element T, current_node &DecodeNode[ValueInfo]) bool {
 	if current_node == unsafe { nil } {
 		$if element is $array || element is $map {
 			return false
@@ -121,7 +121,7 @@ fn get_array_element_type[T](_arr []T) T {
 	return T{}
 }
 
-fn (mut decoder Decoder) check_array_type_valid[T](arr []T, current_node &Node[ValueInfo]) bool {
+fn (mut decoder Decoder) check_array_type_valid[T](arr []T, current_node &DecodeNode[ValueInfo]) bool {
 	element := get_array_element_type(arr)
 	return decoder.check_element_type_valid(element, current_node)
 }
@@ -144,7 +144,7 @@ fn get_map_element_type[U, V](_m map[U]V) V {
 	return V{}
 }
 
-fn (mut decoder Decoder) check_map_type_valid[T](m T, current_node &Node[ValueInfo]) bool {
+fn (mut decoder Decoder) check_map_type_valid[T](m T, current_node &DecodeNode[ValueInfo]) bool {
 	element := get_map_element_type(m)
 	return decoder.check_element_type_valid(element, current_node)
 }
@@ -173,7 +173,7 @@ fn (mut decoder Decoder) get_map_type_workaround[T](initialized_sumtype T) bool 
 }
 
 @[markused]
-fn (decoder &Decoder) get_sumtype_type_field_node(current_node &Node[ValueInfo]) &Node[ValueInfo] {
+fn (decoder &Decoder) get_sumtype_type_field_node(current_node &DecodeNode[ValueInfo]) &DecodeNode[ValueInfo] {
 	if current_node == unsafe { nil } {
 		return unsafe { nil }
 	}
@@ -212,7 +212,7 @@ fn (decoder &Decoder) get_sumtype_type_field_node(current_node &Node[ValueInfo])
 }
 
 @[markused]
-fn (decoder &Decoder) sumtype_type_field_matches(type_field_node &Node[ValueInfo], expected string) bool {
+fn (decoder &Decoder) sumtype_type_field_matches(type_field_node &DecodeNode[ValueInfo], expected string) bool {
 	if type_field_node == unsafe { nil } {
 		return false
 	}
@@ -228,13 +228,13 @@ fn (decoder &Decoder) sumtype_type_field_matches(type_field_node &Node[ValueInfo
 	}
 }
 
-fn (decoder &Decoder) check_sumtype_type_valid[T](value T, current_node &Node[ValueInfo]) bool {
+fn (decoder &Decoder) check_sumtype_type_valid[T](value T, current_node &DecodeNode[ValueInfo]) bool {
 	type_field_node := decoder.get_sumtype_type_field_node(current_node)
 	return decoder.sumtype_type_field_matches(type_field_node,
 		sumtype_variant_name(typeof(value).name))
 }
 
-fn (mut decoder Decoder) check_struct_type_valid[T](s T, current_node &Node[ValueInfo]) bool {
+fn (mut decoder Decoder) check_struct_type_valid[T](s T, current_node &DecodeNode[ValueInfo]) bool {
 	return decoder.check_sumtype_type_valid(s, current_node)
 }
 

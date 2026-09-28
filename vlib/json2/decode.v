@@ -13,11 +13,13 @@ const float_zero_in_string = '0.0'
 
 const whitespace_chars = [` `, `\t`, `\n`, `\r`]!
 
-// Node represents a node in a linked list to store ValueInfo.
-struct Node[T] {
+// DecodeNode represents a node in a linked list to store ValueInfo. It is not named
+// `Node`, since a user type of that name nested in `decode[[]Node]` would still
+// collide with it during specialization.
+struct DecodeNode[T] {
 mut:
 	value T
-	next  &Node[T] = unsafe { nil } // next is the next node in the linked list.
+	next  &DecodeNode[T] = unsafe { nil } // next is the next node in the linked list.
 }
 
 // ValueInfo represents the position and length of a value, such as string, number, array, object key, and object value in a JSON string.
@@ -103,22 +105,22 @@ struct Decoder {
 	json   string // json is the JSON data to be decoded.
 	strict bool   // strict mode rejects quoted strings as numbers, and fixed arrays of another length
 mut:
-	values_info  LinkedList[ValueInfo] // A linked list to store ValueInfo.
+	values_info  DecodeList[ValueInfo] // A linked list to store ValueInfo.
 	checker_idx  int                   // checker_idx is the current index of the decoder.
-	current_node &Node[ValueInfo] = unsafe { nil } // The current node in the linked list.
+	current_node &DecodeNode[ValueInfo] = unsafe { nil } // The current node in the linked list.
 }
 
-// LinkedList represents a linked list to store ValueInfo.
-struct LinkedList[T] {
+// DecodeList represents a linked list to store ValueInfo.
+struct DecodeList[T] {
 mut:
-	head &Node[T] = unsafe { nil } // head is the first node in the linked list.
-	tail &Node[T] = unsafe { nil } // tail is the last node in the linked list.
+	head &DecodeNode[T] = unsafe { nil } // head is the first node in the linked list.
+	tail &DecodeNode[T] = unsafe { nil } // tail is the last node in the linked list.
 	len  int // len is the length of the linked list.
 }
 
 // push adds a new element to the linked list.
-fn (mut list LinkedList[T]) push(value T) {
-	node := &Node[T]{
+fn (mut list DecodeList[T]) push(value T) {
+	node := &DecodeNode[T]{
 		value: value
 	}
 	if list.head == unsafe { nil } {
@@ -132,12 +134,12 @@ fn (mut list LinkedList[T]) push(value T) {
 }
 
 // last returns the last element added to the linked list.
-fn (list &LinkedList[T]) last() &T {
+fn (list &DecodeList[T]) last() &T {
 	return &list.tail.value
 }
 
 // str returns a string representation of the linked list.
-fn (list &LinkedList[ValueInfo]) str() string {
+fn (list &DecodeList[ValueInfo]) str() string {
 	mut result_buffer := []u8{}
 	mut current := list.head
 	for current != unsafe { nil } {
@@ -151,7 +153,7 @@ fn (list &LinkedList[ValueInfo]) str() string {
 }
 
 @[unsafe]
-fn (list &LinkedList[T]) free() {
+fn (list &DecodeList[T]) free() {
 	mut current := list.head
 	for current != unsafe { nil } {
 		mut next := current.next

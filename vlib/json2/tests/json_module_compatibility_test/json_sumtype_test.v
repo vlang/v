@@ -54,7 +54,9 @@ fn test_main() {
 				net: 1.2
 			}])
 		}
-	}, escape_unicode: true)
+	},
+		escape_unicode: true
+	)
 	assert data3 == '{"attributes":{"price":[{"net":1.2,"_type":"Price"}]}}'
 
 	entity3 := json2.decode[ShopResponseData](data3) or { panic(err) }
@@ -70,7 +72,9 @@ fn test_main() {
 fn test_sum_types() {
 	data1 := json2.encode(Animal(Dog{
 		dog_name: 'Caramelo'
-	}), escape_unicode: true)
+	}),
+		escape_unicode: true
+	)
 	assert data1 == '{"dog_name":"Caramelo","_type":"Dog"}'
 
 	s := '{"_type":"Cat","cat_name":"Whiskers"}'
@@ -103,21 +107,22 @@ fn test_sum_types() {
 	assert cat.cat_name == 'Whiskers'
 	assert dog.dog_name == 'Goofie'
 
-	j := json2.encode(animals[0], escape_unicode: true)
+	// The asserts above smartcast `animals[0]` to `Cat`; encode the sum value.
+	j := json2.encode(Animal(animals[0]), escape_unicode: true)
 	assert j == '{"cat_name":"Whiskers","_type":"Cat"}'
 }
 
 type Value = string | i32
 
-struct ValueNode {
+struct Node {
 	value Value
 }
 
 fn test_sum_types_with_i32() {
-	data1 := json2.encode([ValueNode{i32(128)}, ValueNode{'mystring'}], escape_unicode: true)
+	data1 := json2.encode([Node{i32(128)}, Node{'mystring'}], escape_unicode: true)
 	assert data1 == '[{"value":128},{"value":"mystring"}]'
 
-	node := json2.decode[[]ValueNode](data1) or {
+	node := json2.decode[[]Node](data1) or {
 		println(err)
 		assert false
 		return
