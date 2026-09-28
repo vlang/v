@@ -369,9 +369,13 @@ fn new_pointer_to[T](value T) &T {
 
 // decode_option_payload decodes the current value as the payload of an option.
 fn (mut decoder Decoder) decode_option_payload[P](_ ?P) !P {
-	mut payload := P{}
-	decoder.decode_value(mut payload)!
-	return payload
+	$if P is $pointer {
+		return decoder.decode_array_element(P{})!
+	} $else {
+		mut payload := P{}
+		decoder.decode_value(mut payload)!
+		return payload
+	}
 }
 
 fn create_decoded_ptr[T](_ &T) &T {
@@ -1408,7 +1412,7 @@ fn (mut decoder Decoder) decode_fixed_array_element[E](element &E) ! {
 				*element = payload
 			}
 		}
-	} $else $if E.indirections == 1 {
+	} $else $if E is $pointer {
 		unsafe {
 			*element = decoder.decode_array_element(*element)!
 		}
@@ -1434,6 +1438,23 @@ fn (mut decoder Decoder) decode_array_element[E](initial E) !E {
 			mut decoded_ptr := create_decoded_ptr(element)
 			decoder.decode_value(mut decoded_ptr)!
 			element = decoded_ptr
+		}
+	} $else $if E.indirections == 2 {
+		// `&&T` and `&&&T` elements point to a newly decoded value, like fields.
+		if decoder.current_node.value.value_kind == .null {
+			decoder.current_node = decoder.current_node.next
+		} else {
+			mut decoded_ptr := $new(E.pointee_type.pointee_type)
+			decoder.decode_value(mut decoded_ptr)!
+			element = new_pointer_to(decoded_ptr)
+		}
+	} $else $if E.indirections == 3 {
+		if decoder.current_node.value.value_kind == .null {
+			decoder.current_node = decoder.current_node.next
+		} else {
+			mut decoded_ptr := $new(E.pointee_type.pointee_type.pointee_type)
+			decoder.decode_value(mut decoded_ptr)!
+			element = new_pointer_to(new_pointer_to(decoded_ptr))
 		}
 	} $else {
 		decoder.decode_value(mut element)!
@@ -1494,16 +1515,8 @@ fn (mut decoder Decoder) decode_map[V](mut val map[string]V) ! {
 				}
 				mut map_value := V{}
 
-				$if V.indirections == 1 {
-					if decoder.current_node.value.value_kind == .null {
-						if decoder.current_node != unsafe { nil } {
-							decoder.current_node = decoder.current_node.next
-						}
-					} else {
-						mut decoded_ptr := create_decoded_ptr(map_value)
-						decoder.decode_value(mut decoded_ptr)!
-						map_value = decoded_ptr
-					}
+				$if V is $pointer {
+					map_value = decoder.decode_array_element(map_value)!
 				} $else {
 					decoder.decode_value(mut map_value)!
 				}

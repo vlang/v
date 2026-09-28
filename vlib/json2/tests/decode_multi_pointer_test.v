@@ -20,3 +20,32 @@ fn test_multi_pointer_fields() {
 	assert decoded.n == unsafe { nil }
 	assert decoded.m == none
 }
+
+struct MultiPointerElem {
+	value int = 7
+}
+
+struct MultiPointerContainers {
+	list   []&&int
+	fixed  [2]&&string
+	by_key map[string]&&MultiPointerElem
+	triple []&&&int
+	opts   []?&&int
+}
+
+fn test_multi_pointer_container_elements() {
+	decoded := json2.decode[MultiPointerContainers]('{"list":[1,null,2],"fixed":["a","b"],"by_key":{"k":{"value":3}},"triple":[9],"opts":[5,null]}')!
+	assert decoded.list.len == 3
+	assert **decoded.list[0] == 1
+	assert **decoded.list[2] == 2
+	assert **decoded.fixed[0] == 'a'
+	assert **decoded.fixed[1] == 'b'
+	elem := decoded.by_key['k'] or { panic('k should be set') }
+	assert (**elem).value == 3
+	assert ***decoded.triple[0] == 9
+	first := decoded.opts[0] or { panic('the first option should be set') }
+	assert **first == 5
+	assert decoded.opts[1] == none
+	top := json2.decode[[]&&int]('[3]')!
+	assert **top[0] == 3
+}
