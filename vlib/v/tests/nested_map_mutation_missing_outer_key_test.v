@@ -276,6 +276,49 @@ fn test_postfix_clones_borrowed_owned_inner_key() {
 	assert direct[key] == 1
 }
 
+fn fail_selector_key() !string {
+	return error('key failed')
+}
+
+fn fail_selector_rhs() !int {
+	return error('rhs failed')
+}
+
+fn assign_after_failing_selector_key(mut m map[[2]string]map[string]map[string]NestedMapPoint, key [2]string) ! {
+	m[key][fail_selector_key()!]['c'].x = 1
+}
+
+fn assign_after_failing_selector_rhs(mut m map[[2]string]map[string]map[string]NestedMapPoint, key [2]string) ! {
+	m[key]['b']['c'].x = fail_selector_rhs()!
+}
+
+fn assign_after_failing_owned_final_key(mut m map[string]map[[2]string]NestedMapPoint, key [2]string) ! {
+	m['a'][key].x = fail_selector_rhs()!
+}
+
+fn test_selector_ancestor_keys_are_cleaned_on_early_return() {
+	key := ['a', 'b']!
+	mut m := map[[2]string]map[string]map[string]NestedMapPoint{}
+	mut failures := 0
+	assign_after_failing_selector_key(mut m, key) or {
+		assert err.msg() == 'key failed'
+		failures++
+	}
+	assign_after_failing_selector_rhs(mut m, key) or {
+		assert err.msg() == 'rhs failed'
+		failures++
+	}
+	assert failures == 2
+	assert m.len == 0
+	mut final_key := map[string]map[[2]string]NestedMapPoint{}
+	assign_after_failing_owned_final_key(mut final_key, key) or {
+		assert err.msg() == 'rhs failed'
+		failures++
+	}
+	assert failures == 3
+	assert final_key.len == 0
+}
+
 fn replace_nested_outer(mut m map[string]map[string][]int) string {
 	m['a'] = map[string][]int{
 		'fresh': [7]

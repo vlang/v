@@ -33,10 +33,8 @@ struct MapIndexInfo {
 struct MapSelectorAncestor {
 	info MapIndexInfo
 mut:
-	key_name            string
-	lookup_key_name     string
-	key_is_owned        bool
-	lookup_key_is_owned bool
+	key_name        string
+	lookup_key_name string
 }
 
 struct MapFixedArrayIndexInfo {
@@ -2944,11 +2942,15 @@ fn (mut t Transformer) try_lower_map_index_selector_assign(node flat.Node) ?[]fl
 	for mut ancestor in ancestors {
 		ancestor.key_name = t.new_temp('map_outer_key')
 		outer_key := t.transform_expr_for_type(ancestor.info.key_id, ancestor.info.key_type)
-		ancestor.key_is_owned = t.map_key_expr_creates_owned_value(ancestor.info.key_id,
+		outer_key_is_owned := t.map_key_expr_creates_owned_value(ancestor.info.key_id,
 			ancestor.info.key_type)
 		t.drain_pending(mut result)
 		result << t.make_decl_assign_typed(ancestor.key_name, outer_key,
 			ancestor.info.key_storage_type)
+		if outer_key_is_owned && !isnil(t.tc)
+			&& t.tc.ownership_type_requires_destruction(t.tc.parse_type(ancestor.info.key_type)) {
+			result << t.make_map_key_drop_defer(ancestor.key_name, '')
+		}
 		ancestor.lookup_key_name = ancestor.key_name
 		if !isnil(t.tc)
 			&& t.tc.ownership_type_requires_destruction(t.tc.parse_type(ancestor.info.key_type)) {
@@ -2961,7 +2963,7 @@ fn (mut t Transformer) try_lower_map_index_selector_assign(node flat.Node) ?[]fl
 			t.drain_pending(mut result)
 			result << t.make_decl_assign_typed(ancestor.lookup_key_name, lookup_key,
 				ancestor.info.key_storage_type)
-			ancestor.lookup_key_is_owned = true
+			result << t.make_map_key_drop_defer(ancestor.lookup_key_name, '')
 		}
 	}
 	key_name := t.new_temp('map_key')
@@ -2978,6 +2980,13 @@ fn (mut t Transformer) try_lower_map_index_selector_assign(node flat.Node) ?[]fl
 	}
 	t.drain_pending(mut result)
 	result << t.make_decl_assign_typed(key_name, key_value, info.key_storage_type)
+	mut key_drop_pending_name := ''
+	if key_is_owned && !isnil(t.tc)
+		&& t.tc.ownership_type_requires_destruction(t.tc.parse_type(info.key_type)) {
+		key_drop_pending_name = t.new_temp('map_key_drop_pending')
+		result << t.make_decl_assign_typed(key_drop_pending_name, t.make_bool_literal(true), 'bool')
+		result << t.make_map_key_drop_defer(key_name, key_drop_pending_name)
+	}
 	rhs_id := t.a.child(&node, 1)
 	mut rhs := t.transform_expr_for_type(rhs_id, field_type)
 	mut assignment_is_valid := true
@@ -3010,19 +3019,28 @@ fn (mut t Transformer) try_lower_map_index_selector_assign(node flat.Node) ?[]fl
 	result << t.make_assign_after_owned_drop(field, t.make_ident(rhs_name))
 	result << t.make_map_set_stmt(map_expr, info.base_type, key_name, current_name)
 	t.append_owned_map_set_key_cleanup(key_name, cleanup_key, existing_key_name, mut result)
-	for ancestor in ancestors {
-		if ancestor.lookup_key_is_owned {
-			result << t.make_expr_stmt(t.make_call_typed('drop_owned', [
-				t.make_ident(ancestor.lookup_key_name),
-			], 'void'))
-		}
-		if ancestor.key_is_owned {
-			result << t.make_expr_stmt(t.make_call_typed('drop_owned', [
-				t.make_ident(ancestor.key_name),
-			], 'void'))
-		}
+	if key_drop_pending_name.len > 0 {
+		result << t.make_assign(t.make_ident(key_drop_pending_name), t.make_bool_literal(false))
 	}
 	return result
+}
+
+fn (mut t Transformer) make_map_key_drop_defer(key_name string, guard_name string) flat.NodeId {
+	drop_stmt := t.make_expr_stmt(t.make_call_typed('drop_owned', [t.make_ident(key_name)],
+		'void'))
+	guarded_stmt := if guard_name.len > 0 {
+		t.make_if(t.make_ident(guard_name), t.make_block([drop_stmt]), t.make_empty())
+	} else {
+		drop_stmt
+	}
+	defer_body := t.make_block([guarded_stmt])
+	defer_start := t.a.children.len
+	t.a.children << defer_body
+	return t.a.add_node(flat.Node{
+		kind:           .defer_stmt
+		children_start: defer_start
+		children_count: 1
+	})
 }
 
 // append_owned_lvalue_drop_before_assign destroys an owned value after its
