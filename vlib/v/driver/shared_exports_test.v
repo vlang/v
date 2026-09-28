@@ -62,4 +62,22 @@ fn test_shared_exports_collects_global_abi_names() {
 	attr.set_generic_params(["export: 'mylib_counter'"])
 	ast.add_node(attr)
 	assert v3_exported_global_names(&ast) == ['mylib_counter']
+	assert v3_shared_exports_data_names(&ast) == ['mylib_counter']
+}
+
+fn test_shared_exports_keep_the_interface_table() {
+	mut ast := flat.FlatAst.new()
+	ast.add_node(flat.Node{ kind: .file, value: 'builtin.v' })
+	ast.add_node(flat.Node{ kind: .module_decl, value: 'builtin' })
+	ast.add_node(flat.Node{ kind: .interface_decl, value: 'IError' })
+	// Cgen emits no interface table when `builtin.IError` is the only interface.
+	assert !v3_shared_library_exports_interface_table(&ast)
+	assert v3_shared_exports_data_names(&ast) == []string{}
+	ast.add_node(flat.Node{ kind: .file, value: 'mylib.v' })
+	ast.add_node(flat.Node{ kind: .module_decl, value: 'mylib' })
+	ast.add_node(flat.Node{ kind: .interface_decl, value: 'IError' })
+	assert v3_shared_library_exports_interface_table(&ast)
+	assert v3_shared_exports_data_names(&ast) == ['_v_interface_exports']
+	script := v3_shared_exports_version_script(map[string]string{}, v3_shared_exports_data_names(&ast))
+	assert script.contains('"_v_interface_exports";')
 }

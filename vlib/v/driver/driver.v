@@ -3288,6 +3288,43 @@ fn v3_has_linker_version_script(flags []string) bool {
 	return flags.any(it.contains('--version-script'))
 }
 
+// v3_shared_library_exports_interface_table reports whether cgen emits the
+// `_v_interface_exports` table of a shared library (see
+// `FlatGen.shared_exports_interface_table`): it does for every interface other
+// than `IError`, and `dl.open` looks the table up in the loaded library.
+fn v3_shared_library_exports_interface_table(a &flat.FlatAst) bool {
+	mut cur_module := 'main'
+	for node in a.nodes {
+		match node.kind {
+			.file {
+				cur_module = 'main'
+			}
+			.module_decl {
+				cur_module = node.value
+			}
+			.interface_decl {
+				is_ierror := node.value == 'builtin.IError'
+					|| (node.value == 'IError' && cur_module in ['', 'main', 'builtin'])
+				if !is_ierror {
+					return true
+				}
+			}
+			else {}
+		}
+	}
+	return false
+}
+
+// v3_shared_exports_data_names returns the data symbols that a shared library
+// exports besides its `@[export]` functions.
+fn v3_shared_exports_data_names(a &flat.FlatAst) []string {
+	mut names := v3_exported_global_names(a)
+	if v3_shared_library_exports_interface_table(a) {
+		names << '_v_interface_exports'
+	}
+	return names
+}
+
 fn v3_c_compiler_flag_plan(options V3CCompilerFlagOptions) V3CCompilerFlagPlan {
 	mut before_inputs := options.environment_c_flags.clone()
 	before_inputs << options.target_args
@@ -13324,7 +13361,7 @@ pub fn run(args []string) {
 			exports_dir := if generate_c_project.len > 0 { generate_c_project } else { cc_dir }
 			exports_script := os.join_path_single(exports_dir, 'exports.map')
 			os.write_file(exports_script, v3_shared_exports_version_script(a.export_fn_names,
-				v3_exported_global_names(&a))) or {
+				v3_shared_exports_data_names(&a))) or {
 				eprintln('failed to write shared exports script ${exports_script}: ${err.msg()}')
 				cleanup_c_build_dir(cc_dir)
 				exit(1)
