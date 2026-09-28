@@ -205,14 +205,14 @@ fn test_system_libc_thread_preamble_uses_native_windows_api() {
 	assert windows_code.contains('return a.handle == b.handle;'), windows_code
 	assert windows_code.contains('static __v_thread __v_thread_spawn_detached(__v_thread_start_fn start, void* arg, void (*cleanup)(void*)) {'), windows_code
 	// The detached thread frees its own context and result; its handle is closed at once.
-	assert windows_code.contains('free(raw_context); void* result = context.start(context.arg); if (result) free(result); return 0; }'), windows_code
+	assert windows_code.contains('__v_thread_free(raw_context); void* result = context.start(context.arg); if (result) __v_thread_free(result); return 0; }'), windows_code
 	assert windows_code.contains('HANDLE handle = CreateThread(NULL, __v_thread_stack_size, __v_windows_detached_thread_start, context, 0, NULL);'), windows_code
 	assert windows_code.contains('if (!CloseHandle(handle))'), windows_code
 	assert !windows_code.contains('pthread_'), windows_code
 	posix_code := c_code[posix_start..]
 	assert posix_code.contains('pthread_equal(a.handle, b.handle) != 0'), posix_code
 	assert posix_code.contains('pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED)'), posix_code
-	assert posix_code.contains('free(raw_context); void* result = context.start(context.arg); if (result) free(result); return NULL; }'), posix_code
+	assert posix_code.contains('__v_thread_free(raw_context); void* result = context.start(context.arg); if (result) __v_thread_free(result); return NULL; }'), posix_code
 }
 
 fn test_headerless_thread_runtime_can_spawn_detached_threads() {

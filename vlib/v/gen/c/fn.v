@@ -4256,7 +4256,7 @@ fn (mut g FlatGen) detached_spawn_result_cleanup(typ types.Type, expr string, de
 			idx := g.tmp_count
 			g.tmp_count++
 			result := '__tr_result${idx}'
-			mut cleanup := 'free(${result}); '
+			mut cleanup := '__v_thread_free(${result}); '
 			if thread_name.starts_with('thread ') {
 				inner_type := g.tc.parse_type(trimmed_space(thread_name[7..]))
 				inner_ct := g.fn_return_type_name(inner_type)
