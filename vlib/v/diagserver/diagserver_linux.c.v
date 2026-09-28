@@ -126,13 +126,28 @@ pub fn serve() Request {
 		if question != '' {
 			channel = new_channel()
 		}
+		server_pid := os.getpid()
 		pid := os.fork()
 		if pid == 0 {
+			// A test holds the child here, before it asks to end with the server,
+			// until something writes to the FIFO V_DIAGNOSTICS_CHILD_PAUSE names.
+			if pause := os.getenv_opt('V_DIAGNOSTICS_CHILD_PAUSE') {
+				os.read_file(pause) or {}
+			}
 			// The client reads a single stream: diagnostics go where the answer goes.
 			C.dup2(1, 2)
 			C.signal(C.SIGPIPE, C.SIG_DFL)
-			// Nobody reads what a child prints once the server is gone.
-			C.prctl(C.PR_SET_PDEATHSIG, voidptr(usize(C.SIGKILL)), 0, 0, 0)
+			// Nobody reads what a child prints once the server is gone. The kernel
+			// ends the child with the server only if the server is still there when
+			// the child asks: one that ended since the fork left the child to another
+			// parent, and the child ends at once.
+			if C.prctl(C.PR_SET_PDEATHSIG, voidptr(usize(C.SIGKILL)), 0, 0, 0) != 0 {
+				eprintln('v-diagnostics-server: a child cannot follow the server')
+				exit(2)
+			}
+			if os.getppid() != server_pid {
+				C._exit(2)
+			}
 			warm.close_server_ends()
 			os.chdir(work_dir) or {
 				eprintln('v-diagnostics-server: cannot enter ${work_dir}: ${err}')
