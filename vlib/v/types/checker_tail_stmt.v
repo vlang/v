@@ -287,7 +287,7 @@ fn (tc &TypeChecker) unreachable_statement_diagnostic_pos(id flat.NodeId) token.
 }
 
 fn (mut tc TypeChecker) check_unused_expression_statement(id flat.NodeId) {
-	if !tc.valid_node_id(id) || tc.node_is_in_translated_file(id) {
+	if !tc.valid_node_id(id) {
 		return
 	}
 	stmt := tc.a.node(id)
@@ -324,6 +324,9 @@ fn (mut tc TypeChecker) check_unused_expression_statement(id flat.NodeId) {
 	}
 	if semantic.kind == .call {
 		tc.check_must_use_call(semantic_id, semantic)
+		return
+	}
+	if tc.node_is_in_translated_file(id) {
 		return
 	}
 	if semantic.kind == .or_expr {
