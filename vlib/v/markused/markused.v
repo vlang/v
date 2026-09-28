@@ -6763,7 +6763,7 @@ fn (c &CallCollector) generic_factory_return_type_name(index &flat.Node, name st
 		for i in 0 .. arg_count {
 			arg := c.generic_factory_type_arg(c.a.child(index, i + 1))
 			if arg.len == 0 { return return_type }
-			args << markused_resolve_imported_type_name(arg, imports)
+			args << markused_resolve_imported_type_text(arg, imports)
 		}
 		return types.subst_generic_text(return_type, args, params[params.len - arg_count..])
 	}
@@ -8531,6 +8531,24 @@ fn (c &CallCollector) value_name_candidates(name string, cur_module string, impo
 		}
 	}
 	return candidates
+}
+
+// Resolve qualified identifiers throughout a type without changing its container syntax.
+fn markused_resolve_imported_type_text(text string, imports map[string]string) string {
+	if !text.contains('.') || imports.len == 0 { return text }
+	mut out := strings.new_builder(text.len)
+	mut i := 0
+	for i < text.len {
+		if !text[i].is_letter() && text[i] != `_` {
+			out.write_u8(text[i])
+			i++
+			continue
+		}
+		start := i
+		for i < text.len && (text[i].is_alnum() || text[i] in [`_`, `.`]) { i++ }
+		out.write_string(markused_resolve_imported_type_name(text[start..i], imports))
+	}
+	return out.str()
 }
 
 fn markused_resolve_imported_type_name(name string, imports map[string]string) string {

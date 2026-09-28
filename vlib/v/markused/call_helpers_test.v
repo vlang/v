@@ -296,3 +296,33 @@ fn test_closure_runtime_import_marks_syntax_need() {
 	})
 	assert markused_syntax_needs_closure_runtime(&a)
 }
+
+fn test_explicit_generic_factory_resolves_nested_import_aliases() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	tc.fn_generic_params['gates.make_gate'] = ['U']
+	tc.fn_ret_types['gates.make_gate'] = types.Type(types.Struct{ name: 'gates.Gate[U]' })
+	imports := {
+		'alias': 'actual.module'
+		'other': 'other.module'
+	}
+	for form in ['alias.Payload', '[]alias.Payload', '[2]alias.Payload', 'Box[alias.Payload]',
+		'alias.Box[other.Payload]', '&alias.Payload', '?alias.Payload', '!alias.Payload',
+		'map[alias.Key][]other.Payload', 'fn (alias.Payload) other.Payload',
+		'(alias.Payload, []other.Payload)', 'chan alias.Payload', 'thread alias.Payload',
+		'actual.module.Payload', 'long_alias.Payload', 'T'] {
+		base := a.add_val(.ident, 'make_gate')
+		// Type text nodes retain the same spelling for every nested argument form.
+		arg := a.add_val(.struct_decl, form)
+		indexed := call_helper_node(mut a, flat.Node{ kind: .index }, [base, arg])
+		call := call_helper_node(mut a, flat.Node{ kind: .call }, [indexed])
+		collector := CallCollector{ a: &a, tc: &tc }
+		expected := if form == 'long_alias.Payload' {
+			form
+		} else {
+			form.replace('alias.', 'actual.module.').replace('other.', 'other.module.')
+		}
+		assert collector.top_level_call_return_type_name(call, 'gates', imports,
+			map[string]bool{}, map[string]string{}, false) == 'gates.Gate[${expected}]'
+	}
+}
