@@ -813,6 +813,17 @@ fn test_unindexed_generic_factory_infers_spread_and_shared_arguments() {
 	}
 }
 
+fn test_repeated_generic_parameter_keeps_first_alias_inference() {
+	mut inferred := map[string]string{}
+	for name in ['A', 'B'] {
+		markused_infer_alias_generic_type('U', types.Type(types.Alias{
+			name:      name
+			base_type: types.Type(types.int_)
+		}), ['U'], mut inferred)
+	}
+	assert inferred['U'] == 'A'
+}
+
 fn test_unindexed_generic_factory_uses_prior_local_type() {
 	mut a := flat.FlatAst.new()
 	mut tc := types.TypeChecker.new(&a)

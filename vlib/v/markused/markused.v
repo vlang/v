@@ -6561,7 +6561,7 @@ fn markused_infer_alias_generic_type(param_text string, actual types.Type, gener
 		}
 		return
 	}
-	if clean in generic_params && !markused_type_has_unknown(actual) {
+	if clean in generic_params && clean !in inferred && !markused_type_has_unknown(actual) {
 		type_name := resolve_type_name(actual)
 		if type_name.len > 0 {
 			inferred[clean] = type_name
