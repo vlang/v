@@ -1,6 +1,10 @@
 > `json2` replaces the removed cJSON based `json` module. `v fmt -w file.v`
-> migrates code that still uses `json.decode(T, s)`, `json.encode(x)` and
-> `json.encode_pretty(x)` to `json2`.
+> rewrites the usual `json.decode(T, s)`, `json.encode(x)` and
+> `json.encode_pretty(x)` calls to `json2`, and leaves code it cannot rewrite
+> safely unchanged. By hand, `json.decode(T, s)` becomes `json2.decode[T](s)`,
+> `json.encode(x)` becomes `json2.encode(x, escape_unicode: true)`, and
+> `json.encode_pretty(x)` becomes
+> `json2.encode(x, prettify: true, escape_unicode: true)`.
 
 `json2` is an experimental JSON parser written from scratch on V.
 
