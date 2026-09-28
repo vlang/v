@@ -431,6 +431,27 @@ fn test_generic_factory_return_keeps_noncolliding_main_type_spelling() {
 	assert collector.typed_receiver_method_name(inferred, 'backward', 'main')? == 'gates.Gate[Payload].backward'
 }
 
+fn test_generic_factory_return_locks_main_alias_when_target_collides() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	tc.type_aliases['Payload'] = 'Context'
+	tc.type_alias_modules['Payload'] = 'main'
+	tc.structs['Context'] = []types.StructField{}
+	tc.struct_modules['Context'] = 'main'
+	tc.structs['gates.Context'] = []types.StructField{}
+	tc.fn_generic_params['gates.make_gate'] = ['U']
+	tc.fn_ret_types['gates.make_gate'] = types.Type(types.Struct{ name: 'gates.Gate[U]' })
+	tc.fn_ret_types['gates.Gate[main.Payload].backward'] = types.Type(types.int_)
+	base := a.add_val(.ident, 'make_gate')
+	arg := a.add_val(.ident, 'Payload')
+	indexed := call_helper_node(mut a, flat.Node{ kind: .index }, [base, arg])
+	collector := CallCollector{ a: &a, tc: &tc }
+	inferred := collector.generic_factory_return_type_name(a.node(indexed), 'gates.make_gate',
+		'main', map[string]string{}, false, '')
+	assert inferred == 'gates.Gate[main.Payload]'
+	assert collector.typed_receiver_method_name(inferred, 'backward', 'main')? == 'gates.Gate[main.Payload].backward'
+}
+
 fn test_promoted_generic_factory_return_substitutes_embedded_receiver() {
 	mut a := flat.FlatAst.new()
 	mut tc := types.TypeChecker.new(&a)

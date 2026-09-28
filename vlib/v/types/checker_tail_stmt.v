@@ -11799,6 +11799,20 @@ pub fn (tc &TypeChecker) qualify_type_name_at(name string, id flat.NodeId, modul
 }
 
 fn (tc &TypeChecker) main_type_name_has_non_main_collision(name string) bool {
+	mut seen := map[string]bool{}
+	return tc.main_type_name_has_non_main_collision_inner(name, mut seen)
+}
+
+fn (tc &TypeChecker) main_type_name_has_non_main_collision_inner(name string, mut seen map[string]bool) bool {
+	if seen[name] {
+		return false
+	}
+	seen[name] = true
+	if target := tc.type_aliases[name] {
+		if tc.main_alias_target_has_non_main_collision(target, mut seen) {
+			return true
+		}
+	}
 	if _ := tc.unique_qualified_type_name(name) {
 		return false
 	}
@@ -11816,6 +11830,29 @@ fn (tc &TypeChecker) main_type_name_has_non_main_collision(name string) bool {
 	}
 	for candidate, _ in tc.interface_names {
 		if type_name_collides_with_main(candidate, name) { return true }
+	}
+	return false
+}
+
+fn (tc &TypeChecker) main_alias_target_has_non_main_collision(target string, mut seen map[string]bool) bool {
+	mut i := 0
+	for i < target.len {
+		if !target[i].is_letter() && target[i] != `_` {
+			i++
+			continue
+		}
+		start := i
+		for i < target.len && (target[i].is_alnum() || target[i] in [`_`, `.`]) {
+			i++
+		}
+		part := target[start..i]
+		if part.contains('.') || is_builtin_type_name(part) || !tc.type_symbol_known(part) {
+			continue
+		}
+		owner := tc.struct_modules[part] or { tc.type_alias_modules[part] or { '' } }
+		if owner in ['', 'main'] && tc.main_type_name_has_non_main_collision_inner(part, mut seen) {
+			return true
+		}
 	}
 	return false
 }
