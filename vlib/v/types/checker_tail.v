@@ -1119,6 +1119,7 @@ fn (mut tc TypeChecker) check_postfix(id flat.NodeId, node flat.Node) {
 	child := tc.a.nodes[int(child_id)]
 	tc.check_node(child_id)
 	if node.op in [.inc, .dec] {
+		postfix_is_translated := tc.node_is_from_translated_file(node)
 		op := if node.op == .inc { '++' } else { '--' }
 		action := if node.op == .inc { 'increment' } else { 'decrement' }
 		rewrite_op := if node.op == .inc { '+' } else { '-' }
@@ -1154,11 +1155,11 @@ fn (mut tc TypeChecker) check_postfix(id flat.NodeId, node flat.Node) {
 			}
 			is_implicitly_dereferenced_mut_param := child.kind == .ident
 				&& child.value in tc.fn_context.mut_param_base_types
-			if tc.unsafe_depth == 0 && !tc.translated_files[tc.cur_file]
+			if tc.unsafe_depth == 0 && !postfix_is_translated
 				&& !is_implicitly_dereferenced_mut_param {
 				tc.record_warning_at(.assignment_mismatch, 'pointer arithmetic is only allowed in `unsafe` blocks', id, tc.prefix_operator_pos(id, op))
 			}
-			tc.check_lvalue_mutability(child_id)
+			tc.check_lvalue_mutability_with_translated_rules(child_id, postfix_is_translated)
 			return
 		}
 		if !infix_power_type_is_numeric(child_type) {
@@ -1166,7 +1167,7 @@ fn (mut tc TypeChecker) check_postfix(id flat.NodeId, node flat.Node) {
 			tc.record_error_at(.assignment_mismatch, 'invalid operation: ${op} (non-numeric type `${type_name}`)', id, tc.prefix_operator_pos(id, op))
 			return
 		}
-		tc.check_lvalue_mutability(child_id)
+		tc.check_lvalue_mutability_with_translated_rules(child_id, postfix_is_translated)
 	}
 	if node.op == .not && child.kind == .array_literal {
 		fixed_type := if child.typ.len > 0 {
@@ -1214,6 +1215,17 @@ fn (mut tc TypeChecker) check_postfix(id flat.NodeId, node flat.Node) {
 				tc.record_error(.assignment_mismatch, 'postfix mutation is not supported for overloaded index expressions', id)
 			}
 		}
+	}
+}
+
+fn (mut tc TypeChecker) check_lvalue_mutability_with_translated_rules(id flat.NodeId, translated bool) {
+	if translated {
+		// Translated code permits ordinary writes; shared storage still requires a lock.
+		tc.unsafe_depth++
+	}
+	tc.check_lvalue_mutability(id)
+	if translated {
+		tc.unsafe_depth--
 	}
 }
 
