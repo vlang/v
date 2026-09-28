@@ -8801,7 +8801,7 @@ fn (tc &TypeChecker) for_in_iterable_yields_ref(container_id flat.NodeId) bool {
 	if tc.expr_is_shared_arg(container_id) {
 		return false
 	}
-	container := tc.a.nodes[int(container_id)]
+	container := tc.a.nodes[int(tc.unwrap_paren_expr_id(container_id))]
 	if container.kind == .ident && container.value in tc.fn_context.mut_param_base_types {
 		// Mutable loop bindings use a pointer internally so writes reach the
 		// container element. Iterating that binding still has ordinary value

@@ -1330,7 +1330,10 @@ fn (mut t Transformer) detect_for_in_type(node flat.Node) string {
 		if fixed_array_type := t.detect_for_in_global_fixed_array_type(iter_id) {
 			return fixed_array_type
 		}
-		iter_node := t.a.nodes[int(iter_id)]
+		mut iter_node := t.a.nodes[int(iter_id)]
+		for iter_node.kind == .paren && iter_node.children_count == 1 {
+			iter_node = t.a.child_node(&iter_node, 0)
+		}
 		if iter_node.kind == .ident && iter_node.value.len > 0 {
 			mut raw_local_type := t.raw_var_type(iter_node.value)
 			if t.pointer_value_rvalues[iter_node.value] && raw_local_type.starts_with('&') {
@@ -1340,10 +1343,11 @@ fn (mut t Transformer) detect_for_in_type(node flat.Node) string {
 				return raw_local_type
 			}
 			mut local_type := t.normalize_type_alias(t.var_type(iter_node.value))
-			// A `mut` parameter is stored as a pointer by the C ABI, but iterating it
-			// without `mut value` still binds map values by value. Preserve real source
-			// `&map` expressions while removing only this implicit storage pointer.
-			if t.mut_param_values[iter_node.value] && local_type.starts_with('&')
+			// Mutable parameters and loop bindings use pointers for their storage.
+			// Preserve real source `&map` expressions while removing only this
+			// implicit storage pointer from the iterable's value type.
+			if (t.mut_param_values[iter_node.value] || t.pointer_value_rvalues[iter_node.value])
+				&& local_type.starts_with('&')
 				&& for_iter_type_is_container(local_type[1..]) {
 				local_type = local_type[1..]
 			}

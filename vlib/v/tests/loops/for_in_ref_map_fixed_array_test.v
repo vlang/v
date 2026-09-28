@@ -81,3 +81,74 @@ fn test_mutable_array_fixed_array_value_assignment_updates_entry() {
 	}
 	assert fixed[0] == [5, 6]!
 }
+
+fn replace_parenthesized_map_values(mut entries map[string]int) {
+	// Preserve the parentheses that exercise iterable classification.
+	// vfmt off
+	for _, mut value in ((entries)) {
+		value = 41
+	}
+	// vfmt on
+}
+
+fn replace_parenthesized_fixed_array_map_values(mut entries map[string][2]int) {
+	// vfmt off
+	for _, mut value in ((entries)) {
+		value = [5, 6]!
+	}
+	// vfmt on
+}
+
+fn test_parenthesized_mutable_map_parameters_update_entries() {
+	mut entries := {
+		'a': 1
+	}
+	replace_parenthesized_map_values(mut entries)
+	assert entries['a'] == 41
+	mut arrays := {
+		'a': [1, 2]!
+	}
+	replace_parenthesized_fixed_array_map_values(mut arrays)
+	assert arrays['a'] == [5, 6]!
+}
+
+fn test_parenthesized_outer_mutable_map_binding_updates_entries() {
+	mut maps := [{
+		'a': 1
+	}]
+	for mut entries in maps {
+		// vfmt off
+		for _, mut value in ((entries)) {
+			value = 51
+		}
+		// vfmt on
+	}
+	assert maps[0]['a'] == 51
+	mut arrays := [{
+		'a': [1, 2]!
+	}]
+	for mut entries in arrays {
+		// vfmt off
+		for _, mut value in ((entries)) {
+			value = [7, 8]!
+		}
+		// vfmt on
+	}
+	assert arrays[0]['a'] == [7, 8]!
+}
+
+fn test_parenthesized_explicit_map_reference_keeps_pointer_rebinding() {
+	mut entries := {
+		'a': [1, 2]!
+	}
+	mut replacement := [3, 4]!
+	for _, mut value in (&entries) {
+		// The borrowed stack array remains alive throughout this loop.
+		unsafe {
+			value = &replacement
+			value[1] = 9
+		}
+	}
+	assert entries['a'] == [1, 2]!
+	assert replacement == [3, 9]!
+}
