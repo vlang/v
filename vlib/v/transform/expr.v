@@ -24,16 +24,46 @@ fn (mut t Transformer) transform_translated_array_arithmetic(id flat.NodeId, nod
 	}
 	mut lhs := t.transform_value_operand(lhs_id)
 	if lhs_type is types.ArrayFixed {
+		lhs = t.materialize_translated_array_decay_operand(lhs_id, lhs)
 		lhs = t.make_prefix(.amp, t.make_index(lhs, t.make_int_literal(0), lhs_type.elem_type.name()))
 	}
 	mut rhs := t.transform_value_operand(rhs_id)
 	if rhs_type is types.ArrayFixed {
+		rhs = t.materialize_translated_array_decay_operand(rhs_id, rhs)
 		rhs = t.make_prefix(.amp, t.make_index(rhs, t.make_int_literal(0), rhs_type.elem_type.name()))
 	}
 	result := t.make_infix(node.op, lhs, rhs)
 	result_type := if node.typ.len > 0 { node.typ } else { t.tc.type_name(t.tc.resolve_type(id)) }
 	t.set_node_typ(int(result), result_type)
 	return result
+}
+
+fn (mut t Transformer) materialize_translated_array_decay_operand(source flat.NodeId, value flat.NodeId) flat.NodeId {
+	if t.translated_array_decay_operand_addressable(value) {
+		return value
+	}
+	typ := t.resolve_expr_type(source)
+	tmp_name := t.new_temp('array_decay')
+	t.pending_stmts << t.make_decl_assign_typed(tmp_name, value, typ)
+	return t.make_ident(tmp_name)
+}
+
+fn (t &Transformer) translated_array_decay_operand_addressable(id flat.NodeId) bool {
+	if int(id) < 0 || int(id) >= t.a.nodes.len {
+		return false
+	}
+	node := t.a.node(id)
+	return match node.kind {
+		.ident { true }
+		.selector, .index, .paren {
+			node.children_count > 0
+				&& t.translated_array_decay_operand_addressable(t.a.child(node, 0))
+		}
+		.prefix {
+			node.op == .mul && node.children_count > 0
+		}
+		else { false }
+	}
 }
 
 // transform_infix_string_ops transforms transform infix string ops data for transform.

@@ -7845,6 +7845,9 @@ unsafe {
 assert *p == `i`
 ```
 
+In `@[translated]` files, fixed arrays can decay to pointers in arithmetic. When the array is
+returned by a function, the pointer remains valid until the end of the enclosing scope.
+
 Best practice is to avoid putting memory-safe expressions inside an `unsafe` block,
 so that the reason for using `unsafe` is as clear as possible. Generally any code
 you think is memory-safe should not be inside an `unsafe` block, so the compiler

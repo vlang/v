@@ -18,6 +18,17 @@ fn test_translated_fixed_array_pointer_arithmetic() {
 	assert read_translated_element(next - 1) == 3
 }
 
+fn translated_make_array() [3]int {
+	return [7, 11, 13]!
+}
+
+fn test_translated_returned_array_pointer_survives_assignment() {
+	second := translated_make_array() + 1
+	assert unsafe { *second } == 11
+	third := 2 + translated_make_array()
+	assert unsafe { *third } == 13
+}
+
 fn translated_array_offset() !int {
 	return 1
 }
