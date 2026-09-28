@@ -2717,7 +2717,9 @@ fn (mut t Transformer) try_lower_nested_map_index_postfix_stmt(id flat.NodeId) ?
 	}
 	start := t.a.children.len
 	t.a.children << lhs_id
-	t.a.children << t.make_int_literal(1)
+	one := t.make_int_literal(1)
+	t.copy_translated_map_update_pos(id, [one])
+	t.a.children << one
 	return t.try_lower_nested_map_index_assign(flat.Node{
 		kind:           .index_assign
 		op:             if node.op == .dec { flat.Op.minus_assign } else { flat.Op.plus_assign }
@@ -3172,11 +3174,13 @@ fn (mut t Transformer) lower_map_index_compound_with_info(info MapIndexInfo, map
 	if int(rhs) < 0 {
 		rhs = t.transform_expr(rhs_id)
 	}
+	lhs := t.make_ident(current_name)
 	new_value := if info.value_type == 'string' && op == .plus {
-		t.make_call_typed('string__plus', [t.make_ident(current_name), rhs], 'string')
+		t.make_call_typed('string__plus', [lhs, rhs], 'string')
 	} else {
-		t.make_infix(op, t.make_ident(current_name), rhs)
+		t.make_infix(op, lhs, rhs)
 	}
+	t.copy_translated_map_update_pos(rhs_id, [lhs, new_value])
 	result << t.make_assign(t.make_ident(current_name), new_value)
 	if staged_owned_string_name.len > 0 {
 		result << t.make_expr_stmt(t.make_call_typed('drop_owned', [
@@ -3187,11 +3191,23 @@ fn (mut t Transformer) lower_map_index_compound_with_info(info MapIndexInfo, map
 	result << t.make_map_set_stmt(map_expr, info.base_type, key_name, current_name)
 }
 
+fn (mut t Transformer) copy_translated_map_update_pos(source flat.NodeId, targets []flat.NodeId) {
+	pos := t.a.node(source).pos
+	file := t.a.source_files[pos.id] or { return }
+	if isnil(t.tc) || !t.tc.translated_files[file.name] { return }
+	for target in targets {
+		t.a.nodes[int(target)].pos = pos
+	}
+}
+
 // lower_map_index_postfix_with_info builds lower map index postfix with info data for transform.
-fn (mut t Transformer) lower_map_index_postfix_with_info(info MapIndexInfo, map_expr flat.NodeId, key_name string, op flat.Op, mut result []flat.NodeId) {
+fn (mut t Transformer) lower_map_index_postfix_with_info(info MapIndexInfo, map_expr flat.NodeId, key_name string, op flat.Op, source flat.NodeId, mut result []flat.NodeId) {
 	current_name := t.load_map_index_current(info, map_expr, key_name, mut result)
 	infix_op := if op == .dec { flat.Op.minus } else { flat.Op.plus }
-	new_value := t.make_infix(infix_op, t.make_ident(current_name), t.make_int_literal(1))
+	lhs := t.make_ident(current_name)
+	one := t.make_int_literal(1)
+	new_value := t.make_infix(infix_op, lhs, one)
+	t.copy_translated_map_update_pos(source, [lhs, one, new_value])
 	result << t.make_assign(t.make_ident(current_name), new_value)
 	result << t.make_map_set_stmt(map_expr, info.base_type, key_name, current_name)
 }
@@ -3342,7 +3358,7 @@ fn (mut t Transformer) try_lower_map_index_postfix_stmt(id flat.NodeId) ?[]flat.
 	result << t.make_decl_assign_typed(key_name, key_value, info.key_storage_type)
 	cleanup_key, existing_key_name := t.prepare_owned_map_set_key_cleanup(key_is_owned,
 		info.key_type, map_expr, info.base_type, key_name, mut result)
-	t.lower_map_index_postfix_with_info(info, map_expr, key_name, node.op, mut result)
+	t.lower_map_index_postfix_with_info(info, map_expr, key_name, node.op, id, mut result)
 	t.append_owned_map_set_key_cleanup(key_name, cleanup_key, existing_key_name, mut result)
 	return result
 }

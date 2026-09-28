@@ -13340,8 +13340,33 @@ fn mut_optional_param_value_types_match(param_type types.Type, expected types.Ty
 }
 
 // gen_expr_with_expected_type emits expr with expected type output for c.
-@[direct_array_access]
 fn (mut g FlatGen) gen_expr_with_expected_type(id flat.NodeId, expected_type types.Type) {
+	actual := cgen_unalias_type(g.usable_expr_type(id))
+	expected := cgen_unalias_type(expected_type)
+	if g.translated_bool_destination(id, expected)
+		&& (translated_integer_scalar_type(actual) || actual.is_float()) {
+		// MSVC stores bool as an unsigned char, so normalize before storing it.
+		// Keep floating operands intact until the nonzero comparison.
+		g.write('((')
+		g.gen_expr_with_expected_type_inner(id, actual)
+		g.write(') != 0)')
+		return
+	}
+	if g.expr_is_in_translated_file(id) && expected.name() == 'int'
+		&& (actual.is_integer() || actual.is_float() || actual is types.Char
+			|| actual is types.Enum || actual == types.Type(types.bool_)) {
+		// Translated int values cross C's 32-bit conversion boundary even though
+		// the V int used to store them is wider on 64-bit hosts.
+		g.write('((i32)(')
+		g.gen_expr_with_expected_type_inner(id, expected_type)
+		g.write('))')
+		return
+	}
+	g.gen_expr_with_expected_type_inner(id, expected_type)
+}
+
+@[direct_array_access]
+fn (mut g FlatGen) gen_expr_with_expected_type_inner(id flat.NodeId, expected_type types.Type) {
 	node := unsafe { &g.a.nodes[int(id)] }
 	expected := g.canonical_import_alias_type_for_node(expected_type, node)
 	has_known_actual := g.known_expr_type_id == int(id)
@@ -13465,7 +13490,10 @@ fn (mut g FlatGen) gen_expr_with_expected_type(id flat.NodeId, expected_type typ
 			g.expected_enum = old_expected_enum
 			return
 		}
-		if g.cast_alias_matches_expected_storage(node.value, expected) {
+		cast_target := g.canonical_import_alias_type_in_file(node.value, g.node_source_file(node))
+		translated_int_cast := g.expr_is_in_translated_file(id)
+			&& cgen_unalias_type(cast_target).name() == 'int'
+		if !translated_int_cast && g.cast_alias_matches_expected_storage(node.value, expected) {
 			g.gen_expr_with_expected_type(g.a.child(node, 0), expected)
 			g.expected_expr_type = old_expected
 			g.expected_enum = old_expected_enum
@@ -15199,8 +15227,13 @@ fn (g &FlatGen) const_ref_name_from_node(node flat.Node) string {
 				|| g.current_module_global_type_for_ident(base.value) != none {
 				return ''
 			}
-			resolved_base := g.selector_base_module_for_member(base.value, node.value) or {
-				base.value
+			// Prefer the import aliases of the file that owns the selector: global
+			// initializers can be emitted while another file is current.
+			mut resolved_base := base.value
+			if module_name := g.import_alias_module_for_file(base.value, g.node_source_file(&node)) {
+				resolved_base = module_name
+			} else if module_name := g.selector_base_module_for_member(base.value, node.value) {
+				resolved_base = module_name
 			}
 			return g.const_ref_name('${resolved_base}.${node.value}')
 		}
@@ -15910,6 +15943,23 @@ fn (mut g FlatGen) const_expr_to_string(id flat.NodeId, seen []string) string {
 				g.power_expr_string(lhs, rhs, g.usable_expr_type(id))
 			} else if node.op == .left_shift && g.shift_needs_64bit_widening(&node) {
 				'((u64)(${lhs})) << (${rhs})'
+			} else if node.op in [.left_shift, .right_shift, .right_shift_unsigned]
+				&& g.expr_is_in_translated_file(id) {
+				lhs_id := g.a.child(&node, 0)
+				lhs_type := g.usable_expr_type(lhs_id)
+				shift_type := if unsigned_shift_unalias_type(lhs_type).name() == 'int' {
+					types.Type(types.i32_)
+				} else {
+					g.usable_expr_type(id)
+				}
+				ut, bits := g.unsigned_shift_type_parts(shift_type)
+				ct := if node.op == .right_shift_unsigned {
+					ut
+				} else {
+					g.value_c_type(unsigned_shift_unalias_type(shift_type))
+				}
+				op := if node.op == .left_shift { '<<' } else { '>>' }
+				'((u64)(${rhs}) >= ${bits} ? (${ct})0 : (${ct})((${ct})(${lhs}) ${op} (${rhs})))'
 			} else if node.op == .right_shift_unsigned {
 				// `>>>` must stay a logical shift in const initializers too;
 				// op_str would map it to a plain arithmetic `>>`. The operands
@@ -15942,8 +15992,15 @@ fn (mut g FlatGen) const_expr_to_string(id flat.NodeId, seen []string) string {
 		}
 		.cast_expr {
 			target_type := g.tc.parse_type(node.value)
+			if g.translated_bool_destination(id, target_type) {
+				child := g.const_expr_to_string(g.a.child(&node, 0), seen)
+				return '((${child}) != 0)'
+			}
 			mut ct := if node.value.starts_with('fn_ptr:') {
 				g.resolve_fn_ptr_type(node.value)
+			} else if g.expr_is_in_translated_file(id)
+				&& cgen_unalias_type(target_type).name() == 'int' {
+				'i32'
 			} else {
 				g.tc.c_type(target_type)
 			}
@@ -16772,10 +16829,13 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 				return
 			}
 			if node.op in [.left_shift, .right_shift, .right_shift_unsigned] {
-				shift_type := if node.op == .right_shift_unsigned {
+				mut shift_type := if node.op == .right_shift_unsigned || g.expr_is_in_translated_file(id) {
 					g.usable_expr_type(id)
 				} else {
 					lhs_type
+				}
+				if g.expr_is_in_translated_file(id) && unsigned_shift_unalias_type(lhs_type).name() == 'int' {
+					shift_type = types.Type(types.i32_)
 				}
 				g.gen_guarded_shift(lhs_id, rhs_id, shift_type, node.op)
 				g.expected_enum = old_expected_enum
@@ -16822,12 +16882,28 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 				g.expected_enum = old_expected_enum
 				return
 			}
-			if g.gen_checked_integer_infix(node, lhs_id, rhs_id, lhs_type) {
+			if g.gen_checked_integer_infix(id, node, lhs_id, rhs_id, lhs_type, rhs_type) {
+				g.expected_enum = old_expected_enum
+				return
+			}
+			if g.gen_translated_numeric_arithmetic(id, node, lhs_id, rhs_id, lhs_type,
+				rhs_type) {
 				g.expected_enum = old_expected_enum
 				return
 			}
 			lhs_node := g.a.nodes[int(lhs_id)]
 			rhs_node := g.a.nodes[int(rhs_id)]
+			if node.op in [.eq, .ne] && g.expr_is_in_translated_file(id)
+				&& ((fn_type_from(lhs_type) != none && cgen_unalias_type(rhs_type).is_integer())
+					|| (fn_type_from(rhs_type) != none && cgen_unalias_type(lhs_type).is_integer())) {
+				g.write('((uintptr_t)(')
+				g.gen_expr(lhs_id)
+				g.write(') ${g.op_str(node.op)} (uintptr_t)(')
+				g.gen_expr(rhs_id)
+				g.write('))')
+				g.expected_enum = old_expected_enum
+				return
+			}
 			if node.op in [.eq, .ne, .lt, .gt, .le, .ge] && g.gen_mixed_sign_integer_comparison(lhs_id, rhs_id, lhs_type, rhs_type, node.op) {
 				g.expected_enum = old_expected_enum
 				return
@@ -17882,6 +17958,8 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 			cast_arg_type := cgen_unalias_type(g.usable_expr_type(cast_arg_id))
 			mut ct := if node.value.starts_with('fn_ptr:') {
 				g.resolve_fn_ptr_type(node.value)
+			} else if g.expr_is_in_translated_file(id) && semantic_target.name() == 'int' {
+				'i32'
 			} else {
 				g.cast_c_type(target_type)
 			}
@@ -17897,7 +17975,12 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 				g.gen_default_value_for_type(target_type)
 				return
 			}
-			if semantic_target is types.Interface && cast_arg.kind == .none_expr && g.is_ierror_type_name(semantic_target.name) {
+			if g.translated_bool_destination(id, target_type)
+				&& (translated_integer_scalar_type(cast_arg_type) || cast_arg_type.is_float()) {
+				g.write('((')
+				g.gen_expr_with_expected_type_inner(cast_arg_id, cast_arg_type)
+				g.write(') != 0)')
+			} else if semantic_target is types.Interface && cast_arg.kind == .none_expr && g.is_ierror_type_name(semantic_target.name) {
 				g.write(g.ierror_none_literal_string())
 			} else if semantic_target is types.Interface {
 				if !g.gen_interface_value_expr(g.a.child(node, 0), semantic_target) {
@@ -18221,7 +18304,18 @@ fn (mut g FlatGen) gen_checked_integer_postfix(child_id flat.NodeId, op flat.Op)
 		return false
 	}
 	value_type := g.usable_expr_type(child_id)
-	helper := g.integer_overflow_helper(value_type, op) or { return false }
+	normalize_bool := g.translated_bool_destination(child_id, value_type)
+	helper_type := if g.expr_is_in_translated_file(child_id)
+		&& cgen_unalias_type(value_type).name() == 'int' {
+		g.tc.parse_type('i32')
+	} else {
+		value_type
+	}
+	helper := if normalize_bool {
+		''
+	} else {
+		g.integer_overflow_helper(helper_type, op) or { return false }
+	}
 	c_type := g.value_c_type(value_type)
 	if c_type.len == 0 {
 		return false
@@ -18242,7 +18336,13 @@ fn (mut g FlatGen) gen_checked_integer_postfix(child_id flat.NodeId, op flat.Op)
 			gen_expr_lvalue(mut g, child_id)
 		}
 	}
-	g.write('); *${address} = ${helper}(*${address}, 1); *${address}; })')
+	if normalize_bool {
+		previous := g.tmp_name()
+		operator := if op == .inc { '+' } else { '-' }
+		g.write('); ${c_type} ${previous} = *${address}; *${address} = ((${previous} ${operator} 1) != 0); ${previous}; })')
+	} else {
+		g.write('); *${address} = ${helper}(*${address}, 1); *${address}; })')
+	}
 	return true
 }
 
@@ -23458,22 +23558,26 @@ fn (mut g FlatGen) gen_c_static_fixed_array_initializer(id flat.NodeId, fixed ty
 		g.write('{0}')
 		return
 	}
-	if g.gen_c_static_array_literal_initializer(id) {
+	if g.gen_c_static_array_literal_initializer(id, types.Type(fixed)) {
 		return
 	}
 	g.gen_expr_with_expected_type(id, types.Type(fixed))
 }
 
-fn (mut g FlatGen) gen_c_static_array_literal_initializer(id flat.NodeId) bool {
+fn (mut g FlatGen) gen_c_static_array_literal_initializer(id flat.NodeId, expected types.Type) bool {
 	if int(id) < 0 || int(id) >= g.a.nodes.len {
 		return false
 	}
 	node := g.a.nodes[int(id)]
 	if node.kind in [.cast_expr, .paren, .postfix] && node.children_count > 0 {
-		return g.gen_c_static_array_literal_initializer(g.a.child(&node, 0))
+		return g.gen_c_static_array_literal_initializer(g.a.child(&node, 0), expected)
 	}
 	if node.kind != .array_literal {
 		return false
+	}
+	mut elem_type := types.Type(types.Unknown{})
+	if fixed := array_fixed_type(default_init_unalias_type(expected)) {
+		elem_type = fixed.elem_type
 	}
 	g.write('{')
 	for i in 0 .. node.children_count {
@@ -23481,10 +23585,12 @@ fn (mut g FlatGen) gen_c_static_array_literal_initializer(id flat.NodeId) bool {
 			g.write(', ')
 		}
 		child_id := g.a.child(&node, i)
-		if g.gen_c_static_array_literal_initializer(child_id) {
+		if g.gen_c_static_array_literal_initializer(child_id, elem_type) {
 			continue
 		}
-		constant := g.const_expr_to_string(child_id, []string{})
+		constant := g.global_scalar_static_initializer(child_id, elem_type) or {
+			g.const_expr_to_string(child_id, []string{})
+		}
 		if trimmed_space(constant).len > 0 {
 			g.write(constant)
 		} else {
@@ -23547,6 +23653,12 @@ fn (mut g FlatGen) global_scalar_static_initializer(id flat.NodeId, typ types.Ty
 	if trimmed_space(expr).len == 0 || g.const_expr_needs_runtime_storage(expr) {
 		return none
 	}
+	if g.expr_is_in_translated_file(value_id) && clean_type.name() == 'int' {
+		return '((i32)(${expr}))'
+	}
+	if g.translated_bool_destination(value_id, clean_type) {
+		return '((${expr}) != 0)'
+	}
 	return expr
 }
 
@@ -23594,8 +23706,8 @@ fn (mut g FlatGen) global_decls() {
 		}
 		vq := g.global_volatile_qualifier(name)
 		section_prefix := g.global_linker_section_prefix(name)
-		if decl_typ is types.ArrayFixed {
-			c_elem, dims := g.fixed_array_decl_parts(decl_typ)
+		if fixed := array_fixed_type(default_init_unalias_type(decl_typ)) {
+			c_elem, dims := g.fixed_array_decl_parts(fixed)
 			if val_id := g.global_inits[name] {
 				if name in g.global_cinit_names || g.global_fixed_array_is_static(val_id, decl_typ) {
 					g.write('${section_prefix}${vq}${c_elem} ${g.global_c_name(name)}${dims} = ')
@@ -23604,7 +23716,7 @@ fn (mut g FlatGen) global_decls() {
 					continue
 				}
 			}
-			init := if g.has_zero_sized_leading_init_slot(decl_typ) { '' } else { ' = {0}' }
+			init := if g.has_zero_sized_leading_init_slot(fixed) { '' } else { ' = {0}' }
 			if is_thread_local {
 				cname := g.global_c_name(name)
 				g.emit_tinyc_windows_thread_local_slot(cname, c_elem, dims)
@@ -25760,8 +25872,9 @@ fn (g &FlatGen) shift_needs_64bit_widening(node &flat.Node) bool {
 	if node.children_count < 2 {
 		return false
 	}
-	lhs := g.a.child_node(node, 0)
-	if lhs.kind != .int_literal {
+	lhs_id := g.a.child(node, 0)
+	lhs := g.a.nodes[int(lhs_id)]
+	if lhs.kind != .int_literal || g.expr_is_in_translated_file(lhs_id) {
 		return false
 	}
 	rhs_value := g.shift_count_const_value(g.a.child(node, 1), []string{}) or { return false }
@@ -25856,6 +25969,21 @@ fn (mut g FlatGen) gen_unsigned_right_shift(lhs_id flat.NodeId, rhs_id flat.Node
 
 fn (mut g FlatGen) gen_guarded_shift(lhs_id flat.NodeId, rhs_id flat.NodeId, lhs_type types.Type, op flat.Op) {
 	g.gen_guarded_shift_from_text(g.expr_to_string(lhs_id), rhs_id, lhs_type, op)
+}
+
+fn (g &FlatGen) compound_shift_operand_type(lhs_id flat.NodeId, lhs_type types.Type) types.Type {
+	return if g.expr_is_in_translated_file(lhs_id) {
+		g.tc.translated_promoted_shift_type(lhs_type)
+	} else {
+		lhs_type
+	}
+}
+
+fn (mut g FlatGen) gen_compound_shift_value(lhs_text string, lhs_id flat.NodeId, rhs_id flat.NodeId, lhs_type types.Type, op flat.Op) {
+	normalize_bool := g.translated_bool_destination(lhs_id, lhs_type)
+	if normalize_bool { g.write('((') }
+	g.gen_guarded_shift_from_text(lhs_text, rhs_id, g.compound_shift_operand_type(lhs_id, lhs_type), op)
+	if normalize_bool { g.write(') != 0)') }
 }
 
 // gen_unsigned_right_shift_from_text is gen_unsigned_right_shift with the lhs
@@ -26000,15 +26128,51 @@ fn checked_integer_bounds(typ types.Type) ?CheckedIntegerBounds {
 	}
 }
 
-fn (mut g FlatGen) gen_checked_integer_infix(node flat.Node, lhs_id flat.NodeId, rhs_id flat.NodeId, lhs_type types.Type) bool {
+fn translated_integer_scalar_type(typ types.Type) bool {
+	clean := cgen_unalias_type(typ)
+	return clean.is_integer() || clean is types.Char || clean is types.Enum
+		|| clean == types.Type(types.bool_)
+}
+
+fn (g &FlatGen) translated_bool_destination(id flat.NodeId, typ types.Type) bool {
+	return cgen_unalias_type(typ) == types.Type(types.bool_) && g.expr_is_in_translated_file(id)
+}
+
+fn (mut g FlatGen) gen_checked_integer_infix(id flat.NodeId, node flat.Node, lhs_id flat.NodeId, rhs_id flat.NodeId, lhs_type types.Type, rhs_type types.Type) bool {
 	if !g.check_overflow || g.ignore_overflow || node.op !in [.plus, .minus, .mul] {
 		return false
 	}
-	helper := g.integer_overflow_helper(lhs_type, node.op) or { return false }
+	mut helper_type := lhs_type
+	mut translated_ct := ''
+	if g.expr_is_in_translated_file(id) && translated_integer_scalar_type(lhs_type)
+		&& translated_integer_scalar_type(rhs_type) {
+		result_type := cgen_unalias_type(g.usable_expr_type(id))
+		if result_type.is_integer() {
+			helper_type = if result_type.name() == 'int' {
+				g.tc.parse_type('i32')
+			} else {
+				result_type
+			}
+			translated_ct = g.translated_numeric_c_type(id, result_type)
+		}
+	}
+	helper := g.integer_overflow_helper(helper_type, node.op) or { return false }
 	g.write('${helper}(')
+	if translated_ct.len > 0 {
+		g.write('(${translated_ct})(')
+	}
 	g.gen_expr(lhs_id)
+	if translated_ct.len > 0 {
+		g.write(')')
+	}
 	g.write(', ')
+	if translated_ct.len > 0 {
+		g.write('(${translated_ct})(')
+	}
 	g.gen_expr(rhs_id)
+	if translated_ct.len > 0 {
+		g.write(')')
+	}
 	g.write(')')
 	return true
 }
@@ -26061,7 +26225,7 @@ fn (mut g FlatGen) gen_safe_integer_division(node flat.Node, lhs_id flat.NodeId,
 		return false
 	}
 	checked_integer_bounds(result_type) or { return false }
-	c_type := g.value_c_type(result_type)
+	c_type := g.translated_numeric_c_type(lhs_id, result_type)
 	if c_type.len == 0 {
 		return false
 	}
@@ -26076,9 +26240,97 @@ fn (mut g FlatGen) gen_safe_integer_division(node flat.Node, lhs_id flat.NodeId,
 	return true
 }
 
+fn (mut g FlatGen) translated_numeric_c_type(id flat.NodeId, typ types.Type) string {
+	clean := cgen_unalias_type(typ)
+	if g.expr_is_in_translated_file(id) && clean.name() == 'int' {
+		return 'i32'
+	}
+	return g.value_c_type(typ)
+}
+
+fn (mut g FlatGen) gen_translated_numeric_arithmetic(id flat.NodeId, node flat.Node, lhs_id flat.NodeId, rhs_id flat.NodeId, lhs_type types.Type, rhs_type types.Type) bool {
+	if !g.expr_is_in_translated_file(id)
+		|| (node.op !in [.plus, .minus, .mul, .amp, .pipe, .xor]
+			&& (g.has_builtins || node.op !in [.div, .mod])) {
+		return false
+	}
+	result_type := cgen_unalias_type(g.usable_expr_type(id))
+	if !result_type.is_integer() && !result_type.is_float() {
+		return false
+	}
+	lhs_clean := cgen_unalias_type(lhs_type)
+	rhs_clean := cgen_unalias_type(rhs_type)
+	if lhs_clean is types.Pointer || rhs_clean is types.Pointer || lhs_clean is types.Struct
+		|| rhs_clean is types.Struct {
+		return false
+	}
+	ct := g.translated_numeric_c_type(id, result_type)
+	g.write('(((${ct})(')
+	g.gen_expr(lhs_id)
+	g.write(')) ${g.op_str(node.op)} ((${ct})(')
+	g.gen_expr(rhs_id)
+	g.write(')))')
+	return true
+}
+
+fn (g &FlatGen) expr_is_in_translated_file(id flat.NodeId) bool {
+	if isnil(g.tc) || int(id) < 0 || int(id) >= g.a.nodes.len {
+		return false
+	}
+	file := g.a.source_files[g.a.node(id).pos.id] or { return false }
+	return g.tc.translated_files[file.name]
+}
+
+fn (g &FlatGen) translated_comparison_integer_width(typ types.Type) int {
+	clean := unsigned_shift_unalias_type(typ)
+	if clean is types.Rune {
+		return 32
+	}
+	if clean is types.Enum {
+		width := fixed_integer_c_type_width(g.enum_storage_c_type(clean)) or { return 0 }
+		return if width < 32 { 32 } else { width }
+	}
+	if clean is types.Primitive && clean.props.has(.integer) {
+		return if clean.size == 0 || clean.size < 32 { 32 } else { int(clean.size) }
+	}
+	return 0
+}
+
+fn (g &FlatGen) translated_comparison_integer_is_unsigned(typ types.Type) bool {
+	clean := unsigned_shift_unalias_type(typ)
+	if clean is types.Rune {
+		return true
+	}
+	if clean is types.Enum {
+		storage := g.enum_storage_c_type(clean)
+		width := fixed_integer_c_type_width(storage) or { return false }
+		return width >= 32 && enum_storage_c_type_is_unsigned(storage)
+	}
+	if clean is types.Primitive {
+		return clean.props.has(.unsigned) && clean.size >= 32
+	}
+	return false
+}
+
+fn (g &FlatGen) translated_comparison_integer_sign(typ types.Type) int {
+	if g.translated_comparison_integer_width(typ) == 0 {
+		return 0
+	}
+	return if g.translated_comparison_integer_is_unsigned(typ) { 1 } else { -1 }
+}
+
 fn (mut g FlatGen) gen_mixed_sign_integer_comparison(lhs_id flat.NodeId, rhs_id flat.NodeId, lhs_type types.Type, rhs_type types.Type, op flat.Op) bool {
-	lhs_sign := integer_sign_kind(lhs_type)
-	rhs_sign := integer_sign_kind(rhs_type)
+	translated := g.expr_is_in_translated_file(lhs_id)
+	lhs_sign := if translated {
+		g.translated_comparison_integer_sign(lhs_type)
+	} else {
+		integer_sign_kind(lhs_type)
+	}
+	rhs_sign := if translated {
+		g.translated_comparison_integer_sign(rhs_type)
+	} else {
+		integer_sign_kind(rhs_type)
+	}
 	if lhs_sign == 0 || rhs_sign == 0 || lhs_sign == rhs_sign {
 		return false
 	}
@@ -26087,6 +26339,30 @@ fn (mut g FlatGen) gen_mixed_sign_integer_comparison(lhs_id flat.NodeId, rhs_id 
 	// behavior instead of narrowing `0xffff_ffff_ffff_ffff` to signed `int` first.
 	if (lhs_sign < 0 && g.a.nodes[int(lhs_id)].kind == .int_literal) || (rhs_sign < 0 && g.a.nodes[int(rhs_id)].kind == .int_literal) {
 		return false
+	}
+	if translated {
+		lhs_width := g.translated_comparison_integer_width(lhs_type)
+		rhs_width := g.translated_comparison_integer_width(rhs_type)
+		if lhs_width == 0 || rhs_width == 0 {
+			return false
+		}
+		lhs_unsigned := g.translated_comparison_integer_is_unsigned(lhs_type)
+		rhs_unsigned := g.translated_comparison_integer_is_unsigned(rhs_type)
+		common_width := if lhs_width > rhs_width { lhs_width } else { rhs_width }
+		common_unsigned := if lhs_unsigned == rhs_unsigned {
+			lhs_unsigned
+		} else if lhs_unsigned {
+			lhs_width >= rhs_width
+		} else {
+			rhs_width >= lhs_width
+		}
+		common_type := if common_unsigned { 'u${common_width}' } else { 'i${common_width}' }
+		g.write('(((${common_type})(')
+		g.gen_expr(lhs_id)
+		g.write(')) ${g.op_str(op)} ((${common_type})(')
+		g.gen_expr(rhs_id)
+		g.write(')))')
+		return true
 	}
 	lhs_ct := g.value_c_type(unsigned_shift_unalias_type(lhs_type))
 	rhs_ct := g.value_c_type(unsigned_shift_unalias_type(rhs_type))

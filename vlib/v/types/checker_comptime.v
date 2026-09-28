@@ -3723,24 +3723,28 @@ fn (mut tc TypeChecker) check_prefix_expr(id flat.NodeId, node flat.Node) {
 		return
 	}
 	if node.op in [.plus, .minus] && !infix_power_type_is_numeric(child_type)
-		&& !tc.prefix_wraps_numeric_literal_str_call(child) {
+		&& !tc.prefix_wraps_numeric_literal_str_call(child)
+		&& !(tc.node_is_in_translated_file(child_id) && translated_numeric_type(child_type)) {
 		op := if node.op == .minus { '-' } else { '+' }
 		tc.record_error_at(.assignment_mismatch, 'operator `${op}` can only be used with numeric types, but the value after `${op}` is of type `${child_type.name()}` instead', id, tc.prefix_operator_pos(id, op))
 		return
 	}
-	if node.op == .bit_not && child_type is Enum {
+	if node.op == .bit_not && child_type is Enum
+		&& !tc.node_is_in_translated_file(child_id) {
 		if !child_type.is_flag {
 			tc.record_error_at(.assignment_mismatch, 'operator `~` can only be used with `@[flag]` tagged enums', id, tc.prefix_operator_pos(id, '~'))
 		}
 		return
 	}
-	if node.op == .bit_not && !child_type.is_integer() {
+	if node.op == .bit_not && !child_type.is_integer()
+		&& !(tc.node_is_in_translated_file(child_id) && translated_integer_type(child_type)) {
 		tc.record_error_at(.assignment_mismatch, 'operator `~` can only be used with integer types, but the value after `~` is of type `${tc.diagnostic_expr_type_name(child_id, child_type)}` instead', id, tc.prefix_operator_pos(id, '~'))
 		return
 	}
 	implicit_bool_pointer := child_type is Pointer
 		&& tc.type_compatible(child_type.base_type, Type(bool_))
-	if node.op == .not && !tc.type_compatible(child_type, Type(bool_)) && !implicit_bool_pointer {
+	if node.op == .not && !tc.type_compatible(child_type, Type(bool_)) && !implicit_bool_pointer
+		&& !tc.translated_condition_compatible(child_id, child_type) {
 		tc.record_error_at(.assignment_mismatch, 'operator `!` can only be used with bool types, but the value after `!` is of type `${tc.diagnostic_expr_type_name(child_id, child_type)}` instead', id, tc.prefix_operator_pos(id, '!'))
 		return
 	}
@@ -7539,11 +7543,15 @@ fn (mut tc TypeChecker) check_infix(id flat.NodeId, node flat.Node) {
 	}
 	lhs_pointer_arithmetic := lhs_clean is Pointer && lhs_type.name() != 'voidptr'
 	rhs_pointer_arithmetic := rhs_clean is Pointer && rhs_type.name() != 'voidptr'
+	lhs_pointer_offset := lhs_clean.is_integer()
+		|| (tc.node_is_in_translated_file(id) && translated_integer_type(lhs_type))
+	rhs_pointer_offset := rhs_clean.is_integer()
+		|| (tc.node_is_in_translated_file(id) && translated_integer_type(rhs_type))
 	pointer_arithmetic := if node.op == .plus {
-		(lhs_pointer_arithmetic && rhs_clean.is_integer())
-			|| (rhs_pointer_arithmetic && lhs_clean.is_integer())
+		(lhs_pointer_arithmetic && rhs_pointer_offset)
+			|| (rhs_pointer_arithmetic && lhs_pointer_offset)
 	} else if node.op == .minus {
-		lhs_pointer_arithmetic && (rhs_clean.is_integer() || rhs_pointer_arithmetic)
+		lhs_pointer_arithmetic && (rhs_pointer_offset || rhs_pointer_arithmetic)
 	} else {
 		false
 	}
@@ -7571,7 +7579,8 @@ fn (mut tc TypeChecker) check_infix(id flat.NodeId, node flat.Node) {
 		return
 	}
 	invalid_enum_op := enum_operands && node.op !in [.eq, .ne]
-	if invalid_enum_op && node.op !in [.logical_and, .logical_or] {
+	if invalid_enum_op && node.op !in [.logical_and, .logical_or]
+		&& !tc.translated_numeric_expr_compatible(id, lhs_type, rhs_type) {
 		tc.record_invalid_enum_infix(id, node, lhs_clean)
 		return
 	}
@@ -7585,9 +7594,11 @@ fn (mut tc TypeChecker) check_infix(id flat.NodeId, node flat.Node) {
 	}
 	if node.op in [.logical_and, .logical_or] {
 		bool_type := Type(bool_)
-		lhs_is_bool := tc.type_compatible(lhs_type, bool_type)
+		lhs_is_bool := (tc.type_compatible(lhs_type, bool_type)
+			|| tc.translated_condition_compatible(lhs_id, lhs_type))
 			&& !tc.expr_has_unresolved_generic_name_ident(lhs_id)
-		rhs_is_bool := tc.type_compatible(rhs_type, bool_type)
+		rhs_is_bool := (tc.type_compatible(rhs_type, bool_type)
+			|| tc.translated_condition_compatible(rhs_id, rhs_type))
 			&& !tc.expr_has_unresolved_generic_name_ident(rhs_id)
 		op := if node.op == .logical_and { '&&' } else { '||' }
 		if !lhs_is_bool {
@@ -7602,7 +7613,7 @@ fn (mut tc TypeChecker) check_infix(id flat.NodeId, node flat.Node) {
 		if node.op == .logical_or && lhs_node.kind == .infix && lhs_node.op == .logical_and {
 			tc.record_error_at(.condition_mismatch, 'ambiguous boolean expression. use `()` to ensure correct order of operations', id, tc.infix_operator_pos(node, '||'))
 		}
-		if invalid_enum_op {
+		if invalid_enum_op && !tc.node_is_in_translated_file(id) {
 			tc.record_invalid_enum_infix(id, node, lhs_clean)
 		}
 		if !lhs_is_bool || !rhs_is_bool {
@@ -7642,6 +7653,9 @@ fn (mut tc TypeChecker) check_infix(id flat.NodeId, node flat.Node) {
 				&& tc.zero_literal_expr_id(rhs_id) != none)
 				|| (rhs_clean is Pointer && lhs_clean.is_integer()
 					&& tc.zero_literal_expr_id(lhs_id) != none)
+		translated_callback_comparison := tc.node_is_in_translated_file(id)
+			&& ((fn_type_from_type(lhs_type) != none && rhs_clean.is_integer())
+				|| (fn_type_from_type(rhs_type) != none && lhs_clean.is_integer()))
 		compatible := if lhs_is_sum != rhs_is_sum {
 			false
 		} else {
@@ -7651,6 +7665,7 @@ fn (mut tc TypeChecker) check_infix(id flat.NodeId, node flat.Node) {
 				|| tc.expr_compatible(lhs_id, lhs_type, rhs_type)
 				|| tc.expr_compatible(rhs_id, rhs_type, lhs_type)
 				|| pointer_value_comparison_allowed || pointer_integer_zero_comparison
+				|| translated_callback_comparison
 				|| c_literal_scalar_comparison
 		}
 		unsafe_zero_struct_comparison :=
@@ -7774,11 +7789,14 @@ fn (mut tc TypeChecker) check_infix(id flat.NodeId, node flat.Node) {
 	}
 	if node.op in [.amp, .pipe, .xor] {
 		op := infix_operator_name(node.op) or { '' }
-		if !unalias_type(lhs_type).is_integer() {
+		translated := tc.node_is_in_translated_file(id)
+		if !unalias_type(lhs_type).is_integer()
+			&& !(translated && translated_integer_type(lhs_type)) {
 			tc.record_error_at(.assignment_mismatch, 'left type of `${op}` cannot be non-integer type `${tc.diagnostic_expr_type_name(lhs_id, lhs_type)}`', lhs_id, lhs_node.pos)
 			return
 		}
-		if !unalias_type(rhs_type).is_integer() {
+		if !unalias_type(rhs_type).is_integer()
+			&& !(translated && translated_integer_type(rhs_type)) {
 			tc.record_error_at(.assignment_mismatch, 'right type of `${op}` cannot be non-integer type `${tc.diagnostic_expr_type_name(rhs_id, rhs_type)}`', rhs_id, tc.a.node(rhs_id).pos)
 			return
 		}
@@ -7825,18 +7843,25 @@ fn (mut tc TypeChecker) check_infix(id flat.NodeId, node flat.Node) {
 		}
 	}
 	if node.op in [.left_shift, .right_shift, .right_shift_unsigned] {
-		if !unalias_type(lhs_type).is_integer() {
+		translated := tc.node_is_in_translated_file(id)
+		if !unalias_type(lhs_type).is_integer()
+			&& !(translated && translated_integer_type(lhs_type)) {
 			tc.record_error_at(.assignment_mismatch, 'invalid operation: shift on type `${tc.diagnostic_expr_type_name(lhs_id, lhs_type)}`', lhs_id, lhs_node.pos)
 			tc.register_synth_type(id, Type(void_))
 			return
 		}
-		if !unalias_type(rhs_type).is_integer() {
+		if !unalias_type(rhs_type).is_integer()
+			&& !(translated && translated_integer_type(rhs_type)) {
 			tc.record_error_at(.assignment_mismatch, 'cannot shift non-integer type `${tc.diagnostic_expr_type_name(rhs_id, rhs_type)}` into type `${tc.diagnostic_expr_type_name(lhs_id, lhs_type)}`', rhs_id, tc.a.node(rhs_id).pos)
 			tc.register_synth_type(id, Type(void_))
 			return
 		}
 		skip_inactive_compact_else := tc.shift_is_in_inactive_compact_else(id)
-		bit_size := tc.integer_shift_bit_size(lhs_type)
+		bit_size := if tc.node_is_in_translated_file(id) {
+			int_max(32, tc.integer_shift_bit_size(lhs_type))
+		} else {
+			tc.integer_shift_bit_size(lhs_type)
+		}
 		if !skip_inactive_compact_else && node.op != .right_shift_unsigned && bit_size > 0
 			&& lhs_node.kind != .int_literal && rhs_node.kind == .int_literal {
 			if shift_count := v_int_literal_value(rhs_node.value) {
@@ -7894,6 +7919,7 @@ fn (mut tc TypeChecker) check_infix(id flat.NodeId, node flat.Node) {
 			return
 		}
 		if (infix_power_type_is_numeric(lhs_type) && infix_power_type_is_numeric(rhs_type))
+			|| tc.translated_numeric_expr_compatible(id, lhs_type, rhs_type)
 			|| tc.infix_operator_return_type(node.op, lhs_type, rhs_type) != none {
 			return
 		}
@@ -7934,7 +7960,7 @@ fn (mut tc TypeChecker) check_infix(id flat.NodeId, node flat.Node) {
 		tc.record_error(.assignment_mismatch, 'invalid operator `+` to `${lhs_type.name()}` and `${rhs_type.name()}`', id)
 		return
 	}
-	if (lhs_pointer && !rhs_type.is_integer()) || (rhs_pointer && !lhs_type.is_integer()) {
+	if (lhs_pointer && !rhs_pointer_offset) || (rhs_pointer && !lhs_pointer_offset) {
 		tc.record_error_at(.assignment_mismatch, 'mismatched types `${lhs_type.name()}` and `${rhs_type.name()}`', id, token.new_span(node.pos.id, node.pos.offset, int_max(node.pos.offset + 1, node.pos.end - 1)))
 		tc.register_synth_type(id, Type(void_))
 		return
@@ -7964,9 +7990,10 @@ fn (mut tc TypeChecker) check_infix(id flat.NodeId, node flat.Node) {
 		return
 	}
 	if (infix_power_type_is_numeric(lhs_type) && infix_power_type_is_numeric(rhs_type))
+		|| tc.translated_numeric_expr_compatible(id, lhs_type, rhs_type)
 		|| tc.infix_operator_return_type(node.op, lhs_type, rhs_type) != none
-		|| (lhs_type is Pointer && rhs_type.is_integer())
-		|| (rhs_type is Pointer && lhs_type.is_integer()) {
+		|| (lhs_type is Pointer && rhs_pointer_offset)
+		|| (rhs_type is Pointer && lhs_pointer_offset) {
 		return
 	}
 	lhs_name := tc.diagnostic_expr_type_name(lhs_id, lhs_type)
@@ -7980,8 +8007,14 @@ fn (mut tc TypeChecker) check_infix(id flat.NodeId, node flat.Node) {
 
 fn (tc &TypeChecker) integer_shift_bit_size(typ Type) int {
 	clean := unalias_type(typ)
+	if clean is Rune {
+		return 32
+	}
+	if clean is Enum {
+		return tc.integer_shift_bit_size(tc.inline_asm_enum_backing_type(clean.name))
+	}
 	if clean is Primitive {
-		if typ.name() == 'int' || clean.size == 0 {
+		if clean.name() == 'int' || clean.size == 0 {
 			return 32
 		}
 		return int(clean.size)
@@ -8154,6 +8187,9 @@ fn (tc &TypeChecker) expr_is_inside_unsafe_block(id flat.NodeId) bool {
 }
 
 fn (mut tc TypeChecker) check_signed_unsigned_comparison(op flat.Op, lhs_id flat.NodeId, lhs_type Type, rhs_id flat.NodeId, rhs_type Type) bool {
+	if tc.translated_numeric_expr_compatible(lhs_id, lhs_type, rhs_type) {
+		return false
+	}
 	lhs_unsigned := type_is_unsigned_integer(lhs_type)
 	rhs_unsigned := type_is_unsigned_integer(rhs_type)
 	lhs_node := tc.a.node(lhs_id)
@@ -17524,7 +17560,8 @@ fn (mut tc TypeChecker) check_assign(id flat.NodeId, node flat.Node) {
 				continue
 			}
 		}
-		if type_is_unsigned_integer(expected_type) && tc.expr_is_negative_integer_literal(rhs_id) {
+		if !tc.node_is_in_translated_file(rhs_id) && type_is_unsigned_integer(expected_type)
+			&& tc.expr_is_negative_integer_literal(rhs_id) {
 			tc.record_error_at(.assignment_mismatch, 'cannot assign negative value to unsigned integer type', rhs_id, rhs_node.pos)
 			i += 2
 			continue
@@ -18570,6 +18607,21 @@ fn (mut tc TypeChecker) record_compound_assignment_operand_errors(op flat.Op, lh
 			tc.record_error(.assignment_mismatch, 'operator ${op_text} not defined on right operand type `${rhs_type.name()}`', rhs_id)
 		}
 		return
+	}
+	if tc.node_is_in_translated_file(lhs_id) {
+		if op in [.plus_assign, .minus_assign] && unalias_type(lhs_type) is Pointer
+			&& translated_integer_type(rhs_type) {
+			return
+		}
+		if op in [.plus_assign, .minus_assign, .mul_assign, .div_assign]
+			&& translated_numeric_type(lhs_type) && translated_numeric_type(rhs_type) {
+			return
+		}
+		if op in [.mod_assign, .amp_assign, .pipe_assign, .xor_assign, .left_shift_assign,
+			.right_shift_assign, .right_shift_unsigned_assign]
+			&& translated_integer_type(lhs_type) && translated_integer_type(rhs_type) {
+			return
+		}
 	}
 	if op == .minus_assign && (array_type_from_receiver(lhs_type) != none
 		|| map_type_from_receiver(unalias_type(lhs_type)) != none) {

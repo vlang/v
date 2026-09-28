@@ -1,6 +1,7 @@
 module types
 
 import os
+import strconv
 import strings
 import v.flat
 import v.gen.c.naming
@@ -949,7 +950,8 @@ fn (mut tc TypeChecker) check_bool_condition(cond_id flat.NodeId) {
 		tc.record_error(.condition_mismatch, 'non-bool type `void` used as if condition', cond_id)
 		return
 	}
-	if !tc.condition_type_is_bool_like(cond_type) && tc.should_diagnose(cond_id) {
+	if !tc.condition_type_is_bool_like(cond_type)
+		&& !tc.translated_condition_compatible(cond_id, cond_type) && tc.should_diagnose(cond_id) {
 		cond_name := tc.diagnostic_expr_type_name(cond_id, cond_type)
 		tc.record_error(.condition_mismatch, 'non-bool type `${cond_name}` used as if condition', cond_id)
 	}
@@ -1012,7 +1014,8 @@ fn (mut tc TypeChecker) check_for_condition(cond_id flat.NodeId, _node flat.Node
 	}
 	tc.check_node(cond_id)
 	cond_type := tc.resolve_type(cond_id)
-	if tc.condition_type_is_bool_like(cond_type) {
+	if tc.condition_type_is_bool_like(cond_type)
+		|| tc.translated_condition_compatible(cond_id, cond_type) {
 		return
 	}
 	if _node.value == 'c_style' && unalias_type(cond_type) is Pointer {
@@ -3275,7 +3278,7 @@ fn (tc &TypeChecker) if_expr_tail_type(id flat.NodeId) Type {
 	for tc.valid_node_id(cur_id) {
 		node := tc.a.nodes[int(cur_id)]
 		if node.kind != .if_expr {
-			return tc.choose_if_tail_type(result, tc.branch_tail_type(cur_id))
+			return tc.choose_translated_if_tail_type(id, result, tc.branch_tail_type(cur_id))
 		}
 		if node.children_count > 1 {
 			cond_id := tc.a.child(&node, 0)
@@ -3291,7 +3294,7 @@ fn (tc &TypeChecker) if_expr_tail_type(id flat.NodeId) Type {
 					then_type = tc.branch_tail_type_with_smartcasts(then_id, smartcasts)
 				}
 			}
-			result = tc.choose_if_tail_type(result, then_type)
+			result = tc.choose_translated_if_tail_type(id, result, then_type)
 		}
 		if node.children_count <= 2 {
 			return result
@@ -3306,9 +3309,105 @@ fn (tc &TypeChecker) if_expr_tail_type(id flat.NodeId) Type {
 			continue
 		}
 		else_type := tc.branch_tail_type(else_id)
-		return tc.choose_if_tail_type(result, else_type)
+		return tc.choose_translated_if_tail_type(id, result, else_type)
 	}
 	return result
+}
+
+fn (tc &TypeChecker) choose_translated_if_tail_type(id flat.NodeId, current Type, next Type) Type {
+	if tc.translated_numeric_expr_compatible(id, current, next) {
+		return tc.translated_common_numeric_type(current, next)
+	}
+	return tc.choose_if_tail_type(current, next)
+}
+
+fn (tc &TypeChecker) translated_integer_literal_type(id flat.NodeId) ?Type {
+	literal := (tc.integer_literal_source(id) or { return none }).replace('_', '').to_lower()
+	value, parse_error := strconv.common_parse_uint2(literal, 0, 64)
+	if parse_error != 0 {
+		return none
+	}
+	// C considers unsigned int before wider signed types for nondecimal literals.
+	// Decimal literals move directly from int to a wider signed type.
+	if value <= u64(0x7fff_ffff) {
+		return Type(int_)
+	}
+	if (literal.starts_with('0x') || literal.starts_with('0o') || literal.starts_with('0b'))
+		&& value <= u64(0xffff_ffff) {
+		return Type(u32_)
+	}
+	if value <= u64(0x7fff_ffff_ffff_ffff) {
+		return Type(i64_)
+	}
+	return Type(u64_)
+}
+
+// translated_promoted_numeric_type applies C integral promotions in translated code.
+pub fn (tc &TypeChecker) translated_promoted_numeric_type(typ Type) Type {
+	clean := unalias_type(typ)
+	if clean is Enum {
+		backing := unalias_type(tc.inline_asm_enum_backing_type(clean.name))
+		return if translated_integer_bit_width(backing) < 32 { Type(int_) } else { backing }
+	}
+	if clean is Char || clean == Type(bool_) {
+		return Type(int_)
+	}
+	if clean is Primitive && clean.props.has(.integer) && clean.size > 0 && clean.size < 32 {
+		return Type(int_)
+	}
+	return clean
+}
+
+// translated_promoted_shift_type applies integral promotion using C's int width.
+pub fn (tc &TypeChecker) translated_promoted_shift_type(typ Type) Type {
+	promoted := tc.translated_promoted_numeric_type(typ)
+	return if promoted == Type(int_) { Type(i32_) } else { promoted }
+}
+
+fn translated_integer_bit_width(typ Type) int {
+	if typ is Primitive {
+		return if typ.size == 0 { 32 } else { int(typ.size) }
+	}
+	if typ is ISize || typ is USize {
+		return platform_int_bits()
+	}
+	return 32
+}
+
+fn translated_integer_is_unsigned(typ Type) bool {
+	if typ is Primitive {
+		return typ.props.has(.unsigned)
+	}
+	return typ is USize || typ is Rune
+}
+
+// translated_common_numeric_type selects the arithmetic type after C numeric promotions.
+pub fn (tc &TypeChecker) translated_common_numeric_type(lhs Type, rhs Type) Type {
+	left := tc.translated_promoted_numeric_type(lhs)
+	right := tc.translated_promoted_numeric_type(rhs)
+	if left.is_float() || right.is_float() {
+		if left.is_float() && !type_is_f32(left) {
+			return Type(f64_)
+		}
+		if right.is_float() && !type_is_f32(right) {
+			return Type(f64_)
+		}
+		return Type(f32_)
+	}
+	left_bits := translated_integer_bit_width(left)
+	right_bits := translated_integer_bit_width(right)
+	left_unsigned := translated_integer_is_unsigned(left)
+	right_unsigned := translated_integer_is_unsigned(right)
+	if left_bits > right_bits {
+		return left
+	}
+	if right_bits > left_bits {
+		return right
+	}
+	if left_unsigned != right_unsigned {
+		return if left_unsigned { left } else { right }
+	}
+	return left
 }
 
 // match_expr_tail_type supports match expression value type handling for TypeChecker.
@@ -4194,7 +4293,9 @@ fn (mut tc TypeChecker) check_struct_init(id flat.NodeId, node flat.Node) {
 				} else {
 					tc.a.nodes[int(value_id)].pos
 				}
-				tc.warn_if_integer_literal_outside_known_type_range(value_id, expected, warning_pos)
+				if !tc.node_is_in_translated_file(value_id) {
+					tc.warn_if_integer_literal_outside_known_type_range(value_id, expected, warning_pos)
+				}
 				tc.check_node_with_expected_context(value_id, expected)
 			} else {
 				tc.check_node(value_id)
@@ -4204,7 +4305,8 @@ fn (mut tc TypeChecker) check_struct_init(id flat.NodeId, node flat.Node) {
 					tc.ownership_consume_expr(value_id, 'struct field', value_id)
 				}
 			}
-			if type_is_unsigned_integer(expected) && tc.expr_is_negative_integer_literal(value_id) {
+			if !tc.node_is_in_translated_file(value_id) && type_is_unsigned_integer(expected)
+				&& tc.expr_is_negative_integer_literal(value_id) {
 				tc.record_error_at(.assignment_mismatch, 'cannot assign negative value to unsigned integer type', value_id, value_node.pos)
 			}
 			if tc.unsafe_depth == 0 && !tc.translated_files[tc.cur_file]
@@ -7591,7 +7693,8 @@ fn (mut tc TypeChecker) check_index(id flat.NodeId, node flat.Node) {
 		if index_type is Unknown && tc.new_error_kind_since(index_error_count, .unknown_ident)
 			&& (base_type is Array || base_type is ArrayFixed) {
 			tc.type_mismatch(.cannot_index, 'non-integer index `void` (array type `${base_type.name()}`)', index_id)
-		} else if index_type !is Unknown && index_type !is Enum && !index_type.is_integer() {
+		} else if index_type !is Unknown && index_type !is Enum && !index_type.is_integer()
+			&& !(tc.node_is_in_translated_file(index_id) && translated_integer_type(index_type)) {
 			if index_type is OptionType || index_type is ResultType {
 				tc.type_mismatch(.cannot_index, 'cannot use Option or Result as index (array type `${base_type.name()}`)', index_id)
 			} else {
@@ -16577,6 +16680,11 @@ fn (tc &TypeChecker) resolve_type_uncached(id flat.NodeId) Type {
 	}
 	node_ref := tc.a.node(id)
 	node := tc.a.nodes[int(id)]
+	if node.kind == .int_literal && tc.node_is_in_translated_file(id) {
+		if typ := tc.translated_integer_literal_type(id) {
+			return typ
+		}
+	}
 	if node.kind == .ident && tc.errors.any(it.node == id && it.kind == .unknown_ident) {
 		return Type(void_)
 	}
@@ -17194,7 +17302,9 @@ fn (tc &TypeChecker) resolve_type_uncached(id flat.NodeId) Type {
 				return Type(void_)
 			}
 			if node.op in [.left_shift, .right_shift, .right_shift_unsigned]
-				&& (!unalias_type(lt).is_integer() || !unalias_type(rt).is_integer()) {
+				&& (!unalias_type(lt).is_integer() || !unalias_type(rt).is_integer())
+				&& !(tc.node_is_in_translated_file(id) && translated_integer_type(lt)
+					&& translated_integer_type(rt)) {
 				return Type(void_)
 			}
 			if node.op == .left_shift && array_type_from_receiver(lt) != none {
@@ -17202,12 +17312,14 @@ fn (tc &TypeChecker) resolve_type_uncached(id flat.NodeId) Type {
 			}
 			if node.op in [.plus, .minus] {
 				if node.op == .minus && lt is Pointer && rt is Pointer {
-					return Type(int_)
+					return if tc.node_is_in_translated_file(id) { Type(isize_) } else { Type(int_) }
 				}
-				if lt is Pointer && rt.is_integer() {
+				if lt is Pointer && (rt.is_integer()
+					|| (tc.node_is_in_translated_file(id) && translated_integer_type(rt))) {
 					return lt_raw
 				}
-				if node.op == .plus && rt is Pointer && lt.is_integer() {
+				if node.op == .plus && rt is Pointer && (lt.is_integer()
+					|| (tc.node_is_in_translated_file(id) && translated_integer_type(lt))) {
 					return rt_raw
 				}
 			}
@@ -17215,6 +17327,9 @@ fn (tc &TypeChecker) resolve_type_uncached(id flat.NodeId) Type {
 				return operator_ret
 			}
 			if node.op == .right_shift_unsigned {
+				if tc.node_is_in_translated_file(id) {
+					return unsigned_shift_result_type(tc.translated_promoted_shift_type(lt))
+				}
 				// Untyped integer literals retain the language's 32-bit default. An
 				// explicit `int(...)` uses the target-width `int` instead.
 				if tc.integer_literal_source(lhs_id) != none {
@@ -17223,7 +17338,16 @@ fn (tc &TypeChecker) resolve_type_uncached(id flat.NodeId) Type {
 				return unsigned_shift_result_type(lt)
 			}
 			if node.op in [.left_shift, .right_shift] {
+				if tc.node_is_in_translated_file(id)
+					&& (tc.integer_shift_bit_size(lt) < 32 || unalias_type(lt) == Type(bool_)) {
+					return Type(i32_)
+				}
 				return lt_raw
+			}
+			if tc.node_is_in_translated_file(id) && translated_numeric_type(lt)
+				&& translated_numeric_type(rt)
+				&& node.op in [.plus, .minus, .mul, .div, .mod, .amp, .pipe, .xor] {
+				return tc.translated_common_numeric_type(lt, rt)
 			}
 			if node.op == .plus {
 				if lt is String && optional_payload_is_string(rt) {
@@ -17273,6 +17397,14 @@ fn (tc &TypeChecker) resolve_type_uncached(id flat.NodeId) Type {
 					return Type(Pointer{
 						base_type: inner
 					})
+				}
+			}
+			if node.children_count > 0 && tc.node_is_in_translated_file(id)
+				&& node.op in [.plus, .minus, .bit_not] {
+				child_type := tc.resolve_type(tc.a.child(&node, 0))
+				if (node.op == .bit_not && translated_integer_type(child_type))
+					|| (node.op in [.plus, .minus] && translated_numeric_type(child_type)) {
+					return tc.translated_promoted_numeric_type(child_type)
 				}
 			}
 			if node.typ.len > 0 {

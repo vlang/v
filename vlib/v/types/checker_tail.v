@@ -633,6 +633,11 @@ fn assignment_op_reads_lhs(op flat.Op) bool {
 }
 
 fn (tc &TypeChecker) assignment_types_compatible(rhs_id flat.NodeId, rhs_type Type, expected_type Type, op flat.Op) bool {
+	if tc.translated_numeric_expr_compatible(rhs_id, rhs_type, expected_type)
+		|| (tc.node_is_in_translated_file(rhs_id) && op in [.plus_assign, .minus_assign]
+			&& unalias_type(expected_type) is Pointer && translated_integer_type(rhs_type)) {
+		return true
+	}
 	if op == .assign && tc.fn_storage_voidptr_mismatch(rhs_id, rhs_type, expected_type) {
 		return false
 	}
@@ -732,6 +737,7 @@ fn (tc &TypeChecker) assignment_integer_literal_operand(id flat.NodeId) ?flat.No
 fn (tc &TypeChecker) fn_storage_voidptr_mismatch(expr_id flat.NodeId, actual Type, expected Type) bool {
 	return is_fn_pointer_type(expected) && fn_param_is_voidptr_type(actual) && tc.unsafe_depth == 0
 		&& !tc.current_fn_declared_unsafe() && !tc.expr_is_unsafe_nil(expr_id)
+		&& !tc.node_is_in_translated_file(expr_id)
 }
 
 fn (tc &TypeChecker) direct_sum_assignment_variant_matches(actual Type, expected SumType) bool {
@@ -1259,7 +1265,8 @@ fn (mut tc TypeChecker) check_postfix(id flat.NodeId, node flat.Node) {
 			tc.check_lvalue_mutability_with_translated_rules(child_id, postfix_is_translated)
 			return
 		}
-		if !infix_power_type_is_numeric(child_type) {
+		if !infix_power_type_is_numeric(child_type)
+			&& !(tc.node_is_in_translated_file(child_id) && translated_numeric_type(child_type)) {
 			type_name := if child_type is Nil { 'voidptr' } else { child_type.name() }
 			tc.record_error_at(.assignment_mismatch, 'invalid operation: ${op} (non-numeric type `${type_name}`)', id, tc.prefix_operator_pos(id, op))
 			return
@@ -2325,7 +2332,7 @@ fn (mut tc TypeChecker) check_return(id flat.NodeId, node flat.Node) {
 			return
 		}
 	}
-	if type_is_unsigned_integer(expected) {
+	if type_is_unsigned_integer(expected) && !tc.node_is_in_translated_file(child_id) {
 		if literal := tc.integer_literal_source(child_id) {
 			if literal.starts_with('-') {
 				tc.record_notice_at(.return_mismatch, 'cannot use a negative value as value of type `${expected.name()}` in return argument', child_id, tc.a.node(child_id).pos)
@@ -2340,6 +2347,7 @@ fn (mut tc TypeChecker) check_return(id flat.NodeId, node flat.Node) {
 		&& unalias_type(actual).is_integer() != unalias_type(expected).is_integer()
 		&& tc.integer_literal_source(child_id) == none && tc.a.node(child_id).kind != .float_literal
 		&& !implicit_integer_to_float_compatible(actual, expected)
+		&& !tc.translated_numeric_expr_compatible(child_id, actual, expected)
 	clean_expected_for_reference := unalias_type(expected)
 	expected_accepts_pointer_value := clean_expected_for_reference is Interface
 		|| (clean_expected_for_reference is OptionType
@@ -3144,6 +3152,7 @@ fn return_numeric_alias_compatible(actual Type, expected Type) bool {
 
 fn (tc &TypeChecker) expr_compatible(expr_id flat.NodeId, actual Type, expected Type) bool {
 	return tc.type_compatible(actual, expected) || tc.zero_literal_can_be_pointer(expr_id, expected)
+		|| tc.translated_numeric_expr_compatible(expr_id, actual, expected)
 		|| tc.int_literal_can_be_char(expr_id, expected)
 		|| tc.interface_expr_compatible(actual, expected)
 		|| tc.fn_voidptr_expr_compatible(actual, expected)
@@ -3153,6 +3162,28 @@ fn (tc &TypeChecker) expr_compatible(expr_id flat.NodeId, actual Type, expected 
 		|| tc.failure_literal_expr_compatible(expr_id, actual, expected)
 		|| tc.fn_literal_omitted_params_compatible(expr_id, actual, expected)
 		|| tc.fn_decl_value_mut_ref_slot_compatible(expr_id, actual, expected)
+}
+
+fn translated_numeric_type(typ Type) bool {
+	clean := unalias_type(typ)
+	return clean.is_integer() || clean.is_float() || clean is Char || clean is Enum
+		|| clean == Type(bool_)
+}
+
+fn translated_integer_type(typ Type) bool {
+	clean := unalias_type(typ)
+	return clean.is_integer() || clean is Char || clean is Enum || clean == Type(bool_)
+}
+
+fn (tc &TypeChecker) translated_numeric_expr_compatible(id flat.NodeId, actual Type, expected Type) bool {
+	return tc.node_is_in_translated_file(id) && translated_numeric_type(actual)
+		&& translated_numeric_type(expected)
+}
+
+fn (tc &TypeChecker) translated_condition_compatible(id flat.NodeId, typ Type) bool {
+	return tc.node_is_in_translated_file(id)
+		&& (translated_numeric_type(typ) || unalias_type(typ) is Pointer
+			|| fn_type_from_type(typ) != none)
 }
 
 fn (tc &TypeChecker) interface_expr_compatible(actual Type, expected Type) bool {
@@ -14619,10 +14650,11 @@ fn (mut tc TypeChecker) check_call_arg_types(id flat.NodeId, node flat.Node, inf
 		resolved_arg_type := tc.resolve_type(arg_id)
 		constant_integer_value := tc.implicit_integer_constant_value(arg_id,
 			resolved_arg_type)
-		negative_unsigned_literal := type_is_unsigned_integer(expected)
+		negative_unsigned_literal := !tc.node_is_in_translated_file(arg_id)
+			&& type_is_unsigned_integer(expected)
 			&& (tc.expr_is_negative_integer_literal(arg_id)
 				|| (constant_integer_value or { 0 }) < 0)
-		if !negative_unsigned_literal {
+		if !negative_unsigned_literal && !tc.node_is_in_translated_file(arg_id) {
 			tc.warn_if_integer_literal_outside_known_type_range(arg_id, expected, tc.a.nodes[int(arg_id)].pos)
 		}
 		if !call_param_is_shared(info, param_idx) && !tc.expr_is_explicit_shared_arg(arg_id)
@@ -14801,6 +14833,7 @@ fn (mut tc TypeChecker) check_call_arg_types(id flat.NodeId, node flat.Node, inf
 			&& actual.base_type.name() == expected.name())
 			&& !implicit_integer_to_float_compatible(actual, expected)
 			&& !tc.c_call_arg_compatible(info.name, arg_id, expected, actual)
+			&& !tc.translated_numeric_expr_compatible(arg_id, actual, expected)
 			&& (tc.mut_param_expr_base(arg_id, actual) or {
 				actual
 			}).name() != expected.name() {
@@ -19862,7 +19895,8 @@ fn (mut tc TypeChecker) check_if_expr(id flat.NodeId, node flat.Node) {
 		else_id := tc.a.child(&node, 2)
 		if tc.branch_has_value_tail(then_id) && tc.branch_has_value_tail(else_id)
 			&& !tc.if_branch_types_compatible(then_type, else_type, tc.branch_tail_is_array_literal(then_id), tc.branch_tail_is_array_literal(else_id))
-			&& !tc.if_branch_multi_return_compatible(then_type, then_id, else_type, else_id) {
+			&& !tc.if_branch_multi_return_compatible(then_type, then_id, else_type, else_id)
+			&& !tc.translated_numeric_expr_compatible(id, then_type, else_type) {
 			if tc.if_branch_empty_array_compatible(then_type, then_id, else_type, else_id) {
 				return
 			}
