@@ -18,6 +18,8 @@ struct GlobalInheritedAlignedArrayPointerCell {
 type GlobalArrayPointerAddress = [32]u8
 type GlobalArrayPointerRow = [4]int
 type GlobalArrayPointerValues = GlobalArrayPointerRow
+type GlobalArrayPointerNestedRow = [3]int
+type GlobalArrayPointerNestedRowAlias = GlobalArrayPointerNestedRow
 
 __global global_row_calls = 0
 
@@ -37,6 +39,7 @@ __global global_index_array = &[4]int{init: index * 2}
 __global global_nested_filled_array = &[2][3]int{init: [3]int{init: 7}}
 __global global_nested_index_array = &[2][3]int{init: [3]int{init: index + 5}}
 __global global_nested_call_array = &[2][3]int{init: make_global_array_pointer_row(index)}
+__global global_nested_alias_call_array = &[2]GlobalArrayPointerNestedRowAlias{init: make_global_array_pointer_row(index)}
 __global global_aligned_array = &[2]GlobalAlignedArrayPointerCell{}
 __global global_nested_aligned_array = &[2][2]GlobalAlignedArrayPointerCell{}
 __global global_inherited_aligned_array = &[2]GlobalInheritedAlignedArrayPointerCell{}
@@ -57,7 +60,7 @@ fn test_global_fixed_array_pointers_are_initialized() {
 	assert u64(voidptr(global_nested_aligned_array)) % 512 == 0
 	assert u64(voidptr(global_inherited_aligned_array)) % 512 == 0
 	assert u64(voidptr(global_filled_aligned_array)) % 512 == 0
-	assert global_row_calls == 2
+	assert global_row_calls == 4
 	// Indexing these pointer-backed arrays requires an unsafe block.
 	unsafe {
 		assert global_zero_array[0] == 0
@@ -90,6 +93,8 @@ fn test_global_fixed_array_pointers_are_initialized() {
 		assert global_nested_call_array[0][2] == 2
 		assert global_nested_call_array[1][0] == 10
 		assert global_nested_call_array[1][2] == 12
+		assert global_nested_alias_call_array[0][1] == 1
+		assert global_nested_alias_call_array[1][2] == 12
 		assert global_aligned_array[1].value == 19
 		assert global_nested_aligned_array[1][1].value == 19
 		assert global_inherited_aligned_array[1].inner.value == 19

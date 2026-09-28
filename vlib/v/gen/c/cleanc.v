@@ -22966,7 +22966,7 @@ fn (mut g FlatGen) global_fixed_array_fill_stmt(dst string, val_id flat.NodeId, 
 		}
 	}
 	element := '${dst}[${index_tmp}]'
-	assignment := if inner := array_fixed_type(fixed.elem_type) {
+	assignment := if inner := array_fixed_type(default_init_unalias_type(fixed.elem_type)) {
 		g.global_fixed_array_fill_stmt(element, init_id, inner)
 	} else {
 		init_expr := g.expr_to_string_with_expected_type(init_id, fixed.elem_type)
