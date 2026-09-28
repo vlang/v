@@ -226,25 +226,39 @@ fn imports_json(a &flat.FlatAst) bool {
 
 // resolves_project_json_module reports whether `import json` in `file` resolves to
 // an existing module. vlib has no `json` module anymore, so such a module belongs
-// to the project (beside the file, in a parent directory, in ~/.vmodules, or in a
-// `-path` root). The compiler keeps using it, so its calls must not be rewritten
-// to `json2`.
+// to the project (beside the file, in a parent directory, or in a module root).
+// The compiler keeps using it, so its calls must not be rewritten to `json2`.
 fn (foptions &FormatOptions) resolves_project_json_module(file string) bool {
-	vroot := os.dir(os.getenv('VEXE'))
-	mut lookups := [[]string{}]
+	mut lookup := &compiler_pref.Preferences{
+		vroot: os.dir(os.getenv('VEXE'))
+	}
 	if foptions.module_search_paths.len > 0 {
-		lookups << foptions.module_search_paths
+		// `-path` replaces vlib and ~/.vmodules as the module roots, but the compiler
+		// still looks beside the importing file and in its parent directories.
+		mut roots := foptions.module_search_paths.clone()
+		roots << importer_and_parent_dirs(file)
+		lookup.module_search_paths = roots
 	}
-	for search_paths in lookups {
-		lookup := &compiler_pref.Preferences{
-			vroot:               vroot
-			module_search_paths: search_paths
+	return lookup.get_module_path('json', file) != ''
+}
+
+// importer_and_parent_dirs lists the directory of `file` and its parents, up to a
+// directory with a module search stop marker.
+fn importer_and_parent_dirs(file string) []string {
+	mut dirs := []string{}
+	mut dir := os.dir(os.real_path(file))
+	for {
+		dirs << dir
+		if compiler_pref.is_module_search_stop_dir(dir) {
+			break
 		}
-		if lookup.get_module_path('json', file) != '' {
-			return true
+		parent := os.dir(dir)
+		if parent == dir {
+			break
 		}
+		dir = parent
 	}
-	return false
+	return dirs
 }
 
 fn (foptions &FormatOptions) formatted_content_from_file(file string, report_diagnostics bool) !string {

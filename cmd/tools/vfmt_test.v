@@ -964,6 +964,52 @@ fn test_fmt_keeps_json_module_found_through_path_flag_with_v3() {
 	assert migrated.contains('import json2\n'), migrated
 }
 
+fn test_fmt_json_lookup_with_path_flag_follows_the_compiler_with_v3() {
+	module_source := "module json\n\npub fn encode[T](x T) string {\n\treturn 'own'\n}\n"
+	source := 'import json\n\nfn main() {\n\tprintln(json.encode(1))\n}\n'
+	root := os.join_path(vfmt_test_tdir, 'json_path_lookup')
+	// A module in ~/.vmodules is not searched when `-path` leaves out `@vmodules`.
+	vmodules := os.join_path(root, 'vmodules')
+	os.mkdir_all(os.join_path(vmodules, 'json'))!
+	os.write_file(os.join_path(vmodules, 'json', 'json.v'), module_source)!
+	os.mkdir_all(os.join_path(root, 'app'))!
+	app_file := os.join_path(root, 'app', 'main.v')
+	os.write_file(app_file, source)!
+	// A sibling of the importing file's directory is still found through `-path`.
+	os.mkdir_all(os.join_path(root, 'project', 'src'))!
+	os.mkdir_all(os.join_path(root, 'project', 'json'))!
+	os.write_file(os.join_path(root, 'project', 'json', 'json.v'), module_source)!
+	project_file := os.join_path(root, 'project', 'src', 'main.v')
+	os.write_file(project_file, source)!
+	old_vflags := os.getenv('VFLAGS')
+	old_vmodules := os.getenv('VMODULES')
+	os.setenv('VMODULES', vmodules, true)
+	os.setenv('VFLAGS', '-path @vlib', true)
+	app_res := os.execute('${os.quoted_path(vexe)} fmt -w ${os.quoted_path(app_file)}')
+	project_res := os.execute('${os.quoted_path(vexe)} fmt -w ${os.quoted_path(project_file)}')
+	os.unsetenv('VFLAGS')
+	app_copy := os.join_path(root, 'app', 'copy.v')
+	os.write_file(app_copy, source)!
+	with_vmodules_res := os.execute('${os.quoted_path(vexe)} fmt ${os.quoted_path(app_copy)}')
+	for name, value in {
+		'VFLAGS':   old_vflags
+		'VMODULES': old_vmodules
+	} {
+		if value == '' {
+			os.unsetenv(name)
+		} else {
+			os.setenv(name, value, true)
+		}
+	}
+	assert app_res.exit_code == 0, app_res.output
+	assert os.read_file(app_file)!.contains('import json2\n')
+	assert project_res.exit_code == 0, project_res.output
+	assert os.read_file(project_file)! == source
+	// Without `-path`, ~/.vmodules is searched, so a file importing that module keeps it.
+	assert with_vmodules_res.exit_code == 0, with_vmodules_res.output
+	assert with_vmodules_res.output.contains('import json\n'), with_vmodules_res.output
+}
+
 fn test_fmt_keeps_project_owned_json_module_imports_with_v3() {
 	source := "import json
 
