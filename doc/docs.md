@@ -4970,6 +4970,8 @@ Fixed array fields initialize each element with its specialized generic defaults
 Generic types brought into scope by a selective import retain their declaring module when
 passed to generic functions and methods in other modules.
 
+Methods called on a generic factory result retain their dependencies in the compiled program.
+
 ```v wip
 
 struct Repo[T] {
