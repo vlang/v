@@ -10013,10 +10013,25 @@ fn (mut t Transformer) clone_specialized_comptime_new_marker(node flat.Node, tar
 }
 
 fn (mut t Transformer) generic_clone_child_is_return_value(node flat.Node, child_index int, direct_return_value bool) bool {
-	if direct_return_value && node.kind == .infix && node.children_count == 2 {
+	if direct_return_value && node.kind in [.prefix, .infix] {
 		mut expected := t.generic_inference_expected_type(t.cur_fn_ret_type)
 		for expected.starts_with('?') || expected.starts_with('!') {
 			expected = expected[1..].trim_space()
+		}
+		result_type := types.unalias_type(t.tc.parse_resolution_type(expected))
+		if node.kind == .prefix {
+			if node.children_count != 1 || child_index != 0 {
+				return false
+			}
+			return match node.op {
+				.not { result_type == types.Type(types.bool_) }
+				.plus, .minus { result_type.is_integer() || result_type.is_float() }
+				.bit_not { result_type.is_integer() || result_type is types.Enum }
+				else { false }
+			}
+		}
+		if node.children_count != 2 {
+			return false
 		}
 		if !types.is_builtin_type_name(expected) {
 			if _ := t.struct_operator_call_info_any(expected, node.op) {
@@ -10037,17 +10052,21 @@ fn (mut t Transformer) generic_clone_child_is_return_value(node flat.Node, child
 				}
 			}
 		}
-		result_type := types.unalias_type(t.tc.parse_resolution_type(expected))
 		if result_type.is_integer() || result_type.is_float() {
-			return node.op in [.plus, .minus, .mul, .div, .mod, .amp, .pipe, .xor]
-				|| (child_index == 0 && node.op in [.left_shift, .right_shift])
+			return node.op in [.plus, .minus, .mul, .div, .mod, .amp, .pipe, .xor, .power]
+				|| (child_index == 0
+					&& node.op in [.left_shift, .right_shift, .right_shift_unsigned])
+		}
+		if result_type is types.Enum {
+			return node.op in [.amp, .pipe, .xor]
+		}
+		if result_type == types.Type(types.bool_) {
+			return node.op in [.logical_and, .logical_or]
 		}
 		return result_type.is_string() && node.op == .plus
 	}
 	return (node.kind == .return_stmt && node.children_count == 1 && child_index == 0)
 		|| (direct_return_value && node.kind in [.paren, .postfix, .expr_stmt, .dump_expr]
-			&& node.children_count == 1 && child_index == 0)
-		|| (direct_return_value && node.kind == .prefix && node.op in [.plus, .minus, .bit_not]
 			&& node.children_count == 1 && child_index == 0)
 		|| (direct_return_value && node.kind == .or_expr)
 		|| (direct_return_value && node.kind in [.if_expr, .match_stmt] && child_index > 0)

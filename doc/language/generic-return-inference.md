@@ -2,9 +2,9 @@
 
 A generic call used as a function's return value can infer its result type from that function's
 declared return type. This context also reaches the value inside `dump(...)`, the operand of
-unary `+`, `-`, or `~`, and the selected branch of a returned expression. Numeric arithmetic
-operands and string concatenation also receive this context. For `<<` and `>>`, it reaches only
-the left operand; the shift count keeps its own type.
+unary `+`, `-`, `~`, or `!`, and the selected branch of a returned expression. Numeric arithmetic,
+boolean logic, flag operations, and string concatenation also receive compatible return context.
+For `<<`, `>>`, and `>>>`, it reaches only the left operand; the shift count keeps its own type.
 
 Returns inside `$for variant in Sum.variants` retain the same context when a branch narrows a
 sum value to the current variant. The variant's type does not replace the declared return type

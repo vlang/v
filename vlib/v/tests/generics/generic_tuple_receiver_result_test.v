@@ -296,6 +296,8 @@ fn contextual_infix_value[T]() T {
 		return T(1.5)
 	} $else $if T is u64 {
 		return T(0x1_0000_0007)
+	} $else $if T is ContextualFlags {
+		return T(ContextualFlags.first)
 	} $else $if T is string {
 		return T('c')
 	} $else {
@@ -398,4 +400,60 @@ fn test_generic_infix_return_context_keeps_independent_operand_types() {
 	unsafe {
 		assert contextual_infix_pointer(1, &values[0]) == &values[0]
 	}
+}
+
+@[flag]
+enum ContextualFlags {
+	first
+	second
+	third
+}
+
+fn contextual_infix_power[A, B](first A, second B) B {
+	_ = first
+	return contextual_infix_value() ** second
+}
+
+fn contextual_infix_unsigned_shift[A, B](first A, second B) B {
+	_ = first
+	return contextual_infix_value() >>> second
+}
+
+fn contextual_unsigned_shift_count[A, B](first A, second B) B {
+	_ = first
+	return second >>> contextual_infix_value()
+}
+
+fn contextual_boolean_value[T]() T {
+	$if T is bool {
+		return T(false)
+	} $else {
+		return T(7)
+	}
+}
+
+fn contextual_not[A, B](first A, second B) bool {
+	_ = first
+	_ = second
+	return !contextual_boolean_value()
+}
+
+fn contextual_logical_and[A, B](first A, second B) bool {
+	_ = first
+	return contextual_boolean_value() && second
+}
+
+fn contextual_logical_or[A, B](first A, second B) bool {
+	_ = first
+	return second || contextual_boolean_value()
+}
+
+fn test_generic_return_context_covers_boolean_power_unsigned_shift_and_flags() {
+	assert contextual_not(1, '')
+	assert !contextual_logical_and(1, true)
+	assert !contextual_logical_or(1, false)
+	assert contextual_infix_power(1, f64(2)) == 2.25
+	assert contextual_infix_unsigned_shift(1, u64(1)) == 0x8000_0003
+	assert contextual_unsigned_shift_count(1, u64(256)) == 2
+	assert contextual_infix_or(1, ContextualFlags.second) == ContextualFlags.first | .second
 }
