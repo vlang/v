@@ -13926,8 +13926,9 @@ fn (mut t Transformer) coerce_transformed_expr_to_type(expr flat.NodeId, source_
 	if t.is_optional_type_name(optional_target) && t.is_ierror_type(expr_type) {
 		optional_payload := t.optional_base_type(optional_target)
 		payload_accepts_ierror := optional_payload in ['IError', 'builtin.IError']
-			|| (!isnil(t.tc) && t.tc.slot_value_compatible(t.tc.parse_type(expr_type),
-				t.tc.parse_type(optional_payload)))
+			|| (t.normalize_type_alias(optional_payload) != 'string' && !isnil(t.tc)
+				&& t.tc.slot_value_compatible(t.tc.parse_type(expr_type),
+					t.tc.parse_type(optional_payload)))
 		if (optional_target.starts_with('!')
 			&& t.return_expr_is_propagated_err(source_id, optional_payload))
 			|| !payload_accepts_ierror {

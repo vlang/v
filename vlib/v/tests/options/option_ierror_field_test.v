@@ -7,6 +7,25 @@ interface Any {}
 
 type ErrorOrText = IError | string
 
+type ErrorText = string
+
+fn test_error_is_optional_failure_for_string_payloads() {
+	mut text := ?string(none)
+	mut alias_text := ?ErrorText(none)
+	text = error('string failure')
+	alias_text = error('alias failure')
+	if _ := text {
+		assert false
+	} else {
+		assert err.msg() == 'string failure'
+	}
+	if _ := alias_text {
+		assert false
+	} else {
+		assert err.msg() == 'alias failure'
+	}
+}
+
 struct ConcreteError {
 	reason string
 }
