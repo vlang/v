@@ -22,10 +22,20 @@ fn (mut t Transformer) transform_translated_array_arithmetic(id flat.NodeId, nod
 	if lhs_type !is types.ArrayFixed && rhs_type !is types.ArrayFixed {
 		return none
 	}
+	lhs_value_type := if lhs_type is types.ArrayFixed {
+		'&${lhs_type.elem_type.name()}'
+	} else {
+		t.checker_expr_type_name(lhs_id) or { lhs_type.name() }
+	}
 	mut lhs := t.transform_value_operand(lhs_id)
 	if lhs_type is types.ArrayFixed {
 		lhs = t.materialize_translated_array_decay_operand(lhs_id, lhs)
 		lhs = t.make_prefix(.amp, t.make_index(lhs, t.make_int_literal(0), lhs_type.elem_type.name()))
+	}
+	if rhs_type is types.ArrayFixed {
+		// The RHS can queue array storage before the final infix expression.
+		// Capture the LHS now, including reads the RHS may subsequently mutate.
+		lhs = t.snapshot_transformed_expr_for_reuse(lhs, lhs_value_type, 'array_decay_left')
 	}
 	mut rhs := t.transform_value_operand(rhs_id)
 	if rhs_type is types.ArrayFixed {

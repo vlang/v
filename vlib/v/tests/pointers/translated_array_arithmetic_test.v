@@ -63,3 +63,42 @@ fn test_translated_fixed_array_operator_overload() {
 	result := left + right
 	assert result == TranslatedVec3([5, 7, 9]!)
 }
+
+fn translated_ordered_offset(mut calls []int) int {
+	calls << 1
+	return 1
+}
+
+fn translated_ordered_array(mut calls []int) [3]int {
+	calls << 2
+	return [7, 11, 13]!
+}
+
+struct TranslatedOrderState {
+mut:
+	offset int
+}
+
+fn translated_array_after_offset_change(mut state TranslatedOrderState) [3]int {
+	state.offset = 2
+	return [7, 11, 13]!
+}
+
+fn test_translated_array_arithmetic_preserves_operand_order() {
+	mut calls := []int{}
+	second := translated_ordered_offset(mut calls) + translated_ordered_array(mut calls)
+	assert calls == [1, 2]
+	assert unsafe { *second } == 11
+	calls.clear()
+	third := (translated_ordered_offset(mut calls) + 1) + translated_ordered_array(mut calls)
+	assert calls == [1, 2]
+	assert unsafe { *third } == 13
+	calls.clear()
+	reversed := translated_ordered_array(mut calls) + translated_ordered_offset(mut calls)
+	assert calls == [2, 1]
+	assert unsafe { *reversed } == 11
+	mut state := TranslatedOrderState{}
+	first := state.offset + translated_array_after_offset_change(mut state)
+	assert state.offset == 2
+	assert unsafe { *first } == 7
+}
