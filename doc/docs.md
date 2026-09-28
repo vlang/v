@@ -9218,6 +9218,7 @@ is `DLL_PROCESS_DETACH`.
 
 Files marked `@[translated]` retain C storage rules: global declarations and writes through
 pointers do not require additional flags or `unsafe` blocks. These rules apply only to those files.
+Pointer-returning calls can also receive field assignments.
 
 V can translate your C code to human readable V code, and generating V wrappers
 on top of C libraries.

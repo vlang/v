@@ -784,17 +784,44 @@ fn (g &Parser) validate_expression_mutation_lvalue(tokens []FastcExpressionToken
 	}
 	global_key := fastc_global_key(g.module_name, root_name)
 	mut selfhost_pointer_root := false
+	if g.selfhost || g.translated {
+		mut selector_depth := 0
+		for i, item in lvalue {
+			match item.tok {
+				.lpar, .lsbr, .lcbr {
+					selector_depth++
+					continue
+				}
+				.rpar, .rsbr, .rcbr {
+					selector_depth--
+					continue
+				}
+				else {}
+			}
+			if selector_depth != 0 || item.tok != .dot || i == 0 || i + 1 >= lvalue.len
+				|| lvalue[i + 1].tok != .name || g.expression_dot_is_module_separator(lvalue,
+				i) {
+				continue
+			}
+			receiver_start := fastc_method_receiver_start(lvalue, i)
+			receiver_type := g.infer_expression_type(lvalue[receiver_start..i]) or { continue }
+			if fastc_is_pointer_type(g.underlying_alias_type(receiver_type)) {
+				selfhost_pointer_root = true
+				break
+			}
+		}
+	}
 	if local := g.locals[root_name] {
-		selfhost_pointer_root = (g.selfhost || g.translated)
-			&& fastc_is_pointer_type(g.underlying_alias_type(local.typ))
+		selfhost_pointer_root = selfhost_pointer_root || ((g.selfhost || g.translated)
+			&& fastc_is_pointer_type(g.underlying_alias_type(local.typ)))
 		if !local.is_mut && lvalue[0].unsafe_depth == 0 && !selfhost_pointer_root {
 			return g.unsupported('mutation of immutable or unknown name `${root_name}`')
 		}
-	} else if global_key !in g.globals {
+	} else if global_key !in g.globals && !selfhost_pointer_root {
 		return g.unsupported('mutation of immutable or unknown name `${root_name}`')
 	} else if global_type := g.global_types[global_key] {
-		selfhost_pointer_root = (g.selfhost || g.translated)
-			&& fastc_is_pointer_type(g.underlying_alias_type(global_type))
+		selfhost_pointer_root = selfhost_pointer_root || ((g.selfhost || g.translated)
+			&& fastc_is_pointer_type(g.underlying_alias_type(global_type)))
 	}
 	mut selector_depth := 0
 	for i, item in lvalue {
