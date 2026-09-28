@@ -507,3 +507,28 @@ fn test_required_raw_field_keeps_null_text() {
 	// `@[required]`.
 	assert json2.decode[RequiredRawBody]('{"body":null}')!.body == 'null'
 }
+
+type IntOrRune = ?int | ?rune
+
+type RuneOrString = ?rune | ?string
+
+type RuneOrInt = ?rune | ?int
+
+fn test_option_rune_variants_take_strings() {
+	// A rune is written as a string, so `?rune` takes one when no `?string` does.
+	encoded := json2.encode(IntOrRune(?rune(`q`)))
+	assert encoded == '"q"'
+	decoded := json2.decode[IntOrRune](encoded)!
+	letter := (decoded as ?rune) or { panic('the rune should be set') }
+	assert letter == `q`
+	int_value := json2.decode[IntOrRune]('5')!
+	number := (int_value as ?int) or { panic('the int should be set') }
+	assert number == 5
+	// A payload of the JSON value's own kind wins over one that converts it.
+	string_value := json2.decode[RuneOrString]('"hello"')!
+	text := (string_value as ?string) or { panic('the string should be set') }
+	assert text == 'hello'
+	count_value := json2.decode[RuneOrInt]('5')!
+	count := (count_value as ?int) or { panic('the int should be set') }
+	assert count == 5
+}

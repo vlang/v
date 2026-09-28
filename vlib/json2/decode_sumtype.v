@@ -248,7 +248,7 @@ fn (mut decoder Decoder) resolve_sumtype_from_type_field[T](mut val T) !bool {
 			// An option of a struct or a time (`?Foo`, `?time.Time`) is tagged with its
 			// payload's name, like in the removed `json` module.
 			option_value := $zero(v.typ)
-			if option_payload_fits(option_value, .object) {
+			if option_payload_fit(option_value, .object) > 0 {
 				has_discriminated_variant = true
 				mut matches := decoder.sumtype_type_field_matches(type_field_node,
 					sumtype_variant_name(typeof(v.typ).name.trim_left('?')))
@@ -425,12 +425,13 @@ fn (mut decoder Decoder) init_sumtype_by_value_kind[T](mut val T, value_info Val
 	}
 	// A value no other variant takes goes to an option variant, whose payload has to
 	// decode it (`5` for `?int | string`), like in the removed `json` module: first one
-	// whose payload fits the JSON value (`?string` for a string), then any.
+	// whose payload takes the JSON value as it is (`?string` for a string), then one
+	// that converts it (`?rune` for a string), then any.
 	if value_info.value_kind != .null {
-		for any_payload in [false, true] {
+		for min_fit in [2, 1, 0] {
 			$for v in T.variants {
 				$if v.typ is $option {
-					if any_payload || option_payload_fits($zero(v.typ), value_info.value_kind) {
+					if option_payload_fit($zero(v.typ), value_info.value_kind) >= min_fit {
 						val = T(v)
 						return
 					}
@@ -442,23 +443,28 @@ fn (mut decoder Decoder) init_sumtype_by_value_kind[T](mut val T, value_info Val
 	decoder.decode_error('could not resolve sumtype `${T.name}`, got ${value_info.value_kind}.')!
 }
 
-// option_payload_fits reports whether the payload of an option (`?int`) takes a JSON
-// value of `kind`. Aliases are unwrapped, so `?Text` takes a string for `type Text = string`.
-fn option_payload_fits[P](_ ?P, kind ValueKind) bool {
+// option_payload_fit reports how the payload of an option (`?int`) takes a JSON value
+// of `kind`: 2 when it is of that kind (`?string` for a string), 1 when it converts it
+// (`?rune` or `?time.Time` for a string), and 0 when it does not take it. Aliases are
+// unwrapped, so `?Text` takes a string for `type Text = string`.
+fn option_payload_fit[P](_ ?P, kind ValueKind) int {
 	$if P.unaliased_typ is time.Time {
-		return kind == .string || kind == .object
+		return if kind == .string || kind == .object { 1 } else { 0 }
 	} $else $if P.unaliased_typ is string {
-		return kind == .string
+		return if kind == .string { 2 } else { 0 }
 	} $else $if P.unaliased_typ is bool {
-		return kind == .boolean
-	} $else $if P.unaliased_typ is rune || P.unaliased_typ is $int || P.unaliased_typ is $float {
-		return kind == .number
+		return if kind == .boolean { 2 } else { 0 }
+	} $else $if P.unaliased_typ is rune {
+		// A rune is written as a string, and a number is taken as its code point.
+		return if kind == .string || kind == .number { 1 } else { 0 }
+	} $else $if P.unaliased_typ is $int || P.unaliased_typ is $float {
+		return if kind == .number { 2 } else { 0 }
 	} $else $if P.unaliased_typ is $enum {
-		return kind == .string || kind == .number
+		return if kind == .string || kind == .number { 1 } else { 0 }
 	} $else $if P.unaliased_typ is $array || P.unaliased_typ is $array_fixed {
-		return kind == .array
+		return if kind == .array { 2 } else { 0 }
 	} $else {
-		return kind == .object
+		return if kind == .object { 2 } else { 0 }
 	}
 }
 
