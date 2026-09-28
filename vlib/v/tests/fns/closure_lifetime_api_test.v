@@ -1054,6 +1054,44 @@ fn test_closure_lifetime_borrowed_callback_result_is_not_destroyed() {
 	assert res.exit_code == 0, res.output
 }
 
+fn test_nested_map_append_cleans_up_staged_capturing_closures() {
+	$if gcboehm_leak ? {
+		return
+	}
+	tmp_dir := os.join_path(os.vtmp_dir(), 'v_nested_map_append_closure_${os.getpid()}')
+	os.mkdir_all(tmp_dir) or { panic(err) }
+	defer {
+		os.rmdir_all(tmp_dir) or {}
+	}
+	source := [
+		'module main',
+		'',
+		'struct ClosureMapHolder {',
+		'mut:',
+		'\tvalues map[string]map[string][]fn () int',
+		'}',
+		'',
+		'fn run() {',
+		'\tvalue := 7',
+		'\tmut holder := ClosureMapHolder{}',
+		"\tholder.values['a']['b'] << fn [value] () int { return value }",
+		"\tholder.values['a']['b'] << [fn [value] () int { return value + 1 }]",
+		"\tassert holder.values['a']['b'][0]() == 7",
+		"\tassert holder.values['a']['b'][1]() == 8",
+		'}',
+		'',
+		'fn main() {',
+		'\trun()',
+		'}',
+	].join('\n')
+	c_res := c_output_for_program(tmp_dir, 'nested_map_append_closure', source)
+	assert c_res.exit_code == 0, c_res.output
+	run_fn := c_function_body(c_res.output, 'run(void) {') or { panic(c_res.output) }
+	assert total_closure_destroys(run_fn) == 2, run_fn
+	res := run_program_with_gc(tmp_dir, 'nested_map_append_closure', source, 'none')
+	assert res.exit_code == 0, res.output
+}
+
 fn test_lifetime_rejects_misuse_with_errors() {
 	$if gcboehm_leak ? {
 		return
