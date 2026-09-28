@@ -1165,7 +1165,8 @@ fn (mut tc TypeChecker) check_postfix(id flat.NodeId, node flat.Node) {
 			tc.check_lvalue_mutability(child_id)
 			return
 		}
-		if !infix_power_type_is_numeric(child_type) {
+		if !infix_power_type_is_numeric(child_type)
+			&& !(tc.node_is_in_translated_file(child_id) && translated_numeric_type(child_type)) {
 			type_name := if child_type is Nil { 'voidptr' } else { child_type.name() }
 			tc.record_error_at(.assignment_mismatch, 'invalid operation: ${op} (non-numeric type `${type_name}`)', id, tc.prefix_operator_pos(id, op))
 			return

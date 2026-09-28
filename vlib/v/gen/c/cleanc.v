@@ -22442,6 +22442,9 @@ fn (mut g FlatGen) global_scalar_static_initializer(id flat.NodeId, typ types.Ty
 	if trimmed_space(expr).len == 0 || g.const_expr_needs_runtime_storage(expr) {
 		return none
 	}
+	if g.expr_is_in_translated_file(value_id) && clean_type.name() == 'int' {
+		return '((i32)(${expr}))'
+	}
 	return expr
 }
 

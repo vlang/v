@@ -58,6 +58,15 @@ enum TranslatedUnsigned32Enum as u32 {
 	high = 0xffff_ffff
 }
 
+fn test_translated_scalar_postfix_mutations() {
+	mut state := TranslatedUnsigned32Enum.zero
+	state++
+	assert int(state) == 1
+	mut ch := char(0)
+	ch++
+	assert ch == char(1)
+}
+
 fn test_translated_backed_enum_comparisons_use_c_widths() {
 	narrow_signed := int(-1)
 	assert !(narrow_signed < TranslatedUnsigned32Enum.high)
