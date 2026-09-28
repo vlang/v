@@ -32,7 +32,6 @@ fn fn_field_call_test_output(pointer_storage bool, pointer_type bool, pointer_fi
 		typ:  field_type
 	}]
 	owner := tc.cur_scope.insert_with_owner('receiver', base_type)
-	g.declare_local_pointer_storage(owner, pointer_storage)
 	g.declare_local_c_type(owner, if pointer_storage { 'FnFieldHolder*' } else { 'FnFieldHolder' })
 
 	base_id := a.add_node(flat.Node{
