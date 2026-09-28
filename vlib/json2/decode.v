@@ -597,6 +597,11 @@ fn decode_struct_key[T](mut decoder Decoder, val T, key_info ValueInfo, prefix s
 									mut decoded_ptr := $new(field.typ.payload_type.pointee_type)
 									decoder.decode_value(mut decoded_ptr)!
 									new_val.$(field.name) = decoded_ptr
+								} $else $if field.typ is ?rune {
+									// The generic payload of `?rune` does not keep its `rune` type.
+									mut unwrapped_rune := rune(0)
+									decoder.decode_value(mut unwrapped_rune)!
+									new_val.$(field.name) = unwrapped_rune
 								} $else {
 									mut unwrapped_val := $zero(field.typ.payload_type)
 									decoder.decode_value(mut unwrapped_val)!
@@ -973,6 +978,11 @@ fn (mut decoder Decoder) decode_value[T](mut val T) ! {
 												mut decoded_ptr := $new(field.typ.payload_type.pointee_type)
 												decoder.decode_value(mut decoded_ptr)!
 												val.$(field.name) = decoded_ptr
+											} $else $if field.typ is ?rune {
+												// The generic payload of `?rune` does not keep its `rune` type.
+												mut unwrapped_rune := rune(0)
+												decoder.decode_value(mut unwrapped_rune)!
+												val.$(field.name) = unwrapped_rune
 											} $else {
 												mut unwrapped_val := $zero(field.typ.payload_type)
 												decoder.decode_value(mut unwrapped_val)!
@@ -1076,6 +1086,20 @@ fn (mut decoder Decoder) decode_value[T](mut val T) ! {
 
 			unsafe {
 				val = vmemcmp(decoder.json.str + value_info.position, c'true', 'true'.len) == 0
+			}
+		} $else $if T.unaliased_typ is rune {
+			// Like the removed `json` module, a rune is decoded from a JSON string (its
+			// first character); a number is taken as the code point.
+			value_info := decoder.current_node.value
+			if value_info.value_kind == .string {
+				decoded := decoder.decode_string_value(value_info)!
+				val = if decoded.len > 0 { T(decoded.runes()[0]) } else { T(0) }
+			} else if value_info.value_kind == .number {
+				mut code_point := u32(0)
+				unsafe { decoder.decode_number(&code_point)! }
+				val = T(code_point)
+			} else {
+				decoder.decode_error('Expected string, but got ${value_info.value_kind}')!
 			}
 		} $else $if T.unaliased_typ is $float || T.unaliased_typ is $int {
 			value_info := decoder.current_node.value

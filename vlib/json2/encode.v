@@ -59,6 +59,9 @@ fn (mut encoder Encoder) encode_value[T](val T) {
 		encoder.encode_string(string(val))
 	} $else $if T.unaliased_typ is bool {
 		encoder.encode_boolean(bool(val))
+	} $else $if T.unaliased_typ is rune {
+		// Like the removed `json` module, a rune is a JSON string of its character.
+		encoder.encode_string(rune(val).str())
 	} $else $if T.unaliased_typ is u8 {
 		encoder.encode_number(u8(val))
 	} $else $if T.unaliased_typ is u16 {
