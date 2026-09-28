@@ -12253,6 +12253,7 @@ pub fn run(args []string) {
 		if is_shared && !is_liveshared && prefs.normalized_target_os() == 'linux'
 			&& !effective_tcc && (!c_only || generate_c_project.len > 0)
 			&& !v3_has_linker_version_script(resolved_c_flags)
+			&& !v3_has_linker_version_script(environment_c_flags)
 			&& !v3_has_linker_version_script(link_ld_flags) {
 			exports_dir := if generate_c_project.len > 0 { generate_c_project } else { cc_dir }
 			exports_script = os.join_path_single(exports_dir, 'exports.map')

@@ -129,4 +129,20 @@ fn test_new_compiler_shared_library_exports_only_tagged_functions() {
 	assert user_nm.exit_code == 0, user_nm.output
 	assert user_nm.output.contains('mylib_compute'), user_nm.output
 	assert !user_nm.output.contains('mylib_counter'), user_nm.output
+	old_cflags := os.getenv_opt('CFLAGS')
+	os.setenv('CFLAGS', '-Wl,--version-script,${user_script}', true)
+	defer {
+		if value := old_cflags {
+			os.setenv('CFLAGS', value, true)
+		} else {
+			os.unsetenv('CFLAGS')
+		}
+	}
+	env_out := os.join_path(workdir, 'libmylib_cflags')
+	env_build := cmdexec.run(vexe, ['-new-compiler', '-nocache', '-shared', '-o', env_out, lib_src])
+	assert env_build.exit_code == 0, env_build.output
+	env_nm := cmdexec.run('nm', ['-D', '--defined-only', '--format=posix', '${env_out}.so'])
+	assert env_nm.exit_code == 0, env_nm.output
+	assert env_nm.output.contains('mylib_compute'), env_nm.output
+	assert !env_nm.output.contains('mylib_counter'), env_nm.output
 }
