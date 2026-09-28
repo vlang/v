@@ -18709,7 +18709,9 @@ fn (mut g FlatGen) c99_feature_test_macros() {
 	// Portable output does not know which `-std=` the machine that compiles it
 	// will use. The bootstrap Makefile builds `vc/v.c` with `-std=c99`, where
 	// glibc hides the POSIX declarations this code needs, so always request them.
-	if !g.c99_mode && !g.output_cross_c {
+	// A strict ISO `-std=` passed through `-cflags` or `#flag` hides them too: on
+	// Linux, `time.now()` then fails on the missing `struct tm.tm_gmtoff`.
+	if !g.output_cross_c && !c_effective_strict_iso_mode(g.c_flags, g.c99_mode) {
 		return
 	}
 	g.writeln('#if defined(__linux__) && !defined(_GNU_SOURCE)')

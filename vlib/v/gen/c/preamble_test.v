@@ -216,6 +216,28 @@ fn test_cross_c_system_libc_preamble_keeps_posix_environ() {
 	assert c_code.contains('#ifndef _WIN32\nextern char** environ;\n#endif')
 }
 
+fn test_strict_iso_c_flags_request_linux_posix_feature_macros() {
+	for flags in [['-std=c99'], ['-std=c11'], ['--std=c17'], ['-std', 'c99'], ['-ansi']] {
+		mut g := FlatGen.new()
+		g.c_flags = flags
+		g.c99_feature_test_macros()
+		c_code := g.sb.str()
+		assert c_code.contains('#if defined(__linux__) && !defined(_GNU_SOURCE)\n#define _GNU_SOURCE\n#endif'), '${flags}: ${c_code}'
+		assert c_code.contains('#define _POSIX_C_SOURCE 200809L'), '${flags}: ${c_code}'
+	}
+}
+
+fn test_gnu_c_flags_keep_default_feature_macros() {
+	for flags in [[]string{}, ['-std=gnu11'], ['-std=c99', '-std=gnu99'], ['-O2']] {
+		mut g := FlatGen.new()
+		g.c_flags = flags
+		g.c99_feature_test_macros()
+		c_code := g.sb.str()
+		assert !c_code.contains('_GNU_SOURCE'), '${flags}: ${c_code}'
+		assert !c_code.contains('_POSIX_C_SOURCE'), '${flags}: ${c_code}'
+	}
+}
+
 fn test_headerless_pthread_fallback_respects_darwin_type_guards() {
 	mut g := FlatGen.new()
 	g.headerless_libc_preamble()
