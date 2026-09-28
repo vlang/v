@@ -21,3 +21,5 @@ ordinary V source keeps its existing checks and mixed-sign comparison behavior.
 Mixed-sign comparisons use C's promoted operand widths, including the backing
 widths of explicitly backed enums. Wide backed enums retain their backing type
 through arithmetic and bitwise operations.
+Mixed-width arithmetic is evaluated in the same C common type before its result
+is used by an enclosing expression or returned.

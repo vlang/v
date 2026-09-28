@@ -62,6 +62,16 @@ fn test_translated_backed_enum_comparisons_use_c_widths() {
 	assert wide_signed < TranslatedUnsigned32Enum.high
 }
 
+fn translated_wrapped_subtraction() u32 {
+	return u32(0) - int(1)
+}
+
+fn test_translated_mixed_arithmetic_uses_common_c_type() {
+	assert (u32(0) - int(1)) > i64(0)
+	assert translated_wrapped_subtraction() == u32(0xffff_ffff)
+	assert (int(-1) + u32(1)) == u32(0)
+}
+
 fn translated_int_shift(count int) int {
 	value := int(1)
 	return value << count
@@ -80,6 +90,7 @@ fn test_translated_wide_enum_preserves_backing_type() {
 	value := TranslatedWideEnum.high | TranslatedWideEnum.zero
 	assert typeof(value).name == 'u64'
 	assert value > 0
+	assert TranslatedWideEnum.high >> 63 == 1
 }
 
 fn test_translated_boolean_indices_and_pointer_offsets() {

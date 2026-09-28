@@ -15689,6 +15689,11 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 				g.expected_enum = old_expected_enum
 				return
 			}
+			if g.gen_translated_numeric_arithmetic(id, node, lhs_id, rhs_id, lhs_type,
+				rhs_type) {
+				g.expected_enum = old_expected_enum
+				return
+			}
 			lhs_node := g.a.nodes[int(lhs_id)]
 			rhs_node := g.a.nodes[int(rhs_id)]
 			if node.op in [.eq, .ne] && g.expr_is_in_translated_file(id)
@@ -24652,7 +24657,7 @@ fn (mut g FlatGen) gen_safe_integer_division(node flat.Node, lhs_id flat.NodeId,
 		return false
 	}
 	checked_integer_bounds(result_type) or { return false }
-	c_type := g.value_c_type(result_type)
+	c_type := g.translated_numeric_c_type(lhs_id, result_type)
 	if c_type.len == 0 {
 		return false
 	}
@@ -24664,6 +24669,38 @@ fn (mut g FlatGen) gen_safe_integer_division(node flat.Node, lhs_id flat.NodeId,
 	g.write('); ${c_type} ${rhs_tmp} = (${c_type})(')
 	g.gen_expr(rhs_id)
 	g.write('); if (${rhs_tmp} == 0) v_panic(_S("${message}")); (${c_type})(${lhs_tmp} ${g.op_str(node.op)} ${rhs_tmp}); })')
+	return true
+}
+
+fn (mut g FlatGen) translated_numeric_c_type(id flat.NodeId, typ types.Type) string {
+	clean := cgen_unalias_type(typ)
+	if g.expr_is_in_translated_file(id) && clean.name() == 'int' {
+		return 'i32'
+	}
+	return g.value_c_type(typ)
+}
+
+fn (mut g FlatGen) gen_translated_numeric_arithmetic(id flat.NodeId, node flat.Node, lhs_id flat.NodeId, rhs_id flat.NodeId, lhs_type types.Type, rhs_type types.Type) bool {
+	if !g.expr_is_in_translated_file(id)
+		|| node.op !in [.plus, .minus, .mul, .amp, .pipe, .xor] {
+		return false
+	}
+	result_type := cgen_unalias_type(g.usable_expr_type(id))
+	if !result_type.is_integer() && !result_type.is_float() {
+		return false
+	}
+	lhs_clean := cgen_unalias_type(lhs_type)
+	rhs_clean := cgen_unalias_type(rhs_type)
+	if lhs_clean is types.Pointer || rhs_clean is types.Pointer || lhs_clean is types.Struct
+		|| rhs_clean is types.Struct {
+		return false
+	}
+	ct := g.translated_numeric_c_type(id, result_type)
+	g.write('(((${ct})(')
+	g.gen_expr(lhs_id)
+	g.write(')) ${g.op_str(node.op)} ((${ct})(')
+	g.gen_expr(rhs_id)
+	g.write(')))')
 	return true
 }
 
