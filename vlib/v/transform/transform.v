@@ -396,6 +396,8 @@ mut:
 	// Discarded call results may be reclaimed only for functions in this frozen pre-pass map.
 	exclusive_closure_return_fns   map[string]bool
 	exclusive_closure_returns_done bool
+	// Frozen before body lowering so ordinary wrappers keep translated array retention.
+	translated_array_retaining_fns map[string]bool
 	// mut_fixed_array_capture_sources records locals captured as `mut` fixed arrays by
 	// closures that are not proven local. Their storage is moved to the heap so the outer
 	// binding and escaped closure context keep sharing the same durable array.
@@ -1089,6 +1091,7 @@ pub fn transform_selected_functions(mut a flat.FlatAst, tc &types.TypeChecker, s
 	t.materialize_inferred_anonymous_structs()
 	t.prepare()
 	t.collect_exclusive_closure_return_fns()
+	t.collect_translated_array_retaining_fns()
 	base_node_count := t.a.nodes.len
 	t.transformed_fns = []bool{len: t.a.nodes.len}
 	for i in 0 .. t.a.nodes.len {
@@ -3552,6 +3555,7 @@ struct DeferredBaseWrite {
 // Returns whether function bodies were actually transformed in parallel.
 fn (mut t Transformer) transform_all_dispatch(want_parallel bool) bool {
 	mut dpsw := time.new_stopwatch()
+	t.collect_translated_array_retaining_fns()
 	t.collect_exclusive_closure_return_fns()
 	t.timing_profile('  [ttime]   dsp closure ret  ${f64(dpsw.elapsed().microseconds()) / 1000.0:7.2f} ms')
 	dpsw.restart()
@@ -4376,6 +4380,7 @@ fn (t &Transformer) fork_program_view(ast &flat.FlatAst, wtc &types.TypeChecker,
 		local_closure_field_cleanups:        map[int]bool{}
 		exclusive_closure_return_fns:        t.exclusive_closure_return_fns
 		exclusive_closure_returns_done:      t.exclusive_closure_returns_done
+		translated_array_retaining_fns:      t.translated_array_retaining_fns
 		mut_fixed_array_capture_sources:     map[string]bool{}
 		generic_fn_specs_in_progress:        map[string]bool{}
 		generic_fn_spec_nodes:               map[string]flat.NodeId{}

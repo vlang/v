@@ -29,3 +29,6 @@ backing storage, including calls from ordinary V files. Addressable arguments ke
 Local arrays passed to translated fixed-array parameters are conservatively promoted too, since
 callees can retain their address without returning it. This can allocate even for a callee that
 does not retain the array. Array values produced by blocks are copied before leaving that scope.
+Ordinary functions and methods that forward arrays to these callees preserve the same retention
+requirement through further wrappers, including recursive and generic calls. The original caller
+provides persistent backing storage; forwarding a local array continues to preserve its identity.

@@ -1392,3 +1392,17 @@ fn test_thread_handle_array_append_does_not_clone_result_fields() {
 	assert results[0][0].values == ['first']
 	assert results[1][0].values == ['second']
 }
+
+fn test_translated_array_retention_distinguishes_generic_and_source_call_names() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	tc.specialized_generic_fns['forwarding.forward_T_string'] = true
+	mut t := new_transformer(mut a, &tc, map[string]bool{})
+	t.translated_array_retaining_fns['forwarding__forward'] = true
+	assert t.call_uses_translated_array_parameters('forwarding.forward')
+	assert t.call_uses_translated_array_parameters('forwarding.forward_T_string')
+	assert !t.call_uses_translated_array_parameters('forwarding.forward_T_ordinary')
+	worker := t.fork_scoped_batch_worker(&a, &tc)
+	assert worker.call_uses_translated_array_parameters('forwarding.forward_T_string')
+	assert !worker.call_uses_translated_array_parameters('forwarding.forward_T_ordinary')
+}

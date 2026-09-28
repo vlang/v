@@ -2108,11 +2108,91 @@ fn (mut t Transformer) transform_spread_arg_over_fixed_variadic_tail(arg_node fl
 	return args
 }
 
+fn (t &Transformer) translated_array_call_key(name string) string {
+	// Specializations can be emitted after the frozen call graph was built.
+	// Only generated names may decode this suffix; source functions can contain it too.
+	mut clean := if !isnil(t.tc) && t.tc.specialized_generic_fns[name]
+		&& name.contains('_T_') {
+		name.all_before('_T_')
+	} else {
+		name
+	}
+	if clean.starts_with('main.') || clean.starts_with('builtin.') {
+		clean = clean.all_after('.')
+	}
+	return c_name(clean)
+}
+
+fn (mut t Transformer) collect_translated_array_retaining_fns() {
+	if isnil(t.tc) || t.tc.translated_files.len == 0 {
+		return
+	}
+	// Freeze transitive retention before lowering any callers or spawning workers.
+	// A wrapper must preserve the caller's original storage, not copy its parameter.
+	mut pending := []string{}
+	for name, file in t.tc.fn_type_files {
+		if !t.tc.translated_files[file] {
+			continue
+		}
+		for param in t.tc.fn_param_types[name] {
+			if types.unalias_type(param) is types.ArrayFixed {
+				key := t.translated_array_call_key(name)
+				if !t.translated_array_retaining_fns[key] {
+					t.translated_array_retaining_fns[key] = true
+					pending << key
+				}
+				break
+			}
+		}
+	}
+	if pending.len == 0 {
+		return
+	}
+	t.ensure_node_module_map()
+	old_file := t.cur_file
+	old_module := t.cur_module
+	defer {
+		t.cur_file = old_file
+		t.cur_module = old_module
+	}
+	mut callers := map[string][]string{}
+	for idx in 0 .. t.a.nodes.len {
+		node := t.a.nodes[idx]
+		if node.kind != .fn_decl {
+			continue
+		}
+		t.cur_file = t.node_file_or(idx, '')
+		t.cur_module = t.node_module_or(idx, '')
+		name := if t.cur_module in ['', 'main', 'builtin']
+			|| node.value.starts_with('${t.cur_module}.') {
+			node.value
+		} else {
+			'${t.cur_module}.${node.value}'
+		}
+		caller := t.translated_array_call_key(name)
+		for callee in t.generated_fn_body_call_names(flat.NodeId(idx)) {
+			key := t.translated_array_call_key(callee)
+			callers[key] << caller
+		}
+	}
+	for pos := 0; pos < pending.len; pos++ {
+		for caller in callers[pending[pos]] {
+			if !t.translated_array_retaining_fns[caller] {
+				t.translated_array_retaining_fns[caller] = true
+				pending << caller
+			}
+		}
+	}
+}
+
 fn (t &Transformer) call_uses_translated_array_parameters(call_name string) bool {
 	if isnil(t.tc) {
 		return false
 	}
 	if t.tc.translated_files[t.cur_file] {
+		return true
+	}
+	if t.translated_array_retaining_fns[t.translated_array_call_key(call_name)] {
 		return true
 	}
 	if file := t.tc.fn_type_files[call_name] {
