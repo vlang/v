@@ -110,3 +110,54 @@ fn test_translated_array_arithmetic_preserves_operand_order() {
 fn translated_make_vec() TranslatedVec3 {
 	return TranslatedVec3([7, 11, 13]!)
 }
+
+fn translated_ordered_index(mut calls []int) int {
+	calls << 1
+	return 0
+}
+
+fn translated_rhs_offset(mut calls []int) int {
+	calls << 2
+	return 1
+}
+
+fn translated_ordered_pointer(value &[3]int, mut calls []int) &[3]int {
+	calls << 1
+	return value
+}
+
+fn test_translated_array_lvalue_addresses_are_evaluated_before_offsets() {
+	mut calls := []int{}
+	mut arrays := [[3, 5, 7]!, [11, 13, 17]!]!
+	indexed := arrays[translated_ordered_index(mut calls)] + translated_rhs_offset(mut calls)
+	assert calls == [1, 2]
+	assert unsafe { *indexed } == 5
+	unsafe { *indexed = 19 }
+	assert arrays[0][1] == 19
+	calls.clear()
+	dereferenced := (*translated_ordered_pointer(&arrays[1], mut calls)) + translated_rhs_offset(mut calls)
+	assert calls == [1, 2]
+	assert unsafe { *dereferenced } == 13
+	unsafe { *dereferenced = 23 }
+	assert arrays[1][1] == 23
+	calls.clear()
+	propagated := arrays[translated_ordered_index(mut calls)] + translated_result_rhs_offset(mut calls)!
+	assert calls == [1, 2]
+	assert unsafe { *propagated } == 19
+}
+
+fn translated_result_rhs_offset(mut calls []int) !int {
+	return translated_rhs_offset(mut calls)
+}
+
+const translated_rows_n = 2
+const translated_rows_m = 1 + 1
+
+fn translated_named_rows_difference(left [2][translated_rows_n]int, right [2][translated_rows_m]int) int {
+	return left - right
+}
+
+fn test_translated_array_subtraction_compares_evaluated_lengths() {
+	rows := [[3, 5]!, [7, 11]!]!
+	assert translated_named_rows_difference(rows, rows) == 0
+}

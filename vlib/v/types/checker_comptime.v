@@ -7173,6 +7173,19 @@ fn (tc &TypeChecker) translated_array_arithmetic_operand(id flat.NodeId, op flat
 	return typ
 }
 
+fn (tc &TypeChecker) translated_pointer_elements_match(left Type, right Type) bool {
+	lhs := unalias_type(left)
+	rhs := unalias_type(right)
+	if lhs is ArrayFixed && rhs is ArrayFixed {
+		return tc.fixed_array_lengths_compatible(lhs, rhs)
+			&& tc.translated_pointer_elements_match(lhs.elem_type, rhs.elem_type)
+	}
+	if lhs is Pointer && rhs is Pointer {
+		return tc.translated_pointer_elements_match(lhs.base_type, rhs.base_type)
+	}
+	return lhs.name() == rhs.name()
+}
+
 fn (mut tc TypeChecker) check_infix(id flat.NodeId, node flat.Node) {
 	if node.children_count < 2 || !tc.should_diagnose(id) {
 		return
@@ -7419,7 +7432,7 @@ fn (mut tc TypeChecker) check_infix(id flat.NodeId, node flat.Node) {
 				|| unalias_type(tc.infix_read_type(rhs_id)) is ArrayFixed) {
 			lhs_elem := unalias_type(lhs_clean.base_type)
 			rhs_elem := unalias_type(rhs_clean.base_type)
-			if lhs_elem.name() != rhs_elem.name() {
+			if !tc.translated_pointer_elements_match(lhs_elem, rhs_elem) {
 				tc.record_error_at(.assignment_mismatch, 'cannot subtract pointers to different element types `${lhs_elem.name()}` and `${rhs_elem.name()}`', id, node.pos)
 				return
 			}

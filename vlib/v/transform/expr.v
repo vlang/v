@@ -32,11 +32,9 @@ fn (mut t Transformer) transform_translated_array_arithmetic(id flat.NodeId, nod
 		lhs = t.materialize_translated_array_decay_operand(lhs_id, lhs)
 		lhs = t.make_prefix(.amp, t.make_index(lhs, t.make_int_literal(0), lhs_type.elem_type.name()))
 	}
-	if rhs_type is types.ArrayFixed {
-		// The RHS can queue array storage before the final infix expression.
-		// Capture the LHS now, including reads the RHS may subsequently mutate.
-		lhs = t.snapshot_transformed_expr_for_reuse(lhs, lhs_value_type, 'array_decay_left')
-	}
+	// Evaluate the LHS address or offset before the RHS, including indexed and
+	// dereferenced array lvalues whose address computation has side effects.
+	lhs = t.snapshot_transformed_expr_for_reuse(lhs, lhs_value_type, 'array_decay_left')
 	mut rhs := t.transform_value_operand(rhs_id)
 	if rhs_type is types.ArrayFixed {
 		rhs = t.materialize_translated_array_decay_operand(rhs_id, rhs)
