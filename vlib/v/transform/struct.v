@@ -723,6 +723,9 @@ fn (t &Transformer) nested_generic_defaults_need_lowering(type_name string, mut 
 		return false
 	}
 	normalized := t.normalize_type_alias(type_name)
+	if normalized.len == 0 || normalized[0] in [`&`, `?`, `!`] || normalized.starts_with('map[') || normalized.starts_with('[]') {
+		return false
+	}
 	if t.is_fixed_array_type(normalized) {
 		return t.nested_generic_defaults_need_lowering(fixed_array_elem_type(normalized), mut visited)
 	}
