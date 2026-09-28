@@ -353,8 +353,8 @@ fn macos_v3_original_caller_environment(dispatch_environment map[string]string) 
 	}
 	for private_name in [macos_v3_fallback_file_env, macos_v3_c_error_dir_env, macos_v3_vhash_env,
 		macos_v3_vcurrent_hash_env, macos_v3_embedded_env, macos_v3_retry_env,
-		'V3_CRUN_BUILD_IDENTITY', 'V3_INTERNAL_RESTART', macos_v3_caller_vexe_env,
-		macos_v3_caller_vexe_present_env, macos_v3_caller_vchild_env,
+		'V3_CRUN_BUILD_IDENTITY', 'V3_INTERNAL_RESTART', 'V3_INTERNAL_CACHE_RECOVERY',
+		macos_v3_caller_vexe_env, macos_v3_caller_vexe_present_env, macos_v3_caller_vchild_env,
 		macos_v3_caller_vchild_present_env, macos_v3_caller_no_fallback_env,
 		macos_v3_caller_no_fallback_present_env] {
 		caller_environment.delete(private_name)

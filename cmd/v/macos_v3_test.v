@@ -315,7 +315,7 @@ fn test_macos_v3_child_environment_preserves_the_original_caller() {
 		'V_MACOS_V3_C_ERROR_DIR':   '/tmp/stale-c-error'
 		'V_MACOS_V3_RETRY':         '1'
 	}
-	environment := macos_v3_child_environment(@VEXE, caller_environment, caller_environment)
+	mut environment := macos_v3_child_environment(@VEXE, caller_environment, caller_environment)
 	assert environment['VEXE'] == os.real_path(@VEXE)
 	assert environment['VCHILD'] == 'true'
 	assert environment[macos_v3_vhash_env] == @VHASH
@@ -325,6 +325,7 @@ fn test_macos_v3_child_environment_preserves_the_original_caller() {
 	assert macos_v3_c_error_dir_env !in environment
 	assert macos_v3_retry_env !in environment
 
+	environment['V3_INTERNAL_CACHE_RECOVERY'] = '1'
 	restored := macos_v3_original_caller_environment(environment)
 	assert restored['PATH'] == '/usr/bin'
 	assert restored['VEXE'] == 'caller-vexe'
@@ -333,6 +334,7 @@ fn test_macos_v3_child_environment_preserves_the_original_caller() {
 	assert macos_v3_embedded_env !in restored
 	assert macos_v3_caller_vexe_env !in restored
 	assert macos_v3_caller_vchild_env !in restored
+	assert 'V3_INTERNAL_CACHE_RECOVERY' !in restored
 }
 
 fn test_macos_v3_fastc_rejects_incompatible_gc() {

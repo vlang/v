@@ -716,6 +716,9 @@ fn test_v3_cache_artifact_detection_accepts_quoted_paths_with_spaces() {
 	assert v3_cache_failure_artifacts("ld: '${missing}': No such file or directory") == [
 		os.join_path_single(os.real_path(module_dir), os.base(missing)),
 	]
+	assert v3_cache_failure_artifacts("link.exe: fatal error LNK1104: cannot open file '${missing}'") == [
+		os.join_path_single(os.real_path(module_dir), os.base(missing)),
+	]
 	assert v3_cache_recovery_should_retry([missing], 0)
 }
 
