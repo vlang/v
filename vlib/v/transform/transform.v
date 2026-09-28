@@ -9951,7 +9951,7 @@ pub fn (mut t Transformer) transform_expr(id flat.NodeId) flat.NodeId {
 			return if node.value == '__v3_comptime_new' {
 				t.comptime_new_value(target)
 			} else {
-				t.zero_value_for_type(target)
+				t.comptime_zero_value(target)
 			}
 		}
 	}

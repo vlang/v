@@ -3023,7 +3023,7 @@ fn (mut t Transformer) clone_variant_subst_with_smartcast(id flat.NodeId, var_na
 				return if node.value == '__v3_comptime_new' {
 					t.comptime_new_value(item.typ)
 				} else {
-					t.zero_value_for_type(item.typ)
+					t.comptime_zero_value(item.typ)
 				}
 			}
 		}
@@ -3039,14 +3039,7 @@ fn (mut t Transformer) clone_variant_subst_with_smartcast(id flat.NodeId, var_na
 		if operand.kind == .ident && operand.value == var_name {
 			// `T(v)` wraps a zero value of the variant's type in the sum type
 			// (the VariantData literal is only the loop var's runtime carrier).
-			zero_id := t.zero_value_for_type(item.typ)
-			variant_zero := if item.typ in t.enum_types
-				|| t.qualified_alias_name(item.typ) in t.enum_types {
-				t.make_cast(item.typ, zero_id, item.typ)
-			} else {
-				zero_id
-			}
-			return t.make_cast(node.value, variant_zero, node.value)
+			return t.make_cast(node.value, t.comptime_zero_value(item.typ), node.value)
 		}
 	}
 	if node.kind == .selector && node.children_count > 0
@@ -3957,6 +3950,20 @@ fn (t &Transformer) field_type_is_alias(core string, decl_module string) bool {
 	return false
 }
 
+// comptime_zero_value is the value of `$zero(typ)`, and the payload of `T(v)`: the
+// zero value of `typ`. A literal zero has its default type (`0` is an `int`, `''` a
+// `string`), so it is cast to `typ` whenever that differs: an `i32`, float, enum or
+// alias type must keep its identity, or `T(v)` wraps it as another sum variant, or
+// as none at all.
+fn (mut t Transformer) comptime_zero_value(typ string) flat.NodeId {
+	zero_id := t.zero_value_for_type(typ)
+	if typ !in ['', 'void', 'int', 'f64', 'string', 'bool']
+		&& t.a.node(zero_id).kind in [.int_literal, .float_literal, .string_literal, .bool_literal] {
+		return t.make_cast(typ, zero_id, typ)
+	}
+	return zero_id
+}
+
 fn (t &Transformer) qualified_alias_name(name string) string {
 	if name.contains('.') || t.cur_module.len == 0 || t.cur_module in ['main', 'builtin'] {
 		return name
@@ -3984,7 +3991,7 @@ fn (mut t Transformer) clone_field_subst_scoped(id flat.NodeId, var_name string,
 		return if node.value == '__v3_comptime_new' {
 			t.comptime_new_value(target)
 		} else {
-			t.zero_value_for_type(target)
+			t.comptime_zero_value(target)
 		}
 	}
 	if comptime_for_declares_var(node, var_name) {

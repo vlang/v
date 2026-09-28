@@ -9947,7 +9947,7 @@ fn (mut t Transformer) clone_generic_node_from(node flat.Node, args []string, is
 			return if node.value == '__v3_comptime_new' {
 				t.clone_specialized_comptime_new_marker(node, target)
 			} else {
-				t.zero_value_for_type(target)
+				t.comptime_zero_value(target)
 			}
 		}
 	}
