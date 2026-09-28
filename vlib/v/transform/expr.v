@@ -1770,6 +1770,11 @@ fn (t &Transformer) struct_operator_fn_name_any(struct_type string, op_name stri
 }
 
 fn (t &Transformer) struct_operator_fn_name_with_usage(struct_type string, op_name string, require_used bool) ?string {
+	if !isnil(t.tc) {
+		if info := t.tc.c_struct_operator_call_info(t.tc.parse_type(struct_type), op_name, t.cur_file, t.cur_module) {
+			if t.is_known_operator_fn_name(info.name, require_used) { return info.name }
+		}
+	}
 	for receiver in t.operator_receiver_candidates(struct_type) {
 		method_name := '${receiver}.${op_name}'
 		if t.is_known_operator_fn_name(method_name, require_used) {

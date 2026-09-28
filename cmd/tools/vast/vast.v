@@ -2,6 +2,7 @@ module main
 
 import flag
 import os
+import strings
 import time
 import v.flat
 import v.parser
@@ -119,64 +120,188 @@ fn (ctx Context) json(file string) string {
 	prefs.is_fmt = true
 	mut p := parser.Parser.new(prefs)
 	a := p.parse_file(file)
-	mut root := create_object()
-	mut files := create_array()
-	for raw_id in a.file_node_ids {
-		id := flat.NodeId(raw_id)
-		node := a.node(id)
-		if node.kind == .file && node.children_count > 0 {
-			files.add_item(ctx.ast_node(a, id))
-		}
+	mut w := JsonWriter{
+		sb: strings.new_builder(64 * 1024)
 	}
-	ctx.add_field(mut root, 'files', files, false)
-	if a.comments.len > 0 {
-		mut comments := create_array()
+	w.begin_object()
+	if ctx.show_field('files', false) {
+		w.key('files')
+		w.begin_array()
+		for raw_id in a.file_node_ids {
+			id := flat.NodeId(raw_id)
+			node := a.node(id)
+			if node.kind == .file && node.children_count > 0 {
+				w.array_item()
+				ctx.write_ast_node(mut w, a, id)
+			}
+		}
+		w.end_array()
+	}
+	if a.comments.len > 0 && ctx.show_field('comments', false) {
+		w.key('comments')
+		w.begin_array()
 		for comment in a.comments {
-			mut item := create_object()
-			ctx.add_field(mut item, 'text', create_string(comment.text), false)
-			ctx.add_field(mut item, 'pos', position_node(comment.pos), false)
-			comments.add_item(item)
+			w.array_item()
+			w.begin_object()
+			if ctx.show_field('text', false) {
+				w.key('text')
+				w.string(comment.text)
+			}
+			if ctx.show_field('pos', false) {
+				w.key('pos')
+				w.position(comment.pos)
+			}
+			w.end_object()
 		}
-		ctx.add_field(mut root, 'comments', comments, false)
+		w.end_array()
 	}
-	return json_print(mut root)
+	w.end_object()
+	return w.sb.str()
 }
 
-fn (ctx Context) ast_node(a &flat.FlatAst, id flat.NodeId) &Node {
+fn (ctx Context) write_ast_node(mut w JsonWriter, a &flat.FlatAst, id flat.NodeId) {
 	node := a.node(id)
-	mut result := create_object()
-	ctx.add_field(mut result, 'kind', create_string('${node.kind}'), false)
-	ctx.add_field(mut result, 'value', create_string(node.value), node.value == '')
-	ctx.add_field(mut result, 'type', create_string(node.typ), node.typ == '')
-	ctx.add_field(mut result, 'op', create_string('${node.op}'), node.op == .none)
-	ctx.add_field(mut result, 'is_mut', if node.is_mut { create_true() } else { create_false() }, !node.is_mut)
-	ctx.add_field(mut result, 'pos', position_node(node.pos), !node.pos.is_valid())
-	if node.children_count > 0 {
-		mut children := create_array()
+	w.begin_object()
+	if ctx.show_field('kind', false) {
+		w.key('kind')
+		w.string('${node.kind}')
+	}
+	if ctx.show_field('value', node.value == '') {
+		w.key('value')
+		w.string(node.value)
+	}
+	if ctx.show_field('type', node.typ == '') {
+		w.key('type')
+		w.string(node.typ)
+	}
+	if ctx.show_field('op', node.op == .none) {
+		w.key('op')
+		w.string('${node.op}')
+	}
+	if ctx.show_field('is_mut', !node.is_mut) {
+		w.key('is_mut')
+		w.bool(node.is_mut)
+	}
+	if ctx.show_field('pos', !node.pos.is_valid()) {
+		w.key('pos')
+		w.position(node.pos)
+	}
+	if node.children_count > 0 && ctx.show_field('children', false) {
+		w.key('children')
+		w.begin_array()
 		for child in a.children_of(node) {
-			children.add_item(ctx.ast_node(a, child))
+			w.array_item()
+			ctx.write_ast_node(mut w, a, child)
 		}
-		ctx.add_field(mut result, 'children', children, false)
+		w.end_array()
 	}
-	return result
+	w.end_object()
 }
 
-fn position_node(pos token.Pos) &Node {
-	mut result := create_object()
-	add_item_to_object(mut result, 'file_id', create_number(pos.id))
-	add_item_to_object(mut result, 'offset', create_number(pos.offset))
-	add_item_to_object(mut result, 'end', create_number(pos.end))
-	return result
+// show_field reports whether the `key` property is part of the output.
+fn (ctx Context) show_field(key string, is_default bool) bool {
+	return !(key in ctx.hide_names || ctx.is_terse && key !in ['kind', 'files', 'children']
+		|| ctx.is_skip_defaults && is_default)
 }
 
-fn (ctx Context) add_field(mut node Node, key string, child &Node, is_default bool) {
-	if key in ctx.hide_names || ctx.is_terse && key !in ['kind', 'files', 'children']
-		|| ctx.is_skip_defaults && is_default {
-		return
+// JsonWriter writes indented JSON in the layout of cJSON's formatted printer:
+// object members one per line, indented with tabs, as `"key":<tab>value`, and
+// array elements on one line, separated by `, `.
+struct JsonWriter {
+mut:
+	sb     strings.Builder
+	depth  int
+	counts []int // number of members/elements written, per open object/array
+}
+
+fn (mut w JsonWriter) begin_object() {
+	w.sb.write_string('{\n')
+	w.depth++
+	w.counts << 0
+}
+
+fn (mut w JsonWriter) end_object() {
+	if w.counts.pop() > 0 {
+		w.sb.write_u8(`\n`)
 	}
-	add_item_to_object(mut node, key, child)
+	w.depth--
+	w.indent(w.depth)
+	w.sb.write_u8(`}`)
 }
 
-fn (mut node Node) add_item(child &Node) {
-	add_item_to_array(mut node, child)
+fn (mut w JsonWriter) begin_array() {
+	w.sb.write_u8(`[`)
+	w.depth++
+	w.counts << 0
+}
+
+fn (mut w JsonWriter) end_array() {
+	w.counts.pop()
+	w.depth--
+	w.sb.write_u8(`]`)
+}
+
+// key starts the next member of the current object.
+fn (mut w JsonWriter) key(name string) {
+	if w.counts.last() > 0 {
+		w.sb.write_string(',\n')
+	}
+	w.counts[w.counts.len - 1]++
+	w.indent(w.depth)
+	w.string(name)
+	w.sb.write_string(':\t')
+}
+
+// array_item starts the next element of the current array.
+fn (mut w JsonWriter) array_item() {
+	if w.counts.last() > 0 {
+		w.sb.write_string(', ')
+	}
+	w.counts[w.counts.len - 1]++
+}
+
+fn (mut w JsonWriter) indent(depth int) {
+	for _ in 0 .. depth {
+		w.sb.write_u8(`\t`)
+	}
+}
+
+fn (mut w JsonWriter) bool(value bool) {
+	w.sb.write_string(if value { 'true' } else { 'false' })
+}
+
+fn (mut w JsonWriter) position(pos token.Pos) {
+	w.begin_object()
+	w.key('file_id')
+	w.sb.write_string(pos.id.str())
+	w.key('offset')
+	w.sb.write_string(pos.offset.str())
+	w.key('end')
+	w.sb.write_string(pos.end.str())
+	w.end_object()
+}
+
+fn (mut w JsonWriter) string(value string) {
+	w.sb.write_u8(`"`)
+	for c in value {
+		match c {
+			`"` { w.sb.write_string('\\"') }
+			`\\` { w.sb.write_string('\\\\') }
+			8 { w.sb.write_string('\\b') }
+			12 { w.sb.write_string('\\f') }
+			`\n` { w.sb.write_string('\\n') }
+			`\r` { w.sb.write_string('\\r') }
+			`\t` { w.sb.write_string('\\t') }
+			else {
+				if c < 32 {
+					w.sb.write_string('\\u00')
+					w.sb.write_u8('0123456789abcdef'[c >> 4])
+					w.sb.write_u8('0123456789abcdef'[c & 15])
+				} else {
+					w.sb.write_u8(c)
+				}
+			}
+		}
+	}
+	w.sb.write_u8(`"`)
 }

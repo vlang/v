@@ -1103,25 +1103,27 @@ fn (mut t Transformer) normalize_generic_call_expr(id flat.NodeId, node flat.Nod
 	for child in children {
 		t.a.children << child
 	}
-	mut resolved_named_call := false
+	mut resolved_name := ''
 	if !isnil(t.tc) {
-		if _ := t.tc.resolved_call_name(id) {
-			resolved_named_call = true
-		}
+		resolved_name = t.tc.resolved_call_name(id) or { '' }
 	}
-	return t.a.add_node(flat.Node{
+	normalized_id := t.a.add_node(flat.Node{
 		kind:           .call
 		op:             node.op
 		children_start: start
 		children_count: flat.child_count(children.len)
 		pos:            node.pos
-		value:          if !resolved_named_call && t.generic_call_base_is_fn_value(base_id, base) {
+		value:          if resolved_name.len == 0 && t.generic_call_base_is_fn_value(base_id, base) {
 			''
 		} else {
 			type_arg
 		}
 		typ:            node.typ
 	})
+	if !isnil(t.tc) && t.tc.c_backed_alias_method_name(resolved_name) {
+		t.set_generated_resolved_call(normalized_id, resolved_name)
+	}
+	return normalized_id
 }
 
 fn (t &Transformer) generic_call_base_is_fn_value(base_id flat.NodeId, base flat.Node) bool {
@@ -1392,9 +1394,6 @@ fn (mut t Transformer) transform_call_args(id flat.NodeId, node flat.Node) flat.
 		return addr
 	}
 	call_name := t.call_name_for_node(id, node)
-	if call_name in ['json.encode', 'json.encode_pretty', 'json.decode'] {
-		return t.transform_cgen_json_encode_call(id, node)
-	}
 	mut params := t.call_param_types_for_node(call_name, node)
 	mut param_type_names := t.call_param_type_names(params)
 	mut is_generic_variadic := false
@@ -2063,43 +2062,6 @@ fn (t &Transformer) closure_result_type_may_alias_capture(typ types.Type, mut se
 			false
 		}
 	}
-}
-
-fn (mut t Transformer) transform_cgen_json_encode_call(id flat.NodeId, node flat.Node) flat.NodeId {
-	mut children := []flat.NodeId{cap: int(node.children_count)}
-	call_name := t.call_name_for_node(id, node)
-	saved_in_call_callee := t.in_call_callee
-	t.in_call_callee = true
-	children << t.transform_expr(t.a.child(&node, 0))
-	t.in_call_callee = saved_in_call_callee
-	for i in 1 .. node.children_count {
-		child_id := t.a.child(&node, i)
-		if i == 1 && call_name in ['json.encode', 'json.encode_pretty']
-			&& t.expr_has_smartcast(child_id) {
-			original_type := t.trim_pointer_type(t.original_expr_type(child_id))
-			if t.is_sum_type_name(original_type) {
-				// JSON sum values need the runtime tag so the encoder can append `_type`.
-				// An earlier `assert value is Variant` may otherwise lower this argument
-				// to the bare payload and discard that tag before cgen sees it.
-				children << t.make_plain_expr_for_smartcast(child_id)
-				continue
-			}
-		}
-		children << t.transform_expr(child_id)
-	}
-	start := t.a.children.len
-	t.a.children << children
-	new_id := t.a.add_node(flat.Node{
-		kind:           .call
-		op:             node.op
-		children_start: start
-		children_count: flat.child_count(children.len)
-		pos:            node.pos
-		value:          node.value
-		typ:            node.typ
-	})
-	t.copy_cloned_resolution(id, new_id)
-	return new_id
 }
 
 fn (t &Transformer) call_param_type_names(params []types.Type) []string {
@@ -5336,7 +5298,7 @@ fn (t &Transformer) reliable_infix_stringify_type(node flat.Node) string {
 		}
 		.right_shift_unsigned {
 			if lhs_type.len > 0 {
-				return t.unsigned_shift_type_text(lhs_type)
+				return t.unsigned_shift_type_text(lhs_type, node)
 			}
 		}
 		.left_shift, .right_shift {
@@ -5362,10 +5324,25 @@ fn (t &Transformer) reliable_infix_stringify_type(node flat.Node) string {
 	return ''
 }
 
-fn (t &Transformer) unsigned_shift_type_text(typ string) string {
+fn (t &Transformer) unsigned_shift_type_text(typ string, node flat.Node) string {
 	clean := typ.trim_space()
 	if !isnil(t.tc) {
-		resolved := t.semantic_type_name(types.unsigned_shift_result_type(t.tc.parse_type(clean)))
+		mut operand := t.tc.parse_type(clean)
+		file := if source := t.a.source_files[node.pos.id] { source.name } else { t.cur_file }
+		if t.tc.translated_files[file] {
+			operand = t.tc.translated_promoted_shift_type(operand)
+			if node.children_count > 0 {
+				lhs_id := t.a.child(&node, 0)
+				checked := t.tc.expr_type(lhs_id) or { t.tc.resolve_type(lhs_id) }
+				promoted := t.tc.translated_promoted_shift_type(checked)
+				// A literal's spelling can require a wider C type than the
+				// transformer's generic `int` fallback.
+				if promoted.is_integer() {
+					operand = promoted
+				}
+			}
+		}
+		resolved := t.semantic_type_name(types.unsigned_shift_result_type(operand))
 		if resolved in ['u8', 'u16', 'u32', 'u64', 'usize'] {
 			return resolved
 		}

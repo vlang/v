@@ -102,7 +102,14 @@ fn test_skip_and_rename_attributes() {
 		b:    3
 	}, " `json: '-'` skip attribute not working"
 
+	// `omitempty` only affects encoding, so an explicit empty value is still decoded.
 	assert json.decode[StruWithOmitemptyAttribute]('{"name": "", "a": 2, "b": 3}')! == StruWithOmitemptyAttribute{
+		a:    2
+		name: ''
+		b:    3
+	}, '`omitempty` attribute not working'
+
+	assert json.decode[StruWithOmitemptyAttribute]('{"a": 2, "b": 3}')! == StruWithOmitemptyAttribute{
 		a:    2
 		name: none
 		b:    3

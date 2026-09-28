@@ -1,12 +1,12 @@
 // vtest vflags: -w
-import json
+import json2
 
 struct JsonMutReceiver {
 	value string
 }
 
 fn (mut receiver JsonMutReceiver) encode() string {
-	return json.encode(receiver)
+	return json2.encode(receiver, escape_unicode: true)
 }
 
 fn test_json_encode_mut_receiver_uses_value_type() {
