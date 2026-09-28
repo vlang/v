@@ -5962,12 +5962,12 @@ pub fn (tc &TypeChecker) sizeof_arg_is_type(node flat.Node) bool {
 	return node.value.len > 0 && tc.type_name_known(node.value)
 }
 
-// sizeof_value_declaration finds a qualified constant's initializer or a global's declaration.
+// sizeof_value_declaration finds a qualified constant's initializer or value declaration.
 pub fn (tc &TypeChecker) sizeof_value_declaration(name string) ?flat.NodeId {
 	if initializer := tc.const_exprs[name] {
 		return initializer
 	}
-	if !tc.global_names[name] {
+	if name !in tc.const_types && !tc.global_names[name] {
 		return none
 	}
 	mut module_name := ''
@@ -5977,7 +5977,7 @@ pub fn (tc &TypeChecker) sizeof_value_declaration(name string) ?flat.NodeId {
 			module_name = ''
 		} else if node.kind == .module_decl {
 			module_name = node.value
-		} else if node.kind == .global_decl {
+		} else if node.kind in [.global_decl, .const_decl] {
 			for i in 0 .. node.children_count {
 				field_id := tc.a.child(&node, i)
 				field := tc.a.node(field_id)

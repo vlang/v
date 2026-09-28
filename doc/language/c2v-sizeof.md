@@ -15,7 +15,8 @@ as value operands.
 Qualified names through imported modules, including import aliases, are resolved after parsing
 so that both constants and type names retain their meaning.
 When deferred type-test branches declare a constant or global and a type with the same name,
-`sizeof` uses the value's storage type only when its branch is selected. Compound operands such
+`sizeof` uses the value's storage type only when its branch is selected, including header-style
+constants that have a declared type without an initializer. Compound operands such
 as `sizeof(Item + 0)` keep their expression interpretation when `Item` is a deferred constant.
 
 Known type names retain their type interpretation, including lowercase aliases, generic struct

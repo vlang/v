@@ -646,6 +646,56 @@ $if ${condition} { ${then_decl} } $else { ${else_decl} }
 	}
 }
 
+fn test_translated_sizeof_selects_deferred_header_constant_or_type() {
+	root := os.join_path(os.vtmp_dir(), 'translated_sizeof_header_kind_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+	os.write_file(os.join_path(root, 'v.mod'), "Module { name: 'sizeof_header_kind' }")!
+	os.write_file(os.join_path(root, 'header.h'), '#include <stdint.h>
+#define Item ((int64_t)0)
+#define Pair ((int64_t[2]){0, 0})
+')!
+	path := os.join_path(root, 'a.c.v')
+	later := os.join_path(root, 'z.c.v')
+	for name in ['padding_a.v', 'padding_b.v'] {
+		os.write_file(os.join_path(root, name), 'module main\n//' + ' '.repeat(70000) + '\n')!
+	}
+	for condition in ['int is $int', 'int is $float'] {
+		for const_in_then in [true, false] {
+			constant := 'const Item i64\nconst (\n Pair [2]i64\n)'
+			alias := 'type Item = u8\ntype Pair = u16'
+			then_decl := if const_in_then { constant } else { alias }
+			else_decl := if const_in_then { alias } else { constant }
+			selected := (condition == 'int is $int') == const_in_then
+			expected_item := if selected { 'i64' } else { 'u8' }
+			expected_pair := if selected { '[2]i64' } else { 'u16' }
+			source := '@[translated]
+module main
+#include "@VMODROOT/header.h"
+const chosen_size = sizeof(Item)
+fn main() {
+ assert sizeof(Item) == sizeof(${expected_item})
+ assert chosen_size == sizeof(${expected_item})
+ assert sizeof(Pair) == sizeof(${expected_pair})
+}
+'
+			declarations := '\n\$if ${condition} {\n${then_decl}\n} \$else {\n${else_decl}\n}\n'
+			os.write_file(path, source + declarations)!
+			os.write_file(later, 'module main\n')!
+			for flags in ['', '-no-parallel'] {
+				result := os.execute('${os.quoted_path(@VEXE)} ${flags} run ${os.quoted_path(root)}')
+				assert result.exit_code == 0, result.output
+			}
+			os.write_file(path, source)!
+			os.write_file(later, '@[translated]\nmodule main\n' + declarations)!
+			for flags in ['', '-no-parallel'] {
+				result := os.execute('${os.quoted_path(@VEXE)} ${flags} run ${os.quoted_path(root)}')
+				assert result.exit_code == 0, result.output
+			}
+		}
+	}
+}
+
 fn test_translated_sizeof_deferred_constant_compound_operands() {
 	root := os.join_path(os.vtmp_dir(), 'translated_sizeof_compound_${os.getpid()}')
 	os.mkdir_all(root)!
