@@ -2690,6 +2690,60 @@ fn main() {
 	assert out == '1250025000'
 }
 
+fn test_scope_owned_pointer_reassignment_keeps_field_closure_cleanup() {
+	v3_bin := build_v3_review_transform()
+	source := '@[heap]
+struct Holder {
+mut:
+	callback fn () int = unsafe { nil }
+}
+
+fn main() {
+	mut total := 0
+	for i in 0 .. 3 {
+		mut holder := &Holder{}
+		holder = holder
+		other := &Holder{}
+		holder = other
+		holder.callback = fn [i] () int { return i }
+		total += holder.callback()
+	}
+	println(total)
+}
+'
+	c_source := gen_c_from_source(v3_bin, 'fresh_pointer_reassignment_closure_c', source)
+	assert c_source.contains('closure__closure_try_destroy(__field_closure_'), c_source
+	assert run_good(v3_bin, 'fresh_pointer_reassignment_closure', source) == '3'
+}
+
+fn test_scope_owned_indexed_pointer_field_keeps_closure_cleanup() {
+	v3_bin := build_v3_review_transform()
+	source := '@[heap]
+struct Holder {
+mut:
+	callback fn () int = unsafe { nil }
+}
+
+struct Wrapper {
+mut:
+	holders []&Holder
+}
+
+fn main() {
+	mut total := 0
+	for i in 0 .. 3 {
+		mut wrapper := Wrapper{ holders: [&Holder{}] }
+		wrapper.holders[0].callback = fn [i] () int { return i }
+		total += wrapper.holders[0].callback()
+	}
+	println(total)
+}
+'
+	c_source := gen_c_from_source(v3_bin, 'indexed_pointer_field_closure_c', source)
+	assert c_source.contains('closure__closure_try_destroy(__field_closure_'), c_source
+	assert run_good(v3_bin, 'indexed_pointer_field_closure', source) == '3'
+}
+
 fn test_reassigned_non_escaping_bound_method_closures_are_reclaimed() {
 	v3_bin := build_v3_review_transform()
 	source := 'struct Value {
