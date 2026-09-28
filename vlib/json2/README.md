@@ -32,6 +32,9 @@ fn main() {
 Enums encode as strings by default. Use `@[json_as_number]` on an enum to emit
 its integer value instead.
 
+Use `@[omitempty]` to omit empty struct fields. For boolean fields, including optional
+booleans, `false` is empty and `true` is encoded.
+
 #### decode[T]
 
 ```v

@@ -1537,13 +1537,13 @@ mut:
 
 @[inline]
 fn (mut g Parser) validate_expression_stream_token(expression_tokens []FastcExpressionToken, stops []token.Token, allow_mutation_statement bool, allow_declaration_guard bool, paren_depth int, bracket_depth int, brace_depth int, unsafe_expression_depth int, source_token_count int, mut state FastcExpressionOperatorState) ! {
-	if !g.selfhost && g.tok in [.left_shift, .right_shift, .right_shift_unsigned, .left_shift_assign,
-		.right_shift_assign, .right_shift_unsigned_assign] {
+	if !g.selfhost && !g.translated && g.tok in [.left_shift, .right_shift, .right_shift_unsigned,
+		.left_shift_assign, .right_shift_assign, .right_shift_unsigned_assign] {
 		// V defines oversized shifts to produce zero. Raw C shifts are
 		// undefined and may mask the count to the operand width instead.
 		return g.unsupported('shift expressions')
 	}
-	if !g.selfhost && g.tok in [.div, .div_assign, .mod, .mod_assign] {
+	if (!g.selfhost || g.translated) && g.tok in [.div, .div_assign, .mod, .mod_assign] {
 		// Integer division and modulo require V's runtime zero checks. This
 		// scanner-only lane has no type information to add them selectively.
 		return g.unsupported('division or modulo expressions')
@@ -1639,10 +1639,17 @@ fn (mut g Parser) render_expression_stream_token(mut expression_tokens []FastcEx
 	mut next_token_is_mut_argument := input_next_token_is_mut_argument
 	mut source_token_count := input_source_token_count
 	source_token_count++
+	keyword_module_alias := if g.tok.is_keyword() && g.lit in g.imports {
+		mut lookahead := g.s
+		lookahead.scan() == .dot
+	} else {
+		false
+	}
 	// A word that is also a keyword (`conn.select(...)`, `x.lock`) is a member
 	// name, not a keyword, once it follows `.`; store it as a plain name so the
 	// method-call and inference paths recognize it like any other member.
-	stored_tok := if (previous_token == .dot && g.tok.is_keyword()) || shared_is_struct_field || spawn_is_field_name || keyword_is_field_name {
+	stored_tok := if (previous_token == .dot && g.tok.is_keyword()) || keyword_module_alias
+		|| shared_is_struct_field || spawn_is_field_name || keyword_is_field_name {
 		token.Token.name
 	} else {
 		g.tok
@@ -1663,7 +1670,9 @@ fn (mut g Parser) render_expression_stream_token(mut expression_tokens []FastcEx
 		''
 	}
 	selfhost_bare_name := g.selfhost && g.tok == .name && previous_token != .dot
-	mut piece := if selfhost_bare_name {
+	mut piece := if keyword_module_alias {
+		g.expression_name(previous_token, qualified_name_owner)!
+	} else if selfhost_bare_name {
 		fastc_c_identifier(g.lit)
 	} else {
 		g.expression_token(previous_token, previous_lit, qualified_name_owner, module_separator)!

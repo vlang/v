@@ -9,6 +9,9 @@ For more details, see also the
 Large `i64` and `u64` values are encoded as exact decimal JSON numbers, and
 `json.decode` preserves those integer values when reading decimal integer input.
 
+The first argument to `json.decode` is a type. Array types such as `[]string` and
+`[][]int` are accepted directly without an empty array initializer.
+
 Struct fields of type `time.Time` can be decoded from either a JSON number or
 from a JSON string in ISO 8601, RFC 3339, or Unix-timestamp form.
 
