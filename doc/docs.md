@@ -4920,6 +4920,11 @@ fn main() {
 
 ### Generics
 
+Omitted fields of a generic struct use their declared defaults, including in nested structs.
+This also applies through concrete generic aliases and imported structs; defaults use the
+imports visible in the declaring file.
+Fixed array fields initialize each element with its specialized generic defaults.
+
 Generic types brought into scope by a selective import retain their declaring module when
 passed to generic functions and methods in other modules.
 
