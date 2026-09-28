@@ -4194,6 +4194,12 @@ You can see the complete
 
 ### Interfaces
 
+A mutable interface alias can use `mut value as OtherInterface` when its source is mutable.
+A narrowed interface value can be cast for an immediate scalar getter that only reads fields.
+Type tests joined by `||` do not narrow the value in the true branch; they do not require `mut`
+unless a nested condition itself narrows the value.
+A negative type guard whose body exits also narrows the value after the guard and requires `mut`.
+
 Casting a pointer to an interface can be used directly as the receiver of a method returning
 multiple values. Interface data fields retain their individual types during the conversion.
 
@@ -4401,6 +4407,9 @@ to be implemented, by structs which implement that interface.
 They are just a convenient way to write `i.some_function()` instead of
 `some_function(i)`, similar to how struct methods can be looked at, as
 a convenience for writing `s.xyz()` instead of `xyz(s)`.
+
+An immediate read-only interface method call on a smart-casted value can return
+a scalar, including `char`, `rune`, `isize`, `usize`, or an enum.
 
 > [!NOTE]
 > This feature is NOT a "default implementation" like in C#.
