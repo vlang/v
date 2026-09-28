@@ -18,10 +18,11 @@ fn test_main() {
 
 fn test_option_sumtype_variants() {
 	empty := ?int(none)
-	assert json2.encode([OptionElem(1), OptionElem(empty), 3]) == '[1,null,3]'
+	// Like the removed module, a `none` option variant is written as `{}`.
+	assert json2.encode([OptionElem(1), OptionElem(empty), 3]) == '[1,{},3]'
 	assert json2.encode([OptionElem(1), OptionElem(?int(5)), 3]) == '[1,5,3]'
 	no_name := ?string(none)
-	assert json2.encode(OptionName(no_name)) == 'null'
+	assert json2.encode(OptionName(no_name)) == '{}'
 	assert json2.encode(OptionName(?string('x"y'))) == '"x\\"y"'
 }
 

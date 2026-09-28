@@ -320,3 +320,24 @@ fn test_required_fields_reject_null() {
 	}
 	assert json2.decode[RequiredName]('{"name":"x"}')!.name == 'x'
 }
+
+type OptionVariant = ?int | string
+
+struct OptionFoo {
+	a int
+}
+
+type OptionStructVariant = ?OptionFoo | int
+
+fn test_option_sumtype_variants_with_values() {
+	number := json2.decode[OptionVariant]('5')!
+	assert json2.encode(number) == '5'
+	text := json2.decode[OptionVariant]('"s"')!
+	assert text == OptionVariant('s')
+	nothing := json2.decode[OptionVariant]('null')!
+	assert json2.encode(nothing) == '{}'
+	foo := OptionStructVariant(?OptionFoo(OptionFoo{2}))
+	encoded := json2.encode(foo)
+	assert encoded == '{"a":2,"_type":"OptionFoo"}'
+	assert json2.encode(json2.decode[OptionStructVariant](encoded)!) == encoded
+}

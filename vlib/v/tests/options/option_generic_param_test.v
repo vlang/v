@@ -8,5 +8,5 @@ const array = [Elem(1), Elem(empty), 3]
 
 fn test_main() {
 	dump(array)
-	assert dump(json2.encode(array)) == '[1,null,3]'
+	assert dump(json2.encode(array)) == '[1,{},3]'
 }

@@ -487,6 +487,21 @@ fn (mut encoder Encoder) encode_sumtype[T](val T) {
 					} else {
 						encoder.encode_sumtype_struct_variant(val, variant_name)
 					}
+				} $else $if variant.typ is $option {
+					// Like the removed `json` module, a `none` option variant is `{}`.
+					variant_value := val
+					if variant_value == none {
+						encoder.output << `{`
+						encoder.output << `}`
+					} else {
+						payload := get_value_from_optional(variant_value)
+						$if payload is $struct {
+							// A struct payload carries its `_type`, like a struct variant.
+							encoder.encode_sumtype_struct_variant(payload, sumtype_variant_name(typeof(payload).name))
+						} $else {
+							encoder.encode_value(payload)
+						}
+					}
 				} $else $if variant.typ is $map {
 					encoder.encode_value(val)
 				} $else $if variant.typ is $array_dynamic {
