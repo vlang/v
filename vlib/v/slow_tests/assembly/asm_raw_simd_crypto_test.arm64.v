@@ -197,6 +197,33 @@ fn arm64_ghash_block_to_polynomial(block []u8) [2]u64 {
 	return result
 }
 
+// arm64_ghash_clmul_product_reference returns the unreduced 256-bit carryless
+// product of two GHASH polynomials, computed bit by bit. This mirrors
+// ghash_clmul_product_reference in the amd64 sibling (asm_raw_ghash_clmul_test.amd64.v)
+// so both fixtures check their PMULL/PCLMUL kernels against the same
+// independent reference instead of separately hand-computed constants.
+fn arm64_ghash_clmul_product_reference(x [2]u64, h [2]u64) [4]u64 {
+	mut product := [4]u64{}
+	for x_word in 0 .. 2 {
+		for x_bit in 0 .. 64 {
+			if ((x[x_word] >> x_bit) & 1) == 0 {
+				continue
+			}
+			x_position := x_word * 64 + x_bit
+			for h_word in 0 .. 2 {
+				for h_bit in 0 .. 64 {
+					if ((h[h_word] >> h_bit) & 1) == 0 {
+						continue
+					}
+					position := x_position + h_word * 64 + h_bit
+					product[position / 64] ^= u64(1) << (position & 63)
+				}
+			}
+		}
+	}
+	return product
+}
+
 fn arm64_ghash_reduce_product(mut product [4]u64) [2]u64 {
 	mut position := 255
 	for position >= 128 {
@@ -273,11 +300,7 @@ fn test_raw_ghash_pmull_vector() ! {
 	x := arm64_ghash_block_to_polynomial(x_bytes)
 	h := arm64_ghash_block_to_polynomial(h_bytes)
 	mut product := raw_ghash_pmull_product(&x, &h)
-	mut expected_product := [4]u64{}
-	expected_product[0] = 967084790008197592
-	expected_product[1] = 8907455666260999920
-	expected_product[2] = 3863501629616998091
-	expected_product[3] = 3091736768428133317
+	expected_product := arm64_ghash_clmul_product_reference(x, h)
 	assert product == expected_product
 	actual_ghash := arm64_polynomial_to_ghash_block(arm64_ghash_reduce_product(mut product))
 	expected_ghash := hex.decode('5e2ec746917062882c85b0685353deb7')!
