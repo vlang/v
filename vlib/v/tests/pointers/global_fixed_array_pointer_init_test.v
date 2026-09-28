@@ -39,6 +39,11 @@ fn free_global_optional_aligned_array_pointer(value &[2]?GlobalAlignedArrayPoint
 __global global_zero_array = &[4]int{}
 __global global_unsafe_array = unsafe { &[4]int{} }
 __global global_parenthesized_array = &([4]int{})
+__global global_inner_unsafe_array = &(unsafe { [4]int{} })
+__global global_inner_unsafe_filled_array = &(unsafe { [2]int{init: index * 2 + 3} })
+__global global_inner_unsafe_call_array = &(unsafe {
+	[2][3]int{init: make_global_array_pointer_row(index + 4)}
+})
 __global global_literal_array = &[3, 5]!
 __global global_cell_array = &[2]GlobalArrayPointerCell{}
 __global global_nested_array = &[2][3]int{}
@@ -68,6 +73,9 @@ fn test_global_fixed_array_pointers_are_initialized() {
 	assert unsafe { voidptr(global_zero_array) } != unsafe { nil }
 	assert unsafe { voidptr(global_unsafe_array) } != unsafe { nil }
 	assert unsafe { voidptr(global_parenthesized_array) } != unsafe { nil }
+	assert unsafe { voidptr(global_inner_unsafe_array) } != unsafe { nil }
+	assert unsafe { voidptr(global_inner_unsafe_filled_array) } != unsafe { nil }
+	assert unsafe { voidptr(global_inner_unsafe_call_array) } != unsafe { nil }
 	assert unsafe { voidptr(global_literal_array) } != unsafe { nil }
 	assert unsafe { voidptr(global_cell_array) } != unsafe { nil }
 	assert unsafe { voidptr(global_nested_array) } != unsafe { nil }
@@ -80,7 +88,7 @@ fn test_global_fixed_array_pointers_are_initialized() {
 	assert u64(voidptr(global_nested_aligned_array)) % 512 == 0
 	assert u64(voidptr(global_inherited_aligned_array)) % 512 == 0
 	assert u64(voidptr(global_filled_aligned_array)) % 512 == 0
-	assert global_row_calls == 10
+	assert global_row_calls == 12
 	// Indexing these pointer-backed arrays requires an unsafe block.
 	unsafe {
 		assert global_zero_array[0] == 0
@@ -91,6 +99,13 @@ fn test_global_fixed_array_pointers_are_initialized() {
 		assert global_unsafe_array[3] == 43
 		assert global_parenthesized_array[0] == 0
 		assert global_parenthesized_array[3] == 0
+		assert global_inner_unsafe_array[0] == 0
+		global_inner_unsafe_array[3] = 44
+		assert global_inner_unsafe_array[3] == 44
+		assert global_inner_unsafe_filled_array[0] == 3
+		assert global_inner_unsafe_filled_array[1] == 5
+		assert global_inner_unsafe_call_array[0][2] == 42
+		assert global_inner_unsafe_call_array[1][2] == 52
 		assert global_literal_array[0] == 3
 		assert global_literal_array[1] == 5
 		assert global_cell_array[0].value == 23

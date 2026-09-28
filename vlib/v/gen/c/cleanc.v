@@ -22858,7 +22858,8 @@ fn (mut g FlatGen) emit_global_inits() {
 					&& initializer.children_count == 1 {
 					mut child_id := g.a.child(initializer, 0)
 					mut child := g.a.node(child_id)
-					for child.kind == .paren && child.children_count == 1 {
+					for ((child.kind == .block && child.value == 'unsafe')
+						|| child.kind in [.expr_stmt, .paren]) && child.children_count == 1 {
 						child_id = g.a.child(child, 0)
 						child = g.a.node(child_id)
 					}

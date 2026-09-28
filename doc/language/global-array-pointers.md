@@ -11,6 +11,7 @@ Arrays of aligned structs retain the alignment required by their elements.
 This also applies to fixed-array aliases, nested fills, and alignment inherited
 through struct value fields.
 Alias chains and nested rows returned by functions are initialized as well.
-Parentheses around the fixed-array literal preserve this initialization.
+Parentheses and single-expression `unsafe` blocks around the fixed-array literal preserve
+this initialization, including `&(unsafe { [4]int{} })`.
 Optional or result elements retain inherited alignment, and freeing aligned
 array pointers uses the matching aligned deallocator.
