@@ -14828,6 +14828,14 @@ fn (mut tc TypeChecker) call_returned_alias_arguments(id flat.NodeId, mut visiti
 	// The return body belongs to the already checked program. Preserve its
 	// expression and call resolution, including receivers bound as callee locals.
 	callee_view.begin_sparse_transform_node_caches(tc.a.nodes.len)
+	if tc.parallel_check_sparse {
+		// A parallel checker owns only the dense node-cache slots of its current
+		// item. The callee body can belong to an item of another worker, and the
+		// types resolved here can live in this worker's scratch arena, so keep
+		// entries outside that range in the view's private sparse caches.
+		callee_view.check_range_lo = tc.check_range_lo
+		callee_view.check_range_hi = tc.check_range_hi
+	}
 	callee_view.fn_context.node_id = decl.idx
 	callee_view.fn_context.generic_params = fn_node.generic_params().clone()
 	callee_view.fn_context.return_type = info.return_type
