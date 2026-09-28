@@ -3956,7 +3956,16 @@ fn (t &Transformer) field_type_is_alias(core string, decl_module string) bool {
 // alias type must keep its identity, or `T(v)` wraps it as another sum variant, or
 // as none at all.
 fn (mut t Transformer) comptime_zero_value(typ string) flat.NodeId {
-	zero_id := t.zero_value_for_type(typ)
+	mut zero_type := typ
+	// In an imported specialization a program alias is locked as `main.Props`, but
+	// program aliases are registered bare. Resolve it through its bare name, or its
+	// zero value is a zeroed struct (`(map){0}` for a map alias, which crashes on use).
+	if typ.starts_with('main.') && !t.ident_is_import_alias('main') && !isnil(t.tc) {
+		if target := t.tc.type_aliases[typ['main.'.len..]] {
+			zero_type = t.lock_colliding_main_generic_type_text(target, t.cur_module)
+		}
+	}
+	zero_id := t.zero_value_for_type(zero_type)
 	if typ !in ['', 'void', 'int', 'f64', 'string', 'bool']
 		&& t.a.node(zero_id).kind in [.int_literal, .float_literal, .string_literal, .bool_literal] {
 		return t.make_cast(typ, zero_id, typ)
