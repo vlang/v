@@ -14770,7 +14770,25 @@ fn (mut p Parser) scan_translated_sizeof_comptime_if(source string, tokens []Inl
 	close := inline_asm_matching_close_brace(tokens, open, end)
 	if close >= end { return end }
 	condition := source[tokens[start + 1].end..tokens[open].pos]
-	_, known, taken := p.inline_asm_comptime_condition(condition)
+	mut known := false
+	mut taken := false
+	mut needs_context := false
+	for t in tokens[start + 2..open] {
+		// A deferred branch can introduce a constant used by a following
+		// condition. Its missing value must not select that condition's else arm.
+		if translated_sizeof_pseudo_needs_source_context(t)
+			|| (t.kind == .name
+				&& p.translated_sizeof_const_names[p.translated_sizeof_declaration_key(t.lit)]
+				&& p.comptime_value(t.lit) == none) {
+			needs_context = true
+			break
+		}
+	}
+	if !needs_context {
+		_, condition_known, condition_taken := p.inline_asm_comptime_condition(condition)
+		known = condition_known
+		taken = condition_taken
+	}
 	mut saved_consts := if !known { p.comptime_const_values.clone() } else { map[string]string{} }
 	defer {
 		if !known { p.comptime_const_values = saved_consts.move() }
@@ -14796,6 +14814,12 @@ fn (mut p Parser) scan_translated_sizeof_comptime_if(source string, tokens []Inl
 	return if else_close < end { else_close + 1 } else { end }
 }
 
+fn translated_sizeof_pseudo_needs_source_context(t InlineAsmScanToken) bool {
+	return t.kind == .name && t.lit.starts_with('@')
+		&& t.lit !in ['@OS', '@CCOMPILER', '@BACKEND', '@PLATFORM', '@VEXE', '@VEXEROOT', '@VROOT',
+			'@VHASH', '@VCURRENTHASH', '@BUILD_DATE', '@BUILD_TIME', '@BUILD_TIMESTAMP']
+}
+
 fn (mut p Parser) scan_translated_sizeof_comptime_match(source string, tokens []InlineAsmScanToken, start int, end int) int {
 	open := inline_asm_comptime_open_brace(tokens, start + 2, end)
 	if open >= end || start + 2 >= open { return end }
@@ -14814,10 +14838,7 @@ fn (mut p Parser) scan_translated_sizeof_comptime_match(source string, tokens []
 			header_pos = inline_asm_matching_close_brace(tokens, header_pos, close) + 1
 			continue
 		}
-		t := tokens[header_pos]
-		if t.kind == .name && t.lit.starts_with('@')
-			&& t.lit !in ['@OS', '@CCOMPILER', '@BACKEND', '@PLATFORM', '@VEXE', '@VEXEROOT', '@VROOT',
-				'@VHASH', '@VCURRENTHASH', '@BUILD_DATE', '@BUILD_TIME', '@BUILD_TIMESTAMP'] {
+		if translated_sizeof_pseudo_needs_source_context(tokens[header_pos]) {
 			needs_source_context = true
 			break
 		}

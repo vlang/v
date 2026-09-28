@@ -3,9 +3,9 @@
 In `@[translated]` files, `sizeof` accepts constant expressions and named values.
 Declarations later in the same module are recognized, including constants in deferred
 compile-time type or size conditions and header-style constants without initializers.
-Top-level `$match` declarations follow the selected arm when its subject is known; deferred
-matches and source-location-dependent matches retain candidates until normal parsing or
-compile-time selection resolves them.
+Top-level `$match` declarations follow the selected arm when its subject is known. Deferred
+matches and location-dependent `$if` or `$match` conditions retain candidates until normal
+parsing in the declaring file or compile-time selection resolves them.
 Declaration attributes such as `@[if feature ?]`
 exclude disabled candidates from the name lookup.
 Globals are recognized before their declarations, including grouped globals in other parsed

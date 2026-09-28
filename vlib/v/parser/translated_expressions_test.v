@@ -393,6 +393,62 @@ $match @FILE {
 	}
 }
 
+fn test_translated_sizeof_location_dependent_comptime_conditions() {
+	root := os.join_path(os.vtmp_dir(), 'translated_sizeof_location_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+	main_file := os.join_path(root, 'a.v')
+	later_file := os.join_path(root, 'z.v')
+	source := '@[translated]
+module main
+fn main() {
+ assert sizeof(FileValue) == sizeof([2]u64)
+ assert sizeof(FileType) == sizeof(u8)
+ assert sizeof(FunctionValue) == sizeof([3]u16)
+ assert sizeof(LineValue) == sizeof([3]u32)
+ assert sizeof(FollowingValue) == sizeof([4]u16)
+}
+'
+	declarations := '
+$if @FILE == "__DECL_FILE__" {
+ const FileValue = [2]u64{}
+ type FileType = u8
+ const enabled = true
+} $else {
+ type FileValue = u8
+ const FileType = [2]u64{}
+ const enabled = false
+}
+$if @FN == "" {
+ const FunctionValue = [3]u16{}
+} $else { type FunctionValue = u8 }
+$if @LINE == "__LINE__" {
+ __global LineValue = [3]u32{}
+} $else { type LineValue = u8 }
+$if enabled {
+ const FollowingValue = [4]u16{}
+} $else { type FollowingValue = u8 }
+'
+	for name in ['padding_a.v', 'padding_b.v'] {
+		os.write_file(os.join_path(root, name), 'module main\n//' + ' '.repeat(70000) + '\n')!
+	}
+	for later in [false, true] {
+		declaration_file := if later { later_file } else { main_file }
+		prefix := if later { '@[translated]\nmodule main\n' } else { source }
+		mut contents := prefix + declarations.replace('__DECL_FILE__',
+			declaration_file.replace('\\', '\\\\').replace('"', '\\"'))
+		line_start := contents.index('\$if @LINE') or { panic('missing line condition') }
+		line := contents[..line_start].count('\n') + 1
+		contents = contents.replace('__LINE__', line.str())
+		os.write_file(main_file, if later { source } else { contents })!
+		os.write_file(later_file, if later { contents } else { 'module main\n' })!
+		for flags in ['', '-no-parallel'] {
+			result := os.execute('${os.quoted_path(@VEXE)} ${flags} -enable-globals run ${os.quoted_path(root)}')
+			assert result.exit_code == 0, result.output
+		}
+	}
+}
+
 fn test_translated_sizeof_ignores_constants_from_other_modules() {
 	root := os.join_path(os.vtmp_dir(), 'translated_sizeof_modules_${os.getpid()}')
 	os.mkdir_all(root)!
