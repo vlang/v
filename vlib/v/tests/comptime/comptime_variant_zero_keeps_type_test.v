@@ -13,6 +13,14 @@ type Num = i32 | f32 | u8 | Color | string
 
 type Named = MyStr | string
 
+struct Point {
+	x int
+}
+
+type Spot = Point
+
+type Place = Point | Spot
+
 fn variant_cast_names[T]() []string {
 	mut names := []string{}
 	$for v in T.variants {
@@ -40,4 +48,24 @@ fn test_variant_cast_keeps_the_variant_type() {
 fn test_variant_zero_keeps_the_variant_type() {
 	assert variant_zero_names[Num]() == ['i32', 'f32', 'u8', 'Color', 'string']
 	assert variant_zero_names[Named]() == ['MyStr', 'string']
+}
+
+fn variant_unaliased_names[T]() []string {
+	mut names := []string{}
+	$for v in T.variants {
+		names << typeof(v.typ.unaliased_typ).name
+		names << typeof($zero(v.typ.unaliased_typ)).name
+	}
+	return names
+}
+
+fn test_variant_cast_keeps_a_struct_alias() {
+	// The zero value of `Spot` is a `Point`; `T(v)` still selects `Spot`.
+	assert variant_cast_names[Place]() == ['Point', 'Spot']
+	assert variant_zero_names[Place]() == ['Point', 'Spot']
+}
+
+fn test_variant_unaliased_typ_names_the_base_type() {
+	assert variant_unaliased_names[Place]() == ['Point', 'Point', 'Point', 'Point']
+	assert variant_unaliased_names[Named]() == ['string', 'string', 'string', 'string']
 }

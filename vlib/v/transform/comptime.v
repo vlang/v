@@ -3012,19 +3012,15 @@ fn (mut t Transformer) clone_variant_subst_with_smartcast(id flat.NodeId, var_na
 	node := t.a.nodes[int(id)]
 	if node.kind == .string_literal && node.children_count > 0
 		&& node.value in ['__v3_comptime_zero', '__v3_comptime_new'] {
-		target_expr := t.a.child_node(&node, 0)
-		if target_expr.kind == .selector && target_expr.value == 'typ'
-			&& target_expr.children_count > 0 {
-			base := t.a.child_node(target_expr, 0)
-			// The marker can share its loop-variable leaf with the discarded
-			// generic template. The marker itself is sufficient to recover the
-			// variant type after that leaf has been pruned.
-			if base.kind == .empty || (base.kind == .ident && base.value == var_name) {
-				return if node.value == '__v3_comptime_new' {
-					t.comptime_new_value(item.typ)
-				} else {
-					t.comptime_zero_value(item.typ)
-				}
+		// The marker can share its loop-variable leaf with the discarded generic
+		// template. The marker itself is sufficient to recover the variant type
+		// after that leaf has been pruned.
+		if member := t.variant_type_member(t.a.child(&node, 0), var_name, true) {
+			target := t.variant_member_type(member, item)
+			return if node.value == '__v3_comptime_new' {
+				t.comptime_new_value(target)
+			} else {
+				t.comptime_zero_value(target)
 			}
 		}
 	}
@@ -3039,23 +3035,34 @@ fn (mut t Transformer) clone_variant_subst_with_smartcast(id flat.NodeId, var_na
 		if operand.kind == .ident && operand.value == var_name {
 			// `T(v)` wraps a zero value of the variant's type in the sum type
 			// (the VariantData literal is only the loop var's runtime carrier).
-			return t.make_cast(node.value, t.comptime_zero_value(item.typ), node.value)
+			mut zero := t.comptime_zero_value(item.typ)
+			if t.comptime_typeof_unaliased_type(item.typ) != item.typ {
+				// An alias variant's zero value has its base type; keep the alias, so
+				// `Foo | Alias` selects `Alias` rather than `Foo`.
+				zero = t.make_cast(item.typ, zero, item.typ)
+			}
+			return t.make_cast(node.value, zero, node.value)
 		}
 	}
-	if node.kind == .selector && node.children_count > 0
-		&& t.typeof_arg_is_variant_typ(t.a.child(&node, 0), var_name) {
-		match node.value {
-			'name' {
-				return t.make_string_literal(item.typ)
+	if node.kind == .selector && node.children_count > 0 {
+		if member := t.typeof_arg_variant_member(t.a.child(&node, 0), var_name) {
+			match node.value {
+				'name' {
+					return t.make_string_literal(t.variant_member_type(member, item))
+				}
+				'idx' {
+					if member == 'typ' {
+						return t.make_int_literal(item.typ_id)
+					}
+				}
+				else {}
 			}
-			'idx' {
-				return t.make_int_literal(item.typ_id)
-			}
-			else {}
 		}
 	}
-	if node.kind == .typeof_expr && t.typeof_arg_is_variant_typ(id, var_name) {
-		return t.make_string_literal(item.typ)
+	if node.kind == .typeof_expr {
+		if member := t.typeof_arg_variant_member(id, var_name) {
+			return t.make_string_literal(t.variant_member_type(member, item))
+		}
 	}
 	if node.kind == .selector && node.children_count > 0 {
 		base := t.a.child_node(&node, 0)
@@ -3179,20 +3186,58 @@ fn (mut t Transformer) clone_variant_subst_with_smartcast(id flat.NodeId, var_na
 	return clone_id
 }
 
-fn (t &Transformer) typeof_arg_is_variant_typ(id flat.NodeId, var_name string) bool {
+// typeof_arg_variant_member returns `typ` for `typeof(v.typ)` and `unaliased_typ` for
+// `typeof(v.typ.unaliased_typ)`, where `v` is the variant loop variable `var_name`.
+fn (t &Transformer) typeof_arg_variant_member(id flat.NodeId, var_name string) ?string {
 	if int(id) < 0 || int(id) >= t.a.nodes.len {
-		return false
+		return none
 	}
 	node := t.a.nodes[int(id)]
 	if node.kind != .typeof_expr || node.children_count == 0 {
-		return false
+		return none
 	}
-	arg := t.a.child_node(&node, 0)
-	if arg.kind != .selector || arg.value != 'typ' || arg.children_count == 0 {
-		return false
+	return t.variant_type_member(t.a.child(&node, 0), var_name, false)
+}
+
+// variant_type_member returns `typ` for `v.typ` and `unaliased_typ` for
+// `v.typ.unaliased_typ`, where `v` is the variant loop variable `var_name`. With
+// `allow_pruned`, an emptied `v` leaf is accepted too.
+fn (t &Transformer) variant_type_member(id flat.NodeId, var_name string, allow_pruned bool) ?string {
+	if int(id) < 0 || int(id) >= t.a.nodes.len {
+		return none
 	}
-	base := t.a.child_node(arg, 0)
-	return base.kind == .ident && base.value == var_name
+	mut sel := t.a.nodes[int(id)]
+	if sel.kind != .selector || sel.children_count == 0 {
+		return none
+	}
+	member := sel.value
+	if member == 'unaliased_typ' {
+		sel = t.a.child_node(&sel, 0)
+		if sel.kind != .selector || sel.children_count == 0 {
+			return none
+		}
+	} else if member != 'typ' {
+		return none
+	}
+	if sel.value != 'typ' {
+		return none
+	}
+	base := t.a.child_node(&sel, 0)
+	if (allow_pruned && base.kind == .empty) || (base.kind == .ident && base.value == var_name) {
+		return member
+	}
+	return none
+}
+
+// variant_member_type is the type named by `v.typ` or `v.typ.unaliased_typ` for the
+// variant `item`: an alias variant keeps its name for `typ` and is unwrapped for
+// `unaliased_typ`.
+fn (t &Transformer) variant_member_type(member string, item VariantMeta) string {
+	return if member == 'unaliased_typ' {
+		t.comptime_typeof_unaliased_type(item.typ)
+	} else {
+		item.typ
+	}
 }
 
 fn (t &Transformer) subst_variant_cond(cond string, var_name string, item VariantMeta) string {
