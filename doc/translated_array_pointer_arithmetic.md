@@ -8,6 +8,8 @@ The pointer refers to the original array storage. Fixed-array addresses that can
 the expression remain inline. When evaluating the right operand can affect the left operand's value
 or address, the compiler captures the left operand first to preserve evaluation order.
 Global initializers retain these temporaries too, including `offset() + values`.
+When a global initializer decays a returned array or an array literal, its backing storage lasts
+for the program lifetime and retains the element type's alignment.
 
 An inferred global keeps its checked type, so an array-plus-offset initializer remains a pointer
 when the global is read or passed to a function.

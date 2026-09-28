@@ -4418,14 +4418,22 @@ fn (mut tc TypeChecker) resolve_inferred_global_types(a &flat.FlatAst) {
 					}
 					qname := tc.qualify_name(f.value)
 					existing := tc.file_scope.lookup(qname) or { Type(void_) }
+					initializer_id := a.child(f, 0)
+					initializer := a.node(initializer_id)
+					mut arithmetic := initializer
+					for arithmetic.kind in [.paren, .expr_stmt] && arithmetic.children_count == 1 {
+						arithmetic = a.child_node(arithmetic, 0)
+					}
+					// Before later function declarations are registered, offset + array()
+					// can provisionally resolve to the offset's scalar type.
+					recheck_arithmetic := tc.translated_files[tc.cur_file]
+						&& arithmetic.kind == .infix && arithmetic.op in [.plus, .minus]
 					if existing !is Unknown && existing !is Void
 						&& !type_contains_unknown(existing)
 						&& !generic_semantic_type_has_placeholder(existing)
-						&& !tc.type_text_has_generic_placeholder(existing.name()) {
+						&& !tc.type_text_has_generic_placeholder(existing.name()) && !recheck_arithmetic {
 						continue
 					}
-					initializer_id := a.child(f, 0)
-					initializer := a.node(initializer_id)
 					mut ft := tc.resolve_type(initializer_id)
 					// Function bodies are checked after globals are collected. Infer an
 					// implicit generic call here so methods used on the global receiver see

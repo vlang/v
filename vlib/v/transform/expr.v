@@ -86,7 +86,12 @@ fn (mut t Transformer) materialize_translated_array_decay_operand(source flat.No
 	}
 	typ := t.resolve_expr_type(source)
 	tmp_name := t.new_temp('array_decay')
-	t.pending_stmts << t.make_decl_assign_typed(tmp_name, value, typ)
+	decl := t.make_decl_assign_typed(tmp_name, value, typ)
+	if t.in_global_init {
+		// Global pointers must outlive _vinit, including returned/literal arrays.
+		t.a.nodes[int(decl)].value = 'static'
+	}
+	t.pending_stmts << decl
 	return t.make_ident(tmp_name)
 }
 

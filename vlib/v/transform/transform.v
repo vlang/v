@@ -250,6 +250,7 @@ mut:
 	in_spawn_expr                       bool
 	has_spawn_expr                      bool
 	in_const_init                       bool
+	in_global_init                      bool
 	in_return_expr                      bool
 	expected_expr_node                  int = -1
 	expected_expr_type                  string
@@ -4148,6 +4149,7 @@ fn (t &Transformer) fork_worker_config(ast &flat.FlatAst, wtc &types.TypeChecker
 	w.cur_fn_ret_type = ''
 	w.in_call_callee = false
 	w.in_const_init = false
+	w.in_global_init = false
 	w.in_return_expr = false
 	w.expected_expr_node = -1
 	w.expected_expr_type = ''
@@ -4247,6 +4249,7 @@ fn (t &Transformer) fork_scan_worker(wtc &types.TypeChecker) &Transformer {
 	w.cur_fn_ret_type = ''
 	w.in_call_callee = false
 	w.in_const_init = false
+	w.in_global_init = false
 	w.in_return_expr = false
 	w.expected_expr_node = -1
 	w.expected_expr_type = ''
@@ -5853,11 +5856,14 @@ fn (mut t Transformer) transform_const_or_expr(_id flat.NodeId, node flat.Node, 
 
 // transform_global_decl transforms transform global decl data for transform.
 fn (mut t Transformer) transform_global_decl(node flat.Node) {
+	old_in_global_init := t.in_global_init
+	t.in_global_init = true
 	old_tc_file := t.tc.cur_file
 	old_tc_module := t.tc.cur_module
 	t.tc.cur_file = t.cur_file
 	t.tc.cur_module = t.cur_module
 	defer {
+		t.in_global_init = old_in_global_init
 		t.tc.cur_file = old_tc_file
 		t.tc.cur_module = old_tc_module
 	}
@@ -9096,6 +9102,11 @@ fn mut_param_has_builtin_pointer_value(param flat.Node) bool {
 }
 
 fn (mut t Transformer) transform_fn_body(fn_idx int) {
+	old_in_global_init := t.in_global_init
+	t.in_global_init = false
+	defer {
+		t.in_global_init = old_in_global_init
+	}
 	if !isnil(t.selector_type_cache) {
 		t.selector_type_cache.generation++
 	}
