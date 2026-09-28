@@ -29,6 +29,7 @@ const c_common_c_attributes = ['alias', 'aligned', 'always_inline', 'cold', 'con
 	'visibility', 'warn_unused_result', 'weak']
 const c_has_attribute_predicate = '__has_attribute'
 const c_has_include_predicate = '__has_include'
+const c_has_include_next_predicate = '__has_include_next'
 
 // c_short_name_view returns the suffix after the final dot without allocating.
 @[direct_array_access; inline]
@@ -6111,6 +6112,7 @@ fn c_forced_precompiled_header_has_nsfont(flags []string, ccompiler string) bool
 struct CHeaderScanLine {
 	text        string
 	source_file string
+	search_dir  string
 	ancestors   []string
 	macros_only bool
 }
@@ -6472,7 +6474,8 @@ fn c_expand_header_tokens(raw string, values map[string]string, undefined map[st
 		if call := c_header_macro_call(raw[start..]) {
 			if name in values || '@function:${name}' in values {
 				end = start + call.end
-			} else if name in [c_has_include_predicate, c_has_attribute_predicate] {
+			} else if name in [c_has_include_predicate, c_has_include_next_predicate,
+				c_has_attribute_predicate] {
 				// The predicate evaluator expands its argument in the appropriate context.
 				i = start + call.end
 				result.write_string(raw[start..i])
@@ -6624,7 +6627,8 @@ fn c_header_conditions_possibly_active(known []bool, active []bool) bool {
 
 fn c_header_text_objective_c_scan_for_target(text string, flags []string, c99_mode bool, target pref.Target, cocoa_include_only bool, vroot string, source_file string, native_language string, ccompiler string) bool {
 	mut defined := {
-		c_has_include_predicate: true
+		c_has_include_predicate:      true
+		c_has_include_next_predicate: true
 	}
 	mut undefined := {
 		'__OBJC__': true
@@ -6744,16 +6748,16 @@ fn c_header_text_objective_c_scan_for_target(text string, flags []string, c99_mo
 	for line in c_join_continued_lines(text) {
 		lines << CHeaderScanLine{ text: line, source_file: source_file }
 	}
-	mut line_index := 0
-	for line_index < lines.len {
-		scan_line := lines[line_index]
+	// Process nested headers in source order without retaining their consumed lines.
+	lines.reverse_in_place()
+	for lines.len > 0 {
+		scan_line := lines.pop()
 		line := scan_line.text
-		line_index++
 		line_in_block_comment := in_block_comment
 		clean, next_in_block_comment := c_preprocessor_directive_scan_line(line, in_block_comment)
 		in_block_comment = next_in_block_comment
 		name := c_directive_name(clean)
-		predicate_context := CHeaderPredicateContext{ flags: flags, vroot: vroot, source_file: scan_line.source_file, search_paths: search_paths }
+		predicate_context := CHeaderPredicateContext{ flags: flags, vroot: vroot, source_file: scan_line.source_file, search_paths: search_paths, search_after: scan_line.search_dir }
 		mut directive_macro_name := ''
 		if cocoa_include_only {
 			if name in ['if', 'ifdef', 'ifndef'] {
@@ -6885,7 +6889,7 @@ fn c_header_text_objective_c_scan_for_target(text string, flags []string, c99_mo
 			definite_text.writeln('')
 			continue
 		}
-		if cocoa_include_only && (name in ['include', 'import', 'define', 'undef']
+		if cocoa_include_only && (name in ['include', 'include_next', 'import', 'define', 'undef']
 			|| (name == 'pragma' && c_directive_arg(clean).trim_space() == 'once')
 			|| (name.len == 0 && !scan_line.macros_only && (class_state.mode != .none || line.contains('@')))) {
 			// Save state only when an uncertain branch can change it. SDK headers have
@@ -6904,14 +6908,19 @@ fn c_header_text_objective_c_scan_for_target(text string, flags []string, c99_mo
 			c_header_cocoa_touch_path(mut cocoa_conditions, scan_line.source_file, once_paths, included_paths)
 			once_paths[scan_line.source_file] = true
 		}
-		if name in ['include', 'import'] {
+		if name in ['include', 'include_next', 'import'] {
 			include_arg := c_expand_header_macro(c_directive_arg(clean), macro_values, map[string]string{}, map[string]bool{}, 0)
 			if cocoa_include_only {
-				if c_header_nsfont_framework_include(include_arg, predicate_context) {
+				include_context := CHeaderPredicateContext{
+					...predicate_context
+					include_next: name == 'include_next'
+					search_after: scan_line.search_dir
+				}
+				if c_header_nsfont_framework_include(include_arg, include_context) {
 					cocoa_provided = cocoa_provided || !scan_line.macros_only
 				} else if c_include_arg_is_literal(include_arg) {
-					for path in c_header_include_file_paths(include_arg, predicate_context) {
-						real_path := os.real_path(path)
+					for candidate in c_header_include_candidates(include_arg, include_context) {
+						real_path := os.real_path(candidate.path)
 						if real_path in scan_line.ancestors || real_path in once_paths || (name == 'import' && real_path in included_paths) {
 							break
 						}
@@ -6926,11 +6935,10 @@ fn c_header_text_objective_c_scan_for_target(text string, flags []string, c99_mo
 						}
 						mut ancestors := scan_line.ancestors.clone()
 						ancestors << real_path
-						mut nested := []CHeaderScanLine{}
-						for header_line in c_join_continued_lines(header) {
-							nested << CHeaderScanLine{ text: header_line, source_file: real_path, ancestors: ancestors, macros_only: scan_line.macros_only }
+						header_lines := c_join_continued_lines(header)
+						for header_index := header_lines.len; header_index > 0; header_index-- {
+							lines << CHeaderScanLine{ text: header_lines[header_index - 1], source_file: real_path, search_dir: candidate.search_dir, ancestors: ancestors, macros_only: scan_line.macros_only }
 						}
-						lines.insert(line_index, nested)
 						break
 					}
 				}
@@ -7164,12 +7172,16 @@ fn c_header_objective_c_condition_state(raw string, defined map[string]bool, und
 
 struct CHeaderSearchPaths {
 mut:
-	quote_dirs        []string
-	include_dirs      []string
-	framework_dirs    []string
+	dirs              []CHeaderSearchDir
 	predefined_macros []string
 	undefined_macros  []string
 	complete          bool
+}
+
+struct CHeaderSearchDir {
+	path       string
+	framework  bool
+	quote_only bool
 }
 
 fn c_header_target_abi_macros(target pref.Target, flags []string) CHeaderSearchPaths {
@@ -7274,11 +7286,9 @@ fn c_header_compiler_search_paths(ccompiler string, flags []string, language str
 			reading = false
 		} else if reading {
 			if line.ends_with(' (framework directory)') {
-				result.framework_dirs << line[..line.len - ' (framework directory)'.len]
-			} else if quotes_only {
-				result.quote_dirs << line
+				result.dirs << CHeaderSearchDir{ path: line[..line.len - ' (framework directory)'.len], framework: true, quote_only: quotes_only }
 			} else {
-				result.include_dirs << line
+				result.dirs << CHeaderSearchDir{ path: line, quote_only: quotes_only }
 			}
 		}
 	}
@@ -7295,6 +7305,13 @@ struct CHeaderPredicateContext {
 	vroot        string
 	source_file  string
 	search_paths CHeaderSearchPaths
+	include_next bool
+	search_after string
+}
+
+struct CHeaderIncludeCandidate {
+	path       string
+	search_dir string
 }
 
 fn c_header_nsfont_framework_include(include_arg string, context CHeaderPredicateContext) bool {
@@ -7334,60 +7351,114 @@ fn c_header_include_available(include_arg string, context CHeaderPredicateContex
 }
 
 fn c_header_include_file_paths(include_arg string, context CHeaderPredicateContext) []string {
+	return c_header_include_candidates(include_arg, context).map(it.path)
+}
+
+fn c_header_include_candidates(include_arg string, context CHeaderPredicateContext) []CHeaderIncludeCandidate {
 	clean := include_arg.trim_space()
-	mut include_dirs := []string{}
-	if clean[0] == `"` {
-		include_dirs << context.search_paths.quote_dirs
-	}
-	if !context.search_paths.complete {
-		include_dirs << c_flag_include_dirs(context.flags)
-	}
-	include_dirs << context.search_paths.include_dirs
-	mut paths := c_include_file_paths(clean, context.vroot, context.source_file, include_dirs)
+	if !c_include_arg_is_literal(clean) { return []CHeaderIncludeCandidate{} }
 	path := c_resolve_pseudo_paths(clean[1..clean.len - 1], context.vroot, context.source_file)
 	if os.is_abs_path(path) {
-		return paths
+		return [CHeaderIncludeCandidate{ path: path }]
 	}
+	mut paths := []CHeaderIncludeCandidate{}
+	if clean[0] == `"` {
+		first := c_include_file_path(clean, context.vroot, context.source_file)
+		if first.len > 0 { paths << CHeaderIncludeCandidate{ path: first, search_dir: 'local' } }
+	}
+	mut dirs := context.search_paths.dirs.clone()
+	if dirs.len == 0 { dirs = c_header_search_dirs_from_flags(context.flags) }
 	mut sdk_root := ''
-	mut framework_dirs := context.search_paths.framework_dirs.clone()
 	mut i := 0
 	for i < context.flags.len {
 		flag := context.flags[i]
-		if flag in ['-isysroot', '--sysroot', '-F', '-iframework'] && i + 1 < context.flags.len {
+		if flag in ['-isysroot', '--sysroot'] && i + 1 < context.flags.len {
 			i++
-			if flag in ['-isysroot', '--sysroot'] {
-				sdk_root = context.flags[i]
-			} else {
-				framework_dirs << context.flags[i]
-			}
+			sdk_root = context.flags[i]
 		} else if flag.starts_with('--sysroot=') {
 			sdk_root = flag['--sysroot='.len..]
 		} else if flag.starts_with('-isysroot') && flag.len > '-isysroot'.len {
 			sdk_root = flag['-isysroot'.len..].trim_left('=')
-		} else if flag.starts_with('-F') && flag.len > 2 {
-			framework_dirs << flag[2..]
 		}
 		i++
 	}
 	standard_paths := '-nostdinc' !in context.flags && '-nostdlibinc' !in context.flags
 	if sdk_root.len > 0 && standard_paths {
-		paths << os.join_path(sdk_root, 'usr/include', path)
-		framework_dirs << os.join_path(sdk_root, 'System/Library/Frameworks')
+		dirs << CHeaderSearchDir{ path: os.join_path(sdk_root, 'usr/include') }
+		dirs << CHeaderSearchDir{ path: os.join_path(sdk_root, 'System/Library/Frameworks'), framework: true }
 	}
-	if path.contains('/') {
-		framework := path.all_before('/')
-		header := path.all_after('/')
-		for dir in framework_dirs {
+	mut seen_dirs := map[string]bool{}
+	for dir in dirs {
+		if dir.path.len == 0 || (dir.quote_only && clean[0] != `"` && !context.include_next) {
+			continue
+		}
+		key := (if dir.framework { 'framework:' } else { 'include:' }) + os.real_path(dir.path)
+		if key in seen_dirs { continue }
+		seen_dirs[key] = true
+		if !dir.framework {
+			paths << CHeaderIncludeCandidate{ path: os.join_path_single(dir.path, path), search_dir: key }
+		} else if path.contains('/') {
+			framework := path.all_before('/')
+			header := path.all_after('/')
 			for headers in ['Headers', 'PrivateHeaders'] {
-				paths << os.join_path(dir, '${framework}.framework', headers, header)
+				paths << CHeaderIncludeCandidate{
+					path:       os.join_path(dir.path, '${framework}.framework', headers, header)
+					search_dir: key
+				}
 			}
+		} else {
+			// Keep the search position even when this spelling is not framework-qualified.
+			paths << CHeaderIncludeCandidate{ search_dir: key }
 		}
 	}
-	return paths
+	mut start := 0
+	if context.include_next {
+		for index, candidate in paths {
+			if candidate.search_dir == context.search_after { start = index + 1 }
+		}
+	}
+	return paths[start..].filter(it.path.len > 0 && (!context.include_next || it.search_dir != 'local'))
+}
+
+fn c_header_search_dirs_from_flags(flags []string) []CHeaderSearchDir {
+	mut quoted := []CHeaderSearchDir{}
+	mut user_dirs := []CHeaderSearchDir{}
+	mut system_dirs := []CHeaderSearchDir{}
+	mut after_dirs := []CHeaderSearchDir{}
+	mut i := 0
+	for i < flags.len {
+		flag := flags[i]
+		for prefix in ['-iquote', '-isystem', '-idirafter', '-iframework', '-I', '-F'] {
+			mut path := ''
+			if flag == prefix && i + 1 < flags.len {
+				i++
+				path = flags[i]
+			} else if flag.starts_with(prefix) && flag.len > prefix.len {
+				path = flag[prefix.len..].trim_left('=')
+			} else {
+				continue
+			}
+			dir := CHeaderSearchDir{ path: path.trim('"\''), framework: prefix in ['-F', '-iframework'], quote_only: prefix == '-iquote' }
+			match prefix {
+				'-iquote' { quoted << dir }
+				'-isystem', '-iframework' { system_dirs << dir }
+				'-idirafter' { after_dirs << dir }
+				else { user_dirs << dir }
+			}
+			break
+		}
+		i++
+	}
+	quoted << user_dirs
+	quoted << system_dirs
+	quoted << after_dirs
+	return quoted
 }
 
 fn c_header_objective_c_compiler_predicate_state(clean string, defined map[string]bool, undefined map[string]bool, uncertain map[string]bool, macro_values map[string]string, strict_iso_mode bool, target pref.Target, predicate_context CHeaderPredicateContext) ?bool {
-	predicate := if clean.starts_with(c_has_include_predicate) {
+	predicate := if clean.starts_with(c_has_include_next_predicate) {
+		c_has_include_next_predicate
+	} else if clean.starts_with(c_has_include_predicate) {
 		c_has_include_predicate
 	} else {
 		c_has_attribute_predicate
@@ -7422,12 +7493,16 @@ fn c_header_objective_c_compiler_predicate_state(clean string, defined map[strin
 		}
 		return none
 	}
-	if predicate in defined && (predicate != c_has_include_predicate || predicate in macro_values) {
+	include_predicate := predicate in [c_has_include_predicate, c_has_include_next_predicate]
+	if predicate in defined && (!include_predicate || predicate in macro_values) {
 		return none
 	}
-	if predicate == c_has_include_predicate {
+	if include_predicate {
 		include_arg := c_expand_header_macro(attribute, macro_values, map[string]string{}, map[string]bool{}, 0)
-		return c_header_include_available(include_arg, predicate_context)
+		return c_header_include_available(include_arg, CHeaderPredicateContext{
+			...predicate_context
+			include_next: predicate == c_has_include_next_predicate
+		})
 	}
 	return attribute.trim('_') in c_common_c_attributes
 }
@@ -7584,7 +7659,16 @@ fn c_header_condition_top_level_binary(expression string, operators []string) (b
 		}
 		mut matched := ''
 		for operator in operators {
-			if expression[i..].starts_with(operator) {
+			mut matches := i + operator.len <= expression.len
+			if matches {
+				for offset, ch in operator {
+					if expression[i + offset] != ch {
+						matches = false
+						break
+					}
+				}
+			}
+			if matches {
 				matched = operator
 				break
 			}
@@ -8005,7 +8089,7 @@ fn c_header_condition_top_level_parts(expression string, operator string) []stri
 			i++
 			continue
 		}
-		if depth == 0 && expression[i..i + 2] == operator {
+		if depth == 0 && expression[i] == operator[0] && expression[i + 1] == operator[1] {
 			part := expression[start..i].trim_space()
 			if part.len == 0 {
 				return [expression]

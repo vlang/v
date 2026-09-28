@@ -268,3 +268,110 @@ fn test_cocoa_search_probe_keeps_cross_compiler_macros() {
 		assert '__APPLE__ 1' !in paths.predefined_macros
 	}
 }
+
+fn test_cocoa_include_next_continues_after_wrapper_search_directory() {
+	root := os.join_path(os.vtmp_dir(), 'v3_cocoa_include_next_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+	mut g := cocoa_declaration_test_gen()
+	for framework in [false, true] {
+		mut roots := []string{}
+		mut headers := []string{}
+		for label in ['first', 'second', 'last'] {
+			dir := os.join_path(root, if framework { 'frameworks' } else { 'includes' }, label)
+			header := os.join_path(dir, if framework {
+				'Cocoa.framework/Headers/Cocoa.h'
+			} else {
+				'Cocoa/Cocoa.h'
+			})
+			os.mkdir_all(os.dir(header))!
+			roots << dir
+			headers << header
+		}
+		os.write_file(headers[0], '#pragma once\n#include_next <Cocoa/Cocoa.h>\n')!
+		os.write_file(headers[1], '#define NEXT <Cocoa/Cocoa.h>\n#include_next NEXT\n')!
+		os.write_file(headers[2], '@class NSFont;\n')!
+		g.c_flags = ['-nostdinc', '-x', 'objective-c']
+		for dir in roots { g.c_flags << [if framework { '-F' } else { '-I' }, dir] }
+		g.preinclude_directives = ['#include <Cocoa/Cocoa.h>']
+		assert !g.header_c_struct_needs_compat_typedef('C.NSFont'), framework.str()
+		os.write_file(headers[2], 'struct NSFont { int value; };\n')!
+		assert g.header_c_struct_needs_compat_typedef('C.NSFont'), framework.str()
+	}
+	first := os.join_path(root, 'includes/first')
+	second := os.join_path(root, 'includes/second')
+	os.write_file(os.join_path(first, 'redirect.h'), '#include_next <font.h>\n')!
+	os.write_file(os.join_path(first, 'font.h'), 'struct NSFont { int value; };\n')!
+	os.write_file(os.join_path(second, 'font.h'), '@class NSFont;\n')!
+	g.c_flags = ['-nostdinc', '-x', 'objective-c', '-I', first, '-I', second]
+	g.preinclude_directives = ['#include <redirect.h>']
+	assert !g.header_c_struct_needs_compat_typedef('C.NSFont')
+	os.write_file(os.join_path(first, 'font.h'), '@class NSFont;\n')!
+	os.write_file(os.join_path(second, 'font.h'), 'struct NSFont { int value; };\n')!
+	assert g.header_c_struct_needs_compat_typedef('C.NSFont')
+}
+
+fn test_cocoa_include_next_keeps_quote_and_framework_search_order() {
+	root := os.join_path(os.vtmp_dir(), 'v3_cocoa_include_next_order_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+	first := os.join_path(root, 'first')
+	second := os.join_path(root, 'second')
+	last := os.join_path(root, 'last')
+	for dir in [first, second, last] { os.mkdir_all(dir)! }
+	os.write_file(os.join_path(second, 'font.h'), '@class NSFont;\n')!
+	os.write_file(os.join_path(last, 'font.h'), 'struct NSFont { int value; };\n')!
+	mut g := cocoa_declaration_test_gen()
+	g.c_flags = ['-nostdinc', '-x', 'objective-c', '-iquote', first, '-iquote', second, '-I', last]
+	g.preinclude_directives = ['#include "wrapper.h"']
+	for include_arg in ['<font.h>', '"font.h"'] {
+		os.write_file(os.join_path(first, 'wrapper.h'), '#include_next ${include_arg}\n')!
+		assert !g.header_c_struct_needs_compat_typedef('C.NSFont'), include_arg
+	}
+	for first_framework in [true, false] {
+		mut flags := ['-nostdinc', '-x', 'objective-c']
+		for index, dir in [first, second, last] {
+			framework := (index != 1) == first_framework
+			header := os.join_path(dir, if framework {
+				'Cocoa.framework/Headers/Cocoa.h'
+			} else {
+				'Cocoa/Cocoa.h'
+			})
+			os.mkdir_all(os.dir(header))!
+			os.write_file(header, if index == 0 {
+				'#define WRAPPER_FOUND 1\n#include_next <Cocoa/Cocoa.h>\n'
+			} else if index == 1 {
+				'#include_next <Cocoa/Cocoa.h>\n'
+			} else {
+				'#if WRAPPER_FOUND\n@class NSFont;\n#endif\n'
+			})!
+			flags << [if framework { '-F' } else { '-I' }, dir]
+		}
+		g.c_flags = flags
+		g.preinclude_directives = ['#include <Cocoa/Cocoa.h>']
+		assert !g.header_c_struct_needs_compat_typedef('C.NSFont'), first_framework.str()
+	}
+}
+
+fn test_cocoa_include_next_predicate_uses_current_search_position() {
+	root := os.join_path(os.vtmp_dir(), 'v3_cocoa_has_include_next_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+	first := os.join_path(root, 'first')
+	second := os.join_path(root, 'second')
+	for dir in [first, second] { os.mkdir_all(dir)! }
+	wrapper := os.join_path(first, 'wrapper.h')
+	font := os.join_path(second, 'font.h')
+	os.write_file(os.join_path(first, 'font.h'), 'struct NSFont { int value; };\n')!
+	mut g := cocoa_declaration_test_gen()
+	g.c_flags = ['-nostdinc', '-x', 'objective-c', '-I', first, '-I', second]
+	g.preinclude_directives = ['#include <wrapper.h>']
+	os.write_file(wrapper, '#define NEXT <font.h>\n#if __has_include_next(NEXT)\n#include_next NEXT\n#endif\n')!
+	os.write_file(font, '@class NSFont;\n')!
+	assert !g.header_c_struct_needs_compat_typedef('C.NSFont')
+	os.rm(font)!
+	os.write_file(wrapper, '#if !__has_include_next(<font.h>)\n@class NSFont;\n#endif\n')!
+	assert !g.header_c_struct_needs_compat_typedef('C.NSFont')
+	os.write_file(font, 'struct NSFont { int value; };\n')!
+	assert g.header_c_struct_needs_compat_typedef('C.NSFont')
+}
