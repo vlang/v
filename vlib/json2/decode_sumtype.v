@@ -11,6 +11,18 @@ fn sumtype_variant_name(type_name string) string {
 	return type_name.all_after_last('.')
 }
 
+// struct_variant_tag returns the `_type` of a struct sum type variant of type `T`: the
+// struct's own name, also for an alias of it (`Foo` for `type Alias = Foo`), like the
+// removed `json` module wrote it.
+fn struct_variant_tag[T]() string {
+	return sumtype_variant_name(typeof($zero(T.unaliased_typ)).name)
+}
+
+// option_payload_tag returns the `_type` of an option variant of a struct or a time.
+fn option_payload_tag[P](_ ?P) string {
+	return struct_variant_tag[P]()
+}
+
 fn (mut decoder Decoder) get_decoded_sumtype_workaround[T](initialized_sumtype T) !T {
 	$if initialized_sumtype is $sumtype || ( T is $alias && T.unaliased_typ is $sumtype ) {
 		resolved_sumtype := initialized_sumtype
@@ -225,8 +237,10 @@ fn (mut decoder Decoder) sumtype_type_field_matches(type_field_node &DecodeNode[
 
 fn (mut decoder Decoder) check_sumtype_type_valid[T](value T, current_node &DecodeNode[ValueInfo]) bool {
 	type_field_node := decoder.get_sumtype_type_field_node(current_node)
+	// An alias of a struct is tagged with its own name, or with the struct's name.
 	return decoder.sumtype_type_field_matches(type_field_node,
 		sumtype_variant_name(typeof(value).name))
+		|| decoder.sumtype_type_field_matches(type_field_node, struct_variant_tag[T]())
 }
 
 fn (mut decoder Decoder) check_struct_type_valid[T](s T, current_node &DecodeNode[ValueInfo]) bool {
@@ -243,35 +257,39 @@ fn (mut decoder Decoder) resolve_sumtype_from_type_field[T](mut val T) !bool {
 		return false
 	}
 	mut has_discriminated_variant := false
-	$for v in T.variants {
-		$if v.typ is $option {
-			// An option of a struct or a time (`?Foo`, `?time.Time`) is tagged with its
-			// payload's name, like in the removed `json` module.
-			option_value := $zero(v.typ)
-			if option_payload_fit(option_value, .object) > 0 {
-				has_discriminated_variant = true
-				mut matches := decoder.sumtype_type_field_matches(type_field_node,
-					sumtype_variant_name(typeof(v.typ).name.trim_left('?')))
-				if option_payload_is_time(option_value) {
-					// An option of a time alias is written as `Time` too.
-					matches = matches || decoder.sumtype_type_field_matches(type_field_node, 'Time')
+	// A variant is tagged with its payload's name, like in the removed `json` module:
+	// the struct's name for an alias of a struct (`Foo` for `type Alias = Foo`), and
+	// `Time` for a time or an alias of it. The variant's own name is accepted too, and
+	// is tried first, so `Foo | Alias` tells both apart.
+	for base_names in [false, true] {
+		$for v in T.variants {
+			$if v.typ is $option {
+				// An option of a struct or a time (`?Foo`, `?time.Time`) is tagged with
+				// its payload's name.
+				option_value := $zero(v.typ)
+				if option_payload_fit(option_value, .object) > 0 {
+					has_discriminated_variant = true
+					name := if base_names {
+						option_payload_tag(option_value)
+					} else {
+						sumtype_variant_name(typeof(v.typ).name.trim_left('?'))
+					}
+					if decoder.sumtype_type_field_matches(type_field_node, name) {
+						val = T(v)
+						return true
+					}
 				}
-				if matches {
+			} $else $if v.typ is $struct {
+				has_discriminated_variant = true
+				name := if base_names {
+					sumtype_variant_name(typeof(v.typ.unaliased_typ).name)
+				} else {
+					sumtype_variant_name(typeof(v.typ).name)
+				}
+				if decoder.sumtype_type_field_matches(type_field_node, name) {
 					val = T(v)
 					return true
 				}
-			}
-		} $else $if v.typ is $struct {
-			has_discriminated_variant = true
-			mut matches := decoder.sumtype_type_field_matches(type_field_node,
-				sumtype_variant_name(typeof(v.typ).name))
-			$if v.typ.unaliased_typ is time.Time {
-				// A time alias variant is written as `Time`, like in the removed module.
-				matches = matches || decoder.sumtype_type_field_matches(type_field_node, 'Time')
-			}
-			if matches {
-				val = T(v)
-				return true
 			}
 		}
 	}
@@ -465,16 +483,6 @@ fn option_payload_fit[P](_ ?P, kind ValueKind) int {
 		return if kind == .array { 2 } else { 0 }
 	} $else {
 		return if kind == .object { 2 } else { 0 }
-	}
-}
-
-// option_payload_is_time reports whether the payload of an option is a `time.Time`
-// or an alias of it.
-fn option_payload_is_time[P](_ ?P) bool {
-	$if P.unaliased_typ is time.Time {
-		return true
-	} $else {
-		return false
 	}
 }
 

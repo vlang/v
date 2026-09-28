@@ -469,7 +469,6 @@ fn (mut encoder Encoder) encode_sumtype[T](val T) {
 	} $else {
 		$for variant in T.variants {
 			if val is variant {
-				variant_name := sumtype_variant_name(typeof(variant.typ).name)
 				// An option variant comes first: the time and struct checks below also
 				// hold for an option of a time or a struct.
 				$if variant.typ is $option {
@@ -496,7 +495,10 @@ fn (mut encoder Encoder) encode_sumtype[T](val T) {
 						variant_value := val
 						encoder.encode_value(variant_value)
 					} else {
-						encoder.encode_sumtype_struct_variant(val, variant_name)
+						// A struct alias variant is tagged with the struct's name, like in the
+						// removed module (`Foo` for `type Alias = Foo`).
+						encoder.encode_sumtype_struct_variant(val,
+							sumtype_variant_name(typeof(variant.typ.unaliased_typ).name))
 					}
 				} $else $if variant.typ is $map {
 					encoder.encode_value(val)
@@ -532,7 +534,7 @@ fn (mut encoder Encoder) encode_sumtype_option_payload[P](payload P) {
 	$if P.unaliased_typ is time.Time {
 		encoder.encode_sumtype_time_variant(time.Time(payload), 'Time')
 	} $else $if P.unaliased_typ is $struct {
-		encoder.encode_sumtype_struct_variant(payload, sumtype_variant_name(typeof(payload).name))
+		encoder.encode_sumtype_struct_variant(payload, struct_variant_tag[P]())
 	} $else $if P is $array_dynamic {
 		encoder.encode_array_of_sumtype_variants(payload)
 	} $else $if P is $array_fixed {
@@ -621,7 +623,7 @@ fn (mut encoder Encoder) encode_sumtype_array_item[T](item T) {
 	} $else $if T is Encodable {
 		encoder.encode_value(item)
 	} $else $if T is $struct {
-		encoder.encode_sumtype_struct_variant(item, sumtype_variant_name(T.name))
+		encoder.encode_sumtype_struct_variant(item, struct_variant_tag[T]())
 	} $else $if T is $array_dynamic {
 		encoder.encode_array_of_sumtype_variants(item)
 	} $else $if T is $array_fixed {

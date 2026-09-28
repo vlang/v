@@ -569,3 +569,38 @@ fn test_references_to_sum_types_decode() {
 	top := json2.decode[&Being]('{"model":"C3","_type":"Robot"}')!
 	assert json2.encode(top) == '{"model":"C3","_type":"Robot"}'
 }
+
+type AliasItem = ArrayVariantItem
+
+type AliasItemValue = AliasItem | int
+
+type OptionAliasItemValue = ?AliasItem | int
+
+type AliasItemsValue = []AliasItem | int
+
+type ItemOrAlias = ArrayVariantItem | AliasItem
+
+fn test_struct_alias_variants_use_the_struct_name() {
+	// Like the removed module, an alias of a struct is tagged with the struct's name.
+	value := AliasItemValue(AliasItem(ArrayVariantItem{1}))
+	assert json2.encode(value) == '{"a":1,"_type":"ArrayVariantItem"}'
+	option_value := OptionAliasItemValue(?AliasItem(AliasItem(ArrayVariantItem{2})))
+	assert json2.encode(option_value) == '{"a":2,"_type":"ArrayVariantItem"}'
+	items := AliasItemsValue([AliasItem(ArrayVariantItem{3})])
+	assert json2.encode(items) == '[{"a":3,"_type":"ArrayVariantItem"}]'
+	// Both the struct's name and the alias's own name are read back.
+	for tag in ['ArrayVariantItem', 'AliasItem'] {
+		decoded := json2.decode[AliasItemValue]('{"a":4,"_type":"${tag}"}')!
+		assert decoded.type_name() == 'AliasItem'
+		assert json2.encode(decoded) == '{"a":4,"_type":"ArrayVariantItem"}'
+		decoded_option := json2.decode[OptionAliasItemValue]('{"a":5,"_type":"${tag}"}')!
+		assert json2.encode(decoded_option) == '{"a":5,"_type":"ArrayVariantItem"}'
+		decoded_items := json2.decode[AliasItemsValue]('[{"a":6,"_type":"${tag}"}]')!
+		assert json2.encode(decoded_items) == '[{"a":6,"_type":"ArrayVariantItem"}]'
+	}
+	// The exact name wins when a sum type holds both the struct and its alias.
+	by_struct := json2.decode[ItemOrAlias]('{"a":7,"_type":"ArrayVariantItem"}')!
+	assert by_struct.type_name() == 'ArrayVariantItem'
+	by_alias := json2.decode[ItemOrAlias]('{"a":8,"_type":"AliasItem"}')!
+	assert by_alias.type_name() == 'AliasItem'
+}
