@@ -147,6 +147,34 @@ fn test_fmt_accepts_semantic_duplicate_operator_and_recursive_alias() {
 	}
 }
 
+fn test_fmt_preserves_multiple_attribute_groups() {
+	for source, expected in {
+		'@[inline] @[deprecated] fn f() {}\n':                        [
+			'@[deprecated; inline]',
+			'fn f() {}',
+		]
+		'@[inline]\n@[deprecated]\nfn f() {}\n':                      [
+			'@[deprecated; inline]',
+			'fn f() {}',
+		]
+		"struct Holder { value int @[required] @[json: 'value'] }\n": ['required', "json: 'value'",
+			'value int']
+	} {
+		res, formatted := run_vfmt_write('multiple_attribute_groups', source, '')
+		assert res.exit_code == 0, res.output
+		for part in expected {
+			assert formatted.contains(part), formatted
+		}
+		second, formatted_twice := run_vfmt_write('multiple_attribute_groups_twice', formatted, '')
+		assert second.exit_code == 0, second.output
+		assert formatted_twice == formatted
+	}
+	invalid := '@[inline]\n@[deprecated: ]\nfn f() {}\n'
+	res, unchanged := run_vfmt_write('invalid_attribute_group', invalid, '')
+	assert res.exit_code != 0, res.output
+	assert unchanged == invalid
+}
+
 fn test_fmt_preserves_duplicate_deprecated_message_arguments() {
 	source := "@[deprecated(msg: 'old', msg: 'new')] fn old() {}\n"
 	res, formatted := run_vfmt_write('duplicate_deprecated_messages', source, '')

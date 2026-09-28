@@ -3907,7 +3907,7 @@ fn (mut p Parser) parse_field_attrs_with_kinds_mode(single_group bool, check_pen
 			break
 		}
 		group_start := p.span_start()
-		if groups > 0 {
+		if groups > 0 && !p.prefs.is_fmt {
 			p.record_diagnostic_span('multiple attributes should be in the same @[], with ; separators', int_max(0, p.tok_pos - 1), p.tok_pos + 1)
 		}
 		groups++
