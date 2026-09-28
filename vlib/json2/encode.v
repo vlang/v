@@ -526,12 +526,17 @@ fn (mut encoder Encoder) encode_sumtype[T](val T) {
 
 // encode_sumtype_option_payload writes the value of a set option variant of a sum
 // type like the variant it holds, as the removed `json` module did: a time (also an
-// alias of one) as `{"_type":"Time","value":...}`, and a struct with its `_type`.
+// alias of one) as `{"_type":"Time","value":...}`, and a struct with its `_type`, also
+// as an element of a (nested or fixed size) array.
 fn (mut encoder Encoder) encode_sumtype_option_payload[P](payload P) {
 	$if P.unaliased_typ is time.Time {
 		encoder.encode_sumtype_time_variant(time.Time(payload), 'Time')
 	} $else $if P.unaliased_typ is $struct {
 		encoder.encode_sumtype_struct_variant(payload, sumtype_variant_name(typeof(payload).name))
+	} $else $if P is $array_dynamic {
+		encoder.encode_array_of_sumtype_variants(payload)
+	} $else $if P is $array_fixed {
+		encoder.encode_fixed_array_of_sumtype_variants(payload)
 	} $else {
 		encoder.encode_value(payload)
 	}

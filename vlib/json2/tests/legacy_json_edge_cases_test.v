@@ -532,3 +532,23 @@ fn test_option_rune_variants_take_strings() {
 	count := (count_value as ?int) or { panic('the int should be set') }
 	assert count == 5
 }
+
+type OptionItems = ?[]ArrayVariantItem | int
+
+type OptionFixedItems = ?[2]ArrayVariantItem | int
+
+type OptionNestedItems = ?[][]ArrayVariantItem | int
+
+fn test_option_array_variants_tag_struct_elements() {
+	// Like the removed module, struct elements in an option variant's array get `_type`.
+	items := OptionItems(?[]ArrayVariantItem([ArrayVariantItem{1}]))
+	items_json := json2.encode(items)
+	assert items_json == '[{"a":1,"_type":"ArrayVariantItem"}]'
+	decoded_items := json2.decode[OptionItems](items_json)!
+	decoded_list := (decoded_items as ?[]ArrayVariantItem) or { panic('the array should be set') }
+	assert decoded_list == [ArrayVariantItem{1}]
+	fixed := OptionFixedItems(?[2]ArrayVariantItem([ArrayVariantItem{1}, ArrayVariantItem{2}]!))
+	assert json2.encode(fixed) == '[{"a":1,"_type":"ArrayVariantItem"},{"a":2,"_type":"ArrayVariantItem"}]'
+	nested := OptionNestedItems(?[][]ArrayVariantItem([[ArrayVariantItem{1}]]))
+	assert json2.encode(nested) == '[[{"a":1,"_type":"ArrayVariantItem"}]]'
+}
