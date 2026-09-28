@@ -5420,6 +5420,18 @@ fn (c &CallCollector) infer_local_type_bindings(node &flat.Node, cur_module stri
 					mut ident_types, false)
 			} else {
 				mut nested_types := type_names.clone()
+				if child.kind == .lambda_expr {
+					for param_i in 0 .. int(child.children_count) - 1 {
+						param_id := c.a.child(child, param_i)
+						param := c.a.node(param_id)
+						if param.kind != .ident || param.value.len == 0 { continue }
+						nested_types[param.value] = if param.typ.len > 0 {
+							markused_resolve_imported_type_name(param.typ, imports)
+						} else {
+							resolve_type_name(c.node_type(param_id))
+						}
+					}
+				}
 				c.infer_local_type_bindings(child, cur_module, imports, names, mut nested_types,
 					mut ident_types, false)
 			}
@@ -6259,13 +6271,7 @@ fn (c &CallCollector) generic_factory_short_struct_field_type_text(fn_name strin
 		params := c.tc.struct_generic_params[candidate] or {
 			c.tc.struct_generic_params[base] or { []string{} }
 		}
-		mut replacements := map[string]string{}
-		if params.len == args.len {
-			for i, param in params {
-				replacements[param] = args[i]
-			}
-		}
-		return markused_substitute_alias_generics(field_type, replacements)
+		return types.subst_generic_text(field_type, args, params)
 	}
 	return ''
 }
@@ -6454,7 +6460,7 @@ fn markused_infer_alias_generic_type(param_text string, actual types.Type, gener
 		}
 		return
 	}
-	if clean in generic_params {
+	if clean in generic_params && !markused_type_has_unknown(actual) {
 		type_name := resolve_type_name(actual)
 		if type_name.len > 0 {
 			inferred[clean] = type_name
@@ -6930,9 +6936,26 @@ fn (c &CallCollector) register_top_level_for_in_vars(node &flat.Node, cur_module
 		return
 	}
 	local_values[value_var] = true
-	// A range loop (`for i in 0 .. n`, header == 4) binds an integer, not a container
-	// element — nothing to resolve.
-	if header == 4 {
+	container := c.a.node(container_id)
+	if header == 4 || container.kind == .range {
+		cached := c.node_type(key_id)
+		if types.unalias_type(cached).is_integer() {
+			local_types[value_var] = cached.name()
+			return
+		}
+		low := if header == 4 { container_id } else { c.a.child(container, 0) }
+		high := if header == 4 { c.a.child(node, 3) } else { c.a.child(container, 1) }
+		low_literal := c.range_endpoint_is_literal(low, cur_module, imports, local_types, 0)
+		candidates := if low_literal { [high, low] } else { [low, high] }
+		local_types[value_var] = 'int'
+		for candidate in candidates {
+			type_name := c.top_level_expr_type_name(candidate, cur_module, imports, local_values,
+				local_types, false)
+			if types.unalias_type(c.tc.parse_canonical_type(type_name)).is_integer() {
+				local_types[value_var] = type_name
+				break
+			}
+		}
 		return
 	}
 	elem := c.top_level_for_in_elem_type_name(container_id, cur_module, imports, local_values, local_types) or { return }
@@ -6941,9 +6964,23 @@ fn (c &CallCollector) register_top_level_for_in_vars(node &flat.Node, cur_module
 	}
 }
 
+fn (c &CallCollector) range_endpoint_is_literal(id flat.NodeId, cur_module string, imports map[string]string, local_types map[string]string, depth int) bool {
+	if int(id) < 0 || depth >= 32 { return false }
+	node := c.a.node(id)
+	if node.kind in [.int_literal, .float_literal, .char_literal] { return true }
+	if node.kind == .ident && node.value !in local_types {
+		for candidate in c.value_name_candidates(node.value, cur_module, imports) {
+			if expr_id := c.tc.const_exprs[candidate] {
+				return c.range_endpoint_is_literal(expr_id, cur_module, imports, local_types, depth + 1)
+			}
+		}
+	}
+	return false
+}
+
 fn (c &CallCollector) top_level_for_in_key_type_name(container_id flat.NodeId, cur_module string, imports map[string]string, local_values map[string]bool, local_types map[string]string) string {
 	type_name := c.top_level_expr_type_name(container_id, cur_module, imports, local_values,
-		local_types, true)
+		local_types, true).trim_left('&?!')
 	if type_name.starts_with('map[') {
 		end := markused_generic_matching_bracket(type_name, 3)
 		if end < type_name.len {
@@ -6958,10 +6995,11 @@ fn (c &CallCollector) top_level_for_in_key_type_name(container_id flat.NodeId, c
 }
 
 fn (c &CallCollector) top_level_for_in_elem_type_name(container_id flat.NodeId, cur_module string, imports map[string]string, local_values map[string]bool, local_types map[string]string) ?string {
-	type_name := c.top_level_expr_type_name(container_id, cur_module, imports, local_values, local_types, true)
+	type_name := c.top_level_expr_type_name(container_id, cur_module, imports, local_values, local_types, true).trim_left('&?!')
 	if type_name.len == 0 {
 		return none
 	}
+	if type_name == 'string' { return 'u8' }
 	if type_name.starts_with('[]') {
 		return type_name[2..]
 	}
