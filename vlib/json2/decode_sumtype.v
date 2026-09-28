@@ -228,50 +228,23 @@ fn (mut decoder Decoder) check_struct_type_valid[T](s T, current_node &Node[Valu
 	return decoder.check_sumtype_type_valid(s, current_node)
 }
 
-fn (mut decoder Decoder) get_struct_type_workaround[T](initialized_sumtype T) bool {
-	$if initialized_sumtype is $sumtype || ( T is $alias && T.unaliased_typ is $sumtype ) {
-		$for v in T.variants {
-			if initialized_sumtype is v {
-				$if initialized_sumtype is $struct {
-					val := $zero(v.typ)
-					return decoder.check_struct_type_valid(val, decoder.current_node)
-				}
-			}
-		}
-	}
-	return false
-}
-
-fn (mut decoder Decoder) get_time_type_workaround[T](initialized_sumtype T) bool {
-	$if initialized_sumtype is $sumtype || ( T is $alias && T.unaliased_typ is $sumtype ) {
-		$for v in T.variants {
-			if initialized_sumtype is v {
-				$if initialized_sumtype is time.Time {
-					val := $zero(v.typ)
-					return decoder.check_sumtype_type_valid(val, decoder.current_node)
-				}
-			}
-		}
-	}
-	return false
-}
-
+// resolve_sumtype_from_type_field selects the struct (or time.Time) variant named by
+// the object's `_type` field. The name is matched before anything is constructed:
+// building a variant runs its field defaults, which may have side effects, so only
+// the selected variant may be built.
 fn (mut decoder Decoder) resolve_sumtype_from_type_field[T](mut val T) !bool {
-	if decoder.get_sumtype_type_field_node(decoder.current_node) == unsafe { nil } {
+	type_field_node := decoder.get_sumtype_type_field_node(decoder.current_node)
+	if type_field_node == unsafe { nil } {
 		return false
 	}
 	mut has_discriminated_variant := false
 	$for v in T.variants {
-		$if v.typ is time.Time {
+		$if v.typ is $struct {
 			has_discriminated_variant = true
-			val = T(v)
-			if decoder.get_time_type_workaround(val) {
-				return true
-			}
-		} $else $if v.typ is $struct {
-			has_discriminated_variant = true
-			val = T(v)
-			if decoder.get_struct_type_workaround(val) {
+			if decoder.sumtype_type_field_matches(type_field_node,
+				sumtype_variant_name(typeof(v.typ).name))
+			{
+				val = T(v)
 				return true
 			}
 		}
@@ -374,13 +347,9 @@ fn (mut decoder Decoder) init_sumtype_by_value_kind[T](mut val T, value_info Val
 						return
 					}
 				} $else $if v.typ is $struct {
+					// Without a `_type` field no struct variant matches by name; the
+					// only one that can be selected is built below.
 					struct_variant_count++
-					val = T(v)
-
-					if decoder.get_struct_type_workaround(val) {
-						return
-					}
-
 					failed_struct = true
 				}
 			}
@@ -392,6 +361,11 @@ fn (mut decoder Decoder) init_sumtype_by_value_kind[T](mut val T, value_info Val
 		// the object shape is already unambiguous.
 		if struct_variant_count == 1
 			&& decoder.get_sumtype_type_field_node(decoder.current_node) == unsafe { nil } {
+			$for v in T.variants {
+				$if v.typ is $struct {
+					val = T(v)
+				}
+			}
 			return
 		}
 		decoder.decode_error('could not resolve sumtype `${T.name}`, missing "_type" field?')!

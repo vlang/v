@@ -184,9 +184,9 @@ fn test_json_decode_v3_sum_constructs_only_selected_variant() {
 	decode_v3_sum_default_calls = 0
 	decoded := json2.decode[DecodeV3NoThrowawaySum]('{"name":"selected","_type":"DecodeV3SelectedVariant"}')!
 	assert (decoded as DecodeV3SelectedVariant).name == 'selected'
-	// json2 resolves `_type` by building a default value of each candidate struct
-	// variant, so unlike the removed `json` module it may run the defaults of
-	// variants it does not select.
+	// Result unwrapping may construct one default sum value. The decoder must not
+	// construct another first-variant payload before selecting the second variant.
+	assert decode_v3_sum_default_calls <= 1
 }
 
 fn test_json_decode_v3_recursive_pointer_and_generic_fixed_array() {
