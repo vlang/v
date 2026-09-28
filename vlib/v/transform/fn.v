@@ -61,6 +61,30 @@ fn (t &Transformer) resolve_call_name(node flat.Node) string {
 					return qname
 				}
 			}
+			// Top-level script expressions may not have a recorded checker call.
+			if !isnil(t.tc) && t.a.has_vsh_source && t.cur_module == 'main'
+				&& t.cur_file.ends_with('.vsh') {
+				if declared_file := t.tc.fn_type_files[name] {
+					if source_file := t.a.source_files[node.pos.id] {
+						if declared_file == source_file.name {
+							return name
+						}
+					}
+				}
+				for imported in t.tc.file_selective_imports[file_import_key(t.cur_file, name)] or {
+					[]string{}
+				} {
+					if t.is_known_fn_name(imported) {
+						return imported
+					}
+				}
+				if name !in t.tc.v_fn_semantic_names {
+					qualified := 'os.${name}'
+					if t.is_known_fn_name(qualified) {
+						return qualified
+					}
+				}
+			}
 			// Try unqualified name after current-module authority.
 			if t.is_known_fn_name(name) {
 				return name
@@ -710,6 +734,28 @@ fn (t &Transformer) resolve_specialized_generic_receiver_method(receiver_type st
 
 // resolve_alias_receiver_method converts resolve alias receiver method data for transform.
 fn (t &Transformer) resolve_alias_receiver_method(base_type string, method string) ?string {
+	if isnil(t.tc) || base_type == '' || method == '' || isnil(t.alias_receiver_method_cache) {
+		return t.resolve_alias_receiver_method_keyed(base_type, method)
+	}
+	// Answer repeated lookups before building the memo's composite key.
+	mut cache := t.alias_receiver_method_cache
+	mut recent := cache.recent_cache()
+	state, cached := recent.get(t.cur_module, base_type, method)
+	if state > 0 {
+		return cached
+	}
+	if state < 0 {
+		return none
+	}
+	if resolved := t.resolve_alias_receiver_method_keyed(base_type, method) {
+		recent.put(t.cur_module, base_type, method, 1, resolved)
+		return resolved
+	}
+	recent.put(t.cur_module, base_type, method, -1, '')
+	return none
+}
+
+fn (t &Transformer) resolve_alias_receiver_method_keyed(base_type string, method string) ?string {
 	if isnil(t.tc) || base_type == '' || method == '' {
 		return none
 	}
@@ -2652,6 +2698,11 @@ fn (t &Transformer) static_assoc_fn_name(base_id flat.NodeId, method string) ?st
 	if method == '' {
 		return none
 	}
+	// Most selector calls name instance methods: skip building candidate types
+	// when no static method anywhere has this name.
+	if t.static_method_names_ready && method !in t.static_method_names {
+		return none
+	}
 	base := t.a.nodes[int(base_id)]
 	if base.kind == .ident {
 		if base.value == 'C' || t.is_import_alias_ident(base_id) {
@@ -2687,6 +2738,31 @@ fn (t &Transformer) static_assoc_fn_name(base_id flat.NodeId, method string) ?st
 	return none
 }
 
+// build_static_method_names records the method part of every static type
+// method (`fn Type.method()`) the checker registered. Functions that transform
+// adds later, such as generic specializations, reuse the method name of a source
+// declaration, so the set stays complete for static_assoc_fn_name.
+fn (mut t Transformer) build_static_method_names() {
+	t.static_method_names = map[string]bool{}
+	for name, _ in t.fn_ret_types {
+		t.add_static_method_name(name)
+	}
+	if !isnil(t.tc) {
+		for name, _ in t.tc.fn_ret_types {
+			t.add_static_method_name(name)
+		}
+		for name, _ in t.tc.fn_param_types {
+			t.add_static_method_name(name)
+		}
+	}
+	t.static_method_names_ready = true
+}
+
+fn (mut t Transformer) add_static_method_name(name string) {
+	_, method := flat.decode_static_type_method_name(name) or { return }
+	t.static_method_names[method] = true
+}
+
 fn (t &Transformer) selector_is_lexical_module_call(base_id flat.NodeId, method string, call_name string) bool {
 	if int(base_id) < 0 || int(base_id) >= t.a.nodes.len || isnil(t.tc) {
 		return false
@@ -2696,8 +2772,8 @@ fn (t &Transformer) selector_is_lexical_module_call(base_id flat.NodeId, method 
 		return false
 	}
 	file := t.a.source_files[base.pos.id] or { return false }
-	module_name := t.tc.file_imports[file.name + '\n' + base.value] or { return false }
-	return call_name == '${module_name}.${method}'
+	module_name := t.file_import_module(file.name, base.value) or { return false }
+	return qualified_name_equals(call_name, module_name, method)
 }
 
 // call_selector_base_is_namespace reports whether the base of a selector callee names a
@@ -2738,7 +2814,7 @@ fn (t &Transformer) is_import_alias_ident(id flat.NodeId) bool {
 	// alias (`import core.flags`, where that module also exports `flags`). In a
 	// selector callee such as `flags.parse()`, the file import remains the
 	// syntactic namespace unless a local value shadows it.
-	if _ := t.tc.file_imports[file_import_key(t.cur_file, node.value)] {
+	if _ := t.file_import_module(t.cur_file, node.value) {
 		return t.raw_var_type(node.value).len == 0
 	}
 	if node.value !in t.tc.imports {
@@ -3141,62 +3217,93 @@ fn (mut t Transformer) parse_decl_param_type(typ string, module_name string, fil
 }
 
 fn (t &Transformer) decl_param_type_in_module(typ string, module_name string) string {
+	return t.decl_param_type_in_scope(typ, module_name, '')
+}
+
+fn (t &Transformer) decl_param_type_in_scope(typ string, module_name string, file_name string) string {
 	clean := typ.trim_space()
 	if clean.len == 0 {
 		return clean
 	}
 	if clean.starts_with('&') {
-		return '&' + t.decl_param_type_in_module(clean[1..], module_name)
+		return '&' + t.decl_param_type_in_scope(clean[1..], module_name, file_name)
 	}
 	if clean.starts_with('mut ') {
-		return 'mut ' + t.decl_param_type_in_module(clean[4..], module_name)
+		return 'mut ' + t.decl_param_type_in_scope(clean[4..], module_name, file_name)
 	}
 	if clean.starts_with('shared ') {
-		return 'shared ' + t.decl_param_type_in_module(clean[7..], module_name)
+		return 'shared ' + t.decl_param_type_in_scope(clean[7..], module_name, file_name)
 	}
 	if clean.starts_with('atomic ') {
-		return 'atomic ' + t.decl_param_type_in_module(clean[7..], module_name)
+		return 'atomic ' + t.decl_param_type_in_scope(clean[7..], module_name, file_name)
 	}
 	if clean.starts_with('?') {
-		return '?' + t.decl_param_type_in_module(clean[1..], module_name)
+		return '?' + t.decl_param_type_in_scope(clean[1..], module_name, file_name)
 	}
 	if clean.starts_with('!') {
-		return '!' + t.decl_param_type_in_module(clean[1..], module_name)
+		return '!' + t.decl_param_type_in_scope(clean[1..], module_name, file_name)
 	}
 	if clean.starts_with('...') {
-		return '...' + t.decl_param_type_in_module(clean[3..], module_name)
+		return '...' + t.decl_param_type_in_scope(clean[3..], module_name, file_name)
 	}
 	if clean.starts_with('[]') {
-		return '[]' + t.decl_param_type_in_module(clean[2..], module_name)
+		return '[]' + t.decl_param_type_in_scope(clean[2..], module_name, file_name)
+	}
+	if clean.starts_with('chan mut ') {
+		return 'chan mut ' + t.decl_param_type_in_scope(clean[9..], module_name, file_name)
+	}
+	if clean.starts_with('chan ') {
+		return 'chan ' + t.decl_param_type_in_scope(clean[5..], module_name, file_name)
+	}
+	if clean.starts_with('thread ') {
+		return 'thread ' + t.decl_param_type_in_scope(clean[7..], module_name, file_name)
 	}
 	if clean.starts_with('map[') {
 		bracket_end := generic_matching_bracket(clean, 3)
 		if bracket_end < clean.len {
-			key := t.decl_param_type_in_module(clean[4..bracket_end], module_name)
-			value := t.decl_param_type_in_module(clean[bracket_end + 1..], module_name)
+			key := t.decl_param_type_in_scope(clean[4..bracket_end], module_name, file_name)
+			value := t.decl_param_type_in_scope(clean[bracket_end + 1..], module_name, file_name)
 			return 'map[${key}]${value}'
 		}
 	}
 	if clean.starts_with('[') {
 		bracket_end := generic_matching_bracket(clean, 0)
 		if bracket_end < clean.len {
-			return clean[..bracket_end + 1] + t.decl_param_type_in_module(clean[bracket_end + 1..], module_name)
+			return clean[..bracket_end + 1] + t.decl_param_type_in_scope(clean[bracket_end + 1..], module_name, file_name)
 		}
 	}
 	if clean.starts_with('fn(') || clean.starts_with('fn (') {
-		if scoped_fn_type := t.decl_fn_type_in_module(clean, module_name) {
+		if scoped_fn_type := t.decl_fn_type_in_scope(clean, module_name, file_name) {
 			return scoped_fn_type
 		}
 		return clean
+	}
+	if clean.starts_with('(') && clean.ends_with(')') {
+		parts := split_generic_args(clean[1..clean.len - 1])
+		if parts.len > 1 {
+			mut scoped_parts := []string{cap: parts.len}
+			for part in parts {
+				scoped_parts << t.decl_param_type_in_scope(part, module_name, file_name)
+			}
+			return '(' + scoped_parts.join(', ') + ')'
+		}
 	}
 	base, args, ok := generic_app_parts(clean)
 	if ok {
 		mut scoped_args := []string{}
 		for arg in args {
-			scoped_args << t.decl_param_type_in_module(arg, module_name)
+			scoped_args << t.decl_param_type_in_scope(arg, module_name, file_name)
 		}
-		scoped_base := t.decl_param_type_in_module(base, module_name)
+		scoped_base := t.decl_param_type_in_scope(base, module_name, file_name)
 		return scoped_base + '[' + scoped_args.join(', ') + ']'
+	}
+	if file_name != '' && !isnil(t.tc) {
+		if selected := t.selective_signature_type_symbol(file_name, clean) {
+			return selected
+		}
+		if clean.contains('.') {
+			return t.tc.resolve_imported_type_text_in_file(clean, file_name)
+		}
 	}
 	if clean.contains('.') || module_name == '' || module_name == 'main'
 		|| module_name == 'builtin' || types.is_builtin_type_name(clean)
@@ -3215,19 +3322,19 @@ fn (t &Transformer) decl_param_type_in_module(typ string, module_name string) st
 	return clean
 }
 
-fn (t &Transformer) decl_fn_type_in_module(typ string, module_name string) ?string {
+fn (t &Transformer) decl_fn_type_in_scope(typ string, module_name string, file_name string) ?string {
 	params, ret := fn_type_text_parts(typ) or { return none }
 	mut scoped_params := []string{cap: params.len}
 	for param in params {
-		scoped_params << t.decl_fn_type_param_in_module(param, module_name)
+		scoped_params << t.decl_fn_type_param_in_scope(param, module_name, file_name)
 	}
 	if ret.len > 0 {
-		return 'fn(${scoped_params.join(', ')}) ${t.decl_param_type_in_module(ret, module_name)}'
+		return 'fn(${scoped_params.join(', ')}) ${t.decl_param_type_in_scope(ret, module_name, file_name)}'
 	}
 	return 'fn(${scoped_params.join(', ')})'
 }
 
-fn (t &Transformer) decl_fn_type_param_in_module(param string, module_name string) string {
+fn (t &Transformer) decl_fn_type_param_in_scope(param string, module_name string, file_name string) string {
 	mut text := param.trim_space()
 	mut is_mut := false
 	if text.starts_with('mut ') {
@@ -3254,7 +3361,7 @@ fn (t &Transformer) decl_fn_type_param_in_module(param string, module_name strin
 		}
 		break
 	}
-	scoped := t.decl_param_type_in_module(text, module_name)
+	scoped := t.decl_param_type_in_scope(text, module_name, file_name)
 	if is_mut && scoped.len > 0 && !scoped.starts_with('&') {
 		return '&' + scoped
 	}
@@ -3263,6 +3370,23 @@ fn (t &Transformer) decl_fn_type_param_in_module(param string, module_name strin
 
 // call_is_variadic updates call is variadic state for Transformer.
 fn (t &Transformer) call_is_variadic(call_name string) bool {
+	// Generic specializations are re-checked on every call (see below).
+	if isnil(t.call_variadic_cache) || call_name.contains('_T_') {
+		return t.call_is_variadic_keyed(call_name)
+	}
+	// Answer repeated lookups before building the memo's composite key.
+	mut cache := t.call_variadic_cache
+	mut recent := cache.recent_cache()
+	state, _ := recent.get(t.cur_file, call_name, '')
+	if state != 0 {
+		return state > 0
+	}
+	result := t.call_is_variadic_keyed(call_name)
+	recent.put(t.cur_file, call_name, '', if result { i8(1) } else { i8(-1) }, '')
+	return result
+}
+
+fn (t &Transformer) call_is_variadic_keyed(call_name string) bool {
 	// Generic signatures are registered after some early transform probes. Do not
 	// let an earlier negative cache entry hide the template's variadic marker.
 	if !isnil(t.tc) && call_name.contains('_T_') && t.tc.specialized_generic_fns[call_name]
@@ -3592,6 +3716,13 @@ fn pointer_type_depth_and_base(typ string) (int, string) {
 // transform_call_arg_for_param transforms transform call arg for param data for transform.
 @[direct_array_access]
 fn (mut t Transformer) transform_call_arg_for_param(arg_id flat.NodeId, param_type string) flat.NodeId {
+	// Only the call result is returned. Argument conversions keep their call-site
+	// semantics even when the enclosing call is part of a return expression.
+	outer_return_expr := t.in_return_expr
+	t.in_return_expr = false
+	defer {
+		t.in_return_expr = outer_return_expr
+	}
 	// Keep prerequisites produced by earlier arguments outside this argument's
 	// expression. A later block argument (notably `unsafe { nil }`) transforms its
 	// statements eagerly and would otherwise drain an earlier sum-box temporary
@@ -4047,7 +4178,7 @@ fn (t &Transformer) imported_global_name(name string) ?string {
 	for candidate in t.global_qualified_names[name] or { []string{} } {
 		owner := candidate.all_before_last('.')
 		alias := owner.all_after_last('.')
-		resolved := t.tc.file_imports[file_import_key(t.cur_file, alias)] or {
+		resolved := t.file_import_module(t.cur_file, alias) or {
 			t.tc.imports[alias] or { '' }
 		}
 		if resolved == owner {
@@ -4506,6 +4637,12 @@ fn (mut t Transformer) transform_pointer_rvalue_arg(arg_id flat.NodeId, arg_node
 	if arg_type.len == 0 || arg_type == 'void' || arg_type == 'unknown'
 		|| is_pointer_like_type_name(arg_type) {
 		return none
+	}
+	if t.is_fixed_array_type(t.normalize_type_alias(arg_type))
+		&& t.normalize_type_alias(arg_type) != t.normalize_type_alias(value_type) {
+		// Array-to-element-pointer decay needs the whole array, not a scalar
+		// temporary of the pointer's base type. CGen handles its ABI storage.
+		return t.transform_expr(value_id)
 	}
 	value := t.transform_expr_for_type(value_id, value_type)
 	tmp_name := t.new_temp('ptr_arg')
@@ -5491,7 +5628,7 @@ fn (t &Transformer) source_enum_type_name(file string, spelling string) ?string 
 		return none
 	}
 	resolved := if spelling.contains('.') {
-		module_name := t.tc.file_imports[file_import_key(file, spelling.all_before('.'))] or {
+		module_name := t.file_import_module(file, spelling.all_before('.')) or {
 			return none
 		}
 		'${module_name}.${spelling.all_after('.')}'
@@ -6708,6 +6845,28 @@ fn (mut t Transformer) alias_custom_str_method_name(alias_name string) ?string {
 // lookup_str_alias resolves a type name to `(alias_name, base_type)` when it names a type
 // alias, mirroring the direct/module-qualified/suffix lookups of wrap_string_conversion.
 fn (t &Transformer) lookup_str_alias(clean_typ string) ?(string, string) {
+	if isnil(t.tc) || clean_typ == '' || isnil(t.str_alias_cache) {
+		return t.lookup_str_alias_keyed(clean_typ)
+	}
+	// Answer repeated lookups before building the memo's composite key.
+	mut cache := t.str_alias_cache
+	mut recent := cache.recent_cache()
+	state, cached := recent.get(t.cur_module, clean_typ, '')
+	if state > 0 {
+		return clean_typ, cached
+	}
+	if state < 0 {
+		return none
+	}
+	if name, target := t.lookup_str_alias_keyed(clean_typ) {
+		recent.put(t.cur_module, clean_typ, '', 1, target)
+		return name, target
+	}
+	recent.put(t.cur_module, clean_typ, '', -1, '')
+	return none
+}
+
+fn (t &Transformer) lookup_str_alias_keyed(clean_typ string) ?(string, string) {
 	if isnil(t.tc) || clean_typ == '' {
 		return none
 	}
@@ -6910,7 +7069,8 @@ fn (mut t Transformer) lower_struct_str(expr flat.NodeId, struct_type string) ?f
 	if guard_root_address {
 		mut address_source := t.make_prefix(.amp, base)
 		if expr_node.kind == .ident
-			&& (t.pointer_value_rvalues[expr_node.value] || t.mut_param_values[expr_node.value]) {
+			&& ((t.pointer_value_rvalues[expr_node.value]
+				&& t.var_type(expr_node.value).starts_with('&')) || t.mut_param_values[expr_node.value]) {
 			address_source = t.transform_expr_preserving_pointer_value(expr)
 		} else if int(deref_address_source) >= 0 {
 			address_source = deref_address_source
@@ -10544,6 +10704,11 @@ fn (mut t Transformer) try_lower_array_method_call(call_id flat.NodeId, node fla
 		}
 	}
 	base_node := t.a.nodes[int(base_id)]
+	if unwrapped := t.or_expr_receiver_unwrapped_type(base_id) {
+		if unwrapped.starts_with('[]') || t.is_fixed_array_type(unwrapped) {
+			base_type = unwrapped
+		}
+	}
 	if base_node.kind == .call {
 		concrete_base_type := t.concrete_generic_call_return_type(base_id, base_node)
 		if concrete_base_type.starts_with('[]') {
@@ -11829,13 +11994,24 @@ fn (t &Transformer) fn_literal_lvalue_is_rooted_at_capture(id flat.NodeId, name 
 // lift_fn_literal supports lift fn literal handling for Transformer.
 fn (mut t Transformer) lift_fn_literal(_id flat.NodeId, node flat.Node) flat.NodeId {
 	name := t.new_fn_literal_name()
+	source_file := if file := t.a.source_files[node.pos.id] {
+		file.name
+	} else {
+		t.node_file_or(int(_id), t.cur_file)
+	}
+	source_module := if !isnil(t.tc) {
+		t.tc.file_modules[source_file] or { t.node_module_or(int(_id), t.cur_module) }
+	} else {
+		t.node_module_or(int(_id), t.cur_module)
+	}
 	// A checked literal can carry its complete function-value type here; the
 	// synthesized declaration itself needs only that signature's return type.
-	ret_type := if node.typ.len > 0 {
+	raw_ret_type := if node.typ.len > 0 {
 		fn_type_return_type_text(node.typ) or { node.typ }
 	} else {
 		'void'
 	}
+	ret_type := t.decl_param_type_in_scope(raw_ret_type, source_module, source_file)
 	result_may_alias_capture := t.immediate_closure_result_may_alias_capture(ret_type)
 	mut param_types := []types.Type{}
 	mut param_type_texts := []string{}
@@ -11853,12 +12029,22 @@ fn (mut t Transformer) lift_fn_literal(_id flat.NodeId, node flat.Node) flat.Nod
 		child_id := t.a.child(&node, i)
 		child := t.a.nodes[int(child_id)]
 		if child.kind == .param {
-			param_ids << child_id
+			// A default callback can be lifted while constructing an imported
+			// struct. Resolve its signature types using the declaration's imports.
+			param_type := t.decl_param_type_in_scope(child.typ, source_module, source_file)
+			param_ids << if param_type == child.typ {
+				child_id
+			} else {
+				t.a.add_node(flat.Node{
+					...child
+					typ: param_type
+				})
+			}
 			// mut x &T keeps its own pointer in typ and marks the extra mutable
 			// caller slot with op == .amp; mut x T already carries that slot as
 			// the folded &T. The lifted signature and the fn-value cast below both
 			// describe the slot, so add the level the text is still missing.
-			slot_type_text := explicit_mut_pointer_param_type_text(child, child.typ)
+			slot_type_text := explicit_mut_pointer_param_type_text(child, param_type)
 			param_type_texts << slot_type_text
 			if child.value.len > 0 {
 				param_names << child.value
@@ -12158,6 +12344,11 @@ fn (mut t Transformer) lift_fn_literal(_id flat.NodeId, node flat.Node) flat.Nod
 	// declarations. Root the generated declaration explicitly so module-local
 	// callbacks are not referenced without a prototype/body in the C output.
 	t.mark_fn_used_name(name)
+	// Specialization can lift a literal after markused scanned its source body.
+	// Its callees are no longer children of the enclosing generated function.
+	for callee in t.generated_fn_body_call_names(fn_decl) {
+		t.mark_fn_used_name(callee)
+	}
 	mut fn_value_param_type_texts := []string{cap: param_types.len}
 	for i, param_type in param_types {
 		raw_type := if i < param_type_texts.len { param_type_texts[i] } else { '' }
@@ -12384,6 +12575,9 @@ fn (mut t Transformer) try_lower_builtin_call(_id flat.NodeId, node flat.Node) ?
 		if base.kind == .none_expr && callee.value == 'str' && node.children_count == 1 {
 			return t.make_string_literal('<none>')
 		}
+	}
+	if named_cast := t.try_lower_resolved_named_cast_call(_id, node) {
+		return named_cast
 	}
 	if cast_call := t.try_lower_primitive_cast_call(node) {
 		return cast_call
@@ -12939,6 +13133,21 @@ fn (mut t Transformer) try_lower_generic_sum_constructor_call(node flat.Node) ?f
 	})
 }
 
+fn (mut t Transformer) try_lower_resolved_named_cast_call(id flat.NodeId, node flat.Node) ?flat.NodeId {
+	if isnil(t.tc) || node.children_count != 2 {
+		return none
+	}
+	callee := t.a.child_node(&node, 0)
+	if callee.kind != .ident || t.var_type(callee.value).len > 0 {
+		return none
+	}
+	target := t.tc.resolved_call_name(id) or { return none }
+	if target !in t.tc.type_aliases && target !in t.tc.structs && target !in t.tc.enum_names {
+		return none
+	}
+	return t.make_cast(target, t.transform_expr(t.a.child(&node, 1)), target)
+}
+
 fn (mut t Transformer) try_lower_generic_named_type_cast_call(node flat.Node) ?flat.NodeId {
 	if node.children_count != 2 {
 		return none
@@ -13335,7 +13544,7 @@ fn (mut t Transformer) try_lower_receiver_method_call(id flat.NodeId, node flat.
 		return none
 	}
 	if base_node.kind == .ident && !isnil(t.tc) {
-		imported_module := t.tc.file_imports[file_import_key(t.cur_file, base_node.value)] or {
+		imported_module := t.file_import_module(t.cur_file, base_node.value) or {
 			t.tc.imports[base_node.value] or { '' }
 		}
 		if imported_module.len > 0 {
@@ -14153,6 +14362,16 @@ fn (t &Transformer) resolved_receiver_call_display_name(node flat.Node, base_id 
 	return '${base_name}.${method}'
 }
 
+fn (t &Transformer) callback_declared_type_text(raw string) string {
+	mut declared := t.normalize_type_alias(raw)
+	for _ in 0 .. 16 {
+		next := t.normalize_type_alias(declared)
+		if next == declared { break }
+		declared = next
+	}
+	return declared
+}
+
 fn (mut t Transformer) resolved_receiver_arg_compatible(arg_id flat.NodeId, actual_type string, expected_type string) bool {
 	if actual_type == '' || actual_type == 'unknown' || expected_type == '' {
 		return true
@@ -14163,8 +14382,29 @@ fn (mut t Transformer) resolved_receiver_arg_compatible(arg_id flat.NodeId, actu
 	if expected_type.contains('unknown') {
 		return true
 	}
-	actual := t.normalize_type_alias(actual_type)
-	expected := t.normalize_type_alias(expected_type)
+	mut actual := t.callback_declared_type_text(actual_type)
+	mut actual_callconv_type := actual_type
+	if raw := t.raw_var_type_for_expr(arg_id) {
+		declared := t.callback_declared_type_text(raw)
+		mut corresponds := declared == actual
+		if !corresponds && !isnil(t.tc) {
+			raw_type := types.unalias_type(t.tc.parse_type(raw))
+			resolved_type := types.unalias_type(t.tc.parse_type(actual_type))
+			// Semantic function names omit shared, atomic and variadic syntax.
+			// Keep the declaration's modes when the remaining payload agrees.
+			corresponds = raw_type is types.FnType && resolved_type is types.FnType
+				&& raw_type.name() == resolved_type.name()
+		}
+		if corresponds {
+			actual_callconv_type = raw
+			actual = declared
+		}
+	}
+	if !isnil(t.tc) && !t.tc.fn_type_callconv_compatible(t.tc.parse_type(actual_callconv_type),
+		t.tc.parse_type(expected_type)) {
+		return false
+	}
+	expected := t.callback_declared_type_text(expected_type)
 	if t.is_integer_type_name(expected) {
 		if literal := t.specialized_int_literal(arg_id) {
 			return specialized_int_literal_fits_type(literal, expected)
@@ -14175,6 +14415,17 @@ fn (mut t Transformer) resolved_receiver_arg_compatible(arg_id flat.NodeId, actu
 	}
 	if actual == expected {
 		return true
+	}
+	if !isnil(t.tc) && actual.starts_with('fn') && expected.starts_with('fn') {
+		if !t.callback_fn_type_modes_compatible(actual, expected) {
+			return false
+		}
+		actual_fn := transform_fn_type(t.tc.parse_type(actual)) or { return false }
+		expected_fn := transform_fn_type(t.tc.parse_type(expected)) or { return false }
+		if !t.callback_fn_type_payloads_compatible(actual_fn, expected_fn, false) {
+			return false
+		}
+		return t.tc.slot_value_compatible(actual_fn, expected_fn)
 	}
 	if t.expr_is_nil_like(arg_id)
 		&& (expected.starts_with('&') || expected in ['voidptr', 'byteptr', 'charptr']) {
@@ -14256,6 +14507,214 @@ fn (mut t Transformer) resolved_receiver_arg_compatible(arg_id flat.NodeId, actu
 		return true
 	}
 	return false
+}
+
+fn callback_param_shared_atomic_mode(param string) string {
+	payload := generic_fn_type_param_payload(param)
+	if payload.starts_with('shared ') {
+		return 'shared'
+	}
+	if payload.starts_with('atomic ') {
+		return 'atomic'
+	}
+	return ''
+}
+
+fn (t &Transformer) callback_nested_fn_types(param string) []string {
+	mut signatures := []string{}
+	t.collect_callback_nested_fn_types(param, mut signatures)
+	return signatures
+}
+
+fn (t &Transformer) collect_callback_nested_fn_types(param string, mut signatures []string) {
+	mut payload := generic_fn_type_param_payload(param)
+	for {
+		unnamed := if payload.starts_with('map[') {
+			payload
+		} else {
+			generic_fn_type_param_payload(payload)
+		}
+		if unnamed != payload {
+			payload = unnamed
+			continue
+		}
+		normalized := t.normalize_type_alias(payload).trim_space()
+		if normalized != payload {
+			payload = normalized
+			continue
+		}
+		if payload.starts_with('?') || payload.starts_with('!') || payload.starts_with('&') {
+			payload = payload[1..].trim_space()
+		} else if payload.starts_with('shared ') {
+			payload = payload[7..].trim_space()
+		} else if payload.starts_with('atomic ') {
+			payload = payload[7..].trim_space()
+		} else if payload.starts_with('[]') {
+			payload = payload[2..].trim_space()
+		} else if payload.starts_with('...') {
+			payload = payload[3..].trim_space()
+		} else if payload.starts_with('chan ') || payload.starts_with('thread ') {
+			prefix_len := if payload.starts_with('chan ') { 5 } else { 7 }
+			payload = payload[prefix_len..].trim_space()
+		} else if payload.starts_with('map[') || payload.starts_with('[') {
+			open := if payload.starts_with('map[') { 3 } else { 0 }
+			mut depth := 0
+			mut end := -1
+			for i := open; i < payload.len; i++ {
+				if payload[i] == `[` {
+					depth++
+				} else if payload[i] == `]` {
+					depth--
+					if depth == 0 {
+						end = i
+						break
+					}
+				}
+			}
+			if end < 0 || end + 1 >= payload.len {
+				return
+			}
+			payload = payload[end + 1..].trim_space()
+		} else if payload.starts_with('(') && payload.ends_with(')') {
+			for part in split_generic_args(payload[1..payload.len - 1]) {
+				t.collect_callback_nested_fn_types(part, mut signatures)
+			}
+			return
+		} else {
+			_, args, is_generic := generic_app_parts(payload)
+			if is_generic {
+				for arg in args {
+					t.collect_callback_nested_fn_types(arg, mut signatures)
+				}
+				return
+			}
+			break
+		}
+	}
+	if payload.starts_with('fn(') || payload.starts_with('fn (') {
+		signatures << payload
+	}
+}
+
+fn (t &Transformer) callback_fn_type_modes_compatible(actual string, expected string) bool {
+	actual_params, actual_return := fn_type_text_parts(actual) or { return false }
+	expected_params, expected_return := fn_type_text_parts(expected) or { return false }
+	if actual_params.len != expected_params.len {
+		return false
+	}
+	for i, actual_param in actual_params {
+		if generic_fn_type_param_payload(actual_param).starts_with('...') != generic_fn_type_param_payload(expected_params[i]).starts_with('...') {
+			return false
+		}
+		if callback_param_shared_atomic_mode(actual_param) != callback_param_shared_atomic_mode(expected_params[i]) {
+			return false
+		}
+		actual_nested := t.callback_nested_fn_types(actual_param)
+		expected_nested := t.callback_nested_fn_types(expected_params[i])
+		if actual_nested.len != expected_nested.len {
+			return false
+		}
+		for j, nested_actual in actual_nested {
+			if !t.callback_fn_type_modes_compatible(nested_actual, expected_nested[j]) {
+				return false
+			}
+		}
+	}
+	if callback_param_shared_atomic_mode(actual_return) != callback_param_shared_atomic_mode(expected_return) {
+		return false
+	}
+	actual_nested := t.callback_nested_fn_types(actual_return)
+	expected_nested := t.callback_nested_fn_types(expected_return)
+	if actual_nested.len != expected_nested.len {
+		return false
+	}
+	for i, nested_actual in actual_nested {
+		if !t.callback_fn_type_modes_compatible(nested_actual, expected_nested[i]) {
+			return false
+		}
+	}
+	return true
+}
+
+fn (t &Transformer) callback_fn_type_payloads_compatible(actual types.FnType, expected types.FnType, inside_container bool) bool {
+	if actual.params.len != expected.params.len {
+		return false
+	}
+	for i in 0 .. actual.params.len {
+		if !types.fn_param_modes_compatible(actual, expected, i) {
+			return false
+		}
+		param := types.unalias_type(types.fn_compatible_param_type(actual, i))
+		expected_param := types.unalias_type(types.fn_compatible_param_type(expected, i))
+		// The userdata conversion applies to a callback parameter, never to a
+		// pointer buried in a parameter container or a nested callback return.
+		if param is types.Pointer && expected_param is types.Pointer {
+			if types.unalias_type(param.base_type) is types.Void
+				|| types.unalias_type(expected_param.base_type) is types.Void {
+				continue
+			}
+		}
+		if !t.callback_payload_type_compatible(param, expected_param, inside_container) {
+			return false
+		}
+	}
+	if !inside_container && types.unalias_type(actual.return_type) is types.Pointer
+		&& types.unalias_type(expected.return_type) is types.Pointer {
+		// The ordinary function checker validates direct return covariance.
+		return true
+	}
+	return t.callback_payload_type_compatible(actual.return_type, expected.return_type,
+		inside_container)
+}
+
+fn (t &Transformer) callback_payload_type_compatible(actual types.Type, expected types.Type, inside_container bool) bool {
+	a := types.unalias_type(actual)
+	e := types.unalias_type(expected)
+	if a is types.Array && e is types.Array {
+		return t.callback_payload_type_compatible(a.elem_type, e.elem_type, true)
+	}
+	if a is types.ArrayFixed && e is types.ArrayFixed {
+		actual_len := t.tc.fixed_array_len_value(a) or {
+			if a.len_expr != e.len_expr {
+				return false
+			}
+			return t.callback_payload_type_compatible(a.elem_type, e.elem_type, true)
+		}
+		expected_len := t.tc.fixed_array_len_value(e) or {
+			if a.len_expr != e.len_expr {
+				return false
+			}
+			return t.callback_payload_type_compatible(a.elem_type, e.elem_type, true)
+		}
+		return actual_len == expected_len && t.callback_payload_type_compatible(a.elem_type, e.elem_type,
+			true)
+	}
+	if a is types.Map && e is types.Map {
+		return t.callback_payload_type_compatible(a.key_type, e.key_type, true)
+			&& t.callback_payload_type_compatible(a.value_type, e.value_type, true)
+	}
+	if a is types.Channel && e is types.Channel {
+		return a.is_mut == e.is_mut
+			&& t.callback_payload_type_compatible(a.elem_type, e.elem_type, true)
+	}
+	if a is types.Pointer && e is types.Pointer {
+		return t.callback_payload_type_compatible(a.base_type, e.base_type, true)
+	}
+	if a is types.OptionType && e is types.OptionType {
+		return t.callback_payload_type_compatible(a.base_type, e.base_type, true)
+	}
+	if a is types.ResultType && e is types.ResultType {
+		return t.callback_payload_type_compatible(a.base_type, e.base_type, true)
+	}
+	if a is types.FnType && e is types.FnType {
+		return t.callback_fn_type_payloads_compatible(a, e, true)
+	}
+	if (a is types.Primitive || a is types.Rune || a is types.Char || a is types.ISize || a is types.USize)
+		&& (e is types.Primitive || e is types.Rune || e is types.Char || e is types.ISize || e is types.USize) {
+		return t.tc.fn_param_compatible(a, e)
+	}
+	return a.name() == e.name() || (!inside_container && t.tc.slot_value_compatible(a, e)
+		&& t.tc.slot_value_compatible(e, a))
 }
 
 struct SpecializedIntLiteral {
@@ -16014,6 +16473,19 @@ fn (mut t Transformer) is_method_call(node flat.Node) bool {
 fn (t &Transformer) get_call_return_type(id flat.NodeId, node flat.Node) string {
 	if ret := t.fn_value_call_return_type(node) {
 		return t.call_return_type_name(ret, node)
+	}
+	if !isnil(t.tc) && t.a.has_vsh_source && t.cur_module == 'main'
+		&& t.cur_file.ends_with('.vsh')
+		&& node.children_count > 0 {
+		callee := t.a.child_node(&node, 0)
+		if callee.kind == .ident {
+			selected := t.resolve_call_name(node)
+			if selected != callee.value {
+				if ret := t.tc.fn_ret_types[selected] {
+					return t.call_return_type_name(t.semantic_type_name(ret), node)
+				}
+			}
+		}
 	}
 	if ret := t.current_generic_receiver_call_return_type(node) {
 		return ret

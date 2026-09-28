@@ -778,3 +778,18 @@ fn test_unsafe_value_block_scopes_direct_array_access() {
 	checked := g.sb.str()
 	assert checked.contains('array_get('), checked
 }
+
+fn test_lowered_ident_annotation_precedes_outer_checker_binding() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	mut g := FlatGen.new()
+	g.a = &a
+	g.tc = &tc
+	tc.cur_scope.insert('err', types.Type(types.String{}))
+	value := a.add_node(flat.Node{
+		kind:  .ident
+		value: 'err'
+		typ:   'int'
+	})
+	assert g.usable_expr_type(value) == types.Type(types.int_)
+}

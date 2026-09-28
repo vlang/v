@@ -267,6 +267,7 @@ fn fastc_resolve_source_files_deferring_memo(paths []string, prefs &pref.Prefere
 					import_order:            header.import_order
 					blank_imports:           header.blank_imports
 					has_globals:             header.has_globals
+					translated:              header.translated
 					has_constants:           header.has_constants
 					has_global_declarations: header.has_global_declarations
 					has_interfaces:          header.has_interfaces
@@ -1206,6 +1207,7 @@ fn fastc_canonicalize_header_imports(header FastcSourceHeader, module_aliases ma
 		import_order:            header.import_order
 		blank_imports:           header.blank_imports
 		has_globals:             header.has_globals
+		translated:              header.translated
 		has_constants:           header.has_constants
 		has_global_declarations: header.has_global_declarations
 		has_interfaces:          header.has_interfaces
@@ -1420,6 +1422,7 @@ fn fastc_scan_source_header(source string, path string, prefs &pref.Preferences)
 	mut import_order := []string{}
 	mut blank_imports := []string{}
 	mut has_globals := false
+	mut translated := false
 	mut brace_depth := 0
 	mut tok := scan.scan()
 	for tok != .eof {
@@ -1429,14 +1432,22 @@ fn fastc_scan_source_header(source string, path string, prefs &pref.Preferences)
 		}
 		if module_name == '' && tok == .attribute {
 			mut attribute_depth := 1
+			mut is_attribute_name := true
 			tok = scan.scan()
 			for attribute_depth > 0 && tok != .eof {
-				if tok == .name && scan.lit == 'has_globals' {
+				if attribute_depth == 1 && is_attribute_name && tok == .name
+					&& scan.lit in ['has_globals', 'translated'] {
 					has_globals = true
+					if scan.lit == 'translated' {
+						translated = true
+					}
 				}
-				if tok == .lsbr {
+				if attribute_depth == 1 {
+					is_attribute_name = tok == .semicolon
+				}
+				if tok in [.lsbr, .lpar, .lcbr, .attribute] {
 					attribute_depth++
-				} else if tok == .rsbr {
+				} else if tok in [.rsbr, .rpar, .rcbr] {
 					attribute_depth--
 				}
 				tok = scan.scan()
@@ -1540,6 +1551,7 @@ fn fastc_scan_source_header(source string, path string, prefs &pref.Preferences)
 		import_order:  import_order
 		blank_imports: blank_imports
 		has_globals:   has_globals
+		translated:    translated
 	}
 }
 
@@ -1566,6 +1578,7 @@ fn fastc_header_with_scan_flags(header FastcSourceHeader, flags FastcSourceScanF
 		import_order:            header.import_order
 		blank_imports:           header.blank_imports
 		has_globals:             header.has_globals
+		translated:              header.translated
 		has_constants:           flags.has_constants
 		has_global_declarations: flags.has_global_declarations
 		has_interfaces:          flags.has_interfaces
@@ -1586,6 +1599,7 @@ fn fastc_header_with_body_spans(header FastcSourceHeader, body_spans []int) Fast
 		import_order:            header.import_order
 		blank_imports:           header.blank_imports
 		has_globals:             header.has_globals
+		translated:              header.translated
 		has_constants:           header.has_constants
 		has_global_declarations: header.has_global_declarations
 		has_interfaces:          header.has_interfaces

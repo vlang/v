@@ -282,6 +282,9 @@ pub const node_flag_freed_assignment = u8(8)
 // node_flag_mut_builtin_pointer_param marks a source `mut p voidptr`/`byteptr`/`charptr`
 // parameter before the parser folds its mutable caller slot into the type text.
 pub const node_flag_mut_builtin_pointer_param = u8(16)
+// node_flag_literal_interpolation_text marks a string literal whose source token
+// contained `${...}` as literal text (for example, `\${name}` or a raw string).
+pub const node_flag_literal_interpolation_text = u8(32)
 
 // node_flags packs rare node bools into Node.flags.
 @[inline]
@@ -308,7 +311,7 @@ pub fn node_flags(skip_ownership_drops bool, is_static_type_method bool) u8 {
 pub fn clone_node_flags(source &Node, skip_ownership_drops bool) u8 {
 	mut flags := node_flags(skip_ownership_drops, source.is_static_type_method())
 	flags |= source.flags & (node_flag_embed_payload | node_flag_freed_assignment |
-		node_flag_mut_builtin_pointer_param)
+		node_flag_mut_builtin_pointer_param | node_flag_literal_interpolation_text)
 	return flags
 }
 
@@ -364,6 +367,13 @@ pub fn (n &Node) is_embed_payload() bool {
 @[inline]
 pub fn (n &Node) is_freed_assignment() bool {
 	return (n.flags & node_flag_freed_assignment) != 0
+}
+
+// has_literal_interpolation_text reports whether `${...}` in this string literal
+// was parsed as text and must not be reinterpreted by nested-interpolation lowering.
+@[inline]
+pub fn (n &Node) has_literal_interpolation_text() bool {
+	return (n.flags & node_flag_literal_interpolation_text) != 0
 }
 
 // is_mut_builtin_pointer_param reports whether this parameter was declared as
@@ -441,6 +451,10 @@ pub mut:
 	// nothing in the AST records its identifier occurrences or reads.
 	comptime_skipped_names      map[string]bool
 	comptime_skipped_read_names map[string]bool
+	// Every name spelled in such a skipped body, whatever it refers to, keyed by
+	// comptime_skipped_decl_key. A function or constant used only on another
+	// target is not unused.
+	comptime_skipped_decl_names map[string]bool
 	// Goto label operands use the same key format, but are not local-name uses.
 	comptime_skipped_goto_labels map[string]bool
 	export_fn_names              map[string]string
@@ -481,6 +495,8 @@ pub mut:
 	// missing_import_hints holds the migration hint the resolver produced for an
 	// unresolved import node, when it can explain the failure. Usually empty.
 	missing_import_hints map[int]string
+	// resolved_module_dirs maps canonical module identities to their resolved directories.
+	resolved_module_dirs map[string]string
 	// cached_header_sources maps each module cache header parsed in place of a
 	// module's sources to one of those sources, so diagnostics and ownership can
 	// judge a warm header by the code it stands for rather than by where the
@@ -581,6 +597,15 @@ pub fn (mut a FlatAst) set_node_is_mut(id NodeId, is_mut bool) {
 	}
 }
 
+// comptime_skipped_decl_key returns the comptime_skipped_decl_names key for
+// `name` spelled in `file`. A private function or constant is only usable from
+// its own module, so the checker only probes that module's files. Files, not
+// module names, key the record: the loader may later rename a module to its
+// import path, but it never renames a file.
+pub fn comptime_skipped_decl_key(file string, name string) string {
+	return '${file}|${name}'
+}
+
 // new creates a FlatAst value for flat.
 pub fn FlatAst.new() FlatAst {
 	return FlatAst{
@@ -589,6 +614,7 @@ pub fn FlatAst.new() FlatAst {
 		disabled_fns:                  map[string]bool{}
 		comptime_skipped_names:        map[string]bool{}
 		comptime_skipped_read_names:   map[string]bool{}
+		comptime_skipped_decl_names:   map[string]bool{}
 		comptime_skipped_goto_labels:  map[string]bool{}
 		export_fn_names:               map[string]string{}
 		noreturn_fns:                  map[string]bool{}
@@ -598,6 +624,7 @@ pub fn FlatAst.new() FlatAst {
 		template_call_sites:           map[int]token.Pos{}
 		template_actions:              map[int]string{}
 		missing_imports:               map[int]string{}
+		resolved_module_dirs:          map[string]string{}
 		cached_header_sources:         map[string]string{}
 		missing_import_hints:          map[int]string{}
 		formatter_sources:             map[int]string{}

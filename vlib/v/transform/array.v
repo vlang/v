@@ -609,6 +609,14 @@ fn (mut t Transformer) make_struct_runtime_default_value_guarded(struct_type str
 	if struct_type.starts_with('&') {
 		return none
 	}
+	normalized_type := t.normalize_type_alias(struct_type)
+	if t.is_fixed_array_type(normalized_type) {
+		return t.transform_fixed_array_init_expr(flat.Node{
+			kind:  .array_init
+			value: normalized_type
+			typ:   normalized_type
+		})
+	}
 	if t.resolve_sum_name(struct_type) in t.sum_types {
 		return none
 	}
@@ -624,13 +632,16 @@ fn (mut t Transformer) make_struct_runtime_default_value_guarded(struct_type str
 	info := t.lookup_struct_info(struct_type) or { return none }
 	mut field_ids := []flat.NodeId{}
 	old_module := t.cur_module
+	old_file := t.cur_file
 	if info.module.len > 0 {
 		t.cur_module = info.module
 	}
 	defer {
 		t.cur_module = old_module
+		t.cur_file = old_file
 	}
 	for field in info.fields {
+		t.cur_file = old_file
 		field_type := t.lookup_struct_field_type(struct_type, field.name) or {
 			if field.typ.len > 0 { field.typ } else { field.raw_typ }
 		}
@@ -649,15 +660,19 @@ fn (mut t Transformer) make_struct_runtime_default_value_guarded(struct_type str
 			continue
 		}
 		if int(field.default_expr) >= 0 {
-			default_node := t.a.nodes[int(field.default_expr)]
+			default_id := t.specialize_struct_default_expr(normalized_type, field.default_expr)
+			default_node := t.a.nodes[int(default_id)]
+			if source_file := t.a.source_files[default_node.pos.id] {
+				t.cur_file = source_file.name
+			}
 			enum_field_type := t.enum_type_name_for_expected(field_type, info.module)
 			sum_field_type := t.struct_field_sum_type(field_type, info.module)
 			value = if default_node.kind == .enum_val && enum_field_type.len > 0 {
-				t.transform_enum_shorthand(field.default_expr, default_node, enum_field_type)
+				t.transform_enum_shorthand(default_id, default_node, enum_field_type)
 			} else if sum_field_type.len > 0 {
-				t.wrap_sum_value(field.default_expr, sum_field_type)
+				t.wrap_sum_value(default_id, sum_field_type)
 			} else {
-				t.transform_expr_for_type(field.default_expr, field_type)
+				t.transform_expr_for_type(default_id, field_type)
 			}
 		} else if clean_type.starts_with('map[') || clean_type.starts_with('[]') {
 			value = t.zero_value_for_type(clean_type)
@@ -1084,8 +1099,10 @@ fn (mut t Transformer) transform_fixed_array_literal_for_type(_id flat.NodeId, n
 	mut values := []flat.NodeId{cap: int(node.children_count)}
 	for i in 0 .. node.children_count {
 		elem_id := t.a.child(&node, i)
+		outer := t.begin_isolated_pending()
 		transformed := t.transform_expr_for_type(elem_id, elem_type)
 		value := t.clone_borrowed_projection(elem_id, transformed, elem_type)
+		t.end_isolated_pending(outer)
 		if ordered_temps {
 			tmp_name := t.new_temp('fixed_arr_val')
 			t.pending_stmts << t.make_decl_assign_typed(tmp_name, value, elem_type)
