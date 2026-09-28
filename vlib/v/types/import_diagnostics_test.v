@@ -148,7 +148,8 @@ fn test_manifestless_nested_module_rejects_its_canonical_self_import() {
 	os.write_file(os.join_path(root, 'layers', 'plain.v'), 'module layers\n')!
 	os.write_file(path, 'module layers\nimport nn.layers as self\n')!
 	mut p := parser.Parser.new(pref.new_preferences())
-	a := p.parse_file(path)
+	mut a := p.parse_file(path)
+	a.resolved_module_dirs['nn.layers'] = os.real_path(os.dir(path))
 	mut tc := TypeChecker.new(a)
 	tc.collect(a)
 	assert tc.current_file_module_path_identity() or { '' } == 'nn.layers'

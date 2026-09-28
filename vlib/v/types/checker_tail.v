@@ -453,9 +453,14 @@ fn (tc &TypeChecker) current_file_module_source_root() ?string {
 		return source_root
 	}
 	// Without a manifest or -path, the resolver can still find an import in an
-	// ancestor directory. A matching import path identifies that ancestor root.
+	// ancestor directory. Only a resolved import of this directory establishes
+	// that identity; a same-named dependency in a global root takes precedence.
 	if info := tc.file_imports_by_file[tc.cur_file] {
 		for _, module_path in info.imports {
+			resolved_dir := tc.a.resolved_module_dirs[module_path] or { continue }
+			if resolved_dir.replace('\\', '/').trim_right('/') != directory {
+				continue
+			}
 			if module_path.all_after_last('.') != tc.cur_module || !module_path.contains('.') {
 				continue
 			}

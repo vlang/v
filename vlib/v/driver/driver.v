@@ -18568,9 +18568,14 @@ fn resolve_imports(mut a flat.FlatAst, mut p parser.Parser, prefs &pref.Preferen
 	mut parsed_modules := map[string]bool{}
 	parsed_modules['builtin'] = true
 	parsed_modules['main'] = true
+	mut parsed_identity_dirs := map[string]string{}
+	// A directory on disk is one module, however an import spells its path.
+	mut parsed_dir_identities := map[string]string{}
 	explicit_initial_imports := imports_from_files(a, initial_files)
 	canonicalize_colliding_initial_modules(mut a, prefs, initial_files, explicit_initial_imports)
-	seed_initial_modules(a, initial_files, explicit_initial_imports, mut parsed_modules)
+	seed_initial_modules(a, initial_files, explicit_initial_imports, mut parsed_modules,
+		mut parsed_identity_dirs, mut parsed_dir_identities)
+	a.resolved_module_dirs = parsed_identity_dirs.clone()
 
 	// Backend modules excluded by the active configuration are never parsed: their
 	// dispatch in main() is gated out by the matching `$if !skip_* ?`, so nothing
@@ -18603,10 +18608,6 @@ fn resolve_imports(mut a flat.FlatAst, mut p parser.Parser, prefs &pref.Preferen
 	shadow_dependency_roots := shadow_dependency_roots_for(prefs)
 	shadow_explicit_roots := shadow_explicit_roots_for(prefs, shadow_dependency_roots)
 	mut parsed_module_identities := map[string]string{}
-	mut parsed_identity_dirs := map[string]string{}
-	// The identity each already parsed module directory (by real path) got. A
-	// directory on disk is one module, however an import spells its path.
-	mut parsed_dir_identities := map[string]string{}
 	// Import spellings already checked against a reused module directory.
 	mut checked_dir_spellings := map[string]bool{}
 	mut identity_source_paths := map[string]string{}
@@ -18649,6 +18650,7 @@ fn resolve_imports(mut a flat.FlatAst, mut p parser.Parser, prefs &pref.Preferen
 			}
 			parsed_modules[identity] = true
 			parsed_identity_dirs[identity] = module_info.dir
+			a.resolved_module_dirs[identity] = module_info.real_dir
 			parsed_dir_identities[module_info.real_dir] = identity
 			cache_state.module_import_paths[identity] = if identity in module_info.import_paths {
 				identity
@@ -18921,6 +18923,9 @@ fn resolve_imports(mut a flat.FlatAst, mut p parser.Parser, prefs &pref.Preferen
 				[]string{}
 			}
 			module_resolved := mod_dir_exists && mod_files.len > 0
+			if module_resolved {
+				a.resolved_module_dirs[cache_module] = mod_real_dir
+			}
 			if !module_resolved && !is_bundle_warmup_import {
 				a.missing_imports[node_idx] = mod_name
 				record_missing_import_hint(mut a, prefs, node_idx, mod_name, importing_file)
@@ -19187,7 +19192,7 @@ fn record_cache_module_dependency(mut state V3ModuleCacheState, owner string, de
 	}
 }
 
-fn seed_initial_modules(a &flat.FlatAst, initial_files []string, explicit_imports map[string]bool, mut parsed_modules map[string]bool) {
+fn seed_initial_modules(a &flat.FlatAst, initial_files []string, explicit_imports map[string]bool, mut parsed_modules map[string]bool, mut identity_dirs map[string]string, mut dir_identities map[string]string) {
 	mut selected_files := map[string]bool{}
 	for file in initial_files {
 		selected_files[file] = true
@@ -19225,6 +19230,10 @@ fn seed_initial_modules(a &flat.FlatAst, initial_files []string, explicit_import
 		// A single-module package can deliberately import a different package whose
 		// declared short name matches its own (v.gen.wasm imports the top-level wasm
 		// module). Do not let the initial package's seed suppress that explicit import.
+		identity_dirs[module_name] = os.real_path(os.dir(file_node.value))
+		if !holds_local_submodules {
+			dir_identities[identity_dirs[module_name]] = module_name
+		}
 		if module_name in explicit_imports && !holds_local_submodules {
 			continue
 		}

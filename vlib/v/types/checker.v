@@ -5854,6 +5854,7 @@ fn (mut tc TypeChecker) check_import_diagnostics() {
 	mut first_imports := map[string]token.Pos{}
 	mut declaration_seen_in_file := false
 	mut module_path_identity := ''
+	mut module_directory := ''
 	mut module_path_identity_checked := false
 	for idx in tc.top_level_idx {
 		node := tc.a.nodes[idx]
@@ -5908,9 +5909,12 @@ fn (mut tc TypeChecker) check_import_diagnostics() {
 		// Self-import diagnostics only apply to imports written by the user.
 		if has_source && node.value != tc.cur_module && !module_path_identity_checked {
 			module_path_identity = tc.current_file_module_path_identity() or { '' }
+			module_directory = os.real_path(os.dir(tc.cur_file))
 			module_path_identity_checked = true
 		}
-		if has_source && (node.value == tc.cur_module || node.value == module_path_identity) {
+		resolved_directory := tc.a.resolved_module_dirs[node.value] or { module_directory }
+		if has_source && (node.value == tc.cur_module
+			|| (node.value == module_path_identity && resolved_directory == module_directory)) {
 			tc.record_error_at(.duplicate_decl, 'cannot import `${module_path}` into a module with the same name', flat.NodeId(idx), tc.import_module_path_pos(node))
 		}
 		if has_source && node.typ == tc.cur_module && !tc.current_file_uses_nested_module_path() {
