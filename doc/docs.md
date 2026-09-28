@@ -8792,8 +8792,9 @@ On macOS, including `Cocoa/Cocoa.h`, `AppKit/AppKit.h`, or `AppKit/NSFont.h` mak
 wrapper-header lookup use the compiler's include search paths, including its selected SDK.
 Conditional guards use the selected compiler's predefined macros. Headers that shadow framework
 names are inspected for their actual declarations.
-Wrapper headers can also declare `@class NSFont` directly. Function-like include macros are expanded
-before resolving their headers. Classes loaded by Clang's `-include-pch` are also recognized.
+Wrapper headers can declare `@class NSFont` or `@compatibility_alias NSFont ...` directly.
+Function-like macros are expanded in header names and conditional guards. Classes and aliases loaded
+by Clang's `-include-pch` are also recognized.
 
 ```v oksyntax
 struct C.NameOfTheStruct {

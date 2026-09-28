@@ -6099,7 +6099,8 @@ fn c_forced_precompiled_header_has_nsfont(flags []string, ccompiler string) bool
 		probe := cmdexec.run_with_timeout(parts[0], args, 5000)
 		if probe.exit_code != 0 { continue }
 		for line in probe.output.split_into_lines() {
-			if line.starts_with('ObjCInterfaceDecl ') && 'NSFont' in line.fields() {
+			if (line.starts_with('ObjCInterfaceDecl ') || line.starts_with('ObjCCompatibleAliasDecl '))
+				&& 'NSFont' in line.fields() {
 				return true
 			}
 		}
@@ -6170,7 +6171,7 @@ fn c_header_nsfont_class_line(line string, in_block_comment bool, initial CHeade
 				.after_at {
 					state.mode = match identifier {
 						'class' { .class_name }
-						'interface' { .interface_name }
+						'interface', 'compatibility_alias' { .interface_name }
 						else { .none }
 					}
 				}
@@ -6398,6 +6399,85 @@ fn c_expand_header_macro(raw string, values map[string]string, overrides map[str
 
 fn c_cocoa_include_macro(value string, values map[string]string, overrides map[string]string, overridden map[string]bool, context CHeaderPredicateContext) bool {
 	return c_header_nsfont_framework_include(c_expand_header_macro(value, values, overrides, overridden, 0), context)
+}
+
+fn c_expand_header_condition_macros(raw string, values map[string]string, undefined map[string]bool, uncertain map[string]bool, mut expanding map[string]bool, depth int) ?string {
+	if depth >= 64 { return none }
+	mut result := strings.new_builder(raw.len)
+	mut i := 0
+	for i < raw.len {
+		start := i
+		if raw[i] in [`'`, `"`] {
+			quote := raw[i]
+			i++
+			for i < raw.len {
+				if raw[i] == `\\` && i + 1 < raw.len {
+					i += 2
+					continue
+				}
+				i++
+				if raw[i - 1] == quote { break }
+			}
+			result.write_string(raw[start..i])
+			continue
+		}
+		if raw[i].is_digit() {
+			i++
+			for i < raw.len && (c_identifier_continue(raw[i]) || raw[i] == `.`) { i++ }
+			result.write_string(raw[start..i])
+			continue
+		}
+		if !c_identifier_start(raw[i]) {
+			result.write_u8(raw[i])
+			i++
+			continue
+		}
+		for i < raw.len && c_identifier_continue(raw[i]) { i++ }
+		name := raw[start..i]
+		if name == 'defined' {
+			// The operand of defined names the macro itself, not its replacement.
+			for i < raw.len && raw[i].is_space() { i++ }
+			parenthesized := i < raw.len && raw[i] == `(`
+			if parenthesized { i++ }
+			for i < raw.len && raw[i].is_space() { i++ }
+			for i < raw.len && c_identifier_continue(raw[i]) { i++ }
+			if parenthesized {
+				for i < raw.len && raw[i].is_space() { i++ }
+				if i < raw.len && raw[i] == `)` { i++ }
+			}
+			result.write_string(raw[start..i])
+			continue
+		}
+		if name in undefined || name in uncertain {
+			result.write_string(name)
+			continue
+		}
+		mut end := i
+		if call := c_header_macro_call(raw[start..]) {
+			if name in values || '@function:${name}' in values {
+				end = start + call.end
+			} else if name in [c_has_include_predicate, c_has_attribute_predicate] {
+				// The predicate evaluator expands its argument in the appropriate context.
+				i = start + call.end
+				result.write_string(raw[start..i])
+				continue
+			}
+		}
+		input := raw[start..end]
+		// Undefined and uncertain definitions are removed from values as their state changes.
+		replacement := c_expand_header_macro(input, values, map[string]string{}, map[string]bool{}, 0)
+		if replacement == input {
+			result.write_string(name)
+			continue
+		}
+		if expanding[name] { return none }
+		expanding[name] = true
+		expanded := c_expand_header_condition_macros(replacement, values, undefined, uncertain, mut expanding, depth + 1) or { return none }
+		expanding.delete(name)
+		result.write_string(expanded)
+		i = end
+	}
+	return result.str()
 }
 
 fn (mut condition CHeaderCocoaCondition) merge_branch(cocoa_provided bool, class_state CHeaderClassState, once_paths map[string]bool, included_paths map[string]bool, defined map[string]bool, undefined map[string]bool, uncertain map[string]bool, values map[string]string, context CHeaderPredicateContext) {
@@ -6967,7 +7047,10 @@ fn c_header_condition_without_comments(raw string) string {
 }
 
 fn c_header_objective_c_condition_state(raw string, defined map[string]bool, undefined map[string]bool, uncertain map[string]bool, macro_values map[string]string, strict_iso_mode bool, target pref.Target, predicate_context CHeaderPredicateContext) (bool, bool) {
-	clean := c_header_condition_without_outer_parens(c_header_condition_without_comments(raw))
+	mut expanding := map[string]bool{}
+	expanded := c_expand_header_condition_macros(c_header_condition_without_comments(raw), macro_values,
+		undefined, uncertain, mut expanding, 0) or { return false, true }
+	clean := c_header_condition_without_outer_parens(expanded)
 	if active := c_header_objective_c_compiler_predicate_state(clean, defined, undefined, uncertain, macro_values, strict_iso_mode, target, predicate_context) {
 		return true, active
 	}

@@ -69,6 +69,61 @@ fn test_cocoa_wrappers_declare_nsfont_directly() {
 	assert g.header_c_struct_needs_compat_typedef('C.NSFont')
 }
 
+fn test_cocoa_wrappers_declare_nsfont_compatibility_aliases() {
+	root := os.join_path(os.vtmp_dir(), 'v3_cocoa_alias_wrapper_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+	header := os.join_path(root, 'wrapper.h')
+	mut g := cocoa_declaration_test_gen()
+	g.c_flags = ['-x', 'objective-c']
+	g.preinclude_directives = ['#include "${header}"']
+	for source, provides_font in {
+		'@class SomeFont;\n@compatibility_alias NSFont SomeFont;':                                               true
+		'@class SomeFont;\n@compatibility_alias\nNSFont /* alias */ SomeFont;':                                  true
+		'#if FEATURE\n@compatibility_alias NSFont First;\n#else\n@compatibility_alias NSFont Second;\n#endif':   true
+		'@compatibility_alias Other NSFont;':                                                                    false
+		'@compatibility_alias NSFontDescriptor SomeFont;':                                                       false
+		'#if FEATURE\n@compatibility_alias NSFont SomeFont;\n#endif':                                            false
+		'#if 0\n@compatibility_alias NSFont SomeFont;\n#endif':                                                  false
+		'// @compatibility_alias NSFont SomeFont;\nconst char *text = "@compatibility_alias NSFont SomeFont;";': false
+	} {
+		os.write_file(header, source + '\n')!
+		assert g.header_c_struct_needs_compat_typedef('C.NSFont') == !provides_font, source
+	}
+	os.write_file(header, '@class SomeFont;\n@compatibility_alias NSFont SomeFont;\n')!
+	g.c_flags = ['-x', 'objective-c', '-imacros', header]
+	g.preinclude_directives = []
+	assert g.header_c_struct_needs_compat_typedef('C.NSFont')
+}
+
+fn test_cocoa_function_like_condition_macros() {
+	mut g := cocoa_declaration_test_gen()
+	for source, provides_font in {
+		'#define ENABLED(x) x\n#if ENABLED(1)\n#include <Cocoa/Cocoa.h>\n#endif':                                                   true
+		'#define ENABLED(x) x\n#if ENABLED(0)\n#include <Cocoa/Cocoa.h>\n#endif':                                                   false
+		'#define ENABLED(x) x\n#if 0\n#elif ENABLED(1)\n#include <Cocoa/Cocoa.h>\n#endif':                                          true
+		'#define ENABLED(x) x\n#define ON ENABLED(1)\n#if ON\n#include <Cocoa/Cocoa.h>\n#endif':                                    true
+		'#define ENABLED(x) x\n#define APPLY ENABLED\n#if APPLY(1)\n#include <Cocoa/Cocoa.h>\n#endif':                              true
+		'#define ENABLED(x) x\n#define BOTH(a,b) ((a) && (b))\n#if BOTH(ENABLED(1), ENABLED(1))\n#include <Cocoa/Cocoa.h>\n#endif': true
+		'#define ENABLED(x) x || 1\n#if ENABLED(1) && 0\n#include <Cocoa/Cocoa.h>\n#endif':                                         true
+		'#define ENABLED(x) x + 1\n#if ENABLED(0) * 0 == 1\n#include <Cocoa/Cocoa.h>\n#endif':                                      false
+		'#define ENABLED() 1\n#if ENABLED()\n#include <Cocoa/Cocoa.h>\n#endif':                                                     true
+		'#define ENABLED(...) (__VA_ARGS__)\n#if ENABLED(1 + 1) == 2\n#include <Cocoa/Cocoa.h>\n#endif':                            true
+		'#define JOIN(a,b) a ## b\n#define ENABLED_1 1\n#if JOIN(ENABLED_,1)\n#include <Cocoa/Cocoa.h>\n#endif':                    true
+		'#define ENABLED(x) x\n#define PRESENT 1\n#if defined(PRESENT) && ENABLED(PRESENT)\n#include <Cocoa/Cocoa.h>\n#endif':      true
+		'#define ENABLED(x) x\n#if ENABLED(FEATURE)\n#include <Cocoa/Cocoa.h>\n#endif':                                             false
+		'#define ENABLED(x) x\n#undef ENABLED\n#if ENABLED(1)\n#include <Cocoa/Cocoa.h>\n#endif':                                   false
+		'#define ENABLED(x) ENABLED(x) + 1\n#if ENABLED(1)\n#include <Cocoa/Cocoa.h>\n#endif':                                      false
+		'#if FEATURE\n#define ENABLED(x) 1\n#else\n#define ENABLED(x) 0\n#endif\n#if ENABLED(1)\n#include <Cocoa/Cocoa.h>\n#endif': false
+	} {
+		g.preinclude_directives = [source]
+		assert g.header_c_struct_needs_compat_typedef('C.NSFont') == !provides_font, source
+	}
+	g.c_flags = ['-DENABLED(x)=x']
+	g.preinclude_directives = ['#if ENABLED(1)\n#include <Cocoa/Cocoa.h>\n#endif']
+	assert !g.header_c_struct_needs_compat_typedef('C.NSFont')
+}
+
 fn test_cocoa_precompiled_forced_headers_declare_nsfont() {
 	$if macos {
 		root := os.join_path(os.vtmp_dir(), 'v3_cocoa_pch_${os.getpid()}')
@@ -81,14 +136,15 @@ fn test_cocoa_precompiled_forced_headers_declare_nsfont() {
 		g.ccompiler = 'clang'
 		g.c_flags = ['-x', 'objective-c', '-include-pch', pch]
 		for source, provides_font in {
-			'@class NSFont;':                          true
-			'#if ENABLE_FONT\n@class NSFont;\n#endif': true
+			'@class NSFont;':                                                   true
+			'@interface SomeFont\n@end\n@compatibility_alias NSFont SomeFont;': true
+			'#if ENABLE_FONT\n@class NSFont;\n#endif':                          true
 			'@interface NSFont
-@end':                  true
-			'@class NSFontDescriptor;':                false
+@end':                                           true
+			'@class NSFontDescriptor;':                                         false
 			'#if 0
 @class NSFont;
-#endif':             false
+#endif':                                      false
 		} {
 			os.write_file(header, source + '
 ')!
