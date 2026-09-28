@@ -429,16 +429,19 @@ fn (tc &TypeChecker) current_file_module_path_identity() ?string {
 
 fn (tc &TypeChecker) current_file_module_source_root() ?string {
 	directory := os.real_path(os.dir(tc.cur_file)).replace('\\', '/').trim_right('/')
-	for root in tc.module_search_paths {
-		search_root := os.real_path(root).replace('\\', '/').trim_right('/')
-		if search_root.len > 0 && directory.starts_with(search_root + '/') {
-			return search_root
-		}
-	}
 	vmod_root := checker_vmod_root_for_file(tc.cur_file)
 	mut source_root := ''
 	if manifest := vmod.from_file(os.join_path(vmod_root, 'v.mod')) {
 		source_root = os.real_path(manifest.source_root(vmod_root)).replace('\\', '/').trim_right('/')
+	}
+	for root in tc.module_search_paths {
+		search_root := os.real_path(root).replace('\\', '/').trim_right('/')
+		if search_root.len > 0 && directory.starts_with(search_root + '/') {
+			if source_root.starts_with(search_root + '/') && directory.starts_with(source_root + '/') {
+				return source_root
+			}
+			return search_root
+		}
 	}
 	if tc.compiler_vroot.len > 0 {
 		vlib_root := os.real_path(os.join_path(tc.compiler_vroot, 'vlib')).replace('\\', '/').trim_right('/')

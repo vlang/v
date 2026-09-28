@@ -1,5 +1,32 @@
 import os
 
+fn test_nested_project_manifest_precedes_enclosing_search_path() {
+	for base_url in ['', 'src'] {
+		root := os.join_path(os.vtmp_dir(), 'v3_nested_manifest_identity_${os.getpid()}_${base_url}')
+		project := os.join_path(root, 'project')
+		source_root := if base_url == '' { project } else { os.join_path(project, base_url) }
+		source := os.join_path(source_root, 'foo', 'foo.v')
+		dependency := os.join_path(source_root, 'net', 'foo', 'foo.v')
+		os.mkdir_all(os.dir(source))!
+		os.mkdir_all(os.dir(dependency))!
+		defer { os.rmdir_all(root) or {} }
+		os.write_file(os.join_path(project, 'v.mod'), "Module { name: 'project', base_url: '${base_url}' }")!
+		os.write_file(dependency, 'module foo\npub fn value() int { return 42 }\n')!
+		search_path := '${root}|@vlib|@vmodules'
+		for alias in ['', ' as other'] {
+			name := if alias == '' { 'foo' } else { 'other' }
+			os.write_file(source, 'module foo\nimport net.foo${alias}\npub fn answer() int { return ${name}.value() }\n')!
+			result := os.execute('${os.quoted_path(@VEXE)} -path ${os.quoted_path(search_path)} -shared -check ${os.quoted_path(source)}')
+			if alias == '' {
+				assert result.exit_code != 0, result.output
+				assert result.output.contains('same name'), result.output
+			} else {
+				assert result.exit_code == 0, result.output
+			}
+		}
+	}
+}
+
 fn test_initial_module_can_import_a_distinct_same_basename_module() {
 	root := os.join_path(os.vtmp_dir(), 'v3_initial_import_identity_${os.getpid()}')
 	source := os.join_path(root, 'app', 'html', 'html.v')
