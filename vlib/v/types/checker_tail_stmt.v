@@ -5748,7 +5748,7 @@ pub fn (tc &TypeChecker) expr_is_method_value(id flat.NodeId) bool {
 	if node.kind != .selector || node.children_count == 0 {
 		return false
 	}
-	receiver := unwrap_pointer(tc.resolve_type(tc.a.child(&node, 0)))
+	receiver := unwrap_all_pointers(tc.resolve_type(tc.a.child(&node, 0)))
 	clean := unalias_type(receiver)
 	if receiver is Alias {
 		underlying := unalias_type(receiver)
@@ -6310,7 +6310,7 @@ fn (mut tc TypeChecker) check_selector(id flat.NodeId, node flat.Node) {
 		&& !tc.translated_files[tc.cur_file] && !tc.selector_is_assignment_lhs(id) {
 		tc.record_warning_at(.unknown_field, 'reading a union field (or its address) requires `unsafe`', id, tc.selector_field_diagnostic_pos(id, node.value))
 	}
-	clean_recv := unwrap_pointer(base_type)
+	clean_recv := unwrap_all_pointers(base_type)
 	selector_is_method_value := tc.expr_is_method_value(id)
 		&& !tc.ident_is_call_callee_or_generic_base(id)
 	// Selectors see through every pointer layer (`pp.field` with `pp` of type `&&Box`),
@@ -6353,7 +6353,8 @@ fn (mut tc TypeChecker) check_selector(id flat.NodeId, node flat.Node) {
 						tc.record_error_at(.unknown_field, 'field `${tc.source_text_for_node(base_id)}.${node.value}` is not public', id,
 							tc.node_value_diagnostic_pos(id))
 					}
-				} else {
+				} else if visibility_recv.name.starts_with('C.') || visibility_recv.name.starts_with('JS.')
+					|| tc.struct_field_is_private_outside_module(visibility_recv.name, node.value) {
 					display_name := tc.diagnostic_type_name(Type(visibility_recv))
 					decl_module := tc.diagnostic_module_display_name(visibility.module_name)
 					inside_module := if tc.cur_module.len > 0 { tc.cur_module } else { 'main' }
@@ -6363,6 +6364,28 @@ fn (mut tc TypeChecker) check_selector(id flat.NodeId, node flat.Node) {
 			} else if !tc.selector_is_call_callee(id)
 				&& tc.struct_field_is_private_outside_module(visibility_recv.name, node.value) {
 				tc.record_error_at(.unknown_field, 'field `${tc.diagnostic_type_name(Type(visibility_recv))}.${node.value}` is not public', id,
+					tc.node_value_diagnostic_pos(id))
+			}
+		}
+	}
+	if selector_is_method_value && clean_recv is Struct
+		&& tc.struct_field_type(clean_recv.name, node.value) == none {
+		mut declaration_key := '${clean_recv.name}.${node.value}'
+		if info := tc.resolve_generic_struct_method(clean_recv.name, node.value) {
+			declaration_key = info.name
+		}
+		if tc.private_declaration(declaration_key) != none {
+			method_name := '${tc.diagnostic_type_name(Type(clean_recv))}.${node.value}'
+			tc.record_error_at(.unknown_fn, 'method `${method_name}` is private', id,
+				tc.node_value_diagnostic_pos(id))
+		}
+	}
+	if selector_is_method_value && clean_recv is Alias
+		&& tc.struct_field_type(clean_recv.name, node.value) == none {
+		if declaration_key := tc.concrete_method_signature_key(clean_recv.name, node.value) {
+			if tc.private_declaration(declaration_key) != none {
+				method_name := '${tc.diagnostic_type_name(Type(clean_recv))}.${node.value}'
+				tc.record_error_at(.unknown_fn, 'method `${method_name}` is private', id,
 					tc.node_value_diagnostic_pos(id))
 			}
 		}

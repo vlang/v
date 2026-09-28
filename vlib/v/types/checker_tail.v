@@ -4500,16 +4500,69 @@ fn (mut tc TypeChecker) check_call_privacy(id flat.NodeId, node flat.Node, info 
 	if info.name in ['error', 'error_with_code'] {
 		return false
 	}
-	if _ := tc.private_declaration(info.name) {
+	mut declaration_name := info.name
+	if info.has_receiver {
+		callee := tc.a.child_node(&node, 0)
+		if callee.kind == .selector && callee.children_count > 0 {
+			receiver_type := tc.resolve_type(tc.a.child(callee, 0))
+			mut direct_type := receiver_type
+			for direct_type is Pointer {
+				direct_type = direct_type.base_type
+			}
+			if callee.value == 'str' && direct_type is Struct {
+				if visibility := tc.private_declaration(direct_type.name) {
+					receiver_name := method_type_name(direct_type)
+					mut has_direct_str := '${receiver_name}.str' in tc.fn_ret_types
+					if !has_direct_str {
+						has_direct_str = tc.resolve_generic_struct_method(receiver_name, 'str') != none
+					}
+					if !has_direct_str {
+						type_name := tc.diagnostic_type_name(Type(direct_type))
+						name_pos := tc.method_call_name_pos(node, callee)
+						tc.record_error_at(.assignment_mismatch, 'cannot stringify private type `${type_name}` outside module `${visibility.module_name}` without an explicit `str()` method', id,
+							token.new_span(name_pos.id, name_pos.offset, node.pos.end))
+						return true
+					}
+				}
+			}
+			receiver_name := method_type_name(direct_type)
+			mut has_direct_method := '${receiver_name}.${callee.value}' in tc.fn_ret_types
+			mut selected_is_private := false
+			if _ := tc.private_declaration(info.name) {
+				selected_is_private = true
+			}
+			if !has_direct_method && !selected_is_private {
+				if direct_info := tc.resolve_generic_struct_method(receiver_name, callee.value) {
+					has_direct_method = direct_info.name == info.name
+				}
+			}
+			if !has_direct_method && !selected_is_private
+				&& !(callee.value == 'str' && direct_type is Struct) {
+				if embedded_info := tc.embedded_method_call_info(receiver_name, callee.value) {
+					declaration_name = embedded_info.name
+				}
+			}
+		}
+	}
+	if _ := tc.private_declaration(declaration_name) {
 		callee := tc.a.child_node(&node, 0)
 		if info.has_receiver && callee.kind == .selector && callee.children_count > 0 {
 			receiver_id := tc.a.child(callee, 0)
 			name_pos := tc.method_call_name_pos(node, callee)
 			receiver_type := tc.resolve_type(receiver_id)
-			receiver_name := method_type_name(unalias_and_unwrap_pointer_type(receiver_type))
-			if embedded_info := tc.embedded_method_call_info(receiver_name, callee.value) {
-				if embedded_info.name == info.name {
-					return false
+			mut clean_receiver_type := receiver_type
+			for clean_receiver_type is Pointer {
+				clean_receiver_type = clean_receiver_type.base_type
+			}
+			receiver_name := method_type_name(unalias_type(clean_receiver_type))
+			receiver_module := tc.struct_module_for_type(receiver_name)
+			if receiver_module == tc.cur_module
+				|| (receiver_module in ['', 'main'] && tc.cur_module in ['', 'main']) {
+				// Promoted methods remain accessible in the embedding struct's module.
+				if embedded_info := tc.embedded_method_call_info(receiver_name, callee.value) {
+					if embedded_info.name == info.name {
+						return false
+					}
 				}
 			}
 			if callee.value == 'slice' && unalias_type(receiver_type) is Array {
