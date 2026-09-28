@@ -6084,9 +6084,91 @@ struct CHeaderScanLine {
 	macros_only bool
 }
 
+enum CHeaderClassMode {
+	none
+	after_at
+	class_name
+	class_tail
+	interface_name
+}
+
+struct CHeaderClassState {
+mut:
+	mode        CHeaderClassMode
+	angle_depth int
+}
+
+fn c_header_nsfont_class_line(line string, in_block_comment bool, initial CHeaderClassState) (bool, CHeaderClassState) {
+	mut state := initial
+	mut in_comment := in_block_comment
+	mut found := false
+	mut i := 0
+	for i < line.len {
+		if in_comment {
+			end := line[i..].index('*/') or { return found, state }
+			i += end + 2
+			in_comment = false
+			continue
+		}
+		if i + 1 < line.len && line[i..i + 2] == '/*' {
+			in_comment = true
+			i += 2
+			continue
+		}
+		if i + 1 < line.len && line[i..i + 2] == '//' { break }
+		if line[i] in [`'`, `"`] {
+			quote := line[i]
+			i++
+			for i < line.len {
+				if line[i] == `\\` && i + 1 < line.len {
+					i += 2
+					continue
+				}
+				i++
+				if line[i - 1] == quote { break }
+			}
+			state = CHeaderClassState{}
+			continue
+		}
+		if line[i] == `@` {
+			state = CHeaderClassState{ mode: .after_at }
+		} else if c_identifier_start(line[i]) {
+			start := i
+			for i < line.len && c_identifier_continue(line[i]) { i++ }
+			identifier := line[start..i]
+			match state.mode {
+				.after_at {
+					state.mode = match identifier {
+						'class' { .class_name }
+						'interface' { .interface_name }
+						else { .none }
+					}
+				}
+				.class_name, .interface_name {
+					found = found || identifier == 'NSFont'
+					state.mode = if state.mode == .class_name { .class_tail } else { .none }
+				}
+				else {}
+			}
+			continue
+		} else if state.mode == .class_tail && line[i] == `<` {
+			state.angle_depth++
+		} else if state.mode == .class_tail && line[i] == `>` && state.angle_depth > 0 {
+			state.angle_depth--
+		} else if state.mode == .class_tail && line[i] == `,` && state.angle_depth == 0 {
+			state.mode = .class_name
+		} else if line[i] in [`;`, `{`, `}`] {
+			state = CHeaderClassState{}
+		}
+		i++
+	}
+	return found, state
+}
+
 struct CHeaderCocoaCondition {
-	forked bool
-	before bool
+	forked       bool
+	before       bool
+	before_class CHeaderClassState
 mut:
 	before_once      map[string]bool
 	before_included  map[string]bool
@@ -6104,31 +6186,194 @@ mut:
 	common_undefined map[string]bool
 	common_uncertain map[string]bool
 	common_values    map[string]string
+	common_class     CHeaderClassState
+}
+
+struct CHeaderMacroCall {
+	name string
+	args []string
+	end  int
+}
+
+fn c_header_macro_call(raw string) ?CHeaderMacroCall {
+	mut i := 0
+	if raw.len == 0 || !c_identifier_start(raw[0]) { return none }
+	for i < raw.len && c_identifier_continue(raw[i]) { i++ }
+	name := raw[..i]
+	for i < raw.len && raw[i].is_space() { i++ }
+	if i >= raw.len || raw[i] != `(` { return none }
+	i++
+	mut start := i
+	mut depth := 1
+	mut quote := u8(0)
+	mut args := []string{}
+	for i < raw.len {
+		ch := raw[i]
+		if quote != 0 {
+			if ch == `\\` && i + 1 < raw.len {
+				i += 2
+				continue
+			}
+			if ch == quote { quote = 0 }
+		} else if ch in [`'`, `"`] {
+			quote = ch
+		} else if ch == `(` {
+			depth++
+		} else if ch == `)` {
+			depth--
+			if depth == 0 {
+				args << raw[start..i].trim_space()
+				return CHeaderMacroCall{ name: name, args: args, end: i + 1 }
+			}
+		} else if ch == `,` && depth == 1 {
+			args << raw[start..i].trim_space()
+			start = i + 1
+		}
+		i++
+	}
+	return none
+}
+
+fn c_header_macro_value(name string, values map[string]string, overrides map[string]string, overridden map[string]bool) ?string {
+	if name in overridden { return overrides[name] or { return none } }
+	return values[name] or { return none }
+}
+
+fn c_header_forget_macro_value(name string, mut values map[string]string) {
+	values.delete(name)
+	values.delete('@function:${name}')
+	values.delete('@parameters:${name}')
+}
+
+fn c_header_record_macro(definition string, mut values map[string]string) {
+	name, function_like := c_macro_declarator_name(definition)
+	if name.len == 0 { return }
+	c_header_forget_macro_value(name, mut values)
+	if function_like {
+		call := c_header_macro_call(definition) or { return }
+		values['@function:${name}'] = definition[call.end..].trim_space()
+		values['@parameters:${name}'] = call.args.join(',')
+	} else {
+		value := definition[name.len..].trim_space()
+		if value.len > 0 { values[name] = value }
+	}
+}
+
+fn c_header_substitute_macro(body string, raw_args map[string]string, expanded_args map[string]string) string {
+	mut result := strings.new_builder(body.len)
+	mut i := 0
+	for i < body.len {
+		if body[i] in [`'`, `"`] {
+			start := i
+			quote := body[i]
+			i++
+			for i < body.len {
+				if body[i] == `\\` && i + 1 < body.len {
+					i += 2
+					continue
+				}
+				i++
+				if body[i - 1] == quote { break }
+			}
+			result.write_string(body[start..i])
+			continue
+		}
+		if i + 1 < body.len && body[i..i + 2] == '##' {
+			result.write_string('##')
+			i += 2
+			continue
+		}
+		if body[i] == `#` {
+			mut start := i + 1
+			for start < body.len && body[start].is_space() { start++ }
+			mut end := start
+			for end < body.len && c_identifier_continue(body[end]) { end++ }
+			if arg := raw_args[body[start..end]] {
+				quoted := arg.fields().join(' ').replace('\\', '\\\\').replace('"', '\\"')
+				result.write_string('"${quoted}"')
+				i = end
+				continue
+			}
+		}
+		if c_identifier_start(body[i]) {
+			start := i
+			for i < body.len && c_identifier_continue(body[i]) { i++ }
+			name := body[start..i]
+			pasted := body[..start].trim_space().ends_with('##') || body[i..].trim_space().starts_with('##')
+			arg := if pasted { raw_args[name] or { name } } else { expanded_args[name] or { name } }
+			result.write_string(arg)
+		} else {
+			result.write_u8(body[i])
+			i++
+		}
+	}
+	// Token pasting is applied after parameter substitution and before rescanning.
+	mut expanded := result.str()
+	i = 0
+	mut quote := u8(0)
+	for i < expanded.len {
+		if quote != 0 {
+			if expanded[i] == `\\` && i + 1 < expanded.len {
+				i += 2
+				continue
+			}
+			if expanded[i] == quote { quote = 0 }
+		} else if expanded[i] in [`'`, `"`] {
+			quote = expanded[i]
+		} else if i + 1 < expanded.len && expanded[i..i + 2] == '##' {
+			left := expanded[..i].trim_right(' \t')
+			expanded = left + expanded[i + 2..].trim_left(' \t')
+			i = left.len
+			continue
+		}
+		i++
+	}
+	return expanded
+}
+
+fn c_expand_header_macro(raw string, values map[string]string, overrides map[string]string, overridden map[string]bool, depth int) string {
+	input := raw.trim_space()
+	if depth >= 32 || c_include_arg_is_literal(input) { return input }
+	if value := c_header_macro_value(input, values, overrides, overridden) {
+		return c_expand_header_macro(value, values, overrides, overridden, depth + 1)
+	}
+	call := c_header_macro_call(input) or { return input }
+	if call.end != input.len { return input }
+	if alias := c_header_macro_value(call.name, values, overrides, overridden) {
+		return c_expand_header_macro(alias + input[call.name.len..], values, overrides, overridden, depth + 1)
+	}
+	body := c_header_macro_value('@function:${call.name}', values, overrides, overridden) or { return input }
+	parameters := c_header_macro_value('@parameters:${call.name}', values, overrides, overridden) or { return input }
+	params := if parameters.len == 0 { []string{} } else { parameters.split(',') }
+	variadic := params.len > 0 && params[params.len - 1].ends_with('...')
+	fixed := params.len - if variadic { 1 } else { 0 }
+	if call.args.len < fixed || (!variadic && call.args.len != fixed && !(fixed == 0 && call.args == [''])) {
+		return input
+	}
+	mut raw_args := map[string]string{}
+	mut expanded_args := map[string]string{}
+	for index, param in params {
+		name := if param == '...' { '__VA_ARGS__' } else { param.trim_right('.') }
+		argument := if variadic && index == fixed {
+			call.args[index..].join(',')
+		} else {
+			call.args[index]
+		}
+		raw_args[name] = argument
+		expanded_args[name] = c_expand_header_macro(argument, values, overrides, overridden, depth + 1)
+	}
+	replacement := c_header_substitute_macro(body, raw_args, expanded_args)
+	return c_expand_header_macro(replacement, values, overrides, overridden, depth + 1)
 }
 
 fn c_cocoa_include_macro(value string, values map[string]string, overrides map[string]string, overridden map[string]bool) bool {
-	mut current := value
-	mut expanded := map[string]bool{}
-	for current !in expanded {
-		expanded[current] = true
-		if current in overridden {
-			if replacement := overrides[current] {
-				current = replacement.trim_space()
-			} else {
-				break
-			}
-		} else if replacement := values[current] {
-			current = replacement.trim_space()
-		} else {
-			break
-		}
-	}
-	return cocoa_nsfont_framework_include(current)
+	return cocoa_nsfont_framework_include(c_expand_header_macro(value, values, overrides, overridden, 0))
 }
 
-fn (mut condition CHeaderCocoaCondition) merge_branch(cocoa_provided bool, once_paths map[string]bool, included_paths map[string]bool, defined map[string]bool, undefined map[string]bool, uncertain map[string]bool, values map[string]string) {
+fn (mut condition CHeaderCocoaCondition) merge_branch(cocoa_provided bool, class_state CHeaderClassState, once_paths map[string]bool, included_paths map[string]bool, defined map[string]bool, undefined map[string]bool, uncertain map[string]bool, values map[string]string) {
 	condition.all_branches = condition.all_branches && cocoa_provided
 	if !condition.saw_branch {
+		condition.common_class = class_state
 		for path, _ in condition.touched_paths {
 			if path in once_paths { condition.common_once[path] = true }
 			if path in included_paths { condition.common_included[path] = true }
@@ -6142,12 +6387,13 @@ fn (mut condition CHeaderCocoaCondition) merge_branch(cocoa_provided bool, once_
 		condition.saw_branch = true
 		return
 	}
+	if condition.common_class != class_state { condition.common_class = CHeaderClassState{} }
 	for path, _ in condition.touched_paths {
 		if path !in once_paths { condition.common_once.delete(path) }
 		if path !in included_paths { condition.common_included.delete(path) }
 	}
 	for name, _ in condition.touched_macros {
-		if name.starts_with('@function:') { continue }
+		if name.starts_with('@function:') || name.starts_with('@parameters:') { continue }
 		if name in condition.common_defined && name in defined { continue }
 		if name in condition.common_undefined && name in undefined { continue }
 		condition.common_defined.delete(name)
@@ -6160,7 +6406,8 @@ fn (mut condition CHeaderCocoaCondition) merge_branch(cocoa_provided bool, once_
 	}
 	for name, _ in condition.touched_macros {
 		value := condition.common_values[name]
-		if name in condition.common_uncertain || name in condition.common_undefined {
+		macro_name := if name.starts_with('@') { name.all_after(':') } else { name }
+		if macro_name in condition.common_uncertain || macro_name in condition.common_undefined {
 			condition.common_values.delete(name)
 		} else if name !in condition.common_values && name !in values {
 			continue
@@ -6221,9 +6468,8 @@ fn c_header_cocoa_touch_macro(mut conditions []CHeaderCocoaCondition, name strin
 	for mut condition in conditions {
 		if condition.forked {
 			condition.save_macro(name, defined, undefined, uncertain, values)
-			if name in [c_has_attribute_predicate, c_has_include_predicate] {
-				condition.save_macro('@function:${name}', defined, undefined, uncertain, values)
-			}
+			condition.save_macro('@function:${name}', defined, undefined, uncertain, values)
+			condition.save_macro('@parameters:${name}', defined, undefined, uncertain, values)
 		}
 	}
 }
@@ -6309,10 +6555,7 @@ fn c_header_text_objective_c_scan_for_target(text string, flags []string, c99_mo
 			if is_undef {
 				defined.delete(macro_name)
 				undefined[macro_name] = true
-				macro_values.delete(macro_name)
-				if macro_name in [c_has_attribute_predicate, c_has_include_predicate] {
-					macro_values.delete('@function:${macro_name}')
-				}
+				c_header_forget_macro_value(macro_name, mut macro_values)
 				if macro_name in c_objective_c_compatibility_qualifiers {
 					objective_c_compatibility_macros.delete(macro_name)
 				}
@@ -6326,25 +6569,12 @@ fn c_header_text_objective_c_scan_for_target(text string, flags []string, c99_mo
 						objective_c_compatibility_macros[macro_name] = true
 					}
 				}
-				if is_function_like {
-					macro_values.delete(macro_name)
-					if macro_name in [c_has_attribute_predicate, c_has_include_predicate] {
-						macro_values['@function:${macro_name}'] = if definition.contains('=') {
-							definition.all_after('=').trim_space()
-						} else {
-							'1'
-						}
-					}
+				value := if definition.contains('=') {
+					definition.all_after('=').trim_space()
 				} else {
-					if macro_name in [c_has_attribute_predicate, c_has_include_predicate] {
-						macro_values.delete('@function:${macro_name}')
-					}
-					macro_values[macro_name] = if definition.contains('=') {
-						definition.all_after('=').trim_space()
-					} else {
-						'1'
-					}
+					'1'
 				}
+				c_header_record_macro('${macro_declarator} ${value}', mut macro_values)
 			}
 		}
 		i++
@@ -6363,6 +6593,7 @@ fn c_header_text_objective_c_scan_for_target(text string, flags []string, c99_mo
 	mut definite_text := strings.new_builder(text.len / 4)
 	mut in_block_comment := false
 	mut cocoa_provided := false
+	mut class_state := CHeaderClassState{}
 	mut cocoa_conditions := []CHeaderCocoaCondition{}
 	mut once_paths := map[string]bool{}
 	mut included_paths := map[string]bool{}
@@ -6380,6 +6611,7 @@ fn c_header_text_objective_c_scan_for_target(text string, flags []string, c99_mo
 		scan_line := lines[line_index]
 		line := scan_line.text
 		line_index++
+		line_in_block_comment := in_block_comment
 		clean, next_in_block_comment := c_preprocessor_directive_scan_line(line, in_block_comment)
 		in_block_comment = next_in_block_comment
 		name := c_directive_name(clean)
@@ -6392,17 +6624,19 @@ fn c_header_text_objective_c_scan_for_target(text string, flags []string, c99_mo
 				last := cocoa_conditions.len - 1
 				if cocoa_conditions[last].forked {
 					if c_header_conditions_possibly_active(condition_known, condition_active) {
-						cocoa_conditions[last].merge_branch(cocoa_provided, once_paths, included_paths, defined, undefined, uncertain, macro_values)
+						cocoa_conditions[last].merge_branch(cocoa_provided, class_state, once_paths, included_paths, defined, undefined, uncertain, macro_values)
 					}
 					cocoa_provided = cocoa_conditions[last].before
+					class_state = cocoa_conditions[last].before_class
 					cocoa_conditions[last].restore_branch(false, mut once_paths, mut included_paths, mut defined, mut undefined, mut uncertain, mut macro_values)
 					if name == 'endif' {
 						// A non-exhaustive chain also has a path that executes no branch.
 						if !condition_taken_known[last] || !condition_taken[last] {
-							cocoa_conditions[last].merge_branch(cocoa_provided, once_paths, included_paths, defined, undefined, uncertain, macro_values)
+							cocoa_conditions[last].merge_branch(cocoa_provided, class_state, once_paths, included_paths, defined, undefined, uncertain, macro_values)
 						}
 						cocoa_provided = cocoa_provided || (cocoa_conditions[last].saw_branch && cocoa_conditions[last].all_branches)
 						if cocoa_conditions[last].saw_branch {
+							class_state = cocoa_conditions[last].common_class
 							cocoa_conditions[last].restore_branch(true, mut once_paths, mut included_paths, mut defined, mut undefined, mut uncertain, mut macro_values)
 						}
 					}
@@ -6514,15 +6748,16 @@ fn c_header_text_objective_c_scan_for_target(text string, flags []string, c99_mo
 			continue
 		}
 		if cocoa_include_only && (name in ['include', 'import', 'define', 'undef']
-			|| (name == 'pragma' && c_directive_arg(clean).trim_space() == 'once')) {
+			|| (name == 'pragma' && c_directive_arg(clean).trim_space() == 'once')
+			|| (name.len == 0 && !scan_line.macros_only && (class_state.mode != .none || line.contains('@')))) {
 			// Save state only when an uncertain branch can change it. SDK headers have
 			// many conditional declarations that do not affect includes or macros.
 			for depth in 0 .. cocoa_conditions.len {
 				if !cocoa_conditions[depth].forked && !condition_known[depth] {
 					had_unchanged_branch := cocoa_conditions[depth].saw_branch
-					cocoa_conditions[depth] = CHeaderCocoaCondition{ forked: true, before: cocoa_provided }
+					cocoa_conditions[depth] = CHeaderCocoaCondition{ forked: true, before: cocoa_provided, before_class: class_state }
 					if had_unchanged_branch {
-						cocoa_conditions[depth].merge_branch(cocoa_provided, once_paths, included_paths, defined, undefined, uncertain, macro_values)
+						cocoa_conditions[depth].merge_branch(cocoa_provided, class_state, once_paths, included_paths, defined, undefined, uncertain, macro_values)
 					}
 				}
 			}
@@ -6532,12 +6767,7 @@ fn c_header_text_objective_c_scan_for_target(text string, flags []string, c99_mo
 			once_paths[scan_line.source_file] = true
 		}
 		if name in ['include', 'import'] {
-			mut include_arg := c_directive_arg(clean).trim_space()
-			mut expanded_macros := map[string]bool{}
-			for (include_arg in macro_values && include_arg !in expanded_macros) {
-				expanded_macros[include_arg] = true
-				include_arg = macro_values[include_arg].trim_space()
-			}
+			include_arg := c_expand_header_macro(c_directive_arg(clean), macro_values, map[string]string{}, map[string]bool{}, 0)
 			if cocoa_include_only {
 				if cocoa_nsfont_framework_include(include_arg) {
 					cocoa_provided = cocoa_provided || !scan_line.macros_only
@@ -6585,7 +6815,6 @@ fn c_header_text_objective_c_scan_for_target(text string, flags []string, c99_mo
 					if name == 'define' {
 						undefined.delete(macro_name)
 						defined[macro_name] = true
-						macro_values.delete(macro_name)
 						definition := c_directive_arg(clean).trim_space()
 						macro_token := parts[0]
 						if macro_name in c_objective_c_compatibility_qualifiers {
@@ -6595,29 +6824,11 @@ fn c_header_text_objective_c_scan_for_target(text string, flags []string, c99_mo
 								objective_c_compatibility_macros[macro_name] = true
 							}
 						}
-						if macro_token.contains('(') {
-							if macro_name in [c_has_attribute_predicate, c_has_include_predicate] {
-								macro_values['@function:${macro_name}'] = if definition.len > macro_token.len {
-									definition[macro_token.len..].trim_space()
-								} else {
-									''
-								}
-							}
-						} else {
-							if macro_name in [c_has_attribute_predicate, c_has_include_predicate] {
-								macro_values.delete('@function:${macro_name}')
-							}
-							if definition.len > macro_token.len {
-								macro_values[macro_name] = definition[macro_token.len..].trim_space()
-							}
-						}
+						c_header_record_macro(definition, mut macro_values)
 					} else {
 						defined.delete(macro_name)
 						undefined[macro_name] = true
-						macro_values.delete(macro_name)
-						if macro_name in [c_has_attribute_predicate, c_has_include_predicate] {
-							macro_values.delete('@function:${macro_name}')
-						}
+						c_header_forget_macro_value(macro_name, mut macro_values)
 						if macro_name in c_objective_c_compatibility_qualifiers {
 							objective_c_compatibility_macros.delete(macro_name)
 						}
@@ -6626,10 +6837,7 @@ fn c_header_text_objective_c_scan_for_target(text string, flags []string, c99_mo
 					defined.delete(macro_name)
 					undefined.delete(macro_name)
 					uncertain[macro_name] = true
-					macro_values.delete(macro_name)
-					if macro_name in [c_has_attribute_predicate, c_has_include_predicate] {
-						macro_values.delete('@function:${macro_name}')
-					}
+					c_header_forget_macro_value(macro_name, mut macro_values)
 					if macro_name in c_objective_c_compatibility_qualifiers {
 						objective_c_compatibility_macros.delete(macro_name)
 					}
@@ -6637,6 +6845,11 @@ fn c_header_text_objective_c_scan_for_target(text string, flags []string, c99_mo
 			}
 		}
 		if cocoa_include_only {
+			if name.len == 0 && !scan_line.macros_only {
+				found, next_class_state := c_header_nsfont_class_line(line, line_in_block_comment, class_state)
+				class_state = next_class_state
+				cocoa_provided = cocoa_provided || found
+			}
 			continue
 		}
 		mut possible_line := line
@@ -6986,13 +7199,7 @@ fn c_header_objective_c_compiler_predicate_state(clean string, defined map[strin
 		return none
 	}
 	if predicate == c_has_include_predicate {
-		mut include_arg := attribute
-		mut expanded := map[string]bool{}
-		for (include_arg in macro_values && include_arg !in expanded) {
-			if include_arg in uncertain || include_arg in undefined { return none }
-			expanded[include_arg] = true
-			include_arg = macro_values[include_arg].trim_space()
-		}
+		include_arg := c_expand_header_macro(attribute, macro_values, map[string]string{}, map[string]bool{}, 0)
 		return c_header_include_available(include_arg, predicate_context)
 	}
 	return attribute.trim('_') in c_common_c_attributes
