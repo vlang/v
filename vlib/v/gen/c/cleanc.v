@@ -22847,7 +22847,13 @@ fn (mut g FlatGen) emit_global_inits() {
 		if typ := g.global_types[qname] {
 			clean_type := default_init_unalias_type(typ)
 			if clean_type is types.Pointer {
-				initializer := g.a.node(val_id)
+				mut initializer_id := val_id
+				mut initializer := g.a.node(initializer_id)
+				for ((initializer.kind == .block && initializer.value == 'unsafe')
+					|| initializer.kind in [.expr_stmt, .paren]) && initializer.children_count == 1 {
+					initializer_id = g.a.child(initializer, 0)
+					initializer = g.a.node(initializer_id)
+				}
 				if initializer.kind == .prefix && initializer.op == .amp
 					&& initializer.children_count == 1 {
 					mut child_id := g.a.child(initializer, 0)

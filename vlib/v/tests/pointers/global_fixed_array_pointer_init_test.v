@@ -37,6 +37,7 @@ fn free_global_optional_aligned_array_pointer(value &[2]?GlobalAlignedArrayPoint
 }
 
 __global global_zero_array = &[4]int{}
+__global global_unsafe_array = unsafe { &[4]int{} }
 __global global_parenthesized_array = &([4]int{})
 __global global_literal_array = &[3, 5]!
 __global global_cell_array = &[2]GlobalArrayPointerCell{}
@@ -59,6 +60,7 @@ __global global_filled_aligned_array = &[2]GlobalAlignedArrayPointerCell{init: G
 
 fn test_global_fixed_array_pointers_are_initialized() {
 	assert unsafe { voidptr(global_zero_array) } != unsafe { nil }
+	assert unsafe { voidptr(global_unsafe_array) } != unsafe { nil }
 	assert unsafe { voidptr(global_parenthesized_array) } != unsafe { nil }
 	assert unsafe { voidptr(global_literal_array) } != unsafe { nil }
 	assert unsafe { voidptr(global_cell_array) } != unsafe { nil }
@@ -79,6 +81,8 @@ fn test_global_fixed_array_pointers_are_initialized() {
 		assert global_zero_array[3] == 0
 		global_zero_array[3] = 42
 		assert global_zero_array[3] == 42
+		global_unsafe_array[3] = 43
+		assert global_unsafe_array[3] == 43
 		assert global_parenthesized_array[0] == 0
 		assert global_parenthesized_array[3] == 0
 		assert global_literal_array[0] == 3
