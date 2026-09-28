@@ -3730,7 +3730,8 @@ fn (mut tc TypeChecker) check_call(id flat.NodeId, node flat.Node) {
 		if callee.kind == .ident && (callee.value in tc.fn_ret_types
 			|| tc.qualify_fn_name(callee.value) in tc.fn_ret_types) {
 			if local_type := tc.non_file_scope_type(callee.value) {
-				if fn_type_from_type(local_type) != none {
+				if fn_type_from_type(local_type) != none
+					|| fn_type_from_type(tc.smartcast_type(callee_id) or { Type(void_) }) != none {
 					// Callable locals and parameters shadow same-named functions.
 				} else {
 					tc.record_error(.call_arg_mismatch, 'ambiguous call to: `${callee.value}`, may refer to fn `${callee.value}` or variable `${callee.value}`', id)

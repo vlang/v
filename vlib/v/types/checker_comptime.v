@@ -14658,6 +14658,7 @@ fn (mut tc TypeChecker) call_returned_alias_arguments(id flat.NodeId, mut visiti
 		if tc.a.node(child_id).kind != .param {
 			callee_view.collect_returned_alias_sources_in_scope(child_id, args_by_param, mut visiting,
 				mut sources)
+			callee_view.apply_post_if_exit_smartcasts(child_id)
 		}
 	}
 	visiting.delete(decl.idx)
@@ -14755,8 +14756,10 @@ fn (mut tc TypeChecker) collect_returned_alias_sources_in_scope(id flat.NodeId, 
 		}
 	}
 	for i in 0 .. node.children_count {
-		tc.collect_returned_alias_sources_in_scope(tc.a.child(node, i), args_by_param,
+		child_id := tc.a.child(node, i)
+		tc.collect_returned_alias_sources_in_scope(child_id, args_by_param,
 			mut visiting, mut sources)
+		tc.apply_post_if_exit_smartcasts(child_id)
 	}
 	if node.kind == .decl_assign {
 		for lhs_id in tc.multi_assign_lhs_ids(*node) {
