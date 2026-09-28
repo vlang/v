@@ -53,6 +53,28 @@ fn fixed_array_decay_byte_compatible(actual types.Type, expected types.Type) boo
 	return a.name() in ['char', 'i8', 'u8'] && e.name() in ['char', 'i8', 'u8']
 }
 
+fn (mut g FlatGen) fixed_array_decay_shape_equal(actual types.Type, expected types.Type, allow_byte_cast bool) bool {
+	a := cgen_unalias_type(actual)
+	e := cgen_unalias_type(expected)
+	if a is types.ArrayFixed {
+		return e is types.ArrayFixed && g.fixed_array_len_value(a) == g.fixed_array_len_value(e)
+			&& g.fixed_array_decay_shape_equal(a.elem_type, e.elem_type, allow_byte_cast)
+	}
+	if e is types.ArrayFixed {
+		return false
+	}
+	if a is types.Pointer {
+		return e is types.Pointer && g.fixed_array_decay_shape_equal(a.base_type, e.base_type,
+			allow_byte_cast)
+	}
+	if e is types.Pointer {
+		return false
+	}
+	return cgen_types_equal_after_alias_erasure(a, e)
+		|| (allow_byte_cast && a.name() in ['char', 'i8', 'u8']
+			&& e.name() in ['char', 'i8', 'u8'])
+}
+
 fn fixed_array_index_info(t types.Type) (bool, bool, types.ArrayFixed) {
 	if fixed := array_fixed_type(t) {
 		return true, false, fixed
@@ -532,16 +554,24 @@ fn (mut g FlatGen) gen_fixed_array_pointer_lvalue_arg(id flat.NodeId, expected t
 	if actual_fixed := array_fixed_type(actual) {
 		if fixed := expected_fixed {
 			if inner_fixed := array_fixed_type(cgen_unalias_type(actual_fixed.elem_type)) {
-				if g.fixed_array_len_value(inner_fixed) == g.fixed_array_len_value(fixed) {
-					if cgen_types_equal_after_alias_erasure(inner_fixed.elem_type, fixed.elem_type) {
+				if g.fixed_array_decay_shape_equal(types.Type(inner_fixed), types.Type(fixed),
+					false) {
+					if g.expr_is_addressable(id) {
 						g.gen_expr(id)
-						return true
+					} else {
+						g.gen_fixed_array_data_arg(id, actual_fixed)
 					}
-					if fixed_array_decay_byte_compatible(inner_fixed.elem_type, fixed.elem_type) {
-						g.write('(${g.cast_c_type(expected_ptr)})')
+					return true
+				}
+				if g.fixed_array_decay_shape_equal(types.Type(inner_fixed), types.Type(fixed),
+					true) {
+					g.write('(${g.cast_c_type(expected_ptr)})')
+					if g.expr_is_addressable(id) {
 						g.gen_expr(id)
-						return true
+					} else {
+						g.gen_fixed_array_data_arg(id, actual_fixed)
 					}
+					return true
 				}
 			}
 			if !g.expr_is_addressable(id) {

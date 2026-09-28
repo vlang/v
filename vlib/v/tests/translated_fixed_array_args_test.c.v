@@ -98,6 +98,10 @@ fn sum_named_row(values &[row_len]int) int {
 	return unsafe { values[0] + values[1] }
 }
 
+fn first_named_deep_row(values &[row_len][row_len]int) int {
+	return unsafe { values[0][0] }
+}
+
 fn first_pointer_value(values &&int) int {
 	return unsafe { *values[0] }
 }
@@ -123,6 +127,10 @@ fn test_translated_array_decay_resolves_nested_aliases() {
 	alias_rows[1][0] = 3
 	alias_rows[1][1] = 5
 	assert sum_row(alias_rows) == 42
+	assert sum_row([[20, 22]!, [3, 5]!]!) == 42
+	assert sum_row([make_runtime_row(20), make_runtime_row(3)]!) == 41
+	deep_rows := [[[20, 22]!, [3, 5]!]!, [[7, 11]!, [13, 17]!]!]!
+	assert first_named_deep_row(deep_rows) == 20
 	mut named_pointer := unsafe { &[row_len]int(nil) }
 	named_pointer = plain_rows
 	assert named_pointer == plain_rows
