@@ -9261,7 +9261,7 @@ fn (mut p Parser) unsafe_block_stmt(unsafe_start int) flat.NodeId {
 	p.unsafe_depth++
 	id := p.block_stmt()
 	p.unsafe_depth--
-	if was_nested && !p.unsafe_block_has_nil_tail(id) {
+	if was_nested && !p.prefs.is_fmt && !p.unsafe_block_has_nil_tail(id) {
 		p.record_diagnostic_span('already inside `unsafe` block', unsafe_start, unsafe_start + 6)
 	}
 	if int(id) >= 0 && int(id) < p.a.nodes.len {
@@ -13938,7 +13938,7 @@ fn (mut p Parser) array_init_after_element_type(elem_type string, start int) fla
 		}
 	}
 	p.check(.rcbr)
-	if init_start >= 0 && !has_len {
+	if init_start >= 0 && !has_len && !p.prefs.is_fmt {
 		p.record_diagnostic_span('cannot use `init` attribute unless `len` attribute is also provided',
 			init_start, init_end)
 	}
@@ -14302,17 +14302,19 @@ fn (mut p Parser) select_expr() flat.NodeId {
 		branch_id := p.select_branch()
 		branch := p.a.node(branch_id)
 		if branch.value == 'else' {
-			if has_timeout {
-				p.record_diagnostic_span('timeout `> t` and `else` are mutually exclusive `select` keys',
-					branch_key_start, branch_key_end)
-			} else if has_else {
-				p.record_diagnostic_span('at most one `else` branch allowed in `select` block',
-					branch_key_start, branch_key_end)
+			if !p.prefs.is_fmt {
+				if has_timeout {
+					p.record_diagnostic_span('timeout `> t` and `else` are mutually exclusive `select` keys',
+						branch_key_start, branch_key_end)
+				} else if has_else {
+					p.record_diagnostic_span('at most one `else` branch allowed in `select` block',
+						branch_key_start, branch_key_end)
+				}
 			}
 			has_else = true
 		} else if branch.value in ['recv', 'recv_assign']
 			|| branch.value.starts_with('recv_compound:') {
-			if branch.children_count >= 2 {
+			if !p.prefs.is_fmt && branch.children_count >= 2 {
 				rhs := p.a.child_node(branch, 1)
 				if rhs.kind != .prefix {
 					p.record_diagnostic_span('select key: receive expression expected',
@@ -14323,17 +14325,19 @@ fn (mut p Parser) select_expr() flat.NodeId {
 				}
 			}
 		} else if p.select_branch_is_timeout(branch) {
-			condition := p.a.child_node(branch, 0)
-			if has_deprecated_timeout_prefix && condition.kind == .infix
-				&& condition.op == .arrow {
-				p.record_diagnostic_span('send expression cannot be used as timeout',
-					int(condition.pos.offset), int(condition.pos.end))
-			} else if has_else {
-				p.record_diagnostic_span('`else` and timeout value are mutually exclusive `select` keys',
-					int(condition.pos.offset), int(condition.pos.end))
-			} else if has_timeout {
-				p.record_diagnostic_span('at most one timeout branch allowed in `select` block',
-					int(condition.pos.offset), int(condition.pos.end))
+			if !p.prefs.is_fmt {
+				condition := p.a.child_node(branch, 0)
+				if has_deprecated_timeout_prefix && condition.kind == .infix
+					&& condition.op == .arrow {
+					p.record_diagnostic_span('send expression cannot be used as timeout',
+						int(condition.pos.offset), int(condition.pos.end))
+				} else if has_else {
+					p.record_diagnostic_span('`else` and timeout value are mutually exclusive `select` keys',
+						int(condition.pos.offset), int(condition.pos.end))
+				} else if has_timeout {
+					p.record_diagnostic_span('at most one timeout branch allowed in `select` block',
+						int(condition.pos.offset), int(condition.pos.end))
+				}
 			}
 			has_timeout = true
 		}

@@ -22,6 +22,9 @@ fn test_formatter_preserves_syntax_without_semantic_diagnostics() {
 		'struct B {}\nstruct A { B; B }':                                                            'cannot embed `B` more than once'
 		'struct Number {}\nfn (n Number) += (other Number) Number { return n }':                     'cannot overload `+=`, overload `+` and `+=` will be automatically generated'
 		'fn handle(int) {}':                                                                         'functions with type only params can not have bodies'
+		'fn main() { a := []int{init: 1}; _ = a }':                                                  'cannot use `init` attribute unless `len` attribute is also provided'
+		'fn main() { select { else {} else {} } }':                                                  'at most one `else` branch allowed in `select` block'
+		'fn main() { unsafe { unsafe { println(1) } } }':                                            'already inside `unsafe` block'
 	}
 	for source, expected in cases {
 		os.write_file(path, source + '\n')!
