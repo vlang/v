@@ -34,6 +34,53 @@ fn test_explicit_generic_factory_return_type_retains_receiver_methods() {
 	}
 }
 
+fn test_generic_factory_inference_uses_call_site_shadowing() {
+	for imported in [false, true] {
+		for placement in ['before', 'after', 'nested'] {
+			mut a := flat.FlatAst.new()
+			mut tc := types.TypeChecker.new(&a)
+			tc.fn_generic_params['gates.make_gate'] = ['T']
+			tc.fn_ret_types['gates.make_gate'] = types.Type(types.Pointer{
+				base_type: types.Type(types.Struct{ name: 'gates.Gate[T]' })
+			})
+			shadow_name := if imported { 'g' } else { 'make_gate' }
+			shadow_lhs := a.add_val(.ident, shadow_name)
+			shadow_rhs := a.add_val(.int_literal, '1')
+			shadow := call_helper_node(mut a, flat.Node{ kind: .decl_assign }, [
+				shadow_lhs,
+				shadow_rhs,
+			])
+			base := if imported {
+				module_id := a.add_val(.ident, 'g')
+				call_helper_node(mut a, flat.Node{ kind: .selector, value: 'make_gate' }, [module_id])
+			} else {
+				a.add_val(.ident, 'make_gate')
+			}
+			arg := a.add_val(.ident, 'T')
+			indexed := call_helper_node(mut a, flat.Node{ kind: .index }, [base, arg])
+			call := call_helper_node(mut a, flat.Node{ kind: .call }, [indexed])
+			lhs := a.add_val(.ident, 'gate')
+			decl := call_helper_node(mut a, flat.Node{ kind: .decl_assign }, [lhs, call])
+			stmts := match placement {
+				'before' { [shadow, decl] }
+				'after' { [decl, shadow] }
+				else { [call_helper_node(mut a, flat.Node{ kind: .block }, [shadow]), decl] }
+			}
+			body := call_helper_node(mut a, flat.Node{ kind: .block }, stmts)
+			fn_id := call_helper_node(mut a, flat.Node{ kind: .fn_decl, value: 'use_gate' }, [body])
+			collector := CallCollector{ a: &a, tc: &tc }
+			_, local_types := collector.local_value_info(a.node(fn_id), 'gates', {
+				'g': 'gates'
+			})
+			assert (local_types['gate'] or { '' }) == if placement == 'before' {
+				''
+			} else {
+				'gates.Gate[T]'
+			}
+		}
+	}
+}
+
 fn test_checker_selected_generic_selector_factory_return_type() {
 	mut a := flat.FlatAst.new()
 	mut tc := types.TypeChecker.new(&a)

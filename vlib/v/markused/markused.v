@@ -2043,6 +2043,8 @@ struct CallCollector {
 	generic_type_bases map[string]bool
 	// Self-host builds are known not to need monomorphization, so they can omit
 	// generic-only reachability probes while preserving ordinary call collection.
+	local_ident_visibility           map[int]bool
+	has_local_ident_visibility       bool
 	detect_generics                  bool
 	body_checker_edges_authoritative bool
 }
@@ -4697,7 +4699,12 @@ fn (c &CallCollector) collect_body(node &flat.Node, cur_module string, imports m
 			|| c.type_text_uses_generics(node.value, cur_module, imports)
 			|| c.node_uses_generics(node, cur_module, imports))
 	}
-	result.uses_generics = c.collect_calls_with_locals_and_generics(node, cur_module, imports, receiver_name, receiver_struct, local_values, local_types, visible_local_idents, c.body_checker_edges_authoritative, c.detect_generics, result.uses_generics, mut result.calls, mut result.refs, true)
+	scoped := CallCollector{
+		...c
+		local_ident_visibility:     visible_local_idents
+		has_local_ident_visibility: true
+	}
+	result.uses_generics = scoped.collect_calls_with_locals_and_generics(node, cur_module, imports, receiver_name, receiver_struct, local_values, local_types, visible_local_idents, c.body_checker_edges_authoritative, c.detect_generics, result.uses_generics, mut result.calls, mut result.refs, true)
 	c.collect_interface_boxed_return_methods(node, mut result.calls)
 	return result
 }
@@ -4740,7 +4747,12 @@ fn (c &CallCollector) collect_calls(node &flat.Node, cur_module string, imports 
 	} else {
 		map[int]bool{}
 	}
-	c.collect_calls_with_locals(node, cur_module, imports, receiver_name, receiver_struct, local_values, local_types, visible_local_idents, mut calls)
+	scoped := CallCollector{
+		...c
+		local_ident_visibility:     visible_local_idents
+		has_local_ident_visibility: true
+	}
+	scoped.collect_calls_with_locals(node, cur_module, imports, receiver_name, receiver_struct, local_values, local_types, visible_local_idents, mut calls)
 }
 
 fn (c &CallCollector) collect_calls_with_generic_usage(node &flat.Node, cur_module string, imports map[string]string, receiver_name string, receiver_struct string, mut calls []string) bool {
@@ -4752,7 +4764,12 @@ fn (c &CallCollector) collect_calls_with_generic_usage(node &flat.Node, cur_modu
 	}
 	uses_generics := c.node_uses_generics(node, cur_module, imports)
 	mut no_refs := []string{}
-	return c.collect_calls_with_locals_and_generics(node, cur_module, imports, receiver_name, receiver_struct, local_values, local_types, visible_local_idents, false, true, uses_generics, mut calls, mut no_refs, false)
+	scoped := CallCollector{
+		...c
+		local_ident_visibility:     visible_local_idents
+		has_local_ident_visibility: true
+	}
+	return scoped.collect_calls_with_locals_and_generics(node, cur_module, imports, receiver_name, receiver_struct, local_values, local_types, visible_local_idents, false, true, uses_generics, mut calls, mut no_refs, false)
 }
 
 // collect_calls_with_locals is collect_calls with the per-body local-value
@@ -5299,6 +5316,7 @@ fn (c &CallCollector) add_initializer_ref_candidates(name string, cur_module str
 fn (c &CallCollector) local_value_info(node &flat.Node, cur_module string, imports map[string]string) (map[string]bool, map[string]string) {
 	mut names := map[string]bool{}
 	mut type_names := map[string]string{}
+	mut declarations := []flat.NodeId{}
 	param_types := c.local_fn_param_type_names(node, cur_module)
 	mut stack := []flat.NodeId{cap: int(node.children_count)}
 	for i in 0 .. node.children_count {
@@ -5318,35 +5336,43 @@ fn (c &CallCollector) local_value_info(node &flat.Node, cur_module string, impor
 				}
 			}
 		} else if child.kind == .decl_assign {
-			mut i := 0
-			for i < child.children_count {
-				lhs_id := c.a.child(child, i)
-				if int(lhs_id) >= 0 {
-					lhs := c.a.node(lhs_id)
-					if lhs.kind == .ident && lhs.value.len > 0 {
-						names[lhs.value] = true
-						if i + 1 < child.children_count {
-							rhs_id := c.a.child(child, i + 1)
-							if int(rhs_id) >= 0 {
-								type_name := if child.children_count == 2 && child.typ.len > 0 {
-									c.local_decl_type_name(child.typ, rhs_id, cur_module, imports, type_names)
-								} else {
-									c.top_level_decl_rhs_type_name(rhs_id, cur_module, imports, names, type_names)
-								}
-								if type_name.len > 0 {
-									type_names[lhs.value] = type_name
-								}
-							}
-						}
-					}
+			declarations << id
+			for i := 0; i < child.children_count; i += 2 {
+				lhs := c.a.child_node(child, i)
+				if lhs.kind == .ident && lhs.value.len > 0 {
+					names[lhs.value] = true
 				}
-				i += 2
 			}
 		}
 		for i in 0 .. child.children_count {
 			next_id := c.a.child(child, i)
 			if int(next_id) >= 0 {
 				stack << next_id
+			}
+		}
+	}
+	// Infer calls using the locals visible at each identifier, not declarations
+	// collected later in the body or in a different block.
+	scoped := CallCollector{
+		...c
+		local_ident_visibility:     markused_visible_local_idents(c.a, node, names)
+		has_local_ident_visibility: true
+	}
+	for id in declarations {
+		child := c.a.node(id)
+		for i := 0; i + 1 < child.children_count; i += 2 {
+			lhs := c.a.child_node(child, i)
+			rhs_id := c.a.child(child, i + 1)
+			if lhs.kind != .ident || lhs.value.len == 0 || int(rhs_id) < 0 {
+				continue
+			}
+			type_name := if child.children_count == 2 && child.typ.len > 0 {
+				scoped.local_decl_type_name(child.typ, rhs_id, cur_module, imports, type_names)
+			} else {
+				scoped.top_level_decl_rhs_type_name(rhs_id, cur_module, imports, names, type_names)
+			}
+			if type_name.len > 0 {
+				type_names[lhs.value] = type_name
 			}
 		}
 	}
@@ -6689,8 +6715,16 @@ fn (c &CallCollector) top_level_call_return_type_name(call_id flat.NodeId, cur_m
 		base_id := c.a.child(callee, 0)
 		name := c.qualified_expr_name(base_id)
 		resolved := markused_resolve_imported_type_name(name, imports)
-		if name.all_before('.') !in local_values
-			&& c.generic_fn_name_is_known(resolved, cur_module) {
+		mut root_id := base_id
+		for c.a.node(root_id).kind == .selector && c.a.node(root_id).children_count > 0 {
+			root_id = c.a.child(c.a.node(root_id), 0)
+		}
+		shadowed := if c.has_local_ident_visibility {
+			markused_ident_is_visible_local(root_id, name.all_before('.'), local_values, c.local_ident_visibility)
+		} else {
+			name.all_before('.') in local_values
+		}
+		if !shadowed && c.generic_fn_name_is_known(resolved, cur_module) {
 			callee = c.a.node(base_id)
 		}
 	}
