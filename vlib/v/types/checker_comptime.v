@@ -4662,7 +4662,7 @@ fn (tc &TypeChecker) interface_cast_is_readonly_receiver(id flat.NodeId, child_i
 	}
 	info := tc.resolve_call_info(call_id, *call) or { return false }
 	if !info.has_receiver || tc.call_param_is_mut(info, 0)
-		|| unalias_type(info.return_type) !is Primitive {
+		|| !readonly_interface_getter_scalar_type(info.return_type) {
 		return false
 	}
 	decl_module := tc.fn_type_modules[info.name] or { tc.cur_module }
@@ -4691,6 +4691,12 @@ fn (tc &TypeChecker) interface_cast_is_readonly_receiver(id flat.NodeId, child_i
 		}
 	}
 	return returns == 1
+}
+
+fn readonly_interface_getter_scalar_type(typ Type) bool {
+	clean := unalias_type(typ)
+	return clean is Primitive || clean is Char || clean is Rune || clean is ISize
+		|| clean is USize || clean is Enum
 }
 
 fn (tc &TypeChecker) smartcast_wrapper_cast_payload_compatible(child_id flat.NodeId, actual Type, target Type) bool {

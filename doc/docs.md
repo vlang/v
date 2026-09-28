@@ -4405,6 +4405,9 @@ They are just a convenient way to write `i.some_function()` instead of
 `some_function(i)`, similar to how struct methods can be looked at, as
 a convenience for writing `s.xyz()` instead of `xyz(s)`.
 
+An immediate read-only interface method call on a smart-casted value can return
+a scalar, including `char`, `rune`, `isize`, `usize`, or an enum.
+
 > [!NOTE]
 > This feature is NOT a "default implementation" like in C#.
 
