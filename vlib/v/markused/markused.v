@@ -6503,6 +6503,14 @@ fn markused_infer_alias_generic_type(param_text string, actual types.Type, gener
 		}
 		return
 	}
+	if clean.starts_with('chan ') {
+		actual_clean := types.unwrap_pointer(actual)
+		if actual_clean is types.Channel {
+			markused_infer_alias_generic_type(clean[5..], actual_clean.elem_type, generic_params,
+				mut inferred)
+		}
+		return
+	}
 	if clean.starts_with('...') {
 		markused_infer_alias_generic_type(clean[3..], actual, generic_params, mut inferred)
 		return
@@ -6550,7 +6558,7 @@ fn markused_infer_generic_type_text(pattern string, actual string, generic_param
 		}
 		return
 	}
-	for prefix in ['mut ', 'shared ', 'atomic ', '...', '[]', '?', '!', '&'] {
+	for prefix in ['mut ', 'shared ', 'atomic ', '...', '[]', 'chan ', '?', '!', '&'] {
 		if clean.starts_with(prefix) {
 			if value.starts_with(prefix) {
 				markused_infer_generic_type_text(clean[prefix.len..], value[prefix.len..],

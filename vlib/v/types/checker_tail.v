@@ -16954,6 +16954,13 @@ fn (mut tc TypeChecker) infer_generic_type_text_from_type(param_text string, act
 		}
 		return
 	}
+	if clean.starts_with('chan ') {
+		if actual is Channel {
+			tc.infer_generic_type_text_from_type(clean[5..], actual.elem_type, generic_params,
+				mut inferred)
+		}
+		return
+	}
 	if clean.starts_with('[') {
 		close := find_matching_bracket(clean, 0)
 		if close > 0 && close + 1 < clean.len && actual is ArrayFixed {
@@ -17029,14 +17036,14 @@ pub fn (tc &TypeChecker) infer_generic_reachability_type_args(fn_name string, pa
 	clean := trimmed_space(param_text)
 	base, _, is_generic := generic_type_application_parts(clean)
 	is_callback := clean.contains('fn(') || clean.contains('fn (')
-	if !is_callback && !is_generic {
+	if !is_callback && !is_generic && !clean.starts_with('chan ') {
 		return inferred
 	}
 	file := tc.fn_type_files[fn_name] or { tc.cur_file }
 	module_name := tc.fn_type_modules[fn_name] or { tc.cur_module }
 	mut view := tc.fork_type_parse_view(file, module_name)
 	view.generic_decl_file = file
-	if !is_callback
+	if !is_callback && !clean.starts_with('chan ')
 		&& view.interface_metadata_name(view.generic_param_type_text(base)) !in view.interface_names {
 		return inferred
 	}

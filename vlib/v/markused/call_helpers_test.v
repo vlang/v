@@ -695,6 +695,7 @@ fn test_unindexed_generic_factory_return_infers_nested_argument_types() {
 	for forms in [
 		['Box[U]', 'Box[T]'],
 		['[3]U', '[3]T'],
+		['chan U', 'chan T'],
 		['?U', 'T'],
 		['...U', 'T'],
 	] {
@@ -707,6 +708,15 @@ fn test_unindexed_generic_factory_return_infers_nested_argument_types() {
 		assert inferred == 'gates.Gate[T]'
 		assert collector.typed_receiver_method_name(inferred, 'backward', 'consumer')? == 'gates.Gate[T].backward'
 	}
+}
+
+fn test_channel_generic_reachability_inference() {
+	mut a := flat.FlatAst.new()
+	tc := types.TypeChecker.new(&a)
+	actual := types.Type(types.Channel{ elem_type: types.Type(types.int_) })
+	inferred := tc.infer_generic_reachability_type_args('gates.make_gate', 'chan U', actual,
+		['U'])
+	assert inferred['U'] == 'int'
 }
 
 fn test_unindexed_generic_factory_uses_prior_local_type() {
@@ -1447,11 +1457,14 @@ fn test_factory_local_inference_preserves_range_integer_types() {
 					children << [low, high]
 				}
 				children << [decl, method]
-				loop := call_helper_node(mut a, flat.Node{ kind: .for_in_stmt, value: if range_node {
-					'3'
-				} else {
-					'4'
-				} }, children)
+				loop := call_helper_node(mut a, flat.Node{
+					kind:  .for_in_stmt
+					value: if range_node {
+						'3'
+					} else {
+						'4'
+					}
+				}, children)
 				body := call_helper_node(mut a, flat.Node{ kind: .block }, [loop])
 				fn_id := call_helper_node(mut a, flat.Node{ kind: .fn_decl, value: 'use_gate' }, [
 					low_param,
