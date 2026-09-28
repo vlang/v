@@ -149,6 +149,9 @@ type ByteRowsAlias = ByteRows
 type ByteRowsAliasChain = ByteRowsAlias
 
 fn first_alias_byte_row(rows ByteRowsAliasChain) u8 {
+	mut pointer := unsafe { &[2]u8(nil) }
+	pointer = rows
+	assert first_byte_row(pointer) == first_byte_row(rows)
 	return first_byte_row(rows)
 }
 

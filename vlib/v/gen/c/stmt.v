@@ -8926,7 +8926,7 @@ fn (mut g FlatGen) gen_assign(node flat.Node) {
 				}
 				rhs_type := g.usable_expr_type(rhs_id)
 				if node.op == .assign && cgen_unalias_type(lhs_type) is types.Pointer {
-					if rhs_fixed := array_fixed_type(rhs_type) {
+					if rhs_fixed := array_fixed_type(cgen_unalias_type(rhs_type)) {
 						lhs_ptr := cgen_unalias_type(lhs_type) as types.Pointer
 						needs_byte_cast := g.fixed_array_decay_byte_compatible(rhs_fixed.elem_type,
 							lhs_ptr.base_type)
