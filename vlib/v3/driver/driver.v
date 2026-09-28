@@ -12687,6 +12687,11 @@ fn v3_canonical_cache_artifact(path string, directories []string) ?string {
 	if !os.is_abs_path(path) {
 		return none
 	}
+	// Compiler source locations name the reporting file, not the missing input.
+	location_suffix := path.all_after_last(':')
+	if location_suffix.len > 0 && location_suffix.bytes().all(it >= `0` && it <= `9`) {
+		return none
+	}
 	clean := os.abs_path(path)
 	parent := os.dir(clean)
 	if !os.is_dir(parent) {
@@ -12758,6 +12763,23 @@ fn v3_cache_error_artifacts(output string) []string {
 	return artifacts
 }
 
+fn v3_cache_diagnostic_has_source_position(line string) bool {
+	bytes := line.bytes()
+	for i, ch in bytes {
+		if ch != `:` {
+			continue
+		}
+		mut end := i + 1
+		for end < bytes.len && bytes[end] >= `0` && bytes[end] <= `9` {
+			end++
+		}
+		if end > i + 1 && end < bytes.len && bytes[end] == `:` {
+			return true
+		}
+	}
+	return false
+}
+
 // v3_cache_failure_artifacts returns the cache entries to discard after a C
 // toolchain failure. Both signals are required: the output has to name a cached
 // artifact *and* report a whole-file failure, so an ordinary compile error is
@@ -12777,6 +12799,11 @@ fn v3_cache_failure_artifacts(output string) []string {
 		if !has_marker {
 			continue
 		}
+		missing_input := lowered.contains('no such file or directory')
+			|| lowered.contains('file not found')
+		if missing_input && v3_cache_diagnostic_has_source_position(line) {
+			continue
+		}
 		mut diagnostic := line
 		for next in lines[i + 1..] {
 			if !next.starts_with('>>>') && (next.len == 0 || !next[0].is_space()) {
@@ -12785,6 +12812,9 @@ fn v3_cache_failure_artifacts(output string) []string {
 			diagnostic += '\n${next}'
 		}
 		for artifact in v3_cache_error_artifacts(diagnostic) {
+			if missing_input && (os.exists(artifact) || artifact.contains(': ')) {
+				continue
+			}
 			if artifact !in artifacts {
 				artifacts << artifact
 			}

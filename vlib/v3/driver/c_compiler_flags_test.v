@@ -667,6 +667,12 @@ fn test_v3_cache_artifact_detection_accepts_quoted_paths_with_spaces() {
 	}
 	object := os.join_path(cache_dir, 'cached object.o')
 	os.write_file(object, 'broken')!
+	source := os.join_path(cache_dir, 'main.c')
+	os.write_file(source, '#include "missing.h"\n')!
+	clang_missing := v3_cache_failure_artifacts("${source}:42:10: fatal error: 'missing.h' file not found")
+	assert clang_missing == [], clang_missing.str()
+	assert v3_cache_failure_artifacts("${source}:42:10: fatal error: 'missing.h': No such file or directory") == []
+	assert v3_cache_failure_artifacts("clang: ${source}: missing.h: file not found") == []
 	assert v3_cache_failure_artifacts("ld: '${object}': file format not recognized") == [
 		os.real_path(object),
 	]
