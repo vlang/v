@@ -28,7 +28,16 @@ fn make_global_array_pointer_row(index int) [3]int {
 	return [index * 10, index * 10 + 1, index * 10 + 2]!
 }
 
+fn free_global_aligned_array_pointer(value &[2]GlobalAlignedArrayPointerCell) {
+	unsafe { free(value) }
+}
+
+fn free_global_optional_aligned_array_pointer(value &[2]?GlobalAlignedArrayPointerCell) {
+	unsafe { free(value) }
+}
+
 __global global_zero_array = &[4]int{}
+__global global_parenthesized_array = &([4]int{})
 __global global_literal_array = &[3, 5]!
 __global global_cell_array = &[2]GlobalArrayPointerCell{}
 __global global_nested_array = &[2][3]int{}
@@ -41,6 +50,7 @@ __global global_nested_index_array = &[2][3]int{init: [3]int{init: index + 5}}
 __global global_nested_call_array = &[2][3]int{init: make_global_array_pointer_row(index)}
 __global global_nested_alias_call_array = &[2]GlobalArrayPointerNestedRowAlias{init: make_global_array_pointer_row(index)}
 __global global_aligned_array = &[2]GlobalAlignedArrayPointerCell{}
+__global global_optional_aligned_array = &[2]?GlobalAlignedArrayPointerCell{}
 __global global_nested_aligned_array = &[2][2]GlobalAlignedArrayPointerCell{}
 __global global_inherited_aligned_array = &[2]GlobalInheritedAlignedArrayPointerCell{}
 __global global_filled_aligned_array = &[2]GlobalAlignedArrayPointerCell{init: GlobalAlignedArrayPointerCell{
@@ -49,6 +59,7 @@ __global global_filled_aligned_array = &[2]GlobalAlignedArrayPointerCell{init: G
 
 fn test_global_fixed_array_pointers_are_initialized() {
 	assert unsafe { voidptr(global_zero_array) } != unsafe { nil }
+	assert unsafe { voidptr(global_parenthesized_array) } != unsafe { nil }
 	assert unsafe { voidptr(global_literal_array) } != unsafe { nil }
 	assert unsafe { voidptr(global_cell_array) } != unsafe { nil }
 	assert unsafe { voidptr(global_nested_array) } != unsafe { nil }
@@ -57,6 +68,7 @@ fn test_global_fixed_array_pointers_are_initialized() {
 	assert unsafe { voidptr(global_filled_array) } != unsafe { nil }
 	assert unsafe { voidptr(global_index_array) } != unsafe { nil }
 	assert u64(voidptr(global_aligned_array)) % 512 == 0
+	assert u64(voidptr(global_optional_aligned_array)) % 512 == 0
 	assert u64(voidptr(global_nested_aligned_array)) % 512 == 0
 	assert u64(voidptr(global_inherited_aligned_array)) % 512 == 0
 	assert u64(voidptr(global_filled_aligned_array)) % 512 == 0
@@ -67,6 +79,8 @@ fn test_global_fixed_array_pointers_are_initialized() {
 		assert global_zero_array[3] == 0
 		global_zero_array[3] = 42
 		assert global_zero_array[3] == 42
+		assert global_parenthesized_array[0] == 0
+		assert global_parenthesized_array[3] == 0
 		assert global_literal_array[0] == 3
 		assert global_literal_array[1] == 5
 		assert global_cell_array[0].value == 23
@@ -101,4 +115,6 @@ fn test_global_fixed_array_pointers_are_initialized() {
 		assert global_filled_aligned_array[0].value == 5
 		assert global_filled_aligned_array[1].value == 6
 	}
+	free_global_aligned_array_pointer(global_aligned_array)
+	free_global_optional_aligned_array_pointer(global_optional_aligned_array)
 }

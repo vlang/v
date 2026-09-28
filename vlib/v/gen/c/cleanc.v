@@ -22850,8 +22850,12 @@ fn (mut g FlatGen) emit_global_inits() {
 				initializer := g.a.node(val_id)
 				if initializer.kind == .prefix && initializer.op == .amp
 					&& initializer.children_count == 1 {
-					child_id := g.a.child(initializer, 0)
-					child := g.a.node(child_id)
+					mut child_id := g.a.child(initializer, 0)
+					mut child := g.a.node(child_id)
+					for child.kind == .paren && child.children_count == 1 {
+						child_id = g.a.child(child, 0)
+						child = g.a.node(child_id)
+					}
 					if child.kind in [.array_init, .array_literal, .struct_init]
 						|| (child.kind == .postfix && child.op == .not) {
 						if fixed := array_fixed_type(default_init_unalias_type(clean_type.base_type)) {
@@ -22904,6 +22908,12 @@ fn (g &FlatGen) global_fixed_array_type_has_aligned_struct(typ types.Type, mut s
 	if clean is types.ArrayFixed {
 		return g.global_fixed_array_type_has_aligned_struct(clean.elem_type, mut seen)
 	}
+	if clean is types.OptionType {
+		return g.global_fixed_array_type_has_aligned_struct(clean.base_type, mut seen)
+	}
+	if clean is types.ResultType {
+		return g.global_fixed_array_type_has_aligned_struct(clean.base_type, mut seen)
+	}
 	if clean is types.Struct && !seen[clean.name] {
 		seen[clean.name] = true
 		if g.struct_decl_alignment_for_name(clean.name) != none {
@@ -22936,6 +22946,9 @@ fn (g &FlatGen) global_fixed_array_pointer_alignment(fixed types.ArrayFixed) ?st
 	if elem is types.Struct {
 		ct := g.struct_decl_alignment_c_type(elem.name, g.value_c_type(elem))
 		return '__alignof__(${ct})'
+	}
+	if elem is types.OptionType || elem is types.ResultType {
+		return '__alignof__(${g.value_c_type(elem)})'
 	}
 	return none
 }

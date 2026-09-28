@@ -2309,6 +2309,9 @@ fn (g &FlatGen) pointer_free_needs_aligned_free(t types.Type) bool {
 	if base_type is types.Pointer {
 		return false
 	}
+	if base_type is types.ArrayFixed {
+		return g.global_fixed_array_pointer_alignment(base_type) != none
+	}
 	name := base_type.name()
 	if name.len == 0 {
 		return false
