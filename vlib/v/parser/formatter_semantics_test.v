@@ -7,6 +7,8 @@ fn test_formatter_preserves_syntax_without_semantic_diagnostics() {
 	path := os.join_path(os.vtmp_dir(), 'formatter_semantics_${os.getpid()}.v')
 	defer { os.rm(path) or {} }
 	cases := {
+		'fn main() { asm arm64 intel { nop } }':                                                     'the `intel` assembly modifier is only supported for i386 and amd64'
+		'fn f(value int) { if match value { 0 { true } else { false } } {} }':                       'cannot use `match` with `if` statements'
 		'fn f(values []?int) ?int { return values[0]? }':                                            '`?` for propagating errors from index expressions is no longer supported, use `!` instead of `?`'
 		'@[inline] @[deprecated] fn f() {}':                                                         'multiple attributes should be in the same @[], with ; separators'
 		"struct Holder { value int @[required] @[json: 'value'] }":                                  'multiple attributes should be in the same @[], with ; separators'
@@ -109,4 +111,27 @@ fn test_formatter_still_reports_invalid_syntax() {
 	mut formatter := Parser.new(prefs)
 	formatter.parse_file(path)
 	assert formatter.diagnostics.len > 0
+}
+
+fn test_formatter_skips_assembly_backend_compatibility() {
+	path := os.join_path(os.vtmp_dir(), 'formatter_asm_backend_${os.getpid()}.v')
+	defer { os.rm(path) or {} }
+	for backend in ['wasm', 'arm64', 'eval'] {
+		for source, expected in {
+			'fn main() { asm goto arm64 { nop } }':  '`asm goto` is only supported by the C backend'
+			'fn main() { asm amd64 raw { "nop" } }': 'the `raw` assembly modifier is only supported by the C backend'
+			'fn main() { asm amd64 intel { nop } }': 'the `intel` assembly modifier is only supported by the C backend'
+		} {
+			os.write_file(path, source + '\n')!
+			mut prefs := pref.new_preferences()
+			prefs.backend = backend
+			mut compiler := Parser.new(prefs)
+			compiler.parse_file(path)
+			assert compiler.diagnostics.any(it.message == expected), compiler.diagnostics.str()
+			prefs.is_fmt = true
+			mut formatter := Parser.new(prefs)
+			formatter.parse_file(path)
+			assert formatter.diagnostics.len == 0, formatter.diagnostics.str()
+		}
+	}
 }

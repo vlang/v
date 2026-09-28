@@ -147,6 +147,32 @@ fn test_fmt_accepts_semantic_duplicate_operator_and_recursive_alias() {
 	}
 }
 
+fn test_fmt_preserves_assembly_compatibility() {
+	for options in ['', '-b=wasm', '-b=arm64', '-b=eval'] {
+		for assembly in ['asm arm64 intel { nop }', 'asm amd64 raw { "nop" }', 'asm goto arm64 { nop }'] {
+			source := 'fn main() { ${assembly} }\n'
+			res, formatted := run_vfmt_write('assembly_compatibility', source, options)
+			assert res.exit_code == 0, res.output
+			assert formatted.contains(assembly), formatted
+			second, twice := run_vfmt_write('assembly_compatibility_twice', formatted, options)
+			assert second.exit_code == 0, second.output
+			assert twice == formatted
+		}
+	}
+}
+
+fn test_fmt_preserves_match_conditions() {
+	source := 'fn f(value int) { if match value { 0 { true } else { false } } { println(value) } }\n'
+	res, formatted := run_vfmt_write('match_condition', source, '')
+	assert res.exit_code == 0, res.output
+	assert formatted.contains('if match value {')
+	assert formatted.contains('true') && formatted.contains('false')
+	assert formatted.contains('println(value)')
+	second, twice := run_vfmt_write('match_condition_twice', formatted, '')
+	assert second.exit_code == 0, second.output
+	assert twice == formatted
+}
+
 fn test_fmt_preserves_index_propagation() {
 	for source in [
 		'fn f(values []?int) ?int { return values[0]? }\n',

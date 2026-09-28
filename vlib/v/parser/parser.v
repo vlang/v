@@ -8260,7 +8260,7 @@ fn (mut p Parser) return_stmt() flat.NodeId {
 fn (mut p Parser) if_stmt() flat.NodeId {
 	if_start := p.span_start()
 	p.next() // skip 'if'
-	if p.tok == .key_match {
+	if p.tok == .key_match && !p.prefs.is_fmt {
 		p.record_diagnostic_span('cannot use `match` with `if` statements', p.tok_pos, p.tok_end)
 	} else if p.tok == .key_if {
 		p.record_diagnostic_span('the condition of an `if` should be a boolean expression, not another `if` statement; did you write `if` twice by mistake?',
