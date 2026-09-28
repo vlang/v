@@ -91,6 +91,9 @@ pub:
 	// In strict mode, quoted strings are not accepted as numbers.
 	// For example, '"123"' will fail to decode as int in strict mode,
 	// but will succeed in default mode.
+	// Strict mode also requires a fixed size array to get a JSON array with exactly
+	// as many elements. By default, `null` or missing trailing elements keep their
+	// default values, and extra elements are ignored.
 	strict bool
 }
 
@@ -98,7 +101,7 @@ pub:
 @[markused]
 struct Decoder {
 	json   string // json is the JSON data to be decoded.
-	strict bool   // strict mode rejects quoted strings as numbers
+	strict bool   // strict mode rejects quoted strings as numbers, and fixed arrays of another length
 mut:
 	values_info  LinkedList[ValueInfo] // A linked list to store ValueInfo.
 	checker_idx  int                   // checker_idx is the current index of the decoder.
@@ -350,10 +353,6 @@ pub fn decode[T](val string, params DecoderOptions) !T {
 		decoder.decode_value(mut result)!
 	}
 	return result
-}
-
-fn get_dynamic_from_element[T](_t T) []T {
-	return []T{}
 }
 
 fn create_decoded_ptr[T](_ &T) &T {
@@ -824,19 +823,7 @@ fn (mut decoder Decoder) decode_value[T](mut val T) ! {
 			// and bug recursive array decoding like `[][]int{}`
 			return
 		} $else $if T.unaliased_typ is $array_fixed {
-			mut dynamic_val := get_dynamic_from_element(val[0])
-
-			// avoid copying by pointing dynamic_val to val
-			unsafe {
-				dynamic_val.len = 0
-				dynamic_val.cap = val.len // ensures data wont reallocate
-				dynamic_val.data = &val
-			}
-			decoder.decode_array(mut dynamic_val)!
-
-			if dynamic_val.len != val.len {
-				decoder.decode_error('Fixed size array expected ${val.len} elements but got ${dynamic_val.len} elements')!
-			}
+			decoder.decode_fixed_array(mut val)!
 			return
 		} $else $if T.unaliased_typ is $struct {
 			struct_info := decoder.current_node.value
@@ -1250,28 +1237,80 @@ fn (mut decoder Decoder) decode_array[T](mut val []T) ! {
 					break
 				}
 
-				mut array_element := T{}
-
-				$if T.indirections == 1 {
-					if decoder.current_node.value.value_kind == .null {
-						if decoder.current_node != unsafe { nil } {
-							decoder.current_node = decoder.current_node.next
-						}
-					} else {
-						mut decoded_ptr := create_decoded_ptr(array_element)
-						decoder.decode_value(mut decoded_ptr)!
-						array_element = decoded_ptr
-					}
-				} $else {
-					decoder.decode_value(mut array_element)!
-				}
-
-				val << array_element
+				val << decoder.decode_array_element(T{})!
 			}
 		} else {
 			decoder.decode_error('Expected array, but got ${array_info.value_kind}')!
 		}
 	}
+}
+
+// decode_fixed_array decodes a JSON array into the elements of a fixed size array.
+// Outside of strict mode it behaves like the removed `json` module: `null` keeps the
+// default elements, a shorter array only replaces the leading elements, and extra
+// elements are skipped.
+fn (mut decoder Decoder) decode_fixed_array[T](mut val T) ! {
+	array_info := decoder.current_node.value
+	if array_info.value_kind == .null && !decoder.strict {
+		decoder.current_node = decoder.current_node.next
+		return
+	}
+	if array_info.value_kind != .array {
+		decoder.decode_error('Expected array, but got ${array_info.value_kind}')!
+	}
+	decoder.current_node = decoder.current_node.next
+	array_end := array_info.position + array_info.length
+	mut idx := 0
+	for decoder.current_node != unsafe { nil }
+		&& decoder.current_node.value.position < array_end {
+		if idx < val.len {
+			decoder.decode_fixed_array_element(&val[idx])!
+		} else {
+			decoder.skip_current_value()
+		}
+		idx++
+	}
+	if decoder.strict && idx != val.len {
+		decoder.decode_error('Fixed size array expected ${val.len} elements but got ${idx} elements')!
+	}
+}
+
+// decode_fixed_array_element decodes the current JSON value into a fixed size array
+// element. Elements are decoded in place, since v3 cannot yet assign a fixed array
+// element that is itself a fixed array through a `mut` parameter; only a pointer
+// element is replaced.
+fn (mut decoder Decoder) decode_fixed_array_element[E](element &E) ! {
+	$if E.indirections == 1 {
+		unsafe {
+			*element = decoder.decode_array_element(*element)!
+		}
+	} $else {
+		mut target := unsafe { element }
+		decoder.decode_value(mut target)!
+	}
+}
+
+// decode_array_element decodes the current JSON value as an array element that
+// starts out as `initial`. It takes and returns the element by value: for a `mut`
+// parameter, a pointer element type would be inferred without its `&`.
+fn (mut decoder Decoder) decode_array_element[E](initial E) !E {
+	mut element := initial
+	$if E is $interface {
+		decoder.skip_current_value()
+	} $else $if E.unaliased_typ is voidptr {
+		decoder.skip_current_value()
+	} $else $if E.indirections == 1 {
+		if decoder.current_node.value.value_kind == .null {
+			decoder.current_node = decoder.current_node.next
+		} else {
+			mut decoded_ptr := create_decoded_ptr(element)
+			decoder.decode_value(mut decoded_ptr)!
+			element = decoded_ptr
+		}
+	} $else {
+		decoder.decode_value(mut element)!
+	}
+	return element
 }
 
 fn (mut decoder Decoder) decode_map[V](mut val map[string]V) ! {

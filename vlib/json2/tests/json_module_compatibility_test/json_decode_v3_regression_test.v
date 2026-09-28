@@ -121,21 +121,17 @@ fn test_json_decode_v3_fixed_arrays_keep_recursive_defaults() {
 	assert omitted.elems[0].value == 7
 	assert omitted.elems[1].value == 7
 
-	// json2 requires a JSON array to fill the whole fixed-size array.
-	json2.decode[DecodeV3FixedDefaults]('{"maps":[{"decoded":3}],"elems":[{"value":4}]}') or {
-		assert err.msg().contains('Fixed size array expected 2 elements but got 1 elements')
-	}
-	mut full := json2.decode[DecodeV3FixedDefaults]('{"maps":[{"decoded":3},{}],"elems":[{"value":4},{}]}')!
-	full.maps[1]['defaulted'] = 5
-	assert full.maps[0]['decoded'] == 3
-	assert full.maps[1]['defaulted'] == 5
-	assert full.elems[0].value == 4
-	assert full.elems[1].value == 7
+	mut partial := json2.decode[DecodeV3FixedDefaults]('{"maps":[{"decoded":3}],"elems":[{"value":4}]}')!
+	partial.maps[1]['defaulted'] = 5
+	assert partial.maps[0]['decoded'] == 3
+	assert partial.maps[1]['defaulted'] == 5
+	assert partial.elems[0].value == 4
+	assert partial.elems[1].value == 7
 
-	// json2 does not accept `null` for a fixed-size array either.
-	json2.decode[DecodeV3FixedDefaults]('{"maps":null,"elems":null}') or {
-		assert err.msg().contains('Expected array, but got null')
-	}
+	mut nulls := json2.decode[DecodeV3FixedDefaults]('{"maps":null,"elems":null}')!
+	nulls.maps[0]['ready'] = 6
+	assert nulls.maps[0]['ready'] == 6
+	assert nulls.elems[0].value == 7
 }
 
 fn test_json_decode_v3_propagates_invalid_time_errors() {
