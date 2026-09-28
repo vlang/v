@@ -527,7 +527,9 @@ fn test_v3_cache_failure_artifacts_needs_a_cached_path_and_a_whole_file_failure(
 	os.mkdir_all(cache_dir)!
 	object := os.join_path(cache_dir, 'atomic_deadbeef_cafe.o')
 	rejected := 'tcc: error: ${object}: unrecognized file type'
-	assert v3_cache_failure_artifacts(rejected) == [os.join_path_single(os.real_path(cache_dir), os.base(object))]
+	assert v3_cache_failure_artifacts(rejected) == [
+		os.join_path_single(os.real_path(cache_dir), os.base(object)),
+	]
 
 	// A line-scoped diagnostic in a cached unit is a real compile error, not a
 	// poisoned entry; spending a rebuild on it would only reproduce it.
@@ -544,6 +546,11 @@ fn test_v3_cache_failure_artifacts_needs_a_cached_path_and_a_whole_file_failure(
 
 	// Every marker has to be paired with a cached path.
 	assert v3_cache_failure_artifacts('ld: duplicate symbol _main') == []
+
+	// A warning about a healthy cache entry and a separate linker error do not
+	// identify that entry as the cause of the failure.
+	unrelated_failure := 'ld: warning: using ${object}\nld: cannot find -lfoo: No such file or directory'
+	assert v3_cache_failure_artifacts(unrelated_failure) == []
 }
 
 fn test_v3_fastc_cache_failure_maps_restored_build_object_to_owned_entry() {

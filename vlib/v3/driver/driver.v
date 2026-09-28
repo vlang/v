@@ -12694,18 +12694,26 @@ fn v3_cache_error_artifacts(output string) []string {
 // artifact *and* report a whole-file failure, so an ordinary compile error is
 // never mistaken for a poisoned cache.
 fn v3_cache_failure_artifacts(output string) []string {
-	lowered := output.to_lower_ascii()
-	mut has_marker := false
-	for marker in v3_cache_failure_markers {
-		if lowered.contains(marker) {
-			has_marker = true
-			break
+	mut artifacts := []string{}
+	for line in output.split_into_lines() {
+		lowered := line.to_lower_ascii()
+		mut has_marker := false
+		for marker in v3_cache_failure_markers {
+			if lowered.contains(marker) {
+				has_marker = true
+				break
+			}
+		}
+		if !has_marker {
+			continue
+		}
+		for artifact in v3_cache_error_artifacts(line) {
+			if artifact !in artifacts {
+				artifacts << artifact
+			}
 		}
 	}
-	if !has_marker {
-		return []
-	}
-	return v3_cache_error_artifacts(output)
+	return artifacts
 }
 
 // v3_discard_cache_artifacts removes the rejected entries together with the
