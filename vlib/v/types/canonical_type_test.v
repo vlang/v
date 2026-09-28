@@ -27,3 +27,20 @@ fn test_parse_canonical_builtin_type_ignores_registered_struct() {
 
 	assert tc.parse_canonical_type('string') is String
 }
+
+fn test_parse_canonical_type_cached_does_not_reuse_typeof_across_scopes() {
+	a := flat.FlatAst.new()
+	mut tc := TypeChecker.new(&a)
+	tc.set_fresh_type_cache(true)
+	tc.cur_scope = new_scope(tc.file_scope)
+	tc.cur_scope.insert('x', Type(int_))
+	assert tc.parse_canonical_type_cached('[]typeof(x)').name() == '[]int'
+	// Same text and parse context, but `x` now has another type in scope.
+	tc.cur_scope = new_scope(tc.file_scope)
+	tc.cur_scope.insert('x', Type(string_))
+	assert tc.parse_canonical_type_cached('[]typeof(x)').name() == '[]string'
+	// Context-independent texts are still memoized.
+	assert tc.parse_canonical_type_cached('[]int').name() == '[]int'
+	assert '[]int' in tc.type_cache.canonical_texts
+	assert '[]typeof(x)' !in tc.type_cache.canonical_texts
+}

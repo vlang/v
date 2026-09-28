@@ -99,7 +99,8 @@ paths moved after 0.5.2. Fallback roots missing these compatibility modules are
 not used. If a fallback command exits unsuccessfully, V notes where the default
 compiler stopped and how to show its suppressed diagnostics. For a command
 that may have run user code, the note preserves the child's status without
-mislabeling it as a compiler failure. Re-run the command with `-new-compiler`
+mislabeling it as a compiler failure, including JavaScript tests run by the compatibility compiler.
+Re-run the command with `-new-compiler`
 to see the default-compiler diagnostics without a fallback retry.
 
 ## Packaging V for distribution
@@ -1264,6 +1265,9 @@ println(a) // [[[0, 0], [0, 2], [0, 0]], [[0, 0], [0, 0], [0, 0]]]
 
 #### Array methods
 
+A function literal passed to `map` uses its return type for the output elements. Its parameters
+and nested array expressions have their own scope, including parameters named `it`.
+
 All arrays can be easily printed with `println(arr)` and converted to a string
 with `s := arr.str()`.
 
@@ -1531,6 +1535,9 @@ filtered := files.filter(it#[-4..].to_lower() == '.jpg').map(it.to_upper())
 
 ### Fixed size arrays
 
+Mapping a fixed size array preserves its length and uses the mapping expression or function
+return type as its element type. Filtering still produces a dynamic array.
+
 V also supports arrays with fixed size. Unlike ordinary arrays, their
 length is constant. You cannot append elements to them, nor shrink them.
 You can only modify their elements in place.
@@ -1563,6 +1570,8 @@ Note that slicing will cause the data of the fixed size array to be copied to
 the newly created ordinary array.
 
 ### Maps
+
+Methods and references on map iteration values address the stored element, including nested maps.
 
 ```v
 mut m := map[string]int{} // a map with `string` keys and `int` values
@@ -1926,6 +1935,9 @@ the enum operand supplies the type for shorthand values such as `.red` in the br
 This works with the enum operand on either side of the comparison.
 Branch-local values keep their declared types; unrelated enum types cannot be compared this way.
 
+Appending an `if` or `match` expression to an enum array also supplies the element type
+for shorthand values in its branches. Every branch must produce a compatible enum value.
+
 #### `If` unwrapping
 Anywhere you can use `or {}`, you can also use "if unwrapping". This binds the unwrapped value
 of an expression to a variable when that expression is not none nor an error.
@@ -2082,6 +2094,9 @@ match mut x {
 ```
 
 ### Match
+
+Conditions that compare different nested fields remain distinct match cases, even when
+their final field names and comparison operators are the same.
 
 ```v
 os := 'windows'
@@ -2495,6 +2510,8 @@ outer: for i := 4; true; i++ {
 ```
 
 The label must immediately precede the outer loop.
+A labelled loop can iterate over a `filter` or `map` result; `break` and `continue`
+refer to that loop after its iterable has been evaluated.
 The above code prints:
 
 ```
@@ -2800,6 +2817,9 @@ _ = Foo{}
 Here "short" means omitting the field names and relying on the struct field
 order, so `Point{10, 20}` is a shorter form of `Point{x: 10, y: 20}`.
 
+For imported struct types, both forms report an unknown type using its qualified name
+and the same suggestions. Dots in field values do not affect which type name is highlighted.
+
 ```v
 struct Point {
 	x int
@@ -2923,6 +2943,8 @@ __global:
 Private fields are available only inside the same [module](#modules), any attempt
 to directly access them from another module will cause an error during compilation.
 Public immutable fields are readonly everywhere.
+A public function can return a value of a private struct type. The caller can read its public
+fields without naming the private type; its private fields remain inaccessible.
 
 ### Anonymous structs
 
@@ -3049,6 +3071,9 @@ but a short, preferably one letter long, name.
 
 ### Embedded structs
 
+Promoted fields from different nested embeds can be initialized together. Their shared parent
+is initialized once, retaining the explicitly supplied fields and defaults for omitted fields.
+
 V supports embedded structs.
 
 ```v
@@ -3099,6 +3124,9 @@ Unlike inheritance, you cannot type cast between structs and embedded structs
 (the embedding struct can also have its own fields, and it can also embed multiple structs).
 
 If you need to access embedded structs directly, use an explicit reference like `button.Size`.
+
+Optional fields keep their optional type when accessed through multiple embedded structs.
+You can unwrap them with an `if` guard, including after an earlier check against `none`.
 
 Conceptually, embedded structs are similar to [mixin](https://en.wikipedia.org/wiki/Mixin)s
 in OOP, *NOT* base classes.
@@ -3271,6 +3299,10 @@ V supports functions that receive an arbitrary, variable amounts of arguments, d
 Below, `a ...int` refers to an arbitrary amount of parameters that will be collected
 into an array named `a`.
 
+Methods on generic structs can also accept these arguments. The receiver type determines
+the specialization, and the arguments are collected into the parameter array.
+The element type keeps its declaring module when the method is called from another module.
+
 ```v
 fn sum(a ...int) int {
 	mut total := 0
@@ -3356,6 +3388,9 @@ Parameter names and whitespace do not affect function type compatibility.
 
 ### Closures
 
+Callbacks in specialized generic functions retain the functions they call, including imported
+functions referenced only from the callback body.
+
 V supports closures too.
 This means that anonymous functions can inherit variables from the scope they were created in.
 They must do so explicitly by listing all variables that are inherited.
@@ -3407,6 +3442,8 @@ println(c()) // 3
 ```
 
 If you need the value to be modified outside the function, use a reference.
+Capturing a `mut` parameter preserves its reference to the caller's value, including when the
+closure passes it to a spawned function.
 
 ```v oksyntax
 mut i := 0
@@ -3454,6 +3491,14 @@ The only guarantee is that 600 (from the body of `f`) will be printed after all 
 This *may* change in V 1.0 .
 
 ## References
+
+Pointers to concrete values can be passed to optional interface parameters when their types
+implement the interface. The option contains an interface value referring to the original object.
+Additional pointer layers, such as `&&Record`, must be dereferenced before passing the object.
+Pointers to interface values, such as `&Named`, must also be dereferenced first.
+
+Returning a stored pointer field returns that pointer value. It does not borrow the storage of
+the containing struct, unlike taking the address of one of its fields.
 
 ```v
 struct Foo {}
@@ -3537,6 +3582,10 @@ To dereference a reference, use the `*` operator, just like in C.
 
 ## Constants
 
+A constant can be qualified with its module name inside that module, including in module tests.
+
+A fixed array constant can be initialized by a function call; the call runs during initialization.
+
 ```v
 const pi = 3.14
 const world = '世界'
@@ -3547,12 +3596,17 @@ println(world)
 
 Constants are declared with `const`. They can only be defined
 at the module level (outside of functions).
+Global variables can infer their types from constants, including constants initialized by functions.
+
 Constant values can never be changed. You can also declare a single
 constant separately:
 
 ```v
 const e = 2.71828
 ```
+
+A constant initializer may call a function with the same name, such as `const answer = answer()`.
+Reading the constant itself in its initializer is still a cycle.
 
 V constants are more flexible than in most languages. You can assign more complex values:
 
@@ -3753,6 +3807,7 @@ the expression itself, and the expression value.
 
 Every file in the root of a folder is part of the same module.
 Simple programs don't need to specify module name, in which case it defaults to 'main'.
+This also applies to scripts with top-level statements that import other modules.
 
 See [symbol visibility](#symbol-visibility), [Access modifiers](#access-modifiers).
 
@@ -3808,10 +3863,26 @@ fn main() {
 * You can create modules anywhere under a valid V module lookup root.
 * All modules are compiled statically into a single executable.
 
+Reserved keywords can be module names without escaping. For example, `type/type.v` can declare
+`module type`; another file can use `import type` and call `type.value()`. Keywords also work in
+longer import paths, such as `import type.bar`. If a keyword cannot be used as an expression
+qualifier, give the import an alias with `as`.
+Module path segments must not start with `@`.
+
 In normal projects, the nearest `v.mod` file is that lookup root.
 Besides package metadata, `v.mod` also acts as a relative module anchor:
 V prepends the folder containing `v.mod` to the module lookup path, so
 files beside or below it can import sibling modules under the same tree.
+
+To keep module lookup inside a project, place an empty `.v.mod.stop` file in
+its root. When V walks upward from a source file, it searches that directory
+but not its parents. The marker also prevents V from selecting a `v.mod` above
+it as the project's root. An explicit `-path` can still name modules outside
+the boundary. `v doc` follows the same boundary when resolving a module name.
+
+A `.git`, `.hg`, or `.svn` entry also prevents V from selecting a parent
+directory's `v.mod`. These repository markers do not stop the upward module
+search, so projects can still import a module checked out beside them.
 
 For example, this layout works:
 
@@ -3916,6 +3987,9 @@ amount := Decimal(0.0)
 
 ### Enums
 
+Methods on an ordinary enum keep their definitions even when another module declares a
+flag enum with the same type name.
+
 An enum is a group of constant integer values, each having its own name,
 whose values start at 0 and increase by 1 for each name listed.
 For example:
@@ -3940,6 +4014,8 @@ println(int(color)) // prints 1
 ```
 
 The enum type can be any integer type, but can be omitted, if it is `int`: `enum Color {`.
+When a struct field expects an enum, its value can use the short `.field` form, including
+inside parentheses in a collapsed struct call argument.
 
 Enum match must be exhaustive or have an `else` branch.
 This ensures that if a new enum field is added, it's handled everywhere in the code.
@@ -4128,6 +4204,15 @@ You can see the complete
 
 ### Interfaces
 
+A mutable interface alias can use `mut value as OtherInterface` when its source is mutable.
+A narrowed interface value can be cast for an immediate scalar getter that only reads fields.
+Type tests joined by `||` do not narrow the value in the true branch; they do not require `mut`
+unless a nested condition itself narrows the value.
+A negative type guard whose body exits also narrows the value after the guard and requires `mut`.
+
+Casting a pointer to an interface can be used directly as the receiver of a method returning
+multiple values. Interface data fields retain their individual types during the conversion.
+
 ```v
 // interface-example.1
 struct Dog {
@@ -4170,6 +4255,7 @@ fn main() {
 A type implements an interface by implementing its methods and fields.
 Equivalent fixed array lengths in method signatures may use different constant expressions.
 Callback userdata parameters may use `voidptr` or a concrete pointer type.
+An interface field's default value may be a pointer to a type that implements the interface.
 
 An interface can have a `mut:` section. Implementing types will need
 to have a `mut` receiver, for methods declared in the `mut:` section
@@ -4334,6 +4420,9 @@ They are just a convenient way to write `i.some_function()` instead of
 `some_function(i)`, similar to how struct methods can be looked at, as
 a convenience for writing `s.xyz()` instead of `xyz(s)`.
 
+An immediate read-only interface method call on a smart-casted value can return
+a scalar, including `char`, `rune`, `isize`, `usize`, or an enum.
+
 > [!NOTE]
 > This feature is NOT a "default implementation" like in C#.
 
@@ -4402,7 +4491,19 @@ pub interface ReaderWriter {
 }
 ```
 
+An interface value smart cast to a struct refers to the concrete object stored in the interface.
+It can be dereferenced to copy the struct or returned through a struct reference.
+This applies to single-type `match` branches as well as `if` and `assert` smart casts.
+For a value pattern such as `item is T`, a function returning that struct by value can copy the
+smart-casted value directly, including through `?T` and `!T` returns and `if`/`match` expressions.
+An explicit pointer pattern such as `item is &T` requires `*item` to copy the struct by value.
+
 ### Sum types
+
+Mapping an array variant inside a `match` branch infers the result element type from the mapper.
+
+Assignments to common struct fields also work through sum type array elements, including
+compound assignments after filtering or smart casting other elements.
 
 A sum type instance can hold a value of several different types. Use the `type`
 keyword to declare a sum type:
@@ -4824,6 +4925,14 @@ fn main() {
 
 ### Generics
 
+Omitted fields of a generic struct use their declared defaults, including in nested structs.
+This also applies through concrete generic aliases and imported structs; defaults use the
+imports visible in the declaring file.
+Fixed array fields initialize each element with its specialized generic defaults.
+
+Generic types brought into scope by a selective import retain their declaring module when
+passed to generic functions and methods in other modules.
+
 ```v wip
 
 struct Repo[T] {
@@ -4859,10 +4968,19 @@ user := users_repo.find_by_id(1)? // find_by_id[User]
 post := posts_repo.find_by_id(1)? // find_by_id[Post]
 ```
 
+Generic calls keep the identity of caller types even when an imported module declares a type
+with the same short name.
+
 Currently generic function definitions must declare their type parameters, but in
 future versions, V will infer generic type parameters from single-letter type names in
 runtime parameter types. This is why the `find_by_id(1)` calls above can omit `[T]`,
 because the receiver argument `r` in the method declaration, uses a generic type `T`.
+
+Receiver inference also works across module imports and aliases. Declared receiver types
+are resolved in the module that defines the method, so a caller type with the same name
+does not change the inferred type arguments. `typeof(call()).name` reports the concrete
+return type of an inferred generic method call.
+Inference also follows receivers obtained by unwrapping an option or propagating a result.
 
 Another example:
 
@@ -4890,6 +5008,10 @@ println(compare(1.1, 1.0)) // Outputs: 1
 println(compare(1.1, 1.1)) //          0
 println(compare(1.1, 1.2)) //         -1
 ```
+
+V can also infer a generic callback's return type from an unbound instance
+method passed as an argument, such as `item.call(Item.value)` when `call[T]`
+accepts a `fn (mut Item) T` callback.
 
 #### Structured generic receiver patterns
 
@@ -7255,6 +7377,20 @@ it will make it more self contained and thus easier to distribute.
 When that happens (the default), `embedded_file.data()` will cause *no IO*,
 and it will always return the same data.
 
+With `-prod`, a large embedded file is stored through the assembler's `.incbin`
+directive: V writes the bytes to a file, assembles a small `.S` source that
+includes it, and links the resulting object next to the generated C, so the C
+compiler never has to parse the bytes as an array initializer. That happens when
+the build links natively with GCC, Clang or MinGW, or with TCC targeting the
+host on non-macOS systems when a GCC or Clang compatible compiler is installed.
+On ELF targets, the payload object marks its stack as non-executable.
+Generated C or object output (`-o file.c`, `-o file.o`, `-generate-c-project`),
+MSVC, iOS and WebAssembly targets, and a Windows target built on another OS keep
+the array form. TCC builds targeting another OS or architecture also keep it.
+`-keepc`, an explicit `-b c`, and `-dump-c-flags` also keep the array form so
+their retained output does not depend on temporary object files. `-d no_incbin`
+selects it everywhere.
+
 `$embed_file` supports compression of the embedded file when compiling with `-prod`.
 Currently only one compression type is supported: `zlib`.
 
@@ -7329,6 +7465,7 @@ See more [details](https://github.com/vlang/v/blob/master/vlib/v/TEMPLATES.md)
 The compiler can compile a VML file directly into an `ui2.Element` expression with
 `$vml(path)`. The VML is parsed while the application is compiled; the resulting program
 constructs UI2 elements directly and does not parse the VML file at runtime.
+Diagnostics from compiled VML include the `$vml` call site in the V source file.
 
 ```v ignore
 import ui2
@@ -7895,6 +8032,7 @@ assert __offsetof(Foo, b) == 4
 ## Limited operator overloading
 
 Operator overloading defines the behavior of certain binary operators for certain types.
+Types in different modules can define their own operators even when their type names match.
 
 ```v
 struct Vec {
@@ -8781,9 +8919,14 @@ standard C library).
 
 To overcome that limitation (that V does not have a C parser), V needs you to
 redeclare the C functions and structs, on the V side, in your `.c.v` files.
+V functions can share names such as `mktemp` and `truncate` with C library functions.
+Use the `C.` prefix to refer to the C function.
 Note that such redeclarations only need to have enough details about the
 functions/structs that you want to use.
 Note also that they *do not have* to be complete, unlike the ones in the .h files.
+
+Parameter names in `C.` function declarations may start with uppercase letters, as in C headers.
+The lowercase naming rule still applies to parameters of ordinary V functions.
 
 
 **C. struct redeclarations**
@@ -8870,8 +9013,27 @@ functions.
 
 ```v
 #flag freebsd -I/usr/local/include -L/usr/local/lib
-#flag -lsqlite3
-#include "sqlite3.h"
+
+// Use the system SQLite when there is one; otherwise build the amalgamation that
+// `v vlib/db/sqlite/install_thirdparty_sqlite.vsh` downloads, like `db.sqlite` does.
+$if $pkgconfig ( 'sqlite3' ) {
+	#pkgconfig sqlite3
+} $else $if darwin {
+	#flag -lsqlite3
+} $else {
+	#flag -I @VEXEROOT/thirdparty/sqlite
+	$if tinyc {
+		#flag -DSQLITE_DISABLE_INTRINSIC
+	}
+	$if windows {
+		#flag @VEXEROOT/thirdparty/sqlite/sqlite3.o
+	} $else {
+		#flag @VEXEROOT/thirdparty/sqlite/sqlite3.c
+		#flag -lm
+	}
+}
+
+#include "sqlite3.h" # Run: v vlib/db/sqlite/install_thirdparty_sqlite.vsh
 // See also the example from https://www.sqlite.org/quickstart.html
 pub struct C.sqlite3 {
 }
@@ -9221,6 +9383,10 @@ is `DLL_PROCESS_DETACH`.
 
 ### Translating C to V
 
+Files marked `@[translated]` retain C storage rules: global declarations and writes through
+pointers do not require additional flags or `unsafe` blocks. These rules apply only to those files.
+Pointer-returning calls can also receive field assignments.
+
 V can translate your C code to human readable V code, and generating V wrappers
 on top of C libraries.
 
@@ -9328,9 +9494,9 @@ a := 100
 b := 20
 mut c := 0
 asm amd64 {
-    mov eax, a
-    add eax, b
-    mov c, eax
+    mov rax, a
+    add rax, b
+    mov c, rax
     ; =r (c) as c // output
     ; r (a) as a // input
       r (b) as b
@@ -9524,6 +9690,8 @@ cross-platform support. "V scripts" run on Unix-like systems, as well as on Wind
 To use V's script mode, save your source file with the `.vsh` file extension.
 It will make all functions in the `os` module global (so that you can use `mkdir()` instead
 of `os.mkdir()`, for example).
+Array methods work on unwrapped results of these calls, for example
+`ls(path)!.filter(it.ends_with('.v'))`.
 
 V also knows to compile & run `.vsh` files immediately, so you do not need a separate
 step to compile them. V will also recompile an executable, produced by a `.vsh` file,

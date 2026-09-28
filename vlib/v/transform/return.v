@@ -170,6 +170,20 @@ fn (mut t Transformer) return_values_from_ids(ids []flat.NodeId) []flat.NodeId {
 	return vals
 }
 
+fn (mut t Transformer) transformed_branch_error_return(value_id flat.NodeId, ret_typ string, source_return_id flat.NodeId) ?flat.NodeId {
+	if !t.is_optional_type_name(ret_typ) {
+		return none
+	}
+	payload_type := t.optional_base_type(t.qualify_optional_type(ret_typ))
+	if !t.return_expr_is_propagated_err(value_id, payload_type) {
+		return none
+	}
+	err_expr := t.transform_expr(value_id)
+	ret := t.make_none_return_stmt_with_err_expr(err_expr)
+	t.mark_transformed_return(ret, source_return_id)
+	return ret
+}
+
 fn (mut t Transformer) return_expr_is_propagated_err(id flat.NodeId, payload_type string) bool {
 	if int(id) < 0 || int(id) >= t.a.nodes.len {
 		return false
@@ -195,6 +209,9 @@ fn (mut t Transformer) return_expr_is_propagated_err(id flat.NodeId, payload_typ
 fn (t &Transformer) return_ierror_expr_type(id flat.NodeId) string {
 	if int(id) < 0 || int(id) >= t.a.nodes.len {
 		return ''
+	}
+	if sc := t.find_smartcast(t.expr_key(id)) {
+		return t.return_ierror_type_candidate(t.smartcast_target_type(sc)) or { '' }
 	}
 	node := t.a.nodes[int(id)]
 	primary_type := match node.kind {
@@ -808,10 +825,19 @@ fn (mut t Transformer) return_block_from_branch(branch_id flat.NodeId, ret_typ s
 		}
 		return t.make_block(all)
 	}
+	if extra_return_vals.len == 0 && branch.kind in [.if_expr, .match_stmt] {
+		return t.make_block(t.transform_stmt(t.make_transformed_return(branch_id, ret_typ,
+			source_return_id)))
+	}
 	if branch.kind != .block {
 		// single expression branch: just `return <expr>`
 		mut all := []flat.NodeId{}
 		if extra_return_vals.len == 0 {
+			if ret := t.transformed_branch_error_return(branch_id, ret_typ, source_return_id) {
+				t.drain_pending(mut all)
+				all << ret
+				return t.make_block(all)
+			}
 			if ret := t.transformed_direct_optional_forward_return(branch_id, ret_typ, source_return_id) {
 				t.drain_pending(mut all)
 				all << ret
@@ -862,7 +888,18 @@ fn (mut t Transformer) return_block_from_branch(branch_id flat.NodeId, ret_typ s
 		}
 		return t.make_block(all)
 	}
+	if extra_return_vals.len == 0 && t.a.nodes[int(tail_expr)].kind in [.if_expr, .match_stmt] {
+		for stmt in t.transform_stmt(t.make_transformed_return(tail_expr, ret_typ, source_return_id)) {
+			all << stmt
+		}
+		return t.make_block(all)
+	}
 	if extra_return_vals.len == 0 {
+		if ret := t.transformed_branch_error_return(tail_expr, ret_typ, source_return_id) {
+			t.drain_pending(mut all)
+			all << ret
+			return t.make_block(all)
+		}
 		if ret := t.transformed_direct_optional_forward_return(tail_expr, ret_typ, source_return_id) {
 			t.drain_pending(mut all)
 			all << ret
@@ -885,6 +922,7 @@ fn (mut t Transformer) build_return_if_chain(if_id flat.NodeId, ret_typ string, 
 	}
 	cond_id := t.a.child(&if_node, 0)
 	cond_smartcasts := t.extract_all_is_exprs(cond_id)
+	else_smartcasts := t.extract_else_branch_smartcasts(cond_id)
 	new_cond := t.transform_and_chain_smartcasts(cond_id)
 	mut cond_prelude := []flat.NodeId{}
 	t.drain_pending(mut cond_prelude)
@@ -898,6 +936,9 @@ fn (mut t Transformer) build_return_if_chain(if_id flat.NodeId, ret_typ string, 
 	}
 	mut else_block := flat.empty_node
 	if if_node.children_count >= 3 {
+		for info in else_smartcasts {
+			t.push_smartcast(info.expr_name, info.variant_name, info.sum_type_name)
+		}
 		else_id := t.a.child(&if_node, 2)
 		else_node := t.a.nodes[int(else_id)]
 		if else_node.kind == .if_expr {
@@ -906,6 +947,9 @@ fn (mut t Transformer) build_return_if_chain(if_id flat.NodeId, ret_typ string, 
 			else_block = t.make_block([inner])
 		} else {
 			else_block = t.return_block_from_branch(else_id, ret_typ, extra_return_vals, source_return_id)
+		}
+		for _ in else_smartcasts {
+			t.pop_smartcast()
 		}
 	}
 	new_if := t.make_if(new_cond, then_block, else_block)
@@ -1139,6 +1183,11 @@ fn (mut t Transformer) match_branch_return_block(branch flat.Node, body_start_id
 		t.transform_enum_shorthand(tail_expr, tail_expr_node, expected_ret)
 	} else {
 		tail_expr
+	}
+	if ret := t.transformed_branch_error_return(actual_tail, ret_typ, source_return_id) {
+		t.drain_pending(mut all)
+		all << ret
+		return t.make_block(all)
 	}
 	if ret := t.transformed_direct_optional_forward_return(actual_tail, ret_typ, source_return_id) {
 		t.drain_pending(mut all)
