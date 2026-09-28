@@ -24672,10 +24672,23 @@ fn (g &FlatGen) expr_is_in_translated_file(id flat.NodeId) bool {
 	return g.tc.translated_files[file.name]
 }
 
-fn (mut g FlatGen) gen_mixed_sign_integer_comparison(lhs_id flat.NodeId, rhs_id flat.NodeId, lhs_type types.Type, rhs_type types.Type, op flat.Op) bool {
-	if g.expr_is_in_translated_file(lhs_id) {
-		return false
+fn translated_comparison_integer_width(typ types.Type) int {
+	clean := unsigned_shift_unalias_type(typ)
+	if clean is types.Primitive && clean.props.has(.integer) {
+		return if clean.size == 0 || clean.size < 32 { 32 } else { int(clean.size) }
 	}
+	return 0
+}
+
+fn translated_comparison_integer_is_unsigned(typ types.Type) bool {
+	clean := unsigned_shift_unalias_type(typ)
+	if clean is types.Primitive {
+		return clean.props.has(.unsigned) && clean.size >= 32
+	}
+	return false
+}
+
+fn (mut g FlatGen) gen_mixed_sign_integer_comparison(lhs_id flat.NodeId, rhs_id flat.NodeId, lhs_type types.Type, rhs_type types.Type, op flat.Op) bool {
 	lhs_sign := integer_sign_kind(lhs_type)
 	rhs_sign := integer_sign_kind(rhs_type)
 	if lhs_sign == 0 || rhs_sign == 0 || lhs_sign == rhs_sign {
@@ -24686,6 +24699,30 @@ fn (mut g FlatGen) gen_mixed_sign_integer_comparison(lhs_id flat.NodeId, rhs_id 
 	// behavior instead of narrowing `0xffff_ffff_ffff_ffff` to signed `int` first.
 	if (lhs_sign < 0 && g.a.nodes[int(lhs_id)].kind == .int_literal) || (rhs_sign < 0 && g.a.nodes[int(rhs_id)].kind == .int_literal) {
 		return false
+	}
+	if g.expr_is_in_translated_file(lhs_id) {
+		lhs_width := translated_comparison_integer_width(lhs_type)
+		rhs_width := translated_comparison_integer_width(rhs_type)
+		if lhs_width == 0 || rhs_width == 0 {
+			return false
+		}
+		lhs_unsigned := translated_comparison_integer_is_unsigned(lhs_type)
+		rhs_unsigned := translated_comparison_integer_is_unsigned(rhs_type)
+		common_width := if lhs_width > rhs_width { lhs_width } else { rhs_width }
+		common_unsigned := if lhs_unsigned == rhs_unsigned {
+			lhs_unsigned
+		} else if lhs_unsigned {
+			lhs_width >= rhs_width
+		} else {
+			rhs_width >= lhs_width
+		}
+		common_type := if common_unsigned { 'u${common_width}' } else { 'i${common_width}' }
+		g.write('(((${common_type})(')
+		g.gen_expr(lhs_id)
+		g.write(')) ${g.op_str(op)} ((${common_type})(')
+		g.gen_expr(rhs_id)
+		g.write(')))')
+		return true
 	}
 	lhs_ct := g.value_c_type(unsigned_shift_unalias_type(lhs_type))
 	rhs_ct := g.value_c_type(unsigned_shift_unalias_type(rhs_type))

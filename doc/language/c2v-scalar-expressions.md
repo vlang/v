@@ -18,3 +18,5 @@ using C's integer conversion rules. Function addresses supplied through `voidptr
 can be assigned to callback variables. Callbacks can be compared with integer
 sentinels such as `0` and `-1`. These rules apply only to translated files;
 ordinary V source keeps its existing checks and mixed-sign comparison behavior.
+Mixed-sign comparisons use C's promoted operand widths, and explicitly backed
+wide enums retain their backing type through arithmetic and bitwise operations.

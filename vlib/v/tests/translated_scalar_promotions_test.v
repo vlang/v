@@ -28,6 +28,39 @@ fn test_translated_unsigned_sentinels() {
 	assert fields.default_address == address
 }
 
+struct DirectUnsignedSentinel {
+	address u64
+}
+
+fn test_translated_direct_unsigned_field_sentinel() {
+	fields := DirectUnsignedSentinel{ address: -1 }
+	assert fields.address == u64(0xffff_ffff_ffff_ffff)
+}
+
+fn test_translated_mixed_sign_comparisons_use_c_widths() {
+	narrow_signed := int(-1)
+	unsigned := u32(1)
+	assert !(narrow_signed < unsigned)
+	assert narrow_signed > unsigned
+	assert narrow_signed == u32(0xffff_ffff)
+	wide_signed := i64(-1)
+	assert wide_signed < unsigned
+	small_signed := i8(-1)
+	small_unsigned := u16(1)
+	assert small_signed < small_unsigned
+}
+
+enum TranslatedWideEnum as u64 {
+	zero = 0
+	high = 0x8000_0000_0000_0000
+}
+
+fn test_translated_wide_enum_preserves_backing_type() {
+	value := TranslatedWideEnum.high | TranslatedWideEnum.zero
+	assert typeof(value).name == 'u64'
+	assert value > 0
+}
+
 fn test_translated_boolean_indices_and_pointer_offsets() {
 	values := [11, 22, 33]!
 	index := true

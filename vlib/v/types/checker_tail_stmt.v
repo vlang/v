@@ -3154,14 +3154,18 @@ fn (tc &TypeChecker) if_expr_tail_type(id flat.NodeId) Type {
 
 fn (tc &TypeChecker) choose_translated_if_tail_type(id flat.NodeId, current Type, next Type) Type {
 	if tc.translated_numeric_expr_compatible(id, current, next) {
-		return translated_common_numeric_type(current, next)
+		return tc.translated_common_numeric_type(current, next)
 	}
 	return tc.choose_if_tail_type(current, next)
 }
 
-fn translated_promoted_numeric_type(typ Type) Type {
+fn (tc &TypeChecker) translated_promoted_numeric_type(typ Type) Type {
 	clean := unalias_type(typ)
-	if clean is Char || clean is Enum || clean == Type(bool_) {
+	if clean is Enum {
+		backing := unalias_type(tc.inline_asm_enum_backing_type(clean.name))
+		return if translated_integer_bit_width(backing) < 32 { Type(int_) } else { backing }
+	}
+	if clean is Char || clean == Type(bool_) {
 		return Type(int_)
 	}
 	if clean is Primitive && clean.props.has(.integer) && clean.size > 0 && clean.size < 32 {
@@ -3187,9 +3191,9 @@ fn translated_integer_is_unsigned(typ Type) bool {
 	return typ is USize
 }
 
-fn translated_common_numeric_type(lhs Type, rhs Type) Type {
-	left := translated_promoted_numeric_type(lhs)
-	right := translated_promoted_numeric_type(rhs)
+fn (tc &TypeChecker) translated_common_numeric_type(lhs Type, rhs Type) Type {
+	left := tc.translated_promoted_numeric_type(lhs)
+	right := tc.translated_promoted_numeric_type(rhs)
 	if left.is_float() || right.is_float() {
 		if left.is_float() && !type_is_f32(left) {
 			return Type(f64_)
@@ -4082,7 +4086,9 @@ fn (mut tc TypeChecker) check_struct_init(id flat.NodeId, node flat.Node) {
 				} else {
 					tc.a.nodes[int(value_id)].pos
 				}
-				tc.warn_if_integer_literal_outside_known_type_range(value_id, expected, warning_pos)
+				if !tc.node_is_in_translated_file(value_id) {
+					tc.warn_if_integer_literal_outside_known_type_range(value_id, expected, warning_pos)
+				}
 				tc.check_node_with_expected_context(value_id, expected)
 			} else {
 				tc.check_node(value_id)
@@ -16747,7 +16753,7 @@ fn (tc &TypeChecker) resolve_type_uncached(id flat.NodeId) Type {
 			if tc.node_is_in_translated_file(id) && translated_numeric_type(lt)
 				&& translated_numeric_type(rt)
 				&& node.op in [.plus, .minus, .mul, .div, .mod, .amp, .pipe, .xor] {
-				return translated_common_numeric_type(lt, rt)
+				return tc.translated_common_numeric_type(lt, rt)
 			}
 			if node.op == .plus {
 				if lt is String && optional_payload_is_string(rt) {
@@ -16801,7 +16807,7 @@ fn (tc &TypeChecker) resolve_type_uncached(id flat.NodeId) Type {
 				child_type := tc.resolve_type(tc.a.child(&node, 0))
 				if (node.op == .bit_not && translated_integer_type(child_type))
 					|| (node.op in [.plus, .minus] && translated_numeric_type(child_type)) {
-					return translated_promoted_numeric_type(child_type)
+					return tc.translated_promoted_numeric_type(child_type)
 				}
 			}
 			if node.typ.len > 0 {
