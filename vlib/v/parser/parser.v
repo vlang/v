@@ -14690,7 +14690,7 @@ fn (mut p Parser) scan_translated_sizeof_range(source string, tokens []InlineAsm
 			skip_decl = false
 		}
 		if kind == .key_global {
-			i = p.scan_translated_sizeof_globals(tokens, i, end, !skip_decl)
+			i = p.scan_translated_sizeof_values(tokens, i, end, !skip_decl)
 			skip_decl = false
 			continue
 		}
@@ -14703,36 +14703,20 @@ fn (mut p Parser) scan_translated_sizeof_range(source string, tokens []InlineAsm
 			} else {
 				map[string]string{}
 			}
-			next := p.inline_asm_collect_const_decl(tokens, i, end)
+			p.inline_asm_collect_const_decl(tokens, i, end)
 			if skip_decl {
 				p.comptime_const_values = saved_consts.move()
-				skip_decl = false
-				i = if next > i { next } else { i + 1 }
-				continue
 			}
-			mut j := i + 1
-			grouped := j < end && tokens[j].kind == .lpar
-			if grouped { j++ }
-			mut depth := 0
-			for j + 1 < next {
-				if depth == 0 && tokens[j].kind == .name && tokens[j + 1].kind == .assign {
-					p.translated_sizeof_const_names[p.translated_sizeof_declaration_key(tokens[j].lit)] = true
-				}
-				match tokens[j].kind {
-					.lpar, .lsbr, .lcbr { depth++ }
-					.rpar, .rsbr, .rcbr { depth-- }
-					else {}
-				}
-				j++
-			}
-			i = if next > i { next } else { i + 1 }
+			i = p.scan_translated_sizeof_values(tokens, i, end, !skip_decl)
+			skip_decl = false
 			continue
 		}
 		i++
 	}
 }
 
-fn (mut p Parser) scan_translated_sizeof_globals(tokens []InlineAsmScanToken, start int, end int, inspect bool) int {
+fn (mut p Parser) scan_translated_sizeof_values(tokens []InlineAsmScanToken, start int, end int, inspect bool) int {
+	is_const := tokens[start].kind == .key_const
 	mut i := start + 1
 	grouped := i < end && tokens[i].kind == .lpar
 	if grouped { i++ }
@@ -14755,7 +14739,12 @@ fn (mut p Parser) scan_translated_sizeof_globals(tokens []InlineAsmScanToken, st
 					continue
 				}
 				if inspect && (kind == .name || kind.is_keyword()) {
-					p.translated_sizeof_global_names[p.translated_sizeof_declaration_key(tokens[i].lit)] = true
+					key := p.translated_sizeof_declaration_key(tokens[i].lit)
+					if is_const {
+						p.translated_sizeof_const_names[key] = true
+					} else {
+						p.translated_sizeof_global_names[key] = true
+					}
 				}
 				at_name = false
 			}

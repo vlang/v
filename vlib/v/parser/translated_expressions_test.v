@@ -116,6 +116,65 @@ $if feature ? {
 	}
 }
 
+fn test_translated_sizeof_typed_only_constants() {
+	root := os.join_path(os.vtmp_dir(), 'translated_sizeof_headers_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+	os.write_file(os.join_path(root, 'v.mod'), "Module { name: 'sizeof_headers' }")!
+	os.write_file(os.join_path(root, 'header.h'), '#include <stdint.h>
+#define Earlier ((uint16_t)0)
+#define Foo ((intptr_t)0)
+#define Grouped ((uint64_t[2]){0, 0})
+#define Callback ((intptr_t (*)(intptr_t))0)
+')!
+	main_file := os.join_path(root, 'a.c.v')
+	source := '@[translated]
+module main
+#include "@VMODROOT/header.h"
+const Earlier u16
+type Disabled = int
+fn main() {
+ assert sizeof(Earlier) == sizeof(u16)
+ assert sizeof(Foo) == sizeof(int)
+ assert sizeof(Grouped) == sizeof([2]u64)
+ assert sizeof(Callback) == sizeof(fn (int) int)
+ assert sizeof(Mixed) == sizeof([2]int)
+ assert sizeof(Disabled) == sizeof(int)
+}
+'
+	declarations := '
+const Foo int
+const (
+ Grouped [2]u64
+ Callback fn (int) int
+ Mixed = [1, 2]!
+)
+@[if false]
+const Disabled [2]int
+'
+	os.write_file(main_file, source + declarations)!
+	mut p := Parser.new(pref.new_preferences())
+	p.parse_file(main_file)
+	assert p.diagnostics.len == 0, p.diagnostics.str()
+	sizes := p.a.nodes.filter(it.kind == .sizeof_expr)
+	assert sizes.len == 12
+	for i in [0, 2, 4, 6, 8] {
+		assert sizes[i].children_count == 1
+	}
+	assert sizes[10].children_count == 0
+	single := os.execute('${os.quoted_path(@VEXE)} run ${os.quoted_path(main_file)}')
+	assert single.exit_code == 0, single.output
+	os.write_file(main_file, source)!
+	os.write_file(os.join_path(root, 'z.c.v'), '@[translated]\nmodule main\n' + declarations)!
+	for name in ['padding_a.v', 'padding_b.v'] {
+		os.write_file(os.join_path(root, name), 'module main\n//' + ' '.repeat(70000) + '\n')!
+	}
+	for flags in ['', '-no-parallel'] {
+		result := os.execute('${os.quoted_path(@VEXE)} ${flags} run ${os.quoted_path(root)}')
+		assert result.exit_code == 0, result.output
+	}
+}
+
 fn test_translated_sizeof_ignores_excluded_sibling_files() {
 	root := os.join_path(os.vtmp_dir(), 'translated_sizeof_selected_${os.getpid()}')
 	os.mkdir_all(root)!

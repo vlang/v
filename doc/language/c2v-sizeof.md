@@ -2,7 +2,8 @@
 
 In `@[translated]` files, `sizeof` accepts constant expressions and named values.
 Declarations later in the same module are recognized, including constants in deferred
-compile-time type or size conditions. Declaration attributes such as `@[if feature ?]`
+compile-time type or size conditions and header-style constants without initializers.
+Declaration attributes such as `@[if feature ?]`
 exclude disabled candidates from the name lookup.
 Globals are recognized before their declarations, including grouped globals in other parsed
 files, so an indexed expression such as `sizeof(Regs[0])` keeps its value interpretation.
