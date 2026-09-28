@@ -744,6 +744,109 @@ fn test_unindexed_generic_factory_uses_prior_local_type() {
 	assert local_types['gate'] == 'gates.Gate[Payload]'
 }
 
+fn test_generic_factory_uses_for_in_element_type() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	tc.parallel_check_sparse = true
+	method := 'gates.make_gate'
+	tc.fn_generic_params[method] = ['U']
+	tc.fn_param_type_texts[method] = ['U']
+	tc.fn_ret_types[method] = types.Type(types.Struct{ name: 'gates.Gate[U]' })
+	tc.fn_ret_types['gates.Gate[T].backward'] = types.Type(types.int_)
+	param := a.add_node(flat.Node{ kind: .param, value: 'values', typ: '[]T' })
+	loop_value := a.add_val(.ident, 'value')
+	container := a.add_val(.ident, 'values')
+	gate_lhs := a.add_val(.ident, 'gate')
+	callee := a.add_val(.ident, 'make_gate')
+	value_arg := a.add_val(.ident, 'value')
+	factory_call := call_helper_node(mut a, flat.Node{ kind: .call }, [callee, value_arg])
+	tc.sparse_resolved_call_names[int(factory_call)] = method
+	gate_decl := call_helper_node(mut a, flat.Node{ kind: .decl_assign }, [gate_lhs, factory_call])
+	gate_use := a.add_val(.ident, 'gate')
+	backward := call_helper_node(mut a, flat.Node{ kind: .selector, value: 'backward' }, [
+		gate_use,
+	])
+	backward_call := call_helper_node(mut a, flat.Node{ kind: .call }, [backward])
+	loop_body := call_helper_node(mut a, flat.Node{ kind: .block }, [gate_decl, backward_call])
+	loop := call_helper_node(mut a, flat.Node{ kind: .for_in_stmt, value: '0' }, [
+		loop_value,
+		flat.empty_node,
+		container,
+		loop_body,
+	])
+	body := call_helper_node(mut a, flat.Node{ kind: .block }, [loop])
+	fn_id := call_helper_node(mut a, flat.Node{ kind: .fn_decl, value: 'use_gates' }, [
+		param,
+		body,
+	])
+	collector := CallCollector{ a: &a, tc: &tc, import_contexts: [map[string]string{}] }
+	_, _, ident_types := collector.local_value_info(a.node(fn_id), 'main', map[string]string{})
+	assert ident_types[int(value_arg)] == 'T'
+	assert ident_types[int(gate_use)] == 'gates.Gate[T]'
+	assert 'gates.Gate[T].backward' in collector.collect_body(a.node(fn_id), 'main',
+		map[string]string{}).calls
+}
+
+fn test_for_in_map_registers_key_and_value_types() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	key := a.add_val(.ident, 'key')
+	value := a.add_val(.ident, 'value')
+	container := a.add_val(.ident, 'items')
+	loop := call_helper_node(mut a, flat.Node{ kind: .for_in_stmt, value: '3' }, [key, value,
+		container])
+	collector := CallCollector{ a: &a, tc: &tc }
+	mut names := {
+		'items': true
+	}
+	mut type_names := {
+		'items': 'map[string]T'
+	}
+	collector.register_top_level_for_in_vars(a.node(loop), 'main', map[string]string{},
+		mut names, mut type_names)
+	assert type_names['key'] == 'string'
+	assert type_names['value'] == 'T'
+}
+
+fn test_generic_factory_multi_return_decl_uses_component_type() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	tc.parallel_check_sparse = true
+	method := 'gates.make_pair'
+	tc.fn_generic_params[method] = ['U']
+	tc.fn_ret_types[method] = types.Type(types.MultiReturn{
+		types: [types.Type(types.Struct{ name: 'gates.Gate[U]' }), types.Type(types.int_)]
+	})
+	tc.fn_ret_types['gates.Gate[T].backward'] = types.Type(types.int_)
+	callee := a.add_val(.ident, 'make_pair')
+	type_arg := a.add_val(.ident, 'T')
+	indexed := call_helper_node(mut a, flat.Node{ kind: .index }, [callee, type_arg])
+	factory_call := call_helper_node(mut a, flat.Node{ kind: .call }, [indexed])
+	tc.sparse_resolved_call_names[int(factory_call)] = method
+	gate_lhs := a.add_val(.ident, 'gate')
+	count_lhs := a.add_val(.ident, 'count')
+	decl := call_helper_node(mut a, flat.Node{ kind: .decl_assign, value: '2' }, [
+		gate_lhs,
+		factory_call,
+		count_lhs,
+	])
+	gate_use := a.add_val(.ident, 'gate')
+	backward := call_helper_node(mut a, flat.Node{ kind: .selector, value: 'backward' }, [
+		gate_use,
+	])
+	backward_call := call_helper_node(mut a, flat.Node{ kind: .call }, [backward])
+	body := call_helper_node(mut a, flat.Node{ kind: .block }, [decl, backward_call])
+	fn_id := call_helper_node(mut a, flat.Node{ kind: .fn_decl, value: 'use_pair' }, [body])
+	collector := CallCollector{ a: &a, tc: &tc, import_contexts: [map[string]string{}] }
+	_, local_types, ident_types := collector.local_value_info(a.node(fn_id), 'main',
+		map[string]string{})
+	assert local_types['gate'] == 'gates.Gate[T]'
+	assert local_types['count'] == 'int'
+	assert ident_types[int(gate_use)] == 'gates.Gate[T]'
+	assert 'gates.Gate[T].backward' in collector.collect_body(a.node(fn_id), 'main',
+		map[string]string{}).calls
+}
+
 fn test_nested_local_type_does_not_replace_outer_binding() {
 	mut a := flat.FlatAst.new()
 	mut tc := types.TypeChecker.new(&a)

@@ -5352,8 +5352,11 @@ fn (c &CallCollector) local_value_info(node &flat.Node, cur_module string, impor
 		if child.kind == .param && child.value.len > 0 {
 			names[child.value] = true
 		} else if child.kind == .decl_assign {
-			for i := 0; i < child.children_count; i += 2 {
-				lhs := c.a.child_node(child, i)
+			lhs_count := markused_assign_lhs_count(child)
+			rhs_count := int(child.children_count) - lhs_count
+			for i in 0 .. lhs_count {
+				idx := if i < rhs_count { i * 2 } else { rhs_count + i }
+				lhs := c.a.child_node(child, idx)
 				if lhs.kind == .ident && lhs.value.len > 0 {
 					names[lhs.value] = true
 				}
@@ -5378,6 +5381,19 @@ fn (c &CallCollector) local_value_info(node &flat.Node, cur_module string, impor
 	return names, type_names, ident_types
 }
 
+fn markused_assign_lhs_count(node &flat.Node) int {
+	if node.value.is_int() {
+		count := node.value.int()
+		if count > 0 && count <= int(node.children_count) {
+			return count
+		}
+	}
+	if node.children_count <= 2 {
+		return if node.children_count > 0 { 1 } else { 0 }
+	}
+	return int(node.children_count) - 1
+}
+
 fn (c &CallCollector) infer_local_type_bindings(node &flat.Node, cur_module string, imports map[string]string, names map[string]bool, mut type_names map[string]string, mut ident_types map[int]string, root bool) {
 	for i in 0 .. node.children_count {
 		id := c.a.child(node, i)
@@ -5388,8 +5404,16 @@ fn (c &CallCollector) infer_local_type_bindings(node &flat.Node, cur_module stri
 		if child.kind in [.fn_decl, .c_fn_decl] {
 			continue
 		}
-		if child.kind in [.block, .if_expr, .match_stmt, .for_stmt, .for_in_stmt, .fn_literal,
-			.lambda_expr] {
+		if child.kind == .for_in_stmt {
+			mut nested_types := type_names.clone()
+			mut nested_names := names.clone()
+			c.register_top_level_for_in_vars(child, cur_module, imports, mut nested_names,
+				mut nested_types)
+			c.infer_local_type_bindings(child, cur_module, imports, nested_names,
+				mut nested_types, mut ident_types, false)
+			continue
+		}
+		if child.kind in [.block, .if_expr, .match_stmt, .for_stmt, .fn_literal, .lambda_expr] {
 			if root && child.kind == .block {
 				c.infer_local_type_bindings(child, cur_module, imports, names, mut type_names,
 					mut ident_types, false)
@@ -5408,8 +5432,11 @@ fn (c &CallCollector) infer_local_type_bindings(node &flat.Node, cur_module stri
 		}
 		if child.kind == .decl_assign {
 			pre_types := type_names.clone()
-			for j := 1; j < child.children_count; j += 2 {
-				rhs_id := c.a.child(child, j)
+			lhs_count := markused_assign_lhs_count(child)
+			rhs_count := int(child.children_count) - lhs_count
+			for j in 0 .. rhs_count {
+				rhs_idx := if j < lhs_count { j * 2 + 1 } else { lhs_count + j }
+				rhs_id := c.a.child(child, rhs_idx)
 				if int(rhs_id) >= 0 {
 					mut rhs_types := pre_types.clone()
 					c.infer_local_type_bindings(c.a.node(rhs_id), cur_module, imports, names,
@@ -5422,13 +5449,33 @@ fn (c &CallCollector) infer_local_type_bindings(node &flat.Node, cur_module stri
 					}
 				}
 			}
-			for j := 0; j + 1 < child.children_count; j += 2 {
-				lhs := c.a.child_node(child, j)
-				rhs_id := c.a.child(child, j + 1)
-				if lhs.kind != .ident || lhs.value.len == 0 || int(rhs_id) < 0 {
+			mut parts := []string{}
+			if rhs_count == 1 && lhs_count > 1 {
+				rhs_id := c.a.child(child, 1)
+				tuple := c.top_level_decl_rhs_type_name(rhs_id, cur_module, imports, names,
+					pre_types)
+				if tuple.starts_with('(') && tuple.ends_with(')') {
+					parts = markused_split_generic_args(tuple[1..tuple.len - 1])
+				}
+			}
+			for j in 0 .. lhs_count {
+				lhs_idx := if j < rhs_count { j * 2 } else { rhs_count + j }
+				lhs := c.a.child_node(child, lhs_idx)
+				if lhs.kind != .ident || lhs.value.len == 0 || lhs.value == '_' {
 					continue
 				}
-				type_name := if child.children_count == 2 && child.typ.len > 0 {
+				if parts.len == lhs_count {
+					type_names[lhs.value] = parts[j]
+					continue
+				}
+				if j >= rhs_count || (rhs_count == 1 && lhs_count > 1) {
+					continue
+				}
+				rhs_id := c.a.child(child, j * 2 + 1)
+				if int(rhs_id) < 0 {
+					continue
+				}
+				type_name := if lhs_count == 1 && child.typ.len > 0 {
 					c.local_decl_type_name(child.typ, rhs_id, cur_module, imports, pre_types)
 				} else {
 					c.top_level_decl_rhs_type_name(rhs_id, cur_module, imports, names, pre_types)
@@ -6799,6 +6846,11 @@ fn (c &CallCollector) register_top_level_for_in_vars(node &flat.Node, cur_module
 		value_var = c.a.node(val_id).value
 		if key_node.kind == .ident && key_node.value.len > 0 && key_node.value != '_' {
 			local_values[key_node.value] = true
+			key_type := c.top_level_for_in_key_type_name(container_id, cur_module, imports,
+				local_values, local_types)
+			if key_type.len > 0 {
+				local_types[key_node.value] = key_type
+			}
 		}
 	} else if key_node.kind == .ident && key_node.value.len > 0 {
 		value_var = key_node.value
@@ -6818,10 +6870,41 @@ fn (c &CallCollector) register_top_level_for_in_vars(node &flat.Node, cur_module
 	}
 }
 
+fn (c &CallCollector) top_level_for_in_key_type_name(container_id flat.NodeId, cur_module string, imports map[string]string, local_values map[string]bool, local_types map[string]string) string {
+	type_name := c.top_level_expr_type_name(container_id, cur_module, imports, local_values,
+		local_types, true)
+	if type_name.starts_with('map[') {
+		end := markused_generic_matching_bracket(type_name, 3)
+		if end < type_name.len {
+			return type_name[4..end]
+		}
+	}
+	container := types.unwrap_pointer(c.tc.parse_canonical_type(type_name))
+	if container is types.Map {
+		return container.key_type.name()
+	}
+	return 'int'
+}
+
 fn (c &CallCollector) top_level_for_in_elem_type_name(container_id flat.NodeId, cur_module string, imports map[string]string, local_values map[string]bool, local_types map[string]string) ?string {
 	type_name := c.top_level_expr_type_name(container_id, cur_module, imports, local_values, local_types, true)
 	if type_name.len == 0 {
 		return none
+	}
+	if type_name.starts_with('[]') {
+		return type_name[2..]
+	}
+	if type_name.starts_with('map[') {
+		end := markused_generic_matching_bracket(type_name, 3)
+		if end + 1 < type_name.len {
+			return type_name[end + 1..]
+		}
+	}
+	if type_name.starts_with('[') {
+		end := markused_generic_matching_bracket(type_name, 0)
+		if end + 1 < type_name.len {
+			return type_name[end + 1..]
+		}
 	}
 	ct := types.unwrap_pointer(c.tc.parse_canonical_type(type_name))
 	if ct is types.Array {
@@ -7019,6 +7102,9 @@ fn (c &CallCollector) inferred_generic_factory_return_type_name(call_id flat.Nod
 fn (c &CallCollector) generic_factory_return_type_text(candidate string, cur_module string, unwrap_optional_result bool) string {
 	mut return_type := c.fn_return_type_name(candidate, unwrap_optional_result)
 	semantic_has_placeholder := if semantic_type := c.fn_return_type_for_name(candidate) {
+		if return_type.len == 0 && semantic_type is types.MultiReturn {
+			return_type = semantic_type.name()
+		}
 		markused_type_has_unknown(semantic_type)
 	} else {
 		false
