@@ -75,6 +75,14 @@ fn (mut decoder Decoder) check_element_type_valid[T](element T, current_node &De
 	$if element is $sumtype { // this will always match the first sumtype array/map
 		return true
 	}
+	$if element is $option {
+		// A `none` element is `null`, or `{}` as the removed module wrote it; a set one
+		// has the shape of its payload.
+		if current_node.value.value_kind == .null || decoder.is_empty_object(current_node) {
+			return true
+		}
+		return decoder.check_option_element_valid(element, current_node)
+	}
 
 	match current_node.value.value_kind {
 		.string {
@@ -130,6 +138,19 @@ fn (mut decoder Decoder) check_element_type_valid[T](element T, current_node &De
 	}
 
 	return false
+}
+
+fn (mut decoder Decoder) check_option_element_valid[P](_ ?P, current_node &DecodeNode[ValueInfo]) bool {
+	return decoder.check_element_type_valid(P{}, current_node)
+}
+
+// is_empty_object reports whether `node` is an object without members (`{}`).
+fn (decoder &Decoder) is_empty_object(node &DecodeNode[ValueInfo]) bool {
+	if node.value.value_kind != .object {
+		return false
+	}
+	end := node.value.position + node.value.length
+	return node.next == unsafe { nil } || node.next.value.position >= end
 }
 
 fn get_array_element_type[T](_arr []T) T {

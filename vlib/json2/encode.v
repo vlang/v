@@ -616,7 +616,16 @@ fn (mut encoder Encoder) encode_fixed_array_of_sumtype_variants[A](val A) {
 }
 
 fn (mut encoder Encoder) encode_sumtype_array_item[T](item T) {
-	$if T.unaliased_typ is time.Time {
+	// An option element comes first, like an option variant: `none` is `{}`, and a set
+	// value is written like the variant it holds, as in the removed module.
+	$if T is $option {
+		if item == none {
+			encoder.output << `{`
+			encoder.output << `}`
+		} else {
+			encoder.encode_sumtype_option_payload(get_value_from_optional(item))
+		}
+	} $else $if T.unaliased_typ is time.Time {
 		// Like a time variant, `{"_type":"Time","value":...}` as in the removed module.
 		encoder.encode_sumtype_time_variant(time.Time(item), 'Time')
 	} $else $if T is JsonEncoder {

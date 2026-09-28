@@ -371,6 +371,15 @@ fn new_pointer_to[T](value T) &T {
 	return ptr
 }
 
+// option_element_is_none reports whether the current array element is `none` for an
+// option element type: `null`, or `{}` (how the removed module wrote a `none` element
+// of a sum type's array) when the payload does not take an object, as for `?int`.
+fn (mut decoder Decoder) option_element_is_none[P](element ?P) bool {
+	node := decoder.current_node
+	return node.value.value_kind == .null
+		|| (decoder.is_empty_object(node) && option_payload_fit(element, .object) == 0)
+}
+
 // decode_option_payload decodes the current value as the payload of an option.
 fn (mut decoder Decoder) decode_option_payload[P](_ ?P) !P {
 	$if P is $pointer {
@@ -1343,9 +1352,9 @@ fn (mut decoder Decoder) decode_array[T](mut val []T) ! {
 				$if T is $option {
 					// An option element (`[]?int`): `null` is `none`. Decoded directly,
 					// since v3 cannot return `!?T` from the element helper.
-					if decoder.current_node.value.value_kind == .null {
+					if decoder.option_element_is_none(T(none)) {
 						val << T(none)
-						decoder.current_node = decoder.current_node.next
+						decoder.skip_current_value()
 					} else {
 						val << decoder.decode_option_payload(T(none))!
 					}
@@ -1398,11 +1407,11 @@ fn (mut decoder Decoder) decode_fixed_array[T](mut val T) ! {
 // element is replaced.
 fn (mut decoder Decoder) decode_fixed_array_element[E](element &E) ! {
 	$if E is $option {
-		if decoder.current_node.value.value_kind == .null {
+		if decoder.option_element_is_none(E(none)) {
 			unsafe {
 				*element = E(none)
 			}
-			decoder.current_node = decoder.current_node.next
+			decoder.skip_current_value()
 		} else {
 			payload := decoder.decode_option_payload(E(none))!
 			unsafe {

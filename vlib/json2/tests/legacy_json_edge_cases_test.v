@@ -636,3 +636,35 @@ fn test_time_wrapper_needs_the_time_discriminator() {
 		assert false, 'a mistagged element should not decode as a time'
 	}
 }
+
+type OptionItemsArray = []?ArrayVariantItem | int
+
+type FixedOptionItems = [2]?ArrayVariantItem | int
+
+type OptionIntsArray = []?int | string
+
+fn test_option_elements_of_array_variants() {
+	// Like the removed module, a set element is written like the variant it holds, with
+	// its `_type`, and a `none` element as `{}`.
+	items := OptionItemsArray([?ArrayVariantItem(ArrayVariantItem{1}), none])
+	encoded := json2.encode(items)
+	assert encoded == '[{"a":1,"_type":"ArrayVariantItem"},{}]'
+	fixed := FixedOptionItems([?ArrayVariantItem(ArrayVariantItem{2}), none]!)
+	assert json2.encode(fixed) == '[{"a":2,"_type":"ArrayVariantItem"},{}]'
+	ints := OptionIntsArray([?int(5), none])
+	ints_json := json2.encode(ints)
+	assert ints_json == '[5,{}]'
+	// The variant is resolved from these elements, also from a leading `{}`.
+	decoded := json2.decode[OptionItemsArray](encoded)!
+	decoded_items := decoded as []?ArrayVariantItem
+	first := decoded_items[0] or { panic('the first element should be set') }
+	assert first.a == 1
+	leading := json2.decode[OptionItemsArray]('[{},{"a":3,"_type":"ArrayVariantItem"}]')!
+	assert (leading as []?ArrayVariantItem).len == 2
+	// `{}` is `none` for a payload that cannot be an object.
+	decoded_ints := json2.decode[OptionIntsArray](ints_json)!
+	int_items := decoded_ints as []?int
+	five := int_items[0] or { panic('the first int should be set') }
+	assert five == 5
+	assert int_items[1] == none
+}
