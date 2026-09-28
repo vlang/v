@@ -73,6 +73,42 @@ fn test_translated_mixed_arithmetic_uses_common_c_type() {
 	assert u32(0xffff_ffff) + i64(1) == i64(0x1_0000_0000)
 }
 
+fn test_translated_mixed_compound_arithmetic_uses_common_c_type() {
+	mut quotient := int(-3)
+	quotient /= u32(2)
+	assert quotient == 2147483646
+	mut remainder := int(-3)
+	remainder %= u32(2)
+	assert remainder == 1
+	mut wrapped := int(-1)
+	wrapped += u32(1)
+	assert wrapped == 0
+	mut values := [int(-3)]
+	mut evaluations := [0]
+	values[translated_compound_index(mut evaluations)] /= u32(2)
+	assert evaluations[0] == 1
+	assert values[0] == 2147483646
+	mut fixed := [int(-3), 0]!
+	ptr := unsafe { &fixed[0] }
+	unsafe {
+		ptr[0] /= u32(2)
+	}
+	assert fixed[0] == 2147483646
+	mut direct_fixed := [int(-3), 0]!
+	direct_fixed[0] /= u32(2)
+	assert direct_fixed[0] == 2147483646
+	mut mapped := {
+		'a': int(-3)
+	}
+	mapped['a'] /= u32(2)
+	assert mapped['a'] == 2147483646
+}
+
+fn translated_compound_index(mut evaluations []int) int {
+	evaluations[0]++
+	return 0
+}
+
 fn translated_narrow_return(value u32) int {
 	return value
 }

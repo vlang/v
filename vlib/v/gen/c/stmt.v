@@ -8936,6 +8936,12 @@ fn (mut g FlatGen) gen_assign(node flat.Node) {
 					i += 2
 					continue
 				}
+				if g.gen_translated_numeric_compound_assign(lhs_id, rhs_id, lhs_type, rhs_type,
+					node.op) {
+					g.expected_enum = ''
+					i += 2
+					continue
+				}
 				if g.gen_checked_integer_assign(lhs_id, rhs_id, lhs_type, rhs_type, node.op) {
 					g.expected_enum = ''
 					i += 2
@@ -9056,6 +9062,55 @@ fn (mut g FlatGen) gen_assign(node flat.Node) {
 		}
 		i += 2
 	}
+}
+
+fn (mut g FlatGen) gen_translated_numeric_compound_assign(lhs_id flat.NodeId, rhs_id flat.NodeId, lhs_type types.Type, rhs_type types.Type, op flat.Op) bool {
+	operator := g.translated_numeric_compound_operator(lhs_id, lhs_type, rhs_type, op) or {
+		return false
+	}
+	storage_ct := g.value_c_type(lhs_type)
+	address := g.tmp_name()
+	g.write('{ ${storage_ct}* ${address} = &(')
+	if g.assign_lhs_needs_deref(lhs_id, lhs_type, rhs_type, op) {
+		g.write('*')
+	}
+	gen_expr_lvalue(mut g, lhs_id)
+	g.write('); *${address} = ')
+	g.gen_translated_numeric_compound_value('*${address}', lhs_id, rhs_id, lhs_type, rhs_type,
+		operator)
+	g.writeln('; }')
+	return true
+}
+
+fn (g &FlatGen) translated_numeric_compound_operator(lhs_id flat.NodeId, lhs_type types.Type, rhs_type types.Type, op flat.Op) ?string {
+	if !g.expr_is_in_translated_file(lhs_id) || op !in [.plus_assign, .minus_assign, .mul_assign,
+		.div_assign, .mod_assign, .amp_assign, .pipe_assign, .xor_assign] {
+		return none
+	}
+	lhs_clean := cgen_unalias_type(lhs_type)
+	rhs_clean := cgen_unalias_type(rhs_type)
+	if !(lhs_clean.is_integer() || lhs_clean.is_float())
+		|| !(rhs_clean.is_integer() || rhs_clean.is_float()) {
+		return none
+	}
+	return match op {
+		.plus_assign { '+' }
+		.minus_assign { '-' }
+		.mul_assign { '*' }
+		.div_assign { '/' }
+		.mod_assign { '%' }
+		.amp_assign { '&' }
+		.pipe_assign { '|' }
+		else { '^' }
+	}
+}
+
+fn (mut g FlatGen) gen_translated_numeric_compound_value(lhs_text string, lhs_id flat.NodeId, rhs_id flat.NodeId, lhs_type types.Type, rhs_type types.Type, operator string) {
+	lhs_ct := g.translated_numeric_c_type(lhs_id, lhs_type)
+	rhs_ct := g.translated_numeric_c_type(rhs_id, rhs_type)
+	g.write('(${lhs_ct})(((${lhs_ct})(${lhs_text})) ${operator} ((${rhs_ct})(')
+	g.gen_expr(rhs_id)
+	g.write(')))')
 }
 
 fn (mut g FlatGen) gen_checked_integer_assign(lhs_id flat.NodeId, rhs_id flat.NodeId, lhs_type types.Type, rhs_type types.Type, op flat.Op) bool {

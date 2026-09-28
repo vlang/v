@@ -24724,7 +24724,8 @@ fn (mut g FlatGen) translated_numeric_c_type(id flat.NodeId, typ types.Type) str
 
 fn (mut g FlatGen) gen_translated_numeric_arithmetic(id flat.NodeId, node flat.Node, lhs_id flat.NodeId, rhs_id flat.NodeId, lhs_type types.Type, rhs_type types.Type) bool {
 	if !g.expr_is_in_translated_file(id)
-		|| node.op !in [.plus, .minus, .mul, .amp, .pipe, .xor] {
+		|| (node.op !in [.plus, .minus, .mul, .amp, .pipe, .xor]
+			&& (g.has_builtins || node.op !in [.div, .mod])) {
 		return false
 	}
 	result_type := cgen_unalias_type(g.usable_expr_type(id))

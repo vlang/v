@@ -2881,10 +2881,23 @@ fn (mut t Transformer) load_map_index_current(info MapIndexInfo, map_expr flat.N
 fn (mut t Transformer) lower_map_index_compound_with_info(info MapIndexInfo, map_expr flat.NodeId, key_name string, op flat.Op, rhs_id flat.NodeId, mut result []flat.NodeId) {
 	current_name := t.load_map_index_current(info, map_expr, key_name, mut result)
 	rhs := t.transform_expr(rhs_id)
-	new_value := if info.value_type == 'string' && op == .plus {
-		t.make_call_typed('string__plus', [t.make_ident(current_name), rhs], 'string')
+	lhs := t.make_ident(current_name)
+	pos := t.a.node(rhs_id).pos
+	translated := if file := t.a.source_files[pos.id] {
+		!isnil(t.tc) && t.tc.translated_files[file.name]
 	} else {
-		t.make_infix(op, t.make_ident(current_name), rhs)
+		false
+	}
+	if translated {
+		t.a.nodes[int(lhs)].pos = pos
+	}
+	new_value := if info.value_type == 'string' && op == .plus {
+		t.make_call_typed('string__plus', [lhs, rhs], 'string')
+	} else {
+		t.make_infix(op, lhs, rhs)
+	}
+	if translated {
+		t.a.nodes[int(new_value)].pos = pos
 	}
 	result << t.make_assign(t.make_ident(current_name), new_value)
 	t.append_map_value_drop_before_set(map_expr, info.base_type, key_name, info.value_type, mut result)

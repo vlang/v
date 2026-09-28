@@ -1853,12 +1853,19 @@ fn (mut g FlatGen) gen_index_assign(node flat.Node) {
 				g.gen_guarded_shift_from_text(lhs_text, g.a.child(&node, 1), arr_type.elem_type,
 					shift_op)
 			} else if op := compound_assign_to_infix_op(node.op) {
+				rhs_id := g.a.child(&node, 1)
+				rhs_type := g.usable_expr_type(rhs_id)
 				if arr_type.elem_type is types.String && op == .plus {
 					g.write('string__plus(')
 					g.write('*(string*)array_get(*_a${tmp}, _i${tmp})')
 					g.write(', ')
 					g.gen_expr_as_string(g.a.child(&node, 1))
 					g.write(')')
+				} else if operator := g.translated_numeric_compound_operator(base_id,
+					arr_type.elem_type, rhs_type, node.op) {
+					lhs_text := '*(${c_elem}*)array_get(*_a${tmp}, _i${tmp})'
+					g.gen_translated_numeric_compound_value(lhs_text, base_id, rhs_id,
+						arr_type.elem_type, rhs_type, operator)
 				} else {
 					g.write('(')
 					g.write('*(${c_elem}*)array_get(*_a${tmp}, _i${tmp})')
@@ -1877,6 +1884,14 @@ fn (mut g FlatGen) gen_index_assign(node flat.Node) {
 			ptr_type := base_type
 			mut expected_type := ptr_type.base_type
 			mut fixed_len := ''
+			if fixed := array_fixed_type(ptr_type.base_type) {
+				expected_type = fixed.elem_type
+			}
+			rhs_id := g.a.child(&node, 1)
+			if g.gen_translated_numeric_compound_assign(g.a.child(&node, 0), rhs_id,
+				expected_type, g.usable_expr_type(rhs_id), node.op) {
+				return
+			}
 			if fixed := array_fixed_type(ptr_type.base_type) {
 				g.write('(*')
 				g.gen_expr(base_id)
