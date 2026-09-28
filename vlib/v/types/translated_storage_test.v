@@ -17,3 +17,14 @@ fn test_regular_v_storage_rules_remain_checked() {
 		assert result.output.contains('modifying variables via dereferencing'), result.output
 	}
 }
+
+fn test_ordinary_assignment_through_pointer_call_remains_rejected() {
+	root := os.join_path(os.vtmp_dir(), 'v3_pointer_call_storage_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+	path := os.join_path(root, 'main.v')
+	os.write_file(path, 'module main\nfn ptr(value &int) &int { return value }\nfn main() { value := 0; unsafe { *ptr(&value) = 42 } }\n')!
+	result := os.execute('${os.quoted_path(@VEXE)} -check ${os.quoted_path(path)}')
+	assert result.exit_code != 0, result.output
+	assert result.output.contains('cannot dereference a function call on the left side'), result.output
+}

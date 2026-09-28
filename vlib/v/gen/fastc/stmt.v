@@ -1412,6 +1412,13 @@ fn (mut g Parser) parse_simple_statement() ! {
 				g.write_line('${shift};')
 				return
 			}
+			if g.translated && operator in [.left_shift_assign, .right_shift_assign] {
+				shift := g.render_guarded_shift_assignment(c_target, value, resolved_expected_type, operator) or {
+					return g.unsupported('shift assignment on type `${resolved_expected_type}`')
+				}
+				g.write_line('${shift};')
+				return
+			}
 			mut assigned_value := value
 			if g.selfhost && operator == .assign && resolved_expected_type == 'Option' && actual_type != 'Option' {
 				if actual_type.trim_right('*') == 'IError' {

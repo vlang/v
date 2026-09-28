@@ -16772,7 +16772,7 @@ fn (mut tc TypeChecker) check_assign(id flat.NodeId, node flat.Node) {
 		if effective_lhs_node.kind == .prefix && effective_lhs_node.op == .mul
 			&& effective_lhs_node.children_count > 0 {
 			deref_child := tc.a.child_node(effective_lhs_node, 0)
-			if deref_child.kind == .call {
+			if deref_child.kind == .call && !assignment_is_translated {
 				tc.record_error_at(.assignment_mismatch, 'cannot dereference a function call on the left side of an assignment, use a temporary variable', effective_lhs_id, tc.prefix_operator_pos(effective_lhs_id, '*'))
 			}
 			if tc.unsafe_depth == 0 && !assignment_is_translated {

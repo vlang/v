@@ -54,3 +54,15 @@ fn test_translated_global_retains_array_map_element() {
 	assert translated_saved.value == 2
 	assert translated_freed == 0
 }
+
+fn translated_pointer_call(value &int) &int {
+	return value
+}
+
+fn test_translated_assignment_through_pointer_call() {
+	value := 0
+	*translated_pointer_call(&value) = 42
+	assert value == 42
+	*translated_pointer_call(&value) += 1
+	assert value == 43
+}

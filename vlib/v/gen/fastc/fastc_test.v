@@ -3171,8 +3171,8 @@ fn test_translated_mutation_operators_and_receiver_shapes() {
 	os.mkdir_all(root)!
 	defer { os.rmdir_all(root) or {} }
 	operations := ['=7', '+=3', '-=3', '*=3', '/=2', '%=3', '&=3', '|=3', '^=3', '<<=1', '>>=1',
-		'>>>=1', '++', '--']
-	expected := [7, 15, 9, 36, 6, 0, 0, 15, 15, 24, 6, 6, 13, 11]
+		'>>>=1', '++', '--', '<<=64', '>>=64', '>>>=64']
+	expected := [7, 15, 9, 36, 6, 0, 0, 15, 15, 24, 6, 6, 13, 11, 0, 0, 0]
 	for selfhost in [false, true] {
 		mut prefs := pref.new_preferences()
 		prefs.building_v = selfhost
@@ -13907,4 +13907,70 @@ fn main() {
 ', 'address_of_mut_parameter.v', prefs) or { panic(err) }
 	assert c_source.contains('.program=(program)'), c_source
 	assert !c_source.contains('.program=(&program)'), c_source
+}
+
+fn test_translated_fastc_shifts_are_bounded_and_evaluate_once() {
+	root := os.join_path(os.vtmp_dir(), 'translated_shift_bounds_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+	mut prefs := pref.new_preferences()
+	mut source := '@[translated]\nmodule main\ntype ShiftAlias = i32\ntype ShiftAliasChain = ShiftAlias\n'
+	mut checks := []string{}
+	for i, typ in ['i8', 'u8', 'i16', 'u16', 'i32', 'u32', 'i64', 'u64', 'int', 'ShiftAliasChain'] {
+		bits := if i < 2 {
+			8
+		} else if i < 4 {
+			16
+		} else if i in [4, 5, 9] {
+			32
+		} else if i in [6, 7] {
+			64
+		} else {
+			prefs.target.pointer_bits
+		}
+		for j, op in ['<<', '>>', '>>>'] {
+			name := 'shift_${i}_${j}'
+			source += 'fn ${name}(value ${typ}, count int) ${typ} { return value ${op} count }\n'
+			source += 'fn assign_${name}(value ${typ}, count int) ${typ} { value ${op}= count; return value }\n'
+			for count in [0, 1, bits - 1, bits, bits + 1, -1] {
+				expected := if count == 0 {
+					4
+				} else if count == 1 {
+					if j == 0 { 8 } else { 2 }
+				} else {
+					0
+				}
+				checks << 'if (${name}(4, ${count}) != ${expected}) return 1;'
+				checks << 'if (assign_${name}(4, ${count}) != ${expected}) return 2;'
+			}
+		}
+	}
+	source += '
+struct ShiftState { value i64 }
+__global shift_calls = 0
+fn shift_target(state &ShiftState) &ShiftState { shift_calls++; return state }
+fn shift_count() int { shift_calls++; return 64 }
+fn shift_once(state &ShiftState) { shift_target(state).value <<= shift_count() }
+fn shift_value() i64 { shift_calls++; return 4 }
+fn expression_once() i64 { return shift_value() >> shift_count() }
+fn direct_pointer(value &i64) &i64 { return value }
+fn write_pointer_call(value &i64) { *direct_pointer(value) = 7 }
+'
+	checks << 'ShiftState state = {.value=4}; shift_calls=0; shift_once(&state); if (state.value != 0 || shift_calls != 2) return 3;'
+	checks << 'shift_calls=0; if (expression_once() != 0 || shift_calls != 2) return 4;'
+	checks << 'i64 cell = 0; write_pointer_call(&cell); if (cell != 7) return 5;'
+	for selfhost in [false, true] {
+		prefs.building_v = selfhost
+		generated := generate(source, 'translated_shift_bounds.v', prefs) or { panic(err) }
+		assert !generated.contains('>>>'), generated
+		if selfhost { continue }
+		c_file := os.join_path(root, 'shifts.c')
+		bin_file := os.join_path(root, 'shifts')
+		os.write_file(c_file, '#define main unused_main\n' + generated + '\n#undef main\nint main(void) {\n' + checks.join('\n') + '\nreturn 0;\n}\n')!
+		tcc := os.join_path(prefs.vroot, 'thirdparty', 'tcc', 'tcc.exe')
+		compiled := cmdexec.run(tcc, ['-std=gnu11', '-o', bin_file, c_file])
+		assert compiled.exit_code == 0, compiled.output + '\n' + generated
+		ran := cmdexec.run(bin_file, [])
+		assert ran.exit_code == 0, ran.output
+	}
 }

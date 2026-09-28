@@ -838,6 +838,8 @@ fn (g &Parser) render_array_assignment_expression(tokens []FastcExpressionToken)
 		overloaded
 	} else if operator == .right_shift_unsigned_assign {
 		g.render_unsigned_right_shift_assignment(left.source, right, left.typ) or { return none }
+	} else if g.translated && operator in [.left_shift_assign, .right_shift_assign] {
+		g.render_guarded_shift_assignment(left.source, right, left.typ, operator) or { return none }
 	} else {
 		'${left.source}${operator.str()}${right}'
 	}
@@ -990,6 +992,8 @@ fn (g &Parser) render_assignment_expression(tokens []FastcExpressionToken) ?Fast
 		overloaded
 	} else if operator == .right_shift_unsigned_assign {
 		g.render_unsigned_right_shift_assignment(left, right, left_type) or { return none }
+	} else if g.translated && operator in [.left_shift_assign, .right_shift_assign] {
+		g.render_guarded_shift_assignment(left, right, left_type, operator) or { return none }
 	} else {
 		'${left}${operator.str()}${right}'
 	}
@@ -1022,9 +1026,9 @@ fn (g &Parser) render_overloaded_assignment(target string, value string, target_
 	return '({ ${target_type} *__vf_overloaded_assignment_target = &(${target}); *__vf_overloaded_assignment_target = ${method_name}(*__vf_overloaded_assignment_target,${value}); })'
 }
 
-fn (g &Parser) render_unsigned_right_shift_assignment(target string, value string, target_type string) ?string {
-	resolved_type := fastc_trim_pointer_suffix(g.underlying_alias_type(target_type))
-	unsigned_type, bits := match resolved_type {
+fn (g &Parser) shift_type_parts(operand_type string) ?(string, string) {
+	resolved_type := fastc_trim_pointer_suffix(g.underlying_alias_type(operand_type))
+	return match resolved_type {
 		'byte', 'char', 'i8', 'u8' { 'u8', '8' }
 		'i16', 'u16' { 'u16', '16' }
 		'i32', 'rune', 'u32', 'unsigned int' { 'u32', '32' }
@@ -1035,6 +1039,39 @@ fn (g &Parser) render_unsigned_right_shift_assignment(target string, value strin
 			return none
 		}
 	}
+}
+
+fn (g &Parser) render_guarded_shift_expression(left string, right string, left_type string, operator token.Token) ?string {
+	operand_type := if left_type in ['integer literal', 'negative integer literal'] {
+		'i32'
+	} else {
+		left_type
+	}
+	unsigned_type, bits := g.shift_type_parts(operand_type) or { return none }
+	value_type := fastc_output_c_type(operand_type)
+	result_type := if operator == .right_shift_unsigned { unsigned_type } else { value_type }
+	shift_type := if operator in [.left_shift, .right_shift_unsigned] {
+		unsigned_type
+	} else {
+		value_type
+	}
+	op := if operator == .left_shift { '<<' } else { '>>' }
+	return '({ ${shift_type} __vf_shift_value = (${shift_type})(${left}); u64 __vf_shift_count = (u64)(${right}); __vf_shift_count >= ${bits} ? (${result_type})0 : (${result_type})(__vf_shift_value ${op} __vf_shift_count); })'
+}
+
+fn (g &Parser) render_guarded_shift_assignment(target string, value string, target_type string, assignment token.Token) ?string {
+	op := if assignment == .left_shift_assign {
+		token.Token.left_shift
+	} else {
+		token.Token.right_shift
+	}
+	shift := g.render_guarded_shift_expression('*__vf_shift_target', value, target_type, op) or { return none }
+	ct := fastc_output_c_type(target_type)
+	return '({ ${ct} *__vf_shift_target = &(${target}); *__vf_shift_target = (${ct})(${shift}); })'
+}
+
+fn (g &Parser) render_unsigned_right_shift_assignment(target string, value string, target_type string) ?string {
+	unsigned_type, bits := g.shift_type_parts(target_type) or { return none }
 	target_c_type := fastc_output_c_type(target_type)
 	return '({ ${target_c_type} *__vf_unsigned_shift_target = &(${target}); ${unsigned_type} __vf_unsigned_shift_value = (${unsigned_type})(*__vf_unsigned_shift_target); u64 __vf_unsigned_shift_count = (u64)(${value}); *__vf_unsigned_shift_target = (${target_c_type})(__vf_unsigned_shift_count >= ${bits} ? (${unsigned_type})0 : (__vf_unsigned_shift_value >> __vf_unsigned_shift_count)); })'
 }
@@ -1348,7 +1385,9 @@ fn (g &Parser) render_overloaded_binary_expression(tokens []FastcExpressionToken
 		if rendered := g.render_overloaded_binary_expression(right_tokens) {
 			right_special = rendered
 		}
-		if left_special.source == '' && right_special.source == '' {
+		guarded_shift := g.translated && tokens[operator_index].tok in [.left_shift, .right_shift,
+			.right_shift_unsigned]
+		if left_special.source == '' && right_special.source == '' && !guarded_shift {
 			return none
 		}
 		right_type := g.infer_expression_type(right_tokens) or { return none }
@@ -1361,6 +1400,12 @@ fn (g &Parser) render_overloaded_binary_expression(tokens []FastcExpressionToken
 			right_special.source
 		} else {
 			g.render_call_argument_expression(right_tokens, right_type) or { return none }
+		}
+		if guarded_shift {
+			return FastcRenderedExpression{
+				source: g.render_guarded_shift_expression(left, right, left_type, tokens[operator_index].tok) or { return none }
+				typ:    fastc_normalize_inferred_type(left_type)
+			}
 		}
 		// A `+` whose operands are strings is concatenation, not C pointer arithmetic. When
 		// one side is itself a lowered string expression (`a + s[..n] + b`), the recursive
