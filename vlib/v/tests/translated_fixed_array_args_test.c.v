@@ -244,3 +244,25 @@ fn test_translated_interface_void_pointer_uses_source_array_type() {
 	assert sink.sum_alias([[20, 22]!, [3, 5]!]!) == 42
 	assert sink.sum_alias([make_runtime_row(20), make_runtime_row(3)]!) == 41
 }
+
+fn C.translated_sum_ints(values &int) int
+fn C.translated_mutate_ints(values DecayedIntPtrAlias)
+fn C.translated_increment_int(value &int)
+
+fn test_translated_c_int_pointer_arguments_convert_array_storage() {
+	mut values := [20, 22]!
+	assert C.translated_sum_ints(values) == 42
+	assert C.translated_sum_ints([21, 22]!) == 43
+	assert C.translated_sum_ints(make_runtime_row(22)) == 45
+	C.translated_mutate_ints(values)
+	assert values == [-7, 42]!
+	mut rows := [[1, 2]!, [3, 4]!]!
+	C.translated_mutate_ints(rows[1])
+	assert rows == [[1, 2]!, [-7, 42]!]!
+	mut scalar := 40
+	C.translated_increment_int(&scalar)
+	assert scalar == 41
+	mut dynamic := [1, 2]
+	C.translated_mutate_ints(dynamic.data)
+	assert dynamic == [-7, 42]
+}
