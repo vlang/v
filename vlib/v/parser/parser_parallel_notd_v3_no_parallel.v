@@ -136,6 +136,7 @@ fn (p &Parser) timing_profile(message string) {
 pub fn (mut p Parser) parse_files_dispatch(paths []string, allow_parallel bool) ([]int, bool) {
 	previous_paths := p.parse_batch_paths
 	p.parse_batch_paths = paths.clone()
+	p.reset_translated_sizeof_declarations()
 	defer { p.parse_batch_paths = previous_paths }
 	if !allow_parallel || paths.len < min_parallel_parse_files {
 		return p.parse_files_with_starts(paths), false

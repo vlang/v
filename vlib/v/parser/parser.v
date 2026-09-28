@@ -130,7 +130,7 @@ mut:
 	parse_batch_paths                 []string
 	translated_sizeof_type_names      map[string]bool
 	translated_sizeof_const_names     map[string]bool
-	translated_sizeof_types_scanned   bool
+	translated_sizeof_scanned_modules map[string]bool
 	local_binding_undos               []string
 	local_binding_scopes              []int
 	active_lambda_param_counts        map[string]int
@@ -340,6 +340,7 @@ pub fn (mut p Parser) release_source_storage() {
 pub fn (mut p Parser) parse_files_with_starts(paths []string) []int {
 	previous_paths := p.parse_batch_paths
 	p.parse_batch_paths = paths.clone()
+	p.reset_translated_sizeof_declarations()
 	defer { p.parse_batch_paths = previous_paths }
 	mut starts := []int{cap: paths.len}
 	for path in paths {
@@ -400,9 +401,9 @@ pub fn (mut p Parser) parse_into(path string) {
 		p.imported_module_names['os'] = true
 	}
 	p.local_binding_counts.clear()
-	p.translated_sizeof_type_names.clear()
-	p.translated_sizeof_const_names.clear()
-	p.translated_sizeof_types_scanned = false
+	if p.parse_batch_paths.len == 0 {
+		p.reset_translated_sizeof_declarations()
+	}
 	p.local_binding_undos.clear()
 	p.local_binding_scopes.clear()
 	p.active_lambda_param_counts.clear()
@@ -14533,33 +14534,52 @@ fn (mut p Parser) sizeof_expr() flat.NodeId {
 	})
 }
 
+fn (mut p Parser) reset_translated_sizeof_declarations() {
+	p.translated_sizeof_type_names.clear()
+	p.translated_sizeof_const_names.clear()
+	p.translated_sizeof_scanned_modules.clear()
+}
+
+fn (p &Parser) translated_sizeof_declaration_key(name string) string {
+	return '${os.dir(p.cur_file)}\x00${p.cur_module}\x00${name}'
+}
+
 fn (mut p Parser) translated_sizeof_name_is_type(name string) bool {
+	if p.resolve_local_type_name(name) != name {
+		return true
+	}
 	p.scan_translated_sizeof_declarations()
-	return p.translated_sizeof_type_names[name] || p.has_prior_type_declaration(name)
+	return p.translated_sizeof_type_names[p.translated_sizeof_declaration_key(name)]
+		|| p.has_prior_type_declaration(name)
 }
 
 fn (mut p Parser) translated_sizeof_name_is_const(name string) bool {
+	if p.resolve_local_type_name(name) != name {
+		return false
+	}
 	p.scan_translated_sizeof_declarations()
-	return p.translated_sizeof_const_names[name]
+	return p.translated_sizeof_const_names[p.translated_sizeof_declaration_key(name)]
 }
 
 fn (mut p Parser) scan_translated_sizeof_declarations() {
-	if !p.translated_sizeof_types_scanned {
-		p.translated_sizeof_types_scanned = true
-		p.scan_translated_sizeof_source(p.s.src)
-		// Workers need declarations from the complete parse batch, including files
-		// assigned to other workers. Never inspect siblings excluded from the build.
-		mut paths := p.parsed_v_file_paths.clone()
-		paths << p.parse_batch_paths
-		mut scanned := map[string]bool{}
-		for path in paths {
-			if path == p.cur_file || os.dir(path) != os.dir(p.cur_file) || scanned[path] {
-				continue
-			}
-			scanned[path] = true
-			source := os.read_file(path) or { continue }
-			p.scan_translated_sizeof_source(source)
+	key := p.translated_sizeof_declaration_key('')
+	if p.translated_sizeof_scanned_modules[key] {
+		return
+	}
+	p.translated_sizeof_scanned_modules[key] = true
+	p.scan_translated_sizeof_source(p.s.src)
+	// Each worker indexes a module once for the full batch, including files
+	// assigned to other workers. Never inspect siblings excluded from the build.
+	mut paths := p.parsed_v_file_paths.clone()
+	paths << p.parse_batch_paths
+	mut scanned := map[string]bool{}
+	for path in paths {
+		if path == p.cur_file || os.dir(path) != os.dir(p.cur_file) || scanned[path] {
+			continue
 		}
+		scanned[path] = true
+		source := os.read_file(path) or { continue }
+		p.scan_translated_sizeof_source(source)
 	}
 }
 
@@ -14605,7 +14625,7 @@ fn (mut p Parser) scan_translated_sizeof_range(source string, tokens []InlineAsm
 		}
 		if kind in [.key_type, .key_struct, .key_enum, .key_interface, .key_union]
 			&& i + 1 < end && tokens[i + 1].kind == .name {
-			p.translated_sizeof_type_names[tokens[i + 1].lit] = true
+			p.translated_sizeof_type_names[p.translated_sizeof_declaration_key(tokens[i + 1].lit)] = true
 		}
 		if kind == .key_const {
 			next := p.inline_asm_collect_const_decl(tokens, i, end)
@@ -14615,7 +14635,7 @@ fn (mut p Parser) scan_translated_sizeof_range(source string, tokens []InlineAsm
 			mut depth := 0
 			for j + 1 < next {
 				if depth == 0 && tokens[j].kind == .name && tokens[j + 1].kind == .assign {
-					p.translated_sizeof_const_names[tokens[j].lit] = true
+					p.translated_sizeof_const_names[p.translated_sizeof_declaration_key(tokens[j].lit)] = true
 				}
 				match tokens[j].kind {
 					.lpar, .lsbr, .lcbr { depth++ }

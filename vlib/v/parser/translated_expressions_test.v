@@ -203,3 +203,73 @@ fn test_translated_postfix_before_complex_dereference_assignments() {
 		assert p.diagnostics.len == 0, '${target}: ${p.diagnostics}'
 	}
 }
+
+fn test_translated_sizeof_function_local_types_keep_their_scope() {
+	root := os.join_path(os.vtmp_dir(), 'translated_sizeof_local_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+	path := os.join_path(root, 'main.v')
+	os.write_file(path, '@[translated]
+module main
+const c_record = [1, 2]!
+fn main() {
+ assert sizeof(c_record) > 0
+ struct c_record { value int }
+ assert sizeof(c_record) > 0
+ if true {
+  assert sizeof(c_union) > 0
+  union c_union { first int second i64 }
+ }
+ other()
+}
+fn other() {
+ c_union := [1, 2]!
+ assert sizeof(c_union) == sizeof([2]int)
+ assert sizeof(c_record) == sizeof([2]int)
+}
+')!
+	mut p := Parser.new(pref.new_preferences())
+	p.parse_file(path)
+	assert p.diagnostics.len == 0, p.diagnostics.str()
+	sizes := p.a.nodes.filter(it.kind == .sizeof_expr)
+	assert sizes[0].value.contains('c_record@local@')
+	assert sizes[1].value == sizes[0].value
+	assert sizes[2].value.contains('c_union@local@')
+	assert sizes[3].children_count == 1
+	assert sizes[5].children_count == 1
+	result := os.execute('${os.quoted_path(@VEXE)} run ${os.quoted_path(path)}')
+	assert result.exit_code == 0, result.output
+}
+
+fn test_translated_sizeof_declaration_cache_is_scoped_and_refreshed() {
+	root := os.join_path(os.vtmp_dir(), 'translated_sizeof_cache_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+	mut p := Parser.new(pref.new_preferences())
+	for module_index in 0 .. 2 {
+		dir := os.join_path(root, 'module_${module_index}')
+		os.mkdir_all(dir)!
+		mut paths := []string{}
+		for i in 0 .. 8 {
+			path := os.join_path(dir, 'use_${i}.v')
+			os.write_file(path, '@[translated]\nmodule main\nfn use_${i}() { _ = sizeof(c_value) }\n')!
+			paths << path
+		}
+		declaration := os.join_path(dir, 'declaration.v')
+		paths << declaration
+		for is_type in [true, false] {
+			os.write_file(declaration, if is_type {
+				'module main\nstruct c_value { value int }\n'
+			} else {
+				'module main\nconst c_value = 7\n'
+			})!
+			start := p.a.nodes.len
+			p.parse_files(paths)
+			assert p.diagnostics.len == 0, p.diagnostics.str()
+			sizes := p.a.nodes[start..].filter(it.kind == .sizeof_expr)
+			assert sizes.len == 8
+			assert sizes.all((it.children_count == 0) == is_type)
+			assert p.translated_sizeof_scanned_modules.len == 1
+		}
+	}
+}
