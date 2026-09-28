@@ -679,6 +679,12 @@ fn (mut g FlatGen) gen_struct_init(id flat.NodeId) {
 	}
 	init_semantic_type := g.tc.parse_type(init_value)
 	effective_type := default_init_unalias_type(types.unwrap_pointer(init_semantic_type))
+	// A specialized `T{}` may be a container rather than a struct. Its runtime
+	// metadata must be initialized by the corresponding default-value emitter.
+	if node.children_count == 0 && (effective_type is types.Array || effective_type is types.Map) {
+		g.gen_default_value_for_type(init_semantic_type)
+		return
+	}
 	if init_semantic_type !is types.OptionType && init_semantic_type !is types.ResultType
 		&& (effective_type !is types.Struct || g.struct_init_is_lowered_sum_literal(node))
 		&& g.gen_lowered_sum_init(node) {

@@ -47,6 +47,30 @@ fn test_generic_channel_default_uses_concrete_element_size() {
 	assert g.sb.str().contains('sizeof(string)')
 }
 
+fn test_specialized_generic_container_struct_literal_uses_runtime_default() {
+	for concrete in ['[]string', 'map[string]int'] {
+		mut ast := flat.FlatAst.new()
+		init_id := ast.add_node(flat.Node{
+			kind:  .struct_init
+			value: 'T'
+		})
+		mut tc := types.TypeChecker.new(&ast)
+		tc.cur_module = 'main'
+		mut g := FlatGen.new()
+		g.a = &ast
+		g.tc = &tc
+		g.struct_default_generic_params = ['T']
+		g.struct_default_generic_args = [concrete]
+		g.gen_struct_init(init_id)
+		generated := g.sb.str()
+		if concrete == '[]string' {
+			assert generated == 'array_new(sizeof(string), 0, 0)'
+		} else {
+			assert generated.contains('new_map')
+		}
+	}
+}
+
 fn test_flattened_generic_struct_default_value_preserves_field_defaults() {
 	mut ast := flat.FlatAst.new()
 	default_value := ast.add_node(flat.Node{
