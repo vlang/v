@@ -55,3 +55,23 @@ fn test_escaped_sumtype_discriminator() {
 	robot := json2.decode[Being]('{"_type":"Robot","model":"r2"}')!
 	assert robot is Robot
 }
+
+struct OptionContainers {
+	fixed  [2]?int
+	by_key map[string]?int
+	humans []?Human
+}
+
+fn test_option_elements_in_containers() {
+	assert json2.decode[[]?int]('[1,null]')! == [?int(1), none]
+	containers := json2.decode[OptionContainers]('{"fixed":[null,2],"by_key":{"x":null,"y":5},"humans":[{"name":"h"},null]}')!
+	assert containers.fixed[0] == none
+	second := containers.fixed[1]
+	assert second? == 2
+	assert containers.by_key['x'] == none
+	y := containers.by_key['y']
+	assert y? == 5
+	first_human := containers.humans[0] or { panic('the first human should be set') }
+	assert first_human.name == 'h'
+	assert containers.humans[1] == none
+}

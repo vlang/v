@@ -367,6 +367,13 @@ fn new_pointer_to[T](value T) &T {
 	return ptr
 }
 
+// decode_option_payload decodes the current value as the payload of an option.
+fn (mut decoder Decoder) decode_option_payload[P](_ ?P) !P {
+	mut payload := P{}
+	decoder.decode_value(mut payload)!
+	return payload
+}
+
 fn create_decoded_ptr[T](_ &T) &T {
 	$if T is $interface {
 		return unsafe { nil }
@@ -771,6 +778,16 @@ fn (mut decoder Decoder) decode_value[T](mut val T) ! {
 		if decoder.current_node != unsafe { nil } {
 			decoder.current_node = decoder.current_node.next
 		}
+		return
+	} $else $if T is $option {
+		// An option element of an array or map (`[]?int`): `null` is `none`, anything
+		// else is the payload, like in the removed `json` module.
+		if decoder.current_node.value.value_kind == .null {
+			val = none
+			decoder.current_node = decoder.current_node.next
+			return
+		}
+		val = decoder.decode_option_payload(val)!
 		return
 	} $else {
 		// Custom Decoders
@@ -1325,7 +1342,18 @@ fn (mut decoder Decoder) decode_array[T](mut val []T) ! {
 					break
 				}
 
-				val << decoder.decode_array_element(T{})!
+				$if T is $option {
+					// An option element (`[]?int`): `null` is `none`. Decoded directly,
+					// since v3 cannot return `!?T` from the element helper.
+					if decoder.current_node.value.value_kind == .null {
+						val << T(none)
+						decoder.current_node = decoder.current_node.next
+					} else {
+						val << decoder.decode_option_payload(T(none))!
+					}
+				} $else {
+					val << decoder.decode_array_element(T{})!
+				}
 			}
 		} else {
 			decoder.decode_error('Expected array, but got ${array_info.value_kind}')!
@@ -1368,7 +1396,19 @@ fn (mut decoder Decoder) decode_fixed_array[T](mut val T) ! {
 // element that is itself a fixed array through a `mut` parameter; only a pointer
 // element is replaced.
 fn (mut decoder Decoder) decode_fixed_array_element[E](element &E) ! {
-	$if E.indirections == 1 {
+	$if E is $option {
+		if decoder.current_node.value.value_kind == .null {
+			unsafe {
+				*element = E(none)
+			}
+			decoder.current_node = decoder.current_node.next
+		} else {
+			payload := decoder.decode_option_payload(E(none))!
+			unsafe {
+				*element = payload
+			}
+		}
+	} $else $if E.indirections == 1 {
 		unsafe {
 			*element = decoder.decode_array_element(*element)!
 		}
@@ -1442,6 +1482,16 @@ fn (mut decoder Decoder) decode_map[V](mut val map[string]V) ! {
 					break
 				}
 
+				$if V is $option {
+					// An option value (`map[string]?int`): `null` is `none`.
+					if decoder.current_node.value.value_kind == .null {
+						val[key_str] = V(none)
+						decoder.current_node = decoder.current_node.next
+					} else {
+						val[key_str] = decoder.decode_option_payload(V(none))!
+					}
+					continue
+				}
 				mut map_value := V{}
 
 				$if V.indirections == 1 {
