@@ -22960,7 +22960,7 @@ fn (g &FlatGen) global_fixed_array_pointer_alignment(fixed types.ArrayFixed) ?st
 }
 
 fn (mut g FlatGen) global_fixed_array_fill_stmt(dst string, val_id flat.NodeId, fixed types.ArrayFixed) string {
-	node := g.a.node(val_id)
+	node := g.a.nodes[int(val_id)]
 	if node.kind !in [.array_init, .array_literal, .struct_init, .postfix] {
 		source := g.fixed_array_copy_source_string(val_id, types.Type(fixed))
 		if trimmed_space(source).len > 0 {
@@ -22971,6 +22971,27 @@ fn (mut g FlatGen) global_fixed_array_fill_stmt(dst string, val_id flat.NodeId, 
 	literal := g.fixed_array_compound_literal_expr(val_id, fixed)
 	if trimmed_space(literal).len > 0 {
 		return 'memmove(${dst}, ${literal}, sizeof(${dst}));'
+	}
+	if node.kind == .postfix && node.children_count > 0 {
+		return g.global_fixed_array_fill_stmt(dst, g.a.child(&node, 0), fixed)
+	}
+	if node.kind == .array_literal {
+		mut assignments := []string{}
+		for i in 0 .. node.children_count {
+			child_id := g.a.child(&node, i)
+			element := '${dst}[${i}]'
+			assignment := if inner := array_fixed_type(default_init_unalias_type(fixed.elem_type)) {
+				g.global_fixed_array_fill_stmt(element, child_id, inner)
+			} else {
+				init_expr := g.expr_to_string_with_expected_type(child_id, fixed.elem_type)
+				'${element} = ${init_expr};'
+			}
+			if trimmed_space(assignment).len == 0 {
+				return ''
+			}
+			assignments << assignment
+		}
+		return assignments.join(' ')
 	}
 	if node.kind != .array_init {
 		return ''

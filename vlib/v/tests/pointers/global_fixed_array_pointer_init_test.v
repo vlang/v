@@ -50,6 +50,12 @@ __global global_nested_filled_array = &[2][3]int{init: [3]int{init: 7}}
 __global global_nested_index_array = &[2][3]int{init: [3]int{init: index + 5}}
 __global global_nested_call_array = &[2][3]int{init: make_global_array_pointer_row(index)}
 __global global_nested_alias_call_array = &[2]GlobalArrayPointerNestedRowAlias{init: make_global_array_pointer_row(index)}
+__global global_nested_literal_call_array = &[make_global_array_pointer_row(0),
+	make_global_array_pointer_row(1)]!
+__global global_deep_literal_call_array = &[
+	[make_global_array_pointer_row(0), make_global_array_pointer_row(1)]!,
+	[make_global_array_pointer_row(2), make_global_array_pointer_row(3)]!,
+]!
 __global global_aligned_array = &[2]GlobalAlignedArrayPointerCell{}
 __global global_optional_aligned_array = &[2]?GlobalAlignedArrayPointerCell{}
 __global global_nested_aligned_array = &[2][2]GlobalAlignedArrayPointerCell{}
@@ -74,7 +80,7 @@ fn test_global_fixed_array_pointers_are_initialized() {
 	assert u64(voidptr(global_nested_aligned_array)) % 512 == 0
 	assert u64(voidptr(global_inherited_aligned_array)) % 512 == 0
 	assert u64(voidptr(global_filled_aligned_array)) % 512 == 0
-	assert global_row_calls == 4
+	assert global_row_calls == 10
 	// Indexing these pointer-backed arrays requires an unsafe block.
 	unsafe {
 		assert global_zero_array[0] == 0
@@ -113,6 +119,10 @@ fn test_global_fixed_array_pointers_are_initialized() {
 		assert global_nested_call_array[1][2] == 12
 		assert global_nested_alias_call_array[0][1] == 1
 		assert global_nested_alias_call_array[1][2] == 12
+		assert global_nested_literal_call_array[0][1] == 1
+		assert global_nested_literal_call_array[1][2] == 12
+		assert global_deep_literal_call_array[0][1][2] == 12
+		assert global_deep_literal_call_array[1][1][2] == 32
 		assert global_aligned_array[1].value == 19
 		assert global_nested_aligned_array[1][1].value == 19
 		assert global_inherited_aligned_array[1].inner.value == 19

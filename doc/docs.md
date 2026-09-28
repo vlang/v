@@ -3579,6 +3579,8 @@ println(world)
 Constants are declared with `const`. They can only be defined
 at the module level (outside of functions).
 Global variables can infer their types from constants, including constants initialized by functions.
+Global pointers to fixed-array literals are initialized at startup, including nested elements
+computed by function calls.
 
 Constant values can never be changed. You can also declare a single
 constant separately:
