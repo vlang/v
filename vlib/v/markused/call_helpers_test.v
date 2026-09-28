@@ -645,3 +645,26 @@ fn test_generic_factory_signature_text_uses_declaration_imports() {
 	assert collector.generic_factory_return_type_name(a.node(indexed), method, 'consumer',
 		map[string]string{}, false, '') == 'external.Handler[int]'
 }
+
+fn test_unindexed_generic_factory_return_infers_argument_type() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	tc.parallel_check_sparse = true
+	method := 'gates.make_gate'
+	tc.fn_generic_params[method] = ['U']
+	tc.fn_param_type_texts[method] = ['U']
+	tc.fn_ret_types[method] = types.Type(types.Struct{ name: 'gates.Gate[U]' })
+	tc.fn_ret_types['gates.Gate[T].backward'] = types.Type(types.int_)
+	base := a.add_val(.ident, 'make_gate')
+	value := a.add_val(.ident, 'value')
+	call := call_helper_node(mut a, flat.Node{ kind: .call }, [base, value])
+	tc.sparse_resolved_call_names[int(call)] = method
+	collector := CallCollector{ a: &a, tc: &tc }
+	inferred := collector.top_level_call_return_type_name(call, 'consumer', map[string]string{}, {
+		'value': true
+	}, {
+		'value': 'T'
+	}, false)
+	assert inferred == 'gates.Gate[T]'
+	assert collector.typed_receiver_method_name(inferred, 'backward', 'consumer')? == 'gates.Gate[T].backward'
+}

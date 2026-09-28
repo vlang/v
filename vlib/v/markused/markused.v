@@ -6067,6 +6067,12 @@ fn (c &CallCollector) infer_alias_generic_args(call &flat.Node, param_texts []st
 		arg_id := markused_generic_call_arg_value(c.a, c.a.child(call, arg_i))
 		if actual := c.alias_aware_expr_type(arg_id, cur_module, imports, local_values, local_types) {
 			markused_infer_alias_generic_type(param_texts[param_idx], actual, generic_params, mut inferred)
+		} else if param_texts[param_idx] in generic_params {
+			actual_text := c.top_level_expr_type_name(arg_id, cur_module, imports, local_values,
+				local_types, false)
+			if actual_text.len > 0 && actual_text != 'unknown' {
+				inferred[param_texts[param_idx]] = actual_text
+			}
 		}
 		param_idx++
 	}
@@ -6745,6 +6751,16 @@ fn (c &CallCollector) top_level_call_return_type_name(call_id flat.NodeId, cur_m
 			return c.generic_factory_return_type_name(callee, resolved, cur_module, imports, unwrap_optional_result, receiver_type)
 		}
 	}
+	if callee.kind in [.ident, .selector] {
+		if resolved := c.tc.resolved_call_name(call_id) {
+			if c.generic_fn_name_is_known(resolved, cur_module) {
+				if inferred := c.inferred_generic_factory_return_type_name(call_id, call, resolved,
+					cur_module, imports, local_values, local_types, unwrap_optional_result) {
+					return inferred
+				}
+			}
+		}
+	}
 	if callee.kind == .selector && callee.value.len > 0 && callee.children_count > 0 {
 		base_id := c.a.child(callee, 0)
 		base := c.a.node(base_id)
@@ -6775,21 +6791,8 @@ fn (c &CallCollector) generic_factory_return_type_name(index &flat.Node, name st
 			&& !c.generic_receiver_method_name_is_known(candidate) {
 			continue
 		}
-		mut return_type := c.fn_return_type_name(candidate, unwrap_optional_result)
-		semantic_has_placeholder := if semantic_type := c.fn_return_type_for_name(candidate) {
-			markused_type_has_unknown(semantic_type)
-		} else {
-			false
-		}
-		if return_type.len == 0 || semantic_has_placeholder {
-			if signature_text := c.tc.fn_ret_type_texts[candidate] {
-				return_type = c.generic_factory_signature_type_text(signature_text, candidate,
-					cur_module)
-				if unwrap_optional_result && (return_type.starts_with('?') || return_type.starts_with('!')) {
-					return_type = return_type[1..]
-				}
-			}
-		}
+		return_type := c.generic_factory_return_type_text(candidate, cur_module,
+			unwrap_optional_result)
 		if return_type.len == 0 { continue }
 		arg_count := int(index.children_count) - 1
 		if arg_count <= 0 { return return_type }
@@ -6803,6 +6806,76 @@ fn (c &CallCollector) generic_factory_return_type_name(index &flat.Node, name st
 		return c.tc.specialize_generic_factory_return(return_type, candidate, receiver_type, args)
 	}
 	return ''
+}
+
+fn (c &CallCollector) inferred_generic_factory_return_type_name(call_id flat.NodeId, call &flat.Node, name string, cur_module string, imports map[string]string, local_values map[string]bool, local_types map[string]string, unwrap_optional_result bool) ?string {
+	for candidate in markused_fn_signature_name_candidates(name, cur_module) {
+		generic_params := c.tc.fn_generic_params[candidate] or { continue }
+		if generic_params.len == 0 {
+			continue
+		}
+		mut param_texts := c.tc.fn_param_type_texts[candidate] or { []string{} }
+		if param_texts.len == 0 {
+			if decl := c.fn_decls[candidate] {
+				param_texts = c.generic_fn_param_type_texts(candidate, c.a.node(decl.node_id))
+			}
+		}
+		if param_texts.len == 0 {
+			continue
+		}
+		inferred := c.infer_alias_generic_args(call, param_texts, generic_params, cur_module,
+			imports, local_values, local_types)
+		mut args := []string{cap: generic_params.len}
+		mut complete := true
+		for param in generic_params {
+			if actual := inferred[param] {
+				args << c.generic_factory_qualified_type_text(actual, call_id, cur_module,
+					imports)
+			} else {
+				complete = false
+				break
+			}
+		}
+		if !complete {
+			continue
+		}
+		return_type := c.generic_factory_return_type_text(candidate, cur_module,
+			unwrap_optional_result)
+		if return_type.len == 0 {
+			continue
+		}
+		mut receiver_type := ''
+		callee := c.a.child_node(call, 0)
+		if callee.kind == .selector && callee.children_count > 0 {
+			receiver_id := c.a.child(callee, 0)
+			raw_receiver := c.top_level_receiver_type_name(receiver_id, cur_module, imports,
+				local_values, local_types)
+			receiver_type = c.generic_factory_qualified_type_text(raw_receiver, receiver_id,
+				cur_module, imports)
+		}
+		return c.tc.specialize_generic_factory_return(return_type, candidate, receiver_type,
+			args)
+	}
+	return none
+}
+
+fn (c &CallCollector) generic_factory_return_type_text(candidate string, cur_module string, unwrap_optional_result bool) string {
+	mut return_type := c.fn_return_type_name(candidate, unwrap_optional_result)
+	semantic_has_placeholder := if semantic_type := c.fn_return_type_for_name(candidate) {
+		markused_type_has_unknown(semantic_type)
+	} else {
+		false
+	}
+	if return_type.len == 0 || semantic_has_placeholder {
+		if signature_text := c.tc.fn_ret_type_texts[candidate] {
+			return_type = c.generic_factory_signature_type_text(signature_text, candidate,
+				cur_module)
+			if unwrap_optional_result && (return_type.starts_with('?') || return_type.starts_with('!')) {
+				return_type = return_type[1..]
+			}
+		}
+	}
+	return return_type
 }
 
 fn (c &CallCollector) generic_factory_signature_type_text(signature_text string, candidate string, cur_module string) string {
