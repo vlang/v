@@ -158,23 +158,66 @@ fn (tc &TypeChecker) vls_call_target(call_id flat.NodeId, callee_id flat.NodeId)
 	if callee.kind != .selector || callee.children_count == 0 {
 		return none
 	}
-	// With the type parameters of the receiver: `xs.map()` of `xs []T` calls the
-	// `map` of every array.
-	receiver_type := tc.vls_value_type(tc.a.child(callee, 0)) or { return none }
-	owner := tc.vls_member_owner(receiver_type) or { return none }
-	method := '${owner}.${callee.value}'
-	if method in tc.fn_type_files || tc.vls_builtin_method_decl(method) != none {
-		return method
+	return tc.vls_method_target(tc.a.child(callee, 0), callee.value)
+}
+
+// vls_method_target is the method `method` of the value `receiver_id`, called
+// or named without a call: of its type, with its type parameters (`xs.map()` of
+// `xs []T` calls the `map` of every array), of a struct that its struct embeds,
+// or of the interface that the constraint of its type parameter names. A method
+// of a generic struct is registered as its declaration writes its receiver,
+// `Box[T].label`; one of an interface keeps the type arguments of the value,
+// `Shelf[User].get`, which its signature takes.
+fn (tc &TypeChecker) vls_method_target(receiver_id flat.NodeId, method string) ?string {
+	mut receiver_type := tc.vls_value_type(receiver_id)?
+	if constrained := tc.vls_constrained_type(receiver_id, receiver_type) {
+		receiver_type = constrained
 	}
-	// A method of a generic struct, which is registered with its receiver as
-	// its declaration writes it: `Box[T].label` for `b.label()` of a `Box[T]`.
-	if info := tc.resolve_generic_struct_method(owner, callee.value) {
+	owner := tc.vls_member_owner(receiver_type)?
+	name := '${owner}.${method}'
+	if name in tc.fn_type_files || tc.vls_builtin_method_decl(name) != none {
+		return name
+	}
+	if info := tc.resolve_generic_struct_method(owner, method) {
 		return info.name
 	}
-	// A method of a struct that the receiver's struct embeds.
-	owners := tc.embedded_method_candidates(owner, callee.value)
+	owners := tc.embedded_method_candidates(owner, method)
 	if owners.len == 1 {
-		return '${owners[0]}.${callee.value}'
+		return '${owners[0]}.${method}'
+	}
+	if _ := tc.vls_interface_member(owner, method) {
+		return name
+	}
+	return none
+}
+
+// vls_interface_decl is the declaration of the interface `name`; of a generic
+// interface, `Shelf[User]`, the one of `Shelf`.
+fn (tc &TypeChecker) vls_interface_decl(name string) ?flat.Node {
+	base, _, is_generic := generic_type_application_parts(name)
+	mut keys := [name]
+	if is_generic {
+		keys << base
+	}
+	for key in keys {
+		index := tc.first_type_declaration_ids[key] or { continue }
+		decl := tc.a.nodes[index]
+		if decl.kind == .interface_decl {
+			return decl
+		}
+	}
+	return none
+}
+
+// vls_interface_member is the member `method` that the interface `name`
+// declares, generic or not.
+fn (tc &TypeChecker) vls_interface_member(name string, method string) ?flat.Node {
+	decl := tc.vls_interface_decl(name)?
+	for i in 0 .. decl.children_count {
+		member := tc.a.child_node(&decl, i)
+		if member.kind == .interface_field && member.value == method {
+			return *member
+		}
 	}
 	return none
 }
@@ -310,11 +353,13 @@ fn (tc &TypeChecker) vls_array_method_call_type(call flat.Node) ?Type {
 			}
 			arg_id := tc.a.child(&call, 1)
 			arg := tc.a.node(arg_id)
-			// A lambda gives what its body does, a function value what it returns.
+			// A lambda gives what its body does, a function value what it returns,
+			// and an expression of `it`, `it * 2`, its value.
 			elem := if arg.kind == .lambda_expr && arg.children_count > 0 {
-				tc.vls_expr_type(tc.a.child(arg, int(arg.children_count) - 1))?
+				body_id := tc.a.child(arg, int(arg.children_count) - 1)
+				tc.vls_expr_type(body_id) or { tc.vls_unconstrained_type(body_id)? }
 			} else {
-				value := tc.vls_value_type(arg_id)?
+				value := tc.vls_value_type(arg_id) or { tc.vls_unconstrained_type(arg_id)? }
 				if value is FnType { value.return_type } else { value }
 			}
 			if elem is Void {
@@ -467,7 +512,7 @@ fn (tc &TypeChecker) vls_narrowed_constraints(fn_node flat.Node, path []flat.Nod
 			taken: taken
 		}
 	}
-	return tc.comptime_ways_constraints(ways, scope.constraints)
+	return tc.comptime_ways_constraints(ways, scope.constraints, scope.names)
 }
 
 // vls_local_type_param is the type parameter, one of `names`, that the local
@@ -561,6 +606,11 @@ fn (tc &TypeChecker) vls_enclosing_decl(id flat.NodeId) ?(flat.Node, []flat.Node
 // `decl`, names a type that exists: of `[T Nope]`, which the check reports,
 // a hover says nothing.
 fn (tc &TypeChecker) vls_constraint_known(decl flat.Node, constraint GenericConstraint) bool {
+	// A type parameter without a constraint, which a `$if` decided (see
+	// comptime_ways_constraints).
+	if constraint.name == '' {
+		return true
+	}
 	file := tc.a.source_files[int(decl.pos.id)] or { return false }
 	decl_module := tc.file_modules[file.name] or { tc.cur_module }
 	return tc.type_name_known_in_scope(constraint.name.all_before('['), file.name, decl_module)
@@ -646,7 +696,8 @@ fn (tc &TypeChecker) vls_generic_value_text(id flat.NodeId, name string, type_te
 // vls_generic_value_text).
 fn (tc &TypeChecker) vls_value_hover(id flat.NodeId, name string, typ Type) string {
 	text := tc.vls_value_type_text(typ)
-	if type_contains_unknown(typ) {
+	// `[]T`, or a generic type with a type parameter as its argument, `Box[T]`.
+	if type_contains_unknown(typ) || !vls_type_text_params_hold(text, map[string]bool{}) {
 		return tc.vls_generic_value_text(id, name, text)
 	}
 	return '${name} ${text}'
@@ -662,7 +713,12 @@ fn (tc &TypeChecker) vls_type_param_hover(id flat.NodeId, word string) ?string {
 	if word !in scope.names {
 		return none
 	}
-	declared := scope.constraints[word] or { return '[${word}]' }
+	declared := scope.constraints[word] or {
+		// Without a constraint: what a `$if` makes of it there, if one does.
+		narrowed := tc.vls_narrowed_constraints(decl, path)[word] or { return '[${word}]' }
+		line := tc.vls_type_param_line(word, narrowed) or { return '[${word}]' }
+		return '[${word}]\n${line}'
+	}
 	head := '[${word} ${declared.name}]'
 	if !tc.vls_constraint_known(decl, declared) {
 		return head
@@ -721,7 +777,8 @@ fn (tc &TypeChecker) vls_local_type(id flat.NodeId) ?Type {
 	if_id := tc.vls_parent_id(decl_id)
 	if rhs_count == 1 && tc.valid_node_id(if_id) && tc.a.node(if_id).kind == .if_expr
 		&& tc.a.child(tc.a.node(if_id), 0) == decl_id {
-		value := tc.vls_expr_type(tc.multi_assign_rhs_id(decl, 0))?
+		rhs_id := tc.multi_assign_rhs_id(decl, 0)
+		value := tc.vls_unconstrained_type(rhs_id) or { tc.vls_expr_type(rhs_id)? }
 		base := match value {
 			OptionType { value.base_type }
 			ResultType { value.base_type }
@@ -742,14 +799,22 @@ fn (tc &TypeChecker) vls_local_type(id flat.NodeId) ?Type {
 		if value.kind == .fn_literal {
 			return tc.vls_fn_literal_type(value)
 		}
-		return tc.vls_unconstrained_type(value_id)
-	}
-	// `x, y := f()`: the values of a call that returns several.
-	if rhs_count == 1 {
-		values := unalias_type(tc.vls_unconstrained_type(tc.multi_assign_rhs_id(decl, 0))?)
-		if values is MultiReturn && i < values.types.len {
-			return values.types[i]
+		if typ := tc.vls_unconstrained_type(value_id) {
+			return typ
 		}
+	} else if rhs_count == 1 {
+		// `x, y := f()`: the values of a call that returns several.
+		if values := tc.vls_unconstrained_type(tc.multi_assign_rhs_id(decl, 0)) {
+			held := unalias_type(values)
+			if held is MultiReturn && i < held.types.len {
+				return held.types[i]
+			}
+		}
+	}
+	// What the check of a generic body with its type parameters open gave the
+	// variable (see vls_type_generic_body).
+	if typ := tc.vls_open_types[int(id)] {
+		return typ
 	}
 	return none
 }
@@ -833,6 +898,27 @@ fn (tc &TypeChecker) vls_unconstrained_type(id flat.NodeId) ?Type {
 	}
 	if node.kind in [.array_init, .map_init] && node.typ.len > 0 {
 		return tc.parse_type(node.typ)
+	}
+	// A generic call returns what its arguments bind: `identity(a)` of `a A` is
+	// an `A`, not the `T` that `identity` declares.
+	if node.kind == .call {
+		if typ := tc.vls_generic_call_type(id, *node) {
+			return typ
+		}
+	}
+	// `f() or { ... }`: what the option holds.
+	if node.kind == .or_expr && node.children_count > 0 {
+		held := unalias_type(tc.vls_unconstrained_type(tc.a.child(node, 0))?)
+		return match held {
+			OptionType { held.base_type }
+			ResultType { held.base_type }
+			else { held }
+		}
+	}
+	// What the check of a generic body with its type parameters open gives it
+	// (see vls_type_generic_body).
+	if typ := tc.vls_open_types[int(id)] {
+		return typ
 	}
 	if typ := tc.vls_value_type(id) {
 		return typ
@@ -1053,7 +1139,9 @@ fn (mut tc TypeChecker) vls_hover_selector(node flat.Node) string {
 	if field_type := tc.vls_field_type(receiver_type, node.value) {
 		return '${node.value} ${tc.vls_type_text(field_type)}'
 	}
-	return ''
+	// A method named without a call, `label_of := b.label`: as a call of it.
+	target := tc.vls_method_target(receiver_id, node.value) or { return '' }
+	return tc.vls_fn_signature(target) or { '' }
 }
 
 // vls_enum_receiver returns the enum a selector's receiver names: `Color`, or
@@ -1474,17 +1562,46 @@ fn (tc &TypeChecker) vls_param_text(param &flat.Node, types []Type, idx int) str
 
 // vls_interface_method_signature is the signature of a method an interface
 // declares, `Named.greet` or `IError.msg`: its declaration is a member of the
-// interface, not a function.
+// interface, not a function. A generic interface's is written with the type
+// arguments of the value, `fn get() main.User` for `Shelf[User].get`.
 fn (tc &TypeChecker) vls_interface_method_signature(resolved string) ?VlsSignature {
 	interface_name := resolved.all_before_last('.')
 	method := resolved.all_after_last('.')
 	if interface_name == resolved {
 		return none
 	}
-	index := tc.first_type_declaration_ids[interface_name] or { return none }
-	decl := tc.a.nodes[index]
-	if decl.kind != .interface_decl {
-		return none
+	decl := tc.vls_interface_decl(interface_name)?
+	_, args, is_generic := generic_type_application_parts(interface_name)
+	type_params := decl.generic_params().map(it.trim_space())
+	if is_generic && type_params.len == args.len {
+		member := tc.vls_interface_member(interface_name, method)?
+		type_args := args.map(it.trim_space())
+		mut params := []string{}
+		mut names := []string{}
+		mut types := []Type{}
+		for j in 0 .. member.children_count {
+			param := tc.a.child_node(&member, j)
+			if param.kind != .param {
+				continue
+			}
+			text := tc.vls_written_type_text(subst_generic_text(param.typ, type_args,
+				type_params))
+			params << '${param.value} ${text.replace('fn(', 'fn (')}'
+			names << param.value
+			types << Type(void_)
+		}
+		ret_text := if member.typ.len == 0 || member.typ == 'void' {
+			''
+		} else {
+			' ${tc.vls_written_type_text(subst_generic_text(member.typ, type_args, type_params))}'
+		}
+		return VlsSignature{
+			name:   method
+			params: params
+			names:  names
+			types:  types
+			ret:    ret_text
+		}
 	}
 	for i in 0 .. decl.children_count {
 		member := tc.a.child_node(&decl, i)
@@ -1532,6 +1649,16 @@ fn (tc &TypeChecker) vls_interface_method_signature(resolved string) ?VlsSignatu
 		}
 	}
 	return none
+}
+
+// vls_written_type_text writes the type `text` as vls_type_text does, or as it
+// is written when it names a type parameter, `T` or `[]T`.
+fn (tc &TypeChecker) vls_written_type_text(text string) string {
+	typ := tc.parse_type(text)
+	if type_contains_unknown(typ) {
+		return text
+	}
+	return tc.vls_type_text(typ)
 }
 
 // vls_type_text writes a type as V1's hover did: the program's own types with

@@ -129,7 +129,7 @@ struct GenericBodyDiagnostics {
 // fork of the checker, with each type parameter that `texts` names as the type
 // written there, or with its type parameters open when it names none.
 fn (tc &TypeChecker) check_generic_fn_body_as(node flat.Node, fn_idx int, texts map[string]string) GenericBodyDiagnostics {
-	w := tc.checked_generic_fn_body(node, fn_idx, texts)
+	w := tc.checked_generic_fn_body(node, fn_idx, texts, false)
 	return GenericBodyDiagnostics{
 		errors:  w.errors
 		notices: w.notices
@@ -137,9 +137,12 @@ fn (tc &TypeChecker) check_generic_fn_body_as(node flat.Node, fn_idx int, texts 
 }
 
 // checked_generic_fn_body returns the fork of the checker that checked the body
-// of the generic function `node` (see check_generic_fn_body_as).
-fn (tc &TypeChecker) checked_generic_fn_body(node flat.Node, fn_idx int, texts map[string]string) &TypeChecker {
+// of the generic function `node` (see check_generic_fn_body_as); with
+// `keep_placeholders`, it keeps the types that are a type parameter itself too
+// (see placeholder_types).
+fn (tc &TypeChecker) checked_generic_fn_body(node flat.Node, fn_idx int, texts map[string]string, keep_placeholders bool) &TypeChecker {
 	mut w := tc.fork_for_parallel_check()
+	w.keep_placeholder_types = keep_placeholders
 	w.fn_context.node_id = fn_idx
 	w.fn_context.concrete_generic_receiver_specialization =
 		tc.fn_context.concrete_generic_receiver_specialization

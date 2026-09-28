@@ -742,13 +742,16 @@ pub mut:
 	building_v_fast                  bool
 	parallel_check_min_items         int = min_parallel_check_items // the fewest function bodies a check splits among the worker pool
 	logical_file_order               []int // the `.file` markers in the order to collect them, when not the node order
-	prepared_collect                 &PreparedCollect = unsafe { nil } // what collect_continue continues from
+	prepared_collect                 &PreparedCollect  = unsafe { nil } // what collect_continue continues from
 	vls_prefs                        &pref.Preferences = unsafe { nil } // what a question parses a file again with (see vls_add_skipped_branches)
 	vls_reparsed_files               map[int]bool        // the files whose left-out branches have nodes
 	vls_twins                        map[int]flat.NodeId // a node added for a left-out branch's file, to the checked node it parses again
-	vls_added_start                  int = max_int       // the first of the nodes that questions added
-	vls_body_types                   map[int]Type        // the types that a generic body gives its nodes in every instance (see vls_type_generic_body)
-	vls_typed_bodies                 map[int]bool        // the generic functions whose bodies were typed so
+	vls_added_start                  int = max_int // the first of the nodes that questions added
+	vls_body_types                   map[int]Type // the types that a generic body gives its nodes in every instance (see vls_type_generic_body)
+	vls_open_types                   map[int]Type // the types, with its type parameters, that a generic body gives the nodes that depend on them (see vls_type_generic_body)
+	vls_typed_bodies                 map[int]bool // the generic functions whose bodies were typed so
+	keep_placeholder_types           bool         // a fork keeps the types that are a type parameter itself, which the cache of types leaves out
+	placeholder_types                map[int]Type // those types
 	incremental                      &IncrementalCheck = unsafe { nil } // what an incremental check keeps (see start_incremental_check)
 	capture_items                    bool                  // each body checked notes where its diagnostics end (see incremental_capture)
 	item_marks                       []IncrementalItemMark // those notes
@@ -10150,6 +10153,10 @@ fn (mut tc TypeChecker) remember_expr_type(id flat.NodeId, typ Type) {
 		if idx < tc.expr_type_values.len {
 			tc.expr_type_values[idx] = typ
 			tc.expr_type_set[idx] = true
+		}
+	} else if tc.keep_placeholder_types && typ is Unknown {
+		if _ := generic_placeholder_from_unknown(typ) {
+			tc.placeholder_types[int(id)] = typ
 		}
 	}
 }

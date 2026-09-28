@@ -165,19 +165,11 @@ fn (tc &TypeChecker) vls_function_definition(resolved string) ?VlsPos {
 		return VlsPos{int(decl.pos.id), int(decl.pos.offset)}
 	}
 	interface_name := resolved.all_before_last('.')
-	method := resolved.all_after_last('.')
 	if interface_name == resolved {
 		return none
 	}
-	index := tc.first_type_declaration_ids[interface_name] or { return none }
-	decl := tc.a.nodes[index]
-	for i in 0 .. decl.children_count {
-		member := tc.a.child_node(&decl, i)
-		if member.kind == .interface_field && member.value == method {
-			return VlsPos{int(member.pos.id), int(member.pos.offset)}
-		}
-	}
-	return none
+	member := tc.vls_interface_member(interface_name, resolved.all_after_last('.'))?
+	return VlsPos{int(member.pos.id), int(member.pos.offset)}
 }
 
 fn (tc &TypeChecker) vls_const_definition(name string) ?VlsPos {
@@ -361,8 +353,8 @@ fn (tc &TypeChecker) vls_selector_definition(node flat.Node) ?VlsPos {
 	if at := tc.vls_field_definition(type_name, node.value) {
 		return at
 	}
-	// A method named without a call.
-	return tc.vls_function_definition('${type_name}.${node.value}')
+	// A method named without a call, as a call of it.
+	return tc.vls_function_definition(tc.vls_method_target(receiver_id, node.value)?)
 }
 
 // vls_module_member_definition is where `module.member` is declared: a const,

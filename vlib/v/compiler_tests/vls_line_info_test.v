@@ -3223,11 +3223,11 @@ fn test_values_of_interfaces_tested_together_are_the_types_they_are_tested_for()
 }
 
 fn test_a_test_that_cannot_be_followed_leaves_the_others_their_types() {
-	// A type parameter without a constraint, or one tested in a way that the
-	// editor cannot follow, `sizeof(B) == 8`: that test may go either way, and
-	// the other tests still decide their values.
+	// A test that the editor cannot follow, `sizeof(B) == 8`, may go either way,
+	// and the other tests still decide their values; one of a type parameter
+	// without a constraint decides it too.
 	assert joined('\t\treturn a + f64(u)', 'a', 0) == hover_of('a f64')
-	assert joined('\t\treturn a + f64(u)', 'u', 0) == hover_of('u U')
+	assert joined('\t\treturn a + f64(u)', 'u', 0) == hover_of('u int')
 	assert joined('\t\treturn a + f64(b) * 2.0', 'a', 0) == hover_of('a f64')
 	assert joined('\t\treturn a + f64(b) * 2.0', 'b', 0) == hover_of('b B\\nB: ${all_numbers}')
 	// Nested tests: the outer one on a type parameter, the inner one on two
@@ -3363,4 +3363,407 @@ fn test_values_tested_together_offer_what_their_tests_leave_them() {
 	// and `i8` both have.
 	assert joined_members('\t\tprintln(x.zz)') == ['eq_epsilon', 'str', 'strg', 'strlong', 'strsci']
 	assert joined_members('\t\tprintln(y.zz)') == ['hex', 'hex_full', 'str']
+}
+
+const generic_forms_program = "module main
+
+interface Named {
+	name string
+	greet() string
+}
+
+struct User {
+	name string
+	age  int
+}
+
+fn (u User) greet() string {
+	return 'hi \${u.name}'
+}
+
+struct Box[T] {
+	item T
+}
+
+fn (b Box[T]) get() T {
+	return b.item
+}
+
+type Signed = i8 | int | f64
+
+fn identity[T](x T) T {
+	return x
+}
+
+fn wrap_list[T](x T) []T {
+	return [x]
+}
+
+fn count_of[T](x T) int {
+	_ = x
+	return 1
+}
+
+fn find[T](x T) ?T {
+	return x
+}
+
+fn first_of[T](xs []T) T {
+	return xs[0]
+}
+
+fn sets[A Signed, B Signed](a A, b B) f64 {
+	bigger := if a > a { a } else { a }
+	label := if a > a { 'big' } else { 'small' }
+	kind := match a {
+		0 { 'zero' }
+		else { 'other' }
+	}
+	picked := match a {
+		0 { a }
+		else { a }
+	}
+	values := [a, a]
+	first := values[0]
+	fixed := [a, a]!
+	nested := [[a]]
+	pairs := {
+		'x': a
+	}
+	boxed := Box[A]{
+		item: a
+	}
+	inferred := Box{
+		item: a
+	}
+	inner := boxed.item
+	got := boxed.get()
+	converted := a.str()
+	same := identity(a)
+	twice_same := identity(identity(a))
+	listed := wrap_list(a)
+	count := count_of(a)
+	head := first_of(values)
+	head_typed := first_of[A](values)
+	maybe := find(a) or { a }
+	if found := find(a) {
+		println(found)
+	}
+	for elem in values {
+		println(elem)
+	}
+	dumped := dump(a)
+	ref := &a
+	ts := typeof(a).name
+	doubled := values.map(it * 2)
+	println(typeof(inferred).name)
+	println('\${bigger} \${label} \${kind} \${picked} \${first} \${fixed} \${nested} \${pairs} \${inner} \${got}')
+	println('\${converted} \${same} \${twice_same} \${listed} \${count} \${head} \${head_typed} \${maybe}')
+	println('\${dumped} \${ref} \${ts} \${doubled} \${b}')
+	return 0.0
+}
+
+fn named[T Named](x T) string {
+	greeting := x.greet()
+	boxed := Box[T]{
+		item: x
+	}
+	held := boxed.item
+	names := [x.name]
+	return greeting + held.name + names.len.str()
+}
+
+fn loose[U](u U) string {
+	copy := identity(u)
+	\$if u is int {
+		n := u + 1
+		k := U(0)
+		return n.str() + k.str() + u.hex()
+	} \$else \$if U is string {
+		return u
+	} \$else \$if u in [i8, i16] {
+		small := u
+		return small.str()
+	} \$else \$if u !in [f32, f64] {
+		return 'other \${copy}'
+	} \$else {
+		float := u
+		return float.str()
+	}
+}
+
+fn plain_int(i int) string {
+	return i.hex()
+}
+
+fn main() {
+	println(sets(1, 2))
+	println(named(User{'ana', 3}))
+	println(loose(4))
+	println(loose('x'))
+	println(loose(i8(5)))
+	println(loose(true))
+	println(loose(1.5))
+	println(plain_int(6))
+}
+"
+
+// generic_form asks for the hover of the `nth` `word` of the line of
+// generic_forms_program that reads `text`.
+fn generic_form(text string, word string, nth int) string {
+	return ask(program_dir('generic_forms', generic_forms_program), 'hv^', line_of(generic_forms_program,
+		text), word, nth)
+}
+
+fn test_a_local_of_a_generic_body_has_the_type_the_check_gives_its_value() {
+	// What a value of a type parameter makes of a local is written with the type
+	// parameter, and what it can be on a line of its own: an `if` or a `match`
+	// used as a value, an array, its element, a map, a generic struct and its
+	// field, and what `or {}`, `dump()` and `&` give.
+	signed := 'A: i8 | int | f64'
+	for local, typ in {
+		'\tbigger := if a > a { a } else { a }': 'A'
+		'\tpicked := match a {':                 'A'
+		'\tvalues := [a, a]':                    '[]A'
+		'\tfirst := values[0]':                  'A'
+		'\tfixed := [a, a]!':                    '[2]A'
+		'\tnested := [[a]]':                     '[][]A'
+		'\tpairs := {':                          'map[string]A'
+		'\tboxed := Box[A]{':                    'Box[A]'
+		'\tinferred := Box{':                    'Box[A]'
+		'\tinner := boxed.item':                 'A'
+		'\tmaybe := find(a) or { a }':           'A'
+		'\tdumped := dump(a)':                   'A'
+		'\tref := &a':                           '&A'
+		'\tdoubled := values.map(it * 2)':       '[]A'
+	} {
+		word := local.trim_space().all_before(' ')
+		assert generic_form(local, word, 0) == hover_of('${word} ${typ}\\n${signed}'), local
+	}
+	// What the type parameters do not decide has its own type.
+	for local, typ in {
+		"\tlabel := if a > a { 'big' } else { 'small' }": 'string'
+		'\tkind := match a {':                            'string'
+		'\tconverted := a.str()':                         'string'
+		'\tts := typeof(a).name':                         'string'
+	} {
+		word := local.trim_space().all_before(' ')
+		assert generic_form(local, word, 0) == hover_of('${word} ${typ}'), local
+	}
+	// With an interface as the constraint.
+	named := 'T: implements main.Named'
+	assert generic_form('\tboxed := Box[T]{', 'boxed', 0) == hover_of('boxed Box[T]\\n${named}')
+	assert generic_form('\theld := boxed.item', 'held', 0) == hover_of('held T\\n${named}')
+	assert generic_form('\tnames := [x.name]', 'names', 0) == hover_of('names []string')
+	assert generic_form('\tgreeting := x.greet()', 'greeting', 0) == hover_of('greeting string')
+}
+
+fn test_a_generic_call_in_a_generic_body_returns_what_its_arguments_bind() {
+	// `identity(a)` returns what `a` is, an `A`, not the `T` that `identity`
+	// declares; so do the other generic calls, with their type arguments
+	// written or not, and the methods of a generic struct.
+	signed := 'A: i8 | int | f64'
+	for local, typ in {
+		'\tsame := identity(a)':                 'A'
+		'\ttwice_same := identity(identity(a))': 'A'
+		'\tlisted := wrap_list(a)':              '[]A'
+		'\thead := first_of(values)':            'A'
+		'\thead_typed := first_of[A](values)':   'A'
+		'\tgot := boxed.get()':                  'A'
+	} {
+		word := local.trim_space().all_before(' ')
+		assert generic_form(local, word, 0) == hover_of('${word} ${typ}\\n${signed}'), local
+	}
+	assert generic_form('\tcount := count_of(a)', 'count', 0) == hover_of('count int')
+	// The guard of an `if` and the variable of a `for` loop.
+	assert generic_form('\t\tprintln(found)', 'found', 0) == hover_of('found A\\n${signed}')
+	assert generic_form('\t\tprintln(elem)', 'elem', 0) == hover_of('elem A\\n${signed}')
+	// A type parameter without a constraint.
+	assert generic_form('\tcopy := identity(u)', 'copy', 0) == hover_of('copy U')
+}
+
+fn test_a_type_parameter_without_a_constraint_is_what_a_compile_time_test_makes_it() {
+	// `$if u is int {`: `u` is an `int` there, and so is a local that holds it;
+	// `$else $if U is string {`, a `string`. `in` leaves the types of its list
+	// and the `$else` of `!in` the types of its. What no test decides stays `U`.
+	assert generic_form('\t\tn := u + 1', 'u', 0) == hover_of('u int')
+	assert generic_form('\t\tn := u + 1', 'n', 0) == hover_of('n int')
+	assert generic_form('\t\tk := U(0)', 'U', 0) == hover_of('[U]\\nU: int')
+	assert generic_form('\t\treturn u', 'u', 0) == hover_of('u string')
+	assert generic_form('\t\tsmall := u', 'small', 0) == hover_of('small U\\nU: i8 | i16')
+	assert generic_form('\t\tfloat := u', 'u', 0) == hover_of('u U\\nU: f32 | f64')
+	assert generic_form("\t\treturn 'other \${copy}'", 'copy', 0) == hover_of('copy U')
+	assert generic_form('\tcopy := identity(u)', 'u', 0) == hover_of('u U')
+	// Completion offers there what an `int` offers.
+	dir := program_dir('generic_forms', generic_forms_program)
+	branch := '\t\treturn n.str() + k.str() + u.hex()'
+	plain := '\treturn i.hex()'
+	branch_col := branch.index('u.hex') or { panic(branch) } + 2
+	plain_col := plain.index('i.hex') or { panic(plain) } + 2
+	offered := ask_at(dir, '${line_of(generic_forms_program, branch)}:${branch_col}')
+	assert offered != ''
+	assert offered == ask_at(dir, '${line_of(generic_forms_program, plain)}:${plain_col}')
+}
+
+const method_values_program = "module main
+
+struct Base {}
+
+fn (b Base) describe() string {
+	return 'base'
+}
+
+struct Plain {
+	Base
+	name string
+}
+
+fn (p Plain) label() string {
+	return p.name
+}
+
+struct Box[T] {
+	item T
+}
+
+fn (b Box[T]) label() string {
+	return 'box'
+}
+
+fn (b Box[T]) twice() string {
+	again := b.label
+	return again() + again()
+}
+
+fn main() {
+	p := Plain{
+		name: 'p'
+	}
+	b := Box[int]{
+		item: 1
+	}
+	plain_label := p.label
+	box_label := b.label
+	println(plain_label() + box_label() + b.twice())
+	println(p.label() + p.describe() + b.label())
+}
+"
+
+// method_value asks `code` about the `nth` `word` of the line of
+// method_values_program that reads `text`.
+fn method_value(code string, text string, word string, nth int) string {
+	return ask(program_dir('method_values', method_values_program), code, line_of(method_values_program,
+		text), word, nth)
+}
+
+fn test_a_method_named_without_a_call_is_the_method() {
+	// `p.label` without a call is the method `label`, of a struct or of a
+	// generic struct, as `p.label()` is: its hover and its declaration.
+	for code in ['hv^', 'gd^'] {
+		plain := method_value(code, '\tprintln(p.label() + p.describe() + b.label())', 'label', 0)
+		boxed := method_value(code, '\tprintln(p.label() + p.describe() + b.label())', 'label', 1)
+		assert plain != '' && boxed != ''
+		if code == 'gd^' {
+			assert plain != boxed
+		}
+		assert method_value(code, '\tplain_label := p.label', 'label', 0) == plain
+		assert method_value(code, '\tbox_label := b.label', 'label', 0) == boxed
+		assert method_value(code, '\tagain := b.label', 'label', 0) == boxed
+	}
+}
+
+const interface_methods_program = "module main
+
+interface Comparable[T] {
+	less(other T) bool
+}
+
+struct Num {
+	v int
+}
+
+fn (a Num) less(b Num) bool {
+	return a.v < b.v
+}
+
+fn smallest[T Comparable[T]](a T, b T) T {
+	return if a.less(b) { a } else { b }
+}
+
+interface Named {
+	name string
+	greet() string
+}
+
+struct User {
+	name string
+}
+
+fn (u User) greet() string {
+	return 'hi \${u.name}'
+}
+
+interface Shelf[T Named] {
+	get() T
+}
+
+struct UserShelf {
+	u User
+}
+
+fn (s UserShelf) get() User {
+	return s.u
+}
+
+fn take_now[T Named](s Shelf[T]) T {
+	return s.get()
+}
+
+fn shelf_name(s Shelf[User]) string {
+	return s.get().name
+}
+
+fn greeting(n Named) string {
+	greeter := n.greet
+	return n.greet() + greeter()
+}
+
+fn named_greeting[T Named](x T) string {
+	return x.greet()
+}
+
+fn main() {
+	println(smallest(Num{1}, Num{2}).v)
+	shelf := UserShelf{User{'ana'}}
+	println(take_now[User](shelf).name + shelf_name(shelf))
+	println(greeting(User{'bo'}) + named_greeting(User{'cy'}))
+}
+"
+
+// interface_method asks `code` about the `nth` `word` of the line of
+// interface_methods_program that reads `text`.
+fn interface_method(code string, text string, word string, nth int) string {
+	return ask(program_dir('interface_methods', interface_methods_program), code, line_of(interface_methods_program,
+		text), word, nth)
+}
+
+fn test_a_method_of_an_interface_is_its_member_generic_or_not() {
+	// `a.less(b)` with `[T Comparable[T]]` calls the `less` of that interface,
+	// `s.get()` the `get` of `Shelf[T]` or of `Shelf[User]`, with the type
+	// arguments of the value; and so does a method named without a call.
+	less := '\treturn if a.less(b) { a } else { b }'
+	assert interface_method('hv^', less, 'less', 0) == hover_of('fn less(other T) bool')
+	assert interface_method('gd^', less, 'less', 0) == 'main.v:${line_of(interface_methods_program, '\tless(other T) bool')}:1'
+	get_at := 'main.v:${line_of(interface_methods_program, '\tget() T')}:1'
+	assert interface_method('hv^', '\treturn s.get()', 'get', 0) == hover_of('fn get() T')
+	assert interface_method('gd^', '\treturn s.get()', 'get', 0) == get_at
+	assert interface_method('hv^', '\treturn s.get().name', 'get', 0) == hover_of('fn get() main.User')
+	assert interface_method('gd^', '\treturn s.get().name', 'get', 0) == get_at
+	greet_at := 'main.v:${line_of(interface_methods_program, '\tgreet() string')}:1'
+	assert interface_method('hv^', '\tgreeter := n.greet', 'greet', 0) == hover_of('fn greet() string')
+	assert interface_method('gd^', '\tgreeter := n.greet', 'greet', 0) == greet_at
+	// As before: a method of an interface, called on a value of it or of a type
+	// parameter that it constrains.
+	assert interface_method('hv^', '\treturn n.greet() + greeter()', 'greet', 0) == hover_of('fn greet() string')
+	assert interface_method('gd^', '\treturn x.greet()', 'greet', 0) == greet_at
 }

@@ -206,10 +206,21 @@ mut:
 // comptime_ways_constraints are `constraints` at the end of `ways`, the `$if`s on
 // the way to a node from the outermost one: each type parameter keeps the
 // types for which some types of the others take every `$if` the way that
-// leads there. A test that cannot be followed, or that tests no constrained
-// type parameter, may go either way. A condition that cannot be read, or ways
-// with too many combinations, leave the type parameters as they are.
-fn (tc &TypeChecker) comptime_ways_constraints(ways []ComptimeWay, constraints map[string]GenericConstraint) map[string]GenericConstraint {
+// leads there. One of `names` without a constraint can be any type, as one
+// whose constraint is an interface: `$if u is int {` makes it an `int`, and
+// gives it a constraint without a name there. A test that cannot be followed,
+// or that tests no type parameter, may go either way. A condition that cannot
+// be read, or ways with too many combinations, leave the type parameters as
+// they are.
+fn (tc &TypeChecker) comptime_ways_constraints(ways []ComptimeWay, constraints map[string]GenericConstraint, names []string) map[string]GenericConstraint {
+	mut testable := constraints.clone()
+	for name in names {
+		if name !in testable {
+			testable[name] = GenericConstraint{
+				is_interface: true
+			}
+		}
+	}
 	mut conds := ComptimeConds{}
 	mut roots := []int{}
 	mut taken := []bool{}
@@ -227,7 +238,7 @@ fn (tc &TypeChecker) comptime_ways_constraints(ways []ComptimeWay, constraints m
 	mut negated := []bool{len: conds.tests.len}
 	mut group_index := map[string]int{}
 	for test_idx, test in conds.tests {
-		name, tested_types, is_negated := tc.comptime_test_types(test, constraints) or {
+		name, tested_types, is_negated := tc.comptime_test_types(test, testable) or {
 			either_way << test_idx
 			continue
 		}
@@ -248,7 +259,7 @@ fn (tc &TypeChecker) comptime_ways_constraints(ways []ComptimeWay, constraints m
 	}
 	mut combinations := 1 << either_way.len
 	for mut g in groups {
-		constraint := constraints[g.name]
+		constraint := testable[g.name]
 		if constraint.is_interface {
 			g.open = true
 		} else {
@@ -327,7 +338,7 @@ fn (tc &TypeChecker) comptime_ways_constraints(ways []ComptimeWay, constraints m
 	}
 	mut narrowed := constraints.clone()
 	for k, g in groups {
-		constraint := constraints[g.name]
+		constraint := testable[g.name]
 		if g.open && possible[k][g.group_of[g.types.len]] {
 			continue
 		}
