@@ -22,3 +22,10 @@ Addressable array variables retain their original storage and aliasing behavior.
 When a local array or array field escapes through such a pointer, its containing local is moved
 to the heap. Writes through the local and its pointers continue to affect the same storage.
 Stores into globals, mutable pointer parameters, and indirect destinations also retain this storage.
+The same promotion applies to arrays introduced by multiple or tuple declarations.
+Temporary fixed-array arguments passed to translated functions and methods receive persistent
+backing storage, including calls from ordinary V files. Addressable arguments keep their identity.
+
+Local arrays passed to translated fixed-array parameters are conservatively promoted too, since
+callees can retain their address without returning it. This can allocate even for a callee that
+does not retain the array. Array values produced by blocks are copied before leaving that scope.

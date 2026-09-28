@@ -34,7 +34,7 @@ fn (mut t Transformer) transform_translated_array_arithmetic(id flat.NodeId, nod
 	mut lhs := t.transform_value_operand(lhs_id)
 	if lhs_type is types.ArrayFixed {
 		if !lhs_addressable {
-			lhs = t.materialize_translated_array_decay_operand(lhs_id, lhs)
+			lhs = t.materialize_translated_array_decay_operand(lhs, lhs_raw.name())
 		}
 		lhs = t.make_prefix(.amp, t.make_index(lhs, t.make_int_literal(0), lhs_type.elem_type.name()))
 	}
@@ -49,7 +49,7 @@ fn (mut t Transformer) transform_translated_array_arithmetic(id flat.NodeId, nod
 	mut rhs := t.transform_value_operand(rhs_id)
 	if rhs_type is types.ArrayFixed {
 		if !rhs_addressable {
-			rhs = t.materialize_translated_array_decay_operand(rhs_id, rhs)
+			rhs = t.materialize_translated_array_decay_operand(rhs, rhs_raw.name())
 		}
 		rhs = t.make_prefix(.amp, t.make_index(rhs, t.make_int_literal(0), rhs_type.elem_type.name()))
 	}
@@ -86,8 +86,44 @@ fn (t &Transformer) translated_array_decay_address_stable(id flat.NodeId) bool {
 	}
 }
 
-fn (mut t Transformer) materialize_translated_array_decay_operand(source flat.NodeId, value flat.NodeId) flat.NodeId {
-	typ := t.resolve_expr_type(source)
+fn (mut t Transformer) materialize_translated_array_decay_operand(value flat.NodeId, typ string) flat.NodeId {
+	mut block_id := value
+	for t.a.nodes[int(block_id)].kind == .paren && t.a.nodes[int(block_id)].children_count == 1 {
+		block_id = t.a.child(&t.a.nodes[int(block_id)], 0)
+	}
+	block := t.a.nodes[int(block_id)]
+	if block.kind == .block && block.children_count > 0 {
+		// A C statement expression decays an array tail before its storage leaves
+		// scope. Copy the value inside that scope and yield its persistent pointer.
+		last_id := t.a.child(&block, block.children_count - 1)
+		last := t.a.nodes[int(last_id)]
+		tail := if last.kind == .expr_stmt && last.children_count > 0 {
+			t.a.child(&last, 0)
+		} else {
+			last_id
+		}
+		outer_pending := t.pending_stmts
+		t.pending_stmts = []flat.NodeId{}
+		owned := t.materialize_translated_array_decay_operand(tail, typ)
+		mut body := []flat.NodeId{cap: int(block.children_count) + t.pending_stmts.len}
+		for i in 0 .. block.children_count - 1 {
+			body << t.a.child(&block, i)
+		}
+		body << t.pending_stmts
+		t.pending_stmts = outer_pending
+		pointer_type := '&${typ}'
+		address := t.make_prefix(.amp, owned)
+		t.set_node_typ(int(address), pointer_type)
+		body << t.make_expr_stmt(address)
+		owned_block := t.make_block(body)
+		t.set_node_value(int(owned_block), block.value)
+		t.set_node_typ(int(owned_block), pointer_type)
+		pointer_name := t.new_temp('array_decay_block')
+		t.pending_stmts << t.make_decl_assign_typed(pointer_name, owned_block, pointer_type)
+		result := t.make_prefix(.mul, t.make_ident(pointer_name))
+		t.set_node_typ(int(result), typ)
+		return result
+	}
 	tmp_name := t.new_temp('array_decay')
 	decl := t.make_decl_assign_typed(tmp_name, value, typ)
 	if t.in_global_init {

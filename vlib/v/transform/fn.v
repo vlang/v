@@ -2092,7 +2092,7 @@ fn (mut t Transformer) transform_spread_arg_over_fixed_variadic_tail(arg_node fl
 	variadic_array_type := t.semantic_type_name(variadic_type)
 	spread_type0 := t.node_type(spread_id)
 	spread_type := if spread_type0.len > 0 { spread_type0 } else { variadic_array_type }
-	spread_expr := t.stable_transformed_expr_for_reuse(t.transform_call_arg_for_param(spread_id, spread_type), spread_type, 'varargs_spread')
+	spread_expr := t.stable_transformed_expr_for_reuse(t.transform_call_arg_for_param(spread_id, spread_type, t.call_uses_translated_array_parameters('')), spread_type, 'varargs_spread')
 	mut args := []flat.NodeId{cap: variadic_idx - param_idx + 1}
 	for fixed_idx in param_idx .. variadic_idx {
 		elem := t.make_index(spread_expr, t.make_int_literal(fixed_idx - param_idx), t.semantic_type_name(params[fixed_idx]))
@@ -2106,6 +2106,35 @@ fn (mut t Transformer) transform_spread_arg_over_fixed_variadic_tail(arg_node fl
 		args << t.make_range_index(spread_expr, t.make_int_literal(tail_start), flat.empty_node, variadic_array_type)
 	}
 	return args
+}
+
+fn (t &Transformer) call_uses_translated_array_parameters(call_name string) bool {
+	if isnil(t.tc) {
+		return false
+	}
+	if t.tc.translated_files[t.cur_file] {
+		return true
+	}
+	if file := t.tc.fn_type_files[call_name] {
+		return t.tc.translated_files[file]
+	}
+	return false
+}
+
+fn (t &Transformer) expr_has_translated_array_call(id flat.NodeId) bool {
+	if isnil(t.tc) || t.tc.translated_files.len == 0 || int(id) < 0 {
+		return false
+	}
+	node := t.a.nodes[int(id)]
+	if node.kind == .call && t.call_uses_translated_array_parameters(t.call_name_for_node(id, node)) {
+		return true
+	}
+	for i in 0 .. node.children_count {
+		if t.expr_has_translated_array_call(t.a.child(&node, i)) {
+			return true
+		}
+	}
+	return false
 }
 
 fn (mut t Transformer) transform_call_arg_for_named_param(arg_id flat.NodeId, param_type string, call_name string) flat.NodeId {
@@ -2129,7 +2158,7 @@ fn (mut t Transformer) transform_call_arg_for_named_param(arg_id flat.NodeId, pa
 			return t.transform_expr(arg_id)
 		}
 	}
-	return t.transform_call_arg_for_param(arg_id, param_type)
+	return t.transform_call_arg_for_param(arg_id, param_type, t.call_uses_translated_array_parameters(call_name))
 }
 
 fn (mut t Transformer) transform_variadic_spread_arg_for_param(spread_id flat.NodeId, variadic_type types.Array, param_type string) flat.NodeId {
@@ -2145,7 +2174,7 @@ fn (mut t Transformer) transform_variadic_spread_arg_for_param(spread_id flat.No
 			}
 		}
 	}
-	return t.transform_call_arg_for_param(spread_id, param_type)
+	return t.transform_call_arg_for_param(spread_id, param_type, t.call_uses_translated_array_parameters(''))
 }
 
 fn (mut t Transformer) make_range_index(base flat.NodeId, start_id flat.NodeId, end_id flat.NodeId, typ string) flat.NodeId {
@@ -3591,14 +3620,14 @@ fn pointer_type_depth_and_base(typ string) (int, string) {
 
 // transform_call_arg_for_param transforms transform call arg for param data for transform.
 @[direct_array_access]
-fn (mut t Transformer) transform_call_arg_for_param(arg_id flat.NodeId, param_type string) flat.NodeId {
+fn (mut t Transformer) transform_call_arg_for_param(arg_id flat.NodeId, param_type string, translated_array_args bool) flat.NodeId {
 	// Keep prerequisites produced by earlier arguments outside this argument's
 	// expression. A later block argument (notably `unsafe { nil }`) transforms its
 	// statements eagerly and would otherwise drain an earlier sum-box temporary
 	// into the block, after the call has already referenced it.
 	outer_pending := t.pending_stmts
 	t.pending_stmts = []flat.NodeId{}
-	result := t.transform_call_arg_for_param_isolated(arg_id, param_type)
+	result := t.transform_call_arg_for_param_isolated(arg_id, param_type, translated_array_args)
 	arg_pending := t.pending_stmts
 	t.pending_stmts = outer_pending
 	for stmt in arg_pending {
@@ -3608,9 +3637,19 @@ fn (mut t Transformer) transform_call_arg_for_param(arg_id flat.NodeId, param_ty
 }
 
 @[direct_array_access]
-fn (mut t Transformer) transform_call_arg_for_param_isolated(arg_id flat.NodeId, param_type string) flat.NodeId {
+fn (mut t Transformer) transform_call_arg_for_param_isolated(arg_id flat.NodeId, param_type string, translated_array_args bool) flat.NodeId {
 	if int(arg_id) < 0 {
 		return arg_id
+	}
+	if translated_array_args && t.is_fixed_array_type(t.normalize_type_alias(param_type)) {
+		arg_type := t.node_type(arg_id)
+		if t.is_fixed_array_type(t.normalize_type_alias(arg_type))
+			&& !t.translated_array_decay_operand_addressable(arg_id) {
+			// Fixed-array parameters decay to a data pointer. A translated callee can
+			// retain it, so an rvalue argument needs storage beyond this call expression.
+			value := t.transform_value_operand(arg_id)
+			return t.materialize_translated_array_decay_operand(value, arg_type)
+		}
 	}
 	mut arg_node := &t.a.nodes[int(arg_id)]
 	if arg_node.is_mut && param_type.starts_with('&?&') {
@@ -15735,7 +15774,7 @@ fn (mut t Transformer) transform_receiver_method_args_with_base(node flat.Node, 
 			for spread_offset in 0 .. spread_count {
 				expected := t.semantic_type_name(params[param_idx + spread_offset])
 				index_arg := t.make_spread_index_for_expected_param(spread_base, spread_offset, expected)
-				args << t.transform_call_arg_for_param(index_arg, expected)
+				args << t.transform_call_arg_for_named_param(index_arg, expected, method_name)
 			}
 			i++
 			continue
@@ -15752,13 +15791,13 @@ fn (mut t Transformer) transform_receiver_method_args_with_base(node flat.Node, 
 						break
 					}
 					field := t.make_selector(value, 'arg${multi_idx}', t.semantic_type_name(item_type))
-					args << t.transform_call_arg_for_param(field, t.semantic_type_name(params[expected_idx]))
+					args << t.transform_call_arg_for_named_param(field, t.semantic_type_name(params[expected_idx]), method_name)
 				}
 				i++
 				continue
 			}
 		}
-		args << t.clone_receiver_aliased_arg(recv_root, arg_id, t.transform_call_arg_for_param(arg_id, param_type), param_type)
+		args << t.clone_receiver_aliased_arg(recv_root, arg_id, t.transform_call_arg_for_named_param(arg_id, param_type, method_name), param_type)
 		i++
 	}
 	if variadic_idx >= 0 && !variadic_tail_supplied && explicit_args == variadic_idx - param_offset {

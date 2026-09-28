@@ -352,3 +352,52 @@ fn test_translated_addressable_array_storage_survives_escape() {
 	assert usize(voidptr(aligned)) % 512 == 0
 	assert aligned.value == 53
 }
+
+fn translated_return_multi_decl_array() &int {
+	mut values, tag := [3, 5, 7]!, 17
+	pointer := values + 1
+	values[1] = tag
+	return pointer
+}
+
+fn translated_return_second_multi_decl_array() &int {
+	tag, values := 19, [23, 29, 31]!
+	assert tag == 19
+	return values + 1
+}
+
+fn translated_make_array_pair() ([3]int, int) {
+	return [37, 41, 43]!, 47
+}
+
+fn translated_return_multi_result_array() &int {
+	mut values, tag := translated_make_array_pair()
+	pointer := values + 1
+	values[1] = tag
+	return pointer
+}
+
+fn translated_return_multi_if_array(flag bool) &int {
+	mut values, tag := if flag { [53, 59, 61]!, 67 } else { [71, 73, 79]!, 83 }
+	values[1] = tag
+	return values + 1
+}
+
+fn translated_return_multi_match_array(flag bool) &int {
+	mut values, tag := match flag {
+		true { [89, 97, 101]!, 103 }
+		else { [107, 109, 113]!, 127 }
+	}
+	values[1] = tag
+	return values + 1
+}
+
+fn test_translated_multi_decl_array_storage_survives_escape() {
+	assert read_translated_element(translated_return_multi_decl_array()) == 17
+	assert read_translated_element(translated_return_second_multi_decl_array()) == 29
+	assert read_translated_element(translated_return_multi_result_array()) == 47
+	assert read_translated_element(translated_return_multi_if_array(true)) == 67
+	assert read_translated_element(translated_return_multi_if_array(false)) == 83
+	assert read_translated_element(translated_return_multi_match_array(true)) == 103
+	assert read_translated_element(translated_return_multi_match_array(false)) == 127
+}

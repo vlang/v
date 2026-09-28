@@ -5889,7 +5889,8 @@ fn (mut t Transformer) transform_global_decl(node flat.Node) {
 				t.a.children[gf.children_start] = preserved
 				continue
 			}
-			if t.expr_has_if_guard(val_id) || t.tc.translated_files[t.cur_file] {
+			if t.expr_has_if_guard(val_id) || t.tc.translated_files[t.cur_file]
+				|| t.expr_has_translated_array_call(val_id) {
 				// Keep guard unwraps and translated expression temporaries with
 				// their value; the runtime initializer renders the block.
 				t.a.children[gf.children_start] = t.transform_const_expr_no_pending(val_id)
@@ -6952,13 +6953,25 @@ fn (t &Transformer) closure_return_candidate_use_is_safe(id flat.NodeId, name st
 fn (mut t Transformer) heap_escaping_source_decl(node flat.Node, var_name string, elem_typ string) []flat.NodeId {
 	rhs_id := t.a.child(&node, 1)
 	rhs := t.a.nodes[int(rhs_id)]
-	ptr_typ := '&${elem_typ}'
 	mut stmts := []flat.NodeId{}
 	transformed_init := t.transform_expr(rhs_id)
 	// Statements lifted out while transforming the initializer must precede the heap decl.
 	t.drain_pending(mut stmts)
+	stmts << t.heap_escaping_value_decl(var_name, transformed_init, elem_typ, rhs.kind == .struct_init)
+	return stmts
+}
+
+fn (t &Transformer) should_heap_escaping_source(name string, typ string) bool {
+	return name in t.escaping_amp_sources && name !in t.heaped_amp_locals
+		&& (t.heapable_value_type(typ)
+			|| (!isnil(t.tc) && t.tc.translated_files.len > 0 && t.is_fixed_array_type(typ)))
+}
+
+fn (mut t Transformer) heap_escaping_value_decl(var_name string, transformed_init flat.NodeId, elem_typ string, struct_literal bool) []flat.NodeId {
+	ptr_typ := '&${elem_typ}'
+	mut stmts := []flat.NodeId{}
 	mut heap_rhs := flat.NodeId(0)
-	if rhs.kind == .struct_init {
+	if struct_literal {
 		heap_rhs = t.make_prefix(.amp, transformed_init)
 	} else {
 		tmp := t.new_temp('esc')
@@ -6993,7 +7006,7 @@ fn (mut t Transformer) mark_escaping_amp_ptrs(body_ids []flat.NodeId) {
 	t.reset_escaping_amp_state()
 	// Translated array decay synthesizes address-taking after this scan. The
 	// generic fast flags only recognize addresses already present in the AST.
-	if t.fast_escape_precheck && (isnil(t.tc) || !t.tc.translated_files[t.cur_file]) {
+	if t.fast_escape_precheck && (isnil(t.tc) || t.tc.translated_files.len == 0) {
 		if t.item_escape_scan_known {
 			if !t.item_escape_scan_needed {
 				return
@@ -8510,7 +8523,7 @@ fn (mut t Transformer) scan_escape_pass(id flat.NodeId, mut amp_ptrs map[string]
 		for i in 1 .. node.children_count {
 			t.mark_callback_method_value_receiver_escape(t.a.child(&node, i), amp_sources, ptr_aliases, local_stack_names)
 		}
-		t.mark_implicit_voidptr_argument_escapes(id, node, local_stack_names)
+		t.mark_implicit_argument_address_escapes(id, node, amp_sources, ptr_aliases, local_stack_names)
 	}
 	if node.kind in [.assign, .selector_assign, .index_assign] && node.op == .assign
 		&& node.children_count == 2 {
@@ -8609,20 +8622,33 @@ fn escape_return_type_consumes_pointer_value(typ types.Type) bool {
 		&& typ !is types.MultiReturn && typ !is types.Unknown && typ !is types.Void
 }
 
-fn (mut t Transformer) mark_implicit_voidptr_argument_escapes(call_id flat.NodeId, call flat.Node, local_stack_names map[string]bool) {
+fn (mut t Transformer) mark_implicit_argument_address_escapes(call_id flat.NodeId, call flat.Node, amp_sources map[string][]string, ptr_aliases map[string]string, local_stack_names map[string]bool) {
 	call_name := t.call_name_for_node(call_id, call)
 	params := t.call_param_types_for_node(call_name, call)
 	if params.len == 0 {
 		return
 	}
+	translated_array_args := t.call_uses_translated_array_parameters(call_name)
 	param_offset := t.call_param_offset_for_node(call_name, call, params)
 	for child_idx in 1 .. call.children_count {
 		param_idx := child_idx - 1 + param_offset
-		if param_idx < 0 || param_idx >= params.len
-			|| !escape_type_is_void_pointer(params[param_idx]) {
+		if param_idx < 0 || param_idx >= params.len {
 			continue
 		}
 		mut arg_id := t.a.child(&call, child_idx)
+		if translated_array_args && types.unalias_type(params[param_idx]) is types.ArrayFixed {
+			// The callee can retain the decayed address even without returning it.
+			// Promote the original local so all of its aliases still share storage.
+			for source in t.escape_address_sources(arg_id, amp_sources, ptr_aliases) {
+				if source in local_stack_names {
+					t.escaping_amp_sources[source] = true
+				}
+			}
+			continue
+		}
+		if !escape_type_is_void_pointer(params[param_idx]) {
+			continue
+		}
 		mut arg := t.a.nodes[int(arg_id)]
 		for arg.kind in [.paren, .expr_stmt] && arg.children_count == 1 {
 			arg_id = t.a.child(&arg, 0)
@@ -14822,11 +14848,7 @@ fn (mut t Transformer) transform_decl_assign_stmt(id flat.NodeId, node flat.Node
 			&& src.value !in t.heaped_amp_locals && t.is_fixed_array_type(inferred_typ) {
 			return t.heap_escaping_source_decl(node, src.value, inferred_typ)
 		}
-		if src.kind == .ident && src.value in t.escaping_amp_sources
-			&& src.value !in t.heaped_amp_locals
-			&& (t.heapable_value_type(inferred_typ)
-				|| (!isnil(t.tc) && t.tc.translated_files[t.cur_file]
-					&& t.is_fixed_array_type(inferred_typ))) {
+		if src.kind == .ident && t.should_heap_escaping_source(src.value, inferred_typ) {
 			return t.heap_escaping_source_decl(node, src.value, inferred_typ)
 		}
 		// A struct declared `@[heap]` is always heap-allocated at its own declaration,
@@ -15240,7 +15262,11 @@ fn (mut t Transformer) try_expand_plain_multi_decl(node flat.Node) ?[]flat.NodeI
 		if typ.len > 0 {
 			typ = t.normalize_type_alias(typ)
 			t.set_var_type(lhs.value, typ)
-			result << t.make_decl_assign_typed(lhs.value, rhs, typ)
+			if t.should_heap_escaping_source(lhs.value, typ) {
+				result << t.heap_escaping_value_decl(lhs.value, rhs, typ, rhs_node.kind == .struct_init)
+			} else {
+				result << t.make_decl_assign_typed(lhs.value, rhs, typ)
+			}
 		} else {
 			result << t.make_decl_assign(lhs.value, rhs)
 		}
@@ -15313,7 +15339,11 @@ fn (mut t Transformer) try_expand_multi_return_decl(node flat.Node) ?[]flat.Node
 			field_type_name := field_type.name()
 			field := t.make_selector(t.make_ident(tmp_name), field_name, field_type_name)
 			t.set_var_type(lhs.value, t.normalize_type_alias(field_type_name))
-			result << t.make_decl_assign_typed(lhs.value, field, field_type_name)
+			if t.should_heap_escaping_source(lhs.value, field_type_name) {
+				result << t.heap_escaping_value_decl(lhs.value, field, field_type_name, false)
+			} else {
+				result << t.make_decl_assign_typed(lhs.value, field, field_type_name)
+			}
 		}
 		return result
 	}
@@ -15779,15 +15809,33 @@ fn (mut t Transformer) expand_multi_return_if_decl(rhs_id flat.NodeId, rhs flat.
 	}
 	value_types := t.promoted_multi_if_value_types(rhs_id, rhs, lhs_ids.len)
 	mut result := []flat.NodeId{}
+	mut target_lhs_ids := []flat.NodeId{cap: lhs_ids.len}
 	for i, lhs_id in lhs_ids {
 		lhs := t.a.nodes[int(lhs_id)]
 		if lhs.kind != .ident || lhs.value == '_' {
+			target_lhs_ids << lhs_id
 			continue
 		}
 		typ := if i < value_types.len { value_types[i] } else { 'int' }
-		result << t.make_decl_assign_typed(lhs.value, t.zero_value_for_type(typ), typ)
+		zero := t.zero_value_for_type(typ)
+		if t.should_heap_escaping_source(lhs.value, typ) {
+			result << t.heap_escaping_value_decl(lhs.value, zero, typ, false)
+		} else {
+			result << t.make_decl_assign_typed(lhs.value, zero, typ)
+		}
+		if lhs.value in t.heaped_amp_locals {
+			// Branches assign the array value through its stable heap storage.
+			// Rebinding the pointer would retain a temporary from just one branch.
+			target_name := t.new_temp('if_result')
+			result << t.make_decl_assign_typed(target_name, t.make_ident(lhs.value), '&${typ}')
+			target := t.make_prefix(.mul, t.make_ident(target_name))
+			t.set_node_typ(int(target), typ)
+			target_lhs_ids << target
+		} else {
+			target_lhs_ids << lhs_id
+		}
 	}
-	if_stmts := t.expand_multi_return_if_assign(rhs_id, rhs, lhs_ids) or { return none }
+	if_stmts := t.expand_multi_return_if_assign(rhs_id, rhs, target_lhs_ids) or { return none }
 	for stmt in if_stmts {
 		result << stmt
 	}
@@ -15833,13 +15881,22 @@ fn (mut t Transformer) expand_multi_return_match_decl(rhs_id flat.NodeId, rhs fl
 		}
 		typ := if i < value_types.len { value_types[i].name() } else { 'int' }
 		t.set_var_type(lhs.value, t.normalize_type_alias(typ))
-		result << t.make_decl_assign_typed(lhs.value, t.zero_value_for_type(typ), typ)
+		zero := t.zero_value_for_type(typ)
+		if t.should_heap_escaping_source(lhs.value, typ) {
+			result << t.heap_escaping_value_decl(lhs.value, zero, typ, false)
+		} else {
+			result << t.make_decl_assign_typed(lhs.value, zero, typ)
+		}
 		// A match branch may declare a local with the same name as a result slot.
 		// Keep an address of the outer storage so the lowered branch assignment
 		// cannot bind to that inner local in C.
 		target_type := '&${typ}'
 		target_name := t.new_temp('match_result')
-		address := t.make_prefix(.amp, t.make_ident(lhs.value))
+		address := if lhs.value in t.heaped_amp_locals {
+			t.make_ident(lhs.value)
+		} else {
+			t.make_prefix(.amp, t.make_ident(lhs.value))
+		}
 		t.set_node_typ(int(address), target_type)
 		result << t.make_decl_assign_typed(target_name, address, target_type)
 		target := t.make_prefix(.mul, t.make_ident(target_name))
@@ -18702,14 +18759,37 @@ fn (mut t Transformer) transform_call_expr(id flat.NodeId, node flat.Node) flat.
 				}
 			}
 			mut new_args := []flat.NodeId{cap: int(node.children_count)}
+			ordered_call_name := t.call_name_for_node(id, node)
+			translated_array_args := t.call_uses_translated_array_parameters(ordered_call_name)
+			ordered_params := if translated_array_args {
+				t.concrete_generic_call_param_types(id, node) or {
+					t.call_param_types_for_node(ordered_call_name, node)
+				}
+			} else {
+				[]types.Type{}
+			}
+			ordered_param_offset := t.call_param_offset_for_node(ordered_call_name, node, ordered_params)
 			for i in 1 .. node.children_count {
 				arg_id := t.a.child(&node, i)
 				arg := t.a.nodes[int(arg_id)]
+				param_idx := i - 1 + ordered_param_offset
 				na := if arg.kind == .field_init {
 					// Trailing params-struct fields are still individual call children here.
 					// Leave their internal ordering to transform_struct_fields after
 					// transform_call_args groups them into the final struct argument.
 					arg_id
+				} else if i <= last_branch && translated_array_args && param_idx >= 0
+					&& param_idx < ordered_params.len
+					&& types.unalias_type(ordered_params[param_idx]) is types.ArrayFixed
+					&& t.is_fixed_array_type(t.normalize_type_alias(t.node_type(arg_id))) {
+					// Translated array parameters can retain the argument's address. Preserve
+					// lvalue identity and give rvalues persistent storage before ordering
+					// lowering would hide their origin behind a stack snapshot.
+					if t.translated_array_decay_operand_addressable(arg_id) {
+						t.stabilize_original_lvalue_receiver(arg_id) or { arg_id }
+					} else {
+						t.transform_call_arg_for_named_param(arg_id, t.semantic_type_name(ordered_params[param_idx]), ordered_call_name)
+					}
 				} else if t.is_value_match_or_if_operand(arg_id) {
 					t.materialize_value_branch_operand(arg_id)
 				} else if i < last_branch && t.a.nodes[int(arg_id)].kind != .field_init
