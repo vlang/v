@@ -933,6 +933,9 @@ pub mut:
 	checker_fixture_mode          bool
 	is_test                       bool
 	check_concrete_generic_bodies bool              // `-check` checks the concrete clones of the program's generics for fields and methods their types lack
+	library_instances             int               // the instances of library generics that such a check cloned
+	library_headers               int               // how many of them it cloned without their bodies (see transform.LibraryBodies)
+	library_bodies_kept_for       string            // why every one of them kept its body, when one had to
 	check_generic_bodies          bool              // the bodies of generic functions whose type parameters all have a constraint are checked
 	type_param_texts              map[string]string // in a fork that checks a generic body with its type parameters as types their constraints admit, the text of each (check_generic_fn_body_as)
 	type_params_expanding         map[string]bool   // the type parameters of type_param_texts whose own text is being parsed: `T` of `[T Comparable[T]]` stays open inside it

@@ -17575,8 +17575,17 @@ fn check_concrete_generic_bodies_of_check(mut a flat.FlatAst, mut tc types.TypeC
 	tc.complete_incremental_check_for_instances()
 	trace_incremental_check(mut tc)
 	tc.check_concrete_generic_bodies = true
+	tc.library_instances = 0
+	tc.library_headers = 0
+	tc.library_bodies_kept_for = ''
 	_, _ = transform.monomorphize_with_used_checked_config(mut a, tc, used_fns, false)
 	tc.check_concrete_generic_bodies = false
+	if tc.library_instances > 0 {
+		trace_diagnostics_server('instances: ${tc.library_headers} of ${tc.library_instances} library instances cloned without their bodies')
+		if tc.library_bodies_kept_for != '' {
+			trace_diagnostics_server('instances: every library instance keeps its body: ${tc.library_bodies_kept_for}')
+		}
+	}
 	return true
 }
 

@@ -409,6 +409,7 @@ mut:
 	generic_specialization_args_log    []string
 	generic_specialization_args_parent &map[string][]string = unsafe { nil }
 	generic_fn_specs_in_progress       map[string]bool
+	library_bodies                     LibraryBodies // which library instances a check clones without their bodies
 	generic_fn_spec_nodes              map[string]flat.NodeId
 	monomorph_cache_specs              map[string]MonomorphCacheSpec
 	monomorph_signature_types          []MonomorphSignatureType

@@ -3995,7 +3995,22 @@ fn (mut t Transformer) emit_generic_fn_specialization(decl GenericFnDecl, args [
 	t.cloning_generic_fn_depth++
 	old_clone_ret_type := t.cur_fn_ret_type
 	t.cur_fn_ret_type = t.specialized_signature_type_text(decl, t.generic_fn_return_type_text(decl), concrete_args, t.active_generic_params)
-	clone_id := t.clone_generic_fn_node(decl.node, concrete_args)
+	// A check clones a library instance without its body when the body cannot
+	// ask for an instance of the program (see LibraryBodies).
+	library_clone := !isnil(t.tc) && t.tc.check_concrete_generic_bodies
+		&& decl.file !in t.tc.diagnostic_files
+	header_only := library_clone && !t.library_instance_needs_body(concrete_args)
+	if library_clone {
+		t.tc.library_instances++
+		if header_only {
+			t.tc.library_headers++
+		}
+	}
+	clone_id := if header_only {
+		t.clone_generic_fn_header(decl.node, concrete_args)
+	} else {
+		t.clone_generic_fn_node(decl.node, concrete_args)
+	}
 	t.cur_fn_ret_type = old_clone_ret_type
 	t.cloning_generic_fn_depth--
 	// Declaration attributes are indexed by the parsed declaration node. A
@@ -9980,6 +9995,24 @@ fn (mut t Transformer) generic_const_string_value(id flat.NodeId, args []string)
 
 fn (mut t Transformer) clone_generic_fn_node(node flat.Node, args []string) flat.NodeId {
 	return t.clone_generic_node_from(node, args, true)
+}
+
+// clone_generic_fn_header clones the generic function `node` without its body:
+// only the parameters, which the signature of the instance needs.
+fn (mut t Transformer) clone_generic_fn_header(node flat.Node, args []string) flat.NodeId {
+	start := t.a.children.len
+	for i in 0 .. node.children_count {
+		child_id := t.a.child(&node, i)
+		if t.a.nodes[int(child_id)].kind == .param {
+			t.a.children << child_id
+		}
+	}
+	header := flat.Node{
+		...node
+		children_start: start
+		children_count: flat.child_count(t.a.children.len - start)
+	}
+	return t.clone_generic_node_from(header, args, true)
 }
 
 @[direct_array_access]
