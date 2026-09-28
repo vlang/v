@@ -670,6 +670,10 @@ fn test_v3_cache_artifact_detection_accepts_quoted_paths_with_spaces() {
 	assert v3_cache_failure_artifacts("ld: '${object}': file format not recognized") == [
 		os.real_path(object),
 	]
+	assert v3_cache_failure_artifacts('/usr/bin/ld:${object}: file format not recognized') == [
+		os.real_path(object),
+	]
+	assert !v3_cache_recovery_should_retry([object], 0)
 	module_dir := os.join_path(root, 'v3_module_cache_ab12', 'config')
 	os.mkdir_all(module_dir)!
 	module_object := os.join_path(module_dir, 'module.o')
@@ -677,6 +681,11 @@ fn test_v3_cache_artifact_detection_accepts_quoted_paths_with_spaces() {
 	assert v3_cache_failure_artifacts("ld: '${module_object}': file format not recognized") == [
 		os.real_path(module_object),
 	]
+	missing := os.join_path(module_dir, 'missing object.o')
+	assert v3_cache_failure_artifacts("ld: '${missing}': No such file or directory") == [
+		os.join_path_single(os.real_path(module_dir), os.base(missing)),
+	]
+	assert v3_cache_recovery_should_retry([missing], 0)
 }
 
 fn test_v3_discard_cache_artifacts_drops_sidecars_and_link_plans() {

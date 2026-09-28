@@ -12702,6 +12702,24 @@ fn v3_cache_error_artifacts(output string) []string {
 			}
 		}
 	}
+	// GNU ld also prints unquoted absolute paths, so whitespace can be part of
+	// the artifact name. Try each absolute suffix before the diagnostic colon;
+	// canonical containment below rejects the linker executable and other paths.
+	for line in output.split_into_lines() {
+		end := line.last_index(':') or { continue }
+		prefix := line[..end].trim_space()
+		for i, ch in prefix.bytes() {
+			if ch != `/` {
+				continue
+			}
+			candidate := prefix[i..].trim('\'"`()[],;:')
+			if artifact := v3_canonical_cache_artifact(candidate, directories) {
+				if artifact !in artifacts {
+					artifacts << artifact
+				}
+			}
+		}
+	}
 	return artifacts
 }
 
@@ -12789,6 +12807,19 @@ fn v3_unrepaired_cache_failure_artifacts(output string) ?[]string {
 	return artifacts
 }
 
+fn v3_cache_recovery_should_retry(artifacts []string, discarded int) bool {
+	if discarded > 0 {
+		return true
+	}
+	// A missing cache artifact has nothing to delete, but retrying can recreate it.
+	for artifact in artifacts {
+		if !os.exists(artifact) {
+			return true
+		}
+	}
+	return false
+}
+
 // v3_recover_from_cache_failure discards the cache entries a C toolchain
 // failure blamed and restarts the build once. Such an entry is otherwise
 // permanent - it outlives the build that published it, and the only symptom is
@@ -12802,7 +12833,7 @@ fn v3_recover_from_cache_failure(output string, cc_dir string) bool {
 	if artifacts.len == 0 {
 		return false
 	}
-	if v3_discard_cache_artifacts(artifacts) == 0 {
+	if !v3_cache_recovery_should_retry(artifacts, v3_discard_cache_artifacts(artifacts)) {
 		return false
 	}
 	// Reported even under `-silent`, like the tcc fallback warning: a repair the
