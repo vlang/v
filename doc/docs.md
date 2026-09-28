@@ -4986,6 +4986,7 @@ fn main() {
 
 If a spawned thread's handle is discarded, including inside a discarded array or struct,
 V detaches the thread. Keep its handle and call `wait()` when the result or completion matters.
+The detached thread releases an owned return value after its function finishes.
 
 > [!NOTE]
 > Threads rely on the machine's CPU (number of cores/threads).

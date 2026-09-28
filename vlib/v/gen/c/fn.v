@@ -3845,7 +3845,13 @@ fn (mut g FlatGen) gen_spawn_expr(node flat.Node) {
 	// return is `Optional_T` (not the generic `Optional`, whose payload is `int`) and a
 	// fixed-array return is its `_v_ret_*` wrapper struct. The wrapper mallocs and
 	// assigns this type, and `[]thread T.wait()` must read back the same layout.
-	ret_ct := g.fn_return_type_name(g.tc.resolve_type(call_id))
+	ret_type := g.tc.resolve_type(call_id)
+	outer_return_type := g.spawn_return_type
+	g.spawn_return_type = ret_type
+	defer {
+		g.spawn_return_type = outer_return_type
+	}
+	ret_ct := g.fn_return_type_name(ret_type)
 	mut wrapper := ''
 	mut arg_expr := 'NULL'
 	if fn_node.kind == .ident {
@@ -4009,37 +4015,48 @@ fn (g &FlatGen) spawn_selector_fn_value_type(callee_id flat.NodeId, fn_node flat
 // call and returns its result as a `void*`. When the callee returns a value, the
 // result is heap-copied so `[]thread T .wait()` can recover it (the wait fn frees
 // it); a void callee returns NULL. `post` runs after the call (e.g. `free(p);`).
-fn spawn_wrapper_body(call_expr string, ret_ct string, post string) string {
-	return spawn_wrapper_body_with_pre(call_expr, ret_ct, '', post)
+fn (mut g FlatGen) spawn_wrapper_body(call_expr string, ret_ct string, post string) string {
+	return g.spawn_wrapper_body_with_pre(call_expr, ret_ct, '', post)
 }
 
-fn spawn_wrapper_body_with_pre(call_expr string, ret_ct string, pre string, post string) string {
+fn (mut g FlatGen) spawn_wrapper_body_with_pre(call_expr string, ret_ct string, pre string, post string) string {
 	if ret_ct == 'void' || ret_ct.len == 0 {
+		return '${pre}${call_expr}; ${post}return NULL;'
+	}
+	if g.spawn_detached {
+		if g.ownership_type_requires_destruction(g.spawn_return_type, 0) {
+			clean_type := default_init_unalias_type(g.spawn_return_type)
+			value := if clean_type is types.ArrayFixed { '__tr.ret_arr' } else { '__tr' }
+			drop := g.ownership_drop_value_to_string(g.spawn_return_type, value)
+			return '${pre}${ret_ct} __tr = ${call_expr}; ${drop}${post}return NULL;'
+		}
 		return '${pre}${call_expr}; ${post}return NULL;'
 	}
 	return '${pre}${ret_ct}* __tr = (${ret_ct}*)__v_thread_alloc(sizeof(${ret_ct})); *__tr = ${call_expr}; ${post}return (void*)__tr;'
 }
 
 fn (mut g FlatGen) ensure_noarg_spawn_wrapper(cfn string, ret_ct string) string {
-	key := 'noarg|${cfn}'
+	key := 'noarg|${cfn}|detached:${g.spawn_detached}'
 	if name := g.spawn_wrapper_names[key] {
 		return name
 	}
-	name := g.cname('${cfn}_thread_wrapper')
+	suffix := if g.spawn_detached { '_detached' } else { '' }
+	name := g.cname('${cfn}_thread_wrapper${suffix}')
 	g.spawn_wrapper_names[key] = name
-	body := spawn_wrapper_body('${cfn}()', ret_ct, '')
+	body := g.spawn_wrapper_body('${cfn}()', ret_ct, '')
 	g.add_spawn_wrapper_def('static void* ${name}(void* arg) { (void)arg; ${body} }')
 	return name
 }
 
 fn (mut g FlatGen) ensure_receiver_spawn_wrapper(cfn string, receiver_ct string, ret_ct string) string {
-	key := 'receiver|${cfn}|${receiver_ct}'
+	key := 'receiver|${cfn}|${receiver_ct}|detached:${g.spawn_detached}'
 	if name := g.spawn_wrapper_names[key] {
 		return name
 	}
-	name := g.cname('${cfn}_thread_wrapper')
+	suffix := if g.spawn_detached { '_detached' } else { '' }
+	name := g.cname('${cfn}_thread_wrapper${suffix}')
 	g.spawn_wrapper_names[key] = name
-	body := spawn_wrapper_body('${cfn}((${receiver_ct})arg)', ret_ct, '')
+	body := g.spawn_wrapper_body('${cfn}((${receiver_ct})arg)', ret_ct, '')
 	g.add_spawn_wrapper_def('static void* ${name}(void* arg) { ${body} }')
 	return name
 }
@@ -4052,14 +4069,15 @@ fn (mut g FlatGen) ensure_args_spawn_wrapper(cfn string, args []SpawnPackedArg, 
 	signature := spawn_packed_args_signature(args)
 	captures := g.spawn_fn_literal_captures(cfn)
 	capture_signature := spawn_closure_capture_signature(captures)
+	detached_suffix := if g.spawn_detached { '_detached' } else { '' }
 	mut struct_name := g.cname('${cfn}_thread_args')
-	mut wrapper_name := g.cname('${cfn}_args_thread_wrapper')
+	mut wrapper_name := g.cname('${cfn}_args_thread_wrapper${detached_suffix}')
 	if !spawn_packed_args_are_direct(args) {
 		suffix := spawn_packed_args_name_suffix(args)
 		struct_name = g.cname('${cfn}_thread_args_${suffix}')
-		wrapper_name = g.cname('${cfn}_args_thread_wrapper_${suffix}')
+		wrapper_name = g.cname('${cfn}_args_thread_wrapper_${suffix}${detached_suffix}')
 	}
-	key := 'args|${cfn}|${signature}|captures:${capture_signature}'
+	key := 'args|${cfn}|${signature}|captures:${capture_signature}|detached:${g.spawn_detached}'
 	if name := g.spawn_wrapper_names[key] {
 		return name, struct_name
 	}
@@ -4084,7 +4102,7 @@ fn (mut g FlatGen) ensure_args_spawn_wrapper(cfn string, args []SpawnPackedArg, 
 			pre += '${capture.global_cname} = __v3_spawn_args->c${i}; '
 		}
 	}
-	body := spawn_wrapper_body_with_pre('${cfn}(${call_args.join(', ')})', ret_ct, pre, 'free(__v3_spawn_args); ')
+	body := g.spawn_wrapper_body_with_pre('${cfn}(${call_args.join(', ')})', ret_ct, pre, 'free(__v3_spawn_args); ')
 	g.add_spawn_wrapper_def('static void* ${wrapper_name}(void* arg) { ${struct_name}* __v3_spawn_args = (${struct_name}*)arg; ${body} }')
 	return wrapper_name, struct_name
 }
@@ -4115,13 +4133,14 @@ fn (mut g FlatGen) ensure_fn_value_spawn_wrapper(fn_ct string, args []SpawnPacke
 		suffix += '_captures_${capture_suffix}'
 	}
 	suffix = suffix.replace('*', 'ptr').replace(' ', '_')
+	detached_suffix := if g.spawn_detached { '_detached' } else { '' }
 	struct_name := g.cname('fn_value_thread_args_${suffix}')
 	wrapper_name := g.cname('fn_value_args_thread_wrapper_${suffix}${if destroys_fn {
 		'_destroy'
 	} else {
 		''
-	}}')
-	key := 'fnvalue|${fn_ct}|${ret_ct}|${signature}|captures:${capture_signature}|destroy:${destroys_fn}'
+	}}${detached_suffix}')
+	key := 'fnvalue|${fn_ct}|${ret_ct}|${signature}|captures:${capture_signature}|destroy:${destroys_fn}|detached:${g.spawn_detached}'
 	if name := g.spawn_wrapper_names[key] {
 		return name, struct_name
 	}
@@ -4149,7 +4168,7 @@ fn (mut g FlatGen) ensure_fn_value_spawn_wrapper(fn_ct string, args []SpawnPacke
 	} else {
 		''
 	}
-	body := spawn_wrapper_body_with_pre('__v3_spawn_args->f(${call_args.join(', ')})', ret_ct, pre, '${destroy}free(__v3_spawn_args); ')
+	body := g.spawn_wrapper_body_with_pre('__v3_spawn_args->f(${call_args.join(', ')})', ret_ct, pre, '${destroy}free(__v3_spawn_args); ')
 	g.add_spawn_wrapper_def('static void* ${wrapper_name}(void* arg) { ${struct_name}* __v3_spawn_args = (${struct_name}*)arg; ${body} }')
 	return wrapper_name, struct_name
 }

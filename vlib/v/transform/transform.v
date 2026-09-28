@@ -10575,6 +10575,58 @@ fn is_simple_ident_name(name string) bool {
 	return true
 }
 
+fn (mut t Transformer) mark_detached_spawn_result_drop(spawn_node flat.Node) {
+	if isnil(t.tc) || spawn_node.children_count == 0 {
+		return
+	}
+	call_id := t.a.child(&spawn_node, 0)
+	mut seen := map[string]bool{}
+	t.mark_detached_spawn_drop_type(t.tc.resolve_type(call_id), mut seen)
+}
+
+fn (mut t Transformer) mark_detached_spawn_drop_type(typ types.Type, mut seen map[string]bool) {
+	name := typ.name()
+	if seen[name] {
+		return
+	}
+	seen[name] = true
+	match typ {
+		types.Alias {
+			t.mark_detached_spawn_drop_type(typ.base_type, mut seen)
+		}
+		types.OptionType, types.ResultType {
+			t.mark_detached_spawn_drop_type(typ.base_type, mut seen)
+		}
+		types.Array, types.ArrayFixed {
+			t.mark_detached_spawn_drop_type(typ.elem_type, mut seen)
+		}
+		types.Map {
+			t.mark_detached_spawn_drop_type(typ.key_type, mut seen)
+			t.mark_detached_spawn_drop_type(typ.value_type, mut seen)
+		}
+		types.Struct {
+			method := if t.tc.autofree_mode { 'free' } else { 'drop' }
+			module_name := t.tc.struct_module_for_type(typ.name)
+			for candidate in ['${typ.name}.${method}',
+				'${module_name}.${typ.name.all_after_last('.')}.${method}'] {
+				if candidate in t.tc.fn_param_types || candidate in t.tc.fn_ret_types {
+					t.mark_fn_used_name(candidate)
+					return
+				}
+			}
+			for field in t.tc.struct_fields_for_type(typ.name) {
+				t.mark_detached_spawn_drop_type(field.typ, mut seen)
+			}
+		}
+		types.SumType {
+			for variant in t.tc.sum_types[typ.name] or { []string{} } {
+				t.mark_detached_spawn_drop_type(t.tc.parse_type(variant), mut seen)
+			}
+		}
+		else {}
+	}
+}
+
 fn (mut t Transformer) transform_spawn_expr(id flat.NodeId, node flat.Node) flat.NodeId {
 	detach := t.discarded_aggregate_spawns[int(id)]
 	old_in_spawn_expr := t.in_spawn_expr
@@ -10609,6 +10661,7 @@ fn (mut t Transformer) transform_spawn_expr(id flat.NodeId, node flat.Node) flat
 	}
 	t.in_spawn_expr = old_in_spawn_expr
 	if detach && result_node.kind == .spawn_expr {
+		t.mark_detached_spawn_result_drop(result_node)
 		detached := t.copy_node_with_children(result_node, t.a.children_of(result_node).clone())
 		t.a.nodes[int(detached)].flags = result_node.flags | flat.node_flag_detached_spawn
 		return detached
@@ -12094,6 +12147,7 @@ fn (mut t Transformer) transform_detached_spawn_stmt(stmt flat.Node, spawn_id fl
 	mut value := t.transform_expr(spawn_id)
 	spawn_node := t.a.nodes[int(value)]
 	if spawn_node.kind == .spawn_expr {
+		t.mark_detached_spawn_result_drop(spawn_node)
 		value = t.copy_node_with_children(spawn_node, t.a.children_of(&spawn_node).clone())
 		t.a.nodes[int(value)].flags = spawn_node.flags | flat.node_flag_detached_spawn
 	}

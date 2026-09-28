@@ -491,6 +491,7 @@ mut:
 	needs_thread_type             bool
 	needs_thread_runtime          bool
 	spawn_detached                bool // the spawn being emitted has its handle discarded
+	spawn_return_type             types.Type = types.Type(types.void_)
 	const_runtime_inits           []string
 	const_runtime_init_modules    []string
 	runtime_inits                 []string

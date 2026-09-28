@@ -260,6 +260,18 @@ fn answer() int {
 	return 42
 }
 
+fn make_array() []int {
+	return [1, 2, 3]
+}
+
+struct Owned {
+	values []int
+}
+
+fn make_owned() Owned {
+	return Owned{values: [4, 5]}
+}
+
 fn add(a int, b int) int {
 	return a + b
 }
@@ -276,21 +288,28 @@ fn main() {
 	b, _ = 2, spawn work()
 	println(b)
 	spawn answer()
+	spawn make_array()
+	spawn make_owned()
 	spawn add(1, 2)
 	spawn wait_for(spawn answer())
 	t := spawn answer()
 	println(t.wait())
+	owned := spawn make_array()
+	println(owned.wait())
 }
 	')
 	c_compact := compact_c(c_code)
 	assert c_code.contains('static __v_thread __v_thread_spawn_detached(__v_thread_start_fn start, void* arg, void (*cleanup)(void*))'), c_code
-	assert c_compact.count('__v_thread_spawn_detached(work_thread_wrapper,') == 4, c_code
-	assert c_compact.count('__v_thread_spawn_detached(answer_thread_wrapper,') == 1, c_code
-	assert c_compact.contains('__v_thread_spawn_detached(add_args_thread_wrapper,(void*)_sa'), c_code
+	assert c_compact.count('__v_thread_spawn_detached(work_thread_wrapper_detached,') == 4, c_code
+	assert c_compact.count('__v_thread_spawn_detached(answer_thread_wrapper_detached,') == 1, c_code
+	assert c_compact.contains('__v_thread_spawn_detached(add_args_thread_wrapper_detached,(void*)_sa'), c_code
 	// The spawn nested in the arguments is joined by `wait_for`, so it stays joinable.
-	assert c_compact.contains('__v_thread_spawn_detached(wait_for_args_thread_wrapper,(void*)_sa'), c_code
+	assert c_compact.contains('__v_thread_spawn_detached(wait_for_args_thread_wrapper_detached,(void*)_sa'), c_code
 	assert c_compact.count('__v_thread_spawn(answer_thread_wrapper,') == 2, c_code
 	assert c_compact.contains('__v_threadt=__v_thread_spawn(answer_thread_wrapper,'), c_code
+	assert c_code.contains('static void* make_array_thread_wrapper_detached(void* arg) { (void)arg; Array __tr = make_array();'), c_code
+	assert c_code.contains('array__free(&(__tr));'), c_code
+	assert c_code.contains('static void* make_array_thread_wrapper(void* arg) { (void)arg; Array* __tr = (Array*)__v_thread_alloc(sizeof(Array));'), c_code
 	assert c_compact.contains('__v_thread__twthread0=t;'), c_code
 }
 
@@ -322,7 +341,7 @@ fn main() {
 }
 	')
 	c_compact := compact_c(c_code)
-	assert c_compact.count('__v_thread_spawn_detached(answer_thread_wrapper,') == 6, c_code
+	assert c_compact.count('__v_thread_spawn_detached(answer_thread_wrapper_detached,') == 6, c_code
 	assert c_compact.count('__v_thread_spawn(answer_thread_wrapper,') == 2, c_code
 }
 
@@ -368,8 +387,8 @@ fn main() {
 }
 	")
 	c_compact := compact_c(c_code)
-	assert c_compact.count('__v_thread_spawn_detached(work_thread_wrapper,') == 6, c_code
-	assert c_compact.count('__v_thread_spawn_detached(other_thread_wrapper,') == 6, c_code
+	assert c_compact.count('__v_thread_spawn_detached(work_thread_wrapper_detached,') == 6, c_code
+	assert c_compact.count('__v_thread_spawn_detached(other_thread_wrapper_detached,') == 6, c_code
 	assert !c_compact.contains('__v_thread_spawn(other_thread_wrapper,'), c_code
 	assert c_compact.contains('__v_threadt=__v_thread_spawn(work_thread_wrapper,'), c_code
 	assert c_compact.count('(void)(t);') == 2, c_code
