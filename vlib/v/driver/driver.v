@@ -13361,7 +13361,7 @@ pub fn run(args []string) {
 			exports_dir := if generate_c_project.len > 0 { generate_c_project } else { cc_dir }
 			exports_script := os.join_path_single(exports_dir, 'exports.map')
 			os.write_file(exports_script, v3_shared_exports_version_script(a.export_fn_names,
-				v3_shared_exports_data_names(&a))) or {
+				v3_shared_exports_data_names(a))) or {
 				eprintln('failed to write shared exports script ${exports_script}: ${err.msg()}')
 				cleanup_c_build_dir(cc_dir)
 				exit(1)
