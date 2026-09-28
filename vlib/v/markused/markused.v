@@ -6783,7 +6783,8 @@ fn (c &CallCollector) generic_factory_return_type_name(index &flat.Node, name st
 		}
 		if return_type.len == 0 || semantic_has_placeholder {
 			if signature_text := c.tc.fn_ret_type_texts[candidate] {
-				return_type = signature_text
+				return_type = c.generic_factory_signature_type_text(signature_text, candidate,
+					cur_module)
 				if unwrap_optional_result && (return_type.starts_with('?') || return_type.starts_with('!')) {
 					return_type = return_type[1..]
 				}
@@ -6802,6 +6803,26 @@ fn (c &CallCollector) generic_factory_return_type_name(index &flat.Node, name st
 		return c.tc.specialize_generic_factory_return(return_type, candidate, receiver_type, args)
 	}
 	return ''
+}
+
+fn (c &CallCollector) generic_factory_signature_type_text(signature_text string, candidate string, cur_module string) string {
+	mut decl_module := c.tc.fn_type_modules[candidate] or { cur_module }
+	mut decl_id := flat.empty_node
+	mut decl_imports := map[string]string{}
+	if decl := c.fn_decls[candidate] {
+		decl_module = decl.module
+		decl_id = decl.node_id
+		if c.import_contexts.len > 0 {
+			decl_imports = c.imports(decl.import_context)
+		}
+	} else if decl_module == cur_module && candidate.contains('.') {
+		prefix := candidate.all_before('.')
+		if !prefix.contains('[') {
+			decl_module = prefix
+		}
+	}
+	return c.generic_factory_qualified_type_text(signature_text, decl_id, decl_module,
+		decl_imports)
 }
 
 fn markused_type_has_unknown(typ types.Type) bool {

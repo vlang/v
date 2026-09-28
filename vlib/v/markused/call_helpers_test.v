@@ -589,3 +589,59 @@ fn test_generic_factory_return_keeps_qualified_unknown_module_name() {
 	assert inferred == 'unknown_factory.Gate'
 	assert collector.typed_receiver_method_name(inferred, 'backward', 'main')? == 'unknown_factory.Gate.backward'
 }
+
+fn test_generic_factory_signature_text_uses_declaration_scope() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	tc.fn_generic_params['gates.make'] = ['U']
+	tc.fn_type_modules['gates.make'] = 'gates'
+	tc.structs['gates.Handler'] = []types.StructField{}
+	tc.structs['gates.Key'] = []types.StructField{}
+	base := a.add_val(.ident, 'make')
+	arg := a.add_val(.ident, 'int')
+	indexed := call_helper_node(mut a, flat.Node{ kind: .index }, [base, arg])
+	collector := CallCollector{ a: &a, tc: &tc }
+	unknown := types.Type(types.Unknown{ reason: 'generic U' })
+	tc.fn_ret_types['gates.make'] = types.Type(types.Alias{
+		name:      'gates.Handler[U]'
+		base_type: unknown
+	})
+	tc.fn_ret_type_texts['gates.make'] = 'Handler[U]'
+	assert collector.generic_factory_return_type_name(a.node(indexed), 'gates.make', 'consumer',
+		map[string]string{}, false, '') == 'gates.Handler[int]'
+	tc.fn_ret_types['gates.make'] = types.Type(types.Map{
+		key_type:   types.Type(types.Struct{ name: 'gates.Key' })
+		value_type: unknown
+	})
+	tc.fn_ret_type_texts['gates.make'] = 'map[Key]U'
+	assert collector.generic_factory_return_type_name(a.node(indexed), 'gates.make', 'consumer',
+		map[string]string{}, false, '') == 'map[gates.Key]int'
+}
+
+fn test_generic_factory_signature_text_uses_declaration_imports() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	method := 'gates.make'
+	tc.fn_generic_params[method] = ['U']
+	tc.fn_ret_types[method] = types.Type(types.Alias{
+		name:      'external.Handler[U]'
+		base_type: types.Type(types.Unknown{ reason: 'generic U' })
+	})
+	tc.fn_ret_type_texts[method] = 'handler.Handler[U]'
+	base := a.add_val(.ident, 'make')
+	arg := a.add_val(.ident, 'int')
+	indexed := call_helper_node(mut a, flat.Node{ kind: .index }, [base, arg])
+	decl_id := a.add_node(flat.Node{ kind: .fn_decl, value: 'make' })
+	collector := CallCollector{
+		a:               &a
+		tc:              &tc
+		fn_decls:        {
+			method: FnDeclInfo{ node_id: decl_id, module: 'gates', import_context: 1 }
+		}
+		import_contexts: [map[string]string{}, {
+			'handler': 'external'
+		}]
+	}
+	assert collector.generic_factory_return_type_name(a.node(indexed), method, 'consumer',
+		map[string]string{}, false, '') == 'external.Handler[int]'
+}
