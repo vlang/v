@@ -8000,6 +8000,19 @@ unsafe {
 assert *p == `i`
 ```
 
+Unlike in C, fixed arrays do not decay to pointers. For pointer arithmetic over a fixed array,
+take the address of an element (or cast the array's address) inside `unsafe`.
+Subtracting two pointers gives the distance in elements:
+
+```v
+values := [3, 5, 7]!
+p := unsafe { &values[0] + 2 }
+assert unsafe { *p } == 7
+assert unsafe { p - &values[0] } == 2
+q := unsafe { &int(&values) + 1 }
+assert unsafe { *q } == 5
+```
+
 Best practice is to avoid putting memory-safe expressions inside an `unsafe` block,
 so that the reason for using `unsafe` is as clear as possible. Generally any code
 you think is memory-safe should not be inside an `unsafe` block, so the compiler
