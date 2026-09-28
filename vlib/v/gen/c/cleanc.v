@@ -23067,7 +23067,12 @@ fn (g &FlatGen) global_fixed_array_pointer_local_root(id flat.NodeId) bool {
 		return false
 	}
 	if node.kind in [.index, .selector, .paren] && node.children_count > 0 {
-		return g.global_fixed_array_pointer_local_root(g.a.child(node, 0))
+		base_id := g.a.child(node, 0)
+		if node.kind in [.index, .selector]
+			&& default_init_unalias_type(g.usable_expr_type(base_id)) is types.Pointer {
+			return false
+		}
+		return g.global_fixed_array_pointer_local_root(base_id)
 	}
 	return false
 }
