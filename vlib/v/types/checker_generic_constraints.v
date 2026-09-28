@@ -1268,6 +1268,27 @@ pub fn (mut tc TypeChecker) infer_type_params_from_constraints(decl flat.Node, m
 	}
 }
 
+// infer_type_params_from_interface binds in `inferred` the type parameters
+// `names` that `param_text`, a generic interface as the type of a parameter,
+// `Shelf[T]`, names and nothing bound yet, from `actual_text`, the type of what
+// a call passes there: the types of its methods and fields against those of
+// the members of the interface, `User` for a `get() User` against `get() T`.
+pub fn (mut tc TypeChecker) infer_type_params_from_interface(param_text string, actual_text string, names []string, mut inferred map[string]string) {
+	mut missing := []string{}
+	for name in names {
+		mut one := map[string]bool{}
+		one[name] = true
+		if name !in inferred && type_text_names_any(param_text, one) {
+			missing << name
+		}
+	}
+	if missing.len == 0 || !generic_type_application(param_text.trim_space()) {
+		return
+	}
+	tc.infer_from_constraint(param_text.trim_space(), tc.parse_type(actual_text), missing, mut
+		inferred)
+}
+
 // infer_from_constraint binds the type parameters `missing` that the
 // constraint `text` names from `actual`, the type bound to the type parameter
 // that it constrains: the type arguments of the same generic type, `Pair[T]`

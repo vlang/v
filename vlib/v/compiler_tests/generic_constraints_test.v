@@ -1962,3 +1962,54 @@ fn test_a_type_parameter_is_inferred_from_the_constraint_that_names_it() {
 	assert errors.len == 1, check.output
 	assert errors[0].contains('main.v:28:') && errors[0].contains('Named'), errors[0]
 }
+
+const inferred_from_interface = "module main
+
+interface Named {
+	name string
+}
+
+interface Shelf[T Named] {
+	get() T
+}
+
+struct User {
+	name string
+}
+
+struct UserShelf {
+	u User
+}
+
+fn (s UserShelf) get() User {
+	return s.u
+}
+
+fn take_now[T Named](s Shelf[T]) T {
+	return s.get()
+}
+
+fn main() {
+	shelf := UserShelf{User{'ana'}}
+	println(take_now(shelf).name)
+	println(take_now[User](shelf).name)
+	println(take_now(Shelf[User](shelf)).name)
+}
+"
+
+fn test_a_type_parameter_is_inferred_from_a_type_passed_for_a_generic_interface() {
+	// `take_now(shelf)` passes a `UserShelf` for `s Shelf[T]`: its `get()`
+	// returns a `User`, so `T` is `User`, as `take_now[User](shelf)` writes it.
+	// The check took it so, but the build made no instance of `take_now`, and
+	// the C compiler failed on its call.
+	dir := os.join_path(os.vtmp_dir(), 'v3_generic_constraints_interface_arg_${os.getpid()}')
+	os.mkdir_all(dir) or { panic(err) }
+	defer {
+		os.rmdir_all(dir) or {}
+	}
+	path := os.join_path(dir, 'main.v')
+	os.write_file(path, inferred_from_interface) or { panic(err) }
+	res := os.execute('${os.quoted_path(@VEXE)} -new-compiler run ${os.quoted_path(path)}')
+	assert res.exit_code == 0, res.output
+	assert res.output.trim_space().split_into_lines() == ['ana', 'ana', 'ana'], res.output
+}

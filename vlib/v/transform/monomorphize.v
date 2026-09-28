@@ -8102,6 +8102,10 @@ fn (mut t Transformer) infer_generic_call_args_seeded(decl GenericFnDecl, _id fl
 		arg_type := generic_arg_type_for_param(inference_param_type, inferred_arg_type)
 		if arg_type.len > 0 && !defer_numeric_literal {
 			infer_generic_type_args(inference_param_type, arg_type, mut inferred)
+			// A type passed for a generic interface, a `UserShelf` for `Shelf[T]`:
+			// its methods bind what the members of the interface name.
+			t.tc.infer_type_params_from_interface(inference_param_type, arg_type, param_names, mut
+				inferred)
 			t.infer_generic_sum_variant_args(child.typ, arg_type, mut inferred)
 			if is_recv_param {
 				t.infer_generic_receiver_suffix_args(child.typ, arg_type, mut inferred)
