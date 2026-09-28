@@ -6085,16 +6085,19 @@ struct CHeaderScanLine {
 }
 
 struct CHeaderCocoaCondition {
-	before           bool
+	forked bool
+	before bool
+mut:
 	before_once      map[string]bool
 	before_included  map[string]bool
 	before_defined   map[string]bool
 	before_undefined map[string]bool
 	before_uncertain map[string]bool
 	before_values    map[string]string
-mut:
 	all_branches     bool = true
 	saw_branch       bool
+	touched_macros   map[string]bool
+	touched_paths    map[string]bool
 	common_once      map[string]bool
 	common_included  map[string]bool
 	common_defined   map[string]bool
@@ -6103,12 +6106,22 @@ mut:
 	common_values    map[string]string
 }
 
-fn c_cocoa_include_macro(value string, values map[string]string) bool {
+fn c_cocoa_include_macro(value string, values map[string]string, overrides map[string]string, overridden map[string]bool) bool {
 	mut current := value
 	mut expanded := map[string]bool{}
-	for (current in values && current !in expanded) {
+	for current !in expanded {
 		expanded[current] = true
-		current = values[current].trim_space()
+		if current in overridden {
+			if replacement := overrides[current] {
+				current = replacement.trim_space()
+			} else {
+				break
+			}
+		} else if replacement := values[current] {
+			current = replacement.trim_space()
+		} else {
+			break
+		}
 	}
 	return cocoa_nsfont_framework_include(current)
 }
@@ -6116,50 +6129,114 @@ fn c_cocoa_include_macro(value string, values map[string]string) bool {
 fn (mut condition CHeaderCocoaCondition) merge_branch(cocoa_provided bool, once_paths map[string]bool, included_paths map[string]bool, defined map[string]bool, undefined map[string]bool, uncertain map[string]bool, values map[string]string) {
 	condition.all_branches = condition.all_branches && cocoa_provided
 	if !condition.saw_branch {
-		condition.common_once = once_paths.clone()
-		condition.common_included = included_paths.clone()
-		condition.common_defined = defined.clone()
-		condition.common_undefined = undefined.clone()
-		condition.common_uncertain = uncertain.clone()
-		condition.common_values = values.clone()
+		for path, _ in condition.touched_paths {
+			if path in once_paths { condition.common_once[path] = true }
+			if path in included_paths { condition.common_included[path] = true }
+		}
+		for name, _ in condition.touched_macros {
+			if name in defined { condition.common_defined[name] = true }
+			if name in undefined { condition.common_undefined[name] = true }
+			if name in uncertain { condition.common_uncertain[name] = true }
+			if value := values[name] { condition.common_values[name] = value }
+		}
 		condition.saw_branch = true
 		return
 	}
-	for path in condition.common_once.keys() {
+	for path, _ in condition.touched_paths {
 		if path !in once_paths { condition.common_once.delete(path) }
-	}
-	for path in condition.common_included.keys() {
 		if path !in included_paths { condition.common_included.delete(path) }
 	}
-	mut names := map[string]bool{}
-	for state in [condition.common_defined, condition.common_undefined, condition.common_uncertain,
-		defined, undefined, uncertain] {
-		for name in state.keys() { names[name] = true }
-	}
-	for name in names.keys() {
+	for name, _ in condition.touched_macros {
+		if name.starts_with('@function:') { continue }
 		if name in condition.common_defined && name in defined { continue }
 		if name in condition.common_undefined && name in undefined { continue }
 		condition.common_defined.delete(name)
 		condition.common_undefined.delete(name)
 		condition.common_uncertain[name] = true
 	}
-	previous_values := condition.common_values.clone()
-	mut value_names := map[string]bool{}
-	for name in previous_values.keys() { value_names[name] = true }
-	for name in values.keys() { value_names[name] = true }
-	for name in value_names.keys() {
-		value := previous_values[name]
+	mut previous_cocoa_values := map[string]bool{}
+	for name, _ in condition.touched_macros {
+		previous_cocoa_values[name] = c_cocoa_include_macro(condition.common_values[name], values, condition.common_values, condition.touched_macros)
+	}
+	for name, _ in condition.touched_macros {
+		value := condition.common_values[name]
 		if name in condition.common_uncertain || name in condition.common_undefined {
 			condition.common_values.delete(name)
-		} else if name !in previous_values || name !in values {
+		} else if name !in condition.common_values && name !in values {
+			continue
+		} else if name !in condition.common_values || name !in values {
 			condition.common_values[name] = ''
 		} else if value != values[name] {
 			// Cocoa and AppKit include alternatives both provide the same NSFont declaration.
-			condition.common_values[name] = if c_cocoa_include_macro(value, previous_values)
-				&& c_cocoa_include_macro(values[name], values) {
+			condition.common_values[name] = if previous_cocoa_values[name]
+				&& c_cocoa_include_macro(values[name], values, map[string]string{}, map[string]bool{}) {
 				'<Cocoa/Cocoa.h>'
 			} else {
 				''
+			}
+		}
+	}
+}
+
+fn (condition &CHeaderCocoaCondition) restore_branch(common bool, mut once_paths map[string]bool, mut included_paths map[string]bool, mut defined map[string]bool, mut undefined map[string]bool, mut uncertain map[string]bool, mut values map[string]string) {
+	once_state := if common { condition.common_once } else { condition.before_once }
+	included_state := if common { condition.common_included } else { condition.before_included }
+	defined_state := if common { condition.common_defined } else { condition.before_defined }
+	undefined_state := if common { condition.common_undefined } else { condition.before_undefined }
+	uncertain_state := if common { condition.common_uncertain } else { condition.before_uncertain }
+	value_state := if common { condition.common_values } else { condition.before_values }
+	for path, _ in condition.touched_paths {
+		if path in once_state { once_paths[path] = true } else { once_paths.delete(path) }
+		if path in included_state {
+			included_paths[path] = true
+		} else {
+			included_paths.delete(path)
+		}
+	}
+	for name, _ in condition.touched_macros {
+		if name in defined_state { defined[name] = true } else { defined.delete(name) }
+		if name in undefined_state { undefined[name] = true } else { undefined.delete(name) }
+		if name in uncertain_state { uncertain[name] = true } else { uncertain.delete(name) }
+		if value := value_state[name] { values[name] = value } else { values.delete(name) }
+	}
+}
+
+fn (mut condition CHeaderCocoaCondition) save_macro(name string, defined map[string]bool, undefined map[string]bool, uncertain map[string]bool, values map[string]string) {
+	if name in condition.touched_macros { return }
+	condition.touched_macros[name] = true
+	if name in defined { condition.before_defined[name] = true }
+	if name in undefined { condition.before_undefined[name] = true }
+	if name in uncertain { condition.before_uncertain[name] = true }
+	if value := values[name] { condition.before_values[name] = value }
+	if condition.saw_branch {
+		// Earlier branches did not change this name, so their common state is its entry state.
+		if name in defined { condition.common_defined[name] = true }
+		if name in undefined { condition.common_undefined[name] = true }
+		if name in uncertain { condition.common_uncertain[name] = true }
+		if value := values[name] { condition.common_values[name] = value }
+	}
+}
+
+fn c_header_cocoa_touch_macro(mut conditions []CHeaderCocoaCondition, name string, defined map[string]bool, undefined map[string]bool, uncertain map[string]bool, values map[string]string) {
+	for mut condition in conditions {
+		if condition.forked {
+			condition.save_macro(name, defined, undefined, uncertain, values)
+			if name in [c_has_attribute_predicate, c_has_include_predicate] {
+				condition.save_macro('@function:${name}', defined, undefined, uncertain, values)
+			}
+		}
+	}
+}
+
+fn c_header_cocoa_touch_path(mut conditions []CHeaderCocoaCondition, path string, once_paths map[string]bool, included_paths map[string]bool) {
+	for mut condition in conditions {
+		if condition.forked && path !in condition.touched_paths {
+			condition.touched_paths[path] = true
+			if path in once_paths { condition.before_once[path] = true }
+			if path in included_paths { condition.before_included[path] = true }
+			if condition.saw_branch {
+				if path in once_paths { condition.common_once[path] = true }
+				if path in included_paths { condition.common_included[path] = true }
 			}
 		}
 	}
@@ -6289,7 +6366,6 @@ fn c_header_text_objective_c_scan_for_target(text string, flags []string, c99_mo
 	mut cocoa_conditions := []CHeaderCocoaCondition{}
 	mut once_paths := map[string]bool{}
 	mut included_paths := map[string]bool{}
-	include_dirs := c_flag_include_dirs(flags)
 	mut lines := []CHeaderScanLine{}
 	if cocoa_include_only {
 		for input in c_forced_include_entries(flags) {
@@ -6311,49 +6387,55 @@ fn c_header_text_objective_c_scan_for_target(text string, flags []string, c99_mo
 		mut directive_macro_name := ''
 		if cocoa_include_only {
 			if name in ['if', 'ifdef', 'ifndef'] {
-				cocoa_conditions << CHeaderCocoaCondition{ before: cocoa_provided, before_once: once_paths.clone(), before_included: included_paths.clone(), before_defined: defined.clone(), before_undefined: undefined.clone(), before_uncertain: uncertain.clone(), before_values: macro_values.clone() }
+				cocoa_conditions << CHeaderCocoaCondition{}
 			} else if name in ['elif', 'else', 'endif'] && cocoa_conditions.len > 0 {
 				last := cocoa_conditions.len - 1
-				if c_header_conditions_possibly_active(condition_known, condition_active) {
-					cocoa_conditions[last].merge_branch(cocoa_provided, once_paths, included_paths, defined, undefined, uncertain, macro_values)
-				}
-				cocoa_provided = cocoa_conditions[last].before
-				once_paths = cocoa_conditions[last].before_once.clone()
-				included_paths = cocoa_conditions[last].before_included.clone()
-				defined = cocoa_conditions[last].before_defined.clone()
-				undefined = cocoa_conditions[last].before_undefined.clone()
-				uncertain = cocoa_conditions[last].before_uncertain.clone()
-				macro_values = cocoa_conditions[last].before_values.clone()
-				if name == 'endif' {
-					// A non-exhaustive chain also has a path that executes no branch.
-					if !condition_taken_known[last] || !condition_taken[last] {
+				if cocoa_conditions[last].forked {
+					if c_header_conditions_possibly_active(condition_known, condition_active) {
 						cocoa_conditions[last].merge_branch(cocoa_provided, once_paths, included_paths, defined, undefined, uncertain, macro_values)
 					}
-					cocoa_provided = cocoa_provided || (cocoa_conditions[last].saw_branch && cocoa_conditions[last].all_branches)
-					if cocoa_conditions[last].saw_branch {
-						once_paths = cocoa_conditions[last].common_once.clone()
-						included_paths = cocoa_conditions[last].common_included.clone()
-						defined = cocoa_conditions[last].common_defined.clone()
-						undefined = cocoa_conditions[last].common_undefined.clone()
-						uncertain = cocoa_conditions[last].common_uncertain.clone()
-						macro_values = cocoa_conditions[last].common_values.clone()
+					cocoa_provided = cocoa_conditions[last].before
+					cocoa_conditions[last].restore_branch(false, mut once_paths, mut included_paths, mut defined, mut undefined, mut uncertain, mut macro_values)
+					if name == 'endif' {
+						// A non-exhaustive chain also has a path that executes no branch.
+						if !condition_taken_known[last] || !condition_taken[last] {
+							cocoa_conditions[last].merge_branch(cocoa_provided, once_paths, included_paths, defined, undefined, uncertain, macro_values)
+						}
+						cocoa_provided = cocoa_provided || (cocoa_conditions[last].saw_branch && cocoa_conditions[last].all_branches)
+						if cocoa_conditions[last].saw_branch {
+							cocoa_conditions[last].restore_branch(true, mut once_paths, mut included_paths, mut defined, mut undefined, mut uncertain, mut macro_values)
+						}
 					}
+				} else if c_header_conditions_possibly_active(condition_known, condition_active) {
+					// A path with no directives must participate if a later branch mutates state.
+					cocoa_conditions[last].saw_branch = true
+				}
+				if name == 'endif' {
 					cocoa_conditions.delete_last()
 				}
 			}
 		}
 		if name in ['ifdef', 'ifndef'] {
-			macro_name := c_directive_arg(clean).fields()[0] or { '' }
-			known, mut active := c_header_objective_c_macro_state(macro_name, defined, undefined, uncertain, strict_iso_mode, target)
-			if name == 'ifndef' {
-				active = !active
+			mut known := true
+			mut active := false
+			if !cocoa_include_only || c_header_conditions_possibly_active(condition_known, condition_active) {
+				macro_name := c_directive_arg(clean).fields()[0] or { '' }
+				known, active = c_header_objective_c_macro_state(macro_name, defined, undefined, uncertain, strict_iso_mode, target)
+				if name == 'ifndef' {
+					active = !active
+				}
 			}
 			condition_known << known
 			condition_active << (if known { active } else { true })
 			condition_taken_known << known
 			condition_taken << (if known { active } else { true })
 		} else if name == 'if' {
-			known, active := c_header_objective_c_condition_state(c_directive_arg(clean), defined, undefined, uncertain, macro_values, strict_iso_mode, target, predicate_context)
+			// Nested tests cannot affect a known-inactive branch, including repeated SDK guards.
+			mut known := true
+			mut active := false
+			if !cocoa_include_only || c_header_conditions_possibly_active(condition_known, condition_active) {
+				known, active = c_header_objective_c_condition_state(c_directive_arg(clean), defined, undefined, uncertain, macro_values, strict_iso_mode, target, predicate_context)
+			}
 			condition_known << known
 			condition_active << (if known { active } else { true })
 			condition_taken_known << known
@@ -6362,7 +6444,12 @@ fn c_header_text_objective_c_scan_for_target(text string, flags []string, c99_mo
 			last := condition_known.len - 1
 			prior_known := condition_taken_known[last]
 			prior_taken := condition_taken[last]
-			known, active := c_header_objective_c_condition_state(c_directive_arg(clean), defined, undefined, uncertain, macro_values, strict_iso_mode, target, predicate_context)
+			mut known := true
+			mut active := false
+			if !cocoa_include_only || (!(prior_known && prior_taken)
+				&& c_header_conditions_possibly_active(condition_known[..last], condition_active[..last])) {
+				known, active = c_header_objective_c_condition_state(c_directive_arg(clean), defined, undefined, uncertain, macro_values, strict_iso_mode, target, predicate_context)
+			}
 			if (prior_known && prior_taken) || (known && !active) {
 				condition_known[last] = true
 				condition_active[last] = false
@@ -6413,7 +6500,7 @@ fn c_header_text_objective_c_scan_for_target(text string, flags []string, c99_mo
 			// sokol's `_SAPP_MACOS` do not make Linux translation units look like
 			// Objective-C. Command-line definitions were seeded above and retain
 			// precedence here.
-			if name == 'define' {
+			if name == 'define' && !cocoa_include_only {
 				parts := c_directive_arg(clean).fields()
 				if parts.len > 0 {
 					macro_name := parts[0].all_before('(')
@@ -6426,7 +6513,22 @@ fn c_header_text_objective_c_scan_for_target(text string, flags []string, c99_mo
 			definite_text.writeln('')
 			continue
 		}
+		if cocoa_include_only && (name in ['include', 'import', 'define', 'undef']
+			|| (name == 'pragma' && c_directive_arg(clean).trim_space() == 'once')) {
+			// Save state only when an uncertain branch can change it. SDK headers have
+			// many conditional declarations that do not affect includes or macros.
+			for depth in 0 .. cocoa_conditions.len {
+				if !cocoa_conditions[depth].forked && !condition_known[depth] {
+					had_unchanged_branch := cocoa_conditions[depth].saw_branch
+					cocoa_conditions[depth] = CHeaderCocoaCondition{ forked: true, before: cocoa_provided }
+					if had_unchanged_branch {
+						cocoa_conditions[depth].merge_branch(cocoa_provided, once_paths, included_paths, defined, undefined, uncertain, macro_values)
+					}
+				}
+			}
+		}
 		if cocoa_include_only && name == 'pragma' && c_directive_arg(clean).trim_space() == 'once' && scan_line.ancestors.len > 0 {
+			c_header_cocoa_touch_path(mut cocoa_conditions, scan_line.source_file, once_paths, included_paths)
 			once_paths[scan_line.source_file] = true
 		}
 		if name in ['include', 'import'] {
@@ -6440,16 +6542,18 @@ fn c_header_text_objective_c_scan_for_target(text string, flags []string, c99_mo
 				if cocoa_nsfont_framework_include(include_arg) {
 					cocoa_provided = cocoa_provided || !scan_line.macros_only
 				} else if c_include_arg_is_literal(include_arg) {
-					for path in c_include_file_paths(include_arg, vroot, scan_line.source_file, include_dirs) {
+					for path in c_header_include_file_paths(include_arg, predicate_context) {
 						real_path := os.real_path(path)
 						if real_path in scan_line.ancestors || real_path in once_paths || (name == 'import' && real_path in included_paths) {
 							break
 						}
 						header := os.read_file(real_path) or { continue }
+						c_header_cocoa_touch_path(mut cocoa_conditions, real_path, once_paths, included_paths)
 						included_paths[real_path] = true
 						if name == 'import' { once_paths[real_path] = true }
 						guard := c_header_guard_name(header)
 						if guard.len > 0 && guard !in defined && guard !in uncertain && guard !in undefined {
+							c_header_cocoa_touch_macro(mut cocoa_conditions, guard, defined, undefined, uncertain, macro_values)
 							undefined[guard] = true
 						}
 						mut ancestors := scan_line.ancestors.clone()
@@ -6473,6 +6577,9 @@ fn c_header_text_objective_c_scan_for_target(text string, flags []string, c99_mo
 			if parts.len > 0 {
 				macro_name := parts[0].all_before('(')
 				directive_macro_name = macro_name
+				if cocoa_include_only {
+					c_header_cocoa_touch_macro(mut cocoa_conditions, macro_name, defined, undefined, uncertain, macro_values)
+				}
 				if definitely_active || cocoa_include_only {
 					uncertain.delete(macro_name)
 					if name == 'define' {
@@ -6529,6 +6636,9 @@ fn c_header_text_objective_c_scan_for_target(text string, flags []string, c99_mo
 				}
 			}
 		}
+		if cocoa_include_only {
+			continue
+		}
 		mut possible_line := line
 		for qualifier in c_objective_c_compatibility_qualifiers {
 			if objective_c_compatibility_macros[qualifier] || directive_macro_name == qualifier {
@@ -6538,11 +6648,11 @@ fn c_header_text_objective_c_scan_for_target(text string, flags []string, c99_mo
 		possible_text.writeln(possible_line)
 		definite_text.writeln(if definitely_active { possible_line } else { '' })
 	}
-	possible_source := possible_text.str()
-	definite_typedefs := modulecache.c_source_typedef_identifiers(definite_text.str())
 	if cocoa_include_only {
 		return cocoa_conditions.len == 0 && cocoa_provided
 	}
+	possible_source := possible_text.str()
+	definite_typedefs := modulecache.c_source_typedef_identifiers(definite_text.str())
 	return c_header_text_has_objective_c_tokens(possible_source, definite_typedefs)
 }
 
@@ -6771,17 +6881,32 @@ fn c_header_include_available(include_arg string, context CHeaderPredicateContex
 	if clean.len < 3 || !((clean[0] == `<` && clean[clean.len - 1] == `>`) || (clean[0] == `"` && clean[clean.len - 1] == `"`)) {
 		return none
 	}
-	for path in c_include_file_paths(clean, context.vroot, context.source_file, c_flag_include_dirs(context.flags)) {
+	for path in c_header_include_file_paths(clean, context) {
 		if os.is_file(path) { return true }
 	}
-	path := clean[1..clean.len - 1]
-	for dir in context.search_paths.include_dirs {
-		if os.is_file(os.join_path(dir, path)) { return true }
+	has_sdk_root := context.flags.any(it in ['-isysroot', '--sysroot']
+		|| it.starts_with('-isysroot') || it.starts_with('--sysroot='))
+	if context.search_paths.complete || has_sdk_root || '-nostdinc' in context.flags
+		|| '-nostdlibinc' in context.flags {
+		return false
 	}
+	return none
+}
+
+fn c_header_include_file_paths(include_arg string, context CHeaderPredicateContext) []string {
+	clean := include_arg.trim_space()
+	mut include_dirs := []string{}
 	if clean[0] == `"` {
-		for dir in context.search_paths.quote_dirs {
-			if os.is_file(os.join_path(dir, path)) { return true }
-		}
+		include_dirs << context.search_paths.quote_dirs
+	}
+	if !context.search_paths.complete {
+		include_dirs << c_flag_include_dirs(context.flags)
+	}
+	include_dirs << context.search_paths.include_dirs
+	mut paths := c_include_file_paths(clean, context.vroot, context.source_file, include_dirs)
+	path := c_resolve_pseudo_paths(clean[1..clean.len - 1], context.vroot, context.source_file)
+	if os.is_abs_path(path) {
+		return paths
 	}
 	mut sdk_root := ''
 	mut framework_dirs := context.search_paths.framework_dirs.clone()
@@ -6806,7 +6931,7 @@ fn c_header_include_available(include_arg string, context CHeaderPredicateContex
 	}
 	standard_paths := '-nostdinc' !in context.flags && '-nostdlibinc' !in context.flags
 	if sdk_root.len > 0 && standard_paths {
-		if os.is_file(os.join_path(sdk_root, 'usr/include', path)) { return true }
+		paths << os.join_path(sdk_root, 'usr/include', path)
 		framework_dirs << os.join_path(sdk_root, 'System/Library/Frameworks')
 	}
 	if path.contains('/') {
@@ -6814,14 +6939,11 @@ fn c_header_include_available(include_arg string, context CHeaderPredicateContex
 		header := path.all_after('/')
 		for dir in framework_dirs {
 			for headers in ['Headers', 'PrivateHeaders'] {
-				if os.is_file(os.join_path(dir, '${framework}.framework', headers, header)) {
-					return true
-				}
+				paths << os.join_path(dir, '${framework}.framework', headers, header)
 			}
 		}
 	}
-	if context.search_paths.complete || sdk_root.len > 0 || !standard_paths { return false }
-	return none
+	return paths
 }
 
 fn c_header_objective_c_compiler_predicate_state(clean string, defined map[string]bool, undefined map[string]bool, uncertain map[string]bool, macro_values map[string]string, strict_iso_mode bool, target pref.Target, predicate_context CHeaderPredicateContext) ?bool {

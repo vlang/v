@@ -850,12 +850,24 @@ fn test_cocoa_declarations_merge_branch_include_macros() {
 	g.target = pref.target_from('macos', 'arm64') or { panic(err) }
 	g.register_struct_decl_info('C.NSFont', 'C.NSFont', 'uiold', 'ui.c.v', flat.Node{})
 	for source, needs_typedef in {
-		'#if FEATURE\n#define UI_HEADER <Cocoa/Cocoa.h>\n#else\n#define UI_HEADER <Cocoa/Cocoa.h>\n#endif\n#include UI_HEADER':                              false
-		'#if FEATURE\n#define UI_HEADER <Cocoa/Cocoa.h>\n#else\n#define UI_HEADER <AppKit/AppKit.h>\n#endif\n#include UI_HEADER':                            false
-		'#define APPLE_UI <Cocoa/Cocoa.h>\n#if FEATURE\n#define UI_HEADER APPLE_UI\n#else\n#define UI_HEADER <AppKit/NSFont.h>\n#endif\n#include UI_HEADER': false
-		'#if FEATURE\n#define UI_HEADER <Cocoa/Cocoa.h>\n#endif\n#include UI_HEADER':                                                                        true
-		'#if FEATURE\n#define UI_HEADER <Cocoa/Cocoa.h>\n#else\n#define UI_HEADER <X11/Xlib.h>\n#endif\n#include UI_HEADER':                                 true
-		'#if FEATURE\n#define USE_COCOA 1\n#else\n#define USE_COCOA 0\n#endif\n#if USE_COCOA\n#include <Cocoa/Cocoa.h>\n#endif':                             true
+		'#define UI_HEADER <Cocoa/Cocoa.h>\n#if FEATURE\nint unused;\n#else\n#define UI_HEADER <AppKit/NSFont.h>\n#endif\n#include UI_HEADER':                             false
+		'#define UI_HEADER <Cocoa/Cocoa.h>\n#if FEATURE\n#undef UI_HEADER\n#else\nint unused;\n#endif\n#include UI_HEADER':                                                true
+		'#define UI_HEADER <Cocoa/Cocoa.h>\n#if FEATURE\n#define OTHER 1\n#elif ANOTHER\n#undef UI_HEADER\n#else\nint unused;\n#endif\n#include UI_HEADER':                true
+		'#if FEATURE\nint unused;\n#else\n#include <Cocoa/Cocoa.h>\n#endif':                                                                                               true
+		'#if FEATURE\nint unused;\n#elif OTHER\n#include <Cocoa/Cocoa.h>\n#else\n#include <AppKit/NSFont.h>\n#endif':                                                      true
+		'#if 0\nint unused;\n#elif FEATURE\n#include <Cocoa/Cocoa.h>\n#else\n#include <AppKit/NSFont.h>\n#endif':                                                          false
+		'#if FEATURE\n#define __has_include(x) 0\n#else\n#define __has_include(x) 0\n#endif\n#if __has_include(<Cocoa/Cocoa.h>)\n#include <Cocoa/Cocoa.h>\n#endif':        true
+		'#if 1\n#define UI_HEADER <Cocoa/Cocoa.h>\n#elif FEATURE\n#define UI_HEADER <X11/Xlib.h>\n#endif\n#include UI_HEADER':                                             false
+		'#if 0\n#define UI_HEADER <X11/Xlib.h>\n#elif 1\n#define UI_HEADER <Cocoa/Cocoa.h>\n#endif\n#include UI_HEADER':                                                   false
+		'#if 0\n#define UI_HEADER <X11/Xlib.h>\n#elif FEATURE\n#define UI_HEADER <Cocoa/Cocoa.h>\n#else\n#define UI_HEADER <AppKit/NSFont.h>\n#endif\n#include UI_HEADER': false
+		'#if 0\n#define UI_HEADER <X11/Xlib.h>\n#elif FEATURE\n#define UI_HEADER <Cocoa/Cocoa.h>\n#endif\n#include UI_HEADER':                                             true
+		'#if 0\n#if FEATURE\n#include <Cocoa/Cocoa.h>\n#else\n#include <AppKit/NSFont.h>\n#endif\n#endif':                                                                 true
+		'#if FEATURE\n#define UI_HEADER <Cocoa/Cocoa.h>\n#else\n#define UI_HEADER <Cocoa/Cocoa.h>\n#endif\n#include UI_HEADER':                                            false
+		'#if FEATURE\n#define UI_HEADER <Cocoa/Cocoa.h>\n#else\n#define UI_HEADER <AppKit/AppKit.h>\n#endif\n#include UI_HEADER':                                          false
+		'#define APPLE_UI <Cocoa/Cocoa.h>\n#if FEATURE\n#define UI_HEADER APPLE_UI\n#else\n#define UI_HEADER <AppKit/NSFont.h>\n#endif\n#include UI_HEADER':               false
+		'#if FEATURE\n#define UI_HEADER <Cocoa/Cocoa.h>\n#endif\n#include UI_HEADER':                                                                                      true
+		'#if FEATURE\n#define UI_HEADER <Cocoa/Cocoa.h>\n#else\n#define UI_HEADER <X11/Xlib.h>\n#endif\n#include UI_HEADER':                                               true
+		'#if FEATURE\n#define USE_COCOA 1\n#else\n#define USE_COCOA 0\n#endif\n#if USE_COCOA\n#include <Cocoa/Cocoa.h>\n#endif':                                           true
 	} {
 		g.preinclude_directives = [source]
 		assert g.header_c_struct_needs_compat_typedef('C.NSFont') == needs_typedef
@@ -974,5 +986,51 @@ fn test_cocoa_header_predicates_use_default_compiler_header_paths() {
 		assert !g.header_c_struct_needs_compat_typedef('C.NSFont')
 		g.preinclude_directives = ['#if __has_include(<quote_only.h>)\n#include <Cocoa/Cocoa.h>\n#endif']
 		assert g.header_c_struct_needs_compat_typedef('C.NSFont')
+	}
+}
+
+fn test_cocoa_declarations_scan_compiler_search_path_wrappers() {
+	$if macos {
+		root := os.join_path(os.vtmp_dir(), 'v3_cocoa_search_wrapper_${os.getpid()}')
+		includes := os.join_path(root, 'includes')
+		quotes := os.join_path(root, 'quotes')
+		frameworks := os.join_path(root, 'frameworks')
+		framework_headers := os.join_path(frameworks, 'Wrapper.framework', 'Headers')
+		for dir in [includes, quotes, framework_headers] {
+			os.mkdir_all(dir)!
+		}
+		defer { os.rmdir_all(root) or {} }
+		previous_cpath := os.getenv_opt('CPATH')
+		os.setenv('CPATH', includes, true)
+		defer {
+			if previous := previous_cpath {
+				os.setenv('CPATH', previous, true)
+			} else {
+				os.unsetenv('CPATH')
+			}
+		}
+		os.write_file(os.join_path(includes, 'wrapper.h'), '#include <nested.h>\n')!
+		os.write_file(os.join_path(includes, 'nested.h'), '#import <Cocoa/Cocoa.h>\n')!
+		os.write_file(os.join_path(quotes, 'wrapper.h'), '// No Objective-C class declarations.\n')!
+		os.write_file(os.join_path(framework_headers, 'Wrapper.h'), '#import <Cocoa/Cocoa.h>\n')!
+		mut ast := &flat.FlatAst{}
+		mut tc := types.TypeChecker.new(ast)
+		mut g := FlatGen.new()
+		g.a = ast
+		g.tc = &tc
+		g.target = pref.host_target()
+		g.ccompiler = 'clang'
+		g.register_struct_decl_info('C.NSFont', 'C.NSFont', 'uiold', 'ui.c.v', flat.Node{})
+		// CPATH is visible to the compiler probe, without appearing in g.c_flags.
+		g.preinclude_directives = ['#include <wrapper.h>']
+		assert !g.header_c_struct_needs_compat_typedef('C.NSFont')
+		g.c_flags = ['-iquote', quotes]
+		g.preinclude_directives = ['#include "wrapper.h"']
+		assert g.header_c_struct_needs_compat_typedef('C.NSFont')
+		g.preinclude_directives = ['#include <wrapper.h>']
+		assert !g.header_c_struct_needs_compat_typedef('C.NSFont')
+		g.c_flags = ['-F', frameworks]
+		g.preinclude_directives = ['#include <Wrapper/Wrapper.h>']
+		assert !g.header_c_struct_needs_compat_typedef('C.NSFont')
 	}
 }
