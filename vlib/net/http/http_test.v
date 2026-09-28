@@ -6,7 +6,8 @@ fn test_https_get() {
 	$if !network ? {
 		return
 	}
-	assert http.get_text('https://vlang.io/version') == '0.1.5'
+	url := 'https://raw.githubusercontent.com/vlang/v/master/vlib/veb/tests/testdata/root.txt'
+	assert http.get_text(url) == 'root'
 	println('https ok')
 }
 

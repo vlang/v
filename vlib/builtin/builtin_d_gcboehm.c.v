@@ -191,6 +191,7 @@ $if gcboehm_leak ? {
 #include <gc.h>
 #include "@VEXEROOT/vlib/builtin/gc_debugger_linux.h"
 #define v_gc_set_warn_proc(cb) GC_set_warn_proc((GC_warn_proc)(cb))
+#define v_gc_get_warn_proc() ((void *)GC_get_warn_proc())
 #define v_gc_set_abort_func(cb) GC_set_abort_func((GC_abort_func)(cb))
 #define v_gc_get_abort_func() ((void *)GC_get_abort_func())
 #define v_gc_call_abort_func(fn, msg) ((GC_abort_func)(fn))(msg)
@@ -302,7 +303,7 @@ fn C.GC_set_sp_corrector(fn (voidptr, voidptr))
 // Note: GC warnings are silenced by default. Use gc_set_warn_proc/1 to set your own handler for them.
 pub type FnGC_WarnCB = fn (const_msg &char, arg usize)
 
-fn C.GC_get_warn_proc() FnGC_WarnCB
+fn C.v_gc_get_warn_proc() voidptr
 fn C.v_gc_set_warn_proc(cb FnGC_WarnCB)
 
 // GC_REGISTER_DISPLACEMENT is `GC_debug_register_displacement` when `GC_DEBUG` is set
@@ -324,7 +325,7 @@ __global gc_boehm_default_abort_func voidptr
 
 // gc_get_warn_proc returns the current callback fn, that will be used for printing GC warnings.
 pub fn gc_get_warn_proc() FnGC_WarnCB {
-	return C.GC_get_warn_proc()
+	return FnGC_WarnCB(C.v_gc_get_warn_proc())
 }
 
 // gc_set_warn_proc sets the callback fn, that will be used for printing GC warnings.

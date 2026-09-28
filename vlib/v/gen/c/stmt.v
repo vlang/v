@@ -5376,7 +5376,7 @@ fn (mut g FlatGen) gen_default_return_stmt() {
 	if g.cur_fn_ret_is_optional {
 		ct := g.current_fn_optional_type_name(g.cur_fn_ret)
 		g.writeln('return (${ct}){.ok = true};')
-	} else if g.cur_fn_name == 'main' && g.test_files.len == 0 {
+	} else if g.cur_fn_name == 'main' && g.test_files.len == 0 && !g.suppress_main {
 		g.writeln('return 0;')
 	} else if g.cur_fn_ret is types.Void {
 		g.writeln('return;')
@@ -6689,6 +6689,16 @@ fn (g &FlatGen) usable_expr_type_uncached(id flat.NodeId) types.Type {
 			}
 		}
 		if node.kind == .selector && node.children_count > 0 {
+			base_node := g.a.child_node(&node, 0)
+			if base_node.kind == .ident {
+				if storage := g.current_module_selector_const_name(base_node.value, node.value) {
+					if typ := g.tc.const_types[storage] {
+						if typ !is types.Unknown && typ !is types.Void {
+							return typ
+						}
+					}
+				}
+			}
 			base_type0 := g.usable_expr_type(g.a.child(&node, 0))
 			base_type := types.unwrap_pointer(base_type0)
 			collection_base_type := cgen_unalias_type(base_type)
@@ -9477,7 +9487,8 @@ fn (g &FlatGen) local_name_shadows_c_function(name string) bool {
 
 fn local_name_shadows_c_runtime(name string) bool {
 	return match name {
-		'array_get', 'array_slice', 'int_str', 'new_map', 'string__eq', 'string__lt', 'string__plus' {
+		'argc', 'argv', 'array_get', 'array_slice', 'int_str', 'new_map', 'string__eq', 'string__lt',
+		'string__plus' {
 			true
 		}
 		else {

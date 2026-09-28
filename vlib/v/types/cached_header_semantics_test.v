@@ -57,11 +57,10 @@ fn check_cached_header_source(source string, extension string, parallel bool, sc
 	// Deliberately leave diagnostic_files empty: every parsed file is checked.
 	// Filtering diagnostics to a selected .v file would hide the regression.
 	was_parallel := tc.check_semantics_opt(parallel)
-	$if windows {
-		assert !was_parallel
-	} $else {
-		assert was_parallel == parallel
-	}
+	// Parallel checking used to abort under Boehm GC's interior-pointer scanning
+	// on Windows; fixed in feaac2e (fix #28896), so it now behaves like every
+	// other OS instead of being forced serial here.
+	assert was_parallel == parallel
 	return CachedHeaderCheck{
 		errors:      tc.errors.clone()
 		notices:     tc.notices.clone()
