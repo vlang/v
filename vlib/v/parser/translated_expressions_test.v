@@ -61,6 +61,10 @@ module main
 const later_regs = [3, 12, 13]!
 const LaterRegs = [3, 12, 13]!
 ')!
+	// Cross the dispatch threshold so the first pass also exercises worker batches.
+	for name in ['padding_a.v', 'padding_b.v'] {
+		os.write_file(os.join_path(root, name), 'module main\n//' + ' '.repeat(70000) + '\n')!
+	}
 	for flags in ['', '-no-parallel'] {
 		result := os.execute('${os.quoted_path(@VEXE)} ${flags} -check ${os.quoted_path(root)}')
 		assert result.exit_code == 0, result.output
@@ -76,6 +80,54 @@ fn test_translated_sizeof_ignores_excluded_sibling_files() {
 	os.write_file(os.join_path(root, 'item_d_feature.v'), '@[translated]\nmodule main\nconst Item = [3, 4]!\n')!
 	for flags in ['', '-d feature'] {
 		result := os.execute('${os.quoted_path(@VEXE)} ${flags} run ${os.quoted_path(root)}')
+		assert result.exit_code == 0, result.output
+	}
+}
+
+fn test_translated_sizeof_ignores_unparsed_siblings() {
+	root := os.join_path(os.vtmp_dir(), 'translated_sizeof_single_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+	main_file := os.join_path(root, 'main.v')
+	os.write_file(main_file, '@[translated]\nmodule main\ntype Item = int\nfn main() { assert sizeof(Item) == sizeof(int) }\n')!
+	os.write_file(os.join_path(root, 'unused.v'), '@[translated]\nmodule main\nconst Item = [3, 4]!\n')!
+	for flags in ['', '-no-parallel'] {
+		result := os.execute('${os.quoted_path(@VEXE)} ${flags} run ${os.quoted_path(main_file)}')
+		assert result.exit_code == 0, result.output
+	}
+}
+
+fn test_translated_sizeof_later_active_comptime_constants() {
+	root := os.join_path(os.vtmp_dir(), 'translated_sizeof_comptime_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+	main_file := os.join_path(root, 'main.v')
+	os.write_file(main_file, '@[translated]
+module main
+type Item = int
+fn main() {
+ assert sizeof(Regs) == sizeof([2]int)
+ assert sizeof(NestedRegs) == sizeof([3]int)
+ assert sizeof(Item) == sizeof(int)
+}
+$if feature ? {
+ const Regs = [1, 2]!
+ $if true {
+  const NestedRegs = [1, 2, 3]!
+ }
+} $else $if false {
+ const Item = [1, 2]!
+} $else {
+ const Regs = [3, 4]!
+ $if false {
+  const Item = [1, 2]!
+ } $else {
+  const NestedRegs = [4, 5, 6]!
+ }
+}
+')!
+	for flags in ['', '-d feature', '-no-parallel', '-no-parallel -d feature'] {
+		result := os.execute('${os.quoted_path(@VEXE)} ${flags} run ${os.quoted_path(main_file)}')
 		assert result.exit_code == 0, result.output
 	}
 }

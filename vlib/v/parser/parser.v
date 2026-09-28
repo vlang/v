@@ -127,6 +127,7 @@ mut:
 	// comptime_value_*: a name is in scope when local_binding_counts[name] > 0.
 	local_binding_counts              map[string]int
 	global_names                      map[string]bool
+	parse_batch_paths                 []string
 	translated_sizeof_type_names      map[string]bool
 	translated_sizeof_const_names     map[string]bool
 	translated_sizeof_types_scanned   bool
@@ -307,9 +308,7 @@ pub fn (mut p Parser) parse_file(path string) &flat.FlatAst {
 
 // parse_files reads parse files input for parser.
 pub fn (mut p Parser) parse_files(paths []string) &flat.FlatAst {
-	for path in paths {
-		p.parse_into(path)
-	}
+	p.parse_files_with_starts(paths)
 	return p.a
 }
 
@@ -339,6 +338,9 @@ pub fn (mut p Parser) release_source_storage() {
 // bound per-file post-processing (module-name canonicalization) when files are
 // parsed in batches instead of one at a time.
 pub fn (mut p Parser) parse_files_with_starts(paths []string) []int {
+	previous_paths := p.parse_batch_paths
+	p.parse_batch_paths = paths.clone()
+	defer { p.parse_batch_paths = previous_paths }
 	mut starts := []int{cap: paths.len}
 	for path in paths {
 		starts << p.a.nodes.len
@@ -14526,14 +14528,16 @@ fn (mut p Parser) scan_translated_sizeof_declarations() {
 	if !p.translated_sizeof_types_scanned {
 		p.translated_sizeof_types_scanned = true
 		p.scan_translated_sizeof_source(p.s.src)
-		// Parsing sibling files can run in parallel. Read their declarations here
-		// so sizeof has the same meaning regardless of parse order.
-		for path in p.prefs.without_excluded(pref.get_v_files_from_dir_for_target(os.dir(p.cur_file),
-			p.prefs.user_defines, p.prefs.target)) {
-			if os.file_name(path) == os.file_name(p.cur_file)
-				|| (p.prefs.backend != 'c' && path.ends_with('.c.v')) {
+		// Workers need declarations from the complete parse batch, including files
+		// assigned to other workers. Never inspect siblings excluded from the build.
+		mut paths := p.parsed_v_file_paths.clone()
+		paths << p.parse_batch_paths
+		mut scanned := map[string]bool{}
+		for path in paths {
+			if path == p.cur_file || os.dir(path) != os.dir(p.cur_file) || scanned[path] {
 				continue
 			}
+			scanned[path] = true
 			source := os.read_file(path) or { continue }
 			p.scan_translated_sizeof_source(source)
 		}
@@ -14544,60 +14548,93 @@ fn (mut p Parser) scan_translated_sizeof_source(source string) {
 	if !source.contains('const') && !source.contains('type') {
 		return
 	}
-	mut scan := scanner.new_scanner(p.prefs, .normal)
+	mut scan := scanner.new_scanner(p.prefs, .skip_interpolation)
 	scan.init(p.s.current_file(), source)
-	mut depth := 0
-	mut after_type := false
-	mut after_const := false
-	mut const_paren_depth := 0
+	mut tokens := []InlineAsmScanToken{}
 	for {
-		tok := scan.scan()
-		if tok == .eof {
+		kind := scan.scan()
+		if kind == .eof {
 			break
 		}
-		if tok == .key_module {
-			mut module_scan := scan
-			if module_scan.scan() == .name && module_scan.lit != p.cur_module {
-				return
-			}
-		}
-		if after_type {
-			if tok == .name {
-				p.translated_sizeof_type_names[scan.lit] = true
-			}
-			after_type = false
-		}
-		if after_const {
-			if tok == .name {
-				p.translated_sizeof_const_names[scan.lit] = true
-			} else if tok == .lpar {
-				const_paren_depth = 1
-			}
-			after_const = false
-		} else if const_paren_depth > 0 {
-			if tok == .lpar {
-				const_paren_depth++
-			} else if tok == .rpar {
-				const_paren_depth--
-			} else if tok == .name && const_paren_depth == 1 {
-				mut lookahead := scan
-				if lookahead.scan() == .assign {
-					p.translated_sizeof_const_names[scan.lit] = true
-				}
-			}
-		}
-		if tok == .lcbr {
-			depth++
-		} else if tok == .rcbr {
-			depth--
-		} else if depth == 0 && const_paren_depth == 0 {
-			if tok == .key_type {
-				after_type = true
-			} else if tok == .key_const {
-				after_const = true
-			}
+		tokens << InlineAsmScanToken{
+			kind: kind
+			lit:  scan.lit
+			pos:  scan.pos
+			end:  scan.offset
 		}
 	}
+	mut saved_consts := p.comptime_const_values.clone()
+	defer { p.comptime_const_values = saved_consts.move() }
+	p.scan_translated_sizeof_range(source, tokens, 0, tokens.len)
+}
+
+fn (mut p Parser) scan_translated_sizeof_range(source string, tokens []InlineAsmScanToken, start int, end int) {
+	mut i := start
+	for i < end {
+		kind := tokens[i].kind
+		if kind == .key_module && i + 1 < end && tokens[i + 1].lit != p.cur_module {
+			return
+		}
+		if kind == .dollar && i + 1 < end && tokens[i + 1].kind == .key_if {
+			i = p.scan_translated_sizeof_comptime_if(source, tokens, i, end, true)
+			continue
+		}
+		if kind == .lcbr {
+			i = inline_asm_matching_close_brace(tokens, i, end) + 1
+			continue
+		}
+		if kind == .key_type && i + 1 < end && tokens[i + 1].kind == .name {
+			p.translated_sizeof_type_names[tokens[i + 1].lit] = true
+		}
+		if kind == .key_const {
+			next := p.inline_asm_collect_const_decl(tokens, i, end)
+			mut j := i + 1
+			grouped := j < end && tokens[j].kind == .lpar
+			if grouped { j++ }
+			mut depth := 0
+			for j + 1 < next {
+				if depth == 0 && tokens[j].kind == .name && tokens[j + 1].kind == .assign {
+					p.translated_sizeof_const_names[tokens[j].lit] = true
+				}
+				match tokens[j].kind {
+					.lpar, .lsbr, .lcbr { depth++ }
+					.rpar, .rsbr, .rcbr { depth-- }
+					else {}
+				}
+				j++
+			}
+			i = if next > i { next } else { i + 1 }
+			continue
+		}
+		i++
+	}
+}
+
+fn (mut p Parser) scan_translated_sizeof_comptime_if(source string, tokens []InlineAsmScanToken, start int, end int, inspect bool) int {
+	open := inline_asm_comptime_open_brace(tokens, start + 2, end)
+	if open >= end { return end }
+	close := inline_asm_matching_close_brace(tokens, open, end)
+	if close >= end { return end }
+	condition := source[tokens[start + 1].end..tokens[open].pos]
+	_, known, taken := p.inline_asm_comptime_condition(condition)
+	if inspect && known && taken {
+		p.scan_translated_sizeof_range(source, tokens, open + 1, close)
+	}
+	mut next := inline_asm_skip_semicolons(tokens, close + 1, end)
+	if next + 1 >= end || tokens[next].kind != .dollar || tokens[next + 1].kind != .key_else {
+		return close + 1
+	}
+	next = inline_asm_skip_semicolons(tokens, next + 2, end)
+	inspect_else := inspect && known && !taken
+	if next + 1 < end && tokens[next].kind == .dollar && tokens[next + 1].kind == .key_if {
+		return p.scan_translated_sizeof_comptime_if(source, tokens, next, end, inspect_else)
+	}
+	if next >= end || tokens[next].kind != .lcbr { return next }
+	else_close := inline_asm_matching_close_brace(tokens, next, end)
+	if inspect_else && else_close < end {
+		p.scan_translated_sizeof_range(source, tokens, next + 1, else_close)
+	}
+	return if else_close < end { else_close + 1 } else { end }
 }
 
 fn (mut p Parser) isreftype_expr() flat.NodeId {
