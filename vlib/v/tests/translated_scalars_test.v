@@ -195,3 +195,43 @@ fn translated_postfix_index(mut evaluations []int) int {
 	evaluations[0]++
 	return 0
 }
+
+fn translated_postfix_key(mut evaluations []int) string {
+	evaluations[0]++
+	return 'flag'
+}
+
+fn test_translated_boolean_map_postfix_stays_normalized() {
+	mut flags := {
+		'flag': true
+	}
+	mut evaluations := [0]
+	flags[translated_postfix_key(mut evaluations)]++
+	assert evaluations == [1]
+	assert flags['flag'] == true
+	flags['flag']++
+	assert flags['flag'] == true
+	flags['flag']--
+	assert flags['flag'] == false
+	flags['missing']--
+	assert flags['missing'] == true
+	before := flags['flag']++
+	assert before == false
+	assert flags['flag'] == true
+	mut aliases := {
+		'flag': TranslatedFlag(true)
+	}
+	aliases['flag']++
+	assert aliases['flag'] == true
+	mut nested := {
+		'row': {
+			'flag': true
+		}
+	}
+	nested['row']['flag']++
+	assert nested['row']['flag'] == true
+	nested['row']['flag']--
+	assert nested['row']['flag'] == false
+	nested['row']['missing']--
+	assert nested['row']['missing'] == true
+}
