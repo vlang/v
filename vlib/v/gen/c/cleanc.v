@@ -16578,7 +16578,7 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 				if needs_paren {
 					g.write(')')
 				}
-				if base_type0 is types.Pointer {
+				if node.op == .arrow || base_type0 is types.Pointer {
 					g.write('->')
 				} else {
 					g.write('.')
