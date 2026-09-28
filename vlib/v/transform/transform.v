@@ -10653,7 +10653,7 @@ fn (mut t Transformer) mark_detached_spawn_drop_type(typ types.Type, mut seen ma
 			}
 		}
 		types.SumType {
-			for variant in t.tc.sum_types[typ.name] or { []string{} } {
+			for variant in t.concrete_sum_variants_for_candidate(typ.name) {
 				t.mark_detached_spawn_drop_type(t.tc.parse_type(variant), mut seen)
 			}
 		}
