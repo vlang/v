@@ -355,6 +355,16 @@ pub fn decode[T](val string, params DecoderOptions) !T {
 	return result
 }
 
+// new_pointer_to returns a new heap pointer to `value`: one more level of
+// indirection, for decoding `&&T` and `&&&T` fields.
+fn new_pointer_to[T](value T) &T {
+	mut ptr := unsafe { &T(vcalloc(sizeof(T))) }
+	unsafe {
+		*ptr = value
+	}
+	return ptr
+}
+
 fn create_decoded_ptr[T](_ &T) &T {
 	$if T is $interface {
 		return unsafe { nil }
@@ -597,6 +607,14 @@ fn decode_struct_key[T](mut decoder Decoder, val T, key_info ValueInfo, prefix s
 									mut decoded_ptr := $new(field.typ.payload_type.pointee_type)
 									decoder.decode_value(mut decoded_ptr)!
 									new_val.$(field.name) = decoded_ptr
+								} $else $if field.indirections == 2 {
+									mut decoded_ptr := $new(field.typ.payload_type.pointee_type.pointee_type)
+									decoder.decode_value(mut decoded_ptr)!
+									new_val.$(field.name) = new_pointer_to(decoded_ptr)
+								} $else $if field.indirections == 3 {
+									mut decoded_ptr := $new(field.typ.payload_type.pointee_type.pointee_type.pointee_type)
+									decoder.decode_value(mut decoded_ptr)!
+									new_val.$(field.name) = new_pointer_to(new_pointer_to(decoded_ptr))
 								} $else $if field.typ is ?rune {
 									// The generic payload of `?rune` does not keep its `rune` type.
 									mut unwrapped_rune := rune(0)
@@ -651,6 +669,24 @@ fn decode_struct_key[T](mut decoder Decoder, val T, key_info ValueInfo, prefix s
 								mut decoded_ptr := create_decoded_ptr(new_val.$(field.name))
 								decoder.decode_value(mut decoded_ptr)!
 								new_val.$(field.name) = decoded_ptr
+							}
+						} $else $if field.indirections == 2 {
+							if decoder.current_node.value.value_kind == .null {
+								new_val.$(field.name) = unsafe { nil }
+								decoder.current_node = decoder.current_node.next
+							} else {
+								mut decoded_ptr := $new(field.typ.pointee_type.pointee_type)
+								decoder.decode_value(mut decoded_ptr)!
+								new_val.$(field.name) = new_pointer_to(decoded_ptr)
+							}
+						} $else $if field.indirections == 3 {
+							if decoder.current_node.value.value_kind == .null {
+								new_val.$(field.name) = unsafe { nil }
+								decoder.current_node = decoder.current_node.next
+							} else {
+								mut decoded_ptr := $new(field.typ.pointee_type.pointee_type.pointee_type)
+								decoder.decode_value(mut decoded_ptr)!
+								new_val.$(field.name) = new_pointer_to(new_pointer_to(decoded_ptr))
 							}
 						} $else {
 							decoder.decode_value(mut new_val.$(field.name))!
@@ -978,6 +1014,14 @@ fn (mut decoder Decoder) decode_value[T](mut val T) ! {
 												mut decoded_ptr := $new(field.typ.payload_type.pointee_type)
 												decoder.decode_value(mut decoded_ptr)!
 												val.$(field.name) = decoded_ptr
+											} $else $if field.indirections == 2 {
+												mut decoded_ptr := $new(field.typ.payload_type.pointee_type.pointee_type)
+												decoder.decode_value(mut decoded_ptr)!
+												val.$(field.name) = new_pointer_to(decoded_ptr)
+											} $else $if field.indirections == 3 {
+												mut decoded_ptr := $new(field.typ.payload_type.pointee_type.pointee_type.pointee_type)
+												decoder.decode_value(mut decoded_ptr)!
+												val.$(field.name) = new_pointer_to(new_pointer_to(decoded_ptr))
 											} $else $if field.typ is ?rune {
 												// The generic payload of `?rune` does not keep its `rune` type.
 												mut unwrapped_rune := rune(0)
@@ -1036,6 +1080,24 @@ fn (mut decoder Decoder) decode_value[T](mut val T) ! {
 											mut decoded_ptr := create_decoded_ptr(val.$(field.name))
 											decoder.decode_value(mut decoded_ptr)!
 											val.$(field.name) = decoded_ptr
+										}
+									} $else $if field.indirections == 2 {
+										if decoder.current_node.value.value_kind == .null {
+											val.$(field.name) = unsafe { nil }
+											decoder.current_node = decoder.current_node.next
+										} else {
+											mut decoded_ptr := $new(field.typ.pointee_type.pointee_type)
+											decoder.decode_value(mut decoded_ptr)!
+											val.$(field.name) = new_pointer_to(decoded_ptr)
+										}
+									} $else $if field.indirections == 3 {
+										if decoder.current_node.value.value_kind == .null {
+											val.$(field.name) = unsafe { nil }
+											decoder.current_node = decoder.current_node.next
+										} else {
+											mut decoded_ptr := $new(field.typ.pointee_type.pointee_type.pointee_type)
+											decoder.decode_value(mut decoded_ptr)!
+											val.$(field.name) = new_pointer_to(new_pointer_to(decoded_ptr))
 										}
 									} $else {
 										mut decoded_field_value := val.$(field.name)
