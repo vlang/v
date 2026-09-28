@@ -968,6 +968,54 @@ fn test_unindexed_generic_factory_return_infers_interface_implementer() {
 	assert collector.typed_receiver_method_name(inferred, 'backward', 'consumer')? == 'gates.Gate[int].backward'
 }
 
+fn test_unindexed_generic_factory_infers_short_struct_fields_together() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	tc.parallel_check_sparse = true
+	method := 'gates.make_gate'
+	tc.fn_generic_params[method] = ['U']
+	tc.fn_param_type_texts[method] = ['Params[U]']
+	tc.fn_ret_types[method] = types.Type(types.Struct{ name: 'gates.Gate[U]' })
+	tc.fn_ret_types['gates.Gate[T].backward'] = types.Type(types.int_)
+	tc.struct_generic_params['gates.Params'] = ['P']
+	count_decl := a.add_node(flat.Node{ kind: .field_decl, value: 'count', typ: 'int' })
+	items_decl := a.add_node(flat.Node{ kind: .field_decl, value: 'items', typ: '[]P' })
+	struct_id := call_helper_node(mut a, flat.Node{ kind: .struct_decl, value: 'Params' }, [
+		count_decl,
+		items_decl,
+	])
+	fn_id := a.add_val(.fn_decl, 'make_gate')
+	callee := a.add_val(.ident, 'make_gate')
+	count_value := a.add_val(.int_literal, '1')
+	count := call_helper_node(mut a, flat.Node{ kind: .field_init, value: 'count' }, [
+		count_value,
+	])
+	items_value := a.add_val(.ident, 'values')
+	items := call_helper_node(mut a, flat.Node{ kind: .field_init, value: 'items' }, [
+		items_value,
+	])
+	call := call_helper_node(mut a, flat.Node{ kind: .call }, [callee, count, items])
+	tc.sparse_resolved_call_names[int(call)] = method
+	collector := CallCollector{
+		a:               &a
+		tc:              &tc
+		fn_decls:        {
+			method: FnDeclInfo{ node_id: fn_id, module: 'gates' }
+		}
+		struct_decls:    {
+			'gates.Params': StructDeclInfo{ node_id: struct_id, module: 'gates' }
+		}
+		import_contexts: [map[string]string{}]
+	}
+	inferred := collector.top_level_call_return_type_name(call, 'consumer', map[string]string{}, {
+		'values': true
+	}, {
+		'values': '[]T'
+	}, false)
+	assert inferred == 'gates.Gate[T]'
+	assert collector.typed_receiver_method_name(inferred, 'backward', 'consumer')? == 'gates.Gate[T].backward'
+}
+
 fn test_inferred_factory_callback_arguments_keep_caller_generic_names() {
 	mut mismatches := []string{}
 	for caller in ['T', 'U'] {

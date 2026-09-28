@@ -6172,31 +6172,101 @@ fn (c &CallCollector) infer_alias_generic_args(call &flat.Node, fn_name string, 
 		if param_idx >= param_texts.len {
 			break
 		}
-		arg_id := markused_generic_call_arg_value(c.a, c.a.child(call, arg_i))
-		if actual := c.alias_aware_expr_type(arg_id, cur_module, imports, local_values, local_types) {
-			markused_infer_alias_generic_type(param_texts[param_idx], actual, generic_params, mut inferred)
-		}
-		if inferred.len < generic_params.len {
-			actual_text := c.top_level_expr_type_name(arg_id, cur_module, imports, local_values,
-				local_types, false)
-			if actual_text.len > 0 && actual_text != 'unknown' {
-				markused_infer_generic_type_text(param_texts[param_idx], actual_text,
-					generic_params, mut inferred)
+		raw_arg_id := c.a.child(call, arg_i)
+		raw_arg := c.a.node(raw_arg_id)
+		if raw_arg.kind == .field_init && raw_arg.children_count > 0 {
+			field_pattern := c.generic_factory_short_struct_field_type_text(fn_name,
+				param_texts[param_idx], raw_arg.value, cur_module)
+			if field_pattern.len > 0 {
+				c.infer_alias_generic_argument(fn_name, field_pattern, c.a.child(raw_arg, 0),
+					generic_params, cur_module, imports, local_values, local_types, mut inferred)
 			}
+			continue
 		}
-		if inferred.len < generic_params.len {
-			if actual := c.alias_aware_expr_type(arg_id, cur_module, imports, local_values, local_types) {
-				for generic, concrete in c.tc.infer_generic_reachability_type_args(fn_name,
-					param_texts[param_idx], actual, generic_params) {
-					if generic !in inferred && concrete !in ['unknown', 'generic'] {
-						inferred[generic] = concrete
-					}
-				}
-			}
-		}
+		c.infer_alias_generic_argument(fn_name, param_texts[param_idx], raw_arg_id,
+			generic_params, cur_module, imports, local_values, local_types, mut inferred)
 		param_idx++
 	}
 	return inferred
+}
+
+fn (c &CallCollector) infer_alias_generic_argument(fn_name string, pattern string, arg_id flat.NodeId, generic_params []string, cur_module string, imports map[string]string, local_values map[string]bool, local_types map[string]string, mut inferred map[string]string) {
+	if actual := c.alias_aware_expr_type(arg_id, cur_module, imports, local_values, local_types) {
+		markused_infer_alias_generic_type(pattern, actual, generic_params, mut inferred)
+	}
+	if inferred.len < generic_params.len {
+		actual_text := c.top_level_expr_type_name(arg_id, cur_module, imports, local_values,
+			local_types, false)
+		if actual_text.len > 0 && actual_text != 'unknown' {
+			markused_infer_generic_type_text(pattern, actual_text, generic_params, mut inferred)
+		}
+	}
+	if inferred.len < generic_params.len {
+		if actual := c.alias_aware_expr_type(arg_id, cur_module, imports, local_values, local_types) {
+			for generic, concrete in c.tc.infer_generic_reachability_type_args(fn_name,
+				pattern, actual, generic_params) {
+				if generic !in inferred && concrete !in ['unknown', 'generic'] {
+					inferred[generic] = concrete
+				}
+			}
+		}
+	}
+}
+
+fn (c &CallCollector) generic_factory_short_struct_field_type_text(fn_name string, param_text string, field_name string, cur_module string) string {
+	base, args, is_generic := markused_generic_app_parts(param_text)
+	if !is_generic || field_name.len == 0 {
+		return ''
+	}
+	mut decl_module := c.tc.fn_type_modules[fn_name] or { cur_module }
+	mut decl_imports := map[string]string{}
+	if decl := c.fn_decls[fn_name] {
+		decl_module = decl.module
+		if c.import_contexts.len > 0 {
+			decl_imports = c.imports(decl.import_context)
+		}
+	}
+	resolved_base := markused_resolve_imported_type_name(base, decl_imports)
+	mut candidates := []string{}
+	if !resolved_base.contains('.') && decl_module !in ['', 'main', 'builtin'] {
+		candidates << '${decl_module}.${resolved_base}'
+	}
+	candidates << resolved_base
+	for candidate in candidates {
+		mut field_type := ''
+		if info := c.struct_decl_info(candidate, decl_module) {
+			decl := c.a.node(info.node_id)
+			for i in 0 .. decl.children_count {
+				field := c.a.child_node(decl, i)
+				if field.kind == .field_decl && field.value == field_name {
+					field_type = field.typ
+					break
+				}
+			}
+		}
+		if field_type.len == 0 {
+			for field in c.tc.struct_fields_for_type(candidate) {
+				if field.name == field_name {
+					field_type = field.typ.name()
+					break
+				}
+			}
+		}
+		if field_type.len == 0 {
+			continue
+		}
+		params := c.tc.struct_generic_params[candidate] or {
+			c.tc.struct_generic_params[base] or { []string{} }
+		}
+		mut replacements := map[string]string{}
+		if params.len == args.len {
+			for i, param in params {
+				replacements[param] = args[i]
+			}
+		}
+		return markused_substitute_alias_generics(field_type, replacements)
+	}
+	return ''
 }
 
 fn (c &CallCollector) alias_aware_expr_type(id flat.NodeId, cur_module string, imports map[string]string, local_values map[string]bool, local_types map[string]string) ?types.Type {
