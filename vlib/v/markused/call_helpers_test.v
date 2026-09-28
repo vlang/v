@@ -787,6 +787,46 @@ fn test_generic_factory_uses_for_in_element_type() {
 		map[string]string{}).calls
 }
 
+fn test_generic_factory_uses_pipe_lambda_map_element_type() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	tc.parallel_check_sparse = true
+	method := 'gates.make_gate'
+	tc.fn_generic_params[method] = ['U']
+	tc.fn_param_type_texts[method] = ['U']
+	tc.fn_ret_types[method] = types.Type(types.Struct{ name: 'gates.Gate[U]' })
+	tc.fn_ret_types['gates.Gate[T].backward'] = types.Type(types.int_)
+	param := a.add_node(flat.Node{ kind: .param, value: 'values', typ: '[]T' })
+	values := a.add_val(.ident, 'values')
+	map_selector := call_helper_node(mut a, flat.Node{ kind: .selector, value: 'map' }, [values])
+	lambda_param := a.add_val(.ident, 'value')
+	gate_lhs := a.add_val(.ident, 'gate')
+	callee := a.add_val(.ident, 'make_gate')
+	value_arg := a.add_val(.ident, 'value')
+	factory_call := call_helper_node(mut a, flat.Node{ kind: .call }, [callee, value_arg])
+	tc.sparse_resolved_call_names[int(factory_call)] = method
+	gate_decl := call_helper_node(mut a, flat.Node{ kind: .decl_assign }, [gate_lhs, factory_call])
+	gate_use := a.add_val(.ident, 'gate')
+	backward := call_helper_node(mut a, flat.Node{ kind: .selector, value: 'backward' }, [
+		gate_use,
+	])
+	backward_call := call_helper_node(mut a, flat.Node{ kind: .call }, [backward])
+	lambda_body := call_helper_node(mut a, flat.Node{ kind: .block }, [gate_decl, backward_call])
+	lambda := call_helper_node(mut a, flat.Node{ kind: .lambda_expr }, [lambda_param, lambda_body])
+	map_call := call_helper_node(mut a, flat.Node{ kind: .call }, [map_selector, lambda])
+	body := call_helper_node(mut a, flat.Node{ kind: .block }, [map_call])
+	fn_id := call_helper_node(mut a, flat.Node{ kind: .fn_decl, value: 'use_gates' }, [
+		param,
+		body,
+	])
+	collector := CallCollector{ a: &a, tc: &tc, import_contexts: [map[string]string{}] }
+	_, _, ident_types := collector.local_value_info(a.node(fn_id), 'main', map[string]string{})
+	assert ident_types[int(value_arg)] == 'T'
+	assert ident_types[int(gate_use)] == 'gates.Gate[T]'
+	assert 'gates.Gate[T].backward' in collector.collect_body(a.node(fn_id), 'main',
+		map[string]string{}).calls
+}
+
 fn test_for_in_map_registers_key_and_value_types() {
 	mut a := flat.FlatAst.new()
 	mut tc := types.TypeChecker.new(&a)

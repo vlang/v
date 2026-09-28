@@ -5351,6 +5351,13 @@ fn (c &CallCollector) local_value_info(node &flat.Node, cur_module string, impor
 		child := c.a.node(id)
 		if child.kind == .param && child.value.len > 0 {
 			names[child.value] = true
+		} else if child.kind == .lambda_expr {
+			for i in 0 .. child.children_count - 1 {
+				param := c.a.child_node(child, i)
+				if param.kind == .ident && param.value.len > 0 {
+					names[param.value] = true
+				}
+			}
 		} else if child.kind == .decl_assign {
 			lhs_count := markused_assign_lhs_count(child)
 			rhs_count := int(child.children_count) - lhs_count
@@ -5413,8 +5420,16 @@ fn (c &CallCollector) infer_local_type_bindings(node &flat.Node, cur_module stri
 				mut nested_types, mut ident_types, false)
 			continue
 		}
+		if child.kind == .lambda_expr {
+			mut nested_types := type_names.clone()
+			c.seed_lambda_param_types(id, child, node, cur_module, imports, type_names,
+				mut nested_types)
+			c.infer_local_type_bindings(child, cur_module, imports, names, mut nested_types,
+				mut ident_types, false)
+			continue
+		}
 		if child.kind in [.block, .if_expr, .match_stmt, .match_branch, .select_stmt, .select_branch,
-			.for_stmt, .fn_literal, .lambda_expr, .comptime_if, .comptime_for, .defer_stmt, .lock_expr] {
+			.for_stmt, .fn_literal, .comptime_if, .comptime_for, .defer_stmt, .lock_expr] {
 			if root && child.kind == .block {
 				c.infer_local_type_bindings(child, cur_module, imports, names, mut type_names,
 					mut ident_types, false)
@@ -5506,6 +5521,46 @@ fn (c &CallCollector) infer_local_type_bindings(node &flat.Node, cur_module stri
 		}
 		c.infer_local_type_bindings(child, cur_module, imports, names, mut type_names,
 			mut ident_types, false)
+	}
+}
+
+fn (c &CallCollector) seed_lambda_param_types(id flat.NodeId, lambda &flat.Node, parent &flat.Node, cur_module string, imports map[string]string, outer_types map[string]string, mut nested_types map[string]string) {
+	mut param_types := []string{}
+	if fn_type := c.tc.expr_type(id) {
+		if fn_type is types.FnType {
+			for param in fn_type.params {
+				param_types << if markused_type_has_unknown(param) { '' } else { param.name() }
+			}
+		}
+	}
+	if parent.kind == .call && parent.children_count > 1 {
+		callee := c.a.child_node(parent, 0)
+		if callee.kind == .selector && callee.value == 'map' && callee.children_count > 0 {
+			receiver_id := c.a.child(callee, 0)
+			if elem := c.top_level_for_in_elem_type_name(receiver_id, cur_module, imports,
+				map[string]bool{}, outer_types) {
+				if param_types.len == 0 {
+					param_types << elem
+				} else if param_types[0].len == 0 {
+					param_types[0] = elem
+				}
+			}
+		}
+	}
+	for i in 0 .. lambda.children_count - 1 {
+		param := c.a.child_node(lambda, i)
+		if param.kind != .ident || param.value.len == 0 {
+			continue
+		}
+		mut typ := if i < param_types.len { param_types[i] } else { '' }
+		if typ.len == 0 && param.typ.len > 0 {
+			typ = markused_resolve_imported_type_name(param.typ, imports)
+		}
+		if typ.len > 0 {
+			nested_types[param.value] = typ
+		} else {
+			nested_types.delete(param.value)
+		}
 	}
 }
 
@@ -5666,6 +5721,21 @@ fn markused_collect_visible_local_idents(a &flat.FlatAst, node &flat.Node, local
 		match child.kind {
 			.fn_decl, .c_fn_decl, .fn_literal {
 				continue
+			}
+			.lambda_expr {
+				scope_mark := local_stack.len
+				for j in 0 .. child.children_count - 1 {
+					param := a.child_node(child, j)
+					if param.kind == .ident {
+						markused_push_visible_local(param.value, mut locals, mut local_stack)
+					}
+				}
+				if child.children_count > 0 {
+					body := a.child_node(child, int(child.children_count) - 1)
+					markused_collect_visible_local_idents(a, body, local_values, mut locals,
+						mut local_stack, mut visible_ids)
+				}
+				markused_restore_visible_local_scope(scope_mark, mut locals, mut local_stack)
 			}
 			.block, .if_expr, .match_stmt, .for_stmt, .for_in_stmt {
 				scope_mark := local_stack.len
