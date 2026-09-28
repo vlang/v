@@ -672,7 +672,7 @@ fn test_v3_cache_artifact_detection_accepts_quoted_paths_with_spaces() {
 	clang_missing := v3_cache_failure_artifacts("${source}:42:10: fatal error: 'missing.h' file not found")
 	assert clang_missing == [], clang_missing.str()
 	assert v3_cache_failure_artifacts("${source}:42:10: fatal error: 'missing.h': No such file or directory") == []
-	assert v3_cache_failure_artifacts("clang: ${source}: missing.h: file not found") == []
+	assert v3_cache_failure_artifacts('clang: ${source}: missing.h: file not found') == []
 	assert v3_cache_failure_artifacts("ld: '${object}': file format not recognized") == [
 		os.real_path(object),
 	]
@@ -682,11 +682,15 @@ fn test_v3_cache_artifact_detection_accepts_quoted_paths_with_spaces() {
 	assert v3_cache_failure_artifacts("ld: file too small (length=0) in '${object}'") == [
 		os.real_path(object),
 	]
-	assert v3_cache_failure_artifacts("ld: file too short: '${object}'") == [os.real_path(object)]
-	assert v3_cache_failure_artifacts("ld.lld: ${object}: section table goes past the end of file") == [
+	assert v3_cache_failure_artifacts("ld: file too short: '${object}'") == [
 		os.real_path(object),
 	]
-	assert v3_cache_failure_artifacts("ld: empty file '${object}'") == [os.real_path(object)]
+	assert v3_cache_failure_artifacts('ld.lld: ${object}: section table goes past the end of file') == [
+		os.real_path(object),
+	]
+	assert v3_cache_failure_artifacts("ld: empty file '${object}'") == [
+		os.real_path(object),
+	]
 	assert v3_cache_failure_artifacts("ld: i386 architecture of input file `${object}' is incompatible with i386:x86-64 output") == [
 		os.real_path(object),
 	]
@@ -719,11 +723,18 @@ fn test_v3_cache_artifact_detection_accepts_quoted_paths_with_spaces() {
 	assert v3_cache_failure_artifacts("link.exe: fatal error LNK1104: cannot open file '${missing}'") == [
 		os.join_path_single(os.real_path(module_dir), os.base(missing)),
 	]
+	missing_dylib := os.join_path(module_dir, 'module.dylib')
+	assert v3_cache_failure_artifacts("ld: '${missing_dylib}': No such file or directory") == [
+		os.join_path_single(os.real_path(module_dir), os.base(missing_dylib)),
+	]
 	assert v3_cache_recovery_should_retry([missing], 0)
 	os.rmdir_all(cache_dir)!
 	recovered := v3_cache_failure_artifacts("ld: '${missing}': No such file or directory")
 	assert recovered == [
 		os.join_path(os.real_path(root), 'v3_module_cache_ab12', 'config', 'missing object.o'),
+	]
+	assert v3_cache_failure_artifacts("ld: '${missing_dylib}': No such file or directory") == [
+		os.join_path(os.real_path(root), 'v3_module_cache_ab12', 'config', 'module.dylib'),
 	]
 	assert v3_cache_failure_artifacts("ld: '${source}': No such file or directory") == []
 	unowned := os.join_path(root, 'v3_module_cache_nothex', 'missing.o')
@@ -731,6 +742,31 @@ fn test_v3_cache_artifact_detection_accepts_quoted_paths_with_spaces() {
 	discarded := v3_discard_cache_artifacts([missing])
 	assert discarded == 0
 	assert v3_cache_recovery_should_retry([missing], discarded)
+}
+
+fn test_v3_cache_failure_artifacts_recognizes_lld_truncated_objects_as_scripts() {
+	root := os.join_path(os.vtmp_dir(), 'v3_lld_script_cache_${os.getpid()}')
+	cache_dir := os.join_path(root, 'v3_module_cache_ab12')
+	os.mkdir_all(cache_dir)!
+	previous := os.getenv_opt('V3CACHE')
+	os.setenv('V3CACHE', root, true)
+	defer {
+		if value := previous {
+			os.setenv('V3CACHE', value, true)
+		} else {
+			os.unsetenv('V3CACHE')
+		}
+		os.rmdir_all(root) or {}
+	}
+	object := os.join_path(cache_dir, 'truncated.o')
+	os.write_file(object, '\x7fELF')!
+	for message in ['unexpected EOF', 'unknown directive'] {
+		assert v3_cache_failure_artifacts('ld.lld: ${object}:1: ${message}') == [
+			os.real_path(object),
+		]
+	}
+	os.write_file(object, 'this is a larger linker script, not a truncated object')!
+	assert v3_cache_failure_artifacts('ld.lld: ${object}:1: unknown directive') == []
 }
 
 fn test_v3_cache_unquoted_windows_path_candidates_keep_spaces() {

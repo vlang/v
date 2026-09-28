@@ -12641,7 +12641,7 @@ fn v3_cache_artifact_directories() []string {
 }
 
 fn v3_missing_cache_artifact(path string) ?string {
-	if os.file_ext(path).to_lower() !in ['.o', '.obj', '.a', '.lib'] {
+	if os.file_ext(path).to_lower() !in ['.o', '.obj', '.a', '.lib', '.dylib'] {
 		return none
 	}
 	temp_root := os.real_path(os.abs_path(os.vtmp_dir()))
@@ -12818,6 +12818,33 @@ fn v3_cache_diagnostic_has_source_position(line string) bool {
 	return false
 }
 
+fn v3_cache_lld_truncated_object_artifacts(line string) []string {
+	lowered := line.to_lower_ascii()
+	if !lowered.contains('ld.lld:')
+		|| (!lowered.contains('unexpected eof') && !lowered.contains('unknown directive')) {
+		return []
+	}
+	message_start := line.last_index(': ') or { return [] }
+	prefix := line[..message_start]
+	line_number := prefix.all_after_last(':')
+	if line_number.len == 0 || !line_number.bytes().all(it >= `0` && it <= `9`) {
+		return []
+	}
+	path_prefix := prefix.all_before_last(':')
+	directories := v3_cache_artifact_directories()
+	for candidate in v3_cache_unquoted_path_candidates(path_prefix) {
+		if os.file_ext(candidate).to_lower() !in ['.o', '.obj'] {
+			continue
+		}
+		if artifact := v3_canonical_cache_artifact(candidate, directories) {
+			if os.is_file(artifact) && os.file_size(artifact) <= 16 {
+				return [artifact]
+			}
+		}
+	}
+	return []
+}
+
 // v3_cache_failure_artifacts returns the cache entries to discard after a C
 // toolchain failure. Both signals are required: the output has to name a cached
 // artifact *and* report a whole-file failure, so an ordinary compile error is
@@ -12826,6 +12853,15 @@ fn v3_cache_failure_artifacts(output string) []string {
 	mut artifacts := []string{}
 	lines := output.split_into_lines()
 	for i, line in lines {
+		script_artifacts := v3_cache_lld_truncated_object_artifacts(line)
+		if script_artifacts.len > 0 {
+			for artifact in script_artifacts {
+				if artifact !in artifacts {
+					artifacts << artifact
+				}
+			}
+			continue
+		}
 		lowered := line.to_lower_ascii()
 		mut has_marker := false
 		for marker in v3_cache_failure_markers {
