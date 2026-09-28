@@ -14461,6 +14461,10 @@ fn (t &Transformer) callback_payload_type_compatible(actual types.Type, expected
 	if a is types.FnType && e is types.FnType {
 		return t.callback_fn_type_payloads_compatible(a, e, inside_container)
 	}
+	if (a is types.Primitive || a is types.Rune || a is types.Char || a is types.ISize || a is types.USize)
+		&& (e is types.Primitive || e is types.Rune || e is types.Char || e is types.ISize || e is types.USize) {
+		return t.tc.fn_param_compatible(a, e)
+	}
 	return a.name() == e.name() || (!inside_container && t.tc.slot_value_compatible(a, e)
 		&& t.tc.slot_value_compatible(e, a))
 }

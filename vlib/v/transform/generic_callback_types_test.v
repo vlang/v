@@ -109,3 +109,18 @@ fn test_specialized_receiver_callback_uses_function_type_compatibility() {
 	assert !t.resolved_receiver_arg_compatible(id, 'fn (int)', 'CdeclFn')
 	assert t.resolved_receiver_arg_compatible(id, 'fn (int)', 'FastFn')
 }
+
+fn test_specialized_callbacks_preserve_abi_identical_scalar_payloads() {
+	mut a := flat.FlatAst.new()
+	id := a.add_val(.ident, 'callback')
+	mut tc := types.TypeChecker.new(&a)
+	mut t := new_transformer(mut a, &tc, map[string]bool{})
+	for wrapper in ['&%s', '[]%s', 'map[string]%s', 'chan %s', '?%s', '!%s', '[][2]%s'] {
+		actual := 'fn (${wrapper.replace('%s', 'rune')})'
+		expected := 'fn (${wrapper.replace('%s', 'u32')})'
+		assert tc.slot_value_compatible(tc.parse_type(actual), tc.parse_type(expected))
+		assert t.resolved_receiver_arg_compatible(id, actual, expected)
+		assert t.resolved_receiver_arg_compatible(id, expected, actual)
+		assert !t.resolved_receiver_arg_compatible(id, actual, 'fn (${wrapper.replace('%s', 'u64')})')
+	}
+}

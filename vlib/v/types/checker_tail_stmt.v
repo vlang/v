@@ -9508,7 +9508,8 @@ fn type_contains_unknown(typ Type) bool {
 	return false
 }
 
-fn (tc &TypeChecker) fn_param_compatible(actual Type, expected Type) bool {
+// fn_param_compatible compares parameter representations, preserving source-level integer distinctions.
+pub fn (tc &TypeChecker) fn_param_compatible(actual Type, expected Type) bool {
 	if actual is Unknown || expected is Unknown {
 		return false
 	}
