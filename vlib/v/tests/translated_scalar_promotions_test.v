@@ -414,3 +414,21 @@ fn test_translated_compound_shifts_use_promoted_width() {
 	values[2] >>>= count
 	assert values == [false, false, false]!
 }
+
+type TranslatedRuneAlias = rune
+
+fn test_translated_rune_shifts_keep_unsigned_width() {
+	value := rune(0x80000000)
+	count := int(31)
+	assert value >> 31 == 1
+	assert value >> count == 1
+	assert typeof(value >> count).name == 'rune'
+	alias_value := TranslatedRuneAlias(value)
+	assert alias_value >> count == 1
+	assert alias_value >>> count == 1
+	mut compound := value
+	compound >>= count
+	assert compound == 1
+	too_far := int(32)
+	assert value >> too_far == 0
+}

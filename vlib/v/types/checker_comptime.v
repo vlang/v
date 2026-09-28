@@ -7853,6 +7853,9 @@ fn (mut tc TypeChecker) check_infix(id flat.NodeId, node flat.Node) {
 
 fn (tc &TypeChecker) integer_shift_bit_size(typ Type) int {
 	clean := unalias_type(typ)
+	if clean is Rune {
+		return 32
+	}
 	if clean is Enum {
 		return tc.integer_shift_bit_size(tc.inline_asm_enum_backing_type(clean.name))
 	}
