@@ -92,6 +92,24 @@ fn narrowed_error_option(item IError) ?ConditionalPayloadError {
 	return if item is ConditionalPayloadError { item } else { ConditionalPayloadError{ value: 2 } }
 }
 
+fn negated_error_result(item IError) !ConditionalPayloadError {
+	return if item !is ConditionalPayloadError { ConditionalPayloadError{ value: 2 } } else { item }
+}
+
+fn negated_error_option(item IError) ?ConditionalPayloadError {
+	return if item !is ConditionalPayloadError { ConditionalPayloadError{ value: 2 } } else { item }
+}
+
+fn negated_error_else_if(item IError, keep bool) !ConditionalPayloadError {
+	return if item !is ConditionalPayloadError {
+		ConditionalPayloadError{ value: 2 }
+	} else if keep {
+		item
+	} else {
+		ConditionalPayloadError{ value: 3 }
+	}
+}
+
 fn matched_error_result(item IError) !ConditionalPayloadError {
 	return match item {
 		ConditionalPayloadError { item }
@@ -111,6 +129,10 @@ fn test_smartcasted_ierror_is_successful_payload() {
 		expected := if item is ConditionalPayloadError { 41 } else { 2 }
 		assert narrowed_error_result(item)!.value == expected
 		assert narrowed_error_option(item)?.value == expected
+		assert negated_error_result(item)!.value == expected
+		assert negated_error_option(item)?.value == expected
+		assert negated_error_else_if(item, true)!.value == expected
+		assert negated_error_else_if(item, false)!.value == if expected == 41 { 3 } else { 2 }
 		assert matched_error_result(item)!.value == expected
 		assert matched_error_option(item)?.value == expected
 	}
