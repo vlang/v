@@ -1459,11 +1459,8 @@ fn (mut decoder Decoder) decode_map[V](mut val map[string]V) ! {
 				}
 
 				$if V is $alias && V.unaliased_typ is $map {
-					// V is a map alias (e.g. `type SyntaxStyle = map[string]X`).
-					// V's checker reports `val[key]` as the unaliased element type
-					// while `map_value` keeps the alias type, so direct assignment
-					// fails to type-check. Skip to keep generic instantiations
-					// compilable; decoding into map-alias map values is unsupported.
+					// A map alias value (`type Props = map[string]int`).
+					val[key_str] = map_value.move()
 				} $else $if K is string {
 					$if V is $map {
 						val[key_str] = map_value.move()
