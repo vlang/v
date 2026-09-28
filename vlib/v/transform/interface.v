@@ -854,11 +854,13 @@ fn (mut t Transformer) make_interface_literal_from_expr(id flat.NodeId, iface_na
 	// type and emit the matching `_typ` dispatch id.
 	object_expr := if is_ptr {
 		source
-	} else if share_source && t.expr_can_take_address(source) {
+	} else if share_source && !source_is_pointer_alias && t.expr_can_take_address(source) {
 		addr := t.make_prefix(.amp, source)
 		t.set_node_typ(int(addr), '&${concrete_type}')
 		addr
 	} else {
+		// A pointer alias needs its own boxed slot, even when its pointee is shared.
+		// The temporary holding that pointer can expire before the interface does.
 		addr := t.make_prefix(.amp, source)
 		size := t.make_sizeof_type(concrete_type)
 		dup := t.make_non_aliasing_allocation_call('memdup', [addr, size], 'voidptr')

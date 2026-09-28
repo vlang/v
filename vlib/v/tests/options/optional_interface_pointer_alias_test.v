@@ -64,6 +64,10 @@ fn (r &Record) address() voidptr {
 	return voidptr(r)
 }
 
+fn (r AliasOnlyPtr) address() voidptr {
+	return voidptr(r)
+}
+
 fn optional_address(value ?HasAddress) voidptr {
 	return (value or { return unsafe { nil } }).address()
 }
@@ -71,4 +75,23 @@ fn optional_address(value ?HasAddress) voidptr {
 fn test_inline_pointer_alias_preserves_original_address() {
 	record := Record{}
 	assert optional_address(RecordPtr(&record)) == voidptr(&record)
+}
+
+fn retain_optional_address(mut values []HasAddress, value ?HasAddress) {
+	values << value or { panic('expected an address') }
+}
+
+@[noinline]
+fn retain_inline_pointer_alias(mut values []HasAddress, mut record AliasOnlyRecord) {
+	retain_optional_address(mut values, AliasOnlyPtr(&record))
+}
+
+fn test_retained_inline_pointer_alias_preserves_original_address() {
+	mut first := AliasOnlyRecord{}
+	mut second := AliasOnlyRecord{}
+	mut values := []HasAddress{}
+	retain_inline_pointer_alias(mut values, mut first)
+	retain_inline_pointer_alias(mut values, mut second)
+	assert values[0].address() == voidptr(&first)
+	assert values[1].address() == voidptr(&second)
 }
