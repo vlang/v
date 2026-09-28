@@ -405,9 +405,24 @@ fn (mut g Gen) setup_json_migration(fnode &flat.Node) {
 	if declared_names[qualifier] {
 		return
 	}
+	mut import_symbols := map[int]bool{}
+	for id in g.a.children_of(legacy) {
+		import_symbols[int(id)] = true
+	}
 	for i, n in g.a.nodes {
 		if n.pos.id != g.file_id {
 			continue
+		}
+		// With `import json { decode }`, a parameter, variable or loop variable of the
+		// same name shadows the import, and a use that is not a call cannot be rewritten.
+		if legacy.children_count > 0 && n.value in ['encode', 'decode', 'encode_pretty']
+			&& (n.kind == .param || (n.kind == .ident && !called[i] && !import_symbols[i])) {
+			return
+		}
+		// A legacy `decode` needs both the type and the source argument to be rewritten.
+		if n.kind == .call && n.children_count > 0 && n.children_count < 3
+			&& g.is_json_decode_callee(g.a.child_node(n, 0), legacy.children_count > 0) {
+			return
 		}
 		// Existing module selector receivers are safe; any other identifier with the
 		// qualifier can be a lexical collision, so keep the legacy import conservatively.
@@ -1920,12 +1935,15 @@ fn (g &Gen) json_migration_call_kind(callee_id flat.NodeId) ?string {
 }
 
 fn (g &Gen) is_legacy_json_decode(callee_id flat.NodeId) bool {
-	callee := g.a.node(callee_id)
+	return g.is_json_decode_callee(g.a.node(callee_id), g.selective_json)
+}
+
+fn (g &Gen) is_json_decode_callee(callee &flat.Node, selective bool) bool {
 	if callee.kind == .selector && callee.children_count > 0 && callee.value == 'decode' {
 		receiver := g.a.child_node(callee, 0)
 		return receiver.kind == .ident && receiver.value == 'json'
 	}
-	return g.selective_json && callee.kind == .ident && callee.value == 'decode'
+	return selective && callee.kind == .ident && callee.value == 'decode'
 }
 
 fn (mut g Gen) json_migration_call(kind string, callee flat.NodeId, args []flat.NodeId) {

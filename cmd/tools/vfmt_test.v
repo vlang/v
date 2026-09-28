@@ -899,6 +899,26 @@ fn f() {
 	assert formatted_twice == formatted
 }
 
+fn test_fmt_skips_json2_migration_for_shadowed_selective_imports_with_v3() {
+	header := 'import json { decode, encode }\n\nstruct User {\n\tname string\n}\n\n'
+	for name, body in {
+		'param':    "fn use(decode fn (string) string) string {\n\treturn decode('{}')\n}\n"
+		'local':    "fn f() {\n\tdecode := fn (s string) string {\n\t\treturn s\n\t}\n\tprintln(decode('{}'))\n\tprintln(encode(User{}))\n}\n"
+		'for_var':  "fn f() {\n\tfor decode in [fn (s string) string {\n\t\treturn s\n\t}] {\n\t\tprintln(decode('{}'))\n\t}\n}\n"
+		'as_value': 'fn f() {\n\tg := encode[User]\n\t_ = g\n}\n'
+	} {
+		source := header + body
+		res, formatted := run_vfmt_write('shadowed_selective_${name}_test', source, '')
+		assert res.exit_code == 0, res.output
+		assert formatted == source, name
+	}
+	// A legacy decode call without both arguments cannot be rewritten either.
+	one_arg := "import json\n\nfn f() {\n\tprintln(json.decode('{}'))\n\tprintln(json.encode(1))\n}\n"
+	res, formatted := run_vfmt_write('one_argument_decode', one_arg, '')
+	assert res.exit_code == 0, res.output
+	assert formatted == one_arg
+}
+
 fn test_fmt_keeps_json_module_found_through_path_flag_with_v3() {
 	path_root := os.join_path(vfmt_test_tdir, 'json_path_root')
 	os.mkdir_all(os.join_path(path_root, 'json'))!
