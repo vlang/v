@@ -36,6 +36,7 @@ fn test_match_tuple_branches_reject_optional_slot_mismatch_in_both_orders() {
 		tc.collect(a)
 		_ = tc.check_semantics_opt(false)
 		assert tc.errors.any(it.msg.contains('return type mismatch')), tc.errors.str()
+		assert !tc.errors.any(it.msg.contains('undefined')), tc.errors.str()
 	}
 }
 
