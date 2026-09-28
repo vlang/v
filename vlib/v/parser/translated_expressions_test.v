@@ -273,3 +273,69 @@ fn test_translated_sizeof_declaration_cache_is_scoped_and_refreshed() {
 		}
 	}
 }
+
+fn test_translated_sizeof_filters_conditional_declaration_attributes() {
+	root := os.join_path(os.vtmp_dir(), 'translated_sizeof_attributes_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+	path := os.join_path(root, 'main.v')
+	os.write_file(path, '@[translated]
+module main
+fn main() {
+ $if feature ? {
+  assert sizeof(Item) == sizeof([2]int)
+ } $else {
+  assert sizeof(Item) == sizeof(int)
+ }
+}
+@[if feature ?]
+const Item = [1, 2]!
+@[if !feature ?]
+type Item = int
+')!
+	for flags in ['', '-d feature', '-no-parallel', '-no-parallel -d feature'] {
+		result := os.execute('${os.quoted_path(@VEXE)} ${flags} run ${os.quoted_path(path)}')
+		assert result.exit_code == 0, result.output
+	}
+}
+
+fn test_translated_sizeof_indexes_constants_in_deferred_metadata_branches() {
+	root := os.join_path(os.vtmp_dir(), 'translated_sizeof_deferred_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+	path := os.join_path(root, 'main.v')
+	for condition in ['sizeof(int) > 0', 'int is $int'] {
+		os.write_file(path, '@[translated]
+module main
+fn main() {
+ assert sizeof(Regs) == sizeof([2]int)
+ assert sizeof(Item) == sizeof(int)
+ assert sizeof(lower_item) == sizeof(int)
+}
+$if ${condition} {
+ const Regs = [1, 2]!
+ type Item = int
+ type lower_item = int
+} $else {
+ const OtherRegs = [1, 2, 3]!
+ const Item = [1, 2, 3]!
+ const lower_item = [1, 2, 3]!
+}
+')!
+		for flags in ['', '-no-parallel'] {
+			result := os.execute('${os.quoted_path(@VEXE)} ${flags} run ${os.quoted_path(path)}')
+			assert result.exit_code == 0, result.output
+		}
+	}
+	os.write_file(path, '@[translated]
+module main
+fn main() { assert sizeof(Regs) == sizeof([2]int) }
+$if sizeof(int) == 0 {
+ const OtherRegs = [1, 2, 3]!
+} $else {
+ const Regs = [1, 2]!
+}
+')!
+	result := os.execute('${os.quoted_path(@VEXE)} run ${os.quoted_path(path)}')
+	assert result.exit_code == 0, result.output
+}

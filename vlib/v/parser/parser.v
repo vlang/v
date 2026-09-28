@@ -14558,7 +14558,10 @@ fn (mut p Parser) translated_sizeof_name_is_const(name string) bool {
 		return false
 	}
 	p.scan_translated_sizeof_declarations()
-	return p.translated_sizeof_const_names[p.translated_sizeof_declaration_key(name)]
+	key := p.translated_sizeof_declaration_key(name)
+	// Deferred branches can declare both candidates. Retain the existing named
+	// type form when a type is possible; later phases resolve the bare spelling.
+	return p.translated_sizeof_const_names[key] && !p.translated_sizeof_type_names[key]
 }
 
 fn (mut p Parser) scan_translated_sizeof_declarations() {
@@ -14610,8 +14613,24 @@ fn (mut p Parser) scan_translated_sizeof_source(source string) {
 
 fn (mut p Parser) scan_translated_sizeof_range(source string, tokens []InlineAsmScanToken, start int, end int) {
 	mut i := start
+	mut skip_decl := false
 	for i < end {
 		kind := tokens[i].kind
+		if kind == .attribute {
+			mut close := i + 1
+			mut depth := 1
+			for close < end && depth > 0 {
+				if tokens[close].kind in [.lsbr, .attribute] { depth++ }
+				if tokens[close].kind == .rsbr { depth-- }
+				if depth > 0 { close++ }
+			}
+			if close < end && i + 1 < close && tokens[i + 1].kind == .key_if {
+				condition := source[tokens[i + 1].end..tokens[close].pos]
+				skip_decl = skip_decl || !p.eval_attribute_comptime_cond(condition)
+			}
+			i = close + 1
+			continue
+		}
 		if kind == .key_module && i + 1 < end && tokens[i + 1].lit != p.cur_module {
 			return
 		}
@@ -14625,10 +14644,27 @@ fn (mut p Parser) scan_translated_sizeof_range(source string, tokens []InlineAsm
 		}
 		if kind in [.key_type, .key_struct, .key_enum, .key_interface, .key_union]
 			&& i + 1 < end && tokens[i + 1].kind == .name {
-			p.translated_sizeof_type_names[p.translated_sizeof_declaration_key(tokens[i + 1].lit)] = true
+			if !skip_decl {
+				p.translated_sizeof_type_names[p.translated_sizeof_declaration_key(tokens[i + 1].lit)] = true
+			}
+			skip_decl = false
+		}
+		if kind == .key_fn || kind == .key_global {
+			skip_decl = false
 		}
 		if kind == .key_const {
+			mut saved_consts := if skip_decl {
+				p.comptime_const_values.clone()
+			} else {
+				map[string]string{}
+			}
 			next := p.inline_asm_collect_const_decl(tokens, i, end)
+			if skip_decl {
+				p.comptime_const_values = saved_consts.move()
+				skip_decl = false
+				i = if next > i { next } else { i + 1 }
+				continue
+			}
 			mut j := i + 1
 			grouped := j < end && tokens[j].kind == .lpar
 			if grouped { j++ }
@@ -14658,15 +14694,20 @@ fn (mut p Parser) scan_translated_sizeof_comptime_if(source string, tokens []Inl
 	if close >= end { return end }
 	condition := source[tokens[start + 1].end..tokens[open].pos]
 	_, known, taken := p.inline_asm_comptime_condition(condition)
-	if inspect && known && taken {
+	mut saved_consts := if !known { p.comptime_const_values.clone() } else { map[string]string{} }
+	defer {
+		if !known { p.comptime_const_values = saved_consts.move() }
+	}
+	if inspect && (!known || taken) {
 		p.scan_translated_sizeof_range(source, tokens, open + 1, close)
 	}
+	if !known { p.comptime_const_values = saved_consts.clone() }
 	mut next := inline_asm_skip_semicolons(tokens, close + 1, end)
 	if next + 1 >= end || tokens[next].kind != .dollar || tokens[next + 1].kind != .key_else {
 		return close + 1
 	}
 	next = inline_asm_skip_semicolons(tokens, next + 2, end)
-	inspect_else := inspect && known && !taken
+	inspect_else := inspect && (!known || !taken)
 	if next + 1 < end && tokens[next].kind == .dollar && tokens[next + 1].kind == .key_if {
 		return p.scan_translated_sizeof_comptime_if(source, tokens, next, end, inspect_else)
 	}
