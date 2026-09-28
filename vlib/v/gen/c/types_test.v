@@ -251,6 +251,31 @@ fn main() {}
 	assert !c_source.contains('Unused__autostr'), c_source
 }
 
+// cgen names `<Enum>__autostr` helpers from checked `types.Enum` names, which already
+// identify the declaring module. Reading them through the current file's imports would
+// retarget them: with `import a as real_a` and `import b as a`, a value returned by
+// `real_a.make()` has type `a.Kind`, and it must not become `b.Kind`.
+fn test_enum_autostr_c_name_ignores_current_file_imports() {
+	mut ast := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&ast)
+	tc.enum_names['Kind'] = true
+	tc.enum_names['a.Kind'] = true
+	tc.enum_names['b.Kind'] = true
+	tc.cur_file = '/tmp/main.v'
+	tc.cur_module = 'main'
+	tc.file_imports['/tmp/main.v\nreal_a'] = 'a'
+	tc.file_imports['/tmp/main.v\na'] = 'b'
+	tc.file_selective_imports['/tmp/main.v\nKind'] = ['b.Kind']
+	mut g := FlatGen.new()
+	g.a = &ast
+	g.tc = &tc
+
+	assert g.enum_autostr_c_name('a.Kind') == 'a__Kind'
+	assert g.enum_autostr_c_name('b.Kind') == 'b__Kind'
+	assert g.enum_autostr_c_name('Kind') == 'Kind'
+	assert g.enum_autostr_c_name('main.Kind') == 'Kind'
+}
+
 fn test_json_helper_scan_requires_legacy_json_module() {
 	mut ast := flat.FlatAst.new()
 	ast.nodes = [flat.Node{ kind: .call, children_count: 2 },
@@ -716,6 +741,20 @@ fn test_optional_array_typedef_ignores_nominal_name_collisions() {
 	assert g.stale_ambiguous_qualified_struct_c_type('Array')
 	assert g.emit_optional_typedef('Optional_Array', 'Array')
 	assert g.sb.str().contains('Array value; } Optional_Array;')
+}
+
+fn test_optional_builtin_typedef_ignores_nominal_name_collisions() {
+	mut ast := &flat.FlatAst{}
+	mut tc := types.TypeChecker.new(ast)
+	tc.structs['first.u64'] = []types.StructField{}
+	tc.structs['second.u64'] = []types.StructField{}
+	mut g := FlatGen.new()
+	g.a = ast
+	g.tc = &tc
+
+	assert g.stale_ambiguous_qualified_struct_c_type('u64')
+	assert g.emit_optional_typedef('Optional_u64', 'u64')
+	assert g.sb.str().contains('u64 value; } Optional_u64;')
 }
 
 fn test_optional_sum_typedef_ignores_struct_name_collisions() {

@@ -3,6 +3,49 @@ module transform
 import v.flat
 import v.types
 
+fn test_callback_payload_checks_symbolic_fixed_array_lengths() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	tc.const_exprs['two'] = a.add_node(flat.Node{ kind: .int_literal, value: '2' })
+	tc.const_exprs['three'] = a.add_node(flat.Node{ kind: .int_literal, value: '3' })
+	t := new_transformer(mut a, &tc, map[string]bool{})
+	int_type := types.Type(types.int_)
+	two := types.Type(types.Array{
+		elem_type: types.Type(types.ArrayFixed{ elem_type: int_type, len_expr: 'two' })
+	})
+	three := types.Type(types.Array{
+		elem_type: types.Type(types.ArrayFixed{ elem_type: int_type, len_expr: 'three' })
+	})
+	assert t.callback_payload_type_compatible(two, two, false)
+	assert !t.callback_payload_type_compatible(two, three, false)
+}
+
+fn test_callback_payload_checks_channel_mutability() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	t := new_transformer(mut a, &tc, map[string]bool{})
+	elem_type := types.Type(types.Pointer{ base_type: types.Type(types.int_) })
+	mutable := types.Type(types.Channel{ elem_type: elem_type, is_mut: true })
+	read_only := types.Type(types.Channel{ elem_type: elem_type })
+	assert t.callback_payload_type_compatible(mutable, mutable, false)
+	assert !t.callback_payload_type_compatible(mutable, read_only, false)
+}
+
+fn test_callback_payload_accepts_void_pointer_userdata() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	t := new_transformer(mut a, &tc, map[string]bool{})
+	int_ptr := types.Type(types.Pointer{ base_type: types.Type(types.int_) })
+	void_ptr := types.Type(types.Pointer{ base_type: types.Type(types.void_) })
+	float_ptr := types.Type(types.Pointer{ base_type: types.Type(types.f64_) })
+	int_callback := types.Type(types.FnType{ params: [int_ptr], return_type: types.Type(types.void_) })
+	void_callback := types.Type(types.FnType{ params: [void_ptr], return_type: types.Type(types.void_) })
+	float_callback := types.Type(types.FnType{ params: [float_ptr], return_type: types.Type(types.void_) })
+	assert t.callback_payload_type_compatible(int_callback, void_callback, false)
+	assert t.callback_payload_type_compatible(void_callback, int_callback, false)
+	assert !t.callback_payload_type_compatible(int_callback, float_callback, false)
+}
+
 fn test_zeroed_staging_values_keep_heap_structs_on_the_stack() {
 	mut a := flat.FlatAst.new()
 	decl := a.add_node(flat.Node{ kind: .struct_decl, value: 'HeapValue' })
@@ -67,6 +110,44 @@ fn test_enum_autostr_call_marks_synthesized_helper_used() {
 	call := t.enum_autostr_call(expr, 'state.Status')
 	assert t.used_fns['state__Status__autostr']
 	assert a.node(call).kind == .call
+}
+
+// With `import a as real_a` and `import b as a`, the checked type `a.Kind` is module a's
+// enum, but the declaration spelling `a.Kind` names module b's. Helper naming takes the
+// type as is; only a recorded declaration spelling goes through the file's imports.
+fn test_enum_autostr_keeps_checked_types_and_resolves_declaration_spellings() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	file := '/tmp/main.v'
+	tc.enum_names['a.Kind'] = true
+	tc.enum_names['b.Kind'] = true
+	tc.enum_names['toml.token.Kind'] = true
+	tc.cur_file = file
+	tc.file_imports['${file}\nreal_a'] = 'a'
+	tc.file_imports['${file}\na'] = 'b'
+	tc.file_imports['${file}\ntoken'] = 'toml.token'
+	tc.file_selective_imports['${file}\nKind'] = ['b.Kind']
+	mut t := new_transformer(mut a, &tc, {
+		'main': true
+	})
+	t.cur_file = file
+	t.enum_types['a.Kind'] = ['from_a']
+	t.enum_types['b.Kind'] = ['from_b']
+	t.enum_types['toml.token.Kind'] = ['eof']
+
+	assert t.enum_autostr_type_name('a.Kind') == 'a.Kind'
+	assert t.enum_autostr_type_name('b.Kind') == 'b.Kind'
+	assert (t.source_enum_type_name(file, 'a.Kind') or { '' }) == 'b.Kind'
+	assert (t.source_enum_type_name(file, 'real_a.Kind') or { '' }) == 'a.Kind'
+	assert (t.source_enum_type_name(file, 'token.Kind') or { '' }) == 'toml.token.Kind'
+	assert (t.source_enum_type_name(file, 'Kind') or { '' }) == 'b.Kind'
+	assert t.source_enum_elem_type(file, '[]token.Kind') == '[]toml.token.Kind'
+	assert t.source_enum_elem_type(file, 'string') == 'string'
+
+	t.set_var_type_with_raw('declared', '[]b.Kind', '[]a.Kind')
+	t.set_var_type('inferred', '[]a.Kind')
+	assert (t.declared_var_spelling('declared') or { '' }) == '[]a.Kind'
+	assert (t.declared_var_spelling('inferred') or { '' }) == ''
 }
 
 fn test_cloned_worker_merge_replays_relocated_children_and_body_roots() {
@@ -356,6 +437,61 @@ fn test_sql_table_name_substitutes_active_generic_parameter() {
 	assert t.sql_table_type_names_match('main.User', 'User')
 }
 
+fn test_embedded_field_path_specializes_each_owner() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	mut t := new_transformer(mut a, &tc, map[string]bool{})
+	outer := StructInfo{
+		fields: [FieldInfo{ name: 'Middle', typ: 'Middle[T]', is_embedded: true }]
+	}
+	middle := StructInfo{
+		fields: [FieldInfo{ name: 'Leaf', typ: 'Leaf[T]', is_embedded: true }]
+	}
+	leaf := StructInfo{
+		fields: [FieldInfo{ name: 'payload', typ: 'T' }]
+	}
+	t.structs['Outer'] = outer
+	t.structs['Outer[Choice]'] = outer
+	t.structs['Middle'] = middle
+	t.structs['Middle[T]'] = middle
+	t.structs['Middle[Choice]'] = middle
+	t.structs['Leaf'] = leaf
+	t.structs['Leaf[T]'] = leaf
+	t.structs['Leaf[Choice]'] = leaf
+	path := t.struct_field_path_for_field('Outer[Choice]', 'payload') or { panic('missing embed path') }
+	assert path.map(it.typ) == ['Middle[Choice]', 'Leaf[Choice]']
+	assert t.lookup_struct_field_type(path.last().typ, 'payload') or { '' } == 'Choice'
+}
+
+fn test_embedded_field_path_uses_selected_struct_owner() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	tc.file_selective_imports['main.v\nOuter'] = ['pkg.Outer']
+	tc.struct_generic_params['pkg.Outer'] = ['T']
+	tc.struct_generic_params['pkg.Middle'] = ['T']
+	mut t := new_transformer(mut a, &tc, map[string]bool{})
+	t.cur_file = 'main.v'
+	t.cur_module = 'main'
+	t.structs['Outer'] = StructInfo{
+		name:   'Outer'
+		module: 'main'
+		fields: [FieldInfo{ name: 'Middle', typ: 'other.Middle[int]', is_embedded: true }]
+	}
+	t.structs['pkg.Outer'] = StructInfo{
+		name:   'Outer'
+		module: 'pkg'
+		fields: [FieldInfo{ name: 'Middle', typ: 'pkg.Middle[T]', is_embedded: true }]
+	}
+	t.structs['pkg.Middle'] = StructInfo{
+		name:   'Middle'
+		module: 'pkg'
+		fields: [FieldInfo{ name: 'payload', typ: 'T' }]
+	}
+	path := t.struct_field_path_for_field('Outer[Choice]', 'payload') or { panic('missing selected embed path') }
+	assert path.len == 1
+	assert path[0].typ == 'pkg.Middle[Choice]'
+}
+
 fn test_sql_table_name_keeps_main_lock_outside_main_module() {
 	t := Transformer{
 		cur_module: 'orm'
@@ -426,6 +562,38 @@ fn test_module_qualified_generic_callee_is_not_treated_as_value_index() {
 	assert t.generic_call_type_args_name(index_node) == 'Payload'
 }
 
+fn test_local_module_generic_call_keeps_explicit_type_args_when_normalized() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	tc.fn_ret_types['sync.new_channel'] = types.Type(types.void_)
+	mut t := new_transformer(mut a, &tc, map[string]bool{})
+	t.cur_module = 'sync'
+
+	callee_id := t.a.add_val(.ident, 'new_channel')
+	type_id := t.a.add_val(.ident, 'int')
+	index_children_start := t.a.children.len
+	t.a.children << callee_id
+	t.a.children << type_id
+	index_id := t.a.add_node(flat.Node{
+		kind:           .index
+		children_start: index_children_start
+		children_count: 2
+	})
+	arg_id := t.a.add_val(.int_literal, '0')
+	call_children_start := t.a.children.len
+	t.a.children << index_id
+	t.a.children << arg_id
+	call_id := t.a.add_node(flat.Node{
+		kind:           .call
+		children_start: call_children_start
+		children_count: 2
+	})
+
+	normalized_id := t.normalize_generic_call_expr(call_id, t.a.nodes[int(call_id)])
+	assert normalized_id != call_id
+	assert t.a.nodes[int(normalized_id)].value == 'int'
+}
+
 fn test_flattened_generic_receiver_short_variants() {
 	assert flattened_generic_receiver_short_variants('foo__Bar_baz__Qux') == [
 		'Bar_Qux',
@@ -448,8 +616,8 @@ fn test_auto_str_helper_call_uses_type_owner_module() {
 	mut t := Transformer{
 		a:          &a
 		tc:         &tc
-		cur_module: 'token'
-		cur_file:   'token.v'
+		cur_module: 'main'
+		cur_file:   'main.v'
 	}
 	value := t.make_ident('pos')
 	t.stringify_stack << 'Wrapper'
@@ -458,6 +626,21 @@ fn test_auto_str_helper_call_uses_type_owner_module() {
 
 	assert callee.value == '__v3_autostr_v__token__Pos'
 	assert t.auto_str_types['v.token.Pos'].helper_module == 'token'
+	t.synthesize_auto_str_helpers()
+	mut helper_idx := -1
+	for i, node in a.nodes {
+		if node.kind == .fn_decl && node.value == '__v3_autostr_v__token__Pos' {
+			helper_idx = i
+			break
+		}
+	}
+	assert helper_idx >= 3
+	assert a.nodes[helper_idx - 3].kind == .file
+	assert a.nodes[helper_idx - 3].value == 'main.v'
+	assert a.nodes[helper_idx - 2].kind == .module_decl
+	assert a.nodes[helper_idx - 2].value == 'main'
+	assert a.nodes[helper_idx - 1].kind == .module_decl
+	assert a.nodes[helper_idx - 1].value == 'token'
 }
 
 fn test_default_clone_helper_drops_owned_rvalue_after_saving_clone() {
@@ -526,6 +709,30 @@ fn test_program_sum_equality_helper_does_not_collide_with_cached_module_helper()
 	assert program_helper in t.sum_eq_types
 	assert t.sum_eq_types[module_helper].helper_module == 'orm'
 	assert t.sum_eq_types[program_helper].helper_module == 'main'
+}
+
+fn test_sum_equality_helper_keeps_requesting_file_context() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	mut t := new_transformer(mut a, &tc, map[string]bool{})
+	t.sum_types['xml.Contents'] = ['string']
+	t.cur_module = 'xml'
+	t.cur_file = 'parser_test.v'
+	t.sum_eq_helper_module = 'xml'
+	helper := sum_eq_helper_name('xml.Contents')
+	t.build_sum_eq_helper_fn('xml.Contents', helper)
+
+	mut helper_id := flat.empty_node
+	for i, node in a.nodes {
+		if node.kind == .fn_decl && node.value == helper {
+			helper_id = flat.NodeId(i)
+			break
+		}
+	}
+	assert helper_id != flat.empty_node
+	assert t.node_module_or(int(helper_id), '') == 'xml'
+	assert t.node_file_or(int(helper_id), '') == 'parser_test.v'
+	assert a.nodes.any(it.kind == .file && it.value == 'parser_test.v')
 }
 
 fn test_large_recursive_pointer_auto_str_stops_before_expanding_back_edge() {

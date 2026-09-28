@@ -100,15 +100,15 @@ fn test_http2_fetch_real_server() {
 	$if !network ? {
 		return
 	}
-	// HTTP/2 is negotiated by default for https requests. On Windows this runs
-	// over the SChannel backend's ALPN + HTTP/2 path (vlang/v#27383).
-	resp := get('https://www.google.com/')!
+	// An ordinary HTTPS request stays on HTTP/1.1.
+	plain := get('https://www.google.com/')!
+	assert plain.version() == .v1_1
+	// Explicit opt-in negotiates HTTP/2 when the server supports it. On
+	// Windows this uses the SChannel ALPN + HTTP/2 path (vlang/v#27383).
+	resp := fetch(url: 'https://www.google.com/', enable_http2: true)!
 	assert resp.version() == .v2_0
 	assert resp.status_code == 200
 	assert resp.body.len > 0
-	// Opting out forces HTTP/1.1 against the same server.
-	plain := fetch(url: 'https://www.google.com/', enable_http2: false)!
-	assert plain.version() == .v1_1
 }
 
 fn test_to_h2_request_authority_from_host_header() {

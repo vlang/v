@@ -344,7 +344,6 @@ fn drive_until_rst_or_response(mut client_end PipeEnd, out []u8, label string) i
 		}
 	}
 	assert false, '${label}: server sent neither RST_STREAM nor a response'
-	return -2
 }
 
 // malformed_headers_out builds preface + SETTINGS + a single complete HEADERS
@@ -1065,7 +1064,6 @@ fn drive_until_goaway_or_close(mut client_end PipeEnd, out []u8, label string) i
 		}
 	}
 	assert false, '${label}: server sent neither GOAWAY nor closed'
-	return -3
 }
 
 // preface_and_settings returns the client preface followed by an empty SETTINGS

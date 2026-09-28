@@ -84,7 +84,7 @@ fn test_fmt_uses_v3_formatter() {
 
 	assert res.exit_code == 0, res.output
 	assert res.output.contains('vfmt running v.gen.v over file:'), res.output
-	assert res.output.contains("fn main() {\n\tprintln('v3')\n}"), res.output
+	assert res.output.contains("fn main() { println('v3') }"), res.output
 }
 
 fn test_fmt_checks_accept_legacy_formatted_source() {
@@ -164,7 +164,7 @@ fn test_fmt_preserves_comments_with_v3() {
 	assert formatted.contains('// vfmt off')
 	assert formatted.contains('// vfmt on')
 	assert formatted.contains('println("keep this")')
-	assert formatted.contains("fn format_me() {\n\tprintln('yes')\n}"), formatted
+	assert formatted.contains("fn format_me() { println('yes') }"), formatted
 }
 
 fn test_fmt_keeps_regular_comments_attached_with_v3() {
@@ -766,7 +766,7 @@ fn test_fmt_ignores_vfmt_directives_inside_strings_with_v3() {
 	assert res.exit_code == 0, res.output
 	assert formatted.contains("off := '// vfmt off'"), formatted
 	assert formatted.contains("on := '// vfmt on'"), formatted
-	assert formatted.contains("fn format_me() {\n\tprintln('yes')\n}"), formatted
+	assert formatted.contains("fn format_me() { println('yes') }"), formatted
 }
 
 fn test_fmt_preserves_go_and_spawn_keywords_with_v3() {

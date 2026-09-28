@@ -1,7 +1,8 @@
-// vtest build: !sanitized_job?
+// vtest build: !sanitized_job? && !use_openssl?
 import net.http
 import net.mbedtls
 import os
+import time
 import veb
 
 const https_port = 13013
@@ -11,7 +12,12 @@ pub struct Context {
 }
 
 pub struct App {
+	veb.Middleware[Context]
 	started chan bool
+}
+
+fn passthrough_middleware(mut _ctx Context) bool {
+	return true
 }
 
 pub fn (mut app App) before_accept_loop() {
@@ -22,10 +28,11 @@ pub fn (app &App) index(mut ctx Context) veb.Result {
 	return ctx.text('secure')
 }
 
-fn test_veb_serves_https_requests() {
+fn test_veb_serves_https_requests() ! {
 	cert_path := os.join_path(@VMODROOT, 'examples', 'ssl_server', 'cert', 'server.crt')
 	key_path := os.join_path(@VMODROOT, 'examples', 'ssl_server', 'cert', 'server.key')
 	mut app := &App{}
+	app.use(handler: passthrough_middleware)
 	spawn veb.run_at[App, Context](mut app,
 		host:               '127.0.0.1'
 		port:               https_port
@@ -36,7 +43,13 @@ fn test_veb_serves_https_requests() {
 			cert_key: key_path
 		}
 	)
-	_ := <-app.started
+	select {
+		_ := <-app.started {
+		}
+		5 * time.second {
+			return error('mbedTLS HTTPS server did not start in time')
+		}
+	}
 	res := http.fetch(
 		url:      'https://127.0.0.1:${https_port}/'
 		validate: false

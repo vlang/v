@@ -1,5 +1,26 @@
 module transform
 
+import v.flat
+import v.types
+
+fn test_nested_generic_defaults_skip_pointer_aliases() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	tc.type_aliases['BoxPointer'] = '&Box[int]'
+	tc.type_aliases['BoxPointerChain'] = 'BoxPointer'
+	mut t := new_transformer(mut a, &tc, {
+		'main': true
+	})
+	t.structs['Box'] = StructInfo{
+		name:   'Box'
+		fields: [FieldInfo{ name: 'value', typ: 'int', default_expr: 0 }]
+	}
+	for alias in ['BoxPointer', 'BoxPointerChain'] {
+		mut visited := map[string]bool{}
+		assert !t.nested_generic_defaults_need_lowering(alias, mut visited)
+	}
+}
+
 fn test_struct_field_lookup_preserves_first_field_and_missing_names() {
 	for count in [0, 1, 15, 16, 256] {
 		mut fields := []FieldInfo{}

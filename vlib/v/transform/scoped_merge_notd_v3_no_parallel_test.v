@@ -54,6 +54,36 @@ fn test_scoped_monomorph_specialization_args_are_deep_cloned() {
 	assert owned_args == ['cloud.Body', '[]string']
 }
 
+fn test_scoped_batch_specialization_names_outlive_scratch_scope() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	mut t := new_transformer(mut a, &tc, map[string]bool{})
+	t.a.specialized_fn_modules[3] = 'builtin'
+	t.a.specialized_fn_files[3] = 'builtin.v'
+	nodes_len := t.a.specialized_fn_nodes.len
+	modules_len := t.a.specialized_fn_modules.len
+	files_len := t.a.specialized_fn_files.len
+
+	// A scoped batch records the module/file names of the functions it
+	// specializes, and those names can live in the batch's scratch arena
+	// (vlang/v#28897).
+	scope := transform_worker_scope_begin(true)
+	t.a.specialized_fn_nodes[7] = true
+	t.a.specialized_fn_modules[7] = 'main'.clone()
+	t.a.specialized_fn_files[7] = 'main.v'.clone()
+	transform_worker_scope_leave(scope)
+
+	t.promote_scoped_specialization_maps(scope, nodes_len, modules_len, files_len)
+	assert !transform_scope_owns(scope, t.a.specialized_fn_modules[7].str)
+	assert !transform_scope_owns(scope, t.a.specialized_fn_files[7].str)
+	transform_worker_scope_free(scope)
+	assert t.a.specialized_fn_nodes[7]
+	assert t.a.specialized_fn_modules[7] == 'main'
+	assert t.a.specialized_fn_files[7] == 'main.v'
+	assert t.a.specialized_fn_modules[3] == 'builtin'
+	assert t.a.specialized_fn_files[3] == 'builtin.v'
+}
+
 fn test_generic_unresolved_cache_owns_scoped_module() {
 	mut a := flat.FlatAst.new()
 	mut tc := types.TypeChecker.new(&a)
