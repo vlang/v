@@ -10247,12 +10247,16 @@ fn (mut t Transformer) clone_generic_node_from(node flat.Node, args []string, is
 		} else {
 			t.resolve_substituted_type_text(array_locked)
 		}
-		cloned_typ = if t.is_fixed_array_type(array_value)
-			|| (array_value.starts_with('[') && !array_value.starts_with('[]')) {
-			array_value
+		// A fixed-array init keeps its whole type in `value`, a dynamic one only the
+		// element type. Once a type parameter is substituted, the shape has to come
+		// from the unsubstituted spelling: `[]T{}` with `T = [7]u8` is `[][7]u8`.
+		is_fixed_init := if array_substituted != node.value {
+			node.value.starts_with('[') && !node.value.starts_with('[]')
 		} else {
-			'[]${array_value}'
+			t.is_fixed_array_type(array_value)
+				|| (array_value.starts_with('[') && !array_value.starts_with('[]'))
 		}
+		cloned_typ = if is_fixed_init { array_value } else { '[]${array_value}' }
 	} else if node.kind == .struct_init && node.value.len > 0 && node.value != 'Optional'
 		&& !t.is_optional_type_name(node.value) {
 		// The checker can annotate `T{}` with its surrounding optional/result
