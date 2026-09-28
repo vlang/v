@@ -152,6 +152,9 @@ fn (t &Transformer) translated_array_decay_operand_addressable(id flat.NodeId) b
 	if int(id) < 0 || int(id) >= t.a.nodes.len {
 		return false
 	}
+	if t.expr_is_overloaded_index_result(id) {
+		return false
+	}
 	node := t.a.node(id)
 	return match node.kind {
 		.ident { true }

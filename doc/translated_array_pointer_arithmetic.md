@@ -18,6 +18,7 @@ when the global is read or passed to a function. This includes arithmetic within
 
 Function-returned arrays and array literals used in pointer arithmetic receive owned, aligned
 backing storage, so the resulting pointers remain valid after leaving a function or inner block.
+Fixed-array values returned by overloaded index methods follow the same storage rule.
 Addressable array variables retain their original storage and aliasing behavior.
 When a local array or array field escapes through such a pointer, its containing local is moved
 to the heap. Writes through the local and its pointers continue to affect the same storage.

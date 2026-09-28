@@ -401,3 +401,42 @@ fn test_translated_multi_decl_array_storage_survives_escape() {
 	assert read_translated_element(translated_return_multi_match_array(true)) == 103
 	assert read_translated_element(translated_return_multi_match_array(false)) == 127
 }
+
+struct TranslatedIndexedArrays {
+	start int
+}
+
+fn (b TranslatedIndexedArrays) [] (index int) [3]int {
+	start := b.start + index * 10
+	return [start, start + 1, start + 2]!
+}
+
+fn translated_return_indexed_array_pointer() &int {
+	box := TranslatedIndexedArrays{ start: 20 }
+	return box[2] + 1
+}
+
+fn translated_retain_indexed_array(values [3]int) &int {
+	return values + 1
+}
+
+fn translated_return_indexed_array_argument() &int {
+	box := TranslatedIndexedArrays{ start: 30 }
+	return translated_retain_indexed_array(box[1])
+}
+
+fn test_translated_overloaded_index_arrays_keep_returned_value_storage() {
+	assert read_translated_element(translated_return_indexed_array_pointer()) == 41
+	assert read_translated_element(translated_return_indexed_array_argument()) == 41
+	box := TranslatedIndexedArrays{ start: 50 }
+	left := box[0] + 1
+	right := 2 + box[1]
+	wrapped := (box[2]) + 1
+	assert read_translated_element(left) == 51
+	assert read_translated_element(right) == 62
+	assert read_translated_element(wrapped) == 71
+	mut calls := []int{}
+	ordered := box[translated_ordered_index(mut calls)] + translated_rhs_offset(mut calls)
+	assert calls == [1, 2]
+	assert read_translated_element(ordered) == 51
+}

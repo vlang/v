@@ -1216,6 +1216,9 @@ fn (g &FlatGen) map_index_value_is_rvalue(id flat.NodeId) bool {
 }
 
 fn (mut g FlatGen) gen_index_overload_call(node flat.Node, base_id flat.NodeId, base_type types.Type, info types.CallInfo) {
+	if _ := array_fixed_type(info.return_type) {
+		g.write('(')
+	}
 	g.write(g.cname(info.name))
 	g.write('(')
 	g.gen_index_overload_receiver_arg(base_id, base_type, info)
@@ -1224,6 +1227,9 @@ fn (mut g FlatGen) gen_index_overload_call(node flat.Node, base_id flat.NodeId, 
 		g.gen_index_overload_index_arg(node, info.params[1])
 	}
 	g.write(')')
+	if _ := array_fixed_type(info.return_type) {
+		g.write(').ret_arr')
+	}
 }
 
 fn (mut g FlatGen) gen_index_overload_set(node flat.Node, lhs flat.Node, base_id flat.NodeId, base_type types.Type, info types.CallInfo) {
@@ -1506,12 +1512,18 @@ fn (mut g FlatGen) gen_index_operator_get_call(node flat.Node) bool {
 	if info.params.len < 2 {
 		return false
 	}
+	if _ := array_fixed_type(info.return_type) {
+		g.write('(')
+	}
 	g.write(g.cname(g.index_operator_call_name(info, base_type, '[]')))
 	g.write('(')
 	g.gen_index_operator_receiver_arg(base_id, base_type, info.params[0])
 	g.write(', ')
 	g.gen_expr_with_expected_type(index_id, info.params[1])
 	g.write(')')
+	if _ := array_fixed_type(info.return_type) {
+		g.write(').ret_arr')
+	}
 	return true
 }
 
