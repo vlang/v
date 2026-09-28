@@ -9003,13 +9003,20 @@ fn (mut g FlatGen) gen_assign(node flat.Node) {
 					}
 
 					lhs_assign_id := g.a.child(&node, i)
+					mut shift_type := lhs_type
+					if g.expr_is_in_translated_file(lhs_assign_id) {
+						shift_type = g.tc.translated_promoted_numeric_type(lhs_type)
+						if shift_type.name() == 'int' {
+							shift_type = types.Type(types.i32_)
+						}
+					}
 					if g.a.nodes[int(lhs_assign_id)].kind == .ident {
 						mut lhs_text := g.expr_to_string(lhs_assign_id)
 						if g.assign_lhs_needs_deref(lhs_assign_id, lhs_type, rhs_type, node.op) {
 							lhs_text = '*${lhs_text}'
 						}
 						g.write('${lhs_text} = ')
-						g.gen_guarded_shift_from_text(lhs_text, rhs_id, lhs_type, shift_op)
+						g.gen_guarded_shift_from_text(lhs_text, rhs_id, shift_type, shift_op)
 						g.writeln(';')
 					} else {
 						// Compound assignment evaluates its lvalue once; spill the
@@ -9019,7 +9026,7 @@ fn (mut g FlatGen) gen_assign(node flat.Node) {
 						g.write('{ ${lhs_ct}* ${addr_tmp} = &(')
 						g.gen_expr(lhs_assign_id)
 						g.write('); *${addr_tmp} = ')
-						g.gen_guarded_shift_from_text('*${addr_tmp}', rhs_id, lhs_type, shift_op)
+						g.gen_guarded_shift_from_text('*${addr_tmp}', rhs_id, shift_type, shift_op)
 						g.writeln('; }')
 					}
 					g.expected_enum = ''
@@ -9108,6 +9115,25 @@ fn (g &FlatGen) translated_numeric_compound_operator(lhs_id flat.NodeId, lhs_typ
 fn (mut g FlatGen) gen_translated_numeric_compound_value(lhs_text string, lhs_id flat.NodeId, rhs_id flat.NodeId, lhs_type types.Type, rhs_type types.Type, operator string) {
 	lhs_ct := g.translated_numeric_c_type(lhs_id, lhs_type)
 	rhs_ct := g.translated_numeric_c_type(rhs_id, rhs_type)
+	if translated_integer_scalar_type(lhs_type) && translated_integer_scalar_type(rhs_type) {
+		mut common_type := g.tc.translated_common_numeric_type(lhs_type, rhs_type)
+		if common_type.name() == 'int' {
+			common_type = types.Type(types.i32_)
+		}
+		op := match operator {
+			'+' { flat.Op.plus }
+			'-' { flat.Op.minus }
+			'*' { flat.Op.mul }
+			else { flat.Op.assign }
+		}
+		if helper := g.integer_overflow_helper(common_type, op) {
+			common_ct := g.value_c_type(common_type)
+			g.write('(${lhs_ct})(${helper}((${common_ct})(${lhs_text}), (${common_ct})(')
+			g.gen_expr(rhs_id)
+			g.write(')))')
+			return
+		}
+	}
 	g.write('(${lhs_ct})(((${lhs_ct})(${lhs_text})) ${operator} ((${rhs_ct})(')
 	g.gen_expr(rhs_id)
 	g.write(')))')

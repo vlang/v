@@ -3181,7 +3181,8 @@ fn (tc &TypeChecker) translated_integer_literal_type(id flat.NodeId) ?Type {
 	return Type(u64_)
 }
 
-fn (tc &TypeChecker) translated_promoted_numeric_type(typ Type) Type {
+// translated_promoted_numeric_type applies C integral promotions in translated code.
+pub fn (tc &TypeChecker) translated_promoted_numeric_type(typ Type) Type {
 	clean := unalias_type(typ)
 	if clean is Enum {
 		backing := unalias_type(tc.inline_asm_enum_backing_type(clean.name))
@@ -3213,7 +3214,8 @@ fn translated_integer_is_unsigned(typ Type) bool {
 	return typ is USize || typ is Rune
 }
 
-fn (tc &TypeChecker) translated_common_numeric_type(lhs Type, rhs Type) Type {
+// translated_common_numeric_type selects the arithmetic type after C numeric promotions.
+pub fn (tc &TypeChecker) translated_common_numeric_type(lhs Type, rhs Type) Type {
 	left := tc.translated_promoted_numeric_type(lhs)
 	right := tc.translated_promoted_numeric_type(rhs)
 	if left.is_float() || right.is_float() {

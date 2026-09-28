@@ -88,3 +88,26 @@ fn test_ordinary_int_casts_keep_the_native_width() {
 	result := os.execute('${os.quoted_path(@VEXE)} run ${os.quoted_path(root)}')
 	assert result.exit_code == 0, result.output
 }
+
+fn test_translated_compound_arithmetic_respects_overflow_checks() {
+	root := os.join_path(os.vtmp_dir(), 'v3_translated_compound_overflow_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+	path := os.join_path(root, 'main.v')
+	cases := [
+		'mut value := i64(9223372036854775807); value += i64(1)',
+		'mut value := i64(-9223372036854775807); value -= i64(2)',
+		'mut value := i64(9223372036854775807); value *= i64(2)',
+		'mut value := int(2147483647); value += int(1)',
+		'mut values := [i64(9223372036854775807)]!; values[0] += i64(1)',
+	]
+	for body in cases {
+		os.write_file(path, '@[translated]\nmodule main\nfn main() { ${body} }\n')!
+		result := os.execute('${os.quoted_path(@VEXE)} -check-overflow run ${os.quoted_path(path)}')
+		assert result.exit_code != 0, result.output
+		assert result.output.contains('overflow'), result.output
+	}
+	os.write_file(path, '@[translated]\nmodule main\nfn main() { mut value := int(-1); value += u32(0); assert value == -1; mut narrow := u8(255); narrow += u8(1); assert narrow == 0 }\n')!
+	result := os.execute('${os.quoted_path(@VEXE)} -check-overflow run ${os.quoted_path(path)}')
+	assert result.exit_code == 0, result.output
+}

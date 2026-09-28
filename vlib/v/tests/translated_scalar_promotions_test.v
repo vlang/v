@@ -390,3 +390,27 @@ fn test_translated_explicit_int_casts_narrow_in_wider_contexts() {
 	assert translated_int_cast_constant == -1
 	assert translated_alias_cast_constant == -1
 }
+
+fn test_translated_compound_shifts_use_promoted_width() {
+	count := int(40)
+	mut flag := true
+	flag <<= count
+	assert !flag
+	flag = true
+	flag >>= count
+	assert !flag
+	flag = true
+	flag >>>= count
+	assert !flag
+	mut small := i8(-1)
+	small >>= count
+	assert small == 0
+	mut code := TranslatedUnsigned32Enum.two
+	code <<= count
+	assert int(code) == 0
+	mut values := [true, true, true]!
+	values[0] <<= count
+	values[1] >>= count
+	values[2] >>>= count
+	assert values == [false, false, false]!
+}
