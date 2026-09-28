@@ -22854,7 +22854,7 @@ fn (mut g FlatGen) emit_global_inits() {
 					child := g.a.node(child_id)
 					if child.kind in [.array_init, .array_literal, .struct_init]
 						|| (child.kind == .postfix && child.op == .not) {
-						if fixed := array_fixed_type(clean_type.base_type) {
+						if fixed := array_fixed_type(default_init_unalias_type(clean_type.base_type)) {
 							if g.queue_global_fixed_array_pointer_init(g.global_c_name(qname),
 								child_id, fixed, typ) {
 								continue
@@ -22941,11 +22941,18 @@ fn (g &FlatGen) global_fixed_array_pointer_alignment(fixed types.ArrayFixed) ?st
 }
 
 fn (mut g FlatGen) global_fixed_array_fill_stmt(dst string, val_id flat.NodeId, fixed types.ArrayFixed) string {
+	node := g.a.node(val_id)
+	if node.kind !in [.array_init, .array_literal, .struct_init, .postfix] {
+		source := g.fixed_array_copy_source_string(val_id, types.Type(fixed))
+		if trimmed_space(source).len > 0 {
+			return 'memmove(${dst}, ${source}, sizeof(${dst}));'
+		}
+		return ''
+	}
 	literal := g.fixed_array_compound_literal_expr(val_id, fixed)
 	if trimmed_space(literal).len > 0 {
 		return 'memmove(${dst}, ${literal}, sizeof(${dst}));'
 	}
-	node := g.a.node(val_id)
 	if node.kind != .array_init {
 		return ''
 	}

@@ -10,3 +10,4 @@ such as `&[4]int{init: index * 2}` fill each element before the global pointer i
 Arrays of aligned structs retain the alignment required by their elements.
 This also applies to fixed-array aliases, nested fills, and alignment inherited
 through struct value fields.
+Alias chains and nested rows returned by functions are initialized as well.
