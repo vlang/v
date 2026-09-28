@@ -244,7 +244,20 @@ fn (mut decoder Decoder) resolve_sumtype_from_type_field[T](mut val T) !bool {
 	}
 	mut has_discriminated_variant := false
 	$for v in T.variants {
-		$if v.typ is $struct {
+		$if v.typ is $option {
+			// An option of a struct or a time (`?Foo`, `?time.Time`) is tagged with its
+			// payload's name, like in the removed `json` module.
+			option_name := typeof(v.typ).name
+			if option_payload_fits(option_name, .object) {
+				has_discriminated_variant = true
+				if decoder.sumtype_type_field_matches(type_field_node,
+					sumtype_variant_name(option_name.trim_left('?')))
+				{
+					val = T(v)
+					return true
+				}
+			}
+		} $else $if v.typ is $struct {
 			has_discriminated_variant = true
 			mut matches := decoder.sumtype_type_field_matches(type_field_node,
 				sumtype_variant_name(typeof(v.typ).name))

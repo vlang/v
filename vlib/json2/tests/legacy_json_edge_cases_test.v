@@ -362,3 +362,30 @@ fn test_option_rune_elements() {
 	z := top[0] or { panic('z should be set') }
 	assert z == `z`
 }
+
+type OptionTimeVariant = ?time.Time | int
+
+struct OptionFooVariant {
+	a int
+}
+
+struct OptionBarVariant {
+	b int
+}
+
+type OptionStructs = ?OptionFooVariant | ?OptionBarVariant
+
+fn test_option_time_and_struct_variants() {
+	value := OptionTimeVariant(?time.Time(time.unix(100)))
+	encoded := json2.encode(value)
+	// Like the removed module, a time in an option variant is a `Time` object.
+	assert encoded == '{"_type":"Time","value":100}'
+	decoded := json2.decode[OptionTimeVariant](encoded)!
+	decoded_time := (decoded as ?time.Time) or { panic('the time should be set') }
+	assert decoded_time.unix() == 100
+	// `_type` selects between option variants of structs.
+	bar := json2.decode[OptionStructs]('{"b":2,"_type":"OptionBarVariant"}')!
+	assert json2.encode(bar) == '{"b":2,"_type":"OptionBarVariant"}'
+	foo := json2.decode[OptionStructs]('{"a":1,"_type":"OptionFooVariant"}')!
+	assert json2.encode(foo) == '{"a":1,"_type":"OptionFooVariant"}'
+}
