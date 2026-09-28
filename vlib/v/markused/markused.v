@@ -6875,9 +6875,26 @@ fn (c &CallCollector) generic_factory_return_type_name(index &flat.Node, name st
 }
 
 fn (c &CallCollector) inferred_generic_factory_return_type_name(call_id flat.NodeId, call &flat.Node, name string, cur_module string, imports map[string]string, local_values map[string]bool, local_types map[string]string, unwrap_optional_result bool) ?string {
+	mut receiver_type := ''
+	callee := c.a.child_node(call, 0)
+	if callee.kind == .selector && callee.children_count > 0 {
+		receiver_id := c.a.child(callee, 0)
+		raw_receiver := c.top_level_receiver_type_name(receiver_id, cur_module, imports,
+			local_values, local_types)
+		receiver_type = c.generic_factory_qualified_type_text(raw_receiver, receiver_id,
+			cur_module, imports)
+	}
 	for candidate in markused_fn_signature_name_candidates(name, cur_module) {
-		generic_params := c.tc.fn_generic_params[candidate] or { continue }
+		generic_params := c.tc.fn_generic_params[candidate] or { []string{} }
 		if generic_params.len == 0 {
+			if receiver_type.len > 0 && c.generic_receiver_method_name_is_known(candidate) {
+				return_type := c.generic_factory_return_type_text(candidate, cur_module,
+					unwrap_optional_result)
+				if return_type.len > 0 {
+					return c.tc.specialize_generic_factory_return(return_type, candidate,
+						receiver_type, []string{})
+				}
+			}
 			continue
 		}
 		mut param_texts := c.tc.fn_param_type_texts[candidate] or { []string{} }
@@ -6909,15 +6926,6 @@ fn (c &CallCollector) inferred_generic_factory_return_type_name(call_id flat.Nod
 			unwrap_optional_result)
 		if return_type.len == 0 {
 			continue
-		}
-		mut receiver_type := ''
-		callee := c.a.child_node(call, 0)
-		if callee.kind == .selector && callee.children_count > 0 {
-			receiver_id := c.a.child(callee, 0)
-			raw_receiver := c.top_level_receiver_type_name(receiver_id, cur_module, imports,
-				local_values, local_types)
-			receiver_type = c.generic_factory_qualified_type_text(raw_receiver, receiver_id,
-				cur_module, imports)
 		}
 		return c.tc.specialize_generic_factory_return(return_type, candidate, receiver_type,
 			args)

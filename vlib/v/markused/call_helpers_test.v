@@ -508,6 +508,16 @@ fn test_receiver_only_generic_factory_return_substitutes_explicit_receiver_arg()
 	}, false)
 	assert inferred == 'gates.Gate[int]'
 	assert collector.typed_receiver_method_name(inferred, 'backward', 'main')? == 'gates.Gate[int].backward'
+	plain_call := call_helper_node(mut a, flat.Node{ kind: .call }, [selector])
+	tc.sparse_resolved_call_names[int(plain_call)] = method
+	plain_inferred := collector.top_level_call_return_type_name(plain_call, 'main',
+		map[string]string{}, {
+			'builder': true
+		}, {
+			'builder': 'gates.Builder[int]'
+		}, false)
+	assert plain_inferred == 'gates.Gate[int]'
+	assert collector.typed_receiver_method_name(plain_inferred, 'backward', 'main')? == 'gates.Gate[int].backward'
 }
 
 fn test_generic_factory_return_uses_placeholder_signature_text() {
