@@ -87,3 +87,40 @@ fn test_translated_compound_and_bitwise_operators() {
 	callbacks := TranslatedCallbacks{}
 	assert (if !callbacks.callback { 1 } else { 0 }) == 1
 }
+
+fn test_translated_scalar_postfix_mutations() {
+	mut state := TranslatedCode.zero
+	state++
+	assert state == TranslatedCode.one
+	state--
+	assert state == TranslatedCode.zero
+	mut character := char(0)
+	character++
+	assert character == 1
+	character--
+	assert character == 0
+	mut flag := false
+	flag++
+	assert flag
+	flag++
+	assert flag
+	flag--
+	assert !flag
+	flag--
+	assert flag
+	mut flags := [false]
+	mut evaluations := [0]
+	flags[translated_postfix_index(mut evaluations)]++
+	assert flags[0]
+	assert evaluations[0] == 1
+	mut states := {
+		'key': TranslatedCode.zero
+	}
+	states['key']++
+	assert states['key'] == TranslatedCode.one
+}
+
+fn translated_postfix_index(mut evaluations []int) int {
+	evaluations[0]++
+	return 0
+}

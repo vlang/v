@@ -2,6 +2,58 @@ module types
 
 import os
 
+fn test_translated_static_globals_use_c_int_width() {
+	root := os.join_path(os.vtmp_dir(), 'v3_translated_static_globals_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+	os.write_file(os.join_path(root, 'translated.v'), '@[translated]
+module main
+type StaticInt = int
+type StaticRow = [2]StaticInt
+struct StaticHolder { value int }
+const static_unsigned = u32(0xffff_ffff)
+__global (
+	translated_static int = u32(0xffff_ffff)
+	translated_static_alias StaticInt = static_unsigned
+	translated_static_parens int = (u32(0xffff_ffff))
+	translated_static_float int = f64(-1.5)
+	translated_static_wide i64 = u32(0xffff_ffff)
+	translated_static_array [2]int = [u32(0xffff_ffff), u32(0x8000_0000)]!
+	translated_static_nested [1][2]int = [[u32(0xffff_ffff), u32(0x8000_0000)]!]!
+	translated_static_row StaticRow = [u32(0xffff_ffff), u32(0x8000_0000)]!
+	translated_static_wide_array [1]i64 = [u32(0xffff_ffff)]!
+	translated_static_struct StaticHolder = StaticHolder{value: u32(0xffff_ffff)}
+)
+')!
+	os.write_file(os.join_path(root, 'main.v'), 'module main
+__global ordinary_static int = int(u32(0xffff_ffff))
+__global ordinary_static_array [1]int = [int(u32(0xffff_ffff))]!
+fn main() {
+	assert i64(translated_static) == -1
+	assert i64(translated_static_alias) == -1
+	assert i64(translated_static_parens) == -1
+	assert i64(translated_static_float) == -1
+	assert translated_static_wide == i64(4294967295)
+	assert i64(translated_static_array[0]) == -1
+	assert i64(translated_static_array[1]) == -2147483648
+	assert i64(translated_static_nested[0][0]) == -1
+	assert i64(translated_static_nested[0][1]) == -2147483648
+	assert i64(translated_static_row[0]) == -1
+	assert i64(translated_static_row[1]) == -2147483648
+	assert translated_static_wide_array[0] == i64(4294967295)
+	assert i64(translated_static_struct.value) == -1
+	if sizeof(int) == 8 {
+		assert i64(ordinary_static) == 4294967295
+		assert i64(ordinary_static_array[0]) == 4294967295
+	}
+}
+')!
+	for flags in ['', '-no-parallel'] {
+		result := os.execute('${os.quoted_path(@VEXE)} ${flags} -enable-globals run ${os.quoted_path(root)}')
+		assert result.exit_code == 0, result.output
+	}
+}
+
 fn test_translated_enum_arithmetic_with_overflow_checks() {
 	root := os.join_path(os.vtmp_dir(), 'v3_translated_enum_overflow_${os.getpid()}')
 	os.mkdir_all(root)!

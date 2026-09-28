@@ -22353,22 +22353,26 @@ fn (mut g FlatGen) gen_c_static_fixed_array_initializer(id flat.NodeId, fixed ty
 		g.write('{0}')
 		return
 	}
-	if g.gen_c_static_array_literal_initializer(id) {
+	if g.gen_c_static_array_literal_initializer(id, types.Type(fixed)) {
 		return
 	}
 	g.gen_expr_with_expected_type(id, types.Type(fixed))
 }
 
-fn (mut g FlatGen) gen_c_static_array_literal_initializer(id flat.NodeId) bool {
+fn (mut g FlatGen) gen_c_static_array_literal_initializer(id flat.NodeId, expected types.Type) bool {
 	if int(id) < 0 || int(id) >= g.a.nodes.len {
 		return false
 	}
 	node := g.a.nodes[int(id)]
 	if node.kind in [.cast_expr, .paren, .postfix] && node.children_count > 0 {
-		return g.gen_c_static_array_literal_initializer(g.a.child(&node, 0))
+		return g.gen_c_static_array_literal_initializer(g.a.child(&node, 0), expected)
 	}
 	if node.kind != .array_literal {
 		return false
+	}
+	mut elem_type := types.Type(types.Unknown{})
+	if fixed := array_fixed_type(default_init_unalias_type(expected)) {
+		elem_type = fixed.elem_type
 	}
 	g.write('{')
 	for i in 0 .. node.children_count {
@@ -22376,10 +22380,12 @@ fn (mut g FlatGen) gen_c_static_array_literal_initializer(id flat.NodeId) bool {
 			g.write(', ')
 		}
 		child_id := g.a.child(&node, i)
-		if g.gen_c_static_array_literal_initializer(child_id) {
+		if g.gen_c_static_array_literal_initializer(child_id, elem_type) {
 			continue
 		}
-		constant := g.const_expr_to_string(child_id, []string{})
+		constant := g.global_scalar_static_initializer(child_id, elem_type) or {
+			g.const_expr_to_string(child_id, []string{})
+		}
 		if trimmed_space(constant).len > 0 {
 			g.write(constant)
 		} else {
@@ -22492,8 +22498,8 @@ fn (mut g FlatGen) global_decls() {
 		}
 		vq := g.global_volatile_qualifier(name)
 		section_prefix := g.global_linker_section_prefix(name)
-		if decl_typ is types.ArrayFixed {
-			c_elem, dims := g.fixed_array_decl_parts(decl_typ)
+		if fixed := array_fixed_type(default_init_unalias_type(decl_typ)) {
+			c_elem, dims := g.fixed_array_decl_parts(fixed)
 			if val_id := g.global_inits[name] {
 				if name in g.global_cinit_names || g.global_fixed_array_is_static(val_id, decl_typ) {
 					g.write('${section_prefix}${vq}${c_elem} ${g.global_c_name(name)}${dims} = ')
@@ -22502,7 +22508,7 @@ fn (mut g FlatGen) global_decls() {
 					continue
 				}
 			}
-			init := if g.has_zero_sized_leading_init_slot(decl_typ) { '' } else { ' = {0}' }
+			init := if g.has_zero_sized_leading_init_slot(fixed) { '' } else { ' = {0}' }
 			if is_thread_local {
 				cname := g.global_c_name(name)
 				g.emit_tinyc_windows_thread_local_slot(cname, c_elem, dims)

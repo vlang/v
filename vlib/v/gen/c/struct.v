@@ -277,7 +277,7 @@ fn (mut g FlatGen) gen_struct_field_expr_for_field(value_id flat.NodeId, struct_
 			g.gen_c_static_fixed_array_initializer(value_id, fixed)
 			return
 		}
-		if g.gen_c_static_array_literal_initializer(value_id) {
+		if g.gen_c_static_array_literal_initializer(value_id, expected) {
 			return
 		}
 		value := g.a.node(value_id)

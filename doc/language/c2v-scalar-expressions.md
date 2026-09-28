@@ -11,8 +11,10 @@ Translated scalar return statements also use C conversions, including float to
 integer and negative integer sentinels returned as unsigned values. Unary numeric
 and bitwise operations, and shifts, accept enum, character, and boolean operands
 through C's integral promotion rules, including boolean shifts.
-Postfix `++` and `--` accept translated enum and character scalars.
+Postfix `++` and `--` accept translated enum, character, and boolean scalars.
 Static translated `int` globals narrow their initial values to C's 32-bit `int` width.
+This conversion also applies to `int` elements in static fixed-array globals, including nested
+arrays and aliases. Wider element types and ordinary V files keep their usual conversions.
 Mixed numeric arithmetic and conditional branches use C's usual arithmetic
 conversions when determining the expression type.
 

@@ -23,6 +23,12 @@ fn main() {
 	value += true
 	value -= Code.one
 	_ = 3 ^ true
+	mut state := Code.zero
+	state++
+	mut character := char(0)
+	character--
+	mut boolean := false
+	boolean++
 	translated()
 }
 ')!
@@ -38,6 +44,9 @@ fn main() {
 		assert result.output.contains('invalid right operand: int += bool'), result.output
 		assert result.output.contains('invalid right operand: int -= Code'), result.output
 		assert result.output.contains('right type of `^` cannot be non-integer type `bool`'), result.output
+		assert result.output.contains('invalid operation: ++ (non-numeric type `Code`)'), result.output
+		assert result.output.contains('invalid operation: -- (non-numeric type `char`)'), result.output
+		assert result.output.contains('invalid operation: ++ (non-numeric type `bool`)'), result.output
 	}
 }
 
