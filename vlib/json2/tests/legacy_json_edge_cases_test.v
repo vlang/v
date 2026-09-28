@@ -246,3 +246,32 @@ fn test_escaped_sumtype_discriminator_key() {
 	robot := json2.decode[Being]('{"_typ\\u0065":"Robot","model":"r2"}')!
 	assert robot is Robot
 }
+
+struct OmitInner {
+	a int
+}
+
+struct OmitDefault {
+	a int = 3
+}
+
+type OmitValue = OmitInner | int
+
+struct OmitHolder {
+	c NullColor   @[omitempty]
+	i OmitInner   @[omitempty]
+	w OmitDefault @[omitempty]
+	v OmitValue   @[omitempty]
+}
+
+fn test_omitempty_of_enums_structs_and_sumtypes() {
+	// Like the removed module: a field equal to its type's default value is omitted.
+	assert json2.encode(OmitHolder{}) == '{}'
+	assert json2.encode(OmitHolder{
+		c: .green
+		i: OmitInner{1}
+		w: OmitDefault{0}
+		v: OmitValue(5)
+	}) == '{"c":"green","i":{"a":1},"w":{"a":0},"v":5}'
+	assert json2.encode(OmitHolder{ v: OmitValue(0) }) == '{"v":0}'
+}

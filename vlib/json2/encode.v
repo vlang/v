@@ -686,6 +686,12 @@ fn check_not_empty[T](val T) ?bool {
 		}
 	} $else $if T.unaliased_typ is $array || T.unaliased_typ is $map {
 		return val.len != 0
+	} $else $if T.unaliased_typ is $enum {
+		return val != unsafe { T(0) }
+	} $else $if T.unaliased_typ is $struct || T.unaliased_typ is $sumtype {
+		// Like the removed `json` module, a struct or sum type value is empty when it
+		// is its type's default value (a struct with its field defaults).
+		return val != T{}
 	}
 	return true
 }
