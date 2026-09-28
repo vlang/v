@@ -32,6 +32,11 @@ mut:
 	words []string
 }
 
+struct NestedAppendFixedBorrowedHolder {
+mut:
+	words [2]string
+}
+
 fn (mut c NestedMapKeyCounter) key(k string) string {
 	c.n++
 	return k
@@ -526,4 +531,20 @@ fn test_nested_append_clones_borrowed_projection() {
 	holder.words[0] = 'source-changed'.clone()
 	assert holder.words == ['source-changed', 'borrowed-b']
 	assert nested['a']['b'] == ['borrowed-a', 'borrowed-b']
+}
+
+fn nested_append_borrowed_fixed_words(mut holder NestedAppendFixedBorrowedHolder) map[string]map[string][][2]string {
+	mut nested := map[string]map[string][][2]string{}
+	nested['a']['b'] << holder.words
+	return nested
+}
+
+fn test_nested_append_clones_borrowed_fixed_array_projection() {
+	mut holder := NestedAppendFixedBorrowedHolder{
+		words: ['fixed-a'.clone(), 'fixed-b'.clone()]!
+	}
+	nested := nested_append_borrowed_fixed_words(mut holder)
+	holder.words[0] = 'source-changed'.clone()
+	assert holder.words == ['source-changed', 'fixed-b']!
+	assert nested['a']['b'] == [['fixed-a', 'fixed-b']!]
 }

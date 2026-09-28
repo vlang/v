@@ -1926,9 +1926,11 @@ fn (mut t Transformer) map_index_inner_map_slot(id flat.NodeId) ?flat.NodeId {
 	found := t.make_map_get_check_expr(map_expr, info.base_type, lookup_key_name)
 	mut reinsert_key_name := lookup_key_name
 	mut missing_stmts := []flat.NodeId{}
+	mut cleanup_reinsert_key := false
+	mut reinsert_key_existed_name := ''
 	if lookup_key_name != key_name && t.normalize_type_alias(info.key_type).trim_space() != 'string' {
-		// Non-string map keys transfer their owned data on insertion. Keep the
-		// lookup key independent if a later operand removed the original entry.
+		// Keep the lookup key independent if a later operand removed the original
+		// entry. The insertion callback may clone the reinsertion key again.
 		reinsert_key_name = t.new_temp('map_insert_key')
 		pending_start := t.pending_stmts.len
 		reinsert_key := t.make_compiler_default_clone_value(t.make_ident(lookup_key_name),
@@ -1937,6 +1939,8 @@ fn (mut t Transformer) map_index_inner_map_slot(id flat.NodeId) ?flat.NodeId {
 		t.pending_stmts = t.pending_stmts[..pending_start].clone()
 		missing_stmts << t.make_decl_assign_typed(reinsert_key_name, reinsert_key,
 			info.key_storage_type)
+		cleanup_reinsert_key, reinsert_key_existed_name = t.prepare_owned_map_set_key_cleanup(true,
+			info.key_type, map_expr, info.base_type, reinsert_key_name, mut missing_stmts)
 	}
 	new_zero_name := t.new_temp('map_zero')
 	reinsert := t.make_call_typed('map__get_and_set', [
@@ -1947,6 +1951,8 @@ fn (mut t Transformer) map_index_inner_map_slot(id flat.NodeId) ?flat.NodeId {
 	missing_stmts << t.make_decl_assign_typed(new_zero_name, t.zero_value_for_type(info.value_type),
 		info.value_type)
 	missing_stmts << t.make_expr_stmt(reinsert)
+	t.append_owned_map_set_key_cleanup(reinsert_key_name, cleanup_reinsert_key, reinsert_key_existed_name,
+		mut missing_stmts)
 	missing_block := t.make_block(missing_stmts)
 	current_slot := t.make_if(t.make_map_exists_expr(map_expr, info.base_type, lookup_key_name),
 		t.make_block([t.make_expr_stmt(found)]), missing_block)
@@ -3219,9 +3225,16 @@ fn (mut t Transformer) lower_map_index_append_with_info_and_prelude(info MapInde
 					|| (rhs_node.kind == .call && !t.expr_can_take_address(rhs_id))))
 		mut rhs := t.transform_expr(rhs_id)
 		rhs_array_type := t.normalize_type_alias(staged_rhs_type)
-		if rhs_array_type.starts_with('[]') {
+		rhs_elem_type := if rhs_array_type.starts_with('[]') {
+			rhs_array_type[2..]
+		} else if t.is_fixed_array_type(rhs_array_type) {
+			fixed_array_elem_type(rhs_array_type)
+		} else {
+			''
+		}
+		if rhs_elem_type.len > 0 {
 			cloned_rhs, borrowed_clone := t.clone_borrowed_array_append_many_value(rhs_id,
-				rhs, staged_rhs_type, rhs_array_type[2..])
+				rhs, staged_rhs_type, rhs_elem_type)
 			rhs = cloned_rhs
 			staged_rhs_is_owned = staged_rhs_is_owned || borrowed_clone
 		}
