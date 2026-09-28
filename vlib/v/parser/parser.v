@@ -14518,7 +14518,8 @@ fn (mut p Parser) sizeof_expr() flat.NodeId {
 				|| p.translated_sizeof_name_is_const(p.lit)
 				|| (!isreftype_name_can_start_type(p.lit)
 					&& !p.translated_sizeof_name_is_type(p.lit) && p.peek() != .dot)
-				|| (p.peek() == .lsbr && !type_name_can_init(p.lit)))) {
+				|| (p.peek() == .lsbr && !type_name_can_init(p.lit)
+					&& !p.translated_sizeof_name_is_type(p.lit)))) {
 		inner := p.expr(.lowest)
 		p.check(.rpar)
 		return p.a.add_node(flat.Node{

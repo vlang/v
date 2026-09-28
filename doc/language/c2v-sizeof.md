@@ -12,5 +12,6 @@ When deferred type-test branches declare a constant or global and a type with th
 `sizeof` uses the value's storage type only when its branch is selected. Compound operands such
 as `sizeof(Item + 0)` keep their expression interpretation when `Item` is a deferred constant.
 
-Known type names retain their type interpretation, including lowercase aliases and
-function-local types. Ordinary V files retain their existing `sizeof` parsing rules.
+Known type names retain their type interpretation, including lowercase aliases, generic struct
+instantiations such as `sizeof(c_box[int])`, and function-local types. Ordinary V files retain their
+existing `sizeof` parsing rules.

@@ -206,6 +206,8 @@ fn main() {
  assert sizeof(c_enum) > 0
  assert sizeof(c_interface) > 0
  assert sizeof(c_union) > 0
+ assert sizeof(c_box[int]) == sizeof(int)
+ assert sizeof(c_box[[2]int]) == sizeof([2]int)
 }
 '
 	definitions := '
@@ -213,6 +215,7 @@ struct c_record { value int }
 enum c_enum { zero }
 interface c_interface { value() int }
 union c_union { first int second i64 }
+struct c_box[T] { value T }
 '
 	main_file := os.join_path(root, 'a.v')
 	os.write_file(main_file, use_types + definitions)!
@@ -220,7 +223,7 @@ union c_union { first int second i64 }
 	p.parse_file(main_file)
 	assert p.diagnostics.len == 0, p.diagnostics.str()
 	sizes := p.a.nodes.filter(it.kind == .sizeof_expr)
-	assert sizes.len == 4
+	assert sizes.len == 8
 	assert sizes.all(it.children_count == 0)
 	result := os.execute('${os.quoted_path(@VEXE)} run ${os.quoted_path(main_file)}')
 	assert result.exit_code == 0, result.output
