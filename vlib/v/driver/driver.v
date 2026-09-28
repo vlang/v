@@ -18805,7 +18805,7 @@ fn source_imports_fast_parallel(a &flat.FlatAst, files []string) [][]string {
 // graph with a byte-level import scan. Parsing the resulting files in one batch
 // avoids three parse/merge barriers while preserving the ordinary resolver as
 // the source of truth for the resulting AST.
-fn discover_eager_selfhost_modules(a &flat.FlatAst, prefs &pref.Preferences, first_file string, project_root string, mut parsed_modules map[string]bool, mut module_path_cache map[string]string) []EagerSelfhostModule {
+fn discover_eager_selfhost_modules(a &flat.FlatAst, prefs &pref.Preferences, first_file string, project_root string, initial_identity_dirs map[string]string, mut parsed_modules map[string]bool, mut module_path_cache map[string]string) []EagerSelfhostModule {
 	// Traversal attempts are separate from successfully parsed modules. An
 	// unresolved eager probe must remain visible to the authoritative resolver.
 	mut visited_modules := parsed_modules.clone()
@@ -18879,7 +18879,7 @@ fn discover_eager_selfhost_modules(a &flat.FlatAst, prefs &pref.Preferences, fir
 	// Alias-aware resolution is local to each request. Reconcile its short
 	// identities in discovery order so distinct directories with the same module
 	// suffix receive the same qualification as the authoritative resolver.
-	mut identity_dirs := map[string]string{}
+	mut identity_dirs := initial_identity_dirs.clone()
 	for i in 0 .. modules.len {
 		identity := modules[i].identity
 		if owner_dir := identity_dirs[identity] {
@@ -18968,7 +18968,8 @@ fn resolve_imports(mut a flat.FlatAst, mut p parser.Parser, prefs &pref.Preferen
 	}
 	if prefs.building_v && !prefs.selfhost && allow_parallel && !cache_state.manager.enabled
 		&& !initial_files.any(input_is_v3_compiler_entry(it)) && eager_selfhost_imports {
-		modules := discover_eager_selfhost_modules(a, prefs, first_file, project_root, mut parsed_modules, mut module_path_cache)
+		modules := discover_eager_selfhost_modules(a, prefs, first_file, project_root,
+			parsed_identity_dirs, mut parsed_modules, mut module_path_cache)
 		mut eager_files := []string{}
 		mut eager_canons := []string{}
 		for module_info in modules {
