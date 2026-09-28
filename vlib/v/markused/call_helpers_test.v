@@ -494,3 +494,34 @@ fn test_generic_factory_return_uses_placeholder_signature_text() {
 		}
 	}
 }
+
+fn test_generic_factory_return_uses_nested_placeholder_signature_text() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	tc.fn_generic_params['gates.make'] = ['U']
+	tc.fn_ret_types['[]ReceiverRequest.receiver_kind'] = types.Type(types.int_)
+	base := a.add_val(.ident, 'make')
+	arg := a.add_val(.ident, 'ReceiverRequest')
+	indexed := call_helper_node(mut a, flat.Node{ kind: .index }, [base, arg])
+	unknown := types.Type(types.Unknown{ reason: 'generic U' })
+	array_unknown := types.Type(types.Array{ elem_type: unknown })
+	for form in ['[]U', '?[]U', '![]U'] {
+		tc.fn_ret_type_texts['gates.make'] = form
+		tc.fn_ret_types['gates.make'] = match form[0] {
+			`?` { types.Type(types.OptionType{ base_type: array_unknown }) }
+			`!` { types.Type(types.ResultType{ base_type: array_unknown }) }
+			else { array_unknown }
+		}
+		collector := CallCollector{ a: &a, tc: &tc }
+		assert collector.fn_return_type_name('gates.make', true) == '[]unknown'
+		assert collector.generic_factory_return_type_name(a.node(indexed), 'gates.make',
+			'main', map[string]string{}, true, '') == '[]ReceiverRequest'
+		assert collector.typed_receiver_method_name('[]ReceiverRequest', 'receiver_kind',
+			'main')? == '[]ReceiverRequest.receiver_kind'
+		if form[0] in [`?`, `!`] {
+			wrapped := collector.generic_factory_return_type_name(a.node(indexed), 'gates.make',
+				'main', map[string]string{}, false, '')
+			assert wrapped == '${form[..1]}[]ReceiverRequest'
+		}
+	}
+}

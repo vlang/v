@@ -6763,10 +6763,12 @@ fn (c &CallCollector) generic_factory_return_type_name(index &flat.Node, name st
 	for candidate in markused_fn_signature_name_candidates(name, cur_module) {
 		if candidate !in c.tc.fn_generic_params { continue }
 		mut return_type := c.fn_return_type_name(candidate, unwrap_optional_result)
-		if return_type.len == 0 {
-			return_type = c.tc.fn_ret_type_texts[candidate] or { '' }
-			if unwrap_optional_result && (return_type.starts_with('?') || return_type.starts_with('!')) {
-				return_type = return_type[1..]
+		if return_type.len == 0 || return_type.contains('unknown') {
+			if signature_text := c.tc.fn_ret_type_texts[candidate] {
+				return_type = signature_text
+				if unwrap_optional_result && (return_type.starts_with('?') || return_type.starts_with('!')) {
+					return_type = return_type[1..]
+				}
 			}
 		}
 		if return_type.len == 0 { continue }
