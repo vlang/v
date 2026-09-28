@@ -2931,3 +2931,436 @@ fn test_a_local_of_a_generic_body_that_no_type_parameter_decides_has_its_type() 
 	// One that depends on them stays as it was.
 	assert generic_local('\tsame := number', 'same', 0) == hover_of('same T\\nT: int | f64')
 }
+
+const joined_program = "module main
+
+interface Named {
+	name string
+}
+
+struct User {
+	name string
+	age  int
+}
+
+struct Admin {
+	name  string
+	level int
+}
+
+type Number = i8 | i16 | int | u8 | f32 | f64
+
+fn all_f64[A Number, B Number, C Number](a A, b B, c C) f64 {
+	\$if a is f64 && b is f64 && c is f64 {
+		total := a + b + c
+		return total
+	}
+	return f64(a) + f64(b) + f64(c)
+}
+
+fn all_f64_types[A Number, B Number, C Number](a A, b B, c C) f64 {
+	\$if A is f64 && B is f64 && C is f64 {
+		sum := A(a) + B(b) + C(c)
+		return sum
+	} \$else {
+		return f64(a) * f64(b) * f64(c)
+	}
+}
+
+fn in_lists[A Number, B Number](a A, b B) f64 {
+	\$if a in [f32, f64] && b in [i8, u8] {
+		return f64(a) + f64(b)
+	} \$else {
+		return f64(a) - f64(b)
+	}
+}
+
+fn not_in_lists[A Number, B Number](a A, b B) f64 {
+	\$if a !in [f32, f64] && b !in [i8, u8] {
+		return f64(a) / f64(b)
+	} \$else {
+		return f64(a) - f64(b) - 1.0
+	}
+}
+
+fn either_f64[A Number, B Number](a A, b B) f64 {
+	\$if a is f64 || b is f64 {
+		return f64(a) + f64(b) + 2.0
+	} \$else {
+		return f64(a) + f64(b) + 3.0
+	}
+}
+
+fn either_in[A Number, B Number](a A, b B) f64 {
+	\$if a in [i8, u8] || b !in [f32, f64] {
+		return f64(a) + f64(b) + 4.0
+	} \$else {
+		return f64(a) + f64(b) + 5.0
+	}
+}
+
+fn not_both_f64[A Number, B Number](a A, b B) f64 {
+	\$if a !is f64 || b !is f64 {
+		return f64(a) + f64(b) + 6.0
+	} \$else {
+		return a + b
+	}
+}
+
+fn chain[A Number, B Number](a A, b B) f64 {
+	\$if a is f64 && b is f64 {
+		return a * b
+	} \$else \$if a is f32 && b is f32 {
+		return f64(a * b)
+	} \$else \$if a is f64 {
+		return a + f64(b)
+	} \$else {
+		return f64(a) * f64(b) * 7.0
+	}
+}
+
+fn three_tests[T Number](x T) f64 {
+	\$if x !is f64 && x !is f32 && x !is int {
+		return f64(x) + 8.0
+	}
+	return 0.0
+}
+
+fn grouped[T Number](y T) f64 {
+	\$if (y is f64 || y is f32) && y !is f32 {
+		return y
+	}
+	return 1.0
+}
+
+fn negated[T Number](z T) f64 {
+	\$if !(z is f64) {
+		return f64(z) + 9.0
+	} \$else {
+		return z
+	}
+}
+
+fn groups[T Number](v T) f64 {
+	\$if T in [\$float, i8] {
+		return f64(v) + 10.0
+	} \$else \$if T !in [int] {
+		return f64(v) + 11.0
+	} \$else {
+		return f64(v) + 12.0
+	}
+}
+
+fn local_and_param[A Named, B Named](a A, b B) int {
+	x := a
+	\$if x is User && b is Admin {
+		return x.age + b.level
+	}
+	return x.name.len + b.name.len
+}
+
+fn listed_names[A Named, B Named](a A, b B) int {
+	\$if a in [User, Admin] && b !in [User] {
+		return a.name.len + b.name.len + 1
+	} \$else \$if a !in [User, Admin] {
+		return a.name.len + b.name.len + 2
+	} \$else {
+		return a.name.len + b.name.len + 3
+	}
+}
+
+fn free_param[A Number, U](a A, u U) f64 {
+	\$if a is f64 && u is int {
+		return a + f64(u)
+	}
+	return 14.0
+}
+
+fn nested[A Number, B Number, C Number](a A, b B, c C) f64 {
+	\$if A is \$float {
+		\$if b is f64 && c in [i8, i16] {
+			return f64(a) + b + f64(c)
+		}
+	}
+	return 15.0
+}
+
+fn unfollowed[A Number, B Number](a A, b B) f64 {
+	\$if a is f64 && sizeof(B) == 8 {
+		return a + f64(b) * 2.0
+	}
+	return 16.0
+}
+
+fn main() {
+	println(all_f64(1.0, 2.0, 3.0))
+	println(all_f64_types(1.0, 2.0, 3.0))
+	println(in_lists(f32(1), u8(2)))
+	println(not_in_lists(1, 2))
+	println(either_f64(1, 2.0))
+	println(either_in(1.0, 2.0))
+	println(not_both_f64(1.0, 2.0))
+	println(chain(f32(1), f32(2)))
+	println(three_tests(i16(3)))
+	println(grouped(4.0))
+	println(negated(5))
+	println(groups(6))
+	println(local_and_param(User{'u', 1}, Admin{'a', 2}))
+	println(listed_names(User{'v', 3}, User{'w', 4}))
+	println(free_param(1.0, 2))
+	println(nested(1.0, 2.0, i8(3)))
+	println(unfollowed(1.0, 2.0))
+}
+"
+
+// joined asks for the hover of the `nth` `word` of the line of joined_program
+// that reads `text`.
+fn joined(text string, word string, nth int) string {
+	return ask(program_dir('joined', joined_program), 'hv^', line_of(joined_program, text), word,
+		nth)
+}
+
+const all_numbers = 'i8 | i16 | int | u8 | f32 | f64'
+
+fn test_values_tested_together_with_and_are_each_the_type_they_are_tested_for() {
+	// `$if a is f64 && b is f64 && c is f64 {`: in its branch each of them is an
+	// `f64`, and so is a local that adds them; after it, any type of `Number`.
+	for word in ['a', 'b', 'c'] {
+		assert joined('\t\ttotal := a + b + c', word, 0) == hover_of('${word} f64')
+	}
+	assert joined('\t\ttotal := a + b + c', 'total', 0) == hover_of('total f64')
+	assert joined('\t\treturn total', 'total', 0) == hover_of('total f64')
+	assert joined('\treturn f64(a) + f64(b) + f64(c)', 'a', 0) == hover_of('a A\\nA: ${all_numbers}')
+	// The same tests on the type parameters, which are `f64` there too.
+	sum := '\t\tsum := A(a) + B(b) + C(c)'
+	assert joined(sum, 'A', 0) == hover_of('[A Number]\\nA: f64')
+	assert joined(sum, 'C', 0) == hover_of('[C Number]\\nC: f64')
+	assert joined(sum, 'b', 0) == hover_of('b f64')
+	assert joined(sum, 'sum', 0) == hover_of('sum f64')
+	// Its `$else` is where one of them is not: each can be any type.
+	assert joined('\t\treturn f64(a) * f64(b) * f64(c)', 'b', 0) == hover_of('b B\\nB: ${all_numbers}')
+}
+
+fn test_values_tested_together_against_lists_keep_what_their_lists_leave() {
+	// `in` keeps the types of its list, `!in` the others, for each value.
+	assert joined('\t\treturn f64(a) + f64(b)', 'a', 0) == hover_of('a A\\nA: f32 | f64')
+	assert joined('\t\treturn f64(a) + f64(b)', 'b', 0) == hover_of('b B\\nB: i8 | u8')
+	assert joined('\t\treturn f64(a) / f64(b)', 'a', 0) == hover_of('a A\\nA: i8 | i16 | int | u8')
+	assert joined('\t\treturn f64(a) / f64(b)', 'b', 0) == hover_of('b B\\nB: i16 | int | f32 | f64')
+	// Their `$else`s: one value may be in its list, when the other is not.
+	for line in ['\t\treturn f64(a) - f64(b)', '\t\treturn f64(a) - f64(b) - 1.0'] {
+		assert joined(line, 'a', 0) == hover_of('a A\\nA: ${all_numbers}')
+		assert joined(line, 'b', 0) == hover_of('b B\\nB: ${all_numbers}')
+	}
+}
+
+fn test_values_tested_together_with_or_are_decided_in_the_else() {
+	// `$if a is f64 || b is f64 {`: either may be an `f64`, so in its branch each
+	// can be any type; in its `$else` neither is one.
+	assert joined('\t\treturn f64(a) + f64(b) + 2.0', 'a', 0) == hover_of('a A\\nA: ${all_numbers}')
+	assert joined('\t\treturn f64(a) + f64(b) + 2.0', 'b', 0) == hover_of('b B\\nB: ${all_numbers}')
+	assert joined('\t\treturn f64(a) + f64(b) + 3.0', 'a', 0) == hover_of('a A\\nA: i8 | i16 | int | u8 | f32')
+	assert joined('\t\treturn f64(a) + f64(b) + 3.0', 'b', 0) == hover_of('b B\\nB: i8 | i16 | int | u8 | f32')
+	// `in` and `!in` joined with `||`: its `$else` is where `a` is not in its
+	// list and `b` is in its.
+	assert joined('\t\treturn f64(a) + f64(b) + 4.0', 'a', 0) == hover_of('a A\\nA: ${all_numbers}')
+	assert joined('\t\treturn f64(a) + f64(b) + 5.0', 'a', 0) == hover_of('a A\\nA: i16 | int | f32 | f64')
+	assert joined('\t\treturn f64(a) + f64(b) + 5.0', 'b', 0) == hover_of('b B\\nB: f32 | f64')
+	// `!is` joined with `||`: its `$else` is where both are `f64`.
+	assert joined('\t\treturn f64(a) + f64(b) + 6.0', 'b', 0) == hover_of('b B\\nB: ${all_numbers}')
+	assert joined('\t\treturn a + b', 'a', 0) == hover_of('a f64')
+	assert joined('\t\treturn a + b', 'b', 0) == hover_of('b f64')
+}
+
+fn test_each_branch_of_a_chain_of_tests_on_several_values_leaves_what_the_others_did_not_take() {
+	assert joined('\t\treturn a * b', 'a', 0) == hover_of('a f64')
+	assert joined('\t\treturn a * b', 'b', 0) == hover_of('b f64')
+	assert joined('\t\treturn f64(a * b)', 'a', 0) == hover_of('a f32')
+	assert joined('\t\treturn f64(a * b)', 'b', 0) == hover_of('b f32')
+	// `$else $if a is f64 {`: `a` is an `f64`, so `b` is not, or the first
+	// branch would have taken them.
+	assert joined('\t\treturn a + f64(b)', 'a', 0) == hover_of('a f64')
+	assert joined('\t\treturn a + f64(b)', 'b', 0) == hover_of('b B\\nB: i8 | i16 | int | u8 | f32')
+	// The last `$else`: `a` is not an `f64`; `b` can be any type.
+	last := '\t\treturn f64(a) * f64(b) * 7.0'
+	assert joined(last, 'a', 0) == hover_of('a A\\nA: i8 | i16 | int | u8 | f32')
+	assert joined(last, 'b', 0) == hover_of('b B\\nB: ${all_numbers}')
+	// A value in the condition of a later test is what the tests before leave.
+	assert joined('\t} \$else \$if a is f32 && b is f32 {', 'a', 0) == hover_of('a A\\nA: ${all_numbers}')
+}
+
+fn test_a_value_tested_three_times_in_parentheses_or_after_not_is_what_the_tests_leave() {
+	assert joined('\t\treturn f64(x) + 8.0', 'x', 0) == hover_of('x T\\nT: i8 | i16 | u8')
+	assert joined('\t\treturn y', 'y', 0) == hover_of('y f64')
+	assert joined('\t\treturn f64(z) + 9.0', 'z', 0) == hover_of('z T\\nT: i8 | i16 | int | u8 | f32')
+	assert joined('\t\treturn z', 'z', 0) == hover_of('z f64')
+	// A group in a list, and `!in` in an `$else $if`.
+	assert joined('\t\treturn f64(v) + 10.0', 'v', 0) == hover_of('v T\\nT: i8 | f32 | f64')
+	assert joined('\t\treturn f64(v) + 11.0', 'v', 0) == hover_of('v T\\nT: i16 | u8')
+	assert joined('\t\treturn f64(v) + 12.0', 'v', 0) == hover_of('v int')
+}
+
+fn test_values_of_interfaces_tested_together_are_the_types_they_are_tested_for() {
+	// A local that holds a value of a type parameter, tested with a parameter.
+	assert joined('\t\treturn x.age + b.level', 'x', 0) == hover_of('x main.User')
+	assert joined('\t\treturn x.age + b.level', 'b', 0) == hover_of('b main.Admin')
+	named := 'implements main.Named'
+	assert joined('\treturn x.name.len + b.name.len', 'x', 0) == hover_of('x A\\nA: ${named}')
+	assert joined('\treturn x.name.len + b.name.len', 'b', 0) == hover_of('b B\\nB: ${named}')
+	// `in` keeps the types of its list; `!in` on an interface leaves any other
+	// type that implements it, and its `$else` the types of its list.
+	first := '\t\treturn a.name.len + b.name.len + 1'
+	assert joined(first, 'a', 0) == hover_of('a A\\nA: main.User | main.Admin')
+	assert joined(first, 'b', 0) == hover_of('b B\\nB: ${named}')
+	second := '\t\treturn a.name.len + b.name.len + 2'
+	assert joined(second, 'a', 0) == hover_of('a A\\nA: ${named}')
+	assert joined(second, 'b', 0) == hover_of('b B\\nB: ${named}')
+	// The last `$else`: `a` is in the list, so `b` is a `User`, or the first
+	// branch would have taken them.
+	third := '\t\treturn a.name.len + b.name.len + 3'
+	assert joined(third, 'a', 0) == hover_of('a A\\nA: main.User | main.Admin')
+	assert joined(third, 'b', 0) == hover_of('b main.User')
+}
+
+fn test_a_test_that_cannot_be_followed_leaves_the_others_their_types() {
+	// A type parameter without a constraint, or one tested in a way that the
+	// editor cannot follow, `sizeof(B) == 8`: that test may go either way, and
+	// the other tests still decide their values.
+	assert joined('\t\treturn a + f64(u)', 'a', 0) == hover_of('a f64')
+	assert joined('\t\treturn a + f64(u)', 'u', 0) == hover_of('u U')
+	assert joined('\t\treturn a + f64(b) * 2.0', 'a', 0) == hover_of('a f64')
+	assert joined('\t\treturn a + f64(b) * 2.0', 'b', 0) == hover_of('b B\\nB: ${all_numbers}')
+	// Nested tests: the outer one on a type parameter, the inner one on two
+	// values.
+	inner := '\t\t\treturn f64(a) + b + f64(c)'
+	assert joined(inner, 'a', 0) == hover_of('a A\\nA: f32 | f64')
+	assert joined(inner, 'b', 0) == hover_of('b f64')
+	assert joined(inner, 'c', 0) == hover_of('c C\\nC: i8 | i16')
+}
+
+const operations_program = "module main
+
+type Signed = i8 | int | f64
+
+type Whole = i8 | int
+
+fn shifts[A Whole](a A) string {
+	shifted := a << 2
+	widened := 1 << a
+	text := a.str() + '!'
+	return '\${shifted} \${widened} \${text}'
+}
+
+fn operations[A Signed, B Signed](a A, b B) f64 {
+	cast := A(a)
+	twice := a + a
+	casts := A(a) * A(a)
+	mixed := f64(a) + f64(b)
+	left := 2 * a
+	grouped := (a + a) / a
+	negative := -a
+	compared := a < a
+	both := compared && twice > a
+	\$if A is f64 && B is f64 {
+		joined := a + b
+		return joined + twice + cast + casts + mixed + left + grouped + negative
+	}
+	return if both { 1.0 } else { 0.0 }
+}
+
+fn main() {
+	println(operations(1.0, 2.0))
+	println(shifts(3))
+}
+"
+
+// operation asks for the hover of the first `word` of the line of
+// operations_program that reads `text`.
+fn operation(text string, word string) string {
+	return ask(program_dir('operations', operations_program), 'hv^', line_of(operations_program,
+		text), word, 0)
+}
+
+fn test_a_local_whose_value_is_an_operation_on_values_of_type_parameters_has_its_type() {
+	// An operation on numbers has the type of its operands, the first one that
+	// is not a literal; a comparison and a logical operation are a `bool`.
+	signed := 'A: i8 | int | f64'
+	assert operation('\tcast := A(a)', 'cast') == hover_of('cast A\\n${signed}')
+	assert operation('\ttwice := a + a', 'twice') == hover_of('twice A\\n${signed}')
+	assert operation('\tcasts := A(a) * A(a)', 'casts') == hover_of('casts A\\n${signed}')
+	assert operation('\tmixed := f64(a) + f64(b)', 'mixed') == hover_of('mixed f64')
+	assert operation('\tleft := 2 * a', 'left') == hover_of('left A\\n${signed}')
+	assert operation('\tgrouped := (a + a) / a', 'grouped') == hover_of('grouped A\\n${signed}')
+	assert operation('\tnegative := -a', 'negative') == hover_of('negative A\\n${signed}')
+	assert operation('\tcompared := a < a', 'compared') == hover_of('compared bool')
+	assert operation('\tboth := compared && twice > a', 'both') == hover_of('both bool')
+	// In the branch of `$if A is f64 && B is f64 {` they are `f64`s.
+	ret := '\t\treturn joined + twice + cast + casts + mixed + left + grouped + negative'
+	assert operation('\t\tjoined := a + b', 'joined') == hover_of('joined f64')
+	assert operation(ret, 'twice') == hover_of('twice f64')
+	assert operation(ret, 'negative') == hover_of('negative f64')
+	// A shift has the type of what it shifts, not of how far; `+` on a value of
+	// no known type has the type of the other operand.
+	assert operation('\tshifted := a << 2', 'shifted') == hover_of('shifted A\\nA: i8 | int')
+	assert operation('\twidened := 1 << a', 'widened') == hover_of('widened int')
+	assert operation("\ttext := a.str() + '!'", 'text') == hover_of('text string')
+}
+
+const joined_members_program = 'module main
+
+interface Named {
+	name string
+}
+
+struct User {
+	name string
+	age  int
+}
+
+struct Admin {
+	name  string
+	level int
+}
+
+type Numeric = int | i8 | f32 | f64
+
+fn both[A Named, B Named](a A, b B) {
+	\$if a is User && b is Admin {
+		println(a.zz)
+		println(b.zz)
+	} \$else \$if a is User {
+		println(b.yy)
+	}
+}
+
+fn numbers[A Numeric, B Numeric](x A, y B) {
+	\$if x in [f32, f64] && y !in [f32, f64] {
+		println(x.zz)
+		println(y.zz)
+	}
+}
+
+fn main() {}
+'
+
+// joined_members lists the labels that completion offers after the `.` of the
+// line of joined_members_program that reads `text`.
+fn joined_members(text string) []string {
+	dir := program_dir('joined_members', joined_members_program)
+	dot := text.index('.') or { panic('`${text}` has no `.`') }
+	answer := ask_at(dir, '${line_of(joined_members_program, text)}:${dot + 1}')
+	assert answer != '', text
+	return (json2.decode[Details](answer) or { panic('${err}: ${answer}') }).details.map(it.label)
+}
+
+fn test_values_tested_together_offer_what_their_tests_leave_them() {
+	// `$if a is User && b is Admin {`: `a` offers the members of a `User`, `b`
+	// those of an `Admin`. In `$else $if a is User {`, `b` is no `Admin`.
+	assert joined_members('\t\tprintln(a.zz)') == ['age', 'name']
+	assert joined_members('\t\tprintln(b.zz)') == ['level', 'name']
+	assert joined_members('\t\tprintln(b.yy)') == ['name']
+	// `in` and `!in`: `x` offers what `f32` and `f64` both have, `y` what `int`
+	// and `i8` both have.
+	assert joined_members('\t\tprintln(x.zz)') == ['eq_epsilon', 'str', 'strg', 'strlong', 'strsci']
+	assert joined_members('\t\tprintln(y.zz)') == ['hex', 'hex_full', 'str']
+}

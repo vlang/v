@@ -436,16 +436,19 @@ fn (tc &TypeChecker) vls_type_constraint(id flat.NodeId, typ Type) ?GenericConst
 }
 
 // vls_narrowed_constraints are the constraints of the type parameters of
-// `fn_node` at the end of `path`, the nodes from there up to the body: each
-// `$if` on the way narrows them in the branch that holds the path, as the check
-// of the body does (see constraint_comptime_branches). A branch the check
-// cannot follow leaves them as they are.
+// `fn_node` at the end of `path`, the nodes from there up to the body: the
+// `$if`s on the way, together, leave each one the types with which it can go
+// through all of them the way the path does (see comptime_ways_constraints).
 fn (tc &TypeChecker) vls_narrowed_constraints(fn_node flat.Node, path []flat.NodeId) map[string]GenericConstraint {
 	scope := tc.type_param_scope(fn_node)
-	mut constraints := scope.constraints.clone()
+	mut ways := []ComptimeWay{}
 	for i := path.len - 1; i >= 1; i-- {
 		node := tc.a.node(path[i])
-		if node.kind != .comptime_if {
+		if node.kind != .comptime_if || node.children_count == 0 {
+			continue
+		}
+		taken := tc.a.child(node, 0) == path[i - 1]
+		if !taken && (node.children_count < 2 || tc.a.child(node, 1) != path[i - 1]) {
 			continue
 		}
 		mut tested := tc.comptime_tested_params(node.value, fn_node, scope.names, false)
@@ -459,15 +462,12 @@ fn (tc &TypeChecker) vls_narrowed_constraints(fn_node flat.Node, path []flat.Nod
 				tested[tested_name] = param
 			}
 		}
-		cond := comptime_condition_on_type_params(node.value, tested)
-		for branch in tc.constraint_comptime_branches(*node, cond, constraints) {
-			if branch.id == path[i - 1] {
-				constraints = branch.constraints.clone()
-				break
-			}
+		ways << ComptimeWay{
+			cond:  comptime_condition_on_type_params(node.value, tested)
+			taken: taken
 		}
 	}
-	return constraints
+	return tc.comptime_ways_constraints(ways, scope.constraints)
 }
 
 // vls_local_type_param is the type parameter, one of `names`, that the local
@@ -834,7 +834,58 @@ fn (tc &TypeChecker) vls_unconstrained_type(id flat.NodeId) ?Type {
 	if node.kind in [.array_init, .map_init] && node.typ.len > 0 {
 		return tc.parse_type(node.typ)
 	}
-	return tc.vls_value_type(id)
+	if typ := tc.vls_value_type(id) {
+		return typ
+	}
+	return tc.vls_operation_type(*node)
+}
+
+// vls_operation_type is the type of `node`, an operation that the checker kept
+// no type for, as in a generic body: a comparison, a logical operation, `in`
+// and `is` are a `bool`; `-x`, `(x)` and an operation on numbers have the type
+// of their operands, the first one that is not a literal, and a shift the type
+// of what it shifts.
+fn (tc &TypeChecker) vls_operation_type(node flat.Node) ?Type {
+	match node.kind {
+		.in_expr, .is_expr {
+			return Type(bool_)
+		}
+		.paren {
+			if node.children_count == 1 {
+				return tc.vls_unconstrained_type(tc.a.child(&node, 0))
+			}
+		}
+		.prefix {
+			if node.op == .not {
+				return Type(bool_)
+			}
+			if node.op in [.minus, .plus, .bit_not] && node.children_count == 1 {
+				return tc.vls_unconstrained_type(tc.a.child(&node, 0))
+			}
+		}
+		.infix {
+			if node.op in [.eq, .ne, .lt, .gt, .le, .ge, .logical_and, .logical_or] {
+				return Type(bool_)
+			}
+			if node.children_count != 2 {
+				return none
+			}
+			left := tc.a.child(&node, 0)
+			if node.op in [.left_shift, .right_shift, .right_shift_unsigned] {
+				return tc.vls_unconstrained_type(left)
+			}
+			if node.op in [.plus, .minus, .mul, .div, .mod, .amp, .pipe, .xor, .power] {
+				if tc.a.node(left).kind !in [.int_literal, .float_literal] {
+					if typ := tc.vls_unconstrained_type(left) {
+						return typ
+					}
+				}
+				return tc.vls_unconstrained_type(tc.a.child(&node, 1))
+			}
+		}
+		else {}
+	}
+	return none
 }
 
 // vls_element_type is the type of `node`, an index, where the checker kept
