@@ -166,3 +166,13 @@ fn test_enum_initializers_keep_keyword_reference_identity_in_constant_sizes() {
 	assert from_plain.len == int(KeywordInitializer.from_plain)
 	assert from_escaped.len == int(KeywordInitializer.from_escaped)
 }
+
+fn test_native_backend_evaluates_escaped_enum_initializer_references() {
+	$if arm64 {
+		path := os.join_path(os.vtmp_dir(), 'v3_native_escaped_enum_initializer_${os.getpid()}.v')
+		defer { os.rm(path) or {} }
+		os.write_file(path, 'enum Kind { struct = 4 next = int(Kind.@struct) + 6 @none = 11 reverse = int(Kind.none) + 2 type = 17 @type = 23 plain_exact = int(Kind.type) + 3 escaped_exact = int(Kind.@type) + 3 }\nfn main() { assert int(Kind.next) == 10; assert int(Kind.reverse) == 13; assert int(Kind.plain_exact) == 20; assert int(Kind.escaped_exact) == 26; value := Kind.next; assert value.str() == "next" }\n')!
+		result := os.execute('${os.quoted_path(@VEXE)} -b arm64 -gc none run ${os.quoted_path(path)}')
+		assert result.exit_code == 0, result.output
+	}
+}

@@ -4750,6 +4750,16 @@ fn (g &FlatGen) struct_field_c_abi_fn_ptr_type(type_name string, field_name stri
 			}
 		}
 	}
+	if field_name.starts_with('@') {
+		owner := cgen_unalias_unwrap_all_pointers(g.tc.parse_type(type_name))
+		if owner is types.Struct && owner.name.starts_with('C.') {
+			for candidate in [field_name, field_name[1..]] {
+				if typ := g.tc.struct_field_c_abi_fn_ptr_type(owner.name, candidate) {
+					return typ
+				}
+			}
+		}
+	}
 	return none
 }
 

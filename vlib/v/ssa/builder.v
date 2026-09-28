@@ -644,7 +644,7 @@ fn (mut b Builder) register_enum_values(node flat.Node, module_name string) {
 			continue
 		}
 		if field.children_count > 0 {
-			if explicit := b.enum_field_expr_value(b.a.child(field, 0)) {
+			if explicit := b.enum_field_expr_value(b.a.child(field, 0), enum_names.last()) {
 				value = explicit
 			}
 		}
@@ -1235,10 +1235,8 @@ fn (mut b Builder) register_enum_autostr_fns() {
 					if field.kind != .enum_field {
 						continue
 					}
-					if field.children_count > 0 {
-						if explicit := b.enum_field_expr_value(b.a.child(field, 0)) {
-							val = explicit
-						}
+					if registered := b.enum_values['${qualified}.${field.value}'] {
+						val = registered
 					}
 					names << field.value
 					// Flag enums store one bit per field, matching `enum_value_for_type`.
@@ -1263,12 +1261,10 @@ fn (mut b Builder) register_enum_autostr_fns() {
 }
 
 // enum_field_expr_value evaluates the constant integer value of an enum-field initializer
-// expression, mirroring cgen's enum_field_expr_value (gen/c/types.v). Without this the
-// autostr helpers above would only honour bare `.int_literal` initializers and leave a
-// field like `a = 1 << 3` / `a = -1` at the previous sequential value, so the generated
-// `<Enum>__autostr` would compare against the wrong number.
-fn (b &Builder) enum_field_expr_value(id flat.NodeId) ?int {
-	if int(id) < 0 {
+// expression. References resolve against already registered fields of the same enum,
+// preserving exact declaration names before trying an escaped keyword alternative.
+fn (b &Builder) enum_field_expr_value(id flat.NodeId, enum_name string) ?int {
+	if int(id) < 0 || int(id) >= b.a.nodes.len {
 		return none
 	}
 	node := b.a.nodes[int(id)]
@@ -1276,17 +1272,32 @@ fn (b &Builder) enum_field_expr_value(id flat.NodeId) ?int {
 		.int_literal {
 			return parse_int_literal(node.value)
 		}
-		.paren {
+		.ident, .enum_val, .selector {
+			name := if node.kind == .selector { b.qualified_expr_name(id) } else { node.value }
+			return b.enum_field_value_for_type(enum_name, name, false)
+		}
+		.paren, .cast_expr {
 			if node.children_count == 0 {
 				return none
 			}
-			return b.enum_field_expr_value(b.a.child(&node, 0))
+			return b.enum_field_expr_value(b.a.child(&node, 0), enum_name)
+		}
+		.call {
+			if node.children_count != 2 {
+				return none
+			}
+			cast_name := b.qualified_expr_name(b.a.child(&node, 0))
+			if cast_name !in ['int', 'i8', 'i16', 'i32', 'i64', 'isize', 'u8', 'u16', 'u32', 'u64',
+				'usize', 'rune'] {
+				return none
+			}
+			return b.enum_field_expr_value(b.a.child(&node, 1), enum_name)
 		}
 		.prefix {
 			if node.children_count == 0 {
 				return none
 			}
-			value := b.enum_field_expr_value(b.a.child(&node, 0))?
+			value := b.enum_field_expr_value(b.a.child(&node, 0), enum_name)?
 			return match node.op {
 				.plus { value }
 				.minus { -value }
@@ -1298,8 +1309,8 @@ fn (b &Builder) enum_field_expr_value(id flat.NodeId) ?int {
 			if node.children_count < 2 {
 				return none
 			}
-			left := b.enum_field_expr_value(b.a.child(&node, 0))?
-			right := b.enum_field_expr_value(b.a.child(&node, 1))?
+			left := b.enum_field_expr_value(b.a.child(&node, 0), enum_name)?
+			right := b.enum_field_expr_value(b.a.child(&node, 1), enum_name)?
 			return match node.op {
 				.plus {
 					left + right
@@ -7842,6 +7853,10 @@ fn enum_member_lookup_keys(member string) []string {
 
 // enum_value_for_type supports enum value for type handling for Builder.
 fn (b &Builder) enum_value_for_type(type_name string, member string) ?int {
+	return b.enum_field_value_for_type(type_name, member, true)
+}
+
+fn (b &Builder) enum_field_value_for_type(type_name string, member string, as_flag_bit bool) ?int {
 	if type_name.len == 0 || type_name in ['int', 'unknown'] {
 		return none
 	}
@@ -7856,13 +7871,21 @@ fn (b &Builder) enum_value_for_type(type_name string, member string) ?int {
 	for candidate in member_keys {
 		if value := b.enum_values[candidate] {
 			enum_name := candidate.all_before_last('.')
-			return if b.is_flag_enum_type_name(enum_name) { 1 << value } else { value }
+			return if as_flag_bit && b.is_flag_enum_type_name(enum_name) {
+				1 << value
+			} else {
+				value
+			}
 		}
 		clean_member := candidate.all_after_last('.')
 		for name in names {
 			key := name + '.' + clean_member
 			if value := b.enum_values[key] {
-				return if b.is_flag_enum_type_name(name) { 1 << value } else { value }
+				return if as_flag_bit && b.is_flag_enum_type_name(name) {
+					1 << value
+				} else {
+					value
+				}
 			}
 		}
 	}

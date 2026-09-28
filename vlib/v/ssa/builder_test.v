@@ -1,6 +1,9 @@
 module ssa
 
+import os
 import v.flat
+import v.parser
+import v.pref
 import v.types
 
 // test_bench_runtime_stubs_include_macos_rss_helper validates this v3 regression case.
@@ -310,4 +313,27 @@ fn test_enum_lookup_keeps_exact_keyword_members_before_fallback() {
 	assert b.enum_value_for_type('Plain', '@struct') or { 0 } == 7
 	assert b.enum_value_for_type('Distinct', 'none') or { 0 } == 2
 	assert b.enum_value_for_type('Distinct', '@none') or { 0 } == 4
+}
+
+fn test_native_enum_registration_evaluates_escaped_initializer_references() {
+	path := os.join_path(os.vtmp_dir(), 'v3_ssa_escaped_enum_initializers_${os.getpid()}.v')
+	defer { os.rm(path) or {} }
+	os.write_file(path, 'module models\nenum Kind { struct = 4 next = int(Kind.@struct) + 6 @none = 11 reverse = int(Kind.none) + 2 type = 17 @type = 23 plain_exact = int(Kind.type) + 3 escaped_exact = int(Kind.@type) + 3 }\n')!
+	mut p := parser.Parser.new(pref.new_preferences())
+	p.parse_file(path)
+	assert p.diagnostics.len == 0, p.diagnostics.str()
+	mut b := Builder{ a: p.a }
+	for node in p.a.nodes {
+		if node.kind == .enum_decl {
+			b.register_enum_values(node, 'models')
+		}
+	}
+	for field, expected in {
+		'next':          10
+		'reverse':       13
+		'plain_exact':   20
+		'escaped_exact': 26
+	} {
+		assert b.enum_value_for_type('models.Kind', field) or { -1 } == expected, field
+	}
 }
