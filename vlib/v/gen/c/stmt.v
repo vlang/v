@@ -3778,8 +3778,7 @@ fn (mut g FlatGen) gen_test_assert_failure(node flat.Node) {
 		g.writeln('v3_eprint_lit("Assertion failed\\n");')
 		return
 	}
-	module_name := if g.tc.cur_module.len > 0 { g.tc.cur_module } else { 'main' }
-	expression := qualify_assert_builtin_types(detail.expression, module_name)
+	expression := detail.expression
 	g.writeln('v3_eprint_lit("${c_escape('${detail.file}:${detail.line}: fn ${g.cur_fn_name}')}\\n");')
 	lhs_id, rhs_id := g.assert_reported_value_ids(node) or {
 		g.writeln('v3_eprint_lit("    assert ${c_escape(expression)}\\n");')
@@ -4954,36 +4953,6 @@ fn c_inline_asm_ident_char(c u8) bool {
 	return c_inline_asm_ident_start(c) || c.is_digit()
 }
 
-fn qualify_assert_builtin_types(expression string, module_name string) string {
-	mut result := expression
-	for call_name in ['__offsetof(', 'offsetof(', 'sizeof('] {
-		mut search_from := 0
-		for search_from < result.len {
-			relative := result[search_from..].index(call_name) or { break }
-			call_start := search_from + relative
-			type_start := call_start + call_name.len
-			mut type_end := type_start
-			for type_end < result.len && result[type_end] !in [`,`, `)`] {
-				type_end++
-			}
-			raw_type := result[type_start..type_end]
-			clean_type := raw_type.trim_space()
-			if clean_type.len > 0 && !clean_type.contains('.')
-				&& clean_type !in ['bool', 'byte', 'char', 'f32', 'f64', 'int', 'i8', 'i16', 'i32',
-					'i64', 'isize', 'rune', 'string', 'u8', 'u16', 'u32', 'u64', 'usize', 'voidptr'] {
-				leading := raw_type[..raw_type.len - raw_type.trim_left(' \t').len]
-				trailing := raw_type[raw_type.trim_right(' \t').len..]
-				replacement := '${leading}${module_name}.${clean_type}${trailing}'
-				result = result[..type_start] + replacement + result[type_end..]
-				search_from = type_start + replacement.len
-			} else {
-				search_from = type_end
-			}
-		}
-	}
-	return result
-}
-
 fn (g &FlatGen) is_numeric_literal_expr(id flat.NodeId) bool {
 	node := g.a.node(id)
 	if node.kind in [.int_literal, .float_literal, .char_literal] {
@@ -5407,7 +5376,7 @@ fn (mut g FlatGen) gen_default_return_stmt() {
 	if g.cur_fn_ret_is_optional {
 		ct := g.current_fn_optional_type_name(g.cur_fn_ret)
 		g.writeln('return (${ct}){.ok = true};')
-	} else if g.cur_fn_name == 'main' && g.test_files.len == 0 {
+	} else if g.cur_fn_name == 'main' && g.test_files.len == 0 && !g.suppress_main {
 		g.writeln('return 0;')
 	} else if g.cur_fn_ret is types.Void {
 		g.writeln('return;')
@@ -6720,6 +6689,16 @@ fn (g &FlatGen) usable_expr_type_uncached(id flat.NodeId) types.Type {
 			}
 		}
 		if node.kind == .selector && node.children_count > 0 {
+			base_node := g.a.child_node(&node, 0)
+			if base_node.kind == .ident {
+				if storage := g.current_module_selector_const_name(base_node.value, node.value) {
+					if typ := g.tc.const_types[storage] {
+						if typ !is types.Unknown && typ !is types.Void {
+							return typ
+						}
+					}
+				}
+			}
 			base_type0 := g.usable_expr_type(g.a.child(&node, 0))
 			base_type := types.unwrap_pointer(base_type0)
 			collection_base_type := cgen_unalias_type(base_type)
@@ -8936,7 +8915,15 @@ fn (mut g FlatGen) gen_assign(node flat.Node) {
 						}
 						if _ := array_fixed_type(rhs_type) {
 							dst := g.expr_to_string(lhs_id)
-							g.writeln('memmove(${dst}, ${g.expr_to_string(rhs_id)}, sizeof(${dst}));')
+							if rhs_node.kind == .block && rhs_node.children_count == 1 {
+								// `unsafe { [1]map[string]int{} }`: gen_expr would emit its
+								// fixed-array literal as an untyped `{...}` list.
+								g.write('memmove(${dst}, ')
+								g.gen_fixed_array_copy_source(rhs_id, lhs_type)
+								g.writeln(', sizeof(${dst}));')
+							} else {
+								g.writeln('memmove(${dst}, ${g.expr_to_string(rhs_id)}, sizeof(${dst}));')
+							}
 							i += 2
 							continue
 						} else {
@@ -9500,7 +9487,8 @@ fn (g &FlatGen) local_name_shadows_c_function(name string) bool {
 
 fn local_name_shadows_c_runtime(name string) bool {
 	return match name {
-		'array_get', 'array_slice', 'int_str', 'new_map', 'string__eq', 'string__lt', 'string__plus' {
+		'argc', 'argv', 'array_get', 'array_slice', 'int_str', 'new_map', 'string__eq', 'string__lt',
+		'string__plus' {
 			true
 		}
 		else {

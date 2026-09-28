@@ -47,6 +47,51 @@ fn manual_stdlib_c_headers() string {
 	return '#ifdef sprintf\n#undef sprintf\n#endif\n#ifdef snprintf\n#undef snprintf\n#endif\n#ifdef vsnprintf\n#undef vsnprintf\n#endif\n#ifdef memcpy\n#undef memcpy\n#endif\n#ifdef memmove\n#undef memmove\n#endif\n#ifdef memset\n#undef memset\n#endif\n' + manual_c_headers_source
 }
 
+// cached_file_import returns the module that `alias` names through the imports
+// of `file`. The checker's import tables are complete before C generation, so
+// answers, including misses, are memoized by the parts of the table's key.
+fn (g &FlatGen) cached_file_import(file string, alias string) ?string {
+	if isnil(g.import_key_cache) {
+		return g.tc.file_imports['${file}\n${alias}'] or { return none }
+	}
+	mut cache := g.import_key_cache
+	state, cached := cache.get(file, alias, '')
+	if state > 0 {
+		return cached
+	}
+	if state < 0 {
+		return none
+	}
+	module_name := g.tc.file_imports['${file}\n${alias}'] or {
+		cache.put(file, alias, '', -1, '')
+		return none
+	}
+	cache.put(file, alias, '', 1, module_name)
+	return module_name
+}
+
+// file_selective_import_candidates returns the selective imports of `name` in
+// `file`, or none. Most names are not selectively imported; those misses are
+// memoized so they do not build the table's composite key again.
+fn (g &FlatGen) file_selective_import_candidates(file string, name string) ?[]string {
+	if !isnil(g.selective_import_key_cache) {
+		mut cache := g.selective_import_key_cache
+		state, _ := cache.get(file, name, '')
+		if state < 0 {
+			return none
+		}
+		candidates := g.tc.file_selective_imports['${file}\n${name}'] or {
+			cache.put(file, name, '', -1, '')
+			return none
+		}
+		if state == 0 {
+			cache.put(file, name, '', 1, '')
+		}
+		return candidates
+	}
+	return g.tc.file_selective_imports['${file}\n${name}'] or { return none }
+}
+
 fn cgen_worker_scope_begin(enabled bool) voidptr {
 	$if prealloc {
 		if enabled {
@@ -54,6 +99,21 @@ fn cgen_worker_scope_begin(enabled bool) voidptr {
 		}
 	}
 	return unsafe { nil }
+}
+
+// cgen_chunk_arena_keep_bytes bounds how much of a dispatcher's chunk arena
+// stays mapped between chunks (see prealloc_scope_reenter).
+const cgen_chunk_arena_keep_bytes = isize($d('cgen_chunk_arena_keep_mb', 1)) * 1024 * 1024
+
+// cgen_worker_scope_reenter makes a chunk arena that was left current again,
+// rewound, for the next chunk. False means the caller needs a new arena.
+fn cgen_worker_scope_reenter(scope voidptr) bool {
+	$if prealloc {
+		if scope != unsafe { nil } {
+			return unsafe { prealloc_scope_reenter(scope, cgen_chunk_arena_keep_bytes) }
+		}
+	}
+	return false
 }
 
 fn cgen_worker_scope_leave(scope voidptr) {
@@ -598,7 +658,9 @@ mut:
 	prefix_param_scan              bool
 	lean_parallel_worker_init      bool
 	lazy_param_abi_merge           bool
-	usable_expr_type_memo          &UsableExprTypeMemo = unsafe { nil }
+	usable_expr_type_memo          &UsableExprTypeMemo  = unsafe { nil }
+	import_key_cache               &util.KeyRecentCache = unsafe { nil }
+	selective_import_key_cache     &util.KeyRecentCache = unsafe { nil }
 	needed_optional_types          map[string]string
 	// cabi_int_out_args maps a C-call argument node to the C spelling to emit in its
 	// place (the address of a temporary C `int`), while a `&int` out-parameter is
@@ -668,9 +730,15 @@ mut:
 	cache_split                        bool
 	cache_stable_symbols               bool
 	parallel_cc                        bool
-	cache_native_input_paths           map[string]bool
-	program_body_only                  bool
-	cached_support_identifiers         map[string]bool
+	// Set when the driver stores long `$embed_file` payloads through the
+	// assembler (see embed_incbin_payloads); the set of objects it does that for
+	// is derived on first use.
+	embed_incbin               bool
+	embed_incbin_syms          map[string]bool
+	embed_incbin_syms_ready    bool
+	cache_native_input_paths   map[string]bool
+	program_body_only          bool
+	cached_support_identifiers map[string]bool
 	// Set when the target is built with -prealloc / -d prealloc: the bump
 	// arena's base block pointer must be thread-local (matching V1's cgen),
 	// or every spawned thread would race on the same arena.
@@ -782,7 +850,7 @@ fn canonical_annotation_leaf(typ string) string {
 @[inline]
 fn (g &FlatGen) parse_node_type(node &flat.Node) types.Type {
 	if canonical_annotation_leaf(node.typ).contains('.') {
-		return g.tc.parse_canonical_type(node.typ)
+		return g.tc.parse_canonical_type_cached(node.typ)
 	}
 	return g.tc.parse_type_ref(node.typ, node.type_text_id())
 }
@@ -1007,6 +1075,9 @@ fn (mut g FlatGen) declare_local_mutability(owner types.ScopeBindingOwner, is_mu
 }
 
 fn (g &FlatGen) local_storage_is_mutable(name string) bool {
+	if name.len == 0 || g.local_mutable_by_owner.len == 0 {
+		return false
+	}
 	owner := g.local_storage_owner(name) or { return false }
 	return g.local_mutable_by_owner[owner.storage_key()] or { false }
 }
@@ -1142,7 +1213,9 @@ fn (g &FlatGen) local_storage_is_shared(name string) bool {
 		return false
 	}
 	owner := g.local_storage_owner(name) or { return false }
-	if g.local_shared_storage_by_owner[owner.storage_key()] {
+	// Most functions declare no shared locals; skip hashing the owner key then.
+	if g.local_shared_storage_by_owner.len > 0
+		&& g.local_shared_storage_by_owner[owner.storage_key()] {
 		return true
 	}
 	if g.tc.file_scope == unsafe { nil } || !owner.belongs_to_scope(g.tc.file_scope) {
@@ -1207,6 +1280,8 @@ fn (g &FlatGen) local_storage_is_pointer(name string) bool {
 pub fn FlatGen.new() FlatGen {
 	return FlatGen{
 		memo_usable_expr_types:             os.getenv('V3_NO_CGEN_EXPR_TYPE_MEMO') == ''
+		import_key_cache:                   &util.KeyRecentCache{}
+		selective_import_key_cache:         &util.KeyRecentCache{}
 		cache_struct_fields:                os.getenv('V3_NO_CGEN_STRUCT_FIELDS_CACHE') == ''
 		dedup_fn_decl_aliases:              os.getenv('V3_NO_DEDUP_FN_DECL_ALIASES') == ''
 		prefix_param_scan:                  os.getenv('V3_NO_PREFIX_PARAM_SCAN') == ''
@@ -1681,6 +1756,13 @@ pub fn (mut g FlatGen) set_cache_stable_symbols(enabled bool) {
 	g.cache_stable_symbols = enabled
 }
 
+// set_embed_incbin makes long `$embed_file` payloads refer to objects the driver
+// assembles from the bytes with `.incbin`, instead of spelling the bytes out as
+// C array initializers; see embed_incbin_payloads for which payloads that covers.
+pub fn (mut g FlatGen) set_embed_incbin(enabled bool) {
+	g.embed_incbin = enabled
+}
+
 // set_parallel_cc marks safe top-level function batches for split C compilation.
 pub fn (mut g FlatGen) set_parallel_cc(enabled bool) {
 	g.parallel_cc = enabled
@@ -1705,11 +1787,20 @@ pub fn (mut g FlatGen) set_program_body_only(enabled bool) {
 // translation unit rather than an imported module cache object. Each file is
 // resolved through `a`'s table of resolved source paths.
 pub fn (mut g FlatGen) set_cache_program_files(a &flat.FlatAst, files []string) {
-	g.cache_program_files = map[string]bool{}
+	g.cache_program_files = cache_program_file_set(a, files)
+}
+
+// cache_program_file_set is the set that set_cache_program_files keeps: each
+// program file by the path it was given and by its real path, so that a caller
+// outside the generator (the driver deciding which `$embed_file` payloads are
+// assembled, see embed_incbin_payloads) tests membership the same way.
+pub fn cache_program_file_set(a &flat.FlatAst, files []string) map[string]bool {
+	mut program_files := map[string]bool{}
 	for file in files {
-		g.cache_program_files[file] = true
-		g.cache_program_files[a.real_source_path(file)] = true
+		program_files[file] = true
+		program_files[a.real_source_path(file)] = true
 	}
+	return program_files
 }
 
 // set_incremental_fn_names limits program-body generation to functions whose
@@ -3311,14 +3402,14 @@ fn (g &FlatGen) cleanup_scoped_output_files(stream_path string, fn_stream_path s
 
 // gen_with_used_options emits with used options output for c.
 pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[string]bool, tc &types.TypeChecker, no_parallel bool) string {
-	effective_no_parallel := no_parallel || g.profile_file.len > 0
+	effective_no_parallel := no_parallel || g.profile_file.len > 0 || g.coverage_dir.len > 0
 	// The preparation choices below must agree with the dispatch mode the stages
 	// actually run in: a parallel dispatch expects prepare_pre_dispatch_master,
 	// a serial one expects prepare_serial_fn_tables. Keying both off the same
 	// flag keeps function selection on the master instead of inside one of the
 	// forked scoped preseed helpers.
 	mut parallel_cgen := !effective_no_parallel
-	if g.profile_file.len > 0 {
+	if g.profile_file.len > 0 || g.coverage_dir.len > 0 {
 		// Counter metadata and numbering are accumulated by one serial generator.
 		g.scope_parallel_workers = false
 	}
@@ -3521,6 +3612,10 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	g.unique_struct_ct_cache = &StringLookupCache{}
 	g.alias_method_cache = &StringLookupCache{}
 	g.import_alias_cache = &ContextStringLookupCache{}
+	// The import front caches memoize the previous program's import tables,
+	// including misses; the serial path never resets them otherwise.
+	g.import_key_cache = &util.KeyRecentCache{}
+	g.selective_import_key_cache = &util.KeyRecentCache{}
 	g.enum_selector_cache = &ContextStringLookupCache{}
 	g.enum_method_cache = &ContextStringLookupCache{}
 	g.qualified_enum_method_cache = &ContextStringLookupCache{}
@@ -11618,7 +11713,7 @@ fn (g &FlatGen) enum_selector_base_name_uncached(name string) ?string {
 	if name.contains('.') || g.tc.cur_file.len == 0 {
 		return none
 	}
-	candidates := g.tc.file_selective_imports['${g.tc.cur_file}\n${name}'] or { return none }
+	candidates := g.file_selective_import_candidates(g.tc.cur_file, name) or { return none }
 	for candidate in candidates {
 		if candidate in g.tc.enum_names || candidate in g.tc.flag_enums {
 			return candidate
@@ -11673,15 +11768,22 @@ fn (mut g FlatGen) const_block_init_to_string(qname string, val_node flat.Node, 
 	for i in 0 .. int(val_node.children_count) - 1 {
 		g.gen_node(g.a.child(&val_node, i))
 	}
-	g.write('${qname} = ')
 	last_id := g.a.child(&val_node, int(val_node.children_count) - 1)
 	last := g.a.nodes[int(last_id)]
-	if last.kind == .expr_stmt && last.children_count > 0 {
-		g.gen_expr_with_expected_type(g.a.child(&last, 0), expected)
+	value_id := if last.kind == .expr_stmt && last.children_count > 0 {
+		g.a.child(&last, 0)
 	} else {
-		g.gen_expr_with_expected_type(last_id, expected)
+		last_id
 	}
-	g.writeln(';')
+	if _ := array_fixed_type(default_init_unalias_type(expected)) {
+		g.write('memmove(${qname}, ')
+		g.gen_fixed_array_copy_source(value_id, expected)
+		g.writeln(', sizeof(${qname}));')
+	} else {
+		g.write('${qname} = ')
+		g.gen_expr_with_expected_type(value_id, expected)
+		g.writeln(';')
+	}
 	g.indent--
 	g.pop_scope()
 	g.writeln('}')
@@ -13395,7 +13497,7 @@ fn (mut g FlatGen) gen_pointer_pointer_struct_selector(base_id flat.NodeId, base
 	}
 	inner_base := (inner_ptr as types.Pointer).base_type
 
-	struct_type := types.unwrap_pointer(inner_base)
+	struct_type := cgen_unalias_type(types.unwrap_pointer(inner_base))
 	if struct_type !is types.Struct {
 		return false
 	}
@@ -13413,7 +13515,7 @@ fn (mut g FlatGen) gen_pointer_pointer_struct_selector(base_id flat.NodeId, base
 		g.write('))->${g.field_c_name(inner_base, field)}')
 		return true
 	}
-	if embedded_path := g.embedded_field_path_for_promoted_selector(inner_base, field) {
+	if embedded_path := g.embedded_field_path_for_promoted_selector(struct_type, field) {
 		g.write('(*(')
 		if base_is_mut_pointer_param {
 			g.gen_mut_pointer_slot_expr(base_id)
@@ -14080,7 +14182,14 @@ fn (g &FlatGen) const_ref_name_from_node(node flat.Node) string {
 	if node.kind == .selector && node.children_count > 0 {
 		base := g.a.child_node(&node, 0)
 		if base.kind == .ident {
-			return g.const_ref_name('${base.value}.${node.value}')
+			if g.selector_base_is_local_value(base.value)
+				|| g.current_module_global_type_for_ident(base.value) != none {
+				return ''
+			}
+			resolved_base := g.selector_base_module_for_member(base.value, node.value) or {
+				base.value
+			}
+			return g.const_ref_name('${resolved_base}.${node.value}')
 		}
 	}
 	return ''
@@ -14153,11 +14262,17 @@ fn (g &FlatGen) const_ref_name_from_node_cached_for_collect(node flat.Node, uniq
 		if base.kind != .ident {
 			return ''
 		}
+		if g.selector_base_is_local_value(base.value)
+			|| g.current_module_global_type_for_ident(base.value) != none {
+			return ''
+		}
 		cache_key := '${g.tc.cur_file}|${g.tc.cur_module}|selector|${base.value}|${node.value}'
 		if cache_key in cache {
 			return cache[cache_key]
 		}
-		resolved_base := g.import_alias_module(base.value) or { base.value }
+		resolved_base := g.selector_base_module_for_member(base.value, node.value) or {
+			base.value
+		}
 		const_name := g.const_ref_name_fast_for_collect('${resolved_base}.${node.value}', unique_index)
 		cache[cache_key] = const_name
 		return const_name
@@ -14988,10 +15103,19 @@ fn (mut g FlatGen) const_expr_to_string(id flat.NodeId, seen []string) string {
 
 // const_ident_c_name converts const ident c name data for c.
 fn (g &FlatGen) const_ident_c_name(name string) string {
+	mod := g.const_modules[name] or { '' }
+	qualified := if name.contains('.') || mod.len == 0 {
+		name
+	} else {
+		'${mod}.${name}'
+	}
+	if qualified in g.tc.fn_ret_types {
+		// V distinguishes value and call lookup; C needs distinct storage symbols.
+		return '_const_${g.cname(qualified)}'
+	}
 	if name.contains('.') {
 		return g.cname(name)
 	}
-	mod := if name in g.const_modules { g.const_modules[name] } else { '' }
 	if mod.len > 0 && mod != 'main' {
 		return g.cname('${mod}.${name}')
 	}
@@ -15767,7 +15891,12 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 		.prefix {
 			child_id := g.a.child(node, 0)
 			child := g.a.nodes[int(child_id)]
-			fn_value_type := cgen_unalias_type(g.fn_value_candidate_type(child_id, child))
+			// Only `&` needs to know whether its operand is a function value.
+			fn_value_type := if node.op == .amp {
+				cgen_unalias_type(g.fn_value_candidate_type(child_id, child))
+			} else {
+				types.Type(types.void_)
+			}
 			if node.op == .amp && fn_value_type is types.FnType {
 				// A function value is already a C pointer, so `&` on one is a no-op
 				// wherever the context wants a callable: `Holder{ f: &local }` has to
@@ -15805,11 +15934,17 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 				g.gen_expr(child_id)
 				return
 			}
+			if node.op == .amp && child.kind == .ident
+				&& g.local_indirect_value_type(child.value) != none {
+				// Borrowed loop values already store the address of their element.
+				g.write(g.local_decl_cname(child.value))
+				return
+			}
 			if node.op == .arrow {
 				child_type0 := g.usable_expr_type(child_id)
 				child_type := concrete_receiver_type(child_type0)
 				if child_type is types.Channel {
-					elem_ct := g.tc.c_type(child_type.elem_type)
+					elem_ct := g.value_c_type(child_type.elem_type)
 					tmp := g.tmp_name()
 					g.write('({${elem_ct} ${tmp} = (${elem_ct}){0}; sync__Channel__pop(')
 					if child_type0 is types.Pointer {
@@ -16102,6 +16237,12 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 		.selector {
 			base_id := g.a.child(node, 0)
 			base := g.a.nodes[int(base_id)]
+			if base.kind == .ident {
+				if storage := g.current_module_selector_const_name(base.value, node.value) {
+					g.write(g.const_ident_c_name(storage))
+					return
+				}
+			}
 			if base.kind == .typeof_expr {
 				if node.value == 'name' {
 					g.gen_typeof_name(base)
@@ -16229,7 +16370,7 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 				}
 				full_qname := g.const_storage_name(imported_selector_module, node.value)
 				if full_qname in g.const_vals {
-					g.write(g.cname(full_qname))
+					g.write(g.const_ident_c_name(full_qname))
 				} else {
 					g.write(g.cname('${short_mod}.${node.value}'))
 				}
@@ -16341,6 +16482,29 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 					g.write('.')
 				}
 				g.write(g.field_c_name(base_type0, node.value))
+			} else if base.kind == .ident && !g.selector_base_is_local_value(base.value)
+				&& g.global_type_for_ident(base.value) == none
+				&& g.selector_base_is_module(base.value, node.value) {
+				mod := g.selector_base_module_for_member(base.value, node.value) or { '' }
+				short_mod := if mod.contains('.') {
+					mod.all_after_last('.')
+				} else {
+					mod
+				}
+				// A module-level const is stored under the importing module's full path
+				// (e.g. `v.gen.wasm`), matching its function naming. Reference it by that
+				// exact storage name rather than the short alias, otherwise we'd emit an
+				// undeclared `wasm__x` for a const defined as `v3__gen__wasm__x`.
+				full_qname := if mod == 'main' {
+					'main.${node.value}'
+				} else {
+					g.const_storage_name(mod, node.value)
+				}
+				if full_qname in g.const_vals {
+					g.write(g.const_ident_c_name(full_qname))
+				} else {
+					g.write(g.cname('${short_mod}.${node.value}'))
+				}
 			} else if node.value == 'len' && base.kind == .ident {
 				base_type := g.tc.resolve_type(base_id)
 				if fixed := array_fixed_type(types.unwrap_pointer(base_type)) {
@@ -16353,23 +16517,6 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 					} else {
 						g.write('.len')
 					}
-				}
-			} else if base.kind == .ident && !base_is_local && g.selector_base_is_module(base.value) {
-				mod := g.selector_base_module(base.value) or { '' }
-				short_mod := if mod.contains('.') {
-					mod.all_after_last('.')
-				} else {
-					mod
-				}
-				// A module-level const is stored under the importing module's full path
-				// (e.g. `v.gen.wasm`), matching its function naming. Reference it by that
-				// exact storage name rather than the short alias, otherwise we'd emit an
-				// undeclared `wasm__x` for a const defined as `v3__gen__wasm__x`.
-				full_qname := g.const_storage_name(mod, node.value)
-				if full_qname in g.const_vals {
-					g.write(g.cname(full_qname))
-				} else {
-					g.write(g.cname('${short_mod}.${node.value}'))
 				}
 			} else if base.kind == .selector && base.children_count > 0 && g.is_module_qualified_enum(base) {
 				inner_base := g.a.child_node(&base, 0)
@@ -16823,7 +16970,7 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 				g.write(g.ierror_none_literal_string())
 			} else {
 				ct := g.optional_type_name(g.optional_none_type(id))
-				g.write('(${ct}){.ok = false, .err = builtin__none__}')
+				g.write('(${ct}){.ok = false${g.optional_none_err_field()}}')
 			}
 		}
 		.or_expr {
@@ -18457,6 +18604,9 @@ fn (mut g FlatGen) headerless_execinfo_declarations() {
 }
 
 fn (mut g FlatGen) system_libc_preamble() {
+	g.writeln('#ifndef _WIN32')
+	g.writeln('extern char** environ;')
+	g.writeln('#endif')
 	g.collect_preserved_c_fns(c_headerless_libc_declared_fns)
 	g.collect_preserved_c_fns([
 		'kevent',
@@ -20936,14 +21086,16 @@ fn (mut g FlatGen) atomic_builtin_compat_decls() {
 		g.writeln(g.c_local_header_directive(header))
 		g.writeln('#else')
 	}
-	// A portable snapshot is compiled by a C compiler that is not known yet, so the
-	// choice above cannot be made from `g.ccompiler`; the preprocessor has to make
-	// it instead. system_libc_headers() already includes that header behind
+	// Generated Windows C can be compiled by TCC even when the selected compiler
+	// recorded in `g.ccompiler` is different (including portable snapshots). The
+	// preprocessor must make the final choice. system_libc_headers() includes
+	// that header behind
 	// `_WIN32 && __TINYC__`, so defining the helpers again wherever it is in effect
 	// expands its macros over the definitions - `atomic_fetch_add_byte(void* ptr,
 	// byte delta)` becomes `ManualInterlockedExchangeAdd8(void* ptr, byte delta)`,
 	// which redefines the header's own function. Leave the block out exactly there.
-	guard_windows_tcc := g.output_cross_c
+	// The ordinary MSVC path already opened the same choice above.
+	guard_windows_tcc := (g.output_cross_c || g.target.os == 'windows') && !windows_msvc
 	if guard_windows_tcc {
 		g.writeln('#if !(defined(_WIN32) && (defined(__TINYC__) || (defined(_MSC_VER) && !defined(__clang__))))')
 	}
@@ -22778,7 +22930,7 @@ fn (mut g FlatGen) emit_global_inits() {
 					continue
 				}
 				if clean_type is types.Channel {
-					elem_ct := g.tc.c_type(clean_type.elem_type)
+					elem_ct := g.value_sizeof_target(clean_type.elem_type)
 					g.queue_runtime_init('\t${g.global_c_name(qname)} = sync__new_channel_st((u32)(0), (u32)(sizeof(${elem_ct})));')
 					continue
 				}
@@ -23501,14 +23653,24 @@ fn (mut g FlatGen) emit_const(name string, val_id flat.NodeId) {
 		// A lowered const initializer (`.map()` chains): leading statements
 		// compute temps, the last child is the value expression.
 		if ct != 'void' {
-			g.writeln('${ct} ${qname};')
+			if fixed := array_fixed_type(default_init_unalias_type(v_type)) {
+				c_elem, dims := g.fixed_array_decl_parts(fixed)
+				g.writeln('${c_elem} ${qname}${dims};')
+			} else {
+				g.writeln('${ct} ${qname};')
+			}
 			g.queue_const_runtime_init(g.const_block_init_to_string(qname, val_node, v_type))
 		}
 		g.tc.cur_module = old_module
 		return
 	}
 	mut expr_str := if fixed := array_fixed_type(default_init_unalias_type(v_type)) {
-		g.fixed_array_initializer_string(val_id, fixed)
+		initializer := g.fixed_array_initializer_string(val_id, fixed)
+		if initializer.len > 0 {
+			initializer
+		} else {
+			g.fixed_array_copy_source_string(val_id, types.Type(fixed))
+		}
 	} else if ct == 'Array' {
 		arr := array_like_type(default_init_unalias_type(v_type)) or {
 			types.Array{
@@ -23559,10 +23721,10 @@ fn (mut g FlatGen) emit_const(name string, val_id flat.NodeId) {
 		is_static_const = false
 	}
 	if !is_static_const {
-		if v_type is types.ArrayFixed {
-			c_elem, dims := g.fixed_array_decl_parts(v_type)
+		if fixed := array_fixed_type(default_init_unalias_type(v_type)) {
+			c_elem, dims := g.fixed_array_decl_parts(fixed)
 			g.writeln('${c_elem} ${qname}${dims};')
-			g.queue_const_fixed_array_runtime_init(qname, val_id, v_type)
+			g.queue_const_fixed_array_runtime_init(qname, val_id, fixed)
 		} else if ct != 'void' {
 			g.writeln('${ct} ${qname};')
 			// The initializer is not a compile-time constant (e.g. `os.args =

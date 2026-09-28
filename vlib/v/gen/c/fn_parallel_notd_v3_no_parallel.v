@@ -7,6 +7,7 @@ import time
 import v.flat
 import v.gen.c.naming
 import v.types
+import v.util
 import v.workers
 
 const max_flat_cgen_jobs = 18
@@ -518,8 +519,10 @@ fn optional_support_selection_thread(arg voidptr) voidptr {
 
 fn unresolved_call_optional_thread(arg voidptr) voidptr {
 	mut w := unsafe { &FlatGen(arg) }
+	usw := time.new_stopwatch()
 	scope := cgen_worker_scope_begin(w.scope_parallel_workers)
 	w.collect_unresolved_call_optional_types()
+	w.timing_profile('  [ttime]       fs call opts   ${f64(usw.elapsed().microseconds()) / 1000.0:7.2f} ms')
 	w.worker_scope = scope
 	cgen_worker_scope_leave(scope)
 	return unsafe { nil }
@@ -1494,6 +1497,10 @@ fn (mut g FlatGen) gen_fn_chunks_scoped_dynamic(
 		g.begin_usable_expr_type_memo()
 		g.end_usable_expr_type_memo()
 	}
+	// Chunks reuse one scratch arena: each chunk's output is absorbed into the
+	// result arena before the next chunk starts, so the arena is rewound instead
+	// of being freed and faulted in again for every chunk.
+	mut scratch_scope := unsafe { nil }
 	for {
 		chunk_idx := <-chunk_queue or { break }
 		n_chunks++
@@ -1501,7 +1508,10 @@ fn (mut g FlatGen) gen_fn_chunks_scoped_dynamic(
 		for item in chunks[chunk_idx] {
 			chunk_cost += item.cost
 		}
-		scratch_scope := cgen_worker_scope_begin(true)
+		if scratch_scope == unsafe { nil } || !cgen_worker_scope_reenter(scratch_scope) {
+			cgen_worker_scope_free(scratch_scope)
+			scratch_scope = cgen_worker_scope_begin(true)
+		}
 		mut batch := g.new_parallel_worker(chunk_idx)
 		if reuse_expr_type_memo {
 			batch.usable_expr_type_memo = g.usable_expr_type_memo
@@ -1519,8 +1529,8 @@ fn (mut g FlatGen) gen_fn_chunks_scoped_dynamic(
 		if g.fn_segs.len > segment_start {
 			g.fn_seg_chunk_indexes << chunk_idx
 		}
-		cgen_worker_scope_free(scratch_scope)
 	}
+	cgen_worker_scope_free(scratch_scope)
 	g.timing_profile('  [ttime]     cg wkr busy    ${f64(wsw.elapsed().microseconds()) / 1000.0:7.2f} ms (chunks: ${n_chunks})')
 	g.worker_scope = result_scope
 	cgen_worker_scope_leave(result_scope)
@@ -2791,6 +2801,9 @@ fn (g &FlatGen) new_parallel_worker_config(worker_id int, result_only bool) &Fla
 		has_builtins:                       g.has_builtins
 		cache_split:                        g.cache_split
 		cache_stable_symbols:               g.cache_stable_symbols
+		embed_incbin:                       g.embed_incbin
+		embed_incbin_syms:                  g.embed_incbin_syms
+		embed_incbin_syms_ready:            g.embed_incbin_syms_ready
 		compile_defines:                    g.compile_defines
 		compile_values:                     g.compile_values
 		trace_calls:                        g.trace_calls
@@ -2901,6 +2914,8 @@ fn (g &FlatGen) new_parallel_worker_config(worker_id int, result_only bool) &Fla
 		cur_fn_ret_is_optional:             g.cur_fn_ret_is_optional
 		cur_fn_ret_base:                    g.cur_fn_ret_base
 		memo_usable_expr_types:             g.memo_usable_expr_types
+		import_key_cache:                   &util.KeyRecentCache{}
+		selective_import_key_cache:         &util.KeyRecentCache{}
 		cache_struct_fields:                g.cache_struct_fields
 		dedup_fn_decl_aliases:              g.dedup_fn_decl_aliases
 		prefix_param_scan:                  g.prefix_param_scan
@@ -3422,6 +3437,7 @@ fn (mut g FlatGen) run_pre_dispatch_parallel(no_parallel bool) bool {
 	optional_worker.c_name_cache = &CNameCache{}
 	optional_worker.generic_app_cache = &GenericAppCache{}
 	mut call_optional_worker := g.new_parallel_worker(3)
+	call_optional_worker.tc.verbose = g.tc.verbose
 	call_optional_worker.c_name_cache = &CNameCache{}
 	call_optional_worker.generic_app_cache = &GenericAppCache{}
 	fail := os.getenv('V3_TEST_PTHREAD_CREATE_FAIL')

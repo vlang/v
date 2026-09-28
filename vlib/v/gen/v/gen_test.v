@@ -1965,6 +1965,13 @@ fn test_formatter_keeps_a_trailing_comment_on_a_match_branch() {
 	assert vfmt('match_branch_trailing_comment_twice', out) == out
 }
 
+fn test_formatter_keeps_trailing_comments_on_compact_match_branches() {
+	source := 'fn foo(arg int) int {\n\treturn match arg {\n\t\t1 { 1 } // return 1\n\t\telse { 0 } // return 2\n\t}\n}\n'
+	out := vfmt('compact_match_branch_trailing_comments', source)
+	assert out == source, out
+	assert vfmt('compact_match_branch_trailing_comments_twice', out) == out
+}
+
 // A blank separator line must carry no indentation. Writing it left a line of whitespace, which
 // V source never carries and which the next run read back differently, so the formatter was not a
 // fixed point.
@@ -2219,6 +2226,14 @@ fn test_formatter_aligns_struct_field_defaults_and_comments() {
 	out := vfmt('struct_field_suffix_alignment', source)
 	assert out == source, out
 	assert vfmt('struct_field_suffix_alignment_twice', out) == out
+}
+
+fn test_formatter_aligns_struct_field_attributes_with_defaults() {
+	source := 'struct Foo {\n\ta    int    @[some_attr]\n\tbeta string @[another]\n\tpi   f32 = 3.14    @[yet_another]\n\td    f64 = 2.9999999    @[yet_another]\n}\n\nfn main() {}\n'
+	want := 'struct Foo {\n\ta    int        @[some_attr]\n\tbeta string     @[another]\n\tpi   f32 = 3.14      @[yet_another]\n\td    f64 = 2.9999999 @[yet_another]\n}\n\nfn main() {}\n'
+	out := vfmt('struct_field_attribute_alignment', source)
+	assert out == want, out
+	assert vfmt('struct_field_attribute_alignment_twice', out) == want
 }
 
 // Enum members and interface members align their trailing comments the same way.

@@ -1565,11 +1565,11 @@ fn (t &Transformer) map_key_backing_type(key_type string) ?string {
 	if !isnil(t.tc) && !clean.contains('.') && clean !in t.tc.structs {
 		mut alias_target := t.tc.type_aliases[clean] or { '' }
 		if alias_target.len == 0 {
-			suffix := '.${clean}'
 			mut matches := 0
-			for aname, target in t.tc.type_aliases {
-				if aname.ends_with(suffix) {
-					alias_target = target
+			// Only module-qualified aliases, i.e. those ending in `.${clean}`.
+			for alias in t.type_aliases_with_short_name(clean) {
+				if alias.name.contains('.') {
+					alias_target = alias.target
 					matches++
 					if matches > 1 {
 						alias_target = ''
@@ -2176,12 +2176,7 @@ fn (mut t Transformer) lower_map_or_body_to_stmts(body_id flat.NodeId, target_na
 		return result
 	}
 	err_scope := t.enter_implicit_err_scope()
-	err_value := if int(err_expr) >= 0 {
-		err_expr
-	} else {
-		t.make_struct_init('IError')
-	}
-	result << t.make_decl_assign_typed('err', err_value, 'IError')
+	t.append_implicit_err_decl(mut result, err_expr)
 	for i in 0 .. body.children_count {
 		child_id := t.a.child(&body, i)
 		child := t.a.nodes[int(child_id)]

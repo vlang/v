@@ -788,7 +788,7 @@ fn (g &FlatGen) canonical_import_alias_type_text_in_file_uncached(typ string, fi
 	}
 	if clean.contains('.') {
 		alias := clean.all_before('.')
-		if module_name := g.tc.file_imports['${file}\n${alias}'] {
+		if module_name := g.cached_file_import(file, alias) {
 			return module_name + clean[alias.len..]
 		}
 	}
@@ -832,7 +832,7 @@ fn (g &FlatGen) current_file_import_alias_module(alias string) ?string {
 	if g.tc.cur_file.len == 0 {
 		return none
 	}
-	return g.tc.file_imports['${g.tc.cur_file}\n${alias}'] or { none }
+	return g.cached_file_import(g.tc.cur_file, alias) or { none }
 }
 
 fn optional_payload_is_bare_struct(t types.Type) bool {
@@ -878,6 +878,11 @@ fn (mut g FlatGen) collect_unresolved_call_optional_types() {
 	// source not covered by the shared declaration-signature scan. Legacy
 	// `json.decode(T, ...)` is also handled here because its declaration keeps an
 	// erased `!voidptr` return while cgen materializes a concrete `!T` wrapper.
+	// `json.decode` is declared by the C-magic `json` module, and the checker
+	// rejects the call without it. Resolving every call's target only to rule it
+	// out is the bulk of this scan, so skip that when the module is absent.
+	json_decode_possible := 'json.decode' in g.tc.fn_ret_types
+		|| 'json.decode' in g.tc.fn_param_types
 	mut seen_type_ids := []bool{len: 65536}
 	mut seen_type_texts := map[string]bool{}
 	for idx in g.type_metadata_nodes() {
@@ -885,8 +890,25 @@ fn (mut g FlatGen) collect_unresolved_call_optional_types() {
 		if node.kind != .call {
 			continue
 		}
-		if json_type := g.json_decode_call_expr_result_type(flat.NodeId(idx)) {
-			g.collect_optional_typedef_type(json_type)
+		if json_decode_possible {
+			if json_type := g.json_decode_call_expr_result_type(flat.NodeId(idx)) {
+				g.collect_optional_typedef_type(json_type)
+			}
+		}
+		// Only a complete type spelling that was not collected yet can add a
+		// typedef. Rule the rest out before the checker metadata below, which
+		// costs a map lookup per resolved call.
+		if node.typ.len == 0 || node.typ in ['int', 'array', 'map', 'unknown']
+			|| !cgen_type_text_is_complete(node.typ) {
+			continue
+		}
+		type_id := node.type_text_id()
+		if type_id != 0 {
+			if seen_type_ids[int(type_id)] {
+				continue
+			}
+		} else if node.typ in seen_type_texts {
+			continue
 		}
 		if idx < g.tc.expr_type_set.len && g.tc.expr_type_set[idx] {
 			continue
@@ -902,21 +924,12 @@ fn (mut g FlatGen) collect_unresolved_call_optional_types() {
 				continue
 			}
 		}
-		if node.typ.len > 0 && node.typ !in ['int', 'array', 'map', 'unknown'] && cgen_type_text_is_complete(node.typ) {
-			type_id := node.type_text_id()
-			if type_id != 0 {
-				if seen_type_ids[int(type_id)] {
-					continue
-				}
-				seen_type_ids[int(type_id)] = true
-			} else {
-				if node.typ in seen_type_texts {
-					continue
-				}
-				seen_type_texts[node.typ] = true
-			}
-			g.collect_optional_typedef_type(g.parse_node_type(&node))
+		if type_id != 0 {
+			seen_type_ids[int(type_id)] = true
+		} else {
+			seen_type_texts[node.typ] = true
 		}
+		g.collect_optional_typedef_type(g.parse_node_type(&node))
 	}
 }
 

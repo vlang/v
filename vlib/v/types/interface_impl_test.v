@@ -149,6 +149,21 @@ fn test_interface_metadata_name_keeps_same_named_structs_out_of_interfaces() {
 	assert tc.interface_metadata_name('iomod.Reader') == 'io.Reader'
 }
 
+fn test_interface_metadata_name_keeps_composite_types_out_of_interfaces() {
+	mut a := flat.FlatAst.new()
+	mut tc := TypeChecker.new(&a)
+	tc.interface_names['baz.MyData'] = true
+	tc.structs['bar.MyData'] = []StructField{}
+	// https://github.com/vlang/v/issues/28952
+	// The text after the last `.` of an array, option, pointer or function type is
+	// its element type, not the name of a same-named interface in another module.
+	for name in ['[]bar.MyData', '?bar.MyData', '&bar.MyData', '[2]bar.MyData', '[][]bar.MyData',
+		'?[]bar.MyData', '[]baz.MyData', 'map[string]bar.MyData', 'fn (bar.MyData) bar.MyData'] {
+		assert tc.interface_metadata_name(name) !in tc.interface_names, name
+	}
+	assert tc.interface_metadata_name('baz.MyData') == 'baz.MyData'
+}
+
 fn test_undeclared_ierror_does_not_make_every_type_an_error_payload() {
 	// https://github.com/vlang/v/issues/28886
 	// With `-no-builtin` no `IError` is declared. A missing interface has no

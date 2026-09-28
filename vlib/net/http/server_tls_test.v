@@ -774,13 +774,11 @@ fn test_server_tls_h2_negotiation() {
 	assert resp.status_code == 200
 	assert resp.body == 'tls hello /h2'
 
-	// With HTTP/2 disabled on the client, the server must keep speaking
-	// HTTP/1.1 to the same listener. (enable_http2 defaults to true since
-	// vlang/v#27384, so it must be opted out of explicitly here.)
+	// Without an explicit HTTP/2 opt-in, the client uses HTTP/1.1 to the
+	// same listener even after an HTTP/2 connection has been established.
 	resp_h1 := http.fetch(
-		url:          'https://127.0.0.1:${port}/h1'
-		enable_http2: false
-		validate:     false
+		url:      'https://127.0.0.1:${port}/h1'
+		validate: false
 	) or {
 		assert false, 'h1 fetch failed: ${err}'
 		return

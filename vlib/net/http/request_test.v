@@ -370,6 +370,15 @@ fn test_get_does_not_wait_for_timeout_when_content_length_is_complete() {
 	assert elapsed < time.second
 }
 
+fn test_http2_requires_explicit_client_opt_in() {
+	assert !http.FetchConfig{}.enable_http2
+	assert !http.Request{}.enable_http2
+	default_request := http.prepare(url: 'https://example.com')!
+	assert !default_request.enable_http2
+	opted_in := http.prepare(url: 'https://example.com', enable_http2: true)!
+	assert opted_in.enable_http2
+}
+
 fn test_prepare_uses_fetch_config_timeouts() {
 	req := http.prepare(
 		url:           'http://example.com'
