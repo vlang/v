@@ -1680,3 +1680,25 @@ fn test_fmt_demangles_function_local_aggregate_types_with_v3() {
 	assert second_res.exit_code == 0, second_res.output
 	assert formatted_twice == formatted
 }
+
+fn test_fmt_preserves_contextual_range_embed_and_position_restrictions() {
+	for source, expected in {
+		'fn main() { value := [2]field.typ{} }':                  '[2]field.typ{}'
+		'fn f[T]() { if T is int { println(1) } }':               'if T is int'
+		'struct Example { value field.typ }':                     'value field.typ'
+		'struct Example { value pkg.typ }':                       'value pkg.typ'
+		'fn f(a, mut b int) {}':                                  'fn f(a int, mut b int)'
+		'fn f(a, mut b &int) {}':                                 'fn f(a &int, mut b &int)'
+		'fn main() { for i := 0; i < 3; j := 1 { println(j) } }': 'j := 1'
+		'fn main() {}\n#!/usr/bin/env -S v run':                  '#!/usr/bin/env -S v run'
+		'fn f(x int) { match x { 0 .. 3 {} else {} } }':          '0 .. 3'
+		'struct Holder { pkg.lower }':                            'pkg.lower'
+	} {
+		res, formatted := run_vfmt_write('match_range_embed', source + '\n', '')
+		assert res.exit_code == 0, res.output
+		assert formatted.contains(expected), formatted
+		second, twice := run_vfmt_write('match_range_embed_twice', formatted, '')
+		assert second.exit_code == 0, second.output
+		assert twice == formatted
+	}
+}

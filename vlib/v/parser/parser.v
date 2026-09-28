@@ -1119,12 +1119,12 @@ fn token_id_to_op(tv int) flat.Op {
 }
 
 fn (p &Parser) formatter_assignment_op() string {
-	if !p.prefs.is_fmt || p.tok !in [.and_assign, .or_assign] || p.tok_pos < 0
+	if !p.prefs.is_fmt || p.tok !in [.and_assign, .or_assign, .decl_assign] || p.tok_pos < 0
 		|| p.tok_end > p.s.src.len {
 		return ''
 	}
 	spelling := p.s.src[p.tok_pos..p.tok_end]
-	if spelling in ['&&=', '||='] {
+	if spelling in ['&&=', '||=', ':='] {
 		return spelling
 	}
 	return ''
@@ -2084,6 +2084,7 @@ fn (mut p Parser) parse_param_group(is_c_decl bool) []flat.NodeId {
 	}
 	mut names := []string{}
 	mut name_positions := []token.Pos{}
+	mut name_mutabilities := []bool{}
 	mut is_mut := false
 	mut is_shared := false
 	mut is_atomic := false
@@ -2149,9 +2150,12 @@ fn (mut p Parser) parse_param_group(is_c_decl bool) []flat.NodeId {
 	}
 	name_positions << p.current_pos()
 	names << p.expect_name_or_keyword()
+	name_mutabilities << is_mut
 	for p.tok == .comma {
 		p.next()
+		mut name_is_mut := is_mut
 		if p.tok == .key_mut {
+			name_is_mut = true
 			p.next()
 		}
 		if p.tok_can_be_decl_name() {
@@ -2161,6 +2165,7 @@ fn (mut p Parser) parse_param_group(is_c_decl bool) []flat.NodeId {
 			}
 			name_positions << p.current_pos()
 			names << p.expect_name_or_keyword()
+			name_mutabilities << name_is_mut
 		}
 	}
 	if p.tok == .key_mut {
@@ -2191,24 +2196,26 @@ fn (mut p Parser) parse_param_group(is_c_decl bool) []flat.NodeId {
 	}
 	p.record_inline_sum_type_deprecation(type_start, p.prev_tok_end)
 	param_group_end := p.prev_tok_end
-	explicit_mut_ref := is_mut && typ.starts_with('&')
-	mut_builtin_pointer := is_mut && typ in ['voidptr', 'byteptr', 'charptr']
-	if is_mut && !typ.starts_with('&') {
-		typ = '&' + typ
-	}
-	if is_shared {
-		typ = 'shared ' + typ
-	}
-	if is_atomic {
-		typ = 'atomic ' + typ
-	}
 	for i, name in names {
+		param_is_mut := is_mut || (p.prefs.is_fmt && name_mutabilities[i])
+		explicit_mut_ref := param_is_mut && typ.starts_with('&')
+		mut_builtin_pointer := param_is_mut && typ in ['voidptr', 'byteptr', 'charptr']
+		mut param_type := typ
+		if param_is_mut && !param_type.starts_with('&') {
+			param_type = '&' + param_type
+		}
+		if is_shared {
+			param_type = 'shared ' + param_type
+		}
+		if is_atomic {
+			param_type = 'atomic ' + param_type
+		}
 		id := p.add_node(flat.Node{
 			kind:   .param
 			op:     if explicit_mut_ref { .amp } else { .none }
 			value:  name
-			typ:    typ
-			is_mut: is_mut
+			typ:    param_type
+			is_mut: param_is_mut
 			flags:  if mut_builtin_pointer { flat.node_flag_mut_builtin_pointer_param } else { 0 }
 			pos:    name_positions[i]
 		})
@@ -2490,7 +2497,7 @@ fn (mut p Parser) struct_decl() flat.NodeId {
 				}
 				p.next()
 				second := p.expect_name_or_keyword()
-				if second.len > 0 && second[0] >= `a` && second[0] <= `z` {
+				if !p.prefs.is_fmt && second.len > 0 && second[0] >= `a` && second[0] <= `z` {
 					p.record_diagnostic_span('invalid field name', field_start, field_start + field_name.len)
 				}
 				full_type := '${field_name}.${second}'
@@ -3656,7 +3663,7 @@ fn (mut p Parser) directive() flat.NodeId {
 	if name == 'flag' && value.len == 0 {
 		p.record_diagnostic_span('no argument(s) provided for #flag', directive_start, directive_end)
 	}
-	if name.starts_with('!') && directive_start > 0 {
+	if name.starts_with('!') && directive_start > 0 && !p.prefs.is_fmt {
 		p.record_diagnostic_span('a shebang is only valid at the top of the file', directive_start,
 			directive_end)
 	}
@@ -8259,7 +8266,8 @@ fn (mut p Parser) if_stmt() flat.NodeId {
 		p.record_diagnostic_span('the condition of an `if` should be a boolean expression, not another `if` statement; did you write `if` twice by mistake?',
 			p.tok_pos, p.tok_end)
 		p.next()
-	} else if p.tok == .name && p.lit in p.cur_fn_generic_params && p.peek() == .key_is {
+	} else if !p.prefs.is_fmt && p.tok == .name && p.lit in p.cur_fn_generic_params
+		&& p.peek() == .key_is {
 		p.record_diagnostic_span('use `$if` instead of `if`', if_start, if_start + 2)
 	}
 	cond := p.control_header_expr(.lowest)
@@ -9106,12 +9114,14 @@ fn (mut p Parser) match_branch_cond() flat.NodeId {
 	p.in_match_branch_condition--
 	cond_node := p.a.node(cond)
 	if cond_node.kind == .range && cond_node.children_count == 2 {
-		low := p.a.child_node(cond_node, 0)
-		high := p.a.child_node(cond_node, 1)
-		op_start := clamp_source_offset(low.pos.end, p.s.src.len)
-		op_end := int_min(clamp_source_offset(high.pos.offset, p.s.src.len), op_start + 2)
-		p.record_diagnostic_span('match only supports inclusive (`...`) ranges, not exclusive (`..`) ',
-			op_start, op_end)
+		if !p.prefs.is_fmt {
+			low := p.a.child_node(cond_node, 0)
+			high := p.a.child_node(cond_node, 1)
+			op_start := clamp_source_offset(low.pos.end, p.s.src.len)
+			op_end := int_min(clamp_source_offset(high.pos.offset, p.s.src.len), op_start + 2)
+			p.record_diagnostic_span('match only supports inclusive (`...`) ranges, not exclusive (`..`) ',
+				op_start, op_end)
+		}
 		return cond
 	}
 	if p.tok == .ellipsis {
@@ -9873,7 +9883,7 @@ fn (mut p Parser) for_post_clause() flat.NodeId {
 	mut ends := []int{}
 	exprs << p.expr(.lowest)
 	ends << p.prev_tok_end
-	if p.tok == .decl_assign {
+	if p.tok == .decl_assign && !p.prefs.is_fmt {
 		p.record_diagnostic_span('for loop post statement cannot be a variable declaration', p.tok_pos, p.tok_end)
 	}
 	if p.tok == .comma {
@@ -13880,7 +13890,7 @@ fn (mut p Parser) parse_fixed_array_literal_type_name() string {
 		if p.tok == .dot {
 			p.next()
 			if p.tok == .name {
-				if p.lit != 'typ' {
+				if p.prefs.is_fmt || p.lit != 'typ' {
 					name += '.' + p.lit
 				}
 				p.next()
@@ -15604,7 +15614,7 @@ fn (mut p Parser) parse_type_name() string {
 		for p.tok == .dot {
 			p.next()
 			if p.tok == .name {
-				if p.lit != 'typ' {
+				if p.prefs.is_fmt || p.lit != 'typ' {
 					name += '.' + p.lit
 				}
 				p.next()

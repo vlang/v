@@ -7,6 +7,11 @@ fn test_formatter_preserves_syntax_without_semantic_diagnostics() {
 	path := os.join_path(os.vtmp_dir(), 'formatter_semantics_${os.getpid()}.v')
 	defer { os.rm(path) or {} }
 	cases := {
+		'fn f[T]() { if T is int { println(1) } }':                                                  'use `$if` instead of `if`'
+		'fn main() { for i := 0; i < 3; j := 1 { println(j) } }':                                    'for loop post statement cannot be a variable declaration'
+		'fn main() {}\n#!/usr/bin/env -S v run':                                                     'a shebang is only valid at the top of the file'
+		'fn f(x int) { match x { 0 .. 3 {} else {} } }':                                             'match only supports inclusive (`...`) ranges, not exclusive (`..`) '
+		'struct Holder { pkg.lower }':                                                               'invalid field name'
 		'struct Example {}\nfn (value Example) Foo.bar() {}':                                        'cannot declare a static function as a receiver method'
 		'fn main() { for i in 0 ... 3 { println(i) } }':                                             'for loop only supports exclusive (`..`) ranges, not inclusive (`...`)'
 		'fn f(value array) {}':                                                                      '`array` is an internal type, it cannot be used directly. Use `[]int`, `[]Foo` etc'
