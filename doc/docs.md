@@ -2389,6 +2389,8 @@ When iterating a reference to a map (`for key, value in &m`), values with ordina
 are pointers to their entries. Assigning one to another variable preserves its reference to the
 same entry. If the map element is already a pointer or an optional, the loop value keeps that
 element type instead.
+A pointer to a nested array or map remains a reference container when iterated again,
+including through parentheses or a closure capture.
 Fixed-array map values also refer to their entry storage, so changes through the reference update
 the map value.
 Parentheses around a mutable map container do not change whether assigning the loop value updates
