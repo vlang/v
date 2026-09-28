@@ -133,6 +133,9 @@ fn (tc &TypeChecker) vls_type_details(typ Type) []VlsDetail {
 	}
 	fields := tc.structs[owner] or { tc.interface_fields[owner] or { []StructField{} } }
 	for field in fields {
+		if t is Struct && !tc.vls_field_is_usable(typ, owner, field.name) {
+			continue
+		}
 		details << VlsDetail{
 			kind:   5
 			label:  field.name
@@ -141,6 +144,23 @@ fn (tc &TypeChecker) vls_type_details(typ Type) []VlsDetail {
 	}
 	tc.vls_method_details(owner, mut details, mut seen)
 	return details
+}
+
+// vls_field_is_usable reports whether the file being completed may use the
+// field `field` of the struct `owner` on a value of type `typ`, by the rules
+// the checker applies to a selector: through an alias, the alias's module
+// decides; a struct private to another module has no field to use there, but
+// for the public ones of an anonymous struct; else the field's `pub` does.
+fn (tc &TypeChecker) vls_field_is_usable(typ Type, owner string, field string) bool {
+	receiver := unwrap_all_pointers(typ)
+	if receiver is Alias {
+		return !tc.alias_struct_field_is_private_outside_module(receiver, field)
+	}
+	if visibility := tc.private_declaration(owner) {
+		return tc.is_synthesized_anon_struct(owner)
+			&& tc.anonymous_struct_field_is_public(owner, field, visibility.module_name)
+	}
+	return !tc.struct_field_is_private_outside_module(owner, field)
 }
 
 // vls_method_details adds the methods of the type `owner` the file being

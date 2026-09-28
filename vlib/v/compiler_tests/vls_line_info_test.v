@@ -300,6 +300,14 @@ fn ask_at(dir string, spec string) string {
 	return res.output.trim_space()
 }
 
+// ask_in asks `-line-info` about `spec`, a file of the program of `dir` with a
+// position (`models/models.v:10:10`), checking the program from its main.v.
+fn ask_in(dir string, spec string) string {
+	res := os.execute('cd ${os.quoted_path(dir)} && ${os.quoted_path(line_info_v3_bin)} -w -check -nocolor -vls-mode -line-info "${spec}" main.v')
+	assert res.exit_code == 0, res.output
+	return res.output.trim_space()
+}
+
 fn is_name_byte(c u8) bool {
 	return c.is_letter() || c.is_digit() || c == `_`
 }
@@ -491,6 +499,47 @@ struct InlayHint {
 	label   string
 	kind    int
 	tooltip string
+}
+
+fn test_completion_leaves_out_the_fields_the_module_cannot_use() {
+	// `models.User` has a private field: `main` cannot use it, but through an
+	// alias `main` declares it can, as the checker says; `models` uses all.
+	dir := os.join_path(work_dir, 'private_fields')
+	os.mkdir_all(os.join_path(dir, 'models')) or { panic(err) }
+	os.write_file(os.join_path(dir, 'main.v'), 'module main
+
+import models
+
+type Account = models.User
+
+fn main() {
+	u := models.User{}
+	println(u.zz)
+	a := Account{}
+	println(a.zz)
+}
+') or { panic(err) }
+	os.write_file(os.join_path(dir, 'models', 'models.v'), 'module models
+
+pub struct User {
+	hidden int
+pub:
+	visible int
+}
+
+pub fn (u User) peek() int {
+	return u.zz
+}
+') or { panic(err) }
+	for spec, want in {
+		'main.v:9:11':           ['2 peek int', '5 visible int']
+		'main.v:11:11':          ['5 hidden int', '2 peek int', '5 visible int']
+		'models/models.v:10:10': ['5 hidden int', '2 peek int', '5 visible int']
+	} {
+		answer := ask_in(dir, spec)
+		details := (json2.decode[Details](answer) or { panic('${err}: ${answer}') }).details
+		assert details.map('${it.kind} ${it.label} ${it.detail}') == want, spec
+	}
 }
 
 fn test_inlay_hints_of_the_whole_file() {
