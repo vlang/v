@@ -1497,6 +1497,16 @@ fn (mut decoder Decoder) decode_enum[T](mut val T) ! {
 	enum_info := decoder.current_node.value
 
 	if enum_info.value_kind == .number {
+		$if T.unaliased_typ is $enum {
+			if enum_uses_json_as_number[T]() {
+				// Like the removed `json` module, a `@[json_as_number]` enum takes the
+				// number as its backing value, declared or not (`Status(99)`).
+				mut backing := i64(0)
+				unsafe { decoder.decode_number(&backing)! }
+				val = unsafe { T(backing) }
+				return
+			}
+		}
 		mut result := 0
 		unsafe { decoder.decode_number(&result)! }
 
