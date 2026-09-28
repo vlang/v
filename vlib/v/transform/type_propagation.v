@@ -2020,8 +2020,8 @@ fn (t &Transformer) node_type_uncached(id flat.NodeId) string {
 			name = t.tc.resolve_type(id).name()
 		}
 		if name.len > 0 && name != 'void' && (name != 'int'
-			|| node.kind in [.ident, .int_literal, .infix, .prefix, .paren, .selector, .index,
-				.call]) {
+			|| node.kind in [.ident, .int_literal, .infix, .prefix, .postfix, .paren, .selector,
+				.index, .call]) {
 			return t.normalize_type_alias(name)
 		}
 	}
