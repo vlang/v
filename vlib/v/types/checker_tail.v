@@ -19441,8 +19441,12 @@ fn (tc &TypeChecker) branch_explicit_comma_tail_types(id flat.NodeId) ?[]Type {
 				return none
 			}
 			value_id := tc.a.child(stmt, 0)
-			typ := tc.expr_type(value_id) or { tc.resolve_type(value_id) }
-			if typ is Unknown || !type_has_runtime_value(typ) {
+			typ := if tc.a.node(value_id).kind == .none_expr {
+				Type(none_)
+			} else {
+				tc.expr_type(value_id) or { tc.resolve_type(value_id) }
+			}
+			if typ is Unknown || (!type_has_runtime_value(typ) && typ !is None) {
 				return none
 			}
 			tail_types << typ

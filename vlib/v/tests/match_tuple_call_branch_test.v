@@ -260,3 +260,48 @@ fn test_if_tuple_error_promotes_to_wrapped_slot() {
 		assert (result_text or { 'failed' }) == if flag { 'ok' } else { 'failed' }
 	}
 }
+
+fn test_match_tuple_infers_option_from_none_and_value() {
+	for flag in [true, false] {
+		a, b := match flag {
+			true { 1, none }
+			else { 2, 'value' }
+		}
+		assert a == if flag { 1 } else { 2 }
+		assert (b or { 'missing' }) == if flag { 'missing' } else { 'value' }
+		c, d := match flag {
+			true { 'value', 1 }
+			else { none, 2 }
+		}
+		assert (c or { 'missing' }) == if flag { 'value' } else { 'missing' }
+		assert d == if flag { 1 } else { 2 }
+		e, f := if flag { 1, none } else { 2, 'value' }
+		assert e == a
+		assert (f or { 'missing' }) == (b or { 'missing' })
+		g, h := if flag { 'value', 1 } else { none, 2 }
+		assert (g or { 'missing' }) == (c or { 'missing' })
+		assert h == d
+	}
+}
+
+fn test_match_tuple_infers_each_optional_slot_across_all_arms() {
+	for value in 0 .. 3 {
+		a, b, c := match value {
+			0 { none, 1, 'first' }
+			1 { 'middle', none, 'second' }
+			else { 'last', 3, none }
+		}
+		assert (a or { 'missing' }) == ['missing', 'middle', 'last'][value]
+		assert (b or { 0 }) == [1, 0, 3][value]
+		assert (c or { 'missing' }) == ['first', 'second', 'missing'][value]
+		d, e := if value == 0 {
+			1, none
+		} else if value == 1 {
+			2, 'x'
+		} else {
+			3, 'y'
+		}
+		assert d == value + 1
+		assert (e or { 'missing' }) == ['missing', 'x', 'y'][value]
+	}
+}

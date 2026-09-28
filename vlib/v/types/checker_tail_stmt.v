@@ -2119,6 +2119,11 @@ fn (mut tc TypeChecker) check_general_match_branch_tail_types(id flat.NodeId, no
 		}
 	}
 	mut expected := tail_types[0]
+	if expected is MultiReturn {
+		if _ := tc.multi_expr_tail_types(id, expected.types.len) {
+			return
+		}
+	}
 	if expected is Void || expected is Unknown {
 		return
 	}
