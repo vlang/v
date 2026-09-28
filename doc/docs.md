@@ -4006,6 +4006,8 @@ println(int(color)) // prints 1
 ```
 
 The enum type can be any integer type, but can be omitted, if it is `int`: `enum Color {`.
+When a struct field expects an enum, its value can use the short `.field` form, including
+inside parentheses in a collapsed struct call argument.
 
 Enum match must be exhaustive or have an `else` branch.
 This ensures that if a new enum field is added, it's handled everywhere in the code.
