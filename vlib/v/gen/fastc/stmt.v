@@ -1479,11 +1479,16 @@ fn (mut g Parser) parse_simple_statement() ! {
 		}
 		g.consume_statement_end()
 		if g.translated {
-			if pointer_member := g.render_pointer_member_access_expression(g.last_expression,
-				expression) {
-				g.write_line('${pointer_member.source};')
-				return
+			mut translated_expression := expression
+			if method_call := g.render_method_call_expression(g.last_expression, translated_expression) {
+				translated_expression = method_call.source
 			}
+			if pointer_member := g.render_pointer_member_access_expression(g.last_expression,
+				translated_expression) {
+				translated_expression = pointer_member.source
+			}
+			g.write_line('${translated_expression};')
+			return
 		}
 		g.write_line('${expression};')
 		return

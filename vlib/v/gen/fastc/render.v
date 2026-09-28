@@ -898,7 +898,7 @@ fn (g &Parser) render_assignment_expression(tokens []FastcExpressionToken) ?Fast
 		field := left_tokens.last().lit
 		raw_receiver := g.render_raw_expression_tokens(receiver_tokens) or { '' }
 		if call := g.render_method_call_expression(receiver_tokens, raw_receiver) {
-			access := if call.typ.ends_with('*') { '->' } else { '.' }
+			access := if g.underlying_alias_type(call.typ).ends_with('*') { '->' } else { '.' }
 			left = '(${call.source})${access}${field}'
 		}
 	}
@@ -1561,7 +1561,7 @@ fn (g &Parser) render_pointer_member_access_expression(tokens []FastcExpressionT
 				continue
 			}
 		}
-		if !receiver_type.ends_with('*') {
+		if !g.underlying_alias_type(receiver_type).ends_with('*') {
 			continue
 		}
 		receiver_source := if lowered_array_receiver != '' {

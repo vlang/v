@@ -3109,6 +3109,31 @@ fn test_translated_pointer_writes_accept_immutable_roots() {
 	assert dereference_write.contains('*target=value;'), dereference_write
 }
 
+fn test_translated_alias_pointer_call_field_writes() {
+	for selfhost in [false, true] {
+		mut prefs := pref.new_preferences()
+		prefs.building_v = selfhost
+		for receiver in ['get_state()', 'accessor.state()'] {
+			for operation in ['=1', '++', '--'] {
+				source := '@[translated]
+module main
+struct State { count int }
+type StateRef = &State
+type StateRefAlias = StateRef
+struct Accessor {}
+fn get_state() StateRefAlias { return unsafe { nil } }
+fn (a Accessor) state() StateRefAlias { return unsafe { nil } }
+fn write(accessor Accessor) {
+ ${receiver}.count${operation}
+}
+'
+				generated := generate(source, 'translated_alias_return.v', prefs) or { panic(err) }
+				assert generated.contains('->count${operation};'), generated
+			}
+		}
+	}
+}
+
 fn test_translated_scalar_mutations_accept_known_immutable_locals() {
 	prefs := pref.new_preferences()
 	for body in [
