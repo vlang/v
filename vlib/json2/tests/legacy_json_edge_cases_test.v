@@ -552,3 +552,20 @@ fn test_option_array_variants_tag_struct_elements() {
 	nested := OptionNestedItems(?[][]ArrayVariantItem([[ArrayVariantItem{1}]]))
 	assert json2.encode(nested) == '[[{"a":1,"_type":"ArrayVariantItem"}]]'
 }
+
+struct SumRefHolder {
+	value  &Being
+	values []&Being
+	maybe  ?&Being
+}
+
+fn test_references_to_sum_types_decode() {
+	// Like the removed module, a `&SumType` field decodes into a new sum type value.
+	input := '{"value":{"name":"Bob","_type":"Human"},"values":[{"model":"R2","_type":"Robot"}],"maybe":{"name":"Al","_type":"Human"}}'
+	holder := json2.decode[SumRefHolder](input)!
+	assert json2.encode(holder) == input
+	value := *holder.value
+	assert value is Human
+	top := json2.decode[&Being]('{"model":"C3","_type":"Robot"}')!
+	assert json2.encode(top) == '{"model":"C3","_type":"Robot"}'
+}

@@ -395,6 +395,9 @@ fn create_decoded_ptr[T](_ &T) &T {
 		return unsafe { nil }
 	} $else $if T.unaliased_typ is voidptr {
 		return unsafe { nil }
+	} $else $if T is $sumtype {
+		// `&T(ptr)` would wrap the pointer in the sum type instead of casting it.
+		return $new(T)
 	} $else {
 		return unsafe { &T(vcalloc(sizeof(T))) }
 	}
