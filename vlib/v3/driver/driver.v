@@ -7994,11 +7994,20 @@ fn add_v3_profile_used_fns(mut used_fns map[string]bool) {
 	}
 }
 
+fn v3_fastc_cache_failure_output(output string, cached_objects map[string]string) string {
+	mut mapped := output
+	for build_object, cache_object in cached_objects {
+		mapped = mapped.replace(build_object, cache_object)
+	}
+	return mapped
+}
+
 $if !skip_fastc ? {
 	struct V3FastCCompileResult {
-		success bool
-		command string
-		output  string
+		success        bool
+		command        string
+		output         string
+		cached_objects map[string]string
 	}
 
 	fn publish_v3_fastc_c_source(pieces []string, output_file string, c_to_stdout bool) ! {
@@ -8174,10 +8183,12 @@ $if !skip_fastc ? {
 		mut result := os.Result{}
 		mut command := ''
 		mut sign_in_process := false
+		mut cached_objects := map[string]string{}
 		link_cache_key := generation_link_cache_key
 		mut link_cache_restored := false
 		if unit_paths.len > 1 {
 			prepared_units := fastc.fastc_prepare_c_units(tcc_path, compile_args, unit_paths, cache_enabled)
+			cached_objects = prepared_units.restored_cache_objects()
 			link_inputs := prepared_units.objects.clone()
 			mut display_args := compile_base_args.clone()
 			display_args << ['-o', staged_binary]
@@ -8264,6 +8275,7 @@ $if !skip_fastc ? {
 			return V3FastCCompileResult{
 				command: command
 				output: result.output
+				cached_objects: cached_objects
 			}
 		}
 		if sign_in_process {
@@ -9550,7 +9562,8 @@ pub fn run(args []string) {
 				os.rm(fastc_bin_file) or {}
 			}
 			if !fastc_result.success {
-				if v3_recover_from_cache_failure(args, fastc_result.output, '') {
+				cache_failure_output := v3_fastc_cache_failure_output(fastc_result.output, fastc_result.cached_objects)
+				if v3_recover_from_cache_failure(args, cache_failure_output, '') {
 					return
 				}
 				if fastc_result.command.len == 0 {
@@ -9558,7 +9571,7 @@ pub fn run(args []string) {
 				} else if !show_c_output && fastc_result.output.len > 0 {
 					eprintln(fastc_result.output.trim_space())
 				}
-				if v3_cache_failure_artifacts(fastc_result.output).len > 0 {
+				if v3_cache_failure_artifacts(cache_failure_output).len > 0 {
 					eprintln("Suggestion: the C toolchain keeps rejecting files from V's cache. Run `v wipe-cache`, then repeat your compilation.")
 				}
 				exit(1)
@@ -12534,8 +12547,8 @@ fn v3_is_tcc_compilation_failure(c_compiler string, output string) bool {
 
 // v3_cache_artifact_dir_names are the fixed-name persistent caches a build links
 // artifacts out of. Module caches have a hexadecimal root key suffix.
-const v3_cache_artifact_dir_names = ['v3_thirdparty_objs', 'v3_fastc_unit_cache', 'v3_fastc_link_cache',
-	'v3_crun_cache']
+const v3_cache_artifact_dir_names = ['v3_thirdparty_objs', 'v3_fastc_unit_cache',
+	'v3_fastc_link_cache', 'v3_crun_cache']
 
 // v3_cache_failure_markers are whole-file rejections: the toolchain could not
 // read or find an input, or saw the same symbol twice. Line-scoped diagnostics

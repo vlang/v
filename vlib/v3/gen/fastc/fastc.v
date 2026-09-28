@@ -2923,6 +2923,18 @@ pub:
 	cache_key string
 }
 
+// restored_cache_objects maps build-local objects restored from the FastC cache
+// to their persistent cache entries for reporting linker failures.
+pub fn (prepared &FastcPreparedUnits) restored_cache_objects() map[string]string {
+	mut restored := map[string]string{}
+	for entry in prepared.entries {
+		if entry.hit && entry.cache_object != '' {
+			restored[entry.object] = entry.cache_object
+		}
+	}
+	return restored
+}
+
 // fastc_unit_compile_order returns the indexes of uncached C units largest
 // first. TinyCC processes start one at a time, so launching longer jobs first
 // reduces the time spent waiting for the final unit.

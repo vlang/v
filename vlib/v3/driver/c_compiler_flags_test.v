@@ -527,8 +527,7 @@ fn test_v3_cache_failure_artifacts_needs_a_cached_path_and_a_whole_file_failure(
 	os.mkdir_all(cache_dir)!
 	object := os.join_path(cache_dir, 'atomic_deadbeef_cafe.o')
 	rejected := 'tcc: error: ${object}: unrecognized file type'
-	assert v3_cache_failure_artifacts(rejected) == [os.join_path_single(os.real_path(cache_dir),
-		os.base(object))]
+	assert v3_cache_failure_artifacts(rejected) == [os.join_path_single(os.real_path(cache_dir), os.base(object))]
 
 	// A line-scoped diagnostic in a cached unit is a real compile error, not a
 	// poisoned entry; spending a rebuild on it would only reproduce it.
@@ -545,6 +544,31 @@ fn test_v3_cache_failure_artifacts_needs_a_cached_path_and_a_whole_file_failure(
 
 	// Every marker has to be paired with a cached path.
 	assert v3_cache_failure_artifacts('ld: duplicate symbol _main') == []
+}
+
+fn test_v3_fastc_cache_failure_maps_restored_build_object_to_owned_entry() {
+	root := os.join_path(os.vtmp_dir(), 'v3_fastc_failure_map_${os.getpid()}')
+	cache_dir := os.join_path(root, 'v3_fastc_unit_cache')
+	os.mkdir_all(cache_dir)!
+	previous := os.getenv_opt('V3CACHE')
+	os.setenv('V3CACHE', root, true)
+	defer {
+		if value := previous {
+			os.setenv('V3CACHE', value, true)
+		} else {
+			os.unsetenv('V3CACHE')
+		}
+		os.rmdir_all(root) or {}
+	}
+	cache_object := os.join_path(cache_dir, 'unit.o')
+	os.write_file(cache_object, 'broken')!
+	build_object := os.join_path(root, 'build', 'unit.o')
+	output := "ld: '${build_object}': file format not recognized"
+	assert v3_cache_failure_artifacts(output) == []
+	mapped := v3_fastc_cache_failure_output(output, {
+		build_object: cache_object
+	})
+	assert v3_cache_failure_artifacts(mapped) == [os.real_path(cache_object)]
 }
 
 fn test_v3_cache_error_artifacts_reads_paths_out_of_toolchain_diagnostics() {
@@ -610,12 +634,16 @@ fn test_v3_cache_artifact_detection_accepts_quoted_paths_with_spaces() {
 	}
 	object := os.join_path(cache_dir, 'cached object.o')
 	os.write_file(object, 'broken')!
-	assert v3_cache_failure_artifacts("ld: '${object}': file format not recognized") == [os.real_path(object)]
+	assert v3_cache_failure_artifacts("ld: '${object}': file format not recognized") == [
+		os.real_path(object),
+	]
 	module_dir := os.join_path(root, 'v3_module_cache_ab12', 'config')
 	os.mkdir_all(module_dir)!
 	module_object := os.join_path(module_dir, 'module.o')
 	os.write_file(module_object, 'broken')!
-	assert v3_cache_failure_artifacts("ld: '${module_object}': file format not recognized") == [os.real_path(module_object)]
+	assert v3_cache_failure_artifacts("ld: '${module_object}': file format not recognized") == [
+		os.real_path(module_object),
+	]
 }
 
 fn test_v3_discard_cache_artifacts_drops_sidecars_and_link_plans() {
