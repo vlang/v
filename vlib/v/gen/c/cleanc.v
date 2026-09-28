@@ -22852,7 +22852,7 @@ fn (mut g FlatGen) emit_global_inits() {
 					&& initializer.children_count == 1 {
 					child_id := g.a.child(initializer, 0)
 					child := g.a.node(child_id)
-					if child.kind in [.array_init, .array_literal]
+					if child.kind in [.array_init, .array_literal, .struct_init]
 						|| (child.kind == .postfix && child.op == .not) {
 						if fixed := array_fixed_type(clean_type.base_type) {
 							if g.queue_global_fixed_array_pointer_init(g.global_c_name(qname),
@@ -22899,46 +22899,57 @@ fn (mut g FlatGen) emit_global_inits() {
 	g.tc.cur_module = old_module
 }
 
-fn (g &FlatGen) global_fixed_array_pointer_alignment(fixed types.ArrayFixed) ?string {
-	clean_elem := default_init_unalias_type(fixed.elem_type)
-	if clean_elem is types.ArrayFixed {
-		return g.global_fixed_array_pointer_alignment(clean_elem)
+fn (g &FlatGen) global_fixed_array_type_has_aligned_struct(typ types.Type, mut seen map[string]bool) bool {
+	clean := default_init_unalias_type(typ)
+	if clean is types.ArrayFixed {
+		return g.global_fixed_array_type_has_aligned_struct(clean.elem_type, mut seen)
 	}
-	if clean_elem is types.Struct {
-		for name in [fixed.elem_type.name(), clean_elem.name] {
-			if align := g.struct_decl_alignment_for_name(name) {
-				align_ct := g.struct_decl_alignment_c_type(clean_elem.name, g.value_c_type(clean_elem))
-				return struct_decl_alignment_memdup_arg(align, align_ct)
+	if clean is types.Struct && !seen[clean.name] {
+		seen[clean.name] = true
+		if g.struct_decl_alignment_for_name(clean.name) != none {
+			return true
+		}
+		if fields := g.struct_fields_for_type(clean.name) {
+			for field in fields {
+				if g.global_fixed_array_type_has_aligned_struct(field.typ, mut seen) {
+					return true
+				}
 			}
 		}
+	}
+	return false
+}
+
+fn (g &FlatGen) global_fixed_array_pointer_alignment(fixed types.ArrayFixed) ?string {
+	mut seen := map[string]bool{}
+	if !g.global_fixed_array_type_has_aligned_struct(fixed.elem_type, mut seen) {
+		return none
+	}
+	mut elem := default_init_unalias_type(fixed.elem_type)
+	for {
+		if elem is types.ArrayFixed {
+			elem = default_init_unalias_type(elem.elem_type)
+			continue
+		}
+		break
+	}
+	if elem is types.Struct {
+		ct := g.struct_decl_alignment_c_type(elem.name, g.value_c_type(elem))
+		return '__alignof__(${ct})'
 	}
 	return none
 }
 
-fn (mut g FlatGen) queue_global_fixed_array_pointer_init(target string, val_id flat.NodeId, fixed types.ArrayFixed, typ types.Type) bool {
-	ct := g.tc.c_type(typ)
-	mut source := g.fixed_array_compound_literal_expr(val_id, fixed)
-	copy_fn := if alignment := g.global_fixed_array_pointer_alignment(fixed) {
-		'v3_aligned_memdup'
-	} else {
-		'memdup'
-	}
-	mut alignment_arg := ''
-	if alignment := g.global_fixed_array_pointer_alignment(fixed) {
-		alignment_arg = ', ${alignment}'
-	}
-	if source.len > 0 {
-		// Keep the literal's storage alive after global initialization.
-		g.queue_runtime_init('\t${target} = (${ct})${copy_fn}(${source}, sizeof(*${target})${alignment_arg});')
-		return true
+fn (mut g FlatGen) global_fixed_array_fill_stmt(dst string, val_id flat.NodeId, fixed types.ArrayFixed) string {
+	literal := g.fixed_array_compound_literal_expr(val_id, fixed)
+	if trimmed_space(literal).len > 0 {
+		return 'memmove(${dst}, ${literal}, sizeof(${dst}));'
 	}
 	node := g.a.node(val_id)
 	if node.kind != .array_init {
-		return false
+		return ''
 	}
-	init_id := g.array_init_field_value(node, 'init') or { return false }
-	c_elem, dims := g.fixed_array_decl_parts(fixed)
-	array_tmp := g.tmp_name()
+	init_id := g.array_init_field_value(node, 'init') or { return '' }
 	index_tmp := g.tmp_name()
 	int_ct := g.value_c_type(types.Type(types.int_))
 	mut bindings := ''
@@ -22947,22 +22958,44 @@ fn (mut g FlatGen) queue_global_fixed_array_pointer_init(target string, val_id f
 			bindings += '${int_ct} ${g.local_decl_cname(name)} = ${index_tmp}; '
 		}
 	}
-	mut assignment := ''
-	if inner := array_fixed_type(fixed.elem_type) {
-		init_source := g.fixed_array_runtime_copy_source_expr(init_id, inner)
-		if trimmed_space(init_source).len == 0 {
-			return false
-		}
-		assignment = 'memmove(${array_tmp}[${index_tmp}], ${init_source}, sizeof(${array_tmp}[${index_tmp}]));'
+	element := '${dst}[${index_tmp}]'
+	assignment := if inner := array_fixed_type(fixed.elem_type) {
+		g.global_fixed_array_fill_stmt(element, init_id, inner)
 	} else {
 		init_expr := g.expr_to_string_with_expected_type(init_id, fixed.elem_type)
 		if trimmed_space(init_expr).len == 0 {
-			return false
+			return ''
 		}
-		assignment = '${array_tmp}[${index_tmp}] = ${init_expr};'
+		'${element} = ${init_expr};'
 	}
-	source = array_tmp
-	g.queue_runtime_init('\t{ ${c_elem} ${array_tmp}${dims} = {0}; for (${int_ct} ${index_tmp} = 0; ${index_tmp} < sizeof(${array_tmp}) / sizeof(${array_tmp}[0]); ${index_tmp}++) { ${bindings}${assignment} } ${target} = (${ct})${copy_fn}(${source}, sizeof(${array_tmp})${alignment_arg}); }')
+	if assignment.len == 0 {
+		return ''
+	}
+	return 'for (${int_ct} ${index_tmp} = 0; ${index_tmp} < sizeof(${dst}) / sizeof(${dst}[0]); ${index_tmp}++) { ${bindings}${assignment} }'
+}
+
+fn (mut g FlatGen) queue_global_fixed_array_pointer_init(target string, val_id flat.NodeId, fixed types.ArrayFixed, typ types.Type) bool {
+	ct := g.tc.c_type(typ)
+	source := g.fixed_array_compound_literal_expr(val_id, fixed)
+	alignment := g.global_fixed_array_pointer_alignment(fixed) or { '' }
+	copy_fn := if alignment.len > 0 {
+		'v3_aligned_memdup'
+	} else {
+		'memdup'
+	}
+	alignment_arg := if alignment.len > 0 { ', ${alignment}' } else { '' }
+	if source.len > 0 {
+		// Keep the literal's storage alive after global initialization.
+		g.queue_runtime_init('\t${target} = (${ct})${copy_fn}(${source}, sizeof(*${target})${alignment_arg});')
+		return true
+	}
+	c_elem, dims := g.fixed_array_decl_parts(fixed)
+	array_tmp := g.tmp_name()
+	fill := g.global_fixed_array_fill_stmt(array_tmp, val_id, fixed)
+	if fill.len == 0 {
+		return false
+	}
+	g.queue_runtime_init('\t{ ${c_elem} ${array_tmp}${dims} = {0}; ${fill} ${target} = (${ct})${copy_fn}(${array_tmp}, sizeof(${array_tmp})${alignment_arg}); }')
 	return true
 }
 

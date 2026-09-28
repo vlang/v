@@ -8,3 +8,5 @@ The storage remains valid after global initialization. Element defaults also app
 of structs and nested fixed arrays, just as they do for local fixed-array literals. Initializers
 such as `&[4]int{init: index * 2}` fill each element before the global pointer is assigned.
 Arrays of aligned structs retain the alignment required by their elements.
+This also applies to fixed-array aliases, nested fills, and alignment inherited
+through struct value fields.
