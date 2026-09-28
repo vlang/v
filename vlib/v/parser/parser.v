@@ -3962,7 +3962,7 @@ fn (mut p Parser) parse_field_attrs_with_kinds_mode(single_group bool, check_pen
 					arg := p.lit.trim_space()
 					p.next()
 					if attr_name == 'deprecated' && arg_name == 'msg' {
-						if has_base_arg {
+						if has_base_arg && !p.prefs.is_fmt {
 							p.record_diagnostic_span('duplicate `msg` argument for `@[deprecated(...)]` attribute',
 								piece_start, p.prev_tok_end)
 						}

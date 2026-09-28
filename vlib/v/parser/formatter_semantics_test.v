@@ -25,6 +25,7 @@ fn test_formatter_preserves_syntax_without_semantic_diagnostics() {
 		'fn main() { a := []int{init: 1}; _ = a }':                                                  'cannot use `init` attribute unless `len` attribute is also provided'
 		'fn main() { select { else {} else {} } }':                                                  'at most one `else` branch allowed in `select` block'
 		'fn main() { unsafe { unsafe { println(1) } } }':                                            'already inside `unsafe` block'
+		"@[deprecated(msg: 'old', msg: 'new')] fn old() {}":                                         'duplicate `msg` argument for `@[deprecated(...)]` attribute'
 	}
 	for source, expected in cases {
 		os.write_file(path, source + '\n')!

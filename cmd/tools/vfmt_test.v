@@ -110,6 +110,16 @@ fn test_fmt_accepts_semantic_duplicate_operator_and_recursive_alias() {
 	}
 }
 
+fn test_fmt_preserves_duplicate_deprecated_message_arguments() {
+	source := "@[deprecated(msg: 'old', msg: 'new')] fn old() {}\n"
+	res, formatted := run_vfmt_write('duplicate_deprecated_messages', source, '')
+	assert res.exit_code == 0, res.output
+	assert formatted.contains("@[deprecated(msg: 'old', msg: 'new')]")
+	second, formatted_twice := run_vfmt_write('duplicate_deprecated_messages_twice', formatted, '')
+	assert second.exit_code == 0, second.output
+	assert formatted_twice == formatted
+}
+
 fn test_fmt_uses_v3_formatter() {
 	source_path := os.join_path(vfmt_test_tdir, 'v3_formatter.v')
 	os.write_file(source_path, 'fn main(){println("v3")}\n')!
