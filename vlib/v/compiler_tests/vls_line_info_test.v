@@ -548,6 +548,14 @@ fn ask_at(dir string, spec string) string {
 	return res.output.trim_space()
 }
 
+// ask_in asks `-line-info` about `spec`, a file of the program of `dir` with a
+// position (`models/models.v:10:10`), checking the program from its main.v.
+fn ask_in(dir string, spec string) string {
+	res := os.execute('cd ${os.quoted_path(dir)} && ${os.quoted_path(line_info_v3_bin)} -w -check -nocolor -vls-mode -line-info "${spec}" main.v')
+	assert res.exit_code == 0, res.output
+	return res.output.trim_space()
+}
+
 fn is_name_byte(c u8) bool {
 	return c.is_letter() || c.is_digit() || c == `_`
 }
@@ -739,6 +747,47 @@ struct InlayHint {
 	label   string
 	kind    int
 	tooltip string
+}
+
+fn test_completion_leaves_out_the_fields_the_module_cannot_use() {
+	// `models.User` has a private field: `main` cannot use it, but through an
+	// alias `main` declares it can, as the checker says; `models` uses all.
+	dir := os.join_path(work_dir, 'private_fields')
+	os.mkdir_all(os.join_path(dir, 'models')) or { panic(err) }
+	os.write_file(os.join_path(dir, 'main.v'), 'module main
+
+import models
+
+type Account = models.User
+
+fn main() {
+	u := models.User{}
+	println(u.zz)
+	a := Account{}
+	println(a.zz)
+}
+') or { panic(err) }
+	os.write_file(os.join_path(dir, 'models', 'models.v'), 'module models
+
+pub struct User {
+	hidden int
+pub:
+	visible int
+}
+
+pub fn (u User) peek() int {
+	return u.zz
+}
+') or { panic(err) }
+	for spec, want in {
+		'main.v:9:11':           ['2 peek int', '5 visible int']
+		'main.v:11:11':          ['5 hidden int', '2 peek int', '5 visible int']
+		'models/models.v:10:10': ['5 hidden int', '2 peek int', '5 visible int']
+	} {
+		answer := ask_in(dir, spec)
+		details := (json2.decode[Details](answer) or { panic('${err}: ${answer}') }).details
+		assert details.map('${it.kind} ${it.label} ${it.detail}') == want, spec
+	}
 }
 
 fn test_inlay_hints_of_the_whole_file() {
@@ -1025,6 +1074,64 @@ fn test_a_server_child_answers_no_more_once_a_module_appears_at_the_project_root
 	p.stdin_write('quit\n')
 	p.wait()
 	assert p.code == 0
+}
+
+// release_child writes to `fifo` once a child reads it, without waiting for a
+// child that never does: a FIFO opened to write without a reader fails at once.
+fn release_child(fifo string) {
+	for _ in 0 .. 500 {
+		fd := C.open(&char(fifo.str), C.O_WRONLY | C.O_NONBLOCK)
+		if fd >= 0 {
+			C.write(fd, c'go', 2)
+			C.close(fd)
+			return
+		}
+		time.sleep(10 * time.millisecond)
+	}
+}
+
+fn test_a_child_whose_server_ended_before_the_child_followed_it_ends() {
+	$if !linux {
+		return
+	}
+	// Right after its fork, a child asks the kernel to end it with the server;
+	// a server that ended in between leaves it running, checking for nobody. A
+	// FIFO holds the child there while the test kills the server: the child has
+	// to end then, before it checks and prints the error of this program.
+	dir := program_dir('orphan_child', 'module main\n\nfn main() {\n\tprintln(missing)\n}\n')
+	fifo := os.join_path(work_dir, 'orphan_child.fifo')
+	assert os.execute('mkfifo ${os.quoted_path(fifo)}').exit_code == 0
+	mut p := start_server(dir, {
+		'V_DIAGNOSTICS_CHILD_PAUSE': fifo
+	})
+	defer {
+		p.close()
+	}
+	p.stdin_write('check t0\n')
+	started := read_until(mut p, ' t0\n')
+	assert started.contains('v-diagnostics-server: child '), started
+	child := started.all_after('v-diagnostics-server: child ').all_before(' ').int()
+	assert child > 0, started
+	p.signal_kill()
+	p.wait()
+	// Writing to the FIFO lets the child go on.
+	release_child(fifo)
+	for _ in 0 .. 1000 {
+		if !os.exists('/proc/${child}') {
+			break
+		}
+		time.sleep(10 * time.millisecond)
+	}
+	assert !os.exists('/proc/${child}'), 'the child ${child} is still running'
+	mut printed := ''
+	for {
+		chunk := p.stdout_read()
+		if chunk == '' {
+			break
+		}
+		printed += chunk
+	}
+	assert !printed.contains('missing'), printed
 }
 
 fn test_a_server_child_that_grew_answers_its_last_question_and_leaves() {
@@ -1398,6 +1505,30 @@ fn line_of(source string, text string) int {
 	line := source.split('\n').index(text) + 1
 	assert line > 0, '`${text}` is not a line'
 	return line
+}
+
+fn test_a_type_name_in_a_comment_or_in_the_text_of_a_string_names_no_type() {
+	// Only code refers to a type: a word of a comment or of the text of a
+	// string that spells one is no reference; an interpolated expression is code.
+	dir := program_dir('type_words_in_text', "module main
+
+struct Marker {}
+
+fn main() {
+	println('Marker')
+	// Marker is just text.
+	println(Marker{})
+	println('\${Marker{}}')
+}
+")
+	for line in [6, 7] {
+		assert ask(dir, 'gd^', line, 'Marker', 0) == '', 'line ${line}'
+		assert ask(dir, 'hv^', line, 'Marker', 0) == '', 'line ${line}'
+	}
+	for line in [8, 9] {
+		assert ask(dir, 'gd^', line, 'Marker', 0) == 'main.v:3:7', 'line ${line}'
+		assert ask(dir, 'hv^', line, 'Marker', 0) == hover_of('struct Marker'), 'line ${line}'
+	}
 }
 
 // not_array_methods_program calls methods of a struct named like the array

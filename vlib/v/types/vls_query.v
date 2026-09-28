@@ -2,6 +2,8 @@ module types
 
 import os
 import v.flat
+import v.pref
+import v.scanner
 
 // VlsMethod is what a `-line-info` request of the mini-VLS protocol asks for.
 pub enum VlsMethod {
@@ -127,6 +129,10 @@ pub fn (mut tc TypeChecker) vls_answer(q VlsQuery) string {
 		target = tc.vls_target_at(file_id, offset, source) or { target }
 	}
 	if int(target.id) < 0 {
+		// A word of a comment or of the text of a string names no type.
+		if !vls_offset_is_code(source, offset) {
+			return ''
+		}
 		return tc.vls_answer_type_word(q, file_id, source, offset)
 	}
 	if q.method == .hover {
@@ -310,6 +316,26 @@ fn vls_type_words_at(source string, offset int) []string {
 	}
 	words << word
 	return words
+}
+
+// vls_offset_is_code reports whether the byte `offset` of `source` is code: not
+// in a comment, nor in the text of a string or of a character literal. An
+// expression interpolated in a string is code.
+fn vls_offset_is_code(source string, offset int) bool {
+	mut s := scanner.new_scanner(&pref.Preferences{}, .scan_comments)
+	s.init(unsafe { nil }, source)
+	// A token takes at least a byte, or ends a line; the bound only guards
+	// against a scanner that would stop moving on.
+	for _ in 0 .. 2 * source.len + 2 {
+		tok := s.scan()
+		if tok == .eof || s.pos > offset {
+			break
+		}
+		if tok in [.comment, .string, .char] && offset < s.offset {
+			return false
+		}
+	}
+	return true
 }
 
 fn vls_is_name_byte(c u8) bool {

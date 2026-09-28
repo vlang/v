@@ -221,13 +221,28 @@ pub fn serve() Request {
 		if question != '' || shared {
 			channel = new_channel()
 		}
+		server_pid := os.getpid()
 		pid := os.fork()
 		if pid == 0 {
+			// A test holds the child here, before it asks to end with the server,
+			// until something writes to the FIFO V_DIAGNOSTICS_CHILD_PAUSE names.
+			if pause := os.getenv_opt('V_DIAGNOSTICS_CHILD_PAUSE') {
+				os.read_file(pause) or {}
+			}
 			// The client reads a single stream: diagnostics go where the answer goes.
 			C.dup2(1, 2)
 			C.signal(C.SIGPIPE, C.SIG_DFL)
-			// Nobody reads what a child prints once the server is gone.
-			C.prctl(C.PR_SET_PDEATHSIG, voidptr(usize(C.SIGKILL)), 0, 0, 0)
+			// Nobody reads what a child prints once the server is gone. The kernel
+			// ends the child with the server only if the server is still there when
+			// the child asks: one that ended since the fork left the child to another
+			// parent, and the child ends at once.
+			if C.prctl(C.PR_SET_PDEATHSIG, voidptr(usize(C.SIGKILL)), 0, 0, 0) != 0 {
+				eprintln('v-diagnostics-server: a child cannot follow the server')
+				exit(2)
+			}
+			if os.getppid() != server_pid {
+				C._exit(2)
+			}
 			for mut other in warm {
 				other.close_server_ends()
 			}
@@ -317,11 +332,17 @@ pub fn (mut r Request) diagnose_in_grandchild() bool {
 	flush_stdout()
 	flush_stderr()
 	fd := unsafe { int(C.syscall(C.SYS_memfd_create, c'v-diagnostics', voidptr(0))) }
+	child_pid := os.getpid()
 	pid := if fd >= 0 { os.fork() } else { -1 }
 	if pid == 0 {
 		// What it prints goes to its file only: a grandchild that outlives the
-		// child cannot write into an answer. It does not outlive it for long.
-		C.prctl(C.PR_SET_PDEATHSIG, voidptr(usize(C.SIGKILL)), 0, 0, 0)
+		// child cannot write into an answer. It does not outlive it for long,
+		// and a child that ended since the fork leaves it to end at once, as
+		// serve's children do with the server.
+		if C.prctl(C.PR_SET_PDEATHSIG, voidptr(usize(C.SIGKILL)), 0, 0, 0) != 0
+			|| os.getppid() != child_pid {
+			C._exit(2)
+		}
 		C.dup2(fd, 1)
 		C.dup2(fd, 2)
 		os.fd_close(fd)
