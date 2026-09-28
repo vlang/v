@@ -54,8 +54,9 @@ Options:
                  in the definition of `C.func` to the `i32` type.
 
   -no-migrate-json2
-                 Do not rewrite deprecated `json` module usage to `json2`.
-                 The migration is on by default for non-test `.v` files.
+                 Do not rewrite removed `json` module usage to `json2`.
+                 The migration is on by default for `.v` files, including
+                 tests (`_test.v`).
 
 Environment Variables:
   VDIFF_CMD      A custom tool and options that will be used for viewing the

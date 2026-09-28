@@ -29,7 +29,7 @@ struct FormatOptions {
 	is_backup        bool // make a `file.v.bak` copy *before* overwriting a `file.v` in place with `-w`
 	in_process       bool // do not fork a worker process; potentially faster, but more prone to crashes for invalid files
 	is_new_int       bool // rewrite int to i32 in translated modules and C declarations
-	no_migrate_json2 bool // opt out of the default rewrite of deprecated `json` usage to `json2` (`-no-migrate-json2`)
+	no_migrate_json2 bool // opt out of the default rewrite of removed `json` usage to `json2` (`-no-migrate-json2`)
 	backend          string = 'c'
 mut:
 	diff_cmd string // filled in when -diff or -verify is passed
