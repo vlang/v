@@ -1640,7 +1640,7 @@ fn (mut g Gen) call_expr(id flat.NodeId) {
 		return
 	}
 	if kind := g.json_migration_call_kind(children[0]) {
-		g.json_migration_call(kind, children[1..])
+		g.json_migration_call(kind, children[0], children[1..])
 		return
 	}
 	callee_continues := g.selector_starts_on_new_line(children[0])
@@ -1926,14 +1926,18 @@ fn (g &Gen) is_legacy_json_decode(callee_id flat.NodeId) bool {
 	return g.selective_json && callee.kind == .ident && callee.value == 'decode'
 }
 
-fn (mut g Gen) json_migration_call(kind string, args []flat.NodeId) {
+fn (mut g Gen) json_migration_call(kind string, callee flat.NodeId, args []flat.NodeId) {
 	if kind == 'decode' && args.len >= 2 {
 		g.write('${g.json_qualifier}.decode[')
-		type_arg := g.a.node(args[0])
-		if source_type := g.source_span(type_arg.pos.offset, type_arg.pos.end) {
-			g.write(source_type.trim_space())
+		if source_type := g.json_decode_type_arg_source(callee, args[1]) {
+			g.write(source_type)
 		} else {
-			g.expr(args[0])
+			type_arg := g.a.node(args[0])
+			if source_type := g.source_span(type_arg.pos.offset, type_arg.pos.end) {
+				g.write(source_type.trim_space())
+			} else {
+				g.expr(args[0])
+			}
 		}
 		g.write('](')
 		g.expr_list(args[1..], ', ')
@@ -1949,6 +1953,22 @@ fn (mut g Gen) json_migration_call(kind string, args []flat.NodeId) {
 		g.write('prettify: true, ')
 	}
 	g.write('escape_unicode: true)')
+}
+
+// json_decode_type_arg_source returns the source of the type argument of
+// `json.decode(T, s)`: the text between the callee and the second argument, without
+// the surrounding `(` and `,`. The span of the type node itself does not always
+// cover the type (anonymous structs, option types).
+fn (g &Gen) json_decode_type_arg_source(callee flat.NodeId, second_arg flat.NodeId) ?string {
+	between := g.source_span(g.a.node(callee).pos.end, g.a.node(second_arg).pos.offset)?.trim_space()
+	if !between.starts_with('(') || !between.ends_with(',') {
+		return none
+	}
+	type_text := between[1..between.len - 1].trim_space()
+	if type_text.len == 0 {
+		return none
+	}
+	return type_text
 }
 
 fn (mut g Gen) index_expr(id flat.NodeId) {

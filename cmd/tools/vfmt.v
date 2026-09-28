@@ -212,7 +212,9 @@ fn (foptions &FormatOptions) should_migrate_json2(file string) bool {
 	if foptions.no_migrate_json2 {
 		return false
 	}
-	return !file.ends_with('_test.v') && !file.ends_with('.vv')
+	// `.vv` files are fixtures (formatter and compiler test inputs) whose legacy
+	// source is the point; tests are migrated like any other code.
+	return !file.ends_with('.vv')
 }
 
 fn (foptions &FormatOptions) formatted_content_from_file(file string, report_diagnostics bool) !string {
