@@ -2108,14 +2108,13 @@ fn (t &Transformer) shared_alias_storage_type(typ string) string {
 	}
 	if !clean.contains('.') {
 		mut found := ''
-		for name, target in t.tc.type_aliases {
-			if name == clean || name.ends_with('.${clean}') {
-				inner := shared_alias_inner_type_text(target) or { continue }
-				if found != '' && found != inner {
-					return typ
-				}
-				found = inner
+		// `name == clean || name.ends_with('.${clean}')`, for a dot-free `clean`.
+		for alias in t.type_aliases_with_short_name(clean) {
+			inner := shared_alias_inner_type_text(alias.target) or { continue }
+			if found != '' && found != inner {
+				return typ
 			}
+			found = inner
 		}
 		if found.len > 0 {
 			return '&${found}'
