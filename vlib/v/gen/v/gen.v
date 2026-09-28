@@ -430,7 +430,9 @@ fn (mut g Gen) setup_json_migration(fnode &flat.Node) {
 		if n.kind == .selector && n.children_count > 0 {
 			receiver := g.a.child_node(n, 0)
 			if receiver.kind == .ident && receiver.value == 'json' {
-				if vfmt_is_disabled_at(directives, n.pos.offset) {
+				// A local `json` binding shadows the import, and its method calls are
+				// not module calls to rewrite.
+				if vfmt_is_disabled_at(directives, n.pos.offset) || g.a.formatter_local_sels[i] {
 					return
 				}
 				if n.value !in ['encode', 'decode', 'encode_pretty'] || !called[i] {

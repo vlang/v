@@ -918,7 +918,29 @@ fn test_own() {
 		assert os.read_file(source_path)! == source
 	}
 	// Without a project `json` module, the import names the removed vlib module, and
-	// test files are migrated like other code.
+	// test files are migrated like other code. A file with a local `json` binding
+	// keeps the legacy source, since its method calls are not module calls.
+	for name, local_source in {
+		'local_var': 'json := Encoder{}\n\tassert json.encode() == 0'
+		'param':     'f := fn (json Encoder) int {\n\t\treturn json.encode()\n\t}\n\tassert f(Encoder{}) == 0'
+		'for_var':   'for json in [Encoder{}] {\n\t\tassert json.encode() == 0\n\t}'
+	} {
+		local_json := 'import json
+
+struct Encoder {}
+
+fn (e Encoder) encode() int {
+	return 0
+}
+
+fn test_local() {
+	${local_source}
+}
+'
+		local_res, local_formatted := run_vfmt_write('local_json_${name}_test', local_json, '')
+		assert local_res.exit_code == 0, local_res.output
+		assert local_formatted == local_json
+	}
 	res, formatted := run_vfmt_write('removed_json_module_test', source, '')
 	assert res.exit_code == 0, res.output
 	assert formatted.contains('import json2\n'), formatted
