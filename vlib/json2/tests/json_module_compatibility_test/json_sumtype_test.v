@@ -107,7 +107,8 @@ fn test_sum_types() {
 	assert cat.cat_name == 'Whiskers'
 	assert dog.dog_name == 'Goofie'
 
-	// The asserts above smartcast `animals[0]` to `Cat`; encode the sum value.
+	// The asserts above narrow `animals[0]` to `Cat`. As the json2 README describes, vfmt
+	// leaves such an encode to the author, who casts it back to the sum type.
 	j := json2.encode(Animal(animals[0]), escape_unicode: true)
 	assert j == '{"cat_name":"Whiskers","_type":"Cat"}'
 }

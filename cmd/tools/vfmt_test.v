@@ -923,6 +923,25 @@ fn test_fmt_json_decode_migration_runs_and_skips_option_targets_with_v3() {
 	assert plain_formatted == option_source
 }
 
+fn test_fmt_skips_json2_migration_for_narrowed_sumtype_values_with_v3() {
+	header := 'import json\n\nstruct Cat {\n\tname string\n}\n\nstruct Dog {\n\tname string\n}\n\ntype Animal = Cat | Dog\n\n'
+	for name, body in {
+		'if_is':       'fn f(x Animal) {\n\tif x is Cat {\n\t\tprintln(json.encode(x))\n\t}\n}\n'
+		'assert_is':   'fn f(animals []Animal) {\n\tassert animals[0] is Cat\n\tprintln(json.encode(animals[0]))\n}\n'
+		'match_arm':   'fn f(x Animal) {\n\tmatch x {\n\t\tCat { println(json.encode(x)) }\n\t\telse {}\n\t}\n}\n'
+		'not_is_exit': 'fn f(x Animal) {\n\tif x !is Cat {\n\t\treturn\n\t}\n\tprintln(json.encode(x))\n}\n'
+	} {
+		source := header + body
+		res, formatted := run_vfmt_write('narrowed_${name}', source, '')
+		assert res.exit_code == 0, res.output
+		assert formatted == source, name
+	}
+	// Encoding a value that is not narrowed is migrated as usual.
+	plain := header + 'fn f(x Animal) {\n\tprintln(json.encode(x))\n}\n'
+	_, migrated := run_vfmt_write('not_narrowed', plain, '')
+	assert migrated.contains('json2.encode(x, escape_unicode: true, time_as_unix: true)'), migrated
+}
+
 fn test_fmt_skips_json2_migration_for_shadowed_selective_imports_with_v3() {
 	header := 'import json { decode, encode }\n\nstruct User {\n\tname string\n}\n\n'
 	for name, body in {

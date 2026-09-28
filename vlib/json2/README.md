@@ -16,6 +16,11 @@
 > `json.decode(?T, s)` has no direct counterpart, since V does not accept `?T` as a
 > type argument, and vfmt leaves such files unchanged: decode `T` with
 > `json2.decode[T](s)`, and handle a `null` input yourself.
+>
+> `json.encode(x)` wrote a sum type value narrowed by `x is Cat` or `match x` as the
+> whole sum type, with its `_type` field, while `json2.encode(x)` writes the narrowed
+> variant. vfmt leaves such files unchanged as well: cast the value back to its sum
+> type, as in `json2.encode(Animal(x), escape_unicode: true, time_as_unix: true)`.
 
 `json2` is an experimental JSON parser written from scratch on V.
 

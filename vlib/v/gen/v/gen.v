@@ -350,12 +350,20 @@ fn (mut g Gen) setup_json_migration(fnode &flat.Node) {
 	mut json2_imports := []flat.NodeId{}
 	mut called := map[int]bool{}
 	mut selector_receivers := map[int]bool{}
+	// Expressions that an `is` check or a `match` narrows to one sum type variant.
+	mut narrowed := map[string]bool{}
 	for i, n in g.a.nodes {
 		if n.pos.id != g.file_id {
 			continue
 		}
 		if n.kind == .call && n.children_count > 0 {
 			called[int(g.a.child(n, 0))] = true
+		}
+		if (n.kind == .is_expr || n.kind == .match_stmt) && n.children_count > 0 {
+			subject := g.a.child_node(n, 0)
+			if text := g.source_span(subject.pos.offset, subject.pos.end) {
+				narrowed[text.trim_space()] = true
+			}
 		}
 		if n.kind == .selector && n.children_count > 0 {
 			receiver := g.a.child(n, 0)
@@ -418,6 +426,18 @@ fn (mut g Gen) setup_json_migration(fnode &flat.Node) {
 		if legacy.children_count > 0 && n.value in ['encode', 'decode', 'encode_pretty']
 			&& (n.kind == .param || (n.kind == .ident && !called[i] && !import_symbols[i])) {
 			return
+		}
+		// The removed `json.encode` encoded a value narrowed by `x is T` or `match x` as
+		// its declared sum type, with `_type`; `json2.encode` infers the narrowed
+		// variant, and only the author can spell the sum type back (`Animal(x)`).
+		if n.kind == .call && n.children_count > 1
+			&& g.is_json_encode_callee(g.a.child_node(n, 0), legacy.children_count > 0) {
+			arg := g.a.child_node(n, 1)
+			if text := g.source_span(arg.pos.offset, arg.pos.end) {
+				if narrowed[text.trim_space()] {
+					return
+				}
+			}
 		}
 		// A legacy `decode` needs both the type and the source argument to be rewritten,
 		// and an option or result type (`json.decode(?T, s)`) cannot be a type argument.
@@ -1946,6 +1966,15 @@ fn (g &Gen) json_migration_call_kind(callee_id flat.NodeId) ?string {
 
 fn (g &Gen) is_legacy_json_decode(callee_id flat.NodeId) bool {
 	return g.is_json_decode_callee(g.a.node(callee_id), g.selective_json)
+}
+
+fn (g &Gen) is_json_encode_callee(callee &flat.Node, selective bool) bool {
+	if callee.kind == .selector && callee.children_count > 0
+		&& callee.value in ['encode', 'encode_pretty'] {
+		receiver := g.a.child_node(callee, 0)
+		return receiver.kind == .ident && receiver.value == 'json'
+	}
+	return selective && callee.kind == .ident && callee.value in ['encode', 'encode_pretty']
 }
 
 fn (g &Gen) is_json_decode_callee(callee &flat.Node, selective bool) bool {
