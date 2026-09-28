@@ -8000,8 +8000,12 @@ unsafe {
 assert *p == `i`
 ```
 
-Unlike in C, fixed arrays do not decay to pointers. For pointer arithmetic over a fixed array,
-take the address of an element (or cast the array's address) inside `unsafe`.
+Unlike in C, a fixed array does not decay to a pointer in arithmetic, including in
+`@[translated]` files. Those files only let fixed arrays decay for pointer parameters,
+assignments, and comparisons; see
+[c2v array rules](https://github.com/vlang/v/blob/master/doc/language/c2v-array-arguments.md).
+For pointer arithmetic over a fixed array, take the address of an element
+(or cast the array's address) inside `unsafe`.
 Subtracting two pointers gives the distance in elements:
 
 ```v
