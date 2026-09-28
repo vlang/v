@@ -10155,7 +10155,7 @@ fn (mut t Transformer) clone_generic_node_from(node flat.Node, args []string, is
 			|| (direct_return_value && node.kind == .or_expr)
 			|| (direct_return_value && node.kind in [.if_expr, .match_stmt] && i > 0)
 			|| (direct_return_value && node.kind == .comptime_if)
-			|| (direct_return_value && node.kind in [.block, .match_branch]
+			|| (direct_return_value && node.kind in [.block, .match_branch, .lock_expr]
 				&& i == node.children_count - 1)
 		child := t.clone_generic_node_with_return_context(t.a.child(&node, i), args,
 			child_is_return_value)

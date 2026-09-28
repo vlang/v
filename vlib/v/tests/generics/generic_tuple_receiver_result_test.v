@@ -182,3 +182,34 @@ fn test_generic_contextual_returns_reach_branch_tails_and_or_values() {
 	assert contextual_or(false, 1, 'value') == ''
 	assert contextual_or(true, 1, 'value') == ''
 }
+
+struct ContextualGuard {
+mut:
+	value int
+}
+
+fn contextual_rlock[A, B](shared guard ContextualGuard, first A, second B) B {
+	_ = first
+	_ = second
+	return rlock guard {
+		contextual_zero()
+	}
+}
+
+fn contextual_lock[A, B](shared guard ContextualGuard, first A, second B) B {
+	_ = first
+	_ = second
+	return lock guard {
+		guard.value++
+		contextual_zero()
+	}
+}
+
+fn test_generic_contextual_returns_reach_lock_expression_body() {
+	shared guard := ContextualGuard{}
+	assert contextual_rlock(shared guard, 1, 'value') == ''
+	assert contextual_lock(shared guard, 1, 'value') == ''
+	rlock guard {
+		assert guard.value == 1
+	}
+}
