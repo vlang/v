@@ -679,11 +679,11 @@ fn (mut g FlatGen) gen_struct_init(id flat.NodeId) {
 	}
 	init_semantic_type := g.tc.parse_type(init_value)
 	effective_type := default_init_unalias_type(types.unwrap_pointer(init_semantic_type))
-	// A specialized `T{}` may be a container rather than a struct. Its runtime
-	// metadata must be initialized by the corresponding default-value emitter.
+	// A specialized `T{}` may be a container or enum rather than a struct.
+	// Dispatch its semantic default before the struct-literal path.
 	if node.children_count == 0
 		&& (effective_type is types.Array || effective_type is types.Map
-			|| effective_type is types.Channel) {
+			|| effective_type is types.Channel || effective_type is types.Enum) {
 		g.gen_default_value_for_type(init_semantic_type)
 		return
 	}
@@ -1760,6 +1760,15 @@ fn (mut g FlatGen) gen_heap_struct_init(node flat.Node) {
 	init_module := g.tc.cur_module
 	parsed_init_type := g.tc.parse_type(node.value)
 	clean_init_type := default_init_unalias_type(types.unwrap_all_pointers(parsed_init_type))
+	if node.children_count == 0
+		&& (clean_init_type is types.Array || clean_init_type is types.Map
+			|| clean_init_type is types.Channel) {
+		ct := g.value_c_type(parsed_init_type)
+		g.write('(${ct}*)memdup((${ct}[]){')
+		g.gen_default_value_for_type(parsed_init_type)
+		g.write('}, sizeof(${ct}))')
+		return
+	}
 	mut name := if clean_init_type is types.Struct {
 		g.struct_init_value_c_type(clean_init_type)
 	} else {

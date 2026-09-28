@@ -48,7 +48,7 @@ fn test_generic_channel_default_uses_concrete_element_size() {
 }
 
 fn test_specialized_generic_container_struct_literal_uses_runtime_default() {
-	for concrete in ['[]string', 'map[string]int', 'Ch'] {
+	for concrete in ['[]string', 'map[string]int', 'Ch', 'Mode'] {
 		mut ast := flat.FlatAst.new()
 		init_id := ast.add_node(flat.Node{
 			kind:  .struct_init
@@ -57,6 +57,37 @@ fn test_specialized_generic_container_struct_literal_uses_runtime_default() {
 		mut tc := types.TypeChecker.new(&ast)
 		tc.cur_module = 'main'
 		tc.type_aliases['Ch'] = 'chan string'
+		tc.enum_names['Mode'] = true
+		tc.enum_fields['Mode'] = ['first']
+		mut g := FlatGen.new()
+		g.a = &ast
+		g.tc = &tc
+		g.struct_default_generic_params = ['T']
+		g.struct_default_generic_args = [concrete]
+		g.enum_vals['Mode.first'] = 20
+		g.gen_struct_init(init_id)
+		generated := g.sb.str()
+		if concrete == '[]string' {
+			assert generated == 'array_new(sizeof(string), 0, 0)'
+		} else if concrete == 'map[string]int' {
+			assert generated.contains('new_map')
+		} else if concrete == 'Ch' {
+			assert generated.contains('sync__new_channel_st')
+		} else {
+			assert generated == '20'
+		}
+	}
+}
+
+fn test_specialized_generic_heap_container_literal_initializes_metadata() {
+	for concrete in ['[]string', 'map[string]int'] {
+		mut ast := flat.FlatAst.new()
+		init_id := ast.add_node(flat.Node{
+			kind:  .struct_init
+			value: '&T'
+		})
+		mut tc := types.TypeChecker.new(&ast)
+		tc.cur_module = 'main'
 		mut g := FlatGen.new()
 		g.a = &ast
 		g.tc = &tc
@@ -64,12 +95,11 @@ fn test_specialized_generic_container_struct_literal_uses_runtime_default() {
 		g.struct_default_generic_args = [concrete]
 		g.gen_struct_init(init_id)
 		generated := g.sb.str()
+		assert generated.contains('memdup(')
 		if concrete == '[]string' {
-			assert generated == 'array_new(sizeof(string), 0, 0)'
-		} else if concrete == 'map[string]int' {
-			assert generated.contains('new_map')
+			assert generated.contains('array_new(sizeof(string), 0, 0)')
 		} else {
-			assert generated.contains('sync__new_channel_st')
+			assert generated.contains('new_map')
 		}
 	}
 }
