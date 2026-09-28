@@ -145,6 +145,41 @@ fn test_fmt_preserves_signature_and_comptime_semantic_errors() {
 	}
 }
 
+fn test_fmt_preserves_semantic_signature_and_collection_restrictions() {
+	for source, expected in {
+		'fn f() mut int { return 1 }':                        'fn f() mut int'
+		'__global int int':                                   '__global int int'
+		'fn main() { mut _ := 1 }':                           'mut _ := 1'
+		'fn main() { shared _ := 1 }':                        'shared _ := 1'
+		'fn main() { atomic _ := 1 }':                        'atomic _ := 1'
+		'fn main() { mut x := 1; x = 2 @[freed; other] }':    '@[freed; other]'
+		'fn main() { mut x := 1; x = 2 @[freed: 1] }':        '@[freed: 1]'
+		'fn main() { println($res()) }':                      'println($res())'
+		'struct Holder { values &[]int }':                    'values &[]int'
+		'fn + (a int, b int) int { return a + b }':           'fn +('
+		"@[export: 'f'] fn f[T](value T) {}":                 "@[export: 'f']"
+		"@[export: 'f'] fn C.f()":                            'fn C.f()'
+		'fn C.foo() { println(1) }':                          'fn C.foo() { println(1) }'
+		'fn JS.foo() { println(1) }':                         'fn JS.foo() { println(1) }'
+		'fn f(mut values ...int) {}':                         'mut values ...int'
+		'fn f(shared values ...int) {}':                      'shared values ...int'
+		'fn f(atomic values ...int) {}':                      'atomic values ...int'
+		'type Callback = fn (mut ...int)':                    'fn (mut ...int)'
+		'fn main() { values := []!int{}; _ = values }':       '[]!int{}'
+		'fn main() { values := [2]!int{}; _ = values }':      '[2]!int{}'
+		'fn main() { values := [..]!int[1, 2]; _ = values }': '[..]!int[1, 2]'
+		'fn main() { values := chan !int{}; _ = values }':    'chan !int{}'
+		'fn main() { values := [2]int{len: 2}; _ = values }': '[2]int{len: 2}'
+	} {
+		res, formatted := run_vfmt_write('semantic_types', source + '\n', '')
+		assert res.exit_code == 0, res.output
+		assert formatted.contains(expected), formatted
+		second, formatted_twice := run_vfmt_write('semantic_types_twice', formatted, '')
+		assert second.exit_code == 0, second.output
+		assert formatted_twice == formatted
+	}
+}
+
 fn test_fmt_uses_v3_formatter() {
 	source_path := os.join_path(vfmt_test_tdir, 'v3_formatter.v')
 	os.write_file(source_path, 'fn main(){println("v3")}\n')!

@@ -1489,8 +1489,10 @@ fn (mut p Parser) fn_decl() flat.NodeId {
 	if !is_method && p.tok.is_overloadable() {
 		name_pos = p.tok_pos
 		name = p.tok.str()
-		p.record_diagnostic_span('cannot use operator overloading with normal functions', p.tok_pos,
-			p.tok_end)
+		if !p.prefs.is_fmt {
+			p.record_diagnostic_span('cannot use operator overloading with normal functions', p.tok_pos,
+				p.tok_end)
+		}
 		p.next()
 	}
 	if p.tok_can_be_decl_name() {
@@ -1797,7 +1799,7 @@ fn (mut p Parser) fn_decl_body(name string, receiver_name string, receiver_type 
 		p.record_diagnostic_span('unexpected token `[` after function signature, expecting `{`',
 			p.tok_pos, p.tok_end)
 	}
-	if is_c_decl && p.tok == .lcbr {
+	if is_c_decl && p.tok == .lcbr && !p.prefs.is_fmt {
 		p.record_diagnostic_span('interop functions cannot have a body', p.tok_pos, p.tok_end)
 	}
 	// no body — extern/C declaration
@@ -1922,7 +1924,7 @@ fn (mut p Parser) fn_decl_body(name string, receiver_name string, receiver_type 
 	id := p.add_node(flat.Node{
 		kind:           .fn_decl
 		op:             if is_pub { .arrow } else { .none }
-		value:          name
+		value:          if p.prefs.is_fmt && is_c_decl { '${interop_prefix}.${name}' } else { name }
 		typ:            ret_type
 		pos:            token.new_pos(p.cur_file_id, name_pos)
 		payload:        flat.node_payload(generic_params)
@@ -1940,6 +1942,9 @@ fn (mut p Parser) fn_decl_body(name string, receiver_name string, receiver_type 
 }
 
 fn (mut p Parser) record_export_attr_diagnostic(message string, before int) {
+	if p.prefs.is_fmt {
+		return
+	}
 	prefix := p.s.src[..clamp_source_offset(before, p.s.src.len)]
 	start := prefix.last_index('@[export') or { before }
 	end := p.s.src.index_after(']', start) or { start + 1 }
@@ -1947,7 +1952,7 @@ fn (mut p Parser) record_export_attr_diagnostic(message string, before int) {
 }
 
 fn (mut p Parser) validate_fn_return_type(first string, start int) string {
-	if first.trim_left('?!').starts_with('mut ') {
+	if first.trim_left('?!').starts_with('mut ') && !p.prefs.is_fmt {
 		mut_start := p.s.src.index_after('mut', start) or { start }
 		p.record_diagnostic_span('cannot use `mut` on fn return type', mut_start, mut_start + 3)
 	}
@@ -2784,7 +2789,7 @@ fn (mut p Parser) global_decl() flat.NodeId {
 			field_start := p.span_start()
 			gname := p.expect_name_or_keyword()
 			p.global_names[gname] = true
-			if is_builtin_type(gname) {
+			if is_builtin_type(gname) && !p.prefs.is_fmt {
 				p.record_diagnostic_span('invalid use of reserved type `${gname}` as a global name',
 					field_start, field_start + gname.len)
 			}
@@ -7829,7 +7834,7 @@ fn (mut p Parser) stmt() flat.NodeId {
 			mut_start := p.tok_pos
 			mut_end := p.tok_end
 			p.next()
-			if p.tok == .name && p.lit == '_' {
+			if p.tok == .name && p.lit == '_' && !p.prefs.is_fmt {
 				p.record_diagnostic_span('cannot use `mut` on `_`', mut_start, mut_end)
 			}
 			if p.tok == .key_static {
@@ -7861,7 +7866,7 @@ fn (mut p Parser) stmt() flat.NodeId {
 			shared_start := p.tok_pos
 			shared_end := p.tok_end
 			p.next()
-			if p.tok == .name && p.lit == '_' {
+			if p.tok == .name && p.lit == '_' && !p.prefs.is_fmt {
 				p.record_diagnostic_span('cannot use `shared` on `_`', shared_start, shared_end)
 			}
 			stmt_id := p.assign_or_expr_stmt()
@@ -7872,7 +7877,7 @@ fn (mut p Parser) stmt() flat.NodeId {
 			atomic_start := p.tok_pos
 			atomic_end := p.tok_end
 			p.next()
-			if p.tok == .name && p.lit == '_' {
+			if p.tok == .name && p.lit == '_' && !p.prefs.is_fmt {
 				p.record_diagnostic_span('cannot use `atomic` on `_`', atomic_start, atomic_end)
 			}
 			stmt_id := p.assign_or_expr_stmt()
@@ -9530,12 +9535,14 @@ fn (mut p Parser) finish_assignment_stmt(id flat.NodeId) flat.NodeId {
 		attr_start := clamp_source_offset(p.tok_pos, p.s.src.len)
 		parsed := p.parse_single_field_attr_group()
 		if parsed.attrs.len != 1 {
-			p.record_diagnostic_span('assignment attributes support at most one argument', attr_start, clamp_source_offset(p.prev_tok_end, p.s.src.len))
+			if !p.prefs.is_fmt {
+				p.record_diagnostic_span('assignment attributes support at most one argument', attr_start, clamp_source_offset(p.prev_tok_end, p.s.src.len))
+			}
 		} else {
 			attr := parsed.attrs[0].trim_space()
 			if attr == 'freed' && int(id) >= 0 && int(id) < p.a.nodes.len {
 				p.a.nodes[int(id)].set_freed_assignment(true)
-			} else if attr.starts_with('freed:') {
+			} else if attr.starts_with('freed:') && !p.prefs.is_fmt {
 				p.record_diagnostic_span('assignment attribute `freed` does not accept an argument', attr_start, clamp_source_offset(p.prev_tok_end, p.s.src.len))
 			}
 		}
@@ -11678,7 +11685,7 @@ fn (mut p Parser) prefix_expr() flat.NodeId {
 				return id
 			}
 			if name == 'chan' && p.can_start_type_name() {
-				if p.tok == .not {
+				if p.tok == .not && !p.prefs.is_fmt {
 					p.record_diagnostic_span('cannot use chan with Result type', p.tok_pos, p.tok_pos + 1)
 				}
 				elem_type := p.parse_fixed_array_literal_type_name()
@@ -12682,7 +12689,8 @@ fn (mut p Parser) call_args(fn_expr flat.NodeId) flat.NodeId {
 	p.check(.rpar)
 	args_end := p.prev_tok_end
 	fn_node := p.a.nodes[int(fn_expr)]
-	if fn_node.kind == .ident && fn_node.value in ['print', 'println', 'eprint', 'eprintln'] {
+	if !p.prefs.is_fmt && fn_node.kind == .ident
+		&& fn_node.value in ['print', 'println', 'eprint', 'eprintln'] {
 		for arg_id in ids[1..] {
 			arg := p.a.nodes[int(arg_id)]
 			if arg.kind == .defer_result && arg.typ == 'invalid' {
@@ -13527,7 +13535,7 @@ fn (mut p Parser) array_literal() flat.NodeId {
 			p.check(.rsbr)
 			dimensions++
 		}
-		if p.tok == .not {
+		if p.tok == .not && !p.prefs.is_fmt {
 			p.record_diagnostic_span('fixed arrays do not support storing Result values',
 				p.tok_pos, p.tok_end)
 		}
@@ -13546,7 +13554,7 @@ fn (mut p Parser) array_literal() flat.NodeId {
 		}
 		was_inside_array_init_type_expr := p.inside_array_init_type_expr
 		p.inside_array_init_type_expr = true
-		if p.tok == .not {
+		if p.tok == .not && !p.prefs.is_fmt {
 			p.record_diagnostic_span('arrays do not support storing Result values', p.tok_pos,
 				p.tok_end)
 		}
@@ -13598,7 +13606,7 @@ fn (mut p Parser) array_literal() flat.NodeId {
 			// `[segs + 1]f32`) — an infix node has no `.value`, which would otherwise
 			// collapse the type to a dynamic `[]f32`.
 			size_str := p.fixed_array_size_text(ids[0], size_start, size_end)
-			if p.tok == .not {
+			if p.tok == .not && !p.prefs.is_fmt {
 				p.record_diagnostic_span('fixed arrays do not support storing Result values',
 					p.tok_pos, p.tok_end)
 			}
@@ -13633,7 +13641,7 @@ fn (mut p Parser) array_literal() flat.NodeId {
 						fname_start := p.span_start()
 						fname_end := p.tok_end
 						fname := p.expect_name()
-						if fname in ['len', 'cap'] {
+						if fname in ['len', 'cap'] && !p.prefs.is_fmt {
 							p.record_diagnostic_span('`len` and `cap` are invalid attributes for fixed array dimension',
 								fname_start, fname_end)
 						}
@@ -15208,6 +15216,9 @@ fn (mut p Parser) parse_fn_type_param() string {
 }
 
 fn (mut p Parser) record_variadic_modifier_diagnostic(typ string, end int) {
+	if p.prefs.is_fmt {
+		return
+	}
 	element_type := typ.trim_string_left('...')
 	start := int_max(0, end - element_type.len)
 	p.record_diagnostic_span('variadic arguments cannot be `mut`, `shared` or `atomic`', start,
@@ -15401,7 +15412,7 @@ fn (mut p Parser) parse_type_name() string {
 	// pointer &T
 	if p.tok == .amp {
 		p.next()
-		if p.parsing_struct_field_type && p.tok == .lsbr && p.peek() == .rsbr {
+		if p.parsing_struct_field_type && p.tok == .lsbr && p.peek() == .rsbr && !p.prefs.is_fmt {
 			p.record_diagnostic_span('V arrays are already references behind the scenes,\nthere is no need to use a reference to an array (e.g. use `[]string` instead of `&[]string`).\nIf you need to modify an array in a function, use a mutable argument instead: `fn foo(mut s []string) {}`.',
 				p.tok_pos, p.tok_end)
 		}
