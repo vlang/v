@@ -359,7 +359,7 @@ fn (mut t Transformer) transform_for_in_body(id flat.NodeId, node flat.Node) []f
 		}
 	}
 	detected_iter_type := t.detect_for_in_type(node)
-	mut iter_type := t.normalize_type_alias(detected_iter_type)
+	mut iter_type := t.comptime_normalize_type_alias_chain(detected_iter_type)
 	if !isnil(t.tc) {
 		clean_detected := detected_iter_type.trim_left('&')
 		generic_base, _, is_generic := generic_app_parts(clean_detected)
@@ -463,6 +463,9 @@ fn (t &Transformer) for_in_binding_storage_type(binding_id flat.NodeId, elem_typ
 }
 
 fn (t &Transformer) for_in_container_needs_value_load(container_id flat.NodeId) bool {
+	if t.for_in_mut_pointer_alias_value_type(container_id) != none {
+		return true
+	}
 	mut id := container_id
 	for int(id) >= 0 && int(id) < t.a.nodes.len {
 		node := t.a.nodes[int(id)]
@@ -472,6 +475,37 @@ fn (t &Transformer) for_in_container_needs_value_load(container_id flat.NodeId) 
 		id = t.a.child(&node, 0)
 	}
 	return false
+}
+
+fn (t &Transformer) for_in_mut_pointer_alias_value_type(container_id flat.NodeId) ?string {
+	mut id := container_id
+	for int(id) >= 0 && int(id) < t.a.nodes.len {
+		node := t.a.nodes[int(id)]
+		if node.kind == .paren && node.children_count == 1 {
+			id = t.a.child(&node, 0)
+			continue
+		}
+		if node.kind == .ident && t.mut_param_values[node.value]
+			&& !t.pointer_value_rvalues[node.value] {
+			slot_type := t.comptime_normalize_type_alias_chain(t.var_type(node.value))
+			if slot_type.starts_with('&&') && for_iter_type_is_container(slot_type[2..]) {
+				return slot_type[1..]
+			}
+		}
+		break
+	}
+	return none
+}
+
+fn (mut t Transformer) transform_for_in_container_value(container_id flat.NodeId) flat.NodeId {
+	if value_type := t.for_in_mut_pointer_alias_value_type(container_id) {
+		// `mut values Alias` carries an ABI slot even when Alias hides the
+		// container pointer and the parameter has no explicit-pointer marker.
+		value := t.make_prefix(.mul, t.transform_expr(container_id))
+		t.set_node_typ(int(value), value_type)
+		return value
+	}
+	return t.transform_expr(container_id)
 }
 
 // rebuild_for_in_stmt supports rebuild for in stmt handling for Transformer.
@@ -501,7 +535,7 @@ fn (mut t Transformer) rebuild_for_in_stmt(_id flat.NodeId, node flat.Node) []fl
 	} else if map_iter_type.starts_with('map[') && source_is_owned_temporary {
 		t.stable_expr_for_reuse(container_id)
 	} else {
-		t.transform_expr(container_id)
+		t.transform_for_in_container_value(container_id)
 	}
 	mut cleanup_owned_snapshot := false
 	if map_iter_type.starts_with('map[') && !isnil(t.tc)
@@ -1040,13 +1074,13 @@ fn (mut t Transformer) lower_indexed_for_in(id flat.NodeId, node flat.Node, key_
 	} else {
 		checker_container_type
 	}
-	source_container_type := if t.node_type(container_id).len > 0 {
+	source_container_type := t.comptime_normalize_type_alias_chain(if t.node_type(container_id).len > 0 {
 		t.node_type(container_id)
 	} else if raw_container_type.len > 0 {
 		raw_container_type
 	} else {
 		iter_type
-	}
+	})
 	// `for x in &arr` and `ref := &arr; for x in ref` request by-reference
 	// elements, distinct from `node.op == .amp` (`for mut x in arr`). Mutable
 	// parameters and other pointer-backed values carry only a storage pointer and
@@ -1073,7 +1107,7 @@ fn (mut t Transformer) lower_indexed_for_in(id flat.NodeId, node flat.Node, key_
 		t.transform_expr(container_id)
 	} else if t.for_in_container_needs_value_load(container_id) {
 		// Load an indirect loop binding before dereferencing its container pointer.
-		t.transform_expr(container_id)
+		t.transform_for_in_container_value(container_id)
 	} else if t.expr_can_take_address(container_id) {
 		mut lvalue := t.transform_lvalue(container_id)
 		if !t.is_stable_expr_for_reuse(lvalue) {
@@ -1107,7 +1141,7 @@ fn (mut t Transformer) lower_indexed_for_in(id flat.NodeId, node flat.Node, key_
 			container = t.make_selector(container, 'value', actual_iter_type)
 		}
 	}
-	container_type := t.node_type(container)
+	container_type := t.comptime_normalize_type_alias_chain(t.node_type(container))
 	if container_type.len > 0 && container_type !in ['array', 'map', 'unknown']
 		&& for_iter_type_is_container(container_type)
 		&& (actual_iter_type.len == 0 || for_iter_type_has_generic_placeholder(actual_iter_type))
@@ -1347,7 +1381,7 @@ fn (mut t Transformer) detect_for_in_type(node flat.Node) string {
 			if raw_local_type.len > 0 && t.iterator_for_in_info(raw_local_type) != none {
 				return raw_local_type
 			}
-			mut local_type := t.normalize_type_alias(t.var_type(iter_node.value))
+			mut local_type := t.comptime_normalize_type_alias_chain(t.var_type(iter_node.value))
 			// Mutable parameters and loop bindings use pointers for their storage.
 			// Preserve real source `&map` expressions while removing only this
 			// implicit storage pointer from the iterable's value type.
