@@ -3809,6 +3809,9 @@ fn (mut g FlatGen) callback_wrapper_decls() {
 // spawn goes through `__v_thread_spawn_detached`, which also frees the thread's context
 // and result when it exits; nothing can join it.
 fn (g &FlatGen) spawn_start_fn() string {
+	if g.spawn_comparable {
+		return '__v_thread_spawn_comparable'
+	}
 	return if g.spawn_detached { '__v_thread_spawn_detached' } else { '__v_thread_spawn' }
 }
 
@@ -3824,9 +3827,12 @@ fn (mut g FlatGen) gen_spawn_expr(node flat.Node) {
 	// detached. A spawn nested in its arguments has its own mode, so restore this one
 	// after emitting it.
 	outer_detached := g.spawn_detached
+	outer_comparable := g.spawn_comparable
 	g.spawn_detached = node.is_detached_spawn()
+	g.spawn_comparable = outer_comparable && g.spawn_detached
 	defer {
 		g.spawn_detached = outer_detached
+		g.spawn_comparable = outer_comparable
 	}
 	if node.children_count == 0 {
 		g.write(g.empty_spawn_value())

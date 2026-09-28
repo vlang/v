@@ -38,6 +38,16 @@ fn make_generic_drop_signal_box(done chan int) GenericDropSignalBox[int] {
 	return GenericDropSignalBox[int]{ done: done }
 }
 
+struct DiscardedSpawnLogicCounter {
+mut:
+	count int
+}
+
+fn mark_discarded_spawn_logic(mut counter DiscardedSpawnLogicCounter) bool {
+	counter.count++
+	return true
+}
+
 fn test_discarded_spawn_drops_return_value() {
 	done := chan int{cap: 5}
 	spawn make_drop_signal(done)
@@ -74,8 +84,12 @@ fn test_discarded_spawn_drops_results_under_prefix_expression() {
 
 fn test_discarded_spawn_drops_results_under_logical_expression() {
 	done := chan int{cap: 4}
-	_ := ((spawn make_drop_signal(done)) == (spawn make_drop_signal(done))) && true
-	_ := ((spawn make_drop_signal(done)) == (spawn make_drop_signal(done))) || false
+	mut counter := DiscardedSpawnLogicCounter{}
+	_ := ((spawn make_drop_signal(done)) != (spawn make_drop_signal(done)))
+		&& mark_discarded_spawn_logic(mut counter)
+	_ := ((spawn make_drop_signal(done)) == (spawn make_drop_signal(done)))
+		|| mark_discarded_spawn_logic(mut counter)
+	assert counter.count == 2
 	for _ in 0 .. 4 {
 		select {
 			value := <-done {
