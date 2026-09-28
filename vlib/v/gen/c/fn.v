@@ -2365,6 +2365,9 @@ fn (g &FlatGen) pointer_free_needs_aligned_free(t types.Type) bool {
 	if base_type is types.Pointer {
 		return false
 	}
+	if base_type is types.ArrayFixed {
+		return g.global_fixed_array_pointer_alignment(base_type) != none
+	}
 	name := base_type.name()
 	if name.len == 0 {
 		return false
@@ -7185,8 +7188,9 @@ fn (mut g FlatGen) gen_call(id flat.NodeId, node flat.Node) {
 	if fn_node.kind == .selector && g.gen_compiler_default_free_call(fn_node, resolved_target_name) {
 		return
 	}
-	if (target_name in ['free', 'builtin.free', 'C.free']
-		|| resolved_target_name in ['free', 'builtin.free', 'C.free']) && node.children_count == 2 {
+	// C.free must keep the C allocation family even after an aligned pointer cast.
+	if (target_name in ['free', 'builtin.free']
+		|| resolved_target_name in ['free', 'builtin.free']) && node.children_count == 2 {
 		arg_id := g.a.child(&node, 1)
 		arg_type := g.usable_expr_type(arg_id)
 		clean_type := types.unwrap_pointer(arg_type)

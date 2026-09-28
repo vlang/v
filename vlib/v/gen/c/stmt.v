@@ -6663,6 +6663,14 @@ fn (g &FlatGen) usable_expr_type_uncached(id flat.NodeId) types.Type {
 					return typ
 				}
 			}
+			// A global's C declaration follows its registered storage type. Its
+			// lowered annotation can name a different view (`&[3]int` for storage
+			// declared as `int*`), so indexing must not switch to that view.
+			if !g.ident_is_local_binding(node.value) {
+				if typ := g.global_type_for_ident(node.value) {
+					return typ
+				}
+			}
 			// Lowering can replace the checked type with a concrete annotation for
 			// a shadowed local. Use it before consulting a checker scope that no
 			// longer follows the lexical scope of this identifier.

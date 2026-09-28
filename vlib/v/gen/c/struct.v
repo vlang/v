@@ -1931,7 +1931,11 @@ fn (mut g FlatGen) gen_heap_struct_init(node flat.Node) {
 	}
 	if clean_init_type is types.ArrayFixed && node.children_count == 0 {
 		initializer := g.empty_fixed_array_initializer_string(clean_init_type)
-		g.write('(${name}*)memdup(&(${name})${initializer}, sizeof(${name}))')
+		if alignment := g.global_fixed_array_pointer_alignment(clean_init_type) {
+			g.write('(${name}*)v3_aligned_memdup(&(${name})${initializer}, sizeof(${name}), ${alignment})')
+		} else {
+			g.write('(${name}*)memdup(&(${name})${initializer}, sizeof(${name}))')
+		}
 		return
 	}
 	// A bare generic heap literal (`&Vec4{..}`) carries no type args; when the

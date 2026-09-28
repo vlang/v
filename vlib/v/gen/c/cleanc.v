@@ -437,6 +437,7 @@ mut:
 	global_files                   map[string]string      // qualified global name -> declaring file (for import-alias type resolution)
 	global_inits                   map[string]flat.NodeId // qualified global name -> initializer value node
 	global_init_order              []string               // qualified global names, in declaration order
+	in_global_array_pointer_init   bool
 	enum_backing_infos             map[string]EnumBackingInfo
 	iface_impls                    map[string][]string // interface name -> implementing concrete type names
 	interface_dispatch_required    map[string]bool     // source/lowered concrete method names required by emitted interface dispatch
@@ -4238,7 +4239,31 @@ fn (mut g FlatGen) write_type_declaration_block() {
 	g.fn_ptr_typedefs()
 }
 
+fn (mut g FlatGen) gen_vgc_global_array_roots() {
+	if 'vgc' !in g.compile_defines {
+		return
+	}
+	g.writeln('void v3_vgc_mark_global_arrays(void) {')
+	for name, typ in g.global_types {
+		if name.starts_with('C.') || name in g.c_extern_global_names {
+			continue
+		}
+		clean := default_init_unalias_type(typ)
+		mut contains_array := clean is types.ArrayFixed
+		if clean is types.Pointer {
+			contains_array = default_init_unalias_type(clean.base_type) is types.ArrayFixed
+		}
+		if !contains_array {
+			continue
+		}
+		cname := g.global_c_name(name)
+		g.writeln('vgc_scan_range((size_t)&${cname}, (size_t)&${cname} + sizeof(${cname}));')
+	}
+	g.writeln('}')
+}
+
 fn (mut g FlatGen) gen_vinit() {
+	g.gen_vgc_global_array_roots()
 	needs_closure_init := g.needs_closure_runtime_init()
 	needs_gc_init := g.needs_gc_runtime_init()
 	has_embed_joins := g.has_chunked_embed_blobs()
@@ -16879,6 +16904,21 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 		.prefix {
 			child_id := g.a.child(node, 0)
 			child := g.a.nodes[int(child_id)]
+			if node.op == .amp && g.in_global_array_pointer_init {
+				// Guard/branch lowering can hide an addressed temporary in a nested
+				// assignment, so give it owned storage wherever it occurs in the initializer.
+				child_type := default_init_unalias_type(g.usable_expr_type(child_id))
+				if child_type is types.ArrayFixed {
+					pointer_type := types.Type(types.Pointer{ base_type: child_type })
+					tmp := g.tmp_name()
+					init_stmt := g.global_fixed_array_pointer_init_stmt(tmp, id, child_type,
+						pointer_type, false)
+					if init_stmt.len > 0 {
+						g.write('({ ${g.tc.c_type(pointer_type)} ${tmp}; ${init_stmt} ${tmp}; })')
+						return
+					}
+				}
+			}
 			// Only `&` needs to know whether its operand is a function value.
 			fn_value_type := if node.op == .amp {
 				cgen_unalias_type(g.fn_value_candidate_type(child_id, child))
@@ -22326,15 +22366,25 @@ fn (mut g FlatGen) builtin_abi_decls() {
 	g.writeln('int posix_memalign(void** memptr, size_t alignment, size_t size);')
 	g.writeln('#endif')
 	g.writeln('#endif')
-	g.writeln('static inline void* v3_aligned_memdup(void* src, ptrdiff_t sz, size_t alignment) { void* p = NULL; if (alignment < sizeof(void*)) alignment = sizeof(void*);')
+	g.writeln('void* memdup_align(void* src, ptrdiff_t sz, ptrdiff_t alignment);')
+	g.writeln('void v_free(void* p);')
+	g.writeln('static inline void* v3_aligned_memdup(void* src, ptrdiff_t sz, size_t alignment) {')
+	g.writeln('#if defined(CUSTOM_DEFINE_prealloc) || defined(CUSTOM_DEFINE_vgc) || defined(_VGCBOEHM) || defined(CUSTOM_DEFINE_gcboehm)')
+	g.writeln('return memdup_align(src, sz, (ptrdiff_t)alignment);')
+	g.writeln('#else')
+	g.writeln('void* p = NULL; if (alignment < sizeof(void*)) alignment = sizeof(void*);')
 	g.writeln('#ifdef _WIN32')
 	g.writeln('p = _aligned_malloc((size_t)sz, alignment);')
 	g.writeln('#else')
 	g.writeln('if (posix_memalign(&p, alignment, (size_t)sz) != 0) p = NULL;')
 	g.writeln('#endif')
-	g.writeln('if (p != NULL) memcpy(p, src, (size_t)sz); return p; }')
+	g.writeln('if (p != NULL) memcpy(p, src, (size_t)sz); return p;')
+	g.writeln('#endif')
+	g.writeln('}')
 	g.writeln('static inline void v3_aligned_free(void* p) {')
-	g.writeln('#ifdef _WIN32')
+	g.writeln('#if defined(CUSTOM_DEFINE_prealloc) || defined(CUSTOM_DEFINE_vgc) || defined(_VGCBOEHM) || defined(CUSTOM_DEFINE_gcboehm)')
+	g.writeln('v_free(p);')
+	g.writeln('#elif defined(_WIN32)')
 	g.writeln('_aligned_free(p);')
 	g.writeln('#else')
 	g.writeln('free(p);')
@@ -23835,12 +23885,15 @@ fn (mut g FlatGen) test_failure_helpers() {
 // (`(T*)memdup(&(T){...}, sizeof(T))`), so it is safe. Other initializers that
 // need dropped temporaries are skipped, leaving the global zero/NULL.
 fn (mut g FlatGen) emit_global_inits() {
+	old_array_pointer_init := g.in_global_array_pointer_init
 	old_module := g.tc.cur_module
 	old_file := g.tc.cur_file
 	defer {
 		g.tc.cur_file = old_file
+		g.in_global_array_pointer_init = old_array_pointer_init
 	}
 	for qname in g.global_init_order {
+		g.in_global_array_pointer_init = false
 		if qname in g.global_cinit_names {
 			continue
 		}
@@ -23917,6 +23970,17 @@ fn (mut g FlatGen) emit_global_inits() {
 		}
 		if typ := g.global_types[qname] {
 			clean_type := default_init_unalias_type(typ)
+			if clean_type is types.Pointer {
+				if fixed := g.global_fixed_array_pointer_source_type(val_id, clean_type) {
+					g.in_global_array_pointer_init = true
+					init_stmt := g.global_fixed_array_pointer_init_stmt(g.global_c_name(qname),
+						val_id, fixed, typ, false)
+					if init_stmt.len > 0 {
+						g.queue_runtime_init(init_stmt)
+						continue
+					}
+				}
+			}
 			if clean_type is types.ArrayFixed {
 				target := g.global_c_name(qname)
 				g.queue_fixed_array_runtime_init(target, val_id, clean_type)
@@ -23951,6 +24015,238 @@ fn (mut g FlatGen) emit_global_inits() {
 		}
 	}
 	g.tc.cur_module = old_module
+}
+
+fn (g &FlatGen) global_fixed_array_type_has_aligned_struct(typ types.Type, mut seen map[string]bool) bool {
+	clean := default_init_unalias_type(typ)
+	if clean is types.ArrayFixed {
+		return g.global_fixed_array_type_has_aligned_struct(clean.elem_type, mut seen)
+	}
+	if clean is types.OptionType {
+		return g.global_fixed_array_type_has_aligned_struct(clean.base_type, mut seen)
+	}
+	if clean is types.ResultType {
+		return g.global_fixed_array_type_has_aligned_struct(clean.base_type, mut seen)
+	}
+	if clean is types.Struct && !seen[clean.name] {
+		seen[clean.name] = true
+		if g.struct_decl_alignment_for_name(clean.name) != none {
+			return true
+		}
+		if fields := g.struct_fields_for_type(clean.name) {
+			for field in fields {
+				if g.global_fixed_array_type_has_aligned_struct(field.typ, mut seen) {
+					return true
+				}
+			}
+		}
+	}
+	return false
+}
+
+fn (g &FlatGen) global_fixed_array_pointer_alignment(fixed types.ArrayFixed) ?string {
+	mut seen := map[string]bool{}
+	if !g.global_fixed_array_type_has_aligned_struct(fixed.elem_type, mut seen) {
+		return none
+	}
+	mut elem := default_init_unalias_type(fixed.elem_type)
+	for {
+		if elem is types.ArrayFixed {
+			elem = default_init_unalias_type(elem.elem_type)
+			continue
+		}
+		break
+	}
+	if elem is types.Struct {
+		ct := g.struct_decl_alignment_c_type(elem.name, g.value_c_type(elem))
+		return '__alignof__(${ct})'
+	}
+	if elem is types.OptionType || elem is types.ResultType {
+		return '__alignof__(${g.value_c_type(elem)})'
+	}
+	return none
+}
+
+fn (mut g FlatGen) global_fixed_array_fill_stmt(dst string, val_id flat.NodeId, fixed types.ArrayFixed) string {
+	node := g.a.nodes[int(val_id)]
+	if node.kind !in [.array_init, .array_literal, .struct_init, .postfix] {
+		source := g.fixed_array_copy_source_string(val_id, types.Type(fixed))
+		if trimmed_space(source).len > 0 {
+			return 'memmove(${dst}, ${source}, sizeof(${dst}));'
+		}
+		return ''
+	}
+	literal := g.fixed_array_compound_literal_expr(val_id, fixed)
+	if trimmed_space(literal).len > 0 {
+		return 'memmove(${dst}, ${literal}, sizeof(${dst}));'
+	}
+	if node.kind == .postfix && node.children_count > 0 {
+		return g.global_fixed_array_fill_stmt(dst, g.a.child(&node, 0), fixed)
+	}
+	if node.kind == .array_literal {
+		mut assignments := []string{}
+		for i in 0 .. node.children_count {
+			child_id := g.a.child(&node, i)
+			element := '${dst}[${i}]'
+			assignment := if inner := array_fixed_type(default_init_unalias_type(fixed.elem_type)) {
+				g.global_fixed_array_fill_stmt(element, child_id, inner)
+			} else {
+				init_expr := g.expr_to_string_with_expected_type(child_id, fixed.elem_type)
+				'${element} = ${init_expr};'
+			}
+			if trimmed_space(assignment).len == 0 {
+				return ''
+			}
+			assignments << assignment
+		}
+		return assignments.join(' ')
+	}
+	if node.kind !in [.array_init, .struct_init] {
+		return ''
+	}
+	init_id := g.array_init_field_value(node, 'init') or { return '' }
+	index_tmp := g.tmp_name()
+	int_ct := g.value_c_type(types.Type(types.int_))
+	mut bindings := ''
+	for name in ['index', 'it'] {
+		if g.node_contains_ident(init_id, name) {
+			bindings += '${int_ct} ${g.local_decl_cname(name)} = ${index_tmp}; '
+		}
+	}
+	element := '${dst}[${index_tmp}]'
+	assignment := if inner := array_fixed_type(default_init_unalias_type(fixed.elem_type)) {
+		g.global_fixed_array_fill_stmt(element, init_id, inner)
+	} else {
+		init_expr := g.expr_to_string_with_expected_type(init_id, fixed.elem_type)
+		if trimmed_space(init_expr).len == 0 {
+			return ''
+		}
+		'${element} = ${init_expr};'
+	}
+	if assignment.len == 0 {
+		return ''
+	}
+	return 'for (${int_ct} ${index_tmp} = 0; ${index_tmp} < sizeof(${dst}) / sizeof(${dst}[0]); ${index_tmp}++) { ${bindings}${assignment} }'
+}
+
+fn (g &FlatGen) global_fixed_array_pointer_local_root(id flat.NodeId) bool {
+	node := g.a.node(id)
+	if node.kind == .ident {
+		if local_type := g.local_ident_type(node.value) {
+			return default_init_unalias_type(local_type) !is types.Pointer
+		}
+		return false
+	}
+	if node.kind in [.index, .selector, .paren] && node.children_count > 0 {
+		base_id := g.a.child(node, 0)
+		if node.kind in [.index, .selector]
+			&& default_init_unalias_type(g.usable_expr_type(base_id)) is types.Pointer {
+			return false
+		}
+		return g.global_fixed_array_pointer_local_root(base_id)
+	}
+	return false
+}
+
+fn (g &FlatGen) global_fixed_array_pointer_source_type(id flat.NodeId, pointer types.Pointer) ?types.ArrayFixed {
+	if fixed := array_fixed_type(default_init_unalias_type(pointer.base_type)) {
+		return fixed
+	}
+	node := g.a.node(id)
+	if node.kind in [.expr_stmt, .paren] && node.children_count == 1 {
+		return g.global_fixed_array_pointer_source_type(g.a.child(node, 0), pointer)
+	}
+	if node.kind == .block && node.children_count > 0 {
+		return g.global_fixed_array_pointer_source_type(g.a.child(node, int(node.children_count) - 1),
+			pointer)
+	}
+	if node.kind == .prefix && node.op == .amp && node.children_count == 1 {
+		return g.global_fixed_array_pointer_source_type(g.a.child(node, 0), pointer)
+	}
+	if node.kind == .index && node.children_count > 0 {
+		base_type := default_init_unalias_type(g.usable_expr_type(g.a.child(node, 0)))
+		if base_type is types.ArrayFixed {
+			return array_fixed_type(default_init_unalias_type(base_type.elem_type))
+		}
+	}
+	return none
+}
+
+fn (mut g FlatGen) global_fixed_array_pointer_init_stmt(target string, val_id flat.NodeId, fixed types.ArrayFixed, typ types.Type, addressed bool) string {
+	node := g.a.node(val_id)
+	if node.kind in [.expr_stmt, .paren] && node.children_count == 1 {
+		return g.global_fixed_array_pointer_init_stmt(target, g.a.child(node, 0), fixed,
+			typ, addressed)
+	}
+	if node.kind == .block && node.value == 'unsafe' && node.children_count > 0 {
+		orig := g.sb
+		orig_line_start := g.line_start
+		orig_indent := g.indent
+		g.sb = strings.new_builder(256)
+		g.line_start = true
+		g.indent = 1
+		g.push_scope()
+		g.unsafe_depth++
+		defer_start := g.defers.len
+		defer {
+			g.trim_defers(defer_start)
+			g.unsafe_depth--
+			g.pop_scope()
+			g.sb = orig
+			g.line_start = orig_line_start
+			g.indent = orig_indent
+		}
+		g.writeln('{')
+		g.indent++
+		for i in 0 .. int(node.children_count) - 1 {
+			g.gen_node(g.a.child(node, i))
+		}
+		last_id := g.a.child(node, int(node.children_count) - 1)
+		init_stmt := g.global_fixed_array_pointer_init_stmt(target, last_id, fixed, typ,
+			addressed)
+		if init_stmt.len == 0 {
+			return ''
+		}
+		g.writeln(init_stmt)
+		g.gen_defers_from(defer_start)
+		if g.block_consumes_scope_ownership_drops(*node) {
+			g.gen_scope_ownership_drops()
+		}
+		g.indent--
+		g.writeln('}')
+		return g.sb.str()
+	}
+	if !addressed && node.kind == .prefix && node.op == .amp && node.children_count == 1 {
+		return g.global_fixed_array_pointer_init_stmt(target, g.a.child(node, 0), fixed,
+			typ, true)
+	}
+	// Lowering can put the addressed array in a local value inside `unsafe`.
+	// Copy that scoped storage too, while references to globals keep their identity.
+	local_array := g.global_fixed_array_pointer_local_root(val_id)
+	if !addressed || (node.kind !in [.array_init, .array_literal, .struct_init]
+		&& !(node.kind == .postfix && node.op == .not) && !local_array) {
+		return ''
+	}
+	ct := g.tc.c_type(typ)
+	source := g.fixed_array_compound_literal_expr(val_id, fixed)
+	alignment := g.global_fixed_array_pointer_alignment(fixed) or { '' }
+	copy_fn := if alignment.len > 0 {
+		'v3_aligned_memdup'
+	} else {
+		'memdup'
+	}
+	alignment_arg := if alignment.len > 0 { ', ${alignment}' } else { '' }
+	if source.len > 0 {
+		// Keep the literal's storage alive after global initialization.
+		return '\t${target} = (${ct})${copy_fn}(${source}, sizeof(*${target})${alignment_arg});'
+	}
+	c_elem, dims := g.fixed_array_decl_parts(fixed)
+	array_tmp := g.tmp_name()
+	fill := g.global_fixed_array_fill_stmt(array_tmp, val_id, fixed)
+	if fill.len == 0 {
+		return ''
+	}
+	return '\t{ ${c_elem} ${array_tmp}${dims} = {0}; ${fill} ${target} = (${ct})${copy_fn}(${array_tmp}, sizeof(${array_tmp})${alignment_arg}); }'
 }
 
 fn (mut g FlatGen) queue_global_array_init(target string, val_id flat.NodeId, typ types.Array) bool {
@@ -24898,14 +25194,15 @@ fn (mut g FlatGen) write_fixed_array_initializer(mut builder strings.Builder, va
 	if node.kind != .array_literal {
 		return false
 	}
+	clean_elem_type := default_init_unalias_type(fixed.elem_type)
 	builder.write_u8(`{`)
 	for i in 0 .. node.children_count {
 		if i > 0 {
 			builder.write_string(', ')
 		}
 		child_id := g.a.child(&node, i)
-		if fixed.elem_type is types.ArrayFixed {
-			if !g.write_fixed_array_initializer(mut builder, child_id, fixed.elem_type) {
+		if clean_elem_type is types.ArrayFixed {
+			if !g.write_fixed_array_initializer(mut builder, child_id, clean_elem_type) {
 				return false
 			}
 		} else {
@@ -24931,14 +25228,15 @@ fn (mut g FlatGen) write_fixed_array_value_initializer(mut builder strings.Build
 
 fn (mut g FlatGen) write_fixed_array_value_initializer_from_text(mut builder strings.Builder, base string, fixed types.ArrayFixed) {
 	len := trimmed_space(g.fixed_array_len_value(fixed)).int()
+	clean_elem_type := default_init_unalias_type(fixed.elem_type)
 	builder.write_u8(`{`)
 	for i in 0 .. len {
 		if i > 0 {
 			builder.write_string(', ')
 		}
 		elem := '${base}[${i}]'
-		if fixed.elem_type is types.ArrayFixed {
-			g.write_fixed_array_value_initializer_from_text(mut builder, elem, fixed.elem_type)
+		if clean_elem_type is types.ArrayFixed {
+			g.write_fixed_array_value_initializer_from_text(mut builder, elem, clean_elem_type)
 		} else {
 			builder.write_string(elem)
 		}
