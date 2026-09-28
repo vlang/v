@@ -1064,6 +1064,24 @@ fn test_fmt_json_lookup_with_path_flag_follows_the_compiler_with_v3() {
 	// Without `-path`, ~/.vmodules is searched, so a file importing that module keeps it.
 	assert with_vmodules_res.exit_code == 0, with_vmodules_res.output
 	assert with_vmodules_res.output.contains('import json\n'), with_vmodules_res.output
+	// A `json` folder above another `v.mod` project is not the imported module with
+	// `-path` (the compiler's `module_dir_belongs_to_other_project`).
+	outer := os.join_path(root, 'outer')
+	os.mkdir_all(os.join_path(outer, 'app', 'src'))!
+	os.mkdir_all(os.join_path(outer, 'json'))!
+	os.write_file(os.join_path(outer, 'json', 'json.v'), module_source)!
+	os.write_file(os.join_path(outer, 'app', 'v.mod'), "Module {\n\tname: 'app'\n}\n")!
+	outer_file := os.join_path(outer, 'app', 'src', 'main.v')
+	os.write_file(outer_file, source)!
+	os.setenv('VFLAGS', '-path @vlib', true)
+	outer_res := os.execute('${os.quoted_path(vexe)} fmt ${os.quoted_path(outer_file)}')
+	if old_vflags == '' {
+		os.unsetenv('VFLAGS')
+	} else {
+		os.setenv('VFLAGS', old_vflags, true)
+	}
+	assert outer_res.exit_code == 0, outer_res.output
+	assert outer_res.output.contains('import json2\n'), outer_res.output
 }
 
 fn test_fmt_keeps_project_owned_json_module_imports_with_v3() {

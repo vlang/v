@@ -8,6 +8,7 @@ import os.cmdline
 import rand
 import term
 import v.util
+import v.vmod
 import v.util.diff
 import v.util.vflags
 import v.errors as compiler_errors
@@ -237,11 +238,35 @@ fn (foptions &FormatOptions) resolves_project_json_module(file string) bool {
 		// still looks beside the importing file and in its parent directories first
 		// (`resolve_local_or_project_module_path` and `resolve_ancestor_module_path`
 		// in v.driver); `pref.get_module_path` is only its last fallback.
+		// Like `module_dir_belongs_to_other_project`, a parent directory's `json` only
+		// counts when it belongs to the importer's project, or declares `json` itself.
 		mut roots := foptions.module_search_paths.clone()
-		roots << importer_and_parent_dirs(file)
+		importer_vmod_root := util.nearest_vmod_root(file) or { '' }
+		for dir in importer_and_parent_dirs(file) {
+			if json_dir_belongs_to_importer(os.join_path(dir, 'json'), importer_vmod_root) {
+				roots << dir
+			}
+		}
 		lookup.module_search_paths = roots
 	}
 	return lookup.get_module_path('json', file) != ''
+}
+
+// json_dir_belongs_to_importer reports whether a `json` directory in a parent folder
+// is the module an import of the importer (in the project at `importer_vmod_root`)
+// resolves to: it is inside that project, or its own `v.mod` declares `json`.
+fn json_dir_belongs_to_importer(candidate string, importer_vmod_root string) bool {
+	if importer_vmod_root.len == 0 {
+		return true
+	}
+	real_candidate := os.real_path(candidate).replace('\\', '/')
+	real_importer := os.real_path(importer_vmod_root).replace('\\', '/')
+	if real_candidate == real_importer || real_candidate.starts_with(real_importer + '/') {
+		return true
+	}
+	root := util.nearest_vmod_root(candidate) or { return false }
+	manifest := vmod.from_file(os.join_path_single(root, 'v.mod')) or { return false }
+	return manifest.name == 'json'
 }
 
 // importer_and_parent_dirs lists the directory of `file` and its parents, up to a
