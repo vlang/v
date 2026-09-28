@@ -8861,7 +8861,7 @@ fn (mut g FlatGen) gen_assign(node flat.Node) {
 				i += 2
 				continue
 			}
-			if node.op == .assign && lhs.kind == .ident {
+			if node.op == .assign && lhs.kind == .ident && g.local_storage_is_mutable(lhs.value) {
 				if indirect := g.local_indirect_value_type(lhs.value) {
 					if _ := array_fixed_type(indirect) {
 						dst := '*${g.expr_to_string(lhs_id)}'
