@@ -254,6 +254,22 @@ fn test_fmt_preserves_signature_and_comptime_semantic_errors() {
 	}
 }
 
+fn test_fmt_preserves_bare_channel_types() {
+	for source, expected in {
+		'fn f(ch chan) {}\n':                   'fn f(ch chan)'
+		'fn main() { ch := chan{}; _ = ch }\n': 'ch := chan{}'
+		'struct Holder { ch chan }\n':          'ch chan'
+		'fn f() chan { return chan{} }\n':      'fn f() chan'
+	} {
+		res, formatted := run_vfmt_write('bare_channel', source, '')
+		assert res.exit_code == 0, res.output
+		assert formatted.contains(expected), formatted
+		second, twice := run_vfmt_write('bare_channel_twice', formatted, '')
+		assert second.exit_code == 0, second.output
+		assert twice == formatted
+	}
+}
+
 fn test_fmt_preserves_interop_qualifiers_on_receiver_declarations() {
 	for prefix, suffix in {
 		'C':  'c'

@@ -11710,8 +11710,10 @@ fn (mut p Parser) prefix_expr() flat.NodeId {
 			}
 			if name == 'chan' && p.tok == .lcbr {
 				id := p.struct_init('chan')
-				p.record_diagnostic_span('`chan` has no type specified. Use `chan Type{}` instead of `chan{}`',
-					name_pos, p.prev_tok_end)
+				if !p.prefs.is_fmt {
+					p.record_diagnostic_span('`chan` has no type specified. Use `chan Type{}` instead of `chan{}`',
+						name_pos, p.prev_tok_end)
+				}
 				return id
 			}
 			if name == 'chan' && p.can_start_type_name() {
@@ -15596,8 +15598,10 @@ fn (mut p Parser) parse_type_name() string {
 				elem := p.parse_type_name()
 				return 'chan ${elem}'
 			}
-			p.record_diagnostic_span('`chan` has no type specified. Use `chan Type` instead of `chan`',
-				name_start, name_end)
+			if !p.prefs.is_fmt {
+				p.record_diagnostic_span('`chan` has no type specified. Use `chan Type` instead of `chan`',
+					name_start, name_end)
+			}
 			return 'chan'
 		}
 		// thread T

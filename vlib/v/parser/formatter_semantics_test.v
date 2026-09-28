@@ -7,6 +7,8 @@ fn test_formatter_preserves_syntax_without_semantic_diagnostics() {
 	path := os.join_path(os.vtmp_dir(), 'formatter_semantics_${os.getpid()}.v')
 	defer { os.rm(path) or {} }
 	cases := {
+		'fn f(ch chan) {}':                                                                          '`chan` has no type specified. Use `chan Type` instead of `chan`'
+		'fn main() { ch := chan{}; _ = ch }':                                                        '`chan` has no type specified. Use `chan Type{}` instead of `chan{}`'
 		'fn f() { match sql { else {} } }':                                                          'unexpected keyword `sql`, expecting name'
 		'fn f(sql int) {}':                                                                          'unexpected keyword `sql`, expecting name'
 		'fn f(value, sql int) {}':                                                                   'unexpected keyword `sql`, expecting name'
