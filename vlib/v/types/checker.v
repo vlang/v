@@ -733,6 +733,7 @@ pub struct TypeChecker {
 pub mut:
 	a                                &flat.FlatAst = unsafe { nil }
 	compiler_vroot                   string
+	module_search_paths              []string
 	verbose                          bool
 	raw_type_equality                bool
 	fast_parse_recent                bool
@@ -1241,6 +1242,7 @@ fn (tc &TypeChecker) fork_program_view(ast &flat.FlatAst, direct_dependencies_by
 	return &TypeChecker{
 		a:                                     ast
 		compiler_vroot:                        tc.compiler_vroot
+		module_search_paths:                   tc.module_search_paths
 		raw_type_equality:                     tc.raw_type_equality
 		fast_parse_recent:                     tc.fast_parse_recent
 		fast_type_text_refs:                   tc.fast_type_text_refs
@@ -5859,11 +5861,15 @@ fn removed_json_module_message(file string) string {
 fn (mut tc TypeChecker) check_import_diagnostics() {
 	mut first_imports := map[string]token.Pos{}
 	mut declaration_seen_in_file := false
+	mut module_path_identity := ''
+	mut module_directory := ''
+	mut module_path_identity_checked := false
 	for idx in tc.top_level_idx {
 		node := tc.a.nodes[idx]
 		if node.kind == .file {
 			tc.enter_file(node.value)
 			declaration_seen_in_file = false
+			module_path_identity_checked = false
 			continue
 		}
 		if node.kind == .module_decl {
@@ -5913,10 +5919,18 @@ fn (mut tc TypeChecker) check_import_diagnostics() {
 		// Compiler-injected runtime imports have no source span and may name the
 		// current module (for example channel support while compiling `sync`).
 		// Self-import diagnostics only apply to imports written by the user.
-		if has_source && module_base == tc.cur_module {
+		if has_source && node.value != tc.cur_module && !module_path_identity_checked {
+			module_path_identity = tc.current_file_module_path_identity() or { '' }
+			module_directory = os.real_path(os.dir(tc.current_file_module_source_path()))
+			module_path_identity_checked = true
+		}
+		resolved_directory := tc.a.resolved_module_dirs[node.value] or { module_directory }
+		if has_source && (node.value == tc.cur_module
+			|| (node.value == module_path_identity
+				&& os.real_path(resolved_directory) == module_directory)) {
 			tc.record_error_at(.duplicate_decl, 'cannot import `${module_path}` into a module with the same name', flat.NodeId(idx), tc.import_module_path_pos(node))
 		}
-		if has_source && node.typ == tc.cur_module {
+		if has_source && node.typ == tc.cur_module && !tc.current_file_uses_nested_module_path() {
 			alias_pos := if explicit_alias {
 				tc.import_alias_pos(node)
 			} else {
@@ -7701,12 +7715,13 @@ fn (mut tc TypeChecker) annotate_fn_node(node flat.Node) {
 // UnusedDeclCandidate is one private declaration that survived the used-fns
 // filter and now only needs the referenced-name scan to confirm it is unused.
 struct UnusedDeclCandidate {
-	is_fn    bool
-	name     string
-	qname    string
-	file     string
-	node_id  flat.NodeId
-	position token.Pos
+	is_fn       bool
+	name        string
+	qname       string
+	file        string
+	file_module string
+	node_id     flat.NodeId
+	position    token.Pos
 mut:
 	alive bool
 }
@@ -7726,10 +7741,16 @@ pub fn (mut tc TypeChecker) diagnose_unused_private_declarations(used_fns map[st
 	mut fn_keys := map[string][]int{}
 	mut const_keys := map[string][]int{}
 	mut module_name := ''
+	// The files of each module, by the module identity the checker resolved, for
+	// the skipped `$if` branch records, which are keyed by file.
+	mut module_files := map[string][]string{}
+	mut file_module := ''
 	for idx in tc.top_level_idx {
 		node := tc.a.nodes[idx]
 		if node.kind == .file {
 			tc.enter_file(node.value)
+			file_module = if tc.cur_module.len > 0 { tc.cur_module } else { 'main' }
+			module_files[file_module] << tc.cur_file
 			continue
 		}
 		if node.kind == .module_decl {
@@ -7755,11 +7776,12 @@ pub fn (mut tc TypeChecker) diagnose_unused_private_declarations(used_fns map[st
 			}
 			cand_idx := candidates.len
 			candidates << UnusedDeclCandidate{
-				is_fn:   true
-				name:    node.value
-				qname:   qname
-				file:    tc.cur_file
-				node_id: flat.NodeId(idx)
+				is_fn:       true
+				name:        node.value
+				qname:       qname
+				file:        tc.cur_file
+				file_module: file_module
+				node_id:     flat.NodeId(idx)
 			}
 			fn_keys[node.value] << cand_idx
 			if qname != node.value {
@@ -7787,12 +7809,13 @@ pub fn (mut tc TypeChecker) diagnose_unused_private_declarations(used_fns map[st
 			}
 			cand_idx := candidates.len
 			candidates << UnusedDeclCandidate{
-				is_fn:    false
-				name:     field.value
-				qname:    qname
-				file:     tc.cur_file
-				node_id:  field_id
-				position: field.pos
+				is_fn:       false
+				name:        field.value
+				qname:       qname
+				file:        tc.cur_file
+				file_module: file_module
+				node_id:     field_id
+				position:    field.pos
 			}
 			const_keys[field.value] << cand_idx
 			if qname != field.value {
@@ -7819,7 +7842,7 @@ pub fn (mut tc TypeChecker) diagnose_unused_private_declarations(used_fns map[st
 	// candidate's file so deferred emission matches the former in-walk emission.
 	walk_end_file := tc.cur_file
 	for cand in candidates {
-		if cand.alive {
+		if cand.alive || tc.used_in_skipped_comptime_branch(cand, module_files) {
 			continue
 		}
 		tc.cur_file = cand.file
@@ -7830,6 +7853,22 @@ pub fn (mut tc TypeChecker) diagnose_unused_private_declarations(used_fns map[st
 		}
 	}
 	tc.cur_file = walk_end_file
+}
+
+// used_in_skipped_comptime_branch reports whether a file of the candidate's own
+// module spells its name in a `$if` branch this build does not take. Such a
+// body is never parsed, so only the parser's record of the skipped names shows
+// the use, and a private declaration cannot be used from any other module.
+fn (tc &TypeChecker) used_in_skipped_comptime_branch(cand UnusedDeclCandidate, module_files map[string][]string) bool {
+	if tc.a.comptime_skipped_decl_names.len == 0 {
+		return false
+	}
+	for file in module_files[cand.file_module] {
+		if flat.comptime_skipped_decl_key(file, cand.name) in tc.a.comptime_skipped_decl_names {
+			return true
+		}
+	}
+	return false
 }
 
 fn (tc &TypeChecker) declaration_contains_error(node flat.Node) bool {
@@ -8164,6 +8203,18 @@ fn (mut tc TypeChecker) check_node_with_expected_context(id flat.NodeId, expecte
 	saved_type := tc.expected_expr_type
 	tc.expected_expr_id = int(id)
 	tc.expected_expr_type = expected
+	mut value_id := id
+	for tc.valid_node_id(value_id) {
+		value := tc.a.nodes[int(value_id)]
+		if value.kind == .enum_val {
+			_ = tc.resolve_expr(id, expected)
+			break
+		}
+		if value.kind !in [.paren, .expr_stmt] || value.children_count != 1 {
+			break
+		}
+		value_id = tc.a.child(&value, 0)
+	}
 	tc.check_node(id)
 	tc.expected_expr_id = saved_id
 	tc.expected_expr_type = saved_type
@@ -8684,24 +8735,45 @@ fn (mut tc TypeChecker) annotate_for_in(_id flat.NodeId, node flat.Node) {
 	container_id := tc.a.child(&node, 2)
 	tc.annotate_node(container_id)
 	has_val := int(val_id) >= 0
+	mut_binding_id := if has_val { val_id } else { key_id }
+	mut mut_binding_name := ''
+	mut had_mut_base := false
+	mut saved_mut_base := Type(void_)
+	mut had_mut_owner := false
+	mut saved_mut_owner := ScopeBindingOwner{}
+	if node.op == .amp && tc.valid_node_id(mut_binding_id) {
+		binding := tc.a.node(mut_binding_id)
+		if binding.kind == .ident {
+			mut_binding_name = binding.value
+			if base := tc.fn_context.mut_param_base_types[mut_binding_name] {
+				had_mut_base = true
+				saved_mut_base = base
+			}
+			if owner := tc.fn_context.mut_local_owners[mut_binding_name] {
+				had_mut_owner = true
+				saved_mut_owner = owner
+			}
+		}
+	}
 	if header == 4 {
 		tc.insert_loop_var(key_id, tc.range_loop_var_type(container_id, tc.a.child(&node, 3)))
 		tc.annotate_node(tc.a.child(&node, 3))
 	} else {
 		clean := tc.for_in_iterable_type(container_id)
-		yields_ref := node.op == .amp || tc.for_in_iterable_yields_ref(container_id)
+		source_yields_ref := tc.for_in_iterable_yields_ref(container_id)
+		yields_ref := node.op == .amp || source_yields_ref
 		if clean is Array {
 			elem_type := for_in_ref_binding_type(clean.elem_type, yields_ref)
 			if has_val {
 				tc.insert_loop_var(key_id, Type(int_))
 				if node.op == .amp {
-					tc.insert_mut_loop_var(val_id, elem_type)
+					tc.insert_mut_loop_var_with_source(val_id, elem_type, source_yields_ref)
 				} else {
 					tc.insert_loop_var(val_id, elem_type)
 				}
 			} else {
 				if node.op == .amp {
-					tc.insert_mut_loop_var(key_id, elem_type)
+					tc.insert_mut_loop_var_with_source(key_id, elem_type, source_yields_ref)
 				} else {
 					tc.insert_loop_var(key_id, elem_type)
 				}
@@ -8711,13 +8783,13 @@ fn (mut tc TypeChecker) annotate_for_in(_id flat.NodeId, node flat.Node) {
 			if has_val {
 				tc.insert_loop_var(key_id, Type(int_))
 				if node.op == .amp {
-					tc.insert_mut_loop_var(val_id, elem_type)
+					tc.insert_mut_loop_var_with_source(val_id, elem_type, source_yields_ref)
 				} else {
 					tc.insert_loop_var(val_id, elem_type)
 				}
 			} else {
 				if node.op == .amp {
-					tc.insert_mut_loop_var(key_id, elem_type)
+					tc.insert_mut_loop_var_with_source(key_id, elem_type, source_yields_ref)
 				} else {
 					tc.insert_loop_var(key_id, elem_type)
 				}
@@ -8727,13 +8799,13 @@ fn (mut tc TypeChecker) annotate_for_in(_id flat.NodeId, node flat.Node) {
 			if has_val {
 				tc.insert_loop_var(key_id, clean.key_type)
 				if node.op == .amp {
-					tc.insert_mut_loop_var(val_id, value_type)
+					tc.insert_mut_loop_var_with_source(val_id, value_type, source_yields_ref)
 				} else {
 					tc.insert_loop_var(val_id, value_type)
 				}
 			} else {
 				if node.op == .amp {
-					tc.insert_mut_loop_var(key_id, value_type)
+					tc.insert_mut_loop_var_with_source(key_id, value_type, source_yields_ref)
 				} else {
 					tc.insert_loop_var(key_id, value_type)
 				}
@@ -8772,13 +8844,31 @@ fn (mut tc TypeChecker) annotate_for_in(_id flat.NodeId, node flat.Node) {
 	for i in header .. node.children_count {
 		tc.annotate_node(tc.a.child(&node, i))
 	}
+	if mut_binding_name.len > 0 {
+		if had_mut_base {
+			tc.fn_context.mut_param_base_types[mut_binding_name] = saved_mut_base
+		} else {
+			tc.fn_context.mut_param_base_types.delete(mut_binding_name)
+		}
+		if had_mut_owner {
+			tc.fn_context.mut_local_owners[mut_binding_name] = saved_mut_owner
+		} else {
+			tc.fn_context.mut_local_owners.delete(mut_binding_name)
+		}
+	}
 }
 
 fn (tc &TypeChecker) for_in_iterable_type(container_id flat.NodeId) Type {
 	mut clean := unwrap_pointer(tc.resolve_type(container_id))
 	for _ in 0 .. 8 {
 		if clean is Alias {
-			clean = clean.base_type
+			base := clean.base_type
+			pointed := unalias_type(unwrap_pointer(base))
+			clean = if pointed is Array || pointed is ArrayFixed || pointed is Map {
+				unwrap_pointer(base)
+			} else {
+				base
+			}
 			continue
 		}
 		if clean is OptionType {
@@ -8797,7 +8887,7 @@ fn (tc &TypeChecker) for_in_iterable_yields_ref(container_id flat.NodeId) bool {
 	if tc.expr_is_shared_arg(container_id) {
 		return false
 	}
-	container := tc.a.nodes[int(container_id)]
+	container := tc.a.nodes[int(tc.unwrap_paren_expr_id(container_id))]
 	if container.kind == .ident && container.value in tc.fn_context.mut_param_base_types {
 		// Mutable loop bindings use a pointer internally so writes reach the
 		// container element. Iterating that binding still has ordinary value
@@ -9030,6 +9120,10 @@ fn (mut tc TypeChecker) insert_loop_var(id flat.NodeId, typ Type) ScopeBindingOw
 }
 
 fn (mut tc TypeChecker) insert_mut_loop_var(id flat.NodeId, typ Type) {
+	tc.insert_mut_loop_var_with_source(id, typ, false)
+}
+
+fn (mut tc TypeChecker) insert_mut_loop_var_with_source(id flat.NodeId, typ Type, source_yields_ref bool) {
 	owner := tc.insert_loop_var(id, typ)
 	if int(id) < 0 || int(id) >= tc.a.nodes.len {
 		return
@@ -9039,8 +9133,10 @@ fn (mut tc TypeChecker) insert_mut_loop_var(id flat.NodeId, typ Type) {
 		return
 	}
 	tc.fn_context.mut_local_owners[v.value] = owner
-	if typ is Pointer {
+	if typ is Pointer && !source_yields_ref {
 		tc.fn_context.mut_param_base_types[v.value] = typ.base_type
+	} else {
+		tc.fn_context.mut_param_base_types.delete(v.value)
 	}
 }
 
@@ -9186,7 +9282,7 @@ pub fn (tc &TypeChecker) resolved_call_name(id flat.NodeId) ?string {
 }
 
 // resolved_call_may_store_globally reports whether the resolved callee or one of its
-// transitive callees belongs to a source file annotated with `@[has_globals]`.
+// transitive callees belongs to a source file annotated with `@[has_globals]` or `@[translated]`.
 pub fn (tc &TypeChecker) resolved_call_may_store_globally(id flat.NodeId) bool {
 	name := tc.cached_resolved_call(id) or { return false }
 	mut visiting := map[string]bool{}
@@ -9194,7 +9290,7 @@ pub fn (tc &TypeChecker) resolved_call_may_store_globally(id flat.NodeId) bool {
 }
 
 // fn_value_may_store_globally reports whether invoking a function value can reach a
-// declaration from a source file annotated with `@[has_globals]`. An unresolved function
+// declaration from a source file annotated with `@[has_globals]` or `@[translated]`. An unresolved function
 // value is conservative because its body is opaque at this call site.
 pub fn (tc &TypeChecker) fn_value_may_store_globally(id flat.NodeId) bool {
 	name := tc.resolved_fn_value_name(id) or { return true }
@@ -9208,7 +9304,7 @@ fn (tc &TypeChecker) fn_may_store_globally(name string, mut visiting map[string]
 	}
 	visiting[name] = true
 	file := tc.fn_type_files[name] or { return false }
-	if tc.has_globals_files[file] {
+	if tc.has_globals_files[file] || tc.translated_files[file] {
 		return true
 	}
 	decl_module := tc.fn_type_modules[name] or { '' }
@@ -9868,7 +9964,8 @@ pub fn (mut tc TypeChecker) check_semantics() {
 				tc.check_const_field_values(node)
 			}
 			.global_decl {
-				if !tc.enable_globals && !tc.has_globals_files[tc.cur_file] {
+				if !tc.enable_globals && !tc.has_globals_files[tc.cur_file]
+					&& !tc.node_is_from_translated_file(node) {
 					tc.record_error_at(.duplicate_decl, 'use `v -enable-globals ...` to enable globals', flat.NodeId(i), tc.source_line_declaration_pos(flat.NodeId(i)))
 				}
 				tc.check_global_decl_semantics(flat.NodeId(i), node)

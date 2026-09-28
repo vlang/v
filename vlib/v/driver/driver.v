@@ -11690,6 +11690,7 @@ pub fn run(args []string) {
 	mut checker_warning_count := 0
 	mut cached_checker_diagnostics := []V3CachedTypeDiagnostic{}
 	pre_tc.compiler_vroot = prefs.vroot
+	pre_tc.module_search_paths = prefs.module_search_paths.clone()
 	// Which files the shadowing check may blame. Use the same nearest-v.mod root
 	// as import resolution, so a nested entry directory still owns sibling modules.
 	pre_tc.shadow_diagnostic_root = os.real_path(project_root_for_files(user_files))
@@ -18789,7 +18790,7 @@ fn source_imports_fast_parallel(a &flat.FlatAst, files []string) [][]string {
 // graph with a byte-level import scan. Parsing the resulting files in one batch
 // avoids three parse/merge barriers while preserving the ordinary resolver as
 // the source of truth for the resulting AST.
-fn discover_eager_selfhost_modules(a &flat.FlatAst, prefs &pref.Preferences, first_file string, project_root string, mut parsed_modules map[string]bool, mut module_path_cache map[string]string) []EagerSelfhostModule {
+fn discover_eager_selfhost_modules(a &flat.FlatAst, prefs &pref.Preferences, first_file string, project_root string, initial_identity_dirs map[string]string, mut parsed_modules map[string]bool, mut module_path_cache map[string]string) []EagerSelfhostModule {
 	// Traversal attempts are separate from successfully parsed modules. An
 	// unresolved eager probe must remain visible to the authoritative resolver.
 	mut visited_modules := parsed_modules.clone()
@@ -18863,7 +18864,7 @@ fn discover_eager_selfhost_modules(a &flat.FlatAst, prefs &pref.Preferences, fir
 	// Alias-aware resolution is local to each request. Reconcile its short
 	// identities in discovery order so distinct directories with the same module
 	// suffix receive the same qualification as the authoritative resolver.
-	mut identity_dirs := map[string]string{}
+	mut identity_dirs := initial_identity_dirs.clone()
 	for i in 0 .. modules.len {
 		identity := modules[i].identity
 		if owner_dir := identity_dirs[identity] {
@@ -18880,9 +18881,14 @@ fn resolve_imports(mut a flat.FlatAst, mut p parser.Parser, prefs &pref.Preferen
 	mut parsed_modules := map[string]bool{}
 	parsed_modules['builtin'] = true
 	parsed_modules['main'] = true
+	mut parsed_identity_dirs := map[string]string{}
+	// A directory on disk is one module, however an import spells its path.
+	mut parsed_dir_identities := map[string]string{}
 	explicit_initial_imports := imports_from_files(mut a, initial_files)
 	canonicalize_colliding_initial_modules(mut a, prefs, initial_files, explicit_initial_imports)
-	seed_initial_modules(mut a, initial_files, explicit_initial_imports, mut parsed_modules)
+	seed_initial_modules(mut a, initial_files, explicit_initial_imports, mut parsed_modules,
+		mut parsed_identity_dirs, mut parsed_dir_identities)
+	a.resolved_module_dirs = parsed_identity_dirs.clone()
 
 	// Backend modules excluded by the active configuration are never parsed: their
 	// dispatch in main() is gated out by the matching `$if !skip_* ?`, so nothing
@@ -18915,10 +18921,6 @@ fn resolve_imports(mut a flat.FlatAst, mut p parser.Parser, prefs &pref.Preferen
 	shadow_dependency_roots := shadow_dependency_roots_for(prefs)
 	shadow_explicit_roots := shadow_explicit_roots_for(prefs, shadow_dependency_roots)
 	mut parsed_module_identities := map[string]string{}
-	mut parsed_identity_dirs := map[string]string{}
-	// The identity each already parsed module directory (by real path) got. A
-	// directory on disk is one module, however an import spells its path.
-	mut parsed_dir_identities := map[string]string{}
 	// Import spellings already checked against a reused module directory.
 	mut checked_dir_spellings := map[string]bool{}
 	mut identity_source_paths := map[string]string{}
@@ -18951,7 +18953,8 @@ fn resolve_imports(mut a flat.FlatAst, mut p parser.Parser, prefs &pref.Preferen
 	}
 	if prefs.building_v && !prefs.selfhost && allow_parallel && !cache_state.manager.enabled
 		&& !initial_files.any(input_is_v3_compiler_entry(it)) && eager_selfhost_imports {
-		modules := discover_eager_selfhost_modules(a, prefs, first_file, project_root, mut parsed_modules, mut module_path_cache)
+		modules := discover_eager_selfhost_modules(a, prefs, first_file, project_root,
+			parsed_identity_dirs, mut parsed_modules, mut module_path_cache)
 		mut eager_files := []string{}
 		mut eager_canons := []string{}
 		for module_info in modules {
@@ -18961,6 +18964,7 @@ fn resolve_imports(mut a flat.FlatAst, mut p parser.Parser, prefs &pref.Preferen
 			}
 			parsed_modules[identity] = true
 			parsed_identity_dirs[identity] = module_info.dir
+			a.resolved_module_dirs[identity] = module_info.real_dir
 			parsed_dir_identities[module_info.real_dir] = identity
 			cache_state.module_import_paths[identity] = if identity in module_info.import_paths {
 				identity
@@ -19233,6 +19237,9 @@ fn resolve_imports(mut a flat.FlatAst, mut p parser.Parser, prefs &pref.Preferen
 				[]string{}
 			}
 			module_resolved := mod_dir_exists && mod_files.len > 0
+			if module_resolved {
+				a.resolved_module_dirs[cache_module] = mod_real_dir
+			}
 			if !module_resolved && !is_bundle_warmup_import {
 				a.missing_imports[node_idx] = mod_name
 				record_missing_import_hint(mut a, prefs, node_idx, mod_name, importing_file)
@@ -19502,7 +19509,7 @@ fn record_cache_module_dependency(mut state V3ModuleCacheState, owner string, de
 // seed_initial_modules marks the modules the initial files declare as parsed,
 // except a module they also import explicitly while declaring no other module.
 // Like imports_from_files it records the paths it resolves in `a`.
-fn seed_initial_modules(mut a flat.FlatAst, initial_files []string, explicit_imports map[string]bool, mut parsed_modules map[string]bool) {
+fn seed_initial_modules(mut a flat.FlatAst, initial_files []string, explicit_imports map[string]bool, mut parsed_modules map[string]bool, mut identity_dirs map[string]string, mut dir_identities map[string]string) {
 	mut selected_files := map[string]bool{}
 	for file in initial_files {
 		selected_files[file] = true
@@ -19542,6 +19549,10 @@ fn seed_initial_modules(mut a flat.FlatAst, initial_files []string, explicit_imp
 		// A single-module package can deliberately import a different package whose
 		// declared short name matches its own (v.gen.wasm imports the top-level wasm
 		// module). Do not let the initial package's seed suppress that explicit import.
+		identity_dirs[module_name] = os.real_path(os.dir(file_node.value))
+		if !holds_local_submodules {
+			dir_identities[identity_dirs[module_name]] = module_name
+		}
 		if module_name in explicit_imports && !holds_local_submodules {
 			continue
 		}

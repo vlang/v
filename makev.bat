@@ -196,7 +196,7 @@ REM override it after V3 changes into its isolated link directory.
 "%V_BOOTSTRAP%" %V_BOOTSTRAP_VFLAGS% -keepc -g -showcc -cc "!tcc_exe!" -o "%V_STAGE%" cmd/v
 set stage_error=!ERRORLEVEL!
 if !stage_error! NEQ 0 (
-	if exist "%V_STAGE%" del "%V_STAGE%"
+	call :try_delete "%V_STAGE%"
 	exit /b !stage_error!
 )
 echo  ^> Compiling "%V_EXE%" with "%V_STAGE%"
@@ -204,7 +204,7 @@ REM V3 supplies the absolute bundled-TCC root itself. A relative -B here would
 REM override it after V3 changes into its isolated link directory.
 "%V_STAGE%" %V_BOOTSTRAP_VFLAGS% -keepc -g -showcc -cc "!tcc_exe!" -o "%V_UPDATED%" cmd/v
 set stage_error=!ERRORLEVEL!
-if exist "%V_STAGE%" del "%V_STAGE%"
+call :try_delete "%V_STAGE%"
 exit /b !stage_error!
 
 :clang_strap
@@ -219,7 +219,7 @@ if !ERRORLEVEL! NEQ 0 goto :compile_error
 echo  ^> Compiling "%V_EXE%" with "%V_STAGE%"
 "%V_STAGE%" %V_BOOTSTRAP_VFLAGS% -keepc -g -showcc -cc "!clang_exe!" -cflags "--target=!clang_target!" -o "%V_UPDATED%" cmd/v
 set stage_error=!ERRORLEVEL!
-if exist "%V_STAGE%" del "%V_STAGE%"
+call :try_delete "%V_STAGE%"
 if !stage_error! NEQ 0 goto :compile_error
 call :move_updated_to_v
 if !ERRORLEVEL! NEQ 0 goto :compile_error
@@ -269,22 +269,35 @@ set ObjFile=.v.c.obj
 echo  ^> Bootstrapping "%V_BOOTSTRAP%" before compiling "%V_EXE%" with MSVC
 set stage_vflags=
 set stage_with_clang=0
-call :build_bootstrap_with_clang
+REM Bootstrap order for -msvc: bundled TCC first (fastest, no external
+REM toolchain needed), then MSVC itself (already confirmed present -
+REM vsdevcmd.bat has already run above - and explicitly what -msvc asked
+REM for), then Clang, then GCC as the remaining fallbacks. Any of these can
+REM fail to compile vc/v_win.c on its own (e.g. a stale snapshot only some
+REM toolchains can parse - see vlang/v#29025 and vlang/tccbin#96), which is
+REM why every option here is still tried in order rather than stopping at
+REM the first choice.
+call :build_bootstrap_with_tcc
 if !ERRORLEVEL! EQU 0 (
-	set stage_vflags=-cc "!clang_exe!" -cflags "--target=!clang_target!"
-	set stage_with_clang=1
+	set stage_vflags=-cc "!tcc_exe!"
 ) else (
-	call :build_bootstrap_with_gcc
+	call :build_bootstrap_with_msvc
 	if !ERRORLEVEL! EQU 0 (
-		set stage_vflags=-cc "!gcc_exe!"
+		set stage_vflags=-cc msvc
 	) else (
-		call :build_bootstrap_with_tcc
-		if !ERRORLEVEL! EQU 0 set stage_vflags=-cc "!tcc_exe!"
+		call :build_bootstrap_with_clang
+		if !ERRORLEVEL! EQU 0 (
+			set stage_vflags=-cc "!clang_exe!" -cflags "--target=!clang_target!"
+			set stage_with_clang=1
+		) else (
+			call :build_bootstrap_with_gcc
+			if !ERRORLEVEL! EQU 0 set stage_vflags=-cc "!gcc_exe!"
+		)
 	)
 )
 if not defined stage_vflags (
 	echo Could not build a bootstrap compiler before compiling with MSVC
-	if exist %ObjFile% del %ObjFile%
+	call :try_delete "%ObjFile%"
 	goto :compile_error
 )
 
@@ -295,16 +308,16 @@ if !stage_with_clang! EQU 1 (
 	"%V_BOOTSTRAP%" %V_BOOTSTRAP_VFLAGS% -keepc -g -showcc !stage_vflags! -o "%V_STAGE%" cmd/v
 )
 if !ERRORLEVEL! NEQ 0 (
-	if exist %ObjFile% del %ObjFile%
-	if exist "%V_STAGE%" del "%V_STAGE%"
+	call :try_delete "%ObjFile%"
+	call :try_delete "%V_STAGE%"
 	goto :compile_error
 )
 
 echo  ^> Compiling "%V_EXE%" with "%V_STAGE%"
 "%V_STAGE%" %V_BOOTSTRAP_VFLAGS% -keepc -g -showcc -cc msvc -o "%V_UPDATED%" cmd/v
 set msvc_error=!ERRORLEVEL!
-if exist %ObjFile% del %ObjFile%
-if exist "%V_STAGE%" del "%V_STAGE%"
+call :try_delete "%ObjFile%"
+call :try_delete "%V_STAGE%"
 if %msvc_error% NEQ 0 goto :compile_error
 call :move_updated_to_v
 if !ERRORLEVEL! NEQ 0 goto :compile_error
@@ -473,6 +486,25 @@ echo  ^> Attempting to build "%V_BOOTSTRAP%" (from %V_C_FILE%) with "!tcc_exe!"
 "!tcc_exe!" %VC_BOOTSTRAP_DEFINE% -B"%tcc_dir%" -bt10 -g -w -o "%V_BOOTSTRAP%" "%V_C_FILE%" -ladvapi32 -lws2_32 -lbcrypt -Wl,-stack=33554432
 exit /b !ERRORLEVEL!
 
+:build_bootstrap_with_msvc
+REM Only reachable from msvc_strap, where vsdevcmd.bat has already put cl.exe
+REM on PATH and MSVC's presence is already confirmed. Tried right after the
+REM bundled TCC there, since -msvc means MSVC was explicitly requested.
+REM Clang/GCC are the remaining fallbacks for when neither TCC nor cl.exe can
+REM compile %V_C_FILE% (e.g. a stale vc/v_win.c snapshot that only some
+REM toolchains can parse - see vlang/v#29025 and vlang/tccbin#96 for two
+REM concrete cases).
+where cl >nul 2>&1
+if !ERRORLEVEL! NEQ 0 (
+	echo  ^> MSVC's cl.exe not found on PATH
+	exit /b 1
+)
+echo  ^> Attempting to build "%V_BOOTSTRAP%" (from %V_C_FILE%) with MSVC
+cl /nologo %VC_BOOTSTRAP_DEFINE% /volatile:ms /bigobj /MD /we4013 /utf-8 /w /std:c11 /D_CRT_DECLARE_NONSTDC_NAMES=1 /Fe"%V_BOOTSTRAP%" "%V_C_FILE%" kernel32.lib user32.lib dbghelp.lib ws2_32.lib bcrypt.lib advapi32.lib /link /STACK:33554432
+set msvc_bootstrap_error=!ERRORLEVEL!
+call :try_delete "%ObjFile%"
+exit /b !msvc_bootstrap_error!
+
 :build_bootstrap_with_clang
 call :resolve_executable clang
 if [!resolved_exe!] == [] (
@@ -500,7 +532,7 @@ if !stage_error! NEQ 0 exit /b !stage_error!
 echo  ^> Compiling "%V_STAGE%" from "%V_STAGE_C%" with Clang
 "!clang_exe!" --target=!clang_target! -std=gnu11 -municode -g -w -fwrapv -Wno-int-conversion -o "%V_STAGE%" "%V_STAGE_C%" -ldbghelp -lws2_32 -L"%~dp0vlib\crypto\rand\internal\libraries\bcrypt" -lbcrypt -I "%~dp0thirdparty\stdatomic\win" -ladvapi32 -Wl,--stack=33554432
 set stage_error=!ERRORLEVEL!
-if exist "%V_STAGE_C%" del "%V_STAGE_C%"
+call :try_delete "%V_STAGE_C%"
 exit /b !stage_error!
 
 :build_bootstrap_with_gcc
@@ -556,6 +588,42 @@ exit /b 1
 :eof
 popd
 endlocal
+exit /b 0
+
+:try_delete
+REM Best-effort delete of a just-executed intermediate compiler binary.
+REM Windows (or a real-time antivirus scanner) can briefly hold a lock on an
+REM exe right after the process running it exits, so retry a couple of times
+REM with short waits before giving up silently - a leftover intermediate
+REM binary here does not affect build success either way, and the noisy
+REM native "Access is denied." message is not worth surfacing to the user.
+REM
+REM CONTRACT for callers: this always `exit /b 0`, regardless of whether the
+REM delete actually succeeded. Every call site MUST capture the real
+REM compile/link step's !ERRORLEVEL! into a named variable BEFORE calling
+REM this (see the "set msvc_error=!ERRORLEVEL!" / "set stage_error=!ERRORLEVEL!"
+REM pattern at its call sites) and check that saved variable afterward, never
+REM !ERRORLEVEL! directly after a `call :try_delete` - this always succeeds
+REM and would silently swallow a real failure otherwise.
+REM
+REM KNOWN LIMITATION: cmd/tools/makev_test.py only unit-tests this routine in
+REM isolation (BatchExecutionTests.run_try_delete) and only statically greps
+REM for %VC_BOOTSTRAP_DEFINE% in build_bootstrap_with_msvc's source text - no
+REM test drives msvc_strap/build_bootstrap_with_msvc/build_stage_with_clang
+REM through cmd.exe with a real or stubbed failing compiler, so a future edit
+REM that violates the contract above would not be caught by the test suite.
+REM Found and empirically confirmed (by deliberately reintroducing the bug
+REM and observing the full suite still pass) via an adversarial review of
+REM vlang/v#29100; left undressed for now rather than adding a harder-to-get-
+REM right execution-level test or a build-script refactor.
+if not exist "%~1" exit /b 0
+del "%~1" >nul 2>&1
+if not exist "%~1" exit /b 0
+ping 192.0.2.1 -n 1 -w 100 >nul
+del "%~1" >nul 2>&1
+if not exist "%~1" exit /b 0
+ping 192.0.2.1 -n 1 -w 250 >nul
+del "%~1" >nul 2>&1
 exit /b 0
 
 :move_updated_to_v

@@ -1030,6 +1030,9 @@ f2 := 456e+2 // 45600
 
 ### Arrays
 
+Returning a new array through helper calls preserves each helper's parameter scope.
+
+
 An array is a collection of data elements of the same type. An array literal is a
 list of expressions surrounded by square brackets. An individual element can be
 accessed using an *index* expression. Indexing starts from `0`.
@@ -1858,6 +1861,10 @@ fn main() {
 }
 ```
 
+A nested module such as `app.html` can import a distinct module named `net.html`, with or without
+an alias. Their full module paths determine their identities.
+A module cannot import its own full path, even when the project has no `v.mod` file.
+
 You cannot alias an imported function or type.
 However, you _can_ redeclare a type.
 
@@ -2094,6 +2101,9 @@ match mut x {
 ```
 
 ### Match
+
+A match expression can return multiple values. A branch ending with comma-separated values can
+be combined with a branch ending in a call that returns the same types.
 
 Conditions that compare different nested fields remain distinct match cases, even when
 their final field names and comparison operators are the same.
@@ -2397,6 +2407,22 @@ for key, value in m {
 	//         two -> 2
 }
 ```
+
+A mutable map iteration value still has the map's element type. Assigning it to a map entry copies
+that element, including when its struct type comes from another module.
+When iterating a reference to a map (`for key, value in &m`), values with ordinary element types
+are pointers to their entries. Assigning one to another variable preserves its reference to the
+same entry. If the map element is already a pointer or an optional, the loop value keeps that
+element type instead.
+A pointer to a nested array or map remains a reference container when iterated again,
+including through parentheses or a closure capture.
+Fixed-array map values also refer to their entry storage, so changes through the reference update
+the map value.
+Aliases of array and map pointers preserve these reference semantics, including pointer rebinding.
+Parentheses around a mutable map container do not change whether assigning the loop value updates
+its entry.
+Mutable map parameters, including explicit pointer parameters (`mut m &map[K]V`),
+keep ordinary value iteration. A mutable loop value writes through to the map entry.
 
 Either key or value can be ignored by using a single underscore as the identifier.
 
@@ -3238,6 +3264,9 @@ are a function of their arguments only, and their evaluation has no side effects
 (unless the function uses I/O).
 
 Function arguments are immutable by default, even when [references](#references) are passed.
+An array returned from an immutable argument remains immutable, including when returned through
+a local function value, a narrowed `if` or `match` branch, or after an exiting `if` guard.
+Use `.clone()` for a mutable copy.
 
 > [!NOTE]
 > However, V is not a purely functional language.
@@ -3383,6 +3412,9 @@ fn f(cb fn (a int) int) int {
 println(f(|x| x + 4)) // prints 14
 ```
 
+Function values passed to generic methods are checked by their parameter and return types.
+Parameter names and whitespace do not affect function type compatibility.
+
 ### Closures
 
 Callbacks in specialized generic functions retain the functions they call, including imported
@@ -3438,6 +3470,9 @@ println(c()) // 2
 println(c()) // 3
 ```
 
+A callback's captured values remain available while the callback is stored in a
+struct field, including when that field is assigned through a pointer to the struct.
+
 If you need the value to be modified outside the function, use a reference.
 Capturing a `mut` parameter preserves its reference to the caller's value, including when the
 closure passes it to a spawned function.
@@ -3488,6 +3523,11 @@ The only guarantee is that 600 (from the body of `f`) will be printed after all 
 This *may* change in V 1.0 .
 
 ## References
+
+Pointers to concrete values can be passed to optional interface parameters when their types
+implement the interface. The option contains an interface value referring to the original object.
+Additional pointer layers, such as `&&Record`, must be dereferenced before passing the object.
+Pointers to interface values, such as `&Named`, must also be dereferenced first.
 
 Returning a stored pointer field returns that pointer value. It does not borrow the storage of
 the containing struct, unlike taking the address of one of its fields.
@@ -3717,6 +3757,9 @@ See also [String interpolation](#string-interpolation).
 <a id='custom-print-of-types'></a>
 
 ### Printing custom types
+
+Automatic string conversion also works for values whose local name was used for a reference in
+an earlier scope.
 
 If you want to define a custom print value for your type, simply define a
 `str() string` method:
@@ -4006,6 +4049,8 @@ println(int(color)) // prints 1
 ```
 
 The enum type can be any integer type, but can be omitted, if it is `int`: `enum Color {`.
+When a struct field expects an enum, its value can use the short `.field` form, including
+inside parentheses in a collapsed struct call argument.
 
 Enum match must be exhaustive or have an `else` branch.
 This ensures that if a new enum field is added, it's handled everywhere in the code.
@@ -4243,6 +4288,8 @@ fn main() {
 #### Implement an interface
 
 A type implements an interface by implementing its methods and fields.
+Equivalent fixed array lengths in method signatures may use different constant expressions.
+Callback userdata parameters may use `voidptr` or a concrete pointer type.
 An interface field's default value may be a pointer to a type that implements the interface.
 
 An interface can have a `mut:` section. Implementing types will need
@@ -4784,6 +4831,9 @@ x := read() or {
 }
 ```
 
+A local `err` declared in a nested block shadows the implicit `or` error variable, including in
+result values.
+
 #### Options/results when returning multiple values
 
 Only one `Option` or `Result` is allowed to be returned from a function. It is
@@ -4913,8 +4963,15 @@ fn main() {
 
 ### Generics
 
+Omitted fields of a generic struct use their declared defaults, including in nested structs.
+This also applies through concrete generic aliases and imported structs; defaults use the
+imports visible in the declaring file.
+Fixed array fields initialize each element with its specialized generic defaults.
+
 Generic types brought into scope by a selective import retain their declaring module when
 passed to generic functions and methods in other modules.
+
+Methods called on a generic factory result retain their dependencies in the compiled program.
 
 ```v wip
 
@@ -4950,6 +5007,10 @@ posts_repo := new_repo[Post](db) // returns Repo[Post]
 user := users_repo.find_by_id(1)? // find_by_id[User]
 post := posts_repo.find_by_id(1)? // find_by_id[Post]
 ```
+
+A generic method retains its receiver type when called inside a function returning multiple
+values, including a Result tuple. The enclosing return type does not replace receiver arguments.
+This also applies when a value from a Result tuple is returned as an interface.
 
 Generic calls keep the identity of caller types even when an imported module declares a type
 with the same short name.
@@ -7948,6 +8009,19 @@ unsafe {
 assert *p == `i`
 ```
 
+Unlike in C, fixed arrays do not decay to pointers. For pointer arithmetic over a fixed array,
+take the address of an element (or cast the array's address) inside `unsafe`.
+Subtracting two pointers gives the distance in elements:
+
+```v
+values := [3, 5, 7]!
+p := unsafe { &values[0] + 2 }
+assert unsafe { *p } == 7
+assert unsafe { p - &values[0] } == 2
+q := unsafe { &int(&values) + 1 }
+assert unsafe { *q } == 5
+```
+
 Best practice is to avoid putting memory-safe expressions inside an `unsafe` block,
 so that the reason for using `unsafe` is as clear as possible. Generally any code
 you think is memory-safe should not be inside an `unsafe` block, so the compiler
@@ -8917,6 +8991,17 @@ For example, if a struct has 3 fields on the C side, but you want to only
 refer to 1 of them, you can declare it like this:
 
 **Example of C struct redeclaration**
+
+On macOS, including `Cocoa/Cocoa.h`, `AppKit/AppKit.h`, or `AppKit/NSFont.h` makes an opaque
+`C.NSFont` declaration refer to Cocoa's Objective-C class. Header availability checks and nested
+wrapper-header lookup use the compiler's include search paths, including its selected SDK.
+Conditional guards use the selected compiler's predefined macros. Headers that shadow framework
+names are inspected for their actual declarations.
+Wrapper headers can declare `@class NSFont` or `@compatibility_alias NSFont ...` directly.
+Function-like macros are expanded in header names, conditional guards, and class declarations.
+Classes and aliases loaded by Clang's `-include-pch` are also recognized. Portable C generation uses
+the macOS target ABI for basic predefined macros when its target compiler is unavailable.
+
 ```v oksyntax
 struct C.NameOfTheStruct {
 	a_field int
@@ -9365,6 +9450,10 @@ In the example above, `C.DWORD(1)` is `DLL_PROCESS_ATTACH` and `C.DWORD(0)`
 is `DLL_PROCESS_DETACH`.
 
 ### Translating C to V
+
+Files marked `@[translated]` retain C storage rules: global declarations and writes through
+pointers do not require additional flags or `unsafe` blocks. These rules apply only to those files.
+Pointer-returning calls can also receive field assignments.
 
 V can translate your C code to human readable V code, and generating V wrappers
 on top of C libraries.

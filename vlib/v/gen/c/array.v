@@ -41,6 +41,41 @@ fn fixed_array_pointer_type(t types.Type) ?types.ArrayFixed {
 	return none
 }
 
+fn (mut g FlatGen) fixed_array_decay_byte_compatible(actual types.Type, expected types.Type) bool {
+	a := cgen_unalias_type(actual)
+	e := cgen_unalias_type(expected)
+	if a is types.ArrayFixed && e is types.ArrayFixed {
+		return g.fixed_array_len_value(a) == g.fixed_array_len_value(e)
+			&& g.fixed_array_decay_byte_compatible(a.elem_type, e.elem_type)
+	}
+	if a is types.Pointer && e is types.Pointer {
+		return g.fixed_array_decay_byte_compatible(a.base_type, e.base_type)
+	}
+	return a.name() in ['char', 'i8', 'u8'] && e.name() in ['char', 'i8', 'u8']
+}
+
+fn (mut g FlatGen) fixed_array_decay_shape_equal(actual types.Type, expected types.Type, allow_byte_cast bool) bool {
+	a := cgen_unalias_type(actual)
+	e := cgen_unalias_type(expected)
+	if a is types.ArrayFixed {
+		return e is types.ArrayFixed && g.fixed_array_len_value(a) == g.fixed_array_len_value(e)
+			&& g.fixed_array_decay_shape_equal(a.elem_type, e.elem_type, allow_byte_cast)
+	}
+	if e is types.ArrayFixed {
+		return false
+	}
+	if a is types.Pointer {
+		return e is types.Pointer && g.fixed_array_decay_shape_equal(a.base_type, e.base_type,
+			allow_byte_cast)
+	}
+	if e is types.Pointer {
+		return false
+	}
+	return cgen_types_equal_after_alias_erasure(a, e)
+		|| (allow_byte_cast && a.name() in ['char', 'i8', 'u8']
+			&& e.name() in ['char', 'i8', 'u8'])
+}
+
 fn fixed_array_index_info(t types.Type) (bool, bool, types.ArrayFixed) {
 	if fixed := array_fixed_type(t) {
 		return true, false, fixed
@@ -310,14 +345,7 @@ fn (mut g FlatGen) gen_fixed_array_data_arg(id flat.NodeId, arr types.ArrayFixed
 	}
 	if node.kind == .array_literal {
 		if elem_fixed := array_fixed_type(arr.elem_type) {
-			mut needs_runtime_copy := false
-			for i in 0 .. node.children_count {
-				if g.fixed_array_initializer_string(g.a.child(&node, i), elem_fixed).len == 0 {
-					needs_runtime_copy = true
-					break
-				}
-			}
-			if needs_runtime_copy {
+			if g.fixed_array_literal_needs_runtime_copy(node, elem_fixed) {
 				g.gen_nested_fixed_array_literal_copy(node, arr, elem_fixed)
 				return
 			}
@@ -395,6 +423,15 @@ fn (mut g FlatGen) gen_fixed_array_data_arg(id flat.NodeId, arr types.ArrayFixed
 		return
 	}
 	g.gen_expr(id)
+}
+
+fn (g &FlatGen) fixed_array_literal_needs_runtime_copy(node flat.Node, elem_fixed types.ArrayFixed) bool {
+	for i in 0 .. node.children_count {
+		if g.fixed_array_initializer_string(g.a.child(&node, i), elem_fixed).len == 0 {
+			return true
+		}
+	}
+	return false
 }
 
 // gen_cabi_fixed_array_data_arg materializes fixed arrays whose V element storage
@@ -497,11 +534,11 @@ fn (g &FlatGen) array_init_field_value(node flat.Node, field_name string) ?flat.
 }
 
 fn (mut g FlatGen) gen_fixed_array_pointer_lvalue_arg(id flat.NodeId, expected types.Type) bool {
-	if _ := fixed_array_pointer_type(expected) {
-		// handled below
-	} else {
+	expected_ptr := cgen_unalias_type(expected)
+	if expected_ptr !is types.Pointer {
 		return false
 	}
+	expected_fixed := array_fixed_type(cgen_unalias_type(expected_ptr.base_type))
 	if int(id) < 0 || int(id) >= g.a.nodes.len {
 		return false
 	}
@@ -515,13 +552,50 @@ fn (mut g FlatGen) gen_fixed_array_pointer_lvalue_arg(id flat.NodeId, expected t
 	if actual is types.Pointer {
 		return false
 	}
-	if _ := array_fixed_type(actual) {
-		if !g.expr_is_addressable(id) {
-			return false
+	if actual_fixed := array_fixed_type(cgen_unalias_type(actual)) {
+		if cgen_unalias_type(expected_ptr.base_type) is types.Void {
+			g.gen_fixed_array_data_arg(id, actual_fixed)
+			return true
 		}
-		g.write('&')
-		g.gen_expr(id)
-		return true
+		if fixed := expected_fixed {
+			if inner_fixed := array_fixed_type(cgen_unalias_type(actual_fixed.elem_type)) {
+				if g.fixed_array_decay_shape_equal(types.Type(inner_fixed), types.Type(fixed),
+					false) {
+					if g.expr_is_addressable(id) {
+						g.gen_expr(id)
+					} else {
+						g.gen_fixed_array_data_arg(id, actual_fixed)
+					}
+					return true
+				}
+				if g.fixed_array_decay_shape_equal(types.Type(inner_fixed), types.Type(fixed),
+					true) {
+					g.write('(${g.cast_c_type(expected_ptr)})')
+					if g.expr_is_addressable(id) {
+						g.gen_expr(id)
+					} else {
+						g.gen_fixed_array_data_arg(id, actual_fixed)
+					}
+					return true
+				}
+			}
+			if !g.expr_is_addressable(id) {
+				return false
+			}
+			g.write('&')
+			g.gen_expr(id)
+			return true
+		}
+		if g.fixed_array_decay_shape_equal(actual_fixed.elem_type, expected_ptr.base_type, false) {
+			g.gen_fixed_array_data_arg(id, actual_fixed)
+			return true
+		}
+		if g.fixed_array_decay_byte_compatible(actual_fixed.elem_type, expected_ptr.base_type)
+			&& !cgen_types_equal_after_alias_erasure(actual_fixed.elem_type, expected_ptr.base_type) {
+			g.write('(${g.cast_c_type(expected_ptr)})')
+			g.gen_fixed_array_data_arg(id, actual_fixed)
+			return true
+		}
 	}
 	return false
 }

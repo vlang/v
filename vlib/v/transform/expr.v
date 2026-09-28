@@ -190,6 +190,9 @@ fn (mut t Transformer) transform_infix_array_ops(_id flat.NodeId, node flat.Node
 	if node.children_count < 2 || node.op !in [.eq, .ne] {
 		return none
 	}
+	if comparison := t.transform_translated_array_pointer_comparison(node) {
+		return comparison
+	}
 	lhs_id := t.a.children[node.children_start]
 	rhs_id := t.a.children[node.children_start + 1]
 	lhs_raw_type := t.node_type(lhs_id)
@@ -388,6 +391,50 @@ fn (mut t Transformer) transform_infix_array_ops(_id flat.NodeId, node flat.Node
 		return t.make_prefix(.not, eq_call)
 	}
 	return eq_call
+}
+
+fn (mut t Transformer) transform_translated_array_pointer_comparison(node flat.Node) ?flat.NodeId {
+	if isnil(t.tc) {
+		return none
+	}
+	file := t.a.source_files[node.pos.id] or { return none }
+	if !t.tc.translated_files[file.name] {
+		return none
+	}
+	lhs_id := t.a.child(&node, 0)
+	rhs_id := t.a.child(&node, 1)
+	lhs_type := types.unalias_type(t.tc.resolve_type(lhs_id))
+	rhs_type := types.unalias_type(t.tc.resolve_type(rhs_id))
+	if !((lhs_type is types.ArrayFixed && rhs_type is types.Pointer)
+		|| (rhs_type is types.ArrayFixed && lhs_type is types.Pointer)) {
+		return none
+	}
+	// C array decay compares addresses, including pointers to nested fixed arrays.
+	lhs := t.translated_array_pointer_comparison_operand(lhs_id, lhs_type)
+	rhs := t.translated_array_pointer_comparison_operand(rhs_id, rhs_type)
+	return t.make_infix(node.op, lhs, rhs)
+}
+
+fn (t &Transformer) translated_fixed_array_pointer_lvalue(id flat.NodeId, other_id flat.NodeId) bool {
+	if isnil(t.tc) || int(id) < 0 || int(id) >= t.a.nodes.len {
+		return false
+	}
+	file := t.a.source_files[t.a.nodes[int(id)].pos.id] or { return false }
+	if !t.tc.translated_files[file.name] {
+		return false
+	}
+	return types.unalias_type(t.tc.resolve_type(id)) is types.ArrayFixed
+		&& types.unalias_type(t.tc.resolve_type(other_id)) is types.Pointer
+}
+
+fn (mut t Transformer) translated_array_pointer_comparison_operand(id flat.NodeId, typ types.Type) flat.NodeId {
+	mut value := t.transform_expr_preserving_pointer_value(id)
+	if typ is types.ArrayFixed && t.expr_can_be_fixed_array_literal(id) {
+		// Keep the literal's element type while C lowers it to a compound literal.
+		elem_ptr_type := '&${typ.elem_type.name()}'
+		value = t.make_cast(elem_ptr_type, value, elem_ptr_type)
+	}
+	return t.make_cast('voidptr', value, 'voidptr')
 }
 
 fn (t &Transformer) array_comparison_literal_elem_type(id flat.NodeId) ?string {

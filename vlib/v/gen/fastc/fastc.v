@@ -926,6 +926,7 @@ struct FastcSourceHeader {
 	import_order            []string
 	blank_imports           []string
 	has_globals             bool
+	translated              bool
 	has_constants           bool
 	has_global_declarations bool
 	// Byte-level superset tests over the whole file (see fastc_source_scan_flags):
@@ -1254,6 +1255,7 @@ struct Parser {
 	// source-level functions. It is immutable and shared by file generators.
 	function_c_names map[string]string
 	selfhost         bool
+	translated       bool
 	header_free      bool
 	// source_has_select is false only when the file provably holds no `select`
 	// word (see fastc_source_scan_flags), so block pre-scans for channel
@@ -1669,6 +1671,7 @@ fn fastc_generate_single_file(ctx &FastcFileGenContext, source_file FastcSourceF
 		used_function_names:       ctx.used_function_names
 		function_c_names:          ctx.function_c_names
 		selfhost:                  prefs.building_v
+		translated:                source_file.header.translated
 		source_has_select:         source_file.header.has_select
 		has_startup_inits:         ctx.has_startup_inits
 		has_cleanup_hooks:         ctx.has_cleanup_hooks
