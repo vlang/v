@@ -79,6 +79,18 @@ pub fn (mut p Point) inc(dx int) int {
 '
 }
 
+fn test_formatter_preserves_contextually_invalid_method_and_range_syntax() {
+	for source in [
+		'struct Example {}\n\nfn (value Example) Foo.bar() {}\n',
+		'struct Example {}\n\nfn (value Example) Foo.@select()\n',
+		'fn main() {\n\tfor i in 0 ... 3 { println(i) }\n}\n',
+	] {
+		formatted := vfmt('contextual_method_range', source)
+		assert formatted == source, formatted
+		assert vfmt('contextual_method_range_twice', formatted) == formatted
+	}
+}
+
 fn test_formatter_preserves_interop_receiver_qualifiers() {
 	for source in [
 		'struct Native {}\n\nfn (value Native) C.foo() {}\n',

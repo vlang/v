@@ -1376,6 +1376,7 @@ fn (mut p Parser) fn_decl() flat.NodeId {
 	mut receiver_is_mut := false
 	mut is_method := false
 	mut is_static_type_method := false
+	mut formatter_method_name := ''
 
 	// method receiver: fn (mut r Type) name()
 	if p.tok == .lpar {
@@ -1529,9 +1530,12 @@ fn (mut p Parser) fn_decl() flat.NodeId {
 			name_pos = p.tok_pos
 			second := p.expect_name_or_keyword()
 			if is_method {
-				p.record_diagnostic_span('cannot declare a static function as a receiver method',
-					qualified_start, p.prev_tok_end)
+				if !p.prefs.is_fmt {
+					p.record_diagnostic_span('cannot declare a static function as a receiver method',
+						qualified_start, p.prev_tok_end)
+				}
 				name = name + '.' + second
+				formatter_method_name = name
 			} else {
 				// Static method: Type.name
 				receiver_type = name
@@ -1559,7 +1563,12 @@ fn (mut p Parser) fn_decl() flat.NodeId {
 		p.file_method_names[name] = true
 	}
 
-	return p.fn_decl_body(name, receiver_name, receiver_type, receiver_is_mut, is_method, '', name_pos)
+	id := p.fn_decl_body(name, receiver_name, receiver_type, receiver_is_mut, is_method, '', name_pos)
+	if p.prefs.is_fmt && formatter_method_name.len > 0 {
+		// Compiler method names include receiver ownership; retain the source qualifier.
+		p.a.formatter_sources[int(id)] = formatter_method_name
+	}
+	return id
 }
 
 fn (mut p Parser) fn_operator_overload(receiver_name string, receiver_type string, receiver_is_mut bool, op_name string, name_pos int) flat.NodeId {
@@ -8852,11 +8861,14 @@ fn (mut p Parser) for_in_parts(key_id flat.NodeId, val_id flat.NodeId, first_is_
 
 	// optional range: `for i in 0 .. n`
 	mut range_end := flat.empty_node
+	is_inclusive := p.tok == .ellipsis
 	if p.tok == .dotdot {
 		p.next()
 		range_end = p.expr(.lowest)
 	} else if p.tok == .ellipsis {
-		p.record_diagnostic_span('for loop only supports exclusive (`..`) ranges, not inclusive (`...`)', p.tok_pos, p.tok_end)
+		if !p.prefs.is_fmt {
+			p.record_diagnostic_span('for loop only supports exclusive (`..`) ranges, not inclusive (`...`)', p.tok_pos, p.tok_end)
+		}
 		p.next()
 		range_end = p.expr(.lowest)
 	}
@@ -8902,7 +8914,7 @@ fn (mut p Parser) for_in_parts(key_id flat.NodeId, val_id flat.NodeId, first_is_
 		ids << id
 	}
 	start := p.add_children(ids)
-	return p.add_node(flat.Node{
+	id := p.add_node(flat.Node{
 		kind:           .for_in_stmt
 		children_start: start
 		children_count: flat.child_count(ids.len)
@@ -8911,6 +8923,10 @@ fn (mut p Parser) for_in_parts(key_id flat.NodeId, val_id flat.NodeId, first_is_
 		value:          if int(range_end) >= 0 { '4' } else { '3' }
 		op:             if first_is_mut || second_is_mut { .amp } else { .none }
 	})
+	if p.prefs.is_fmt && is_inclusive {
+		p.a.formatter_sources[int(id)] = '...'
+	}
+	return id
 }
 
 fn (mut p Parser) record_for_mut_diagnostic(id flat.NodeId, message string) {

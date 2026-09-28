@@ -202,6 +202,21 @@ fn test_fmt_preserves_interop_qualifiers_on_receiver_declarations() {
 	}
 }
 
+fn test_fmt_preserves_qualified_receiver_and_inclusive_range_syntax() {
+	for source, expected in {
+		'struct Example {}\nfn (value Example) Foo.bar() {}':  'fn (value Example) Foo.bar() {}'
+		'struct Example {}\nfn (value Example) Foo.@select()': 'fn (value Example) Foo.@select()'
+		'fn main() { for i in 0 ... 3 { println(i) } }':       'for i in 0 ... 3'
+	} {
+		res, formatted := run_vfmt_write('qualified_method_range', source + '\n', '')
+		assert res.exit_code == 0, res.output
+		assert formatted.contains(expected), formatted
+		second, twice := run_vfmt_write('qualified_method_range_twice', formatted, '')
+		assert second.exit_code == 0, second.output
+		assert twice == formatted
+	}
+}
+
 fn test_fmt_preserves_semantic_signature_and_collection_restrictions() {
 	for source, expected in {
 		'fn f(value array) {}':                               'value array'

@@ -7,6 +7,8 @@ fn test_formatter_preserves_syntax_without_semantic_diagnostics() {
 	path := os.join_path(os.vtmp_dir(), 'formatter_semantics_${os.getpid()}.v')
 	defer { os.rm(path) or {} }
 	cases := {
+		'struct Example {}\nfn (value Example) Foo.bar() {}':                                        'cannot declare a static function as a receiver method'
+		'fn main() { for i in 0 ... 3 { println(i) } }':                                             'for loop only supports exclusive (`..`) ranges, not inclusive (`...`)'
 		'fn f(value array) {}':                                                                      '`array` is an internal type, it cannot be used directly. Use `[]int`, `[]Foo` etc'
 		'fn f(value map) {}':                                                                        'cannot use the map type without key and value definition'
 		'fn main() { _ := [2]map{} }':                                                               'cannot use the map type without key and value definition'
