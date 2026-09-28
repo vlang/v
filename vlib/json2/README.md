@@ -29,6 +29,11 @@
 > not resolve types, so check the output of such types after migrating. Decoding is not
 > affected: the `from_json_*` methods only handle a JSON string, number, boolean or
 > `null`, so objects written by the old module still decode field by field.
+>
+> `json2.decode` also accepts an enum value given as the number of one of its members,
+> for an enum without `@[json_as_number]` too, as `json2.encode(x, enum_as_int: true)`
+> writes it; the old module only accepted the member's name there. Other numbers are
+> still rejected.
 
 `json2` is an experimental JSON parser written from scratch on V.
 
