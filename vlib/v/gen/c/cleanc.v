@@ -22900,7 +22900,7 @@ fn (mut g FlatGen) emit_global_inits() {
 		if typ := g.global_types[qname] {
 			clean_type := default_init_unalias_type(typ)
 			if clean_type is types.Pointer {
-				if fixed := array_fixed_type(default_init_unalias_type(clean_type.base_type)) {
+				if fixed := g.global_fixed_array_pointer_source_type(val_id, clean_type) {
 					g.in_global_array_pointer_init = true
 					init_stmt := g.global_fixed_array_pointer_init_stmt(g.global_c_name(qname),
 						val_id, fixed, typ, false)
@@ -23058,6 +23058,44 @@ fn (mut g FlatGen) global_fixed_array_fill_stmt(dst string, val_id flat.NodeId, 
 	return 'for (${int_ct} ${index_tmp} = 0; ${index_tmp} < sizeof(${dst}) / sizeof(${dst}[0]); ${index_tmp}++) { ${bindings}${assignment} }'
 }
 
+fn (g &FlatGen) global_fixed_array_pointer_local_root(id flat.NodeId) bool {
+	node := g.a.node(id)
+	if node.kind == .ident {
+		if local_type := g.local_ident_type(node.value) {
+			return default_init_unalias_type(local_type) !is types.Pointer
+		}
+		return false
+	}
+	if node.kind in [.index, .selector, .paren] && node.children_count > 0 {
+		return g.global_fixed_array_pointer_local_root(g.a.child(node, 0))
+	}
+	return false
+}
+
+fn (g &FlatGen) global_fixed_array_pointer_source_type(id flat.NodeId, pointer types.Pointer) ?types.ArrayFixed {
+	if fixed := array_fixed_type(default_init_unalias_type(pointer.base_type)) {
+		return fixed
+	}
+	node := g.a.node(id)
+	if node.kind in [.expr_stmt, .paren] && node.children_count == 1 {
+		return g.global_fixed_array_pointer_source_type(g.a.child(node, 0), pointer)
+	}
+	if node.kind == .block && node.children_count > 0 {
+		return g.global_fixed_array_pointer_source_type(g.a.child(node, int(node.children_count) - 1),
+			pointer)
+	}
+	if node.kind == .prefix && node.op == .amp && node.children_count == 1 {
+		return g.global_fixed_array_pointer_source_type(g.a.child(node, 0), pointer)
+	}
+	if node.kind == .index && node.children_count > 0 {
+		base_type := default_init_unalias_type(g.usable_expr_type(g.a.child(node, 0)))
+		if base_type is types.ArrayFixed {
+			return array_fixed_type(default_init_unalias_type(base_type.elem_type))
+		}
+	}
+	return none
+}
+
 fn (mut g FlatGen) global_fixed_array_pointer_init_stmt(target string, val_id flat.NodeId, fixed types.ArrayFixed, typ types.Type, addressed bool) string {
 	node := g.a.node(val_id)
 	if node.kind in [.expr_stmt, .paren] && node.children_count == 1 {
@@ -23106,9 +23144,9 @@ fn (mut g FlatGen) global_fixed_array_pointer_init_stmt(target string, val_id fl
 		return g.global_fixed_array_pointer_init_stmt(target, g.a.child(node, 0), fixed,
 			typ, true)
 	}
-	// Lowering can put the addressed literal in a local array inside `unsafe`.
+	// Lowering can put the addressed array in a local value inside `unsafe`.
 	// Copy that scoped storage too, while references to globals keep their identity.
-	local_array := node.kind == .ident && g.local_ident_type(node.value) != none
+	local_array := g.global_fixed_array_pointer_local_root(val_id)
 	if !addressed || (node.kind !in [.array_init, .array_literal, .struct_init]
 		&& !(node.kind == .postfix && node.op == .not) && !local_array) {
 		return ''

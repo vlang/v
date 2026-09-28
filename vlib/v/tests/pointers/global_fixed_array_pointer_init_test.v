@@ -6,6 +6,11 @@ mut:
 	value int = 23
 }
 
+struct GlobalArrayPointerHolder {
+mut:
+	rows [2]GlobalArrayPointerNestedRowAlias
+}
+
 @[aligned: 512]
 struct GlobalAlignedArrayPointerCell {
 	value int = 19
@@ -68,6 +73,16 @@ __global global_nested_statement_array = unsafe {
 	value := global_array_wrapper_value(20)
 	offset := global_array_wrapper_value(3)
 	&([value + offset, value + offset + 1]!)
+}
+__global global_local_index_array = unsafe {
+	mut grid := [2]GlobalArrayPointerNestedRowAlias{}
+	grid[1][0] = 37
+	&grid[1]
+}
+__global global_local_selector_array = unsafe {
+	mut holder := GlobalArrayPointerHolder{}
+	holder.rows[1][0] = 41
+	&holder.rows[1]
 }
 __global global_statement_aligned_array = unsafe {
 	value := global_array_wrapper_value(30)
@@ -282,6 +297,8 @@ fn test_global_fixed_array_pointer_unsafe_statements_keep_storage_and_scope() {
 		assert global_inner_statement_array[3] == 16
 		assert global_nested_statement_array[0] == 23
 		assert global_nested_statement_array[1] == 24
+		assert global_local_index_array[0] == 37
+		assert global_local_selector_array[0] == 41
 		assert global_statement_aligned_array[1].value == 31
 		global_statement_array[3] = 45
 		assert global_statement_array[3] == 45
@@ -289,6 +306,8 @@ fn test_global_fixed_array_pointer_unsafe_statements_keep_storage_and_scope() {
 		free(global_statement_array)
 		free(global_inner_statement_array)
 		free(global_nested_statement_array)
+		free(global_local_index_array)
+		free(global_local_selector_array)
 	}
 	free_global_aligned_array_pointer(global_statement_aligned_array)
 }
