@@ -29,6 +29,9 @@ concurrency:
   group: puzzle_vibes-${{ github.workflow }}-${{ github.ref == 'refs/heads/master' && github.sha || github.ref }}
   cancel-in-progress: true
 
+permissions:
+  contents: read
+
 jobs:
   v-compiles-puzzle-vibes:
     runs-on: ubuntu-24.04

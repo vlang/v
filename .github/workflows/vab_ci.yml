@@ -23,6 +23,9 @@ concurrency:
   group: vab-${{ github.workflow }}-${{ github.ref == 'refs/heads/master' && github.sha || github.ref }}
   cancel-in-progress: true
 
+permissions:
+  contents: read
+
 jobs:
   vab-compiles-v-examples:
     runs-on: ubuntu-24.04

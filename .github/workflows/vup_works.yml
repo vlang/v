@@ -26,6 +26,9 @@ concurrency:
   group: vup-${{ github.workflow }}-${{ github.ref == 'refs/heads/master' && github.sha || github.ref }}
   cancel-in-progress: true
 
+permissions:
+  contents: read
+
 jobs:
   v-up-works-nix:
     strategy:

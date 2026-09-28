@@ -25,6 +25,9 @@ concurrency:
 env:
   V_CI_MUSL: 1
 
+permissions:
+  contents: read
+
 jobs:
   docker-alpine-musl-gcc:
     runs-on: ubuntu-24.04

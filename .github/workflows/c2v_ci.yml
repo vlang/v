@@ -28,6 +28,9 @@ concurrency:
   group: c2v-${{ github.workflow }}-${{ github.ref == 'refs/heads/master' && github.sha || github.ref }}
   cancel-in-progress: true
 
+permissions:
+  contents: read
+
 jobs:
   build-doom:
     runs-on: ubuntu-24.04

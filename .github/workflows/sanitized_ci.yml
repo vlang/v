@@ -82,6 +82,9 @@ env:
     libasound2-dev libegl-dev
   SANITIZER_CLANG_PACKAGES: clang
 
+permissions:
+  contents: read
+
 jobs:
   sanitize-linux:
     runs-on: ubuntu-22.04

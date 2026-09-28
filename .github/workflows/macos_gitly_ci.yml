@@ -30,6 +30,9 @@ on:
     types: [opened, synchronize, reopened]
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 jobs:
   macos-gitly-ci:
     if: ${{ github.repository == 'vlang/v' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) }}

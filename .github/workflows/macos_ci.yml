@@ -27,6 +27,9 @@ concurrency:
   group: macos-${{ github.workflow }}-${{ github.ref == 'refs/heads/master' && github.sha || github.ref }}
   cancel-in-progress: true
 
+permissions:
+  contents: read
+
 jobs:
   clang-macos:
     strategy:

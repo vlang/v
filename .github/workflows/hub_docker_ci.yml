@@ -16,6 +16,9 @@ concurrency:
   group: 'hub_docker_ci-${{ github.ref }}'
   cancel-in-progress: true
 
+permissions:
+  contents: read
+
 jobs:
   publish-new-docker-images:
     strategy:

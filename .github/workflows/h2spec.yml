@@ -23,6 +23,9 @@ concurrency:
   group: h2spec-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+permissions:
+  contents: read
+
 jobs:
   h2spec:
     runs-on: ubuntu-latest

@@ -21,6 +21,9 @@ concurrency:
   group: vinix-${{ github.workflow }}-${{ github.ref == 'refs/heads/master' && github.sha || github.ref }}
   cancel-in-progress: true
 
+permissions:
+  contents: read
+
 jobs:
   vinix-build:
     runs-on: ubuntu-24.04

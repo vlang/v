@@ -76,6 +76,9 @@ concurrency:
 ### See https://github.com/cross-platform-actions/action
 ### for a description of the used fields here
 
+permissions:
+  contents: read
+
 jobs:
   tcc-freebsd:
     runs-on: ubuntu-latest

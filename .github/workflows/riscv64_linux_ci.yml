@@ -46,6 +46,10 @@ concurrency:
   group: riscv64-${{ github.workflow }}-${{ github.ref == 'refs/heads/master' && github.sha || github.ref }}
   cancel-in-progress: true
 
+permissions:
+  contents: read
+  packages: write
+
 jobs:
   riscv64_linux:
     # The host should always be Linux

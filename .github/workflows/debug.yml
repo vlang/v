@@ -2,6 +2,9 @@ name: Debug CI
 
 on: [workflow_dispatch]
 
+permissions:
+  contents: read
+
 jobs:
   debug-msvc:
     runs-on: windows-2025

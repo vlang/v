@@ -27,6 +27,9 @@ concurrency:
   group: linux-${{ github.workflow }}-${{ github.ref == 'refs/heads/master' && github.sha || github.ref }}
   cancel-in-progress: true
 
+permissions:
+  contents: read
+
 jobs:
   tcc-linux:
     runs-on: ubuntu-24.04

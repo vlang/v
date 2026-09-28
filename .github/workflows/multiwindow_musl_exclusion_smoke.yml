@@ -22,6 +22,9 @@ concurrency:
 env:
   V_CI_MUSL: 1
 
+permissions:
+  contents: read
+
 jobs:
   multiwindow-musl-exclusion:
     runs-on: ubuntu-24.04

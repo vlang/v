@@ -25,6 +25,9 @@ concurrency:
   group: docs_site-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: ${{ !contains(github.ref, 'master')}}
 
+permissions:
+  contents: read
+
 jobs:
   deploy-docs-site:
     runs-on: ubuntu-latest

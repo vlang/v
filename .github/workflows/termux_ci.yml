@@ -42,6 +42,9 @@ concurrency:
   group: termux-${{ github.workflow }}-${{ github.ref == 'refs/heads/master' && github.sha || github.ref }}
   cancel-in-progress: true
 
+permissions:
+  contents: read
+
 jobs:
   termux-build:
     runs-on: ubuntu-latest

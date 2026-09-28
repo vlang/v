@@ -9,6 +9,9 @@ on:
       - '!vlib/json2/strict/**' # Ignore
       - '!vlib/json2/tests/**' # Ignore
 
+permissions:
+  contents: read
+
 jobs:
   json-encode-benchmark:
     runs-on: ubuntu-latest

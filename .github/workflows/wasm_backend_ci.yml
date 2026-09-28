@@ -50,6 +50,9 @@ concurrency:
   group: wasm-${{ github.workflow }}-${{ github.ref == 'refs/heads/master' && github.sha || github.ref }}
   cancel-in-progress: true
 
+permissions:
+  contents: read
+
 jobs:
   wasm-backend:
     runs-on: ${{ matrix.os }}
