@@ -96,8 +96,10 @@ pub:
 	// Strict mode also requires a fixed size array to get a JSON array with exactly
 	// as many elements. By default, `null` or missing trailing elements keep their
 	// default values, and extra elements are ignored.
-	// Strict mode also rejects `null` for a number, bool, string or enum, which is
-	// its zero value by default.
+	// Strict mode also rejects `null` for a value that is not an option. By default,
+	// like in the removed `json` module, `null` is the zero value of a number, bool,
+	// string, enum or time, an empty array or map, and a nested struct with its
+	// default field values.
 	strict bool
 }
 
@@ -105,7 +107,7 @@ pub:
 @[markused]
 struct Decoder {
 	json   string // json is the JSON data to be decoded.
-	strict bool   // strict mode rejects quoted strings as numbers, fixed arrays of another length, and null scalars
+	strict bool   // strict mode rejects quoted strings as numbers, fixed arrays of another length, and null values
 mut:
 	values_info  DecodeList[ValueInfo] // A linked list to store ValueInfo.
 	checker_idx  int                   // checker_idx is the current index of the decoder.
@@ -867,6 +869,8 @@ fn (mut decoder Decoder) decode_value[T](mut val T) ! {
 				decoded_time.from_json_number(decoder.json[value_info.position..value_info.position + value_info.length]) or {
 					decoder.decode_error('${typeof(val).name}: ${err.msg()}')!
 				}
+			} else if value_info.value_kind == .null && !decoder.strict {
+				// Outside of strict mode `null` is the zero time, like in the removed module.
 			} else {
 				decoder.decode_error('Expected string or number, but got ${value_info.value_kind}')!
 			}
@@ -1140,6 +1144,13 @@ fn (mut decoder Decoder) decode_value[T](mut val T) ! {
 						field_idx++
 					}
 				}
+			} else if struct_info.value_kind == .null && !decoder.strict
+				&& decoder.current_node != decoder.values_info.head {
+				// Outside of strict mode a nested `null` is the struct with its default
+				// field values, like in the removed `json` module, which rejected a
+				// `null` root.
+				val = T{}
+				decoder.current_node = decoder.current_node.next
 			} else {
 				decoder.decode_error('Expected object, but got ${struct_info.value_kind}')!
 			}
@@ -1341,6 +1352,9 @@ fn (mut decoder Decoder) decode_array[T](mut val []T) ! {
 					val << decoder.decode_array_element(T{})!
 				}
 			}
+		} else if array_info.value_kind == .null && !decoder.strict {
+			// Outside of strict mode `null` is an empty array, like in the removed module.
+			decoder.current_node = decoder.current_node.next
 		} else {
 			decoder.decode_error('Expected array, but got ${array_info.value_kind}')!
 		}
@@ -1522,6 +1536,10 @@ fn (mut decoder Decoder) decode_map[V](mut val map[string]V) ! {
 					}
 				}
 			}
+		} else if map_info.value_kind == .null && !decoder.strict {
+			// Outside of strict mode `null` is an empty map, like in the removed module.
+			val.clear()
+			decoder.current_node = decoder.current_node.next
 		} else {
 			decoder.decode_error('Expected object, but got ${map_info.value_kind}')!
 		}

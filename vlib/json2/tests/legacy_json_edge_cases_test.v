@@ -153,3 +153,41 @@ fn test_time_alias_sumtype_variant() {
 	decoded := json2.decode[TimeValueHolder](encoded)!
 	assert decoded.value.type_name() == 'Timestamp'
 }
+
+struct NullInner {
+	a int = 3
+}
+
+struct NullContainers {
+	list  []int
+	m     map[string]int
+	inner NullInner
+	at    time.Time
+	lists [][]int
+	objs  []NullInner
+}
+
+fn test_null_containers_structs_and_times() {
+	assert json2.decode[[]int]('null')! == []int{}
+	assert json2.decode[map[string]int]('null')!.len == 0
+	assert json2.decode[time.Time]('null')! == time.Time{}
+	decoded := json2.decode[NullContainers]('{"list":null,"m":null,"inner":null,"at":null,"lists":[null,[1]],"objs":[null]}')!
+	assert decoded.list == []
+	assert decoded.m.len == 0
+	assert decoded.inner.a == 3
+	assert decoded.at == time.Time{}
+	assert decoded.lists == [[]int{}, [1]]
+	assert decoded.objs.len == 1
+	assert decoded.objs[0].a == 3
+	// Like the removed module, a `null` root is not a struct.
+	if _ := json2.decode[NullInner]('null') {
+		assert false
+	}
+	// Strict mode keeps rejecting these.
+	if _ := json2.decode[[]int]('null', strict: true) {
+		assert false
+	}
+	if _ := json2.decode[NullContainers]('{"inner":null}', strict: true) {
+		assert false
+	}
+}
