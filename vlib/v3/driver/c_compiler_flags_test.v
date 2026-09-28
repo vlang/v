@@ -684,6 +684,15 @@ fn test_v3_cache_artifact_detection_accepts_quoted_paths_with_spaces() {
 	assert v3_cache_failure_artifacts("ld: i386 architecture of input file `${object}' is incompatible with i386:x86-64 output") == [
 		os.real_path(object),
 	]
+	assert v3_cache_failure_artifacts("link.exe: LNK1136: invalid or corrupt file '${object}'") == [
+		os.real_path(object),
+	]
+	assert v3_cache_failure_artifacts("link.exe: LNK1107: invalid or corrupt file '${object}'") == [
+		os.real_path(object),
+	]
+	assert v3_cache_failure_artifacts("ld: warning: ignoring file '${object}', building for macOS-arm64 but attempting to link with file built for macOS-x86_64") == [
+		os.real_path(object),
+	]
 	$if windows {
 		assert v3_cache_failure_artifacts('link.exe: ${object}: file format not recognized') == [
 			os.real_path(object),

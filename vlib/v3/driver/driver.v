@@ -12566,7 +12566,9 @@ const v3_cache_failure_markers = ['unrecognized file type', 'file format not rec
 	'truncated or malformed', 'file too small', 'file too short', 'empty file',
 	'section table goes past the end of file', 'archive has no index',
 	'duplicate symbol', 'multiple definition',
-	'defined twice', 'incompatible file format', 'architecture of input file']
+	'defined twice', 'incompatible file format', 'architecture of input file',
+	'invalid or corrupt file', 'lnk1136', 'lnk1107',
+	'but attempting to link with file built for']
 
 const v3_cache_recovery_env = 'V3_INTERNAL_CACHE_RECOVERY'
 
