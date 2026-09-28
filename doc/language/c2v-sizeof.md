@@ -13,7 +13,8 @@ files, so an indexed expression such as `sizeof(Regs[0])` keeps its value interp
 Globals from another module do not force current-module or imported type names to be parsed
 as value operands.
 Qualified names through imported modules, including import aliases, are resolved after parsing
-so that both constants and type names retain their meaning.
+so that both constants and type names retain their meaning. Enum members such as `sizeof(Color.red)`
+and members through enum aliases are measured as values, including enums declared in later files.
 When deferred type-test branches declare a constant or global and a type with the same name,
 `sizeof` uses the value's storage type only when its branch is selected, including header-style
 constants that have a declared type without an initializer. Compound operands such

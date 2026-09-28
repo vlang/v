@@ -613,6 +613,57 @@ fn main() {
 	}
 }
 
+fn test_translated_sizeof_enum_member_operands() {
+	root := os.join_path(os.vtmp_dir(), 'translated_sizeof_enum_members_${os.getpid()}')
+	os.mkdir_all(os.join_path(root, 'definitions'))!
+	defer { os.rmdir_all(root) or {} }
+	os.write_file(os.join_path(root, 'v.mod'), "Module { name: 'sizeof_enum_members' }")!
+	os.write_file(os.join_path(root, 'definitions', 'color.v'), 'module definitions
+pub enum Imported as u32 { red }
+pub struct Record { value i64 }
+')!
+	main_path := os.join_path(root, 'a.v')
+	later_path := os.join_path(root, 'z.v')
+	declarations := 'enum Color as u16 { red }
+type Alias = Color
+type color = Color
+@[flag]
+enum Permission { read write }
+struct Record { red [2]u8 }
+'
+	source := '@[translated]
+module main
+import definitions as imported
+const color_size = sizeof(Color.red)
+fn shadow(color Record) { assert sizeof(color.red) == sizeof([2]u8) }
+fn main() {
+ assert sizeof(Color.red) == sizeof(Color)
+ assert color_size == sizeof(Color)
+ assert sizeof(Alias.red) == sizeof(Color)
+ assert sizeof(color.red) == sizeof(Color)
+ assert sizeof(Permission.read | Permission.write) == sizeof(Permission)
+ assert sizeof(imported.Imported.red) == sizeof(imported.Imported)
+ assert sizeof(imported.Record) == sizeof(i64)
+ shadow(Record{})
+}
+'
+	for name in ['padding_a.v', 'padding_b.v'] {
+		os.write_file(os.join_path(root, name), 'module main\n//' + ' '.repeat(70000) + '\n')!
+	}
+	for later in [false, true] {
+		os.write_file(main_path, source + if later { '' } else { declarations })!
+		os.write_file(later_path, '@[translated]\nmodule main\n' + if later {
+			declarations
+		} else {
+			''
+		})!
+		for flags in ['', '-no-parallel'] {
+			result := os.execute('${os.quoted_path(@VEXE)} ${flags} run ${os.quoted_path(root)}')
+			assert result.exit_code == 0, result.output
+		}
+	}
+}
+
 fn test_translated_sizeof_selects_deferred_constant_or_type() {
 	root := os.join_path(os.vtmp_dir(), 'translated_sizeof_selected_kind_${os.getpid()}')
 	os.mkdir_all(root)!

@@ -14495,10 +14495,11 @@ fn (mut p Parser) sizeof_expr() flat.NodeId {
 	p.check(.lpar)
 	if p.is_translated && p.tok == .name && !p.is_local_binding(p.lit)
 		&& (p.translated_sizeof_name_is_ambiguous(p.lit)
-			|| (p.peek() == .dot && p.imported_module_names[p.lit]
+			|| (p.peek() == .dot
+				&& (p.imported_module_names[p.lit] || p.translated_sizeof_name_is_type(p.lit))
 				&& !p.translated_sizeof_name_is_global(p.lit))) {
-		// Imports and deferred branches are resolved after parsing. Preserve
-		// both interpretations until the selected declaration is known.
+		// Imports, type members and deferred branches are resolved after parsing.
+		// Preserve both interpretations until the selected declaration is known.
 		inner := p.expr(.lowest)
 		name := p.type_expr_name(inner)
 		p.check(.rpar)
