@@ -2507,9 +2507,12 @@ fn (mut p Parser) struct_decl() flat.NodeId {
 				}
 				continue
 			}
+			// `Size [json: size]` is the legacy embed attribute form, but a capitalized field
+			// name followed by a fixed array type (`Data4 [8]u8`) is a regular field.
 			if !p.parsing_c_struct_fields && p.tok == .lsbr && p.tok_pos > p.prev_tok_end
 				&& field_name.len > 0
-				&& field_name[0] >= `A` && field_name[0] <= `Z` && p.peek() != .rsbr {
+				&& field_name[0] >= `A` && field_name[0] <= `Z` && p.peek() != .rsbr
+				&& !p.current_lbr_starts_fixed_array_type() {
 				attr_start := p.tok_pos
 				mut embed_attrs := pending_attrs.clone()
 				embed_attrs << p.parse_field_attrs()
