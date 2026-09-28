@@ -694,6 +694,11 @@ fn (mut t Transformer) transform_infix_interface_ops(_id flat.NodeId, node flat.
 	if rhs_type.len == 0 {
 		rhs_type = t.checker_node_type(rhs_id)
 	}
+	lhs_depth, _ := pointer_type_depth_and_base(t.normalize_type_alias(lhs_type))
+	rhs_depth, _ := pointer_type_depth_and_base(t.normalize_type_alias(rhs_type))
+	if lhs_depth > 1 || rhs_depth > 1 {
+		return none
+	}
 	lhs_iface := t.resolve_interface_type_name(lhs_type)
 	rhs_iface := t.resolve_interface_type_name(rhs_type)
 	if lhs_iface.len == 0 && rhs_iface.len == 0 {

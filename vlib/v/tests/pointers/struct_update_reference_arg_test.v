@@ -196,6 +196,9 @@ fn updated_aliased_interface_array(base ReferenceReaderImpl) []ReferenceReaderRe
 fn test_struct_update_stored_as_nested_interface_pointer() {
 	values := updated_interface_array(ReferenceReaderImpl{ value: 41 })
 	assert values.len == 1
+	assert values[0] == values[0]
+	other := updated_interface_array(ReferenceReaderImpl{ value: 41 })
+	assert values[0] != other[0]
 	reader := **values[0]
 	assert reader.read() == 42
 	triple := updated_triple_interface_array(ReferenceReaderImpl{ value: 40 })
