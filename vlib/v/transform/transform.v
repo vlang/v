@@ -14015,19 +14015,29 @@ fn (mut t Transformer) coerce_transformed_expr_to_type(expr flat.NodeId, source_
 			actual_depth, actual_base := pointer_type_depth_and_base(expr_type)
 			target_depth, target_base := pointer_type_depth_and_base(target)
 			if actual_depth == 0 && target_depth > 1 && t.is_sum_type_name(target_base)
-				&& t.sum_target_accepts_variant_type(target_base, actual_base)
 				&& t.normalize_type_alias(actual_base) != t.normalize_type_alias(target_base) {
-				mut current := t.make_sum_literal(target_base, actual_base, expr)
-				mut current_type := target_base
-				for _ in 0 .. target_depth {
-					tmp_name := t.new_temp('sum_ref')
-					t.pending_stmts << t.make_decl_assign_typed(tmp_name, current, current_type)
-					addr := t.make_prefix(.amp, t.make_ident(tmp_name))
-					dup := t.make_memdup_call_for_type(addr, current_type)
-					current_type = '&${current_type}'
-					current = t.make_cast(current_type, dup, current_type)
+				path := t.sum_variant_path(target_base, actual_base)
+				if path.len > 0 {
+					mut current := expr
+					for i := path.len - 1; i >= 0; i-- {
+						sum_name := if i == 0 {
+							target_base
+						} else {
+							t.resolve_sum_name(t.trim_pointer_type(path[i - 1]))
+						}
+						current = t.make_sum_literal(sum_name, path[i], current)
+					}
+					mut current_type := target_base
+					for _ in 0 .. target_depth {
+						tmp_name := t.new_temp('sum_ref')
+						t.pending_stmts << t.make_decl_assign_typed(tmp_name, current, current_type)
+						addr := t.make_prefix(.amp, t.make_ident(tmp_name))
+						dup := t.make_memdup_call_for_type(addr, current_type)
+						current_type = '&${current_type}'
+						current = t.make_cast(current_type, dup, current_type)
+					}
+					return current
 				}
-				return current
 			}
 			if target_depth > actual_depth
 				&& t.normalize_type_alias(actual_base) == t.normalize_type_alias(target_base) {

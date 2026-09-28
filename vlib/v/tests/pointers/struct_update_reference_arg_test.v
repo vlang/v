@@ -83,12 +83,23 @@ struct ReferenceNodeB {
 }
 
 type ReferenceNode = ReferenceNodeA | ReferenceNodeB
+type ReferenceInnerNode = ReferenceNodeA | ReferenceNodeB
+
+struct ReferenceNodeC {
+	value int
+}
+
+type ReferenceOuterNode = ReferenceInnerNode | ReferenceNodeC
 
 fn updated_sum_array(base ReferenceNodeA, value int) []&ReferenceNode {
 	return [ReferenceNodeA{ ...base, value: value }]
 }
 
 fn updated_nested_sum_array(base ReferenceNodeA, value int) []&&ReferenceNode {
+	return [ReferenceNodeA{ ...base, value: value }]
+}
+
+fn updated_nested_outer_sum_array(base ReferenceNodeA, value int) []&&ReferenceOuterNode {
 	return [ReferenceNodeA{ ...base, value: value }]
 }
 
@@ -122,6 +133,32 @@ fn test_struct_update_stored_as_nested_sum_pointer() {
 		match node {
 			ReferenceNodeA {
 				assert node.value == i
+			}
+			else {
+				assert false
+			}
+		}
+	}
+}
+
+fn test_struct_update_stored_as_nested_sum_variant_pointer() {
+	base := ReferenceNodeA{ value: -1 }
+	mut values := []&&ReferenceOuterNode{}
+	for value in 0 .. 8 {
+		values << updated_nested_outer_sum_array(base, value)
+	}
+	for i, value in values {
+		node := **value
+		match node {
+			ReferenceInnerNode {
+				match node {
+					ReferenceNodeA {
+						assert node.value == i
+					}
+					else {
+						assert false
+					}
+				}
 			}
 			else {
 				assert false

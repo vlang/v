@@ -11,3 +11,4 @@ When the stored element is a pointer to an interface, each pointer layer receive
 its own storage after the updated struct is boxed as an interface.
 For nested pointers to a sum type, the update is wrapped as the sum value before
 the pointer layers receive storage.
+Nested sum variants are wrapped from the innermost sum outward.
