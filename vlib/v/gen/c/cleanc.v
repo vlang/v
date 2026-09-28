@@ -6401,12 +6401,28 @@ fn c_cocoa_include_macro(value string, values map[string]string, overrides map[s
 	return c_header_nsfont_framework_include(c_expand_header_macro(value, values, overrides, overridden, 0), context)
 }
 
-fn c_expand_header_condition_macros(raw string, values map[string]string, undefined map[string]bool, uncertain map[string]bool, mut expanding map[string]bool, depth int) ?string {
+fn c_expand_header_tokens(raw string, values map[string]string, undefined map[string]bool, uncertain map[string]bool, preserve_defined bool, in_block_comment bool, mut expanding map[string]bool, depth int) ?string {
 	if depth >= 64 { return none }
 	mut result := strings.new_builder(raw.len)
+	mut in_comment := in_block_comment
 	mut i := 0
 	for i < raw.len {
 		start := i
+		if in_comment || (i + 1 < raw.len && raw[i..i + 2] == '/*') {
+			if !in_comment { i += 2 }
+			end := raw[i..].index('*/') or {
+				result.write_string(raw[start..])
+				break
+			}
+			i += end + 2
+			result.write_string(raw[start..i])
+			in_comment = false
+			continue
+		}
+		if i + 1 < raw.len && raw[i..i + 2] == '//' {
+			result.write_string(raw[i..])
+			break
+		}
 		if raw[i] in [`'`, `"`] {
 			quote := raw[i]
 			i++
@@ -6434,7 +6450,7 @@ fn c_expand_header_condition_macros(raw string, values map[string]string, undefi
 		}
 		for i < raw.len && c_identifier_continue(raw[i]) { i++ }
 		name := raw[start..i]
-		if name == 'defined' {
+		if preserve_defined && name == 'defined' {
 			// The operand of defined names the macro itself, not its replacement.
 			for i < raw.len && raw[i].is_space() { i++ }
 			parenthesized := i < raw.len && raw[i] == `(`
@@ -6472,7 +6488,8 @@ fn c_expand_header_condition_macros(raw string, values map[string]string, undefi
 		}
 		if expanding[name] { return none }
 		expanding[name] = true
-		expanded := c_expand_header_condition_macros(replacement, values, undefined, uncertain, mut expanding, depth + 1) or { return none }
+		expanded := c_expand_header_tokens(replacement, values, undefined, uncertain, preserve_defined,
+			false, mut expanding, depth + 1) or { return none }
 		expanding.delete(name)
 		result.write_string(expanded)
 		i = end
@@ -6644,6 +6661,11 @@ fn c_header_text_objective_c_scan_for_target(text string, flags []string, c99_mo
 		defined[macro_name] = true
 		undefined.delete(macro_name)
 		c_header_record_macro(definition, mut macro_values)
+	}
+	for name in search_paths.undefined_macros {
+		defined.delete(name)
+		undefined[name] = true
+		c_header_forget_macro_value(name, mut macro_values)
 	}
 	mut objective_c_compatibility_macros := map[string]bool{}
 	mut i := 0
@@ -6962,7 +6984,10 @@ fn c_header_text_objective_c_scan_for_target(text string, flags []string, c99_mo
 		}
 		if cocoa_include_only {
 			if name.len == 0 && !scan_line.macros_only {
-				found, next_class_state := c_header_nsfont_class_line(line, line_in_block_comment, class_state)
+				mut expanding := map[string]bool{}
+				expanded := c_expand_header_tokens(line, macro_values, undefined, uncertain, false,
+					line_in_block_comment, mut expanding, 0) or { line }
+				found, next_class_state := c_header_nsfont_class_line(expanded, line_in_block_comment, class_state)
 				class_state = next_class_state
 				cocoa_provided = cocoa_provided || found
 			}
@@ -7048,8 +7073,8 @@ fn c_header_condition_without_comments(raw string) string {
 
 fn c_header_objective_c_condition_state(raw string, defined map[string]bool, undefined map[string]bool, uncertain map[string]bool, macro_values map[string]string, strict_iso_mode bool, target pref.Target, predicate_context CHeaderPredicateContext) (bool, bool) {
 	mut expanding := map[string]bool{}
-	expanded := c_expand_header_condition_macros(c_header_condition_without_comments(raw), macro_values,
-		undefined, uncertain, mut expanding, 0) or { return false, true }
+	expanded := c_expand_header_tokens(c_header_condition_without_comments(raw), macro_values,
+		undefined, uncertain, true, false, mut expanding, 0) or { return false, true }
 	clean := c_header_condition_without_outer_parens(expanded)
 	if active := c_header_objective_c_compiler_predicate_state(clean, defined, undefined, uncertain, macro_values, strict_iso_mode, target, predicate_context) {
 		return true, active
@@ -7143,18 +7168,54 @@ mut:
 	include_dirs      []string
 	framework_dirs    []string
 	predefined_macros []string
+	undefined_macros  []string
 	complete          bool
 }
 
-fn c_header_compiler_search_paths(ccompiler string, flags []string, language string, target pref.Target, c99_mode bool) CHeaderSearchPaths {
-	if target.os != pref.host_target().os {
-		return CHeaderSearchPaths{}
+fn c_header_target_abi_macros(target pref.Target, flags []string) CHeaderSearchPaths {
+	if target.os != 'macos' { return CHeaderSearchPaths{} }
+	mut result := CHeaderSearchPaths{}
+	if '-undef' in flags {
+		result.undefined_macros = ['__APPLE__', '__MACH__', '__LP64__', '_LP64', '__SIZEOF_POINTER__',
+			'__SIZEOF_LONG__']
+		return result
 	}
+	mut pointer_bits := target.pointer_bits
+	for flag in flags {
+		if flag == '-m32' { pointer_bits = 32 }
+		if flag == '-m64' { pointer_bits = 64 }
+	}
+	result.predefined_macros = ['__APPLE__ 1', '__MACH__ 1', '__SIZEOF_POINTER__ ${pointer_bits / 8}',
+		'__SIZEOF_LONG__ ${pointer_bits / 8}']
+	if pointer_bits == 64 {
+		result.predefined_macros << ['__LP64__ 1', '_LP64 1']
+	} else {
+		result.undefined_macros = ['__LP64__', '_LP64']
+	}
+	return result
+}
+
+fn c_header_compiler_search_paths(ccompiler string, flags []string, language string, target pref.Target, c99_mode bool) CHeaderSearchPaths {
+	// Portable C generation need not have a target compiler or SDK installed.
+	fallback := c_header_target_abi_macros(target, flags)
 	compiler := if ccompiler.len > 0 { ccompiler } else { 'cc' }
-	parts := cmdexec.split_args(compiler) or { return CHeaderSearchPaths{} }
-	if parts.len == 0 { return CHeaderSearchPaths{} }
+	parts := cmdexec.split_args(compiler) or { return fallback }
+	if parts.len == 0 { return fallback }
 	mut args := parts[1..].clone()
-	if target.os == 'macos' && target.arch != pref.host_target().arch && target.arch in [
+	mut target_flags := args.clone()
+	target_flags << flags
+	has_explicit_target := target_flags.any(it in ['-target', '--target', '-arch']
+		|| it.starts_with('--target=') || it.starts_with('-target='))
+	if target.os != pref.host_target().os && !has_explicit_target {
+		if target.os == 'macos' && target.arch in ['amd64', 'arm64'] {
+			arch := if target.arch == 'amd64' { 'x86_64' } else { 'arm64' }
+			args << ['-target', '${arch}-apple-darwin']
+		} else {
+			return fallback
+		}
+	}
+	if !has_explicit_target && target.os == 'macos' && target.os == pref.host_target().os
+		&& target.arch != pref.host_target().arch && target.arch in [
 		'amd64',
 		'arm64',
 	] {
@@ -7189,14 +7250,19 @@ fn c_header_compiler_search_paths(ccompiler string, flags []string, language str
 	// Forced headers run later in source order and must not seed this baseline.
 	args << ['-E', '-v', '-dM', '-x', language, null_path]
 	probe := cmdexec.run_with_timeout(parts[0], args, 5000)
-	if probe.exit_code != 0 { return CHeaderSearchPaths{} }
-	mut result := CHeaderSearchPaths{}
+	if probe.exit_code != 0 { return fallback }
+	mut result := CHeaderSearchPaths{ undefined_macros: fallback.undefined_macros }
 	mut reading := false
 	mut quotes_only := false
 	for raw in probe.output.split_into_lines() {
 		line := raw.trim_space()
 		if line.starts_with('#define ') {
-			result.predefined_macros << line['#define '.len..]
+			definition := line['#define '.len..]
+			result.predefined_macros << definition
+			if result.undefined_macros.len > 0 {
+				name := definition.fields()[0].all_before('(')
+				result.undefined_macros = result.undefined_macros.filter(it != name)
+			}
 		} else if line == '#include "..." search starts here:' {
 			reading = true
 			quotes_only = true
@@ -7215,6 +7281,11 @@ fn c_header_compiler_search_paths(ccompiler string, flags []string, language str
 				result.include_dirs << line
 			}
 		}
+	}
+	if target.os != pref.host_target().os {
+		// A portable target can use an SDK unavailable to this host. Files found
+		// by the probe are useful; an absent framework is not conclusive.
+		result.complete = false
 	}
 	return result
 }

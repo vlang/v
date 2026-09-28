@@ -8793,8 +8793,9 @@ wrapper-header lookup use the compiler's include search paths, including its sel
 Conditional guards use the selected compiler's predefined macros. Headers that shadow framework
 names are inspected for their actual declarations.
 Wrapper headers can declare `@class NSFont` or `@compatibility_alias NSFont ...` directly.
-Function-like macros are expanded in header names and conditional guards. Classes and aliases loaded
-by Clang's `-include-pch` are also recognized.
+Function-like macros are expanded in header names, conditional guards, and class declarations.
+Classes and aliases loaded by Clang's `-include-pch` are also recognized. Portable C generation uses
+the macOS target ABI for basic predefined macros when its target compiler is unavailable.
 
 ```v oksyntax
 struct C.NameOfTheStruct {

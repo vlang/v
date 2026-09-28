@@ -208,3 +208,63 @@ fn test_cocoa_header_names_resolve_before_class_detection() {
 		assert g.header_c_struct_needs_compat_typedef('C.NSFont')
 	}
 }
+
+fn test_cocoa_macro_class_declarations() {
+	mut g := cocoa_declaration_test_gen()
+	g.c_flags = ['-x', 'objective-c']
+	for source, provides_font in {
+		'#define DECLARE_CLASS(name) @class name;\nDECLARE_CLASS(NSFont)':                                              true
+		'#define FONT NSFont\n@class FONT;':                                                                            true
+		'#define FONT NSFont\n@class\nFONT;':                                                                           true
+		'#define DECLARE_CLASS(name) @class name;\n#define DECLARE DECLARE_CLASS\nDECLARE(NSFont)':                     true
+		'#define DECLARE_CLASS(name) @class name;\n#define FONT NSFont\nDECLARE_CLASS(FONT)':                           true
+		'#define JOIN(a,b) a ## b\n@class JOIN(NS,Font);':                                                              true
+		'#define FONT NSFont\n@compatibility_alias FONT ExistingFont;':                                                 true
+		'#define DECLARE @interface NSFont\nDECLARE\n@end':                                                             true
+		'#define defined @class NSFont;\ndefined':                                                                      true
+		'#define DECLARE_CLASS(name) @class name;\n#if 0\nDECLARE_CLASS(NSFont)\n#endif':                               false
+		'#define FONT OtherFont\n@class FONT;':                                                                         false
+		'#define DECLARE_CLASS(name) @class name;\n// DECLARE_CLASS(NSFont)\nconst char *s = "DECLARE_CLASS(NSFont)";': false
+		'#define END */ @class NSFont; /*\n/* END */':                                                                  false
+		'#if FEATURE\n#define FONT NSFont\n#else\n#define FONT OtherFont\n#endif\n@class FONT;':                        false
+	} {
+		g.preinclude_directives = [source]
+		assert g.header_c_struct_needs_compat_typedef('C.NSFont') == !provides_font, source
+	}
+}
+
+fn test_portable_cocoa_guards_use_target_abi_without_a_compiler() {
+	mut g := cocoa_declaration_test_gen()
+	g.target = pref.target_from('linux', 'amd64')!
+	g.output_cross_c = true
+	g.ccompiler = 'v-cocoa-unavailable-compiler-for-test'
+	for guard in ['__LP64__', '__SIZEOF_POINTER__ == 8', '__SIZEOF_LONG__ == 8',
+		'defined(__APPLE__) && __MACH__'] {
+		g.preinclude_directives = ['#if ${guard}\n#include <Cocoa/Cocoa.h>\n#endif']
+		assert !g.header_c_struct_needs_compat_typedef('C.NSFont'), guard
+	}
+	g.preinclude_directives = ['#if __SIZEOF_POINTER__ == 4\n#include <Cocoa/Cocoa.h>\n#endif']
+	assert g.header_c_struct_needs_compat_typedef('C.NSFont')
+	g.preinclude_directives = ['#if __LP64__\n#include <Cocoa/Cocoa.h>\n#endif']
+	g.c_flags = ['-U__LP64__']
+	assert g.header_c_struct_needs_compat_typedef('C.NSFont')
+	g.c_flags = ['-D__LP64__=0']
+	assert g.header_c_struct_needs_compat_typedef('C.NSFont')
+	g.c_flags = ['-m32']
+	g.preinclude_directives = ['#if !defined(__LP64__) && __SIZEOF_POINTER__ == 4\n#include <Cocoa/Cocoa.h>\n#endif']
+	assert !g.header_c_struct_needs_compat_typedef('C.NSFont')
+	g.c_flags = ['-undef']
+	g.preinclude_directives = ['#if defined(__LP64__) || defined(__APPLE__)\n#include <Cocoa/Cocoa.h>\n#endif']
+	assert g.header_c_struct_needs_compat_typedef('C.NSFont')
+}
+
+fn test_cocoa_search_probe_keeps_cross_compiler_macros() {
+	$if macos {
+		target := pref.target_from('linux', 'amd64')!
+		paths := c_header_compiler_search_paths('clang', ['--target=x86_64-unknown-linux-gnu'],
+			'c', target, false)
+		assert '__linux__ 1' in paths.predefined_macros
+		assert '__LP64__ 1' in paths.predefined_macros
+		assert '__APPLE__ 1' !in paths.predefined_macros
+	}
+}
