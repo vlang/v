@@ -339,6 +339,11 @@ fn (mut encoder Encoder) encode_number[T](val T) {
 		integer_val = f64(val).str()
 	}
 	$if T is $float {
+		// JSON has no NaN or infinity, which V formats as `nan`, `+inf` and `-inf`.
+		if integer_val == 'nan' || integer_val.ends_with('inf') {
+			encoder.encode_null()
+			return
+		}
 		if integer_val.len > 2 && integer_val[integer_val.len - 2] == `.`
 			&& integer_val[integer_val.len - 1] == `0` { // ends in .0
 			// `2.0` = > `2`

@@ -1,5 +1,6 @@
 import json2 as json
 import time
+import math
 import math.big
 
 type StrAlias = string
@@ -140,6 +141,17 @@ fn test_encode_decode_struct_with_f64_array_roundtrips() ! {
 	encoded := json.encode(original)
 	assert encoded == '{"arr":[0.9716157205240175,0.9336099585062241]}'
 	assert json.decode[F64ArrayRoundtripPayload](encoded)! == original
+}
+
+fn test_non_finite_floats_encode_as_null() {
+	nan := math.nan()
+	inf := math.inf(1)
+	assert json.encode(f32(nan)) == 'null'
+	assert json.encode(f32(-inf)) == 'null'
+	assert json.encode(FloatAlias(inf)) == 'null'
+	assert json.encode([1.5, nan, inf, -inf]) == '[1.5,null,null,null]'
+	assert json.encode(F64ArrayRoundtripPayload{ arr: [nan] }) == '{"arr":[null]}'
+	assert json.encode(json.Any(inf)) == 'null'
 }
 
 fn test_arrays() {
