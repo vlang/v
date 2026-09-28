@@ -5,5 +5,6 @@ selected element, as in C. Subtracting an integer moves the pointer back, and su
 compatible pointers and fixed arrays yields an element count.
 Offsets can come from value `if` and `match` branches. Pointer subtraction
 requires matching element types after fixed-array decay.
-Fixed-array aliases with declared arithmetic operators keep their operator behavior.
+Fixed-array aliases keep a declared operator when its parameter matches the other operand.
+Other uses, such as adding an integer to an alias with an array-addition operator, still decay.
 Ordinary V files retain their array arithmetic restrictions.

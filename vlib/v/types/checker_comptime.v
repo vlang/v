@@ -7158,9 +7158,9 @@ fn comptime_condition_top_level_index(s string, needle string) int {
 
 // check_infix validates type-sensitive infix operations that would otherwise reach CGen
 // as raw helper calls with incompatible arguments.
-fn (tc &TypeChecker) translated_array_arithmetic_operand(id flat.NodeId, op flat.Op, typ Type, receiver Type) Type {
+fn (tc &TypeChecker) translated_array_arithmetic_operand(id flat.NodeId, op flat.Op, typ Type, preserve_operator bool) Type {
 	if op in [.plus, .minus] && tc.node_is_in_translated_file(id) {
-		if receiver is Alias && tc.type_has_infix_operator_method(receiver, op) {
+		if preserve_operator {
 			return typ
 		}
 		clean := unalias_type(typ)
@@ -7171,6 +7171,15 @@ fn (tc &TypeChecker) translated_array_arithmetic_operand(id flat.NodeId, op flat
 		}
 	}
 	return typ
+}
+
+// translated_array_operator_applies keeps array aliases only for a matching operator signature.
+pub fn (tc &TypeChecker) translated_array_operator_applies(op flat.Op, lhs Type, rhs Type) bool {
+	if lhs !is Alias || unalias_type(lhs) !is ArrayFixed {
+		return false
+	}
+	signature := tc.infix_operator_signature(op, lhs) or { return false }
+	return signature.param_count == 2 && tc.infix_operator_operand_compatible(rhs, signature.param_type)
 }
 
 fn (tc &TypeChecker) translated_pointer_elements_match(left Type, right Type) bool {
@@ -7195,9 +7204,10 @@ fn (mut tc TypeChecker) check_infix(id flat.NodeId, node flat.Node) {
 	lhs_node := tc.a.node(lhs_id)
 	rhs_node := tc.a.node(rhs_id)
 	receiver := tc.infix_read_type(lhs_id)
-	mut lhs_type := tc.translated_array_arithmetic_operand(id, node.op, receiver, receiver)
-	mut rhs_type := tc.translated_array_arithmetic_operand(id, node.op, tc.infix_read_type(rhs_id),
-		receiver)
+	right := tc.infix_read_type(rhs_id)
+	preserve_operator := tc.translated_array_operator_applies(node.op, receiver, right)
+	mut lhs_type := tc.translated_array_arithmetic_operand(id, node.op, receiver, preserve_operator)
+	mut rhs_type := tc.translated_array_arithmetic_operand(id, node.op, right, preserve_operator)
 	if node.op in [.pipe, .amp, .xor] {
 		if expected := tc.expected_context_for_expr(id) {
 			clean_expected := unalias_type(expected)

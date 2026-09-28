@@ -16696,10 +16696,11 @@ fn (tc &TypeChecker) resolve_type_uncached(id flat.NodeId) Type {
 			lhs_id := tc.a.child(&node, 0)
 			rhs_id := tc.a.child(&node, 1)
 			receiver := tc.infix_read_type(lhs_id)
-			lt := tc.translated_array_arithmetic_operand(id, node.op, receiver, receiver)
+			right := tc.infix_read_type(rhs_id)
+			preserve_operator := tc.translated_array_operator_applies(node.op, receiver, right)
+			lt := tc.translated_array_arithmetic_operand(id, node.op, receiver, preserve_operator)
 			lt_raw := lt
-			rt := tc.translated_array_arithmetic_operand(id, node.op, tc.infix_read_type(rhs_id),
-				receiver)
+			rt := tc.translated_array_arithmetic_operand(id, node.op, right, preserve_operator)
 			rt_raw := rt
 			if lt is Void || rt is Void {
 				return Type(void_)

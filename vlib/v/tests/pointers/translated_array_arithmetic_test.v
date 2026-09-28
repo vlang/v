@@ -199,3 +199,17 @@ fn translated_ordered_rows(value &[2][3]int, mut calls []int) &[2][3]int {
 	calls << 1
 	return value
 }
+
+fn test_translated_array_alias_with_unmatched_operator_still_decays() {
+	mut values := TranslatedVec3([3, 5, 7]!)
+	second := values + 1
+	assert unsafe { *second } == 5
+	unsafe { *second = 19 }
+	assert values[1] == 19
+	assert values - second == -1
+	assert second - values == 1
+	returned := translated_make_vec() + 1
+	assert unsafe { *returned } == 11
+	summed := values + TranslatedVec3([1, 2, 3]!)
+	assert summed == TranslatedVec3([4, 21, 10]!)
+}
