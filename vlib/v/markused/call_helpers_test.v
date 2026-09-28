@@ -109,7 +109,7 @@ fn test_generic_factory_inference_uses_call_site_shadowing() {
 			body := call_helper_node(mut a, flat.Node{ kind: .block }, stmts)
 			fn_id := call_helper_node(mut a, flat.Node{ kind: .fn_decl, value: 'use_gate' }, [body])
 			collector := CallCollector{ a: &a, tc: &tc }
-			_, local_types := collector.local_value_info(a.node(fn_id), 'gates', {
+			_, local_types, _ := collector.local_value_info(a.node(fn_id), 'gates', {
 				'g': 'gates'
 			})
 			assert (local_types['gate'] or { '' }) == if placement == 'before' {
@@ -696,6 +696,7 @@ fn test_unindexed_generic_factory_return_infers_nested_argument_types() {
 		['Box[U]', 'Box[T]'],
 		['[3]U', '[3]T'],
 		['?U', 'T'],
+		['...U', 'T'],
 	] {
 		tc.fn_param_type_texts[method] = [forms[0]]
 		inferred := collector.top_level_call_return_type_name(call, 'consumer', map[string]string{}, {
@@ -738,9 +739,60 @@ fn test_unindexed_generic_factory_uses_prior_local_type() {
 			'Payload': StructDeclInfo{ module: 'main' }
 		}
 	}
-	_, local_types := collector.local_value_info(a.node(fn_id), 'main', map[string]string{})
+	_, local_types, _ := collector.local_value_info(a.node(fn_id), 'main', map[string]string{})
 	assert local_types['payload'] == 'Payload'
 	assert local_types['gate'] == 'gates.Gate[Payload]'
+}
+
+fn test_nested_local_type_does_not_replace_outer_binding() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	tc.fn_ret_types['A.method'] = types.Type(types.int_)
+	tc.fn_ret_types['B.method'] = types.Type(types.int_)
+	outer_lhs := a.add_val(.ident, 'item')
+	outer_rhs := a.add_val(.struct_init, 'A')
+	outer_decl := call_helper_node(mut a, flat.Node{ kind: .decl_assign }, [outer_lhs, outer_rhs])
+	inner_lhs := a.add_val(.ident, 'item')
+	inner_rhs := a.add_val(.struct_init, 'B')
+	inner_decl := call_helper_node(mut a, flat.Node{ kind: .decl_assign }, [inner_lhs, inner_rhs])
+	inner_use := a.add_val(.ident, 'item')
+	inner_method := call_helper_node(mut a, flat.Node{ kind: .selector, value: 'method' }, [
+		inner_use,
+	])
+	inner_call := call_helper_node(mut a, flat.Node{ kind: .call }, [inner_method])
+	inner_block := call_helper_node(mut a, flat.Node{ kind: .block }, [inner_decl, inner_call])
+	outer_use := a.add_val(.ident, 'item')
+	outer_method := call_helper_node(mut a, flat.Node{ kind: .selector, value: 'method' }, [
+		outer_use,
+	])
+	outer_call := call_helper_node(mut a, flat.Node{ kind: .call }, [outer_method])
+	body := call_helper_node(mut a, flat.Node{ kind: .block }, [outer_decl, inner_block, outer_call])
+	fn_id := call_helper_node(mut a, flat.Node{ kind: .fn_decl, value: 'use_item' }, [body])
+	collector := CallCollector{
+		a:               &a
+		tc:              &tc
+		struct_decls:    {
+			'A': StructDeclInfo{ module: 'main' }
+			'B': StructDeclInfo{ module: 'main' }
+		}
+		import_contexts: [map[string]string{}]
+	}
+	local_values, local_types, ident_types := collector.local_value_info(a.node(fn_id), 'main',
+		map[string]string{})
+	assert local_types['item'] == 'A'
+	assert ident_types[int(inner_use)] == 'B'
+	assert ident_types[int(outer_use)] == 'A'
+	scoped := CallCollector{
+		...collector
+		local_ident_types: ident_types
+	}
+	assert scoped.top_level_receiver_type_name(inner_use, 'main', map[string]string{},
+		local_values, local_types) == 'B'
+	assert scoped.top_level_receiver_type_name(outer_use, 'main', map[string]string{},
+		local_values, local_types) == 'A'
+	calls := collector.collect_body(a.node(fn_id), 'main', map[string]string{}).calls
+	assert 'A.method' in calls
+	assert 'B.method' in calls
 }
 
 fn test_unindexed_generic_factory_return_infers_callback_result() {
