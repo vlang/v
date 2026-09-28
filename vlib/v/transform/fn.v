@@ -13020,8 +13020,9 @@ fn (t &Transformer) pointer_str_receiver_type(id flat.NodeId) ?string {
 }
 
 // try_lower_copy_call lowers the builtin `copy(mut dst, src)` to the runtime `copy`,
-// which takes two arrays of any element type. Fixed size arrays and strings are passed
-// as array views of their storage, so the elements are written in place.
+// which moves the elements bit by bit. Fixed size arrays and strings are passed as array
+// views of their storage, so the elements are written in place. With ownership, elements
+// that need destruction are copied one by one instead, see `lower_owned_copy_call`.
 fn (mut t Transformer) try_lower_copy_call(node flat.Node) ?flat.NodeId {
 	if node.children_count != 3 {
 		return none
@@ -13054,7 +13055,82 @@ fn (mut t Transformer) try_lower_copy_call(node flat.Node) ?flat.NodeId {
 	} else {
 		t.make_prefix(.amp, t.transform_expr(dst_id))
 	}
-	return t.make_call_typed('copy', [dst, t.copy_source_array(src_arg_id, array_type)], 'int')
+	src := t.copy_source_array(src_arg_id, array_type)
+	if !isnil(t.tc) && t.tc.ownership_type_requires_destruction(t.tc.parse_type(elem_type)) {
+		return t.lower_owned_copy_call(dst, src, t.copy_source_is_temporary(src_arg_id),
+			elem_type, array_type)
+	}
+	return t.make_call_typed('copy', [dst, src], 'int')
+}
+
+// lower_owned_copy_call copies elements that need ownership destruction one by one:
+// each source element is cloned, and the destination element it replaces is dropped.
+// The loop runs backwards when `dst` starts after `src`, so overlapping arrays are
+// copied like with `vmemmove`. A temporary source is dropped after it has been cloned.
+fn (mut t Transformer) lower_owned_copy_call(dst_ptr flat.NodeId, src flat.NodeId, src_is_temporary bool, elem_type string, array_type string) flat.NodeId {
+	dst_value := t.make_prefix(.mul, dst_ptr)
+	t.set_node_typ(int(dst_value), array_type)
+	dst := t.stable_transformed_expr_for_reuse(dst_value, array_type, 'copy_dst')
+	len_name := t.new_temp('copy_len')
+	t.pending_stmts << t.make_decl_assign_typed(len_name, t.make_selector(src, 'len', 'int'),
+		'int')
+	t.pending_stmts << t.make_if_with_skip_ownership_drops(t.make_infix(.lt, t.make_selector(dst,
+		'len', 'int'), t.make_ident(len_name)), t.make_block([
+		t.make_assign_without_ownership_drop(t.make_ident(len_name), t.make_selector(dst,
+			'len', 'int')),
+	]), t.make_empty())
+	backward := t.make_infix(.gt, t.make_selector(dst, 'data', 'voidptr'), t.make_selector(src,
+		'data', 'voidptr'))
+	t.pending_stmts << t.make_if_with_skip_ownership_drops(backward, t.make_block([
+		t.make_owned_copy_loop(dst, src, len_name, elem_type, true),
+	]), t.make_block([t.make_owned_copy_loop(dst, src, len_name, elem_type, false)]))
+	if src_is_temporary {
+		t.pending_stmts << t.make_expr_stmt(t.make_call_typed('drop_owned', [src], 'void'))
+	}
+	return t.make_ident(len_name)
+}
+
+fn (mut t Transformer) make_owned_copy_loop(dst flat.NodeId, src flat.NodeId, len_name string, elem_type string, backward bool) flat.NodeId {
+	idx_name := t.new_temp('copy_idx')
+	init := t.make_decl_assign_typed(idx_name, if backward {
+		t.make_infix(.minus, t.make_ident(len_name), t.make_int_literal(1))
+	} else {
+		t.make_int_literal(0)
+	}, 'int')
+	cond := if backward {
+		t.make_infix(.ge, t.make_ident(idx_name), t.make_int_literal(0))
+	} else {
+		t.make_infix(.lt, t.make_ident(idx_name), t.make_ident(len_name))
+	}
+	post := t.make_expr_stmt(t.make_postfix(t.make_ident(idx_name), if backward {
+		flat.Op.dec
+	} else {
+		flat.Op.inc
+	}))
+	pending_start := t.pending_stmts.len
+	cloned := t.make_compiler_default_clone_value(t.make_index(src, t.make_ident(idx_name),
+		elem_type), elem_type, true)
+	mut body := t.pending_stmts[pending_start..].clone()
+	t.pending_stmts = t.pending_stmts[..pending_start].clone()
+	value_name := t.new_temp('copy_value')
+	body << t.make_decl_assign_typed(value_name, cloned, elem_type)
+	t.append_owned_lvalue_drop_before_assign(t.make_index(dst, t.make_ident(idx_name), elem_type),
+		elem_type, mut body)
+	body << t.make_assign_after_owned_drop(t.make_index(dst, t.make_ident(idx_name), elem_type),
+		t.make_ident(value_name))
+	return t.make_for_stmt(init, cond, post, body, flat.Node{
+		flags: flat.node_flag_skip_ownership_drops
+	})
+}
+
+// copy_source_is_temporary reports whether a `copy` source is an array literal or a call
+// result, which nothing else owns, rather than storage or a slice of it.
+fn (t &Transformer) copy_source_is_temporary(id flat.NodeId) bool {
+	mut node := t.a.nodes[int(id)]
+	for node.kind == .paren && node.children_count > 0 {
+		node = t.a.child_node(&node, 0)
+	}
+	return node.kind in [.array_literal, .call]
 }
 
 // copy_arg_value_type returns the type of a `copy` argument without pointers and aliases.

@@ -1526,6 +1526,8 @@ pub fn (b []u8) hex() string {
 // are written in place, so `copy(mut fixed[2..], src)` updates `fixed` itself.
 // `src` can be a dynamic array, a fixed size array, a slice of either, or a string
 // when `dst` holds bytes. Both must have the same element type. They may overlap.
+// With `-d ownership`, elements that need destruction are cloned into `dst`, and the
+// elements they replace are dropped.
 // Example: mut a := [3]int{}; n := copy(mut a, [1, 2, 3, 4]); assert n == 3; assert a == [1, 2, 3]!
 // NOTE: This is not an `array` method. The compiler accepts any of the argument types
 // above; the `[]u8` parameters here only describe the byte case.

@@ -4355,7 +4355,8 @@ fn (mut tc TypeChecker) check_call(id flat.NodeId, node flat.Node) {
 		tc.check_instantiated_generic_compile_errors(id, node, info)
 		tc.check_instantiated_generic_compile_warnings(node, info)
 		$if ownership ? {
-			tc.ownership_after_call(id, node, info)
+			tc.ownership_after_call(id, node, tc.builtin_copy_ownership_call_info(id, node,
+				info))
 		}
 		return
 	}
@@ -15571,8 +15572,7 @@ fn (mut tc TypeChecker) check_builtin_map_call_args(_id flat.NodeId, node flat.N
 // parameters only describe the byte case, so they are replaced by the argument types.
 // `report` records diagnostics for invalid arguments.
 fn (mut tc TypeChecker) builtin_copy_call_info(id flat.NodeId, node flat.Node, info CallInfo, report bool) CallInfo {
-	if info.name !in ['copy', 'builtin.copy'] || info.has_receiver || info.params.len != 2
-		|| node.children_count != 3 {
+	if !is_builtin_copy_call(node, info) {
 		return info
 	}
 	diagnose := report && tc.should_diagnose(id)
@@ -15621,10 +15621,36 @@ fn (mut tc TypeChecker) builtin_copy_call_info(id flat.NodeId, node flat.Node, i
 				src_id, tc.call_argument_diagnostic_pos(src_id))
 		}
 	}
+	if diagnose && tc.ownership_type_requires_destruction(dst_elem) {
+		if bad_type := tc.ownership_default_clone_missing_method(dst_elem) {
+			tc.record_error_at(.call_arg_mismatch, 'cannot copy `${tc.diagnostic_type_name(dst_elem)}` elements: `${bad_type}` requires ownership destruction but has no compatible `clone()` method; implement `IClone` or use pointers',
+				src_id, tc.call_argument_diagnostic_pos(src_id))
+		}
+	}
 	return CallInfo{
 		...info
 		params: [dst_param, src_param]
 	}
+}
+
+// builtin_copy_ownership_call_info borrows the source of a builtin `copy` call for the
+// ownership analysis. `copy` duplicates its elements, so the caller keeps owning the source.
+fn (mut tc TypeChecker) builtin_copy_ownership_call_info(id flat.NodeId, node flat.Node, info CallInfo) CallInfo {
+	if !is_builtin_copy_call(node, info) {
+		return info
+	}
+	copy_info := tc.builtin_copy_call_info(id, node, info, false)
+	return CallInfo{
+		...copy_info
+		params: [copy_info.params[0], Type(Pointer{
+			base_type: copy_info.params[1]
+		})]
+	}
+}
+
+fn is_builtin_copy_call(node flat.Node, info CallInfo) bool {
+	return info.name in ['copy', 'builtin.copy'] && !info.has_receiver && info.params.len == 2
+		&& node.children_count == 3
 }
 
 fn copy_arg_elem_type(typ Type) ?Type {
