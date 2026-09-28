@@ -208,6 +208,14 @@ fn test_system_libc_thread_preamble_uses_native_windows_api() {
 	assert posix_code.contains('pthread_equal(a.handle, b.handle) != 0'), posix_code
 }
 
+fn test_cross_c_system_libc_preamble_keeps_posix_environ() {
+	mut g := windows_preamble_test_gen()
+	g.set_output_cross_c(true)
+	g.system_libc_preamble()
+	c_code := g.sb.str()
+	assert c_code.contains('#ifndef _WIN32\nextern char** environ;\n#endif')
+}
+
 fn test_headerless_pthread_fallback_respects_darwin_type_guards() {
 	mut g := FlatGen.new()
 	g.headerless_libc_preamble()
