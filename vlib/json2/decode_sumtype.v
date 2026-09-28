@@ -173,7 +173,7 @@ fn (mut decoder Decoder) get_map_type_workaround[T](initialized_sumtype T) bool 
 }
 
 @[markused]
-fn (decoder &Decoder) get_sumtype_type_field_node(current_node &DecodeNode[ValueInfo]) &DecodeNode[ValueInfo] {
+fn (mut decoder Decoder) get_sumtype_type_field_node(current_node &DecodeNode[ValueInfo]) &DecodeNode[ValueInfo] {
 	if current_node == unsafe { nil } || current_node.value.value_kind != .object {
 		return unsafe { nil }
 	}
@@ -181,18 +181,14 @@ fn (decoder &Decoder) get_sumtype_type_field_node(current_node &DecodeNode[Value
 	// another sum type, which is encoded before the outer `_type`) can have a
 	// `_type` of its own.
 	object_end := current_node.value.position + current_node.value.length
-	type_field := '"_type"'
 	mut key_node := current_node.next
 	for key_node != unsafe { nil } && key_node.value.position < object_end {
 		value_node := key_node.next
 		if value_node == unsafe { nil } {
 			break
 		}
-		key_info := key_node.value
-		if key_info.length == type_field.len && unsafe {
-			key_info.position + type_field.len <= decoder.json.len
-				&& 0 == vmemcmp(decoder.json.str + key_info.position, type_field.str, type_field.len)
-		} {
+		// A key spelled with escapes (`"_\u0074ype"`) is `_type` after unescaping.
+		if decoder.json_key_matches(key_node.value, '_type') or { false } {
 			return value_node
 		}
 		// Skip the value, with everything nested in it.

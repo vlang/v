@@ -238,3 +238,11 @@ fn test_encode_inner_nil_pointers() {
 	}
 	assert json2.encode(value) == '{"a":null,"b":null}'
 }
+
+fn test_escaped_sumtype_discriminator_key() {
+	being := json2.decode[Being]('{"_\\u0074ype":"Human","name":"x"}')!
+	assert being is Human
+	assert (being as Human).name == 'x'
+	robot := json2.decode[Being]('{"_typ\\u0065":"Robot","model":"r2"}')!
+	assert robot is Robot
+}
