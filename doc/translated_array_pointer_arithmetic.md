@@ -32,3 +32,5 @@ does not retain the array. Array values produced by blocks are copied before lea
 Ordinary functions and methods that forward arrays to these callees preserve the same retention
 requirement through further wrappers, including recursive and generic calls. The original caller
 provides persistent backing storage; forwarding a local array continues to preserve its identity.
+When a program includes translated code, indirect calls through function values also preserve
+fixed-array arguments conservatively, since their runtime target may retain the array.

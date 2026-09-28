@@ -1406,3 +1406,79 @@ fn test_translated_array_retention_distinguishes_generic_and_source_call_names()
 	assert worker.call_uses_translated_array_parameters('forwarding.forward_T_string')
 	assert !worker.call_uses_translated_array_parameters('forwarding.forward_T_ordinary')
 }
+
+fn test_indirect_array_retention_requires_translated_program_and_keeps_named_calls() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	tc.fn_ret_types['ordinary'] = types.int_
+	tc.fn_type_files['ordinary'] = '/ordinary.v'
+	mut t := new_transformer(mut a, &tc, map[string]bool{})
+	t.set_var_type('callback', 'fn ([3]int) &int')
+	assert !t.call_uses_translated_array_parameters('callback')
+	tc.translated_files['/translated.v'] = true
+	assert t.call_uses_translated_array_parameters('callback')
+	assert t.call_uses_translated_array_parameters('')
+	assert !t.call_uses_translated_array_parameters('ordinary')
+}
+
+fn test_retention_graph_seeds_callbacks_without_fixed_array_declarations() {
+	mut a := flat.FlatAst.new()
+	a.add_val(.file, '/ordinary.v')
+	a.add_val(.module_decl, 'main')
+	param := a.add_node(flat.Node{
+		kind:  .param
+		value: 'callback'
+		typ:   'fn ([3]int) &int'
+	})
+	callee := a.add_node(flat.Node{
+		kind:  .ident
+		value: 'callback'
+		typ:   'fn ([3]int) &int'
+	})
+	call_children := a.children.len
+	a.children << callee
+	call := a.add_node(flat.Node{
+		kind:           .call
+		children_start: call_children
+		children_count: 1
+	})
+	decl_children := a.children.len
+	a.children << param
+	a.children << call
+	a.add_node(flat.Node{
+		kind:           .fn_decl
+		value:          'wrapper'
+		children_start: decl_children
+		children_count: 2
+	})
+	mut tc := types.TypeChecker.new(&a)
+	tc.translated_files['/translated.v'] = true
+	mut t := new_transformer(mut a, &tc, map[string]bool{})
+	t.collect_translated_array_retaining_fns()
+	assert t.translated_array_retaining_fns['wrapper']
+	// Generic templates have no concrete fixed-array parameter before specialization.
+	tc.fn_type_files['translated.pick'] = '/translated.v'
+	tc.fn_generic_params['translated.pick'] = ['T']
+	t.collect_translated_array_retaining_fns()
+	assert t.translated_array_retaining_fns['translated__pick']
+}
+
+fn test_indirect_array_scan_preserves_unresolved_generic_callback_signatures() {
+	for callback_type in ['T', 'fn (T) &int'] {
+		mut a := flat.FlatAst.new()
+		callee := a.add_node(flat.Node{ kind: .ident, value: 'callback', typ: callback_type })
+		arg := a.add_node(flat.Node{ kind: .ident, value: 'values', typ: 'T' })
+		children_start := a.children.len
+		a.children << callee
+		a.children << arg
+		call := a.add_node(flat.Node{
+			kind:           .call
+			children_start: children_start
+			children_count: 2
+		})
+		mut tc := types.TypeChecker.new(&a)
+		mut t := new_transformer(mut a, &tc, map[string]bool{})
+		t.set_var_type('callback', callback_type)
+		assert t.fn_body_has_indirect_array_call(call)
+	}
+}

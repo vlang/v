@@ -2134,43 +2134,46 @@ fn (mut t Transformer) collect_translated_array_retaining_fns() {
 		if !t.tc.translated_files[file] {
 			continue
 		}
+		// A generic parameter can become a fixed array after this graph is frozen.
+		mut retains_array := t.tc.fn_generic_params[name].len > 0
 		for param in t.tc.fn_param_types[name] {
 			if types.unalias_type(param) is types.ArrayFixed {
-				key := t.translated_array_call_key(name)
-				if !t.translated_array_retaining_fns[key] {
-					t.translated_array_retaining_fns[key] = true
-					pending << key
-				}
+				retains_array = true
 				break
 			}
 		}
-	}
-	if pending.len == 0 {
-		return
+		if retains_array {
+			key := t.translated_array_call_key(name)
+			if !t.translated_array_retaining_fns[key] {
+				t.translated_array_retaining_fns[key] = true
+				pending << key
+			}
+		}
 	}
 	t.ensure_node_module_map()
-	old_file := t.cur_file
-	old_module := t.cur_module
-	defer {
-		t.cur_file = old_file
-		t.cur_module = old_module
-	}
+	mut scan := t.fork_scan_worker(t.tc)
 	mut callers := map[string][]string{}
 	for idx in 0 .. t.a.nodes.len {
 		node := t.a.nodes[idx]
 		if node.kind != .fn_decl {
 			continue
 		}
-		t.cur_file = t.node_file_or(idx, '')
-		t.cur_module = t.node_module_or(idx, '')
-		name := if t.cur_module in ['', 'main', 'builtin']
-			|| node.value.starts_with('${t.cur_module}.') {
+		scan.cur_file = t.node_file_or(idx, '')
+		scan.cur_module = t.node_module_or(idx, '')
+		name := if scan.cur_module in ['', 'main', 'builtin']
+			|| node.value.starts_with('${scan.cur_module}.') {
 			node.value
 		} else {
-			'${t.cur_module}.${node.value}'
+			'${scan.cur_module}.${node.value}'
 		}
 		caller := t.translated_array_call_key(name)
-		for callee in t.generated_fn_body_call_names(flat.NodeId(idx)) {
+		scan.seed_generated_fn_body_context(flat.NodeId(idx))
+		if scan.fn_body_has_indirect_array_call(flat.NodeId(idx))
+			&& !t.translated_array_retaining_fns[caller] {
+			t.translated_array_retaining_fns[caller] = true
+			pending << caller
+		}
+		for callee in scan.generated_fn_body_call_names(flat.NodeId(idx)) {
 			key := t.translated_array_call_key(callee)
 			callers[key] << caller
 		}
@@ -2185,11 +2188,50 @@ fn (mut t Transformer) collect_translated_array_retaining_fns() {
 	}
 }
 
+fn (t &Transformer) array_call_target_is_indirect(call_name string) bool {
+	return call_name.len == 0 || t.is_fn_pointer_type_name(t.var_type(call_name))
+		|| !t.is_known_fn_name(call_name)
+}
+
+fn (mut t Transformer) fn_body_has_indirect_array_call(id flat.NodeId) bool {
+	if int(id) < 0 || int(id) >= t.a.nodes.len {
+		return false
+	}
+	node := t.a.nodes[int(id)]
+	if node.kind == .decl_assign {
+		t.seed_generated_decl_assign_binding(node)
+	}
+	if node.kind == .call && node.children_count > 0
+		&& t.array_call_target_is_indirect(t.call_name_for_node(id, node)) {
+		if fn_type := t.call_callee_fn_type(t.a.child(&node, 0)) {
+			for param in fn_type.params {
+				param_type := types.unalias_type(param)
+				if param_type is types.ArrayFixed || param_type is types.Unknown {
+					return true
+				}
+			}
+		} else if node.children_count > 1 {
+			// A generic callback can acquire its array signature only after specialization.
+			return true
+		}
+	}
+	for i in 0 .. node.children_count {
+		if t.fn_body_has_indirect_array_call(t.a.child(&node, i)) {
+			return true
+		}
+	}
+	return false
+}
+
 fn (t &Transformer) call_uses_translated_array_parameters(call_name string) bool {
 	if isnil(t.tc) {
 		return false
 	}
 	if t.tc.translated_files[t.cur_file] {
+		return true
+	}
+	// Runtime callbacks may refer to a translated function or one of its wrappers.
+	if t.tc.translated_files.len > 0 && t.array_call_target_is_indirect(call_name) {
 		return true
 	}
 	if t.translated_array_retaining_fns[t.translated_array_call_key(call_name)] {
@@ -3068,9 +3110,9 @@ fn (t &Transformer) call_callee_fn_type(fn_id flat.NodeId) ?types.FnType {
 			return fn_type
 		}
 	}
-	if node.kind == .index {
-		// `fns[i](...)`: the checker's local scope is gone here, so type the
-		// element from the transformer's own view of the indexed container.
+	if node.kind in [.index, .selector] {
+		// `fns[i](...)` and `holder.callback(...)`: the checker's local scope is
+		// gone, so recover the callable type from the transformer's current bindings.
 		elem_type := t.node_type(fn_id)
 		if elem_type.len > 0 && elem_type != 'unknown' {
 			if fn_type := transform_fn_type(t.tc.parse_type(elem_type)) {

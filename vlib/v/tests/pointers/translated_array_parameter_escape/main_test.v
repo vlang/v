@@ -7,6 +7,7 @@ import forwarding as wrappers
 __global saved_parameter_pointer = decay.pick(make_values())
 __global saved_block_parameter_pointer = decay.pick(unsafe { make_values() })
 __global saved_forwarded_pointer = forward_twice(make_values())
+__global saved_indirect_pointer = selected_picker()(make_values())
 
 fn make_values() [3]int {
 	return [3, 5, 7]!
@@ -188,4 +189,112 @@ fn test_ordinary_wrappers_preserve_translated_array_storage() {
 	assert decay.read_retained() == 53
 	forward_retained(make_values())
 	assert decay.read_retained() == 5
+}
+
+fn pick_through_function_value() &int {
+	picker := decay.pick
+	return picker(make_values())
+}
+
+fn invoke_picker(picker fn ([3]int) &int, values [3]int) &int {
+	return picker(values)
+}
+
+fn pick_through_forwarded_callback() &int {
+	return invoke_picker(decay.pick, make_values())
+}
+
+fn pick_local_through_callback() &int {
+	picker := decay.pick
+	mut values := make_values()
+	pointer := picker(values)
+	values[1] = 59
+	return pointer
+}
+
+fn retain_through_callback() {
+	retain := decay.retain
+	mut values := make_values()
+	retain(values)
+	values[1] = 61
+}
+
+fn selected_picker() fn ([3]int) &int {
+	return decay.pick
+}
+
+struct ArrayCallbackHolder {
+	picker fn ([3]int) &int @[required]
+mut:
+	values [3]int
+}
+
+fn pick_through_callback_field() &int {
+	holder := ArrayCallbackHolder{ picker: decay.pick }
+	return holder.picker(make_values())
+}
+
+fn pick_through_callback_index() &int {
+	pickers := [decay.pick]
+	return pickers[0](make_values())
+}
+
+fn pick_through_bound_method() &int {
+	owner := decay.Picker{}
+	picker := owner.pick
+	return picker(make_values())
+}
+
+fn pick_through_callback_branch(flag bool) &int {
+	picker := if flag { decay.pick } else { wrappers.forward }
+	return picker(make_values())
+}
+
+fn pick_through_indirect_branch_argument(flag bool) &int {
+	picker := decay.pick_offset
+	return picker(make_values(), if flag { 1 } else { 2 })
+}
+
+fn pick_local_through_forwarded_callback() &int {
+	mut values := make_values()
+	pointer := invoke_picker(decay.pick, values)
+	values[1] = 67
+	return pointer
+}
+
+fn pick_field_through_callback() &int {
+	mut holder := ArrayCallbackHolder{ picker: decay.pick, values: make_values() }
+	pointer := holder.picker(holder.values)
+	holder.values[1] = 73
+	return pointer
+}
+
+fn invoke_retainer(retain fn ([3]int), values [3]int) {
+	retain(values)
+}
+
+fn retain_through_forwarded_callback() {
+	mut values := make_values()
+	invoke_retainer(decay.retain, values)
+	values[1] = 71
+}
+
+fn test_translated_function_values_preserve_array_storage() {
+	assert read_pointer(pick_through_function_value()) == 5
+	assert read_pointer(pick_through_forwarded_callback()) == 5
+	assert read_pointer(pick_local_through_callback()) == 59
+	assert read_pointer(pick_local_through_forwarded_callback()) == 67
+	assert read_pointer(pick_field_through_callback()) == 73
+	assert read_pointer(saved_indirect_pointer) == 5
+	assert read_pointer(pick_through_callback_field()) == 5
+	assert read_pointer(pick_through_callback_index()) == 5
+	assert read_pointer(pick_through_bound_method()) == 5
+	assert read_pointer(pick_through_callback_branch(true)) == 5
+	assert read_pointer(pick_through_callback_branch(false)) == 5
+	assert read_pointer(pick_through_indirect_branch_argument(true)) == 5
+	assert read_pointer(pick_through_indirect_branch_argument(false)) == 7
+	retain_through_callback()
+	assert decay.read_retained() == 61
+	retain_through_forwarded_callback()
+	assert decay.read_retained() == 71
 }

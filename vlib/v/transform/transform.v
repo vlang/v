@@ -8630,18 +8630,18 @@ fn escape_return_type_consumes_pointer_value(typ types.Type) bool {
 fn (mut t Transformer) mark_implicit_argument_address_escapes(call_id flat.NodeId, call flat.Node, amp_sources map[string][]string, ptr_aliases map[string]string, local_stack_names map[string]bool) {
 	call_name := t.call_name_for_node(call_id, call)
 	params := t.call_param_types_for_node(call_name, call)
-	if params.len == 0 {
-		return
-	}
 	translated_array_args := t.call_uses_translated_array_parameters(call_name)
 	param_offset := t.call_param_offset_for_node(call_name, call, params)
 	for child_idx in 1 .. call.children_count {
 		param_idx := child_idx - 1 + param_offset
-		if param_idx < 0 || param_idx >= params.len {
-			continue
-		}
 		mut arg_id := t.a.child(&call, child_idx)
-		if translated_array_args && types.unalias_type(params[param_idx]) is types.ArrayFixed {
+		has_param := param_idx >= 0 && param_idx < params.len
+		fixed_param := has_param && types.unalias_type(params[param_idx]) is types.ArrayFixed
+		// Generic and callback signatures may be incomplete during this pre-pass.
+		// Their actual fixed-array arguments still need their original storage retained.
+		fixed_value_arg := translated_array_args
+			&& t.is_fixed_array_type(t.normalize_type_alias(t.node_type(arg_id)))
+		if translated_array_args && (fixed_param || fixed_value_arg) {
 			// The callee can retain the decayed address even without returning it.
 			// Promote the original local so all of its aliases still share storage.
 			for source in t.escape_address_sources(arg_id, amp_sources, ptr_aliases) {
@@ -8649,6 +8649,9 @@ fn (mut t Transformer) mark_implicit_argument_address_escapes(call_id flat.NodeI
 					t.escaping_amp_sources[source] = true
 				}
 			}
+			continue
+		}
+		if !has_param {
 			continue
 		}
 		if !escape_type_is_void_pointer(params[param_idx]) {
