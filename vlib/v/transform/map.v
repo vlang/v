@@ -3121,13 +3121,27 @@ fn (mut t Transformer) load_map_index_current(info MapIndexInfo, map_expr flat.N
 // lower_map_index_compound_with_info builds lower map index compound with info data for transform.
 fn (mut t Transformer) lower_map_index_compound_with_info(info MapIndexInfo, map_expr flat.NodeId, key_name string, op flat.Op, rhs_id flat.NodeId, existing_key_name string, mut result []flat.NodeId) {
 	mut rhs := flat.empty_node
+	mut staged_owned_string_name := ''
 	if t.map_index_yields_map(info.base_id) {
 		// A side-effecting RHS can replace the stored inner map. Evaluate it
 		// before reading the value to be updated.
+		rhs_type := t.node_type(rhs_id)
+		if info.value_type == 'string' && op == .plus && !isnil(t.tc)
+			&& t.tc.ownership_type_requires_destruction(t.tc.parse_type(rhs_type)) {
+			rhs_node := t.a.nodes[int(t.unwrap_parens(rhs_id))]
+			if t.map_key_expr_creates_owned_value(rhs_id, rhs_type)
+				|| (rhs_node.kind == .call && !t.expr_can_take_address(rhs_id)) {
+				staged_owned_string_name = t.new_temp('map_rhs')
+			}
+		}
 		value := t.transform_expr(rhs_id)
 		t.drain_pending(mut result)
-		rhs_name := t.new_temp('map_rhs')
-		result << t.make_decl_assign_typed(rhs_name, value, t.node_type(rhs_id))
+		rhs_name := if staged_owned_string_name.len > 0 {
+			staged_owned_string_name
+		} else {
+			t.new_temp('map_rhs')
+		}
+		result << t.make_decl_assign_typed(rhs_name, value, rhs_type)
 		rhs = t.make_ident(rhs_name)
 		if existing_key_name.len > 0 {
 			result << t.make_assign(t.make_ident(existing_key_name), t.make_map_exists_expr(map_expr,
@@ -3144,6 +3158,11 @@ fn (mut t Transformer) lower_map_index_compound_with_info(info MapIndexInfo, map
 		t.make_infix(op, t.make_ident(current_name), rhs)
 	}
 	result << t.make_assign(t.make_ident(current_name), new_value)
+	if staged_owned_string_name.len > 0 {
+		result << t.make_expr_stmt(t.make_call_typed('drop_owned', [
+			t.make_ident(staged_owned_string_name),
+		], 'void'))
+	}
 	t.append_map_value_drop_before_set(map_expr, info.base_type, key_name, info.value_type, mut result)
 	result << t.make_map_set_stmt(map_expr, info.base_type, key_name, current_name)
 }
@@ -3228,7 +3247,7 @@ fn (mut t Transformer) lower_map_index_append_with_info_and_prelude(info MapInde
 			staged_rhs := t.make_ident(staged_rhs_name)
 			t.set_node_typ(int(staged_rhs), staged_rhs_type)
 			if t.a.nodes[int(append)].value == 'push_many' {
-				if staged_rhs_type.starts_with('[]') {
+				if t.normalize_type_alias(staged_rhs_type).starts_with('[]') {
 					// The append copied the element bytes; only the old array buffer remains.
 					result << t.make_expr_stmt(t.make_method_call(staged_rhs, 'free', []flat.NodeId{}))
 				}

@@ -25,6 +25,7 @@ mut:
 }
 
 type NestedMapVariant = int | []NestedMapVariant
+type NestedAppendWords = []string
 
 fn (mut c NestedMapKeyCounter) key(k string) string {
 	c.n++
@@ -467,14 +468,31 @@ fn make_nested_append_row() []int {
 	return [3, 4]
 }
 
+fn make_nested_append_alias_words() NestedAppendWords {
+	return ['epsilon'.clone(), 'zeta'.clone()]
+}
+
+fn make_nested_compound_word() string {
+	return 'suffix'.clone()
+}
+
 fn test_nested_append_releases_staged_owned_rhs() {
 	mut words := map[string]map[string][]string{}
 	words['a']['b'] << make_nested_append_words()
 	words['a']['b'] << make_nested_append_word()
 	words['a']['b'] << ['delta'.clone()]
 	assert words['a']['b'] == ['alpha', 'beta', 'gamma', 'delta']
+	words['a']['b'] << make_nested_append_alias_words()
+	assert words['a']['b'] == ['alpha', 'beta', 'gamma', 'delta', 'epsilon', 'zeta']
 	mut rows := map[string]map[string][][]int{}
 	rows['a']['b'] << make_nested_append_row()
 	rows['a']['b'] << [5, 6]
 	assert rows['a']['b'] == [[3, 4], [5, 6]]
+}
+
+fn test_nested_compound_releases_staged_owned_string_rhs() {
+	mut words := map[string]map[string]string{}
+	words['a']['b'] += make_nested_compound_word()
+	words['a']['b'] += make_nested_compound_word()
+	assert words['a']['b'] == 'suffixsuffix'
 }
