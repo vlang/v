@@ -552,7 +552,7 @@ fn (mut g FlatGen) gen_fixed_array_pointer_lvalue_arg(id flat.NodeId, expected t
 	if actual is types.Pointer {
 		return false
 	}
-	if actual_fixed := array_fixed_type(actual) {
+	if actual_fixed := array_fixed_type(cgen_unalias_type(actual)) {
 		if fixed := expected_fixed {
 			if inner_fixed := array_fixed_type(cgen_unalias_type(actual_fixed.elem_type)) {
 				if g.fixed_array_decay_shape_equal(types.Type(inner_fixed), types.Type(fixed),

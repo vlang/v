@@ -141,3 +141,18 @@ fn test_translated_array_decay_resolves_nested_aliases() {
 	pointers := [&cell]!
 	assert first_pointer_value(pointers) == 42
 }
+
+type ByteRows = [2][2]char
+
+type ByteRowsAlias = ByteRows
+
+type ByteRowsAliasChain = ByteRowsAlias
+
+fn first_alias_byte_row(rows ByteRowsAliasChain) u8 {
+	return first_byte_row(rows)
+}
+
+fn test_translated_array_decay_unwraps_outer_alias_chains() {
+	rows := [[char(65), char(66)]!, [char(67), char(68)]!]!
+	assert first_alias_byte_row(rows) == 65
+}
