@@ -45,7 +45,11 @@ fn test_translated_sizeof_constant_in_later_file() {
 	defer { os.rmdir_all(root) or {} }
 	os.write_file(os.join_path(root, 'a.v'), '@[translated]
 module main
-fn main() { assert sizeof(later_regs) == sizeof([3]int) }
+fn main() {
+ assert sizeof(later_regs) == sizeof([3]int)
+ assert sizeof(my_type) == sizeof(int)
+}
+type my_type = int
 ')!
 	os.write_file(os.join_path(root, 'z.v'), '@[translated]
 module main

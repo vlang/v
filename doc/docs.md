@@ -9221,6 +9221,7 @@ including nested `if` expressions and subtraction of a negative operand. Postfix
 updates followed by a dereference assignment on the next line end the current statement.
 Other arithmetic continues across the newline. A translated `sizeof` recognizes constant
 operands even when their declarations appear later in the module.
+Lowercase type aliases declared in the same file remain type operands of `sizeof`.
 Translated local C variables can be updated without an explicit `mut` declaration.
 
 V can translate your C code to human readable V code, and generating V wrappers

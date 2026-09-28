@@ -127,6 +127,8 @@ mut:
 	// comptime_value_*: a name is in scope when local_binding_counts[name] > 0.
 	local_binding_counts              map[string]int
 	global_names                      map[string]bool
+	translated_sizeof_type_names      map[string]bool
+	translated_sizeof_types_scanned   bool
 	local_binding_undos               []string
 	local_binding_scopes              []int
 	active_lambda_param_counts        map[string]int
@@ -250,6 +252,7 @@ pub fn Parser.new(prefs &pref.Preferences) &Parser {
 		prefs:                         unsafe { prefs }
 		s:                             scanner.new_scanner(prefs, .normal)
 		local_type_names:              map[string]string{}
+		translated_sizeof_type_names:  map[string]bool{}
 		anonymous_struct_types:        map[string][]string{}
 		comptime_const_values:         map[string]string{}
 		comptime_local_values:         map[string]string{}
@@ -393,6 +396,8 @@ pub fn (mut p Parser) parse_into(path string) {
 		p.imported_module_names['os'] = true
 	}
 	p.local_binding_counts.clear()
+	p.translated_sizeof_type_names.clear()
+	p.translated_sizeof_types_scanned = false
 	p.local_binding_undos.clear()
 	p.local_binding_scopes.clear()
 	p.active_lambda_param_counts.clear()
@@ -14465,7 +14470,8 @@ fn (mut p Parser) sizeof_expr() flat.NodeId {
 			&& (p.is_local_binding(p.lit)
 				|| p.global_names[p.lit]
 				|| p.a.nodes.any(it.kind == .const_field && it.value == p.lit)
-				|| (!isreftype_name_can_start_type(p.lit) && p.peek() != .dot)
+				|| (!isreftype_name_can_start_type(p.lit)
+					&& !p.translated_sizeof_name_is_type(p.lit) && p.peek() != .dot)
 				|| (p.peek() == .lsbr && !type_name_can_init(p.lit)))) {
 		inner := p.expr(.lowest)
 		p.check(.rpar)
@@ -14500,6 +14506,36 @@ fn (mut p Parser) sizeof_expr() flat.NodeId {
 		value: type_name
 		pos:   p.span_to(sizeof_start)
 	})
+}
+
+fn (mut p Parser) translated_sizeof_name_is_type(name string) bool {
+	if !p.translated_sizeof_types_scanned {
+		p.translated_sizeof_types_scanned = true
+		mut scan := scanner.new_scanner(p.prefs, .normal)
+		scan.init(p.s.current_file(), p.s.src)
+		mut depth := 0
+		mut after_type := false
+		for {
+			tok := scan.scan()
+			if tok == .eof {
+				break
+			}
+			if after_type {
+				if tok == .name {
+					p.translated_sizeof_type_names[scan.lit] = true
+				}
+				after_type = false
+			}
+			if tok == .lcbr {
+				depth++
+			} else if tok == .rcbr {
+				depth--
+			} else if depth == 0 && tok == .key_type {
+				after_type = true
+			}
+		}
+	}
+	return p.translated_sizeof_type_names[name] || p.has_prior_type_declaration(name)
 }
 
 fn (mut p Parser) isreftype_expr() flat.NodeId {
