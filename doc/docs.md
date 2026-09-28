@@ -4479,6 +4479,13 @@ pub interface ReaderWriter {
 }
 ```
 
+An interface value smart cast to a struct refers to the concrete object stored in the interface.
+It can be dereferenced to copy the struct or returned through a struct reference.
+This applies to single-type `match` branches as well as `if` and `assert` smart casts.
+For a value pattern such as `item is T`, a function returning that struct by value can copy the
+smart-casted value directly, including through `?T` and `!T` returns and `if`/`match` expressions.
+An explicit pointer pattern such as `item is &T` requires `*item` to copy the struct by value.
+
 ### Sum types
 
 Mapping an array variant inside a `match` branch infers the result element type from the mapper.

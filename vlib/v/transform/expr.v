@@ -688,6 +688,14 @@ fn (mut t Transformer) transform_infix_interface_ops(_id flat.NodeId, node flat.
 	rhs_id := t.a.children[node.children_start + 1]
 	mut lhs_type := t.node_type(lhs_id)
 	mut rhs_type := t.node_type(rhs_id)
+	lhs_smartcast := t.smartcast_node_type(lhs_id)
+	if lhs_smartcast.len > 0 {
+		lhs_type = lhs_smartcast
+	}
+	rhs_smartcast := t.smartcast_node_type(rhs_id)
+	if rhs_smartcast.len > 0 {
+		rhs_type = rhs_smartcast
+	}
 	if lhs_type.len == 0 {
 		lhs_type = t.checker_node_type(lhs_id)
 	}
