@@ -131,3 +131,75 @@ $if feature ? {
 		assert result.exit_code == 0, result.output
 	}
 }
+
+fn test_translated_sizeof_ignores_constants_from_other_modules() {
+	root := os.join_path(os.vtmp_dir(), 'translated_sizeof_modules_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+	dependency := os.join_path(root, 'dependency.v')
+	main_file := os.join_path(root, 'main.v')
+	os.write_file(dependency, 'module dependency\npub const item = [1, 2]!\n')!
+	os.write_file(main_file, '@[translated]\nmodule main\ntype item = int\nfn main() { assert sizeof(item) == sizeof(int) }\n')!
+	mut p := Parser.new(pref.new_preferences())
+	p.parse_file(dependency)
+	p.parse_file(main_file)
+	assert p.diagnostics.len == 0, p.diagnostics.str()
+	sizes := p.a.nodes.filter(it.kind == .sizeof_expr)
+	assert sizes.len == 2
+	assert sizes[0].value == 'item'
+	assert sizes[0].children_count == 0
+}
+
+fn test_translated_sizeof_later_lowercase_type_declarations() {
+	root := os.join_path(os.vtmp_dir(), 'translated_sizeof_lowercase_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+	use_types := '@[translated]
+module main
+fn main() {
+ assert sizeof(c_record) > 0
+ assert sizeof(c_enum) > 0
+ assert sizeof(c_interface) > 0
+ assert sizeof(c_union) > 0
+}
+'
+	definitions := '
+struct c_record { value int }
+enum c_enum { zero }
+interface c_interface { value() int }
+union c_union { first int second i64 }
+'
+	main_file := os.join_path(root, 'a.v')
+	os.write_file(main_file, use_types + definitions)!
+	mut p := Parser.new(pref.new_preferences())
+	p.parse_file(main_file)
+	assert p.diagnostics.len == 0, p.diagnostics.str()
+	sizes := p.a.nodes.filter(it.kind == .sizeof_expr)
+	assert sizes.len == 4
+	assert sizes.all(it.children_count == 0)
+	result := os.execute('${os.quoted_path(@VEXE)} run ${os.quoted_path(main_file)}')
+	assert result.exit_code == 0, result.output
+	os.write_file(main_file, use_types)!
+	os.write_file(os.join_path(root, 'z.v'), '@[translated]\nmodule main\n' + definitions)!
+	for name in ['padding_a.v', 'padding_b.v'] {
+		os.write_file(os.join_path(root, name), 'module main\n//' + ' '.repeat(70000) + '\n')!
+	}
+	for flags in ['', '-no-parallel'] {
+		batch := os.execute('${os.quoted_path(@VEXE)} ${flags} run ${os.quoted_path(root)}')
+		assert batch.exit_code == 0, batch.output
+	}
+}
+
+fn test_translated_postfix_before_complex_dereference_assignments() {
+	root := os.join_path(os.vtmp_dir(), 'translated_deref_assignment_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+	for target in ['*state.dst++', '*state.dst[0]++', '*(state.dst)++', '*targets[0]++',
+		'*get_target()++', '*(*cursor)++', '*dst'] {
+		main_file := os.join_path(root, 'main.v')
+		os.write_file(main_file, '@[translated]\nmodule main\nfn main() {\nch := *src++\n${target} = ch\n}\n')!
+		mut p := Parser.new(pref.new_preferences())
+		p.parse_file(main_file)
+		assert p.diagnostics.len == 0, '${target}: ${p.diagnostics}'
+	}
+}

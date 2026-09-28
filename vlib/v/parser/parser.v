@@ -10805,15 +10805,35 @@ fn (mut p Parser) expr_with_lhs_context(first flat.NodeId, min_bp token.BindingP
 }
 
 fn (mut p Parser) translated_postfix_line_starts_deref_assignment() bool {
-	if p.tok != .mul || p.peek() != .name {
+	if p.tok != .mul || p.peek() !in [.name, .lpar, .mul] {
 		return false
 	}
 	mut scan := p.s
-	mut next := scan.scan()
-	if next in [.inc, .dec] {
+	mut next := p.peek_tok
+	mut closing := []token.Token{}
+	for p.line_nr_for_pos(scan.pos) == p.line_nr_for_pos(p.tok_pos) {
+		if closing.len == 0 && token_is_assignment(next) {
+			return true
+		}
+		match next {
+			.eof, .semicolon, .lcbr, .rcbr { return false }
+			.lpar { closing << .rpar }
+			.lsbr { closing << .rsbr }
+			.rpar, .rsbr {
+				if closing.len == 0 || closing.last() != next {
+					return false
+				}
+				closing.delete_last()
+			}
+			else {
+				if closing.len == 0 && next !in [.name, .dot, .mul, .inc, .dec] {
+					return false
+				}
+			}
+		}
 		next = scan.scan()
 	}
-	return token_is_assignment(next) && p.line_nr_for_pos(scan.pos) == p.line_nr_for_pos(p.tok_pos)
+	return false
 }
 
 fn (p &Parser) is_comptime_type_accessor(id flat.NodeId) bool {
@@ -14474,7 +14494,6 @@ fn (mut p Parser) sizeof_expr() flat.NodeId {
 		|| (p.is_translated && p.tok == .name
 			&& (p.is_local_binding(p.lit)
 				|| p.global_names[p.lit]
-				|| p.a.nodes.any(it.kind == .const_field && it.value == p.lit)
 				|| p.translated_sizeof_name_is_const(p.lit)
 				|| (!isreftype_name_can_start_type(p.lit)
 					&& !p.translated_sizeof_name_is_type(p.lit) && p.peek() != .dot)
@@ -14545,7 +14564,8 @@ fn (mut p Parser) scan_translated_sizeof_declarations() {
 }
 
 fn (mut p Parser) scan_translated_sizeof_source(source string) {
-	if !source.contains('const') && !source.contains('type') {
+	if !source.contains('const') && !source.contains('type') && !source.contains('struct')
+		&& !source.contains('enum') && !source.contains('interface') && !source.contains('union') {
 		return
 	}
 	mut scan := scanner.new_scanner(p.prefs, .skip_interpolation)
@@ -14583,7 +14603,8 @@ fn (mut p Parser) scan_translated_sizeof_range(source string, tokens []InlineAsm
 			i = inline_asm_matching_close_brace(tokens, i, end) + 1
 			continue
 		}
-		if kind == .key_type && i + 1 < end && tokens[i + 1].kind == .name {
+		if kind in [.key_type, .key_struct, .key_enum, .key_interface, .key_union]
+			&& i + 1 < end && tokens[i + 1].kind == .name {
 			p.translated_sizeof_type_names[tokens[i + 1].lit] = true
 		}
 		if kind == .key_const {
