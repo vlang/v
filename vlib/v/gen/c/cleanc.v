@@ -9,6 +9,7 @@ import v.flat
 import v.gen.c.naming
 import v.modulecache
 import v.pref
+import v.token as vtoken
 import v.types
 import v.util
 
@@ -12619,6 +12620,26 @@ fn (g &FlatGen) enum_value_expr_for_key(key string) ?string {
 	if val := g.enum_vals[key] {
 		return '${val}'
 	}
+	field_name := key.all_after_last('.')
+	if field_name.starts_with('@')
+		&& vtoken.Token.from_string_tinyv(field_name[1..]).is_keyword() {
+		plain_key := key[..key.len - field_name.len] + field_name[1..]
+		if expr := g.enum_value_exprs[plain_key] {
+			return expr
+		}
+		if val := g.enum_vals[plain_key] {
+			return '${val}'
+		}
+	}
+	if !field_name.starts_with('@') && vtoken.Token.from_string_tinyv(field_name).is_keyword() {
+		escaped_key := key[..key.len - field_name.len] + '@' + field_name
+		if expr := g.enum_value_exprs[escaped_key] {
+			return expr
+		}
+		if val := g.enum_vals[escaped_key] {
+			return '${val}'
+		}
+	}
 	return none
 }
 
@@ -12655,6 +12676,9 @@ fn (g &FlatGen) enum_value_expr_for_type(type_name string, field_name string) ?s
 	}
 	if val := g.enum_value_for_type(type_name, field_name) {
 		return '${val}'
+	}
+	if !field_name.starts_with('@') && vtoken.Token.from_string_tinyv(field_name).is_keyword() {
+		return g.enum_value_expr_for_type(type_name, '@${field_name}')
 	}
 	return none
 }

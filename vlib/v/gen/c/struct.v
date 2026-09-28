@@ -985,7 +985,8 @@ fn (mut g FlatGen) gen_struct_init(id flat.NodeId) {
 				continue
 			}
 		}
-		if field.value.len > 0 && allowed_fields.len > 0 && field.value !in allowed_fields {
+		if field.value.len > 0 && allowed_fields.len > 0 && field.value !in allowed_fields
+			&& !g.struct_has_direct_named_field(lookup_name, field.value) {
 			promoted = g.promoted_struct_init_field(lookup_name, field.value) or { continue }
 		}
 		if has_field {
@@ -1431,7 +1432,8 @@ fn (mut g FlatGen) gen_struct_init_with_fixed_array_fields_impl(node flat.Node, 
 				continue
 			}
 		}
-		if field.value.len > 0 && allowed_fields.len > 0 && field.value !in allowed_fields {
+		if field.value.len > 0 && allowed_fields.len > 0 && field.value !in allowed_fields
+			&& !g.struct_has_direct_named_field(lookup_name, field.value) {
 			continue
 		}
 		value_id := g.a.child(field, 0)
@@ -4880,6 +4882,16 @@ fn (g &FlatGen) struct_field_c_abi_fn_ptr_type(type_name string, field_name stri
 			}
 		}
 	}
+	if field_name.starts_with('@') {
+		owner := cgen_unalias_unwrap_all_pointers(g.tc.parse_type(type_name))
+		if owner is types.Struct && owner.name.starts_with('C.') {
+			for candidate in [field_name, field_name[1..]] {
+				if typ := g.tc.struct_field_c_abi_fn_ptr_type(owner.name, candidate) {
+					return typ
+				}
+			}
+		}
+	}
 	return none
 }
 
@@ -5179,12 +5191,18 @@ fn (g &FlatGen) promoted_struct_init_field(type_name string, field_name string) 
 	if owner.len == 0 {
 		return none
 	}
-	field_type := g.struct_field_type(owner, field_name) or { return none }
+	field_type := g.struct_field_type(owner, field_name) or {
+		if owner.starts_with('C.') && field_name.starts_with('@') {
+			g.struct_field_type(owner, field_name[1..]) or { return none }
+		} else {
+			return none
+		}
+	}
 	mut parts := []string{cap: path.len + 1}
 	for field in path {
 		parts << c_field_name(field.name)
 	}
-	parts << c_field_name(field_name)
+	parts << g.init_field_c_name(owner, field_name)
 	return PromotedStructInitField{
 		root:       path[0].name
 		root_type:  g.embedded_field_type_name(path[0])
@@ -5242,15 +5260,26 @@ fn (g &FlatGen) direct_embedded_field_for_selector(base_type types.Type, field_n
 }
 
 fn (g &FlatGen) embedded_field_path_for_promoted_field(type_name string, field_name string) ?[]types.StructField {
+	if path := g.embedded_field_path_for_promoted_field_inner(type_name, field_name, false) {
+		return path
+	}
+	if field_name.starts_with('@') && field_name.len > 1 {
+		return g.embedded_field_path_for_promoted_field_inner(type_name, field_name[1..], true)
+	}
+	return none
+}
+
+fn (g &FlatGen) embedded_field_path_for_promoted_field_inner(type_name string, field_name string, c_owner_only bool) ?[]types.StructField {
 	for field in g.struct_embedded_fields(type_name) {
 		embedded_type_name := g.embedded_field_type_name(field)
 		if embedded_type_name.len == 0 {
 			continue
 		}
-		if g.direct_struct_field_exists(embedded_type_name, field_name) {
+		if (!c_owner_only || embedded_type_name.starts_with('C.'))
+			&& g.direct_struct_field_exists(embedded_type_name, field_name) {
 			return [field]
 		}
-		if nested := g.embedded_field_path_for_promoted_field(embedded_type_name, field_name) {
+		if nested := g.embedded_field_path_for_promoted_field_inner(embedded_type_name, field_name, c_owner_only) {
 			mut path := [field]
 			path << nested
 			return path
@@ -5271,7 +5300,10 @@ fn (g &FlatGen) embedded_field_path_for_promoted_selector(base_type types.Type, 
 	if g.direct_struct_field_exists(type_name, field_name) {
 		return none
 	}
-	return g.embedded_field_path_for_promoted_field(type_name, field_name)
+	if path := g.embedded_field_path_for_promoted_field(type_name, field_name) {
+		return path
+	}
+	return none
 }
 
 // concrete_bare_struct_selector_name recovers the declaration identity of a bare

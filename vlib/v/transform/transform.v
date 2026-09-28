@@ -13454,10 +13454,17 @@ fn (mut t Transformer) struct_field_selector_for_type(base flat.NodeId, struct_t
 
 fn (t &Transformer) struct_field_path_for_field(struct_type string, field string) ?[]FieldInfo {
 	mut seen := map[string]bool{}
-	return t.struct_field_path_for_field_inner(struct_type, field, mut seen)
+	if path := t.struct_field_path_for_field_inner(struct_type, field, false, mut seen) {
+		return path
+	}
+	if field.starts_with('@') && field.len > 1 {
+		seen.clear()
+		return t.struct_field_path_for_field_inner(struct_type, field[1..], true, mut seen)
+	}
+	return none
 }
 
-fn (t &Transformer) struct_field_path_for_field_inner(struct_type string, field string, mut seen map[string]bool) ?[]FieldInfo {
+fn (t &Transformer) struct_field_path_for_field_inner(struct_type string, field string, c_owner_only bool, mut seen map[string]bool) ?[]FieldInfo {
 	clean := t.trim_pointer_type(t.normalize_type_alias(struct_type))
 	info := t.lookup_struct_info(clean) or { return none }
 	mut lookup_key := t.alias_target_type_preserving_main_lock(clean) or { clean }
@@ -13472,7 +13479,7 @@ fn (t &Transformer) struct_field_path_for_field_inner(struct_type string, field 
 	}
 	seen[lookup_key] = true
 	for f in info.fields {
-		if f.name == field {
+		if f.name == field && (!c_owner_only || lookup_key.starts_with('C.')) {
 			return []FieldInfo{}
 		}
 	}
@@ -13487,7 +13494,7 @@ fn (t &Transformer) struct_field_path_for_field_inner(struct_type string, field 
 		}
 		embedded_field_type := t.normalize_field_type(f.typ, owner_type)
 		embedded_type := t.trim_pointer_type(embedded_field_type)
-		if path := t.struct_field_path_for_field_inner(embedded_type, field, mut seen) {
+		if path := t.struct_field_path_for_field_inner(embedded_type, field, c_owner_only, mut seen) {
 			mut result := []FieldInfo{cap: path.len + 1}
 			result << FieldInfo{
 				...f

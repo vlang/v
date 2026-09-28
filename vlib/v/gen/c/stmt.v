@@ -9336,11 +9336,7 @@ fn (g &FlatGen) expr_c_abi_fn_ptr_type(id flat.NodeId) ?string {
 		return none
 	}
 	base_id := g.a.child(&expr, 0)
-	base_type := types.unwrap_pointer(g.usable_expr_type(base_id))
-	mut clean := base_type
-	if base_type is types.Alias {
-		clean = base_type.base_type
-	}
+	clean := cgen_unalias_unwrap_all_pointers(g.usable_expr_type(base_id))
 	if clean is types.Struct {
 		return g.struct_field_c_abi_fn_ptr_type(clean.name, expr.value)
 	}
