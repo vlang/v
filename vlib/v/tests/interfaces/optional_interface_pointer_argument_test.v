@@ -28,4 +28,7 @@ fn test_pointer_argument_is_boxed_inside_optional_interface() {
 	assert optional_name(none) == 'none'
 	wrapped := ?Named(item)
 	assert optional_name(wrapped) == 'record'
+	mut boxed := Named(Record{ label: 'boxed' })
+	boxed_ptr := &boxed
+	assert optional_name(*boxed_ptr) == 'boxed'
 }

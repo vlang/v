@@ -14268,7 +14268,8 @@ fn (mut tc TypeChecker) check_call_arg_types(id flat.NodeId, node flat.Node, inf
 		expected_value := unalias_type(expected)
 		actual_value := unalias_type(actual)
 		clean_expected_for_interface := if expected_value is OptionType && actual_value is Pointer
-			&& unalias_type(actual_value.base_type) !is Pointer {
+			&& unalias_type(actual_value.base_type) !is Pointer
+			&& unalias_type(actual_value.base_type) !is Interface {
 			unalias_type(expected_value.base_type)
 		} else {
 			expected_value

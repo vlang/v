@@ -3490,6 +3490,7 @@ This *may* change in V 1.0 .
 Pointers to concrete values can be passed to optional interface parameters when their types
 implement the interface. The option contains an interface value referring to the original object.
 Additional pointer layers, such as `&&Record`, must be dereferenced before passing the object.
+Pointers to interface values, such as `&Named`, must also be dereferenced first.
 
 Returning a stored pointer field returns that pointer value. It does not borrow the storage of
 the containing struct, unlike taking the address of one of its fields.
