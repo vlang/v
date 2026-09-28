@@ -2457,7 +2457,8 @@ fn (mut t Transformer) try_lower_map_index_assign(id flat.NodeId, node flat.Node
 	}
 	if node.op == .left_shift_assign && info.value_type.starts_with('[]') {
 		cleanup_key, existing_key_name := t.prepare_owned_map_set_key_cleanup(key_is_owned, info.key_type, map_expr, info.base_type, key_name, mut result)
-		if !t.lower_map_index_append_with_info(info, map_expr, key_name, rhs_id, existing_key_name, mut result) {
+		if !t.lower_map_index_append_with_info(info, map_expr, key_name, rhs_id, flat.NodeId(-1),
+			existing_key_name, mut result) {
 			return []flat.NodeId{}
 		}
 		t.append_owned_map_set_key_cleanup(key_name, cleanup_key, existing_key_name, mut result)
@@ -3202,12 +3203,12 @@ fn (mut t Transformer) lower_map_index_postfix_with_info(info MapIndexInfo, map_
 }
 
 // lower_map_index_append_with_info builds lower map index append with info data for transform.
-fn (mut t Transformer) lower_map_index_append_with_info(info MapIndexInfo, map_expr flat.NodeId, key_name string, rhs_id flat.NodeId, existing_key_name string, mut result []flat.NodeId) bool {
+fn (mut t Transformer) lower_map_index_append_with_info(info MapIndexInfo, map_expr flat.NodeId, key_name string, rhs_id flat.NodeId, source_append_id flat.NodeId, existing_key_name string, mut result []flat.NodeId) bool {
 	return t.lower_map_index_append_with_info_and_prelude(info, map_expr, key_name, rhs_id,
-		[]flat.NodeId{}, existing_key_name, mut result)
+		source_append_id, []flat.NodeId{}, existing_key_name, mut result)
 }
 
-fn (mut t Transformer) lower_map_index_append_with_info_and_prelude(info MapIndexInfo, map_expr flat.NodeId, key_name string, rhs_id flat.NodeId, pre_append_stmts []flat.NodeId, existing_key_name string, mut result []flat.NodeId) bool {
+fn (mut t Transformer) lower_map_index_append_with_info_and_prelude(info MapIndexInfo, map_expr flat.NodeId, key_name string, rhs_id flat.NodeId, source_append_id flat.NodeId, pre_append_stmts []flat.NodeId, existing_key_name string, mut result []flat.NodeId) bool {
 	mut append_rhs := rhs_id
 	mut staged_rhs_name := ''
 	mut staged_rhs_type := ''
@@ -3268,6 +3269,9 @@ fn (mut t Transformer) lower_map_index_append_with_info_and_prelude(info MapInde
 	}
 	append := t.make_infix(.left_shift, t.make_ident(working_name), append_rhs)
 	t.annotate_left_shift(append)
+	if int(source_append_id) in t.local_closure_field_cleanups {
+		t.local_closure_field_cleanups[int(append)] = true
+	}
 	mut staged_scalar_was_cloned := false
 	if staged_rhs_is_owned && t.a.nodes[int(append)].value != 'push_many' {
 		array_type := t.clean_array_append_lhs_type(info.value_type)
@@ -3281,6 +3285,15 @@ fn (mut t Transformer) lower_map_index_append_with_info_and_prelude(info MapInde
 	if lowered := t.try_lower_array_append_stmt(append) {
 		for stmt in lowered {
 			result << stmt
+		}
+		if staged_rhs_name.len > 0 && t.a.nodes[int(append)].value == 'push_many'
+			&& t.expr_contains_local_closure_field_cleanup(rhs_id) {
+			// Array lowering sees only the staged identifier. Use the source RHS to
+			// register cleanup for closures copied into the destination array.
+			staged_rhs := t.make_ident(staged_rhs_name)
+			t.set_node_typ(int(staged_rhs), staged_rhs_type)
+			t.append_local_closure_initializer_cleanups_for_value(staged_rhs, rhs_id,
+				t.normalize_type_alias(staged_rhs_type), mut result)
 		}
 		if staged_rhs_is_owned {
 			staged_rhs := t.make_ident(staged_rhs_name)
@@ -3379,7 +3392,7 @@ fn (mut t Transformer) try_lower_map_index_append_stmt_with_prelude(id flat.Node
 	result << t.make_decl_assign_typed(key_name, key_value, info.key_storage_type)
 	cleanup_key, existing_key_name := t.prepare_owned_map_set_key_cleanup(key_is_owned, info.key_type, map_expr, info.base_type, key_name, mut result)
 	if !t.lower_map_index_append_with_info_and_prelude(info, map_expr, key_name, t.a.child(&node,
-		1), pre_append_stmts, existing_key_name, mut result) {
+		1), id, pre_append_stmts, existing_key_name, mut result) {
 		return []flat.NodeId{}
 	}
 	t.append_owned_map_set_key_cleanup(key_name, cleanup_key, existing_key_name, mut result)
