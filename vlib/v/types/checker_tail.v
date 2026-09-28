@@ -5627,14 +5627,23 @@ fn (tc &TypeChecker) unknown_method_call_parts(node flat.Node) ?(flat.Node, Type
 	if tc.is_namespace_selector(*callee, base) {
 		return none
 	}
-	receiver_type := unwrap_pointer(tc.resolve_type(tc.a.child(callee, 0)))
+	receiver := tc.resolve_type(tc.a.child(callee, 0))
+	receiver_type := unwrap_pointer(receiver)
 	if receiver_type !is Struct && receiver_type !is Interface && receiver_type !is Alias
 		&& receiver_type !is String && receiver_type !is Primitive {
 		return none
 	}
 	receiver_name := receiver_type.name()
-	if tc.struct_field_type(receiver_name, callee.value) != none
-		|| tc.concrete_method_signature_key(receiver_name, callee.value) != none {
+	if tc.struct_field_type(receiver_name, callee.value) != none {
+		return none
+	}
+	underlying := unalias_and_unwrap_pointer_type(receiver)
+	if underlying is Struct && underlying.name.starts_with('C.') {
+		method_name, ambiguous := tc.lookup_c_struct_receiver_method(receiver, callee.value)
+		if method_name.len > 0 && !ambiguous { return none }
+		return *callee, receiver_type, receiver_name
+	}
+	if tc.concrete_method_signature_key(receiver_name, callee.value) != none {
 		return none
 	}
 	method_candidates := receiver_method_name_candidates(receiver_type, callee.value, tc.cur_module)
@@ -9134,6 +9143,9 @@ fn (tc &TypeChecker) type_is_pointer_receiver(typ Type) bool {
 }
 
 fn (tc &TypeChecker) method_can_be_called_on_receiver(receiver Type, method string, method_name string) bool {
+	if tc.fn_key_is_static_associated(method_name) {
+		return false
+	}
 	if method != 'hex' || !tc.type_is_pointer_receiver(receiver) {
 		return true
 	}
@@ -9210,7 +9222,8 @@ fn (mut tc TypeChecker) resolve_generic_call_info(id flat.NodeId, fn_node flat.N
 				if underlying is Struct && underlying.name.starts_with('C.') { return none }
 			}
 			call_name := '${type_name}.${base_node.value}'
-			if call_name in tc.fn_ret_types {
+			if call_name in tc.fn_ret_types
+				&& tc.method_can_be_called_on_receiver(base_type, base_node.value, call_name) {
 				if tc.explicit_generic_arg_count_mismatch(call_name, type_args, id) {
 					return tc.call_info(call_name, true)
 				}
@@ -19021,6 +19034,25 @@ fn (tc &TypeChecker) is_known_call(node flat.Node) bool {
 		return true
 	}
 	fn_node := tc.a.child_node(&node, 0)
+	if fn_node.kind == .selector && fn_node.children_count > 0 {
+		base_id := tc.a.child(fn_node, 0)
+		base := tc.a.node(base_id)
+		if !tc.is_namespace_selector(*fn_node, base) {
+			receiver := tc.selector_fn_base_type(base_id) or { tc.resolve_type(base_id) }
+			underlying := unalias_and_unwrap_pointer_type(receiver)
+			if underlying is Struct && underlying.name.starts_with('C.') {
+				if _ := tc.selector_field_fn_type(fn_node, receiver) { return true }
+				name, ambiguous := tc.lookup_c_struct_receiver_method(receiver, fn_node.value)
+				if ambiguous { return false }
+				if name.len > 0 { return true }
+				// Inferred return annotations do not turn static C declarations into methods.
+				return fn_node.value == 'str'
+					|| (fn_node.value == 'free' && type_has_runtime_value(underlying))
+					|| (fn_node.value == 'clone' && tc.type_has_compiler_default_clone(underlying))
+					|| (fn_node.value == 'hex' && tc.is_builtin_hex_receiver(receiver))
+			}
+		}
+	}
 	if node.typ.len > 0 {
 		if fn_node.kind == .index && fn_node.value != 'range' {
 			return tc.explicit_generic_call_target_is_known(node)

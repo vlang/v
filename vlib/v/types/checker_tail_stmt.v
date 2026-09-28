@@ -6164,7 +6164,9 @@ fn (mut tc TypeChecker) check_selector(id flat.NodeId, node flat.Node) {
 			return
 		}
 		if method_name.len == 0 && method_receiver.name.starts_with('C.')
-			&& node.value == 'hex' && tc.type_is_pointer_receiver(base_type)
+			&& ((node.value == 'hex' && tc.type_is_pointer_receiver(base_type))
+				|| tc.fn_key_is_static_associated('${method_receiver.name}.${node.value}')
+				|| tc.fn_key_is_static_associated(checker_qualified_fn_name(tc.cur_module, '${method_receiver.name}.${node.value}')))
 			&& !tc.ident_is_call_callee_or_generic_base(id) {
 			tc.record_error_at(.unknown_field, 'unknown method `${node.value}` on `${base_type.name()}`', id, tc.node_value_diagnostic_pos(id))
 			tc.register_synth_type(id, Type(void_))
@@ -18795,8 +18797,53 @@ struct InfixOperatorSignature {
 	param_count int
 }
 
+// c_struct_operator_call_info resolves a visible C receiver operator in its source context.
+pub fn (tc &TypeChecker) c_struct_operator_call_info(receiver Type, method string, file string, module_name string) ?CallInfo {
+	underlying := unalias_and_unwrap_pointer_type(receiver)
+	if underlying !is Struct || !(underlying as Struct).name.starts_with('C.') {
+		return none
+	}
+	view := if tc.cur_file == file && tc.cur_module == module_name {
+		tc
+	} else {
+		tc.fork_type_parse_view(file, module_name)
+	}
+	name, ambiguous := view.lookup_c_struct_receiver_method(receiver, method)
+	if ambiguous || name.len == 0 {
+		return none
+	}
+	if _ := view.private_declaration(name) { return none }
+	info := view.call_info(name, true)
+	if info.params.len == 0 || !view.method_receiver_compatible(receiver, info.params[0], name) {
+		return none
+	}
+	return info
+}
+
+fn (tc &TypeChecker) c_struct_infix_operator_call_info(op flat.Op, lhs Type) ?CallInfo {
+	op_name := infix_operator_name(op) or { return none }
+	if info := tc.c_struct_operator_call_info(lhs, op_name, tc.cur_file, tc.cur_module) {
+		return info
+	}
+	fallback := match op {
+		.gt, .ge, .le { '<' }
+		.ne { '==' }
+		else { return none }
+	}
+	return tc.c_struct_operator_call_info(lhs, fallback, tc.cur_file, tc.cur_module)
+}
+
 fn (tc &TypeChecker) infix_operator_signature(op flat.Op, lhs Type) ?InfixOperatorSignature {
 	op_name := infix_operator_name(op) or { return none }
+	underlying := unalias_and_unwrap_pointer_type(lhs)
+	if underlying is Struct && underlying.name.starts_with('C.') {
+		info := tc.c_struct_infix_operator_call_info(op, lhs) or { return none }
+		return InfixOperatorSignature{
+			return_type: info.return_type
+			param_type:  if info.params.len > 1 { info.params[1] } else { Type(void_) }
+			param_count: info.params.len
+		}
+	}
 	if lhs is Pointer && lhs.base_type !is Alias && unalias_type(lhs.base_type) !is Struct {
 		return none
 	}
@@ -18886,6 +18933,10 @@ fn (tc &TypeChecker) infix_operator_operand_compatible(actual Type, expected Typ
 
 fn (tc &TypeChecker) type_has_infix_operator_method(typ Type, op flat.Op) bool {
 	op_name := infix_operator_name(op) or { return false }
+	underlying := unalias_and_unwrap_pointer_type(typ)
+	if underlying is Struct && underlying.name.starts_with('C.') {
+		return tc.c_struct_infix_operator_call_info(op, typ) != none
+	}
 	type_name := resolve_type_name_for_method(unwrap_pointer(typ))
 	if type_name.len == 0 {
 		return false

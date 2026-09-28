@@ -20,3 +20,21 @@ fn test_hex_and_index() {
 	value[2] += 5
 	assert value[2] == 36
 }
+
+fn test_imported_infix_and_compound_operators() {
+	a := left.make()
+	mut b := left.make()
+	b[0] = 19
+	assert a == b
+	assert !(a != b)
+	assert a < b
+	assert b > a
+	assert a <= b
+	assert b >= a
+	assert (a + b)[0] == 36
+	assert (a * b)[0] == 323
+	b += a
+	assert b[0] == 36
+	b *= a
+	assert b[0] == 612
+}

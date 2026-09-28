@@ -2183,7 +2183,7 @@ fn (mut tc TypeChecker) build_declaration_param_mutability_index(a &flat.FlatAst
 }
 
 // build_fn_name_indexes records the short names, per-file bare names and
-// static/associated keys of every V function declaration.
+// static/associated keys of V and interop function declarations.
 fn (mut tc TypeChecker) build_fn_name_indexes(a &flat.FlatAst) {
 	tc.static_associated_fn_keys = map[string]bool{}
 	tc.fn_decl_short_name_ids = map[string]int{}
@@ -2195,20 +2195,28 @@ fn (mut tc TypeChecker) build_fn_name_indexes(a &flat.FlatAst) {
 			module_name = node.value
 			continue
 		}
-		if node.kind != .fn_decl {
+		if node.kind !in [.fn_decl, .c_fn_decl] {
 			continue
 		}
-		short_name := node.value.all_after_last('.')
-		if short_name !in tc.fn_decl_short_name_ids {
-			tc.fn_decl_short_name_ids[short_name] = index
+		if node.kind == .fn_decl {
+			short_name := node.value.all_after_last('.')
+			if short_name !in tc.fn_decl_short_name_ids {
+				tc.fn_decl_short_name_ids[short_name] = index
+			}
+			tc.file_bare_fn_names['${node.pos.id}\x00${node.value}'] = true
 		}
-		tc.file_bare_fn_names['${node.pos.id}\x00${node.value}'] = true
-		if node.value.contains('.') || node.is_static_type_method() {
-			qname := checker_qualified_fn_name(module_name, node.value)
+		decl_name := if node.kind == .c_fn_decl && !node.value.starts_with('C.') {
+			'C.${node.value}'
+		} else {
+			node.value
+		}
+		if decl_name.contains('.') || node.is_static_type_method() {
+			qname := checker_qualified_fn_name(module_name, decl_name)
 			is_static := node.is_static_type_method() || node.children_count == 0
 				|| a.child_node(&node, 0).kind != .param || a.child_node(&node, 0).op != .dot
-			if node.value !in tc.static_associated_fn_keys {
-				tc.static_associated_fn_keys[node.value] = is_static
+			// A declaration's canonical key takes priority over another module's bare alias.
+			if qname == decl_name || decl_name !in tc.static_associated_fn_keys {
+				tc.static_associated_fn_keys[decl_name] = is_static
 			}
 			if qname !in tc.static_associated_fn_keys {
 				tc.static_associated_fn_keys[qname] = is_static
@@ -6241,7 +6249,7 @@ fn (tc &TypeChecker) import_is_used(import_id flat.NodeId, import_node flat.Node
 		if is_selective_import_child {
 			continue
 		}
-		if node.kind in [.call, .selector, .index] {
+		if node.kind in [.call, .selector, .index, .infix, .assign, .selector_assign, .index_assign] {
 			if resolved := tc.resolved_call_name(flat.NodeId(idx)) {
 				if resolved.starts_with('${module_path}.C.') {
 					return true

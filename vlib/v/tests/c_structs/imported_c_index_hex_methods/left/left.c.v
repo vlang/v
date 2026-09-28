@@ -31,3 +31,23 @@ pub fn (c C.Counter) [] (index int) int {
 pub fn (mut c C.Counter) []= (index int, value int) {
 	c.value = value - index
 }
+
+// + adds the stored counter values.
+pub fn (a C.Counter) + (b C.Counter) C.Counter {
+	return C.Counter{ value: a.value + b.value }
+}
+
+// * multiplies the stored counter values.
+pub fn (a C.Counter) * (b C.Counter) C.Counter {
+	return C.Counter{ value: a.value * b.value }
+}
+
+// == compares the counters' tens digits instead of their complete storage.
+pub fn (a C.Counter) == (b C.Counter) bool {
+	return a.value / 10 == b.value / 10
+}
+
+// < orders counters by their units digit.
+pub fn (a C.Counter) < (b C.Counter) bool {
+	return a.value % 10 < b.value % 10
+}
