@@ -722,15 +722,20 @@ fn (t &Transformer) nested_generic_defaults_need_lowering(type_name string, mut 
 	if type_name.len == 0 || type_name[0] in [`&`, `?`, `!`, `[`] || type_name.starts_with('map[') || type_name in visited {
 		return false
 	}
+	normalized := t.normalize_type_alias(type_name)
+	if normalized in visited {
+		return false
+	}
 	visited[type_name] = true
-	info := t.lookup_struct_info(type_name) or { return false }
-	_, args, generic := generic_app_parts(type_name)
+	visited[normalized] = true
+	info := t.lookup_struct_info(normalized) or { return false }
+	_, args, generic := generic_app_parts(normalized)
 	for field in info.fields {
 		if int(field.default_expr) >= 0 {
 			if generic && args.len > 0 { return true }
 			continue
 		}
-		field_type := t.lookup_struct_field_type(type_name, field.name) or { field.typ }
+		field_type := t.lookup_struct_field_type(normalized, field.name) or { field.typ }
 		if t.nested_generic_defaults_need_lowering(field_type, mut visited) { return true }
 	}
 	return false
@@ -755,7 +760,8 @@ fn (mut t Transformer) add_missing_struct_defaults(id flat.NodeId, node flat.Nod
 		field_ids << child_id
 	}
 	mut missing_defaults := map[string]flat.NodeId{}
-	_, generic_args, generic_init := generic_app_parts(node.value)
+	resolved_node_type := t.normalize_type_alias(node.value)
+	_, generic_args, generic_init := generic_app_parts(resolved_node_type)
 	mut lower_generic_defaults := generic_init && generic_args.len > 0
 	for field in info.fields {
 		if field.name in provided { continue }
@@ -787,6 +793,7 @@ fn (mut t Transformer) add_missing_struct_defaults(id flat.NodeId, node flat.Nod
 		return id
 	}
 	old_module := t.cur_module
+	old_file := t.cur_file
 	// Imported defaults must retain their declaration module while resolving consts, globals,
 	// and function names. Cgen can emit ordinary defaults itself, but callable literals need
 	// transform-time lowering into named functions before cgen sees them.
@@ -831,9 +838,13 @@ fn (mut t Transformer) add_missing_struct_defaults(id flat.NodeId, node flat.Nod
 		if field.name !in missing_defaults {
 			continue
 		}
+		t.cur_file = old_file
 		field_type := t.lookup_struct_field_type(node.value, field.name) or { field.typ }
-		default_id := t.specialize_struct_default_expr(node.value, missing_defaults[field.name])
+		default_id := t.specialize_struct_default_expr(resolved_node_type, missing_defaults[field.name])
 		default_node := t.a.nodes[int(default_id)]
+		if source_file := t.a.source_files[default_node.pos.id] {
+			t.cur_file = source_file.name
+		}
 		if imported_decl && !lower_generic_defaults && default_node.kind !in [
 			.fn_literal,
 			.lambda_expr,
@@ -873,6 +884,7 @@ fn (mut t Transformer) add_missing_struct_defaults(id flat.NodeId, node flat.Nod
 	t.orm_initialized_fields = saved_orm_initialized_fields.clone()
 	t.sql_query_data_aliases = saved_sql_query_data_aliases.clone()
 	t.cur_module = old_module
+	t.cur_file = old_file
 	if !added {
 		for stmt in prelude {
 			t.pending_stmts << stmt

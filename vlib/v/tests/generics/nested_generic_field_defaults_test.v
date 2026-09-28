@@ -23,6 +23,12 @@ struct Numbers {
 	floating NumericBox[f64]
 }
 
+type NumericIntAlias = NumericBox[int]
+
+struct AliasedNumbers {
+	integer NumericIntAlias
+}
+
 fn state_or_default(states map[int]State, key int) State {
 	return states[key] or { State{} }
 }
@@ -43,4 +49,6 @@ fn test_nested_generic_field_defaults() {
 	numbers := Numbers{}
 	assert numbers.integer.value == 42
 	assert numbers.floating.value == 42.0
+	aliased := AliasedNumbers{}
+	assert aliased.integer.value == 42
 }
