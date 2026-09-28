@@ -10,6 +10,7 @@ such as `&[4]int{init: index * 2}` fill each element before the global pointer i
 Arrays of aligned structs retain the alignment required by their elements.
 This also applies to fixed-array aliases, nested fills, and alignment inherited
 through struct value fields.
+An alias constructor such as `&Cells{init: 7}` also fills every element.
 Alias chains and nested rows returned by functions are initialized as well.
 Parentheses and `unsafe` blocks around the fixed-array literal preserve this initialization,
 including `&(unsafe { [4]int{} })`. Statements before the final literal run in order, and local

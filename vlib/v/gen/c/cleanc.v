@@ -22986,7 +22986,7 @@ fn (mut g FlatGen) global_fixed_array_fill_stmt(dst string, val_id flat.NodeId, 
 		}
 		return assignments.join(' ')
 	}
-	if node.kind != .array_init {
+	if node.kind !in [.array_init, .struct_init] {
 		return ''
 	}
 	init_id := g.array_init_field_value(node, 'init') or { return '' }

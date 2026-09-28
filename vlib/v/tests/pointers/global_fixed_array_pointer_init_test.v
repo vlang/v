@@ -80,6 +80,7 @@ __global global_cell_array = &[2]GlobalArrayPointerCell{}
 __global global_nested_array = &[2][3]int{}
 __global global_alias_array = &GlobalArrayPointerAddress{}
 __global global_chained_alias_array = &GlobalArrayPointerValues{}
+__global global_filled_alias_array = &GlobalArrayPointerRow{init: 7}
 __global global_filled_array = &[4]int{init: 7}
 __global global_index_array = &[4]int{init: index * 2}
 __global global_nested_filled_array = &[2][3]int{init: [3]int{init: 7}}
@@ -151,6 +152,8 @@ fn test_global_fixed_array_pointers_are_initialized() {
 		assert global_alias_array[31] == 0
 		assert global_chained_alias_array[0][0] == 0
 		assert global_chained_alias_array[0][3] == 0
+		assert global_filled_alias_array[0] == 7
+		assert global_filled_alias_array[3] == 7
 		assert global_filled_array[0] == 7
 		assert global_filled_array[3] == 7
 		assert global_index_array[0] == 0
