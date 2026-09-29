@@ -2037,6 +2037,71 @@ fn test_mux_response_rejects_malformed_fields() {
 		'pseudo-header')
 }
 
+// mux_interim_response_result runs one request whose response is a 1xx HEADERS
+// block carrying `interim` (without END_STREAM) followed by a final 200 that
+// ends the stream, and returns the request error, or a description of the
+// accepted response starting with '<<accepted'.
+fn mux_interim_response_result(interim []H2HeaderField) string {
+	mut cend, mut pend := new_mux_pipe()
+	mut conn := new_test_mux_conn(mut cend)
+	mut peer := &MuxTestPeer{
+		end: pend
+	}
+	peer_thread := spawn fn (mut peer MuxTestPeer, interim []H2HeaderField) {
+		peer.read_preface() or {
+			peer.fail('preface: ${err.msg()}')
+			return
+		}
+		ids := peer.wait_for_headers(1) or {
+			peer.fail('headers: ${err.msg()}')
+			return
+		}
+		peer.write_frame(H2HeadersFrame{
+			stream_id:   ids[0]
+			fragment:    peer.encoder.encode(interim)
+			end_headers: true
+		}) or {
+			peer.fail('interim: ${err.msg()}')
+			return
+		}
+		peer.write_frame(H2HeadersFrame{
+			stream_id:   ids[0]
+			fragment:    peer.encoder.encode([H2HeaderField{':status', '200'}])
+			end_headers: true
+			end_stream:  true
+		}) or {
+			peer.fail('final: ${err.msg()}')
+			return
+		}
+		// Drain the client's frames until the pipe closes.
+		for {
+			peer.pump() or { return }
+		}
+	}(mut peer, interim)
+	mut got := ''
+	if resp := conn.do(H2ClientRequest{ authority: 't', path: '/x' }) {
+		got = '<<accepted: status=${resp.status} headers=${resp.headers}>>'
+	} else {
+		got = err.msg()
+	}
+	cend.close_both() // unblock the peer's pump loop so its thread exits
+	peer_thread.wait()
+	assert peer.failure_msg() == ''
+	return got
+}
+
+// RFC 9113 §8.2.2 exempts TE only in requests, so a 1xx informational response
+// carrying it is malformed too: the stream must be reset rather than the 1xx
+// block dropped unvalidated and the following 200 accepted.
+fn test_mux_rejects_te_in_informational_response() {
+	ok := mux_interim_response_result([H2HeaderField{':status', '103'},
+		H2HeaderField{'link', '</style.css>; rel=preload'}])
+	assert ok.starts_with('<<accepted: status=200'), 'a valid 103 before the 200 was rejected: ${ok}'
+	got := mux_interim_response_result([H2HeaderField{':status', '103'},
+		H2HeaderField{'te', 'trailers'}])
+	assert got.contains('only in requests'), 'expected the TE rejection, got: ${got}'
+}
+
 // RFC 9113 §8.1: a trailing HEADERS block carrying a pseudo-header (or any
 // malformed field) is malformed and must reset the stream, not be dropped.
 fn test_mux_trailers_reject_pseudo() {

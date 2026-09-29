@@ -595,6 +595,53 @@ fn test_h2_response_field_error_rejects_te() {
 	assert h2_response_field_error('x-te') == ''
 }
 
+// build_server_interim_stream encodes a server-side response on stream 1 that
+// sends a 1xx informational HEADERS block (`interim`, without END_STREAM) before
+// a final 200 HEADERS block that ends the stream.
+fn build_server_interim_stream(interim []H2HeaderField) []u8 {
+	mut senc := H2HpackEncoder{}
+	mut out := []u8{}
+	out << H2Frame(H2SettingsFrame{}).encode()
+	out << H2Frame(H2SettingsFrame{
+		ack: true
+	}).encode()
+	out << H2Frame(H2HeadersFrame{
+		stream_id:   1
+		fragment:    senc.encode(interim)
+		end_headers: true
+	}).encode()
+	out << H2Frame(H2HeadersFrame{
+		stream_id:   1
+		fragment:    senc.encode([H2HeaderField{':status', '200'}])
+		end_headers: true
+		end_stream:  true
+	}).encode()
+	return out
+}
+
+// RFC 9113 §8.2.2 exempts TE only in requests, so a 1xx informational response
+// carrying it is malformed too: it must fail the request rather than be dropped
+// unvalidated before the final response is accepted.
+fn test_h2_conn_rejects_te_in_informational_response() {
+	mut ok := new_h2_conn(&MockTransport{
+		inbound: build_server_interim_stream([H2HeaderField{':status', '103'},
+			H2HeaderField{'link', '</style.css>; rel=preload'}])
+	})
+	resp := ok.do(H2ClientRequest{ authority: 'h.example' })!
+	assert resp.status == 200
+	assert !resp.headers.any(it.name == 'link'), 'interim fields leaked into the final response'
+
+	mut c := new_h2_conn(&MockTransport{
+		inbound: build_server_interim_stream([H2HeaderField{':status', '103'},
+			H2HeaderField{'te', 'trailers'}])
+	})
+	if r := c.do(H2ClientRequest{ authority: 'h.example' }) {
+		assert false, 'TE in a 103 response was accepted: status=${r.status}'
+	} else {
+		assert err.msg().contains('only in requests'), 'unexpected error: ${err.msg()}'
+	}
+}
+
 // RFC 9113 §6.5.2: the client honors the peer's advisory
 // SETTINGS_MAX_HEADER_LIST_SIZE and refuses an over-limit request rather than
 // emitting it. Conformance gap G4 (set white-box: on the sync path the peer's
