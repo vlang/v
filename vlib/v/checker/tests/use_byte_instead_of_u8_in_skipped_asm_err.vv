@@ -41,6 +41,23 @@ fn main() {
 			}
 		}
 	}
+	$if never_defined_flag ? {
+		asm amd64 {
+			mov r, z
+			; =r (r)
+			; r (if x > 0 {
+				asm amd64 {
+					.byte 0x94
+					mov r, w
+					; =r (r)
+					; r (byte(x)) as w
+				}
+				int(byte(7))
+			} else {
+				0
+			}) as z
+		}
+	}
 	$match @OS {
 		'plan9' {
 			asm amd64 {

@@ -6661,8 +6661,7 @@ fn (mut tc TypeChecker) check_deprecated_byte_types_in_file(anchor flat.NodeId, 
 			|| tc.deprecated_byte_is_value_ident(file_id, start)
 			|| deprecated_byte_is_field_key(source, i)
 			|| deprecated_byte_is_receiver_name(source, start, i)
-			|| (deprecated_byte_is_in_ranges(inline_asm_ranges, start)
-				&& !deprecated_byte_is_in_ranges(inline_asm_operand_ranges, start))
+			|| deprecated_byte_is_asm_text(inline_asm_ranges, inline_asm_operand_ranges, start)
 			|| deprecated_byte_is_type_comparison(source, start) {
 			continue
 		}
@@ -6680,13 +6679,25 @@ fn (mut tc TypeChecker) check_deprecated_byte_types_in_file(anchor flat.NodeId, 
 	}
 }
 
-fn deprecated_byte_is_in_ranges(ranges []token.Pos, offset int) bool {
+// deprecated_byte_is_asm_text reports whether `offset` is assembler text: inside an
+// asm statement, but not inside one of its operand expressions, which are V code.
+// They nest (an operand can hold an `if` expression whose branch has its own asm),
+// so the innermost range containing `offset` decides.
+fn deprecated_byte_is_asm_text(asm_ranges []token.Pos, operand_ranges []token.Pos, offset int) bool {
+	asm_start := deprecated_byte_innermost_range_start(asm_ranges, offset)
+	return asm_start >= 0 && asm_start > deprecated_byte_innermost_range_start(operand_ranges, offset)
+}
+
+// deprecated_byte_innermost_range_start returns the start of the innermost range
+// containing `offset`, or -1 when none does. The ranges nest, so it starts last.
+fn deprecated_byte_innermost_range_start(ranges []token.Pos, offset int) int {
+	mut innermost := -1
 	for pos in ranges {
-		if pos.offset <= offset && offset < pos.end {
-			return true
+		if pos.offset <= offset && offset < pos.end && pos.offset > innermost {
+			innermost = pos.offset
 		}
 	}
-	return false
+	return innermost
 }
 
 fn deprecated_byte_is_type_comparison(source string, offset int) bool {

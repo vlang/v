@@ -9,5 +9,19 @@ fn main() {
 		  =r (buf[byte(0)])
 		; r (byte(x)) as y
 	}
+	// An operand can hold another asm statement, whose text is exempt again, while
+	// the rest of the operand is still V code.
+	asm amd64 {
+		mov result, z
+		; =r (result)
+		; r (if x > 0 {
+			asm amd64 {
+				.byte 0x91
+			}
+			int(byte(7))
+		} else {
+			0
+		}) as z
+	}
 	println('${result} ${buf}')
 }

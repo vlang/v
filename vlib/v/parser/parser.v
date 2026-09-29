@@ -6763,14 +6763,19 @@ fn (mut p Parser) skip_block() {
 // name it spells as a possible use of a function or a constant.
 fn (mut p Parser) skip_block_recording_decl_names() {
 	mut depth := 1
+	mut paren_depth := 0
 	mut scan := p.new_skipped_decl_name_scan()
+	mut asm_state := SkippedAsmState{}
 	p.next()
 	for depth > 0 && p.tok != .eof {
 		p.record_skipped_decl_name(mut scan)
-		if p.tok == .lcbr {
-			depth++
-		} else if p.tok == .rcbr {
-			depth--
+		p.skipped_asm_step(mut asm_state, depth, paren_depth)
+		match p.tok {
+			.lcbr { depth++ }
+			.rcbr { depth-- }
+			.lpar { paren_depth++ }
+			.rpar { paren_depth-- }
+			else {}
 		}
 		p.next()
 	}
@@ -6816,16 +6821,35 @@ fn (mut p Parser) record_skipped_decl_name(mut scan SkippedDeclNameScan) {
 }
 
 // SkippedAsmState follows the `asm` statements in a block the parser skips without
-// parsing it.
+// parsing it. An operand expression can hold another `asm` statement (in a branch of
+// an `if` expression), so the bodies being followed form a stack.
 struct SkippedAsmState {
 mut:
-	in_header        bool
-	body_depth       int = -1
+	in_header      bool
+	header_is_goto bool
+	header_start   int
+	bodies         []SkippedAsmBody // the innermost body is last
+}
+
+// SkippedAsmBody is the body of one `asm` statement in a skipped block.
+struct SkippedAsmBody {
+	depth            int
 	base_paren_depth int
-	section          int
-	is_goto          bool
 	start            int
-	operand_start    int = -1
+	is_goto          bool
+mut:
+	section       int
+	operand_start int = -1
+}
+
+// in_goto_labels reports whether a token at `depth` is in the label section of the
+// innermost `asm goto` body.
+fn (state &SkippedAsmState) in_goto_labels(depth int) bool {
+	if state.in_header || state.bodies.len == 0 {
+		return false
+	}
+	body := state.bodies.last()
+	return body.is_goto && body.section == 4 && depth == body.depth
 }
 
 // skipped_asm_step advances `state` over the current token of a skipped block, where
@@ -6834,48 +6858,61 @@ mut:
 // records the source span of every `asm` statement and of every operand expression,
 // and returns whether the token belongs to the assembly rather than to an operand.
 fn (mut p Parser) skipped_asm_step(mut state SkippedAsmState, depth int, paren_depth int) bool {
-	if state.body_depth >= 0 {
-		in_operand := state.section in [1, 2] && paren_depth > state.base_paren_depth
-		if depth == state.body_depth {
-			if state.section in [1, 2] && p.tok == .lpar && paren_depth == state.base_paren_depth {
-				state.operand_start = p.tok_pos
-			} else if in_operand && p.tok == .rpar && paren_depth == state.base_paren_depth + 1
-				&& state.operand_start >= 0 {
-				p.record_skipped_asm_span(state.operand_start, p.tok_end, true)
-				state.operand_start = -1
-			}
-			if p.tok == .semicolon && p.tok_pos >= 0 && p.tok_pos < p.s.src.len
-				&& p.s.src[p.tok_pos] == `;` {
-				state.section++
-			}
-			if p.tok == .rcbr {
-				p.record_skipped_asm_span(state.start, p.tok_end, false)
-				state.body_depth = -1
-			}
-		}
-		return !in_operand
-	}
 	if state.in_header {
 		if p.tok == .key_goto {
-			state.is_goto = true
+			state.header_is_goto = true
 		} else if p.tok == .lcbr {
 			state.in_header = false
-			state.body_depth = depth + 1
-			state.base_paren_depth = paren_depth
-			state.section = 0
-			state.operand_start = -1
+			state.bodies << SkippedAsmBody{
+				depth:            depth + 1
+				base_paren_depth: paren_depth
+				start:            state.header_start
+				is_goto:          state.header_is_goto
+			}
 		} else if p.tok in [.semicolon, .rcbr] {
 			state.in_header = false
 		}
 		return true
 	}
+	if state.bodies.len > 0 {
+		i := state.bodies.len - 1
+		body := state.bodies[i]
+		in_operand := body.section in [1, 2] && paren_depth > body.base_paren_depth
+		if in_operand && p.tok == .key_asm {
+			// An `asm` statement nested in this operand expression.
+			p.start_skipped_asm_header(mut state)
+			return true
+		}
+		if depth == body.depth {
+			if body.section in [1, 2] && p.tok == .lpar && paren_depth == body.base_paren_depth {
+				state.bodies[i].operand_start = p.tok_pos
+			} else if in_operand && p.tok == .rpar && paren_depth == body.base_paren_depth + 1
+				&& body.operand_start >= 0 {
+				p.record_skipped_asm_span(body.operand_start, p.tok_end, true)
+				state.bodies[i].operand_start = -1
+			}
+			if p.tok == .semicolon && p.tok_pos >= 0 && p.tok_pos < p.s.src.len
+				&& p.s.src[p.tok_pos] == `;` {
+				state.bodies[i].section++
+			}
+			if p.tok == .rcbr {
+				p.record_skipped_asm_span(body.start, p.tok_end, false)
+				state.bodies.delete_last()
+			}
+		}
+		return !in_operand
+	}
 	if p.tok == .key_asm {
-		state.in_header = true
-		state.is_goto = false
-		state.start = p.tok_pos
+		p.start_skipped_asm_header(mut state)
 		return true
 	}
 	return false
+}
+
+fn (mut p Parser) start_skipped_asm_header(mut state SkippedAsmState) {
+	state.in_header = true
+	state.header_is_goto = false
+	state.header_start = p.tok_pos
 }
 
 fn (mut p Parser) record_skipped_asm_span(start int, end int, is_operand bool) {
@@ -7000,8 +7037,7 @@ fn (mut p Parser) skip_comptime_block() {
 			}
 			pending_comma_lhs_reads.clear()
 		}
-		if asm_state.body_depth >= 0 && depth == asm_state.body_depth && asm_state.is_goto
-			&& asm_state.section == 4 && p.tok == .name {
+		if p.tok == .name && asm_state.in_goto_labels(depth) {
 			p.a.comptime_skipped_goto_labels[prefix + p.lit] = true
 		}
 		skip_asm_token := p.skipped_asm_step(mut asm_state, depth, paren_depth)

@@ -19,17 +19,31 @@ vlib/v/checker/tests/use_byte_instead_of_u8_in_skipped_asm_err.vv:31:9: error: b
       |                  ~~~~~~~
    32 |         }
    33 |     } $else {
-vlib/v/checker/tests/use_byte_instead_of_u8_in_skipped_asm_err.vv:50:13: error: byte is deprecated, use u8 instead
-   48 |                 mov r, z
-   49 |                 ; =r (r)
-   50 |                 ; r (u8(byte(x))) as z
+vlib/v/checker/tests/use_byte_instead_of_u8_in_skipped_asm_err.vv:53:11: error: byte is deprecated, use u8 instead
+   51 |                     mov r, w
+   52 |                     ; =r (r)
+   53 |                     ; r (byte(x)) as w
+      |                          ~~~~~~~
+   54 |                 }
+   55 |                 int(byte(7))
+vlib/v/checker/tests/use_byte_instead_of_u8_in_skipped_asm_err.vv:55:9: error: byte is deprecated, use u8 instead
+   53 |                     ; r (byte(x)) as w
+   54 |                 }
+   55 |                 int(byte(7))
+      |                     ~~~~~~~
+   56 |             } else {
+   57 |                 0
+vlib/v/checker/tests/use_byte_instead_of_u8_in_skipped_asm_err.vv:67:13: error: byte is deprecated, use u8 instead
+   65 |                 mov r, z
+   66 |                 ; =r (r)
+   67 |                 ; r (u8(byte(x))) as z
       |                         ~~~~~~~
-   51 |             }
-   52 |         }
-vlib/v/checker/tests/use_byte_instead_of_u8_in_skipped_asm_err.vv:56:11: error: byte is deprecated, use u8 instead
-   54 |     }
-   55 |     disabled_fn()
-   56 |     after := byte(2)
+   68 |             }
+   69 |         }
+vlib/v/checker/tests/use_byte_instead_of_u8_in_skipped_asm_err.vv:73:11: error: byte is deprecated, use u8 instead
+   71 |     }
+   72 |     disabled_fn()
+   73 |     after := byte(2)
       |              ~~~~~~~
-   57 |     println('${r} ${buf} ${after}')
-   58 | }
+   74 |     println('${r} ${buf} ${after}')
+   75 | }

@@ -11,4 +11,11 @@ vlib/v/checker/tests/use_byte_instead_of_u8_in_asm_operand_err.vv:10:8: error: b
    10 |         ; r (byte(x)) as y
       |              ~~~~~~~
    11 |     }
-   12 |     println('${result} ${buf}')
+   12 |     // An operand can hold another asm statement, whose text is exempt again, while
+vlib/v/checker/tests/use_byte_instead_of_u8_in_asm_operand_err.vv:21:8: error: byte is deprecated, use u8 instead
+   19 |                 .byte 0x91
+   20 |             }
+   21 |             int(byte(7))
+      |                 ~~~~~~~
+   22 |         } else {
+   23 |             0
