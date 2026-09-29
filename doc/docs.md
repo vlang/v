@@ -1570,7 +1570,23 @@ println(typeof(anums).name) // => []int
 ```
 
 Note that slicing will cause the data of the fixed size array to be copied to
-the newly created ordinary array.
+the newly created ordinary array. The exception is a slice that is written to:
+passing it as a `mut` argument, or calling `sort()`, `sort_with_compare()` or
+`reverse_in_place()` on it, updates the fixed size array itself:
+
+```v
+fn fill(mut a []int) {
+	for i in 0 .. a.len {
+		a[i] = 9
+	}
+}
+
+mut fixed := [4, 3, 2, 1]!
+fill(mut fixed[2..])
+println(fixed) // => [4, 3, 9, 9]
+fixed[..2].sort()
+println(fixed) // => [3, 4, 9, 9]
+```
 
 To copy elements into an existing array instead, use the builtin `copy` function.
 Like Go's `copy`, it copies as many elements as both arguments have, returns that
