@@ -350,12 +350,20 @@ fn (mut g Gen) setup_json_migration(fnode &flat.Node) {
 	mut json2_imports := []flat.NodeId{}
 	mut called := map[int]bool{}
 	mut selector_receivers := map[int]bool{}
+	// Expressions that an `is` check or a `match` narrows to one sum type variant.
+	mut narrowed := map[string]bool{}
 	for i, n in g.a.nodes {
 		if n.pos.id != g.file_id {
 			continue
 		}
 		if n.kind == .call && n.children_count > 0 {
 			called[int(g.a.child(n, 0))] = true
+		}
+		if (n.kind == .is_expr || n.kind == .match_stmt) && n.children_count > 0 {
+			subject := g.a.child_node(n, 0)
+			if text := g.source_span(subject.pos.offset, subject.pos.end) {
+				narrowed[text.trim_space()] = true
+			}
 		}
 		if n.kind == .selector && n.children_count > 0 {
 			receiver := g.a.child(n, 0)
@@ -405,9 +413,39 @@ fn (mut g Gen) setup_json_migration(fnode &flat.Node) {
 	if declared_names[qualifier] {
 		return
 	}
+	mut import_symbols := map[int]bool{}
+	for id in g.a.children_of(legacy) {
+		import_symbols[int(id)] = true
+	}
 	for i, n in g.a.nodes {
 		if n.pos.id != g.file_id {
 			continue
+		}
+		// With `import json { decode }`, a parameter, variable or loop variable of the
+		// same name shadows the import, and a use that is not a call cannot be rewritten.
+		if legacy.children_count > 0 && n.value in ['encode', 'decode', 'encode_pretty']
+			&& (n.kind == .param || (n.kind == .ident && !called[i] && !import_symbols[i])) {
+			return
+		}
+		// The removed `json.encode` encoded a value narrowed by `x is T` or `match x` as
+		// its declared sum type, with `_type`; `json2.encode` infers the narrowed
+		// variant, and only the author can spell the sum type back (`Animal(x)`).
+		if n.kind == .call && n.children_count > 1
+			&& g.is_json_encode_callee(g.a.child_node(n, 0), legacy.children_count > 0) {
+			arg := g.a.child_node(n, 1)
+			if text := g.source_span(arg.pos.offset, arg.pos.end) {
+				if narrowed[text.trim_space()] {
+					return
+				}
+			}
+		}
+		// A legacy `decode` needs both the type and the source argument to be rewritten,
+		// and an option or result type (`json.decode(?T, s)`) cannot be a type argument.
+		if n.kind == .call && n.children_count > 0
+			&& g.is_json_decode_callee(g.a.child_node(n, 0), legacy.children_count > 0)
+			&& (n.children_count < 3 || g.json_decode_type_arg_is_option(n)
+				|| json_decode_target_has_initializer(g.json_decode_type_arg_text(n))) {
+			return
 		}
 		// Existing module selector receivers are safe; any other identifier with the
 		// qualifier can be a lexical collision, so keep the legacy import conservatively.
@@ -430,7 +468,9 @@ fn (mut g Gen) setup_json_migration(fnode &flat.Node) {
 		if n.kind == .selector && n.children_count > 0 {
 			receiver := g.a.child_node(n, 0)
 			if receiver.kind == .ident && receiver.value == 'json' {
-				if vfmt_is_disabled_at(directives, n.pos.offset) {
+				// A local `json` binding shadows the import, and its method calls are
+				// not module calls to rewrite.
+				if vfmt_is_disabled_at(directives, n.pos.offset) || g.a.formatter_local_sels[i] {
 					return
 				}
 				if n.value !in ['encode', 'decode', 'encode_pretty'] || !called[i] {
@@ -1640,7 +1680,7 @@ fn (mut g Gen) call_expr(id flat.NodeId) {
 		return
 	}
 	if kind := g.json_migration_call_kind(children[0]) {
-		g.json_migration_call(kind, children[1..])
+		g.json_migration_call(kind, children[0], children[1..])
 		return
 	}
 	callee_continues := g.selector_starts_on_new_line(children[0])
@@ -1657,8 +1697,16 @@ fn (mut g Gen) call_expr(id flat.NodeId) {
 	g.write('(')
 	if !g.migrate_json2 && g.is_legacy_json_decode(children[0]) && args.len > 0 {
 		first := g.a.node(args[0])
+		// The type argument is not an expression: `[]Foo` parses as an empty array
+		// literal, and `?Foo` as an empty node, which keeps only its source text.
+		mut type_text := ''
 		if first.kind == .array_init && first.children_count == 0 {
-			g.write(first.typ)
+			type_text = first.typ
+		} else if first.kind == .empty && args.len > 1 {
+			type_text = g.json_decode_type_arg_source(children[0], args[1]) or { '' }
+		}
+		if type_text.len > 0 {
+			g.write(type_text)
 			if args.len > 1 {
 				g.write(', ')
 				g.expr_list(args[1..], ', ')
@@ -1918,22 +1966,38 @@ fn (g &Gen) json_migration_call_kind(callee_id flat.NodeId) ?string {
 }
 
 fn (g &Gen) is_legacy_json_decode(callee_id flat.NodeId) bool {
-	callee := g.a.node(callee_id)
+	return g.is_json_decode_callee(g.a.node(callee_id), g.selective_json)
+}
+
+fn (g &Gen) is_json_encode_callee(callee &flat.Node, selective bool) bool {
+	if callee.kind == .selector && callee.children_count > 0
+		&& callee.value in ['encode', 'encode_pretty'] {
+		receiver := g.a.child_node(callee, 0)
+		return receiver.kind == .ident && receiver.value == 'json'
+	}
+	return selective && callee.kind == .ident && callee.value in ['encode', 'encode_pretty']
+}
+
+fn (g &Gen) is_json_decode_callee(callee &flat.Node, selective bool) bool {
 	if callee.kind == .selector && callee.children_count > 0 && callee.value == 'decode' {
 		receiver := g.a.child_node(callee, 0)
 		return receiver.kind == .ident && receiver.value == 'json'
 	}
-	return g.selective_json && callee.kind == .ident && callee.value == 'decode'
+	return selective && callee.kind == .ident && callee.value == 'decode'
 }
 
-fn (mut g Gen) json_migration_call(kind string, args []flat.NodeId) {
+fn (mut g Gen) json_migration_call(kind string, callee flat.NodeId, args []flat.NodeId) {
 	if kind == 'decode' && args.len >= 2 {
 		g.write('${g.json_qualifier}.decode[')
-		type_arg := g.a.node(args[0])
-		if source_type := g.source_span(type_arg.pos.offset, type_arg.pos.end) {
-			g.write(source_type.trim_space())
+		if source_type := g.json_decode_type_arg_source(callee, args[1]) {
+			g.write(json_decode_type_text(source_type))
 		} else {
-			g.expr(args[0])
+			type_arg := g.a.node(args[0])
+			if source_type := g.source_span(type_arg.pos.offset, type_arg.pos.end) {
+				g.write(json_decode_type_text(source_type))
+			} else {
+				g.expr(args[0])
+			}
 		}
 		g.write('](')
 		g.expr_list(args[1..], ', ')
@@ -1946,9 +2010,62 @@ fn (mut g Gen) json_migration_call(kind string, args []flat.NodeId) {
 		g.write(', ')
 	}
 	if kind == 'encode_pretty' {
-		g.write('prettify: true, ')
+		g.write('prettify: true, legacy_layout: true, ')
 	}
-	g.write('escape_unicode: true)')
+	g.write('escape_unicode: true, time_as_unix: true)')
+}
+
+// json_decode_type_arg_source returns the source of the type argument of
+// `json.decode(T, s)`: the text between the callee and the second argument, without
+// the surrounding `(` and `,`. The span of the type node itself does not always
+// cover the type (anonymous structs, option types).
+// json_decode_type_arg_is_option reports whether the type argument of the legacy
+// `json.decode(T, s)` call is an option or result type, which json2 cannot take:
+// V does not accept `?T` as a generic type argument.
+fn (g &Gen) json_decode_type_arg_is_option(call &flat.Node) bool {
+	type_arg := g.a.child_node(call, 1)
+	type_text := g.json_decode_type_arg_text(call)
+	return type_text.starts_with('?') || type_text.starts_with('!')
+		|| type_arg.value.starts_with('?') || type_arg.value.starts_with('!')
+}
+
+// json_decode_type_arg_text is the source of the type argument of a legacy
+// `json.decode(T, s)` call.
+fn (g &Gen) json_decode_type_arg_text(call &flat.Node) string {
+	type_arg := g.a.child_node(call, 1)
+	return g.json_decode_type_arg_source(g.a.child(call, 0), g.a.child(call, 2)) or {
+		g.source_span(type_arg.pos.offset, type_arg.pos.end) or { '' }.trim_space()
+	}
+}
+
+// json_decode_type_text turns a legacy decode target into a type argument: the value
+// form `map[string]int{}`, `[]Foo{}` or `Foo{}` names its type with an empty
+// initializer, which is not part of the type.
+fn json_decode_type_text(target string) string {
+	text := target.trim_space()
+	if text.ends_with('{}') && !text.starts_with('struct') {
+		return text[..text.len - 2].trim_space()
+	}
+	return text
+}
+
+// json_decode_target_has_initializer reports a value target with a non-empty
+// initializer (`[]int{len: 2}`), which names no type that can be spelled back.
+fn json_decode_target_has_initializer(target string) bool {
+	text := target.trim_space()
+	return text.ends_with('}') && !text.ends_with('{}') && !text.starts_with('struct')
+}
+
+fn (g &Gen) json_decode_type_arg_source(callee flat.NodeId, second_arg flat.NodeId) ?string {
+	between := g.source_span(g.a.node(callee).pos.end, g.a.node(second_arg).pos.offset)?.trim_space()
+	if !between.starts_with('(') || !between.ends_with(',') {
+		return none
+	}
+	type_text := between[1..between.len - 1].trim_space()
+	if type_text.len == 0 {
+		return none
+	}
+	return type_text
 }
 
 fn (mut g Gen) index_expr(id flat.NodeId) {
@@ -3094,7 +3211,8 @@ fn (mut g Gen) for_in_stmt(id flat.NodeId) {
 	g.write(' in ')
 	g.expr(children[2])
 	if body_start == 4 {
-		g.write(' .. ')
+		range_op := g.a.formatter_sources[int(id)] or { '..' }
+		g.write(' ${range_op} ')
 		g.expr(children[3])
 	}
 	g.suppress_trailing_comments--
@@ -3956,13 +4074,19 @@ fn (mut g Gen) fn_decl(id flat.NodeId) {
 		g.write(' ')
 		g.write(receiver_type)
 		g.write(') ')
-		method_name := name.all_after_last('.')
+		method_name := g.a.formatter_sources[int(id)] or {
+			if name.starts_with('C:') || name.starts_with('JS:') {
+				name.replace(':', '.')
+			} else {
+				name.all_after_last('.')
+			}
+		}
 		g.write(method_name)
 		if method_name in ['+', '-', '*', '/', '%', '**', '==', '!=', '<', '<=', '>', '>=', '|',
 			'^', '[]', '[]='] {
 			g.write(' ')
 		}
-	} else if n.kind == .c_fn_decl {
+	} else if n.kind == .c_fn_decl || name.starts_with('C:') || name.starts_with('JS:') {
 		if name.starts_with('JS:') {
 			g.write('JS.${name[3..]}')
 		} else if name.starts_with('C:') {

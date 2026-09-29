@@ -1,4 +1,4 @@
-import json
+import json2 as json
 
 fn test_option_types() {
 	assert json.decode[StructTypeOption[string]]('{}')!.val == none

@@ -135,7 +135,9 @@ fn (t &Transformer) interface_target_should_share_source(id flat.NodeId, target_
 	if t.tc.interface_field_list(iface_name).any(it.is_mut) && t.expr_can_take_address(id) {
 		return true
 	}
-	if !t.in_return_expr && t.interface_pointer_source_needs_heap_copy(id) {
+	if !t.in_return_expr
+		&& (t.interface_pointer_source_needs_heap_copy(id)
+			|| t.interface_pointer_alias_source_needs_heap_copy(id)) {
 		return true
 	}
 	return false
@@ -825,6 +827,9 @@ fn (mut t Transformer) make_interface_literal_from_expr(id flat.NodeId, iface_na
 	normalized_source_type := t.normalize_type_alias(source_type)
 	source_is_pointer_alias := !source_type.starts_with('&')
 		&& normalized_source_type.starts_with('&')
+	source_has_pointer_storage := source_type.starts_with('&') || source_is_pointer_alias
+	alias_implements_interface := source_is_pointer_alias && !isnil(t.tc)
+		&& t.tc.type_text_implements_interface(source_type, iface_name)
 	if source_is_pointer_alias && !share_source
 		&& t.interface_pointer_alias_source_needs_heap_copy(id) {
 		pointee_type := normalized_source_type[1..]
@@ -834,8 +839,14 @@ fn (mut t Transformer) make_interface_literal_from_expr(id flat.NodeId, iface_na
 		t.pending_stmts << t.make_decl_assign_typed(tmp_name, copied, source_type)
 		source = t.make_ident(tmp_name)
 	}
-	is_ptr := source_type.starts_with('&')
-	concrete_type := if is_ptr { source_type[1..] } else { source_type }
+	is_ptr := source_has_pointer_storage && !alias_implements_interface
+	concrete_type := if source_is_pointer_alias && !alias_implements_interface {
+		normalized_source_type[1..]
+	} else if is_ptr {
+		source_type[1..]
+	} else {
+		source_type
+	}
 	t.mark_interface_boxed_type(iface_name, concrete_type)
 	if impl_name := t.interface_concrete_impl_name(concrete_type) {
 		if impl_name != concrete_type {
@@ -857,11 +868,13 @@ fn (mut t Transformer) make_interface_literal_from_expr(id flat.NodeId, iface_na
 	// type and emit the matching `_typ` dispatch id.
 	object_expr := if is_ptr {
 		source
-	} else if share_source && t.expr_can_take_address(source) {
+	} else if share_source && !source_is_pointer_alias && t.expr_can_take_address(source) {
 		addr := t.make_prefix(.amp, source)
 		t.set_node_typ(int(addr), '&${concrete_type}')
 		addr
 	} else {
+		// A pointer alias needs its own boxed slot, even when its pointee is shared.
+		// The temporary holding that pointer can expire before the interface does.
 		addr := t.make_prefix(.amp, source)
 		size := t.make_sizeof_type(concrete_type)
 		dup := t.make_non_aliasing_allocation_call('memdup', [addr, size], 'voidptr')
@@ -898,7 +911,7 @@ fn (mut t Transformer) make_interface_literal_from_expr(id flat.NodeId, iface_na
 		} else {
 			t.make_selector(field_base, field.name, field_type)
 		}
-		if is_ptr && concrete_type != 'voidptr' {
+		if source_has_pointer_storage && concrete_type != 'voidptr' {
 			field_value = t.null_safe_interface_pointer_field(source, field_value, field_type)
 		}
 		field_ids << t.make_sum_literal_field(field.name, field_value, field_type)

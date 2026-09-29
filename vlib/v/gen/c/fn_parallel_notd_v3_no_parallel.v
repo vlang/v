@@ -519,8 +519,10 @@ fn optional_support_selection_thread(arg voidptr) voidptr {
 
 fn unresolved_call_optional_thread(arg voidptr) voidptr {
 	mut w := unsafe { &FlatGen(arg) }
+	usw := time.new_stopwatch()
 	scope := cgen_worker_scope_begin(w.scope_parallel_workers)
 	w.collect_unresolved_call_optional_types()
+	w.timing_profile('  [ttime]       fs call opts   ${f64(usw.elapsed().microseconds()) / 1000.0:7.2f} ms')
 	w.worker_scope = scope
 	cgen_worker_scope_leave(scope)
 	return unsafe { nil }
@@ -1349,9 +1351,6 @@ fn (mut g FlatGen) absorb_scoped_cgen_batch(batch &FlatGen, output_streamed bool
 		if opt_name !in g.needed_optional_types {
 			g.needed_optional_types[opt_name.clone()] = val_type.clone()
 		}
-	}
-	for pointer_ct, pointer_type in batch.json_encode_pointer_types {
-		g.json_encode_pointer_types[pointer_ct.clone()] = pointer_type.clone()
 	}
 	for encoded, name in batch.fn_ptr_types {
 		if encoded !in g.fn_ptr_types {
@@ -2741,7 +2740,6 @@ fn (g &FlatGen) new_parallel_worker_config(worker_id int, result_only bool) &Fla
 		}
 		str_lits_shared:                    g.scope_parallel_workers && (!result_only || g.str_lits_shared)
 		str_lits_base_len:                  g.str_lits.len
-		json_encode_pointer_types:          map[string]string{}
 		global_types:                       g.global_types
 		global_raw_type_texts:              g.global_raw_type_texts
 		enum_vals:                          g.enum_vals
@@ -3281,9 +3279,6 @@ fn (mut g FlatGen) merge_parallel_worker_into(w &FlatGen, mut ordered []string, 
 	for opt_name, val_type in w.needed_optional_types {
 		g.needed_optional_types[opt_name.clone()] = val_type.clone()
 	}
-	for pointer_ct, pointer_type in w.json_encode_pointer_types {
-		g.json_encode_pointer_types[pointer_ct.clone()] = pointer_type.clone()
-	}
 	for encoded, name in w.fn_ptr_types {
 		if encoded !in g.fn_ptr_types {
 			g.fn_ptr_types[encoded.clone()] = name.clone()
@@ -3435,6 +3430,7 @@ fn (mut g FlatGen) run_pre_dispatch_parallel(no_parallel bool) bool {
 	optional_worker.c_name_cache = &CNameCache{}
 	optional_worker.generic_app_cache = &GenericAppCache{}
 	mut call_optional_worker := g.new_parallel_worker(3)
+	call_optional_worker.tc.verbose = g.tc.verbose
 	call_optional_worker.c_name_cache = &CNameCache{}
 	call_optional_worker.generic_app_cache = &GenericAppCache{}
 	fail := os.getenv('V3_TEST_PTHREAD_CREATE_FAIL')

@@ -15,6 +15,7 @@ fn test_compiler_selection_flags_are_not_forwarded() {
 }
 
 fn test_external_tool_build_args_drop_non_binary_modes() {
+	assert external_tool_build_args('vfmt', ['-cross', '-os', 'windows', '-arch', 'x64']) == []string{}
 	assert external_tool_build_args('vfmt', ['-silent', '-N', '-W', '-check']) == [
 		'-silent',
 		'-N',
@@ -67,6 +68,39 @@ fn test_tools_that_consume_prefix_compiler_options_receive_them() {
 		'fmt',
 		'-verify',
 		'file.v',
+	]
+}
+
+fn test_formatter_backend_options_are_runtime_preferences() {
+	for flag in ['-b', '-backend'] {
+		prefix := ['-cc', 'clang', flag, 'js', '-gc', 'none']
+		assert external_tool_compile_args('vfmt', prefix) == ['-cc', 'clang', '-gc', 'none']
+		assert external_tool_runtime_args('fmt', prefix, ['fmt', 'source.v']) == [
+			flag,
+			'js',
+			'fmt',
+			'source.v',
+		]
+		assert external_tool_compile_args('vtest', prefix) == prefix
+		joined_prefix := ['-cc', 'clang', '${flag}=js', '-gc', 'none']
+		assert external_tool_compile_args('vfmt', joined_prefix) == ['-cc', 'clang', '-gc', 'none']
+		assert external_tool_runtime_args('fmt', joined_prefix, ['fmt', 'source.v']) == [
+			'${flag}=js',
+			'fmt',
+			'source.v',
+		]
+		assert external_tool_compile_args('vtest', joined_prefix) == joined_prefix
+	}
+}
+
+fn test_formatter_target_options_do_not_target_its_executable() {
+	assert external_tool_compile_args('vfmt', ['-b', 'wasm', '-os', 'browser', '-arch', 'wasm32',
+		'-cc', 'clang']) == [
+		'-cc',
+		'clang',
+	]
+	assert external_tool_compile_args('vfmt', ['-os=browser', '-arch=wasm32', '-prod']) == [
+		'-prod',
 	]
 }
 
@@ -546,4 +580,40 @@ fn test_build_module_uses_the_compatibility_compilers_own_vlib() {
 		'build-module',
 		mymod,
 	]
+}
+
+fn test_install_external_tool_modules_leaves_a_build_with_a_path_to_the_compiler() {
+	$if windows {
+		return
+	}
+	base := os.join_path(os.vtmp_dir(), 'launcher_tool_modules_${os.getpid()}')
+	os.rmdir_all(base) or {}
+	vmodules := os.join_path(base, 'vmodules')
+	path_root := os.join_path(base, 'path')
+	tool_source := os.join_path(base, 'vdoc')
+	os.mkdir_all(vmodules)!
+	os.mkdir_all(path_root)!
+	os.mkdir_all(tool_source)!
+	// This stands in for `v retry -- git clone ...`, and records every install attempt. It
+	// fails, so an attempt would also make install_external_tool_modules exit.
+	attempts := os.join_path(base, 'install_attempts')
+	fake_vexe := os.join_path(base, 'fake_v')
+	os.write_file(fake_vexe, '#!/bin/sh\necho "\$*" >> ${os.quoted_path(attempts)}\nexit 1\n')!
+	os.chmod(fake_vexe, 0o755)!
+	previous_vmodules := os.getenv_opt('VMODULES')
+	previous_vexe := os.getenv_opt('VEXE')
+	previous_sandboxed := os.getenv_opt('VTEST_SANDBOXED_PACKAGING')
+	os.setenv('VMODULES', vmodules, true)
+	os.setenv('VEXE', fake_vexe, true)
+	os.unsetenv('VTEST_SANDBOXED_PACKAGING')
+	defer {
+		restore_environment('VMODULES', previous_vmodules)
+		restore_environment('VEXE', previous_vexe)
+		restore_environment('VTEST_SANDBOXED_PACKAGING', previous_sandboxed)
+		os.rmdir_all(base) or {}
+	}
+	// `markdown` is in none of the roots, but a `-path` replaces VMODULES, so installing it
+	// there would not help. The compiler reports the missing module instead.
+	install_external_tool_modules('vdoc', tool_source, ['-path', path_root])
+	assert !os.exists(attempts)
 }

@@ -3,6 +3,7 @@ module c
 import os
 import v.flat
 import v.gen.c.naming
+import v.pref
 import v.types
 
 struct PromotedStructInitField {
@@ -277,12 +278,14 @@ fn (mut g FlatGen) gen_struct_field_expr_for_field(value_id flat.NodeId, struct_
 			g.gen_c_static_fixed_array_initializer(value_id, fixed)
 			return
 		}
-		if g.gen_c_static_array_literal_initializer(value_id) {
+		if g.gen_c_static_array_literal_initializer(value_id, expected) {
 			return
 		}
 		value := g.a.node(value_id)
 		if value.kind in [.ident, .selector] {
-			constant := g.const_expr_to_string(value_id, []string{})
+			constant := g.global_scalar_static_initializer(value_id, expected) or {
+				g.const_expr_to_string(value_id, []string{})
+			}
 			if trimmed_space(constant).len > 0 {
 				g.write(constant)
 				return
@@ -720,6 +723,22 @@ fn (mut g FlatGen) gen_unset_struct_field_default(struct_name string, field_name
 		g.gen_default_value_for_type(clean_type)
 		return true
 	}
+	if fixed := array_fixed_type(clean_type) {
+		if fixed.len > 0 && fixed_array_elem_needs_runtime_header(fixed.elem_type) {
+			if has {
+				g.write(', ')
+			}
+			g.write('.${field_c_name} = {')
+			for idx in 0 .. fixed.len {
+				if idx > 0 {
+					g.write(', ')
+				}
+				g.gen_default_value_for_type(fixed.elem_type)
+			}
+			g.write('}')
+			return true
+		}
+	}
 	if g.field_needs_default_init(clean_type) {
 		if has {
 			g.write(', ')
@@ -966,7 +985,8 @@ fn (mut g FlatGen) gen_struct_init(id flat.NodeId) {
 				continue
 			}
 		}
-		if field.value.len > 0 && allowed_fields.len > 0 && field.value !in allowed_fields {
+		if field.value.len > 0 && allowed_fields.len > 0 && field.value !in allowed_fields
+			&& !g.struct_has_direct_named_field(lookup_name, field.value) {
 			promoted = g.promoted_struct_init_field(lookup_name, field.value) or { continue }
 		}
 		if has_field {
@@ -1332,7 +1352,7 @@ fn (mut g FlatGen) struct_init_has_fixed_array_field(node flat.Node, type_name s
 				// flat-literal path and emitted `.id = (u64[4]){...}`, which is a
 				// compound literal decaying to a pointer rather than an array
 				// initializer -- clang then initializes `id[0]` with it.
-				if field.has_default || g.field_needs_default_init(fixed.elem_type) {
+				if field.has_default || g.fixed_array_elem_needs_default_init(fixed.elem_type) {
 					return true
 				}
 			}
@@ -1412,7 +1432,8 @@ fn (mut g FlatGen) gen_struct_init_with_fixed_array_fields_impl(node flat.Node, 
 				continue
 			}
 		}
-		if field.value.len > 0 && allowed_fields.len > 0 && field.value !in allowed_fields {
+		if field.value.len > 0 && allowed_fields.len > 0 && field.value !in allowed_fields
+			&& !g.struct_has_direct_named_field(lookup_name, field.value) {
 			continue
 		}
 		value_id := g.a.child(field, 0)
@@ -1534,7 +1555,7 @@ fn (mut g FlatGen) gen_struct_init_with_fixed_array_fields_impl(node flat.Node, 
 				continue
 			}
 			if fixed := array_fixed_type(field.typ) {
-				if g.field_needs_default_init(fixed.elem_type) {
+				if g.fixed_array_elem_needs_default_init(fixed.elem_type) {
 					cfield := g.init_field_c_name(lookup_name, field.name)
 					for idx in 0 .. fixed.len {
 						g.write(' ${tmp}.${cfield}[${idx}] = ')
@@ -1914,7 +1935,11 @@ fn (mut g FlatGen) gen_heap_struct_init(node flat.Node) {
 	}
 	if clean_init_type is types.ArrayFixed && node.children_count == 0 {
 		initializer := g.empty_fixed_array_initializer_string(clean_init_type)
-		g.write('(${name}*)memdup(&(${name})${initializer}, sizeof(${name}))')
+		if alignment := g.global_fixed_array_pointer_alignment(clean_init_type) {
+			g.write('(${name}*)v3_aligned_memdup(&(${name})${initializer}, sizeof(${name}), ${alignment})')
+		} else {
+			g.write('(${name}*)memdup(&(${name})${initializer}, sizeof(${name}))')
+		}
 		return
 	}
 	// A bare generic heap literal (`&Vec4{..}`) carries no type args; when the
@@ -2631,6 +2656,22 @@ fn (mut g FlatGen) field_needs_default_init(typ types.Type) bool {
 	return false
 }
 
+// fixed_array_elem_needs_runtime_header reports whether the elements of a fixed
+// array field are maps, dynamic arrays or channels, which are unusable when zero
+// filled: they need their runtime headers.
+fn fixed_array_elem_needs_runtime_header(elem_type types.Type) bool {
+	clean_type := default_init_unalias_type(elem_type)
+	return clean_type is types.Map || clean_type is types.Array || clean_type is types.Channel
+}
+
+// fixed_array_elem_needs_default_init reports whether a struct literal must
+// initialize the elements of a fixed array field explicitly: elements that need
+// a runtime header, or structs with defaults of their own.
+fn (mut g FlatGen) fixed_array_elem_needs_default_init(elem_type types.Type) bool {
+	return fixed_array_elem_needs_runtime_header(elem_type)
+		|| g.field_needs_default_init(elem_type)
+}
+
 // struct_needs_default_init reports whether building `type_name` as a struct
 // literal would set any field that C's `{0}` would not: a field with an explicit
 // default (`x int = 5`), an omitted dynamic array/map, or a by-value struct field
@@ -2684,6 +2725,12 @@ fn (mut g FlatGen) struct_needs_default_init_inner(type_name string, mut visited
 		if clean_ftyp is types.Struct
 			&& g.struct_needs_default_init_inner(clean_ftyp.name, mut visited) {
 			found = true
+			continue
+		}
+		if fixed := array_fixed_type(clean_ftyp) {
+			if fixed_array_elem_needs_runtime_header(fixed.elem_type) {
+				found = true
+			}
 		}
 	}
 	return found
@@ -4835,6 +4882,16 @@ fn (g &FlatGen) struct_field_c_abi_fn_ptr_type(type_name string, field_name stri
 			}
 		}
 	}
+	if field_name.starts_with('@') {
+		owner := cgen_unalias_unwrap_all_pointers(g.tc.parse_type(type_name))
+		if owner is types.Struct && owner.name.starts_with('C.') {
+			for candidate in [field_name, field_name[1..]] {
+				if typ := g.tc.struct_field_c_abi_fn_ptr_type(owner.name, candidate) {
+					return typ
+				}
+			}
+		}
+	}
 	return none
 }
 
@@ -5134,12 +5191,18 @@ fn (g &FlatGen) promoted_struct_init_field(type_name string, field_name string) 
 	if owner.len == 0 {
 		return none
 	}
-	field_type := g.struct_field_type(owner, field_name) or { return none }
+	field_type := g.struct_field_type(owner, field_name) or {
+		if owner.starts_with('C.') && field_name.starts_with('@') {
+			g.struct_field_type(owner, field_name[1..]) or { return none }
+		} else {
+			return none
+		}
+	}
 	mut parts := []string{cap: path.len + 1}
 	for field in path {
 		parts << c_field_name(field.name)
 	}
-	parts << c_field_name(field_name)
+	parts << g.init_field_c_name(owner, field_name)
 	return PromotedStructInitField{
 		root:       path[0].name
 		root_type:  g.embedded_field_type_name(path[0])
@@ -5197,15 +5260,26 @@ fn (g &FlatGen) direct_embedded_field_for_selector(base_type types.Type, field_n
 }
 
 fn (g &FlatGen) embedded_field_path_for_promoted_field(type_name string, field_name string) ?[]types.StructField {
+	if path := g.embedded_field_path_for_promoted_field_inner(type_name, field_name, false) {
+		return path
+	}
+	if field_name.starts_with('@') && field_name.len > 1 {
+		return g.embedded_field_path_for_promoted_field_inner(type_name, field_name[1..], true)
+	}
+	return none
+}
+
+fn (g &FlatGen) embedded_field_path_for_promoted_field_inner(type_name string, field_name string, c_owner_only bool) ?[]types.StructField {
 	for field in g.struct_embedded_fields(type_name) {
 		embedded_type_name := g.embedded_field_type_name(field)
 		if embedded_type_name.len == 0 {
 			continue
 		}
-		if g.direct_struct_field_exists(embedded_type_name, field_name) {
+		if (!c_owner_only || embedded_type_name.starts_with('C.'))
+			&& g.direct_struct_field_exists(embedded_type_name, field_name) {
 			return [field]
 		}
-		if nested := g.embedded_field_path_for_promoted_field(embedded_type_name, field_name) {
+		if nested := g.embedded_field_path_for_promoted_field_inner(embedded_type_name, field_name, c_owner_only) {
 			mut path := [field]
 			path << nested
 			return path
@@ -5226,7 +5300,10 @@ fn (g &FlatGen) embedded_field_path_for_promoted_selector(base_type types.Type, 
 	if g.direct_struct_field_exists(type_name, field_name) {
 		return none
 	}
-	return g.embedded_field_path_for_promoted_field(type_name, field_name)
+	if path := g.embedded_field_path_for_promoted_field(type_name, field_name) {
+		return path
+	}
+	return none
 }
 
 // concrete_bare_struct_selector_name recovers the declaration identity of a bare
@@ -5920,7 +5997,7 @@ fn (g &FlatGen) skip_builtin_struct(name string) bool {
 			return true
 		}
 	}
-	return name in c_preamble_defined_structs
+	return name in c_preamble_defined_structs || g.cocoa_nsfont_class(name)
 }
 
 const c_system_header_struct_names = {
@@ -6655,7 +6732,7 @@ fn (mut g FlatGen) soa_companion_decls() {
 }
 
 fn (g &FlatGen) header_c_struct_needs_compat_typedef(name string) bool {
-	if !name.starts_with('C.') || name in c_preamble_defined_structs
+	if !name.starts_with('C.') || name in c_preamble_defined_structs || g.cocoa_nsfont_class(name)
 		|| name[2..] in c_system_header_struct_names || !c_struct_needs_typedef(name)
 		|| name in g.tc.c_typedef_structs || name[2..] in g.inlined_c_typedef_names
 		|| (g.cache_split && name[2..] in c_cache_system_header_struct_names) {
@@ -6668,6 +6745,42 @@ fn (g &FlatGen) header_c_struct_needs_compat_typedef(name string) bool {
 		return info.file.ends_with('.c.v') || c_source_looks_header_backed(info.file)
 	}
 	return false
+}
+
+fn cocoa_nsfont_framework_include(arg string) bool {
+	clean := arg.trim_space()
+	if clean.len < 3 || !((clean[0] == `<` && clean[clean.len - 1] == `>`)
+		|| (clean[0] == `"` && clean[clean.len - 1] == `"`)) {
+		return false
+	}
+	path := clean[1..clean.len - 1]
+	return path in ['Cocoa/Cocoa.h', 'AppKit/AppKit.h', 'AppKit/NSFont.h']
+}
+
+fn (g &FlatGen) cocoa_nsfont_class(name string) bool {
+	if name != 'C.NSFont' || (g.target.os != 'macos' && !g.output_cross_c) {
+		return false
+	}
+	if name !in g.struct_decl_infos {
+		return false
+	}
+	mut directives := []string{}
+	for preinclude in g.preinclude_directives {
+		directives << preinclude
+	}
+	directives << g.ordered_c_directives(false)
+	target := if g.output_cross_c {
+		pref.target_from('macos', g.target.arch) or { g.target }
+	} else {
+		g.target
+	}
+	native_language := if isnil(g.a) {
+		'c'
+	} else {
+		cache_native_inputs_language(g.a, g.compiler_vroot, g.c_flags, g.c99_mode, g.ccompiler, target)
+	}
+	return c_header_text_has_cocoa_nsfont_include_for_target(directives.join('\n'), g.c_flags,
+		g.c99_mode, target, g.compiler_vroot, g.struct_decl_infos[name].file, native_language, g.ccompiler)
 }
 
 fn (g &FlatGen) soa_companion_name(struct_name string) string {

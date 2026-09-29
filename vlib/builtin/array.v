@@ -1520,15 +1520,22 @@ pub fn (b []u8) hex() string {
 	return unsafe { data_to_hex_string(b.data, b.len) }
 }
 
-// copy copies the `src` byte array elements to the `dst` byte array.
-// The number of the elements copied is the minimum of the length of both arrays.
-// Returns the number of elements copied.
-// NOTE: This is not an `array` method. It is a function that takes two arrays of bytes.
+// copy copies elements from `src` to `dst`, like Go's `copy`, and returns the number
+// of elements copied, which is the minimum of the lengths of both arguments.
+// `dst` can be a dynamic array, a fixed size array, or a slice of either. The elements
+// are written in place, so `copy(mut fixed[2..], src)` updates `fixed` itself.
+// `src` can be a dynamic array, a fixed size array, a slice of either, or a string
+// when `dst` holds bytes. Both must have the same element type. They may overlap.
+// With `-d ownership`, elements that need destruction are cloned into `dst`, and the
+// elements they replace are dropped.
+// Example: mut a := [3]int{}; n := copy(mut a, [1, 2, 3, 4]); assert n == 3; assert a == [1, 2, 3]!
+// NOTE: This is not an `array` method. The compiler accepts any of the argument types
+// above; the `[]u8` parameters here only describe the byte case.
 // See also: `arrays.copy`.
 pub fn copy(mut dst []u8, src []u8) int {
 	min := if dst.len < src.len { dst.len } else { src.len }
 	if min > 0 {
-		unsafe { vmemmove(dst.data, src.data, min) }
+		unsafe { vmemmove(dst.data, src.data, isize(min) * isize(dst.element_size)) }
 	}
 	return min
 }

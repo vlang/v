@@ -1115,6 +1115,9 @@ f2 := 456e+2 // 45600
 
 ### Arrays
 
+Returning a new array through helper calls preserves each helper's parameter scope.
+
+
 An array is a collection of data elements of the same type. An array literal is a
 list of expressions surrounded by square brackets. An individual element can be
 accessed using an *index* expression. Indexing starts from `0`.
@@ -1654,6 +1657,24 @@ println(typeof(anums).name) // => []int
 Note that slicing will cause the data of the fixed size array to be copied to
 the newly created ordinary array.
 
+To copy elements into an existing array instead, use the builtin `copy` function.
+Like Go's `copy`, it copies as many elements as both arguments have, returns that
+number, and handles overlapping arguments. The destination can be an ordinary array,
+a fixed size array, or a slice of either, and is updated in place. The source can
+also be a string, when the destination holds bytes:
+
+```v
+items := [1, 2, 3, 4, 5]
+mut fixed := [4]int{}
+println(copy(mut fixed, items)) // => 4
+println(fixed) // => [1, 2, 3, 4]
+copy(mut fixed[2..], [9, 9, 9])
+println(fixed) // => [1, 2, 9, 9]
+mut buf := []u8{len: 3}
+copy(mut buf, 'hello')
+println(buf.bytestr()) // => hel
+```
+
 ### Maps
 
 Methods and references on map iteration values address the stored element, including nested maps.
@@ -1943,6 +1964,10 @@ fn main() {
 }
 ```
 
+A nested module such as `app.html` can import a distinct module named `net.html`, with or without
+an alias. Their full module paths determine their identities.
+A module cannot import its own full path, even when the project has no `v.mod` file.
+
 You cannot alias an imported function or type.
 However, you _can_ redeclare a type.
 
@@ -2179,6 +2204,9 @@ match mut x {
 ```
 
 ### Match
+
+A match expression can return multiple values. A branch ending with comma-separated values can
+be combined with a branch ending in a call that returns the same types.
 
 Conditions that compare different nested fields remain distinct match cases, even when
 their final field names and comparison operators are the same.
@@ -2482,6 +2510,22 @@ for key, value in m {
 	//         two -> 2
 }
 ```
+
+A mutable map iteration value still has the map's element type. Assigning it to a map entry copies
+that element, including when its struct type comes from another module.
+When iterating a reference to a map (`for key, value in &m`), values with ordinary element types
+are pointers to their entries. Assigning one to another variable preserves its reference to the
+same entry. If the map element is already a pointer or an optional, the loop value keeps that
+element type instead.
+A pointer to a nested array or map remains a reference container when iterated again,
+including through parentheses or a closure capture.
+Fixed-array map values also refer to their entry storage, so changes through the reference update
+the map value.
+Aliases of array and map pointers preserve these reference semantics, including pointer rebinding.
+Parentheses around a mutable map container do not change whether assigning the loop value updates
+its entry.
+Mutable map parameters, including explicit pointer parameters (`mut m &map[K]V`),
+keep ordinary value iteration. A mutable loop value writes through to the map entry.
 
 Either key or value can be ignored by using a single underscore as the identifier.
 
@@ -3323,6 +3367,9 @@ are a function of their arguments only, and their evaluation has no side effects
 (unless the function uses I/O).
 
 Function arguments are immutable by default, even when [references](#references) are passed.
+An array returned from an immutable argument remains immutable, including when returned through
+a local function value, a narrowed `if` or `match` branch, or after an exiting `if` guard.
+Use `.clone()` for a mutable copy.
 
 > [!NOTE]
 > However, V is not a purely functional language.
@@ -3468,6 +3515,9 @@ fn f(cb fn (a int) int) int {
 println(f(|x| x + 4)) // prints 14
 ```
 
+Function values passed to generic methods are checked by their parameter and return types.
+Parameter names and whitespace do not affect function type compatibility.
+
 ### Closures
 
 Callbacks in specialized generic functions retain the functions they call, including imported
@@ -3523,6 +3573,9 @@ println(c()) // 2
 println(c()) // 3
 ```
 
+A callback's captured values remain available while the callback is stored in a
+struct field, including when that field is assigned through a pointer to the struct.
+
 If you need the value to be modified outside the function, use a reference.
 Capturing a `mut` parameter preserves its reference to the caller's value, including when the
 closure passes it to a spawned function.
@@ -3573,6 +3626,11 @@ The only guarantee is that 600 (from the body of `f`) will be printed after all 
 This *may* change in V 1.0 .
 
 ## References
+
+Pointers to concrete values can be passed to optional interface parameters when their types
+implement the interface. The option contains an interface value referring to the original object.
+Additional pointer layers, such as `&&Record`, must be dereferenced before passing the object.
+Pointers to interface values, such as `&Named`, must also be dereferenced first.
 
 Returning a stored pointer field returns that pointer value. It does not borrow the storage of
 the containing struct, unlike taking the address of one of its fields.
@@ -3674,6 +3732,8 @@ println(world)
 Constants are declared with `const`. They can only be defined
 at the module level (outside of functions).
 Global variables can infer their types from constants, including constants initialized by functions.
+Global pointers to fixed-array literals are initialized at startup, including nested elements
+computed by function calls.
 
 Constant values can never be changed. You can also declare a single
 constant separately:
@@ -3802,6 +3862,9 @@ See also [String interpolation](#string-interpolation).
 <a id='custom-print-of-types'></a>
 
 ### Printing custom types
+
+Automatic string conversion also works for values whose local name was used for a reference in
+an earlier scope.
 
 If you want to define a custom print value for your type, simply define a
 `str() string` method:
@@ -4091,11 +4154,20 @@ println(int(color)) // prints 1
 ```
 
 The enum type can be any integer type, but can be omitted, if it is `int`: `enum Color {`.
+When a struct field expects an enum, its value can use the short `.field` form, including
+inside parentheses in a collapsed struct call argument.
 
 Enum match must be exhaustive or have an `else` branch.
 This ensures that if a new enum field is added, it's handled everywhere in the code.
 
 Enum fields can re-use reserved keywords:
+
+The `@` escape is also accepted in qualified and shorthand member references, including
+comparisons, assignments, struct defaults, `match` branches, and constant integer expressions.
+These references also work with the eval backend, with shorthand on either side of a comparison.
+Enum initializers can refer to earlier keyword members, for example `next = int(Kind.@struct) + 1`.
+Exact declarations take precedence: if both `none` and `@none` are declared, they retain distinct
+values and match coverage.
 
 ```v
 enum Color {
@@ -4328,6 +4400,8 @@ fn main() {
 #### Implement an interface
 
 A type implements an interface by implementing its methods and fields.
+Equivalent fixed array lengths in method signatures may use different constant expressions.
+Callback userdata parameters may use `voidptr` or a concrete pointer type.
 An interface field's default value may be a pointer to a type that implements the interface.
 
 An interface can have a `mut:` section. Implementing types will need
@@ -4869,6 +4943,9 @@ x := read() or {
 }
 ```
 
+A local `err` declared in a nested block shadows the implicit `or` error variable, including in
+result values.
+
 #### Options/results when returning multiple values
 
 Only one `Option` or `Result` is allowed to be returned from a function. It is
@@ -4998,8 +5075,15 @@ fn main() {
 
 ### Generics
 
+Omitted fields of a generic struct use their declared defaults, including in nested structs.
+This also applies through concrete generic aliases and imported structs; defaults use the
+imports visible in the declaring file.
+Fixed array fields initialize each element with its specialized generic defaults.
+
 Generic types brought into scope by a selective import retain their declaring module when
 passed to generic functions and methods in other modules.
+
+Methods called on a generic factory result retain their dependencies in the compiled program.
 
 ```v wip
 
@@ -5035,6 +5119,10 @@ posts_repo := new_repo[Post](db) // returns Repo[Post]
 user := users_repo.find_by_id(1)? // find_by_id[User]
 post := posts_repo.find_by_id(1)? // find_by_id[Post]
 ```
+
+A generic method retains its receiver type when called inside a function returning multiple
+values, including a Result tuple. The enclosing return type does not replace receiver arguments.
+This also applies when a value from a Result tuple is returned as an interface.
 
 Generic calls keep the identity of caller types even when an imported module declares a type
 with the same short name.
@@ -5188,6 +5276,12 @@ fn main() {
 }
 ```
 
+If a spawned thread's handle is discarded, including inside a discarded array or struct,
+V detaches the thread. Keep its handle and call `wait()` when the result or completion matters.
+The detached thread releases an owned return value after its function finishes.
+If the return value is a thread handle, it joins that thread; a returned closure releases
+its captured context.
+
 > [!NOTE]
 > Threads rely on the machine's CPU (number of cores/threads).
 > Be aware that OS threads spawned with `spawn`
@@ -5234,6 +5328,9 @@ fn main() {
 	println('Results: ${h1}, ${h2}') //   prints `Results: 16.9, 54.1`
 }
 ```
+
+Discarding a spawned thread's handle, including through `dump(spawn ...)`, detaches the thread.
+Keep the handle when you need to call `.wait()`.
 
 If there is a large number of tasks, it might be easier to manage them
 using an array of threads.
@@ -6438,6 +6535,13 @@ It's recommended to set up your editor, so that `v fmt -w` runs on every save.
 A vfmt run is usually pretty cheap (takes <30ms).
 
 Always run `v fmt -w file.v` before pushing your code.
+
+The formatter checks syntax without requiring the code to pass semantic checks.
+For example, it preserves closure captures and loop binder mutability while you edit
+incomplete code.
+
+Backend options before `fmt`, such as `v -b arm64 fmt file.v`, or in `VFLAGS` are honored.
+The `arm64` and `eval` backends use the same source formatting rules as `c`.
 
 A function, loop, `if` branch or `match` branch whose body is a single statement
 stays on one line when you write it that way and it fits in 100 columns:
@@ -8033,6 +8137,19 @@ unsafe {
 assert *p == `i`
 ```
 
+Unlike in C, fixed arrays do not decay to pointers. For pointer arithmetic over a fixed array,
+take the address of an element (or cast the array's address) inside `unsafe`.
+Subtracting two pointers gives the distance in elements:
+
+```v
+values := [3, 5, 7]!
+p := unsafe { &values[0] + 2 }
+assert unsafe { *p } == 7
+assert unsafe { p - &values[0] } == 2
+q := unsafe { &int(&values) + 1 }
+assert unsafe { *q } == 5
+```
+
 Best practice is to avoid putting memory-safe expressions inside an `unsafe` block,
 so that the reason for using `unsafe` is as clear as possible. Generally any code
 you think is memory-safe should not be inside an `unsafe` block, so the compiler
@@ -8286,6 +8403,7 @@ The `@[aligned]` attribute can be applied to a structure or union to specify a m
 the default alignment. Use `@[packed]` if you want to *decrease* it. The alignment of any struct
 or union, should be at least a perfect multiple of the lowest common multiple of the alignments of
 all of the members of the struct or union.
+Heap-allocated fixed arrays of aligned structs, including fixed-array aliases, keep that alignment.
 
 Example:
 ```v
@@ -8997,11 +9115,26 @@ Parameter names in `C.` function declarations may start with uppercase letters, 
 The lowercase naming rule still applies to parameters of ordinary V functions.
 
 
+An escaped C field name such as `@type` also matches a binding declared with the plain name `type`.
+An exact escaped V field takes precedence, including fields promoted from embedded structs.
+The C keyword fallback follows the C field's owning embed for both its type and its storage.
+
 **C. struct redeclarations**
 For example, if a struct has 3 fields on the C side, but you want to only
 refer to 1 of them, you can declare it like this:
 
 **Example of C struct redeclaration**
+
+On macOS, including `Cocoa/Cocoa.h`, `AppKit/AppKit.h`, or `AppKit/NSFont.h` makes an opaque
+`C.NSFont` declaration refer to Cocoa's Objective-C class. Header availability checks and nested
+wrapper-header lookup use the compiler's include search paths, including its selected SDK.
+Conditional guards use the selected compiler's predefined macros. Headers that shadow framework
+names are inspected for their actual declarations.
+Wrapper headers can declare `@class NSFont` or `@compatibility_alias NSFont ...` directly.
+Function-like macros are expanded in header names, conditional guards, and class declarations.
+Classes and aliases loaded by Clang's `-include-pch` are also recognized. Portable C generation uses
+the macOS target ABI for basic predefined macros when its target compiler is unavailable.
+
 ```v oksyntax
 struct C.NameOfTheStruct {
 	a_field int
@@ -9081,8 +9214,27 @@ functions.
 
 ```v
 #flag freebsd -I/usr/local/include -L/usr/local/lib
-#flag -lsqlite3
-#include "sqlite3.h"
+
+// Use the system SQLite when there is one; otherwise build the amalgamation that
+// `v vlib/db/sqlite/install_thirdparty_sqlite.vsh` downloads, like `db.sqlite` does.
+$if $pkgconfig ( 'sqlite3' ) {
+	#pkgconfig sqlite3
+} $else $if darwin {
+	#flag -lsqlite3
+} $else {
+	#flag -I @VEXEROOT/thirdparty/sqlite
+	$if tinyc {
+		#flag -DSQLITE_DISABLE_INTRINSIC
+	}
+	$if windows {
+		#flag @VEXEROOT/thirdparty/sqlite/sqlite3.o
+	} $else {
+		#flag @VEXEROOT/thirdparty/sqlite/sqlite3.c
+		#flag -lm
+	}
+}
+
+#include "sqlite3.h" # Run: v vlib/db/sqlite/install_thirdparty_sqlite.vsh
 // See also the example from https://www.sqlite.org/quickstart.html
 pub struct C.sqlite3 {
 }
@@ -9307,6 +9459,11 @@ Another example, demonstrating passing structs from C to V and back again:
 
 ### C types
 
+V methods declared on a C struct can be called through imported fields and local copies of that
+struct. The method retains the visibility of its declaring V module.
+Calls see methods from directly imported modules by their full module path.
+If a V alias of that C struct declares the same method, calls on the alias use its own method.
+
 Ordinary zero terminated C strings can be converted to V strings with
 `unsafe { &char(cstring).vstring() }` or if you know their length already with
 `unsafe { &char(cstring).vstring_with_len(len) }`.
@@ -9397,6 +9554,9 @@ fn foo() {
 }
 ```
 
+The same `@[export]` attribute exposes a `__global` variable from a shared library,
+including builds that hide other symbols by default.
+
 When compiling a Windows DLL with `-shared`, V generates a default `DllMain`
 that calls `_vinit_caller()` on `DLL_PROCESS_ATTACH` and `_vcleanup_caller()`
 on `DLL_PROCESS_DETACH`.
@@ -9431,6 +9591,29 @@ In the example above, `C.DWORD(1)` is `DLL_PROCESS_ATTACH` and `C.DWORD(0)`
 is `DLL_PROCESS_DETACH`.
 
 ### Translating C to V
+
+Files marked `@[translated]` retain C storage rules: global declarations and writes through
+pointers do not require additional flags or `unsafe` blocks. These rules apply only to those files.
+Pointer-returning calls can also receive field assignments.
+
+Files marked `@[translated]` retain C scalar conversions between numbers, enums, and booleans.
+These scalars can be mixed in arithmetic expressions and compound assignments. Integral scalars
+can be used in bitwise expressions. Scalar values and pointers, including function pointers,
+can serve as conditions. Ordinary V files retain V's type and condition checks, even when
+compiled together with translated files.
+Conversions to translated `int` use the target C `int` width at assignments, calls, and returns.
+Mixed numeric compound assignments use C arithmetic conversions before storing their result.
+This includes `rune` as an unsigned 32-bit integer and enums with their declared backing types.
+
+Files marked `@[translated] module ...` also accept expression conditions generated by C2V,
+including nested `if` expressions and subtraction of a negative operand. Postfix pointer
+updates followed by a dereference assignment on the next line end the current statement,
+including compound assignments.
+Other arithmetic continues across the newline. A translated `sizeof` recognizes constant
+operands even when their declarations appear later in the module.
+Only source files selected for the target and compile-time defines contribute declarations.
+Lowercase type aliases declared in the same file remain type operands of `sizeof`.
+Translated local C variables can be updated without an explicit `mut` declaration.
 
 V can translate your C code to human readable V code, and generating V wrappers
 on top of C libraries.
@@ -9539,9 +9722,9 @@ a := 100
 b := 20
 mut c := 0
 asm amd64 {
-    mov eax, a
-    add eax, b
-    mov c, eax
+    mov rax, a
+    add rax, b
+    mov c, rax
     ; =r (c) as c // output
     ; r (a) as a // input
       r (b) as b
@@ -9616,6 +9799,14 @@ when it changes or observes condition flags. Raw templates leave the compiler-sp
 template performs address arithmetic; use `m` when the template needs the compiler to format a
 memory operand. Keep the pointer and length constraints read-write when the template modifies them.
 
+SIMD kernels use the same named operands. A pointer to a fixed array, such as `&[16]u8` or
+`&[4]u32`, can use an `r` constraint and an explicit byte offset; an `m` constraint is useful when
+the compiler should choose the memory form. Keep alignment requirements in the kernel contract.
+List every vector register that the template overwrites, including `xmm6` through `xmm15` on
+Win64: GCC and Clang use those registers as nonvolatile and can preserve them when they are listed
+as clobbers. MSVC x64 does not support GNU inline assembly, so GNU raw fixtures use `!msvc` guards.
+Instructions such as `pclmulqdq` and ARM64 `pmull` are optional CPU features; tests that execute
+them must check the host feature before entering the raw block.
 `asm goto` emits GNU `asm goto` and is available only with the C backend. Its fifth semicolon
 section lists the V labels that the assembly may branch to. Use the label name in a structured
 branch instruction; a `raw` template uses GNU's `%l[label]` form. Targets cannot enter or leave a

@@ -67,3 +67,9 @@ fn test_file_function_names_do_not_collide_with_libc() {
 	assert c_name('C.mktemp') == 'mktemp'
 	assert c_name('C.truncate') == 'truncate'
 }
+
+fn test_gnu_predefined_macro_names_are_escaped() {
+	// `gcc -std=gnu11` and clang predefine `linux` and `unix` as `1` on Linux.
+	assert c_name('linux') == 'v_linux'
+	assert c_name('unix') == 'v_unix'
+}

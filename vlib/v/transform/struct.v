@@ -71,12 +71,19 @@ fn (mut t Transformer) transform_struct_fields(id flat.NodeId, node flat.Node) f
 		if child.kind == .field_init && child.children_count > 0 {
 			val_id := t.a.child(&child, 0)
 			val_node := t.a.nodes[int(val_id)]
-			field_name := if child.value.len > 0 {
+			mut field_name := if child.value.len > 0 {
 				child.value
 			} else if i < info.fields.len {
 				info.fields[i].name
 			} else {
 				''
+			}
+			if child.value.starts_with('@') && info.name.starts_with('C.')
+				&& !info.fields.any(it.name == child.value) {
+				plain_name := child.value[1..]
+				if info.fields.any(it.name == plain_name) {
+					field_name = plain_name
+				}
 			}
 			mut target_field_name := field_name
 			mut field_type := if t.lean_struct_init_fields {
@@ -108,7 +115,17 @@ fn (mut t Transformer) transform_struct_fields(id flat.NodeId, node flat.Node) f
 						promoted_key = promoted_field_path_key(path)
 						promoted_paths[promoted_key] = path
 						embedded_owner := path[path.len - 1].typ
-						field_type = t.lookup_struct_field_raw_type(embedded_owner, field_name) or {
+						if field_name.starts_with('@') {
+							if embedded_info := t.lookup_struct_info(embedded_owner) {
+								plain_name := field_name[1..]
+								if embedded_info.name.starts_with('C.')
+									&& !embedded_info.fields.any(it.name == field_name)
+									&& embedded_info.fields.any(it.name == plain_name) {
+									target_field_name = plain_name
+								}
+							}
+						}
+						field_type = t.lookup_struct_field_raw_type(embedded_owner, target_field_name) or {
 							t.checker_struct_field_type_name(node.value, field_name) or { '' }
 						}
 					}
@@ -744,9 +761,38 @@ fn (mut t Transformer) specialize_struct_default_expr(struct_type string, defaul
 	return clone_id
 }
 
-// add_missing_struct_defaults checks if any fields with default values are missing
-// from the struct initialization. This is a hook point for future default-fill logic.
-// Currently returns the node unchanged because StructInfo does not yet store default values.
+// nested_generic_defaults_need_lowering finds omitted value fields whose generic defaults
+// need specialization before the backend emits the enclosing struct's default value.
+fn (t &Transformer) nested_generic_defaults_need_lowering(type_name string, mut visited map[string]bool) bool {
+	if type_name.len == 0 || type_name[0] in [`&`, `?`, `!`] || type_name.starts_with('map[') || type_name.starts_with('[]') || type_name in visited {
+		return false
+	}
+	normalized := t.normalize_type_alias(type_name)
+	if normalized.len == 0 || normalized[0] in [`&`, `?`, `!`] || normalized.starts_with('map[') || normalized.starts_with('[]') {
+		return false
+	}
+	if t.is_fixed_array_type(normalized) {
+		return t.nested_generic_defaults_need_lowering(fixed_array_elem_type(normalized), mut visited)
+	}
+	if normalized in visited {
+		return false
+	}
+	visited[type_name] = true
+	visited[normalized] = true
+	info := t.lookup_struct_info(normalized) or { return false }
+	_, args, generic := generic_app_parts(normalized)
+	for field in info.fields {
+		if int(field.default_expr) >= 0 {
+			if generic && args.len > 0 { return true }
+			continue
+		}
+		field_type := t.lookup_struct_field_type(normalized, field.name) or { field.typ }
+		if t.nested_generic_defaults_need_lowering(field_type, mut visited) { return true }
+	}
+	return false
+}
+
+// add_missing_struct_defaults lowers omitted defaults, including nested generic fields.
 fn (mut t Transformer) add_missing_struct_defaults(id flat.NodeId, node flat.Node) flat.NodeId {
 	if node.value.len == 0 {
 		return id
@@ -764,14 +810,34 @@ fn (mut t Transformer) add_missing_struct_defaults(id flat.NodeId, node flat.Nod
 		}
 		field_ids << child_id
 	}
-	mut has_missing_default := false
+	mut missing_defaults := map[string]flat.NodeId{}
+	resolved_node_type := t.normalize_type_alias(node.value)
+	_, generic_args, generic_init := generic_app_parts(resolved_node_type)
+	mut lower_generic_defaults := generic_init && generic_args.len > 0
 	for field in info.fields {
-		if field.name !in provided && int(field.default_expr) >= 0 {
-			has_missing_default = true
-			break
+		if field.name in provided { continue }
+		if int(field.default_expr) >= 0 {
+			missing_defaults[field.name] = field.default_expr
+			continue
+		}
+		field_type := t.lookup_struct_field_type(node.value, field.name) or { field.typ }
+		mut visited := map[string]bool{}
+		if t.nested_generic_defaults_need_lowering(field_type, mut visited) {
+			normalized_field_type := t.normalize_type_alias(field_type)
+			missing_defaults[field.name] = if t.is_fixed_array_type(normalized_field_type) {
+				t.make_fixed_array_init(normalized_field_type)
+			} else {
+				t.a.add_node(flat.Node{
+					kind:  .struct_init
+					value: field_type
+					typ:   field_type
+					pos:   node.pos
+				})
+			}
+			lower_generic_defaults = true
 		}
 	}
-	if !has_missing_default {
+	if missing_defaults.len == 0 {
 		for stmt in prelude {
 			t.pending_stmts << stmt
 		}
@@ -783,6 +849,7 @@ fn (mut t Transformer) add_missing_struct_defaults(id flat.NodeId, node flat.Nod
 		return id
 	}
 	old_module := t.cur_module
+	old_file := t.cur_file
 	// Imported defaults must retain their declaration module while resolving consts, globals,
 	// and function names. Cgen can emit ordinary defaults itself, but callable literals need
 	// transform-time lowering into named functions before cgen sees them.
@@ -801,7 +868,7 @@ fn (mut t Transformer) add_missing_struct_defaults(id flat.NodeId, node flat.Nod
 			}
 		}
 	}
-	if imported_decl && !has_missing_callable_default {
+	if imported_decl && !has_missing_callable_default && !lower_generic_defaults {
 		for stmt in prelude {
 			t.pending_stmts << stmt
 		}
@@ -824,13 +891,20 @@ fn (mut t Transformer) add_missing_struct_defaults(id flat.NodeId, node flat.Nod
 	t.reset_var_types()
 	mut added := false
 	for field in info.fields {
-		if field.name in provided || int(field.default_expr) < 0 {
+		if field.name !in missing_defaults {
 			continue
 		}
+		t.cur_file = old_file
 		field_type := t.lookup_struct_field_type(node.value, field.name) or { field.typ }
-		default_id := t.specialize_struct_default_expr(node.value, field.default_expr)
+		default_id := t.specialize_struct_default_expr(resolved_node_type, missing_defaults[field.name])
 		default_node := t.a.nodes[int(default_id)]
-		if imported_decl && default_node.kind !in [.fn_literal, .lambda_expr] {
+		if source_file := t.a.source_files[default_node.pos.id] {
+			t.cur_file = source_file.name
+		}
+		if imported_decl && !lower_generic_defaults && default_node.kind !in [
+			.fn_literal,
+			.lambda_expr,
+		] {
 			continue
 		}
 		enum_field_type := t.enum_type_name_for_expected(field_type, info.module)
@@ -866,6 +940,7 @@ fn (mut t Transformer) add_missing_struct_defaults(id flat.NodeId, node flat.Nod
 	t.orm_initialized_fields = saved_orm_initialized_fields.clone()
 	t.sql_query_data_aliases = saved_sql_query_data_aliases.clone()
 	t.cur_module = old_module
+	t.cur_file = old_file
 	if !added {
 		for stmt in prelude {
 			t.pending_stmts << stmt

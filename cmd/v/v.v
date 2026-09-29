@@ -9,6 +9,7 @@ import v.cmdexec
 import v.driver
 import v.help
 import v.pref
+import v.util
 
 const v_version = '0.5.2'
 const v1_fallback_binary = 'v1_fallback'
@@ -351,6 +352,10 @@ fn external_tool_runtime_args(command string, prefix_args []string, command_args
 	if command in ['build-examples', 'build-tools', 'self', 'test', 'test-self'] {
 		tool_args << prefix_args
 	}
+	if command == 'fmt' {
+		backend_args, _ := split_tool_backend_args(prefix_args)
+		tool_args << backend_args
+	}
 	tool_args << command_args
 	return tool_args
 }
@@ -382,6 +387,9 @@ fn launch_external_tool(vroot string, tool_name string, tool_source string, pref
 				}
 				exec_cached_tool(entry.binary, tool_args)
 			}
+			// Install what the tool needs from outside vlib first: this can make a recorded
+			// `cannot import module` failure below stale, since it stamps the missing module.
+			install_external_tool_modules(tool_name, tool_source, compile_args)
 			if recorded := unbuildable_tool_failure(entry) {
 				// Rebuilding a tool that is already known to not compile would cost seconds on
 				// every single invocation, so report the recorded failure straight away instead.
@@ -398,6 +406,7 @@ fn launch_external_tool(vroot string, tool_name string, tool_source string, pref
 			exec_cached_tool(entry.binary, tool_args)
 		}
 	}
+	install_external_tool_modules(tool_name, tool_source, compile_args)
 	mut driver_args := []string{}
 	driver_args << compile_args
 	driver_args << ['run', tool_source]
@@ -405,11 +414,37 @@ fn launch_external_tool(vroot string, tool_name string, tool_source string, pref
 	driver.run(driver_args)
 }
 
+// install_external_tool_modules installs the modules from outside vlib that a tool imports,
+// like `markdown` for `vdoc`, right before the tool is compiled. A fresh V installation does
+// not have them yet, and compiling the tool without them fails with a confusing
+// `cannot import module` error. Sandboxed packaging has no network access, and must provide
+// such modules itself, just like it does for `v build-tools`.
+fn install_external_tool_modules(tool_name string, tool_source string, compile_args []string) {
+	if os.getenv('VTEST_SANDBOXED_PACKAGING') != '' {
+		return
+	}
+	// A `-path` replaces the default module roots, including VMODULES, where modules are
+	// installed. So a build with a `-path` is left to the compiler, which reports a module
+	// that is really missing.
+	if '-path' in compile_args {
+		return
+	}
+	util.ensure_modules_for_tool_are_installed(tool_name, tool_source, tool_cache_is_verbose()) or {
+		eprintln(err.msg())
+		exit(1)
+	}
+}
+
 // external_tool_compile_args applies launcher-only build policy to a `cmd/tools/` helper.
 // Diagnostic tools used to be built this way by `util.launch_tool`: keep them GC-free so
 // they can start even when libgc cannot allocate executable pages or cannot be loaded.
 fn external_tool_compile_args(tool_name string, prefix_args []string) []string {
 	mut compile_args := clean_compiler_selection_flags(prefix_args)
+	if tool_name == 'vfmt' {
+		// Backend options select formatting rules, not the formatter executable's target.
+		_, native_args := split_tool_backend_args(compile_args)
+		compile_args = external_tool_args_without_target(native_args)
+	}
 	if tool_name in ['vself', 'vup', 'vdoctor', 'vsymlink'] {
 		compile_args = external_tool_args_without_gc(compile_args)
 		if '-g' !in compile_args {
@@ -418,6 +453,46 @@ fn external_tool_compile_args(tool_name string, prefix_args []string) []string {
 		compile_args << ['-gc', 'none']
 	}
 	return compile_args
+}
+
+fn external_tool_args_without_target(args []string) []string {
+	mut result := []string{cap: args.len}
+	mut skip_target_value := false
+	for arg in args {
+		if skip_target_value {
+			skip_target_value = false
+			continue
+		}
+		if arg in ['-os', '-arch'] {
+			skip_target_value = true
+			continue
+		}
+		if arg in ['-cross'] || arg.starts_with('-os=') || arg.starts_with('-arch=') {
+			continue
+		}
+		result << arg
+	}
+	return result
+}
+
+fn split_tool_backend_args(args []string) ([]string, []string) {
+	mut backend_args := []string{}
+	mut other_args := []string{}
+	mut backend_value_follows := false
+	for arg in args {
+		if backend_value_follows {
+			backend_args << arg
+			backend_value_follows = false
+		} else if arg in ['-b', '-backend'] {
+			backend_args << arg
+			backend_value_follows = true
+		} else if arg.starts_with('-b=') || arg.starts_with('-backend=') {
+			backend_args << arg
+		} else {
+			other_args << arg
+		}
+	}
+	return backend_args, other_args
 }
 
 fn external_tool_args_without_gc(args []string) []string {
