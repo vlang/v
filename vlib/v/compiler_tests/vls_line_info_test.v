@@ -3635,6 +3635,12 @@ fn (b Box[T]) twice() string {
 	return again() + again()
 }
 
+type Shown = Plain
+
+fn (s Shown) describe() string {
+	return 'shown'
+}
+
 fn main() {
 	p := Plain{
 		name: 'p'
@@ -3646,6 +3652,10 @@ fn main() {
 	box_label := b.label
 	println(plain_label() + box_label() + b.twice())
 	println(p.label() + p.describe() + b.label())
+	plain_describe := p.describe
+	shown := Shown(p)
+	shown_describe := shown.describe
+	println(plain_describe() + shown.describe() + shown_describe())
 }
 "
 
@@ -3669,6 +3679,24 @@ fn test_a_method_named_without_a_call_is_the_method() {
 		assert method_value(code, '\tplain_label := p.label', 'label', 0) == plain
 		assert method_value(code, '\tbox_label := b.label', 'label', 0) == boxed
 		assert method_value(code, '\tagain := b.label', 'label', 0) == boxed
+	}
+}
+
+fn test_a_method_named_without_a_call_is_the_one_its_call_is() {
+	// A method promoted from an embedded struct, `p.describe`, and the own method
+	// of an alias of that struct, `shown.describe`: without a call, the method
+	// that the call is, not the one of the aliased struct.
+	for code in ['hv^', 'gd^'] {
+		promoted := method_value(code, '\tprintln(p.label() + p.describe() + b.label())',
+			'describe', 0)
+		shown := method_value(code, '\tprintln(plain_describe() + shown.describe() + shown_describe())',
+			'describe', 0)
+		assert promoted != '' && shown != ''
+		if code == 'gd^' {
+			assert promoted != shown
+		}
+		assert method_value(code, '\tplain_describe := p.describe', 'describe', 0) == promoted
+		assert method_value(code, '\tshown_describe := shown.describe', 'describe', 0) == shown
 	}
 }
 

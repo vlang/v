@@ -173,6 +173,15 @@ fn (tc &TypeChecker) vls_method_target(receiver_id flat.NodeId, method string) ?
 	if constrained := tc.vls_constrained_type(receiver_id, receiver_type) {
 		receiver_type = constrained
 	}
+	// A method of an alias comes before the ones of the type it names, as in a
+	// call: `a.describe` with `fn (a Alias) describe()`.
+	alias_receiver := unwrap_all_pointers(receiver_type)
+	if alias_receiver is Alias {
+		alias_method := '${alias_receiver.name}.${method}'
+		if alias_method in tc.fn_type_files {
+			return alias_method
+		}
+	}
 	owner := tc.vls_member_owner(receiver_type)?
 	name := '${owner}.${method}'
 	if name in tc.fn_type_files || tc.vls_builtin_method_decl(name) != none {
