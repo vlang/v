@@ -61,3 +61,25 @@ fn test_glob_keeps_a_dot_prefix_before_a_wildcard_folder() {
 	// Files matched right in the start folder carry no walked root.
 	assert os.glob('./*.v')! == ['./root.v']
 }
+
+fn test_glob_keeps_a_parent_prefix_before_a_wildcard_folder() {
+	$if windows {
+		return
+	}
+	root := os.join_path(os.vtmp_dir(), 'glob_parent_prefix_wildcard_${os.getpid()}')
+	previous_dir := os.getwd()
+	os.mkdir_all(os.join_path(root, 'sub'))!
+	os.mkdir_all(os.join_path(root, 'working'))!
+	os.write_file(os.join_path(root, 'sub', 'a.v'), '')!
+	os.write_file(os.join_path(root, 'root.v'), '')!
+	defer {
+		os.chdir(previous_dir) or {}
+		os.rmdir_all(root) or {}
+	}
+	os.chdir(os.join_path(root, 'working'))!
+	for prefix in ['../', '.././', './../'] {
+		assert os.glob('${prefix}*/a.v')! == ['${prefix}sub/a.v']
+		assert os.glob('${prefix}**/*.v')! == ['${prefix}root.v', '${prefix}sub/a.v']
+		assert os.glob('${prefix}*.v')! == ['${prefix}root.v']
+	}
+}
