@@ -3046,6 +3046,17 @@ fn interp_literal_parts(source string, prefix_len int) ?[]string {
 				i = interp_skip_nested_literal(source, i)
 				continue
 			}
+			// A brace in a comment of the embedded expression does not close it.
+			if ch == `/` && i + 1 < body_end && source[i + 1] == `*` {
+				i = interp_skip_block_comment(source, i)
+				continue
+			}
+			if ch == `/` && i + 1 < body_end && source[i + 1] == `/` {
+				for i < body_end && source[i] != `\n` {
+					i++
+				}
+				continue
+			}
 			if ch == `{` {
 				depth++
 			} else if ch == `}` {
@@ -3063,6 +3074,31 @@ fn interp_literal_parts(source string, prefix_len int) ?[]string {
 	}
 	parts << source[part_start..body_end]
 	return parts
+}
+
+// interp_skip_block_comment returns the offset just past the block comment opening at
+// `start`. Like the scanner, it nests comments, but `/*/` does not open another one.
+fn interp_skip_block_comment(source string, start int) int {
+	mut depth := 1
+	mut i := start + 2
+	for i + 1 < source.len {
+		if source[i] == `/` && source[i + 1] == `*`
+			&& (i + 2 >= source.len || source[i + 2] != `/`) {
+			depth++
+			i += 2
+			continue
+		}
+		if source[i] == `*` && source[i + 1] == `/` {
+			depth--
+			i += 2
+			if depth == 0 {
+				return i
+			}
+			continue
+		}
+		i++
+	}
+	return source.len
 }
 
 fn interp_has_literal_dollar(source string) bool {
@@ -5533,6 +5569,12 @@ fn (mut g Gen) write_comment(text string) {
 		&& ((text[2] >= `a` && text[2] <= `z`) || (text[2] >= `A` && text[2] <= `Z`)
 			|| (text[2] >= `0` && text[2] <= `9`)) {
 		normalized = '// ${text[2..]}'
+	}
+	// A block comment inside `${...}` stays inline: a line break there would end the
+	// line of a single-line string literal in the middle of its interpolation.
+	if g.in_string_interp && normalized.starts_with('/*') && !normalized.contains('\n') {
+		g.write(normalized)
+		return
 	}
 	lines := normalized.split('\n')
 	for i, line in lines {

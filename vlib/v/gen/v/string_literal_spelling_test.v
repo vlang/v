@@ -81,6 +81,10 @@ fn test_formatter_preserves_interpolated_literal_spelling() {
 	for i, literal in literals {
 		assert_literal_spelling('interp_${i}', literal)
 	}
+	// A brace in a comment of an embedded expression does not end it, and the comment
+	// stays inline, so the literal suffix is kept exactly.
+	assert_literal_spelling('interp_comment_brace', r"'${1 /* } */} tail'")
+	assert_literal_spelling('interp_nested_comment_brace', r"'${1 /* a /* } */ b */} x \x41'")
 	// Changing the delimiter only rewrites the quote escapes.
 	assert_literal_formats_to('interp_requote_single', r"'it\'s \x41 ${cmd}'", '"' + r"it's \x41 ${cmd}" + '"')
 	assert_literal_formats_to('interp_requote_double', r'"plain \x41 ${cmd}"', r"'plain \x41 ${cmd}'")
