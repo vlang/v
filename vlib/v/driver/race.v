@@ -38,6 +38,25 @@ fn v3_race_gc_mode(gc_mode string) !string {
 	return error('`-race` cannot be combined with `-gc ${gc_mode}`: the race detector tracks heap memory through the C allocator, so race builds do not use a garbage collector (like `-gc none`)')
 }
 
+// v3_race_check_prealloc reports an error for `-race` with the arena allocator (`-prealloc`),
+// for the reason of v3_race_gc_mode: the arenas hand out and reuse memory without the C
+// allocator, so the race detector would not see where the lifetime of an object begins and
+// ends.
+fn v3_race_check_prealloc(user_defines []string) ! {
+	if user_defines.any(it.all_before('=').trim_space() == 'prealloc') {
+		return error('`-race` cannot be combined with `-prealloc`: the race detector tracks heap memory through the C allocator, which the arena allocator bypasses')
+	}
+}
+
+// v3_race_check_reserved_define reports an error for `-d race` without `-race`. The `race`
+// define turns on the race detector hooks of the V runtime, which need the ThreadSanitizer
+// runtime that only `-race` links.
+fn v3_race_check_reserved_define(race bool, user_defines []string) ! {
+	if !race && user_defines.any(it.all_before('=').trim_space() == 'race') {
+		return error('`-d race` is reserved for race builds: use `-race` to build with the race detector')
+	}
+}
+
 // v3_race_check_backend reports an error when `-race` is used with a backend that does not
 // emit C for clang/gcc.
 fn v3_race_check_backend(backend string) ! {

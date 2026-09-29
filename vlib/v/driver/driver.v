@@ -10242,12 +10242,22 @@ pub fn run(args []string) {
 		eprintln('option `-profile` is only supported by the C backend')
 		exit(1)
 	}
+	v3_race_check_reserved_define(race, user_defines) or {
+		// A command-line error, not a V3 failure: no V1 compatibility retry.
+		clear_macos_v3_compiler_error_fallback(macos_v3_fallback_file)
+		eprintln(err.msg())
+		exit(1)
+	}
 	if race {
 		v3_race_check_backend(backend) or {
 			eprintln(err.msg())
 			exit(1)
 		}
 		gc_mode = v3_race_gc_mode(gc_mode) or {
+			eprintln(err.msg())
+			exit(1)
+		}
+		v3_race_check_prealloc(user_defines) or {
 			eprintln(err.msg())
 			exit(1)
 		}

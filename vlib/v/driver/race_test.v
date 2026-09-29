@@ -15,6 +15,29 @@ fn test_race_builds_use_the_c_allocator() {
 	}
 }
 
+fn test_race_rejects_the_arena_allocator() {
+	v3_race_check_prealloc(['debug', 'race'])!
+	for defines in [['prealloc'], ['race', 'prealloc=1']] {
+		if _ := v3_race_check_prealloc(defines) {
+			assert false, defines.str()
+		} else {
+			assert err.msg().contains('`-prealloc`'), err.msg()
+		}
+	}
+}
+
+fn test_the_race_define_is_reserved_for_race_builds() {
+	v3_race_check_reserved_define(false, ['debug', 'racer'])!
+	v3_race_check_reserved_define(true, ['race'])!
+	for defines in [['race'], ['race=1']] {
+		if _ := v3_race_check_reserved_define(false, defines) {
+			assert false, defines.str()
+		} else {
+			assert err.msg().contains('use `-race`'), err.msg()
+		}
+	}
+}
+
 fn test_race_needs_the_c_backend() {
 	v3_race_check_backend('c')!
 	for backend in ['fastc', 'arm64', 'wasm', 'js'] {

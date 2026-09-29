@@ -5812,12 +5812,13 @@ passed to functions, so it misses races on them. It is supported on linux (amd64
 ppc64le, s390x, loongarch64, riscv64), macos (amd64, arm64), freebsd/amd64 and netbsd/amd64.
 Race builds:
 
-* do not use a garbage collector, like `-gc none`: ThreadSanitizer has to see every
-  allocation and free of heap memory, which a garbage collector hides from it;
+* do not use a garbage collector, like `-gc none`, and cannot use `-prealloc`:
+  ThreadSanitizer has to see every allocation and free of heap memory, which a garbage
+  collector or an arena allocator hides from it;
 * typically run 2-20x slower and use 5-10x more memory, like in Go (with `-prod`, a function
   that was inlined into its caller is reported as the caller);
 * define `race`, so code can check for them with `$if race ? {}`, and `_d_race.v` files are
-  compiled in them.
+  compiled in them. That define is reserved: `-d race` without `-race` is an error.
 
 The `VRACE` environment variable passes options to the race detector, in the same format as
 Go's `GORACE`. For example, `VRACE="halt_on_error=1"` stops the program at the first race,

@@ -732,6 +732,10 @@ fn (mut m map) get_and_set(key voidptr, zero voidptr) voidptr {
 }
 
 fn (mut m VMapData) get_and_set(key voidptr, zero voidptr) voidptr {
+	$if race ? {
+		// Used for `m[key] += x`, `m[key]++` and the like: a write of the map, as in set().
+		racewrite(&m.count)
+	}
 	if m.metas == unsafe { nil } {
 		m.set(key, zero)
 	}
