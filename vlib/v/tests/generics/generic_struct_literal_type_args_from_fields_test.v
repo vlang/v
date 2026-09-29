@@ -28,3 +28,16 @@ fn test_a_generic_struct_literal_takes_its_type_arguments_from_its_fields_in_a_g
 	assert wrap('x') == 'x Box[string]'
 	assert from_local(2.5) == '2.5'
 }
+
+fn test_a_generic_struct_literal_takes_its_type_arguments_from_its_fields_in_an_array_or_a_selector() {
+	// Outside of a generic body the check inferred them for the literal, but the
+	// array or the selector around it had asked for its type first: `[]Box` and
+	// `Box`, which the C compiler rejected.
+	boxes := [Box{
+		item: 3
+	}]
+	assert '${boxes[0].item} ${typeof(boxes).name}' == '3 []Box[int]'
+	assert Box{
+		item: 2
+	}.item == 2
+}

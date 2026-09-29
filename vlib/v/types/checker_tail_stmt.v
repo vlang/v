@@ -17078,6 +17078,17 @@ fn (tc &TypeChecker) resolve_type_uncached(id flat.NodeId) Type {
 			return inner
 		}
 		.struct_init {
+			// A literal of a generic struct without its type arguments, `Box{ item: 1 }`,
+			// has the ones that the types of its fields give it (see
+			// infer_generic_struct_init_type): the array or the selector around it asks
+			// for its type before the check of the literal records it. The inference
+			// reads the checker and parses types, as this function does.
+			if !node.value.contains('[') {
+				mut checker := unsafe { tc }
+				if inferred := checker.infer_generic_struct_init_type(node) {
+					return inferred
+				}
+			}
 			return tc.parse_type(node.value)
 		}
 		.assoc {
