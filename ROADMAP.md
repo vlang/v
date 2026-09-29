@@ -51,12 +51,12 @@ For a list of all features and fixes, check out the changelog.
 - [ ] Custom attributes
 - [ ] Contexts that are passed implicitly (e.g. for custom allocation/memory management)
 - [x] 64/32 bit int depending on arch (will remove array.len limitation on 64 bit systems)
-- [ ] `copy()` builtin function (e.g. for easier conversion from `[]Foo` to `[4]Foo`)
+- [x] `copy()` builtin function (e.g. for easier conversion from `[]Foo` to `[4]Foo`)
 - [x] Integrate the new parallel parser/checker/cc
 - [x] Incremental compilation
 - [ ] Runtime race detector
-- [ ] [Thread safe maps](https://github.com/vlang/v/discussions/11729)
-- [ ] `recover()` from panics
+- [x] [Thread safe maps](https://github.com/vlang/v/discussions/11729)
+- [x] `recover()` from panics
 - [x] -usecache on by default
 - [x] ORM migrations
 - [ ] Make ORM work without installing developer libs (libpq-dev etc)
