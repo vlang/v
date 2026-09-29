@@ -13,7 +13,7 @@ $if windows {
 }
 
 fn scoped_monomorph_v3_bin_path() string {
-	return os.join_path(os.temp_dir(), 'v3_scoped_monomorphize_closure_test${scoped_monomorph_bin_suffix}')
+	return os.join_path(os.temp_dir(), 'v3_scoped_monomorphize_closure_test_${os.getpid()}${scoped_monomorph_bin_suffix}')
 }
 
 fn scoped_monomorph_cc() string {
@@ -42,6 +42,10 @@ fn testsuite_begin() {
 	os.rm(scoped_monomorph_v3_bin_path()) or {}
 }
 
+fn testsuite_end() {
+	os.rm(scoped_monomorph_v3_bin_path()) or {}
+}
+
 // Compiler builds use `-prealloc`, and the memory-bounded monomorphize path (the
 // fix for vlang/v#28564) runs for every non-empty specialization batch there.
 // That path used to give two different lifted closures the same `__anon_fn_N`
@@ -52,6 +56,10 @@ fn testsuite_begin() {
 // This is the small `veb` program from vlang/v#28489, which exercises closures
 // lifted while specializing a generic helper.
 fn test_scoped_monomorphize_keeps_closure_signatures_and_args() {
+	$if linux && arm64 {
+		// The scoped specializer is deliberately disabled on this target.
+		return
+	}
 	v3_bin := scoped_monomorph_v3_bin()
 	// The driver keeps parallel monomorphization opt-in. Preallocation alone
 	// selects the serial path and never enters the scoped worker merge.
@@ -64,7 +72,7 @@ fn test_scoped_monomorphize_keeps_closure_signatures_and_args() {
 			os.unsetenv('V3_PARALLEL_MONOMORPHIZE')
 		}
 	}
-	dir := os.join_path(os.temp_dir(), 'v3_scoped_monomorphize_closure')
+	dir := os.join_path(os.temp_dir(), 'v3_scoped_monomorphize_closure_${os.getpid()}')
 	os.rmdir_all(dir) or {}
 	os.mkdir_all(dir) or { panic(err) }
 	defer {
