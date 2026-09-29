@@ -1795,6 +1795,22 @@ fn (mut tc TypeChecker) check_node(id flat.NodeId) {
 		tc.check_loop_control_statement(id, node)
 		return
 	}
+	mut shared_map_autolock_key := ''
+	if tc.shared_map_autolock_possible() {
+		if tc.lock_depth == 0 {
+			if autolock := tc.shared_map_autolock(id, node) {
+				tc.enter_shared_map_autolock(autolock)
+				shared_map_autolock_key = autolock.key
+			}
+		} else if tc.autolocked_map.len > 0 {
+			tc.check_nested_shared_map_autolock(id, node)
+		}
+	}
+	defer {
+		if shared_map_autolock_key.len > 0 {
+			tc.leave_shared_map_autolock(shared_map_autolock_key)
+		}
+	}
 	if node.kind == .const_decl {
 		if tc.const_decl_is_in_top_level_comptime(id) {
 			for i in 0 .. node.children_count {
@@ -2033,7 +2049,7 @@ fn (mut tc TypeChecker) check_node(id flat.NodeId) {
 				part_id
 			}
 			tc.check_node(expr_id)
-			if access := tc.unlocked_shared_access(expr_id) {
+			if access := tc.unlocked_shared_read_access(expr_id) {
 				tc.record_error_at(.call_arg_mismatch, '`${access.name}` is `shared` and must be `rlock`ed or `lock`ed to be used as non-mut interpolation object', expr_id, access.pos)
 			}
 			expr := tc.a.node(expr_id)

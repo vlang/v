@@ -3796,7 +3796,7 @@ fn (mut tc TypeChecker) check_call(id flat.NodeId, node flat.Node) {
 					tc.record_error_at(.call_arg_mismatch, 'you have to create a handle and `rlock` it to use a `shared` element as non-mut argument to print', element_id, tc.a.node(element_id).pos)
 					continue
 				}
-				if access := tc.unlocked_shared_access(arg_id) {
+				if access := tc.unlocked_shared_read_access(arg_id) {
 					tc.record_error_at(.call_arg_mismatch, '`${access.name}` is `shared` and must be `rlock`ed or `lock`ed to be used as non-mut argument to print', arg_id, access.pos)
 				}
 			}
@@ -13278,7 +13278,14 @@ fn (tc &TypeChecker) expr_is_shared_arg(id flat.NodeId) bool {
 }
 
 fn (tc &TypeChecker) unlocked_shared_access(id flat.NodeId) ?SharedAccessDiagnostic {
+	return tc.unlocked_shared_access_impl(id, false)
+}
+
+fn (tc &TypeChecker) unlocked_shared_access_impl(id flat.NodeId, allow_map_autolock bool) ?SharedAccessDiagnostic {
 	if !tc.valid_node_id(id) {
+		return none
+	}
+	if allow_map_autolock && tc.shared_map_read_autolocks(id) {
 		return none
 	}
 	node := tc.a.node(id)
@@ -13294,7 +13301,7 @@ fn (tc &TypeChecker) unlocked_shared_access(id flat.NodeId) ?SharedAccessDiagnos
 		}
 		.paren, .index {
 			if node.children_count > 0 {
-				return tc.unlocked_shared_access(tc.a.child(node, 0))
+				return tc.unlocked_shared_access_impl(tc.a.child(node, 0), allow_map_autolock)
 			}
 		}
 		.selector {
@@ -13304,7 +13311,7 @@ fn (tc &TypeChecker) unlocked_shared_access(id flat.NodeId) ?SharedAccessDiagnos
 			if tc.selector_is_shared_arg(node) && tc.current_shared_expr_lock_mode(id) != 0 {
 				return none
 			}
-			if access := tc.unlocked_shared_access(tc.a.child(node, 0)) {
+			if access := tc.unlocked_shared_access_impl(tc.a.child(node, 0), allow_map_autolock) {
 				return access
 			}
 			if tc.selector_is_shared_arg(node)
@@ -14012,7 +14019,12 @@ fn (mut tc TypeChecker) check_call_arg_types(id flat.NodeId, node flat.Node, inf
 			tc.record_error_at(.call_arg_mismatch, 'method with `shared` receiver cannot be called inside `lock`/`rlock` block', recv_id, tc.method_call_name_pos(node, fn_node))
 		}
 		if !receiver_is_shared_param {
-			if access := tc.unlocked_shared_access(recv_id) {
+			unlocked_access := if mutating_receiver {
+				tc.unlocked_shared_access(recv_id)
+			} else {
+				tc.unlocked_shared_read_access(recv_id)
+			}
+			if access := unlocked_access {
 				if mutating_receiver {
 					if tc.lock_depth > 0 {
 						tc.record_error_at(.call_arg_mismatch, '${access.name} must be added to the `lock` list above', recv_id, access.pos)
@@ -14507,6 +14519,17 @@ fn (mut tc TypeChecker) check_call_arg_types(id flat.NodeId, node flat.Node, inf
 		}
 		implicit_receiver_arg := tc.call_arg_is_callee_receiver(node, arg_id)
 			|| tc.call_arg_is_lowered_method_receiver(node, info, param_idx, expected)
+		if call_param_is_shared(info, param_idx) && tc.autolocked_map.len > 0
+			&& tc.expr_is_explicit_shared_arg(arg_id) {
+			call_kind := if info.has_receiver { 'method' } else { 'function' }
+			shared_arg := tc.a.node(arg_id)
+			arg_pos := if shared_arg.kind == .prefix && shared_arg.children_count > 0 {
+				tc.a.child_node(shared_arg, 0).pos
+			} else {
+				shared_arg.pos
+			}
+			tc.record_error_at(.call_arg_mismatch, '${call_kind} with `shared` arguments cannot be called while `${tc.autolocked_map}` is locked automatically, call it in a separate statement', arg_id, arg_pos)
+		}
 		if call_param_is_shared(info, param_idx) && !tc.expr_is_explicit_shared_arg(arg_id) {
 			param_name := tc.source_call_param_name(info.name, param_idx) or {
 				'${param_idx + 1 - (if info.has_receiver { 1 } else { 0 })}'
@@ -14522,7 +14545,12 @@ fn (mut tc TypeChecker) check_call_arg_types(id flat.NodeId, node flat.Node, inf
 			continue
 		}
 		if !is_print_style_fn_name(info.name) {
-			if access := tc.unlocked_shared_access(arg_id) {
+			unlocked_access := if param_is_mut && mut_arg_node.is_mut {
+				tc.unlocked_shared_access(arg_id)
+			} else {
+				tc.unlocked_shared_read_access(arg_id)
+			}
+			if access := unlocked_access {
 				if param_is_mut && mut_arg_node.is_mut {
 					if tc.lock_depth > 0 {
 						tc.record_error_at(.call_arg_mismatch, '${access.name} must be added to the `lock` list above', arg_id, access.pos)

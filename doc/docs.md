@@ -5623,6 +5623,59 @@ fn main() {
 }
 ```
 
+#### Thread-safe maps
+
+A single operation on a `shared` map does not need a `lock`/`rlock` block: it locks
+the map by itself, for the duration of that one operation. So a `shared` map can be used
+as a thread-safe map:
+
+```v
+import sync
+
+fn count(shared words map[string]int, text string, mut wg sync.WaitGroup) {
+	for word in text.split(' ') {
+		words[word]++ // locks `words` while it is updated
+	}
+	wg.done()
+}
+
+fn main() {
+	shared words := map[string]int{}
+	mut wg := sync.new_waitgroup()
+	wg.add(2)
+	spawn count(shared words, 'a b a', mut wg)
+	spawn count(shared words, 'b c', mut wg)
+	wg.wait()
+	println(words['a']) // 2, read with an `rlock`
+	println('c' in words) // true
+	println(words.len) // 3
+}
+```
+
+Statements that change the map (`m[k] = v`, `m[k] += v`, `m[k]++`, `m[k] << v`,
+`m.delete(k)` and `m.clear()`) take a `lock`. The whole statement runs with the map
+locked, so `m[k] = m[k] * 2` is atomic too. Reads (`m[k]`, `m[k] or { ... }`, `k in m`,
+`m.len`, `m.keys()`, `m.values()` and `m.clone()`) take an `rlock`. This works for
+`shared` variables, parameters, globals and struct fields.
+
+Operations that must happen together still need an explicit block, and so do iterating
+over the map, `if v := m[k] {` and statements that use two `shared` maps:
+
+```v
+shared m := map[string]int{}
+// check and insert in one step
+lock m {
+	if 'a' !in m {
+		m['a'] = 0
+	}
+}
+rlock m {
+	for k, v in m {
+		println('${k}: ${v}')
+	}
+}
+```
+
 ### Difference Between Channels and Shared Objects
 
 **Purpose**:

@@ -72,9 +72,10 @@ fn (mut t Transformer) transform_for_body(id flat.NodeId, node flat.Node) []flat
 				new_post = t.a.add(.empty)
 				post_block := t.a.nodes[int(expanded[0])]
 				post_body = t.a.children_of(&post_block).clone()
-			} else if expanded.len == 1 {
+			} else if expanded.len == 1 && t.a.nodes[int(expanded[0])].kind != .lock_expr {
 				new_post = expanded[0]
-			} else if expanded.len > 1 {
+			} else if expanded.len > 0 {
+				// a `lock` block (e.g. from `m[k]++` on a `shared` map) is not an expression
 				new_post = t.a.add(.empty)
 				post_body = expanded.clone()
 			}

@@ -179,6 +179,8 @@ mut:
 	const_suffixes                map[string]string
 	source_parent_ids             []i32
 	shared_local_decl_names       map[string]bool
+	has_shared_decls              bool            // any `shared` variable, parameter, global or field, see shared_map_autolock_possible
+	shared_field_names            map[string]bool // names of `shared` fields and globals
 	// const_array_fixed_storage_ready marks the cache below as fully populated
 	// (by the overlapped pre-dispatch scan), making the precompute a no-op.
 	const_array_fixed_storage_ready bool
@@ -263,6 +265,9 @@ mut:
 	suppress_first_last_accessor_borrow bool
 
 	autolock_depth                int
+	shared_map_read_locks         map[int]flat.NodeId // reads of `shared` maps -> the map they read-lock, see try_autolock_shared_map_read
+	shared_map_read_ids           []int
+	shared_map_reads_stmt         flat.NodeId              = -1
 	alias_cache                   &AliasCache              = unsafe { nil }
 	sum_cache                     &AliasCache              = unsafe { nil }
 	module_type_cache             &ModuleTypeCache         = unsafe { nil }
@@ -4328,6 +4333,8 @@ fn (t &Transformer) fork_program_view(ast &flat.FlatAst, wtc &types.TypeChecker,
 		const_suffixes:                      t.const_suffixes
 		source_parent_ids:                   t.source_parent_ids
 		shared_local_decl_names:             t.shared_local_decl_names
+		has_shared_decls:                    t.has_shared_decls
+		shared_field_names:                  t.shared_field_names
 		const_array_fixed_storage_cache:     t.const_array_fixed_storage_cache
 		enum_types:                          t.enum_types
 		enum_backing_types:                  t.enum_backing_types
@@ -10032,6 +10039,11 @@ pub fn (mut t Transformer) transform_stmt(id flat.NodeId) []flat.NodeId {
 		return [id]
 	}
 	node := t.a.nodes[int(id)]
+	if t.autolock_depth == 0 && t.shared_map_autolock_possible() {
+		if lowered := t.try_autolock_shared_map_stmt(id, node) {
+			return lowered
+		}
+	}
 	kind_id := int(node.kind)
 	if kind_id == 44 {
 		return t.transform_return_stmt(id, node)
@@ -10256,6 +10268,11 @@ pub fn (mut t Transformer) transform_expr(id flat.NodeId) flat.NodeId {
 	if optional_wrapper_access_marker in node.generic_params()
 		|| transformed_option_unwrap_access_marker in node.generic_params() {
 		return id
+	}
+	if t.shared_map_read_locks.len > 0 && t.autolock_depth == 0 {
+		if locked := t.try_autolock_shared_map_read(id) {
+			return locked
+		}
 	}
 	kind_id := int(node.kind)
 	if kind_id == 8 {
@@ -17491,6 +17508,8 @@ fn (mut t Transformer) build_source_parent_index() {
 	mut fn_offsets := map[int][]int{}
 	mut if_exprs := map[int][]int{}
 	mut shared_names := map[string]bool{}
+	mut has_shared_decls := false
+	mut shared_fields := map[string]bool{}
 	for parent_id, node in t.a.nodes {
 		for i in 0 .. node.children_count {
 			child_id := int(t.a.child(&node, i))
@@ -17500,6 +17519,12 @@ fn (mut t Transformer) build_source_parent_index() {
 		}
 		if node.kind == .fn_decl && node.pos.is_valid() {
 			fn_offsets[node.pos.id] << node.pos.offset
+		}
+		if node.kind in [.param, .field_decl] && node.typ.starts_with('shared ') {
+			has_shared_decls = true
+			if node.kind == .field_decl {
+				shared_fields[node.value] = true
+			}
 		}
 		if node.kind == .if_expr && node.children_count >= 2 {
 			body := t.a.child_node(&node, 1)
@@ -17519,6 +17544,7 @@ fn (mut t Transformer) build_source_parent_index() {
 			decls[lhs.value] << parent_id
 			if node.value == 'shared' || node.value.starts_with('shared:') {
 				shared_names[lhs.value] = true
+				has_shared_decls = true
 			}
 		}
 	}
@@ -17531,6 +17557,8 @@ fn (mut t Transformer) build_source_parent_index() {
 	t.fn_decl_offsets_by_file = fn_offsets.move()
 	t.if_expr_nodes_by_file = if_exprs.move()
 	t.shared_local_decl_names = shared_names.move()
+	t.has_shared_decls = has_shared_decls
+	t.shared_field_names = shared_fields.move()
 }
 
 fn (t &Transformer) source_parent_id(child_id int) int {
@@ -18339,6 +18367,10 @@ fn (mut t Transformer) transform_lock_node(id flat.NodeId, node flat.Node) flat.
 		return id
 	}
 	body := t.a.nodes[int(body_id)]
+	// Statements hoisted out of the enclosing expression so far must stay in front of
+	// the lock, not be drained into the body's block, where they would go out of scope.
+	mut outer_pending := t.pending_stmts.clone()
+	t.pending_stmts.clear()
 	t.autolock_depth++
 	new_body := if body.kind == .block {
 		mut new_block := if lock_target_type.len > 0 && lock_target_type != 'void' {
@@ -18364,6 +18396,10 @@ fn (mut t Transformer) transform_lock_node(id flat.NodeId, node flat.Node) flat.
 		t.transform_expr(body_id)
 	}
 	t.autolock_depth--
+	if outer_pending.len > 0 {
+		outer_pending << t.pending_stmts
+		t.pending_stmts = outer_pending
+	}
 	children << new_body
 	lock_typ := if lock_target_type.len > 0 {
 		lock_target_type
