@@ -19,6 +19,7 @@ fn main() {
 	run('test_race_method_value2', test_race_method_value2)
 	run('test_race_method_value3', test_race_method_value3)
 	run('test_no_race_method_value', test_no_race_method_value)
+	run('test_race_panic_arg', test_race_panic_arg)
 	run('test_race_defer_arg', test_race_defer_arg)
 	run('test_race_defer_arg2', test_race_defer_arg2)
 	run('test_no_race_addr_expr', test_no_race_addr_expr)
@@ -195,8 +196,21 @@ fn test_no_race_method_value() {
 	_ = <-c
 }
 
-// Go's TestRacePanicArg is not translated: it reads the shared variable as the argument
-// of `panic` and continues with `recover`, and V has no `recover`.
+fn test_race_panic_arg() {
+	c := chan bool{cap: 1}
+	mut err := &Cell[IError]{
+		v: error('err')
+	}
+	spawn fn [mut err, c] () {
+		err.v = error('err2')
+		c <- true
+	}()
+	defer {
+		_ = recover()
+		_ = <-c
+	}
+	panic(err.v)
+}
 
 fn test_race_defer_arg() {
 	c := chan bool{cap: 1}

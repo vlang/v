@@ -75,6 +75,7 @@ fn main() {
 	run('test_race_unsafe_ptr_rw', test_race_unsafe_ptr_rw)
 	run('test_race_func_variable_rw', test_race_func_variable_rw)
 	run('test_race_func_variable_ww', test_race_func_variable_ww)
+	run('test_race_panic', test_race_panic)
 	run('test_no_race_blank', test_no_race_blank)
 	run('test_race_append_rw', test_race_append_rw)
 	run('test_race_append_len_rw', test_race_append_len_rw)
@@ -314,8 +315,35 @@ fn test_race_func_variable_ww() {
 	_ = <-ch
 }
 
-// Go's TestRacePanic is not translated: its racing writes are done by deferred functions
-// that recover from an integer division by zero panic, and V has no recover.
+fn test_race_panic() {
+	mut x := &Cell[int]{}
+	_ = x.v
+	mut zero := &Cell[int]{}
+	ch := chan bool{cap: 2}
+	spawn fn [mut x, mut zero, ch] () {
+		defer {
+			_ = recover() or { panic('should be panicking') }
+			x.v = 1
+			ch <- true
+		}
+		y := 1 / zero.v
+		zero.v = y
+	}()
+	spawn fn [mut x, mut zero, ch] () {
+		defer {
+			_ = recover() or { panic('should be panicking') }
+			x.v = 2
+			ch <- true
+		}
+		y := 1 / zero.v
+		zero.v = y
+	}()
+	_ = <-ch
+	_ = <-ch
+	if zero.v != 0 {
+		panic('zero has changed')
+	}
+}
 
 fn test_no_race_blank() {
 	mut a := &Cell[[5]int]{}

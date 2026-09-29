@@ -23,6 +23,8 @@ fn main() {
 	run('test_no_race_wait_group_multiple_wait2', test_no_race_wait_group_multiple_wait2)
 	run('test_no_race_wait_group_multiple_wait3', test_no_race_wait_group_multiple_wait3)
 	run('test_race_wait_group2', test_race_wait_group2)
+	run('test_no_race_wait_group_panic_recover', test_no_race_wait_group_panic_recover)
+	run('test_no_race_wait_group_panic_recover2', test_no_race_wait_group_panic_recover2)
 	run('test_no_race_wait_group_transitive', test_no_race_wait_group_transitive)
 	run('test_no_race_wait_group_reuse', test_no_race_wait_group_reuse)
 	run('test_no_race_wait_group_reuse2', test_no_race_wait_group_reuse2)
@@ -235,12 +237,43 @@ fn test_race_wait_group2() {
 	wg.wait()
 }
 
-// Go's TestNoRaceWaitGroupPanicRecover is not translated: it recovers from the
-// "negative WaitGroup counter" panic of wg.Add(-1) in a deferred function; V has no recover.
+// V's WaitGroup panics with this message where Go's panics with
+// "sync: negative WaitGroup counter".
+const negative_wait_group_counter = 'Negative number of jobs in waitgroup'
 
-// Go's TestNoRaceWaitGroupPanicRecover2 is not translated: it recovers from the
-// "negative WaitGroup counter" panic of wg.Add(-1) in a deferred function, and tests the
-// synchronization through that panic; V has no recover.
+fn test_no_race_wait_group_panic_recover() {
+	mut x := 0
+	mut wg := sync.new_waitgroup()
+	defer {
+		err := recover() or { 'no panic' }
+		if err != negative_wait_group_counter {
+			panic('Unexpected panic: ${err}')
+		}
+		x = 2
+	}
+	x = 1
+	wg.add(-1)
+}
+
+fn test_no_race_wait_group_panic_recover2() {
+	mut x := &Cell[int]{}
+	_ = x.v
+	mut wg := sync.new_waitgroup()
+	ch := chan bool{cap: 1}
+	f := fn [mut x, ch] () {
+		x.v = 2
+		ch <- true
+	}
+	spawn fn [mut x, mut wg, f] () {
+		defer {
+			_ = recover()
+			spawn f()
+		}
+		x.v = 1
+		wg.add(-1)
+	}()
+	_ = <-ch
+}
 
 fn test_no_race_wait_group_transitive() {
 	mut x := &Cell[int]{}

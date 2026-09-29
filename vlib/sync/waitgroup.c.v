@@ -92,7 +92,11 @@ pub fn (mut wg WaitGroup) add(delta int) {
 			racerelease(wg)
 		}
 		racedisable()
-		first_add := wg.add_state(delta)
+		first_add := wg.add_state(delta) or {
+			// A recovered panic must not leave the race detector disabled for this thread.
+			raceenable()
+			panic(err.msg())
+		}
 		raceenable()
 		if first_add {
 			// The first add() must be synchronized with wait(). Like Go, model this as a
@@ -101,26 +105,26 @@ pub fn (mut wg WaitGroup) add(delta int) {
 		}
 		return
 	}
-	wg.add_state(delta)
+	wg.add_state(delta) or { panic(err.msg()) }
 }
 
 // add_state changes the task count, wakes the waiters when it becomes zero, and returns
 // whether this call moved it up from zero.
-fn (mut wg WaitGroup) add_state(delta int) bool {
+fn (mut wg WaitGroup) add_state(delta int) !bool {
 	state_delta := u64(u32(delta)) << 32
 	old_state := C.atomic_fetch_add_u64(voidptr(&wg.state), state_delta)
 	new_state := old_state + state_delta
 	new_nrjobs := int(i32(new_state >> 32))
 	mut num_waiters := u32(new_state)
 	if new_nrjobs < 0 {
-		panic('Negative number of jobs in waitgroup')
+		return error('Negative number of jobs in waitgroup')
 	}
 	first_add := delta > 0 && new_nrjobs == delta
 	if new_nrjobs > 0 || num_waiters == 0 {
 		return first_add
 	}
 	if C.atomic_load_u64(voidptr(&wg.state)) != new_state {
-		panic('WaitGroup misuse: add() called concurrently with wait()')
+		return error('WaitGroup misuse: add() called concurrently with wait()')
 	}
 	C.atomic_store_u64(voidptr(&wg.state), 0)
 	for num_waiters > 0 {
@@ -163,6 +167,9 @@ pub fn (mut wg WaitGroup) wait() {
 			}
 			wg.sem.wait() // blocks until task_count becomes 0
 			if C.atomic_load_u64(voidptr(&wg.state)) != 0 {
+				$if race ? {
+					raceenable()
+				}
 				panic('WaitGroup misuse: reused before previous wait() returned')
 			}
 			$if race ? {

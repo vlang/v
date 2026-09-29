@@ -30,8 +30,8 @@ const max_runs = 3
 // clang for that reason; these tests only pass with it.
 const gcc_known_misses = ['issues.test_race_issue12664', 'map.test_race_map_variable',
 	'map.test_race_map_variable2', 'map.test_race_map_variable3', 'mop2.test_race_complex128_ww',
-	'mop3.test_race_slice_slice', 'mop3.test_race_slice_string', 'mop3.test_race_method_thunk2',
-	'mop3.test_race_method_thunk4', 'slice.test_race_slice_write_slice',
+	'mop3.test_race_panic_arg', 'mop3.test_race_slice_slice', 'mop3.test_race_slice_string',
+	'mop3.test_race_method_thunk2', 'mop3.test_race_method_thunk4', 'slice.test_race_slice_write_slice',
 	'slice.test_race_slice_var_write', 'slice.test_race_slice_var_read',
 	'slice.test_race_slice_var_range', 'slice.test_race_slice_var_append',
 	'slice.test_race_slice_var_copy', 'slice.test_race_slice_var_copy2', 'slice.test_race_concat_string',

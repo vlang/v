@@ -44,21 +44,19 @@ two accesses happen at the very same time. V threads run in parallel, so:
 gcc's ThreadSanitizer instrumentation does not see the reads and writes of whole struct
 values in call arguments and results (a struct passed by value, a struct result stored
 through the return slot), which V uses for strings, arrays and maps. `v -race` uses clang when
-it is installed, and the 18 tests that only pass with it count as known gcc limitations when
+it is installed, and the 19 tests that only pass with it count as known gcc limitations when
 the suite runs with gcc.
 
 ## Not translated
 
-30 of Go's 370 race tests need a Go feature that V does not have:
+26 of Go's 370 race tests need a Go feature that V does not have:
 
 | Go file | Go tests | Reason |
 | --- | --- | --- |
-| mop_test.go | TestRacePanic, TestRacePanicArg | `recover()` |
 | mop_test.go | TestNoRaceIssue60934 | the race state of reused goroutines |
 | mutex_test.go | TestNoRaceMutexSemaphore | unlocking a mutex on another thread |
-| atomic_test.go | TestNoRaceAtomicCrash | recovering from a nil dereference |
-| sync_test.go | TestNoRaceNilMutexCrash | recovering from a nil dereference |
-| waitgroup_test.go | TestNoRaceWaitGroupPanicRecover, ...Recover2 | `recover()` |
+| atomic_test.go | TestNoRaceAtomicCrash | recovering from a nil dereference (a signal) |
+| sync_test.go | TestNoRaceNilMutexCrash | recovering from a nil dereference (a signal) |
 | time_test.go | TestNoRaceAfterFuncReset, TestNoRaceTimerReset | `Timer.Reset` |
 | time_test.go | TestNoRaceTicker, TestNoRaceTickerReset | `time.Ticker` |
 | reflect_test.go | all 3 | runtime reflection |
