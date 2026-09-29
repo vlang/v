@@ -224,6 +224,75 @@ fn test_cross_output_lets_the_target_libc_pick_the_poll_header() {
 	assert fallback.contains('#else\n#include <poll.h>'), 'musl and the other targets lost <poll.h>: ${fallback}'
 }
 
+fn test_cross_windows_output_guards_the_msvc_only_headers() {
+	// `vc/v_win.c` is generated with `-cross -os windows -cc msvc` and then built
+	// by makev.bat with the bundled TinyCC, which ships neither <intrin.h> nor
+	// <dbghelp.h> on Windows. Deciding that at generation time baked both into
+	// every Windows snapshot, so the bootstrap died on
+	// `include file 'intrin.h' not found` before compiling a line of V. The
+	// snapshot is compiled by a different C compiler than the one it was generated
+	// for, so the choice belongs to the C preprocessor. See #29146.
+	c_code := cross_generate_with('-cross -os windows -cc msvc', 'msvc_headers',
+		"module main\n\nfn main() {\n\tprintln('ok')\n}\n")
+	for header in ['#include <intrin.h>', '#include <dbghelp.h>'] {
+		at := c_code.index(header) or {
+			assert false, '${header} is missing from the Windows snapshot: the MSVC intrinsics and the dbghelp backtraces need it'
+			return
+		}
+		guards := enclosing_guards_at(c_code, at)
+		assert guards.any(it.contains('_MSC_VER')), '${header} is not behind an _MSC_VER guard, it is behind ${guards} - only MSVC ships it, so every other C compiler fails to find it'
+	}
+}
+
+fn test_cross_windows_output_includes_the_same_headers_for_every_c_compiler() {
+	// A snapshot's header set is a promise about the C compiler that will compile
+	// it, and that compiler is picked at build time, not generation time: the same
+	// `vc/v_win.c` gets built by tcc, clang and gcc (makev.bat), and the bundled
+	// tcc is the one CI uses first. So `-cc` must not change which headers the
+	// snapshot includes - only the C preprocessor may. See #29146, where
+	// `if g.ccompiler == 'msvc'` made the msvc spelling the only buildable one.
+	mut reference := []string{}
+	for ccompiler in ['msvc', 'gcc', 'clang', 'tcc'] {
+		c_code := cross_generate_with('-cross -os windows -cc ${ccompiler}', 'headers_${ccompiler}',
+			'module main\n\nimport crypto.rand\n\nfn main() {\n\tmut buffer := []u8{len: 1}\n\tcrypto.rand.read(mut buffer) or {}\n}\n')
+		includes := c_code.split_into_lines().filter(it.trim_space().starts_with('#include'))
+			.map(it.trim_space())
+		if reference.len == 0 {
+			reference = includes.clone()
+			continue
+		}
+		only_here := includes.filter(it !in reference)
+		only_there := reference.filter(it !in includes)
+		assert only_here.len == 0 && only_there.len == 0, '-cc ${ccompiler} emits ${only_here} but the msvc spelling emits ${only_there} instead'
+	}
+}
+
+// enclosing_guards_at returns the conditions of the `#if` directives that are still
+// open at `at`, outermost first, each negated when `at` sits in its `#else` branch.
+// It is what tells an include that a guard actually protects from one that merely
+// follows a guard that closed earlier.
+fn enclosing_guards_at(c_code string, at int) []string {
+	mut stack := []string{}
+	mut in_else := []bool{}
+	for line in c_code[..at].split_into_lines() {
+		directive := line.trim_space()
+		if directive.starts_with('#if') {
+			stack << directive.all_before('\n')
+			in_else << false
+		} else if directive.starts_with('#else') && in_else.len > 0 {
+			in_else[in_else.len - 1] = !in_else[in_else.len - 1]
+		} else if directive.starts_with('#endif') && stack.len > 0 {
+			stack.delete_last()
+			in_else.delete_last()
+		}
+	}
+	mut guards := []string{}
+	for i, condition in stack {
+		guards << if in_else[i] { '!(${condition})' } else { condition }
+	}
+	return guards
+}
+
 fn test_top_level_asm_is_emitted_with_its_reference() {
 	c_code := cross_generate_with('-os linux -arch amd64 -gc none', 'top_level_asm', 'module main\n\nfn main() {\n\tmut value := int(0)\n\tasm amd64 {\n\t\tmov value, [rip + word_sequence]\n\t\t; =r (value)\n\t}\n\tassert value == 0x480f3527\n}\n\nasm amd64 {\n\t.global word_sequence\n\tword_sequence:\n\t.long 0x480f3527\n}\n')
 	assert c_code.contains('".global word_sequence\\n\\t"'), 'the top-level asm block is missing'
