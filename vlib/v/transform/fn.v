@@ -1,6 +1,7 @@
 module transform
 
 import v.flat
+import v.token
 import v.types
 
 const spread_index_expected_type_marker = '__v3_spread_index_expected_type'
@@ -15012,6 +15013,38 @@ fn (t &Transformer) receiver_selector_is_fn_field(base_type string, field string
 	field_type := t.lookup_struct_field_type(base_type, field) or { return false }
 	clean := t.normalize_type_alias(field_type)
 	return clean.starts_with('fn(') || clean.starts_with('fn (')
+}
+
+// AllocWarning is an allocation lowering adds where the source shows none, as
+// when a local whose address escapes is moved to the heap. The node decides
+// whether it is reported, and whether `@[freed]` silences it; `pos` is where.
+struct AllocWarning {
+	node        flat.NodeId
+	pos         token.Pos
+	description string
+}
+
+// warn_alloc records an allocation for -warn-about-allocs. Workers keep their
+// own; the transform hands them all to the checker once they are merged, see
+// report_alloc_warnings.
+fn (mut t Transformer) warn_alloc(id flat.NodeId, pos token.Pos, description string) {
+	if !t.tc.warn_about_allocs {
+		return
+	}
+	t.alloc_warnings << AllocWarning{
+		node:        id
+		pos:         pos
+		description: description
+	}
+}
+
+// report_alloc_warnings passes what warn_alloc recorded to the checker, which
+// reports it with its own allocation warnings. Called on the main thread.
+fn (mut t Transformer) report_alloc_warnings() {
+	for warning in t.alloc_warnings {
+		t.tc.record_transform_alloc_warning(warning.node, warning.pos, warning.description)
+	}
+	t.alloc_warnings.clear()
 }
 
 fn (mut t Transformer) record_monomorph_error(message string) {

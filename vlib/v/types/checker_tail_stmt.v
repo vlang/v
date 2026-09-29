@@ -4422,6 +4422,10 @@ fn (mut tc TypeChecker) check_struct_init(id flat.NodeId, node flat.Node) {
 						continue
 					}
 				}
+				// Before the checks below, some of which end with `continue`.
+				if tc.warn_about_allocs {
+					tc.warn_implicit_interface_conversion(value_id, actual, expected)
+				}
 				if value_node.kind == .fn_literal && value_node.typ == '?'
 					&& clean_expected is FnType && clean_expected.return_type !is OptionType {
 					expected_name := expected.name().replace_once('fn(', 'fn (')
@@ -7489,6 +7493,35 @@ fn (mut tc TypeChecker) check_js_index_type(id flat.NodeId, typ Type, base_type 
 }
 
 // check_index validates check index state for types.
+// fixed_array_slice_is_view reports whether `fixed[a..b]` at `id` is written
+// to, which makes the transform slice the fixed array's own storage instead of
+// a copy: a `mut` argument, the receiver of an in-place sort or reverse, or
+// the destination of copy().
+fn (tc &TypeChecker) fixed_array_slice_is_view(id flat.NodeId) bool {
+	mut current := id
+	mut parent := tc.direct_parent_id(current)
+	for tc.valid_node_id(parent) && parent != current && tc.a.node(parent).kind == .paren {
+		current = parent
+		parent = tc.direct_parent_id(current)
+	}
+	if tc.a.node(id).is_mut || tc.a.node(current).is_mut {
+		return true
+	}
+	if !tc.valid_node_id(parent) || parent == current {
+		return false
+	}
+	outer := tc.a.node(parent)
+	// A selector's only child is its base.
+	if outer.kind == .selector && outer.value in ['sort', 'sort_with_compare', 'reverse_in_place'] {
+		return true
+	}
+	if outer.kind == .call && outer.children_count > 1 && tc.a.child(&outer, 1) == current {
+		callee := tc.a.child_node(&outer, 0)
+		return callee.kind == .ident && callee.value == 'copy'
+	}
+	return false
+}
+
 fn (mut tc TypeChecker) check_index(id flat.NodeId, node flat.Node) {
 	if node.children_count == 0 {
 		return
@@ -7601,6 +7634,13 @@ fn (mut tc TypeChecker) check_index(id flat.NodeId, node flat.Node) {
 		return
 	}
 	if node.value == 'range' {
+		// Slicing a string or a fixed array copies it; slicing an array shares
+		// the array's buffer.
+		if base_type is String {
+			tc.warn_alloc('string slice', id, node.pos)
+		} else if base_type is ArrayFixed && !tc.fixed_array_slice_is_view(id) {
+			tc.warn_alloc('slice of a fixed array', id, node.pos)
+		}
 		mut range_out_of_bounds_reported := false
 		if !(base_type is Array || base_type is ArrayFixed || base_type is String)
 			&& tc.should_diagnose(id) {

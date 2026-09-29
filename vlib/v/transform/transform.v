@@ -547,6 +547,9 @@ mut:
 	monomorph_worker_scopes []voidptr
 	signature_maps_shared   bool
 	signature_maps_changed  bool
+	// Allocations lowering adds that the source does not show, for
+	// -warn-about-allocs; see warn_alloc.
+	alloc_warnings []AllocWarning
 }
 
 // AliasCache memoizes normalize_type_alias results. It lives on the heap so the
@@ -1161,6 +1164,7 @@ pub fn transform_selected_functions(mut a flat.FlatAst, tc &types.TypeChecker, s
 			synthesized_helpers << node.value
 		}
 	}
+	t.report_alloc_warnings()
 	return t.used_fns, t.monomorph_errors, synthesized_helpers
 }
 
@@ -1266,6 +1270,7 @@ fn transform_after_prepare(mut t Transformer, mut a flat.FlatAst, _used_fns map[
 	}
 	t.used_fns_log_active = used_log_was_active
 	t.release_finished_scratch()
+	t.report_alloc_warnings()
 	return t.used_fns, was_parallel, t.monomorph_errors, owned_base_nodes, t.retained_worker_regions
 }
 
@@ -1748,6 +1753,7 @@ pub fn monomorphize_with_used_checked_config_scoped_cached(mut a flat.FlatAst, t
 	} else {
 		t.release_monomorph_worker_scopes()
 	}
+	t.report_alloc_warnings()
 	return t.used_fns, t.monomorph_errors, final_specs
 }
 
@@ -4144,6 +4150,7 @@ fn (t &Transformer) fork_worker_config(ast &flat.FlatAst, wtc &types.TypeChecker
 	w.generic_fn_specs_in_progress = map[string]bool{}
 	w.monomorph_errors = []string{}
 	w.monomorph_error_seen = map[string]bool{}
+	w.alloc_warnings = []AllocWarning{}
 	// Fields added after the fork/merge machinery was first written. They are
 	// mutated during body transforms (or lazily built), so each worker needs
 	// private backing storage — a plain struct copy would share the master's.
@@ -5033,6 +5040,9 @@ fn (mut t Transformer) merge_worker(w &Transformer, items []FnWorkItem, base_nod
 			}
 			t.tc.apply_forked_fn_value(idx, owned_name)
 		}
+	}
+	for warning in w.alloc_warnings {
+		t.alloc_warnings << warning
 	}
 	for message in w.monomorph_errors {
 		owned_message := if w.worker_scope != unsafe { nil } && !t.retain_worker_results {
@@ -15624,10 +15634,12 @@ fn (mut t Transformer) transform_decl_assign_stmt(id flat.NodeId, node flat.Node
 		src := t.a.child_node(&node, 0)
 		if src.kind == .ident && src.value in t.mut_fixed_array_capture_sources
 			&& src.value !in t.heaped_amp_locals && t.is_fixed_array_type(inferred_typ) {
+			t.warn_alloc(t.a.child(&node, 1), src.pos, 'local moved to the heap: a closure captures it mutably')
 			return t.heap_escaping_source_decl(node, src.value, inferred_typ)
 		}
 		if src.kind == .ident && src.value in t.escaping_amp_sources
 			&& src.value !in t.heaped_amp_locals && t.heapable_value_type(inferred_typ) {
+			t.warn_alloc(t.a.child(&node, 1), src.pos, 'local moved to the heap: its address escapes')
 			return t.heap_escaping_source_decl(node, src.value, inferred_typ)
 		}
 		// A struct declared `@[heap]` is always heap-allocated at its own declaration,
@@ -15637,6 +15649,7 @@ fn (mut t Transformer) transform_decl_assign_stmt(id flat.NodeId, node flat.Node
 			&& node.value != zeroed_stack_value_decl_marker
 			&& !decl_assign_value_is_shared(node.value)
 			&& src.value !in t.heaped_amp_locals && t.heap_attr_struct_type(inferred_typ) {
+			t.warn_alloc(t.a.child(&node, 1), src.pos, 'local of a `@[heap]` struct')
 			return t.heap_escaping_source_decl(node, src.value, inferred_typ)
 		}
 	}

@@ -31,6 +31,138 @@ fn run_warn_allocs_process(program string, args []string, environment map[string
 	return result
 }
 
+// The allocations the source does not show: `&T{}`, a value becoming an
+// interface without a cast, slices that copy, and locals lowering moves to
+// the heap. They were the leaks -warn-about-allocs missed in a kernel built
+// with -gc none.
+fn test_warn_about_allocs_reports_implicit_allocations() {
+	root := os.join_path(os.vtmp_dir(), 'v3_warn_allocs_implicit_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root)!
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	v3_bin := build_warn_allocs_v3(root)
+	source := os.join_path(root, 'main.v')
+	os.write_file(source, "interface Resource {
+mut:
+	close()
+}
+
+struct File {
+mut:
+	fd int
+}
+
+fn (mut f File) close() {}
+
+struct Node {
+mut:
+	resource &Resource = unsafe { nil }
+}
+
+struct Entry {
+	base u64
+}
+
+interface Speaker {
+	speak() string
+}
+
+struct Dog {
+	name string
+}
+
+fn (d &Dog) speak() string {
+	return d.name
+}
+
+fn hold(r &Resource) {}
+
+fn say(s Speaker) string {
+	return s.speak()
+}
+
+fn open_file() &Resource {
+	f := &File{}
+	return f
+}
+
+fn main() {
+	mut f := &File{}
+	hold(f)
+	mut node := Node{
+		resource: f
+	}
+	node.resource = f
+	fixed := [1, 2, 3]!
+	copied := fixed[..]
+	text := 'hello world'
+	word := text[0..5]
+	mut entries := []Entry{cap: 2} @[freed]
+	entry := Entry{
+		base: 1
+	}
+	entries.insert(0, entry)
+	kept := Entry{
+		base: 2
+	} @[freed]
+	entries.insert(0, kept)
+	dog := &Dog{
+		name: 'rex'
+	} @[freed]
+	println(say(dog))
+	println(say(Dog{ name: 'fido' }))
+	mut speakers := []Speaker{cap: 1} @[freed]
+	speakers << Dog{
+		name: 'spot'
+	}
+	println(copied.len + word.len + entries.len + speakers.len)
+	println(open_file() != unsafe { nil })
+	// Slices written through share the fixed array: none of these copy.
+	mut digits := [4, 3, 2, 1]!
+	fill(mut digits[2..])
+	digits[..2].sort()
+	digits[1..3].reverse_in_place()
+	copy(mut digits[..2], [7, 8]!)
+	println(digits)
+}
+
+fn fill(mut values []int) {
+	for i in 0 .. values.len {
+		values[i] = 9
+	}
+}
+")!
+	output := os.join_path(root, 'main.c')
+	plain := cmdexec.run(v3_bin, ['-silent', '-nocache', '-o', output, source])
+	assert plain.exit_code == 0, plain.output
+	assert !plain.output.contains('allocation ('), plain.output
+
+	warned := cmdexec.run(v3_bin, ['-silent', '-nocache', '-warn-about-allocs', '-o', output, source])
+	assert warned.exit_code == 0, warned.output
+	// `&File{}` twice; `&Dog{}` is freed. hold(f), the field, the assignment,
+	// the return, and a Dog value passed and appended: a pointer passed as a
+	// value interface boxes nothing.
+	for description, count in {
+		'struct on the heap':                           2
+		'conversion to interface':                      6
+		'slice of a fixed array':                       1
+		'string slice':                                 1
+		'local moved to the heap: its address escapes': 1
+	} {
+		message := 'allocation (${description})'
+		assert warned.output.count(message) == count, '${message}\n${warned.output}'
+	}
+	assert warned.output.contains('main.v:47:7: warning: allocation (conversion to interface)'), warned.output
+	assert warned.output.contains('main.v:57:2: warning: allocation (local moved to the heap: its address escapes)'), warned.output
+
+	as_errors := cmdexec.run(v3_bin, ['-silent', '-nocache', '-W', '-warn-about-allocs', '-o',
+		output, source])
+	assert as_errors.exit_code != 0, as_errors.output
+	assert as_errors.output.contains('error: allocation (struct on the heap)'), as_errors.output
+}
+
 fn test_warn_about_allocs_reports_v1_allocation_sites() {
 	root := os.join_path(os.vtmp_dir(), 'v3_warn_allocs_${os.getpid()}')
 	os.rmdir_all(root) or {}

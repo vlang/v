@@ -2255,6 +2255,9 @@ fn (mut t Transformer) absorb_scoped_batch(batch &Transformer, scope voidptr, ne
 	for message in batch.monomorph_errors {
 		t.monomorph_errors << t.promote_scoped_result_text(message)
 	}
+	for warning in batch.alloc_warnings {
+		t.alloc_warnings << warning
+	}
 	deferred_start := t.deferred_base_writes.len
 	for write in batch.deferred_base_writes {
 		t.deferred_base_writes << write
