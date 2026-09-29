@@ -28,7 +28,11 @@ fn run_issue_28694_probe(name string, source string, files map[string]string) {
 		os.write_file(path, contents) or { panic(err) }
 	}
 	source_path := os.join_path(temp_dir, 'main.c.v')
-	output_path := os.join_path(temp_dir, if os.user_os() == 'windows' { 'probe.exe' } else { 'probe' })
+	output_path := os.join_path(temp_dir, if os.user_os() == 'windows' {
+		'probe.exe'
+	} else {
+		'probe'
+	})
 	os.write_file(source_path, source) or { panic(err) }
 	build := os.execute('${os.quoted_path(@VEXE)} -new-compiler -nocache -o ${os.quoted_path(output_path)} ${os.quoted_path(source_path)}')
 	assert build.exit_code == 0, '${name}: ${build.output}'
@@ -37,21 +41,21 @@ fn run_issue_28694_probe(name string, source string, files map[string]string) {
 }
 
 fn test_issue_28694_urllib_result_bool() {
-	run_issue_28694_probe('urllib', 'import net.urllib
+	run_issue_28694_probe('urllib', "import net.urllib
 
 fn main() {
-	mut url := urllib.parse(\'https://example.com/a%20b\') or { panic(err) }
-	assert url.path == \'/a b\'
-	ok := url.set_path(\'/next%2Fpath\') or { panic(err) }
+	mut url := urllib.parse('https://example.com/a%20b') or { panic(err) }
+	assert url.path == '/a b'
+	ok := url.set_path('/next%2Fpath') or { panic(err) }
 	assert ok
-	assert url.path == \'/next/path\'
-	if _ := url.set_path(\'/bad%ZZ\') {
-		assert false, \'invalid escaping must return an error\'
+	assert url.path == '/next/path'
+	if _ := url.set_path('/bad%ZZ') {
+		assert false, 'invalid escaping must return an error'
 	} else {
 		assert err.msg().len > 0
 	}
 }
-', map[string]string{})
+", map[string]string{})
 }
 
 fn test_issue_28694_imported_fixed_array_constant() {

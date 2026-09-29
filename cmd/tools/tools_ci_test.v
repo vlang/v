@@ -113,15 +113,14 @@ fn tools_ci_expected_commands(job string, compiler string) []string {
 		}
 		commands << 'hostname -s freebsd-ci'
 	} else {
-		commands << ['pkg_add git sqlite3 gmake boehm-gc libiconv openssl',
-			'hostname -s openbsd-ci']
+		commands << ['pkg_add git sqlite3 gmake boehm-gc libiconv openssl', 'hostname -s openbsd-ci']
 	}
 	commands << ['uname -a', 'git config --global --add safe.directory .']
 	if job == 'tools-openbsd' {
 		commands << 'ulimit -d 4194304'
 	}
-	commands << ['gmake', 'v -showcc -o v cmd/v', 'v symlink', 'v doctor',
-		'v fmt -verify cmd/', 'v -silent -N -W -check build-tools', 'v -silent test-self cmd']
+	commands << ['gmake', 'v -showcc -o v cmd/v', 'v symlink', 'v doctor', 'v fmt -verify cmd/',
+		'v -silent -N -W -check build-tools', 'v -silent test-self cmd']
 	if compiler != 'tcc' {
 		commands << 'v -silent -W -cstrict test-self cmd'
 	}
