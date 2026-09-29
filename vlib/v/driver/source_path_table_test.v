@@ -253,16 +253,21 @@ fn test_initial_module_seeding_records_through_the_source_path_table() {
 	// Both files declare a module, so the explicitly imported `alpha` still stays
 	// local: that needs the first scan to find both files too.
 	mut parsed_modules := map[string]bool{}
+	mut identity_dirs := map[string]string{}
+	mut dir_identities := map[string]string{}
 	seed_initial_modules(mut a, ['written_alpha.v', 'written_beta.v'], {
 		'alpha': true
-	}, mut parsed_modules)
+	}, mut parsed_modules, mut identity_dirs, mut dir_identities)
 	assert parsed_modules == {
 		'alpha': true
 		'beta':  true
 	}
 	mut fresh := parse_unrecorded_files([alpha])
 	mut fresh_modules := map[string]bool{}
-	seed_initial_modules(mut fresh, ['elsewhere.v'], map[string]bool{}, mut fresh_modules)
+	mut fresh_identity_dirs := map[string]string{}
+	mut fresh_dir_identities := map[string]string{}
+	seed_initial_modules(mut fresh, ['elsewhere.v'], map[string]bool{}, mut fresh_modules, mut
+		fresh_identity_dirs, mut fresh_dir_identities)
 	assert fresh_modules.len == 0
 	assert_records_both_scans(fresh, alpha)
 }
