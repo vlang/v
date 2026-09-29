@@ -16543,7 +16543,15 @@ fn v3_cached_object_compile_signature(c_standard string, opt_flag string, pic_fl
 	].join('\n')
 }
 
-fn v3_cached_object_wrapper_compile_signature(base string, generated_source string) string {
+fn v3_cached_object_wrapper_compile_signature(program_base string, generated_source string) string {
+	// A program that calls `recover()` gives every `defer` a panic frame, the
+	// cached objects of its modules included, so those objects are kept apart
+	// from the ones of programs that do not.
+	base := if generated_source.contains('typedef struct v_unwind_frame {') {
+		'${program_base}\npanic_frames=true'
+	} else {
+		program_base
+	}
 	start_marker := '/* V3CACHE_PROGRAM_WRAPPERS */'
 	end_marker := '/* V3CACHE_PROGRAM_WRAPPERS_END */'
 	first_start := generated_source.index(start_marker) or { return base }

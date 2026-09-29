@@ -2734,6 +2734,42 @@ if you are inside an inner scope (deep inside an `if` or `for`).
 
 For these more rare cases, you can use: `defer(fn) {}` instead of just `defer {}`.
 
+#### Recovering from panics
+
+A panic runs the pending `defer` blocks of every function on the stack, newest
+first. Calling `recover()` directly in one of these blocks stops the panic, and
+returns its message. The function that deferred the block then runs its other
+deferred blocks, and returns normally, with the zero value of its result type.
+This works like `recover` in Go.
+
+```v
+fn parse_age(s string) int {
+	defer {
+		if msg := recover() {
+			eprintln('invalid age ${s}: ${msg}')
+		}
+	}
+	age := s.int()
+	if age < 0 {
+		panic('negative age')
+	}
+	return age
+}
+
+fn main() {
+	println(parse_age('42')) // 42
+	println(parse_age('-1')) // 0, after printing `invalid age -1: negative age`
+}
+```
+
+`recover()` returns `none` when there is no panic, and when it is not called
+directly in a deferred block that runs because of the panic (for example, in a
+function that such a block calls). A block can also run cleanup code without
+calling `recover()`: the panic then goes on to the callers, and if nothing
+recovers it, the program prints the message and exits once all deferred blocks
+ran. Runtime errors that panic, like an array index out of range, can be
+recovered as well. Signals, like a segmentation fault, cannot.
+
 ### Goto
 
 V allows unconditionally jumping to a label with `goto`. The label name must be contained
@@ -3764,6 +3800,7 @@ fn eprintln(s string) // same as println(), but uses stderr
 
 fn exit(code int) // terminates the program with a custom error code
 fn panic(s string) // prints a message and backtraces on stderr, and terminates the program with error code 1
+fn recover() ?string // stops a panic from a `defer` block, see [Recovering from panics](#recovering-from-panics)
 fn print_backtrace() // prints backtraces on stderr
 ```
 
@@ -7628,16 +7665,20 @@ Paths could also use the compile time pseudo variables `@VEXEROOT`,
 logo := $embed_file('@VEXEROOT/examples/assets/logo.png')
 ```
 
-Note that by default, using `$embed_file(file)`, will always embed the whole content
-of the file, but you can modify that behaviour by passing: `-d embed_only_metadata`
-when compiling your program. In that case, the file will not be embedded. Instead,
-it will be loaded *the first time* your program calls `embedded_file.data()` at runtime,
-making it easier to change in external editor programs, without needing to recompile
-your program.
+The whole content of the file is embedded only in `-prod` builds (and in portable
+`-os cross` C output). A normal development build stores just the file's path and
+the file is loaded from that path *the first time* your program calls
+`embedded_file.data()` at runtime. This keeps rebuilds cheap and lets you change
+the file in an external editor without recompiling your program.
+
+Because the stored path points to the machine the program was built on, a
+development build panics when it runs where that file does not exist, for example
+on another computer, or after cross compiling for another OS. Use `-prod` for
+anything you distribute.
 
 Embedding a file inside your executable, will increase its size, but
 it will make it more self contained and thus easier to distribute.
-When that happens (the default), `embedded_file.data()` will cause *no IO*,
+When that happens (with `-prod`), `embedded_file.data()` will cause *no IO*,
 and it will always return the same data.
 
 With `-prod`, a large embedded file is stored through the assembler's `.incbin`

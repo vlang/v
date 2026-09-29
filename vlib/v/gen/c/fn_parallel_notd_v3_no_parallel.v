@@ -2721,6 +2721,7 @@ fn (g &FlatGen) new_parallel_worker_config(worker_id int, result_only bool) &Fla
 		is_debug:                           g.is_debug
 		race:                               g.race
 		line_directives:                    g.line_directives
+		uses_recover:                       g.uses_recover
 		check_overflow:                     g.check_overflow
 		force_bounds_checking:              g.force_bounds_checking
 		object_file_mode:                   g.object_file_mode

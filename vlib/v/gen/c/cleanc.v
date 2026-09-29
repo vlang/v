@@ -432,6 +432,9 @@ mut:
 	fn_defer_counts                map[int]string
 	defer_capture_names            []string
 	defer_capture_types            map[string]types.Type
+	uses_recover                   bool   // the program calls `recover()`, so every `defer` links a panic frame
+	cur_fn_panic_owner             bool   // the current function declared the `_v_unwind_owner` of its frames
+	cur_panic_frame                string // frame of the deferred block being emitted, which `recover()` asks for
 	interfaces                     map[string][]string
 	const_vals                     map[string]flat.NodeId
 	const_modules                  map[string]string
@@ -3434,6 +3437,7 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	// post-monomorph map matches the worker path and avoids a full-program clone
 	// at the cgen memory peak.
 	g.used_fns = &used_fns
+	g.uses_recover = g.program_uses_recover()
 	g.used_fn_names = []string{}
 	g.fn_gen_items = []FlatFnGenItem{}
 	g.top_level_node_ids = []i32{}
@@ -19621,6 +19625,7 @@ fn (mut g FlatGen) preamble() {
 		g.headerless_libc_preamble()
 	}
 	g.write_arch_macros()
+	g.panic_recovery_preamble()
 	g.writeln('')
 	if !g.has_builtins {
 		g.writeln('typedef struct {')
@@ -19642,6 +19647,42 @@ fn (mut g FlatGen) preamble() {
 	}
 	g.writeln('typedef struct Array { void* data; int len; int cap; int elem_size; } Array;')
 	g.writeln('')
+}
+
+// panic_recovery_preamble declares the frame that each `defer` links in a program
+// that calls `recover()`. Its head is `PanicFrame` in vlib/builtin/recover.c.v.
+fn (mut g FlatGen) panic_recovery_preamble() {
+	if !g.uses_recover {
+		return
+	}
+	g.writeln('#include <setjmp.h>')
+	g.writeln('typedef struct v_unwind_frame {')
+	g.writeln('\tstruct v_unwind_frame* prev;')
+	g.writeln('\tvoid* owner;')
+	g.writeln('\tvoid (*jump)(void*);')
+	g.writeln('\tjmp_buf buf;')
+	g.writeln('} v_unwind_frame;')
+	// `_setjmp` does not save the signal mask, which takes a system call.
+	g.writeln('#if defined(_WIN32)')
+	g.writeln('#define v_unwind_setjmp(buf) setjmp(buf)')
+	g.writeln('#define v_unwind_longjmp(buf) longjmp(buf, 1)')
+	g.writeln('#else')
+	g.writeln('#define v_unwind_setjmp(buf) _setjmp(buf)')
+	g.writeln('#define v_unwind_longjmp(buf) _longjmp(buf, 1)')
+	g.writeln('#endif')
+	// A landing pad reads locals after the longjmp(). An optimizing compiler may
+	// keep a local in a register that the longjmp() restores to its value at the
+	// setjmp(), so the locals a deferred block reads get their address escaped:
+	// that keeps them in memory, and the landing pad reloads them from there.
+	g.writeln('#if defined(__GNUC__) && !defined(__TINYC__)')
+	g.writeln('#define v_unwind_keep(p) __asm__ __volatile__("" : : "r"(p) : "memory")')
+	g.writeln('#define v_unwind_reload() __asm__ __volatile__("" : : : "memory")')
+	g.writeln('#else')
+	g.writeln('static void* volatile v_unwind_kept;')
+	g.writeln('#define v_unwind_keep(p) (v_unwind_kept = (void*)(p))')
+	g.writeln('#define v_unwind_reload() ((void)v_unwind_kept)')
+	g.writeln('#endif')
+	g.writeln('static inline void v_unwind_jump(void* frame) { v_unwind_longjmp(((v_unwind_frame*)frame)->buf); }')
 }
 
 fn (g &FlatGen) c_directives_use_system_libc() bool {
@@ -23562,7 +23603,31 @@ fn (g &FlatGen) is_builtin_autostr_addr_state(name string) bool {
 // exist during early boot.
 fn (g &FlatGen) global_is_thread_local(name string) bool {
 	return g.target.os != 'vinix' && (name.contains('__anon_fn_')
-		|| g.is_builtin_autostr_addr_state(name))
+		|| g.is_builtin_autostr_addr_state(name) || g.is_builtin_panic_state(name))
+}
+
+// Every thread unwinds its own stack, so the panic frames it links are its own.
+fn (g &FlatGen) is_builtin_panic_state(name string) bool {
+	return name == 'g_panic_state' && (g.global_modules[name] or { '' }) == 'builtin'
+}
+
+// program_uses_recover reports whether the program calls the builtin `recover()`.
+// Only then does a `defer` link a panic frame, so other programs pay nothing.
+@[direct_array_access]
+fn (g &FlatGen) program_uses_recover() bool {
+	if g.target_libc_headers || g.target.os == 'vinix' || 'freestanding' in g.compile_defines {
+		return false
+	}
+	if g.has_used_fn_filter() {
+		return g.used_fn_contains('recover')
+	}
+	for i in 0 .. g.a.nodes.len {
+		node := unsafe { &g.a.nodes[i] }
+		if node.kind == .ident && node.value == 'recover' {
+			return true
+		}
+	}
+	return false
 }
 
 fn (mut g FlatGen) emit_tinyc_windows_thread_local_slot(cname string, ct string, dims string) {
