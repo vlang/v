@@ -3787,28 +3787,16 @@ fn (mut t Transformer) transform_call_arg_for_param_isolated(arg_id flat.NodeId,
 	if param_type.starts_with('&[]') {
 		arg_type := t.node_type(arg_id)
 		if arg_node.is_mut {
-			if view := t.fixed_array_range_view(arg_id, if arg_type.starts_with('[]') {
-				arg_type
-			} else {
-				param_type[1..]
-			})
-			{
-				tmp_name := t.new_temp('fixed_array_arg')
-				t.pending_stmts << t.make_decl_assign_typed(tmp_name, view, param_type[1..])
-				addr := t.make_prefix(.amp, t.make_ident(tmp_name))
-				t.set_node_typ(int(addr), param_type)
-				return addr
+			range_type := if arg_type.starts_with('[]') { arg_type } else { param_type[1..] }
+			if view := t.fixed_array_range_view(arg_id, range_type) {
+				return t.fixed_array_mut_arg(view, range_type, param_type)
 			}
 		}
 		fixed_type := if arg_type.starts_with('&') { arg_type[1..] } else { arg_type }
 		if t.is_fixed_array_type(fixed_type) {
 			array_type := param_type[1..]
-			array_value := t.fixed_array_value_to_array_no_alloc(arg_id, fixed_type, array_type)
-			tmp_name := t.new_temp('fixed_array_arg')
-			t.pending_stmts << t.make_decl_assign_typed(tmp_name, array_value, array_type)
-			addr := t.make_prefix(.amp, t.make_ident(tmp_name))
-			t.set_node_typ(int(addr), param_type)
-			return addr
+			view := t.fixed_array_value_to_array_no_alloc(arg_id, fixed_type, array_type)
+			return t.fixed_array_mut_arg(view, array_type, param_type)
 		}
 	}
 	if transform_param_type_is_void_pointer(param_type)
@@ -13169,6 +13157,42 @@ fn (t &Transformer) copy_source_is_temporary(id flat.NodeId) bool {
 // unaliased_value_type returns the type of an expression without pointers and aliases.
 fn (t &Transformer) unaliased_value_type(id flat.NodeId) string {
 	return t.alias_str_resolved_base_type(t.node_type(id).trim_left('&')).trim_left('&')
+}
+
+// fixed_array_mut_arg passes `view`, a view of a fixed array's storage, to a `mut []T`
+// parameter. The callee may keep its parameter, by returning or storing it, and a view
+// of a stack array must not outlive the call. So the callee gets a heap copy, and its
+// elements are copied back into the fixed array after the call. They are copied from
+// the buffer that was passed, not from the parameter, so appending to or reassigning
+// the parameter in the callee does not change the fixed array, just as with the view.
+// Without an enclosing call transform to run the copy-back, or in `spawn`, the view
+// itself is passed.
+fn (mut t Transformer) fixed_array_mut_arg(view flat.NodeId, array_type string, param_type string) flat.NodeId {
+	view_name := t.new_temp('fixed_array_view')
+	t.pending_stmts << t.make_decl_assign_typed(view_name, view, array_type)
+	mut arg_name := view_name
+	if t.call_expr_depth > 0 && !t.in_spawn_expr {
+		buf_name := t.new_temp('fixed_array_buf')
+		view_addr := t.make_prefix(.amp, t.make_ident(view_name))
+		t.set_node_typ(int(view_addr), '&${array_type}')
+		t.mark_fn_used('array__clone')
+		t.pending_stmts << t.make_decl_assign_typed(buf_name, t.make_call_typed('array__clone',
+			[view_addr], array_type), array_type)
+		arg_name = t.new_temp('fixed_array_arg')
+		t.pending_stmts << t.make_decl_assign_typed(arg_name, t.make_ident(buf_name),
+			array_type)
+		size := t.make_infix(.mul, t.make_selector(t.make_ident(view_name), 'len', 'int'),
+			t.make_sizeof_type(array_type[2..]))
+		t.mark_fn_used('vmemcpy')
+		t.fixed_array_arg_writebacks << t.make_expr_stmt(t.make_call_typed('vmemcpy', [
+			t.make_selector(t.make_ident(view_name), 'data', 'voidptr'),
+			t.make_selector(t.make_ident(buf_name), 'data', 'voidptr'),
+			size,
+		], 'voidptr'))
+	}
+	addr := t.make_prefix(.amp, t.make_ident(arg_name))
+	t.set_node_typ(int(addr), param_type)
+	return addr
 }
 
 // fixed_array_range_view lowers `fixed[a..b]`, where the result is written to, to a slice of

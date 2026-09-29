@@ -252,6 +252,8 @@ mut:
 	monomorph_errors                    []string
 	monomorph_error_seen                map[string]bool
 	in_spawn_expr                       bool
+	fixed_array_arg_writebacks          []flat.NodeId
+	call_expr_depth                     int
 	has_spawn_expr                      bool
 	discarded_aggregate_spawns          map[int]bool
 	in_const_init                       bool
@@ -19451,9 +19453,29 @@ fn (mut t Transformer) call_argument_borrows_fixed_array(id flat.NodeId, node fl
 	return param_type.starts_with('&') || param_type in ['voidptr', 'byteptr', 'charptr']
 }
 
-// transform_call_expr transforms transform call expr data for transform.
-@[direct_array_access]
+// transform_call_expr transforms transform call expr data for transform. When the call
+// took a fixed array as a `mut []T` argument through a heap copy, `fixed_array_mut_arg`
+// left the statements that copy its elements back in `fixed_array_arg_writebacks`; they
+// run right after the call.
 fn (mut t Transformer) transform_call_expr(id flat.NodeId, node flat.Node) flat.NodeId {
+	writebacks_start := t.fixed_array_arg_writebacks.len
+	t.call_expr_depth++
+	call := t.transform_call_expr_inner(id, node)
+	t.call_expr_depth--
+	if t.fixed_array_arg_writebacks.len == writebacks_start {
+		return call
+	}
+	writebacks := t.fixed_array_arg_writebacks[writebacks_start..].clone()
+	t.fixed_array_arg_writebacks = t.fixed_array_arg_writebacks[..writebacks_start].clone()
+	mut typ := t.node_type(call)
+	if typ in ['', 'unknown'] {
+		typ = t.node_type(id)
+	}
+	return t.finish_mut_optional_value_call(call, typ, writebacks)
+}
+
+@[direct_array_access]
+fn (mut t Transformer) transform_call_expr_inner(id flat.NodeId, node flat.Node) flat.NodeId {
 	if node.value.len > 0 && node.value == '__v_compile_warn' {
 		return t.make_empty()
 	}
