@@ -12764,6 +12764,29 @@ pub fn (tc &TypeChecker) promoted_method_value_owner(id flat.NodeId) ?string {
 	return tc.promoted_method_owner(tc.resolve_type(tc.a.child(&node, 0)), node.value)
 }
 
+// alias_method_value_receiver is the alias whose own method the selector `id` names
+// without a call: `Alias` for `a.describe` with `fn (a Alias) describe()`, and none
+// when the method is the one of the aliased type.
+pub fn (tc &TypeChecker) alias_method_value_receiver(id flat.NodeId) ?string {
+	if int(id) < 0 || int(id) >= tc.a.nodes.len {
+		return none
+	}
+	node := tc.a.nodes[int(id)]
+	if node.kind != .selector || node.children_count == 0 {
+		return none
+	}
+	receiver := unwrap_pointer(tc.resolve_type(tc.a.child(&node, 0)))
+	if receiver !is Alias {
+		return none
+	}
+	alias := receiver as Alias
+	key := tc.alias_method_value_decl_key(alias, node.value) or { return none }
+	if key.all_before_last('.').all_after_last('.') != alias.name.all_after_last('.') {
+		return none
+	}
+	return alias.name
+}
+
 // record_promoted_method_value records the method of the embedded struct `owner`
 // that a method value of an alias promotes, as the method values of a struct are.
 fn (mut tc TypeChecker) record_promoted_method_value(owner string, method string) {

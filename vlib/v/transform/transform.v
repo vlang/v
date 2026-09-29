@@ -20189,23 +20189,48 @@ fn (mut t Transformer) transform_selector_expr(id flat.NodeId, node flat.Node) f
 		new_base := t.selector_base_for_field(transformed_base, base_type0)
 		return t.lower_sum_shared_field_selector(new_base, base_type0, node.value, shared_typ)
 	}
+	// Ask the checker about a method named without a call before the receiver is
+	// lowered: lowering retypes a local that holds a struct alias as its struct.
+	is_method_value := !isnil(t.tc) && t.tc.expr_is_method_value(id)
+	promoted_owner := if is_method_value {
+		t.tc.promoted_method_value_owner(id) or { '' }
+	} else {
+		''
+	}
+	alias_receiver := if is_method_value {
+		t.tc.alias_method_value_receiver(id) or { '' }
+	} else {
+		''
+	}
 	mut new_base := t.transform_selector_base_expr(base_id)
 	mut selector_generic_params := node.generic_params().clone()
-	if !isnil(t.tc) && t.tc.expr_is_method_value(id) {
+	if is_method_value {
 		// A method promoted from an embedded struct binds that struct, as its call
 		// does: `p.describe` is `p.Base.describe`. The checker names the embedded
 		// struct also when its method is generic, `Holder[int]`, before any
-		// specialization of that method exists. It sees the struct under an alias,
-		// so an alias that declares the method keeps it.
-		if owner := t.tc.promoted_method_value_owner(id) {
+		// specialization of that method exists.
+		if promoted_owner.len > 0 {
 			own_method := t.resolve_receiver_method_name(new_base, node.value)
 			if own_method.len == 0
-				|| method_receiver_short_names_match(own_method.all_before_last('.'), owner) {
+				|| method_receiver_short_names_match(own_method.all_before_last('.'), promoted_owner) {
 				if embedded_base := t.embedded_receiver_base_for_type(new_base,
-					t.node_type(new_base), owner)
+					t.node_type(new_base), promoted_owner)
 				{
 					new_base = embedded_base
 				}
+			}
+		}
+		// A method of a struct alias binds the alias: its lowered receiver can be the
+		// struct, and C generation picks the method of the type it sees.
+		if alias_receiver.len > 0 {
+			base_type := t.node_type(new_base)
+			if t.trim_pointer_type(base_type) != alias_receiver {
+				target := if base_type.starts_with('&') {
+					'&${alias_receiver}'
+				} else {
+					alias_receiver
+				}
+				new_base = t.make_cast(target, new_base, target)
 			}
 		}
 		method_value_name := t.resolve_receiver_method_name(new_base, node.value)
