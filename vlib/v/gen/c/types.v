@@ -54,6 +54,34 @@ fn (g &FlatGen) enum_backing_info(enum_name string) ?EnumBackingInfo {
 	return none
 }
 
+// wide_enum_signature_c_type returns the C type that function parameters and return
+// values need for an enum with a backing type (`enum E as u64`). Those pass other
+// enums as `int`. A narrower value round-trips through `int`, but a 64 bit value
+// would be truncated, and a pointer (`mut e E`) must address the real storage: an
+// `int*` to a `u8` field would overwrite the bytes after it.
+fn (g &FlatGen) wide_enum_signature_c_type(t types.Type) ?string {
+	if t is types.Pointer {
+		if t.base_type is types.Enum {
+			if info := g.enum_backing_info(t.base_type.name) {
+				if info.storage_c_type !in ['int', 'i32'] {
+					return info.c_name + '*'
+				}
+			}
+			return none
+		}
+		base := g.wide_enum_signature_c_type(t.base_type)?
+		return base + '*'
+	}
+	if t is types.Enum {
+		if info := g.enum_backing_info(t.name) {
+			if info.storage_c_type in ['i64', 'u64'] {
+				return info.c_name
+			}
+		}
+	}
+	return none
+}
+
 fn (g &FlatGen) enum_value_c_type(enum_type types.Enum) string {
 	if info := g.enum_backing_info(enum_type.name) {
 		return info.c_name
@@ -788,7 +816,7 @@ fn (g &FlatGen) canonical_import_alias_type_text_in_file_uncached(typ string, fi
 	}
 	if clean.contains('.') {
 		alias := clean.all_before('.')
-		if module_name := g.tc.file_imports['${file}\n${alias}'] {
+		if module_name := g.cached_file_import(file, alias) {
 			return module_name + clean[alias.len..]
 		}
 	}
@@ -832,7 +860,7 @@ fn (g &FlatGen) current_file_import_alias_module(alias string) ?string {
 	if g.tc.cur_file.len == 0 {
 		return none
 	}
-	return g.tc.file_imports['${g.tc.cur_file}\n${alias}'] or { none }
+	return g.cached_file_import(g.tc.cur_file, alias) or { none }
 }
 
 fn optional_payload_is_bare_struct(t types.Type) bool {
@@ -874,10 +902,8 @@ fn (mut g FlatGen) collect_optional_typedefs() {
 }
 
 fn (mut g FlatGen) collect_unresolved_call_optional_types() {
-	// Calls without a resolved expression type are normally the only optional-type
-	// source not covered by the shared declaration-signature scan. Legacy
-	// `json.decode(T, ...)` is also handled here because its declaration keeps an
-	// erased `!voidptr` return while cgen materializes a concrete `!T` wrapper.
+	// Calls without a resolved expression type are the only optional-type source
+	// not covered by the shared declaration-signature scan.
 	mut seen_type_ids := []bool{len: 65536}
 	mut seen_type_texts := map[string]bool{}
 	for idx in g.type_metadata_nodes() {
@@ -885,38 +911,39 @@ fn (mut g FlatGen) collect_unresolved_call_optional_types() {
 		if node.kind != .call {
 			continue
 		}
-		if json_type := g.json_decode_call_expr_result_type(flat.NodeId(idx)) {
-			g.collect_optional_typedef_type(json_type)
+		// Only a complete type spelling that was not collected yet can add a
+		// typedef. Rule the rest out before the checker metadata below, which
+		// costs a map lookup per resolved call.
+		if node.typ.len == 0 || node.typ in ['int', 'array', 'map', 'unknown']
+			|| !cgen_type_text_is_complete(node.typ) {
+			continue
+		}
+		type_id := node.type_text_id()
+		if type_id != 0 {
+			if seen_type_ids[int(type_id)] {
+				continue
+			}
+		} else if node.typ in seen_type_texts {
+			continue
 		}
 		if idx < g.tc.expr_type_set.len && g.tc.expr_type_set[idx] {
 			continue
 		}
 		if idx < g.tc.resolved_call_set.len && g.tc.resolved_call_set[idx] {
 			name := g.tc.resolved_call_names[idx].value
-			// The compiler-magic `json.decode(T, s)` is declared as a `!voidptr`
-			// stub; its real `!T` return type only exists in the node spelling.
-			if name in g.tc.fn_ret_types && name != 'json.decode' {
+			if name in g.tc.fn_ret_types {
 				// collect_declaration_signature_types() already processed this exact
 				// return entry; only calls without checker return metadata need their
 				// transformed node spelling inspected below.
 				continue
 			}
 		}
-		if node.typ.len > 0 && node.typ !in ['int', 'array', 'map', 'unknown'] && cgen_type_text_is_complete(node.typ) {
-			type_id := node.type_text_id()
-			if type_id != 0 {
-				if seen_type_ids[int(type_id)] {
-					continue
-				}
-				seen_type_ids[int(type_id)] = true
-			} else {
-				if node.typ in seen_type_texts {
-					continue
-				}
-				seen_type_texts[node.typ] = true
-			}
-			g.collect_optional_typedef_type(g.parse_node_type(&node))
+		if type_id != 0 {
+			seen_type_ids[int(type_id)] = true
+		} else {
+			seen_type_texts[node.typ] = true
 		}
+		g.collect_optional_typedef_type(g.parse_node_type(&node))
 	}
 }
 

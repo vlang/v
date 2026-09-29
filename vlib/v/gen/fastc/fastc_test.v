@@ -798,6 +798,20 @@ fn test_fastc_unit_compile_order_starts_largest_cache_misses_first() {
 	assert fastc_unit_compile_order(paths, prepared) == [2, 3, 0]
 }
 
+fn test_fastc_prepared_units_map_restored_and_new_cache_objects() {
+	prepared := FastcPreparedUnits{
+		entries: [
+			FastcUnitCacheEntry{ object: '/build/hit.o', cache_object: '/cache/hit.o', hit: true },
+			FastcUnitCacheEntry{ object: '/build/miss.o', cache_object: '/cache/miss.o' },
+			FastcUnitCacheEntry{ object: '/build/uncached.o' },
+		]
+	}
+	assert prepared.cache_objects() == {
+		'/build/hit.o':  '/cache/hit.o'
+		'/build/miss.o': '/cache/miss.o'
+	}
+}
+
 fn test_fastc_link_cache_restores_an_independent_executable() {
 	$if !windows {
 		key := 'test-${os.getpid()}'
@@ -3118,11 +3132,168 @@ fn test_global_declarations_require_enable_globals_or_module_attribute() {
 
 	attributed_source := generate('@[has_globals]\nmodule main\n__global answer = 42\nfn main() {}\n', 'attributed_global.v', prefs) or { panic(err) }
 	assert attributed_source.contains('static int answer;'), attributed_source
+	translated_source := generate('@[translated]\nmodule main\n__global answer = 42\nfn main() {}\n',
+		'translated_global.v', prefs) or { panic(err) }
+	assert translated_source.contains('static int answer;'), translated_source
 
 	mut enabled_prefs := pref.new_preferences()
 	enabled_prefs.enable_globals = true
 	enabled_source := generate('module main\n__global answer = 42\nfn main() {}\n', 'enabled_global.v', enabled_prefs) or { panic(err) }
 	assert enabled_source.contains('static int answer;'), enabled_source
+}
+
+fn test_translated_pointer_writes_accept_immutable_roots() {
+	prefs := pref.new_preferences()
+	source := 'module main\nstruct State {\nmut:\n count int\n}\nfn bump(state &State) { state.count = 1 }\nfn main() {}\n'
+	mut message := ''
+	_ := generate(source, 'plain_pointer_write.v', prefs) or {
+		message = err.msg()
+		''
+	}
+	assert message.contains('mutation of immutable or unknown name'), message
+	translated := generate('@[translated]\n${source}', 'translated_pointer_write.v', prefs) or {
+		panic(err)
+	}
+	assert translated.contains('state->count=1;'), translated
+	pointer_increment := generate('@[translated]\nmodule main\nfn advance(p &int) { p++ }\nfn main() {}\n',
+		'translated_pointer_increment.v', prefs) or { panic(err) }
+	assert pointer_increment.contains('p++;'), pointer_increment
+	alias_increment := generate('@[translated]\nmodule main\ntype Cursor = &int\nfn advance(p Cursor) { p++ }\nfn main() {}\n',
+		'translated_alias_pointer_increment.v', prefs) or { panic(err) }
+	assert alias_increment.contains('p++;'), alias_increment
+	alias_selector := generate('@[translated]\nmodule main\nstruct State {\nmut:\n count int\n}\ntype StateRef = &State\nfn bump(state StateRef) { state.count = 1 }\nfn main() {}\n',
+		'translated_alias_pointer_selector.v', prefs) or { panic(err) }
+	assert alias_selector.contains('state->count=1;'), alias_selector
+	global_pointer := generate('@[translated]\nmodule main\nstruct GlobalState { count int }\n__global state = &GlobalState(unsafe { nil })\nfn main() { state.count = 1 }\n',
+		'translated_global_pointer_selector.v', prefs) or { panic(err) }
+	assert global_pointer.contains('state->count=1;'), global_pointer
+	pointer_call := generate('@[translated]\nmodule main\nstruct State { count int }\nfn get_state() &State { return unsafe { nil } }\nfn main() { get_state().count = 1 }\n',
+		'translated_pointer_call_selector.v', prefs) or { panic(err) }
+	assert pointer_call.contains('->count=1;'), pointer_call
+	dereference_write := generate('@[translated]\nmodule main\nfn store(target &int, value int) { *target = value }\nfn main() {}\n',
+		'translated_dereference_write.v', prefs) or { panic(err) }
+	assert dereference_write.contains('*target=value;'), dereference_write
+}
+
+fn test_translated_alias_pointer_call_field_writes() {
+	for selfhost in [false, true] {
+		mut prefs := pref.new_preferences()
+		prefs.building_v = selfhost
+		for receiver in ['get_state()', 'accessor.state()'] {
+			for operation in ['=1', '++', '--'] {
+				source := '@[translated]
+module main
+struct State { count int }
+type StateRef = &State
+type StateRefAlias = StateRef
+struct Accessor {}
+fn get_state() StateRefAlias { return unsafe { nil } }
+fn (a Accessor) state() StateRefAlias { return unsafe { nil } }
+fn write(accessor Accessor) {
+ ${receiver}.count${operation}
+}
+'
+				generated := generate(source, 'translated_alias_return.v', prefs) or { panic(err) }
+				assert generated.contains('->count${operation};'), generated
+			}
+		}
+	}
+}
+
+fn test_translated_scalar_mutations_accept_known_immutable_locals() {
+	prefs := pref.new_preferences()
+	for body in [
+		'fn advance(i int) { i++ }',
+		'fn advance(i int) { i-- }',
+		'fn advance(i int) { i += 2 }',
+		'fn advance(i int) { i = 2 }',
+		'fn advance() { i := 1; i++ }',
+		'fn advance() { i := 1; i-- }',
+		'fn advance() { i := 1; i += 2 }',
+		'fn advance() { i := 1; i = 2 }',
+	] {
+		source := 'module main\n${body}\nfn main() {}\n'
+		mut message := ''
+		_ := generate(source, 'immutable_scalar.v', prefs) or {
+			message = err.msg()
+			''
+		}
+		assert message.contains('mutation of immutable or unknown name'), message
+		_ := generate('@[translated]\n${source}', 'translated_scalar.v', prefs) or {
+			panic(err)
+		}
+	}
+	mut message := ''
+	_ := generate('@[translated]\nmodule main\nfn main() { missing++ }\n',
+		'translated_unknown.v', prefs) or {
+		message = err.msg()
+		''
+	}
+	assert message.contains('mutation of immutable or unknown name'), message
+}
+
+fn test_translated_mutation_operators_and_receiver_shapes() {
+	root := os.join_path(os.vtmp_dir(), 'translated_mutation_matrix_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+	operations := ['=7', '+=3', '-=3', '*=3', '&=3', '|=3', '^=3', '<<=1', '>>=1', '>>>=1', '++',
+		'--', '<<=64', '>>=64', '>>>=64']
+	expected := [7, 15, 9, 36, 0, 15, 15, 24, 6, 6, 13, 11, 0, 0, 0]
+	for selfhost in [false, true] {
+		mut prefs := pref.new_preferences()
+		prefs.building_v = selfhost
+		mut source := '@[translated]
+module main
+struct State { count int }
+type StateValue = State
+type StateRef = &State
+type StateRefAlias = StateRef
+__global global_state State
+fn copy_state(state StateValue) StateValue { return state }
+fn get_state(state &State) StateRefAlias { return state }
+fn (state &State) reference() StateRefAlias { return state }
+fn logical_shift(value int) int { value >>>= 1; return value }
+'
+		unsigned_type := if prefs.target.pointer_bits == 32 { 'u32' } else { 'u64' }
+		mut checks := ['if (logical_shift(-1) != ((${unsigned_type})-1 >> 1)) return 3;']
+		for i, operation in operations {
+			source += 'fn scalar_${i}(value int) int { value${operation}; return value }\n'
+			checks << 'if (scalar_${i}(12) != ${expected[i]}) return 1;'
+			for shape, target in ['state.count', 'copy.count', 'global_state.count',
+				'get_state(&state).count', 'state.reference().count', 'pointer.count'] {
+				name := 'mutate_${i}_${shape}'
+				source += 'fn ${name}(state StateValue) int {\n'
+				if shape == 1 { source += 'copy := copy_state(state)\n' }
+				if shape == 2 { source += 'global_state.count = state.count\n' }
+				if shape == 5 { source += 'pointer := StateRefAlias(&state)\n' }
+				result := if shape == 1 {
+					'copy.count'
+				} else if shape == 2 {
+					'global_state.count'
+				} else {
+					'state.count'
+				}
+				source += '${target}${operation}\nreturn ${result}\n}\n'
+				checks << 'if (${name}((State){.count=12}) != ${expected[i]}) return 2;'
+			}
+		}
+		generated := generate(source, 'translated_mutation_matrix.v', prefs) or { panic(err) }
+		assert !generated.contains('>>>='), generated
+		if selfhost {
+			// Selfhost output relies on real builtin definitions. The standalone
+			// preamble below also lets us execute every non-selfhost mutation.
+			continue
+		}
+		c_file := os.join_path(root, 'matrix.c')
+		bin_file := os.join_path(root, 'matrix')
+		os.write_file(c_file, '#define main unused_main\n' + generated +
+			'\n#undef main\nint main(void) {\n' + checks.join('\n') + '\nreturn 0;\n}\n')!
+		tcc := os.join_path(prefs.vroot, 'thirdparty', 'tcc', 'tcc.exe')
+		compiled := cmdexec.run(tcc, ['-std=gnu11', '-o', bin_file, c_file])
+		assert compiled.exit_code == 0, compiled.output + '\n' + generated
+		ran := cmdexec.run(bin_file, [])
+		assert ran.exit_code == 0, ran.output
+	}
 }
 
 fn test_duplicate_global_declarations_are_rejected() {
@@ -13802,4 +13973,127 @@ fn main() {
 ', 'address_of_mut_parameter.v', prefs) or { panic(err) }
 	assert c_source.contains('.program=(program)'), c_source
 	assert !c_source.contains('.program=(&program)'), c_source
+}
+
+fn test_translated_fastc_shifts_are_bounded_and_evaluate_once() {
+	root := os.join_path(os.vtmp_dir(), 'translated_shift_bounds_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+	mut prefs := pref.new_preferences()
+	mut source := '@[translated]\nmodule main\ntype ShiftAlias = i32\ntype ShiftAliasChain = ShiftAlias\n'
+	mut checks := []string{}
+	for i, typ in ['i8', 'u8', 'i16', 'u16', 'i32', 'u32', 'i64', 'u64', 'int', 'ShiftAliasChain'] {
+		bits := if i < 2 {
+			8
+		} else if i < 4 {
+			16
+		} else if i in [4, 5, 9] {
+			32
+		} else if i in [6, 7] {
+			64
+		} else {
+			prefs.target.pointer_bits
+		}
+		for j, op in ['<<', '>>', '>>>'] {
+			name := 'shift_${i}_${j}'
+			source += 'fn ${name}(value ${typ}, count int) ${typ} { return value ${op} count }\n'
+			source += 'fn assign_${name}(value ${typ}, count int) ${typ} { value ${op}= count; return value }\n'
+			for count in [0, 1, bits - 1, bits, bits + 1, -1] {
+				expected := if count == 0 {
+					4
+				} else if count == 1 {
+					if j == 0 { 8 } else { 2 }
+				} else {
+					0
+				}
+				checks << 'if (${name}(4, ${count}) != ${expected}) return 1;'
+				checks << 'if (assign_${name}(4, ${count}) != ${expected}) return 2;'
+			}
+		}
+	}
+	source += '
+struct ShiftState { value i64 }
+__global shift_calls = 0
+fn shift_target(state &ShiftState) &ShiftState { shift_calls++; return state }
+fn shift_count() int { shift_calls++; return 64 }
+fn shift_once(state &ShiftState) { shift_target(state).value <<= shift_count() }
+fn shift_value() i64 { shift_calls++; return 4 }
+fn expression_once() i64 { return shift_value() >> shift_count() }
+fn direct_pointer(value &i64) &i64 { return value }
+fn write_pointer_call(value &i64) { *direct_pointer(value) = 7 }
+fn literal_left(count int) int { return 1 << count }
+fn literal_right(count int) int { return -1 >> count }
+fn literal_unsigned(count int) u64 { return -1 >>> count }
+'
+	checks << 'ShiftState state = {.value=4}; shift_calls=0; shift_once(&state); if (state.value != 0 || shift_calls != 2) return 3;'
+	checks << 'shift_calls=0; if (expression_once() != 0 || shift_calls != 2) return 4;'
+	checks << 'i64 cell = 0; write_pointer_call(&cell); if (cell != 7) return 5;'
+	checks << 'if (literal_left(40) != ${if prefs.target.pointer_bits == 64 {
+		'1099511627776LL'
+	} else {
+		'0'
+	}}) return 8;'
+	checks << 'if (literal_right(40) != ${if prefs.target.pointer_bits == 64 { '-1' } else { '0' }}) return 9;'
+	checks << 'if (literal_unsigned(40) != 0) return 10;'
+	for i, target in ['*value', '(*value)', '*direct_pointer(value)', '(*direct_pointer(value))'] {
+		for j, op in ['<<=', '>>=', '>>>='] {
+			name := 'deref_shift_${i}_${j}'
+			source += 'fn ${name}(value &i64, count int) { ${target} ${op} count }\n'
+			checks << 'cell=4; ${name}(&cell, 64); if (cell != 0) return 6;'
+			checks << 'cell=4; ${name}(&cell, 1); if (cell != ${if j == 0 { 8 } else { 2 }}) return 7;'
+		}
+	}
+	for selfhost in [false, true] {
+		prefs.building_v = selfhost
+		generated := generate(source, 'translated_shift_bounds.v', prefs) or { panic(err) }
+		assert !generated.contains('>>>'), generated
+		if selfhost { continue }
+		c_file := os.join_path(root, 'shifts.c')
+		bin_file := os.join_path(root, 'shifts')
+		os.write_file(c_file, '#define main unused_main\n' + generated + '\n#undef main\nint main(void) {\n' + checks.join('\n') + '\nreturn 0;\n}\n')!
+		tcc := os.join_path(prefs.vroot, 'thirdparty', 'tcc', 'tcc.exe')
+		compiled := cmdexec.run(tcc, ['-std=gnu11', '-o', bin_file, c_file])
+		assert compiled.exit_code == 0, compiled.output + '\n' + generated
+		ran := cmdexec.run(bin_file, [])
+		assert ran.exit_code == 0, ran.output
+	}
+}
+
+fn test_translated_fastc_division_keeps_checked_backend_fallback() {
+	for selfhost in [false, true] {
+		mut prefs := pref.new_preferences()
+		prefs.building_v = selfhost
+		for body in ['return value / count', 'return value % count', 'value /= count; return value',
+			'value %= count; return value', '*ptr /= count; return value',
+			'(*ptr) %= count; return value'] {
+			mut message := ''
+			_ := generate('@[translated]\nmodule main\nfn divide(value int, count int, ptr &int) int { ${body} }\n', 'translated_division.v', prefs) or {
+				message = err.msg()
+				''
+			}
+			assert message.contains('division or modulo expressions'), message
+		}
+	}
+}
+
+fn test_translated_header_marker_uses_attribute_names() {
+	prefs := pref.new_preferences()
+	for attribute in ['@[metadata: translated]', '@[metadata: has_globals]',
+		'@[metadata: [translated, has_globals]]', '@[metadata: "translated"]'] {
+		header := fastc_scan_source_header('${attribute}\nmodule main\n', 'attribute_values.v', prefs)!
+		assert !header.translated
+		assert !header.has_globals
+		mut message := ''
+		_ := generate('${attribute}\nmodule main\nfn main() { value := 1; value++ }\n', 'attribute_mutation.v', prefs) or {
+			message = err.msg()
+			''
+		}
+		assert message.contains('mutation of immutable'), message
+	}
+	for attribute in ['@[translated]', '@[metadata: "value"; translated]',
+		'@[metadata: [translated]; translated]'] {
+		header := fastc_scan_source_header('${attribute}\nmodule main\n', 'attribute_names.v', prefs)!
+		assert header.translated
+		assert header.has_globals
+	}
 }

@@ -5213,3 +5213,49 @@ fn test_struct_lookup_name_preserves_builtin_struct_over_imported_enum_short_nam
 	]
 	assert t.struct_lookup_name('SliceIndex') == ''
 }
+
+fn test_merge_worker_relocates_allocation_warnings() {
+	mut a := flat.FlatAst.new()
+	base_id := a.add_node(flat.Node{
+		kind:  .ident
+		value: 'source_local'
+	})
+	mut tc := types.TypeChecker.new(&a)
+	tc.warn_about_allocs = true
+	mut master := new_transformer(mut a, &tc, map[string]bool{})
+	base_nodes := master.a.nodes.len
+	base_children := master.a.children.len
+
+	mut worker_ast := master.clone_ast_base(base_nodes, base_children)
+	mut worker_tc := tc.fork_for_parallel_transform(worker_ast)
+	mut worker := master.fork_worker(worker_ast, worker_tc)
+	// A local a comptime `$for` expansion made inside the worker, and one of
+	// the source's.
+	worker_id := worker_ast.add_node(flat.Node{
+		kind:  .ident
+		value: 'expanded_local'
+	})
+	decl := flat.Node{
+		kind: .decl_assign
+	}
+	freed_decl := flat.Node{
+		kind:  .decl_assign
+		flags: flat.node_flag_freed_assignment
+	}
+	worker.warn_alloc(decl, worker_id, token.Pos{}, 'local of a `@[heap]` struct')
+	worker.warn_alloc(freed_decl, worker_id, token.Pos{}, 'local of a `@[heap]` struct')
+	worker.warn_alloc(decl, base_id, token.Pos{}, 'local moved to the heap: its address escapes')
+	assert worker.alloc_warnings.len == 2
+
+	master.a.add_node(flat.Node{
+		kind:  .ident
+		value: 'earlier_master_append'
+	})
+	shifted_id := master.a.nodes.len
+	master.merge_worker(worker, []FnWorkItem{}, base_nodes, base_children, false)
+
+	assert master.alloc_warnings.len == 2
+	assert int(master.alloc_warnings[0].node) == shifted_id
+	assert master.a.nodes[int(master.alloc_warnings[0].node)].value == 'expanded_local'
+	assert master.alloc_warnings[1].node == base_id
+}

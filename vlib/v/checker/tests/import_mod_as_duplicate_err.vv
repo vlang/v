@@ -1,5 +1,5 @@
 module json2
 
-import json as json2
+import strings as json2
 
-_ := json2.encode('foo')
+_ := json2.new_builder(8)

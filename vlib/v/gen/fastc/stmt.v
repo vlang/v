@@ -1310,16 +1310,18 @@ fn (mut g Parser) parse_simple_statement() ! {
 			}
 			return
 		}
-		if !g.selfhost && (g.tok.is_assignment() || g.tok in [.inc, .dec]) && !is_global && (!is_known_local || !statement_local.is_mut) {
+		if !g.selfhost && (g.tok.is_assignment() || g.tok in [.inc, .dec]) && !is_global
+			&& (!is_known_local || !statement_local.is_mut)
+			&& !(g.translated && is_known_local) {
 			return g.unsupported('mutation of immutable or unknown name `${name}`')
 		}
 		g.validate_expression_name(name, .unknown)!
 		if g.tok.is_assignment() {
-			if !g.selfhost && g.tok in [.left_shift_assign, .right_shift_assign,
+			if !g.selfhost && !g.translated && g.tok in [.left_shift_assign, .right_shift_assign,
 				.right_shift_unsigned_assign] {
 				return g.unsupported('shift expressions')
 			}
-			if !g.selfhost && g.tok in [.div_assign, .mod_assign] {
+			if (!g.selfhost || g.translated) && g.tok in [.div_assign, .mod_assign] {
 				return g.unsupported('division or modulo expressions')
 			}
 			operator := g.tok
@@ -1410,6 +1412,13 @@ fn (mut g Parser) parse_simple_statement() ! {
 				g.write_line('${shift};')
 				return
 			}
+			if g.translated && operator in [.left_shift_assign, .right_shift_assign] {
+				shift := g.render_guarded_shift_assignment(c_target, value, resolved_expected_type, operator) or {
+					return g.unsupported('shift assignment on type `${resolved_expected_type}`')
+				}
+				g.write_line('${shift};')
+				return
+			}
 			mut assigned_value := value
 			if g.selfhost && operator == .assign && resolved_expected_type == 'Option' && actual_type != 'Option' {
 				if actual_type.trim_right('*') == 'IError' {
@@ -1476,6 +1485,10 @@ fn (mut g Parser) parse_simple_statement() ! {
 			return g.unsupported('value-only expression statement')
 		}
 		g.consume_statement_end()
+		if g.translated {
+			g.write_line('${g.render_translated_statement_expression(g.last_expression, expression)};')
+			return
+		}
 		g.write_line('${expression};')
 		return
 	}
@@ -1492,9 +1505,13 @@ fn (mut g Parser) parse_simple_statement() ! {
 		g.write_line('{ ${g.last_expression_type} ${handle} = ${expression}; pthread_detach(${handle}.handle); }')
 		return
 	}
-	if g.selfhost && g.last_expression_is_statement() {
+	if (g.selfhost || g.translated) && g.last_expression_is_statement() {
 		g.consume_statement_end()
-		g.write_line('${expression};')
+		if g.translated {
+			g.write_line('${g.render_translated_statement_expression(g.last_expression, expression)};')
+		} else {
+			g.write_line('${expression};')
+		}
 		return
 	}
 	if g.or_value_capture {
@@ -1503,6 +1520,20 @@ fn (mut g Parser) parse_simple_statement() ! {
 		return
 	}
 	return g.unsupported('value-only expression statement')
+}
+
+fn (g &Parser) render_translated_statement_expression(tokens []FastcExpressionToken, expression string) string {
+	mut rendered := expression
+	if assignment := g.render_assignment_expression(tokens) {
+		rendered = assignment.source
+	}
+	if method_call := g.render_method_call_expression(tokens, rendered) {
+		rendered = method_call.source
+	}
+	if pointer_member := g.render_pointer_member_access_expression(tokens, rendered) {
+		rendered = pointer_member.source
+	}
+	return rendered
 }
 
 fn (mut g Parser) parse_assert_statement() ! {
@@ -2306,7 +2337,7 @@ fn (g &Parser) expression_tokens_are_statement(expression_tokens []FastcExpressi
 			}
 		}
 	}
-	if g.selfhost && fastc_expression_tokens_contain_assignment_or_mutation(tokens) {
+	if (g.selfhost || g.translated) && fastc_expression_tokens_contain_assignment_or_mutation(tokens) {
 		return true
 	}
 	if g.selfhost && fastc_expression_tokens_contain(tokens, .left_shift) {

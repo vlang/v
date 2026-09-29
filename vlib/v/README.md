@@ -141,7 +141,7 @@ limit for the split C compilation. Cached builds divide the compiler across 32 C
 those production objects by content, compiler, flags, target, and included-file contents. Repeated
 production self-builds therefore compile only changed units. `-nocache` disables this reuse and
 uses one C unit per compiler job to avoid repeatedly parsing the shared declarations. Other
-parallel C builds remain limited to two jobs.
+parallel C builds are limited to eight jobs.
 
 ## Fast C backend
 
@@ -384,6 +384,12 @@ cached. This avoids semantic and lowering work whose only consumer would be the 
 The pre-split main, TinyCC, and runtime-prefix sources are restored as `C module plan (cached)`.
 Source, imported-module, native-input, compiler, target, flag, or configuration changes invalidate
 the plan and run the complete diagnostic and generation pipeline normally.
+
+If the C toolchain rejects a cached V artifact as missing or malformed, V3 warns, removes the
+affected cache entry and its metadata, then restarts the build once. If the retry still fails, the
+warning names the rejected artifact; run `./v wipe-cache` to clear all caches before retrying.
+This recovery applies only to V-owned cache files. `-nocache` disables the module and FastC caches,
+but third-party object cache entries may still be repaired.
 
 ## Architecture
 

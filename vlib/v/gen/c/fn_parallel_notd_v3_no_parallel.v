@@ -7,6 +7,7 @@ import time
 import v.flat
 import v.gen.c.naming
 import v.types
+import v.util
 import v.workers
 
 const max_flat_cgen_jobs = 18
@@ -518,8 +519,10 @@ fn optional_support_selection_thread(arg voidptr) voidptr {
 
 fn unresolved_call_optional_thread(arg voidptr) voidptr {
 	mut w := unsafe { &FlatGen(arg) }
+	usw := time.new_stopwatch()
 	scope := cgen_worker_scope_begin(w.scope_parallel_workers)
 	w.collect_unresolved_call_optional_types()
+	w.timing_profile('  [ttime]       fs call opts   ${f64(usw.elapsed().microseconds()) / 1000.0:7.2f} ms')
 	w.worker_scope = scope
 	cgen_worker_scope_leave(scope)
 	return unsafe { nil }
@@ -1349,9 +1352,6 @@ fn (mut g FlatGen) absorb_scoped_cgen_batch(batch &FlatGen, output_streamed bool
 			g.needed_optional_types[opt_name.clone()] = val_type.clone()
 		}
 	}
-	for pointer_ct, pointer_type in batch.json_encode_pointer_types {
-		g.json_encode_pointer_types[pointer_ct.clone()] = pointer_type.clone()
-	}
 	for encoded, name in batch.fn_ptr_types {
 		if encoded !in g.fn_ptr_types {
 			g.fn_ptr_types[encoded.clone()] = name.clone()
@@ -1494,6 +1494,10 @@ fn (mut g FlatGen) gen_fn_chunks_scoped_dynamic(
 		g.begin_usable_expr_type_memo()
 		g.end_usable_expr_type_memo()
 	}
+	// Chunks reuse one scratch arena: each chunk's output is absorbed into the
+	// result arena before the next chunk starts, so the arena is rewound instead
+	// of being freed and faulted in again for every chunk.
+	mut scratch_scope := unsafe { nil }
 	for {
 		chunk_idx := <-chunk_queue or { break }
 		n_chunks++
@@ -1501,7 +1505,10 @@ fn (mut g FlatGen) gen_fn_chunks_scoped_dynamic(
 		for item in chunks[chunk_idx] {
 			chunk_cost += item.cost
 		}
-		scratch_scope := cgen_worker_scope_begin(true)
+		if scratch_scope == unsafe { nil } || !cgen_worker_scope_reenter(scratch_scope) {
+			cgen_worker_scope_free(scratch_scope)
+			scratch_scope = cgen_worker_scope_begin(true)
+		}
 		mut batch := g.new_parallel_worker(chunk_idx)
 		if reuse_expr_type_memo {
 			batch.usable_expr_type_memo = g.usable_expr_type_memo
@@ -1519,8 +1526,8 @@ fn (mut g FlatGen) gen_fn_chunks_scoped_dynamic(
 		if g.fn_segs.len > segment_start {
 			g.fn_seg_chunk_indexes << chunk_idx
 		}
-		cgen_worker_scope_free(scratch_scope)
 	}
+	cgen_worker_scope_free(scratch_scope)
 	g.timing_profile('  [ttime]     cg wkr busy    ${f64(wsw.elapsed().microseconds()) / 1000.0:7.2f} ms (chunks: ${n_chunks})')
 	g.worker_scope = result_scope
 	cgen_worker_scope_leave(result_scope)
@@ -1570,6 +1577,7 @@ fn clone_embedded_fields_by_type(values map[string][]types.StructField) map[stri
 				has_default: field.has_default
 				is_embed:    field.is_embed
 				is_mut:      field.is_mut
+				is_volatile: field.is_volatile
 			}
 		}
 		cloned[name.clone()] = owned_fields
@@ -2711,6 +2719,7 @@ fn (g &FlatGen) new_parallel_worker_config(worker_id int, result_only bool) &Fla
 		print_fn_names:                     g.print_fn_names
 		is_prod:                            g.is_prod
 		is_debug:                           g.is_debug
+		uses_recover:                       g.uses_recover
 		check_overflow:                     g.check_overflow
 		force_bounds_checking:              g.force_bounds_checking
 		object_file_mode:                   g.object_file_mode
@@ -2733,7 +2742,6 @@ fn (g &FlatGen) new_parallel_worker_config(worker_id int, result_only bool) &Fla
 		}
 		str_lits_shared:                    g.scope_parallel_workers && (!result_only || g.str_lits_shared)
 		str_lits_base_len:                  g.str_lits.len
-		json_encode_pointer_types:          map[string]string{}
 		global_types:                       g.global_types
 		global_raw_type_texts:              g.global_raw_type_texts
 		enum_vals:                          g.enum_vals
@@ -2904,6 +2912,8 @@ fn (g &FlatGen) new_parallel_worker_config(worker_id int, result_only bool) &Fla
 		cur_fn_ret_is_optional:             g.cur_fn_ret_is_optional
 		cur_fn_ret_base:                    g.cur_fn_ret_base
 		memo_usable_expr_types:             g.memo_usable_expr_types
+		import_key_cache:                   &util.KeyRecentCache{}
+		selective_import_key_cache:         &util.KeyRecentCache{}
 		cache_struct_fields:                g.cache_struct_fields
 		dedup_fn_decl_aliases:              g.dedup_fn_decl_aliases
 		prefix_param_scan:                  g.prefix_param_scan
@@ -3271,9 +3281,6 @@ fn (mut g FlatGen) merge_parallel_worker_into(w &FlatGen, mut ordered []string, 
 	for opt_name, val_type in w.needed_optional_types {
 		g.needed_optional_types[opt_name.clone()] = val_type.clone()
 	}
-	for pointer_ct, pointer_type in w.json_encode_pointer_types {
-		g.json_encode_pointer_types[pointer_ct.clone()] = pointer_type.clone()
-	}
 	for encoded, name in w.fn_ptr_types {
 		if encoded !in g.fn_ptr_types {
 			g.fn_ptr_types[encoded.clone()] = name.clone()
@@ -3425,6 +3432,7 @@ fn (mut g FlatGen) run_pre_dispatch_parallel(no_parallel bool) bool {
 	optional_worker.c_name_cache = &CNameCache{}
 	optional_worker.generic_app_cache = &GenericAppCache{}
 	mut call_optional_worker := g.new_parallel_worker(3)
+	call_optional_worker.tc.verbose = g.tc.verbose
 	call_optional_worker.c_name_cache = &CNameCache{}
 	call_optional_worker.generic_app_cache = &GenericAppCache{}
 	fail := os.getenv('V3_TEST_PTHREAD_CREATE_FAIL')

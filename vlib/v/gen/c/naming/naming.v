@@ -51,7 +51,9 @@ const reserved_words = {
 	'void':     true
 	'volatile': true
 	'while':    true
+	// GNU C modes predefine these as macros (`linux` on Linux, `unix` on Unix).
 	'unix':     true
+	'linux':    true
 }
 
 // libc_collisions are libc function names that are not C keywords but clash at

@@ -190,6 +190,9 @@ fn (mut t Transformer) transform_infix_array_ops(_id flat.NodeId, node flat.Node
 	if node.children_count < 2 || node.op !in [.eq, .ne] {
 		return none
 	}
+	if comparison := t.transform_translated_array_pointer_comparison(node) {
+		return comparison
+	}
 	lhs_id := t.a.children[node.children_start]
 	rhs_id := t.a.children[node.children_start + 1]
 	lhs_raw_type := t.node_type(lhs_id)
@@ -388,6 +391,50 @@ fn (mut t Transformer) transform_infix_array_ops(_id flat.NodeId, node flat.Node
 		return t.make_prefix(.not, eq_call)
 	}
 	return eq_call
+}
+
+fn (mut t Transformer) transform_translated_array_pointer_comparison(node flat.Node) ?flat.NodeId {
+	if isnil(t.tc) {
+		return none
+	}
+	file := t.a.source_files[node.pos.id] or { return none }
+	if !t.tc.translated_files[file.name] {
+		return none
+	}
+	lhs_id := t.a.child(&node, 0)
+	rhs_id := t.a.child(&node, 1)
+	lhs_type := types.unalias_type(t.tc.resolve_type(lhs_id))
+	rhs_type := types.unalias_type(t.tc.resolve_type(rhs_id))
+	if !((lhs_type is types.ArrayFixed && rhs_type is types.Pointer)
+		|| (rhs_type is types.ArrayFixed && lhs_type is types.Pointer)) {
+		return none
+	}
+	// C array decay compares addresses, including pointers to nested fixed arrays.
+	lhs := t.translated_array_pointer_comparison_operand(lhs_id, lhs_type)
+	rhs := t.translated_array_pointer_comparison_operand(rhs_id, rhs_type)
+	return t.make_infix(node.op, lhs, rhs)
+}
+
+fn (t &Transformer) translated_fixed_array_pointer_lvalue(id flat.NodeId, other_id flat.NodeId) bool {
+	if isnil(t.tc) || int(id) < 0 || int(id) >= t.a.nodes.len {
+		return false
+	}
+	file := t.a.source_files[t.a.nodes[int(id)].pos.id] or { return false }
+	if !t.tc.translated_files[file.name] {
+		return false
+	}
+	return types.unalias_type(t.tc.resolve_type(id)) is types.ArrayFixed
+		&& types.unalias_type(t.tc.resolve_type(other_id)) is types.Pointer
+}
+
+fn (mut t Transformer) translated_array_pointer_comparison_operand(id flat.NodeId, typ types.Type) flat.NodeId {
+	mut value := t.transform_expr_preserving_pointer_value(id)
+	if typ is types.ArrayFixed && t.expr_can_be_fixed_array_literal(id) {
+		// Keep the literal's element type while C lowers it to a compound literal.
+		elem_ptr_type := '&${typ.elem_type.name()}'
+		value = t.make_cast(elem_ptr_type, value, elem_ptr_type)
+	}
+	return t.make_cast('voidptr', value, 'voidptr')
 }
 
 fn (t &Transformer) array_comparison_literal_elem_type(id flat.NodeId) ?string {
@@ -688,11 +735,24 @@ fn (mut t Transformer) transform_infix_interface_ops(_id flat.NodeId, node flat.
 	rhs_id := t.a.children[node.children_start + 1]
 	mut lhs_type := t.node_type(lhs_id)
 	mut rhs_type := t.node_type(rhs_id)
+	lhs_smartcast := t.smartcast_node_type(lhs_id)
+	if lhs_smartcast.len > 0 {
+		lhs_type = lhs_smartcast
+	}
+	rhs_smartcast := t.smartcast_node_type(rhs_id)
+	if rhs_smartcast.len > 0 {
+		rhs_type = rhs_smartcast
+	}
 	if lhs_type.len == 0 {
 		lhs_type = t.checker_node_type(lhs_id)
 	}
 	if rhs_type.len == 0 {
 		rhs_type = t.checker_node_type(rhs_id)
+	}
+	lhs_depth, _ := pointer_type_depth_and_base(t.normalize_type_alias(lhs_type))
+	rhs_depth, _ := pointer_type_depth_and_base(t.normalize_type_alias(rhs_type))
+	if lhs_depth > 1 || rhs_depth > 1 {
+		return none
 	}
 	lhs_iface := t.resolve_interface_type_name(lhs_type)
 	rhs_iface := t.resolve_interface_type_name(rhs_type)
@@ -1710,6 +1770,11 @@ fn (t &Transformer) struct_operator_fn_name_any(struct_type string, op_name stri
 }
 
 fn (t &Transformer) struct_operator_fn_name_with_usage(struct_type string, op_name string, require_used bool) ?string {
+	if !isnil(t.tc) {
+		if info := t.tc.c_struct_operator_call_info(t.tc.parse_type(struct_type), op_name, t.cur_file, t.cur_module) {
+			if t.is_known_operator_fn_name(info.name, require_used) { return info.name }
+		}
+	}
 	for receiver in t.operator_receiver_candidates(struct_type) {
 		method_name := '${receiver}.${op_name}'
 		if t.is_known_operator_fn_name(method_name, require_used) {
@@ -2959,25 +3024,30 @@ fn (mut t Transformer) lower_array_membership_expr(base_id flat.NodeId, needle_i
 	mut base := flat.empty_node
 	mut needle := flat.empty_node
 	mut prefix := []flat.NodeId{}
+	t.drain_pending(mut prefix)
 	if receiver_first {
 		base = t.stable_array_expr_for_membership(base_id, base_type, clean_base_type)
 		t.drain_pending(mut prefix)
-		needle = t.stable_expr_for_reuse(needle_id)
+	} else {
+		// Resolve the container's concrete generic element before staging the needle,
+		// while keeping the needle's pending statements first in source order.
+		base = t.stable_array_expr_for_membership(base_id, base_type, clean_base_type)
+	}
+	elem_type = t.resolved_membership_element_type(base, elem_type)
+	if receiver_first {
+		needle = t.stable_membership_needle(needle_id, elem_type, 'contains_needle', false)
 		t.drain_pending(mut prefix)
 	} else {
+		mut base_pending := []flat.NodeId{}
+		t.drain_pending(mut base_pending)
 		// `needle in container`: the needle is evaluated before the container in source order.
 		// If the container hoists a value branch whose prelude can mutate a syntactically stable
 		// needle (`x in (match node { First { change(mut x)! } ... })`), snapshot the needle's
 		// source-order value so the membership loop reads it before that prelude runs.
-		transformed_needle := t.transform_expr_for_type(needle_id, elem_type)
-		needle = if t.operand_hoists_value_branch(base_id) {
-			t.snapshot_transformed_expr_for_reuse(transformed_needle, elem_type, 'contains_needle')
-		} else {
-			t.stable_transformed_expr_for_reuse(transformed_needle, elem_type, 'contains_needle')
-		}
+		needle = t.stable_membership_needle(needle_id, elem_type, 'contains_needle',
+			base_pending.len > 0 || t.operand_hoists_value_branch(base_id))
 		t.drain_pending(mut prefix)
-		base = t.stable_array_expr_for_membership(base_id, base_type, clean_base_type)
-		t.drain_pending(mut prefix)
+		prefix << base_pending
 	}
 	result_name := t.new_temp('contains')
 	idx_name := t.new_temp('contains_idx')
@@ -3032,16 +3102,24 @@ fn (mut t Transformer) lower_array_index_expr(base_id flat.NodeId, needle_id fla
 	mut base := flat.empty_node
 	mut needle := flat.empty_node
 	mut prefix := []flat.NodeId{}
+	t.drain_pending(mut prefix)
 	if receiver_first {
 		base = t.stable_array_expr_for_membership(base_id, base_type, clean_base_type)
 		t.drain_pending(mut prefix)
-		needle = t.stable_expr_for_reuse(needle_id)
-		t.drain_pending(mut prefix)
 	} else {
-		needle = t.stable_expr_for_reuse(needle_id)
-		t.drain_pending(mut prefix)
 		base = t.stable_array_expr_for_membership(base_id, base_type, clean_base_type)
-		t.drain_pending(mut prefix)
+	}
+	mut base_pending := []flat.NodeId{}
+	if !receiver_first {
+		t.drain_pending(mut base_pending)
+	}
+	elem_type = t.resolved_membership_element_type(base, elem_type)
+	needle = t.stable_membership_needle(needle_id, elem_type, 'index_needle',
+		!receiver_first && t.operand_hoists_value_branch(base_id))
+	t.drain_pending(mut prefix)
+	if !receiver_first {
+		// The base was transformed first for its element type, but runs after the needle.
+		prefix << base_pending
 	}
 	result_name := t.new_temp('index')
 	idx_name := t.new_temp('index_idx')
@@ -3097,16 +3175,23 @@ fn (mut t Transformer) lower_array_last_index_expr(base_id flat.NodeId, needle_i
 	mut base := flat.empty_node
 	mut needle := flat.empty_node
 	mut prefix := []flat.NodeId{}
+	t.drain_pending(mut prefix)
 	if receiver_first {
 		base = t.stable_array_expr_for_membership(base_id, base_type, clean_base_type)
 		t.drain_pending(mut prefix)
-		needle = t.stable_expr_for_reuse(needle_id)
-		t.drain_pending(mut prefix)
 	} else {
-		needle = t.stable_expr_for_reuse(needle_id)
-		t.drain_pending(mut prefix)
 		base = t.stable_array_expr_for_membership(base_id, base_type, clean_base_type)
-		t.drain_pending(mut prefix)
+	}
+	mut base_pending := []flat.NodeId{}
+	if !receiver_first {
+		t.drain_pending(mut base_pending)
+	}
+	elem_type = t.resolved_membership_element_type(base, elem_type)
+	needle = t.stable_membership_needle(needle_id, elem_type, 'last_index_needle',
+		!receiver_first && t.operand_hoists_value_branch(base_id))
+	t.drain_pending(mut prefix)
+	if !receiver_first {
+		prefix << base_pending
 	}
 	result_name := t.new_temp('last_index')
 	idx_name := t.new_temp('last_index_idx')
@@ -3150,7 +3235,40 @@ fn (mut t Transformer) stable_array_expr_for_membership(id flat.NodeId, raw_type
 	if t.membership_container_is_pointer_array(raw_type) {
 		expr = t.make_prefix(.mul, expr)
 	}
-	return t.stable_transformed_expr_for_reuse(expr, clean_type, 'in_arr')
+	mut storage_type := clean_type
+	transformed_type := t.membership_container_type(t.node_type(expr))
+	if transformed_type != storage_type && decl_type_is_usable(transformed_type)
+		&& !t.generic_arg_is_unresolved(transformed_type) {
+		storage_type = transformed_type
+	}
+	return t.stable_transformed_expr_for_reuse(expr, storage_type, 'in_arr')
+}
+
+fn (mut t Transformer) stable_membership_needle(id flat.NodeId, elem_type string, prefix string, snapshot bool) flat.NodeId {
+	if t.is_interface_type(elem_type) && !t.membership_type_is_pointer(elem_type) {
+		// Resolve a generic needle's concrete type before equality boxes it as an interface.
+		// Boxing the original expression can retain an unresolved generic payload type.
+		return if snapshot {
+			t.snapshot_expr_for_reuse(id)
+		} else {
+			t.stable_expr_for_reuse(id)
+		}
+	}
+	expr := t.transform_expr_for_type(id, elem_type)
+	return if snapshot {
+		t.snapshot_transformed_expr_for_reuse(expr, elem_type, prefix)
+	} else {
+		t.stable_transformed_expr_for_reuse(expr, elem_type, prefix)
+	}
+}
+
+fn (t &Transformer) resolved_membership_element_type(base flat.NodeId, fallback string) string {
+	base_type := t.membership_container_type(t.node_type(base))
+	if base_type.starts_with('[]') && decl_type_is_usable(base_type)
+		&& !t.generic_arg_is_unresolved(base_type) && base_type[2..] != fallback {
+		return base_type[2..]
+	}
+	return fallback
 }
 
 // make_membership_eq_expr builds make membership eq expr data for transform.

@@ -134,6 +134,10 @@ fn (p &Parser) timing_profile(message string) {
 // Returns each file's first node id in p.a and whether threads were used.
 @[direct_array_access]
 pub fn (mut p Parser) parse_files_dispatch(paths []string, allow_parallel bool) ([]int, bool) {
+	previous_paths := p.parse_batch_paths
+	p.parse_batch_paths = paths.clone()
+	p.reset_translated_sizeof_declarations()
+	defer { p.parse_batch_paths = previous_paths }
 	if !allow_parallel || paths.len < min_parallel_parse_files {
 		return p.parse_files_with_starts(paths), false
 	}
@@ -179,6 +183,7 @@ pub fn (mut p Parser) parse_files_dispatch(paths []string, allow_parallel bool) 
 	mut worker_chunk_bytes := []int{len: thread_count}
 	for ci in 0 .. thread_count {
 		mut w := Parser.new(p.prefs)
+		w.parse_batch_paths = paths.clone()
 		w.next_file_id = dispatch_file_id_start + bounds[ci + 1]
 		w.quick_source_sums = p.quick_source_sums
 		mut chunk_bytes := i64(0)
@@ -1231,6 +1236,12 @@ fn (mut p Parser) merge_parsed_worker_bookkeeping(mut w Parser, mut starts []int
 		if skipped {
 			_, canonical := p.a.intern_text(key)
 			p.a.comptime_skipped_read_names[canonical] = true
+		}
+	}
+	for key, skipped in w.a.comptime_skipped_decl_names {
+		if skipped {
+			_, canonical := p.a.intern_text(key)
+			p.a.comptime_skipped_decl_names[canonical] = true
 		}
 	}
 	for key, skipped in w.a.comptime_skipped_goto_labels {

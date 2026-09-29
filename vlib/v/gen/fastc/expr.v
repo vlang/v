@@ -1537,13 +1537,13 @@ mut:
 
 @[inline]
 fn (mut g Parser) validate_expression_stream_token(expression_tokens []FastcExpressionToken, stops []token.Token, allow_mutation_statement bool, allow_declaration_guard bool, paren_depth int, bracket_depth int, brace_depth int, unsafe_expression_depth int, source_token_count int, mut state FastcExpressionOperatorState) ! {
-	if !g.selfhost && g.tok in [.left_shift, .right_shift, .right_shift_unsigned, .left_shift_assign,
-		.right_shift_assign, .right_shift_unsigned_assign] {
+	if !g.selfhost && !g.translated && g.tok in [.left_shift, .right_shift, .right_shift_unsigned,
+		.left_shift_assign, .right_shift_assign, .right_shift_unsigned_assign] {
 		// V defines oversized shifts to produce zero. Raw C shifts are
 		// undefined and may mask the count to the operand width instead.
 		return g.unsupported('shift expressions')
 	}
-	if !g.selfhost && g.tok in [.div, .div_assign, .mod, .mod_assign] {
+	if (!g.selfhost || g.translated) && g.tok in [.div, .div_assign, .mod, .mod_assign] {
 		// Integer division and modulo require V's runtime zero checks. This
 		// scanner-only lane has no type information to add them selectively.
 		return g.unsupported('division or modulo expressions')

@@ -5,7 +5,7 @@ struct User {
 }
 
 fn encode_user(u User) string {
-	return j2.encode(u, escape_unicode: true)
+	return j2.encode(u, escape_unicode: true, time_as_unix: true)
 }
 
 fn main() {
