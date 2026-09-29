@@ -2718,6 +2718,7 @@ fn (g &FlatGen) new_parallel_worker_config(worker_id int, result_only bool) &Fla
 		print_fn_names:                     g.print_fn_names
 		is_prod:                            g.is_prod
 		is_debug:                           g.is_debug
+		uses_recover:                       g.uses_recover
 		check_overflow:                     g.check_overflow
 		force_bounds_checking:              g.force_bounds_checking
 		object_file_mode:                   g.object_file_mode

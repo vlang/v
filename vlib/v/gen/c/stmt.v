@@ -3019,12 +3019,19 @@ fn (mut g FlatGen) gen_node(id flat.NodeId) {
 		}
 		.defer_stmt {
 			if node.value == 'function' {
+				if g.cur_fn_panic_owner {
+					g.gen_fn_defer_panic_frame(id)
+				}
 				if count_name := g.fn_defer_counts[int(id)] {
 					g.writeln('${count_name}++;')
 				}
 				g.fn_defers << id
 			} else {
-				g.defers << g.a.child(&node, 0)
+				body_id := g.a.child(&node, 0)
+				if g.cur_fn_panic_owner {
+					g.gen_block_defer_panic_frame(body_id)
+				}
+				g.defers << body_id
 			}
 		}
 		.debugger_stmt {

@@ -132,6 +132,14 @@ fn test_cached_object_wrapper_signature_ignores_non_wrapper_prefix_changes() {
 	assert v3_cached_object_wrapper_compile_signature(base, 'int declaration;') == base
 }
 
+fn test_cached_object_signature_keeps_panic_frame_objects_apart() {
+	base := 'base signature'
+	plain := 'int declaration;\n/* V3CACHE_BODY_BEGIN */\n'
+	with_frames := 'typedef struct v_unwind_frame {\n\tstruct v_unwind_frame* prev;\n} v_unwind_frame;\n/* V3CACHE_BODY_BEGIN */\n'
+	assert v3_cached_object_wrapper_compile_signature(base, plain) == base
+	assert v3_cached_object_wrapper_compile_signature(base, with_frames) != base
+}
+
 fn test_cache_function_reference_counts_scans_source_once() {
 	candidates := {
 		'alpha__one': true
