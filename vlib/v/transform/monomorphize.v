@@ -10519,6 +10519,15 @@ fn (mut t Transformer) clone_generic_node_from(node flat.Node, args []string, is
 	t.substitute_cloned_generic_call_type_args(node, mut children, args)
 	if t.cloning_comptime_for_depth > 0 {
 		// Inside a `$for` body: clone verbatim, no generic-call retargeting.
+		mut comptime_value := t.subst_node_value(node, args)
+		// Lock a colliding caller type like the regular clone below: `T(v)` in a
+		// `$for v in T.variants` body of json2 must keep a main `Any` distinct from
+		// `json2.Any`.
+		if node.kind in [.array_init, .map_init, .cast_expr, .as_expr]
+			&& t.subst_type(node.value, args) != node.value {
+			comptime_value = t.lock_colliding_main_substitution_type_text(node.value,
+				comptime_value, t.cur_module, t.active_generic_params)
+		}
 		start2 := t.a.children.len
 		for child in children {
 			t.a.children << child
@@ -10530,7 +10539,7 @@ fn (mut t Transformer) clone_generic_node_from(node flat.Node, args []string, is
 			children_start: start2
 			children_count: flat.child_count(children.len)
 			typ:            cloned_typ
-			value:          t.subst_node_value(node, args)
+			value:          comptime_value
 			is_mut:         node.is_mut
 			flags:          flat.clone_node_flags(node, false)
 		})

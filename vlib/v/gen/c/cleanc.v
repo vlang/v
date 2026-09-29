@@ -14413,6 +14413,13 @@ fn (g &FlatGen) sum_type_name_for_type(base_type0 types.Type) ?string {
 		clean = clean.base_type
 	}
 	if clean is types.SumType {
+		// The checker names a sum type by its `sum_types` key, where a bare name is a
+		// main or builtin declaration. Qualifying it with the current module would turn
+		// a main `Any` passed into a json2 generic into `json2.Any`.
+		if !clean.name.contains('.') && clean.name in g.tc.sum_types
+			&& g.resolve_sum_name(clean.name) == clean.name {
+			return clean.name
+		}
 		for candidate in [g.shared_qualify_type_text(clean.name, g.tc.cur_module), clean.name] {
 			sum_name := g.resolve_sum_name(candidate)
 			if sum_name in g.tc.sum_types {

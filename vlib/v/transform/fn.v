@@ -6185,7 +6185,8 @@ fn (t &Transformer) aggregate_str_method_name(aggregate string) ?string {
 	// Imported declarations have a short convenience entry in the transformer's
 	// struct table. When that short spelling is used through a selective import,
 	// resolve its qualified owner before falling back to generated auto-str.
-	if !aggregate.contains('.') && !t.bare_struct_name_is_local_to_current_module(aggregate) {
+	if !aggregate.contains('.') && !t.bare_struct_name_is_local_to_current_module(aggregate)
+		&& !t.bare_sum_type_name_is_local_to_current_module(aggregate) {
 		if qualified := t.qualified_types[aggregate] {
 			if method := t.resolve_receiver_method_for_type(qualified, 'str') {
 				return method
