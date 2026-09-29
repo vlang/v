@@ -5134,6 +5134,10 @@ fn (tc &TypeChecker) global_type_for_selector(node flat.Node) ?Type {
 		return tc.file_scope.lookup(qname)
 	}
 	if resolved == 'main' || resolved == tc.cur_module {
+		// A current-module const owns this name over the cross-module global_names bare hit; return none defers to const_type_for_selector. No shadow check here — node.value is a selector name, not a scope ident.
+		if tc.qualify_name(node.value) in tc.const_types {
+			return none
+		}
 		if node.value in tc.global_names {
 			return tc.file_scope.lookup(node.value)
 		}
