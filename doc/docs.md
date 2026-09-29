@@ -1571,8 +1571,9 @@ println(typeof(anums).name) // => []int
 
 Note that slicing will cause the data of the fixed size array to be copied to
 the newly created ordinary array. The exception is a slice that is written to:
-passing it as a `mut` argument, or calling `sort()`, `sort_with_compare()` or
-`reverse_in_place()` on it, updates the fixed size array itself:
+passing it as a `mut` argument, changing its elements, iterating over it with
+`for mut`, or calling `sort()`, `sort_with_compare()` or `reverse_in_place()` on it,
+updates the fixed size array itself:
 
 ```v
 fn fill(mut a []int) {

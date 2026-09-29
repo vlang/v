@@ -15205,7 +15205,19 @@ fn (t &Transformer) expr_can_take_address(id flat.NodeId) bool {
 			if node.children_count == 0 {
 				return false
 			}
-			return t.expr_can_take_address(t.a.child(&node, 0))
+			base_id := t.a.child(&node, 0)
+			// An element of an array slice lives in the sliced array's storage, which a
+			// fixed array range reaches through a view, so it is addressable when the
+			// sliced array is.
+			range_id := t.unwrap_parens(base_id)
+			if t.is_range_index_expr(range_id) {
+				range_node := t.a.nodes[int(range_id)]
+				sliced_id := t.a.child(&range_node, 0)
+				sliced_type := t.unaliased_value_type(sliced_id)
+				return (sliced_type.starts_with('[]') || t.is_fixed_array_type(sliced_type))
+					&& t.expr_can_take_address(sliced_id)
+			}
+			return t.expr_can_take_address(base_id)
 		}
 		.selector {
 			if node.children_count == 0 {
@@ -20177,6 +20189,17 @@ fn (mut t Transformer) transform_index_expr(id flat.NodeId, node flat.Node) flat
 }
 
 fn (mut t Transformer) transform_index_base_expr(id flat.NodeId) flat.NodeId {
+	// An element of a fixed array range is read and written through a view of the fixed
+	// array's storage. Slicing a fixed array copies it, so stores through the copy would
+	// be lost, and reads would allocate it for nothing.
+	if t.is_range_index_expr(t.unwrap_parens(id)) {
+		range_type := t.unaliased_value_type(id)
+		if range_type.starts_with('[]') {
+			if view := t.fixed_array_range_view(id, range_type) {
+				return t.stable_transformed_expr_for_reuse(view, range_type, 'fixed_array_slice')
+			}
+		}
+	}
 	node := t.a.node(id)
 	if node.kind == .prefix && node.op == .mul && node.children_count == 1 {
 		inner_id := t.a.child(node, 0)
