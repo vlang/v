@@ -22,7 +22,7 @@ fn main() {
 	t2 := spawn inc(mut c)
 	t1.wait()
 	t2.wait()
-	println(c.n)
+	println("joined \${c.n > 0}")
 }
 '
 
@@ -135,11 +135,11 @@ fn thread_sanitizer_runs() bool {
 	return true
 }
 
-fn build_race_program(name string, source string) string {
+fn build_race_program(name string, source string, flags ...string) string {
 	source_path := os.join_path(tdir, '${name}.v')
 	exe_path := os.join_path(tdir, name)
 	os.write_file(source_path, source) or { panic(err) }
-	res := os.execute('${vexe} -race -o ${os.quoted_path(exe_path)} ${os.quoted_path(source_path)}')
+	res := os.execute('${vexe} -race ${flags.join(' ')} -o ${os.quoted_path(exe_path)} ${os.quoted_path(source_path)}')
 	assert res.exit_code == 0, res.output
 	return exe_path
 }
@@ -152,7 +152,8 @@ fn test_race_detector() {
 	racy_run := os.execute(os.quoted_path(racy))
 	assert racy_run.exit_code == 66, racy_run.output
 	assert racy_run.output.contains('WARNING: ThreadSanitizer: data race'), racy_run.output
-	assert racy_run.output.contains('2000'), racy_run.output
+	// The unsynchronized increments can lose updates, so only check that both threads ended.
+	assert racy_run.output.contains('joined true'), racy_run.output
 	summary := racy_run.output.all_after('SUMMARY: ThreadSanitizer: data race').all_before('\n')
 	if summary.contains('.c:') || summary.contains('.v:') {
 		// The symbolizer found line info: it must point at the V source, not the generated C.
@@ -162,6 +163,12 @@ fn test_race_detector() {
 	// VRACE passes options to the race detector, like GORACE does for Go.
 	vrace_run := os.execute('VRACE="exitcode=7" ${os.quoted_path(racy)}')
 	assert vrace_run.exit_code == 7, vrace_run.output
+
+	// The race runtime support is compiled on its own, and must build in strict C99 mode too.
+	racy_c99 := build_race_program('racy_c99', racy_source, '-c99')
+	racy_c99_run := os.execute('VRACE="exitcode=7" ${os.quoted_path(racy_c99)}')
+	assert racy_c99_run.exit_code == 7, racy_c99_run.output
+	assert racy_c99_run.output.contains('WARNING: ThreadSanitizer: data race'), racy_c99_run.output
 
 	synchronized := build_race_program('synchronized', synchronized_source)
 	synchronized_run := os.execute(os.quoted_path(synchronized))

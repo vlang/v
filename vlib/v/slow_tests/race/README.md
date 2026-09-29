@@ -44,7 +44,7 @@ two accesses happen at the very same time. V threads run in parallel, so:
 gcc's ThreadSanitizer instrumentation does not see the reads and writes of whole struct
 values in call arguments and results (a struct passed by value, a struct result stored
 through the return slot), which V uses for strings, arrays and maps. `v -race` uses clang when
-it is installed, and the 19 tests that only pass with it count as known gcc limitations when
+it is installed, and the 20 tests that only pass with it count as known gcc limitations when
 the suite runs with gcc.
 
 ## Not translated

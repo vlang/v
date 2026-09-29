@@ -5,6 +5,12 @@
 // configured with GORACE in the same syntax; V uses VRACE for that, for example
 // `VRACE="halt_on_error=1 log_path=/tmp/race"`. TSAN_OPTIONS still overrides both.
 
+// This file is compiled on its own, not as part of the generated C, so it has to request
+// the declarations that a strict ISO C mode (`v -c99`) hides on glibc: syscall(), AT_FDCWD.
+#if defined(__linux__) && !defined(_GNU_SOURCE)
+#define _GNU_SOURCE
+#endif
+
 #if defined(__has_feature)
 #if __has_feature(thread_sanitizer)
 #define V_RACE_TSAN 1

@@ -171,9 +171,12 @@ fn main() {
 }
 
 // race_build_requested reports whether `-race` is one of the compiler options, and not an
-// argument of the program that `v run` starts.
+// argument of the program that `v run` starts. Like the driver, it reads compiler options
+// after the input too, except when the input is run: then they belong to the program.
 fn race_build_requested(args []string) bool {
 	mut option_value_follows := false
+	mut runs_input := false
+	mut input_seen := false
 	for arg in args {
 		if option_value_follows {
 			option_value_follows = false
@@ -186,9 +189,20 @@ fn race_build_requested(args []string) bool {
 			option_value_follows = true
 			continue
 		}
-		if !arg.starts_with('-') && arg !in ['run', 'crun', 'build', 'test'] {
+		if arg.starts_with('-') {
+			continue
+		}
+		if !input_seen && arg in ['run', 'crun'] {
+			runs_input = true
+			continue
+		}
+		if !input_seen && arg in ['build', 'test'] {
+			continue
+		}
+		if runs_input || arg.ends_with('.vsh') {
 			return false
 		}
+		input_seen = true
 	}
 	return false
 }
