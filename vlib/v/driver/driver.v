@@ -20218,7 +20218,9 @@ fn seed_initial_modules(mut a flat.FlatAst, initial_files []string, explicit_imp
 		// declared short name matches its own (v.gen.wasm imports the top-level wasm
 		// module). Do not let the initial package's seed suppress that explicit import.
 		identity_dirs[module_name] = os.real_path(os.dir(file_node.value))
-		if !holds_local_submodules {
+		// `main` is never imported, and a `module main` test sits in the directory of
+		// the module it tests: an import of that module must keep its own identity.
+		if !holds_local_submodules && module_name != 'main' {
 			dir_identities[identity_dirs[module_name]] = module_name
 		}
 		if module_name in explicit_imports && !holds_local_submodules {
