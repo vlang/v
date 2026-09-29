@@ -8823,6 +8823,13 @@ fn (c &CallCollector) collect_value_struct_default_calls(type_text string, cur_m
 	info := c.struct_decl_info_with_imports(clean.all_before('['), cur_module, imports) or {
 		return
 	}
+	// A default can create more values of its own struct (`next []Node = []Node{len: 1}`),
+	// so expand each struct once per collected body. `@` starts no symbol name.
+	expanded_marker := '@markused.struct_defaults:${int(info.node_id)}'
+	if expanded_marker in calls {
+		return
+	}
+	calls << expanded_marker
 	c.collect_struct_default_calls_from_info_guarded(info, map[string]bool{}, mut active_defaults, mut calls)
 }
 
