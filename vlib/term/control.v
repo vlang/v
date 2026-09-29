@@ -3,8 +3,6 @@
 // that can be found in the LICENSE file.
 module term
 
-import os
-
 // Sources for ANSI Control Sequences
 // https://github.com/RajeshPatkarInstitute/Panim
 // https://www.gnu.org/software/screen/manual/html_node/Control-Sequences.html
@@ -132,19 +130,9 @@ pub fn clear_previous_line() {
 	flush_stdout()
 }
 
-// run show_cursor() on exit/termination.
+// show_cursor_on_exit restores the cursor when main returns or exit is called.
+// It preserves the application's signal handlers. Signal termination does not run
+// exit callbacks; applications should arrange signal cleanup in normal execution.
 pub fn show_cursor_on_exit() {
-	at_exit(fn () {
-		term.show_cursor()
-	}) or {}
-
-	os.signal_opt(.int, fn (_ os.Signal) {
-		term.show_cursor()
-		exit(0)
-	}) or {}
-
-	os.signal_opt(.term, fn (_ os.Signal) {
-		term.show_cursor()
-		exit(0)
-	}) or {}
+	at_exit(show_cursor) or {}
 }
