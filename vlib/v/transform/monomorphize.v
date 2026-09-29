@@ -10565,6 +10565,17 @@ fn (mut t Transformer) clone_generic_node_from(node flat.Node, args []string, is
 	if node.kind == .ident && t.mut_param_values[node.value] {
 		t.mut_value_ident_nodes[int(clone_id)] = true
 	}
+	// A literal of a generic struct without its type arguments, `Box{ item: a }`,
+	// has the ones that the types of its fields give it in this instance, as
+	// `Box[A]{}` has the ones that the substitution gives it: the check of the
+	// body cannot tell them from `a A`, and every later reader of the type of the
+	// literal took the bare `Box` (see infer_bare_generic_struct_init_type).
+	if node.kind == .struct_init && !cloned_value.contains('[') {
+		if inferred := t.infer_bare_generic_struct_init_type(t.a.nodes[int(clone_id)]) {
+			t.set_node_value(int(clone_id), inferred)
+			t.set_node_typ(int(clone_id), inferred)
+		}
+	}
 	if node.kind == .call {
 		// Retarget nested generic calls while the surrounding concrete arguments and
 		// module context are still live. Deferring implicit calls to the global scan
