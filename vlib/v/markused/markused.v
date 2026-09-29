@@ -4908,6 +4908,11 @@ fn (c &CallCollector) collect_calls_with_locals_and_generics(node &flat.Node, cu
 			.struct_init {
 				c.collect_struct_default_calls(child, cur_module, imports, mut calls)
 			}
+			.array_init {
+				// `[]Box{len: n}` and `[3]Box{}` fill their elements with Box's defaults.
+				mut element_defaults := map[int]bool{}
+				c.collect_value_struct_default_calls(array_init_element_type_text(child), cur_module, imports, mut element_defaults, mut calls)
+			}
 			else {}
 		}
 
@@ -5822,6 +5827,11 @@ fn (c &CallCollector) collect_top_level_expr_calls(id flat.NodeId, cur_module st
 			}
 			.struct_init {
 				c.collect_struct_default_calls(child, cur_module, imports, mut calls)
+			}
+			.array_init {
+				// `[]Box{len: n}` and `[3]Box{}` fill their elements with Box's defaults.
+				mut element_defaults := map[int]bool{}
+				c.collect_value_struct_default_calls(array_init_element_type_text(child), cur_module, imports, mut element_defaults, mut calls)
 			}
 			else {}
 		}
@@ -8761,10 +8771,18 @@ fn (c &CallCollector) collect_struct_default_calls_from_info_guarded(info Struct
 	for i in 0 .. node.children_count {
 		field_id := c.a.child(node, i)
 		field := c.a.node(field_id)
-		if field.kind != .field_decl || field.children_count == 0 || field.value in provided {
+		if field.kind != .field_decl || field.value in provided {
 			continue
 		}
 		if active_defaults[int(field_id)] {
+			continue
+		}
+		if field.children_count == 0 {
+			// A struct field without a default of its own is initialized with that
+			// struct's defaults, which the transformer only expands after markused.
+			active_defaults[int(field_id)] = true
+			c.collect_value_struct_default_calls(field.typ, info.module, imports, mut active_defaults, mut calls)
+			active_defaults.delete(int(field_id))
 			continue
 		}
 		active_defaults[int(field_id)] = true
@@ -8790,6 +8808,36 @@ fn (c &CallCollector) collect_struct_default_calls_from_info_guarded(info Struct
 		c.collect_calls(field, info.module, imports, '', '', mut calls)
 		active_defaults.delete(int(field_id))
 	}
+}
+
+// collect_value_struct_default_calls collects the field default calls of a struct that
+// `type_text` stores by value. References, options, containers and function types are
+// initialized without the struct's defaults.
+fn (c &CallCollector) collect_value_struct_default_calls(type_text string, cur_module string, imports map[string]string, mut active_defaults map[int]bool, mut calls []string) {
+	clean := type_text.trim_space()
+	if clean.len == 0 || clean[0] in [`&`, `?`, `!`, `[`, `(`] || clean.starts_with('map[')
+		|| clean.starts_with('fn') || clean.starts_with('chan ') || clean.starts_with('shared ')
+		|| clean.starts_with('thread') {
+		return
+	}
+	info := c.struct_decl_info_with_imports(clean.all_before('['), cur_module, imports) or {
+		return
+	}
+	c.collect_struct_default_calls_from_info_guarded(info, map[string]bool{}, mut active_defaults, mut calls)
+}
+
+// array_init_element_type_text returns the element type spelling of an array literal
+// type: `B` for `[]B{len: n}` and `[3]B{}`.
+fn array_init_element_type_text(node &flat.Node) string {
+	mut typ := if node.typ.len > 0 { node.typ } else { node.value }
+	for typ.starts_with('[') {
+		close := typ.index_u8(`]`)
+		if close < 0 {
+			return ''
+		}
+		typ = typ[close + 1..]
+	}
+	return typ
 }
 
 // resolve_type_name resolves resolve type name information for markused.
