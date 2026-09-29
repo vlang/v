@@ -177,13 +177,17 @@ fn race_build_requested(args []string) bool {
 	mut option_value_follows := false
 	mut runs_input := false
 	mut input_seen := false
-	for arg in args {
+	for i, arg in args {
 		if option_value_follows {
 			option_value_follows = false
 			continue
 		}
 		if arg == '-race' {
 			return true
+		}
+		if arg in ['-prof', '-profile'] {
+			option_value_follows = v1_fallback_profile_option_consumes_value(args, i)
+			continue
 		}
 		if arg == '-cf' || pref.option_may_consume_value(arg) {
 			option_value_follows = true
