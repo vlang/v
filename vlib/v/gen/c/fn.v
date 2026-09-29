@@ -6479,22 +6479,23 @@ fn (mut g FlatGen) gen_fn_defers() {
 
 fn (mut g FlatGen) gen_fn_defer_at(index int) {
 	defer_id := g.fn_defers[index]
-	count_name := g.fn_defer_counts[int(defer_id)] or { '0' }
-	mut frame := ''
-	if g.cur_fn_panic_owner && count_name != '0' {
-		frame = panic_frame_name(int(defer_id))
-		g.writeln('if (${count_name} > 0) panic_frame_pop(&${frame});')
-	}
-	g.gen_fn_defer_loop(defer_id, count_name, frame)
-}
-
-// gen_fn_defer_loop runs a `defer(fn)` block once for every time it was reached.
-fn (mut g FlatGen) gen_fn_defer_loop(defer_id flat.NodeId, count_name string, frame string) {
 	defer_node := g.a.nodes[int(defer_id)]
+	count_name := g.fn_defer_counts[int(defer_id)] or { '0' }
+	if g.cur_fn_panic_owner && count_name != '0' {
+		// One frame stands for all pending runs of the block. It stays linked
+		// until the last run, so a panic in one run still runs the others.
+		frame := panic_frame_name(int(defer_id))
+		g.writeln('while (${count_name} > 0) {')
+		g.indent++
+		g.writeln('${count_name}--;')
+		g.writeln('if (${count_name} == 0) panic_frame_pop(&${frame});')
+		g.gen_defer_block(g.a.child(&defer_node, 0), frame)
+		g.indent--
+		g.writeln('}')
+		return
+	}
 	defer_body := g.a.nodes[int(g.a.child(&defer_node, 0))]
 	iter_name := '${count_name}_i'
-	old_panic_frame := g.cur_panic_frame
-	g.cur_panic_frame = frame
 	g.writeln('for (int ${iter_name} = 0; ${iter_name} < ${count_name}; ${iter_name}++) {')
 	g.indent++
 	for j in 0 .. defer_body.children_count {
@@ -6502,7 +6503,6 @@ fn (mut g FlatGen) gen_fn_defer_loop(defer_id flat.NodeId, count_name string, fr
 	}
 	g.indent--
 	g.writeln('}')
-	g.cur_panic_frame = old_panic_frame
 }
 
 fn panic_frame_name(id int) string {
@@ -6561,17 +6561,22 @@ fn (mut g FlatGen) gen_block_defer_panic_frame(body_id flat.NodeId) {
 
 // gen_fn_defer_panic_frame links the frame of a `defer(fn)` block the first
 // time it is reached. The frame itself is declared at the top of the function.
+// Its landing pad does one pending run of the block, and links the frame again
+// while others are left, so that the unwinding comes back for each of them.
 fn (mut g FlatGen) gen_fn_defer_panic_frame(defer_id flat.NodeId) {
 	count_name := g.fn_defer_counts[int(defer_id)] or { return }
 	frame := panic_frame_name(int(defer_id))
 	defer_node := g.a.nodes[int(defer_id)]
+	body_id := g.a.child(&defer_node, 0)
 	g.writeln('if (${count_name} == 0) {')
 	g.indent++
-	g.gen_panic_frame_link(frame, g.a.child(&defer_node, 0), count_name)
+	g.gen_panic_frame_link(frame, body_id, count_name)
 	g.writeln('if (v_unwind_setjmp(${frame}.buf)) {')
 	g.indent++
 	g.writeln('v_unwind_reload();')
-	g.gen_fn_defer_loop(defer_id, count_name, frame)
+	g.writeln('${count_name}--;')
+	g.writeln('if (${count_name} > 0) panic_frame_relink(&${frame});')
+	g.gen_defer_block(body_id, frame)
 	g.gen_panic_landing_return(frame)
 	g.indent--
 	g.writeln('}')

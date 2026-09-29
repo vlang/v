@@ -88,8 +88,9 @@ fn panic_frame_push(frame voidptr) {
 }
 
 // panic_frame_pop unlinks the frame of a deferred block that is about to run
-// normally. A `defer(fn)` frame lives until its function returns, so a block
-// deferred before it inside a loop can be unlinked from below it.
+// normally; for a `defer(fn)` block, that is its last pending run. A `defer(fn)`
+// frame lives until its function returns, so a block deferred before it inside
+// a loop can be unlinked from below it.
 @[markused]
 fn panic_frame_pop(frame voidptr) {
 	f := unsafe { &PanicFrame(frame) }
@@ -104,6 +105,20 @@ fn panic_frame_pop(frame voidptr) {
 			return
 		}
 		cur = cur.prev
+	}
+}
+
+// panic_frame_relink links the frame of a `defer(fn)` block again, while its
+// landing pad runs one of the block's pending runs and others are left. A panic
+// in that run then still runs the others, and so does the panic that landed.
+@[markused]
+fn panic_frame_relink(frame voidptr) {
+	panic_frame_push(frame)
+	if g_panic_state.len > 0 {
+		mut rec := panic_record(g_panic_state.len - 1)
+		if voidptr(rec.frame) == frame {
+			rec.resume = unsafe { &PanicFrame(frame) }
+		}
 	}
 }
 
@@ -157,6 +172,13 @@ fn panic_record_drop() {
 	unsafe {
 		C.free(rec.msg.str)
 		*rec = PanicRecord{}
+	}
+	// Nothing frees the records when their thread ends, so they go with the
+	// last panic in flight.
+	if g_panic_state.len == 0 {
+		unsafe { C.free(g_panic_state.records) }
+		g_panic_state.records = unsafe { nil }
+		g_panic_state.cap = 0
 	}
 }
 
@@ -249,8 +271,11 @@ fn panic_fatal() {
 	}
 	debug := panic_record(g_panic_state.len - 1).debug
 	panic_frames_reset()
-	if debug.file.len > 0 {
-		panic_debug(debug.line_no, debug.file, debug.mod, debug.fn_name, msg)
+	// The native backends build panic_debug() in, so it has no source to call.
+	$if !native {
+		if debug.file.len > 0 {
+			panic_debug(debug.line_no, debug.file, debug.mod, debug.fn_name, msg)
+		}
 	}
 	panic(msg)
 }

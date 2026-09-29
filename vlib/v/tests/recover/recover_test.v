@@ -529,3 +529,70 @@ fn test_panic_message_survives_allocations_in_deferred_blocks() {
 	allocate_then_recover(mut log)
 	assert log == ['heap message 42']
 }
+
+fn repeated_fn_defer_panics_on_return(mut log []int) {
+	defer {
+		recover()
+	}
+	for _ in 0 .. 3 {
+		defer(fn) {
+			log << 1
+			if log.len == 1 {
+				panic('cleanup')
+			}
+		}
+	}
+}
+
+fn test_panic_in_a_repeated_function_defer_on_return_still_runs_the_others() {
+	mut log := []int{}
+	repeated_fn_defer_panics_on_return(mut log)
+	assert log.len == 3
+}
+
+fn repeated_fn_defer_panics_while_unwinding(mut log []string) {
+	defer {
+		if r := recover() {
+			log << 'recovered ${r}'
+		}
+	}
+	for _ in 0 .. 3 {
+		defer(fn) {
+			log << 'cleanup'
+			if log.len == 1 {
+				panic('in cleanup')
+			}
+		}
+	}
+	panic('body')
+}
+
+fn test_panic_in_a_repeated_function_defer_while_unwinding_still_runs_the_others() {
+	mut log := []string{}
+	repeated_fn_defer_panics_while_unwinding(mut log)
+	assert log == ['cleanup', 'cleanup', 'cleanup', 'recovered in cleanup']
+}
+
+fn repeated_fn_defer_recovers(mut log []string) int {
+	for _ in 0 .. 3 {
+		defer(fn) {
+			log << 'run: ' + (recover() or { 'none' })
+		}
+	}
+	panic('p')
+	return 1
+}
+
+fn test_recover_in_a_repeated_function_defer() {
+	mut log := []string{}
+	assert repeated_fn_defer_recovers(mut log) == 0
+	assert log == ['run: p', 'run: none', 'run: none']
+}
+
+fn test_many_threads_that_recover() {
+	mut threads := []thread string{}
+	for _ in 0 .. 200 {
+		threads << spawn worker(1)
+	}
+	assert threads.wait().all(it == '')
+}
