@@ -15,3 +15,9 @@ fn test_decode_into_main_sum_type_named_any() {
 	assert json2.decode[Any]('true')! == Any(true)
 	assert json2.decode[Any]('1.5')! == Any(f32(1.5))
 }
+
+fn test_decode_arrays_into_main_sum_type_named_any() {
+	assert json2.decode[[]Any]('["hi",true,1.5]')! == [Any('hi'), Any(true), Any(f32(1.5))]
+	assert json2.decode[[][]Any]('[["hi"],[true]]')! == [[Any('hi')], [Any(true)]]
+	assert json2.decode[[]json2.Any]('["hi",true]')! == [json2.Any('hi'), json2.Any(true)]
+}

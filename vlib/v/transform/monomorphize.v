@@ -8360,6 +8360,13 @@ fn (t &Transformer) current_specialization_has_generic_arg(arg string) bool {
 			return true
 		}
 	}
+	// Nested inference may peel only one layer of an enclosing argument such as
+	// `[][]Any`. Its remaining container still carries the main element's provenance.
+	for prefix in ['mut ', 'shared ', 'atomic ', '...', '[]', '?', '!', '&'] {
+		if clean.starts_with(prefix) {
+			return t.current_specialization_has_generic_arg(clean[prefix.len..])
+		}
+	}
 	receiver := t.current_fn_receiver_type()
 	if receiver.len == 0 {
 		return false
@@ -9242,6 +9249,12 @@ fn (mut t Transformer) generic_receiver_needs_decl_type_fallback(param_type stri
 fn (t &Transformer) generic_inference_alias_target(typ string, module_name string) string {
 	clean := typ.trim_space()
 	if clean.len == 0 {
+		return clean
+	}
+	// Specialization keys use bare main types. Keep their caller provenance when
+	// inferring a nested call instead of resolving a homonym in the callee module.
+	if t.substituted_type_belongs_to_main_generic(clean)
+		&& t.current_specialization_has_generic_arg(clean) {
 		return clean
 	}
 	if target := t.direct_generic_inference_alias_target(clean, module_name) {
