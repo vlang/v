@@ -14901,7 +14901,7 @@ fn (mut tc TypeChecker) call_returned_alias_arguments(id flat.NodeId, mut visiti
 		return []flat.NodeId{}
 	}
 	info := tc.resolve_call_info(id, *call) or {
-		return tc.conservative_call_alias_arguments(*call, false)
+		return tc.opaque_call_alias_arguments(*call, return_type, false)
 	}
 	decl_module := tc.fn_type_modules[info.name] or { tc.cur_module }
 	// A builtin that builds a new collection is not a window onto the one it was
@@ -14923,7 +14923,7 @@ fn (mut tc TypeChecker) call_returned_alias_arguments(id flat.NodeId, mut visiti
 		return []flat.NodeId{}
 	}
 	decl := tc.visible_mutation_fn_decl(info.name, decl_module) or {
-		return tc.conservative_call_alias_arguments(*call, info.has_receiver)
+		return tc.opaque_call_alias_arguments(*call, return_type, info.has_receiver)
 	}
 	if visiting[decl.idx] {
 		return tc.conservative_call_alias_arguments(*call, info.has_receiver)
@@ -15297,6 +15297,19 @@ fn (mut tc TypeChecker) returned_alias_arguments(id flat.NodeId, args_by_param m
 	return []flat.NodeId{}
 }
 
+// A callee whose body cannot be read, such as a function value or a callback stored
+// in a field, is taken to be able to hand back any argument it was given. A `voidptr`
+// it returns is left out of that: it names no pointee that would tie it to one of
+// them, and the typed reference a caller makes of it is a reinterpretation this
+// analysis cannot follow. Tainting it would flag every type-erased lookup, like a
+// container that is asked for a component by its type index.
+fn (tc &TypeChecker) opaque_call_alias_arguments(call flat.Node, return_type Type, has_receiver bool) []flat.NodeId {
+	if fn_param_is_voidptr_type(return_type) {
+		return []flat.NodeId{}
+	}
+	return tc.conservative_call_alias_arguments(call, has_receiver)
+}
+
 fn (tc &TypeChecker) conservative_call_alias_arguments(call flat.Node, has_receiver bool) []flat.NodeId {
 	mut sources := []flat.NodeId{}
 	if has_receiver && call.children_count > 0 {
@@ -15308,7 +15321,20 @@ fn (tc &TypeChecker) conservative_call_alias_arguments(call flat.Node, has_recei
 	for i in 1 .. call.children_count {
 		sources << tc.call_arg_value(tc.a.child(&call, i))
 	}
-	return sources
+	return sources.filter(tc.opaque_call_arg_can_be_returned(it))
+}
+
+// A number, a string or anything else that is copied in whole reaches the callee as a
+// copy of its own, so nothing handed back can point into the caller's. A struct or a
+// fixed array is kept even when it shares nothing: an immutable one may be passed by
+// reference, and the callee can then return the address of a part of it.
+fn (tc &TypeChecker) opaque_call_arg_can_be_returned(id flat.NodeId) bool {
+	typ := unalias_type(tc.resolve_type(id))
+	if typ is Struct || typ is ArrayFixed {
+		return true
+	}
+	mut seen := map[string]bool{}
+	return tc.type_can_hold_shared_storage(typ, mut seen)
 }
 
 fn (tc &TypeChecker) immutable_alias_argument(id flat.NodeId) ?flat.NodeId {
