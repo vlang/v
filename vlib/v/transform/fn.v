@@ -14829,7 +14829,15 @@ fn (t &Transformer) embedded_receiver_path(base_type string, receiver_type strin
 			lookup_type = short_type
 		}
 	}
-	fields := t.embedded_fields[lookup_type] or { return none }
+	fields := t.embedded_fields[lookup_type] or {
+		// The index holds declarations; a generic instance (`Wrap[int]`) has the
+		// fields of its declaration with its type arguments.
+		if !lookup_type.contains('[') {
+			return none
+		}
+		info := t.lookup_struct_info(lookup_type) or { return none }
+		info.fields.filter(t.is_embedded_field(it))
+	}
 	clean_receiver := t.normalize_type_alias(receiver_type)
 	for field in fields {
 		// The semantic type of an embedded alias can be its underlying function
@@ -14847,8 +14855,11 @@ fn (t &Transformer) embedded_receiver_path(base_type string, receiver_type strin
 		} else {
 			raw_field
 		}
+		// The source spelling is relative to the module of the embedding struct
+		// (`Base` in `shapes`); the semantic type is qualified (`shapes.Base`).
+		semantic_field := t.normalize_type_alias(field.typ.trim_left('&'))
 		if field.name in [raw_field, short_raw_field, clean_field, short_field]
-			&& clean_field == clean_receiver {
+			&& (clean_field == clean_receiver || semantic_field == clean_receiver) {
 			return [field]
 		}
 		if sub_path := t.embedded_receiver_path(clean_field, receiver_type) {

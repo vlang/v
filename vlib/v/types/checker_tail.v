@@ -18317,11 +18317,21 @@ fn (tc &TypeChecker) method_value_type(receiver_name string, method string) ?Typ
 	if method_name !in tc.fn_ret_types && method_name !in tc.fn_param_types {
 		// A concrete generic receiver (`Box[int]`) has its methods registered under the
 		// open key (`Box[T].method`); resolve and substitute so a method *value* on a
-		// generic struct is typed instead of reported as an unknown field.
-		ci := tc.resolve_generic_struct_method(receiver_name, method) or { return none }
-		signature = ci.name
-		ret_type = ci.return_type
-		params = ci.params.clone()
+		// generic struct is typed instead of reported as an unknown field. A generic
+		// interface (`Shelf[User]`) and a method promoted from an embedded struct
+		// resolve as their calls do.
+		if ci := tc.resolve_generic_struct_method(receiver_name, method) {
+			signature = ci.name
+			ret_type = ci.return_type
+			params = ci.params.clone()
+		} else if ci := tc.interface_receiver_method_call_info(receiver_name, method) {
+			signature = tc.interface_method_signature_key(receiver_name, method) or { ci.name }
+			ret_type = ci.return_type
+			params = ci.params.clone()
+		} else {
+			owner := tc.embedded_method_value_owner(receiver_name, method) or { return none }
+			return tc.method_value_type(owner, method)
+		}
 	}
 	mut bound_params := []Type{}
 	mut bound_params_mut := []bool{}
@@ -18371,9 +18381,18 @@ fn (mut tc TypeChecker) check_pointer_receiver_method_value_safety(id flat.NodeI
 	if clean !is Struct || tc.type_has_declaration_attribute(clean, 'heap') {
 		return
 	}
-	for method_name in receiver_method_name_candidates(clean, node.value, tc.cur_module) {
+	mut method_names := receiver_method_name_candidates(clean, node.value, tc.cur_module)
+	// A method promoted from an embedded struct takes as its receiver a part of the
+	// struct stored here, so `@[heap]` belongs to this struct.
+	mut storage_name := ''
+	if owner := tc.promoted_method_owner(base_type, node.value) {
+		method_names = ['${owner}.${node.value}']
+		storage_name = clean.name().all_after_last('.')
+	}
+	for method_name in method_names {
 		params := tc.fn_param_types[method_name] or { continue }
 		struct_name := method_name.all_before_last('.').all_after_last('.')
+		heap_name := if storage_name.len > 0 { storage_name } else { struct_name }
 		if params.len == 0 || unalias_type(params[0]) !is Pointer {
 			continue
 		}
@@ -18383,7 +18402,7 @@ fn (mut tc TypeChecker) check_pointer_receiver_method_value_safety(id flat.NodeI
 		if tc.mut_receiver_methods[method_name] {
 			continue
 		}
-		tc.record_error_at(.assignment_mismatch, 'method `${struct_name}.${node.value}` cannot be used as a variable outside `unsafe` blocks as its receiver might refer to an object stored on stack. Consider declaring `${struct_name}` as `@[heap]`.', id, node.pos)
+		tc.record_error_at(.assignment_mismatch, 'method `${struct_name}.${node.value}` cannot be used as a variable outside `unsafe` blocks as its receiver might refer to an object stored on stack. Consider declaring `${heap_name}` as `@[heap]`.', id, node.pos)
 		return
 	}
 }

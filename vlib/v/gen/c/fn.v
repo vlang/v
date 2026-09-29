@@ -3705,7 +3705,9 @@ fn (mut g FlatGen) gen_method_value_closure(selector_id flat.NodeId, base_id fla
 		} else {
 			params = g.interface_method_param_types(method_key) or { return false }
 			decl_key := g.interface_method_signature_key(receiver_name, method) or { method_key }
-			ret = g.tc.fn_ret_types[decl_key] or { types.Type(types.void_) }
+			// A generic interface (`Shelf[User]`) returns its type arguments where its
+			// declaration returns its parameters, as interface_method_param_types does.
+			_, ret = g.tc.specialized_interface_method_signature(receiver_name, decl_key)
 			g.add_spawn_wrapper_def('${g.interface_dispatch_signature(receiver_name, g.cname(receiver_name), method)};')
 			if !g.should_emit_interface_dispatch(receiver_name, method) {
 				g.add_spawn_wrapper_def(g.interface_dispatch_def_string(receiver_name, g.cname(receiver_name), method))

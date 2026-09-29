@@ -7894,6 +7894,12 @@ fn (t &Transformer) fn_literal_has_runtime_captures(id flat.NodeId) bool {
 	return false
 }
 
+// method_receiver_short_names_match reports whether two spellings of a receiver
+// name one type: `shapes.Base` and `Base`, or `Holder[int]` and `Holder[T]`.
+fn method_receiver_short_names_match(a string, b string) bool {
+	return a.all_before('[').all_after_last('.') == b.all_before('[').all_after_last('.')
+}
+
 fn (t &Transformer) bound_method_value_allocates_runtime_closure(id flat.NodeId) bool {
 	if int(id) < 0 || int(id) >= t.a.nodes.len || isnil(t.tc) {
 		return false
@@ -20186,6 +20192,22 @@ fn (mut t Transformer) transform_selector_expr(id flat.NodeId, node flat.Node) f
 	mut new_base := t.transform_selector_base_expr(base_id)
 	mut selector_generic_params := node.generic_params().clone()
 	if !isnil(t.tc) && t.tc.expr_is_method_value(id) {
+		// A method promoted from an embedded struct binds that struct, as its call
+		// does: `p.describe` is `p.Base.describe`. The checker names the embedded
+		// struct also when its method is generic, `Holder[int]`, before any
+		// specialization of that method exists. It sees the struct under an alias,
+		// so an alias that declares the method keeps it.
+		if owner := t.tc.promoted_method_value_owner(id) {
+			own_method := t.resolve_receiver_method_name(new_base, node.value)
+			if own_method.len == 0
+				|| method_receiver_short_names_match(own_method.all_before_last('.'), owner) {
+				if embedded_base := t.embedded_receiver_base_for_type(new_base,
+					t.node_type(new_base), owner)
+				{
+					new_base = embedded_base
+				}
+			}
+		}
 		method_value_name := t.resolve_receiver_method_name(new_base, node.value)
 		if method_value_name.len > 0 {
 			// C generation emits the bound-method wrapper later. Keep its target
