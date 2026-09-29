@@ -17723,7 +17723,11 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 				if needs_paren {
 					g.write(')')
 				}
-				if node.op == .arrow || base_type0 is types.Pointer {
+				// A pointer-backed `mut` receiver keeps its arrow, but an explicit
+				// dereference such as the `(*item)` of a `for mut item in items` loop
+				// variable already is a value: `(*item)->Base` would not compile.
+				base_is_deref := base.kind == .prefix && base.op == .mul
+				if (node.op == .arrow && !base_is_deref) || base_type0 is types.Pointer {
 					g.write('->')
 				} else {
 					g.write('.')
