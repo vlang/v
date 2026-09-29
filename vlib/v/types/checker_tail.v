@@ -5079,6 +5079,11 @@ fn (mut tc TypeChecker) record_uninferred_generic_method_type(id flat.NodeId, no
 		if type_contains_unknown(receiver_type) {
 			receiver_unresolved = true
 		} else {
+			// A method promoted from an embedded struct takes the type arguments of
+			// that struct: `h.own()` on a struct that embeds `Holder[int]`.
+			if owner := tc.promoted_method_owner(receiver_type, callee.value) {
+				receiver_type = tc.parse_type(owner)
+			}
 			tc.infer_generic_type_text_from_type(param_texts[0], receiver_type, generic_params, mut inferred)
 			tc.infer_generic_type_value_from_type(param_texts[0], receiver_type, generic_params, mut inferred_types)
 		}
