@@ -49,6 +49,7 @@ fn test_self_build_current_hash_is_empty_without_git_metadata() {
 fn test_v3_parallel_c_job_count() {
 	// A developer may export V3_PARALLEL_CC_JOBS globally; the default-cap
 	// assertions below must not see it.
+	assert v3_parallel_cc_max_jobs == 8
 	name := 'V3_PARALLEL_CC_JOBS'
 	old_value := os.getenv(name)
 	was_set := name in os.environ()
@@ -57,8 +58,8 @@ fn test_v3_parallel_c_job_count() {
 	}
 	os.unsetenv(name)
 	assert v3_parallel_c_job_count(0, false, false, false) == 1
-	assert v3_parallel_c_job_count(8, false, false, false) == v3_parallel_cc_max_jobs
-	assert v3_parallel_c_job_count(8, true, false, false) == v3_parallel_cc_max_jobs
+	assert v3_parallel_c_job_count(24, false, false, false) == v3_parallel_cc_max_jobs
+	assert v3_parallel_c_job_count(24, true, false, false) == v3_parallel_cc_max_jobs
 	assert v3_parallel_c_job_count(16, true, true, false) == v3_parallel_cc_max_jobs
 	assert v3_parallel_c_job_count(1, true, true, true) == 1
 	assert v3_parallel_c_job_count(4, true, true, true) == 4
@@ -72,9 +73,10 @@ fn test_v3_parallel_c_job_count_env_override_only_raises_the_cap() {
 	defer {
 		restore_driver_environment(name, old_value, was_set)
 	}
-	os.setenv(name, '8', true)
-	assert v3_parallel_c_job_count(24, false, false, false) == 8
+	os.setenv(name, '16', true)
+	assert v3_parallel_c_job_count(24, false, false, false) == 16
 	// Still bounded by the jobs actually available.
+	assert v3_parallel_c_job_count(12, false, false, false) == 12
 	assert v3_parallel_c_job_count(3, false, false, false) == 3
 	// A value below the default cap does not lower it.
 	os.setenv(name, '1', true)
