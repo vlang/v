@@ -335,7 +335,7 @@ fn u64_to_hex_no_leading_zeros(nn u64, len u8) string {
 	return unsafe { tos(memdup(&buf[i], res_len + 1), res_len) }
 }
 
-// hex returns the value of the `byte` as a hexadecimal `string`.
+// hex returns the value of the `u8` as a hexadecimal `string`.
 // Note that the output is zero padded for values below 16.
 // Example: assert u8(2).hex() == '02'
 // Example: assert u8(15).hex() == '0f'
@@ -523,14 +523,14 @@ pub fn (nn u64) hex_full() string {
 	return u64_to_hex(nn, 16)
 }
 
-// str returns the contents of `byte` as a zero terminated `string`.
-// See also: [`byte.ascii_str`](#byte.ascii_str)
+// str returns the contents of `u8` as a zero terminated `string`.
+// See also: [`u8.ascii_str`](#u8.ascii_str)
 // Example: assert u8(111).str() == '111'
 pub fn (b u8) str() string {
 	return int(b).str_l(4)
 }
 
-// ascii_str returns the contents of `byte` as a zero terminated ASCII `string` character.
+// ascii_str returns the contents of `u8` as a zero terminated ASCII `string` character.
 // Example: assert u8(97).ascii_str() == 'a'
 pub fn (b u8) ascii_str() string {
 	mut str := string{
@@ -544,7 +544,7 @@ pub fn (b u8) ascii_str() string {
 	return str
 }
 
-// str_escaped returns the contents of `byte` as an escaped `string`.
+// str_escaped returns the contents of `u8` as an escaped `string`.
 // Example: assert u8(0).str_escaped() == r'`\0`'
 @[manualfree]
 pub fn (b u8) str_escaped() string {

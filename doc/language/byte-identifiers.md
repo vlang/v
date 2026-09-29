@@ -7,3 +7,6 @@ For example, with `const byte = 8`, a `byte` branch in `match value` compares `v
 the constant `8`; it does not match every integer as a type pattern. The evaluator follows
 the same rule. FastC also resolves `byte` expressions to their declared symbols and reports
 an unresolved name when no such declaration exists.
+
+Generated documentation highlights `byte` as an ordinary identifier or function name,
+while `u8` retains builtin type highlighting. Byte method documentation belongs to `u8`.
