@@ -16,7 +16,7 @@ fn fastc_builtin_type_idx(type_name string) ?int {
 		'int' { 8 }
 		'i64' { 9 }
 		'isize' { 10 }
-		'u8', 'byte' { 11 }
+		'u8' { 11 }
 		'u16' { 12 }
 		'u32' { 13 }
 		'u64' { 14 }
@@ -1029,7 +1029,7 @@ fn (g &Parser) render_overloaded_assignment(target string, value string, target_
 fn (g &Parser) shift_type_parts(operand_type string) ?(string, string) {
 	resolved_type := fastc_trim_pointer_suffix(g.underlying_alias_type(operand_type))
 	return match resolved_type {
-		'byte', 'char', 'i8', 'u8' { 'u8', '8' }
+		'char', 'i8', 'u8' { 'u8', '8' }
 		'i16', 'u16' { 'u16', '16' }
 		'i32', 'rune', 'u32', 'unsigned int' { 'u32', '32' }
 		'i64', 'u64' { 'u64', '64' }
@@ -3987,7 +3987,7 @@ fn fastc_map_runtime_functions(key_type string, pointer_bits int) (string, strin
 	if key_type == 'string' {
 		return 'builtin__map_hash_string', 'builtin__map_eq_string', 'builtin__map_clone_string', 'builtin__map_free_string'
 	}
-	suffix := if key_type in ['i8', 'u8', 'byte', 'char', 'bool'] {
+	suffix := if key_type in ['i8', 'u8', 'char', 'bool'] {
 		'1'
 	} else if key_type in ['i16', 'u16'] {
 		'2'

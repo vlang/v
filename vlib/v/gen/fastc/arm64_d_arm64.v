@@ -1229,7 +1229,7 @@ fn (mut p FastArm64Program) type_id(name string) ssa.TypeID {
 		'int', 'i64', 'isize', 'int_literal' {
 			return p.i64_type
 		}
-		'u8', 'byte' {
+		'u8' {
 			return p.u8_type
 		}
 		'u16' {
@@ -6268,8 +6268,7 @@ fn (mut p FastArm64Parser) parse_prefix() !FastArm64Value {
 			}
 		}
 		if p.tok == .name && (p.lit in ['bool', 'i8', 'char', 'i16', 'int', 'i32', 'rune', 'i64',
-			'u8', 'byte', 'u16', 'u32', 'u64', 'isize', 'usize', 'f32', 'f64', 'voidptr', 'byteptr',
-			'charptr'] || p.lit in p.program.type_ids || p.lit in p.program.type_aliases) {
+			'u8', 'u16', 'u32', 'u64', 'isize', 'usize', 'f32', 'f64', 'voidptr', 'byteptr', 'charptr'] || p.lit in p.program.type_ids || p.lit in p.program.type_aliases) {
 			mut look := p.s
 			if look.scan() == .lpar {
 				type_name := p.lit
@@ -6953,8 +6952,8 @@ fn (mut p FastArm64Parser) parse_sizeof_expression() !FastArm64Value {
 	if p.tok == .name {
 		mut look := p.s
 		if look.scan() == .rpar && (p.lit in ['bool', 'i8', 'char', 'i16', 'int', 'i32', 'rune',
-			'i64', 'u8', 'byte', 'u16', 'u32', 'u64', 'isize', 'usize', 'f32', 'f64', 'voidptr',
-			'byteptr', 'charptr', 'string'] || p.lit in p.program.type_ids || p.lit in p.program.type_aliases) {
+			'i64', 'u8', 'u16', 'u32', 'u64', 'isize', 'usize', 'f32', 'f64', 'voidptr', 'byteptr',
+			'charptr', 'string'] || p.lit in p.program.type_ids || p.lit in p.program.type_aliases) {
 			type_name := p.lit
 			p.next()
 			p.expect(.rpar)!
@@ -7852,8 +7851,8 @@ fn (mut p FastArm64Parser) parse_name_expression() !FastArm64Value {
 		if (qualified_type_key in p.program.type_ids || qualified_type_key in p.program.type_aliases) && display_name.count('.') == 1 && key !in p.program.functions {
 			return p.parse_cast(qualified_type_key)
 		}
-		if (first_name in ['int', 'i8', 'char', 'i16', 'i32', 'rune', 'i64', 'u8', 'byte', 'u16',
-			'u32', 'u64', 'isize', 'usize', 'f32', 'f64', 'bool', 'voidptr', 'byteptr', 'charptr'] || first_name in p.program.type_ids || first_name in p.program.type_aliases) && display_name == first_name {
+		if (first_name in ['int', 'i8', 'char', 'i16', 'i32', 'rune', 'i64', 'u8', 'u16', 'u32',
+			'u64', 'isize', 'usize', 'f32', 'f64', 'bool', 'voidptr', 'byteptr', 'charptr'] || first_name in p.program.type_ids || first_name in p.program.type_aliases) && display_name == first_name {
 			return p.parse_cast(first_name)
 		}
 		return p.parse_call(key, display_name)

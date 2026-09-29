@@ -4929,8 +4929,8 @@ fn (mut e Eval) direct_str_method_value(receiver Value, method_name string, args
 }
 
 fn is_builtin_str_receiver_type_name(name string) bool {
-	return name in ['bool', 'int', 'i8', 'i16', 'i32', 'i64', 'isize', 'u8', 'byte', 'u16', 'u32',
-		'u64', 'usize', 'f32', 'f64', 'rune', 'char', 'string']
+	return name in ['bool', 'int', 'i8', 'i16', 'i32', 'i64', 'isize', 'u8', 'u16', 'u32', 'u64',
+		'usize', 'f32', 'f64', 'rune', 'char', 'string']
 }
 
 fn (mut e Eval) call_method_target(receiver Value, target FunctionDef, args []Value) !MethodCallResult {
@@ -5568,7 +5568,7 @@ fn (mut e Eval) zero_value_for_type_name_in_module(type_name string, module_name
 	if name == 'string' {
 		return Value('')
 	}
-	if name in ['int', 'i8', 'i16', 'i32', 'i64', 'u8', 'byte', 'u16', 'u32', 'u64', 'isize', 'usize',
+	if name in ['int', 'i8', 'i16', 'i32', 'i64', 'u8', 'u16', 'u32', 'u64', 'isize', 'usize',
 		'rune', 'char'] {
 		return Value(i64(0))
 	}
@@ -5856,7 +5856,7 @@ fn (e &Eval) cast_value_in_module(value Value, type_name string, module_name str
 	}
 	target_name := e.qualify_type_name(module_name, name)
 	source := e.unwrap_sum_cast_value(value, target_name)
-	if name in ['int', 'i8', 'i16', 'i32', 'i64', 'u8', 'byte', 'u16', 'u32', 'u64', 'isize', 'usize',
+	if name in ['int', 'i8', 'i16', 'i32', 'i64', 'u8', 'u16', 'u32', 'u64', 'isize', 'usize',
 		'rune', 'char'] {
 		return Value(e.value_as_int(source)!)
 	}
@@ -5926,8 +5926,8 @@ fn (e &Eval) value_matches_type_name(value Value, target_name string) bool {
 			return name == 'bool'
 		}
 		i64 {
-			return name in ['int', 'i8', 'i16', 'i32', 'i64', 'u8', 'byte', 'u16', 'u32', 'u64',
-				'isize', 'usize', 'rune', 'char']
+			return name in ['int', 'i8', 'i16', 'i32', 'i64', 'u8', 'u16', 'u32', 'u64', 'isize',
+				'usize', 'rune', 'char']
 		}
 		EnumValue {
 			return e.type_name_matches(value.type_name, name)
@@ -5984,8 +5984,8 @@ fn (e &Eval) type_value_module_name(value TypeValue) string {
 }
 
 fn is_builtin_type_name(name string) bool {
-	return name in ['bool', 'int', 'i8', 'i16', 'i32', 'i64', 'isize', 'u8', 'byte', 'u16', 'u32',
-		'u64', 'usize', 'f32', 'f64', 'rune', 'char', 'string', 'void', 'voidptr', 'charptr', 'byteptr',
+	return name in ['bool', 'int', 'i8', 'i16', 'i32', 'i64', 'isize', 'u8', 'u16', 'u32', 'u64',
+		'usize', 'f32', 'f64', 'rune', 'char', 'string', 'void', 'voidptr', 'charptr', 'byteptr',
 		'array']
 }
 
@@ -6023,7 +6023,7 @@ fn (e &Eval) normalize_type_name(type_name string) string {
 
 fn (e &Eval) sizeof_type_name(name string) i64 {
 	return match name {
-		'bool', 'i8', 'u8', 'byte', 'char' { i64(1) }
+		'bool', 'i8', 'u8', 'char' { i64(1) }
 		'i16', 'u16' { i64(2) }
 		'int', 'i32', 'u32', 'rune', 'f32' { i64(4) }
 		else { i64(8) }
