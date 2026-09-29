@@ -10150,7 +10150,7 @@ fn array_type_from_receiver(t Type) ?Array {
 }
 
 fn (tc &TypeChecker) thread_wait_return_type(t Type) ?Type {
-	clean := unwrap_pointer(t)
+	clean := unalias_and_unwrap_pointer_type(t)
 	if clean is Struct {
 		thread_name := trimmed_space(clean.name)
 		if thread_name == 'thread' || thread_name.ends_with('.thread') {

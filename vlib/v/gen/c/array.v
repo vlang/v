@@ -930,13 +930,13 @@ fn (mut g FlatGen) gen_array_method_call(node flat.Node, fn_node &flat.Node, arr
 			// Any other element type is not a thread, so route it through the normal
 			// method fallback instead of joining arbitrary array data as pthread_t handles.
 			mut is_thread := false
-			elem := arr.elem_type
+			elem := cgen_unalias_type(arr.elem_type)
 			if elem is types.Struct {
 				tn := trimmed_space(elem.name)
 				is_thread = tn == 'thread' || tn.starts_with('thread ')
 			}
 			if is_thread {
-				g.gen_thread_array_wait(base_id, is_ptr, arr.elem_type)
+				g.gen_thread_array_wait(base_id, is_ptr, elem)
 			} else {
 				g.gen_array_method_call_fallback(node, fn_node.value, base_id, is_ptr, arr)
 			}

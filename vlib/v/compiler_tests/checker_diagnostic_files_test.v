@@ -492,6 +492,34 @@ fn main() {
 	assert errors.len == 0, errors.str()
 }
 
+fn test_builtin_wait_on_arrays_of_thread_aliases_is_allowed() {
+	errors := check_diagnostic_project('thread_alias_array_wait', {
+		'main.v': 'module main
+
+type Worker = thread int
+type NestedWorker = Worker
+type Tick = thread
+
+fn compute(n int) int {
+	return n * 2
+}
+
+fn tick() {}
+
+fn main() {
+	mut workers := []NestedWorker{}
+	workers << NestedWorker(spawn compute(2))
+	results := workers.wait()
+	assert results == [4]
+	mut ticks := []Tick{}
+	ticks << Tick(spawn tick())
+	ticks.wait()
+}
+'
+	}, ['main.v'])
+	assert errors.len == 0, errors.str()
+}
+
 fn test_unknown_enum_values_are_reported() {
 	errors := check_diagnostic_project('unknown_enum_values', {
 		'main.v': 'module main
