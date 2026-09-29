@@ -7534,6 +7534,7 @@ fn clone_struct_field_map(values map[string][]types.StructField) map[string][]ty
 				has_default: field.has_default
 				is_embed:    field.is_embed
 				is_mut:      field.is_mut
+				is_volatile: field.is_volatile
 			}
 		}
 		cloned[name.clone()] = owned_fields

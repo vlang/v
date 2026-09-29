@@ -1577,6 +1577,7 @@ fn clone_embedded_fields_by_type(values map[string][]types.StructField) map[stri
 				has_default: field.has_default
 				is_embed:    field.is_embed
 				is_mut:      field.is_mut
+				is_volatile: field.is_volatile
 			}
 		}
 		cloned[name.clone()] = owned_fields

@@ -3583,6 +3583,7 @@ fn (mut t Transformer) materialize_generic_struct_spec(spec_name string, decl Ge
 			has_default: field.children_count > 0
 			is_embed:    field.typ.len == 0 || field.value.len == 0 || field.value == field.typ
 			is_mut:      field.is_mut
+			is_volatile: types.source_field_decl_is_volatile(field)
 		}
 	}
 	t.tc.structs[spec_name] = fields

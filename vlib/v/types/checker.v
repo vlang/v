@@ -4302,7 +4302,9 @@ fn source_field_decl_is_mut(field flat.Node) bool {
 	return meta.len > 0 && meta[0].contains('m')
 }
 
-fn source_field_decl_is_volatile(field flat.Node) bool {
+// source_field_decl_is_volatile reports whether a `field_decl` node was declared
+// `volatile` (the `v` flag the parser packs into its payload).
+pub fn source_field_decl_is_volatile(field flat.Node) bool {
 	meta := field.generic_params()
 	return meta.len > 0 && meta[0].contains('v')
 }
