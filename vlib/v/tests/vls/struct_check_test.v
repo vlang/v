@@ -2,6 +2,8 @@ import os
 import term
 import v.util.diff
 
+// vexe is the compiler under test, not the `v` that PATH finds.
+const vexe = os.quoted_path(@VEXE)
 const vroot = os.real_path(@VMODROOT)
 const tmp_dir = os.real_path(os.temp_dir())
 
@@ -21,7 +23,7 @@ struct TestData {
 
 const test_data = [
 	TestData{
-		cmd:    'v -w -check -vls-mode ${os.quoted_path(text_file)}'
+		cmd:    '${vexe} -w -check -vls-mode ${os.quoted_path(text_file)}'
 		output: '' // for a struct with `mut:` in it, should report no error
 	},
 ]
