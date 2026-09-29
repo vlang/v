@@ -4675,7 +4675,8 @@ fn (mut tc TypeChecker) check_cast_expr(id flat.NodeId, node flat.Node) {
 	}
 	if tc.interface_field_list(target_iface.name).any(it.is_mut) {
 		child := tc.a.node(child_id)
-		if actual !is Pointer && child.kind == .ident && !tc.ident_is_mutable_lvalue(child.value)
+		if (actual !is Pointer || tc.is_interface_value_smartcast_reference(child_id))
+			&& child.kind == .ident && !tc.ident_is_mutable_lvalue(child.value)
 			&& !tc.interface_cast_is_readonly_receiver(id, child_id) {
 			tc.record_error_at(.assignment_mismatch, '`${child.value}` is immutable, declare it with `mut` to make it mutable', child_id, tc.node_value_diagnostic_pos(child_id))
 			return
@@ -4725,6 +4726,15 @@ fn (mut tc TypeChecker) warn_implicit_interface_conversion(expr_id flat.NodeId, 
 		|| tc.interface_pointer_target_cast_needs_heap_copy(target, actual, target_iface) {
 		tc.warn_alloc('conversion to interface', expr_id, expr.pos)
 	}
+}
+
+// is_interface_value_smartcast_reference reports an interface value narrowed to a reference
+// of its concrete struct (`if l is Item`). The reference still aliases the object of the
+// interface value, so it is as immutable as the variable that holds it.
+fn (tc &TypeChecker) is_interface_value_smartcast_reference(child_id flat.NodeId) bool {
+	_ := tc.smartcast_type(child_id) or { return false }
+	declared := tc.declared_receiver_expr_type(child_id) or { return false }
+	return unalias_type(declared) is Interface
 }
 
 fn (tc &TypeChecker) interface_cast_is_readonly_receiver(id flat.NodeId, child_id flat.NodeId) bool {
