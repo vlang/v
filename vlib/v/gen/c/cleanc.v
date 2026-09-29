@@ -4159,6 +4159,12 @@ fn (mut g FlatGen) gen_translation_unit_prefix() {
 }
 
 fn (mut g FlatGen) emit_translation_unit_include_directives() {
+	if g.target.os == 'windows' {
+		// V's encoding-neutral WinAPI bindings pass UTF-16 strings. Select the wide APIs
+		// before any preinclude can load Windows or CRT headers and lock in ANSI aliases.
+		g.writeln('#ifndef UNICODE\n#define UNICODE\n#endif')
+		g.writeln('#ifndef _UNICODE\n#define _UNICODE\n#endif')
+	}
 	mut windows_header_emitted := g.emit_preinclude_directives()
 	windows_header_emitted = g.emit_preserved_c_directives_scoped(windows_header_emitted)
 	if g.target.os == 'windows' && !windows_header_emitted {

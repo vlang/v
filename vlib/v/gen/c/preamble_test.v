@@ -16,7 +16,10 @@ fn test_windows_translation_unit_preserves_configuration_preincludes() {
 		'#include <synchapi.h>', '#include <windows.h>']
 	g.emit_translation_unit_include_directives()
 	c_code := g.sb.str()
-	assert c_code.index('#include "winapi_config.h"')? < c_code.index('#include <windows.h>')?
+	config_index := c_code.index('#include "winapi_config.h"')?
+	assert c_code.index('#ifndef UNICODE\n#define UNICODE\n#endif')? < config_index
+	assert c_code.index('#ifndef _UNICODE\n#define _UNICODE\n#endif')? < config_index
+	assert config_index < c_code.index('#include <windows.h>')?
 	assert c_code.index('#include <windows.h>')? < c_code.index('#include <bcrypt.h>')?
 	assert c_code.index('#include <windows.h>')? < c_code.index('#include <synchapi.h>')?
 	assert c_code.count('#include <windows.h>') == 1
