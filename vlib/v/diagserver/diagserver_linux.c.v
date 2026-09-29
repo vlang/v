@@ -47,9 +47,10 @@ mut:
 	digests  map[string]string
 	base_kb  i64    // the child's resident memory after its first answer
 	work_dir string // the input directory, which the child enters by name
-	// shared is set in a server whose checks and questions share their children.
-	shared      bool
-	diagnostics Diagnostics
+	// shares_children is set in a server whose checks and questions share their
+	// children.
+	shares_children bool
+	diagnostics     Diagnostics
 	// token is the one of the check the child answers, which ends its partial
 	// answer (see print_diagnostics), when the client takes partial answers
 	// (V_DIAGNOSTICS_PARTIAL).
@@ -138,7 +139,7 @@ pub fn serve() Request {
 	if os.getenv('V_DIAGNOSTICS_SERVER') == '' {
 		return Request{}
 	}
-	shared := os.getenv('V_DIAGNOSTICS_SHARED') != ''
+	shares_children := os.getenv('V_DIAGNOSTICS_SHARED') != ''
 	// fork() keeps only the calling thread. The child gives the worker pools new
 	// threads, and no other thread may be running.
 	others := threads_besides_pool_workers()
@@ -159,7 +160,7 @@ pub fn serve() Request {
 	C.signal(C.SIGPIPE, C.SIG_IGN)
 	// What a check leaves for the next check of the program, in a file that
 	// every child sees and that ends with the server.
-	record_fd := if shared {
+	record_fd := if shares_children {
 		unsafe { int(C.syscall(C.SYS_memfd_create, c'v-diagnostics-record', voidptr(0))) }
 	} else {
 		-1
@@ -196,7 +197,7 @@ pub fn serve() Request {
 			answered(2, '')
 			continue
 		}
-		if (question != '' || shared) && warm.len > 0 {
+		if (question != '' || shares_children) && warm.len > 0 {
 			if i := holding_child(mut warm, if question != '' {
 				question
 			} else {
@@ -218,7 +219,7 @@ pub fn serve() Request {
 		// The child of a query reads its next questions from one pipe and tells
 		// the server on another that it answered.
 		mut channel := Channel{}
-		if question != '' || shared {
+		if question != '' || shares_children {
 			channel = new_channel()
 		}
 		server_pid := os.getpid()
@@ -254,7 +255,7 @@ pub fn serve() Request {
 			// The server runs without the compiler's memory watchdog, which is a
 			// thread of its own; the child, which may start threads, keeps one.
 			spawn watch_memory(memory_limit_kb())
-			return channel.child_request(question, work_dir, shared, token, record_fd)
+			return channel.child_request(question, work_dir, shares_children, token, record_fd)
 		}
 		if pid < 0 {
 			channel.close_all()
@@ -305,7 +306,7 @@ pub fn (r &Request) answers_again() bool {
 // shares_checks reports whether this child answers the checks of its program
 // too, besides its questions.
 pub fn (r &Request) shares_checks() bool {
-	return r.shared && r.status_fd >= 0
+	return r.shares_children && r.status_fd >= 0
 }
 
 // print_partial_with sets what prints the diagnostics the check found before
@@ -574,7 +575,7 @@ pub fn (mut r Request) next_question(code int) ?string {
 		}
 		// A child whose files held something else already answers no more, nor
 		// does one whose grandchild could not take the diagnostics, for a check.
-		if !r.current || (r.asks_for_diagnostics(question) && (!r.shared || r.diagnostics.failed)) {
+		if !r.current || (r.asks_for_diagnostics(question) && (!r.shares_children || r.diagnostics.failed)) {
 			os.fd_write(r.status_fd, 'stale\n')
 			return none
 		}
@@ -646,21 +647,21 @@ fn new_channel() Channel {
 }
 
 // child_request closes the server's ends in the child, which keeps its own.
-fn (mut c Channel) child_request(question string, work_dir string, shared bool, token string, record_fd int) Request {
+fn (mut c Channel) child_request(question string, work_dir string, shares_children bool, token string, record_fd int) Request {
 	os.fd_close(c.questions_fd)
 	os.fd_close(c.status_fd)
 	return Request{
-		question:    question
-		from_server: true
-		questions:   LineReader{
+		question:        question
+		from_server:     true
+		questions:       LineReader{
 			fd: c.child_questions_fd
 		}
-		status_fd:   c.child_status_fd
-		work_dir:    work_dir
-		shared:      shared
-		token:       token
-		partials:    os.getenv('V_DIAGNOSTICS_PARTIAL') != ''
-		record_fd:   record_fd
+		status_fd:       c.child_status_fd
+		work_dir:        work_dir
+		shares_children: shares_children
+		token:           token
+		partials:        os.getenv('V_DIAGNOSTICS_PARTIAL') != ''
+		record_fd:       record_fd
 	}
 }
 
