@@ -49,6 +49,18 @@ fn test_a_count_past_the_width_shifts_every_bit_out() {
 	assert (u64(4) >> u128(1)).str() == '2'
 }
 
+fn test_typeof_on_a_logical_right_shift_is_unsigned() {
+	// `>>>` shifts zero bits in, so its result is unsigned however signed the
+	// operand is. Naming it after the operand sent the value to the signed printer
+	// and disagreed with the shift helper, which returns a `u128`.
+	y := i128(-1)
+	assert typeof(y >>> 1) == 'u128'
+	assert typeof(y >>> u128(1)) == 'u128'
+	assert typeof(u128(5) >>> 1) == 'u128'
+	assert (y >>> 1).str() == '170141183460469231731687303715884105727'
+	assert (y >>> 127).str() == '1'
+}
+
 fn takes_wide(x u128) int {
 	_ = x
 	return -7

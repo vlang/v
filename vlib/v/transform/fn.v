@@ -5210,12 +5210,15 @@ fn (t &Transformer) wide_method_receiver_type(id flat.NodeId) string {
 // the type of the operand, which picked the wrong printer and, on the portable
 // representation, produced C that does not compile. A shift is the same shape:
 // its result is as wide as its left operand, since the right one is a count.
+// A logical right shift is the exception to that: it takes its width from the
+// left operand but its result is unsigned, so `typeof(i128(-1) >>> 1)` is `u128`.
 fn (t &Transformer) wide_operator_result_type(id flat.NodeId, depth int) string {
 	if depth > 4 || int(id) < 0 || int(id) >= t.a.nodes.len {
 		return ''
 	}
 	node := t.a.nodes[int(id)]
 	mut child_limit := node.children_count
+	mut unsigned_result := false
 	match node.kind {
 		.paren {
 			if node.children_count == 0 {
@@ -5229,6 +5232,9 @@ fn (t &Transformer) wide_operator_result_type(id flat.NodeId, depth int) string 
 			}
 			if node.op in [.left_shift, .right_shift, .right_shift_unsigned] {
 				child_limit = 1
+				if node.op == .right_shift_unsigned {
+					unsigned_result = true
+				}
 			}
 		}
 		.prefix {
@@ -5243,7 +5249,7 @@ fn (t &Transformer) wide_operator_result_type(id flat.NodeId, depth int) string 
 	for i in 0 .. child_limit {
 		name := t.raw_checker_node_type(t.a.child(&node, i)).all_after_last('.')
 		if name in ['u128', 'i128'] {
-			return name
+			return if unsigned_result { 'u128' } else { name }
 		}
 	}
 	// An operand that is an operator node of its own widens the same way, and the
@@ -5251,7 +5257,7 @@ fn (t &Transformer) wide_operator_result_type(id flat.NodeId, depth int) string 
 	for i in 0 .. child_limit {
 		nested := t.wide_operator_result_type(t.a.child(&node, i), depth + 1)
 		if nested.len > 0 {
-			return nested
+			return if unsigned_result { 'u128' } else { nested }
 		}
 	}
 	return ''

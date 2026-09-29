@@ -653,7 +653,8 @@ fn main() {
 A shift by 128 or more gives `0`. The count is read at its own width, so a count
 that does not fit in 64 bits shifts everything out rather than being taken for a
 small one. `>>` on a negative signed value is an arithmetic shift, so it gives
-`-1` once the value is all ones, while `>>>` reads the same bits as unsigned.
+`-1` once the value is all ones, while `>>>` reads the same bits as unsigned and
+its result is a `u128`, whatever the sign of the operand.
 Division or modulo by zero panics, as it does for the other integer types, and
 overflow wraps.
 
