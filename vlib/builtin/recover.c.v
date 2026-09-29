@@ -272,7 +272,7 @@ fn panic_fatal() {
 	debug := panic_record(g_panic_state.len - 1).debug
 	panic_frames_reset()
 	// The native backends build panic_debug() in, so it has no source to call.
-	$if !native {
+	$if !native ? {
 		if debug.file.len > 0 {
 			panic_debug(debug.line_no, debug.file, debug.mod, debug.fn_name, msg)
 		}

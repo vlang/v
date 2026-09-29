@@ -1488,6 +1488,12 @@ pub fn comptime_optional_flag_value(p &Preferences, name string) bool {
 	if name == 'test' && name !in p.compile_values {
 		return false
 	}
+	// Builtin spells its native backend check `$if native ?`, because the V1
+	// compatibility compiler, which still checks some fixtures, knows `native`
+	// only as a define. Here it also names the backend, as in `$if native`.
+	if name == 'native' {
+		return comptime_flag_value(p, name) || name in p.user_defines
+	}
 	return name in p.user_defines
 }
 
