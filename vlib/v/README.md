@@ -141,7 +141,7 @@ limit for the split C compilation. Cached builds divide the compiler across 32 C
 those production objects by content, compiler, flags, target, and included-file contents. Repeated
 production self-builds therefore compile only changed units. `-nocache` disables this reuse and
 uses one C unit per compiler job to avoid repeatedly parsing the shared declarations. Other
-parallel C builds remain limited to two jobs.
+parallel C builds are limited to eight jobs.
 
 ## Fast C backend
 
