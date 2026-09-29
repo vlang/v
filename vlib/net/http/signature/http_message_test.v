@@ -571,6 +571,7 @@ fn test_sign_request_rejects_empty_existing_signature_input() {
 
 fn test_sign_request_rejects_http2_removed_covered_field() {
 	mut req := build_request('https://example.com/foo')
+	req.enable_http2 = true
 	req.header.set(.connection, 'keep-alive')
 	key := Key.hmac_sha256(test_secret.bytes())!
 	if _ := sign_request(mut req, key, components: ['connection'], created: 1) {
@@ -583,6 +584,7 @@ fn test_sign_request_rejects_http2_removed_covered_field() {
 
 fn test_sign_request_rejects_http2_replaced_host_field() {
 	mut req := build_request('https://example.com/foo')
+	req.enable_http2 = true
 	key := Key.hmac_sha256(test_secret.bytes())!
 	if _ := sign_request(mut req, key, components: ['host'], created: 1) {
 		assert false, 'Host is replaced by @authority during possible HTTP/2 negotiation'
@@ -625,6 +627,7 @@ fn test_sign_request_rejects_generated_connection_close_coverage() {
 
 fn test_sign_request_rejects_http2_filtered_te_value() {
 	mut req := build_request('https://example.com/foo')
+	req.enable_http2 = true
 	req.header.add_custom('TE', 'gzip')!
 	key := Key.hmac_sha256(test_secret.bytes())!
 	if _ := sign_request(mut req, key, components: ['te'], created: 1) {
