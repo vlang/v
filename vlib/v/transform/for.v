@@ -1098,8 +1098,9 @@ fn (mut t Transformer) lower_indexed_for_in(id flat.NodeId, node flat.Node, key_
 		range_type := t.unaliased_value_type(container_id)
 		if range_type.starts_with('[]') {
 			if view := t.fixed_array_range_view(container_id, range_type) {
-				fixed_range_container = t.stable_transformed_expr_for_reuse(view, range_type,
-					'for_container')
+				tmp_name := t.new_temp('for_container')
+				t.pending_stmts << t.make_decl_assign_typed(tmp_name, view, range_type)
+				fixed_range_container = t.make_ident(tmp_name)
 			}
 		}
 	}

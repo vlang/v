@@ -11285,7 +11285,11 @@ pub fn (mut t Transformer) transform_lvalue(id flat.NodeId) flat.NodeId {
 				return lowered
 			}
 			mut new_children := []flat.NodeId{cap: int(node.children_count)}
-			new_children << t.transform_index_base_expr(t.a.child(&node, 0))
+			new_children << if t.is_range_index_expr(id) {
+				t.transform_index_base_expr(t.a.child(&node, 0))
+			} else {
+				t.transform_element_index_base_expr(t.a.child(&node, 0))
+			}
 			for i in 1 .. node.children_count {
 				new_children << t.transform_expr(t.a.child(&node, i))
 			}
@@ -20122,7 +20126,11 @@ fn (mut t Transformer) transform_index_expr(id flat.NodeId, node flat.Node) flat
 		// stabilize an earlier side-effecting operand before a later hoisting one.
 		// The index base (`i == 0`) keeps master's dedicated base lowering.
 		mut new_child := if i == 0 {
-			base := t.transform_index_base_expr(child_id)
+			base := if index_node_is_range(t.a, node) {
+				t.transform_index_base_expr(child_id)
+			} else {
+				t.transform_element_index_base_expr(child_id)
+			}
 			if node.value == 'range' && node.children_count < 3 {
 				base_type := t.node_type(base)
 				t.stable_transformed_expr_for_reuse(base, base_type, 'slice_base')
@@ -20188,18 +20196,28 @@ fn (mut t Transformer) transform_index_expr(id flat.NodeId, node flat.Node) flat
 	return t.lower_owned_array_index_move(id, new_id)
 }
 
-fn (mut t Transformer) transform_index_base_expr(id flat.NodeId) flat.NodeId {
-	// An element of a fixed array range is read and written through a view of the fixed
-	// array's storage. Slicing a fixed array copies it, so stores through the copy would
-	// be lost, and reads would allocate it for nothing.
+// transform_element_index_base_expr transforms the base of an element index, `base[i]`.
+// When the base is a range of a fixed array, the element is read and written through a
+// view of the fixed array's storage: slicing a fixed array copies it, so stores through
+// the copy would be lost. The view never escapes the element access. A range of a range,
+// like `a[..][1..]`, uses transform_index_base_expr and keeps copying the fixed array.
+fn (mut t Transformer) transform_element_index_base_expr(id flat.NodeId) flat.NodeId {
 	if t.is_range_index_expr(t.unwrap_parens(id)) {
 		range_type := t.unaliased_value_type(id)
 		if range_type.starts_with('[]') {
 			if view := t.fixed_array_range_view(id, range_type) {
-				return t.stable_transformed_expr_for_reuse(view, range_type, 'fixed_array_slice')
+				// Always store the view slice: cgen takes the address of an element store's
+				// base, and an inline `array_slice(...)` is not addressable.
+				tmp_name := t.new_temp('fixed_array_slice')
+				t.pending_stmts << t.make_decl_assign_typed(tmp_name, view, range_type)
+				return t.make_ident(tmp_name)
 			}
 		}
 	}
+	return t.transform_index_base_expr(id)
+}
+
+fn (mut t Transformer) transform_index_base_expr(id flat.NodeId) flat.NodeId {
 	node := t.a.node(id)
 	if node.kind == .prefix && node.op == .mul && node.children_count == 1 {
 		inner_id := t.a.child(node, 0)

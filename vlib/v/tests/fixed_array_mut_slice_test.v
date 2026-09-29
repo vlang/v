@@ -34,6 +34,17 @@ fn (mut c Counter) bump() {
 	c.n++
 }
 
+fn chained_fixed_slice() []int {
+	a := [1, 2, 3]!
+	return a[..][1..]
+}
+
+// overwrite_stack reuses the stack that a returned view into a dead fixed array would use.
+fn overwrite_stack() int {
+	b := [7, 7, 7, 7, 7, 7, 7, 7]!
+	return b[3]
+}
+
 fn append_one(mut a []int) {
 	a << 1
 	a[0] = 5
@@ -159,4 +170,21 @@ fn test_element_of_array_slice_is_mutated_in_place() {
 	mut dynamic := [Counter{1}, Counter{2}, Counter{3}]
 	dynamic[1..][1].bump()
 	assert dynamic[2].n == 4
+}
+
+fn test_chained_fixed_slice_keeps_copy_semantics() {
+	mut a := [1, 2, 3]!
+	snapshot := a[..][..]
+	a[0] = 99
+	assert snapshot == [1, 2, 3]
+	tail := a[1..][..]
+	a[2] = 42
+	assert tail == [2, 3]
+	assert a[..][2] == 42
+}
+
+fn test_chained_fixed_slice_returned_from_a_helper_is_independent() {
+	values := chained_fixed_slice()
+	assert overwrite_stack() == 7
+	assert values == [2, 3]
 }
