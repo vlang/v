@@ -3308,6 +3308,10 @@ underlying object mutable. For a type-erased container lookup that guarantees se
 component storage, place the conversion in `unsafe { ... }`. The caller must ensure the returned
 pointer does not provide mutable access to an immutable argument.
 
+A scalar passed by value to a callback is independent of the caller's storage. If a callback
+parameter is a reference, an implicitly referenced scalar remains borrowed from its immutable
+argument; the scalar's expression type alone does not establish a by-value copy.
+
 > [!NOTE]
 > However, V is not a purely functional language.
 

@@ -125,3 +125,54 @@ fn main() {}
 	assert tc.notices.len == 0, tc.notices.str()
 	assert tc.errors.len == 0, tc.errors.str()
 }
+
+fn test_scalar_passed_to_a_callback_reference_parameter_is_borrowed() {
+	tc := check_alias_source('scalar_ref', 'struct Item { mut: x int }
+fn by_reference(n int, get fn (&int) &Item) {
+ mut alias := get(n)
+ alias.x = 1
+}
+fn main() {}
+')
+	assert tc.notices.any(it.msg == '`n` is immutable, cannot have a mutable reference to an immutable object'), tc.notices.str()
+	assert tc.errors.any(it.msg == '`alias.x` aliases mutable data from an immutable value'), tc.errors.str()
+}
+
+fn test_scalar_passed_to_a_stored_callback_reference_parameter_is_borrowed() {
+	tc := check_alias_source('stored_scalar_ref', 'struct Item { mut: x int }
+struct Getter { get fn (&int) &Item = unsafe { nil } }
+fn by_reference(n int, getter Getter) {
+ mut alias := getter.get(n)
+ alias.x = 1
+}
+fn main() {}
+')
+	assert tc.notices.any(it.msg == '`n` is immutable, cannot have a mutable reference to an immutable object'), tc.notices.str()
+	assert tc.errors.any(it.msg == '`alias.x` aliases mutable data from an immutable value'), tc.errors.str()
+}
+
+fn test_scalar_passed_by_value_to_a_stored_callback_is_not_borrowed() {
+	tc := check_alias_source('stored_scalar', 'struct Item { mut: x int }
+struct Getter { get fn (int) &Item = unsafe { nil } }
+fn by_value(n int, getter Getter) {
+ mut alias := getter.get(n)
+ alias.x = 1
+}
+fn main() {}
+')
+	assert tc.notices.len == 0, tc.notices.str()
+	assert tc.errors.len == 0, tc.errors.str()
+}
+
+fn test_scalar_reference_parameter_after_expanded_tuple_is_borrowed() {
+	tc := check_alias_source('tuple_scalar_ref', 'struct Item { mut: x int }
+fn pair() (int, int) { return 1, 2 }
+fn by_reference(n int, get fn (int, int, &int) &Item) {
+ mut alias := get(pair(), n)
+ alias.x = 1
+}
+fn main() {}
+')
+	assert tc.notices.any(it.msg == '`n` is immutable, cannot have a mutable reference to an immutable object'), tc.notices.str()
+	assert tc.errors.any(it.msg == '`alias.x` aliases mutable data from an immutable value'), tc.errors.str()
+}

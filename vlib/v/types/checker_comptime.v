@@ -14895,13 +14895,13 @@ fn (mut tc TypeChecker) call_returned_alias_arguments(id flat.NodeId, mut visiti
 	}
 	return_type := unalias_type(tc.resolve_type(id))
 	if return_type is Unknown || return_type is Void {
-		return tc.conservative_call_alias_arguments(*call, true)
+		return tc.conservative_call_alias_arguments(*call, CallInfo{ has_receiver: true })
 	}
 	if return_type !is Array && return_type !is Map && return_type !is Pointer {
 		return []flat.NodeId{}
 	}
 	info := tc.resolve_call_info(id, *call) or {
-		return tc.conservative_call_alias_arguments(*call, false)
+		return tc.conservative_call_alias_arguments(*call, CallInfo{})
 	}
 	decl_module := tc.fn_type_modules[info.name] or { tc.cur_module }
 	// A builtin that builds a new collection is not a window onto the one it was
@@ -14923,10 +14923,10 @@ fn (mut tc TypeChecker) call_returned_alias_arguments(id flat.NodeId, mut visiti
 		return []flat.NodeId{}
 	}
 	decl := tc.visible_mutation_fn_decl(info.name, decl_module) or {
-		return tc.conservative_call_alias_arguments(*call, info.has_receiver)
+		return tc.conservative_call_alias_arguments(*call, info)
 	}
 	if visiting[decl.idx] {
-		return tc.conservative_call_alias_arguments(*call, info.has_receiver)
+		return tc.conservative_call_alias_arguments(*call, info)
 	}
 	fn_node := tc.a.node(flat.NodeId(decl.idx))
 	mut callee := tc.a.child_node(call, 0)
@@ -15300,25 +15300,57 @@ fn (mut tc TypeChecker) returned_alias_arguments(id flat.NodeId, args_by_param m
 // Without a readable callee body, pointer arguments may be returned unchanged,
 // including through a voidptr result. Type erasure does not establish independence
 // from those arguments; a caller can make that guarantee at an explicit unsafe boundary.
-fn (tc &TypeChecker) conservative_call_alias_arguments(call flat.Node, has_receiver bool) []flat.NodeId {
+fn (tc &TypeChecker) conservative_call_alias_arguments(call flat.Node, info CallInfo) []flat.NodeId {
 	mut sources := []flat.NodeId{}
-	if has_receiver && call.children_count > 0 {
+	if info.has_receiver && call.children_count > 0 {
 		callee := tc.a.child_node(&call, 0)
 		if callee.kind == .selector && callee.children_count > 0 {
-			sources << tc.a.child(callee, 0)
+			receiver := tc.a.child(callee, 0)
+			param_type := if info.params_known && info.params.len > 0 {
+				info.params[0]
+			} else {
+				Type(Unknown{})
+			}
+			if tc.opaque_call_arg_can_be_returned(receiver, param_type) {
+				sources << receiver
+			}
 		}
 	}
-	for i in 1 .. call.children_count {
-		sources << tc.call_arg_value(tc.a.child(&call, i))
+	mut param_idx := if info.has_receiver { 1 } else { 0 }
+	mut layout_known := !info.has_implicit_veb_ctx
+	for i in 1 + info.arg_offset .. call.children_count {
+		arg_id := tc.call_arg_value(tc.a.child(&call, i))
+		formal_idx := if info.is_variadic && info.params.len > 0 && param_idx >= info.params.len - 1 {
+			info.params.len - 1
+		} else {
+			param_idx
+		}
+		param_type := if layout_known && info.params_known && formal_idx < info.params.len {
+			tc.call_arg_expected_type(info, formal_idx)
+		} else {
+			Type(Unknown{})
+		}
+		if tc.opaque_call_arg_can_be_returned(arg_id, param_type) {
+			sources << arg_id
+		}
+		arg_type := unalias_type(tc.resolve_type(arg_id))
+		param_idx += if arg_type is MultiReturn { arg_type.types.len } else { 1 }
+		if !info.is_variadic && tc.spread_arg_value(arg_id) != none {
+			// A decomposed array obscures the remaining positional parameter mapping.
+			layout_known = false
+		}
 	}
-	return sources.filter(tc.opaque_call_arg_can_be_returned(it))
+	return sources
 }
 
-// A number, a string or anything else that is copied in whole reaches the callee as a
-// copy of its own, so nothing handed back can point into the caller's. A struct or a
-// fixed array is kept even when it shares nothing: an immutable one may be passed by
-// reference, and the callee can then return the address of a part of it.
-fn (tc &TypeChecker) opaque_call_arg_can_be_returned(id flat.NodeId) bool {
+// A scalar copied into a by-value parameter cannot alias the caller's storage.
+// An implicit reference argument is still borrowed, even when its expression is
+// scalar. Without a known formal type, keep conservative provenance. Structs and
+// fixed arrays are kept because the callee can receive their storage by reference.
+fn (tc &TypeChecker) opaque_call_arg_can_be_returned(id flat.NodeId, param_type Type) bool {
+	if unalias_type(param_type) is Pointer || type_contains_unknown(param_type) {
+		return true
+	}
 	typ := unalias_type(tc.resolve_type(id))
 	if typ is Struct || typ is ArrayFixed {
 		return true
