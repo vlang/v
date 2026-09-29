@@ -1781,9 +1781,40 @@ fn (g &Gen) call_args_expanded(id flat.NodeId, args []flat.NodeId) bool {
 	if !has_named_args {
 		return false
 	}
+	layout := g.call_args_layout_source(id, source, args)
 	// The opening parenthesis is already present in the output line and in source.
-	projected_width := g.output_line_len() + source.len - 1
-	return source.contains('\n') || projected_width > formatter_max_line_len
+	projected_width := g.output_line_len() + layout.len - 1
+	return layout.contains('\n') || projected_width > formatter_max_line_len
+}
+
+// call_args_layout_source is the source of a call's arguments with every multi-line
+// positional argument cut down to its last line. A line break inside such an argument,
+// e.g. in `encode(Foo{\n\tx: 1\n}, pretty: true)`, belongs to the argument itself and
+// must not move the named arguments that follow it onto their own lines.
+fn (g &Gen) call_args_layout_source(id flat.NodeId, source string, args []flat.NodeId) string {
+	args_end := g.a.formatter_node_ends[int(id)] or { return source }
+	args_start := args_end - source.len
+	mut b := strings.new_builder(source.len)
+	mut cursor := 0
+	for arg in args {
+		if g.a.node(arg).kind == .field_init {
+			break
+		}
+		start := g.leftmost_source_start(arg) - args_start
+		end := g.rightmost_source_end(arg) - args_start
+		if start < cursor || end <= start || end > source.len {
+			continue
+		}
+		text := source[start..end]
+		if !text.contains('\n') {
+			continue
+		}
+		b.write_string(source[cursor..start])
+		b.write_string(text.all_after_last('\n').trim_left(' \t'))
+		cursor = end
+	}
+	b.write_string(source[cursor..])
+	return b.str()
 }
 
 fn (g &Gen) call_args_hanging(args []flat.NodeId) bool {
@@ -2920,6 +2951,8 @@ fn (mut g Gen) string_interp(id flat.NodeId) {
 	}
 	quote := if has_single && !has_double { `"` } else { `'` }
 	quote_str := if quote == `"` { '"' } else { "'" }
+	// Keep the source spelling of each literal part, as plain literals do.
+	literal_spellings := g.interp_literal_spellings(n, children, quote)
 	if n.typ.starts_with('js:') {
 		g.write('js')
 	}
@@ -2927,7 +2960,7 @@ fn (mut g Gen) string_interp(id flat.NodeId) {
 	for cid in children {
 		c := g.a.node(cid)
 		if c.kind == .string_literal {
-			g.write(escape_string(c.value, quote))
+			g.write(literal_spellings[int(cid)] or { escape_string(c.value, quote) })
 		} else if c.kind == .directive && c.value == 'string_interp_format' {
 			g.write('\${')
 			was_in_string_interp := g.in_string_interp
@@ -2946,6 +2979,90 @@ fn (mut g Gen) string_interp(id flat.NodeId) {
 		}
 	}
 	g.write(quote_str)
+}
+
+// interp_literal_spellings maps the literal parts of the interpolated string `n` to
+// their source spelling under `quote`. Segment values are stored decoded, and
+// re-escaping them would rewrite spellings like `\x41` or a bare `$` in `'$HOME'`.
+// The map is empty when the source cannot be matched up with the parts.
+fn (g &Gen) interp_literal_spellings(n &flat.Node, children []flat.NodeId, quote u8) map[int]string {
+	mut spellings := map[int]string{}
+	source := g.source_span(n.pos.offset, n.pos.end) or { return spellings }
+	prefix_len := if n.typ.starts_with('js:') { 2 } else { 0 }
+	parts := interp_literal_parts(source, prefix_len) or { return spellings }
+	old_quote := source[prefix_len]
+	mut ci := 0
+	for pi, part in parts {
+		if part.len > 0 {
+			if ci >= children.len || g.a.node(children[ci]).kind != .string_literal {
+				return map[int]string{}
+			}
+			spellings[int(children[ci])] = requote_literal_body(part, old_quote, quote)
+			ci++
+		}
+		if pi < parts.len - 1 {
+			if ci >= children.len || g.a.node(children[ci]).kind == .string_literal {
+				return map[int]string{}
+			}
+			ci++
+		}
+	}
+	if ci != children.len {
+		return map[int]string{}
+	}
+	return spellings
+}
+
+// interp_literal_parts splits the source of an interpolated string literal into the
+// source text of its literal parts: the one before, between and after each `${...}`.
+fn interp_literal_parts(source string, prefix_len int) ?[]string {
+	if source.len < prefix_len + 2 {
+		return none
+	}
+	quote := source[prefix_len]
+	if quote !in [`'`, `"`] || source[source.len - 1] != quote {
+		return none
+	}
+	body_end := source.len - 1
+	mut parts := []string{}
+	mut part_start := prefix_len + 1
+	mut i := part_start
+	for i < body_end {
+		c := source[i]
+		if c == `\\` {
+			i += 2
+			continue
+		}
+		if c != `$` || i + 1 >= body_end || source[i + 1] != `{` {
+			i++
+			continue
+		}
+		parts << source[part_start..i]
+		mut depth := 1
+		i += 2
+		for i < body_end && depth > 0 {
+			ch := source[i]
+			if ch in [`'`, `"`, `\``] {
+				i = interp_skip_nested_literal(source, i)
+				continue
+			}
+			if ch == `{` {
+				depth++
+			} else if ch == `}` {
+				depth--
+			}
+			i++
+		}
+		if depth != 0 {
+			return none
+		}
+		part_start = i
+	}
+	if i != body_end {
+		return none
+	}
+	parts << source[part_start..body_end]
+	return parts
 }
 
 fn interp_has_literal_dollar(source string) bool {
@@ -5706,9 +5823,17 @@ fn requote_literal_text(source string, prefix_len int) string {
 	if new_quote == old_quote {
 		return source
 	}
-	mut b := strings.new_builder(source.len + 8)
-	b.write_string(source[..prefix_len])
-	b.write_u8(new_quote)
+	quote := new_quote.ascii_str()
+	return source[..prefix_len] + quote + requote_literal_body(body, old_quote, new_quote) + quote
+}
+
+// requote_literal_body rewrites the quote escaping of a literal body written between
+// `old_quote` delimiters for `new_quote` ones, copying every other escape unchanged.
+fn requote_literal_body(body string, old_quote u8, new_quote u8) string {
+	if new_quote == old_quote {
+		return body
+	}
+	mut b := strings.new_builder(body.len + 8)
 	mut i := 0
 	for i < body.len {
 		c := body[i]
@@ -5729,7 +5854,6 @@ fn requote_literal_text(source string, prefix_len int) string {
 		b.write_u8(c)
 		i++
 	}
-	b.write_u8(new_quote)
 	return b.str()
 }
 
