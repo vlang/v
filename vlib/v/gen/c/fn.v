@@ -5831,10 +5831,7 @@ fn (mut g FlatGen) gen_test_main() {
 		g.indent--
 		g.writeln('}')
 		g.writeln('__v_test_jump_active = 0;')
-		if g.uses_recover {
-			// A failed assert jumped over the deferred blocks of the test.
-			g.writeln('panic_frames_reset();')
-		}
+		g.gen_test_panic_frames_reset()
 		if hooks.after_each.len > 0 {
 			g.writeln('__v_test_jump_active = 1;')
 			g.writeln('if (setjmp(__v_test_jump_buffer) == 0) {')
@@ -5843,6 +5840,7 @@ fn (mut g FlatGen) gen_test_main() {
 			g.indent--
 			g.writeln('}')
 			g.writeln('__v_test_jump_active = 0;')
+			g.gen_test_panic_frames_reset()
 		}
 		if g.show_test_stats {
 			g.writeln('double __v_test_elapsed_ms_${idx} = __v_test_now_ms() - __v_test_start_ms_${idx};')
@@ -6503,6 +6501,14 @@ fn (mut g FlatGen) gen_fn_defer_at(index int) {
 	}
 	g.indent--
 	g.writeln('}')
+}
+
+// gen_test_panic_frames_reset forgets the panic frames that a failed assert left
+// behind, when it jumped out of a test or a hook past their deferred blocks.
+fn (mut g FlatGen) gen_test_panic_frames_reset() {
+	if g.uses_recover {
+		g.writeln('panic_frames_reset();')
+	}
 }
 
 fn panic_frame_name(id int) string {
