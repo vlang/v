@@ -5254,6 +5254,7 @@ fn (mut g FlatGen) gen_fn_in_module(node_id flat.NodeId, node flat.Node, module_
 	if is_direct_no_main_export {
 		g.writeln('_vno_main_init_caller();')
 	}
+	g.gen_panic_owner_decl(g.uses_recover && g.node_defers(node_id))
 	g.gen_function_defer_prelude()
 	// A `@[_naked]` body has no compiler-generated frame for its own `ret` to
 	// unwind through, so nothing may run before the user's hand-written code:
@@ -5673,6 +5674,7 @@ fn (mut g FlatGen) gen_top_level_main(stmts []TopLevelStmt) {
 		g.gen_profile_registration()
 	}
 	g.indent++
+	g.gen_panic_owner_decl(g.uses_recover && stmts.any(g.node_defers(it.id)))
 	g.gen_function_defer_prelude()
 	g.gen_trace_call('main main.main/0', 'main', 'main.main')
 	g.gen_profile_fn_begin('main', 'main', 'main', false, false)
@@ -5829,6 +5831,7 @@ fn (mut g FlatGen) gen_test_main() {
 		g.indent--
 		g.writeln('}')
 		g.writeln('__v_test_jump_active = 0;')
+		g.gen_test_panic_frames_reset()
 		if hooks.after_each.len > 0 {
 			g.writeln('__v_test_jump_active = 1;')
 			g.writeln('if (setjmp(__v_test_jump_buffer) == 0) {')
@@ -5837,6 +5840,7 @@ fn (mut g FlatGen) gen_test_main() {
 			g.indent--
 			g.writeln('}')
 			g.writeln('__v_test_jump_active = 0;')
+			g.gen_test_panic_frames_reset()
 		}
 		if g.show_test_stats {
 			g.writeln('double __v_test_elapsed_ms_${idx} = __v_test_now_ms() - __v_test_start_ms_${idx};')
@@ -6253,8 +6257,11 @@ fn (mut g FlatGen) add_function_defer_capture(id flat.NodeId, name string) {
 
 // gen_function_defer_prelude emits function defer prelude output for c.
 fn (mut g FlatGen) gen_function_defer_prelude() {
-	for _, count_name in g.fn_defer_counts {
+	for defer_id, count_name in g.fn_defer_counts {
 		g.writeln('int ${count_name} = 0;')
+		if g.cur_fn_panic_owner {
+			g.writeln('v_unwind_frame ${panic_frame_name(defer_id)};')
+		}
 	}
 	for name in g.defer_capture_names {
 		typ := g.defer_capture_types[name] or { continue }
@@ -6426,7 +6433,19 @@ fn (mut g FlatGen) gen_defers_range(start int, end int) {
 }
 
 fn (mut g FlatGen) gen_defer_at(index int) {
-	defer_body := g.a.nodes[int(g.defers[index])]
+	body_id := g.defers[index]
+	mut frame := ''
+	if g.cur_fn_panic_owner {
+		frame = panic_frame_name(int(body_id))
+		g.writeln('panic_frame_pop(&${frame});')
+	}
+	g.gen_defer_block(body_id, frame)
+}
+
+fn (mut g FlatGen) gen_defer_block(body_id flat.NodeId, frame string) {
+	defer_body := g.a.nodes[int(body_id)]
+	old_panic_frame := g.cur_panic_frame
+	g.cur_panic_frame = frame
 	g.writeln('{')
 	g.indent++
 	for j in 0 .. defer_body.children_count {
@@ -6434,6 +6453,7 @@ fn (mut g FlatGen) gen_defer_at(index int) {
 	}
 	g.indent--
 	g.writeln('}')
+	g.cur_panic_frame = old_panic_frame
 }
 
 // gen_fn_defers emits fn defers output for c.
@@ -6458,8 +6478,21 @@ fn (mut g FlatGen) gen_fn_defers() {
 fn (mut g FlatGen) gen_fn_defer_at(index int) {
 	defer_id := g.fn_defers[index]
 	defer_node := g.a.nodes[int(defer_id)]
-	defer_body := g.a.nodes[int(g.a.child(&defer_node, 0))]
 	count_name := g.fn_defer_counts[int(defer_id)] or { '0' }
+	if g.cur_fn_panic_owner && count_name != '0' {
+		// One frame stands for all pending runs of the block. It stays linked
+		// until the last run, so a panic in one run still runs the others.
+		frame := panic_frame_name(int(defer_id))
+		g.writeln('while (${count_name} > 0) {')
+		g.indent++
+		g.writeln('${count_name}--;')
+		g.writeln('if (${count_name} == 0) panic_frame_pop(&${frame});')
+		g.gen_defer_block(g.a.child(&defer_node, 0), frame)
+		g.indent--
+		g.writeln('}')
+		return
+	}
+	defer_body := g.a.nodes[int(g.a.child(&defer_node, 0))]
 	iter_name := '${count_name}_i'
 	g.writeln('for (int ${iter_name} = 0; ${iter_name} < ${count_name}; ${iter_name}++) {')
 	g.indent++
@@ -6468,6 +6501,164 @@ fn (mut g FlatGen) gen_fn_defer_at(index int) {
 	}
 	g.indent--
 	g.writeln('}')
+}
+
+// gen_test_panic_frames_reset forgets the panic frames that a failed assert left
+// behind, when it jumped out of a test or a hook past their deferred blocks.
+fn (mut g FlatGen) gen_test_panic_frames_reset() {
+	if g.uses_recover {
+		g.writeln('panic_frames_reset();')
+	}
+}
+
+fn panic_frame_name(id int) string {
+	return '_v_pf_${id}'
+}
+
+// gen_panic_owner_decl declares the local whose address tells the panic frames of
+// one call of the current function apart from those of other calls. Only a
+// function that defers something, in a program that calls `recover()`, has one.
+fn (mut g FlatGen) gen_panic_owner_decl(defers bool) {
+	g.cur_panic_frame = ''
+	g.cur_fn_panic_owner = g.uses_recover && defers
+	if g.cur_fn_panic_owner {
+		g.writeln('char _v_unwind_owner;')
+	}
+}
+
+// node_defers reports whether the statements under `id` defer a block, not
+// counting nested functions.
+@[direct_array_access]
+fn (g &FlatGen) node_defers(id flat.NodeId) bool {
+	mut stack := [id]
+	for stack.len > 0 {
+		cur := stack.pop()
+		if !g.valid_node_id(cur) {
+			continue
+		}
+		node := unsafe { &g.a.nodes[int(cur)] }
+		if node.kind == .defer_stmt {
+			return true
+		}
+		if cur != id && node.kind in [.fn_decl, .c_fn_decl, .fn_literal] {
+			continue
+		}
+		for i in 0 .. node.children_count {
+			stack << g.a.child(node, i)
+		}
+	}
+	return false
+}
+
+// gen_block_defer_panic_frame links the frame of a `defer` block that was just
+// reached. Its landing pad runs the block when a panic unwinds through it.
+fn (mut g FlatGen) gen_block_defer_panic_frame(body_id flat.NodeId) {
+	frame := panic_frame_name(int(body_id))
+	g.writeln('v_unwind_frame ${frame};')
+	g.gen_panic_frame_link(frame, body_id, '')
+	g.writeln('if (v_unwind_setjmp(${frame}.buf)) {')
+	g.indent++
+	g.writeln('v_unwind_reload();')
+	g.gen_defer_block(body_id, frame)
+	g.gen_panic_landing_return(frame)
+	g.indent--
+	g.writeln('}')
+}
+
+// gen_fn_defer_panic_frame links the frame of a `defer(fn)` block the first
+// time it is reached. The frame itself is declared at the top of the function.
+// Its landing pad does one pending run of the block, and links the frame again
+// while others are left, so that the unwinding comes back for each of them.
+fn (mut g FlatGen) gen_fn_defer_panic_frame(defer_id flat.NodeId) {
+	count_name := g.fn_defer_counts[int(defer_id)] or { return }
+	frame := panic_frame_name(int(defer_id))
+	defer_node := g.a.nodes[int(defer_id)]
+	body_id := g.a.child(&defer_node, 0)
+	g.writeln('if (${count_name} == 0) {')
+	g.indent++
+	g.gen_panic_frame_link(frame, body_id, count_name)
+	g.writeln('if (v_unwind_setjmp(${frame}.buf)) {')
+	g.indent++
+	g.writeln('v_unwind_reload();')
+	g.writeln('${count_name}--;')
+	g.writeln('if (${count_name} > 0) panic_frame_relink(&${frame});')
+	g.gen_defer_block(body_id, frame)
+	g.gen_panic_landing_return(frame)
+	g.indent--
+	g.writeln('}')
+	g.indent--
+	g.writeln('}')
+}
+
+fn (mut g FlatGen) gen_panic_frame_link(frame string, body_id flat.NodeId, count_name string) {
+	g.writeln('${frame}.owner = &_v_unwind_owner;')
+	g.writeln('${frame}.jump = v_unwind_jump;')
+	g.writeln('panic_frame_push(&${frame});')
+	if count_name.len > 0 {
+		g.writeln('v_unwind_keep(&${count_name});')
+	}
+	for name in g.defer_block_locals(body_id) {
+		g.writeln('v_unwind_keep(&${name});')
+	}
+}
+
+// gen_panic_landing_return ends a landing pad. The unwinding goes on from
+// panic_frame_done unless the panic was recovered and this was the last frame
+// of the call, which then returns the zero value of its result type.
+fn (mut g FlatGen) gen_panic_landing_return(frame string) {
+	g.writeln('panic_frame_done(&${frame});')
+	g.gen_noreturn_default_return_stmt()
+}
+
+// defer_block_locals returns the C storage of the locals that a deferred block
+// reads. The landing pad of the block runs after a longjmp(), so they have to
+// be kept in memory, or an optimizing C compiler may restore stale registers.
+@[direct_array_access]
+fn (g &FlatGen) defer_block_locals(body_id flat.NodeId) []string {
+	mut names := []string{}
+	mut seen := map[string]bool{}
+	mut stack := [body_id]
+	for stack.len > 0 {
+		id := stack.pop()
+		if !g.valid_node_id(id) {
+			continue
+		}
+		node := unsafe { &g.a.nodes[int(id)] }
+		if node.kind == .ident && node.value.len > 0 && node.value !in seen {
+			seen[node.value] = true
+			if g.ident_names_local(node.value) {
+				names << g.local_storage_cname(node.value)
+			}
+		}
+		for i in 0 .. node.children_count {
+			stack << g.a.child(node, i)
+		}
+	}
+	return names
+}
+
+// ident_names_local reports whether `name` is a parameter or a local of the
+// function being emitted, the way the identifier expression decides it.
+fn (g &FlatGen) ident_names_local(name string) bool {
+	if g.current_param_type(name) != none {
+		return true
+	}
+	if owner := g.tc.cur_scope.lookup_owner(name) {
+		return !owner.belongs_to_scope(g.tc.file_scope)
+	}
+	return false
+}
+
+// local_storage_cname is the C variable that holds local `name`; for a pointer
+// to the value, that is the pointer.
+fn (g &FlatGen) local_storage_cname(name string) string {
+	if g.local_storage_is_shared(name) {
+		return g.local_cname(name)
+	}
+	if g.local_storage_needs_implicit_deref(name) || g.local_name_needs_global_suffix(name) {
+		return g.local_decl_cname(name)
+	}
+	return g.local_cname(name)
 }
 
 // trim_defers transforms trim defers data for c.
@@ -7156,6 +7347,13 @@ fn (mut g FlatGen) gen_call(id flat.NodeId, node flat.Node) {
 		&& (fn_name == 'panic' || target_name == 'builtin.panic'
 			|| resolved_target_name == 'builtin.panic') {
 		g.gen_builtin_panic_call(node)
+		return
+	}
+	// `recover()` directly in a deferred block asks whether the panic runs that block.
+	if fn_node.kind == .ident && !callee_is_fn_value && fn_name == 'recover'
+		&& node.children_count == 1 && g.cur_panic_frame.len > 0
+		&& resolved_target_name in ['recover', 'builtin.recover'] {
+		g.write('panic_recover_frame(&${g.cur_panic_frame})')
 		return
 	}
 	if g.gen_lowered_enum_autostr_pointer_call(id, node, fn_node) {
