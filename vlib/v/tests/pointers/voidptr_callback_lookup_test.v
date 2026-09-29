@@ -1,5 +1,6 @@
 // A container that hands out components through a type-erased callback lets the
-// caller mutate a component without the container itself being mutable.
+// caller mutate a component without the container itself being mutable. The lookup
+// uses an explicit unsafe boundary because the callback guarantees separate storage.
 struct Container {
 mut:
 	on_query fn (&Container, usize) voidptr = unsafe { nil }
@@ -16,7 +17,7 @@ mut:
 }
 
 fn Counter.from_container(c &Container) &Counter {
-	return c.query(usize(typeof(Counter{}).idx))
+	return unsafe { &Counter(c.query(usize(typeof(Counter{}).idx))) }
 }
 
 fn bump(c &Container) {

@@ -3302,6 +3302,12 @@ An array returned from an immutable argument remains immutable, including when r
 a local function value, a narrowed `if` or `match` branch, or after an exiting `if` guard.
 Use `.clone()` for a mutable copy.
 
+A pointer returned through a callback can still refer to an immutable argument, even if the
+callback returns `voidptr`. Converting that result to a typed reference does not make the
+underlying object mutable. For a type-erased container lookup that guarantees separate mutable
+component storage, place the conversion in `unsafe { ... }`. The caller must ensure the returned
+pointer does not provide mutable access to an immutable argument.
+
 > [!NOTE]
 > However, V is not a purely functional language.
 

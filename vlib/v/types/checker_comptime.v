@@ -14901,7 +14901,7 @@ fn (mut tc TypeChecker) call_returned_alias_arguments(id flat.NodeId, mut visiti
 		return []flat.NodeId{}
 	}
 	info := tc.resolve_call_info(id, *call) or {
-		return tc.opaque_call_alias_arguments(*call, return_type, false)
+		return tc.conservative_call_alias_arguments(*call, false)
 	}
 	decl_module := tc.fn_type_modules[info.name] or { tc.cur_module }
 	// A builtin that builds a new collection is not a window onto the one it was
@@ -14923,7 +14923,7 @@ fn (mut tc TypeChecker) call_returned_alias_arguments(id flat.NodeId, mut visiti
 		return []flat.NodeId{}
 	}
 	decl := tc.visible_mutation_fn_decl(info.name, decl_module) or {
-		return tc.opaque_call_alias_arguments(*call, return_type, info.has_receiver)
+		return tc.conservative_call_alias_arguments(*call, info.has_receiver)
 	}
 	if visiting[decl.idx] {
 		return tc.conservative_call_alias_arguments(*call, info.has_receiver)
@@ -15297,19 +15297,9 @@ fn (mut tc TypeChecker) returned_alias_arguments(id flat.NodeId, args_by_param m
 	return []flat.NodeId{}
 }
 
-// A callee whose body cannot be read, such as a function value or a callback stored
-// in a field, is taken to be able to hand back any argument it was given. A `voidptr`
-// it returns is left out of that: it names no pointee that would tie it to one of
-// them, and the typed reference a caller makes of it is a reinterpretation this
-// analysis cannot follow. Tainting it would flag every type-erased lookup, like a
-// container that is asked for a component by its type index.
-fn (tc &TypeChecker) opaque_call_alias_arguments(call flat.Node, return_type Type, has_receiver bool) []flat.NodeId {
-	if fn_param_is_voidptr_type(return_type) {
-		return []flat.NodeId{}
-	}
-	return tc.conservative_call_alias_arguments(call, has_receiver)
-}
-
+// Without a readable callee body, pointer arguments may be returned unchanged,
+// including through a voidptr result. Type erasure does not establish independence
+// from those arguments; a caller can make that guarantee at an explicit unsafe boundary.
 fn (tc &TypeChecker) conservative_call_alias_arguments(call flat.Node, has_receiver bool) []flat.NodeId {
 	mut sources := []flat.NodeId{}
 	if has_receiver && call.children_count > 0 {

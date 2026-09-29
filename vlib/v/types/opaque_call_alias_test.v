@@ -17,11 +17,11 @@ fn check_alias_source(name string, source string) TypeChecker {
 	return tc
 }
 
-fn test_voidptr_from_a_stored_callback_does_not_borrow_its_arguments() {
+fn test_voidptr_lookup_with_an_unsafe_boundary_does_not_borrow_its_arguments() {
 	tc := check_alias_source('voidptr', 'struct Queryable { mut: on_query fn (&Queryable, usize) voidptr = unsafe { nil } }
 fn (q &Queryable) query(idx usize) voidptr { return q.on_query(q, idx) }
 struct View { mut: render_inc int }
-fn View.from_context(ctx &Queryable) &View { return ctx.query(usize(typeof(View{}).idx)) }
+fn View.from_context(ctx &Queryable) &View { return unsafe { &View(ctx.query(usize(typeof(View{}).idx))) } }
 fn dev(ctx &Queryable) {
  mut view := View.from_context(ctx)
  view.render_inc++
@@ -68,4 +68,60 @@ fn main() {
 }
 ')
 	assert tc.errors.any(it.msg == '`alias.x` aliases mutable data from an immutable value'), tc.errors.str()
+}
+
+fn test_voidptr_from_a_callback_still_borrows_its_argument() {
+	tc := check_alias_source('indirect', 'struct Item { mut: x int }
+fn raw(item &Item) voidptr { return item }
+fn typed(item &Item, get fn (&Item) voidptr) &Item { return get(item) }
+fn main() {
+ item := &Item{}
+ mut alias := typed(item, raw)
+ alias.x = 1
+}
+')
+	assert tc.notices.any(it.msg == '`item` is immutable, cannot have a mutable reference to an immutable object'), tc.notices.str()
+	assert tc.errors.any(it.msg == '`alias.x` aliases mutable data from an immutable value'), tc.errors.str()
+}
+
+fn test_voidptr_from_a_stored_callback_still_borrows_its_argument() {
+	tc := check_alias_source('stored', 'struct Item { mut: x int }
+struct Getter { get fn (&Item) voidptr = unsafe { nil } }
+fn typed(item &Item, getter Getter) &Item { return getter.get(item) }
+fn main() {
+ item := &Item{}
+ getter := Getter{get: fn (item &Item) voidptr { return item }}
+ mut alias := typed(item, getter)
+ alias.x = 1
+}
+')
+	assert tc.notices.any(it.msg == '`item` is immutable, cannot have a mutable reference to an immutable object'), tc.notices.str()
+	assert tc.errors.any(it.msg == '`alias.x` aliases mutable data from an immutable value'), tc.errors.str()
+}
+
+fn test_voidptr_lookup_without_an_unsafe_boundary_borrows_its_arguments() {
+	tc := check_alias_source('container_borrow', 'struct Queryable { on_query fn (&Queryable, usize) voidptr = unsafe { nil } }
+fn (q &Queryable) query(idx usize) voidptr { return q.on_query(q, idx) }
+struct View { mut: render_inc int }
+fn View.from_context(ctx &Queryable) &View { return ctx.query(usize(typeof(View{}).idx)) }
+fn dev(ctx &Queryable) {
+ mut view := View.from_context(ctx)
+ view.render_inc = 5
+}
+fn main() {}
+')
+	assert tc.notices.any(it.msg == '`ctx` is immutable, cannot have a mutable reference to an immutable object'), tc.notices.str()
+	assert tc.errors.any(it.msg == '`view.render_inc` aliases mutable data from an immutable value'), tc.errors.str()
+}
+
+fn test_voidptr_callback_conversion_inside_unsafe_does_not_borrow_its_argument() {
+	tc := check_alias_source('unsafe_conversion', 'struct Item { mut: x int }
+fn by_callback(item &Item, get fn (&Item) voidptr) {
+ mut alias := unsafe { &Item(get(item)) }
+ alias.x = 1
+}
+fn main() {}
+')
+	assert tc.notices.len == 0, tc.notices.str()
+	assert tc.errors.len == 0, tc.errors.str()
 }
