@@ -858,6 +858,7 @@ pub mut:
 	generic_decl_file      string // declaring file of the generic param text being inferred ('' = cur_file)
 	unsafe_depth           int
 	lock_depth             int
+	autolocked_map         string // the `shared` map locked by the operation being checked, see SharedMapAutolock
 	comptime_static_depth  int
 	errors                 []TypeError
 	notices                []TypeError
