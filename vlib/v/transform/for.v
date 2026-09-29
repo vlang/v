@@ -1092,11 +1092,26 @@ fn (mut t Transformer) lower_indexed_for_in(id flat.NodeId, node flat.Node, key_
 		&& !t.for_in_container_is_pointer_storage(container_id)
 	container_is_explicit_reference := (container_node.kind == .prefix
 		&& container_node.op == .amp) || container_is_reference_binding
-	source_is_owned_temporary := !source_container_type.starts_with('&')
-		&& !t.expr_can_take_address(container_id)
+	// `for mut` over a range of a fixed array iterates over a view of the fixed array's
+	// storage. Slicing a fixed array copies it, so the writes would be lost.
+	mut fixed_range_container := flat.empty_node
+	if node.op == .amp {
+		range_type := t.unaliased_value_type(container_id)
+		if range_type.starts_with('[]') {
+			if view := t.fixed_array_range_view(container_id, range_type) {
+				tmp_name := t.new_temp('for_container')
+				t.pending_stmts << t.make_decl_assign_typed(tmp_name, view, range_type)
+				fixed_range_container = t.make_ident(tmp_name)
+			}
+		}
+	}
+	source_is_owned_temporary := int(fixed_range_container) < 0
+		&& !source_container_type.starts_with('&') && !t.expr_can_take_address(container_id)
 	direct_map_index_container := node.op == .amp && container_node.kind == .index
 	container_has_smartcast := t.expr_has_smartcast(container_id)
-	mut container := if direct_map_index_container {
+	mut container := if int(fixed_range_container) >= 0 {
+		fixed_range_container
+	} else if direct_map_index_container {
 		container_id
 	} else if t.is_value_match_or_if_operand(container_id) {
 		// Route a value `match`/`if` container through value lowering so a propagating

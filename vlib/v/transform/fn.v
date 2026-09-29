@@ -13262,7 +13262,11 @@ fn (t &Transformer) is_range_index_expr(id flat.NodeId) bool {
 	if int(id) < 0 {
 		return false
 	}
-	node := t.a.nodes[int(id)]
+	return index_node_is_range(t.a, t.a.nodes[int(id)])
+}
+
+// index_node_is_range reports whether `node` is a range index, like `a[1..]`.
+fn index_node_is_range(a &flat.FlatAst, node flat.Node) bool {
 	if node.kind != .index {
 		return false
 	}
@@ -13270,7 +13274,7 @@ fn (t &Transformer) is_range_index_expr(id flat.NodeId) bool {
 		return true
 	}
 	if node.children_count > 1 {
-		index := t.a.child_node(&node, 1)
+		index := a.child_node(&node, 1)
 		return index.kind == .range
 	}
 	return false
