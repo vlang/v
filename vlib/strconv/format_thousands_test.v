@@ -51,6 +51,17 @@ fn test_format_thousands_int_types() {
 	assert format_thousands(u64(18446744073709551615), ' ') == '18 446 744 073 709 551 615'
 }
 
+fn test_format_thousands_float_types_and_decimal_separator() {
+	assert format_thousands(f32(12345.5), ',') == '12,345.5'
+	assert format_thousands(f64(-1234567.25), ',') == '-1,234,567.25'
+	separator := Separator{
+		integer: '.'
+		decimal: ','
+	}
+	assert format_thousands(f32(-12345.5), separator) == '-12.345,5'
+	assert format_thousands(f64(1234567.25), separator) == '1.234.567,25'
+}
+
 fn test_format_thousands_float_large_magnitude() {
 	// This is the case from the review: a float large enough that a naive
 	// `.str()` (on either the C or the JS backend) emits scientific
