@@ -4198,7 +4198,7 @@ fn (mut tc TypeChecker) check_call(id flat.NodeId, node flat.Node) {
 			receiver_name := receiver_type.name()
 			if !unresolved_generic_receiver_type(receiver_type) && receiver_type is Array
 				&& !tc.alias_declares_method(raw_receiver_type, 'wait') {
-				elem := array_elem_type(receiver_type)
+				elem := unalias_and_unwrap_pointer_type(array_elem_type(receiver_type))
 				is_thread_elem := if _ := tc.thread_wait_return_type(elem) { true } else { false }
 				if elem !is Unknown && !is_thread_elem {
 					tc.record_error(.unknown_fn,
@@ -10150,7 +10150,7 @@ fn array_type_from_receiver(t Type) ?Array {
 }
 
 fn (tc &TypeChecker) thread_wait_return_type(t Type) ?Type {
-	clean := unalias_and_unwrap_pointer_type(t)
+	clean := unwrap_pointer(t)
 	if clean is Struct {
 		thread_name := trimmed_space(clean.name)
 		if thread_name == 'thread' || thread_name.ends_with('.thread') {

@@ -520,6 +520,29 @@ fn main() {
 	assert errors.len == 0, errors.str()
 }
 
+fn test_declared_wait_on_a_thread_alias_keeps_its_return_type() {
+	errors := check_diagnostic_project('thread_alias_user_wait', {
+		'main.v': "module main
+
+type Worker = thread int
+
+fn (w Worker) wait() string {
+	return 'custom'
+}
+
+fn compute() int {
+	return 1
+}
+
+fn main() {
+	w := Worker(spawn compute())
+	assert w.wait().len == 6
+}
+"
+	}, ['main.v'])
+	assert errors.len == 0, errors.str()
+}
+
 fn test_unknown_enum_values_are_reported() {
 	errors := check_diagnostic_project('unknown_enum_values', {
 		'main.v': 'module main
