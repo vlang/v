@@ -87,6 +87,7 @@ pub fn read_bytes(path string) ![]u8 {
 	}
 	mut res := []u8{len: fsize}
 	nr_read_elements := int(C.fread(res.data, 1, fsize, fp))
+	race_file_read()
 	if nr_read_elements == 0 && fsize > 0 {
 		return error('fread failed')
 	}
@@ -166,6 +167,7 @@ pub fn read_file(path string) !string {
 	unsafe {
 		mut str := malloc_noscan(allocate + 1)
 		nelements := int(C.fread(str, 1, allocate, fp))
+		race_file_read()
 		is_eof := int(C.feof(fp))
 		is_error := int(C.ferror(fp))
 		if is_eof == 0 && is_error != 0 {
@@ -764,6 +766,7 @@ pub fn read_file_array[T](path string) []T {
 		malloc_noscan(allocate)
 	}
 	nread := C.fread(buf, tsize, len, fp)
+	race_file_read()
 	C.fclose(fp)
 	return unsafe {
 		array{

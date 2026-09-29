@@ -2241,6 +2241,8 @@ fn (mut g FlatGen) gen_select(id flat.NodeId, node flat.Node, is_expr bool) {
 		if !select_case.is_push && int(select_case.lhs_id) >= 0 {
 			lhs := g.a.nodes[int(select_case.lhs_id)]
 			if lhs.kind != .ident || lhs.value != '_' {
+				// The select statement's own line directive is many C lines above.
+				g.write_line_directive(lhs)
 				if select_case.is_decl {
 					ct := g.value_c_type(elem_types[i])
 					g.write('${ct} ')
@@ -8837,9 +8839,11 @@ fn (mut g FlatGen) gen_assign(node flat.Node) {
 			g.track_local_pointer_alias_assign(lhs, rhs_id)
 		}
 		if lhs.kind == .ident && lhs.value == '_' {
-			g.write('(void)(')
-			g.gen_expr(rhs_id)
-			g.writeln(');')
+			if !g.gen_race_blank_read(rhs_id) {
+				g.write('(void)(')
+				g.gen_expr(rhs_id)
+				g.writeln(');')
+			}
 		} else if node.op == .left_shift_assign && lhs.kind == .ident
 			&& node.value in ['push', 'push_many'] {
 			if node.value == 'push_many' {

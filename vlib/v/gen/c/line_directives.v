@@ -11,10 +11,12 @@ const generated_code_file = '<generated>'
 // line_directive_scan_limit bounds how many nodes of a statement are searched for its start.
 const line_directive_scan_limit = 32
 
-// set_line_directives makes the generated C map every V statement back to its source line
-// with `#line` directives. The C debug info then carries V file:line positions, which the
-// race detector shows in its stack traces.
-pub fn (mut g FlatGen) set_line_directives(enabled bool) {
+// set_race generates C for a race build (`-race`). The generated C maps every V statement
+// back to its source line with `#line` directives, so the C debug info carries the V
+// file:line positions that the race detector shows in its stack traces, and the few V
+// constructs that read memory without the C compiler loading it do load it.
+pub fn (mut g FlatGen) set_race(enabled bool) {
+	g.race = enabled
 	g.line_directives = enabled
 }
 
@@ -92,4 +94,26 @@ fn (mut g FlatGen) write_line_directive_text(directive string) {
 	g.sb.write_string(directive)
 	g.sb.write_string('\n')
 	g.line_start = true
+}
+
+// gen_race_blank_read generates `_ = expr` in a race build. Like Go, V reads the value of
+// `expr`, but the C compiler does not load a struct for `(void)(expr)`: a race on a string,
+// an interface or an option read that way would go unreported. Copying it is a load.
+fn (mut g FlatGen) gen_race_blank_read(rhs_id flat.NodeId) bool {
+	rhs := g.a.nodes[int(rhs_id)]
+	if !g.race || rhs.kind !in [.ident, .selector, .index, .prefix, .paren] {
+		return false
+	}
+	typ := g.usable_expr_type(rhs_id)
+	if _ := array_fixed_type(typ) {
+		return false
+	}
+	if g.tc.c_type(typ) in ['', 'void'] {
+		return false
+	}
+	// Race builds need clang or gcc, which both deduce the type with `__auto_type`.
+	g.write('{ __auto_type __race_blank_read = ')
+	g.gen_expr(rhs_id)
+	g.writeln('; (void)__race_blank_read; }')
+	return true
 }

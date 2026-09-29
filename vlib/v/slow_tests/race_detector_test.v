@@ -98,6 +98,22 @@ fn testsuite_end() {
 	os.rmdir_all(tdir) or {}
 }
 
+// race_c_compiler returns the C compiler that `v -race` uses here: the one that VFLAGS
+// selects with `-cc`, or else clang when it is installed, or else the platform default.
+fn race_c_compiler() string {
+	flags := os.getenv('VFLAGS').fields()
+	i := flags.index('-cc')
+	if i >= 0 && i + 1 < flags.len {
+		return flags[i + 1]
+	}
+	$if !macos {
+		if _ := os.find_abs_path_of_executable('clang') {
+			return 'clang'
+		}
+	}
+	return 'cc'
+}
+
 // thread_sanitizer_runs reports whether the C compiler that `-race` uses can build and run
 // a ThreadSanitizer program here. It cannot on Windows, with compilers or distributions
 // without the TSan runtime, or on Linux kernels whose ASLR layout old TSan runtimes reject.
@@ -105,9 +121,10 @@ fn thread_sanitizer_runs() bool {
 	probe_c := os.join_path(tdir, 'tsan_probe.c')
 	probe_exe := os.join_path(tdir, 'tsan_probe')
 	os.write_file(probe_c, 'int main(void) { return 0; }\n') or { return false }
-	compiled := os.execute('cc -fsanitize=thread ${os.quoted_path(probe_c)} -o ${os.quoted_path(probe_exe)}')
+	cc := race_c_compiler()
+	compiled := os.execute('${os.quoted_path(cc)} -fsanitize=thread ${os.quoted_path(probe_c)} -o ${os.quoted_path(probe_exe)}')
 	if compiled.exit_code != 0 {
-		eprintln('skipping: `cc -fsanitize=thread` does not work here:\n${compiled.output}')
+		eprintln('skipping: `${cc} -fsanitize=thread` does not work here:\n${compiled.output}')
 		return false
 	}
 	ran := os.execute(os.quoted_path(probe_exe))

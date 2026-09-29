@@ -70,9 +70,10 @@ see also `v help build`.
 
    -race
       Enable the data race detector, like `go build -race`. The program is
-      compiled with ThreadSanitizer (`-fsanitize=thread`, clang or gcc), and
-      reports every data race it runs into with the V file:line stacks of both
-      accesses. A program that reported races exits with status 66.
+      compiled with ThreadSanitizer (`-fsanitize=thread`; clang when it is
+      installed, since gcc misses races on struct values), and reports every
+      data race it runs into with the V file:line stacks of both accesses.
+      A program that reported races exits with status 66.
       Race builds do not use a garbage collector (like `-gc none`), and are
       slower and use more memory. `$if race ? {}` is true in them.
       The VRACE environment variable passes options to the detector, like

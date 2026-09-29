@@ -5765,10 +5765,15 @@ in code that does not run. So it is most useful with tests and realistic workloa
 that reported races exits with status 66, so a test that races fails.
 
 How it works: `-race` compiles the program with ThreadSanitizer (`-fsanitize=thread`), the
-race detection runtime that Go's race detector uses too. It needs `clang` or `gcc` with the
-ThreadSanitizer runtime (on some Linux distributions, the `libtsan` package for gcc), and it
-is supported on linux (amd64, arm64, ppc64le, s390x, loongarch64, riscv64), macos (amd64,
-arm64), freebsd/amd64 and netbsd/amd64. Race builds:
+race detection runtime that Go's race detector uses too. Like Go's runtime, V's channels,
+`sync` types and closure allocator tell it the happens-before relations that the language
+guarantees, instead of those of their implementation. V passes the race detector test suite
+of Go (`vlib/v/slow_tests/race`). `-race` needs `clang` or `gcc` with the ThreadSanitizer
+runtime (on some Linux distributions, the `libtsan` package for gcc), and uses clang when it
+is installed: gcc does not instrument copies of whole struct values, like strings and arrays
+passed to functions, so it misses races on them. It is supported on linux (amd64, arm64,
+ppc64le, s390x, loongarch64, riscv64), macos (amd64, arm64), freebsd/amd64 and netbsd/amd64.
+Race builds:
 
 * do not use a garbage collector, like `-gc none`: ThreadSanitizer has to see every
   allocation and free of heap memory, which a garbage collector hides from it;

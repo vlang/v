@@ -68,6 +68,18 @@ fn v3_race_supported_target_names() string {
 	return names.join(', ')
 }
 
+// v3_race_default_c_compiler returns the C compiler of a race build without `-cc`: clang,
+// when it is installed. gcc's ThreadSanitizer instrumentation misses the reads and writes of
+// whole struct values in call arguments and results, which V uses for strings, arrays and
+// maps, so races on them would go unreported. On macOS, `cc` is clang.
+fn v3_race_default_c_compiler(default_c_compiler string) string {
+	$if macos {
+		return default_c_compiler
+	}
+	os.find_abs_path_of_executable('clang') or { return default_c_compiler }
+	return 'clang'
+}
+
 // v3_race_check_c_compiler reports an error for C compilers that have no ThreadSanitizer
 // support. The effective name is the one the generated code is written for (`tinyc`,
 // `clang`, `gcc`, ...).

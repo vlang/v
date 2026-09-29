@@ -21,8 +21,12 @@
 // `report_thread_leaks=0`: like Go, report data races, not threads that are never joined;
 // starting a thread with `spawn` and not waiting for it is common in V programs.
 // `second_deadlock_stack=1` shows where both mutexes of a lock-order inversion were taken.
+// `ignore_interceptors_accesses=0`: on macOS, TSan ignores the memory accesses of its libc
+// interceptors by default, and with them those of `memcpy`/`memset`, which the C compiler
+// uses for struct, array and fixed array copies. Races on such copies would go unreported.
 #define V_RACE_DEFAULT_OPTIONS \
-	"abort_on_error=0 exitcode=66 report_thread_leaks=0 second_deadlock_stack=1"
+	"abort_on_error=0 exitcode=66 report_thread_leaks=0 second_deadlock_stack=1 " \
+	"ignore_interceptors_accesses=0"
 
 // TSan calls `__tsan_default_options` while it initializes itself: before it can track
 // instrumented code, and on Linux before its interceptors of libc functions like strlen,

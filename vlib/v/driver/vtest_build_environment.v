@@ -88,6 +88,9 @@ pub fn vtest_build_environment(vroot string, args []string) TestBuildEnvironment
 			i++
 		}
 	}
+	if race && !c_compiler_explicit {
+		c_compiler = v3_race_default_c_compiler(c_compiler)
+	}
 	if pref.normalized_os(target_os.trim_space().to_lower()) == 'cross' {
 		cross_output = true
 		target_os = os.user_os()

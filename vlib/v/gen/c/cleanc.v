@@ -404,6 +404,7 @@ mut:
 	suppress_main                  bool
 	coverage_dir                   string
 	coverage_build_options         string
+	race                           bool
 	line_directives                bool
 	line_directive_paths           map[string]string
 	line_directive_fn_start        int

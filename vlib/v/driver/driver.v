@@ -10252,6 +10252,9 @@ pub fn run(args []string) {
 			exit(1)
 		}
 		record_user_define(mut user_defines, mut compile_values, 'race')
+		if !c_compiler_explicit {
+			c_compiler = v3_race_default_c_compiler(c_compiler)
+		}
 		for flag in v3_race_c_flags {
 			if flag !in user_c_flags {
 				user_c_flags << flag
@@ -13139,7 +13142,7 @@ pub fn run(args []string) {
 			g.set_ccompiler(prefs.ccompiler)
 			g.set_prod(prefs.is_prod)
 			g.set_debug(prefs.is_debug)
-			g.set_line_directives(race)
+			g.set_race(race)
 			g.set_check_overflow(check_overflow)
 			g.set_force_bounds_checking(prefs.force_bounds_checking)
 			g.set_prealloc('prealloc' in prefs.user_defines)
@@ -13210,7 +13213,7 @@ pub fn run(args []string) {
 			g.set_ccompiler(prefs.ccompiler)
 			g.set_prod(prefs.is_prod)
 			g.set_debug(prefs.is_debug)
-			g.set_line_directives(race)
+			g.set_race(race)
 			g.set_check_overflow(check_overflow)
 			g.set_force_bounds_checking(prefs.force_bounds_checking)
 			g.set_prealloc('prealloc' in prefs.user_defines)
