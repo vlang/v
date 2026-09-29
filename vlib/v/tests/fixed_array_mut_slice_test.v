@@ -76,6 +76,21 @@ fn test_in_place_methods_on_slice_of_fixed_array() {
 	assert b.data == [1, 2, 3, 0]!
 }
 
+fn test_parenthesized_fixed_array_slice_sort() {
+	mut a := [3, 2, 1]!
+	(a[..]).sort()
+	assert a == [1, 2, 3]!
+}
+
+fn test_parenthesized_slices_of_fixed_array_write_in_place() {
+	mut a := [1, 2, 3]!
+	(a[1..]).reverse_in_place()
+	assert a == [1, 3, 2]!
+	mut b := [0, 0, 0]!
+	fill_nines(mut (b[1..]))
+	assert b == [0, 9, 9]!
+}
+
 fn test_mut_slice_of_dynamic_array_argument_still_writes_in_place() {
 	mut a := [0, 0, 0, 0]
 	fill_nines(mut a[1..3])

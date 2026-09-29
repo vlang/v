@@ -13173,12 +13173,14 @@ fn (t &Transformer) unaliased_value_type(id flat.NodeId) string {
 
 // fixed_array_range_view lowers `fixed[a..b]`, where the result is written to, to a slice of
 // a view of the fixed array's storage. Slicing a fixed size array would copy it, so the
-// writes would be lost. It returns none for other expressions.
+// writes would be lost. Parentheses around the range are ignored. It returns none for
+// other expressions.
 fn (mut t Transformer) fixed_array_range_view(id flat.NodeId, array_type string) ?flat.NodeId {
-	if !t.is_range_index_expr(id) {
+	range_id := t.unwrap_parens(id)
+	if !t.is_range_index_expr(range_id) {
 		return none
 	}
-	node := t.a.nodes[int(id)]
+	node := t.a.nodes[int(range_id)]
 	base_id := t.a.child(&node, 0)
 	base_type := t.unaliased_value_type(base_id)
 	if !t.is_fixed_array_type(base_type) {
