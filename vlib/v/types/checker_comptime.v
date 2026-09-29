@@ -4694,10 +4694,12 @@ fn (mut tc TypeChecker) warn_implicit_interface_conversion(expr_id flat.NodeId, 
 		return
 	}
 	expr := tc.a.node(expr_id)
-	if expr.kind in [.nil_literal, .cast_expr] {
-		// nil boxes nothing, and a written cast is reported by check_cast_expr.
+	if expr.kind == .nil_literal {
 		return
 	}
+	// A written cast to an interface leaves an interface here, which returned
+	// above: check_cast_expr reports that allocation. A cast to a concrete
+	// type or an alias still leaves a value to box.
 	implementer := if clean_actual is Pointer { clean_actual.base_type } else { actual }
 	if !tc.type_implements_interface(implementer, target_iface)
 		&& !tc.type_implements_interface(actual, target_iface) {

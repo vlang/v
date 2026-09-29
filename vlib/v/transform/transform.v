@@ -5041,8 +5041,17 @@ fn (mut t Transformer) merge_worker(w &Transformer, items []FnWorkItem, base_nod
 			t.tc.apply_forked_fn_value(idx, owned_name)
 		}
 	}
+	// A warning can name a node the worker made, a statement a comptime `$for`
+	// expanded, and such nodes move with the rest of the worker's region.
 	for warning in w.alloc_warnings {
-		t.alloc_warnings << warning
+		t.alloc_warnings << AllocWarning{
+			...warning
+			node: if int(warning.node) >= base_nodes {
+				flat.NodeId(int(warning.node) + int(node_shift))
+			} else {
+				warning.node
+			}
+		}
 	}
 	for message in w.monomorph_errors {
 		owned_message := if w.worker_scope != unsafe { nil } && !t.retain_worker_results {
@@ -15634,12 +15643,12 @@ fn (mut t Transformer) transform_decl_assign_stmt(id flat.NodeId, node flat.Node
 		src := t.a.child_node(&node, 0)
 		if src.kind == .ident && src.value in t.mut_fixed_array_capture_sources
 			&& src.value !in t.heaped_amp_locals && t.is_fixed_array_type(inferred_typ) {
-			t.warn_alloc(t.a.child(&node, 1), src.pos, 'local moved to the heap: a closure captures it mutably')
+			t.warn_alloc(node, t.a.child(&node, 1), src.pos, 'local moved to the heap: a closure captures it mutably')
 			return t.heap_escaping_source_decl(node, src.value, inferred_typ)
 		}
 		if src.kind == .ident && src.value in t.escaping_amp_sources
 			&& src.value !in t.heaped_amp_locals && t.heapable_value_type(inferred_typ) {
-			t.warn_alloc(t.a.child(&node, 1), src.pos, 'local moved to the heap: its address escapes')
+			t.warn_alloc(node, t.a.child(&node, 1), src.pos, 'local moved to the heap: its address escapes')
 			return t.heap_escaping_source_decl(node, src.value, inferred_typ)
 		}
 		// A struct declared `@[heap]` is always heap-allocated at its own declaration,
@@ -15649,7 +15658,7 @@ fn (mut t Transformer) transform_decl_assign_stmt(id flat.NodeId, node flat.Node
 			&& node.value != zeroed_stack_value_decl_marker
 			&& !decl_assign_value_is_shared(node.value)
 			&& src.value !in t.heaped_amp_locals && t.heap_attr_struct_type(inferred_typ) {
-			t.warn_alloc(t.a.child(&node, 1), src.pos, 'local of a `@[heap]` struct')
+			t.warn_alloc(node, t.a.child(&node, 1), src.pos, 'local of a `@[heap]` struct')
 			return t.heap_escaping_source_decl(node, src.value, inferred_typ)
 		}
 	}

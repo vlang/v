@@ -1,4 +1,5 @@
 import os
+import strings
 import v.cmdexec
 
 const warn_allocs_vexe = @VEXE
@@ -161,6 +162,132 @@ fn fill(mut values []int) {
 		output, source])
 	assert as_errors.exit_code != 0, as_errors.output
 	assert as_errors.output.contains('error: allocation (struct on the heap)'), as_errors.output
+}
+
+// Review regressions: a value cast to a concrete type or an alias is still
+// boxed; values returned with others, plainly or as a Result, are boxed too;
+// and a `@[heap]` local a comptime `$for` expands is reported unless it is
+// `@[freed]`, whether or not the transform runs in parallel.
+fn test_warn_about_allocs_reports_casts_multi_returns_and_expanded_locals() {
+	root := os.join_path(os.vtmp_dir(), 'v3_warn_allocs_review_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root)!
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	v3_bin := build_warn_allocs_v3(root)
+	source := os.join_path(root, 'main.v')
+	os.write_file(source, "interface Speaker {
+	speak() string
+}
+
+struct Dog {
+	name string
+}
+
+fn (d &Dog) speak() string {
+	return d.name
+}
+
+type Hound = Dog
+
+fn (h &Hound) speak() string {
+	return 'woof'
+}
+
+fn say(s Speaker) string {
+	return s.speak()
+}
+
+fn pair() (Speaker, int) {
+	return Dog{
+		name: 'fido'
+	}, 1
+}
+
+fn result_pair() !(Speaker, int) {
+	return Dog{
+		name: 'rex'
+	}, 2
+}
+
+fn main() {
+	println(say(Dog(Dog{ name: 'fido' })))
+	println(say(Hound(Dog{ name: 'max' })))
+	s, n := pair()
+	r, m := result_pair() or { panic(err) }
+	println(s.speak())
+	println(r.speak())
+	println(n + m)
+}
+")!
+	warned := cmdexec.run(v3_bin, ['-silent', '-nocache', '-warn-about-allocs', '-o',
+		os.join_path(root, 'main.c'), source])
+	assert warned.exit_code == 0, warned.output
+	assert warned.output.count('allocation (conversion to interface)') == 4, warned.output
+	for position in ['24:9', '30:9', '36:14', '37:14'] {
+		assert warned.output.contains('main.v:${position}: warning: allocation (conversion to interface)'), warned.output
+	}
+
+	// Enough functions for the transform to split its work between workers.
+	mut expanded := strings.new_builder(16384)
+	expanded.write_string('@[heap]
+struct Tag {
+	name string
+}
+
+struct Config {
+	width  int
+	height int
+}
+
+fn keep(t &Tag) int {
+	return t.name.len
+}
+
+fn tags[T]() int {
+	mut total := 0
+	\$for field in T.fields {
+		tag := Tag{
+			name: field.name
+		}
+		total += keep(tag)
+	}
+	return total
+}
+
+fn freed_tags[T]() int {
+	mut total := 0
+	\$for field in T.fields {
+		tag := Tag{
+			name: field.name
+		} @[freed]
+		total += keep(tag)
+	}
+	return total
+}
+')
+	for i in 0 .. 300 {
+		expanded.write_string('\nfn filler_${i}() int {\n\treturn ${i}\n}\n')
+	}
+	expanded.write_string('\nfn main() {\n\tmut sum := tags[Config]() + freed_tags[Config]()\n')
+	for i in 0 .. 300 {
+		expanded.write_string('\tsum += filler_${i}()\n')
+	}
+	expanded.write_string('\tprintln(sum)\n}\n')
+	expanded_source := os.join_path(root, 'expanded.v')
+	os.write_file(expanded_source, expanded.str())!
+	for parallel in [true, false] {
+		mut args := ['-silent', '-nocache', '-warn-about-allocs', '-o',
+			os.join_path(root, 'expanded.c'), expanded_source]
+		if !parallel {
+			args.prepend('-no-parallel')
+		}
+		result := cmdexec.run(v3_bin, args)
+		assert result.exit_code == 0, result.output
+		assert result.output.count('allocation (local of a `@[heap]` struct)') == 1, result.output
+		assert result.output.contains('expanded.v:18:3: warning: allocation (local of a `@[heap]` struct)'), result.output
+	}
 }
 
 fn test_warn_about_allocs_reports_v1_allocation_sites() {

@@ -15016,19 +15016,21 @@ fn (t &Transformer) receiver_selector_is_fn_field(base_type string, field string
 }
 
 // AllocWarning is an allocation lowering adds where the source shows none, as
-// when a local whose address escapes is moved to the heap. The node decides
-// whether it is reported, and whether `@[freed]` silences it; `pos` is where.
+// when a local whose address escapes is moved to the heap: the node it is
+// reported for, and `pos`, where.
 struct AllocWarning {
 	node        flat.NodeId
 	pos         token.Pos
 	description string
 }
 
-// warn_alloc records an allocation for -warn-about-allocs. Workers keep their
-// own; the transform hands them all to the checker once they are merged, see
-// report_alloc_warnings.
-fn (mut t Transformer) warn_alloc(id flat.NodeId, pos token.Pos, description string) {
-	if !t.tc.warn_about_allocs {
+// warn_alloc records an allocation for -warn-about-allocs, unless `decl`, the
+// assignment it is made for, is marked `@[freed]`. That is decided here, from
+// the declaration itself: a statement a comptime `$for` expanded is a copy the
+// checker never saw. Workers keep their own warnings; the transform hands them
+// all to the checker once they are merged, see report_alloc_warnings.
+fn (mut t Transformer) warn_alloc(decl flat.Node, id flat.NodeId, pos token.Pos, description string) {
+	if !t.tc.warn_about_allocs || decl.is_freed_assignment() {
 		return
 	}
 	t.alloc_warnings << AllocWarning{

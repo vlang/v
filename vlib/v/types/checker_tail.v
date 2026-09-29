@@ -2280,9 +2280,18 @@ fn (mut tc TypeChecker) check_return(id flat.NodeId, node flat.Node) {
 			} $else {
 				tc.check_node(child_id)
 			}
+			// The slot's own type, before resolve_expr records the one it is
+			// converted to.
+			source_type := if tc.warn_about_allocs {
+				tc.resolve_type(child_id)
+			} else {
+				Type(void_)
+			}
 			actual := tc.resolve_expr(child_id, multi.types[i])
 			if !tc.return_type_compatible(child_id, actual, multi.types[i]) {
 				tc.type_mismatch(.return_mismatch, 'cannot return `${actual.name()}` as `${multi.types[i].name()}`', id)
+			} else if tc.warn_about_allocs {
+				tc.warn_implicit_interface_conversion(child_id, source_type, multi.types[i])
 			}
 		}
 		$if ownership ? {

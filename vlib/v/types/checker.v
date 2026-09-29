@@ -2766,8 +2766,9 @@ fn (mut tc TypeChecker) warn_alloc(description string, id flat.NodeId, pos token
 
 // record_transform_alloc_warning reports an allocation the transform adds
 // where the source shows none, such as a local moved to the heap because its
-// address escapes. Only project code is reported, and `@[freed]` on the
-// assignment silences it, as for the checker's own allocation warnings.
+// address escapes. Only project code is reported. The transform has already
+// left out assignments marked `@[freed]`: the node may be one it made, which
+// has no parents here to look for the attribute on.
 pub fn (mut tc TypeChecker) record_transform_alloc_warning(id flat.NodeId, pos token.Pos, description string) {
 	if !tc.warn_about_allocs || !tc.valid_node_id(id) {
 		return
@@ -2779,7 +2780,7 @@ pub fn (mut tc TypeChecker) record_transform_alloc_warning(id flat.NodeId, pos t
 	saved_fn_node := tc.fn_context.node_id
 	tc.cur_file = file.name
 	tc.fn_context.node_id = -1
-	tc.warn_alloc_at(description, id, pos)
+	tc.record_warning_at(.compile_error, 'allocation (${description})', id, pos)
 	tc.cur_file = saved_file
 	tc.fn_context.node_id = saved_fn_node
 }
