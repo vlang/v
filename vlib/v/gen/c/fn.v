@@ -2160,6 +2160,24 @@ fn (g &FlatGen) fn_decl_noreturn_prefix(node_id flat.NodeId) string {
 	return ''
 }
 
+// A `@[_naked]` body is the whole function: the compiler must not wrap it in a
+// prologue and epilogue, or the hand-written `ret` returns through a frame it
+// never set up. The attribute has to precede the declarator, so it cannot join
+// the `_constructor`/`_destructor` group in fn_decl_c_attribute. MSVC is left
+// out: its `__declspec(naked)` is x86-only, and it has no inline assembly for
+// the body to begin with.
+fn (g &FlatGen) fn_decl_naked_prefix(node_id flat.NodeId) string {
+	if g.ccompiler == 'msvc' {
+		return ''
+	}
+	for raw_attr in g.fn_decl_attributes(node_id) {
+		if raw_attr.all_before(':').trim_space() == '_naked' {
+			return '__attribute__((naked)) '
+		}
+	}
+	return ''
+}
+
 fn (mut g FlatGen) write_method_c_name(id flat.NodeId, node flat.Node, method_name string) {
 	call_name := g.method_call_name_for_call(id, node, method_name)
 	if call_name in ['builtin.map__set', 'builtin_map__set', 'builtin__map__set']
@@ -5181,6 +5199,15 @@ fn (mut g FlatGen) gen_fn_in_module(node_id flat.NodeId, node flat.Node, module_
 		|| (is_entry_main && 'main' in g.print_fn_names)
 	fn_start_pos := g.sb.len
 	mut is_direct_no_main_export := false
+	// Whether this declarator actually received the naked C attribute below --
+	// never true for entry main, which does not go through fn_decl_naked_prefix
+	// at all. Read back from what was written rather than re-deriving it from
+	// the node's own attribute list: a specialized generic instantiation's
+	// node_id has no entry in the checker's declaration_attributes map (only
+	// its original, unspecialized declaration does), but fn_decl_naked_prefix
+	// already resolves that through fn_decl_attributes's source-position
+	// fallback -- reusing its result keeps this check exactly as accurate.
+	mut is_naked_fn := false
 	if is_entry_main {
 		force_main_console := g.tc.declaration_has_attribute(node_id, 'console')
 		g.writeln(g.c_main_declaration(force_main_console))
@@ -5210,6 +5237,9 @@ fn (mut g FlatGen) gen_fn_in_module(node_id flat.NodeId, node flat.Node, module_
 			}
 		}
 		g.write(g.fn_decl_noreturn_prefix(node_id))
+		naked_prefix := g.fn_decl_naked_prefix(node_id)
+		is_naked_fn = naked_prefix.len > 0
+		g.write(naked_prefix)
 		g.write(g.fn_return_type_name(ret_type))
 		g.write(' ')
 		g.write(generated_fn_name)
@@ -5225,8 +5255,20 @@ fn (mut g FlatGen) gen_fn_in_module(node_id flat.NodeId, node flat.Node, module_
 		g.writeln('_vno_main_init_caller();')
 	}
 	g.gen_function_defer_prelude()
-	g.gen_trace_fn_begin(node, module_name)
-	g.gen_profile_fn_begin(generated_fn_name, module_name, node.value, g.tc.declaration_has_attribute(node_id, 'inline'))
+	// A `@[_naked]` body has no compiler-generated frame for its own `ret` to
+	// unwind through, so nothing may run before the user's hand-written code:
+	// entry tracing's call, and profiling's timer read and two `double` locals,
+	// both write to stack slots relative to a frame that does not exist yet.
+	// `gen_profile_fn_begin` is called regardless of `is_naked_fn` -- it is the
+	// only place that resets `profile_fn_active`/`profile_fn_restore_enabled`,
+	// and those must not keep leaking a PRECEDING function's profiled state
+	// into a later naked function's explicit `return` (handled independently
+	// by `gen_return_cleanup` in stmt.v, via `gen_profile_fn_exit`).
+	if !is_naked_fn {
+		g.gen_trace_fn_begin(node, module_name)
+	}
+	g.gen_profile_fn_begin(generated_fn_name, module_name, node.value,
+		g.tc.declaration_has_attribute(node_id, 'inline'), is_naked_fn)
 
 	for i in 0 .. node.children_count {
 		id := g.a.child(&node, i)
@@ -5237,7 +5279,9 @@ fn (mut g FlatGen) gen_fn_in_module(node_id flat.NodeId, node flat.Node, module_
 		}
 	}
 	g.gen_all_defers()
-	g.gen_profile_fn_exit()
+	if !is_naked_fn {
+		g.gen_profile_fn_exit()
+	}
 	g.gen_ownership_drops(g.tc.ownership_drop_entries_at_fn_exit(qualify_name_in_module(module_name, node.value)))
 	if is_entry_main {
 		g.writeln('return 0;')
@@ -5631,7 +5675,7 @@ fn (mut g FlatGen) gen_top_level_main(stmts []TopLevelStmt) {
 	g.indent++
 	g.gen_function_defer_prelude()
 	g.gen_trace_call('main main.main/0', 'main', 'main.main')
-	g.gen_profile_fn_begin('main', 'main', 'main', false)
+	g.gen_profile_fn_begin('main', 'main', 'main', false, false)
 	for stmt in stmts {
 		g.tc.cur_file = stmt.file
 		g.tc.cur_module = stmt.module

@@ -87,11 +87,15 @@ fn check_good(name string, src string) {
 }
 
 fn gen_c(v3_bin string, name string, src string) string {
+	return gen_c_with_flags(v3_bin, name, '', src)
+}
+
+fn gen_c_with_flags(v3_bin string, name string, flags string, src string) string {
 	src_path := '${tmp_test_path(name)}.v'
 	os.write_file(src_path, src) or { panic(err) }
 	c_path := '${tmp_test_path(name)}.c'
 	os.rm(c_path) or {}
-	compile := os.execute('${v3_bin} ${src_path} -b c -o ${c_path}')
+	compile := os.execute('${v3_bin} ${flags} ${src_path} -b c -o ${c_path}')
 	assert compile.exit_code == 0, '${name}: ${compile.output}'
 	assert os.exists(c_path)
 	return os.read_file(c_path) or { panic(err) }
@@ -10254,4 +10258,172 @@ fn main() {
 }
 ')
 	assert out == '2\n2'
+}
+
+// A `@[_naked]` function is its own prologue and epilogue: without
+// `__attribute__((naked))` the C compiler wraps the hand-written body in a frame
+// the body's own `ret` never unwinds, and calling it crashes. The attribute has
+// to precede the declarator -- gcc rejects it after the parameter list with
+// "attributes should be specified before the declarator in a function definition".
+fn test_naked_attribute_precedes_the_declarator() {
+	v3_bin := build_v3()
+	c_source := gen_c(v3_bin, 'naked_attribute', '
+@[_naked]
+fn naked_body() {
+}
+
+fn ordinary_body() {
+}
+
+fn main() {
+	naked_body()
+	ordinary_body()
+}
+')
+	assert c_source.contains('__attribute__((naked)) void naked_body(void) {'), c_source
+	assert !c_source.contains('__attribute__((naked)) void ordinary_body'), c_source
+}
+
+// `-profile` and `-trace-calls` both insert code at the very start of a function
+// body, before the user's own code runs: profiling declares a timer read and two
+// `double` locals, tracing emits a call. A `@[_naked]` body has no compiler-
+// generated frame for those to live in or for its own `ret` to unwind through,
+// so either one corrupts the caller's stack. Neither may be emitted for one.
+fn test_naked_attribute_skips_profiling_and_trace_instrumentation() {
+	v3_bin := build_v3()
+	profile_path := tmp_test_path('naked_attribute_profile_out')
+	c_source := gen_c_with_flags(v3_bin, 'naked_attribute_profile', '-profile ${profile_path} -trace-calls',
+		'
+@[_naked]
+fn naked_fn() {
+	asm amd64 {
+		push rbp
+		mov rbp, rsp
+		mov rsp, rbp
+		pop rbp
+		ret
+	}
+}
+
+fn ordinary_fn() {
+}
+
+fn main() {
+	naked_fn()
+	ordinary_fn()
+}
+')
+	naked_body := c_fn_body(c_source, 'void naked_fn(void) {')
+	ordinary_body := c_fn_body(c_source, 'void ordinary_fn(void) {')
+	assert naked_body != '', c_source
+	assert ordinary_body != '', c_source
+	assert !naked_body.contains('_PROF_FN_START'), naked_body
+	assert !naked_body.contains('on_call('), naked_body
+	// The ordinary function proves profiling and tracing were truly active, so
+	// the naked function's clean body above is the fix and not a flag typo.
+	assert ordinary_body.contains('_PROF_FN_START'), ordinary_body
+	assert ordinary_body.contains('on_call('), ordinary_body
+}
+
+// A generic function's specialized instantiation gets its OWN node id, distinct
+// from the generic declaration's; the checker only records attributes against
+// the declaration it walked, never the specialization gen/c synthesizes later.
+// `fn_decl_naked_prefix` already resolves this correctly (`fn_decl_attributes`
+// falls back to a source-position lookup for a specialized node); the guard
+// above must resolve it the same way, not by asking the checker directly.
+fn test_naked_attribute_skips_profiling_for_generic_specialization() {
+	v3_bin := build_v3()
+	profile_path := tmp_test_path('naked_attribute_generic_profile_out')
+	c_source := gen_c_with_flags(v3_bin, 'naked_attribute_generic_profile', '-profile ${profile_path}',
+		'
+@[_naked]
+fn naked_fn[T]() {
+	asm amd64 {
+		push rbp
+		mov rbp, rsp
+		mov rsp, rbp
+		pop rbp
+		ret
+	}
+}
+
+fn main() {
+	naked_fn[int]()
+}
+')
+	// `c_fn_body` starts matching AT the signature text, after any attribute
+	// prefix on the same line -- check the prefix against the full source.
+	assert c_source.contains('__attribute__((naked)) void naked_fn_T_v_int(void) {'), c_source
+	naked_body := c_fn_body(c_source, 'void naked_fn_T_v_int(void) {')
+	assert naked_body != '', c_source
+	assert !naked_body.contains('_PROF_FN_START'), naked_body
+}
+
+// `gen_profile_fn_begin` is the only place that resets `profile_fn_active` and
+// `profile_fn_restore_enabled`; skipping the whole call for a naked function (as
+// above) left both fields holding whatever the PRECEDING profiled function left
+// them at. A non-void naked function still needs an explicit V `return` to
+// satisfy the checker's tail-return analysis (its own `asm` `ret` is invisible to
+// it), and that `return` goes through `gen_return_cleanup` in stmt.v, which calls
+// `gen_profile_fn_exit()` unconditionally -- not gated on naked-ness at all. With
+// a stale `profile_fn_active == true`, that emits cleanup referencing
+// `_PROF_FN_START`/`_PROF_PREV_MEASURED_TIME`, undeclared in this body because
+// `gen_profile_fn_begin` never ran to declare them. Found by @medvednikov's
+// review of 141e8274fc.
+//
+// `-profile-fns builtin__memdup_noscan` targets the actual function V3 generates
+// immediately before `naked_fn` in this program (verified empirically -- codegen
+// order is not source order, and builtin runtime functions get interspersed).
+// Without a name in `-profile-fns` matching that PRECEDING function,
+// `profile_fn_restore_enabled` is false regardless of whether its own reset
+// works, and `_prev_v__profile_enabled` can never appear either way -- a plain
+// `-profile` run alone cannot exercise this half of the leak at all (an
+// adversarial review of this test caught that gap: an earlier version of this
+// test asserted its absence but could never have failed either version of the
+// fix). Confirmed both directions on the exact scenario below: the true pre-fix
+// binary (commit 141e8274fc, unmodified) emits
+// `profile__v__profile_enabled = _prev_v__profile_enabled;` in `naked_fn`'s body
+// with these flags; the fixed binary does not.
+fn test_naked_attribute_resets_profiling_state_for_a_later_explicit_return() {
+	v3_bin := build_v3()
+	profile_path := tmp_test_path('naked_attribute_explicit_return_profile_out')
+	c_source := gen_c_with_flags(v3_bin, 'naked_attribute_explicit_return_profile', '-profile ${profile_path} -profile-fns builtin__memdup_noscan',
+		'
+fn profiled_fn() {
+}
+
+@[_naked]
+fn naked_fn() int {
+	asm amd64 {
+		mov eax, 42
+		ret
+	}
+	return 0
+}
+
+fn main() {
+	profiled_fn()
+	println(naked_fn())
+}
+')
+	// This test's whole scenario depends on an assumption it never used to
+	// assert: that `memdup_noscan` is really generated (a) with
+	// profile_fn_restore_enabled active and (b) immediately before naked_fn,
+	// so profile_fn_active/profile_fn_restore_enabled are genuinely stale-true
+	// going into naked_fn's own generation. An adversarial review caught that,
+	// unasserted, a future change to used-function generation order could
+	// silently stop exercising the leak (e.g. naked_fn generated before any
+	// profiled function ever ran) while every assertion below kept passing
+	// vacuously. Assert the precondition directly instead of only its absence
+	// of symptoms, so a future break in the assumption fails loudly here
+	// rather than silently losing coverage.
+	preceding_body := c_fn_body(c_source, 'memdup_noscan(void* src, ptrdiff_t sz) {')
+	assert preceding_body != '', c_source
+	assert preceding_body.contains('bool _prev_v__profile_enabled ='), preceding_body
+	assert c_source.index(preceding_body) or { -1 } < c_source.index('naked_fn(void) {') or { -1 }, c_source
+	naked_body := c_fn_body(c_source, 'i64 naked_fn(void) {')
+	assert naked_body != '', c_source
+	assert !naked_body.contains('_PROF_FN_START'), naked_body
+	assert !naked_body.contains('_PROF_PREV_MEASURED_TIME'), naked_body
+	assert !naked_body.contains('_prev_v__profile_enabled'), naked_body
 }
