@@ -3,6 +3,7 @@ module c
 import os
 import v.flat
 import v.gen.c.naming
+import v.pref
 import v.types
 
 struct PromotedStructInitField {
@@ -6755,9 +6756,39 @@ fn (g &FlatGen) cocoa_nsfont_class(name string) bool {
 }
 
 // cocoa_nsfont_framework_directive reports an `#include` or `#import` of a framework header
-// that declares NSFont.
+// that declares NSFont. `#include macos <Cocoa/Cocoa.h>` from another host, or in portable
+// output, is kept under the guard that V generates for the macOS target.
 fn cocoa_nsfont_framework_directive(text string) bool {
-	clean := text.trim_space()
+	lines := text.trim_space().split_into_lines()
+	if lines.len == 3 && lines[0].starts_with('#if ') && lines[2].trim_space() == '#endif' {
+		return c_condition_is_macos_target(lines[0]['#if '.len..].trim_space())
+			&& cocoa_nsfont_framework_include_line(lines[1])
+	}
+	return lines.len == 1 && cocoa_nsfont_framework_include_line(lines[0])
+}
+
+// c_condition_is_macos_target reports the guard of a macOS target prefix, also when
+// combined_c_condition nests it with the guard of an enclosing macOS `$if`.
+fn c_condition_is_macos_target(condition string) bool {
+	macos := pref.cross_target_c_condition('macos') or { return false }
+	if condition == macos {
+		return true
+	}
+	if !condition.starts_with('(') || !condition.ends_with(')') {
+		return false
+	}
+	inner := condition[1..condition.len - 1]
+	if inner.starts_with('${macos} && ') {
+		return c_condition_is_macos_target(inner['${macos} && '.len..])
+	}
+	if inner.ends_with(' && ${macos}') {
+		return c_condition_is_macos_target(inner[..inner.len - ' && '.len - macos.len])
+	}
+	return false
+}
+
+fn cocoa_nsfont_framework_include_line(line string) bool {
+	clean := line.trim_space()
 	if !clean.starts_with('#') {
 		return false
 	}

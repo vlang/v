@@ -445,6 +445,36 @@ fn test_cocoa_nsfont_binding_uses_the_framework_class() {
 	assert g.header_c_struct_needs_compat_typedef('C.NSFont')
 }
 
+fn test_cocoa_nsfont_binding_accepts_a_target_qualified_cocoa_include() {
+	mut ast := &flat.FlatAst{}
+	mut tc := types.TypeChecker.new(ast)
+	mut g := FlatGen.new()
+	g.a = ast
+	g.tc = &tc
+	g.set_target(pref.target_from('macos', 'arm64') or { panic(err) })
+	// Portable output keeps a target-qualified include under its preprocessor guard,
+	// as a build for macOS on another host does.
+	g.set_output_cross_c(true)
+	g.register_struct_decl_info('C.NSFont', 'C.NSFont', 'ui', 'ui_darwin.c.v', flat.Node{})
+	g.collect_c_directive('ui', flat.Node{
+		kind:  .directive
+		value: 'include'
+		typ:   'macos <Cocoa/Cocoa.h>'
+	}, '', false)
+	directives := g.ordered_c_directives(false)
+	assert directives.len == 1 && directives[0].starts_with('#if '), directives.str()
+	assert !g.header_c_struct_needs_compat_typedef('C.NSFont')
+	// The guard of another target does not make NSFont the Cocoa class.
+	g.c_directives.clear()
+	g.collect_c_directive('ui', flat.Node{
+		kind:  .directive
+		value: 'include'
+		typ:   'linux <Cocoa/Cocoa.h>'
+	}, '', false)
+	assert g.ordered_c_directives(false).len == 1
+	assert g.header_c_struct_needs_compat_typedef('C.NSFont')
+}
+
 fn test_c_struct_declared_in_platform_binding_stays_header_owned() {
 	dir := os.join_path(os.vtmp_dir(), 'v3_c_struct_source_owner_${os.getpid()}')
 	os.rmdir_all(dir) or {}
