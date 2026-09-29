@@ -213,7 +213,7 @@ pub fn (nn u128) str() string {
 		buf[index] = u8(48) + u8(n % u128(10))
 		n = n / u128(10)
 	}
-	return unsafe { tos(&buf[index], buf.len - index) }
+	return buf[index..].bytestr()
 }
 
 // str returns the value of the `i128` as a `string`.

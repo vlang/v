@@ -22,6 +22,28 @@ fn test_i128_str() {
 	assert (i128(-1) << 127).str() == '-170141183460469231731687303715884105728'
 }
 
+fn test_wide_str_owns_its_text_and_terminates_it() {
+	// The digits were written into a fixed buffer and returned as a pointer into
+	// the middle of it. A value that fills the buffer put the terminating byte
+	// past its end, and the string pointed inside the array's allocation rather
+	// than at one a C string consumer, or the caller, could treat as its own.
+	biggest := (u128(1) << 127) - u128(1) + (u128(1) << 127)
+	s := biggest.str()
+	assert s.len == 39
+	unsafe {
+		assert s.str[s.len] == 0
+	}
+	small := u128(7).str()
+	unsafe {
+		assert small.str[small.len] == 0
+	}
+	assert i128(-7).str() == '-7'
+	negative := i128(-1).str()
+	unsafe {
+		assert negative.str[negative.len] == 0
+	}
+}
+
 fn test_interpolation_uses_the_same_text() {
 	v := u128(1) << 100
 	assert '${v}' == '1267650600228229401496703205376'
