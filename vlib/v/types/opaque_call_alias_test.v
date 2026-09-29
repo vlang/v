@@ -176,3 +176,120 @@ fn main() {}
 	assert tc.notices.any(it.msg == '`n` is immutable, cannot have a mutable reference to an immutable object'), tc.notices.str()
 	assert tc.errors.any(it.msg == '`alias.x` aliases mutable data from an immutable value'), tc.errors.str()
 }
+
+fn test_collapsed_scalar_fields_are_copied_before_a_callback_reference_argument() {
+	tc := check_alias_source('collapsed_scalars', 'struct Item { mut: x int }
+struct Cfg { n int name string }
+fn by_fields(n int, name string, get fn (&Cfg) &Item) {
+ mut alias := get(n: n, name: name)
+ alias.x = 1
+}
+fn main() {}
+')
+	assert tc.notices.len == 0, tc.notices.str()
+	assert tc.errors.len == 0, tc.errors.str()
+}
+
+fn test_collapsed_nested_scalar_struct_is_copied_before_a_callback_reference_argument() {
+	tc := check_alias_source('collapsed_nested', 'struct Item { mut: x int }
+struct Value { n int }
+struct Cfg { value Value }
+fn by_fields(value Value, get fn (&Cfg) &Item) {
+ mut alias := get(value: value)
+ alias.x = 1
+}
+fn main() {}
+')
+	assert tc.notices.len == 0, tc.notices.str()
+	assert tc.errors.len == 0, tc.errors.str()
+}
+
+fn test_collapsed_scalar_fields_after_a_positional_argument_are_copied() {
+	tc := check_alias_source('collapsed_after_positional', 'struct Item { mut: x int }
+struct Cfg { n int }
+fn by_fields(n int, get fn (int, &Cfg) &Item) {
+ mut alias := get(n, n: n)
+ alias.x = 1
+}
+fn main() {}
+')
+	assert tc.notices.len == 0, tc.notices.str()
+	assert tc.errors.len == 0, tc.errors.str()
+}
+
+fn test_collapsed_pointer_field_still_borrows_its_value() {
+	tc := check_alias_source('collapsed_pointer', 'struct Item { mut: x int }
+struct Cfg { n int item &Item }
+fn by_fields(n int, item &Item, get fn (&Cfg) &Item) {
+ mut alias := get(n: n, item: item)
+ alias.x = 1
+}
+fn main() {}
+')
+	assert !tc.notices.any(it.msg == '`n` is immutable, cannot have a mutable reference to an immutable object'), tc.notices.str()
+	assert tc.notices.any(it.msg == '`item` is immutable, cannot have a mutable reference to an immutable object'), tc.notices.str()
+	assert tc.errors.len == 1, tc.errors.str()
+	assert tc.errors[0].msg == '`alias.x` aliases mutable data from an immutable value', tc.errors.str()
+}
+
+fn test_decomposed_scalar_elements_are_copied_to_callback_value_parameters() {
+	tc := check_alias_source('spread_scalars', 'struct Item { mut: x int }
+fn by_values(values []int, get fn (int, int) &Item) {
+ mut alias := get(...values)
+ alias.x = 1
+}
+fn main() {}
+')
+	assert tc.notices.len == 0, tc.notices.str()
+	assert tc.errors.len == 0, tc.errors.str()
+}
+
+fn test_decomposed_fixed_array_scalar_elements_are_copied() {
+	tc := check_alias_source('spread_fixed_scalars', 'struct Item { mut: x int }
+fn by_values(values [2]int, get fn (int, int) &Item) {
+ mut alias := get(...values)
+ alias.x = 1
+}
+fn main() {}
+')
+	assert tc.notices.len == 0, tc.notices.str()
+	assert tc.errors.len == 0, tc.errors.str()
+}
+
+fn test_decomposed_scalar_elements_after_a_positional_argument_are_copied() {
+	tc := check_alias_source('spread_after_positional', 'struct Item { mut: x int }
+fn by_values(n int, values []int, get fn (int, int, int) &Item) {
+ mut alias := get(n, ...values)
+ alias.x = 1
+}
+fn main() {}
+')
+	assert tc.notices.len == 0, tc.notices.str()
+	assert tc.errors.len == 0, tc.errors.str()
+}
+
+fn test_decomposed_pointer_elements_still_borrow_the_array() {
+	tc := check_alias_source('spread_pointers', 'struct Item { mut: x int }
+fn by_values(values []&Item, get fn (&Item, &Item) &Item) {
+ mut alias := get(...values)
+ alias.x = 1
+}
+fn main() {}
+')
+	assert tc.notices.any(it.msg == '`values` is immutable, cannot have a mutable reference to an immutable object'), tc.notices.str()
+	assert tc.errors.len == 1, tc.errors.str()
+	assert tc.errors[0].msg == '`alias.x` aliases mutable data from an immutable value', tc.errors.str()
+}
+
+fn test_decomposed_scalar_elements_passed_to_reference_parameters_are_borrowed() {
+	tc := check_alias_source('spread_scalar_refs', 'struct Item { mut: x int }
+fn by_values(values []int, get fn (int, &int) &Item) {
+ mut alias := get(...values)
+ alias.x = 1
+}
+fn main() {}
+')
+	assert tc.notices.any(it.msg == '`values` is immutable, cannot have a mutable reference to an immutable object'), tc.notices.str()
+	assert tc.errors.len == 1, tc.errors.str()
+	assert tc.errors[0].msg == '`alias.x` aliases mutable data from an immutable value', tc.errors.str()
+}

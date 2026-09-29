@@ -3311,6 +3311,8 @@ pointer does not provide mutable access to an immutable argument.
 A scalar passed by value to a callback is independent of the caller's storage. If a callback
 parameter is a reference, an implicitly referenced scalar remains borrowed from its immutable
 argument; the scalar's expression type alone does not establish a by-value copy.
+Scalar fields supplied with collapsed struct argument syntax and scalar elements decomposed
+into by-value parameters are copied too. Pointer fields and elements can still share storage.
 
 > [!NOTE]
 > However, V is not a purely functional language.

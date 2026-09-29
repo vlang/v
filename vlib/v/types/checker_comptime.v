@@ -15318,29 +15318,69 @@ fn (tc &TypeChecker) conservative_call_alias_arguments(call flat.Node, info Call
 	}
 	mut param_idx := if info.has_receiver { 1 } else { 0 }
 	mut layout_known := !info.has_implicit_veb_ctx
+	mut collapsed_target := Type(Unknown{})
+	mut has_collapsed_target := false
 	for i in 1 + info.arg_offset .. call.children_count {
+		raw_arg := tc.a.child_node(&call, i)
 		arg_id := tc.call_arg_value(tc.a.child(&call, i))
-		formal_idx := if info.is_variadic && info.params.len > 0 && param_idx >= info.params.len - 1 {
-			info.params.len - 1
-		} else {
-			param_idx
+		if raw_arg.kind == .field_init {
+			if !has_collapsed_target {
+				collapsed_target = tc.opaque_call_param_type(info, param_idx, layout_known)
+				has_collapsed_target = true
+				param_idx++
+			}
+			// The fields form one temporary struct. Its reference parameter does not
+			// turn a copied scalar field into a reference to the original scalar.
+			field_type := tc.collapsed_field_expected_type(raw_arg.value, collapsed_target) or {
+				Type(Unknown{})
+			}
+			if tc.opaque_call_copied_value_can_be_returned(tc.resolve_type(arg_id), field_type) {
+				sources << arg_id
+			}
+			continue
 		}
-		param_type := if layout_known && info.params_known && formal_idx < info.params.len {
-			tc.call_arg_expected_type(info, formal_idx)
-		} else {
-			Type(Unknown{})
+		if !info.is_variadic {
+			if spread_id := tc.spread_arg_value(arg_id) {
+				elem_type := array_like_elem_type(unwrap_pointer(tc.resolve_type(spread_id))) or {
+					Type(Unknown{})
+				}
+				mut can_alias := !layout_known || !info.params_known || param_idx >= info.params.len
+				for spread_param_idx in param_idx .. info.params.len {
+					if tc.opaque_call_copied_value_can_be_returned(elem_type,
+						tc.opaque_call_param_type(info, spread_param_idx, layout_known)) {
+						can_alias = true
+						break
+					}
+				}
+				if can_alias {
+					sources << spread_id
+				}
+				// A nonvariadic spread supplies all remaining parameters.
+				param_idx = info.params.len
+				layout_known = false
+				continue
+			}
 		}
+		param_type := tc.opaque_call_param_type(info, param_idx, layout_known)
 		if tc.opaque_call_arg_can_be_returned(arg_id, param_type) {
 			sources << arg_id
 		}
 		arg_type := unalias_type(tc.resolve_type(arg_id))
 		param_idx += if arg_type is MultiReturn { arg_type.types.len } else { 1 }
-		if !info.is_variadic && tc.spread_arg_value(arg_id) != none {
-			// A decomposed array obscures the remaining positional parameter mapping.
-			layout_known = false
-		}
 	}
 	return sources
+}
+
+fn (tc &TypeChecker) opaque_call_param_type(info CallInfo, param_idx int, layout_known bool) Type {
+	formal_idx := if info.is_variadic && info.params.len > 0 && param_idx >= info.params.len - 1 {
+		info.params.len - 1
+	} else {
+		param_idx
+	}
+	if !layout_known || !info.params_known || formal_idx >= info.params.len {
+		return Type(Unknown{})
+	}
+	return tc.call_arg_expected_type(info, formal_idx)
 }
 
 // A scalar copied into a by-value parameter cannot alias the caller's storage.
@@ -15348,11 +15388,15 @@ fn (tc &TypeChecker) conservative_call_alias_arguments(call flat.Node, info Call
 // scalar. Without a known formal type, keep conservative provenance. Structs and
 // fixed arrays are kept because the callee can receive their storage by reference.
 fn (tc &TypeChecker) opaque_call_arg_can_be_returned(id flat.NodeId, param_type Type) bool {
-	if unalias_type(param_type) is Pointer || type_contains_unknown(param_type) {
-		return true
-	}
 	typ := unalias_type(tc.resolve_type(id))
 	if typ is Struct || typ is ArrayFixed {
+		return true
+	}
+	return tc.opaque_call_copied_value_can_be_returned(typ, param_type)
+}
+
+fn (tc &TypeChecker) opaque_call_copied_value_can_be_returned(typ Type, param_type Type) bool {
+	if unalias_type(param_type) is Pointer || type_contains_unknown(param_type) {
 		return true
 	}
 	mut seen := map[string]bool{}
