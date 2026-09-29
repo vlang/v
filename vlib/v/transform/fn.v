@@ -2688,6 +2688,9 @@ fn (t &Transformer) static_assoc_fn_name(base_id flat.NodeId, method string) ?st
 	} else if base.kind == .selector && base.children_count > 0 {
 		inner := t.a.child_node(&base, 0)
 		if inner.kind == .ident {
+			if t.var_type(inner.value).len > 0 {
+				return none
+			}
 			type_ident := '${inner.value}.${base.value}'
 			for type_name in t.static_assoc_type_candidates(type_ident) {
 				name := flat.encode_static_type_method_name(type_name, method)

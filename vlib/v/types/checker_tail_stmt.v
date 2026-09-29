@@ -9105,6 +9105,9 @@ fn (tc &TypeChecker) selector_fn_value_key(node flat.Node) ?string {
 	if base.kind == .selector && base.children_count > 0 {
 		inner := tc.a.child_node(base, 0)
 		if inner.kind == .ident {
+			if tc.ident_resolves_to_value(inner.value) {
+				return none
+			}
 			mod_name := tc.resolve_import_alias(inner.value) or { inner.value }
 			key := '${mod_name}.${base.value}.${node.value}'
 			if tc.fn_signature_known(key) {
