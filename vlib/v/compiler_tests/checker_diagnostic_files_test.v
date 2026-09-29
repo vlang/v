@@ -543,6 +543,24 @@ fn main() {
 	assert errors.len == 0, errors.str()
 }
 
+fn test_wait_on_arrays_of_pointer_aliases_is_rejected() {
+	errors := check_diagnostic_project('thread_pointer_alias_array_wait', {
+		'main.v': 'module main
+
+type Worker = thread int
+type WorkerPtr = &Worker
+
+fn main() {
+	mut workers := []WorkerPtr{}
+	workers.wait()
+}
+'
+	}, ['main.v'])
+	assert errors.len == 1, errors.str()
+	assert errors[0].kind == .unknown_fn
+	assert errors[0].msg == '`[]WorkerPtr` has no method `wait()` (only thread handles and arrays of them have)'
+}
+
 fn test_unknown_enum_values_are_reported() {
 	errors := check_diagnostic_project('unknown_enum_values', {
 		'main.v': 'module main

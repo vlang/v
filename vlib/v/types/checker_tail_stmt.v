@@ -17297,7 +17297,7 @@ fn (tc &TypeChecker) resolve_type_uncached(id flat.NodeId) Type {
 						// other array element type is not a thread and `.wait()` is
 						// unsupported, so reject it rather than mis-typing the call as the
 						// receiver array (which would emit invalid C joining non-handles).
-						elem := unalias_and_unwrap_pointer_type(array_elem_type(clean_array))
+						elem := unalias_type(array_elem_type(clean_array))
 						if elem is Struct {
 							if elem.name == 'thread' {
 								return Type(void_)
