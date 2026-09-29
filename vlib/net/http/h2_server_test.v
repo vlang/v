@@ -857,7 +857,7 @@ fn test_h2_server_deduplicates_response_header_name_casing() {
 	mut handler_iface := Handler(MixedCaseResponseHeaderHandler{})
 	spawn fn [mut server_end, mut handler_iface] () {
 		mut transport := H2Transport(server_end)
-		serve_h2_conn(mut transport, mut handler_iface) or {}
+		serve_h2_conn(mut transport, mut handler_iface, '127.0.0.1:0') or {}
 	}()
 
 	mut conn := new_h2_conn(client_end)
