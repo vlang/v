@@ -192,6 +192,52 @@ fn test_conditions_loops_and_or_blocks() {
 	assert z == 4
 }
 
+fn test_range_bounds_and_select_cases() {
+	shared m := map[string]int{}
+	m['start'] = 1
+	m['limit'] = 4
+	mut sum := 0
+	for i in m['start'] .. m['limit'] {
+		sum += i
+	}
+	for i in 0 .. m.len {
+		sum += i
+	}
+	assert sum == 7
+	shared chans := map[string]chan int{}
+	chans['c'] = chan int{cap: 1}
+	ch := chan int{cap: 1}
+	select {
+		ch <- m['limit'] {
+		}
+	}
+	select {
+		chans['c'] <- m['start'] {
+		}
+	}
+	mut got := 0
+	select {
+		x := <-chans['c'] {
+			got += x
+		}
+	}
+	select {
+		y := <-ch {
+			got += y
+		}
+		m['limit'] * 1000000 {
+			assert false
+		}
+	}
+	assert got == 5
+	if select {
+		ch <- m['start'] {
+		}
+	} {
+		assert <-ch == 1
+	}
+}
+
 fn get[T](shared m map[string]T, key string) T {
 	return m[key]
 }

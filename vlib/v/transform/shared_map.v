@@ -31,13 +31,18 @@ fn (mut t Transformer) try_autolock_shared_map_stmt(id flat.NodeId, node flat.No
 		return none
 	}
 	mut stmt_id := id
-	if node.kind == .for_in_stmt && node.children_count > 2 {
-		// The loop lowering reads the container node directly, so replace it with the
-		// `rlock` expression, which is evaluated once, before the loop.
-		container_id := t.a.child(&node, 2)
-		if base_id := t.shared_map_read_locks[int(container_id)] {
-			mut children := t.a.children_of(&node).clone()
-			children[2] = t.shared_map_rlock_expr(container_id, base_id)
+	if node.kind == .for_in_stmt {
+		// The loop lowering reads the container (or the range bounds) directly, so replace
+		// them with the `rlock` expressions, which are evaluated once, before the loop.
+		mut children := t.a.children_of(&node).clone()
+		mut replaced := false
+		for i in 2 .. t.for_in_header_len(node) {
+			if base_id := t.shared_map_read_locks[int(children[i])] {
+				children[i] = t.shared_map_rlock_expr(children[i], base_id)
+				replaced = true
+			}
+		}
+		if replaced {
 			stmt_id = t.copy_node_with_children(node, children)
 		}
 	}
@@ -145,13 +150,24 @@ fn (mut t Transformer) collect_shared_map_reads_in_stmt(id flat.NodeId, node fla
 			}
 		}
 		.for_in_stmt {
-			if node.children_count > 2 {
-				t.collect_shared_map_reads(t.a.child(&node, 2), t.for_in_binds_mut(node),
-					false)
+			// the container, or the start and the end of a range
+			binds_mut := t.for_in_binds_mut(node)
+			for i in 2 .. t.for_in_header_len(node) {
+				t.collect_shared_map_reads(t.a.child(&node, i), binds_mut, false)
 			}
+		}
+		.select_stmt {
+			t.collect_shared_map_reads(id, false, true)
 		}
 		else {}
 	}
+}
+
+// for_in_header_len returns the number of children before the body of a `for ... in`:
+// the key, the value, the container, and the end of a range.
+fn (t &Transformer) for_in_header_len(node flat.Node) int {
+	header := if node.value == '4' { 4 } else { 3 }
+	return if header < node.children_count { header } else { int(node.children_count) }
 }
 
 // collect_shared_map_reads records the reads of `shared` maps in the expression `id`.
@@ -285,8 +301,28 @@ fn (mut t Transformer) collect_shared_map_reads(id flat.NodeId, in_target bool, 
 				t.collect_shared_map_reads_in_block(t.a.child(&node, i), !is_stmt)
 			}
 		}
-		.block, .match_branch, .lock_expr, .fn_literal, .lambda_expr, .select_stmt,
-		.select_branch, .comptime_if, .comptime_for, .sql_expr, .asm_stmt, .typeof_expr,
+		.select_stmt {
+			// Only the reads in the case headers (channels, sent values and timeouts) are
+			// locked, not the channel operations. The bodies are lowered as statements.
+			for i in 0 .. node.children_count {
+				branch := t.a.nodes[int(t.a.child(&node, i))]
+				if branch.kind != .select_branch || branch.value == 'else' {
+					continue
+				}
+				is_recv := branch.children_count > 1
+					&& t.a.child_node(&branch, 1).kind == .prefix
+					&& t.a.child_node(&branch, 1).op == .arrow
+				if is_recv {
+					// the target of `x := <-ch` / `x = <-ch`, then the receive
+					t.collect_shared_map_reads(t.a.child(&branch, 0), true, false)
+					t.collect_shared_map_reads(t.a.child(&branch, 1), false, false)
+				} else if branch.children_count > 0 {
+					t.collect_shared_map_reads(t.a.child(&branch, 0), false, false)
+				}
+			}
+		}
+		.block, .match_branch, .lock_expr, .fn_literal, .lambda_expr, .select_branch,
+		.comptime_if, .comptime_for, .sql_expr, .asm_stmt, .typeof_expr,
 		.sizeof_expr, .offsetof_expr, .defer_stmt, .decl_assign, .assign, .selector_assign,
 		.index_assign, .expr_stmt, .for_stmt, .for_in_stmt, .return_stmt {
 		}
