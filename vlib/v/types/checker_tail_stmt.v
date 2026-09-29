@@ -12764,6 +12764,32 @@ pub fn (tc &TypeChecker) promoted_method_value_owner(id flat.NodeId) ?string {
 	return tc.promoted_method_owner(tc.resolve_type(tc.a.child(&node, 0)), node.value)
 }
 
+// method_value_selector_type is the type of the selector `id` that names a method
+// without a call, as selector_type gives it: `fn () User` for `s.get` with
+// `s Shelf[User]`, the method of an alias before the ones of its struct.
+pub fn (tc &TypeChecker) method_value_selector_type(id flat.NodeId) ?Type {
+	if int(id) < 0 || int(id) >= tc.a.nodes.len {
+		return none
+	}
+	node := tc.a.nodes[int(id)]
+	if node.kind != .selector || node.children_count == 0 {
+		return none
+	}
+	base_type := tc.resolve_type(tc.a.child(&node, 0))
+	receiver := unwrap_pointer(base_type)
+	if receiver is Alias && '${receiver.name}.${node.value}' in tc.fn_param_types {
+		return tc.method_value_type(receiver.name, node.value)
+	}
+	clean := unalias_and_unwrap_pointer_type(base_type)
+	if clean is Struct {
+		return tc.method_value_type(clean.name, node.value)
+	}
+	if clean is Interface {
+		return tc.method_value_type(clean.name, node.value)
+	}
+	return none
+}
+
 // alias_method_value_receiver is the alias whose own method the selector `id` names
 // without a call: `Alias` for `a.describe` with `fn (a Alias) describe()`, and none
 // when the method is the one of the aliased type.

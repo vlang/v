@@ -7894,6 +7894,43 @@ fn (t &Transformer) fn_literal_has_runtime_captures(id flat.NodeId) bool {
 	return false
 }
 
+// checker_method_value_type_name is the type that the checker gives the method
+// value `id`, or '' when it has none that the transform can spell.
+fn (t &Transformer) checker_method_value_type_name(id flat.NodeId) string {
+	typ := t.tc.method_value_selector_type(id) or { return '' }
+	if typ is types.Unknown {
+		return ''
+	}
+	name := t.semantic_type_name(typ)
+	if !decl_type_is_usable(name) || t.generic_arg_is_unresolved(name) {
+		return ''
+	}
+	return name
+}
+
+// request_instance_method_value asks for the specialization of the generic method
+// that a method value names on a generic struct instance, `Box[int].get` for `b.get`
+// with `b Box[int]`, when no call asks for it. It reports whether it asked.
+fn (mut t Transformer) request_instance_method_value(receiver string, method string) bool {
+	base, args, ok := generic_app_parts(t.trim_pointer_type(receiver))
+	if !ok || args.len == 0 || t.generic_args_have_placeholders(args) {
+		return false
+	}
+	decls := t.cached_generic_fn_decls()
+	decl := decls['${base}.${method}'] or {
+		decls['${base.all_after_last('.')}.${method}'] or { return false }
+	}
+	if t.generic_fn_param_names(decl.node, decl.module).len != args.len {
+		return false
+	}
+	concrete_args := t.canonical_generic_specialization_args(args)
+	if !t.generic_specialization_registered(decl, concrete_args)
+		&& !t.generic_specialization_in_progress(decl, concrete_args) {
+		t.request_generic_fn_specialization(decl, concrete_args)
+	}
+	return true
+}
+
 // method_receiver_short_names_match reports whether two spellings of a receiver
 // name one type: `shapes.Base` and `Base`, or `Holder[int]` and `Holder[T]`.
 fn method_receiver_short_names_match(a string, b string) bool {
@@ -20202,6 +20239,14 @@ fn (mut t Transformer) transform_selector_expr(id flat.NodeId, node flat.Node) f
 	} else {
 		''
 	}
+	// The clone of a generic body carries no type on the selector: the checker
+	// types the method value of the instance's receiver (`fn () User`). A callee
+	// stays a method call.
+	checker_method_value_type := if is_method_value && node.typ.len == 0 && !t.in_call_callee {
+		t.checker_method_value_type_name(id)
+	} else {
+		''
+	}
 	mut new_base := t.transform_selector_base_expr(base_id)
 	mut selector_generic_params := node.generic_params().clone()
 	if is_method_value {
@@ -20233,7 +20278,15 @@ fn (mut t Transformer) transform_selector_expr(id flat.NodeId, node flat.Node) f
 				new_base = t.make_cast(target, new_base, target)
 			}
 		}
-		method_value_name := t.resolve_receiver_method_name(new_base, node.value)
+		mut method_value_name := t.resolve_receiver_method_name(new_base, node.value)
+		if method_value_name.len == 0 && !t.in_call_callee {
+			// In a generic body the checker saw the method of the open receiver
+			// (`Box[T].get`); the one of this instance (`Box[int].get`) is asked
+			// for here, as a call in the instance asks for it.
+			if t.request_instance_method_value(t.node_type(new_base), node.value) {
+				method_value_name = t.resolve_receiver_method_name(new_base, node.value)
+			}
+		}
 		if method_value_name.len > 0 {
 			// C generation emits the bound-method wrapper later. Keep its target
 			// live when reflection makes the enclosing body reachable late.
@@ -20243,6 +20296,14 @@ fn (mut t Transformer) transform_selector_expr(id flat.NodeId, node flat.Node) f
 			method_iface_name := t.resolve_interface_type_name(method_value_name.all_before_last('.'))
 			if method_iface_name.len > 0 {
 				t.mark_interface_method_implementers_used(method_iface_name, node.value)
+			}
+		} else if !t.in_call_callee {
+			// A member of a generic interface instance (`Shelf[User].get`) names no
+			// function: the methods of the types that implement it are reached through
+			// its dispatch. The check records them only for a receiver it sees concrete.
+			base_iface := t.resolve_interface_type_name(t.trim_pointer_type(t.node_type(new_base)))
+			if base_iface.len > 0 {
+				t.mark_interface_method_implementers_used(base_iface, node.value)
 			}
 		}
 		method_params := t.call_param_types(method_value_name)
@@ -20278,7 +20339,10 @@ fn (mut t Transformer) transform_selector_expr(id flat.NodeId, node flat.Node) f
 		}
 		new_children << nc
 	}
-	sel_typ := t.transformed_selector_type(node)
+	mut sel_typ := t.transformed_selector_type(node)
+	if sel_typ.len == 0 {
+		sel_typ = checker_method_value_type
+	}
 	base_type := t.node_type(new_base)
 	sel_op := if node.op == .arrow || base_type.starts_with('&') { flat.Op.arrow } else { node.op }
 	if !changed && sel_op == node.op {
