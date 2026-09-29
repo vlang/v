@@ -134,6 +134,11 @@ fn main() {
 	if '-new-compiler' in args {
 		os.setenv(v3_no_fallback_env, '1', true)
 	}
+	if race_build_requested(args) {
+		// The compatibility compiler has no race detector. A failed race build must
+		// report its own error instead of silently retrying without instrumentation.
+		os.setenv(v3_no_fallback_env, '1', true)
+	}
 	if '-new-compiler' !in args && v3_fixture_requires_compatibility_compiler(args) {
 		launch_v1(clean_compiler_selection_flags(args), 'legacy diagnostic fixture', RetryState{})
 	}
@@ -163,6 +168,29 @@ fn main() {
 		launch_ownership_compiler(args)
 	}
 	run_with_fallback(args, args)
+}
+
+// race_build_requested reports whether `-race` is one of the compiler options, and not an
+// argument of the program that `v run` starts.
+fn race_build_requested(args []string) bool {
+	mut option_value_follows := false
+	for arg in args {
+		if option_value_follows {
+			option_value_follows = false
+			continue
+		}
+		if arg == '-race' {
+			return true
+		}
+		if arg == '-cf' || pref.option_may_consume_value(arg) {
+			option_value_follows = true
+			continue
+		}
+		if !arg.starts_with('-') && arg !in ['run', 'crun', 'build', 'test'] {
+			return false
+		}
+	}
+	return false
 }
 
 fn ownership_checker_is_compiled() bool {

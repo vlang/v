@@ -14,7 +14,7 @@ pub:
 
 // vtest_build_environment resolves the facts and defines of the compilation
 // that the compiler options `args` describe (`-os`, `-arch`, `-cc`, `-prod`,
-// `-d`, ...), the way `run` resolves them for `v <args> file_test.v`. A test
+// `-race`, `-d`, ...), the way `run` resolves them for `v <args> file_test.v`. A test
 // runner started with those options exports the result through
 // pref.set_build_flags_and_defines, so that its `// vtest build:` decisions
 // match the compiler's own.
@@ -27,6 +27,7 @@ pub fn vtest_build_environment(vroot string, args []string) TestBuildEnvironment
 	mut c_compiler_explicit := false
 	mut is_prod := false
 	mut is_c_debug := false
+	mut race := false
 	mut parallel_cc := false
 	mut dump_c_flags := false
 	mut libc_mode := ''
@@ -61,6 +62,10 @@ pub fn vtest_build_environment(vroot string, args []string) TestBuildEnvironment
 		} else if arg == '-parallel-cc' {
 			parallel_cc = true
 			i++
+		} else if arg == '-race' {
+			race = true
+			record_user_define(mut user_defines, mut compile_values, 'race')
+			i++
 		} else if arg == '-musl' {
 			libc_mode = 'musl'
 			i++
@@ -93,6 +98,7 @@ pub fn vtest_build_environment(vroot string, args []string) TestBuildEnvironment
 		backend:             backend
 		is_prod:             is_prod
 		is_c_debug:          is_c_debug
+		race:                race
 		c_compiler:          c_compiler
 		c_compiler_explicit: c_compiler_explicit
 		dump_c_flags:        dump_c_flags

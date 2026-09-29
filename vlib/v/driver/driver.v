@@ -3765,7 +3765,7 @@ fn v3_crun_build_identity(state &V3ModuleCacheState, prefs &pref.Preferences, us
 }
 
 fn cli_usage() string {
-	return 'usage: v3 [run|crun|test] <file.v|directory> [options]\n' + '  -o <output>                 output binary or C file\n' + '  -b <c|fastc|arm64|wasm|eval> backend\n' + '  -os <name> -arch <name>     target platform\n' + '  -cc <compiler>               C compiler executable\n' + '  -cflags <flags>              extra C compiler options\n' + '  -ldflags <flags>             extra options appended to the link command\n' + '  -thread-stack-size <bytes>   spawned-thread stack size\n' + '  -prod -c99 -shared -strict  C build modes\n' + '  -v                           verbose stage profiling\n' + '  -silent                      suppress benchmark output\n' + '  -showcc                      print C compiler commands\n' + '  -trace-calls                 trace function entries to stderr\n' + '  -trace-fns <patterns>        restrict tracing to functions or modules\n' + '  -profile [file]              write V1-compatible function profile data\n' + '  -profile-fns <names>         profile only named functions and their callees\n' + '  -profile-no-inline           omit @[inline] functions from the profile\n' + '  -no-memory-limit             disable the 10176 MiB user-build memory safety limit\n' + '  -d <name>                    compile-time define'
+	return 'usage: v3 [run|crun|test] <file.v|directory> [options]\n' + '  -o <output>                 output binary or C file\n' + '  -b <c|fastc|arm64|wasm|eval> backend\n' + '  -os <name> -arch <name>     target platform\n' + '  -cc <compiler>               C compiler executable\n' + '  -cflags <flags>              extra C compiler options\n' + '  -ldflags <flags>             extra options appended to the link command\n' + '  -thread-stack-size <bytes>   spawned-thread stack size\n' + '  -prod -c99 -shared -strict  C build modes\n' + '  -v                           verbose stage profiling\n' + '  -silent                      suppress benchmark output\n' + '  -showcc                      print C compiler commands\n' + '  -trace-calls                 trace function entries to stderr\n' + '  -trace-fns <patterns>        restrict tracing to functions or modules\n' + '  -race                        detect data races at runtime (ThreadSanitizer)\n' + '  -profile [file]              write V1-compatible function profile data\n' + '  -profile-fns <names>         profile only named functions and their callees\n' + '  -profile-no-inline           omit @[inline] functions from the profile\n' + '  -no-memory-limit             disable the 10176 MiB user-build memory safety limit\n' + '  -d <name>                    compile-time define'
 }
 
 fn shared_library_postfix(target_os string) string {
@@ -7727,6 +7727,7 @@ struct V3BundledTccProbeOptions {
 	c_only              bool
 	is_prod             bool
 	is_c_debug          bool
+	race                bool // TCC has no ThreadSanitizer, so `-race` never selects it implicitly
 	is_shared           bool
 	is_liveshared       bool
 	c_compiler          string
@@ -7764,7 +7765,7 @@ fn v3_should_probe_bundled_tcc(options V3BundledTccProbeOptions) bool {
 	if options.host_os == 'windows' && options.target.os == 'windows' {
 		return true
 	}
-	return !options.is_prod && !options.is_c_debug
+	return !options.is_prod && !options.is_c_debug && !options.race
 }
 
 fn v3_bundled_tcc_available(options V3BundledTccProbeOptions) bool {
@@ -7892,7 +7893,7 @@ fn v3_select_c_compiler(vroot string, requested V3BundledTccProbeOptions) V3CCom
 	}
 	bundled_tcc_available := v3_bundled_tcc_available(options)
 	allow_system_tcc := options.backend == 'c' && !options.c_only && !options.is_prod
-		&& !options.is_c_debug && !options.c_compiler_explicit
+		&& !options.is_c_debug && !options.race && !options.c_compiler_explicit
 		&& !(options.is_shared && !options.is_liveshared && options.target.os == 'linux')
 		&& (!options.parallel_cc || options.target.os == 'windows')
 		&& options.target.os == options.host_target.os
@@ -9689,6 +9690,7 @@ pub fn run(args []string) {
 	mut profile_fns := []string{}
 	mut is_trace_calls := false
 	mut trace_fns := []string{}
+	mut race := false
 	mut command_seen := false
 	mut macos_sdk_root_cache := V3MacosSdkRootCache{}
 	environment_c_flags := parse_v3_environment_flags('CFLAGS')
@@ -9956,6 +9958,9 @@ pub fn run(args []string) {
 			i += 2
 		} else if args[i] == '-trace-calls' {
 			is_trace_calls = true
+			i++
+		} else if args[i] == '-race' {
+			race = true
 			i++
 		} else if args[i] == '-trace-fns' {
 			for pattern in args[i + 1].split(',') {
@@ -10237,6 +10242,25 @@ pub fn run(args []string) {
 		eprintln('option `-profile` is only supported by the C backend')
 		exit(1)
 	}
+	if race {
+		v3_race_check_backend(backend) or {
+			eprintln(err.msg())
+			exit(1)
+		}
+		gc_mode = v3_race_gc_mode(gc_mode) or {
+			eprintln(err.msg())
+			exit(1)
+		}
+		record_user_define(mut user_defines, mut compile_values, 'race')
+		for flag in v3_race_c_flags {
+			if flag !in user_c_flags {
+				user_c_flags << flag
+			}
+		}
+		// Every module, builtin included, must be instrumented and carry the V line
+		// directives of the race build, so cached objects of a normal build cannot be reused.
+		no_cache = true
+	}
 	should_run = should_run && !skip_running
 	if is_o && (backend !in ['c', 'fastc'] || !explicit_output
 		|| (!output_file.ends_with('.c') && !output_file.ends_with('.o'))) {
@@ -10462,6 +10486,12 @@ pub fn run(args []string) {
 	target := pref.target_from(target_os, target_arch) or {
 		eprintln(err.msg())
 		exit(1)
+	}
+	if race {
+		v3_race_check_target(target, output_cross_c) or {
+			eprintln(err.msg())
+			exit(1)
+		}
 	}
 	if target_libc_headers && output_cross_c {
 		eprintln('option `-target-libc-headers` does not support portable cross output')
@@ -10715,6 +10745,7 @@ pub fn run(args []string) {
 		c_only:              c_only
 		is_prod:             is_prod
 		is_c_debug:          is_c_debug
+		race:                race
 		is_shared:           is_shared
 		is_liveshared:       is_liveshared
 		c_compiler:          c_compiler
@@ -10731,6 +10762,12 @@ pub fn run(args []string) {
 	c_compiler = selection.c_compiler
 	use_implicit_tcc_semantics := selection.use_implicit_tcc_semantics
 	effective_c_compiler := selection.effective_c_compiler
+	if race {
+		v3_race_check_c_compiler(c_compiler, effective_c_compiler) or {
+			eprintln(err.msg())
+			exit(1)
+		}
+	}
 	macos_linux_cross_compile := v3_macos_linux_cross_compile(host_target, target, backend,
 		c_compiler)
 	libc_mode = v3_apply_libc_define(mut user_defines, mut compile_values, libc_mode, c_compiler,
@@ -13102,6 +13139,7 @@ pub fn run(args []string) {
 			g.set_ccompiler(prefs.ccompiler)
 			g.set_prod(prefs.is_prod)
 			g.set_debug(prefs.is_debug)
+			g.set_line_directives(race)
 			g.set_check_overflow(check_overflow)
 			g.set_force_bounds_checking(prefs.force_bounds_checking)
 			g.set_prealloc('prealloc' in prefs.user_defines)
@@ -13172,6 +13210,7 @@ pub fn run(args []string) {
 			g.set_ccompiler(prefs.ccompiler)
 			g.set_prod(prefs.is_prod)
 			g.set_debug(prefs.is_debug)
+			g.set_line_directives(race)
 			g.set_check_overflow(check_overflow)
 			g.set_force_bounds_checking(prefs.force_bounds_checking)
 			g.set_prealloc('prealloc' in prefs.user_defines)
@@ -14196,6 +14235,12 @@ Please install the corresponding development package/libraries and make sure the
 					// discarded these entries and the rebuild republished them.
 					eprintln("Suggestion: the C toolchain keeps rejecting files from V's cache. Run `v wipe-cache`, then repeat your compilation.")
 				}
+				if race {
+					race_hint := v3_race_c_compiler_hint(result.output)
+					if race_hint != '' {
+						eprintln(race_hint)
+					}
+				}
 				cleanup_c_build_dir(cc_dir)
 				exit(1)
 			}
@@ -14219,6 +14264,9 @@ Please install the corresponding development package/libraries and make sure the
 			eprintln('failed to finalize ${bin_file}: ${err}')
 			cleanup_c_build_dir(cc_dir)
 			exit(1)
+		}
+		if race && target.os == 'macos' {
+			v3_race_keep_macos_debug_symbols(staged_binary, bin_file)
 		}
 		for temporary_object in c_object_cache_stats.temporary_objects {
 			os.rm(temporary_object) or {}
@@ -14251,6 +14299,9 @@ Please install the corresponding development package/libraries and make sure the
 			run_result := run_binary(bin_file, run_args)
 			if remove_binary_after_run {
 				os.rm(bin_file) or {}
+				if race && target.os == 'macos' {
+					v3_race_remove_macos_debug_symbols(bin_file)
+				}
 			}
 			if run_result != 0 {
 				exit(run_result)

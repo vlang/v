@@ -226,6 +226,7 @@ argument, e.g. `v new abc`.
     * [Spawning Concurrent Tasks](#spawning-concurrent-tasks)
     * [Channels](#channels)
     * [Shared Objects](#shared-objects)
+    * [Race Detector](#race-detector)
 * [JSON](#json)
     * [Decoding JSON](#decoding-json)
     * [Encoding JSON](#encoding-json)
@@ -5686,6 +5687,106 @@ rlock m {
 **Synchronization**:
 - Channels: Implicit (via channel operations)
 - Shared objects:  Explicit (via `rlock`/`lock` blocks)
+
+### Race Detector
+
+A data race happens when two threads access the same memory at the same time, and at least
+one of the accesses is a write, without a channel, a `lock`/`rlock` block, a `sync` primitive
+or an atomic operation ordering them. Data races are hard to find: they depend on timing, and
+the program usually works until it does not.
+
+Like Go, V has a race detector built in. Build or run a program, or its tests, with `-race`:
+
+```shell
+v -race run main.v
+v -race test .
+```
+
+Consider this program, where two threads increment one counter without synchronization:
+
+```v
+struct Counter {
+mut:
+	n int
+}
+
+fn inc(mut c Counter) {
+	for _ in 0 .. 1000 {
+		c.n++
+	}
+}
+
+fn main() {
+	mut c := &Counter{}
+	t1 := spawn inc(mut c)
+	t2 := spawn inc(mut c)
+	t1.wait()
+	t2.wait()
+	println(c.n)
+}
+```
+
+`v -race run main.v` reports the race with the V source positions of both accesses, of the
+allocation, and of the `spawn` calls that started the threads:
+
+```
+==================
+WARNING: ThreadSanitizer: data race (pid=55780)
+  Write of size 8 at 0x000109800380 by thread T2:
+    #0 inc main.v:8
+    #1 inc_args_thread_wrapper src.c:2438
+
+  Previous write of size 8 at 0x000109800380 by thread T1:
+    #0 inc main.v:8
+    #1 inc_args_thread_wrapper src.c:2438
+
+  Location is heap block of size 8 at 0x000109800380 allocated by main thread:
+    #0 malloc <null>
+    #1 v_malloc allocation.c.v:96
+    #2 memdup allocation.c.v:503
+    #3 main main.v:13
+
+  Thread T2 (tid=19154470, running) created by main thread at:
+    #0 pthread_create <null>
+    #1 __v_thread_spawn src.c:672
+    #2 main main.v:15
+  ...
+SUMMARY: ThreadSanitizer: data race main.v:8 in inc
+==================
+2000
+ThreadSanitizer: reported 1 warnings
+```
+
+Making `n` an `atomic int`, putting it in a `shared` object, or guarding it with a
+`sync.Mutex` removes the race.
+
+The race detector finds the races that happen while the program runs; it cannot find races
+in code that does not run. So it is most useful with tests and realistic workloads. A program
+that reported races exits with status 66, so a test that races fails.
+
+How it works: `-race` compiles the program with ThreadSanitizer (`-fsanitize=thread`), the
+race detection runtime that Go's race detector uses too. It needs `clang` or `gcc` with the
+ThreadSanitizer runtime (on some Linux distributions, the `libtsan` package for gcc), and it
+is supported on linux (amd64, arm64, ppc64le, s390x, loongarch64, riscv64), macos (amd64,
+arm64), freebsd/amd64 and netbsd/amd64. Race builds:
+
+* do not use a garbage collector, like `-gc none`: ThreadSanitizer has to see every
+  allocation and free of heap memory, which a garbage collector hides from it;
+* typically run 2-20x slower and use 5-10x more memory, like in Go (with `-prod`, a function
+  that was inlined into its caller is reported as the caller);
+* define `race`, so code can check for them with `$if race ? {}`, and `_d_race.v` files are
+  compiled in them.
+
+The `VRACE` environment variable passes options to the race detector, in the same format as
+Go's `GORACE`. For example, `VRACE="halt_on_error=1"` stops the program at the first race,
+`VRACE="log_path=/tmp/race"` writes the reports to `/tmp/race.<pid>` instead of stderr, and
+`VRACE="exitcode=1"` changes the exit status. `TSAN_OPTIONS` takes the same options, and
+overrides `VRACE`.
+
+On some Linux kernels, older ThreadSanitizer runtimes stop with
+`FATAL: ThreadSanitizer: unexpected memory mapping`. Run the program with address space
+randomization reduced (`setarch $(uname -m) -R ./program`, or
+`sudo sysctl vm.mmap_rnd_bits=28`), or use a newer compiler.
 
 ## JSON
 

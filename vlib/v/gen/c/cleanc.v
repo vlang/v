@@ -404,6 +404,9 @@ mut:
 	suppress_main                  bool
 	coverage_dir                   string
 	coverage_build_options         string
+	line_directives                bool
+	line_directive_paths           map[string]string
+	line_directive_fn_start        int
 	coverage_files                 map[string]&CoverageInfo
 	coverage_counter_count         int
 	cache_program_files            map[string]bool
@@ -22371,11 +22374,11 @@ fn (mut g FlatGen) atomic_builtin_compat_decls() {
 	g.writeln('static inline u32 atomic_fetch_sub_u32(void* ptr, u32 delta) { return __atomic_fetch_sub((u32*)ptr, delta, 5); }')
 	g.writeln('static inline u64 atomic_fetch_sub_u64(void* ptr, u64 delta) { return __atomic_fetch_sub((u64*)ptr, delta, 5); }')
 	g.writeln('static inline void* atomic_fetch_sub_ptr(void* ptr, void* delta) { return (void*)(uintptr_t)__atomic_fetch_sub((uintptr_t*)ptr, (uintptr_t)delta, 5); }')
+	g.writeln('#ifdef __TINYC__')
 	g.writeln('static inline byte atomic_load_byte(void* ptr) { return __atomic_fetch_add((byte*)ptr, 0, 5); }')
 	g.writeln('static inline u16 atomic_load_u16(void* ptr) { return __atomic_fetch_add((u16*)ptr, 0, 5); }')
 	g.writeln('static inline u32 atomic_load_u32(void* ptr) { return __atomic_fetch_add((u32*)ptr, 0, 5); }')
 	g.writeln('static inline u64 atomic_load_u64(void* ptr) { return __atomic_fetch_add((u64*)ptr, 0, 5); }')
-	g.writeln('#ifdef __TINYC__')
 	g.writeln('static inline void* atomic_load_ptr(void* ptr) { return (void*)(uintptr_t)__atomic_fetch_add((uintptr_t*)ptr, (uintptr_t)0, 5); }')
 	g.writeln('static inline byte atomic_exchange_byte(void* ptr, byte val) { return __atomic_exchange_1((byte*)ptr, val, 5); }')
 	g.writeln('static inline u16 atomic_exchange_u16(void* ptr, u16 val) { return __atomic_exchange_2((u16*)ptr, val, 5); }')
@@ -22406,6 +22409,12 @@ fn (mut g FlatGen) atomic_builtin_compat_decls() {
 	g.writeln('static inline bool atomic_compare_exchange_weak_u32(void* ptr, u32* expected, u32 desired) { return __atomic_compare_exchange_4((u32*)ptr, expected, desired, 5, 5); }')
 	g.writeln('static inline bool atomic_compare_exchange_weak_u64(void* ptr, u64* expected, u64 desired) { return __atomic_compare_exchange_8((u64*)ptr, expected, desired, 5, 5); }')
 	g.writeln('#else')
+	// A load must not be a read-modify-write here: a plain read that runs concurrently with
+	// `fetch_add(0)` is a data race, and the race detector (`-race`) reports it as one.
+	g.writeln('static inline byte atomic_load_byte(void* ptr) { return __atomic_load_n((byte*)ptr, 5); }')
+	g.writeln('static inline u16 atomic_load_u16(void* ptr) { return __atomic_load_n((u16*)ptr, 5); }')
+	g.writeln('static inline u32 atomic_load_u32(void* ptr) { return __atomic_load_n((u32*)ptr, 5); }')
+	g.writeln('static inline u64 atomic_load_u64(void* ptr) { return __atomic_load_n((u64*)ptr, 5); }')
 	g.writeln('static inline void* atomic_load_ptr(void* ptr) { return __atomic_load_n((void**)ptr, 5); }')
 	g.writeln('static inline byte atomic_exchange_byte(void* ptr, byte val) { return __atomic_exchange_n((byte*)ptr, val, 5); }')
 	g.writeln('static inline u16 atomic_exchange_u16(void* ptr, u16 val) { return __atomic_exchange_n((u16*)ptr, val, 5); }')
