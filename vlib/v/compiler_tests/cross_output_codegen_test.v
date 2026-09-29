@@ -234,13 +234,63 @@ fn test_cross_windows_output_guards_the_msvc_only_headers() {
 	// for, so the choice belongs to the C preprocessor. See #29146.
 	c_code := cross_generate_with('-cross -os windows -cc msvc', 'msvc_headers',
 		"module main\n\nfn main() {\n\tprintln('ok')\n}\n")
+	guard_error := msvc_only_header_guard_error(c_code)
+	assert guard_error == '', guard_error
+}
+
+// msvc_only_header_guard_error checks every include, accepting only explicit positive
+// MSVC directives in its active branches. Other condition spellings fail conservatively.
+fn msvc_only_header_guard_error(c_code string) string {
 	for header in ['#include <intrin.h>', '#include <dbghelp.h>'] {
-		at := c_code.index(header) or {
-			assert false, '${header} is missing from the Windows snapshot: the MSVC intrinsics and the dbghelp backtraces need it'
-			return
+		mut start := 0
+		mut found := false
+		for {
+			at := c_code.index_after(header, start) or { break }
+			found = true
+			guards := enclosing_guards_at(c_code, at)
+			if !guards.any(it in ['#if defined(_MSC_VER)', '#ifdef _MSC_VER', '#elif defined(_MSC_VER)']) {
+				return '${header} at byte ${at} is not behind a positive MSVC-only guard: ${guards}'
+			}
+			start = at + header.len
 		}
-		guards := enclosing_guards_at(c_code, at)
-		assert guards.any(it.contains('_MSC_VER')), '${header} is not behind an _MSC_VER guard, it is behind ${guards} - only MSVC ships it, so every other C compiler fails to find it'
+		if !found {
+			return '${header} is missing from the Windows snapshot: the MSVC intrinsics and the dbghelp backtraces need it'
+		}
+	}
+	return ''
+}
+
+fn test_msvc_only_header_guard_assertion_rejects_unguarded_and_negative_branches() {
+	headers := '#include <intrin.h>\n#include <dbghelp.h>\n'
+	guarded := '#if defined(_MSC_VER)\n${headers}#endif\n'
+	for c_code in [
+		'${guarded}#include <intrin.h>\n',
+		'${guarded}#include <dbghelp.h>\n',
+		'#ifdef _WIN32\n${guarded}${headers}#endif\n',
+		'#ifndef _MSC_VER\n${headers}#endif\n',
+		'#if !defined(_MSC_VER)\n${headers}#endif\n',
+		'#if defined(_MSC_VER)\n#else\n${headers}#endif\n',
+		'#if defined(_MSC_VER)\n#elif 1\n${headers}#endif\n',
+		'#if 0\n#elif defined(_MSC_VER)\n#else\n${headers}#endif\n',
+		'#if defined(_MSC_VER) || defined(__TINYC__)\n${headers}#endif\n',
+		'#if defined(_MSC_VER)\n#endif\n${headers}',
+		'#if defined(_MSC_VER)\n#include <intrin.h>\n#endif\n',
+		'#if defined(_MSC_VER)\n#include <dbghelp.h>\n#endif\n',
+	] {
+		assert msvc_only_header_guard_error(c_code) != '', 'accepted unsafe or incomplete includes:\n${c_code}'
+	}
+}
+
+fn test_msvc_only_header_guard_assertion_accepts_active_positive_branches() {
+	headers := '#include <intrin.h>\n#include <dbghelp.h>\n'
+	for c_code in [
+		'#if defined(_MSC_VER)\n${headers}${headers}#endif\n',
+		'#ifdef _WIN32\n#ifdef _MSC_VER\n${headers}#endif\n#endif\n',
+		'#if 0\n#elif defined(_MSC_VER)\n${headers}#endif\n',
+		'#if defined(_MSC_VER)\n#if 0\n#else\n${headers}#endif\n#endif\n',
+	] {
+		guard_error := msvc_only_header_guard_error(c_code)
+		assert guard_error == '', '${guard_error}\n${c_code}'
 	}
 }
 
@@ -255,6 +305,8 @@ fn test_cross_windows_output_includes_the_same_headers_for_every_c_compiler() {
 	for ccompiler in ['msvc', 'gcc', 'clang', 'tcc'] {
 		c_code := cross_generate_with('-cross -os windows -cc ${ccompiler}', 'headers_${ccompiler}',
 			'module main\n\nimport crypto.rand\n\nfn main() {\n\tmut buffer := []u8{len: 1}\n\tcrypto.rand.read(mut buffer) or {}\n}\n')
+		guard_error := msvc_only_header_guard_error(c_code)
+		assert guard_error == '', '-cc ${ccompiler}: ${guard_error}'
 		includes := c_code.split_into_lines().filter(it.trim_space().starts_with('#include'))
 			.map(it.trim_space())
 		if reference.len == 0 {
@@ -267,10 +319,9 @@ fn test_cross_windows_output_includes_the_same_headers_for_every_c_compiler() {
 	}
 }
 
-// enclosing_guards_at returns the conditions of the `#if` directives that are still
-// open at `at`, outermost first, each negated when `at` sits in its `#else` branch.
-// It is what tells an include that a guard actually protects from one that merely
-// follows a guard that closed earlier.
+// enclosing_guards_at returns the active branch directives at `at`, outermost first.
+// An `#elif` replaces the preceding branch and an `#else` negates it. Earlier sibling
+// conditions are omitted: only an explicit positive directive proves MSVC-only use.
 fn enclosing_guards_at(c_code string, at int) []string {
 	mut stack := []string{}
 	mut in_else := []bool{}
@@ -279,8 +330,11 @@ fn enclosing_guards_at(c_code string, at int) []string {
 		if directive.starts_with('#if') {
 			stack << directive.all_before('\n')
 			in_else << false
+		} else if directive.starts_with('#elif') && stack.len > 0 {
+			stack[stack.len - 1] = directive
+			in_else[in_else.len - 1] = false
 		} else if directive.starts_with('#else') && in_else.len > 0 {
-			in_else[in_else.len - 1] = !in_else[in_else.len - 1]
+			in_else[in_else.len - 1] = true
 		} else if directive.starts_with('#endif') && stack.len > 0 {
 			stack.delete_last()
 			in_else.delete_last()
