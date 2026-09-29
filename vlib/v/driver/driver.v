@@ -9018,6 +9018,8 @@ fn is_minimal_literal_output_builtin_file(path string) bool {
 		'panicing.c.v',
 		'prealloc.c.v',
 		'printing.c.v',
+		// panicing.c.v hands a panic to the unwinder of `recover()` in there.
+		'recover.c.v',
 		'vgc_notd_vgc.c.v',
 	]
 }
