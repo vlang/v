@@ -1,6 +1,7 @@
 module ssa
 
 import v.flat
+import v.token
 import v.types
 
 const arm64_force_external_syms = ['_malloc', '_free', '_calloc', '_realloc', '_exit', '_abort',
@@ -643,7 +644,7 @@ fn (mut b Builder) register_enum_values(node flat.Node, module_name string) {
 			continue
 		}
 		if field.children_count > 0 {
-			if explicit := b.enum_field_expr_value(b.a.child(field, 0)) {
+			if explicit := b.enum_field_expr_value(b.a.child(field, 0), enum_names.last()) {
 				value = explicit
 			}
 		}
@@ -1234,10 +1235,8 @@ fn (mut b Builder) register_enum_autostr_fns() {
 					if field.kind != .enum_field {
 						continue
 					}
-					if field.children_count > 0 {
-						if explicit := b.enum_field_expr_value(b.a.child(field, 0)) {
-							val = explicit
-						}
+					if registered := b.enum_values['${qualified}.${field.value}'] {
+						val = registered
 					}
 					names << field.value
 					// Flag enums store one bit per field, matching `enum_value_for_type`.
@@ -1262,12 +1261,10 @@ fn (mut b Builder) register_enum_autostr_fns() {
 }
 
 // enum_field_expr_value evaluates the constant integer value of an enum-field initializer
-// expression, mirroring cgen's enum_field_expr_value (gen/c/types.v). Without this the
-// autostr helpers above would only honour bare `.int_literal` initializers and leave a
-// field like `a = 1 << 3` / `a = -1` at the previous sequential value, so the generated
-// `<Enum>__autostr` would compare against the wrong number.
-fn (b &Builder) enum_field_expr_value(id flat.NodeId) ?int {
-	if int(id) < 0 {
+// expression. References resolve against already registered fields of the same enum,
+// preserving exact declaration names before trying an escaped keyword alternative.
+fn (b &Builder) enum_field_expr_value(id flat.NodeId, enum_name string) ?int {
+	if int(id) < 0 || int(id) >= b.a.nodes.len {
 		return none
 	}
 	node := b.a.nodes[int(id)]
@@ -1275,17 +1272,32 @@ fn (b &Builder) enum_field_expr_value(id flat.NodeId) ?int {
 		.int_literal {
 			return parse_int_literal(node.value)
 		}
-		.paren {
+		.ident, .enum_val, .selector {
+			name := if node.kind == .selector { b.qualified_expr_name(id) } else { node.value }
+			return b.enum_field_value_for_type(enum_name, name, false)
+		}
+		.paren, .cast_expr {
 			if node.children_count == 0 {
 				return none
 			}
-			return b.enum_field_expr_value(b.a.child(&node, 0))
+			return b.enum_field_expr_value(b.a.child(&node, 0), enum_name)
+		}
+		.call {
+			if node.children_count != 2 {
+				return none
+			}
+			cast_name := b.qualified_expr_name(b.a.child(&node, 0))
+			if cast_name !in ['int', 'i8', 'i16', 'i32', 'i64', 'isize', 'u8', 'u16', 'u32', 'u64',
+				'usize', 'rune'] {
+				return none
+			}
+			return b.enum_field_expr_value(b.a.child(&node, 1), enum_name)
 		}
 		.prefix {
 			if node.children_count == 0 {
 				return none
 			}
-			value := b.enum_field_expr_value(b.a.child(&node, 0))?
+			value := b.enum_field_expr_value(b.a.child(&node, 0), enum_name)?
 			return match node.op {
 				.plus { value }
 				.minus { -value }
@@ -1297,8 +1309,8 @@ fn (b &Builder) enum_field_expr_value(id flat.NodeId) ?int {
 			if node.children_count < 2 {
 				return none
 			}
-			left := b.enum_field_expr_value(b.a.child(&node, 0))?
-			right := b.enum_field_expr_value(b.a.child(&node, 1))?
+			left := b.enum_field_expr_value(b.a.child(&node, 0), enum_name)?
+			right := b.enum_field_expr_value(b.a.child(&node, 1), enum_name)?
 			return match node.op {
 				.plus {
 					left + right
@@ -1499,29 +1511,29 @@ fn (b &Builder) skip_source_fn(name string) bool {
 	}
 	if name in ['_wymix', 'wyhash', 'wyhash64', 'string__eq', 'string__lt', 'array_new', 'array_get',
 		'string__plus', 'string_plus_many', 'string.trim_right', 'array_push', 'array_push_many',
-		'array.push_many', 'array_clone', 'panic', 'fast_string_eq', 'strings.new_builder',
-		'strings.Builder.write_string', 'strings.Builder.writeln', 'strings.Builder.str',
-		'strings.Builder.write_ptr', 'strings.Builder.write_u8', 'strings.Builder.write_runes',
-		'strings.Builder.free', 'strings.Builder.last_n', 'Builder.write_string', 'Builder.writeln',
-		'Builder.str', 'Builder.write_ptr', 'Builder.write_u8', 'Builder.write_runes', 'Builder.free',
-		'Builder.last_n', 'new_map', 'map__set', 'map__get', 'map__exists', 'map__get_check',
-		'map__get_key_check', 'map__get_or_set', 'map__delete', 'map__clear', 'map__clone', 'map__move',
-		'map__free', 'map__reserve', 'map__keys', 'map__values', 'v3_map_find', 'v3_map_set_sized',
-		'u8.is_digit', 'u8.is_letter', 'u8.is_alnum', 'u8.is_capital', 'bytestr', '[]u8.bytestr',
-		'[]u8.hex', '[]rune.string', 'Array_u8__bytestr', 'Array_u8__hex', 'Array_rune__string',
-		'array.repeat_to_depth', 'string.all_before_last', 'string__all_before_last', 'all_before_last',
-		'string.all_after_last', 'string__all_after_last', 'all_after_last', '_ht_alloc', '_ht_free',
-		'f32_to_str_l', 'f32_to_str_l_with_dot', 'f64_to_str_l', 'f64_to_str_l_with_dot', 'print',
-		'println', 'eprint', 'eprintln', 'arguments', 'at_exit', 'tos2', 'tos3', 'tos_clone',
-		'v_prealloc_atomic_add_i32', 'v_prealloc_atomic_load_i32', 'v_prealloc_atomic_store_i32',
-		'v_prealloc_atomic_cas_i32', 'FD_ZERO', 'FD_SET', 'FD_ISSET', 'v_signal_with_handler_cast',
-		'normalize_path_in_builder', 'check_fwrite', 'check_fread', 'os.check_fwrite', 'os.check_fread',
-		'array_eq_raw', 'array_eq_string', 'array_eq_array', 'fxx_to_str_l_parse',
-		'fxx_to_str_l_parse_with_dot', 'u8.vstring', 'u8.vstring_with_len', 'char.vstring',
-		'char.vstring_with_len', 'byteptr.vstring', 'byteptr.vstring_with_len', 'charptr.vstring',
-		'charptr.vstring_with_len', 'u8.vstring_literal', 'u8.vstring_literal_with_len',
-		'char.vstring_literal', 'char.vstring_literal_with_len', 'byteptr.vstring_literal',
-		'byteptr.vstring_literal_with_len', 'charptr.vstring_literal',
+		'array.push_many', 'array_clone', 'panic', 'panic_debug', 'fast_string_eq',
+		'strings.new_builder', 'strings.Builder.write_string', 'strings.Builder.writeln',
+		'strings.Builder.str', 'strings.Builder.write_ptr', 'strings.Builder.write_u8',
+		'strings.Builder.write_runes', 'strings.Builder.free', 'strings.Builder.last_n',
+		'Builder.write_string', 'Builder.writeln', 'Builder.str', 'Builder.write_ptr',
+		'Builder.write_u8', 'Builder.write_runes', 'Builder.free', 'Builder.last_n', 'new_map',
+		'map__set', 'map__get', 'map__exists', 'map__get_check', 'map__get_key_check', 'map__get_or_set',
+		'map__delete', 'map__clear', 'map__clone', 'map__move', 'map__free', 'map__reserve', 'map__keys',
+		'map__values', 'v3_map_find', 'v3_map_set_sized', 'u8.is_digit', 'u8.is_letter', 'u8.is_alnum',
+		'u8.is_capital', 'bytestr', '[]u8.bytestr', '[]u8.hex', '[]rune.string', 'Array_u8__bytestr',
+		'Array_u8__hex', 'Array_rune__string', 'array.repeat_to_depth', 'string.all_before_last',
+		'string__all_before_last', 'all_before_last', 'string.all_after_last', 'string__all_after_last',
+		'all_after_last', '_ht_alloc', '_ht_free', 'f32_to_str_l', 'f32_to_str_l_with_dot',
+		'f64_to_str_l', 'f64_to_str_l_with_dot', 'print', 'println', 'eprint', 'eprintln', 'arguments',
+		'at_exit', 'tos2', 'tos3', 'tos_clone', 'v_prealloc_atomic_add_i32',
+		'v_prealloc_atomic_load_i32', 'v_prealloc_atomic_store_i32', 'v_prealloc_atomic_cas_i32',
+		'FD_ZERO', 'FD_SET', 'FD_ISSET', 'v_signal_with_handler_cast', 'normalize_path_in_builder',
+		'check_fwrite', 'check_fread', 'os.check_fwrite', 'os.check_fread', 'array_eq_raw',
+		'array_eq_string', 'array_eq_array', 'fxx_to_str_l_parse', 'fxx_to_str_l_parse_with_dot',
+		'u8.vstring', 'u8.vstring_with_len', 'char.vstring', 'char.vstring_with_len', 'byteptr.vstring',
+		'byteptr.vstring_with_len', 'charptr.vstring', 'charptr.vstring_with_len', 'u8.vstring_literal',
+		'u8.vstring_literal_with_len', 'char.vstring_literal', 'char.vstring_literal_with_len',
+		'byteptr.vstring_literal', 'byteptr.vstring_literal_with_len', 'charptr.vstring_literal',
 		'charptr.vstring_literal_with_len', 'prealloc_malloc', 'prealloc_malloc_align',
 		'prealloc_calloc', 'prealloc_realloc', 'prealloc_scope_begin', 'v_realloc'] {
 		return true
@@ -7803,9 +7815,12 @@ fn (mut b Builder) build_enum_val(id flat.NodeId, node flat.Node) ValueID {
 			return b.m.get_or_add_const(b.i64_type, value.str())
 		}
 	}
-	clean_member0 := node.value.trim_left('.')
-	if value := b.enum_values[clean_member0] {
-		return b.m.get_or_add_const(b.i64_type, value.str())
+	raw_member := node.value.trim_left('.')
+	member_keys := enum_member_lookup_keys(raw_member)
+	for key in member_keys {
+		if value := b.enum_values[key] {
+			return b.m.get_or_add_const(b.i64_type, value.str())
+		}
 	}
 	if b.tc != unsafe { nil } {
 		if typ := b.tc.expr_type(id) {
@@ -7815,35 +7830,63 @@ fn (mut b Builder) build_enum_val(id flat.NodeId, node flat.Node) ValueID {
 			}
 		}
 	}
-	if !b.enum_member_dupes[node.value] {
-		if value := b.enum_member_values[node.value] {
-			return b.m.get_or_add_const(b.i64_type, value.str())
+	for key in member_keys {
+		member_name := key.all_after_last('.')
+		if !b.enum_member_dupes[member_name] {
+			if value := b.enum_member_values[member_name] {
+				return b.m.get_or_add_const(b.i64_type, value.str())
+			}
 		}
 	}
 	return b.m.get_or_add_const(b.i64_type, '0')
 }
 
+fn enum_member_lookup_keys(member string) []string {
+	field := member.all_after_last('.')
+	plain := if field.starts_with('@') { field[1..] } else { field }
+	if token.Token.from_string_tinyv(plain).is_keyword() {
+		alternate := if field.starts_with('@') { plain } else { '@' + field }
+		return [member, member[..member.len - field.len] + alternate]
+	}
+	return [member]
+}
+
 // enum_value_for_type supports enum value for type handling for Builder.
 fn (b &Builder) enum_value_for_type(type_name string, member string) ?int {
+	return b.enum_field_value_for_type(type_name, member, true)
+}
+
+fn (b &Builder) enum_field_value_for_type(type_name string, member string, as_flag_bit bool) ?int {
 	if type_name.len == 0 || type_name in ['int', 'unknown'] {
 		return none
 	}
-	clean_member0 := member.trim_left('.')
-	if value := b.enum_values[clean_member0] {
-		enum_name := clean_member0.all_before_last('.')
-		return if b.is_flag_enum_type_name(enum_name) { 1 << value } else { value }
-	}
-	clean_member := clean_member0.all_after_last('.')
+	raw_member := member.trim_left('.')
+	member_keys := enum_member_lookup_keys(raw_member)
 	mut names := []string{}
 	names << type_name
 	short_type := type_name.all_after('.')
 	if short_type != type_name {
 		names << short_type
 	}
-	for name in names {
-		key := name + '.' + clean_member
-		if value := b.enum_values[key] {
-			return if b.is_flag_enum_type_name(name) { 1 << value } else { value }
+	for candidate in member_keys {
+		if value := b.enum_values[candidate] {
+			enum_name := candidate.all_before_last('.')
+			return if as_flag_bit && b.is_flag_enum_type_name(enum_name) {
+				1 << value
+			} else {
+				value
+			}
+		}
+		clean_member := candidate.all_after_last('.')
+		for name in names {
+			key := name + '.' + clean_member
+			if value := b.enum_values[key] {
+				return if as_flag_bit && b.is_flag_enum_type_name(name) {
+					1 << value
+				} else {
+					value
+				}
+			}
 		}
 	}
 	return none

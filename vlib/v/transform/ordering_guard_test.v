@@ -148,3 +148,17 @@ fn test_callee_base_runtime_value_classification() {
 	t.set_node_typ(int(typed_base), 'strings.Builder')
 	assert !t.callee_base_is_not_a_runtime_value(typed_base)
 }
+
+// An omitted range bound is represented by an empty node. It has no side effects and must not
+// become an `unknown __order_snapshot` temp when the other bound hoists a value branch.
+fn test_empty_operand_does_not_need_an_ordering_snapshot() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	mut t := new_transformer(mut a, &tc, map[string]bool{})
+
+	empty := t.make_empty()
+	assert t.is_pure_constant_expr(empty)
+	assert !t.operand_needs_ordering_snapshot(empty)
+	assert t.snapshot_expr_for_reuse(empty) == empty
+	assert ordering_snapshot_decl_count(&t) == 0
+}

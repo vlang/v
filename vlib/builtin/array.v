@@ -1071,10 +1071,21 @@ pub fn (a &array) clone() array {
 pub fn (a &array) clone_to_depth(depth int) array {
 	source_capacity_in_bytes := u64(a.cap) * u64(a.element_size)
 	use_noscan_data := depth == 0 && a.uses_noscan_data()
+	// Unless nested arrays/strings are cloned element by element below, the
+	// whole capacity is copied from `a`, so zeroing the new buffer first is wasted.
+	clones_elements := depth > 0 && a.len >= 0 && a.cap >= a.len
+		&& (a.element_size == sizeof(array) || a.element_size == sizeof(string))
+	copies_capacity := !clones_elements && a.data != 0 && source_capacity_in_bytes > 0
 	mut data := unsafe { nil }
 	if a.cap > 0 {
 		if use_noscan_data {
-			data = a.alloc_array_data_like(source_capacity_in_bytes)
+			if copies_capacity {
+				data = a.alloc_array_data_like_uninit(source_capacity_in_bytes)
+			} else {
+				data = a.alloc_array_data_like(source_capacity_in_bytes)
+			}
+		} else if copies_capacity {
+			data = alloc_array_data_uninit(source_capacity_in_bytes)
 		} else {
 			data = alloc_array_data(source_capacity_in_bytes)
 		}
@@ -1124,6 +1135,16 @@ fn (mut a array) set(i int, val voidptr) {
 		}
 	}
 	unsafe { vmemcpy(&u8(a.data) + u64(a.element_size) * u64(i), val, a.element_size) }
+}
+
+// array_sort_move copies `count` elements of `element_size` bytes from index `si`
+// of `src` to index `di` of `dst`. The compiler's lowered stable sort calls it
+// with indexes it has already bounded, so it skips the per-element range checks
+// of `array.set`.
+@[inline; markused; unsafe]
+fn array_sort_move(dst voidptr, di int, src voidptr, si int, count int, element_size usize) {
+	vmemcpy(&u8(dst) + usize(di) * element_size, &u8(src) + usize(si) * element_size,
+		isize(usize(count) * element_size))
 }
 
 @[markused]
@@ -1499,15 +1520,22 @@ pub fn (b []u8) hex() string {
 	return unsafe { data_to_hex_string(b.data, b.len) }
 }
 
-// copy copies the `src` byte array elements to the `dst` byte array.
-// The number of the elements copied is the minimum of the length of both arrays.
-// Returns the number of elements copied.
-// NOTE: This is not an `array` method. It is a function that takes two arrays of bytes.
+// copy copies elements from `src` to `dst`, like Go's `copy`, and returns the number
+// of elements copied, which is the minimum of the lengths of both arguments.
+// `dst` can be a dynamic array, a fixed size array, or a slice of either. The elements
+// are written in place, so `copy(mut fixed[2..], src)` updates `fixed` itself.
+// `src` can be a dynamic array, a fixed size array, a slice of either, or a string
+// when `dst` holds bytes. Both must have the same element type. They may overlap.
+// With `-d ownership`, elements that need destruction are cloned into `dst`, and the
+// elements they replace are dropped.
+// Example: mut a := [3]int{}; n := copy(mut a, [1, 2, 3, 4]); assert n == 3; assert a == [1, 2, 3]!
+// NOTE: This is not an `array` method. The compiler accepts any of the argument types
+// above; the `[]u8` parameters here only describe the byte case.
 // See also: `arrays.copy`.
 pub fn copy(mut dst []u8, src []u8) int {
 	min := if dst.len < src.len { dst.len } else { src.len }
 	if min > 0 {
-		unsafe { vmemmove(dst.data, src.data, min) }
+		unsafe { vmemmove(dst.data, src.data, isize(min) * isize(dst.element_size)) }
 	}
 	return min
 }

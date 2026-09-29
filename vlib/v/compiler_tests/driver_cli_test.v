@@ -106,8 +106,7 @@ fn main() {
 ')!
 	// A hidden notice must not consume the one diagnostic slot and
 	// prevent the actual error from being printed.
-	failed := cmdexec.run(v3_bin, ['-n', '-nocolor', '-check', '-message-limit', '1',
-		error_source])
+	failed := cmdexec.run(v3_bin, ['-n', '-nocolor', '-check', '-message-limit', '1', error_source])
 	assert failed.exit_code != 0, failed.output
 	assert failed.output.contains('error:'), failed.output
 	assert failed.output.contains('missing_value'), failed.output

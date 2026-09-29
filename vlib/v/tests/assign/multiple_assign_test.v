@@ -49,7 +49,11 @@ fn test_multiple_assign_postfix_expr() {
 	mut a := 11
 	mut b := 22
 	mut c := 33
-	a, b, c = b++, c++, a--
+	old_a, old_b, old_c := a, b, c
+	a--
+	b++
+	c++
+	a, b, c = old_b, old_c, old_a
 	assert a == 22
 	assert b == 33
 	assert c == 11
@@ -59,7 +63,9 @@ fn test_multiple_assign_complex_expr() {
 	mut a := 11
 	mut b := 22
 	mut c := 33
-	a, b, c = -b + 1, -c * 2, a++
+	old_a := a
+	a++
+	a, b, c = -b + 1, -c * 2, old_a
 	assert a == -21
 	assert b == -66
 	assert c == 11

@@ -235,7 +235,7 @@ fn (mut ch Channel) try_push_priv(src voidptr, no_block bool) ChanState {
 	for {
 		mut got_sem := false
 		mut wradr := C.atomic_load_ptr(unsafe { &voidptr(&ch.write_adr) })
-		for wradr != C.NULL {
+		for wradr != unsafe { nil } {
 			if C.atomic_compare_exchange_strong_ptr(voidptr(&ch.write_adr), voidptr(&wradr),
 				isize(0))
 			{
@@ -278,7 +278,7 @@ fn (mut ch Channel) try_push_priv(src voidptr, no_block bool) ChanState {
 			mut read_in_progress := false
 			C.atomic_store_ptr(unsafe { &voidptr(&ch.read_adr) }, src)
 			wradr = C.atomic_load_ptr(unsafe { &voidptr(&ch.write_adr) })
-			if wradr != C.NULL {
+			if wradr != unsafe { nil } {
 				mut src2 := src
 				if C.atomic_compare_exchange_strong_ptr(voidptr(&ch.read_adr), voidptr(&src2),
 					isize(0))
@@ -454,7 +454,7 @@ fn (mut ch Channel) try_pop_priv(dest voidptr, no_block bool) ChanState {
 		if ch.cap == 0 {
 			// unbuffered channel - first see if a `push()` has adversized
 			mut rdadr := C.atomic_load_ptr(unsafe { &voidptr(&ch.read_adr) })
-			for rdadr != C.NULL {
+			for rdadr != unsafe { nil } {
 				if C.atomic_compare_exchange_strong_ptr(voidptr(&ch.read_adr), voidptr(&rdadr),
 					isize(0))
 				{
@@ -550,7 +550,7 @@ fn (mut ch Channel) try_pop_priv(dest voidptr, no_block bool) ChanState {
 		C.atomic_store_ptr(unsafe { &voidptr(&ch.write_adr) }, dest)
 		if ch.cap == 0 {
 			mut rdadr := C.atomic_load_ptr(unsafe { &voidptr(&ch.read_adr) })
-			if rdadr != C.NULL {
+			if rdadr != unsafe { nil } {
 				mut dest2 := dest
 				if C.atomic_compare_exchange_strong_ptr(voidptr(&ch.write_adr), voidptr(&dest2),
 					isize(0))

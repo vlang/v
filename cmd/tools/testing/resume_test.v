@@ -44,6 +44,36 @@ fn test_resume_records_only_matching_files_and_options() ! {
 	assert disabled.path == ''
 }
 
+fn test_resume_records_vet_and_fmt_source_checks() ! {
+	root := os.join_path(os.temp_dir(), 'vtest-resume-source-${rand.ulid()}')
+	os.mkdir_all(root)!
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	file := os.join_path(root, 'source.v')
+	os.write_file(file, 'fn main() {}\n')!
+	mut ts := TestSession{
+		vexe:       os.executable()
+		resume_dir: os.join_path(root, 'progress')
+		vargs:      'vet'
+	}
+	vet := ts.test_resume(file)!
+	assert vet.path != ''
+	assert !vet.passed
+	vet.save()!
+	assert ts.test_resume(file)!.passed
+
+	ts.vargs = 'fmt -inprocess -verify'
+	fmt := ts.test_resume(file)!
+	assert fmt.path != vet.path
+	assert !fmt.passed
+	fmt.save()!
+	assert ts.test_resume(file)!.passed
+
+	os.write_file(file, 'fn changed() {}\n')!
+	assert !ts.test_resume(file)!.passed
+}
+
 fn test_resume_invalid_records_and_write_errors() ! {
 	root := os.join_path(os.temp_dir(), 'vtest-resume-${rand.ulid()}')
 	os.mkdir_all(root)!

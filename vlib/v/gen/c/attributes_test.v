@@ -61,3 +61,25 @@ fn test_inline_hint_preserves_external_linkage_and_specialization_attributes() {
 	g.decl_attrs[int(source)] = ['inline', 'noinline']
 	assert g.fn_decl_inlining_prefix(source) == '__declspec(noinline) '
 }
+
+fn test_naked_attribute_is_emitted_for_every_c_compiler_but_msvc() {
+	mut g := cgen_attribute_test_gen()
+	g.ccompiler = 'gcc'
+	pos := token.new_span(1, 20, 40)
+	naked := g.a.add_node(flat.Node{ kind: .fn_decl, value: 'naked_body', pos: pos })
+	ordinary := g.a.add_node(flat.Node{ kind: .fn_decl, value: 'ordinary_body', pos: pos })
+	g.decl_attrs[int(naked)] = ['_naked']
+
+	assert g.fn_decl_naked_prefix(naked) == '__attribute__((naked)) '
+	assert g.fn_decl_naked_prefix(ordinary) == ''
+	// The attribute belongs before the declarator, so it must not also join the
+	// `_constructor`/`_destructor` group that is written after the parameter list.
+	assert g.fn_decl_c_attribute(naked) == ''
+
+	g.ccompiler = 'clang'
+	assert g.fn_decl_naked_prefix(naked) == '__attribute__((naked)) '
+	// MSVC spells this `__declspec(naked)` and supports it on x86 only, and it has
+	// no inline assembly for a naked body to hold in the first place.
+	g.ccompiler = 'msvc'
+	assert g.fn_decl_naked_prefix(naked) == ''
+}

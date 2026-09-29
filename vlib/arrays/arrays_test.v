@@ -448,7 +448,7 @@ fn test_array_append_empty_struct() {
 
 	// test fixed array
 	array := [XYZ{}]!
-	assert (XYZ{} in names) == true
+	assert (XYZ{} in array) == true
 }
 
 fn test_index_of_first() {

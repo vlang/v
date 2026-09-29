@@ -203,9 +203,55 @@ fn test_system_libc_thread_preamble_uses_native_windows_api() {
 	assert windows_code.contains('WaitForSingleObject('), windows_code
 	assert windows_code.contains('CloseHandle('), windows_code
 	assert windows_code.contains('return a.handle == b.handle;'), windows_code
+	assert windows_code.contains('static __v_thread __v_thread_spawn_detached(__v_thread_start_fn start, void* arg, void (*cleanup)(void*)) {'), windows_code
+	// The detached thread frees its own context and result; its handle is closed at once.
+	assert windows_code.contains('__v_thread_free(raw_context); void* result = context.start(context.arg); if (result) __v_thread_free(result); return 0; }'), windows_code
+	assert windows_code.contains('HANDLE handle = CreateThread(NULL, __v_thread_stack_size, __v_windows_detached_thread_start, context, 0, NULL);'), windows_code
+	assert windows_code.contains('if (!CloseHandle(handle))'), windows_code
 	assert !windows_code.contains('pthread_'), windows_code
 	posix_code := c_code[posix_start..]
 	assert posix_code.contains('pthread_equal(a.handle, b.handle) != 0'), posix_code
+	assert posix_code.contains('pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED)'), posix_code
+	assert posix_code.contains('__v_thread_free(raw_context); void* result = context.start(context.arg); if (result) __v_thread_free(result); return NULL; }'), posix_code
+}
+
+fn test_headerless_thread_runtime_can_spawn_detached_threads() {
+	mut g := FlatGen.new()
+	g.headerless_libc_preamble()
+	c_code := g.sb.str()
+	assert c_code.contains('int pthread_detach(void* thread);'), c_code
+	assert c_code.contains('HANDLE handle = CreateThread(NULL, __v_thread_stack_size, __v_windows_detached_thread_start, context, 0, NULL);'), c_code
+	assert c_code.contains('pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED)'), c_code
+}
+
+fn test_cross_c_system_libc_preamble_keeps_posix_environ() {
+	mut g := windows_preamble_test_gen()
+	g.set_output_cross_c(true)
+	g.system_libc_preamble()
+	c_code := g.sb.str()
+	assert c_code.contains('#ifndef _WIN32\nextern char** environ;\n#endif')
+}
+
+fn test_strict_iso_c_flags_request_linux_posix_feature_macros() {
+	for flags in [['-std=c99'], ['-std=c11'], ['--std=c17'], ['-std', 'c99'], ['-ansi']] {
+		mut g := FlatGen.new()
+		g.c_flags = flags
+		g.c99_feature_test_macros()
+		c_code := g.sb.str()
+		assert c_code.contains('#if defined(__linux__) && !defined(_GNU_SOURCE)\n#define _GNU_SOURCE\n#endif'), '${flags}: ${c_code}'
+		assert c_code.contains('#define _POSIX_C_SOURCE 200809L'), '${flags}: ${c_code}'
+	}
+}
+
+fn test_gnu_c_flags_keep_default_feature_macros() {
+	for flags in [[]string{}, ['-std=gnu11'], ['-std=c99', '-std=gnu99'], ['-O2']] {
+		mut g := FlatGen.new()
+		g.c_flags = flags
+		g.c99_feature_test_macros()
+		c_code := g.sb.str()
+		assert !c_code.contains('_GNU_SOURCE'), '${flags}: ${c_code}'
+		assert !c_code.contains('_POSIX_C_SOURCE'), '${flags}: ${c_code}'
+	}
 }
 
 fn test_headerless_pthread_fallback_respects_darwin_type_guards() {
@@ -315,7 +361,10 @@ fn test_target_libc_preamble_emits_pthread_runtime_when_threads_are_used() {
 	assert c_code.contains('#include <pthread.h>')
 	assert c_code.contains('static __v_thread __v_thread_spawn(')
 	assert c_code.contains('static void* __v_thread_join(')
+	assert c_code.contains('pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED)')
 	assert c_code.contains('pthread_equal(a.handle, b.handle) != 0')
+	assert c_code.contains('void* p = GC_MALLOC_UNCOLLECTABLE(size);')
+	assert c_code.contains('GC_FREE(ptr);')
 }
 
 fn test_vinix_target_libc_thread_runtime_uses_freestanding_pthread_abi() {
@@ -326,6 +375,8 @@ fn test_vinix_target_libc_thread_runtime_uses_freestanding_pthread_abi() {
 	g.preamble()
 	c_code := g.sb.str()
 	assert c_code.contains('pthread_create(&result.handle, NULL, (void*)start, arg)')
+	assert c_code.contains('pthread_create(&handle, NULL, (void*)__v_detached_thread_start, context)')
+	assert c_code.contains('if (pthread_detach(handle) != 0) exit(1);')
 	assert !c_code.contains('pthread_attr_init(&attr)')
 	assert !c_code.contains('fprintf(stderr, "V thread')
 	assert !c_code.contains('abort();')
@@ -423,7 +474,7 @@ fn test_builtin_abi_decls_reuse_tcc_x64_stdatomic_fence_declaration() {
 	mut g := FlatGen.new()
 	g.atomic_thread_fence_compat_decls()
 	c_code := g.sb.str()
-	assert c_code.contains('#if defined(_WIN32) && defined(__TINYC__)\n/* V atomic.h supplies atomic_thread_fence on Windows TCC. */')
+	assert c_code.contains('#if defined(_WIN32) && (defined(__TINYC__) || (defined(_MSC_VER) && !defined(__clang__)))\n/* V atomic.h supplies atomic_thread_fence on Windows TCC and MSVC. */')
 	assert c_code.contains('#define atomic_thread_fence(order) __atomic_thread_fence(order)')
 	assert !c_code.contains('extern void __atomic_thread_fence(int order);')
 }
@@ -453,7 +504,7 @@ fn test_system_libc_headers_make_stdatomic_compatible_with_gnu_objective_c() {
 	g.system_libc_headers()
 	c_code := g.sb.str()
 	assert c_code.contains('#if defined(__has_include)\n#if __has_include(<wchar.h>)\n#include <wchar.h>\n#endif\n#else\n#include <wchar.h>\n#endif')
-	assert c_code.contains('#if defined(_WIN32) && defined(__TINYC__)')
+	assert c_code.contains('#if defined(_WIN32) && (defined(__TINYC__) || (defined(_MSC_VER) && !defined(__clang__)))')
 	assert c_code.contains('thirdparty/stdatomic/win/atomic.h"\n#else')
 	compat_guard := '#if defined(__OBJC__) && defined(__GNUC__) && !defined(__clang__)'
 	assert c_code.contains('${compat_guard}\n#define _Atomic volatile\n#endif\n#include <stdatomic.h>')

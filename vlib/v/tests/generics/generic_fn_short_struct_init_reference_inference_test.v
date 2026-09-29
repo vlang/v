@@ -1,5 +1,5 @@
 // vtest vflags: -w
-import json
+import json2
 
 @[heap]
 struct Logger {}
@@ -9,7 +9,7 @@ struct SaveParams[T] {
 }
 
 fn (mut l Logger) save[T](p SaveParams[T]) string {
-	return json.encode(p.object)
+	return json2.encode(p.object, escape_unicode: true)
 }
 
 struct Object {
