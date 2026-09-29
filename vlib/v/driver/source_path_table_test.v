@@ -2,6 +2,7 @@ module driver
 
 import os
 import v.flat
+import v.modulecache
 import v.parser
 import v.pref
 import v.token
@@ -289,4 +290,174 @@ fn test_initial_module_canonicalization_records_through_the_source_path_table() 
 	})
 	assert module_decl_values(fresh) == ['sample']
 	assert_records_both_scans(fresh, path)
+}
+
+fn test_cgen_cache_input_resolves_through_the_source_path_table() {
+	mut a := flat.FlatAst.new()
+	// Answers only the table can give, so a direct os.real_path would show,
+	// and each file resolves to a DISTINCT answer so a bug that resolves
+	// every file in a module's list through that list's first element alone
+	// cannot pass by coincidence.
+	a.resolved_source_paths['written_user.v'] = 'recorded_user.v'
+	a.resolved_source_paths['written_module_a.v'] = 'recorded_module_a.v'
+	a.resolved_source_paths['written_module_b.v'] = 'recorded_module_b.v'
+	a.resolve_source_paths()
+	state := &V3ModuleCacheState{
+		module_sources: {
+			'sample': ['written_module_a.v', 'written_module_b.v']
+		}
+	}
+	input := v3_cgen_cache_input(state, &a, ['written_user.v'], []string{})
+	assert input.source_files == ['recorded_user.v']
+	assert input.dependency_inputs['module:sample'] == modulecache.header_signature(['recorded_module_a.v',
+		'recorded_module_b.v'].join('\n'))
+}
+
+fn test_cache_vlib_source_and_header_paths_resolves_through_the_source_path_table() {
+	mut a := flat.FlatAst.new()
+	// Each file resolves to a DISTINCT answer only the table can give, so a
+	// bug that resolves every file in a module's list through that list's
+	// first element alone cannot pass by coincidence.
+	a.resolved_source_paths['/vlib/strconv/written_a.v'] = 'recorded_vlib_a.v'
+	a.resolved_source_paths['/vlib/strconv/written_b.v'] = 'recorded_vlib_b.v'
+	a.resolve_source_paths()
+	state := &V3ModuleCacheState{
+		module_sources: {
+			'strconv': ['/vlib/strconv/written_a.v', '/vlib/strconv/written_b.v']
+		}
+	}
+	paths := cache_vlib_source_and_header_paths(state, &a)
+	assert paths['/vlib/strconv/written_a.v']
+	assert paths['/vlib/strconv/written_b.v']
+	assert paths['recorded_vlib_a.v']
+	assert paths['recorded_vlib_b.v']
+}
+
+fn test_prune_cache_only_function_prototypes_resolves_through_the_source_path_table() {
+	mut a := flat.FlatAst.new()
+	// An answer only the table can give, so a direct os.real_path would show.
+	a.resolved_source_paths['/vlib/owner_mod/x.v'] = 'recorded_owner.v'
+	a.resolved_source_paths['written_fn_file.v'] = 'recorded_owner.v'
+	a.resolve_source_paths()
+	state := &V3ModuleCacheState{
+		module_sources: {
+			'owner_mod': ['/vlib/owner_mod/x.v']
+		}
+	}
+	mut tc := types.TypeChecker.new(&a)
+	tc.fn_type_files['owner_mod.helper'] = 'written_fn_file.v'
+	cache_used_fns := {
+		'owner_mod.helper': true
+	}
+	source := 'int owner_mod__helper(void);\n'
+	pruned := prune_cache_only_function_prototypes(source, &cache_used_fns, '', &tc, state)
+	// The function's raw source file resolves, through the table, to the
+	// same path the vlib scan already recorded -- so it is recognized as
+	// vlib and its prototype is left alone rather than pruned as cache-only.
+	assert pruned == source
+}
+
+fn test_crun_build_identity_resolves_through_the_source_path_table() {
+	root := source_path_table_root('crun_identity')
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	vsh_path := os.join_path(root, 'script.vsh')
+	user_path := os.join_path(root, 'other.v')
+	second_user_path := os.join_path(root, 'second.v')
+	alias_target := os.join_path(root, 'alias_target.v')
+	second_target := os.join_path(root, 'second_target.v')
+	os.write_file(vsh_path, 'println(1)\n')!
+	os.write_file(user_path, 'println(2)\n')!
+	os.write_file(second_user_path, 'println(3)\n')!
+	os.write_file(alias_target, 'println(4)\n')!
+	os.write_file(second_target, 'println(5)\n')!
+	prefs := pref.new_preferences()
+	state := &V3ModuleCacheState{
+		manager: modulecache.Manager{
+			dir: root
+		}
+	}
+	mut plain := flat.FlatAst.new()
+	distinct_identity := v3_crun_build_identity(state, &plain, prefs, [user_path, second_user_path],
+		[]string{}, []string{}, false, false, vsh_path)
+
+	mut aliased := flat.FlatAst.new()
+	// An answer only the table can give: it maps the user file onto the same
+	// resolved path as the running script, so it must be excluded from the
+	// content-addressed identity exactly like a real alias of the script
+	// would be. Both resolve to other REAL files (cached_source_signature
+	// needs readable files to produce a non-empty signature at all).
+	// second_user_path resolves to its OWN distinct real file, so a bug that
+	// resolves every user file through user_files[0] alone (rather than the
+	// per-element loop variable) cannot pass by coincidence.
+	aliased.resolved_source_paths[user_path] = alias_target
+	aliased.resolved_source_paths[vsh_path] = alias_target
+	aliased.resolved_source_paths[second_user_path] = second_target
+	aliased.resolve_source_paths()
+	excluding_identity := v3_crun_build_identity(state, &aliased, prefs, [user_path, second_user_path],
+		[]string{}, []string{}, false, false, vsh_path)
+	only_second_identity := v3_crun_build_identity(state, &aliased, prefs, [second_user_path],
+		[]string{}, []string{}, false, false, vsh_path)
+	// A signature computed over zero or unreadable files returns '', which
+	// would make both comparisons below hold vacuously; guard against that.
+	assert distinct_identity.len > 0
+	assert excluding_identity.len > 0
+	assert distinct_identity != excluding_identity
+	assert excluding_identity == only_second_identity
+}
+
+fn test_crun_build_identity_resolves_module_sources_through_the_source_path_table() {
+	root := source_path_table_root('crun_identity_modules')
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	vsh_path := os.join_path(root, 'script.vsh')
+	module_a := os.join_path(root, 'module_a.v')
+	module_b := os.join_path(root, 'module_b.v')
+	shared_target := os.join_path(root, 'shared_target.v')
+	os.write_file(vsh_path, 'println(1)\n')!
+	os.write_file(module_a, 'println(2)\n')!
+	os.write_file(module_b, 'println(3)\n')!
+	os.write_file(shared_target, 'println(4)\n')!
+	prefs := pref.new_preferences()
+
+	mut two_files := flat.FlatAst.new()
+	// An answer only the table can give: it collapses two DIFFERENT real
+	// files onto the SAME resolved path, so the identity must treat them as
+	// one source, not two -- a direct os.real_path call could never produce
+	// this collapse, since module_a and module_b are genuinely distinct
+	// files on disk.
+	two_files.resolved_source_paths[module_a] = shared_target
+	two_files.resolved_source_paths[module_b] = shared_target
+	two_files.resolve_source_paths()
+	two_files_state := &V3ModuleCacheState{
+		manager:        modulecache.Manager{
+			dir: root
+		}
+		module_sources: {
+			'a': [module_a, module_b]
+		}
+	}
+	two_files_identity := v3_crun_build_identity(two_files_state, &two_files, prefs, []string{},
+		[]string{}, []string{}, false, false, vsh_path)
+
+	mut one_file := flat.FlatAst.new()
+	one_file.resolved_source_paths[module_a] = shared_target
+	one_file.resolve_source_paths()
+	one_file_state := &V3ModuleCacheState{
+		manager:        modulecache.Manager{
+			dir: root
+		}
+		module_sources: {
+			'a': [module_a]
+		}
+	}
+	one_file_identity := v3_crun_build_identity(one_file_state, &one_file, prefs, []string{},
+		[]string{}, []string{}, false, false, vsh_path)
+	// A signature computed over zero or unreadable files returns '', which
+	// would make the comparison below hold vacuously; guard against that.
+	assert two_files_identity.len > 0
+	assert one_file_identity.len > 0
+	assert two_files_identity == one_file_identity
 }

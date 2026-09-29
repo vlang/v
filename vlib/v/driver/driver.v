@@ -3682,11 +3682,11 @@ fn write_v3_crun_cache_marker(bin_file string, build_identity string) ! {
 	}
 }
 
-fn v3_crun_build_identity(state &V3ModuleCacheState, prefs &pref.Preferences, user_files []string, user_c_flags []string, link_ld_flags []string, is_strict bool, enable_globals bool, direct_vsh string) string {
-	direct_vsh_path := os.real_path(direct_vsh)
+fn v3_crun_build_identity(state &V3ModuleCacheState, a &flat.FlatAst, prefs &pref.Preferences, user_files []string, user_c_flags []string, link_ld_flags []string, is_strict bool, enable_globals bool, direct_vsh string) string {
+	direct_vsh_path := a.real_source_path(direct_vsh)
 	mut source_paths := map[string]bool{}
 	for file in user_files {
-		real_file := os.real_path(file)
+		real_file := a.real_source_path(file)
 		// Direct `.vsh` execution follows V's executable-cache contract: the
 		// script timestamp decides whether its cached binary is stale. Imported
 		// modules remain content-addressed through the identity below.
@@ -3696,7 +3696,7 @@ fn v3_crun_build_identity(state &V3ModuleCacheState, prefs &pref.Preferences, us
 	}
 	for files in state.module_sources.values() {
 		for file in files {
-			source_paths[os.real_path(file)] = true
+			source_paths[a.real_source_path(file)] = true
 		}
 	}
 	mut sources := source_paths.keys()
@@ -3927,11 +3927,11 @@ fn clone_type_errors(values []types.TypeError) []types.TypeError {
 	return cloned
 }
 
-fn v3_cgen_cache_input(state &V3ModuleCacheState, user_files []string, user_c_flags []string) V3CgenCacheInput {
+fn v3_cgen_cache_input(state &V3ModuleCacheState, a &flat.FlatAst, user_files []string, user_c_flags []string) V3CgenCacheInput {
 	mut source_set := map[string]bool{}
 	mut user_source_dirs := map[string]bool{}
 	for file in user_files {
-		real_file := os.real_path(file)
+		real_file := a.real_source_path(file)
 		source_set[real_file] = true
 		user_source_dirs[os.dir(real_file)] = true
 	}
@@ -3941,7 +3941,7 @@ fn v3_cgen_cache_input(state &V3ModuleCacheState, user_files []string, user_c_fl
 	for module_name in module_names {
 		source_files := state.module_sources[module_name]
 		entry := state.manager.entry(module_name, source_files)
-		mut source_paths := source_files.map(os.real_path(it))
+		mut source_paths := source_files.map(a.real_source_path(it))
 		source_paths.sort()
 		dependencies['module:${module_name}'] =
 			modulecache.header_signature(source_paths.join('\n'))
@@ -6009,8 +6009,8 @@ fn v3_external_cache_path(key string, prefix string) ?V3ExternalCachePath {
 	}
 }
 
-fn restore_v3_cache_external_inputs(mut state V3ModuleCacheState, user_files []string, user_c_flags []string, ccompiler string, target pref.Target, incremental_declaration_signature string) bool {
-	base_input := v3_cgen_cache_input(state, user_files, user_c_flags)
+fn restore_v3_cache_external_inputs(mut state V3ModuleCacheState, a &flat.FlatAst, user_files []string, user_c_flags []string, ccompiler string, target pref.Target, incremental_declaration_signature string) bool {
+	base_input := v3_cgen_cache_input(state, a, user_files, user_c_flags)
 	prefixes := ['external:', 'external-sha256:', 'external-meta:', 'external-root:',
 		'external-root-owner:', 'external-context:', 'external-owner:', 'external-dir:',
 		'external-missing:', 'external-state:']
@@ -11553,7 +11553,7 @@ pub fn run(args []string) {
 			mut crun_c_flags := user_c_flags.clone()
 			crun_c_flags << cgen.cache_directive_flags(a, prefs.vroot, prefs.target, prefs.compile_values)
 			_ = prepare_v3_cache_external_inputs_scoped(mut cache_state, a, prefs, user_files, crun_c_flags, c_compiler, scope_prealloc_stages)
-			crun_build_identity = v3_crun_build_identity(&cache_state, prefs, user_files, crun_c_flags, link_ld_flags, is_strict, enable_globals_compat, input_file)
+			crun_build_identity = v3_crun_build_identity(&cache_state, a, prefs, user_files, crun_c_flags, link_ld_flags, is_strict, enable_globals_compat, input_file)
 			if crun_build_identity.len > 0 {
 				os.setenv(v3_crun_build_identity_env, crun_build_identity, true)
 			}
@@ -11609,14 +11609,14 @@ pub fn run(args []string) {
 	mut incremental_tcc_declarations_path := ''
 	if backend == 'c' && program_cache_enabled && !cache_state.force_source
 		&& cache_state.parsed_from_source.len == 0 {
-		mut external_inputs_ready := restore_v3_cache_external_inputs(mut cache_state, user_files, cache_c_flags, c_compiler, prefs.target, '')
+		mut external_inputs_ready := restore_v3_cache_external_inputs(mut cache_state, a, user_files, cache_c_flags, c_compiler, prefs.target, '')
 		if !external_inputs_ready && incremental_cache_enabled {
 			incremental_snapshot = incremental_program_snapshot(a, user_files)
 			incremental_snapshot_ready = true
 			if os.getenv('V3_CACHE_TRACE') != '' {
 				eprintln('  V3 incremental snapshot: declarations=${incremental_snapshot.declaration_signature} functions=${incremental_snapshot.functions.len}')
 			}
-			external_inputs_ready = restore_v3_cache_external_inputs(mut cache_state, user_files, cache_c_flags, c_compiler, prefs.target, incremental_snapshot.declaration_signature)
+			external_inputs_ready = restore_v3_cache_external_inputs(mut cache_state, a, user_files, cache_c_flags, c_compiler, prefs.target, incremental_snapshot.declaration_signature)
 		}
 		if !external_inputs_ready
 			&& !prepare_v3_cache_external_inputs_scoped(mut cache_state, a, prefs, user_files, cache_c_flags, c_compiler, scope_prealloc_stages) {
@@ -11627,7 +11627,7 @@ pub fn run(args []string) {
 			trace_v3_cache_fallback('native C sources declare types needed across cache units')
 			restart_v3_without_cache()
 		}
-		input := v3_cgen_cache_input(cache_state, user_files, cache_c_flags)
+		input := v3_cgen_cache_input(cache_state, a, user_files, cache_c_flags)
 		cgen_cache_commit_exists = cache_state.manager.has_cgen_commit(input.source_files)
 		if entry := cache_state.manager.valid_cgen(input.source_files, input.generation_signature, input.dependency_inputs) {
 			metadata := os.read_file(entry.metadata) or { '' }
@@ -13659,7 +13659,7 @@ pub fn run(args []string) {
 					prefix_source_identity = v3_program_prefix_source_identity(prepared_cache.program_prefix_source, prepared_cache.objects)
 				}
 				if !cgen_cache_hit && program_cache_enabled {
-					published_cgen_cache_input := v3_cgen_cache_input(cache_state, user_files, cache_c_flags)
+					published_cgen_cache_input := v3_cgen_cache_input(cache_state, a, user_files, cache_c_flags)
 					prepared_plan_entry = cache_state.manager.write_cgen(published_cgen_cache_input.source_files, published_cgen_cache_input.generation_signature, published_cgen_cache_input.dependency_inputs, generated_source, encode_v3_cgen_metadata(generated_c_flags, interface_impl_signature, prefix_source_identity, windows_gui_entry_point, cached_checker_diagnostics)) or { modulecache.CgenEntry{} }
 				}
 				if incremental_cache_restored && prepared_plan_entry.source.len > 0 {
@@ -13686,12 +13686,12 @@ pub fn run(args []string) {
 				}
 				if !generic_cache_hit && generic_cache_signature.len > 0
 					&& generated_monomorph_specs.len > 0 {
-					published_generic_input := v3_cgen_cache_input(cache_state, user_files, cache_c_flags)
+					published_generic_input := v3_cgen_cache_input(cache_state, a, user_files, cache_c_flags)
 					cache_state.manager.write_generic_program(published_generic_input.source_files, generic_cache_signature, published_generic_input.generation_signature, published_generic_input.dependency_inputs, encode_monomorph_cache_specs(generated_monomorph_specs), encode_cached_used_fns(program_used_fns), prepared_cache.program_prefix_source, modulecache.prune_unreferenced_static_string_definitions(prepared_cache.program_declarations), prepared_cache.program_body_cache, encode_cached_runtime_strings(generic_cache_runtime_strings), encode_v3_cgen_metadata(generated_c_flags, interface_impl_signature, prefix_source_identity, windows_gui_entry_point, cached_checker_diagnostics)) or {}
 				}
 				if (!generic_cache_hit || incremental_cache_hit)
 					&& incremental_snapshot.declaration_signature.len > 0 {
-					published_incremental_input := v3_cgen_cache_input(cache_state, user_files, cache_c_flags)
+					published_incremental_input := v3_cgen_cache_input(cache_state, a, user_files, cache_c_flags)
 					incremental_body := if incremental_cache_hit {
 						refreshed_incremental_body
 					} else {
@@ -15241,7 +15241,7 @@ fn prune_cache_only_function_prototypes(source string, cache_used_fns &map[strin
 	if source.len == 0 || cache_used_fns.len == 0 {
 		return source
 	}
-	vlib_paths := cache_vlib_source_and_header_paths(state)
+	vlib_paths := cache_vlib_source_and_header_paths(state, tc.a)
 	mut interface_dispatch_methods := map[string]bool{}
 	for key in tc.interface_concrete_method_keys() {
 		interface_dispatch_methods[restored_fn_c_name(key)] = true
@@ -15253,7 +15253,7 @@ fn prune_cache_only_function_prototypes(source string, cache_used_fns &map[strin
 		}
 		source_file := tc.fn_type_files[name] or { '' }
 		if cache_path_is_vlib(source_file) || vlib_paths[source_file]
-			|| vlib_paths[os.real_path(source_file)] {
+			|| vlib_paths[tc.a.real_source_path(source_file)] {
 			continue
 		}
 		c_name := restored_fn_c_name(name)
@@ -15320,7 +15320,7 @@ fn cache_function_reference_counts(source string, candidates map[string]bool) ma
 	return counts
 }
 
-fn cache_vlib_source_and_header_paths(state &V3ModuleCacheState) map[string]bool {
+fn cache_vlib_source_and_header_paths(state &V3ModuleCacheState, a &flat.FlatAst) map[string]bool {
 	mut paths := map[string]bool{}
 	for module_name, source_files in state.module_sources {
 		if !source_files.any(cache_path_is_vlib(it)) {
@@ -15328,7 +15328,7 @@ fn cache_vlib_source_and_header_paths(state &V3ModuleCacheState) map[string]bool
 		}
 		for source_file in source_files {
 			paths[source_file] = true
-			paths[os.real_path(source_file)] = true
+			paths[a.real_source_path(source_file)] = true
 		}
 		header := state.manager.entry(module_name, source_files).header
 		paths[header] = true
@@ -20152,7 +20152,10 @@ fn seed_initial_modules(mut a flat.FlatAst, initial_files []string, explicit_imp
 		selected_files[file] = true
 		selected_files[a.record_source_path(file)] = true
 	}
-	mut declared_modules := map[string]bool{}
+	// Resolve each file node against `selected_files` exactly once. Both passes
+	// below need the identical match set, so sharing it here means a file's path
+	// is recorded through the table a single time, not once per pass.
+	mut matched_idxs := []int{}
 	for file_idx, file_node in a.nodes {
 		if file_idx < a.user_code_start || file_node.kind != .file || file_node.value.len == 0 {
 			continue
@@ -20161,7 +20164,11 @@ fn seed_initial_modules(mut a flat.FlatAst, initial_files []string, explicit_imp
 			&& !selected_files[a.record_source_path(file_node.value)] {
 			continue
 		}
-		module_name := test_file_module_name(a, file_node)
+		matched_idxs << file_idx
+	}
+	mut declared_modules := map[string]bool{}
+	for file_idx in matched_idxs {
+		module_name := test_file_module_name(a, a.nodes[file_idx])
 		if module_name.len > 0 {
 			declared_modules[module_name] = true
 		}
@@ -20171,15 +20178,8 @@ fn seed_initial_modules(mut a flat.FlatAst, initial_files []string, explicit_imp
 	// project root (issue #28074), and that local module must win over the path
 	// lookup, which only ever looks for a subdirectory of the same name.
 	holds_local_submodules := declared_modules.len > 1
-	for file_idx, file_node in a.nodes {
-		if file_idx < a.user_code_start || file_node.kind != .file || file_node.value.len == 0 {
-			continue
-		}
-		if !selected_files[file_node.value]
-			&& !selected_files[a.record_source_path(file_node.value)] {
-			continue
-		}
-		module_name := test_file_module_name(a, file_node)
+	for file_idx in matched_idxs {
+		module_name := test_file_module_name(a, a.nodes[file_idx])
 		if module_name.len == 0 {
 			continue
 		}
