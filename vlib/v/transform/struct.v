@@ -88,10 +88,11 @@ fn (mut t Transformer) transform_struct_fields(id flat.NodeId, node flat.Node) f
 			}
 			mut promoted_key := ''
 			if field_type.len == 0 {
-				// A cross-module embed (`aa.Inner`) is initialized under its
-				// short name: `Outer{ Inner: ... }`.
+				// An embed is initialized under its short name, as a field access
+				// reads it: a cross-module one (`aa.Inner`) as `Outer{ Inner: ... }`
+				// and a generic one (`Holder[int]`) as `IntHolder{ Holder: ... }`.
 				for f in info.fields {
-					if f.name.contains('.') && f.name.all_after_last('.') == field_name {
+					if f.name != field_name && embedded_selector_matches(field_name, f.name) {
 						target_field_name = f.name
 						field_type = if t.lean_struct_init_fields {
 							t.lookup_struct_field_type(node.value, f.name) or { f.typ }
