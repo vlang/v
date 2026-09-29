@@ -15923,8 +15923,9 @@ fn (g &FlatGen) type_is_reftype(typ types.Type, mut seen map[string]bool) bool {
 // handles this through the expected type, but a call whose parameter types are
 // not registered (notably a `C.` function) has no expected type, so the argument
 // would otherwise be emitted as the slot itself and the callee would read an
-// unrelated value. Returns false when the argument is not such a case.
-fn (mut g FlatGen) gen_mut_param_value_call_arg(arg_id flat.NodeId, arg_node flat.Node) bool {
+// unrelated value. `expected` is the callee's parameter type, or `void` when it
+// is unknown. Returns false when the argument is not such a case.
+fn (mut g FlatGen) gen_mut_param_value_call_arg(arg_id flat.NodeId, arg_node flat.Node, expected types.Type) bool {
 	if arg_node.kind != .ident || arg_node.is_mut || !g.current_param_is_mut(arg_node.value) {
 		return false
 	}
@@ -15941,6 +15942,12 @@ fn (mut g FlatGen) gen_mut_param_value_call_arg(arg_id flat.NodeId, arg_node fla
 			return false
 		}
 	} else {
+		return false
+	}
+	// A callee that asks for the slot's own type takes the parameter by implicit
+	// reference (e.g. `h.clear()` with `fn (mut h Handle) clear()` and
+	// `type Handle = voidptr`), so the slot must be forwarded unchanged.
+	if expected !is types.Void && g.tc.c_type(expected) == g.tc.c_type(param_type) {
 		return false
 	}
 	g.write('*')
@@ -16025,10 +16032,15 @@ fn (mut g FlatGen) gen_call_args(fn_name string, node flat.Node, start int) {
 		if i > start {
 			g.write(', ')
 		}
-		if !arg_node.is_mut && arg_node.kind == .ident
-			&& (arg_idx >= param_types.len || c_type_is_pointer_like(param_types[arg_idx]))
-			&& g.gen_mut_param_value_call_arg(arg_id, arg_node) {
-			continue
+		if !arg_node.is_mut && arg_node.kind == .ident {
+			if arg_idx >= param_types.len {
+				if g.gen_mut_param_value_call_arg(arg_id, arg_node, types.void_) {
+					continue
+				}
+			} else if c_type_is_pointer_like(param_types[arg_idx])
+				&& g.gen_mut_param_value_call_arg(arg_id, arg_node, param_types[arg_idx]) {
+				continue
+			}
 		}
 		if arg_node.kind == .field_init && variadic_idx >= 0 && arg_idx == variadic_idx {
 			variadic_type := param_types[variadic_idx]

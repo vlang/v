@@ -3,6 +3,7 @@ module main
 #include "@VMODROOT/c_id.c"
 
 fn C.c_mut_voidptr_id(p voidptr) voidptr
+fn C.c_mut_voidptr_clear(pp &voidptr)
 
 // A `mut` parameter read by value is one dereference deep: the value is `*o`,
 // not the address of the parameter slot. Passing it to a C function that takes
@@ -17,6 +18,18 @@ fn test_mut_voidptr_param_passed_to_c_fn() {
 	mut o := voidptr(u64(0x1234))
 	got := c_mut_voidptr_id_thunk(mut o)
 	assert got == voidptr(u64(0x1234))
+}
+
+// A C function that asks for the slot's own type (`&voidptr`) takes the
+// parameter by implicit reference, so it must get `o`, not `*o`.
+fn c_mut_voidptr_clear_thunk(mut o voidptr) {
+	C.c_mut_voidptr_clear(o)
+}
+
+fn test_mut_voidptr_param_passed_by_reference_to_c_fn() {
+	mut o := voidptr(u64(0x1234))
+	c_mut_voidptr_clear_thunk(mut o)
+	assert o == unsafe { nil }
 }
 
 type Builder = []u8
