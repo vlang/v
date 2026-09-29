@@ -12322,6 +12322,8 @@ pub fn run(args []string) {
 		stage_macos_v3_compiler_error_fallback(macos_v3_fallback_file, 'AST transformation')
 		mut transform_was_parallel := false
 		mut transform_errors := []string{}
+		transform_notices_start := pre_tc.notices.len
+		transform_errors_start := pre_tc.errors.len
 		mut incremental_synthesized_helpers := []string{}
 		if !building_v && !uses_generics && ast_contains_sql_expr(a) {
 			uses_generics = true
@@ -12670,6 +12672,26 @@ pub fn run(args []string) {
 				eprintln(message)
 			}
 			exit(1)
+		}
+		// -warn-about-allocs also reports what lowering allocates where the
+		// source shows nothing, such as a local moved to the heap because its
+		// address escapes. Those are known only now.
+		if pre_tc.warn_about_allocs && (pre_tc.notices.len > transform_notices_start
+			|| pre_tc.errors.len > transform_errors_start) {
+			if pre_tc.errors.len > transform_errors_start {
+				// -W made them errors; as for the checker's, a fallback compiler
+				// that reports them itself leaves them to it.
+				if macos_v3_fallback_suppresses_diagnostics(macos_v3_fallback_file) {
+					exit(1)
+				}
+				print_type_diagnostics(a, pre_tc.notices[transform_notices_start..], pre_tc.errors[transform_errors_start..],
+					is_checker_fixture, fatal_errors, check_only, message_limit, skip_notices)
+				exit(1)
+			}
+			print_type_diagnostics(a, pre_tc.notices[transform_notices_start..], []types.TypeError{},
+				is_checker_fixture, fatal_errors, check_only, message_limit, skip_notices)
+			checker_warning_count += pre_tc.notices.len - transform_notices_start
+			pre_tc.notices.trim(transform_notices_start)
 		}
 		if !incremental_cache_hit {
 			pre_tc.freeze_pre_transform_interface_impl_names()

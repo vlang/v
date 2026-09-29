@@ -2762,6 +2762,31 @@ fn (mut tc TypeChecker) warn_alloc(description string, id flat.NodeId, pos token
 		'builtin.closure', 'strconv', 'os', 'sync', 'v.debug', 'v.embed_file'] {
 		return
 	}
+	tc.warn_alloc_at(description, id, pos)
+}
+
+// record_transform_alloc_warning reports an allocation the transform adds
+// where the source shows none, such as a local moved to the heap because its
+// address escapes. Only project code is reported. The transform has already
+// left out assignments marked `@[freed]`: the node may be one it made, which
+// has no parents here to look for the attribute on.
+pub fn (mut tc TypeChecker) record_transform_alloc_warning(id flat.NodeId, pos token.Pos, description string) {
+	if !tc.warn_about_allocs || !tc.valid_node_id(id) {
+		return
+	}
+	// should_diagnose judges by the file and function being checked, and
+	// checking is over: judge by the file the position is in instead.
+	file := tc.a.source_files[pos.id] or { return }
+	saved_file := tc.cur_file
+	saved_fn_node := tc.fn_context.node_id
+	tc.cur_file = file.name
+	tc.fn_context.node_id = -1
+	tc.record_warning_at(.compile_error, 'allocation (${description})', id, pos)
+	tc.cur_file = saved_file
+	tc.fn_context.node_id = saved_fn_node
+}
+
+fn (mut tc TypeChecker) warn_alloc_at(description string, id flat.NodeId, pos token.Pos) {
 	mut current := id
 	mut direct_child := flat.empty_node
 	mut value_path := true

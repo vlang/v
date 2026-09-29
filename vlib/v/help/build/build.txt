@@ -140,8 +140,11 @@ NB: the build flags are shared with the run command too:
 
   -warn-about-allocs
     Warn about array initialization, string interpolation, string concatenation, and casts to
-    interfaces that allocate. Add `@[freed]` after an assignment to suppress allocation warnings
-    for allocations that the assignment frees explicitly.
+    interfaces that allocate, and about allocations the source does not show: `&Struct{}`,
+    values converted to an interface without a cast (arguments, assignments, returns, struct
+    fields, appended elements), slices of strings and fixed arrays, and locals moved to the
+    heap because their address escapes. Add `@[freed]` after an assignment to suppress
+    allocation warnings for allocations that the assignment frees explicitly.
 
   -no-prod-options
     Useful in combination with -prod and -cflags, for allowing more complete customisation,

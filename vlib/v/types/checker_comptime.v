@@ -3696,6 +3696,10 @@ fn (mut tc TypeChecker) check_prefix_expr(id flat.NodeId, node flat.Node) {
 		tc.record_error_at(.assignment_mismatch, 'invalid operation: cannot take address of nil', id, tc.address_operator_pos(id))
 		return
 	}
+	if node.op == .amp && child.kind == .struct_init {
+		// `&T{}` is always a heap allocation.
+		tc.warn_alloc('struct on the heap', id, node.pos)
+	}
 	if node.op == .amp && child.kind == .paren && child.children_count == 1 {
 		inner := tc.a.child_node(child, 0)
 		if inner.kind == .struct_init {
@@ -4686,6 +4690,40 @@ fn (mut tc TypeChecker) check_cast_expr(id flat.NodeId, node flat.Node) {
 		|| tc.interface_pointer_alias_cast_needs_heap_copy(child_id, actual)
 		|| tc.interface_pointer_target_cast_needs_heap_copy(target, actual, target_iface)) {
 		tc.warn_alloc('cast to interface', id, node.pos)
+	}
+}
+
+// warn_implicit_interface_conversion reports the allocation an implicit
+// conversion to an interface makes, as check_cast_expr does for a written
+// one: an argument, an assignment, a return value, a struct field or an
+// appended element whose type implements the interface it goes into. A
+// concrete value is copied to the heap, and so is the interface itself when
+// the target is `&Interface`. Nothing frees either under -gc none.
+fn (mut tc TypeChecker) warn_implicit_interface_conversion(expr_id flat.NodeId, actual Type, target Type) {
+	if !tc.warn_about_allocs || !tc.valid_node_id(expr_id) {
+		return
+	}
+	target_iface := cast_target_interface(target) or { return }
+	clean_actual := unalias_type(actual)
+	if clean_actual is Interface || clean_actual is Unknown || clean_actual is Void
+		|| fn_param_is_voidptr_type(actual) {
+		return
+	}
+	expr := tc.a.node(expr_id)
+	if expr.kind == .nil_literal {
+		return
+	}
+	// A written cast to an interface leaves an interface here, which returned
+	// above: check_cast_expr reports that allocation. A cast to a concrete
+	// type or an alias still leaves a value to box.
+	implementer := if clean_actual is Pointer { clean_actual.base_type } else { actual }
+	if !tc.type_implements_interface(implementer, target_iface)
+		&& !tc.type_implements_interface(actual, target_iface) {
+		return
+	}
+	if clean_actual !is Pointer
+		|| tc.interface_pointer_target_cast_needs_heap_copy(target, actual, target_iface) {
+		tc.warn_alloc('conversion to interface', expr_id, expr.pos)
 	}
 }
 
@@ -7903,6 +7941,9 @@ fn (mut tc TypeChecker) check_infix(id flat.NodeId, node flat.Node) {
 				tc.resolve_expr(rhs_id, lhs_array.elem_type)
 			} else {
 				tc.array_append_diagnostic_rhs_type(rhs_id, rhs_type)
+			}
+			if tc.warn_about_allocs {
+				tc.warn_implicit_interface_conversion(rhs_id, append_rhs_type, lhs_array.elem_type)
 			}
 			if !tc.array_append_rhs_compatible(rhs_id, append_rhs_type, lhs_array.elem_type)
 				|| (unalias_type(append_rhs_type) is ArrayFixed
@@ -17594,6 +17635,9 @@ fn (mut tc TypeChecker) check_assign(id flat.NodeId, node flat.Node) {
 			tc.check_mutable_array_immutable_references(rhs_id)
 		}
 		tc.check_mutable_alias_assignment_lhs(lhs_id, rhs_id)
+		if tc.warn_about_allocs && node.op == .assign {
+			tc.warn_implicit_interface_conversion(rhs_id, tc.resolve_type(rhs_id), expected_type)
+		}
 		rhs_node := tc.a.nodes[int(rhs_id)]
 		if lhs_node.kind == .ident && lhs_node.value == '_' && rhs_node.kind == .none_expr {
 			tc.record_error_at(.assignment_mismatch, 'cannot assign a `none` value to blank `_` identifier', rhs_id, rhs_node.pos)
@@ -17934,6 +17978,9 @@ fn (mut tc TypeChecker) check_valid_assign(id flat.NodeId, node flat.Node) {
 		tc.annotate_expected_expr(rhs_id, expected_type)
 		tc.check_node_with_expected_context(rhs_id, expected_type)
 		_ = tc.resolve_expr(rhs_id, expected_type)
+		if tc.warn_about_allocs && node.op == .assign {
+			tc.warn_implicit_interface_conversion(rhs_id, source_rhs_type, expected_type)
+		}
 		rhs_node := tc.a.node(rhs_id)
 		if rhs_node.kind == .call {
 			if call_info := tc.resolve_call_info(rhs_id, rhs_node) {

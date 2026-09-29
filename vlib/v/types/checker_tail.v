@@ -2167,8 +2167,16 @@ fn (mut tc TypeChecker) check_return(id flat.NodeId, node flat.Node) {
 			}
 			return
 		}
+		// The expression's own type, before resolve_expr records the one it is
+		// converted to, as for any other return below.
+		own_type := if tc.warn_about_allocs { tc.resolve_type(child_id) } else { Type(void_) }
 		actual := tc.resolve_expr(child_id, expected)
 		if tc.return_type_compatible(child_id, actual, expected) {
+			if tc.warn_about_allocs {
+				tc.warn_implicit_interface_conversion(child_id, own_type, contextual_payload_type(expected) or {
+					expected
+				})
+			}
 			$if ownership ? {
 				tc.ownership_after_return(id, node)
 			}
@@ -2272,9 +2280,18 @@ fn (mut tc TypeChecker) check_return(id flat.NodeId, node flat.Node) {
 			} $else {
 				tc.check_node(child_id)
 			}
+			// The slot's own type, before resolve_expr records the one it is
+			// converted to.
+			source_type := if tc.warn_about_allocs {
+				tc.resolve_type(child_id)
+			} else {
+				Type(void_)
+			}
 			actual := tc.resolve_expr(child_id, multi.types[i])
 			if !tc.return_type_compatible(child_id, actual, multi.types[i]) {
 				tc.type_mismatch(.return_mismatch, 'cannot return `${actual.name()}` as `${multi.types[i].name()}`', id)
+			} else if tc.warn_about_allocs {
+				tc.warn_implicit_interface_conversion(child_id, source_type, multi.types[i])
 			}
 		}
 		$if ownership ? {
@@ -2343,6 +2360,11 @@ fn (mut tc TypeChecker) check_return(id flat.NodeId, node flat.Node) {
 	}
 	source_actual := tc.resolve_type(child_id)
 	actual := tc.resolve_expr(child_id, expected)
+	if tc.warn_about_allocs && tc.return_type_compatible(child_id, actual, expected) {
+		tc.warn_implicit_interface_conversion(child_id, source_actual, contextual_payload_type(expected) or {
+			expected
+		})
+	}
 	numeric_kind_mismatch := infix_power_type_is_numeric(actual)
 		&& infix_power_type_is_numeric(expected)
 		&& unalias_type(actual).is_integer() != unalias_type(expected).is_integer()
@@ -14786,6 +14808,9 @@ fn (mut tc TypeChecker) check_call_arg_types(id flat.NodeId, node flat.Node, inf
 					interface_actual, expected_interface, arg_id, tc.call_argument_diagnostic_pos(arg_id),
 					allow_mut_receiver) {
 					continue
+				}
+				if tc.warn_about_allocs {
+					tc.warn_implicit_interface_conversion(arg_id, actual, expected)
 				}
 			}
 			// A concrete value passed explicitly as `mut` to a mutable interface
