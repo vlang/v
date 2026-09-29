@@ -17865,9 +17865,6 @@ fn pointer_builtin_receiver_name(typ Type) string {
 	if typ is Pointer {
 		base := typ.base_type
 		if base is Alias {
-			if base.name == 'byte' {
-				return 'byteptr'
-			}
 			return pointer_builtin_receiver_name(base)
 		}
 		if base is Char {

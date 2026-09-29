@@ -818,7 +818,6 @@ fn (mut tc TypeChecker) check_semantics_scoped_serial() {
 	tc.checked_const_names = map[string]bool{}
 	tc.check_import_diagnostics()
 	tc.check_duplicate_fn_declarations()
-	tc.check_deprecated_byte_types()
 	tc.install_type_cache_overlay()
 	tc.defer_ierror_gating = tc.diagnostic_files.len > 0
 	tc.selected_file_called_fns = map[string]bool{}
@@ -1037,11 +1036,10 @@ fn (mut tc TypeChecker) check_semantics_parallel() bool {
 	tc.check_duplicate_fn_declarations()
 	tc.timing_profile('  [ttime]   ck dup fns       ${f64(presw.elapsed().microseconds()) / 1000.0:7.2f} ms')
 	presw.restart()
-	tc.check_deprecated_byte_types()
 	// Freeze the warm post-collect type cache as the shared read-only base
 	// for every worker thread and the master itself via a private overlay.
 	tc.install_type_cache_overlay()
-	tc.timing_profile('  [ttime]   ck byte+overlay  ${f64(presw.elapsed().microseconds()) / 1000.0:7.2f} ms')
+	tc.timing_profile('  [ttime]   ck overlay       ${f64(presw.elapsed().microseconds()) / 1000.0:7.2f} ms')
 	// Invalid-IError-return diagnostics are gated to functions reachable
 	// from the selected files. Most successful compiles never produce a
 	// candidate, so defer the call-graph walk until after checking and only
@@ -2453,8 +2451,7 @@ fn duplicate_match_case_int(message string) ?int {
 fn type_errors_equal(a TypeError, b TypeError) bool {
 	if a.node == b.node && a.kind == b.kind && a.msg == b.msg
 		&& (is_inline_asm_instruction_error(a.msg)
-			|| a.msg.starts_with('cannot embed non-struct `')
-			|| a.msg == 'byte is deprecated, use u8 instead') {
+			|| a.msg.starts_with('cannot embed non-struct `')) {
 		return a.pos == b.pos
 	}
 	return a.node == b.node && a.kind == b.kind && a.msg == b.msg

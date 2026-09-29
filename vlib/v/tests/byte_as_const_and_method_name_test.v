@@ -1,4 +1,4 @@
-// `byte` is deprecated only as a type; consts, methods and static methods may use it as a name.
+// `byte` is not a type (use `u8`), so consts, methods and static methods may use it as a name.
 const byte = f64(8)
 
 type DataSize = f64

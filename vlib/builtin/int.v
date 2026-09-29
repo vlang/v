@@ -7,8 +7,6 @@ pub struct VContext {
 	allocator int
 }
 
-pub type byte = u8
-
 // ptr_str returns a string with the address of `ptr`.
 pub fn ptr_str(ptr voidptr) string {
 	buf1 := u64_to_hex_no_leading_zeros(u64(ptr), 16)

@@ -1430,6 +1430,8 @@ const c_main_runtime_shadow_fn_names = {
 	'accept':  true
 	'perror':  true
 	'id':      true
+	// The C preamble keeps `typedef uint8_t byte;`.
+	'byte':    true
 }
 
 fn (g &FlatGen) main_runtime_shadow_fn_c_name(module_name string, name string) ?string {
