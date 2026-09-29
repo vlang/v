@@ -7,16 +7,17 @@ const selfqual_vlib_dir = os.dir(selfqual_v3_dir)
 const selfqual_v3_src = os.join_path(selfqual_v3_dir, 'v.v')
 
 fn selfqual_build_v3() string {
-	v3_bin := os.join_path(os.temp_dir(), 'v3_self_qualified_module_name_test')
+	exe_suffix := $if windows { '.exe' } $else { '' }
+	v3_bin := os.join_path(os.temp_dir(), 'v3 self qualified module name test${exe_suffix}')
 	os.rm(v3_bin) or {}
 	build :=
-		os.execute('${selfqual_vexe} -gc none -path "${selfqual_vlib_dir}|@vlib|@vmodules" -o ${v3_bin} ${selfqual_v3_src}')
+		os.execute('${os.quoted_path(selfqual_vexe)} -gc none -path ${os.quoted_path('${selfqual_vlib_dir}|@vlib|@vmodules')} -o ${os.quoted_path(v3_bin)} ${os.quoted_path(selfqual_v3_src)}')
 	assert build.exit_code == 0, build.output
 	return v3_bin
 }
 
 fn selfqual_write_module(name string, module_lines []string, test_lines []string) string {
-	root := os.join_path(os.temp_dir(), 'v3_${name}')
+	root := os.join_path(os.temp_dir(), 'v3 ${name}')
 	mod_dir := os.join_path(root, name)
 	os.rmdir_all(root) or {}
 	os.mkdir_all(mod_dir) or { panic(err) }
@@ -54,11 +55,11 @@ fn test_self_qualified_constant_name_is_generated_as_a_c_name() {
 	])
 	mod_dir := os.join_path(root, mod)
 	selfqual_disable_fallback()
-	test_out := os.execute('${v3_bin} test ${os.quoted_path(mod_dir)}')
+	test_out := os.execute('${os.quoted_path(v3_bin)} -gc none test ${os.quoted_path(mod_dir)}')
 	assert test_out.exit_code == 0, test_out.output
 	assert test_out.output.contains('1 passed'), test_out.output
-	c_path := os.join_path(os.temp_dir(), 'v3_self_qualified_module_name.c')
-	generate := os.execute('${v3_bin} -o ${c_path} ${os.quoted_path(os.join_path(mod_dir, 'lib_test.v'))}')
+	c_path := os.join_path(os.temp_dir(), 'v3 self qualified module name.c')
+	generate := os.execute('${os.quoted_path(v3_bin)} -o ${os.quoted_path(c_path)} ${os.quoted_path(os.join_path(mod_dir, 'lib_test.v'))}')
 	assert generate.exit_code == 0, generate.output
 	generated := os.read_file(c_path) or { panic(err) }
 	assert generated.contains('${mod}__greeting.len')
