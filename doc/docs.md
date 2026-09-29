@@ -9147,15 +9147,8 @@ refer to 1 of them, you can declare it like this:
 
 **Example of C struct redeclaration**
 
-On macOS, including `Cocoa/Cocoa.h`, `AppKit/AppKit.h`, or `AppKit/NSFont.h` makes an opaque
-`C.NSFont` declaration refer to Cocoa's Objective-C class. Header availability checks and nested
-wrapper-header lookup use the compiler's include search paths, including its selected SDK.
-Conditional guards use the selected compiler's predefined macros. Headers that shadow framework
-names are inspected for their actual declarations.
-Wrapper headers can declare `@class NSFont` or `@compatibility_alias NSFont ...` directly.
-Function-like macros are expanded in header names, conditional guards, and class declarations.
-Classes and aliases loaded by Clang's `-include-pch` are also recognized. Portable C generation uses
-the macOS target ABI for basic predefined macros when its target compiler is unavailable.
+On macOS, an `#include` or `#import` of `<Cocoa/Cocoa.h>`, `<AppKit/AppKit.h>` or
+`<AppKit/NSFont.h>` makes an opaque `C.NSFont` declaration refer to Cocoa's Objective-C class.
 
 ```v oksyntax
 struct C.NameOfTheStruct {

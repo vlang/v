@@ -29,8 +29,7 @@ const c_common_c_attributes = ['alias', 'aligned', 'always_inline', 'cold', 'con
 	'noreturn', 'packed', 'pure', 'returns_nonnull', 'section', 'sentinel', 'unused', 'used',
 	'visibility', 'warn_unused_result', 'weak']
 const c_has_attribute_predicate = '__has_attribute'
-const c_has_include_predicate = '__has_include'
-const c_has_include_next_predicate = '__has_include_next'
+const c_has_attribute_override_key = '@function:__has_attribute'
 
 // c_short_name_view returns the suffix after the final dot without allocating.
 @[direct_array_access; inline]
@@ -2424,26 +2423,17 @@ fn cache_c_flag_input_files_with_status(flags []string, compiler_macros map[stri
 	return files, has_untracked_include, include_macros, dynamic_include_macros, resolution_dirs, missing_resolution_paths
 }
 
-struct CForcedIncludeInput {
-	path        string
-	macros_only bool
-}
-
 fn c_forced_include_inputs(flags []string) []string {
-	return c_forced_include_entries(flags).map(it.path)
-}
-
-fn c_forced_include_entries(flags []string) []CForcedIncludeInput {
-	mut imacros_inputs := []CForcedIncludeInput{}
-	mut include_inputs := []CForcedIncludeInput{}
+	mut imacros_inputs := []string{}
+	mut include_inputs := []string{}
 	mut expected_kind := ''
 	for flag in flags {
 		token := flag.trim_space()
 		if expected_kind.len > 0 {
 			if expected_kind == 'imacros' {
-				imacros_inputs << CForcedIncludeInput{ path: token.trim('"\''), macros_only: true }
+				imacros_inputs << token.trim('"\'')
 			} else {
-				include_inputs << CForcedIncludeInput{ path: token.trim('"\'') }
+				include_inputs << token.trim('"\'')
 			}
 			expected_kind = ''
 			continue
@@ -2457,9 +2447,9 @@ fn c_forced_include_entries(flags []string) []CForcedIncludeInput {
 			continue
 		}
 		if token.starts_with('-imacros=') && token.len > '-imacros='.len {
-			imacros_inputs << CForcedIncludeInput{ path: token['-imacros='.len..].trim('"\''), macros_only: true }
+			imacros_inputs << token['-imacros='.len..].trim('"\'')
 		} else if token.starts_with('-include=') && token.len > '-include='.len {
-			include_inputs << CForcedIncludeInput{ path: token['-include='.len..].trim('"\'') }
+			include_inputs << token['-include='.len..].trim('"\'')
 		}
 	}
 	// GCC and Clang process all `-imacros` files before all `-include` files,
@@ -6171,606 +6161,12 @@ fn c_header_text_needs_objective_c(text string) bool {
 }
 
 fn c_header_text_needs_objective_c_for_target(text string, flags []string, c99_mode bool, target pref.Target) bool {
-	return c_header_text_objective_c_scan_for_target(text, flags, c99_mode, target, false, '', '', 'c', '')
-}
-
-fn c_header_text_has_cocoa_nsfont_include_for_target(text string, flags []string, c99_mode bool, target pref.Target, vroot string, source_file string, native_language string, ccompiler string) bool {
-	if c_forced_precompiled_header_has_nsfont(flags, ccompiler) { return true }
-	return c_header_text_objective_c_scan_for_target(text, flags, c99_mode, target, true, vroot, source_file, native_language, ccompiler)
-}
-
-fn c_forced_precompiled_header_has_nsfont(flags []string, ccompiler string) bool {
-	mut inputs := []string{}
-	for i, flag in flags {
-		if flag == '-include-pch' && i + 1 < flags.len {
-			inputs << flags[i + 1].trim('"\'')
-		}
-	}
-	if inputs.len == 0 { return false }
-	compiler := if ccompiler.len > 0 { ccompiler } else { 'cc' }
-	parts := cmdexec.split_args(compiler) or { return false }
-	if parts.len == 0 { return false }
-	for path in inputs {
-		if !os.is_file(path) { continue }
-		mut args := parts[1..].clone()
-		// Read the serialized AST in its original language/target environment.
-		// Scanning the original source would reevaluate its guards with today's flags.
-		args << ['-fsyntax-only', '-fno-color-diagnostics', '-Xclang', '-ast-dump', '-Xclang',
-			'-ast-dump-filter=NSFont', '-x', 'ast', os.real_path(path)]
-		probe := cmdexec.run_with_timeout(parts[0], args, 5000)
-		if probe.exit_code != 0 { continue }
-		for line in probe.output.split_into_lines() {
-			if (line.starts_with('ObjCInterfaceDecl ') || line.starts_with('ObjCCompatibleAliasDecl '))
-				&& 'NSFont' in line.fields() {
-				return true
-			}
-		}
-	}
-	return false
-}
-
-struct CHeaderScanLine {
-	text        string
-	source_file string
-	search_dir  string
-	ancestors   []string
-	macros_only bool
-}
-
-enum CHeaderClassMode {
-	none
-	after_at
-	class_name
-	class_tail
-	interface_name
-}
-
-struct CHeaderClassState {
-mut:
-	mode        CHeaderClassMode
-	angle_depth int
-}
-
-fn c_header_nsfont_class_line(line string, in_block_comment bool, initial CHeaderClassState) (bool, CHeaderClassState) {
-	mut state := initial
-	mut in_comment := in_block_comment
-	mut found := false
-	mut i := 0
-	for i < line.len {
-		if in_comment {
-			end := line[i..].index('*/') or { return found, state }
-			i += end + 2
-			in_comment = false
-			continue
-		}
-		if i + 1 < line.len && line[i..i + 2] == '/*' {
-			in_comment = true
-			i += 2
-			continue
-		}
-		if i + 1 < line.len && line[i..i + 2] == '//' { break }
-		if line[i] in [`'`, `"`] {
-			quote := line[i]
-			i++
-			for i < line.len {
-				if line[i] == `\\` && i + 1 < line.len {
-					i += 2
-					continue
-				}
-				i++
-				if line[i - 1] == quote { break }
-			}
-			state = CHeaderClassState{}
-			continue
-		}
-		if line[i] == `@` {
-			state = CHeaderClassState{ mode: .after_at }
-		} else if c_identifier_start(line[i]) {
-			start := i
-			for i < line.len && c_identifier_continue(line[i]) { i++ }
-			identifier := line[start..i]
-			match state.mode {
-				.after_at {
-					state.mode = match identifier {
-						'class' { .class_name }
-						'interface', 'compatibility_alias' { .interface_name }
-						else { .none }
-					}
-				}
-				.class_name, .interface_name {
-					found = found || identifier == 'NSFont'
-					state.mode = if state.mode == .class_name { .class_tail } else { .none }
-				}
-				else {}
-			}
-			continue
-		} else if state.mode == .class_tail && line[i] == `<` {
-			state.angle_depth++
-		} else if state.mode == .class_tail && line[i] == `>` && state.angle_depth > 0 {
-			state.angle_depth--
-		} else if state.mode == .class_tail && line[i] == `,` && state.angle_depth == 0 {
-			state.mode = .class_name
-		} else if line[i] in [`;`, `{`, `}`] {
-			state = CHeaderClassState{}
-		}
-		i++
-	}
-	return found, state
-}
-
-struct CHeaderCocoaCondition {
-	forked       bool
-	before       bool
-	before_class CHeaderClassState
-mut:
-	before_once      map[string]bool
-	before_included  map[string]bool
-	before_defined   map[string]bool
-	before_undefined map[string]bool
-	before_uncertain map[string]bool
-	before_values    map[string]string
-	all_branches     bool = true
-	saw_branch       bool
-	touched_macros   map[string]bool
-	touched_paths    map[string]bool
-	common_once      map[string]bool
-	common_included  map[string]bool
-	common_defined   map[string]bool
-	common_undefined map[string]bool
-	common_uncertain map[string]bool
-	common_values    map[string]string
-	common_class     CHeaderClassState
-}
-
-struct CHeaderMacroCall {
-	name string
-	args []string
-	end  int
-}
-
-fn c_header_macro_call(raw string) ?CHeaderMacroCall {
-	mut i := 0
-	if raw.len == 0 || !c_identifier_start(raw[0]) { return none }
-	for i < raw.len && c_identifier_continue(raw[i]) { i++ }
-	name := raw[..i]
-	for i < raw.len && raw[i].is_space() { i++ }
-	if i >= raw.len || raw[i] != `(` { return none }
-	i++
-	mut start := i
-	mut depth := 1
-	mut quote := u8(0)
-	mut args := []string{}
-	for i < raw.len {
-		ch := raw[i]
-		if quote != 0 {
-			if ch == `\\` && i + 1 < raw.len {
-				i += 2
-				continue
-			}
-			if ch == quote { quote = 0 }
-		} else if ch in [`'`, `"`] {
-			quote = ch
-		} else if ch == `(` {
-			depth++
-		} else if ch == `)` {
-			depth--
-			if depth == 0 {
-				args << raw[start..i].trim_space()
-				return CHeaderMacroCall{ name: name, args: args, end: i + 1 }
-			}
-		} else if ch == `,` && depth == 1 {
-			args << raw[start..i].trim_space()
-			start = i + 1
-		}
-		i++
-	}
-	return none
-}
-
-fn c_header_macro_value(name string, values map[string]string, overrides map[string]string, overridden map[string]bool) ?string {
-	if name in overridden { return overrides[name] or { return none } }
-	return values[name] or { return none }
-}
-
-fn c_header_forget_macro_value(name string, mut values map[string]string) {
-	values.delete(name)
-	values.delete('@function:${name}')
-	values.delete('@parameters:${name}')
-}
-
-fn c_header_record_macro(definition string, mut values map[string]string) {
-	name, function_like := c_macro_declarator_name(definition)
-	if name.len == 0 { return }
-	c_header_forget_macro_value(name, mut values)
-	if function_like {
-		call := c_header_macro_call(definition) or { return }
-		values['@function:${name}'] = definition[call.end..].trim_space()
-		values['@parameters:${name}'] = call.args.join(',')
-	} else {
-		value := definition[name.len..].trim_space()
-		if value.len > 0 { values[name] = value }
-	}
-}
-
-fn c_header_substitute_macro(body string, raw_args map[string]string, expanded_args map[string]string) string {
-	mut result := strings.new_builder(body.len)
-	mut i := 0
-	for i < body.len {
-		if body[i] in [`'`, `"`] {
-			start := i
-			quote := body[i]
-			i++
-			for i < body.len {
-				if body[i] == `\\` && i + 1 < body.len {
-					i += 2
-					continue
-				}
-				i++
-				if body[i - 1] == quote { break }
-			}
-			result.write_string(body[start..i])
-			continue
-		}
-		if i + 1 < body.len && body[i..i + 2] == '##' {
-			result.write_string('##')
-			i += 2
-			continue
-		}
-		if body[i] == `#` {
-			mut start := i + 1
-			for start < body.len && body[start].is_space() { start++ }
-			mut end := start
-			for end < body.len && c_identifier_continue(body[end]) { end++ }
-			if arg := raw_args[body[start..end]] {
-				quoted := arg.fields().join(' ').replace('\\', '\\\\').replace('"', '\\"')
-				result.write_string('"${quoted}"')
-				i = end
-				continue
-			}
-		}
-		if c_identifier_start(body[i]) {
-			start := i
-			for i < body.len && c_identifier_continue(body[i]) { i++ }
-			name := body[start..i]
-			pasted := body[..start].trim_space().ends_with('##') || body[i..].trim_space().starts_with('##')
-			arg := if pasted { raw_args[name] or { name } } else { expanded_args[name] or { name } }
-			result.write_string(arg)
-		} else {
-			result.write_u8(body[i])
-			i++
-		}
-	}
-	// Token pasting is applied after parameter substitution and before rescanning.
-	mut expanded := result.str()
-	i = 0
-	mut quote := u8(0)
-	for i < expanded.len {
-		if quote != 0 {
-			if expanded[i] == `\\` && i + 1 < expanded.len {
-				i += 2
-				continue
-			}
-			if expanded[i] == quote { quote = 0 }
-		} else if expanded[i] in [`'`, `"`] {
-			quote = expanded[i]
-		} else if i + 1 < expanded.len && expanded[i..i + 2] == '##' {
-			left := expanded[..i].trim_right(' \t')
-			expanded = left + expanded[i + 2..].trim_left(' \t')
-			i = left.len
-			continue
-		}
-		i++
-	}
-	return expanded
-}
-
-fn c_expand_header_macro(raw string, values map[string]string, overrides map[string]string, overridden map[string]bool, depth int) string {
-	input := raw.trim_space()
-	if depth >= 32 || c_include_arg_is_literal(input) { return input }
-	if value := c_header_macro_value(input, values, overrides, overridden) {
-		return c_expand_header_macro(value, values, overrides, overridden, depth + 1)
-	}
-	call := c_header_macro_call(input) or { return input }
-	if call.end != input.len { return input }
-	if alias := c_header_macro_value(call.name, values, overrides, overridden) {
-		return c_expand_header_macro(alias + input[call.name.len..], values, overrides, overridden, depth + 1)
-	}
-	body := c_header_macro_value('@function:${call.name}', values, overrides, overridden) or { return input }
-	parameters := c_header_macro_value('@parameters:${call.name}', values, overrides, overridden) or { return input }
-	params := if parameters.len == 0 { []string{} } else { parameters.split(',') }
-	variadic := params.len > 0 && params[params.len - 1].ends_with('...')
-	fixed := params.len - if variadic { 1 } else { 0 }
-	if call.args.len < fixed || (!variadic && call.args.len != fixed && !(fixed == 0 && call.args == [''])) {
-		return input
-	}
-	mut raw_args := map[string]string{}
-	mut expanded_args := map[string]string{}
-	for index, param in params {
-		name := if param == '...' { '__VA_ARGS__' } else { param.trim_right('.') }
-		argument := if variadic && index == fixed {
-			call.args[index..].join(',')
-		} else {
-			call.args[index]
-		}
-		raw_args[name] = argument
-		expanded_args[name] = c_expand_header_macro(argument, values, overrides, overridden, depth + 1)
-	}
-	replacement := c_header_substitute_macro(body, raw_args, expanded_args)
-	return c_expand_header_macro(replacement, values, overrides, overridden, depth + 1)
-}
-
-fn c_cocoa_include_macro(value string, values map[string]string, overrides map[string]string, overridden map[string]bool, context CHeaderPredicateContext) bool {
-	return c_header_nsfont_framework_include(c_expand_header_macro(value, values, overrides, overridden, 0), context)
-}
-
-fn c_expand_header_tokens(raw string, values map[string]string, undefined map[string]bool, uncertain map[string]bool, preserve_defined bool, in_block_comment bool, mut expanding map[string]bool, depth int) ?string {
-	if depth >= 64 { return none }
-	mut result := strings.new_builder(raw.len)
-	mut in_comment := in_block_comment
-	mut i := 0
-	for i < raw.len {
-		start := i
-		if in_comment || (i + 1 < raw.len && raw[i..i + 2] == '/*') {
-			if !in_comment { i += 2 }
-			end := raw[i..].index('*/') or {
-				result.write_string(raw[start..])
-				break
-			}
-			i += end + 2
-			result.write_string(raw[start..i])
-			in_comment = false
-			continue
-		}
-		if i + 1 < raw.len && raw[i..i + 2] == '//' {
-			result.write_string(raw[i..])
-			break
-		}
-		if raw[i] in [`'`, `"`] {
-			quote := raw[i]
-			i++
-			for i < raw.len {
-				if raw[i] == `\\` && i + 1 < raw.len {
-					i += 2
-					continue
-				}
-				i++
-				if raw[i - 1] == quote { break }
-			}
-			result.write_string(raw[start..i])
-			continue
-		}
-		if raw[i].is_digit() {
-			i++
-			for i < raw.len && (c_identifier_continue(raw[i]) || raw[i] == `.`) { i++ }
-			result.write_string(raw[start..i])
-			continue
-		}
-		if !c_identifier_start(raw[i]) {
-			result.write_u8(raw[i])
-			i++
-			continue
-		}
-		for i < raw.len && c_identifier_continue(raw[i]) { i++ }
-		name := raw[start..i]
-		if preserve_defined && name == 'defined' {
-			// The operand of defined names the macro itself, not its replacement.
-			for i < raw.len && raw[i].is_space() { i++ }
-			parenthesized := i < raw.len && raw[i] == `(`
-			if parenthesized { i++ }
-			for i < raw.len && raw[i].is_space() { i++ }
-			for i < raw.len && c_identifier_continue(raw[i]) { i++ }
-			if parenthesized {
-				for i < raw.len && raw[i].is_space() { i++ }
-				if i < raw.len && raw[i] == `)` { i++ }
-			}
-			result.write_string(raw[start..i])
-			continue
-		}
-		if name in undefined || name in uncertain {
-			result.write_string(name)
-			continue
-		}
-		mut end := i
-		if call := c_header_macro_call(raw[start..]) {
-			if name in values || '@function:${name}' in values {
-				end = start + call.end
-			} else if name in [c_has_include_predicate, c_has_include_next_predicate,
-				c_has_attribute_predicate] {
-				// The predicate evaluator expands its argument in the appropriate context.
-				i = start + call.end
-				result.write_string(raw[start..i])
-				continue
-			}
-		}
-		input := raw[start..end]
-		// Undefined and uncertain definitions are removed from values as their state changes.
-		replacement := c_expand_header_macro(input, values, map[string]string{}, map[string]bool{}, 0)
-		if replacement == input {
-			result.write_string(name)
-			continue
-		}
-		if expanding[name] { return none }
-		expanding[name] = true
-		expanded := c_expand_header_tokens(replacement, values, undefined, uncertain, preserve_defined,
-			false, mut expanding, depth + 1) or { return none }
-		expanding.delete(name)
-		result.write_string(expanded)
-		i = end
-	}
-	return result.str()
-}
-
-fn (mut condition CHeaderCocoaCondition) merge_branch(cocoa_provided bool, class_state CHeaderClassState, once_paths map[string]bool, included_paths map[string]bool, defined map[string]bool, undefined map[string]bool, uncertain map[string]bool, values map[string]string, context CHeaderPredicateContext) {
-	condition.all_branches = condition.all_branches && cocoa_provided
-	if !condition.saw_branch {
-		condition.common_class = class_state
-		for path, _ in condition.touched_paths {
-			if path in once_paths { condition.common_once[path] = true }
-			if path in included_paths { condition.common_included[path] = true }
-		}
-		for name, _ in condition.touched_macros {
-			if name in defined { condition.common_defined[name] = true }
-			if name in undefined { condition.common_undefined[name] = true }
-			if name in uncertain { condition.common_uncertain[name] = true }
-			if value := values[name] { condition.common_values[name] = value }
-		}
-		condition.saw_branch = true
-		return
-	}
-	if condition.common_class != class_state { condition.common_class = CHeaderClassState{} }
-	for path, _ in condition.touched_paths {
-		if path !in once_paths { condition.common_once.delete(path) }
-		if path !in included_paths { condition.common_included.delete(path) }
-	}
-	for name, _ in condition.touched_macros {
-		if name.starts_with('@function:') || name.starts_with('@parameters:') { continue }
-		if name in condition.common_defined && name in defined { continue }
-		if name in condition.common_undefined && name in undefined { continue }
-		condition.common_defined.delete(name)
-		condition.common_undefined.delete(name)
-		condition.common_uncertain[name] = true
-	}
-	mut previous_cocoa_values := map[string]bool{}
-	for name, _ in condition.touched_macros {
-		previous_cocoa_values[name] = c_cocoa_include_macro(condition.common_values[name], values, condition.common_values, condition.touched_macros, context)
-	}
-	for name, _ in condition.touched_macros {
-		value := condition.common_values[name]
-		macro_name := if name.starts_with('@') { name.all_after(':') } else { name }
-		if macro_name in condition.common_uncertain || macro_name in condition.common_undefined {
-			condition.common_values.delete(name)
-		} else if name !in condition.common_values && name !in values {
-			continue
-		} else if name !in condition.common_values || name !in values {
-			condition.common_values[name] = ''
-		} else if value != values[name] {
-			// Cocoa and AppKit include alternatives both provide the same NSFont declaration.
-			condition.common_values[name] = if previous_cocoa_values[name]
-				&& c_cocoa_include_macro(values[name], values, map[string]string{}, map[string]bool{}, context) {
-				'<Cocoa/Cocoa.h>'
-			} else {
-				''
-			}
-		}
-	}
-}
-
-fn (condition &CHeaderCocoaCondition) restore_branch(common bool, mut once_paths map[string]bool, mut included_paths map[string]bool, mut defined map[string]bool, mut undefined map[string]bool, mut uncertain map[string]bool, mut values map[string]string) {
-	once_state := if common { condition.common_once } else { condition.before_once }
-	included_state := if common { condition.common_included } else { condition.before_included }
-	defined_state := if common { condition.common_defined } else { condition.before_defined }
-	undefined_state := if common { condition.common_undefined } else { condition.before_undefined }
-	uncertain_state := if common { condition.common_uncertain } else { condition.before_uncertain }
-	value_state := if common { condition.common_values } else { condition.before_values }
-	for path, _ in condition.touched_paths {
-		if path in once_state { once_paths[path] = true } else { once_paths.delete(path) }
-		if path in included_state {
-			included_paths[path] = true
-		} else {
-			included_paths.delete(path)
-		}
-	}
-	for name, _ in condition.touched_macros {
-		if name in defined_state { defined[name] = true } else { defined.delete(name) }
-		if name in undefined_state { undefined[name] = true } else { undefined.delete(name) }
-		if name in uncertain_state { uncertain[name] = true } else { uncertain.delete(name) }
-		if value := value_state[name] { values[name] = value } else { values.delete(name) }
-	}
-}
-
-fn (mut condition CHeaderCocoaCondition) save_macro(name string, defined map[string]bool, undefined map[string]bool, uncertain map[string]bool, values map[string]string) {
-	if name in condition.touched_macros { return }
-	condition.touched_macros[name] = true
-	if name in defined { condition.before_defined[name] = true }
-	if name in undefined { condition.before_undefined[name] = true }
-	if name in uncertain { condition.before_uncertain[name] = true }
-	if value := values[name] { condition.before_values[name] = value }
-	if condition.saw_branch {
-		// Earlier branches did not change this name, so their common state is its entry state.
-		if name in defined { condition.common_defined[name] = true }
-		if name in undefined { condition.common_undefined[name] = true }
-		if name in uncertain { condition.common_uncertain[name] = true }
-		if value := values[name] { condition.common_values[name] = value }
-	}
-}
-
-fn c_header_cocoa_touch_macro(mut conditions []CHeaderCocoaCondition, name string, defined map[string]bool, undefined map[string]bool, uncertain map[string]bool, values map[string]string) {
-	for mut condition in conditions {
-		if condition.forked {
-			condition.save_macro(name, defined, undefined, uncertain, values)
-			condition.save_macro('@function:${name}', defined, undefined, uncertain, values)
-			condition.save_macro('@parameters:${name}', defined, undefined, uncertain, values)
-		}
-	}
-}
-
-fn c_header_cocoa_touch_path(mut conditions []CHeaderCocoaCondition, path string, once_paths map[string]bool, included_paths map[string]bool) {
-	for mut condition in conditions {
-		if condition.forked && path !in condition.touched_paths {
-			condition.touched_paths[path] = true
-			if path in once_paths { condition.before_once[path] = true }
-			if path in included_paths { condition.before_included[path] = true }
-			if condition.saw_branch {
-				if path in once_paths { condition.common_once[path] = true }
-				if path in included_paths { condition.common_included[path] = true }
-			}
-		}
-	}
-}
-
-fn c_header_conditions_possibly_active(known []bool, active []bool) bool {
-	for i, is_known in known {
-		if is_known && !active[i] { return false }
-	}
-	return true
-}
-
-fn c_header_text_objective_c_scan_for_target(text string, flags []string, c99_mode bool, target pref.Target, cocoa_include_only bool, vroot string, source_file string, native_language string, ccompiler string) bool {
-	mut defined := {
-		c_has_include_predicate:      true
-		c_has_include_next_predicate: true
-	}
+	mut defined := map[string]bool{}
 	mut undefined := {
 		'__OBJC__': true
 	}
 	mut uncertain := map[string]bool{}
 	mut macro_values := map[string]string{}
-	mut need_objc := native_language in ['objective-c', 'objective-c++']
-	mut need_cpp := native_language in ['c++', 'objective-c++']
-	for index, flag in flags {
-		clean := flag.trim_space()
-		language := if clean == '-x' && index + 1 < flags.len {
-			flags[index + 1]
-		} else if clean.starts_with('-x') {
-			clean[2..]
-		} else {
-			''
-		}
-		need_objc = need_objc || language in ['objective-c', 'objective-c++'] || clean == '-ObjC' || clean.starts_with('-fobjc-')
-		need_cpp = need_cpp || language in ['c++', 'objective-c++']
-	}
-	if need_objc {
-		undefined.delete('__OBJC__')
-		defined['__OBJC__'] = true
-		macro_values['__OBJC__'] = '1'
-	}
-	if need_cpp { defined['__cplusplus'] = true }
-	search_paths := if cocoa_include_only {
-		c_header_compiler_search_paths(ccompiler, flags, c_native_language_from_features(need_objc, need_cpp), target, c99_mode)
-	} else {
-		CHeaderSearchPaths{}
-	}
-	for definition in search_paths.predefined_macros {
-		macro_name := definition.fields()[0].all_before('(')
-		defined[macro_name] = true
-		undefined.delete(macro_name)
-		c_header_record_macro(definition, mut macro_values)
-	}
-	for name in search_paths.undefined_macros {
-		defined.delete(name)
-		undefined[name] = true
-		c_header_forget_macro_value(name, mut macro_values)
-	}
 	mut objective_c_compatibility_macros := map[string]bool{}
 	mut i := 0
 	for i < flags.len {
@@ -6802,7 +6198,10 @@ fn c_header_text_objective_c_scan_for_target(text string, flags []string, c99_mo
 			if is_undef {
 				defined.delete(macro_name)
 				undefined[macro_name] = true
-				c_header_forget_macro_value(macro_name, mut macro_values)
+				macro_values.delete(macro_name)
+				if macro_name == c_has_attribute_predicate {
+					macro_values.delete(c_has_attribute_override_key)
+				}
 				if macro_name in c_objective_c_compatibility_qualifiers {
 					objective_c_compatibility_macros.delete(macro_name)
 				}
@@ -6816,12 +6215,25 @@ fn c_header_text_objective_c_scan_for_target(text string, flags []string, c99_mo
 						objective_c_compatibility_macros[macro_name] = true
 					}
 				}
-				value := if definition.contains('=') {
-					definition.all_after('=').trim_space()
+				if is_function_like {
+					macro_values.delete(macro_name)
+					if macro_name == c_has_attribute_predicate {
+						macro_values[c_has_attribute_override_key] = if definition.contains('=') {
+							definition.all_after('=').trim_space()
+						} else {
+							'1'
+						}
+					}
 				} else {
-					'1'
+					if macro_name == c_has_attribute_predicate {
+						macro_values.delete(c_has_attribute_override_key)
+					}
+					macro_values[macro_name] = if definition.contains('=') {
+						definition.all_after('=').trim_space()
+					} else {
+						'1'
+					}
 				}
-				c_header_record_macro('${macro_declarator} ${value}', mut macro_values)
 			}
 		}
 		i++
@@ -6834,84 +6246,23 @@ fn c_header_text_objective_c_scan_for_target(text string, flags []string, c99_mo
 	mut possible_text := strings.new_builder(text.len)
 	mut definite_text := strings.new_builder(text.len / 4)
 	mut in_block_comment := false
-	mut cocoa_provided := false
-	mut class_state := CHeaderClassState{}
-	mut cocoa_conditions := []CHeaderCocoaCondition{}
-	mut once_paths := map[string]bool{}
-	mut included_paths := map[string]bool{}
-	mut lines := []CHeaderScanLine{}
-	if cocoa_include_only {
-		for input in c_forced_include_entries(flags) {
-			lines << CHeaderScanLine{ text: '#include "${input.path}"', source_file: source_file, macros_only: input.macros_only }
-		}
-	}
 	for line in c_join_continued_lines(text) {
-		lines << CHeaderScanLine{ text: line, source_file: source_file }
-	}
-	// Process nested headers in source order without retaining their consumed lines.
-	lines.reverse_in_place()
-	for lines.len > 0 {
-		scan_line := lines.pop()
-		line := scan_line.text
-		line_in_block_comment := in_block_comment
 		clean, next_in_block_comment := c_preprocessor_directive_scan_line(line, in_block_comment)
 		in_block_comment = next_in_block_comment
 		name := c_directive_name(clean)
-		predicate_context := CHeaderPredicateContext{ flags: flags, vroot: vroot, source_file: scan_line.source_file, search_paths: search_paths, search_after: scan_line.search_dir }
 		mut directive_macro_name := ''
-		if cocoa_include_only {
-			if name in ['if', 'ifdef', 'ifndef'] {
-				cocoa_conditions << CHeaderCocoaCondition{}
-			} else if name in ['elif', 'else', 'endif'] && cocoa_conditions.len > 0 {
-				last := cocoa_conditions.len - 1
-				if cocoa_conditions[last].forked {
-					if c_header_conditions_possibly_active(condition_known, condition_active) {
-						cocoa_conditions[last].merge_branch(cocoa_provided, class_state, once_paths, included_paths, defined, undefined, uncertain, macro_values, predicate_context)
-					}
-					cocoa_provided = cocoa_conditions[last].before
-					class_state = cocoa_conditions[last].before_class
-					cocoa_conditions[last].restore_branch(false, mut once_paths, mut included_paths, mut defined, mut undefined, mut uncertain, mut macro_values)
-					if name == 'endif' {
-						// A non-exhaustive chain also has a path that executes no branch.
-						if !condition_taken_known[last] || !condition_taken[last] {
-							cocoa_conditions[last].merge_branch(cocoa_provided, class_state, once_paths, included_paths, defined, undefined, uncertain, macro_values, predicate_context)
-						}
-						cocoa_provided = cocoa_provided || (cocoa_conditions[last].saw_branch && cocoa_conditions[last].all_branches)
-						if cocoa_conditions[last].saw_branch {
-							class_state = cocoa_conditions[last].common_class
-							cocoa_conditions[last].restore_branch(true, mut once_paths, mut included_paths, mut defined, mut undefined, mut uncertain, mut macro_values)
-						}
-					}
-				} else if c_header_conditions_possibly_active(condition_known, condition_active) {
-					// A path with no directives must participate if a later branch mutates state.
-					cocoa_conditions[last].saw_branch = true
-				}
-				if name == 'endif' {
-					cocoa_conditions.delete_last()
-				}
-			}
-		}
 		if name in ['ifdef', 'ifndef'] {
-			mut known := true
-			mut active := false
-			if !cocoa_include_only || c_header_conditions_possibly_active(condition_known, condition_active) {
-				macro_name := c_directive_arg(clean).fields()[0] or { '' }
-				known, active = c_header_objective_c_macro_state(macro_name, defined, undefined, uncertain, strict_iso_mode, target)
-				if name == 'ifndef' {
-					active = !active
-				}
+			macro_name := c_directive_arg(clean).fields()[0] or { '' }
+			known, mut active := c_header_objective_c_macro_state(macro_name, defined, undefined, uncertain, strict_iso_mode, target)
+			if name == 'ifndef' {
+				active = !active
 			}
 			condition_known << known
 			condition_active << (if known { active } else { true })
 			condition_taken_known << known
 			condition_taken << (if known { active } else { true })
 		} else if name == 'if' {
-			// Nested tests cannot affect a known-inactive branch, including repeated SDK guards.
-			mut known := true
-			mut active := false
-			if !cocoa_include_only || c_header_conditions_possibly_active(condition_known, condition_active) {
-				known, active = c_header_objective_c_condition_state(c_directive_arg(clean), defined, undefined, uncertain, macro_values, strict_iso_mode, target, predicate_context)
-			}
+			known, active := c_header_objective_c_condition_state(c_directive_arg(clean), defined, undefined, uncertain, macro_values, strict_iso_mode, target)
 			condition_known << known
 			condition_active << (if known { active } else { true })
 			condition_taken_known << known
@@ -6920,12 +6271,7 @@ fn c_header_text_objective_c_scan_for_target(text string, flags []string, c99_mo
 			last := condition_known.len - 1
 			prior_known := condition_taken_known[last]
 			prior_taken := condition_taken[last]
-			mut known := true
-			mut active := false
-			if !cocoa_include_only || (!(prior_known && prior_taken)
-				&& c_header_conditions_possibly_active(condition_known[..last], condition_active[..last])) {
-				known, active = c_header_objective_c_condition_state(c_directive_arg(clean), defined, undefined, uncertain, macro_values, strict_iso_mode, target, predicate_context)
-			}
+			known, active := c_header_objective_c_condition_state(c_directive_arg(clean), defined, undefined, uncertain, macro_values, strict_iso_mode, target)
 			if (prior_known && prior_taken) || (known && !active) {
 				condition_known[last] = true
 				condition_active[last] = false
@@ -6976,7 +6322,7 @@ fn c_header_text_objective_c_scan_for_target(text string, flags []string, c99_mo
 			// sokol's `_SAPP_MACOS` do not make Linux translation units look like
 			// Objective-C. Command-line definitions were seeded above and retain
 			// precedence here.
-			if name == 'define' && !cocoa_include_only {
+			if name == 'define' {
 				parts := c_directive_arg(clean).fields()
 				if parts.len > 0 {
 					macro_name := parts[0].all_before('(')
@@ -6989,78 +6335,20 @@ fn c_header_text_objective_c_scan_for_target(text string, flags []string, c99_mo
 			definite_text.writeln('')
 			continue
 		}
-		if cocoa_include_only && (name in ['include', 'include_next', 'import', 'define', 'undef']
-			|| (name == 'pragma' && c_directive_arg(clean).trim_space() == 'once')
-			|| (name.len == 0 && !scan_line.macros_only && (class_state.mode != .none || line.contains('@')))) {
-			// Save state only when an uncertain branch can change it. SDK headers have
-			// many conditional declarations that do not affect includes or macros.
-			for depth in 0 .. cocoa_conditions.len {
-				if !cocoa_conditions[depth].forked && !condition_known[depth] {
-					had_unchanged_branch := cocoa_conditions[depth].saw_branch
-					cocoa_conditions[depth] = CHeaderCocoaCondition{ forked: true, before: cocoa_provided, before_class: class_state }
-					if had_unchanged_branch {
-						cocoa_conditions[depth].merge_branch(cocoa_provided, class_state, once_paths, included_paths, defined, undefined, uncertain, macro_values, predicate_context)
-					}
-				}
-			}
-		}
-		if cocoa_include_only && name == 'pragma' && c_directive_arg(clean).trim_space() == 'once' && scan_line.ancestors.len > 0 {
-			c_header_cocoa_touch_path(mut cocoa_conditions, scan_line.source_file, once_paths, included_paths)
-			once_paths[scan_line.source_file] = true
-		}
-		if name in ['include', 'include_next', 'import'] {
-			include_arg := c_expand_header_macro(c_directive_arg(clean), macro_values, map[string]string{}, map[string]bool{}, 0)
-			if cocoa_include_only {
-				include_context := CHeaderPredicateContext{
-					...predicate_context
-					include_next: name == 'include_next'
-					search_after: scan_line.search_dir
-				}
-				if c_header_nsfont_framework_include(include_arg, include_context) {
-					cocoa_provided = cocoa_provided || !scan_line.macros_only
-				} else if c_include_arg_is_literal(include_arg) {
-					for candidate in c_header_include_candidates(include_arg, include_context) {
-						real_path := os.real_path(candidate.path)
-						if real_path in scan_line.ancestors || real_path in once_paths || (name == 'import' && real_path in included_paths) {
-							break
-						}
-						header := os.read_file(real_path) or { continue }
-						c_header_cocoa_touch_path(mut cocoa_conditions, real_path, once_paths, included_paths)
-						included_paths[real_path] = true
-						if name == 'import' { once_paths[real_path] = true }
-						guard := c_header_guard_name(header)
-						if guard.len > 0 && guard !in defined && guard !in uncertain && guard !in undefined {
-							c_header_cocoa_touch_macro(mut cocoa_conditions, guard, defined, undefined, uncertain, macro_values)
-							undefined[guard] = true
-						}
-						mut ancestors := scan_line.ancestors.clone()
-						ancestors << real_path
-						header_lines := c_join_continued_lines(header)
-						for header_index := header_lines.len; header_index > 0; header_index-- {
-							lines << CHeaderScanLine{ text: header_lines[header_index - 1], source_file: real_path, search_dir: candidate.search_dir, ancestors: ancestors, macros_only: scan_line.macros_only }
-						}
-						break
-					}
-				}
-			}
-			if !cocoa_include_only && name == 'import'
-				&& c_is_apple_framework_include(include_arg) {
-				return true
-			}
+		if name == 'import' && c_is_apple_framework_include(c_directive_arg(clean)) {
+			return true
 		}
 		if name in ['define', 'undef'] {
 			parts := c_directive_arg(clean).fields()
 			if parts.len > 0 {
 				macro_name := parts[0].all_before('(')
 				directive_macro_name = macro_name
-				if cocoa_include_only {
-					c_header_cocoa_touch_macro(mut cocoa_conditions, macro_name, defined, undefined, uncertain, macro_values)
-				}
-				if definitely_active || cocoa_include_only {
+				if definitely_active {
 					uncertain.delete(macro_name)
 					if name == 'define' {
 						undefined.delete(macro_name)
 						defined[macro_name] = true
+						macro_values.delete(macro_name)
 						definition := c_directive_arg(clean).trim_space()
 						macro_token := parts[0]
 						if macro_name in c_objective_c_compatibility_qualifiers {
@@ -7070,11 +6358,29 @@ fn c_header_text_objective_c_scan_for_target(text string, flags []string, c99_mo
 								objective_c_compatibility_macros[macro_name] = true
 							}
 						}
-						c_header_record_macro(definition, mut macro_values)
+						if macro_token.contains('(') {
+							if macro_name == c_has_attribute_predicate {
+								macro_values[c_has_attribute_override_key] = if definition.len > macro_token.len {
+									definition[macro_token.len..].trim_space()
+								} else {
+									''
+								}
+							}
+						} else {
+							if macro_name == c_has_attribute_predicate {
+								macro_values.delete(c_has_attribute_override_key)
+							}
+							if definition.len > macro_token.len {
+								macro_values[macro_name] = definition[macro_token.len..].trim_space()
+							}
+						}
 					} else {
 						defined.delete(macro_name)
 						undefined[macro_name] = true
-						c_header_forget_macro_value(macro_name, mut macro_values)
+						macro_values.delete(macro_name)
+						if macro_name == c_has_attribute_predicate {
+							macro_values.delete(c_has_attribute_override_key)
+						}
 						if macro_name in c_objective_c_compatibility_qualifiers {
 							objective_c_compatibility_macros.delete(macro_name)
 						}
@@ -7083,23 +6389,15 @@ fn c_header_text_objective_c_scan_for_target(text string, flags []string, c99_mo
 					defined.delete(macro_name)
 					undefined.delete(macro_name)
 					uncertain[macro_name] = true
-					c_header_forget_macro_value(macro_name, mut macro_values)
+					macro_values.delete(macro_name)
+					if macro_name == c_has_attribute_predicate {
+						macro_values.delete(c_has_attribute_override_key)
+					}
 					if macro_name in c_objective_c_compatibility_qualifiers {
 						objective_c_compatibility_macros.delete(macro_name)
 					}
 				}
 			}
-		}
-		if cocoa_include_only {
-			if name.len == 0 && !scan_line.macros_only {
-				mut expanding := map[string]bool{}
-				expanded := c_expand_header_tokens(line, macro_values, undefined, uncertain, false,
-					line_in_block_comment, mut expanding, 0) or { line }
-				found, next_class_state := c_header_nsfont_class_line(expanded, line_in_block_comment, class_state)
-				class_state = next_class_state
-				cocoa_provided = cocoa_provided || found
-			}
-			continue
 		}
 		mut possible_line := line
 		for qualifier in c_objective_c_compatibility_qualifiers {
@@ -7109,9 +6407,6 @@ fn c_header_text_objective_c_scan_for_target(text string, flags []string, c99_mo
 		}
 		possible_text.writeln(possible_line)
 		definite_text.writeln(if definitely_active { possible_line } else { '' })
-	}
-	if cocoa_include_only {
-		return cocoa_conditions.len == 0 && cocoa_provided
 	}
 	possible_source := possible_text.str()
 	definite_typedefs := modulecache.c_source_typedef_identifiers(definite_text.str())
@@ -7179,27 +6474,24 @@ fn c_header_condition_without_comments(raw string) string {
 	return result.str().trim_space()
 }
 
-fn c_header_objective_c_condition_state(raw string, defined map[string]bool, undefined map[string]bool, uncertain map[string]bool, macro_values map[string]string, strict_iso_mode bool, target pref.Target, predicate_context CHeaderPredicateContext) (bool, bool) {
-	mut expanding := map[string]bool{}
-	expanded := c_expand_header_tokens(c_header_condition_without_comments(raw), macro_values,
-		undefined, uncertain, true, false, mut expanding, 0) or { return false, true }
-	clean := c_header_condition_without_outer_parens(expanded)
-	if active := c_header_objective_c_compiler_predicate_state(clean, defined, undefined, uncertain, macro_values, strict_iso_mode, target, predicate_context) {
+fn c_header_objective_c_condition_state(raw string, defined map[string]bool, undefined map[string]bool, uncertain map[string]bool, macro_values map[string]string, strict_iso_mode bool, target pref.Target) (bool, bool) {
+	clean := c_header_condition_without_outer_parens(c_header_condition_without_comments(raw))
+	if active := c_header_objective_c_compiler_predicate_state(clean, defined, undefined, uncertain, macro_values, strict_iso_mode, target) {
 		return true, active
 	}
 	has_conditional, condition, if_true, if_false := c_header_condition_top_level_conditional(clean)
 	if has_conditional {
-		known, active := c_header_objective_c_condition_state(condition, defined, undefined, uncertain, macro_values, strict_iso_mode, target, predicate_context)
+		known, active := c_header_objective_c_condition_state(condition, defined, undefined, uncertain, macro_values, strict_iso_mode, target)
 		if !known {
 			return false, true
 		}
-		return c_header_objective_c_condition_state(if active { if_true } else { if_false }, defined, undefined, uncertain, macro_values, strict_iso_mode, target, predicate_context)
+		return c_header_objective_c_condition_state(if active { if_true } else { if_false }, defined, undefined, uncertain, macro_values, strict_iso_mode, target)
 	}
 	or_parts := c_header_condition_top_level_parts(clean, '||')
 	if or_parts.len > 1 {
 		mut all_known := true
 		for part in or_parts {
-			known, active := c_header_objective_c_condition_state(part, defined, undefined, uncertain, macro_values, strict_iso_mode, target, predicate_context)
+			known, active := c_header_objective_c_condition_state(part, defined, undefined, uncertain, macro_values, strict_iso_mode, target)
 			if known && active {
 				return true, true
 			}
@@ -7211,7 +6503,7 @@ fn c_header_objective_c_condition_state(raw string, defined map[string]bool, und
 	if and_parts.len > 1 {
 		mut all_known := true
 		for part in and_parts {
-			known, active := c_header_objective_c_condition_state(part, defined, undefined, uncertain, macro_values, strict_iso_mode, target, predicate_context)
+			known, active := c_header_objective_c_condition_state(part, defined, undefined, uncertain, macro_values, strict_iso_mode, target)
 			if known && !active {
 				return true, false
 			}
@@ -7219,13 +6511,13 @@ fn c_header_objective_c_condition_state(raw string, defined map[string]bool, und
 		}
 		return if all_known { true, true } else { false, true }
 	}
-	if value := c_header_objective_c_integer_operand_value(clean, defined, undefined, uncertain, macro_values, strict_iso_mode, target, predicate_context) {
+	if value := c_header_objective_c_integer_operand_value(clean, defined, undefined, uncertain, macro_values, strict_iso_mode, target) {
 		return true, value != 0
 	}
 	has_comparison, left_text, operator, right_text := c_header_condition_top_level_comparison(clean)
 	if has_comparison {
-		left := c_header_objective_c_integer_operand_value(left_text, defined, undefined, uncertain, macro_values, strict_iso_mode, target, predicate_context) or { return false, true }
-		right := c_header_objective_c_integer_operand_value(right_text, defined, undefined, uncertain, macro_values, strict_iso_mode, target, predicate_context) or { return false, true }
+		left := c_header_objective_c_integer_operand_value(left_text, defined, undefined, uncertain, macro_values, strict_iso_mode, target) or { return false, true }
+		right := c_header_objective_c_integer_operand_value(right_text, defined, undefined, uncertain, macro_values, strict_iso_mode, target) or { return false, true }
 		if operator in ['<', '<=', '>', '>='] && (left < 0 || right < 0) {
 			// Signed/unsigned conversion rules can reverse ordered comparisons.
 			return false, true
@@ -7244,7 +6536,7 @@ fn c_header_objective_c_condition_state(raw string, defined map[string]bool, und
 		return true, active
 	}
 	if clean.starts_with('!') {
-		known, active := c_header_objective_c_condition_state(clean[1..], defined, undefined, uncertain, macro_values, strict_iso_mode, target, predicate_context)
+		known, active := c_header_objective_c_condition_state(clean[1..], defined, undefined, uncertain, macro_values, strict_iso_mode, target)
 		return known, !active
 	}
 	literal_known, literal_active := c_header_objective_c_integer_macro_state(clean)
@@ -7270,299 +6562,8 @@ fn c_header_objective_c_condition_state(raw string, defined map[string]bool, und
 	return known, active
 }
 
-struct CHeaderSearchPaths {
-mut:
-	dirs              []CHeaderSearchDir
-	predefined_macros []string
-	undefined_macros  []string
-	complete          bool
-}
-
-struct CHeaderSearchDir {
-	path       string
-	framework  bool
-	quote_only bool
-}
-
-fn c_header_target_abi_macros(target pref.Target, flags []string) CHeaderSearchPaths {
-	if target.os != 'macos' { return CHeaderSearchPaths{} }
-	mut result := CHeaderSearchPaths{}
-	if '-undef' in flags {
-		result.undefined_macros = ['__APPLE__', '__MACH__', '__LP64__', '_LP64', '__SIZEOF_POINTER__',
-			'__SIZEOF_LONG__']
-		return result
-	}
-	mut pointer_bits := target.pointer_bits
-	for flag in flags {
-		if flag == '-m32' { pointer_bits = 32 }
-		if flag == '-m64' { pointer_bits = 64 }
-	}
-	result.predefined_macros = ['__APPLE__ 1', '__MACH__ 1', '__SIZEOF_POINTER__ ${pointer_bits / 8}',
-		'__SIZEOF_LONG__ ${pointer_bits / 8}']
-	if pointer_bits == 64 {
-		result.predefined_macros << ['__LP64__ 1', '_LP64 1']
-	} else {
-		result.undefined_macros = ['__LP64__', '_LP64']
-	}
-	return result
-}
-
-fn c_header_compiler_search_paths(ccompiler string, flags []string, language string, target pref.Target, c99_mode bool) CHeaderSearchPaths {
-	// Portable C generation need not have a target compiler or SDK installed.
-	fallback := c_header_target_abi_macros(target, flags)
-	compiler := if ccompiler.len > 0 { ccompiler } else { 'cc' }
-	parts := cmdexec.split_args(compiler) or { return fallback }
-	if parts.len == 0 { return fallback }
-	mut args := parts[1..].clone()
-	mut target_flags := args.clone()
-	target_flags << flags
-	has_explicit_target := target_flags.any(it in ['-target', '--target', '-arch']
-		|| it.starts_with('--target=') || it.starts_with('-target='))
-	if target.os != pref.host_target().os && !has_explicit_target {
-		if target.os == 'macos' && target.arch in ['amd64', 'arm64'] {
-			arch := if target.arch == 'amd64' { 'x86_64' } else { 'arm64' }
-			args << ['-target', '${arch}-apple-darwin']
-		} else {
-			return fallback
-		}
-	}
-	if !has_explicit_target && target.os == 'macos' && target.os == pref.host_target().os
-		&& target.arch != pref.host_target().arch && target.arch in [
-		'amd64',
-		'arm64',
-	] {
-		args << ['-arch', if target.arch == 'amd64' { 'x86_64' } else { 'arm64' }]
-	}
-	if c99_mode { args << '-std=c99' }
-	path_flags := ['-I', '-isystem', '-iquote', '-idirafter', '-F', '-iframework', '-isysroot',
-		'--sysroot', '-resource-dir', '-target', '--target', '-arch', '-B']
-	mut i := 0
-	for i < flags.len {
-		flag := flags[i]
-		if flag in ['-framework', '-weak_framework', '-force_load', '-Xlinker', '-mllvm'] {
-			i += 2
-			continue
-		}
-		if flag in path_flags && i + 1 < flags.len {
-			args << [flag, flags[i + 1]]
-			i += 2
-			continue
-		}
-		if flag in ['-nostdinc', '-nostdlibinc', '-nostdinc++', '-nobuiltininc', '-ansi', '-undef',
-			'-pthread']
-			|| path_flags.any(flag.starts_with(it) && flag.len > it.len)
-			|| flag.starts_with('-std=') || flag.starts_with('-stdlib=')
-			|| flag.starts_with('-m') || flag.starts_with('-f') || flag.starts_with('-O') {
-			args << flag
-		}
-		i++
-	}
-	null_path := $if windows { 'NUL' } $else { '/dev/null' }
-	// One empty-input probe supplies both search paths and compiler-defined guards.
-	// Forced headers run later in source order and must not seed this baseline.
-	args << ['-E', '-v', '-dM', '-x', language, null_path]
-	probe := cmdexec.run_with_timeout(parts[0], args, 5000)
-	if probe.exit_code != 0 { return fallback }
-	mut result := CHeaderSearchPaths{ undefined_macros: fallback.undefined_macros }
-	mut reading := false
-	mut quotes_only := false
-	for raw in probe.output.split_into_lines() {
-		line := raw.trim_space()
-		if line.starts_with('#define ') {
-			definition := line['#define '.len..]
-			result.predefined_macros << definition
-			if result.undefined_macros.len > 0 {
-				name := definition.fields()[0].all_before('(')
-				result.undefined_macros = result.undefined_macros.filter(it != name)
-			}
-		} else if line == '#include "..." search starts here:' {
-			reading = true
-			quotes_only = true
-		} else if line == '#include <...> search starts here:' {
-			reading = true
-			quotes_only = false
-		} else if line == 'End of search list.' && reading {
-			result.complete = true
-			reading = false
-		} else if reading {
-			if line.ends_with(' (framework directory)') {
-				result.dirs << CHeaderSearchDir{ path: line[..line.len - ' (framework directory)'.len], framework: true, quote_only: quotes_only }
-			} else {
-				result.dirs << CHeaderSearchDir{ path: line, quote_only: quotes_only }
-			}
-		}
-	}
-	if target.os != pref.host_target().os {
-		// A portable target can use an SDK unavailable to this host. Files found
-		// by the probe are useful; an absent framework is not conclusive.
-		result.complete = false
-	}
-	return result
-}
-
-struct CHeaderPredicateContext {
-	flags        []string
-	vroot        string
-	source_file  string
-	search_paths CHeaderSearchPaths
-	include_next bool
-	search_after string
-}
-
-struct CHeaderIncludeCandidate {
-	path       string
-	search_dir string
-}
-
-fn c_header_nsfont_framework_include(include_arg string, context CHeaderPredicateContext) bool {
-	if !cocoa_nsfont_framework_include(include_arg) { return false }
-	for path in c_header_include_file_paths(include_arg, context) {
-		if !os.is_file(path) { continue }
-		// Only the system framework has the known declaration. An earlier local,
-		// -I, or -F header with the same include spelling must be inspected instead.
-		clean := path.replace('\\', '/')
-		for name in ['Cocoa/Cocoa.h', 'AppKit/AppKit.h', 'AppKit/NSFont.h'] {
-			if clean.contains('/System/Library/Frameworks/${name.all_before('/')}.framework/')
-				&& clean.ends_with('/Headers/${name.all_after('/')}') {
-				return true
-			}
-		}
-		return false
-	}
-	// Portable C output may be generated without access to the target SDK.
-	return !context.search_paths.complete
-}
-
-fn c_header_include_available(include_arg string, context CHeaderPredicateContext) ?bool {
-	clean := include_arg.trim_space()
-	if clean.len < 3 || !((clean[0] == `<` && clean[clean.len - 1] == `>`) || (clean[0] == `"` && clean[clean.len - 1] == `"`)) {
-		return none
-	}
-	for path in c_header_include_file_paths(clean, context) {
-		if os.is_file(path) { return true }
-	}
-	has_sdk_root := context.flags.any(it in ['-isysroot', '--sysroot']
-		|| it.starts_with('-isysroot') || it.starts_with('--sysroot='))
-	if context.search_paths.complete || has_sdk_root || '-nostdinc' in context.flags
-		|| '-nostdlibinc' in context.flags {
-		return false
-	}
-	return none
-}
-
-fn c_header_include_file_paths(include_arg string, context CHeaderPredicateContext) []string {
-	return c_header_include_candidates(include_arg, context).map(it.path)
-}
-
-fn c_header_include_candidates(include_arg string, context CHeaderPredicateContext) []CHeaderIncludeCandidate {
-	clean := include_arg.trim_space()
-	if !c_include_arg_is_literal(clean) { return []CHeaderIncludeCandidate{} }
-	path := c_resolve_pseudo_paths(clean[1..clean.len - 1], context.vroot, context.source_file)
-	if os.is_abs_path(path) {
-		return [CHeaderIncludeCandidate{ path: path }]
-	}
-	mut paths := []CHeaderIncludeCandidate{}
-	if clean[0] == `"` {
-		first := c_include_file_path(clean, context.vroot, context.source_file)
-		if first.len > 0 { paths << CHeaderIncludeCandidate{ path: first, search_dir: 'local' } }
-	}
-	mut dirs := context.search_paths.dirs.clone()
-	if dirs.len == 0 { dirs = c_header_search_dirs_from_flags(context.flags) }
-	mut sdk_root := ''
-	mut i := 0
-	for i < context.flags.len {
-		flag := context.flags[i]
-		if flag in ['-isysroot', '--sysroot'] && i + 1 < context.flags.len {
-			i++
-			sdk_root = context.flags[i]
-		} else if flag.starts_with('--sysroot=') {
-			sdk_root = flag['--sysroot='.len..]
-		} else if flag.starts_with('-isysroot') && flag.len > '-isysroot'.len {
-			sdk_root = flag['-isysroot'.len..].trim_left('=')
-		}
-		i++
-	}
-	standard_paths := '-nostdinc' !in context.flags && '-nostdlibinc' !in context.flags
-	if sdk_root.len > 0 && standard_paths {
-		dirs << CHeaderSearchDir{ path: os.join_path(sdk_root, 'usr/include') }
-		dirs << CHeaderSearchDir{ path: os.join_path(sdk_root, 'System/Library/Frameworks'), framework: true }
-	}
-	mut seen_dirs := map[string]bool{}
-	for dir in dirs {
-		if dir.path.len == 0 || (dir.quote_only && clean[0] != `"` && !context.include_next) {
-			continue
-		}
-		key := (if dir.framework { 'framework:' } else { 'include:' }) + os.real_path(dir.path)
-		if key in seen_dirs { continue }
-		seen_dirs[key] = true
-		if !dir.framework {
-			paths << CHeaderIncludeCandidate{ path: os.join_path_single(dir.path, path), search_dir: key }
-		} else if path.contains('/') {
-			framework := path.all_before('/')
-			header := path.all_after('/')
-			for headers in ['Headers', 'PrivateHeaders'] {
-				paths << CHeaderIncludeCandidate{
-					path:       os.join_path(dir.path, '${framework}.framework', headers, header)
-					search_dir: key
-				}
-			}
-		} else {
-			// Keep the search position even when this spelling is not framework-qualified.
-			paths << CHeaderIncludeCandidate{ search_dir: key }
-		}
-	}
-	mut start := 0
-	if context.include_next {
-		for index, candidate in paths {
-			if candidate.search_dir == context.search_after { start = index + 1 }
-		}
-	}
-	return paths[start..].filter(it.path.len > 0 && (!context.include_next || it.search_dir != 'local'))
-}
-
-fn c_header_search_dirs_from_flags(flags []string) []CHeaderSearchDir {
-	mut quoted := []CHeaderSearchDir{}
-	mut user_dirs := []CHeaderSearchDir{}
-	mut system_dirs := []CHeaderSearchDir{}
-	mut after_dirs := []CHeaderSearchDir{}
-	mut i := 0
-	for i < flags.len {
-		flag := flags[i]
-		for prefix in ['-iquote', '-isystem', '-idirafter', '-iframework', '-I', '-F'] {
-			mut path := ''
-			if flag == prefix && i + 1 < flags.len {
-				i++
-				path = flags[i]
-			} else if flag.starts_with(prefix) && flag.len > prefix.len {
-				path = flag[prefix.len..].trim_left('=')
-			} else {
-				continue
-			}
-			dir := CHeaderSearchDir{ path: path.trim('"\''), framework: prefix in ['-F', '-iframework'], quote_only: prefix == '-iquote' }
-			match prefix {
-				'-iquote' { quoted << dir }
-				'-isystem', '-iframework' { system_dirs << dir }
-				'-idirafter' { after_dirs << dir }
-				else { user_dirs << dir }
-			}
-			break
-		}
-		i++
-	}
-	quoted << user_dirs
-	quoted << system_dirs
-	quoted << after_dirs
-	return quoted
-}
-
-fn c_header_objective_c_compiler_predicate_state(clean string, defined map[string]bool, undefined map[string]bool, uncertain map[string]bool, macro_values map[string]string, strict_iso_mode bool, target pref.Target, predicate_context CHeaderPredicateContext) ?bool {
-	predicate := if clean.starts_with(c_has_include_next_predicate) {
-		c_has_include_next_predicate
-	} else if clean.starts_with(c_has_include_predicate) {
-		c_has_include_predicate
-	} else {
-		c_has_attribute_predicate
-	}
+fn c_header_objective_c_compiler_predicate_state(clean string, defined map[string]bool, undefined map[string]bool, uncertain map[string]bool, macro_values map[string]string, strict_iso_mode bool, target pref.Target) ?bool {
+	predicate := c_has_attribute_predicate
 	if !clean.starts_with(predicate) {
 		return none
 	}
@@ -7571,15 +6572,14 @@ fn c_header_objective_c_compiler_predicate_state(clean string, defined map[strin
 		return none
 	}
 	attribute := rest[1..rest.len - 1].trim_space()
-	if attribute.len == 0 || (predicate == c_has_attribute_predicate && c_header_struct_tag(attribute) != attribute) {
+	if attribute.len == 0 || c_header_struct_tag(attribute) != attribute {
 		return none
 	}
 	if predicate in uncertain || predicate in undefined {
 		return none
 	}
-	override_key := '@function:${predicate}'
-	if predicate in defined && override_key in macro_values {
-		replacement := macro_values[override_key]
+	if predicate in defined {
+		replacement := macro_values[c_has_attribute_override_key] or { return none }
 		value := c_header_condition_without_outer_parens(c_header_condition_without_comments(replacement))
 		literal_known, literal_active := c_header_objective_c_integer_macro_state(value)
 		if literal_known {
@@ -7592,17 +6592,6 @@ fn c_header_objective_c_compiler_predicate_state(clean string, defined map[strin
 			}
 		}
 		return none
-	}
-	include_predicate := predicate in [c_has_include_predicate, c_has_include_next_predicate]
-	if predicate in defined && (!include_predicate || predicate in macro_values) {
-		return none
-	}
-	if include_predicate {
-		include_arg := c_expand_header_macro(attribute, macro_values, map[string]string{}, map[string]bool{}, 0)
-		return c_header_include_available(include_arg, CHeaderPredicateContext{
-			...predicate_context
-			include_next: predicate == c_has_include_next_predicate
-		})
 	}
 	return attribute.trim('_') in c_common_c_attributes
 }
@@ -7632,17 +6621,17 @@ fn c_header_defined_macro_name(clean string) ?string {
 	return macro_name
 }
 
-fn c_header_objective_c_integer_operand_value(raw string, defined map[string]bool, undefined map[string]bool, uncertain map[string]bool, macro_values map[string]string, strict_iso_mode bool, target pref.Target, predicate_context CHeaderPredicateContext) ?i64 {
+fn c_header_objective_c_integer_operand_value(raw string, defined map[string]bool, undefined map[string]bool, uncertain map[string]bool, macro_values map[string]string, strict_iso_mode bool, target pref.Target) ?i64 {
 	mut seen := map[string]bool{}
-	return c_header_objective_c_integer_expression_value(raw, defined, undefined, uncertain, macro_values, strict_iso_mode, target, predicate_context, mut seen, 0)
+	return c_header_objective_c_integer_expression_value(raw, defined, undefined, uncertain, macro_values, strict_iso_mode, target, mut seen, 0)
 }
 
-fn c_header_objective_c_integer_expression_value(raw string, defined map[string]bool, undefined map[string]bool, uncertain map[string]bool, macro_values map[string]string, strict_iso_mode bool, target pref.Target, predicate_context CHeaderPredicateContext, mut seen map[string]bool, depth int) ?i64 {
+fn c_header_objective_c_integer_expression_value(raw string, defined map[string]bool, undefined map[string]bool, uncertain map[string]bool, macro_values map[string]string, strict_iso_mode bool, target pref.Target, mut seen map[string]bool, depth int) ?i64 {
 	if depth >= 64 {
 		return none
 	}
 	clean := c_header_condition_without_outer_parens(c_header_condition_without_comments(raw))
-	if active := c_header_objective_c_compiler_predicate_state(clean, defined, undefined, uncertain, macro_values, strict_iso_mode, target, predicate_context) {
+	if active := c_header_objective_c_compiler_predicate_state(clean, defined, undefined, uncertain, macro_values, strict_iso_mode, target) {
 		return if active { i64(1) } else { i64(0) }
 	}
 	if value := c_header_objective_c_integer_value(clean) {
@@ -7650,11 +6639,11 @@ fn c_header_objective_c_integer_expression_value(raw string, defined map[string]
 	}
 	has_conditional, condition, if_true, if_false := c_header_condition_top_level_conditional(clean)
 	if has_conditional {
-		known, active := c_header_objective_c_condition_state(condition, defined, undefined, uncertain, macro_values, strict_iso_mode, target, predicate_context)
+		known, active := c_header_objective_c_condition_state(condition, defined, undefined, uncertain, macro_values, strict_iso_mode, target)
 		if !known {
 			return none
 		}
-		return c_header_objective_c_integer_expression_value(if active { if_true } else { if_false }, defined, undefined, uncertain, macro_values, strict_iso_mode, target, predicate_context, mut seen, depth + 1)
+		return c_header_objective_c_integer_expression_value(if active { if_true } else { if_false }, defined, undefined, uncertain, macro_values, strict_iso_mode, target, mut seen, depth + 1)
 	}
 	operator_groups := [
 		['|'],
@@ -7671,16 +6660,16 @@ fn c_header_objective_c_integer_expression_value(raw string, defined map[string]
 		if !has_operator {
 			continue
 		}
-		left := c_header_objective_c_integer_expression_value(left_text, defined, undefined, uncertain, macro_values, strict_iso_mode, target, predicate_context, mut seen, depth + 1) or {
+		left := c_header_objective_c_integer_expression_value(left_text, defined, undefined, uncertain, macro_values, strict_iso_mode, target, mut seen, depth + 1) or {
 			return none
 		}
-		right := c_header_objective_c_integer_expression_value(right_text, defined, undefined, uncertain, macro_values, strict_iso_mode, target, predicate_context, mut seen, depth + 1) or {
+		right := c_header_objective_c_integer_expression_value(right_text, defined, undefined, uncertain, macro_values, strict_iso_mode, target, mut seen, depth + 1) or {
 			return none
 		}
 		return c_header_objective_c_checked_integer_binary(left, right, operator)
 	}
 	if clean.len > 1 && clean[0] in [`+`, `-`, `!`, `~`] {
-		value := c_header_objective_c_integer_expression_value(clean[1..], defined, undefined, uncertain, macro_values, strict_iso_mode, target, predicate_context, mut seen, depth + 1) or {
+		value := c_header_objective_c_integer_expression_value(clean[1..], defined, undefined, uncertain, macro_values, strict_iso_mode, target, mut seen, depth + 1) or {
 			return none
 		}
 		if clean[0] == `+` {
@@ -7716,7 +6705,7 @@ fn c_header_objective_c_integer_expression_value(raw string, defined map[string]
 	}
 	replacement := macro_values[clean] or { return none }
 	seen[clean] = true
-	value := c_header_objective_c_integer_expression_value(replacement, defined, undefined, uncertain, macro_values, strict_iso_mode, target, predicate_context, mut seen, depth + 1)
+	value := c_header_objective_c_integer_expression_value(replacement, defined, undefined, uncertain, macro_values, strict_iso_mode, target, mut seen, depth + 1)
 	seen.delete(clean)
 	return value
 }
@@ -7759,16 +6748,7 @@ fn c_header_condition_top_level_binary(expression string, operators []string) (b
 		}
 		mut matched := ''
 		for operator in operators {
-			mut matches := i + operator.len <= expression.len
-			if matches {
-				for offset, ch in operator {
-					if expression[i + offset] != ch {
-						matches = false
-						break
-					}
-				}
-			}
-			if matches {
+			if expression[i..].starts_with(operator) {
 				matched = operator
 				break
 			}
@@ -8189,7 +7169,7 @@ fn c_header_condition_top_level_parts(expression string, operator string) []stri
 			i++
 			continue
 		}
-		if depth == 0 && expression[i] == operator[0] && expression[i + 1] == operator[1] {
+		if depth == 0 && expression[i..i + 2] == operator {
 			part := expression[start..i].trim_space()
 			if part.len == 0 {
 				return [expression]
@@ -11054,7 +10034,7 @@ fn (g &FlatGen) visit_module_init(mod string, module_to_init map[string]string, 
 	}
 }
 
-fn (g &FlatGen) ordered_c_directives(late bool) []string {
+fn (mut g FlatGen) ordered_c_directives(late bool) []string {
 	mut directives_by_module := map[string][]CDirective{}
 	mut module_order := []string{}
 	for directive in g.c_directives {
