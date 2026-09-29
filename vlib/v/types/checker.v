@@ -6440,14 +6440,17 @@ fn (mut tc TypeChecker) check_deprecated_byte_types() {
 	mut identifier_offsets := map[u64]bool{}
 	mut inline_asm_ranges := map[int][]token.Pos{}
 	for node in tc.a.nodes {
-		if node.value == 'byte' && node.pos.is_valid() {
-			if offset := deprecated_byte_name_offset(node) {
-				identifier_offsets[deprecated_byte_position_key(node.pos.id, offset)] = true
-			}
-		} else if node.kind == .asm_stmt && node.pos.is_valid() {
+		if !node.pos.is_valid() {
+			continue
+		}
+		if node.kind == .asm_stmt {
 			mut ranges := inline_asm_ranges[node.pos.id]
 			ranges << node.pos
 			inline_asm_ranges[node.pos.id] = ranges
+		} else if node.value.ends_with('byte') {
+			if offset := deprecated_byte_name_offset(node) {
+				identifier_offsets[deprecated_byte_position_key(node.pos.id, offset)] = true
+			}
 		}
 	}
 	mut pending_file := ''
@@ -6472,10 +6475,21 @@ fn deprecated_byte_position_key(file_id int, offset int) u64 {
 }
 
 // deprecated_byte_name_offset returns the source offset at which `node` spells
-// `byte` as a name (variable, parameter, field, enum value), not as a type.
+// `byte` as a name (variable, parameter, field, enum value, const, function,
+// method), not as a type.
 fn deprecated_byte_name_offset(node flat.Node) ?int {
+	name := if node.kind in [.fn_decl, .c_fn_decl] {
+		// Methods and C functions are stored qualified (`T.byte`, `T@static@byte`,
+		// `C.byte`), but their span starts at the bare name.
+		node.value.all_after_last('.').all_after_last('@')
+	} else {
+		node.value
+	}
+	if name != 'byte' {
+		return none
+	}
 	match node.kind {
-		.ident, .field_decl, .interface_field, .enum_field {
+		.ident, .field_decl, .interface_field, .enum_field, .const_field, .fn_decl, .c_fn_decl {
 			return node.pos.offset
 		}
 		.param {
