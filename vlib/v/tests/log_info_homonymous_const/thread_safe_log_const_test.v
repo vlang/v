@@ -14,8 +14,7 @@ fn (mut r Recorder) write(buf []u8) !int {
 
 const default_logger = log.new_thread_safe_log()
 
-// A homonymous `&ThreadSafeLog` const used to silently swallow `log.info`
-// (wrong concrete method on the `Logger` box) — github.com/vlang/v/issues/29026.
+// A homonymous `&ThreadSafeLog` const used to silently swallow `log.info`.
 fn test_log_info_survives_homonymous_thread_safe_log_const() {
 	mut rec := &Recorder{}
 	mut lg := &log.Log{}

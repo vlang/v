@@ -13,8 +13,7 @@ fn (mut r Recorder) write(buf []u8) !int {
 	return buf.len
 }
 
-// `net.websocket` declares `const default_logger = &log.Log{}`; that must not
-// hijack `log.info` (github.com/vlang/v/issues/29026).
+// net.websocket's `const default_logger = &log.Log{}` must not hijack log.info (#29026).
 fn test_log_info_survives_websocket_default_logger_const() {
 	_ := websocket.ClientState{}
 	mut rec := &Recorder{}

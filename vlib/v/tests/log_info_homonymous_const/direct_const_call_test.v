@@ -2,16 +2,14 @@ module main
 
 import log
 
-fn mk() &log.Log {
+fn setup_default_logger() &log.Log {
 	return &log.Log{}
 }
 
-const default_logger = mk()
+const default_logger = setup_default_logger()
 
-// A direct bare call on a homonymous user const must keep the const's method
-// and the const's C symbol (`main__default_logger`), not mix in `log`'s global
-// type (which panics `interface method log__Logger.info not implemented`).
+// Must keep the const's method and C symbol; mixing in log's global type
+// panics `interface method log__Logger.info not implemented`.
 fn test_direct_call_on_homonymous_user_const() {
 	default_logger.info('direct const call')
-	assert true
 }

@@ -26,7 +26,6 @@ fn read(logger &Logger) int {
 	return logger.value()
 }
 
-// Bare `default_logger` here is api's own `__global`.
 pub fn current() int {
 	return read(default_logger)
 }

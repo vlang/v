@@ -16,8 +16,7 @@ struct MyLog {}
 
 const default_logger = MyLog{}
 
-// A homonymous const of an unrelated type never had `info`; `log.info` must
-// still use interface dispatch on the `log.default_logger` global.
+// The const has no `info`; `log.info` must still dispatch on the log global.
 fn test_log_info_survives_homonymous_unrelated_const() {
 	mut rec := &Recorder{}
 	mut lg := &log.Log{}

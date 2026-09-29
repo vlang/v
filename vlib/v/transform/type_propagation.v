@@ -2064,10 +2064,8 @@ fn (t &Transformer) checker_type_over_struct_guess(id flat.NodeId, guessed strin
 			return none
 		}
 		if t.current_module_declares_const(node.value) {
-			// A current-module const owns the bare name and its C symbol; the
-			// checker still binds the name to a homonymous foreign `__global`, so
-			// its cached type must not override the const's type (method lookup
-			// would then pair the global's method with the const's symbol).
+			// The checker still binds this name to the foreign `__global`; its
+			// cached type must not override the current module's const.
 			return none
 		}
 	}

@@ -12,14 +12,12 @@ fn (mut r Recorder) write(buf []u8) !int {
 	return buf.len
 }
 
-fn mk() &log.Log {
+fn setup_default_logger() &log.Log {
 	return &log.Log{}
 }
 
-const default_logger = mk()
+const default_logger = setup_default_logger()
 
-// `log.info` must keep interface dispatch on the `log.default_logger` global
-// even when a same-named user const exists (github.com/vlang/v/issues/29026).
 fn test_log_info_survives_homonymous_user_const() {
 	mut rec := &Recorder{}
 	mut lg := &log.Log{}

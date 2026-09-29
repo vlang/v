@@ -12,13 +12,8 @@ fn (mut r Recorder) write(buf []u8) !int {
 	return buf.len
 }
 
-fn mk() &log.Log {
-	return &log.Log{}
-}
+const my_logger = &log.Log{}
 
-const my_logger = mk()
-
-// A user const with a different name, and `log.info` with no collision at all.
 fn test_log_info_with_different_name_const() {
 	mut rec := &Recorder{}
 	mut lg := &log.Log{}

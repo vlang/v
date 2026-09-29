@@ -2,11 +2,9 @@ module main
 
 import os
 
-// A method that exists only on the homonymous foreign `__global`'s type must
-// not be paired with the declaring module's const C symbol. That pair is the
-// old method/symbol mismatch class and reads garbage (or panics on interfaces).
-// The const owns the name, so the call can only resolve against the const's
-// type; a global-only method then fails closed instead of silently mispairing.
+// A global-only method must not pair with the const's C symbol — that mix reads
+// garbage. The const owns the name, so resolution is against the const's type
+// only and a global-only method fails closed instead of silently mispairing.
 
 fn testsuite_begin() {
 	os.setenv('VCOLORS', 'never', true)
@@ -90,13 +88,11 @@ fn test_global_only_method_does_not_pair_with_const_symbol() {
 	gen := os.execute('${os.quoted_path(@VEXE)} -enable-globals -o ${os.quoted_path(c_path)} ${os.quoted_path(workspace)}')
 	assert gen.exit_code == 0, gen.output
 	c := os.read_file(c_path) or { panic(err) }
-	// Shared method: the fix working — const method + const symbol.
 	assert c.contains('api__ConstType__shared(consumer__default_logger)'), c
 	// The bad pair must not appear: global method on the const's symbol.
 	assert !c.contains('api__GlobalType__only_global(consumer__default_logger)'), c
-	// Fail closed: the call is resolved against the const's type only.
+	// Fail closed: resolved against the const's type only; the build rejects it.
 	assert c.contains('api__ConstType__only_global('), c
-	// Building the binary rejects the call instead of emitting silent UB.
 	build := os.execute('${os.quoted_path(@VEXE)} -enable-globals -o ${os.quoted_path(os.join_path(workspace, 'app'))} ${os.quoted_path(workspace)}')
 	assert build.exit_code != 0, build.output
 	assert !build.output.contains('api__GlobalType__only_global(consumer__default_logger)'), build.output

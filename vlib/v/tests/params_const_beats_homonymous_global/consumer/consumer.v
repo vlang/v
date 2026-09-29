@@ -4,8 +4,7 @@ import api
 
 pub const default_logger = &api.Impl{n: 7}
 
-// The default value of a struct field declared in this module is the module's
-// own const, not other's homonymous `__global`.
+// Field default is this module's const, not other's homonymous `__global`.
 @[params]
 pub struct Opt {
 pub:
