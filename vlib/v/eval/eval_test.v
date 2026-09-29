@@ -1916,6 +1916,25 @@ fn main() {
 	assert e.stdout() == '0\n10\n'
 }
 
+fn test_eval_escaped_reference_to_plain_keyword_enum_member() {
+	mut e := create()
+	e.run_text('
+enum E {
+	first
+	struct = 7
+}
+
+fn main() {
+	println(int_str(E.@struct))
+	match E.@struct {
+		.@struct { println("seven") }
+		else { println("wrong") }
+	}
+}
+') or { panic(err) }
+	assert e.stdout() == '7\nseven\n'
+}
+
 fn test_eval_enum_selector_preserves_sum_variant_type() {
 	mut e := create()
 	e.run_text('

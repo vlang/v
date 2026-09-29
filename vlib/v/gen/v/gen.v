@@ -350,12 +350,20 @@ fn (mut g Gen) setup_json_migration(fnode &flat.Node) {
 	mut json2_imports := []flat.NodeId{}
 	mut called := map[int]bool{}
 	mut selector_receivers := map[int]bool{}
+	// Expressions that an `is` check or a `match` narrows to one sum type variant.
+	mut narrowed := map[string]bool{}
 	for i, n in g.a.nodes {
 		if n.pos.id != g.file_id {
 			continue
 		}
 		if n.kind == .call && n.children_count > 0 {
 			called[int(g.a.child(n, 0))] = true
+		}
+		if (n.kind == .is_expr || n.kind == .match_stmt) && n.children_count > 0 {
+			subject := g.a.child_node(n, 0)
+			if text := g.source_span(subject.pos.offset, subject.pos.end) {
+				narrowed[text.trim_space()] = true
+			}
 		}
 		if n.kind == .selector && n.children_count > 0 {
 			receiver := g.a.child(n, 0)
@@ -405,9 +413,39 @@ fn (mut g Gen) setup_json_migration(fnode &flat.Node) {
 	if declared_names[qualifier] {
 		return
 	}
+	mut import_symbols := map[int]bool{}
+	for id in g.a.children_of(legacy) {
+		import_symbols[int(id)] = true
+	}
 	for i, n in g.a.nodes {
 		if n.pos.id != g.file_id {
 			continue
+		}
+		// With `import json { decode }`, a parameter, variable or loop variable of the
+		// same name shadows the import, and a use that is not a call cannot be rewritten.
+		if legacy.children_count > 0 && n.value in ['encode', 'decode', 'encode_pretty']
+			&& (n.kind == .param || (n.kind == .ident && !called[i] && !import_symbols[i])) {
+			return
+		}
+		// The removed `json.encode` encoded a value narrowed by `x is T` or `match x` as
+		// its declared sum type, with `_type`; `json2.encode` infers the narrowed
+		// variant, and only the author can spell the sum type back (`Animal(x)`).
+		if n.kind == .call && n.children_count > 1
+			&& g.is_json_encode_callee(g.a.child_node(n, 0), legacy.children_count > 0) {
+			arg := g.a.child_node(n, 1)
+			if text := g.source_span(arg.pos.offset, arg.pos.end) {
+				if narrowed[text.trim_space()] {
+					return
+				}
+			}
+		}
+		// A legacy `decode` needs both the type and the source argument to be rewritten,
+		// and an option or result type (`json.decode(?T, s)`) cannot be a type argument.
+		if n.kind == .call && n.children_count > 0
+			&& g.is_json_decode_callee(g.a.child_node(n, 0), legacy.children_count > 0)
+			&& (n.children_count < 3 || g.json_decode_type_arg_is_option(n)
+				|| json_decode_target_has_initializer(g.json_decode_type_arg_text(n))) {
+			return
 		}
 		// Existing module selector receivers are safe; any other identifier with the
 		// qualifier can be a lexical collision, so keep the legacy import conservatively.
@@ -430,7 +468,9 @@ fn (mut g Gen) setup_json_migration(fnode &flat.Node) {
 		if n.kind == .selector && n.children_count > 0 {
 			receiver := g.a.child_node(n, 0)
 			if receiver.kind == .ident && receiver.value == 'json' {
-				if vfmt_is_disabled_at(directives, n.pos.offset) {
+				// A local `json` binding shadows the import, and its method calls are
+				// not module calls to rewrite.
+				if vfmt_is_disabled_at(directives, n.pos.offset) || g.a.formatter_local_sels[i] {
 					return
 				}
 				if n.value !in ['encode', 'decode', 'encode_pretty'] || !called[i] {
@@ -1198,6 +1238,10 @@ fn (mut g Gen) expr(id flat.NodeId) {
 		.sizeof_expr {
 			if source := g.a.formatter_sources[int(id)] {
 				g.write(source.trim_space())
+			} else if n.children_count > 0 {
+				g.write('sizeof(')
+				g.expr(g.a.child(n, 0))
+				g.write(')')
 			} else {
 				g.write('sizeof(${g.type_text(n.value)})')
 			}
@@ -1636,7 +1680,7 @@ fn (mut g Gen) call_expr(id flat.NodeId) {
 		return
 	}
 	if kind := g.json_migration_call_kind(children[0]) {
-		g.json_migration_call(kind, children[1..])
+		g.json_migration_call(kind, children[0], children[1..])
 		return
 	}
 	callee_continues := g.selector_starts_on_new_line(children[0])
@@ -1653,8 +1697,16 @@ fn (mut g Gen) call_expr(id flat.NodeId) {
 	g.write('(')
 	if !g.migrate_json2 && g.is_legacy_json_decode(children[0]) && args.len > 0 {
 		first := g.a.node(args[0])
+		// The type argument is not an expression: `[]Foo` parses as an empty array
+		// literal, and `?Foo` as an empty node, which keeps only its source text.
+		mut type_text := ''
 		if first.kind == .array_init && first.children_count == 0 {
-			g.write(first.typ)
+			type_text = first.typ
+		} else if first.kind == .empty && args.len > 1 {
+			type_text = g.json_decode_type_arg_source(children[0], args[1]) or { '' }
+		}
+		if type_text.len > 0 {
+			g.write(type_text)
 			if args.len > 1 {
 				g.write(', ')
 				g.expr_list(args[1..], ', ')
@@ -1914,22 +1966,38 @@ fn (g &Gen) json_migration_call_kind(callee_id flat.NodeId) ?string {
 }
 
 fn (g &Gen) is_legacy_json_decode(callee_id flat.NodeId) bool {
-	callee := g.a.node(callee_id)
+	return g.is_json_decode_callee(g.a.node(callee_id), g.selective_json)
+}
+
+fn (g &Gen) is_json_encode_callee(callee &flat.Node, selective bool) bool {
+	if callee.kind == .selector && callee.children_count > 0
+		&& callee.value in ['encode', 'encode_pretty'] {
+		receiver := g.a.child_node(callee, 0)
+		return receiver.kind == .ident && receiver.value == 'json'
+	}
+	return selective && callee.kind == .ident && callee.value in ['encode', 'encode_pretty']
+}
+
+fn (g &Gen) is_json_decode_callee(callee &flat.Node, selective bool) bool {
 	if callee.kind == .selector && callee.children_count > 0 && callee.value == 'decode' {
 		receiver := g.a.child_node(callee, 0)
 		return receiver.kind == .ident && receiver.value == 'json'
 	}
-	return g.selective_json && callee.kind == .ident && callee.value == 'decode'
+	return selective && callee.kind == .ident && callee.value == 'decode'
 }
 
-fn (mut g Gen) json_migration_call(kind string, args []flat.NodeId) {
+fn (mut g Gen) json_migration_call(kind string, callee flat.NodeId, args []flat.NodeId) {
 	if kind == 'decode' && args.len >= 2 {
 		g.write('${g.json_qualifier}.decode[')
-		type_arg := g.a.node(args[0])
-		if source_type := g.source_span(type_arg.pos.offset, type_arg.pos.end) {
-			g.write(source_type.trim_space())
+		if source_type := g.json_decode_type_arg_source(callee, args[1]) {
+			g.write(json_decode_type_text(source_type))
 		} else {
-			g.expr(args[0])
+			type_arg := g.a.node(args[0])
+			if source_type := g.source_span(type_arg.pos.offset, type_arg.pos.end) {
+				g.write(json_decode_type_text(source_type))
+			} else {
+				g.expr(args[0])
+			}
 		}
 		g.write('](')
 		g.expr_list(args[1..], ', ')
@@ -1942,9 +2010,62 @@ fn (mut g Gen) json_migration_call(kind string, args []flat.NodeId) {
 		g.write(', ')
 	}
 	if kind == 'encode_pretty' {
-		g.write('prettify: true, ')
+		g.write('prettify: true, legacy_layout: true, ')
 	}
-	g.write('escape_unicode: true)')
+	g.write('escape_unicode: true, time_as_unix: true)')
+}
+
+// json_decode_type_arg_source returns the source of the type argument of
+// `json.decode(T, s)`: the text between the callee and the second argument, without
+// the surrounding `(` and `,`. The span of the type node itself does not always
+// cover the type (anonymous structs, option types).
+// json_decode_type_arg_is_option reports whether the type argument of the legacy
+// `json.decode(T, s)` call is an option or result type, which json2 cannot take:
+// V does not accept `?T` as a generic type argument.
+fn (g &Gen) json_decode_type_arg_is_option(call &flat.Node) bool {
+	type_arg := g.a.child_node(call, 1)
+	type_text := g.json_decode_type_arg_text(call)
+	return type_text.starts_with('?') || type_text.starts_with('!')
+		|| type_arg.value.starts_with('?') || type_arg.value.starts_with('!')
+}
+
+// json_decode_type_arg_text is the source of the type argument of a legacy
+// `json.decode(T, s)` call.
+fn (g &Gen) json_decode_type_arg_text(call &flat.Node) string {
+	type_arg := g.a.child_node(call, 1)
+	return g.json_decode_type_arg_source(g.a.child(call, 0), g.a.child(call, 2)) or {
+		g.source_span(type_arg.pos.offset, type_arg.pos.end) or { '' }.trim_space()
+	}
+}
+
+// json_decode_type_text turns a legacy decode target into a type argument: the value
+// form `map[string]int{}`, `[]Foo{}` or `Foo{}` names its type with an empty
+// initializer, which is not part of the type.
+fn json_decode_type_text(target string) string {
+	text := target.trim_space()
+	if text.ends_with('{}') && !text.starts_with('struct') {
+		return text[..text.len - 2].trim_space()
+	}
+	return text
+}
+
+// json_decode_target_has_initializer reports a value target with a non-empty
+// initializer (`[]int{len: 2}`), which names no type that can be spelled back.
+fn json_decode_target_has_initializer(target string) bool {
+	text := target.trim_space()
+	return text.ends_with('}') && !text.ends_with('{}') && !text.starts_with('struct')
+}
+
+fn (g &Gen) json_decode_type_arg_source(callee flat.NodeId, second_arg flat.NodeId) ?string {
+	between := g.source_span(g.a.node(callee).pos.end, g.a.node(second_arg).pos.offset)?.trim_space()
+	if !between.starts_with('(') || !between.ends_with(',') {
+		return none
+	}
+	type_text := between[1..between.len - 1].trim_space()
+	if type_text.len == 0 {
+		return none
+	}
+	return type_text
 }
 
 fn (mut g Gen) index_expr(id flat.NodeId) {
@@ -2351,6 +2472,7 @@ fn (mut g Gen) fn_literal(id flat.NodeId) {
 		i++
 	}
 	body := children[i..]
+	is_inline := g.fn_literal_is_inline(n)
 	g.write('fn')
 	gp := n.generic_params()
 	if captures.len > 0 {
@@ -2388,12 +2510,26 @@ fn (mut g Gen) fn_literal(id flat.NodeId) {
 		g.write(' {}')
 		return
 	}
+	if is_inline && g.write_inline_body(' ', body, n.pos.end) {
+		return
+	}
 	g.writeln(' {')
 	g.stmt_list_ids(body)
 	g.indent++
 	g.emit_comments_before(n.pos.end)
 	g.indent--
 	g.write('}')
+}
+
+// fn_literal_is_inline reports whether an anonymous function written on one line, with a
+// single-statement body, stays on that line.
+fn (g &Gen) fn_literal_is_inline(n &flat.Node) bool {
+	children := g.a.children_of(n)
+	mut i := 0
+	for i < children.len && g.a.node(children[i]).kind in [.ident, .param] {
+		i++
+	}
+	return g.braced_body_is_inline(n.pos.offset, children[i..], n.pos.end)
 }
 
 fn (mut g Gen) lambda(id flat.NodeId) {
@@ -2443,9 +2579,7 @@ fn (mut g Gen) or_expr(id flat.NodeId) {
 	}
 	blk := g.a.node(children[1])
 	stmts := g.a.children_of(blk)
-	is_compact := stmts.len <= 1 && g.source_block_is_compact(blk)
-		&& !g.has_comment_between(blk.pos.offset, blk.pos.end)
-	if is_compact {
+	if g.or_block_is_compact(blk) {
 		g.write(' or {')
 		if stmts.len > 0 {
 			g.write(' ')
@@ -2462,6 +2596,13 @@ fn (mut g Gen) or_expr(id flat.NodeId) {
 	g.emit_comments_before(blk.pos.end)
 	g.indent--
 	g.write('}')
+}
+
+// or_block_is_compact reports whether the block of an `or { ... }` stays on the line of its
+// expression: it has at most one statement and the source wrote it on one line, without comments.
+fn (g &Gen) or_block_is_compact(blk &flat.Node) bool {
+	return blk.children_count <= 1 && g.source_block_is_compact(blk)
+		&& !g.has_comment_between(blk.pos.offset, blk.pos.end)
 }
 
 fn (mut g Gen) compact_stmt(id flat.NodeId) {
@@ -2943,6 +3084,8 @@ fn (mut g Gen) for_stmt_with_init(id flat.NodeId, init_override flat.NodeId) {
 		}
 		return
 	}
+	is_inline := init_override == flat.empty_node
+		&& g.braced_body_is_inline(n.pos.offset, body, n.pos.end)
 	in_init := g.in_init
 	g.in_init = true
 	g.write('for')
@@ -2974,6 +3117,10 @@ fn (mut g Gen) for_stmt_with_init(id flat.NodeId, init_override flat.NodeId) {
 	}
 	g.suppress_trailing_comments--
 	g.in_init = in_init
+	if is_inline && g.write_inline_body('', body, n.pos.end) {
+		g.writeln('')
+		return
+	}
 	g.write('{')
 	header_end := if !g.is_empty(post) {
 		g.rightmost_source_end(post)
@@ -3028,6 +3175,9 @@ fn (mut g Gen) for_in_stmt(id flat.NodeId) {
 	header := if n.value.len > 0 { n.value.int() } else { 3 }
 	v0 := children[0]
 	v1 := children[1]
+	body_start := if header >= 4 && children.len >= 4 { 4 } else { 3 }
+	body := unsafe { children[body_start..] }
+	is_inline := g.braced_body_is_inline(n.pos.offset, body, n.pos.end)
 	mut_val := n.op == .amp
 	mutability := g.a.formatter_for_in_mut[int(id)] or { u8(0) }
 	first_is_mut := if mutability > 0 {
@@ -3059,17 +3209,17 @@ fn (mut g Gen) for_in_stmt(id flat.NodeId) {
 		g.expr(v1)
 	}
 	g.write(' in ')
-	mut body_start := 3
-	if header >= 4 && children.len >= 4 {
-		g.expr(children[2])
-		g.write(' .. ')
+	g.expr(children[2])
+	if body_start == 4 {
+		range_op := g.a.formatter_sources[int(id)] or { '..' }
+		g.write(' ${range_op} ')
 		g.expr(children[3])
-		body_start = 4
-	} else {
-		g.expr(children[2])
 	}
 	g.suppress_trailing_comments--
-	body := unsafe { children[body_start..] }
+	if is_inline && g.write_inline_body(' ', body, n.pos.end) {
+		g.writeln('')
+		return
+	}
 	g.write(' {')
 	header_end := g.rightmost_source_end(children[body_start - 1])
 	body_source_start := if body.len > 0 { g.leftmost_source_start(body[0]) } else { n.pos.end }
@@ -3086,13 +3236,33 @@ fn (mut g Gen) for_in_stmt(id flat.NodeId) {
 }
 
 fn (mut g Gen) if_expr(id flat.NodeId) {
+	g.if_expr_chain(id, false)
+}
+
+// if_expr_chain prints an `if` expression. `is_else_if` marks the `else if` part of a chain,
+// which follows the layout of the expanded head: a compact head has no `else if`.
+fn (mut g Gen) if_expr_chain(id flat.NodeId, is_else_if bool) {
 	n := g.a.node(id)
 	children := g.a.children_of(n)
 	if children.len < 2 {
 		return
 	}
-	start_line_len := g.output_line_len()
-	is_compact := g.if_expr_is_compact(n, children, start_line_len)
+	if !is_else_if && g.if_expr_is_compact(n, children, g.output_line_len()) {
+		// As in `write_inline_body`, the printed line decides: `if c {return x}` gains two
+		// spaces, and a compact `if` that ends up over the limit is expanded on the next run.
+		mark := g.output_mark()
+		g.if_expr_layout(children, true)
+		if g.printed_on_one_line(mark) {
+			return
+		}
+		g.rollback_to(mark)
+	}
+	g.if_expr_layout(children, false)
+}
+
+// if_expr_layout prints an `if` expression with its branches either on the `if` line
+// (`is_compact`) or expanded.
+fn (mut g Gen) if_expr_layout(children []flat.NodeId, is_compact bool) {
 	cond := children[0]
 	cn := g.a.node(cond)
 	g.write('if ')
@@ -3144,7 +3314,7 @@ fn (mut g Gen) if_expr(id flat.NodeId) {
 			g.write(' else ')
 		}
 		if en.kind == .if_expr {
-			g.if_expr(else_id)
+			g.if_expr_chain(else_id, true)
 		} else if is_compact {
 			g.compact_expr_block(else_id)
 		} else {
@@ -3163,19 +3333,180 @@ fn (g &Gen) if_expr_is_compact(n &flat.Node, children []flat.NodeId, start_line_
 	if children.len !in [2, 3] || g.has_comment_between(n.pos.offset, n.pos.end) {
 		return false
 	}
+	mut if_len := 0
 	if source := g.source_span(n.pos.offset, n.pos.end) {
+		if_len = source.trim_space().len
 		if source.contains('\n') || source.contains('\r')
-			|| start_line_len + source.trim_space().len > formatter_max_line_len {
+			|| start_line_len + if_len > formatter_max_line_len {
 			return false
 		}
 	} else {
 		return false
 	}
-	if g.compact_block_expr_ids(children[1]) == none {
+	// `output_line_len` is 0 at the start of a statement; the indentation is written lazily.
+	indent_len := if g.on_newline { g.indent * 4 } else { 0 }
+	line_len := indent_len + start_line_len + if_len
+	if !g.if_branch_is_compact(children[1], line_len) {
 		return false
 	}
 	return children.len == 2
-		|| (g.a.node(children[2]).kind == .block && g.compact_block_expr_ids(children[2]) != none)
+		|| (g.a.node(children[2]).kind == .block && g.if_branch_is_compact(children[2], line_len))
+}
+
+// if_branch_is_compact reports whether an `if` branch can stay on the `if` line: it holds
+// expressions (the value of an `if` expression), or one `return`/assignment/jump statement,
+// which a compact `match` branch already keeps inline.
+fn (g &Gen) if_branch_is_compact(id flat.NodeId, line_len int) bool {
+	if g.compact_block_expr_ids(id) != none {
+		return true
+	}
+	n := g.a.node(id)
+	if n.kind != .block || line_len > formatter_max_line_len {
+		return false
+	}
+	stmt_id := g.compact_branch_stmt(g.a.children_of(n)) or { return false }
+	return !g.node_forces_line_break(stmt_id)
+}
+
+// inline_body_stmt returns the statement of a braced body that can be printed on its header
+// line: a single expression, `return`, assignment or jump statement.
+fn (g &Gen) inline_body_stmt(body []flat.NodeId) ?flat.NodeId {
+	if body.len != 1 {
+		return none
+	}
+	mut stmt_id := body[0]
+	mut stmt := g.a.node(stmt_id)
+	if stmt.kind == .block && stmt.value.len == 0 && stmt.children_count == 1 {
+		stmt_id = g.a.child(stmt, 0)
+		stmt = g.a.node(stmt_id)
+	}
+	if stmt.kind != .if_expr && !(stmt.kind == .expr_stmt && stmt.children_count == 1) {
+		stmt_id = g.compact_branch_stmt([stmt_id]) or { return none }
+	}
+	if g.node_forces_line_break(stmt_id) {
+		return none
+	}
+	return stmt_id
+}
+
+// braced_body_is_inline reports whether the source wrote a loop or function, from its header
+// at `start` to the closing `}` of `body` at `end`, on one line, and the body can stay there.
+fn (g &Gen) braced_body_is_inline(start int, body []flat.NodeId, end int) bool {
+	if g.has_comment_between(start, end) {
+		return false
+	}
+	source := g.source_span(start, end) or { return false }
+	// Some declarations (operator methods) do not span their body; never guess for those.
+	if source.contains('\n') || source.contains('\r') || !source.trim_space().ends_with('}') {
+		return false
+	}
+	line_len := if g.on_newline { g.indent * 4 } else { g.output_line_len() }
+	if line_len + source.trim_space().len > formatter_max_line_len {
+		return false
+	}
+	return g.inline_body_stmt(body) != none
+}
+
+// write_inline_body prints `sep` and a body accepted by `braced_body_is_inline` as `{ stmt }`,
+// and reports whether that printed line fits in `formatter_max_line_len` columns. The source
+// length is not enough: normalizing `{return x}` to `{ return x }` can push the line past the
+// limit, and the next run would then expand it. A body that does not fit on one line is taken
+// back out, so the caller prints it expanded.
+fn (mut g Gen) write_inline_body(sep string, body []flat.NodeId, end int) bool {
+	stmt_id := g.inline_body_stmt(body) or { return false }
+	mark := g.output_mark()
+	g.write(sep)
+	g.write('{ ')
+	g.compact_stmt(stmt_id)
+	g.write(' }')
+	if !g.printed_on_one_line(mark) {
+		g.rollback_to(mark)
+		return false
+	}
+	g.source_end = int_max(g.source_end, end)
+	return true
+}
+
+// OutputMark is a point in the output that a one-line layout can be rolled back to, when the
+// printed line turns out too long for it.
+struct OutputMark {
+	out_len    int
+	on_newline bool
+	source_end int
+	comment_i  int
+}
+
+fn (g &Gen) output_mark() OutputMark {
+	return OutputMark{
+		out_len:    g.out.len
+		on_newline: g.on_newline
+		source_end: g.source_end
+		comment_i:  g.comment_i
+	}
+}
+
+// printed_on_one_line reports whether the output written since `mark` has no line break and
+// ends a line of at most `formatter_max_line_len` columns.
+fn (g &Gen) printed_on_one_line(mark OutputMark) bool {
+	for i in mark.out_len .. g.out.len {
+		if g.out.byte_at(i) == `\n` {
+			return false
+		}
+	}
+	return g.output_line_len() <= formatter_max_line_len
+}
+
+// rollback_to removes the output written since `mark`.
+fn (mut g Gen) rollback_to(mark OutputMark) {
+	g.out.go_back_to(mark.out_len)
+	g.on_newline = mark.on_newline
+	g.source_end = mark.source_end
+	g.comment_i = mark.comment_i
+}
+
+// node_forces_line_break reports whether formatting `id` always breaks the line (a `match`,
+// a non-empty map literal, a nested loop, ...), so a statement containing it cannot be kept
+// inline even when its source is on one line.
+fn (g &Gen) node_forces_line_break(id flat.NodeId) bool {
+	if int(id) < 0 {
+		return false
+	}
+	n := g.a.node(id)
+	match n.kind {
+		.match_stmt, .select_stmt, .comptime_if, .comptime_for, .for_stmt, .for_in_stmt,
+		.asm_stmt, .sql_expr, .lock_expr, .defer_stmt, .label_stmt, .veb_template {
+			return true
+		}
+		.map_init {
+			if n.children_count > 0 {
+				return true
+			}
+		}
+		.if_expr {
+			if !g.if_expr_is_compact(n, g.a.children_of(n), 0) {
+				return true
+			}
+		}
+		.fn_literal {
+			if !g.fn_literal_is_inline(n) {
+				return true
+			}
+		}
+		.or_expr {
+			// `x() or { a() b() }` is printed with one statement per line, see `or_expr`.
+			if n.value !in ['!', '?'] && n.children_count > 1
+				&& !g.or_block_is_compact(g.a.child_node(n, 1)) {
+				return true
+			}
+		}
+		else {}
+	}
+	for child in g.a.children_of(n) {
+		if g.node_forces_line_break(child) {
+			return true
+		}
+	}
+	return false
 }
 
 fn (g &Gen) compact_block_expr_ids(id flat.NodeId) ?[]flat.NodeId {
@@ -3188,7 +3519,17 @@ fn (g &Gen) compact_block_expr_ids(id flat.NodeId) ?[]flat.NodeId {
 
 fn (mut g Gen) compact_expr_block(id flat.NodeId) {
 	n := g.a.node(id)
-	expressions := g.compact_block_expr_ids(id) or { []flat.NodeId{} }
+	expressions := g.compact_block_expr_ids(id) or {
+		// A single `return`/assignment/jump statement, see `if_branch_is_compact`.
+		if stmt_id := g.compact_branch_stmt(g.a.children_of(n)) {
+			g.write('{ ')
+			g.compact_stmt(stmt_id)
+			g.write(' }')
+			g.source_end = int_max(g.source_end, n.pos.end)
+			return
+		}
+		[]flat.NodeId{}
+	}
 	g.write('{')
 	if expressions.len > 0 {
 		g.write(' ')
@@ -3227,7 +3568,10 @@ fn (mut g Gen) match_node(id flat.NodeId) {
 			if g.match_branch_is_compact(b, bchildren) {
 				g.write('else ')
 				g.compact_match_branch(b, bchildren)
-				g.writeln('')
+				g.emit_trailing_comments(b.pos.end)
+				if !g.on_newline {
+					g.writeln('')
+				}
 			} else {
 				g.write('else')
 				g.writeln(' {')
@@ -3273,7 +3617,10 @@ fn (mut g Gen) match_node(id flat.NodeId) {
 			if g.match_branch_is_compact(b, rest) {
 				g.write(' ')
 				g.compact_match_branch(b, rest)
-				g.writeln('')
+				g.emit_trailing_comments(b.pos.end)
+				if !g.on_newline {
+					g.writeln('')
+				}
 			} else {
 				g.writeln(' {')
 				g.stmt_list_ids(rest)
@@ -3690,10 +4037,6 @@ fn (mut g Gen) fn_decl(id flat.NodeId) {
 	defer {
 		g.in_c_function = was_in_c_function
 	}
-	g.emit_attrs(id)
-	if n.op == .arrow {
-		g.write('pub ')
-	}
 	children := g.a.children_of(n)
 	mut i := 0
 	mut params := []flat.NodeId{}
@@ -3702,6 +4045,13 @@ fn (mut g Gen) fn_decl(id flat.NodeId) {
 		i++
 	}
 	body := children[i..]
+	// A declaration's position starts at its name, after `pub fn (receiver) `.
+	is_inline := n.kind == .fn_decl && g.braced_body_is_inline(g.source_line_start(n.pos.offset),
+		body, g.a.formatter_node_ends[int(id)] or { n.pos.end })
+	g.emit_attrs(id)
+	if n.op == .arrow {
+		g.write('pub ')
+	}
 	mut recv := flat.empty_node
 	if params.len > 0 && g.a.node(params[0]).op == .dot {
 		recv = params[0]
@@ -3724,13 +4074,19 @@ fn (mut g Gen) fn_decl(id flat.NodeId) {
 		g.write(' ')
 		g.write(receiver_type)
 		g.write(') ')
-		method_name := name.all_after_last('.')
+		method_name := g.a.formatter_sources[int(id)] or {
+			if name.starts_with('C:') || name.starts_with('JS:') {
+				name.replace(':', '.')
+			} else {
+				name.all_after_last('.')
+			}
+		}
 		g.write(method_name)
 		if method_name in ['+', '-', '*', '/', '%', '**', '==', '!=', '<', '<=', '>', '>=', '|',
 			'^', '[]', '[]='] {
 			g.write(' ')
 		}
-	} else if n.kind == .c_fn_decl {
+	} else if n.kind == .c_fn_decl || name.starts_with('C:') || name.starts_with('JS:') {
 		if name.starts_with('JS:') {
 			g.write('JS.${name[3..]}')
 		} else if name.starts_with('C:') {
@@ -3772,6 +4128,10 @@ fn (mut g Gen) fn_decl(id flat.NodeId) {
 	if body.len == 0 && g.empty_braced_body_is_compact(n, formatter_end)
 		&& !g.has_comment_between(n.pos.offset, formatter_end) {
 		g.writeln(' {}')
+		return
+	}
+	if is_inline && g.write_inline_body(' ', body, formatter_end) {
+		g.writeln('')
 		return
 	}
 	g.writeln(' {')
@@ -5033,6 +5393,14 @@ fn (mut g Gen) skip_comments_before(limit int) {
 fn (g &Gen) source_line(offset int) int {
 	file := g.a.source_files[g.file_id] or { return 0 }
 	return file.find_line(offset)
+}
+
+// source_line_start returns the offset of the first byte of the source line holding `offset`.
+fn (g &Gen) source_line_start(offset int) int {
+	if offset <= 0 || offset > g.source.len {
+		return offset
+	}
+	return g.source[..offset].last_index_u8(`\n`) + 1
 }
 
 fn (g &Gen) source_span(start int, end int) ?string {

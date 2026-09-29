@@ -1,0 +1,22 @@
+// A panic in a deferred block that runs for another panic aborts that panic;
+// the program ends with both of them when nothing recovers the newer one.
+fn cleanup() {
+	defer {
+		if msg := recover() {
+			println('never reached: ${msg}')
+		}
+	}
+}
+
+fn work() {
+	defer {
+		println('cleanup starts')
+		panic('second')
+	}
+	panic('first')
+}
+
+fn main() {
+	cleanup()
+	work()
+}

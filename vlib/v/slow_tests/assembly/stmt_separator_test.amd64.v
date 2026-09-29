@@ -28,13 +28,12 @@ fn main() {
 
 const vexe = os.getenv('VEXE')
 const v_file = os.join_path(os.vtmp_dir(), 'generated_stmt_separator.amd64.v')
-const genexe_file = os.join_path(os.vtmp_dir(), 'generated_stmt_separator.exe')
 const c_file = os.join_path(os.vtmp_dir(), 'generated_stmt_separator.exe.tmp.c')
 
-fn test_stmt_separator() {
+fn test_stmt_separator() ! {
 	os.write_file(v_file, asm_file_content)!
 	eprintln('Compiling...')
-	compile_cmd := '${os.quoted_path(vexe)} -cg -skip-running -no-rsp -keepc -o ${os.quoted_path(genexe_file)} ${os.quoted_path(v_file)}'
+	compile_cmd := '${os.quoted_path(vexe)} -cg -b c -o ${os.quoted_path(c_file)} ${os.quoted_path(v_file)}'
 	eprintln('> compile_cmd: ${compile_cmd}')
 	time.sleep(1000 * time.millisecond) // improve chances of working on windows
 	compile_res := os.system(compile_cmd)
@@ -42,7 +41,6 @@ fn test_stmt_separator() {
 
 	content := os.read_file(c_file)!
 	os.rm(v_file)!
-	os.rm(genexe_file)!
 	os.rm(c_file)!
 	assert content.contains(r'addq %[z], %%rax\n\t')
 }

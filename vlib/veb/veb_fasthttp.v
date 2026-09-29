@@ -5,6 +5,7 @@ module veb
 
 import fasthttp
 import net.http
+import os
 import strconv
 import strings
 import time
@@ -77,6 +78,7 @@ pub fn run_new[A, X](mut global_app A, params RunParams) ! {
 		return error('invalid port number `${params.port}`, it should be between 1 and 65535')
 	}
 	if ssl_enabled(params) {
+		prompt_to_kill_processes_listening_on_port(params.port)
 		maybe_init_server[A](mut global_app, new_server_without_lifecycle())
 		run_at_with_ssl[A, X](mut global_app, params)!
 		return
@@ -85,6 +87,7 @@ pub fn run_new[A, X](mut global_app A, params RunParams) ! {
 	// Generate routes and controllers just like the original run() function.
 	routes := generate_routes[A, X](global_app)!
 	controllers_sorted := check_duplicate_routes_in_controllers[A](global_app, routes)!
+	prompt_to_kill_processes_listening_on_port(params.port)
 
 	// Allocate params on the heap to keep it valid for the server lifetime
 	request_params := &RequestParams{
@@ -125,6 +128,50 @@ pub fn run_new[A, X](mut global_app A, params RunParams) ! {
 
 fn spawn_fasthttp_server_run(mut server fasthttp.Server) thread ! {
 	return spawn server.run()
+}
+
+fn listening_process_ids_from_lsof_output(output string) []int {
+	mut pids := []int{}
+	for line in output.split_into_lines() {
+		pid := strconv.atoi(line.trim_space()) or { continue }
+		if pid > 0 {
+			pids << pid
+		}
+	}
+	return pids
+}
+
+fn listening_process_ids(port int) []int {
+	$if windows {
+		return []int{}
+	} $else {
+		// `lsof` exits with status 1 when no process is listening, which is expected.
+		result := os.execute('lsof -tiTCP:${port} -sTCP:LISTEN')
+		return listening_process_ids_from_lsof_output(result.output)
+	}
+}
+
+fn prompt_to_kill_processes_listening_on_port(port int) {
+	pids := listening_process_ids(port)
+	if pids.len == 0 {
+		return
+	}
+	pid_list := pids.map(it.str()).join(', ')
+	answer := os.input('[veb] Port ${port} is in use by process ${pid_list}. Kill it? [y/N] ')
+	if answer.trim_space().to_lower() != 'y' {
+		return
+	}
+	for pid in pids {
+		// PIDs are parsed as integers from lsof output, so this command has no user-provided shell input.
+		os.execute('kill -TERM ${pid}')
+	}
+	// Give gracefully terminated servers a moment to release the listener before binding ours.
+	for _ in 0 .. 10 {
+		if listening_process_ids(port).len == 0 {
+			return
+		}
+		time.sleep(100 * time.millisecond)
+	}
 }
 
 // parallel_append_handler is veb's fasthttp append handler (fasthttp.AppendHandler):

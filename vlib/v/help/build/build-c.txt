@@ -97,8 +97,11 @@ see also `v help build`.
    -icon <path>
    --icon=<path>
    -seticon <path>
+   --seticon=<path>
       Embed the provided `.ico` or `.png` file as the icon of the generated
-      Windows executable. Use it only when V is producing a Windows `.exe`.
+      Windows executable. All spellings accept either a space or `=` before
+      the path. This requires the C backend and a Windows `.exe` output.
+      Cross-compiling also requires `windres` or `llvm-windres`.
 
    -showcc
       Prints the C command that is used to build the program.

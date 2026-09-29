@@ -7,7 +7,7 @@ import time
 
 // profiler_alloc is the allocation function that records allocations
 fn profiler_alloc(size int, ctx voidptr) voidptr {
-	ptr := unsafe { C.malloc(size) }
+	ptr := unsafe { C.malloc(usize(size)) }
 	if ptr == unsafe { nil } {
 		return ptr
 	}
@@ -56,7 +56,7 @@ fn profiler_alloc(size int, ctx voidptr) voidptr {
 
 // profiler_alloc_with_location records allocation with source location
 pub fn profiler_alloc_with_location(size int, file string, line int) voidptr {
-	ptr := unsafe { C.malloc(size) }
+	ptr := unsafe { C.malloc(usize(size)) }
 	if ptr == unsafe { nil } {
 		return ptr
 	}
@@ -160,7 +160,7 @@ fn profiler_realloc(ptr voidptr, new_size int, ctx voidptr) voidptr {
 		profiler_state.mu.unlock()
 	}
 
-	new_ptr := unsafe { C.realloc(ptr, new_size) }
+	new_ptr := unsafe { C.realloc(ptr, usize(new_size)) }
 	if new_ptr == unsafe { nil } {
 		return new_ptr
 	}

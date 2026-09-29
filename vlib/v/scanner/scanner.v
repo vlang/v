@@ -217,13 +217,12 @@ fn (mut s Scanner) validate_char_literal(start int, content_start int, content_e
 			if s.diagnostics.len > before_errors {
 				return
 			}
-			extra := match escape {
-				`x` { 2 }
-				`u` { 4 }
-				`U` { 8 }
-				else { 0 }
+			offset = s.char_literal_escape_end(offset, content_end)
+			// A character can be spelled as its UTF-8 bytes (`\xe2\x98\x85`, `\342\230\205`),
+			// the same as in a string, so those escapes together are still one character.
+			if lead := s.char_literal_escape_byte(part_start, offset) {
+				offset = s.char_literal_utf8_escapes_end(lead, offset, content_end)
 			}
-			offset = int_min(content_end, offset + 2 + extra)
 		} else {
 			offset = int_min(content_end, offset + utf8_char_len(s.src[offset]))
 		}
@@ -233,6 +232,113 @@ fn (mut s Scanner) validate_char_literal(start int, content_start int, content_e
 		formatted_parts := parts.map('`${it}`').join(', ')
 		s.error_with_details('invalid character literal `${content}` => `${content}` ([${formatted_parts}]) (more than one character)', start, details)
 	}
+}
+
+// char_literal_escape_end returns where the escape that starts at the backslash at
+// `offset` ends. An octal escape is exactly three octal digits, which is how string
+// literals decode it; without three, the backslash escapes only the next character.
+fn (s &Scanner) char_literal_escape_end(offset int, content_end int) int {
+	extra := match s.src[offset + 1] {
+		`x` {
+			2
+		}
+		`u` {
+			4
+		}
+		`U` {
+			8
+		}
+		else {
+			if s.char_literal_octal_escape_at(offset, content_end) { 2 } else { 0 }
+		}
+	}
+	return int_min(content_end, offset + 2 + extra)
+}
+
+fn (s &Scanner) char_literal_octal_escape_at(offset int, content_end int) bool {
+	if offset + 3 >= content_end {
+		return false
+	}
+	for i in 1 .. 4 {
+		c := s.src[offset + i]
+		if c < `0` || c > `7` {
+			return false
+		}
+	}
+	return true
+}
+
+// char_literal_escape_byte returns the byte that a `\xHH` or three-digit octal escape
+// spanning `start` to `end` stands for.
+fn (s &Scanner) char_literal_escape_byte(start int, end int) ?u8 {
+	if end - start != 4 {
+		return none
+	}
+	escape := s.src[start + 1]
+	mut value := 0
+	if escape == `x` {
+		for i in start + 2 .. end {
+			if !s.src[i].is_hex_digit() {
+				return none
+			}
+			value = value * 16 + int(string_escape_hex_value(s.src[i]))
+		}
+	} else if escape >= `0` && escape <= `7` {
+		for i in start + 1 .. end {
+			if s.src[i] < `0` || s.src[i] > `7` {
+				return none
+			}
+			value = value * 8 + int(s.src[i] - `0`)
+		}
+	} else {
+		return none
+	}
+	if value > 0xff {
+		return none
+	}
+	return u8(value)
+}
+
+// char_literal_utf8_escapes_end extends a byte escape holding the UTF-8 lead byte `lead`
+// over the continuation byte escapes that complete its character, and returns where
+// they end. The bytes have to be one well-formed UTF-8 sequence: if they are missing, are
+// not continuation bytes, or spell an overlong form, a surrogate or a code point above
+// U+10FFFF, the escape stays on its own.
+fn (s &Scanner) char_literal_utf8_escapes_end(lead u8, offset int, content_end int) int {
+	continuation_bytes := if lead >= 0xc2 && lead <= 0xdf {
+		1
+	} else if lead >= 0xe0 && lead <= 0xef {
+		2
+	} else if lead >= 0xf0 && lead <= 0xf4 {
+		3
+	} else {
+		0
+	}
+	if continuation_bytes == 0 {
+		return offset
+	}
+	mut code_point := u32(lead) & (u32(0x7f) >> (continuation_bytes + 1))
+	mut end := offset
+	for _ in 0 .. continuation_bytes {
+		if end + 1 >= content_end || s.src[end] != `\\` {
+			return offset
+		}
+		next_end := s.char_literal_escape_end(end, content_end)
+		b := s.char_literal_escape_byte(end, next_end) or { return offset }
+		if b < 0x80 || b > 0xbf {
+			return offset
+		}
+		code_point = (code_point << 6) | u32(b & 0x3f)
+		end = next_end
+	}
+	// The same range `check_string_escape` enforces for `\u`/`\U`, plus the smallest code
+	// point each length may encode, which rules out overlong forms.
+	shortest_form_minimum := [u32(0x80), 0x800, 0x10000][continuation_bytes - 1]
+	if code_point < shortest_form_minimum || code_point > 0x10ffff
+		|| (code_point >= 0xd800 && code_point <= 0xdfff) {
+		return offset
+	}
+	return end
 }
 
 // current_file returns current file data for Scanner.

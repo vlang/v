@@ -926,6 +926,7 @@ struct FastcSourceHeader {
 	import_order            []string
 	blank_imports           []string
 	has_globals             bool
+	translated              bool
 	has_constants           bool
 	has_global_declarations bool
 	// Byte-level superset tests over the whole file (see fastc_source_scan_flags):
@@ -1254,6 +1255,7 @@ struct Parser {
 	// source-level functions. It is immutable and shared by file generators.
 	function_c_names map[string]string
 	selfhost         bool
+	translated       bool
 	header_free      bool
 	// source_has_select is false only when the file provably holds no `select`
 	// word (see fastc_source_scan_flags), so block pre-scans for channel
@@ -1669,6 +1671,7 @@ fn fastc_generate_single_file(ctx &FastcFileGenContext, source_file FastcSourceF
 		used_function_names:       ctx.used_function_names
 		function_c_names:          ctx.function_c_names
 		selfhost:                  prefs.building_v
+		translated:                source_file.header.translated
 		source_has_select:         source_file.header.has_select
 		has_startup_inits:         ctx.has_startup_inits
 		has_cleanup_hooks:         ctx.has_cleanup_hooks
@@ -1815,6 +1818,13 @@ fn generate_source_pieces(input_sources []FastcSourceFile, module_aliases map[st
 	// value resolve and B gets its own dispatch table entries.
 	fastc_promote_embedded_interface_methods(embed_embedders, embed_embeddeds, mut functions, mut interface_methods)
 	function_c_names := fastc_compact_function_c_names(functions, prefs.building_v)
+	mut has_entry_module := false
+	for source_file in sources {
+		if source_file.header.module_name in ['', 'main'] {
+			has_entry_module = true
+			break
+		}
+	}
 	mut pending_references := fastc_start_referenced_function_names(sources, prefs, functions)
 	has_c_functions := fastc_functions_declare_c(functions)
 	fastc_prefixed_c_names := fastc_reserved_temporary_c_names(functions, globals)
@@ -1913,7 +1923,14 @@ fn generate_source_pieces(input_sources []FastcSourceFile, module_aliases map[st
 	}
 	startup_initializers := fastc_generate_startup_initializers(ordered_sources, constant_output.module_initializers, global_output.module_initializers, module_init_calls, function_c_names)!
 	timer.mark('startup_initializers')
-	used_function_names := fastc_wait_referenced_function_names(mut pending_references)
+	mut used_function_names := fastc_wait_referenced_function_names(mut pending_references)
+	if 'main' !in functions {
+		// A program without an explicit main has no entry roots to walk from, so
+		// every declared function must survive the earlier name-based body filter too.
+		for key in functions.keys() {
+			used_function_names[key.all_after_last('.')] = true
+		}
+	}
 	timer.mark('wait_references')
 	mut pending_interface_dispatches := fastc_start_interface_dispatches(declared_kinds, functions, function_c_names, interface_methods, used_function_names, prefs.building_v, prefs)
 	struct_field_lookup := constant_output.struct_field_lookup.move()
@@ -1936,13 +1953,6 @@ fn generate_source_pieces(input_sources []FastcSourceFile, module_aliases map[st
 	mut fixed_array_types := constant_output.fixed_array_types.clone()
 	for name, array_type in global_output.fixed_array_types {
 		fixed_array_types[name] = array_type
-	}
-	mut has_entry_module := false
-	for source_file in sources {
-		if source_file.header.module_name in ['', 'main'] {
-			has_entry_module = true
-			break
-		}
 	}
 	mut entry_has_main := false
 	// Self-host builds drop the functions that nothing reachable refers to:
@@ -2923,6 +2933,18 @@ pub struct FastcPreparedUnits {
 pub:
 	objects   []string
 	cache_key string
+}
+
+// cache_objects maps build-local objects to their persistent cache entries for
+// reporting linker failures, including units published during this build.
+pub fn (prepared &FastcPreparedUnits) cache_objects() map[string]string {
+	mut cached := map[string]string{}
+	for entry in prepared.entries {
+		if entry.cache_object != '' {
+			cached[entry.object] = entry.cache_object
+		}
+	}
+	return cached
 }
 
 // fastc_unit_compile_order returns the indexes of uncached C units largest

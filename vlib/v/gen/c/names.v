@@ -3,6 +3,7 @@ module c
 import strings
 import v.gen.c.naming
 import v.types
+import v.util
 
 // c_name converts c name data for c.
 fn c_name(name string) string {
@@ -263,6 +264,8 @@ fn (mut c ContextStringLookupCache) select_context(file string, module_name stri
 }
 
 fn (mut g FlatGen) reset_context_lookup_caches() {
+	g.import_key_cache = &util.KeyRecentCache{}
+	g.selective_import_key_cache = &util.KeyRecentCache{}
 	g.import_alias_cache = &ContextStringLookupCache{}
 	g.enum_selector_cache = &ContextStringLookupCache{}
 	g.enum_method_cache = &ContextStringLookupCache{}
@@ -553,7 +556,18 @@ fn c_escape(s string) string {
 // c_escape_into appends the C-escaped form of s to out, without the temporary
 // builder and copy that c_escape needs for its return value.
 fn c_escape_into(mut out strings.Builder, s string) {
-	for b in s.bytes() {
+	// Copy runs of bytes that need no escape in one write; literal tables are
+	// mostly plain text, and a per-byte write dominated emitting them.
+	mut run_start := 0
+	for i in 0 .. s.len {
+		b := s[i]
+		if b >= 32 && b != 127 && b != `\\` && b != `"` {
+			continue
+		}
+		if i > run_start {
+			unsafe { out.write_ptr(s.str + run_start, i - run_start) }
+		}
+		run_start = i + 1
 		match b {
 			`\\` {
 				out.write_string('\\\\')
@@ -582,6 +596,9 @@ fn c_escape_into(mut out strings.Builder, s string) {
 				}
 			}
 		}
+	}
+	if s.len > run_start {
+		unsafe { out.write_ptr(s.str + run_start, s.len - run_start) }
 	}
 }
 

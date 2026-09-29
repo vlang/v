@@ -212,6 +212,7 @@ fn test_chacha20_no_overlap_xor_key_stream() ! {
 		mut output := []u8{len: input.len}
 		cs.xor_key_stream(mut output, input)
 		got := hex.encode(output)
+		assert got == t.output
 
 		// for decryption, we can not use cs.xor_key_stream directly on output bytes
 		// internally, Cipher stream has updates the counter, thats differ from encryption phase
