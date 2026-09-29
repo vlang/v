@@ -223,6 +223,20 @@ fn test_casts_between_widths() {
 	assert f64(i128(-2)) == -2.0
 }
 
+fn test_a_cast_to_f64_rounds_once() {
+	// Each limb converted to `double` on its own rounds twice, and the first
+	// rounding discards the bit that decides the second. This value came out 2^65
+	// too low; the answer has to match what the native type gives.
+	x := (u128(9007199254740993) << 64) + (u128(1) << 63)
+	assert f64(x) == f64((u128(1) << 117) + (u128(1) << 65))
+	// A discarded half with nothing behind it is a tie, and a tie rounds to even.
+	assert f64(u128(9007199254740993) << 64) == f64(u128(1) << 117)
+	// The extremes keep the rule as well: the largest value rounds up to 2^128,
+	// and the smallest signed value converts exactly.
+	assert f64(u_max()) == f64(u128(1) << 127) * 2.0
+	assert f64(i128(-1) << 127) == -f64(u128(1) << 127)
+}
+
 fn test_division_by_zero_is_a_panic() {
 	// The runtime panic is the documented behaviour for a zero divisor at every
 	// width, so 128-bit division follows it instead of producing garbage.

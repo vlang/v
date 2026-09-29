@@ -662,8 +662,10 @@ The compiler does not require a 128-bit C type. Every operation becomes a call
 to a small helper, and the helper has two implementations: the C compiler's own
 `__int128` where it exists (gcc, clang), and one built from 64-bit limbs
 everywhere else (tcc, MSVC, every 32-bit target), where a 128-bit value is a
-struct. Both answer identically. Pass `-d v3_no_native_int128` to force the
-portable implementation on a compiler that has the native type.
+struct. Both answer identically, down to the rounding of a cast to `f64`: the
+whole 128-bit magnitude is rounded once, rather than each limb on its own. Pass
+`-d v3_no_native_int128` to force the portable implementation on a compiler that
+has the native type.
 
 Printing works through `str()`, so println and string interpolation show the
 decimal value, including the minimum `i128` that has no positive counterpart.

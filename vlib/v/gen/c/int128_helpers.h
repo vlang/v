@@ -502,12 +502,73 @@ static inline u128 __v_u128_rem(u128 a, u128 b) {
 	return r;
 }
 
+/* A value wider than a double has to be rounded once, from the whole magnitude.
+ * Converting each limb on its own rounds twice, and the first rounding throws away
+ * the bit that decides the second: with hi = 2^53 + 1 and lo = 2^63, the high limb
+ * rounds down to 2^117 and the answer lands 2^65 too low.
+ *
+ * Keep the top 53 bits and round on the guard bit below them plus every bit after
+ * it, the way a hardware conversion does. The scale below is a power of two, which
+ * multiplies exactly, so this decides the only rounding there is. */
+static inline double __v_u128_scale_pow2(double m, int e) {
+	while (e >= 32) {
+		m *= 4294967296.0;
+		e -= 32;
+	}
+	while (e > 0) {
+		m *= 2.0;
+		e--;
+	}
+	return m;
+}
+
 static inline double __v_u128_to_f64(u128 a) {
-	return (double)a.hi * V_INT128_TWO64 + (double)a.lo;
+	int bits;
+	int shift;
+	u64 keep;
+	bool guard;
+	bool sticky;
+	if (a.hi == 0) {
+		return (double)a.lo;
+	}
+	/* The count of significant bits, 65 to 128 here, so that the top 53 of them
+	 * are the ones a double can hold. */
+	bits = 128;
+	{
+		u64 top = a.hi;
+		while ((top >> 63) == 0) {
+			top <<= 1;
+			bits--;
+		}
+	}
+	shift = bits - 53;
+	if (shift >= 64) {
+		/* Everything below the kept bits is in the low limb, plus `shift - 64`
+		 * bits of the high one. */
+		int dropped = shift - 64;
+		if (dropped == 0) {
+			keep = a.hi;
+			guard = (a.lo >> 63) != 0;
+			sticky = (a.lo & 0x7fffffffffffffffull) != 0;
+		} else {
+			keep = a.hi >> dropped;
+			guard = ((a.hi >> (dropped - 1)) & 1) != 0;
+			sticky = (a.hi & ((((u64)1) << (dropped - 1)) - 1)) != 0 || a.lo != 0;
+		}
+	} else {
+		keep = (a.hi << (64 - shift)) | (a.lo >> shift);
+		guard = ((a.lo >> (shift - 1)) & 1) != 0;
+		sticky = (a.lo & ((((u64)1) << (shift - 1)) - 1)) != 0;
+	}
+	/* Round to nearest, ties to even, on the guard and sticky bits. */
+	if (guard && (sticky || (keep & 1) != 0)) {
+		keep++;
+	}
+	return __v_u128_scale_pow2((double)keep, shift);
 }
 
 static inline double __v_i128_to_f64(i128 a) {
-	double v = (double)__v_u128_abs_of(a).hi * V_INT128_TWO64 + (double)__v_u128_abs_of(a).lo;
+	double v = __v_u128_to_f64(__v_u128_abs_of(a));
 	return (a.hi >> 63) != 0 ? -v : v;
 }
 
