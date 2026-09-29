@@ -6730,8 +6730,10 @@ fn (g &FlatGen) usable_expr_type_uncached(id flat.NodeId) types.Type {
 			}
 			// Lowering can replace the checked type with a concrete annotation for
 			// a shadowed local. Use it before consulting a checker scope that no
-			// longer follows the lexical scope of this identifier.
-			if node.typ.len > 0 {
+			// longer follows the lexical scope of this identifier. A `shared T`
+			// annotation parses as `T`, without the pointer the local is stored as,
+			// so `&local` would be taken once more.
+			if node.typ.len > 0 && !node.typ.trim_space().starts_with('shared ') {
 				annotated := g.parse_node_type(&node)
 				if !decl_annotation_is_unusable(annotated, node.typ)
 					&& !g.type_contains_generic_placeholder(annotated) {
