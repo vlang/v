@@ -3050,8 +3050,8 @@ This is an alternative to factory functions like `fn new_user() User {}` and sho
 instead.
 
 Static type methods can also be used as function values by omitting the call parentheses,
-such as `make_user := User.new`. A selector rooted in a local value accesses its fields;
-it does not name a static type method.
+such as `make_user := User.new`. A field selector rooted in a local variable, constant, or
+global reads that value's field; it does not name a static type method.
 
 > [!NOTE]
 > Note, that these are not constructors, but simple functions. V doesn't have constructors or

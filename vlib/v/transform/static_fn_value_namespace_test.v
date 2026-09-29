@@ -41,4 +41,18 @@ fn test_static_fn_value_fallback_rejects_local_root_without_checker_metadata() {
 	t.set_var_type(root, 'Wrapper')
 	assert t.static_assoc_fn_name(type_id, 'new') == none
 	assert t.static_fn_value_name(value_id, a.node(value_id)) == none
+	t.unset_var_type(root)
+	tc.const_types[root] = types.Type(types.Struct{ name: 'Wrapper' })
+	assert t.static_fn_value_name(value_id, a.node(value_id)) == none
+	tc.const_types.delete(root)
+	t.globals[root] = 'Wrapper'
+	assert t.static_fn_value_name(value_id, a.node(value_id)) == none
+	t.cur_file = 'namespace.v'
+	tc.file_imports[file_import_key(t.cur_file, root)] = 'staticfnref'
+	assert t.static_fn_value_name(value_id, a.node(value_id)) == none
+	t.globals.delete(root)
+	// An unrelated module's same-named constant must not hide an import alias.
+	tc.const_types['transitive.${root}'] = types.int_
+	t.const_suffixes[root] = 'transitive.${root}'
+	assert t.static_fn_value_name(value_id, a.node(value_id)) or { '' } == name
 }
