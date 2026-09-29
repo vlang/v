@@ -2056,21 +2056,22 @@ fn mux_interim_response_result(interim []H2HeaderField) string {
 			peer.fail('headers: ${err.msg()}')
 			return
 		}
-		peer.write_frame(H2HeadersFrame{
+		interim_frame := H2Frame(H2HeadersFrame{
 			stream_id:   ids[0]
 			fragment:    peer.encoder.encode(interim)
 			end_headers: true
-		}) or {
-			peer.fail('interim: ${err.msg()}')
-			return
-		}
-		peer.write_frame(H2HeadersFrame{
+		})
+		final_frame := H2Frame(H2HeadersFrame{
 			stream_id:   ids[0]
 			fragment:    peer.encoder.encode([H2HeaderField{':status', '200'}])
 			end_headers: true
 			end_stream:  true
-		}) or {
-			peer.fail('final: ${err.msg()}')
+		})
+		// Publish both frames under one pipe lock, before rejection can close it.
+		mut frames := interim_frame.encode()
+		frames << final_frame.encode()
+		peer.end.write(frames) or {
+			peer.fail('response: ${err.msg()}')
 			return
 		}
 		// Drain the client's frames until the pipe closes.
