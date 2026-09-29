@@ -1836,6 +1836,35 @@ fn (mut g FlatGen) gen_index_operator_receiver_tmp_arg(tmp string, actual types.
 }
 
 // gen_index_assign emits index assign output for c.
+// can_gen_direct_array_store reports whether an element store may go through the
+// array data pointer directly, the same way an element load does. Element types
+// that need their own lowering (strings, fixed arrays used as elements) are
+// excluded here, and the caller excludes shared array wrappers.
+fn (g &FlatGen) can_gen_direct_array_store(arr_type types.Array) bool {
+	if !(g.direct_array_access || g.unsafe_depth > 0) {
+		return false
+	}
+	if arr_type.elem_type is types.String {
+		return false
+	}
+	if _ := array_fixed_type(arr_type.elem_type) {
+		return false
+	}
+	return true
+}
+
+// gen_direct_array_elem_lvalue writes the lvalue of one array element, in the
+// same spelling the direct element load in cleanc.v uses:
+// (*((${c_elem}*)((<base>).data) + (<idx>)))
+fn (mut g FlatGen) gen_direct_array_elem_lvalue(base_id flat.NodeId, idx_id flat.NodeId, c_elem string, is_ptr bool) {
+	g.write('(*((${c_elem}*)((')
+	g.gen_expr(base_id)
+	g.write(if is_ptr { ')->data' } else { ').data' })
+	g.write(') + (')
+	g.gen_expr(idx_id)
+	g.write(')))')
+}
+
 fn (mut g FlatGen) gen_index_assign(node flat.Node) {
 	lhs_id := g.a.child(&node, 0)
 	lhs := g.a.nodes[int(lhs_id)]
@@ -1912,6 +1941,29 @@ fn (mut g FlatGen) gen_index_assign(node flat.Node) {
 		}
 		if is_array_base {
 			c_elem := g.value_c_type(arr_type.elem_type)
+			// Direct element store, mirroring the direct element load in cleanc.v:
+			// when the function is marked @[direct_array_access] (or we are inside an
+			// unsafe block), a store must go straight through the data pointer like a
+			// load does. Without this, a hot loop that writes array elements compiles to
+			// an array__set() call per element while the reads next to it are inlined.
+			if g.can_gen_direct_array_store(arr_type)
+				&& !g.array_assign_base_is_shared_value_selector(base_id) {
+				idx_id := g.a.child(&lhs, 1)
+				if op := compound_assign_to_infix_op(node.op) {
+					g.gen_direct_array_elem_lvalue(base_id, idx_id, c_elem, base_type is types.Pointer)
+					g.write(' ${g.op_str(op)}= ')
+					g.gen_expr_with_expected_type(g.a.child(&node, 1), arr_type.elem_type)
+					g.writeln(';')
+					return
+				}
+				if node.op == .assign {
+					g.gen_direct_array_elem_lvalue(base_id, idx_id, c_elem, base_type is types.Pointer)
+					g.write(' = ')
+					g.gen_expr_with_expected_type(g.a.child(&node, 1), arr_type.elem_type)
+					g.writeln(';')
+					return
+				}
+			}
 			tmp := g.tmp_count
 			g.tmp_count++
 			// Use the public alias here: a source local named `array` hides the
