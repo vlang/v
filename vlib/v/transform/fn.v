@@ -9881,7 +9881,7 @@ fn (mut t Transformer) make_compiler_default_clone_value(source flat.NodeId, typ
 	}
 	// Enum values are scalars. A different module may also define a struct with
 	// the same short name, which the struct lookup fallback could select here.
-	if !isnil(t.tc) && t.tc.parse_type(clean) is types.Enum {
+	if !isnil(t.tc) && types.unalias_type(t.tc.parse_type(clean)) is types.Enum {
 		return source
 	}
 	if clean == 'thread' || clean.starts_with('thread ') || clean == 'chan'
@@ -10395,7 +10395,7 @@ fn (t &Transformer) compiler_default_clone_type_needs_work_seen(typ string, seen
 	if clean.len == 0 || clean.starts_with('&') || clean in seen {
 		return false
 	}
-	if !isnil(t.tc) && t.tc.parse_type(clean) is types.Enum {
+	if !isnil(t.tc) && types.unalias_type(t.tc.parse_type(clean)) is types.Enum {
 		return false
 	}
 	if clean == 'thread' || clean.starts_with('thread ') || clean == 'chan'
