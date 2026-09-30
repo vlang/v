@@ -9901,6 +9901,9 @@ See also [V Types](#v-types).
 
 This lists operators for [primitive types](#primitive-types) only.
 
+Boolean values, including aliases of `bool` without an overloaded `<` operator, cannot be ordered
+with `<`, `>`, `<=`, or `>=`.
+
 ```v ignore
 +    sum                    integers, floats, strings
 -    difference             integers, floats
