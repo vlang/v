@@ -25690,8 +25690,33 @@ fn (g &FlatGen) translated_comparison_integer_sign(typ types.Type) int {
 	return if g.translated_comparison_integer_is_unsigned(typ) { 1 } else { -1 }
 }
 
-fn (mut g FlatGen) gen_mixed_sign_integer_comparison(lhs_id flat.NodeId, rhs_id flat.NodeId, lhs_type types.Type, rhs_type types.Type, op flat.Op) bool {
+// translated_comparison_operand_type is the type of a comparison operand in C
+// translated to V: a rune literal stands for a C character constant, an `int`
+// (`c > `,`` with `c` holding EOF, -1, is false).
+fn (g &FlatGen) translated_comparison_operand_type(id flat.NodeId, typ types.Type) types.Type {
+	mut node := g.a.nodes[int(id)]
+	for node.kind == .paren && node.children_count > 0 {
+		node = g.a.nodes[int(g.a.child(&node, 0))]
+	}
+	if node.kind == .char_literal && !node.value.starts_with('c:')
+		&& unsigned_shift_unalias_type(typ) is types.Rune {
+		return types.Type(types.i32_)
+	}
+	return typ
+}
+
+fn (mut g FlatGen) gen_mixed_sign_integer_comparison(lhs_id flat.NodeId, rhs_id flat.NodeId, lhs_operand_type types.Type, rhs_operand_type types.Type, op flat.Op) bool {
 	translated := g.expr_is_in_translated_file(lhs_id)
+	lhs_type := if translated {
+		g.translated_comparison_operand_type(lhs_id, lhs_operand_type)
+	} else {
+		lhs_operand_type
+	}
+	rhs_type := if translated {
+		g.translated_comparison_operand_type(rhs_id, rhs_operand_type)
+	} else {
+		rhs_operand_type
+	}
 	lhs_sign := if translated {
 		g.translated_comparison_integer_sign(lhs_type)
 	} else {
