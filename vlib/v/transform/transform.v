@@ -22352,6 +22352,9 @@ fn (t &Transformer) raw_expr_type_without_smartcast(id flat.NodeId) string {
 			if typ.len > 0 {
 				return typ
 			}
+			if t.current_module_declares_const(node.value) {
+				return t.const_owned_expr_type(node.value, node.typ)
+			}
 			if global_type := t.current_module_global_type(node.value) {
 				return t.normalize_type_alias(global_type)
 			}
@@ -23787,6 +23790,8 @@ fn (mut t Transformer) transform_ident_expr(id flat.NodeId, node flat.Node) flat
 				if global_type := t.current_module_global_type(node.value) {
 					typ = global_type
 					is_global = true
+				} else if t.current_module_declares_const(node.value) {
+					// const owns the name: leave typ empty so the const path below emits `mod.name`.
 				} else if global_name := t.imported_global_name(node.value) {
 					typ = t.globals[global_name]
 					is_global = true
@@ -25335,6 +25340,9 @@ fn (t &Transformer) resolve_expr_type(id flat.NodeId) string {
 			if local_type.len > 0 {
 				return local_type
 			}
+			if t.current_module_declares_const(node.value) {
+				return t.const_owned_expr_type(node.value, '')
+			}
 			if global_type := t.current_module_global_type(node.value) {
 				return t.normalize_type_alias(global_type)
 			}
@@ -25940,6 +25948,15 @@ fn (t &Transformer) const_type_name(name string) ?string {
 		return tname
 	}
 	return none
+}
+
+fn (t &Transformer) const_owned_expr_type(name string, node_typ string) string {
+	if key := t.const_type_key_in_context(name, t.cur_module, t.cur_file) {
+		if const_type := t.const_type_name(key) {
+			return t.normalize_type_alias(const_type)
+		}
+	}
+	return t.normalize_type_alias(node_typ)
 }
 
 // const_type_key supports const type key handling for Transformer.

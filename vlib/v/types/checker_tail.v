@@ -19034,11 +19034,13 @@ fn (tc &TypeChecker) selector_fn_base_type(base_id flat.NodeId) ?Type {
 	if int(base_id) >= 0 {
 		base_node := tc.a.nodes[int(base_id)]
 		if base_node.kind == .ident {
-			if typ := tc.non_file_scope_type(base_node.value) {
-				if base := tc.mut_param_base_for_current_ident(base_node.value, typ) {
-					return base
+			if !tc.bare_name_is_const_owned_over_global(base_node.value) {
+				if typ := tc.non_file_scope_type(base_node.value) {
+					if base := tc.mut_param_base_for_current_ident(base_node.value, typ) {
+						return base
+					}
+					return typ
 				}
-				return typ
 			}
 		}
 	}

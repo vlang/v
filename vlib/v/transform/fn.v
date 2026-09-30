@@ -1003,8 +1003,13 @@ fn (t &Transformer) raw_const_type_name_for_expr(id flat.NodeId) ?string {
 	if t.selector_const_base_is_value(node) {
 		return none
 	}
-	if node.kind == .ident && t.raw_var_type(node.value).len > 0 {
-		return none
+	if node.kind == .ident {
+		if t.raw_var_type(node.value).len > 0 {
+			return none
+		}
+		if t.ident_compiles_to_global_symbol(node.value) {
+			return none
+		}
 	}
 	name := t.expr_key(id)
 	if name.len == 0 {
@@ -4260,6 +4265,49 @@ fn (t &Transformer) imported_global_name(name string) ?string {
 		return candidates[0]
 	}
 	return none
+}
+
+// current_module_declares_const: accepts the bare name or the `mod.name`
+// spelling transform_ident_expr writes after the const path. Exact keys only —
+// const_suffixes sees every transitive module and must not decide ownership.
+fn (t &Transformer) current_module_declares_const(name string) bool {
+	if name == '' || isnil(t.tc) {
+		return false
+	}
+	if name.contains('.') {
+		base := name.all_before_last('.')
+		if base in ['main', 'builtin'] {
+			// main/builtin consts keep a bare key; `main.name` is only their
+			// C-symbol spelling.
+			field := short_name_view(name)
+			return field in t.tc.const_types
+				&& t.tc.const_owner_module(field) in ['', 'main', 'builtin']
+		}
+		return name in t.tc.const_types && t.tc.const_owner_module(name) == t.cur_module
+	}
+	if t.cur_module.len > 0 && t.cur_module != 'main' && t.cur_module != 'builtin' {
+		return '${t.cur_module}.${name}' in t.tc.const_types
+	}
+	return name in t.tc.const_types
+}
+
+// ident_compiles_to_global_symbol: cgen emits a global's C symbol. A const of
+// the declaring module owns the bare name and its C symbol (docs.md:3645-3653),
+// so this must stay in lockstep with transform_ident_expr (it keeps the const's
+// symbol iff this is false) or method and symbol come from different
+// declarations and read garbage. `t.globals` is keyed by bare name across
+// modules, so a main/builtin hit is not proof — a local const still owns it.
+fn (t &Transformer) ident_compiles_to_global_symbol(name string) bool {
+	if t.current_module_global_type(name) == none {
+		if t.current_module_declares_const(name) {
+			return false
+		}
+		return t.imported_global_name(name) != none
+	}
+	if t.cur_module.len > 0 && t.cur_module != 'main' && t.cur_module != 'builtin' {
+		return true
+	}
+	return name !in t.tc.const_types
 }
 
 fn (mut t Transformer) lift_lambda_expr_for_fn_param(_id flat.NodeId, node flat.Node, param_type string) ?flat.NodeId {

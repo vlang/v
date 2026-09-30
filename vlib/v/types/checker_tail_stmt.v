@@ -8347,15 +8347,17 @@ fn (mut tc TypeChecker) check_ident(id flat.NodeId, node flat.Node) {
 			return
 		}
 	}
-	if typ := tc.non_file_scope_type(node.value) {
-		if typ is Unknown && typ.reason == 'invalid variable' {
-			tc.record_error_at(.unknown_ident, 'invalid variable `${node.value}`', id, tc.node_value_diagnostic_pos(id))
-			tc.register_synth_type(id, Type(void_))
-			tc.fn_context.continue_after_unknown_ident = true
+	if !tc.bare_name_is_const_owned_over_global(node.value) {
+		if typ := tc.non_file_scope_type(node.value) {
+			if typ is Unknown && typ.reason == 'invalid variable' {
+				tc.record_error_at(.unknown_ident, 'invalid variable `${node.value}`', id, tc.node_value_diagnostic_pos(id))
+				tc.register_synth_type(id, Type(void_))
+				tc.fn_context.continue_after_unknown_ident = true
+				return
+			}
+			tc.register_synth_type(id, typ)
 			return
 		}
-		tc.register_synth_type(id, typ)
-		return
 	}
 	qname := tc.qualify_name(node.value)
 	if qname != node.value {
@@ -8634,6 +8636,23 @@ fn (tc &TypeChecker) non_file_scope_type(name string) ?Type {
 		return none
 	}
 	return owner.scope.types[owner.index]
+}
+
+fn (tc &TypeChecker) bare_name_is_const_owned_over_global(name string) bool {
+	if name.contains('.') || name !in tc.global_names {
+		return false
+	}
+	qname := tc.qualify_name(name)
+	if qname !in tc.const_types {
+		return false
+	}
+	// A local/param (function scope, parent != nil) out-ranks both; the global is root-scope.
+	if owner := tc.cur_scope.lookup_owner(name) {
+		if owner.scope != unsafe { nil } && owner.scope.parent != unsafe { nil } {
+			return false
+		}
+	}
+	return true
 }
 
 // defer_result_index returns -1 for an unindexed `$res()` node and the non-negative
@@ -17179,8 +17198,10 @@ fn (tc &TypeChecker) resolve_type_uncached(id flat.NodeId) Type {
 			if smart_type := tc.smartcast_type(id) {
 				return smart_type
 			}
-			if typ := tc.non_file_scope_type(node.value) {
-				return typ
+			if !tc.bare_name_is_const_owned_over_global(node.value) {
+				if typ := tc.non_file_scope_type(node.value) {
+					return typ
+				}
 			}
 			qname := tc.qualify_name(node.value)
 			if qname != node.value {
