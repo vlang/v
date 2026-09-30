@@ -14665,7 +14665,19 @@ fn (mut t Transformer) transform_field_init_for_struct_type(id flat.NodeId, targ
 }
 
 // transform_block_expr_for_type transforms transform block expr for type data for transform.
+// transform_block_expr_for_type lowers a block used as a value of `target_type`.
+// Statements queued before the block (such as the snapshot of an earlier call
+// argument) stay in front of the enclosing statement: they must not move into
+// the block's statement expression, which the caller may also discard.
 fn (mut t Transformer) transform_block_expr_for_type(id flat.NodeId, node flat.Node, target_type string) ?flat.NodeId {
+	outer_pending := t.pending_stmts.clone()
+	t.pending_stmts.clear()
+	result := t.transform_block_expr_for_type_in_own_scope(id, node, target_type)
+	t.restore_outer_pending(outer_pending)
+	return result
+}
+
+fn (mut t Transformer) transform_block_expr_for_type_in_own_scope(id flat.NodeId, node flat.Node, target_type string) ?flat.NodeId {
 	if node.kind != .block || node.children_count == 0 || target_type == '' {
 		return none
 	}
@@ -18351,7 +18363,25 @@ fn transform_type_text_is_fixed_array(typ string) bool {
 }
 
 // transform_block_expr transforms transform block expr data for transform.
+// transform_block_expr lowers a block expression. As in transform_block_expr_for_type,
+// statements queued before the block stay in front of the enclosing statement.
 fn (mut t Transformer) transform_block_expr(id flat.NodeId, node flat.Node) flat.NodeId {
+	outer_pending := t.pending_stmts.clone()
+	t.pending_stmts.clear()
+	result := t.transform_block_expr_in_own_scope(id, node)
+	t.restore_outer_pending(outer_pending)
+	return result
+}
+
+// restore_outer_pending puts the statements queued before a nested lowering in
+// front of the ones it queued.
+fn (mut t Transformer) restore_outer_pending(outer_pending []flat.NodeId) {
+	mut pending := outer_pending.clone()
+	pending << t.pending_stmts
+	t.pending_stmts = pending
+}
+
+fn (mut t Transformer) transform_block_expr_in_own_scope(id flat.NodeId, node flat.Node) flat.NodeId {
 	mut child_ids := []flat.NodeId{cap: int(node.children_count)}
 	for i in 0 .. node.children_count {
 		child_ids << t.a.children[node.children_start + i]
