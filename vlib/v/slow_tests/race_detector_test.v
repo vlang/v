@@ -120,6 +120,74 @@ fn main() {
 }
 '
 
+// `_ = value` reads the value, like in Go: in an optimized build too, which drops unused
+// copies, and for a fixed array or a `mut` parameter, which C accesses through a pointer.
+const blank_read_source = 'struct Cell {
+mut:
+	s string
+	a [4]int
+}
+
+fn writer(mut c Cell) {
+	for i in 0 .. 1000 {
+		c.s = i.str()
+		c.a[1] = i
+	}
+}
+
+fn read_mut_param(mut c Cell) {
+	_ = c
+}
+
+fn main() {
+	mut c := &Cell{}
+	t := spawn writer(mut c)
+	read := \$d("read", "string")
+	for _ in 0 .. 1000 {
+		match read {
+			"string" { _ = c.s }
+			"fixed_array" { _ = c.a }
+			else { read_mut_param(mut c) }
+		}
+	}
+	t.wait()
+	println("done")
+}
+'
+
+// Reading a line of a file, which V does with `getc`, happens after the write of that line
+// in another thread, like every file read.
+const file_line_source = 'import os
+import time
+
+struct Data {
+mut:
+	x int
+}
+
+fn main() {
+	path := os.join_path(os.vtmp_dir(), "race_file_line_\${os.getpid()}.txt")
+	os.write_file(path, "")!
+	mut r := os.open(path)!
+	mut d := &Data{}
+	t := spawn fn (mut d Data, path string) {
+		d.x = 42
+		mut w := os.open_append(path) or { panic(err) }
+		w.write_string("ready\n") or { panic(err) }
+		w.close()
+	}(mut d, path)
+	for os.file_size(path) == 0 {
+		time.sleep(time.millisecond)
+	}
+	mut buf := []u8{len: 16}
+	n := r.read_bytes_with_newline(mut buf)!
+	println("read \${n} \${d.x}")
+	t.wait()
+	r.close()
+	os.rm(path) or {}
+}
+'
+
 fn testsuite_begin() {
 	os.mkdir_all(tdir) or {}
 }
@@ -237,4 +305,31 @@ fn test_race_rejects_the_arena_allocator_and_a_plain_race_define() {
 	assert define.exit_code != 0, define.output
 	assert define.output.contains('`-d race` is reserved for race builds'), define.output
 	assert !define.output.contains('retrying with'), define.output
+}
+
+fn test_race_blank_reads_are_reads() {
+	if !thread_sanitizer_runs() {
+		return
+	}
+	for read in ['string', 'fixed_array', 'mut_param'] {
+		mut flags := ['-d', 'read=${read}']
+		if read != 'mut_param' {
+			flags << '-prod'
+		}
+		exe := build_race_program('blank_read_${read}', blank_read_source, ...flags)
+		res := os.execute('VRACE="exitcode=7" ${os.quoted_path(exe)}')
+		assert res.exit_code == 7, '${read}: ${res.output}'
+		assert res.output.contains('WARNING: ThreadSanitizer: data race'), '${read}: ${res.output}'
+	}
+}
+
+fn test_race_file_line_read_happens_after_the_write() {
+	if !thread_sanitizer_runs() {
+		return
+	}
+	exe := build_race_program('file_line', file_line_source)
+	res := os.execute(os.quoted_path(exe))
+	assert res.exit_code == 0, res.output
+	assert !res.output.contains('ThreadSanitizer'), res.output
+	assert res.output.contains('read 6 42'), res.output
 }

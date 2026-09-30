@@ -688,6 +688,7 @@ pub fn get_raw_line() string {
 
 		mut str := ''
 		nr_chars := unsafe { C.getline(voidptr(&buf), &max, C.stdin) }
+		race_file_read()
 		if nr_chars >= 0 && buf != 0 {
 			str = unsafe { tos(buf, nr_chars) }
 		} else if int(C.feof(C.stdin)) == 0 && int(C.ferror(C.stdin)) != 0 {
@@ -737,6 +738,7 @@ pub fn get_raw_stdin() []u8 {
 		max := usize(0)
 		buf := &u8(unsafe { nil })
 		nr_chars := unsafe { C.getline(voidptr(&buf), &max, C.stdin) }
+		race_file_read()
 		return array{
 			element_size: 1
 			data:         voidptr(buf)

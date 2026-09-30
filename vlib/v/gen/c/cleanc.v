@@ -19556,6 +19556,10 @@ fn (mut g FlatGen) preamble() {
 	g.writeln('#define __bool_true_false_are_defined 1')
 	g.writeln('#endif')
 	g.writeln('typedef void* voidptr;')
+	if g.race {
+		// gen_race_blank_read reads fixed arrays through the ThreadSanitizer runtime.
+		g.writeln('void __tsan_read_range(void* addr, unsigned long size);')
+	}
 	g.writeln('typedef i64 int_literal;')
 	g.writeln('typedef double float_literal;')
 	g.writeln('struct sync__Channel;')

@@ -408,6 +408,9 @@ pub fn (f &File) read_bytes_with_newline(mut buf []u8) !int {
 	mut nbytes := 0
 
 	stream := unsafe { &C.FILE(f.cfile) }
+	defer {
+		race_file_read()
+	}
 	for (buf_ptr < buf.len) {
 		c = C.getc(stream)
 		match c {

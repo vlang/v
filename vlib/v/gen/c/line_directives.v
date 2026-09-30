@@ -3,6 +3,7 @@ module c
 import os
 import v.flat
 import v.token
+import v.types
 
 // generated_code_file is the file name of the C code that the compiler generates without a
 // V source position, like thread wrappers or `str()` methods, once `#line` directives are on.
@@ -104,16 +105,34 @@ fn (mut g FlatGen) gen_race_blank_read(rhs_id flat.NodeId) bool {
 	if !g.race || rhs.kind !in [.ident, .selector, .index, .prefix, .paren] {
 		return false
 	}
-	typ := g.usable_expr_type(rhs_id)
-	if _ := array_fixed_type(typ) {
-		return false
+	mut typ := g.usable_expr_type(rhs_id)
+	// The value of a `mut` parameter is behind the pointer that C passes.
+	mut deref := ''
+	if rhs.kind == .ident && g.current_param_is_mut(rhs.value) {
+		if param_type := g.current_param_type(rhs.value) {
+			if param_type is types.Pointer {
+				typ = param_type.base_type
+				deref = '*'
+			}
+		}
+	}
+	if fixed := array_fixed_type(typ) {
+		// A C array cannot be copied, and `(void)(array)` only takes its address: tell the
+		// race detector that all its elements are read. The size comes from the V type,
+		// as a fixed array parameter is a pointer in C.
+		elem_c_type, dims := g.fixed_array_decl_parts(fixed)
+		g.write('__tsan_read_range((void*)(${deref}')
+		g.gen_expr(rhs_id)
+		g.writeln('), sizeof(${elem_c_type}${dims}));')
+		return true
 	}
 	if g.tc.c_type(typ) in ['', 'void'] {
 		return false
 	}
-	// Race builds need clang or gcc, which both deduce the type with `__auto_type`.
-	g.write('{ __auto_type __race_blank_read = ')
+	// Race builds need clang or gcc, which both deduce the type with `__auto_type`. The copy
+	// is volatile, as an optimized build (`-prod`) would drop an unused copy, and its load.
+	g.write('{ volatile __auto_type __race_blank_read = ${deref}(')
 	g.gen_expr(rhs_id)
-	g.writeln('; (void)__race_blank_read; }')
+	g.writeln('); (void)__race_blank_read; }')
 	return true
 }
