@@ -191,12 +191,14 @@ fn (vd &VDoc) repo_root_for_links(input_dir string) string {
 	mut ancestor := input_dir
 	mut manifest_root := ''
 	for {
+		// A module's manifest takes precedence over an unrelated enclosing checkout.
+		if os.is_file(os.join_path(ancestor, 'v.mod')) {
+			manifest_root = ancestor
+			break
+		}
 		// Worktrees have a .git file instead of a directory.
 		if os.exists(os.join_path(ancestor, '.git')) {
 			return ancestor
-		}
-		if manifest_root == '' && os.is_file(os.join_path(ancestor, 'v.mod')) {
-			manifest_root = ancestor
 		}
 		parent := os.dir(ancestor)
 		if parent == ancestor {
@@ -212,7 +214,7 @@ fn (vd &VDoc) repo_root_for_links(input_dir string) string {
 		input_dir
 	}
 	if manifest_root != '' {
-		// Archives may lack .git; include every declared source directory in the root.
+		// Include every declared source directory without relying on enclosing Git metadata.
 		for source_dir in doc.module_source_dirs(module_source_root(manifest_root)) {
 			root = common_ancestor(root, os.real_path(source_dir) + os.path_separator)
 		}

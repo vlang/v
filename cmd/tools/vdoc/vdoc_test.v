@@ -576,7 +576,12 @@ fn test_repo_file_path_for_links_handles_worktrees_and_file_inputs() {
 }
 
 fn test_repo_file_path_for_links_preserves_manifestless_input_roots() {
-	root := os.join_path('links_no_manifest', 'nested')
+	// Keep this fixture outside the suite's v.mod created by the README test.
+	fixture_root := tpath + '_links_no_manifest'
+	defer {
+		os.rmdir_all(fixture_root) or {}
+	}
+	root := os.join_path(fixture_root, 'nested')
 	os.mkdir_all(root)!
 	file := os.join_path(root, 'file.v')
 	os.write_file(file, 'module mypkg\n')!
@@ -590,6 +595,59 @@ fn test_repo_file_path_for_links_preserves_manifestless_input_roots() {
 			}
 			expected := if is_multi && input_path == root { 'nested/file.v' } else { 'file.v' }
 			assert vd.get_repo_file_path_for_links(os.real_path(file)) == expected
+		}
+	}
+}
+
+fn test_repo_file_path_for_links_ignores_unrelated_enclosing_checkout() {
+	repo := 'links_unrelated_checkout'
+	os.mkdir_all(os.join_path(repo, '.git'))!
+	os.write_file(os.join_path(repo, 'v.mod'), "Module {\n\tname: 'outer'\n\trepo_url: 'https://github.com/example/outer'\n}\n")!
+	for base_url in ['', 'src'] {
+		root := os.join_path(repo, 'examples', if base_url == '' { 'mypkg' } else { 'mypkg_src' })
+		write_subdirs_fixture(root, "\trepo_url: 'https://github.com/example/mypkg'\n\trepo_branch: 'main'\n\tbase_url: '${base_url}'\n\tsubdirs: ['internal']\n", {
+			os.join_path(base_url, 'root.v'):            'module mypkg\n\n// root_fn links to [a guide](guide.md).\npub fn root_fn() {}\n'
+			os.join_path(base_url, 'internal', 'sub.v'): 'module mypkg\n\npub fn sub_fn() {}\n'
+		})!
+		source_root := os.join_path(root, base_url)
+		file := os.real_path(os.join_path(source_root, 'root.v'))
+		expected := if base_url == '' { 'root.v' } else { 'src/root.v' }
+		for input_path in [source_root, file] {
+			for is_multi in [false, true] {
+				vd := VDoc{
+					cfg: Config{
+						input_path: input_path
+						is_multi:   is_multi
+					}
+				}
+				assert vd.get_repo_file_path_for_links(file) == expected
+			}
+		}
+	}
+	root := os.join_path(repo, 'examples', 'mypkg')
+	res := os.execute_opt('${vexe_} doc -no-timestamp -f html -o - -html-only-contents -comments ${os.quoted_path(root)}')!
+	assert res.output.contains('https://github.com/example/mypkg/blob/main/root.v#L')
+	assert res.output.contains('https://github.com/example/mypkg/blob/main/internal/sub.v#L')
+	assert res.output.contains('https://github.com/example/mypkg/blob/main/guide.md')
+	assert !res.output.contains('/blob/main/examples/')
+}
+
+fn test_repo_file_path_for_links_keeps_manifestless_git_root() {
+	repo := 'links_git_without_manifest'
+	root := os.join_path(repo, 'nested')
+	os.mkdir_all(root)!
+	os.write_file(os.join_path(repo, '.git'), 'gitdir: /unused/worktrees/mypkg\n')!
+	file := os.join_path(root, 'file.v')
+	os.write_file(file, 'module mypkg\n')!
+	for input_path in [root, file] {
+		for is_multi in [false, true] {
+			vd := VDoc{
+				cfg: Config{
+					input_path: input_path
+					is_multi:   is_multi
+				}
+			}
+			assert vd.get_repo_file_path_for_links(os.real_path(file)) == 'nested/file.v'
 		}
 	}
 }
