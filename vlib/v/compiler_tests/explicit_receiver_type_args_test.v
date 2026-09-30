@@ -194,6 +194,20 @@ fn test_explicit_types_that_the_receiver_fixes_are_fine() {
 	assert error_lines(res.output) == [], res.output
 }
 
+// A generic method named with its type arguments is a value of the type of that
+// method, as a generic function named so is: a variable it initializes has
+// that type, and a misuse of it is an error.
+fn test_a_method_value_has_the_type_of_the_method_it_names() {
+	source := receiver_source('', box_of_int + '\tf := b.own[int]\n\tx := f + 1\n\tprintln(x)\n')
+	res := check_receiver_source('value_type', source)
+	assert res.exit_code == 1, res.output
+	line := line_of(source, '\tx := f + 1')
+	assert error_lines(res.output) == [
+		'${line}:7: mismatched types `fn () int` and `int literal`',
+		'${line}:7: infix expr: cannot use `int literal` (right expression) as `fn () int`',
+	], res.output
+}
+
 // A method named with its type arguments and without a call is checked as its
 // call is: `b.own[string]` for a `Box[int]` too.
 fn test_a_method_value_that_writes_another_type_than_the_receiver_fixes_is_an_error() {

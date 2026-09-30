@@ -155,10 +155,11 @@ fn (tc &TypeChecker) vls_call_target(call_id flat.NodeId, callee_id flat.NodeId)
 			return name
 		}
 	}
-	if callee.kind != .selector || callee.children_count == 0 {
+	// A method, `x.m(...)`, or `x.m[T](...)` with its type arguments.
+	if name_node.kind != .selector || name_node.children_count == 0 {
 		return none
 	}
-	return tc.vls_method_target(tc.a.child(callee, 0), callee.value)
+	return tc.vls_method_target(tc.a.child(name_node, 0), name_node.value)
 }
 
 // vls_method_target is the method `method` of the value `receiver_id`, called

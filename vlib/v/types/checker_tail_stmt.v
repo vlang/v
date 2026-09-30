@@ -17287,6 +17287,16 @@ fn (tc &TypeChecker) resolve_type_uncached(id flat.NodeId) Type {
 		return smart_type
 	}
 	if kind_id == 14 {
+		// A generic method named with its type arguments, `h.first[int]`: the
+		// type its check gave it (see check_generic_method_value), which the
+		// resolution of an index cannot tell from an index of the method value.
+		if node.children_count > 0 && tc.a.child_node(&node, 0).kind == .selector {
+			if typ := tc.cached_expr_type(id) {
+				if typ is FnType {
+					return typ
+				}
+			}
+		}
 		return tc.resolve_index_type(node)
 	}
 	if node.kind == .infix && node.op in [.eq, .ne, .lt, .gt, .le, .ge, .logical_and, .logical_or] {

@@ -5,6 +5,7 @@
 import os
 import time
 import x.json2
+import v.compiler_tests.method_form
 
 const vexe = @VEXE
 const tests_dir = os.dir(@FILE)
@@ -542,10 +543,114 @@ fn ask(dir string, code string, line int, word string, nth int) string {
 	return ask_at(dir, '${line}:${code}${found + 1}')
 }
 
+// ask_at asks `-line-info` about `spec` of main.v of `dir`, and asks its method
+// form the same (see same_answer_in_method_form).
 fn ask_at(dir string, spec string) string {
+	answer := ask_at_only(dir, spec)
+	same_answer_in_method_form(dir, spec, answer)
+	return answer
+}
+
+fn ask_at_only(dir string, spec string) string {
 	res := os.execute('cd ${os.quoted_path(dir)} && ${os.quoted_path(line_info_v3_bin)} -w -check -nocolor -vls-mode -line-info "main.v:${spec}" main.v')
 	assert res.exit_code == 0, res.output
 	return res.output.trim_space()
+}
+
+// same_answer_in_method_form asks the question `spec` of the method form of the
+// program of `dir` too, when that program declares a generic function with a
+// constraint: its generic functions are methods of `Host`, with the same type
+// parameters (see method_form), and a method's own type parameters have to
+// behave as those of a function, in the editor too. The method form answers
+// what `dir` answers, where it moves it.
+fn same_answer_in_method_form(dir string, spec string, answer string) {
+	source := os.read_file(os.join_path(dir, 'main.v')) or { return }
+	if !declares_a_constrained_generic_fn(source) {
+		return
+	}
+	form := method_form.of(source) or { return }
+	twin := dir + '_methods'
+	twin_file := os.join_path(twin, 'main.v')
+	if (os.read_file(twin_file) or { '' }) != form.source {
+		os.mkdir_all(twin) or { panic(err) }
+		os.write_file(twin_file, form.source) or { panic(err) }
+	}
+	// Several questions at once are separated by tabs, and name their file from
+	// the second one on.
+	moved_spec := spec.split('\t').map(moved_question(form, it)).join('\t')
+	method_answer := without_host(ask_at_only(twin, moved_spec))
+	expected := positions_in_method_form(form, answer)
+	assert method_answer == expected, 'the method form of `${os.file_name(dir)}` answers `${spec}` (`${moved_spec}` there) with\n${method_answer}\nnot\n${expected}'
+}
+
+// moved_question is `question`, `line:code col` of main.v, where the method form
+// moves it. The column of a question is the 0-based byte of the cursor.
+fn moved_question(form method_form.MethodForm, question string) string {
+	file := if question.starts_with('main.v:') { 'main.v:' } else { '' }
+	line := question[file.len..].all_before(':').int()
+	rest := question[file.len..].all_after(':')
+	mut code_len := 0
+	for code_len < rest.len && !rest[code_len].is_digit() {
+		code_len++
+	}
+	return '${file}${line}:${rest[..code_len]}${form.col(line, rest[code_len..].int() + 1) - 1}'
+}
+
+// declares_a_constrained_generic_fn reports whether `source` declares a generic
+// function, not a method, with a constraint on a type parameter: `[T Named]`.
+fn declares_a_constrained_generic_fn(source string) bool {
+	for line in source.split('\n') {
+		rest := if line.starts_with('pub fn ') {
+			line['pub fn '.len..]
+		} else if line.starts_with('fn ') && !line.starts_with('fn (') {
+			line['fn '.len..]
+		} else {
+			continue
+		}
+		if !rest.contains('[') || rest.index_u8(`[`) > rest.index_u8(`(`) {
+			continue
+		}
+		params := rest.all_after('[').all_before(']')
+		if params.split(',').any(it.trim_space().contains(' ')) {
+			return true
+		}
+	}
+	return false
+}
+
+// positions_in_method_form is `answer`, of the program, with the positions of
+// main.v it names where the method form moves them: `main.v:19:5`, a 0-based
+// column.
+fn positions_in_method_form(form method_form.MethodForm, answer string) string {
+	return answer.split('\n').map(position_in_method_form(form, it)).join('\n')
+}
+
+// position_in_method_form is positions_in_method_form for one line of an answer:
+// the answer to one of several questions comes after its number and a tab.
+fn position_in_method_form(form method_form.MethodForm, text string) string {
+	number := text.all_before('\t')
+	head := if text.contains('\t') && number.len > 0 && number.bytes().all(it.is_digit()) {
+		number + '\t'
+	} else {
+		''
+	}
+	answer := text[head.len..]
+	for prefix in ['./main.v:', 'main.v:'] {
+		if answer.starts_with(prefix) {
+			parts := answer[prefix.len..].split(':')
+			if parts.len == 2 && parts.all(it.len > 0 && it.bytes().all(it.is_digit())) {
+				line := parts[0].int()
+				return '${head}${prefix}${line}:${form.col(line, parts[1].int() + 1) - 1}'
+			}
+		}
+	}
+	return text
+}
+
+// without_host is an answer of the method form as the program would give it:
+// without the receiver `Host` that the method form gives each generic function.
+fn without_host(answer string) string {
+	return answer.replace('(host_ Host) ', '').replace('(host_ main.Host) ', '')
 }
 
 // ask_in asks `-line-info` about `spec`, a file of the program of `dir` with a
