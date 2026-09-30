@@ -15,6 +15,10 @@ VISIBILITYfn (values Names) clone() []Holder {
 
 TYPE_VISIBILITYtype WrappedNames = Names
 
+struct NamesPointer {
+	values &WrappedNames
+}
+
 pub fn make() WrappedNames {
 	return WrappedNames(Names(['first']))
 }
@@ -22,6 +26,11 @@ pub fn make() WrappedNames {
 pub fn make_ptr() &WrappedNames {
 	values := make()
 	return &values
+}
+
+pub fn make_ptr_ptr() &&WrappedNames {
+	holder := &NamesPointer{values: make_ptr()}
+	return &holder.values
 }
 
 pub fn make_names_ptr() &Names {
@@ -47,6 +56,7 @@ fn main() {
 	sql db { insert row into Account }!
 	values := aliases.make()
 	ptr_values := aliases.make_ptr()
+	ptr_ptr_values := aliases.make_ptr_ptr()
 	STATEMENT
 	selected := sql db { select from Account where name == 'first' }!
 	assert selected.len == 1
@@ -84,6 +94,7 @@ fn sql_alias_visibility_result(name string, is_public bool, expression string, i
 		})
 		.replace('aliases.make()', '${import_name}.make()')
 		.replace('aliases.make_ptr()', '${import_name}.make_ptr()')
+		.replace('aliases.make_ptr_ptr()', '${import_name}.make_ptr_ptr()')
 	os.write_file(source, main_source) or {
 		panic(err)
 	}
@@ -167,5 +178,34 @@ fn test_pointer_alias_methods_keep_alias_resolution_in_sql_values() {
 				}
 			}
 		}
+	}
+}
+
+fn test_multiple_pointer_alias_methods_obey_visibility_in_sql_checking() {
+	for i, expression in ['aliases.make_ptr_ptr().clone()[0].name', 'ptr_ptr_values.clone()[0].name',
+		'(ptr_ptr_values).clone()[0].name', 'renamed.make_ptr_ptr().clone()[0].name'] {
+		import_name := if expression.starts_with('renamed.') { 'renamed' } else { 'aliases' }
+		for is_public in [true, false] {
+			for is_update in [false, true] {
+				result := sql_alias_visibility_result('multiple_pointer_${i}_${is_public}_${is_update}',
+					is_public, expression, is_update, true, true, import_name)
+				if is_public {
+					assert result.exit_code == 0, result.output
+				} else {
+					assert result.exit_code != 0, result.output
+					assert result.output.contains('method `&&aliases.WrappedNames.clone` is private'), result.output
+				}
+			}
+		}
+	}
+}
+
+fn test_multiple_pointer_alias_methods_keep_declared_sql_result_types() {
+	for import_name in ['aliases', 'renamed'] {
+		expression := '${import_name}.make_ptr_ptr().clone()[0]'
+		result := sql_alias_visibility_result('multiple_pointer_result_${import_name}',
+			true, expression, false, true, true, import_name)
+		assert result.exit_code != 0, result.output
+		assert result.output.contains('this expression has type `aliases.Holder`'), result.output
 	}
 }

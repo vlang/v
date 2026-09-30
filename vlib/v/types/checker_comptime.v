@@ -10805,7 +10805,7 @@ fn (mut tc TypeChecker) check_sql_alias_method_privacy(id flat.NodeId, node flat
 			continue
 		}
 		receiver := tc.sql_orm_call_receiver_type(tokens, i) or { continue }
-		method := tc.concrete_method_signature_key(unwrap_pointer(receiver).name(), tokens[i]) or {
+		method := tc.concrete_method_signature_key(unwrap_all_pointers(receiver).name(), tokens[i]) or {
 			continue
 		}
 		if method.all_before_last('.') !in tc.type_aliases
@@ -11431,14 +11431,14 @@ fn (tc &TypeChecker) sql_orm_member_value_type(typ Type, member string) ?Type {
 fn (tc &TypeChecker) sql_orm_method_call_type(receiver Type, member string) ?Type {
 	// Alias methods, including methods inherited through another alias, win over
 	// builtin collection methods with the same name.
-	mut alias_receiver := unwrap_pointer(receiver)
+	mut alias_receiver := unwrap_all_pointers(receiver)
 	for alias_receiver is Alias {
 		if method := tc.method_value_type(alias_receiver.name(), member) {
 			if method is FnType {
 				return method.return_type
 			}
 		}
-		alias_receiver = unwrap_pointer(alias_receiver.base_type)
+		alias_receiver = unwrap_all_pointers(alias_receiver.base_type)
 	}
 	// Builtin collection methods are declared on the raw `array`/`map`; like the ordinary
 	// call checker, specialize their results for the concrete receiver.
@@ -11475,7 +11475,7 @@ fn (tc &TypeChecker) sql_orm_method_call_type(receiver Type, member string) ?Typ
 }
 
 fn (tc &TypeChecker) sql_orm_method_return_type(receiver Type, member string) ?Type {
-	receiver_name := unwrap_pointer(receiver).name()
+	receiver_name := unwrap_all_pointers(receiver).name()
 	if method := tc.method_value_type(receiver_name, member) {
 		if method is FnType {
 			return method.return_type
