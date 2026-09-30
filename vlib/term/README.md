@@ -128,3 +128,8 @@ term.hide_cursor()
 // shows the cursor
 term.show_cursor()
 ```
+
+Call `term.show_cursor_on_exit()` before hiding the cursor to restore it when `main`
+returns or `exit()` is called. This helper preserves the application's signal handlers.
+Signal termination does not run exit callbacks. Applications that need cursor cleanup
+on interruption should arrange to return from `main` or call `exit()` from normal execution.

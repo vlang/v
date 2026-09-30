@@ -1,6 +1,7 @@
 module main
 
 import os
+import v.pref
 
 fn test_compiler_selection_flags_are_not_forwarded() {
 	assert clean_compiler_selection_flags(['-silent', '-new-compiler', 'main.v']) == [
@@ -14,6 +15,7 @@ fn test_compiler_selection_flags_are_not_forwarded() {
 }
 
 fn test_external_tool_build_args_drop_non_binary_modes() {
+	assert external_tool_build_args('vfmt', ['-cross', '-os', 'windows', '-arch', 'x64']) == []string{}
 	assert external_tool_build_args('vfmt', ['-silent', '-N', '-W', '-check']) == [
 		'-silent',
 		'-N',
@@ -69,6 +71,39 @@ fn test_tools_that_consume_prefix_compiler_options_receive_them() {
 	]
 }
 
+fn test_formatter_backend_options_are_runtime_preferences() {
+	for flag in ['-b', '-backend'] {
+		prefix := ['-cc', 'clang', flag, 'js', '-gc', 'none']
+		assert external_tool_compile_args('vfmt', prefix) == ['-cc', 'clang', '-gc', 'none']
+		assert external_tool_runtime_args('fmt', prefix, ['fmt', 'source.v']) == [
+			flag,
+			'js',
+			'fmt',
+			'source.v',
+		]
+		assert external_tool_compile_args('vtest', prefix) == prefix
+		joined_prefix := ['-cc', 'clang', '${flag}=js', '-gc', 'none']
+		assert external_tool_compile_args('vfmt', joined_prefix) == ['-cc', 'clang', '-gc', 'none']
+		assert external_tool_runtime_args('fmt', joined_prefix, ['fmt', 'source.v']) == [
+			'${flag}=js',
+			'fmt',
+			'source.v',
+		]
+		assert external_tool_compile_args('vtest', joined_prefix) == joined_prefix
+	}
+}
+
+fn test_formatter_target_options_do_not_target_its_executable() {
+	assert external_tool_compile_args('vfmt', ['-b', 'wasm', '-os', 'browser', '-arch', 'wasm32',
+		'-cc', 'clang']) == [
+		'-cc',
+		'clang',
+	]
+	assert external_tool_compile_args('vfmt', ['-os=browser', '-arch=wasm32', '-prod']) == [
+		'-prod',
+	]
+}
+
 fn test_ownership_compiler_is_selected_only_for_explicit_modes() {
 	assert ownership_compiler_is_required(['-autofree', 'main.v'])
 	assert ownership_compiler_is_required(['-ownership', 'main.v'])
@@ -82,19 +117,21 @@ fn test_ownership_compiler_is_selected_only_for_explicit_modes() {
 }
 
 fn test_launcher_finds_the_source_root() {
-	root := find_vroot(@FILE) or { panic(err) }
+	root := find_vroot(@FILE) or { panic('missing vroot') }
 	assert os.is_file(os.join_path(root, 'GNUmakefile'))
 	assert os.is_dir(os.join_path(root, 'vlib', 'v'))
-	directory_root := find_vroot(root) or { panic(err) }
+	directory_root := find_vroot(root) or { panic('missing vroot') }
 	assert directory_root == root
 }
 
 fn test_windows_makev_keeps_the_v3_tcc_root_absolute() {
-	root := find_vroot(@FILE) or { panic(err) }
+	root := find_vroot(@FILE) or { panic('missing vroot') }
 	source := os.read_file(os.join_path(root, 'makev.bat'))!
-	assert source.contains('set V_FALLBACK_CC_ARGS=-cc "!tcc_exe!"')
+	assert source.contains('set tcc_dir=%~dp0thirdparty\\tcc')
+	assert source.contains('set tcc_exe=%tcc_dir%\\tcc.exe')
 	assert source.contains('"%V_BOOTSTRAP%" %V_BOOTSTRAP_VFLAGS% -keepc -g -showcc -cc "!tcc_exe!" -o "%V_STAGE%" cmd/v')
-	assert source.contains('if !ERRORLEVEL! EQU 0 set stage_vflags=-cc "!tcc_exe!"')
+	assert source.contains('"%V_STAGE%" %V_BOOTSTRAP_VFLAGS% -keepc -g -showcc -cc "!tcc_exe!" -o "%V_UPDATED%" cmd/v')
+	assert source.contains('set stage_vflags=-cc "!tcc_exe!"')
 	assert !source.contains('-cflags -Bthirdparty/tcc')
 }
 
@@ -137,7 +174,7 @@ fn test_json_quote_escapes_report_content() {
 }
 
 fn test_v1_fallback_installer_exposes_compatibility_modules() {
-	root := find_vroot(@FILE) or { panic(err) }
+	root := find_vroot(@FILE) or { panic('missing vroot') }
 	source := os.read_file(os.join_path(root, 'cmd', 'tools', 'install_v1_fallback.sh'))!
 	crypto := source.all_after('install_crypto_subtle_compatibility() {').all_before('\n}')
 	assert crypto.contains('vlib/crypto/internal/subtle')
@@ -206,14 +243,14 @@ fn test_v1_fallback_resolution_requires_compatibility_modules() {
 	os.write_file(os.join_path(json2_dir, 'json2.v'), 'module json2\n')!
 	assert resolve_v1_fallback(fallback) == none
 	os.write_file(os.join_path(json2_dir, v1_fallback_compatibility_marker), '${v_version}\n')!
-	assert resolve_v1_fallback(fallback) or { panic(err) } == cached_fallback
+	assert resolve_v1_fallback(fallback) or { panic('missing v1 fallback') } == cached_fallback
 	legacy := os.join_path(root, 'legacy_' + v1_fallback_binary + $if windows { '.exe' } $else { '' })
 	legacy_root := os.join_path(root, 'legacy_release')
 	os.mkdir_all(legacy_root)!
 	os.cp(@VEXE, legacy)!
 	os.chmod(legacy, 0o755)!
 	os.write_file(legacy + '.vroot', legacy_root)!
-	assert resolve_installed_v1_fallback(legacy, fallback) or { panic(err) } == cached_fallback
+	assert resolve_installed_v1_fallback(legacy, fallback) or { panic('missing installed v1 fallback') } == cached_fallback
 }
 
 fn test_v1_fallback_cached_launcher_uses_the_configured_cache() {
@@ -320,7 +357,7 @@ fn restore_environment(name string, previous ?string) {
 }
 
 fn test_cached_fallback_root_is_preferred_when_installed() {
-	root := find_vroot(@FILE) or { panic(err) }
+	root := find_vroot(@FILE) or { panic('missing vroot') }
 	fallback := os.join_path(root, v1_fallback_binary + $if windows { '.exe' } $else { '' })
 	root_file := fallback + '.vroot'
 	if !os.is_executable(fallback) || !os.is_file(root_file) {
@@ -453,6 +490,8 @@ fn test_fallback_exit_classifies_compile_only_commands() {
 	assert !v1_fallback_exit_identifies_compiler_failure(['-b', 'js', 'example_test.js.v'])
 	assert !v1_fallback_exit_identifies_compiler_failure(['-b', 'js_node', 'example_test.js.v'])
 	assert !v1_fallback_exit_identifies_compiler_failure(['-backend=js_browser', 'example_test.js.v'])
+	assert v1_fallback_exit_identifies_compiler_failure(['-b', 'c', 'example_test.js.v'])
+	assert !pref.is_test_file_for_backend('example_test.js.v', 'js')
 	assert !v1_fallback_exit_identifies_compiler_failure(['-backend=wasm', 'example_test.wasm.v'])
 	assert !v1_fallback_exit_identifies_compiler_failure(['script.vsh'])
 	assert !v1_fallback_exit_identifies_compiler_failure(['-e', 'exit(1)'])
@@ -503,13 +542,30 @@ fn test_fallback_exit_classifies_compile_only_commands() {
 }
 
 fn test_fallback_installer_writes_a_native_windows_root() {
-	root := find_vroot(@FILE) or { panic(err) }
+	root := find_vroot(@FILE) or { panic('missing vroot') }
 	source := os.read_file(os.join_path(root, 'cmd', 'tools', 'install_v1_fallback.sh'))!
 	writer := source.all_after('write_candidate_root() {').all_before('\n}\n\nsha256_of()')
 	assert writer.contains('MSYS*|MINGW*')
 	assert writer.contains('cygpath -w')
 	assert writer.contains('pwd -W')
 	assert source.count('write_candidate_root || return 1') == 2
+}
+
+fn test_fallback_handles_raw_vsh_script_like_a_vsh_script() {
+	previous_norun := os.getenv_opt('VNORUN')
+	os.unsetenv('VNORUN')
+	defer {
+		restore_environment('VNORUN', previous_norun)
+	}
+	// A script run through `-raw-vsh-tmp-prefix` may exit with a non zero code by itself.
+	assert !v1_fallback_exit_identifies_compiler_failure(['-raw-vsh-tmp-prefix', 'tmp', 'script'])
+	assert v1_fallback_exit_identifies_compiler_failure(['-skip-running', '-raw-vsh-tmp-prefix',
+		'tmp', 'script'])
+	// The arguments after an extensionless script belong to the script, even when
+	// they look like compiler options.
+	assert v1_fallback_compiler_prefix_len(['-raw-vsh-tmp-prefix', 'tmp', 'script', '-b', 'js']) == 2
+	assert v1_fallback_compiler_prefix_len(['-raw-vsh-tmp-prefix', 'tmp', 'run', 'script', '-check']) == 2
+	assert v1_fallback_compiler_prefix_len(['-prod', 'main.v']) == 2
 }
 
 fn test_build_module_uses_the_compatibility_compilers_own_vlib() {
@@ -541,4 +597,40 @@ fn test_build_module_uses_the_compatibility_compilers_own_vlib() {
 		'build-module',
 		mymod,
 	]
+}
+
+fn test_install_external_tool_modules_leaves_a_build_with_a_path_to_the_compiler() {
+	$if windows {
+		return
+	}
+	base := os.join_path(os.vtmp_dir(), 'launcher_tool_modules_${os.getpid()}')
+	os.rmdir_all(base) or {}
+	vmodules := os.join_path(base, 'vmodules')
+	path_root := os.join_path(base, 'path')
+	tool_source := os.join_path(base, 'vdoc')
+	os.mkdir_all(vmodules)!
+	os.mkdir_all(path_root)!
+	os.mkdir_all(tool_source)!
+	// This stands in for `v retry -- git clone ...`, and records every install attempt. It
+	// fails, so an attempt would also make install_external_tool_modules exit.
+	attempts := os.join_path(base, 'install_attempts')
+	fake_vexe := os.join_path(base, 'fake_v')
+	os.write_file(fake_vexe, '#!/bin/sh\necho "\$*" >> ${os.quoted_path(attempts)}\nexit 1\n')!
+	os.chmod(fake_vexe, 0o755)!
+	previous_vmodules := os.getenv_opt('VMODULES')
+	previous_vexe := os.getenv_opt('VEXE')
+	previous_sandboxed := os.getenv_opt('VTEST_SANDBOXED_PACKAGING')
+	os.setenv('VMODULES', vmodules, true)
+	os.setenv('VEXE', fake_vexe, true)
+	os.unsetenv('VTEST_SANDBOXED_PACKAGING')
+	defer {
+		restore_environment('VMODULES', previous_vmodules)
+		restore_environment('VEXE', previous_vexe)
+		restore_environment('VTEST_SANDBOXED_PACKAGING', previous_sandboxed)
+		os.rmdir_all(base) or {}
+	}
+	// `markdown` is in none of the roots, but a `-path` replaces VMODULES, so installing it
+	// there would not help. The compiler reports the missing module instead.
+	install_external_tool_modules('vdoc', tool_source, ['-path', path_root])
+	assert !os.exists(attempts)
 }

@@ -1580,17 +1580,21 @@ fn (mut t Transformer) run_parallel_monomorphize_specs(specs []PendingGenericFnS
 		t.ensure_node_context_map_capacity()
 		for idx, spec in args[ci].emitted_specs {
 			root := flat.NodeId(int(args[ci].roots[idx]) + node_shift)
-			t.record_monomorph_cache_spec(spec.key, spec.decl.key, spec.decl.module, spec.args)
-			if !t.generic_specialization_registered(spec.decl, spec.args) {
-				value := specialized_generic_fn_value(spec.decl.node.value, spec.args)
-				t.register_specialized_fn_signature_value(spec.decl, value, spec.args)
+			// A chunk worker can emit a specialization another worker discovered, so
+			// the declaration it carries can live in that worker's scratch arena.
+			// Publish a copy the master arena owns instead (vlang/v#28489).
+			decl := clone_monomorph_worker_decl(spec.decl)
+			t.record_monomorph_cache_spec(spec.key.clone(), decl.key, decl.module, spec.args)
+			if !t.generic_specialization_registered(decl, spec.args) {
+				value := specialized_generic_fn_value(decl.node.value, spec.args)
+				t.register_specialized_fn_signature_value(decl, value, spec.args)
 			}
 			t.generic_fn_spec_nodes[spec.key.clone()] = root
 			t.a.specialized_fn_nodes[int(root)] = true
-			t.a.specialized_fn_modules[int(root)] = spec.decl.module
-			t.a.specialized_fn_files[int(root)] = spec.decl.file
-			t.mark_node_context(root, spec.decl.module, spec.decl.file)
-			emitted[generic_fn_spec_key(spec.decl.key, spec.args)] = true
+			t.a.specialized_fn_modules[int(root)] = decl.module
+			t.a.specialized_fn_files[int(root)] = decl.file
+			t.mark_node_context(root, decl.module, decl.file)
+			emitted[generic_fn_spec_key(decl.key, spec.args)] = true
 			t.pending_generic_fn_spec_keys.delete(spec.key)
 		}
 		for name in args[ci].generated {
@@ -1602,7 +1606,8 @@ fn (mut t Transformer) run_parallel_monomorphize_specs(specs []PendingGenericFnS
 				for item in pending.args {
 					owned_args << item.clone()
 				}
-				t.request_generic_fn_specialization(pending.decl, owned_args)
+				t.request_generic_fn_specialization(clone_monomorph_worker_decl(pending.decl),
+					owned_args)
 			}
 		}
 		t.monomorph_profile('mono merged worker ${ci}: ${time.ticks() - debug_started} ms')
@@ -1646,6 +1651,25 @@ fn clone_monomorph_specialization_args(args []string) []string {
 		owned_args << arg.clone()
 	}
 	return owned_args
+}
+
+// clone_monomorph_worker_decl copies the declaration text a monomorph worker
+// put together while it was running into the arena that is current here.
+// Workers resolve and lift specialization declarations inside their own scratch
+// arena, which is released right after the batch merges; publishing the
+// worker's own strings would leave the master's signature and context tables
+// holding released memory (`string` comparisons then read unmapped bytes).
+fn clone_monomorph_worker_decl(decl GenericFnDecl) GenericFnDecl {
+	mut node := decl.node
+	node.value = decl.node.value.clone()
+	node.typ = decl.node.typ.clone()
+	return GenericFnDecl{
+		id:     decl.id
+		node:   node
+		file:   decl.file.clone()
+		module: decl.module.clone()
+		key:    decl.key.clone()
+	}
 }
 
 fn (mut t Transformer) run_scoped_monomorphize_specs(specs []PendingGenericFnSpec, mut emitted map[string]bool, mut generated []string) bool {
@@ -1727,7 +1751,7 @@ fn (mut t Transformer) run_scoped_monomorphize_specs(specs []PendingGenericFnSpe
 		worker_scope_state := transform_stage_scope_suspend(scope)
 		for spec in emitted_specs {
 			owned_emitted_specs << PendingGenericFnSpec{
-				decl: spec.decl
+				decl: clone_monomorph_worker_decl(spec.decl)
 				args: clone_monomorph_specialization_args(spec.args)
 				key:  spec.key.clone()
 			}
@@ -1761,7 +1785,10 @@ fn (mut t Transformer) run_scoped_monomorphize_specs(specs []PendingGenericFnSpe
 			for item in pending.args {
 				owned_args << item.clone()
 			}
-			t.request_generic_fn_specialization(pending.decl, owned_args)
+			// The queue keeps this declaration past the batch, so publish a copy
+			// the master arena owns (vlang/v#28489).
+			t.request_generic_fn_specialization(clone_monomorph_worker_decl(pending.decl),
+				owned_args)
 		}
 		for idx, spec in owned_emitted_specs {
 			root := flat.NodeId(int(roots[idx]) + node_shift)
@@ -2215,6 +2242,7 @@ fn (mut t Transformer) absorb_scoped_batch(batch &Transformer, scope voidptr, ne
 		t.scoped_owned_base_log << flat.NodeId(idx)
 	}
 	t.scoped_owned_base_log << batch.scoped_owned_base_log
+	t.clone_base_write_log << batch.clone_base_write_log
 	t.inplace_child_log << batch.inplace_child_log
 	for name in batch.used_fns_log {
 		t.mark_used_fn_key(t.promote_scoped_result_text(name))
@@ -2253,6 +2281,9 @@ fn (mut t Transformer) absorb_scoped_batch(batch &Transformer, scope voidptr, ne
 	}
 	for message in batch.monomorph_errors {
 		t.monomorph_errors << t.promote_scoped_result_text(message)
+	}
+	for warning in batch.alloc_warnings {
+		t.alloc_warnings << warning
 	}
 	deferred_start := t.deferred_base_writes.len
 	for write in batch.deferred_base_writes {
@@ -2326,6 +2357,16 @@ fn (mut t Transformer) transform_scoped_helper_batches(items []FnWorkItem, max_b
 	} else {
 		i64(1)
 	}
+	// Batches run one at a time on this thread, and neither the batch absorb
+	// below nor this helper writes the prepared-signature cache in between.
+	// Share this helper's copy with every batch copy-on-write (see
+	// ensure_private_call_param_types_decl_cache): once it has been detached, a
+	// batch fork would otherwise clone the whole map.
+	t.call_param_types_decl_shared = true
+	// Batches reuse one scratch arena: each batch's results are published into
+	// longer-lived storage before the next batch starts, so the arena is rewound
+	// instead of being freed and faulted in again for every batch.
+	mut scratch_scope := unsafe { nil }
 	mut start := 0
 	mut batch_idx := 0
 	for start < items.len {
@@ -2340,7 +2381,10 @@ fn (mut t Transformer) transform_scoped_helper_batches(items []FnWorkItem, max_b
 		spec_nodes_len := t.a.specialized_fn_nodes.len
 		spec_modules_len := t.a.specialized_fn_modules.len
 		spec_files_len := t.a.specialized_fn_files.len
-		scratch_scope := transform_worker_scope_begin(true)
+		if scratch_scope == unsafe { nil } || !transform_worker_scope_reenter(scratch_scope) {
+			transform_worker_scope_free(scratch_scope)
+			scratch_scope = transform_worker_scope_begin(true)
+		}
 		batch_tc := t.tc.fork_for_parallel_transform(t.a)
 		mut batch := t.fork_scoped_batch_worker(t.a, batch_tc)
 		batch.used_fns_log_active = true
@@ -2350,6 +2394,7 @@ fn (mut t Transformer) transform_scoped_helper_batches(items []FnWorkItem, max_b
 		// Nodes appended by an earlier batch are base nodes for this batch too.
 		// Record rewrites to them so their scratch-owned payloads are promoted.
 		batch.scoped_base_nodes = new_node_start
+		batch.clone_base_nodes = t.clone_base_nodes
 		batch.transform_pure_items_serial(items[start..end])
 		transform_worker_scope_leave(scratch_scope)
 		publication_state := transform_stage_scope_suspend(t.merge_scratch_scope)
@@ -2369,10 +2414,10 @@ fn (mut t Transformer) transform_scoped_helper_batches(items []FnWorkItem, max_b
 		// absorb_scoped_batch publishes every appended node and every base-node
 		// mutation recorded by the batch. Avoid rescanning the continuously growing
 		// AST after each small batch; that makes scoped transform quadratic.
-		transform_worker_scope_free(scratch_scope)
 		start = end
 		batch_idx++
 	}
+	transform_worker_scope_free(scratch_scope)
 	// AST payloads outlive the helper. Merge bookkeeping is released after join.
 	transform_worker_scope_leave(t.merge_scratch_scope)
 	t.worker_scope = unsafe { nil }
@@ -2617,7 +2662,8 @@ fn (mut t Transformer) run_parallel_transform(items []FnWorkItem, base_nodes int
 	t.a.worker_pool.run(copy_tasks)
 	for ci, wast in worker_asts {
 		wtc := t.tc.fork_for_parallel_transform(wast)
-		ww := t.fork_worker(wast, wtc)
+		mut ww := t.fork_worker(wast, wtc)
+		ww.clone_base_nodes = base_nodes
 		transform_workers << voidptr(ww)
 		args << TransformChunkArgs{
 			worker:    voidptr(ww)

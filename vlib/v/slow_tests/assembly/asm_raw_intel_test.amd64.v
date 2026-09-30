@@ -1,9 +1,18 @@
 // vtest build: !msvc
+// msvc does not support inline assembly at all (tracked for a MASM-based path: vlang/v#29105).
+// This file is also never compiled on any Windows CI leg (tracked: vlang/v#29107).
 
 fn test_raw_template_with_named_operands() {
-	lhs := 19
-	rhs := 23
-	mut result := 0
+	// `movl`/`addl` are 32-bit instructions, so the operands have to be 32-bit too:
+	// V's `int` is platform width (64-bit here), and an `r` constraint on it is
+	// substituted with a 64-bit register that GNU as refuses to pair with an `l`
+	// suffix. Note this assertion only has teeth under gcc/clang: tcc's own
+	// assembler does not enforce operand-width/register-size matching the way GNU
+	// as and clang's integrated assembler do, so this test still passes under
+	// `-cc tcc` even with the pre-fix, width-mismatched `int` operands.
+	lhs := i32(19)
+	rhs := i32(23)
+	mut result := i32(0)
 	asm amd64 raw {
 		"movl %[lhs], %[result]\n\t"
 		"addl %[rhs], %[result]\n\t"

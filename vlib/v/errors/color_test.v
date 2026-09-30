@@ -65,7 +65,7 @@ fn test_source_colors_preserve_context_and_display_width() {
 	mut file := files.add_file(path, source.len)
 	file.index_lines(source)
 	for text in ['println', '界'] {
-		offset := source.index(text) or { panic(err) }
+		offset := source.index(text) or { panic('missing source text: ${text}') }
 		pos := token.new_span(1, offset, offset + text.len)
 		position := file.position(pos)
 		location := '${relative_error_path(path)}:${position.line}:${position.column}:'

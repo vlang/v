@@ -260,7 +260,9 @@ fn main() {
 	assert with_os.c_code.contains('#define KERN_PROC_ARGS 55'), with_os.c_code
 	assert with_os.c_code.contains('#define KERN_PROC_ARGV 1'), with_os.c_code
 	assert with_os.c_code.contains('#define VM_UVMEXP 4'), with_os.c_code
-	assert with_os.c_code.contains('__atomic_fetch_add((uintptr_t*)ptr, (uintptr_t)0, 5)'), with_os.c_code
+	assert with_os.c_code.contains('__atomic_load_8((u64*)ptr, 5)'), with_os.c_code
+	assert !with_os.c_code.contains('__atomic_fetch_add((uintptr_t*)ptr, (uintptr_t)0, 5)'), with_os.c_code
+	assert !with_os.c_code.contains('__atomic_fetch_add((u64*)ptr, 0, 5)'), with_os.c_code
 	assert with_os.c_code.contains('__atomic_load_n((void**)ptr, 5)'), with_os.c_code
 	assert !with_os.c_code.contains('*(void* volatile*)ptr'), with_os.c_code
 	assert with_os.c_code.contains('#define SOCK_NONBLOCK 04000'), with_os.c_code

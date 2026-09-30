@@ -92,13 +92,14 @@ fn test_cross_windows_output_orders_windows_header_before_bcrypt() {
 }
 
 fn test_cross_output_leaves_the_atomic_helpers_to_the_windows_tcc_header() {
-	// The snapshot does not know its C compiler yet. V's WinAPI atomic header is
+	// The generated C may run through TCC even if it was generated for another
+	// compiler. V's WinAPI atomic header is
 	// emitted behind `_WIN32 && (__TINYC__ || MSVC)` and defines `atomic_fetch_add_byte` and
 	// friends as function-like macros, so the backend's own `static inline`
 	// definitions have to sit behind the negation of that same guard. Without it
 	// the macro expanded over the definition and tcc rejected `vc/v_win.c` with
 	// `redefinition of 'ManualInterlockedExchangeAdd8'`.
-	for flags in ['-cross -os windows -cc msvc', '-os cross'] {
+	for flags in ['-cross -os windows -cc msvc', '-os cross', '-os windows -cc gcc'] {
 		c_code := cross_generate_with(flags, 'atomics', "module main\n\nfn main() {\n\tprintln('ok')\n}\n")
 		guard := '#if !(defined(_WIN32) && (defined(__TINYC__) || (defined(_MSC_VER) && !defined(__clang__))))'
 		definition := 'static inline byte atomic_fetch_add_byte('
@@ -114,6 +115,22 @@ fn test_cross_output_leaves_the_atomic_helpers_to_the_windows_tcc_header() {
 		between := c_code[opened..at].clone()
 		assert between.count('#endif') < between.count('#if'), '${flags}: the guard closed before the atomic helpers'
 	}
+}
+
+fn test_windows_msvc_output_balances_atomic_header_guards() {
+	c_code := cross_generate_with('-os windows -cc msvc', 'windows_msvc_atomics', "module main\n\nfn main() {\n\tprintln('ok')\n}\n")
+	assert c_code.contains('static inline byte atomic_fetch_add_byte(')
+	mut depth := 0
+	for line in c_code.split_into_lines() {
+		directive := line.trim_space()
+		if directive.starts_with('#if') {
+			depth++
+		} else if directive.starts_with('#endif') {
+			depth--
+			assert depth >= 0, 'unmatched #endif in generated MSVC C'
+		}
+	}
+	assert depth == 0, '${depth} unterminated #if directives in generated MSVC C'
 }
 
 fn test_cross_output_keeps_the_posix_semaphore_off_apple() {
@@ -205,6 +222,136 @@ fn test_cross_output_lets_the_target_libc_pick_the_poll_header() {
 	assert condition.contains('__GLIBC__'), '<sys/poll.h> is guarded by `${condition}`, which does not check for glibc'
 	fallback := c_code[sys_poll_at..].all_before('#endif')
 	assert fallback.contains('#else\n#include <poll.h>'), 'musl and the other targets lost <poll.h>: ${fallback}'
+}
+
+fn test_cross_windows_output_guards_the_msvc_only_headers() {
+	// `vc/v_win.c` is generated with `-cross -os windows -cc msvc` and then built
+	// by makev.bat with the bundled TinyCC, which ships neither <intrin.h> nor
+	// <dbghelp.h> on Windows. Deciding that at generation time baked both into
+	// every Windows snapshot, so the bootstrap died on
+	// `include file 'intrin.h' not found` before compiling a line of V. The
+	// snapshot is compiled by a different C compiler than the one it was generated
+	// for, so the choice belongs to the C preprocessor. See #29146.
+	c_code := cross_generate_with('-cross -os windows -cc msvc', 'msvc_headers',
+		"module main\n\nfn main() {\n\tprintln('ok')\n}\n")
+	guard_error := msvc_only_header_guard_error(c_code)
+	assert guard_error == '', guard_error
+}
+
+// msvc_only_header_guard_error checks every include, accepting only explicit positive
+// MSVC directives in its active branches. Other condition spellings fail conservatively.
+fn msvc_only_header_guard_error(c_code string) string {
+	for header in ['#include <intrin.h>', '#include <dbghelp.h>'] {
+		mut start := 0
+		mut found := false
+		for {
+			at := c_code.index_after(header, start) or { break }
+			found = true
+			guards := enclosing_guards_at(c_code, at)
+			if !guards.any(it in ['#if defined(_MSC_VER)', '#ifdef _MSC_VER', '#elif defined(_MSC_VER)']) {
+				return '${header} at byte ${at} is not behind a positive MSVC-only guard: ${guards}'
+			}
+			start = at + header.len
+		}
+		if !found {
+			return '${header} is missing from the Windows snapshot: the MSVC intrinsics and the dbghelp backtraces need it'
+		}
+	}
+	return ''
+}
+
+fn test_msvc_only_header_guard_assertion_rejects_unguarded_and_negative_branches() {
+	headers := '#include <intrin.h>\n#include <dbghelp.h>\n'
+	guarded := '#if defined(_MSC_VER)\n${headers}#endif\n'
+	for c_code in [
+		'${guarded}#include <intrin.h>\n',
+		'${guarded}#include <dbghelp.h>\n',
+		'#ifdef _WIN32\n${guarded}${headers}#endif\n',
+		'#ifndef _MSC_VER\n${headers}#endif\n',
+		'#if !defined(_MSC_VER)\n${headers}#endif\n',
+		'#if defined(_MSC_VER)\n#else\n${headers}#endif\n',
+		'#if defined(_MSC_VER)\n#elif 1\n${headers}#endif\n',
+		'#if 0\n#elif defined(_MSC_VER)\n#else\n${headers}#endif\n',
+		'#if defined(_MSC_VER) || defined(__TINYC__)\n${headers}#endif\n',
+		'#if defined(_MSC_VER)\n#endif\n${headers}',
+		'#if defined(_MSC_VER)\n#include <intrin.h>\n#endif\n',
+		'#if defined(_MSC_VER)\n#include <dbghelp.h>\n#endif\n',
+	] {
+		assert msvc_only_header_guard_error(c_code) != '', 'accepted unsafe or incomplete includes:\n${c_code}'
+	}
+}
+
+fn test_msvc_only_header_guard_assertion_accepts_active_positive_branches() {
+	headers := '#include <intrin.h>\n#include <dbghelp.h>\n'
+	for c_code in [
+		'#if defined(_MSC_VER)\n${headers}${headers}#endif\n',
+		'#ifdef _WIN32\n#ifdef _MSC_VER\n${headers}#endif\n#endif\n',
+		'#if 0\n#elif defined(_MSC_VER)\n${headers}#endif\n',
+		'#if defined(_MSC_VER)\n#if 0\n#else\n${headers}#endif\n#endif\n',
+	] {
+		guard_error := msvc_only_header_guard_error(c_code)
+		assert guard_error == '', '${guard_error}\n${c_code}'
+	}
+}
+
+fn test_cross_windows_output_includes_the_same_headers_for_every_c_compiler() {
+	// A snapshot's header set is a promise about the C compiler that will compile
+	// it, and that compiler is picked at build time, not generation time: the same
+	// `vc/v_win.c` gets built by tcc, clang and gcc (makev.bat), and the bundled
+	// tcc is the one CI uses first. So `-cc` must not change which headers the
+	// snapshot includes - only the C preprocessor may. See #29146, where
+	// `if g.ccompiler == 'msvc'` made the msvc spelling the only buildable one.
+	mut reference := []string{}
+	for ccompiler in ['msvc', 'gcc', 'clang', 'tcc'] {
+		c_code := cross_generate_with('-cross -os windows -cc ${ccompiler}', 'headers_${ccompiler}',
+			'module main\n\nimport crypto.rand\n\nfn main() {\n\tmut buffer := []u8{len: 1}\n\tcrypto.rand.read(mut buffer) or {}\n}\n')
+		guard_error := msvc_only_header_guard_error(c_code)
+		assert guard_error == '', '-cc ${ccompiler}: ${guard_error}'
+		includes := c_code.split_into_lines().filter(it.trim_space().starts_with('#include'))
+			.map(it.trim_space())
+		if reference.len == 0 {
+			reference = includes.clone()
+			continue
+		}
+		only_here := includes.filter(it !in reference)
+		only_there := reference.filter(it !in includes)
+		assert only_here.len == 0 && only_there.len == 0, '-cc ${ccompiler} emits ${only_here} but the msvc spelling emits ${only_there} instead'
+	}
+}
+
+// enclosing_guards_at returns the active branch directives at `at`, outermost first.
+// An `#elif` replaces the preceding branch and an `#else` negates it. Earlier sibling
+// conditions are omitted: only an explicit positive directive proves MSVC-only use.
+fn enclosing_guards_at(c_code string, at int) []string {
+	mut stack := []string{}
+	mut in_else := []bool{}
+	for line in c_code[..at].split_into_lines() {
+		directive := line.trim_space()
+		if directive.starts_with('#if') {
+			stack << directive.all_before('\n')
+			in_else << false
+		} else if directive.starts_with('#elif') && stack.len > 0 {
+			stack[stack.len - 1] = directive
+			in_else[in_else.len - 1] = false
+		} else if directive.starts_with('#else') && in_else.len > 0 {
+			in_else[in_else.len - 1] = true
+		} else if directive.starts_with('#endif') && stack.len > 0 {
+			stack.delete_last()
+			in_else.delete_last()
+		}
+	}
+	mut guards := []string{}
+	for i, condition in stack {
+		guards << if in_else[i] { '!(${condition})' } else { condition }
+	}
+	return guards
+}
+
+fn test_top_level_asm_is_emitted_with_its_reference() {
+	c_code := cross_generate_with('-os linux -arch amd64 -gc none', 'top_level_asm', 'module main\n\nfn main() {\n\tmut value := int(0)\n\tasm amd64 {\n\t\tmov value, [rip + word_sequence]\n\t\t; =r (value)\n\t}\n\tassert value == 0x480f3527\n}\n\nasm amd64 {\n\t.global word_sequence\n\tword_sequence:\n\t.long 0x480f3527\n}\n')
+	assert c_code.contains('".global word_sequence\\n\\t"'), 'the top-level asm block is missing'
+	assert c_code.contains('"word_sequence:\\n\\t"'), 'the top-level asm label is missing'
+	assert c_code.contains('"mov word_sequence(%%rip), %[value]\\n\\t"'), 'the reference to the asm label is missing'
 }
 
 // function_body returns the source of the C function that `signature` opens.

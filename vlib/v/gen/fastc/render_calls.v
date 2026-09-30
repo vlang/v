@@ -198,6 +198,9 @@ fn (g &Parser) render_cast_expression(tokens []FastcExpressionToken) ?FastcRende
 			}
 		}
 		inner_type := g.infer_expression_type(inner_tokens) or { '' }
+		if inner_type == '__v_result' {
+			return none
+		}
 		inner := g.render_call_argument_expression(inner_tokens, if inner_type == 'Option' {
 			'Option'
 		} else {
@@ -207,7 +210,7 @@ fn (g &Parser) render_cast_expression(tokens []FastcExpressionToken) ?FastcRende
 			source: if inner_type == 'Option' {
 				inner
 			} else {
-				fastc_option_success_expression(c_type, inner)
+				fastc_option_success_expression('Option', c_type, inner)
 			}
 			typ:    'Option'
 		}

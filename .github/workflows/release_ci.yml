@@ -56,6 +56,8 @@ jobs:
       fail-fast: false
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
       - name: Compile release binaries
         if: runner.os != 'Windows'
         run: |
@@ -114,7 +116,7 @@ jobs:
     steps:
       - uses: actions/download-artifact@v8
       - name: Create release
-        uses: ncipollo/release-action@v1
+        uses: ncipollo/release-action@339a81892b84b4eeb0f6e744e4574d79d0d9b8dd # v1.21.0
         with:
           artifacts: |
             ~/work/v/v/windows/v_windows.zip

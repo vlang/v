@@ -540,7 +540,7 @@ fn (mut g Parser) expect(expected token.Token) ! {
 
 fn (mut g Parser) parse_module() ! {
 	g.next()
-	if g.tok != .name {
+	if (g.tok != .name && !g.tok.is_keyword()) || g.lit.starts_with('@') {
 		return g.unsupported('module declaration')
 	}
 	if g.lit != g.module_name.all_after_last('.') {
@@ -583,7 +583,12 @@ fn (mut g Parser) skip_import() ! {
 			}
 			selective_depth--
 		}
+		previous_end := g.s.offset
 		g.next()
+		if selective_depth == 0 && g.s.pos > previous_end
+			&& g.s.src[previous_end..g.s.pos].contains('\n') {
+			return
+		}
 	}
 }
 
@@ -726,8 +731,8 @@ fn (mut g Parser) parse_function(enabled bool) ! {
 	mut option_return_type := ''
 	if g.tok != .lcbr && g.tok != .semicolon {
 		if g.tok in [.not, .question] {
+			return_type = if g.tok == .not { '__v_result' } else { 'Option' }
 			g.next()
-			return_type = 'Option'
 			if g.tok in [.lcbr, .semicolon] {
 				option_return_type = 'void'
 			} else if g.tok == .lpar {
@@ -1307,7 +1312,7 @@ fn (mut g Parser) peek_fn_pointer_signature() {
 	tok = look.scan()
 	mut return_type := 'void'
 	if tok in [.not, .question] {
-		return_type = 'Option'
+		return_type = if tok == .not { '__v_result' } else { 'Option' }
 		value_tok := look.scan()
 		if value_tok !in [.lcbr, .semicolon, .comma, .rpar, .eof] {
 			g.pending_fn_option_value_type = g.peek_option_value_type(mut look, value_tok)
@@ -1363,7 +1368,6 @@ fn fastc_output_c_type(t string) string {
 fn fastc_primitive_c_type(raw_type string) ?string {
 	return match raw_type {
 		'bool' { 'bool' }
-		'byte' { 'byte' }
 		'char' { 'char' }
 		'f32' { 'f32' }
 		'f64' { 'f64' }
@@ -1390,6 +1394,7 @@ fn fastc_primitive_c_type(raw_type string) ?string {
 		'array' { 'array' }
 		'map' { 'map' }
 		'Option' { 'Option' }
+		'__v_result' { '__v_result' }
 		'any' { 'voidptr' }
 		else { none }
 	}

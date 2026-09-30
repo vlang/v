@@ -15,18 +15,15 @@ fn (req &Request) ssl_do(port int, method Method, host_name string, path string,
 
 fn net_ssl_do(req &Request, port int, method Method, host_name string, path string, data string, header Header) !Response {
 	mut retries := 0
-	req_headers := req.build_request_headers_with(method, host_name, port, path, data, header)
+	req_headers := req.build_request_headers_with(method, host_name, port, 443, path, data, header)!
 	$if trace_http_request ? {
 		eprint('> ')
 		eprint(req_headers)
 		eprintln('')
 	}
-	// Advertise ALPN `h2` (with an `http/1.1` fallback) when HTTP/2 is enabled.
-	// This is the default for https requests, so ordinary get()/fetch() calls
-	// advertise ALPN and use HTTP/2 when the server selects it; callers can opt
-	// out with `enable_http2: false`. The HTTP/2 read path feeds the same
-	// streaming callbacks and honors the stop limits, so they do not force
-	// HTTP/1.1.
+	// Only explicit HTTP/2 requests advertise ALPN `h2` with an HTTP/1.1
+	// fallback. Ordinary HTTPS requests use HTTP/1.1. The HTTP/2 read path
+	// still supports streaming callbacks and stop limits when opted in.
 	alpn := if req.enable_http2 { ['h2', 'http/1.1'] } else { []string{} }
 	for {
 		mut ssl_conn := ssl.new_ssl_conn(

@@ -1,5 +1,39 @@
-> The name `json2` was chosen to avoid any unwanted potential conflicts with the
-> existing codegen tailored for the main `json` module which is powered by CJSON.
+> `json2` replaces the removed cJSON based `json` module. `v fmt -w file.v`
+> rewrites the usual `json.decode(T, s)`, `json.encode(x)` and
+> `json.encode_pretty(x)` calls to `json2`, and leaves code it cannot rewrite
+> safely unchanged. By hand:
+>
+> - `json.decode(T, s)` becomes `json2.decode[T](s)`
+> - `json.encode(x)` becomes `json2.encode(x, escape_unicode: true, time_as_unix: true)`
+> - `json.encode_pretty(x)` becomes `json2.encode(x, prettify: true, legacy_layout: true,
+>   escape_unicode: true, time_as_unix: true)`
+>
+> These options keep the output of the old module: non-ASCII characters escaped as
+> `\uXXXX`, `time.Time` values as Unix timestamps, and its tab based pretty layout.
+> One difference remains: a `@[raw]` field, or a string that receives a JSON object
+> or array, holds the JSON text exactly as written, while the old module returned it
+> without whitespace.
+>
+> `json.decode(?T, s)` has no direct counterpart, since V does not accept `?T` as a
+> type argument, and vfmt leaves such files unchanged: decode `T` with
+> `json2.decode[T](s)`, and handle a `null` input yourself.
+>
+> `json.encode(x)` wrote a sum type value narrowed by `x is Cat` or `match x` as the
+> whole sum type, with its `_type` field, while `json2.encode(x)` writes the narrowed
+> variant. vfmt leaves such files unchanged as well: cast the value back to its sum
+> type, as in `json2.encode(Animal(x), escape_unicode: true, time_as_unix: true)`.
+>
+> A type with its own `to_json()` method (or the deprecated `json_str()`), such as
+> `big.Integer`, is written by `json2.encode` through that method, while the old module
+> ignored it and wrote the type's fields. vfmt migrates these calls too, since it does
+> not resolve types, so check the output of such types after migrating. Decoding is not
+> affected: the `from_json_*` methods only handle a JSON string, number, boolean or
+> `null`, so objects written by the old module still decode field by field.
+>
+> `json2.decode` also accepts an enum value given as the number of one of its members,
+> for an enum without `@[json_as_number]` too, as `json2.encode(x, enum_as_int: true)`
+> writes it; the old module only accepted the member's name there. Other numbers are
+> still rejected.
 
 `json2` is an experimental JSON parser written from scratch on V.
 
@@ -32,7 +66,15 @@ fn main() {
 Enums encode as strings by default. Use `@[json_as_number]` on an enum to emit
 its integer value instead.
 
+Use `@[omitempty]` to omit empty struct fields. For boolean fields, including optional
+booleans, `false` is empty and `true` is encoded. `@[omitempty]` only affects encoding:
+`decode` still assigns an explicit empty value such as `0` or `""` from the input.
+
 #### decode[T]
+
+The target type keeps its declaring module. A program's own sum type named `Any`
+is distinct from `json2.Any`, including through nested dynamic arrays, fixed arrays,
+and maps such as `json2.decode[[][2]Any](text)`.
 
 ```v
 import json2

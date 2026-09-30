@@ -305,7 +305,7 @@ fn test_or_block_err_var_collision_does_not_emit_self_referential_err() {
 	ensure_compilation_succeeded(compilation, cmd)
 	assert !compilation.output.contains('IError err = err.err;')
 	if generated_c_uses_v3_codegen(compilation.output) {
-		assert compilation.output.contains('Optional_string err =')
+		assert compilation.output.contains('__v_option_string err =')
 		mut has_v3_or_block_err := false
 		for line in compilation.output.split_into_lines() {
 			trimmed := line.trim_space()

@@ -1085,10 +1085,16 @@ fn test_statement_if_branch_tails_are_not_value_checked() {
 	assert statement_if == '1'
 	run_bad(v3_bin, 'bad_if_branch_primitive_mismatch', "fn main() {\n\tc := true\n\t_ := if c { 1 } else { 'bad' }\n}\n", 'if-expression branch type mismatch')
 	run_bad(v3_bin, 'bad_if_branch_value_pointer_mismatch', 'struct Foo {}\n\nfn main() {\n\tc := true\n\t_ := if c { Foo{} } else { &Foo{} }\n}\n', 'if-expression branch type mismatch')
-	option_if_error := run_good(v3_bin, 'good_option_if_error_branch', "fn f(ok bool) ?int {\n\treturn if ok { error('bad') } else { 1 }\n}\nfn main() {\n\tprintln(int_str(f(false) or { -1 }))\n\t_ := f(true) or {\n\t\tprintln(err.msg())\n\t\treturn\n\t}\n}\n")
-	assert option_if_error == '1\nbad'
-	option_const_if_error := run_good(v3_bin, 'good_option_const_if_error_branch', "fn f() ?int {\n\treturn if true { error('bad') } else { 1 }\n}\nfn main() {\n\t_ := f() or {\n\t\tprintln(err.msg())\n\t\treturn\n\t}\n}\n")
-	assert option_const_if_error == 'bad'
+}
+
+fn test_if_error_branches_require_result_returns() {
+	v3_bin := build_v3()
+	result_if_error := run_good(v3_bin, 'good_result_if_error_branch', "fn f(ok bool) !int {\n\treturn if ok { error('bad') } else { 1 }\n}\nfn main() {\n\tprintln(int_str(f(false) or { -1 }))\n\t_ := f(true) or {\n\t\tprintln(err.msg())\n\t\treturn\n\t}\n}\n")
+	assert result_if_error == '1\nbad'
+	result_const_if_error := run_good(v3_bin, 'good_result_const_if_error_branch', "fn f() !int {\n\treturn if true { error('bad') } else { 1 }\n}\nfn main() {\n\t_ := f() or {\n\t\tprintln(err.msg())\n\t\treturn\n\t}\n}\n")
+	assert result_const_if_error == 'bad'
+	run_bad(v3_bin, 'bad_option_if_error_branch', "fn f(ok bool) ?int {\n\treturn if ok { error('bad') } else { 1 }\n}\nfn main() {}\n", 'cannot use `!int` as type `?int` in return argument')
+	run_bad(v3_bin, 'bad_option_const_if_error_branch', "fn f() ?int {\n\treturn if true { error('bad') } else { 1 }\n}\nfn main() {}\n", 'cannot use `!int` as type `?int` in return argument')
 	run_bad(v3_bin, 'bad_option_return_error', "fn f() ?int {\n\treturn error('bad')\n}\nfn main() {}\n", 'Option and Result types have been split')
 }
 
@@ -1554,7 +1560,7 @@ fn test_pr_review_codegen_batch_two() {
 	// `[flag]` enum stringification renders combined values as `Enum{.a | .b}`.
 	flag := run_good(v3_bin, 'good_flag_enum_str', '@[flag]\nenum Perm {\n\tread\n\twrite\n\texec\n}\nfn main() {\n\ta := Perm.read | Perm.write\n\tprintln(a.str())\n\tb := Perm.read\n\tprintln(b.str())\n}\n')
 	assert flag == 'Perm{.read | .write}\nPerm{.read}'
-	// spawn of an option-returning fn stores/reads the `Optional_T` ABI layout.
+	// spawn of an option-returning fn stores/reads the `__v_option_T` ABI layout.
 	spawn_opt := run_good(v3_bin, 'good_spawn_option_return', "fn work() ?string {\n\treturn 'hello'\n}\nfn main() {\n\tmut ts := []thread ?string{}\n\tts << spawn work()\n\trs := ts.wait() or { []string{} }\n\tx := rs[0] or { 'none' }\n\tprintln(x)\n}\n")
 	assert spawn_opt == 'hello'
 	// A global V function passed to a method `fn ()` param keeps the function-pointer
@@ -1570,7 +1576,7 @@ fn test_pr_review_codegen_batch_three() {
 	// (combined/zero values fall through), so a non-void fn needs `else`/missing-return.
 	run_bad(v3_bin, 'bad_flag_enum_match_not_exhaustive', '@[flag]\nenum Perm {\n\tread\n\twrite\n}\nfn f(p Perm) int {\n\tmatch p {\n\t\t.read { return 1 }\n\t\t.write { return 2 }\n\t}\n}\nfn main() {\n\tprintln(int_str(f(Perm.read)))\n}\n', 'missing return')
 	// A bound method value returning an option, passed to a V `fn () ?string`
-	// parameter, must emit a wrapper with the `Optional_string` ABI return and a
+	// parameter, must emit a wrapper with the `__v_option_string` ABI return and a
 	// function-pointer (not `(void*)`) cast.
 	mv := run_good(v3_bin, 'good_method_value_option_return', "struct G {\n\tn int\n}\nfn (g G) make() ?string {\n\treturn 'hi'\n}\nfn run(cb fn () ?string) {\n\ts := cb() or { 'none' }\n\tprintln(s)\n}\nfn main() {\n\tg := G{\n\t\tn: 1\n\t}\n\trun(g.make)\n}\n")
 	assert mv == 'hi'

@@ -25,11 +25,11 @@ pub enum ParseMode {
 
 pub enum Style {
 	short         // Posix short only, allows multiple shorts -def is `-d -e -f` and "sticky" arguments e.g.: `-ofoo` = `-o foo`
-	long          // GNU style long option *only*. E.g.: `--name` or `--name=value`
-	short_long    // extends `posix` style shorts with GNU style long options: `--flag` or `--name=value`
+	long          // GNU style long option *only*. E.g.: `--name`, `--name=value` or `--name value`
+	short_long    // extends `posix` style shorts with GNU style long options: `--flag`, `--name=value` or `--name value`. A single dash exact long name, e.g. `-name value`, is also accepted
 	v             // V style flags as found in flags for the `v` compiler. Single flag denote `-` followed by string identifier e.g.: `-verbose`, `-name value`, `-v`, `-n value` or `-d ident=value`
 	v_flag_parser // V `flag.FlagParser` style flags as supported by `flag.FlagParser`. Long flag denote `--` followed by string identifier e.g.: `--verbose`, `--name value`, `-v` or `-n value`.
-	go_flag       // GO `flag` module style. Single flag denote `-` followed by string identifier e.g.: `-verbose`, `-name value`, `-v` or `-n value` and both long `--name value` and GNU long `--name=value`
+	go_flag       // GO `flag` module style. Single flag denote `-` followed by string identifier e.g.: `-verbose`, `-name value`, `-name=value`, `-v` or `-n value` and both long `--name value` and GNU long `--name=value`
 	cmd_exe       // `cmd.exe` style flags. Single flag denote `/` followed by lower- or upper-case character
 }
 
@@ -479,24 +479,27 @@ pub fn (mut fm FlagMapper) parse[T]() ! {
 	}
 
 	for pos, arg in args {
+		mut pos_is_handled := pos in fm.handled_pos
+		if pos_is_handled {
+			// Skipped via `config.skip` or already consumed as the argument of a previous flag. E.g.: `--name -value`
+			trace_dbg_println('${@FN}: skipping position "${pos}". Already handled')
+			continue
+		}
 		if arg == '' {
 			fm.no_match << pos
 			continue
 		}
-		mut pos_is_handled := pos in fm.handled_pos
 
-		if !pos_is_handled {
-			// Stop parsing as soon as possible if `--` (or user defined) stop option is sat and encountered
-			if arg == config.stop or { '' } {
-				trace_println('${@FN}: reached option stop (${config.stop}) at index ${pos}')
-				// record all positions after this as not matching, unless pos is the last entry
-				if pos < args.len - 1 {
-					for unused_pos in pos + 1 .. args.len {
-						fm.no_match << unused_pos
-					}
+		// Stop parsing as soon as possible if `--` (or user defined) stop option is sat and encountered
+		if arg == config.stop or { '' } {
+			trace_println('${@FN}: reached option stop (${config.stop}) at index ${pos}')
+			// record all positions after this as not matching, unless pos is the last entry
+			if pos < args.len - 1 {
+				for unused_pos in pos + 1 .. args.len {
+					fm.no_match << unused_pos
 				}
-				break
 			}
+			break
 		}
 
 		// peek next arg
@@ -521,6 +524,11 @@ pub fn (mut fm FlagMapper) parse[T]() ! {
 			is_long_delimiter := used_delimiter.count(delimiter) == 2
 			is_short_delimiter := used_delimiter.count(delimiter) == 1
 			is_invalid_delimiter := !is_long_delimiter && !is_short_delimiter
+			// In `.short_long` style, a short delimiter flag exactly matching a long flag name is mapped as a long flag,
+			// like GO's `flag` module and GNU's `getopt_long_only()` do. E.g.: `-name value` = `--name value`
+			is_long_name := is_short_delimiter && style == .short_long && flag_name.len > 1
+				&& fm.si.fields.values().any(!it.hints.has(.short_only)
+					&& !it.hints.has(.is_ignore) && it.match_name == flag_name)
 			if is_invalid_delimiter {
 				if config.mode == .relaxed {
 					fm.no_match << pos
@@ -553,7 +561,8 @@ pub fn (mut fm FlagMapper) parse[T]() ! {
 					}
 					return error('short delimiter `${used_delimiter}` encountered in flag `${arg}` in ${style} (GNU) style parsing mode')
 				}
-				if style == .short_long && flag_name.len > 1 && flag_name.contains('-') {
+				if style == .short_long && flag_name.len > 1 && flag_name.contains('-')
+					&& !is_long_name {
 					if config.mode == .relaxed {
 						fm.no_match << pos
 						continue
@@ -579,7 +588,7 @@ pub fn (mut fm FlagMapper) parse[T]() ! {
 			}
 
 			// Identify and match short clusters first. Example: `-yxz( arg)` = `-y -x -z( arg)`
-			if is_short_delimiter && style in [.short, .short_long] {
+			if is_short_delimiter && !is_long_name && style in [.short, .short_long] {
 				fm.map_posix_short_cluster(flag_ctx)!
 			}
 
@@ -614,7 +623,7 @@ pub fn (mut fm FlagMapper) parse[T]() ! {
 					trace_println('${@FN}: skipping long delimiter `${used_delimiter}` match for ${struct_name}.${field.name} since it has [only: ${field.short}]')
 				}
 
-				if is_short_delimiter {
+				if is_short_delimiter && !is_long_name {
 					if style in [.short, .short_long] {
 						if fm.map_posix_short(flag_ctx, field)! {
 							continue
@@ -638,8 +647,8 @@ pub fn (mut fm FlagMapper) parse[T]() ! {
 					}
 				}
 
-				if is_long_delimiter {
-					// Parse GNU `--name=value`
+				if is_long_delimiter || is_long_name {
+					// Parse GNU `--name=value` or `--name value`
 					if style in [.long, .short_long] {
 						if fm.map_gnu_long(flag_ctx, field)! {
 							continue
@@ -1160,6 +1169,19 @@ fn (mut fm FlagMapper) map_v_flag_parser_long(flag_ctx FlagContext, field Struct
 	return false
 }
 
+// flag_arg returns the argument of the (non-bool) flag in `flag_ctx`, given either as `--name=value`
+// or, like GNU's `getopt_long()` and GO's `flag` module allow, as the next argument: `--name value`.
+// The returned `bool` is `true` when the next argument is used.
+fn (fm FlagMapper) flag_arg(flag_ctx FlagContext, field StructField) !(string, bool) {
+	if flag_ctx.raw.contains('=') {
+		return flag_ctx.raw.all_after('='), false
+	}
+	if flag_ctx.pos + 1 >= fm.input.len {
+		return error('flag `${flag_ctx.raw}` mapping to `${field.name}` expects an argument. E.g.: `${flag_ctx.raw} value` or `${flag_ctx.raw}=value`')
+	}
+	return flag_ctx.next, true
+}
+
 // map_go_flag_short returns `true` if the GO short style flag in `flag_ctx` can be mapped to `field`.
 // map_go_flag_short adds data of the match in the internal structures for further processing if applicable
 fn (mut fm FlagMapper) map_go_flag_short(flag_ctx FlagContext, field StructField) !bool {
@@ -1167,7 +1189,6 @@ fn (mut fm FlagMapper) map_go_flag_short(flag_ctx FlagContext, field StructField
 	flag_name := flag_ctx.name
 	pos := flag_ctx.pos
 	used_delimiter := flag_ctx.delimiter
-	next := flag_ctx.next
 
 	if field.hints.has(.is_bool) {
 		if flag_name == field.match_name {
@@ -1189,29 +1210,33 @@ fn (mut fm FlagMapper) map_go_flag_short(flag_ctx FlagContext, field StructField
 	}
 
 	if flag_name == field.match_name || flag_name == field.short {
+		// GO `flag` style `-name value` or `-name=value`
+		arg, next_is_used := fm.flag_arg(flag_ctx, field)!
 		if field.hints.has(.is_array) {
-			trace_println('${@FN}: found match for (GO short style multiple occurrences) ${fm.dbg_match(flag_ctx, field, next, '')}')
+			trace_println('${@FN}: found match for (GO short style multiple occurrences) ${fm.dbg_match(flag_ctx, field, arg, '')}')
 			fm.add_array_flag(field.name, FlagData{
 				raw:        flag_raw
 				field_name: field.name
 				delimiter:  used_delimiter
 				name:       flag_name
-				arg:        ?string(next)
+				arg:        ?string(arg)
 				pos:        pos
 			})
 		} else {
-			trace_println('${@FN}: found match for (GO short style) ${fm.dbg_match(flag_ctx, field, next, '')}')
+			trace_println('${@FN}: found match for (GO short style) ${fm.dbg_match(flag_ctx, field, arg, '')}')
 			fm.field_map_flag[field.name] = FlagData{
 				raw:        flag_raw
 				field_name: field.name
 				delimiter:  used_delimiter
 				name:       flag_name
-				arg:        ?string(next)
+				arg:        ?string(arg)
 				pos:        pos
 			}
 		}
 		fm.handled_pos << pos
-		fm.handled_pos << pos + 1 // arg
+		if next_is_used {
+			fm.handled_pos << pos + 1 // arg
+		}
 		return true
 	}
 	return false
@@ -1243,14 +1268,10 @@ fn (mut fm FlagMapper) map_go_flag_long(flag_ctx FlagContext, field StructField)
 			return true
 		}
 
-		if !flag_raw.contains('=') {
-			if field.hints.has(.is_int_type) && field.hints.has(.can_repeat) {
-				return error('field `${field.name}` has @[repeats], only POSIX short style allows repeating')
-			}
-			return error('long delimiter `${used_delimiter}` flag `${flag_raw}` mapping to `${field.name}` in ${fm.config.style} style parsing mode, expects GO (GNU) style assignment. E.g.: --name=value')
+		if !flag_raw.contains('=') && field.hints.has(.is_int_type) && field.hints.has(.can_repeat) {
+			return error('field `${field.name}` has @[repeats], only POSIX short style allows repeating')
 		}
-
-		arg := if flag_raw.contains('=') { flag_raw.all_after('=') } else { '' }
+		arg, next_is_used := fm.flag_arg(flag_ctx, field)!
 		if field.hints.has(.is_array) {
 			trace_println('${@FN}: found match for (GO `flag` style multiple occurrences) ${fm.dbg_match(flag_ctx, field, arg, '')}')
 			fm.add_array_flag(field.name, FlagData{
@@ -1272,7 +1293,10 @@ fn (mut fm FlagMapper) map_go_flag_long(flag_ctx FlagContext, field StructField)
 				pos:        pos
 			}
 		}
-		fm.handled_pos << pos // NOTE: arg is part of the flag in GO (GNU) long style args
+		fm.handled_pos << pos
+		if next_is_used {
+			fm.handled_pos << pos + 1 // arg
+		}
 		return true
 	}
 	return false
@@ -1302,14 +1326,12 @@ fn (mut fm FlagMapper) map_gnu_long(flag_ctx FlagContext, field StructField) !bo
 			}
 			fm.handled_pos << pos
 			return true
-		} else if fm.config.style in [.long, .short_long] && !flag_raw.contains('=') {
-			if field.hints.has(.is_int_type) && field.hints.has(.can_repeat) {
-				return error('field `${field.name}` has @[repeats], only POSIX short style allows repeating')
-			}
-			return error('long delimiter `${used_delimiter}` flag `${flag_raw}` mapping to `${field.name}` in ${fm.config.style} style parsing mode, expects GNU style assignment. E.g.: --name=value')
 		}
 
-		arg := if flag_raw.contains('=') { flag_raw.all_after('=') } else { '' }
+		if !flag_raw.contains('=') && field.hints.has(.is_int_type) && field.hints.has(.can_repeat) {
+			return error('field `${field.name}` has @[repeats], only POSIX short style allows repeating')
+		}
+		arg, next_is_used := fm.flag_arg(flag_ctx, field)!
 		if field.hints.has(.is_array) {
 			trace_println('${@FN}: found match for (GNU style multiple occurrences) ${fm.dbg_match(flag_ctx, field, arg, '')}')
 			fm.add_array_flag(field.name, FlagData{
@@ -1331,7 +1353,10 @@ fn (mut fm FlagMapper) map_gnu_long(flag_ctx FlagContext, field StructField) !bo
 				pos:        pos
 			}
 		}
-		fm.handled_pos << pos // NOTE: arg is part of the flag in GNU long style args
+		fm.handled_pos << pos
+		if next_is_used {
+			fm.handled_pos << pos + 1 // arg
+		}
 		return true
 	}
 	return false
@@ -1372,6 +1397,21 @@ fn (mut fm FlagMapper) map_posix_short_cluster(flag_ctx FlagContext) ! {
 
 		if matched_fields.len == 0 {
 			return
+		}
+
+		// Every flag in the cluster must be known, up to one that takes the rest as its argument. E.g.: `-vxf` = `-v -x -f`
+		for mflag in split {
+			field := matched_fields[mflag] or {
+				if fm.config.mode == .relaxed {
+					fm.no_match << flag_ctx.pos
+					fm.handled_pos << flag_ctx.pos
+					return
+				}
+				return error('unknown flag `${flag_ctx.delimiter}${mflag}` in short flag cluster `${flag_ctx.raw}`')
+			}
+			if !field.hints.has(.is_bool) && !field.hints.has(.can_repeat) {
+				break
+			}
 		}
 
 		// Iterate `split` instead of `matched_fields` since the order of appearance has significance

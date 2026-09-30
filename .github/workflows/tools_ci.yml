@@ -24,16 +24,31 @@ concurrency:
   group: tools-${{ github.workflow }}-${{ github.ref == 'refs/heads/master' && github.sha || github.ref }}
   cancel-in-progress: true
 
+permissions:
+  contents: read
+
 jobs:
   shell-contracts:
     runs-on: ubuntu-22.04
-    timeout-minutes: 5
+    timeout-minutes: 20
     permissions:
       contents: read
+    env:
+      VFLAGS: -cc gcc
+      VJOBS: '2'
+      V_C_ERROR_BUG_REPORT_DISABLED: '1'
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Build V for the shell regression tests
+        id: build
+        run: make
       - name: Check BSD tool job failure propagation
-        run: python3 cmd/tools/tools_ci_test.py
+        run: ./v -new-compiler cmd/tools/tools_ci_test.v
+      - name: Check shell regression test formatting
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        run: ./v fmt -verify cmd/tools/tools_ci_test.v
 
   tools-linux:
     runs-on: ubuntu-22.04
@@ -46,6 +61,8 @@ jobs:
       VFLAGS: -cc ${{ matrix.cc }}
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
       - name: Build V
         run: make && ./v -showcc -o v cmd/v && ./v symlink && ./v doctor
       - name: Code in cmd/ is formatted
@@ -86,6 +103,8 @@ jobs:
       VFLAGS: -cc ${{ matrix.cc }}
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
       - name: Build V
         run: make && ./v -showcc -o v cmd/v && ./v symlink && ./v doctor
       - name: Check build-tools
@@ -106,6 +125,8 @@ jobs:
       VFLAGS: -cc ${{ matrix.cc }}
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
       - name: Build V
         run: ./makev.bat -${{ matrix.cc }} && ./v -o v2.exe cmd/v && ./v2 -showcc -o v.exe cmd/v && ./v symlink && ./v doctor
       - name: Install OpenSSL for MSVC
@@ -149,6 +170,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v7
+        with:
+          persist-credentials: false
       - name: Build V
         run: make && ./v -cg -o v cmd/v && ./v symlink
       - name: Ensure git commands can be used with no prompts on modern Git versions
@@ -184,9 +207,11 @@ jobs:
       VFLAGS: -cc ${{ matrix.cc }}
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
 
       - name: Start FreeBSD VM with ${{ matrix.cc }}
-        uses: cross-platform-actions/action@v1.6.0
+        uses: cross-platform-actions/action@e0b9770014ba65d5e0815f15b74031c3a635f641 # v1.6.0
         with:
           operating_system: freebsd
           version: '15.1'
@@ -252,9 +277,11 @@ jobs:
       VFLAGS: -cc ${{ matrix.cc }}
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
 
       - name: Start OpenBSD VM with ${{ matrix.cc }}
-        uses: cross-platform-actions/action@v1.6.0
+        uses: cross-platform-actions/action@e0b9770014ba65d5e0815f15b74031c3a635f641 # v1.6.0
         with:
           operating_system: openbsd
           version: '7.8'

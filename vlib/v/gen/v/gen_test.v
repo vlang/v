@@ -79,6 +79,31 @@ pub fn (mut p Point) inc(dx int) int {
 '
 }
 
+fn test_formatter_preserves_contextually_invalid_method_and_range_syntax() {
+	for source in [
+		'struct Example {}\n\nfn (value Example) Foo.bar() {}\n',
+		'struct Example {}\n\nfn (value Example) Foo.@select()\n',
+		'fn main() {\n\tfor i in 0 ... 3 { println(i) }\n}\n',
+	] {
+		formatted := vfmt('contextual_method_range', source)
+		assert formatted == source, formatted
+		assert vfmt('contextual_method_range_twice', formatted) == formatted
+	}
+}
+
+fn test_formatter_preserves_interop_receiver_qualifiers() {
+	for source in [
+		'struct Native {}\n\nfn (value Native) C.foo() {}\n',
+		'struct Native {}\n\nfn (value &Native) JS.nested.foo() {}\n',
+		'struct C.Native {}\n\nfn (value C.Native) foo() {}\n',
+		'struct C.Native {}\n\nfn (value C.Native) C.foo()\n',
+	] {
+		formatted := vfmt('interop_receiver', source)
+		assert formatted == source, formatted
+		assert vfmt('interop_receiver_twice', formatted) == formatted
+	}
+}
+
 fn test_formatter_preserves_operator_method_spacing() {
 	source := 'struct Number {\n\tvalue int\n}\n\nfn (a Number) + (b Number) Number {\n\treturn Number{a.value + b.value}\n}\n\nfn (a Number) == (b Number) bool {\n\treturn a.value == b.value\n}\n\nfn (a Number) < (b Number) bool {\n\treturn a.value < b.value\n}\n\nfn (a Number) [] (index int) int {\n\treturn a.value + index\n}\n'
 	out := vfmt('operator_method_spacing', source)
@@ -131,6 +156,16 @@ fn test_formatter_preserves_multiline_call_struct_arguments() {
 	named_argument := "value := encode(Payload{'item'},\n\tescape_unicode: true\n)\n"
 	assert vfmt_with_options('multiline_named_argument_call', named_argument,
 		FormatOptions{}) == named_argument
+	// A line break inside a positional struct literal does not expand the named ones.
+	inline_named := "value := encode(Payload{\n\tname: 'item'\n}, escape_unicode: true)\n"
+	assert vfmt_with_options('inline_named_after_multiline_struct', inline_named,
+		FormatOptions{}) == inline_named
+}
+
+fn test_formatter_keeps_anonymous_struct_generic_type_arguments() {
+	source := 'fn main() {\n\tb := decode[struct {\n\t\ta string\n\t}](text)!.a\n\t_ = b\n}\n'
+	out := vfmt('anon_struct_type_arg', source)
+	assert out == source, out
 }
 
 fn test_formatter_preserves_gated_slices() {
@@ -1965,6 +2000,13 @@ fn test_formatter_keeps_a_trailing_comment_on_a_match_branch() {
 	assert vfmt('match_branch_trailing_comment_twice', out) == out
 }
 
+fn test_formatter_keeps_trailing_comments_on_compact_match_branches() {
+	source := 'fn foo(arg int) int {\n\treturn match arg {\n\t\t1 { 1 } // return 1\n\t\telse { 0 } // return 2\n\t}\n}\n'
+	out := vfmt('compact_match_branch_trailing_comments', source)
+	assert out == source, out
+	assert vfmt('compact_match_branch_trailing_comments_twice', out) == out
+}
+
 // A blank separator line must carry no indentation. Writing it left a line of whitespace, which
 // V source never carries and which the next run read back differently, so the formatter was not a
 // fixed point.
@@ -2219,6 +2261,14 @@ fn test_formatter_aligns_struct_field_defaults_and_comments() {
 	out := vfmt('struct_field_suffix_alignment', source)
 	assert out == source, out
 	assert vfmt('struct_field_suffix_alignment_twice', out) == out
+}
+
+fn test_formatter_aligns_struct_field_attributes_with_defaults() {
+	source := 'struct Foo {\n\ta    int    @[some_attr]\n\tbeta string @[another]\n\tpi   f32 = 3.14    @[yet_another]\n\td    f64 = 2.9999999    @[yet_another]\n}\n\nfn main() {}\n'
+	want := 'struct Foo {\n\ta    int        @[some_attr]\n\tbeta string     @[another]\n\tpi   f32 = 3.14      @[yet_another]\n\td    f64 = 2.9999999 @[yet_another]\n}\n\nfn main() {}\n'
+	out := vfmt('struct_field_attribute_alignment', source)
+	assert out == want, out
+	assert vfmt('struct_field_attribute_alignment_twice', out) == want
 }
 
 // Enum members and interface members align their trailing comments the same way.

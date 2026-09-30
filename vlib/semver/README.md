@@ -35,3 +35,5 @@ true
 For more details see `semver.v` file.
 
 [semver]: https://semver.org/
+
+Malformed comparator sets return a descriptive parse error when range expansion fails.

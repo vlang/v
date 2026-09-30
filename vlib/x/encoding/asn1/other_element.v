@@ -145,7 +145,7 @@ pub fn (r RawElement) inner_element() !Element {
 	if r.tag.class == .universal {
 		return error('inner element from universal class is not availables')
 	}
-	inner_tag := r.inner_tag or { return err }
+	inner_tag := r.inner_tag or { return error('You dont set an inner_tag') }
 	mode := r.mode or { return error('You dont set any mode') }
 	if mode == .explicit {
 		if !r.tag.constructed {

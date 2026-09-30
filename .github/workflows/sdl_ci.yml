@@ -25,6 +25,9 @@ concurrency:
   group: sdl-${{ github.workflow }}-${{ github.ref == 'refs/heads/master' && github.sha || github.ref }}
   cancel-in-progress: true
 
+permissions:
+  contents: read
+
 jobs:
   v-compiles-sdl-examples:
     runs-on: ubuntu-24.04
@@ -33,6 +36,8 @@ jobs:
       VFLAGS: -cc tcc
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
       - uses: ./.github/actions/cache-apt-packages-action
       - name: Build V
         run: make && sudo ./v symlink

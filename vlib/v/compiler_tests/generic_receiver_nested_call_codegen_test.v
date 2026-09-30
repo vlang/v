@@ -142,8 +142,8 @@ fn test_generic_receiver_nested_calls_use_specialized_receiver_methods() {
 	assert generated.contains('gr__Inner_Array_string__pop'), generated
 	assert generated.contains('gr__Runner_Animal__echo'), generated
 	assert generated.contains('gr__Runner_models__Animal__echo'), generated
-	assert generated.contains('Optional_Array'), generated
+	assert generated.contains('__v_result_Array'), generated
 	assert !generated.contains('Inner_T__'), generated
 	assert !generated.contains('Outer_T__'), generated
-	assert !generated.contains('Optional_i64 __return_opt'), generated
+	assert !generated.contains('__v_result_i64 __return_opt'), generated
 }

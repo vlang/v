@@ -21,7 +21,7 @@ fn load(ok bool) ?embed_file.EmbedFileData {
 }
 
 fn main() {
-	data := load(true) or { panic(err) }
+	data := load(true) or { panic('missing embedded file') }
 	mut sink := 0
 	assert data.path.len > 0
 	assert sink == 0

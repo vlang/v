@@ -19,6 +19,7 @@ const macos_v3_private_environment_names = [
 	'V_MACOS_V3_RETRY',
 	'V3_CRUN_BUILD_IDENTITY',
 	'V3_INTERNAL_RESTART',
+	'V3_INTERNAL_CACHE_RECOVERY',
 	macos_v3_caller_vexe_env,
 	macos_v3_caller_vexe_present_env,
 	macos_v3_caller_vchild_env,
@@ -92,6 +93,9 @@ pub mut:
 	// architecture or C compiler (`-os cross`). Target-dependent `$if` branches
 	// are all kept and decided by the C preprocessor instead of by the checker.
 	output_cross_c bool
+	// raw_vsh_file is the real path of an input without the `.vsh` extension that
+	// is still compiled as a V script (`-raw-vsh-tmp-prefix`).
+	raw_vsh_file string
 pub:
 	build_date      string
 	build_time      string
@@ -393,6 +397,24 @@ fn detect_vroot_from(start string) string {
 	return ''
 }
 
+// expand_module_search_paths expands the value of `-path`: the search roots are
+// separated by `|` (or the OS path delimiter), `@vlib` and `@vmodules` stand for the
+// vlib folder and the global module folders, and `@vroot` for the V root folder.
+pub fn expand_module_search_paths(spec string, vroot string) []string {
+	if spec.len == 0 {
+		return []
+	}
+	mut expanded := []string{}
+	for path in spec.replace('|', os.path_delimiter).split(os.path_delimiter) {
+		match path {
+			'@vlib' { expanded << os.join_path_single(vroot, 'vlib') }
+			'@vmodules' { expanded << os.vmodules_paths() }
+			else { expanded << path.replace('@vroot', vroot) }
+		}
+	}
+	return expanded
+}
+
 // get_vlib_module_path returns get vlib module path data for Preferences.
 pub fn (p &Preferences) get_vlib_module_path(mod string) string {
 	mod_path := vlib_module_path(mod)
@@ -444,6 +466,12 @@ pub fn (p &Preferences) get_module_path(mod string, importing_file_path string) 
 				return try_path
 			}
 		}
+		// An explicit `.v.mod.stop` marker ends the walk: what lies above it is
+		// not part of this project, so a module up there is not what the import
+		// means.
+		if is_module_search_stop_dir(current_dir) {
+			break
+		}
 		parent_dir := os.dir(current_dir)
 		if parent_dir == current_dir {
 			break
@@ -451,6 +479,18 @@ pub fn (p &Preferences) get_module_path(mod string, importing_file_path string) 
 		current_dir = parent_dir
 	}
 	return ''
+}
+
+// module_search_stop_marker is the file that explicitly ends the module search
+// in a directory: the module lookups that walk up from a file do not continue
+// above a directory that holds it. It is what a test session's temp directory
+// carries, so that tests never resolve against whatever contains that directory.
+pub const module_search_stop_marker = '.v.mod.stop'
+
+// is_module_search_stop_dir reports whether `dir` holds the
+// module_search_stop_marker.
+pub fn is_module_search_stop_dir(dir string) bool {
+	return os.exists(os.join_path_single(dir, module_search_stop_marker))
 }
 
 // is_retired_modules_namespace reports whether a directory is the `modules/` a
@@ -608,6 +648,10 @@ fn vmod_root_for_dir(start string) ?string {
 	for dir.len > 0 {
 		if os.is_file(os.join_path_single(dir, 'v.mod')) {
 			return dir
+		}
+		if is_module_search_stop_dir(dir) || ['.git', '.hg', '.svn'].any(os.exists(os.join_path_single(dir,
+			it))) {
+			return none
 		}
 		dir = os.parent_dir(dir)
 	}
@@ -1144,6 +1188,45 @@ pub fn normalized_arch(target_arch string) string {
 }
 
 // normalized_target_os supports normalized target os handling for Preferences.
+// ccompiler_can_assemble reports whether `ccompiler` is a GCC or Clang compatible
+// driver, one that preprocesses and assembles a `.S` file with `-c`. tcc and MSVC
+// cannot; a `cc` or `gcc` name is trusted only after its version output rules
+// out an alias for tcc.
+pub fn ccompiler_can_assemble(ccompiler string) bool {
+	real_name := os.file_name(os.real_path(ccompiler)).to_lower_ascii()
+	if real_name.contains('tcc') || real_name.contains('tinyc') || real_name.contains('msvc')
+		|| real_name in ['cl', 'cl.exe'] {
+		return false
+	}
+	quoted_ccompiler := os.quoted_path(ccompiler)
+	for version_flag in ['--version', '-v'] {
+		res := os.execute('${quoted_ccompiler} ${version_flag} 2>&1')
+		output := res.output.to_lower_ascii()
+		if output.contains('tiny c compiler') || output.contains('tinycc')
+			|| output.contains('\ntcc') || output.starts_with('tcc')
+			|| output.contains('microsoft c/c++') || output.contains('msvc') {
+			return false
+		}
+		if output.contains('clang') || output.contains('gcc version') || output.contains('(gcc)')
+			|| output.contains('free software foundation') || output.contains('gcc ') {
+			return true
+		}
+	}
+	return false
+}
+
+// find_system_assembler returns a GCC or Clang compatible compiler driver found
+// on PATH, one that can assemble a preprocessed `.S` file, or none.
+pub fn find_system_assembler() ?string {
+	for candidate in ['clang', 'gcc', 'cc'] {
+		path := os.find_abs_path_of_executable(candidate) or { continue }
+		if ccompiler_can_assemble(path) {
+			return path
+		}
+	}
+	return none
+}
+
 pub fn (p &Preferences) normalized_target_os() string {
 	return p.target.os
 }
@@ -1407,6 +1490,12 @@ pub fn comptime_optional_flag_value(p &Preferences, name string) bool {
 	// `compile_values`.
 	if name == 'test' && name !in p.compile_values {
 		return false
+	}
+	// Builtin spells its native backend check `$if native ?`, because the V1
+	// compatibility compiler, which still checks some fixtures, knows `native`
+	// only as a define. Here it also names the backend, as in `$if native`.
+	if name == 'native' {
+		return comptime_flag_value(p, name) || name in p.user_defines
 	}
 	return name in p.user_defines
 }

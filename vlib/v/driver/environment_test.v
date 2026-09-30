@@ -49,6 +49,7 @@ fn test_self_build_current_hash_is_empty_without_git_metadata() {
 fn test_v3_parallel_c_job_count() {
 	// A developer may export V3_PARALLEL_CC_JOBS globally; the default-cap
 	// assertions below must not see it.
+	assert v3_parallel_cc_max_jobs == 8
 	name := 'V3_PARALLEL_CC_JOBS'
 	old_value := os.getenv(name)
 	was_set := name in os.environ()
@@ -57,8 +58,8 @@ fn test_v3_parallel_c_job_count() {
 	}
 	os.unsetenv(name)
 	assert v3_parallel_c_job_count(0, false, false, false) == 1
-	assert v3_parallel_c_job_count(8, false, false, false) == v3_parallel_cc_max_jobs
-	assert v3_parallel_c_job_count(8, true, false, false) == v3_parallel_cc_max_jobs
+	assert v3_parallel_c_job_count(24, false, false, false) == v3_parallel_cc_max_jobs
+	assert v3_parallel_c_job_count(24, true, false, false) == v3_parallel_cc_max_jobs
 	assert v3_parallel_c_job_count(16, true, true, false) == v3_parallel_cc_max_jobs
 	assert v3_parallel_c_job_count(1, true, true, true) == 1
 	assert v3_parallel_c_job_count(4, true, true, true) == 4
@@ -72,9 +73,10 @@ fn test_v3_parallel_c_job_count_env_override_only_raises_the_cap() {
 	defer {
 		restore_driver_environment(name, old_value, was_set)
 	}
-	os.setenv(name, '8', true)
-	assert v3_parallel_c_job_count(24, false, false, false) == 8
+	os.setenv(name, '16', true)
+	assert v3_parallel_c_job_count(24, false, false, false) == 16
 	// Still bounded by the jobs actually available.
+	assert v3_parallel_c_job_count(12, false, false, false) == 12
 	assert v3_parallel_c_job_count(3, false, false, false) == 3
 	// A value below the default cap does not lower it.
 	os.setenv(name, '1', true)
@@ -87,10 +89,15 @@ fn test_v3_parallel_c_job_count_env_override_only_raises_the_cap() {
 }
 
 fn test_v3_parallel_c_unit_count() {
-	assert v3_parallel_c_unit_count(2, false, false) == 2 * v3_parallel_cc_units_per_job
-	assert v3_parallel_c_unit_count(2, true, false) == 2 * v3_parallel_cc_units_per_job
-	assert v3_parallel_c_unit_count(2, true, true) == bsd_selfhost_parallel_cc_unit_count
-	assert v3_parallel_c_unit_count(8, true, true) == bsd_selfhost_parallel_cc_unit_count
+	assert v3_parallel_c_unit_count(2, false, false, false, false) == 2 * v3_parallel_cc_units_per_job
+	assert v3_parallel_c_unit_count(2, true, false, true, false) == 2 * v3_parallel_cc_units_per_job
+	assert v3_parallel_c_unit_count(2, true, true, false, false) == 2 * v3_parallel_cc_units_per_job
+	assert v3_parallel_c_unit_count(2, true, true, true, false) == 2
+	assert v3_parallel_c_unit_count(2, true, true, true, true) == bsd_selfhost_parallel_cc_unit_count
+	assert v3_parallel_c_unit_count(4, true, true, true, false) == 4
+	assert v3_parallel_c_unit_count(4, true, true, true, true) == bsd_selfhost_parallel_cc_unit_count
+	assert v3_parallel_c_unit_count(8, true, true, true, false) == 8
+	assert v3_parallel_c_unit_count(8, true, true, true, true) == bsd_selfhost_parallel_cc_unit_count
 }
 
 fn test_v3_large_prod_c_unit_uses_the_compiled_unit_size() {
@@ -200,6 +207,28 @@ fn test_single_moduleless_test_keeps_an_unresolvable_same_dir_fixture_module() {
 	prefs.vroot = os.join_path(root, 'toolchain')
 	mut a := flat.FlatAst.new()
 	assert same_dir_module_source_files(mut a, test_file, '', prefs) == [module_file]
+}
+
+fn test_single_moduleless_test_keeps_a_keyword_same_dir_fixture_module() {
+	root := os.join_path(os.temp_dir(), 'v3_same_dir_keyword_fixture_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root)!
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	test_file := os.join_path(root, 'fixture_test.v')
+	module_file := os.join_path(root, 'helper.v')
+	os.write_file(test_file, 'import type\n\nfn test_helper() {}\n')!
+	os.write_file(module_file, 'module type\n\npub fn value() int { return 1 }\n')!
+	mut prefs := pref.new_preferences()
+	prefs.vroot = os.join_path(root, 'toolchain')
+	mut a := flat.FlatAst.new()
+	assert same_dir_module_source_files(mut a, test_file, '', prefs) == [module_file]
+
+	mut imports := []string{}
+	append_declared_import(mut imports, 'outer.type')
+	append_declared_import(mut imports, 'outer.type { value }')
+	assert imports == ['outer.type']
 }
 
 fn test_main_module_test_includes_an_implicit_main_source() {
@@ -471,11 +500,11 @@ fn test_wayland_gg_precheck_inspects_parsed_imports_in_every_user_file() {
 	prefs := pref.new_preferences()
 	mut p := parser.Parser.new(prefs)
 	mut a := p.parse_files([comment_file, string_file, gg_file, sapp_file])
-	assert !parsed_files_import_linux_gg(a, [comment_file, string_file])
+	assert !parsed_files_import_linux_gg(mut a, [comment_file, string_file])
 	directory_files := v3_directory_user_files(mut a, root, prefs, false, false)!
 	assert directory_files.len == 4
-	assert parsed_files_import_linux_gg(a, directory_files)
-	assert parsed_files_import_linux_gg(a, [sapp_file])
+	assert parsed_files_import_linux_gg(mut a, directory_files)
+	assert parsed_files_import_linux_gg(mut a, [sapp_file])
 }
 
 fn test_linux_wayland_only_session_matches_established_compiler_detection() {
