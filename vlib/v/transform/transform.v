@@ -10408,7 +10408,8 @@ fn (t &Transformer) promoted_sizeof_value_type(node flat.Node) ?string {
 		return none
 	}
 	storage_type := t.var_type(name)
-	if storage_type.starts_with('&') && t.is_fixed_array_type(storage_type[1..]) {
+	if storage_type.starts_with('&')
+		&& t.is_fixed_array_type(t.normalize_type_alias_chain(storage_type[1..])) {
 		return storage_type[1..]
 	}
 	return none
