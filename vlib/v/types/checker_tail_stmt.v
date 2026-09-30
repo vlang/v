@@ -9802,13 +9802,14 @@ pub fn (tc &TypeChecker) const_int_value_in_module(name string, module_name stri
 		return none
 	}
 	mut candidates := []string{}
-	candidates << name
 	if name.contains('.') {
 		alias := name.all_before_last('.')
 		if resolved_module := tc.const_import_alias_module(alias) {
+			// An import alias takes precedence over a module with the same name.
 			candidates << '${resolved_module}.${name.all_after_last('.')}'
 		}
 	}
+	candidates << name
 	if module_name != '' && module_name != 'main' && module_name != 'builtin'
 		&& !name.contains('.') {
 		candidates << '${module_name}.${name}'

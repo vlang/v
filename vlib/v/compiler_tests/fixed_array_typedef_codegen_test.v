@@ -283,15 +283,22 @@ pub const max_name_size = u32(256)
 ', 'module main
 
 import fixture as fx
+import fx as otherfx
 
 fn name_size(name [fx /* imported const */ .max_name_size]char) int {
 	return name.len
 }
 
 fn main() {
+	assert otherfx.max_name_size == 16
 	println(name_size([fx.max_name_size /* trailing comment */]char{}))
 }
 ')
+	// A real module named like the alias must not capture its constant.
+	os.mkdir_all(os.join_path(root, 'fx')) or { panic(err) }
+	os.write_file(os.join_path(root, 'fx', 'fx.v'), 'module fx
+pub const max_name_size = 16
+') or { panic(err) }
 	bin := os.join_path(root, 'out')
 	compile := os.execute('${v3_bin} ${root} -b c -o ${bin}')
 	assert compile.exit_code == 0, compile.output
