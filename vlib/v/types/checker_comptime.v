@@ -4497,8 +4497,12 @@ fn (mut tc TypeChecker) check_cast_expr(id flat.NodeId, node flat.Node) {
 				tc.record_error_at(.assignment_mismatch, 'cannot null cast ${kind}, use ${target_name}(unsafe { nil })', id, tc.cast_expression_diagnostic_pos(node, target_name))
 				return
 			}
-			if tc.unsafe_depth == 0 {
-				message := if struct_type_from_type(target_base) != none {
+			// Like V1, a computed address such as `&Entry(u64(buffer) + offset)` may be
+			// cast to a struct pointer; a literal or a plain number may not.
+			is_struct_target := struct_type_from_type(target_base) != none
+			if tc.unsafe_depth == 0
+				&& (!is_struct_target || tc.a.node(child_id).kind in [.int_literal, .ident]) {
+				message := if is_struct_target {
 					'cannot cast int to a struct pointer outside `unsafe`'
 				} else {
 					'cannot cast a number to `${target_name}` outside `unsafe`'
