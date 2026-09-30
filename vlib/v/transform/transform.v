@@ -9085,7 +9085,7 @@ fn (t &Transformer) escape_selector_assign_retains_value(lhs_id flat.NodeId, amp
 }
 
 // escape_value_tails returns the expressions that give `id` its value: `id` itself, or
-// the tails of a value block (`unsafe { &num }`) and of `if`, `match` and `or` branches.
+// the tails of value blocks, lock bodies, and `if`, `match` and `or` branches.
 fn (t &Transformer) escape_value_tails(id flat.NodeId) []flat.NodeId {
 	if int(id) < 0 || int(id) >= t.a.nodes.len {
 		return []flat.NodeId{}
@@ -9097,7 +9097,7 @@ fn (t &Transformer) escape_value_tails(id flat.NodeId) []flat.NodeId {
 				return t.escape_value_tails(t.a.child(&node, 0))
 			}
 		}
-		.block {
+		.block, .lock_expr {
 			if node.children_count == 0 {
 				return []flat.NodeId{}
 			}
@@ -9167,7 +9167,7 @@ fn (t &Transformer) escape_aggregate_address_sources(id flat.NodeId, amp_sources
 	}
 	node := t.a.nodes[int(id)]
 	match node.kind {
-		.or_expr, .if_expr, .match_stmt, .block {
+		.or_expr, .if_expr, .match_stmt, .block, .lock_expr {
 			mut sources := []string{}
 			for tail_id in t.escape_value_tails(id) {
 				for source_name in t.escape_aggregate_address_sources(tail_id, amp_sources, ptr_aliases) {
