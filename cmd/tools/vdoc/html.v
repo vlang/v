@@ -176,23 +176,48 @@ fn (vd &VDoc) get_repo_file_path_for_links(file_path string) string {
 	if file_path == '' {
 		return ''
 	}
-	cfg := vd.cfg
-	if !cfg.is_multi {
-		// Files pulled in through v.mod `subdirs` keep their folder in the link.
-		input_path := os.real_path(cfg.input_path)
-		input_dir := if os.is_dir(input_path) { input_path } else { os.dir(input_path) }
-		prefix := input_dir + os.path_separator
-		if file_path.starts_with(prefix) {
-			return file_path[prefix.len..].replace('\\', '/')
-		}
-		return os.file_name(file_path).replace('\\', '/')
-	}
-	base_dir := os.dir(os.real_path(cfg.input_path))
-	prefix := base_dir + os.path_separator
-	if file_path.starts_with(prefix) {
-		return file_path[prefix.len..].replace('\\', '/')
+	input_path := os.real_path(vd.cfg.input_path)
+	input_dir := if os.is_dir(input_path) { input_path } else { os.dir(input_path) }
+	base_dir := vd.repo_root_for_links(input_dir)
+	real_file := os.real_path(file_path)
+	prefix := base_dir.trim_right(os.path_separator) + os.path_separator
+	if real_file.starts_with(prefix) {
+		return real_file[prefix.len..].replace('\\', '/')
 	}
 	return file_path.replace('\\', '/')
+}
+
+fn (vd &VDoc) repo_root_for_links(input_dir string) string {
+	mut ancestor := input_dir
+	mut manifest_root := ''
+	for {
+		// Worktrees have a .git file instead of a directory.
+		if os.exists(os.join_path(ancestor, '.git')) {
+			return ancestor
+		}
+		if manifest_root == '' && os.is_file(os.join_path(ancestor, 'v.mod')) {
+			manifest_root = ancestor
+		}
+		parent := os.dir(ancestor)
+		if parent == ancestor {
+			break
+		}
+		ancestor = parent
+	}
+	mut root := if manifest_root != '' {
+		manifest_root
+	} else if vd.cfg.is_multi {
+		os.dir(os.real_path(vd.cfg.input_path))
+	} else {
+		input_dir
+	}
+	if manifest_root != '' {
+		// Archives may lack .git; include every declared source directory in the root.
+		for source_dir in doc.module_source_dirs(module_source_root(manifest_root)) {
+			root = common_ancestor(root, os.real_path(source_dir) + os.path_separator)
+		}
+	}
+	return root
 }
 
 fn (vd &VDoc) write_content(cn &doc.DocNode, mut hw strings.Builder) {

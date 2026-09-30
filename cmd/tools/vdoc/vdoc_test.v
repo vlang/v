@@ -510,6 +510,90 @@ fn test_repo_file_path_for_links_keeps_subdirs() {
 	assert vd.get_repo_file_path_for_links(os.join_path(real_root, 'internal', 'sub.v')) == 'internal/sub.v'
 }
 
+fn test_repo_file_path_for_links_keeps_external_subdirs() {
+	repo := 'subdirs_external_links'
+	root := os.join_path(repo, 'mypkg')
+	os.mkdir_all(os.join_path(repo, '.git'))!
+	write_subdirs_fixture(root, "\trepo_url: 'https://github.com/example/project'\n\trepo_branch: 'main'\n\tsubdirs: ['../shared', '../other']\n", {
+		'root.v':          'module mypkg\n\npub fn root_fn() {}\n'
+		'../shared/sub.v': 'module mypkg\n\n// external_fn links to [a guide](guide.md).\npub fn external_fn() {}\n'
+		'../other/sub.v':  'module mypkg\n\npub fn other_fn() {}\n'
+	})!
+	vd := VDoc{
+		cfg: Config{
+			input_path: root
+		}
+	}
+	real_repo := os.real_path(repo)
+	assert vd.get_repo_file_path_for_links(os.join_path(real_repo, 'mypkg', 'root.v')) == 'mypkg/root.v'
+	assert vd.get_repo_file_path_for_links(os.join_path(real_repo, 'shared', 'sub.v')) == 'shared/sub.v'
+	assert vd.get_repo_file_path_for_links(os.join_path(real_repo, 'other', 'sub.v')) == 'other/sub.v'
+	res := os.execute_opt('${vexe_} doc -no-timestamp -f html -o - -html-only-contents -comments ${os.quoted_path(root)}')!
+	assert res.output.contains('https://github.com/example/project/blob/main/shared/sub.v#L')
+	assert res.output.contains('https://github.com/example/project/blob/main/other/sub.v#L')
+	assert res.output.contains('https://github.com/example/project/blob/main/shared/guide.md')
+}
+
+fn test_repo_file_path_for_links_uses_base_url_manifest_root() {
+	root := 'subdirs_base_url_links'
+	write_subdirs_fixture(root, "\tbase_url: 'src'\n\tsubdirs: ['../shared', 'internal']\n", {
+		'src/root.v':         'module mypkg\n\npub fn root_fn() {}\n'
+		'src/internal/sub.v': 'module mypkg\n\npub fn internal_fn() {}\n'
+		'shared/sub.v':       'module mypkg\n\npub fn external_fn() {}\n'
+	})!
+	vd := VDoc{
+		cfg: Config{
+			input_path: os.join_path(root, 'src')
+		}
+	}
+	real_root := os.real_path(root)
+	assert vd.get_repo_file_path_for_links(os.join_path(real_root, 'src', 'root.v')) == 'src/root.v'
+	assert vd.get_repo_file_path_for_links(os.join_path(real_root, 'src', 'internal', 'sub.v')) == 'src/internal/sub.v'
+	assert vd.get_repo_file_path_for_links(os.join_path(real_root, 'shared', 'sub.v')) == 'shared/sub.v'
+}
+
+fn test_repo_file_path_for_links_handles_worktrees_and_file_inputs() {
+	repo := 'subdirs_worktree_links'
+	root := os.join_path(repo, 'mypkg')
+	os.mkdir_all(repo)!
+	os.write_file(os.join_path(repo, '.git'), 'gitdir: /unused/worktrees/mypkg\n')!
+	write_subdirs_fixture(root, "\tsubdirs: ['../shared']\n", {
+		'root.v':          'module mypkg\n\npub fn root_fn() {}\n'
+		'../shared/sub.v': 'module mypkg\n\npub fn external_fn() {}\n'
+	})!
+	real_repo := os.real_path(repo)
+	for is_multi in [false, true] {
+		vd := VDoc{
+			cfg: Config{
+				input_path: os.join_path(root, 'root.v')
+				is_multi:   is_multi
+			}
+		}
+		assert vd.get_repo_file_path_for_links('') == ''
+		assert vd.get_repo_file_path_for_links(os.join_path(real_repo, 'mypkg', 'root.v')) == 'mypkg/root.v'
+		assert vd.get_repo_file_path_for_links(os.join_path(real_repo, 'shared', 'sub.v')) == 'shared/sub.v'
+	}
+}
+
+fn test_repo_file_path_for_links_preserves_manifestless_input_roots() {
+	root := os.join_path('links_no_manifest', 'nested')
+	os.mkdir_all(root)!
+	file := os.join_path(root, 'file.v')
+	os.write_file(file, 'module mypkg\n')!
+	for input_path in [root, file] {
+		for is_multi in [false, true] {
+			vd := VDoc{
+				cfg: Config{
+					input_path: input_path
+					is_multi:   is_multi
+				}
+			}
+			expected := if is_multi && input_path == root { 'nested/file.v' } else { 'file.v' }
+			assert vd.get_repo_file_path_for_links(os.real_path(file)) == expected
+		}
+	}
+}
+
 fn test_vdocignore_applies_to_vmod_subdirs() {
 	root := 'subdirs_ignored'
 	// A subdir outside of the module folder is documented, but the default rules

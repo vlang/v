@@ -6498,6 +6498,9 @@ Package are up to date.
    to the module source root, and files there should declare the same
    `module mypackage`. `v doc` documents them as part of that module too.
    `v doc -m` also discovers modules whose sources are all in external `subdirs`.
+   HTML source links retain paths relative to the repository root, including
+   external `subdirs` and the `base_url` source folder. Without Git metadata,
+   links use the common root of the manifest and its declared source directories.
 
    The name of your package should be used with the `module` directive
    at the top of all files in your package. For `mypackage.v`:
