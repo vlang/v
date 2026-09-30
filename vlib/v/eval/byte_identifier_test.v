@@ -590,6 +590,11 @@ fn main() {
  println(sizeof(!u16))
  println(sizeof([2]string))
  println(sizeof([2][]u8))
+ println(sizeof(IError))
+ println(sizeof(?u64))
+ println(sizeof([3]?u16))
+ println(sizeof(!string))
+ println(sizeof(![2]Fields))
 }
 '
 	assert_eval_sizeof_matches_compiler(code)
@@ -687,7 +692,7 @@ fn main() {
 	mut generic_parser := parser.Parser.new(&e.prefs)
 	generic_parser.parse_files([small, holder, main_file])
 	e.run_files(generic_parser.a) or { panic(err) }
-	assert e.stdout() == result.output + '8\n20\n10\n8\n160\n4\n'
+	assert e.stdout() == result.output + '8\n20\n10\n8\n12\n4\n'
 }
 
 fn test_eval_sizeof_registered_builtin_layouts_matches_minimal_ast() {
