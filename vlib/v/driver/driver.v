@@ -12179,7 +12179,7 @@ pub fn run(args []string) {
 			if has_v3_authoritative_error(pre_tc.errors) {
 				clear_macos_v3_compiler_error_fallback(macos_v3_fallback_file)
 			}
-			if check_only && !is_checker_fixture {
+			if check_only && !is_checker_fixture && !is_repl {
 				// An editor shows these while the errors are being fixed.
 				pre_tc.diagnose_unused_private_declarations_with_errors()
 			}
@@ -12215,10 +12215,13 @@ pub fn run(args []string) {
 			}
 			exit(1)
 		}
-		if check_only {
+		// A REPL check validates a declaration that only later lines will use.
+		if check_only && !is_repl {
 			// Before the monomorphization below rewrites the tree, as in a build.
 			report_unused_declarations_of_check(a, mut pre_tc, no_skip_unused, test_files,
 				input_file.ends_with('.vsh') || is_checker_fixture)
+		}
+		if check_only {
 			if pre_tc.global_names.len > 0 && os.getenv('V_CHECK_SELECTED_FILES_ONLY') == '' {
 				check_used_fns, check_uses_generics := markused.mark_used_with_generic_usage(a, &pre_tc)
 				if check_uses_generics {
