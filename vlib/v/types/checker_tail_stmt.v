@@ -10127,7 +10127,14 @@ fn fn_param_pointer_slot_compatible(slot Type, other Type) bool {
 	slot_base := fn_param_unalias_type((clean_slot as Pointer).base_type)
 	other_base := fn_param_unalias_type((clean_other as Pointer).base_type)
 	if fn_param_is_voidptr_type(slot_base) {
-		return other_base is Pointer || other_base is FnType
+		if other_base is FnType {
+			return true
+		}
+		if other_base is Pointer {
+			pointee := fn_param_unalias_type(other_base.base_type)
+			return pointee !is Pointer && pointee !is FnType
+		}
+		return false
 	}
 	return fn_param_pointer_slot_compatible(slot_base, other_base)
 }

@@ -32,7 +32,7 @@ fn main() {
 // stands for a pointer to any pointer-sized slot, at the same depth.
 fn test_voidptr_slot_parameters_match_pointer_slots() {
 	for i, params in [['&fn (int) int', '&voidptr'], ['&voidptr', '&fn (int) int'],
-		['&&i32', '&voidptr'], ['&&&i32', '&&voidptr']] {
+		['&&i32', '&voidptr'], ['&&&i32', '&&voidptr'], ['&&fn (int) int', '&&voidptr']] {
 		result := voidptr_slot_check('ok${i}', voidptr_slot_source(params[0], params[1]))
 		assert result.exit_code == 0, '${params}: ${result.output}'
 	}
@@ -42,7 +42,9 @@ fn test_voidptr_slot_parameters_match_pointer_slots() {
 // a pointer in an `i32` or a struct.
 fn test_voidptr_slot_parameters_reject_value_slots() {
 	for i, params in [['&i32', '&voidptr'], ['&voidptr', '&i32'], ['&&i32', '&&voidptr'],
-		['&os.Result', '&voidptr']] {
+		['&os.Result', '&voidptr'], ['&&&i32', '&voidptr'], ['&voidptr', '&&&i32'],
+		['&&&&i32', '&&voidptr'], ['&&voidptr', '&&&&i32'], ['&&fn (int) int', '&voidptr'],
+		['&voidptr', '&&fn (int) int']] {
 		result := voidptr_slot_check('bad${i}', voidptr_slot_source(params[0], params[1]).replace('module main\n',
 			'module main\nimport os\n'))
 		assert result.exit_code != 0, '${params}: ${result.output}'
