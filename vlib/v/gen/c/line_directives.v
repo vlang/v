@@ -98,13 +98,14 @@ fn (mut g FlatGen) write_line_directive_text(directive string) {
 }
 
 // gen_race_blank_read generates `_ = expr` in a race build. Like Go, V reads the value of
-// `expr`, but the C compiler does not load a struct for `(void)(expr)`: a race on a string,
-// an interface or an option read that way would go unreported. Copying it is a load.
+// `expr`, but the C compiler does not load a struct for `(void)(expr)`, and drops a value
+// that is computed without side effects, like `c.n + 1`: a race on what `expr` reads would
+// go unreported. Copying the value to a volatile variable keeps it, and its loads.
 fn (mut g FlatGen) gen_race_blank_read(rhs_id flat.NodeId) bool {
-	rhs := g.a.nodes[int(rhs_id)]
-	if !g.race || rhs.kind !in [.ident, .selector, .index, .prefix, .paren] {
+	if !g.race {
 		return false
 	}
+	rhs := g.a.nodes[int(rhs_id)]
 	mut typ := g.usable_expr_type(rhs_id)
 	// The value of a `mut` parameter, also in parentheses, is behind the pointer that C passes.
 	mut inner := rhs
@@ -123,7 +124,10 @@ fn (mut g FlatGen) gen_race_blank_read(rhs_id flat.NodeId) bool {
 	if fixed := array_fixed_type(typ) {
 		// A C array cannot be copied, and `(void)(array)` only takes its address: tell the
 		// race detector that all its elements are read. The size comes from the V type,
-		// as a fixed array parameter is a pointer in C.
+		// as a fixed array parameter is a pointer in C. That needs an array in memory.
+		if inner.kind !in [.ident, .selector, .index, .prefix] {
+			return false
+		}
 		elem_c_type, dims := g.fixed_array_decl_parts(fixed)
 		g.write('__tsan_read_range((void*)(${deref}')
 		g.gen_expr(rhs_id)
