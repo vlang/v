@@ -14,7 +14,9 @@ fn race_file_write() {
 	}
 }
 
-// race_file_read marks a read from a file.
+// race_file_read marks a read from a file. Call it only when the read did not fail: a
+// failed read does not happen after the writes, like in Go, where only a read without an
+// error acquires `ioSync`.
 @[if race ?]
 fn race_file_read() {
 	$if race ? {

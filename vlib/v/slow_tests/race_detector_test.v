@@ -253,6 +253,56 @@ fn main() {
 }
 '
 
+// A read that fails does not happen after earlier file writes: reading what the writer
+// published before its write is still a race.
+const failed_read_source = 'import os
+import time
+
+struct Data {
+mut:
+	x int
+}
+
+fn main() {
+	path := os.join_path(os.vtmp_dir(), "race_failed_read_\${os.getpid()}.txt")
+	os.write_file(path, "")!
+	// Opened before the writer starts: opening a file after the write would synchronize.
+	mut dir := os.open(os.vtmp_dir())!
+	mut d := &Data{}
+	t := spawn fn (mut d Data, path string) {
+		d.x = 42
+		mut w := os.open_append(path) or { panic(err) }
+		w.write_string("ready\n") or { panic(err) }
+		w.close()
+	}(mut d, path)
+	for os.file_size(path) == 0 {
+		time.sleep(time.millisecond)
+	}
+	mut buf := []u8{len: 16}
+	if _ := dir.read(mut buf) {
+		println("the read of a directory did not fail")
+	} else {
+		println("read failed")
+	}
+	println("x \${d.x}")
+	t.wait()
+	dir.close()
+	os.rm(path) or {}
+}
+'
+
+// A compiler build (`-building-v`, or the `cmd/v` input) defaults to the arena allocator,
+// but a race build keeps the C allocator.
+const allocator_source = 'fn main() {
+	xs := [1, 2, 3]
+	\$if prealloc {
+		println("allocator: prealloc \${xs.len}")
+	} \$else {
+		println("allocator: c \${xs.len}")
+	}
+}
+'
+
 fn testsuite_begin() {
 	os.mkdir_all(tdir) or {}
 }
@@ -409,4 +459,25 @@ fn test_race_every_release_happens_before_the_acquire() {
 	assert !res.output.contains('ThreadSanitizer'), res.output
 	assert res.output.contains('wg 6'), res.output
 	assert res.output.contains('io 4 3'), res.output
+}
+
+fn test_race_failed_file_read_does_not_synchronize() {
+	if !thread_sanitizer_runs() {
+		return
+	}
+	exe := build_race_program('failed_read', failed_read_source)
+	res := os.execute('VRACE="exitcode=7" ${os.quoted_path(exe)}')
+	assert res.output.contains('read failed'), res.output
+	assert res.exit_code == 7, res.output
+	assert res.output.contains('WARNING: ThreadSanitizer: data race'), res.output
+}
+
+fn test_race_compiler_builds_keep_the_c_allocator() {
+	if !thread_sanitizer_runs() {
+		return
+	}
+	exe := build_race_program('allocator', allocator_source, '-building-v')
+	res := os.execute(os.quoted_path(exe))
+	assert res.exit_code == 0, res.output
+	assert res.output.contains('allocator: c 3'), res.output
 }

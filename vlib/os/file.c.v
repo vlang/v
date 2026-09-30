@@ -211,10 +211,10 @@ pub fn (f &File) read(mut buf []u8) !int {
 	}
 	// the following is needed, because on FreeBSD, C.feof is a macro:
 	nbytes := int(C.fread(buf.data, 1, buf.len, unsafe { &C.FILE(f.cfile) }))
-	race_file_read()
 	// if no bytes were read, check for errors and end-of-file.
 	if nbytes <= 0 {
 		if C.feof(unsafe { &C.FILE(f.cfile) }) != 0 {
+			race_file_read()
 			return Eof{}
 		}
 		if C.ferror(unsafe { &C.FILE(f.cfile) }) != 0 {
@@ -224,6 +224,7 @@ pub fn (f &File) read(mut buf []u8) !int {
 			}
 		}
 	}
+	race_file_read()
 	return nbytes
 }
 
@@ -353,7 +354,6 @@ pub fn (mut f File) write_ptr_at(data voidptr, size int, pos u64) int {
 // fread wraps C.fread and handles error and end-of-file detection.
 fn fread(ptr voidptr, item_size int, items int, stream &C.FILE) !int {
 	nbytes := int(C.fread(ptr, item_size, items, stream))
-	race_file_read()
 	// If no bytes were read, check for errors and end-of-file.
 	if nbytes <= 0 {
 		// If fread encountered end-of-file return the none error. Note that fread
@@ -362,6 +362,7 @@ fn fread(ptr voidptr, item_size int, items int, stream &C.FILE) !int {
 		// read. The caller will get none on their next call because there will be
 		// no data available and the end-of-file will be encountered again.
 		if C.feof(stream) != 0 {
+			race_file_read()
 			return Eof{}
 		}
 		// If fread encountered an error, return it. Note that fread and ferror do
@@ -372,6 +373,7 @@ fn fread(ptr voidptr, item_size int, items int, stream &C.FILE) !int {
 			return error('file read error')
 		}
 	}
+	race_file_read()
 	return nbytes
 }
 
@@ -408,14 +410,12 @@ pub fn (f &File) read_bytes_with_newline(mut buf []u8) !int {
 	mut nbytes := 0
 
 	stream := unsafe { &C.FILE(f.cfile) }
-	defer {
-		race_file_read()
-	}
 	for (buf_ptr < buf.len) {
 		c = C.getc(stream)
 		match c {
 			C.EOF {
 				if C.feof(stream) != 0 {
+					race_file_read()
 					return nbytes
 				}
 				if C.ferror(stream) != 0 {
@@ -425,6 +425,7 @@ pub fn (f &File) read_bytes_with_newline(mut buf []u8) !int {
 			newline {
 				buf[buf_ptr] = u8(c)
 				nbytes++
+				race_file_read()
 				return nbytes
 			}
 			else {
@@ -434,6 +435,7 @@ pub fn (f &File) read_bytes_with_newline(mut buf []u8) !int {
 			}
 		}
 	}
+	race_file_read()
 	return nbytes
 }
 

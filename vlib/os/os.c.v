@@ -87,10 +87,10 @@ pub fn read_bytes(path string) ![]u8 {
 	}
 	mut res := []u8{len: fsize}
 	nr_read_elements := int(C.fread(res.data, 1, fsize, fp))
-	race_file_read()
 	if nr_read_elements == 0 && fsize > 0 {
 		return error('fread failed')
 	}
+	race_file_read()
 	res.trim(nr_read_elements)
 	return res
 }
@@ -167,13 +167,13 @@ pub fn read_file(path string) !string {
 	unsafe {
 		mut str := malloc_noscan(allocate + 1)
 		nelements := int(C.fread(str, 1, allocate, fp))
-		race_file_read()
 		is_eof := int(C.feof(fp))
 		is_error := int(C.ferror(fp))
 		if is_eof == 0 && is_error != 0 {
 			free(str)
 			return error('fread failed')
 		}
+		race_file_read()
 		str[nelements] = 0
 		if nelements == 0 {
 			// It is highly likely that the file was a virtual file from
@@ -688,12 +688,12 @@ pub fn get_raw_line() string {
 
 		mut str := ''
 		nr_chars := unsafe { C.getline(voidptr(&buf), &max, C.stdin) }
-		race_file_read()
 		if nr_chars >= 0 && buf != 0 {
 			str = unsafe { tos(buf, nr_chars) }
 		} else if int(C.feof(C.stdin)) == 0 && int(C.ferror(C.stdin)) != 0 {
 			panic('get_raw_line(): error reading from stdin')
 		}
+		race_file_read()
 		ret := str.clone()
 		$if !autofree {
 			unsafe {
@@ -738,7 +738,12 @@ pub fn get_raw_stdin() []u8 {
 		max := usize(0)
 		buf := &u8(unsafe { nil })
 		nr_chars := unsafe { C.getline(voidptr(&buf), &max, C.stdin) }
-		race_file_read()
+		$if race ? {
+			// A read that failed does not happen after the writes to stdin.
+			if nr_chars >= 0 || C.ferror(C.stdin) == 0 {
+				race_file_read()
+			}
+		}
 		return array{
 			element_size: 1
 			data:         voidptr(buf)
@@ -768,7 +773,12 @@ pub fn read_file_array[T](path string) []T {
 		malloc_noscan(allocate)
 	}
 	nread := C.fread(buf, tsize, len, fp)
-	race_file_read()
+	$if race ? {
+		// A read that failed does not happen after the writes to the file.
+		if nread > 0 || C.ferror(fp) == 0 {
+			race_file_read()
+		}
+	}
 	C.fclose(fp)
 	return unsafe {
 		array{
