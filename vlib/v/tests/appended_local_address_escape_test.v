@@ -178,3 +178,29 @@ fn test_element_addresses_of_a_fixed_array_appended() {
 	assert second == 131
 	assert values.map(*it) == [u64(30), 42]
 }
+
+fn append_through_wrapper_aliases(mut values []&u64, data u64, c bool) {
+	first := data
+	p := unsafe {
+		q := &first
+		q
+	}
+	values << p
+	second := data + 1
+	r := if c {
+		s := &second
+		s
+	} else {
+		unsafe { nil }
+	}
+	values << r
+}
+
+// The appended pointer can be an alias declared inside the block or branch that gives
+// another alias its value.
+fn test_address_appended_through_an_alias_declared_in_a_value_wrapper() {
+	mut values := []&u64{}
+	append_through_wrapper_aliases(mut values, 50, true)
+	_ = use_the_stack(10)
+	assert values.map(*it) == [u64(50), 51]
+}
