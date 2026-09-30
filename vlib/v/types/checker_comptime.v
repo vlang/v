@@ -8389,7 +8389,7 @@ fn (mut tc TypeChecker) check_ordered_comparison(id flat.NodeId, node flat.Node,
 	if (fn_type_from_type(lhs_clean) != none) != (fn_type_from_type(rhs_clean) != none) {
 		tc.record_error_at(.condition_mismatch, 'mismatched types `${tc.diagnostic_expr_type_name(lhs_id, lhs_type)}` and `${tc.diagnostic_expr_type_name(rhs_id, rhs_type)}`', id, node.pos)
 	}
-	if tc.type_name(lhs_type) == 'bool' {
+	if lhs_clean is Primitive && lhs_clean.props.has(.boolean) {
 		tc.record_error_at(.condition_mismatch, 'bool types only have the following operators defined: `==`, `!=`, `||`, and `&&`', id, tc.infix_operator_pos(node, op))
 	}
 	if lhs_clean is SumType {

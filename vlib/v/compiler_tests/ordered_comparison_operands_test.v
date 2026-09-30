@@ -57,6 +57,8 @@ enum Perm {
 	write
 }
 
+type MyBool = bool
+
 type MyInt = int
 type MyStr = string
 type FooAlias = Foo
@@ -123,7 +125,7 @@ fn comparison_is_valid(lhs Operand, rhs Operand) bool {
 	}
 	if rhs.key == 'voidptr' {
 		// `bool < x` is rejected for any `x`.
-		return lhs.is_pointer() || (lhs.c_scalar && lhs.key !in ['bool', 'bool_literal'])
+		return lhs.is_pointer() || (lhs.c_scalar && lhs.key !in ['bool', 'bool_literal', 'bool_alias'])
 	}
 	return (lhs.is_pointer() && rhs.integer) || (rhs.is_pointer() && lhs.integer)
 }
@@ -254,6 +256,11 @@ const operands = [
 		c_scalar: true
 	},
 	Operand{
+		key:      'bool_alias'
+		decl:     'MyBool'
+		c_scalar: true
+	},
+	Operand{
 		key:      'bool_literal'
 		text:     'true'
 		c_scalar: true
@@ -354,7 +361,7 @@ fn check_errors(name string, src string) []ErrorAt {
 	}
 	errors := check_file_errors(path)
 	for err in errors {
-		assert err.file == path, 'error in another file: ${err}'
+		assert os.real_path(err.file) == os.real_path(path), 'error in another file: ${err}'
 	}
 	return errors
 }
@@ -525,6 +532,13 @@ const message_cases = [
 	MessageCase{'f fn () int', 'f > 0', [
 		'9: mismatched types `fn () int` and `int literal`',
 		'9: infix expr: cannot use `int literal` (right expression) as `fn () int`',
+	]},
+	MessageCase{'b MyBool', 'b > MyBool(false)', [
+		'11: ${infix_bool_msg}',
+	]},
+	MessageCase{'b MyBool', 'b < 1', [
+		'11: ${infix_bool_msg}',
+		'9: infix expr: cannot use `int literal` (right expression) as `bool`',
 	]},
 	MessageCase{'b bool', 'b > false', [
 		'11: ${infix_bool_msg}',
@@ -757,6 +771,12 @@ struct Point {
 
 type Stamp = int | time.Time
 
+type OrderedBool = bool
+
+fn (a OrderedBool) < (b OrderedBool) bool {
+	return !bool(a) && bool(b)
+}
+
 fn (p Point) far(limit int) bool {
 	return p.x > limit || p.y >= limit
 }
@@ -789,6 +809,8 @@ fn (mut f Foo) is_null_receiver() bool {
 }
 
 fn main() {
+	assert OrderedBool(false) < OrderedBool(true)
+	assert OrderedBool(true) >= OrderedBool(false)
 	println(lt(1, 2))
 	println(lt(2.5, 1.5))
 	println(lt('a', 'b'))
