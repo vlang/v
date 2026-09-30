@@ -145,7 +145,7 @@ fn main() {
 	assert build.output.contains('cannot copy `Handle` elements: `Handle` requires ownership destruction but has no compatible `clone()` method'), build.output
 }
 
-fn test_mut_fixed_array_views_preserve_independent_element_owners() {
+fn test_owned_fixed_array_returned_views_acquire_independent_owners() {
 	output := copy_ownership_run('fixed_array_owners', '@[has_globals]
 module main
 
@@ -194,72 +194,74 @@ fn keep_wrappers(mut values []Wrapper) []Wrapper {
 fn main() {
 	mut fixed := [fresh()]!
 	kept := keep(mut fixed)
+	assert kept[0].id != fixed[0].id
 	drop_owned(kept)
+	assert dropped_ids.len == 1
+	assert !dropped_ids[fixed[0].id]
 	drop_owned(fixed)
 	mut wrappers := [Wrapper{[fresh()]}]!
 	kept_wrappers := keep_wrappers(mut wrappers)
 	drop_owned(kept_wrappers)
+	assert dropped_ids.len == 3
+	assert !dropped_ids[wrappers[0].items[0].id]
 	drop_owned(wrappers)
 	assert dropped_ids.len == next_owned_id
 	mut words := ["first".repeat(3), "second".repeat(3)]!
 	kept_words := keep_strings(mut words)
-	drop_owned(words)
 	assert kept_words[0] == "firstfirstfirst"
 	assert kept_words[1] == "secondsecondsecond"
 	drop_owned(kept_words)
+	assert words[0] == "firstfirstfirst"
+	drop_owned(words)
 	println("ok")
 }
 ')
 	assert output == 'ok'
 }
 
-fn test_mut_fixed_array_views_reject_elements_without_clone() {
+fn test_mut_fixed_array_views_borrow_elements_without_clone() {
 	for argument in ['values', 'values[0..1]'] {
-		build := copy_ownership_compile('uncloneable_fixed_${argument.len}', 'interface Drop {
+		output := copy_ownership_run('uncloneable_fixed_${argument.len}', '@[has_globals]
+module main
+
+__global dropped = false
+
+interface Drop {
 mut:
 	drop()
 }
 
 struct Handle implements Drop {
+mut:
 	fd int
 }
 
-fn (mut h Handle) drop() {}
+fn (mut h Handle) drop() {
+	assert !dropped
+	dropped = true
+}
 
-fn keep(mut values []Handle) []Handle {
-	return values
+fn change(mut values []Handle) {
+	values[0].fd = 2
+}
+
+fn inspect(values &[]Handle) int {
+	return values[0].fd
 }
 
 fn main() {
 	mut values := [Handle{1}]!
-	keep(mut ${argument})
+	assert inspect(values) == 1
+	change(mut ${argument})
+	assert values[0].fd == 2
+	assert !dropped
+	drop_owned(values)
+	assert dropped
+	println("ok")
 }
 ')
-		assert build.exit_code != 0
-		assert build.output.contains('requires ownership destruction but has no compatible `clone()` method'), build.output
+		assert output == 'ok'
 	}
-	build := copy_ownership_compile('uncloneable_fixed_reference', 'interface Drop {
-mut:
-	drop()
-}
-
-struct Handle implements Drop {
-	fd int
-}
-
-fn (mut h Handle) drop() {}
-
-fn inspect(values &[]Handle) {
-	assert values[0].fd == 1
-}
-
-fn main() {
-	values := [Handle{1}]!
-	inspect(values)
-}
-')
-	assert build.exit_code != 0
-	assert build.output.contains('requires ownership destruction but has no compatible `clone()` method'), build.output
 }
 
 fn test_nonownership_fixed_array_views_do_not_root_unused_destructors() {
@@ -295,6 +297,7 @@ fn test_immutable_fixed_array_reference_keeps_original_owners() {
 module main
 
 __global next_id = 0
+__global cloned = 0
 __global dropped = map[int]bool{}
 
 interface Drop {
@@ -312,6 +315,7 @@ fn fresh() Resource {
 }
 
 fn (r &Resource) clone() Resource {
+	cloned++
 	return fresh()
 }
 
@@ -327,7 +331,8 @@ fn inspect(values &[]Resource) int {
 fn main() {
 	values := [fresh()]!
 	original_id := values[0].id
-	assert inspect(values) != original_id
+	assert inspect(values) == original_id
+	assert cloned == 0
 	assert values[0].id == original_id
 	assert !dropped[original_id]
 	drop_owned(values)
@@ -338,7 +343,7 @@ fn main() {
 	assert output == 'ok'
 }
 
-fn test_fixed_array_clone_preludes_follow_callee_evaluation() {
+fn test_fixed_array_borrows_preserve_callee_evaluation_order() {
 	output := copy_ownership_run('fixed_callee_order', '@[has_globals]
 module main
 
@@ -408,7 +413,7 @@ fn main() {
 	assert make_runner().consume(mut values) == 1
 	assert order[0] == "receiver", order.str()
 	assert order.filter(it == "receiver").len == 1
-	assert order.filter(it == "clone").len > 0
+	assert order.filter(it == "clone").len == 0
 	order = []string{}
 	assert make_consumer()(values) == 1
 	assert order[0] == "factory", order.str()
@@ -427,4 +432,349 @@ fn main() {
 }
 ')
 	assert output == 'ok'
+}
+
+fn test_owned_fixed_array_views_clone_only_when_detaching() {
+	output := copy_ownership_run('fixed_array_detach', '@[has_globals]
+module main
+
+__global next_id = 0
+__global clone_count = 0
+__global dropped = map[int]bool{}
+
+interface Drop {
+mut:
+	drop()
+}
+
+struct Resource implements IClone, Drop {
+	id int
+mut:
+	value int
+}
+
+fn fresh() Resource {
+	next_id++
+	return Resource{next_id, 0}
+}
+
+fn (r &Resource) clone() Resource {
+	clone_count++
+	mut result := fresh()
+	result.value = r.value
+	return result
+}
+
+fn (mut r Resource) drop() {
+	if r.id == 0 { return }
+	assert !dropped[r.id], "owner dropped twice"
+	dropped[r.id] = true
+}
+
+fn observe(values []Resource) { assert values[0].value == 0 }
+fn noops(mut values []Resource) {
+	observe(values)
+	values.ensure_cap(values.cap)
+	values.grow_cap(0)
+	unsafe { values.grow_len(0) }
+	values << []Resource{}
+	values.prepend([]Resource{})
+	values.insert(0, []Resource{})
+}
+
+fn change(mut values []Resource, operation int) []Resource {
+	values[0].value = 7
+	if operation == 0 {
+		values << fresh()
+	} else if operation == 1 {
+		values.prepend(fresh())
+	} else if operation == 2 {
+		values.insert(1, fresh())
+	} else if operation == 3 {
+		values.ensure_cap(values.cap + 1)
+	} else if operation == 4 {
+		values.delete(1)
+	} else if operation == 5 {
+		values.trim(1)
+	} else if operation == 6 {
+		popped := values.pop()
+		assert !dropped[popped.id]
+	} else if operation == 7 {
+		values.grow_cap(1)
+	} else {
+		unsafe { values.grow_len(1) }
+		values[2] = fresh()
+	}
+	return values
+}
+
+fn main() {
+	for operation in 0 .. 9 {
+		mut fixed := [fresh(), fresh()]!
+		original_id := fixed[0].id
+		before := clone_count
+		noops(mut fixed)
+		assert clone_count == before
+		changed := change(mut fixed, operation)
+		assert clone_count == before + 2
+		assert fixed[0].id == original_id
+		assert fixed[0].value == 7
+		assert !dropped[original_id]
+		unsafe { changed.free() }
+		assert !dropped[original_id]
+		drop_owned(fixed)
+	}
+	assert dropped.len == next_id
+	println("ok")
+}
+')
+	assert output == 'ok'
+}
+
+fn test_owned_fixed_array_borrowed_empty_uncloneable_range_can_grow() {
+	output := copy_ownership_run('empty_uncloneable_fixed', '@[has_globals]
+module main
+__global dropped = map[int]bool{}
+interface Drop {
+mut:
+	drop()
+}
+struct Handle implements Drop { id int }
+fn (mut h Handle) drop() {
+	assert !dropped[h.id]
+	dropped[h.id] = true
+}
+fn grow(mut values []Handle, reserve bool) []Handle {
+	if reserve { values.ensure_cap(2) }
+	values << Handle{2}
+	return values
+}
+fn main() {
+	for reserve in [false, true] {
+		dropped = map[int]bool{}
+		mut fixed := [Handle{1}]!
+		result := grow(mut fixed[0..0], reserve)
+		assert result.len == 1
+		assert result[0].id == 2
+		assert !dropped[1]
+		drop_owned(result)
+		drop_owned(fixed)
+		assert dropped.len == 2
+	}
+	println("ok")
+}
+')
+	assert output == 'ok'
+}
+
+fn test_owned_fixed_array_borrow_scope_and_retained_headers() {
+	output := copy_ownership_run('fixed_array_scope', '@[has_globals]
+module main
+__global next_id = 0
+__global clones = 0
+__global dropped = map[int]bool{}
+interface Drop {
+mut:
+	drop()
+}
+struct Resource implements IClone, Drop {
+	id int
+	payload string
+mut:
+	value int
+}
+fn fresh() Resource {
+	next_id++
+	return Resource{next_id, "payload".repeat(4), 0}
+}
+fn (r &Resource) clone() Resource {
+	clones++
+	mut result := fresh()
+	result.value = r.value
+	return result
+}
+fn (mut r Resource) drop() {
+	assert !dropped[r.id], "double drop"
+	dropped[r.id] = true
+}
+struct Holder {
+mut:
+	values [1]Resource
+	label string
+}
+fn inspect(values &[]Resource) int { return values[0].id }
+fn change(mut values []Resource) { values[0].value = 7 }
+fn keep(mut values []Resource) []Resource { return values }
+fn keep_reference(mut values []Resource) &[]Resource { return &values }
+type ResourceArray = []Resource
+struct Stored { mut: values &ResourceArray = unsafe { nil } }
+fn store_and_change(mut values []Resource, mut stored Stored) {
+	values[0].value = 9
+	stored.values = &values
+}
+fn ordinary_scope() {
+	mut holder := Holder{[fresh()]!, "label".repeat(4)}
+	assert inspect(holder.values) == holder.values[0].id
+	change(mut holder.values)
+	assert holder.values[0].value == 7
+	assert clones == 0
+}
+fn returned() []Resource {
+	mut holder := Holder{[fresh()]!, "label".repeat(4)}
+	return keep(mut holder.values)
+}
+fn holder_value_reference(holder Holder) &[]Resource {
+	unsafe { return keep_readonly_reference(&holder.values) }
+}
+fn keep_readonly_reference(values &[]Resource) &[]Resource { return values }
+fn dispose_reference(values &[]Resource) {
+	unsafe {
+		values.free()
+	}
+}
+struct ScalarHolder {
+mut:
+	values [2]int
+	label string
+}
+fn keep_scalars(mut values []int) []int { return values }
+fn scalar_scope() []int {
+	mut holder := ScalarHolder{[3, 4]!, "label".repeat(4)}
+	return keep_scalars(mut holder.values)
+}
+fn returned_reference() &[]Resource {
+	mut holder := Holder{[fresh()]!, "label".repeat(4)}
+	return keep_reference(mut holder.values)
+}
+fn stored_reference() Stored {
+	mut holder := Holder{[fresh()]!, "label".repeat(4)}
+	mut stored := Stored{}
+	store_and_change(mut holder.values, mut stored)
+	assert holder.values[0].value == 9
+	return stored
+}
+fn main() {
+	ordinary_scope()
+	assert dropped.len == 1
+	assert scalar_scope() == [3, 4]
+	values := returned()
+	assert clones == 1
+	assert dropped.len == 2
+	assert !dropped[values[0].id]
+	assert values[0].payload == "payload".repeat(4)
+	drop_owned(values)
+	reference := returned_reference()
+	assert clones == 2
+	unsafe {
+		assert !dropped[(*reference)[0].id]
+		assert (*reference)[0].payload == "payload".repeat(4)
+		dispose_reference(reference)
+	}
+	stored := stored_reference()
+	assert clones == 3
+	unsafe {
+		assert (*stored.values)[0].value == 9
+		assert !dropped[(*stored.values)[0].id]
+		dispose_reference(stored.values)
+	}
+	assert dropped.len == next_id
+	println("ok")
+}
+')
+	assert output == 'ok'
+}
+
+fn test_owned_fixed_array_nonempty_uncloneable_views_fail_when_owning() {
+	for operation in ['values << Handle{2}', 'values.ensure_cap(values.cap + 1)', 'return values'] {
+		name := 'uncloneable_boundary_${operation.len}'
+		tail := if operation.starts_with('return ') { '' } else { 'return []Handle{}' }
+		source := 'interface Drop { mut: drop() }
+struct Handle implements Drop { id int }
+fn (mut h Handle) drop() {}
+fn own(mut values []Handle) []Handle {
+	${operation}
+	${tail}
+}
+fn main() {
+	mut fixed := [Handle{1}]!
+	result := own(mut fixed)
+	assert result.len == 0
+}
+'
+		build := copy_ownership_compile(name, source)
+		assert build.exit_code == 0, build.output
+		run := os.execute(os.quoted_path(os.join_path(copy_ownership_tmp_dir, name)))
+		assert run.exit_code != 0, run.output
+		assert run.output.contains('requires ownership destruction but has no compatible `clone()` method'), run.output
+	}
+}
+
+fn test_promoted_fixed_array_roots_use_matching_windows_allocators() {
+	path := os.join_path(copy_ownership_tmp_dir, 'fixed_root_windows.v')
+	cpath := os.join_path(copy_ownership_tmp_dir, 'fixed_root_windows.c')
+	os.write_file(path, 'interface Drop { mut: drop() }
+struct PlainCell implements Drop { value int }
+fn (mut cell PlainCell) drop() {}
+struct PlainHolder { values [2]PlainCell label string }
+@[aligned: 64]
+struct AlignedCell implements Drop { value int }
+fn (mut cell AlignedCell) drop() {}
+struct AlignedHolder { values [2]AlignedCell label string }
+struct NestedHolder { inner AlignedHolder }
+fn inspect(values &[]PlainCell) int { return values[0].value }
+fn inspect_aligned(values &[]AlignedCell) int { return values[0].value }
+fn grow(mut values []PlainCell) {
+	values.ensure_cap(1)
+	values.grow_cap(1)
+	unsafe { values.grow_len(1) }
+}
+fn make_plain() PlainHolder {
+	return PlainHolder{[PlainCell{1}, PlainCell{2}]!, "label".repeat(4)}
+}
+fn make_aligned() AlignedHolder {
+	return AlignedHolder{[AlignedCell{1}, AlignedCell{2}]!, "label".repeat(4)}
+}
+fn plain_scope() {
+	holder := make_plain()
+	assert inspect(holder.values) == 1
+}
+fn aligned_call_scope() {
+	holder := make_aligned()
+	assert inspect_aligned(holder.values) == 1
+}
+fn aligned_literal_scope() {
+	holder := AlignedHolder{[AlignedCell{1}, AlignedCell{2}]!, "label".repeat(4)}
+	assert inspect_aligned(holder.values) == 1
+}
+fn nested_literal_scope() {
+	holder := NestedHolder{make_aligned()}
+	assert inspect_aligned(holder.inner.values) == 1
+}
+fn main() {
+	mut empty := []PlainCell{}
+	grow(mut empty)
+	plain_scope()
+	aligned_call_scope()
+	aligned_literal_scope()
+	nested_literal_scope()
+}
+')!
+	build := os.execute('${os.quoted_path(copy_ownership_v3)} -ownership -d ownership -no-parallel -os windows -o ${os.quoted_path(cpath)} ${os.quoted_path(path)}')
+	assert build.exit_code == 0, build.output
+	generated := os.read_file(cpath)!
+	growth := generated.all_after('void grow(Array* values) {').all_before('\n}')
+	for method in ['ensure_cap', 'grow_cap', 'grow_len'] {
+		assert growth.contains('array__${method}('), growth
+		assert !growth.contains('strings__Builder__${method}('), growth
+	}
+	plain := generated.all_after('void plain_scope(void) {').all_before('\n}')
+	assert plain.contains('memdup('), plain
+	assert !plain.contains('v3_aligned_memdup('), plain
+	assert plain.contains('v_free(holder);'), plain
+	for name in ['aligned_call_scope', 'aligned_literal_scope', 'nested_literal_scope'] {
+		body := generated.all_after('void ${name}(void) {').all_before('\n}')
+		assert body.contains('v3_aligned_memdup('), body
+		assert body.contains('v3_aligned_free(holder);'), body
+		assert !body.contains('v_free(holder);'), body
+	}
 }

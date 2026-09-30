@@ -558,7 +558,7 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 		// Ownership cleanup is synthesized after markused. Its array/map destructors
 		// therefore have no AST call sites for the collector to follow. This also
 		// applies to drop-before-reassignment, which is not part of the exit snapshots.
-		for helper in ['array.free', 'array__free', 'map.free', 'map__free'] {
+		for helper in ['array.free', 'array__free', 'map.free', 'map__free', 'free'] {
 			enqueue(helper, mut used, mut queue)
 		}
 		for type_name in tc.ownership_drop_type_names() {

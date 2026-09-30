@@ -1570,12 +1570,23 @@ println(typeof(anums).name) // => []int
 ```
 
 Whole fixed size arrays and their ranges can be passed to mutable array parameters.
-During an ordinary function call, overlapping arguments share their elements, and element
-writes are copied back to the fixed array afterward. Returned or stored array values retain
-heap storage after the fixed array goes out of scope.
-Elements that own storage are cloned for the heap view and when copied back. With ownership
-checking enabled, destructible elements need a compatible `clone()` method or `IClone` support.
-Immutable array-reference parameters receive a durable view without copying elements back.
+These arguments borrow the original elements, so writes through either the array parameter
+or another alias are immediately visible through both. Returned or stored views keep sharing
+those elements. Local storage is moved to the heap before references to it are formed, so
+retained views remain valid after the local goes out of scope. A callee can also retain a
+reference to the separately allocated array header. Growing or reassigning that header follows
+the usual array slice rules and leaves the original fixed array's size unchanged.
+Immutable array-reference parameters also borrow the original elements. Borrowing does not
+clone elements or require a `clone()` method. Explicitly destroying owned source elements
+invalidates views of those elements, as with other borrowed slices.
+With ownership checking enabled, returning or storing a view copies its buffer to independent
+storage. Owned elements are cloned so the retained value has independent owners. Retained array
+references receive a separate header, so other aliases in the callee still share the original
+elements.
+An operation that detaches a borrowed buffer also clones its owned elements. Such elements
+need a compatible `clone()` method or `IClone` support. Retaining or detaching a nonempty
+uncloneable borrowed buffer panics; borrowing it or changing its elements in place is allowed.
+An empty view can grow without cloning any source elements.
 
 Note that slicing will cause the data of the fixed size array to be copied to
 the newly created ordinary array. The exception is a slice that is written to:

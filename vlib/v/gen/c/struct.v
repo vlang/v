@@ -1567,9 +1567,12 @@ fn (mut g FlatGen) gen_struct_init_with_fixed_array_fields_impl(node flat.Node, 
 		}
 	}
 	if heap {
+		mut seen := map[string]bool{}
 		if align := g.struct_decl_alignment_for_init_names(node.value, name) {
 			align_arg := struct_decl_alignment_memdup_arg(align, name)
 			g.write(' v3_aligned_memdup(&${tmp}, sizeof(${name}), ${align_arg});})')
+		} else if g.global_fixed_array_type_has_aligned_struct(g.tc.parse_type(lookup_name), mut seen) {
+			g.write(' v3_aligned_memdup(&${tmp}, sizeof(${name}), __alignof__(${name}));})')
 		} else {
 			g.write(' memdup(&${tmp}, sizeof(${name}));})')
 		}
@@ -1968,8 +1971,12 @@ fn (mut g FlatGen) gen_heap_struct_init(node flat.Node) {
 		return
 	}
 	mut align_arg := ''
+	mut seen_aligned := map[string]bool{}
 	if align := g.struct_decl_alignment_for_init_names(node.value, lookup_name) {
 		align_arg = struct_decl_alignment_memdup_arg(align, name)
+		g.write('(${name}*)v3_aligned_memdup(&(${name}){')
+	} else if g.global_fixed_array_type_has_aligned_struct(clean_init_type, mut seen_aligned) {
+		align_arg = '__alignof__(${name})'
 		g.write('(${name}*)v3_aligned_memdup(&(${name}){')
 	} else {
 		g.write('(${name}*)memdup(&(${name}){')
@@ -5470,10 +5477,13 @@ fn (mut g FlatGen) gen_heap_assoc_expr(node flat.Node) {
 			g.write(';')
 		}
 	}
+	mut seen_aligned := map[string]bool{}
 	if align := g.heap_assoc_struct_alignment(node, target_type, target_name, ct) {
 		align_ct := g.struct_decl_alignment_c_type(target_name, ct)
 		align_arg := struct_decl_alignment_memdup_arg(align, align_ct)
 		g.write(' (${ct}*)v3_aligned_memdup(&${tmp}, sizeof(${ct}), ${align_arg});})')
+	} else if g.global_fixed_array_type_has_aligned_struct(types.unwrap_pointer(target_type), mut seen_aligned) {
+		g.write(' (${ct}*)v3_aligned_memdup(&${tmp}, sizeof(${ct}), __alignof__(${ct}));})')
 	} else {
 		g.write(' (${ct}*)memdup(&${tmp}, sizeof(${ct}));})')
 	}

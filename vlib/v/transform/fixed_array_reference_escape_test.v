@@ -162,3 +162,16 @@ fn test_fixed_array_reference_zero_argument_method_marks_receiver() {
 	t.mark_escaping_amp_ptrs([call])
 	assert 'holder' in t.escaping_fixed_array_view_sources
 }
+
+fn test_promoted_fixed_array_storage_preserves_nested_element_alignment() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	mut t := new_transformer(mut a, &tc, map[string]bool{})
+	t.structs['Aligned'] = StructInfo{ name: 'Aligned', is_aligned: true, alignment: '64' }
+	for typ in ['Aligned', '[2]Aligned', '[2][3]Aligned'] {
+		call := t.make_memdup_call_for_type(t.make_ident('source'), typ)
+		node := t.a.nodes[int(call)]
+		assert t.a.child_node(&node, 0).value == 'v3_aligned_memdup'
+		assert t.a.child_node(&node, 3).value == '64'
+	}
+}

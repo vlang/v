@@ -2,6 +2,38 @@
 module main
 
 __global external_fixed = [1, 2, 3]!
+__global aliased_fixed = [0, 0]!
+
+fn view_then_fixed(mut values []int) {
+	values[0] = 1
+	assert aliased_fixed[0] == 1
+	aliased_fixed[0] = 2
+	assert values[0] == 2
+}
+
+fn fixed_then_view(mut values []int) {
+	aliased_fixed[0] = 3
+	assert values[0] == 3
+	values[0] = 4
+	assert aliased_fixed[0] == 4
+}
+
+fn view_and_fixed_alias(mut values []int, mut original [2]int) {
+	values[0] = 5
+	assert original[0] == 5
+	original[0] = 6
+	assert values[0] == 6
+}
+
+fn test_mut_fixed_array_views_share_original_storage_during_the_call() {
+	view_then_fixed(mut aliased_fixed)
+	assert aliased_fixed[0] == 2
+	fixed_then_view(mut aliased_fixed[0..1])
+	assert aliased_fixed[0] == 4
+	mut local := [0, 0]!
+	view_and_fixed_alias(mut local[0..1], mut local)
+	assert local[0] == 6
+}
 
 struct Keeper {
 mut:
@@ -24,6 +56,31 @@ fn returned_whole() []int {
 fn returned_range() []int {
 	mut x := [1, 2, 3]!
 	return pass_through(mut x[1..])
+}
+
+fn keep_array_reference(mut values []int) &[]int {
+	return &values
+}
+
+fn returned_array_reference() &[]int {
+	mut values := [2, 3, 4]!
+	return keep_array_reference(mut values[1..])
+}
+
+struct FixedHolder {
+mut:
+	values [2]int
+}
+
+fn forward_holder(mut holder FixedHolder) []int {
+	return pass_through(mut holder.values)
+}
+
+fn returned_holder_alias() []int {
+	mut holder := FixedHolder{[4, 5]!}
+	mut pointer := &holder
+	mut alias := pointer
+	return forward_holder(mut alias)
 }
 
 fn stored_whole(mut k Keeper) {
@@ -71,6 +128,13 @@ fn test_returned_mut_fixed_array_argument_outlives_the_array() {
 	ranged := returned_range()
 	assert overwrite_stack() == 7
 	assert ranged == [2, 3]
+	reference := returned_array_reference()
+	assert overwrite_stack() == 7
+	assert reference.len == 2
+	assert *reference == [3, 4]
+	holder := returned_holder_alias()
+	assert overwrite_stack() == 7
+	assert holder == [4, 5]
 }
 
 fn test_stored_mut_fixed_array_argument_outlives_the_array() {
@@ -216,7 +280,7 @@ fn write_range_and_unpassed_element(mut values []int) {
 	external_fixed[2] = 9
 }
 
-fn test_mut_fixed_array_range_copies_back_only_its_elements() {
+fn test_mut_fixed_array_range_preserves_unpassed_elements() {
 	external_fixed = [1, 2, 3]!
 	write_range_and_unpassed_element(mut external_fixed[0..1])
 	assert external_fixed == [7, 2, 9]!
@@ -242,12 +306,12 @@ fn keep_items(mut values []NestedItem) []NestedItem {
 	return values
 }
 
-fn test_escaped_mut_fixed_array_elements_have_independent_storage() {
+fn test_escaped_mut_fixed_array_views_keep_sharing_original_elements() {
 	mut nested := [[1, 2], [3, 4]]!
 	mut kept_nested := keep_nested(mut nested)
 	assert nested[0] == [5, 2]
 	kept_nested[0][0] = 9
-	assert nested[0] == [5, 2]
+	assert nested[0] == [9, 2]
 	mut maps := [{
 		'value': 1
 	}, {
@@ -256,11 +320,135 @@ fn test_escaped_mut_fixed_array_elements_have_independent_storage() {
 	mut kept_maps := keep_maps(mut maps)
 	assert maps[0]['value'] == 6
 	kept_maps[0]['value'] = 9
-	assert maps[0]['value'] == 6
+	assert maps[0]['value'] == 9
 	mut items := [NestedItem{[1]}, NestedItem{[2]}]!
 	mut kept_items := keep_items(mut items[0..1])
 	assert items[0].values == [7]
 	kept_items[0].values[0] = 9
-	assert items[0].values == [7]
+	assert items[0].values == [9]
 	assert items[1].values == [2]
+}
+
+fn retain_immutable_array_reference(values &[]int) &[]int {
+	return values
+}
+
+fn reference_from_fixed_value(values [2]int) &[]int {
+	unsafe {
+		return retain_immutable_array_reference(&values)
+	}
+}
+
+fn reference_from_holder_value(value FixedHolder) &[]int {
+	unsafe {
+		return retain_immutable_array_reference(&value.values)
+	}
+}
+
+fn fixed_temporary() [2]int { return [31, 32]! }
+
+fn reference_from_fixed_temporary(literal bool) &[]int {
+	if literal { return retain_immutable_array_reference([41, 42]!) }
+	return retain_immutable_array_reference(fixed_temporary())
+}
+
+fn reference_from_addressed_fixed_temporary() &[]int {
+	unsafe {
+		return retain_immutable_array_reference(&[51, 52]!)
+	}
+}
+
+fn test_immutable_fixed_array_references_keep_value_params_and_temporaries_alive() {
+	first := reference_from_fixed_value([11, 12]!)
+	second := reference_from_holder_value(FixedHolder{[21, 22]!})
+	third := reference_from_fixed_temporary(false)
+	fourth := reference_from_fixed_temporary(true)
+	fifth := reference_from_addressed_fixed_temporary()
+	assert overwrite_stack() == 7
+	unsafe {
+		assert *first == [11, 12]
+		assert *second == [21, 22]
+		assert *third == [31, 32]
+		assert *fourth == [41, 42]
+		assert *fifth == [51, 52]
+	}
+}
+
+__global fixed_source_order = []string{}
+
+fn preceding_fixed_scalar() int {
+	fixed_source_order << 'scalar'
+	return 7
+}
+
+fn fixed_source_getter() &[2]int {
+	fixed_source_order << 'source'
+	return &aliased_fixed
+}
+
+fn ordered_fixed_source(before int, values &[]int) int {
+	fixed_source_order << 'callee'
+	return before + values[0]
+}
+
+fn test_fixed_array_source_getter_follows_earlier_scalar_argument() {
+	fixed_source_order = []string{}
+	aliased_fixed = [5, 6]!
+	assert ordered_fixed_source(preceding_fixed_scalar(), fixed_source_getter()) == 12
+	assert fixed_source_order == ['scalar', 'source', 'callee']
+}
+
+@[aligned: 64]
+struct AlignedFixedItem {
+	value int
+}
+
+struct AlignedFixedHolder {
+	values [2]AlignedFixedItem
+}
+
+fn observe_aligned_fixed(values &[]AlignedFixedItem) {
+	unsafe {
+		assert usize(&values[0]) % 64 == 0
+		assert usize(&values[1]) % 64 == 0
+	}
+}
+
+fn test_fixed_array_reference_storage_preserves_element_and_container_alignment() {
+	for i in 0 .. 32 {
+		fixed := [AlignedFixedItem{i}, AlignedFixedItem{i + 1}]!
+		observe_aligned_fixed(fixed)
+		holder := AlignedFixedHolder{[AlignedFixedItem{i}, AlignedFixedItem{i + 1}]!}
+		observe_aligned_fixed(holder.values)
+	}
+}
+
+fn fixed_array_second_return() (int, [2]int) {
+	return 7, [61, 62]!
+}
+
+fn fixed_array_three_returns() ([2]int, [2]int, [2]int) {
+	return [71, 72]!, [81, 82]!, [91, 92]!
+}
+
+fn reference_from_second_fixed_return() &[]int {
+	_, values := fixed_array_second_return()
+	return retain_immutable_array_reference(&values)
+}
+
+fn reference_from_middle_fixed_return() &[]int {
+	first, middle, last := fixed_array_three_returns()
+	assert first[0] == 71
+	assert last[0] == 91
+	return retain_immutable_array_reference(&middle)
+}
+
+fn test_fixed_array_reference_keeps_second_multi_return_local_alive() {
+	kept := reference_from_second_fixed_return()
+	middle := reference_from_middle_fixed_return()
+	assert overwrite_stack() == 7
+	unsafe {
+		assert *kept == [61, 62]
+		assert *middle == [81, 82]
+	}
 }

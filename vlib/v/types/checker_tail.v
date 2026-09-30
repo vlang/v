@@ -14517,25 +14517,6 @@ fn (mut tc TypeChecker) check_call_arg_types(id flat.NodeId, node flat.Node, inf
 		if param_is_mut && mut_arg_node.is_mut {
 			tc.check_locked_shared_base_lvalue_mutation(arg_id)
 		}
-		clean_expected := unalias_type(expected)
-		if clean_expected is Pointer && unalias_type(clean_expected.base_type) is Array {
-			mut fixed_id := arg_id
-			for tc.a.node(fixed_id).kind == .paren && tc.a.node(fixed_id).children_count > 0 {
-				fixed_id = tc.a.child(tc.a.node(fixed_id), 0)
-			}
-			fixed_node := tc.a.node(fixed_id)
-			if mut_arg_node.is_mut && fixed_node.kind == .index && fixed_node.value == 'range'
-				&& fixed_node.children_count > 0 {
-				fixed_id = tc.a.child(fixed_node, 0)
-			}
-			if fixed := tc.fixed_array_type_from_receiver(tc.resolve_type(fixed_id)) {
-				if bad_type := tc.ownership_default_clone_missing_method(fixed.elem_type) {
-					tc.record_error_at(.call_arg_mismatch,
-						'cannot pass fixed array `${tc.diagnostic_type_name(fixed)}` to an array reference parameter: `${bad_type}` requires ownership destruction but has no compatible `clone()` method; implement `IClone` or use pointers',
-						arg_id, tc.call_argument_diagnostic_pos(arg_id))
-				}
-			}
-		}
 		implicit_receiver_arg := tc.call_arg_is_callee_receiver(node, arg_id)
 			|| tc.call_arg_is_lowered_method_receiver(node, info, param_idx, expected)
 		if call_param_is_shared(info, param_idx) && tc.autolocked_map.len > 0

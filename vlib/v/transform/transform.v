@@ -252,9 +252,6 @@ mut:
 	monomorph_errors                    []string
 	monomorph_error_seen                map[string]bool
 	in_spawn_expr                       bool
-	fixed_array_arg_writebacks          []flat.NodeId
-	fixed_array_arg_backings            []FixedArrayArgBacking
-	call_expr_depth                     int
 	has_spawn_expr                      bool
 	discarded_aggregate_spawns          map[int]bool
 	in_const_init                       bool
@@ -6560,16 +6557,52 @@ fn (t &Transformer) struct_alignment_type_name(type_name string) string {
 	return type_name
 }
 
+// heap_storage_has_aligned_struct includes alignment inherited from inline fields.
+fn (t &Transformer) heap_storage_has_aligned_struct(type_name string, mut seen map[string]bool) bool {
+	clean := t.normalize_type_alias(type_name)
+	if t.is_fixed_array_type(clean) {
+		return t.heap_storage_has_aligned_struct(fixed_array_elem_type(clean), mut seen)
+	}
+	if clean.starts_with('?') || clean.starts_with('!') {
+		return t.heap_storage_has_aligned_struct(clean[1..], mut seen)
+	}
+	if clean.starts_with('&') || clean.starts_with('[]') || clean.starts_with('map[')
+		|| seen[clean] {
+		return false
+	}
+	seen[clean] = true
+	if t.struct_alignment_for_type(clean) != none {
+		return true
+	}
+	if info := t.lookup_struct_info(clean) {
+		for field in info.fields {
+			if t.heap_storage_has_aligned_struct(t.compiler_default_clone_field_type(clean, field), mut seen) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 fn (mut t Transformer) make_memdup_call_for_type(addr flat.NodeId, type_name string) flat.NodeId {
 	size := t.make_sizeof_type(type_name)
-	if align := t.struct_alignment_for_type(type_name) {
+	mut alignment_type := t.normalize_type_alias(type_name)
+	for t.is_fixed_array_type(alignment_type) {
+		alignment_type = t.normalize_type_alias(fixed_array_elem_type(alignment_type))
+	}
+	if align := t.struct_alignment_for_type(alignment_type) {
 		align_arg := if align.len > 0 {
 			t.make_int_literal_typed(align, 'usize')
 		} else {
 			t.make_call_typed('__alignof__', [
-				t.make_ident(t.struct_alignment_type_name(type_name)),
+				t.make_ident(t.struct_alignment_type_name(alignment_type)),
 			], 'usize')
 		}
+		return t.make_non_aliasing_allocation_call('v3_aligned_memdup', [addr, size, align_arg], 'voidptr')
+	}
+	mut seen := map[string]bool{}
+	if t.heap_storage_has_aligned_struct(type_name, mut seen) {
+		align_arg := t.make_call_typed('__alignof__', [t.make_sizeof_type(type_name)], 'usize')
 		return t.make_non_aliasing_allocation_call('v3_aligned_memdup', [addr, size, align_arg], 'voidptr')
 	}
 	return t.make_non_aliasing_allocation_call('memdup', [addr, size], 'voidptr')
@@ -8712,15 +8745,22 @@ fn (mut t Transformer) scan_escape_pass(id flat.NodeId, mut amp_ptrs map[string]
 	}
 	if node.kind in [.decl_assign, .assign] && node.children_count >= 2 {
 		mut declared_names := []string{}
-		mut i := 0
-		for i + 1 < node.children_count {
-			lhs := t.a.nodes[int(t.a.child(&node, i))]
-			rhs_id := t.a.child(&node, i + 1)
+		if node.kind == .decl_assign {
+			for lhs_id in t.multi_assign_lhs_ids(node) {
+				lhs := t.a.nodes[int(lhs_id)]
+				if lhs.kind == .ident && lhs.value.len > 0 && lhs.value != '_' {
+					declared_names << lhs.value
+				}
+			}
+		}
+		lhs_count := t.multi_assign_lhs_count(node)
+		rhs_count := t.multi_assign_rhs_count(node)
+		pair_count := if lhs_count < rhs_count { lhs_count } else { rhs_count }
+		for i in 0 .. pair_count {
+			lhs := t.a.nodes[int(t.multi_assign_lhs_id(node, i))]
+			rhs_id := t.multi_assign_rhs_id(node, i)
 			rhs := t.a.nodes[int(rhs_id)]
 			mut lhs_marks_interface_box := false
-			if node.kind == .decl_assign && lhs.kind == .ident && lhs.value.len > 0 {
-				declared_names << lhs.value
-			}
 			t.scan_escape_pointer_write(lhs, rhs, mut amp_ptrs, mut amp_sources, mut ptr_aliases)
 			mut lhs_marks_method_value := false
 			if lhs.kind == .ident && lhs.value.len > 0 {
@@ -8764,7 +8804,6 @@ fn (mut t Transformer) scan_escape_pass(id flat.NodeId, mut amp_ptrs map[string]
 					amp_ptrs[lhs.value] = true
 				}
 			}
-			i += 2
 		}
 		for name in declared_names {
 			add_escape_local_stack_name(name, mut local_stack_names, mut local_stack_added)
@@ -11725,7 +11764,7 @@ fn (mut t Transformer) transform_return_child(child_id flat.NodeId, child_index 
 		return converted
 	}
 	if copied := t.heap_copy_local_address_return(child_id) {
-		return copied
+		return t.clone_owned_array_view_for_storage(copied, t.cur_fn_ret_type)
 	}
 	target_type := t.return_child_target_type(child_index, total_children)
 	mut return_child_id := child_id
@@ -11756,17 +11795,17 @@ fn (mut t Transformer) transform_return_child(child_id flat.NodeId, child_index 
 			return t.transform_expr_for_type(return_child_id, target_type)
 		}
 		if resolved_payload_type in t.sum_types {
-			return t.clone_borrowed_projection(return_child_id, t.wrap_sum_value(return_child_id, resolved_payload_type), resolved_payload_type)
+			return t.clone_borrowed_storage_projection(return_child_id, t.wrap_sum_value(return_child_id, resolved_payload_type), resolved_payload_type)
 		}
-		return t.clone_borrowed_projection(return_child_id, t.transform_expr_for_type(return_child_id, payload_type), payload_type)
+		return t.clone_borrowed_storage_projection(return_child_id, t.transform_expr_for_type(return_child_id, payload_type), payload_type)
 	}
 	resolved_target_type := t.resolve_sum_name(target_type)
 	if target_type.len > 0 && resolved_target_type in t.sum_types {
 		sum_storage_type := t.sum_literal_type_name(target_type, resolved_target_type)
-		return t.clone_borrowed_projection(return_child_id, t.transform_sum_value_for_type(return_child_id, sum_storage_type), sum_storage_type)
+		return t.clone_borrowed_storage_projection(return_child_id, t.transform_sum_value_for_type(return_child_id, sum_storage_type), sum_storage_type)
 	}
 	if target_type.len > 0 && !t.is_optional_type_name(target_type) {
-		return t.clone_borrowed_projection(return_child_id, t.transform_expr_for_type(return_child_id, target_type), target_type)
+		return t.clone_borrowed_storage_projection(return_child_id, t.transform_expr_for_type(return_child_id, target_type), target_type)
 	}
 	return t.wrap_sum_return_expr(return_child_id)
 }
@@ -15933,13 +15972,13 @@ fn (mut t Transformer) transform_decl_assign_stmt(id flat.NodeId, node flat.Node
 			}
 			sum_target := t.assignment_sum_target(lhs_id, child_id, lhs_type)
 			if sum_target.len > 0 && !t.expr_has_smartcast(child_id) {
-				new_children << t.clone_borrowed_projection(child_id, t.transform_sum_value_for_type(child_id, sum_target), sum_target)
+				new_children << t.clone_borrowed_storage_projection(child_id, t.transform_sum_value_for_type(child_id, sum_target), sum_target)
 			} else {
 				mut clone_type := lhs_type
 				if clone_type.len == 0 {
 					clone_type = t.original_expr_type(child_id)
 				}
-				new_children << t.clone_borrowed_projection(child_id, t.transform_expr_for_type(child_id, lhs_type), clone_type)
+				new_children << t.clone_borrowed_storage_projection(child_id, t.transform_expr_for_type(child_id, lhs_type), clone_type)
 			}
 		}
 	}
@@ -16370,7 +16409,13 @@ fn (mut t Transformer) try_expand_multi_return_decl(node flat.Node) ?[]flat.Node
 			field_type_name := field_type.name()
 			field := t.make_selector(t.make_ident(tmp_name), field_name, field_type_name)
 			t.set_var_type(lhs.value, t.normalize_type_alias(field_type_name))
-			result << t.make_decl_assign_typed(lhs.value, field, field_type_name)
+			decl := t.make_decl_assign_typed(lhs.value, field, field_type_name)
+			if lhs.value in t.escaping_fixed_array_view_sources
+				&& (t.is_fixed_array_type(field_type_name) || t.heapable_value_type(field_type_name)) {
+				result << t.heap_escaping_source_decl(t.a.nodes[int(decl)], lhs.value, field_type_name)
+			} else {
+				result << decl
+			}
 		}
 		return result
 	}
@@ -19305,7 +19350,7 @@ fn (mut t Transformer) transform_channel_send_value(value_id flat.NodeId) flat.N
 	if value_type.len == 0 {
 		value_type = t.checker_node_type(value_id)
 	}
-	return t.clone_borrowed_projection(value_id, value, value_type)
+	return t.clone_borrowed_storage_projection(value_id, value, value_type)
 }
 
 // transform_value_operand transforms an operand of an infix/prefix expression,
@@ -19688,28 +19733,9 @@ fn (mut t Transformer) call_argument_borrows_fixed_array(id flat.NodeId, node fl
 	return param_type.starts_with('&') || param_type in ['voidptr', 'byteptr', 'charptr']
 }
 
-// transform_call_expr transforms transform call expr data for transform. When the call
-// took a fixed array as a `mut []T` argument through a heap copy, `fixed_array_mut_arg`
-// left the statements that copy its elements back in `fixed_array_arg_writebacks`; they
-// run right after the call.
+// transform_call_expr lowers a checked call and its argument conversions.
 fn (mut t Transformer) transform_call_expr(id flat.NodeId, node flat.Node) flat.NodeId {
-	writebacks_start := t.fixed_array_arg_writebacks.len
-	outer_backings := t.fixed_array_arg_backings
-	t.fixed_array_arg_backings = []FixedArrayArgBacking{}
-	t.call_expr_depth++
-	call := t.transform_call_expr_inner(id, node)
-	t.call_expr_depth--
-	t.fixed_array_arg_backings = outer_backings
-	if t.fixed_array_arg_writebacks.len == writebacks_start {
-		return call
-	}
-	writebacks := t.fixed_array_arg_writebacks[writebacks_start..].clone()
-	t.fixed_array_arg_writebacks = t.fixed_array_arg_writebacks[..writebacks_start].clone()
-	mut typ := t.node_type(call)
-	if typ in ['', 'unknown'] {
-		typ = t.node_type(id)
-	}
-	return t.finish_mut_optional_value_call(call, typ, writebacks)
+	return t.transform_call_expr_inner(id, node)
 }
 
 @[direct_array_access]

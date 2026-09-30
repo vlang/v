@@ -1037,7 +1037,12 @@ fn (mut g FlatGen) gen_ownership_drops(entries []types.OwnershipDropEntry) {
 			g.gen_ownership_drop_value(typ, expr, 0)
 		}
 		if free_pointer_storage {
-			g.writeln('free(${cname});')
+			free_fn := if g.pointer_free_needs_aligned_free(g.tc.parse_type('&${entry.type_name}')) {
+				'v3_aligned_free'
+			} else {
+				'v_free'
+			}
+			g.writeln('${free_fn}(${cname});')
 		}
 	}
 }
@@ -5602,6 +5607,10 @@ fn (g &FlatGen) heap_local_memdup_expr(source_expr string, base_type types.Type,
 			align_arg := struct_decl_alignment_memdup_arg(align, align_ct)
 			return '(${base_ct}*)v3_aligned_memdup(${src}, sizeof(${base_ct}), ${align_arg})'
 		}
+	}
+	mut seen := map[string]bool{}
+	if g.global_fixed_array_type_has_aligned_struct(clean_base, mut seen) {
+		return '(${base_ct}*)v3_aligned_memdup(${src}, sizeof(${base_ct}), __alignof__(${base_ct}))'
 	}
 	return '(${base_ct}*)memdup(${src}, sizeof(${base_ct}))'
 }
