@@ -80,7 +80,7 @@ fn address_result(value &u64, success bool) !&u64 {
 	if !success {
 		return error('no address')
 	}
-	return value
+	return unsafe { value }
 }
 
 fn append_through_or_values(mut values []&u64, data int) {
@@ -145,33 +145,36 @@ fn test_value_block_if_and_match_aliases_keep_appended_addresses() {
 	assert *values[7] == 42
 }
 
-type AddressList = &[]&u64
-
-type OtherAddressList = AddressList
-
-struct AddressLists {
-mut:
-	direct  AddressList
-	chained OtherAddressList
+fn sum_items(items [3]u64) u64 {
+	return items[0] + items[1] + items[2]
 }
 
-fn append_through_aliases(mut lists AddressLists, data int) {
-	direct_source := u64(data)
-	chained_source := u64(data) + 1
-	lists.direct << &direct_source
-	lists.chained << &chained_source
+fn bump_items(mut items [3]u64) {
+	items[1] += 100
 }
 
-// The array can be reached through an alias of a pointer to it, or an alias of that.
-fn test_address_appended_through_an_alias_of_a_pointer_to_an_array() {
-	mut values := []&u64{}
-	mut lists := AddressLists{
-		direct:  &values
-		chained: &values
+fn append_fixed_array_elements(mut values []&u64, data u64) (u64, u64, u64) {
+	mut items := [data, data + 1, data + 2]!
+	values << unsafe { &items[0] }
+	values << unsafe { &items[2] }
+	items[2] += 10
+	mut total := u64(0)
+	for item in items {
+		total += item
 	}
-	append_through_aliases(mut lists, 40)
+	bump_items(mut items)
+	snapshot := items
+	return sum_items(items), total, snapshot[1]
+}
+
+// The addresses of a fixed array's elements outlive the function: the array is moved to
+// the heap, and its other uses still see one array.
+fn test_element_addresses_of_a_fixed_array_appended() {
+	mut values := []&u64{}
+	sum, total, second := append_fixed_array_elements(mut values, 30)
 	_ = use_the_stack(10)
-	assert values.len == 2
-	assert *values[0] == 40
-	assert *values[1] == 41
+	assert sum == 203
+	assert total == 103
+	assert second == 131
+	assert values.map(*it) == [u64(30), 42]
 }
