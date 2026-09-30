@@ -1672,8 +1672,17 @@ fn sql_value_member_chain_parts(token string) ?SqlValueMemberChain {
 		args = sql_value_call_args(rest[1..close_idx]) or { return none }
 		is_call = true
 	}
+	// `(time.now()).format_ss()`: value lowering has no parenthesised-expression case.
+	mut receiver := clean[..member_idx]
+	for {
+		inner := sql_wrapped_tokens(receiver) or { break }
+		receiver = sql_trim_outer_empty(inner)
+	}
+	if receiver.len == 0 {
+		return none
+	}
 	return SqlValueMemberChain{
-		receiver: sql_value_token_text(clean[..member_idx])
+		receiver: sql_value_token_text(receiver)
 		members:  members
 		is_call:  is_call
 		args:     args

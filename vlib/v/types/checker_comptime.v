@@ -10969,9 +10969,10 @@ fn (mut tc TypeChecker) check_sql_where_constraints(id flat.NodeId, node flat.No
 		if tokens[i + 1] != '(' || !should_check_named_type(fn_name) {
 			continue
 		}
-		// Only the final value of a chain is bound, so a call that is merely the
-		// receiver of `f(x).method()` / `f(x)[0]` can return any type.
-		if sql_call_next_token(tokens, i + 1) in ['.', '['] {
+		// Only the final value is bound, so a call that is merely the receiver of
+		// `f(x).method()` / `f(x)[0]`, or an argument of `g(f(x))`, can return any type.
+		if sql_call_next_token(tokens, i + 1) in ['.', '[']
+			|| sql_call_is_call_arg(tokens, i + 1, where_idx) {
 			continue
 		}
 		ret_type := tc.sql_orm_fn_return_type(fn_name) or { continue }
@@ -10992,6 +10993,26 @@ fn (mut tc TypeChecker) check_sql_where_constraints(id flat.NodeId, node flat.No
 
 fn sql_call_has_or_fallback(tokens []string, open_idx int) bool {
 	return sql_call_next_token(tokens, open_idx) == 'or'
+}
+
+// sql_call_is_call_arg reports whether the call whose `(` is at `open_idx` is nested in
+// the arguments of another call, e.g. `make_holder('x')` in `holder_name(make_holder('x'))`.
+// Grouping parentheses such as `where (a == f(x))` are skipped over.
+fn sql_call_is_call_arg(tokens []string, open_idx int, start int) bool {
+	mut depth := 0
+	for j := open_idx - 2; j > start; j-- {
+		if tokens[j] == ')' {
+			depth++
+		} else if tokens[j] == '(' {
+			if depth > 0 {
+				depth--
+			} else if should_check_named_type(tokens[j - 1])
+				&& tokens[j - 1] !in ['where', 'and', 'or', 'in', 'is', 'like', 'ilike', 'not'] {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // sql_call_next_token returns the token after the `)` matching the `(` at `open_idx`.

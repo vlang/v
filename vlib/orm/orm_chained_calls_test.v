@@ -23,6 +23,10 @@ fn make_holder(name string) Holder {
 	}
 }
 
+fn holder_upper(h Holder) string {
+	return h.upper()
+}
+
 fn day_text(days int) string {
 	return time.unix(0).add_days(days).format_ss()
 }
@@ -73,6 +77,16 @@ fn test_update_set_values_with_chained_calls() {
 		select from Account where id == 1
 	}!
 	assert rows[0].name == 'THIRD'
+
+	sql db {
+		update Account set mod_at = (time.unix(0)).format_ss(), name = (names[0]).to_upper()
+		where id == 1
+	}!
+	rows = sql db {
+		select from Account where id == 1
+	}!
+	assert rows[0].mod_at == time.unix(0).format_ss()
+	assert rows[0].name == 'SECOND'
 }
 
 fn test_where_values_with_chained_calls() {
@@ -110,4 +124,16 @@ fn test_where_values_with_chained_calls() {
 	}!
 	assert by_args.len == 1
 	assert by_args[0].name == 'second'
+
+	by_nested_call := sql db {
+		select from Account where name == holder_upper(make_holder('first'))
+	}!
+	assert by_nested_call.len == 1
+	assert by_nested_call[0].mod_at == first.mod_at
+
+	by_wrapped_receiver := sql db {
+		select from Account where mod_at == (time.unix(0)).add_days(1).format_ss()
+	}!
+	assert by_wrapped_receiver.len == 1
+	assert by_wrapped_receiver[0].name == 'second'
 }
