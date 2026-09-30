@@ -15,3 +15,37 @@ n := strconv.write_dec(-12345, mut buf)
 assert n == 6
 assert buf[..n].bytestr() == '-12345'
 ```
+
+## Thousands separators
+
+`format_thousands` formats built-in integer and floating-point values with a
+thousands separator. Pass a string for the integer separator, or a `Separator`
+to configure both integer and decimal separators.
+
+```v
+import strconv
+
+assert strconv.format_thousands(1234567, ' ') == '1 234 567'
+assert strconv.format_thousands(1234567.89, strconv.Separator{
+	integer: '.'
+	decimal: ','
+}) == '1.234.567,89'
+```
+
+The numeric type is checked at compile time; unsupported types produce a
+compile-time error.
+
+`add_thousands_sep` groups the integer part of an already formatted numeric string,
+preserving its sign, fraction, and exponent. It accepts the same separator options.
+Unlike the numeric API, the string API keeps scientific notation as supplied.
+
+```v
+import strconv
+
+assert strconv.add_thousands_sep('1234567.89', ',') == '1,234,567.89'
+assert strconv.add_thousands_sep('1.5e+21', ',') == '1.5e+21'
+assert strconv.add_thousands_sep('-12345.5', strconv.Separator{
+	integer: '.'
+	decimal: ','
+}) == '-12.345,5'
+```

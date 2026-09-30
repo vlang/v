@@ -265,6 +265,13 @@ fn map_eq_int_8(a voidptr, b voidptr) bool {
 	return unsafe { *&u64(a) == *&u64(b) }
 }
 
+// A 128-bit key is two u64 halves, so equality is a byte compare. Reading them
+// as u64 would need an alignment guarantee the map's key storage does not give.
+@[inline]
+fn map_eq_int_16(a voidptr, b voidptr) bool {
+	return unsafe { vmemcmp(a, b, 16) == 0 }
+}
+
 // map_map_eq compares two maps for equality.
 // Returns true if both maps have the same keys and associated values.
 fn map_map_eq(a map, b map) bool {
@@ -324,6 +331,13 @@ fn map_clone_int_4(dest voidptr, pkey voidptr) {
 fn map_clone_int_8(dest voidptr, pkey voidptr) {
 	unsafe {
 		*&u64(dest) = *&u64(pkey)
+	}
+}
+
+@[inline]
+fn map_clone_int_16(dest voidptr, pkey voidptr) {
+	unsafe {
+		vmemcpy(dest, pkey, 16)
 	}
 }
 
@@ -464,15 +478,23 @@ fn (mut m VMapData) clear() {
 	m.count = 0
 }
 
+// panic_nil_map_hash_fn reports a corrupted map header. It is kept out of line
+// so the diagnostic's string building does not stop key_to_index, which runs on
+// every map access, from being inlined.
+@[noinline]
+fn (m &VMapData) panic_nil_map_hash_fn() {
+	unsafe {
+		p := &u64(m)
+		prev2 := (&u64(usize(m) - usize(16)))[0]
+		prev1 := (&u64(usize(m) - usize(8)))[0]
+		panic('map.hash_fn is nil map_ptr=${usize(m)} key_bytes=${m.key_bytes} value_bytes=${m.value_bytes} even_index=${m.even_index} shift=${m.shift} metas=${usize(m.metas)} prev2=${prev2} prev1=${prev1} w0=${p[0]} w1=${p[1]} w2=${p[2]} w3=${p[3]} w4=${p[4]} w5=${p[5]} w6=${p[6]} w7=${p[7]} hash_fn=${usize(voidptr(m.hash_fn))}')
+	}
+}
+
 @[inline]
 fn (m &VMapData) key_to_index(pkey voidptr) (u32, u32) {
 	if voidptr(m.hash_fn) == unsafe { nil } {
-		unsafe {
-			p := &u64(m)
-			prev2 := (&u64(usize(m) - usize(16)))[0]
-			prev1 := (&u64(usize(m) - usize(8)))[0]
-			panic('map.hash_fn is nil map_ptr=${usize(m)} key_bytes=${m.key_bytes} value_bytes=${m.value_bytes} even_index=${m.even_index} shift=${m.shift} metas=${usize(m.metas)} prev2=${prev2} prev1=${prev1} w0=${p[0]} w1=${p[1]} w2=${p[2]} w3=${p[3]} w4=${p[4]} w5=${p[5]} w6=${p[6]} w7=${p[7]} hash_fn=${usize(voidptr(m.hash_fn))}')
-		}
+		m.panic_nil_map_hash_fn()
 	}
 	hash := m.hash_fn(pkey)
 	index := hash & m.even_index
@@ -561,6 +583,11 @@ fn (mut m map) set(key voidptr, value voidptr) {
 }
 
 fn (mut m VMapData) set(key voidptr, value voidptr) {
+	$if race ? {
+		// Like Go, every insertion is a write of the map, even when it only replaces the
+		// value of an existing key: it races with an unsynchronized `m.len`.
+		racewrite(&m.count)
+	}
 	if m.metas == unsafe { nil } {
 		// Most compiler bookkeeping maps remain empty. Allocate backing storage
 		// only on the first insertion or an explicit reservation.
@@ -719,6 +746,10 @@ fn (mut m map) get_and_set(key voidptr, zero voidptr) voidptr {
 }
 
 fn (mut m VMapData) get_and_set(key voidptr, zero voidptr) voidptr {
+	$if race ? {
+		// Used for `m[key] += x`, `m[key]++` and the like: a write of the map, as in set().
+		racewrite(&m.count)
+	}
 	if m.metas == unsafe { nil } {
 		m.set(key, zero)
 	}
@@ -886,6 +917,10 @@ pub fn (mut m map) delete(key voidptr) {
 
 @[unsafe]
 fn (mut m VMapData) delete(key voidptr) {
+	$if race ? {
+		// Like Go, every delete is a write of the map, even of a missing key.
+		racewrite(&m.count)
+	}
 	if m.count == 0 {
 		return
 	}

@@ -2,7 +2,7 @@
 import os
 import term
 import v.util.diff
-import json
+import json2
 
 const vroot = os.real_path(@VMODROOT)
 const tmp_dir = os.real_path(os.temp_dir())
@@ -380,7 +380,7 @@ fn check_valid_goto_definition(message string) ! {
 
 fn check_valid_auto_completion(message string) ! {
 	// {"kind":5,"label":"a","detail":"int","documentation":""},
-	result := json.decode(JsonVarAC, message) or { return error('completion: fail to json decode') }
+	result := json2.decode[JsonVarAC](message) or { return error('completion: fail to json decode') }
 	for detail in result.details {
 		if detail.kind <= 0 || detail.kind > 25 {
 			return error('completion: kind should in 1-25 : ${detail.kind}')
@@ -389,7 +389,7 @@ fn check_valid_auto_completion(message string) ! {
 }
 
 fn check_valid_json_errors(message string) ! {
-	results := json.decode([]JsonError, message) or {
+	results := json2.decode[[]JsonError](message) or {
 		return error('json_errors: fail to json decode')
 	}
 	for result in results {
@@ -418,7 +418,7 @@ struct HoverResult {
 }
 
 fn check_valid_hover(message string) ! {
-	result := json.decode(HoverResult, message) or {
+	result := json2.decode[HoverResult](message) or {
 		return error('hover: fail to json decode: ${err}')
 	}
 	if result.contents.kind != 'markdown' {
@@ -430,7 +430,7 @@ fn check_valid_hover(message string) ! {
 }
 
 fn check_valid_fn_signature(message string) ! {
-	result := json.decode(SignatureHelp, message) or {
+	result := json2.decode[SignatureHelp](message) or {
 		return error('fn_signature: fail to json decode')
 	}
 	if result.signatures.len != 1 {

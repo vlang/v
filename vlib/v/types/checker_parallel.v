@@ -89,10 +89,11 @@ fn interface_impl_index_chunk_thread(arg voidptr) voidptr {
 }
 
 fn (mut tc TypeChecker) prepare_interface_impl_indexes_parallel(iface_names []string) bool {
-	if iface_names.len < 8 || isnil(tc.a) || isnil(tc.a.worker_pool) {
+	pool := checker_worker_pool(tc.a)
+	if iface_names.len < 8 || isnil(pool) {
 		return false
 	}
-	n_jobs := int_min(tc.a.worker_pool.size() + 1, iface_names.len)
+	n_jobs := int_min(pool.size() + 1, iface_names.len)
 	if n_jobs <= 1 {
 		return false
 	}
@@ -131,7 +132,7 @@ fn (mut tc TypeChecker) prepare_interface_impl_indexes_parallel(iface_names []st
 			force_sync: job == 0
 		}
 	}
-	tc.a.worker_pool.run(tasks)
+	pool.run(tasks)
 	tc.restore_type_cache_base()
 	for i, iface_name in iface_names {
 		if !isnil(results.items[i]) {
@@ -176,7 +177,7 @@ mut:
 struct CollectDeclarationIndexArgs {
 	tc   voidptr
 	a    &flat.FlatAst
-	kind u8 // 0 = generic params, 1 = type declarations, 2 = functions, 3 = visibility
+	kind u8 // 0 = generic params, 1 = type declarations, 2 = parameter mutability, 3 = visibility, 4 = function names, 5 = file declarations
 }
 
 fn collect_index_prep_thread(arg voidptr) voidptr {
@@ -205,8 +206,10 @@ fn collect_declaration_index_thread(arg voidptr) voidptr {
 	match a.kind {
 		0 { tc.build_enclosing_generic_param_index(a.a) }
 		1 { tc.build_type_declaration_index(a.a) }
-		2 { tc.build_fn_declaration_indexes(a.a) }
-		else { tc.collect_declaration_visibility() }
+		2 { tc.build_declaration_param_mutability_index(a.a) }
+		3 { tc.collect_declaration_visibility() }
+		4 { tc.build_fn_name_indexes(a.a) }
+		else { tc.build_file_declaration_indexes(a.a) }
 	}
 	return unsafe { nil }
 }
@@ -214,15 +217,16 @@ fn collect_declaration_index_thread(arg voidptr) voidptr {
 // prepare_collect_index_parallel overlaps independent index tasks. Each cache
 // group owns its arrays, and all allocations survive in persistent arenas.
 fn (mut tc TypeChecker) prepare_collect_index_parallel(a &flat.FlatAst) bool {
-	if !tc.building_v_fast || os.getenv('V3_NO_PAR_CHECK_INDEX_PREP') != '' || isnil(a.worker_pool)
-		|| a.worker_pool.size() < 2 || a.nodes.len < 65536 {
+	pool := checker_worker_pool(a)
+	if !tc.building_v_fast || os.getenv('V3_NO_PAR_CHECK_INDEX_PREP') != '' || isnil(pool)
+		|| pool.size() < 2 || a.nodes.len < 65536 {
 		return false
 	}
 	// The cache groups below reset the node-indexed arrays on pool lanes; the
 	// sparse fn-value store is cleared here, on the collecting thread.
 	tc.reset_sparse_fn_values()
 	tc.init_direct_parent_index(a)
-	parent_jobs := int_min(8, a.worker_pool.size() + 1)
+	parent_jobs := int_min(8, pool.size() + 1)
 	mut args := []CollectIndexPrepArgs{cap: parent_jobs + 4}
 	mut start := 0
 	for job in 0 .. parent_jobs {
@@ -257,7 +261,7 @@ fn (mut tc TypeChecker) prepare_collect_index_parallel(a &flat.FlatAst) bool {
 			force_sync: i == args.len - 1
 		}
 	}
-	a.worker_pool.run(tasks)
+	pool.run(tasks)
 	for arg in args {
 		if arg.kind == 0 {
 			tc.merge_direct_parent_chunk(arg.parent_chunk)
@@ -276,54 +280,36 @@ fn (mut tc TypeChecker) prepare_collect_index_parallel(a &flat.FlatAst) bool {
 // prepare_collect_declaration_indexes_parallel builds independent
 // read-only-AST declaration indexes on separate persistent lanes.
 fn (mut tc TypeChecker) prepare_collect_declaration_indexes_parallel(a &flat.FlatAst) bool {
+	pool := checker_worker_pool(a)
 	if !tc.building_v_fast || !tc.scope_parallel_check_workers
-		|| os.getenv('V3_NO_PAR_CHECK_DECL_INDEXES') != '' || isnil(a.worker_pool)
-		|| a.worker_pool.size() < 2 || tc.top_level_idx.len < 2048 {
+		|| os.getenv('V3_NO_PAR_CHECK_DECL_INDEXES') != '' || isnil(pool)
+		|| pool.size() < 2 || tc.top_level_idx.len < 2048 {
 		return false
 	}
-	mut args := [
-		CollectDeclarationIndexArgs{
+	// Each index task owns its maps; the caller builds one of them itself.
+	mut args := []CollectDeclarationIndexArgs{cap: collect_declaration_index_tasks}
+	for kind in 0 .. collect_declaration_index_tasks {
+		args << CollectDeclarationIndexArgs{
 			tc:   voidptr(tc)
 			a:    a
-			kind: 0
-		},
-		CollectDeclarationIndexArgs{
-			tc:   voidptr(tc)
-			a:    a
-			kind: 1
-		},
-		CollectDeclarationIndexArgs{
-			tc:   voidptr(tc)
-			a:    a
-			kind: 2
-		},
-		CollectDeclarationIndexArgs{
-			tc:   voidptr(tc)
-			a:    a
-			kind: 3
-		},
-	]
-	a.worker_pool.run([
-		workers.Task{
-			run: collect_declaration_index_thread
-			arg: unsafe { voidptr(&args[0]) }
-		},
-		workers.Task{
-			run: collect_declaration_index_thread
-			arg: unsafe { voidptr(&args[1]) }
-		},
-		workers.Task{
-			run: collect_declaration_index_thread
-			arg: unsafe { voidptr(&args[2]) }
-		},
-		workers.Task{
+			kind: u8(kind)
+		}
+	}
+	mut tasks := []workers.Task{cap: args.len}
+	for i in 0 .. args.len {
+		tasks << workers.Task{
 			run:        collect_declaration_index_thread
-			arg:        unsafe { voidptr(&args[3]) }
-			force_sync: true
-		},
-	])
+			arg:        unsafe { voidptr(&args[i]) }
+			force_sync: i == args.len - 1
+		}
+	}
+	pool.run(tasks)
 	return true
 }
+
+// collect_declaration_index_tasks is the number of independent declaration
+// index builders collect_declaration_index_thread dispatches on.
+const collect_declaration_index_tasks = 6
 
 // Pass2FnPrep carries the parse-heavy portion of one fn_decl's pass-2
 // collection (type parsing, param iteration, veb adjustments), computed on the
@@ -439,11 +425,12 @@ fn (mut tc TypeChecker) collect_pass2_fn_range(start int, end int, mut preps []P
 // deterministic id order.
 fn (mut tc TypeChecker) collect_pass2_fn_preps_parallel() []Pass2FnPrep {
 	n := tc.top_level_idx.len
-	if isnil(tc.a.worker_pool) || tc.a.worker_pool.size() == 0 || n < 2048
+	pool := checker_worker_pool(tc.a)
+	if isnil(pool) || pool.size() == 0 || n < 2048
 		|| os.getenv('V3_NO_PAR_PASS2') != '' {
 		return []Pass2FnPrep{}
 	}
-	mut n_jobs := tc.a.worker_pool.size() + 1
+	mut n_jobs := pool.size() + 1
 	if n_jobs > 10 {
 		n_jobs = 10
 	}
@@ -493,7 +480,7 @@ fn (mut tc TypeChecker) collect_pass2_fn_preps_parallel() []Pass2FnPrep {
 			force_sync: ji == 0
 		}
 	}
-	tc.a.worker_pool.run(tasks)
+	pool.run(tasks)
 	return preps
 }
 
@@ -504,27 +491,28 @@ fn (mut tc TypeChecker) finish_pass2_ancillary_registrations() {
 	if tc.fn_ancillary_registrations.len == 0 {
 		return
 	}
-	if isnil(tc.a.worker_pool) || tc.a.worker_pool.size() < 2 {
-		for group in 0 .. 9 {
+	pool := checker_worker_pool(tc.a)
+	if isnil(pool) || pool.size() < 2 {
+		for group in 0 .. pass2_ancillary_groups {
 			tc.apply_pass2_ancillary_group(group)
 		}
 	} else {
-		mut args := []Pass2AncillaryArgs{cap: 9}
-		mut tasks := []workers.Task{cap: 9}
-		for group in 0 .. 9 {
+		mut args := []Pass2AncillaryArgs{cap: pass2_ancillary_groups}
+		mut tasks := []workers.Task{cap: pass2_ancillary_groups}
+		for group in 0 .. pass2_ancillary_groups {
 			args << Pass2AncillaryArgs{
 				tc:    voidptr(tc)
 				group: group
 			}
 		}
-		for group in 0 .. 9 {
+		for group in 0 .. pass2_ancillary_groups {
 			tasks << workers.Task{
 				run:        pass2_ancillary_thread
 				arg:        unsafe { voidptr(&args[group]) }
 				force_sync: group == 0
 			}
 		}
-		tc.a.worker_pool.run(tasks)
+		pool.run(tasks)
 	}
 	tc.fn_ancillary_registrations = []FnAncillaryRegistration{}
 	tc.fn_c_variadic_registrations = []FnNamePairRegistration{}
@@ -568,9 +556,13 @@ fn (mut tc TypeChecker) apply_pass2_ancillary_group(group int) {
 		for registration in tc.fn_ret_text_registrations {
 			tc.fn_ret_type_texts[registration.name] = registration.text
 		}
-	} else if group == 6 {
+	} else if group == 6 || group == 9 {
+		// The module-qualified and module-less keys land in separate maps, so the
+		// largest registration set is split over two lanes.
 		for registration in tc.visible_mutation_registrations {
-			tc.register_visible_mutation_fn_decl_with_lowered(registration.idx, registration.module_name, registration.qname, registration.source_name, registration.c_qname, registration.c_source_name)
+			tc.register_visible_mutation_fn_decl_keys(registration.idx, registration.module_name,
+				registration.qname, registration.source_name, registration.c_qname,
+				registration.c_source_name, group == 9)
 		}
 	} else if group == 7 {
 		for registration in tc.fn_ancillary_registrations {
@@ -584,6 +576,10 @@ fn (mut tc TypeChecker) apply_pass2_ancillary_group(group int) {
 		}
 	}
 }
+
+// pass2_ancillary_groups is the number of independent table groups filled by
+// apply_pass2_ancillary_group.
+const pass2_ancillary_groups = 10
 
 struct Pass2AncillaryArgs {
 	tc    voidptr
@@ -750,6 +746,40 @@ fn check_worker_scope_free(scope voidptr) {
 	}
 }
 
+// checker_serial_only reports whether v3 was built with the internal
+// `v3_no_parallel` define. The other compiler phases swap in serial variant files
+// for that build; the checker keeps one implementation and instead reaches the
+// worker pool only through checker_worker_pool and ensure_checker_worker_pool.
+fn checker_serial_only() bool {
+	$if v3_no_parallel ? {
+		return true
+	}
+	return false
+}
+
+// checker_worker_pool returns the pool a checker pass may fan work out to. It is
+// nil when there is none, and in `v3_no_parallel` builds even when the driver
+// started one, so the pass takes its serial fallback.
+fn checker_worker_pool(a &flat.FlatAst) &workers.Pool {
+	if isnil(a) || checker_serial_only() {
+		return unsafe { nil }
+	}
+	return a.worker_pool
+}
+
+// ensure_checker_worker_pool returns the pool for the parallel semantic check,
+// starting one sized from VJOBS when the driver did not. It returns nil, and
+// starts nothing, in `v3_no_parallel` builds.
+fn ensure_checker_worker_pool(mut a flat.FlatAst) &workers.Pool {
+	if checker_serial_only() {
+		return unsafe { nil }
+	}
+	if isnil(a.worker_pool) {
+		a.worker_pool = workers.new(runtime.nr_jobs() - 1)
+	}
+	return a.worker_pool
+}
+
 // check_semantics_opt runs semantic checks, using worker threads for independent
 // function bodies when requested and there is enough work.
 pub fn (mut tc TypeChecker) check_semantics_opt(want_parallel bool) bool {
@@ -769,7 +799,7 @@ pub fn (mut tc TypeChecker) check_semantics_opt(want_parallel bool) bool {
 		}
 	}
 	tc.timing_profile('  [ttime]   ck preflights    ${f64(pfsw.elapsed().microseconds()) / 1000.0:7.2f} ms')
-	if !want_parallel {
+	if !want_parallel || checker_serial_only() {
 		if tc.scope_parallel_check_workers {
 			tc.check_semantics_scoped_serial()
 		} else {
@@ -925,6 +955,13 @@ fn (tc &TypeChecker) scan_unused_alive_range(fn_keys map[string][]int, const_key
 					}
 				}
 			}
+			if resolved := tc.resolved_fn_value_name(flat.NodeId(i)) {
+				if hits := fn_keys[resolved] {
+					for cand_idx in hits {
+						alive[cand_idx] = true
+					}
+				}
+			}
 		}
 		if node.kind == .call && node.children_count > 0 {
 			callee := tc.a.child_node(&node, 0)
@@ -952,11 +989,12 @@ fn (tc &TypeChecker) scan_unused_alive_range(fn_keys map[string][]int, const_key
 // to the serial scan regardless of shard boundaries.
 fn (mut tc TypeChecker) scan_unused_candidate_references(fn_keys map[string][]int, const_keys map[string][]int, mut alive []bool) {
 	n_nodes := tc.a.nodes.len
-	if isnil(tc.a.worker_pool) || tc.a.worker_pool.size() == 0 || n_nodes < 262_144 {
+	pool := checker_worker_pool(tc.a)
+	if isnil(pool) || pool.size() == 0 || n_nodes < 262_144 {
 		tc.scan_unused_alive_range(fn_keys, const_keys, 0, n_nodes, mut alive)
 		return
 	}
-	mut n_jobs := tc.a.worker_pool.size() + 1
+	mut n_jobs := pool.size() + 1
 	if n_jobs > 8 {
 		n_jobs = 8
 	}
@@ -979,7 +1017,7 @@ fn (mut tc TypeChecker) scan_unused_candidate_references(fn_keys map[string][]in
 			force_sync: job == 0
 		}
 	}
-	tc.a.worker_pool.run(tasks)
+	pool.run(tasks)
 	for arg in args {
 		for cand_idx in 0 .. alive.len {
 			if arg.alive[cand_idx] {
@@ -1075,6 +1113,9 @@ fn (mut tc TypeChecker) collect_parallel_check_items() []CheckWorkItem {
 	tc.cur_module = ''
 	tc.cur_file = ''
 	blocking_import_files := tc.blocking_import_error_files()
+	// A library body is trusted, even an open generic one: it is checked for its
+	// own type parameters, never for the types a program passes to it.
+	library_bodies_trusted := tc.selected_files_only()
 	mut items := []CheckWorkItem{}
 	// Fn subtrees are contiguous: the fn_decl at index i owns exactly the node
 	// range (previous top-level node, i], so the span doubles as the cost
@@ -1093,6 +1134,10 @@ fn (mut tc TypeChecker) collect_parallel_check_items() []CheckWorkItem {
 			}
 			.fn_decl {
 				if blocking_import_files[tc.cur_file] {
+					prev_tl = i
+					continue
+				}
+				if library_bodies_trusted && !tc.diagnostic_files[tc.cur_file] {
 					prev_tl = i
 					continue
 				}
@@ -1116,6 +1161,15 @@ fn (mut tc TypeChecker) collect_parallel_check_items() []CheckWorkItem {
 		prev_tl = i
 	}
 	return items
+}
+
+// selected_files_only reports whether diagnostics are wanted for the selected
+// files alone, as a client that shows no others asks with
+// V_CHECK_SELECTED_FILES_ONLY. Library code outside them is then trusted: its
+// concrete bodies and its signatures, which could only report on themselves,
+// are left unchecked.
+fn (tc &TypeChecker) selected_files_only() bool {
+	return tc.diagnostic_files.len > 0 && os.getenv('V_CHECK_SELECTED_FILES_ONLY') != ''
 }
 
 // check_top_level_declarations runs every declaration-level check (type
@@ -1147,15 +1201,20 @@ fn (mut tc TypeChecker) check_top_level_declaration_signatures() {
 	tc.check_top_level_declarations_filtered(false, true)
 }
 
-fn (mut tc TypeChecker) check_top_level_declarations_filtered(do_values bool, do_signatures bool) {
+fn (mut tc TypeChecker) check_top_level_declarations_filtered(do_values bool, all_signatures bool) {
 	tc.cur_module = ''
 	tc.cur_file = ''
 	blocking_import_files := tc.blocking_import_error_files()
+	selected_files_only := tc.selected_files_only()
 	mut skip_file_semantics := false
+	mut do_signatures := all_signatures
 	for i in tc.top_level_idx {
 		node := tc.a.nodes[i]
 		if node.kind == .file {
 			skip_file_semantics = blocking_import_files[node.value]
+			// A signature check only reports on its own declaration.
+			do_signatures = all_signatures
+				&& (!selected_files_only || tc.diagnostic_files[node.value])
 		} else if skip_file_semantics && node.kind != .module_decl {
 			continue
 		}
@@ -1246,7 +1305,8 @@ fn (mut tc TypeChecker) check_top_level_declarations_filtered(do_values bool, do
 					tc.check_global_decl_semantics(flat.NodeId(i), node)
 				}
 				if do_values {
-					if !tc.enable_globals && !tc.has_globals_files[tc.cur_file] {
+					if !tc.enable_globals && !tc.has_globals_files[tc.cur_file]
+						&& !tc.node_is_from_translated_file(node) {
 						tc.record_error_at(.duplicate_decl, 'use `v -enable-globals ...` to enable globals', flat.NodeId(i), tc.source_line_declaration_pos(flat.NodeId(i)))
 					}
 					tc.check_const_global_initializers(node)
@@ -1291,10 +1351,9 @@ fn check_top_level_decl_signatures_thread(arg voidptr) voidptr {
 
 fn (mut tc TypeChecker) run_parallel_check(items []CheckWorkItem) bool {
 	mut ast := unsafe { tc.a }
-	if isnil(ast.worker_pool) {
-		ast.worker_pool = workers.new(runtime.nr_jobs() - 1)
-	}
-	mut n_jobs := check_job_count(ast.worker_pool.size() + 1, items.len)
+	pool := ensure_checker_worker_pool(mut ast)
+	// Without a pool every item is checked by the serial branch below.
+	mut n_jobs := if isnil(pool) { 1 } else { check_job_count(pool.size() + 1, items.len) }
 	if tc.scope_parallel_check_workers && n_jobs > max_scoped_check_jobs {
 		n_jobs = max_scoped_check_jobs
 	}
@@ -1404,7 +1463,7 @@ fn (mut tc TypeChecker) run_parallel_check(items []CheckWorkItem) bool {
 	}
 	check_worker_scope_leave(setup_scope)
 	rpsw2 := time.new_stopwatch()
-	any_started := ast.worker_pool.run(tasks)
+	any_started := pool.run(tasks)
 	if dynamic_dispatch {
 		for ci in 0 .. chunk_count {
 			chunks[ci] = args[ci].processed
@@ -1437,7 +1496,7 @@ fn (mut tc TypeChecker) run_parallel_check(items []CheckWorkItem) bool {
 				force_sync: ci == 0
 			}
 		}
-		ast.worker_pool.run(ctasks)
+		pool.run(ctasks)
 		mg_clone_ns += time.sys_mono_now() - mg_t0
 	}
 	for ci in merge_start .. chunk_count {
@@ -2748,6 +2807,7 @@ fn (mut tc TypeChecker) check_fn_decl_semantics(fn_idx int, node flat.Node, file
 				tc.record_unused_fn_vars(node)
 				tc.record_unused_fn_params(node)
 				tc.record_unused_fn_labels(node)
+				tc.check_asm_goto_lock_scopes(node)
 			}
 			tc.check_fn_bare_generic_fntype_params(node)
 		}
@@ -3037,7 +3097,7 @@ fn (tc &TypeChecker) comptime_skipped_body_uses_goto_label(node flat.Node, name 
 }
 
 fn (mut tc TypeChecker) record_unused_fn_vars(node flat.Node) {
-	if tc.node_is_from_translated_file(node) {
+	if tc.node_is_from_translated_file(node) || is_regular_v_test_file(tc.cur_file) {
 		return
 	}
 	for diagnostic in tc.errors {
@@ -3506,6 +3566,14 @@ fn (tc &TypeChecker) fn_body_read_names(node flat.Node, candidate_names map[stri
 			&& shadow_depth[current.value] == 0 {
 			used_names[current.value] = true
 		}
+		if current.kind == .directive && current.value == 'string_interp_format' {
+			for name, _ in candidate_names {
+				if shadow_depth[name] == 0
+					&& string_interp_format_uses_ident(current.typ, name) {
+					used_names[name] = true
+				}
+			}
+		}
 		if current.kind in [.sql_expr, .comptime_if, .array_init] {
 			if current.kind == .comptime_if {
 				metadata := current.generic_params()
@@ -3667,6 +3735,102 @@ fn (mut tc TypeChecker) record_unused_fn_labels(node flat.Node) {
 	}
 }
 
+struct AsmGotoLockScan {
+mut:
+	label_scopes    map[string][]int
+	asm_gotos       []flat.NodeId
+	asm_goto_scopes map[int][]int
+}
+
+// check_asm_goto_lock_scopes reports an `asm goto` whose target label sits in a
+// different `lock`/`rlock` scope than the block itself. The C backend cannot lower a
+// jump that enters or leaves a lock scope (the scope's unlock/cleanup would be
+// skipped), so it otherwise emits an `#error` into the generated C with no V source
+// position; this turns that into a positioned compiler diagnostic.
+fn (mut tc TypeChecker) check_asm_goto_lock_scopes(node flat.Node) {
+	mut scan := AsmGotoLockScan{}
+	for i in 0 .. node.children_count {
+		child_id := tc.a.child(&node, i)
+		if tc.a.node(child_id).kind != .param {
+			tc.collect_asm_goto_lock_scopes(child_id, []int{}, mut scan)
+		}
+	}
+	tc.report_asm_goto_lock_crossings(scan)
+}
+
+// report_asm_goto_lock_crossings emits a diagnostic for every collected `asm goto`
+// whose target label resolves to a different `lock`/`rlock` scope path than the
+// block. A target not declared in this function scope resolves to the empty path,
+// matching the C backend (`goto_label_lock_scopes[label] or { [] }`).
+fn (mut tc TypeChecker) report_asm_goto_lock_crossings(scan AsmGotoLockScan) {
+	for asm_id in scan.asm_gotos {
+		asm_node := tc.a.node(asm_id)
+		active := scan.asm_goto_scopes[int(asm_id)]
+		for target in inline_asm_goto_labels(asm_node.value) {
+			target_scope := scan.label_scopes[target] or { []int{} }
+			if !asm_goto_lock_scopes_equal(target_scope, active) {
+				tc.record_error_at(.compile_error, asm_goto_lock_scope_error(target), asm_id,
+					asm_node.pos)
+				break
+			}
+		}
+	}
+}
+
+fn asm_goto_lock_scope_error(target string) string {
+	return '`asm goto` cannot jump to label `${target}`: it is in a different `lock`/`rlock` scope, and the C backend cannot lower a jump that enters or leaves a lock scope'
+}
+
+// collect_asm_goto_lock_scopes walks a function body, recording the `lock`/`rlock`
+// scope path (a stack of enclosing `lock_expr` node ids) at every label declaration
+// and at every `asm goto` block, so report_asm_goto_lock_crossings can compare them.
+fn (mut tc TypeChecker) collect_asm_goto_lock_scopes(id flat.NodeId, scopes []int, mut scan AsmGotoLockScan) {
+	node := tc.a.node(id)
+	if node.kind in [.fn_decl, .c_fn_decl, .fn_literal] {
+		// A nested function or closure is lowered to its own C function with a
+		// fresh lock stack (`collect_fn_prelude_scan` runs per function), so scan
+		// and report its body independently against an empty scope path -- the
+		// enclosing function's locks are not active inside it.
+		mut nested := AsmGotoLockScan{}
+		for i in 0 .. node.children_count {
+			child_id := tc.a.child(node, i)
+			if tc.a.node(child_id).kind != .param {
+				tc.collect_asm_goto_lock_scopes(child_id, []int{}, mut nested)
+			}
+		}
+		tc.report_asm_goto_lock_crossings(nested)
+		return
+	}
+	mut cur := scopes.clone()
+	// `gen_lock_enter` skips a `lock {}` / `rlock {}` with no lock objects
+	// (`lock_count = children_count - 1 <= 0`), so it never becomes an active
+	// scope at runtime -- do not treat it as one here either.
+	if node.kind == .lock_expr && node.children_count > 1 {
+		cur << int(id)
+	}
+	if node.kind == .label_stmt && node.value.len > 0 {
+		scan.label_scopes[node.value] = cur.clone()
+	} else if node.kind == .asm_stmt && inline_asm_goto_labels(node.value).len > 0 {
+		scan.asm_gotos << id
+		scan.asm_goto_scopes[int(id)] = cur.clone()
+	}
+	for i in 0 .. node.children_count {
+		tc.collect_asm_goto_lock_scopes(tc.a.child(node, i), cur, mut scan)
+	}
+}
+
+fn asm_goto_lock_scopes_equal(a []int, b []int) bool {
+	if a.len != b.len {
+		return false
+	}
+	for i, scope in a {
+		if b[i] != scope {
+			return false
+		}
+	}
+	return true
+}
+
 fn (tc &TypeChecker) fn_body_uses_ident(node flat.Node, name string) bool {
 	mut stack := []flat.NodeId{}
 	for i in 0 .. node.children_count {
@@ -3684,9 +3848,39 @@ fn (tc &TypeChecker) fn_body_uses_ident(node flat.Node, name string) bool {
 		if child.kind == .sql_expr && sql_text_contains_ident(child.value, name) {
 			return true
 		}
+		if child.kind == .directive && child.value == 'string_interp_format'
+			&& string_interp_format_uses_ident(child.typ, name) {
+			return true
+		}
 		for i in 0 .. child.children_count {
 			stack << tc.a.child(child, i)
 		}
+	}
+	return false
+}
+
+fn string_interp_format_uses_ident(format string, name string) bool {
+	if name.len == 0 {
+		return false
+	}
+	mut i := 0
+	for i < format.len {
+		if format[i] != `(` {
+			i++
+			continue
+		}
+		end_offset := format[i + 1..].index_u8(`)`)
+		if end_offset < 0 {
+			return false
+		}
+		mut candidate := format[i + 1..i + 1 + end_offset].trim_space()
+		if candidate.starts_with('-') {
+			candidate = candidate[1..].trim_space()
+		}
+		if candidate == name {
+			return true
+		}
+		i += end_offset + 2
 	}
 	return false
 }
@@ -3907,6 +4101,7 @@ fn (tc &TypeChecker) fork_for_parallel_check() &TypeChecker {
 	// sharing the declaration index that collect completed before checking starts.
 	w.visible_mutation_cache = &VisibleMutationCache{
 		decls:            tc.visible_mutation_cache.decls
+		global_decls:     tc.visible_mutation_cache.global_decls
 		decl_misses:      map[string]bool{}
 		results:          map[u64]bool{}
 		rebind_results:   map[u64]bool{}
@@ -4378,15 +4573,16 @@ fn (mut tc TypeChecker) prepare_tail_decl_ids() {
 	mut cache := tc.type_cache
 	start := tc.top_level_idx_nodes_len
 	end := if isnil(tc.a) { 0 } else { tc.a.nodes.len }
+	pool := checker_worker_pool(tc.a)
 	// Only a base cache builds the lazy declaration indexes (overlays defer to it).
 	if !isnil(cache.base) || start <= 0 || end - start < min_parallel_tail_decl_scan
-		|| isnil(tc.a.worker_pool) || tc.a.worker_pool.size() == 0 {
+		|| isnil(pool) || pool.size() == 0 {
 		return
 	}
 	if cache.tail_decl_start == start && cache.tail_decl_end == end {
 		return
 	}
-	n := int_min(tc.a.worker_pool.size() + 1, 16)
+	n := int_min(pool.size() + 1, 16)
 	mut args := []TailDeclScanArgs{cap: n}
 	for i in 0 .. n {
 		args << TailDeclScanArgs{
@@ -4403,7 +4599,7 @@ fn (mut tc TypeChecker) prepare_tail_decl_ids() {
 			force_sync: i == 0
 		}
 	}
-	tc.a.worker_pool.run(tasks)
+	pool.run(tasks)
 	mut total := 0
 	for arg in args {
 		total += arg.ids.len

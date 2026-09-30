@@ -81,12 +81,16 @@ fn (mut s Scope) remember_fast_binding(name string, index int) {
 	s.fast_generations[slot] = s.fast_generation
 }
 
+// scope_fast_lookup_enabled is read once: getenv takes the process-wide
+// environment lock, which parallel workers creating scopes contended on.
+const scope_fast_lookup_enabled = os.getenv('V3_NO_SCOPE_DIRECT') == ''
+
 // new_scope returns a reusable type-checker scope with an optional parent.
 pub fn new_scope(parent &Scope) &Scope {
 	unsafe {
 		return &Scope{
 			parent:          parent
-			fast_lookup:     os.getenv('V3_NO_SCOPE_DIRECT') == ''
+			fast_lookup:     scope_fast_lookup_enabled
 			fast_generation: 1
 		}
 	}

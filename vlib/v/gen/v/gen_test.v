@@ -79,6 +79,31 @@ pub fn (mut p Point) inc(dx int) int {
 '
 }
 
+fn test_formatter_preserves_contextually_invalid_method_and_range_syntax() {
+	for source in [
+		'struct Example {}\n\nfn (value Example) Foo.bar() {}\n',
+		'struct Example {}\n\nfn (value Example) Foo.@select()\n',
+		'fn main() {\n\tfor i in 0 ... 3 { println(i) }\n}\n',
+	] {
+		formatted := vfmt('contextual_method_range', source)
+		assert formatted == source, formatted
+		assert vfmt('contextual_method_range_twice', formatted) == formatted
+	}
+}
+
+fn test_formatter_preserves_interop_receiver_qualifiers() {
+	for source in [
+		'struct Native {}\n\nfn (value Native) C.foo() {}\n',
+		'struct Native {}\n\nfn (value &Native) JS.nested.foo() {}\n',
+		'struct C.Native {}\n\nfn (value C.Native) foo() {}\n',
+		'struct C.Native {}\n\nfn (value C.Native) C.foo()\n',
+	] {
+		formatted := vfmt('interop_receiver', source)
+		assert formatted == source, formatted
+		assert vfmt('interop_receiver_twice', formatted) == formatted
+	}
+}
+
 fn test_formatter_preserves_operator_method_spacing() {
 	source := 'struct Number {\n\tvalue int\n}\n\nfn (a Number) + (b Number) Number {\n\treturn Number{a.value + b.value}\n}\n\nfn (a Number) == (b Number) bool {\n\treturn a.value == b.value\n}\n\nfn (a Number) < (b Number) bool {\n\treturn a.value < b.value\n}\n\nfn (a Number) [] (index int) int {\n\treturn a.value + index\n}\n'
 	out := vfmt('operator_method_spacing', source)
@@ -131,6 +156,16 @@ fn test_formatter_preserves_multiline_call_struct_arguments() {
 	named_argument := "value := encode(Payload{'item'},\n\tescape_unicode: true\n)\n"
 	assert vfmt_with_options('multiline_named_argument_call', named_argument,
 		FormatOptions{}) == named_argument
+	// A line break inside a positional struct literal does not expand the named ones.
+	inline_named := "value := encode(Payload{\n\tname: 'item'\n}, escape_unicode: true)\n"
+	assert vfmt_with_options('inline_named_after_multiline_struct', inline_named,
+		FormatOptions{}) == inline_named
+}
+
+fn test_formatter_keeps_anonymous_struct_generic_type_arguments() {
+	source := 'fn main() {\n\tb := decode[struct {\n\t\ta string\n\t}](text)!.a\n\t_ = b\n}\n'
+	out := vfmt('anon_struct_type_arg', source)
+	assert out == source, out
 }
 
 fn test_formatter_preserves_gated_slices() {
@@ -152,6 +187,208 @@ fn test_formatter_preserves_compact_function_and_expression_bodies() {
 	out := vfmt('compact_bodies', source)
 	assert out == source, out
 	assert vfmt('compact_bodies_twice', out) == out
+}
+
+fn test_formatter_keeps_single_statement_bodies_written_on_one_line() {
+	source := 'struct Point {
+	x int
+mut:
+	y int
+}
+
+fn (p &Point) sum() int { return p.x + p.y }
+
+pub fn (mut p Point) set(y int) { p.y = y }
+
+fn first_positive(a []int) int {
+	mut total := 0
+	for i := 0; i < a.len; i++ { total += a[i] }
+	for x in a { if x > 0 { return x } }
+	for i, x in a { total += i * x }
+	for total > 100 { total /= 2 }
+	if total > 10 { return total } else { total = 0 }
+	if total < 0 { total = -total }
+	cmp := fn (x &int, y &int) int { return *x - *y }
+	_ = cmp
+	return total
+}
+'
+	out := vfmt('single_statement_bodies', source)
+	assert out == source, out
+	assert vfmt('single_statement_bodies_twice', out) == out
+}
+
+fn test_formatter_expands_single_statement_bodies_that_do_not_fit_one_line() {
+	source := "fn expand(a []int, extra_long_argument_name int, another_long_argument_name int) int { return a.len }
+
+fn loops(a []int) {
+	for x in a { m := {'k': x} }
+	for x in a { if x > 1 { println(x) } else if x > 2 { println(x) } }
+	for x in a { // note
+		println(x)
+	}
+	if a.len > 1 { return } else if a.len > 2 { println(a) }
+}
+
+fn multi(x int) int {
+	return x
+}
+"
+	out := vfmt('expanded_single_statement_bodies', source)
+	assert out == "fn expand(a []int, extra_long_argument_name int, another_long_argument_name int) int {
+	return a.len
+}
+
+fn loops(a []int) {
+	for x in a {
+		m := {
+			'k': x
+		}
+	}
+	for x in a {
+		if x > 1 {
+			println(x)
+		} else if x > 2 {
+			println(x)
+		}
+	}
+	for x in a { // note
+		println(x)
+	}
+	if a.len > 1 {
+		return
+	} else if a.len > 2 {
+		println(a)
+	}
+}
+
+fn multi(x int) int {
+	return x
+}
+", out
+	assert vfmt('expanded_single_statement_bodies_twice', out) == out
+}
+
+fn test_formatter_measures_formatted_single_statement_bodies_against_the_line_limit() {
+	// Every source line is at most 99 columns, but `{return x}` gains two spaces when it is
+	// formatted: the bodies that end up over 100 columns are expanded on the first run, not
+	// on the second one.
+	over, fits := 'o'.repeat(71), 'f'.repeat(70)
+	for_in, c_for, lit := 'i'.repeat(66), 'c'.repeat(59), 'l'.repeat(65)
+	source := "fn over() string {return '${over}'}
+
+fn fits() string {return '${fits}'}
+
+fn loops() {
+	for i in 0 .. 3 {println('${for_in}')}
+	for i := 0; i < 3; i++ {println('${c_for}')}
+	cb := fn () string {return '${lit}'}
+	_ = cb
+}
+"
+	out := vfmt('formatted_single_statement_body_width', source)
+	assert out == "fn over() string {
+	return '${over}'
+}
+
+fn fits() string { return '${fits}' }
+
+fn loops() {
+	for i in 0 .. 3 {
+		println('${for_in}')
+	}
+	for i := 0; i < 3; i++ {
+		println('${c_for}')
+	}
+	cb := fn () string {
+		return '${lit}'
+	}
+	_ = cb
+}
+", out
+	assert vfmt('formatted_single_statement_body_width_twice', out) == out
+}
+
+fn test_formatter_measures_formatted_compact_if_branches_against_the_line_limit() {
+	// As for function and loop bodies, `{return x}` and `{'x'}` gain two spaces each: the
+	// branches that end up over 100 columns are expanded on the first run.
+	over, fits := 'o'.repeat(79), 'f'.repeat(78)
+	expr_over, expr_fits := 'e'.repeat(71), 'v'.repeat(68)
+	source := "fn branches(c bool) string {
+	if c {return '${over}'}
+	if c {return '${fits}'}
+	s := if c {'${expr_over}'} else {''}
+	t := if c {'${expr_fits}'} else {''}
+	return s + t
+}
+"
+	out := vfmt('formatted_compact_if_width', source)
+	assert out == "fn branches(c bool) string {
+	if c {
+		return '${over}'
+	}
+	if c { return '${fits}' }
+	s := if c {
+		'${expr_over}'
+	} else {
+		''
+	}
+	t := if c { '${expr_fits}' } else { '' }
+	return s + t
+}
+", out
+	assert vfmt('formatted_compact_if_width_twice', out) == out
+}
+
+fn test_formatter_expands_single_statement_bodies_with_multi_statement_or_blocks() {
+	source := "fn h() ?int { return 1 }
+
+fn first() int { return h() or { println('none') 0 } }
+
+fn second() int { return h() or { 0 } }
+
+fn loops(a []int) {
+	for x in a { _ = h() or { println(x) continue } }
+	if a.len > 0 { _ = h() or { println(a) return } }
+	cb := fn () int { return h() or { println('none') 0 } }
+	_ = cb
+}
+"
+	out := vfmt('multi_statement_or_block_bodies', source)
+	assert out == "fn h() ?int { return 1 }
+
+fn first() int {
+	return h() or {
+		println('none')
+		0
+	}
+}
+
+fn second() int { return h() or { 0 } }
+
+fn loops(a []int) {
+	for x in a {
+		_ = h() or {
+			println(x)
+			continue
+		}
+	}
+	if a.len > 0 {
+		_ = h() or {
+			println(a)
+			return
+		}
+	}
+	cb := fn () int {
+		return h() or {
+			println('none')
+			0
+		}
+	}
+	_ = cb
+}
+", out
+	assert vfmt('multi_statement_or_block_bodies_twice', out) == out
 }
 
 fn test_formatter_keeps_trailing_array_comments_inside_literal() {
@@ -999,7 +1236,7 @@ fn test_formatter_ignores_vfmt_directives_inside_strings() {
 	out := vfmt('vfmt_directives_in_strings', "fn main(){\n\toff := '// vfmt off'\n\ton := '// vfmt on'\n\tprintln(off + on)\n}\n\nfn format_me(){println('yes')}\n")
 	assert out.contains("off := '// vfmt off'"), out
 	assert out.contains("on := '// vfmt on'"), out
-	assert out.contains("fn format_me() {\n\tprintln('yes')\n}"), out
+	assert out.contains("fn format_me() { println('yes') }"), out
 }
 
 fn test_formatter_preserves_go_legacy_dollar_builtins_and_bodyless_functions() {
@@ -1763,6 +2000,13 @@ fn test_formatter_keeps_a_trailing_comment_on_a_match_branch() {
 	assert vfmt('match_branch_trailing_comment_twice', out) == out
 }
 
+fn test_formatter_keeps_trailing_comments_on_compact_match_branches() {
+	source := 'fn foo(arg int) int {\n\treturn match arg {\n\t\t1 { 1 } // return 1\n\t\telse { 0 } // return 2\n\t}\n}\n'
+	out := vfmt('compact_match_branch_trailing_comments', source)
+	assert out == source, out
+	assert vfmt('compact_match_branch_trailing_comments_twice', out) == out
+}
+
 // A blank separator line must carry no indentation. Writing it left a line of whitespace, which
 // V source never carries and which the next run read back differently, so the formatter was not a
 // fixed point.
@@ -2017,6 +2261,14 @@ fn test_formatter_aligns_struct_field_defaults_and_comments() {
 	out := vfmt('struct_field_suffix_alignment', source)
 	assert out == source, out
 	assert vfmt('struct_field_suffix_alignment_twice', out) == out
+}
+
+fn test_formatter_aligns_struct_field_attributes_with_defaults() {
+	source := 'struct Foo {\n\ta    int    @[some_attr]\n\tbeta string @[another]\n\tpi   f32 = 3.14    @[yet_another]\n\td    f64 = 2.9999999    @[yet_another]\n}\n\nfn main() {}\n'
+	want := 'struct Foo {\n\ta    int        @[some_attr]\n\tbeta string     @[another]\n\tpi   f32 = 3.14      @[yet_another]\n\td    f64 = 2.9999999 @[yet_another]\n}\n\nfn main() {}\n'
+	out := vfmt('struct_field_attribute_alignment', source)
+	assert out == want, out
+	assert vfmt('struct_field_attribute_alignment_twice', out) == want
 }
 
 // Enum members and interface members align their trailing comments the same way.

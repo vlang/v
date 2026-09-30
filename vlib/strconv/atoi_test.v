@@ -389,14 +389,14 @@ fn test_common_parse_uint2_fail() {
 	for ch in ascii_characters {
 		// println("ch: [${ch}]")
 		txt_str := '${ch[0]:c}12Ab'
-		num, err := strconv.common_parse_uint2(txt_str, 16, 32)
+		_, err := strconv.common_parse_uint2(txt_str, 16, 32)
 		assert err != 0
 	}
 
 	for ch in special_characters {
 		// println("ch: [${ch}]")
 		txt_str := '${ch[0]:c}12Ab'
-		num, err := strconv.common_parse_uint2(txt_str, 16, 32)
+		_, err := strconv.common_parse_uint2(txt_str, 16, 32)
 		assert err != 0
 	}
 }

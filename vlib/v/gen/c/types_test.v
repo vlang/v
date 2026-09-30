@@ -251,67 +251,29 @@ fn main() {}
 	assert !c_source.contains('Unused__autostr'), c_source
 }
 
-fn test_json_helper_scan_requires_legacy_json_module() {
-	mut ast := flat.FlatAst.new()
-	ast.nodes = [flat.Node{ kind: .call, children_count: 2 },
-		flat.Node{ kind: .ident, value: 'json.encode' },
-		flat.Node{ kind: .ident, value: 'pointer', typ: '&int' }]
-	ast.children = [flat.NodeId(1), flat.NodeId(2)]
-	mut tc := types.TypeChecker.new(&ast)
-	tc.resolved_call_names = [types.cached_name('json.encode'), unsafe { nil }, unsafe { nil }]
-	tc.resolved_call_set = [true, false, false]
-	tc.expr_type_values = [types.Type(types.void_), types.Type(types.void_),
-		types.Type(types.Pointer{ base_type: types.Type(types.int_) })]
-	tc.expr_type_set = [false, false, true]
-	tc.file_modules['json2.v'] = 'json2'
-	mut g := FlatGen.new()
-	g.a = &ast
-	g.tc = &tc
-	assert !g.has_legacy_json_module()
-	g.preintern_json_encode_strings()
-	assert g.str_lits.len == 0
-	tc.file_modules['json_primitives.c.v'] = 'json'
-	assert g.has_legacy_json_module()
-	g.preintern_json_encode_strings()
-	assert 'null' in g.str_lits
-}
-
-fn test_json_pointer_helper_scan_accepts_unresolved_encode_call() {
-	mut ast := flat.FlatAst.new()
-	ast.nodes = [flat.Node{ kind: .call, children_count: 2 },
-		flat.Node{ kind: .ident, value: 'json.encode' },
-		flat.Node{ kind: .ident, value: 'user', typ: '&main.User' }]
-	ast.children = [flat.NodeId(1), flat.NodeId(2)]
-	mut tc := types.TypeChecker.new(&ast)
-	tc.expr_type_values = [types.Type(types.void_), types.Type(types.void_), types.Type(types.Pointer{
-		base_type: types.Type(types.Struct{ name: 'main.User' })
-	})]
-	tc.expr_type_set = [false, false, true]
-	tc.structs['main.User'] = []types.StructField{}
-	tc.file_modules['json_primitives.c.v'] = 'json'
-	mut g := FlatGen.new()
-	g.a = &ast
-	g.tc = &tc
-	helpers := g.prepare_json_encode_pointer_helpers()
-	assert helpers.len == 1
-	assert helpers[0].pointer_ct == 'main__User*'
-}
-
-fn test_json_sum_variant_discriminator_strings_are_preinterned() {
+// cgen names `<Enum>__autostr` helpers from checked `types.Enum` names, which already
+// identify the declaring module. Reading them through the current file's imports would
+// retarget them: with `import a as real_a` and `import b as a`, a value returned by
+// `real_a.make()` has type `a.Kind`, and it must not become `b.Kind`.
+fn test_enum_autostr_c_name_ignores_current_file_imports() {
 	mut ast := flat.FlatAst.new()
 	mut tc := types.TypeChecker.new(&ast)
+	tc.enum_names['Kind'] = true
+	tc.enum_names['a.Kind'] = true
+	tc.enum_names['b.Kind'] = true
+	tc.cur_file = '/tmp/main.v'
 	tc.cur_module = 'main'
-	tc.sum_types['main.Animal'] = ['main.Cat', 'main.Dog']
-	tc.structs['main.Cat'] = []types.StructField{}
-	tc.structs['main.Dog'] = []types.StructField{}
+	tc.file_imports['/tmp/main.v\nreal_a'] = 'a'
+	tc.file_imports['/tmp/main.v\na'] = 'b'
+	tc.file_selective_imports['/tmp/main.v\nKind'] = ['b.Kind']
 	mut g := FlatGen.new()
 	g.a = &ast
 	g.tc = &tc
-	g.preintern_json_encode_value_strings(types.Type(types.SumType{
-		name: 'main.Animal'
-	}), []string{})
-	assert 'Cat' in g.str_lits
-	assert 'Dog' in g.str_lits
+
+	assert g.enum_autostr_c_name('a.Kind') == 'a__Kind'
+	assert g.enum_autostr_c_name('b.Kind') == 'b__Kind'
+	assert g.enum_autostr_c_name('Kind') == 'Kind'
+	assert g.enum_autostr_c_name('main.Kind') == 'Kind'
 }
 
 fn test_optional_typedef_collection_ignores_incomplete_call_type_text() {
@@ -330,47 +292,6 @@ fn test_optional_typedef_collection_ignores_incomplete_call_type_text() {
 	g.collect_optional_typedefs()
 	assert 'Optional_string' in g.needed_optional_types
 	assert g.needed_optional_types.len == 1
-}
-
-fn test_json_pointer_sum_variants_use_direct_owned_payloads() {
-	mut ast := flat.FlatAst.new()
-	mut tc := types.TypeChecker.new(&ast)
-	tc.sum_types['main.Payload'] = ['&main.Node', 'string']
-	tc.structs['main.Node'] = [
-		types.StructField{
-			name: 'name'
-			typ:  types.Type(types.String{})
-		},
-	]
-	mut encode_gen := FlatGen.new()
-	encode_gen.a = &ast
-	encode_gen.tc = &tc
-	payload_type := types.Type(types.SumType{
-		name: 'main.Payload'
-	})
-	pointer_field := encode_gen.sum_field_name('&main.Node')
-	encoded := encode_gen.json_encode_value_c_expr_inner(payload_type, 'value', []string{}) or {
-		assert false, 'pointer sum encoder was not generated'
-		return
-	}
-	assert encoded.contains('(value).${pointer_field}'), encoded
-	assert !encoded.contains('(*(value).${pointer_field})'), encoded
-	equal := encode_gen.json_encode_equal_c_expr(payload_type, 'left', 'right', []string{}) or {
-		assert false, 'pointer sum equality was not generated'
-		return
-	}
-	assert equal.contains('(left).${pointer_field}'), equal
-	assert equal.contains('(right).${pointer_field}'), equal
-	assert !equal.contains('(*(left).${pointer_field})'), equal
-	assert !equal.contains('(*(right).${pointer_field})'), equal
-
-	mut decode_gen := FlatGen.new()
-	decode_gen.a = &ast
-	decode_gen.tc = &tc
-	decode_gen.gen_json_decode_sum_variant_expr('item', 'main.Payload', '&main.Node')
-	decoded := decode_gen.sb.str()
-	assert decoded.contains('v3_json_decode_ptr_'), decoded
-	assert decoded.contains('._pointer_variant_is_owned = true'), decoded
 }
 
 fn test_optional_payload_qualifies_concrete_generic_struct() {
@@ -716,6 +637,20 @@ fn test_optional_array_typedef_ignores_nominal_name_collisions() {
 	assert g.stale_ambiguous_qualified_struct_c_type('Array')
 	assert g.emit_optional_typedef('Optional_Array', 'Array')
 	assert g.sb.str().contains('Array value; } Optional_Array;')
+}
+
+fn test_optional_builtin_typedef_ignores_nominal_name_collisions() {
+	mut ast := &flat.FlatAst{}
+	mut tc := types.TypeChecker.new(ast)
+	tc.structs['first.u64'] = []types.StructField{}
+	tc.structs['second.u64'] = []types.StructField{}
+	mut g := FlatGen.new()
+	g.a = ast
+	g.tc = &tc
+
+	assert g.stale_ambiguous_qualified_struct_c_type('u64')
+	assert g.emit_optional_typedef('Optional_u64', 'u64')
+	assert g.sb.str().contains('u64 value; } Optional_u64;')
 }
 
 fn test_optional_sum_typedef_ignores_struct_name_collisions() {

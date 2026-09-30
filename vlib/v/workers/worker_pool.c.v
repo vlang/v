@@ -17,7 +17,32 @@ const compiler_worker_stack_size = 64 * 1024 * 1024
 // a mistuned setting cannot hand the recursive phases a too-small stack.
 const min_worker_stack_size = 4 * 1024 * 1024
 
+// A completion push normally leaves Channel.push within a few instructions of
+// its value becoming receivable, so Pool.run spins briefly before yielding.
+const completion_push_spins = 100
+
+fn C.atomic_load_u32(voidptr) u32
+
+fn C.atomic_fetch_sub_u32(voidptr, u32) u32
+
+fn C.cpu_relax()
+
 __global v3_pool_size_limit int
+
+// Pools that are still running when the process exits. `exit()` skips the
+// deferred Pool.close calls, and the exit handlers then free the -prealloc arena
+// that holds the pools' job channels while the idle workers still wait on them.
+// Fixed storage keeps the registry itself out of any (possibly disposable) arena.
+const max_open_pools = 64
+
+__global v3_open_pools [64]voidptr
+__global v3_open_pools_len int
+__global v3_open_pools_hook_registered bool
+
+// fork() copies a pool into the child but not the threads serving it. A child
+// counts one more fork generation, and a pool from an earlier one gets new
+// queues and workers the first time it runs a batch (see revive).
+__global v3_fork_generation int
 
 // limit_pool_size caps pools created after this call to at most `size` workers.
 pub fn limit_pool_size(size int) {
@@ -58,6 +83,9 @@ mut:
 	// own channel, so a batch never counts another batch's completions, even
 	// when it runs one of their queued tasks itself.
 	done chan Completion
+	// pushes_in_flight is the batch's count of queued tasks that have not yet
+	// returned from their push into `done` (see wait_for_completion_pushes).
+	pushes_in_flight &u32 = unsafe { nil }
 }
 
 // Stats is a cumulative snapshot of persistent worker-pool activity.
@@ -130,9 +158,11 @@ mut:
 	worker_run_ns          u64
 	caller_run_ns          u64
 	started_at_ns          u64
+	generation             int // the fork generation the threads belong to
 }
 
 fn pool_worker(arg voidptr) voidptr {
+	name_worker_thread()
 	mut pool := unsafe { &Pool(arg) }
 	for {
 		task := <-pool.jobs
@@ -165,6 +195,32 @@ fn run_queued_task(task Task, on_worker bool) {
 		run_ns:        if finished_at >= started_at { finished_at - started_at } else { 0 }
 		on_worker:     on_worker
 	}
+	// Only now has the push stopped touching `done`. This must stay the last
+	// access to batch memory: once the count drops to zero, Pool.run returns and
+	// its caller may release the `done` channel and the counter itself.
+	C.atomic_fetch_sub_u32(task.pushes_in_flight, 1)
+}
+
+// wait_for_completion_pushes returns once every queued task of a batch has
+// returned from its push into the batch's `done` channel. Receiving the last
+// completion is not enough: a buffered Channel.push makes the value receivable
+// by posting the reader semaphore, and only then locks the channel's
+// `read_sub_mtx` to wake select subscribers; the semaphore post itself can also
+// still touch the channel after the token was taken. `done` is allocated by
+// the caller of Pool.run, which in the compiler is often a disposable prealloc
+// scope that is released right after the stage, so a worker still in that
+// window would otherwise write to released memory.
+fn wait_for_completion_pushes(pushes_in_flight &u32) {
+	mut spins := 0
+	for C.atomic_load_u32(pushes_in_flight) != 0 {
+		if spins < completion_push_spins {
+			spins++
+			C.cpu_relax()
+		} else {
+			// The pushing thread was descheduled inside Channel.push; let it run.
+			time.sleep(time.microsecond)
+		}
+	}
 }
 
 // new creates up to size persistent workers. Failed launches simply reduce
@@ -184,6 +240,7 @@ pub fn new(size int) &Pool {
 		launch_attempt_count: u64(wanted)
 		started_at_ns:        time.sys_mono_now()
 		caller_steals:        os.getenv('V3_NO_POOL_STEAL') == ''
+		generation:           v3_fork_generation
 	}
 	fail := os.getenv('V3_TEST_PTHREAD_CREATE_FAIL')
 	stack_size := worker_stack_size()
@@ -200,7 +257,87 @@ pub fn new(size int) &Pool {
 		}
 	}
 	pool.launched_thread_count = u64(pool.threads.len)
+	if pool.threads.len > 0 {
+		register_open_pool(pool)
+	}
 	return pool
+}
+
+fn register_open_pool(pool &Pool) {
+	if !v3_open_pools_hook_registered {
+		v3_open_pools_hook_registered = true
+		// Exit handlers run in reverse registration order, so this runs before the
+		// prealloc cleanup that builtin registered at startup.
+		at_exit(close_open_pools_at_exit) or {}
+	}
+	if v3_open_pools_len < max_open_pools {
+		v3_open_pools[v3_open_pools_len] = voidptr(pool)
+		v3_open_pools_len++
+	}
+}
+
+fn unregister_open_pool(pool &Pool) {
+	for i in 0 .. v3_open_pools_len {
+		if v3_open_pools[i] == voidptr(pool) {
+			v3_open_pools_len--
+			v3_open_pools[i] = v3_open_pools[v3_open_pools_len]
+			v3_open_pools[v3_open_pools_len] = unsafe { nil }
+			return
+		}
+	}
+}
+
+// close_open_pools_at_exit stops and joins the workers of every pool that is
+// still open when the process exits. A pool whose own worker called exit() is
+// left alone: joining it from that worker would never return.
+fn close_open_pools_at_exit() {
+	// Pool.close unregisters the pool, so walk the registry from its end.
+	for i := v3_open_pools_len - 1; i >= 0; i-- {
+		mut pool := unsafe { &Pool(v3_open_pools[i]) }
+		if pool.is_closed || pool.has_current_worker() {
+			continue
+		}
+		pool.close()
+	}
+}
+
+fn (p &Pool) has_current_worker() bool {
+	for worker in p.threads {
+		if worker_thread_is_current(worker) {
+			return true
+		}
+	}
+	return false
+}
+
+// note_fork tells the pools that this process is a child created by fork():
+// the threads they list belong to the parent and do not exist here.
+pub fn note_fork() {
+	v3_fork_generation++
+}
+
+// revive gives a pool from an earlier fork generation a new job queue and as
+// many workers as it had, so a child's parallel phase does not wait on threads
+// that stayed in the parent. Completions need nothing: every batch makes its
+// own channel.
+fn (mut p Pool) revive() {
+	if p.generation == v3_fork_generation {
+		return
+	}
+	p.generation = v3_fork_generation
+	wanted := p.threads.len
+	queue_cap := if wanted > 0 { wanted * 16 } else { 1 }
+	p.jobs = chan Task{cap: queue_cap}
+	p.threads = []WorkerThread{}
+	stack_size := worker_stack_size()
+	for _ in 0 .. wanted {
+		worker, result := worker_thread_create(stack_size, pool_worker, voidptr(p))
+		if result == 0 {
+			p.threads << worker
+		} else {
+			p.launch_failure_count++
+		}
+	}
 }
 
 // size reports the number of successfully launched persistent workers.
@@ -243,6 +380,7 @@ pub fn (mut p Pool) run(tasks []Task) bool {
 	if tasks.len == 0 {
 		return false
 	}
+	p.revive()
 	mut batch := BatchStats{
 		tasks: u64(tasks.len)
 	}
@@ -266,15 +404,20 @@ pub fn (mut p Pool) run(tasks []Task) bool {
 	}
 	// Buffered for the whole batch, so a worker never blocks on reporting.
 	done := chan Completion{cap: if async_count > 0 { async_count } else { 1 }}
+	// Every non-force_sync task is submitted below, and whoever runs it
+	// decrements this once its completion push has returned. It lives on this
+	// stack frame, which outlives the batch because run waits for it to reach 0.
+	mut pushes_in_flight := u32(async_count)
 	mut submitted := 0
 	mut completed := 0
 	for task in tasks {
 		if !task.force_sync {
 			queued_task := Task{
-				run:          task.run
-				arg:          task.arg
-				queued_at_ns: time.sys_mono_now()
-				done:         done
+				run:              task.run
+				arg:              task.arg
+				queued_at_ns:     time.sys_mono_now()
+				done:             done
+				pushes_in_flight: &pushes_in_flight
 			}
 			mut is_submitted := false
 			for !is_submitted {
@@ -322,6 +465,9 @@ pub fn (mut p Pool) run(tasks []Task) bool {
 			}
 		}
 	}
+	// Every completion was received, but the last pushers may still be inside
+	// Channel.push; `done` and pushes_in_flight must outlive them.
+	wait_for_completion_pushes(&pushes_in_flight)
 	done.close()
 	batch.async_tasks = u64(submitted)
 	p.merge_batch_stats(batch)
@@ -364,6 +510,12 @@ pub fn (mut p Pool) close() {
 		return
 	}
 	p.is_closed = true
+	unregister_open_pool(p)
+	if p.generation != v3_fork_generation {
+		// Those threads stayed in the parent: there is nothing here to join.
+		p.threads.clear()
+		return
+	}
 	for _ in p.threads {
 		p.jobs <- Task{
 			stop: true

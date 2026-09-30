@@ -1,5 +1,5 @@
 // vtest vflags: -w
-import json
+import json2
 
 @[heap]
 struct Foo {
@@ -21,7 +21,7 @@ mut:
 
 fn test_ptr() {
 	data := '{ "a": 123, "b": "foo", "c": 1.2, "d": 321, "e": "bar"}'
-	foo := json.decode(Foo, data)!
+	foo := json2.decode[Foo](data)!
 	println(foo)
 
 	assert dump(*foo.a) == 123
@@ -30,12 +30,12 @@ fn test_ptr() {
 	assert dump(**foo.d) == 321
 	assert dump(***foo.e) == 'bar'
 
-	assert dump(json.encode(foo)) == '{"a":123,"b":"foo","c":1.2,"d":321,"e":"bar"}'
+	assert dump(json2.encode(foo, escape_unicode: true)) == '{"a":123,"b":"foo","c":1.2,"d":321,"e":"bar"}'
 }
 
 fn test_option_ptr() ? {
 	data := '{ "a": 123, "b": "foo", "c": 1.2, "d": 321, "e": "bar"}'
-	foo := json.decode(FooOption, data) or { return none }
+	foo := json2.decode[FooOption](data) or { return none }
 	println(foo)
 
 	assert dump(*foo.a?) == 123
@@ -44,5 +44,7 @@ fn test_option_ptr() ? {
 	assert dump(**foo.d?) == 321
 	assert dump(***foo.e?) == 'bar'
 
-	assert dump(json.encode(foo)) == '{"a":123,"b":"foo","c":1.2,"d":321,"e":"bar"}'
+	// Encoding `?&&int` checks a comptime condition on the substituted type, which used
+	// to be split at its `&&` like a logical AND.
+	assert dump(json2.encode(foo, escape_unicode: true)) == '{"a":123,"b":"foo","c":1.2,"d":321,"e":"bar"}'
 }

@@ -36,4 +36,8 @@ static inline int v3_pthread_create(pthread_t *thread, size_t stack_size,
 	return rc;
 }
 
+static inline int v3_pthread_is_current(pthread_t thread) {
+	return pthread_equal(pthread_self(), thread);
+}
+
 #endif

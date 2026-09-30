@@ -7,6 +7,7 @@ import time
 import v.flat
 import v.gen.c.naming
 import v.types
+import v.util
 import v.workers
 
 const max_flat_cgen_jobs = 18
@@ -518,12 +519,69 @@ fn optional_support_selection_thread(arg voidptr) voidptr {
 
 fn unresolved_call_optional_thread(arg voidptr) voidptr {
 	mut w := unsafe { &FlatGen(arg) }
+	usw := time.new_stopwatch()
 	scope := cgen_worker_scope_begin(w.scope_parallel_workers)
 	w.collect_unresolved_call_optional_types()
+	w.timing_profile('  [ttime]       fs call opts   ${f64(usw.elapsed().microseconds()) / 1000.0:7.2f} ms')
 	w.worker_scope = scope
 	cgen_worker_scope_leave(scope)
 	return unsafe { nil }
 }
+
+// InterfaceBoxingScanArgs is one slice of the interface-literal pre-filter.
+struct InterfaceBoxingScanArgs {
+	a     &flat.FlatAst = unsafe { nil }
+	ids   []i32
+	start int
+	end   int
+mut:
+	found []i32
+}
+
+fn interface_boxing_scan_thread(arg voidptr) voidptr {
+	mut a := unsafe { &InterfaceBoxingScanArgs(arg) }
+	a.found = interface_boxing_candidates_in(a.a, a.ids, a.start, a.end)
+	return unsafe { nil }
+}
+
+// interface_boxing_candidate_nodes narrows the type-metadata nodes to lowered
+// interface literals before collect_interface_boxed_types_for_dispatch resolves
+// their names. Nearly every metadata node is rejected by the structural test,
+// so large ASTs split it over the worker pool and keep the slices in node order.
+fn (g &FlatGen) interface_boxing_candidate_nodes() []i32 {
+	ids := g.type_metadata_nodes()
+	if ids.len < min_parallel_interface_boxing_scan || isnil(g.a.worker_pool)
+		|| g.a.worker_pool.size() == 0 {
+		return interface_boxing_candidates_in(g.a, ids, 0, ids.len)
+	}
+	n_jobs := g.a.worker_pool.size() + 1
+	chunk := (ids.len + n_jobs - 1) / n_jobs
+	mut args := []InterfaceBoxingScanArgs{cap: n_jobs}
+	for start := 0; start < ids.len; start += chunk {
+		args << InterfaceBoxingScanArgs{
+			a:     g.a
+			ids:   ids
+			start: start
+			end:   int_min(start + chunk, ids.len)
+		}
+	}
+	mut tasks := []workers.Task{cap: args.len}
+	for i in 0 .. args.len {
+		tasks << workers.Task{
+			run:        interface_boxing_scan_thread
+			arg:        unsafe { voidptr(&args[i]) }
+			force_sync: i == 0
+		}
+	}
+	g.a.worker_pool.run(tasks)
+	mut found := []i32{}
+	for arg in args {
+		found << arg.found
+	}
+	return found
+}
+
+const min_parallel_interface_boxing_scan = 8192
 
 // interface_impl_scan_thread builds the structural-interface dispatch tables
 // while the master pre-seeds independent declaration metadata.
@@ -1294,9 +1352,6 @@ fn (mut g FlatGen) absorb_scoped_cgen_batch(batch &FlatGen, output_streamed bool
 			g.needed_optional_types[opt_name.clone()] = val_type.clone()
 		}
 	}
-	for pointer_ct, pointer_type in batch.json_encode_pointer_types {
-		g.json_encode_pointer_types[pointer_ct.clone()] = pointer_type.clone()
-	}
 	for encoded, name in batch.fn_ptr_types {
 		if encoded !in g.fn_ptr_types {
 			g.fn_ptr_types[encoded.clone()] = name.clone()
@@ -1439,6 +1494,10 @@ fn (mut g FlatGen) gen_fn_chunks_scoped_dynamic(
 		g.begin_usable_expr_type_memo()
 		g.end_usable_expr_type_memo()
 	}
+	// Chunks reuse one scratch arena: each chunk's output is absorbed into the
+	// result arena before the next chunk starts, so the arena is rewound instead
+	// of being freed and faulted in again for every chunk.
+	mut scratch_scope := unsafe { nil }
 	for {
 		chunk_idx := <-chunk_queue or { break }
 		n_chunks++
@@ -1446,7 +1505,10 @@ fn (mut g FlatGen) gen_fn_chunks_scoped_dynamic(
 		for item in chunks[chunk_idx] {
 			chunk_cost += item.cost
 		}
-		scratch_scope := cgen_worker_scope_begin(true)
+		if scratch_scope == unsafe { nil } || !cgen_worker_scope_reenter(scratch_scope) {
+			cgen_worker_scope_free(scratch_scope)
+			scratch_scope = cgen_worker_scope_begin(true)
+		}
 		mut batch := g.new_parallel_worker(chunk_idx)
 		if reuse_expr_type_memo {
 			batch.usable_expr_type_memo = g.usable_expr_type_memo
@@ -1464,8 +1526,8 @@ fn (mut g FlatGen) gen_fn_chunks_scoped_dynamic(
 		if g.fn_segs.len > segment_start {
 			g.fn_seg_chunk_indexes << chunk_idx
 		}
-		cgen_worker_scope_free(scratch_scope)
 	}
+	cgen_worker_scope_free(scratch_scope)
 	g.timing_profile('  [ttime]     cg wkr busy    ${f64(wsw.elapsed().microseconds()) / 1000.0:7.2f} ms (chunks: ${n_chunks})')
 	g.worker_scope = result_scope
 	cgen_worker_scope_leave(result_scope)
@@ -1515,6 +1577,7 @@ fn clone_embedded_fields_by_type(values map[string][]types.StructField) map[stri
 				has_default: field.has_default
 				is_embed:    field.is_embed
 				is_mut:      field.is_mut
+				is_volatile: field.is_volatile
 			}
 		}
 		cloned[name.clone()] = owned_fields
@@ -2656,6 +2719,9 @@ fn (g &FlatGen) new_parallel_worker_config(worker_id int, result_only bool) &Fla
 		print_fn_names:                     g.print_fn_names
 		is_prod:                            g.is_prod
 		is_debug:                           g.is_debug
+		race:                               g.race
+		line_directives:                    g.line_directives
+		uses_recover:                       g.uses_recover
 		check_overflow:                     g.check_overflow
 		force_bounds_checking:              g.force_bounds_checking
 		object_file_mode:                   g.object_file_mode
@@ -2678,7 +2744,6 @@ fn (g &FlatGen) new_parallel_worker_config(worker_id int, result_only bool) &Fla
 		}
 		str_lits_shared:                    g.scope_parallel_workers && (!result_only || g.str_lits_shared)
 		str_lits_base_len:                  g.str_lits.len
-		json_encode_pointer_types:          map[string]string{}
 		global_types:                       g.global_types
 		global_raw_type_texts:              g.global_raw_type_texts
 		enum_vals:                          g.enum_vals
@@ -2736,6 +2801,9 @@ fn (g &FlatGen) new_parallel_worker_config(worker_id int, result_only bool) &Fla
 		has_builtins:                       g.has_builtins
 		cache_split:                        g.cache_split
 		cache_stable_symbols:               g.cache_stable_symbols
+		embed_incbin:                       g.embed_incbin
+		embed_incbin_syms:                  g.embed_incbin_syms
+		embed_incbin_syms_ready:            g.embed_incbin_syms_ready
 		compile_defines:                    g.compile_defines
 		compile_values:                     g.compile_values
 		trace_calls:                        g.trace_calls
@@ -2790,6 +2858,7 @@ fn (g &FlatGen) new_parallel_worker_config(worker_id int, result_only bool) &Fla
 		compiler_vexe:                      g.compiler_vexe
 		compiler_vexe_env_setup:            g.compiler_vexe_env_setup
 		ccompiler:                          g.ccompiler
+		is_shared:                          g.is_shared
 		target:                             g.target
 		// `int_ct` is derived from the target by set_target, which a worker never
 		// calls. Without copying it a worker keeps the 64-bit default and emits an
@@ -2845,6 +2914,8 @@ fn (g &FlatGen) new_parallel_worker_config(worker_id int, result_only bool) &Fla
 		cur_fn_ret_is_optional:             g.cur_fn_ret_is_optional
 		cur_fn_ret_base:                    g.cur_fn_ret_base
 		memo_usable_expr_types:             g.memo_usable_expr_types
+		import_key_cache:                   &util.KeyRecentCache{}
+		selective_import_key_cache:         &util.KeyRecentCache{}
 		cache_struct_fields:                g.cache_struct_fields
 		dedup_fn_decl_aliases:              g.dedup_fn_decl_aliases
 		prefix_param_scan:                  g.prefix_param_scan
@@ -2924,6 +2995,7 @@ fn (g &FlatGen) new_parallel_worker_config(worker_id int, result_only bool) &Fla
 		w.local_c_type_by_owner = map[string]string{}
 		w.local_raw_type_by_owner = map[string]string{}
 		w.local_indirect_value_by_owner = map[string]types.Type{}
+		w.local_implicit_deref_by_owner = map[string]bool{}
 		w.local_shared_storage_by_owner = map[string]bool{}
 		w.local_fn_value_c_name_by_owner = map[string]string{}
 		w.default_value_stack = map[string]bool{}
@@ -3211,9 +3283,6 @@ fn (mut g FlatGen) merge_parallel_worker_into(w &FlatGen, mut ordered []string, 
 	for opt_name, val_type in w.needed_optional_types {
 		g.needed_optional_types[opt_name.clone()] = val_type.clone()
 	}
-	for pointer_ct, pointer_type in w.json_encode_pointer_types {
-		g.json_encode_pointer_types[pointer_ct.clone()] = pointer_type.clone()
-	}
 	for encoded, name in w.fn_ptr_types {
 		if encoded !in g.fn_ptr_types {
 			g.fn_ptr_types[encoded.clone()] = name.clone()
@@ -3365,6 +3434,7 @@ fn (mut g FlatGen) run_pre_dispatch_parallel(no_parallel bool) bool {
 	optional_worker.c_name_cache = &CNameCache{}
 	optional_worker.generic_app_cache = &GenericAppCache{}
 	mut call_optional_worker := g.new_parallel_worker(3)
+	call_optional_worker.tc.verbose = g.tc.verbose
 	call_optional_worker.c_name_cache = &CNameCache{}
 	call_optional_worker.generic_app_cache = &GenericAppCache{}
 	fail := os.getenv('V3_TEST_PTHREAD_CREATE_FAIL')

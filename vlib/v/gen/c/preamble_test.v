@@ -203,9 +203,55 @@ fn test_system_libc_thread_preamble_uses_native_windows_api() {
 	assert windows_code.contains('WaitForSingleObject('), windows_code
 	assert windows_code.contains('CloseHandle('), windows_code
 	assert windows_code.contains('return a.handle == b.handle;'), windows_code
+	assert windows_code.contains('static __v_thread __v_thread_spawn_detached(__v_thread_start_fn start, void* arg, void (*cleanup)(void*)) {'), windows_code
+	// The detached thread frees its own context and result; its handle is closed at once.
+	assert windows_code.contains('__v_thread_free(raw_context); void* result = context.start(context.arg); if (result) __v_thread_free(result); return 0; }'), windows_code
+	assert windows_code.contains('HANDLE handle = CreateThread(NULL, __v_thread_stack_size, __v_windows_detached_thread_start, context, 0, NULL);'), windows_code
+	assert windows_code.contains('if (!CloseHandle(handle))'), windows_code
 	assert !windows_code.contains('pthread_'), windows_code
 	posix_code := c_code[posix_start..]
 	assert posix_code.contains('pthread_equal(a.handle, b.handle) != 0'), posix_code
+	assert posix_code.contains('pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED)'), posix_code
+	assert posix_code.contains('__v_thread_free(raw_context); void* result = context.start(context.arg); if (result) __v_thread_free(result); return NULL; }'), posix_code
+}
+
+fn test_headerless_thread_runtime_can_spawn_detached_threads() {
+	mut g := FlatGen.new()
+	g.headerless_libc_preamble()
+	c_code := g.sb.str()
+	assert c_code.contains('int pthread_detach(void* thread);'), c_code
+	assert c_code.contains('HANDLE handle = CreateThread(NULL, __v_thread_stack_size, __v_windows_detached_thread_start, context, 0, NULL);'), c_code
+	assert c_code.contains('pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED)'), c_code
+}
+
+fn test_cross_c_system_libc_preamble_keeps_posix_environ() {
+	mut g := windows_preamble_test_gen()
+	g.set_output_cross_c(true)
+	g.system_libc_preamble()
+	c_code := g.sb.str()
+	assert c_code.contains('#ifndef _WIN32\nextern char** environ;\n#endif')
+}
+
+fn test_strict_iso_c_flags_request_linux_posix_feature_macros() {
+	for flags in [['-std=c99'], ['-std=c11'], ['--std=c17'], ['-std', 'c99'], ['-ansi']] {
+		mut g := FlatGen.new()
+		g.c_flags = flags
+		g.c99_feature_test_macros()
+		c_code := g.sb.str()
+		assert c_code.contains('#if defined(__linux__) && !defined(_GNU_SOURCE)\n#define _GNU_SOURCE\n#endif'), '${flags}: ${c_code}'
+		assert c_code.contains('#define _POSIX_C_SOURCE 200809L'), '${flags}: ${c_code}'
+	}
+}
+
+fn test_gnu_c_flags_keep_default_feature_macros() {
+	for flags in [[]string{}, ['-std=gnu11'], ['-std=c99', '-std=gnu99'], ['-O2']] {
+		mut g := FlatGen.new()
+		g.c_flags = flags
+		g.c99_feature_test_macros()
+		c_code := g.sb.str()
+		assert !c_code.contains('_GNU_SOURCE'), '${flags}: ${c_code}'
+		assert !c_code.contains('_POSIX_C_SOURCE'), '${flags}: ${c_code}'
+	}
 }
 
 fn test_headerless_pthread_fallback_respects_darwin_type_guards() {
@@ -315,7 +361,10 @@ fn test_target_libc_preamble_emits_pthread_runtime_when_threads_are_used() {
 	assert c_code.contains('#include <pthread.h>')
 	assert c_code.contains('static __v_thread __v_thread_spawn(')
 	assert c_code.contains('static void* __v_thread_join(')
+	assert c_code.contains('pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED)')
 	assert c_code.contains('pthread_equal(a.handle, b.handle) != 0')
+	assert c_code.contains('void* p = GC_MALLOC_UNCOLLECTABLE(size);')
+	assert c_code.contains('GC_FREE(ptr);')
 }
 
 fn test_vinix_target_libc_thread_runtime_uses_freestanding_pthread_abi() {
@@ -326,6 +375,8 @@ fn test_vinix_target_libc_thread_runtime_uses_freestanding_pthread_abi() {
 	g.preamble()
 	c_code := g.sb.str()
 	assert c_code.contains('pthread_create(&result.handle, NULL, (void*)start, arg)')
+	assert c_code.contains('pthread_create(&handle, NULL, (void*)__v_detached_thread_start, context)')
+	assert c_code.contains('if (pthread_detach(handle) != 0) exit(1);')
 	assert !c_code.contains('pthread_attr_init(&attr)')
 	assert !c_code.contains('fprintf(stderr, "V thread')
 	assert !c_code.contains('abort();')
@@ -423,7 +474,7 @@ fn test_builtin_abi_decls_reuse_tcc_x64_stdatomic_fence_declaration() {
 	mut g := FlatGen.new()
 	g.atomic_thread_fence_compat_decls()
 	c_code := g.sb.str()
-	assert c_code.contains('#if defined(_WIN32) && defined(__TINYC__)\n/* V atomic.h supplies atomic_thread_fence on Windows TCC. */')
+	assert c_code.contains('#if defined(_WIN32) && (defined(__TINYC__) || (defined(_MSC_VER) && !defined(__clang__)))\n/* V atomic.h supplies atomic_thread_fence on Windows TCC and MSVC. */')
 	assert c_code.contains('#define atomic_thread_fence(order) __atomic_thread_fence(order)')
 	assert !c_code.contains('extern void __atomic_thread_fence(int order);')
 }
@@ -453,9 +504,64 @@ fn test_system_libc_headers_make_stdatomic_compatible_with_gnu_objective_c() {
 	g.system_libc_headers()
 	c_code := g.sb.str()
 	assert c_code.contains('#if defined(__has_include)\n#if __has_include(<wchar.h>)\n#include <wchar.h>\n#endif\n#else\n#include <wchar.h>\n#endif')
-	assert c_code.contains('#if defined(_WIN32) && defined(__TINYC__)')
+	assert c_code.contains('#if defined(_WIN32) && (defined(__TINYC__) || (defined(_MSC_VER) && !defined(__clang__)))')
 	assert c_code.contains('thirdparty/stdatomic/win/atomic.h"\n#else')
 	compat_guard := '#if defined(__OBJC__) && defined(__GNUC__) && !defined(__clang__)'
 	assert c_code.contains('${compat_guard}\n#define _Atomic volatile\n#endif\n#include <stdatomic.h>')
 	assert c_code.contains('#include <stdatomic.h>\n${compat_guard}\n#undef _Atomic\n#endif')
+}
+
+fn test_system_libc_headers_leave_the_msvc_only_headers_to_the_c_preprocessor() {
+	// The generated C is compiled by whatever C compiler the user picked, which is
+	// not the one V generated it for: `vc/v_win.c` comes out of
+	// `-cross -os windows -cc msvc` (gen_vc_ci.yml) and is then built by tcc, clang
+	// and gcc (makev.bat). Choosing the MSVC-only headers at generation time baked
+	// <intrin.h> and <dbghelp.h> into every Windows snapshot, and the bundled
+	// TinyCC ships neither, so `makev.bat` died on
+	// `include file 'intrin.h' not found` before compiling any line of V.
+	// See #29146.
+	mut g := FlatGen.new()
+	// Generated exactly the way gen_vc_ci.yml generates the Windows snapshot.
+	g.set_ccompiler('msvc')
+	g.system_libc_headers()
+	c_code := g.sb.str()
+	// Only MSVC has these two, so the guard is the whole story: pinned as one block,
+	// because a bare include of either one is exactly the regression.
+	emitted := c_code.split_into_lines().filter(it.trim_space() in [
+		'#include <intrin.h>',
+		'#include <dbghelp.h>',
+	]).map(it.trim_space())
+	assert c_code_is_guarded_msvc_only(c_code), 'the snapshot emits ${emitted} unguarded, but only MSVC has those headers, so a snapshot built by tcc, clang or gcc fails with `include file not found`'
+}
+
+// c_code_is_guarded_msvc_only reports whether <intrin.h> and <dbghelp.h> are emitted
+// as one `#if defined(_MSC_VER)` block, which is the only shape that lets a snapshot
+// built by tcc, clang or gcc skip headers they do not have.
+fn c_code_is_guarded_msvc_only(c_code string) bool {
+	return c_code.contains('#if defined(_MSC_VER)\n#include <intrin.h>\n#include <dbghelp.h>\n#endif')
+}
+
+fn test_system_libc_headers_do_not_depend_on_the_c_compiler_v_was_generated_for() {
+	// A snapshot is generated for one C compiler and compiled by another, so the
+	// header set must not vary with `g.ccompiler`. Branches on it belong in the C
+	// preprocessor instead: see #29146, where `if g.ccompiler == 'msvc'` made
+	// `-cc msvc` the only spelling that could build a Windows snapshot, even
+	// though <intrin.h>/<dbghelp.h> exist nowhere but under MSVC anyway.
+	mut reference := []string{}
+	for ccompiler in ['msvc', 'gcc', 'clang', 'tcc', 'tinyc'] {
+		mut g := FlatGen.new()
+		g.set_ccompiler(ccompiler)
+		g.system_libc_headers()
+		includes := g.sb.str().split_into_lines().filter(it.trim_space().starts_with('#include'))
+			.map(it.trim_space())
+		if reference.len == 0 {
+			reference = includes.clone()
+			continue
+		}
+		// Report the difference rather than both full lists: a header that is
+		// missing from one spelling of the same snapshot is the whole finding.
+		only_here := includes.filter(it !in reference)
+		only_there := reference.filter(it !in includes)
+		assert only_here.len == 0 && only_there.len == 0, '-cc ${ccompiler} emits ${only_here} but the msvc spelling emits ${only_there} instead'
+	}
 }
