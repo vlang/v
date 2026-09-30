@@ -117,6 +117,76 @@ fn forwarded_wrapper_error_reads(a &flat.FlatAst, id flat.NodeId) int {
 	return reads
 }
 
+fn test_optional_conversions_guard_error_reads() {
+	targets := ['?&string', '!&string', '?Value', '!Value']
+	for target in targets {
+		check_optional_conversion(target)?
+	}
+}
+
+fn check_optional_conversion(target string) ? {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	tc.interface_names['IError'] = true
+	tc.sum_types['Value'] = ['int', 'string']
+	mut t := new_transformer(mut a, &tc, map[string]bool{})
+	t.sum_types['Value'] = ['int', 'string']
+	source_type := target[..1] + 'string'
+	t.set_var_type('source', source_type)
+	source := t.make_ident('source')
+	converted := if target.contains('&') {
+		t.transform_optional_value_to_pointer(source, source_type, target, false)?
+	} else {
+		t.transform_optional_value_to_sum(source, source_type, target)?
+	}
+	branch_id := if a.nodes[int(converted)].kind == .if_expr {
+		converted
+	} else {
+		t.pending_stmts.last()
+	}
+	for statement in t.pending_stmts {
+		if statement == branch_id {
+			continue
+		}
+		assert forwarded_wrapper_error_reads(&a, statement) == 0
+		assert forwarded_wrapper_node_calls(&a, statement) == []string{}
+	}
+	branch := a.nodes[int(branch_id)]
+	assert branch.kind == .if_expr
+	assert t.node_type(converted) == target
+	condition := a.child_node(&branch, 0)
+	assert condition.kind == .selector
+	assert condition.value == 'ok'
+	success := a.child(&branch, 1)
+	failure := a.child(&branch, 2)
+	assert forwarded_wrapper_error_reads(&a, success) == 0
+	assert forwarded_wrapper_error_reads(&a, failure) == int(target.starts_with('!'))
+	assert forwarded_wrapper_node_calls(&a, failure) == []string{}
+}
+
+fn test_optional_conversion_keeps_payload_statements_in_success_branch() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	tc.interface_names['IError'] = true
+	mut t := new_transformer(mut a, &tc, map[string]bool{})
+	t.set_var_type('source', '!string')
+	source := t.make_ident('source')
+	before := t.make_expr_stmt(t.make_call_typed('before', [], 'void'))
+	convert := t.make_expr_stmt(t.make_call_typed('convert', [], 'void'))
+	t.pending_stmts << before
+	t.pending_stmts << convert
+	value := t.make_selector(source, 'value', 'string')
+	converted := t.make_optional_conversion(source, value, '!string', 1)
+	assert t.pending_stmts == [before]
+	branch := a.nodes[int(converted)]
+	success := a.child(&branch, 1)
+	failure := a.child(&branch, 2)
+	assert forwarded_wrapper_node_calls(&a, success) == ['convert']
+	assert forwarded_wrapper_node_calls(&a, failure) == []string{}
+	assert forwarded_wrapper_error_reads(&a, success) == 0
+	assert forwarded_wrapper_error_reads(&a, failure) == 1
+}
+
 fn test_const_map_expansion_estimate_ignores_shadowing_local() {
 	mut a := flat.FlatAst.new()
 	const_id := a.add_node(flat.Node{
