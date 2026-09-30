@@ -1065,9 +1065,14 @@ fn (mut t Transformer) build_return_map_index_if_guard_chain(if_node flat.Node, 
 	found_cond := t.make_infix(.ne, t.make_ident(ptr_name), t.a.add(.nil_literal))
 
 	saved_var_types := t.var_types.clone()
+	saved_heaped_state := t.save_heaped_local_state()
+	defer {
+		t.restore_heaped_local_state(saved_heaped_state)
+	}
 	mut then_children := []flat.NodeId{}
 	if lhs.value != '_' {
 		ptr_value := t.make_prefix(.mul, t.make_cast('&${info.value_type}', t.make_ident(ptr_name), '&${info.value_type}'))
+		t.clear_heaped_local_binding(lhs.value)
 		then_children << t.make_decl_assign_typed(lhs.value, ptr_value, info.value_type)
 		t.set_var_type(lhs.value, info.value_type)
 	}
@@ -1076,6 +1081,7 @@ fn (mut t Transformer) build_return_map_index_if_guard_chain(if_node flat.Node, 
 	then_children << t.a.children_of(&t.a.nodes[int(then_block0)])
 	then_block := t.make_block_prefix_scope_drops(then_children)
 	t.restore_var_types(saved_var_types)
+	t.restore_heaped_local_state(saved_heaped_state)
 
 	mut else_block := flat.empty_node
 	if if_node.children_count >= 3 {
