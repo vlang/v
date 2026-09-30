@@ -1149,13 +1149,33 @@ fn (mut tc TypeChecker) check_postfix_value_uses_preflight() {
 	}
 }
 
-// postfix_operator_closes_group reports whether the source after a postfix `++`/`--`
-// ending at `end` continues with `)` or `]`.
+// postfix_operator_closes_group reports whether the next token after a postfix
+// `++`/`--` ending at `end` is `)` or `]`, skipping whitespace and comments as V1's
+// parser does: `f(x++ )` and `f(x++ /* c */)` close the call like `f(x++)`.
 fn postfix_operator_closes_group(source string, end int) bool {
-	if end < 0 || end >= source.len {
+	if end < 0 {
 		return false
 	}
-	return source[end] in [`)`, `]`]
+	mut i := end
+	for i < source.len {
+		c := source[i]
+		if c in [` `, `\t`, `\n`, `\r`] {
+			i++
+		} else if c == `/` && i + 1 < source.len && source[i + 1] == `/` {
+			for i < source.len && source[i] != `\n` {
+				i++
+			}
+		} else if c == `/` && i + 1 < source.len && source[i + 1] == `*` {
+			i += 2
+			for i + 1 < source.len && !(source[i] == `*` && source[i + 1] == `/`) {
+				i++
+			}
+			i += 2
+		} else {
+			return c in [`)`, `]`]
+		}
+	}
+	return false
 }
 
 // check_if_guard validates check if guard state for types.
