@@ -8323,7 +8323,7 @@ fn (t &Transformer) generic_arg_for_call_and_decl_module(arg string, call_module
 		return arg
 	}
 	if t.current_specialization_has_generic_arg(arg) {
-		base, args, is_generic := generic_app_parts(arg)
+		base, args, is_generic := generic_provenance_app_parts(arg)
 		if is_generic && !arg.starts_with('map[') {
 			mut scoped_args := []string{cap: args.len}
 			for nested_arg in args {
@@ -8377,7 +8377,7 @@ fn (t &Transformer) current_specialization_has_generic_arg(arg string) bool {
 			return true
 		}
 	}
-	base, nested_args, is_generic_app := generic_app_parts(clean)
+	base, nested_args, is_generic_app := generic_provenance_app_parts(clean)
 	if is_generic_app {
 		if t.current_specialization_has_generic_arg(base) {
 			return true
@@ -8433,6 +8433,15 @@ fn generic_type_container_components(typ string) []string {
 		}
 	}
 	return []string{}
+}
+
+fn generic_provenance_app_parts(typ string) (string, []string, bool) {
+	// A bracket inside an option, map or function belongs to that container;
+	// it does not make the entire spelling a named generic application.
+	if generic_type_container_components(typ).len > 0 {
+		return '', []string{}, false
+	}
+	return generic_app_parts(typ)
 }
 
 fn (mut t Transformer) specialization_main_type_closure(args []string) map[string]bool {
@@ -8582,7 +8591,7 @@ fn (t &Transformer) generic_arg_for_decl_module(arg string, module_name string) 
 		return arg
 	}
 	if t.current_specialization_has_generic_arg(arg) {
-		base, args, is_generic := generic_app_parts(arg)
+		base, args, is_generic := generic_provenance_app_parts(arg)
 		if is_generic && !arg.starts_with('map[') {
 			mut scoped_args := []string{cap: args.len}
 			for nested_arg in args {
@@ -9298,8 +9307,14 @@ fn (t &Transformer) generic_inference_alias_target(typ string, module_name strin
 	if clean.len == 0 {
 		return clean
 	}
+	// Specialization keys use bare main types. Keep their caller provenance when
+	// inferring a nested call instead of resolving a homonym in the callee module.
+	if t.substituted_type_belongs_to_main_generic(clean)
+		&& t.current_specialization_has_generic_arg(clean) {
+		return clean
+	}
 	if t.current_specialization_has_generic_arg(clean) {
-		base, args, is_generic := generic_app_parts(clean)
+		base, args, is_generic := generic_provenance_app_parts(clean)
 		if is_generic && !clean.starts_with('map[') {
 			mut scoped_args := []string{cap: args.len}
 			for nested_arg in args {
@@ -9308,12 +9323,6 @@ fn (t &Transformer) generic_inference_alias_target(typ string, module_name strin
 			scoped_base := t.generic_inference_alias_target(base, module_name)
 			return '${scoped_base}[${scoped_args.join(', ')}]'
 		}
-	}
-	// Specialization keys use bare main types. Keep their caller provenance when
-	// inferring a nested call instead of resolving a homonym in the callee module.
-	if t.substituted_type_belongs_to_main_generic(clean)
-		&& t.current_specialization_has_generic_arg(clean) {
-		return clean
 	}
 	if target := t.direct_generic_inference_alias_target(clean, module_name) {
 		return target
