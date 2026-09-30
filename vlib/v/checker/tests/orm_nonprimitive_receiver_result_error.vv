@@ -25,6 +25,10 @@ fn make_holder_box() HolderBox {
 	return HolderBox{holder: Holder{name: 'first'}}
 }
 
+fn (b HolderBox) get() Holder {
+	return b.holder
+}
+
 fn load_holders() ?[]Holder {
 	return none
 }
@@ -50,9 +54,18 @@ fn main() {
 	generic_method := sql db {
 		select from Account where name == make_holders().last()
 	}!
+	boxes := [make_holder_box()]
+	indexed_receiver := sql db {
+		select from Account where name == boxes[0].get()
+	}!
+	grouped_receiver := sql db {
+		select from Account where name == (boxes[0]).get()
+	}!
 	dump(indexed)
 	dump(nested)
 	dump(field)
 	dump(optional)
 	dump(generic_method)
+	dump(indexed_receiver)
+	dump(grouped_receiver)
 }

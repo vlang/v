@@ -11021,13 +11021,18 @@ fn sql_call_is_call_arg(tokens []string, open_idx int, start int) bool {
 		} else if tokens[j] == '(' {
 			if depth > 0 {
 				depth--
-			} else if should_check_named_type(tokens[j - 1])
-				&& tokens[j - 1] !in ['where', 'and', 'or', 'in', 'is', 'like', 'ilike', 'not'] {
+			} else if sql_token_is_call_name(tokens[j - 1]) {
 				return true
 			}
 		}
 	}
 	return false
+}
+
+// sql_token_is_call_name reports whether a `(` after `tok` starts a call, not a group.
+fn sql_token_is_call_name(tok string) bool {
+	return should_check_named_type(tok)
+		&& tok !in ['where', 'and', 'or', 'in', 'is', 'like', 'ilike', 'not']
 }
 
 // sql_call_result_is_receiver reports whether the result of the call whose `(` is at
@@ -11042,21 +11047,7 @@ fn sql_call_result_is_receiver(tokens []string, open_idx int) bool {
 		if tokens[i] in [')', '}'] {
 			i++
 		} else if tokens[i] == 'or' && i + 1 < tokens.len && tokens[i + 1] == '{' {
-			mut depth := 0
-			for j in i + 1 .. tokens.len {
-				if tokens[j] == '{' {
-					depth++
-				} else if tokens[j] == '}' {
-					depth--
-					if depth == 0 {
-						i = j + 1
-						break
-					}
-				}
-			}
-			if depth != 0 {
-				return false
-			}
+			i = (sql_value_close_idx(tokens, i + 1, '{', '}') or { return false }) + 1
 		} else {
 			break
 		}
@@ -11086,6 +11077,25 @@ fn sql_value_close_idx(tokens []string, open_idx int, open string, close string)
 	return none
 }
 
+// sql_value_open_idx returns the index of the `open` token matching the `close` at `close_idx`.
+fn sql_value_open_idx(tokens []string, close_idx int, open string, close string) ?int {
+	if close_idx < 0 || close_idx >= tokens.len || tokens[close_idx] != close {
+		return none
+	}
+	mut depth := 0
+	for i := close_idx; i >= 0; i-- {
+		if tokens[i] == close {
+			depth++
+		} else if tokens[i] == open {
+			depth--
+			if depth == 0 {
+				return i
+			}
+		}
+	}
+	return none
+}
+
 // sql_orm_receiver_result_type follows the value bound to SQL, rather than rejecting
 // nonprimitive intermediate receivers in `make_holders()[0].name` or `f().method()`.
 fn (tc &TypeChecker) sql_orm_receiver_result_type(tokens []string, open_idx int, ret_type Type) ?Type {
@@ -11104,45 +11114,57 @@ fn (tc &TypeChecker) sql_orm_receiver_result_type(tokens []string, open_idx int,
 			}
 		} else if tokens[i] == '[' {
 			close_idx := sql_value_close_idx(tokens, i, '[', ']') or { return none }
-			clean := unalias_and_unwrap_pointer_type(typ)
-			typ = match clean {
-				Array { clean.elem_type }
-				ArrayFixed { clean.elem_type }
-				Map { clean.value_type }
-				String { Type(u8_) }
-				else { (tc.index_overload_call_info(typ, false) or { return none }).return_type }
-			}
+			typ = tc.sql_orm_index_value_type(typ) or { return none }
 			i = close_idx + 1
 		} else if tokens[i] == '.' && i + 1 < tokens.len {
 			member := tokens[i + 1]
 			if i + 2 < tokens.len && tokens[i + 2] == '(' {
-				receiver_type := typ
-				typ = tc.sql_orm_method_return_type(typ, member) or { return none }
-				// The builtin array element accessors are declared with `voidptr` results;
-				// their value is the receiver's element (`make_holders().last()` is `Holder`).
-				// Other `voidptr`/generic results stay as they are: rejected as the final value,
-				// unresolvable (and left unchecked) as a receiver.
-				if typ.name() == 'voidptr' && member in ['first', 'last', 'pop', 'pop_left'] {
-					receiver_clean := unalias_and_unwrap_pointer_type(receiver_type)
-					if receiver_clean is Array {
-						typ = receiver_clean.elem_type
-					} else if receiver_clean is ArrayFixed {
-						typ = receiver_clean.elem_type
-					}
-				}
+				typ = tc.sql_orm_method_call_type(typ, member) or { return none }
 				i = (sql_call_close_idx(tokens, i + 2) or { return none }) + 1
 			} else {
-				clean := unalias_and_unwrap_pointer_type(typ)
-				if member in ['len', 'cap'] && (clean is Array || clean is ArrayFixed
-					|| clean is Map || clean is String) {
-					typ = Type(int_)
-				} else {
-					typ = tc.struct_field_type(clean.name(), member) or { return none }
-				}
+				typ = tc.sql_orm_member_value_type(typ, member) or { return none }
 				i += 2
 			}
 		} else {
 			break
+		}
+	}
+	return typ
+}
+
+fn (tc &TypeChecker) sql_orm_index_value_type(typ Type) ?Type {
+	clean := unalias_and_unwrap_pointer_type(typ)
+	return match clean {
+		Array { clean.elem_type }
+		ArrayFixed { clean.elem_type }
+		Map { clean.value_type }
+		String { Type(u8_) }
+		else { (tc.index_overload_call_info(typ, false) or { return none }).return_type }
+	}
+}
+
+fn (tc &TypeChecker) sql_orm_member_value_type(typ Type, member string) ?Type {
+	clean := unalias_and_unwrap_pointer_type(typ)
+	if member in ['len', 'cap'] && (clean is Array || clean is ArrayFixed || clean is Map
+		|| clean is String) {
+		return Type(int_)
+	}
+	return tc.struct_field_type(clean.name(), member)
+}
+
+// sql_orm_method_call_type returns the result type of calling `member` on `receiver`.
+// The builtin array element accessors are declared with `voidptr` results; their value
+// is the receiver's element (`make_holders().last()` is `Holder`). Other `voidptr`/generic
+// results stay as they are: rejected as the final value, unresolvable as a receiver.
+fn (tc &TypeChecker) sql_orm_method_call_type(receiver Type, member string) ?Type {
+	typ := tc.sql_orm_method_return_type(receiver, member)?
+	if typ.name() == 'voidptr' && member in ['first', 'last', 'pop', 'pop_left'] {
+		clean := unalias_and_unwrap_pointer_type(receiver)
+		if clean is Array {
+			return clean.elem_type
+		}
+		if clean is ArrayFixed {
+			return clean.elem_type
 		}
 	}
 	return typ
@@ -11176,24 +11198,96 @@ fn (tc &TypeChecker) sql_orm_method_return_type(receiver Type, member string) ?T
 	return none
 }
 
+// sql_orm_source_call_return_type returns the result type of the call named at `name_idx`:
+// a function (`f(`, `time.now(`), or a method on a receiver that starts at a local
+// variable, string literal or parenthesised value (`h.get(`, `boxes[0].get(`, `(h).get(`).
+// A receiver containing another call returns none; that call's own receiver chain check
+// already covers the final value.
 fn (tc &TypeChecker) sql_orm_source_call_return_type(tokens []string, name_idx int) ?Type {
 	mut start := name_idx
 	for start >= 2 && tokens[start - 1] == '.' && sql_like_identifier(tokens[start - 2]) {
 		start -= 2
 	}
-	if typ := tc.sql_orm_fn_return_type(tokens[start..name_idx + 1].join('')) {
-		return typ
+	if start == 0 || tokens[start - 1] != '.' {
+		if typ := tc.sql_orm_fn_return_type(tokens[start..name_idx + 1].join('')) {
+			return typ
+		}
 	}
-	if start == name_idx {
+	if name_idx < 2 || tokens[name_idx - 1] != '.' {
 		return none
 	}
-	mut receiver := tc.cur_scope.lookup(tokens[start]) or { return none }
-	for i := start + 2; i < name_idx; i += 2 {
-		receiver = tc.struct_field_type(unalias_and_unwrap_pointer_type(receiver).name(), tokens[i]) or {
+	receiver_start := sql_value_receiver_start(tokens, name_idx - 2) or { return none }
+	receiver := tc.sql_orm_value_type(tokens, receiver_start, name_idx - 1) or { return none }
+	return tc.sql_orm_method_call_type(receiver, tokens[name_idx])
+}
+
+// sql_value_receiver_start returns where the member/index/call chain that ends at `end_idx`
+// begins, e.g. the `boxes` of `boxes[0].inner` or the `(` of `(h)`.
+fn sql_value_receiver_start(tokens []string, end_idx int) ?int {
+	mut j := end_idx
+	for j >= 0 {
+		tok := tokens[j]
+		if tok == ']' {
+			j = (sql_value_open_idx(tokens, j, '[', ']') or { return none }) - 1
+			continue
+		}
+		if tok == ')' {
+			open_idx := sql_value_open_idx(tokens, j, '(', ')') or { return none }
+			if open_idx == 0 || !sql_token_is_call_name(tokens[open_idx - 1]) {
+				return open_idx
+			}
+			j = open_idx - 1
+		} else if !sql_like_identifier(tok) && !(tok.len >= 2 && tok[0] in [`'`, `"`]) {
+			return none
+		}
+		if j >= 2 && tokens[j - 1] == '.' {
+			j -= 2
+			continue
+		}
+		return j
+	}
+	return none
+}
+
+// sql_orm_value_type types a call-free value chain in `tokens[start..end]` that starts at a
+// local variable, string literal or parenthesised value, followed by field and index steps.
+fn (tc &TypeChecker) sql_orm_value_type(tokens []string, start int, end int) ?Type {
+	if start >= end {
+		return none
+	}
+	first := tokens[start]
+	mut i := start + 1
+	mut typ := Type(void_)
+	if first == '(' {
+		close_idx := sql_value_close_idx(tokens, start, '(', ')') or { return none }
+		if close_idx >= end {
+			return none
+		}
+		typ = tc.sql_orm_value_type(tokens, start + 1, close_idx) or { return none }
+		i = close_idx + 1
+	} else if first.len >= 2 && first[0] in [`'`, `"`] {
+		typ = Type(string_)
+	} else if sql_like_identifier(first) && (i >= end || tokens[i] != '(') {
+		typ = tc.cur_scope.lookup(first) or { return none }
+	} else {
+		return none
+	}
+	for i < end {
+		if tokens[i] == '[' {
+			close_idx := sql_value_close_idx(tokens, i, '[', ']') or { return none }
+			if close_idx >= end {
+				return none
+			}
+			typ = tc.sql_orm_index_value_type(typ) or { return none }
+			i = close_idx + 1
+		} else if tokens[i] == '.' && i + 1 < end && (i + 2 >= end || tokens[i + 2] != '(') {
+			typ = tc.sql_orm_member_value_type(typ, tokens[i + 1]) or { return none }
+			i += 2
+		} else {
 			return none
 		}
 	}
-	return tc.sql_orm_method_return_type(receiver, tokens[name_idx])
+	return typ
 }
 
 fn (mut tc TypeChecker) check_sql_order_by_constraint(id flat.NodeId, node flat.Node, tokens []string) {
