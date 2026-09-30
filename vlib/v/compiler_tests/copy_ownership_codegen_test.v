@@ -611,6 +611,7 @@ struct Stored { mut: values &ResourceArray = unsafe { nil } }
 type ResourceRef = &[]Resource
 type ResourceRefAlias = ResourceRef
 struct StoredRef { mut: values ResourceRefAlias = unsafe { nil } }
+struct StoredOption { values ?&[]Resource }
 fn store_and_change(mut values []Resource, mut stored Stored) {
 	values[0].value = 9
 	stored.values = &values
@@ -680,6 +681,19 @@ fn stored_reference_alias(initializer bool) StoredRef {
 	assert holder.values[0].value == 12
 	return stored
 }
+fn stored_option_reference(present bool) StoredOption {
+	mut holder := Holder{[fresh()]!, "label".repeat(4)}
+	if !present {
+		return StoredOption{}
+	}
+	holder.values[0].value = 11
+	stored := store_option_reference(mut holder.values)
+	holder.values[0].value = 12
+	return stored
+}
+fn store_option_reference(mut values []Resource) StoredOption {
+	return StoredOption{values: &values}
+}
 fn main() {
 	ordinary_scope()
 	assert dropped.len == 1
@@ -709,6 +723,11 @@ fn main() {
 		assert clones == 4 + index
 		check_stored_alias(stored_alias.values)
 	}
+	assert stored_option_reference(false).values == none
+	assert clones == 5
+	stored_option := stored_option_reference(true)
+	assert clones == 6
+	check_stored_alias(stored_option.values or { panic("missing retained reference") })
 	assert dropped.len == next_id
 	println("ok")
 }

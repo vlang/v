@@ -1973,8 +1973,12 @@ fn (mut t Transformer) clone_borrowed_storage_projection(source_id flat.NodeId, 
 // so retaining it does not detach the caller's still-shared argument header.
 fn (mut t Transformer) clone_owned_array_view_for_storage(value flat.NodeId, typ string) flat.NodeId {
 	resolved_type := t.comptime_normalize_type_alias_chain(typ)
-	array_type := resolved_type.trim_left('&')
-	if !array_type.starts_with('[]') || resolved_type.starts_with('&&') || isnil(t.tc)
+	mut storage_type := resolved_type
+	for t.is_optional_type_name(storage_type) {
+		storage_type = t.comptime_normalize_type_alias_chain(t.optional_base_type(storage_type))
+	}
+	array_type := storage_type.trim_left('&')
+	if !array_type.starts_with('[]') || storage_type.starts_with('&&') || isnil(t.tc)
 		|| !t.tc.ownership_type_requires_destruction(t.tc.parse_type(array_type)) {
 		return value
 	}
@@ -1982,6 +1986,20 @@ fn (mut t Transformer) clone_owned_array_view_for_storage(value flat.NodeId, typ
 	t.pending_stmts << t.make_decl_assign_typed(name, value, typ)
 	bound := t.make_ident(name)
 	t.set_node_typ(int(bound), typ)
+	if t.is_optional_type_name(resolved_type) {
+		// The shallow wrapper keeps its failure state. Only a present payload can
+		// borrow array storage, and its clone must stay inside that success branch.
+		payload_type := t.optional_base_type(resolved_type)
+		payload := t.make_selector(bound, 'value', payload_type)
+		pending_start := t.pending_stmts.len
+		owned_payload := t.clone_owned_array_view_for_storage(payload, payload_type)
+		mut body := t.pending_stmts[pending_start..].clone()
+		t.pending_stmts = t.pending_stmts[..pending_start].clone()
+		body << t.make_assign_without_ownership_drop(payload, owned_payload)
+		t.pending_stmts << t.make_if_with_skip_ownership_drops(t.make_selector(bound, 'ok', 'bool'),
+			t.make_block_skip_scope_drops(body), t.make_empty())
+		return bound
+	}
 	array_value := t.array_lvalue_value(bound, resolved_type)
 	is_slice := t.make_method_call(array_value, 'is_slice_view', []flat.NodeId{})
 	t.set_node_typ(int(is_slice), 'bool')

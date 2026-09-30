@@ -1583,8 +1583,8 @@ Explicitly destroying owned source elements invalidates views of those elements,
 borrowed slices.
 With ownership checking enabled, returning or storing a view copies its buffer to independent
 storage. Owned elements are cloned so the retained value has independent owners. Retained array
-references receive a separate header, so other aliases in the callee still share the original
-elements.
+references, including those stored inside options, receive a separate header, so other aliases
+in the callee still share the original elements.
 An operation that detaches a borrowed buffer also clones its owned elements. Such elements
 need a compatible `clone()` method or `IClone` support. Retaining or detaching a nonempty
 uncloneable borrowed buffer panics; borrowing it or changing its elements in place is allowed.
