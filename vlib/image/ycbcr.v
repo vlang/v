@@ -103,7 +103,7 @@ pub fn (p YCbCr) c_offset(x int, y int) int {
 	}
 }
 
-// sub_image returns the portion of p visible through r.
+// sub_image returns the portion of p visible through r, sharing its pixel storage.
 pub fn (p YCbCr) sub_image(r Rectangle) YCbCr {
 	rr := r.intersect(p.rect)
 	if rr.empty() {
@@ -114,9 +114,9 @@ pub fn (p YCbCr) sub_image(r Rectangle) YCbCr {
 	yi := p.y_offset(rr.min.x, rr.min.y)
 	ci := p.c_offset(rr.min.x, rr.min.y)
 	return YCbCr{
-		y:               p.y[yi..]
-		cb:              p.cb[ci..]
-		cr:              p.cr[ci..]
+		y:               unsafe { &p.y[yi..] }
+		cb:              unsafe { &p.cb[ci..] }
+		cr:              unsafe { &p.cr[ci..] }
 		y_stride:        p.y_stride
 		c_stride:        p.c_stride
 		subsample_ratio: p.subsample_ratio
@@ -200,7 +200,7 @@ pub fn (p NYCbCrA) a_offset(x int, y int) int {
 	return (y - p.ycbcr.rect.min.y) * p.a_stride + (x - p.ycbcr.rect.min.x)
 }
 
-// sub_image returns the portion of p visible through r.
+// sub_image returns the portion of p visible through r, sharing its pixel storage.
 pub fn (p NYCbCrA) sub_image(r Rectangle) NYCbCrA {
 	rr := r.intersect(p.ycbcr.rect)
 	if rr.empty() {
@@ -215,15 +215,15 @@ pub fn (p NYCbCrA) sub_image(r Rectangle) NYCbCrA {
 	ai := p.a_offset(rr.min.x, rr.min.y)
 	return NYCbCrA{
 		ycbcr:    YCbCr{
-			y:               p.ycbcr.y[yi..]
-			cb:              p.ycbcr.cb[ci..]
-			cr:              p.ycbcr.cr[ci..]
+			y:               unsafe { &p.ycbcr.y[yi..] }
+			cb:              unsafe { &p.ycbcr.cb[ci..] }
+			cr:              unsafe { &p.ycbcr.cr[ci..] }
 			y_stride:        p.ycbcr.y_stride
 			c_stride:        p.ycbcr.c_stride
 			subsample_ratio: p.ycbcr.subsample_ratio
 			rect:            rr
 		}
-		a:        p.a[ai..]
+		a:        unsafe { &p.a[ai..] }
 		a_stride: p.a_stride
 	}
 }

@@ -480,9 +480,9 @@ fn test_h1_tls_reuse() {
 	th.wait()
 }
 
-// A TLS connection dialled with HTTP/2 disabled (no ALPN) must not satisfy an
-// HTTP/2-enabled request to the same origin — the ALPN preference is part of
-// the pool key. Forced-h1 requests still share among themselves.
+// A default HTTP/1.1 TLS connection (no ALPN) must not satisfy an explicit
+// HTTP/2 request to the same origin. The ALPN preference is part of the pool
+// key, and default requests still share an HTTP/1.1 connection.
 fn test_h1_tls_no_reuse_across_alpn_preference() {
 	mut port_listener := net.listen_tcp(.ip, '127.0.0.1:0') or {
 		assert false, 'port: ${err}'
@@ -506,22 +506,21 @@ fn test_h1_tls_no_reuse_across_alpn_preference() {
 	}
 	mut srv := &TlsKaSrv{}
 	th := spawn tls_ka_srv_loop(mut srv, mut listener)
-	// 1. Forced-HTTP/1.1 request: dialled without ALPN, pooled under its key.
-	r1 := fetch(url: 'https://127.0.0.1:${port}/h1', validate: false, enable_http2: false) or {
+	// 1. Default HTTP/1.1 request: dialled without ALPN, pooled under its key.
+	r1 := fetch(url: 'https://127.0.0.1:${port}/h1', validate: false) or {
 		assert false, 'fetch 1: ${err}'
 		return
 	}
 	assert r1.status_code == 200
-	// 2. Default (HTTP/2-enabled) request: must NOT reuse the no-ALPN
-	// connection; it dials fresh and advertises h2.
-	r2 := fetch(url: 'https://127.0.0.1:${port}/h2pref', validate: false) or {
+	// 2. Explicit HTTP/2 request: dials fresh and advertises h2.
+	r2 := fetch(url: 'https://127.0.0.1:${port}/h2pref', validate: false, enable_http2: true) or {
 		assert false, 'fetch 2: ${err}'
 		return
 	}
 	assert r2.status_code == 200
 	assert srv.accept_count() == 2
-	// 3. Another forced-HTTP/1.1 request: reuses connection 1.
-	r3 := fetch(url: 'https://127.0.0.1:${port}/h1again', validate: false, enable_http2: false) or {
+	// 3. Another default HTTP/1.1 request: reuses connection 1.
+	r3 := fetch(url: 'https://127.0.0.1:${port}/h1again', validate: false) or {
 		assert false, 'fetch 3: ${err}'
 		return
 	}

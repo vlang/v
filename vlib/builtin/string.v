@@ -812,6 +812,51 @@ pub fn (s string) u64() u64 {
 	return strconv.common_parse_uint(s, 0, 64, false, false) or { 0 }
 }
 
+// u128 returns the value of the string as a `u128`, reading decimal digits.
+// A string that is not a decimal number gives `u128(0)`, the same as `string.u64()`.
+// Example: assert '12345'.u128() == u128(12345)
+pub fn (s string) u128() u128 {
+	mut i := 0
+	if i < s.len && s[i] == `+` {
+		i++
+	}
+	mut result := u128(0)
+	for i < s.len {
+		c := s[i]
+		if c < `0` || c > `9` {
+			return u128(0)
+		}
+		result = result * u128(10) + u128(c - `0`)
+		i++
+	}
+	return result
+}
+
+// i128 returns the value of the string as an `i128`, reading an optional sign and
+// decimal digits. A string that is not a decimal number gives `i128(0)`.
+// Example: assert '-12345'.i128() == i128(-12345)
+pub fn (s string) i128() i128 {
+	mut i := 0
+	mut negative := false
+	if i < s.len && (s[i] == `-` || s[i] == `+`) {
+		negative = s[i] == `-`
+		i++
+	}
+	mut result := i128(0)
+	for i < s.len {
+		c := s[i]
+		if c < `0` || c > `9` {
+			return i128(0)
+		}
+		result = result * i128(10) + i128(c - `0`)
+		i++
+	}
+	if negative {
+		return -result
+	}
+	return result
+}
+
 // parse_uint is like `parse_int` but for unsigned numbers
 //
 // This method directly exposes the `parse_uint` function from `strconv`
@@ -1798,7 +1843,7 @@ pub fn (s string) to_upper() string {
 // is_upper returns `true` if all ASCII letters in the string are uppercase,
 // and the string contains at least one uppercase ASCII letter.
 // It only works when the input is composed entirely from ASCII characters.
-// See also: [`byte.is_capital`](#byte.is_capital)
+// See also: [`u8.is_capital`](#u8.is_capital)
 // Example: assert 'HELLO V'.is_upper() == true
 @[direct_array_access]
 pub fn (s string) is_upper() bool {

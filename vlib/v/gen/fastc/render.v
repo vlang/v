@@ -16,7 +16,7 @@ fn fastc_builtin_type_idx(type_name string) ?int {
 		'int' { 8 }
 		'i64' { 9 }
 		'isize' { 10 }
-		'u8', 'byte' { 11 }
+		'u8' { 11 }
 		'u16' { 12 }
 		'u32' { 13 }
 		'u64' { 14 }
@@ -838,6 +838,8 @@ fn (g &Parser) render_array_assignment_expression(tokens []FastcExpressionToken)
 		overloaded
 	} else if operator == .right_shift_unsigned_assign {
 		g.render_unsigned_right_shift_assignment(left.source, right, left.typ) or { return none }
+	} else if g.translated && operator in [.left_shift_assign, .right_shift_assign] {
+		g.render_guarded_shift_assignment(left.source, right, left.typ, operator) or { return none }
 	} else {
 		'${left.source}${operator.str()}${right}'
 	}
@@ -898,7 +900,7 @@ fn (g &Parser) render_assignment_expression(tokens []FastcExpressionToken) ?Fast
 		field := left_tokens.last().lit
 		raw_receiver := g.render_raw_expression_tokens(receiver_tokens) or { '' }
 		if call := g.render_method_call_expression(receiver_tokens, raw_receiver) {
-			access := if call.typ.ends_with('*') { '->' } else { '.' }
+			access := if g.underlying_alias_type(call.typ).ends_with('*') { '->' } else { '.' }
 			left = '(${call.source})${access}${field}'
 		}
 	}
@@ -941,11 +943,11 @@ fn (g &Parser) render_assignment_expression(tokens []FastcExpressionToken) ?Fast
 	}
 	operator := tokens[assignment_index].tok
 	option_payload_type := g.option_value_type_for_expression(left_tokens)
-	if g.selfhost && operator == .assign && left_type == 'Option' && option_payload_type != '' {
+	if g.selfhost && operator == .assign && left_type in ['Option', '__v_result'] && option_payload_type != '' {
 		rhs_type := fastc_normalize_inferred_type(g.infer_expression_type(rhs_tokens) or { '' })
-		if rhs_type != 'Option' {
+		if rhs_type !in ['Option', '__v_result'] {
 			if fastc_trim_pointer_suffix(rhs_type) == 'IError' {
-				right = '(Option){.err=${right}, .state=1}'
+				right = '(__v_result){.err=${right}, .state=1}'
 			} else {
 				// `right` already holds the fully lowered RHS; for a narrowing boolean it
 				// carries the member smart-cast that a re-render through
@@ -957,7 +959,7 @@ fn (g &Parser) render_assignment_expression(tokens []FastcExpressionToken) ?Fast
 						right
 					}
 				}
-				right = fastc_option_success_expression(option_payload_type, payload)
+				right = fastc_option_success_expression(left_type, option_payload_type, payload)
 			}
 		}
 	}
@@ -990,6 +992,8 @@ fn (g &Parser) render_assignment_expression(tokens []FastcExpressionToken) ?Fast
 		overloaded
 	} else if operator == .right_shift_unsigned_assign {
 		g.render_unsigned_right_shift_assignment(left, right, left_type) or { return none }
+	} else if g.translated && operator in [.left_shift_assign, .right_shift_assign] {
+		g.render_guarded_shift_assignment(left, right, left_type, operator) or { return none }
 	} else {
 		'${left}${operator.str()}${right}'
 	}
@@ -1022,19 +1026,54 @@ fn (g &Parser) render_overloaded_assignment(target string, value string, target_
 	return '({ ${target_type} *__vf_overloaded_assignment_target = &(${target}); *__vf_overloaded_assignment_target = ${method_name}(*__vf_overloaded_assignment_target,${value}); })'
 }
 
-fn (g &Parser) render_unsigned_right_shift_assignment(target string, value string, target_type string) ?string {
-	resolved_type := fastc_trim_pointer_suffix(g.underlying_alias_type(target_type))
-	unsigned_type, bits := match resolved_type {
-		'byte', 'char', 'i8', 'u8' { 'u8', '8' }
+fn (g &Parser) shift_type_parts(operand_type string) ?(string, string) {
+	resolved_type := fastc_trim_pointer_suffix(g.underlying_alias_type(operand_type))
+	return match resolved_type {
+		'char', 'i8', 'u8' { 'u8', '8' }
 		'i16', 'u16' { 'u16', '16' }
-		'i32', 'int', 'rune', 'u32', 'unsigned int' { 'u32', '32' }
+		'i32', 'rune', 'u32', 'unsigned int' { 'u32', '32' }
 		'i64', 'u64' { 'u64', '64' }
+		'int' { 'u${g.prefs.target.pointer_bits}', '${g.prefs.target.pointer_bits}' }
 		'isize', 'usize' { 'usize', '${g.prefs.target.pointer_bits}' }
 		else {
 			return none
 		}
 	}
-	return '({ ${target_type} *__vf_unsigned_shift_target = &(${target}); ${unsigned_type} __vf_unsigned_shift_value = (${unsigned_type})(*__vf_unsigned_shift_target); u64 __vf_unsigned_shift_count = (u64)(${value}); *__vf_unsigned_shift_target = (${target_type})(__vf_unsigned_shift_count >= ${bits} ? (${unsigned_type})0 : (__vf_unsigned_shift_value >> __vf_unsigned_shift_count)); })'
+}
+
+fn (g &Parser) render_guarded_shift_expression(left string, right string, left_type string, operator token.Token) ?string {
+	operand_type := if left_type in ['integer literal', 'negative integer literal'] {
+		if operator == .right_shift_unsigned { 'i32' } else { 'int' }
+	} else {
+		left_type
+	}
+	unsigned_type, bits := g.shift_type_parts(operand_type) or { return none }
+	value_type := fastc_output_c_type(operand_type)
+	result_type := if operator == .right_shift_unsigned { unsigned_type } else { value_type }
+	shift_type := if operator in [.left_shift, .right_shift_unsigned] {
+		unsigned_type
+	} else {
+		value_type
+	}
+	op := if operator == .left_shift { '<<' } else { '>>' }
+	return '({ ${shift_type} __vf_shift_value = (${shift_type})(${left}); u64 __vf_shift_count = (u64)(${right}); __vf_shift_count >= ${bits} ? (${result_type})0 : (${result_type})(__vf_shift_value ${op} __vf_shift_count); })'
+}
+
+fn (g &Parser) render_guarded_shift_assignment(target string, value string, target_type string, assignment token.Token) ?string {
+	op := if assignment == .left_shift_assign {
+		token.Token.left_shift
+	} else {
+		token.Token.right_shift
+	}
+	shift := g.render_guarded_shift_expression('*__vf_shift_target', value, target_type, op) or { return none }
+	ct := fastc_output_c_type(target_type)
+	return '({ ${ct} *__vf_shift_target = &(${target}); *__vf_shift_target = (${ct})(${shift}); })'
+}
+
+fn (g &Parser) render_unsigned_right_shift_assignment(target string, value string, target_type string) ?string {
+	unsigned_type, bits := g.shift_type_parts(target_type) or { return none }
+	target_c_type := fastc_output_c_type(target_type)
+	return '({ ${target_c_type} *__vf_unsigned_shift_target = &(${target}); ${unsigned_type} __vf_unsigned_shift_value = (${unsigned_type})(*__vf_unsigned_shift_target); u64 __vf_unsigned_shift_count = (u64)(${value}); *__vf_unsigned_shift_target = (${target_c_type})(__vf_unsigned_shift_count >= ${bits} ? (${unsigned_type})0 : (__vf_unsigned_shift_value >> __vf_unsigned_shift_count)); })'
 }
 
 fn fastc_overloaded_binary_precedence(tok token.Token) int {
@@ -1346,7 +1385,9 @@ fn (g &Parser) render_overloaded_binary_expression(tokens []FastcExpressionToken
 		if rendered := g.render_overloaded_binary_expression(right_tokens) {
 			right_special = rendered
 		}
-		if left_special.source == '' && right_special.source == '' {
+		guarded_shift := g.translated && tokens[operator_index].tok in [.left_shift, .right_shift,
+			.right_shift_unsigned]
+		if left_special.source == '' && right_special.source == '' && !guarded_shift {
 			return none
 		}
 		right_type := g.infer_expression_type(right_tokens) or { return none }
@@ -1359,6 +1400,12 @@ fn (g &Parser) render_overloaded_binary_expression(tokens []FastcExpressionToken
 			right_special.source
 		} else {
 			g.render_call_argument_expression(right_tokens, right_type) or { return none }
+		}
+		if guarded_shift {
+			return FastcRenderedExpression{
+				source: g.render_guarded_shift_expression(left, right, left_type, tokens[operator_index].tok) or { return none }
+				typ:    fastc_normalize_inferred_type(left_type)
+			}
 		}
 		// A `+` whose operands are strings is concatenation, not C pointer arithmetic. When
 		// one side is itself a lowered string expression (`a + s[..n] + b`), the recursive
@@ -1477,7 +1524,8 @@ fn (g &Parser) render_pointer_member_access_expression(tokens []FastcExpressionT
 		}
 		root_type := g.infer_expression_type(tokens[start..start + 1]) or { continue }
 		root_is_reference := if local := g.locals[item.lit] { local.is_reference } else { false }
-		root_is_pointer := root_type.ends_with('*') || root_is_reference
+		root_is_pointer := fastc_is_pointer_type(g.underlying_alias_type(root_type))
+			|| root_is_reference
 		mut end := start + 1
 		for end + 1 < tokens.len && tokens[end].tok == .dot && tokens[end + 1].tok == .name {
 			if end + 2 < tokens.len && tokens[end + 2].tok == .lpar {
@@ -1560,7 +1608,7 @@ fn (g &Parser) render_pointer_member_access_expression(tokens []FastcExpressionT
 				continue
 			}
 		}
-		if !receiver_type.ends_with('*') {
+		if !g.underlying_alias_type(receiver_type).ends_with('*') {
 			continue
 		}
 		receiver_source := if lowered_array_receiver != '' {
@@ -1890,7 +1938,7 @@ fn (g &Parser) struct_equality_is_supported(typ string, seen []string) bool {
 	if element_type := g.array_element_type(layout_type) {
 		return g.struct_equality_is_supported(element_type, seen)
 	}
-	if layout_type in ['Option', 'array', 'map'] || layout_type.starts_with('Map_') {
+	if layout_type in ['Option', '__v_result', 'array', 'map'] || layout_type.starts_with('Map_') {
 		return false
 	}
 	type_key := g.semantic_type_key(layout_type)
@@ -3175,14 +3223,14 @@ fn (g &Parser) render_call_argument_expression(tokens []FastcExpressionToken, ex
 			return '(${inner})'
 		}
 	}
-	if g.selfhost && expected_type == 'Option' {
+	if g.selfhost && expected_type in ['Option', '__v_result'] {
 		if tokens.len == 1 && tokens[0].tok == .key_none {
 			return '(Option){.state=2}'
 		}
 		actual_type := fastc_normalize_inferred_type(g.infer_expression_type(tokens) or { '' })
-		if actual_type !in ['', 'Option'] {
+		if actual_type !in ['', 'Option', '__v_result'] {
 			value := g.render_call_argument_expression(tokens, actual_type) or { return none }
-			return fastc_option_success_expression(actual_type, value)
+			return fastc_option_success_expression(expected_type, actual_type, value)
 		}
 	}
 	if g.selfhost && expected_type == 'voidptr' && tokens.len > 1 && tokens[0].tok == .mul {
@@ -3394,7 +3442,7 @@ fn (g &Parser) render_array_literal_argument(tokens []FastcExpressionToken, expe
 }
 
 fn (g &Parser) render_selfhost_simple_array_literal_item(tokens []FastcExpressionToken, expected_type string) ?string {
-	if !g.selfhost || expected_type in ['Option', 'voidptr'] {
+	if !g.selfhost || expected_type in ['Option', '__v_result', 'voidptr'] {
 		return none
 	}
 	if tokens.len == 4 && tokens[0].tok == .name && tokens[1].tok == .lpar && tokens[3].tok == .rpar && tokens[2].source == '' {
@@ -3790,7 +3838,7 @@ fn (g &Parser) render_map_lookup_option_expression(tokens []FastcExpressionToken
 	key_source := g.render_membership_candidate(lookup_tokens[open + 1..lookup_tokens.len - 1], key_type) or { return none }
 	option_value_type := if address_of_value { '${value_type}*' } else { value_type }
 	option_result := if address_of_value {
-		'__vf_mv == NULL ? (Option){.state=2} : ${fastc_option_success_expression(option_value_type, '__vf_mv')}'
+		'__vf_mv == NULL ? (Option){.state=2} : ${fastc_option_success_expression('Option', option_value_type, '__vf_mv')}'
 	} else {
 		'(Option){.data=__vf_mv, .state=__vf_mv == NULL ? 2 : 0}'
 	}
@@ -3939,12 +3987,14 @@ fn fastc_map_runtime_functions(key_type string, pointer_bits int) (string, strin
 	if key_type == 'string' {
 		return 'builtin__map_hash_string', 'builtin__map_eq_string', 'builtin__map_clone_string', 'builtin__map_free_string'
 	}
-	suffix := if key_type in ['i8', 'u8', 'byte', 'char', 'bool'] {
+	suffix := if key_type in ['i8', 'u8', 'char', 'bool'] {
 		'1'
 	} else if key_type in ['i16', 'u16'] {
 		'2'
 	} else if key_type in ['i64', 'u64'] {
 		'8'
+	} else if key_type in ['i128', 'u128'] {
+		'16'
 	} else if key_type in ['isize', 'usize'] || fastc_is_pointer_type(key_type) {
 		if pointer_bits == 32 { '4' } else { '8' }
 	} else {
@@ -4372,8 +4422,13 @@ fn (g &Parser) render_option_propagation(inner_tokens []FastcExpressionToken) ?F
 	temporary := '__vf_op'
 	failure := if g.in_main {
 		deferred := g.deferred_scopes_source()
-		'${deferred} builtin__panic_result_not_set(builtin__IError_msg(${temporary}.err));'
-	} else if g.return_type == 'Option' {
+		message := if (g.infer_expression_type(inner_tokens) or { '' }) == '__v_result' {
+			'builtin__IError_msg(${temporary}.err)'
+		} else {
+			'_S("none")'
+		}
+		'${deferred} builtin__panic_result_not_set(${message});'
+	} else if g.return_type in ['Option', '__v_result'] {
 		'return ${temporary};'
 	} else {
 		'return 1;'
@@ -4384,7 +4439,7 @@ fn (g &Parser) render_option_propagation(inner_tokens []FastcExpressionToken) ?F
 		'*((${value_type} *)${temporary}.data)'
 	}
 	return FastcRenderedExpression{
-		source: '({ Option ${temporary} = (${inner_source}); if (${temporary}.state) { ${failure} } ${value}; })'
+		source: '({ __auto_type ${temporary} = (${inner_source}); if (${temporary}.state) { ${failure} } ${value}; })'
 		typ:    value_type
 	}
 }
@@ -4858,7 +4913,11 @@ fn (g &Parser) render_member_receiver(tokens []FastcExpressionToken) ?string {
 			index_source := g.render_membership_candidate(tokens[i + 1..close], 'int') or {
 				return none
 			}
-			data_separator := if current_type.ends_with('*') { '->' } else { '.' }
+			data_separator := if fastc_is_pointer_type(g.underlying_alias_type(current_type)) {
+				'->'
+			} else {
+				'.'
+			}
 			source = '((${element_type} *)(${source})${data_separator}data)[${index_source}]'
 			current_type = element_type
 			member_path += '[]'
@@ -4910,7 +4969,11 @@ fn (g &Parser) render_member_receiver(tokens []FastcExpressionToken) ?string {
 			}
 		}
 		if tokens[i + 1].lit == 'len' && g.is_map_type(current_type) {
-			separator := if current_type.ends_with('*') { '->' } else { '.' }
+			separator := if fastc_is_pointer_type(g.underlying_alias_type(current_type)) {
+				'->'
+			} else {
+				'.'
+			}
 			source += '${separator}data->count'
 			current_type = 'int'
 			member_path += '.len'
@@ -4919,14 +4982,22 @@ fn (g &Parser) render_member_receiver(tokens []FastcExpressionToken) ?string {
 		}
 		field := g.struct_field_metadata(current_type, tokens[i + 1].lit) or { return none }
 		for storage_name in field.storage_path {
-			separator := if current_type.ends_with('*') { '->' } else { '.' }
+			separator := if fastc_is_pointer_type(g.underlying_alias_type(current_type)) {
+				'->'
+			} else {
+				'.'
+			}
 			source += separator + fastc_c_identifier(storage_name)
 			current_type = g.struct_direct_member_type(current_type, storage_name)
 			if current_type == '' {
 				return none
 			}
 		}
-		separator := if current_type.ends_with('*') { '->' } else { '.' }
+		separator := if fastc_is_pointer_type(g.underlying_alias_type(current_type)) {
+			'->'
+		} else {
+			'.'
+		}
 		field_source := source + separator + fastc_c_identifier(field.name)
 		source = if field.is_shared_pointer { '*(${field_source})' } else { field_source }
 		current_type = field.typ

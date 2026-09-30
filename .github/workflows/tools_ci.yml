@@ -27,13 +27,23 @@ concurrency:
 jobs:
   shell-contracts:
     runs-on: ubuntu-22.04
-    timeout-minutes: 5
+    timeout-minutes: 20
     permissions:
       contents: read
+    env:
+      VFLAGS: -cc gcc
+      VJOBS: '2'
+      V_C_ERROR_BUG_REPORT_DISABLED: '1'
     steps:
       - uses: actions/checkout@v7
+      - name: Build V for the shell regression tests
+        id: build
+        run: make
       - name: Check BSD tool job failure propagation
-        run: python3 cmd/tools/tools_ci_test.py
+        run: ./v -new-compiler cmd/tools/tools_ci_test.v
+      - name: Check shell regression test formatting
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        run: ./v fmt -verify cmd/tools/tools_ci_test.v
 
   tools-linux:
     runs-on: ubuntu-22.04

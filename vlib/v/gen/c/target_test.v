@@ -1226,7 +1226,9 @@ fn test_native_input_snapshot_rejects_bytes_changed_between_reads() {
 	first_text := '#define SNAPSHOT_VALUE 1\n'
 	os.write_file(header, first_text)!
 	mut captured_digests := map[string]string{}
-	first := c_snapshot_external_input_text(header, mut captured_digests) or { panic(err) }
+	first := c_snapshot_external_input_text(header, mut captured_digests) or {
+		panic('missing header snapshot')
+	}
 	assert first == first_text
 	assert captured_digests[os.real_path(header)] == sha256.hexhash(first_text)
 	assert c_snapshot_external_input_text(header, mut captured_digests) or { '' } == first_text

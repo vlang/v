@@ -30,7 +30,6 @@ on:
       - 'vlib/flag/**'
       - 'vlib/hash/**'
       - 'vlib/io/**'
-      - 'vlib/json/**'
       - 'vlib/json2/**'
       - 'vlib/math/**'
       - 'vlib/net/**'

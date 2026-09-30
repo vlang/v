@@ -383,6 +383,7 @@ pub fn unsigned_shift_result_type(t Type) Type {
 				if platform_int_bits() == 64 { Type(u64_) } else { Type(u32_) }
 			}
 			64 { Type(u64_) }
+			128 { Type(u128_) }
 			else { Type(u32_) }
 		}
 	}

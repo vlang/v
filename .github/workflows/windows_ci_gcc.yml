@@ -87,7 +87,6 @@ jobs:
           v -o v.c cmd/v
           $direct_c_flags = @(
             '-Ithirdparty/zip'
-            '-Ithirdparty/cJSON'
             '-Ithirdparty/mbedtls/library'
             '-Ithirdparty/mbedtls/include'
             '-Ithirdparty/mbedtls/3rdparty/everest/include'

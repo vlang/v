@@ -94,7 +94,7 @@ fn test_optional_selection_handoff_preserves_signature_context_and_types() {
 		args.items <- items.clone()
 		support_thread.wait()
 		assert worker.needed_optional_types == serial.needed_optional_types
-		assert 'Optional_payload__Data' in worker.needed_optional_types
+		assert '__v_option_payload__Data' in worker.needed_optional_types
 		assert worker.optional_types_ready
 		assert worker.decl_types_ready
 		assert worker.multi_return_types_ready
@@ -276,69 +276,6 @@ fn test_enum_autostr_c_name_ignores_current_file_imports() {
 	assert g.enum_autostr_c_name('main.Kind') == 'Kind'
 }
 
-fn test_json_helper_scan_requires_legacy_json_module() {
-	mut ast := flat.FlatAst.new()
-	ast.nodes = [flat.Node{ kind: .call, children_count: 2 },
-		flat.Node{ kind: .ident, value: 'json.encode' },
-		flat.Node{ kind: .ident, value: 'pointer', typ: '&int' }]
-	ast.children = [flat.NodeId(1), flat.NodeId(2)]
-	mut tc := types.TypeChecker.new(&ast)
-	tc.resolved_call_names = [types.cached_name('json.encode'), unsafe { nil }, unsafe { nil }]
-	tc.resolved_call_set = [true, false, false]
-	tc.expr_type_values = [types.Type(types.void_), types.Type(types.void_),
-		types.Type(types.Pointer{ base_type: types.Type(types.int_) })]
-	tc.expr_type_set = [false, false, true]
-	tc.file_modules['json2.v'] = 'json2'
-	mut g := FlatGen.new()
-	g.a = &ast
-	g.tc = &tc
-	assert !g.has_legacy_json_module()
-	g.preintern_json_encode_strings()
-	assert g.str_lits.len == 0
-	tc.file_modules['json_primitives.c.v'] = 'json'
-	assert g.has_legacy_json_module()
-	g.preintern_json_encode_strings()
-	assert 'null' in g.str_lits
-}
-
-fn test_json_pointer_helper_scan_accepts_unresolved_encode_call() {
-	mut ast := flat.FlatAst.new()
-	ast.nodes = [flat.Node{ kind: .call, children_count: 2 },
-		flat.Node{ kind: .ident, value: 'json.encode' },
-		flat.Node{ kind: .ident, value: 'user', typ: '&main.User' }]
-	ast.children = [flat.NodeId(1), flat.NodeId(2)]
-	mut tc := types.TypeChecker.new(&ast)
-	tc.expr_type_values = [types.Type(types.void_), types.Type(types.void_), types.Type(types.Pointer{
-		base_type: types.Type(types.Struct{ name: 'main.User' })
-	})]
-	tc.expr_type_set = [false, false, true]
-	tc.structs['main.User'] = []types.StructField{}
-	tc.file_modules['json_primitives.c.v'] = 'json'
-	mut g := FlatGen.new()
-	g.a = &ast
-	g.tc = &tc
-	helpers := g.prepare_json_encode_pointer_helpers()
-	assert helpers.len == 1
-	assert helpers[0].pointer_ct == 'main__User*'
-}
-
-fn test_json_sum_variant_discriminator_strings_are_preinterned() {
-	mut ast := flat.FlatAst.new()
-	mut tc := types.TypeChecker.new(&ast)
-	tc.cur_module = 'main'
-	tc.sum_types['main.Animal'] = ['main.Cat', 'main.Dog']
-	tc.structs['main.Cat'] = []types.StructField{}
-	tc.structs['main.Dog'] = []types.StructField{}
-	mut g := FlatGen.new()
-	g.a = &ast
-	g.tc = &tc
-	g.preintern_json_encode_value_strings(types.Type(types.SumType{
-		name: 'main.Animal'
-	}), []string{})
-	assert 'Cat' in g.str_lits
-	assert 'Dog' in g.str_lits
-}
-
 fn test_optional_typedef_collection_ignores_incomplete_call_type_text() {
 	mut ast := &flat.FlatAst{}
 	ast.nodes = [flat.Node{
@@ -353,49 +290,8 @@ fn test_optional_typedef_collection_ignores_incomplete_call_type_text() {
 	g.a = ast
 	g.tc = &tc
 	g.collect_optional_typedefs()
-	assert 'Optional_string' in g.needed_optional_types
+	assert '__v_option_string' in g.needed_optional_types
 	assert g.needed_optional_types.len == 1
-}
-
-fn test_json_pointer_sum_variants_use_direct_owned_payloads() {
-	mut ast := flat.FlatAst.new()
-	mut tc := types.TypeChecker.new(&ast)
-	tc.sum_types['main.Payload'] = ['&main.Node', 'string']
-	tc.structs['main.Node'] = [
-		types.StructField{
-			name: 'name'
-			typ:  types.Type(types.String{})
-		},
-	]
-	mut encode_gen := FlatGen.new()
-	encode_gen.a = &ast
-	encode_gen.tc = &tc
-	payload_type := types.Type(types.SumType{
-		name: 'main.Payload'
-	})
-	pointer_field := encode_gen.sum_field_name('&main.Node')
-	encoded := encode_gen.json_encode_value_c_expr_inner(payload_type, 'value', []string{}) or {
-		assert false, 'pointer sum encoder was not generated'
-		return
-	}
-	assert encoded.contains('(value).${pointer_field}'), encoded
-	assert !encoded.contains('(*(value).${pointer_field})'), encoded
-	equal := encode_gen.json_encode_equal_c_expr(payload_type, 'left', 'right', []string{}) or {
-		assert false, 'pointer sum equality was not generated'
-		return
-	}
-	assert equal.contains('(left).${pointer_field}'), equal
-	assert equal.contains('(right).${pointer_field}'), equal
-	assert !equal.contains('(*(left).${pointer_field})'), equal
-	assert !equal.contains('(*(right).${pointer_field})'), equal
-
-	mut decode_gen := FlatGen.new()
-	decode_gen.a = &ast
-	decode_gen.tc = &tc
-	decode_gen.gen_json_decode_sum_variant_expr('item', 'main.Payload', '&main.Node')
-	decoded := decode_gen.sb.str()
-	assert decoded.contains('v3_json_decode_ptr_'), decoded
-	assert decoded.contains('._pointer_variant_is_owned = true'), decoded
 }
 
 fn test_optional_payload_qualifies_concrete_generic_struct() {
@@ -432,8 +328,8 @@ fn test_optional_payload_qualifies_concrete_generic_struct() {
 	result_type := types.Type(types.ResultType{
 		base_type: value_type
 	})
-	assert g.concrete_optional_type_name(result_type) == 'Optional_json2__StructKeyDecodeResult_TestEchoArgs'
-	assert g.needed_optional_types['Optional_json2__StructKeyDecodeResult_TestEchoArgs'] == 'json2__StructKeyDecodeResult_TestEchoArgs'
+	assert g.optional_type_name(result_type) == '__v_result_json2__StructKeyDecodeResult_TestEchoArgs'
+	assert g.needed_optional_types['__v_result_json2__StructKeyDecodeResult_TestEchoArgs'] == 'json2__StructKeyDecodeResult_TestEchoArgs'
 }
 
 fn test_concrete_optional_enum_uses_common_int_abi() {
@@ -445,9 +341,9 @@ fn test_concrete_optional_enum_uses_common_int_abi() {
 	option_enum := types.Type(types.OptionType{
 		base_type: types.Type(types.Enum{ name: 'State' })
 	})
-	assert g.optional_type_name(option_enum) == 'Optional'
-	assert g.concrete_optional_type_name(option_enum) == 'Optional'
-	assert 'Optional_int' !in g.needed_optional_types
+	assert g.optional_type_name(option_enum) == '__v_option'
+	assert g.optional_type_name(option_enum) == '__v_option'
+	assert '__v_option_int' !in g.needed_optional_types
 }
 
 fn test_value_type_qualifies_concrete_generic_struct() {
@@ -645,7 +541,7 @@ fn test_optional_payload_qualifies_interface() {
 	result_type := types.Type(types.ResultType{
 		base_type: value_type
 	})
-	assert g.concrete_optional_type_name(result_type) == 'Optional_firebird__Value'
+	assert g.optional_type_name(result_type) == '__v_result_firebird__Value'
 }
 
 fn test_optional_payload_keeps_concrete_c_type_with_interface_collision() {
@@ -664,7 +560,7 @@ fn test_optional_payload_keeps_concrete_c_type_with_interface_collision() {
 	result_type := types.Type(types.ResultType{
 		base_type: value_type
 	})
-	assert g.concrete_optional_type_name(result_type) == 'Optional_Value'
+	assert g.optional_type_name(result_type) == '__v_result_Value'
 }
 
 fn test_c_alias_value_type_preserves_the_system_typedef() {
@@ -686,8 +582,8 @@ fn test_optional_typedef_keeps_qualified_interface_with_struct_collision() {
 	g.a = ast
 	g.tc = &tc
 
-	assert g.emit_optional_typedef('Optional_cipher__Block', 'cipher__Block')
-	assert g.sb.str().contains('cipher__Block value; } Optional_cipher__Block;')
+	assert g.emit_optional_typedef('__v_option_cipher__Block', 'cipher__Block')
+	assert g.sb.str().contains('cipher__Block value; } __v_option_cipher__Block;')
 }
 
 fn test_precomputed_qualified_struct_c_types_preserve_ambiguity_checks() {
@@ -739,8 +635,8 @@ fn test_optional_array_typedef_ignores_nominal_name_collisions() {
 
 	assert g.stale_ambiguous_qualified_interface_c_type('Array')
 	assert g.stale_ambiguous_qualified_struct_c_type('Array')
-	assert g.emit_optional_typedef('Optional_Array', 'Array')
-	assert g.sb.str().contains('Array value; } Optional_Array;')
+	assert g.emit_optional_typedef('__v_option_Array', 'Array')
+	assert g.sb.str().contains('Array value; } __v_option_Array;')
 }
 
 fn test_optional_builtin_typedef_ignores_nominal_name_collisions() {
@@ -753,8 +649,8 @@ fn test_optional_builtin_typedef_ignores_nominal_name_collisions() {
 	g.tc = &tc
 
 	assert g.stale_ambiguous_qualified_struct_c_type('u64')
-	assert g.emit_optional_typedef('Optional_u64', 'u64')
-	assert g.sb.str().contains('u64 value; } Optional_u64;')
+	assert g.emit_optional_typedef('__v_option_u64', 'u64')
+	assert g.sb.str().contains('u64 value; } __v_option_u64;')
 }
 
 fn test_optional_sum_typedef_ignores_struct_name_collisions() {
@@ -769,8 +665,8 @@ fn test_optional_sum_typedef_ignores_struct_name_collisions() {
 
 	assert g.stale_missing_qualified_struct_c_type('types__Type')
 	assert g.is_known_sum_c_type('types__Type')
-	assert g.emit_optional_typedef('Optional_types__Type', 'types__Type')
-	assert g.sb.str().contains('types__Type value; } Optional_types__Type;')
+	assert g.emit_optional_typedef('__v_option_types__Type', 'types__Type')
+	assert g.sb.str().contains('types__Type value; } __v_option_types__Type;')
 }
 
 fn test_sum_name_resolution_keeps_a_qualified_concrete_type_out_of_a_namesake_sum() {
@@ -852,7 +748,7 @@ fn test_declaration_signature_scan_ignores_unscoped_regular_fn_nodes() {
 	g.tc = &tc
 
 	g.collect_declaration_signature_types()
-	assert 'Optional_json2__Image' !in g.needed_optional_types
+	assert '__v_option_json2__Image' !in g.needed_optional_types
 }
 
 fn test_declaration_signature_scan_collects_specialized_fn_nodes() {
@@ -869,7 +765,7 @@ fn test_declaration_signature_scan_collects_specialized_fn_nodes() {
 	g.tc = &tc
 
 	g.collect_declaration_signature_types()
-	assert 'Optional_Data' in g.needed_optional_types
+	assert '__v_result_Data' in g.needed_optional_types
 }
 
 fn test_specialized_signature_scan_uses_declaration_module() {
@@ -892,8 +788,8 @@ fn test_specialized_signature_scan_uses_declaration_module() {
 	g.tc = &tc
 
 	g.collect_declaration_signature_types()
-	assert 'Optional_orm__QueryBuilder_Entityptr' in g.needed_optional_types
-	assert 'Optional_QueryBuilder_Entityptr' !in g.needed_optional_types
+	assert '__v_result_orm__QueryBuilder_Entityptr' in g.needed_optional_types
+	assert '__v_result_QueryBuilder_Entityptr' !in g.needed_optional_types
 }
 
 fn test_optional_value_info_preserves_pointer_payload_abi() {
@@ -908,7 +804,7 @@ fn test_optional_value_info_preserves_pointer_payload_abi() {
 			name: 'Data'
 		})
 	})
-	payload_ct, payload_type := g.optional_value_info(option_type, 'Optional_Dataptr')
+	payload_ct, payload_type := g.optional_value_info(option_type, '__v_option_Dataptr')
 	assert payload_ct == 'Data*'
 	assert payload_type is types.Pointer
 	assert (payload_type as types.Pointer).base_type.name() == 'Data'

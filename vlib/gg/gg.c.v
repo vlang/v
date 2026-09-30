@@ -289,7 +289,7 @@ fn gg_init_sokol_window(user_data voidptr) {
 			font_path:             ctx.config.font_path
 			custom_bold_font_path: ctx.config.custom_bold_font_path
 			scale:                 ctx.scale
-		) or { panic(err) }
+		) or { panic('gg: failed to initialize font "${ctx.config.font_path}"') }
 		// println('FT took ${time.ticks()-t} ms')
 		ctx.font_inited = true
 	} else {
@@ -300,7 +300,7 @@ fn gg_init_sokol_window(user_data voidptr) {
 				bytes_mono:   ctx.config.font_bytes_mono
 				bytes_italic: ctx.config.font_bytes_italic
 				scale:        sapp.dpi_scale()
-			) or { panic(err) }
+			) or { panic('gg: failed to initialize font from embedded bytes') }
 			ctx.font_inited = true
 		} else {
 			sfont := font.default()
@@ -312,7 +312,7 @@ fn gg_init_sokol_window(user_data voidptr) {
 				font_path:             sfont
 				custom_bold_font_path: ctx.config.custom_bold_font_path
 				scale:                 sapp.dpi_scale()
-			) or { panic(err) }
+			) or { panic('gg: failed to initialize system font "${sfont}"') }
 			ctx.font_inited = true
 		}
 	}

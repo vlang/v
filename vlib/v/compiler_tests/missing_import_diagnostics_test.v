@@ -219,6 +219,25 @@ fn test_removed_modules_directory_reports_the_move_it_needs() {
 	assert foreign.output.contains('cannot import module "stranger" (not found)'), foreign.output
 	assert !foreign.output.contains(hint), foreign.output
 
+	// The marker keeps an ancestor's legacy modules outside this project. The
+	// hint must stop with the module search, even when there is no local v.mod.
+	boundary_parent := os.join_path(root, 'boundary_parent')
+	write_modules_layout_module(boundary_parent, os.join_path('modules', 'helper'), 'helper')
+	os.write_file(os.join_path(boundary_parent, 'v.mod'), "Module { name: 'parent' }\n") or {
+		panic(err)
+	}
+	boundary_project := os.join_path(boundary_parent, 'project')
+	write_modules_layout_main(boundary_project, 'helper')
+	boundary_main := os.join_path(boundary_project, 'main.v')
+	before_boundary := os.execute('${v3_bin} -nocache -o ${output} ${os.quoted_path(boundary_main)}')
+	assert before_boundary.exit_code != 0, before_boundary.output
+	assert before_boundary.output.contains(hint), before_boundary.output
+	os.write_file(os.join_path(boundary_project, '.v.mod.stop'), '') or { panic(err) }
+	within_boundary := os.execute('${v3_bin} -nocache -o ${output} ${os.quoted_path(boundary_main)}')
+	assert within_boundary.exit_code != 0, within_boundary.output
+	assert within_boundary.output.contains('cannot import module "helper" (not found)'), within_boundary.output
+	assert !within_boundary.output.contains(hint), within_boundary.output
+
 	// A link in the legacy source path makes an otherwise correct `mv` operate
 	// inside an external directory. Report the link as a blocker without giving
 	// the user a command that would move the external module.

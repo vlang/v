@@ -25,9 +25,9 @@ fn run() {
 	file := fs.add_file('local_types.v', source.len)
 	p.s.init(file, source)
 	p.index_local_type_declarations()
-	outer := (source.index('fn run() ') or { panic(err) }) + 'fn run() '.len
-	inner := (source.index('if true ') or { panic(err) }) + 'if true '.len
-	callback := (source.index('fn () ') or { panic(err) }) + 'fn () '.len
+	outer := (source.index('fn run() ') or { panic('missing function marker') }) + 'fn run() '.len
+	inner := (source.index('if true ') or { panic('missing branch marker') }) + 'if true '.len
+	callback := (source.index('fn () ') or { panic('missing callback marker') }) + 'fn () '.len
 	assert p.local_type_decls_by_block.len == 3
 	assert p.local_type_decls_by_block[outer] == ['Outer']
 	assert p.local_type_decls_by_block[inner] == ['Inner']

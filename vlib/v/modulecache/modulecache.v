@@ -270,7 +270,10 @@ fn source_signature_details(source_files []string, build_pseudo_values string, v
 		}
 		for lookup_path in vml_lookup_paths {
 			resolved := os.real_path(lookup_path)
-			metadata := optional_file_metadata_signature(lookup_path)
+			metadata := file_change_signature(lookup_path)
+			if metadata.len == 0 {
+				cacheable = false
+			}
 			validation << 'vmllookup=${lookup_path}\t${resolved}\t${metadata}'
 			hash = hash_bytes(hash, [u8(0xf7)])
 			hash = hash_bytes(hash, lookup_path.bytes())
@@ -279,7 +282,10 @@ fn source_signature_details(source_files []string, build_pseudo_values string, v
 			hash = hash_bytes(hash, [u8(0xff)])
 		}
 		for candidate in vml_lookup_candidates {
-			metadata := optional_file_metadata_signature(candidate)
+			metadata := file_change_signature(candidate)
+			if metadata.len == 0 {
+				cacheable = false
+			}
 			validation << 'vmlcandidate=${candidate}\t${metadata}'
 			hash = hash_bytes(hash, [u8(0xf6)])
 			hash = hash_bytes(hash, candidate.bytes())
@@ -288,8 +294,14 @@ fn source_signature_details(source_files []string, build_pseudo_values string, v
 			hash = hash_bytes(hash, [u8(0xff)])
 		}
 		for vml_path in vml_paths {
+			// Record the file state before reading the bytes the signature hashes, so an
+			// edit in between leaves an older record that the next validation rejects.
+			vml_signature := file_change_signature(vml_path)
+			if vml_signature.len == 0 {
+				cacheable = false
+			}
 			vml_content := os.read_bytes(vml_path) or { return SourceSignatureDetails{} }
-			validation << 'vml=${vml_path}\t${file_metadata_signature(vml_path)}'
+			validation << 'vml=${vml_path}\t${vml_signature}'
 			hash = hash_bytes(hash, [u8(0xf8)])
 			hash = hash_bytes(hash, vml_path.bytes())
 			hash = hash_bytes(hash, [u8(0)])
@@ -310,9 +322,12 @@ fn source_signature_details(source_files []string, build_pseudo_values string, v
 		if uses_vmod_hash || source_uses_pseudo(source, ['@VMODROOT', '@VMOD_FILE', '@VROOT']) {
 			root, vmod_file := signature_vmod_root(file)
 			vmod_metadata := if vmod_file.len > 0 {
-				file_metadata_signature(vmod_file)
+				file_change_signature(vmod_file)
 			} else {
 				''
+			}
+			if vmod_file.len > 0 && vmod_metadata.len == 0 {
+				cacheable = false
 			}
 			validation << 'vmod=${path}\t${root}\t${vmod_file}\t${vmod_metadata}'
 			hash = hash_bytes(hash, [u8(0xfc)])
@@ -748,7 +763,7 @@ fn valid_cached_source_signature(content string, metadata string, build_pseudo_v
 		if line.starts_with('vml=') {
 			parts := line['vml='.len..].split('\t')
 			if parts.len != 2 || parts[0].len == 0
-				|| file_metadata_signature(parts[0]) != parts[1] {
+				|| !file_change_signature_matches(parts[0], parts[1]) {
 				return none
 			}
 			continue
@@ -756,7 +771,7 @@ fn valid_cached_source_signature(content string, metadata string, build_pseudo_v
 		if line.starts_with('vmlcandidate=') {
 			parts := line['vmlcandidate='.len..].split('\t')
 			if parts.len != 2 || parts[0].len == 0
-				|| optional_file_metadata_signature(parts[0]) != parts[1] {
+				|| !file_change_signature_matches(parts[0], parts[1]) {
 				return none
 			}
 			continue
@@ -764,7 +779,7 @@ fn valid_cached_source_signature(content string, metadata string, build_pseudo_v
 		if line.starts_with('vmllookup=') {
 			parts := line['vmllookup='.len..].split('\t')
 			if parts.len != 3 || parts[0].len == 0 || os.real_path(parts[0]) != parts[1]
-				|| optional_file_metadata_signature(parts[0]) != parts[2] {
+				|| !file_change_signature_matches(parts[0], parts[2]) {
 				return none
 			}
 			continue
@@ -775,12 +790,14 @@ fn valid_cached_source_signature(content string, metadata string, build_pseudo_v
 				return none
 			}
 			root, vmod_file := signature_vmod_root(parts[0])
-			vmod_metadata := if vmod_file.len > 0 {
-				file_metadata_signature(vmod_file)
-			} else {
-				''
+			if root != parts[1] || vmod_file != parts[2] {
+				return none
 			}
-			if root != parts[1] || vmod_file != parts[2] || vmod_metadata != parts[3] {
+			if vmod_file.len > 0 {
+				if !file_change_signature_matches(vmod_file, parts[3]) {
+					return none
+				}
+			} else if parts[3] != '' {
 				return none
 			}
 			continue
@@ -835,18 +852,10 @@ fn source_digest_map(source_files []string, digests []string) map[string]string 
 }
 
 fn signature_vmod_root(source_file string) (string, string) {
-	mut dir := os.dir(os.real_path(source_file))
-	original_dir := dir
-	for dir.len > 0 {
-		vmod_file := os.join_path_single(dir, 'v.mod')
-		if os.exists(vmod_file) {
-			return os.real_path(dir), os.real_path(vmod_file)
-		}
-		// `os.parent_dir` stops at a filesystem root; `os.dir` would escape a bare
-		// Windows drive into the relative `.` and match the current directory.
-		dir = os.parent_dir(dir)
+	if root := util.nearest_vmod_root(source_file) {
+		return root, os.real_path(os.join_path_single(root, 'v.mod'))
 	}
-	return os.real_path(original_dir), ''
+	return os.dir(os.real_path(source_file)), ''
 }
 
 fn signature_vmod_hash(root string, vmod_file string) string {
@@ -1079,9 +1088,31 @@ fn resolve_signature_vml_path(path string, source_file string) (string, []string
 	return direct, []string{}
 }
 
-fn optional_file_metadata_signature(path string) string {
+// file_change_signature returns a value that changes whenever the file at `path`
+// changes, appears or disappears: its metadata when the file system reports one,
+// a digest of its contents when it does not, and `missing` when nothing exists at
+// `path`. It is empty for an existing path that can be neither described nor
+// read, which a cached signature must not depend on.
+fn file_change_signature(path string) string {
 	metadata := file_metadata_signature(path)
-	return if metadata.len > 0 { metadata } else { 'missing' }
+	if metadata.len > 0 {
+		return metadata
+	}
+	if !os.exists(path) {
+		return 'missing'
+	}
+	content := file_signature(path)
+	if content.len == 0 {
+		return ''
+	}
+	return 'content:${content}'
+}
+
+// file_change_signature_matches reports whether the file at `path` is unchanged
+// since `signature` was recorded by file_change_signature.
+fn file_change_signature_matches(path string, signature string) bool {
+	current := file_change_signature(path)
+	return current.len > 0 && current == signature
 }
 
 fn signature_name_char(c u8) bool {
@@ -6155,14 +6186,8 @@ fn cached_flag_path_is_relative(path string) bool {
 }
 
 fn cached_vmod_root(source_file string) string {
-	mut dir := os.dir(os.real_path(source_file))
-	for dir.len > 0 {
-		if os.is_file(os.join_path_single(dir, 'v.mod')) {
-			return dir
-		}
-		// `os.parent_dir` stops at a filesystem root; `os.dir` would escape a bare
-		// Windows drive into the relative `.` and match the current directory.
-		dir = os.parent_dir(dir)
+	if root := util.nearest_vmod_root(source_file) {
+		return root
 	}
 	return os.dir(os.real_path(source_file))
 }

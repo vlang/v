@@ -2,6 +2,19 @@ module types
 
 import v.flat
 
+fn test_interface_fixed_array_callback_lengths_resolve_constants() {
+	mut a := flat.FlatAst.new()
+	mut tc := TypeChecker.new(&a)
+	tc.const_exprs['n'] = a.add_node(flat.Node{ kind: .int_literal, value: '2' })
+	int_type := Type(int_)
+	symbolic := Type(ArrayFixed{ elem_type: int_type, len_expr: 'n' })
+	concrete := Type(ArrayFixed{ elem_type: int_type, len: 2 })
+	different := Type(ArrayFixed{ elem_type: int_type, len: 3 })
+	assert tc.fn_type_callconv_compatible(symbolic, concrete)
+	assert tc.fn_type_callconv_compatible(concrete, symbolic)
+	assert !tc.fn_type_callconv_compatible(symbolic, different)
+}
+
 fn test_empty_interface_impl_names_deduplicate_builtin_aliases() {
 	mut a := flat.FlatAst.new()
 	mut tc := TypeChecker.new(&a)
@@ -147,4 +160,41 @@ fn test_interface_metadata_name_keeps_same_named_structs_out_of_interfaces() {
 	assert tc.interface_metadata_name('Reader') == 'Reader'
 	// A name that is not a known type still resolves through its short name.
 	assert tc.interface_metadata_name('iomod.Reader') == 'io.Reader'
+}
+
+fn test_interface_metadata_name_keeps_composite_types_out_of_interfaces() {
+	mut a := flat.FlatAst.new()
+	mut tc := TypeChecker.new(&a)
+	tc.interface_names['baz.MyData'] = true
+	tc.structs['bar.MyData'] = []StructField{}
+	// https://github.com/vlang/v/issues/28952
+	// The text after the last `.` of an array, option, pointer or function type is
+	// its element type, not the name of a same-named interface in another module.
+	for name in ['[]bar.MyData', '?bar.MyData', '&bar.MyData', '[2]bar.MyData', '[][]bar.MyData',
+		'?[]bar.MyData', '[]baz.MyData', 'map[string]bar.MyData', 'fn (bar.MyData) bar.MyData'] {
+		assert tc.interface_metadata_name(name) !in tc.interface_names, name
+	}
+	assert tc.interface_metadata_name('baz.MyData') == 'baz.MyData'
+}
+
+fn test_undeclared_ierror_does_not_make_every_type_an_error_payload() {
+	// https://github.com/vlang/v/issues/28886
+	// With `-no-builtin` no `IError` is declared. A missing interface has no
+	// requirements, but that must not turn plain values into error payloads.
+	mut a := flat.FlatAst.new()
+	mut tc := TypeChecker.new(&a)
+	tc.enum_names['Foo'] = true
+	assert !tc.type_compatible_with_ierror_payload(Type(Enum{
+		name: 'Foo'
+	}))
+	assert !tc.type_compatible_with_ierror_payload(Type(int_))
+	assert !tc.named_type_compatible_with_ierror('Foo')
+	// A module-local `IError` is not the builtin one, even when it is the only
+	// interface with that short name.
+	tc.interface_names['pkg.IError'] = true
+	assert !tc.type_compatible_with_ierror_payload(Type(Enum{
+		name: 'Foo'
+	}))
+	assert !tc.type_compatible_with_ierror_payload(Type(int_))
+	assert !tc.named_type_compatible_with_ierror('Foo')
 }

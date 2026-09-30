@@ -818,7 +818,6 @@ fn (mut tc TypeChecker) check_semantics_scoped_serial() {
 	tc.checked_const_names = map[string]bool{}
 	tc.check_import_diagnostics()
 	tc.check_duplicate_fn_declarations()
-	tc.check_deprecated_byte_types()
 	tc.install_type_cache_overlay()
 	tc.defer_ierror_gating = tc.diagnostic_files.len > 0
 	tc.selected_file_called_fns = map[string]bool{}
@@ -1037,11 +1036,10 @@ fn (mut tc TypeChecker) check_semantics_parallel() bool {
 	tc.check_duplicate_fn_declarations()
 	tc.timing_profile('  [ttime]   ck dup fns       ${f64(presw.elapsed().microseconds()) / 1000.0:7.2f} ms')
 	presw.restart()
-	tc.check_deprecated_byte_types()
 	// Freeze the warm post-collect type cache as the shared read-only base
 	// for every worker thread and the master itself via a private overlay.
 	tc.install_type_cache_overlay()
-	tc.timing_profile('  [ttime]   ck byte+overlay  ${f64(presw.elapsed().microseconds()) / 1000.0:7.2f} ms')
+	tc.timing_profile('  [ttime]   ck overlay       ${f64(presw.elapsed().microseconds()) / 1000.0:7.2f} ms')
 	// Invalid-IError-return diagnostics are gated to functions reachable
 	// from the selected files. Most successful compiles never produce a
 	// candidate, so defer the call-graph walk until after checking and only
@@ -1113,6 +1111,9 @@ fn (mut tc TypeChecker) collect_parallel_check_items() []CheckWorkItem {
 	tc.cur_module = ''
 	tc.cur_file = ''
 	blocking_import_files := tc.blocking_import_error_files()
+	// A library body is trusted, even an open generic one: it is checked for its
+	// own type parameters, never for the types a program passes to it.
+	library_bodies_trusted := tc.selected_files_only()
 	mut items := []CheckWorkItem{}
 	// Fn subtrees are contiguous: the fn_decl at index i owns exactly the node
 	// range (previous top-level node, i], so the span doubles as the cost
@@ -1131,6 +1132,10 @@ fn (mut tc TypeChecker) collect_parallel_check_items() []CheckWorkItem {
 			}
 			.fn_decl {
 				if blocking_import_files[tc.cur_file] {
+					prev_tl = i
+					continue
+				}
+				if library_bodies_trusted && !tc.diagnostic_files[tc.cur_file] {
 					prev_tl = i
 					continue
 				}
@@ -1154,6 +1159,15 @@ fn (mut tc TypeChecker) collect_parallel_check_items() []CheckWorkItem {
 		prev_tl = i
 	}
 	return items
+}
+
+// selected_files_only reports whether diagnostics are wanted for the selected
+// files alone, as a client that shows no others asks with
+// V_CHECK_SELECTED_FILES_ONLY. Library code outside them is then trusted: its
+// concrete bodies and its signatures, which could only report on themselves,
+// are left unchecked.
+fn (tc &TypeChecker) selected_files_only() bool {
+	return tc.diagnostic_files.len > 0 && os.getenv('V_CHECK_SELECTED_FILES_ONLY') != ''
 }
 
 // check_top_level_declarations runs every declaration-level check (type
@@ -1185,15 +1199,20 @@ fn (mut tc TypeChecker) check_top_level_declaration_signatures() {
 	tc.check_top_level_declarations_filtered(false, true)
 }
 
-fn (mut tc TypeChecker) check_top_level_declarations_filtered(do_values bool, do_signatures bool) {
+fn (mut tc TypeChecker) check_top_level_declarations_filtered(do_values bool, all_signatures bool) {
 	tc.cur_module = ''
 	tc.cur_file = ''
 	blocking_import_files := tc.blocking_import_error_files()
+	selected_files_only := tc.selected_files_only()
 	mut skip_file_semantics := false
+	mut do_signatures := all_signatures
 	for i in tc.top_level_idx {
 		node := tc.a.nodes[i]
 		if node.kind == .file {
 			skip_file_semantics = blocking_import_files[node.value]
+			// A signature check only reports on its own declaration.
+			do_signatures = all_signatures
+				&& (!selected_files_only || tc.diagnostic_files[node.value])
 		} else if skip_file_semantics && node.kind != .module_decl {
 			continue
 		}
@@ -1284,7 +1303,8 @@ fn (mut tc TypeChecker) check_top_level_declarations_filtered(do_values bool, do
 					tc.check_global_decl_semantics(flat.NodeId(i), node)
 				}
 				if do_values {
-					if !tc.enable_globals && !tc.has_globals_files[tc.cur_file] {
+					if !tc.enable_globals && !tc.has_globals_files[tc.cur_file]
+						&& !tc.node_is_from_translated_file(node) {
 						tc.record_error_at(.duplicate_decl, 'use `v -enable-globals ...` to enable globals', flat.NodeId(i), tc.source_line_declaration_pos(flat.NodeId(i)))
 					}
 					tc.check_const_global_initializers(node)
@@ -2452,8 +2472,7 @@ fn duplicate_match_case_int(message string) ?int {
 fn type_errors_equal(a TypeError, b TypeError) bool {
 	if a.node == b.node && a.kind == b.kind && a.msg == b.msg
 		&& (is_inline_asm_instruction_error(a.msg)
-			|| a.msg.starts_with('cannot embed non-struct `')
-			|| a.msg == 'byte is deprecated, use u8 instead') {
+			|| a.msg.starts_with('cannot embed non-struct `')) {
 		return a.pos == b.pos
 	}
 	return a.node == b.node && a.kind == b.kind && a.msg == b.msg
@@ -2785,6 +2804,7 @@ fn (mut tc TypeChecker) check_fn_decl_semantics(fn_idx int, node flat.Node, file
 				tc.record_unused_fn_vars(node)
 				tc.record_unused_fn_params(node)
 				tc.record_unused_fn_labels(node)
+				tc.check_asm_goto_lock_scopes(node)
 			}
 			tc.check_fn_bare_generic_fntype_params(node)
 		}
@@ -3710,6 +3730,102 @@ fn (mut tc TypeChecker) record_unused_fn_labels(node flat.Node) {
 			tc.record_warning_at(.unknown_ident, 'label `${label.value}` defined and not used', label_id, tc.a.node(label_id).pos)
 		}
 	}
+}
+
+struct AsmGotoLockScan {
+mut:
+	label_scopes    map[string][]int
+	asm_gotos       []flat.NodeId
+	asm_goto_scopes map[int][]int
+}
+
+// check_asm_goto_lock_scopes reports an `asm goto` whose target label sits in a
+// different `lock`/`rlock` scope than the block itself. The C backend cannot lower a
+// jump that enters or leaves a lock scope (the scope's unlock/cleanup would be
+// skipped), so it otherwise emits an `#error` into the generated C with no V source
+// position; this turns that into a positioned compiler diagnostic.
+fn (mut tc TypeChecker) check_asm_goto_lock_scopes(node flat.Node) {
+	mut scan := AsmGotoLockScan{}
+	for i in 0 .. node.children_count {
+		child_id := tc.a.child(&node, i)
+		if tc.a.node(child_id).kind != .param {
+			tc.collect_asm_goto_lock_scopes(child_id, []int{}, mut scan)
+		}
+	}
+	tc.report_asm_goto_lock_crossings(scan)
+}
+
+// report_asm_goto_lock_crossings emits a diagnostic for every collected `asm goto`
+// whose target label resolves to a different `lock`/`rlock` scope path than the
+// block. A target not declared in this function scope resolves to the empty path,
+// matching the C backend (`goto_label_lock_scopes[label] or { [] }`).
+fn (mut tc TypeChecker) report_asm_goto_lock_crossings(scan AsmGotoLockScan) {
+	for asm_id in scan.asm_gotos {
+		asm_node := tc.a.node(asm_id)
+		active := scan.asm_goto_scopes[int(asm_id)]
+		for target in inline_asm_goto_labels(asm_node.value) {
+			target_scope := scan.label_scopes[target] or { []int{} }
+			if !asm_goto_lock_scopes_equal(target_scope, active) {
+				tc.record_error_at(.compile_error, asm_goto_lock_scope_error(target), asm_id,
+					asm_node.pos)
+				break
+			}
+		}
+	}
+}
+
+fn asm_goto_lock_scope_error(target string) string {
+	return '`asm goto` cannot jump to label `${target}`: it is in a different `lock`/`rlock` scope, and the C backend cannot lower a jump that enters or leaves a lock scope'
+}
+
+// collect_asm_goto_lock_scopes walks a function body, recording the `lock`/`rlock`
+// scope path (a stack of enclosing `lock_expr` node ids) at every label declaration
+// and at every `asm goto` block, so report_asm_goto_lock_crossings can compare them.
+fn (mut tc TypeChecker) collect_asm_goto_lock_scopes(id flat.NodeId, scopes []int, mut scan AsmGotoLockScan) {
+	node := tc.a.node(id)
+	if node.kind in [.fn_decl, .c_fn_decl, .fn_literal] {
+		// A nested function or closure is lowered to its own C function with a
+		// fresh lock stack (`collect_fn_prelude_scan` runs per function), so scan
+		// and report its body independently against an empty scope path -- the
+		// enclosing function's locks are not active inside it.
+		mut nested := AsmGotoLockScan{}
+		for i in 0 .. node.children_count {
+			child_id := tc.a.child(node, i)
+			if tc.a.node(child_id).kind != .param {
+				tc.collect_asm_goto_lock_scopes(child_id, []int{}, mut nested)
+			}
+		}
+		tc.report_asm_goto_lock_crossings(nested)
+		return
+	}
+	mut cur := scopes.clone()
+	// `gen_lock_enter` skips a `lock {}` / `rlock {}` with no lock objects
+	// (`lock_count = children_count - 1 <= 0`), so it never becomes an active
+	// scope at runtime -- do not treat it as one here either.
+	if node.kind == .lock_expr && node.children_count > 1 {
+		cur << int(id)
+	}
+	if node.kind == .label_stmt && node.value.len > 0 {
+		scan.label_scopes[node.value] = cur.clone()
+	} else if node.kind == .asm_stmt && inline_asm_goto_labels(node.value).len > 0 {
+		scan.asm_gotos << id
+		scan.asm_goto_scopes[int(id)] = cur.clone()
+	}
+	for i in 0 .. node.children_count {
+		tc.collect_asm_goto_lock_scopes(tc.a.child(node, i), cur, mut scan)
+	}
+}
+
+fn asm_goto_lock_scopes_equal(a []int, b []int) bool {
+	if a.len != b.len {
+		return false
+	}
+	for i, scope in a {
+		if b[i] != scope {
+			return false
+		}
+	}
+	return true
 }
 
 fn (tc &TypeChecker) fn_body_uses_ident(node flat.Node, name string) bool {

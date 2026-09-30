@@ -1,3 +1,4 @@
+@[has_globals]
 module builtin
 
 fn C.GC_INIT()
@@ -42,9 +43,11 @@ fn v3_gcboehm_runtime_init() {
 	// registers the offset that header adds.
 	C.GC_REGISTER_DISPLACEMENT(sizeof(voidptr))
 	$if windows {
-		// Leave a host collector's abort handler alone. Installed after GC_INIT,
-		// because the setter takes Boehm's allocator lock.
-		if !host_initialized_gc {
+		// Leave a host collector's abort handler alone, and never install a callback
+		// from a DLL that can be unloaded. The setter takes Boehm's allocator lock,
+		// so call it only after GC_INIT.
+		if !host_initialized_gc
+			&& is_address_in_executable(voidptr(&gc_boehm_default_abort_func)) {
 			gc_report_fatal_errors_on_stderr()
 		}
 	}

@@ -62,7 +62,7 @@ fn run_closure_skip_unused_case(tmp_dir string, mode string) {
 	source_path := os.join_path(tmp_dir, 'closure_skip_unused_${mode}.v')
 	binary_path := os.join_path(tmp_dir, 'closure_skip_unused_${mode}')
 	os.write_file(source_path, closure_skip_unused_source()) or { panic(err) }
-	compile_cmd := '${os.quoted_path(vexe)} -skip-unused -gc ${mode} -o ${os.quoted_path(binary_path)} ${os.quoted_path(source_path)}'
+	compile_cmd := '${os.quoted_path(vexe)} -gc ${mode} -o ${os.quoted_path(binary_path)} ${os.quoted_path(source_path)}'
 	compile_res := os.execute(compile_cmd)
 	if mode != 'none' && compile_res.exit_code != 0 && missing_boehm_lib(compile_res.output) {
 		eprintln('skipping ${mode} closure skip-unused test: missing libgc')
