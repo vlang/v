@@ -273,6 +273,29 @@ fn test_multi_declarations_clear_only_lhs_markers_after_reading_rhs_bindings() {
 	}
 }
 
+fn test_generated_fixed_guard_bindings_receive_durable_storage() {
+	for source in ['view', 'address', 'capture'] {
+		mut a := flat.FlatAst.new()
+		mut tc := types.TypeChecker.new(&a)
+		mut t := new_transformer(mut a, &tc, map[string]bool{})
+		if source == 'view' {
+			t.escaping_fixed_array_view_sources['values'] = true
+		} else if source == 'address' {
+			t.escaping_amp_sources['values'] = true
+		} else {
+			t.mut_fixed_array_capture_sources['values'] = true
+		}
+		value := t.make_ident('payload')
+		decls := t.make_guard_value_decls('values', value, '[2]int')
+		assert decls.len == 2
+		assert t.var_type('values') == '&[2]int'
+		assert t.heaped_amp_locals['values']
+		assert t.pointer_value_lvalues['values']
+		assert t.pointer_value_rvalues['values']
+		assert t.a.child_node(&t.a.nodes[int(decls[0])], 1).kind == .ident
+	}
+}
+
 fn test_fixed_array_reference_zero_argument_method_marks_receiver() {
 	mut a := flat.FlatAst.new()
 	mut tc := types.TypeChecker.new(&a)

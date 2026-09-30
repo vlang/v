@@ -1578,6 +1578,8 @@ reference to the separately allocated array header. Growing or reassigning that 
 the usual array slice rules and leaves the original fixed array's size unchanged.
 Immutable array-reference parameters, including each variadic argument, also borrow the
 original elements. These rules also apply to array-reference parameters declared through aliases.
+Fixed array values bound by an option, map, or array guard also receive durable storage when
+passed to a retaining array-reference parameter.
 Borrowing does not clone elements or require a `clone()` method.
 Explicitly destroying owned source elements invalidates views of those elements, as with other
 borrowed slices.

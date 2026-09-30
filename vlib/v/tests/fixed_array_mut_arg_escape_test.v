@@ -892,3 +892,51 @@ fn test_return_map_guards_preserve_inner_reference_and_outer_heap_bindings() {
 		assert *kept == expected
 	}
 }
+
+fn optional_fixed_guard_payload() ?[2]int {
+	return [241, 242]!
+}
+
+@[noinline]
+fn reference_from_generated_fixed_guard_binding(kind int) &[]int {
+	match kind {
+		0 {
+			if values := optional_fixed_guard_payload() {
+				return retain_immutable_array_reference(values)
+			}
+		}
+		1 {
+			payloads := {
+				'hit': [251, 252]!
+			}
+			if values := payloads['hit'] {
+				return retain_immutable_array_reference(values)
+			}
+		}
+		2 {
+			payloads := [[261, 262]!]
+			if values := payloads[0] {
+				return retain_immutable_array_reference(values)
+			}
+		}
+		else {
+			payloads := {
+				'hit': [271, 272]!
+			}
+			return if values := payloads['hit'] {
+				retain_immutable_array_reference(values)
+			} else {
+				panic('expected a guard payload')
+			}
+		}
+	}
+	panic('expected a guard payload')
+}
+
+fn test_generated_fixed_guard_bindings_keep_retained_views_alive() {
+	for kind, expected in [[241, 242], [251, 252], [261, 262], [271, 272]] {
+		kept := reference_from_generated_fixed_guard_binding(kind)
+		assert overwrite_stack() == 7
+		assert read_retained_optional_fixed_reference(kept) == expected
+	}
+}
