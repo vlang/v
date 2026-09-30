@@ -3930,6 +3930,9 @@ println(int(color)) // prints 1
 
 The enum type can be any integer type, but can be omitted, if it is `int`: `enum Color {`.
 
+An unqualified enum name or alias in a struct field's default resolves in the struct's module.
+An importing module's same-named enum does not change that default, including in fixed arrays.
+
 Enum match must be exhaustive or have an `else` branch.
 This ensures that if a new enum field is added, it's handled everywhere in the code.
 

@@ -9044,6 +9044,16 @@ fn (tc &TypeChecker) enum_has_field(enum_name string, field string) bool {
 
 // resolve_enum_name resolves resolve enum name information for types.
 fn (tc &TypeChecker) resolve_enum_name(name string) ?string {
+	qname := tc.qualify_name(name)
+	if qname in tc.enum_names {
+		return qname
+	}
+	// A module's enum or alias shadows a same-named program-module enum.
+	if qname != name {
+		if target := tc.resolve_enum_alias_target(qname) {
+			return target
+		}
+	}
 	if name in tc.enum_names {
 		return name
 	}
@@ -9057,10 +9067,6 @@ fn (tc &TypeChecker) resolve_enum_name(name string) ?string {
 		if shortened in tc.enum_names {
 			return shortened
 		}
-	}
-	qname := tc.qualify_name(name)
-	if qname in tc.enum_names {
-		return qname
 	}
 	if !name.contains('.') {
 		if resolved := tc.resolve_selective_import_type_symbol(name) {
