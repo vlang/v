@@ -5,7 +5,7 @@ const vsh_mode_v3_src = os.join_path(os.dir(os.dir(@FILE)), 'v.v')
 
 fn build_vsh_mode_v3(root string) string {
 	bin := os.join_path(root, 'v3_vsh_script_mode')
-	build := os.execute('${@VEXE} -gc none -path "${vsh_mode_vlib_dir}|@vlib|@vmodules" -o ${bin} ${vsh_mode_v3_src}')
+	build := os.execute('${os.quoted_path(@VEXE)} -gc none -path ${os.quoted_path('${vsh_mode_vlib_dir}|@vlib|@vmodules')} -o ${os.quoted_path(bin)} ${os.quoted_path(vsh_mode_v3_src)}')
 	assert build.exit_code == 0, build.output
 	return bin
 }
@@ -21,18 +21,18 @@ fn run_vsh_script(name string, source string) os.Result {
 	script := os.join_path(root, '${name}.vsh')
 	os.write_file(script, source) or { panic(err) }
 	// `-silent` keeps the driver's benchmark report out of the script's output.
-	return os.execute('${v3_bin} -silent ${script}')
+	return os.execute('${os.quoted_path(v3_bin)} -silent ${os.quoted_path(script)}')
 }
 
 // A `.vsh` script gets `import os` implicitly, and every `os` function, generic
 // function and constant is usable without the module prefix.
 fn test_vsh_script_uses_os_symbols_unqualified() {
-	result := run_vsh_script('script', "dir := join_path(temp_dir(), 'v3_vsh_script_mode_data')
-mkdir_all(dir)!
+	result := run_vsh_script('script', "script_dir := join_path(temp_dir(), 'v3_vsh_script_mode_data')
+mkdir_all(script_dir)!
 defer {
-	rmdir_all(dir) or {}
+	rmdir_all(script_dir) or {}
 }
-payload := join_path(dir, 'payload.bin')
+payload := join_path(script_dir, 'payload.bin')
 write_file_array(payload, [u8(1), 2, 3])!
 println(read_file_array[u8](payload))
 println(exists(payload))
@@ -68,7 +68,7 @@ pub fn message() string {
 
 println(helper.message())
 ') or { panic(err) }
-	result := os.execute('${v3_bin} -silent ${script}')
+	result := os.execute('${os.quoted_path(v3_bin)} -silent ${os.quoted_path(script)}')
 	assert result.exit_code == 0, result.output
 	assert result.output.trim_space() == 'from helper', result.output
 }
@@ -102,7 +102,7 @@ callback()
 // (e.g. from a `#!/usr/bin/env -S v -raw-vsh-tmp-prefix tmp` shebang). Without `run`,
 // the executable is kept as `<prefix>.<script name>` and reused, like a `.vsh` script.
 fn test_raw_vsh_tmp_prefix_runs_extensionless_script() {
-	root := os.join_path(os.vtmp_dir(), 'v3_vsh_raw_prefix_${os.getpid()}')
+	root := os.join_path(os.vtmp_dir(), 'v3 vsh raw prefix ${os.getpid()}')
 	os.rmdir_all(root) or {}
 	os.mkdir_all(root) or { panic(err) }
 	defer {
@@ -115,14 +115,14 @@ println(file_name(executable()))
 println(arguments()[1..])
 ') or { panic(err) }
 	kept_bin := os.join_path(root, 'tmp.myscript')
-	first := os.execute('${v3_bin} -silent -raw-vsh-tmp-prefix tmp ${script} first')
+	first := os.execute('${os.quoted_path(v3_bin)} -silent -raw-vsh-tmp-prefix tmp ${os.quoted_path(script)} first')
 	assert first.exit_code == 0, first.output
 	assert first.output.split_into_lines() == ['tmp.myscript', "['first']"], first.output
 	assert os.is_file(kept_bin)
 	// An unchanged script reuses the kept executable.
 	cache_stamp := os.file_last_mod_unix(kept_bin) + 3600
 	os.utime(kept_bin, cache_stamp, cache_stamp) or { panic(err) }
-	cached := os.execute('${v3_bin} -silent -raw-vsh-tmp-prefix tmp ${script} cached')
+	cached := os.execute('${os.quoted_path(v3_bin)} -silent -raw-vsh-tmp-prefix tmp ${os.quoted_path(script)} cached')
 	assert cached.exit_code == 0, cached.output
 	assert cached.output.split_into_lines() == ['tmp.myscript', "['cached']"], cached.output
 	assert os.file_last_mod_unix(kept_bin) == cache_stamp
@@ -130,7 +130,7 @@ println(arguments()[1..])
 	os.write_file(script, "println('rebuilt')
 ") or { panic(err) }
 	os.utime(script, cache_stamp + 60, cache_stamp + 60) or { panic(err) }
-	rebuilt := os.execute('${v3_bin} -silent -raw-vsh-tmp-prefix tmp ${script}')
+	rebuilt := os.execute('${os.quoted_path(v3_bin)} -silent -raw-vsh-tmp-prefix tmp ${os.quoted_path(script)}')
 	assert rebuilt.exit_code == 0, rebuilt.output
 	assert rebuilt.output == 'rebuilt\n', rebuilt.output
 	assert os.file_last_mod_unix(kept_bin) != cache_stamp
@@ -139,14 +139,14 @@ println(file_name(executable()))
 println(arguments()[1..])
 ') or { panic(err) }
 	os.rm(kept_bin) or { panic(err) }
-	result := os.execute('${v3_bin} -silent -raw-vsh-tmp-prefix tmp run ${script} third')
+	result := os.execute('${os.quoted_path(v3_bin)} -silent -raw-vsh-tmp-prefix tmp run ${os.quoted_path(script)} third')
 	assert result.exit_code == 0, result.output
 	assert result.output.split_into_lines() == ['tmp.myscript', "['third']"], result.output
 	assert !os.exists(kept_bin)
-	listed := os.execute('${v3_bin} -silent -print-v-files -raw-vsh-tmp-prefix tmp ${script}')
+	listed := os.execute('${os.quoted_path(v3_bin)} -silent -print-v-files -raw-vsh-tmp-prefix tmp ${os.quoted_path(script)}')
 	assert listed.exit_code == 0, listed.output
 	assert os.real_path(script) in listed.output.split_into_lines(), listed.output
-	missing := os.execute('${v3_bin} -raw-vsh-tmp-prefix')
+	missing := os.execute('${os.quoted_path(v3_bin)} -raw-vsh-tmp-prefix')
 	assert missing.exit_code != 0
 	assert missing.output.contains('option `-raw-vsh-tmp-prefix` requires a value'), missing.output
 }
