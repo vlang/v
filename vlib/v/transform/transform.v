@@ -8800,6 +8800,16 @@ fn (mut t Transformer) scan_escape_pass(id flat.NodeId, mut amp_ptrs map[string]
 			}
 		}
 	}
+	if node.kind == .infix && node.op == .left_shift && node.children_count == 2
+		&& t.escape_append_target_is_array(t.a.child(&node, 0)) {
+		// `vals << &char(&num)`: the array keeps the appended address, and can outlive this
+		// stack frame (a `mut` parameter, a field, a global, a returned array).
+		rhs_id := t.a.child(&node, 1)
+		t.collect_return_escape_idents(rhs_id, mut returned)
+		for source_name in t.escape_aggregate_address_sources(rhs_id, amp_sources, ptr_aliases) {
+			t.escaping_amp_sources[source_name] = true
+		}
+	}
 	if node.kind == .spawn_expr {
 		t.mark_spawn_argument_address_escapes(node, amp_sources, ptr_aliases, local_stack_names)
 	}
@@ -9009,6 +9019,17 @@ fn (t &Transformer) escape_selector_assign_retains_value(lhs_id flat.NodeId, amp
 		return false
 	}
 	return !t.escape_address_indirect_base_is_stack_backed(root_id, amp_ptrs, ptr_aliases)
+}
+
+// escape_append_target_is_array reports whether `lhs << value` appends to a dynamic array.
+fn (t &Transformer) escape_append_target_is_array(lhs_id flat.NodeId) bool {
+	mut typ := trimmed_transform_text(t.address_expr_type_name(lhs_id))
+	for prefix in ['mut ', 'shared ', '&'] {
+		for typ.starts_with(prefix) {
+			typ = trimmed_transform_text(typ[prefix.len..])
+		}
+	}
+	return trimmed_transform_text(t.normalize_type_alias(typ)).starts_with('[]')
 }
 
 fn (t &Transformer) escape_index_assign_retains_value(lhs_id flat.NodeId) bool {
@@ -15697,8 +15718,11 @@ fn (mut t Transformer) transform_decl_assign_stmt(id flat.NodeId, node flat.Node
 			t.warn_alloc(node, t.a.child(&node, 1), src.pos, 'local moved to the heap: a closure captures it mutably')
 			return t.heap_escaping_source_decl(node, src.value, inferred_typ)
 		}
+		// Every declaration of the name is moved: uses are rewritten by name, and sibling
+		// scopes (the branches of a `match`) can each declare it. A declaration already
+		// moved has a pointer type, which is not heapable.
 		if src.kind == .ident && src.value in t.escaping_amp_sources
-			&& src.value !in t.heaped_amp_locals && t.heapable_value_type(inferred_typ) {
+			&& t.heapable_value_type(inferred_typ) {
 			t.warn_alloc(node, t.a.child(&node, 1), src.pos, 'local moved to the heap: its address escapes')
 			return t.heap_escaping_source_decl(node, src.value, inferred_typ)
 		}
