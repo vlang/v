@@ -956,8 +956,8 @@ static INT connect_to_server(TlsContext *tls_ctx, LPWSTR host, INT port_number) 
 	WCHAR service_name[10];
 	int res = wsprintf(service_name, L"%d", port_number);
 
-	if(WSAConnectByNameW(Socket,connect_name, service_name, &local_address_length, 
-		&local_address, &remote_address_length, &remote_address, &tv, NULL) == FALSE) {
+	if(WSAConnectByNameW(Socket,connect_name, service_name, &local_address_length,
+		(SOCKADDR *)&local_address, &remote_address_length, (SOCKADDR *)&remote_address, &tv, NULL) == FALSE) {
 		INT err_code = WSAGetLastError();
 		vschannel_set_last_error(tls_ctx, err_code);
 		closesocket(Socket);
