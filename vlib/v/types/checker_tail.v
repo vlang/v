@@ -5119,6 +5119,15 @@ fn (mut tc TypeChecker) record_uninferred_generic_method_type(id flat.NodeId, no
 		tc.infer_generic_type_text_from_type(param_texts[param_idx], actual, generic_params, mut inferred)
 		tc.infer_generic_type_value_from_type(param_texts[param_idx], actual, generic_params, mut inferred_types)
 	}
+	// A type parameter that only the constraint of another one names, `T` of
+	// `[C Container[T], T Named]`, from the type bound to that one, as in a call
+	// of a function (see generic_compile_error_instantiation).
+	if generic_params.any(it !in inferred) {
+		decl_module := tc.fn_type_modules[info.name] or { tc.cur_module }
+		if decl := tc.visible_mutation_fn_decl(info.name, decl_module) {
+			tc.infer_type_params_from_constraints(tc.a.node(flat.NodeId(decl.idx)), mut inferred)
+		}
+	}
 	// The type parameters of the function being checked are bound. So are those
 	// that a check of its body gives the types of their constraints (see
 	// check_generic_fn_body_as): the type there may still name one of them, as

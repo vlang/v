@@ -44,7 +44,7 @@ const first_line = 28
 // same_with_methods).
 fn check_program(name string, source string) os.Result {
 	res := check_program_form(name, source)
-	same_with_methods(name, source, res, check_program_form)
+	same_with_methods(name, source, first_line, res, check_program_form)
 	return res
 }
 
@@ -64,7 +64,7 @@ fn check_program_form(name string, source string) os.Result {
 // function is checked in full.
 fn check_fixture(name string, source string) os.Result {
 	res := check_fixture_form(name, source)
-	same_with_methods(name, source, res, check_fixture_form)
+	same_with_methods(name, source, first_line, res, check_fixture_form)
 	return res
 }
 
@@ -83,18 +83,69 @@ fn check_fixture_form(name string, source string) os.Result {
 // functions written as methods of a struct without type parameters, whose own
 // type parameters have to behave as those of the functions, with their
 // constraints. It has to report the errors that `res` reports, where it moves
-// them (see method_form.MethodForm).
-fn same_with_methods(name string, source string, res os.Result, check fn (string, string) os.Result) {
-	form := method_form.of(source) or { return }
+// them (see method_form.MethodForm). `first` is the line of the checked file
+// where `source` starts. It returns false when `source` has no method form.
+fn same_with_methods(name string, source string, first int, res os.Result, check fn (string, string) os.Result) bool {
+	form := method_form.of(source) or { return false }
 	method_res := check('${name}_methods', form.source)
 	assert method_res.exit_code == res.exit_code, 'the method form of `${name}`:\n${method_res.output}'
-	difference := form.differences(error_lines(res.output), error_lines(method_res.output))
+	difference := form.differences(error_lines_from(res.output, first), error_lines_from(method_res.output,
+		first))
 	assert difference == '', 'the method form of `${name}`: ${difference}\n${method_res.output}'
+	return true
+}
+
+// check_whole checks `source`, a whole program without the prelude, and its
+// method form too (see same_with_methods).
+fn check_whole(name string, source string) os.Result {
+	res := check_whole_form(name, source)
+	checked := same_with_methods(name, source, 1, res, check_whole_form)
+	assert checked, '`${name}` declares no generic function'
+	return res
+}
+
+fn check_whole_form(name string, source string) os.Result {
+	dir := os.join_path(os.vtmp_dir(), 'v3_generic_constraints_whole_${name}_${os.getpid()}')
+	os.mkdir_all(dir) or { panic(err) }
+	defer {
+		os.rmdir_all(dir) or {}
+	}
+	path := os.join_path(dir, 'main.v')
+	os.write_file(path, source) or { panic(err) }
+	return os.execute('${os.quoted_path(@VEXE)} -new-compiler -check -nocolor ${os.quoted_path(path)}')
+}
+
+// run_program builds and runs `source`, a whole program without the prelude,
+// and its method form too, which has to print what the program prints.
+fn run_program(name string, source string) os.Result {
+	res := run_program_form(name, source)
+	form := method_form.of(source) or { panic('`${name}` declares no generic function') }
+	method_res := run_program_form('${name}_methods', form.source)
+	assert method_res.exit_code == res.exit_code, 'the method form of `${name}`:\n${method_res.output}'
+	assert method_res.output == res.output, 'the method form of `${name}`:\n${method_res.output}'
+	return res
+}
+
+fn run_program_form(name string, source string) os.Result {
+	dir := os.join_path(os.vtmp_dir(), 'v3_generic_constraints_run_${name}_${os.getpid()}')
+	os.mkdir_all(dir) or { panic(err) }
+	defer {
+		os.rmdir_all(dir) or {}
+	}
+	path := os.join_path(dir, 'main.v')
+	os.write_file(path, source) or { panic(err) }
+	return os.execute('${os.quoted_path(@VEXE)} -new-compiler run ${os.quoted_path(path)}')
 }
 
 // error_lines returns `line:col: message` for every error of a check output,
 // with the line counted from the program's own first line.
 fn error_lines(output string) []string {
+	return error_lines_from(output, first_line)
+}
+
+// error_lines_from returns `line:col: message` for every error of a check
+// output, with the line counted from the line `first` of the checked file.
+fn error_lines_from(output string, first int) []string {
 	mut lines := []string{}
 	for line in output.split_into_lines() {
 		if !line.contains(': error: ') {
@@ -104,7 +155,7 @@ fn error_lines(output string) []string {
 		if location.len < 3 {
 			continue
 		}
-		program_line := location[location.len - 2].int() - first_line + 1
+		program_line := location[location.len - 2].int() - first + 1
 		lines << '${program_line}:${location[location.len - 1]}: ${line.all_after(': error: ')}'
 	}
 	return lines
@@ -937,6 +988,159 @@ fn main() {
 	assert run.output.trim_space() == '1', run.output
 }
 
+// A method of a generic struct has the type parameters of its receiver and its
+// own ones, and is checked as a function with all of them is: `pair` as
+// `pair_fn`, `map` as `map_fn`. A call is checked against the constraints of its
+// own type parameters; the body can use on a value of one only what its
+// constraint declares; and it is checked as the body of a normal function only
+// when every type parameter has a constraint, those of the receiver too: that of
+// `Shelf[T Named]`, not that of `Query[T]`.
+fn test_a_method_of_a_generic_struct_is_checked_as_a_function_with_its_type_parameters() {
+	res := check_program('generic_receivers', "fn takes_int(n int) int {
+	return n
+}
+
+struct Shelf[T Named] {
+	items []T
+}
+
+fn (s Shelf[T]) pair[U Named](u U) string {
+	n := takes_int('s')
+	return s.items[0].name + u.name + u.greet() + n.str()
+}
+
+fn pair_fn[T Named, U Named](s Shelf[T], u U) string {
+	n := takes_int('s')
+	return s.items[0].name + u.name + u.greet() + n.str()
+}
+
+struct Query[T] {
+	items []T
+}
+
+fn (q Query[T]) map[U Named](f fn (T) U) []U {
+	n := takes_int('s')
+	println(n)
+	println(q.items.map(f(it).age))
+	return q.items.map(f(it))
+}
+
+fn map_fn[T, U Named](q Query[T], f fn (T) U) []U {
+	n := takes_int('s')
+	println(n)
+	println(q.items.map(f(it).age))
+	return q.items.map(f(it))
+}
+
+fn to_user(x int) User {
+	return User{
+		name: 'u'
+		age:  x
+	}
+}
+
+fn to_int(x int) int {
+	return x
+}
+
+fn main() {
+	s := Shelf[User]{
+		items: [User{
+			name: 'a'
+		}]
+	}
+	println(s.pair(User{ name: 'b' }))
+	println(pair_fn(s, User{ name: 'b' }))
+	println(s.pair(3))
+	println(pair_fn(s, 3))
+	println(s.pair[int](3))
+	println(pair_fn[User, int](s, 3))
+	q := Query[int]{
+		items: [1, 2]
+	}
+	println(q.map(to_user))
+	println(map_fn(q, to_user))
+	println(q.map(to_int))
+	println(map_fn(q, to_int))
+	println(q.map[int](to_int))
+	println(map_fn[int, int](q, to_int))
+}
+")
+	assert res.exit_code == 1, res.output
+	assert error_lines(res.output) == [
+		'10:17: cannot use `string` as `int` in argument 1 to `takes_int`',
+		'11:38: type `U` has no method `greet`: its constraint `Named` does not declare it',
+		'15:17: cannot use `string` as `int` in argument 1 to `takes_int`',
+		'16:38: type `U` has no method `greet`: its constraint `Named` does not declare it',
+		'26:28: type `U` has no field named `age`: its constraint `Named` does not declare it',
+		'33:28: type `U` has no field named `age`: its constraint `Named` does not declare it',
+		"56:17: `int` doesn't implement field `name` of interface `Named`",
+		"57:21: `int` doesn't implement field `name` of interface `Named`",
+		"58:17: `int` doesn't implement field `name` of interface `Named`",
+		"59:24: `int` doesn't implement field `name` of interface `Named`",
+		"65:10: `int` doesn't implement field `name` of interface `Named`",
+		"66:10: `int` doesn't implement field `name` of interface `Named`",
+		"67:16: `int` doesn't implement field `name` of interface `Named`",
+		"68:22: `int` doesn't implement field `name` of interface `Named`",
+	], res.output
+}
+
+fn test_a_method_of_a_generic_struct_with_constrained_type_parameters_builds_and_runs() {
+	res := run_program('generic_receivers_run', constraint_prelude + "struct Shelf[T Named] {
+	items []T
+}
+
+fn (s Shelf[T]) pair[U Named](u U) string {
+	return s.items[0].name + '+' + u.name
+}
+
+fn pair_fn[T Named, U Named](s Shelf[T], u U) string {
+	return s.items[0].name + '+' + u.name
+}
+
+struct Query[T] {
+	items []T
+}
+
+fn (q Query[T]) map[U Named](f fn (T) U) []U {
+	return q.items.map(f(it))
+}
+
+fn map_fn[T, U Named](q Query[T], f fn (T) U) []U {
+	return q.items.map(f(it))
+}
+
+fn to_user(x int) User {
+	return User{
+		name: 'u\${x}'
+		age:  x
+	}
+}
+
+fn main() {
+	s := Shelf[User]{
+		items: [User{
+			name: 'a'
+		}]
+	}
+	println(s.pair(Pet{ name: 'p' }))
+	println(pair_fn(s, Pet{ name: 'p' }))
+	println(s.pair[User](User{ name: 'b' }))
+	println(pair_fn[User, User](s, User{ name: 'b' }))
+	q := Query[int]{
+		items: [1, 2]
+	}
+	println(q.map(to_user).map(it.name))
+	println(map_fn(q, to_user).map(it.name))
+	println(q.map[User](to_user).map(it.age))
+	println(map_fn[int, User](q, to_user).map(it.age))
+}
+")
+	assert res.exit_code == 0, res.output
+	assert res.output.trim_space().split_into_lines() == ['a+p', 'a+p', 'a+b', 'a+b', "['u1', 'u2']",
+		"['u1', 'u2']", '[1, 2]', '[1, 2]'], res.output
+}
+
 fn test_a_local_of_type_t_can_use_what_the_constraint_declares() {
 	res := check_program('derived_valid', "fn total[T Named](a T, items []T) int {
 	x := a
@@ -1744,8 +1948,10 @@ fn main() {
 	assert error_lines(res.output) == ['2:11: `int` has no property `name`'], res.output
 }
 
-fn test_a_constraint_from_another_module_is_checked_at_the_call() {
-	dir := os.join_path(os.vtmp_dir(), 'v3_generic_constraints_modules_${os.getpid()}')
+// check_shapes checks a program of a module `shapes`, with its interface `Named`
+// and then `decls`, and a `main` of `body` that imports it.
+fn check_shapes(name string, decls string, body string) os.Result {
+	dir := os.join_path(os.vtmp_dir(), 'v3_generic_constraints_${name}_${os.getpid()}')
 	os.mkdir_all(os.join_path(dir, 'shapes')) or { panic(err) }
 	defer {
 		os.rmdir_all(dir) or {}
@@ -1756,13 +1962,10 @@ pub interface Named {
 	name string
 }
 
-pub fn longest[T Named](a T, b T) T {
-	return if a.name.len >= b.name.len { a } else { b }
-}
-') or {
+' + decls) or {
 		panic(err)
 	}
-	os.write_file(os.join_path(dir, 'main.v'), "module main
+	os.write_file(os.join_path(dir, 'main.v'), 'module main
 
 import shapes
 
@@ -1771,17 +1974,37 @@ struct City {
 }
 
 fn main() {
-	println(shapes.longest(City{ name: 'Lima' }, City{ name: 'Oslo' }).name)
-	println(shapes.longest(1, 2))
-}
-") or {
+' + body + '}
+') or {
 		panic(err)
 	}
 	// Several parser workers, as a machine with more cores runs it.
-	res := os.execute('cd ${os.quoted_path(dir)} && VJOBS=4 ${os.quoted_path(@VEXE)} -new-compiler -check -nocolor .')
+	return os.execute('cd ${os.quoted_path(dir)} && VJOBS=4 ${os.quoted_path(@VEXE)} -new-compiler -check -nocolor .')
+}
+
+fn test_a_constraint_from_another_module_is_checked_at_the_call() {
+	res := check_shapes('modules', 'pub fn longest[T Named](a T, b T) T {
+	return if a.name.len >= b.name.len { a } else { b }
+}
+',
+		"\tprintln(shapes.longest(City{ name: 'Lima' }, City{ name: 'Oslo' }).name)\n\tprintln(shapes.longest(1, 2))\n")
 	assert res.exit_code == 1, res.output
 	errors := res.output.split_into_lines().filter(it.contains(': error: '))
 	assert errors == ["main.v:11:25: error: `int` doesn't implement field `name` of interface `Named`"], res.output
+	// The method form: `longest` a method of a struct of `shapes`, with the same
+	// type parameter, and the same error at the same argument.
+	method_res := check_shapes('modules_methods', 'pub struct Host {}
+
+pub fn (h Host) longest[T Named](a T, b T) T {
+	return if a.name.len >= b.name.len { a } else { b }
+}
+',
+		"\th := shapes.Host{}\n\tprintln(h.longest(City{ name: 'Lima' }, City{ name: 'Oslo' }).name)\n\tprintln(h.longest(1, 2))\n")
+	assert method_res.exit_code == 1, method_res.output
+	method_errors := method_res.output.split_into_lines().filter(it.contains(': error: '))
+	assert method_errors == [
+		"main.v:12:20: error: `int` doesn't implement field `name` of interface `Named`",
+	], method_res.output
 }
 
 // A constraint can also be a set of types, declared with `constraint`: the
@@ -1916,13 +2139,7 @@ fn main() {
 }
 
 fn test_a_program_with_constraints_builds_and_runs() {
-	dir := os.join_path(os.vtmp_dir(), 'v3_generic_constraints_run_${os.getpid()}')
-	os.mkdir_all(dir) or { panic(err) }
-	defer {
-		os.rmdir_all(dir) or {}
-	}
-	path := os.join_path(dir, 'main.v')
-	os.write_file(path, constraint_prelude + "struct Box[T Named] {
+	res := run_program('run', constraint_prelude + "struct Box[T Named] {
 	item T
 }
 
@@ -1947,10 +2164,7 @@ fn main() {
 	println(double(1.25))
 	println(Box[User]{ item: u }.label())
 }
-") or {
-		panic(err)
-	}
-	res := os.execute('${os.quoted_path(@VEXE)} -new-compiler run ${os.quoted_path(path)}')
+")
 	assert res.exit_code == 0, res.output
 	assert res.output.trim_space().split_into_lines() == ['30', '42', '2.5', 'box of Alex'], res.output
 }
@@ -1959,26 +2173,19 @@ fn test_the_thousands_formatting_of_28797_takes_a_constraint() {
 	// vlang/v#28797 rejects the types that are not numbers with `$if T !in
 	// [...] { $compile_error(...) }`. With `[T Number]` in its place, its code
 	// builds and runs, and its examples and tests hold...
-	path := os.join_path(os.dir(@FILE), 'testdata', 'format_thousands_28797.v')
-	res := os.execute('${os.quoted_path(@VEXE)} -new-compiler run ${os.quoted_path(path)}')
+	source := os.read_file(os.join_path(os.dir(@FILE), 'testdata', 'format_thousands_28797.v')) or {
+		panic(err)
+	}
+	res := run_program('28797', source)
 	assert res.exit_code == 0, res.output
 	assert res.output.trim_space().ends_with('1.234.567.891.42'), res.output
 	// ... and a call with a string is reported where it is made, as the error of
 	// the constraint.
 	last := "\tprintln(format_thousands(1234567891.42, '.'))"
-	source := os.read_file(path) or { panic(err) }
 	call := source.split('\n').index(last) + 2
 	assert call > 1
-	dir := os.join_path(os.vtmp_dir(), 'v3_generic_constraints_28797_${os.getpid()}')
-	os.mkdir_all(dir) or { panic(err) }
-	defer {
-		os.rmdir_all(dir) or {}
-	}
-	misuse := os.join_path(dir, 'main.v')
-	os.write_file(misuse, source.replace(last, last + "\n\tprintln(format_thousands('1234', ','))")) or {
-		panic(err)
-	}
-	check := os.execute('${os.quoted_path(@VEXE)} -new-compiler -check -nocolor ${os.quoted_path(misuse)}')
+	check := check_whole('28797_misuse', source.replace(last, last +
+		"\n\tprintln(format_thousands('1234', ','))"))
 	assert check.exit_code != 0, check.output
 	errors := check.output.split_into_lines().filter(it.contains(': error: '))
 	assert errors.len == 1, check.output
@@ -2020,21 +2227,12 @@ fn main() {
 fn test_a_type_parameter_is_inferred_from_the_constraint_that_names_it() {
 	// `T` of `[C Container[T], T Named]` is the type of no parameter: a call
 	// binds it from the type of `C`, `Box[User]`, whose `get()` returns a `User`.
-	dir := os.join_path(os.vtmp_dir(), 'v3_generic_constraints_infer_${os.getpid()}')
-	os.mkdir_all(dir) or { panic(err) }
-	defer {
-		os.rmdir_all(dir) or {}
-	}
-	path := os.join_path(dir, 'main.v')
-	os.write_file(path, inferred_from_constraint) or { panic(err) }
-	res := os.execute('${os.quoted_path(@VEXE)} -new-compiler run ${os.quoted_path(path)}')
+	res := run_program('infer', inferred_from_constraint)
 	assert res.exit_code == 0, res.output
 	assert res.output.trim_space() == 'ana', res.output
 	// `Box[int]` binds `T` to `int`, which is no `Named`: the call says so.
-	os.write_file(path, inferred_from_constraint.replace("Box[User]{User{'ana'}}", 'Box[int]{1}')) or {
-		panic(err)
-	}
-	check := os.execute('${os.quoted_path(@VEXE)} -new-compiler -check -nocolor ${os.quoted_path(path)}')
+	check := check_whole('infer_int', inferred_from_constraint.replace("Box[User]{User{'ana'}}",
+		'Box[int]{1}'))
 	errors := check.output.split_into_lines().filter(it.contains(': error: '))
 	assert errors.len == 1, check.output
 	assert errors[0].contains('main.v:28:') && errors[0].contains('Named'), errors[0]
@@ -2079,14 +2277,7 @@ fn test_a_type_parameter_is_inferred_from_a_type_passed_for_a_generic_interface(
 	// returns a `User`, so `T` is `User`, as `take_now[User](shelf)` writes it.
 	// The check took it so, but the build made no instance of `take_now`, and
 	// the C compiler failed on its call.
-	dir := os.join_path(os.vtmp_dir(), 'v3_generic_constraints_interface_arg_${os.getpid()}')
-	os.mkdir_all(dir) or { panic(err) }
-	defer {
-		os.rmdir_all(dir) or {}
-	}
-	path := os.join_path(dir, 'main.v')
-	os.write_file(path, inferred_from_interface) or { panic(err) }
-	res := os.execute('${os.quoted_path(@VEXE)} -new-compiler run ${os.quoted_path(path)}')
+	res := run_program('interface_arg', inferred_from_interface)
 	assert res.exit_code == 0, res.output
 	assert res.output.trim_space().split_into_lines() == ['ana', 'ana', 'ana'], res.output
 }
