@@ -426,6 +426,45 @@ fn test_vmod_subdirs_without_root_files() {
 	assert get_modules(root) == [root]
 }
 
+fn test_vmod_external_subdirs_without_root_files() {
+	root := 'subdirs_external_only'
+	write_subdirs_fixture(root, "\tsubdirs: ['../subdirs_external_only_sources']\n", {
+		'../subdirs_external_only_sources/sub.v': 'module mypkg\n\npub fn external_fn() {}\n'
+	})!
+	assert get_modules(root) == [root]
+	os.execute_opt('${vexe_} doc -no-timestamp -m -f text ${os.quoted_path(root)}')!
+	output := os.read_file(os.join_path(root, '_docs', 'mypkg.txt'))!
+	assert output.contains('fn external_fn()')
+}
+
+fn test_vmod_external_subdirs_are_owned_by_base_url_source_root() {
+	root := 'subdirs_external_base_url'
+	write_subdirs_fixture(root, "\tbase_url: 'src'\n\tsubdirs: ['../shared']\n", {
+		'shared/sub.v': 'module mypkg\n\npub fn external_fn() {}\n'
+	})!
+	source_root := os.join_path(root, 'src')
+	os.mkdir_all(source_root)!
+	assert get_modules(root) == [source_root]
+	assert get_modules('./${root}') == [os.join_path('.', source_root)]
+}
+
+fn test_vmod_external_subdirs_are_not_discovered_as_separate_modules() {
+	root := 'subdirs_external_collection'
+	module_root := os.join_path(root, 'mypkg')
+	write_subdirs_fixture(module_root, "\tsubdirs: ['../shared']\n", {
+		'../shared/sub.v': 'module mypkg\n\npub fn external_fn() {}\n'
+	})!
+	assert get_modules(root) == [module_root]
+}
+
+fn test_vmod_external_subdirs_with_only_ignored_files_are_skipped() {
+	root := 'subdirs_external_ignored'
+	write_subdirs_fixture(root, "\tsubdirs: ['../subdirs_external_ignored_sources']\n", {
+		'../subdirs_external_ignored_sources/tests/sub.v': 'module mypkg\n\npub fn ignored_fn() {}\n'
+	})!
+	assert get_modules(root) == []string{}
+}
+
 fn test_vmod_subdirs_are_resolved_from_base_url() {
 	root := 'subdirs_base_url'
 	write_subdirs_fixture(root, "\tbase_url: 'src'\n\tsubdirs: ['internal']\n", {

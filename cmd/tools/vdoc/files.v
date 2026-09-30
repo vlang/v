@@ -2,6 +2,7 @@ module main
 
 import os
 import document as doc
+import v.vmod
 
 struct IgnoreRules {
 mut:
@@ -17,18 +18,50 @@ mut:
 fn get_modules(path string) []string {
 	mut modules := map[string]bool{}
 	mut owners := map[string]string{}
+	mut declared_owners := map[string]string{}
 	mut source_dirs_cache := map[string][]string{}
+	mut rules_cache := map[string]IgnoreRules{}
 	input_root := os.real_path(path)
-	for p in get_paths(path, IgnoreRules.get(path)) {
+	paths := get_paths(path, IgnoreRules.get(path))
+	for p in paths {
+		dir := os.dir(p)
+		if os.file_name(p) == 'v.mod' {
+			source_root := module_source_root(dir)
+			keep_file := subdir_files_filter(source_root, path, mut rules_cache)
+			if keep_file == unsafe { nil } {
+				continue
+			}
+			for source_dir in doc.module_source_dirs(source_root) {
+				declared_owners[os.real_path(source_dir)] = source_root
+				for filename in os.ls(source_dir) or { continue } {
+					file := os.join_path(source_dir, filename)
+					if filename.ends_with('.v') && !os.is_dir(file) && keep_file(file) {
+						modules[source_root] = true
+					}
+				}
+			}
+		}
+	}
+	for p in paths {
+		if os.file_name(p) == 'v.mod' {
+			continue
+		}
 		dir := os.dir(p)
 		if dir !in owners {
-			owners[dir] = owner_module_dir(dir, input_root, mut source_dirs_cache) or { dir }
+			owners[dir] = owner_module_dir(dir, input_root, mut source_dirs_cache) or {
+				declared_owners[os.real_path(dir)] or { dir }
+			}
 		}
 		modules[owners[dir]] = true
 	}
 	mut res := modules.keys()
 	res.sort()
 	return res
+}
+
+fn module_source_root(dir string) string {
+	manifest := vmod.from_file(os.join_path(dir, 'v.mod')) or { return dir }
+	return if manifest.base_url == '' { dir } else { os.join_path(dir, manifest.base_url) }
 }
 
 // owner_module_dir returns the closest ancestor of `dir` (up to `input_root`) that
@@ -44,11 +77,12 @@ fn owner_module_dir(dir string, input_root string, mut source_dirs_cache map[str
 			break
 		}
 		ancestor = parent
+		source_root := module_source_root(ancestor)
 		if ancestor !in source_dirs_cache {
-			source_dirs_cache[ancestor] = doc.module_source_dirs(ancestor).map(os.real_path(it))
+			source_dirs_cache[ancestor] = doc.module_source_dirs(source_root).map(os.real_path(it))
 		}
 		if real_dir in source_dirs_cache[ancestor] {
-			return ancestor
+			return source_root
 		}
 	}
 	return none
@@ -132,7 +166,7 @@ fn get_paths(path string, ignore_rules IgnoreRules) []string {
 			res << get_paths(fp, ignore_rules)
 			continue
 		}
-		if p.ends_with('.v') {
+		if p.ends_with('.v') || p == 'v.mod' {
 			res << fp
 		}
 	}
