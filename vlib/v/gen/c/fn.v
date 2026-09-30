@@ -14939,7 +14939,8 @@ fn (mut g FlatGen) gen_voidptr_fn_value_arg(arg_id flat.NodeId, arg_node flat.No
 			// In translated C, `voidptr(&f)` of a function variable is the address of
 			// the variable, as in V1 (C translated by c2v stores `(void*)&finder` and
 			// calls through `**(finder_type*)p`). `&` on a function name is the function.
-			if g.expr_is_in_translated_file(operand_id) && g.fn_value_operand_has_storage(operand)
+			if g.expr_is_in_translated_file(operand_id)
+				&& g.fn_value_operand_has_storage(operand_id, operand)
 				&& g.node_is_fn_value_for_voidptr(operand_id, operand) {
 				g.write('&')
 				gen_expr_lvalue(mut g, operand_id)
@@ -14968,14 +14969,15 @@ fn (mut g FlatGen) gen_voidptr_fn_value_arg(arg_id flat.NodeId, arg_node flat.No
 
 // fn_value_operand_has_storage reports whether a function value is read from a
 // variable (a local, parameter or global), a field or an element, whose address
-// differs from the function's, rather than named by a function declaration.
-fn (g &FlatGen) fn_value_operand_has_storage(node flat.Node) bool {
+// differs from the function's, rather than named by a function declaration or bound
+// from a method (`obj.method`).
+fn (g &FlatGen) fn_value_operand_has_storage(id flat.NodeId, node flat.Node) bool {
 	match node.kind {
 		.ident {
 			return g.ident_is_local_binding(node.value) || g.global_type_for_ident(node.value) != none
 		}
 		.selector {
-			if node.children_count == 0 {
+			if node.children_count == 0 || g.tc.expr_is_method_value(id) {
 				return false
 			}
 			base_type := types.unwrap_pointer(cgen_unalias_type(g.usable_expr_type(g.a.child(&node,

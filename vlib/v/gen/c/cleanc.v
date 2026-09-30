@@ -16110,8 +16110,12 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 				// - `ref := &f`, read back through `*ref` - needs the address, and
 				// dropping it there leaves the dereference reading code as data.
 				if g.context_wants_pointer_to_fn() {
-					if child.kind in [.index, .selector] || (g.expr_is_in_translated_file(id)
-						&& g.fn_value_operand_has_storage(child)) {
+					// A bound method value (`obj.method`) is a selector without storage: it
+					// keeps the materialized copy below.
+					field_or_element := child.kind == .index
+						|| (child.kind == .selector && !g.tc.expr_is_method_value(child_id))
+					if field_or_element || (g.expr_is_in_translated_file(id)
+						&& g.fn_value_operand_has_storage(child_id, child)) {
 						// Mutable for-in lowering takes the address of the current array
 						// element. Keep that address tied to the element (or field) so
 						// writes through it update it rather than a heap-copied callback.
@@ -16135,7 +16139,7 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 				// variable's address, as in V1: C translated by c2v stores a callback
 				// through it with `c2v_assign_voidptr(&voidptr(&x), f)`.
 				if g.expr_is_in_translated_file(id) && !g.context_wants_callable()
-					&& g.fn_value_operand_has_storage(child) {
+					&& g.fn_value_operand_has_storage(child_id, child) {
 					g.write('&')
 					gen_expr_lvalue(mut g, child_id)
 					return
