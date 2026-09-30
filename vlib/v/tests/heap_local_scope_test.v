@@ -132,3 +132,20 @@ fn test_same_named_locals_of_sibling_scopes() {
 	_ = use_the_stack(10)
 	assert values.map(*it) == [u64(7), 8, 9, 10, 11, 20, 21, 22]
 }
+
+// A local moved to the heap in a nested scope of a `for mut` loop does not disturb the
+// loop variable, which is also read and written through a pointer.
+fn test_mut_loop_variable_after_a_nested_scope() {
+	mut numbers := [u64(1), 2]
+	mut values := []&u64{}
+	for mut n in numbers {
+		unsafe {
+			copy := *n + 10
+			values << &copy
+		}
+		n++
+	}
+	_ = use_the_stack(10)
+	assert numbers == [u64(2), 3]
+	assert values.map(*it) == [u64(11), 12]
+}

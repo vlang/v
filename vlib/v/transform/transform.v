@@ -7237,10 +7237,11 @@ struct HeapedLocalState {
 // `if`/`match` branch or an `or` body. Locals moved to the heap are tracked by name, but
 // they are lexical bindings: restoring the state when the scope ends keeps a same-named
 // local of a later sibling scope (a pointer, a function) from being lowered as the moved
-// one. When no local is moved yet, the ones moved inside the scope are forgotten instead
-// of copying the maps.
+// one. When the three maps are empty, restoring them is clearing them: they are not
+// copied.
 fn (t &Transformer) save_heaped_local_state() HeapedLocalState {
-	if t.heaped_amp_locals.len == 0 {
+	if t.heaped_amp_locals.len == 0 && t.pointer_value_lvalues.len == 0
+		&& t.pointer_value_rvalues.len == 0 {
 		return HeapedLocalState{}
 	}
 	return HeapedLocalState{
@@ -7253,11 +7254,9 @@ fn (t &Transformer) save_heaped_local_state() HeapedLocalState {
 
 fn (mut t Transformer) restore_heaped_local_state(state HeapedLocalState) {
 	if !state.cloned {
-		for name, _ in t.heaped_amp_locals {
-			t.pointer_value_lvalues.delete(name)
-			t.pointer_value_rvalues.delete(name)
-		}
 		t.heaped_amp_locals.clear()
+		t.pointer_value_lvalues.clear()
+		t.pointer_value_rvalues.clear()
 		return
 	}
 	t.heaped_amp_locals = state.heaped_amp_locals.clone()
