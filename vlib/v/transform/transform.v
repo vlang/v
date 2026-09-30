@@ -22806,7 +22806,23 @@ fn (mut t Transformer) transform_cast_expr(id flat.NodeId, node flat.Node) flat.
 				// A pointer cast from raw container/runtime storage is already the
 				// representation read. Recursive sum types must not reinterpret the
 				// void pointer itself as a new sum variant on a later transform pass.
-				return id
+				// The operand is still lowered: in `&i8(address_of(&local))`, a local
+				// moved to the heap is already the address.
+				operand := t.transform_expr_preserving_pointer_value(child_id)
+				if operand == child_id || t.rewrite_children_in_place(id, [operand]) {
+					return id
+				}
+				start := t.a.children.len
+				t.a.children << operand
+				return t.a.add_node(flat.Node{
+					kind:           .cast_expr
+					op:             node.op
+					children_start: start
+					children_count: 1
+					pos:            node.pos
+					value:          node.value
+					typ:            node.typ
+				})
 			}
 			source_iface := t.resolve_interface_type_name(child_type)
 			if t.pointer_cast_target_implements_source_iface(target_type[1..], source_iface) {
