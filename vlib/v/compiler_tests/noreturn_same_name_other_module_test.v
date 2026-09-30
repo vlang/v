@@ -124,6 +124,64 @@ fn main() {
 	assert output.contains('missing return at end of function'), output
 }
 
+fn test_module_fn_named_exit_returns_normally() {
+	code, output := build('exit_fn', {
+		'runner': "module runner
+
+pub fn exit() int {
+	return 4
+}
+
+pub fn same_module() int {
+	return exit()
+}
+
+fn may() !int {
+	return error('no')
+}
+
+pub fn in_or_block() int {
+	return may() or { exit() }
+}
+"
+	}, 'module main
+
+import runner
+
+fn main() {
+	println(runner.exit())
+	println(runner.same_module())
+	println(runner.in_or_block())
+}
+')
+	assert code == 0, output
+	assert output.trim_space().split_into_lines() == ['4', '4', '4'], output
+}
+
+fn test_missing_return_after_module_exit_call_is_reported() {
+	code, output := build('exit_missing_return', {
+		'runner': 'module runner
+
+pub fn exit() int {
+	return 4
+}
+
+pub fn falls_through() int {
+	exit()
+}
+'
+	}, 'module main
+
+import runner
+
+fn main() {
+	println(runner.falls_through())
+}
+')
+	assert code != 0, output
+	assert output.contains('missing return at end of function'), output
+}
+
 fn test_noreturn_module_fn_with_return_is_still_rejected() {
 	code, output := build('real_noreturn', {
 		'a': 'module a
