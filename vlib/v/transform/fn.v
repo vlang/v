@@ -12149,6 +12149,7 @@ fn (mut t Transformer) lift_fn_literal(_id flat.NodeId, node flat.Node) flat.Nod
 	mut capture_by_ref := map[string]bool{}
 	mut capture_from_context := map[string]bool{}
 	mut capture_from_heap := map[string]bool{}
+	mut capture_heap_value_storage := map[string]bool{}
 	mut capture_is_ref_param := map[string]bool{}
 	mut body_ids := []flat.NodeId{}
 	for i in 0 .. node.children_count {
@@ -12203,10 +12204,12 @@ fn (mut t Transformer) lift_fn_literal(_id flat.NodeId, node flat.Node) flat.Nod
 				if capture_type.len == 0 || capture_type == 'unknown' {
 					capture_type = 'int'
 				}
-				if child.value in t.heaped_amp_locals && capture_type.starts_with('&')
-					&& t.is_fixed_array_type(capture_type[1..]) {
-					capture_type = capture_type[1..]
-					capture_from_heap[child.value] = true
+				if child.value in t.heaped_amp_locals && capture_type.starts_with('&') {
+					capture_heap_value_storage[child.value] = true
+					if t.is_fixed_array_type(capture_type[1..]) {
+						capture_type = capture_type[1..]
+						capture_from_heap[child.value] = true
+					}
 				}
 				if t.active_specialization_args.len > 0 {
 					specialized_capture_type := t.subst_type(capture_type, t.active_specialization_args)
@@ -12326,6 +12329,8 @@ fn (mut t Transformer) lift_fn_literal(_id flat.NodeId, node flat.Node) flat.Nod
 		capture_type := capture_types[capture_name] or { continue }
 		is_ref_capture := capture_by_ref[capture_name] or { false }
 		is_context_capture := capture_from_context[capture_name] or { false }
+		is_heap_value_capture := (capture_heap_value_storage[capture_name] or { false })
+			&& capture_type.starts_with('&')
 		t.set_var_type(capture_name, capture_type)
 		// Captures rewritten into synthetic `&T` pointer-value locals need pointer-value
 		// lvalue/rvalue lowering. A mut capture whose original type is already a pointer
@@ -12333,9 +12338,13 @@ fn (mut t Transformer) lift_fn_literal(_id flat.NodeId, node flat.Node) flat.Nod
 		// dereferencing its rvalue uses would corrupt `&S` -> `S` and break calls that
 		// expect the pointer (e.g. `takes_ptr(p)`), and its assignments must not become
 		// `*p = ...`.
-		if is_ref_capture || is_context_capture {
+		// A recorded heap-value capture carries the original value's `&T` storage slot.
+		if is_ref_capture || is_context_capture || is_heap_value_capture {
 			t.pointer_value_lvalues[capture_name] = true
 			t.pointer_value_rvalues[capture_name] = true
+		}
+		if is_heap_value_capture {
+			t.heaped_amp_locals[capture_name] = true
 		}
 		context_ident := t.make_ident(context_local)
 		t.set_node_typ(int(context_ident), '&${context_type}')

@@ -963,3 +963,34 @@ fn test_lifted_parameter_and_capture_bindings_isolate_outer_storage_markers() {
 	assert overwrite_stack() == 7
 	assert read_retained_optional_fixed_reference(kept) == [281, 282]
 }
+
+@[noinline]
+fn scalar_reference_after_lowering_heap_value_capture() &int {
+	value := 291
+	read_capture := fn [value] () int {
+		p := &value
+		return *p
+	}
+	assert read_capture() == 291
+	return &value
+}
+
+@[noinline]
+fn fixed_reference_after_lowering_heap_struct_capture() &[]int {
+	holder := FixedHolder{ values: [301, 302]! }
+	kept := retain_immutable_array_reference(holder.values)
+	read_capture := fn [holder] () int {
+		p := &holder
+		return (*p).values[0]
+	}
+	assert read_capture() == 301
+	return kept
+}
+
+fn test_lifted_heap_value_captures_recreate_their_own_storage_markers() {
+	scalar := scalar_reference_after_lowering_heap_value_capture()
+	values := fixed_reference_after_lowering_heap_struct_capture()
+	assert overwrite_stack() == 7
+	assert *scalar == 291
+	assert read_retained_optional_fixed_reference(values) == [301, 302]
+}
