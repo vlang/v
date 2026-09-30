@@ -3615,6 +3615,12 @@ fn (mut t Transformer) transform_implicit_ref_arg(arg_id flat.NodeId, param_type
 		&& type_text_without_main_locks(actual_type) != type_text_without_main_locks(expected_type) {
 		return none
 	}
+	// A `voidptr` already is a pointer, accepted for any pointer parameter: passed to
+	// `&voidptr` (C's `void **`) it is the pointer to write through, not a value to
+	// reference (C translated by c2v: `sqlite3_prepare16(..., voidptr(&z_tail))`).
+	if actual_type == 'void' {
+		return none
+	}
 	arg_node := t.a.nodes[int(arg_id)]
 	if expected_depth == actual_depth + 1 && arg_node.kind == .ident
 		&& t.pointer_value_rvalues[arg_node.value] {
