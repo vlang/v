@@ -9126,13 +9126,8 @@ fn (t &Transformer) escape_value_tails(id flat.NodeId) []flat.NodeId {
 
 // escape_append_target_is_array reports whether `lhs << value` appends to a dynamic array.
 fn (t &Transformer) escape_append_target_is_array(lhs_id flat.NodeId) bool {
-	mut typ := trimmed_transform_text(t.address_expr_type_name(lhs_id))
-	for prefix in ['mut ', 'shared ', '&'] {
-		for typ.starts_with(prefix) {
-			typ = trimmed_transform_text(typ[prefix.len..])
-		}
-	}
-	return trimmed_transform_text(t.normalize_type_alias(typ)).starts_with('[]')
+	typ := trimmed_transform_text(t.address_expr_type_name(lhs_id))
+	return t.clean_array_append_lhs_type(typ).starts_with('[]')
 }
 
 fn (t &Transformer) escape_index_assign_retains_value(lhs_id flat.NodeId) bool {
