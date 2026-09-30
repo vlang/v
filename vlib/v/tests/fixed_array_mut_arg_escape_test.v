@@ -778,3 +778,30 @@ fn test_wrapped_fixed_array_ranges_keep_their_reference_headers_alive() {
 	assert read_retained_optional_fixed_reference(result) == [142, 143]
 	assert read_retained_optional_fixed_reference(direct) == [152, 153]
 }
+
+@[noinline]
+fn reference_from_direct_fixed_address(use_range bool) &[]int {
+	values := [161, 162, 163]!
+	unsafe {
+		if use_range {
+			return retain_immutable_array_reference((*&values)[1..])
+		}
+		return retain_immutable_array_reference(*(&values))
+	}
+}
+
+@[noinline]
+fn reference_from_direct_holder_address() &[]int {
+	holder := FixedHolder{[171, 172]!}
+	return unsafe { retain_immutable_array_reference((*(&holder)).values[1..]) }
+}
+
+fn test_direct_address_dereferences_keep_original_fixed_roots_alive() {
+	whole := reference_from_direct_fixed_address(false)
+	range := reference_from_direct_fixed_address(true)
+	field := reference_from_direct_holder_address()
+	assert overwrite_stack() == 7
+	assert read_retained_optional_fixed_reference(whole) == [161, 162, 163]
+	assert read_retained_optional_fixed_reference(range) == [162, 163]
+	assert read_retained_optional_fixed_reference(field) == [172]
+}

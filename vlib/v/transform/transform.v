@@ -8855,7 +8855,7 @@ fn (mut t Transformer) scan_escape_pass(id flat.NodeId, mut amp_ptrs map[string]
 		}
 		if t.escape_index_assign_retains_value(lhs_id)
 			|| (node.kind == .selector_assign
-				&& t.escape_selector_assign_retains_value(lhs_id, amp_ptrs, ptr_aliases)) {
+				&& t.escape_selector_assign_retains_value(lhs_id, amp_ptrs, ptr_aliases, local_stack_names)) {
 			// A map or caller-owned field may retain its value after this stack frame returns.
 			// Track pointer aliases through `returned`, and record direct `&local` values
 			// immediately.
@@ -9202,7 +9202,7 @@ fn (mut t Transformer) mark_spawn_argument_address_escapes(spawn_node flat.Node,
 	}
 }
 
-fn (t &Transformer) escape_selector_assign_retains_value(lhs_id flat.NodeId, amp_ptrs map[string]bool, ptr_aliases map[string]string) bool {
+fn (t &Transformer) escape_selector_assign_retains_value(lhs_id flat.NodeId, amp_ptrs map[string]bool, ptr_aliases map[string]string, local_stack_names map[string]bool) bool {
 	if int(lhs_id) < 0 || int(lhs_id) >= t.a.nodes.len {
 		return false
 	}
@@ -9230,7 +9230,7 @@ fn (t &Transformer) escape_selector_assign_retains_value(lhs_id flat.NodeId, amp
 	if !address_expr_base_is_indirect_storage(root_type) {
 		return false
 	}
-	return !t.escape_address_indirect_base_is_stack_backed(root_id, amp_ptrs, ptr_aliases)
+	return !t.escape_address_indirect_base_is_stack_backed(root_id, amp_ptrs, ptr_aliases, local_stack_names)
 }
 
 fn (t &Transformer) escape_index_assign_retains_value(lhs_id flat.NodeId) bool {
@@ -9470,7 +9470,7 @@ fn (t &Transformer) escape_address_expr_is_stack_local(id flat.NodeId, local_sta
 			}
 			base_id := t.a.child(&node, 0)
 			if address_expr_base_is_indirect_storage(t.address_expr_type_name(base_id)) {
-				return t.escape_address_indirect_base_is_stack_backed(base_id, amp_ptrs, ptr_aliases)
+				return t.escape_address_indirect_base_is_stack_backed(base_id, amp_ptrs, ptr_aliases, local_stack_names)
 			}
 			return t.escape_address_expr_is_stack_local(base_id, local_stack_names, amp_ptrs, ptr_aliases)
 		}
@@ -9481,7 +9481,7 @@ fn (t &Transformer) escape_address_expr_is_stack_local(id flat.NodeId, local_sta
 			base_id := t.a.child(&node, 0)
 			base_type := t.normalize_type_alias(t.address_expr_type_name(base_id))
 			if base_type.starts_with('&') && t.is_fixed_array_type(base_type.trim_left('&')) {
-				return t.escape_address_indirect_base_is_stack_backed(base_id, amp_ptrs, ptr_aliases)
+				return t.escape_address_indirect_base_is_stack_backed(base_id, amp_ptrs, ptr_aliases, local_stack_names)
 			}
 			if !t.is_fixed_array_type(base_type) {
 				return false
@@ -9496,7 +9496,7 @@ fn (t &Transformer) escape_address_expr_is_stack_local(id flat.NodeId, local_sta
 		}
 		.prefix {
 			return node.op == .mul && node.children_count > 0
-				&& t.escape_address_indirect_base_is_stack_backed(t.a.child(&node, 0), amp_ptrs, ptr_aliases)
+				&& t.escape_address_indirect_base_is_stack_backed(t.a.child(&node, 0), amp_ptrs, ptr_aliases, local_stack_names)
 		}
 		else {
 			return false
@@ -9504,7 +9504,7 @@ fn (t &Transformer) escape_address_expr_is_stack_local(id flat.NodeId, local_sta
 	}
 }
 
-fn (t &Transformer) escape_address_indirect_base_is_stack_backed(id flat.NodeId, amp_ptrs map[string]bool, ptr_aliases map[string]string) bool {
+fn (t &Transformer) escape_address_indirect_base_is_stack_backed(id flat.NodeId, amp_ptrs map[string]bool, ptr_aliases map[string]string, local_stack_names map[string]bool) bool {
 	if int(id) < 0 || int(id) >= t.a.nodes.len {
 		return false
 	}
@@ -9513,7 +9513,10 @@ fn (t &Transformer) escape_address_indirect_base_is_stack_backed(id flat.NodeId,
 		return t.escape_pointer_ident_is_stack_backed(node.value, amp_ptrs, ptr_aliases)
 	}
 	if node.kind == .paren && node.children_count > 0 {
-		return t.escape_address_indirect_base_is_stack_backed(t.a.child(&node, 0), amp_ptrs, ptr_aliases)
+		return t.escape_address_indirect_base_is_stack_backed(t.a.child(&node, 0), amp_ptrs, ptr_aliases, local_stack_names)
+	}
+	if node.kind == .prefix && node.op == .amp && node.children_count == 1 {
+		return t.escape_address_expr_is_stack_local(t.a.child(&node, 0), local_stack_names, amp_ptrs, ptr_aliases)
 	}
 	return false
 }

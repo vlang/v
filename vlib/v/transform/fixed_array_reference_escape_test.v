@@ -145,6 +145,44 @@ fn test_fixed_array_reference_stack_pointer_projections_keep_original_root() {
 	assert t.escaping_fixed_array_view_sources.len == 0
 }
 
+fn test_fixed_array_direct_address_dereference_marks_the_original_local() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	fixed := types.Type(types.ArrayFixed{ elem_type: types.Type(types.int_), len: 3 })
+	array_ref := types.Type(types.Pointer{ base_type: types.Type(types.Array{ elem_type: types.Type(types.int_) }) })
+	mut t := new_transformer(mut a, &tc, map[string]bool{})
+	t.set_var_type('fixed', '[3]int')
+	tc.cur_scope.insert('fixed', fixed)
+	for parenthesized in [false, true] {
+		value := t.make_ident('fixed')
+		tc.register_synth_type(value, fixed)
+		addr := t.make_prefix(.amp, value)
+		t.set_node_typ(int(addr), '&[3]int')
+		pointer := if parenthesized { t.make_paren(addr) } else { addr }
+		deref := t.make_prefix(.mul, pointer)
+		t.set_node_typ(int(deref), '[3]int')
+		tc.register_synth_type(deref, fixed)
+		range := t.make_range_index(deref, t.make_int_literal(1), flat.empty_node, '[]int')
+		tc.register_synth_type(range, types.Type(types.Array{ elem_type: types.Type(types.int_) }))
+		t.escaping_fixed_array_view_sources.clear()
+		t.mark_fixed_array_reference_argument_escape(range, array_ref, map[string]bool{}, map[string][]string{}, map[string]string{}, {
+			'fixed': true
+		})
+		assert 'fixed' in t.escaping_fixed_array_view_sources
+	}
+	// A local variable holding a heap pointer is not the owner of its pointed-to storage.
+	t.escaping_fixed_array_view_sources.clear()
+	t.set_var_type('heap', '&[3]int')
+	pointer := t.make_ident('heap')
+	deref := t.make_prefix(.mul, pointer)
+	t.set_node_typ(int(deref), '[3]int')
+	tc.register_synth_type(deref, fixed)
+	t.mark_fixed_array_reference_argument_escape(deref, array_ref, map[string]bool{}, map[string][]string{}, map[string]string{}, {
+		'heap': true
+	})
+	assert t.escaping_fixed_array_view_sources.len == 0
+}
+
 fn test_fixed_array_reference_zero_argument_method_marks_receiver() {
 	mut a := flat.FlatAst.new()
 	mut tc := types.TypeChecker.new(&a)
