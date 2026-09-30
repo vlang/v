@@ -700,8 +700,8 @@ fn live_reserved_rollback_intent(pre_root bin.JsonValue) string {
 	intent = intent.replace(receiver_consumer_id, rollback_id)
 	intent = intent.replace_once('"intent_type": "initial_adopt_current"',
 		'"intent_type": "rollback"')
-	validation_start := intent.index('"validation_subject": {') or { panic(err) }
-	previous_start := intent.index('"previous_last_known_good": null') or { panic(err) }
+	validation_start := intent.index('"validation_subject": {') or { panic('missing fixture text') }
+	previous_start := intent.index('"previous_last_known_good": null') or { panic('missing fixture text') }
 	intent = intent[..validation_start] + '"validation_subject": null,\n  ' +
 		intent[previous_start..]
 	intent = intent.replace_once('"previous_last_known_good": null', '"previous_last_known_good": ${canonical_root_member(pre_root, 'last_known_good')}')
@@ -1529,8 +1529,8 @@ fn live_recovery_h2_publish_adopt_current_source() string {
 	mut native_execution := os.read_file(os.join_path(fixture_root,
 		'native-gate-execution.schema-fixture.json')) or { panic(err) }
 	native_execution = native_execution.replace(receiver_consumer_id, live_h2_business_operation_id)
-	execution_subject_start := native_execution.index('"subject": {') or { panic(err) }
-	execution_hash_start := native_execution.index('"subject_hash":') or { panic(err) }
+	execution_subject_start := native_execution.index('"subject": {') or { panic('missing fixture text') }
+	execution_hash_start := native_execution.index('"subject_hash":') or { panic('missing fixture text') }
 	native_execution = native_execution[..execution_subject_start] +
 		'"subject": ${canonical_subject},\n  ' + native_execution[execution_hash_start..]
 	native_execution = native_execution.replace_once('"subject_hash": "d92d02fd9ab49678ad2957e36da68e91db51a3e7a42de837e3c0693b2b38f8fd"',
@@ -1796,8 +1796,8 @@ fn live_publish_post_source() string {
 		'"candidate_binding": ${live_candidate_binding()}')
 	intent = intent.replace_once('"gate_runs": []',
 		'"gate_runs": ${live_historical_candidate_gate_runs()}')
-	validation_start := intent.index('"validation_subject": {') or { panic(err) }
-	previous_start := intent.index('"previous_last_known_good": null') or { panic(err) }
+	validation_start := intent.index('"validation_subject": {') or { panic('missing fixture text') }
+	previous_start := intent.index('"previous_last_known_good": null') or { panic('missing fixture text') }
 	intent = intent[..validation_start] + '"validation_subject": null,\n  ' +
 		intent[previous_start..]
 	intent = intent.replace_once('"previous_last_known_good": null', '"previous_last_known_good": ${live_artifact_tuple('cccccccccccccccccccccccccccccccccccccccc', 'dddddddddddddddddddddddddddddddddddddddd')}')
@@ -1811,8 +1811,8 @@ fn live_publish_post_source() string {
 		'"original_ref": "thirdparty-linux-amd64"')
 	mut execution := os.read_file(os.join_path(fixture_root,
 		'native-gate-execution.schema-fixture.json')) or { panic(err) }
-	execution_subject_start := execution.index('"subject": {') or { panic(err) }
-	execution_hash_start := execution.index('"subject_hash":') or { panic(err) }
+	execution_subject_start := execution.index('"subject": {') or { panic('missing fixture text') }
+	execution_hash_start := execution.index('"subject_hash":') or { panic('missing fixture text') }
 	execution = execution[..execution_subject_start] + '"subject": ${subject.trim_space()},\n  ' +
 		execution[execution_hash_start..]
 	post_hash := live_publish_post_subject_hash()
@@ -1822,8 +1822,8 @@ fn live_publish_post_source() string {
 		'"expected_ref": "thirdparty-linux-amd64"')
 
 	mut source := live_pre_subject_adoption_source()
-	intent_start := source.index('"active_intent": {') or { panic(err) }
-	post_operation_start := source.index('"post_validation_operation_id":') or { panic(err) }
+	intent_start := source.index('"active_intent": {') or { panic('missing fixture text') }
+	post_operation_start := source.index('"post_validation_operation_id":') or { panic('missing fixture text') }
 	source = source[..intent_start] + '"active_intent": ${intent.trim_space()},\n  ' +
 		source[post_operation_start..]
 	source = source.replace_once('"generation": 0', '"generation": 1')
@@ -1943,8 +1943,8 @@ fn live_remediation_source() string {
 		'"original_ref": "thirdparty-linux-amd64"')
 	mut execution := os.read_file(os.join_path(fixture_root,
 		'native-gate-execution.schema-fixture.json')) or { panic(err) }
-	execution_subject_start := execution.index('"subject": {') or { panic(err) }
-	execution_hash_start := execution.index('"subject_hash":') or { panic(err) }
+	execution_subject_start := execution.index('"subject": {') or { panic('missing fixture text') }
+	execution_hash_start := execution.index('"subject_hash":') or { panic('missing fixture text') }
 	execution = execution[..execution_subject_start] + '"subject": ${subject.trim_space()},\n  ' +
 		execution[execution_hash_start..]
 	subject_hash := bin.native_gate_subject_hash(subject_model) or { panic(err) }

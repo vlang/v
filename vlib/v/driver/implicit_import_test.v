@@ -144,6 +144,79 @@ fn test_strings_similarity_len_fields_do_not_require_closure_runtime() {
 	assert !scan.needs_closure
 }
 
+fn test_slice_len_fields_do_not_require_closure_runtime() {
+	scan := scan_implicit_import_source('slice_len', '
+fn lengths(s string, values []int, fixed [4]int) int {
+	head := s[..1]
+	tail := values[1..]
+	part := fixed[..2]
+	return head.len + tail.len + part.len
+}
+')
+	assert !scan.needs_closure
+}
+
+fn test_string_concatenation_len_field_does_not_require_closure_runtime() {
+	scan := scan_implicit_import_source('concat_len', '
+fn joined(a string, b string, fraction bool) int {
+	digits := a + b
+	text := if fraction { "0." + digits } else { digits + ".0" }
+	return digits.len + text.len
+}
+')
+	assert !scan.needs_closure
+}
+
+fn test_match_smartcast_fields_do_not_require_closure_runtime() {
+	scan := scan_implicit_import_source('match_smartcast', '
+struct Separator {
+	integer string
+	decimal string
+}
+
+type SeparatorOptions = string | Separator
+
+fn decimal_of(sep SeparatorOptions) string {
+	separator := match sep {
+		string {
+			Separator{
+				integer: sep
+			}
+		}
+		Separator {
+			sep
+		}
+	}
+	return separator.decimal
+}
+')
+	assert !scan.needs_closure
+}
+
+fn test_method_value_on_match_smartcast_requires_closure_runtime() {
+	scan := scan_implicit_import_source('match_smartcast_method', '
+struct Separator {
+	decimal string
+}
+
+fn (s Separator) render() string {
+	return s.decimal
+}
+
+type SeparatorOptions = string | Separator
+
+fn use(sep SeparatorOptions) {
+	separator := match sep {
+		string { Separator{} }
+		Separator { sep }
+	}
+	callback := separator.render
+	_ = callback
+}
+')
+	assert scan.needs_closure
+}
+
 fn test_shared_parameter_and_local_require_sync_runtime() {
 	param_scan := scan_implicit_import_source('shared_param', '
 struct State {}
