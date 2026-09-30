@@ -9092,7 +9092,7 @@ fn (t &Transformer) escape_value_tails(id flat.NodeId) []flat.NodeId {
 	}
 	node := t.a.nodes[int(id)]
 	match node.kind {
-		.paren, .expr_stmt {
+		.paren, .expr_stmt, .dump_expr {
 			if node.children_count > 0 {
 				return t.escape_value_tails(t.a.child(&node, 0))
 			}
@@ -9167,7 +9167,7 @@ fn (t &Transformer) escape_aggregate_address_sources(id flat.NodeId, amp_sources
 	}
 	node := t.a.nodes[int(id)]
 	match node.kind {
-		.or_expr, .if_expr, .comptime_if, .match_stmt, .block, .lock_expr {
+		.or_expr, .if_expr, .comptime_if, .match_stmt, .block, .lock_expr, .dump_expr {
 			mut sources := []string{}
 			for tail_id in t.escape_value_tails(id) {
 				for source_name in t.escape_aggregate_address_sources(tail_id, amp_sources, ptr_aliases) {
@@ -9223,7 +9223,8 @@ fn (t &Transformer) escape_aggregate_address_sources(id flat.NodeId, amp_sources
 			}
 			return sources
 		}
-		.field_init, .paren, .cast_expr, .as_expr, .struct_init, .array_literal, .array_init,
+		.field_init, .paren, .cast_expr, .as_expr, .struct_init, .assoc, .array_literal,
+		.array_init,
 		.map_init {
 			mut sources := []string{}
 			for i in 0 .. node.children_count {
