@@ -8322,6 +8322,17 @@ fn (t &Transformer) generic_arg_for_call_and_decl_module(arg string, call_module
 		&& (call_module in ['', 'main'] || t.current_specialization_has_generic_arg(arg)) {
 		return arg
 	}
+	if t.current_specialization_has_generic_arg(arg) {
+		base, args, is_generic := generic_app_parts(arg)
+		if is_generic && !arg.starts_with('map[') {
+			mut scoped_args := []string{cap: args.len}
+			for nested_arg in args {
+				scoped_args << t.generic_arg_for_call_and_decl_module(nested_arg, call_module, decl_module)
+			}
+			scoped_base := t.generic_arg_for_call_and_decl_module(base, call_module, decl_module)
+			return '${scoped_base}[${scoped_args.join(', ')}]'
+		}
+	}
 	// A bare program (main) type alias that collides by short name with a type in the
 	// callee module (e.g. a user `RawHtml` alias against `veb.RawHtml`) must be kept as the
 	// caller's own type: rebasing it into the callee module would merge the two into one
@@ -8569,6 +8580,17 @@ fn (t &Transformer) generic_arg_for_decl_module(arg string, module_name string) 
 	if t.substituted_type_belongs_to_main_generic(arg)
 		&& t.current_specialization_has_generic_arg(arg) {
 		return arg
+	}
+	if t.current_specialization_has_generic_arg(arg) {
+		base, args, is_generic := generic_app_parts(arg)
+		if is_generic && !arg.starts_with('map[') {
+			mut scoped_args := []string{cap: args.len}
+			for nested_arg in args {
+				scoped_args << t.generic_arg_for_decl_module(nested_arg, module_name)
+			}
+			scoped_base := t.generic_arg_for_decl_module(base, module_name)
+			return '${scoped_base}[${scoped_args.join(', ')}]'
+		}
 	}
 	if t.generic_type_text_contains_alias(arg, module_name) {
 		return t.qualify_generic_arg_for_decl_module(arg, module_name)
@@ -9275,6 +9297,17 @@ fn (t &Transformer) generic_inference_alias_target(typ string, module_name strin
 	clean := typ.trim_space()
 	if clean.len == 0 {
 		return clean
+	}
+	if t.current_specialization_has_generic_arg(clean) {
+		base, args, is_generic := generic_app_parts(clean)
+		if is_generic && !clean.starts_with('map[') {
+			mut scoped_args := []string{cap: args.len}
+			for nested_arg in args {
+				scoped_args << t.generic_inference_alias_target(nested_arg, module_name)
+			}
+			scoped_base := t.generic_inference_alias_target(base, module_name)
+			return '${scoped_base}[${scoped_args.join(', ')}]'
+		}
 	}
 	// Specialization keys use bare main types. Keep their caller provenance when
 	// inferring a nested call instead of resolving a homonym in the callee module.
@@ -13324,7 +13357,7 @@ fn (t &Transformer) substituted_type_belongs_to_main_generic(typ string) bool {
 		}
 		return false
 	}
-	base, _, ok := generic_app_parts(clean)
+	base, args, ok := generic_app_parts(clean)
 	local_base := if ok { base } else { clean }
 	if !isnil(t.tc) && !local_base.contains('.') && t.cur_module.len > 0
 		&& t.cur_module !in ['main', 'builtin'] && !t.active_specialization_main_types[local_base] {
@@ -13336,6 +13369,14 @@ fn (t &Transformer) substituted_type_belongs_to_main_generic(typ string) bool {
 			// specialization argument. In particular, an alias target such as
 			// `a.Inner[T]` must not be rebound to a colliding `main.Inner[T]`.
 			return false
+		}
+	}
+	if ok && base.contains('.') {
+		for arg in args {
+			if t.substituted_type_belongs_to_main_generic(arg)
+				&& t.current_specialization_has_generic_arg(arg) {
+				return true
+			}
 		}
 	}
 	if !clean.contains('.') && (clean in t.structs || clean in t.sum_types || clean in t.enum_types) {

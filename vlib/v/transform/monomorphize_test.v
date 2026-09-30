@@ -510,6 +510,13 @@ fn test_nested_generic_components_keep_caller_type_provenance() {
 		assert t.generic_inference_alias_target(typ, 'callee') == typ
 		assert t.generic_arg_for_decl_module(typ, 'callee') == typ
 	}
+	assert t.generic_inference_alias_target('other.Box[map[string]Any]', 'callee') == 'other.Box[map[string]Any]'
+	assert t.generic_arg_for_decl_module('other.Box[[2]Any]', 'callee') == 'other.Box[[2]Any]'
+	t.structs['callee.Box'] = StructInfo{ module: 'callee' }
+	tc.struct_generic_params['callee.Box'] = ['T']
+	assert t.generic_inference_alias_target('Box[[2]Any]', 'callee') == 'callee.Box[[2]Any]'
+	assert t.generic_arg_for_decl_module('Box[map[string]Any]', 'callee') == 'callee.Box[map[string]Any]'
+	assert t.generic_arg_for_call_and_decl_module('Box[[2]Any]', 'callee', 'other') == 'callee.Box[[2]Any]'
 	for typ in ['[2]callee.Any', 'map[string]callee.Any', '(int, callee.Any)', 'other.Box[callee.Any]',
 		'map[string]int', '[2]int'] {
 		assert !t.current_specialization_has_generic_arg(typ), typ
