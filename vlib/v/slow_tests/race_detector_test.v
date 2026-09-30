@@ -153,6 +153,7 @@ fn main() {
 			"string" { _ = c.s }
 			"fixed_array" { _ = c.a }
 			"computed" { _ = c.a[1] * 2 + 1 }
+			"array_literal" { _ = [c.a[1], 0]! }
 			"mut_param" { read_mut_param(mut c) }
 			else { read_mut_param_in_parens(mut c.a) }
 		}
@@ -647,9 +648,10 @@ fn test_race_blank_reads_are_reads() {
 	if !thread_sanitizer_runs() {
 		return
 	}
-	for read in ['string', 'fixed_array', 'computed', 'mut_param', 'mut_param_in_parens'] {
+	for read in ['string', 'fixed_array', 'computed', 'array_literal', 'mut_param',
+		'mut_param_in_parens'] {
 		mut flags := ['-d', 'read=${read}']
-		if read in ['string', 'fixed_array', 'computed'] {
+		if read in ['string', 'fixed_array', 'computed', 'array_literal'] {
 			flags << '-prod'
 		}
 		exe := build_race_program('blank_read_${read}', blank_read_source, ...flags)

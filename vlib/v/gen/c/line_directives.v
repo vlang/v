@@ -124,14 +124,19 @@ fn (mut g FlatGen) gen_race_blank_read(rhs_id flat.NodeId) bool {
 	if fixed := array_fixed_type(typ) {
 		// A C array cannot be copied, and `(void)(array)` only takes its address: tell the
 		// race detector that all its elements are read. The size comes from the V type,
-		// as a fixed array parameter is a pointer in C. That needs an array in memory.
-		if inner.kind !in [.ident, .selector, .index, .prefix] {
-			return false
-		}
+		// as a fixed array parameter is a pointer in C.
 		elem_c_type, dims := g.fixed_array_decl_parts(fixed)
-		g.write('__tsan_read_range((void*)(${deref}')
-		g.gen_expr(rhs_id)
-		g.writeln('), sizeof(${elem_c_type}${dims}));')
+		if inner.kind in [.ident, .selector, .index, .prefix] {
+			g.write('__tsan_read_range((void*)(${deref}')
+			g.gen_expr(rhs_id)
+			g.writeln('), sizeof(${elem_c_type}${dims}));')
+			return true
+		}
+		// Any other array, like `[c.n, 0]!` or a call result, is a value that an optimized
+		// build would drop with its loads: copy it into an array that the race detector reads.
+		g.write('{ ${elem_c_type} __race_blank_read${dims}; memmove(__race_blank_read, ')
+		g.gen_fixed_array_copy_source(rhs_id, typ)
+		g.writeln(', sizeof(__race_blank_read)); __tsan_read_range((void*)__race_blank_read, sizeof(__race_blank_read)); }')
 		return true
 	}
 	if g.tc.c_type(typ) in ['', 'void'] {
