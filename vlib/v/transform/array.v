@@ -1972,8 +1972,9 @@ fn (mut t Transformer) clone_borrowed_storage_projection(source_id flat.NodeId, 
 // value at a storage/return boundary. A pointer escape gets a separate heap header,
 // so retaining it does not detach the caller's still-shared argument header.
 fn (mut t Transformer) clone_owned_array_view_for_storage(value flat.NodeId, typ string) flat.NodeId {
-	array_type := t.normalize_type_alias(typ.trim_left('&'))
-	if !array_type.starts_with('[]') || typ.starts_with('&&') || isnil(t.tc)
+	resolved_type := t.comptime_normalize_type_alias_chain(typ)
+	array_type := resolved_type.trim_left('&')
+	if !array_type.starts_with('[]') || resolved_type.starts_with('&&') || isnil(t.tc)
 		|| !t.tc.ownership_type_requires_destruction(t.tc.parse_type(array_type)) {
 		return value
 	}
@@ -1981,7 +1982,7 @@ fn (mut t Transformer) clone_owned_array_view_for_storage(value flat.NodeId, typ
 	t.pending_stmts << t.make_decl_assign_typed(name, value, typ)
 	bound := t.make_ident(name)
 	t.set_node_typ(int(bound), typ)
-	array_value := t.array_lvalue_value(bound, typ)
+	array_value := t.array_lvalue_value(bound, resolved_type)
 	is_slice := t.make_method_call(array_value, 'is_slice_view', []flat.NodeId{})
 	t.set_node_typ(int(is_slice), 'bool')
 	t.mark_fn_used('array.is_slice_view')
@@ -1997,7 +1998,7 @@ fn (mut t Transformer) clone_owned_array_view_for_storage(value flat.NodeId, typ
 		t.mark_fixed_array_element_drops(array_type[2..], []string{})
 		owned_value = t.request_default_clone_helper(array_value, array_type)
 	}
-	if typ.starts_with('&') {
+	if resolved_type.starts_with('&') {
 		clone_name := t.new_temp('owned_array_escape_value')
 		body << t.make_decl_assign_typed(clone_name, owned_value, array_type)
 		owned_value = t.make_call_typed('v3_heap_array', [t.make_ident(clone_name)], typ)

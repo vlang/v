@@ -608,9 +608,21 @@ fn keep(mut values []Resource) []Resource { return values }
 fn keep_reference(mut values []Resource) &[]Resource { return &values }
 type ResourceArray = []Resource
 struct Stored { mut: values &ResourceArray = unsafe { nil } }
+type ResourceRef = &[]Resource
+type ResourceRefAlias = ResourceRef
+struct StoredRef { mut: values ResourceRefAlias = unsafe { nil } }
 fn store_and_change(mut values []Resource, mut stored Stored) {
 	values[0].value = 9
 	stored.values = &values
+}
+fn store_alias_and_change(mut values []Resource, mut stored StoredRef, initializer bool) {
+	values[0].value = 11
+	if initializer {
+		stored = StoredRef{values: &values}
+	} else {
+		stored.values = &values
+	}
+	values[0].value = 12
 }
 fn ordinary_scope() {
 	mut holder := Holder{[fresh()]!, "label".repeat(4)}
@@ -632,6 +644,14 @@ fn dispose_reference(values &[]Resource) {
 		values.free()
 	}
 }
+fn check_stored_alias(values &[]Resource) {
+	unsafe {
+		assert (*values)[0].value == 11
+		assert !dropped[(*values)[0].id]
+		assert (*values)[0].payload == "payload".repeat(4)
+		dispose_reference(values)
+	}
+}
 struct ScalarHolder {
 mut:
 	values [2]int
@@ -651,6 +671,13 @@ fn stored_reference() Stored {
 	mut stored := Stored{}
 	store_and_change(mut holder.values, mut stored)
 	assert holder.values[0].value == 9
+	return stored
+}
+fn stored_reference_alias(initializer bool) StoredRef {
+	mut holder := Holder{[fresh()]!, "label".repeat(4)}
+	mut stored := StoredRef{}
+	store_alias_and_change(mut holder.values, mut stored, initializer)
+	assert holder.values[0].value == 12
 	return stored
 }
 fn main() {
@@ -676,6 +703,11 @@ fn main() {
 		assert (*stored.values)[0].value == 9
 		assert !dropped[(*stored.values)[0].id]
 		dispose_reference(stored.values)
+	}
+	for index, initializer in [false, true] {
+		stored_alias := stored_reference_alias(initializer)
+		assert clones == 4 + index
+		check_stored_alias(stored_alias.values)
 	}
 	assert dropped.len == next_id
 	println("ok")
