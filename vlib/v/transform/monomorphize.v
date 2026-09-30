@@ -4059,7 +4059,7 @@ fn (mut t Transformer) emit_generic_fn_specialization(decl GenericFnDecl, args [
 		t.tc.check_concrete_fn_semantics(int(clone_id), decl.file, decl.module)
 	} else if !isnil(t.tc) && t.tc.check_concrete_generic_bodies && instance_satisfies
 		&& decl.file in t.tc.diagnostic_files {
-		t.tc.check_concrete_instance_members(int(clone_id), decl.file, decl.module)
+		t.tc.check_concrete_instance_members(int(clone_id), decl.file, decl.module, concrete_args)
 	}
 	// A check only looks at the program's own instances. A library clone stays as
 	// it was cloned, so the calls in its body start no specializations to lower.

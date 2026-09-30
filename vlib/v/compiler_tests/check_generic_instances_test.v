@@ -350,3 +350,26 @@ fn test_operators_that_each_instance_has_stay_valid() {
 		assert error_lines(res.output) == [], res.output
 	}
 }
+
+// A type argument that is an alias with methods of its own, `Octet` for `T`: the
+// clone of `pack` spells its base type, `string`, where the alias's method is
+// the one `el.val.pack()` calls, and the instance is valid in a check and in a
+// build.
+fn test_an_instance_of_an_alias_has_the_methods_of_the_alias() {
+	source := "type Octet = string\n\nfn (o Octet) pack() []u8 {\n\treturn o.bytes()\n}\n\nstruct Elm[T] {\n\tval T\n}\n\nfn (el Elm[T]) pack() []u8 {\n\treturn el.val.pack()\n}\n\nfn main() {\n\tel := Elm[Octet]{\n\t\tval: Octet('xx')\n\t}\n\tprintln(el.pack())\n}\n"
+	for res in [check_program('alias_methods_check', source),
+		build_program('alias_methods_build', source)] {
+		assert res.exit_code == 0, res.output
+		assert error_lines(res.output) == [], res.output
+	}
+}
+
+// The alias does not lend its base type a method it lacks: `Octet` has no
+// `size`, and `string` has none either.
+fn test_an_instance_of_an_alias_still_lacks_what_neither_has() {
+	res := check_program('alias_lacks', "type Octet = string\n\nstruct Elm[T] {\n\tval T\n}\n\nfn (el Elm[T]) size() int {\n\treturn el.val.size()\n}\n\nfn main() {\n\tel := Elm[Octet]{\n\t\tval: Octet('xx')\n\t}\n\tprintln(el.size())\n}\n")
+	assert res.exit_code == 1, res.output
+	errors := error_lines(res.output)
+	assert errors.len == 1, res.output
+	assert errors[0].contains('size'), res.output
+}

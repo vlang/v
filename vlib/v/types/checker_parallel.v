@@ -2737,8 +2737,11 @@ pub fn (mut tc TypeChecker) check_concrete_fn_semantics(fn_idx int, file string,
 // a method or an operator that such a type lacks, as when `show(1)` reads
 // `x.name` or `add(1)` adds a string to `a`. Every other error and warning of the
 // clone is dropped: checked before the clone is lowered, only these are reliable
-// outside checker fixtures, where many valid generic programs would fail.
-pub fn (mut tc TypeChecker) check_concrete_instance_members(fn_idx int, file string, module_name string) {
+// outside checker fixtures, where many valid generic programs would fail. `args`
+// are the types of the instance: the clone spells an alias among them by its
+// base type, and a member of the alias is none of its base (see
+// member_of_an_alias_argument).
+pub fn (mut tc TypeChecker) check_concrete_instance_members(fn_idx int, file string, module_name string, args []string) {
 	errors_start := tc.errors.len
 	notices_start := tc.notices.len
 	// The clone was appended after the parent index was built; without its edges
@@ -2752,7 +2755,7 @@ pub fn (mut tc TypeChecker) check_concrete_instance_members(fn_idx int, file str
 	tc.check_concrete_fn_semantics(fn_idx, file, module_name)
 	mut kept := []TypeError{}
 	for err in tc.errors[errors_start..] {
-		if is_concrete_member_error(err.msg)
+		if (is_concrete_member_error(err.msg) && !tc.member_of_an_alias_argument(err.msg, args))
 			|| (is_concrete_operator_error(err.msg) && tc.operator_operands_are_plain(err.node)) {
 			kept << err
 		}
@@ -2760,6 +2763,42 @@ pub fn (mut tc TypeChecker) check_concrete_instance_members(fn_idx int, file str
 	tc.errors.trim(errors_start)
 	tc.errors << kept
 	tc.notices.trim(notices_start)
+}
+
+// member_of_an_alias_argument reports whether the member error `msg` names the
+// base type of an alias among the types `args` of an instance, and a member
+// that the alias has: `el.val.pack()` of an `Elm[Octet]`, where the clone
+// spells `Octet` as `string` and `pack` is a method of `Octet`.
+fn (tc &TypeChecker) member_of_an_alias_argument(msg string, args []string) bool {
+	type_name, member := concrete_member_error_parts(msg) or { return false }
+	for arg in args {
+		typ := unwrap_pointer(tc.parse_type(arg))
+		if typ is Alias && unalias_type(typ).name() == type_name
+			&& tc.alias_declares_method(typ, member) {
+			return true
+		}
+	}
+	return false
+}
+
+// concrete_member_error_parts returns the type and the member that the member
+// error `msg` names (see is_concrete_member_error): `string` and `pack` for
+// "unknown method or field: `string.pack`", `User` and `nme` for "type `User`
+// has no field named `nme`.".
+fn concrete_member_error_parts(msg string) ?(string, string) {
+	if msg.starts_with('unknown method or field: `') {
+		named := msg.all_after('`').all_before('`')
+		dot := named.last_index_u8(`.`)
+		if dot <= 0 || dot == named.len - 1 {
+			return none
+		}
+		return named[..dot], named[dot + 1..]
+	}
+	quoted := msg.split('`')
+	if quoted.len < 4 {
+		return none
+	}
+	return quoted[1], quoted[3]
 }
 
 // is_concrete_member_error reports whether `msg` says that a concrete type
