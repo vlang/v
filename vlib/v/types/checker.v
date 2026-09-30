@@ -6456,14 +6456,28 @@ fn (mut tc TypeChecker) check_deprecated_byte_types() {
 	mut identifier_offsets := map[u64]bool{}
 	mut inline_asm_ranges := map[int][]token.Pos{}
 	for node in tc.a.nodes {
-		if node.value == 'byte' && node.pos.is_valid() {
-			if offset := deprecated_byte_name_offset(node) {
-				identifier_offsets[deprecated_byte_position_key(node.pos.id, offset)] = true
-			}
-		} else if node.kind == .asm_stmt && node.pos.is_valid() {
+		if node.kind == .asm_stmt && node.pos.is_valid() {
 			mut ranges := inline_asm_ranges[node.pos.id]
 			ranges << node.pos
 			inline_asm_ranges[node.pos.id] = ranges
+		} else if node.value == 'byte' && node.pos.is_valid() {
+			if offset := deprecated_byte_name_offset(node) {
+				identifier_offsets[deprecated_byte_position_key(node.pos.id, offset)] = true
+			}
+		} else if node.kind == .fn_decl {
+			if offset := deprecated_byte_method_name_offset(node) {
+				identifier_offsets[deprecated_byte_position_key(node.pos.id, offset)] = true
+			}
+		} else if node.kind == .import_decl && node.typ == 'byte' {
+			// `import os as byte` keeps the alias in `typ` rather than in an ident
+			// node. Unlike the parser-produced positions above, this one is derived by
+			// scanning the import text, so it is confirmed against that text: the
+			// fallback is the declaration start, which would otherwise mark an
+			// unrelated offset as a name.
+			pos := tc.import_alias_pos(node)
+			if tc.deprecated_byte_source_text(pos) == 'byte' {
+				identifier_offsets[deprecated_byte_position_key(pos.id, pos.offset)] = true
+			}
 		}
 	}
 	mut pending_file := ''
@@ -6488,10 +6502,10 @@ fn deprecated_byte_position_key(file_id int, offset int) u64 {
 }
 
 // deprecated_byte_name_offset returns the source offset at which `node` spells
-// `byte` as a name (variable, parameter, field, enum value), not as a type.
+// `byte` as a name (variable, parameter, field, enum value, const), not as a type.
 fn deprecated_byte_name_offset(node flat.Node) ?int {
 	match node.kind {
-		.ident, .field_decl, .interface_field, .enum_field {
+		.ident, .field_decl, .interface_field, .enum_field, .const_field {
 			return node.pos.offset
 		}
 		.param {
@@ -6508,6 +6522,39 @@ fn deprecated_byte_name_offset(node flat.Node) ?int {
 		else {}
 	}
 	return none
+}
+
+// deprecated_byte_method_name_offset returns the source offset of a method's name
+// when that name is `byte`, else none. A method name reaches the AST as the
+// fn_decl's own value spelled `Type.name`, so it never equals `byte` on its own
+// and the `node.value == 'byte'` test in the caller cannot see it. Only the last
+// segment is the name, which is what keeps `fn (ds byte) get()` reporting its
+// `byte` receiver: there the `byte` is the receiver type, not the method name.
+//
+// A top-level `fn byte()` has no `.` and is left out on purpose, so the
+// deprecation keeps flagging it next to the "cannot shadow builtin type" error
+// that already rejects it.
+fn deprecated_byte_method_name_offset(node flat.Node) ?int {
+	if !node.pos.is_valid() || !node.value.contains('.') {
+		return none
+	}
+	if node.value.all_after_last('.') != 'byte' {
+		return none
+	}
+	return node.pos.offset
+}
+
+// deprecated_byte_source_text returns the source text `pos` points at, or an empty
+// string when it does not point at anything usable.
+fn (tc &TypeChecker) deprecated_byte_source_text(pos token.Pos) string {
+	file := tc.a.source_files[pos.id] or { return '' }
+	source := tc.source_texts_by_file[file.name] or { return '' }
+	start := int_max(0, pos.offset)
+	end := int_min(pos.end, source.len)
+	if end <= start {
+		return ''
+	}
+	return source[start..end]
 }
 
 // deprecated_byte_is_field_key reports `byte:` in a struct init or config call,

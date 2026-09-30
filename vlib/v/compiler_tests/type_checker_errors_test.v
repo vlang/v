@@ -2149,6 +2149,47 @@ fn test_byte_identifier_is_not_treated_as_deprecated_type() {
 	assert output == '6'
 }
 
+// A declaration name is not a type. The check that flags `byte` as a deprecated
+// type reads the raw text, so it has to know the positions that spell `byte` as a
+// name. A const, a method and an import alias each keep their name somewhere the
+// AST walk did not look, so all three were reported as deprecated types even
+// though nothing in the program uses the type. See #29138.
+fn test_byte_declaration_names_are_not_treated_as_deprecated_types() {
+	v3_bin := build_v3()
+
+	// A const name lives in a `.const_field` node.
+	mut output := run_good(v3_bin, 'good_byte_const_name', 'const byte = 8\n\nfn main() {\n\tprintln(int_str(byte))\n}\n')
+	assert output == '8'
+
+	// A method name reaches the AST as the fn_decl value `Type.byte`, so it never
+	// equalled `byte` on its own and the walk could not recognise it.
+	output = run_good(v3_bin, 'good_byte_method_name',
+		'struct DataSize {\n\tsize int\n}\n\nfn (ds &DataSize) byte() int {\n\treturn ds.size\n}\n\nfn main() {\n\tds := DataSize{\n\t\tsize: 8\n\t}\n\tprintln(int_str(ds.byte()))\n}\n')
+	assert output == '8'
+
+	// An import alias lives in the import_decl `typ`, not in an ident node.
+	output = run_good_project(v3_bin, 'good_byte_import_alias', {
+		'main.v':      'module main\n\nimport unit as byte\n\nfn main() {\n\tprintln(byte.value())\n}\n'
+		'unit/unit.v': "module unit\n\npub fn value() string {\n\treturn '8'\n}\n"
+	}, 'main.v')
+	assert output == '8'
+}
+
+// The other half of the method case: `byte` is a name only in the *last* segment of
+// a method name. In `fn (ds byte) get()` the receiver is the deprecated type, so it
+// keeps being reported.
+fn test_byte_in_a_method_receiver_type_is_still_reported() {
+	v3_bin := build_v3()
+	run_bad(v3_bin, 'bad_byte_method_receiver_type',
+		'fn (ds byte) get() int {\n\treturn int(ds)\n}\n\nfn main() {\n\tprintln(int_str(byte(1).get()))\n}\n',
+		'byte is deprecated, use u8 instead')
+	// A plain parameter type, so the guard above is not passing by matching any
+	// method declaration rather than the receiver.
+	run_bad(v3_bin, 'bad_byte_fn_param_type',
+		'fn scaled(x byte) int {\n\treturn int(x)\n}\n\nfn main() {\n\tprintln(int_str(scaled(byte(1))))\n}\n',
+		'byte is deprecated, use u8 instead')
+}
+
 fn test_module_qualified_enum_value_in_if_expression() {
 	v3_bin := build_v3()
 	output := run_good_project(v3_bin, 'good_module_qualified_enum_if_expression', {
