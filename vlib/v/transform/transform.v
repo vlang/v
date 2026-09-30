@@ -15860,11 +15860,11 @@ fn (mut t Transformer) transform_decl_assign_stmt(id flat.NodeId, node flat.Node
 		}
 		// Every declaration of the name is moved: uses are rewritten by name, and sibling
 		// scopes (the branches of a `match`) can each declare it. A declaration already
-		// moved has a pointer type, which is not heapable. A fixed array whose elements'
-		// addresses escape (`out << unsafe { &items[0] }`) is moved like a mutable closure
-		// capture above.
+		// moved has a pointer type, which is not heapable. Fixed arrays stay on the stack:
+		// the checker requires `unsafe` for their element addresses, and moving one would
+		// change its value semantics (`sizeof(buf)`).
 		if src.kind == .ident && src.value in t.escaping_amp_sources
-			&& (t.heapable_value_type(inferred_typ) || t.is_fixed_array_type(inferred_typ)) {
+			&& t.heapable_value_type(inferred_typ) {
 			t.warn_alloc(node, t.a.child(&node, 1), src.pos, 'local moved to the heap: its address escapes')
 			return t.heap_escaping_source_decl(node, src.value, inferred_typ)
 		}

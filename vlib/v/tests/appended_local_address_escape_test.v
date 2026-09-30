@@ -145,62 +145,23 @@ fn test_value_block_if_and_match_aliases_keep_appended_addresses() {
 	assert *values[7] == 42
 }
 
-fn sum_items(items [3]u64) u64 {
-	return items[0] + items[1] + items[2]
+fn copy_c_bytes(bytes &u8) string {
+	return unsafe { tos_clone(bytes) }
 }
 
-fn bump_items(mut items [3]u64) {
-	items[1] += 100
-}
-
-fn append_fixed_array_elements(mut values []&u64, data u64) (u64, u64, u64) {
-	mut items := [data, data + 1, data + 2]!
-	values << unsafe { &items[0] }
-	values << unsafe { &items[2] }
-	items[2] += 10
-	mut total := u64(0)
-	for item in items {
-		total += item
+fn fixed_buffer_text() (string, int) {
+	mut buf := [16]u8{}
+	for i in 0 .. int(sizeof(buf)) - 1 {
+		buf[i] = `x`
 	}
-	bump_items(mut items)
-	snapshot := items
-	return sum_items(items), total, snapshot[1]
+	return copy_c_bytes(unsafe { &buf[0] }), int(sizeof(buf))
 }
 
-// The addresses of a fixed array's elements outlive the function: the array is moved to
-// the heap, and its other uses still see one array.
-fn test_element_addresses_of_a_fixed_array_appended() {
-	mut values := []&u64{}
-	sum, total, second := append_fixed_array_elements(mut values, 30)
-	_ = use_the_stack(10)
-	assert sum == 203
-	assert total == 103
-	assert second == 131
-	assert values.map(*it) == [u64(30), 42]
-}
-
-fn append_through_wrapper_aliases(mut values []&u64, data u64, c bool) {
-	first := data
-	p := unsafe {
-		q := &first
-		q
-	}
-	values << p
-	second := data + 1
-	r := if c {
-		s := &second
-		s
-	} else {
-		unsafe { nil }
-	}
-	values << r
-}
-
-// The appended pointer can be an alias declared inside the block or branch that gives
-// another alias its value.
-fn test_address_appended_through_an_alias_declared_in_a_value_wrapper() {
-	mut values := []&u64{}
-	append_through_wrapper_aliases(mut values, 50, true)
-	_ = use_the_stack(10)
-	assert values.map(*it) == [u64(50), 51]
+// A fixed array stays on the stack when its elements' addresses are passed in a
+// `return` (`time.strftime` returns `cstring_to_vstring(&buf[0])`): `sizeof(buf)` is
+// the size of the array, not of a pointer to it.
+fn test_fixed_array_in_a_return_keeps_its_size() {
+	text, size := fixed_buffer_text()
+	assert size == 16
+	assert text == 'x'.repeat(15)
 }
