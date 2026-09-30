@@ -510,3 +510,58 @@ fn test_system_libc_headers_make_stdatomic_compatible_with_gnu_objective_c() {
 	assert c_code.contains('${compat_guard}\n#define _Atomic volatile\n#endif\n#include <stdatomic.h>')
 	assert c_code.contains('#include <stdatomic.h>\n${compat_guard}\n#undef _Atomic\n#endif')
 }
+
+fn test_system_libc_headers_leave_the_msvc_only_headers_to_the_c_preprocessor() {
+	// The generated C is compiled by whatever C compiler the user picked, which is
+	// not the one V generated it for: `vc/v_win.c` comes out of
+	// `-cross -os windows -cc msvc` (gen_vc_ci.yml) and is then built by tcc, clang
+	// and gcc (makev.bat). Choosing the MSVC-only headers at generation time baked
+	// <intrin.h> and <dbghelp.h> into every Windows snapshot, and the bundled
+	// TinyCC ships neither, so `makev.bat` died on
+	// `include file 'intrin.h' not found` before compiling any line of V.
+	// See #29146.
+	mut g := FlatGen.new()
+	// Generated exactly the way gen_vc_ci.yml generates the Windows snapshot.
+	g.set_ccompiler('msvc')
+	g.system_libc_headers()
+	c_code := g.sb.str()
+	// Only MSVC has these two, so the guard is the whole story: pinned as one block,
+	// because a bare include of either one is exactly the regression.
+	emitted := c_code.split_into_lines().filter(it.trim_space() in [
+		'#include <intrin.h>',
+		'#include <dbghelp.h>',
+	]).map(it.trim_space())
+	assert c_code_is_guarded_msvc_only(c_code), 'the snapshot emits ${emitted} unguarded, but only MSVC has those headers, so a snapshot built by tcc, clang or gcc fails with `include file not found`'
+}
+
+// c_code_is_guarded_msvc_only reports whether <intrin.h> and <dbghelp.h> are emitted
+// as one `#if defined(_MSC_VER)` block, which is the only shape that lets a snapshot
+// built by tcc, clang or gcc skip headers they do not have.
+fn c_code_is_guarded_msvc_only(c_code string) bool {
+	return c_code.contains('#if defined(_MSC_VER)\n#include <intrin.h>\n#include <dbghelp.h>\n#endif')
+}
+
+fn test_system_libc_headers_do_not_depend_on_the_c_compiler_v_was_generated_for() {
+	// A snapshot is generated for one C compiler and compiled by another, so the
+	// header set must not vary with `g.ccompiler`. Branches on it belong in the C
+	// preprocessor instead: see #29146, where `if g.ccompiler == 'msvc'` made
+	// `-cc msvc` the only spelling that could build a Windows snapshot, even
+	// though <intrin.h>/<dbghelp.h> exist nowhere but under MSVC anyway.
+	mut reference := []string{}
+	for ccompiler in ['msvc', 'gcc', 'clang', 'tcc', 'tinyc'] {
+		mut g := FlatGen.new()
+		g.set_ccompiler(ccompiler)
+		g.system_libc_headers()
+		includes := g.sb.str().split_into_lines().filter(it.trim_space().starts_with('#include'))
+			.map(it.trim_space())
+		if reference.len == 0 {
+			reference = includes.clone()
+			continue
+		}
+		// Report the difference rather than both full lists: a header that is
+		// missing from one spelling of the same snapshot is the whole finding.
+		only_here := includes.filter(it !in reference)
+		only_there := reference.filter(it !in includes)
+		assert only_here.len == 0 && only_there.len == 0, '-cc ${ccompiler} emits ${only_here} but the msvc spelling emits ${only_there} instead'
+	}
+}
