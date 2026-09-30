@@ -10998,6 +10998,71 @@ fn (mut tc TypeChecker) check_sql_where_constraints(id flat.NodeId, node flat.No
 		call_length := tc.sql_source_call_length(node, fn_name)
 		tc.record_sql_error_at(.assignment_mismatch, 'ORM: function calls must return only primitive types and time.Time, but `${fn_name}` returns `${ret_type.name()}`', id, tc.sql_expr_text_pos(node, '${fn_name}(', 0, call_length))
 	}
+	tc.check_sql_where_value_types(id, node, tokens, where_idx, table_name)
+}
+
+// check_sql_where_value_types reports call-free values such as `boxes[0].holder` or a
+// local struct that a comparison would bind as an ORM primitive. Values containing calls
+// are covered by the call checks above; a relation field is compared by its primary key.
+fn (mut tc TypeChecker) check_sql_where_value_types(id flat.NodeId, node flat.Node, tokens []string, where_idx int, table_name string) {
+	for i := where_idx + 1; i + 2 < tokens.len; i++ {
+		op := tokens[i + 1]
+		if op !in ['==', '!=', '<', '>', '<=', '>=', 'like', 'ilike']
+			|| !sql_like_identifier(tokens[i]) {
+			continue
+		}
+		if field_type := tc.sql_table_field_type(table_name, tokens[i]) {
+			if sql_orm_value_type_is_aggregate(field_type) {
+				continue
+			}
+		}
+		start := i + 2
+		end := sql_where_value_end(tokens, start)
+		typ := tc.sql_orm_value_type(tokens, start, end) or { continue }
+		if !sql_orm_value_type_is_aggregate(typ) {
+			continue
+		}
+		text := tokens[start..end].join('')
+		mut pos := tc.sql_expr_text_pos(node, '${op} ${text}', op.len + 1, text.len)
+		if pos == node.pos {
+			pos = tc.sql_expr_text_pos(node, text, 0, text.len)
+		}
+		tc.record_sql_error_at(.assignment_mismatch, 'ORM: value expressions must produce only primitive types and time.Time, but this expression has type `${typ.name()}`', id, pos)
+	}
+}
+
+// sql_where_value_end returns where the comparison value starting at `start` ends.
+fn sql_where_value_end(tokens []string, start int) int {
+	mut depth := 0
+	for j in start .. tokens.len {
+		tok := tokens[j]
+		if tok in ['(', '[', '{'] {
+			depth++
+		} else if tok in [')', ']', '}'] {
+			if depth == 0 {
+				return j
+			}
+			depth--
+		} else if depth == 0 && (tok in ['&&', '||', 'and', 'order', 'limit', 'offset']
+			|| (tok == 'or' && (j + 1 >= tokens.len || tokens[j + 1] != '{'))) {
+			return j
+		}
+	}
+	return tokens.len
+}
+
+// sql_orm_value_type_is_aggregate reports types that can never be bound as an ORM
+// primitive: structs other than `time.Time`, collections, sum types and interfaces.
+fn sql_orm_value_type_is_aggregate(typ Type) bool {
+	mut clean := unalias_type(typ)
+	if clean is OptionType {
+		clean = unalias_type(clean.base_type)
+	}
+	if clean is Struct {
+		return clean.name() != 'time.Time'
+	}
+	return clean is Array || clean is ArrayFixed || clean is Map || clean is SumType
+		|| clean is Interface
 }
 
 // sql_call_has_or_fallback reports whether the call whose `(` is at `open_idx` has an
@@ -11157,17 +11222,46 @@ fn (tc &TypeChecker) sql_orm_member_value_type(typ Type, member string) ?Type {
 // is the receiver's element (`make_holders().last()` is `Holder`). Other `voidptr`/generic
 // results stay as they are: rejected as the final value, unresolvable as a receiver.
 fn (tc &TypeChecker) sql_orm_method_call_type(receiver Type, member string) ?Type {
-	typ := tc.sql_orm_method_return_type(receiver, member)?
-	if typ.name() == 'voidptr' && member in ['first', 'last', 'pop', 'pop_left'] {
-		clean := unalias_and_unwrap_pointer_type(receiver)
-		if clean is Array {
-			return clean.elem_type
-		}
-		if clean is ArrayFixed {
-			return clean.elem_type
+	// A method declared on an alias (`type Names = []string`) wins over the builtin one.
+	if unwrap_pointer(receiver) is Alias {
+		if method := tc.method_value_type(unwrap_pointer(receiver).name(), member) {
+			if method is FnType {
+				return method.return_type
+			}
 		}
 	}
-	return typ
+	// Builtin collection methods are declared on the raw `array`/`map`; like the ordinary
+	// call checker, specialize their results for the concrete receiver.
+	clean := unalias_and_unwrap_pointer_type(receiver)
+	if clean is Array {
+		match member {
+			'first', 'last', 'pop', 'pop_left' { return clean.elem_type }
+			'clone', 'reverse', 'sorted', 'filter' { return Type(clean) }
+			else {}
+		}
+	} else if clean is ArrayFixed {
+		if member in ['first', 'last'] {
+			return clean.elem_type
+		}
+	} else if clean is Map {
+		match member {
+			'clone' {
+				return Type(clean)
+			}
+			'keys' {
+				return Type(Array{
+					elem_type: clean.key_type
+				})
+			}
+			'values' {
+				return Type(Array{
+					elem_type: clean.value_type
+				})
+			}
+			else {}
+		}
+	}
+	return tc.sql_orm_method_return_type(receiver, member)
 }
 
 fn (tc &TypeChecker) sql_orm_method_return_type(receiver Type, member string) ?Type {
@@ -11696,9 +11790,11 @@ fn (tc &TypeChecker) dynamic_sql_field_pos(query_id flat.NodeId, field_name stri
 }
 
 fn (tc &TypeChecker) sql_struct_field_type(owner Type, field_name string) ?Type {
-	clean := unalias_type(unwrap_pointer(owner))
-	name := clean.name()
-	for candidate in [name, tc.qualify_name(name)] {
+	return tc.sql_table_field_type(unalias_type(unwrap_pointer(owner)).name(), field_name)
+}
+
+fn (tc &TypeChecker) sql_table_field_type(struct_name string, field_name string) ?Type {
+	for candidate in [struct_name, tc.qualify_name(struct_name)] {
 		for field in tc.structs[candidate] or { continue } {
 			if field.name == field_name {
 				return field.typ

@@ -261,6 +261,12 @@ fn test_where_values_with_chained_calls() {
 	assert by_generic_method.len == 1
 	assert by_generic_method[0].mod_at == second.mod_at
 
+	by_collection_method := sql db {
+		select from Account where name == make_names().reverse()[0] && name == make_names().clone()[1]
+	}!
+	assert by_collection_method.len == 1
+	assert by_collection_method[0].mod_at == second.mod_at
+
 	by_grouped_option := sql db {
 		select from Account where name == (load_name('FIRST')) or { 'missing' }
 	}!

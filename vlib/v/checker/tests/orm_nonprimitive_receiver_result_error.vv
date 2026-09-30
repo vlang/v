@@ -61,6 +61,13 @@ fn main() {
 	grouped_receiver := sql db {
 		select from Account where name == (boxes[0]).get()
 	}!
+	call_free_member := sql db {
+		select from Account where name == boxes[0].holder
+	}!
+	holder := boxes[0].holder
+	local_struct := sql db {
+		select from Account where id == 1 && name == holder
+	}!
 	dump(indexed)
 	dump(nested)
 	dump(field)
@@ -68,4 +75,6 @@ fn main() {
 	dump(generic_method)
 	dump(indexed_receiver)
 	dump(grouped_receiver)
+	dump(call_free_member)
+	dump(local_struct)
 }

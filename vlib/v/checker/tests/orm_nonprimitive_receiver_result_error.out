@@ -46,4 +46,18 @@ vlib/v/checker/tests/orm_nonprimitive_receiver_result_error.vv:62:48: error: ORM
    62 |         select from Account where name == (boxes[0]).get()
       |                                                      ~~~~~
    63 |     }!
-   64 |     dump(indexed)
+   64 |     call_free_member := sql db {
+vlib/v/checker/tests/orm_nonprimitive_receiver_result_error.vv:65:37: error: ORM: value expressions must produce only primitive types and time.Time, but this expression has type `Holder`
+   63 |     }!
+   64 |     call_free_member := sql db {
+   65 |         select from Account where name == boxes[0].holder
+      |                                           ~~~~~~~~~~~~~~~
+   66 |     }!
+   67 |     holder := boxes[0].holder
+vlib/v/checker/tests/orm_nonprimitive_receiver_result_error.vv:69:48: error: ORM: value expressions must produce only primitive types and time.Time, but this expression has type `Holder`
+   67 |     holder := boxes[0].holder
+   68 |     local_struct := sql db {
+   69 |         select from Account where id == 1 && name == holder
+      |                                                      ~~~~~~
+   70 |     }!
+   71 |     dump(indexed)
