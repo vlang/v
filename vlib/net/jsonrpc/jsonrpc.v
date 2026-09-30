@@ -281,8 +281,8 @@ fn try_encode[T](data T) string {
 
 fn try_decode[T](s string) !T {
 	$if T is string {
-		if s[0] == `"` && s[s.len - 1] == `"` {
-			return s.find_between('"', '"\0')
+		if s.len >= 2 && s[0] == `"` && s[s.len - 1] == `"` {
+			return s[1..s.len - 1]
 		}
 		return error('Could not decode data=${s} into type string')
 	} $else $if T is bool {

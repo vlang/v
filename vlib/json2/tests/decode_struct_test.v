@@ -204,7 +204,7 @@ fn test_error_conditions() {
 
 	mut error_count := 0
 	for case in invalid_cases {
-		result := json.decode[JsonU8](case) or {
+		_ := json.decode[JsonU8](case) or {
 			error_count++
 			continue // Expected failure, error handling works correctly
 		}
@@ -268,10 +268,10 @@ fn test_performance_large_scale() {
 fn test_special_float_values() {
 	// Test special float values
 
-	// Json does not support nan, +-inf yet
-	assert json.encode(math.nan()) == 'nan'
-	assert json.encode(math.inf(1)) == '+inf'
-	assert json.encode(math.inf(-1)) == '-inf'
+	// JSON has no nan or +-inf; they are encoded as `null`
+	assert json.encode(math.nan()) == 'null'
+	assert json.encode(math.inf(1)) == 'null'
+	assert json.encode(math.inf(-1)) == 'null'
 
 	println('✓ Special float values test passed')
 }

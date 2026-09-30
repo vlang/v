@@ -49,7 +49,7 @@ fn test_typeof_for_structs() {
 
 //
 fn mysumtype_typeof(x MySumType) string {
-	return typeof(x)
+	return unsafe { typeof(x) }
 }
 
 fn test_typeof_for_sumtypes() {
@@ -61,7 +61,7 @@ fn test_typeof_for_sumtypes() {
 
 //
 fn supersumtype_typeof(x SuperSumType) string {
-	return typeof(x)
+	return unsafe { typeof(x) }
 }
 
 fn mst(x MySumType) MySumType {

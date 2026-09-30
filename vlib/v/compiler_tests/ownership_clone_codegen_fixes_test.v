@@ -33,7 +33,7 @@ fn occf_compile_and_run(v3_bin string, tag string, source string) {
 
 // Reassigning an `?string` field via the drop-before-assign lowering must keep
 // the optional storage type; the temp used to hold the (auto-wrapped) value must
-// be `Optional_string`, not the unwrapped `string` smartcast.
+// be `__v_option_string`, not the unwrapped `string` smartcast.
 fn test_optional_drop_before_assign_keeps_optional_temp() {
 	v3_bin := occf_build_v3('opt_drop_assign')
 	defer {

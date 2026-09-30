@@ -35,22 +35,22 @@ const stderr_value = 2
 
 // (Must be realized in Syscall) (Must be specified)
 // ref: http://www.ccfit.nsu.ru/~deviv/courses/unix/unix/ng7c229.html
-pub const s_ifmt = 0xF000 // type of file
-pub const s_ifdir = 0x4000 // directory
-pub const s_ifreg = 0x8000 // regular file
-pub const s_iflnk = 0xa000 // link
-pub const s_isuid = 0o4000 // SUID
-pub const s_isgid = 0o2000 // SGID
-pub const s_isvtx = 0o1000 // Sticky
-pub const s_irusr = 0o0400 // Read by owner
-pub const s_iwusr = 0o0200 // Write by owner
-pub const s_ixusr = 0o0100 // Execute by owner
-pub const s_irgrp = 0o0040 // Read by group
-pub const s_iwgrp = 0o0020 // Write by group
-pub const s_ixgrp = 0o0010 // Execute by group
-pub const s_iroth = 0o0004 // Read by others
-pub const s_iwoth = 0o0002 // Write by others
-pub const s_ixoth = 0o0001
+pub const s_ifmt = u32(0xF000) // type of file
+pub const s_ifdir = u32(0x4000) // directory
+pub const s_ifreg = u32(0x8000) // regular file
+pub const s_iflnk = u32(0xa000) // link
+pub const s_isuid = u32(0o4000) // SUID
+pub const s_isgid = u32(0o2000) // SGID
+pub const s_isvtx = u32(0o1000) // Sticky
+pub const s_irusr = u32(0o0400) // Read by owner
+pub const s_iwusr = u32(0o0200) // Write by owner
+pub const s_ixusr = u32(0o0100) // Execute by owner
+pub const s_irgrp = u32(0o0040) // Read by group
+pub const s_iwgrp = u32(0o0020) // Write by group
+pub const s_ixgrp = u32(0o0010) // Execute by group
+pub const s_iroth = u32(0o0004) // Read by others
+pub const s_iwoth = u32(0o0002) // Write by others
+pub const s_ixoth = u32(0o0001)
 
 fn C.utime(&char, &C.utimbuf) i32
 
@@ -170,9 +170,21 @@ fn glob_match(dir string, pattern string, next_pattern string, mut matches []str
 
 fn native_glob_pattern(pattern string, mut matches []string) ! {
 	steps := pattern.split(path_separator)
-	cwd := if pattern.starts_with(path_separator) { path_separator } else { '.' }
+	mut cwd := if pattern.starts_with(path_separator) { path_separator } else { '.' }
+	// A leading `.` or `..` says where the search starts; it is not a pattern to
+	// match the entries of a folder against. It is folded into the start folder,
+	// and put back in front of the results verbatim, the way `glob(3)` reports
+	// them: `./a/*.v` yields `./a/x.v`, not `a/x.v`.
+	mut first := 0
+	mut prefix := ''
+	for first + 1 < steps.len && (steps[first] == '.' || steps[first] == '..') {
+		prefix += '${steps[first]}${path_separator}'
+		cwd = if cwd == '.' { steps[first] } else { '${cwd}/${steps[first]}' }
+		first++
+	}
+	from := matches.len
 	mut subdirs := [cwd]
-	for i := 0; i < steps.len; i++ {
+	for i := first; i < steps.len; i++ {
 		step := steps[i]
 		step2 := if i + 1 == steps.len { step } else { steps[i + 1] }
 		if step == '' {
@@ -196,18 +208,24 @@ fn native_glob_pattern(pattern string, mut matches []string) ! {
 		}
 		mut subs := []string{}
 		for sd in subdirs {
-			d := if cwd == '/' {
-				sd
-			} else {
-				if cwd == '.' || cwd == '' {
-					sd
-				} else {
-					if sd == '.' || sd == '/' { cwd } else { '${cwd}/${sd}' }
-				}
-			}
-			subs << glob_match(d.replace('//', '/'), step, step2, mut matches)
+			// The folders walked already carry the start folder in front.
+			subs << glob_match(sd.replace('//', '/'), step, step2, mut matches)
 		}
 		subdirs = subs.clone()
+	}
+	if prefix != '' {
+		// The walk reports paths rooted at the folded start folder; swap that
+		// root for the prefix as it was written in the pattern. From `.`, only the
+		// folders matched by a wildcard or walked by `**` start with `./`.
+		walked := '${cwd}${path_separator}'
+		for i := from; i < matches.len; i++ {
+			found := matches[i]
+			matches[i] = if found.starts_with(walked) {
+				'${prefix}${found[walked.len..]}'
+			} else {
+				'${prefix}${found}'
+			}
+		}
 	}
 }
 

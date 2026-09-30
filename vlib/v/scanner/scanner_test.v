@@ -1,5 +1,6 @@
 module scanner
 
+import encoding.utf8
 import v.pref
 import v.token
 
@@ -168,5 +169,107 @@ fn test_keyword_enum_selector_inserts_semicolon() {
 	for expected in [token.Token.key_assert, .name, .eq, .dot, .key_fn, .semicolon, .key_assert,
 		.name, .eq, .dot, .key_struct, .semicolon, .eof] {
 		assert scanner.scan() == expected
+	}
+}
+
+fn char_literal_diagnostics(source string) []string {
+	mut files := token.FileSet.new()
+	mut file := files.add_file('char_literal.v', source.len)
+	file.index_lines(source)
+	preferences := &pref.Preferences{}
+	mut scanner := new_scanner(preferences, .normal)
+	scanner.init(file, source)
+	for scanner.scan() != .eof {
+	}
+	return scanner.diagnostics.map(it.message)
+}
+
+// A character literal holds one character however it is spelled: a three-digit octal
+// escape is one byte, and the byte escapes of one UTF-8 sequence are one character, the
+// same as in a string.
+fn test_char_literal_escapes_that_spell_one_character_are_accepted() {
+	for source in [
+		r'`\141`',
+		r'`\x61`',
+		r'`\u0061`',
+		r'`\U0001F680`',
+		r'`\0`',
+		r'`\xc3\xa9`',
+		r'`\xe2\x98\x85`',
+		r'`\342\230\205`',
+		r'`\342\x98\205`',
+		r'`\xf0\x9f\x9a\x80`',
+	] {
+		assert char_literal_diagnostics(source) == [], source
+	}
+}
+
+fn test_char_literal_with_more_than_one_character_is_still_rejected() {
+	for source in [
+		r'`\141b`',
+		r'`\x61\x62`',
+		// A lead byte whose continuation bytes are missing, invalid, or overlong is not
+		// one character.
+		r'`\xe2\x98`',
+		r'`\xe2\x98\x41`',
+		r'`\xc0\x80`',
+		r'`\xc3\xa9\xa9`',
+	] {
+		diagnostics := char_literal_diagnostics(source)
+		assert diagnostics.len == 1, source
+		assert diagnostics[0].ends_with('(more than one character)'), '${source}: ${diagnostics[0]}'
+	}
+}
+
+fn utf8_sequence_len(lead u8) int {
+	return if lead >= 0xf0 {
+		4
+	} else if lead >= 0xe0 {
+		3
+	} else {
+		2
+	}
+}
+
+// Byte escapes are one character exactly when they spell one well-formed UTF-8 sequence,
+// which is decided here by `encoding.utf8`, independently of the scanner. The first
+// continuation byte is where the lead-specific limits live (overlong forms after `E0` and
+// `F0`, surrogates after `ED`, code points above U+10FFFF after `F4`), so it walks every
+// boundary of those ranges for every lead byte, together with a valid and an invalid final
+// continuation byte, in both hex and octal spelling.
+fn test_char_literal_byte_escapes_are_one_character_only_when_well_formed_utf8() {
+	second_bytes := [u8(0x7f), 0x80, 0x8f, 0x90, 0x9f, 0xa0, 0xbf, 0xc0]
+	last_bytes := [u8(0x7f), 0x80, 0xbf, 0xc0]
+	mut sequences := [][]u8{}
+	for lead in u8(0xc0) .. u8(0xf8) {
+		for second in second_bytes {
+			if utf8_sequence_len(lead) == 2 {
+				sequences << [lead, second]
+				continue
+			}
+			for last in last_bytes {
+				mut bytes := [lead, second]
+				for bytes.len < utf8_sequence_len(lead) - 1 {
+					bytes << u8(0x80)
+				}
+				bytes << last
+				sequences << bytes
+			}
+		}
+	}
+	for bytes in sequences {
+		well_formed := utf8.validate_str(bytes.bytestr())
+		hex := bytes.map('\\x${it.hex()}').join('')
+		octal := bytes.map('\\${it:o}').join('')
+		for spelling in [hex, octal] {
+			source := '`${spelling}`'
+			diagnostics := char_literal_diagnostics(source)
+			if well_formed {
+				assert diagnostics == [], source
+			} else {
+				assert diagnostics.len == 1, source
+				assert diagnostics[0].ends_with('(more than one character)'), '${source}: ${diagnostics[0]}'
+			}
+		}
 	}
 }

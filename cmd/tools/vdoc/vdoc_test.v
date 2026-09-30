@@ -6,6 +6,7 @@ import os
 import arrays
 import document as doc
 import markdown
+import term
 
 const vexe_path = @VEXE
 const vexe_ = os.quoted_path(vexe_path)
@@ -119,6 +120,18 @@ fn test_html_highlight_escapes_html_tokens() {
 	assert highlighted.contains('// &lt;h1&gt;owned&lt;/h1&gt;')
 	assert !highlighted.contains('<h1>owned</h1>')
 	assert highlighted.contains('<span class="token operator">&lt;</span>')
+}
+
+fn test_color_highlight_byte_as_an_identifier() {
+	assert color_highlight('byte') == 'byte'
+	assert color_highlight('byte()') == term.cyan('byte') + '()'
+	assert color_highlight('u8') == term.green('u8')
+}
+
+fn test_html_highlight_byte_as_an_identifier() {
+	assert html_highlight('byte') == 'byte'
+	assert html_highlight('byte()').contains('<span class="token function">byte</span>')
+	assert html_highlight('u8') == '<span class="token builtin">u8</span>'
 }
 
 fn test_get_readme_md_src() {

@@ -49,7 +49,7 @@ fn test_trace_runtime_is_not_instrumented_or_profiled() {
 	g.set_trace_calls(true, [])
 	g.set_profile('-', false, [])
 	g.gen_trace_fn_begin(flat.Node{}, 'trace_calls')
-	g.gen_profile_fn_begin('trace_calls__on_call', 'trace_calls', 'on_call', false)
+	g.gen_profile_fn_begin('trace_calls__on_call', 'trace_calls', 'on_call', false, false)
 	assert g.sb.len == 0
 	assert !g.profile_fn_active
 }

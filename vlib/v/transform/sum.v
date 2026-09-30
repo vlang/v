@@ -30,14 +30,27 @@ fn interface_pattern_is_collapsed_container_type(name string) bool {
 }
 
 fn (mut t Transformer) pointer_sum_access_expr(expr_id flat.NodeId, expr_type string) (flat.NodeId, string, flat.Op) {
-	mut access := t.transform_selector_base_expr(expr_id)
+	has_smartcast := t.expr_has_smartcast(expr_id)
+	mut access := if has_smartcast {
+		// A runtime tag check always starts from the stored sum/interface value.
+		// Applying an active smartcast here would inspect the extracted variant.
+		t.make_plain_expr_for_smartcast(expr_id)
+	} else {
+		t.transform_selector_base_expr(expr_id)
+	}
 	mut access_type := expr_type
+	if has_smartcast {
+		raw_type := t.raw_expr_type_without_smartcast(expr_id)
+		if raw_type.len > 0 {
+			access_type = raw_type
+		}
+	}
 	for access_type.starts_with('&&') {
 		access = t.make_prefix(.mul, access)
 		access_type = access_type[1..]
 		t.set_node_typ(int(access), access_type)
 	}
-	mut value_type := t.node_type(access)
+	mut value_type := if has_smartcast { access_type } else { t.node_type(access) }
 	if value_type.len == 0 {
 		value_type = access_type
 	}
@@ -603,6 +616,16 @@ fn (t &Transformer) sum_type_index(sum_name string, variant string) int {
 }
 
 fn (t &Transformer) sum_type_variants_for_index(sum_name string) []string {
+	// A bare name the checker registered is the storage name of a main or builtin sum
+	// type, also inside an imported module's specialization. The candidate lookup below
+	// would rebind it to a same-named sum of the current module (`Any` -> `json2.Any`)
+	// and tag the value with that sum's variant indices.
+	if !isnil(t.tc) && t.cur_module !in ['', 'main', 'builtin'] && !sum_name.contains('.')
+		&& sum_name in t.tc.sum_types && '${t.cur_module}.${sum_name}' in t.tc.sum_types {
+		if variants := t.sum_types[sum_name] {
+			return variants
+		}
+	}
 	_, variants := t.concrete_sum_name_and_variants(sum_name)
 	return variants
 }
@@ -839,28 +862,44 @@ fn (t &Transformer) sum_alias_equivalent_variants(sum_name string, pattern strin
 	if variants.len == 0 {
 		return []string{}
 	}
-	pattern_names := t.interface_alias_equivalent_names(pattern)
+	mut pattern_forms := []AliasEquivalentForms{}
+	for name in t.interface_alias_equivalent_names(pattern) {
+		pattern_forms << t.alias_equivalent_forms(name)
+	}
 	mut result := []string{}
 	for variant in variants {
-		if t.type_name_matches_any_alias_equivalent(variant, pattern_names) {
+		if t.type_name_matches_any_alias_equivalent(variant, pattern_forms) {
 			result << variant
 		}
 	}
 	return result
 }
 
-fn (t &Transformer) type_name_matches_any_alias_equivalent(name string, candidates []string) bool {
+// AliasEquivalentForms holds a type name, its spelling normalized in the current
+// module, and the short names of both.
+struct AliasEquivalentForms {
+	name             string
+	normalized       string
+	short            string
+	normalized_short string
+}
+
+fn (t &Transformer) alias_equivalent_forms(name string) AliasEquivalentForms {
 	normalized := t.normalize_type_in_module(name, t.cur_module)
-	short := t.variant_short_name(name)
-	normalized_short := t.variant_short_name(normalized)
-	for candidate in candidates {
-		candidate_normalized := t.normalize_type_in_module(candidate, t.cur_module)
-		candidate_short := t.variant_short_name(candidate)
-		candidate_normalized_short := t.variant_short_name(candidate_normalized)
-		if name == candidate || name == candidate_normalized || normalized == candidate
-			|| normalized == candidate_normalized || short == candidate_short
-			|| short == candidate_normalized_short || normalized_short == candidate_short
-			|| normalized_short == candidate_normalized_short {
+	return AliasEquivalentForms{
+		name:             name
+		normalized:       normalized
+		short:            t.variant_short_name(name)
+		normalized_short: t.variant_short_name(normalized)
+	}
+}
+
+fn (t &Transformer) type_name_matches_any_alias_equivalent(name string, candidates []AliasEquivalentForms) bool {
+	n := t.alias_equivalent_forms(name)
+	for c in candidates {
+		if n.name == c.name || n.name == c.normalized || n.normalized == c.name
+			|| n.normalized == c.normalized || n.short == c.short || n.short == c.normalized_short
+			|| n.normalized_short == c.short || n.normalized_short == c.normalized_short {
 			return true
 		}
 	}
@@ -1079,7 +1118,28 @@ fn (t &Transformer) interface_impl_type_ids(iface_name string, concrete_name str
 	return ids
 }
 
+// interface_alias_equivalent_names returns `name`, its normalized spelling and the
+// aliases equivalent to either, memoized for the current module and file.
 fn (t &Transformer) interface_alias_equivalent_names(name string) []string {
+	if isnil(t.alias_equivalent_names_cache) {
+		return t.interface_alias_equivalent_names_uncached(name)
+	}
+	mut cache := t.alias_equivalent_names_cache
+	if !same_transform_text(cache.module, t.cur_module)
+		|| !same_transform_text(cache.file, t.cur_file) {
+		cache.module = t.cur_module
+		cache.file = t.cur_file
+		cache.entries.clear()
+	}
+	if names := cache.entries[name] {
+		return names
+	}
+	names := t.interface_alias_equivalent_names_uncached(name)
+	cache.entries[name] = names
+	return names
+}
+
+fn (t &Transformer) interface_alias_equivalent_names_uncached(name string) []string {
 	mut names := []string{}
 	mut seen := map[string]bool{}
 	t.push_interface_alias_equivalent_name(mut names, mut seen, name)
@@ -1136,21 +1196,21 @@ fn (t &Transformer) interface_concrete_impl_name(name string) ?string {
 			return canonical
 		}
 	}
-	if name in ['bool', 'int', 'i8', 'i16', 'i32', 'i64', 'isize', 'usize', 'u8', 'byte', 'u16',
-		'u32', 'u64', 'f32', 'f64', 'string', 'char', 'rune', 'voidptr'] {
+	if name in ['bool', 'int', 'i8', 'i16', 'i32', 'i64', 'isize', 'usize', 'u8', 'u16', 'u32',
+		'u64', 'f32', 'f64', 'string', 'char', 'rune', 'voidptr'] {
 		return name
 	}
 	if name.starts_with('builtin.') {
 		short := name['builtin.'.len..]
-		if short in ['bool', 'int', 'i8', 'i16', 'i32', 'i64', 'isize', 'usize', 'u8', 'byte',
-			'u16', 'u32', 'u64', 'f32', 'f64', 'string', 'char', 'rune', 'voidptr'] {
+		if short in ['bool', 'int', 'i8', 'i16', 'i32', 'i64', 'isize', 'usize', 'u8', 'u16', 'u32',
+			'u64', 'f32', 'f64', 'string', 'char', 'rune', 'voidptr'] {
 			return short
 		}
 	}
 	if name.contains('.') {
 		short := name.all_after_last('.')
-		if short in ['bool', 'int', 'i8', 'i16', 'i32', 'i64', 'isize', 'usize', 'u8', 'byte',
-			'u16', 'u32', 'u64', 'f32', 'f64', 'string', 'char', 'rune', 'voidptr'] {
+		if short in ['bool', 'int', 'i8', 'i16', 'i32', 'i64', 'isize', 'usize', 'u8', 'u16', 'u32',
+			'u64', 'f32', 'f64', 'string', 'char', 'rune', 'voidptr'] {
 			return short
 		}
 	}

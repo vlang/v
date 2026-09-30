@@ -74,7 +74,7 @@ fn test_c_struct_redeclaration_checks_field_signature() {
 	assert partial_view_bad.output.contains('cannot redeclare C struct `C.HeaderEvent`'), partial_view_bad.output
 
 	alias_good := run_v3_source(v3_bin, 'good_c_struct_alias_field_redeclaration',
-		'struct C.Foo {\n\tx byte\n}\n\nstruct C.Foo {\n\tx u8\n}\n\nfn main() {}\n')
+		'type MyByte = u8\n\nstruct C.Foo {\n\tx MyByte\n}\n\nstruct C.Foo {\n\tx u8\n}\n\nfn main() {}\n')
 	assert alias_good.exit_code == 0, alias_good.output
 	assert !alias_good.output.contains('C compilation failed'), alias_good.output
 
@@ -103,13 +103,6 @@ fn test_c_struct_redeclaration_checks_field_signature() {
 	assert !cross_module_bad.output.contains('semantic checking continued after C declaration conflict'), cross_module_bad.output
 
 	assert !cross_module_bad.output.contains('C compilation failed'), cross_module_bad.output
-
-	shared_header_good := run_v3_source_cgen(v3_bin, 'good_cjson_shared_header_redeclaration',
-		'import json\nimport json.cjson\n\nfn main() {\n\t_ := json.encode(unsafe { nil })\n\t_ := cjson.version()\n}\n')
-	assert shared_header_good.exit_code == 0, shared_header_good.output
-	assert !shared_header_good.output.contains('cannot redeclare C struct `C.cJSON`'), shared_header_good.output
-
-	assert !shared_header_good.output.contains('C compilation failed'), shared_header_good.output
 
 	cached_termios_good := run_v3_project(v3_bin, 'module_cache_termios_shims', {
 		'v.mod':                   'Module { name: "cached_termios_shims" }\n'

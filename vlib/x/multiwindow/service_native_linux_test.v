@@ -1,7 +1,9 @@
 module multiwindow
 
-import os
-import time
+$if linux && x_multiwindow_x11 ? {
+	import os
+	import time
+}
 
 const x11_stale_xid_child_marker = 'V_MULTIWINDOW_X11_STALE_XID_CHILD'
 

@@ -26,7 +26,8 @@ fn testsuite_begin() {
 	os.setenv('VCOLORS', 'never', true)
 	os.setenv('VTEST_HIDE_OK', '0', true)
 	os.setenv('VTEST_HIDE_SKIP', '0', true)
-	os.setenv('VTEST_MAX_COMPILATION_RETRIES', '0', true)
+	// The runner counts compilation attempts, so use one to disable retries.
+	os.setenv('VTEST_MAX_COMPILATION_RETRIES', '1', true)
 	os.setenv('V_C_ERROR_BUG_REPORT_DISABLED', '1', true)
 	os.setenv('V_MACOS_V3_NO_FALLBACK', '1', true)
 	build := cmdexec.run_with_timeout(@VEXE, ['-new-compiler', '-nocache', '-gc', 'none', '-o',
@@ -45,8 +46,8 @@ fn testsuite_begin() {
 		'discovery/multiwindow_fail_test.v', 'discovery/multiwindow/fail_test.v'] {
 		write_selection_fixture(path, failing)
 	}
-	host_arch := pref.host_arch().str()
-	other_arch := if pref.host_arch() == .amd64 { 'arm64' } else { 'amd64' }
+	host_arch := pref.host_arch()
+	other_arch := if host_arch == 'amd64' { 'arm64' } else { 'amd64' }
 	write_selection_fixture('directory space.with.dots/host_test.${host_arch}.v', passing)
 	write_selection_fixture('incompatible/arch_test.${other_arch}.v', failing)
 	write_selection_fixture('incompatible/backend_test.wasm.v', failing)
@@ -151,7 +152,7 @@ fn test_non_ci_directory_discovery_is_unchanged() {
 }
 
 fn test_architecture_suffix_ignores_dots_in_the_parent_path() {
-	host_arch := pref.host_arch().str()
+	host_arch := pref.host_arch()
 	for path in ['directory space.with.dots/host_test.${host_arch}.v',
 		'./directory space.with.dots/host_test.${host_arch}.v',
 		os.join_path(selection_root, 'directory space.with.dots', 'host_test.${host_arch}.v'),
@@ -171,7 +172,7 @@ fn test_architecture_suffix_is_discovered_from_the_current_directory() {
 }
 
 fn test_explicit_incompatible_architecture_and_backend_still_skip() {
-	other_arch := if pref.host_arch() == .amd64 { 'arm64' } else { 'amd64' }
+	other_arch := if pref.host_arch() == 'amd64' { 'arm64' } else { 'amd64' }
 	for path in ['incompatible/arch_test.${other_arch}.v', 'incompatible/backend_test.wasm.v'] {
 		result := run_selection(['test', os.join_path(selection_root, path)])
 		assert_selection_summary(result, 0, '1 skipped, 1 total')

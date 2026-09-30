@@ -20,11 +20,15 @@ type FN_vcleanup_caller = fn ()
 // open loads a given module into the address space of the calling process.
 pub fn open(filename string, flags int) voidptr {
 	res := C.LoadLibrary(filename.to_wide())
+	if res != unsafe { nil } {
+		register_interface_exports(res)
+	}
 	return res
 }
 
 // close frees the loaded a given module.
 pub fn close(handle voidptr) bool {
+	unregister_interface_exports(handle)
 	return C.FreeLibrary(handle)
 }
 

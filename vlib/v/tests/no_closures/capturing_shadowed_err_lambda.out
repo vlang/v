@@ -1,0 +1,6 @@
+vlib/v/tests/no_closures/capturing_shadowed_err_lambda.vv:16:16: cgen error: a closure was generated for function
+   14 |     println(err)
+   15 |     // the transform captures the outer `err`, although the `or` block shadows it
+   16 |     println(apply(|n| parse(if n > 0 { '' } else { n.str() }) or { err.msg().len }, 7))
+      |                   ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+   17 | }

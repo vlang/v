@@ -1,5 +1,5 @@
 // vtest vflags: -w
-import json
+import json2
 
 type Issue26826Value = Issue26826Nil | string
 
@@ -12,7 +12,7 @@ struct Issue26826Session {
 fn issue_26826_load(v Issue26826Value) !Issue26826Session {
 	match v {
 		string {
-			loaded_session := json.decode(Issue26826Session, v)!
+			loaded_session := json2.decode[Issue26826Session](v)!
 			return loaded_session
 		}
 		else {

@@ -1,8 +1,36 @@
 module types
 
 import os
+import v.flat
 import v.parser
 import v.pref
+
+fn test_cached_module_header_uses_original_source_identity() {
+	root := os.join_path(os.vtmp_dir(), 'v3_cached_module_identity_${os.getpid()}')
+	source := os.join_path(root, 'app', 'html', 'html.v')
+	header := os.join_path(root, 'cache', 'html.vh')
+	os.mkdir_all(os.dir(source))!
+	os.mkdir_all(os.dir(header))!
+	defer { os.rmdir_all(root) or {} }
+	os.write_file(os.join_path(root, 'v.mod'), "Module { name: 'project' }")!
+	os.write_file(source, 'module html\n')!
+	for import_path in ['net.html', 'app.html as own'] {
+		os.write_file(header, 'module html\nimport ${import_path}\n')!
+		mut p := parser.Parser.new(pref.new_preferences())
+		mut a := p.parse_file(header)
+		a.cached_header_sources[header] = source
+		a.resolved_module_dirs['net.html'] = os.join_path(root, 'net', 'html')
+		a.resolved_module_dirs['app.html'] = os.dir(source)
+		mut tc := TypeChecker.new(a)
+		tc.collect(a)
+		tc.check_import_diagnostics()
+		if import_path == 'net.html' {
+			assert tc.errors.len == 0, tc.errors.str()
+		} else {
+			assert tc.errors.any(it.msg.contains('cannot import `app.html` into a module with the same name')), tc.errors.str()
+		}
+	}
+}
 
 fn test_synthetic_vsh_import_has_no_source_diagnostics() {
 	path := os.join_path(os.vtmp_dir(), 'v3_synthetic_vsh_import_${os.getpid()}.vsh')
@@ -18,6 +46,25 @@ fn test_synthetic_vsh_import_has_no_source_diagnostics() {
 	tc.check_unused_import_diagnostics()
 	assert tc.errors.len == 0, tc.errors.str()
 	assert tc.notices.len == 0, tc.notices.str()
+}
+
+fn test_synthetic_runtime_import_may_match_current_module() {
+	path := os.join_path(os.vtmp_dir(), 'v3_synthetic_self_import_${os.getpid()}.v')
+	os.write_file(path, 'module sync\n')!
+	defer {
+		os.rm(path) or {}
+	}
+	mut p := parser.Parser.new(pref.new_preferences())
+	a := p.parse_file(path)
+	a.add_node(flat.Node{
+		kind:  .import_decl
+		value: 'sync'
+		typ:   'sync'
+	})
+	mut tc := TypeChecker.new(a)
+	tc.collect(a)
+	tc.check_import_diagnostics()
+	assert tc.errors.len == 0, tc.errors.str()
 }
 
 fn test_explicit_import_keeps_source_diagnostics() {
@@ -48,4 +95,179 @@ fn test_explicit_unused_import_keeps_source_diagnostics() {
 	tc.check_unused_import_diagnostics()
 	assert tc.errors.len == 0, tc.errors.str()
 	assert tc.notices.any(it.msg.contains("module 'os' is imported but never used")), tc.notices.str()
+}
+
+fn unused_import_diagnostics(warns_are_errors bool, explicit_warns_are_errors bool) TypeChecker {
+	path := os.join_path(os.vtmp_dir(), 'v3_unused_import_prod_${os.getpid()}.v')
+	os.write_file(path, 'import os\n') or { panic(err) }
+	defer {
+		os.rm(path) or {}
+	}
+	mut p := parser.Parser.new(pref.new_preferences())
+	a := p.parse_file(path)
+	mut tc := TypeChecker.new(a)
+	tc.warns_are_errors = warns_are_errors
+	tc.explicit_warns_are_errors = explicit_warns_are_errors
+	tc.collect(a)
+	tc.check_import_diagnostics()
+	tc.check_unused_import_diagnostics()
+	return tc
+}
+
+fn test_unused_import_stays_a_warning_in_prod_builds() {
+	// -prod makes checker warnings errors, but like V1 not the unused import
+	// warning, which V1 reports from the parser.
+	prod := unused_import_diagnostics(true, false)
+	assert prod.errors.len == 0, prod.errors.str()
+	assert prod.notices.any(it.msg.contains("module 'os' is imported but never used")), prod.notices.str()
+	strict := unused_import_diagnostics(true, true)
+	assert strict.errors.any(it.msg.contains("module 'os' is imported but never used")), strict.errors.str()
+}
+
+fn test_aliased_import_may_have_the_same_basename() {
+	path := os.join_path(os.vtmp_dir(), 'v3_same_basename_import_${os.getpid()}.v')
+	os.write_file(path, 'module html\n\nimport net.html as net_html\n')!
+	defer { os.rm(path) or {} }
+	mut p := parser.Parser.new(pref.new_preferences())
+	a := p.parse_file(path)
+	mut tc := TypeChecker.new(a)
+	tc.collect(a)
+	tc.check_import_diagnostics()
+	assert tc.errors.len == 0, tc.errors.str()
+}
+
+fn test_nested_module_can_import_another_module_with_the_same_basename() {
+	root := os.join_path(os.vtmp_dir(), 'v3_nested_import_${os.getpid()}')
+	path := os.join_path(root, 'nn', 'layers', 'layer.v')
+	os.mkdir_all(os.dir(path))!
+	defer { os.rmdir_all(root) or {} }
+	os.write_file(os.join_path(root, 'v.mod'), "Module { name: 'project' }")!
+	os.write_file(path, 'module layers\nimport project.nn.gates.layers\n')!
+	mut p := parser.Parser.new(pref.new_preferences())
+	a := p.parse_file(path)
+	for diagnostic_root in [root, os.join_path(root, 'nn'), os.join_path(root, 'nn', 'models'),
+		os.join_path(root, 'nn', 'layers')] {
+		mut tc := TypeChecker.new(a)
+		tc.module_diagnostic_root = diagnostic_root
+		tc.collect(a)
+		tc.check_import_diagnostics()
+		assert tc.errors.len == 0, '${diagnostic_root}: ${tc.errors}'
+	}
+}
+
+fn test_nested_module_rejects_its_canonical_self_import() {
+	root := os.join_path(os.vtmp_dir(), 'v3_nested_self_import_${os.getpid()}')
+	path := os.join_path(root, 'nn', 'layers', 'layer.v')
+	os.mkdir_all(os.dir(path))!
+	os.mkdir_all(os.join_path(root, 'layers'))!
+	defer { os.rmdir_all(root) or {} }
+	os.write_file(os.join_path(root, 'v.mod'), "Module { name: 'project' }")!
+	os.write_file(path, 'module layers\nimport nn.layers as own\n')!
+	mut p := parser.Parser.new(pref.new_preferences())
+	a := p.parse_file(path)
+	mut tc := TypeChecker.new(a)
+	tc.collect(a)
+	tc.check_import_diagnostics()
+	assert tc.errors.any(it.msg.contains('cannot import `nn.layers` into a module with the same name')), tc.errors.str()
+}
+
+fn test_self_import_identity_is_scoped_to_each_file() {
+	root := os.join_path(os.vtmp_dir(), 'v3_multiple_module_identities_${os.getpid()}')
+	defer { os.rmdir_all(root) or {} }
+	mut paths := []string{}
+	for parent in ['first', 'second', 'third'] {
+		path := os.join_path(root, parent, 'layers', 'layer.v')
+		os.mkdir_all(os.dir(path))!
+		import_path := if parent == 'second' { 'first.layers' } else { '${parent}.layers' }
+		os.write_file(path, 'module layers\nimport os\nimport time\nimport ${import_path} as other\n')!
+		paths << path
+	}
+	os.write_file(os.join_path(root, 'v.mod'), "Module { name: 'project' }")!
+	mut p := parser.Parser.new(pref.new_preferences())
+	a := p.parse_files(paths)
+	mut tc := TypeChecker.new(a)
+	tc.collect(a)
+	tc.check_import_diagnostics()
+	assert tc.errors.len == 2, tc.errors.str()
+	assert tc.errors[0].msg == 'cannot import `first.layers` into a module with the same name'
+	assert tc.errors[1].msg == 'cannot import `third.layers` into a module with the same name'
+}
+
+fn test_manifestless_nested_module_rejects_its_canonical_self_import() {
+	root := os.join_path(os.vtmp_dir(), 'v3_manifestless_self_import_${os.getpid()}')
+	path := os.join_path(root, 'nn', 'layers', 'layer.v')
+	os.mkdir_all(os.dir(path))!
+	os.mkdir_all(os.join_path(root, 'layers'))!
+	defer { os.rmdir_all(root) or {} }
+	os.write_file(os.join_path(root, 'layers', 'plain.v'), 'module layers\n')!
+	os.write_file(path, 'module layers\nimport nn.layers as self\n')!
+	mut p := parser.Parser.new(pref.new_preferences())
+	mut a := p.parse_file(path)
+	a.resolved_module_dirs['nn.layers'] = os.real_path(os.dir(path))
+	mut tc := TypeChecker.new(a)
+	tc.collect(a)
+	assert tc.current_file_module_path_identity() or { '' } == 'nn.layers'
+	tc.check_import_diagnostics()
+	assert tc.errors.any(it.msg.contains('cannot import `nn.layers` into a module with the same name')), tc.errors.str()
+}
+
+fn test_vlib_is_the_module_search_root_for_identity() {
+	root := os.join_path(os.vtmp_dir(), 'v3_vlib_module_identity_${os.getpid()}')
+	time_file := os.join_path(root, 'vlib', 'time', 'time.v')
+	module_file := os.join_path(root, 'vlib', 'v', 'gen', 'v', 'module.v')
+	os.mkdir_all(os.dir(time_file))!
+	os.mkdir_all(os.dir(module_file))!
+	defer { os.rmdir_all(root) or {} }
+	os.write_file(os.join_path(root, 'v.mod'), "Module { name: 'compiler' }")!
+	os.write_file(time_file, 'module time\n')!
+	os.write_file(module_file, 'module v\nimport v.gen.v as self\n')!
+	mut tc := TypeChecker.new(&flat.FlatAst{})
+	tc.compiler_vroot = root
+	tc.cur_file = time_file
+	tc.cur_module = 'time'
+	assert !tc.current_file_uses_nested_module_path()
+	tc.cur_file = module_file
+	tc.cur_module = 'v'
+	assert tc.current_file_module_path_identity() or { '' } == 'v.gen.v'
+	mut p := parser.Parser.new(pref.new_preferences())
+	a := p.parse_file(module_file)
+	mut checked := TypeChecker.new(a)
+	checked.compiler_vroot = root
+	checked.collect(a)
+	checked.check_import_diagnostics()
+	assert checked.errors.any(it.msg.contains('cannot import `v.gen.v` into a module with the same name')), checked.errors.str()
+}
+
+fn test_explicit_module_search_root_defines_self_import_identity() {
+	root := os.join_path(os.vtmp_dir(), 'v3_path_module_identity_${os.getpid()}')
+	module_file := os.join_path(root, 'nn', 'layers', 'layer.v')
+	os.mkdir_all(os.dir(module_file))!
+	os.mkdir_all(os.join_path(root, 'layers'))!
+	defer { os.rmdir_all(root) or {} }
+	os.write_file(module_file, 'module layers\nimport nn.layers as self\n')!
+	mut p := parser.Parser.new(pref.new_preferences())
+	a := p.parse_file(module_file)
+	mut tc := TypeChecker.new(a)
+	tc.module_search_paths = [root]
+	tc.collect(a)
+	assert tc.current_file_module_path_identity() or { '' } == 'nn.layers'
+	tc.check_import_diagnostics()
+	assert tc.errors.any(it.msg.contains('cannot import `nn.layers` into a module with the same name')), tc.errors.str()
+}
+
+fn test_nested_vlib_project_manifest_defines_module_identity() {
+	root := os.join_path(os.vtmp_dir(), 'v3_nested_vlib_project_${os.getpid()}')
+	project := os.join_path(root, 'vlib', 'v', 'tests', 'project')
+	module_file := os.join_path(project, 'mod1', 'mod1.v')
+	os.mkdir_all(os.dir(module_file))!
+	defer { os.rmdir_all(root) or {} }
+	os.write_file(os.join_path(project, 'v.mod'), "Module { name: 'project' }")!
+	os.write_file(module_file, 'module mod1\n')!
+	mut tc := TypeChecker.new(&flat.FlatAst{})
+	tc.compiler_vroot = root
+	tc.cur_file = module_file
+	tc.cur_module = 'mod1'
+	assert tc.current_file_module_source_root() or { '' } == os.real_path(project)
+	assert !tc.current_file_uses_nested_module_path()
+	assert tc.current_file_module_path_identity() or { '' } == 'mod1'
 }
