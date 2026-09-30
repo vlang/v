@@ -855,3 +855,40 @@ fn test_sibling_pointer_bindings_preserve_their_checked_reference_type() {
 		assert read_retained_optional_fixed_reference(kept) == expected
 	}
 }
+
+@[noinline]
+fn reference_after_copying_fixed_root_in_multi_declaration() &[]int {
+	values := [221, 222]!
+	kept := retain_immutable_array_reference(values)
+	zero, copied := 0, values
+	assert zero == 0
+	assert copied == [221, 222]!
+	return kept
+}
+
+fn test_multi_declaration_rhs_reads_promoted_fixed_storage_as_a_value() {
+	kept := reference_after_copying_fixed_root_in_multi_declaration()
+	assert overwrite_stack() == 7
+	assert read_retained_optional_fixed_reference(kept) == [221, 222]
+}
+
+@[noinline]
+fn reference_from_return_map_guard_with_promoted_outer_binding(key string) &int {
+	x := 231
+	values := {
+		'hit': &aliased_fixed[0]
+	}
+	return if x := values[key] { x } else { &x }
+}
+
+fn test_return_map_guards_preserve_inner_reference_and_outer_heap_bindings() {
+	aliased_fixed[0] = 232
+	for key, expected in {
+		'hit':  232
+		'miss': 231
+	} {
+		kept := reference_from_return_map_guard_with_promoted_outer_binding(key)
+		assert overwrite_stack() == 7
+		assert *kept == expected
+	}
+}

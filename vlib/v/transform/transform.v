@@ -7292,6 +7292,18 @@ fn (mut t Transformer) clear_heaped_local_binding(name string) {
 	t.pointer_value_rvalues.delete(name)
 }
 
+fn (mut t Transformer) clear_source_decl_heaped_bindings(node flat.Node) {
+	if !node.pos.is_valid() {
+		return
+	}
+	for lhs_id in t.multi_assign_lhs_ids(node) {
+		lhs := t.a.nodes[int(lhs_id)]
+		if lhs.kind == .ident {
+			t.clear_heaped_local_binding(lhs.value)
+		}
+	}
+}
+
 // transform_scope_stmts keeps statement-only branch markers inside their lexical scope.
 fn (mut t Transformer) transform_scope_stmts(ids []flat.NodeId) []flat.NodeId {
 	state := t.save_heaped_local_state()
@@ -15710,14 +15722,10 @@ fn (mut t Transformer) transform_decl_assign_stmt(id flat.NodeId, node flat.Node
 	if node.children_count == 0 {
 		return [id]
 	}
-	if node.pos.is_valid() {
+	if t.multi_assign_rhs_count(node) <= 1 {
 		// Source declarations introduce a new binding. Generated heap declarations
 		// have no source span and must keep their already-lowered storage markers.
-		for i in 0 .. node.children_count {
-			if i == 1 { continue }
-			lhs := t.a.child_node(&node, i)
-			if lhs.kind == .ident { t.clear_heaped_local_binding(lhs.value) }
-		}
+		t.clear_source_decl_heaped_bindings(node)
 	}
 	if discarded := t.try_lower_discarded_spawn_assign(node) {
 		return discarded
@@ -16400,7 +16408,9 @@ fn (mut t Transformer) try_expand_plain_multi_decl(node flat.Node) ?[]flat.NodeI
 	if lhs_count != rhs_count || rhs_count <= 1 {
 		return none
 	}
-	mut result := []flat.NodeId{}
+	mut lowered_rhs := []flat.NodeId{cap: lhs_count}
+	mut rhs_types := []string{cap: lhs_count}
+	mut rhs_preludes := [][]flat.NodeId{cap: lhs_count}
 	for i in 0 .. lhs_count {
 		lhs_id := t.multi_assign_lhs_id(node, i)
 		rhs_id := t.multi_assign_rhs_id(node, i)
@@ -16412,10 +16422,8 @@ fn (mut t Transformer) try_expand_plain_multi_decl(node flat.Node) ?[]flat.NodeI
 			''
 		}
 		rhs := t.transform_expr(rhs_id)
-		t.drain_pending(mut result)
-		if lhs.kind != .ident || lhs.value == '_' {
-			continue
-		}
+		mut prelude := []flat.NodeId{}
+		t.drain_pending(mut prelude)
 		rhs_authority := t.decl_rhs_type(rhs_id)
 		mut typ := if t.is_fn_pointer_type_name(rhs_authority) { rhs_authority } else { '' }
 		if typ.len == 0 && decl_type_is_usable(rhs_authority)
@@ -16437,8 +16445,23 @@ fn (mut t Transformer) try_expand_plain_multi_decl(node flat.Node) ?[]flat.NodeI
 		if typ.len == 0 && lhs.typ.len > 0 {
 			typ = lhs.typ
 		}
+		lowered_rhs << rhs
+		rhs_types << if typ.len > 0 { t.normalize_type_alias(typ) } else { '' }
+		rhs_preludes << prelude
+	}
+	// Every RHS sees the incoming bindings before the declarations shadow them.
+	t.clear_source_decl_heaped_bindings(node)
+	mut result := []flat.NodeId{}
+	for i in 0 .. lhs_count {
+		lhs := t.a.nodes[int(t.multi_assign_lhs_id(node, i))]
+		rhs_id := t.multi_assign_rhs_id(node, i)
+		rhs := lowered_rhs[i]
+		typ := rhs_types[i]
+		result << rhs_preludes[i]
+		if lhs.kind != .ident || lhs.value == '_' {
+			continue
+		}
 		if typ.len > 0 {
-			typ = t.normalize_type_alias(typ)
 			t.set_var_type(lhs.value, typ)
 			result << t.make_decl_assign_typed(lhs.value, rhs, typ)
 		} else {

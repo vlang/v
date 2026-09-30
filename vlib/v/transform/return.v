@@ -874,6 +874,8 @@ fn (mut t Transformer) convert_forwarded_map(value_id flat.NodeId, actual_type t
 // return_block_from_branch builds a block that keeps leading statements
 // (transformed) and turns the tail expression of the branch into a `return`.
 fn (mut t Transformer) return_block_from_branch(branch_id flat.NodeId, ret_typ string, extra_return_vals []flat.NodeId, source_return_id flat.NodeId) flat.NodeId {
+	heaped_state := t.save_heaped_local_state()
+	defer { t.restore_heaped_local_state(heaped_state) }
 	branch := t.a.nodes[int(branch_id)]
 	if branch.kind == .return_stmt {
 		mut all := []flat.NodeId{}
@@ -1043,6 +1045,8 @@ fn (mut t Transformer) build_return_map_index_if_guard_chain(if_node flat.Node, 
 	}
 	rhs_id := t.a.child(&cond, 1)
 	info := t.map_index_info(rhs_id) or { return none }
+	heaped_state := t.save_heaped_local_state()
+	defer { t.restore_heaped_local_state(heaped_state) }
 
 	outer_pending := t.pending_stmts.clone()
 	t.pending_stmts.clear()
@@ -1057,9 +1061,11 @@ fn (mut t Transformer) build_return_map_index_if_guard_chain(if_node flat.Node, 
 	found_cond := t.make_infix(.ne, t.make_ident(ptr_name), t.a.add(.nil_literal))
 
 	saved_var_types := t.var_types.clone()
+	saved_heaped_state := t.save_heaped_local_state()
 	mut then_children := []flat.NodeId{}
 	if lhs.value != '_' {
 		ptr_value := t.make_prefix(.mul, t.make_cast('&${info.value_type}', t.make_ident(ptr_name), '&${info.value_type}'))
+		t.clear_heaped_local_binding(lhs.value)
 		then_children << t.make_decl_assign_typed(lhs.value, ptr_value, info.value_type)
 		t.set_var_type(lhs.value, info.value_type)
 	}
@@ -1068,6 +1074,7 @@ fn (mut t Transformer) build_return_map_index_if_guard_chain(if_node flat.Node, 
 	then_children << t.a.children_of(&t.a.nodes[int(then_block0)])
 	then_block := t.make_block_prefix_scope_drops(then_children)
 	t.restore_var_types(saved_var_types)
+	t.restore_heaped_local_state(saved_heaped_state)
 
 	mut else_block := flat.empty_node
 	if if_node.children_count >= 3 {
@@ -1192,6 +1199,8 @@ fn (t &Transformer) match_branch_tuple_parts(branch flat.Node, body_start_idx in
 
 // match_branch_return_block supports match branch return block handling for Transformer.
 fn (mut t Transformer) match_branch_return_block(branch flat.Node, body_start_idx int, ret_typ string, source_return_id flat.NodeId) flat.NodeId {
+	heaped_state := t.save_heaped_local_state()
+	defer { t.restore_heaped_local_state(heaped_state) }
 	mut body_ids := []flat.NodeId{}
 	for i in body_start_idx .. branch.children_count {
 		body_ids << t.a.child(&branch, i)

@@ -240,6 +240,39 @@ fn test_inner_pointer_declarations_shadow_and_restore_outer_storage_markers() {
 	}
 }
 
+fn test_multi_declarations_clear_only_lhs_markers_after_reading_rhs_bindings() {
+	for target in ['copied', 'values'] {
+		mut a := flat.FlatAst.new()
+		mut tc := types.TypeChecker.new(&a)
+		fixed_type := types.Type(types.ArrayFixed{ elem_type: types.Type(types.int_), len: 2 })
+		mut t := new_transformer(mut a, &tc, map[string]bool{})
+		t.set_var_type('values', '&[2]int')
+		t.heaped_amp_locals['values'] = true
+		t.pointer_value_lvalues['values'] = true
+		t.pointer_value_rvalues['values'] = true
+		value := t.make_ident('values')
+		tc.register_synth_type(value, fixed_type)
+		start := t.a.children.len
+		t.a.children << [t.make_ident('zero'), t.make_int_literal(0), t.make_ident(target), value]
+		decl := t.a.add_node(flat.Node{
+			kind:           .decl_assign
+			value:          '2'
+			children_start: start
+			children_count: 4
+			pos:            token.new_span(1, 1, 10)
+		})
+		lowered := t.transform_decl_assign_stmt(decl, t.a.nodes[int(decl)])
+		assert lowered.len == 2
+		copied := t.a.nodes[int(lowered[1])]
+		rhs := t.a.child_node(&copied, 1)
+		assert rhs.kind == .prefix
+		assert rhs.op == .mul
+		assert t.heaped_amp_locals['values'] == (target != 'values')
+		assert t.pointer_value_lvalues['values'] == (target != 'values')
+		assert t.pointer_value_rvalues['values'] == (target != 'values')
+	}
+}
+
 fn test_fixed_array_reference_zero_argument_method_marks_receiver() {
 	mut a := flat.FlatAst.new()
 	mut tc := types.TypeChecker.new(&a)
