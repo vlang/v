@@ -16710,7 +16710,8 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 				} else {
 					raw_type := g.tc.cur_scope.lookup(base.value) or { base_type }
 					g.gen_expr(base_id)
-					if raw_type is types.Pointer {
+					// The declared type can be an alias of a pointer (`type P = &T`).
+					if cgen_unalias_type(raw_type) is types.Pointer {
 						g.write('->len')
 					} else {
 						g.write('.len')
