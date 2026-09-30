@@ -4605,7 +4605,7 @@ fn (mut tc TypeChecker) check_cast_expr(id flat.NodeId, node flat.Node) {
 			tc.record_error_at(.assignment_mismatch, 'cannot cast function `${tc.source_text_for_node(child_id)}` to `${target.name()}`', id, node.pos)
 			return
 		}
-		if clean_actual is Struct {
+		if clean_actual is Struct && !tc.expr_is_mut_struct_param(child_id) {
 			message := if clean_actual.name.starts_with('C.') {
 				'cannot cast type `${actual.name()}` to `${target.name()}`'
 			} else {
@@ -7704,8 +7704,9 @@ fn (mut tc TypeChecker) check_infix(id flat.NodeId, node flat.Node) {
 		other_type := if lhs_is_nil { rhs_type } else { lhs_type }
 		clean_other := unalias_type(other_type)
 		if node.op in [.eq, .ne] {
-			mut_receiver := other_node.kind == .ident
-				&& tc.current_fn_param_is_mut_receiver(other_node.value)
+			mut_receiver := (other_node.kind == .ident
+				&& tc.current_fn_param_is_mut_receiver(other_node.value))
+				|| tc.expr_is_mut_struct_param(other_id)
 			optional_pointer := clean_other is OptionType
 				&& unalias_type(clean_other.base_type) is Pointer
 			if clean_other !is Pointer && clean_other !is FnType && !mut_receiver
@@ -18021,9 +18022,19 @@ fn (mut tc TypeChecker) check_assign(id flat.NodeId, node flat.Node) {
 			i += 2
 			continue
 		}
+		// A `mut` struct parameter is a reference, so like V1 it can be stored
+		// where a pointer to its struct is expected: `*d.tail = mag`.
+		rhs_value_type := if clean_expected_type is Pointer && tc.expr_is_mut_struct_param(rhs_id)
+			&& unalias_type(clean_expected_type.base_type).name() == unalias_type(rhs_type).name() {
+			Type(Pointer{
+				base_type: rhs_type
+			})
+		} else {
+			rhs_type
+		}
 		deref_pointer_mismatch := effective_lhs_node.kind == .prefix
 			&& effective_lhs_node.op == .mul
-			&& type_pointer_depth(expected_type) != type_pointer_depth(rhs_type)
+			&& type_pointer_depth(expected_type) != type_pointer_depth(rhs_value_type)
 			&& expected_type.name() != 'voidptr' && rhs_type.name() !in ['voidptr', 'nil']
 		sum_source_type := if source_rhs_type is Unknown { rhs_type } else { source_rhs_type }
 		sum_variant_mismatch := if clean_expected_type is SumType {
@@ -18049,7 +18060,7 @@ fn (mut tc TypeChecker) check_assign(id flat.NodeId, node flat.Node) {
 			string_char_append := node.op == .plus_assign && type_is_string_like(expected_type)
 				&& rhs_type.name() in ['char', 'rune']
 			if !defer_open_generic_mismatch && !string_char_append && (sum_variant_mismatch
-				|| !tc.assignment_types_compatible(rhs_id, rhs_type, expected_type, node.op)) {
+				|| !tc.assignment_types_compatible(rhs_id, rhs_value_type, expected_type, node.op)) {
 				if clean_expected_type is Pointer && unalias_type(rhs_type) is Struct {
 					tc.record_error_at(.assignment_mismatch, 'mismatched types `${expected_type.name()}` and `${rhs_type.name()}`', id, tc.assignment_operator_pos(node, lhs_id, rhs_id))
 				} else if unalias_type(rhs_type) is OptionType
