@@ -1,6 +1,9 @@
 import os
 import term
 
+// The compiler under test, not the first `v` on PATH, which may be another checkout.
+const vexe = os.quoted_path(@VEXE)
+
 const vroot = @VMODROOT
 const test_dir = os.join_path(vroot, 'vlib', 'v', 'tests', 'vls', 'multifile_gotodef')
 const main_file = os.join_path(test_dir, 'main.v')
@@ -66,7 +69,7 @@ fn test_multifile_goto_definition() {
 	}
 
 	for tc in test_cases {
-		cmd := 'v -w -check -json-errors -nocolor -vls-mode -line-info "${main_file}:${tc.line}:gd^${tc.col}" ${os.quoted_path('multifile_gotodef')}'
+		cmd := '${vexe} -w -check -json-errors -nocolor -vls-mode -line-info "${main_file}:${tc.line}:gd^${tc.col}" ${os.quoted_path('multifile_gotodef')}'
 		res := os.execute(cmd)
 
 		if res.exit_code < 0 {
