@@ -517,8 +517,8 @@ fn (mut e Eval) register_files() ! {
 							module_name:  module_name
 							file_name:    file_name
 						}
-						e.global_types[module_name][field.value] = e.qualify_nested_type_name(module_name,
-							field.typ)
+						e.global_types[module_name][field.value] = e.qualify_declared_type_name(module_name,
+							file_name, field.typ)
 					}
 				}
 				.enum_decl {
@@ -1710,7 +1710,7 @@ fn (e &Eval) dereferenced_type_name(type_name string) string {
 			return name[1..]
 		}
 		if alias := e.type_alias_info_in_module(name, e.current_module_name()) {
-			name = e.qualify_nested_type_name(alias.module_name, alias.target)
+			name = e.qualify_declared_type_name(alias.module_name, alias.file_name, alias.target)
 		} else {
 			break
 		}
@@ -1772,7 +1772,7 @@ fn (e &Eval) infer_call_return_type_name(callee_id flat.NodeId, allow_locals boo
 				return e.qualify_declared_type_name(target.module_name, target.file_name, e.node(target.node).typ)
 			}
 			if alias := e.type_alias_info_in_module(receiver_type, e.current_module_name()) {
-				receiver_type = e.qualify_nested_type_name(alias.module_name, alias.target.trim_left('&'))
+				receiver_type = e.qualify_declared_type_name(alias.module_name, alias.file_name, alias.target.trim_left('&'))
 			} else {
 				break
 			}

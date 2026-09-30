@@ -626,6 +626,10 @@ pub type Doubled[T] = [2]T
 pub struct Wrapped[T] { pub: rows [2]T; optional ?T; aliases Doubled[T] }
 pub struct Nested[T] { pub: value Generic[T]; extra T }
 pub const byte = [2]Holder{}
+pub type Pointer = &s.Octet
+pub type Indirect = &Pointer
+pub fn pointer() Pointer { return Pointer(unsafe { nil }) }
+pub fn indirect() Indirect { return Indirect(unsafe { nil }) }
 pub fn make_octet() s.Octet { return s.Octet(1) }
 pub fn make_cell() Cell { return Cell{} }
 ') or { panic(err) }
@@ -634,6 +638,8 @@ module main
 import holder as h
 struct Tiny { x u8 }
 const byte = h.byte
+const pointer = h.pointer()
+const indirect = h.indirect()
 const octet = h.make_octet()
 const cell = h.make_cell()
 const alias_field = h.Cell{}.x
@@ -649,6 +655,9 @@ fn main() {
  println(sizeof(octet))
  println(sizeof(cell))
  println(sizeof(alias_field))
+ println(sizeof(*pointer))
+ println(sizeof(*indirect))
+ println(sizeof(**indirect))
  println(sizeof(generic))
  println(sizeof(generic_rows))
  println(sizeof(nested_generic))
@@ -732,4 +741,41 @@ fn main() {
 }
 '
 	assert_eval_sizeof_matches_compiler(code)
+}
+
+fn test_eval_sizeof_global_receiver_uses_declaration_file_imports() {
+	dir := os.join_path(os.vtmp_dir(), 'eval_sizeof_global_imports_${os.getpid()}')
+	os.mkdir_all(dir) or { panic(err) }
+	defer { os.rmdir_all(dir) or {} }
+	maker := os.join_path(dir, 'maker.v')
+	globals := os.join_path(dir, 'globals.v')
+	constants := os.join_path(dir, 'constants.v')
+	main_file := os.join_path(dir, 'main.v')
+	os.write_file(maker, '
+module maker
+pub struct Maker {}
+pub fn (value Maker) make() u8 { println("evaluated"); return u8(1) }
+') or { panic(err) }
+	os.write_file(globals, '
+module worker
+import maker as m
+__global maker m.Maker
+') or { panic(err) }
+	os.write_file(constants, '
+module worker
+struct Maker {}
+fn (value Maker) make() u16 { println("wrong receiver"); return u16(1) }
+const byte = maker.make()
+pub fn measure() { println(sizeof(byte)) }
+') or { panic(err) }
+	os.write_file(main_file, '
+module main
+import worker
+fn main() { worker.measure() }
+') or { panic(err) }
+	mut e := create()
+	mut p := parser.Parser.new(&e.prefs)
+	p.parse_files([globals, constants, maker, main_file])
+	e.run_files(p.a) or { panic(err) }
+	assert e.stdout() == '1\n'
 }
