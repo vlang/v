@@ -29,7 +29,9 @@ pub fn raceacquire(addr voidptr) {
 }
 
 // racerelease makes what the calling thread did so far happen before a later
-// raceacquire on `addr`.
+// raceacquire on `addr`. Releases on the same `addr` accumulate: the `__tsan_release` of
+// ThreadSanitizer's C interface merges the clocks, like Go's race.ReleaseMerge. (The
+// `__tsan_release` of Go's race runtime replaces them instead; it is Go's race.Release.)
 pub fn racerelease(addr voidptr) {
 	C.__tsan_release(addr)
 }

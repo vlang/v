@@ -188,6 +188,71 @@ fn main() {
 }
 '
 
+// Every done() of a WaitGroup happens before wait() returns, and every file write happens
+// before a later read, also when nothing that the race detector sees orders the done() calls
+// or the writes: racerelease merges the clocks, a later release does not replace them.
+const release_merge_source = 'import os
+import sync
+import time
+
+struct Slots {
+mut:
+	a int
+	b int
+	c int
+}
+
+fn main() {
+	mut s := &Slots{}
+	mut wg := sync.new_waitgroup()
+	wg.add(3)
+	spawn fn (mut s Slots, mut wg sync.WaitGroup) {
+		s.a = 1
+		wg.done()
+	}(mut s, mut wg)
+	spawn fn (mut s Slots, mut wg sync.WaitGroup) {
+		time.sleep(30 * time.millisecond)
+		s.b = 2
+		wg.done()
+	}(mut s, mut wg)
+	spawn fn (mut s Slots, mut wg sync.WaitGroup) {
+		time.sleep(60 * time.millisecond)
+		s.c = 3
+		wg.done()
+	}(mut s, mut wg)
+	wg.wait()
+	println("wg \${s.a + s.b + s.c}")
+
+	path := os.join_path(os.vtmp_dir(), "race_release_merge_\${os.getpid()}.txt")
+	os.write_file(path, "")!
+	mut r := os.open(path)!
+	mut d := &Slots{}
+	t1 := spawn fn (mut d Slots, path string) {
+		d.a = 1
+		mut f := os.open_append(path) or { panic(err) }
+		f.write_string("a\n") or { panic(err) }
+		f.close()
+	}(mut d, path)
+	t2 := spawn fn (mut d Slots, path string) {
+		time.sleep(30 * time.millisecond)
+		d.b = 2
+		mut f := os.open_append(path) or { panic(err) }
+		f.write_string("b\n") or { panic(err) }
+		f.close()
+	}(mut d, path)
+	for os.file_size(path) < 4 {
+		time.sleep(time.millisecond)
+	}
+	mut buf := []u8{len: 16}
+	n := r.read(mut buf)!
+	println("io \${n} \${d.a + d.b}")
+	t1.wait()
+	t2.wait()
+	r.close()
+	os.rm(path) or {}
+}
+'
+
 fn testsuite_begin() {
 	os.mkdir_all(tdir) or {}
 }
@@ -332,4 +397,16 @@ fn test_race_file_line_read_happens_after_the_write() {
 	assert res.exit_code == 0, res.output
 	assert !res.output.contains('ThreadSanitizer'), res.output
 	assert res.output.contains('read 6 42'), res.output
+}
+
+fn test_race_every_release_happens_before_the_acquire() {
+	if !thread_sanitizer_runs() {
+		return
+	}
+	exe := build_race_program('release_merge', release_merge_source)
+	res := os.execute(os.quoted_path(exe))
+	assert res.exit_code == 0, res.output
+	assert !res.output.contains('ThreadSanitizer'), res.output
+	assert res.output.contains('wg 6'), res.output
+	assert res.output.contains('io 4 3'), res.output
 }
