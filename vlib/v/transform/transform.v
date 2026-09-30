@@ -8958,7 +8958,8 @@ fn (t &Transformer) escape_value_contains_fixed_array(typ types.Type, mut seen m
 				return false
 			}
 			seen[typ.name] = true
-			base, args, is_generic := generic_app_parts(typ.name)
+			generic_base, args, is_generic := generic_app_parts(typ.name)
+			base := if is_generic { generic_base } else { typ.name }
 			fields := t.tc.structs[base] or { return false }
 			params := if is_generic {
 				t.generic_struct_param_names_for_base(base)
