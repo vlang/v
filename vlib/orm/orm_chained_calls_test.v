@@ -49,6 +49,38 @@ fn make_names() []string {
 	return ['first', 'second']
 }
 
+fn make_holders() []Holder {
+	return [make_holder('first'), make_holder('second')]
+}
+
+fn make_holder_groups() [][]Holder {
+	return [make_holders()]
+}
+
+struct HolderBox {
+	holder Holder
+}
+
+fn make_holder_box() HolderBox {
+	return HolderBox{ holder: make_holder('first') }
+}
+
+fn load_holders() ?[]Holder {
+	return none
+}
+
+struct ValueBox[T] {
+	value T
+}
+
+fn (box ValueBox[T]) get() T {
+	return box.value
+}
+
+fn make_value_box() ValueBox[string] {
+	return ValueBox[string]{ value: 'FIRST' }
+}
+
 fn make_years() []int {
 	return [1999, 2000]
 }
@@ -239,4 +271,35 @@ fn test_where_values_with_chained_calls() {
 	}!
 	assert by_result_fallback.len == 1
 	assert by_result_fallback[0].mod_at == first.mod_at
+
+	by_indexed_holder_field := sql db {
+		select from Account where name == make_holders()[0].name.to_upper()
+	}!
+	assert by_indexed_holder_field.len == 1
+	assert by_indexed_holder_field[0].mod_at == first.mod_at
+
+	by_nested_indexed_holder := sql db {
+		select from Account where name == make_holder_groups()[0][0].upper()
+	}!
+	assert by_nested_indexed_holder.len == 1
+	assert by_nested_indexed_holder[0].mod_at == first.mod_at
+
+	by_nonprimitive_field_receiver := sql db {
+		select from Account where name == make_holder_box().holder.upper()
+	}!
+	assert by_nonprimitive_field_receiver.len == 1
+	assert by_nonprimitive_field_receiver[0].mod_at == first.mod_at
+
+	fallback_holders := make_holders()
+	by_option_indexed_holder := sql db {
+		select from Account where name == (load_holders() or { fallback_holders })[0].upper()
+	}!
+	assert by_option_indexed_holder.len == 1
+	assert by_option_indexed_holder[0].mod_at == first.mod_at
+
+	by_generic_receiver := sql db {
+		select from Account where name == make_value_box().get()
+	}!
+	assert by_generic_receiver.len == 1
+	assert by_generic_receiver[0].mod_at == first.mod_at
 }

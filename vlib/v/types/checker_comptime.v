@@ -10971,11 +10971,20 @@ fn (mut tc TypeChecker) check_sql_where_constraints(id flat.NodeId, node flat.No
 		}
 		// Only the final value is bound, so a call that is merely the receiver of
 		// `f(x).method()` / `(f(x))[0]`, or an argument of `g(f(x))`, can return any type.
-		if sql_call_result_is_receiver(tokens, i + 1)
-			|| sql_call_is_call_arg(tokens, i + 1, where_idx) {
+		if sql_call_is_call_arg(tokens, i + 1, where_idx) {
 			continue
 		}
-		ret_type := tc.sql_orm_fn_return_type(fn_name) or { continue }
+		ret_type := tc.sql_orm_source_call_return_type(tokens, i) or { continue }
+		if sql_call_result_is_receiver(tokens, i + 1) {
+			final_type := tc.sql_orm_receiver_result_type(tokens, i + 1, ret_type) or {
+				continue
+			}
+			if !sql_orm_fn_return_type_is_allowed(final_type) {
+				call_length := tc.sql_source_call_length(node, fn_name)
+				tc.record_sql_error_at(.assignment_mismatch, 'ORM: value expressions must produce only primitive types and time.Time, but this expression has type `${final_type.name()}`', id, tc.sql_expr_text_pos(node, '${fn_name}(', 0, call_length))
+			}
+			continue
+		}
 		if sql_orm_fn_return_type_is_allowed(ret_type) {
 			continue
 		}
@@ -11056,14 +11065,18 @@ fn sql_call_next_token(tokens []string, open_idx int) string {
 }
 
 fn sql_call_close_idx(tokens []string, open_idx int) ?int {
-	if open_idx < 0 || open_idx >= tokens.len || tokens[open_idx] != '(' {
+	return sql_value_close_idx(tokens, open_idx, '(', ')')
+}
+
+fn sql_value_close_idx(tokens []string, open_idx int, open string, close string) ?int {
+	if open_idx < 0 || open_idx >= tokens.len || tokens[open_idx] != open {
 		return none
 	}
 	mut depth := 0
 	for i in open_idx .. tokens.len {
-		if tokens[i] == '(' {
+		if tokens[i] == open {
 			depth++
-		} else if tokens[i] == ')' {
+		} else if tokens[i] == close {
 			depth--
 			if depth == 0 {
 				return i
@@ -11071,6 +11084,103 @@ fn sql_call_close_idx(tokens []string, open_idx int) ?int {
 		}
 	}
 	return none
+}
+
+// sql_orm_receiver_result_type follows the value bound to SQL, rather than rejecting
+// nonprimitive intermediate receivers in `make_holders()[0].name` or `f().method()`.
+fn (tc &TypeChecker) sql_orm_receiver_result_type(tokens []string, open_idx int, ret_type Type) ?Type {
+	mut typ := ret_type
+	mut i := (sql_call_close_idx(tokens, open_idx) or { return none }) + 1
+	for i < tokens.len {
+		if tokens[i] in [')', '}'] {
+			i++
+		} else if tokens[i] == 'or' && i + 1 < tokens.len && tokens[i + 1] == '{' {
+			i = (sql_value_close_idx(tokens, i + 1, '{', '}') or { return none }) + 1
+			clean := unalias_type(typ)
+			if clean is OptionType {
+				typ = clean.base_type
+			} else if clean is ResultType {
+				typ = clean.base_type
+			}
+		} else if tokens[i] == '[' {
+			close_idx := sql_value_close_idx(tokens, i, '[', ']') or { return none }
+			clean := unalias_and_unwrap_pointer_type(typ)
+			typ = match clean {
+				Array { clean.elem_type }
+				ArrayFixed { clean.elem_type }
+				Map { clean.value_type }
+				String { Type(u8_) }
+				else { (tc.index_overload_call_info(typ, false) or { return none }).return_type }
+			}
+			i = close_idx + 1
+		} else if tokens[i] == '.' && i + 1 < tokens.len {
+			member := tokens[i + 1]
+			if i + 2 < tokens.len && tokens[i + 2] == '(' {
+				typ = tc.sql_orm_method_return_type(typ, member) or { return none }
+				i = (sql_call_close_idx(tokens, i + 2) or { return none }) + 1
+			} else {
+				clean := unalias_and_unwrap_pointer_type(typ)
+				if member in ['len', 'cap'] && (clean is Array || clean is ArrayFixed
+					|| clean is Map || clean is String) {
+					typ = Type(int_)
+				} else {
+					typ = tc.struct_field_type(clean.name(), member) or { return none }
+				}
+				i += 2
+			}
+		} else {
+			break
+		}
+	}
+	return typ
+}
+
+fn (tc &TypeChecker) sql_orm_method_return_type(receiver Type, member string) ?Type {
+	receiver_name := unwrap_pointer(receiver).name()
+	if method := tc.method_value_type(receiver_name, member) {
+		if method is FnType {
+			return method.return_type
+		}
+	}
+	if method := tc.builtin_method_value_type(receiver, member) {
+		if method is FnType {
+			return method.return_type
+		}
+	}
+	clean := unalias_and_unwrap_pointer_type(receiver)
+	if key := tc.concrete_method_signature_key(receiver_name, member) {
+		if method := tc.method_value_type(key.all_before_last('.'), member) {
+			if method is FnType {
+				return method.return_type
+			}
+		}
+	}
+	if field := tc.struct_field_type(clean.name(), member) {
+		if field is FnType {
+			return field.return_type
+		}
+	}
+	return none
+}
+
+fn (tc &TypeChecker) sql_orm_source_call_return_type(tokens []string, name_idx int) ?Type {
+	mut start := name_idx
+	for start >= 2 && tokens[start - 1] == '.' && sql_like_identifier(tokens[start - 2]) {
+		start -= 2
+	}
+	if typ := tc.sql_orm_fn_return_type(tokens[start..name_idx + 1].join('')) {
+		return typ
+	}
+	if start == name_idx {
+		return none
+	}
+	mut receiver := tc.cur_scope.lookup(tokens[start]) or { return none }
+	for i := start + 2; i < name_idx; i += 2 {
+		receiver = tc.struct_field_type(unalias_and_unwrap_pointer_type(receiver).name(), tokens[i]) or {
+			return none
+		}
+	}
+	return tc.sql_orm_method_return_type(receiver, tokens[name_idx])
 }
 
 fn (mut tc TypeChecker) check_sql_order_by_constraint(id flat.NodeId, node flat.Node, tokens []string) {

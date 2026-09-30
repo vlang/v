@@ -1,0 +1,54 @@
+import db.sqlite
+
+struct Account {
+	id   int @[primary; sql: serial]
+	name string
+}
+
+struct Holder {
+	name string
+}
+
+struct HolderBox {
+	holder Holder
+}
+
+fn make_holders() []Holder {
+	return [Holder{name: 'first'}]
+}
+
+fn make_holder_groups() [][]Holder {
+	return [make_holders()]
+}
+
+fn make_holder_box() HolderBox {
+	return HolderBox{holder: Holder{name: 'first'}}
+}
+
+fn load_holders() ?[]Holder {
+	return none
+}
+
+fn main() {
+	mut db := sqlite.connect(':memory:')!
+	fallback := make_holders()
+	_ = make_holder_groups()
+	_ = make_holder_box()
+	_ = load_holders() or { fallback }
+	indexed := sql db {
+		select from Account where name == make_holders()[0]
+	}!
+	nested := sql db {
+		select from Account where name == make_holder_groups()[0][0]
+	}!
+	field := sql db {
+		select from Account where name == make_holder_box().holder
+	}!
+	optional := sql db {
+		select from Account where name == (load_holders() or { fallback })[0]
+	}!
+	dump(indexed)
+	dump(nested)
+	dump(field)
+	dump(optional)
+}
