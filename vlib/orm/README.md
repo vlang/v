@@ -72,6 +72,12 @@ struct Foo {
 `sql` expressions inside array callbacks can use the current `it`, including fields
 such as `it.id`. Nested callbacks use their own `it` binding.
 
+Static `where` values can use function calls, member access and indexing. Structs and
+containers can be intermediate receivers, but the final value must be a primitive type,
+an enum or `time.Time`. For example, `make_holders()[0].name` can bind a string field,
+while `make_holders()[0]` cannot bind the whole struct. Option and Result receivers must
+be unwrapped with an `or` fallback before accessing their members or elements.
+
 ## Usage
 > [!NOTE]
 > For using the Function Call API for `orm`, please check [`Function Call API`](#function-call-api).
