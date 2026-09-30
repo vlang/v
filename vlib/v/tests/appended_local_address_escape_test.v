@@ -157,11 +157,33 @@ fn fixed_buffer_text() (string, int) {
 	return copy_c_bytes(unsafe { &buf[0] }), int(sizeof(buf))
 }
 
-// A fixed array stays on the stack when its elements' addresses are passed in a
-// `return` (`time.strftime` returns `cstring_to_vstring(&buf[0])`): `sizeof(buf)` is
-// the size of the array, not of a pointer to it.
+// A fixed array retains its value size when its elements' addresses are passed in a
+// `return` (`time.strftime` returns `cstring_to_vstring(&buf[0])`), including when the
+// original storage moves to the heap.
 fn test_fixed_array_in_a_return_keeps_its_size() {
 	text, size := fixed_buffer_text()
 	assert size == 16
 	assert text == 'x'.repeat(15)
+}
+
+@[noinline]
+fn append_fixed_element_addresses(mut values []&u64) (int, int) {
+	mut items := [u64(11), 22, 33, 44]!
+	pointer := unsafe { &items }
+	alias := unsafe { &items[1] }
+	values << unsafe { &items[0] }
+	values << alias
+	items[0] = 55
+	items[1] = 66
+	return int(sizeof(items)), int(sizeof(pointer))
+}
+
+fn test_appended_fixed_array_element_addresses_share_durable_storage_and_value_size() {
+	mut values := []&u64{}
+	size, pointer_size := append_fixed_element_addresses(mut values)
+	assert size == 4 * int(sizeof(u64))
+	assert pointer_size == int(sizeof(voidptr))
+	_ = use_the_stack(10)
+	assert *values[0] == 55
+	assert *values[1] == 66
 }

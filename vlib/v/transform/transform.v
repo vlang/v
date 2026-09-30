@@ -10391,6 +10391,29 @@ fn (mut t Transformer) transform_debugger_stmt(node flat.Node) flat.NodeId {
 	})
 }
 
+// promoted_sizeof_value_type keeps a moved local's value size independent of its heap pointer.
+fn (t &Transformer) promoted_sizeof_value_type(node flat.Node) ?string {
+	mut name := node.value
+	if node.children_count > 0 {
+		mut value := t.a.child_node(&node, 0)
+		for value.kind == .paren && value.children_count == 1 {
+			value = t.a.child_node(value, 0)
+		}
+		if value.kind != .ident {
+			return none
+		}
+		name = value.value
+	}
+	if name !in t.heaped_amp_locals {
+		return none
+	}
+	storage_type := t.var_type(name)
+	if storage_type.starts_with('&') {
+		return storage_type[1..]
+	}
+	return none
+}
+
 // Resolve only sizeof's ambiguous name; declaration collection remains unchanged.
 fn (mut t Transformer) selected_sizeof_value_type(name string) ?string {
 	if name in t.active_generic_params {
@@ -10564,6 +10587,11 @@ pub fn (mut t Transformer) transform_expr(id flat.NodeId) flat.NodeId {
 	}
 	if kind_id == 30 || kind_id == 27 || kind_id == 57 {
 		return t.transform_children_expr(id, node)
+	}
+	if node.kind == .sizeof_expr {
+		if value_type := t.promoted_sizeof_value_type(node) {
+			return t.make_sizeof_type(value_type)
+		}
 	}
 	if node.kind == .sizeof_expr && node.value.len > 0 && node.children_count > 0 {
 		if selected_type := t.selected_sizeof_value_type(node.value) {
@@ -15891,11 +15919,10 @@ fn (mut t Transformer) transform_decl_assign_stmt(id flat.NodeId, node flat.Node
 		}
 		// Every declaration of the name is moved: uses are rewritten by name, and sibling
 		// scopes (the branches of a `match`) can each declare it. A declaration already
-		// moved has a pointer type, which is not heapable. Fixed arrays stay on the stack:
-		// the checker requires `unsafe` for their element addresses, and moving one would
-		// change its value semantics (`sizeof(buf)`).
+		// moved has a pointer type, which is not heapable. Fixed arrays use the same
+		// whole-value heap copy so retained element addresses still share later writes.
 		if src.kind == .ident && src.value in t.escaping_amp_sources
-			&& t.heapable_value_type(inferred_typ) {
+			&& (t.heapable_value_type(inferred_typ) || t.is_fixed_array_type(inferred_typ)) {
 			t.warn_alloc(node, t.a.child(&node, 1), src.pos, 'local moved to the heap: its address escapes')
 			return t.heap_escaping_source_decl(node, src.value, inferred_typ)
 		}
