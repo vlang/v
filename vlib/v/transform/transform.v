@@ -9119,23 +9119,7 @@ fn (mut t Transformer) mark_fixed_array_reference_argument_escapes(call_id flat.
 	}
 	for child_idx in 1 .. call.children_count {
 		param_idx := child_idx - 1 + offset
-		if param_idx < 0 {
-			continue
-		}
-		param_type := if variadic_idx >= 0 && param_idx >= variadic_idx {
-			// Every unpacked tail argument is converted to the variadic element type.
-			// The packed array parameter hides any reference to fixed-array storage.
-			variadic_type := params[variadic_idx]
-			if variadic_type is types.Array {
-				variadic_type.elem_type
-			} else {
-				continue
-			}
-		} else if param_idx < params.len {
-			params[param_idx]
-		} else {
-			continue
-		}
+		param_type := call_argument_param_type(params, param_idx, variadic_idx) or { continue }
 		t.mark_fixed_array_reference_argument_escape(t.a.child(&call, child_idx), param_type, amp_ptrs, amp_sources, ptr_aliases, local_stack_names)
 	}
 }

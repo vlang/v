@@ -1442,7 +1442,7 @@ fn (mut t Transformer) transform_call_args(id flat.NodeId, node flat.Node) flat.
 	mut mut_optional_value_writebacks := []flat.NodeId{}
 	// Heap-backed fixed-array views are refreshed after argument evaluation. Keep
 	// ordinary operands in source order too, before a later argument's prelude.
-	ordered_fixed_args := t.call_has_mut_fixed_array_args(node, param_type_names, param_offset)
+	ordered_fixed_args := t.call_has_mut_fixed_array_args(node, params, param_offset, variadic_idx)
 	mut snapshotted_args := 1
 	saved_in_call_callee := t.in_call_callee
 	callee_id := t.a.children[node.children_start]
@@ -3829,18 +3829,19 @@ fn (mut t Transformer) transform_call_arg_for_param_isolated(arg_id flat.NodeId,
 	if arg_node.kind == .array_literal && arg_node.typ.len == 0 && param_type.starts_with('[]') {
 		t.set_node_typ(int(arg_id), param_type)
 	}
-	if param_type.starts_with('&[]') {
+	array_ref_type := t.normalize_type_alias(param_type)
+	if array_ref_type.starts_with('&[]') {
 		mut_arg := arg_node.is_mut
 		arg_type := t.node_type(arg_id)
 		if mut_arg {
-			range_type := if arg_type.starts_with('[]') { arg_type } else { param_type[1..] }
+			range_type := if arg_type.starts_with('[]') { arg_type } else { array_ref_type[1..] }
 			if view := t.fixed_array_range_view_for_arg(arg_id, range_type, true) {
 				return t.fixed_array_mut_arg(view, range_type, param_type)
 			}
 		}
-		fixed_type := t.fixed_array_reference_arg_type(arg_id, param_type[1..])
+		fixed_type := t.fixed_array_reference_arg_type(arg_id, array_ref_type[1..])
 		if t.is_fixed_array_type(fixed_type) {
-			array_type := param_type[1..]
+			array_type := array_ref_type[1..]
 			view := t.fixed_array_mut_arg_backing(arg_id, fixed_type, array_type)
 			return t.fixed_array_mut_arg(view, array_type, param_type)
 		}
@@ -5015,7 +5016,7 @@ fn (mut t Transformer) append_variadic_arg_push(tmp_name string, arg_id flat.Nod
 	} else if escape_type_is_pointer(elem_type) {
 		// Reference elements need the same fixed-array view and address conversions
 		// as an ordinary reference parameter before they are packed into the tail.
-		t.transform_call_arg_for_param(arg_id, t.normalize_type_alias(expected_elem))
+		t.transform_call_arg_for_param(arg_id, expected_elem)
 	} else {
 		t.transform_expr(arg_id)
 	}
@@ -13333,14 +13334,34 @@ fn (t &Transformer) fixed_array_reference_arg_type(id flat.NodeId, array_type st
 	return t.unaliased_value_type(id)
 }
 
-fn (t &Transformer) call_has_mut_fixed_array_args(node flat.Node, params []string, offset int) bool {
+// call_argument_param_type maps each unpacked variadic argument to the tail element type.
+fn call_argument_param_type(params []types.Type, param_idx int, variadic_idx int) ?types.Type {
+	if param_idx < 0 {
+		return none
+	}
+	if variadic_idx >= 0 && variadic_idx < params.len && param_idx >= variadic_idx {
+		variadic_type := params[variadic_idx]
+		if variadic_type is types.Array {
+			return variadic_type.elem_type
+		}
+		return none
+	}
+	if param_idx < params.len {
+		return params[param_idx]
+	}
+	return none
+}
+
+fn (t &Transformer) call_has_mut_fixed_array_args(node flat.Node, params []types.Type, offset int, variadic_idx int) bool {
 	for i in 1 .. node.children_count {
 		param_idx := i - 1 + offset
-		if param_idx >= params.len || !params[param_idx].starts_with('&[]') {
+		param_type := call_argument_param_type(params, param_idx, variadic_idx) or { continue }
+		array_ref_type := t.normalize_type_alias(t.semantic_type_name(param_type))
+		if !array_ref_type.starts_with('&[]') {
 			continue
 		}
 		arg_id := t.unwrap_parens(t.a.child(&node, i))
-		if t.is_fixed_array_type(t.fixed_array_reference_arg_type(arg_id, params[param_idx][1..])) {
+		if t.is_fixed_array_type(t.fixed_array_reference_arg_type(arg_id, array_ref_type[1..])) {
 			return true
 		}
 		if t.is_range_index_expr(arg_id) {
@@ -16583,8 +16604,6 @@ fn (mut t Transformer) transform_receiver_method_args_with_base(node flat.Node, 
 	recv_root := t.expr_root_ident_name(base)
 	params := t.call_param_types(method_name)
 	param_offset := t.receiver_method_param_offset(base, node, params, method_name)
-	ordered_fixed_args := t.call_has_mut_fixed_array_args(node, t.call_param_type_names(params),
-		param_offset)
 	mut snapshotted_args := 0
 	explicit_args := int(node.children_count) - 1
 	expected_explicit := params.len - param_offset
@@ -16599,6 +16618,7 @@ fn (mut t Transformer) transform_receiver_method_args_with_base(node flat.Node, 
 	} else {
 		-1
 	}
+	ordered_fixed_args := t.call_has_mut_fixed_array_args(node, params, param_offset, variadic_idx)
 	mut i := 1
 	mut variadic_tail_supplied := false
 	for i < node.children_count {

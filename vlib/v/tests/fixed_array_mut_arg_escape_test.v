@@ -393,6 +393,49 @@ fn test_fixed_array_single_variadic_fn_value_reference_remains_valid() {
 	}
 }
 
+type FixedIntSlice = []int
+type FixedIntSliceRef = &[]int
+
+fn retain_aliased_fixed_slice(values &FixedIntSlice) &FixedIntSlice {
+	return values
+}
+
+fn retain_aliased_fixed_slice_reference(values FixedIntSliceRef) FixedIntSliceRef {
+	return values
+}
+
+fn retain_variadic_aliased_fixed_slice(index int, values ...&FixedIntSlice) &FixedIntSlice {
+	return values[index]
+}
+
+@[noinline]
+fn reference_from_aliased_fixed_slice(index int, kind int) &[]int {
+	first := [141, 142]!
+	last := [151, 152]!
+	if kind == 0 {
+		return retain_aliased_fixed_slice(first)
+	}
+	if kind == 1 {
+		return retain_aliased_fixed_slice_reference(first)
+	}
+	return retain_variadic_aliased_fixed_slice(index, first, last)
+}
+
+fn test_aliased_fixed_array_references_keep_declared_array_header_type() {
+	for kind in 0 .. 3 {
+		values := reference_from_aliased_fixed_slice(0, kind)
+		assert overwrite_stack() == 7
+		unsafe {
+			assert *values == [141, 142]
+		}
+	}
+	last := reference_from_aliased_fixed_slice(1, 2)
+	assert overwrite_stack() == 7
+	unsafe {
+		assert *last == [151, 152]
+	}
+}
+
 fn reference_from_fixed_value(values [2]int) &[]int {
 	unsafe {
 		return retain_immutable_array_reference(&values)
@@ -456,6 +499,32 @@ fn test_fixed_array_source_getter_follows_earlier_scalar_argument() {
 	aliased_fixed = [5, 6]!
 	assert ordered_fixed_source(preceding_fixed_scalar(), fixed_source_getter()) == 12
 	assert fixed_source_order == ['scalar', 'source', 'callee']
+}
+
+struct OrderedVariadicFixedKeeper {}
+
+fn ordered_variadic_fixed_keeper() OrderedVariadicFixedKeeper {
+	fixed_source_order << 'factory'
+	return OrderedVariadicFixedKeeper{}
+}
+
+fn ordered_variadic_fixed_source(tag string, value int) [2]int {
+	fixed_source_order << tag
+	return [value, value + 1]!
+}
+
+fn (keeper OrderedVariadicFixedKeeper) consume(before int, values ...&[]int) int {
+	fixed_source_order << 'callee'
+	first := unsafe { *values[0] }
+	last := unsafe { *values[1] }
+	return before + first[0] + last[0]
+}
+
+fn test_variadic_fixed_array_sources_follow_computed_callee_and_scalar_argument() {
+	fixed_source_order = []string{}
+	assert ordered_variadic_fixed_keeper().consume(preceding_fixed_scalar(),
+		ordered_variadic_fixed_source('first', 10), ordered_variadic_fixed_source('last', 20)) == 37
+	assert fixed_source_order == ['factory', 'scalar', 'first', 'last', 'callee']
 }
 
 @[aligned: 64]

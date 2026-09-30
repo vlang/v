@@ -240,6 +240,30 @@ fn test_promoted_fixed_array_storage_preserves_nested_element_alignment() {
 	}
 }
 
+fn test_fixed_array_argument_ordering_handles_variadic_tail_and_reference_aliases() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	tc.type_aliases['Slice'] = '[]int'
+	tc.type_aliases['SliceRef'] = '&[]int'
+	mut t := new_transformer(mut a, &tc, map[string]bool{})
+	t.set_var_type('fixed', '[2]int')
+	t.set_var_type('dynamic', '&[]int')
+	call_id := t.make_call_typed('retain', [t.make_int_literal(0), t.make_ident('dynamic'),
+		t.make_ident('fixed')], '&[]int')
+	call := t.a.nodes[int(call_id)]
+	array_ref := types.Type(types.Pointer{ base_type: types.Type(types.Array{ elem_type: types.Type(types.int_) }) })
+	params := [types.Type(types.int_), types.Type(types.Array{ elem_type: array_ref })]
+	assert t.call_has_mut_fixed_array_args(call, params, 0, 1)
+	assert !t.call_has_mut_fixed_array_args(call, params, 0, -1)
+	for param in [
+		types.Type(types.Pointer{ base_type: types.Type(types.Alias{ name: 'Slice', base_type: types.Type(types.Array{ elem_type: types.Type(types.int_) }) }) }),
+		types.Type(types.Alias{ name: 'SliceRef', base_type: array_ref }),
+	] {
+		aliased_call := t.make_call_typed('keep_alias', [t.make_ident('fixed')], '&[]int')
+		assert t.call_has_mut_fixed_array_args(t.a.nodes[int(aliased_call)], [param], 0, -1)
+	}
+}
+
 fn test_fixed_array_reference_sum_headers_do_not_own_inline_variant_storage() {
 	mut a := flat.FlatAst.new()
 	mut tc := types.TypeChecker.new(&a)
