@@ -156,6 +156,16 @@ fn test_formatter_preserves_multiline_call_struct_arguments() {
 	named_argument := "value := encode(Payload{'item'},\n\tescape_unicode: true\n)\n"
 	assert vfmt_with_options('multiline_named_argument_call', named_argument,
 		FormatOptions{}) == named_argument
+	// A line break inside a positional struct literal does not expand the named ones.
+	inline_named := "value := encode(Payload{\n\tname: 'item'\n}, escape_unicode: true)\n"
+	assert vfmt_with_options('inline_named_after_multiline_struct', inline_named,
+		FormatOptions{}) == inline_named
+}
+
+fn test_formatter_keeps_anonymous_struct_generic_type_arguments() {
+	source := 'fn main() {\n\tb := decode[struct {\n\t\ta string\n\t}](text)!.a\n\t_ = b\n}\n'
+	out := vfmt('anon_struct_type_arg', source)
+	assert out == source, out
 }
 
 fn test_formatter_preserves_gated_slices() {

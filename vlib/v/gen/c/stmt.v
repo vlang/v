@@ -1055,6 +1055,17 @@ fn (g &FlatGen) ownership_destructor_method_name() string {
 	return if g.tc.autofree_mode { 'free' } else { 'drop' }
 }
 
+// ownership_free_call releases the storage of a dropped value. Ownership builds use
+// libc allocations, but the result of a discarded spawn is dropped in every build, and
+// with Boehm GC its storage comes from the GC heap: `__v_thread_free` uses `GC_FREE`
+// there and `free` otherwise.
+fn (g &FlatGen) ownership_free_call(ptr string) string {
+	if g.detached_spawn_drop {
+		return '__v_thread_free(${ptr});'
+	}
+	return 'free(${ptr});'
+}
+
 fn (g &FlatGen) ownership_recursive_drop_helper_name(type_name string) string {
 	prefix := if g.detached_spawn_drop {
 		'__v3_detached_ownership_drop_'
@@ -1569,7 +1580,7 @@ fn (mut g FlatGen) gen_ownership_drop_value_inner(typ types.Type, expr string, d
 			}
 			g.writeln('default: break;')
 			g.writeln('}')
-			g.writeln('free(${object});')
+			g.writeln(g.ownership_free_call(object))
 			g.writeln('(${expr})._object = NULL;')
 			g.writeln('(${expr})._object_is_boxed = false;')
 			g.indent--
@@ -1592,7 +1603,7 @@ fn (mut g FlatGen) gen_ownership_drop_value_inner(typ types.Type, expr string, d
 					g.writeln('if ((${expr})._pointer_variant_is_owned && ${payload} != NULL) {')
 					g.indent++
 					g.gen_ownership_drop_value_inner(clean_variant_type.base_type, '*${payload}', depth + 1, mut expanding)
-					g.writeln('free(${payload});')
+					g.writeln(g.ownership_free_call(payload))
 					g.indent--
 					g.writeln('}')
 					g.writeln('break;')
@@ -1604,7 +1615,7 @@ fn (mut g FlatGen) gen_ownership_drop_value_inner(typ types.Type, expr string, d
 				g.writeln('if (${payload} != NULL) {')
 				g.indent++
 				g.gen_ownership_drop_value_inner(variant_type, '*${payload}', depth + 1, mut expanding)
-				g.writeln('free(${payload});')
+				g.writeln(g.ownership_free_call(payload))
 				g.indent--
 				g.writeln('}')
 				g.writeln('break;')
@@ -1655,7 +1666,7 @@ fn (mut g FlatGen) gen_ownership_drop_result_error(expr string, depth int, mut e
 	}
 	g.writeln('default: break;')
 	g.writeln('}')
-	g.writeln('free(${object});')
+	g.writeln(g.ownership_free_call(object))
 	g.writeln('(${expr})._object = NULL;')
 	g.writeln('(${expr})._object_is_boxed = false;')
 	g.indent--
@@ -6722,8 +6733,10 @@ fn (g &FlatGen) usable_expr_type_uncached(id flat.NodeId) types.Type {
 			}
 			// Lowering can replace the checked type with a concrete annotation for
 			// a shadowed local. Use it before consulting a checker scope that no
-			// longer follows the lexical scope of this identifier.
-			if node.typ.len > 0 {
+			// longer follows the lexical scope of this identifier. A `shared T`
+			// annotation parses as `T`, without the pointer the local is stored as,
+			// so `&local` would be taken once more.
+			if node.typ.len > 0 && !node.typ.trim_space().starts_with('shared ') {
 				annotated := g.parse_node_type(&node)
 				if !decl_annotation_is_unusable(annotated, node.typ)
 					&& !g.type_contains_generic_placeholder(annotated) {

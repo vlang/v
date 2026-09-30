@@ -9652,7 +9652,7 @@ fn (g &FlatGen) interface_receiver_needs_address(base_id flat.NodeId, base_type 
 }
 
 fn (mut g FlatGen) gen_interface_method_call(node flat.Node, fn_node flat.Node, base_type types.Type) bool {
-	clean0 := types.unwrap_pointer(base_type)
+	clean0 := types.unwrap_all_pointers(base_type)
 	mut clean := clean0
 	if clean0 is types.Alias {
 		clean = clean0.base_type
@@ -9679,16 +9679,26 @@ fn (mut g FlatGen) gen_interface_method_call(node flat.Node, fn_node flat.Node, 
 	base_id := g.a.child(fn_node, 0)
 	g.write(g.cname(method_name))
 	g.write('(')
-	needs_address := g.interface_receiver_needs_address(base_id, base_type)
-	wrap_rvalue := needs_address && !g.expr_is_addressable(base_id)
-	if wrap_rvalue {
-		g.write('&((${g.value_c_type(base_type)}[]){')
-	} else if needs_address {
-		g.write('&')
-	}
-	g.gen_expr(base_id)
-	if wrap_rvalue {
-		g.write('})[0]')
+	pointer_depth := cgen_type_pointer_depth(base_type)
+	if pointer_depth > 1 {
+		// A `for mut item in []&Iface` variable is stored as `Iface**`, while the
+		// dispatcher takes the `Iface*` that the array element holds.
+		g.write('*'.repeat(pointer_depth - 1))
+		g.write('(')
+		g.gen_expr(base_id)
+		g.write(')')
+	} else {
+		needs_address := g.interface_receiver_needs_address(base_id, base_type)
+		wrap_rvalue := needs_address && !g.expr_is_addressable(base_id)
+		if wrap_rvalue {
+			g.write('&((${g.value_c_type(base_type)}[]){')
+		} else if needs_address {
+			g.write('&')
+		}
+		g.gen_expr(base_id)
+		if wrap_rvalue {
+			g.write('})[0]')
+		}
 	}
 	mut emitted_arg_count := 0
 	for i in 1 .. node.children_count {
