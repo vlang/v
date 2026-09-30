@@ -15919,8 +15919,10 @@ fn (mut t Transformer) transform_decl_assign_stmt(id flat.NodeId, node flat.Node
 			return t.heap_escaping_source_decl(node, src.value, inferred_typ)
 		}
 		if src.kind == .ident && src.value in t.escaping_fixed_array_view_sources
-			&& src.value !in t.heaped_amp_locals
+			&& !inferred_typ.starts_with('&')
 			&& (t.is_fixed_array_type(inferred_typ) || t.heapable_value_type(inferred_typ)) {
+			// Sibling scopes can declare the same name. Promote each value binding;
+			// an earlier binding's heap marker must not suppress this declaration.
 			return t.heap_escaping_source_decl(node, src.value, inferred_typ)
 		}
 		if src.kind == .ident && src.value in t.escaping_amp_sources

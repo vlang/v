@@ -518,3 +518,31 @@ fn test_fixed_array_references_into_boxed_sum_variants_remain_valid() {
 		}
 	}
 }
+
+fn keep_sibling_fixed_holder(holder &FixedHolder) &[]int {
+	return retain_immutable_array_reference(&holder.values)
+}
+
+@[noinline]
+fn fixed_array_reference_from_sibling_branch(kind int) &[]int {
+	match kind {
+		0 {
+			holder := FixedHolder{[71, 72]!}
+			return keep_sibling_fixed_holder(holder)
+		}
+		else {
+			holder := FixedHolder{[81, 82]!}
+			return keep_sibling_fixed_holder(holder)
+		}
+	}
+}
+
+fn test_fixed_array_reference_promotes_same_named_sibling_bindings() {
+	for kind, expected in [[71, 72], [81, 82]] {
+		values := fixed_array_reference_from_sibling_branch(kind)
+		assert overwrite_stack() == 7
+		unsafe {
+			assert *values == expected
+		}
+	}
+}
