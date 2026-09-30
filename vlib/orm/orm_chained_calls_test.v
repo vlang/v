@@ -241,6 +241,12 @@ fn test_where_values_with_chained_calls() {
 	assert by_indexed_call.len == 1
 	assert by_indexed_call[0].mod_at == second.mod_at
 
+	by_generic_method := sql db {
+		select from Account where name == make_names().last()
+	}!
+	assert by_generic_method.len == 1
+	assert by_generic_method[0].mod_at == second.mod_at
+
 	by_signed_arg := sql db {
 		select from Account where mod_at > day_text(-1) && mod_at < day_text(1)
 	}!

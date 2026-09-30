@@ -11117,6 +11117,11 @@ fn (tc &TypeChecker) sql_orm_receiver_result_type(tokens []string, open_idx int,
 			member := tokens[i + 1]
 			if i + 2 < tokens.len && tokens[i + 2] == '(' {
 				typ = tc.sql_orm_method_return_type(typ, member) or { return none }
+				// Builtin generic methods such as `[]string.first()` resolve to `voidptr`
+				// here; leave them unchecked rather than reject a valid element value.
+				if typ.name() == 'voidptr' || tc.type_contains_open_generic_placeholder(typ) {
+					return none
+				}
 				i = (sql_call_close_idx(tokens, i + 2) or { return none }) + 1
 			} else {
 				clean := unalias_and_unwrap_pointer_type(typ)
