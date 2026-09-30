@@ -596,10 +596,10 @@ fn (mut b Builder) ssa_type_from_checker_type(typ types.Type) TypeID {
 		return b.m.type_store.get_ptr(b.ssa_type_from_checker_type(typ.base_type))
 	}
 	if typ is types.OptionType {
-		return b.option_type_id(typ.base_type.name())
+		return b.option_type_id(typ.base_type.name(), false)
 	}
 	if typ is types.ResultType {
-		return b.option_type_id(typ.base_type.name())
+		return b.option_type_id(typ.base_type.name(), true)
 	}
 	if typ is types.Enum {
 		return b.i32_type
@@ -3394,7 +3394,7 @@ fn (mut b Builder) register_os_stat_stubs() {
 		is_link_id := b.register_synthetic_function(name, b.i1_type, p1)
 		b.generate_os_stat_kind_body(is_link_id, 'lstat', '40960')
 	}
-	ls_result_type := b.option_type_id('[]string')
+	ls_result_type := b.option_type_id('[]string', true)
 	for name in ['ls', 'os.ls'] {
 		ls_id := b.register_synthetic_function(name, ls_result_type, p1)
 		b.generate_os_ls_body(ls_id, ls_result_type)
@@ -3517,6 +3517,13 @@ fn (mut b Builder) block_option_value(block_id BlockID, opt_typ TypeID, ok bool,
 			value = b.m.get_or_add_const(value_typ, '0')
 		}
 		b.block_instr2(.store, block_id, b.void_type, value, value_ptr)
+	}
+	err_index := b.m.type_store.types[opt_typ].field_names.index('err')
+	if err_index >= 0 {
+		err_type := b.m.type_store.types[opt_typ].fields[err_index]
+		err_ptr := b.block_struct_field_ptr(block_id, alloca, opt_typ, err_index)
+		err_value := b.m.get_or_add_const(err_type, '0')
+		b.block_instr2(.store, block_id, b.void_type, err_value, err_ptr)
 	}
 	return b.block_instr1(.load, block_id, opt_typ, alloca)
 }
@@ -4081,7 +4088,7 @@ fn (mut b Builder) generate_array_bytestr_body(func_id int) {
 fn (mut b Builder) register_at_exit_stub() {
 	mut p1 := []TypeID{}
 	p1 << b.resolve_type('FnExitCb')
-	result_type := b.option_type_id('void')
+	result_type := b.option_type_id('void', true)
 	func_id := b.register_synthetic_function('at_exit', result_type, p1)
 	b.generate_at_exit_body(func_id, result_type, p1)
 }
@@ -4178,7 +4185,7 @@ fn (mut b Builder) register_rand_prng_interface_stubs() {
 }
 
 fn (mut b Builder) register_embed_file_interface_stubs() {
-	result_type := b.option_type_id('[]u8')
+	result_type := b.option_type_id('[]u8', true)
 	mut params := []TypeID{}
 	params << b.resolve_type('embed_file.Decoder')
 	params << b.array_type
@@ -8568,6 +8575,13 @@ fn (mut b Builder) build_option_value(opt_typ TypeID, ok bool, raw_value ValueID
 		}
 		b.emit2(.store, b.void_type, value, value_ptr)
 	}
+	err_index := b.m.type_store.types[opt_typ].field_names.index('err')
+	if err_index >= 0 {
+		err_type := b.m.type_store.types[opt_typ].fields[err_index]
+		err_ptr := b.block_struct_field_ptr(b.cur_block, alloca, opt_typ, err_index)
+		err_value := b.m.get_or_add_const(err_type, '0')
+		b.emit2(.store, b.void_type, err_value, err_ptr)
+	}
 	return b.emit1(.load, opt_typ, alloca)
 }
 
@@ -11231,7 +11245,7 @@ fn (mut b Builder) load_selector_field(node flat.Node, struct_typ_id TypeID, fie
 
 fn (b &Builder) is_option_like_var(name string) bool {
 	typ := b.var_type_names[name] or { return false }
-	return typ.len > 0 && (typ[0] == `?` || typ[0] == `!` || typ == 'Optional')
+	return typ.len > 0 && (typ[0] == `?` || typ[0] == `!` || typ == '__v_option')
 }
 
 fn (b &Builder) selector_has_addressable_root(node &flat.Node) bool {
@@ -11842,7 +11856,7 @@ fn (mut b Builder) get_field_ptr(base_addr ValueID, field_name string) ValueID {
 
 fn (mut b Builder) resolve_type(name string) TypeID {
 	if name.len > 1 && (name[0] == `?` || name[0] == `!`) {
-		return b.option_type_id(name[1..])
+		return b.option_type_id(name[1..], name[0] == `!`)
 	}
 	if name.starts_with('&') {
 		inner := b.resolve_type(name[1..])
@@ -11976,8 +11990,8 @@ fn normalize_primitive_type_name(name string) string {
 	}
 }
 
-fn (mut b Builder) option_type_id(base_name string) TypeID {
-	key := '?' + base_name
+fn (mut b Builder) option_type_id(base_name string, is_result bool) TypeID {
+	key := (if is_result { '!' } else { '?' }) + base_name
 	if typ := b.option_types[key] {
 		return typ
 	}
@@ -11990,6 +12004,10 @@ fn (mut b Builder) option_type_id(base_name string) TypeID {
 		fields << base_typ
 		field_names << 'value'
 	}
+	if is_result {
+		fields << b.resolve_type('IError')
+		field_names << 'err'
+	}
 	typ_id := b.m.type_store.register(Type{
 		kind:        .struct_t
 		fields:      fields
@@ -11997,7 +12015,6 @@ fn (mut b Builder) option_type_id(base_name string) TypeID {
 	})
 	b.option_types[key] = typ_id
 	b.struct_types[key] = typ_id
-	b.struct_types['!' + base_name] = typ_id
 	return typ_id
 }
 
@@ -12064,7 +12081,7 @@ fn (b &Builder) enum_autostr_fn_name(type_name string) ?string {
 
 fn (mut b Builder) resolve_type_in_module(name string, module_name string) TypeID {
 	if name.len > 1 && (name[0] == `?` || name[0] == `!`) {
-		return b.option_type_id(name[1..])
+		return b.option_type_id(name[1..], name[0] == `!`)
 	}
 	if name.starts_with('&') {
 		inner := b.resolve_type_in_module(name[1..], module_name)

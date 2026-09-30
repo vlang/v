@@ -2191,7 +2191,7 @@ fn (mut t Transformer) transform_infix_optional_none_ops(_id flat.NodeId, node f
 		if !t.is_optional_type_name(lhs_type) || !t.is_optional_type_name(rhs_type) {
 			return none
 		}
-		// This operation compares the Optional_T wrappers themselves. A payload
+		// This operation compares the __v_option_T wrappers themselves. A payload
 		// smartcast left by an earlier assignment must not leak into this comparison
 		// or into a following wrapper comparison in the same logical condition.
 		t.invalidate_smartcast_for_lvalue(lhs_id)
@@ -2208,7 +2208,7 @@ fn (mut t Transformer) transform_infix_optional_none_ops(_id flat.NodeId, node f
 		// `unsafe { record(); nil } == opt`: the left operand is evaluated first.
 		t.lower_discarded_nil_operand_effects(nil_id)
 	}
-	mut opt_type := t.optional_result_expr_type_name(opt_id)
+	mut opt_type := t.normalize_type_alias(t.optional_result_expr_type_name(opt_id))
 	if opt_type.len == 0 {
 		opt_type = t.node_type(opt_id)
 	}
@@ -2334,7 +2334,7 @@ fn (mut t Transformer) collect_discarded_nil_operand_effects(id flat.NodeId, mut
 	}
 }
 
-// transform_optional_wrapper_expr preserves the Optional_T wrapper when a prior
+// transform_optional_wrapper_expr preserves the __v_option_T wrapper when a prior
 // payload assignment has left an option smartcast active for the same expression.
 // Wrapper-level operations such as `x == none` and optional equality must inspect
 // `.ok` on the wrapper, not on the smartcasted `.value` payload.

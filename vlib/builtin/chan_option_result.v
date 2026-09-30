@@ -155,51 +155,12 @@ pub const error_sentinel = IError(&MessageError{
 	msg: 'error'
 })
 
-// Option is the base of V's internal option return system.
 struct Option {
-	state u8 // 0 - ok; 2 - none; 1 - ?
-	err   IError = none__
-	// Data is trailing after err
-	// and is not included in here but in the
-	// derived Option_xxx types
+	state u8
 }
 
-// option is the base of V's internal option return system.
 struct _option {
 	state u8
-	err   IError = none__
-	// Data is trailing after err
-	// and is not included in here but in the
-	// derived _option_xxx types
-}
-
-fn _option_none(data voidptr, mut option _option, size int) {
-	unsafe {
-		*option = _option{
-			state: 2
-		}
-		// use err to get the end of OptionBase and then memcpy into it
-		vmemcpy(&u8(&option.err) + sizeof(IError), data, size)
-	}
-}
-
-fn _option_ok(data voidptr, mut option _option, size int) {
-	unsafe {
-		*option = _option{}
-		// use err to get the end of OptionBase and then memcpy into it
-		vmemcpy(&u8(&option.err) + sizeof(IError), data, size)
-	}
-}
-
-fn _option_clone(current &_option, mut option _option, size int) {
-	unsafe {
-		*option = _option{
-			state: current.state
-			err:   current.err
-		}
-		// use err to get the end of OptionBase and then memcpy into it
-		vmemcpy(&u8(&option.err) + sizeof(IError), &u8(&current.err) + sizeof(IError), size)
-	}
 }
 
 @[markused]

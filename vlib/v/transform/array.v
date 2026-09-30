@@ -651,7 +651,7 @@ fn (mut t Transformer) make_struct_runtime_default_value_guarded(struct_type str
 		// which the zeroed array element already provides. Never expand it into a
 		// runtime default of its base struct: cross-module `normalize_type_alias`
 		// can strip the `?`/`!`, which would otherwise emit the base struct's
-		// fields into the optional wrapper (`(Optional_T){<T fields>}`).
+		// fields into the optional wrapper (`(__v_option_T){<T fields>}`).
 		raw_field_type := if field.raw_typ.len > 0 { field.raw_typ } else { field.typ }
 		field_is_optional := field_type.starts_with('?') || field_type.starts_with('!')
 			|| raw_field_type.starts_with('?') || raw_field_type.starts_with('!')

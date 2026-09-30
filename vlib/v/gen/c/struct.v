@@ -140,7 +140,7 @@ fn (mut g FlatGen) gen_struct_field_expr(value_id flat.NodeId, expected types.Ty
 	if g.gen_pointer_value_struct_field(value_id, expected) {
 		return
 	}
-	// A `mut opt ?T` parameter is stored as `Optional_T*` in C. Struct fields
+	// A `mut opt ?T` parameter is stored as `__v_option_T*` in C. Struct fields
 	// hold the option value itself, so read through that ABI pointer before the
 	// generic optional conversion path treats it as an already-materialized
 	// option.
@@ -837,7 +837,7 @@ fn (mut g FlatGen) gen_struct_init(id flat.NodeId) {
 	}
 	init_type := init_semantic_type
 	node_type := g.parse_node_type(&node)
-	is_optional_init := init_value == 'Optional' || init_type is types.OptionType
+	is_optional_init := init_value == '__v_option' || init_type is types.OptionType
 		|| init_type is types.ResultType
 	has_expected_optional := g.expected_expr_type is types.OptionType
 		|| g.expected_expr_type is types.ResultType || g.expected_expr_is_optional_struct()
@@ -852,22 +852,20 @@ fn (mut g FlatGen) gen_struct_init(id flat.NodeId) {
 		else { false }
 	}
 	// Lowered optional literals can retain their concrete V spelling (`?IError`)
-	// instead of the legacy synthetic `Optional` name. The wrapper ABI still comes
+	// instead of the legacy synthetic `__v_option` name. The wrapper ABI still comes
 	// from the expected option/result type; otherwise trimming the `?` above emits
 	// the payload C type and attempts to initialize an interface with option fields.
 	// A mutable optional struct parameter is the exception: its lowered payload is
 	// a pointer, while the source-level expected type still names the value payload.
 	if is_optional_init && !(init_has_pointer_payload && !expected_has_pointer_payload)
 		&& (g.expected_expr_type is types.OptionType || g.expected_expr_type is types.ResultType) {
-		concrete_expected := g.cur_fn_is_specialized && g.cur_fn_ret_is_optional
-			&& g.type_names_match(g.expected_expr_type, g.cur_fn_ret)
-		name = g.optional_type_name_for_context(g.expected_expr_type, concrete_expected)
-	} else if init_value == 'Optional' && g.expected_expr_is_optional_struct() {
+		name = g.optional_type_name(g.expected_expr_type)
+	} else if init_value == '__v_option' && g.expected_expr_is_optional_struct() {
 		name = g.value_c_type(g.expected_expr_type)
-	} else if init_value == 'Optional'
+	} else if init_value == '__v_option'
 		&& (node_type is types.OptionType || node_type is types.ResultType) {
 		name = g.optional_type_name(node_type)
-	} else if is_optional_init && !name.starts_with('Optional_') {
+	} else if is_optional_init && !is_wrapped_c_type(name) {
 		name = g.optional_type_name(init_type)
 	}
 	if is_optional_init {
@@ -882,7 +880,7 @@ fn (mut g FlatGen) gen_struct_init(id flat.NodeId) {
 			return
 		}
 		if g.optional_struct_init_is_none(node) {
-			g.write('(${name}){.ok = false${g.optional_none_err_field()}}')
+			g.write('(${name}){.ok = false}')
 			return
 		}
 		if g.gen_optional_fixed_array_struct_init(node, name, init_type) {
@@ -896,7 +894,7 @@ fn (mut g FlatGen) gen_struct_init(id flat.NodeId) {
 		} else {
 			g.cur_fn_ret
 		}
-		name = g.concrete_optional_type_name(concrete_type)
+		name = g.optional_type_name(concrete_type)
 	}
 	// A bare generic literal stores its fields under the concrete instance key (`Box[int]`);
 	// the bare `node.value` (`Box`) entry is removed by monomorphization, so resolve the
@@ -1483,7 +1481,7 @@ fn (mut g FlatGen) gen_struct_init_with_fixed_array_fields_impl(node flat.Node, 
 			}
 			g.write('.${g.init_field_c_name(lookup_name, field.value)} = ')
 			value_node := g.a.node(value_id)
-			if name.starts_with('Optional') && field.value == 'value' && value_node.kind == .prefix
+			if is_wrapped_c_type(name) && field.value == 'value' && value_node.kind == .prefix
 				&& value_node.op == .amp {
 				g.gen_expr(value_id)
 			} else if heap_copy_type := g.heap_copy_type_for_sum_pointer_field(lookup_name, field.value, value_id) {
@@ -2071,7 +2069,7 @@ fn (mut g FlatGen) gen_heap_struct_init(node flat.Node) {
 		}
 		g.write('.${designator} = ')
 		value_node := g.a.node(value_id)
-		if name.starts_with('Optional') && field.value == 'value' && value_node.kind == .prefix
+		if is_wrapped_c_type(name) && field.value == 'value' && value_node.kind == .prefix
 			&& value_node.op == .amp {
 			g.gen_expr(value_id)
 		} else if is_sum_literal {
@@ -2532,7 +2530,7 @@ fn (mut g FlatGen) gen_default_value_for_clean_type(clean_typ types.Type) {
 	raw_typ := clean_typ
 	if clean_typ is types.OptionType || clean_typ is types.ResultType {
 		ct := g.optional_type_name(clean_typ)
-		g.write('(${ct}){.ok = false${g.optional_none_err_field()}}')
+		g.write('(${ct}){.ok = false}')
 		return
 	}
 	if clean_typ is types.Struct
@@ -6324,7 +6322,8 @@ fn (mut g FlatGen) struct_decls() {
 	}
 	if !incremental_support_only {
 		err_field := if has_ierror { 'IError err; ' } else { '' }
-		g.writeln('typedef struct Optional { bool ok; ${err_field}int value; } Optional;')
+		g.writeln('typedef struct __v_option { bool ok; int value; } __v_option;')
+		g.writeln('typedef struct __v_result { bool ok; ${err_field}int value; } __v_result;')
 		g.writeln('')
 	}
 	if g.has_builtins && 'array' in remaining {
@@ -6358,7 +6357,7 @@ fn (mut g FlatGen) struct_decls() {
 			}
 			// An interface struct embeds its declared data fields by value, so the
 			// field types must be fully defined first (same constraint as structs).
-			// Option/result fields embed their payload by value in the Optional_T
+			// Option/result fields embed their payload by value in the __v_option_T
 			// typedef, so the dependency is the payload type, not the wrapper.
 			for field in g.tc.interface_field_list(name) {
 				if interface_field_type_contains_self_by_value(field.typ, name) {
@@ -7257,7 +7256,7 @@ fn (mut g FlatGen) emit_sum_option_typedefs(variants []string) {
 fn (mut g FlatGen) emit_option_typedefs_for_type(typ types.Type) bool {
 	if typ is types.OptionType || typ is types.ResultType {
 		opt_name := g.optional_type_name(typ)
-		if opt_name == 'Optional' {
+		if opt_name in ['__v_option', '__v_result'] {
 			return false
 		}
 		if val_type := g.needed_optional_types[opt_name] {

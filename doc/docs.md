@@ -4880,7 +4880,12 @@ fn main() {
 }
 ```
 
-V used to combine `Option` and `Result` into one type, now they are separate.
+An Option stores either a value or `none`. It has no error field and cannot carry an error as
+its failure state. A Result stores either a value or an `IError`.
+An `IError` may still be an ordinary Option payload, for example `?IError`.
+
+With the C backend, Options store their payload inline. Wrapping a value or returning `none`
+does not allocate; the payload itself can require allocation, as with arrays or interface values.
 
 The amount of work required to "upgrade" a function to an option/result function is minimal;
 you have to add a `?` or `!` to the return type and return `none` or an error (respectively)
@@ -4890,8 +4895,12 @@ This is the primary mechanism for error handling in V. They are still values, li
 but the advantage is that errors can't be unhandled, and handling them is a lot less verbose.
 Unlike other languages, V does not handle exceptions with `throw/try/catch` blocks.
 
-`err` is defined inside an `or` block and is set to the string message passed
-to the `error()` function.
+A Result's `or` block and failed `if` guard bind `err` to its `IError`.
+Use `err.msg()` for its message and `err.code()` for its code.
+An Option's `or` block or failed `if` guard does not bind `err`.
+Any existing outer variable named `err` keeps its ordinary meaning in those blocks.
+Use `or { return none }` to propagate absence, or construct an explicit error when converting
+absence to a Result failure.
 
 ```v oksyntax
 user := repo.find_user_by_id(7) or {

@@ -1554,7 +1554,7 @@ fn test_pr_review_codegen_batch_two() {
 	// `[flag]` enum stringification renders combined values as `Enum{.a | .b}`.
 	flag := run_good(v3_bin, 'good_flag_enum_str', '@[flag]\nenum Perm {\n\tread\n\twrite\n\texec\n}\nfn main() {\n\ta := Perm.read | Perm.write\n\tprintln(a.str())\n\tb := Perm.read\n\tprintln(b.str())\n}\n')
 	assert flag == 'Perm{.read | .write}\nPerm{.read}'
-	// spawn of an option-returning fn stores/reads the `Optional_T` ABI layout.
+	// spawn of an option-returning fn stores/reads the `__v_option_T` ABI layout.
 	spawn_opt := run_good(v3_bin, 'good_spawn_option_return', "fn work() ?string {\n\treturn 'hello'\n}\nfn main() {\n\tmut ts := []thread ?string{}\n\tts << spawn work()\n\trs := ts.wait() or { []string{} }\n\tx := rs[0] or { 'none' }\n\tprintln(x)\n}\n")
 	assert spawn_opt == 'hello'
 	// A global V function passed to a method `fn ()` param keeps the function-pointer
@@ -1570,7 +1570,7 @@ fn test_pr_review_codegen_batch_three() {
 	// (combined/zero values fall through), so a non-void fn needs `else`/missing-return.
 	run_bad(v3_bin, 'bad_flag_enum_match_not_exhaustive', '@[flag]\nenum Perm {\n\tread\n\twrite\n}\nfn f(p Perm) int {\n\tmatch p {\n\t\t.read { return 1 }\n\t\t.write { return 2 }\n\t}\n}\nfn main() {\n\tprintln(int_str(f(Perm.read)))\n}\n', 'missing return')
 	// A bound method value returning an option, passed to a V `fn () ?string`
-	// parameter, must emit a wrapper with the `Optional_string` ABI return and a
+	// parameter, must emit a wrapper with the `__v_option_string` ABI return and a
 	// function-pointer (not `(void*)`) cast.
 	mv := run_good(v3_bin, 'good_method_value_option_return', "struct G {\n\tn int\n}\nfn (g G) make() ?string {\n\treturn 'hi'\n}\nfn run(cb fn () ?string) {\n\ts := cb() or { 'none' }\n\tprintln(s)\n}\nfn main() {\n\tg := G{\n\t\tn: 1\n\t}\n\trun(g.make)\n}\n")
 	assert mv == 'hi'

@@ -1737,8 +1737,7 @@ fn (mut t Transformer) transform_mut_optional_value_call_arg(arg_id flat.NodeId,
 
 	lvalue := t.stabilize_transformed_lvalue_for_reuse(t.transform_lvalue(arg_id))
 	tmp_name := t.new_temp('mut_optional_arg')
-	initial_err := t.make_selector(lvalue, 'err', 'IError')
-	initial := t.make_optional_none_with_err(target_option, initial_err)
+	initial := t.make_optional_none(target_option)
 	t.pending_stmts << t.make_decl_assign_typed(tmp_name, initial, target_option)
 	payload := t.make_selector(lvalue, 'value', payload_type)
 	payload_addr := t.make_prefix(.amp, payload)
@@ -1752,8 +1751,7 @@ fn (mut t Transformer) transform_mut_optional_value_call_arg(arg_id flat.NodeId,
 	result_payload := t.make_prefix(.mul, result_payload_ptr)
 	t.set_node_typ(int(result_payload), payload_type)
 	write_some := t.make_assign(lvalue, t.make_optional_some(result_payload, arg_type))
-	result_err := t.make_selector(tmp, 'err', 'IError')
-	write_none := t.make_assign(lvalue, t.make_optional_none_with_err(arg_type, result_err))
+	write_none := t.make_assign(lvalue, t.make_optional_none(arg_type))
 	writeback := t.make_if(t.make_selector(tmp, 'ok', 'bool'), t.make_block([write_some]), t.make_block([write_none]))
 
 	addr := t.make_prefix(.amp, tmp)
@@ -3754,7 +3752,7 @@ fn (mut t Transformer) transform_call_arg_for_param_isolated(arg_id flat.NodeId,
 				// `opt?` propagates: return none/err when it is none, instead of
 				// unconditionally treating it as present.
 				not_ok := t.make_prefix(.not, t.make_selector(opt_expr, 'ok', 'bool'))
-				err_expr := t.make_selector(opt_expr, 'err', 'IError')
+				err_expr := t.result_error_expr(opt_expr)
 				else_stmts := t.lower_or_body_to_stmts_with_err_expr(flat.empty_node, '', payload_type, '?', err_expr)
 				t.pending_stmts << t.make_if(not_ok, t.make_block_skip_scope_drops(else_stmts), t.make_empty())
 			} else {
@@ -10055,19 +10053,13 @@ fn (mut t Transformer) make_compiler_default_clone_value(source flat.NodeId, typ
 		mut body := t.pending_stmts[pending_start..].clone()
 		t.pending_stmts = t.pending_stmts[..pending_start].clone()
 		body << t.make_assign_without_ownership_drop(t.make_ident(out_name), t.make_optional_some(cloned_value, clean))
-		source_err := t.make_selector(stable_source, 'err', 'IError')
-		t.mark_fn_used('string__clone')
-		if !isnil(t.tc) {
-			for concrete in t.tc.ierror_impl_names() {
-				if clone_method := t.tc.concrete_method_signature_key(concrete, 'clone') {
-					t.mark_fn_used_name(clone_method)
-				}
-			}
+		mut else_branch := t.make_empty()
+		cloned_err := t.clone_result_error(stable_source)
+		if int(cloned_err) >= 0 {
+			failed := t.make_optional_none_with_err(clean, cloned_err)
+			assignment := t.make_assign_without_ownership_drop(t.make_ident(out_name), failed)
+			else_branch = t.make_block_skip_scope_drops([assignment])
 		}
-		cloned_err := t.make_call_typed('__v3_clone_owned_ierror', [source_err], 'IError')
-		else_branch := t.make_block_skip_scope_drops([
-			t.make_assign_without_ownership_drop(t.make_ident(out_name), t.make_optional_none_with_err(clean, cloned_err)),
-		])
 		t.pending_stmts << t.make_if_with_skip_ownership_drops(t.make_selector(stable_source, 'ok', 'bool'), t.make_block_skip_scope_drops(body), else_branch)
 		if source_is_owned_temporary {
 			t.pending_stmts << t.make_expr_stmt(t.make_call_typed('drop_owned', [
@@ -17133,4 +17125,21 @@ fn (t &Transformer) specialize_generic_type_name(typ string, generic_arg string)
 		return clean[..bracket_end + 1] + t.specialize_generic_type_name(clean[bracket_end + 1..], generic_arg)
 	}
 	return typ
+}
+
+fn (mut t Transformer) clone_result_error(source flat.NodeId) flat.NodeId {
+	err := t.result_error_expr(source)
+	if int(err) < 0 {
+		return flat.empty_node
+	}
+	t.mark_fn_used('string__clone')
+	cloned := t.make_call_typed('__v3_clone_owned_ierror', [err], 'IError')
+	if isnil(t.tc) {
+		return cloned
+	}
+	for concrete in t.tc.ierror_impl_names() {
+		method := t.tc.concrete_method_signature_key(concrete, 'clone') or { continue }
+		t.mark_fn_used_name(method)
+	}
+	return cloned
 }

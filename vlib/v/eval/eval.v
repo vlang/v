@@ -4384,7 +4384,9 @@ fn (mut e Eval) eval_or_failure(node &flat.Node, value Value) !FlowSignal {
 		or_node := e.node(or_id)
 		if or_node.kind == .block {
 			e.open_scope()
-			e.declare_var('err', e.or_block_err_value(value))
+			if value is StructValue && value.type_name == 'Result' {
+				e.declare_var('err', value.fields['err'] or { void_value() })
+			}
 			signal := e.eval_block_value_flow(or_node) or {
 				e.close_scope() or {}
 				return err
@@ -4405,13 +4407,6 @@ fn (mut e Eval) eval_or_failure(node &flat.Node, value Value) !FlowSignal {
 	return FlowSignal{
 		values: [void_value()]
 	}
-}
-
-fn (e &Eval) or_block_err_value(value Value) Value {
-	if value is VoidValue {
-		return Value('')
-	}
-	return value
 }
 
 fn (mut e Eval) exec_match(node &flat.Node) !FlowSignal {
@@ -5748,7 +5743,6 @@ fn (e &Eval) adapt_value_to_type_name(value Value, type_name string) Value {
 			type_name: 'Option'
 			fields:    {
 				'state': Value(i64(0))
-				'err':   Value('')
 				'data':  data
 			}
 		}
@@ -5889,7 +5883,6 @@ fn (e &Eval) cast_value_in_module(value Value, type_name string, module_name str
 			type_name: 'Option'
 			fields:    {
 				'state': Value(i64(0))
-				'err':   Value('')
 				'data':  data
 			}
 		}

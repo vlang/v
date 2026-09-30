@@ -9512,7 +9512,8 @@ fn (mut tc TypeChecker) check_or_expr(id flat.NodeId, node flat.Node) {
 	fallback_id := tc.a.child(&node, 1)
 	outer_expected := tc.expected_context_for_expr(id) or { Type(void_) }
 	tc.push_scope()
-	if tc.has_ierror_interface() {
+	if tc.has_ierror_interface() && (tc.failure_has_error(inner_id)
+		|| int(id) == tc.channel_send_or_expr_id) {
 		tc.cur_scope.insert('err', tc.parse_type('IError'))
 	}
 	saved_expected_expr_id := tc.expected_expr_id
@@ -16969,10 +16970,10 @@ fn multi_tail_wrappers_match(current Type, actual Type) bool {
 	if clean_actual is None && clean_current is OptionType {
 		return true
 	}
-	if is_ierror_type(current) && (clean_actual is OptionType || clean_actual is ResultType) {
+	if is_ierror_type(current) && clean_actual is ResultType {
 		return true
 	}
-	if is_ierror_type(actual) && (clean_current is OptionType || clean_current is ResultType) {
+	if is_ierror_type(actual) && clean_current is ResultType {
 		return true
 	}
 	return (clean_current is OptionType) == (clean_actual is OptionType)
@@ -17007,12 +17008,10 @@ fn (tc &TypeChecker) promoted_multi_tail_type(current Type, actual Type) ?Type {
 			return inferred
 		}
 	}
-	if is_ierror_type(actual) && (unalias_type(current) is OptionType
-		|| unalias_type(current) is ResultType) {
+	if is_ierror_type(actual) && unalias_type(current) is ResultType {
 		return current
 	}
-	if is_ierror_type(current) && (unalias_type(actual) is OptionType
-		|| unalias_type(actual) is ResultType) {
+	if is_ierror_type(current) && unalias_type(actual) is ResultType {
 		return actual
 	}
 	if (current.name() == 'voidptr' || unalias_type(current) is Nil)
@@ -17184,7 +17183,8 @@ fn (tc &TypeChecker) wrapped_multi_return_tail_is_error(branch_id flat.NodeId, w
 		return true
 	}
 	raw_type := tc.resolve_type(tail_id)
-	return is_ierror_type(raw_type) || tc.type_compatible_with_ierror_payload(raw_type)
+	return wrapper is ResultType
+		&& (is_ierror_type(raw_type) || tc.type_compatible_with_ierror_payload(raw_type))
 }
 
 fn (tc &TypeChecker) tuple_tail_value_groups(body_id flat.NodeId, count int, explicit_comma_tail bool) ?[][]flat.NodeId {

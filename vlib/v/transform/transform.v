@@ -2694,11 +2694,14 @@ struct ImplicitErrScope {
 // enter_implicit_err_scope binds the implicit `err` of an `or`/`else` body. That `err`
 // shadows any outer one, so smartcasts of the outer `err` (e.g. `if err is MyError`)
 // are hidden until leave_implicit_err_scope restores them.
-fn (mut t Transformer) enter_implicit_err_scope() ImplicitErrScope {
+fn (mut t Transformer) enter_implicit_err_scope(has_error bool) ImplicitErrScope {
 	scope := ImplicitErrScope{
 		var_types:   t.var_types.clone()
 		smartcasts:  t.smartcast_stack.clone()
 		invalidated: t.invalidated_smartcasts.clone()
+	}
+	if !has_error {
+		return scope
 	}
 	t.set_implicit_err_var_type()
 	if t.smartcast_stack.len > 0 {
@@ -8841,9 +8844,6 @@ fn (mut t Transformer) return_slot_is_boxed_pointer(id flat.NodeId) bool {
 	if expected is types.Interface {
 		return escape_type_is_pointer(t.tc.resolve_type(id))
 	}
-	if expected is types.OptionType {
-		return t.return_expr_is_propagated_err(id, expected.base_type.name())
-	}
 	if expected is types.ResultType {
 		return t.return_expr_is_propagated_err(id, expected.base_type.name())
 	}
@@ -11222,7 +11222,7 @@ fn (mut t Transformer) transform_pointer_optional_unwrap_lvalue(id flat.NodeId) 
 	source := t.stable_transformed_expr_for_reuse(t.transform_expr(source_id), source_type, 'opt_lvalue')
 	wrapper := t.make_prefix(.mul, source)
 	t.set_node_typ(int(wrapper), optional_type)
-	err_expr := t.make_selector(wrapper, 'err', 'IError')
+	err_expr := t.result_error_expr(wrapper)
 	not_ok := t.make_prefix(.not, t.make_selector(wrapper, 'ok', 'bool'))
 	body_id := t.a.child(&node, 1)
 	else_block := t.make_or_else_block(node.value, t.lower_or_body_to_stmts_with_err_expr(body_id, '', '', node.value, err_expr))
@@ -11462,7 +11462,7 @@ fn (mut t Transformer) transform_return_stmt(id flat.NodeId, node flat.Node) []f
 	if expanded := t.try_expand_forwarded_multi_return(source_return_id, node) {
 		return expanded
 	}
-	if node.children_count == 1 && t.is_optional_type_name(t.cur_fn_ret_type) {
+	if node.children_count == 1 && t.normalize_type_alias(t.cur_fn_ret_type).starts_with('!') {
 		child_id := t.a.child(&node, 0)
 		payload_type := t.optional_base_type(t.qualify_optional_type(t.cur_fn_ret_type))
 		if t.return_expr_is_propagated_err(child_id, payload_type) {
@@ -12364,7 +12364,7 @@ fn (mut t Transformer) transform_assign_stmt(id flat.NodeId, node flat.Node) []f
 	// Capture the lvalue's declared storage type before the optional-assign
 	// smartcast unwraps it (`?string` -> `string`), so the drop-before-assign
 	// temp below keeps the optional storage type the assigned value is wrapped
-	// to, instead of a `string` temp initialised with an `Optional_string`.
+	// to, instead of a `string` temp initialised with an `__v_option_string`.
 	mut pre_smartcast_lhs_type := ''
 	if node.kind == .assign && node.op == .assign && node.children_count == 2 {
 		pre_smartcast_lhs_type = t.lvalue_type(t.a.child(&node, 0))
@@ -12914,7 +12914,7 @@ fn (mut t Transformer) update_option_assignment_smartcast(lhs_id flat.NodeId, rh
 	// Assigning a payload keeps an unwrap already in force, or establishes one
 	// after replacing a value known to be none. Outside such a region the variable
 	// stays a plain `?T`: re-reading it must still yield the option, or `if v := a`
-	// initialises an `Optional_T` from a payload and `'${a}'` prints the payload
+	// initialises an `__v_option_T` from a payload and `'${a}'` prints the payload
 	// instead of `Option(...)`.
 	was_unwrapped := if sc := t.find_smartcast(key) {
 		sc.sum_type_name == option_unwrap_marker
@@ -13367,7 +13367,7 @@ fn (mut t Transformer) try_lower_optional_selector_lvalue_assign(node flat.Node)
 }
 
 fn (mut t Transformer) optional_selector_lvalue_guard_stmts(body_id flat.NodeId, mode string, guard_source flat.NodeId) []flat.NodeId {
-	err_expr := t.make_selector(guard_source, 'err', 'IError')
+	err_expr := t.result_error_expr(guard_source)
 	if mode == '!' || mode == '?' {
 		if t.is_optional_type_name(t.cur_fn_ret_type) {
 			return [
@@ -14839,7 +14839,7 @@ fn (mut t Transformer) coerce_transformed_expr_to_type(expr flat.NodeId, source_
 		target
 	}
 	optional_target = t.infer_typed_optional_target(optional_target, expr_type)
-	if t.is_optional_type_name(optional_target) && t.is_ierror_type(expr_type) {
+	if optional_target.starts_with('!') && t.is_ierror_type(expr_type) {
 		optional_payload := t.optional_base_type(optional_target)
 		payload_accepts_ierror := optional_payload in ['IError', 'builtin.IError']
 			|| (t.normalize_type_alias(optional_payload) != 'string' && !isnil(t.tc)
@@ -15115,16 +15115,16 @@ fn (t &Transformer) infer_typed_optional_target(optional_target string, expr_typ
 	if t.is_optional_type_name(optional_target) {
 		base := t.optional_base_type(optional_target)
 		if value_type.contains('.') && base == value_type.all_after_last('.') {
-			return '?${value_type}'
+			return '${optional_target[..1]}${value_type}'
 		}
 		if value_type.contains('.') && base.contains('.')
 			&& base.all_after_last('.') == value_type.all_after_last('.')
 			&& !t.is_known_type_name(base) && t.is_known_type_name(value_type) {
-			return '?${value_type}'
+			return '${optional_target[..1]}${value_type}'
 		}
 		return optional_target
 	}
-	if optional_target != 'Optional' || isnil(t.tc) {
+	if optional_target != '__v_option' || isnil(t.tc) {
 		return optional_target
 	}
 	typ := t.tc.parse_type(value_type)
@@ -15171,27 +15171,9 @@ fn (mut t Transformer) make_optional_none(optional_type string) flat.NodeId {
 }
 
 fn (mut t Transformer) make_ierror_none() flat.NodeId {
-	none_value := t.make_struct_init('None__')
-	addr := t.make_prefix(.amp, none_value)
-	size := t.make_sizeof_type('None__')
-	dup := t.make_non_aliasing_allocation_call('memdup', [addr, size], 'voidptr')
-	object := t.make_cast('&None__', dup, '&None__')
-	type_id := t.ierror_none_type_id
-	fields := [
-		t.make_sum_literal_field('_typ', t.make_int_literal(type_id), 'int'),
-		t.make_sum_literal_field('_object', object, '&None__'),
-	]
-	start := t.a.children.len
-	for field in fields {
-		t.a.children << field
-	}
-	return t.a.add_node(flat.Node{
-		kind:           .struct_init
-		children_start: start
-		children_count: flat.child_count(fields.len)
-		value:          'IError'
-		typ:            'IError'
-	})
+	value := t.make_ident('none__')
+	t.set_node_typ(int(value), 'IError')
+	return value
 }
 
 fn (mut t Transformer) make_ierror_none_type_check(typ flat.NodeId, iface string) flat.NodeId {
@@ -15207,7 +15189,8 @@ fn (mut t Transformer) make_ierror_none_type_check(typ flat.NodeId, iface string
 
 // make_optional_none_with_err builds make optional none with err data for transform.
 fn (mut t Transformer) make_optional_none_with_err(optional_type string, err_expr flat.NodeId) flat.NodeId {
-	if !t.has_ierror_interface() {
+	if !t.normalize_type_alias(optional_type).starts_with('!')
+		|| int(err_expr) < 0 || !t.has_ierror_interface() {
 		return t.make_optional_none(optional_type)
 	}
 	ok_field := t.make_sum_literal_field('ok', t.make_bool_literal(false), 'bool')
@@ -19192,7 +19175,7 @@ fn (mut t Transformer) transform_infix_expr(id flat.NodeId, node flat.Node) flat
 				send_prelude = t.pending_stmts[send_prelude_start..].clone()
 				t.pending_stmts = t.pending_stmts[..send_prelude_start].clone()
 			}
-			err_scope := t.enter_implicit_err_scope()
+			err_scope := t.enter_implicit_err_scope(true)
 			body := t.transform_expr(t.a.child(&rhs, 1))
 			t.leave_implicit_err_scope(err_scope)
 			for stmt in send_prelude {
@@ -22110,7 +22093,7 @@ fn (mut t Transformer) transform_optional_value_to_pointer(source_id flat.NodeId
 		t.stable_transformed_expr_for_reuse(source, source_type, 'opt_ref')
 	}
 	result_name := t.new_temp('opt_ref_result')
-	err := t.make_selector(source_value, 'err', 'IError')
+	err := t.result_error_expr(source_value)
 	initial := t.make_optional_none_with_err(target_type, err)
 	t.pending_stmts << t.make_decl_assign_typed(result_name, initial, target_type)
 	value := t.make_selector(source_value, 'value', payload_type)
@@ -22146,7 +22129,7 @@ fn (mut t Transformer) transform_optional_value_to_sum(source_id flat.NodeId, so
 	source := t.optional_source_value_expr(source_id, source0, source_optional)
 	source_value := t.stable_transformed_expr_for_reuse(source, source_optional, 'opt_sum')
 	result_name := t.new_temp('opt_sum_result')
-	err := t.make_selector(source_value, 'err', 'IError')
+	err := t.result_error_expr(source_value)
 	initial := t.make_optional_none_with_err(target_optional, err)
 	t.pending_stmts << t.make_decl_assign_typed(result_name, initial, target_optional)
 	payload := t.make_selector(source_value, 'value', source_payload)
@@ -22240,7 +22223,7 @@ fn (mut t Transformer) transform_amp_optional_unwrap(node flat.Node, child flat.
 		return addr
 	}
 	not_ok := t.make_prefix(.not, t.make_selector(source, 'ok', 'bool'))
-	err_expr := t.make_selector(source, 'err', 'IError')
+	err_expr := t.result_error_expr(source)
 	else_block := t.make_or_else_block(child.value, t.lower_or_body_to_stmts_with_err_expr(body_id, '', '', child.value, err_expr))
 	t.pending_stmts << t.make_if(not_ok, else_block, t.make_empty())
 	value := t.make_selector(source, 'value', value_type)
@@ -23849,7 +23832,7 @@ fn (mut t Transformer) apply_smartcast_contexts(base flat.NodeId, typ string, co
 	mut applied_path := []string{}
 	for i, sc in contexts {
 		if sc.sum_type_name == option_unwrap_marker {
-			// current is the Optional_T struct value itself. Type annotations on
+			// current is the __v_option_T struct value itself. Type annotations on
 			// the rebuilt expr may already report the smartcast base type (which
 			// can be a pointer and would make cgen emit `->`), so pin the node's
 			// type back to the option before selecting `.value` from it.

@@ -174,12 +174,12 @@ fn test_fixed_array_optional_abi_conversions_use_memcpy() {
 		len:       2
 	})
 	mut forward_gen := FlatGen.new()
-	forward := forward_gen.optional_forward_return_abi_wrap_expr('Optional_source', 'Optional_destination', fixed, 'source()')
+	forward := forward_gen.optional_forward_return_abi_wrap_expr('__v_option_source', '__v_option_destination', fixed, 'source()')
 	assert forward.contains('if (_t1.ok) { memcpy(_t2.value, _t1.value, sizeof(_t2.value)); }'), forward
 	assert !forward.contains('.value = _t1.value'), forward
 
 	mut interface_gen := FlatGen.new()
-	interface_gen.gen_interface_dispatch_optional_abi_value_return('Optional_destination', '_iface_result', fixed)
+	interface_gen.gen_interface_dispatch_optional_abi_value_return('__v_option_destination', '_iface_result', fixed)
 	interface_output := interface_gen.sb.str()
 	assert interface_output.contains('if (_iface_result.ok) {'), interface_output
 	copy_statement := 'memcpy(_iface_abi_result_out_0.value, _iface_result.value, sizeof(_iface_abi_result_out_0.value));'
