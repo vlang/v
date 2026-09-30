@@ -60,6 +60,7 @@ For a list of all features and fixes, check out the changelog.
 - [x] -usecache on by default
 - [x] ORM migrations
 - [ ] Make ORM work without installing developer libs (libpq-dev etc)
+- [ ] Hot code reloading by modifying running binary (using the native backends)
 
 ## [Version 1.0]
 

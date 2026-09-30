@@ -19763,12 +19763,18 @@ fn (mut g FlatGen) system_libc_headers() {
 	g.writeln('#include <io.h>')
 	g.writeln('#include <process.h>')
 	g.writeln('#include <windows.h>')
-	if g.ccompiler == 'msvc' {
-		// math.bits calls MSVC intrinsics (`_umul128`, `_udiv128`, ...), and builtin's
-		// MSVC backtraces call the dbghelp API directly.
-		g.writeln('#include <intrin.h>')
-		g.writeln('#include <dbghelp.h>')
-	}
+	// Guarded by the C preprocessor, not by `g.ccompiler`: the generated C is
+	// compiled by whatever C compiler the user picked, which is not necessarily
+	// the one V generated it for. `vc/v_win.c` is generated with `-cc msvc` (see
+	// .github/workflows/gen_vc_ci.yml) but is then bootstrapped by tcc/clang/gcc
+	// (makev.bat), and none of those ship <intrin.h>/<dbghelp.h> on Windows.
+	// Every use site is already `#if defined(_MSC_VER)` or `$if msvc` anyway.
+	g.writeln('#if defined(_MSC_VER)')
+	// math.bits calls MSVC intrinsics (`_umul128`, `_udiv128`, ...), and builtin's
+	// MSVC backtraces call the dbghelp API directly.
+	g.writeln('#include <intrin.h>')
+	g.writeln('#include <dbghelp.h>')
+	g.writeln('#endif')
 	g.writeln('#else')
 	for header in ['dirent.h', 'dlfcn.h', 'fcntl.h', 'netdb.h', 'netinet/in.h', 'pthread.h',
 		'arpa/inet.h', 'netinet/tcp.h', 'semaphore.h', 'sys/ioctl.h', 'sys/mman.h', 'sys/resource.h',
