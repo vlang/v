@@ -8805,10 +8805,11 @@ fn (mut t Transformer) scan_escape_pass(id flat.NodeId, mut amp_ptrs map[string]
 		&& t.escape_append_target_is_array(t.a.child(&node, 0)) {
 		// `vals << &char(&num)`: the array keeps the appended address, and can outlive this
 		// stack frame (a `mut` parameter, a field, a global, a returned array).
-		rhs_id := t.a.child(&node, 1)
-		t.collect_return_escape_idents(rhs_id, mut returned)
-		for source_name in t.escape_aggregate_address_sources(rhs_id, amp_sources, ptr_aliases) {
-			t.escaping_amp_sources[source_name] = true
+		for value_id in t.escape_value_tails(t.a.child(&node, 1)) {
+			t.collect_return_escape_idents(value_id, mut returned)
+			for source_name in t.escape_aggregate_address_sources(value_id, amp_sources, ptr_aliases) {
+				t.escaping_amp_sources[source_name] = true
+			}
 		}
 	}
 	if node.kind == .spawn_expr {
@@ -9020,6 +9021,51 @@ fn (t &Transformer) escape_selector_assign_retains_value(lhs_id flat.NodeId, amp
 		return false
 	}
 	return !t.escape_address_indirect_base_is_stack_backed(root_id, amp_ptrs, ptr_aliases)
+}
+
+// escape_value_tails returns the expressions that give `id` its value: `id` itself, or
+// the tails of a value block (`unsafe { &num }`) and of `if` and `match` branches.
+fn (t &Transformer) escape_value_tails(id flat.NodeId) []flat.NodeId {
+	if int(id) < 0 || int(id) >= t.a.nodes.len {
+		return []flat.NodeId{}
+	}
+	node := t.a.nodes[int(id)]
+	match node.kind {
+		.paren, .expr_stmt {
+			if node.children_count > 0 {
+				return t.escape_value_tails(t.a.child(&node, 0))
+			}
+		}
+		.block {
+			if node.children_count == 0 {
+				return []flat.NodeId{}
+			}
+			return t.escape_value_tails(t.a.child(&node, node.children_count - 1))
+		}
+		.if_expr {
+			mut tails := []flat.NodeId{}
+			for i in 1 .. node.children_count {
+				tails << t.escape_value_tails(t.a.child(&node, i))
+			}
+			return tails
+		}
+		.match_stmt {
+			mut tails := []flat.NodeId{}
+			for i in 1 .. node.children_count {
+				branch := t.a.child_node(&node, i)
+				if branch.kind != .match_branch {
+					continue
+				}
+				body_start := if branch.value == 'else' { 0 } else { t.count_conds(*branch) }
+				if int(branch.children_count) > body_start {
+					tails << t.escape_value_tails(t.a.child(branch, branch.children_count - 1))
+				}
+			}
+			return tails
+		}
+		else {}
+	}
+	return [id]
 }
 
 // escape_append_target_is_array reports whether `lhs << value` appends to a dynamic array.
@@ -25620,7 +25666,14 @@ fn (t &Transformer) resolve_expr_type(id flat.NodeId) string {
 		}
 		.prefix {
 			if node.children_count > 0 {
-				child_type := t.node_type(t.a.child(&node, 0))
+				child_id := t.a.child(&node, 0)
+				child_type := t.node_type(child_id)
+				child := t.a.nodes[int(child_id)]
+				if node.op == .amp && child.kind == .ident && child.value in t.heaped_amp_locals
+					&& child_type.starts_with('&') {
+					// A local moved to the heap is stored as its address: `&a` is that pointer.
+					return child_type
+				}
 				if node.op == .amp && child_type.len > 0 {
 					return '&${child_type}'
 				}

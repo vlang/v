@@ -54,3 +54,24 @@ fn test_same_named_locals_in_match_branches() {
 	assert unsafe { *(&u16(values[1])) } == 7
 	assert unsafe { *(&u64(values[2])) } == 31
 }
+
+fn append_through_values(mut values []&u64, data int) {
+	a := u64(data)
+	b := u64(data) * 2
+	values << unsafe { &a }
+	values << if data > 0 { &b } else { &a }
+	values << match data {
+		0 { &a }
+		else { &b }
+	}
+}
+
+// The appended address can be the value of a block or of an `if` or `match`.
+fn test_address_appended_through_a_value_block_or_branch() {
+	mut values := []&u64{}
+	append_through_values(mut values, 21)
+	_ = use_the_stack(10)
+	assert *values[0] == 21
+	assert *values[1] == 42
+	assert *values[2] == 42
+}
