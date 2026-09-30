@@ -1199,8 +1199,7 @@ fn (mut g FlatGen) gen_ierror_from_expr(id flat.NodeId) bool {
 
 fn (mut g FlatGen) ierror_none_literal_string() string {
 	type_id := g.ierror_type_id_for_pattern('None__')
-	empty_sid := g.intern_string('')
-	return '(IError){._typ = ${type_id}, ._object = memdup(&(None__){E_STRUCT}, sizeof(None__)), ._object_is_boxed = true, .message = _str_${empty_sid}, .code = 0}'
+	return '(IError){._typ = ${type_id}, ._object = memdup(&(None__){E_STRUCT}, sizeof(None__)), ._object_is_boxed = true}'
 }
 
 fn (mut g FlatGen) ierror_from_expr_string(id flat.NodeId) ?string {
@@ -1243,9 +1242,8 @@ fn (mut g FlatGen) ierror_from_expr_string_with_type(id flat.NodeId, actual type
 	} else {
 		'memdup((${concrete_ct}[]){${expr}}, sizeof(${concrete_ct}))'
 	}
-	empty_sid := g.intern_string('')
 	boxed := pointer_object_is_owned || object.starts_with('memdup(')
-	return '(IError){._typ = ${type_id}, ._object = ${object}, ._object_is_boxed = ${boxed}, .message = _str_${empty_sid}, .code = 0}'
+	return '(IError){._typ = ${type_id}, ._object = ${object}, ._object_is_boxed = ${boxed}}'
 }
 
 // ierror_pointer_payload_creates_owned_object reports pointer expressions whose C
@@ -1618,12 +1616,6 @@ fn (g &FlatGen) has_ierror_interface() bool {
 	return false
 }
 
-// optional_none_err_field returns the `err` initializer of a `none` option/result
-// literal. Without `IError` (`-no-builtin`) the wrappers have no `err` field.
-fn (g &FlatGen) optional_none_err_field() string {
-	return if g.has_ierror_interface() { ', .err = builtin__none__' } else { '' }
-}
-
 // interface_init_typ_id computes the `_typ` dispatch id for a boxed interface
 // literal by recovering the concrete type from its `_object` field.
 fn (g &FlatGen) interface_init_typ_id(node flat.Node) ?int {
@@ -1943,19 +1935,10 @@ fn (mut g FlatGen) gen_interface_dispatch_with_fallback(iface_name string, cn st
 			recv := g.ierror_method_receiver_expr(concrete, call.path, recv_is_ptr)
 			g.writeln('\tif (i->_typ == ${id}) return ${g.cname(call.method_name)}(${recv});')
 		}
-		match method {
-			'msg' {
-				g.writeln('\treturn i->message;')
-			}
-			'code' {
-				g.writeln('\treturn i->code;')
-			}
-			else {
-				g.writeln('\tv_panic(_str_${sid});')
-				g.writeln('\treturn (${ret_ct}){0};')
-			}
+		if panic_on_default {
+			g.writeln('\tv_panic(_str_${sid});')
 		}
-
+		g.writeln('\treturn (${ret_ct}){0};')
 		g.writeln('}')
 		return
 	}
@@ -2049,11 +2032,11 @@ fn (mut g FlatGen) gen_interface_dispatch_with_fallback(iface_name string, cn st
 					g.writeln('${call}; return;')
 				} else if g.gen_interface_dispatch_optional_abi_return(call, ret_type, g.tc.fn_ret_types[decl] or {
 					ret_type
-				}, decl)
+				})
 				{
 				} else if g.gen_interface_dispatch_wrapped_return(call, ret_type, g.tc.fn_ret_types[decl] or {
 					ret_type
-				}, decl)
+				})
 				{
 				} else {
 					g.writeln('return ${call};')
@@ -2113,11 +2096,11 @@ fn (mut g FlatGen) gen_interface_dispatch_with_fallback(iface_name string, cn st
 				g.writeln('${call}; return;')
 			} else if g.gen_interface_dispatch_optional_abi_return(call, ret_type, g.tc.fn_ret_types[method_key] or {
 				ret_type
-			}, method_key)
+			})
 			{
 			} else if g.gen_interface_dispatch_wrapped_return(call, ret_type, g.tc.fn_ret_types[method_key] or {
 				ret_type
-			}, method_key)
+			})
 			{
 			} else {
 				g.writeln('return ${call};')
@@ -2212,24 +2195,9 @@ fn (mut g FlatGen) interface_exports_table() {
 	g.writeln('};')
 }
 
-// gen_interface_dispatch_optional_abi_value_return emits the adapted wrapper return
-// after a specialized generic method and its interface dispatch use different C ABIs.
-fn (mut g FlatGen) gen_interface_dispatch_optional_abi_value_return(expected_ct string, result string, expected_base types.Type) {
-	if _ := array_fixed_type(expected_base) {
-		out := g.interface_tmp('iface_abi_result_out')
-		g.writeln('\t\t\t${expected_ct} ${out} = { .ok = ${result}.ok, .err = ${result}.err };')
-		g.writeln('\t\t\tif (${result}.ok) {')
-		g.writeln('\t\t\t\tmemcpy(${out}.value, ${result}.value, sizeof(${out}.value));')
-		g.writeln('\t\t\t}')
-		g.writeln('\t\t\treturn ${out};')
-	} else {
-		g.writeln('\t\t\treturn (${expected_ct}){ .ok = ${result}.ok, .err = ${result}.err, .value = ${result}.value };')
-	}
-}
-
 // gen_interface_dispatch_optional_abi_return adapts specialized generic methods
 // whose option/result C ABI differs from the interface dispatch ABI.
-fn (mut g FlatGen) gen_interface_dispatch_optional_abi_return(call string, expected types.Type, actual types.Type, actual_key string) bool {
+fn (mut g FlatGen) gen_interface_dispatch_optional_abi_return(call string, expected types.Type, actual types.Type) bool {
 	expected_wrapped := optional_result_unalias_type(expected)
 	actual_wrapped := optional_result_unalias_type(actual)
 	if (expected_wrapped is types.OptionType) != (actual_wrapped is types.OptionType)
@@ -2246,23 +2214,20 @@ fn (mut g FlatGen) gen_interface_dispatch_optional_abi_return(call string, expec
 		&& g.value_c_type(actual_base) != g.value_c_type(expected_base) {
 		return false
 	}
-	expected_ct := g.fn_return_type_name_for_context(expected, false)
-	actual_ct := g.fn_return_type_name_for_context(actual,
-		g.call_uses_concrete_optional_params(actual_key))
+	expected_ct := g.fn_return_type_name(expected)
+	actual_ct := g.fn_return_type_name(actual)
 	if actual_ct == expected_ct {
 		return false
 	}
-	result := g.interface_tmp('iface_abi_result')
-	g.writeln('{')
-	g.writeln('\t\t\t${actual_ct} ${result} = ${call};')
-	g.gen_interface_dispatch_optional_abi_value_return(expected_ct, result, expected_base)
-	g.writeln('\t\t}')
+	converted := g.optional_forward_return_abi_wrap_expr(actual_ct,
+		expected_ct, expected_base, call)
+	g.writeln('return ${converted};')
 	return true
 }
 
 // gen_interface_dispatch_wrapped_return adapts an option/result whose successful
 // concrete payload implements the interface returned by the dispatch signature.
-fn (mut g FlatGen) gen_interface_dispatch_wrapped_return(call string, expected types.Type, actual types.Type, actual_key string) bool {
+fn (mut g FlatGen) gen_interface_dispatch_wrapped_return(call string, expected types.Type, actual types.Type) bool {
 	if !g.interface_dispatch_wrapped_return_can_adapt(expected, actual) {
 		return false
 	}
@@ -2286,17 +2251,17 @@ fn (mut g FlatGen) gen_interface_dispatch_wrapped_return(call string, expected t
 	if type_id == 0 {
 		return false
 	}
-	actual_ct := g.fn_return_type_name_for_context(actual,
-		g.call_uses_concrete_optional_params(actual_key))
-	expected_ct := g.fn_return_type_name_for_context(expected, false)
+	actual_ct := g.fn_return_type_name(actual)
+	expected_ct := g.fn_return_type_name(expected)
 	iface_ct := g.tc.c_type(expected_iface_type)
 	concrete_ct := g.tc.c_type(actual_value)
 	result := g.interface_tmp('iface_result')
 	out := g.interface_tmp('iface_result_out')
 	g.writeln('{')
 	g.writeln('\t\t\t${actual_ct} ${result} = ${call};')
-	g.writeln('\t\t\t${expected_ct} ${out} = { .ok = ${result}.ok, .err = ${result}.err };')
-	g.writeln('\t\t\tif (${result}.ok) {')
+	error_field := g.optional_error_field(expected_ct, result)
+	g.writeln('\t\t\tif (!${result}.ok) return (${expected_ct}){.ok = false${error_field}};')
+	g.writeln('\t\t\t${expected_ct} ${out} = { .ok = true };')
 	g.write('\t\t\t\t${out}.value = (${iface_ct}){._typ = ${type_id}, ._object = ')
 	if actual_clean is types.Pointer {
 		g.write('${result}.value, ._object_is_boxed = false')
@@ -2313,7 +2278,6 @@ fn (mut g FlatGen) gen_interface_dispatch_wrapped_return(call string, expected t
 		}
 	}
 	g.writeln('};')
-	g.writeln('\t\t\t}')
 	g.writeln('\t\t\treturn ${out};')
 	g.writeln('\t\t}')
 	return true

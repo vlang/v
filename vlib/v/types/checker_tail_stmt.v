@@ -9778,6 +9778,9 @@ fn (tc &TypeChecker) type_compatible(actual Type, expected Type) bool {
 		return true
 	}
 	if expected is OptionType {
+		if is_ierror_type(actual) && unalias_type(expected.base_type) is String {
+			return false
+		}
 		if actual is OptionType {
 			actual_base := option_alias_payload_type(actual.base_type)
 			expected_base := option_alias_payload_type(expected.base_type)
@@ -17161,9 +17164,6 @@ fn (tc &TypeChecker) resolve_type_uncached(id flat.NodeId) Type {
 			if tc.selective_import_symbol_is_ambiguous(node.value) {
 				return unknown_type('ambiguous selective import `${node.value}`')
 			}
-			if node.value == 'err' && tc.has_ierror_interface() {
-				return tc.parse_type('IError')
-			}
 			if is_bare_generic_param(node.value) {
 				return Type(void_)
 			}
@@ -18326,7 +18326,7 @@ fn (tc &TypeChecker) c_type_uncached(t Type) string {
 		return 'void*'
 	}
 	if t is None {
-		return 'Optional'
+		return '__v_option'
 	}
 	if t is String {
 		return 'string'
@@ -18390,9 +18390,9 @@ fn (tc &TypeChecker) c_type_uncached(t Type) string {
 				})
 			}
 			if param_type is OptionType {
-				params << tc.optional_c_type_name(param_type.base_type)
+				params << tc.optional_c_type_name(param_type)
 			} else if param_type is ResultType {
-				params << tc.optional_c_type_name(param_type.base_type)
+				params << tc.optional_c_type_name(param_type)
 			} else {
 				params << tc.c_type(param_type)
 			}
@@ -18400,10 +18400,10 @@ fn (tc &TypeChecker) c_type_uncached(t Type) string {
 		return naming.fn_ptr_encoded(ret, params)
 	}
 	if t is OptionType {
-		return 'Optional'
+		return '__v_option'
 	}
 	if t is ResultType {
-		return 'Optional'
+		return '__v_result'
 	}
 	if t is Struct {
 		if t.name == 'thread' || t.name.ends_with('.thread') || t.name.starts_with('thread ') {
@@ -18606,10 +18606,10 @@ fn (tc &TypeChecker) c_generic_struct_fixed_array_arg_name(arg string) ?string {
 
 fn (tc &TypeChecker) fixed_array_elem_c_type(t Type) string {
 	if t is OptionType {
-		return tc.optional_c_type_name(t.base_type)
+		return tc.optional_c_type_name(t)
 	}
 	if t is ResultType {
-		return tc.optional_c_type_name(t.base_type)
+		return tc.optional_c_type_name(t)
 	}
 	if t is Pointer && t.base_type is Void {
 		return 'voidptr'
@@ -18622,26 +18622,31 @@ fn (tc &TypeChecker) fn_ptr_return_c_type(t Type) string {
 		return 'void'
 	}
 	if t is OptionType {
-		return tc.optional_c_type_name(t.base_type)
+		return tc.optional_c_type_name(t)
 	}
 	if t is ResultType {
-		return tc.optional_c_type_name(t.base_type)
+		return tc.optional_c_type_name(t)
 	}
 	return tc.c_type(t)
 }
 
-fn (tc &TypeChecker) optional_c_type_name(base_type Type) string {
+fn (tc &TypeChecker) optional_c_type_name(typ Type) string {
+	base_type := match typ {
+		OptionType, ResultType { typ.base_type }
+		else { return tc.c_type(typ) }
+	}
+	prefix := if typ is ResultType { '__v_result' } else { '__v_option' }
 	if base_type is Void {
-		return 'Optional'
+		return prefix
 	}
 	mut inner_ct := tc.c_type(base_type)
 	if inner_ct.starts_with('fn_ptr:') {
 		inner_ct = naming.fn_ptr_type_name(inner_ct)
 	}
 	if inner_ct == 'int' {
-		return 'Optional'
+		return prefix
 	}
-	return 'Optional_${inner_ct.replace('*', 'ptr').replace(' ', '_')}'
+	return '${prefix}_${inner_ct.replace('*', 'ptr').replace(' ', '_')}'
 }
 
 // resolve_type_name_for_method resolves resolve type name for method information for types.
@@ -20216,4 +20221,44 @@ fn fn_type_param_head_is_name(head string, tail string) bool {
 		return false
 	}
 	return (head[0] >= `a` && head[0] <= `z`) || head[0] == `_`
+}
+
+fn (tc &TypeChecker) failure_has_error(id flat.NodeId) bool {
+	if !tc.valid_node_id(id) {
+		return false
+	}
+	node := tc.a.node(id)
+	if node.kind == .decl_assign && node.children_count > 1 {
+		return tc.failure_has_error(tc.a.child(node, 1))
+	}
+	if node.children_count > 0
+		&& node.kind in [.match_stmt, .paren, .expr_stmt, .or_expr] {
+		return tc.failure_has_error(tc.a.child(node, 0))
+	}
+	if node.kind == .prefix && node.op == .arrow {
+		return true
+	}
+	if node.kind == .call {
+		name := tc.resolved_call_name(id) or { '' }
+		if typ := tc.fn_ret_types[name] {
+			return unalias_type(typ) is ResultType
+		}
+		if typ := tc.direct_call_return_type(*node) {
+			return unalias_type(typ) is ResultType
+		}
+	}
+	if node.kind != .infix {
+		return unalias_type(tc.resolve_type(id)) is ResultType
+	}
+	mut found := false
+	for child in tc.a.children_of(node) {
+		if !tc.or_expr_source_can_fail(child) {
+			continue
+		}
+		if !tc.failure_has_error(child) {
+			return false
+		}
+		found = true
+	}
+	return found
 }

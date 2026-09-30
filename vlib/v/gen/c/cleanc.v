@@ -511,7 +511,7 @@ mut:
 	optional_types_ready           bool
 	fixed_array_ret_wrappers       map[string]bool // bare fixed-array c_type name -> has a return wrapper struct
 	emitted_fixed_array_typedefs   map[string]bool // bare fixed-array typedefs already written (shared across passes)
-	concrete_optional_abi_fns      map[string]bool // emitted fn names whose option/result params use Optional_T ABI
+	concrete_optional_abi_fns      map[string]bool // emitted fn names whose option/result params use __v_option_T ABI
 	fixed_array_typedefs_needed    map[string]FixedArrayTypedefInfo
 	fixed_array_typedefs_ready     bool
 	fixed_array_map_key_types      map[string]types.ArrayFixed
@@ -13834,7 +13834,7 @@ fn (mut g FlatGen) gen_expr_with_possible_enum_type(id flat.NodeId, expected typ
 
 fn (g &FlatGen) expected_expr_is_optional_struct() bool {
 	if g.expected_expr_type is types.Struct {
-		return g.expected_expr_type.name.starts_with('Optional')
+		return is_wrapped_c_type(g.expected_expr_type.name)
 	}
 	return false
 }
@@ -15180,7 +15180,7 @@ fn (mut g FlatGen) const_expr_to_string(id flat.NodeId, seen []string) string {
 							g.expr_to_string_with_expected_type(val_id, g.tc.parse_type(variant))
 						}
 						'(${inner_ct}[]){${payload}}'
-					} else if ct.starts_with('Optional_') && ct.ends_with('ptr') && field.value == 'value' {
+					} else if is_wrapped_c_type(ct) && ct.ends_with('ptr') && field.value == 'value' {
 						g.expr_to_string(val_id)
 					} else if ftyp := g.struct_field_type(node.value, field.value) {
 						if cgen_unalias_type(ftyp) is types.SumType {
@@ -16541,7 +16541,7 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 				return
 			}
 			// The expected type belongs to the selected field, not to its base. In
-			// particular, propagating a sum payload expectation into an `Optional{}`
+			// particular, propagating a sum payload expectation into an `__v_option{}`
 			// base rewrites the wrapper literal as the sum itself before `.ok`/`.value`.
 			old_selector_expected := g.expected_expr_type
 			old_selector_enum := g.expected_enum
@@ -17182,7 +17182,7 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 				g.write(g.ierror_none_literal_string())
 			} else {
 				ct := g.optional_type_name(g.optional_none_type(id))
-				g.write('(${ct}){.ok = false${g.optional_none_err_field()}}')
+				g.write('(${ct}){.ok = false}')
 			}
 		}
 		.or_expr {
@@ -22310,11 +22310,8 @@ fn fixed_array_elem_is_early_complete(elem types.Type) bool {
 
 // fn_return_type_name is the C type to write for a function/fn-ptr return type,
 // substituting the fixed-array wrapper struct when one exists.
-fn (mut g FlatGen) fn_return_type_name(t types.Type) string {
-	return g.fn_return_type_name_for_context(t, g.cur_fn_is_specialized)
-}
 
-fn (mut g FlatGen) fn_return_type_name_for_context(t types.Type, concrete_optional bool) string {
+fn (mut g FlatGen) fn_return_type_name(t types.Type) string {
 	if fixed := array_fixed_type(t) {
 		bare := g.fixed_array_c_type(fixed)
 		return fixed_array_ret_wrapper_name(bare)
@@ -22325,7 +22322,7 @@ fn (mut g FlatGen) fn_return_type_name_for_context(t types.Type, concrete_option
 	if wide_ct := g.wide_enum_signature_c_type(t) {
 		return wide_ct
 	}
-	ct := g.optional_type_name_for_context(t, concrete_optional)
+	ct := g.optional_type_name(t)
 	// A function/fn-ptr-valued return (`fn f() fn () int`) has the internal `fn_ptr:...`
 	// encoding for its C type; map it to the shared `_fn_ptr_N` typedef, since a C function
 	// cannot be declared returning that raw encoding (it would emit invalid C).
@@ -22702,7 +22699,7 @@ fn (mut g FlatGen) emit_fixed_array_optional_elem_deps(elem types.Type, needed m
 		g.emit_fixed_array_elem_deps(base, needed, mut emitted)
 	}
 	opt_name := g.optional_type_name(elem)
-	if opt_name != 'Optional' {
+	if opt_name !in ['__v_option', '__v_result'] {
 		val_ct, _ := g.optional_value_ct(elem)
 		g.emit_optional_typedef(opt_name, val_ct)
 	}
@@ -23041,7 +23038,7 @@ fn (mut g FlatGen) global_decls() {
 			continue
 		}
 		mut ct := g.tc.c_type(decl_typ)
-		if ct == 'Optional' {
+		if ct in ['__v_option', '__v_result'] {
 			if concrete_ct := g.global_init_optional_c_type(name) {
 				ct = concrete_ct
 			}
@@ -23206,13 +23203,13 @@ fn (mut g FlatGen) queue_global_struct_field_defaults(target string, struct_name
 }
 
 fn (mut g FlatGen) global_storage_type(name string, typ types.Type) types.Type {
-	if typ is types.Struct && typ.name == 'Optional' {
+	if typ is types.Struct && typ.name == '__v_option' {
 		if val_id := g.global_inits[name] {
 			init_type := g.usable_expr_type(val_id)
 			if init_type is types.OptionType || init_type is types.ResultType {
 				return init_type
 			}
-			if init_type is types.Struct && init_type.name.starts_with('Optional_') {
+			if init_type is types.Struct && is_wrapped_c_type(init_type.name) {
 				return init_type
 			}
 		}
@@ -23274,14 +23271,14 @@ fn (mut g FlatGen) global_init_optional_c_type(name string) ?string {
 	if init_type is types.OptionType || init_type is types.ResultType {
 		return g.optional_type_name(init_type)
 	}
-	if init_type is types.Struct && init_type.name.starts_with('Optional_') {
+	if init_type is types.Struct && is_wrapped_c_type(init_type.name) {
 		return g.tc.c_type(init_type)
 	}
 	decl_type := g.declared_call_return_type(val_id)
 	if decl_type is types.OptionType || decl_type is types.ResultType {
 		return g.optional_type_name(decl_type)
 	}
-	if decl_type is types.Struct && decl_type.name.starts_with('Optional_') {
+	if decl_type is types.Struct && is_wrapped_c_type(decl_type.name) {
 		return g.tc.c_type(decl_type)
 	}
 	return none
@@ -24328,7 +24325,7 @@ fn (mut g FlatGen) emit_const(name string, val_id flat.NodeId) {
 		// casts: GCC rejects the latter as non-constant when cached modules are
 		// linked separately.
 		g.writeln('MessageError ${object_name} = {.msg = ${message}};')
-		g.writeln('IError ${qname} = {._typ = ${type_id}, ._object = &${object_name}, .message = ${message}, .code = 0};')
+		g.writeln('IError ${qname} = {._typ = ${type_id}, ._object = &${object_name}};')
 		g.tc.cur_module = old_module
 		return
 	}

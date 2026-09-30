@@ -5794,12 +5794,12 @@ fn (mut t Transformer) retype_generic_call_literal_arg(arg_id flat.NodeId, param
 		if t.is_optional_type_name(param_type) {
 			return t.make_optional_none(t.resolve_substituted_type_text(t.qualify_optional_type(param_type)))
 		}
-		if param_type == 'Optional' || param_type.starts_with('Optional_') {
+		if param_type == '__v_option' || param_type.starts_with('__v_option_') {
 			return t.make_optional_none(param_type)
 		}
 	}
-	if node.kind == .struct_init && (node.value == 'Optional' || t.generic_optional_none_init(node))
-		&& (t.is_optional_type_name(param_type) || param_type.starts_with('Optional_')) {
+	if node.kind == .struct_init && (node.value == '__v_option' || t.generic_optional_none_init(node))
+		&& (t.is_optional_type_name(param_type) || param_type.starts_with('__v_option_')) {
 		optional_type := if t.is_optional_type_name(param_type) {
 			t.resolve_substituted_type_text(t.qualify_optional_type(param_type))
 		} else {
@@ -10441,7 +10441,7 @@ fn (mut t Transformer) clone_generic_node_from(node flat.Node, args []string, is
 		// explicit `mut p &T` has a scoped `&T` rvalue type and must retain it.
 		cloned_typ = cloned_typ[1..]
 	}
-	if node.kind == .struct_init && node.value == 'Optional'
+	if node.kind == .struct_init && node.value == '__v_option'
 		&& t.is_optional_type_name(t.cur_fn_ret_type) {
 		cloned_typ = t.cur_fn_ret_type
 	}
@@ -10467,7 +10467,7 @@ fn (mut t Transformer) clone_generic_node_from(node flat.Node, args []string, is
 				|| (array_value.starts_with('[') && !array_value.starts_with('[]'))
 		}
 		cloned_typ = if is_fixed_init { array_value } else { '[]${array_value}' }
-	} else if node.kind == .struct_init && node.value.len > 0 && node.value != 'Optional'
+	} else if node.kind == .struct_init && node.value.len > 0 && node.value != '__v_option'
 		&& !t.is_optional_type_name(node.value) {
 		// The checker can annotate `T{}` with its surrounding optional/result
 		// context. For a concrete clone the literal itself is authoritative.
@@ -10630,7 +10630,7 @@ fn (mut t Transformer) clone_generic_node_from(node flat.Node, args []string, is
 		return clone_id
 	}
 	if node.kind == .struct_init && children.len == 0 && t.is_optional_type_name(cloned_typ)
-		&& (node.value == 'Optional' || t.is_optional_type_name(node.value)) {
+		&& (node.value == '__v_option' || t.is_optional_type_name(node.value)) {
 		children << t.make_sum_literal_field('ok', t.make_bool_literal(true), 'bool')
 	}
 	cloned_typ = t.retarget_cloned_map_key_storage_type(node, mut children, cloned_typ)
@@ -14690,10 +14690,10 @@ fn generic_type_arg_prefix_from_suffix(suffix string) ?GenericTypeSuffixPart {
 		}
 	}
 	for prefix, marker in {
-		'ptr_':      '&'
-		'Option_':   '?'
-		'Optional_': '?'
-		'Result_':   '!'
+		'ptr_':        '&'
+		'Option_':     '?'
+		'__v_option_': '?'
+		'Result_':     '!'
 	} {
 		if clean.starts_with(prefix) {
 			inner := generic_type_arg_prefix_from_suffix(clean[prefix.len..]) or { return none }
@@ -14789,8 +14789,8 @@ fn generic_type_arg_from_suffix(suffix string) string {
 			return '?${inner}'
 		}
 	}
-	if clean.starts_with('Optional_') {
-		inner := generic_type_arg_from_suffix_with_containers(clean['Optional_'.len..])
+	if clean.starts_with('__v_option_') {
+		inner := generic_type_arg_from_suffix_with_containers(clean['__v_option_'.len..])
 		if inner.len > 0 {
 			return '?${inner}'
 		}

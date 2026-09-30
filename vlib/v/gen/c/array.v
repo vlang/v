@@ -1092,13 +1092,13 @@ fn (mut g FlatGen) gen_thread_array_wait(base_id flat.NodeId, is_ptr bool, elem_
 fn (mut g FlatGen) ensure_thread_arr_wait_fn(ret_name string) string {
 	is_void := ret_name.len == 0
 	if !is_void {
-		ret_type := g.tc.parse_type(ret_name)
+		ret_type := cgen_unalias_type(g.tc.parse_type(ret_name))
 		if ret_type is types.OptionType || ret_type is types.ResultType {
 			return g.ensure_thread_optional_arr_wait_fn(ret_type)
 		}
 	}
 	// Match the ABI return type the spawn wrapper stores (gen_spawn_expr): an
-	// option/result payload is `Optional_T`, a fixed-array payload its `_v_ret_*`
+	// option/result payload is `__v_option_T`, a fixed-array payload its `_v_ret_*`
 	// wrapper — not the bare `c_type`, or the malloc'd and read-back layouts diverge.
 	ret_ct := if is_void { 'void' } else { g.fn_return_type_name(g.tc.parse_type(ret_name)) }
 	key := 'threadwait|${ret_ct}'
@@ -1126,43 +1126,62 @@ fn (mut g FlatGen) ensure_thread_optional_arr_wait_fn(ret_type types.Type) strin
 	}
 	name := g.cname('__v_thread_arr_wait_${naming.type_name_part(ret_ct)}_array')
 	g.spawn_wrapper_names[key] = name
-	mut base_type := types.Type(types.void_)
-	mut array_result_type := types.Type(types.void_)
-	if ret_type is types.OptionType {
-		base_type = ret_type.base_type
-		if ret_type.base_type !is types.Void {
-			array_result_type = types.Type(types.OptionType{
-				base_type: types.Type(types.Array{
-					elem_type: ret_type.base_type
-				})
-			})
-		} else {
-			array_result_type = ret_type
-		}
-	} else if ret_type is types.ResultType {
-		base_type = ret_type.base_type
-		if ret_type.base_type !is types.Void {
-			array_result_type = types.Type(types.ResultType{
-				base_type: types.Type(types.Array{
-					elem_type: ret_type.base_type
-				})
-			})
-		} else {
-			array_result_type = ret_type
-		}
+	base_type := match ret_type {
+		types.OptionType, types.ResultType { ret_type.base_type }
+		else { return name }
+	}
+	payload := if base_type is types.Void {
+		types.Type(base_type)
+	} else {
+		types.Type(types.Array{ elem_type: base_type })
+	}
+	array_result_type := if ret_type is types.OptionType {
+		types.Type(types.OptionType{ base_type: payload })
+	} else {
+		types.Type(types.ResultType{ base_type: payload })
 	}
 	result_ct := g.optional_type_name(array_result_type)
-	if base_type is types.Void {
-		g.add_spawn_wrapper_def('static ${result_ct} ${name}(Array a) { bool __failed = false; IError __err; memset(&__err, 0, sizeof(__err)); for (int __i = 0; __i < a.len; __i++) { __v_thread __t = ((__v_thread*)a.data)[__i]; if (!__t.handle) continue; void* __r = __v_thread_join(__t); ${ret_ct} __item; if (__r) { __item = *((${ret_ct}*)__r); __v_thread_free(__r); } else { memset(&__item, 0, sizeof(__item)); } if (!__item.ok) { if (!__failed) { __failed = true; __err = __item.err; } } } if (__failed) return (${result_ct}){.ok = false, .err = __err}; return (${result_ct}){.ok = true}; }')
-		return name
-	}
+	mut def := strings.new_builder(1024)
+	def.writeln('static ${result_ct} ${name}(Array a) {')
+	def.writeln('${result_ct} result = {.ok = true};')
 	value_ct := g.optional_payload_c_type(base_type)
-	value_assign := if _ := array_fixed_type(base_type) {
-		'memmove(&(((${value_ct}*)__res.data)[__i]), __item.value, sizeof(${value_ct}));'
-	} else {
-		'((${value_ct}*)__res.data)[__i] = __item.value;'
+	if base_type !is types.Void {
+		def.writeln('Array values = array_new(sizeof(${value_ct}), a.len, a.len);')
 	}
-	g.add_spawn_wrapper_def('static ${result_ct} ${name}(Array a) { Array __res = array_new(sizeof(${value_ct}), a.len, a.len); bool __failed = false; IError __err; memset(&__err, 0, sizeof(__err)); for (int __i = 0; __i < a.len; __i++) { __v_thread __t = ((__v_thread*)a.data)[__i]; if (!__t.handle) continue; void* __r = __v_thread_join(__t); ${ret_ct} __item; if (__r) { __item = *((${ret_ct}*)__r); __v_thread_free(__r); } else { memset(&__item, 0, sizeof(__item)); } if (!__item.ok) { if (!__failed) { __failed = true; __err = __item.err; } continue; } ${value_assign} } if (__failed) return (${result_ct}){.ok = false, .err = __err}; return (${result_ct}){.ok = true, .value = __res}; }')
+	def.writeln('for (int i = 0; i < a.len; i++) {')
+	def.writeln('__v_thread thread = ((__v_thread*)a.data)[i];')
+	def.writeln('if (!thread.handle) continue;')
+	def.writeln('void* returned = __v_thread_join(thread);')
+	def.writeln('${ret_ct} item = {0};')
+	def.writeln('if (returned) {')
+	def.writeln('item = *((${ret_ct}*)returned);')
+	def.writeln('__v_thread_free(returned);')
+	def.writeln('}')
+	def.writeln('if (!item.ok) {')
+	if ret_type is types.ResultType {
+		def.writeln('if (result.ok) result.err = item.err;')
+	}
+	def.writeln('result.ok = false;')
+	def.writeln('}')
+	if base_type !is types.Void {
+		def.writeln('if (!result.ok) continue;')
+	}
+	if _ := array_fixed_type(base_type) {
+		def.writeln('memmove(&(((${value_ct}*)values.data)[i]), item.value, sizeof(${value_ct}));')
+	} else if base_type !is types.Void {
+		def.writeln('((${value_ct}*)values.data)[i] = item.value;')
+	}
+	def.writeln('}')
+	if base_type !is types.Void {
+		def.writeln('if (!result.ok) {')
+		def.writeln('array__free(&values);')
+		def.writeln('return result;')
+		def.writeln('}')
+		def.writeln('result.value = values;')
+	}
+	def.writeln('return result;')
+	def.writeln('}')
+	g.add_spawn_wrapper_def(def.str())
 	return name
 }
 

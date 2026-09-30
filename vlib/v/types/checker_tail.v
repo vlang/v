@@ -2336,7 +2336,8 @@ fn (mut tc TypeChecker) check_return(id flat.NodeId, node flat.Node) {
 		tc.record_error_at(.return_mismatch, '`${child_value.value}` used as value', id, tc.noreturn_statement_diagnostic_pos(id))
 		return
 	}
-	if expected is OptionType && is_ierror_type(tc.resolve_type(child_id)) {
+	if expected is OptionType && is_ierror_type(tc.resolve_type(child_id))
+		&& !tc.type_compatible(tc.resolve_type(child_id), Type(expected)) {
 		if tc.valid_node_id(flat.NodeId(tc.fn_context.node_id))
 			&& tc.a.node(flat.NodeId(tc.fn_context.node_id)).typ == '?void' {
 			return
@@ -19338,10 +19339,8 @@ fn multi_return_wrapper_shapes_match(a []Type, b []Type) bool {
 		other := b[i]
 		if (unalias_type(typ) is None && unalias_type(other) is OptionType)
 			|| (unalias_type(other) is None && unalias_type(typ) is OptionType)
-			|| (is_ierror_type(typ) && (unalias_type(other) is OptionType
-				|| unalias_type(other) is ResultType))
-			|| (is_ierror_type(other) && (unalias_type(typ) is OptionType
-				|| unalias_type(typ) is ResultType)) {
+			|| (is_ierror_type(typ) && unalias_type(other) is ResultType)
+			|| (is_ierror_type(other) && unalias_type(typ) is ResultType) {
 			continue
 		}
 		if (unalias_type(typ) is OptionType) != (unalias_type(other) is OptionType)
@@ -19388,20 +19387,20 @@ fn (tc &TypeChecker) if_branch_type_compatible_with_context(actual Type, tail_id
 		return (expected is ResultType || is_ierror_type(expected))
 			&& tc.branch_tail_is_error_literal(tail_id)
 	}
+	if expected is OptionType {
+		if is_ierror_type(actual) && unalias_type(expected.base_type) is String {
+			return false
+		}
+		if tc.type_compatible(actual, expected.base_type) {
+			return true
+		}
+	}
 	if is_ierror_type(actual) {
-		// A direct `return error(...)` from an Option function remains invalid,
-		// but V permits an error-valued tail inside a contextually typed
-		// if/match expression. The surrounding Option stores that IError in its
-		// failure arm, just like `none`, while successful tails provide the
-		// payload value.
-		return (expected is OptionType || expected is ResultType || is_ierror_type(expected))
+		return (expected is ResultType || is_ierror_type(expected))
 			&& tc.branch_tail_is_error_literal(tail_id)
 	}
 	if tc.type_compatible_with_ierror_payload(actual) {
 		return expected is ResultType || is_ierror_type(expected)
-	}
-	if expected is OptionType && tc.type_compatible(actual, expected.base_type) {
-		return true
 	}
 	return tc.type_compatible(actual, expected)
 }
@@ -19468,7 +19467,10 @@ fn (tc &TypeChecker) branch_failure_literal_matches_context(id flat.NodeId, expe
 		return expected is OptionType || is_ierror_type(expected)
 	}
 	if tc.branch_tail_is_error_literal(id) {
-		return expected is OptionType || expected is ResultType || is_ierror_type(expected)
+		if expected is OptionType {
+			return tc.type_compatible(tc.resolve_type(id), expected)
+		}
+		return expected is ResultType || is_ierror_type(expected)
 	}
 	return true
 }
@@ -20157,6 +20159,7 @@ fn (mut tc TypeChecker) check_if_expr(id flat.NodeId, node flat.Node) {
 fn (mut tc TypeChecker) check_if_else_branch(cond_id flat.NodeId, else_id flat.NodeId, value_context bool) {
 	names_err := tc.valid_node_id(cond_id) && tc.a.node(cond_id).kind == .decl_assign
 		&& tc.valid_node_id(else_id) && tc.a.node(else_id).kind != .if_expr
+		&& tc.failure_has_error(cond_id)
 	if names_err {
 		tc.push_scope()
 		if tc.has_ierror_interface() {
@@ -20181,11 +20184,13 @@ fn (tc &TypeChecker) err_block_holds(id flat.NodeId) bool {
 		if node.kind in [.fn_decl, .fn_literal, .lambda_expr, .file] {
 			return false
 		}
-		if node.kind == .or_expr && node.children_count > 1 && tc.a.child(node, 1) == child {
+		if node.kind == .or_expr && node.children_count > 1 && tc.a.child(node, 1) == child
+			&& tc.failure_has_error(tc.a.child(node, 0)) {
 			return true
 		}
 		if node.kind == .if_expr && node.children_count > 2 && tc.a.child(node, 2) == child
-			&& tc.a.node(child).kind != .if_expr && tc.a.child_node(node, 0).kind == .decl_assign {
+			&& tc.a.node(child).kind != .if_expr && tc.a.child_node(node, 0).kind == .decl_assign
+			&& tc.failure_has_error(tc.a.child(node, 0)) {
 			return true
 		}
 		child = parent

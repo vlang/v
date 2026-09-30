@@ -82,7 +82,7 @@ fn test_array_optional_element_or_uses_loaded_element_error() {
 	v3_bin := build_v3_or_review()
 	c_source := or_review_gen_c(v3_bin, 'array_optional_element_error_source',
 		'fn main() {\n\tmut arr := []?int{}\n\tarr << none\n\tvalue := arr[0] or {\n\t\tprintln(err.msg())\n\t\t0\n\t}\n\tprintln(int_str(value))\n}\n')
-	assert c_source.contains('Optional __arr_opt_'), 'missing loaded optional temp'
+	assert c_source.contains('__v_option __arr_opt_'), 'missing loaded optional temp'
 	assert c_source.contains('IError err = __arr_opt_'), 'element failure branch does not use loaded optional err'
 }
 
@@ -90,7 +90,7 @@ fn test_map_optional_element_or_uses_loaded_element_error() {
 	v3_bin := build_v3_or_review()
 	c_source := or_review_gen_c(v3_bin, 'map_optional_element_error_source',
 		"fn main() {\n\tmut m := map[string]?int{}\n\tm['x'] = none\n\tvalue := m['x'] or {\n\t\tprintln(err.msg())\n\t\t0\n\t}\n\tprintln(int_str(value))\n}\n")
-	assert c_source.contains('Optional __map_opt_'), 'missing loaded map optional temp'
+	assert c_source.contains('__v_option __map_opt_'), 'missing loaded map optional temp'
 	assert c_source.contains('IError err = __map_opt_'), 'map element failure branch does not use loaded optional err'
 }
 

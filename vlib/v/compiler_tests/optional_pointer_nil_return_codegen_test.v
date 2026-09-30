@@ -62,7 +62,7 @@ fn check_result_unwrap() ! {
 }
 
 fn main() {
-	check_question_unwrap() or { panic(err) }
+	check_question_unwrap() or { panic('missing value') }
 	check_result_unwrap() or { panic(err) }
 	b := maybe(false) or { unsafe { nil } }
 	assert b == unsafe { nil }
@@ -90,13 +90,13 @@ fn main() {
 	assert !compile.output.contains('C compilation failed'), compile.output
 
 	c_code := os.read_file(bin + '.c') or { panic(err) }
-	assert c_code.contains('return (Optional_main__Tptr){.ok = true, .value = NULL};'), c_code
-	assert c_code.contains('Optional_main__Tptr _t')
-		&& c_code.contains('= (Optional_main__Tptr){.ok = true, .value =')
+	assert c_code.contains('return (__v_option_main__Tptr){.ok = true, .value = NULL};'), c_code
+	assert c_code.contains('__v_option_main__Tptr _t')
+		&& c_code.contains('= (__v_option_main__Tptr){.ok = true, .value =')
 		&& c_code.contains('NULL};'), c_code
 
-	assert c_code.contains('return (Optional_main__Tptr){.ok = false};'), c_code
-	assert c_code.contains('return (Optional_main__Tptr){.ok = false, .err = (IError)'), c_code
+	assert c_code.contains('return (__v_option_main__Tptr){.ok = false};'), c_code
+	assert c_code.contains('return (__v_result_main__Tptr){.ok = false, .err = (IError)'), c_code
 
 	run := os.execute(bin)
 	assert run.exit_code == 0, run.output

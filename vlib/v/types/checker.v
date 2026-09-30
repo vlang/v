@@ -140,7 +140,8 @@ const export_v3_reserved_c_symbols = {
 	'mapnode':       true
 	'DenseArray':    true
 	'SortedMap':     true
-	'Optional':      true
+	'__v_option':    true
+	'__v_result':    true
 	'IError':        true
 	'true':          true
 	'false':         true

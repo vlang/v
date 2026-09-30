@@ -2986,7 +2986,7 @@ fn main() {
 	assert e.stdout() == 'none\n'
 }
 
-fn test_eval_or_block_binds_err() {
+fn test_eval_option_or_block_preserves_outer_err() {
 	mut e := create()
 	e.run_text('
 fn maybe() ?int {
@@ -2994,16 +2994,16 @@ fn maybe() ?int {
 }
 
 fn main() {
+	err := "outer"
 	maybe() or {
-		_ := err
-		println("handled")
+		println(err)
 		return
 	}
 }
 	') or {
 		panic(err)
 	}
-	assert e.stdout() == 'handled\n'
+	assert e.stdout() == 'outer\n'
 }
 
 fn test_eval_or_block_return_propagates_from_for_in_header() {

@@ -204,10 +204,10 @@ fn main() {
 	assert run.output.trim_space() == 'ok'
 
 	c_code := os.read_file(bin + '.c') or { panic(err) }
-	assert c_code.contains('Optional custom_error(void)'), c_code
-	assert c_code.contains('Optional custom_error_with_defer(void)'), c_code
+	assert c_code.contains('__v_result custom_error(void)'), c_code
+	assert c_code.contains('__v_result custom_error_with_defer(void)'), c_code
 	assert c_code.contains('.err = (IError){._typ = '), c_code
-	assert !c_code.contains('Optional custom_error(void) {\n\treturn (Optional){.ok = false};'), c_code
+	assert !c_code.contains('__v_result custom_error(void) {\n\treturn (__v_result){.ok = false};'), c_code
 }
 
 fn test_selective_imported_ierror_payload_is_result_error() {

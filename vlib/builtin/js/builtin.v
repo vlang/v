@@ -93,34 +93,24 @@ fn (_ None__) str() string {
 
 pub struct Option {
 	state u8
-	err   IError = none__
 }
 
-// str returns the Option type: ok, none, or error.
 pub fn (o Option) str() string {
 	if o.state == 0 {
 		return 'Option{ ok }'
 	}
-	if o.state == 1 {
-		return 'Option{ none }'
-	}
-	return 'Option{ error: "${o.err}" }'
+	return 'Option{ none }'
 }
 
 pub struct _option {
 	state u8
-	err   IError = none__
 }
 
-// str returns the Option type: ok, none, or error.
 pub fn (o _option) str() string {
 	if o.state == 0 {
 		return 'Option{ ok }'
 	}
-	if o.state == 1 {
-		return 'Option{ none }'
-	}
-	return 'Option{ error: "${o.err}" }'
+	return 'Option{ none }'
 }
 
 // trace_error prints to stderr a string and a backtrace of the error.

@@ -78,7 +78,9 @@ fn (mut self Module) get_service_from_field(field FieldData, t_name string) !Ser
 
 fn (mut self Module) get_service(service_idx int) !Service {
 	return self.services[service_idx] or {
-		service_info := reflection.get_type(service_idx) or { return err }
+		service_info := reflection.get_type(service_idx) or {
+			return error('unknown service type ${service_idx}')
+		}
 		return error('Service with name ${service_info.name} not available, see available: ${self.services.keys()}')
 	}
 }

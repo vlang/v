@@ -201,8 +201,8 @@ fn decl_type_is_usable(typ string) bool {
 		return false
 	}
 	clean := typ.replace(' ', '')
-	return clean !in ['Option', 'Optional', 'Result'] && !clean.starts_with('Option_')
-		&& !clean.starts_with('Optional_') && !clean.starts_with('Result_')
+	return clean !in ['Option', '__v_option', 'Result'] && !clean.starts_with('Option_')
+		&& !clean.starts_with('__v_option_') && !clean.starts_with('Result_')
 }
 
 fn (t &Transformer) checker_expr_type_name(id flat.NodeId) ?string {

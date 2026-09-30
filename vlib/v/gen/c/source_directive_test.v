@@ -715,7 +715,7 @@ fn test_cross_os_target_include_is_guarded_for_the_c_compiler() {
 		value: 'include'
 		typ:   '${target_os} <target_only.h>'
 	}, '', false)
-	condition := pref.cross_target_c_condition(target_os) or { panic(err) }
+	condition := pref.cross_target_c_condition(target_os) or { panic('missing target condition') }
 	directives := g.ordered_c_directives(false)
 	assert directives == [
 		'#if ${condition}\n#include <target_only.h>\n#endif',
