@@ -1206,6 +1206,11 @@ fn (t &Transformer) generic_call_type_arg_name(id flat.NodeId) string {
 			return '${base}[${args.join(', ')}]'
 		}
 		.array_init {
+			// The value is the element spelling for a dynamic array, including
+			// a fixed-array element. The parser's type retains the outer `[]`.
+			if node.typ.starts_with('[]') {
+				return node.typ
+			}
 			if node.value.len > 0 {
 				if node.value.starts_with('[]') {
 					return '[]${node.value}'

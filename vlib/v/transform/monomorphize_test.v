@@ -484,6 +484,39 @@ fn test_lock_colliding_main_generic_type_text_locks_args_behind_qualified_base()
 	assert t.lock_colliding_main_generic_type_text('AliasContext', 'callee') == 'main.AliasContext'
 }
 
+fn test_nested_generic_components_keep_caller_type_provenance() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	mut t := new_transformer(mut a, &tc, map[string]bool{})
+	t.cur_module = 'callee'
+	t.sum_types['Any'] = ['string', 'bool']
+	t.sum_types['callee.Any'] = ['string', 'int']
+	t.active_specialization_args = ['[][2]Any']
+	t.active_specialization_main_types = t.specialization_main_type_closure(t.active_specialization_args)
+	for typ in ['[][2]Any', '[][]Any', '[]map[string]Any'] {
+		id := a.add_node(flat.Node{ kind: .array_init, value: typ[2..], typ: typ })
+		assert t.generic_call_type_arg_name(id) == typ
+		assert t.canonical_generic_specialization_arg(typ) == typ
+	}
+	for typ in ['[2]Any', 'map[string]Any', 'map[Any]int', '(int, [2]Any)',
+		'other.Box[map[string][2]Any]', 'fn (map[string]Any) [2]Any', 'thread [2]Any'] {
+		assert t.current_specialization_has_generic_arg(typ), typ
+		assert t.specialization_main_type_closure([typ]) == {
+			'Any': true
+		}, typ
+	}
+	for typ in ['[2]Any', 'map[string]Any', 'map[Any]int', '(int, [2]Any)'] {
+		assert t.substituted_type_belongs_to_main_generic(typ), typ
+		assert t.generic_inference_alias_target(typ, 'callee') == typ
+		assert t.generic_arg_for_decl_module(typ, 'callee') == typ
+	}
+	for typ in ['[2]callee.Any', 'map[string]callee.Any', '(int, callee.Any)', 'other.Box[callee.Any]',
+		'map[string]int', '[2]int'] {
+		assert !t.current_specialization_has_generic_arg(typ), typ
+		assert !t.substituted_type_belongs_to_main_generic(typ), typ
+	}
+}
+
 fn test_lock_colliding_main_substitution_keeps_decl_module_generic_base() {
 	mut a := flat.FlatAst.new()
 	mut tc := types.TypeChecker.new(&a)
