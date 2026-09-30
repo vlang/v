@@ -3340,6 +3340,18 @@ An array returned from an immutable argument remains immutable, including when r
 a local function value, a narrowed `if` or `match` branch, or after an exiting `if` guard.
 Use `.clone()` for a mutable copy.
 
+A pointer returned through a callback can still refer to an immutable argument, even if the
+callback returns `voidptr`. Converting that result to a typed reference does not make the
+underlying object mutable. For a type-erased container lookup that guarantees separate mutable
+component storage, place the conversion in `unsafe { ... }`. The caller must ensure the returned
+pointer does not provide mutable access to an immutable argument.
+
+A scalar passed by value to a callback is independent of the caller's storage. If a callback
+parameter is a reference, an implicitly referenced scalar remains borrowed from its immutable
+argument; the scalar's expression type alone does not establish a by-value copy.
+Scalar fields supplied with collapsed struct argument syntax and scalar elements decomposed
+into by-value parameters are copied too. Pointer fields and elements can still share storage.
+
 > [!NOTE]
 > However, V is not a purely functional language.
 
