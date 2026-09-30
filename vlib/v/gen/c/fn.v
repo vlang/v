@@ -9013,12 +9013,16 @@ fn (mut g FlatGen) gen_c_va_macro_call(node flat.Node, target_name string, resol
 		}
 		type_arg_name := g.generic_call_type_arg_name(g.a.child(&node, 1))
 		target_type := g.tc.parse_type(type_arg_name)
+		mut target_ct := g.tc.c_type(target_type)
+		if target_ct.starts_with('fn_ptr:') {
+			target_ct = g.resolve_fn_ptr_type(target_ct)
+		}
 		g.write('${macro_name}(')
 		arg_id := g.a.child(&node, 2)
 		if !g.gen_c_va_list_macro_arg_direct(1, arg_id, name) {
 			g.gen_expr(arg_id)
 		}
-		g.write(', ${g.tc.c_type(target_type)})')
+		g.write(', ${target_ct})')
 		return true
 	}
 	g.write('${macro_name}(')

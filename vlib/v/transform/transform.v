@@ -3218,7 +3218,8 @@ fn (mut t Transformer) collect_types() {
 				}
 			}
 			.c_fn_decl {
-				if node.typ.len > 0 {
+				// The type of `C.va_arg(T, ap)` is `T`, not a declared return type.
+				if node.typ.len > 0 && node.value !in ['C.va_arg', 'va_arg'] {
 					ret_typ := t.normalize_type_in_module(node.typ, cur_mod)
 					t.fn_ret_types[node.value] = ret_typ
 					if node.value.starts_with('C.') {
