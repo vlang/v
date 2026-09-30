@@ -13759,9 +13759,15 @@ fn (p &Parser) fixed_array_size_text(size_node flat.NodeId, size_start int, size
 			return resolved.value
 		}
 	}
-	if size_start >= 0 && node.pos.end > size_start && node.pos.end <= size_end
-		&& size_end <= p.s.src.len {
-		return p.s.src[size_start..node.pos.end].trim_space()
+	if size_start >= 0 && size_end > size_start && size_end <= p.s.src.len {
+		// Comptime replacement nodes can have no span. Keep their original bound
+		// so the checker can still reject unsupported comptime size quantifiers.
+		end := if node.pos.end > size_start && node.pos.end <= size_end {
+			node.pos.end
+		} else {
+			size_end
+		}
+		return p.s.src[size_start..end].trim_space()
 	}
 	return node.value
 }
