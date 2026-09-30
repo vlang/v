@@ -11162,6 +11162,73 @@ fn is_lowered_map_key_temp_name(name string) bool {
 	return name.starts_with('__map_key_') || name.starts_with('__map_eq_key_')
 }
 
+// hold_receiver_type_args has a check of the instances report the explicit type
+// arguments `call_args` of the cloned call `node` of the method `decl` (for
+// `param_names`, in their order) that give a type parameter the method repeats
+// from its receiver another type than the cloned receiver fixes, and sets them
+// to that type: `b.own[int]()` in the instance of a generic function where `b`
+// is a `Box[string]` (see types.TypeChecker.explicit_receiver_type_args).
+// `callee_id` is the cloned callee. A build leaves them as they are.
+fn (mut t Transformer) hold_receiver_type_args(decl GenericFnDecl, callee_id flat.NodeId, node flat.Node, param_names []string, mut call_args []string) {
+	if isnil(t.tc) || !t.tc.check_concrete_generic_bodies || call_args.len != param_names.len
+		|| int(callee_id) < 0 || int(callee_id) >= t.a.nodes.len {
+		return
+	}
+	receiver_params := t.generic_receiver_param_names(decl)
+	if !param_names.any(it in receiver_params) {
+		return
+	}
+	mut callee := t.a.nodes[int(callee_id)]
+	if callee.kind == .index && callee.children_count > 0 && callee.value != 'range' {
+		callee = t.a.nodes[int(t.a.child(&callee, 0))]
+	}
+	if callee.kind != .selector || callee.children_count == 0 {
+		return
+	}
+	receiver_type := t.generic_call_arg_type_for_inference(t.a.child(&callee, 0))
+	if receiver_type.len == 0 || t.generic_arg_is_unresolved(receiver_type) {
+		return
+	}
+	fixed := t.receiver_fixed_type_args(decl, receiver_type)
+	for i, param in param_names {
+		if param !in receiver_params {
+			continue
+		}
+		receiver_arg := fixed[param] or { continue }
+		if receiver_arg == call_args[i] {
+			continue
+		}
+		expected := t.tc.parse_type(receiver_arg).name()
+		given := t.tc.parse_type(call_args[i]).name()
+		if expected == given {
+			continue
+		}
+		t.tc.report_receiver_type_arg_mismatch(t.cur_file, node.pos, decl.node.value.all_after_last('.'),
+			param, t.tc.parse_type(receiver_type).name().trim_left('&'), expected, given)
+		call_args[i] = receiver_arg
+	}
+}
+
+// receiver_fixed_type_args returns the types that a receiver of the type
+// `receiver_type` gives the type parameters of the receiver of the method
+// `decl`: `T` is `string` for a `Box[string]` and `fn (b Box[T]) own[T]() T`,
+// also through an embedded `Box[string]`.
+fn (mut t Transformer) receiver_fixed_type_args(decl GenericFnDecl, receiver_type string) map[string]string {
+	mut fixed := map[string]string{}
+	for i in 0 .. decl.node.children_count {
+		receiver_param := t.a.child_node(&decl.node, i)
+		if receiver_param.kind != .param {
+			continue
+		}
+		param_type := generic_inference_param_type(receiver_param)
+		arg_type := generic_arg_type_for_param(param_type, receiver_type)
+		infer_generic_type_args(param_type, arg_type, mut fixed)
+		t.infer_generic_embedded_receiver_args(receiver_param.typ, arg_type, mut fixed)
+		break
+	}
+	return fixed
+}
+
 fn (mut t Transformer) retarget_cloned_generic_call(node flat.Node, mut children []flat.NodeId, args []string, return_context string) string {
 	if node.kind != .call || children.len == 0 || t.skip_generics {
 		return ''
@@ -11187,6 +11254,11 @@ fn (mut t Transformer) retarget_cloned_generic_call(node flat.Node, mut children
 		}
 		for arg in explicit {
 			call_args << t.subst_type(arg, args)
+		}
+		// A full list spells the receiver's parameters too: the cloned receiver
+		// fixes them.
+		if is_receiver {
+			t.hold_receiver_type_args(decl, children[0], node, param_names, mut call_args)
 		}
 	} else {
 		callee_id := children[0]

@@ -6364,23 +6364,29 @@ fn (tc &TypeChecker) type_contains_open_generic_placeholder(typ Type) bool {
 }
 
 fn (tc &TypeChecker) explicit_generic_args_diagnostic_pos(id flat.NodeId) token.Pos {
-	node := tc.a.node(id)
-	file := tc.a.source_files[node.pos.id] or { return node.pos }
-	source := tc.source_texts_by_file[file.name] or { return node.pos }
-	if node.pos.offset < 0 || node.pos.offset >= source.len {
-		return node.pos
+	return tc.explicit_generic_args_pos_from(tc.a.node(id).pos)
+}
+
+// explicit_generic_args_pos_from is where the first `[...]` after `pos` on its
+// line is: the explicit type arguments of the call or callee at `pos`, or `pos`
+// without them.
+fn (tc &TypeChecker) explicit_generic_args_pos_from(pos token.Pos) token.Pos {
+	file := tc.a.source_files[pos.id] or { return pos }
+	source := tc.source_texts_by_file[file.name] or { return pos }
+	if pos.offset < 0 || pos.offset >= source.len {
+		return pos
 	}
-	line_end := source.index_after('\n', node.pos.offset) or { source.len }
-	open_relative := source[node.pos.offset..line_end].index_u8(`[`)
+	line_end := source.index_after('\n', pos.offset) or { source.len }
+	open_relative := source[pos.offset..line_end].index_u8(`[`)
 	if open_relative < 0 {
-		return node.pos
+		return pos
 	}
-	open := node.pos.offset + open_relative
+	open := pos.offset + open_relative
 	close_relative := source[open..line_end].index_u8(`]`)
 	if close_relative < 0 {
-		return node.pos
+		return pos
 	}
-	return token.new_span(node.pos.id, open, open + close_relative + 1)
+	return token.new_span(pos.id, open, open + close_relative + 1)
 }
 
 // call_generic_args_have_placeholders reports whether the call carries explicit
@@ -9603,7 +9609,8 @@ fn (mut tc TypeChecker) resolve_generic_call_info(id flat.NodeId, fn_node flat.N
 				if tc.explicit_generic_arg_count_mismatch(receiver_info.name, method_type_args, id) {
 					return receiver_info
 				}
-				return tc.specialize_explicit_generic_receiver_call(receiver_info, method_type_args)
+				return tc.specialize_explicit_generic_receiver_call(receiver_info, tc.explicit_receiver_type_args(receiver_info,
+					base_type, method_type_args, id))
 			}
 			// Generic methods promoted from an embedded non-generic receiver keep
 			// the declaring receiver in the function table. Resolve that promoted
@@ -9612,7 +9619,10 @@ fn (mut tc TypeChecker) resolve_generic_call_info(id flat.NodeId, fn_node flat.N
 				if tc.explicit_generic_arg_count_mismatch(embedded_info.name, type_args, id) {
 					return embedded_info
 				}
-				if info := tc.explicit_generic_call_info(embedded_info.name, true, type_args) {
+				// The embedded receiver fixes the type parameters the method repeats
+				// from it.
+				checked_args := tc.explicit_receiver_type_args(embedded_info, base_type, type_args, id)
+				if info := tc.explicit_generic_call_info(embedded_info.name, true, checked_args) {
 					return info
 				}
 				return embedded_info
@@ -9760,6 +9770,99 @@ fn (mut tc TypeChecker) specialize_explicit_generic_receiver_call(info CallInfo,
 		params:      params
 		return_type: tc.substitute_generic_type_values(info.return_type, concrete_types, generic_params)
 	}
+}
+
+// explicit_receiver_type_args returns the explicit type arguments `type_args` of
+// a call of the method `info`, with each type parameter that the method repeats
+// from its receiver (`own[T]` of `fn (b Box[T]) own[T]() T`) set to the type its
+// receiver fixes, and records an error where the call gave another:
+// `b.own[string]()` for a `Box[int]`. `info` is the method as its receiver
+// specializes it, and `receiver` the type the call calls it on, which embeds
+// that receiver when the method is promoted.
+fn (mut tc TypeChecker) explicit_receiver_type_args(info CallInfo, receiver Type, type_args []string, id flat.NodeId) []string {
+	method_params := tc.fn_generic_params[info.name] or { return type_args }
+	if method_params.len != type_args.len || !info.has_receiver || info.params.len == 0 {
+		return type_args
+	}
+	// The receiver as the call spells it (an alias like `IntBox` included), and
+	// the generic struct it is.
+	method_receiver := unwrap_pointer(info.params[0])
+	receiver_struct := unalias_type(method_receiver)
+	_, receiver_args, receiver_is_generic := generic_type_application_parts(receiver_struct.name())
+	if !receiver_is_generic {
+		return type_args
+	}
+	method := info.name.all_after_last('.')
+	mut pattern := info.name.all_before_last('.')
+	_, _, pattern_is_generic := generic_type_application_parts(pattern)
+	if !pattern_is_generic {
+		texts := tc.fn_param_type_texts[info.name] or { return type_args }
+		if texts.len == 0 {
+			return type_args
+		}
+		pattern = comptime_static_unwrap_type_text(texts[0]).trim_left('&').trim_space()
+	}
+	receiver_params, concrete_args := tc.generic_method_receiver_pattern_args('${pattern}.${method}',
+		receiver_args) or { return type_args }
+	mut checked := type_args.clone()
+	for i, param in method_params {
+		at := receiver_params.index(param)
+		if at < 0 {
+			continue
+		}
+		expected := tc.parse_type(tc.explicit_generic_concrete_arg_text(concrete_args[at]))
+		given := tc.parse_type(tc.explicit_generic_concrete_arg_text(type_args[i]))
+		checked[i] = concrete_args[at]
+		if expected.name() == given.name() || !tc.should_diagnose(id) {
+			continue
+		}
+		call_receiver := unalias_type(unwrap_pointer(receiver))
+		receiver_text := if call_receiver.name() != receiver_struct.name() {
+			'${method_receiver.name()}` (embedded in `${call_receiver.name()}`)'
+		} else {
+			'${method_receiver.name()}`'
+		}
+		tc.record_error_at(.call_arg_mismatch, receiver_type_arg_mismatch_message(method, param, receiver_text,
+			expected.name(), given.name()), id, tc.explicit_generic_args_call_pos(id))
+	}
+	return checked
+}
+
+// receiver_type_arg_mismatch_message says that the method `method` takes the type
+// parameter `param` from its receiver, `receiver_text` (its closing backquote
+// and what follows it), which makes it `expected`, and not `given`.
+fn receiver_type_arg_mismatch_message(method string, param string, receiver_text string, expected string, given string) string {
+	return '`${method}` takes `${param}` from its receiver `${receiver_text}: `${param}` is `${expected}`, not `${given}`'
+}
+
+// explicit_generic_args_call_pos is where the explicit type arguments of the
+// call `id` are: `[string]` of `b.own[string]()`.
+fn (tc &TypeChecker) explicit_generic_args_call_pos(id flat.NodeId) token.Pos {
+	call := tc.a.node(id)
+	callee_id := if call.children_count > 0 { tc.a.child(call, 0) } else { id }
+	return tc.explicit_generic_args_diagnostic_pos(callee_id)
+}
+
+// report_receiver_type_arg_mismatch records that the call at `call_pos` of the
+// file `file`, of the method `method` on a receiver `receiver`, gives its type
+// parameter `param`, which the method repeats from its receiver, the type
+// `given` where the receiver makes it `expected` (see
+// explicit_receiver_type_args): the monomorphization finds it in the concrete
+// instances of a generic function. Only in a file that the check diagnoses, and
+// once for a place, as each instance and each pass over it finds it again.
+pub fn (mut tc TypeChecker) report_receiver_type_arg_mismatch(file string, call_pos token.Pos, method string, param string, receiver string, expected string, given string) {
+	if file !in tc.diagnostic_files {
+		return
+	}
+	pos := tc.explicit_generic_args_pos_from(call_pos)
+	msg := receiver_type_arg_mismatch_message(method, param, '${receiver}`', expected, given)
+	if tc.errors.any(it.pos == pos && it.msg == msg) {
+		return
+	}
+	saved_file := tc.cur_file
+	tc.cur_file = file
+	tc.errors << tc.make_type_error_at(.call_arg_mismatch, msg, flat.NodeId(-1), pos)
+	tc.cur_file = saved_file
 }
 
 // explicit_generic_receiver_method_args accepts both `value.method[U]()` and
