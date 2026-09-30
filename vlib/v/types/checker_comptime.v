@@ -3919,6 +3919,21 @@ fn (mut tc TypeChecker) check_prefix_expr(id flat.NodeId, node flat.Node) {
 	tc.record_error_at(.assignment_mismatch, 'cannot take the address of ${display}', id, tc.address_operator_pos(id))
 }
 
+// voidptr_cast_needs_unsafe reports whether a cast from voidptr outside `unsafe` is
+// warned about. Like V1, that is only a cast of a variable or of another cast to an
+// explicit `&T`, where `T` is not a struct or an interface: `&u8(buf)` warns, while
+// `&u8(obj.data)`, `&u64(alloc())`, `charptr(buf)` and `&Node(buf)` do not.
+fn (tc &TypeChecker) voidptr_cast_needs_unsafe(child_id flat.NodeId, target_name string, target_base Type) bool {
+	if !target_name.starts_with('&') {
+		return false
+	}
+	clean_base := unalias_type(target_base)
+	if clean_base is Struct || clean_base is Interface {
+		return false
+	}
+	return tc.a.node(child_id).kind in [.ident, .cast_expr]
+}
+
 fn (tc &TypeChecker) fixed_array_reference_is_call_borrow(id flat.NodeId) bool {
 	mut current := id
 	for _ in 0 .. 64 {
@@ -4500,7 +4515,7 @@ fn (mut tc TypeChecker) check_cast_expr(id flat.NodeId, node flat.Node) {
 			&& !fn_param_is_voidptr_type(target) {
 			if unalias_type(target_base) is SumType {
 				tc.record_error_at(.assignment_mismatch, 'cannot cast voidptr to `${target_name}` outside `unsafe`', id, node.pos)
-			} else {
+			} else if tc.voidptr_cast_needs_unsafe(child_id, target_name, target_base) {
 				tc.record_warning_at(.assignment_mismatch, 'casting voidptr to `${target_name}` is only allowed in `unsafe` code', id, node.pos)
 			}
 			return
