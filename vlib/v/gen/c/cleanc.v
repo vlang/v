@@ -23316,6 +23316,10 @@ fn (mut g FlatGen) test_failure_helpers() {
 	g.writeln('')
 }
 
+fn is_builtin_closure_runtime_file(file string) bool {
+	return os.dir(file).replace('\\', '/').ends_with('vlib/builtin/closure')
+}
+
 // emit_global_inits queues explicit `__global x = expr` assignments and implicit
 // struct-field defaults into _vinit in source declaration order. The C globals are
 // emitted zero-initialized above; initializer expressions (often function calls like
@@ -23336,9 +23340,17 @@ fn (mut g FlatGen) emit_global_inits() {
 		g.tc.cur_file = old_file
 		g.in_global_array_pointer_init = old_array_pointer_init
 	}
+	// The closure runtime can be imported for syntax that only might need it. Its state
+	// is set up for `closure_init`, and without it the map runtime its fields default to
+	// may not be emitted at all.
+	skip_closure_runtime_globals := !g.needs_closure_runtime_init()
 	for qname in g.global_init_order {
 		g.in_global_array_pointer_init = false
 		if qname in g.global_cinit_names {
+			continue
+		}
+		if skip_closure_runtime_globals && g.global_modules[qname] == 'closure'
+			&& is_builtin_closure_runtime_file(g.global_files[qname]) {
 			continue
 		}
 		if mod := g.global_modules[qname] {
