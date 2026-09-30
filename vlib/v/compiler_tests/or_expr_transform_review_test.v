@@ -78,20 +78,36 @@ fn test_bare_channel_or_is_rejected() {
 	assert output.contains('cannot use `or {}` block on non-option variable'), output
 }
 
-fn test_array_optional_element_or_uses_loaded_element_error() {
+fn test_array_optional_element_or_uses_fallback_without_err_binding() {
 	v3_bin := build_v3_or_review()
-	c_source := or_review_gen_c(v3_bin, 'array_optional_element_error_source',
-		'fn main() {\n\tmut arr := []?int{}\n\tarr << none\n\tvalue := arr[0] or {\n\t\tprintln(err.msg())\n\t\t0\n\t}\n\tprintln(int_str(value))\n}\n')
-	assert c_source.contains('__v_option __arr_opt_'), 'missing loaded optional temp'
-	assert c_source.contains('IError err = __arr_opt_'), 'element failure branch does not use loaded optional err'
+	src := 'fn main() {\n\terr := 7\n\tmut arr := []?int{}\n\tarr << none\n\tarr << 5\n\tmissing := arr[0] or { err }\n\tpresent := arr[1] or { -1 }\n\tprintln(int_str(missing))\n\tprintln(int_str(present))\n}\n'
+	c_source := or_review_gen_c(v3_bin, 'array_optional_element_fallback_source', src)
+	assert c_source.contains('__v_option_i64 __arr_opt_'), 'missing loaded optional temp'
+	assert c_source.contains('i64 err = 7;'), 'explicit outer err was not preserved'
+	assert !c_source.contains('IError err = __arr_opt_'), 'element failure branch binds an Option error'
+	out := or_review_run(v3_bin, 'array_optional_element_fallback_run', src)
+	assert out == '7\n5'
 }
 
-fn test_map_optional_element_or_uses_loaded_element_error() {
+fn test_map_optional_element_or_uses_fallback_without_err_binding() {
 	v3_bin := build_v3_or_review()
-	c_source := or_review_gen_c(v3_bin, 'map_optional_element_error_source',
+	src := "fn main() {\n\terr := 7\n\tmut m := map[string]?int{}\n\tm['x'] = none\n\tm['y'] = 5\n\tmissing := m['x'] or { err }\n\tpresent := m['y'] or { -1 }\n\tabsent := m['z'] or { -2 }\n\tprintln(int_str(missing))\n\tprintln(int_str(present))\n\tprintln(int_str(absent))\n}\n"
+	c_source := or_review_gen_c(v3_bin, 'map_optional_element_fallback_source', src)
+	assert c_source.contains('__v_option_i64 __map_opt_'), 'missing loaded map optional temp'
+	assert c_source.contains('i64 err = 7;'), 'explicit outer err was not preserved'
+	assert !c_source.contains('IError err = __map_opt_'), 'map element failure branch binds an Option error'
+	out := or_review_run(v3_bin, 'map_optional_element_fallback_run', src)
+	assert out == '7\n5\n-2'
+}
+
+fn test_optional_element_or_rejects_implicit_err() {
+	v3_bin := build_v3_or_review()
+	array_output := or_review_compile_bad(v3_bin, 'array_optional_element_implicit_err',
+		'fn main() {\n\tmut arr := []?int{}\n\tarr << none\n\tvalue := arr[0] or {\n\t\tprintln(err.msg())\n\t\t0\n\t}\n\tprintln(int_str(value))\n}\n')
+	assert array_output.contains('undefined variable: `err`'), array_output
+	map_output := or_review_compile_bad(v3_bin, 'map_optional_element_implicit_err',
 		"fn main() {\n\tmut m := map[string]?int{}\n\tm['x'] = none\n\tvalue := m['x'] or {\n\t\tprintln(err.msg())\n\t\t0\n\t}\n\tprintln(int_str(value))\n}\n")
-	assert c_source.contains('__v_option __map_opt_'), 'missing loaded map optional temp'
-	assert c_source.contains('IError err = __map_opt_'), 'map element failure branch does not use loaded optional err'
+	assert map_output.contains('undefined variable: `err`'), map_output
 }
 
 fn test_map_index_address_or_nil_remains_valid() {
