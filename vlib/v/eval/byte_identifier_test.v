@@ -98,3 +98,19 @@ fn main() {
 ') or { panic(err) }
 	assert e.stdout() == '2\n'
 }
+
+fn test_eval_sizeof_byte_local_call_uses_the_return_width() {
+	mut e := create()
+	e.run_text('
+fn make_byte() u8 {
+	println("initialized")
+	return u8(1)
+}
+
+fn main() {
+	byte := make_byte()
+	println(sizeof(byte))
+}
+') or { panic(err) }
+	assert e.stdout() == 'initialized\n1\n'
+}

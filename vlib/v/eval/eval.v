@@ -1582,6 +1582,16 @@ fn (e &Eval) infer_expr_type_name(id flat.NodeId) string {
 				return typ
 			}
 		}
+		.call {
+			if node.children_count > 0 {
+				callee := e.node(e.child(node, 0))
+				if callee.kind == .ident {
+					if target := e.function_def(e.current_module_name(), callee.value) {
+						return e.qualify_nested_type_name(target.module_name, e.node(target.node).typ)
+					}
+				}
+			}
+		}
 		.selector {
 			if node.children_count > 0 {
 				if typ := e.type_value_name_from_expr(e.child(node, 0)) {
@@ -6042,14 +6052,6 @@ fn (e &Eval) infer_sizeof_operand_type_name(id flat.NodeId, seen []flat.NodeId, 
 	}
 	if node.kind == .ident {
 		return e.sizeof_const_type_name(node.value, seen) or { '' }
-	}
-	if node.kind == .call && node.children_count > 0 {
-		callee := e.node(e.child(node, 0))
-		if callee.kind == .ident {
-			if target := e.function_def(e.current_module_name(), callee.value) {
-				return e.qualify_nested_type_name(target.module_name, e.node(target.node).typ)
-			}
-		}
 	}
 	return ''
 }
