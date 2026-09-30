@@ -8668,7 +8668,12 @@ fn zero_value_struct_type_name(typ types.Type) string {
 
 // collect_struct_default_calls updates collect struct default calls state for markused.
 fn (c &CallCollector) collect_struct_default_calls(init &flat.Node, cur_module string, imports map[string]string, mut calls []string) {
-	info := c.value_struct_decl_info(init.value, init, cur_module, imports) or { return }
+	init_type := c.value_type_in_source(init.value, init, imports)
+	if init_type is types.Array || init_type is types.ArrayFixed {
+		c.collect_array_default_calls(init, cur_module, imports, mut calls)
+		return
+	}
+	info := c.value_struct_decl_info(init_type, cur_module, imports) or { return }
 	mut set_fields := map[string]bool{}
 	for i in 0 .. init.children_count {
 		field := c.a.child_node(init, i)
@@ -8778,17 +8783,19 @@ fn (c &CallCollector) collect_struct_default_calls_from_info_guarded(info Struct
 			// A struct field without a default of its own is initialized with that
 			// struct's defaults, which the transformer only expands after markused.
 			active_defaults[int(field_id)] = true
-			c.collect_value_struct_default_calls(field.typ, field, info.module, imports, mut active_defaults, mut calls)
+			field_type := c.value_type_in_source(field.typ, field, imports)
+			c.collect_value_struct_default_calls(field_type, info.module, imports, mut active_defaults, mut calls)
 			active_defaults.delete(int(field_id))
 			continue
 		}
 		active_defaults[int(field_id)] = true
 		default := c.a.child_node(field, 0)
 		if default.kind == .struct_init {
-			default_info := c.value_struct_decl_info(default.value, default, info.module, imports) or {
+			default_type := c.value_type_in_source(default.value, default, imports)
+			default_info := c.value_struct_decl_info(default_type, info.module, imports) or {
 				StructDeclInfo{}
 			}
-			if default_info.node_id == info.node_id {
+			if default_type is types.Struct && default_info.node_id == info.node_id {
 				mut nested_provided := map[string]bool{}
 				for j in 0 .. default.children_count {
 					explicit_field := c.a.child_node(default, j)
@@ -8807,17 +8814,19 @@ fn (c &CallCollector) collect_struct_default_calls_from_info_guarded(info Struct
 	}
 }
 
-// value_struct_decl_info resolves structs initialized by a value in its source context.
-fn (c &CallCollector) value_struct_decl_info(type_text string, node &flat.Node, cur_module string, imports map[string]string) ?StructDeclInfo {
+// value_type_in_source resolves a value's semantic type in its source context.
+fn (c &CallCollector) value_type_in_source(type_text string, node &flat.Node, imports map[string]string) types.Type {
 	clean := type_text.trim_space()
-	if clean.len == 0 {
-		return none
-	}
-	mut value_type := types.unalias_type(if source_file := c.a.source_files[node.pos.id] {
+	return types.unalias_type(if source_file := c.a.source_files[node.pos.id] {
 		c.tc.parse_resolution_type_in_file(clean, source_file.name)
 	} else {
 		c.tc.parse_canonical_type(markused_resolve_imported_type_name(clean, imports))
 	})
+}
+
+// value_struct_decl_info resolves structs initialized by a semantic value type.
+fn (c &CallCollector) value_struct_decl_info(typ types.Type, cur_module string, imports map[string]string) ?StructDeclInfo {
+	mut value_type := types.unalias_type(typ)
 	// Fixed arrays initialize their elements; dynamic containers remain empty.
 	for value_type is types.ArrayFixed {
 		value_type = types.unalias_type(value_type.elem_type)
@@ -8831,8 +8840,8 @@ fn (c &CallCollector) value_struct_decl_info(type_text string, node &flat.Node, 
 
 // collect_value_struct_default_calls collects field defaults for struct values.
 // References, options, dynamic containers and function types have no implicit struct defaults.
-fn (c &CallCollector) collect_value_struct_default_calls(type_text string, node &flat.Node, cur_module string, imports map[string]string, mut active_defaults map[int]bool, mut calls []string) {
-	info := c.value_struct_decl_info(type_text, node, cur_module, imports) or { return }
+fn (c &CallCollector) collect_value_struct_default_calls(typ types.Type, cur_module string, imports map[string]string, mut active_defaults map[int]bool, mut calls []string) {
+	info := c.value_struct_decl_info(typ, cur_module, imports) or { return }
 	// A default can create more values of its own struct (`next []Node = []Node{len: 1}`),
 	// so expand each struct once per collected body. `@` starts no symbol name.
 	expanded_marker := '@markused.struct_defaults:${int(info.node_id)}'
@@ -8859,12 +8868,23 @@ fn (c &CallCollector) collect_array_default_calls(node &flat.Node, cur_module st
 		}
 	}
 	typ := if node.typ.len > 0 { node.typ } else { node.value }
-	if (typ.starts_with('[]') || !typ.starts_with('[')) && !has_len {
-		// Empty and capacity-only dynamic arrays do not initialize elements.
-		return
+	array_type := c.value_type_in_source(typ, node, imports)
+	element_type := if array_type is types.Array {
+		if !has_len {
+			// Empty and capacity-only dynamic arrays do not initialize elements.
+			return
+		}
+		array_type.elem_type
+	} else if array_type is types.ArrayFixed {
+		array_type.elem_type
+	} else {
+		if (typ.starts_with('[]') || !typ.starts_with('[')) && !has_len {
+			return
+		}
+		c.value_type_in_source(array_init_element_type_text(node), node, imports)
 	}
 	mut element_defaults := map[int]bool{}
-	c.collect_value_struct_default_calls(array_init_element_type_text(node), node, cur_module, imports, mut element_defaults, mut calls)
+	c.collect_value_struct_default_calls(element_type, cur_module, imports, mut element_defaults, mut calls)
 }
 
 // array_init_element_type_text returns the value type initialized by an array literal.

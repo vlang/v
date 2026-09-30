@@ -622,6 +622,15 @@ fn main() {
 
 fn test_array_defaults_only_keep_implicitly_initialized_elements() {
 	cases := {
+		'Rows{}':                                 false
+		'Rows{cap: 10}':                          false
+		'Rows{len: 1}':                           true
+		'Rows{len: 1, init: Box{value: 1}}':      false
+		'[]Rows{len: 1}':                         false
+		'FixedAlias{init: Box{value: 1}}':        false
+		'FixedAlias{}':                           true
+		'[Box{value: 1}]!':                       false
+		'[Box{}]!':                               true
 		'[]Box{}':                                false
 		'[]Box{cap: 10}':                         false
 		'[]Box{len: 1, init: Box{value: 1}}':     false
@@ -640,12 +649,14 @@ fn test_array_defaults_only_keep_implicitly_initialized_elements() {
 			initializer := if top_level {
 				'__global values = ${literal}\nfn main() { _ := values }'
 			} else {
-				'fn main() { values := ${literal} _ := values }'
+				'fn main() { values := ${literal}; _ := values }'
 			}
 			a, tc := parse_checked_source('implicit_array_elements_${os.getpid()}', '
 struct Box {
 	value int = default_value()
 }
+type FixedAlias = [2]Box
+type Rows = []Box
 fn default_value() int { return 7 }
 fn explicit_box() Box { return Box{value: 1} }
 fn explicit_row() [2]Box { return [2]Box{init: Box{value: 1}} }
@@ -785,6 +796,8 @@ fn test_array_initializers_link_without_unused_defaults() {
 fn C.v3_markused_unused_array_default_symbol() int
 fn default_value() int { return C.v3_markused_unused_array_default_symbol() }
 struct Box { value int = default_value() }
+type FixedAlias = [2]Box
+type Rows = []Box
 fn explicit_box() Box { return Box{value: 3} }
 fn main() {
 	empty := []Box{}
@@ -794,6 +807,10 @@ fn main() {
 	nested_empty := [][2]Box{}
 	nested_capacity := [][2]Box{cap: 10}
 	fixed_explicit := [2]Box{init: Box{value: 2}}
+	raw_explicit := [Box{value: 4}]!
+	alias_empty := Rows{}
+	alias_capacity := Rows{cap: 10}
+	alias_explicit := Rows{len: 1, init: Box{value: 6}}
 	assert empty.len == 0
 	assert capacity.len == 0
 	assert explicit[0].value == 1
@@ -801,6 +818,10 @@ fn main() {
 	assert nested_empty.len == 0
 	assert nested_capacity.len == 0
 	assert fixed_explicit[1].value == 2
+	assert raw_explicit[0].value == 4
+	assert alias_empty.len == 0
+	assert alias_capacity.len == 0
+	assert alias_explicit[0].value == 6
 	println("ok")
 }
 ') or { panic(err) }
@@ -821,6 +842,8 @@ fn test_alias_value_defaults_compile_and_run() {
 		os.rm(v3_bin) or {}
 	}
 	cases := {
+		'FixedAlias{}':           'values[1].value'
+		'Rows{len: 1}':           'values[0].value'
 		'[]Alias{len: 1}':        'values[0].value'
 		'[2]Alias{}':             'values[1].value'
 		'[][2]Alias{len: 1}':     'values[0][1].value'
@@ -837,6 +860,7 @@ type FirstAlias = Box
 type Alias = FirstAlias
 struct Wrapper { box Alias }
 type FixedAlias = [2]Alias
+type Rows = []Box
 struct FixedWrapper { boxes FixedAlias }
 struct GenericBox[T] { value int = default_value() item T }
 type GenericAlias = GenericBox[int]

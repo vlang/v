@@ -16,4 +16,6 @@ A type alias preserves the initialization behavior of its underlying type.
 For `type Alias = Box`, `[]Alias{len: 1}` runs the same field defaults as `[]Box{len: 1}`.
 An omitted struct field of type `Alias` also uses the underlying `Box` defaults.
 Aliases to fixed arrays initialize their elements, including when used as an omitted struct field.
-Aliases to references, options, or dynamic containers do not initialize an underlying struct value.
+For `type Rows = []Box`, `Rows{len: 1}` also initializes a `Box`, while `Rows{}` remains empty.
+Omitted fields or array elements whose aliases wrap references, options, or dynamic containers
+do not initialize the underlying struct.
