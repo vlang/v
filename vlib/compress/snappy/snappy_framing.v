@@ -138,7 +138,7 @@ pub fn (mut enc StreamEncoder) write(buf []u8) !int {
 
 	enc.buf << buf
 	for enc.buf.len >= max_chunk_data_size {
-		block := enc.buf[..max_chunk_data_size]
+		block := enc.buf[..max_chunk_data_size].clone()
 		write_data_chunk(mut enc.out, block)
 		enc.buf = enc.buf[max_chunk_data_size..].clone()
 	}
@@ -226,7 +226,7 @@ pub fn (mut dec StreamDecoder) write(buf []u8) !int {
 		if hdr_end + chunk_len > dec.buf.len {
 			break // wait for more data
 		}
-		chunk_data := dec.buf[hdr_end..hdr_end + chunk_len]
+		chunk_data := dec.buf[hdr_end..hdr_end + chunk_len].clone()
 
 		if !dec.identified {
 			if chunk_type != chunk_type_stream_id {

@@ -170,7 +170,8 @@ fn (mut u Untar) read_data() {
 		part := if u.size > 512 { 512 } else { u.size }
 		u.size -= 512
 		pending := if u.size > 0 { u.size } else { 0 }
-		data_part := u.buffer[0..part]
+		// The consumer runs synchronously before the parser buffer is reused.
+		data_part := unsafe { (&u.buffer[0]).vbytes(part) }
 		u.reader.data_block(mut u.read, data_part, pending)
 	}
 	if u.size <= 0 {
@@ -184,7 +185,8 @@ fn (mut u Untar) read_long_path() {
 	if u.size > 0 {
 		part := if u.size > 512 { 512 } else { u.size }
 		u.size -= 512
-		data_part := u.buffer[0..part]
+		// The consumer runs synchronously before the parser buffer is reused.
+		data_part := unsafe { (&u.buffer[0]).vbytes(part) }
 		if u.long_path != unsafe { nil } {
 			// this long path field collects the data parts as file long name
 			u.long_path.append(data_part)
