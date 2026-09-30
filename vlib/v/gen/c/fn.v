@@ -20527,15 +20527,25 @@ fn (mut g FlatGen) register_fn_ptr_type(typ string) string {
 
 // fn_ptr_type_key returns the normalized key used for function-pointer typedefs.
 fn (mut g FlatGen) fn_ptr_type_key(typ types.FnType) string {
-	ret := if typ.return_type is types.Void { 'void' } else { g.tc.c_type(typ.return_type) }
+	ret := g.fn_ptr_fixed_array_type(typ.return_type) or { g.tc.c_type(typ.return_type) }
 	mut params := []string{}
 	for i in 0 .. typ.params.len {
 		param := fn_type_effective_param(typ, i)
-		params << if param is types.ArrayFixed {
-			g.fixed_array_c_type(param)
-		} else {
-			g.tc.c_type(param)
-		}
+		params << g.fn_ptr_fixed_array_type(param) or { g.tc.c_type(param) }
 	}
 	return naming.fn_ptr_encoded(ret, params)
+}
+
+// Preserve pointer depth while using the emitted name for fixed-array signature types.
+fn (mut g FlatGen) fn_ptr_fixed_array_type(typ types.Type) ?string {
+	if typ is types.ArrayFixed {
+		return g.fixed_array_c_type(typ)
+	}
+	if typ is types.Pointer {
+		return g.fn_ptr_fixed_array_type(typ.base_type)? + '*'
+	}
+	if typ is types.Alias {
+		return g.fn_ptr_fixed_array_type(typ.base_type)
+	}
+	return none
 }

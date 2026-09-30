@@ -339,3 +339,69 @@ fn main() {
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space().int() > 0, run.output
 }
+
+fn test_enum_fixed_array_fn_pointer_pointer_param_uses_emitted_typedef_name() {
+	v3_bin := fixed_array_build_v3()
+	root := fixed_array_write_project('enum_fn_pointer_param', 'module fixture
+
+pub enum Mode as u32 {
+	one
+	two
+}
+
+pub type Callback = fn (modes &[2]Mode)
+
+pub fn callback_size() int {
+	return sizeof(Callback)
+}
+', 'module main
+
+import fixture
+
+fn main() {
+	println(fixture.callback_size())
+}
+')
+	bin := os.join_path(root, 'out')
+	compile := os.execute('${v3_bin} -b c -o ${bin} ${root}')
+	assert compile.exit_code == 0, compile.output
+	generated := os.read_file(bin + '.c') or { panic(err) }
+	assert generated.contains('(Array_fixed_fixture__Mode_2*)'), generated
+	assert !generated.contains('Array_fixed_int_2'), generated
+	run := os.execute(bin)
+	assert run.exit_code == 0, run.output
+	assert run.output.trim_space().int() > 0, run.output
+}
+
+fn test_enum_fixed_array_fn_pointer_return_alias_emits_wrapper() {
+	v3_bin := fixed_array_build_v3()
+	root := fixed_array_write_project('enum_fn_pointer_return', 'module fixture
+
+pub enum Mode as u32 {
+	one
+	two
+}
+
+pub type Callback = fn () [2]Mode
+
+pub fn callback_size() int {
+	return sizeof(Callback)
+}
+', 'module main
+
+import fixture
+
+fn main() {
+	println(fixture.callback_size())
+}
+')
+	bin := os.join_path(root, 'out')
+	compile := os.execute('${v3_bin} -b c -o ${bin} ${root}')
+	assert compile.exit_code == 0, compile.output
+	generated := os.read_file(bin + '.c') or { panic(err) }
+	assert generated.contains('typedef _v_ret_Array_fixed_fixture__Mode_2 (*_fn_ptr_'), generated
+	assert !generated.contains('Array_fixed_int_2'), generated
+	run := os.execute(bin)
+	assert run.exit_code == 0, run.output
+	assert run.output.trim_space().int() > 0, run.output
+}

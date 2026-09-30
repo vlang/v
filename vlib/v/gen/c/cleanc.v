@@ -21625,6 +21625,10 @@ fn (mut g FlatGen) populate_fixed_array_ret_wrappers() {
 			g.collect_fn_type_fixed_array_return_wrappers(param_type)
 		}
 	}
+	for name, target in g.tc.type_aliases {
+		g.tc.cur_module = module_from_qualified_name(name)
+		g.collect_fn_type_fixed_array_return_wrappers(g.tc.parse_type(target))
+	}
 	for name, fields in g.tc.structs {
 		g.tc.cur_module = g.fixed_array_typedef_type_module(name, old_module)
 		for field in fields {
