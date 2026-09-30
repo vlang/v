@@ -344,6 +344,38 @@ fn main() {
 }
 '
 
+// A select that finds all its receive channels closed (-2) happens after their close, like a
+// receive from a closed channel; a write after the close still races.
+const select_closed_source = 'import sync
+
+struct Data {
+mut:
+	x int
+}
+
+fn main() {
+	mut d := &Data{}
+	mut ch := sync.new_channel[int](0)
+	mut closed := sync.new_channel[int](1)
+	closed.close()
+	spawn fn (mut d Data, mut ch sync.Channel) {
+		\$if write_after_close ? {
+			ch.close()
+			d.x = 42
+		} \$else {
+			d.x = 42
+			ch.close()
+		}
+	}(mut d, mut ch)
+	mut a := 0
+	mut b := 0
+	mut chans := [ch, closed]
+	mut objs := [voidptr(&a), voidptr(&b)]
+	idx := sync.channel_select(mut chans, [sync.Direction.pop, .pop], mut objs, max_i64)
+	println("select \${idx} x \${d.x}")
+}
+'
+
 fn testsuite_begin() {
 	os.mkdir_all(tdir) or {}
 }
@@ -532,4 +564,19 @@ fn test_race_command_output_eof_happens_after_the_write() {
 	assert res.exit_code == 0, res.output
 	assert !res.output.contains('ThreadSanitizer'), res.output
 	assert res.output.contains('eof true 0 x 42'), res.output
+}
+
+fn test_race_select_of_closed_channels_happens_after_the_close() {
+	if !thread_sanitizer_runs() {
+		return
+	}
+	exe := build_race_program('select_closed', select_closed_source)
+	res := os.execute(os.quoted_path(exe))
+	assert res.exit_code == 0, res.output
+	assert !res.output.contains('ThreadSanitizer'), res.output
+	assert res.output.contains('select -2 x 42'), res.output
+	racy := build_race_program('select_closed_racy', select_closed_source, '-d', 'write_after_close')
+	racy_res := os.execute('VRACE="exitcode=7" ${os.quoted_path(racy)}')
+	assert racy_res.exit_code == 7, racy_res.output
+	assert racy_res.output.contains('WARNING: ThreadSanitizer: data race'), racy_res.output
 }

@@ -896,6 +896,17 @@ fn channel_select_priv(mut channels []&Channel, dir []Direction, mut objrefs []v
 		}
 		if num_closed == channels.len {
 			event_idx = -2
+			$if race ? {
+				// Like a receive from a closed channel, finding the receive channels closed
+				// happens after their close.
+				raceenable()
+				for i, ch in channels {
+					if dir[i] == .pop {
+						raceacquire(ch.race_addr())
+					}
+				}
+				racedisable()
+			}
 			break outer
 		}
 		if timeout <= 0 {
