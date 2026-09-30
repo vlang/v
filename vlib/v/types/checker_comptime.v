@@ -4612,7 +4612,10 @@ fn (mut tc TypeChecker) check_cast_expr(id flat.NodeId, node flat.Node) {
 			tc.record_error_at(.assignment_mismatch, 'cannot cast function `${tc.source_text_for_node(child_id)}` to `${target.name()}`', id, node.pos)
 			return
 		}
-		if clean_actual is Struct && !tc.expr_is_mut_struct_param(child_id) {
+		// A `mut` struct parameter is a pointer, so it casts to an integer
+		// address, but a pointer cannot be cast to a float.
+		if clean_actual is Struct && !(clean_target.props.has(.integer)
+			&& tc.expr_is_mut_struct_param(child_id)) {
 			message := if clean_actual.name.starts_with('C.') {
 				'cannot cast type `${actual.name()}` to `${target.name()}`'
 			} else {
