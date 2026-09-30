@@ -638,6 +638,11 @@ fn (tc &TypeChecker) assignment_types_compatible(rhs_id flat.NodeId, rhs_type Ty
 			&& unalias_type(expected_type) is Pointer && translated_integer_type(rhs_type)) {
 		return true
 	}
+	// Translated C stores the `&char` results of C functions in its `&i8` storage.
+	if op == .assign && tc.node_is_in_translated_file(rhs_id)
+		&& c_char_pointer_types_compatible(rhs_type, expected_type) {
+		return true
+	}
 	if op == .assign && tc.fn_storage_voidptr_mismatch(rhs_id, rhs_type, expected_type) {
 		return false
 	}
@@ -16572,6 +16577,12 @@ fn (tc &TypeChecker) c_call_arg_compatible(name string, arg_id flat.NodeId, expe
 		return actual_clean.name() in ['int', 'i32']
 	}
 	if clean is Pointer {
+		// Match V1: C's character types are interchangeable behind pointers
+		// (`char *` is `&char` in V's C declarations and `&i8` or `&u8` in
+		// translated C code).
+		if c_char_pointer_types_compatible(actual, expected) {
+			return true
+		}
 		base := fn_param_unalias_type(clean.base_type)
 		if base is Char || (base is Primitive && base.name() == 'u8') {
 			return tc.c_literal_arg(arg_id)
@@ -16584,6 +16595,19 @@ fn (tc &TypeChecker) c_call_arg_compatible(name string, arg_id flat.NodeId, expe
 		}
 	}
 	return false
+}
+
+// c_char_pointer_types_compatible reports whether `actual` and `expected` are
+// pointers of the same depth to C character types: `char`, `i8` or `u8`.
+fn c_char_pointer_types_compatible(actual Type, expected Type) bool {
+	actual_depth, actual_base := type_pointer_depth_and_base(actual)
+	expected_depth, expected_base := type_pointer_depth_and_base(expected)
+	return actual_depth > 0 && actual_depth == expected_depth && is_c_char_type(actual_base)
+		&& is_c_char_type(expected_base)
+}
+
+fn is_c_char_type(typ Type) bool {
+	return typ is Char || (typ is Primitive && typ.name() in ['i8', 'u8'])
 }
 
 fn (tc &TypeChecker) c_fn_value_signature_compatible(actual Type, expected Type) bool {
