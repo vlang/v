@@ -17327,7 +17327,11 @@ fn print_type_diagnostics(a &flat.FlatAst, notices []types.TypeError, type_error
 	} else {
 		20
 	}
-	max_errors := if message_limit >= 0 {
+	// An explicit -message-limit replaces the default cap of 20 errors, so a
+	// large project can ask to see every error in one build.
+	max_errors := if message_limit >= 0 && !fatal_errors {
+		int_min(ordered_errors.len, int_max(0, message_limit - printed_diagnostics))
+	} else if message_limit >= 0 {
 		int_min(default_max_errors, int_max(0, message_limit - printed_diagnostics))
 	} else {
 		default_max_errors
