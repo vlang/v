@@ -81,6 +81,7 @@ Methods declared on collection aliases, including inherited alias methods, use t
 declared return types when checking the final value. Private alias methods remain
 accessible only within their declaring module, following ordinary method visibility rules.
 Alias conversions also follow type visibility. These checks apply during `-check` and compilation.
+Alias methods retain their declared behavior through pointer receivers as well.
 
 ## Usage
 > [!NOTE]

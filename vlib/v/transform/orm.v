@@ -1744,13 +1744,20 @@ fn (mut t Transformer) sql_value_call_expr(callee_name string, args []string, ty
 // Select an alias's declared or inherited method before builtin collection lowering.
 fn (mut t Transformer) sql_transform_value_call(call flat.NodeId) flat.NodeId {
 	node := t.a.nodes[int(call)]
-	alias_return := t.raw_call_decl_return_type(call, node) or { '' }
+	mut alias_return := t.raw_call_decl_return_type(call, node) or { '' }
 	if !isnil(t.tc) {
+		if ret := t.tc.fn_ret_types[t.resolve_call_name(node)] {
+			canonical_return := t.raw_call_return_type_name(ret.name(), node)
+			if t.raw_return_type_contains_alias(canonical_return) {
+				alias_return = canonical_return
+			}
+		}
 		callee := t.a.child_node(&node, 0)
 		if callee.kind == .selector && callee.children_count > 0 {
 			receiver := t.a.child(callee, 0)
 			receiver_type := t.raw_var_type_for_expr(receiver) or { t.node_type(receiver) }
-			if method := t.tc.concrete_method_signature_key(receiver_type, callee.value) {
+			if method := t.tc.concrete_method_signature_key(t.trim_all_pointer_type(receiver_type),
+				callee.value) {
 				if method.all_before_last('.') in t.tc.type_aliases
 					&& !t.receiver_method_name_is_open_generic(method)
 					&& !t.call_selector_base_is_namespace(receiver, callee.value, method) {
@@ -1780,7 +1787,8 @@ fn (mut t Transformer) sql_value_call_callee(callee_name string) flat.NodeId {
 	}
 	mut receiver_type := t.sql_root_value_type_name(parts[0])
 	if receiver_type.len == 0 {
-		return t.sql_qualified_selector(bound_name)
+		callee := t.resolve_imported_type_name(bound_name) or { bound_name }
+		return t.sql_qualified_selector(callee)
 	}
 	mut receiver := t.make_ident(parts[0])
 	t.set_node_typ(int(receiver), receiver_type)
