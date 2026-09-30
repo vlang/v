@@ -23685,6 +23685,19 @@ fn (mut g FlatGen) queue_global_array_init(target string, val_id flat.NodeId, ty
 		return false
 	}
 	node := g.a.nodes[int(val_id)]
+	if node.kind == .array_literal {
+		// `__global a = [x, y]` is a self-contained `new_array_from_c_array(...)`.
+		tmp_sb := g.sb
+		tmp_line_start := g.line_start
+		g.sb = strings.new_builder(64)
+		g.line_start = true
+		g.gen_array_literal_value(node, typ.elem_type)
+		expr_str := g.sb.str()
+		g.sb = tmp_sb
+		g.line_start = tmp_line_start
+		g.queue_runtime_init('\t${target} = ${expr_str};')
+		return true
+	}
 	if node.kind != .array_init {
 		if node.kind != .call || node.children_count == 0 {
 			return false
