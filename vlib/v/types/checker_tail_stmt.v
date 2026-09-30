@@ -11436,8 +11436,8 @@ pub fn (tc &TypeChecker) interface_accepts_implicit_str(iface_name string) bool 
 }
 
 fn implicit_str_builtin_type_names() []string {
-	return ['bool', 'int', 'i8', 'i16', 'i32', 'i64', 'isize', 'usize', 'u8', 'byte', 'u16', 'u32',
-		'u64', 'f32', 'f64', 'string', 'rune']
+	return ['bool', 'int', 'i8', 'i16', 'i32', 'i64', 'isize', 'usize', 'u8', 'u16', 'u32', 'u64',
+		'f32', 'f64', 'string', 'rune']
 }
 
 fn interface_impl_candidate_name(name string) string {

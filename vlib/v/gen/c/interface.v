@@ -527,7 +527,7 @@ fn (g &FlatGen) sum_field_name(variant string) string {
 		'i8' { '_i8' }
 		'i16' { '_i16' }
 		'i64' { '_i64' }
-		'u8', 'byte' { '_u8' }
+		'u8' { '_u8' }
 		'u16' { '_u16' }
 		'u32' { '_u32' }
 		'u64' { '_u64' }
@@ -2667,7 +2667,7 @@ fn (mut g FlatGen) interface_implicit_str_expr(typ types.Type, expr string, quot
 			if name in ['i8', 'i16', 'i32', 'i64', 'int'] {
 				return 'v3_i64_zpad((i64)(${expr}), 0)'
 			}
-			if name in ['u8', 'byte', 'u16', 'u32', 'u64'] {
+			if name in ['u8', 'u16', 'u32', 'u64'] {
 				return 'u64__str((u64)(${expr}))'
 			}
 			return none

@@ -1587,8 +1587,8 @@ fn (t &Transformer) map_key_backing_type(key_type string) ?string {
 		}
 		if alias_target != '' {
 			base := t.normalize_type_alias(alias_target).trim_space()
-			if base in ['int', 'i8', 'i16', 'i32', 'i64', 'isize', 'usize', 'u8', 'byte', 'u16',
-				'u32', 'u64', 'rune', 'char', 'string'] {
+			if base in ['int', 'i8', 'i16', 'i32', 'i64', 'isize', 'usize', 'u8', 'u16', 'u32',
+				'u64', 'rune', 'char', 'string'] {
 				return base
 			}
 		}
@@ -1634,7 +1634,7 @@ fn map_callback_names(key_type string) (string, string, string, string) {
 		return 'map_hash_string', 'map_eq_string', 'map_clone_string', 'map_free_string'
 	}
 	mut size_suffix := '4'
-	if key_type in ['u8', 'i8', 'byte', 'bool', 'char'] {
+	if key_type in ['u8', 'i8', 'bool', 'char'] {
 		size_suffix = '1'
 	} else if key_type in ['u16', 'i16'] {
 		size_suffix = '2'

@@ -760,8 +760,8 @@ fn qualify_type_ref_name(name string, module_name string) string {
 
 // type_ref_is_builtin returns type ref is builtin data for ssa.
 fn type_ref_is_builtin(name string) bool {
-	return name in ['int', 'i8', 'i16', 'i32', 'i64', 'u8', 'byte', 'u16', 'u32', 'u64', 'f32',
-		'f64', 'bool', 'string', 'void', 'voidptr', 'rune', 'char', 'array', 'map']
+	return name in ['int', 'i8', 'i16', 'i32', 'i64', 'u8', 'u16', 'u32', 'u64', 'f32', 'f64',
+		'bool', 'string', 'void', 'voidptr', 'rune', 'char', 'array', 'map']
 }
 
 // sum_type_variants_for_decl supports sum type variants for decl handling for Builder.
@@ -7578,7 +7578,11 @@ fn (mut b Builder) build_expr(id flat.NodeId) ValueID {
 		}
 		.sizeof_expr {
 			mut size := 0
-			if type_name := b.var_type_names[node.value] {
+			if node.children_count > 0 {
+				operand := b.a.child(&node, 0)
+				// sizeof uses the operand's type without evaluating its value.
+				size = b.sizeof_type_name(b.checked_expr_type_name(operand))
+			} else if type_name := b.var_type_names[node.value] {
 				size = b.sizeof_type_name(type_name)
 			} else if addr := b.vars[node.value] {
 				size = b.m.type_size(b.deref_type(addr))
@@ -9121,7 +9125,7 @@ fn sum_variant_field_name(variant string) string {
 		'i8' { '_i8' }
 		'i16' { '_i16' }
 		'i64' { '_i64' }
-		'u8', 'byte' { '_u8' }
+		'u8' { '_u8' }
 		'u16' { '_u16' }
 		'u32' { '_u32' }
 		'u64' { '_u64' }
@@ -11927,7 +11931,7 @@ fn (mut b Builder) primitive_type_id(name string) ?TypeID {
 		'i64' {
 			b.i64_type
 		}
-		'u8', 'byte' {
+		'u8' {
 			b.u8_type
 		}
 		'u16' {
@@ -11966,7 +11970,7 @@ fn (mut b Builder) primitive_type_id(name string) ?TypeID {
 fn normalize_primitive_type_name(name string) string {
 	short_name := name.all_after('.')
 	return match short_name {
-		'int', 'i8', 'char', 'i16', 'i32', 'rune', 'i64', 'u8', 'byte', 'u16', 'u32', 'u64', 'f32',
+		'int', 'i8', 'char', 'i16', 'i32', 'rune', 'i64', 'u8', 'u16', 'u32', 'u64', 'f32',
 		'f64', 'bool', 'string', 'void', 'voidptr', '' {
 			short_name
 		}

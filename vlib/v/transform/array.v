@@ -5821,12 +5821,9 @@ fn (t &Transformer) bound_builtin_method_receiver_type(elem_type string, method 
 	if method !in ['hex', 'hex_full'] {
 		return none
 	}
-	mut clean := t.normalize_type_alias(elem_type)
+	clean := t.normalize_type_alias(elem_type)
 	if clean.starts_with('&') {
 		return none
-	}
-	if clean == 'byte' {
-		clean = 'u8'
 	}
 	if clean in ['u8', 'i8', 'u16', 'i16', 'u32', 'int', 'u64', 'i64', 'rune'] {
 		return clean

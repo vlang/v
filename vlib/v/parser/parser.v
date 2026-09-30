@@ -14660,6 +14660,8 @@ fn (mut p Parser) sizeof_expr() flat.NodeId {
 		})
 	}
 	if !p.can_start_type_name()
+		|| (p.tok == .name && !type_name_can_init(p.lit)
+			&& p.translated_sizeof_name_is_const(p.lit))
 		|| (p.is_translated && p.tok == .name
 			&& (p.is_local_binding(p.lit)
 				|| p.translated_sizeof_name_is_global(p.lit)
@@ -16328,8 +16330,8 @@ fn (p &Parser) anonymous_struct_candidate_field_types(candidate string, field_na
 
 fn anonymous_struct_untyped_numeric_literal_matches(value flat.Node, expected string) bool {
 	if value.kind == .int_literal {
-		return expected in ['int', 'i8', 'i16', 'i32', 'i64', 'isize', 'u8', 'byte', 'u16', 'u32',
-			'u64', 'usize', 'f32', 'f64']
+		return expected in ['int', 'i8', 'i16', 'i32', 'i64', 'isize', 'u8', 'u16', 'u32', 'u64',
+			'usize', 'f32', 'f64']
 	}
 	if value.kind == .float_literal {
 		return expected in ['f32', 'f64']

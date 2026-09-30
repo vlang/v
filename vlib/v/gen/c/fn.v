@@ -3417,9 +3417,6 @@ fn pointer_builtin_receiver_name_for_c(typ types.Type) string {
 	if typ is types.Pointer {
 		base := typ.base_type
 		if base is types.Alias {
-			if base.name == 'byte' {
-				return 'byteptr'
-			}
 			return pointer_builtin_receiver_name_for_c(base)
 		}
 		if base is types.Char {
