@@ -20,8 +20,8 @@ fn end_pointer(n int, z &U8) &U8 {
 
 fn test_pointer_cast_to_an_alias_of_an_integer_type() {
 	all_ones := &U8(-1)
-	assert usize(all_ones) == max_u64
-	assert usize(end_pointer(-1, unsafe { nil })) == max_u64
+	assert usize(all_ones) == ~usize(0)
+	assert usize(end_pointer(-1, unsafe { nil })) == ~usize(0)
 	five := &U8(5)
 	assert usize(five) == 5
 }
