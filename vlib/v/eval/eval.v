@@ -6408,6 +6408,7 @@ fn (e &Eval) sizeof_type_layout(raw_name string, module_name string, seen []stri
 		'bool', 'i8', 'u8', 'char' { TypeLayout{ size: 1, align: 1 } }
 		'i16', 'u16' { TypeLayout{ size: 2, align: 2 } }
 		'i32', 'u32', 'rune', 'f32' { TypeLayout{ size: 4, align: 4 } }
+		'i128', 'u128' { TypeLayout{ size: 16, align: 16 } }
 		'string' { TypeLayout{ size: 24, align: 8 } }
 		'IError' { TypeLayout{ size: 48, align: 8 } }
 		else { TypeLayout{ size: 8, align: 8 } }

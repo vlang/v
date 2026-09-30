@@ -779,3 +779,28 @@ fn main() { worker.measure() }
 	e.run_files(p.a) or { panic(err) }
 	assert e.stdout() == '1\n'
 }
+
+fn test_eval_sizeof_byte_128_bit_values_use_their_full_width() {
+	mut e := create()
+	e.run_text('
+struct Mixed {
+	a u128
+	b u64
+	c u128
+}
+
+const byte = i128(1)
+
+fn main() {
+	wide := u128(1)
+	pair := [2]u128{}
+	mixed := Mixed{}
+	println(sizeof(byte))
+	println(sizeof(wide))
+	println(sizeof(pair))
+	println(sizeof(mixed))
+	println(sizeof(i128))
+}
+') or { panic(err) }
+	assert e.stdout() == '16\n16\n32\n48\n16\n'
+}

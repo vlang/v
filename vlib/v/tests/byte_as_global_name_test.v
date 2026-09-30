@@ -21,3 +21,7 @@ fn test_byte_global_reads_and_writes() {
 	byte = 12
 	assert read_byte_global() == 12
 }
+
+fn test_sizeof_byte_global_uses_its_type() {
+	assert sizeof(byte) == sizeof(int)
+}
