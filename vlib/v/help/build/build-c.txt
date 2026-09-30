@@ -120,9 +120,9 @@ see also `v help build`.
    -bare-builtin-dir <bare-builtin-dir>
       Use with `-freestanding`. This specifies the directory to the
       implementation of some basic builtin functions. The list is as follows:
-         bare_print(buf &byte, len u64)
+         bare_print(buf &u8, len u64)
             Print len characters from the buffer pointed to by buf to stdout.
-         bare_eprint(buf &byte, len u64)
+         bare_eprint(buf &u8, len u64)
             Print len characters from the buffer pointed to by buf to stderr.
          bare_panic(msg string)
             Print "V panic: " + msg, along with an optional backtrace
