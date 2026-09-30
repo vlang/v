@@ -12085,7 +12085,7 @@ fn map_str_kind(tc &types.TypeChecker, typ types.Type) int {
 		if name in ['i8', 'i16', 'i32', 'i64', 'int'] {
 			return 2
 		}
-		if name in ['u8', 'byte'] {
+		if name in ['u8'] {
 			return 3
 		}
 		if name in ['u16', 'u32', 'u64'] {
@@ -17988,7 +17988,7 @@ fn builtin_ast_type_idx(name string) int {
 		'int' { 8 }
 		'i64' { 9 }
 		'isize' { 10 }
-		'u8', 'byte' { 11 }
+		'u8' { 11 }
 		'u16' { 12 }
 		'u32' { 13 }
 		'u64' { 14 }
@@ -18531,7 +18531,7 @@ fn array_membership_fn_name(elem_type types.Type, fixed bool) string {
 	elem_name := elem_type.name()
 	suffix := match elem_name {
 		'string' { 'string' }
-		'u8', 'byte' { 'u8' }
+		'u8' { 'u8' }
 		else { 'int' }
 	}
 
@@ -23232,6 +23232,9 @@ fn (g &FlatGen) global_c_name(name string) string {
 	}
 	if name.starts_with('C.') {
 		return g.cname(name[2..])
+	}
+	if name == 'byte' {
+		return g.cname('main.byte')
 	}
 	return g.cname(name)
 }

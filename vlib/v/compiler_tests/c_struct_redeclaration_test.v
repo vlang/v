@@ -74,7 +74,7 @@ fn test_c_struct_redeclaration_checks_field_signature() {
 	assert partial_view_bad.output.contains('cannot redeclare C struct `C.HeaderEvent`'), partial_view_bad.output
 
 	alias_good := run_v3_source(v3_bin, 'good_c_struct_alias_field_redeclaration',
-		'struct C.Foo {\n\tx byte\n}\n\nstruct C.Foo {\n\tx u8\n}\n\nfn main() {}\n')
+		'type MyByte = u8\n\nstruct C.Foo {\n\tx MyByte\n}\n\nstruct C.Foo {\n\tx u8\n}\n\nfn main() {}\n')
 	assert alias_good.exit_code == 0, alias_good.output
 	assert !alias_good.output.contains('C compilation failed'), alias_good.output
 

@@ -1447,7 +1447,7 @@ fn (t &Transformer) sql_transform_type_is_struct(field_type string) bool {
 		clean = clean[1..]
 	}
 	if clean in ['bool', 'i8', 'i16', 'int', 'i64', 'u8', 'u16', 'u32', 'u64', 'f32', 'f64', 'string',
-		'rune', 'byte', 'time.Time'] {
+		'rune', 'time.Time'] {
 		return false
 	}
 	if clean.starts_with('[]') {

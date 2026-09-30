@@ -1843,7 +1843,7 @@ pub fn (s string) to_upper() string {
 // is_upper returns `true` if all ASCII letters in the string are uppercase,
 // and the string contains at least one uppercase ASCII letter.
 // It only works when the input is composed entirely from ASCII characters.
-// See also: [`byte.is_capital`](#byte.is_capital)
+// See also: [`u8.is_capital`](#u8.is_capital)
 // Example: assert 'HELLO V'.is_upper() == true
 @[direct_array_access]
 pub fn (s string) is_upper() bool {

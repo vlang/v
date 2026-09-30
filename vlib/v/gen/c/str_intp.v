@@ -196,7 +196,7 @@ fn is_string_interp_signed_int_type(name string) bool {
 }
 
 fn is_string_interp_unsigned_int_type(name string) bool {
-	return name in ['u8', 'byte', 'u16', 'u32', 'u64', 'usize']
+	return name in ['u8', 'u16', 'u32', 'u64', 'usize']
 }
 
 fn is_string_interp_char_code_type(name string) bool {

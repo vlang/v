@@ -964,8 +964,8 @@ fn (t &Transformer) alias_receiver_type_matches(base_type string, alias_type str
 
 // is_integer_type_name reports whether is integer type name applies in transform.
 fn (t &Transformer) is_integer_type_name(typ string) bool {
-	return typ in ['int', 'i8', 'i16', 'i32', 'i64', 'u8', 'byte', 'u16', 'u32', 'u64', 'rune',
-		'isize', 'usize', 'i128', 'u128']
+	return typ in ['int', 'i8', 'i16', 'i32', 'i64', 'u8', 'u16', 'u32', 'u64', 'rune', 'isize',
+		'usize', 'i128', 'u128']
 }
 
 // raw_var_type_for_expr supports raw var type for expr handling for Transformer.
@@ -5579,7 +5579,7 @@ fn unsigned_type_text_accepts_int_literal(typ string, value int) bool {
 		return false
 	}
 	max := match typ {
-		'u8', 'byte' { 255 }
+		'u8' { 255 }
 		'u16' { 65535 }
 		'u32', 'u64', 'usize' {
 			return true
@@ -5624,7 +5624,7 @@ fn promote_numeric_stringify_type(a string, b string) string {
 
 fn int_stringify_rank(typ string) int {
 	return match typ {
-		'i8', 'u8', 'byte' { 8 }
+		'i8', 'u8' { 8 }
 		'i16', 'u16' { 16 }
 		'i32', 'u32', 'int', 'rune' { 32 }
 		'i64', 'u64', 'isize', 'usize' { 64 }
@@ -5635,7 +5635,7 @@ fn int_stringify_rank(typ string) int {
 // is_numeric_stringify_type reports whether is numeric stringify type applies in transform.
 fn (t &Transformer) is_numeric_stringify_type(typ string) bool {
 	is_number := typ in ['int', 'int literal', 'i8', 'i16', 'i32', 'i64', 'isize', 'usize', 'u8',
-		'byte', 'u16', 'u32', 'u64', 'f32', 'f64', 'float literal', 'rune']
+		'u16', 'u32', 'u64', 'f32', 'f64', 'float literal', 'rune']
 	return is_number || typ in t.enum_types
 }
 
@@ -6014,7 +6014,7 @@ fn (mut t Transformer) wrap_string_conversion(expr flat.NodeId, typ string) flat
 		'bool' {
 			return t.make_call_typed('bool.str', [expr], 'string')
 		}
-		'u8', 'byte', 'u16', 'u32', 'usize' {
+		'u8', 'u16', 'u32', 'usize' {
 			// C integer promotion would pass an untruncated `int` into the u64
 			// param (`u8(255) + u8(1)` is 256 in C); cast back to the value
 			// type first so the arithmetic wraps at the V type's width.
@@ -6725,7 +6725,7 @@ fn (mut t Transformer) lower_ref_value_str_with_custom_prefix(expr flat.NodeId, 
 		normalized_elem = normalized_elem.all_after_last('.')
 	}
 	if normalized_elem !in ['string', 'rune', 'bool', 'i8', 'i16', 'i32', 'i64', 'int', 'isize',
-		'u8', 'byte', 'u16', 'u32', 'u64', 'usize', 'f32', 'f64'] {
+		'u8', 'u16', 'u32', 'u64', 'usize', 'f32', 'f64'] {
 		if aggregate := t.stringify_aggregate_type_name(elem_type) {
 			if str_fn := t.aggregate_str_method_name(aggregate) {
 				t.mark_fn_used_name(str_fn)
@@ -7167,7 +7167,7 @@ fn (mut t Transformer) optional_payload_alias_display_name(typ string) ?string {
 	}
 	resolved := t.alias_str_resolved_base_type(base)
 	if resolved !in ['string', 'bool', 'rune', 'char', 'i8', 'i16', 'i32', 'i64', 'int', 'isize',
-		'u8', 'byte', 'u16', 'u32', 'u64', 'usize', 'f32', 'f64'] {
+		'u8', 'u16', 'u32', 'u64', 'usize', 'f32', 'f64'] {
 		return none
 	}
 	return t.alias_string_display_name(alias_name, base)
@@ -7195,8 +7195,8 @@ fn (t &Transformer) alias_str_needs_name_wrapper(base_type string) bool {
 		return false
 	}
 	return clean !in ['string', 'bool', 'rune', 'char', 'i8', 'i16', 'i32', 'i64', 'int', 'isize',
-		'u8', 'byte', 'u16', 'u32', 'u64', 'usize', 'f32', 'f64', 'int literal', 'float literal',
-		'voidptr', 'byteptr', 'charptr', 'nil', 'void']
+		'u8', 'u16', 'u32', 'u64', 'usize', 'f32', 'f64', 'int literal', 'float literal', 'voidptr',
+		'byteptr', 'charptr', 'nil', 'void']
 }
 
 fn (mut t Transformer) lower_struct_str(expr flat.NodeId, struct_type string) ?flat.NodeId {
@@ -7446,7 +7446,7 @@ fn (mut t Transformer) struct_field_str_value(expr flat.NodeId, raw_field_type s
 			if pointer_depth == 1 && elem_type == 'char' {
 				return t.string_plus(t.make_string_literal('&'), t.lower_charptr_struct_field_str(expr))
 			}
-			if pointer_depth > 1 || elem_type in ['u8', 'byte', 'voidptr'] {
+			if pointer_depth > 1 || elem_type in ['u8', 'voidptr'] {
 				address := t.make_call_typed('ptr_str', [expr], 'string')
 				return t.string_plus(t.make_string_literal('&'), address)
 			}
@@ -8647,8 +8647,8 @@ fn (mut t Transformer) wrap_formatted_string_conversion(expr flat.NodeId, typ st
 		return t.wide_integer_format_conversion(expr, typ, format)
 	}
 	if char_format := character_format(format) {
-		if normalized_typ in ['int', 'i8', 'i16', 'i32', 'i64', 'isize', 'u8', 'byte', 'u16', 'u32',
-			'u64', 'usize', 'char', 'rune'] {
+		if normalized_typ in ['int', 'i8', 'i16', 'i32', 'i64', 'isize', 'u8', 'u16', 'u32', 'u64',
+			'usize', 'char', 'rune'] {
 			arg := if normalized_typ == 'int' {
 				expr
 			} else {
@@ -8670,7 +8670,7 @@ fn (mut t Transformer) wrap_formatted_string_conversion(expr flat.NodeId, typ st
 		return t.signed_plus_string(expr, clean_typ)
 	}
 	if base := integer_format_base(format) {
-		if clean_typ in ['u8', 'byte', 'u16', 'u32', 'u64', 'usize'] {
+		if clean_typ in ['u8', 'u16', 'u32', 'u64', 'usize'] {
 			arg := t.widened_unsigned_format_arg(expr, clean_typ)
 			formatted := t.make_call_typed('strconv__format_uint', [arg, t.make_int_literal(base)], 'string')
 			return if format == 'X' {
@@ -8689,7 +8689,7 @@ fn (mut t Transformer) wrap_formatted_string_conversion(expr flat.NodeId, typ st
 		}
 	}
 	if base_format := zero_padded_integer_base_format(format) {
-		converted := if clean_typ in ['u8', 'byte', 'u16', 'u32', 'u64', 'usize'] {
+		converted := if clean_typ in ['u8', 'u16', 'u32', 'u64', 'usize'] {
 			arg := t.widened_unsigned_format_arg(expr, clean_typ)
 			t.make_call_typed('strconv__format_uint', [arg, t.make_int_literal(base_format.base)], 'string')
 		} else if clean_typ in ['int', 'i8', 'i16', 'i32', 'i64', 'isize', 'rune'] {
@@ -8709,9 +8709,9 @@ fn (mut t Transformer) wrap_formatted_string_conversion(expr flat.NodeId, typ st
 		return t.make_call_typed('v3_string_rpad_zero', [converted, t.make_int_literal(width)], 'string')
 	}
 	if width := zero_padded_decimal_width(format) {
-		if clean_typ in ['int', 'i8', 'i16', 'i32', 'i64', 'isize', 'rune', 'usize', 'u8', 'byte',
-			'u16', 'u32', 'u64'] {
-			if clean_typ in ['u64', 'usize', 'u32', 'u16', 'u8', 'byte'] {
+		if clean_typ in ['int', 'i8', 'i16', 'i32', 'i64', 'isize', 'rune', 'usize', 'u8', 'u16',
+			'u32', 'u64'] {
+			if clean_typ in ['u64', 'usize', 'u32', 'u16', 'u8'] {
 				arg := t.widened_unsigned_format_arg(expr, clean_typ)
 				return t.make_call_typed('v3_u64_zpad', [arg, t.make_int_literal(width)], 'string')
 			}
@@ -8728,7 +8728,7 @@ fn (mut t Transformer) wrap_formatted_string_conversion(expr flat.NodeId, typ st
 	}
 	if width := static_format_width(format) {
 		mut converted := if base := integer_format_base_suffix(format) {
-			if clean_typ in ['u8', 'byte', 'u16', 'u32', 'u64', 'usize'] {
+			if clean_typ in ['u8', 'u16', 'u32', 'u64', 'usize'] {
 				arg := t.widened_unsigned_format_arg(expr, clean_typ)
 				t.make_call_typed('strconv__format_uint', [arg, t.make_int_literal(base)], 'string')
 			} else if clean_typ in ['int', 'i8', 'i16', 'i32', 'i64', 'isize', 'rune'] {
@@ -8856,8 +8856,8 @@ fn (mut t Transformer) dynamic_format_conversion(expr flat.NodeId, typ string, c
 		return t.make_call_typed('v3_string_pad', [converted, width, t.make_int_literal(0)], 'string')
 	}
 	if width := t.dynamic_zero_width_expr(format) {
-		if clean_typ in ['int', 'i8', 'i16', 'i32', 'i64', 'isize', 'rune', 'usize', 'u8', 'byte',
-			'u16', 'u32', 'u64'] {
+		if clean_typ in ['int', 'i8', 'i16', 'i32', 'i64', 'isize', 'rune', 'usize', 'u8', 'u16',
+			'u32', 'u64'] {
 			converted := t.wrap_formatted_string_conversion(expr, typ, 'd')
 			return t.make_call_typed('v3_string_zpad', [converted, width], 'string')
 		}
@@ -9160,7 +9160,7 @@ fn (t &Transformer) enum_backing_is_unsigned(clean_typ string) bool {
 		&& t.cur_module !in ['main', 'builtin'] {
 		backing = t.enum_backing_types['${t.cur_module}.${clean_typ}'] or { '' }
 	}
-	return backing in ['u8', 'byte', 'u16', 'u32', 'u64', 'usize']
+	return backing in ['u8', 'u16', 'u32', 'u64', 'usize']
 }
 
 fn (t &Transformer) is_formatted_enum_type(clean_typ string) bool {
@@ -9810,9 +9810,9 @@ fn (t &Transformer) map_str_type_has_transform_conversion(typ string) bool {
 	if t.resolve_interface_type_name(clean).len > 0 {
 		return true
 	}
-	if clean in ['string', 'rune', 'bool', 'i8', 'i16', 'i32', 'i64', 'int', 'isize', 'u8', 'byte',
-		'u16', 'u32', 'u64', 'usize', 'i128', 'u128', 'f32', 'f64', 'int literal', 'float literal',
-		'voidptr', 'byteptr', 'charptr', 'IError'] {
+	if clean in ['string', 'rune', 'bool', 'i8', 'i16', 'i32', 'i64', 'int', 'isize', 'u8', 'u16',
+		'u32', 'u64', 'usize', 'i128', 'u128', 'f32', 'f64', 'int literal', 'float literal', 'voidptr',
+		'byteptr', 'charptr', 'IError'] {
 		return true
 	}
 	if clean in t.enum_types || clean in t.structs || clean in t.sum_types {
@@ -9851,7 +9851,7 @@ fn (t &Transformer) map_str_kind_for_type(typ string) int {
 		'isize', 'char', 'i8', 'i16', 'i32', 'i64', 'int' {
 			return 2
 		}
-		'usize', 'u8', 'byte', 'u16', 'u32', 'u64' {
+		'usize', 'u8', 'u16', 'u32', 'u64' {
 			return 3
 		}
 		'f32', 'f64' {
@@ -11643,7 +11643,7 @@ fn (mut t Transformer) validate_cgen_array_method_args(node flat.Node, base_id f
 		base_type
 	}
 	display_name := '${base_name}.${method}'
-	if method == 'bytestr' && base_type !in ['[]u8', '[]byte'] {
+	if method == 'bytestr' && base_type != '[]u8' {
 		t.record_monomorph_error('unknown function `${display_name}`')
 		return false
 	}
@@ -13521,8 +13521,8 @@ fn index_node_is_range(a &flat.FlatAst, node flat.Node) bool {
 	return false
 }
 
-const primitive_cast_type_names = ['bool', 'int', 'i8', 'i16', 'i32', 'i64', 'isize', 'u8', 'byte',
-	'u16', 'u32', 'u64', 'usize', 'f32', 'f64', 'rune', 'char']!
+const primitive_cast_type_names = ['bool', 'int', 'i8', 'i16', 'i32', 'i64', 'isize', 'u8', 'u16',
+	'u32', 'u64', 'usize', 'f32', 'f64', 'rune', 'char']!
 
 // try_lower_primitive_cast_call supports try lower primitive cast call handling for Transformer.
 fn (mut t Transformer) try_lower_primitive_cast_call(node flat.Node) ?flat.NodeId {
@@ -14065,10 +14065,7 @@ fn (mut t Transformer) try_lower_receiver_method_call(id flat.NodeId, node flat.
 		&& t.type_text_has_generic_placeholder(base_type, t.cur_module) {
 		return none
 	}
-	mut builtin_base_type := t.normalize_type_alias(base_type)
-	if builtin_base_type == 'byte' {
-		builtin_base_type = 'u8'
-	}
+	builtin_base_type := t.normalize_type_alias(base_type)
 	if base_type == '[]rune' && method == 'string' {
 		return t.make_call_typed('Array_rune__string', [t.transform_expr(base_id)], 'string')
 	}
@@ -14175,7 +14172,7 @@ fn (mut t Transformer) try_lower_receiver_method_call(id flat.NodeId, node flat.
 	if builtin_base_type == 'string' && method == 'hex' && !base_is_pointer {
 		return t.make_call_typed('string.hex', [t.transform_expr(base_id)], 'string')
 	}
-	if base_type == '[]u8' || base_type == '[]byte' {
+	if base_type == '[]u8' {
 		if method == 'bytestr' {
 			return t.make_call_typed('Array_u8__bytestr', [t.transform_expr(base_id)], 'string')
 		}
@@ -15220,7 +15217,7 @@ fn specialized_uint_literal_value(text string) ?u64 {
 
 fn specialized_int_literal_fits_type(literal SpecializedIntLiteral, typ string) bool {
 	return match typ {
-		'u8', 'byte' { !literal.negative && literal.magnitude <= 255 }
+		'u8' { !literal.negative && literal.magnitude <= 255 }
 		'u16' { !literal.negative && literal.magnitude <= 65535 }
 		'u32' { !literal.negative && literal.magnitude <= u64(4294967295) }
 		'u64', 'usize' { !literal.negative }

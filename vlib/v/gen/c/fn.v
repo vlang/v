@@ -1430,6 +1430,8 @@ const c_main_runtime_shadow_fn_names = {
 	'accept':  true
 	'perror':  true
 	'id':      true
+	// The C preamble keeps `typedef uint8_t byte;`.
+	'byte':    true
 }
 
 fn (g &FlatGen) main_runtime_shadow_fn_c_name(module_name string, name string) ?string {
@@ -3422,9 +3424,6 @@ fn pointer_builtin_receiver_name_for_c(typ types.Type) string {
 	if typ is types.Pointer {
 		base := typ.base_type
 		if base is types.Alias {
-			if base.name == 'byte' {
-				return 'byteptr'
-			}
 			return pointer_builtin_receiver_name_for_c(base)
 		}
 		if base is types.Char {

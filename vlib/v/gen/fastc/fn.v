@@ -1368,7 +1368,6 @@ fn fastc_output_c_type(t string) string {
 fn fastc_primitive_c_type(raw_type string) ?string {
 	return match raw_type {
 		'bool' { 'bool' }
-		'byte' { 'byte' }
 		'char' { 'char' }
 		'f32' { 'f32' }
 		'f64' { 'f64' }

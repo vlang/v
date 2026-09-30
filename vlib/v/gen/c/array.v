@@ -1202,7 +1202,7 @@ fn array_last_index_suffix(elem_type types.Type) ?string {
 	elem_name := elem_type.name()
 	return match elem_name {
 		'string' { 'string' }
-		'u8', 'byte' { 'u8' }
+		'u8' { 'u8' }
 		'int' { 'int' }
 		else { none }
 	}

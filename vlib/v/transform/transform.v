@@ -2175,8 +2175,8 @@ fn (t &Transformer) interface_boxed_impl_name_is_direct(name string) bool {
 		|| name.starts_with('map[') || name.starts_with('builtin.') {
 		return true
 	}
-	if name in ['bool', 'int', 'i8', 'i16', 'i32', 'i64', 'isize', 'usize', 'u8', 'byte', 'u16',
-		'u32', 'u64', 'f32', 'f64', 'string', 'char', 'rune', 'voidptr'] {
+	if name in ['bool', 'int', 'i8', 'i16', 'i32', 'i64', 'isize', 'usize', 'u8', 'u16', 'u32',
+		'u64', 'f32', 'f64', 'string', 'char', 'rune', 'voidptr'] {
 		return true
 	}
 	if name in t.tc.structs || name in t.tc.type_aliases {
@@ -19949,7 +19949,7 @@ fn (mut t Transformer) transform_struct_init(id flat.NodeId, node flat.Node) fla
 		if node.children_count == 0 {
 			if clean_value == 'string' || clean_value == 'bool'
 				|| clean_value in ['f32', 'f64', 'int', 'i8', 'i16', 'i32', 'i64', 'isize', 'usize',
-					'u8', 'byte', 'u16', 'u32', 'u64', 'rune', 'char'] {
+					'u8', 'u16', 'u32', 'u64', 'rune', 'char'] {
 				return t.zero_value_for_type(clean_value)
 			}
 			if default_sum := t.make_default_sum_value(clean_value) {
@@ -24723,7 +24723,7 @@ fn (t &Transformer) sum_field_name(variant string) string {
 		'i8' { '_i8' }
 		'i16' { '_i16' }
 		'i64' { '_i64' }
-		'u8', 'byte' { '_u8' }
+		'u8' { '_u8' }
 		'u16' { '_u16' }
 		'u32' { '_u32' }
 		'u64' { '_u64' }
@@ -25828,7 +25828,7 @@ fn is_numeric_type_name(name string) bool {
 
 fn is_integer_type_name(name string) bool {
 	return name == 'int' || name == 'i8' || name == 'i16' || name == 'i64' || name == 'u8'
-		|| name == 'byte' || name == 'u16' || name == 'u32' || name == 'u64' || name == 'isize'
+		|| name == 'u16' || name == 'u32' || name == 'u64' || name == 'isize'
 		|| name == 'usize' || name == 'rune' || name == 'i128' || name == 'u128'
 }
 

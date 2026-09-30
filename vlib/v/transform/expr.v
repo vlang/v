@@ -2768,7 +2768,7 @@ fn (mut t Transformer) transform_in_expr(id flat.NodeId, node flat.Node) flat.No
 				t.transform_expr(lhs_id)
 			}
 			new_rhs := t.transform_value_operand(rhs_id)
-			fn_name := if t.node_type(lhs_id) in ['u8', 'byte'] {
+			fn_name := if t.node_type(lhs_id) in ['u8'] {
 				'string__contains_u8'
 			} else {
 				'string__contains'
@@ -4201,7 +4201,7 @@ fn (t &Transformer) membership_container_is_pointer_array(typ string) bool {
 fn array_contains_fn_name(elem string) string {
 	return match elem {
 		'string' { 'array_contains_string' }
-		'u8', 'byte' { 'array_contains_u8' }
+		'u8' { 'array_contains_u8' }
 		else { 'array_contains_int' }
 	}
 }
@@ -4210,7 +4210,7 @@ fn array_contains_fn_name(elem string) string {
 fn fixed_array_contains_fn_name(elem string) string {
 	return match elem {
 		'string' { 'fixed_array_contains_string' }
-		'u8', 'byte' { 'fixed_array_contains_u8' }
+		'u8' { 'fixed_array_contains_u8' }
 		else { 'fixed_array_contains_int' }
 	}
 }

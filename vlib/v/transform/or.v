@@ -1501,8 +1501,8 @@ fn (mut t Transformer) zero_value_for_type(typ string) flat.NodeId {
 	if clean in ['void', ''] {
 		return t.make_int_literal(0)
 	}
-	if clean in ['int', 'i8', 'i16', 'i32', 'i64', 'isize', 'usize', 'u8', 'byte', 'u16', 'u32',
-		'u64', 'rune', 'char']
+	if clean in ['int', 'i8', 'i16', 'i32', 'i64', 'isize', 'usize', 'u8', 'u16', 'u32', 'u64',
+		'rune', 'char']
 		|| clean in t.enum_types {
 		return t.make_int_literal(0)
 	}

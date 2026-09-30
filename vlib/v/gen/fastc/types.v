@@ -1523,12 +1523,12 @@ fn (g &Parser) array_element_type(typ string) ?string {
 }
 
 fn fastc_is_integer_type(typ string) bool {
-	return typ in ['byte', 'char', 'i8', 'i16', 'i32', 'i64', 'int', 'isize', 'rune', 'u8', 'u16',
-		'u32', 'u64', 'unsigned int', 'usize']
+	return typ in ['char', 'i8', 'i16', 'i32', 'i64', 'int', 'isize', 'rune', 'u8', 'u16', 'u32',
+		'u64', 'unsigned int', 'usize']
 }
 
 fn fastc_is_unsigned_integer_type(typ string) bool {
-	return typ in ['byte', 'u8', 'u16', 'u32', 'u64', 'unsigned int', 'usize']
+	return typ in ['u8', 'u16', 'u32', 'u64', 'unsigned int', 'usize']
 }
 
 fn fastc_is_wide_unsigned_integer_type(typ string) bool {

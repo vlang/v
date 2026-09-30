@@ -11488,8 +11488,8 @@ pub fn (tc &TypeChecker) interface_accepts_implicit_str(iface_name string) bool 
 }
 
 fn implicit_str_builtin_type_names() []string {
-	return ['bool', 'int', 'i8', 'i16', 'i32', 'i64', 'isize', 'usize', 'u8', 'byte', 'u16', 'u32',
-		'u64', 'f32', 'f64', 'string', 'rune']
+	return ['bool', 'int', 'i8', 'i16', 'i32', 'i64', 'isize', 'usize', 'u8', 'u16', 'u32', 'u64',
+		'f32', 'f64', 'string', 'rune']
 }
 
 fn interface_impl_candidate_name(name string) string {
@@ -16857,8 +16857,8 @@ pub fn (tc &TypeChecker) resolve_type(id flat.NodeId) Type {
 	return tc.widen_mixed_integer_expr_type(id, typ)
 }
 
-const narrow_integer_type_names = ['int', 'i8', 'i16', 'i32', 'i64', 'isize', 'u8', 'byte', 'u16',
-	'u32', 'u64', 'usize', 'rune', 'char']
+const narrow_integer_type_names = ['int', 'i8', 'i16', 'i32', 'i64', 'isize', 'u8', 'u16', 'u32',
+	'u64', 'usize', 'rune', 'char']
 
 // widen_mixed_integer_expr_type gives an arithmetic node the 128-bit type of its
 // widest operand. The type recorded for an infix in argument position is the

@@ -208,7 +208,7 @@ fn (t &Transformer) for_loop_var_unsigned_type(name string) string {
 	for typ.starts_with('&') {
 		typ = typ[1..]
 	}
-	if typ in ['u8', 'byte', 'u16', 'u32', 'u64', 'usize'] {
+	if typ in ['u8', 'u16', 'u32', 'u64', 'usize'] {
 		return typ
 	}
 	return ''
