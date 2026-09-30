@@ -135,15 +135,27 @@ struct TopLevelStmt {
 	file_name   string
 }
 
+struct TypeLayout {
+	size  i64
+	align i64 = 1
+}
+
 struct StructInfo {
+	params      []string
 	module_name string
+	file_name   string
 	name        string
+	is_union    bool
+	pack        i64
+	align       i64
 mut:
 	fields []FieldInfo
 }
 
 struct TypeAliasInfo {
+	params      []string
 	module_name string
+	file_name   string
 	target      string
 }
 
@@ -236,27 +248,29 @@ pub mut:
 	capture_output bool
 	prefs          pref.Preferences
 mut:
-	a                 &flat.FlatAst = unsafe { nil }
-	stdout_data       string
-	stderr_data       string
-	functions         map[string]map[string]FunctionDef
-	consts            map[string]map[string]ConstEntry
-	globals           map[string]map[string]Value
-	global_types      map[string]map[string]string
-	global_inits      []GlobalEntry
-	enum_inits        []EnumInitEntry
-	implicit_main     []TopLevelStmt
-	structs           map[string]StructInfo
-	enum_fields       map[string][]string
-	sum_types         map[string][]string
-	type_aliases      map[string]TypeAliasInfo
-	type_names        map[string]map[string]bool
-	module_imports    map[string][]string
-	module_order      []string
-	file_import_alias map[string]map[string]string
-	modules           map[string]bool
-	scopes            []ScopeFrame
-	call_stack        []CallFrame
+	a                    &flat.FlatAst = unsafe { nil }
+	stdout_data          string
+	stderr_data          string
+	functions            map[string]map[string]FunctionDef
+	consts               map[string]map[string]ConstEntry
+	globals              map[string]map[string]Value
+	global_types         map[string]map[string]string
+	global_inits         []GlobalEntry
+	enum_inits           []EnumInitEntry
+	implicit_main        []TopLevelStmt
+	structs              map[string]StructInfo
+	enum_fields          map[string][]string
+	enum_types           map[string]TypeAliasInfo
+	sizeof_type_bindings map[string]TypeLayout
+	sum_types            map[string][]string
+	type_aliases         map[string]TypeAliasInfo
+	type_names           map[string]map[string]bool
+	module_imports       map[string][]string
+	module_order         []string
+	file_import_alias    map[string]map[string]string
+	modules              map[string]bool
+	scopes               []ScopeFrame
+	call_stack           []CallFrame
 }
 
 // new returns a new evaluator configured for direct execution.
@@ -336,6 +350,8 @@ fn (mut e Eval) reset(a &flat.FlatAst) {
 	e.implicit_main = []TopLevelStmt{}
 	e.structs = map[string]StructInfo{}
 	e.enum_fields = map[string][]string{}
+	e.enum_types = map[string]TypeAliasInfo{}
+	e.sizeof_type_bindings = map[string]TypeLayout{}
 	e.sum_types = map[string][]string{}
 	e.type_aliases = map[string]TypeAliasInfo{}
 	e.type_names = map[string]map[string]bool{}
@@ -423,6 +439,12 @@ fn (mut e Eval) register_implicit_main_stmt(module_name string, file_name string
 }
 
 fn (mut e Eval) register_files() ! {
+	mut declaration_attrs := map[int][]string{}
+	for node in e.a.nodes {
+		if node.kind == .directive && node.value.starts_with('@attributes:') {
+			declaration_attrs[node.value.all_after(':').int()] = node.generic_params().clone()
+		}
+	}
 	for file_id, file_node in e.a.nodes {
 		if file_node.kind != .file || file_node.children_count == 0 {
 			continue
@@ -510,6 +532,16 @@ fn (mut e Eval) register_files() ! {
 						}
 						enum_fields << field.value
 					}
+					backing := child.generic_params()
+					e.enum_types[enum_name] = TypeAliasInfo{
+						module_name: module_name
+						file_name:   file_name
+						target:      if backing.len > 0 && backing[0].len > 0 {
+							backing[0]
+						} else {
+							'i32'
+						}
+					}
 					e.enum_fields[enum_name] = enum_fields
 					if module_name in ['main', 'builtin'] {
 						e.enum_fields[child.value] = enum_fields
@@ -542,8 +574,27 @@ fn (mut e Eval) register_files() ! {
 							}
 						}
 					}
+					attrs := declaration_attrs[int(child_id)] or { []string{} }
+					mut pack := i64(0)
+					for attr in attrs {
+						attr_name := attr.all_before(':').trim_space()
+						if attr_name in ['packed', '_packed'] { pack = 1 }
+						if attr_name == '_pack' {
+							pack = attr.all_after(':').trim_space().trim('\'"').i64()
+						}
+					}
+					mut align := i64(0)
+					for part in child.typ.split(',') {
+						if part == 'aligned' { align = 16 }
+						if part.starts_with('aligned=') { align = part.all_after('=').i64() }
+					}
 					info := StructInfo{
+						params:      child.generic_params().clone()
 						module_name: module_name
+						file_name:   file_name
+						is_union:    'union' in child.typ.split(',')
+						pack:        pack
+						align:       align
 						name:        child.value
 						fields:      fields
 					}
@@ -568,7 +619,9 @@ fn (mut e Eval) register_files() ! {
 						}
 					} else if child.typ.len > 0 {
 						info := TypeAliasInfo{
+							params:      child.generic_params().clone()
 							module_name: module_name
+							file_name:   file_name
 							target:      child.typ
 						}
 						qualified_name := e.qualify_type_name(module_name, child.value)
@@ -1677,14 +1730,14 @@ fn (e &Eval) infer_call_return_type_name(callee_id flat.NodeId, allow_locals boo
 			for i := e.scopes.len - 1; i >= 0 && i >= scope_start; i-- {
 				if value := e.scopes[i].vars[callee.value] {
 					if value is FnValue {
-						return e.qualify_nested_type_name(value.module_name, e.node(value.node).typ)
+						return e.qualify_declared_type_name(value.module_name, value.file_name, e.node(value.node).typ)
 					}
 					return ''
 				}
 			}
 		}
 		if target := e.function_def(e.current_module_name(), callee.value) {
-			return e.qualify_nested_type_name(target.module_name, e.node(target.node).typ)
+			return e.qualify_declared_type_name(target.module_name, target.file_name, e.node(target.node).typ)
 		}
 	}
 	if callee.kind == .selector && callee.children_count > 0 {
@@ -1695,13 +1748,13 @@ fn (e &Eval) infer_call_return_type_name(callee_id flat.NodeId, allow_locals boo
 				callee.value)
 			module_name := e.type_value_module_name(TypeValue{ name: type_name })
 			if target := e.function_def(module_name, static_name) {
-				return e.qualify_nested_type_name(target.module_name, e.node(target.node).typ)
+				return e.qualify_declared_type_name(target.module_name, target.file_name, e.node(target.node).typ)
 			}
 		}
 		if receiver.kind == .ident && (!allow_locals || !e.lookup_var(receiver.value).found) {
 			module_name := e.resolve_module_name(receiver.value)
 			if target := e.function_def(module_name, callee.value) {
-				return e.qualify_nested_type_name(target.module_name, e.node(target.node).typ)
+				return e.qualify_declared_type_name(target.module_name, target.file_name, e.node(target.node).typ)
 			}
 		}
 		mut receiver_type := if !allow_locals && receiver.kind == .ident {
@@ -1716,7 +1769,7 @@ fn (e &Eval) infer_call_return_type_name(callee_id flat.NodeId, allow_locals boo
 		for receiver_type.len > 0 && receiver_type !in seen {
 			seen[receiver_type] = true
 			if target := e.resolve_method_target(receiver_type.trim_left('&'), callee.value) {
-				return e.qualify_nested_type_name(target.module_name, e.node(target.node).typ)
+				return e.qualify_declared_type_name(target.module_name, target.file_name, e.node(target.node).typ)
 			}
 			if alias := e.type_alias_info_in_module(receiver_type, e.current_module_name()) {
 				receiver_type = e.qualify_nested_type_name(alias.module_name, alias.target.trim_left('&'))
@@ -5754,13 +5807,14 @@ fn (e &Eval) qualify_nested_type_name(module_name string, type_name string) stri
 	if name == '' {
 		return ''
 	}
-	if name.starts_with('&') {
-		return '&${e.qualify_nested_type_name(module_name, name[1..])}'
+	if name in e.sizeof_type_bindings { return name }
+	if name.starts_with('&') || name.starts_with('?') || name.starts_with('!') {
+		return '${name[..1]}${e.qualify_nested_type_name(module_name, name[1..])}'
 	}
 	if name.starts_with('[]') {
 		return '[]${e.qualify_nested_type_name(module_name, name[2..])}'
 	}
-	if is_fixed_array_type_name(name) {
+	if is_fixed_array_type_name(name) && !e.sizeof_is_generic_aggregate(name, module_name) {
 		elem := e.qualify_nested_type_name(module_name, fixed_array_elem_type_name(name))
 		raw_len := fixed_array_len_text(name)
 		len := if module_name in e.consts && raw_len in e.consts[module_name] {
@@ -5773,9 +5827,6 @@ fn (e &Eval) qualify_nested_type_name(module_name string, type_name string) stri
 	if name.starts_with('map[') {
 		key_type, value_type := split_map_type(name)
 		return 'map[${e.qualify_nested_type_name(module_name, key_type)}]${e.qualify_nested_type_name(module_name, value_type)}'
-	}
-	if name.starts_with('?') || name.starts_with('!') {
-		return '${name[..1]}${e.qualify_nested_type_name(module_name, name[1..])}'
 	}
 	return e.qualify_type_name(module_name, name)
 }
@@ -5824,17 +5875,25 @@ fn (e &Eval) struct_field_type_name_by_type(type_name string, field_name string)
 	info := e.struct_info(type_name)
 	for field in info.fields {
 		if field.name == field_name {
-			return e.qualify_nested_type_name(field.module_name, field.typ)
+			return e.qualify_declared_type_name(field.module_name, field.file_name, field.typ)
 		}
 	}
 	return ''
 }
 
 fn (e &Eval) struct_info(type_name string) StructInfo {
-	name := e.resolve_struct_type_name(type_name.trim_left('&'))
-	if name in e.structs {
-		return e.structs[name]
+	mut name := type_name.trim_left('&')
+	mut seen := map[string]bool{}
+	for name.len > 0 && name !in seen {
+		seen[name] = true
+		if alias := e.type_alias_info_in_module(name, e.current_module_name()) {
+			name = e.qualify_declared_type_name(alias.module_name, alias.file_name, alias.target).trim_left('&')
+		} else {
+			break
+		}
 	}
+	resolved := e.resolve_struct_type_name(name)
+	if resolved in e.structs { return e.structs[resolved] }
 	return StructInfo{}
 }
 
@@ -6155,39 +6214,80 @@ fn (e &Eval) normalize_type_name(type_name string) string {
 	return e.qualify_type_name(e.current_module_name(), name)
 }
 
+fn (e &Eval) qualify_declared_type_name(module_name string, file_name string, type_name string) string {
+	context := e.declaration_type_context(module_name, file_name)
+	return context.qualify_nested_type_name(module_name, type_name)
+}
+
+// Declaration context avoids caller locals and resolves imports from the declaring file.
+fn (e &Eval) declaration_type_context(module_name string, file_name string) Eval {
+	mut context := *e
+	context.call_stack = [CallFrame{ module_name: module_name, file_name: file_name }]
+	context.scopes = []ScopeFrame{}
+	context.sizeof_type_bindings = map[string]TypeLayout{}
+	return context
+}
+
 fn (e &Eval) infer_sizeof_operand_type_name(id flat.NodeId, seen []flat.NodeId, from_const bool) string {
 	node := e.node(id)
 	if from_const && node.kind == .ident && node.typ.len == 0 {
 		return e.sizeof_const_type_name(node.value, seen) or { '' }
 	}
+	if node.typ.len == 0 && node.kind == .selector && node.children_count > 0 {
+		base := e.node(e.child(node, 0))
+		if base.kind == .ident && (from_const || !e.lookup_var(base.value).found) {
+			module_name := e.resolve_module_name(base.value)
+			if typ := e.sizeof_const_type_name('${module_name}.${node.value}', seen) { return typ }
+		}
+		base_type := e.infer_sizeof_operand_type_name(e.child(node, 0), seen, from_const)
+		if base_type.len > 0 { return e.struct_field_type_name_by_type(base_type, node.value) }
+	}
+	if node.typ.len == 0 && node.kind == .paren && node.children_count > 0 {
+		return e.infer_sizeof_operand_type_name(e.child(node, 0), seen, from_const)
+	}
+	if node.typ.len == 0 && node.kind == .prefix && node.children_count > 0 {
+		typ := e.infer_sizeof_operand_type_name(e.child(node, 0), seen, from_const)
+		if typ.len > 0 {
+			if node.op == .amp { return '&${typ}' }
+			if node.op == .mul { return e.dereferenced_type_name(typ) }
+		}
+	}
+	if node.typ.len == 0 && node.kind == .index && node.children_count > 0 {
+		typ := e.infer_sizeof_operand_type_name(e.child(node, 0), seen, from_const)
+		if typ.starts_with('[]') { return typ[2..] }
+		if is_fixed_array_type_name(typ) { return fixed_array_elem_type_name(typ) }
+		if typ.starts_with('map[') {
+			_, value_type := split_map_type(typ)
+			return value_type
+		}
+	}
 	if from_const && node.kind == .call && node.typ.len == 0 && node.children_count > 0 {
 		return e.infer_call_return_type_name(e.child(node, 0), false)
 	}
 	typ := e.infer_expr_type_name(id)
-	if typ.len > 0 {
-		return typ
-	}
-	if node.kind == .ident {
-		return e.sizeof_const_type_name(node.value, seen) or { '' }
-	}
+	if typ.len > 0 { return typ }
+	if node.kind == .ident { return e.sizeof_const_type_name(node.value, seen) or { '' } }
 	return ''
 }
 
 fn (e &Eval) sizeof_const_type_name(name string, seen []flat.NodeId) ?string {
-	module_name := e.current_module_name()
-	if module_name in e.consts && name in e.consts[module_name] {
-		entry := e.consts[module_name][name]
-		if entry.node in seen {
-			return none
-		}
+	mut module_name := e.current_module_name()
+	mut constant_name := name
+	if name.contains('.') && name !in e.consts[module_name] {
+		qualified := e.resolve_import_alias_type_name(name)
+		module_name = qualified.all_before_last('.')
+		constant_name = qualified.all_after_last('.')
+	}
+	if module_name in e.consts && constant_name in e.consts[module_name] {
+		entry := e.consts[module_name][constant_name]
+		if entry.node in seen { return none }
+		context := e.declaration_type_context(entry.module_name, entry.file_name)
 		node := e.node(entry.node)
-		if node.typ.len > 0 {
-			return e.qualify_nested_type_name(entry.module_name, node.typ)
-		}
+		if node.typ.len > 0 { return context.qualify_nested_type_name(entry.module_name, node.typ) }
 		if node.children_count > 0 {
 			mut visited := seen.clone()
 			visited << entry.node
-			return e.infer_sizeof_operand_type_name(e.child(node, 0), visited, true)
+			return context.infer_sizeof_operand_type_name(e.child(node, 0), visited, true)
 		}
 	}
 	return none
@@ -6198,29 +6298,119 @@ fn (e &Eval) sizeof_type_name(name string) i64 {
 }
 
 fn (e &Eval) sizeof_type_name_in_module(name string, module_name string, seen []string) i64 {
-	key := '${module_name}:${name}'
-	if name.starts_with('&') || key in seen {
-		return 8
+	return e.sizeof_type_layout(name, module_name, seen).size
+}
+
+fn sizeof_aligned_size(size i64, align i64) i64 {
+	return if align > 1 { (size + align - 1) / align * align } else { size }
+}
+
+fn (e &Eval) sizeof_is_generic_aggregate(name string, module_name string) bool {
+	if base, _ := sizeof_generic_parts(name) {
+		qualified := e.qualify_type_name(module_name, base)
+		if info := e.structs[qualified] { return info.params.len > 0 }
+		if alias := e.type_alias_info_in_module(base, module_name) { return alias.params.len > 0 }
 	}
+	return false
+}
+
+fn sizeof_generic_parts(name string) ?(string, []string) {
+	if !name.ends_with(']') { return none }
+	open := name.index('[') or { return none }
+	if open <= 0 { return none }
+	text := name[open + 1..name.len - 1].trim_space()
+	if text.len == 0 { return none }
+	parts := split_multi_return_types('(${text})')
+	return name[..open], if parts.len > 0 { parts } else { [text] }
+}
+
+fn (e &Eval) sizeof_generic_context(module_name string, file_name string, params []string, args []string, caller_module string, seen []string) Eval {
+	mut context := e.declaration_type_context(module_name, file_name)
+	if params.len != args.len { return context }
+	// Resolve each argument before entering the declaration's module. Layout bindings
+	// keep caller types distinct from same-named types in imported generic fields.
+	for i, param in params {
+		context.sizeof_type_bindings[param] = e.sizeof_type_layout(args[i], caller_module, seen)
+	}
+	return context
+}
+
+fn (e &Eval) sizeof_type_layout(raw_name string, module_name string, seen []string) TypeLayout {
+	if layout := e.sizeof_type_bindings[raw_name.trim_space()] { return layout }
+	name := e.qualify_nested_type_name(module_name, raw_name.trim_space())
+	key := '${module_name}:${name}'
+	if name.starts_with('&') || key in seen { return TypeLayout{ size: 8, align: 8 } }
 	mut visited := seen.clone()
 	visited << key
 	if alias := e.type_alias_info_in_module(name, module_name) {
-		return e.sizeof_type_name_in_module(alias.target, alias.module_name, visited)
+		context := e.declaration_type_context(alias.module_name, alias.file_name)
+		return context.sizeof_type_layout(alias.target, alias.module_name, visited)
 	}
-	if is_fixed_array_type_name(name) {
+	if name.starts_with('map[') || name.starts_with('fn ') || name.starts_with('chan ')
+		|| name.starts_with('thread ') {
+		return TypeLayout{ size: 8, align: 8 }
+	}
+	if name.starts_with('?') || name.starts_with('!') {
+		elem := e.sizeof_type_layout(name[1..], module_name, visited)
+		align := if elem.align > 8 { elem.align } else { i64(8) }
+		// Concrete option/result storage: state, aligned IError, then its payload.
+		return TypeLayout{ size: sizeof_aligned_size(sizeof_aligned_size(56, elem.align) + elem.size, align), align: align }
+	}
+	if is_fixed_array_type_name(name) && !e.sizeof_is_generic_aggregate(name, module_name) {
 		if len := e.sizeof_fixed_array_len(fixed_array_len_text(name), module_name, []) {
 			if len >= 0 {
-				return len * e.sizeof_type_name_in_module(fixed_array_elem_type_name(name),
-					module_name, visited)
+				elem := e.sizeof_type_layout(fixed_array_elem_type_name(name), module_name, visited)
+				return TypeLayout{ size: len * elem.size, align: elem.align }
 			}
 		}
-		return 8
+		return TypeLayout{ size: 8, align: 8 }
 	}
+	if backing := e.enum_types[name] {
+		context := e.declaration_type_context(backing.module_name, backing.file_name)
+		return context.sizeof_type_layout(backing.target, backing.module_name, visited)
+	}
+	mut struct_type_name := if name.starts_with('[]') { 'array' } else { name }
+	mut args := []string{}
+	if base, parameters := sizeof_generic_parts(name) {
+		struct_type_name = base
+		args = parameters.clone()
+		if alias := e.type_alias_info_in_module(base, module_name) {
+			if alias.params.len == args.len {
+				context := e.sizeof_generic_context(alias.module_name, alias.file_name, alias.params, args, module_name, visited)
+				return context.sizeof_type_layout(alias.target, alias.module_name, visited)
+			}
+		}
+	}
+	struct_name := e.resolve_struct_type_name_in_module(struct_type_name, module_name)
+	if info := e.structs[struct_name] {
+		context := e.sizeof_generic_context(info.module_name, info.file_name, info.params, args, module_name, visited)
+		mut size := i64(0)
+		mut align := i64(1)
+		for field in info.fields {
+			layout := context.sizeof_type_layout(field.typ, field.module_name, visited)
+			field_align := if info.pack > 0 && info.pack < layout.align {
+				info.pack
+			} else {
+				layout.align
+			}
+			if field_align > align { align = field_align }
+			if info.is_union {
+				if layout.size > size { size = layout.size }
+			} else {
+				size = sizeof_aligned_size(size, field_align) + layout.size
+			}
+		}
+		if info.align > align { align = info.align }
+		return TypeLayout{ size: sizeof_aligned_size(size, align), align: align }
+	}
+	if name.starts_with('[]') || name == 'array' { return TypeLayout{ size: 48, align: 8 } }
 	return match name {
-		'bool', 'i8', 'u8', 'char' { i64(1) }
-		'i16', 'u16' { i64(2) }
-		'int', 'i32', 'u32', 'rune', 'f32' { i64(4) }
-		else { i64(8) }
+		'bool', 'i8', 'u8', 'char' { TypeLayout{ size: 1, align: 1 } }
+		'i16', 'u16' { TypeLayout{ size: 2, align: 2 } }
+		'i32', 'u32', 'rune', 'f32' { TypeLayout{ size: 4, align: 4 } }
+		'string' { TypeLayout{ size: 24, align: 8 } }
+		'IError' { TypeLayout{ size: 48, align: 8 } }
+		else { TypeLayout{ size: 8, align: 8 } }
 	}
 }
 
@@ -6244,7 +6434,8 @@ fn (e &Eval) sizeof_fixed_array_len(text string, module_name string, seen []flat
 		if node.children_count > 0 {
 			mut visited := seen.clone()
 			visited << entry.node
-			return e.sizeof_integer_expr(e.child(node, 0), constant_module, visited)
+			context := e.declaration_type_context(entry.module_name, entry.file_name)
+			return context.sizeof_integer_expr(e.child(node, 0), constant_module, visited)
 		}
 	}
 	return none
@@ -6259,7 +6450,14 @@ fn (e &Eval) sizeof_integer_expr(id flat.NodeId, module_name string, seen []flat
 		.ident {
 			return e.sizeof_fixed_array_len(node.value, module_name, seen)
 		}
-		.cast_expr, .as_expr {
+		.selector {
+			base := e.node(e.child(node, 0))
+			if base.kind == .ident {
+				return e.sizeof_fixed_array_len('${base.value}.${node.value}', module_name, seen)
+			}
+			return none
+		}
+		.cast_expr, .as_expr, .paren {
 			return e.sizeof_integer_expr(e.child(node, 0), module_name, seen)
 		}
 		.prefix {

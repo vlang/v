@@ -16,6 +16,11 @@ is `8`, including with the native ARM64 backend.
 The evaluator also uses declared widths and resolves type aliases for `sizeof` value operands,
 without evaluating a constant initializer or function call.
 Fixed arrays use their length multiplied by the element's width, including nested array aliases.
+Enum, struct and union elements use their declared storage layout, including field padding,
+packing and explicit alignment. Generic aggregate fields use their concrete type arguments.
+Imported constants and field types resolve in their declaring
+file, so caller variables cannot change their width. Builtin aggregate fields follow the current
+C backend's runtime layout, including 64-bit `int` storage.
 Values initialized by methods or qualified calls retain the declared return type's width.
 Pointer parameters and variables retain their pointer width; dereferenced operands use the
 pointed-to type's width, including pointer aliases and multiple pointer levels.

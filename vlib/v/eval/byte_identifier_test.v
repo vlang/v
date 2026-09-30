@@ -423,3 +423,313 @@ fn test_eval_declared_pointer_metadata_keeps_module_and_depth() {
 	assert e.lookup_var_type('byte') or { '' } == '&u8'
 	assert e.qualify_nested_type_name('worker', '[2]&u16') == '[2]&u16'
 }
+
+fn test_eval_sizeof_imported_constants_uses_declaration_context() {
+	dir := os.join_path(os.vtmp_dir(), 'eval_sizeof_imported_consts_${os.getpid()}')
+	os.mkdir_all(dir) or { panic(err) }
+	defer { os.rmdir_all(dir) or {} }
+	widths := os.join_path(dir, 'widths.v')
+	bridge := os.join_path(dir, 'bridge.v')
+	main_file := os.join_path(dir, 'main.v')
+	nested := os.join_path(dir, 'inner.v')
+	os.write_file(nested, 'module inner\npub const narrow = u16(1)\n') or { panic(err) }
+	os.write_file(widths, '
+module widths
+pub type Octet = u8
+pub const narrow = Octet(1)
+pub const count = 2
+pub const row = [count]Octet{}
+pub const pointer = make_pointer()
+pub fn make_pointer() &u8 { println("evaluated"); return &u8(0) }
+') or { panic(err) }
+	os.write_file(bridge, '
+module bridge
+import widths as w
+import widths.inner as nested
+pub const nested_width = nested.narrow
+pub const narrow = w.narrow
+pub const row = w.row
+pub const count = w.count
+pub type Row = [count]w.Octet
+pub const pointer = w.pointer
+') or { panic(err) }
+	os.write_file(main_file, '
+module main
+import bridge as b
+import widths as w
+const byte = b.narrow
+const nested_width = b.nested_width
+const rows = b.row
+const pointer = b.pointer
+fn main() {
+ narrow := i32(0)
+ println(sizeof(byte))
+ println(sizeof(rows))
+ println(sizeof(pointer))
+ println(sizeof(b.narrow))
+ println(sizeof(w.narrow))
+ println(sizeof(b.Row))
+ println(sizeof(*pointer))
+ println(sizeof(rows[0]))
+ println(sizeof(narrow))
+ println(sizeof(nested_width))
+}
+') or { panic(err) }
+	mut e := create()
+	mut p := parser.Parser.new(&e.prefs)
+	p.parse_files([widths, nested, bridge, main_file])
+	e.run_files(p.a) or { panic(err) }
+	assert e.stdout() == '1\n2\n8\n1\n1\n2\n1\n1\n4\n2\n'
+}
+
+fn test_eval_sizeof_fixed_array_aggregate_elements_matches_compiler() {
+	code := '
+struct Tiny { x u8 }
+struct Padded { x u8; y u32; z u16 }
+struct Outer { lead u8; inner Padded; tail u8 }
+union Choice { tiny u8; row [3]u16 }
+struct Empty {}
+struct Node { value u8; next &Node = unsafe { nil } }
+enum Narrow as u8 { first; second }
+enum Wide as u64 { first; second }
+enum Ordinary { first; second }
+type Small = Tiny
+type Row = [3]Small
+const byte = [2]Tiny{}
+fn main() {
+ println(sizeof(byte))
+ println(sizeof([2]Padded))
+ println(sizeof([2]Outer))
+ println(sizeof([2]Choice))
+ println(sizeof([2]Empty))
+ println(sizeof([2]Node))
+ println(sizeof([3]Narrow))
+ println(sizeof([2]Wide))
+ println(sizeof([2]Ordinary))
+ println(sizeof([2]Row))
+ println(sizeof([2][3]Tiny))
+}
+'
+	assert_eval_sizeof_matches_compiler(code)
+}
+
+fn test_eval_sizeof_packed_and_aligned_structs_matches_compiler() {
+	code := '
+@[_packed]
+struct Packed { x u8; y u32 }
+@[aligned: 16]
+struct Aligned { x u8 }
+@[_packed; aligned: 16]
+struct Both { x u8; y u32 }
+struct Container { first u8; packed Packed; last u16 }
+@[_pack: 2]
+struct PackedTwo { x u8; y u32 }
+@[aligned]
+struct MaxAligned { x u8 }
+fn main() {
+ println(sizeof([2]Packed))
+ println(sizeof([2]Aligned))
+ println(sizeof([2]Both))
+ println(sizeof([2]Container))
+ println(sizeof([2]PackedTwo))
+ println(sizeof([2]MaxAligned))
+}
+'
+	assert_eval_sizeof_matches_compiler(code)
+}
+
+fn assert_eval_sizeof_matches_compiler(code string) {
+	dir := os.join_path(os.vtmp_dir(), 'eval_sizeof_layout_${os.getpid()}')
+	os.mkdir_all(dir) or { panic(err) }
+	defer { os.rmdir_all(dir) or {} }
+	source := os.join_path(dir, 'main.v')
+	executable := os.join_path(dir, 'layout')
+	os.write_file(source, code) or { panic(err) }
+	compiled := os.execute('"${@VEXE}" -new-compiler -gc none -cc clang -o "${executable}" "${source}"')
+	assert compiled.exit_code == 0, compiled.output
+	result := os.execute('"${executable}"')
+	assert result.exit_code == 0, result.output
+	mut e := create()
+	e.run_text(code) or { panic(err) }
+	assert e.stdout() == result.output
+}
+
+fn test_eval_sizeof_cycles_and_recursive_pointers_terminate() {
+	mut e := create()
+	e.run_text('
+type First = Second
+type Second = First
+struct Node { value u8; next &Node }
+const byte = other
+const other = byte
+fn main() {
+ println(sizeof(byte))
+ println(sizeof(First))
+ println(sizeof([2]&Node))
+}
+') or { panic(err) }
+	assert e.stdout() == '8\n8\n16\n'
+}
+
+fn test_eval_sizeof_builtin_aggregate_fields_matches_compiler() {
+	code := '
+struct Fields { head u8; text string; values []u8; lookup map[string]u8 }
+type Text = string
+type Values = []u8
+type Lookup = map[string]u8
+struct AliasedFields { head u8; text Text; values Values; lookup Lookup }
+struct Wrapped { optional ?u8; pointer &u8 = unsafe { nil } }
+fn main() {
+ println(sizeof(int))
+ println(sizeof(string))
+ println(sizeof([]u8))
+ println(sizeof(map[string]u8))
+ println(sizeof([2]Fields))
+ println(sizeof([2]AliasedFields))
+ println(sizeof([2]Wrapped))
+ println(sizeof(!u16))
+ println(sizeof([2]string))
+ println(sizeof([2][]u8))
+}
+'
+	assert_eval_sizeof_matches_compiler(code)
+}
+
+fn test_eval_sizeof_imported_aggregate_fields_preserves_file_aliases() {
+	dir := os.join_path(os.vtmp_dir(), 'eval_sizeof_imported_layout_${os.getpid()}')
+	os.mkdir_all(dir) or { panic(err) }
+	defer { os.rmdir_all(dir) or {} }
+	os.mkdir_all(os.join_path(dir, 'small')) or { panic(err) }
+	os.mkdir_all(os.join_path(dir, 'holder')) or { panic(err) }
+	small := os.join_path(dir, 'small', 'small.v')
+	holder := os.join_path(dir, 'holder', 'holder.v')
+	main_file := os.join_path(dir, 'main.v')
+	os.write_file(os.join_path(dir, 'v.mod'), 'Module { name: "layout_probe" }') or { panic(err) }
+	os.write_file(small, '
+module small
+pub type Octet = u8
+pub const count = 3
+pub struct Tiny { pub: x Octet }
+pub enum Tag as u16 { first; second }
+') or { panic(err) }
+	os.write_file(holder, '
+module holder
+import small as s
+pub type Cell = s.Tiny
+pub const count = s.count
+pub type Row = [count]Cell
+pub struct Holder { pub: lead u8; row Row; tag s.Tag; text string; values []u8 }
+pub struct Tiny { pub: x u64 }
+pub struct Generic[T] { pub: lead u8; value T; row [2]T }
+pub type GenericAlias[T] = Generic[T]
+pub type Doubled[T] = [2]T
+pub struct Wrapped[T] { pub: rows [2]T; optional ?T; aliases Doubled[T] }
+pub struct Nested[T] { pub: value Generic[T]; extra T }
+pub const byte = [2]Holder{}
+pub fn make_octet() s.Octet { return s.Octet(1) }
+pub fn make_cell() Cell { return Cell{} }
+') or { panic(err) }
+	os.write_file(main_file, '
+module main
+import holder as h
+struct Tiny { x u8 }
+const byte = h.byte
+const octet = h.make_octet()
+const cell = h.make_cell()
+const alias_field = h.Cell{}.x
+const generic = [2]h.Generic[Tiny]{}
+const generic_rows = [2]h.Generic[[3]Tiny]{}
+const nested_generic = [2]h.Nested[Tiny]{}
+const aliased_generic = [2]h.GenericAlias[Tiny]{}
+const wrapped_generic = [2]h.Wrapped[Tiny]{}
+const doubled_generic = [2]h.Doubled[Tiny]{}
+fn main() {
+ println(sizeof(byte))
+ println(sizeof([2]h.Holder))
+ println(sizeof(octet))
+ println(sizeof(cell))
+ println(sizeof(alias_field))
+ println(sizeof(generic))
+ println(sizeof(generic_rows))
+ println(sizeof(nested_generic))
+ println(sizeof(aliased_generic))
+ println(sizeof(wrapped_generic))
+ println(sizeof(doubled_generic))
+}
+') or { panic(err) }
+	original_main := os.read_file(main_file) or { panic(err) }
+	mut compiled_main := original_main
+	for name in ['generic', 'generic_rows', 'nested_generic', 'aliased_generic', 'wrapped_generic',
+		'doubled_generic'] {
+		compiled_main = compiled_main.split_into_lines().filter(!it.starts_with('const ${name} =') && !it.contains('sizeof(${name})')).join('\n')
+	}
+	os.write_file(main_file, compiled_main) or { panic(err) }
+	executable := os.join_path(dir, 'layout')
+	compiled := os.execute('"${@VEXE}" -new-compiler -gc none -cc clang -o "${executable}" "${dir}"')
+	assert compiled.exit_code == 0, compiled.output
+	result := os.execute('"${executable}"')
+	assert result.exit_code == 0, result.output
+	mut e := create()
+	mut p := parser.Parser.new(&e.prefs)
+	p.parse_files([small, holder, main_file])
+	e.run_files(p.a) or { panic(err) }
+	assert e.stdout() == result.output
+	os.write_file(main_file, original_main) or { panic(err) }
+	mut generic_parser := parser.Parser.new(&e.prefs)
+	generic_parser.parse_files([small, holder, main_file])
+	e.run_files(generic_parser.a) or { panic(err) }
+	assert e.stdout() == result.output + '8\n20\n10\n8\n160\n4\n'
+}
+
+fn test_eval_sizeof_registered_builtin_layouts_matches_minimal_ast() {
+	dir := os.join_path(os.vtmp_dir(), 'eval_sizeof_builtin_layout_${os.getpid()}')
+	os.mkdir_all(dir) or { panic(err) }
+	defer { os.rmdir_all(dir) or {} }
+	main_file := os.join_path(dir, 'main.v')
+	os.write_file(main_file, '
+module main
+struct Fields { head u8; text string; values []u8 }
+const byte = [2]Fields{}
+fn main() { println(sizeof(byte)); println(sizeof(string)); println(sizeof([]u8)) }
+') or { panic(err) }
+	mut e := create()
+	mut p := parser.Parser.new(&e.prefs)
+	p.parse_files([os.join_path(os.dir(@VEXE), 'vlib', 'builtin', 'string.v'),
+		os.join_path(os.dir(@VEXE), 'vlib', 'builtin', 'array.v'), main_file])
+	e.run_files(p.a) or { panic(err) }
+	assert e.stdout() == '160\n24\n48\n'
+}
+
+fn test_eval_sizeof_aggregate_defaults_are_not_evaluated() {
+	mut e := create()
+	e.run_text('
+struct Tiny { value u8 = side_effect() }
+const byte = [2]Tiny{}
+fn side_effect() u8 { println("evaluated"); return u8(1) }
+fn main() { println(sizeof(byte)) }
+') or { panic(err) }
+	assert e.stdout() == '2\n'
+}
+
+fn test_eval_sizeof_generic_aggregate_elements_matches_compiler() {
+	code := '
+struct Tiny[T] { x T }
+struct Pair[T, U] { first T; second U }
+struct Node[T] { x T; next &Node[T] = unsafe { nil } }
+type Octet = u8
+type Box[T] = Tiny[T]
+struct OptionalBox { value ?Tiny[u8] }
+const byte = [2]Tiny[u8]{}
+fn main() {
+ println(sizeof(byte))
+ println(sizeof([2]Tiny[Octet]))
+ println(sizeof([2]Tiny[[3]u8]))
+ println(sizeof([2]Pair[u8, u32]))
+ println(sizeof([2]Tiny[Tiny[u8]]))
+ println(sizeof([2]Node[u8]))
+ println(sizeof([2]Box[u8]))
+ println(sizeof([2]OptionalBox))
+}
+'
+	assert_eval_sizeof_matches_compiler(code)
+}
