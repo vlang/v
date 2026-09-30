@@ -1109,6 +1109,20 @@ fn (t &Transformer) bare_struct_name_is_local_to_current_module(name string) boo
 	return module_name.len == 0 || module_name in ['main', 'builtin']
 }
 
+// bare_sum_type_name_is_local_to_current_module is the sum type counterpart of
+// bare_struct_name_is_local_to_current_module. The transformer also indexes imported
+// sum types by their short name, so only the checker's table tells them apart.
+fn (t &Transformer) bare_sum_type_name_is_local_to_current_module(name string) bool {
+	if name == '' || name.contains('.') || isnil(t.tc) {
+		return false
+	}
+	if t.cur_module.len > 0 && t.cur_module !in ['main', 'builtin'] {
+		return '${t.cur_module}.${name}' in t.tc.sum_types
+	}
+	// The checker keys main and builtin declarations by their bare name only.
+	return name in t.tc.sum_types
+}
+
 fn (t &Transformer) checker_struct_lookup_name(name string) string {
 	if isnil(t.tc) || name == '' {
 		return ''

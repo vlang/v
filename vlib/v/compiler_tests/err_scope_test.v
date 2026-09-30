@@ -50,13 +50,13 @@ const cases = [
 	Case{'or_closure_capture', '', 'x := fails() or {\n\t\tf := fn [err] () {\n\t\t\tprintln(«err»)\n\t\t}\n\t\tf()\n\t\t0\n\t}\n\tprintln(x)', true},
 	Case{'guard_else', '', 'if x := fails() {\n\t\tprintln(x)\n\t} else {\n\t\tprintln(«err»)\n\t}', true},
 	Case{'guard_else_nested', '', 'if x := fails() {\n\t\tprintln(x)\n\t} else {\n\t\tif os.args.len > 0 {\n\t\t\tprintln(«err»)\n\t\t}\n\t}', true},
-	Case{'second_guard_else', '', 'if x := fails() {\n\t\tprintln(x)\n\t} else if y := maybe() {\n\t\tprintln(y)\n\t} else {\n\t\tprintln(«err»)\n\t}', true},
-	Case{'option_guard_else', '', 'if x := maybe() {\n\t\tprintln(x)\n\t} else {\n\t\tprintln(«err»)\n\t}', true},
-	Case{'option_or', '', 'x := maybe() or {\n\t\tprintln(«err»)\n\t\t0\n\t}\n\tprintln(x)', true},
+	Case{'second_guard_else', '', 'if x := fails() {\n\t\tprintln(x)\n\t} else if y := maybe() {\n\t\tprintln(y)\n\t} else {\n\t\tprintln(«err»)\n\t}', false},
+	Case{'option_guard_else', '', 'if x := maybe() {\n\t\tprintln(x)\n\t} else {\n\t\tprintln(«err»)\n\t}', false},
+	Case{'option_or', '', 'x := maybe() or {\n\t\tprintln(«err»)\n\t\t0\n\t}\n\tprintln(x)', false},
 	Case{'return_err_in_else', 'fn g() !int {\n\tif x := fails() {\n\t\treturn x\n\t} else {\n\t\treturn «err»\n\t}\n}\n', 'println(g() or { 0 })', true},
 	Case{'mut_guard_else', '', 'if mut x := fails() {\n\t\tx++\n\t\tprintln(x)\n\t} else {\n\t\tprintln(«err»)\n\t}', true},
-	Case{'map_guard_else', '', "m := {'a': 1}\n\tif v := m['b'] {\n\t\tprintln(v)\n\t} else {\n\t\tprintln(«err»)\n\t}", true},
-	Case{'array_guard_else', '', 'a := [1]\n\tif v := a[3] {\n\t\tprintln(v)\n\t} else {\n\t\tprintln(«err»)\n\t}', true},
+	Case{'map_guard_else', '', "m := {'a': 1}\n\tif v := m['b'] {\n\t\tprintln(v)\n\t} else {\n\t\tprintln(«err»)\n\t}", false},
+	Case{'array_guard_else', '', 'a := [1]\n\tif v := a[3] {\n\t\tprintln(v)\n\t} else {\n\t\tprintln(«err»)\n\t}', false},
 	Case{'chan_guard_else', '', 'ch := chan int{cap: 1}\n\tch.close()\n\tif v := <-ch {\n\t\tprintln(v)\n\t} else {\n\t\tprintln(«err»)\n\t}', true},
 	// something the program declares with that name
 	Case{'local_named_err', '', 'err := 5\n\tprintln(«err»)', true},
@@ -113,7 +113,9 @@ fn test_err_exists_only_where_an_error_is_handled() {
 		output := check_output(v3, c)
 		errors := output.split_into_lines().filter(it.contains(': error: '))
 		line, col := marked_position(c)
-		undefined := errors.any(it.contains('main.v:${line}:${col}: error: undefined ident: `err`'))
+		position := 'main.v:${line}:${col}: error: '
+		undefined_messages := ['undefined ident: `err`', 'undefined variable: `err`']
+		undefined := errors.any(it.contains(position) && it.all_after(position) in undefined_messages)
 		if c.ok && errors.len > 0 {
 			wrong << '${c.name}: `err` is defined there, but: ${errors}'
 		} else if !c.ok && !undefined {

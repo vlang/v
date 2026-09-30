@@ -1132,12 +1132,42 @@ fn (mut tc TypeChecker) check_postfix_value_uses_preflight() {
 		if tc.file_has_global_receiver(file.name) {
 			continue
 		}
+		op := if node.op == .inc { '++' } else { '--' }
+		op_pos := tc.prefix_operator_pos(id, op)
+		// Like V1, only an operator that closes a call argument or an index, as in
+		// `f(x++)` or `a[x--]`, is reported; `n := count++` is a plain post-increment.
+		source := tc.source_texts_by_file[file.name] or { '' }
+		if !postfix_operator_closes_group(source, op_pos.end) {
+			continue
+		}
 		tc.cur_file = file.name
 		tc.cur_module = tc.file_modules[file.name] or { 'main' }
-		op := if node.op == .inc { '++' } else { '--' }
-		tc.record_warning_at(.assignment_mismatch, '`${op}` operator can only be used as a statement',
-			id, tc.prefix_operator_pos(id, op))
+		// V1 reports this from the parser, where only an explicit `-W` turns the
+		// warning into an error; `-prod` alone does not.
+		tc.record_warning_or_error_at(.assignment_mismatch, '`${op}` operator can only be used as a statement',
+			id, op_pos, tc.explicit_warns_are_errors)
 	}
+}
+
+// postfix_operator_closes_group reports whether the next token after a postfix
+// `++`/`--` ending at `end` is `)` or `]`, skipping whitespace and comments as V1's
+// parser does: `f(x++ )` and `f(x++ /* c */)` close the call like `f(x++)`.
+fn postfix_operator_closes_group(source string, end int) bool {
+	if end < 0 {
+		return false
+	}
+	mut i := end
+	for i < source.len {
+		c := source[i]
+		if c in [` `, `\t`, `\n`, `\r`] {
+			i++
+		} else if c == `/` && i + 1 < source.len && source[i + 1] in [`/`, `*`] {
+			i = skip_non_code_at(source, i)
+		} else {
+			return c in [`)`, `]`]
+		}
+	}
+	return false
 }
 
 // check_if_guard validates check if guard state for types.
@@ -6571,8 +6601,11 @@ fn (mut tc TypeChecker) check_selector(id flat.NodeId, node flat.Node) {
 	// receiver is a method value; record the concrete `Type.method` so it survives
 	// dead-code elimination (cgen emits a wrapper that calls it).
 	union_receiver := unalias_type(unwrap_pointer(base_type))
+	// Like the other `unsafe` checks, look at the enclosing blocks too: a selector
+	// can be checked again by a later pass, outside the block's `unsafe_depth`.
 	if union_receiver is Struct && union_receiver.name in tc.unions && tc.unsafe_depth == 0
-		&& !tc.translated_files[tc.cur_file] && !tc.selector_is_assignment_lhs(id) {
+		&& !tc.expr_is_inside_unsafe_block(id) && !tc.translated_files[tc.cur_file]
+		&& !tc.selector_is_assignment_lhs(id) {
 		tc.record_warning_at(.unknown_field, 'reading a union field (or its address) requires `unsafe`', id, tc.selector_field_diagnostic_pos(id, node.value))
 	}
 	clean_recv := unwrap_all_pointers(base_type)
@@ -9233,6 +9266,10 @@ fn (tc &TypeChecker) selector_fn_value_key(node flat.Node) ?string {
 	if base.kind == .selector && base.children_count > 0 {
 		inner := tc.a.child_node(base, 0)
 		if inner.kind == .ident {
+			if tc.ident_resolves_to_value(inner.value) || inner.value in tc.const_types
+				|| tc.qualify_name(inner.value) in tc.const_types {
+				return none
+			}
 			mod_name := tc.resolve_import_alias(inner.value) or { inner.value }
 			key := '${mod_name}.${base.value}.${node.value}'
 			if tc.fn_signature_known(key) {
@@ -9841,6 +9878,9 @@ fn (tc &TypeChecker) type_compatible(actual Type, expected Type) bool {
 		return true
 	}
 	if expected is OptionType {
+		if is_ierror_type(actual) && unalias_type(expected.base_type) is String {
+			return false
+		}
 		if actual is OptionType {
 			actual_base := option_alias_payload_type(actual.base_type)
 			expected_base := option_alias_payload_type(expected.base_type)
@@ -10197,6 +10237,11 @@ fn call_arg_numeric_promotion_index(name string) int {
 		'u32' { 13 }
 		'u64' { 14 }
 		'usize' { 15 }
+		// 128-bit ranks above the 64-bit types, so a narrower integer widens into
+		// it. Without these rows the index is -1, no widening is offered, and an
+		// expression like `wide + 1` is typed `int` and cut to 64 bits.
+		'i128' { 16 }
+		'u128' { 17 }
 		'rune' { 22 }
 		else { -1 }
 	}
@@ -11543,8 +11588,8 @@ pub fn (tc &TypeChecker) interface_accepts_implicit_str(iface_name string) bool 
 }
 
 fn implicit_str_builtin_type_names() []string {
-	return ['bool', 'int', 'i8', 'i16', 'i32', 'i64', 'isize', 'usize', 'u8', 'byte', 'u16', 'u32',
-		'u64', 'f32', 'f64', 'string', 'rune']
+	return ['bool', 'int', 'i8', 'i16', 'i32', 'i64', 'isize', 'usize', 'u8', 'u16', 'u32', 'u64',
+		'f32', 'f64', 'string', 'rune']
 }
 
 fn interface_impl_candidate_name(name string) string {
@@ -17029,7 +17074,7 @@ pub fn (tc &TypeChecker) resolve_type(id flat.NodeId) Type {
 			&& (!tc.parallel_check_sparse || tc.in_check_range(tidx)) {
 			typ := tc.expr_type_values[tidx]
 			if !type_contains_unknown(typ) {
-				return typ
+				return tc.widen_mixed_integer_expr_type(id, typ)
 			}
 		}
 	}
@@ -17040,7 +17085,7 @@ pub fn (tc &TypeChecker) resolve_type(id flat.NodeId) Type {
 	}
 	mi := idx - memo.lo
 	if memo.filled[mi] != 0 {
-		return memo.types[mi]
+		return tc.widen_mixed_integer_expr_type(id, memo.types[mi])
 	}
 	typ := tc.resolve_type_uncached(id)
 	// Unknowns can be provisional (cycle guards, generic placeholders that a
@@ -17050,6 +17095,45 @@ pub fn (tc &TypeChecker) resolve_type(id flat.NodeId) Type {
 		mut m := unsafe { &BodyResolveMemo(memo) }
 		m.types[mi] = typ
 		m.filled[mi] = 1
+	}
+	return tc.widen_mixed_integer_expr_type(id, typ)
+}
+
+const narrow_integer_type_names = ['int', 'i8', 'i16', 'i32', 'i64', 'isize', 'u8', 'u16', 'u32',
+	'u64', 'usize', 'rune', 'char']
+
+// widen_mixed_integer_expr_type gives an arithmetic node the 128-bit type of its
+// widest operand. The type recorded for an infix in argument position is the
+// narrower operand's, while the same expression assigned to a variable gets the
+// 128-bit type from the promotion ladder. Printing, `typeof` and interpolation all
+// read the recorded type, so they cut a mixed expression to 64 bits without this.
+fn (tc &TypeChecker) widen_mixed_integer_expr_type(id flat.NodeId, typ Type) Type {
+	name := typ.name().all_after_last('.')
+	if name !in narrow_integer_type_names {
+		return typ
+	}
+	tidx := int(id)
+	if tidx < 0 || tidx >= tc.a.nodes.len {
+		return typ
+	}
+	node := tc.a.nodes[tidx]
+	if node.kind != .infix {
+		return typ
+	}
+	if node.op in [.eq, .ne, .lt, .gt, .le, .ge, .logical_and, .logical_or] {
+		return typ
+	}
+	// A shift result is as wide as its left operand: the right one is a count, so
+	// a wide count does not make `u64(4) << count` a 128-bit expression, and the
+	// generator still emits a 64-bit operation for it.
+	shift := node.op in [.left_shift, .right_shift, .right_shift_unsigned]
+	child_limit := if shift { 1 } else { node.children_count }
+	for i in 0 .. child_limit {
+		child_type := tc.resolve_type(tc.a.child(&node, i))
+		child_name := child_type.name().all_after_last('.')
+		if child_name in ['u128', 'i128'] {
+			return child_type
+		}
 	}
 	return typ
 }
@@ -17322,9 +17406,6 @@ fn (tc &TypeChecker) resolve_type_uncached(id flat.NodeId) Type {
 			if tc.selective_import_symbol_is_ambiguous(node.value) {
 				return unknown_type('ambiguous selective import `${node.value}`')
 			}
-			if node.value == 'err' && tc.has_ierror_interface() {
-				return tc.parse_type('IError')
-			}
 			if is_bare_generic_param(node.value) {
 				return Type(void_)
 			}
@@ -17429,6 +17510,13 @@ fn (tc &TypeChecker) resolve_type_uncached(id flat.NodeId) Type {
 				}
 				base_id := tc.a.child(fn_node, 0)
 				base_type := tc.selector_fn_base_type(base_id) or { tc.resolve_type(base_id) }
+				// A method call on a value whose type is not known yet has no known
+				// return type either. Falling through would type it as a free function
+				// that shares the method's name (C `write` for `res.write()` with
+				// -target-libc-headers), and that wrong type would be memoized.
+				if base_type is Unknown {
+					return unknown_type('unknown receiver type for `.${fn_node.value}()`')
+				}
 				if fn_typ := tc.selector_field_fn_type(fn_node, base_type) {
 					return fn_typ.return_type
 				}
@@ -17508,7 +17596,7 @@ fn (tc &TypeChecker) resolve_type_uncached(id flat.NodeId) Type {
 						// other array element type is not a thread and `.wait()` is
 						// unsupported, so reject it rather than mis-typing the call as the
 						// receiver array (which would emit invalid C joining non-handles).
-						elem := array_elem_type(clean_array)
+						elem := unalias_type(array_elem_type(clean_array))
 						if elem is Struct {
 							if elem.name == 'thread' {
 								return Type(void_)
@@ -18570,7 +18658,7 @@ fn (tc &TypeChecker) c_type_uncached(t Type) string {
 		return 'void*'
 	}
 	if t is None {
-		return 'Optional'
+		return '__v_option'
 	}
 	if t is String {
 		return 'string'
@@ -18634,9 +18722,9 @@ fn (tc &TypeChecker) c_type_uncached(t Type) string {
 				})
 			}
 			if param_type is OptionType {
-				params << tc.optional_c_type_name(param_type.base_type)
+				params << tc.optional_c_type_name(param_type)
 			} else if param_type is ResultType {
-				params << tc.optional_c_type_name(param_type.base_type)
+				params << tc.optional_c_type_name(param_type)
 			} else {
 				params << tc.c_type(param_type)
 			}
@@ -18644,10 +18732,10 @@ fn (tc &TypeChecker) c_type_uncached(t Type) string {
 		return naming.fn_ptr_encoded(ret, params)
 	}
 	if t is OptionType {
-		return 'Optional'
+		return '__v_option'
 	}
 	if t is ResultType {
-		return 'Optional'
+		return '__v_result'
 	}
 	if t is Struct {
 		if t.name == 'thread' || t.name.ends_with('.thread') || t.name.starts_with('thread ') {
@@ -18850,10 +18938,10 @@ fn (tc &TypeChecker) c_generic_struct_fixed_array_arg_name(arg string) ?string {
 
 fn (tc &TypeChecker) fixed_array_elem_c_type(t Type) string {
 	if t is OptionType {
-		return tc.optional_c_type_name(t.base_type)
+		return tc.optional_c_type_name(t)
 	}
 	if t is ResultType {
-		return tc.optional_c_type_name(t.base_type)
+		return tc.optional_c_type_name(t)
 	}
 	if t is Pointer && t.base_type is Void {
 		return 'voidptr'
@@ -18866,26 +18954,31 @@ fn (tc &TypeChecker) fn_ptr_return_c_type(t Type) string {
 		return 'void'
 	}
 	if t is OptionType {
-		return tc.optional_c_type_name(t.base_type)
+		return tc.optional_c_type_name(t)
 	}
 	if t is ResultType {
-		return tc.optional_c_type_name(t.base_type)
+		return tc.optional_c_type_name(t)
 	}
 	return tc.c_type(t)
 }
 
-fn (tc &TypeChecker) optional_c_type_name(base_type Type) string {
+fn (tc &TypeChecker) optional_c_type_name(typ Type) string {
+	base_type := match typ {
+		OptionType, ResultType { typ.base_type }
+		else { return tc.c_type(typ) }
+	}
+	prefix := if typ is ResultType { '__v_result' } else { '__v_option' }
 	if base_type is Void {
-		return 'Optional'
+		return prefix
 	}
 	mut inner_ct := tc.c_type(base_type)
 	if inner_ct.starts_with('fn_ptr:') {
 		inner_ct = naming.fn_ptr_type_name(inner_ct)
 	}
 	if inner_ct == 'int' {
-		return 'Optional'
+		return prefix
 	}
-	return 'Optional_${inner_ct.replace('*', 'ptr').replace(' ', '_')}'
+	return '${prefix}_${inner_ct.replace('*', 'ptr').replace(' ', '_')}'
 }
 
 // resolve_type_name_for_method resolves resolve type name for method information for types.
@@ -20460,4 +20553,44 @@ fn fn_type_param_head_is_name(head string, tail string) bool {
 		return false
 	}
 	return (head[0] >= `a` && head[0] <= `z`) || head[0] == `_`
+}
+
+fn (tc &TypeChecker) failure_has_error(id flat.NodeId) bool {
+	if !tc.valid_node_id(id) {
+		return false
+	}
+	node := tc.a.node(id)
+	if node.kind == .decl_assign && node.children_count > 1 {
+		return tc.failure_has_error(tc.a.child(node, 1))
+	}
+	if node.children_count > 0
+		&& node.kind in [.match_stmt, .paren, .expr_stmt, .or_expr] {
+		return tc.failure_has_error(tc.a.child(node, 0))
+	}
+	if node.kind == .prefix && node.op == .arrow {
+		return true
+	}
+	if node.kind == .call {
+		name := tc.resolved_call_name(id) or { '' }
+		if typ := tc.fn_ret_types[name] {
+			return unalias_type(typ) is ResultType
+		}
+		if typ := tc.direct_call_return_type(*node) {
+			return unalias_type(typ) is ResultType
+		}
+	}
+	if node.kind != .infix {
+		return unalias_type(tc.resolve_type(id)) is ResultType
+	}
+	mut found := false
+	for child in tc.a.children_of(node) {
+		if !tc.or_expr_source_can_fail(child) {
+			continue
+		}
+		if !tc.failure_has_error(child) {
+			return false
+		}
+		found = true
+	}
+	return found
 }

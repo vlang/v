@@ -2,8 +2,9 @@ import os
 import term
 import v.util.diff
 
-// vexe is the compiler under test, not the `v` that PATH finds.
+// The compiler under test, not the first `v` on PATH, which may be another checkout.
 const vexe = os.quoted_path(@VEXE)
+
 const vroot = os.real_path(@VMODROOT)
 const tmp_dir = os.real_path(os.temp_dir())
 

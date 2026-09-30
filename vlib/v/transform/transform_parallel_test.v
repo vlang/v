@@ -33,37 +33,88 @@ fn test_generated_calls_publish_exact_resolution_except_cgen_intrinsics() {
 }
 
 fn test_forwarded_optional_conversion_propagates_borrowed_clone() {
+	payload := types.Type(types.string_)
+	option := types.Type(types.OptionType{ base_type: payload })
+	result := types.Type(types.ResultType{ base_type: payload })
+	option_clones := ['string__clone']
+	result_clones := ['__v3_clone_owned_ierror', 'string__clone']
+	assert forwarded_wrapper_clone_calls(option, true) == option_clones
+	assert forwarded_wrapper_clone_calls(result, true) == result_clones
+	assert forwarded_wrapper_clone_calls(option, false) == []string{}
+	assert forwarded_wrapper_clone_calls(result, false) == []string{}
+}
+
+fn forwarded_wrapper_clone_calls(wrapper types.Type, clone_borrowed bool) []string {
 	mut a := flat.FlatAst.new()
 	source := a.add_node(flat.Node{
 		kind:  .ident
 		value: 'source'
-		typ:   '?string'
+		typ:   wrapper.name()
 	})
 	mut tc := types.TypeChecker.new(&a)
+	tc.interface_names['IError'] = true
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
+	t.set_var_type('source', wrapper.name())
 	payload := types.Type(types.string_)
-	optional := types.Type(types.OptionType{
-		base_type: types.Type(types.string_)
-	})
-
-	result := t.convert_forwarded_optional_result(source, optional, payload, optional, optional, payload, true)
-
+	result := t.convert_forwarded_optional_result(source, wrapper, payload,
+		wrapper, wrapper, payload, clone_borrowed)
 	assert result != source
-	mut saw_clone := false
-	mut saw_error_clone := false
-	for i, node in a.nodes {
-		if node.kind == .call && tc.resolved_call_name(flat.NodeId(i)) or { '' } == 'string__clone' {
-			saw_clone = true
+	assert t.pending_stmts.len >= 2
+	for statement in t.pending_stmts[..t.pending_stmts.len - 1] {
+		assert forwarded_wrapper_node_calls(&a, statement) == []string{}
+		assert forwarded_wrapper_error_reads(&a, statement) == 0
+	}
+	branch := a.nodes[int(t.pending_stmts.last())]
+	assert branch.kind == .if_expr
+	assert branch.children_count == 3
+	condition := a.child_node(&branch, 0)
+	assert condition.kind == .selector
+	assert condition.value == 'ok'
+	then_id := a.child(&branch, 1)
+	else_id := a.child(&branch, 2)
+	then_calls := forwarded_wrapper_node_calls(&a, then_id)
+	else_calls := forwarded_wrapper_node_calls(&a, else_id)
+	assert then_calls == if clone_borrowed { ['string__clone'] } else { []string{} }
+	assert forwarded_wrapper_error_reads(&a, then_id) == 0
+	if wrapper is types.ResultType {
+		assert forwarded_wrapper_error_reads(&a, else_id) == 1
+		assert else_calls == if clone_borrowed {
+			['__v3_clone_owned_ierror']
+		} else {
+			[]string{}
 		}
-		if node.kind == .call && node.children_count > 0 {
-			callee := a.child_node(&node, 0)
-			if callee.kind == .ident && callee.value == '__v3_clone_owned_ierror' {
-				saw_error_clone = true
-			}
+	} else {
+		assert forwarded_wrapper_error_reads(&a, else_id) == 0
+		assert else_calls == []string{}
+	}
+	mut calls := then_calls.clone()
+	calls << else_calls
+	calls.sort()
+	return calls
+}
+
+fn forwarded_wrapper_node_calls(a &flat.FlatAst, id flat.NodeId) []string {
+	node := a.nodes[int(id)]
+	mut calls := []string{}
+	if node.kind == .call && node.children_count > 0 {
+		callee := a.child_node(&node, 0)
+		if callee.kind == .ident {
+			calls << callee.value
 		}
 	}
-	assert saw_clone
-	assert saw_error_clone
+	for i in 0 .. int(node.children_count) {
+		calls << forwarded_wrapper_node_calls(a, a.child(&node, i))
+	}
+	return calls
+}
+
+fn forwarded_wrapper_error_reads(a &flat.FlatAst, id flat.NodeId) int {
+	node := a.nodes[int(id)]
+	mut reads := if node.kind == .selector && node.value == 'err' { 1 } else { 0 }
+	for i in 0 .. int(node.children_count) {
+		reads += forwarded_wrapper_error_reads(a, a.child(&node, i))
+	}
+	return reads
 }
 
 fn test_const_map_expansion_estimate_ignores_shadowing_local() {

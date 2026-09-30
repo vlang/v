@@ -37,7 +37,7 @@ fn main() {
 	assert !compile.output.contains('C compilation failed'), compile.output
 
 	c_code := os.read_file(bin + '.c')!
-	assert c_code.contains('foo.data = ({ Optional_'), c_code
+	assert c_code.contains('foo.data = ({ __v_option_'), c_code
 	assert c_code.contains('memcpy(') && c_code.contains('.value, (make()).ret_arr'), c_code
 
 	run := os.execute(bin)

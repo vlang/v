@@ -4,8 +4,9 @@ import term
 import v.util.diff
 import json2
 
-// vexe is the compiler under test, not the `v` that PATH finds.
+// The compiler under test, not the first `v` on PATH, which may be another checkout.
 const vexe = os.quoted_path(@VEXE)
+
 const vroot = os.real_path(@VMODROOT)
 const tmp_dir = os.real_path(os.temp_dir())
 const text_file = os.join_path(vroot, 'vlib', 'v', 'tests', 'vls', 'sample_text.vv')

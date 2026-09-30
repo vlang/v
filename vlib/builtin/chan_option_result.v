@@ -38,33 +38,6 @@ pub interface IError {
 	code() int
 }
 
-struct _result {
-	is_error bool
-	err      IError = none__
-	// Data is trailing after err
-	// and is not included in here but in the
-	// derived Result_xxx types
-}
-
-fn _result_ok(data voidptr, mut res _result, size int) {
-	unsafe {
-		*res = _result{}
-		// use err to get the end of ResultBase and then memcpy into it
-		vmemcpy(&u8(&res.err) + sizeof(IError), data, size)
-	}
-}
-
-fn _result_clone(current &_result, mut res _result, size int) {
-	unsafe {
-		*res = _result{
-			is_error: current.is_error
-			err:      current.err
-		}
-		// use err to get the end of ResultBase and then memcpy into it
-		vmemcpy(&u8(&res.err) + sizeof(IError), &u8(&current.err) + sizeof(IError), size)
-	}
-}
-
 // str returns the message of IError.
 pub fn (err IError) str() string {
 	if err is None__ {
@@ -155,58 +128,12 @@ pub const error_sentinel = IError(&MessageError{
 	msg: 'error'
 })
 
-// Option is the base of V's internal option return system.
 struct Option {
-	state u8 // 0 - ok; 2 - none; 1 - ?
-	err   IError = none__
-	// Data is trailing after err
-	// and is not included in here but in the
-	// derived Option_xxx types
+	state u8
 }
 
-// option is the base of V's internal option return system.
 struct _option {
 	state u8
-	err   IError = none__
-	// Data is trailing after err
-	// and is not included in here but in the
-	// derived _option_xxx types
-}
-
-fn _option_none(data voidptr, mut option _option, size int) {
-	unsafe {
-		*option = _option{
-			state: 2
-		}
-		// use err to get the end of OptionBase and then memcpy into it
-		vmemcpy(&u8(&option.err) + sizeof(IError), data, size)
-	}
-}
-
-fn _option_ok(data voidptr, mut option _option, size int) {
-	unsafe {
-		*option = _option{}
-		// use err to get the end of OptionBase and then memcpy into it
-		vmemcpy(&u8(&option.err) + sizeof(IError), data, size)
-	}
-}
-
-fn _option_clone(current &_option, mut option _option, size int) {
-	unsafe {
-		*option = _option{
-			state: current.state
-			err:   current.err
-		}
-		// use err to get the end of OptionBase and then memcpy into it
-		vmemcpy(&u8(&option.err) + sizeof(IError), &u8(&current.err) + sizeof(IError), size)
-	}
-}
-
-@[markused]
-fn _result_ok_markused() {
-	mut res := _result{}
-	// Keep _result_ok emitted for code that constructs Result directly.
-	_result_ok(unsafe { nil }, mut res, 0)
 }
 
 //

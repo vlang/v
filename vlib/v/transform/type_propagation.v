@@ -201,8 +201,8 @@ fn decl_type_is_usable(typ string) bool {
 		return false
 	}
 	clean := typ.replace(' ', '')
-	return clean !in ['Option', 'Optional', 'Result'] && !clean.starts_with('Option_')
-		&& !clean.starts_with('Optional_') && !clean.starts_with('Result_')
+	return clean !in ['Option', '__v_option', 'Result'] && !clean.starts_with('Option_')
+		&& !clean.starts_with('__v_option_') && !clean.starts_with('Result_')
 }
 
 fn (t &Transformer) checker_expr_type_name(id flat.NodeId) ?string {
@@ -1896,6 +1896,13 @@ fn (t &Transformer) node_type_uncached(id flat.NodeId) string {
 		}
 	}
 	if node.kind == .struct_init {
+		// A specialized literal locks caller-owned types with `main.`. Its checker
+		// semantic spelling drops that lock and can rebind an array element to a
+		// homonym in the declaration module when parsed again during conversion.
+		if t.validating_generic_spec && node.typ.contains('main.')
+			&& !t.ident_is_import_alias('main') && decl_type_is_usable(node.typ) {
+			return node.typ
+		}
 		if checker_type := t.checker_expr_type_name(id) {
 			return checker_type
 		}

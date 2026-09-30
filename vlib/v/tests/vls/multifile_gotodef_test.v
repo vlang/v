@@ -1,8 +1,9 @@
 import os
 import term
 
-// vexe is the compiler under test, not the `v` that PATH finds.
+// The compiler under test, not the first `v` on PATH, which may be another checkout.
 const vexe = os.quoted_path(@VEXE)
+
 const vroot = @VMODROOT
 const test_dir = os.join_path(vroot, 'vlib', 'v', 'tests', 'vls', 'multifile_gotodef')
 const main_file = os.join_path(test_dir, 'main.v')

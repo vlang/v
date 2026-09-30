@@ -492,6 +492,75 @@ fn main() {
 	assert errors.len == 0, errors.str()
 }
 
+fn test_builtin_wait_on_arrays_of_thread_aliases_is_allowed() {
+	errors := check_diagnostic_project('thread_alias_array_wait', {
+		'main.v': 'module main
+
+type Worker = thread int
+type NestedWorker = Worker
+type Tick = thread
+
+fn compute(n int) int {
+	return n * 2
+}
+
+fn tick() {}
+
+fn main() {
+	mut workers := []NestedWorker{}
+	workers << NestedWorker(spawn compute(2))
+	results := workers.wait()
+	assert results == [4]
+	mut ticks := []Tick{}
+	ticks << Tick(spawn tick())
+	ticks.wait()
+}
+'
+	}, ['main.v'])
+	assert errors.len == 0, errors.str()
+}
+
+fn test_declared_wait_on_a_thread_alias_keeps_its_return_type() {
+	errors := check_diagnostic_project('thread_alias_user_wait', {
+		'main.v': "module main
+
+type Worker = thread int
+
+fn (w Worker) wait() string {
+	return 'custom'
+}
+
+fn compute() int {
+	return 1
+}
+
+fn main() {
+	w := Worker(spawn compute())
+	assert w.wait().len == 6
+}
+"
+	}, ['main.v'])
+	assert errors.len == 0, errors.str()
+}
+
+fn test_wait_on_arrays_of_pointer_aliases_is_rejected() {
+	errors := check_diagnostic_project('thread_pointer_alias_array_wait', {
+		'main.v': 'module main
+
+type Worker = thread int
+type WorkerPtr = &Worker
+
+fn main() {
+	mut workers := []WorkerPtr{}
+	workers.wait()
+}
+'
+	}, ['main.v'])
+	assert errors.len == 1, errors.str()
+	assert errors[0].kind == .unknown_fn
+	assert errors[0].msg == '`[]WorkerPtr` has no method `wait()` (only thread handles and arrays of them have)'
+}
+
 fn test_unknown_enum_values_are_reported() {
 	errors := check_diagnostic_project('unknown_enum_values', {
 		'main.v': 'module main

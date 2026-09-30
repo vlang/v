@@ -9,10 +9,31 @@ fn set_stream_unbuffered(stream &C.FILE) {
 	C.setvbuf(stream, &char(nil), C._IONBF, usize(0))
 }
 
+// race_stdio_write marks a write to stdout or stderr in a race build (`v -race`), like
+// `race_file_write` in `os` does for files: the write happens before later reads of the
+// output in other threads. ThreadSanitizer does not see that ordering for C `FILE` writes.
+@[if race ?]
+fn race_stdio_write() {
+	$if race ? {
+		racereleaseio()
+	}
+}
+
+// race_stdio_read marks a read from stdin in a race build, like `race_file_read` in `os`:
+// it happens after earlier writes to files or to stdout and stderr. Call it only when the
+// read did not fail.
+@[if race ?]
+fn race_stdio_read() {
+	$if race ? {
+		raceacquireio()
+	}
+}
+
 // eprintln prints a message with a line end, to stderr. Both stderr and stdout are flushed.
 @[if !noeprintln ?]
 pub fn eprintln(s string) {
 	$if builtin_print_use_fprintf ? {
+		race_stdio_write()
 		C.fprintf(C.stderr, c'%.*s\n', s.len, s.str)
 		return
 	}
@@ -38,6 +59,7 @@ pub fn eprintln(s string) {
 @[if !noeprintln ?]
 pub fn eprint(s string) {
 	$if builtin_print_use_fprintf ? {
+		race_stdio_write()
 		C.fprintf(C.stderr, c'%.*s', s.len, s.str)
 		return
 	}
@@ -124,6 +146,7 @@ pub fn unbuffer_stdout() {
 @[manualfree]
 pub fn print(s string) {
 	$if builtin_print_use_fprintf ? {
+		race_stdio_write()
 		C.fprintf(C.stdout, c'%.*s', s.len, s.str)
 		return
 	}
@@ -143,6 +166,7 @@ pub fn print(s string) {
 @[if !noprintln ?; manualfree]
 pub fn println(s string) {
 	$if builtin_print_use_fprintf ? {
+		race_stdio_write()
 		C.fprintf(C.stdout, c'%.*s\n', s.len, s.str)
 		return
 	}
@@ -184,6 +208,7 @@ fn _write_buf_to_fd(fd int, buf &u8, buf_len int) {
 	if buf_len <= 0 {
 		return
 	}
+	race_stdio_write()
 	$if windows {
 		$if v2_native_windows_pe_minimal ? {
 			write_buf_to_fd_kernel32_or_exit(fd, buf, buf_len)

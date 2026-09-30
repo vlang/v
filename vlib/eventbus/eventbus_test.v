@@ -178,13 +178,13 @@ fn test_unsubscribe_reveiver() {
 	reset_ncalls()
 	// given
 	mut eb := eventbus.new[string]()
-	r := &FakeReceiver{}
+	r := FakeReceiver{}
 	// when
-	eb.subscriber.subscribe_method('on_test_with_receiver', on_test_with_receiver, r)
-	eb.subscriber.subscribe_method('on_test', on_test_without_receiver, r)
-	eb.subscriber.unsubscribe_receiver(r)
-	assert !eb.subscriber.is_subscribed_method('on_test_with_receiver', r)
-	assert !eb.subscriber.is_subscribed_method('on_test', r)
+	eb.subscriber.subscribe_method('on_test_with_receiver', on_test_with_receiver, &r)
+	eb.subscriber.subscribe_method('on_test', on_test_without_receiver, &r)
+	eb.subscriber.unsubscribe_receiver(&r)
+	assert !eb.subscriber.is_subscribed_method('on_test_with_receiver', &r)
+	assert !eb.subscriber.is_subscribed_method('on_test', &r)
 
 	assert calls_of_on_test_without_receiver == 0
 	assert call_of_on_test_with_receiver == 0

@@ -523,7 +523,8 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 			used[seed] = true
 		}
 		for seed in ['__new_array', 'array.get', 'array.push', 'map_hash_int_4', 'map_hash_int_8',
-			'map_eq_int_4', 'map_eq_int_8', 'map_clone_int_4', 'map_clone_int_8', 'map_free_nop'] {
+			'map_hash_int_16', 'map_eq_int_4', 'map_eq_int_8', 'map_eq_int_16', 'map_clone_int_4',
+			'map_clone_int_8', 'map_clone_int_16', 'map_free_nop'] {
 			queue << seed
 			used[seed] = true
 		}
@@ -542,9 +543,10 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 			'strconv.Dec64.get_string_64', 'bool.str', 'int.str', 'u64.str', 'rune.str', 'string.+',
 			'ptr_str', 'os.join_path_single', 'panic', 'u8.is_letter', 'u8.is_capital',
 			'string.is_capital', 'string.to_lower_ascii', 'rune.to_lower', 'Array_u8__bytestr',
-			'Array_u8__hex', 'data_to_hex_string', 'map_hash_string', 'map_hash_int_1', 'map_hash_int_2',
-			'map_eq_string', 'map_eq_int_1', 'map_eq_int_2', 'map_clone_string', 'map_clone_int_1',
-			'map_clone_int_2', 'map_free_string', '[]string.join', 'Array_string__join',
+			'Array_u8__hex', 'data_to_hex_string', 'map_hash_string', 'map_hash_int_1',
+			'map_hash_int_2', 'map_hash_int_16', 'map_eq_string', 'map_eq_int_1', 'map_eq_int_2',
+			'map_eq_int_16', 'map_clone_string', 'map_clone_int_1', 'map_clone_int_2',
+			'map_clone_int_16', 'map_free_string', '[]string.join', 'Array_string__join',
 			'embed_file.Decoder.decompress', 'embed_file.join_chunks', 'exit', 'v_exit']
 		if !tc.nofloat {
 			runtime_seeds << ['f32.str', 'f64.str', 'strconv__f32_to_str_l', 'strconv__f64_to_str_l']
@@ -1489,8 +1491,9 @@ fn enqueue_implicit_global_container_roots(a &flat.FlatAst, tc &types.TypeChecke
 	if needs_map {
 		for helper in ['new_map', 'map_hash_string', 'map_eq_string', 'map_clone_string',
 			'map_free_string', 'map_hash_int_1', 'map_hash_int_2', 'map_hash_int_4', 'map_hash_int_8',
-			'map_eq_int_1', 'map_eq_int_2', 'map_eq_int_4', 'map_eq_int_8', 'map_clone_int_1',
-			'map_clone_int_2', 'map_clone_int_4', 'map_clone_int_8', 'map_free_nop'] {
+			'map_hash_int_16', 'map_eq_int_1', 'map_eq_int_2', 'map_eq_int_4', 'map_eq_int_8',
+			'map_eq_int_16', 'map_clone_int_1', 'map_clone_int_2', 'map_clone_int_4', 'map_clone_int_8',
+			'map_clone_int_16', 'map_free_nop'] {
 			enqueue_initializer_callee(helper, fn_decls, a, mut used, mut queue)
 		}
 	}
@@ -3412,7 +3415,7 @@ fn enqueue_stringified_primitive_helpers(type_name string, mut used map[string]b
 			enqueue(markused_c_name('i64.str'), mut used, mut queue)
 			enqueue('strconv__format_int', mut used, mut queue)
 		}
-		'u8', 'byte', 'u16', 'u32', 'usize' {
+		'u8', 'u16', 'u32', 'usize' {
 			enqueue('u64.str', mut used, mut queue)
 			enqueue(markused_c_name('u64.str'), mut used, mut queue)
 			enqueue('strconv__format_uint', mut used, mut queue)
@@ -3421,6 +3424,24 @@ fn enqueue_stringified_primitive_helpers(type_name string, mut used map[string]b
 			enqueue('u64.str', mut used, mut queue)
 			enqueue(markused_c_name('u64.str'), mut used, mut queue)
 			enqueue('strconv__format_uint', mut used, mut queue)
+		}
+		'u128' {
+			enqueue('u128.str', mut used, mut queue)
+			enqueue(markused_c_name('u128.str'), mut used, mut queue)
+			enqueue('u128.str_base', mut used, mut queue)
+			enqueue(markused_c_name('u128.str_base'), mut used, mut queue)
+			enqueue('u128.char_str', mut used, mut queue)
+			enqueue(markused_c_name('u128.char_str'), mut used, mut queue)
+		}
+		'i128' {
+			enqueue('i128.str', mut used, mut queue)
+			enqueue(markused_c_name('i128.str'), mut used, mut queue)
+			// A signed value formats in another base from its bit pattern, which is
+			// the unsigned method's job.
+			enqueue('u128.str_base', mut used, mut queue)
+			enqueue(markused_c_name('u128.str_base'), mut used, mut queue)
+			enqueue('i128.char_str', mut used, mut queue)
+			enqueue(markused_c_name('i128.char_str'), mut used, mut queue)
 		}
 		'f32' {
 			enqueue('f32.str', mut used, mut queue)
@@ -4034,7 +4055,8 @@ fn enqueue_function_value_selectors_in_node(a &flat.FlatAst, collector CallColle
 		return
 	}
 	node := a.node(id)
-	if node.kind == .fn_decl {
+	// Struct field defaults are collected when an initializer is reachable, like bodies.
+	if node.kind in [.fn_decl, .struct_decl] {
 		return
 	}
 	if node.kind == .ident && node.value.len > 0 {
@@ -4917,6 +4939,9 @@ fn (c &CallCollector) collect_calls_with_locals_and_generics(node &flat.Node, cu
 			}
 			.struct_init {
 				c.collect_struct_default_calls(child, cur_module, imports, mut calls)
+			}
+			.array_init {
+				c.collect_array_default_calls(child, cur_module, imports, mut calls)
 			}
 			else {}
 		}
@@ -5832,6 +5857,9 @@ fn (c &CallCollector) collect_top_level_expr_calls(id flat.NodeId, cur_module st
 			}
 			.struct_init {
 				c.collect_struct_default_calls(child, cur_module, imports, mut calls)
+			}
+			.array_init {
+				c.collect_array_default_calls(child, cur_module, imports, mut calls)
 			}
 			else {}
 		}
@@ -8608,6 +8636,10 @@ fn (c &CallCollector) value_name_candidates(name string, cur_module string, impo
 
 // Resolve qualified identifiers throughout a type without changing its container syntax.
 fn (c &CallCollector) generic_factory_qualified_type_text(text string, id flat.NodeId, cur_module string, imports map[string]string) string {
+	return c.qualified_type_text_preserving_params(text, id, cur_module, imports, []string{})
+}
+
+fn (c &CallCollector) qualified_type_text_preserving_params(text string, id flat.NodeId, cur_module string, imports map[string]string, generic_params []string) string {
 	mut out := strings.new_builder(text.len)
 	mut i := 0
 	for i < text.len {
@@ -8619,7 +8651,11 @@ fn (c &CallCollector) generic_factory_qualified_type_text(text string, id flat.N
 		start := i
 		for i < text.len && (text[i].is_alnum() || text[i] in [`_`, `.`]) { i++ }
 		name := markused_resolve_imported_type_name(text[start..i], imports)
-		out.write_string(c.tc.qualify_type_name_at(name, id, cur_module))
+		out.write_string(if name in generic_params {
+			name
+		} else {
+			c.tc.qualify_type_name_at(name, id, cur_module)
+		})
 	}
 	return out.str()
 }
@@ -8671,7 +8707,12 @@ fn zero_value_struct_type_name(typ types.Type) string {
 
 // collect_struct_default_calls updates collect struct default calls state for markused.
 fn (c &CallCollector) collect_struct_default_calls(init &flat.Node, cur_module string, imports map[string]string, mut calls []string) {
-	info := c.struct_decl_info_with_imports(init.value, cur_module, imports) or { return }
+	init_type := c.value_type_in_source(init.value, init, imports)
+	if init_type is types.Array || init_type is types.ArrayFixed {
+		c.collect_array_default_calls(init, cur_module, imports, mut calls)
+		return
+	}
+	info := c.value_struct_decl_info(init_type, cur_module, imports) or { return }
 	mut set_fields := map[string]bool{}
 	for i in 0 .. init.children_count {
 		field := c.a.child_node(init, i)
@@ -8679,7 +8720,7 @@ fn (c &CallCollector) collect_struct_default_calls(init &flat.Node, cur_module s
 			set_fields[field.value] = true
 		}
 	}
-	c.collect_struct_default_calls_from_info(info, set_fields, mut calls)
+	c.collect_struct_default_calls_from_info(info, value_struct_default_type_name(init_type), set_fields, mut calls)
 }
 
 // collect_omitted_params_default_calls marks the field-initializer calls of a
@@ -8743,8 +8784,10 @@ fn (c &CallCollector) collect_omitted_params_default_calls(call &flat.Node, call
 
 // collect_struct_default_calls_for_type supports collect_struct_default_calls_for_type handling.
 fn (c &CallCollector) collect_struct_default_calls_for_type(type_name string, cur_module string, imports map[string]string, mut calls []string) {
-	info := c.struct_decl_info_with_imports(type_name, cur_module, imports) or { return }
-	c.collect_struct_default_calls_from_info(info, map[string]bool{}, mut calls)
+	info := c.struct_decl_info_with_imports(types.generic_base_name(type_name), cur_module, imports) or {
+		return
+	}
+	c.collect_struct_default_calls_from_info(info, type_name, map[string]bool{}, mut calls)
 }
 
 // struct_decl_info supports struct decl info handling for CallCollector.
@@ -8760,46 +8803,185 @@ fn (c &CallCollector) struct_decl_info(type_name string, cur_module string) ?Str
 }
 
 // collect_struct_default_calls_from_info supports collect_struct_default_calls_from_info handling.
-fn (c &CallCollector) collect_struct_default_calls_from_info(info StructDeclInfo, provided map[string]bool, mut calls []string) {
-	mut active_defaults := map[int]bool{}
-	c.collect_struct_default_calls_from_info_guarded(info, provided, mut active_defaults, mut calls)
+fn (c &CallCollector) collect_struct_default_calls_from_info(info StructDeclInfo, struct_name string, provided map[string]bool, mut calls []string) {
+	mut active_defaults := map[string]bool{}
+	c.collect_struct_default_calls_from_info_guarded(info, struct_name, provided, mut active_defaults, mut calls)
 }
 
-fn (c &CallCollector) collect_struct_default_calls_from_info_guarded(info StructDeclInfo, provided map[string]bool, mut active_defaults map[int]bool, mut calls []string) {
+fn (c &CallCollector) collect_struct_default_calls_from_info_guarded(info StructDeclInfo, struct_name string, provided map[string]bool, mut active_defaults map[string]bool, mut calls []string) {
 	node := c.a.node(info.node_id)
 	imports := c.imports(info.import_context)
+	_, generic_args, _ := markused_generic_app_parts(struct_name)
+	generic_params := node.generic_params()
 	for i in 0 .. node.children_count {
 		field_id := c.a.child(node, i)
 		field := c.a.node(field_id)
-		if field.kind != .field_decl || field.children_count == 0 || field.value in provided {
+		if field.kind != .field_decl || field.value in provided {
 			continue
 		}
-		if active_defaults[int(field_id)] {
+		active_key := '${int(field_id)}:${struct_name}'
+		if active_defaults[active_key] {
 			continue
 		}
-		active_defaults[int(field_id)] = true
+		if field.children_count == 0 {
+			// A struct field without a default of its own is initialized with that
+			// struct's defaults, which the transformer only expands after markused.
+			active_defaults[active_key] = true
+			field_type := c.specialized_struct_default_type(field.typ, field_id, info.module, imports, generic_args, generic_params)
+			c.collect_value_struct_default_calls(field_type, info.module, imports, mut active_defaults, mut calls)
+			active_defaults.delete(active_key)
+			continue
+		}
+		active_defaults[active_key] = true
 		default := c.a.child_node(field, 0)
 		if default.kind == .struct_init {
-			default_info := c.struct_decl_info_with_imports(default.value, info.module, imports) or {
-				StructDeclInfo{}
-			}
-			if default_info.node_id == info.node_id {
-				mut nested_provided := map[string]bool{}
-				for j in 0 .. default.children_count {
-					explicit_field := c.a.child_node(default, j)
-					if explicit_field.kind == .field_init {
-						nested_provided[explicit_field.value] = true
+			default_type := c.specialized_struct_default_type(default.value, c.a.child(field, 0), info.module, imports, generic_args, generic_params)
+			if default_type is types.Struct {
+				if default_info := c.value_struct_decl_info(default_type, info.module, imports) {
+					mut nested_provided := map[string]bool{}
+					for j in 0 .. default.children_count {
+						explicit_field := c.a.child_node(default, j)
+						if explicit_field.kind == .field_init {
+							nested_provided[explicit_field.value] = true
+						}
+						c.collect_calls(explicit_field, info.module, imports, '', '', mut calls)
 					}
-					c.collect_calls(explicit_field, info.module, imports, '', '', mut calls)
+					c.collect_struct_default_calls_from_info_guarded(default_info, value_struct_default_type_name(default_type), nested_provided, mut active_defaults, mut calls)
+					active_defaults.delete(active_key)
+					continue
 				}
-				c.collect_struct_default_calls_from_info_guarded(info, nested_provided, mut active_defaults, mut calls)
-				active_defaults.delete(int(field_id))
-				continue
 			}
 		}
 		c.collect_calls(field, info.module, imports, '', '', mut calls)
-		active_defaults.delete(int(field_id))
+		active_defaults.delete(active_key)
 	}
+}
+
+// specialized_struct_default_type substitutes arguments without rebasing their module ownership.
+fn (c &CallCollector) specialized_struct_default_type(type_text string, id flat.NodeId, cur_module string, imports map[string]string, generic_args []string, generic_params []string) types.Type {
+	if generic_args.len == 0 || generic_args.len != generic_params.len {
+		return c.value_type_in_source(type_text, c.a.node(id), imports)
+	}
+	// Qualify declaration-owned types before inserting semantic arguments from the caller.
+	declared_type := c.qualified_type_text_preserving_params(type_text, id, cur_module, imports, generic_params)
+	substituted_type := types.subst_generic_text(declared_type, generic_args, generic_params)
+	// Canonical bare argument names belong to main; protect them from an imported declaration's scope.
+	qualified_type := c.generic_factory_qualified_type_text(substituted_type, id, 'main', map[string]string{})
+	// All names are semantic now; no declaration-file import may capture them.
+	return types.unalias_type(c.tc.parse_resolution_type_in_file(qualified_type, ''))
+}
+
+// value_type_in_source resolves a value's semantic type in its source context.
+fn (c &CallCollector) value_type_in_source(type_text string, node &flat.Node, imports map[string]string) types.Type {
+	clean := type_text.trim_space()
+	return types.unalias_type(if source_file := c.a.source_files[node.pos.id] {
+		c.tc.parse_resolution_type_in_file(clean, source_file.name)
+	} else {
+		c.tc.parse_canonical_type(markused_resolve_imported_type_name(clean, imports))
+	})
+}
+
+// value_struct_decl_info resolves structs initialized by a semantic value type.
+fn (c &CallCollector) value_struct_decl_info(typ types.Type, cur_module string, imports map[string]string) ?StructDeclInfo {
+	struct_name := value_struct_default_type_name(typ)
+	if struct_name.len == 0 {
+		return none
+	}
+	base_name := types.generic_base_name(struct_name)
+	// Semantic bare names belong to their registered module, even when substituted
+	// into an imported generic declaration with a same-named struct of its own.
+	owner := if !base_name.contains('.') {
+		c.tc.struct_modules[base_name] or { cur_module }
+	} else {
+		cur_module
+	}
+	return c.struct_decl_info_with_imports(base_name, owner, imports)
+}
+
+// value_struct_default_type_name preserves the specialization initialized by a value type.
+fn value_struct_default_type_name(typ types.Type) string {
+	mut value_type := types.unalias_type(typ)
+	// Fixed arrays initialize their elements; dynamic containers remain empty.
+	for value_type is types.ArrayFixed {
+		value_type = types.unalias_type(value_type.elem_type)
+	}
+	// Preserve reference, option and result wrappers while unwrapping aliases.
+	if value_type !is types.Struct {
+		return ''
+	}
+	return value_type.name
+}
+
+// collect_value_struct_default_calls collects field defaults for struct values.
+// References, options, dynamic containers and function types have no implicit struct defaults.
+fn (c &CallCollector) collect_value_struct_default_calls(typ types.Type, cur_module string, imports map[string]string, mut active_defaults map[string]bool, mut calls []string) {
+	info := c.value_struct_decl_info(typ, cur_module, imports) or { return }
+	struct_name := value_struct_default_type_name(typ)
+	// A default can create more values of its own struct (`next []Node = []Node{len: 1}`),
+	// so expand each specialization once per collected body. `@` starts no symbol name.
+	expanded_marker := '@markused.struct_defaults:${int(info.node_id)}:${struct_name}'
+	if expanded_marker in calls {
+		return
+	}
+	calls << expanded_marker
+	c.collect_struct_default_calls_from_info_guarded(info, struct_name, map[string]bool{}, mut active_defaults, mut calls)
+}
+
+fn (c &CallCollector) collect_array_default_calls(node &flat.Node, cur_module string, imports map[string]string, mut calls []string) {
+	mut has_len := false
+	for i in 0 .. node.children_count {
+		field := c.a.child_node(node, i)
+		if field.kind != .field_init {
+			continue
+		}
+		if field.value == 'init' {
+			// The explicit initializer is traversed separately, including its defaults.
+			return
+		}
+		if field.value == 'len' {
+			has_len = true
+		}
+	}
+	typ := if node.typ.len > 0 { node.typ } else { node.value }
+	array_type := c.value_type_in_source(typ, node, imports)
+	element_type := if array_type is types.Array {
+		if !has_len {
+			// Empty and capacity-only dynamic arrays do not initialize elements.
+			return
+		}
+		array_type.elem_type
+	} else if array_type is types.ArrayFixed {
+		array_type.elem_type
+	} else {
+		if (typ.starts_with('[]') || !typ.starts_with('[')) && !has_len {
+			return
+		}
+		c.value_type_in_source(array_init_element_type_text(node), node, imports)
+	}
+	mut element_defaults := map[string]bool{}
+	c.collect_value_struct_default_calls(element_type, cur_module, imports, mut element_defaults, mut calls)
+}
+
+// array_init_element_type_text returns the value type initialized by an array literal.
+// Fixed-array elements initialize their contents too, but nested dynamic arrays remain empty.
+fn array_init_element_type_text(node &flat.Node) string {
+	mut typ := if node.typ.len > 0 { node.typ } else { node.value }
+	// Strip the literal's outer dimension once; further dynamic dimensions are containers.
+	if node.typ.len > 0 && typ.starts_with('[') {
+		close := markused_matching_bracket(typ, 0)
+		if close == typ.len {
+			return ''
+		}
+		typ = typ[close + 1..]
+	}
+	for typ.starts_with('[') && !typ.starts_with('[]') {
+		close := markused_matching_bracket(typ, 0)
+		if close == typ.len {
+			return ''
+		}
+		typ = typ[close + 1..]
+	}
+	return typ
 }
 
 // resolve_type_name resolves resolve type name information for markused.

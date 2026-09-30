@@ -2394,6 +2394,9 @@ fn fastc_emit_struct_declaration(mut scan scanner.Scanner, is_union bool, source
 		out.writeln('};')
 		out.writeln('')
 	}
+	if c_name == 'Option' {
+		out.writeln('typedef struct { u8 state; IError err; void *data; } __v_result;')
+	}
 	struct_fields[c_name] = fields_by_name.move()
 	struct_field_info[c_name] = field_info.clone()
 	return scan.scan()
@@ -2988,7 +2991,7 @@ fn fastc_emit_function_alias(mut scan scanner.Scanner, source_file FastcSourceFi
 	if tok in [.not, .question] {
 		// A result/option return (`fn (...) !`, `fn (...) ?Type`) lowers to FastC's
 		// fixed `Option` value; consume any concrete value type after it.
-		return_type = 'Option'
+		return_type = if tok == .not { '__v_result' } else { 'Option' }
 		tok = scan.scan()
 		if tok in [.name, .amp, .and, .mul, .lsbr, .key_fn, .question, .not] {
 			_, tok = fastc_scan_type(mut scan, tok, source_file.path, source_file.header.module_name, source_file.header.imports, declared_types, allow_short_placeholders)!

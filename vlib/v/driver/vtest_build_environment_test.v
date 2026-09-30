@@ -51,6 +51,14 @@ fn test_prod_is_a_fact() {
 	})
 }
 
+fn test_race_is_a_define_and_never_uses_tcc() {
+	with_clean_build_environment(fn () {
+		environment := vtest_build_environment(@VEXEROOT, ['-race'])
+		assert 'race' in environment.defines, environment.defines.str()
+		assert 'tinyc' !in environment.facts, environment.facts.str()
+	})
+}
+
 fn test_the_explicit_c_compiler_is_the_compiler_fact() {
 	with_clean_build_environment(fn () {
 		gcc := vtest_build_environment(@VEXEROOT, ['-cc', 'gcc']).facts

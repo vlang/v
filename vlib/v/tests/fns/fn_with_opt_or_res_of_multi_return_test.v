@@ -6,7 +6,7 @@ struct Bb {
 	a int
 }
 
-fn give(succ Aa) ?(Aa, Bb) {
+fn give(succ Aa) !(Aa, Bb) {
 	return match succ.x {
 		'x' {
 			succ, Bb{}
@@ -17,7 +17,7 @@ fn give(succ Aa) ?(Aa, Bb) {
 	}
 }
 
-fn test_fn_with_opt_of_multi_return() {
+fn test_fn_with_result_of_multi_return() {
 	res, _ := give(Aa{ x: 'x' }) or { panic('got unexpected err') }
 
 	assert res.x == 'x'

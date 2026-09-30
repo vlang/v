@@ -241,7 +241,7 @@ fn vls_keyword_start(source string, offset int) int {
 // vls_or_err_hint marks the implicit `err` of an `or {}` block of more than one
 // line after a call that returns a Result.
 fn (mut tc TypeChecker) vls_or_err_hint(node flat.Node, source string, mut hints []VlsInlayHint) {
-	if node.children_count < 2 || !tc.vls_returns_result(tc.a.child(&node, 0)) {
+	if node.children_count < 2 || !tc.failure_has_error(tc.a.child(&node, 0)) {
 		return
 	}
 	block := tc.a.child_node(&node, 1)
@@ -262,7 +262,7 @@ fn (mut tc TypeChecker) vls_else_err_hint(node flat.Node, source string, mut hin
 		return
 	}
 	guard := tc.a.child_node(&node, 0)
-	if guard.kind != .decl_assign || !tc.vls_returns_result(tc.multi_assign_rhs_id(guard, 0)) {
+	if guard.kind != .decl_assign || !tc.failure_has_error(tc.multi_assign_rhs_id(guard, 0)) {
 		return
 	}
 	// `err` is only in the `else` of the guard itself, not in an `else if`.
@@ -276,25 +276,6 @@ fn (mut tc TypeChecker) vls_else_err_hint(node flat.Node, source string, mut hin
 	if rest == '' || rest.starts_with('//') {
 		hints << vls_parameter_label_hint(start + 1, ' err →')
 	}
-}
-
-// vls_returns_result reports whether `id` is a call of a function that
-// returns a Result.
-fn (mut tc TypeChecker) vls_returns_result(id flat.NodeId) bool {
-	if !tc.valid_node_id(id) {
-		return false
-	}
-	node := tc.a.node(id)
-	if node.kind != .call || node.children_count == 0 {
-		return false
-	}
-	if resolved := tc.vls_call_target(id, tc.a.child(node, 0)) {
-		if ret := tc.fn_ret_types[resolved] {
-			return ret is ResultType
-		}
-	}
-	typ := tc.expr_type(id) or { return false }
-	return typ is ResultType
 }
 
 // vls_slice_hints marks the bounds of a slice, `a[1 ≤..< 3]`: the low one is

@@ -364,7 +364,7 @@ fn collides_with_runtime_dense_array() {}
 @[export: 'SortedMap']
 fn collides_with_runtime_sorted_map() {}
 
-@[export: 'Optional']
+@[export: '__v_option']
 fn collides_with_runtime_optional() {}
 
 fn main() {}
@@ -381,7 +381,7 @@ fn main() {}
 	assert compile.output.contains('export name `map` should be a valid identifier'), compile.output
 	assert compile.output.contains('export name `DenseArray` should be a valid identifier'), compile.output
 	assert compile.output.contains('export name `SortedMap` should be a valid identifier'), compile.output
-	assert compile.output.contains('export name `Optional` should be a valid identifier'), compile.output
+	assert compile.output.contains('export name `__v_option` should be a valid identifier'), compile.output
 }
 
 fn test_generic_export_is_rejected_fail_closed() {

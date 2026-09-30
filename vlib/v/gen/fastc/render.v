@@ -16,7 +16,7 @@ fn fastc_builtin_type_idx(type_name string) ?int {
 		'int' { 8 }
 		'i64' { 9 }
 		'isize' { 10 }
-		'u8', 'byte' { 11 }
+		'u8' { 11 }
 		'u16' { 12 }
 		'u32' { 13 }
 		'u64' { 14 }
@@ -943,11 +943,11 @@ fn (g &Parser) render_assignment_expression(tokens []FastcExpressionToken) ?Fast
 	}
 	operator := tokens[assignment_index].tok
 	option_payload_type := g.option_value_type_for_expression(left_tokens)
-	if g.selfhost && operator == .assign && left_type == 'Option' && option_payload_type != '' {
+	if g.selfhost && operator == .assign && left_type in ['Option', '__v_result'] && option_payload_type != '' {
 		rhs_type := fastc_normalize_inferred_type(g.infer_expression_type(rhs_tokens) or { '' })
-		if rhs_type != 'Option' {
+		if rhs_type !in ['Option', '__v_result'] {
 			if fastc_trim_pointer_suffix(rhs_type) == 'IError' {
-				right = '(Option){.err=${right}, .state=1}'
+				right = '(__v_result){.err=${right}, .state=1}'
 			} else {
 				// `right` already holds the fully lowered RHS; for a narrowing boolean it
 				// carries the member smart-cast that a re-render through
@@ -959,7 +959,7 @@ fn (g &Parser) render_assignment_expression(tokens []FastcExpressionToken) ?Fast
 						right
 					}
 				}
-				right = fastc_option_success_expression(option_payload_type, payload)
+				right = fastc_option_success_expression(left_type, option_payload_type, payload)
 			}
 		}
 	}
@@ -1029,7 +1029,7 @@ fn (g &Parser) render_overloaded_assignment(target string, value string, target_
 fn (g &Parser) shift_type_parts(operand_type string) ?(string, string) {
 	resolved_type := fastc_trim_pointer_suffix(g.underlying_alias_type(operand_type))
 	return match resolved_type {
-		'byte', 'char', 'i8', 'u8' { 'u8', '8' }
+		'char', 'i8', 'u8' { 'u8', '8' }
 		'i16', 'u16' { 'u16', '16' }
 		'i32', 'rune', 'u32', 'unsigned int' { 'u32', '32' }
 		'i64', 'u64' { 'u64', '64' }
@@ -1938,7 +1938,7 @@ fn (g &Parser) struct_equality_is_supported(typ string, seen []string) bool {
 	if element_type := g.array_element_type(layout_type) {
 		return g.struct_equality_is_supported(element_type, seen)
 	}
-	if layout_type in ['Option', 'array', 'map'] || layout_type.starts_with('Map_') {
+	if layout_type in ['Option', '__v_result', 'array', 'map'] || layout_type.starts_with('Map_') {
 		return false
 	}
 	type_key := g.semantic_type_key(layout_type)
@@ -3223,14 +3223,14 @@ fn (g &Parser) render_call_argument_expression(tokens []FastcExpressionToken, ex
 			return '(${inner})'
 		}
 	}
-	if g.selfhost && expected_type == 'Option' {
+	if g.selfhost && expected_type in ['Option', '__v_result'] {
 		if tokens.len == 1 && tokens[0].tok == .key_none {
 			return '(Option){.state=2}'
 		}
 		actual_type := fastc_normalize_inferred_type(g.infer_expression_type(tokens) or { '' })
-		if actual_type !in ['', 'Option'] {
+		if actual_type !in ['', 'Option', '__v_result'] {
 			value := g.render_call_argument_expression(tokens, actual_type) or { return none }
-			return fastc_option_success_expression(actual_type, value)
+			return fastc_option_success_expression(expected_type, actual_type, value)
 		}
 	}
 	if g.selfhost && expected_type == 'voidptr' && tokens.len > 1 && tokens[0].tok == .mul {
@@ -3442,7 +3442,7 @@ fn (g &Parser) render_array_literal_argument(tokens []FastcExpressionToken, expe
 }
 
 fn (g &Parser) render_selfhost_simple_array_literal_item(tokens []FastcExpressionToken, expected_type string) ?string {
-	if !g.selfhost || expected_type in ['Option', 'voidptr'] {
+	if !g.selfhost || expected_type in ['Option', '__v_result', 'voidptr'] {
 		return none
 	}
 	if tokens.len == 4 && tokens[0].tok == .name && tokens[1].tok == .lpar && tokens[3].tok == .rpar && tokens[2].source == '' {
@@ -3838,7 +3838,7 @@ fn (g &Parser) render_map_lookup_option_expression(tokens []FastcExpressionToken
 	key_source := g.render_membership_candidate(lookup_tokens[open + 1..lookup_tokens.len - 1], key_type) or { return none }
 	option_value_type := if address_of_value { '${value_type}*' } else { value_type }
 	option_result := if address_of_value {
-		'__vf_mv == NULL ? (Option){.state=2} : ${fastc_option_success_expression(option_value_type, '__vf_mv')}'
+		'__vf_mv == NULL ? (Option){.state=2} : ${fastc_option_success_expression('Option', option_value_type, '__vf_mv')}'
 	} else {
 		'(Option){.data=__vf_mv, .state=__vf_mv == NULL ? 2 : 0}'
 	}
@@ -3987,12 +3987,14 @@ fn fastc_map_runtime_functions(key_type string, pointer_bits int) (string, strin
 	if key_type == 'string' {
 		return 'builtin__map_hash_string', 'builtin__map_eq_string', 'builtin__map_clone_string', 'builtin__map_free_string'
 	}
-	suffix := if key_type in ['i8', 'u8', 'byte', 'char', 'bool'] {
+	suffix := if key_type in ['i8', 'u8', 'char', 'bool'] {
 		'1'
 	} else if key_type in ['i16', 'u16'] {
 		'2'
 	} else if key_type in ['i64', 'u64'] {
 		'8'
+	} else if key_type in ['i128', 'u128'] {
+		'16'
 	} else if key_type in ['isize', 'usize'] || fastc_is_pointer_type(key_type) {
 		if pointer_bits == 32 { '4' } else { '8' }
 	} else {
@@ -4420,8 +4422,13 @@ fn (g &Parser) render_option_propagation(inner_tokens []FastcExpressionToken) ?F
 	temporary := '__vf_op'
 	failure := if g.in_main {
 		deferred := g.deferred_scopes_source()
-		'${deferred} builtin__panic_result_not_set(builtin__IError_msg(${temporary}.err));'
-	} else if g.return_type == 'Option' {
+		message := if (g.infer_expression_type(inner_tokens) or { '' }) == '__v_result' {
+			'builtin__IError_msg(${temporary}.err)'
+		} else {
+			'_S("none")'
+		}
+		'${deferred} builtin__panic_result_not_set(${message});'
+	} else if g.return_type in ['Option', '__v_result'] {
 		'return ${temporary};'
 	} else {
 		'return 1;'
@@ -4432,7 +4439,7 @@ fn (g &Parser) render_option_propagation(inner_tokens []FastcExpressionToken) ?F
 		'*((${value_type} *)${temporary}.data)'
 	}
 	return FastcRenderedExpression{
-		source: '({ Option ${temporary} = (${inner_source}); if (${temporary}.state) { ${failure} } ${value}; })'
+		source: '({ __auto_type ${temporary} = (${inner_source}); if (${temporary}.state) { ${failure} } ${value}; })'
 		typ:    value_type
 	}
 }

@@ -271,7 +271,7 @@ fn main() {
 	assert c_source.contains('return shared+other;'), c_source
 	assert c_source.contains('return shared^2;'), c_source
 	assert !c_source.contains('return &shared'), c_source
-	assert c_source.contains('Option __v0 = (shared);'), c_source
+	assert c_source.contains('__auto_type __v0 = (shared);'), c_source
 	assert c_source.contains('__vf_m_x = (shared);'), c_source
 	assert c_source.count('return shared;') == 3, c_source
 	assert c_source.contains('if (shared)'), c_source
@@ -429,7 +429,7 @@ fn main() {
 	_ := propagate() or { 0 }
 }
 ', 'selfhost_multiline_shared_result_propagation.v', prefs) or { panic(err) }
-	assert c_source.contains('Option __vf_op = (shared);'), c_source
+	assert c_source.contains('__auto_type __vf_op = (shared);'), c_source
 	assert !c_source.contains('shared!'), c_source
 }
 
@@ -10976,7 +10976,7 @@ fn decode(bits u8) !Kind {
 
 fn main() {}
 ", 'selfhost_result_match_error_branch.v', prefs) or { panic(err) }
-	assert c_source.contains('return (Option){.err=builtin__error(_S("bad kind")), .state=1}'), c_source
+	assert c_source.contains('return (__v_result){.err=builtin__error(_S("bad kind")), .state=1}'), c_source
 	assert !c_source.contains('? (Kind__two) : (builtin__error'), c_source
 }
 
@@ -11020,7 +11020,7 @@ fn classify(value int) !string {
 
 fn main() {}
 ", 'selfhost_result_if_error_branch.v', prefs) or { panic(err) }
-	assert c_source.contains('return (Option){.err=builtin__error(_S("bad value")), .state=1}'), c_source
+	assert c_source.contains('return (__v_result){.err=builtin__error(_S("bad value")), .state=1}'), c_source
 	assert !c_source.contains('? (_S("two")) : (builtin__error'), c_source
 }
 

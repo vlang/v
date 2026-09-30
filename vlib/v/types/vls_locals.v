@@ -190,7 +190,7 @@ fn (tc &TypeChecker) vls_implicit_binding(p_id flat.NodeId, p &flat.Node, child 
 			&& tc.a.child(owner, 1) == p_id
 		from_else := owner.kind == .if_expr && owner.children_count > 2
 			&& tc.a.child(owner, 2) == p_id && tc.a.child_node(owner, 0).kind == .decl_assign
-		if from_or || from_else {
+		if (from_or || from_else) && tc.failure_has_error(tc.a.child(owner, 0)) {
 			return VlsPos{int(p.pos.id), int(p.pos.offset)}
 		}
 		return none

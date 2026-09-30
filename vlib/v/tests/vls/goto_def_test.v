@@ -2,8 +2,9 @@ import os
 import term
 import v.util.diff
 
-// vexe is the compiler under test, not the `v` that PATH finds.
+// The compiler under test, not the first `v` on PATH, which may be another checkout.
 const vexe = os.quoted_path(@VEXE)
+
 const vroot = @VMODROOT
 const test_file = os.join_path(vroot, 'vlib', 'v', 'tests', 'vls', 'goto_def_test_data.vv')
 const mod1_text_file = os.join_path(vroot, 'vlib', 'v', 'tests', 'vls', 'sample_mod1', 'sample.v')

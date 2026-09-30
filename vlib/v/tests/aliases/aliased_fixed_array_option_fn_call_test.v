@@ -36,7 +36,7 @@ fn test_aliased_fixed_array_option_fn_call() {
 		netaddr:   Addr([u8(172), 16, 16, 0]!)
 		broadcast: Addr([u8(172), 16, 16, 3]!)
 	}
-	res1 := net.nth(1) or { panic(err) }
+	res1 := net.nth(1) or { panic('missing address') }
 	res2 := net.nth(1) or { Addr{} }
 	assert res1 == [u8(172), 16, 16, 1]!
 	assert res2 == [u8(172), 16, 16, 1]!

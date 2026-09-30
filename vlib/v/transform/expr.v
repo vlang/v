@@ -2191,7 +2191,7 @@ fn (mut t Transformer) transform_infix_optional_none_ops(_id flat.NodeId, node f
 		if !t.is_optional_type_name(lhs_type) || !t.is_optional_type_name(rhs_type) {
 			return none
 		}
-		// This operation compares the Optional_T wrappers themselves. A payload
+		// This operation compares the __v_option_T wrappers themselves. A payload
 		// smartcast left by an earlier assignment must not leak into this comparison
 		// or into a following wrapper comparison in the same logical condition.
 		t.invalidate_smartcast_for_lvalue(lhs_id)
@@ -2208,7 +2208,7 @@ fn (mut t Transformer) transform_infix_optional_none_ops(_id flat.NodeId, node f
 		// `unsafe { record(); nil } == opt`: the left operand is evaluated first.
 		t.lower_discarded_nil_operand_effects(nil_id)
 	}
-	mut opt_type := t.optional_result_expr_type_name(opt_id)
+	mut opt_type := t.normalize_type_alias(t.optional_result_expr_type_name(opt_id))
 	if opt_type.len == 0 {
 		opt_type = t.node_type(opt_id)
 	}
@@ -2334,7 +2334,7 @@ fn (mut t Transformer) collect_discarded_nil_operand_effects(id flat.NodeId, mut
 	}
 }
 
-// transform_optional_wrapper_expr preserves the Optional_T wrapper when a prior
+// transform_optional_wrapper_expr preserves the __v_option_T wrapper when a prior
 // payload assignment has left an option smartcast active for the same expression.
 // Wrapper-level operations such as `x == none` and optional equality must inspect
 // `.ok` on the wrapper, not on the smartcasted `.value` payload.
@@ -2768,7 +2768,7 @@ fn (mut t Transformer) transform_in_expr(id flat.NodeId, node flat.Node) flat.No
 				t.transform_expr(lhs_id)
 			}
 			new_rhs := t.transform_value_operand(rhs_id)
-			fn_name := if t.node_type(lhs_id) in ['u8', 'byte'] {
+			fn_name := if t.node_type(lhs_id) in ['u8'] {
 				'string__contains_u8'
 			} else {
 				'string__contains'
@@ -4201,7 +4201,7 @@ fn (t &Transformer) membership_container_is_pointer_array(typ string) bool {
 fn array_contains_fn_name(elem string) string {
 	return match elem {
 		'string' { 'array_contains_string' }
-		'u8', 'byte' { 'array_contains_u8' }
+		'u8' { 'array_contains_u8' }
 		else { 'array_contains_int' }
 	}
 }
@@ -4210,7 +4210,7 @@ fn array_contains_fn_name(elem string) string {
 fn fixed_array_contains_fn_name(elem string) string {
 	return match elem {
 		'string' { 'fixed_array_contains_string' }
-		'u8', 'byte' { 'fixed_array_contains_u8' }
+		'u8' { 'fixed_array_contains_u8' }
 		else { 'fixed_array_contains_int' }
 	}
 }

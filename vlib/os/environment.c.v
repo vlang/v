@@ -104,6 +104,7 @@ pub fn environ() map[string]string {
 		}
 		C.FreeEnvironmentStringsW(estrings)
 	} $else {
+		// if anything belongs to an unsafe block, this abomination absolutely does.
 		start := unsafe { &&char(voidptr(C.environ)) }
 		mut i := 0
 		for {
