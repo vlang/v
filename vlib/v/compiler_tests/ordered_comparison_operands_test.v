@@ -762,6 +762,9 @@ fn comparison_column(line string) int {
 	return 0
 }
 
+// Generic operands are checked as T before specialization. The bool and MyBool
+// calls below record the current limitation; they do not establish valid ordering
+// for boolean types. Direct boolean operands remain covered by the negative matrix.
 fn test_ordered_comparisons_between_ordered_operands_compile_and_run() {
 	src := prelude + "
 struct Point {
@@ -816,6 +819,8 @@ fn main() {
 	println(lt('a', 'b'))
 	println(lt(Op{1}, Op{2}))
 	println(lt(true, false))
+	assert !lt(MyBool(true), MyBool(false))
+	assert lt(MyBool(false), MyBool(true))
 	println(positive(3))
 	println(positive(-1.5))
 	println(positive('x'))
