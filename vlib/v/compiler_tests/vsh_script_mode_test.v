@@ -3,8 +3,15 @@ import os
 const vsh_mode_vlib_dir = os.dir(os.dir(os.dir(@FILE)))
 const vsh_mode_v3_src = os.join_path(os.dir(os.dir(@FILE)), 'v.v')
 
+fn vsh_mode_executable_path(path string) string {
+	$if windows {
+		return path + '.exe'
+	}
+	return path
+}
+
 fn build_vsh_mode_v3(root string) string {
-	bin := os.join_path(root, 'v3_vsh_script_mode')
+	bin := vsh_mode_executable_path(os.join_path(root, 'v3_vsh_script_mode'))
 	build := os.execute('${os.quoted_path(@VEXE)} -gc none -path ${os.quoted_path('${vsh_mode_vlib_dir}|@vlib|@vmodules')} -o ${os.quoted_path(bin)} ${os.quoted_path(vsh_mode_v3_src)}')
 	assert build.exit_code == 0, build.output
 	return bin
@@ -114,17 +121,18 @@ fn test_raw_vsh_tmp_prefix_runs_extensionless_script() {
 println(file_name(executable()))
 println(arguments()[1..])
 ') or { panic(err) }
-	kept_bin := os.join_path(root, 'tmp.myscript')
+	kept_bin := vsh_mode_executable_path(os.join_path(root, 'tmp.myscript'))
+	expected_name := os.file_name(kept_bin)
 	first := os.execute('${os.quoted_path(v3_bin)} -silent -raw-vsh-tmp-prefix tmp ${os.quoted_path(script)} first')
 	assert first.exit_code == 0, first.output
-	assert first.output.split_into_lines() == ['tmp.myscript', "['first']"], first.output
+	assert first.output.split_into_lines() == [expected_name, "['first']"], first.output
 	assert os.is_file(kept_bin)
 	// An unchanged script reuses the kept executable.
 	cache_stamp := os.file_last_mod_unix(kept_bin) + 3600
 	os.utime(kept_bin, cache_stamp, cache_stamp) or { panic(err) }
 	cached := os.execute('${os.quoted_path(v3_bin)} -silent -raw-vsh-tmp-prefix tmp ${os.quoted_path(script)} cached')
 	assert cached.exit_code == 0, cached.output
-	assert cached.output.split_into_lines() == ['tmp.myscript', "['cached']"], cached.output
+	assert cached.output.split_into_lines() == [expected_name, "['cached']"], cached.output
 	assert os.file_last_mod_unix(kept_bin) == cache_stamp
 	// A newer script is rebuilt.
 	os.write_file(script, "println('rebuilt')
@@ -141,7 +149,7 @@ println(arguments()[1..])
 	os.rm(kept_bin) or { panic(err) }
 	result := os.execute('${os.quoted_path(v3_bin)} -silent -raw-vsh-tmp-prefix tmp run ${os.quoted_path(script)} third')
 	assert result.exit_code == 0, result.output
-	assert result.output.split_into_lines() == ['tmp.myscript', "['third']"], result.output
+	assert result.output.split_into_lines() == [expected_name, "['third']"], result.output
 	assert !os.exists(kept_bin)
 	listed := os.execute('${os.quoted_path(v3_bin)} -silent -print-v-files -raw-vsh-tmp-prefix tmp ${os.quoted_path(script)}')
 	assert listed.exit_code == 0, listed.output
@@ -149,4 +157,31 @@ println(arguments()[1..])
 	missing := os.execute('${os.quoted_path(v3_bin)} -raw-vsh-tmp-prefix')
 	assert missing.exit_code != 0
 	assert missing.output.contains('option `-raw-vsh-tmp-prefix` requires a value'), missing.output
+}
+
+// Only the extensionless input is a script. Its imported ordinary V files still
+// need to import `os` and qualify its symbols.
+fn test_raw_vsh_imported_v_file_does_not_get_implicit_os_symbols() {
+	root := os.join_path(os.vtmp_dir(), 'v3 vsh ordinary module ${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	v3_bin := build_vsh_mode_v3(root)
+	module_dir := os.join_path(root, 'helper')
+	os.mkdir_all(module_dir) or { panic(err) }
+	ordinary_file := os.join_path(module_dir, 'helper.v')
+	os.write_file(ordinary_file, "module helper
+
+pub fn message() string {
+	return file_name('ordinary.v')
+}
+") or { panic(err) }
+	script := os.join_path(root, 'myscript')
+	os.write_file(script, 'import helper\n\nprintln(helper.message())\n') or { panic(err) }
+	result := os.execute('${os.quoted_path(v3_bin)} -silent -raw-vsh-tmp-prefix tmp ${os.quoted_path(script)}')
+	assert result.exit_code != 0, result.output
+	assert result.output.contains('unknown function: file_name'), result.output
+	assert result.output.contains(ordinary_file) || result.output.contains(os.real_path(ordinary_file)), result.output
 }
