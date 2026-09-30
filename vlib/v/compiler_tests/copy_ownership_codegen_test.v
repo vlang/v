@@ -144,3 +144,148 @@ fn main() {
 	assert build.exit_code != 0
 	assert build.output.contains('cannot copy `Handle` elements: `Handle` requires ownership destruction but has no compatible `clone()` method'), build.output
 }
+
+fn test_mut_fixed_array_views_preserve_independent_element_owners() {
+	output := copy_ownership_run('fixed_array_owners', '@[has_globals]
+module main
+
+__global next_owned_id = 0
+__global dropped_ids = map[int]bool{}
+
+interface Drop {
+mut:
+	drop()
+}
+
+struct Tracked implements IClone, Drop {
+	id int
+}
+
+fn fresh() Tracked {
+	next_owned_id++
+	return Tracked{next_owned_id}
+}
+
+fn (r &Tracked) clone() Tracked {
+	return fresh()
+}
+
+fn (mut r Tracked) drop() {
+	assert !dropped_ids[r.id], "owner dropped twice"
+	dropped_ids[r.id] = true
+}
+
+fn keep(mut values []Tracked) []Tracked {
+	return values
+}
+
+fn keep_strings(mut values []string) []string {
+	return values
+}
+
+struct Wrapper {
+	items []Tracked
+}
+
+fn keep_wrappers(mut values []Wrapper) []Wrapper {
+	return values
+}
+
+fn main() {
+	mut fixed := [fresh()]!
+	kept := keep(mut fixed)
+	drop_owned(kept)
+	drop_owned(fixed)
+	mut wrappers := [Wrapper{[fresh()]}]!
+	kept_wrappers := keep_wrappers(mut wrappers)
+	drop_owned(kept_wrappers)
+	drop_owned(wrappers)
+	assert dropped_ids.len == next_owned_id
+	mut words := ["first".repeat(3), "second".repeat(3)]!
+	kept_words := keep_strings(mut words)
+	drop_owned(words)
+	assert kept_words[0] == "firstfirstfirst"
+	assert kept_words[1] == "secondsecondsecond"
+	drop_owned(kept_words)
+	println("ok")
+}
+')
+	assert output == 'ok'
+}
+
+fn test_mut_fixed_array_views_reject_elements_without_clone() {
+	for argument in ['values', 'values[0..1]'] {
+		build := copy_ownership_compile('uncloneable_fixed_${argument.len}', 'interface Drop {
+mut:
+	drop()
+}
+
+struct Handle implements Drop {
+	fd int
+}
+
+fn (mut h Handle) drop() {}
+
+fn keep(mut values []Handle) []Handle {
+	return values
+}
+
+fn main() {
+	mut values := [Handle{1}]!
+	keep(mut ${argument})
+}
+')
+		assert build.exit_code != 0
+		assert build.output.contains('requires ownership destruction but has no compatible `clone()` method'), build.output
+	}
+	build := copy_ownership_compile('uncloneable_fixed_reference', 'interface Drop {
+mut:
+	drop()
+}
+
+struct Handle implements Drop {
+	fd int
+}
+
+fn (mut h Handle) drop() {}
+
+fn inspect(values &[]Handle) {
+	assert values[0].fd == 1
+}
+
+fn main() {
+	values := [Handle{1}]!
+	inspect(values)
+}
+')
+	assert build.exit_code != 0
+	assert build.output.contains('requires ownership destruction but has no compatible `clone()` method'), build.output
+}
+
+fn test_nonownership_fixed_array_views_do_not_root_unused_destructors() {
+	path := os.join_path(copy_ownership_tmp_dir, 'unused_fixed_drop.c.v')
+	os.write_file(path, 'fn C.unreachable_fixed_array_drop()
+
+struct Storage {
+	values []int
+}
+
+fn (mut s Storage) drop() {
+	C.unreachable_fixed_array_drop()
+}
+
+fn keep(mut values []Storage) []Storage {
+	return values
+}
+
+fn main() {
+	mut values := [Storage{[1]}]!
+	kept := keep(mut values)
+	assert kept[0].values == [1]
+	println("ok")
+}
+') or { panic(err) }
+	output := os.execute('${os.quoted_path(copy_ownership_vexe)} run ${os.quoted_path(path)}')
+	assert output.exit_code == 0, output.output
+	assert output.output.trim_space() == 'ok'
+}

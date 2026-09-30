@@ -13177,6 +13177,57 @@ struct FixedArrayArgBacking {
 	array_type string
 }
 
+// The generated element copy loops have no checker cleanup snapshot. Keep their
+// concrete destructors reachable before the final dead-function elimination pass.
+fn (mut t Transformer) mark_fixed_array_element_drops(typ string, seen []string) {
+	if isnil(t.tc) || !t.tc.ownership_type_requires_destruction(t.tc.parse_type(typ)) {
+		return
+	}
+	clean := t.normalize_type_alias(typ).trim_space()
+	if clean.len == 0 || clean.starts_with('&') || clean in seen {
+		return
+	}
+	mut visited := seen.clone()
+	visited << clean
+	if clean.starts_with('?') || clean.starts_with('!') {
+		t.mark_fixed_array_element_drops(t.optional_base_type(clean), visited)
+		if clean.starts_with('!') {
+			for concrete in t.tc.ierror_impl_names() {
+				t.mark_fixed_array_element_drops(concrete, visited)
+			}
+		}
+		return
+	}
+	if clean.starts_with('[]') || t.is_fixed_array_type(clean) {
+		elem_type := if clean.starts_with('[]') { clean[2..] } else { fixed_array_elem_type(clean) }
+		t.mark_fixed_array_element_drops(elem_type, visited)
+		return
+	}
+	if clean.starts_with('map[') {
+		key_type, value_type := t.map_type_parts(clean)
+		t.mark_fixed_array_element_drops(key_type, visited)
+		t.mark_fixed_array_element_drops(value_type, visited)
+		return
+	}
+	method := if t.tc.autofree_mode { 'free' } else { 'drop' }
+	if signature := t.tc.concrete_method_signature_key(clean, method) {
+		t.mark_fn_used_name(signature)
+		return
+	}
+	if t.is_sum_type_name(clean) {
+		resolved := t.resolve_sum_name(clean)
+		for variant in t.sum_types[resolved] or { []string{} } {
+			t.mark_fixed_array_element_drops(t.resolve_variant(resolved, variant), visited)
+		}
+		return
+	}
+	if info := t.lookup_struct_info(clean) {
+		for field in info.fields {
+			t.mark_fixed_array_element_drops(t.compiler_default_clone_field_type(clean, field), visited)
+		}
+	}
+}
+
 fn (t &Transformer) call_has_mut_fixed_array_args(node flat.Node, params []string, offset int) bool {
 	for i in 1 .. node.children_count {
 		param_idx := i - 1 + offset
@@ -13208,8 +13259,18 @@ fn (mut t Transformer) refresh_fixed_array_arg_backings() {
 	for backing in t.fixed_array_arg_backings {
 		// Nested argument calls may have written back to the source since it was cloned.
 		// Run after their preludes and before the outer call is materialized.
+		elem_type := backing.array_type[2..]
+		if t.compiler_default_clone_type_needs_work(elem_type) {
+			t.mark_fixed_array_element_drops(elem_type, []string{})
+			len_name := t.new_temp('fixed_array_refresh_len')
+			t.pending_stmts << t.make_decl_assign_typed(len_name,
+				t.make_selector(t.make_ident(backing.view_name), 'len', 'int'), 'int')
+			t.pending_stmts << t.make_owned_copy_loop(t.make_ident(backing.buf_name),
+				t.make_ident(backing.view_name), len_name, elem_type, false)
+			continue
+		}
 		size := t.make_infix(.mul, t.make_selector(t.make_ident(backing.view_name), 'len',
-			'int'), t.make_sizeof_type(backing.array_type[2..]))
+			'int'), t.make_sizeof_type(elem_type))
 		t.mark_fn_used('vmemcpy')
 		t.pending_stmts << t.make_expr_stmt(t.make_call_typed('vmemcpy', [
 			t.make_selector(t.make_ident(backing.buf_name), 'data', 'voidptr'),
@@ -13232,14 +13293,32 @@ fn (mut t Transformer) fixed_array_mut_arg(view flat.NodeId, array_type string, 
 			'voidptr'), '&u8')
 		// Copy only the passed range; other elements can change through unrelated aliases.
 		dst := t.make_infix(.plus, data, t.make_selector(t.make_ident(view_name), 'offset', 'int'))
-		size := t.make_infix(.mul, t.make_selector(t.make_ident(view_name), 'len', 'int'),
-			t.make_sizeof_type(array_type[2..]))
-		t.mark_fn_used('vmemcpy')
-		t.fixed_array_arg_writebacks << t.make_expr_stmt(t.make_call_typed('vmemcpy', [
-			dst,
-			t.make_selector(t.make_ident(view_name), 'data', 'voidptr'),
-			size,
-		], 'voidptr'))
+		elem_type := array_type[2..]
+		if t.compiler_default_clone_type_needs_work(elem_type) {
+			len_name := t.new_temp('fixed_array_writeback_len')
+			len := t.make_selector(t.make_ident(view_name), 'len', 'int')
+			t.mark_fn_used('new_array_from_c_array_no_alloc')
+			dst_view := t.make_call_typed('new_array_from_c_array_no_alloc', [
+				len,
+				len,
+				t.make_sizeof_type(elem_type),
+				dst,
+			], array_type)
+			dst_name := t.new_temp('fixed_array_writeback_view')
+			t.fixed_array_arg_writebacks << t.make_decl_assign_typed(len_name, len, 'int')
+			t.fixed_array_arg_writebacks << t.make_decl_assign_typed(dst_name, dst_view, array_type)
+			t.fixed_array_arg_writebacks << t.make_owned_copy_loop(t.make_ident(dst_name),
+				t.make_ident(view_name), len_name, elem_type, false)
+		} else {
+			size := t.make_infix(.mul, t.make_selector(t.make_ident(view_name), 'len', 'int'),
+				t.make_sizeof_type(elem_type))
+			t.mark_fn_used('vmemcpy')
+			t.fixed_array_arg_writebacks << t.make_expr_stmt(t.make_call_typed('vmemcpy', [
+				dst,
+				t.make_selector(t.make_ident(view_name), 'data', 'voidptr'),
+				size,
+			], 'voidptr'))
+		}
 	}
 	addr := t.make_prefix(.amp, t.make_ident(arg_name))
 	t.set_node_typ(int(addr), param_type)
@@ -13259,8 +13338,13 @@ fn (mut t Transformer) fixed_array_mut_arg_backing(value_id flat.NodeId, fixed_t
 	buf_name := t.new_temp('fixed_array_buf')
 	view_addr := t.make_prefix(.amp, t.make_ident(view_name))
 	t.set_node_typ(int(view_addr), '&${array_type}')
-	t.mark_fn_used('array__clone')
-	mut backing := t.make_call_typed('array__clone', [view_addr], array_type)
+	mut backing := if t.compiler_default_clone_type_needs_work(array_type[2..]) {
+		// A helper keeps the conditional allocation lazy when another argument reuses it.
+		t.request_default_clone_helper(t.make_ident(view_name), array_type)
+	} else {
+		t.mark_fn_used('array__clone')
+		t.make_call_typed('array__clone', [view_addr], array_type)
+	}
 	for previous in t.fixed_array_arg_backings {
 		if previous.array_type != array_type {
 			continue

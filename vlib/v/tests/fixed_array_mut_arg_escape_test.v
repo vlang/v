@@ -221,3 +221,46 @@ fn test_mut_fixed_array_range_copies_back_only_its_elements() {
 	write_range_and_unpassed_element(mut external_fixed[0..1])
 	assert external_fixed == [7, 2, 9]!
 }
+
+fn keep_nested(mut values [][]int) [][]int {
+	values[0][0] = 5
+	return values
+}
+
+fn keep_maps(mut values []map[string]int) []map[string]int {
+	values[0]['value'] = 6
+	return values
+}
+
+struct NestedItem {
+mut:
+	values []int
+}
+
+fn keep_items(mut values []NestedItem) []NestedItem {
+	values[0].values[0] = 7
+	return values
+}
+
+fn test_escaped_mut_fixed_array_elements_have_independent_storage() {
+	mut nested := [[1, 2], [3, 4]]!
+	mut kept_nested := keep_nested(mut nested)
+	assert nested[0] == [5, 2]
+	kept_nested[0][0] = 9
+	assert nested[0] == [5, 2]
+	mut maps := [{
+		'value': 1
+	}, {
+		'value': 2
+	}]!
+	mut kept_maps := keep_maps(mut maps)
+	assert maps[0]['value'] == 6
+	kept_maps[0]['value'] = 9
+	assert maps[0]['value'] == 6
+	mut items := [NestedItem{[1]}, NestedItem{[2]}]!
+	mut kept_items := keep_items(mut items[0..1])
+	assert items[0].values == [7]
+	kept_items[0].values[0] = 9
+	assert items[0].values == [7]
+	assert items[1].values == [2]
+}
