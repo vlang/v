@@ -3930,7 +3930,10 @@ fn (tc &TypeChecker) fixed_array_reference_is_call_borrow(id flat.NodeId) bool {
 			return false
 		}
 		parent := tc.a.node(parent_id)
-		if parent.kind != .paren && !(parent.kind == .infix && parent.op in [.plus, .minus]) {
+		// Like V1, a cast such as `voidptr(&buf[0])` or `u64(&buf[0]) + 8` that
+		// goes straight into a call is still only a borrow for that call.
+		if parent.kind != .paren && parent.kind != .cast_expr
+			&& !(parent.kind == .infix && parent.op in [.plus, .minus]) {
 			return false
 		}
 		current = parent_id
