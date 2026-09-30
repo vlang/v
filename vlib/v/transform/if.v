@@ -1315,6 +1315,10 @@ fn (mut t Transformer) build_array_index_if_value_guard_chain(if_node flat.Node,
 
 // if_value_branch_block supports if value branch block handling for Transformer.
 fn (mut t Transformer) if_value_branch_block(branch_id flat.NodeId, target_name string, target_type string) flat.NodeId {
+	heaped_state := t.save_heaped_local_state()
+	defer {
+		t.restore_heaped_local_state(heaped_state)
+	}
 	if int(branch_id) < 0 {
 		return t.make_block([]flat.NodeId{})
 	}
@@ -1626,13 +1630,9 @@ fn (mut t Transformer) transform_if_branch_as_block(branch_id flat.NodeId) flat.
 	}
 	// Auto-heaped locals are lexical bindings. Restore the incoming state after each
 	// branch so same-named locals in later branches cannot reuse stale pointer storage.
-	saved_heaped_amp_locals := t.heaped_amp_locals.clone()
-	saved_pointer_value_lvalues := t.pointer_value_lvalues.clone()
-	saved_pointer_value_rvalues := t.pointer_value_rvalues.clone()
+	heaped_state := t.save_heaped_local_state()
 	defer {
-		t.heaped_amp_locals = saved_heaped_amp_locals.clone()
-		t.pointer_value_lvalues = saved_pointer_value_lvalues.clone()
-		t.pointer_value_rvalues = saved_pointer_value_rvalues.clone()
+		t.restore_heaped_local_state(heaped_state)
 	}
 	branch := t.a.nodes[int(branch_id)]
 	if branch.kind == .block {

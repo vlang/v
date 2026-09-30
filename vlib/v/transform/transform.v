@@ -7224,6 +7224,56 @@ fn (mut t Transformer) collect_mut_capture_sources(id flat.NodeId) {
 	}
 }
 
+// HeapedLocalState records which locals are moved to the heap (and so read and written
+// through their storage pointer) when a lexical scope starts.
+struct HeapedLocalState {
+	cloned                bool
+	heaped_amp_locals     map[string]bool
+	pointer_value_lvalues map[string]bool
+	pointer_value_rvalues map[string]bool
+}
+
+// save_heaped_local_state records the state before a lexical scope: a block, a loop, an
+// `if`/`match` branch or an `or` body. Locals moved to the heap are tracked by name, but
+// they are lexical bindings: restoring the state when the scope ends keeps a same-named
+// local of a later sibling scope (a pointer, a function) from being lowered as the moved
+// one. When no local is moved yet, the ones moved inside the scope are forgotten instead
+// of copying the maps.
+fn (t &Transformer) save_heaped_local_state() HeapedLocalState {
+	if t.heaped_amp_locals.len == 0 {
+		return HeapedLocalState{}
+	}
+	return HeapedLocalState{
+		cloned:                true
+		heaped_amp_locals:     t.heaped_amp_locals.clone()
+		pointer_value_lvalues: t.pointer_value_lvalues.clone()
+		pointer_value_rvalues: t.pointer_value_rvalues.clone()
+	}
+}
+
+fn (mut t Transformer) restore_heaped_local_state(state HeapedLocalState) {
+	if !state.cloned {
+		for name, _ in t.heaped_amp_locals {
+			t.pointer_value_lvalues.delete(name)
+			t.pointer_value_rvalues.delete(name)
+		}
+		t.heaped_amp_locals.clear()
+		return
+	}
+	t.heaped_amp_locals = state.heaped_amp_locals.clone()
+	t.pointer_value_lvalues = state.pointer_value_lvalues.clone()
+	t.pointer_value_rvalues = state.pointer_value_rvalues.clone()
+}
+
+// transform_scope_stmts transforms the statements of a lexical scope; see
+// save_heaped_local_state.
+fn (mut t Transformer) transform_scope_stmts(ids []flat.NodeId) []flat.NodeId {
+	state := t.save_heaped_local_state()
+	result := t.transform_stmts(ids)
+	t.restore_heaped_local_state(state)
+	return result
+}
+
 fn (mut t Transformer) reset_escaping_amp_state() {
 	t.escaping_amp_ptrs.clear()
 	t.escaping_amp_sources.clear()
@@ -14764,6 +14814,10 @@ fn (mut t Transformer) transform_block_expr_for_type(id flat.NodeId, node flat.N
 }
 
 fn (mut t Transformer) transform_block_expr_for_type_in_own_scope(id flat.NodeId, node flat.Node, target_type string) ?flat.NodeId {
+	heaped_state := t.save_heaped_local_state()
+	defer {
+		t.restore_heaped_local_state(heaped_state)
+	}
 	if node.kind != .block || node.children_count == 0 || target_type == '' {
 		return none
 	}
@@ -17761,11 +17815,19 @@ fn (mut t Transformer) transform_lock_stmt(id flat.NodeId, node flat.Node) []fla
 
 // transform_for_stmt transforms transform for stmt data for transform.
 fn (mut t Transformer) transform_for_stmt(id flat.NodeId, node flat.Node) []flat.NodeId {
+	heaped_state := t.save_heaped_local_state()
+	defer {
+		t.restore_heaped_local_state(heaped_state)
+	}
 	return t.transform_for_body(id, node)
 }
 
 // transform_for_in_stmt transforms transform for in stmt data for transform.
 fn (mut t Transformer) transform_for_in_stmt(id flat.NodeId, node flat.Node) []flat.NodeId {
+	heaped_state := t.save_heaped_local_state()
+	defer {
+		t.restore_heaped_local_state(heaped_state)
+	}
 	return t.transform_for_in_body(id, node)
 }
 
@@ -17775,7 +17837,7 @@ fn (mut t Transformer) transform_block_stmt(id flat.NodeId, node flat.Node) []fl
 	for i in 0 .. node.children_count {
 		child_ids << t.a.children[node.children_start + i]
 	}
-	new_children := t.transform_stmts(child_ids)
+	new_children := t.transform_scope_stmts(child_ids)
 	if t.rewrite_children_in_place(id, new_children) {
 		return [id]
 	}
@@ -18484,6 +18546,10 @@ fn (mut t Transformer) restore_outer_pending(outer_pending []flat.NodeId) {
 }
 
 fn (mut t Transformer) transform_block_expr_in_own_scope(id flat.NodeId, node flat.Node) flat.NodeId {
+	heaped_state := t.save_heaped_local_state()
+	defer {
+		t.restore_heaped_local_state(heaped_state)
+	}
 	mut child_ids := []flat.NodeId{cap: int(node.children_count)}
 	for i in 0 .. node.children_count {
 		child_ids << t.a.children[node.children_start + i]
@@ -26574,7 +26640,7 @@ fn (mut t Transformer) build_match_chain(match_expr_id flat.NodeId, orig_expr_id
 	for i in body_start_idx .. branch.children_count {
 		body_ids << t.a.child(&branch, i)
 	}
-	new_body := t.transform_stmts(body_ids)
+	new_body := t.transform_scope_stmts(body_ids)
 	for _ in 0 .. sc_pushed {
 		t.pop_smartcast()
 	}
@@ -26851,7 +26917,7 @@ fn (mut t Transformer) build_match_type_branch_chain(match_expr_id flat.NodeId, 
 			body_id
 		}
 	}
-	body_block := t.make_block(t.transform_stmts(body_ids))
+	body_block := t.make_block(t.transform_scope_stmts(body_ids))
 	for _ in 0 .. sc_pushed {
 		t.pop_smartcast()
 	}

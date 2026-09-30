@@ -878,6 +878,10 @@ fn (mut t Transformer) convert_forwarded_map(value_id flat.NodeId, actual_type t
 // return_block_from_branch builds a block that keeps leading statements
 // (transformed) and turns the tail expression of the branch into a `return`.
 fn (mut t Transformer) return_block_from_branch(branch_id flat.NodeId, ret_typ string, extra_return_vals []flat.NodeId, source_return_id flat.NodeId) flat.NodeId {
+	heaped_state := t.save_heaped_local_state()
+	defer {
+		t.restore_heaped_local_state(heaped_state)
+	}
 	branch := t.a.nodes[int(branch_id)]
 	if branch.kind == .return_stmt {
 		mut all := []flat.NodeId{}
@@ -1196,6 +1200,10 @@ fn (t &Transformer) match_branch_tuple_parts(branch flat.Node, body_start_idx in
 
 // match_branch_return_block supports match branch return block handling for Transformer.
 fn (mut t Transformer) match_branch_return_block(branch flat.Node, body_start_idx int, ret_typ string, source_return_id flat.NodeId) flat.NodeId {
+	heaped_state := t.save_heaped_local_state()
+	defer {
+		t.restore_heaped_local_state(heaped_state)
+	}
 	mut body_ids := []flat.NodeId{}
 	for i in body_start_idx .. branch.children_count {
 		body_ids << t.a.child(&branch, i)
