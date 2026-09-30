@@ -9411,6 +9411,9 @@ fn (t &Transformer) escape_address_expr_is_stack_local(id flat.NodeId, local_sta
 			}
 			base_id := t.a.child(&node, 0)
 			base_type := t.normalize_type_alias(t.address_expr_type_name(base_id))
+			if base_type.starts_with('&') && t.is_fixed_array_type(base_type.trim_left('&')) {
+				return t.escape_address_indirect_base_is_stack_backed(base_id, amp_ptrs, ptr_aliases)
+			}
 			if !t.is_fixed_array_type(base_type) {
 				return false
 			}
@@ -9421,6 +9424,10 @@ fn (t &Transformer) escape_address_expr_is_stack_local(id flat.NodeId, local_sta
 				return false
 			}
 			return t.escape_address_expr_is_stack_local(t.a.child(&node, 0), local_stack_names, amp_ptrs, ptr_aliases)
+		}
+		.prefix {
+			return node.op == .mul && node.children_count > 0
+				&& t.escape_address_indirect_base_is_stack_backed(t.a.child(&node, 0), amp_ptrs, ptr_aliases)
 		}
 		else {
 			return false
