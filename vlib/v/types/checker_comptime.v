@@ -17817,7 +17817,8 @@ fn (mut tc TypeChecker) check_assign(id flat.NodeId, node flat.Node) {
 		}
 		if lhs_node.kind == .selector && lhs_node.children_count > 0 {
 			base_type := unalias_type(tc.resolve_type(tc.a.child(&lhs_node, 0)))
-			if tc.unsafe_depth == 0 && lhs_node.value == 'len'
+			// Like V1, the body of an `@[unsafe]` function counts as `unsafe` here.
+			if tc.unsafe_depth == 0 && !tc.current_fn_declared_unsafe() && lhs_node.value == 'len'
 				&& (base_type is String || base_type is Array) {
 				kind := if base_type is String { 'string' } else { 'array' }
 				tc.check_node(rhs_id)
