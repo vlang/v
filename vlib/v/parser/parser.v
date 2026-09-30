@@ -12545,7 +12545,8 @@ fn (mut p Parser) map_init_after_type(map_type string, start int) flat.NodeId {
 
 fn (mut p Parser) channel_receive_expr(inner flat.NodeId, op_start int) flat.NodeId {
 	inner_node := p.a.node(inner)
-	if inner_node.kind == .or_expr && inner_node.value == '?' && inner_node.children_count >= 2 {
+	// `<-ch?` and `<-ch!` propagate the receive, not the channel operand.
+	if inner_node.kind == .or_expr && inner_node.value in ['?', '!'] && inner_node.children_count >= 2 {
 		source := p.a.child(inner_node, 0)
 		fallback := p.a.child(inner_node, 1)
 		receive := p.a.add_node(flat.Node{
@@ -12557,7 +12558,7 @@ fn (mut p Parser) channel_receive_expr(inner flat.NodeId, op_start int) flat.Nod
 		})
 		return p.a.add_node(flat.Node{
 			kind:           .or_expr
-			value:          '?'
+			value:          inner_node.value
 			children_start: p.add_children2(receive, fallback)
 			children_count: 2
 			pos:            p.span_to(op_start)
