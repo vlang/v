@@ -1605,6 +1605,17 @@ fn program_dir(name string, source string) string {
 	return dir
 }
 
+fn test_a_call_of_a_generic_method_on_a_struct_literal_has_the_type_it_returns() {
+	// `Host{}.first_of(values)` in a generic body is what `first_of` returns for
+	// the `A` of `values`, as `h.first_of(values)` is: the receiver is a value of
+	// the type that the literal writes.
+	source := 'module main\n\nstruct Host {}\n\nfn (h Host) first_of[T](xs []T) T {\n\treturn xs[0]\n}\n\nfn inside[A](values []A) A {\n\tinferred := Host{}.first_of(values)\n\ttyped := Host{}.first_of[A](values)\n\tprintln(typed)\n\treturn inferred\n}\n\nfn main() {\n\tprintln(inside([1]))\n}\n'
+	dir := program_dir('literal_receiver', source)
+	assert ask(dir, 'hv^', line_of(source, '\tinferred := Host{}.first_of(values)'), 'inferred',
+		0) == hover_of('inferred A')
+	assert ask(dir, 'hv^', line_of(source, '\ttyped := Host{}.first_of[A](values)'), 'typed', 0) == hover_of('typed A')
+}
+
 // line_of is the 1-based number of the line of `source` that reads `text`.
 fn line_of(source string, text string) int {
 	line := source.split('\n').index(text) + 1

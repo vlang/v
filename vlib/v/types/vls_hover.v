@@ -438,12 +438,18 @@ fn (tc &TypeChecker) vls_value_type(id flat.NodeId) ?Type {
 	if typ := tc.vls_expr_type(id) {
 		return typ
 	}
-	if tc.a.node(id).kind == .ident {
+	node := tc.a.node(id)
+	if node.kind == .ident {
 		decl_id := tc.vls_local_declaration(id)?
 		decl := tc.a.node(decl_id)
 		if decl.kind == .param && decl.typ.len > 0 {
 			return tc.parse_type(decl.typ)
 		}
+	}
+	// A struct literal is a value of the type it writes: `Host{}` of
+	// `Host{}.first_of(values)` in a body the checker did not type.
+	if node.kind == .struct_init && node.value.len > 0 {
+		return tc.parse_type(node.value)
 	}
 	return none
 }
