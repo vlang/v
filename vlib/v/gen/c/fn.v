@@ -5208,6 +5208,7 @@ fn (mut g FlatGen) gen_fn_in_module(node_id flat.NodeId, node flat.Node, module_
 	// already resolves that through fn_decl_attributes's source-position
 	// fallback -- reusing its result keeps this check exactly as accurate.
 	mut is_naked_fn := false
+	g.write_fn_line_directive(node)
 	if is_entry_main {
 		force_main_console := g.tc.declaration_has_attribute(node_id, 'console')
 		g.writeln(g.c_main_declaration(force_main_console))
@@ -5293,6 +5294,7 @@ fn (mut g FlatGen) gen_fn_in_module(node_id flat.NodeId, node flat.Node, module_
 	g.indent--
 	g.writeln('}')
 	g.writeln('')
+	g.end_fn_line_directives()
 	if should_print_fn {
 		println(g.sb.after(fn_start_pos))
 	}
@@ -5593,6 +5595,7 @@ fn (mut g FlatGen) gen_top_level_main(stmts []TopLevelStmt) {
 	g.tc.cur_module = 'main'
 	old_fn_name := g.cur_fn_name
 	g.cur_fn_name = 'main'
+	g.line_directive_fn_start = 0
 	g.loop_depth = 0
 	g.loop_label_depths = map[string]int{}
 	g.map_loop_copyback_guards = []MapLoopCopybackGuard{}
@@ -5689,6 +5692,7 @@ fn (mut g FlatGen) gen_top_level_main(stmts []TopLevelStmt) {
 	g.indent--
 	g.writeln('}')
 	g.writeln('')
+	g.end_fn_line_directives()
 	if 'main' in g.print_fn_names || 'main__main' in g.print_fn_names {
 		println(g.sb.after(fn_start_pos))
 	}

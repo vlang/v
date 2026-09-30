@@ -8963,6 +8963,12 @@ fn (mut t Transformer) mark_spawn_argument_address_escapes(spawn_node flat.Node,
 	}
 	for i in 1 .. call.children_count {
 		arg_id := t.a.child(&call, i)
+		arg := t.a.nodes[int(arg_id)]
+		if arg.kind == .ident && arg.is_mut && arg.value in local_stack_names {
+			// `spawn f(mut x)` passes the address of `x` just like `spawn f(&x)` below.
+			t.escaping_amp_sources[arg.value] = true
+			continue
+		}
 		for source in t.escape_aggregate_address_sources(arg_id, amp_sources, ptr_aliases) {
 			if source in local_stack_names {
 				// The spawned thread can outlive this frame. Move the original local
@@ -12828,6 +12834,12 @@ fn (mut t Transformer) lower_discarded_closure_value(id flat.NodeId) ?[]flat.Nod
 		return none
 	}
 
+	// The closure is destroyed right away, so a pointer-receiver method value can borrow
+	// its receiver, like the non-escaping local closures do, instead of copying it.
+	// A method value of an interface still copies the interface value.
+	if !t.method_value_base_is_interface(id) {
+		t.mark_local_method_value_receiver_borrows_in_expr(id)
+	}
 	mut result := []flat.NodeId{}
 	t.drain_pending(mut result)
 	closure_value := t.transform_expr_for_type(id, fn_type)
@@ -12837,6 +12849,17 @@ fn (mut t Transformer) lower_discarded_closure_value(id flat.NodeId) ?[]flat.Nod
 	result << t.make_decl_assign_typed(closure_name, closure_value, fn_type)
 	result << t.make_local_closure_destroy_stmt(closure_name)
 	return result
+}
+
+fn (t &Transformer) method_value_base_is_interface(id flat.NodeId) bool {
+	if int(id) < 0 || int(id) >= t.a.nodes.len {
+		return false
+	}
+	node := t.a.nodes[int(id)]
+	if node.kind != .selector || node.children_count == 0 {
+		return false
+	}
+	return t.is_interface_type(t.checker_node_type(t.a.child(&node, 0)))
 }
 
 fn (t &Transformer) discarded_closure_value_is_exclusive(id flat.NodeId) bool {

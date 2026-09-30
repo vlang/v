@@ -404,6 +404,10 @@ mut:
 	suppress_main                  bool
 	coverage_dir                   string
 	coverage_build_options         string
+	race                           bool
+	line_directives                bool
+	line_directive_paths           map[string]string
+	line_directive_fn_start        int
 	coverage_files                 map[string]&CoverageInfo
 	coverage_counter_count         int
 	cache_program_files            map[string]bool
@@ -19552,6 +19556,10 @@ fn (mut g FlatGen) preamble() {
 	g.writeln('#define __bool_true_false_are_defined 1')
 	g.writeln('#endif')
 	g.writeln('typedef void* voidptr;')
+	if g.race {
+		// gen_race_blank_read reads fixed arrays through the ThreadSanitizer runtime.
+		g.writeln('void __tsan_read_range(void* addr, unsigned long size);')
+	}
 	g.writeln('typedef i64 int_literal;')
 	g.writeln('typedef double float_literal;')
 	g.writeln('struct sync__Channel;')
@@ -22342,13 +22350,16 @@ fn (mut g FlatGen) prealloc_atomic_compat_decls() {
 	g.writeln('static inline int v_prealloc_atomic_cas_i32(int *ptr, int expected, int desired) { return InterlockedCompareExchange((volatile LONG*)ptr, (LONG)desired, (LONG)expected) == (LONG)expected; }')
 	g.writeln('#else')
 	g.writeln('static inline int v_prealloc_atomic_add_i32(int *ptr, int delta) { return __atomic_add_fetch(ptr, delta, 5); }')
-	g.writeln('static inline int v_prealloc_atomic_load_i32(int *ptr) { return __atomic_add_fetch(ptr, 0, 5); }')
 	g.writeln('static inline long long v_prealloc_atomic_add_i64(long long *ptr, long long delta) { return __atomic_add_fetch(ptr, delta, 5); }')
-	g.writeln('static inline long long v_prealloc_atomic_load_i64(long long *ptr) { return __atomic_add_fetch(ptr, 0, 5); }')
+	// Loads are real loads, not `add_fetch(ptr, 0)`: that read-modify-write writes the location.
 	g.writeln('#ifdef __TINYC__')
+	g.writeln('static inline int v_prealloc_atomic_load_i32(int *ptr) { return (int)__atomic_load_4((u32*)ptr, 5); }')
+	g.writeln('static inline long long v_prealloc_atomic_load_i64(long long *ptr) { return (long long)__atomic_load_8((u64*)ptr, 5); }')
 	g.writeln('static inline int v_prealloc_atomic_store_i32(int *ptr, int val) { return (int)__atomic_exchange_4((u32*)ptr, (u32)val, 5); }')
 	g.writeln('static inline int v_prealloc_atomic_cas_i32(int *ptr, int expected, int desired) { u32 e = (u32)expected; return __atomic_compare_exchange_4((u32*)ptr, &e, (u32)desired, 5, 5); }')
 	g.writeln('#else')
+	g.writeln('static inline int v_prealloc_atomic_load_i32(int *ptr) { return __atomic_load_n(ptr, 5); }')
+	g.writeln('static inline long long v_prealloc_atomic_load_i64(long long *ptr) { return __atomic_load_n(ptr, 5); }')
 	g.writeln('static inline int v_prealloc_atomic_store_i32(int *ptr, int val) { return __atomic_exchange_n(ptr, val, 5); }')
 	g.writeln('static inline int v_prealloc_atomic_cas_i32(int *ptr, int expected, int desired) { return __atomic_compare_exchange_n(ptr, &expected, desired, 0, 5, 5); }')
 	g.writeln('#endif')
@@ -22361,6 +22372,10 @@ fn (mut g FlatGen) tinyc_atomic_libcall_decls() {
 	g.writeln('extern u16 __atomic_exchange_2(u16* ptr, u16 val, int order);')
 	g.writeln('extern u32 __atomic_exchange_4(u32* ptr, u32 val, int order);')
 	g.writeln('extern u64 __atomic_exchange_8(u64* ptr, u64 val, int order);')
+	g.writeln('extern byte __atomic_load_1(byte* ptr, int order);')
+	g.writeln('extern u16 __atomic_load_2(u16* ptr, int order);')
+	g.writeln('extern u32 __atomic_load_4(u32* ptr, int order);')
+	g.writeln('extern u64 __atomic_load_8(u64* ptr, int order);')
 	g.writeln('extern void __atomic_store_1(byte* ptr, byte val, int order);')
 	g.writeln('extern void __atomic_store_2(u16* ptr, u16 val, int order);')
 	g.writeln('extern void __atomic_store_4(u32* ptr, u32 val, int order);')
@@ -22405,9 +22420,9 @@ fn (mut g FlatGen) atomic_builtin_compat_decls() {
 		g.writeln('#if !(defined(_WIN32) && (defined(__TINYC__) || (defined(_MSC_VER) && !defined(__clang__))))')
 	}
 	// Atomic helpers. We use compiler __atomic_* builtins (memory order 5 == __ATOMIC_SEQ_CST).
-	// clang/gcc inline the generic _n / RMW builtins. tcc only implements the inline
-	// __atomic_{add,sub,fetch}_* RMW builtins; for load/store/exchange/cas it has no generic
-	// _n form, so we route those to the sized __atomic_*_N libcalls (resolved from libc).
+	// clang/gcc inline the generic _n / RMW builtins. tcc has the generic RMW builtins
+	// (__atomic_fetch_add etc.) but no _n form, so its load/store/exchange/cas call the sized
+	// __atomic_*_N helpers from tcc's own libtcc1.a, declared in tinyc_atomic_libcall_decls().
 	g.writeln('static inline byte atomic_fetch_add_byte(void* ptr, byte delta) { return __atomic_fetch_add((byte*)ptr, delta, 5); }')
 	g.writeln('static inline u16 atomic_fetch_add_u16(void* ptr, u16 delta) { return __atomic_fetch_add((u16*)ptr, delta, 5); }')
 	g.writeln('static inline u32 atomic_fetch_add_u32(void* ptr, u32 delta) { return __atomic_fetch_add((u32*)ptr, delta, 5); }')
@@ -22418,12 +22433,16 @@ fn (mut g FlatGen) atomic_builtin_compat_decls() {
 	g.writeln('static inline u32 atomic_fetch_sub_u32(void* ptr, u32 delta) { return __atomic_fetch_sub((u32*)ptr, delta, 5); }')
 	g.writeln('static inline u64 atomic_fetch_sub_u64(void* ptr, u64 delta) { return __atomic_fetch_sub((u64*)ptr, delta, 5); }')
 	g.writeln('static inline void* atomic_fetch_sub_ptr(void* ptr, void* delta) { return (void*)(uintptr_t)__atomic_fetch_sub((uintptr_t*)ptr, (uintptr_t)delta, 5); }')
-	g.writeln('static inline byte atomic_load_byte(void* ptr) { return __atomic_fetch_add((byte*)ptr, 0, 5); }')
-	g.writeln('static inline u16 atomic_load_u16(void* ptr) { return __atomic_fetch_add((u16*)ptr, 0, 5); }')
-	g.writeln('static inline u32 atomic_load_u32(void* ptr) { return __atomic_fetch_add((u32*)ptr, 0, 5); }')
-	g.writeln('static inline u64 atomic_load_u64(void* ptr) { return __atomic_fetch_add((u64*)ptr, 0, 5); }')
 	g.writeln('#ifdef __TINYC__')
-	g.writeln('static inline void* atomic_load_ptr(void* ptr) { return (void*)(uintptr_t)__atomic_fetch_add((uintptr_t*)ptr, (uintptr_t)0, 5); }')
+	g.writeln('static inline byte atomic_load_byte(void* ptr) { return __atomic_load_1((byte*)ptr, 5); }')
+	g.writeln('static inline u16 atomic_load_u16(void* ptr) { return __atomic_load_2((u16*)ptr, 5); }')
+	g.writeln('static inline u32 atomic_load_u32(void* ptr) { return __atomic_load_4((u32*)ptr, 5); }')
+	g.writeln('static inline u64 atomic_load_u64(void* ptr) { return __atomic_load_8((u64*)ptr, 5); }')
+	g.writeln('#if UINTPTR_MAX == 0xFFFFFFFF')
+	g.writeln('static inline void* atomic_load_ptr(void* ptr) { return (void*)(size_t)__atomic_load_4((u32*)ptr, 5); }')
+	g.writeln('#else')
+	g.writeln('static inline void* atomic_load_ptr(void* ptr) { return (void*)(size_t)__atomic_load_8((u64*)ptr, 5); }')
+	g.writeln('#endif')
 	g.writeln('static inline byte atomic_exchange_byte(void* ptr, byte val) { return __atomic_exchange_1((byte*)ptr, val, 5); }')
 	g.writeln('static inline u16 atomic_exchange_u16(void* ptr, u16 val) { return __atomic_exchange_2((u16*)ptr, val, 5); }')
 	g.writeln('static inline u32 atomic_exchange_u32(void* ptr, u32 val) { return __atomic_exchange_4((u32*)ptr, val, 5); }')
@@ -22453,6 +22472,13 @@ fn (mut g FlatGen) atomic_builtin_compat_decls() {
 	g.writeln('static inline bool atomic_compare_exchange_weak_u32(void* ptr, u32* expected, u32 desired) { return __atomic_compare_exchange_4((u32*)ptr, expected, desired, 5, 5); }')
 	g.writeln('static inline bool atomic_compare_exchange_weak_u64(void* ptr, u64* expected, u64 desired) { return __atomic_compare_exchange_8((u64*)ptr, expected, desired, 5, 5); }')
 	g.writeln('#else')
+	// A load must not be a read-modify-write, here or in the tcc branch: `fetch_add(0)` writes
+	// the location, so it faults on read-only memory, and a plain read that runs concurrently
+	// with it is a data race, which the race detector (`-race`) reports.
+	g.writeln('static inline byte atomic_load_byte(void* ptr) { return __atomic_load_n((byte*)ptr, 5); }')
+	g.writeln('static inline u16 atomic_load_u16(void* ptr) { return __atomic_load_n((u16*)ptr, 5); }')
+	g.writeln('static inline u32 atomic_load_u32(void* ptr) { return __atomic_load_n((u32*)ptr, 5); }')
+	g.writeln('static inline u64 atomic_load_u64(void* ptr) { return __atomic_load_n((u64*)ptr, 5); }')
 	g.writeln('static inline void* atomic_load_ptr(void* ptr) { return __atomic_load_n((void**)ptr, 5); }')
 	g.writeln('static inline byte atomic_exchange_byte(void* ptr, byte val) { return __atomic_exchange_n((byte*)ptr, val, 5); }')
 	g.writeln('static inline u16 atomic_exchange_u16(void* ptr, u16 val) { return __atomic_exchange_n((u16*)ptr, val, 5); }')

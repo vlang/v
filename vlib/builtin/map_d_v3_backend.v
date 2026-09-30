@@ -569,6 +569,11 @@ fn (mut m map) set(key voidptr, value voidptr) {
 }
 
 fn (mut m VMapData) set(key voidptr, value voidptr) {
+	$if race ? {
+		// Like Go, every insertion is a write of the map, even when it only replaces the
+		// value of an existing key: it races with an unsynchronized `m.len`.
+		racewrite(&m.count)
+	}
 	if m.metas == unsafe { nil } {
 		// Most compiler bookkeeping maps remain empty. Allocate backing storage
 		// only on the first insertion or an explicit reservation.
@@ -727,6 +732,10 @@ fn (mut m map) get_and_set(key voidptr, zero voidptr) voidptr {
 }
 
 fn (mut m VMapData) get_and_set(key voidptr, zero voidptr) voidptr {
+	$if race ? {
+		// Used for `m[key] += x`, `m[key]++` and the like: a write of the map, as in set().
+		racewrite(&m.count)
+	}
 	if m.metas == unsafe { nil } {
 		m.set(key, zero)
 	}
@@ -894,6 +903,10 @@ pub fn (mut m map) delete(key voidptr) {
 
 @[unsafe]
 fn (mut m VMapData) delete(key voidptr) {
+	$if race ? {
+		// Like Go, every delete is a write of the map, even of a missing key.
+		racewrite(&m.count)
+	}
 	if m.count == 0 {
 		return
 	}
