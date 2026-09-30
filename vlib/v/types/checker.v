@@ -15977,6 +15977,12 @@ fn (tc &TypeChecker) expr_is_mut_struct_param(id flat.NodeId) bool {
 		return false
 	}
 	node := tc.a.node(id)
+	// Parentheses and blocks do not change what the parameter is: `u64((h))` and
+	// `unsafe { h }` are the reference too, as in mut_param_expr_base.
+	if node.kind in [.block, .expr_stmt, .paren] && node.children_count > 0 {
+		child_idx := if node.kind == .block { node.children_count - 1 } else { 0 }
+		return tc.expr_is_mut_struct_param(tc.a.child(node, child_idx))
+	}
 	if node.kind != .ident || node.value !in tc.fn_context.mut_param_owners {
 		return false
 	}
