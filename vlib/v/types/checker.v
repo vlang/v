@@ -14854,6 +14854,11 @@ fn (tc &TypeChecker) type_text_has_generic_struct_placeholder_application(typ st
 	return false
 }
 
+// generic_type_application_parts splits a `Base[A, B]` type name into its base and its generic
+// arguments. A map is spelled `map[K]V`, so its value type is a suffix *outside* the brackets and
+// not a generic argument; it is appended as a second argument here. Without that, every match that
+// goes through this function sees `map[string]FooBar` and `map[string]string` as the very same
+// `map[string]` application, and the value type never participates in the comparison.
 fn generic_type_application_parts(typ string) (string, []string, bool) {
 	if typ == '' || typ[0] == `[` {
 		return '', []string{}, false
@@ -14874,7 +14879,36 @@ fn generic_type_application_parts(typ string) (string, []string, bool) {
 	for i in 0 .. args.len {
 		args[i] = trimmed_space(args[i])
 	}
-	return typ[..bracket], args, true
+	base := typ[..bracket]
+	if generic_application_base_is_map(base) {
+		if bracket_end >= typ.len {
+			return '', []string{}, false
+		}
+		value := trimmed_space(typ[bracket_end + 1..])
+		// A bare `map[K]` with no value type is not a complete map type, so it must not
+		// compare equal to a fully spelled `map[K]V`.
+		if value.len == 0 {
+			return '', []string{}, false
+		}
+		args << value
+	}
+	return base, args, true
+}
+
+// generic_application_base_is_map reports whether the base of a bracketed type name is the `map`
+// container, with any number of pointer layers in front of it (`map`, `&map`, `mut &map`, ...).
+fn generic_application_base_is_map(base string) bool {
+	mut clean := trimmed_space(base)
+	if clean.contains('.') {
+		return false
+	}
+	for clean.starts_with('&') {
+		clean = clean[1..]
+	}
+	for clean.starts_with('mut ') {
+		clean = trimmed_space(clean[4..])
+	}
+	return clean == 'map'
 }
 
 // is_fixed_array_len_text reports whether a postfix `Base[inner]` bracket holds a fixed-array

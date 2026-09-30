@@ -1,0 +1,37 @@
+struct FooBar {
+	s int
+}
+
+fn accept_map_of_strings(inp map[string]string) {
+	dump(typeof(inp).name)
+}
+
+fn accept_map_of_ints(inp map[string]int) {
+	dump(typeof(inp).name)
+}
+
+fn accept_nested_map(inp map[string]map[string]int) {
+	dump(typeof(inp).name)
+}
+
+fn accept_map_ptr(inp &map[string]string) {
+	dump(typeof(inp).name)
+}
+
+fn accept_right_type(inp map[string]int) {
+	dump(typeof(inp).name)
+}
+
+fn main() {
+	mymap := {
+		'foo': FooBar{1}
+		'bar': FooBar{2}
+	}
+	accept_map_of_strings(mymap)
+	accept_map_of_ints(mymap)
+	accept_nested_map(mymap)
+	accept_map_ptr(&mymap)
+	accept_right_type({
+		'a': 1
+	})
+}
