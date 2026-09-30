@@ -99,19 +99,51 @@ fn main() {
 	assert tc.errors.any(it.msg == '`alias.x` aliases mutable data from an immutable value'), tc.errors.str()
 }
 
-fn test_voidptr_lookup_without_an_unsafe_boundary_borrows_its_arguments() {
-	tc := check_alias_source('container_borrow', 'struct Queryable { on_query fn (&Queryable, usize) voidptr = unsafe { nil } }
+fn container_lookup_source(fields string) string {
+	return 'struct View { mut: render_inc int }
+struct Queryable {
+${fields}
+ on_query fn (&Queryable, usize) voidptr = unsafe { nil }
+}
 fn (q &Queryable) query(idx usize) voidptr { return q.on_query(q, idx) }
-struct View { mut: render_inc int }
 fn View.from_context(ctx &Queryable) &View { return ctx.query(usize(typeof(View{}).idx)) }
 fn dev(ctx &Queryable) {
  mut view := View.from_context(ctx)
+ view.render_inc++
+ view.render_inc = 5
+}
+fn main() {}
+'
+}
+
+fn test_voidptr_lookup_of_a_type_the_container_does_not_hold_does_not_borrow_it() {
+	for i, fields in ['', 'views []&View', 'views map[int]voidptr', 'view &View'] {
+		tc := check_alias_source('container_elsewhere_${i}', container_lookup_source(fields))
+		assert tc.notices.len == 0, '${fields}: ${tc.notices}'
+		assert tc.errors.len == 0, '${fields}: ${tc.errors}'
+	}
+}
+
+fn test_voidptr_lookup_of_a_type_the_container_holds_borrows_it() {
+	for i, fields in ['view View', 'View', 'views []View', 'views map[int]View', 'views [2]View',
+		'inner struct { view View }', 'view ?View'] {
+		tc := check_alias_source('container_holds_${i}', container_lookup_source(fields))
+		assert tc.notices.any(it.msg == '`ctx` is immutable, cannot have a mutable reference to an immutable object'), '${fields}: ${tc.notices}'
+		assert tc.errors.any(it.msg == '`view.render_inc` aliases mutable data from an immutable value'), '${fields}: ${tc.errors}'
+	}
+}
+
+fn test_voidptr_lookup_through_a_scalar_argument_does_not_borrow_it() {
+	tc := check_alias_source('scalar_lookup', 'struct View { mut: render_inc int }
+fn lookup(idx usize, get fn (&usize) voidptr) &View { return get(idx) }
+fn dev(idx usize, get fn (&usize) voidptr) {
+ mut view := lookup(idx, get)
  view.render_inc = 5
 }
 fn main() {}
 ')
-	assert tc.notices.any(it.msg == '`ctx` is immutable, cannot have a mutable reference to an immutable object'), tc.notices.str()
-	assert tc.errors.any(it.msg == '`view.render_inc` aliases mutable data from an immutable value'), tc.errors.str()
+	assert tc.notices.len == 0, tc.notices.str()
+	assert tc.errors.len == 0, tc.errors.str()
 }
 
 fn test_voidptr_callback_conversion_inside_unsafe_does_not_borrow_its_argument() {

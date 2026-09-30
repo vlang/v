@@ -15174,8 +15174,8 @@ fn (mut tc TypeChecker) collect_returned_alias_sources_in_scope(id flat.NodeId, 
 	}
 	if node.kind == .return_stmt {
 		for i in 0 .. node.children_count {
-			sources << tc.returned_alias_arguments(tc.a.child(node, i), args_by_param, false,
-				mut visiting)
+			sources << tc.returned_value_alias_arguments(tc.a.child(node, i), args_by_param, mut
+				visiting)
 		}
 		return
 	}
@@ -15460,6 +15460,106 @@ fn (mut tc TypeChecker) returned_alias_arguments(id flat.NodeId, args_by_param m
 		return sources
 	}
 	return []flat.NodeId{}
+}
+
+// A `voidptr` becomes a typed reference by being returned as a `&T`, and a `&T` can
+// only point at storage that holds a `T`. An argument whose own storage has no room
+// for one, like a container asked for a component it keeps elsewhere, is not what
+// comes back. An argument that can hold a `T` is still traced, so a callback that
+// hands back its `&T` argument through a `voidptr` is still caught.
+fn (mut tc TypeChecker) returned_value_alias_arguments(id flat.NodeId, args_by_param map[string]flat.NodeId, mut visiting map[int]bool) []flat.NodeId {
+	if !tc.valid_node_id(id) {
+		return []flat.NodeId{}
+	}
+	node := tc.a.node(id)
+	if node.kind in [.paren, .expr_stmt] && node.children_count > 0 {
+		return tc.returned_value_alias_arguments(tc.a.child(node, 0), args_by_param, mut
+			visiting)
+	}
+	target := tc.voidptr_return_target(id) or {
+		return tc.returned_alias_arguments(id, args_by_param, false, mut visiting)
+	}
+	mut sources := []flat.NodeId{}
+	for source_id in tc.call_returned_alias_arguments(id, mut visiting) {
+		source_type := unalias_type(tc.resolve_type(source_id))
+		holder := if source_type is Pointer { source_type.base_type } else { source_type }
+		mut seen := map[string]bool{}
+		if tc.storage_can_hold(holder, target, mut seen) {
+			sources << tc.returned_alias_arguments(source_id, args_by_param, false, mut visiting)
+		}
+	}
+	return sources
+}
+
+// The `T` of the `&T` a call's `voidptr` result is returned as.
+fn (tc &TypeChecker) voidptr_return_target(id flat.NodeId) ?Type {
+	if tc.a.node(id).kind != .call || !fn_param_is_voidptr_type(tc.resolve_type(id)) {
+		return none
+	}
+	mut return_type := unalias_type(tc.fn_context.return_type)
+	if return_type is OptionType {
+		return_type = unalias_type(return_type.base_type)
+	} else if return_type is ResultType {
+		return_type = unalias_type(return_type.base_type)
+	}
+	if return_type is Pointer && !fn_param_is_voidptr_type(return_type) {
+		return return_type.base_type
+	}
+	return none
+}
+
+// Whether a `target` value can be part of a `holder` value's storage: the value
+// itself, a field or fixed array element held by value, or an element of an array
+// or map it owns. What a stored pointer or a function value refers to is not part of
+// it, as with a returned pointer field. Anything that cannot be looked into is taken
+// to be able to hold it.
+fn (tc &TypeChecker) storage_can_hold(holder Type, target Type, mut seen map[string]bool) bool {
+	clean_holder := unalias_type(holder)
+	clean_target := unalias_type(target)
+	if clean_holder is Void || clean_target is Void || type_contains_unknown(clean_holder)
+		|| type_contains_unknown(clean_target) || clean_holder.name() == clean_target.name() {
+		return true
+	}
+	match clean_holder {
+		Struct {
+			if seen[clean_holder.name] {
+				return false
+			}
+			seen[clean_holder.name] = true
+			fields := tc.struct_fields_for_init(clean_holder.name)
+			if fields.len == 0 {
+				return true
+			}
+			for field in fields {
+				if tc.storage_can_hold(field.typ, target, mut seen) {
+					return true
+				}
+			}
+			return false
+		}
+		Array {
+			return tc.storage_can_hold(clean_holder.elem_type, target, mut seen)
+		}
+		ArrayFixed {
+			return tc.storage_can_hold(clean_holder.elem_type, target, mut seen)
+		}
+		Map {
+			return tc.storage_can_hold(clean_holder.key_type, target, mut seen)
+				|| tc.storage_can_hold(clean_holder.value_type, target, mut seen)
+		}
+		OptionType {
+			return tc.storage_can_hold(clean_holder.base_type, target, mut seen)
+		}
+		ResultType {
+			return tc.storage_can_hold(clean_holder.base_type, target, mut seen)
+		}
+		Interface, SumType {
+			return true
+		}
+		else {
+			return false
+		}
+	}
 }
 
 // Without a readable callee body, pointer arguments may be returned unchanged,

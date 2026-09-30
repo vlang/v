@@ -3437,9 +3437,13 @@ Use `.clone()` for a mutable copy.
 
 A pointer returned through a callback can still refer to an immutable argument, even if the
 callback returns `voidptr`. Converting that result to a typed reference does not make the
-underlying object mutable. For a type-erased container lookup that guarantees separate mutable
-component storage, place the conversion in `unsafe { ... }`. The caller must ensure the returned
-pointer does not provide mutable access to an immutable argument.
+underlying object mutable. A function that returns such a `voidptr` result as a `&T` is only
+taken to borrow the arguments whose own storage can hold a `T`: the value itself, a field or
+element held by value, or an element of an array or map it owns. A type-erased container can
+therefore hand out a component it keeps elsewhere, for example behind a pointer, without
+borrowing the container. Where the container does hold the component, but the callback
+guarantees separate storage, place the conversion in `unsafe { ... }`. The caller must ensure
+the returned pointer does not provide mutable access to an immutable argument.
 
 A scalar passed by value to a callback is independent of the caller's storage. If a callback
 parameter is a reference, an implicitly referenced scalar remains borrowed from its immutable
