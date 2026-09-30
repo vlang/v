@@ -71,6 +71,8 @@ fn main() {
 	values := aliases.make()
 	ptr_values := aliases.make_ptr()
 	ptr_ptr_values := aliases.make_ptr_ptr()
+	optional_none_values := aliases.load_names(false)
+	optional_some_values := aliases.load_names(true)
 	STATEMENT
 	selected := sql db { select from Account where name == 'first' }!
 	assert selected.len == 1
@@ -109,6 +111,7 @@ fn sql_alias_visibility_result(name string, is_public bool, expression string, i
 		.replace('aliases.make()', '${import_name}.make()')
 		.replace('aliases.make_ptr()', '${import_name}.make_ptr()')
 		.replace('aliases.make_ptr_ptr()', '${import_name}.make_ptr_ptr()')
+		.replace('aliases.load_names(', '${import_name}.load_names(')
 	os.write_file(source, main_source) or {
 		panic(err)
 	}
@@ -195,19 +198,21 @@ fn test_pointer_alias_methods_keep_alias_resolution_in_sql_values() {
 	}
 }
 
-fn test_multiple_pointer_alias_methods_obey_visibility_in_sql_checking() {
+fn test_multiple_pointer_alias_methods_keep_resolution_and_visibility_in_sql_values() {
 	for i, expression in ['aliases.make_ptr_ptr().clone()[0].name', 'ptr_ptr_values.clone()[0].name',
 		'(ptr_ptr_values).clone()[0].name', 'renamed.make_ptr_ptr().clone()[0].name'] {
 		import_name := if expression.starts_with('renamed.') { 'renamed' } else { 'aliases' }
 		for is_public in [true, false] {
 			for is_update in [false, true] {
-				result := sql_alias_visibility_result('multiple_pointer_${i}_${is_public}_${is_update}',
-					is_public, expression, is_update, true, true, import_name)
-				if is_public {
-					assert result.exit_code == 0, result.output
-				} else {
-					assert result.exit_code != 0, result.output
-					assert result.output.contains('method `&&aliases.WrappedNames.clone` is private'), result.output
+				for check_only in [false, true] {
+					result := sql_alias_visibility_result('multiple_pointer_${i}_${is_public}_${is_update}_${check_only}',
+						is_public, expression, is_update, check_only, true, import_name)
+					if is_public {
+						assert result.exit_code == 0, result.output
+					} else {
+						assert result.exit_code != 0, result.output
+						assert result.output.contains('method `&&aliases.WrappedNames.clone` is private'), result.output
+					}
 				}
 			}
 		}
@@ -231,6 +236,8 @@ fn test_option_result_alias_fallback_methods_keep_resolution_and_visibility_in_s
 			'(${import_name}.load_names(false) or { ${import_name}.make() }).clone()[0].name',
 			'(${import_name}.find_names(true) or { values }).clone()[0].name',
 			'(${import_name}.find_names(false) or { ${import_name}.make() }).clone()[0].name',
+			'(optional_none_values or { values }).clone()[0].name',
+			'(optional_some_values or { values }).clone()[0].name',
 		] {
 			for is_public in [true, false] {
 				for is_update in [false, true] {
@@ -255,6 +262,8 @@ fn test_option_result_alias_fallback_methods_keep_declared_sql_result_types() {
 		for i, expression in [
 			'(${import_name}.load_names(false) or { values }).clone()[0]',
 			'(${import_name}.find_names(false) or { values }).clone()[0]',
+			'(optional_none_values or { values }).clone()[0]',
+			'(optional_some_values or { values }).clone()[0]',
 		] {
 			result := sql_alias_visibility_result('fallback_result_${import_name}_${i}',
 				true, expression, false, true, true, import_name)

@@ -1765,7 +1765,24 @@ fn (mut t Transformer) sql_transform_value_call(call flat.NodeId) flat.NodeId {
 						t.record_monomorph_error('method `${receiver_type}.${callee.value}` is private')
 						return t.make_int_literal(0)
 					}
-					args := t.transform_receiver_method_args(node, receiver, method)
+					mut receiver_arg := receiver
+					mut receiver_arg_type := receiver_type
+					params := t.call_param_types(method)
+					if params.len > 0 {
+						receiver_depth, _ := pointer_type_depth_and_base(receiver_type)
+						param_depth, _ := pointer_type_depth_and_base(t.semantic_type_name(params[0]))
+						// Ordinary receiver conversion handles the final value/reference layer.
+						// Remove any extra indirections first, retaining reference parameters.
+						remaining_depth := if param_depth > 0 { param_depth } else { 1 }
+						if receiver_depth > remaining_depth {
+							for _ in remaining_depth .. receiver_depth {
+								receiver_arg = t.make_prefix(.mul, receiver_arg)
+								receiver_arg_type = receiver_arg_type[1..]
+								t.set_node_typ(int(receiver_arg), receiver_arg_type)
+							}
+						}
+					}
+					args := t.transform_receiver_method_args(node, receiver_arg, method)
 					return t.make_receiver_method_call_typed(node, method, args,
 						t.receiver_method_return_type(method, node.typ))
 				}

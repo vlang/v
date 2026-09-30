@@ -11576,7 +11576,7 @@ fn sql_value_receiver_start(tokens []string, end_idx int) ?int {
 }
 
 // sql_orm_value_type types a call-free value chain in `tokens[start..end]` that starts at a
-// local variable, string literal or parenthesised value, followed by field and index steps.
+// local variable, string literal or parenthesised value, followed by fallback, field and index steps.
 fn (tc &TypeChecker) sql_orm_value_type(tokens []string, start int, end int) ?Type {
 	if start >= end {
 		return none
@@ -11599,7 +11599,21 @@ fn (tc &TypeChecker) sql_orm_value_type(tokens []string, start int, end int) ?Ty
 		return none
 	}
 	for i < end {
-		if tokens[i] == '[' {
+		if tokens[i] == 'or' && i + 1 < end && tokens[i + 1] == '{' {
+			close_idx := sql_value_close_idx(tokens, i + 1, '{', '}') or { return none }
+			if close_idx >= end {
+				return none
+			}
+			clean := unalias_type(typ)
+			if clean is OptionType {
+				typ = clean.base_type
+			} else if clean is ResultType {
+				typ = clean.base_type
+			} else {
+				return none
+			}
+			i = close_idx + 1
+		} else if tokens[i] == '[' {
 			close_idx := sql_value_close_idx(tokens, i, '[', ']') or { return none }
 			if close_idx >= end {
 				return none
