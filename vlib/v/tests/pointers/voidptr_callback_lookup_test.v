@@ -1,6 +1,5 @@
 // A container that hands out components through a type-erased callback lets the
-// caller mutate a component without the container itself being mutable. The lookup
-// uses an explicit unsafe boundary because the callback guarantees separate storage.
+// caller mutate separately stored components at an explicit unsafe boundary.
 struct Container {
 mut:
 	on_query fn (&Container, usize) voidptr = unsafe { nil }
@@ -35,4 +34,43 @@ fn test_component_from_immutable_container_is_mutable() {
 	}
 	bump(&c)
 	assert counter.hits == 10
+}
+
+struct StoredContainer {
+	counter &Counter
+}
+
+fn erase_stored_counter(counter &Counter) voidptr {
+	return counter
+}
+
+fn stored_counter(c &StoredContainer) &Counter {
+	return erase_stored_counter(c.counter)
+}
+
+fn test_visible_stored_pointer_lookup_does_not_borrow_the_container() {
+	counter := &Counter{}
+	c := StoredContainer{
+		counter: counter
+	}
+	mut found := stored_counter(&c)
+	found.hits = 13
+	assert counter.hits == 13
+}
+
+fn counter_by_key(key usize, get fn (usize) voidptr) &Counter {
+	return get(key)
+}
+
+fn test_type_erased_lookup_with_copied_key_does_not_borrow_the_key() {
+	key := usize(7)
+	counter := &Counter{}
+	get := fn [counter] (idx usize) voidptr {
+		assert idx == 7
+		return counter
+	}
+	mut found := counter_by_key(key, get)
+	found.hits = 17
+	assert counter.hits == 17
+	assert key == 7
 }
