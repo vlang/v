@@ -4878,6 +4878,11 @@ println(compare(1.1, 1.1)) //          0
 println(compare(1.1, 1.2)) //         -1
 ```
 
+Generic type inference also works with field initialization shorthand in nested calls.
+For `struct Box[T] { value T }` and `fn wrap[U](box Box[U]) Box[U]`,
+`wrap(value: 42)` infers `U` as `int`. The struct and function may use different
+parameter names or arrange those parameters in a different order.
+
 #### Structured generic receiver patterns
 
 Generic methods can constrain their receiver to a *structured* shape of the

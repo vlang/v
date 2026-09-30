@@ -4770,12 +4770,9 @@ fn (mut tc TypeChecker) record_uninferred_generic_method_type(id flat.NodeId, no
 		if raw_arg.kind == .field_init {
 			base, _, is_generic := generic_type_application_parts(param_texts[param_idx])
 			if is_generic {
-				for field in tc.source_struct_field_decls(base) {
-					if field.name == raw_arg.value {
-						tc.infer_generic_type_text_from_type(field.typ, actual, generic_params, mut inferred)
-						tc.infer_generic_type_value_from_type(field.typ, actual, generic_params, mut inferred_types)
-						break
-					}
+				if field_text := tc.field_init_struct_field_type(base, param_texts[param_idx], raw_arg.value) {
+					tc.infer_generic_type_text_from_type(field_text, actual, generic_params, mut inferred)
+					tc.infer_generic_type_value_from_type(field_text, actual, generic_params, mut inferred_types)
 				}
 				continue
 			}
@@ -16092,6 +16089,25 @@ fn field_init_struct_param_name(info CallInfo, param_idx int) ?string {
 	return none
 }
 
+// field_init_struct_field_type substitutes the struct declaration's parameters
+// with the arguments in the function parameter before inferring from a field.
+fn (tc &TypeChecker) field_init_struct_field_type(struct_name string, param_text string, field_name string) ?string {
+	base, args, is_generic := generic_type_application_parts(comptime_static_unwrap_type_text(param_text))
+	params := if is_generic {
+		tc.struct_generic_params[base] or {
+			tc.struct_generic_params[tc.qualify_name(base)] or { []string{} }
+		}
+	} else {
+		[]string{}
+	}
+	for field in tc.source_struct_field_decls(struct_name) {
+		if field.name == field_name {
+			return subst_generic_text(field.typ, args, params)
+		}
+	}
+	return none
+}
+
 fn (mut tc TypeChecker) specialized_plain_generic_call_info(node flat.Node, info CallInfo) CallInfo {
 	if tc.call_has_explicit_generic_type_args(node) {
 		return info
@@ -16171,12 +16187,9 @@ fn (mut tc TypeChecker) specialized_plain_generic_call_info(node flat.Node, info
 			}
 			mut field_text := ''
 			if struct_name.len > 0 {
-				for field in tc.source_struct_field_decls(struct_name) {
-					if field.name == raw_arg.value {
-						if type_text_mentions_any_generic_param(field.typ, generic_params) {
-							field_text = trimmed_space(field.typ)
-						}
-						break
+				if field_type := tc.field_init_struct_field_type(struct_name, param_text, raw_arg.value) {
+					if generic_params.any(type_text_contains_symbol(field_type, it)) {
+						field_text = trimmed_space(field_type)
 					}
 				}
 			}
