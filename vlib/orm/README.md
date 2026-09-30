@@ -78,7 +78,8 @@ an enum or `time.Time`. For example, `make_holders()[0].name` can bind a string 
 while `make_holders()[0]` cannot bind the whole struct. Option and Result receivers must
 be unwrapped with an `or` fallback before accessing their members or elements.
 Methods declared on collection aliases, including inherited alias methods, use their
-declared return types when checking the final value.
+declared return types when checking the final value. Private alias methods remain
+accessible only within their declaring module, following ordinary method visibility rules.
 
 ## Usage
 > [!NOTE]

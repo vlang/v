@@ -1742,6 +1742,10 @@ fn (mut t Transformer) sql_transform_value_call(call flat.NodeId) flat.NodeId {
 				if method.all_before_last('.') in t.tc.type_aliases
 					&& !t.receiver_method_name_is_open_generic(method)
 					&& !t.call_selector_base_is_namespace(receiver, callee.value, method) {
+					if t.tc.sql_orm_method_is_private(method, t.cur_file, t.cur_module) {
+						t.record_monomorph_error('method `${receiver_type}.${callee.value}` is private')
+						return t.make_int_literal(0)
+					}
 					args := t.transform_receiver_method_args(node, receiver, method)
 					return t.make_receiver_method_call_typed(node, method, args,
 						t.receiver_method_return_type(method, node.typ))

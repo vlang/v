@@ -10766,6 +10766,7 @@ fn (tc &TypeChecker) sql_expr_is_in_defer(id flat.NodeId) bool {
 }
 
 fn (mut tc TypeChecker) check_sql_orm_constraints(id flat.NodeId, node flat.Node, tokens []string) {
+	tc.check_sql_alias_method_privacy(id, node, tokens)
 	tc.check_sql_aggregate_constraints(id, node, tokens)
 	tc.check_sql_bulk_pointer_arrays(id, node, tokens)
 	tc.check_sql_statement_constraints(id, node, tokens)
@@ -10789,6 +10790,52 @@ fn (mut tc TypeChecker) check_sql_orm_constraints(id flat.NodeId, node flat.Node
 			tc.record_error_at(.assignment_mismatch, 'ORM: select: empty fields in `${table_name}`', id, tc.sql_expr_text_pos(node, ' ${table_name}', 1, table_name.len))
 		}
 	}
+}
+
+fn (mut tc TypeChecker) check_sql_alias_method_privacy(id flat.NodeId, node flat.Node, tokens []string) {
+	for i := 2; i + 1 < tokens.len; i++ {
+		if tokens[i - 1] != '.' || tokens[i + 1] != '(' {
+			continue
+		}
+		receiver := tc.sql_orm_call_receiver_type(tokens, i) or { continue }
+		method := tc.concrete_method_signature_key(unwrap_pointer(receiver).name(), tokens[i]) or {
+			continue
+		}
+		if method.all_before_last('.') !in tc.type_aliases
+			|| tc.private_declaration(method) == none {
+			continue
+		}
+		name := '${receiver.name()}.${tokens[i]}'
+		tc.record_sql_error_at(.unknown_fn, 'method `${name}` is private', id,
+			tc.sql_expr_text_pos(node, '.${tokens[i]}(', 1, tokens[i].len))
+	}
+}
+
+fn (tc &TypeChecker) sql_orm_call_receiver_type(tokens []string, name_idx int) ?Type {
+	end := name_idx - 1
+	start := sql_value_receiver_start(tokens, end - 1) or { return none }
+	if receiver := tc.sql_orm_value_type(tokens, start, end) {
+		return receiver
+	}
+	// Call-free chains are handled above. For returned receivers, use the first
+	// call's declared type and follow its members only up to the selected method.
+	for i := start; i + 1 < end; i++ {
+		if tokens[i + 1] == '(' && should_check_named_type(tokens[i]) {
+			ret_type := tc.sql_orm_source_call_return_type(tokens, i) or { return none }
+			return tc.sql_orm_receiver_result_type(tokens[..end], i + 1, ret_type)
+		}
+	}
+	return none
+}
+
+// sql_orm_method_is_private applies ordinary declaration visibility in the SQL source context.
+pub fn (tc &TypeChecker) sql_orm_method_is_private(name string, file string, module_name string) bool {
+	view := if tc.cur_file == file && tc.cur_module == module_name {
+		tc
+	} else {
+		tc.fork_type_parse_view(file, module_name)
+	}
+	return view.private_declaration(name) != none
 }
 
 fn (mut tc TypeChecker) check_sql_orm_table_kind(id flat.NodeId, node flat.Node, table_name string) {
