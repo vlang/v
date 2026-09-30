@@ -9775,9 +9775,10 @@ pub fn (tc &TypeChecker) const_int_value(name string, seen []string) ?int {
 	return tc.const_int_value_in_module(name, tc.cur_module, seen)
 }
 
-fn (tc &TypeChecker) const_import_alias_module(alias string) ?string {
+fn (tc &TypeChecker) const_import_alias_module(alias string) (string, bool) {
 	// Code generation can evaluate a stored type after leaving its source file.
 	// Recover the import only when the alias has one meaning across the program.
+	// Report conflicting meanings separately from the absence of an import alias.
 	mut found := ''
 	for _, info in tc.file_imports_by_file {
 		if isnil(info) {
@@ -9785,15 +9786,12 @@ fn (tc &TypeChecker) const_import_alias_module(alias string) ?string {
 		}
 		if module_name := info.imports[alias] {
 			if found.len > 0 && found != module_name {
-				return none
+				return '', true
 			}
 			found = module_name
 		}
 	}
-	if found.len > 0 {
-		return found
-	}
-	return none
+	return found, false
 }
 
 // const_int_value_in_module supports const int value handling for a specific module.
@@ -9804,7 +9802,11 @@ pub fn (tc &TypeChecker) const_int_value_in_module(name string, module_name stri
 	mut candidates := []string{}
 	if name.contains('.') {
 		alias := name.all_before_last('.')
-		if resolved_module := tc.const_import_alias_module(alias) {
+		resolved_module, ambiguous := tc.const_import_alias_module(alias)
+		if ambiguous {
+			return none
+		}
+		if resolved_module.len > 0 {
 			// An import alias takes precedence over a module with the same name.
 			candidates << '${resolved_module}.${name.all_after_last('.')}'
 		}

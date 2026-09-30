@@ -308,4 +308,21 @@ pub const max_name_size = 16
 	generated := os.read_file(bin + '.c') or { panic(err) }
 	assert generated.contains('Array_fixed_char_256[256]'), generated
 	assert !generated.contains('Array_fixed_char_fx__max_name_size'), generated
+
+	// A second source file gives the alias another meaning. The real fx module
+	// must not silently supply its length when the stored type cannot choose one.
+	os.mkdir_all(os.join_path(root, 'second')) or { panic(err) }
+	os.write_file(os.join_path(root, 'second', 'second.v'), 'module second
+pub const max_name_size = 128
+') or { panic(err) }
+	os.write_file(os.join_path(root, 'second_import.v'), 'module main
+import second as fx
+fn second_size() int {
+	return fx.max_name_size
+}
+') or { panic(err) }
+	ambiguous_bin := os.join_path(root, 'ambiguous')
+	ambiguous := os.execute('${v3_bin} -b c -o ${ambiguous_bin} ${root}')
+	assert ambiguous.exit_code != 0, ambiguous.output
+	assert ambiguous.output.contains('non-constant array bound `fx.max_name_size`'), ambiguous.output
 }
