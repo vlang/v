@@ -12760,7 +12760,8 @@ fn (mut g FlatGen) gen_pointer_alias_value_cast_addr(id flat.NodeId, expected ty
 	}
 	target_alias := target_type as types.Alias
 	base_type := target_alias.base_type
-	if base_type is types.Pointer {
+	// `&U8(-1)`, with an alias of an integer type, is a pointer cast like `&u8(-1)`.
+	if base_type is types.Pointer || cgen_unalias_type(base_type).is_integer() {
 		return false
 	}
 	target_ct := g.value_c_type(base_type)
@@ -12798,7 +12799,7 @@ fn (mut g FlatGen) gen_pointer_alias_value_cast_expr(id flat.NodeId, expected ty
 	}
 	target_alias := target_base as types.Alias
 	base_type := target_alias.base_type
-	if base_type is types.Pointer {
+	if base_type is types.Pointer || cgen_unalias_type(base_type).is_integer() {
 		return false
 	}
 	child_id := g.a.child(node, 0)
@@ -16274,7 +16275,10 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 					g.write(', sizeof(${ct}))')
 					return
 				}
-				if target_type is types.Alias && target_type.base_type !is types.Pointer {
+				// `&SS('hi')` (an alias of a value type) points to a copy of the value.
+				// `&U8(-1)` (an alias of an integer type) is a pointer cast, as `&u8(-1)` is.
+				if target_type is types.Alias && target_type.base_type !is types.Pointer
+					&& !cgen_unalias_type(target_type.base_type).is_integer() {
 					base_ct := g.value_c_type(target_type.base_type)
 					value_expr := g.expr_to_string(g.a.child(&child, 0))
 					source_expr := '(${base_ct}[]){${value_expr}}[0]'
