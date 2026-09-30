@@ -106,10 +106,14 @@ fn (mut g FlatGen) gen_race_blank_read(rhs_id flat.NodeId) bool {
 		return false
 	}
 	mut typ := g.usable_expr_type(rhs_id)
-	// The value of a `mut` parameter is behind the pointer that C passes.
+	// The value of a `mut` parameter, also in parentheses, is behind the pointer that C passes.
+	mut inner := rhs
+	for inner.kind == .paren && inner.children_count > 0 {
+		inner = g.a.nodes[int(g.a.child(&inner, 0))]
+	}
 	mut deref := ''
-	if rhs.kind == .ident && g.current_param_is_mut(rhs.value) {
-		if param_type := g.current_param_type(rhs.value) {
+	if inner.kind == .ident && g.current_param_is_mut(inner.value) {
+		if param_type := g.current_param_type(inner.value) {
 			if param_type is types.Pointer {
 				typ = param_type.base_type
 				deref = '*'

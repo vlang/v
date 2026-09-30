@@ -139,6 +139,10 @@ fn read_mut_param(mut c Cell) {
 	_ = c
 }
 
+fn read_mut_param_in_parens(mut a [4]int) {
+	_ = ((a))
+}
+
 fn main() {
 	mut c := &Cell{}
 	t := spawn writer(mut c)
@@ -147,7 +151,8 @@ fn main() {
 		match read {
 			"string" { _ = c.s }
 			"fixed_array" { _ = c.a }
-			else { read_mut_param(mut c) }
+			"mut_param" { read_mut_param(mut c) }
+			else { read_mut_param_in_parens(mut c.a) }
 		}
 	}
 	t.wait()
@@ -303,6 +308,42 @@ const allocator_source = 'fn main() {
 }
 '
 
+// The end of a command's output, where `read_line` stops, happens after earlier file writes
+// too, like every read that does not fail.
+const command_eof_source = 'import os
+import time
+
+struct Data {
+mut:
+	x int
+}
+
+fn main() {
+	path := os.join_path(os.vtmp_dir(), "race_command_eof_\${os.getpid()}.txt")
+	os.write_file(path, "")!
+	// Started before the writer: starting a process after the write would synchronize.
+	mut cmd := os.Command{
+		path: "sleep 0.3"
+	}
+	cmd.start()!
+	mut d := &Data{}
+	t := spawn fn (mut d Data, path string) {
+		d.x = 42
+		mut w := os.open_append(path) or { panic(err) }
+		w.write_string("ready\n") or { panic(err) }
+		w.close()
+	}(mut d, path)
+	for os.file_size(path) == 0 {
+		time.sleep(time.millisecond)
+	}
+	line := cmd.read_line()
+	println("eof \${cmd.eof} \${line.len} x \${d.x}")
+	cmd.close()!
+	t.wait()
+	os.rm(path) or {}
+}
+'
+
 fn testsuite_begin() {
 	os.mkdir_all(tdir) or {}
 }
@@ -426,9 +467,9 @@ fn test_race_blank_reads_are_reads() {
 	if !thread_sanitizer_runs() {
 		return
 	}
-	for read in ['string', 'fixed_array', 'mut_param'] {
+	for read in ['string', 'fixed_array', 'mut_param', 'mut_param_in_parens'] {
 		mut flags := ['-d', 'read=${read}']
-		if read != 'mut_param' {
+		if read in ['string', 'fixed_array'] {
 			flags << '-prod'
 		}
 		exe := build_race_program('blank_read_${read}', blank_read_source, ...flags)
@@ -480,4 +521,15 @@ fn test_race_compiler_builds_keep_the_c_allocator() {
 	res := os.execute(os.quoted_path(exe))
 	assert res.exit_code == 0, res.output
 	assert res.output.contains('allocator: c 3'), res.output
+}
+
+fn test_race_command_output_eof_happens_after_the_write() {
+	if !thread_sanitizer_runs() {
+		return
+	}
+	exe := build_race_program('command_eof', command_eof_source)
+	res := os.execute(os.quoted_path(exe))
+	assert res.exit_code == 0, res.output
+	assert !res.output.contains('ThreadSanitizer'), res.output
+	assert res.output.contains('eof true 0 x 42'), res.output
 }

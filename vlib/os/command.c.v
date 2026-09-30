@@ -65,6 +65,12 @@ pub fn (mut c Command) read_line() string {
 			res.write_ptr(bufbp, len)
 		}
 	}
+	$if race ? {
+		// The end of the output is a read that did not fail too.
+		if C.feof(c.f) != 0 {
+			race_file_read()
+		}
+	}
 	c.eof = true
 	final := res.str()
 	return final
