@@ -1161,16 +1161,8 @@ fn postfix_operator_closes_group(source string, end int) bool {
 		c := source[i]
 		if c in [` `, `\t`, `\n`, `\r`] {
 			i++
-		} else if c == `/` && i + 1 < source.len && source[i + 1] == `/` {
-			for i < source.len && source[i] != `\n` {
-				i++
-			}
-		} else if c == `/` && i + 1 < source.len && source[i + 1] == `*` {
-			i += 2
-			for i + 1 < source.len && !(source[i] == `*` && source[i + 1] == `/`) {
-				i++
-			}
-			i += 2
+		} else if c == `/` && i + 1 < source.len && source[i + 1] in [`/`, `*`] {
+			i = skip_non_code_at(source, i)
 		} else {
 			return c in [`)`, `]`]
 		}
