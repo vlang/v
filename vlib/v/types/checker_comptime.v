@@ -4498,10 +4498,12 @@ fn (mut tc TypeChecker) check_cast_expr(id flat.NodeId, node flat.Node) {
 				return
 			}
 			// Like V1, a computed address such as `&Entry(u64(buffer) + offset)` may be
-			// cast to a struct pointer; a literal or a plain number may not.
+			// cast to a struct pointer; a literal or a plain number may not, with or
+			// without parentheses around it.
 			is_struct_target := struct_type_from_type(target_base) != none
+			operand_kind := tc.a.node(tc.unwrap_paren_expr_id(child_id)).kind
 			if tc.unsafe_depth == 0
-				&& (!is_struct_target || tc.a.node(child_id).kind in [.int_literal, .ident]) {
+				&& (!is_struct_target || operand_kind in [.int_literal, .ident]) {
 				message := if is_struct_target {
 					'cannot cast int to a struct pointer outside `unsafe`'
 				} else {
