@@ -11016,14 +11016,35 @@ fn sql_call_is_call_arg(tokens []string, open_idx int, start int) bool {
 }
 
 // sql_call_result_is_receiver reports whether the result of the call whose `(` is at
-// `open_idx` is used by a member or index access, also through grouping parentheses:
-// `f(x).m()`, `f(x)[0]`, `(f(x)).m()`. A `)` after the call closes either such a group or
-// an enclosing call, and calls nested in call arguments are skipped anyway.
+// `open_idx` is used by a member or index access, also through grouping parentheses and
+// `or` fallbacks: `f(x).m()`, `f(x)[0]`, `(f(x)).m()`, `(opt() or { f(x) }).m()`.
+// A `)` after the call closes either such a group or an enclosing call (whose arguments
+// are skipped anyway), and a `}` closes the fallback block that the call is the value of.
 fn sql_call_result_is_receiver(tokens []string, open_idx int) bool {
 	close_idx := sql_call_close_idx(tokens, open_idx) or { return false }
 	mut i := close_idx + 1
-	for i < tokens.len && tokens[i] == ')' {
-		i++
+	for i < tokens.len {
+		if tokens[i] in [')', '}'] {
+			i++
+		} else if tokens[i] == 'or' && i + 1 < tokens.len && tokens[i + 1] == '{' {
+			mut depth := 0
+			for j in i + 1 .. tokens.len {
+				if tokens[j] == '{' {
+					depth++
+				} else if tokens[j] == '}' {
+					depth--
+					if depth == 0 {
+						i = j + 1
+						break
+					}
+				}
+			}
+			if depth != 0 {
+				return false
+			}
+		} else {
+			break
+		}
 	}
 	return i < tokens.len && tokens[i] in ['.', '[']
 }

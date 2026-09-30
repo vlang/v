@@ -27,6 +27,20 @@ fn holder_upper(h Holder) string {
 	return h.upper()
 }
 
+fn load_holder(name string) ?Holder {
+	if name == '' {
+		return none
+	}
+	return make_holder(name)
+}
+
+fn find_holder(name string) !Holder {
+	if name == '' {
+		return error('empty holder name')
+	}
+	return make_holder(name)
+}
+
 fn day_text(days int) string {
 	return time.unix(0).add_days(days).format_ss()
 }
@@ -131,6 +145,14 @@ fn test_update_set_values_with_chained_calls() {
 		select from Account where id == 1
 	}!
 	assert rows[0].year == 2002
+
+	sql db {
+		update Account set name = (load_holder('') or { make_holder('fourth') }).upper() where id == 1
+	}!
+	rows = sql db {
+		select from Account where id == 1
+	}!
+	assert rows[0].name == 'FOURTH'
 }
 
 fn test_where_values_with_chained_calls() {
@@ -204,4 +226,17 @@ fn test_where_values_with_chained_calls() {
 	}!
 	assert by_wrapped_index_base.len == 1
 	assert by_wrapped_index_base[0].mod_at == second.mod_at
+
+	fallback := make_holder('second')
+	by_option_receiver := sql db {
+		select from Account where name == (load_holder('first') or { fallback }).upper()
+	}!
+	assert by_option_receiver.len == 1
+	assert by_option_receiver[0].mod_at == first.mod_at
+
+	by_result_fallback := sql db {
+		select from Account where name == (find_holder('') or { make_holder('first') }).upper()
+	}!
+	assert by_result_fallback.len == 1
+	assert by_result_fallback[0].mod_at == first.mod_at
 }
