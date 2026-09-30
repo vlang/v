@@ -15916,7 +15916,6 @@ fn (mut t Transformer) transform_decl_assign_stmt(id flat.NodeId, node flat.Node
 		if src.kind == .ident && src.value in t.escaping_fixed_array_view_sources
 			&& src.value !in t.heaped_amp_locals
 			&& (t.is_fixed_array_type(inferred_typ) || t.heapable_value_type(inferred_typ)) {
-			t.warn_alloc(node, t.a.child(&node, 1), src.pos, 'local moved to the heap: a fixed array can escape through a reference argument')
 			return t.heap_escaping_source_decl(node, src.value, inferred_typ)
 		}
 		if src.kind == .ident && src.value in t.escaping_amp_sources
