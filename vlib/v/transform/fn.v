@@ -3837,7 +3837,7 @@ fn (mut t Transformer) transform_call_arg_for_param_isolated(arg_id flat.NodeId,
 			payload_ref_type = t.comptime_normalize_type_alias_chain(t.optional_base_type(payload_ref_type))
 		}
 		if payload_ref_type.starts_with('&[]')
-			&& t.is_fixed_array_type(t.fixed_array_reference_arg_type(arg_id, payload_ref_type[1..])) {
+			&& t.fixed_array_reference_arg_needs_durable_header(arg_id, payload_ref_type[1..]) {
 			// Create the durable reference before placing it in a successful wrapper.
 			// None and already-wrapped values follow the ordinary optional conversion.
 			value := t.transform_call_arg_for_param(arg_id, payload_type)
@@ -3848,13 +3848,19 @@ fn (mut t Transformer) transform_call_arg_for_param_isolated(arg_id flat.NodeId,
 	}
 	array_ref_type := resolved_param_type
 	if array_ref_type.starts_with('&[]') {
-		mut_arg := arg_node.is_mut
 		arg_type := t.node_type(arg_id)
-		if mut_arg {
-			range_type := if arg_type.starts_with('[]') { arg_type } else { array_ref_type[1..] }
-			if view := t.fixed_array_range_view_for_arg(arg_id, range_type, true) {
-				return t.fixed_array_mut_arg(view, range_type, param_type)
-			}
+		range_type := if arg_node.is_mut && arg_type.starts_with('[]') {
+			arg_type
+		} else {
+			array_ref_type[1..]
+		}
+		mut range_arg_id := t.unwrap_parens(arg_id)
+		range_arg := t.a.nodes[int(range_arg_id)]
+		if range_arg.kind == .prefix && range_arg.op == .amp && range_arg.children_count == 1 {
+			range_arg_id = t.unwrap_parens(t.a.child(&range_arg, 0))
+		}
+		if view := t.fixed_array_range_view_for_arg(range_arg_id, range_type, true) {
+			return t.fixed_array_mut_arg(view, range_type, param_type)
 		}
 		fixed_type := t.fixed_array_reference_arg_type(arg_id, array_ref_type[1..])
 		if t.is_fixed_array_type(fixed_type) {
@@ -13351,6 +13357,26 @@ fn (t &Transformer) fixed_array_reference_arg_type(id flat.NodeId, array_type st
 	return t.unaliased_value_type(id)
 }
 
+// fixed_array_reference_arg_needs_durable_header includes ranges over fixed backing storage.
+fn (t &Transformer) fixed_array_reference_arg_needs_durable_header(id flat.NodeId, array_type string) bool {
+	arg_id := t.unwrap_parens(id)
+	if int(arg_id) < 0 || int(arg_id) >= t.a.nodes.len {
+		return false
+	}
+	arg := t.a.nodes[int(arg_id)]
+	if arg.kind == .prefix && arg.op == .amp && arg.children_count == 1 {
+		return t.fixed_array_reference_arg_needs_durable_header(t.a.child(&arg, 0), array_type)
+	}
+	if t.is_fixed_array_type(t.fixed_array_reference_arg_type(arg_id, array_type)) {
+		return true
+	}
+	if t.is_range_index_expr(arg_id) {
+		base_id := t.a.child(&t.a.nodes[int(arg_id)], 0)
+		return t.is_fixed_array_type(t.unaliased_value_type(base_id))
+	}
+	return false
+}
+
 // call_argument_param_type maps each unpacked variadic argument to the tail element type.
 fn call_argument_param_type(params []types.Type, param_idx int, variadic_idx int) ?types.Type {
 	if param_idx < 0 {
@@ -13379,14 +13405,8 @@ fn (t &Transformer) call_has_mut_fixed_array_args(node flat.Node, params []types
 			continue
 		}
 		arg_id := t.unwrap_parens(t.a.child(&node, i))
-		if t.is_fixed_array_type(t.fixed_array_reference_arg_type(arg_id, array_ref_type[1..])) {
+		if t.fixed_array_reference_arg_needs_durable_header(arg_id, array_ref_type[1..]) {
 			return true
-		}
-		if t.is_range_index_expr(arg_id) {
-			base_id := t.a.child(&t.a.nodes[int(arg_id)], 0)
-			if t.is_fixed_array_type(t.unaliased_value_type(base_id)) {
-				return true
-			}
 		}
 	}
 	return false

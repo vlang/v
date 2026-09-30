@@ -733,3 +733,48 @@ fn test_optional_fixed_array_reference_keeps_present_payload_alive_and_preserves
 	assert read_retained_optional_fixed_reference(first) == [111, 112]
 	assert read_retained_optional_fixed_reference(last) == [121, 122]
 }
+
+fn retain_result_fixed_reference(values !&[]int) !&[]int {
+	return values
+}
+
+@[noinline]
+fn optional_range_reference_from_local_fixed(present bool) ?&[]int {
+	if !present {
+		return retain_optional_fixed_reference(none)
+	}
+	values := [131, 132, 133]!
+	return retain_optional_fixed_reference((values[1..]))
+}
+
+@[noinline]
+fn result_range_reference_from_local_fixed(present bool) !&[]int {
+	if !present {
+		return error('missing range')
+	}
+	values := [141, 142, 143]!
+	return retain_result_fixed_reference(values[1..])
+}
+
+@[noinline]
+fn direct_range_reference_from_local_fixed() &[]int {
+	values := [151, 152, 153]!
+	return retain_immutable_array_reference(values[1..])
+}
+
+fn test_wrapped_fixed_array_ranges_keep_their_reference_headers_alive() {
+	assert optional_range_reference_from_local_fixed(false) == none
+	if unexpected := result_range_reference_from_local_fixed(false) {
+		_ = unexpected
+		assert false, 'expected the failed range result'
+	} else {
+		assert err.msg() == 'missing range'
+	}
+	optional := optional_range_reference_from_local_fixed(true) or { panic('missing optional range') }
+	result := result_range_reference_from_local_fixed(true) or { panic(err) }
+	direct := direct_range_reference_from_local_fixed()
+	assert overwrite_stack() == 7
+	assert read_retained_optional_fixed_reference(optional) == [132, 133]
+	assert read_retained_optional_fixed_reference(result) == [142, 143]
+	assert read_retained_optional_fixed_reference(direct) == [152, 153]
+}

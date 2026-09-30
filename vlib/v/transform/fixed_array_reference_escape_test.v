@@ -310,6 +310,35 @@ fn test_fixed_array_optional_reference_arguments_promote_successful_payload_sour
 	assert t.escaping_fixed_array_view_sources.len == 0
 }
 
+fn test_fixed_array_range_reference_headers_are_allocated_before_wrapping() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	fixed := types.Type(types.ArrayFixed{ elem_type: types.Type(types.int_), len: 3 })
+	array := types.Type(types.Array{ elem_type: types.Type(types.int_) })
+	mut t := new_transformer(mut a, &tc, map[string]bool{})
+	t.set_var_type('fixed', '[3]int')
+	tc.cur_scope.insert('fixed', fixed)
+	for wrapper in ['?&[]int', '!&[]int'] {
+		for explicit in [false, true] {
+			value := t.make_ident('fixed')
+			tc.register_synth_type(value, fixed)
+			range := t.make_range_index(value, t.make_int_literal(1), flat.empty_node, '[]int')
+			tc.register_synth_type(range, array)
+			arg := if explicit { t.make_prefix(.amp, range) } else { range }
+			assert t.fixed_array_reference_arg_needs_durable_header(arg, '[]int')
+			wrapped := t.transform_call_arg_for_param(arg, wrapper)
+			wrapped_node := t.a.nodes[int(wrapped)]
+			assert wrapped_node.kind == .struct_init
+			assert wrapped_node.typ == wrapper
+			payload_field := t.a.child_node(&wrapped_node, 1)
+			assert payload_field.value == 'value'
+			header_call := t.a.child_node(payload_field, 0)
+			assert header_call.kind == .call
+			assert t.a.child_node(header_call, 0).value == 'v3_heap_array'
+		}
+	}
+}
+
 fn test_fixed_array_reference_sum_headers_do_not_own_inline_variant_storage() {
 	mut a := flat.FlatAst.new()
 	mut tc := types.TypeChecker.new(&a)
