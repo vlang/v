@@ -289,3 +289,142 @@ fn main() {
 	assert output.exit_code == 0, output.output
 	assert output.output.trim_space() == 'ok'
 }
+
+fn test_immutable_fixed_array_reference_keeps_original_owners() {
+	output := copy_ownership_run('immutable_fixed_reference', '@[has_globals]
+module main
+
+__global next_id = 0
+__global dropped = map[int]bool{}
+
+interface Drop {
+mut:
+	drop()
+}
+
+struct Resource implements IClone, Drop {
+	id int
+}
+
+fn fresh() Resource {
+	next_id++
+	return Resource{next_id}
+}
+
+fn (r &Resource) clone() Resource {
+	return fresh()
+}
+
+fn (mut r Resource) drop() {
+	assert !dropped[r.id]
+	dropped[r.id] = true
+}
+
+fn inspect(values &[]Resource) int {
+	return values[0].id
+}
+
+fn main() {
+	values := [fresh()]!
+	original_id := values[0].id
+	assert inspect(values) != original_id
+	assert values[0].id == original_id
+	assert !dropped[original_id]
+	drop_owned(values)
+	assert dropped[original_id]
+	println("ok")
+}
+')
+	assert output == 'ok'
+}
+
+fn test_fixed_array_clone_preludes_follow_callee_evaluation() {
+	output := copy_ownership_run('fixed_callee_order', '@[has_globals]
+module main
+
+__global order = []string{}
+
+struct Item implements IClone {
+	id int
+}
+
+fn (r &Item) clone() Item {
+	order << "clone"
+	return Item{r.id}
+}
+
+struct Runner {
+mut:
+	calls int
+}
+
+fn make_runner() Runner {
+	order << "receiver"
+	return Runner{}
+}
+
+fn (r Runner) consume(mut values []Item) int {
+	order << "call"
+	return values[0].id
+}
+
+fn (mut r Runner) consume_mut(mut values []Item) int {
+	r.calls++
+	order << "call"
+	return values[0].id
+}
+
+fn next_runner() int {
+	order << "index"
+	return 0
+}
+
+fn consume_values(mut values []Item) int {
+	order << "call"
+	return values[0].id
+}
+
+fn consume_reference(values &[]Item) int {
+	order << "call"
+	return values[0].id
+}
+
+fn make_consumer() fn (&[]Item) int {
+	order << "factory"
+	return consume_reference
+}
+
+struct Holder {
+	callback fn (mut []Item) int @[required]
+}
+
+fn get_holder() Holder {
+	order << "getter"
+	return Holder{consume_values}
+}
+
+fn main() {
+	mut values := [Item{1}]!
+	assert make_runner().consume(mut values) == 1
+	assert order[0] == "receiver", order.str()
+	assert order.filter(it == "receiver").len == 1
+	assert order.filter(it == "clone").len > 0
+	order = []string{}
+	assert make_consumer()(values) == 1
+	assert order[0] == "factory", order.str()
+	assert order.filter(it == "factory").len == 1
+	order = []string{}
+	assert get_holder().callback(mut values) == 1
+	assert order[0] == "getter", order.str()
+	assert order.filter(it == "getter").len == 1
+	order = []string{}
+	mut runners := [Runner{}, Runner{}]!
+	assert runners[next_runner()].consume_mut(mut values) == 1
+	assert runners[0].calls == 1
+	assert order[0] == "index", order.str()
+	assert order.filter(it == "index").len == 1
+	println("ok")
+}
+')
+	assert output == 'ok'
+}

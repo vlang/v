@@ -1575,6 +1575,7 @@ writes are copied back to the fixed array afterward. Returned or stored array va
 heap storage after the fixed array goes out of scope.
 Elements that own storage are cloned for the heap view and when copied back. With ownership
 checking enabled, destructible elements need a compatible `clone()` method or `IClone` support.
+Immutable array-reference parameters receive a durable view without copying elements back.
 
 Note that slicing will cause the data of the fixed size array to be copied to
 the newly created ordinary array. The exception is a slice that is written to:

@@ -1432,7 +1432,6 @@ fn (mut t Transformer) transform_call_args(id flat.NodeId, node flat.Node) flat.
 	ordered_fixed_args := t.call_has_mut_fixed_array_args(node, param_type_names, param_offset)
 	mut snapshotted_args := 1
 	saved_in_call_callee := t.in_call_callee
-	t.in_call_callee = true
 	callee_id := t.a.children[node.children_start]
 	immediate_bound_method := t.immediate_bound_method_value_allocates_runtime_closure(callee_id)
 	immediate_factory_closure := t.call_returns_exclusive_closure(callee_id)
@@ -1449,15 +1448,21 @@ fn (mut t Transformer) transform_call_args(id flat.NodeId, node flat.Node) flat.
 			t.set_fresh_runtime_closure_expr_type(callee_id, immediate_closure_type)
 		}
 	}
-	mut transformed_callee := t.const_fn_call_target(callee_id) or {
+	ordered_callee_id := if ordered_fixed_args {
+		t.snapshot_fixed_array_call_callee(id, node, callee_id)
+	} else {
+		callee_id
+	}
+	t.in_call_callee = true
+	mut transformed_callee := t.const_fn_call_target(ordered_callee_id) or {
 		if param_offset == 1 && params.len > 0 {
-			if converted_callee := t.transform_method_callee_receiver_for_param(callee_id, t.semantic_type_name(params[0])) {
+			if converted_callee := t.transform_method_callee_receiver_for_param(ordered_callee_id, t.semantic_type_name(params[0])) {
 				converted_callee
 			} else {
-				t.transform_expr(callee_id)
+				t.transform_expr(ordered_callee_id)
 			}
 		} else {
-			t.transform_expr(callee_id)
+			t.transform_expr(ordered_callee_id)
 		}
 	}
 	t.in_call_callee = saved_in_call_callee
@@ -3797,18 +3802,19 @@ fn (mut t Transformer) transform_call_arg_for_param_isolated(arg_id flat.NodeId,
 		t.set_node_typ(int(arg_id), param_type)
 	}
 	if param_type.starts_with('&[]') {
+		mut_arg := arg_node.is_mut
 		arg_type := t.node_type(arg_id)
-		if arg_node.is_mut {
+		if mut_arg {
 			range_type := if arg_type.starts_with('[]') { arg_type } else { param_type[1..] }
 			if view := t.fixed_array_range_view_for_arg(arg_id, range_type, true) {
-				return t.fixed_array_mut_arg(view, range_type, param_type)
+				return t.fixed_array_mut_arg(view, range_type, param_type, true)
 			}
 		}
 		fixed_type := if arg_type.starts_with('&') { arg_type[1..] } else { arg_type }
 		if t.is_fixed_array_type(fixed_type) {
 			array_type := param_type[1..]
 			view := t.fixed_array_mut_arg_backing(arg_id, fixed_type, array_type)
-			return t.fixed_array_mut_arg(view, array_type, param_type)
+			return t.fixed_array_mut_arg(view, array_type, param_type, mut_arg)
 		}
 	}
 	if transform_param_type_is_void_pointer(param_type)
@@ -13248,6 +13254,52 @@ fn (t &Transformer) call_has_mut_fixed_array_args(node flat.Node, params []strin
 	return false
 }
 
+// Snapshot the callee before user-defined element clones run. A method keeps its
+// receiver's lvalue identity; a function-valued field snapshots the entire callee.
+fn (mut t Transformer) snapshot_fixed_array_call_callee(id flat.NodeId, call flat.Node, callee_id flat.NodeId) flat.NodeId {
+	callee := t.a.nodes[int(callee_id)]
+	if callee.kind == .selector && callee.children_count > 0 {
+		base_id := t.a.child(&callee, 0)
+		if t.call_selector_base_is_namespace(base_id, callee.value, call.value)
+			|| t.callee_base_is_not_a_runtime_value(base_id) {
+			return callee_id
+		}
+		is_fn_field := t.receiver_selector_is_fn_field(t.normalize_type_alias(t.trim_pointer_type(t.lvalue_type(base_id))), callee.value)
+		if !is_fn_field {
+			if !t.operand_needs_ordering_snapshot(base_id) {
+				return callee_id
+			}
+			new_base := if t.method_receiver_is_reference(id, base_id, callee.value) {
+				if stabilized := t.stabilize_original_lvalue_receiver(base_id) {
+					stabilized
+				} else {
+					t.snapshot_expr_for_reuse(base_id)
+				}
+			} else {
+				t.snapshot_expr_for_reuse(base_id)
+			}
+			if new_base == base_id {
+				return callee_id
+			}
+			start := t.a.children.len
+			t.a.children << new_base
+			for i in 1 .. callee.children_count {
+				t.a.children << t.a.child(&callee, i)
+			}
+			result := t.a.add_node(flat.Node{
+				...callee
+				children_start: start
+			})
+			t.copy_cloned_resolution(callee_id, result)
+			return result
+		}
+	}
+	if t.callee_needs_ordering_snapshot(callee_id) {
+		return t.snapshot_expr_for_reuse(callee_id)
+	}
+	return callee_id
+}
+
 fn (mut t Transformer) snapshot_fixed_array_call_args(mut args []flat.NodeId, start int) {
 	for i in start .. args.len {
 		args[i] = t.snapshot_transformed_expr_for_reuse(args[i], t.node_type(args[i]),
@@ -13280,14 +13332,14 @@ fn (mut t Transformer) refresh_fixed_array_arg_backings() {
 	}
 }
 
-// fixed_array_mut_arg gives a `mut []T` parameter its own header over the shared backing.
+// fixed_array_mut_arg gives an array-reference parameter its own header over the shared backing.
 // Appending or reassigning that header leaves the backing used for copy-back unchanged.
-fn (mut t Transformer) fixed_array_mut_arg(view flat.NodeId, array_type string, param_type string) flat.NodeId {
+fn (mut t Transformer) fixed_array_mut_arg(view flat.NodeId, array_type string, param_type string, write_back bool) flat.NodeId {
 	view_name := t.new_temp('fixed_array_arg_view')
 	t.pending_stmts << t.make_decl_assign_typed(view_name, view, array_type)
 	arg_name := t.new_temp('fixed_array_arg')
 	t.pending_stmts << t.make_decl_assign_typed(arg_name, t.make_ident(view_name), array_type)
-	if t.call_expr_depth > 0 && !t.in_spawn_expr && t.fixed_array_arg_backings.len > 0 {
+	if write_back && t.call_expr_depth > 0 && !t.in_spawn_expr && t.fixed_array_arg_backings.len > 0 {
 		backing := t.fixed_array_arg_backings.last()
 		data := t.make_cast('&u8', t.make_selector(t.make_ident(backing.view_name), 'data',
 			'voidptr'), '&u8')
@@ -16493,6 +16545,9 @@ fn (mut t Transformer) transform_receiver_method_args_with_base(node flat.Node, 
 	recv_root := t.expr_root_ident_name(base)
 	params := t.call_param_types(method_name)
 	param_offset := t.receiver_method_param_offset(base, node, params, method_name)
+	ordered_fixed_args := t.call_has_mut_fixed_array_args(node, t.call_param_type_names(params),
+		param_offset)
+	mut snapshotted_args := 0
 	explicit_args := int(node.children_count) - 1
 	expected_explicit := params.len - param_offset
 	variadic_arg_pos := 1 + params.len - 1 - param_offset
@@ -16509,6 +16564,10 @@ fn (mut t Transformer) transform_receiver_method_args_with_base(node flat.Node, 
 	mut i := 1
 	mut variadic_tail_supplied := false
 	for i < node.children_count {
+		if ordered_fixed_args {
+			t.snapshot_fixed_array_call_args(mut args, snapshotted_args)
+			snapshotted_args = args.len
+		}
 		param_idx := (args.len - 1) + param_offset
 		arg_id := t.a.child(&node, i)
 		arg_node := t.a.nodes[int(arg_id)]
@@ -16608,6 +16667,10 @@ fn (mut t Transformer) transform_receiver_method_args_with_base(node flat.Node, 
 		}
 	}
 	t.append_missing_params_struct_args(mut args, params, param_offset)
+	if ordered_fixed_args {
+		t.snapshot_fixed_array_call_args(mut args, snapshotted_args)
+	}
+	t.refresh_fixed_array_arg_backings()
 	return args
 }
 
