@@ -1576,9 +1576,10 @@ those elements. Local storage is moved to the heap before references to it are f
 retained views remain valid after the local goes out of scope. A callee can also retain a
 reference to the separately allocated array header. Growing or reassigning that header follows
 the usual array slice rules and leaves the original fixed array's size unchanged.
-Immutable array-reference parameters also borrow the original elements. Borrowing does not
-clone elements or require a `clone()` method. Explicitly destroying owned source elements
-invalidates views of those elements, as with other borrowed slices.
+Immutable array-reference parameters, including each variadic argument, also borrow the
+original elements. Borrowing does not clone elements or require a `clone()` method.
+Explicitly destroying owned source elements invalidates views of those elements, as with other
+borrowed slices.
 With ownership checking enabled, returning or storing a view copies its buffer to independent
 storage. Owned elements are cloned so the retained value has independent owners. Retained array
 references receive a separate header, so other aliases in the callee still share the original

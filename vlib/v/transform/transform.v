@@ -7196,8 +7196,13 @@ fn (t &Transformer) escape_subtree_may_need_scan(id flat.NodeId) bool {
 		}
 		name := t.tc.resolved_call_name(id) or { return true }
 		params := t.tc.fn_param_types[name] or { return true }
-		for param in params {
+		for param_idx, param in params {
 			if escape_type_is_pointer(param) {
+				return true
+			}
+			if param_idx == params.len - 1 && param is types.Array
+				&& t.call_is_variadic_for_node(name, node)
+				&& escape_type_is_pointer(param.elem_type) {
 				return true
 			}
 		}
@@ -9091,8 +9096,10 @@ fn (mut t Transformer) mark_fixed_array_reference_argument_escapes(call_id flat.
 	}
 	call_name := t.call_name_for_node(call_id, call)
 	mut params := t.call_param_types_for_node(call_name, call)
+	mut is_variadic := t.call_is_variadic_for_node(call_name, call)
 	if concrete_params := t.concrete_generic_call_param_types(call_id, call) {
 		params = concrete_params.clone()
+		is_variadic = is_variadic || t.concrete_generic_call_is_variadic(call_id, call)
 	}
 	offset := if t.call_is_selector_form(call) && t.concrete_generic_call_is_method(call_id) {
 		1
@@ -9105,12 +9112,31 @@ fn (mut t Transformer) mark_fixed_array_reference_argument_escapes(call_id flat.
 			t.mark_fixed_array_reference_argument_escape(t.a.child(callee, 0), params[0], amp_ptrs, amp_sources, ptr_aliases, local_stack_names)
 		}
 	}
+	variadic_idx := if is_variadic && params.len > 0 && params[params.len - 1] is types.Array {
+		params.len - 1
+	} else {
+		-1
+	}
 	for child_idx in 1 .. call.children_count {
 		param_idx := child_idx - 1 + offset
-		if param_idx < 0 || param_idx >= params.len {
+		if param_idx < 0 {
 			continue
 		}
-		t.mark_fixed_array_reference_argument_escape(t.a.child(&call, child_idx), params[param_idx], amp_ptrs, amp_sources, ptr_aliases, local_stack_names)
+		param_type := if variadic_idx >= 0 && param_idx >= variadic_idx {
+			// Every unpacked tail argument is converted to the variadic element type.
+			// The packed array parameter hides any reference to fixed-array storage.
+			variadic_type := params[variadic_idx]
+			if variadic_type is types.Array {
+				variadic_type.elem_type
+			} else {
+				continue
+			}
+		} else if param_idx < params.len {
+			params[param_idx]
+		} else {
+			continue
+		}
+		t.mark_fixed_array_reference_argument_escape(t.a.child(&call, child_idx), param_type, amp_ptrs, amp_sources, ptr_aliases, local_stack_names)
 	}
 }
 

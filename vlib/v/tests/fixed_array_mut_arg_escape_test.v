@@ -333,6 +333,66 @@ fn retain_immutable_array_reference(values &[]int) &[]int {
 	return values
 }
 
+fn retain_variadic_array_reference(index int, values ...&[]int) &[]int {
+	return values[index]
+}
+
+fn retain_generic_variadic_array_reference[T](index int, values ...&[]T) &[]T {
+	return values[index]
+}
+
+struct VariadicFixedKeeper {}
+
+fn (keeper VariadicFixedKeeper) retain(index int, values ...&[]int) &[]int {
+	return values[index]
+}
+
+@[noinline]
+fn reference_from_variadic_fixed_locals(index int, kind int) &[]int {
+	first := [101, 102]!
+	middle := [111, 112]!
+	last := [121, 122]!
+	if kind == 0 {
+		return retain_variadic_array_reference(index, first, middle, last)
+	}
+	if kind == 1 {
+		return retain_generic_variadic_array_reference[int](index, first, middle, last)
+	}
+	if kind == 2 {
+		retain_fn := retain_variadic_array_reference
+		return retain_fn(index, first, middle, last)
+	}
+	keeper := VariadicFixedKeeper{}
+	return keeper.retain(index, first, middle, last)
+}
+
+fn test_fixed_array_variadic_references_keep_every_tail_position_alive() {
+	for kind in 0 .. 4 {
+		for index, expected in [[101, 102], [111, 112], [121, 122]] {
+			values := reference_from_variadic_fixed_locals(index, kind)
+			assert overwrite_stack() == 7
+			unsafe {
+				assert *values == expected
+			}
+		}
+	}
+}
+
+@[noinline]
+fn reference_from_single_variadic_fn_value() &[]int {
+	values := [131, 132]!
+	retain_fn := retain_variadic_array_reference
+	return retain_fn(0, values)
+}
+
+fn test_fixed_array_single_variadic_fn_value_reference_remains_valid() {
+	values := reference_from_single_variadic_fn_value()
+	assert overwrite_stack() == 7
+	unsafe {
+		assert *values == [131, 132]
+	}
+}
+
 fn reference_from_fixed_value(values [2]int) &[]int {
 	unsafe {
 		return retain_immutable_array_reference(&values)

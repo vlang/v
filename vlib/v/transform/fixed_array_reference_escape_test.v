@@ -163,6 +163,70 @@ fn test_fixed_array_reference_zero_argument_method_marks_receiver() {
 	assert 'holder' in t.escaping_fixed_array_view_sources
 }
 
+fn test_fixed_array_reference_variadic_arguments_promote_each_tail_source() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	fixed := types.Type(types.ArrayFixed{ elem_type: types.Type(types.int_), len: 2 })
+	array_ref := types.Type(types.Pointer{ base_type: types.Type(types.Array{ elem_type: types.Type(types.int_) }) })
+	tc.fn_param_types['retain'] = [types.Type(types.int_),
+		types.Type(types.Array{ elem_type: array_ref })]
+	tc.fn_ret_types['retain'] = array_ref
+	tc.fn_variadic['retain'] = true
+	mut t := new_transformer(mut a, &tc, map[string]bool{})
+	mut args := [t.make_int_literal(2)]
+	mut locals := map[string]bool{}
+	for name in ['first', 'middle', 'last'] {
+		t.set_var_type(name, '[2]int')
+		tc.cur_scope.insert(name, fixed)
+		arg := t.make_ident(name)
+		tc.register_synth_type(arg, fixed)
+		args << arg
+		locals[name] = true
+	}
+	call_id := t.make_call_typed('retain', args, '&[]int')
+	t.set_resolved_call_entry(int(call_id), 'retain')
+	t.fast_escape_precheck = true
+	t.item_escape_scan_known = true
+	t.item_escape_scan_needed = false
+	t.mark_escaping_amp_ptrs([call_id])
+	for name in locals.keys() {
+		assert name in t.escaping_fixed_array_view_sources, name
+	}
+	t.escaping_fixed_array_view_sources.clear()
+	ref_alias := types.Type(types.Alias{ name: 'ArrayRef', base_type: array_ref })
+	tc.fn_param_types['retain_alias'] = [types.Type(types.int_),
+		types.Type(types.Array{ elem_type: ref_alias })]
+	tc.fn_ret_types['retain_alias'] = array_ref
+	tc.fn_variadic['retain_alias'] = true
+	alias_call := t.make_call_typed('retain_alias', args, '&[]int')
+	t.set_resolved_call_entry(int(alias_call), 'retain_alias')
+	t.mark_fixed_array_reference_argument_escapes(alias_call, t.a.nodes[int(alias_call)], map[string]bool{}, map[string][]string{}, map[string]string{}, locals)
+	for name in locals.keys() {
+		assert name in t.escaping_fixed_array_view_sources, name
+	}
+	// An ordinary array parameter contains references that were formed earlier;
+	// it must not reinterpret its argument as a variadic reference element.
+	t.escaping_fixed_array_view_sources.clear()
+	tc.fn_param_types['retain_array'] = tc.fn_param_types['retain'].clone()
+	tc.fn_ret_types['retain_array'] = array_ref
+	ordinary := t.make_call_typed('retain_array', args[..2], '&[]int')
+	t.set_resolved_call_entry(int(ordinary), 'retain_array')
+	t.mark_fixed_array_reference_argument_escapes(ordinary, t.a.nodes[int(ordinary)], map[string]bool{}, map[string][]string{}, map[string]string{}, locals)
+	assert t.escaping_fixed_array_view_sources.len == 0
+	t.set_var_type('array_fn', 'fn (int, []&[]int) &[]int')
+	ordinary_value := t.make_call_typed('array_fn', args[..2], '&[]int')
+	t.mark_fixed_array_reference_argument_escapes(ordinary_value, t.a.nodes[int(ordinary_value)], map[string]bool{}, map[string][]string{}, map[string]string{}, locals)
+	assert t.escaping_fixed_array_view_sources.len == 0
+	t.set_var_type('retain_fn', 'fn (int, []&[]int) &[]int')
+	fn_value_call := t.make_call_typed('retain_fn', args, '&[]int')
+	t.a.nodes[int(fn_value_call)].flags |= flat.node_flag_variadic_call
+	assert (flat.clone_node_flags(&t.a.nodes[int(fn_value_call)], false) & flat.node_flag_variadic_call) != 0
+	t.mark_fixed_array_reference_argument_escapes(fn_value_call, t.a.nodes[int(fn_value_call)], map[string]bool{}, map[string][]string{}, map[string]string{}, locals)
+	for name in locals.keys() {
+		assert name in t.escaping_fixed_array_view_sources, name
+	}
+}
+
 fn test_promoted_fixed_array_storage_preserves_nested_element_alignment() {
 	mut a := flat.FlatAst.new()
 	mut tc := types.TypeChecker.new(&a)

@@ -1430,7 +1430,7 @@ fn (mut t Transformer) transform_call_args(id flat.NodeId, node flat.Node) flat.
 	has_spread_at_variadic_slot := variadic_arg_pos > 0 && variadic_arg_pos < node.children_count
 		&& t.call_arg_is_spread(t.a.child(&node, variadic_arg_pos))
 	is_c_variadic := t.tc.c_variadic_fns[call_name]
-	is_variadic := !is_c_variadic && (t.call_is_variadic(call_name)
+	is_variadic := !is_c_variadic && (t.call_is_variadic_for_node(call_name, node)
 		|| is_generic_variadic || (params.len > 0 && params[params.len - 1] is types.Array
 		&& (explicit_args > expected_explicit || has_spread_at_variadic_slot)))
 	variadic_idx := if is_variadic && params.len > 0 && params[params.len - 1] is types.Array {
@@ -3359,6 +3359,22 @@ fn (t &Transformer) decl_fn_type_param_in_scope(param string, module_name string
 	return scoped
 }
 
+// call_is_variadic_for_node also follows checker-resolved function-value targets.
+fn (t &Transformer) call_is_variadic_for_node(call_name string, node flat.Node) bool {
+	if (node.flags & flat.node_flag_variadic_call) != 0 {
+		return true
+	}
+	if t.call_is_variadic(call_name) {
+		return true
+	}
+	if !isnil(t.tc) && node.children_count > 0 {
+		if name := t.tc.resolved_fn_value_name(t.a.child(&node, 0)) {
+			return t.call_is_variadic(name)
+		}
+	}
+	return false
+}
+
 // call_is_variadic updates call is variadic state for Transformer.
 fn (t &Transformer) call_is_variadic(call_name string) bool {
 	// Generic specializations are re-checked on every call (see below).
@@ -4996,6 +5012,10 @@ fn (mut t Transformer) append_variadic_arg_push(tmp_name string, arg_id flat.Nod
 		t.wrap_sum_value(arg_id, expected_elem)
 	} else if t.resolve_interface_type_name(expected_elem).len > 0 {
 		t.transform_expr_for_type(arg_id, expected_elem)
+	} else if escape_type_is_pointer(elem_type) {
+		// Reference elements need the same fixed-array view and address conversions
+		// as an ordinary reference parameter before they are packed into the tail.
+		t.transform_call_arg_for_param(arg_id, t.normalize_type_alias(expected_elem))
 	} else {
 		t.transform_expr(arg_id)
 	}
