@@ -2676,7 +2676,7 @@ fn (t &Transformer) static_assoc_fn_name(base_id flat.NodeId, method string) ?st
 		if base.value == 'C' || t.is_import_alias_ident(base_id) {
 			return none
 		}
-		if t.var_type(base.value).len > 0 {
+		if t.static_assoc_ident_is_value(base_id) {
 			return none
 		}
 		base_type := t.node_type(base_id)
@@ -2692,8 +2692,12 @@ fn (t &Transformer) static_assoc_fn_name(base_id flat.NodeId, method string) ?st
 			}
 		}
 	} else if base.kind == .selector && base.children_count > 0 {
-		inner := t.a.child_node(&base, 0)
+		inner_id := t.a.child(&base, 0)
+		inner := t.a.node(inner_id)
 		if inner.kind == .ident {
+			if t.static_assoc_ident_is_value(inner_id) {
+				return none
+			}
 			type_ident := '${inner.value}.${base.value}'
 			for type_name in t.static_assoc_type_candidates(type_ident) {
 				name := flat.encode_static_type_method_name(type_name, method)
@@ -2704,6 +2708,78 @@ fn (t &Transformer) static_assoc_fn_name(base_id flat.NodeId, method string) ?st
 		}
 	}
 	return none
+}
+
+// static_assoc_ident_is_value distinguishes runtime roots from type namespaces,
+// including file-scope bindings that are absent from the local variable table.
+fn (t &Transformer) static_assoc_ident_is_value(id flat.NodeId) bool {
+	name := t.a.node(id).value
+	if t.var_type(name).len > 0 || t.current_module_global_type(name) != none {
+		return true
+	}
+	const_name := if t.cur_module in ['', 'main', 'builtin'] {
+		name
+	} else {
+		'${t.cur_module}.${name}'
+	}
+	if !isnil(t.tc) && const_name in t.tc.const_types {
+		return true
+	}
+	if t.is_import_alias_ident(id) {
+		return false
+	}
+	return t.imported_global_name(name) != none
+		|| t.const_type_key_in_context(name, t.cur_module, t.cur_file) != none
+}
+
+// static_fn_value_name returns the static type method that a `Type.method` or
+// `mod.Type.method` selector names when it is used as a function value, not called.
+// Generic specializations do not carry the checker's resolution for their cloned
+// selectors, so fall back to looking the static method up from the base.
+fn (t &Transformer) static_fn_value_name(id flat.NodeId, node flat.Node) ?string {
+	if t.in_call_callee || node.children_count != 1 || isnil(t.tc) {
+		return none
+	}
+	if t.static_method_names_ready && node.value !in t.static_method_names {
+		return none
+	}
+	if resolved := t.tc.resolved_fn_value_name(id) {
+		flat.decode_static_type_method_name(resolved) or { return none }
+		return resolved
+	}
+	name := t.static_assoc_fn_name(t.a.child(&node, 0), node.value) or { return none }
+	receiver, method := flat.decode_static_type_method_name(name) or { return none }
+	// Enum fields take precedence over a same-named static method.
+	if t.enum_method_name_shadows_field('${receiver}.${method}') {
+		return none
+	}
+	return name
+}
+
+// lower_static_fn_value replaces a static type method value selector with an ident
+// naming the function, the same form other function values take. Emitting the
+// selector as is would produce `Type.method` in C, where `Type` is not a value.
+fn (mut t Transformer) lower_static_fn_value(id flat.NodeId, node flat.Node, name string) flat.NodeId {
+	mut typ := ''
+	if checked := t.tc.expr_type(id) {
+		typ = fn_value_type_name_from_type(checked) or { '' }
+	}
+	if typ.len == 0 {
+		if params := t.tc.fn_param_types[name] {
+			ret := t.tc.fn_ret_types[name] or { types.Type(types.void_) }
+			typ = fn_literal_value_type_text(params, ret.name())
+		}
+	}
+	ident := t.a.add_node(flat.Node{
+		kind:  .ident
+		pos:   node.pos
+		value: name
+		typ:   typ
+	})
+	t.set_resolved_fn_value_entry(int(ident), name)
+	// Specialized generic bodies are transformed after the initial markused pass.
+	t.mark_fn_used_name(name)
+	return ident
 }
 
 // build_static_method_names records the method part of every static type
@@ -2808,6 +2884,9 @@ fn (t &Transformer) static_assoc_type_candidates(type_ident string) []string {
 		return []string{}
 	}
 	mut candidates := []string{}
+	if imported := t.selective_import_type_name_for_file(t.cur_file, type_ident) {
+		t.add_static_assoc_type_candidate(mut candidates, imported)
+	}
 	t.add_static_assoc_type_candidate(mut candidates, type_ident)
 	if !type_ident.contains('.') && t.cur_module.len > 0 && t.cur_module != 'main'
 		&& t.cur_module != 'builtin' {

@@ -21066,6 +21066,9 @@ fn (mut t Transformer) transform_selector_expr(id flat.NodeId, node flat.Node) f
 	if node.value in t.sum_variant_fields {
 		return id
 	}
+	if static_fn := t.static_fn_value_name(id, node) {
+		return t.lower_static_fn_value(id, node, static_fn)
+	}
 	base_id0 := t.a.child(&node, 0)
 	if node.value == 'typ' && t.selector_base_is_comptime_type_value(base_id0) {
 		if base_type := t.comptime_type_expr_type(base_id0) {
