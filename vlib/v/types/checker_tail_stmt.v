@@ -12732,6 +12732,11 @@ pub fn (tc &TypeChecker) struct_fields_for_type(struct_name string) []StructFiel
 
 @[direct_array_access]
 fn (tc &TypeChecker) struct_field_type(struct_name string, field_name string) ?Type {
+	if struct_name.starts_with('C.') {
+		if typ := tc.c_struct_module_field_type(struct_name, field_name) {
+			return typ
+		}
+	}
 	if field_name.starts_with('@') && field_name.len > 1
 		&& token.Token.from_string_tinyv(field_name[1..]).is_keyword() {
 		mut exact_seen := map[string]bool{}
@@ -12806,6 +12811,26 @@ fn (tc &TypeChecker) struct_field_type(struct_name string, field_name string) ?T
 		cache.struct_field_misses[cache_key] = true
 	}
 	tc.remember_struct_field_type(struct_name, field_name, Type(void_), false)
+	return none
+}
+
+// c_struct_module_field_type returns the type of a field that the current module's own
+// declaration of a C struct has and the canonical declaration lacks. Modules can mirror
+// one C struct with different fields (`C.sigaction` in `os` and in a translated C
+// library); each module's code can use the fields it declares.
+fn (tc &TypeChecker) c_struct_module_field_type(struct_name string, field_name string) ?Type {
+	fields := tc.c_struct_scoped_fields[c_struct_module_key(tc.cur_module, struct_name)] or {
+		return none
+	}
+	canonical := tc.structs[struct_name] or { []StructField{} }
+	if canonical.any(it.name == field_name) {
+		return none
+	}
+	for field in fields {
+		if field.name == field_name {
+			return field.typ
+		}
+	}
 	return none
 }
 
