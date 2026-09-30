@@ -2381,6 +2381,8 @@ fn pointer_free_base_type(t types.Type) ?types.Type {
 fn (g &FlatGen) pointer_free_needs_aligned_free(t types.Type) bool {
 	base_type := pointer_free_base_type(t) or { return false }
 	mut seen := map[string]bool{}
+	// Windows manual builtin malloc and memdup also use _aligned_malloc. Only C.free
+	// releases pointers from the C allocator; it bypasses this builtin free path.
 	return g.global_fixed_array_type_has_aligned_struct(base_type, mut seen)
 }
 
