@@ -6550,8 +6550,11 @@ fn (mut tc TypeChecker) check_selector(id flat.NodeId, node flat.Node) {
 	// receiver is a method value; record the concrete `Type.method` so it survives
 	// dead-code elimination (cgen emits a wrapper that calls it).
 	union_receiver := unalias_type(unwrap_pointer(base_type))
+	// Like the other `unsafe` checks, look at the enclosing blocks too: a selector
+	// can be checked again by a later pass, outside the block's `unsafe_depth`.
 	if union_receiver is Struct && union_receiver.name in tc.unions && tc.unsafe_depth == 0
-		&& !tc.translated_files[tc.cur_file] && !tc.selector_is_assignment_lhs(id) {
+		&& !tc.expr_is_inside_unsafe_block(id) && !tc.translated_files[tc.cur_file]
+		&& !tc.selector_is_assignment_lhs(id) {
 		tc.record_warning_at(.unknown_field, 'reading a union field (or its address) requires `unsafe`', id, tc.selector_field_diagnostic_pos(id, node.value))
 	}
 	clean_recv := unwrap_all_pointers(base_type)
