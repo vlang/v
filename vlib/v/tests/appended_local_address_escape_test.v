@@ -75,3 +75,37 @@ fn test_address_appended_through_a_value_block_or_branch() {
 	assert *values[1] == 42
 	assert *values[2] == 42
 }
+
+fn address_result(value &u64, success bool) !&u64 {
+	if !success {
+		return error('no address')
+	}
+	return value
+}
+
+fn append_through_or_values(mut values []&u64, data int) {
+	option_source := u64(data)
+	option_fallback := u64(data) * 2
+	result_source := u64(data) * 3
+	result_fallback := u64(data) * 4
+	alias_fallback := u64(data) * 5
+	missing := ?&u64(none)
+	candidate := ?&u64(&option_source)
+	values << (candidate or { &option_fallback })
+	values << (missing or { &option_fallback })
+	values << (address_result(&result_source, true) or { &result_fallback })
+	values << (address_result(&result_source, false) or { &result_fallback })
+	alias := missing or { &alias_fallback }
+	values << alias
+}
+
+fn test_option_and_result_appends_keep_operand_and_fallback_addresses() {
+	mut values := []&u64{}
+	append_through_or_values(mut values, 21)
+	_ = use_the_stack(10)
+	assert *values[0] == 21
+	assert *values[1] == 42
+	assert *values[2] == 63
+	assert *values[3] == 84
+	assert *values[4] == 105
+}

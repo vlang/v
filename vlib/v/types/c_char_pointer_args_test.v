@@ -9,7 +9,7 @@ fn c_char_pointer_check(name string, files map[string]string) os.Result {
 	for file, source in files {
 		os.write_file(os.join_path(root, file), source) or { panic(err) }
 	}
-	return os.execute('${os.quoted_path(@VEXE)} -check ${os.quoted_path(root)}')
+	return os.execute('${os.quoted_path(@VEXE)} -new-compiler -check ${os.quoted_path(root)}')
 }
 
 fn test_c_calls_accept_character_pointers_of_the_same_depth() {
@@ -69,4 +69,55 @@ fn main() {
 	})
 	assert plain.exit_code != 0, plain.output
 	assert plain.output.contains('cannot assign to `holder.data`: expected `&i8`, not `&char`'), plain.output
+}
+
+fn test_translated_character_pointers_in_typed_value_contexts() {
+	source := "type SignedChars = &i8
+struct Holder { data SignedChars }
+fn duplicate(text &i8) &i8 { return C.strdup(text) }
+fn accept(text &i8) { _ = text }
+fn accept_pointer_slot(slot &&i8) { _ = slot }
+fn main() {
+	text := C.strdup(c'x')
+	holder := Holder{data: text}
+	accept(text)
+	accept_pointer_slot(&text)
+	values := [&i8(c'x'), text]
+	mut appended := []&i8{}
+	appended << text
+	mapping := {'x': &i8(c'x'), 'y': text}
+	_ = duplicate(&i8(c'x'))
+	_ = holder
+	_ = values
+	_ = mapping
+}
+"
+	translated := c_char_pointer_check('translated_values', {
+		'main.c.v': '@[translated]\nmodule main\n' + source
+	})
+	assert translated.exit_code == 0, translated.output
+	plain := c_char_pointer_check('plain_values', {
+		'translated.v': '@[translated]\nmodule main\nfn translated() {}\n'
+		'main.c.v':     'module main\n' + source
+	})
+	assert plain.exit_code != 0, plain.output
+	assert plain.output.contains('cannot use `&char` as type `&i8` in return argument'), plain.output
+	assert plain.output.contains('field `data`: expected `SignedChars`, not `&char`'), plain.output
+	assert plain.output.contains('cannot use `&char` as `&i8` in argument 1 to `accept`'), plain.output
+}
+
+fn test_translated_character_pointer_values_keep_depth_and_base_checks() {
+	result := c_char_pointer_check('translated_other_values', {
+		'main.v': '@[translated]
+module main
+fn different_depth(text &char) &&i8 { return text }
+fn different_base(text &char) &i16 { return text }
+fn different_wrapper(text ?&char) ?&i8 { return text }
+fn main() {}
+'
+	})
+	assert result.exit_code != 0, result.output
+	assert result.output.contains('cannot use `&char` as type `&&i8` in return argument'), result.output
+	assert result.output.contains('cannot use `&char` as type `&i16` in return argument'), result.output
+	assert result.output.contains('cannot use `?&char` as type `?&i8` in return argument'), result.output
 }

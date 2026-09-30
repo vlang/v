@@ -638,11 +638,6 @@ fn (tc &TypeChecker) assignment_types_compatible(rhs_id flat.NodeId, rhs_type Ty
 			&& unalias_type(expected_type) is Pointer && translated_integer_type(rhs_type)) {
 		return true
 	}
-	// Translated C stores the `&char` results of C functions in its `&i8` storage.
-	if op == .assign && tc.node_is_in_translated_file(rhs_id)
-		&& c_char_pointer_types_compatible(rhs_type, expected_type) {
-		return true
-	}
 	if op == .assign && tc.fn_storage_voidptr_mismatch(rhs_id, rhs_type, expected_type) {
 		return false
 	}
@@ -3192,6 +3187,7 @@ fn return_numeric_alias_compatible(actual Type, expected Type) bool {
 fn (tc &TypeChecker) expr_compatible(expr_id flat.NodeId, actual Type, expected Type) bool {
 	return tc.type_compatible(actual, expected) || tc.zero_literal_can_be_pointer(expr_id, expected)
 		|| tc.translated_numeric_expr_compatible(expr_id, actual, expected)
+		|| tc.translated_char_pointer_expr_compatible(expr_id, actual, expected)
 		|| tc.int_literal_can_be_char(expr_id, expected)
 		|| tc.interface_expr_compatible(actual, expected)
 		|| tc.fn_voidptr_expr_compatible(actual, expected)
@@ -3217,6 +3213,10 @@ fn translated_integer_type(typ Type) bool {
 fn (tc &TypeChecker) translated_numeric_expr_compatible(id flat.NodeId, actual Type, expected Type) bool {
 	return tc.node_is_in_translated_file(id) && translated_numeric_type(actual)
 		&& translated_numeric_type(expected)
+}
+
+fn (tc &TypeChecker) translated_char_pointer_expr_compatible(id flat.NodeId, actual Type, expected Type) bool {
+	return tc.node_is_in_translated_file(id) && c_char_pointer_types_compatible(actual, expected)
 }
 
 fn (tc &TypeChecker) translated_condition_compatible(id flat.NodeId, typ Type) bool {

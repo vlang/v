@@ -9846,6 +9846,9 @@ is `DLL_PROCESS_DETACH`.
 Files marked `@[translated]` retain C storage rules: global declarations and writes through
 pointers do not require additional flags or `unsafe` blocks. These rules apply only to those files.
 Pointer-returning calls can also receive field assignments.
+Pointers to `char`, `i8`, and `u8` of the same pointer depth are interchangeable in translated
+assignments, returns, function arguments, and other typed values. Ordinary V files retain their
+pointer type checks; calls to C functions also accept these character pointers.
 
 Files marked `@[translated]` retain C scalar conversions between numbers, enums, and booleans.
 These scalars can be mixed in arithmetic expressions and compound assignments. Integral scalars
