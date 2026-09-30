@@ -11,14 +11,15 @@ import v.workers
 #include <errno.h>
 #include <signal.h>
 #include <sys/file.h>
-#include <sys/syscall.h>
 #include <sys/wait.h>
 #include <unistd.h>
 
 // `-os cross` compiles this file into vc/v.c for every Unix, and only `$if`
-// guards reach the C preprocessor there: prctl exists on Linux alone.
+// guards reach the C preprocessor there: prctl and the memfd_create syscall are
+// Linux's.
 $if linux {
 	#include <sys/prctl.h>
+	#include <sys/syscall.h>
 }
 
 fn C.waitpid(pid int, status &int, options int) int
@@ -166,7 +167,7 @@ pub fn serve() Request {
 	// What a check leaves for the next check of the program, in a file that
 	// every child sees and that ends with the server.
 	record_fd := if shares_children {
-		unsafe { int(C.syscall(C.SYS_memfd_create, c'v-diagnostics-record', voidptr(0))) }
+		memory_file(c'v-diagnostics-record')
 	} else {
 		-1
 	}
@@ -339,7 +340,7 @@ pub fn (r &Request) asks_for_diagnostics(question string) bool {
 pub fn (mut r Request) diagnose_in_grandchild() bool {
 	flush_stdout()
 	flush_stderr()
-	fd := unsafe { int(C.syscall(C.SYS_memfd_create, c'v-diagnostics', voidptr(0))) }
+	fd := memory_file(c'v-diagnostics')
 	child_pid := os.getpid()
 	pid := if fd >= 0 { os.fork() } else { -1 }
 	if pid == 0 {
@@ -347,8 +348,12 @@ pub fn (mut r Request) diagnose_in_grandchild() bool {
 		// child cannot write into an answer. It does not outlive it for long,
 		// and a child that ended since the fork leaves it to end at once, as
 		// serve's children do with the server.
-		if C.prctl(C.PR_SET_PDEATHSIG, voidptr(usize(C.SIGKILL)), 0, 0, 0) != 0
-			|| os.getppid() != child_pid {
+		$if linux {
+			if C.prctl(C.PR_SET_PDEATHSIG, voidptr(usize(C.SIGKILL)), 0, 0, 0) != 0 {
+				C._exit(2)
+			}
+		}
+		if os.getppid() != child_pid {
 			C._exit(2)
 		}
 		C.dup2(fd, 1)
@@ -377,6 +382,16 @@ pub fn (mut r Request) diagnose_in_grandchild() bool {
 		fd:  fd
 	}
 	return false
+}
+
+// memory_file makes a file that lives in memory and ends with its last
+// descriptor, and returns that descriptor, or -1 where it cannot be made.
+fn memory_file(name &char) int {
+	$if linux {
+		return unsafe { int(C.syscall(C.SYS_memfd_create, name, voidptr(0))) }
+	} $else {
+		return -1
+	}
 }
 
 // keep_busy_with has the child call `step` while it waits for its next

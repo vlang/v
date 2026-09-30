@@ -186,6 +186,25 @@ fn test_cross_output_uses_getentropy_instead_of_the_linux_syscall_where_unavaila
 	assert body[getentropy_at..syscall_at].contains('#else'), 'the Linux syscall is not in the fallback branch: ${body}'
 }
 
+fn test_cross_output_keeps_the_linux_calls_of_the_diagnostics_server_behind_linux_guards() {
+	// The snapshot bakes in diagserver_linux.c.v too, and is compiled on macOS,
+	// which has neither memfd_create nor prctl. Each of these calls has to stay
+	// behind a guard that holds on Linux alone, or the snapshot does not compile
+	// there.
+	c_code := cross_generate_with('-cross -os linux', 'diagserver', 'module main\n\nimport v.diagserver\n\nfn main() {\n\tmut request := diagserver.serve()\n\tif request.diagnose_in_grandchild() {\n\t\treturn\n\t}\n}\n')
+	for call in ['SYS_memfd_create', 'prctl('] {
+		assert c_code.contains(call), '`${call}` is missing from the snapshot'
+		mut from := 0
+		for {
+			at := c_code.index_after(call, from) or { break }
+			guards := enclosing_guards_at(c_code, at)
+			assert guards.any(!it.starts_with('!') && it.contains('defined(__linux__)')
+				&& !it.contains('!defined(__linux__)')), 'a `${call}` call is guarded by ${guards}, which also hold outside Linux'
+			from = at + call.len
+		}
+	}
+}
+
 fn test_cross_output_keeps_a_working_clock_on_apple() {
 	// `time` splits per platform too, so a snapshot generated on Linux bakes the
 	// stand-ins from time_linux.c.v, while the preprocessor still takes the
