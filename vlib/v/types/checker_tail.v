@@ -20420,7 +20420,19 @@ fn (mut tc TypeChecker) check_empty_or_value_tail(branch_id flat.NodeId) {
 			return
 		}
 	}
-	if unalias_type(tc.resolve_type(tail_id)) is Void && !tc.branch_tail_never_returns(branch_id)
+	mut tail_type := tc.resolve_type(tail_id)
+	if unalias_type(tail_type) is Void {
+		// The branch is checked by now. A memoized `void` can be from before, when
+		// an inferred generic call in the tail had no type yet
+		// (`u32(1) << at(&cols[0], 0).from`), so resolve the tail again (inside any
+		// parentheses, whose own resolution would read the memo).
+		mut value_id := tail_id
+		for tc.a.node(value_id).kind == .paren && tc.a.node(value_id).children_count > 0 {
+			value_id = tc.a.child(tc.a.node(value_id), 0)
+		}
+		tail_type = tc.resolve_type_uncached(value_id)
+	}
+	if unalias_type(tail_type) is Void && !tc.branch_tail_never_returns(branch_id)
 		&& !tc.stmt_definitely_returns(tail_id)
 		&& !tc.expr_subtree_has_undefined_variable_error(tail_id) {
 		tc.record_error_at(.if_branch_mismatch, 'the final expression in `if` or `match`, must have a value of a non-void type', tail_id, tail.pos)
