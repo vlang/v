@@ -18655,6 +18655,9 @@ fn (mut g FlatGen) fn_ptr_type_key(typ types.FnType) string {
 
 // fn_ptr_signature_type normalizes fixed arrays and nested callbacks while preserving pointer depth.
 fn (mut g FlatGen) fn_ptr_signature_type(typ types.Type) ?string {
+	if typ is types.OptionType || typ is types.ResultType {
+		return g.optional_type_name(typ)
+	}
 	if typ is types.FnType {
 		return g.fn_ptr_type_key(typ)
 	}

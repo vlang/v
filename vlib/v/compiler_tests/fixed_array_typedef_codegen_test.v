@@ -492,3 +492,69 @@ fn main() {
 	run := os.execute(os.quoted_path(bin))
 	assert run.exit_code == 0, run.output
 }
+
+fn test_backed_enum_optional_result_callbacks_keep_payload_types() {
+	v3_bin := fixed_array_build_v3()
+	root := fixed_array_write_project('enum_optional_callback_calls', 'module fixture
+pub enum Mode as i32 {
+ one = 7
+ two = 19
+}
+', "module main
+import fixture
+
+type OptionalMaker = fn () ?[2]fixture.Mode
+type ResultMaker = fn () ![2]fixture.Mode
+
+fn make_option() ?[2]fixture.Mode {
+ return [fixture.Mode.one, fixture.Mode.two]!
+}
+fn none_option() ?[2]fixture.Mode {
+ return none
+}
+fn make_result() ![2]fixture.Mode {
+ return [fixture.Mode.one, fixture.Mode.two]!
+}
+fn error_result() ![2]fixture.Mode {
+ return error('missing modes')
+}
+fn invoke_option(cb fn () ?[2]fixture.Mode) int {
+ modes := cb() or { return -1 }
+ return int(modes[0]) + int(modes[1])
+}
+fn invoke_result(cb fn () ![2]fixture.Mode) int {
+ modes := cb() or { return -1 }
+ return int(modes[0]) + int(modes[1])
+}
+fn result_error_message(cb fn () ![2]fixture.Mode) string {
+ cb() or { return err.msg() }
+ return 'ok'
+}
+fn main() {
+ assert invoke_option(make_option) == 26
+ assert invoke_option(OptionalMaker(make_option)) == 26
+ assert invoke_option(none_option) == -1
+ assert invoke_option(OptionalMaker(none_option)) == -1
+ assert invoke_result(make_result) == 26
+ assert invoke_result(ResultMaker(make_result)) == 26
+ assert invoke_result(error_result) == -1
+ assert invoke_result(ResultMaker(error_result)) == -1
+ assert result_error_message(error_result) == 'missing modes'
+ assert result_error_message(ResultMaker(error_result)) == 'missing modes'
+ assert result_error_message(make_result) == 'ok'
+}
+")
+	defer {
+		os.rm(v3_bin) or {}
+		os.rmdir_all(root) or {}
+	}
+	exe_suffix := $if windows { '.exe' } $else { '' }
+	bin := os.join_path(root, 'out${exe_suffix}')
+	compile := os.execute('${os.quoted_path(v3_bin)} -b c -o ${os.quoted_path(bin)} ${os.quoted_path(root)}')
+	assert compile.exit_code == 0, compile.output
+	generated := os.read_file(bin + '.c') or { panic(err) }
+	assert !generated.contains('Array_fixed_int_2'), generated
+	assert generated.contains('Array_fixed_fixture__Mode_2 (*_fn_ptr_'), generated
+	run := os.execute(os.quoted_path(bin))
+	assert run.exit_code == 0, run.output
+}
