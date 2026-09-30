@@ -7515,8 +7515,8 @@ fn (tc &TypeChecker) fixed_array_slice_is_view(id flat.NodeId) bool {
 	if outer.kind == .selector && outer.value in ['sort', 'sort_with_compare', 'reverse_in_place'] {
 		return true
 	}
-	if outer.kind == .call && outer.children_count > 1 && tc.a.child(&outer, 1) == current {
-		callee := tc.a.child_node(&outer, 0)
+	if outer.kind == .call && outer.children_count > 1 && tc.a.child(outer, 1) == current {
+		callee := tc.a.child_node(outer, 0)
 		return callee.kind == .ident && callee.value == 'copy'
 	}
 	return false
