@@ -376,6 +376,37 @@ fn main() {
 }
 '
 
+// `println` to a redirected stdout happens before a later read of that output, like a file
+// write does.
+const stdout_write_source = 'import os
+import time
+
+struct Data {
+mut:
+	x int
+}
+
+fn main() {
+	// stdout is redirected to this file. It is opened before the writer starts: opening a
+	// file after the write would synchronize.
+	path := os.getenv("RACE_STDOUT_FILE")
+	mut r := os.open(path)!
+	mut d := &Data{}
+	t := spawn fn (mut d Data) {
+		d.x = 42
+		println("ready")
+	}(mut d)
+	for os.file_size(path) == 0 {
+		time.sleep(time.millisecond)
+	}
+	mut buf := []u8{len: 16}
+	n := r.read(mut buf)!
+	eprintln("read \${n} x \${d.x}")
+	t.wait()
+	r.close()
+}
+'
+
 fn testsuite_begin() {
 	os.mkdir_all(tdir) or {}
 }
@@ -579,4 +610,18 @@ fn test_race_select_of_closed_channels_happens_after_the_close() {
 	racy_res := os.execute('VRACE="exitcode=7" ${os.quoted_path(racy)}')
 	assert racy_res.exit_code == 7, racy_res.output
 	assert racy_res.output.contains('WARNING: ThreadSanitizer: data race'), racy_res.output
+}
+
+fn test_race_stdout_write_happens_before_reading_the_output() {
+	if !thread_sanitizer_runs() {
+		return
+	}
+	exe := build_race_program('stdout_write', stdout_write_source)
+	out := os.join_path(tdir, 'stdout_write.out')
+	err := os.join_path(tdir, 'stdout_write.err')
+	res := os.execute('RACE_STDOUT_FILE=${os.quoted_path(out)} ${os.quoted_path(exe)} > ${os.quoted_path(out)} 2> ${os.quoted_path(err)}')
+	stderr := os.read_file(err) or { '' }
+	assert res.exit_code == 0, stderr
+	assert !stderr.contains('ThreadSanitizer'), stderr
+	assert stderr.contains('read 6 x 42'), stderr
 }

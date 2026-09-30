@@ -34,6 +34,7 @@ pub fn print_character(ch u8) int {
 		// TODO
 		return 0
 	} $else {
+		race_stdio_write()
 		x := C.putchar(ch)
 		if x == C.EOF {
 			return -1
