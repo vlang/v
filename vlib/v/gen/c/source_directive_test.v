@@ -475,6 +475,62 @@ fn test_cocoa_nsfont_binding_accepts_a_target_qualified_cocoa_include() {
 	assert g.header_c_struct_needs_compat_typedef('C.NSFont')
 }
 
+fn test_cocoa_nsfont_binding_respects_ordered_conditional_directives() {
+	mut ast := &flat.FlatAst{}
+	mut tc := types.TypeChecker.new(ast)
+	mut g := FlatGen.new()
+	g.a = ast
+	g.tc = &tc
+	g.set_target(pref.target_from('macos', 'arm64') or { panic(err) })
+	g.register_struct_decl_info('C.NSFont', 'C.NSFont', 'main', 'main.c.v', flat.Node{})
+	for source in [
+		'#if 0\n#include <Cocoa/Cocoa.h>\n#endif',
+		'#if 1\n#else\n#import <AppKit/AppKit.h>\n#endif',
+		'#if 0\n#if 1\n#include <AppKit/NSFont.h>\n#endif\n#endif',
+		'#if 0\n#elif 0\n#include <Cocoa/Cocoa.h>\n#endif',
+		'#define USE_COCOA 0\n#if USE_COCOA\n#include <Cocoa/Cocoa.h>\n#endif',
+		'#define USE_COCOA 1\n#undef USE_COCOA\n#ifdef USE_COCOA\n#include <Cocoa/Cocoa.h>\n#endif',
+	] {
+		g.c_directives.clear()
+		for line in source.split_into_lines() {
+			g.add_c_directive('main', line, false)
+		}
+		assert g.header_c_struct_needs_compat_typedef('C.NSFont'), source
+	}
+	for source in [
+		'#if 0\n#else\n#include <Cocoa/Cocoa.h>\n#endif',
+		'#if 0\n#elif 1\n#import <AppKit/AppKit.h>\n#endif',
+		'#define USE_COCOA 1\n#if USE_COCOA\n#include <AppKit/NSFont.h>\n#endif',
+	] {
+		g.c_directives.clear()
+		for line in source.split_into_lines() {
+			g.add_c_directive('main', line, false)
+		}
+		assert !g.header_c_struct_needs_compat_typedef('C.NSFont'), source
+	}
+	g.c_directives.clear()
+	for line in ['#if USE_COCOA', '#include <Cocoa/Cocoa.h>', '#endif'] {
+		g.add_c_directive('main', line, false)
+	}
+	g.c_flags = ['-DUSE_COCOA=0']
+	assert g.header_c_struct_needs_compat_typedef('C.NSFont')
+	g.c_flags = ['-D', 'USE_COCOA=1']
+	assert !g.header_c_struct_needs_compat_typedef('C.NSFont')
+	g.c_flags = ['-DUSE_COCOA=1', '-UUSE_COCOA']
+	assert g.header_c_struct_needs_compat_typedef('C.NSFont')
+	g.c_flags.clear()
+	g.c_directives.clear()
+	g.preinclude_directives = ['#if 0\n#include <Cocoa/Cocoa.h>\n#endif']
+	assert g.header_c_struct_needs_compat_typedef('C.NSFont')
+	g.preinclude_directives.clear()
+	// An import is emitted between its importer's before- and after-import directives.
+	g.module_imports['main'] = ['child']
+	g.add_c_directive('main', '#if 0', true)
+	g.add_c_directive('main', '#endif', false)
+	g.add_c_directive('child', '#include <Cocoa/Cocoa.h>', false)
+	assert g.header_c_struct_needs_compat_typedef('C.NSFont')
+}
+
 fn test_c_struct_declared_in_platform_binding_stays_header_owned() {
 	dir := os.join_path(os.vtmp_dir(), 'v3_c_struct_source_owner_${os.getpid()}')
 	os.rmdir_all(dir) or {}

@@ -9366,6 +9366,7 @@ fn c_native_source_context_state(directives []string, flags []string, c99_mode b
 	mut defined := map[string]bool{}
 	mut undefined := map[string]bool{}
 	mut uncertain := map[string]bool{}
+	mut macro_values := map[string]string{}
 	mut external_macros_possible := source_macros_possible || c_forced_include_inputs(flags).len > 0
 	mut active_source_include := false
 	strict_iso_mode := c_effective_strict_iso_mode(flags, c99_mode)
@@ -9392,15 +9393,24 @@ fn c_native_source_context_state(directives []string, flags []string, c99_mode b
 			if is_undef {
 				defined.delete(name)
 				undefined[name] = true
+				macro_values.delete(name)
 			} else {
 				undefined.delete(name)
 				defined[name] = true
+				if !name.contains('(') {
+					macro_values[name] = if definition.contains('=') {
+						definition.all_after('=').trim_space()
+					} else {
+						'1'
+					}
+				}
 			}
 		}
 		i++
 	}
 	if external_macros_possible {
 		c_preprocessor_invalidate_macro_state(mut defined, mut undefined, mut uncertain)
+		macro_values.clear()
 	}
 	mut condition_known := []bool{}
 	mut condition_active := []bool{}
@@ -9426,7 +9436,7 @@ fn c_native_source_context_state(directives []string, flags []string, c99_mode b
 			}
 			if name == 'if' {
 				arg := c_directive_arg(clean)
-				known, active := c_preprocessor_condition_state(arg, defined, undefined, uncertain, external_macros_possible, strict_iso_mode, target)
+				known, active := c_native_source_context_condition_state(arg, defined, undefined, uncertain, macro_values, external_macros_possible, strict_iso_mode, target)
 				condition_known << known
 				condition_active << (if known { active } else { true })
 				condition_taken_known << known
@@ -9437,7 +9447,7 @@ fn c_native_source_context_state(directives []string, flags []string, c99_mode b
 				last := condition_known.len - 1
 				prior_known := condition_taken_known[last]
 				prior_taken := condition_taken[last]
-				known, active := c_preprocessor_condition_state(c_directive_arg(clean), defined, undefined, uncertain, external_macros_possible, strict_iso_mode, target)
+				known, active := c_native_source_context_condition_state(c_directive_arg(clean), defined, undefined, uncertain, macro_values, external_macros_possible, strict_iso_mode, target)
 				if (prior_known && prior_taken) || (known && !active) {
 					condition_known[last] = true
 					condition_active[last] = false
@@ -9479,7 +9489,7 @@ fn c_native_source_context_state(directives []string, flags []string, c99_mode b
 				condition_taken.delete_last()
 				continue
 			}
-			if name in ['include', 'insert'] {
+			if name in ['include', 'import', 'insert'] {
 				mut possibly_active := true
 				for depth in 0 .. condition_known.len {
 					if condition_known[depth] && !condition_active[depth] {
@@ -9488,10 +9498,11 @@ fn c_native_source_context_state(directives []string, flags []string, c99_mode b
 					}
 				}
 				if possibly_active {
-					if name == 'include' && c_include_arg_is_source_file(c_directive_arg(clean)) {
+					if name in ['include', 'import'] && c_include_arg_is_source_file(c_directive_arg(clean)) {
 						active_source_include = true
 					}
 					c_preprocessor_invalidate_macro_state(mut defined, mut undefined, mut uncertain)
+					macro_values.clear()
 					external_macros_possible = true
 				}
 				continue
@@ -9521,14 +9532,22 @@ fn c_native_source_context_state(directives []string, flags []string, c99_mode b
 				if name == 'define' {
 					undefined.delete(macro_name)
 					defined[macro_name] = true
+					definition := c_directive_arg(clean)
+					if !parts[0].contains('(') {
+						macro_values[macro_name] = definition[parts[0].len..].trim_space()
+					} else {
+						macro_values.delete(macro_name)
+					}
 				} else {
 					defined.delete(macro_name)
 					undefined[macro_name] = true
+					macro_values.delete(macro_name)
 				}
 			} else if possibly_active {
 				defined.delete(macro_name)
 				undefined.delete(macro_name)
 				uncertain[macro_name] = true
+				macro_values.delete(macro_name)
 			}
 		}
 	}
@@ -9543,6 +9562,16 @@ fn c_native_source_context_state(directives []string, flags []string, c99_mode b
 	return CNativeSourceContextState{
 		source_macros_possible: active_source_include
 	}
+}
+
+fn c_native_source_context_condition_state(raw string, defined map[string]bool, undefined map[string]bool, uncertain map[string]bool, macro_values map[string]string, external_macros_possible bool, strict_iso_mode bool, target pref.Target) (bool, bool) {
+	// Evaluate values supplied by the source or -D flags before falling back to
+	// the context scanner's conservative handling of macros from unread headers.
+	known, active := c_header_objective_c_condition_state(raw, defined, undefined, uncertain, macro_values, strict_iso_mode, target)
+	if known {
+		return known, active
+	}
+	return c_preprocessor_condition_state(raw, defined, undefined, uncertain, external_macros_possible, strict_iso_mode, target)
 }
 
 fn c_preprocessor_macro_state(name string, defined map[string]bool, undefined map[string]bool, uncertain map[string]bool, strict_iso_mode bool, target pref.Target) (bool, bool) {
@@ -10034,7 +10063,7 @@ fn (g &FlatGen) visit_module_init(mod string, module_to_init map[string]string, 
 	}
 }
 
-fn (mut g FlatGen) ordered_c_directives(late bool) []string {
+fn (g &FlatGen) ordered_c_directives(late bool) []string {
 	mut directives_by_module := map[string][]CDirective{}
 	mut module_order := []string{}
 	for directive in g.c_directives {
