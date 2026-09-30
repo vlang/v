@@ -15297,6 +15297,19 @@ fn (t &Transformer) expr_can_take_address(id flat.NodeId) bool {
 				return (sliced_type.starts_with('[]') || t.is_fixed_array_type(sliced_type))
 					&& t.expr_can_take_address(sliced_id)
 			}
+			// Indexing through a pointer (`unsafe { (&v.x)[i] }`) reaches the memory it
+			// points to: the element is addressable even when the pointer is not.
+			mut base_type := t.node_type(base_id)
+			if base_type.len == 0 {
+				base_type = t.resolve_expr_type(base_id)
+			}
+			base_type = t.normalize_type_alias(base_type)
+			if base_type.starts_with('&') {
+				pointee := t.normalize_type_alias(base_type[1..])
+				if !pointee.starts_with('map[') && pointee != 'string' {
+					return true
+				}
+			}
 			return t.expr_can_take_address(base_id)
 		}
 		.selector {
