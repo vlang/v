@@ -20,9 +20,10 @@ fn test_sizeof_byte_expression_uses_operand_type_without_evaluating_it() {
 		u8_type:  m.type_store.get_uint(8)
 	}
 	for typ, expected in {
-		'f64':   '8'
-		'u8':    '1'
-		'[3]u8': '3'
+		'f64':      '8'
+		'u8':       '1'
+		'[3]u8':    '3'
+		'[2][3]u8': '6'
 	} {
 		operand := a.add_node(flat.Node{
 			kind:  .ident

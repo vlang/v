@@ -8304,8 +8304,8 @@ fn (b &Builder) is_decimal_int_text(text string) bool {
 
 fn (mut b Builder) sizeof_type_name(type_name string) int {
 	if b.is_fixed_array_type_name(type_name) {
-		elem_type := b.resolve_type(b.fixed_array_elem_type_name(type_name))
-		return b.fixed_array_len_text(type_name).int() * b.m.type_size(elem_type)
+		// Recurse so nested fixed arrays (`[2][3]u8`) use their element's full size.
+		return b.fixed_array_len_text(type_name).int() * b.sizeof_type_name(b.fixed_array_elem_type_name(type_name))
 	}
 	return b.m.type_size(b.resolve_type(type_name))
 }
