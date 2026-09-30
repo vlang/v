@@ -2009,7 +2009,16 @@ fn (mut t Transformer) sql_or_expr_from_token_for_type(token string, typ string)
 	tokens := sql_clean_tokens(token.split(' '))
 	source_tokens, fallback_tokens := sql_or_value_expr_parts(tokens) or { return none }
 	source := t.sql_expr_from_token_for_type(sql_value_token_text(source_tokens), '')
-	fallback := t.sql_expr_from_token_for_type(sql_value_token_text(fallback_tokens), typ)
+	source_type := t.raw_var_type_for_expr(source) or { t.node_type(source) }
+	// Method resolution needs the declared alias payload before ordinary or lowering
+	// normalizes its Option/Result storage to the underlying collection.
+	value_type := if t.is_optional_type_name(source_type)
+		&& t.raw_return_type_contains_alias(source_type) {
+		t.optional_base_type(source_type)
+	} else {
+		typ
+	}
+	fallback := t.sql_expr_from_token_for_type(sql_value_token_text(fallback_tokens), value_type)
 	body := t.make_block([t.make_expr_stmt(fallback)])
 	start := t.a.children.len
 	t.a.children << source
@@ -2018,9 +2027,9 @@ fn (mut t Transformer) sql_or_expr_from_token_for_type(token string, typ string)
 		kind:           .or_expr
 		children_start: start
 		children_count: 2
-		typ:            typ
+		typ:            value_type
 	})
-	t.set_node_typ(int(id), typ)
+	t.set_node_typ(int(id), value_type)
 	return id
 }
 

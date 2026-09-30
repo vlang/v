@@ -23,6 +23,20 @@ pub fn make() WrappedNames {
 	return WrappedNames(Names(['first']))
 }
 
+pub fn load_names(ok bool) ?WrappedNames {
+	if !ok {
+		return none
+	}
+	return make()
+}
+
+pub fn find_names(ok bool) !WrappedNames {
+	if !ok {
+		return error('missing names')
+	}
+	return make()
+}
+
 pub fn make_ptr() &WrappedNames {
 	values := make()
 	return &values
@@ -207,5 +221,45 @@ fn test_multiple_pointer_alias_methods_keep_declared_sql_result_types() {
 			true, expression, false, true, true, import_name)
 		assert result.exit_code != 0, result.output
 		assert result.output.contains('this expression has type `aliases.Holder`'), result.output
+	}
+}
+
+fn test_option_result_alias_fallback_methods_keep_resolution_and_visibility_in_sql_values() {
+	for import_name in ['aliases', 'renamed'] {
+		for i, expression in [
+			'(${import_name}.load_names(true) or { values }).clone()[0].name',
+			'(${import_name}.load_names(false) or { ${import_name}.make() }).clone()[0].name',
+			'(${import_name}.find_names(true) or { values }).clone()[0].name',
+			'(${import_name}.find_names(false) or { ${import_name}.make() }).clone()[0].name',
+		] {
+			for is_public in [true, false] {
+				for is_update in [false, true] {
+					for check_only in [false, true] {
+						result := sql_alias_visibility_result('fallback_${import_name}_${i}_${is_public}_${is_update}_${check_only}',
+							is_public, expression, is_update, check_only, true, import_name)
+						if is_public {
+							assert result.exit_code == 0, result.output
+						} else {
+							assert result.exit_code != 0, result.output
+							assert result.output.contains('method `aliases.WrappedNames.clone` is private'), result.output
+						}
+					}
+				}
+			}
+		}
+	}
+}
+
+fn test_option_result_alias_fallback_methods_keep_declared_sql_result_types() {
+	for import_name in ['aliases', 'renamed'] {
+		for i, expression in [
+			'(${import_name}.load_names(false) or { values }).clone()[0]',
+			'(${import_name}.find_names(false) or { values }).clone()[0]',
+		] {
+			result := sql_alias_visibility_result('fallback_result_${import_name}_${i}',
+				true, expression, false, true, true, import_name)
+			assert result.exit_code != 0, result.output
+			assert result.output.contains('this expression has type `aliases.Holder`'), result.output
+		}
 	}
 }
