@@ -7,14 +7,14 @@ fn test_leading_zeros() {
 	// 8 bit
 	i = 1
 	for x in 0 .. 8 {
-		assert leading_zeros_8(u8(u8(i) << x)) == 7 - x
+		assert leading_zeros_8(u8(u8(i) << u8(x))) == 7 - x
 	}
 	assert leading_zeros_8(0) == 8
 
 	// 16 bit
 	i = 1
 	for x in 0 .. 16 {
-		assert leading_zeros_16(u16(i) << x) == 15 - x
+		assert leading_zeros_16(u16(i) << u16(x)) == 15 - x
 	}
 	assert leading_zeros_16(0) == 16
 
@@ -38,14 +38,14 @@ fn test_trailing_zeros() {
 	// 8 bit
 	i = 1
 	for x in 0 .. 8 {
-		assert trailing_zeros_8(u8(u8(i) << x)) == x
+		assert trailing_zeros_8(u8(u8(i) << u8(x))) == x
 	}
 	assert trailing_zeros_8(0) == 8
 
 	// 16 bit
 	i = 1
 	for x in 0 .. 16 {
-		assert trailing_zeros_16(u16(i) << x) == x
+		assert trailing_zeros_16(u16(i) << u16(x)) == x
 	}
 	assert trailing_zeros_16(0) == 16
 

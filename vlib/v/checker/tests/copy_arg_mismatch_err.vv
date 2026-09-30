@@ -1,0 +1,11 @@
+fn main() {
+	mut ints := []int{len: 3}
+	strs := ['a', 'b']
+	copy(mut ints, strs)
+	mut fixed := [2]string{}
+	copy(mut fixed, ints)
+	mut n := 5
+	copy(mut n, ints)
+	copy(mut ints, 'abc')
+	copy(mut ints, 42)
+}

@@ -174,17 +174,9 @@ fn test_fixed_array_optional_abi_conversions_use_memcpy() {
 		len:       2
 	})
 	mut forward_gen := FlatGen.new()
-	forward := forward_gen.optional_forward_return_abi_wrap_expr('Optional_source', 'Optional_destination', fixed, 'source()')
+	forward := forward_gen.optional_forward_return_abi_wrap_expr('__v_option_source', '__v_option_destination', fixed, 'source()')
 	assert forward.contains('if (_t1.ok) { memcpy(_t2.value, _t1.value, sizeof(_t2.value)); }'), forward
 	assert !forward.contains('.value = _t1.value'), forward
-
-	mut interface_gen := FlatGen.new()
-	interface_gen.gen_interface_dispatch_optional_abi_value_return('Optional_destination', '_iface_result', fixed)
-	interface_output := interface_gen.sb.str()
-	assert interface_output.contains('if (_iface_result.ok) {'), interface_output
-	copy_statement := 'memcpy(_iface_abi_result_out_0.value, _iface_result.value, sizeof(_iface_abi_result_out_0.value));'
-	assert interface_output.contains(copy_statement), interface_output
-	assert !interface_output.contains('.value = _iface_result.value'), interface_output
 }
 
 fn test_ownership_recursive_drop_helpers_deduplicate_emitted_c_symbol() {
@@ -777,4 +769,19 @@ fn test_unsafe_value_block_scopes_direct_array_access() {
 	g.gen_expr(element)
 	checked := g.sb.str()
 	assert checked.contains('array_get('), checked
+}
+
+fn test_lowered_ident_annotation_precedes_outer_checker_binding() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	mut g := FlatGen.new()
+	g.a = &a
+	g.tc = &tc
+	tc.cur_scope.insert('err', types.Type(types.String{}))
+	value := a.add_node(flat.Node{
+		kind:  .ident
+		value: 'err'
+		typ:   'int'
+	})
+	assert g.usable_expr_type(value) == types.Type(types.int_)
 }

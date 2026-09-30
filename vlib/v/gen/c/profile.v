@@ -36,10 +36,17 @@ fn profile_v1_fn_name(cfn_name string, module_name string, fn_name string) strin
 	return cfn_name
 }
 
-fn (mut g FlatGen) gen_profile_fn_begin(cfn_name string, module_name string, fn_name string, is_inline bool) {
+fn (mut g FlatGen) gen_profile_fn_begin(cfn_name string, module_name string, fn_name string, is_inline bool, skip_instrumentation bool) {
+	// These two fields are this function's ONLY resetter. A caller that skips
+	// the whole call for one function (a @[_naked] body, which has no frame
+	// for the timer/locals below to live in) must still reach this point, or
+	// the fields keep whatever a PRECEDING profiled function left them at --
+	// and an explicit return in that later function still runs
+	// gen_profile_fn_exit() independently, via gen_return_cleanup in
+	// stmt.v, regardless of naked-ness.
 	g.profile_fn_active = false
 	g.profile_fn_restore_enabled = false
-	if g.profile_file.len == 0 || (g.profile_no_inline && is_inline)
+	if skip_instrumentation || g.profile_file.len == 0 || (g.profile_no_inline && is_inline)
 		|| module_name == g.profile_runtime_module_name()
 		|| (g.is_trace_calls && module_name == g.trace_runtime_module_name())
 		|| fn_name.starts_with('time.vpc_now')

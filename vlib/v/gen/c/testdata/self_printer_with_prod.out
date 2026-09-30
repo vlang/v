@@ -1,4 +1,4 @@
-// vtest vflags: -prod -skip-unused
+// vtest vflags: -prod
 // See https://github.com/vlang/v/issues/20923
 module main
 

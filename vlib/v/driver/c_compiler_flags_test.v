@@ -824,6 +824,314 @@ fn test_add_c_language_runtime_link_flags() {
 	assert existing == ['-lstdc++', '-lobjc']
 }
 
+fn test_v3_cache_failure_artifacts_needs_a_cached_path_and_a_whole_file_failure() {
+	cache_dir := os.join_path(os.vtmp_dir(), 'v3_thirdparty_objs')
+	os.mkdir_all(cache_dir)!
+	object := os.join_path(cache_dir, 'atomic_deadbeef_cafe.o')
+	rejected := 'tcc: error: ${object}: unrecognized file type'
+	assert v3_cache_failure_artifacts(rejected) == [
+		os.join_path_single(os.real_path(cache_dir), os.base(object)),
+	]
+	assert v3_cache_failure_artifacts('/usr/bin/ld:${object}: file format not recognized') == [
+		os.join_path_single(os.real_path(cache_dir), os.base(object)),
+	]
+
+	// A line-scoped diagnostic in a cached unit is a real compile error, not a
+	// poisoned entry; spending a rebuild on it would only reproduce it.
+	module_source := os.join_path(os.vtmp_dir(), 'v3_module_cache_1234', 'abcd', 'main_9.c')
+	compile_error := '${module_source}:41:7: error: use of undeclared identifier'
+	assert v3_cache_failure_artifacts(compile_error) == []
+
+	// The build directory sits next to the caches but holds generated source.
+	build_source := os.join_path(os.vtmp_dir(), 'prog.01M2AH.tmp.c')
+	assert v3_cache_failure_artifacts('cc: ${build_source}: no such file or directory') == []
+
+	// A whole-file failure about a file V does not own is the user's to fix.
+	assert v3_cache_failure_artifacts('ld: file not found: /usr/local/lib/libfoo.a') == []
+
+	// Every marker has to be paired with a cached path.
+	assert v3_cache_failure_artifacts('ld: duplicate symbol _main') == []
+
+	// A warning about a healthy cache entry and a separate linker error do not
+	// identify that entry as the cause of the failure.
+	unrelated_failure := 'ld: warning: using ${object}\nld: cannot find -lfoo: No such file or directory'
+	assert v3_cache_failure_artifacts(unrelated_failure) == []
+}
+
+fn test_v3_cache_failure_artifacts_reads_multiline_duplicate_symbols() {
+	cache_dir := os.join_path(os.vtmp_dir(), 'v3_fastc_unit_cache')
+	os.mkdir_all(cache_dir)!
+	object := os.join_path(cache_dir, 'duplicate_${os.getpid()}.o')
+	defer { os.rm(object) or {} }
+	os.write_file(object, 'broken')!
+	canonical := os.real_path(object)
+	lld := 'ld.lld: error: duplicate symbol: value\n>>> defined at src.c:4\n>>> ${object}\n'
+	assert v3_cache_failure_artifacts(lld) == [canonical]
+	ld64 := 'duplicate symbol _value in:\n    ${object}\nld: 1 duplicate symbols\n'
+	assert v3_cache_failure_artifacts(ld64) == [canonical]
+}
+
+fn test_v3_fastc_cache_failure_maps_restored_build_object_to_owned_entry() {
+	root := os.join_path(os.vtmp_dir(), 'v3_fastc_failure_map_${os.getpid()}')
+	cache_dir := os.join_path(os.vtmp_dir(), 'v3_fastc_unit_cache')
+	os.mkdir_all(cache_dir)!
+	cache_object := os.join_path(cache_dir, 'unit_${os.getpid()}.o')
+	previous := os.getenv_opt('V3CACHE')
+	os.setenv('V3CACHE', root, true)
+	defer {
+		if value := previous {
+			os.setenv('V3CACHE', value, true)
+		} else {
+			os.unsetenv('V3CACHE')
+		}
+		os.rm(cache_object) or {}
+		os.rmdir_all(root) or {}
+	}
+	os.write_file(cache_object, 'broken')!
+	build_object := os.join_path(root, 'build', 'unit.o')
+	output := "ld: '${build_object}': file format not recognized"
+	assert v3_cache_failure_artifacts(output) == []
+	mapped := v3_fastc_cache_failure_output(output, {
+		build_object: cache_object
+	})
+	assert v3_cache_failure_artifacts(mapped) == [os.real_path(cache_object)]
+}
+
+fn test_v3_cache_error_artifacts_reads_paths_out_of_toolchain_diagnostics() {
+	cache_dir := os.join_path(os.vtmp_dir(), 'v3_fastc_unit_cache')
+	os.mkdir_all(cache_dir)!
+	first := os.join_path(cache_dir, 'unit_1.o')
+	second := os.join_path(cache_dir, 'unit_2.o')
+	output := "ld: warning: ignoring file '${first}', building for macOS-arm64\n" + 'ld: ${second}: file format not recognized\n' + 'ld: ${first}: not an object file\n'
+	// Quoting and punctuation differ per toolchain, and one path can be blamed
+	// more than once.
+	canonical_dir := os.real_path(cache_dir)
+	assert v3_cache_error_artifacts(output) == [
+		os.join_path_single(canonical_dir, os.base(first)),
+		os.join_path_single(canonical_dir, os.base(second)),
+	]
+	assert v3_cache_error_artifacts('') == []
+}
+
+fn test_v3_cache_artifact_detection_rejects_paths_outside_owned_directories() {
+	root := os.join_path(os.vtmp_dir(), 'v3_cache_recovery_guard_${os.getpid()}')
+	cache_dir := os.join_path(root, 'v3_module_cache_ab12')
+	outside_dir := os.join_path(root, 'v3_thirdparty_objs_backup')
+	os.mkdir_all(cache_dir)!
+	os.mkdir_all(outside_dir)!
+	previous := os.getenv_opt('V3CACHE')
+	os.setenv('V3CACHE', root, true)
+	defer {
+		if value := previous {
+			os.setenv('V3CACHE', value, true)
+		} else {
+			os.unsetenv('V3CACHE')
+		}
+		os.rmdir_all(root) or {}
+	}
+	outside := os.join_path(outside_dir, 'user.o')
+	os.write_file(outside, 'keep')!
+	traversal := '${cache_dir}/../v3_thirdparty_objs_backup/user.o'
+	for path in [outside, traversal] {
+		assert v3_cache_failure_artifacts('ld: ${path}: file format not recognized') == []
+	}
+	$if !windows {
+		link := os.join_path(cache_dir, 'linked-user.o')
+		os.symlink(outside, link)!
+		assert v3_cache_failure_artifacts('ld: ${link}: file format not recognized') == []
+	}
+	assert v3_discard_cache_artifacts([outside, traversal]) == 0
+	assert os.read_file(outside)! == 'keep'
+	for name in v3_cache_artifact_dir_names {
+		user_cache := os.join_path(root, name)
+		os.mkdir_all(user_cache)!
+		user_object := os.join_path(user_cache, 'user.o')
+		os.write_file(user_object, 'keep')!
+		assert v3_cache_failure_artifacts('ld: ${user_object}: file format not recognized') == []
+		assert v3_discard_cache_artifacts([user_object]) == 0
+		assert os.read_file(user_object)! == 'keep'
+	}
+}
+
+fn test_v3_cache_artifact_detection_accepts_quoted_paths_with_spaces() {
+	root := os.join_path(os.vtmp_dir(), 'v3 cache recovery ${os.getpid()}')
+	cache_dir := os.join_path(root, 'v3_module_cache_ab12')
+	os.mkdir_all(cache_dir)!
+	previous := os.getenv_opt('V3CACHE')
+	os.setenv('V3CACHE', root, true)
+	defer {
+		if value := previous {
+			os.setenv('V3CACHE', value, true)
+		} else {
+			os.unsetenv('V3CACHE')
+		}
+		os.rmdir_all(root) or {}
+	}
+	object := os.join_path(cache_dir, 'cached object.o')
+	os.write_file(object, 'broken')!
+	source := os.join_path(cache_dir, 'main.c')
+	os.write_file(source, '#include "missing.h"\n')!
+	clang_missing := v3_cache_failure_artifacts("${source}:42:10: fatal error: 'missing.h' file not found")
+	assert clang_missing == [], clang_missing.str()
+	assert v3_cache_failure_artifacts("${source}:42:10: fatal error: 'missing.h': No such file or directory") == []
+	assert v3_cache_failure_artifacts('clang: ${source}: missing.h: file not found') == []
+	assert v3_cache_failure_artifacts("ld: '${object}': file format not recognized") == [
+		os.real_path(object),
+	]
+	assert v3_cache_failure_artifacts('/usr/bin/ld:${object}: file format not recognized') == [
+		os.real_path(object),
+	]
+	assert v3_cache_failure_artifacts("ld: file too small (length=0) in '${object}'") == [
+		os.real_path(object),
+	]
+	assert v3_cache_failure_artifacts("ld: file too short: '${object}'") == [
+		os.real_path(object),
+	]
+	assert v3_cache_failure_artifacts('ld.lld: ${object}: section table goes past the end of file') == [
+		os.real_path(object),
+	]
+	assert v3_cache_failure_artifacts("ld: empty file '${object}'") == [
+		os.real_path(object),
+	]
+	assert v3_cache_failure_artifacts("ld: i386 architecture of input file `${object}' is incompatible with i386:x86-64 output") == [
+		os.real_path(object),
+	]
+	assert v3_cache_failure_artifacts("link.exe: LNK1136: invalid or corrupt file '${object}'") == [
+		os.real_path(object),
+	]
+	assert v3_cache_failure_artifacts("link.exe: LNK1107: invalid or corrupt file '${object}'") == [
+		os.real_path(object),
+	]
+	assert v3_cache_failure_artifacts("ld: warning: ignoring file '${object}', building for macOS-arm64 but attempting to link with file built for macOS-x86_64") == [
+		os.real_path(object),
+	]
+	$if windows {
+		assert v3_cache_failure_artifacts('link.exe: ${object}: file format not recognized') == [
+			os.real_path(object),
+		]
+	}
+	assert !v3_cache_recovery_should_retry([object], 0)
+	module_dir := os.join_path(root, 'v3_module_cache_ab12', 'config')
+	os.mkdir_all(module_dir)!
+	module_object := os.join_path(module_dir, 'module.o')
+	os.write_file(module_object, 'broken')!
+	assert v3_cache_failure_artifacts("ld: '${module_object}': file format not recognized") == [
+		os.real_path(module_object),
+	]
+	missing := os.join_path(module_dir, 'missing object.o')
+	assert v3_cache_failure_artifacts("ld: '${missing}': No such file or directory") == [
+		os.join_path_single(os.real_path(module_dir), os.base(missing)),
+	]
+	assert v3_cache_failure_artifacts("link.exe: fatal error LNK1104: cannot open file '${missing}'") == [
+		os.join_path_single(os.real_path(module_dir), os.base(missing)),
+	]
+	missing_dylib := os.join_path(module_dir, 'module.dylib')
+	assert v3_cache_failure_artifacts("ld: '${missing_dylib}': No such file or directory") == [
+		os.join_path_single(os.real_path(module_dir), os.base(missing_dylib)),
+	]
+	assert v3_cache_recovery_should_retry([missing], 0)
+	os.rmdir_all(cache_dir)!
+	recovered := v3_cache_failure_artifacts("ld: '${missing}': No such file or directory")
+	assert recovered == [
+		os.join_path(os.real_path(root), 'v3_module_cache_ab12', 'config', 'missing object.o'),
+	]
+	assert v3_cache_failure_artifacts("ld: '${missing_dylib}': No such file or directory") == [
+		os.join_path(os.real_path(root), 'v3_module_cache_ab12', 'config', 'module.dylib'),
+	]
+	assert v3_cache_failure_artifacts("ld: '${source}': No such file or directory") == []
+	unowned := os.join_path(root, 'v3_module_cache_nothex', 'missing.o')
+	assert v3_cache_failure_artifacts("ld: '${unowned}': No such file or directory") == []
+	discarded := v3_discard_cache_artifacts([missing])
+	assert discarded == 0
+	assert v3_cache_recovery_should_retry([missing], discarded)
+}
+
+fn test_v3_cache_failure_artifacts_recognizes_lld_truncated_objects_as_scripts() {
+	root := os.join_path(os.vtmp_dir(), 'v3_lld_script_cache_${os.getpid()}')
+	cache_dir := os.join_path(root, 'v3_module_cache_ab12')
+	os.mkdir_all(cache_dir)!
+	previous := os.getenv_opt('V3CACHE')
+	os.setenv('V3CACHE', root, true)
+	defer {
+		if value := previous {
+			os.setenv('V3CACHE', value, true)
+		} else {
+			os.unsetenv('V3CACHE')
+		}
+		os.rmdir_all(root) or {}
+	}
+	object := os.join_path(cache_dir, 'truncated.o')
+	os.write_file(object, '\x7fELF')!
+	for message in ['unexpected EOF', 'unknown directive'] {
+		assert v3_cache_failure_artifacts('ld.lld: ${object}:1: ${message}') == [
+			os.real_path(object),
+		]
+	}
+	os.write_file(object, 'this is a larger linker script, not a truncated object')!
+	assert v3_cache_failure_artifacts('ld.lld: ${object}:1: unknown directive') == []
+}
+
+fn test_v3_cache_unquoted_windows_path_candidates_keep_spaces() {
+	drive := 'C:\\Users\\First Last\\cached.o'
+	unc := '\\\\server\\share\\First Last\\cached.o'
+	assert v3_cache_unquoted_path_candidates('link.exe: ${drive}') == [drive]
+	assert v3_cache_unquoted_path_candidates('link.exe: ${unc}') == [unc]
+}
+
+fn test_v3_cache_artifact_detection_includes_isolated_test_modules() {
+	root := os.join_path(os.vtmp_dir(), 'v3_test_cache_${os.getpid()}')
+	cache_dir := os.join_path(root, 'v3_module_cache_ab12')
+	os.mkdir_all(cache_dir)!
+	previous_cache := os.getenv_opt('V3CACHE')
+	previous_isolate := os.getenv_opt('V3_TEST_ISOLATE_CACHE')
+	os.unsetenv('V3CACHE')
+	os.setenv('V3_TEST_ISOLATE_CACHE', '1', true)
+	defer {
+		if value := previous_cache {
+			os.setenv('V3CACHE', value, true)
+		}
+		if value := previous_isolate {
+			os.setenv('V3_TEST_ISOLATE_CACHE', value, true)
+		} else {
+			os.unsetenv('V3_TEST_ISOLATE_CACHE')
+		}
+		os.rmdir_all(root) or {}
+	}
+	object := os.join_path(cache_dir, 'cached object.o')
+	os.write_file(object, 'broken')!
+	assert v3_cache_failure_artifacts("ld: '${object}': file format not recognized") == [
+		os.real_path(object),
+	]
+}
+
+fn test_v3_discard_cache_artifacts_drops_sidecars_and_link_plans() {
+	cache_dir := os.join_path(os.vtmp_dir(), 'v3_thirdparty_objs')
+	os.mkdir_all(cache_dir)!
+	token := 'v3_discard_test_${os.getpid()}'
+	object := os.join_path(cache_dir, '${token}.o')
+	stamp := '${object}.stamp'
+	deps := '${object}.deps'
+	plan := os.join_path(cache_dir, 'link_${token}.manifest')
+	unrelated := os.join_path(cache_dir, '${token}_keep.o')
+	for path in [object, stamp, deps, plan, unrelated] {
+		os.write_file(path, 'x')!
+	}
+	defer {
+		for path in [object, stamp, deps, plan, unrelated] {
+			os.rm(path) or {}
+		}
+	}
+	discarded := v3_discard_cache_artifacts([object])
+	assert discarded >= 4, '${discarded}'
+	assert !os.exists(object)
+	// A stamp still certifies a deleted object, and a link plan replays its path
+	// into the next link, so both have to go with it.
+	assert !os.exists(stamp)
+	assert !os.exists(deps)
+	assert !os.exists(plan)
+	assert os.exists(unrelated)
+}
+
 fn test_tcc_atomic_object_key_separates_compilers_targets_and_args() {
 	root := os.join_path(os.vtmp_dir(), 'v3_atomic_object_key_${os.getpid()}')
 	os.mkdir_all(root)!

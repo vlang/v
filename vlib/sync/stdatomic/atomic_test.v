@@ -24,6 +24,10 @@ fn test_count_10_times_1_cycle_should_result_10_cycles_with_sync() {
 
 // This test just to make sure that we have an anti-test to prove it works
 fn test_count_10_times_1_cycle_should_not_be_10_cycles_without_sync() {
+	$if race ? {
+		// The unsynchronized counter is a data race on purpose, which `-race` reports.
+		return
+	}
 	desired_iterations := 10 * iterations_per_cycle
 	mut wg := sync.new_waitgroup()
 	mut counter := &Counter{}

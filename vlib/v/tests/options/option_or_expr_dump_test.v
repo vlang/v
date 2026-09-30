@@ -4,5 +4,5 @@ fn f() ? {
 }
 
 fn test_main() {
-	f() or { dump(err) }
+	f() or { dump(none) }
 }

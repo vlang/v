@@ -1,0 +1,7 @@
+vlib/v/checker/tests/mut_struct_param_float_cast_err.vv:13:9: error: cannot cast struct `Header` to `f64`
+   11 | 
+   12 | fn as_float(mut h Header) f64 {
+   13 |     return f64(h)
+      |            ~~~~~~
+   14 | }
+   15 |

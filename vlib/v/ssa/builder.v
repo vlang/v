@@ -1,6 +1,7 @@
 module ssa
 
 import v.flat
+import v.token
 import v.types
 
 const arm64_force_external_syms = ['_malloc', '_free', '_calloc', '_realloc', '_exit', '_abort',
@@ -595,10 +596,10 @@ fn (mut b Builder) ssa_type_from_checker_type(typ types.Type) TypeID {
 		return b.m.type_store.get_ptr(b.ssa_type_from_checker_type(typ.base_type))
 	}
 	if typ is types.OptionType {
-		return b.option_type_id(typ.base_type.name())
+		return b.option_type_id(typ.base_type.name(), false)
 	}
 	if typ is types.ResultType {
-		return b.option_type_id(typ.base_type.name())
+		return b.option_type_id(typ.base_type.name(), true)
 	}
 	if typ is types.Enum {
 		return b.i32_type
@@ -643,7 +644,7 @@ fn (mut b Builder) register_enum_values(node flat.Node, module_name string) {
 			continue
 		}
 		if field.children_count > 0 {
-			if explicit := b.enum_field_expr_value(b.a.child(field, 0)) {
+			if explicit := b.enum_field_expr_value(b.a.child(field, 0), enum_names.last()) {
 				value = explicit
 			}
 		}
@@ -759,8 +760,8 @@ fn qualify_type_ref_name(name string, module_name string) string {
 
 // type_ref_is_builtin returns type ref is builtin data for ssa.
 fn type_ref_is_builtin(name string) bool {
-	return name in ['int', 'i8', 'i16', 'i32', 'i64', 'u8', 'byte', 'u16', 'u32', 'u64', 'f32',
-		'f64', 'bool', 'string', 'void', 'voidptr', 'rune', 'char', 'array', 'map']
+	return name in ['int', 'i8', 'i16', 'i32', 'i64', 'u8', 'u16', 'u32', 'u64', 'f32', 'f64',
+		'bool', 'string', 'void', 'voidptr', 'rune', 'char', 'array', 'map']
 }
 
 // sum_type_variants_for_decl supports sum type variants for decl handling for Builder.
@@ -1234,10 +1235,8 @@ fn (mut b Builder) register_enum_autostr_fns() {
 					if field.kind != .enum_field {
 						continue
 					}
-					if field.children_count > 0 {
-						if explicit := b.enum_field_expr_value(b.a.child(field, 0)) {
-							val = explicit
-						}
+					if registered := b.enum_values['${qualified}.${field.value}'] {
+						val = registered
 					}
 					names << field.value
 					// Flag enums store one bit per field, matching `enum_value_for_type`.
@@ -1262,12 +1261,10 @@ fn (mut b Builder) register_enum_autostr_fns() {
 }
 
 // enum_field_expr_value evaluates the constant integer value of an enum-field initializer
-// expression, mirroring cgen's enum_field_expr_value (gen/c/types.v). Without this the
-// autostr helpers above would only honour bare `.int_literal` initializers and leave a
-// field like `a = 1 << 3` / `a = -1` at the previous sequential value, so the generated
-// `<Enum>__autostr` would compare against the wrong number.
-fn (b &Builder) enum_field_expr_value(id flat.NodeId) ?int {
-	if int(id) < 0 {
+// expression. References resolve against already registered fields of the same enum,
+// preserving exact declaration names before trying an escaped keyword alternative.
+fn (b &Builder) enum_field_expr_value(id flat.NodeId, enum_name string) ?int {
+	if int(id) < 0 || int(id) >= b.a.nodes.len {
 		return none
 	}
 	node := b.a.nodes[int(id)]
@@ -1275,17 +1272,32 @@ fn (b &Builder) enum_field_expr_value(id flat.NodeId) ?int {
 		.int_literal {
 			return parse_int_literal(node.value)
 		}
-		.paren {
+		.ident, .enum_val, .selector {
+			name := if node.kind == .selector { b.qualified_expr_name(id) } else { node.value }
+			return b.enum_field_value_for_type(enum_name, name, false)
+		}
+		.paren, .cast_expr {
 			if node.children_count == 0 {
 				return none
 			}
-			return b.enum_field_expr_value(b.a.child(&node, 0))
+			return b.enum_field_expr_value(b.a.child(&node, 0), enum_name)
+		}
+		.call {
+			if node.children_count != 2 {
+				return none
+			}
+			cast_name := b.qualified_expr_name(b.a.child(&node, 0))
+			if cast_name !in ['int', 'i8', 'i16', 'i32', 'i64', 'isize', 'u8', 'u16', 'u32', 'u64',
+				'usize', 'rune'] {
+				return none
+			}
+			return b.enum_field_expr_value(b.a.child(&node, 1), enum_name)
 		}
 		.prefix {
 			if node.children_count == 0 {
 				return none
 			}
-			value := b.enum_field_expr_value(b.a.child(&node, 0))?
+			value := b.enum_field_expr_value(b.a.child(&node, 0), enum_name)?
 			return match node.op {
 				.plus { value }
 				.minus { -value }
@@ -1297,8 +1309,8 @@ fn (b &Builder) enum_field_expr_value(id flat.NodeId) ?int {
 			if node.children_count < 2 {
 				return none
 			}
-			left := b.enum_field_expr_value(b.a.child(&node, 0))?
-			right := b.enum_field_expr_value(b.a.child(&node, 1))?
+			left := b.enum_field_expr_value(b.a.child(&node, 0), enum_name)?
+			right := b.enum_field_expr_value(b.a.child(&node, 1), enum_name)?
 			return match node.op {
 				.plus {
 					left + right
@@ -3382,7 +3394,7 @@ fn (mut b Builder) register_os_stat_stubs() {
 		is_link_id := b.register_synthetic_function(name, b.i1_type, p1)
 		b.generate_os_stat_kind_body(is_link_id, 'lstat', '40960')
 	}
-	ls_result_type := b.option_type_id('[]string')
+	ls_result_type := b.option_type_id('[]string', true)
 	for name in ['ls', 'os.ls'] {
 		ls_id := b.register_synthetic_function(name, ls_result_type, p1)
 		b.generate_os_ls_body(ls_id, ls_result_type)
@@ -3505,6 +3517,13 @@ fn (mut b Builder) block_option_value(block_id BlockID, opt_typ TypeID, ok bool,
 			value = b.m.get_or_add_const(value_typ, '0')
 		}
 		b.block_instr2(.store, block_id, b.void_type, value, value_ptr)
+	}
+	err_index := b.m.type_store.types[opt_typ].field_names.index('err')
+	if err_index >= 0 {
+		err_type := b.m.type_store.types[opt_typ].fields[err_index]
+		err_ptr := b.block_struct_field_ptr(block_id, alloca, opt_typ, err_index)
+		err_value := b.m.get_or_add_const(err_type, '0')
+		b.block_instr2(.store, block_id, b.void_type, err_value, err_ptr)
 	}
 	return b.block_instr1(.load, block_id, opt_typ, alloca)
 }
@@ -4069,7 +4088,7 @@ fn (mut b Builder) generate_array_bytestr_body(func_id int) {
 fn (mut b Builder) register_at_exit_stub() {
 	mut p1 := []TypeID{}
 	p1 << b.resolve_type('FnExitCb')
-	result_type := b.option_type_id('void')
+	result_type := b.option_type_id('void', true)
 	func_id := b.register_synthetic_function('at_exit', result_type, p1)
 	b.generate_at_exit_body(func_id, result_type, p1)
 }
@@ -4166,7 +4185,7 @@ fn (mut b Builder) register_rand_prng_interface_stubs() {
 }
 
 fn (mut b Builder) register_embed_file_interface_stubs() {
-	result_type := b.option_type_id('[]u8')
+	result_type := b.option_type_id('[]u8', true)
 	mut params := []TypeID{}
 	params << b.resolve_type('embed_file.Decoder')
 	params << b.array_type
@@ -7566,7 +7585,11 @@ fn (mut b Builder) build_expr(id flat.NodeId) ValueID {
 		}
 		.sizeof_expr {
 			mut size := 0
-			if type_name := b.var_type_names[node.value] {
+			if node.children_count > 0 {
+				operand := b.a.child(&node, 0)
+				// sizeof uses the operand's type without evaluating its value.
+				size = b.sizeof_type_name(b.checked_expr_type_name(operand))
+			} else if type_name := b.var_type_names[node.value] {
 				size = b.sizeof_type_name(type_name)
 			} else if addr := b.vars[node.value] {
 				size = b.m.type_size(b.deref_type(addr))
@@ -7803,9 +7826,12 @@ fn (mut b Builder) build_enum_val(id flat.NodeId, node flat.Node) ValueID {
 			return b.m.get_or_add_const(b.i64_type, value.str())
 		}
 	}
-	clean_member0 := node.value.trim_left('.')
-	if value := b.enum_values[clean_member0] {
-		return b.m.get_or_add_const(b.i64_type, value.str())
+	raw_member := node.value.trim_left('.')
+	member_keys := enum_member_lookup_keys(raw_member)
+	for key in member_keys {
+		if value := b.enum_values[key] {
+			return b.m.get_or_add_const(b.i64_type, value.str())
+		}
 	}
 	if b.tc != unsafe { nil } {
 		if typ := b.tc.expr_type(id) {
@@ -7815,35 +7841,63 @@ fn (mut b Builder) build_enum_val(id flat.NodeId, node flat.Node) ValueID {
 			}
 		}
 	}
-	if !b.enum_member_dupes[node.value] {
-		if value := b.enum_member_values[node.value] {
-			return b.m.get_or_add_const(b.i64_type, value.str())
+	for key in member_keys {
+		member_name := key.all_after_last('.')
+		if !b.enum_member_dupes[member_name] {
+			if value := b.enum_member_values[member_name] {
+				return b.m.get_or_add_const(b.i64_type, value.str())
+			}
 		}
 	}
 	return b.m.get_or_add_const(b.i64_type, '0')
 }
 
+fn enum_member_lookup_keys(member string) []string {
+	field := member.all_after_last('.')
+	plain := if field.starts_with('@') { field[1..] } else { field }
+	if token.Token.from_string_tinyv(plain).is_keyword() {
+		alternate := if field.starts_with('@') { plain } else { '@' + field }
+		return [member, member[..member.len - field.len] + alternate]
+	}
+	return [member]
+}
+
 // enum_value_for_type supports enum value for type handling for Builder.
 fn (b &Builder) enum_value_for_type(type_name string, member string) ?int {
+	return b.enum_field_value_for_type(type_name, member, true)
+}
+
+fn (b &Builder) enum_field_value_for_type(type_name string, member string, as_flag_bit bool) ?int {
 	if type_name.len == 0 || type_name in ['int', 'unknown'] {
 		return none
 	}
-	clean_member0 := member.trim_left('.')
-	if value := b.enum_values[clean_member0] {
-		enum_name := clean_member0.all_before_last('.')
-		return if b.is_flag_enum_type_name(enum_name) { 1 << value } else { value }
-	}
-	clean_member := clean_member0.all_after_last('.')
+	raw_member := member.trim_left('.')
+	member_keys := enum_member_lookup_keys(raw_member)
 	mut names := []string{}
 	names << type_name
 	short_type := type_name.all_after('.')
 	if short_type != type_name {
 		names << short_type
 	}
-	for name in names {
-		key := name + '.' + clean_member
-		if value := b.enum_values[key] {
-			return if b.is_flag_enum_type_name(name) { 1 << value } else { value }
+	for candidate in member_keys {
+		if value := b.enum_values[candidate] {
+			enum_name := candidate.all_before_last('.')
+			return if as_flag_bit && b.is_flag_enum_type_name(enum_name) {
+				1 << value
+			} else {
+				value
+			}
+		}
+		clean_member := candidate.all_after_last('.')
+		for name in names {
+			key := name + '.' + clean_member
+			if value := b.enum_values[key] {
+				return if as_flag_bit && b.is_flag_enum_type_name(name) {
+					1 << value
+				} else {
+					value
+				}
+			}
 		}
 	}
 	return none
@@ -8257,8 +8311,8 @@ fn (b &Builder) is_decimal_int_text(text string) bool {
 
 fn (mut b Builder) sizeof_type_name(type_name string) int {
 	if b.is_fixed_array_type_name(type_name) {
-		elem_type := b.resolve_type(b.fixed_array_elem_type_name(type_name))
-		return b.fixed_array_len_text(type_name).int() * b.m.type_size(elem_type)
+		// Recurse so nested fixed arrays (`[2][3]u8`) use their element's full size.
+		return b.fixed_array_len_text(type_name).int() * b.sizeof_type_name(b.fixed_array_elem_type_name(type_name))
 	}
 	return b.m.type_size(b.resolve_type(type_name))
 }
@@ -8524,6 +8578,13 @@ fn (mut b Builder) build_option_value(opt_typ TypeID, ok bool, raw_value ValueID
 			}
 		}
 		b.emit2(.store, b.void_type, value, value_ptr)
+	}
+	err_index := b.m.type_store.types[opt_typ].field_names.index('err')
+	if err_index >= 0 {
+		err_type := b.m.type_store.types[opt_typ].fields[err_index]
+		err_ptr := b.block_struct_field_ptr(b.cur_block, alloca, opt_typ, err_index)
+		err_value := b.m.get_or_add_const(err_type, '0')
+		b.emit2(.store, b.void_type, err_value, err_ptr)
 	}
 	return b.emit1(.load, opt_typ, alloca)
 }
@@ -9078,7 +9139,7 @@ fn sum_variant_field_name(variant string) string {
 		'i8' { '_i8' }
 		'i16' { '_i16' }
 		'i64' { '_i64' }
-		'u8', 'byte' { '_u8' }
+		'u8' { '_u8' }
 		'u16' { '_u16' }
 		'u32' { '_u32' }
 		'u64' { '_u64' }
@@ -11188,7 +11249,7 @@ fn (mut b Builder) load_selector_field(node flat.Node, struct_typ_id TypeID, fie
 
 fn (b &Builder) is_option_like_var(name string) bool {
 	typ := b.var_type_names[name] or { return false }
-	return typ.len > 0 && (typ[0] == `?` || typ[0] == `!` || typ == 'Optional')
+	return typ.len > 0 && (typ[0] == `?` || typ[0] == `!` || typ == '__v_option')
 }
 
 fn (b &Builder) selector_has_addressable_root(node &flat.Node) bool {
@@ -11799,7 +11860,7 @@ fn (mut b Builder) get_field_ptr(base_addr ValueID, field_name string) ValueID {
 
 fn (mut b Builder) resolve_type(name string) TypeID {
 	if name.len > 1 && (name[0] == `?` || name[0] == `!`) {
-		return b.option_type_id(name[1..])
+		return b.option_type_id(name[1..], name[0] == `!`)
 	}
 	if name.starts_with('&') {
 		inner := b.resolve_type(name[1..])
@@ -11884,7 +11945,7 @@ fn (mut b Builder) primitive_type_id(name string) ?TypeID {
 		'i64' {
 			b.i64_type
 		}
-		'u8', 'byte' {
+		'u8' {
 			b.u8_type
 		}
 		'u16' {
@@ -11923,7 +11984,7 @@ fn (mut b Builder) primitive_type_id(name string) ?TypeID {
 fn normalize_primitive_type_name(name string) string {
 	short_name := name.all_after('.')
 	return match short_name {
-		'int', 'i8', 'char', 'i16', 'i32', 'rune', 'i64', 'u8', 'byte', 'u16', 'u32', 'u64', 'f32',
+		'int', 'i8', 'char', 'i16', 'i32', 'rune', 'i64', 'u8', 'u16', 'u32', 'u64', 'f32',
 		'f64', 'bool', 'string', 'void', 'voidptr', '' {
 			short_name
 		}
@@ -11933,8 +11994,8 @@ fn normalize_primitive_type_name(name string) string {
 	}
 }
 
-fn (mut b Builder) option_type_id(base_name string) TypeID {
-	key := '?' + base_name
+fn (mut b Builder) option_type_id(base_name string, is_result bool) TypeID {
+	key := (if is_result { '!' } else { '?' }) + base_name
 	if typ := b.option_types[key] {
 		return typ
 	}
@@ -11947,6 +12008,10 @@ fn (mut b Builder) option_type_id(base_name string) TypeID {
 		fields << base_typ
 		field_names << 'value'
 	}
+	if is_result {
+		fields << b.resolve_type('IError')
+		field_names << 'err'
+	}
 	typ_id := b.m.type_store.register(Type{
 		kind:        .struct_t
 		fields:      fields
@@ -11954,7 +12019,6 @@ fn (mut b Builder) option_type_id(base_name string) TypeID {
 	})
 	b.option_types[key] = typ_id
 	b.struct_types[key] = typ_id
-	b.struct_types['!' + base_name] = typ_id
 	return typ_id
 }
 
@@ -12021,7 +12085,7 @@ fn (b &Builder) enum_autostr_fn_name(type_name string) ?string {
 
 fn (mut b Builder) resolve_type_in_module(name string, module_name string) TypeID {
 	if name.len > 1 && (name[0] == `?` || name[0] == `!`) {
-		return b.option_type_id(name[1..])
+		return b.option_type_id(name[1..], name[0] == `!`)
 	}
 	if name.starts_with('&') {
 		inner := b.resolve_type_in_module(name[1..], module_name)

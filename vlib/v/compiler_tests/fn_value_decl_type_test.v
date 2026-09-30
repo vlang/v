@@ -659,18 +659,18 @@ fn main() {
 fn test_local_fn_literal_decl_generates_fn_pointer_locals() {
 	v3_bin := build_v3()
 	optional_c := gen_c(v3_bin, 'fn_value_optional_void_local_c', optional_fn_src)
-	assert !optional_c.contains('Optional f = __anon_fn'), optional_c
+	assert !optional_c.contains('__v_option f = __anon_fn'), optional_c
 	assert !optional_c.contains('i64 f = __anon_fn'), optional_c
-	assert optional_c.contains('typedef struct Optional (*_fn_ptr_'), optional_c
+	assert optional_c.contains('typedef struct __v_option (*_fn_ptr_'), optional_c
 	assert optional_c.contains(' f = __anon_fn_'), optional_c
 
 	optional_callback_c := gen_c(v3_bin, 'fn_value_optional_callback_param_c',
 		optional_callback_param_src)
-	assert !optional_callback_c.contains('Optional_fn_ptr:'), optional_callback_c
-	assert optional_callback_c.contains('struct Optional__fn_ptr_'), optional_callback_c
+	assert !optional_callback_c.contains('__v_option_fn_ptr:'), optional_callback_c
+	assert optional_callback_c.contains('struct __v_option__fn_ptr_'), optional_callback_c
 
 	plain_c := gen_c(v3_bin, 'fn_value_plain_int_local_c', plain_fn_src)
-	assert !plain_c.contains('Optional f = __anon_fn'), plain_c
+	assert !plain_c.contains('__v_option f = __anon_fn'), plain_c
 	assert !plain_c.contains('i64 f = __anon_fn'), plain_c
 	assert plain_c.contains('typedef i64 (*_fn_ptr_'), plain_c
 	assert plain_c.contains(' f = __anon_fn_'), plain_c
@@ -709,7 +709,7 @@ fn test_shadowed_fn_value_calls_use_bound_callable_types() {
 
 	optional_c := gen_c(v3_bin, 'fn_value_optional_call_shadow_c',
 		local_fn_value_optional_call_shadow_src)
-	assert optional_c.contains('take((Optional_i64){.ok = true, .value = f()})'), optional_c
+	assert optional_c.contains('take((__v_option_i64){.ok = true, .value = f()})'), optional_c
 	assert !optional_c.contains('take(f())'), optional_c
 
 	drop_owned_c := gen_c(v3_bin, 'drop_owned_callback_shadow_c', drop_owned_callback_shadow_src)

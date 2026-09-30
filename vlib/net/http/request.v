@@ -64,7 +64,7 @@ pub mut:
 	in_memory_verification   bool // if true, verify, cert, and cert_key are read from memory, not from a file
 	allow_redirect           bool = true // whether to allow redirect
 	max_retries              int  = 5    // maximum number of retries required when an underlying socket error occurs
-	enable_http2             bool = true // when true (the default) and the URL is https, advertise ALPN `h2, http/1.1` and use HTTP/2 if the server selects it; set to false to force HTTP/1.1. Ignored for plain http://, and for the Windows SChannel backend which has no ALPN yet (see vlang/v#27383). on_progress / on_progress_body / stop_copying_limit / stop_receiving_limit are honored on the HTTP/2 path; on_progress fires per DATA frame payload rather than per raw network read.
+	enable_http2             bool // opt in to HTTP/2 for HTTPS: advertise ALPN `h2, http/1.1` and use HTTP/2 if selected. HTTP/1.1 is the default. Ignored for plain http://. Progress callbacks and receive limits work on HTTP/2; on_progress fires per DATA frame payload.
 	enable_http3             bool // when true and the URL is https, use HTTP/3 (QUIC over UDP) for this request instead of the TCP-based HTTP/1.1/2 path. **Requires building with `-d http3`**: the QUIC/TLS/QPACK stack is compiled only on demand so ordinary net.http and veb builds do not pay its compile-time cost -- without the flag, an enable_http3 request fails fast with a "not compiled in" error. Opt-in only (default false) and, unlike enable_http2, never automatically probed: UDP has no fast-fail signal the way a closed TCP port does, so there is no automatic fallback to HTTP/1.1/2 if the h3 attempt fails or times out -- that decision is the caller's. Ignored for plain http://. req.cert/req.cert_key (mutual TLS) are not supported by this v1 HTTP/3 client; setting either alongside enable_http3 fails the request immediately rather than silently ignoring them. req.validate is also not honorable yet: net.quic's client TLS stack has no skip-verification mode at all (v1 limitation, unlike the h1/h2 ssl.SSLConn path), so certificate validation is always enforced regardless of this flag. **req.verify is effectively REQUIRED for HTTP/3 today**: net.quic's TLS 1.3 stack has no OS/default trust-store fallback of any kind (unlike the h1/h2 ssl.SSLConn path, which uses the platform's own trust store when req.verify is empty) -- leaving req.verify unset means every h3 request fails certificate verification against every real server, since there are no trust anchors to validate against at all. on_progress / on_progress_body / stop_copying_limit / stop_receiving_limit are not honored on the HTTP/3 path (see H3ClientRequest's own scope note).
 	disable_connection_reuse bool // opt out of the shared connection pool: open a fresh connection for this request, send `Connection: close`, and close the connection after the response (the pre-pooling behavior)
 	// callbacks to allow custom reporting code to run, while the request is running, and to implement streaming
@@ -234,6 +234,21 @@ pub fn (req &Request) cookie(name string) ?Cookie {
 	return none
 }
 
+// cookie_header_value returns the value net.http sends in the Cookie header,
+// combining request cookies and explicit Cookie field values.
+pub fn (req &Request) cookie_header_value() string {
+	return req.cookie_header_value_with_header(req.header)
+}
+
+fn (req &Request) cookie_header_value_with_header(header Header) string {
+	mut parts := []string{cap: req.cookies.len + header.values(.cookie).len}
+	for key, value in req.cookies {
+		parts << '${key}=${value}'
+	}
+	parts << header.values(.cookie)
+	return parts.join('; ')
+}
+
 // do will send the HTTP request and returns `http.Response` as soon as the response is received
 pub fn (req &Request) do() !Response {
 	mut rurl := urllib.parse(req.url) or { return error('http.Request.do: invalid url ${req.url}') }
@@ -380,12 +395,15 @@ fn (req &Request) method_and_url_to_response(method Method, url urllib.URL, data
 	return error('http.request.method_and_url_to_response: unsupported scheme: "${scheme}"')
 }
 
-fn (req &Request) build_request_headers(method Method, host_name string, port int, path string) string {
-	return req.build_request_headers_with(method, host_name, port, path, req.data, req.header)
+fn (req &Request) build_request_headers(method Method, host_name string, port int, path string) !string {
+	default_port := if port == 443 { 443 } else { 80 }
+	return req.build_request_headers_with(method, host_name, port, default_port, path, req.data,
+		req.header)
 }
 
-fn (req &Request) build_request_headers_with(method Method, host_name string, port int, path string, data string, header Header) string {
-	return req.build_request_headers_opts(method, host_name, port, path, data, header, true)
+fn (req &Request) build_request_headers_with(method Method, host_name string, port int, default_port int, path string, data string, header Header) !string {
+	return req.build_request_headers_opts(method, host_name, port, default_port, path, data,
+		header, true)
 }
 
 // build_request_headers_opts builds the raw HTTP/1.x request. With
@@ -393,7 +411,10 @@ fn (req &Request) build_request_headers_with(method Method, host_name string, po
 // one-shot behavior); the pooled keep-alive path passes false and emits no
 // Connection header, leaving the HTTP/1.1 default (keep-alive) in effect and
 // respecting any Connection header the caller set themselves.
-fn (req &Request) build_request_headers_opts(method Method, host_name string, port int, path string, data string, header Header, connection_close bool) string {
+fn (req &Request) build_request_headers_opts(method Method, host_name string, port int, default_port int, path string, data string, header Header, connection_close bool) !string {
+	if method == .trace && data != '' {
+		return error('net.http: TRACE requests must not carry a body')
+	}
 	mut sb := strings.new_builder(4096)
 	version := if req.version == .unknown { Version.v1_1 } else { req.version }
 	sb.write_string(method.str())
@@ -404,10 +425,11 @@ fn (req &Request) build_request_headers_opts(method Method, host_name string, po
 	sb.write_string('\r\n')
 	if !header.contains(.host) {
 		sb.write_string('Host: ')
-		if port != 80 && port != 443 && port != 0 {
-			sb.write_string('${host_name}:${port}')
+		wire_host := authority_host(host_name)
+		if port != default_port && port != 0 {
+			sb.write_string('${wire_host}:${port}')
 		} else {
-			sb.write_string(host_name)
+			sb.write_string(wire_host)
 		}
 		sb.write_string('\r\n')
 	}
@@ -417,7 +439,7 @@ fn (req &Request) build_request_headers_opts(method Method, host_name string, po
 		sb.write_string(ua)
 		sb.write_string('\r\n')
 	}
-	if !header.contains(.content_length) {
+	if method != .trace && !header.contains(.content_length) {
 		// Write Content-Length: 0 even if there's no content, since some APIs
 		// stop working without this header.
 		sb.write_string('Content-Length: ')
@@ -425,15 +447,27 @@ fn (req &Request) build_request_headers_opts(method Method, host_name string, po
 		sb.write_string('\r\n')
 	}
 	chkey := CommonHeader.cookie.str()
-	for key in header.keys() {
-		if key == chkey {
+	for key in header.unique_keys() {
+		if header_key_eq(key, chkey) {
 			continue
 		}
-		val := header.custom_values(key).join('; ')
-		sb.write_string(key)
-		sb.write_string(': ')
-		sb.write_string(val)
-		sb.write_string('\r\n')
+		values := header.custom_values(key).map(it.trim_space())
+		if values.len > 1 && values.last() == '' {
+			// A combined trailing empty member would end in OWS, which parsers
+			// remove. Separate lines preserve the empty value for signatures.
+			for value in values {
+				sb.write_string(key)
+				sb.write_string(': ')
+				sb.write_string(value)
+				sb.write_string('\r\n')
+			}
+		} else {
+			// RFC 9110 §5.2 permits combining repeated field lines with a comma.
+			sb.write_string(key)
+			sb.write_string(': ')
+			sb.write_string(values.join(', '))
+			sb.write_string('\r\n')
+		}
 	}
 	sb.write_string(req.build_request_cookies_header_with_header(header))
 	if connection_close {
@@ -449,37 +483,16 @@ fn (req &Request) build_request_cookies_header() string {
 }
 
 fn (req &Request) build_request_cookies_header_with_header(header Header) string {
-	if req.cookies.len < 1 {
+	value := req.cookie_header_value_with_header(header)
+	if value == '' && !header.contains(.cookie) {
 		return ''
 	}
-	mut sb_cookie := strings.new_builder(1024)
-	hvcookies := header.values(.cookie)
-	total_cookies := req.cookies.len + hvcookies.len
-	sb_cookie.write_string('Cookie: ')
-	mut idx := 0
-	for key, val in req.cookies {
-		sb_cookie.write_string(key)
-		sb_cookie.write_string('=')
-		sb_cookie.write_string(val)
-		if idx < total_cookies - 1 {
-			sb_cookie.write_string('; ')
-		}
-		idx++
-	}
-	for c in hvcookies {
-		sb_cookie.write_string(c)
-		if idx < total_cookies - 1 {
-			sb_cookie.write_string('; ')
-		}
-		idx++
-	}
-	sb_cookie.write_string('\r\n')
-	return sb_cookie.str()
+	return 'Cookie: ${value}\r\n'
 }
 
 fn (req &Request) http_do(host string, method Method, path string, data string, header Header) !Response {
 	host_name, port := net.split_address(host)!
-	s := req.build_request_headers_with(method, host_name, port, path, data, header)
+	s := req.build_request_headers_with(method, host_name, port, 80, path, data, header)!
 	mut client := net.dial_tcp(host)!
 	client.set_read_timeout(req.read_timeout)
 	client.set_write_timeout(req.write_timeout)
@@ -930,12 +943,10 @@ pub fn parse_request_head(mut reader io.BufferedReader) !Request {
 			// Skip space or tab in value name
 			pos++
 		}
-		if pos + 1 < line.len {
-			value := line[pos + 1..]
-			_, _ = key, value
-			// println('key,value=${key},${value}')
-			header.add_custom(key, value)!
-		}
+		value := if pos + 1 < line.len { line[pos + 1..] } else { '' }
+		// Preserve present empty fields; signature verification distinguishes
+		// an empty field value from a missing field.
+		header.add_custom(key, value)!
 		line = reader.read_line()!
 	}
 	// header.coerce(canonicalize: true)
@@ -993,10 +1004,8 @@ pub fn parse_request_head_str(s string) !Request {
 			val_start++
 		}
 
-		if val_start < line.len {
-			value := line[val_start..]
-			header.add_custom(key, value)!
-		}
+		value := if val_start < line.len { line[val_start..] } else { '' }
+		header.add_custom(key, value)!
 		line_start = line_end + 1
 	}
 

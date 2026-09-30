@@ -1,6 +1,7 @@
 import common { Task, exec }
 import crypto.sha256
 import os
+import runtime
 
 fn test_symlink() {
 	exec('v symlink')
@@ -58,11 +59,14 @@ fn self_tests() {
 	// test the release's own standard library instead of this repository's.
 	// Individual files still fall back to it when the default compiler cannot
 	// build them.
+	// The module cache setup costs more than it saves for these independent test
+	// builds. Keep cache behavior covered by the dedicated compiler tests, and
+	// use every core on the 7 GB runners instead of the one-job memory default.
 	if common.is_github_job {
-		exec('VJOBS=1 v -no-memory-limit -silent test-self vlib')
+		exec('VJOBS=${runtime.nr_cpus()} v -nocache -no-memory-limit -silent test-self vlib')
 	} else {
 		vjobs := os.getenv_opt('VJOBS') or { '1' }
-		exec('VJOBS=${vjobs} v -no-memory-limit -progress test-self vlib')
+		exec('VJOBS=${vjobs} v -nocache -no-memory-limit -progress test-self vlib')
 	}
 }
 

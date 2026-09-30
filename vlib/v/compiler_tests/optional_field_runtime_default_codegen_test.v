@@ -9,7 +9,7 @@ const opt_default_v3_src = os.join_path(opt_default_v3_dir, 'v.v')
 // An `?T` field (T in another module) must not be expanded into a runtime
 // default of its base struct when generating the default element of a
 // `[]Outer{cap: n}` array. Cross-module `normalize_type_alias` used to strip
-// the `?`, emitting `(Optional_ig__IErr){<IErr fields>}` — invalid C, since the
+// the `?`, emitting `(__v_option_ig__IErr){<IErr fields>}` — invalid C, since the
 // optional wrapper has fields `ok`/`err`/`value`, not the base struct's fields.
 fn test_optional_field_runtime_default_is_none_cross_module() {
 	pid := os.getpid()

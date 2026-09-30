@@ -1,0 +1,80 @@
+import db.sqlite
+
+struct Account {
+	id   int @[primary; sql: serial]
+	name string
+}
+
+struct Holder {
+	name string
+}
+
+struct HolderBox {
+	holder Holder
+}
+
+fn make_holders() []Holder {
+	return [Holder{name: 'first'}]
+}
+
+fn make_holder_groups() [][]Holder {
+	return [make_holders()]
+}
+
+fn make_holder_box() HolderBox {
+	return HolderBox{holder: Holder{name: 'first'}}
+}
+
+fn (b HolderBox) get() Holder {
+	return b.holder
+}
+
+fn load_holders() ?[]Holder {
+	return none
+}
+
+fn main() {
+	mut db := sqlite.connect(':memory:')!
+	fallback := make_holders()
+	_ = make_holder_groups()
+	_ = make_holder_box()
+	_ = load_holders() or { fallback }
+	indexed := sql db {
+		select from Account where name == make_holders()[0]
+	}!
+	nested := sql db {
+		select from Account where name == make_holder_groups()[0][0]
+	}!
+	field := sql db {
+		select from Account where name == make_holder_box().holder
+	}!
+	optional := sql db {
+		select from Account where name == (load_holders() or { fallback })[0]
+	}!
+	generic_method := sql db {
+		select from Account where name == make_holders().last()
+	}!
+	boxes := [make_holder_box()]
+	indexed_receiver := sql db {
+		select from Account where name == boxes[0].get()
+	}!
+	grouped_receiver := sql db {
+		select from Account where name == (boxes[0]).get()
+	}!
+	call_free_member := sql db {
+		select from Account where name == boxes[0].holder
+	}!
+	holder := boxes[0].holder
+	local_struct := sql db {
+		select from Account where id == 1 && name == holder
+	}!
+	dump(indexed)
+	dump(nested)
+	dump(field)
+	dump(optional)
+	dump(generic_method)
+	dump(indexed_receiver)
+	dump(grouped_receiver)
+	dump(call_free_member)
+	dump(local_struct)
+}

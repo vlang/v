@@ -3,6 +3,7 @@ module c
 import os
 import v.flat
 import v.gen.c.naming
+import v.pref
 import v.types
 
 struct PromotedStructInitField {
@@ -139,7 +140,7 @@ fn (mut g FlatGen) gen_struct_field_expr(value_id flat.NodeId, expected types.Ty
 	if g.gen_pointer_value_struct_field(value_id, expected) {
 		return
 	}
-	// A `mut opt ?T` parameter is stored as `Optional_T*` in C. Struct fields
+	// A `mut opt ?T` parameter is stored as `__v_option_T*` in C. Struct fields
 	// hold the option value itself, so read through that ABI pointer before the
 	// generic optional conversion path treats it as an already-materialized
 	// option.
@@ -277,12 +278,14 @@ fn (mut g FlatGen) gen_struct_field_expr_for_field(value_id flat.NodeId, struct_
 			g.gen_c_static_fixed_array_initializer(value_id, fixed)
 			return
 		}
-		if g.gen_c_static_array_literal_initializer(value_id) {
+		if g.gen_c_static_array_literal_initializer(value_id, expected) {
 			return
 		}
 		value := g.a.node(value_id)
 		if value.kind in [.ident, .selector] {
-			constant := g.const_expr_to_string(value_id, []string{})
+			constant := g.global_scalar_static_initializer(value_id, expected) or {
+				g.const_expr_to_string(value_id, []string{})
+			}
 			if trimmed_space(constant).len > 0 {
 				g.write(constant)
 				return
@@ -342,6 +345,12 @@ fn (mut g FlatGen) gen_embed_file_uncompressed_field(value_id flat.NodeId, struc
 	// and between the specializations of a generic that cloned the expression,
 	// and it keeps the externally linked joined buffer nameable by a separately
 	// generated translation unit, which is what the module cache produces.
+	if g.embed_payload_uses_incbin(embed_blob_symbol(data.value)) {
+		// The assembler puts the bytes in the object file; gen_embed_file_blobs
+		// declares the object, and the driver assembles and links it.
+		g.write('(u8*)_v_embed_blob_${embed_blob_symbol(data.value)}')
+		return true
+	}
 	if data.value.len > c_max_object_size {
 		// Split across several objects, which `_vinit` joins once into the buffer
 		// named here. Reading a pointer rather than joining at every evaluation is
@@ -398,6 +407,15 @@ fn (mut g FlatGen) gen_embed_file_blobs() {
 			continue
 		}
 		seen[sym] = true
+		if g.embed_payload_uses_incbin(sym) {
+			// Defined by the object the driver assembles from the payload with
+			// `.incbin`; see embed_incbin_payloads. No size split is needed there:
+			// the C object size limit is about initializers, which that object
+			// does not have.
+			g.writeln('extern const unsigned char _v_embed_blob_${sym}[];')
+			defined++
+			continue
+		}
 		if node.value.len <= c_max_object_size {
 			g.write('static const unsigned char _v_embed_blob_${sym}')
 			g.write_embed_blob_bytes(node.value, 0, node.value.len)
@@ -436,20 +454,91 @@ fn (mut g FlatGen) for_each_embed_blob_chunked(each fn (mut FlatGen, string, str
 			continue
 		}
 		seen[sym] = true
+		if g.embed_payload_uses_incbin(sym) {
+			continue
+		}
 		each(mut g, sym, node.value)
 	}
 }
 
 // has_chunked_embed_blobs reports whether `_vinit` has any payload to join.
-fn (g &FlatGen) has_chunked_embed_blobs() bool {
+fn (mut g FlatGen) has_chunked_embed_blobs() bool {
 	for i in 0 .. g.a.nodes.len {
 		node := unsafe { &g.a.nodes[i] }
 		if node.kind == .string_literal && node.is_embed_payload()
-			&& node.value.len > c_max_object_size {
+			&& node.value.len > c_max_object_size
+			&& !g.embed_payload_uses_incbin(embed_blob_symbol(node.value)) {
 			return true
 		}
 	}
 	return false
+}
+
+// EmbedIncbinPayload is one `$embed_file` payload that the C build stores through
+// the assembler's `.incbin` directive rather than a C array initializer.
+pub struct EmbedIncbinPayload {
+pub:
+	symbol  string // the suffix of the `_v_embed_blob_` object the generated C names
+	payload string // the bytes that object holds
+}
+
+// embed_incbin_payloads lists the payloads that take the `.incbin` path when the
+// driver has enabled it: every payload too long for a string literal, in AST
+// order, except, under the module cache, those that a cached module refers to.
+// A cached module is a file outside `program_files`; its object is reused by
+// later builds that do not assemble this build's objects, so its payloads stay
+// self contained C arrays. The same bytes referred to from both sides are one
+// symbol, and go the self contained way too. The driver and the generator
+// derive the list from the same inputs, so they agree on which objects exist.
+pub fn embed_incbin_payloads(a &flat.FlatAst, program_files map[string]bool, module_cache bool) []EmbedIncbinPayload {
+	mut candidates := []EmbedIncbinPayload{}
+	mut seen := map[string]bool{}
+	mut in_cached_module := map[string]bool{}
+	mut cur_file_is_program := true
+	mut program_file_memo := map[string]bool{}
+	for i in 0 .. a.nodes.len {
+		node := unsafe { &a.nodes[i] }
+		if node.kind == .file {
+			cur_file_is_program = !module_cache
+				|| cache_program_file_matches(a, program_files, node.value, mut program_file_memo)
+			continue
+		}
+		if node.kind != .string_literal || !node.is_embed_payload()
+			|| !embed_payload_needs_blob(node.value.len) {
+			continue
+		}
+		sym := embed_blob_symbol(node.value)
+		if !cur_file_is_program {
+			in_cached_module[sym] = true
+		}
+		if seen[sym] {
+			continue
+		}
+		seen[sym] = true
+		candidates << EmbedIncbinPayload{
+			symbol:  sym
+			payload: node.value
+		}
+	}
+	return candidates.filter(!in_cached_module[it.symbol])
+}
+
+// embed_payload_uses_incbin reports whether the object named `sym` is one the
+// driver assembles with `.incbin`, which decides how the generated C refers to
+// it. The set is derived once from the AST and kept; the AST does not change
+// under code generation.
+fn (mut g FlatGen) embed_payload_uses_incbin(sym string) bool {
+	if !g.embed_incbin {
+		return false
+	}
+	if !g.embed_incbin_syms_ready {
+		g.embed_incbin_syms = map[string]bool{}
+		for entry in embed_incbin_payloads(g.a, g.cache_program_files, g.cache_stable_symbols) {
+			g.embed_incbin_syms[entry.symbol] = true
+		}
+		g.embed_incbin_syms_ready = true
+	}
+	return g.embed_incbin_syms[sym]
 }
 
 // gen_embed_blob_joined defines the buffers that _vinit fills, and is emitted
@@ -607,7 +696,7 @@ fn (mut g FlatGen) gen_unset_struct_field_default(struct_name string, field_name
 		if has {
 			g.write(', ')
 		}
-		g.write('.${field_c_name} = sync__new_channel_st((u32)(0), (u32)(sizeof(${g.tc.c_type(clean_type.elem_type)})))')
+		g.write('.${field_c_name} = sync__new_channel_st((u32)(0), (u32)(sizeof(${g.value_sizeof_target(clean_type.elem_type)})))')
 		return true
 	}
 	if clean_type is types.String {
@@ -633,6 +722,22 @@ fn (mut g FlatGen) gen_unset_struct_field_default(struct_name string, field_name
 		g.write('.${field_c_name} = ')
 		g.gen_default_value_for_type(clean_type)
 		return true
+	}
+	if fixed := array_fixed_type(clean_type) {
+		if fixed.len > 0 && fixed_array_elem_needs_runtime_header(fixed.elem_type) {
+			if has {
+				g.write(', ')
+			}
+			g.write('.${field_c_name} = {')
+			for idx in 0 .. fixed.len {
+				if idx > 0 {
+					g.write(', ')
+				}
+				g.gen_default_value_for_type(fixed.elem_type)
+			}
+			g.write('}')
+			return true
+		}
 	}
 	if g.field_needs_default_init(clean_type) {
 		if has {
@@ -732,7 +837,7 @@ fn (mut g FlatGen) gen_struct_init(id flat.NodeId) {
 	}
 	init_type := init_semantic_type
 	node_type := g.parse_node_type(&node)
-	is_optional_init := init_value == 'Optional' || init_type is types.OptionType
+	is_optional_init := init_value == '__v_option' || init_type is types.OptionType
 		|| init_type is types.ResultType
 	has_expected_optional := g.expected_expr_type is types.OptionType
 		|| g.expected_expr_type is types.ResultType || g.expected_expr_is_optional_struct()
@@ -747,22 +852,20 @@ fn (mut g FlatGen) gen_struct_init(id flat.NodeId) {
 		else { false }
 	}
 	// Lowered optional literals can retain their concrete V spelling (`?IError`)
-	// instead of the legacy synthetic `Optional` name. The wrapper ABI still comes
+	// instead of the legacy synthetic `__v_option` name. The wrapper ABI still comes
 	// from the expected option/result type; otherwise trimming the `?` above emits
 	// the payload C type and attempts to initialize an interface with option fields.
 	// A mutable optional struct parameter is the exception: its lowered payload is
 	// a pointer, while the source-level expected type still names the value payload.
 	if is_optional_init && !(init_has_pointer_payload && !expected_has_pointer_payload)
 		&& (g.expected_expr_type is types.OptionType || g.expected_expr_type is types.ResultType) {
-		concrete_expected := g.cur_fn_is_specialized && g.cur_fn_ret_is_optional
-			&& g.type_names_match(g.expected_expr_type, g.cur_fn_ret)
-		name = g.optional_type_name_for_context(g.expected_expr_type, concrete_expected)
-	} else if init_value == 'Optional' && g.expected_expr_is_optional_struct() {
+		name = g.optional_type_name(g.expected_expr_type)
+	} else if init_value == '__v_option' && g.expected_expr_is_optional_struct() {
 		name = g.value_c_type(g.expected_expr_type)
-	} else if init_value == 'Optional'
+	} else if init_value == '__v_option'
 		&& (node_type is types.OptionType || node_type is types.ResultType) {
 		name = g.optional_type_name(node_type)
-	} else if is_optional_init && !name.starts_with('Optional_') {
+	} else if is_optional_init && !is_wrapped_c_type(name) {
 		name = g.optional_type_name(init_type)
 	}
 	if is_optional_init {
@@ -777,7 +880,7 @@ fn (mut g FlatGen) gen_struct_init(id flat.NodeId) {
 			return
 		}
 		if g.optional_struct_init_is_none(node) {
-			g.write('(${name}){.ok = false, .err = builtin__none__}')
+			g.write('(${name}){.ok = false}')
 			return
 		}
 		if g.gen_optional_fixed_array_struct_init(node, name, init_type) {
@@ -791,7 +894,7 @@ fn (mut g FlatGen) gen_struct_init(id flat.NodeId) {
 		} else {
 			g.cur_fn_ret
 		}
-		name = g.concrete_optional_type_name(concrete_type)
+		name = g.optional_type_name(concrete_type)
 	}
 	// A bare generic literal stores its fields under the concrete instance key (`Box[int]`);
 	// the bare `node.value` (`Box`) entry is removed by monomorphization, so resolve the
@@ -880,7 +983,8 @@ fn (mut g FlatGen) gen_struct_init(id flat.NodeId) {
 				continue
 			}
 		}
-		if field.value.len > 0 && allowed_fields.len > 0 && field.value !in allowed_fields {
+		if field.value.len > 0 && allowed_fields.len > 0 && field.value !in allowed_fields
+			&& !g.struct_has_direct_named_field(lookup_name, field.value) {
 			promoted = g.promoted_struct_init_field(lookup_name, field.value) or { continue }
 		}
 		if has_field {
@@ -1246,7 +1350,7 @@ fn (mut g FlatGen) struct_init_has_fixed_array_field(node flat.Node, type_name s
 				// flat-literal path and emitted `.id = (u64[4]){...}`, which is a
 				// compound literal decaying to a pointer rather than an array
 				// initializer -- clang then initializes `id[0]` with it.
-				if field.has_default || g.field_needs_default_init(fixed.elem_type) {
+				if field.has_default || g.fixed_array_elem_needs_default_init(fixed.elem_type) {
 					return true
 				}
 			}
@@ -1326,7 +1430,8 @@ fn (mut g FlatGen) gen_struct_init_with_fixed_array_fields_impl(node flat.Node, 
 				continue
 			}
 		}
-		if field.value.len > 0 && allowed_fields.len > 0 && field.value !in allowed_fields {
+		if field.value.len > 0 && allowed_fields.len > 0 && field.value !in allowed_fields
+			&& !g.struct_has_direct_named_field(lookup_name, field.value) {
 			continue
 		}
 		value_id := g.a.child(field, 0)
@@ -1376,7 +1481,7 @@ fn (mut g FlatGen) gen_struct_init_with_fixed_array_fields_impl(node flat.Node, 
 			}
 			g.write('.${g.init_field_c_name(lookup_name, field.value)} = ')
 			value_node := g.a.node(value_id)
-			if name.starts_with('Optional') && field.value == 'value' && value_node.kind == .prefix
+			if is_wrapped_c_type(name) && field.value == 'value' && value_node.kind == .prefix
 				&& value_node.op == .amp {
 				g.gen_expr(value_id)
 			} else if heap_copy_type := g.heap_copy_type_for_sum_pointer_field(lookup_name, field.value, value_id) {
@@ -1448,7 +1553,7 @@ fn (mut g FlatGen) gen_struct_init_with_fixed_array_fields_impl(node flat.Node, 
 				continue
 			}
 			if fixed := array_fixed_type(field.typ) {
-				if g.field_needs_default_init(fixed.elem_type) {
+				if g.fixed_array_elem_needs_default_init(fixed.elem_type) {
 					cfield := g.init_field_c_name(lookup_name, field.name)
 					for idx in 0 .. fixed.len {
 						g.write(' ${tmp}.${cfield}[${idx}] = ')
@@ -1519,6 +1624,18 @@ fn (mut g FlatGen) gen_fixed_array_copy_source(value_id flat.NodeId, field_type 
 	}
 	if val_node.kind == .paren && val_node.children_count > 0 {
 		g.gen_fixed_array_copy_source(g.a.child(val_node, 0), field_type)
+		return
+	}
+	// `unsafe { [1]map[string]int{} }` yields its only expression. gen_expr emits that
+	// expression bare, which for a fixed-array literal is an untyped `{...}` list, so
+	// peel the block like a paren (keeping its unsafe context) to get a compound literal.
+	if val_node.kind in [.block, .expr_stmt] && val_node.children_count == 1 {
+		old_unsafe_depth := g.unsafe_depth
+		if val_node.kind == .block && val_node.value == 'unsafe' {
+			g.unsafe_depth++
+		}
+		g.gen_fixed_array_copy_source(g.a.child(val_node, 0), field_type)
+		g.unsafe_depth = old_unsafe_depth
 		return
 	}
 	if val_node.kind == .prefix && val_node.op == .mul && val_node.children_count > 0 {
@@ -1775,7 +1892,7 @@ fn (mut g FlatGen) gen_lowered_sum_field_value(sum_name string, field &flat.Node
 // gen_channel_init emits channel init output for c.
 fn (mut g FlatGen) gen_channel_init(node flat.Node) {
 	elem_type := g.tc.parse_type(node.value[5..])
-	elem_ct := g.tc.c_type(elem_type)
+	elem_ct := g.value_sizeof_target(elem_type)
 	g.write('sync__new_channel_st((u32)(')
 	if cap_id := channel_init_field(node, g.a, 'cap') {
 		g.gen_expr(cap_id)
@@ -1816,7 +1933,11 @@ fn (mut g FlatGen) gen_heap_struct_init(node flat.Node) {
 	}
 	if clean_init_type is types.ArrayFixed && node.children_count == 0 {
 		initializer := g.empty_fixed_array_initializer_string(clean_init_type)
-		g.write('(${name}*)memdup(&(${name})${initializer}, sizeof(${name}))')
+		if alignment := g.global_fixed_array_pointer_alignment(clean_init_type) {
+			g.write('(${name}*)v3_aligned_memdup(&(${name})${initializer}, sizeof(${name}), ${alignment})')
+		} else {
+			g.write('(${name}*)memdup(&(${name})${initializer}, sizeof(${name}))')
+		}
 		return
 	}
 	// A bare generic heap literal (`&Vec4{..}`) carries no type args; when the
@@ -1948,7 +2069,7 @@ fn (mut g FlatGen) gen_heap_struct_init(node flat.Node) {
 		}
 		g.write('.${designator} = ')
 		value_node := g.a.node(value_id)
-		if name.starts_with('Optional') && field.value == 'value' && value_node.kind == .prefix
+		if is_wrapped_c_type(name) && field.value == 'value' && value_node.kind == .prefix
 			&& value_node.op == .amp {
 			g.gen_expr(value_id)
 		} else if is_sum_literal {
@@ -2356,7 +2477,7 @@ fn (mut g FlatGen) gen_default_value_for_clean_type(clean_typ types.Type) {
 		return
 	}
 	if clean_typ is types.Channel {
-		g.write('sync__new_channel_st((u32)(0), (u32)(sizeof(${g.tc.c_type(clean_typ.elem_type)})))')
+		g.write('sync__new_channel_st((u32)(0), (u32)(sizeof(${g.value_sizeof_target(clean_typ.elem_type)})))')
 		return
 	}
 	if clean_typ is types.String {
@@ -2409,7 +2530,7 @@ fn (mut g FlatGen) gen_default_value_for_clean_type(clean_typ types.Type) {
 	raw_typ := clean_typ
 	if clean_typ is types.OptionType || clean_typ is types.ResultType {
 		ct := g.optional_type_name(clean_typ)
-		g.write('(${ct}){.ok = false, .err = builtin__none__}')
+		g.write('(${ct}){.ok = false}')
 		return
 	}
 	if clean_typ is types.Struct
@@ -2533,6 +2654,22 @@ fn (mut g FlatGen) field_needs_default_init(typ types.Type) bool {
 	return false
 }
 
+// fixed_array_elem_needs_runtime_header reports whether the elements of a fixed
+// array field are maps, dynamic arrays or channels, which are unusable when zero
+// filled: they need their runtime headers.
+fn fixed_array_elem_needs_runtime_header(elem_type types.Type) bool {
+	clean_type := default_init_unalias_type(elem_type)
+	return clean_type is types.Map || clean_type is types.Array || clean_type is types.Channel
+}
+
+// fixed_array_elem_needs_default_init reports whether a struct literal must
+// initialize the elements of a fixed array field explicitly: elements that need
+// a runtime header, or structs with defaults of their own.
+fn (mut g FlatGen) fixed_array_elem_needs_default_init(elem_type types.Type) bool {
+	return fixed_array_elem_needs_runtime_header(elem_type)
+		|| g.field_needs_default_init(elem_type)
+}
+
 // struct_needs_default_init reports whether building `type_name` as a struct
 // literal would set any field that C's `{0}` would not: a field with an explicit
 // default (`x int = 5`), an omitted dynamic array/map, or a by-value struct field
@@ -2586,6 +2723,12 @@ fn (mut g FlatGen) struct_needs_default_init_inner(type_name string, mut visited
 		if clean_ftyp is types.Struct
 			&& g.struct_needs_default_init_inner(clean_ftyp.name, mut visited) {
 			found = true
+			continue
+		}
+		if fixed := array_fixed_type(clean_ftyp) {
+			if fixed_array_elem_needs_runtime_header(fixed.elem_type) {
+				found = true
+			}
 		}
 	}
 	return found
@@ -3217,7 +3360,7 @@ fn (g &FlatGen) shared_qualify_leaf_type_text(name string, module_name string) s
 		clean = name[prefix.len..]
 	}
 	mut imported := ''
-	for candidate in g.tc.file_selective_imports['${g.tc.cur_file}\n${clean}'] or { []string{} } {
+	for candidate in g.file_selective_import_candidates(g.tc.cur_file, clean) or { []string{} } {
 		if candidate !in g.tc.structs && candidate !in g.tc.type_aliases && candidate !in g.tc.interface_names && candidate !in g.tc.sum_types && candidate !in g.tc.enum_names && candidate !in g.tc.flag_enums {
 			continue
 		}
@@ -4150,7 +4293,7 @@ fn (g &FlatGen) struct_init_import_alias_type_name(type_name string) string {
 	if is_generic && args.len > 0 && !base.contains('.') {
 		mut resolved := []string{}
 		if g.tc.cur_file.len > 0 {
-			if candidates := g.tc.file_selective_imports['${g.tc.cur_file}\n${base}'] {
+			if candidates := g.file_selective_import_candidates(g.tc.cur_file, base) {
 				for candidate in candidates {
 					if candidate.len > 0 && candidate !in resolved {
 						resolved << candidate
@@ -4366,8 +4509,9 @@ fn (g &FlatGen) find_struct_decl(type_name string) ?StructDeclInfo {
 	// leak into this file's literals. Checked before the per-module cache below,
 	// because two files of one module can import different homonyms.
 	if !type_name.contains('.') && g.tc.cur_file.len > 0 {
-		selective_key := '${g.tc.cur_file}\n${type_name}'
-		for candidate in g.tc.file_selective_imports[selective_key] or { []string{} } {
+		for candidate in g.file_selective_import_candidates(g.tc.cur_file, type_name) or {
+			[]string{}
+		} {
 			if info := g.struct_decl_infos[candidate] {
 				return info
 			}
@@ -4736,6 +4880,16 @@ fn (g &FlatGen) struct_field_c_abi_fn_ptr_type(type_name string, field_name stri
 			}
 		}
 	}
+	if field_name.starts_with('@') {
+		owner := cgen_unalias_unwrap_all_pointers(g.tc.parse_type(type_name))
+		if owner is types.Struct && owner.name.starts_with('C.') {
+			for candidate in [field_name, field_name[1..]] {
+				if typ := g.tc.struct_field_c_abi_fn_ptr_type(owner.name, candidate) {
+					return typ
+				}
+			}
+		}
+	}
 	return none
 }
 
@@ -5035,12 +5189,18 @@ fn (g &FlatGen) promoted_struct_init_field(type_name string, field_name string) 
 	if owner.len == 0 {
 		return none
 	}
-	field_type := g.struct_field_type(owner, field_name) or { return none }
+	field_type := g.struct_field_type(owner, field_name) or {
+		if owner.starts_with('C.') && field_name.starts_with('@') {
+			g.struct_field_type(owner, field_name[1..]) or { return none }
+		} else {
+			return none
+		}
+	}
 	mut parts := []string{cap: path.len + 1}
 	for field in path {
 		parts << c_field_name(field.name)
 	}
-	parts << c_field_name(field_name)
+	parts << g.init_field_c_name(owner, field_name)
 	return PromotedStructInitField{
 		root:       path[0].name
 		root_type:  g.embedded_field_type_name(path[0])
@@ -5098,15 +5258,26 @@ fn (g &FlatGen) direct_embedded_field_for_selector(base_type types.Type, field_n
 }
 
 fn (g &FlatGen) embedded_field_path_for_promoted_field(type_name string, field_name string) ?[]types.StructField {
+	if path := g.embedded_field_path_for_promoted_field_inner(type_name, field_name, false) {
+		return path
+	}
+	if field_name.starts_with('@') && field_name.len > 1 {
+		return g.embedded_field_path_for_promoted_field_inner(type_name, field_name[1..], true)
+	}
+	return none
+}
+
+fn (g &FlatGen) embedded_field_path_for_promoted_field_inner(type_name string, field_name string, c_owner_only bool) ?[]types.StructField {
 	for field in g.struct_embedded_fields(type_name) {
 		embedded_type_name := g.embedded_field_type_name(field)
 		if embedded_type_name.len == 0 {
 			continue
 		}
-		if g.direct_struct_field_exists(embedded_type_name, field_name) {
+		if (!c_owner_only || embedded_type_name.starts_with('C.'))
+			&& g.direct_struct_field_exists(embedded_type_name, field_name) {
 			return [field]
 		}
-		if nested := g.embedded_field_path_for_promoted_field(embedded_type_name, field_name) {
+		if nested := g.embedded_field_path_for_promoted_field_inner(embedded_type_name, field_name, c_owner_only) {
 			mut path := [field]
 			path << nested
 			return path
@@ -5127,7 +5298,10 @@ fn (g &FlatGen) embedded_field_path_for_promoted_selector(base_type types.Type, 
 	if g.direct_struct_field_exists(type_name, field_name) {
 		return none
 	}
-	return g.embedded_field_path_for_promoted_field(type_name, field_name)
+	if path := g.embedded_field_path_for_promoted_field(type_name, field_name) {
+		return path
+	}
+	return none
 }
 
 // concrete_bare_struct_selector_name recovers the declaration identity of a bare
@@ -5632,6 +5806,10 @@ fn map_integer_callback_size_suffix(key_type types.Type, c_key string, pointer_b
 	if c_key in ['i64', 'u64', 'f64', 'double'] || c_key.starts_with('arc__Arc_') {
 		return '8'
 	}
+	if c_key in ['i128', 'u128'] {
+		// A 128-bit key needs callbacks that use all sixteen bytes.
+		return '16'
+	}
 	return '4'
 }
 
@@ -5817,7 +5995,7 @@ fn (g &FlatGen) skip_builtin_struct(name string) bool {
 			return true
 		}
 	}
-	return name in c_preamble_defined_structs
+	return name in c_preamble_defined_structs || g.cocoa_nsfont_class(name)
 }
 
 const c_system_header_struct_names = {
@@ -5998,10 +6176,6 @@ fn (mut g FlatGen) emit_interface_struct(name string) {
 	g.writeln('\t\t\tu32 _object_is_boxed : 1;')
 	g.writeln('\t\t};')
 	g.writeln('\t};')
-	if g.is_ierror_type_name(name) {
-		g.writeln('\tstring message;')
-		g.writeln('\tint code;')
-	}
 	for field in iface_fields {
 		mut ct := if field.typ is types.OptionType || field.typ is types.ResultType {
 			g.optional_type_name(field.typ)
@@ -6132,7 +6306,6 @@ fn (mut g FlatGen) struct_decls() {
 		remaining.delete('string')
 		remaining_cnames.delete('string')
 	}
-	mut has_ierror := false
 	for name in interface_names {
 		if name !in iface_remaining {
 			continue
@@ -6142,13 +6315,12 @@ fn (mut g FlatGen) struct_decls() {
 			emitted['IError'] = true
 			iface_remaining.delete(name)
 			remaining_cnames.delete('IError')
-			has_ierror = true
 			break
 		}
 	}
 	if !incremental_support_only {
-		err_field := if has_ierror { 'IError err; ' } else { '' }
-		g.writeln('typedef struct Optional { bool ok; ${err_field}int value; } Optional;')
+		g.write_optional_typedef('__v_option', 'int')
+		g.write_optional_typedef('__v_result', 'int')
 		g.writeln('')
 	}
 	if g.has_builtins && 'array' in remaining {
@@ -6182,7 +6354,7 @@ fn (mut g FlatGen) struct_decls() {
 			}
 			// An interface struct embeds its declared data fields by value, so the
 			// field types must be fully defined first (same constraint as structs).
-			// Option/result fields embed their payload by value in the Optional_T
+			// Option/result fields embed their payload by value in the __v_option_T
 			// typedef, so the dependency is the payload type, not the wrapper.
 			for field in g.tc.interface_field_list(name) {
 				if interface_field_type_contains_self_by_value(field.typ, name) {
@@ -6552,7 +6724,7 @@ fn (mut g FlatGen) soa_companion_decls() {
 }
 
 fn (g &FlatGen) header_c_struct_needs_compat_typedef(name string) bool {
-	if !name.starts_with('C.') || name in c_preamble_defined_structs
+	if !name.starts_with('C.') || name in c_preamble_defined_structs || g.cocoa_nsfont_class(name)
 		|| name[2..] in c_system_header_struct_names || !c_struct_needs_typedef(name)
 		|| name in g.tc.c_typedef_structs || name[2..] in g.inlined_c_typedef_names
 		|| (g.cache_split && name[2..] in c_cache_system_header_struct_names) {
@@ -6565,6 +6737,54 @@ fn (g &FlatGen) header_c_struct_needs_compat_typedef(name string) bool {
 		return info.file.ends_with('.c.v') || c_source_looks_header_backed(info.file)
 	}
 	return false
+}
+
+// cocoa_nsfont_class reports the `C.NSFont` binding of a macOS program that includes AppKit.
+// NSFont is an Objective-C class there, which a C struct or typedef of the same name would
+// conflict with. Only the program's own directives decide this: V does not read C headers.
+fn (g &FlatGen) cocoa_nsfont_class(name string) bool {
+	if name != 'C.NSFont' || (g.target.os != 'macos' && !g.output_cross_c)
+		|| name !in g.struct_decl_infos {
+		return false
+	}
+	mut directives := g.preinclude_directives.clone()
+	directives << g.ordered_c_directives(false)
+	// Portable output keeps the macOS branch even when generated on another host.
+	target := if g.output_cross_c {
+		pref.target_from('macos', g.target.arch) or { g.target }
+	} else {
+		g.target
+	}
+	mut context := []string{}
+	mut in_block_comment := false
+	for directive in directives {
+		for line in c_join_continued_lines(directive) {
+			clean, next_in_block_comment := c_preprocessor_directive_scan_line(line, in_block_comment)
+			in_block_comment = next_in_block_comment
+			if cocoa_nsfont_framework_include_line(clean)
+				&& !c_native_source_context_definitely_inactive(context, g.c_flags, g.c99_mode, target, false) {
+				return true
+			}
+			context << clean
+		}
+	}
+	return false
+}
+
+fn cocoa_nsfont_framework_include_line(line string) bool {
+	clean := line.trim_space()
+	if !clean.starts_with('#') {
+		return false
+	}
+	directive := clean[1..].trim_space()
+	arg := if directive.starts_with('include') {
+		directive['include'.len..]
+	} else if directive.starts_with('import') {
+		directive['import'.len..]
+	} else {
+		return false
+	}
+	return arg.trim_space() in ['<Cocoa/Cocoa.h>', '<AppKit/AppKit.h>', '<AppKit/NSFont.h>']
 }
 
 fn (g &FlatGen) soa_companion_name(struct_name string) string {
@@ -7045,7 +7265,7 @@ fn (mut g FlatGen) emit_sum_option_typedefs(variants []string) {
 fn (mut g FlatGen) emit_option_typedefs_for_type(typ types.Type) bool {
 	if typ is types.OptionType || typ is types.ResultType {
 		opt_name := g.optional_type_name(typ)
-		if opt_name == 'Optional' {
+		if opt_name in ['__v_option', '__v_result'] {
 			return false
 		}
 		if val_type := g.needed_optional_types[opt_name] {

@@ -55,3 +55,21 @@ fn test_fn_ptr_encoded_round_trips_nested_keys() {
 	assert nested_ret == 'i64'
 	assert fn_ptr_encoded_params(nested_params) == [inner, 'i64']
 }
+
+fn test_file_function_names_do_not_collide_with_libc() {
+	assert c_name('mktemp') == '${internal_symbol_c_prefix}libc_mktemp'
+	assert c_name('truncate') == '${internal_symbol_c_prefix}libc_truncate'
+	assert c_name('v_mktemp') == 'v_mktemp'
+	assert c_name('v_truncate') == 'v_truncate'
+	assert c_name('mktemp') != c_name('v_mktemp')
+	assert c_name('truncate') != c_name('v_truncate')
+	assert c_name('mktemp') != c_name('${internal_symbol_c_prefix}libc_mktemp')
+	assert c_name('C.mktemp') == 'mktemp'
+	assert c_name('C.truncate') == 'truncate'
+}
+
+fn test_gnu_predefined_macro_names_are_escaped() {
+	// `gcc -std=gnu11` and clang predefine `linux` and `unix` as `1` on Linux.
+	assert c_name('linux') == 'v_linux'
+	assert c_name('unix') == 'v_unix'
+}

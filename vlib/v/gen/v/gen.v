@@ -350,12 +350,20 @@ fn (mut g Gen) setup_json_migration(fnode &flat.Node) {
 	mut json2_imports := []flat.NodeId{}
 	mut called := map[int]bool{}
 	mut selector_receivers := map[int]bool{}
+	// Expressions that an `is` check or a `match` narrows to one sum type variant.
+	mut narrowed := map[string]bool{}
 	for i, n in g.a.nodes {
 		if n.pos.id != g.file_id {
 			continue
 		}
 		if n.kind == .call && n.children_count > 0 {
 			called[int(g.a.child(n, 0))] = true
+		}
+		if (n.kind == .is_expr || n.kind == .match_stmt) && n.children_count > 0 {
+			subject := g.a.child_node(n, 0)
+			if text := g.source_span(subject.pos.offset, subject.pos.end) {
+				narrowed[text.trim_space()] = true
+			}
 		}
 		if n.kind == .selector && n.children_count > 0 {
 			receiver := g.a.child(n, 0)
@@ -405,9 +413,39 @@ fn (mut g Gen) setup_json_migration(fnode &flat.Node) {
 	if declared_names[qualifier] {
 		return
 	}
+	mut import_symbols := map[int]bool{}
+	for id in g.a.children_of(legacy) {
+		import_symbols[int(id)] = true
+	}
 	for i, n in g.a.nodes {
 		if n.pos.id != g.file_id {
 			continue
+		}
+		// With `import json { decode }`, a parameter, variable or loop variable of the
+		// same name shadows the import, and a use that is not a call cannot be rewritten.
+		if legacy.children_count > 0 && n.value in ['encode', 'decode', 'encode_pretty']
+			&& (n.kind == .param || (n.kind == .ident && !called[i] && !import_symbols[i])) {
+			return
+		}
+		// The removed `json.encode` encoded a value narrowed by `x is T` or `match x` as
+		// its declared sum type, with `_type`; `json2.encode` infers the narrowed
+		// variant, and only the author can spell the sum type back (`Animal(x)`).
+		if n.kind == .call && n.children_count > 1
+			&& g.is_json_encode_callee(g.a.child_node(n, 0), legacy.children_count > 0) {
+			arg := g.a.child_node(n, 1)
+			if text := g.source_span(arg.pos.offset, arg.pos.end) {
+				if narrowed[text.trim_space()] {
+					return
+				}
+			}
+		}
+		// A legacy `decode` needs both the type and the source argument to be rewritten,
+		// and an option or result type (`json.decode(?T, s)`) cannot be a type argument.
+		if n.kind == .call && n.children_count > 0
+			&& g.is_json_decode_callee(g.a.child_node(n, 0), legacy.children_count > 0)
+			&& (n.children_count < 3 || g.json_decode_type_arg_is_option(n)
+				|| json_decode_target_has_initializer(g.json_decode_type_arg_text(n))) {
+			return
 		}
 		// Existing module selector receivers are safe; any other identifier with the
 		// qualifier can be a lexical collision, so keep the legacy import conservatively.
@@ -430,7 +468,9 @@ fn (mut g Gen) setup_json_migration(fnode &flat.Node) {
 		if n.kind == .selector && n.children_count > 0 {
 			receiver := g.a.child_node(n, 0)
 			if receiver.kind == .ident && receiver.value == 'json' {
-				if vfmt_is_disabled_at(directives, n.pos.offset) {
+				// A local `json` binding shadows the import, and its method calls are
+				// not module calls to rewrite.
+				if vfmt_is_disabled_at(directives, n.pos.offset) || g.a.formatter_local_sels[i] {
 					return
 				}
 				if n.value !in ['encode', 'decode', 'encode_pretty'] || !called[i] {
@@ -1640,7 +1680,7 @@ fn (mut g Gen) call_expr(id flat.NodeId) {
 		return
 	}
 	if kind := g.json_migration_call_kind(children[0]) {
-		g.json_migration_call(kind, children[1..])
+		g.json_migration_call(kind, children[0], children[1..])
 		return
 	}
 	callee_continues := g.selector_starts_on_new_line(children[0])
@@ -1657,8 +1697,16 @@ fn (mut g Gen) call_expr(id flat.NodeId) {
 	g.write('(')
 	if !g.migrate_json2 && g.is_legacy_json_decode(children[0]) && args.len > 0 {
 		first := g.a.node(args[0])
+		// The type argument is not an expression: `[]Foo` parses as an empty array
+		// literal, and `?Foo` as an empty node, which keeps only its source text.
+		mut type_text := ''
 		if first.kind == .array_init && first.children_count == 0 {
-			g.write(first.typ)
+			type_text = first.typ
+		} else if first.kind == .empty && args.len > 1 {
+			type_text = g.json_decode_type_arg_source(children[0], args[1]) or { '' }
+		}
+		if type_text.len > 0 {
+			g.write(type_text)
 			if args.len > 1 {
 				g.write(', ')
 				g.expr_list(args[1..], ', ')
@@ -1733,9 +1781,40 @@ fn (g &Gen) call_args_expanded(id flat.NodeId, args []flat.NodeId) bool {
 	if !has_named_args {
 		return false
 	}
+	layout := g.call_args_layout_source(id, source, args)
 	// The opening parenthesis is already present in the output line and in source.
-	projected_width := g.output_line_len() + source.len - 1
-	return source.contains('\n') || projected_width > formatter_max_line_len
+	projected_width := g.output_line_len() + layout.len - 1
+	return layout.contains('\n') || projected_width > formatter_max_line_len
+}
+
+// call_args_layout_source is the source of a call's arguments with every multi-line
+// positional argument cut down to its last line. A line break inside such an argument,
+// e.g. in `encode(Foo{\n\tx: 1\n}, pretty: true)`, belongs to the argument itself and
+// must not move the named arguments that follow it onto their own lines.
+fn (g &Gen) call_args_layout_source(id flat.NodeId, source string, args []flat.NodeId) string {
+	args_end := g.a.formatter_node_ends[int(id)] or { return source }
+	args_start := args_end - source.len
+	mut b := strings.new_builder(source.len)
+	mut cursor := 0
+	for arg in args {
+		if g.a.node(arg).kind == .field_init {
+			break
+		}
+		start := g.leftmost_source_start(arg) - args_start
+		end := g.rightmost_source_end(arg) - args_start
+		if start < cursor || end <= start || end > source.len {
+			continue
+		}
+		text := source[start..end]
+		if !text.contains('\n') {
+			continue
+		}
+		b.write_string(source[cursor..start])
+		b.write_string(text.all_after_last('\n').trim_left(' \t'))
+		cursor = end
+	}
+	b.write_string(source[cursor..])
+	return b.str()
 }
 
 fn (g &Gen) call_args_hanging(args []flat.NodeId) bool {
@@ -1918,22 +1997,38 @@ fn (g &Gen) json_migration_call_kind(callee_id flat.NodeId) ?string {
 }
 
 fn (g &Gen) is_legacy_json_decode(callee_id flat.NodeId) bool {
-	callee := g.a.node(callee_id)
+	return g.is_json_decode_callee(g.a.node(callee_id), g.selective_json)
+}
+
+fn (g &Gen) is_json_encode_callee(callee &flat.Node, selective bool) bool {
+	if callee.kind == .selector && callee.children_count > 0
+		&& callee.value in ['encode', 'encode_pretty'] {
+		receiver := g.a.child_node(callee, 0)
+		return receiver.kind == .ident && receiver.value == 'json'
+	}
+	return selective && callee.kind == .ident && callee.value in ['encode', 'encode_pretty']
+}
+
+fn (g &Gen) is_json_decode_callee(callee &flat.Node, selective bool) bool {
 	if callee.kind == .selector && callee.children_count > 0 && callee.value == 'decode' {
 		receiver := g.a.child_node(callee, 0)
 		return receiver.kind == .ident && receiver.value == 'json'
 	}
-	return g.selective_json && callee.kind == .ident && callee.value == 'decode'
+	return selective && callee.kind == .ident && callee.value == 'decode'
 }
 
-fn (mut g Gen) json_migration_call(kind string, args []flat.NodeId) {
+fn (mut g Gen) json_migration_call(kind string, callee flat.NodeId, args []flat.NodeId) {
 	if kind == 'decode' && args.len >= 2 {
 		g.write('${g.json_qualifier}.decode[')
-		type_arg := g.a.node(args[0])
-		if source_type := g.source_span(type_arg.pos.offset, type_arg.pos.end) {
-			g.write(source_type.trim_space())
+		if source_type := g.json_decode_type_arg_source(callee, args[1]) {
+			g.write(json_decode_type_text(source_type))
 		} else {
-			g.expr(args[0])
+			type_arg := g.a.node(args[0])
+			if source_type := g.source_span(type_arg.pos.offset, type_arg.pos.end) {
+				g.write(json_decode_type_text(source_type))
+			} else {
+				g.expr(args[0])
+			}
 		}
 		g.write('](')
 		g.expr_list(args[1..], ', ')
@@ -1946,9 +2041,62 @@ fn (mut g Gen) json_migration_call(kind string, args []flat.NodeId) {
 		g.write(', ')
 	}
 	if kind == 'encode_pretty' {
-		g.write('prettify: true, ')
+		g.write('prettify: true, legacy_layout: true, ')
 	}
-	g.write('escape_unicode: true)')
+	g.write('escape_unicode: true, time_as_unix: true)')
+}
+
+// json_decode_type_arg_source returns the source of the type argument of
+// `json.decode(T, s)`: the text between the callee and the second argument, without
+// the surrounding `(` and `,`. The span of the type node itself does not always
+// cover the type (anonymous structs, option types).
+// json_decode_type_arg_is_option reports whether the type argument of the legacy
+// `json.decode(T, s)` call is an option or result type, which json2 cannot take:
+// V does not accept `?T` as a generic type argument.
+fn (g &Gen) json_decode_type_arg_is_option(call &flat.Node) bool {
+	type_arg := g.a.child_node(call, 1)
+	type_text := g.json_decode_type_arg_text(call)
+	return type_text.starts_with('?') || type_text.starts_with('!')
+		|| type_arg.value.starts_with('?') || type_arg.value.starts_with('!')
+}
+
+// json_decode_type_arg_text is the source of the type argument of a legacy
+// `json.decode(T, s)` call.
+fn (g &Gen) json_decode_type_arg_text(call &flat.Node) string {
+	type_arg := g.a.child_node(call, 1)
+	return g.json_decode_type_arg_source(g.a.child(call, 0), g.a.child(call, 2)) or {
+		g.source_span(type_arg.pos.offset, type_arg.pos.end) or { '' }.trim_space()
+	}
+}
+
+// json_decode_type_text turns a legacy decode target into a type argument: the value
+// form `map[string]int{}`, `[]Foo{}` or `Foo{}` names its type with an empty
+// initializer, which is not part of the type.
+fn json_decode_type_text(target string) string {
+	text := target.trim_space()
+	if text.ends_with('{}') && !text.starts_with('struct') {
+		return text[..text.len - 2].trim_space()
+	}
+	return text
+}
+
+// json_decode_target_has_initializer reports a value target with a non-empty
+// initializer (`[]int{len: 2}`), which names no type that can be spelled back.
+fn json_decode_target_has_initializer(target string) bool {
+	text := target.trim_space()
+	return text.ends_with('}') && !text.ends_with('{}') && !text.starts_with('struct')
+}
+
+fn (g &Gen) json_decode_type_arg_source(callee flat.NodeId, second_arg flat.NodeId) ?string {
+	between := g.source_span(g.a.node(callee).pos.end, g.a.node(second_arg).pos.offset)?.trim_space()
+	if !between.starts_with('(') || !between.ends_with(',') {
+		return none
+	}
+	type_text := between[1..between.len - 1].trim_space()
+	if type_text.len == 0 {
+		return none
+	}
+	return type_text
 }
 
 fn (mut g Gen) index_expr(id flat.NodeId) {
@@ -2803,6 +2951,8 @@ fn (mut g Gen) string_interp(id flat.NodeId) {
 	}
 	quote := if has_single && !has_double { `"` } else { `'` }
 	quote_str := if quote == `"` { '"' } else { "'" }
+	// Keep the source spelling of each literal part, as plain literals do.
+	literal_spellings := g.interp_literal_spellings(n, children, quote)
 	if n.typ.starts_with('js:') {
 		g.write('js')
 	}
@@ -2810,7 +2960,7 @@ fn (mut g Gen) string_interp(id flat.NodeId) {
 	for cid in children {
 		c := g.a.node(cid)
 		if c.kind == .string_literal {
-			g.write(escape_string(c.value, quote))
+			g.write(literal_spellings[int(cid)] or { escape_string(c.value, quote) })
 		} else if c.kind == .directive && c.value == 'string_interp_format' {
 			g.write('\${')
 			was_in_string_interp := g.in_string_interp
@@ -2829,6 +2979,126 @@ fn (mut g Gen) string_interp(id flat.NodeId) {
 		}
 	}
 	g.write(quote_str)
+}
+
+// interp_literal_spellings maps the literal parts of the interpolated string `n` to
+// their source spelling under `quote`. Segment values are stored decoded, and
+// re-escaping them would rewrite spellings like `\x41` or a bare `$` in `'$HOME'`.
+// The map is empty when the source cannot be matched up with the parts.
+fn (g &Gen) interp_literal_spellings(n &flat.Node, children []flat.NodeId, quote u8) map[int]string {
+	mut spellings := map[int]string{}
+	source := g.source_span(n.pos.offset, n.pos.end) or { return spellings }
+	prefix_len := if n.typ.starts_with('js:') { 2 } else { 0 }
+	parts := interp_literal_parts(source, prefix_len) or { return spellings }
+	old_quote := source[prefix_len]
+	mut ci := 0
+	for pi, part in parts {
+		if part.len > 0 {
+			if ci >= children.len || g.a.node(children[ci]).kind != .string_literal {
+				return map[int]string{}
+			}
+			spellings[int(children[ci])] = requote_literal_body(part, old_quote, quote)
+			ci++
+		}
+		if pi < parts.len - 1 {
+			if ci >= children.len || g.a.node(children[ci]).kind == .string_literal {
+				return map[int]string{}
+			}
+			ci++
+		}
+	}
+	if ci != children.len {
+		return map[int]string{}
+	}
+	return spellings
+}
+
+// interp_literal_parts splits the source of an interpolated string literal into the
+// source text of its literal parts: the one before, between and after each `${...}`.
+fn interp_literal_parts(source string, prefix_len int) ?[]string {
+	if source.len < prefix_len + 2 {
+		return none
+	}
+	quote := source[prefix_len]
+	if quote !in [`'`, `"`] || source[source.len - 1] != quote {
+		return none
+	}
+	body_end := source.len - 1
+	mut parts := []string{}
+	mut part_start := prefix_len + 1
+	mut i := part_start
+	for i < body_end {
+		c := source[i]
+		if c == `\\` {
+			i += 2
+			continue
+		}
+		if c != `$` || i + 1 >= body_end || source[i + 1] != `{` {
+			i++
+			continue
+		}
+		parts << source[part_start..i]
+		mut depth := 1
+		i += 2
+		for i < body_end && depth > 0 {
+			ch := source[i]
+			if ch in [`'`, `"`, `\``] {
+				i = interp_skip_nested_literal(source, i)
+				continue
+			}
+			// A brace in a comment of the embedded expression does not close it.
+			if ch == `/` && i + 1 < body_end && source[i + 1] == `*` {
+				i = interp_skip_block_comment(source, i)
+				continue
+			}
+			if ch == `/` && i + 1 < body_end && source[i + 1] == `/` {
+				for i < body_end && source[i] != `\n` {
+					i++
+				}
+				continue
+			}
+			if ch == `{` {
+				depth++
+			} else if ch == `}` {
+				depth--
+			}
+			i++
+		}
+		if depth != 0 {
+			return none
+		}
+		part_start = i
+	}
+	if i != body_end {
+		return none
+	}
+	parts << source[part_start..body_end]
+	return parts
+}
+
+// interp_skip_block_comment returns the offset just past the block comment opening at
+// `start`. Like the scanner, it nests comments, but `/*/` does not open another one.
+fn interp_skip_block_comment(source string, start int) int {
+	mut depth := 1
+	mut i := start + 2
+	for i + 1 < source.len {
+		if source[i] == `/` && source[i + 1] == `*`
+			&& (i + 2 >= source.len || source[i + 2] != `/`) {
+			depth++
+			i += 2
+			continue
+		}
+		if source[i] == `*` && source[i + 1] == `/` {
+			depth--
+			i += 2
+			if depth == 0 {
+				return i
+			}
+			continue
+		}
+		i++
+	}
+	return source.len
 }
 
 fn interp_has_literal_dollar(source string) bool {
@@ -3094,7 +3364,8 @@ fn (mut g Gen) for_in_stmt(id flat.NodeId) {
 	g.write(' in ')
 	g.expr(children[2])
 	if body_start == 4 {
-		g.write(' .. ')
+		range_op := g.a.formatter_sources[int(id)] or { '..' }
+		g.write(' ${range_op} ')
 		g.expr(children[3])
 	}
 	g.suppress_trailing_comments--
@@ -3450,7 +3721,10 @@ fn (mut g Gen) match_node(id flat.NodeId) {
 			if g.match_branch_is_compact(b, bchildren) {
 				g.write('else ')
 				g.compact_match_branch(b, bchildren)
-				g.writeln('')
+				g.emit_trailing_comments(b.pos.end)
+				if !g.on_newline {
+					g.writeln('')
+				}
 			} else {
 				g.write('else')
 				g.writeln(' {')
@@ -3496,7 +3770,10 @@ fn (mut g Gen) match_node(id flat.NodeId) {
 			if g.match_branch_is_compact(b, rest) {
 				g.write(' ')
 				g.compact_match_branch(b, rest)
-				g.writeln('')
+				g.emit_trailing_comments(b.pos.end)
+				if !g.on_newline {
+					g.writeln('')
+				}
 			} else {
 				g.writeln(' {')
 				g.stmt_list_ids(rest)
@@ -3950,13 +4227,19 @@ fn (mut g Gen) fn_decl(id flat.NodeId) {
 		g.write(' ')
 		g.write(receiver_type)
 		g.write(') ')
-		method_name := name.all_after_last('.')
+		method_name := g.a.formatter_sources[int(id)] or {
+			if name.starts_with('C:') || name.starts_with('JS:') {
+				name.replace(':', '.')
+			} else {
+				name.all_after_last('.')
+			}
+		}
 		g.write(method_name)
 		if method_name in ['+', '-', '*', '/', '%', '**', '==', '!=', '<', '<=', '>', '>=', '|',
 			'^', '[]', '[]='] {
 			g.write(' ')
 		}
-	} else if n.kind == .c_fn_decl {
+	} else if n.kind == .c_fn_decl || name.starts_with('C:') || name.starts_with('JS:') {
 		if name.starts_with('JS:') {
 			g.write('JS.${name[3..]}')
 		} else if name.starts_with('C:') {
@@ -5287,6 +5570,12 @@ fn (mut g Gen) write_comment(text string) {
 			|| (text[2] >= `0` && text[2] <= `9`)) {
 		normalized = '// ${text[2..]}'
 	}
+	// A block comment inside `${...}` stays inline: a line break there would end the
+	// line of a single-line string literal in the middle of its interpolation.
+	if g.in_string_interp && normalized.starts_with('/*') && !normalized.contains('\n') {
+		g.write(normalized)
+		return
+	}
 	lines := normalized.split('\n')
 	for i, line in lines {
 		if i == lines.len - 1 && line == '' {
@@ -5576,9 +5865,17 @@ fn requote_literal_text(source string, prefix_len int) string {
 	if new_quote == old_quote {
 		return source
 	}
-	mut b := strings.new_builder(source.len + 8)
-	b.write_string(source[..prefix_len])
-	b.write_u8(new_quote)
+	quote := new_quote.ascii_str()
+	return source[..prefix_len] + quote + requote_literal_body(body, old_quote, new_quote) + quote
+}
+
+// requote_literal_body rewrites the quote escaping of a literal body written between
+// `old_quote` delimiters for `new_quote` ones, copying every other escape unchanged.
+fn requote_literal_body(body string, old_quote u8, new_quote u8) string {
+	if new_quote == old_quote {
+		return body
+	}
+	mut b := strings.new_builder(body.len + 8)
 	mut i := 0
 	for i < body.len {
 		c := body[i]
@@ -5599,7 +5896,6 @@ fn requote_literal_text(source string, prefix_len int) string {
 		b.write_u8(c)
 		i++
 	}
-	b.write_u8(new_quote)
 	return b.str()
 }
 
