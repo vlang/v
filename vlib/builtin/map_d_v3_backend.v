@@ -265,6 +265,13 @@ fn map_eq_int_8(a voidptr, b voidptr) bool {
 	return unsafe { *&u64(a) == *&u64(b) }
 }
 
+// A 128-bit key is two u64 halves, so equality is a byte compare. Reading them
+// as u64 would need an alignment guarantee the map's key storage does not give.
+@[inline]
+fn map_eq_int_16(a voidptr, b voidptr) bool {
+	return unsafe { vmemcmp(a, b, 16) == 0 }
+}
+
 // map_map_eq compares two maps for equality.
 // Returns true if both maps have the same keys and associated values.
 fn map_map_eq(a map, b map) bool {
@@ -324,6 +331,13 @@ fn map_clone_int_4(dest voidptr, pkey voidptr) {
 fn map_clone_int_8(dest voidptr, pkey voidptr) {
 	unsafe {
 		*&u64(dest) = *&u64(pkey)
+	}
+}
+
+@[inline]
+fn map_clone_int_16(dest voidptr, pkey voidptr) {
+	unsafe {
+		vmemcpy(dest, pkey, 16)
 	}
 }
 

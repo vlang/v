@@ -12091,6 +12091,12 @@ fn map_str_kind(tc &types.TypeChecker, typ types.Type) int {
 		if name in ['u16', 'u32', 'u64'] {
 			return 3
 		}
+		if name == 'u128' {
+			return 10
+		}
+		if name == 'i128' {
+			return 11
+		}
 		if name == 'bool' {
 			return 7
 		}
@@ -12682,6 +12688,18 @@ fn (mut g FlatGen) gen_expr_with_expected_type_inner(id flat.NodeId, expected_ty
 		g.expected_expr_type = old_expected
 		g.expected_enum = old_expected_enum
 		return
+	}
+	if wide_target := int128_signedness(semantic_expected) {
+		// The promotion ladder accepts a narrower integer where a 128-bit one is
+		// expected, in an argument, a field, a return value or an element. On the
+		// native representation C widens it by itself; the struct representation
+		// has no such conversion, so the helper does the widening here instead.
+		if int128_signedness(semantic_actual) == none && source_signedness_known(semantic_actual) {
+			g.gen_int128_operand(id, semantic_actual, wide_target)
+			g.expected_expr_type = old_expected
+			g.expected_enum = old_expected_enum
+			return
+		}
 	}
 	g.gen_expr(id)
 	g.expected_expr_type = old_expected
@@ -14952,6 +14970,12 @@ fn (mut g FlatGen) const_expr_to_string(id flat.NodeId, seen []string) string {
 		return '0'
 	}
 	node := g.a.nodes[int(id)]
+	if _ := int128_signedness(g.usable_expr_type(id)) {
+		// A 128-bit constant has to reach C as an expression built from the helpers.
+		// A cast to the struct representation plus a plain `<<` does not compile on
+		// the portable path, and it silently truncates on the native one.
+		return g.expr_to_string(id)
+	}
 	return match node.kind {
 		.ident, .selector {
 			const_name := g.const_ref_name_from_node(node)
@@ -15583,6 +15607,12 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 	match node.kind {
 		.int_literal {
 			v := node.value.replace('_', '')
+			if parts := int128_literal_parts(v) {
+				// Wider than 64 bits: emit the halves, because a C decimal constant
+				// that large is silently reduced to its low 64 bits.
+				g.write('__v_u128_make(${parts.high}ULL, ${parts.low}ULL)')
+				return
+			}
 			if v.starts_with('0o') {
 				g.write('0${v[2..]}')
 			} else {
@@ -15860,6 +15890,10 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 			old_expected_enum := g.expected_enum
 			lhs_type := g.usable_expr_type(lhs_id)
 			rhs_type := g.usable_expr_type(rhs_id)
+			if g.gen_int128_infix(id, node, lhs_id, rhs_id, lhs_type, rhs_type) {
+				g.expected_enum = old_expected_enum
+				return
+			}
 			if node.op == .power {
 				lhs_node := g.a.nodes[int(lhs_id)]
 				if lhs_node.kind == .prefix && lhs_node.op == .minus && lhs_node.children_count == 1 {
@@ -16034,6 +16068,9 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 		.prefix {
 			child_id := g.a.child(node, 0)
 			child := g.a.nodes[int(child_id)]
+			if g.gen_int128_prefix(node, child_id) {
+				return
+			}
 			if node.op == .amp && g.in_global_array_pointer_init {
 				// Guard/branch lowering can hide an addressed temporary in a nested
 				// assignment, so give it owned storage wherever it occurs in the initializer.
@@ -16370,6 +16407,9 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 					g.write(')${g.op_str(node.op)}')
 					return
 				}
+			}
+			if g.gen_int128_inc_dec(node.op, child_id, g.usable_expr_type(child_id)) {
+				return
 			}
 			if child.kind == .ident && g.current_param_is_mut(child.value) {
 				g.write('(*')
@@ -17025,6 +17065,9 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 				ct = g.resolve_fn_ptr_type(ct)
 			}
 			cast_arg := g.a.nodes[int(cast_arg_id)]
+			if g.gen_int128_cast(node, target_type, g.a.child(node, 0)) {
+				return
+			}
 			if shared_alias_ptr := g.shared_alias_pointer_type_from_text(node.value) {
 				g.gen_expr_with_expected_type(g.a.child(node, 0), shared_alias_ptr)
 				return
@@ -18582,6 +18625,7 @@ fn (mut g FlatGen) preamble() {
 	}
 	g.writeln('typedef i64 int_literal;')
 	g.writeln('typedef double float_literal;')
+	g.emit_int128_preamble()
 	g.writeln('struct sync__Channel;')
 	g.writeln('typedef struct sync__Channel* chan;')
 	g.writeln('#ifndef true')
@@ -21778,6 +21822,30 @@ fn (mut g FlatGen) builtin_abi_decls() {
 	g.writeln('static inline string v3_i64_zpad(i64 n, int width) { return v3_string_zpad(i64__str(n), width); }')
 	g.writeln('static inline string v3_u64_zpad(u64 n, int width) { return v3_string_zpad(u64__str(n), width); }')
 	g.writeln("static inline string v3_string_rpad_zero(string s, int width) { if (s.len >= width) return s; u8* out = malloc_noscan((ptrdiff_t)width + 1); memcpy(out, s.str, (size_t)s.len); memset(out + s.len, '0', (size_t)(width - s.len)); out[width] = 0; return (string){.str = out, .len = width, .is_lit = 0}; }")
+	// The 128-bit printers only exist when the program uses those types, so the map
+	// printer reaches for the preamble's decimal helpers instead, and only when one
+	// of those types shows up in an expression.
+	mut has_wide_integer := false
+	for i in 0 .. g.tc.expr_type_values.len {
+		if i < g.tc.expr_type_set.len && g.tc.expr_type_set[i] {
+			if _ := int128_signedness(g.tc.expr_type_values[i]) {
+				has_wide_integer = true
+				break
+			}
+		}
+	}
+	if has_wide_integer {
+		// The helper hands back a shared buffer, so the text is copied out. Two map
+		// values in one row would otherwise both point at the second one's digits.
+		g.writeln('static inline string v3_wide_int_dec(void* p, int is_signed) {')
+		g.writeln('	const char* s = is_signed ? __v_i128_str(*(i128*)p) : __v_u128_str(*(u128*)p);')
+		g.writeln('	int n = (int)strlen(s);')
+		g.writeln('	u8* out = malloc_noscan((ptrdiff_t)(n + 1));')
+		g.writeln('	memcpy(out, s, (size_t)n);')
+		g.writeln('	out[n] = 0;')
+		g.writeln('	return (string){.str = (char*)out, .len = n, .is_lit = 0};')
+		g.writeln('}')
+	}
 	g.writeln('static inline i64 v3_map_signed(void* p, int bytes) { if (bytes == 1) return *(signed char*)p; if (bytes == 2) return *(short*)p; if (bytes == 8) return *(long long*)p; return *(int*)p; }')
 	g.writeln('static inline u64 v3_map_unsigned(void* p, int bytes) { if (bytes == 1) return *(unsigned char*)p; if (bytes == 2) return *(unsigned short*)p; if (bytes == 8) return *(unsigned long long*)p; return *(unsigned int*)p; }')
 	g.writeln('static inline string v3_f32_array_str(float* vals, int n) { string out = v3_c_lit("[", 1); for (int i = 0; i < n; ++i) { if (i > 0) out = string__plus(out, v3_c_lit(", ", 2)); out = string__plus(out, f64__str((double)vals[i])); } return string__plus(out, v3_c_lit("]", 1)); }')
@@ -21791,8 +21859,12 @@ fn (mut g FlatGen) builtin_abi_decls() {
 	g.writeln('\tif (kind == 6) { if (fixed_len == 0 && bytes == (int)sizeof(Array)) { Array a = *(Array*)p; if (a.element_size == (int)sizeof(float)) return v3_f32_array_str((float*)a.data, a.len); if (a.element_size == (int)sizeof(double)) return v3_f64_array_str((double*)a.data, a.len); } if (fixed_len > 0 && bytes == fixed_len * (int)sizeof(float)) return v3_f32_array_str((float*)p, fixed_len); int n = fixed_len > 0 ? fixed_len : bytes / (int)sizeof(double); return v3_f64_array_str((double*)p, n); }')
 	g.writeln('\tif (kind == 8) { return f64__str((double)*(float*)p); }')
 	g.writeln('\tif (kind == 9) { int n = fixed_len > 0 ? fixed_len : bytes / (int)sizeof(float); return v3_f32_array_str((float*)p, n); }')
-	g.writeln('\tif (kind == 7) { return *(bool*)p ? v3_c_lit("true", 4) : v3_c_lit("false", 5); }')
-	g.writeln('\treturn v3_c_lit("<map value>", 11);')
+	g.writeln('	if (kind == 7) { return *(bool*)p ? v3_c_lit("true", 4) : v3_c_lit("false", 5); }')
+	if has_wide_integer {
+		g.writeln('	if (kind == 10) { return v3_wide_int_dec(p, 0); }')
+		g.writeln('	if (kind == 11) { return v3_wide_int_dec(p, 1); }')
+	}
+	g.writeln('	return v3_c_lit("<map value>", 11);')
 	g.writeln('}')
 	g.writeln('static inline string v3_map_str(map m, int key_kind, int val_kind, int val_fixed_len) {')
 	g.writeln('\tstring out = v3_c_lit("{", 1); bool first = true;')
@@ -25240,6 +25312,7 @@ fn unsigned_shift_parts(ct string) (string, string) {
 		'i16', 'u16' { 'u16', '16' }
 		'int', 'i32', 'u32' { 'u32', '32' }
 		'i64', 'u64' { 'u64', '64' }
+		'i128', 'u128' { 'u128', '128' }
 		'isize', 'usize', 'ptrdiff_t', 'size_t' { 'size_t', '(sizeof(size_t) * 8)' }
 		else { 'u64', '64' }
 	}
@@ -25278,9 +25351,25 @@ fn (mut g FlatGen) gen_guarded_shift_from_text(lhs_text string, rhs_id flat.Node
 	}
 	lhs_tmp := g.tmp_name()
 	rhs_tmp := g.tmp_name()
-	g.write('({ ${lhs_type_name} ${lhs_tmp} = (${lhs_type_name})(${lhs_text}); u64 ${rhs_tmp} = (u64)(')
+	g.write('({ ${lhs_type_name} ${lhs_tmp} = (${lhs_type_name})(${lhs_text}); u64 ${rhs_tmp} = ')
+	g.gen_shift_count_value(rhs_id)
+	g.write('; ${rhs_tmp} >= ${bits} ? (${result_type})0 : (${result_type})(${lhs_tmp} ${op_text} ${rhs_tmp}); })')
+}
+
+// gen_shift_count_value writes a shift count as a u64. A 128-bit count is read
+// through the helpers: the struct representation has no C cast to a u64, and its
+// upper half has to count, because a count past 64 bits is past every width and
+// the guard around this value turns it into a zero result.
+fn (mut g FlatGen) gen_shift_count_value(rhs_id flat.NodeId) {
+	if int128_signedness(g.usable_expr_type(rhs_id)) != none {
+		g.write('__v_u128_shift_count(')
+		g.gen_expr(rhs_id)
+		g.write(')')
+		return
+	}
+	g.write('(u64)(')
 	g.gen_expr(rhs_id)
-	g.write('); ${rhs_tmp} >= ${bits} ? (${result_type})0 : (${result_type})(${lhs_tmp} ${op_text} ${rhs_tmp}); })')
+	g.write(')')
 }
 
 fn fixed_integer_c_type_width(c_type string) ?int {

@@ -9117,6 +9117,11 @@ fn (mut g FlatGen) gen_assign(node flat.Node) {
 						}
 					}
 				}
+				if g.gen_int128_compound_assign(node.op, g.a.child(&node, i), rhs_id, lhs_type, rhs_type) {
+					g.expected_enum = ''
+					i += 2
+					continue
+				}
 				if node.op == .power_assign {
 					lhs_assign_id := g.a.child(&node, i)
 					if g.a.nodes[int(lhs_assign_id)].kind == .ident {

@@ -2670,6 +2670,11 @@ fn (mut g FlatGen) interface_implicit_str_expr(typ types.Type, expr string, quot
 			if name in ['u8', 'byte', 'u16', 'u32', 'u64'] {
 				return 'u64__str((u64)(${expr}))'
 			}
+			if name in ['u128', 'i128'] {
+				// The 128-bit types have no `(u)64` spelling that can carry them, so
+				// they render through their own str method.
+				return '${name}__str((${name})(${expr}))'
+			}
 			return none
 		}
 		types.Pointer {
