@@ -13105,11 +13105,15 @@ fn (tc &TypeChecker) mut_receiver_call_requires_mutable_lvalue(info CallInfo, re
 	if tc.expr_root_is_global_binding(recv_id) {
 		return false
 	}
-	method_module := tc.fn_type_modules[info.name] or { '' }
+	return tc.mut_receiver_method_requires_mutable_lvalue(info.name)
+}
+
+fn (tc &TypeChecker) mut_receiver_method_requires_mutable_lvalue(method_name string) bool {
+	method_module := tc.fn_type_modules[method_name] or { '' }
 	if method_module.len > 0 && method_module != tc.cur_module {
 		// Match V's private-mutability rule: an immutable binding is accepted across a
 		// module boundary only when the method cannot mutate caller-visible state.
-		decl := tc.visible_mutation_fn_decl(info.name, method_module) or { return true }
+		decl := tc.visible_mutation_fn_decl(method_name, method_module) or { return true }
 		cache_id := visible_mutation_cache_id(decl, 0)
 		if cached := tc.cached_visible_mutation_result(cache_id) {
 			return cached

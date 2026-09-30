@@ -82,6 +82,7 @@ declared return types when checking the final value. Private alias methods remai
 accessible only within their declaring module, following ordinary method visibility rules.
 Alias conversions also follow type visibility. These checks apply during `-check` and compilation.
 Alias methods follow the same visibility and return type rules through pointer receivers.
+Mutable alias methods also require a receiver eligible under ordinary V mutability rules.
 
 ## Usage
 > [!NOTE]

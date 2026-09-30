@@ -10808,12 +10808,46 @@ fn (mut tc TypeChecker) check_sql_alias_method_privacy(id flat.NodeId, node flat
 		method := tc.concrete_method_signature_key(unwrap_all_pointers(receiver).name(), tokens[i]) or {
 			continue
 		}
-		if method.all_before_last('.') !in tc.type_aliases
-			|| tc.private_declaration(method) == none {
+		if method.all_before_last('.') !in tc.type_aliases {
 			continue
 		}
-		name := '${receiver.name()}.${tokens[i]}'
-		tc.record_sql_error_at(.unknown_fn, 'method `${name}` is private', id,
+		if tc.private_declaration(method) != none {
+			name := '${receiver.name()}.${tokens[i]}'
+			tc.record_sql_error_at(.unknown_fn, 'method `${name}` is private', id,
+				tc.sql_expr_text_pos(node, '.${tokens[i]}(', 1, tokens[i].len))
+			continue
+		}
+		if !tc.mut_receiver_methods[method] {
+			continue
+		}
+		end := i - 1
+		start := sql_value_receiver_start(tokens, end - 1) or { continue }
+		if shared_name := tc.sql_orm_shared_receiver_name(tokens, start, end) {
+			if tc.current_shared_lock_mode(shared_name) != `w` {
+				message := if tc.current_shared_lock_mode(shared_name) == `r` {
+					'${shared_name} has an `rlock` but needs a `lock`'
+				} else {
+					'${shared_name} is `shared` and must be `lock`ed to be passed as `mut`'
+				}
+				tc.record_sql_error_at(.call_arg_mismatch, message, id,
+					tc.sql_expr_text_pos(node, '.${tokens[i]}(', 1, tokens[i].len))
+			}
+			continue
+		}
+		if tc.unsafe_depth > 0
+			|| tc.expr_is_inside_unsafe_block(id)
+			|| !tc.mut_receiver_method_requires_mutable_lvalue(method) {
+			continue
+		}
+		if tc.sql_orm_mut_receiver_is_mutable(tokens, start, end, receiver) {
+			continue
+		}
+		message := if end == start + 1 && sql_like_identifier(tokens[start]) {
+			'`${tokens[start]}` is immutable, declare it with `mut` to make it mutable'
+		} else {
+			'cannot pass expression as `mut`'
+		}
+		tc.record_sql_error_at(.call_arg_mismatch, message, id,
 			tc.sql_expr_text_pos(node, '.${tokens[i]}(', 1, tokens[i].len))
 	}
 }
@@ -10821,6 +10855,10 @@ fn (mut tc TypeChecker) check_sql_alias_method_privacy(id flat.NodeId, node flat
 fn (tc &TypeChecker) sql_orm_call_receiver_type(tokens []string, name_idx int) ?Type {
 	end := name_idx - 1
 	start := sql_value_receiver_start(tokens, end - 1) or { return none }
+	return tc.sql_orm_receiver_type(tokens, start, end)
+}
+
+fn (tc &TypeChecker) sql_orm_receiver_type(tokens []string, start int, end int) ?Type {
 	if receiver := tc.sql_orm_value_type(tokens, start, end) {
 		return receiver
 	}
@@ -10831,6 +10869,119 @@ fn (tc &TypeChecker) sql_orm_call_receiver_type(tokens []string, name_idx int) ?
 			ret_type := tc.sql_orm_source_call_return_type(tokens, i) or { return none }
 			return tc.sql_orm_receiver_result_type(tokens[..end], i + 1, ret_type)
 		}
+	}
+	return none
+}
+
+// SQL receiver tokens have no expression AST. Follow the supported call/member/index
+// chain using the same pointer-storage and binding rules as ordinary mut receivers.
+fn (tc &TypeChecker) sql_orm_mut_receiver_is_mutable(tokens []string, start int, end int, typ Type) bool {
+	if start >= end {
+		return false
+	}
+	if tokens[start] == '(' {
+		close_idx := sql_value_close_idx(tokens, start, '(', ')') or { return false }
+		if close_idx == end - 1 {
+			return tc.sql_orm_mut_receiver_is_mutable(tokens, start + 1, close_idx, typ)
+		}
+	}
+	if tokens[end - 1] == '}' {
+		open_idx := sql_value_open_idx(tokens, end - 1, '{', '}') or { return false }
+		if open_idx > start && tokens[open_idx - 1] == 'or' {
+			source_type := tc.sql_orm_receiver_type(tokens, start, open_idx - 1) or {
+				return false
+			}
+			return tc.sql_orm_mut_receiver_is_mutable(tokens, start, open_idx - 1,
+				source_type)
+		}
+	}
+	if tokens[end - 1] == ')' {
+		open_idx := sql_value_open_idx(tokens, end - 1, '(', ')') or { return false }
+		if open_idx > start && tc.sql_orm_alias_conversion_type(tokens, open_idx - 1) != none {
+			return false
+		}
+		return tc.type_is_pointer_receiver(typ)
+	}
+	if tc.type_is_pointer_receiver(typ) {
+		return true
+	}
+	if end == start + 1 && sql_like_identifier(tokens[start]) {
+		return tc.ident_is_global_binding(tokens[start])
+			|| tc.ident_is_mutable_lvalue(tokens[start])
+	}
+	base_end := if tokens[end - 1] == ']' {
+		sql_value_open_idx(tokens, end - 1, '[', ']') or { return false }
+	} else if end >= start + 3 && tokens[end - 2] == '.' {
+		end - 2
+	} else {
+		return false
+	}
+	base_type := tc.sql_orm_receiver_type(tokens, start, base_end) or { return false }
+	return tc.sql_orm_mut_receiver_is_mutable(tokens, start, base_end, base_type)
+}
+
+// Shared storage needs its own write-lock check before pointer or module exceptions.
+// Calls produce separate storage; grouping and fallbacks retain the original receiver.
+fn (tc &TypeChecker) sql_orm_shared_receiver_name(tokens []string, start int, end int) ?string {
+	if start >= end {
+		return none
+	}
+	if tokens[start] == '(' {
+		close_idx := sql_value_close_idx(tokens, start, '(', ')') or { return none }
+		if close_idx == end - 1 {
+			return tc.sql_orm_shared_receiver_name(tokens, start + 1, close_idx)
+		}
+	}
+	if tokens[end - 1] == '}' {
+		open_idx := sql_value_open_idx(tokens, end - 1, '{', '}') or { return none }
+		if open_idx > start && tokens[open_idx - 1] == 'or' {
+			return tc.sql_orm_shared_receiver_name(tokens, start, open_idx - 1)
+		}
+	}
+	if end == start + 1 && tc.current_binding_is_shared(tokens[start]) {
+		return tokens[start]
+	}
+	base_end := if tokens[end - 1] == ']' {
+		sql_value_open_idx(tokens, end - 1, '[', ']') or { return none }
+	} else if end >= start + 3 && tokens[end - 2] == '.' {
+		end - 2
+	} else {
+		return none
+	}
+	if tokens[end - 2] == '.' {
+		base_type := tc.sql_orm_receiver_type(tokens, start, base_end) or { return none }
+		clean := unalias_and_unwrap_pointer_type(base_type)
+		if clean is Struct && tc.struct_field_is_shared(clean.name, tokens[end - 1]) {
+			return sql_orm_receiver_storage_key(tokens, start, end) or {
+				tokens[start..end].join('')
+			}
+		}
+	}
+	return tc.sql_orm_shared_receiver_name(tokens, start, base_end)
+}
+
+fn sql_orm_receiver_storage_key(tokens []string, start int, end int) ?string {
+	if start >= end {
+		return none
+	}
+	if end == start + 1 {
+		return tokens[start].trim('\'"')
+	}
+	if tokens[start] == '(' {
+		close_idx := sql_value_close_idx(tokens, start, '(', ')') or { return none }
+		if close_idx == end - 1 {
+			return sql_orm_receiver_storage_key(tokens, start + 1, close_idx)
+		}
+	}
+	if tokens[end - 1] == ']' {
+		open_idx := sql_value_open_idx(tokens, end - 1, '[', ']') or { return none }
+		base := sql_orm_receiver_storage_key(tokens, start, open_idx) or { return none }
+		index := sql_orm_receiver_storage_key(tokens, open_idx + 1, end - 1) or { return none }
+		return '${base}[${index}]'
+	}
+	if end >= start + 3 && tokens[end - 2] == '.' {
+		base := sql_orm_receiver_storage_key(tokens, start, end - 2) or { return none }
+		return '${base}.${tokens[end - 1]}'
 	}
 	return none
 }

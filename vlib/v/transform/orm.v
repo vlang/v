@@ -1766,11 +1766,11 @@ fn (mut t Transformer) sql_transform_value_call(call flat.NodeId) flat.NodeId {
 						return t.make_int_literal(0)
 					}
 					mut receiver_arg := receiver
-					mut receiver_arg_type := receiver_type
+					mut receiver_arg_type := t.normalize_type_alias(receiver_type)
 					params := t.call_param_types(method)
 					if params.len > 0 {
-						receiver_depth, _ := pointer_type_depth_and_base(receiver_type)
-						param_depth, _ := pointer_type_depth_and_base(t.semantic_type_name(params[0]))
+						receiver_depth, _ := pointer_type_depth_and_base(receiver_arg_type)
+						param_depth, _ := pointer_type_depth_and_base(t.normalize_type_alias(t.semantic_type_name(params[0])))
 						// Ordinary receiver conversion handles the final value/reference layer.
 						// Remove any extra indirections first, retaining reference parameters.
 						remaining_depth := if param_depth > 0 { param_depth } else { 1 }
