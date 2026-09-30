@@ -7197,12 +7197,12 @@ fn (t &Transformer) escape_subtree_may_need_scan(id flat.NodeId) bool {
 		name := t.tc.resolved_call_name(id) or { return true }
 		params := t.tc.fn_param_types[name] or { return true }
 		for param_idx, param in params {
-			if escape_type_is_pointer(param) {
+			if escape_type_is_pointer(fixed_array_reference_param_payload(param)) {
 				return true
 			}
 			if param_idx == params.len - 1 && param is types.Array
 				&& t.call_is_variadic_for_node(name, node)
-				&& escape_type_is_pointer(param.elem_type) {
+				&& escape_type_is_pointer(fixed_array_reference_param_payload(param.elem_type)) {
 				return true
 			}
 		}
@@ -8924,6 +8924,20 @@ fn escape_type_is_pointer(typ types.Type) bool {
 	return false
 }
 
+// fixed_array_reference_param_payload exposes references passed inside option/result wrappers.
+fn fixed_array_reference_param_payload(typ types.Type) types.Type {
+	if typ is types.Alias {
+		return fixed_array_reference_param_payload(typ.base_type)
+	}
+	if typ is types.OptionType {
+		return fixed_array_reference_param_payload(typ.base_type)
+	}
+	if typ is types.ResultType {
+		return fixed_array_reference_param_payload(typ.base_type)
+	}
+	return typ
+}
+
 fn escape_return_type_consumes_pointer_value(typ types.Type) bool {
 	if typ is types.Alias {
 		return escape_return_type_consumes_pointer_value(typ.base_type)
@@ -9125,7 +9139,7 @@ fn (mut t Transformer) mark_fixed_array_reference_argument_escapes(call_id flat.
 }
 
 fn (mut t Transformer) mark_fixed_array_reference_argument_escape(arg_id flat.NodeId, param_type types.Type, amp_ptrs map[string]bool, amp_sources map[string][]string, ptr_aliases map[string]string, local_stack_names map[string]bool) {
-	if !escape_type_is_pointer(param_type) {
+	if !escape_type_is_pointer(fixed_array_reference_param_payload(param_type)) {
 		return
 	}
 	mut value_id := arg_id

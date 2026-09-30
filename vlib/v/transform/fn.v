@@ -3829,7 +3829,24 @@ fn (mut t Transformer) transform_call_arg_for_param_isolated(arg_id flat.NodeId,
 	if arg_node.kind == .array_literal && arg_node.typ.len == 0 && param_type.starts_with('[]') {
 		t.set_node_typ(int(arg_id), param_type)
 	}
-	array_ref_type := t.normalize_type_alias(param_type)
+	resolved_param_type := t.comptime_normalize_type_alias_chain(param_type)
+	if t.is_optional_type_name(resolved_param_type) {
+		payload_type := t.optional_base_type(resolved_param_type)
+		mut payload_ref_type := t.comptime_normalize_type_alias_chain(payload_type)
+		for t.is_optional_type_name(payload_ref_type) {
+			payload_ref_type = t.comptime_normalize_type_alias_chain(t.optional_base_type(payload_ref_type))
+		}
+		if payload_ref_type.starts_with('&[]')
+			&& t.is_fixed_array_type(t.fixed_array_reference_arg_type(arg_id, payload_ref_type[1..])) {
+			// Create the durable reference before placing it in a successful wrapper.
+			// None and already-wrapped values follow the ordinary optional conversion.
+			value := t.transform_call_arg_for_param(arg_id, payload_type)
+			wrapped := t.make_optional_some(value, resolved_param_type)
+			t.set_node_typ(int(wrapped), param_type)
+			return wrapped
+		}
+	}
+	array_ref_type := resolved_param_type
 	if array_ref_type.starts_with('&[]') {
 		mut_arg := arg_node.is_mut
 		arg_type := t.node_type(arg_id)
@@ -5013,7 +5030,7 @@ fn (mut t Transformer) append_variadic_arg_push(tmp_name string, arg_id flat.Nod
 		t.wrap_sum_value(arg_id, expected_elem)
 	} else if t.resolve_interface_type_name(expected_elem).len > 0 {
 		t.transform_expr_for_type(arg_id, expected_elem)
-	} else if escape_type_is_pointer(elem_type) {
+	} else if escape_type_is_pointer(fixed_array_reference_param_payload(elem_type)) {
 		// Reference elements need the same fixed-array view and address conversions
 		// as an ordinary reference parameter before they are packed into the tail.
 		t.transform_call_arg_for_param(arg_id, expected_elem)
@@ -13356,7 +13373,8 @@ fn (t &Transformer) call_has_mut_fixed_array_args(node flat.Node, params []types
 	for i in 1 .. node.children_count {
 		param_idx := i - 1 + offset
 		param_type := call_argument_param_type(params, param_idx, variadic_idx) or { continue }
-		array_ref_type := t.normalize_type_alias(t.semantic_type_name(param_type))
+		payload_type := fixed_array_reference_param_payload(param_type)
+		array_ref_type := t.comptime_normalize_type_alias_chain(t.semantic_type_name(payload_type))
 		if !array_ref_type.starts_with('&[]') {
 			continue
 		}

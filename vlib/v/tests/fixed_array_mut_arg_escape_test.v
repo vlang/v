@@ -675,3 +675,61 @@ fn test_fixed_array_reference_promotes_same_named_sibling_bindings() {
 		}
 	}
 }
+
+fn retain_optional_fixed_reference(values ?&[]int) ?&[]int {
+	return values
+}
+
+fn retain_optional_aliased_fixed_reference(values ?FixedIntSliceRef) ?FixedIntSliceRef {
+	return values
+}
+
+fn retain_variadic_optional_fixed_reference(index int, values ...?&[]int) ?&[]int {
+	return values[index]
+}
+
+@[noinline]
+fn optional_reference_from_local_fixed(present bool) ?&[]int {
+	if !present {
+		return retain_optional_fixed_reference(none)
+	}
+	values := [91, 92]!
+	return retain_optional_fixed_reference(values)
+}
+
+@[noinline]
+fn optional_aliased_reference_from_local_fixed(present bool) ?FixedIntSliceRef {
+	if !present {
+		return retain_optional_aliased_fixed_reference(none)
+	}
+	values := [101, 102]!
+	return retain_optional_aliased_fixed_reference(values)
+}
+
+@[noinline]
+fn variadic_optional_reference_from_local_fixed(index int) ?&[]int {
+	first := [111, 112]!
+	last := [121, 122]!
+	return retain_variadic_optional_fixed_reference(index, none, first, last)
+}
+
+fn read_retained_optional_fixed_reference(values &[]int) []int {
+	return unsafe { *values }
+}
+
+fn test_optional_fixed_array_reference_keeps_present_payload_alive_and_preserves_none() {
+	assert optional_reference_from_local_fixed(false) == none
+	assert optional_aliased_reference_from_local_fixed(false) == none
+	assert variadic_optional_reference_from_local_fixed(0) == none
+	present := optional_reference_from_local_fixed(true) or { panic('missing fixed reference') }
+	aliased := optional_aliased_reference_from_local_fixed(true) or {
+		panic('missing aliased fixed reference')
+	}
+	first := variadic_optional_reference_from_local_fixed(1) or { panic('missing first reference') }
+	last := variadic_optional_reference_from_local_fixed(2) or { panic('missing last reference') }
+	assert overwrite_stack() == 7
+	assert read_retained_optional_fixed_reference(present) == [91, 92]
+	assert read_retained_optional_fixed_reference(aliased) == [101, 102]
+	assert read_retained_optional_fixed_reference(first) == [111, 112]
+	assert read_retained_optional_fixed_reference(last) == [121, 122]
+}

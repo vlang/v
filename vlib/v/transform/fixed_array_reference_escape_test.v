@@ -258,10 +258,56 @@ fn test_fixed_array_argument_ordering_handles_variadic_tail_and_reference_aliase
 	for param in [
 		types.Type(types.Pointer{ base_type: types.Type(types.Alias{ name: 'Slice', base_type: types.Type(types.Array{ elem_type: types.Type(types.int_) }) }) }),
 		types.Type(types.Alias{ name: 'SliceRef', base_type: array_ref }),
+		types.Type(types.OptionType{ base_type: array_ref }),
+		types.Type(types.ResultType{ base_type: array_ref }),
 	] {
 		aliased_call := t.make_call_typed('keep_alias', [t.make_ident('fixed')], '&[]int')
 		assert t.call_has_mut_fixed_array_args(t.a.nodes[int(aliased_call)], [param], 0, -1)
 	}
+}
+
+fn test_fixed_array_optional_reference_arguments_promote_successful_payload_sources() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	fixed := types.Type(types.ArrayFixed{ elem_type: types.Type(types.int_), len: 2 })
+	array_ref := types.Type(types.Pointer{ base_type: types.Type(types.Array{ elem_type: types.Type(types.int_) }) })
+	ref_alias := types.Type(types.Alias{ name: 'SliceRef', base_type: array_ref })
+	option_ref := types.Type(types.OptionType{ base_type: ref_alias })
+	result_ref := types.Type(types.ResultType{ base_type: ref_alias })
+	mut t := new_transformer(mut a, &tc, map[string]bool{})
+	t.set_var_type('fixed', '[2]int')
+	tc.cur_scope.insert('fixed', fixed)
+	value := t.make_ident('fixed')
+	tc.register_synth_type(value, fixed)
+	for param in [option_ref, result_ref,
+		types.Type(types.Alias{ name: 'MaybeSliceRef', base_type: option_ref }),
+		types.Type(types.Alias{ name: 'ResultSliceRef', base_type: result_ref })] {
+		tc.fn_param_types['retain_optional'] = [param]
+		tc.fn_ret_types['retain_optional'] = param
+		call := t.make_call_typed('retain_optional', [value], '?&[]int')
+		t.set_resolved_call_entry(int(call), 'retain_optional')
+		t.fast_escape_precheck = true
+		t.item_escape_scan_known = true
+		t.item_escape_scan_needed = false
+		t.escaping_fixed_array_view_sources.clear()
+		t.mark_escaping_amp_ptrs([call])
+		assert 'fixed' in t.escaping_fixed_array_view_sources
+		tc.fn_param_types['retain_optional_tail'] = [types.Type(types.Array{ elem_type: param })]
+		tc.fn_ret_types['retain_optional_tail'] = param
+		tc.fn_variadic['retain_optional_tail'] = true
+		tail_call := t.make_call_typed('retain_optional_tail', [value, value], '?&[]int')
+		t.set_resolved_call_entry(int(tail_call), 'retain_optional_tail')
+		t.escaping_fixed_array_view_sources.clear()
+		t.mark_escaping_amp_ptrs([tail_call])
+		assert 'fixed' in t.escaping_fixed_array_view_sources
+	}
+	t.escaping_fixed_array_view_sources.clear()
+	no_value := t.make_optional_none('?&[]int')
+	tc.register_synth_type(no_value, option_ref)
+	no_value_call := t.make_call_typed('retain_optional', [no_value], '?&[]int')
+	t.set_resolved_call_entry(int(no_value_call), 'retain_optional')
+	t.mark_escaping_amp_ptrs([no_value_call])
+	assert t.escaping_fixed_array_view_sources.len == 0
 }
 
 fn test_fixed_array_reference_sum_headers_do_not_own_inline_variant_storage() {
