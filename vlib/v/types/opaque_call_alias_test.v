@@ -179,6 +179,7 @@ fn main() {}
 
 fn test_collapsed_scalar_fields_are_copied_before_a_callback_reference_argument() {
 	tc := check_alias_source('collapsed_scalars', 'struct Item { mut: x int }
+@[params]
 struct Cfg { n int name string }
 fn by_fields(n int, name string, get fn (&Cfg) &Item) {
  mut alias := get(n: n, name: name)
@@ -193,6 +194,7 @@ fn main() {}
 fn test_collapsed_nested_scalar_struct_is_copied_before_a_callback_reference_argument() {
 	tc := check_alias_source('collapsed_nested', 'struct Item { mut: x int }
 struct Value { n int }
+@[params]
 struct Cfg { value Value }
 fn by_fields(value Value, get fn (&Cfg) &Item) {
  mut alias := get(value: value)
@@ -206,6 +208,7 @@ fn main() {}
 
 fn test_collapsed_scalar_fields_after_a_positional_argument_are_copied() {
 	tc := check_alias_source('collapsed_after_positional', 'struct Item { mut: x int }
+@[params]
 struct Cfg { n int }
 fn by_fields(n int, get fn (int, &Cfg) &Item) {
  mut alias := get(n, n: n)
@@ -219,6 +222,7 @@ fn main() {}
 
 fn test_collapsed_pointer_field_still_borrows_its_value() {
 	tc := check_alias_source('collapsed_pointer', 'struct Item { mut: x int }
+@[params]
 struct Cfg { n int item &Item }
 fn by_fields(n int, item &Item, get fn (&Cfg) &Item) {
  mut alias := get(n: n, item: item)
