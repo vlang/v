@@ -77,6 +77,8 @@ containers can be intermediate receivers, but the final value must be a primitiv
 an enum or `time.Time`. For example, `make_holders()[0].name` can bind a string field,
 while `make_holders()[0]` cannot bind the whole struct. Option and Result receivers must
 be unwrapped with an `or` fallback before accessing their members or elements.
+Methods declared on collection aliases, including inherited alias methods, use their
+declared return types when checking the final value.
 
 ## Usage
 > [!NOTE]

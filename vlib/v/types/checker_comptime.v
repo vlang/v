@@ -11375,13 +11375,16 @@ fn (tc &TypeChecker) sql_orm_member_value_type(typ Type, member string) ?Type {
 // is the receiver's element (`make_holders().last()` is `Holder`). Other `voidptr`/generic
 // results stay as they are: rejected as the final value, unresolvable as a receiver.
 fn (tc &TypeChecker) sql_orm_method_call_type(receiver Type, member string) ?Type {
-	// A method declared on an alias (`type Names = []string`) wins over the builtin one.
-	if unwrap_pointer(receiver) is Alias {
-		if method := tc.method_value_type(unwrap_pointer(receiver).name(), member) {
+	// Alias methods, including methods inherited through another alias, win over
+	// builtin collection methods with the same name.
+	mut alias_receiver := unwrap_pointer(receiver)
+	for alias_receiver is Alias {
+		if method := tc.method_value_type(alias_receiver.name(), member) {
 			if method is FnType {
 				return method.return_type
 			}
 		}
+		alias_receiver = unwrap_pointer(alias_receiver.base_type)
 	}
 	// Builtin collection methods are declared on the raw `array`/`map`; like the ordinary
 	// call checker, specialize their results for the concrete receiver.
