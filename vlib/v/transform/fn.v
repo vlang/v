@@ -3431,8 +3431,12 @@ fn (mut t Transformer) builtin_addr_expr(arg_id flat.NodeId, arg_type string) fl
 
 fn (mut t Transformer) transform_implicit_ref_arg(arg_id flat.NodeId, param_type string) ?flat.NodeId {
 	arg_node := t.a.nodes[int(arg_id)]
-	if arg_node.kind == .selector && arg_node.value == 'data' && arg_node.children_count > 0 {
-		base_type := t.trim_all_pointer_type(t.normalize_type_alias(t.node_type(t.a.child(&arg_node, 0))))
+	mut data_node := arg_node
+	for data_node.kind == .paren && data_node.children_count == 1 {
+		data_node = t.a.child_node(&data_node, 0)
+	}
+	if data_node.kind == .selector && data_node.value == 'data' && data_node.children_count > 0 {
+		base_type := t.trim_all_pointer_type(t.normalize_type_alias(t.node_type(t.a.child(&data_node, 0))))
 		if base_type.starts_with('[]') {
 			// A dynamic array's data is already the address of its elements.
 			return t.transform_expr(arg_id)

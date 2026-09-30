@@ -98,6 +98,7 @@ of the `array` itself, getting passed to the C function, and *not* the address o
 elements of the V array.
 
 Passing `a.data` to a V pointer parameter also passes the element buffer directly.
+Parenthesizing the argument, such as `(a.data)`, preserves that behavior.
 This holds when `a` is a pointer to an array or a mutable array parameter.
 
 
