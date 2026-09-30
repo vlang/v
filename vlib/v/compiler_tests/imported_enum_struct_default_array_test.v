@@ -16,3 +16,34 @@ fn test_imported_enum_default_in_fixed_array() {
 	run := os.execute(os.quoted_path(output_path))
 	assert run.exit_code == 0, run.output
 }
+
+fn test_imported_enum_alias_default_in_fixed_array() {
+	root := os.join_path(os.temp_dir(), 'v3_imported_enum_alias_array_${os.getpid()}')
+	dep_dir := os.join_path(root, 'dep')
+	main_path := os.join_path(root, 'main.v')
+	output_path := os.join_path(root, 'program')
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	os.mkdir_all(dep_dir) or { panic(err) }
+	os.write_file(os.join_path(dep_dir, 'dep.v'), 'module dep
+pub enum Kind { first second }
+pub type KindAlias = Kind
+pub struct Item {
+pub mut:
+	kind KindAlias = KindAlias.second
+}
+') or { panic(err) }
+	os.write_file(main_path, 'module main
+import dep
+fn main() {
+	items := [2]dep.Item{}
+	assert items[0].kind == .second
+	assert items[1].kind == .second
+}
+') or { panic(err) }
+	compile := os.execute('${os.quoted_path(@VEXE)} -new-compiler -path "${root}|@vlib|@vmodules" -o ${os.quoted_path(output_path)} ${os.quoted_path(main_path)}')
+	assert compile.exit_code == 0, compile.output
+	run := os.execute(os.quoted_path(output_path))
+	assert run.exit_code == 0, run.output
+}
