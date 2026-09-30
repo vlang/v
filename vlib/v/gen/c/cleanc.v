@@ -1519,8 +1519,16 @@ fn is_type_metadata_node(node &flat.Node, mut cache TypeMetadataTextCache) bool 
 	if cache.may_need_array_typedef(node.typ) {
 		return true
 	}
+	if is_optional_sizeof_node(node) {
+		return true
+	}
 	return node.kind in [.array_init, .array_literal, .cast_expr, .sizeof_expr, .typeof_expr]
 		&& cache.may_need_array_typedef(node.value)
+}
+
+fn is_optional_sizeof_node(node &flat.Node) bool {
+	return node.kind == .sizeof_expr && node.children_count == 0 && node.value.len > 1
+		&& node.value[0] in [`?`, `!`]
 }
 
 fn (g &FlatGen) type_metadata_nodes() []i32 {
