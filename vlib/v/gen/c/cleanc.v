@@ -13820,6 +13820,12 @@ fn (g &FlatGen) context_wants_pointer_to_fn() bool {
 	return false
 }
 
+// context_wants_callable reports whether the expression being generated is
+// consumed as a function value (a field, parameter or variable of a function type).
+fn (g &FlatGen) context_wants_callable() bool {
+	return cgen_unalias_type(g.expected_expr_type) is types.FnType
+}
+
 // gen_expr_with_possible_enum_type emits expr with possible enum type output for c.
 fn (mut g FlatGen) gen_expr_with_possible_enum_type(id flat.NodeId, expected types.Type) {
 	node := g.a.nodes[int(id)]
@@ -16103,10 +16109,12 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 				// - `ref := &f`, read back through `*ref` - needs the address, and
 				// dropping it there leaves the dereference reading code as data.
 				if g.context_wants_pointer_to_fn() {
-					if child.kind in [.index, .selector] {
+					if child.kind in [.index, .selector] || (g.expr_is_in_translated_file(id)
+						&& g.fn_value_operand_has_storage(child)) {
 						// Mutable for-in lowering takes the address of the current array
 						// element. Keep that address tied to the element (or field) so
 						// writes through it update it rather than a heap-copied callback.
+						// In translated C, `&` on a variable is its address, as in V1.
 						g.write('&')
 						gen_expr_lvalue(mut g, child_id)
 						return
@@ -16119,6 +16127,16 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 					g.write('({ ${fn_ct} ${tmp} = ')
 					g.gen_expr(child_id)
 					g.write('; (${fn_ct}*)memdup(&${tmp}, sizeof(${fn_ct})); })')
+					return
+				}
+				// In translated C, where no callable is expected, `&` on a function
+				// variable (a local, parameter, global, field or element) is the
+				// variable's address, as in V1: C translated by c2v stores a callback
+				// through it with `c2v_assign_voidptr(&voidptr(&x), f)`.
+				if g.expr_is_in_translated_file(id) && !g.context_wants_callable()
+					&& g.fn_value_operand_has_storage(child) {
+					g.write('&')
+					gen_expr_lvalue(mut g, child_id)
 					return
 				}
 				g.gen_expr(child_id)

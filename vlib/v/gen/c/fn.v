@@ -14933,6 +14933,19 @@ fn (mut g FlatGen) gen_voidptr_fn_value_arg(arg_id flat.NodeId, arg_node flat.No
 	mut value_id := arg_id
 	mut value_node := arg_node
 	for value_node.children_count > 0 {
+		if value_node.kind == .prefix && value_node.op == .amp {
+			operand_id := g.a.child(&value_node, 0)
+			operand := g.a.nodes[int(operand_id)]
+			// In translated C, `voidptr(&f)` of a function variable is the address of
+			// the variable, as in V1 (C translated by c2v stores `(void*)&finder` and
+			// calls through `**(finder_type*)p`). `&` on a function name is the function.
+			if g.expr_is_in_translated_file(operand_id) && g.fn_value_operand_has_storage(operand)
+				&& g.node_is_fn_value_for_voidptr(operand_id, operand) {
+				g.write('&')
+				gen_expr_lvalue(mut g, operand_id)
+				return true
+			}
+		}
 		if value_node.kind in [.cast_expr, .paren]
 			|| (value_node.kind == .prefix && value_node.op == .amp) {
 			value_id = g.a.child(&value_node, 0)
@@ -14951,6 +14964,31 @@ fn (mut g FlatGen) gen_voidptr_fn_value_arg(arg_id flat.NodeId, arg_node flat.No
 	}
 	g.gen_expr(value_id)
 	return true
+}
+
+// fn_value_operand_has_storage reports whether a function value is read from a
+// variable (a local, parameter or global), a field or an element, whose address
+// differs from the function's, rather than named by a function declaration.
+fn (g &FlatGen) fn_value_operand_has_storage(node flat.Node) bool {
+	match node.kind {
+		.ident {
+			return g.ident_is_local_binding(node.value) || g.global_type_for_ident(node.value) != none
+		}
+		.selector {
+			if node.children_count == 0 {
+				return false
+			}
+			base_type := types.unwrap_pointer(cgen_unalias_type(g.usable_expr_type(g.a.child(&node,
+				0))))
+			return cgen_unalias_type(base_type) is types.Struct
+		}
+		.index {
+			return node.value != 'range'
+		}
+		else {
+			return false
+		}
+	}
 }
 
 fn (g &FlatGen) fn_value_candidate_type(id flat.NodeId, node flat.Node) types.Type {
