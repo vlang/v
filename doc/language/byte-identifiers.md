@@ -14,6 +14,8 @@ FastC uses a separate C function symbol so this name can coexist with its intern
 is `8`, including with the native ARM64 backend.
 The evaluator also uses declared widths and resolves type aliases for `sizeof` value operands,
 without evaluating a constant initializer or function call.
+Fixed arrays use their length multiplied by the element's width, including nested array aliases.
+Values initialized by methods or qualified calls retain the declared return type's width.
 
 Generated documentation highlights `byte` as an ordinary identifier or function name,
 while `u8` retains builtin type highlighting. Byte method documentation belongs to `u8`.

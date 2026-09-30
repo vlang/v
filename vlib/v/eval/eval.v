@@ -862,7 +862,12 @@ fn (e &Eval) lookup_var(name string) MaybeValue {
 }
 
 fn (e &Eval) lookup_var_type(name string) ?string {
-	for i := e.scopes.len - 1; i >= 0; i-- {
+	scope_start := if e.call_stack.len > 0 && e.call_stack[e.call_stack.len - 1].scope_idx >= 0 {
+		e.call_stack[e.call_stack.len - 1].scope_idx
+	} else {
+		0
+	}
+	for i := e.scopes.len - 1; i >= scope_start; i-- {
 		if name in e.scopes[i].types {
 			return e.scopes[i].types[name]
 		}
@@ -1584,12 +1589,7 @@ fn (e &Eval) infer_expr_type_name(id flat.NodeId) string {
 		}
 		.call {
 			if node.children_count > 0 {
-				callee := e.node(e.child(node, 0))
-				if callee.kind == .ident {
-					if target := e.function_def(e.current_module_name(), callee.value) {
-						return e.qualify_nested_type_name(target.module_name, e.node(target.node).typ)
-					}
-				}
+				return e.infer_call_return_type_name(e.child(node, 0), true)
 			}
 		}
 		.selector {
@@ -1627,6 +1627,72 @@ fn (e &Eval) infer_expr_type_name(id flat.NodeId) string {
 		else {}
 	}
 
+	return ''
+}
+
+fn (e &Eval) infer_call_return_type_name(callee_id flat.NodeId, allow_locals bool) string {
+	callee := e.node(callee_id)
+	if callee.kind == .ident {
+		if allow_locals {
+			scope_start := if e.call_stack.len > 0 {
+				e.call_stack[e.call_stack.len - 1].scope_idx
+			} else {
+				0
+			}
+			for i := e.scopes.len - 1; i >= 0 && i >= scope_start; i-- {
+				if value := e.scopes[i].vars[callee.value] {
+					if value is FnValue {
+						return e.qualify_nested_type_name(value.module_name, e.node(value.node).typ)
+					}
+					return ''
+				}
+			}
+		}
+		if target := e.function_def(e.current_module_name(), callee.value) {
+			return e.qualify_nested_type_name(target.module_name, e.node(target.node).typ)
+		}
+	}
+	if callee.kind == .selector && callee.children_count > 0 {
+		receiver_id := e.child(callee, 0)
+		receiver := e.node(receiver_id)
+		if type_name := e.type_value_name_from_expr(receiver_id) {
+			static_name := flat.encode_static_type_method_name(type_name.all_after_last('.'),
+				callee.value)
+			module_name := e.type_value_module_name(TypeValue{ name: type_name })
+			if target := e.function_def(module_name, static_name) {
+				return e.qualify_nested_type_name(target.module_name, e.node(target.node).typ)
+			}
+		}
+		if receiver.kind == .ident && (!allow_locals || !e.lookup_var(receiver.value).found) {
+			module_name := e.resolve_module_name(receiver.value)
+			if target := e.function_def(module_name, callee.value) {
+				return e.qualify_nested_type_name(target.module_name, e.node(target.node).typ)
+			}
+		}
+		mut receiver_type := if !allow_locals && receiver.kind == .ident {
+			module_name := e.current_module_name()
+			e.global_types[module_name][receiver.value] or { '' }
+		} else if !allow_locals && receiver.kind == .call && receiver.children_count > 0 {
+			e.infer_call_return_type_name(e.child(receiver, 0), false)
+		} else {
+			e.infer_expr_type_name(receiver_id)
+		}
+		mut seen := map[string]bool{}
+		for receiver_type.len > 0 && receiver_type !in seen {
+			seen[receiver_type] = true
+			if target := e.resolve_method_target(receiver_type, callee.value) {
+				return e.qualify_nested_type_name(target.module_name, e.node(target.node).typ)
+			}
+			if alias := e.type_alias_info_in_module(receiver_type, e.current_module_name()) {
+				receiver_type = e.qualify_nested_type_name(alias.module_name, alias.target.trim_left('&'))
+			} else {
+				break
+			}
+		}
+	}
+	if callee.kind == .fn_literal {
+		return e.qualify_nested_type_name(e.current_module_name(), callee.typ)
+	}
 	return ''
 }
 
@@ -5656,6 +5722,16 @@ fn (e &Eval) qualify_nested_type_name(module_name string, type_name string) stri
 	if name.starts_with('[]') {
 		return '[]${e.qualify_nested_type_name(module_name, name[2..])}'
 	}
+	if is_fixed_array_type_name(name) {
+		elem := e.qualify_nested_type_name(module_name, fixed_array_elem_type_name(name))
+		raw_len := fixed_array_len_text(name)
+		len := if module_name in e.consts && raw_len in e.consts[module_name] {
+			'${module_name}.${raw_len}'
+		} else {
+			raw_len
+		}
+		return if name.starts_with('[') { '[${len}]${elem}' } else { '${elem}[${len}]' }
+	}
 	if name.starts_with('map[') {
 		key_type, value_type := split_map_type(name)
 		return 'map[${e.qualify_nested_type_name(module_name, key_type)}]${e.qualify_nested_type_name(module_name, value_type)}'
@@ -6046,6 +6122,9 @@ fn (e &Eval) infer_sizeof_operand_type_name(id flat.NodeId, seen []flat.NodeId, 
 	if from_const && node.kind == .ident && node.typ.len == 0 {
 		return e.sizeof_const_type_name(node.value, seen) or { '' }
 	}
+	if from_const && node.kind == .call && node.typ.len == 0 && node.children_count > 0 {
+		return e.infer_call_return_type_name(e.child(node, 0), false)
+	}
 	typ := e.infer_expr_type_name(id)
 	if typ.len > 0 {
 		return typ
@@ -6077,26 +6156,115 @@ fn (e &Eval) sizeof_const_type_name(name string, seen []flat.NodeId) ?string {
 }
 
 fn (e &Eval) sizeof_type_name(name string) i64 {
-	mut target := name
-	mut module_name := e.current_module_name()
-	mut seen := map[string]bool{}
-	for !target.starts_with('&') {
-		if target in seen {
-			break
-		}
-		seen[target] = true
-		if alias := e.type_alias_info_in_module(target, module_name) {
-			target = alias.target
-			module_name = alias.module_name
-		} else {
-			break
-		}
+	return e.sizeof_type_name_in_module(name, e.current_module_name(), [])
+}
+
+fn (e &Eval) sizeof_type_name_in_module(name string, module_name string, seen []string) i64 {
+	key := '${module_name}:${name}'
+	if name.starts_with('&') || key in seen {
+		return 8
 	}
-	return match target {
+	mut visited := seen.clone()
+	visited << key
+	if alias := e.type_alias_info_in_module(name, module_name) {
+		return e.sizeof_type_name_in_module(alias.target, alias.module_name, visited)
+	}
+	if is_fixed_array_type_name(name) {
+		if len := e.sizeof_fixed_array_len(fixed_array_len_text(name), module_name, []) {
+			if len >= 0 {
+				return len * e.sizeof_type_name_in_module(fixed_array_elem_type_name(name),
+					module_name, visited)
+			}
+		}
+		return 8
+	}
+	return match name {
 		'bool', 'i8', 'u8', 'char' { i64(1) }
 		'i16', 'u16' { i64(2) }
 		'int', 'i32', 'u32', 'rune', 'f32' { i64(4) }
 		else { i64(8) }
+	}
+}
+
+fn (e &Eval) sizeof_fixed_array_len(text string, module_name string, seen []flat.NodeId) ?i64 {
+	if len := fixed_array_len_literal(text) {
+		return i64(len)
+	}
+	mut constant_name := text
+	mut constant_module := module_name
+	if text.contains('.') {
+		qualified := e.resolve_import_alias_type_name(text)
+		constant_module = qualified.all_before_last('.')
+		constant_name = qualified.all_after_last('.')
+	}
+	if constant_module in e.consts && constant_name in e.consts[constant_module] {
+		entry := e.consts[constant_module][constant_name]
+		if entry.node in seen {
+			return none
+		}
+		node := e.node(entry.node)
+		if node.children_count > 0 {
+			mut visited := seen.clone()
+			visited << entry.node
+			return e.sizeof_integer_expr(e.child(node, 0), constant_module, visited)
+		}
+	}
+	return none
+}
+
+fn (e &Eval) sizeof_integer_expr(id flat.NodeId, module_name string, seen []flat.NodeId) ?i64 {
+	node := e.node(id)
+	match node.kind {
+		.int_literal {
+			return strconv.parse_int(clean_number_literal(node.value), 0, 64) or { return none }
+		}
+		.ident {
+			return e.sizeof_fixed_array_len(node.value, module_name, seen)
+		}
+		.cast_expr, .as_expr {
+			return e.sizeof_integer_expr(e.child(node, 0), module_name, seen)
+		}
+		.prefix {
+			value := e.sizeof_integer_expr(e.child(node, 0), module_name, seen) or { return none }
+			return match node.op {
+				.plus { value }
+				.minus { -value }
+				.bit_not { ~value }
+				else { return none }
+			}
+		}
+		.infix {
+			left := e.sizeof_integer_expr(e.child(node, 0), module_name, seen) or { return none }
+			right := e.sizeof_integer_expr(e.child(node, 1), module_name, seen) or { return none }
+			if node.op in [.div, .mod] && right == 0 {
+				return none
+			}
+			return match node.op {
+				.plus { left + right }
+				.minus { left - right }
+				.mul { left * right }
+				.div { left / right }
+				.mod { left % right }
+				.amp { left & right }
+				.pipe { left | right }
+				.xor { left ^ right }
+				.left_shift, .right_shift, .right_shift_unsigned {
+					if right < 0 || right >= 64 {
+						return none
+					}
+					match node.op {
+						.left_shift { left << right }
+						.right_shift { left >> right }
+						else { i64(u64(left) >>> right) }
+					}
+				}
+				.power { eval_integer_power(left, right) }
+				else { return none }
+			}
+		}
+		else {
+			return none
+		}
 	}
 }
 
