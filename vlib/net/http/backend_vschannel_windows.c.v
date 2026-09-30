@@ -21,7 +21,12 @@ fn C.vschannel_alpn_supported() int
 
 // vschannel_request_on_open mirrors C.request (declared in builtin/cfns.c.v) but
 // runs over an already-open connection. See thirdparty/vschannel/vschannel.c.
-fn C.vschannel_request_on_open(&C.TlsContext, &u8, u32, &&char, fn (voidptr, isize) voidptr) i32
+fn C.vschannel_request_on_open(&C.TlsContext, &u8, u32, &&char, fn (voidptr, i64) voidptr) i32
+
+// Match the void-pointer allocator callback expected by SChannel.
+fn vschannel_realloc(buffer voidptr, new_size i64) voidptr {
+	return unsafe { v_realloc(&u8(buffer), isize(new_size)) }
+}
 
 fn vschannel_ssl_do(req &Request, port int, method Method, host_name string, path string, data string, header Header) !Response {
 	// When HTTP/2 is enabled (the default for https), advertise ALPN `h2` and,
@@ -49,7 +54,7 @@ fn vschannel_h1_do(req &Request, port int, method Method, host_name string, path
 	$if trace_http_request ? {
 		eprintln('> ${sdata}')
 	}
-	length := C.request(&ctx, port, addr.to_wide(), sdata.str, sdata.len, &buff, v_realloc)
+	length := C.request(&ctx, port, addr.to_wide(), sdata.str, sdata.len, &buff, vschannel_realloc)
 	err_code := C.vschannel_last_error(&ctx)
 	C.vschannel_cleanup(&ctx)
 	return req.vschannel_finish_response(unsafe { &u8(buff) }, length, err_code)!
@@ -64,7 +69,7 @@ fn (req &Request) vschannel_h1_on_open(ctx &C.TlsContext, method Method, host_na
 	$if trace_http_request ? {
 		eprintln('> ${sdata}')
 	}
-	length := C.vschannel_request_on_open(ctx, sdata.str, sdata.len, &buff, v_realloc)
+	length := C.vschannel_request_on_open(ctx, sdata.str, sdata.len, &buff, vschannel_realloc)
 	err_code := C.vschannel_last_error(ctx)
 	C.vschannel_cleanup(ctx)
 	return req.vschannel_finish_response(unsafe { &u8(buff) }, length, err_code)!
