@@ -90,3 +90,16 @@ fn test_resolved_ancestor_import_still_rejects_self_import() {
 	assert result.exit_code != 0, result.output
 	assert result.output.contains('cannot import `identity_project.layers` into a module with the same name'), result.output
 }
+
+fn test_module_main_test_can_import_the_module_of_its_directory() {
+	root := os.join_path(os.vtmp_dir(), 'v3_main_test_import_identity_${os.getpid()}')
+	source := os.join_path(root, 'mymod', 'mymod.v')
+	test_file := os.join_path(root, 'mymod', 'mymod_test.v')
+	os.mkdir_all(os.dir(source))!
+	defer { os.rmdir_all(root) or {} }
+	os.write_file(source, 'module mymod\npub fn value() int { return 42 }\n')!
+	os.write_file(test_file, 'module main\nimport mymod\nfn test_value() { assert mymod.value() == 42 }\n')!
+	search_path := '${root}|@vlib|@vmodules'
+	result := os.execute('${os.quoted_path(@VEXE)} -path ${os.quoted_path(search_path)} -check ${os.quoted_path(test_file)}')
+	assert result.exit_code == 0, result.output
+}

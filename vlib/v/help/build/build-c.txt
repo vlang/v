@@ -68,6 +68,20 @@ see also `v help build`.
       Turn on additional C warnings. This slows down compilation
       slightly (~10% for gcc), but sometimes provides better error diagnosis.
 
+   -race
+      Enable the data race detector, like `go build -race`. The program is
+      compiled with ThreadSanitizer (`-fsanitize=thread`; clang when it is
+      installed, since gcc misses races on struct values), and reports every
+      data race it runs into with the V file:line stacks of both accesses.
+      A program that reported races exits with status 66.
+      Race builds do not use a garbage collector (like `-gc none`) nor
+      `-prealloc`, and are slower and use more memory. `$if race ? {}` is
+      true in them; `-d race` without `-race` is an error.
+      The VRACE environment variable passes options to the detector, like
+      GORACE does for Go, e.g. `VRACE="halt_on_error=1 log_path=/tmp/race"`.
+      Supported on linux (amd64, arm64, ppc64le, s390x, loongarch64, riscv64),
+      macos (amd64, arm64), freebsd/amd64 and netbsd/amd64.
+
    -cmain <MainFunctionName>
       Useful with framework like code, that uses macros to re-define `main`,
       like SDL2 does for example.

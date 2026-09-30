@@ -134,6 +134,11 @@ fn main() {
 	if '-new-compiler' in args {
 		os.setenv(v3_no_fallback_env, '1', true)
 	}
+	if race_build_requested(args) {
+		// The compatibility compiler has no race detector. A failed race build must
+		// report its own error instead of silently retrying without instrumentation.
+		os.setenv(v3_no_fallback_env, '1', true)
+	}
 	if '-new-compiler' !in args && v3_fixture_requires_compatibility_compiler(args) {
 		launch_v1(clean_compiler_selection_flags(args), 'legacy diagnostic fixture', RetryState{})
 	}
@@ -163,6 +168,47 @@ fn main() {
 		launch_ownership_compiler(args)
 	}
 	run_with_fallback(args, args)
+}
+
+// race_build_requested reports whether `-race` is one of the compiler options, and not an
+// argument of the program that `v run` starts. Like the driver, it reads compiler options
+// after the input too, except when the input is run: then they belong to the program.
+fn race_build_requested(args []string) bool {
+	mut option_value_follows := false
+	mut runs_input := false
+	mut input_seen := false
+	for i, arg in args {
+		if option_value_follows {
+			option_value_follows = false
+			continue
+		}
+		if arg == '-race' {
+			return true
+		}
+		if arg in ['-prof', '-profile'] {
+			option_value_follows = v1_fallback_profile_option_consumes_value(args, i)
+			continue
+		}
+		if arg == '-cf' || pref.option_may_consume_value(arg) {
+			option_value_follows = true
+			continue
+		}
+		if arg.starts_with('-') {
+			continue
+		}
+		if !input_seen && arg in ['run', 'crun'] {
+			runs_input = true
+			continue
+		}
+		if !input_seen && arg in ['build', 'test'] {
+			continue
+		}
+		if runs_input || arg.ends_with('.vsh') {
+			return false
+		}
+		input_seen = true
+	}
+	return false
 }
 
 fn ownership_checker_is_compiled() bool {
@@ -467,7 +513,7 @@ fn external_tool_args_without_target(args []string) []string {
 			skip_target_value = true
 			continue
 		}
-		if arg in ['-cross'] || arg.starts_with('-os=') || arg.starts_with('-arch=') {
+		if arg == '-cross' || arg.starts_with('-os=') || arg.starts_with('-arch=') {
 			continue
 		}
 		result << arg

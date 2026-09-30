@@ -8322,6 +8322,17 @@ fn (t &Transformer) generic_arg_for_call_and_decl_module(arg string, call_module
 		&& (call_module in ['', 'main'] || t.current_specialization_has_generic_arg(arg)) {
 		return arg
 	}
+	if t.current_specialization_has_generic_arg(arg) {
+		base, args, is_generic := generic_provenance_app_parts(arg)
+		if is_generic && !arg.starts_with('map[') {
+			mut scoped_args := []string{cap: args.len}
+			for nested_arg in args {
+				scoped_args << t.generic_arg_for_call_and_decl_module(nested_arg, call_module, decl_module)
+			}
+			scoped_base := t.generic_arg_for_call_and_decl_module(base, call_module, decl_module)
+			return '${scoped_base}[${scoped_args.join(', ')}]'
+		}
+	}
 	// A bare program (main) type alias that collides by short name with a type in the
 	// callee module (e.g. a user `RawHtml` alias against `veb.RawHtml`) must be kept as the
 	// caller's own type: rebasing it into the callee module would merge the two into one
@@ -8360,6 +8371,23 @@ fn (t &Transformer) current_specialization_has_generic_arg(arg string) bool {
 			return true
 		}
 	}
+	// Nested inference can retain containers around a concrete caller type.
+	for component in generic_type_container_components(clean) {
+		if t.current_specialization_has_generic_arg(component) {
+			return true
+		}
+	}
+	base, nested_args, is_generic_app := generic_provenance_app_parts(clean)
+	if is_generic_app {
+		if t.current_specialization_has_generic_arg(base) {
+			return true
+		}
+		for nested_arg in nested_args {
+			if t.current_specialization_has_generic_arg(nested_arg) {
+				return true
+			}
+		}
+	}
 	receiver := t.current_fn_receiver_type()
 	if receiver.len == 0 {
 		return false
@@ -8376,6 +8404,44 @@ fn (t &Transformer) current_specialization_has_generic_arg(arg string) bool {
 		}
 	}
 	return false
+}
+
+fn generic_type_container_components(typ string) []string {
+	clean := typ.trim_space()
+	for prefix in ['mut ', 'shared ', 'atomic ', '...', '[]', '?', '!', '&', 'chan ', 'thread '] {
+		if clean.starts_with(prefix) {
+			return [clean[prefix.len..].trim_space()]
+		}
+	}
+	if clean.starts_with('map[') {
+		end := generic_matching_bracket(clean, 3)
+		if end > 3 && end + 1 < clean.len {
+			return [clean[4..end].trim_space(), clean[end + 1..].trim_space()]
+		}
+	} else if clean.starts_with('[') {
+		end := generic_matching_bracket(clean, 0)
+		if end > 0 && end + 1 < clean.len {
+			return [clean[end + 1..].trim_space()]
+		}
+	} else if clean.starts_with('(') && clean.ends_with(')') && clean.contains(',') {
+		return split_generic_args(clean[1..clean.len - 1])
+	} else if clean.starts_with('fn(') || clean.starts_with('fn (') {
+		if params, ret := fn_type_text_parts(clean) {
+			mut components := params.clone()
+			components << ret
+			return components
+		}
+	}
+	return []string{}
+}
+
+fn generic_provenance_app_parts(typ string) (string, []string, bool) {
+	// A bracket inside an option, map or function belongs to that container;
+	// it does not make the entire spelling a named generic application.
+	if generic_type_container_components(typ).len > 0 {
+		return '', []string{}, false
+	}
+	return generic_app_parts(typ)
 }
 
 fn (mut t Transformer) specialization_main_type_closure(args []string) map[string]bool {
@@ -8464,24 +8530,10 @@ fn (t &Transformer) collect_specialization_main_types(typ string, mut types_in_s
 	if clean.starts_with('main.') && !t.ident_is_import_alias('main') {
 		clean = clean['main.'.len..]
 	}
-	for prefix in ['mut ', 'shared ', 'atomic ', '...', '[]', '?', '!', '&', 'chan '] {
-		if clean.starts_with(prefix) {
-			t.collect_specialization_main_types(clean[prefix.len..], mut types_in_scope, mut seen)
-			return
-		}
-	}
-	if clean.starts_with('map[') {
-		end := generic_matching_bracket(clean, 3)
-		if end > 3 && end + 1 < clean.len {
-			t.collect_specialization_main_types(clean[4..end], mut types_in_scope, mut seen)
-			t.collect_specialization_main_types(clean[end + 1..], mut types_in_scope, mut seen)
-		}
-		return
-	}
-	if clean.starts_with('[') && !clean.starts_with('[]') {
-		end := generic_matching_bracket(clean, 0)
-		if end > 0 && end + 1 < clean.len {
-			t.collect_specialization_main_types(clean[end + 1..], mut types_in_scope, mut seen)
+	components := generic_type_container_components(clean)
+	if components.len > 0 {
+		for component in components {
+			t.collect_specialization_main_types(component, mut types_in_scope, mut seen)
 		}
 		return
 	}
@@ -8537,6 +8589,17 @@ fn (t &Transformer) generic_arg_for_decl_module(arg string, module_name string) 
 	if t.substituted_type_belongs_to_main_generic(arg)
 		&& t.current_specialization_has_generic_arg(arg) {
 		return arg
+	}
+	if t.current_specialization_has_generic_arg(arg) {
+		base, args, is_generic := generic_provenance_app_parts(arg)
+		if is_generic && !arg.starts_with('map[') {
+			mut scoped_args := []string{cap: args.len}
+			for nested_arg in args {
+				scoped_args << t.generic_arg_for_decl_module(nested_arg, module_name)
+			}
+			scoped_base := t.generic_arg_for_decl_module(base, module_name)
+			return '${scoped_base}[${scoped_args.join(', ')}]'
+		}
 	}
 	if t.generic_type_text_contains_alias(arg, module_name) {
 		return t.qualify_generic_arg_for_decl_module(arg, module_name)
@@ -9243,6 +9306,23 @@ fn (t &Transformer) generic_inference_alias_target(typ string, module_name strin
 	clean := typ.trim_space()
 	if clean.len == 0 {
 		return clean
+	}
+	// Specialization keys use bare main types. Keep their caller provenance when
+	// inferring a nested call instead of resolving a homonym in the callee module.
+	if t.substituted_type_belongs_to_main_generic(clean)
+		&& t.current_specialization_has_generic_arg(clean) {
+		return clean
+	}
+	if t.current_specialization_has_generic_arg(clean) {
+		base, args, is_generic := generic_provenance_app_parts(clean)
+		if is_generic && !clean.starts_with('map[') {
+			mut scoped_args := []string{cap: args.len}
+			for nested_arg in args {
+				scoped_args << t.generic_inference_alias_target(nested_arg, module_name)
+			}
+			scoped_base := t.generic_inference_alias_target(base, module_name)
+			return '${scoped_base}[${scoped_args.join(', ')}]'
+		}
 	}
 	if target := t.direct_generic_inference_alias_target(clean, module_name) {
 		return target
@@ -10519,6 +10599,15 @@ fn (mut t Transformer) clone_generic_node_from(node flat.Node, args []string, is
 	t.substitute_cloned_generic_call_type_args(node, mut children, args)
 	if t.cloning_comptime_for_depth > 0 {
 		// Inside a `$for` body: clone verbatim, no generic-call retargeting.
+		mut comptime_value := t.subst_node_value(node, args)
+		// Lock a colliding caller type like the regular clone below: `T(v)` in a
+		// `$for v in T.variants` body of json2 must keep a main `Any` distinct from
+		// `json2.Any`.
+		if node.kind in [.array_init, .map_init, .cast_expr, .as_expr]
+			&& t.subst_type(node.value, args) != node.value {
+			comptime_value = t.lock_colliding_main_substitution_type_text(node.value,
+				comptime_value, t.cur_module, t.active_generic_params)
+		}
 		start2 := t.a.children.len
 		for child in children {
 			t.a.children << child
@@ -10530,7 +10619,7 @@ fn (mut t Transformer) clone_generic_node_from(node flat.Node, args []string, is
 			children_start: start2
 			children_count: flat.child_count(children.len)
 			typ:            cloned_typ
-			value:          t.subst_node_value(node, args)
+			value:          comptime_value
 			is_mut:         node.is_mut
 			flags:          flat.clone_node_flags(node, false)
 		})
@@ -13268,12 +13357,16 @@ fn (t &Transformer) type_short_name_has_non_main_owner(name string) bool {
 
 fn (t &Transformer) substituted_type_belongs_to_main_generic(typ string) bool {
 	clean := typ.trim_space()
-	for prefix in ['mut ', 'shared ', 'atomic ', '...', '[]', '?', '!', '&'] {
-		if clean.starts_with(prefix) {
-			return t.substituted_type_belongs_to_main_generic(clean[prefix.len..])
+	components := generic_type_container_components(clean)
+	if components.len > 0 {
+		for component in components {
+			if t.substituted_type_belongs_to_main_generic(component) {
+				return true
+			}
 		}
+		return false
 	}
-	base, _, ok := generic_app_parts(clean)
+	base, args, ok := generic_app_parts(clean)
 	local_base := if ok { base } else { clean }
 	if !isnil(t.tc) && !local_base.contains('.') && t.cur_module.len > 0
 		&& t.cur_module !in ['main', 'builtin'] && !t.active_specialization_main_types[local_base] {
@@ -13285,6 +13378,14 @@ fn (t &Transformer) substituted_type_belongs_to_main_generic(typ string) bool {
 			// specialization argument. In particular, an alias target such as
 			// `a.Inner[T]` must not be rebound to a colliding `main.Inner[T]`.
 			return false
+		}
+	}
+	if ok && base.contains('.') {
+		for arg in args {
+			if t.substituted_type_belongs_to_main_generic(arg)
+				&& t.current_specialization_has_generic_arg(arg) {
+				return true
+			}
 		}
 	}
 	if !clean.contains('.') && (clean in t.structs || clean in t.sum_types || clean in t.enum_types) {
@@ -14027,7 +14128,9 @@ fn (t &Transformer) canonical_generic_specialization_arg(arg string) string {
 			return t.canonical_generic_specialization_arg(source)
 		}
 	}
-	if t.substituted_type_belongs_to_main_generic(clean)
+	// Leading bracket forms still need length normalization or recovery of a
+	// materialized generic application such as `[string]Box`.
+	if !clean.starts_with('[') && t.substituted_type_belongs_to_main_generic(clean)
 		&& t.current_specialization_has_generic_arg(clean) {
 		return clean
 	}

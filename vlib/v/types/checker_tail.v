@@ -4189,6 +4189,28 @@ fn (mut tc TypeChecker) check_call(id flat.NodeId, node flat.Node) {
 				tc.check_builtin_array_mutable_receiver(receiver_id)
 			}
 		}
+		if callee.kind == .selector && callee.value == 'wait' && callee.children_count > 0 {
+			// Only thread handles and arrays of them have `.wait()`. On any other
+			// array the call resolves silently, so report it here like V1 does.
+			receiver_id := tc.a.child(callee, 0)
+			raw_receiver_type := tc.resolve_type(receiver_id)
+			receiver_type := unalias_and_unwrap_pointer_type(raw_receiver_type)
+			receiver_name := receiver_type.name()
+			if !unresolved_generic_receiver_type(receiver_type) && receiver_type is Array
+				&& !tc.alias_declares_method(raw_receiver_type, 'wait') {
+				elem := unalias_type(array_elem_type(receiver_type))
+				is_thread_elem := elem is Struct && tc.thread_wait_return_type(elem) != none
+				if elem !is Unknown && !is_thread_elem {
+					tc.record_error(.unknown_fn,
+						'`${receiver_name}` has no method `wait()` (only thread handles and arrays of them have)',
+						receiver_id)
+					tc.register_synth_type(id, Type(MultiReturn{
+						types: []Type{}
+					}))
+					return
+				}
+			}
+		}
 		if callee.kind == .selector && callee.value == 'sort' && callee.children_count > 0 {
 			receiver_id := tc.a.child(callee, 0)
 			receiver_type := unalias_and_unwrap_pointer_type(tc.resolve_type(receiver_id))
@@ -19722,7 +19744,9 @@ fn (tc &TypeChecker) is_known_call(node flat.Node) bool {
 			if fn_node.value == 'hex' {
 				return tc.is_builtin_hex_receiver(base_type)
 			}
-			return true
+			// The builtin map methods; any other name is an unknown method, as in V1.
+			return fn_node.value in ['clone', 'move', 'delete', 'clear', 'free', 'keys', 'values',
+				'reserve', 'str']
 		}
 		if clean_type is String {
 			if fn_node.value == 'hex' {
@@ -19804,6 +19828,20 @@ fn (tc &TypeChecker) is_known_array_receiver_method(receiver Type, method string
 			}
 		}
 		return method == 'pointers'
+	}
+	return false
+}
+
+// alias_declares_method reports whether any alias in the chain of `typ` (for
+// `type MyArr = []int`, `MyArr`) declares its own `method`, which takes priority
+// over the builtin methods of the aliased type.
+fn (tc &TypeChecker) alias_declares_method(typ Type, method string) bool {
+	mut current := unwrap_pointer(typ)
+	for current is Alias {
+		if '${current.name}.${method}' in tc.fn_ret_types {
+			return true
+		}
+		current = unwrap_pointer(current.base_type)
 	}
 	return false
 }
@@ -19964,7 +20002,7 @@ fn (mut tc TypeChecker) check_if_expr(id flat.NodeId, node flat.Node) {
 		if tc.valid_node_id(else_id) && tc.a.node(else_id).kind == .if_expr {
 			tc.fn_context.mut_local_owners = saved_mut_local_owners.clone()
 		}
-		tc.check_branch_node(else_id, value_context)
+		tc.check_if_else_branch(cond_id, else_id, value_context)
 		$if ownership ? {
 			tc.ownership_end_branch(else_id)
 		}
@@ -20110,6 +20148,49 @@ fn (mut tc TypeChecker) check_if_expr(id flat.NodeId, node flat.Node) {
 	}
 }
 
+// check_if_else_branch checks the `else` branch `else_id` of an `if`. After an
+// `if x := call() {` guard, a plain `else` block names the error of the call
+// `err`, as an `or {}` block does; an `else if` does not.
+fn (mut tc TypeChecker) check_if_else_branch(cond_id flat.NodeId, else_id flat.NodeId, value_context bool) {
+	names_err := tc.valid_node_id(cond_id) && tc.a.node(cond_id).kind == .decl_assign
+		&& tc.valid_node_id(else_id) && tc.a.node(else_id).kind != .if_expr
+	if names_err {
+		tc.push_scope()
+		if tc.has_ierror_interface() {
+			tc.cur_scope.insert('err', tc.parse_type('IError'))
+		}
+	}
+	tc.check_branch_node(else_id, value_context)
+	if names_err {
+		tc.pop_scope()
+	}
+}
+
+// err_block_holds reports whether the identifier `id` is in a block that names
+// the error it handles `err`: an `or {}` block, or the plain `else` block right
+// after an `if x := call() {` guard. It follows the tree rather than the scopes,
+// for the checks that keep no scope for such a block.
+fn (tc &TypeChecker) err_block_holds(id flat.NodeId) bool {
+	mut child := id
+	mut parent := tc.direct_parent_id(child)
+	for tc.valid_node_id(parent) {
+		node := tc.a.node(parent)
+		if node.kind in [.fn_decl, .fn_literal, .lambda_expr, .file] {
+			return false
+		}
+		if node.kind == .or_expr && node.children_count > 1 && tc.a.child(node, 1) == child {
+			return true
+		}
+		if node.kind == .if_expr && node.children_count > 2 && tc.a.child(node, 2) == child
+			&& tc.a.node(child).kind != .if_expr && tc.a.child_node(node, 0).kind == .decl_assign {
+			return true
+		}
+		child = parent
+		parent = tc.direct_parent_id(child)
+	}
+	return false
+}
+
 // check_valid_if_expr preserves scopes, guard bindings, smartcasts, and branch
 // expression typing without rebuilding diagnostics for the valid self-host input.
 fn (mut tc TypeChecker) check_valid_if_expr(id flat.NodeId, node flat.Node) {
@@ -20162,7 +20243,7 @@ fn (mut tc TypeChecker) check_valid_if_expr(id flat.NodeId, node flat.Node) {
 		if tc.valid_node_id(else_id) && tc.a.node(else_id).kind == .if_expr {
 			tc.fn_context.mut_local_owners = saved_mut_local_owners.clone()
 		}
-		tc.check_branch_node(else_id, value_context)
+		tc.check_if_else_branch(cond_id, else_id, value_context)
 		if value_context {
 			tc.branch_tail_type(else_id)
 		}

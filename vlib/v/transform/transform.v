@@ -8963,6 +8963,12 @@ fn (mut t Transformer) mark_spawn_argument_address_escapes(spawn_node flat.Node,
 	}
 	for i in 1 .. call.children_count {
 		arg_id := t.a.child(&call, i)
+		arg := t.a.nodes[int(arg_id)]
+		if arg.kind == .ident && arg.is_mut && arg.value in local_stack_names {
+			// `spawn f(mut x)` passes the address of `x` just like `spawn f(&x)` below.
+			t.escaping_amp_sources[arg.value] = true
+			continue
+		}
 		for source in t.escape_aggregate_address_sources(arg_id, amp_sources, ptr_aliases) {
 			if source in local_stack_names {
 				// The spawned thread can outlive this frame. Move the original local
@@ -12828,6 +12834,12 @@ fn (mut t Transformer) lower_discarded_closure_value(id flat.NodeId) ?[]flat.Nod
 		return none
 	}
 
+	// The closure is destroyed right away, so a pointer-receiver method value can borrow
+	// its receiver, like the non-escaping local closures do, instead of copying it.
+	// A method value of an interface still copies the interface value.
+	if !t.method_value_base_is_interface(id) {
+		t.mark_local_method_value_receiver_borrows_in_expr(id)
+	}
 	mut result := []flat.NodeId{}
 	t.drain_pending(mut result)
 	closure_value := t.transform_expr_for_type(id, fn_type)
@@ -12837,6 +12849,17 @@ fn (mut t Transformer) lower_discarded_closure_value(id flat.NodeId) ?[]flat.Nod
 	result << t.make_decl_assign_typed(closure_name, closure_value, fn_type)
 	result << t.make_local_closure_destroy_stmt(closure_name)
 	return result
+}
+
+fn (t &Transformer) method_value_base_is_interface(id flat.NodeId) bool {
+	if int(id) < 0 || int(id) >= t.a.nodes.len {
+		return false
+	}
+	node := t.a.nodes[int(id)]
+	if node.kind != .selector || node.children_count == 0 {
+		return false
+	}
+	return t.is_interface_type(t.checker_node_type(t.a.child(&node, 0)))
 }
 
 fn (t &Transformer) discarded_closure_value_is_exclusive(id flat.NodeId) bool {
@@ -21043,6 +21066,9 @@ fn (mut t Transformer) transform_selector_expr(id flat.NodeId, node flat.Node) f
 	if node.value in t.sum_variant_fields {
 		return id
 	}
+	if static_fn := t.static_fn_value_name(id, node) {
+		return t.lower_static_fn_value(id, node, static_fn)
+	}
 	base_id0 := t.a.child(&node, 0)
 	if node.value == 'typ' && t.selector_base_is_comptime_type_value(base_id0) {
 		if base_type := t.comptime_type_expr_type(base_id0) {
@@ -23222,6 +23248,13 @@ fn (mut t Transformer) transform_typeof_expr_mode(id flat.NodeId, node flat.Node
 		}
 	}
 	if typ.len == 0 {
+		// An arithmetic expression that mixes a 128-bit type with a narrower one is
+		// recorded under the narrower operand's type, so `typeof` would name `u64`
+		// for a value that is 128 bits wide. The promotion goes to the wider operand,
+		// and the operands still carry their own types here.
+		typ = t.wide_method_receiver_type(expr_id)
+	}
+	if typ.len == 0 {
 		typ = t.node_type(expr_id)
 	}
 	if typ.len == 0 {
@@ -23671,6 +23704,13 @@ fn (t &Transformer) typeof_type_name(node flat.Node) string {
 				typ = typ.trim_string_left('&')
 			}
 		}
+	}
+	if typ.len == 0 {
+		// An arithmetic expression that mixes a 128-bit type with a narrower one is
+		// recorded under the narrower operand's type, so `typeof` would name `u64`
+		// for a value that is 128 bits wide. The promotion always goes to the wider
+		// operand, and the operands still carry their own types here.
+		typ = t.stringify_wide_integer_operand(expr_id)
 	}
 	if typ.len == 0 {
 		typ = t.node_type(expr_id)
@@ -25806,7 +25846,7 @@ fn is_numeric_type_name(name string) bool {
 fn is_integer_type_name(name string) bool {
 	return name == 'int' || name == 'i8' || name == 'i16' || name == 'i64' || name == 'u8'
 		|| name == 'u16' || name == 'u32' || name == 'u64' || name == 'isize'
-		|| name == 'usize' || name == 'rune'
+		|| name == 'usize' || name == 'rune' || name == 'i128' || name == 'u128'
 }
 
 fn is_float_type_name(name string) bool {

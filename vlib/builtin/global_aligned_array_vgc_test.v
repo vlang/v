@@ -1,4 +1,5 @@
 // vtest vflags: -gc vgc
+// vtest build: !race?
 @[has_globals]
 module builtin
 

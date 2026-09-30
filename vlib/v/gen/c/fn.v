@@ -1967,6 +1967,13 @@ fn (g &FlatGen) selector_base_module(name string) ?string {
 	if mod := g.tc.imports[name] {
 		return mod
 	}
+	// A file can qualify a symbol with the name of its own module (`m.f` written inside
+	// `m`). No import statement records that, so without this check the qualified name
+	// reaches the C output verbatim and the C compiler reports the module name itself as
+	// an undeclared identifier.
+	if g.tc != unsafe { nil } && name == g.tc.cur_module {
+		return g.tc.cur_module
+	}
 	return none
 }
 
@@ -5207,6 +5214,7 @@ fn (mut g FlatGen) gen_fn_in_module(node_id flat.NodeId, node flat.Node, module_
 	// already resolves that through fn_decl_attributes's source-position
 	// fallback -- reusing its result keeps this check exactly as accurate.
 	mut is_naked_fn := false
+	g.write_fn_line_directive(node)
 	if is_entry_main {
 		force_main_console := g.tc.declaration_has_attribute(node_id, 'console')
 		g.writeln(g.c_main_declaration(force_main_console))
@@ -5292,6 +5300,7 @@ fn (mut g FlatGen) gen_fn_in_module(node_id flat.NodeId, node flat.Node, module_
 	g.indent--
 	g.writeln('}')
 	g.writeln('')
+	g.end_fn_line_directives()
 	if should_print_fn {
 		println(g.sb.after(fn_start_pos))
 	}
@@ -5592,6 +5601,7 @@ fn (mut g FlatGen) gen_top_level_main(stmts []TopLevelStmt) {
 	g.tc.cur_module = 'main'
 	old_fn_name := g.cur_fn_name
 	g.cur_fn_name = 'main'
+	g.line_directive_fn_start = 0
 	g.loop_depth = 0
 	g.loop_label_depths = map[string]int{}
 	g.map_loop_copyback_guards = []MapLoopCopybackGuard{}
@@ -5688,6 +5698,7 @@ fn (mut g FlatGen) gen_top_level_main(stmts []TopLevelStmt) {
 	g.indent--
 	g.writeln('}')
 	g.writeln('')
+	g.end_fn_line_directives()
 	if 'main' in g.print_fn_names || 'main__main' in g.print_fn_names {
 		println(g.sb.after(fn_start_pos))
 	}
@@ -9647,7 +9658,7 @@ fn (g &FlatGen) interface_receiver_needs_address(base_id flat.NodeId, base_type 
 }
 
 fn (mut g FlatGen) gen_interface_method_call(node flat.Node, fn_node flat.Node, base_type types.Type) bool {
-	clean0 := types.unwrap_pointer(base_type)
+	clean0 := types.unwrap_all_pointers(base_type)
 	mut clean := clean0
 	if clean0 is types.Alias {
 		clean = clean0.base_type
@@ -9674,16 +9685,26 @@ fn (mut g FlatGen) gen_interface_method_call(node flat.Node, fn_node flat.Node, 
 	base_id := g.a.child(fn_node, 0)
 	g.write(g.cname(method_name))
 	g.write('(')
-	needs_address := g.interface_receiver_needs_address(base_id, base_type)
-	wrap_rvalue := needs_address && !g.expr_is_addressable(base_id)
-	if wrap_rvalue {
-		g.write('&((${g.value_c_type(base_type)}[]){')
-	} else if needs_address {
-		g.write('&')
-	}
-	g.gen_expr(base_id)
-	if wrap_rvalue {
-		g.write('})[0]')
+	pointer_depth := cgen_type_pointer_depth(base_type)
+	if pointer_depth > 1 {
+		// A `for mut item in []&Iface` variable is stored as `Iface**`, while the
+		// dispatcher takes the `Iface*` that the array element holds.
+		g.write('*'.repeat(pointer_depth - 1))
+		g.write('(')
+		g.gen_expr(base_id)
+		g.write(')')
+	} else {
+		needs_address := g.interface_receiver_needs_address(base_id, base_type)
+		wrap_rvalue := needs_address && !g.expr_is_addressable(base_id)
+		if wrap_rvalue {
+			g.write('&((${g.value_c_type(base_type)}[]){')
+		} else if needs_address {
+			g.write('&')
+		}
+		g.gen_expr(base_id)
+		if wrap_rvalue {
+			g.write('})[0]')
+		}
 	}
 	mut emitted_arg_count := 0
 	for i in 1 .. node.children_count {
@@ -14181,6 +14202,48 @@ fn (g &FlatGen) type_is_reftype(typ types.Type, mut seen map[string]bool) bool {
 	return false
 }
 
+// gen_mut_param_value_call_arg emits a `mut` parameter that a call passes by
+// value. In V a `mut` parameter read by value is one dereference deep: the value
+// is `*name`, not the address of its parameter slot. The plain expression path
+// handles this through the expected type, but a call whose parameter types are
+// not registered (notably a `C.` function) has no expected type, so the argument
+// would otherwise be emitted as the slot itself and the callee would read an
+// unrelated value. `expected` is the callee's parameter type, or `void` when it
+// is unknown. Returns false when the argument is not such a case.
+fn (mut g FlatGen) gen_mut_param_value_call_arg(arg_id flat.NodeId, arg_node flat.Node, expected types.Type) bool {
+	if arg_node.kind != .ident || arg_node.is_mut || !g.current_param_is_mut(arg_node.value) {
+		return false
+	}
+	if g.current_mut_param_binding_is_shadowed(arg_node.value) {
+		return false
+	}
+	// Only a mutable parameter whose own value is a pointer is one dereference deep:
+	// passing it by value means passing `*name`. For every other mutable parameter the
+	// C variable already holds the address of the caller's storage, so a callee that
+	// asks for a pointer wants the slot itself, not `*name`.
+	param_type := g.current_param_type(arg_node.value) or { return false }
+	if param_type is types.Pointer {
+		if !c_type_is_pointer_like(param_type.base_type) {
+			return false
+		}
+	} else {
+		return false
+	}
+	// A callee that asks for the slot's own type takes the parameter by implicit
+	// reference (e.g. `h.clear()` with `fn (mut h Handle) clear()` and
+	// `type Handle = voidptr`), so the slot must be forwarded unchanged.
+	if expected !is types.Void && g.tc.c_type(expected) == g.tc.c_type(param_type) {
+		return false
+	}
+	g.write('*')
+	if g.current_param_is_mut_pointer(arg_node.value) {
+		g.gen_mut_pointer_slot_expr(arg_id)
+	} else {
+		g.gen_expr(arg_id)
+	}
+	return true
+}
+
 // gen_call_args emits call args output for c.
 fn (mut g FlatGen) gen_call_args(fn_name string, node flat.Node, start int) {
 	callee_name := if node.children_count > 0 {
@@ -14253,6 +14316,16 @@ fn (mut g FlatGen) gen_call_args(fn_name string, node flat.Node, start int) {
 		}
 		if i > start {
 			g.write(', ')
+		}
+		if !arg_node.is_mut && arg_node.kind == .ident {
+			if arg_idx >= param_types.len {
+				if g.gen_mut_param_value_call_arg(arg_id, arg_node, types.void_) {
+					continue
+				}
+			} else if c_type_is_pointer_like(param_types[arg_idx])
+				&& g.gen_mut_param_value_call_arg(arg_id, arg_node, param_types[arg_idx]) {
+				continue
+			}
 		}
 		if arg_node.kind == .field_init && variadic_idx >= 0 && arg_idx == variadic_idx {
 			variadic_type := param_types[variadic_idx]

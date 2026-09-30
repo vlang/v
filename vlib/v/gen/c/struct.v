@@ -5808,6 +5808,10 @@ fn map_integer_callback_size_suffix(key_type types.Type, c_key string, pointer_b
 	if c_key in ['i64', 'u64', 'f64', 'double'] || c_key.starts_with('arc__Arc_') {
 		return '8'
 	}
+	if c_key in ['i128', 'u128'] {
+		// A 128-bit key needs callbacks that use all sixteen bytes.
+		return '16'
+	}
 	return '4'
 }
 
@@ -6743,40 +6747,52 @@ fn (g &FlatGen) header_c_struct_needs_compat_typedef(name string) bool {
 	return false
 }
 
-fn cocoa_nsfont_framework_include(arg string) bool {
-	clean := arg.trim_space()
-	if clean.len < 3 || !((clean[0] == `<` && clean[clean.len - 1] == `>`)
-		|| (clean[0] == `"` && clean[clean.len - 1] == `"`)) {
-		return false
-	}
-	path := clean[1..clean.len - 1]
-	return path in ['Cocoa/Cocoa.h', 'AppKit/AppKit.h', 'AppKit/NSFont.h']
-}
-
+// cocoa_nsfont_class reports the `C.NSFont` binding of a macOS program that includes AppKit.
+// NSFont is an Objective-C class there, which a C struct or typedef of the same name would
+// conflict with. Only the program's own directives decide this: V does not read C headers.
 fn (g &FlatGen) cocoa_nsfont_class(name string) bool {
-	if name != 'C.NSFont' || (g.target.os != 'macos' && !g.output_cross_c) {
+	if name != 'C.NSFont' || (g.target.os != 'macos' && !g.output_cross_c)
+		|| name !in g.struct_decl_infos {
 		return false
 	}
-	if name !in g.struct_decl_infos {
-		return false
-	}
-	mut directives := []string{}
-	for preinclude in g.preinclude_directives {
-		directives << preinclude
-	}
+	mut directives := g.preinclude_directives.clone()
 	directives << g.ordered_c_directives(false)
+	// Portable output keeps the macOS branch even when generated on another host.
 	target := if g.output_cross_c {
 		pref.target_from('macos', g.target.arch) or { g.target }
 	} else {
 		g.target
 	}
-	native_language := if isnil(g.a) {
-		'c'
-	} else {
-		cache_native_inputs_language(g.a, g.compiler_vroot, g.c_flags, g.c99_mode, g.ccompiler, target)
+	mut context := []string{}
+	mut in_block_comment := false
+	for directive in directives {
+		for line in c_join_continued_lines(directive) {
+			clean, next_in_block_comment := c_preprocessor_directive_scan_line(line, in_block_comment)
+			in_block_comment = next_in_block_comment
+			if cocoa_nsfont_framework_include_line(clean)
+				&& !c_native_source_context_definitely_inactive(context, g.c_flags, g.c99_mode, target, false) {
+				return true
+			}
+			context << clean
+		}
 	}
-	return c_header_text_has_cocoa_nsfont_include_for_target(directives.join('\n'), g.c_flags,
-		g.c99_mode, target, g.compiler_vroot, g.struct_decl_infos[name].file, native_language, g.ccompiler)
+	return false
+}
+
+fn cocoa_nsfont_framework_include_line(line string) bool {
+	clean := line.trim_space()
+	if !clean.starts_with('#') {
+		return false
+	}
+	directive := clean[1..].trim_space()
+	arg := if directive.starts_with('include') {
+		directive['include'.len..]
+	} else if directive.starts_with('import') {
+		directive['import'.len..]
+	} else {
+		return false
+	}
+	return arg.trim_space() in ['<Cocoa/Cocoa.h>', '<AppKit/AppKit.h>', '<AppKit/NSFont.h>']
 }
 
 fn (g &FlatGen) soa_companion_name(struct_name string) string {

@@ -1997,6 +1997,10 @@ fn (mut tc TypeChecker) check_match_condition_type(subject_type Type, cond_id fl
 		return
 	}
 	if cond.kind == .enum_val && clean_subject is Enum {
+		enum_name := tc.resolve_enum_name(clean_subject.name) or { clean_subject.name }
+		if !tc.enum_value_matches(cond.value, enum_name) {
+			tc.record_error_at(.unknown_field, 'unknown enum field `${cond.value.all_after_last('.')}` for `${enum_name}`', cond_id, cond.pos)
+		}
 		return
 	}
 	clean_condition := unalias_type(condition_type)
@@ -6262,6 +6266,21 @@ fn (mut tc TypeChecker) check_selector(id flat.NodeId, node flat.Node) {
 		tc.register_synth_type(id, typ)
 		return
 	}
+	// `Color.nope`: the enum is a namespace below, which accepts any member, so a
+	// value the enum does not declare would otherwise pass unnoticed.
+	if base.kind == .ident && base.value.len > 0 && base.value[0].is_capital() {
+		if enum_name := tc.resolve_enum_name(base.value) {
+			if !tc.enum_has_field(enum_name, node.value)
+				&& !tc.enum_member_is_callable(enum_name, base.value, node.value) {
+				tc.record_error_at(.unknown_field, 'unknown enum field `${node.value}` for `${enum_name}`', id, tc.node_value_diagnostic_pos(id))
+				tc.register_synth_type(id, Type(Enum{
+					name:    enum_name
+					is_flag: enum_name in tc.flag_enums
+				}))
+				return
+			}
+		}
+	}
 	if base.kind == .prefix && base.op == .amp && base.children_count > 0 {
 		addressed := tc.a.child_node(&base, 0)
 		if addressed.kind == .struct_init {
@@ -7515,8 +7534,8 @@ fn (tc &TypeChecker) fixed_array_slice_is_view(id flat.NodeId) bool {
 	if outer.kind == .selector && outer.value in ['sort', 'sort_with_compare', 'reverse_in_place'] {
 		return true
 	}
-	if outer.kind == .call && outer.children_count > 1 && tc.a.child(&outer, 1) == current {
-		callee := tc.a.child_node(&outer, 0)
+	if outer.kind == .call && outer.children_count > 1 && tc.a.child(outer, 1) == current {
+		callee := tc.a.child_node(outer, 0)
 		return callee.kind == .ident && callee.value == 'copy'
 	}
 	return false
@@ -8312,7 +8331,9 @@ fn (mut tc TypeChecker) check_ident(id flat.NodeId, node flat.Node) {
 			return
 		}
 	}
-	if node.value == 'err' && tc.has_ierror_interface() {
+	// The `err` of a block that handles an error, where the check of that block
+	// kept no scope for it, as the check of an instance of a generic function.
+	if node.value == 'err' && tc.has_ierror_interface() && tc.err_block_holds(id) {
 		tc.register_synth_type(id, tc.parse_type('IError'))
 		return
 	}
@@ -9145,6 +9166,10 @@ fn (tc &TypeChecker) selector_fn_value_key(node flat.Node) ?string {
 	if base.kind == .selector && base.children_count > 0 {
 		inner := tc.a.child_node(base, 0)
 		if inner.kind == .ident {
+			if tc.ident_resolves_to_value(inner.value) || inner.value in tc.const_types
+				|| tc.qualify_name(inner.value) in tc.const_types {
+				return none
+			}
 			mod_name := tc.resolve_import_alias(inner.value) or { inner.value }
 			key := '${mod_name}.${base.value}.${node.value}'
 			if tc.fn_signature_known(key) {
@@ -9537,6 +9562,25 @@ fn (tc &TypeChecker) enum_field_name(enum_name string, field string) ?string {
 		}
 	}
 	return none
+}
+
+// enum_member_is_callable reports whether `Enum.member` names a function rather
+// than a value: a static one declared for the enum (`fn Color.first()`) or a
+// method passed as a value (`colors.map(Color.label)`).
+fn (tc &TypeChecker) enum_member_is_callable(enum_name string, base string, member string) bool {
+	if _ := tc.static_assoc_fn_key_for_base(base, member) {
+		return true
+	}
+	enum_type := Type(Enum{
+		name:    enum_name
+		is_flag: enum_name in tc.flag_enums
+	})
+	for mname in receiver_method_name_candidates(enum_type, member, tc.cur_module) {
+		if mname in tc.fn_ret_types {
+			return true
+		}
+	}
+	return false
 }
 
 // resolve_enum_name resolves resolve enum name information for types.
@@ -10090,6 +10134,11 @@ fn call_arg_numeric_promotion_index(name string) int {
 		'u32' { 13 }
 		'u64' { 14 }
 		'usize' { 15 }
+		// 128-bit ranks above the 64-bit types, so a narrower integer widens into
+		// it. Without these rows the index is -1, no widening is offered, and an
+		// expression like `wide + 1` is typed `int` and cut to 64 bits.
+		'i128' { 16 }
+		'u128' { 17 }
 		'rune' { 22 }
 		else { -1 }
 	}
@@ -16780,7 +16829,7 @@ pub fn (tc &TypeChecker) resolve_type(id flat.NodeId) Type {
 			&& (!tc.parallel_check_sparse || tc.in_check_range(tidx)) {
 			typ := tc.expr_type_values[tidx]
 			if !type_contains_unknown(typ) {
-				return typ
+				return tc.widen_mixed_integer_expr_type(id, typ)
 			}
 		}
 	}
@@ -16791,7 +16840,7 @@ pub fn (tc &TypeChecker) resolve_type(id flat.NodeId) Type {
 	}
 	mi := idx - memo.lo
 	if memo.filled[mi] != 0 {
-		return memo.types[mi]
+		return tc.widen_mixed_integer_expr_type(id, memo.types[mi])
 	}
 	typ := tc.resolve_type_uncached(id)
 	// Unknowns can be provisional (cycle guards, generic placeholders that a
@@ -16801,6 +16850,45 @@ pub fn (tc &TypeChecker) resolve_type(id flat.NodeId) Type {
 		mut m := unsafe { &BodyResolveMemo(memo) }
 		m.types[mi] = typ
 		m.filled[mi] = 1
+	}
+	return tc.widen_mixed_integer_expr_type(id, typ)
+}
+
+const narrow_integer_type_names = ['int', 'i8', 'i16', 'i32', 'i64', 'isize', 'u8', 'u16', 'u32',
+	'u64', 'usize', 'rune', 'char']
+
+// widen_mixed_integer_expr_type gives an arithmetic node the 128-bit type of its
+// widest operand. The type recorded for an infix in argument position is the
+// narrower operand's, while the same expression assigned to a variable gets the
+// 128-bit type from the promotion ladder. Printing, `typeof` and interpolation all
+// read the recorded type, so they cut a mixed expression to 64 bits without this.
+fn (tc &TypeChecker) widen_mixed_integer_expr_type(id flat.NodeId, typ Type) Type {
+	name := typ.name().all_after_last('.')
+	if name !in narrow_integer_type_names {
+		return typ
+	}
+	tidx := int(id)
+	if tidx < 0 || tidx >= tc.a.nodes.len {
+		return typ
+	}
+	node := tc.a.nodes[tidx]
+	if node.kind != .infix {
+		return typ
+	}
+	if node.op in [.eq, .ne, .lt, .gt, .le, .ge, .logical_and, .logical_or] {
+		return typ
+	}
+	// A shift result is as wide as its left operand: the right one is a count, so
+	// a wide count does not make `u64(4) << count` a 128-bit expression, and the
+	// generator still emits a 64-bit operation for it.
+	shift := node.op in [.left_shift, .right_shift, .right_shift_unsigned]
+	child_limit := if shift { 1 } else { node.children_count }
+	for i in 0 .. child_limit {
+		child_type := tc.resolve_type(tc.a.child(&node, i))
+		child_name := child_type.name().all_after_last('.')
+		if child_name in ['u128', 'i128'] {
+			return child_type
+		}
 	}
 	return typ
 }
@@ -17259,7 +17347,7 @@ fn (tc &TypeChecker) resolve_type_uncached(id flat.NodeId) Type {
 						// other array element type is not a thread and `.wait()` is
 						// unsupported, so reject it rather than mis-typing the call as the
 						// receiver array (which would emit invalid C joining non-handles).
-						elem := array_elem_type(clean_array)
+						elem := unalias_type(array_elem_type(clean_array))
 						if elem is Struct {
 							if elem.name == 'thread' {
 								return Type(void_)

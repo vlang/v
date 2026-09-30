@@ -214,6 +214,7 @@ pub fn (f &File) read(mut buf []u8) !int {
 	// if no bytes were read, check for errors and end-of-file.
 	if nbytes <= 0 {
 		if C.feof(unsafe { &C.FILE(f.cfile) }) != 0 {
+			race_file_read()
 			return Eof{}
 		}
 		if C.ferror(unsafe { &C.FILE(f.cfile) }) != 0 {
@@ -223,6 +224,7 @@ pub fn (f &File) read(mut buf []u8) !int {
 			}
 		}
 	}
+	race_file_read()
 	return nbytes
 }
 
@@ -242,6 +244,7 @@ pub fn (mut f File) write(buf []u8) !int {
 		}
 	}
 	*/
+	race_file_write()
 	written := int(C.fwrite(buf.data, 1, buf.len, f.cfile))
 	if written == 0 && buf.len != 0 {
 		return error('0 bytes written')
@@ -256,6 +259,7 @@ pub fn (mut f File) writeln(s string) !int {
 		return error_file_not_opened()
 	}
 	written := f.write_string(s)!
+	race_file_write()
 	x := C.fputs(c'\n', f.cfile)
 	if x < 0 {
 		return error('could not add newline')
@@ -278,6 +282,7 @@ pub fn (mut f File) write_to(pos u64, buf []u8) !int {
 		return error_file_not_opened()
 	}
 	f.seek(pos, .start) or {}
+	race_file_write()
 	res := int(C.fwrite(buf.data, 1, buf.len, f.cfile))
 	if res == 0 && buf.len != 0 {
 		return error('0 bytes written')
@@ -291,6 +296,7 @@ pub fn (mut f File) write_to(pos u64, buf []u8) !int {
 // pointers to it, it will cause your programs to segfault.
 @[unsafe]
 pub fn (mut f File) write_ptr(data voidptr, size int) int {
+	race_file_write()
 	return int(C.fwrite(data, 1, size, f.cfile))
 }
 
@@ -310,6 +316,7 @@ pub fn (mut f File) write_full_buffer(buffer voidptr, buffer_len usize) ! {
 	for remaining_bytes > 0 {
 		unsafe {
 			C.errno = 0
+			race_file_write()
 			x := i64(C.fwrite(ptr, 1, remaining_bytes, f.cfile))
 			cerror := int(C.errno)
 			ptr += x
@@ -336,6 +343,7 @@ pub fn (mut f File) write_full_buffer(buffer voidptr, buffer_len usize) ! {
 @[unsafe]
 pub fn (mut f File) write_ptr_at(data voidptr, size int, pos u64) int {
 	f.seek(pos, .start) or {}
+	race_file_write()
 	res := int(C.fwrite(data, 1, size, f.cfile))
 	f.seek(0, .end) or {}
 	return res
@@ -354,6 +362,7 @@ fn fread(ptr voidptr, item_size int, items int, stream &C.FILE) !int {
 		// read. The caller will get none on their next call because there will be
 		// no data available and the end-of-file will be encountered again.
 		if C.feof(stream) != 0 {
+			race_file_read()
 			return Eof{}
 		}
 		// If fread encountered an error, return it. Note that fread and ferror do
@@ -364,6 +373,7 @@ fn fread(ptr voidptr, item_size int, items int, stream &C.FILE) !int {
 			return error('file read error')
 		}
 	}
+	race_file_read()
 	return nbytes
 }
 
@@ -405,6 +415,7 @@ pub fn (f &File) read_bytes_with_newline(mut buf []u8) !int {
 		match c {
 			C.EOF {
 				if C.feof(stream) != 0 {
+					race_file_read()
 					return nbytes
 				}
 				if C.ferror(stream) != 0 {
@@ -414,6 +425,7 @@ pub fn (f &File) read_bytes_with_newline(mut buf []u8) !int {
 			newline {
 				buf[buf_ptr] = u8(c)
 				nbytes++
+				race_file_read()
 				return nbytes
 			}
 			else {
@@ -423,6 +435,7 @@ pub fn (f &File) read_bytes_with_newline(mut buf []u8) !int {
 			}
 		}
 	}
+	race_file_read()
 	return nbytes
 }
 
@@ -581,6 +594,7 @@ pub fn (mut f File) write_struct[T](t &T) ! {
 		return error_size_of_type_0()
 	}
 	C.errno = 0
+	race_file_write()
 	nbytes := int(C.fwrite(t, 1, tsize, f.cfile))
 	if C.errno != 0 {
 		return error(posix_get_error_msg(C.errno))

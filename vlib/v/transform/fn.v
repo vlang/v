@@ -965,7 +965,7 @@ fn (t &Transformer) alias_receiver_type_matches(base_type string, alias_type str
 // is_integer_type_name reports whether is integer type name applies in transform.
 fn (t &Transformer) is_integer_type_name(typ string) bool {
 	return typ in ['int', 'i8', 'i16', 'i32', 'i64', 'u8', 'u16', 'u32', 'u64', 'rune', 'isize',
-		'usize']
+		'usize', 'i128', 'u128']
 }
 
 // raw_var_type_for_expr supports raw var type for expr handling for Transformer.
@@ -1206,6 +1206,11 @@ fn (t &Transformer) generic_call_type_arg_name(id flat.NodeId) string {
 			return '${base}[${args.join(', ')}]'
 		}
 		.array_init {
+			// The value is the element spelling for a dynamic array, including
+			// a fixed-array element. The parser's type retains the outer `[]`.
+			if node.typ.starts_with('[]') {
+				return node.typ
+			}
 			if node.value.len > 0 {
 				if node.value.starts_with('[]') {
 					return '[]${node.value}'
@@ -2671,7 +2676,7 @@ fn (t &Transformer) static_assoc_fn_name(base_id flat.NodeId, method string) ?st
 		if base.value == 'C' || t.is_import_alias_ident(base_id) {
 			return none
 		}
-		if t.var_type(base.value).len > 0 {
+		if t.static_assoc_ident_is_value(base_id) {
 			return none
 		}
 		base_type := t.node_type(base_id)
@@ -2687,8 +2692,12 @@ fn (t &Transformer) static_assoc_fn_name(base_id flat.NodeId, method string) ?st
 			}
 		}
 	} else if base.kind == .selector && base.children_count > 0 {
-		inner := t.a.child_node(&base, 0)
+		inner_id := t.a.child(&base, 0)
+		inner := t.a.node(inner_id)
 		if inner.kind == .ident {
+			if t.static_assoc_ident_is_value(inner_id) {
+				return none
+			}
 			type_ident := '${inner.value}.${base.value}'
 			for type_name in t.static_assoc_type_candidates(type_ident) {
 				name := flat.encode_static_type_method_name(type_name, method)
@@ -2699,6 +2708,78 @@ fn (t &Transformer) static_assoc_fn_name(base_id flat.NodeId, method string) ?st
 		}
 	}
 	return none
+}
+
+// static_assoc_ident_is_value distinguishes runtime roots from type namespaces,
+// including file-scope bindings that are absent from the local variable table.
+fn (t &Transformer) static_assoc_ident_is_value(id flat.NodeId) bool {
+	name := t.a.node(id).value
+	if t.var_type(name).len > 0 || t.current_module_global_type(name) != none {
+		return true
+	}
+	const_name := if t.cur_module in ['', 'main', 'builtin'] {
+		name
+	} else {
+		'${t.cur_module}.${name}'
+	}
+	if !isnil(t.tc) && const_name in t.tc.const_types {
+		return true
+	}
+	if t.is_import_alias_ident(id) {
+		return false
+	}
+	return t.imported_global_name(name) != none
+		|| t.const_type_key_in_context(name, t.cur_module, t.cur_file) != none
+}
+
+// static_fn_value_name returns the static type method that a `Type.method` or
+// `mod.Type.method` selector names when it is used as a function value, not called.
+// Generic specializations do not carry the checker's resolution for their cloned
+// selectors, so fall back to looking the static method up from the base.
+fn (t &Transformer) static_fn_value_name(id flat.NodeId, node flat.Node) ?string {
+	if t.in_call_callee || node.children_count != 1 || isnil(t.tc) {
+		return none
+	}
+	if t.static_method_names_ready && node.value !in t.static_method_names {
+		return none
+	}
+	if resolved := t.tc.resolved_fn_value_name(id) {
+		flat.decode_static_type_method_name(resolved) or { return none }
+		return resolved
+	}
+	name := t.static_assoc_fn_name(t.a.child(&node, 0), node.value) or { return none }
+	receiver, method := flat.decode_static_type_method_name(name) or { return none }
+	// Enum fields take precedence over a same-named static method.
+	if t.enum_method_name_shadows_field('${receiver}.${method}') {
+		return none
+	}
+	return name
+}
+
+// lower_static_fn_value replaces a static type method value selector with an ident
+// naming the function, the same form other function values take. Emitting the
+// selector as is would produce `Type.method` in C, where `Type` is not a value.
+fn (mut t Transformer) lower_static_fn_value(id flat.NodeId, node flat.Node, name string) flat.NodeId {
+	mut typ := ''
+	if checked := t.tc.expr_type(id) {
+		typ = fn_value_type_name_from_type(checked) or { '' }
+	}
+	if typ.len == 0 {
+		if params := t.tc.fn_param_types[name] {
+			ret := t.tc.fn_ret_types[name] or { types.Type(types.void_) }
+			typ = fn_literal_value_type_text(params, ret.name())
+		}
+	}
+	ident := t.a.add_node(flat.Node{
+		kind:  .ident
+		pos:   node.pos
+		value: name
+		typ:   typ
+	})
+	t.set_resolved_fn_value_entry(int(ident), name)
+	// Specialized generic bodies are transformed after the initial markused pass.
+	t.mark_fn_used_name(name)
+	return ident
 }
 
 // build_static_method_names records the method part of every static type
@@ -2803,6 +2884,9 @@ fn (t &Transformer) static_assoc_type_candidates(type_ident string) []string {
 		return []string{}
 	}
 	mut candidates := []string{}
+	if imported := t.selective_import_type_name_for_file(t.cur_file, type_ident) {
+		t.add_static_assoc_type_candidate(mut candidates, imported)
+	}
 	t.add_static_assoc_type_candidate(mut candidates, type_ident)
 	if !type_ident.contains('.') && t.cur_module.len > 0 && t.cur_module != 'main'
 		&& t.cur_module != 'builtin' {
@@ -5195,12 +5279,93 @@ fn (mut t Transformer) stringify_expr(expr_id flat.NodeId) flat.NodeId {
 		// Interface payloads are exposed through their backing address while
 		// smartcasted. Preserve the reference marker used by V stringification,
 		// even when the concrete payload itself is stored in a boxed allocation.
+		// A reference-typed aggregate payload already carries that marker from its
+		// own `&Struct`/`&SumType` conversion, so prefixing it again prints `&&`.
 		if t.is_interface_type_name(sc.sum_type_name)
-			&& !t.smartcast_target_type(sc).trim_space().starts_with('&') {
+			&& !t.smartcast_target_type(sc).trim_space().starts_with('&')
+			&& !(typ.starts_with('&')
+				&& t.stringify_aggregate_type_name(t.trim_all_pointer_type(typ)) != none) {
 			return t.string_plus(t.make_string_literal('&'), converted)
 		}
 	}
 	return converted
+}
+
+const stringify_narrow_integer_types = ['int', 'i8', 'i16', 'i32', 'i64', 'isize', 'u8', 'u16',
+	'u32', 'u64', 'usize', 'rune']
+
+// wide_method_receiver_type returns `u128` or `i128` when the expression is an
+// arithmetic node this compiler lowers as a 128-bit value, and an empty string
+// otherwise.
+fn (t &Transformer) wide_method_receiver_type(id flat.NodeId) string {
+	return t.wide_operator_result_type(id, 0)
+}
+
+// wide_operator_result_type returns `u128` or `i128` when the expression is an
+// operator node whose result is that wide. Only an operator widens its result: a
+// call, a cast and an index have the type their callee, target or element
+// declares, whether or not a 128-bit value sits inside them. Searching through
+// those replaced the type of `consume(x)` (an int) and of `u8(x)` (a byte) with
+// the type of the operand, which picked the wrong printer and, on the portable
+// representation, produced C that does not compile. A shift is the same shape:
+// its result is as wide as its left operand, since the right one is a count.
+// A logical right shift is the exception to that: it takes its width from the
+// left operand but its result is unsigned, so `typeof(i128(-1) >>> 1)` is `u128`.
+fn (t &Transformer) wide_operator_result_type(id flat.NodeId, depth int) string {
+	if depth > 4 || int(id) < 0 || int(id) >= t.a.nodes.len {
+		return ''
+	}
+	node := t.a.nodes[int(id)]
+	mut child_limit := node.children_count
+	mut unsigned_result := false
+	match node.kind {
+		.paren {
+			if node.children_count == 0 {
+				return ''
+			}
+			return t.wide_operator_result_type(t.a.child(&node, 0), depth + 1)
+		}
+		.infix {
+			if node.op in [.eq, .ne, .lt, .gt, .le, .ge, .logical_and, .logical_or] {
+				return ''
+			}
+			if node.op in [.left_shift, .right_shift, .right_shift_unsigned] {
+				child_limit = 1
+				if node.op == .right_shift_unsigned {
+					unsigned_result = true
+				}
+			}
+		}
+		.prefix {
+			if node.op !in [.minus, .bit_not] {
+				return ''
+			}
+		}
+		else {
+			return ''
+		}
+	}
+	for i in 0 .. child_limit {
+		name := t.raw_checker_node_type(t.a.child(&node, i)).all_after_last('.')
+		if name in ['u128', 'i128'] {
+			return if unsigned_result { 'u128' } else { name }
+		}
+	}
+	// An operand that is an operator node of its own widens the same way, and the
+	// checker records it under the narrower side just like the outer one.
+	for i in 0 .. child_limit {
+		nested := t.wide_operator_result_type(t.a.child(&node, i), depth + 1)
+		if nested.len > 0 {
+			return if unsigned_result { 'u128' } else { nested }
+		}
+	}
+	return ''
+}
+
+// stringify_wide_integer_operand returns `u128` or `i128` when the expression is
+// an operator node whose result is that wide.
+fn (t &Transformer) stringify_wide_integer_operand(id flat.NodeId) string {
+	return t.wide_operator_result_type(id, 0)
 }
 
 fn (t &Transformer) declared_selector_pointer_alias_type(id flat.NodeId) ?string {
@@ -5662,6 +5827,15 @@ fn (mut t Transformer) wrap_string_conversion(expr flat.NodeId, typ string) flat
 	if clean_typ.starts_with('builtin.') {
 		clean_typ = clean_typ['builtin.'.len..]
 	}
+	if clean_typ in stringify_narrow_integer_types {
+		// An arithmetic node with a 128-bit operand resolves to the narrower side
+		// here, so the printer picked for it showed the low 64 bits only. The value
+		// itself is lowered correctly, so preferring the 128-bit side is enough.
+		wide := t.stringify_wide_integer_operand(expr)
+		if wide.len > 0 {
+			clean_typ = wide
+		}
+	}
 	if map_typ := generic_map_type_arg_from_suffix(clean_typ) {
 		return t.wrap_string_conversion(expr, if is_ref { '&${map_typ}' } else { map_typ })
 	}
@@ -5852,6 +6026,9 @@ fn (mut t Transformer) wrap_string_conversion(expr flat.NodeId, typ string) flat
 		'u64' {
 			return t.make_call_typed('u64.str', [expr], 'string')
 		}
+		'u128' {
+			return t.make_call_typed('u128.str', [expr], 'string')
+		}
 		'int', 'int literal' {
 			return t.make_call_typed('int.str', [expr], 'string')
 		}
@@ -5866,6 +6043,9 @@ fn (mut t Transformer) wrap_string_conversion(expr flat.NodeId, typ string) flat
 		}
 		'i64' {
 			return t.make_call_typed('i64.str', [expr], 'string')
+		}
+		'i128' {
+			return t.make_call_typed('i128.str', [expr], 'string')
 		}
 		'char' {
 			return t.make_call_typed('v3_char_string', [
@@ -6185,7 +6365,8 @@ fn (t &Transformer) aggregate_str_method_name(aggregate string) ?string {
 	// Imported declarations have a short convenience entry in the transformer's
 	// struct table. When that short spelling is used through a selective import,
 	// resolve its qualified owner before falling back to generated auto-str.
-	if !aggregate.contains('.') && !t.bare_struct_name_is_local_to_current_module(aggregate) {
+	if !aggregate.contains('.') && !t.bare_struct_name_is_local_to_current_module(aggregate)
+		&& !t.bare_sum_type_name_is_local_to_current_module(aggregate) {
 		if qualified := t.qualified_types[aggregate] {
 			if method := t.resolve_receiver_method_for_type(qualified, 'str') {
 				return method
@@ -8464,6 +8645,9 @@ fn (mut t Transformer) wrap_formatted_string_conversion(expr flat.NodeId, typ st
 			return formatted
 		}
 	}
+	if is_wide_integer_type_name(clean_typ) {
+		return t.wide_integer_format_conversion(expr, typ, format)
+	}
 	if char_format := character_format(format) {
 		if normalized_typ in ['int', 'i8', 'i16', 'i32', 'i64', 'isize', 'u8', 'u16', 'u32', 'u64',
 			'usize', 'char', 'rune'] {
@@ -8561,6 +8745,65 @@ fn (mut t Transformer) wrap_formatted_string_conversion(expr flat.NodeId, typ st
 			t.make_int_literal(0)], 'string')
 	}
 	return t.wrap_string_conversion(expr, typ)
+}
+
+// is_wide_integer_type_name reports whether a type name is one of the 128-bit
+// integers. Their formatting cannot go through the 64-bit helpers: the cast alone
+// would cut the value back to its low half.
+fn is_wide_integer_type_name(name string) bool {
+	return name in ['u128', 'i128']
+}
+
+// wide_integer_format_conversion lowers a format specifier on a 128-bit value. The
+// base forms print through `u128.str_base`, which formats the bit pattern, and the
+// width comes from padding the printed text rather than the number.
+fn (mut t Transformer) wide_integer_format_conversion(expr flat.NodeId, typ string, format string) flat.NodeId {
+	mut text := t.wrap_string_conversion(expr, typ)
+	if format == 'c' {
+		// The cast the 64-bit path would use cannot be put on a 128-bit value, so
+		// the conversion happens inside the type instead.
+		name := if typ.trim_space() == 'i128' { 'i128__char_str' } else { 'u128__char_str' }
+		return t.make_call_typed(name, [expr], 'string')
+	}
+	mut width := 0
+	mut zero := false
+	mut base := 0
+	if format == 'X' || format == 'x' {
+		base = 16
+	} else if format == 'o' {
+		base = 8
+	} else if format == 'b' {
+		base = 2
+	} else if b := integer_format_base(format) {
+		base = b
+	} else if padded := zero_padded_integer_base_format(format) {
+		base = padded.base
+		width = padded.width
+		zero = true
+	} else if w := left_zero_padded_decimal_width(format) {
+		width = w
+		zero = true
+	} else if w := zero_padded_decimal_width(format) {
+		width = w
+		zero = true
+	} else if w := static_format_width(format) {
+		width = w
+	}
+	if base > 0 {
+		text = t.make_call_typed('u128__str_base',
+			[t.make_cast('u128', expr, 'u128'), t.make_int_literal(base)], 'string')
+		if format == 'X' {
+			text = t.make_call_typed('v3_string_upper_ascii', [text], 'string')
+		}
+	}
+	if width > 0 {
+		text = if zero {
+			t.make_call_typed('v3_string_zpad', [text, t.make_int_literal(width)], 'string')
+		} else {
+			t.make_call_typed('v3_string_pad', [text, t.make_int_literal(width), t.make_int_literal(0)], 'string')
+		}
+	}
+	return text
 }
 
 fn (mut t Transformer) widened_unsigned_format_arg(expr flat.NodeId, typ string) flat.NodeId {
@@ -9570,8 +9813,8 @@ fn (t &Transformer) map_str_type_has_transform_conversion(typ string) bool {
 		return true
 	}
 	if clean in ['string', 'rune', 'bool', 'i8', 'i16', 'i32', 'i64', 'int', 'isize', 'u8', 'u16',
-		'u32', 'u64', 'usize', 'f32', 'f64', 'int literal', 'float literal', 'voidptr', 'byteptr',
-		'charptr', 'IError'] {
+		'u32', 'u64', 'usize', 'i128', 'u128', 'f32', 'f64', 'int literal', 'float literal', 'voidptr',
+		'byteptr', 'charptr', 'IError'] {
 		return true
 	}
 	if clean in t.enum_types || clean in t.structs || clean in t.sum_types {
@@ -10617,7 +10860,12 @@ fn (mut t Transformer) try_lower_array_method_call(call_id flat.NodeId, node fla
 		}
 		if !decoded_value_is_concrete {
 			mut raw_base_types := []string{}
-			for candidate in [t.raw_var_type_for_expr(base_id) or { '' }, t.node_type(base_id),
+			// A method called on an arithmetic expression that has a 128-bit operand
+			// belongs to the wider type: the checker recorded the expression under
+			// the narrower operand's type, so its `.str()` would call the 64-bit
+			// printer on a 128-bit value.
+			for candidate in [t.wide_method_receiver_type(base_id),
+				t.raw_var_type_for_expr(base_id) or { '' }, t.node_type(base_id),
 				t.lvalue_type(base_id)] {
 				clean := candidate.trim_left('&')
 				if clean.len > 0 && clean !in raw_base_types {

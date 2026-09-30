@@ -288,3 +288,38 @@ fn main() {
 	assert !output.contains('right value:'), output
 	assert output.contains('items: 1\n'), output
 }
+
+// test_failed_assert_reports_wide_integer_operands checks that an operand of a
+// failed assert prints its value when it is 128-bit. Those types have no `(u)64`
+// spelling to fall back on, so they came out as the `<value>` placeholder.
+fn test_failed_assert_reports_wide_integer_operands() {
+	result := run_assert_failure_source('wide_integer.v', "fn main() {
+	a := u128(18446744073709551616)
+	b := u128(340282366920938463463374607431768211455)
+	assert a == b
+}
+")
+	assert result.exit_code == 1, result.output
+	lines := result.output.trim_space().split_into_lines()
+	assert lines.len == 4, result.output
+	assert lines[0].ends_with('wide_integer.v:4: FAIL: fn main.main: assert a == b'), result.output
+	assert lines[1] == '   left value: a = 18446744073709551616', result.output
+	assert lines[2] == '  right value: b = 340282366920938463463374607431768211455', result.output
+	assert lines[3] == 'V panic: Assertion failed...', result.output
+}
+
+// test_failed_assert_reports_signed_wide_integer_operands covers the same report
+// for `i128`, where a value can be negative.
+fn test_failed_assert_reports_signed_wide_integer_operands() {
+	result := run_assert_failure_source('wide_integer_signed.v', "fn main() {
+	a := i128(-170141183460469231731687303715884105728)
+	b := i128(7)
+	assert a == b
+}
+")
+	assert result.exit_code == 1, result.output
+	lines := result.output.trim_space().split_into_lines()
+	assert lines.len == 4, result.output
+	assert lines[1] == '   left value: a = -170141183460469231731687303715884105728', result.output
+	assert lines[2] == '  right value: b = 7', result.output
+}

@@ -1,4 +1,5 @@
 // vtest vflags: -gc boehm_leak
+// vtest build: !race?
 // Regression test for issue #28896. A managed V array points one header past the
 // start of its Boehm block, and `-gc boehm_leak` builds Boehm with GC_DEBUG,
 // which puts its own debug header in front of every object as well. The

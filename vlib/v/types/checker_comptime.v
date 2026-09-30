@@ -4675,7 +4675,8 @@ fn (mut tc TypeChecker) check_cast_expr(id flat.NodeId, node flat.Node) {
 	}
 	if tc.interface_field_list(target_iface.name).any(it.is_mut) {
 		child := tc.a.node(child_id)
-		if actual !is Pointer && child.kind == .ident && !tc.ident_is_mutable_lvalue(child.value)
+		if (actual !is Pointer || tc.is_interface_value_smartcast_reference(child_id))
+			&& child.kind == .ident && !tc.ident_is_mutable_lvalue(child.value)
 			&& !tc.interface_cast_is_readonly_receiver(id, child_id) {
 			tc.record_error_at(.assignment_mismatch, '`${child.value}` is immutable, declare it with `mut` to make it mutable', child_id, tc.node_value_diagnostic_pos(child_id))
 			return
@@ -4725,6 +4726,15 @@ fn (mut tc TypeChecker) warn_implicit_interface_conversion(expr_id flat.NodeId, 
 		|| tc.interface_pointer_target_cast_needs_heap_copy(target, actual, target_iface) {
 		tc.warn_alloc('conversion to interface', expr_id, expr.pos)
 	}
+}
+
+// is_interface_value_smartcast_reference reports an interface value narrowed to a reference
+// of its concrete struct (`if l is Item`). The reference still aliases the object of the
+// interface value, so it is as immutable as the variable that holds it.
+fn (tc &TypeChecker) is_interface_value_smartcast_reference(child_id flat.NodeId) bool {
+	_ := tc.smartcast_type(child_id) or { return false }
+	declared := tc.declared_receiver_expr_type(child_id) or { return false }
+	return unalias_type(declared) is Interface
 }
 
 fn (tc &TypeChecker) interface_cast_is_readonly_receiver(id flat.NodeId, child_id flat.NodeId) bool {
@@ -5661,8 +5671,33 @@ fn (mut tc TypeChecker) check_integer_literal_cast_overflow(id flat.NodeId, node
 		return
 	}
 	bit_size := if clean_target.size == 0 { 32 } else { int(clean_target.size) }
-	value, parse_error := strconv.common_parse_uint2(magnitude, 0, bit_size)
 	target_name := target.name()
+	radix := integer_literal_radix(magnitude)
+	if bit_size > 64 {
+		// strconv stops at 64 bits, so the digits are compared against the largest
+		// value the type holds. The limit is decimal while the literal may be
+		// written in any base, so the magnitude is converted first: comparing the
+		// source text by length let `0x100000000000000000000000000000000` (2^128)
+		// through and rejected a valid 65-bit binary literal.
+		// The negative limit is the magnitude of the minimum, because that is the
+		// one value whose positive counterpart does not exist.
+		limit := if clean_target.props.has(.unsigned) {
+			'340282366920938463463374607431768211455'
+		} else if is_negative {
+			'170141183460469231731687303715884105728'
+		} else {
+			'170141183460469231731687303715884105727'
+		}
+		digits := decimal_magnitude_of_base(magnitude, radix) or {
+			tc.record_error_at(.assignment_mismatch, 'value `${literal}` overflows `${target_name}`', id, node.pos)
+			return
+		}
+		if decimal_magnitude_exceeds(digits, limit) {
+			tc.record_error_at(.assignment_mismatch, 'value `${literal}` overflows `${target_name}`', id, node.pos)
+		}
+		return
+	}
+	value, parse_error := strconv.common_parse_uint2(magnitude, 0, bit_size)
 	if parse_error == -3 {
 		tc.record_error_at(.assignment_mismatch, 'value `${literal}` overflows `${target_name}`', id, node.pos)
 		return
@@ -5682,6 +5717,94 @@ fn (mut tc TypeChecker) check_integer_literal_cast_overflow(id flat.NodeId, node
 	if overflows_sign_bit {
 		tc.record_warning_at(.assignment_mismatch, 'value `${literal}` overflows `${target_name}`, this will be considered hard error soon', id, node.pos)
 	}
+}
+
+// integer_literal_radix returns the base a magnitude is written in. The sign has
+// already been stripped by the caller.
+fn integer_literal_radix(magnitude string) int {
+	if magnitude.len >= 2 && magnitude[0] == `0` {
+		match magnitude[1] {
+			`x`, `X` { return 16 }
+			`o`, `O` { return 8 }
+			`b`, `B` { return 2 }
+			else {}
+		}
+	}
+	return 10
+}
+
+// decimal_magnitude_of_base renders a magnitude written in `radix` as decimal
+// digits, so a decimal limit can be compared with it whatever base the source
+// used. strconv parses 64 bits at most and this exists for the widths above
+// that, so the conversion is a digit at a time and needs no wide arithmetic. A
+// value with more digits than a 128-bit one has cannot fit the target either,
+// and none comes back for it.
+fn decimal_magnitude_of_base(magnitude string, radix int) ?string {
+	start := if radix != 10 && magnitude.len >= 2 { 2 } else { 0 }
+	digits := magnitude[start..]
+	if digits.len == 0 {
+		return none
+	}
+	// One byte per decimal digit, least significant first. 128 bits need 39
+	// digits; the room above that is for a value too large to be a concern here.
+	mut out := []u8{len: 48, init: 0}
+	mut out_len := 0
+	for ch in digits {
+		digit := if ch >= `0` && ch <= `9` {
+			int(ch - `0`)
+		} else if ch >= `a` && ch <= `f` {
+			int(ch - `a`) + 10
+		} else if ch >= `A` && ch <= `F` {
+			int(ch - `A`) + 10
+		} else {
+			return none
+		}
+		if digit >= radix {
+			return none
+		}
+		mut carry := digit
+		for i in 0 .. out_len {
+			scaled := int(out[i]) * radix + carry
+			out[i] = u8(scaled % 10)
+			carry = scaled / 10
+		}
+		for carry > 0 {
+			if out_len >= out.len {
+				return none
+			}
+			out[out_len] = u8(carry % 10)
+			carry /= 10
+			out_len++
+		}
+	}
+	if out_len == 0 {
+		return '0'
+	}
+	mut text := []u8{len: out_len}
+	for i in 0 .. out_len {
+		text[out_len - 1 - i] = out[i] + `0`
+	}
+	return text.bytestr()
+}
+
+// Compares a literal's digits against a limit too large for u64. Leading zeros go
+// first, then the shorter number is the smaller one, and equal lengths compare
+// digit by digit through the string ordering.
+fn decimal_magnitude_exceeds(magnitude string, limit string) bool {
+	mut start := 0
+	for start < magnitude.len && magnitude[start] == `0` {
+		start++
+	}
+	digits := magnitude[start..]
+	mut limit_start := 0
+	for limit_start < limit.len && limit[limit_start] == `0` {
+		limit_start++
+	}
+	trimmed := limit[limit_start..]
+	if digits.len != trimmed.len {
+		return digits.len > trimmed.len
+	}
+	return digits > trimmed
 }
 
 fn (tc &TypeChecker) integer_literal_source(id flat.NodeId) ?string {
@@ -14936,13 +15059,13 @@ fn (mut tc TypeChecker) call_returned_alias_arguments(id flat.NodeId, mut visiti
 	}
 	return_type := unalias_type(tc.resolve_type(id))
 	if return_type is Unknown || return_type is Void {
-		return tc.conservative_call_alias_arguments(*call, true)
+		return tc.conservative_call_alias_arguments(*call, CallInfo{ has_receiver: true })
 	}
 	if return_type !is Array && return_type !is Map && return_type !is Pointer {
 		return []flat.NodeId{}
 	}
 	info := tc.resolve_call_info(id, *call) or {
-		return tc.conservative_call_alias_arguments(*call, false)
+		return tc.conservative_call_alias_arguments(*call, CallInfo{})
 	}
 	decl_module := tc.fn_type_modules[info.name] or { tc.cur_module }
 	// A builtin that builds a new collection is not a window onto the one it was
@@ -14964,10 +15087,10 @@ fn (mut tc TypeChecker) call_returned_alias_arguments(id flat.NodeId, mut visiti
 		return []flat.NodeId{}
 	}
 	decl := tc.visible_mutation_fn_decl(info.name, decl_module) or {
-		return tc.conservative_call_alias_arguments(*call, info.has_receiver)
+		return tc.conservative_call_alias_arguments(*call, info)
 	}
 	if visiting[decl.idx] {
-		return tc.conservative_call_alias_arguments(*call, info.has_receiver)
+		return tc.conservative_call_alias_arguments(*call, info)
 	}
 	fn_node := tc.a.node(flat.NodeId(decl.idx))
 	mut callee := tc.a.child_node(call, 0)
@@ -15338,18 +15461,110 @@ fn (mut tc TypeChecker) returned_alias_arguments(id flat.NodeId, args_by_param m
 	return []flat.NodeId{}
 }
 
-fn (tc &TypeChecker) conservative_call_alias_arguments(call flat.Node, has_receiver bool) []flat.NodeId {
+// Without a readable callee body, pointer arguments may be returned unchanged,
+// including through a voidptr result. Type erasure does not establish independence
+// from those arguments; a caller can make that guarantee at an explicit unsafe boundary.
+fn (tc &TypeChecker) conservative_call_alias_arguments(call flat.Node, info CallInfo) []flat.NodeId {
 	mut sources := []flat.NodeId{}
-	if has_receiver && call.children_count > 0 {
+	if info.has_receiver && call.children_count > 0 {
 		callee := tc.a.child_node(&call, 0)
 		if callee.kind == .selector && callee.children_count > 0 {
-			sources << tc.a.child(callee, 0)
+			receiver := tc.a.child(callee, 0)
+			param_type := if info.params_known && info.params.len > 0 {
+				info.params[0]
+			} else {
+				Type(Unknown{})
+			}
+			if tc.opaque_call_arg_can_be_returned(receiver, param_type) {
+				sources << receiver
+			}
 		}
 	}
-	for i in 1 .. call.children_count {
-		sources << tc.call_arg_value(tc.a.child(&call, i))
+	mut param_idx := if info.has_receiver { 1 } else { 0 }
+	mut layout_known := !info.has_implicit_veb_ctx
+	mut collapsed_target := Type(Unknown{})
+	mut has_collapsed_target := false
+	for i in 1 + info.arg_offset .. call.children_count {
+		raw_arg := tc.a.child_node(&call, i)
+		arg_id := tc.call_arg_value(tc.a.child(&call, i))
+		if raw_arg.kind == .field_init {
+			if !has_collapsed_target {
+				collapsed_target = tc.opaque_call_param_type(info, param_idx, layout_known)
+				has_collapsed_target = true
+				param_idx++
+			}
+			// The fields form one temporary struct. Its reference parameter does not
+			// turn a copied scalar field into a reference to the original scalar.
+			field_type := tc.collapsed_field_expected_type(raw_arg.value, collapsed_target) or {
+				Type(Unknown{})
+			}
+			if tc.opaque_call_copied_value_can_be_returned(tc.resolve_type(arg_id), field_type) {
+				sources << arg_id
+			}
+			continue
+		}
+		if !info.is_variadic {
+			if spread_id := tc.spread_arg_value(arg_id) {
+				elem_type := array_like_elem_type(unwrap_pointer(tc.resolve_type(spread_id))) or {
+					Type(Unknown{})
+				}
+				mut can_alias := !layout_known || !info.params_known || param_idx >= info.params.len
+				for spread_param_idx in param_idx .. info.params.len {
+					if tc.opaque_call_copied_value_can_be_returned(elem_type,
+						tc.opaque_call_param_type(info, spread_param_idx, layout_known)) {
+						can_alias = true
+						break
+					}
+				}
+				if can_alias {
+					sources << spread_id
+				}
+				// A nonvariadic spread supplies all remaining parameters.
+				param_idx = info.params.len
+				layout_known = false
+				continue
+			}
+		}
+		param_type := tc.opaque_call_param_type(info, param_idx, layout_known)
+		if tc.opaque_call_arg_can_be_returned(arg_id, param_type) {
+			sources << arg_id
+		}
+		arg_type := unalias_type(tc.resolve_type(arg_id))
+		param_idx += if arg_type is MultiReturn { arg_type.types.len } else { 1 }
 	}
 	return sources
+}
+
+fn (tc &TypeChecker) opaque_call_param_type(info CallInfo, param_idx int, layout_known bool) Type {
+	formal_idx := if info.is_variadic && info.params.len > 0 && param_idx >= info.params.len - 1 {
+		info.params.len - 1
+	} else {
+		param_idx
+	}
+	if !layout_known || !info.params_known || formal_idx >= info.params.len {
+		return Type(Unknown{})
+	}
+	return tc.call_arg_expected_type(info, formal_idx)
+}
+
+// A scalar copied into a by-value parameter cannot alias the caller's storage.
+// An implicit reference argument is still borrowed, even when its expression is
+// scalar. Without a known formal type, keep conservative provenance. Structs and
+// fixed arrays are kept because the callee can receive their storage by reference.
+fn (tc &TypeChecker) opaque_call_arg_can_be_returned(id flat.NodeId, param_type Type) bool {
+	typ := unalias_type(tc.resolve_type(id))
+	if typ is Struct || typ is ArrayFixed {
+		return true
+	}
+	return tc.opaque_call_copied_value_can_be_returned(typ, param_type)
+}
+
+fn (tc &TypeChecker) opaque_call_copied_value_can_be_returned(typ Type, param_type Type) bool {
+	if unalias_type(param_type) is Pointer || type_contains_unknown(param_type) {
+		return true
+	}
+	mut seen := map[string]bool{}
+	return tc.type_can_hold_shared_storage(typ, mut seen)
 }
 
 fn (tc &TypeChecker) immutable_alias_argument(id flat.NodeId) ?flat.NodeId {

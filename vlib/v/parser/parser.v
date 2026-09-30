@@ -13426,11 +13426,16 @@ fn type_name_can_init(type_name string) bool {
 // of the preceding expression. Fall back to walking the source backwards in that case.
 fn (p &Parser) struct_init_name_start(name string) int {
 	lcbr := clamp_source_offset(p.tok_pos, p.s.src.len)
-	guess := lcbr - name.len
-	if guess >= 0 && p.s.src[guess..lcbr] == name {
+	// `struct {` separates the name from its brace.
+	mut name_end := lcbr
+	for name_end > 0 && p.s.src[name_end - 1] in [` `, `\t`] {
+		name_end--
+	}
+	guess := name_end - name.len
+	if guess >= 0 && p.s.src[guess..name_end] == name {
 		return guess
 	}
-	mut start := lcbr
+	mut start := name_end
 	for start > 0 {
 		c := p.s.src[start - 1]
 		if c == `]` {
@@ -13458,7 +13463,7 @@ fn (p &Parser) struct_init_name_start(name string) int {
 		}
 		start--
 	}
-	if start == lcbr {
+	if start == name_end {
 		return int_max(0, guess)
 	}
 	return start
@@ -17124,9 +17129,9 @@ fn write_utf8_codepoint(buf &u8, j int, code u32) int {
 }
 
 fn is_builtin_type(name string) bool {
-	return name in ['int', 'i8', 'i16', 'i32', 'i64', 'u8', 'u16', 'u32', 'u64', 'f32', 'f64',
-		'bool', 'string', 'rune', 'char', 'voidptr', 'charptr', 'byteptr', 'usize', 'isize', 'array',
-		'map', 'mapnode', '_result', '_option', 'any']
+	return name in ['int', 'i8', 'i16', 'i32', 'i64', 'i128', 'u8', 'u16', 'u32', 'u64', 'u128',
+		'f32', 'f64', 'bool', 'string', 'rune', 'char', 'voidptr', 'charptr', 'byteptr', 'usize',
+		'isize', 'array', 'map', 'mapnode', '_result', '_option', 'any']
 }
 
 fn parser_name_can_start_pointer_type(name string) bool {
