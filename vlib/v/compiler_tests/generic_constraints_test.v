@@ -1,6 +1,7 @@
 module main
 
 import os
+import v.compiler_tests.method_form
 
 // A type parameter can name an interface it must satisfy, `fn f[T Named]`: a
 // call is checked against the interface, where V checks a value passed to an
@@ -39,7 +40,15 @@ struct Pet {
 // The prelude above is 27 lines: a program's own lines start at 28.
 const first_line = 28
 
+// check_program checks `source` after the prelude, and its method form too (see
+// same_with_methods).
 fn check_program(name string, source string) os.Result {
+	res := check_program_form(name, source)
+	same_with_methods(name, source, res, check_program_form)
+	return res
+}
+
+fn check_program_form(name string, source string) os.Result {
 	dir := os.join_path(os.vtmp_dir(), 'v3_generic_constraints_${name}_${os.getpid()}')
 	os.mkdir_all(dir) or { panic(err) }
 	defer {
@@ -54,6 +63,12 @@ fn check_program(name string, source string) os.Result {
 // checked, `-checker-fixture`, where each concrete instance of a generic
 // function is checked in full.
 fn check_fixture(name string, source string) os.Result {
+	res := check_fixture_form(name, source)
+	same_with_methods(name, source, res, check_fixture_form)
+	return res
+}
+
+fn check_fixture_form(name string, source string) os.Result {
 	dir := os.join_path(os.vtmp_dir(), 'v3_generic_constraints_fixture_${name}_${os.getpid()}')
 	os.mkdir_all(dir) or { panic(err) }
 	defer {
@@ -62,6 +77,19 @@ fn check_fixture(name string, source string) os.Result {
 	path := os.join_path(dir, 'main.v')
 	os.write_file(path, constraint_prelude + source) or { panic(err) }
 	return os.execute('${os.quoted_path(@VEXE)} -new-compiler -checker-fixture -check -nocolor ${os.quoted_path(path)}')
+}
+
+// same_with_methods checks, with `check`, the method form of `source`: its generic
+// functions written as methods of a struct without type parameters, whose own
+// type parameters have to behave as those of the functions, with their
+// constraints. It has to report the errors that `res` reports, where it moves
+// them (see method_form.MethodForm).
+fn same_with_methods(name string, source string, res os.Result, check fn (string, string) os.Result) {
+	form := method_form.of(source) or { return }
+	method_res := check('${name}_methods', form.source)
+	assert method_res.exit_code == res.exit_code, 'the method form of `${name}`:\n${method_res.output}'
+	difference := form.differences(error_lines(res.output), error_lines(method_res.output))
+	assert difference == '', 'the method form of `${name}`: ${difference}\n${method_res.output}'
 }
 
 // error_lines returns `line:col: message` for every error of a check output,
@@ -858,6 +886,55 @@ fn main() {
 		'56:16: `Num` incorrectly implements method `less` of interface `Comparable`: expected `int`, not `Num` for parameter 1',
 		'57:16: `Odd` incorrectly implements method `less` of interface `Comparable`: expected `Odd`, not `int` for parameter 1',
 	], res.output
+}
+
+// A method passes its type parameter on to a method whose constraint is a
+// generic interface, as a function does: its checked body has `U` as the
+// interface `Comparable[U]`, which names `U` itself, and `smallest` takes it for
+// `T`. Before, the method said `could not infer generic type `T``.
+fn test_a_method_passes_its_type_parameter_on_to_a_generic_interface_constraint() {
+	source := 'interface Comparable[T] {
+	less(other T) bool
+}
+
+struct Num {
+	v int
+}
+
+fn (a Num) less(b Num) bool {
+	return a.v < b.v
+}
+
+struct Sorter {}
+
+fn (s Sorter) smallest[T Comparable[T]](a T, b T) T {
+	if a.less(b) {
+		return a
+	}
+	return b
+}
+
+fn (s Sorter) relay[U Comparable[U]](a U, b U) U {
+	return s.smallest(a, b)
+}
+
+fn main() {
+	println(Sorter{}.relay(Num{2}, Num{1}).v)
+}
+'
+	res := check_program('method_relay', source)
+	assert res.exit_code == 0, res.output
+	assert error_lines(res.output) == [], res.output
+	dir := os.join_path(os.vtmp_dir(), 'v3_generic_constraints_method_relay_run_${os.getpid()}')
+	os.mkdir_all(dir) or { panic(err) }
+	defer {
+		os.rmdir_all(dir) or {}
+	}
+	path := os.join_path(dir, 'main.v')
+	os.write_file(path, constraint_prelude + source) or { panic(err) }
+	run := os.execute('${os.quoted_path(@VEXE)} -new-compiler run ${os.quoted_path(path)}')
+	assert run.exit_code == 0, run.output
+	assert run.output.trim_space() == '1', run.output
 }
 
 fn test_a_local_of_type_t_can_use_what_the_constraint_declares() {

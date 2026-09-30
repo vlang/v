@@ -10283,6 +10283,14 @@ fn (mut tc TypeChecker) generic_fn_value_matches_expected(key string, expected T
 	return tc.fn_value_signature_compatible(specialized, expected)
 }
 
+// remember_method_value_call records that the method value `id` names the
+// function `name`: the transform names so the instance of the generic method
+// that `h.first[int]` names (see check_generic_method_value), which the value
+// binds to its receiver.
+pub fn (mut tc TypeChecker) remember_method_value_call(id flat.NodeId, name string) {
+	tc.remember_resolved_call(id, name)
+}
+
 // remember_resolved_call supports remember resolved call handling for TypeChecker.
 fn (mut tc TypeChecker) remember_resolved_call(id flat.NodeId, name string) {
 	idx := int(id)

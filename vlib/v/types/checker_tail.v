@@ -5119,6 +5119,16 @@ fn (mut tc TypeChecker) record_uninferred_generic_method_type(id flat.NodeId, no
 		tc.infer_generic_type_text_from_type(param_texts[param_idx], actual, generic_params, mut inferred)
 		tc.infer_generic_type_value_from_type(param_texts[param_idx], actual, generic_params, mut inferred_types)
 	}
+	// The type parameters of the function being checked are bound. So are those
+	// that a check of its body gives the types of their constraints (see
+	// check_generic_fn_body_as): the type there may still name one of them, as
+	// `Comparable[U]` names `U`, and it is `U`'s, as in a call of a function.
+	mut bound := tc.fn_context.generic_params.clone()
+	for name, _ in tc.type_param_texts {
+		if name !in bound {
+			bound << name
+		}
+	}
 	mut missing := ''
 	for param in generic_params {
 		arg := inferred[param] or {
@@ -5129,7 +5139,7 @@ fn (mut tc TypeChecker) record_uninferred_generic_method_type(id flat.NodeId, no
 			missing = param
 			break
 		}
-		if tc.type_text_has_unbound_generic_placeholder(arg, tc.fn_context.generic_params) {
+		if tc.type_text_has_unbound_generic_placeholder(arg, bound) {
 			missing = param
 			break
 		}

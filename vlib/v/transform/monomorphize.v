@@ -225,7 +225,15 @@ fn (mut t Transformer) monomorphize_pass() []string {
 			if t.node_file_or(i, '').len == 0 {
 				continue
 			}
-			decl_key, args := t.explicit_generic_fn_value_specialization(flat.NodeId(i), node, t.node_module_or(i, ''), decls) or { continue }
+			decl_key, args := t.explicit_generic_fn_value_specialization(flat.NodeId(i), node, t.node_module_or(i, ''), decls) or {
+				// A generic method named on a value with its type arguments.
+				if asked := t.bind_explicit_generic_method_value(flat.NodeId(i), node,
+					t.node_module_or(i, ''), decls)
+				{
+					changed = changed || asked
+				}
+				continue
+			}
 			decl := decls[decl_key] or { continue }
 			concrete_args := t.canonical_generic_specialization_args(args)
 			if !t.generic_specialization_registered(decl, concrete_args) {
@@ -328,6 +336,12 @@ fn (mut t Transformer) monomorphize_pass() []string {
 						typ:   fn_type
 						pos:   node.pos
 					})
+					continue
+				}
+				if asked := t.bind_explicit_generic_method_value(flat.NodeId(i), node,
+					t.node_module_or(i, ''), decls)
+				{
+					changed = changed || asked
 					continue
 				}
 			}
@@ -513,6 +527,134 @@ fn (mut t Transformer) explicit_generic_fn_value_specialization(id flat.NodeId, 
 		return decl_key, args
 	}
 	return none
+}
+
+// explicit_generic_method_value_specialization returns the declaration of the
+// generic method that the index `node` names on a value with its type arguments
+// and without a call, `h.first[int]`, which the check typed as a method value
+// (see types.TypeChecker.check_generic_method_value), and the types of all its
+// type parameters: those its receiver gives, and those written.
+fn (mut t Transformer) explicit_generic_method_value_specialization(id flat.NodeId, node flat.Node, module_name string, decls map[string]GenericFnDecl) ?(GenericFnDecl, []string) {
+	if isnil(t.tc) || node.children_count < 2 || node.value == 'range' {
+		return none
+	}
+	selector := t.a.child_node(&node, 0)
+	if selector.kind != .selector || selector.children_count == 0 {
+		return none
+	}
+	// The generic method the check resolved it to.
+	method_key := t.tc.resolved_call_name(id) or { return none }
+	if (t.tc.fn_generic_params[method_key] or { []string{} }).len == 0 {
+		return none
+	}
+	type_arg_text := t.generic_call_type_args_name(node)
+	if type_arg_text.len == 0 || t.type_arg_text_has_enclosing_generic_param(id, type_arg_text) {
+		return none
+	}
+	receiver_type := t.generic_call_arg_type_for_inference(t.a.child(selector, 0))
+	if receiver_type.len == 0 || t.generic_arg_is_unresolved(receiver_type)
+		|| t.type_arg_text_has_enclosing_generic_param(id, receiver_type) {
+		return none
+	}
+	decl := t.generic_method_decl_of(receiver_type, selector.value, decls) or { return none }
+	param_names := t.generic_fn_param_names(decl.node, decl.module)
+	receiver_params := t.generic_receiver_param_names(decl)
+	fixed := t.receiver_fixed_type_args(decl, receiver_type)
+	explicit := normalize_generic_args(split_generic_args(type_arg_text), module_name)
+	own := param_names.filter(it !in receiver_params)
+	mut args := []string{cap: param_names.len}
+	if explicit.len == param_names.len {
+		for i, name in param_names {
+			args << fixed[name] or { explicit[i] }
+		}
+	} else if explicit.len == own.len {
+		mut next := 0
+		for name in param_names {
+			if name in receiver_params {
+				args << fixed[name] or { return none }
+			} else {
+				args << explicit[next]
+				next++
+			}
+		}
+	} else {
+		return none
+	}
+	scoped := t.generic_call_args_for_decl(args, module_name, decl.module)
+	if t.generic_args_have_placeholders(scoped) {
+		return none
+	}
+	return decl, scoped
+}
+
+// generic_method_decl_of returns the generic method `method` of the type
+// `receiver_type`, or of the type it aliases.
+fn (mut t Transformer) generic_method_decl_of(receiver_type string, method string, decls map[string]GenericFnDecl) ?GenericFnDecl {
+	clean := t.trim_pointer_type(receiver_type)
+	mut names := []string{}
+	base, _, is_app := generic_app_parts(clean)
+	names << if is_app { base } else { clean }
+	unaliased := types.unalias_type(t.tc.parse_type(clean)).name()
+	unaliased_base, _, unaliased_app := generic_app_parts(unaliased)
+	names << if unaliased_app { unaliased_base } else { unaliased }
+	for name in names {
+		for key in ['${name}.${method}', '${name.all_after_last('.')}.${method}'] {
+			if decl := decls[key] {
+				return decl
+			}
+		}
+	}
+	return none
+}
+
+// bind_explicit_generic_method_value makes the index `id`, a generic method
+// named on a value with its type arguments (see
+// explicit_generic_method_value_specialization), the method value of the
+// instance of those types, bound to the value as any method value is: a
+// selector of the method, whose call the check records as that instance. It
+// returns none for another index, and otherwise whether it asked for the
+// instance.
+fn (mut t Transformer) bind_explicit_generic_method_value(id flat.NodeId, node flat.Node, module_name string, decls map[string]GenericFnDecl) ?bool {
+	decl, args := t.explicit_generic_method_value_specialization(id, node, module_name, decls) or {
+		return none
+	}
+	concrete_args := t.canonical_generic_specialization_args(args)
+	mut asked := false
+	if !t.generic_specialization_registered(decl, concrete_args) {
+		t.request_generic_fn_specialization(decl, concrete_args)
+		asked = true
+	}
+	spec_value := specialized_generic_fn_value(decl.node.value, concrete_args)
+	spec_name := transform_qualified_fn_name(decl.module, spec_value)
+	t.record_generic_specialization_args_for_names([spec_name, c_name(spec_name)], concrete_args)
+	selector := t.a.child_node(&node, 0)
+	// The type of the value: the instance without its receiver, which it binds.
+	params := t.tc.fn_param_types[spec_name] or {
+		t.tc.fn_param_types[spec_value] or { []types.Type{} }
+	}
+	method_type := if params.len > 0 {
+		types.Type(types.FnType{
+			params:      params[1..].clone()
+			return_type: t.tc.fn_ret_types[spec_name] or {
+				t.tc.fn_ret_types[spec_value] or { types.Type(types.void_) }
+			}
+		})
+	} else {
+		t.tc.expr_type(id) or { types.Type(types.void_) }
+	}
+	start := t.a.children.len
+	t.a.children << t.a.child(selector, 0)
+	t.set_node(int(id), flat.Node{
+		kind:           .selector
+		op:             selector.op
+		children_start: start
+		children_count: 1
+		pos:            node.pos
+		value:          selector.value
+		typ:            t.semantic_type_name(method_type)
+	})
+	t.tc.remember_method_value_call(id, spec_name)
+	return asked
 }
 
 fn (mut t Transformer) explicit_generic_arg_is_known_type(arg string, module_name string) bool {

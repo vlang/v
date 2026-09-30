@@ -4847,6 +4847,16 @@ fn (c &CallCollector) collect_calls_with_locals_and_generics(node &flat.Node, cu
 						qname := qualify_fn(cur_module, base.value)
 						calls << if c.is_known_fn_name(qname) { qname } else { base.value }
 						uses_generics = true
+					} else if base.kind == .selector {
+						// A generic method named on a value with its type arguments,
+						// `h.first[int]`: the method the check resolved it to (see
+						// types.TypeChecker.check_generic_method_value).
+						if name := c.tc.resolved_call_name(child_id) {
+							if (c.tc.fn_generic_params[name] or { []string{} }).len > 0 {
+								calls << name
+								uses_generics = true
+							}
+						}
 					}
 				}
 				c.collect_index_operator_method(child_id, '[]', cur_module, imports, local_values, local_types, mut calls)

@@ -7601,6 +7601,14 @@ fn (mut tc TypeChecker) check_index(id flat.NodeId, node flat.Node) {
 		return
 	}
 	generic_base_node := tc.a.child_node(&node, 0)
+	// A generic method named on a value with its type arguments and without a
+	// call, `h.first[int]`, as `first[int]` names a function.
+	if generic_base_node.kind == .selector && !tc.ident_is_call_callee_or_generic_base(id) {
+		if method_type := tc.check_generic_method_value(id, node) {
+			tc.register_synth_type(id, method_type)
+			return
+		}
+	}
 	if name := tc.generic_call_base_name(generic_base_node) {
 		type_args := tc.generic_call_type_arg_names(node)
 		mut has_unresolved_generic := false
@@ -18280,6 +18288,78 @@ fn (tc &TypeChecker) resolve_index_type(node flat.Node) Type {
 		})
 	}
 	return tc.resolve_index_base_type(base_type, node)
+}
+
+// check_generic_method_value returns the type of the generic method that the
+// index `node` names on a value with its type arguments and without a call,
+// `h.first[int]`: the method of those types without its receiver, which the
+// value binds, as `first[int]` is the function of those types. Its type
+// arguments are checked as those of a call are (see resolve_generic_call_info):
+// their count, those its receiver fixes, and their constraints.
+fn (mut tc TypeChecker) check_generic_method_value(id flat.NodeId, node flat.Node) ?Type {
+	selector := tc.a.child_node(&node, 0)
+	if selector.children_count == 0 || tc.generic_call_type_arg_names(node).len == 0 {
+		return none
+	}
+	// Before the dot, a module or a type names a function, not a value: a local,
+	// a constant or a global is a value.
+	receiver := tc.a.child_node(selector, 0)
+	if receiver.kind == .ident && !tc.ident_resolves_to_value(receiver.value)
+		&& (receiver.value in tc.imports || tc.type_symbol_known(receiver.value)) {
+		return none
+	}
+	info := tc.resolve_generic_call_info(id, node) or { return none }
+	if !info.has_receiver || info.params.len == 0
+		|| (tc.fn_generic_params[info.name] or { []string{} }).len == 0 {
+		return none
+	}
+	tc.check_generic_method_value_constraints(id, node, info.name)
+	// The generic method it names, for markused and the monomorphization.
+	tc.remember_resolved_call(id, info.name)
+	return Type(FnType{
+		params:      info.params[1..].clone()
+		return_type: info.return_type
+	})
+}
+
+// check_generic_method_value_constraints checks the type arguments of the
+// generic method value `node` (see check_generic_method_value) against the
+// constraints of the type parameters of the method `name`, as
+// check_generic_fn_value_constraints checks those of a function value.
+fn (mut tc TypeChecker) check_generic_method_value_constraints(id flat.NodeId, node flat.Node, name string) {
+	decl := tc.top_level_fn_decl(name) or { return }
+	params := decl.generic_params()
+	constraints := decl.generic_constraints()
+	type_args := tc.generic_call_type_arg_names(node)
+	if constraints.len != params.len || type_args.len != params.len {
+		return
+	}
+	concrete := type_args.map(tc.explicit_generic_concrete_arg_text(it))
+	for i, text in constraints {
+		if text.len == 0 {
+			continue
+		}
+		constraint := tc.generic_constraint_with_args(decl, text, params, concrete) or { continue }
+		actual := tc.parse_type(concrete[i])
+		if tc.generic_constraint_accepts(constraint, actual) {
+			continue
+		}
+		tc.record_generic_constraint_error(constraint, params[i], actual, id, tc.explicit_type_arg_pos(node,
+			i) or { node.pos })
+	}
+}
+
+// top_level_fn_decl returns the declaration of the function or method `name`.
+fn (tc &TypeChecker) top_level_fn_decl(name string) ?flat.Node {
+	short := name.all_after_last('.')
+	for idx in tc.top_level_idx {
+		node := tc.a.nodes[idx]
+		if node.kind == .fn_decl && node.value.all_after_last('.') == short
+			&& (node.value == name || name.ends_with('.${node.value}')) {
+			return node
+		}
+	}
+	return none
 }
 
 // explicit_generic_fn_value_type resolves `generic_fn[ConcreteType]` when the

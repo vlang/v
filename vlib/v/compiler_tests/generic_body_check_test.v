@@ -2,6 +2,7 @@
 module main
 
 import os
+import v.compiler_tests.method_form
 
 // A check checks the body of a generic function whose type parameters all have
 // a constraint as the body of any other function, with each type parameter as
@@ -19,8 +20,15 @@ fn testsuite_end() {
 }
 
 // check checks `source` as the main.v of a directory of its own, as an editor
-// does, and returns the lines of its errors and warnings.
+// does, and returns the lines of its errors and warnings. Its method form has to
+// report the same (see same_with_methods).
 fn check(name string, source string) []string {
+	lines := check_form(name, source)
+	same_with_methods(name, source, lines, check_form)
+	return lines
+}
+
+fn check_form(name string, source string) []string {
 	dir := os.join_path(work_dir, name)
 	os.mkdir_all(dir) or { panic(err) }
 	os.write_file(os.join_path(dir, 'main.v'), source) or { panic(err) }
@@ -30,14 +38,32 @@ fn check(name string, source string) []string {
 }
 
 // build builds `source` as the main.v of a directory of its own and returns the
-// lines of its errors.
+// lines of its errors. Its method form has to report the same.
 fn build(name string, source string) []string {
+	lines := build_form(name, source)
+	same_with_methods(name, source, lines, build_form)
+	return lines
+}
+
+fn build_form(name string, source string) []string {
 	dir := os.join_path(work_dir, name)
 	os.mkdir_all(dir) or { panic(err) }
 	os.write_file(os.join_path(dir, 'main.v'), source) or { panic(err) }
 	res := os.execute('cd ${os.quoted_path(dir)} && ${os.quoted_path(@VEXE)} -new-compiler -nocolor -o prog .')
 	return res.output.split_into_lines().filter(it.starts_with('main.v:')
 		&& it.contains(': error: '))
+}
+
+// same_with_methods checks, with `check`, the method form of `source`: its generic
+// functions written as methods of a struct without type parameters, whose own
+// type parameters have to behave as those of the functions, with their
+// constraints. It has to report the lines that `lines` are, where it moves them
+// (see method_form.MethodForm).
+fn same_with_methods(name string, source string, lines []string, check fn (string, string) []string) {
+	form := method_form.of(source) or { return }
+	method_lines := check('${name}_methods', form.source)
+	difference := form.differences(lines.map(it.all_after('main.v:')), method_lines.map(it.all_after('main.v:')))
+	assert difference == '', 'the method form of `${name}`: ${difference}'
 }
 
 fn test_a_build_checks_a_generic_body_whose_type_parameters_all_have_constraints() {

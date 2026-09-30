@@ -193,3 +193,15 @@ fn test_explicit_types_that_the_receiver_fixes_are_fine() {
 	assert res.exit_code == 0, res.output
 	assert error_lines(res.output) == [], res.output
 }
+
+// A method named with its type arguments and without a call is checked as its
+// call is: `b.own[string]` for a `Box[int]` too.
+fn test_a_method_value_that_writes_another_type_than_the_receiver_fixes_is_an_error() {
+	source := receiver_source('', box_of_int + '\tf := b.own[string]\n\tprintln(f())\n')
+	res := check_receiver_source('value', source)
+	assert res.exit_code == 1, res.output
+	line := line_of(source, '\tf := b.own[string]')
+	assert error_lines(res.output) == [
+		'${line}:12: `own` takes `T` from its receiver `Box[int]`: `T` is `int`, not `string`',
+	], res.output
+}
