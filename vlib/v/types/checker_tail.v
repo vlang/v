@@ -9062,7 +9062,8 @@ fn (mut tc TypeChecker) resolve_call_info_uncached(id flat.NodeId, node flat.Nod
 				params_known: true
 			}
 		}
-		if fn_node.value == 'malloc' {
+		// A module's own `malloc` is called before builtin's, as in V1.
+		if fn_node.value == 'malloc' && tc.local_bare_fn_key('malloc') == none {
 			return CallInfo{
 				name:         'malloc'
 				params:       tarr1(Type(ISize{}))
