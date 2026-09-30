@@ -10,12 +10,15 @@ an unresolved name when no such declaration exists.
 
 A call such as `byte(8)` invokes the declared function, including when it takes one argument.
 FastC uses a separate C function symbol so this name can coexist with its internal `byte` typedef.
+Global variables named `byte` also use a separate C symbol in both C backends.
 `sizeof(byte)` measures the constant or variable's type; for `const byte = f64(8)`, the result
 is `8`, including with the native ARM64 backend.
 The evaluator also uses declared widths and resolves type aliases for `sizeof` value operands,
 without evaluating a constant initializer or function call.
 Fixed arrays use their length multiplied by the element's width, including nested array aliases.
 Values initialized by methods or qualified calls retain the declared return type's width.
+Pointer parameters and variables retain their pointer width; dereferenced operands use the
+pointed-to type's width, including pointer aliases and multiple pointer levels.
 
 Generated documentation highlights `byte` as an ordinary identifier or function name,
 while `u8` retains builtin type highlighting. Byte method documentation belongs to `u8`.

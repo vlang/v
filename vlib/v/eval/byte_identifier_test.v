@@ -306,3 +306,120 @@ fn main() {
 	e.run_files(p.a) or { panic(err) }
 	assert e.stdout() == '1\nqualified\n1\n6\n3\n'
 }
+
+fn test_eval_sizeof_byte_pointer_parameter_preserves_depth() {
+	mut e := create()
+	e.run_text('
+fn width(byte &u8) { println(sizeof(byte)); println(sizeof(*byte)) }
+fn wider(byte &i32) { println(sizeof(byte)); println(sizeof(*byte)) }
+fn indirect(byte &&u8) { println(sizeof(byte)); println(sizeof(*byte)); println(sizeof(**byte)) }
+fn main() {
+ value := u8(1)
+ wide := i32(1)
+ width(&value)
+ wider(&wide)
+ pointer := &value
+ indirect(&pointer)
+}
+') or { panic(err) }
+	assert e.stdout() == '8\n1\n8\n4\n8\n8\n1\n'
+}
+
+fn test_eval_sizeof_byte_pointer_alias_parameter() {
+	mut e := create()
+	e.run_text('
+type Pointer = &u16
+type Indirect = &Pointer
+fn width(byte Pointer) { println(sizeof(byte)); println(sizeof(*byte)) }
+fn indirect(byte Indirect) { println(sizeof(byte)) }
+fn main() {
+ value := u16(1)
+ pointer := &value
+ width(pointer)
+ indirect(&pointer)
+ println(sizeof(Pointer))
+ println(sizeof(Indirect))
+}
+') or { panic(err) }
+	assert e.stdout() == '8\n2\n8\n8\n8\n'
+}
+
+fn test_eval_sizeof_byte_pointer_function_literal_parameter() {
+	mut e := create()
+	e.run_text('
+fn main() {
+ width := fn (byte &u16) { println(sizeof(byte)); println(sizeof(*byte)) }
+ value := u16(1)
+ width(&value)
+}
+') or { panic(err) }
+	assert e.stdout() == '8\n2\n'
+}
+
+fn test_eval_sizeof_byte_pointer_method_receiver_and_field() {
+	mut e := create()
+	e.run_text('
+struct Holder { value u8; pointer &u16 }
+fn (byte &Holder) width() {
+ println(sizeof(byte))
+ field := byte.value
+ pointer := byte.pointer
+ println(sizeof(field))
+ println(sizeof(pointer))
+}
+fn main() { holder := Holder{}; holder.width() }
+') or { panic(err) }
+	assert e.stdout() == '8\n1\n8\n'
+}
+
+fn test_eval_sizeof_byte_local_pointer_survives_assignment() {
+	mut e := create()
+	e.run_text('
+fn main() {
+ value := u8(1)
+ mut byte := &value
+ println(sizeof(byte))
+ byte = &value
+ println(sizeof(byte))
+ copy := byte
+ println(sizeof(copy))
+}
+') or { panic(err) }
+	assert e.stdout() == '8\n8\n8\n'
+}
+
+fn test_eval_sizeof_byte_pointer_cast_preserves_width() {
+	mut e := create()
+	e.run_text('
+fn main() {
+ byte := &u8(0)
+ println(sizeof(byte))
+ wider := &u16(0)
+ println(sizeof(wider))
+ indirect := &&u8(0)
+ println(sizeof(indirect))
+}
+') or { panic(err) }
+	assert e.stdout() == '8\n8\n8\n'
+}
+
+fn test_eval_sizeof_byte_pointer_return_signature_is_not_evaluated() {
+	mut e := create()
+	e.run_text('
+const byte = pointer()
+const other = byte
+fn pointer() &u8 { println("evaluated"); return &u8(0) }
+fn main() { println(sizeof(byte)); println(sizeof(other)) }
+') or { panic(err) }
+	assert e.stdout() == '8\n8\n'
+}
+
+fn test_eval_declared_pointer_metadata_keeps_module_and_depth() {
+	mut e := create()
+	e.call_stack << CallFrame{ module_name: 'worker' }
+	e.declare_var_typed('byte', Value(i64(0)), '&&Holder')
+	assert e.lookup_var_type('byte') or { '' } == '&&worker.Holder'
+	e.set_var_type('byte', '&u8')
+	assert e.lookup_var_type('byte') or { '' } == '&u8'
+	assert e.qualify_nested_type_name('worker', '[2]&u16') == '[2]&u16'
+}

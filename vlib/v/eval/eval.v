@@ -805,9 +805,9 @@ fn (mut e Eval) declare_var_typed(name string, value Value, type_name string) {
 		e.open_scope()
 	}
 	e.scopes[e.scopes.len - 1].vars[name] = value
-	normalized := e.normalize_type_name(type_name)
-	if normalized.len > 0 {
-		e.scopes[e.scopes.len - 1].types[name] = normalized
+	declared := e.qualify_expected_type_name(e.current_module_name(), type_name)
+	if declared.len > 0 {
+		e.scopes[e.scopes.len - 1].types[name] = declared
 	}
 }
 
@@ -830,13 +830,13 @@ fn (mut e Eval) set_var(name string, value Value) ! {
 }
 
 fn (mut e Eval) set_var_type(name string, type_name string) {
-	normalized := e.normalize_type_name(type_name)
-	if normalized.len == 0 {
+	declared := e.qualify_expected_type_name(e.current_module_name(), type_name)
+	if declared.len == 0 {
 		return
 	}
 	for i := e.scopes.len - 1; i >= 0; i-- {
 		if name in e.scopes[i].vars {
-			e.scopes[i].types[name] = normalized
+			e.scopes[i].types[name] = declared
 			return
 		}
 	}
@@ -1561,10 +1561,10 @@ fn (e &Eval) infer_expr_type_name(id flat.NodeId) string {
 	}
 	node := e.node(id)
 	if node.kind in [.struct_init, .cast_expr, .as_expr] {
-		return e.normalize_type_name(node.value)
+		return e.qualify_nested_type_name(e.current_module_name(), node.value)
 	}
 	if node.typ.len > 0 {
-		return e.normalize_type_name(node.typ)
+		return e.qualify_expected_type_name(e.current_module_name(), node.typ)
 	}
 	match node.kind {
 		.int_literal {
@@ -1585,6 +1585,24 @@ fn (e &Eval) infer_expr_type_name(id flat.NodeId) string {
 		.ident {
 			if typ := e.lookup_var_type(node.value) {
 				return typ
+			}
+		}
+		.paren {
+			if node.children_count > 0 {
+				return e.infer_expr_type_name(e.child(node, 0))
+			}
+		}
+		.prefix {
+			if node.children_count > 0 {
+				typ := e.infer_expr_type_name(e.child(node, 0))
+				if typ.len > 0 {
+					if node.op == .amp {
+						return '&${typ}'
+					}
+					if node.op == .mul {
+						return e.dereferenced_type_name(typ)
+					}
+				}
 			}
 		}
 		.call {
@@ -1627,6 +1645,23 @@ fn (e &Eval) infer_expr_type_name(id flat.NodeId) string {
 		else {}
 	}
 
+	return ''
+}
+
+fn (e &Eval) dereferenced_type_name(type_name string) string {
+	mut name := type_name
+	mut seen := map[string]bool{}
+	for name.len > 0 && name !in seen {
+		seen[name] = true
+		if name.starts_with('&') {
+			return name[1..]
+		}
+		if alias := e.type_alias_info_in_module(name, e.current_module_name()) {
+			name = e.qualify_nested_type_name(alias.module_name, alias.target)
+		} else {
+			break
+		}
+	}
 	return ''
 }
 
@@ -1680,7 +1715,7 @@ fn (e &Eval) infer_call_return_type_name(callee_id flat.NodeId, allow_locals boo
 		mut seen := map[string]bool{}
 		for receiver_type.len > 0 && receiver_type !in seen {
 			seen[receiver_type] = true
-			if target := e.resolve_method_target(receiver_type, callee.value) {
+			if target := e.resolve_method_target(receiver_type.trim_left('&'), callee.value) {
 				return e.qualify_nested_type_name(target.module_name, e.node(target.node).typ)
 			}
 			if alias := e.type_alias_info_in_module(receiver_type, e.current_module_name()) {
@@ -5719,6 +5754,9 @@ fn (e &Eval) qualify_nested_type_name(module_name string, type_name string) stri
 	if name == '' {
 		return ''
 	}
+	if name.starts_with('&') {
+		return '&${e.qualify_nested_type_name(module_name, name[1..])}'
+	}
 	if name.starts_with('[]') {
 		return '[]${e.qualify_nested_type_name(module_name, name[2..])}'
 	}
@@ -5793,7 +5831,7 @@ fn (e &Eval) struct_field_type_name_by_type(type_name string, field_name string)
 }
 
 fn (e &Eval) struct_info(type_name string) StructInfo {
-	name := e.resolve_struct_type_name(type_name)
+	name := e.resolve_struct_type_name(type_name.trim_left('&'))
 	if name in e.structs {
 		return e.structs[name]
 	}

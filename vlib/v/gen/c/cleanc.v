@@ -24111,6 +24111,9 @@ fn (g &FlatGen) global_c_name(name string) string {
 	if name.starts_with('C.') {
 		return g.cname(name[2..])
 	}
+	if name == 'byte' {
+		return g.cname('main.byte')
+	}
 	return g.cname(name)
 }
 

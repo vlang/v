@@ -101,6 +101,9 @@ fn fastc_global_key(module_name string, name string) string {
 }
 
 fn fastc_c_global_name(key string) string {
+	if key == 'byte' {
+		return 'main__byte'
+	}
 	return fastc_c_identifier(key.replace('.', '__'))
 }
 

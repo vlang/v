@@ -113,3 +113,51 @@ fn test_fastc_arm64_sizeof_byte_constant_uses_its_type() {
 		assert executed.output == '8\n'
 	}
 }
+
+fn test_fastc_byte_globals_do_not_collide_with_c_typedef() {
+	for fixture, source in {
+		'scalar':  'module main
+__global byte int
+fn update() { byte = 8; byte += 2; byte++; byte-- }
+fn read() int { return byte }
+fn main() {
+ println(byte)
+ update()
+ println(read())
+ byte = 12
+ println(byte)
+ println(read())
+}
+'
+		'pointer': 'module main
+__global byte &int
+fn main() { value := 9; byte = &value; println(*byte) }
+
+'
+	} {
+		mut prefs := pref.new_preferences()
+		prefs.enable_globals = true
+		c_source := generate(source, 'byte_global_${fixture}.v', prefs) or { panic(err) }
+		assert c_source.contains('typedef unsigned char byte;')
+		test_dir := os.join_path(os.vtmp_dir(), 'fastc_byte_global_${fixture}_${os.getpid()}')
+		os.mkdir_all(test_dir) or { panic(err) }
+		defer { os.rmdir_all(test_dir) or {} }
+		c_file := os.join_path(test_dir, 'program.c')
+		bin_file := os.join_path(test_dir, 'program')
+		os.write_file(c_file, c_source) or { panic(err) }
+		tcc := os.join_path(prefs.vroot, 'thirdparty', 'tcc', 'tcc.exe')
+		compiled := cmdexec.run(tcc, ['-std=gnu11', '-o', bin_file, c_file])
+		assert compiled.exit_code == 0, compiled.output
+		executed := cmdexec.run(bin_file, [])
+		assert executed.exit_code == 0, executed.output
+		assert executed.output == if fixture == 'scalar' { '0\n10\n12\n12\n' } else { '9\n' }
+	}
+}
+
+fn test_fastc_byte_global_mapping_keeps_other_symbol_names() {
+	assert fastc_c_global_name('byte') == 'main__byte'
+	assert fastc_c_global_name('main.byte') == 'main__byte'
+	assert fastc_c_global_name('worker.byte') == 'worker__byte'
+	assert fastc_c_constant_name('main', 'byte') == 'main__byte'
+	assert fastc_c_function_name('main', 'byte') == '__vf_function_byte'
+}
