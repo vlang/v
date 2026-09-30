@@ -175,3 +175,28 @@ fn test_promoted_fixed_array_storage_preserves_nested_element_alignment() {
 		assert t.a.child_node(&node, 3).value == '64'
 	}
 }
+
+fn test_fixed_array_reference_sum_headers_do_not_own_inline_variant_storage() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	fixed := types.Type(types.ArrayFixed{ elem_type: types.Type(types.int_), len: 2 })
+	tc.structs['FixedPayload'] = [types.StructField{ name: 'values', typ: fixed }]
+	tc.structs['Wrapper'] = [types.StructField{ name: 'payload', typ: types.Type(types.SumType{ name: 'Payload' }) }]
+	tc.sum_types['Payload'] = ['int', 'FixedPayload']
+	tc.sum_types['Generic'] = ['int', 'T']
+	tc.sum_generic_params['Generic'] = ['T']
+	mut t := new_transformer(mut a, &tc, map[string]bool{})
+	for name in ['Payload', 'Generic[FixedPayload]'] {
+		mut seen := map[string]bool{}
+		assert !t.escape_value_contains_fixed_array(types.Type(types.SumType{ name: name }), mut seen)
+	}
+	mut seen := map[string]bool{}
+	assert !t.escape_value_contains_fixed_array(types.Type(types.Alias{
+		name:      'PayloadAlias'
+		base_type: types.Type(types.SumType{ name: 'Payload' })
+	}), mut seen)
+	seen.clear()
+	assert !t.escape_value_contains_fixed_array(types.Type(types.Struct{ name: 'Wrapper' }), mut seen)
+	seen.clear()
+	assert t.escape_value_contains_fixed_array(types.Type(types.Struct{ name: 'FixedPayload' }), mut seen)
+}

@@ -8992,6 +8992,11 @@ fn (t &Transformer) escape_value_contains_fixed_array(typ types.Type, mut seen m
 		types.Alias, types.OptionType, types.ResultType {
 			return t.escape_value_contains_fixed_array(typ.base_type, mut seen)
 		}
+		types.SumType {
+			// C and SSA box struct variants independently. The sum header is not
+			// the inline owner of the fixed-array fields inside those variants.
+			return false
+		}
 		types.Struct {
 			if isnil(t.tc) || typ.name in seen {
 				return false

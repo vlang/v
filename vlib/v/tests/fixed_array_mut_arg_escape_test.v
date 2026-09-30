@@ -452,3 +452,69 @@ fn test_fixed_array_reference_keeps_second_multi_return_local_alive() {
 		assert *middle == [81, 82]
 	}
 }
+
+struct EmptyFixedPayload {}
+
+type FixedPayload = EmptyFixedPayload | FixedHolder
+type FixedPayloadAlias = FixedPayload
+
+struct GenericFixedSumHolder[T] {
+mut:
+	values [2]T
+}
+
+type GenericFixedPayload[T] = EmptyFixedPayload | GenericFixedSumHolder[T]
+
+fn keep_fixed_sum_reference(payload &FixedPayload) &[]int {
+	if payload is FixedHolder {
+		return retain_immutable_array_reference(&payload.values)
+	}
+	panic('unexpected fixed array payload')
+}
+
+fn keep_mut_fixed_sum_reference(mut payload FixedPayload) &[]int {
+	if payload is FixedHolder {
+		payload.values[0] = 41
+		return retain_immutable_array_reference(&payload.values)
+	}
+	panic('unexpected fixed array payload')
+}
+
+fn keep_generic_array_reference[T](values &[]T) &[]T {
+	return values
+}
+
+fn keep_generic_fixed_sum_reference[T](payload &GenericFixedPayload[T]) &[]T {
+	if payload is GenericFixedSumHolder[T] {
+		return keep_generic_array_reference[T](&payload.values)
+	}
+	panic('unexpected fixed array payload')
+}
+
+@[noinline]
+fn fixed_sum_reference_from_local(kind int) &[]int {
+	if kind == 0 {
+		payload := FixedPayload(FixedHolder{[11, 12]!})
+		return keep_fixed_sum_reference(payload)
+	}
+	if kind == 1 {
+		mut payload := FixedPayload(FixedHolder{[21, 22]!})
+		return keep_mut_fixed_sum_reference(mut payload)
+	}
+	if kind == 2 {
+		payload := FixedPayloadAlias(FixedHolder{[31, 32]!})
+		return keep_fixed_sum_reference(payload)
+	}
+	payload := GenericFixedPayload[int](GenericFixedSumHolder[int]{[51, 52]!})
+	return keep_generic_fixed_sum_reference[int](payload)
+}
+
+fn test_fixed_array_references_into_boxed_sum_variants_remain_valid() {
+	for kind, expected in [[11, 12], [41, 22], [31, 32], [51, 52]] {
+		values := fixed_sum_reference_from_local(kind)
+		assert overwrite_stack() == 7
+		unsafe {
+			assert *values == expected
+		}
+	}
+}
