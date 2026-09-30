@@ -79,6 +79,12 @@ pub fn (mut p Point) inc(dx int) int {
 '
 }
 
+fn test_formatter_keeps_the_spacing_of_compile_time_conditions() {
+	// `v fmt` wrote `[f32, f64]&& b`, `!( a is f64 )`, `sizeof ( A )` and `[]&& int`.
+	source := "module main\n\nfn f[A, B](a A, b B) {\n\t\$if a in [f32, f64] && b !is f32 {\n\t\tprintln(1)\n\t}\n\t\$if !(a is f64) {\n\t\tprintln(2)\n\t}\n\t\$if A is []&&int {\n\t\tprintln(3)\n\t}\n\t\$if A in [f32, f64] || A is int {\n\t\tprintln(4)\n\t}\n\t\$if sizeof(A) == 8 {\n\t\tprintln(5)\n\t}\n\t\$if (a is int) || (a is f64) {\n\t\tprintln(6)\n\t}\n\t\$if A.name == 'f64' {\n\t\tprintln(7)\n\t}\n\t\$if linux && !debug {\n\t\tprintln(8)\n\t}\n\t\$if my_flag ? {\n\t\tprintln(9)\n\t}\n\t\$if a is \$int {\n\t\tprintln(10)\n\t}\n\t\$if A !in [i8, i16] && A is \$int {\n\t\tprintln(11)\n\t}\n\t\$if a is ?int {\n\t\tprintln(12)\n\t}\n\t\$if \$d('mode', 1) == 2 {\n\t\tprintln(13)\n\t}\n\t\$if !(A in [f32, f64]) && (B is int || B is i64) {\n\t\tprintln(14)\n\t}\n\t\$if A is [3]&&int {\n\t\tprintln(15)\n\t}\n}\n\nfn main() {\n\tf(1, 2)\n}\n"
+	assert vfmt('comptime_condition_spacing', source) == source
+}
+
 fn test_formatter_keeps_generic_constraints() {
 	// `v fmt` used to delete them: `fn longest[T Named]` became `fn longest[T]`.
 	source := 'module m

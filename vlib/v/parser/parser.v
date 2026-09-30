@@ -4933,6 +4933,7 @@ fn (mut p Parser) parse_top_level_block_body() []flat.NodeId {
 fn (mut p Parser) parse_comptime_cond() string {
 	mut cond := strings.new_builder(64)
 	mut prev_tok_str := ''
+	mut prev_and_starts_type := false
 	for p.tok != .lcbr && p.tok != .eof {
 		raw_tok_str := p.comptime_cond_token_text()
 		tok_str := if raw_tok_str.starts_with('@') && !p.prefs.is_fmt {
@@ -4952,14 +4953,20 @@ fn (mut p Parser) parse_comptime_cond() string {
 		// Keep it only when formatting, as parse_attribute_comptime_cond does for `@[if flag ?]`.
 		// `in`/`!in` must stay detached from the type list too: the scanner only recognises
 		// `!in` when a space follows, so `T !in[...]` would re-scan as `!` `in` `[`.
-		needs_space := comptime_cond_needs_space(prev_tok_str, tok_str)
+		mut needs_space := comptime_cond_needs_space(prev_tok_str, tok_str)
 			|| (p.prefs.is_fmt && tok_str == '?')
 			|| (p.prefs.is_fmt && tok_str == '[' && prev_tok_str in ['in', '!in'])
+		and_starts_type := tok_str == '&&' && p.comptime_and_starts_type()
+		if p.prefs.is_fmt {
+			needs_space = comptime_cond_fmt_needs_space(prev_tok_str, tok_str, needs_space,
+				and_starts_type, prev_and_starts_type)
+		}
 		if cond.len > 0 && needs_space {
 			cond.write_string(' ')
 		}
 		cond.write_string(tok_str)
 		prev_tok_str = tok_str
+		prev_and_starts_type = and_starts_type
 		p.next()
 	}
 	return cond.str()
@@ -5295,6 +5302,50 @@ fn comptime_cond_needs_space(prev string, cur string) bool {
 		return false
 	}
 	return true
+}
+
+// comptime_cond_fmt_needs_space is the space `v fmt` writes between two pieces of
+// a `$if` condition where it differs from the text the checker reads
+// (comptime_cond_needs_space): none inside parentheses or between a name and its
+// parentheses, `!(a is T)` and `sizeof(T)`; one before an operator after a list,
+// `[f32, f64] && b`; and none around a `&&` that starts a type, `[]&&int`.
+fn comptime_cond_fmt_needs_space(prev string, cur string, default_space bool, cur_starts_type bool, prev_starts_type bool) bool {
+	if prev == '(' || cur == ')' || prev_starts_type {
+		return false
+	}
+	if cur == '(' && comptime_cond_piece_is_name(prev) {
+		return false
+	}
+	if prev == ']' {
+		if cur == '&&' {
+			return !cur_starts_type
+		}
+		return cur in ['||', '==', '!=', '<', '>', '<=', '>=', 'is', '!is', 'in', '!in']
+	}
+	return default_space
+}
+
+// comptime_cond_piece_is_name reports whether a piece of a `$if` condition is a
+// name that parentheses can follow as a call, `sizeof` or `$d`, and not a word
+// of the condition, `is` or `in`.
+fn comptime_cond_piece_is_name(piece string) bool {
+	if piece.len == 0 || piece in ['is', '!is', 'in', '!in'] {
+		return false
+	}
+	for i, c in piece {
+		if !(c.is_letter() || c == `_` || (i > 0 && (c.is_digit() || c == `.`))) {
+			return false
+		}
+	}
+	return true
+}
+
+// comptime_and_starts_type reports whether the `&&` at the current token starts
+// a type, as in `[]&&int`, rather than joining two conditions: the type follows
+// it without a space, where `a && b` has one.
+fn (p &Parser) comptime_and_starts_type() bool {
+	next := p.s.pos + 2
+	return next < p.s.src.len && !p.s.src[next].is_space()
 }
 
 fn comptime_cond_has_type_test(cond string) bool {
