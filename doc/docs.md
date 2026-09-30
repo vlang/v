@@ -5274,6 +5274,11 @@ V can also infer a generic callback's return type from an unbound instance
 method passed as an argument, such as `item.call(Item.value)` when `call[T]`
 accepts a `fn (mut Item) T` callback.
 
+Generic type inference also works with field initialization shorthand in nested calls.
+For `struct Box[T] { value T }` and `fn wrap[U](box Box[U]) Box[U]`,
+`wrap(value: 42)` infers `U` as `int`. The struct and function may use different
+parameter names or arrange those parameters in a different order.
+
 #### Structured generic receiver patterns
 
 Generic methods can constrain their receiver to a *structured* shape of the

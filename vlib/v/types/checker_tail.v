@@ -5108,12 +5108,9 @@ fn (mut tc TypeChecker) record_uninferred_generic_method_type(id flat.NodeId, no
 		if raw_arg.kind == .field_init {
 			base, _, is_generic := generic_type_application_parts(param_texts[param_idx])
 			if is_generic {
-				for field in tc.source_struct_field_decls(base) {
-					if field.name == raw_arg.value {
-						tc.infer_generic_type_text_from_type(field.typ, actual, generic_params, mut inferred)
-						tc.infer_generic_type_value_from_type(field.typ, actual, generic_params, mut inferred_types)
-						break
-					}
+				if field_text := tc.field_init_struct_field_type(base, param_texts[param_idx], raw_arg.value) {
+					tc.infer_generic_type_text_from_type(field_text, actual, generic_params, mut inferred)
+					tc.infer_generic_type_value_from_type(field_text, actual, generic_params, mut inferred_types)
 				}
 				continue
 			}
@@ -16854,6 +16851,53 @@ fn (tc &TypeChecker) variadic_any_arg_is_scalar(id flat.NodeId) bool {
 	return true
 }
 
+// field_init_struct_param_name returns the struct name of the parameter that a
+// shorthand field-init argument initializes. The resolved parameter type is
+// preferred over the declaration text, so pointer, option, result and alias
+// wrappers around the struct do not hide the initialized struct.
+fn field_init_struct_param_name(info CallInfo, param_idx int) ?string {
+	if param_idx < 0 || param_idx >= info.params.len {
+		return none
+	}
+	mut typ := info.params[param_idx]
+	for _ in 0 .. 8 {
+		if typ is Pointer {
+			typ = typ.base_type
+		} else if typ is OptionType {
+			typ = typ.base_type
+		} else if typ is ResultType {
+			typ = typ.base_type
+		} else if typ is Alias {
+			typ = typ.base_type
+		} else {
+			break
+		}
+	}
+	if typ is Struct && typ.name.len > 0 {
+		return typ.name
+	}
+	return none
+}
+
+// field_init_struct_field_type substitutes the struct declaration's parameters
+// with the arguments in the function parameter before inferring from a field.
+fn (tc &TypeChecker) field_init_struct_field_type(struct_name string, param_text string, field_name string) ?string {
+	base, args, is_generic := generic_type_application_parts(comptime_static_unwrap_type_text(param_text))
+	params := if is_generic {
+		tc.struct_generic_params[base] or {
+			tc.struct_generic_params[tc.qualify_name(base)] or { []string{} }
+		}
+	} else {
+		[]string{}
+	}
+	for field in tc.source_struct_field_decls(struct_name) {
+		if field.name == field_name {
+			return subst_generic_text(field.typ, args, params)
+		}
+	}
+	return none
+}
+
 fn (mut tc TypeChecker) specialized_plain_generic_call_info(node flat.Node, info CallInfo) CallInfo {
 	if tc.call_has_explicit_generic_type_args(node) {
 		return info
@@ -16922,7 +16966,35 @@ fn (mut tc TypeChecker) specialized_plain_generic_call_info(node flat.Node, info
 		if arg_node.kind == .lambda_expr && param_idx < info.params.len {
 			actual = tc.contextual_generic_lambda_type(arg_id, info.params[param_idx], generic_params, inferred_types) or { actual }
 		}
-		param_text := trimmed_space(param_texts[param_idx])
+		mut param_text := trimmed_space(param_texts[param_idx])
+		if raw_arg.kind == .field_init {
+			// A shorthand field-init argument to a generic struct parameter
+			// (`f(field: value)` for `fn f[T](x Box[T])`) carries no type of its
+			// own. Infer `T` from the declared type of the initialized field and
+			// the shorthand value, reusing the numeric literal deferral below so
+			// that a later argument can still decide the placeholder's type.
+			struct_name := field_init_struct_param_name(info, param_idx) or {
+				base, _, is_generic := generic_type_application_parts(param_text)
+				if is_generic { base } else { '' }
+			}
+			mut field_text := ''
+			if struct_name.len > 0 {
+				if field_type := tc.field_init_struct_field_type(struct_name, param_text, raw_arg.value) {
+					if generic_params.any(type_text_contains_symbol(field_type, it)) {
+						field_text = trimmed_space(field_type)
+					}
+				}
+			}
+			if field_text.len > 0 {
+				if is_anonymous_struct_name(raw_arg.typ) {
+					// A shorthand with a literal value is parsed as an anonymous
+					// aggregate. The initialized field takes its type from the
+					// value, not from that aggregate type.
+					actual = tc.resolve_generic_call_arg_type(arg_id)
+				}
+				param_text = field_text
+			}
+		}
 		mut defer_numeric_literal := false
 		if arg_node.kind in [.int_literal, .float_literal] && param_text in generic_params {
 			for later_param_idx in param_idx + 1 .. param_texts.len {
