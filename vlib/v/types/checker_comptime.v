@@ -5,6 +5,7 @@ import strings
 import v.errors as compiler_errors
 import v.flat
 import v.pref
+import v.scanner
 import v.token
 import v.util
 
@@ -10817,14 +10818,29 @@ fn (mut tc TypeChecker) check_sql_alias_method_privacy(id flat.NodeId, node flat
 				tc.sql_expr_text_pos(node, '.${tokens[i]}(', 1, tokens[i].len))
 			continue
 		}
-		if !tc.mut_receiver_methods[method] {
-			continue
-		}
+		mutating_receiver := tc.mut_receiver_methods[method]
 		end := i - 1
 		start := sql_value_receiver_start(tokens, end - 1) or { continue }
+		shared_params := tc.fn_shared_params[method] or { []bool{} }
+		if shared_params.len > 0 && shared_params[0] {
+			if tc.lock_depth > 0 {
+				tc.record_sql_error_at(.call_arg_mismatch,
+					'method with `shared` receiver cannot be called inside `lock`/`rlock` block',
+					id, tc.sql_expr_text_pos(node, '.${tokens[i]}(', 1, tokens[i].len))
+			}
+			if !tc.sql_orm_receiver_is_shared(tokens, start, end) {
+				tc.record_sql_error_at(.call_arg_mismatch,
+					'cannot use shared method `${tokens[i]}` as `${tokens[start..end].join('')}` is not a shared var',
+					id, tc.sql_expr_text_pos(node, '.${tokens[i]}(', 1, tokens[i].len))
+			}
+			continue
+		}
 		if shared_name := tc.sql_orm_shared_receiver_name(tokens, start, end) {
-			if tc.current_shared_lock_mode(shared_name) != `w` {
-				message := if tc.current_shared_lock_mode(shared_name) == `r` {
+			lock_mode := tc.sql_orm_current_shared_lock_mode(shared_name)
+			if (mutating_receiver && lock_mode != `w`) || (!mutating_receiver && lock_mode == 0) {
+				message := if !mutating_receiver {
+					'`${shared_name}` is `shared` and must be `rlock`ed or `lock`ed to be used as non-mut receiver'
+				} else if lock_mode == `r` {
 					'${shared_name} has an `rlock` but needs a `lock`'
 				} else {
 					'${shared_name} is `shared` and must be `lock`ed to be passed as `mut`'
@@ -10834,7 +10850,7 @@ fn (mut tc TypeChecker) check_sql_alias_method_privacy(id flat.NodeId, node flat
 			}
 			continue
 		}
-		if tc.unsafe_depth > 0
+		if !mutating_receiver || tc.unsafe_depth > 0
 			|| tc.expr_is_inside_unsafe_block(id)
 			|| !tc.mut_receiver_method_requires_mutable_lvalue(method) {
 			continue
@@ -10948,6 +10964,12 @@ fn (tc &TypeChecker) sql_orm_shared_receiver_name(tokens []string, start int, en
 	} else {
 		return none
 	}
+	if tokens[end - 1] == ']'
+		&& tc.sql_orm_receiver_has_shared_elements(tokens, start, base_end) {
+		return sql_orm_receiver_storage_key(tokens, start, end) or {
+			tokens[start..end].join('')
+		}
+	}
 	if tokens[end - 2] == '.' {
 		base_type := tc.sql_orm_receiver_type(tokens, start, base_end) or { return none }
 		clean := unalias_and_unwrap_pointer_type(base_type)
@@ -10960,12 +10982,90 @@ fn (tc &TypeChecker) sql_orm_shared_receiver_name(tokens []string, start int, en
 	return tc.sql_orm_shared_receiver_name(tokens, start, base_end)
 }
 
+// Direct shared receivers differ from fields merely contained in a shared root.
+fn (tc &TypeChecker) sql_orm_receiver_is_shared(tokens []string, start int, end int) bool {
+	if start >= end {
+		return false
+	}
+	if tokens[start] == '(' {
+		close_idx := sql_value_close_idx(tokens, start, '(', ')') or { return false }
+		if close_idx == end - 1 {
+			return tc.sql_orm_receiver_is_shared(tokens, start + 1, close_idx)
+		}
+	}
+	if end == start + 1 {
+		return tc.current_binding_is_shared(tokens[start])
+	}
+	if tokens[end - 1] == ']' {
+		open_idx := sql_value_open_idx(tokens, end - 1, '[', ']') or { return false }
+		return tc.sql_orm_receiver_has_shared_elements(tokens, start, open_idx)
+	}
+	if end >= start + 3 && tokens[end - 2] == '.' {
+		base_type := tc.sql_orm_receiver_type(tokens, start, end - 2) or { return false }
+		clean := unalias_and_unwrap_pointer_type(base_type)
+		return clean is Struct && tc.struct_field_is_shared(clean.name, tokens[end - 1])
+	}
+	return false
+}
+
+fn (tc &TypeChecker) sql_orm_receiver_has_shared_elements(tokens []string, start int, end int) bool {
+	if start >= end {
+		return false
+	}
+	if tokens[start] == '(' {
+		close_idx := sql_value_close_idx(tokens, start, '(', ')') or { return false }
+		if close_idx == end - 1 {
+			return tc.sql_orm_receiver_has_shared_elements(tokens, start + 1, close_idx)
+		}
+	}
+	if end == start + 1 {
+		return tc.current_binding_has_shared_elements(tokens[start])
+	}
+	if end >= start + 3 && tokens[end - 2] == '.' {
+		base_type := tc.sql_orm_receiver_type(tokens, start, end - 2) or { return false }
+		clean := unalias_and_unwrap_pointer_type(base_type)
+		return clean is Struct
+			&& tc.struct_field_has_shared_elements(clean.name, tokens[end - 1])
+	}
+	return false
+}
+
+fn (tc &TypeChecker) sql_orm_current_shared_lock_mode(name string) u8 {
+	mode := tc.current_shared_lock_mode(name)
+	if mode != 0 {
+		return mode
+	}
+	// Index lock keys keep source whitespace; SQL values are stored as tokens.
+	for lock_name, modes in tc.fn_context.locked_shared_modes {
+		if modes.len > 0 && sql_orm_compact_storage_key(lock_name) == name {
+			return modes.last()
+		}
+	}
+	return 0
+}
+
+fn sql_orm_compact_storage_key(source string) string {
+	mut s := scanner.new_scanner(&pref.Preferences{}, .skip_interpolation)
+	s.init(unsafe { nil }, source)
+	mut parts := []string{}
+	for _ in 0 .. 2 * source.len + 2 {
+		tok := s.scan()
+		if tok == .eof {
+			break
+		}
+		if tok !in [.comment, .semicolon] && s.pos >= 0 && s.offset > s.pos {
+			parts << source[s.pos..s.offset]
+		}
+	}
+	return parts.join('')
+}
+
 fn sql_orm_receiver_storage_key(tokens []string, start int, end int) ?string {
 	if start >= end {
 		return none
 	}
 	if end == start + 1 {
-		return tokens[start].trim('\'"')
+		return tokens[start]
 	}
 	if tokens[start] == '(' {
 		close_idx := sql_value_close_idx(tokens, start, '(', ')') or { return none }
@@ -10974,10 +11074,8 @@ fn sql_orm_receiver_storage_key(tokens []string, start int, end int) ?string {
 		}
 	}
 	if tokens[end - 1] == ']' {
-		open_idx := sql_value_open_idx(tokens, end - 1, '[', ']') or { return none }
-		base := sql_orm_receiver_storage_key(tokens, start, open_idx) or { return none }
-		index := sql_orm_receiver_storage_key(tokens, open_idx + 1, end - 1) or { return none }
-		return '${base}[${index}]'
+		// shared_lock_key uses source spelling for the entire index subtree.
+		return tokens[start..end].join('')
 	}
 	if end >= start + 3 && tokens[end - 2] == '.' {
 		base := sql_orm_receiver_storage_key(tokens, start, end - 2) or { return none }

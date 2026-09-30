@@ -80,6 +80,8 @@ struct Account {
 	name string
 }
 
+EXTRA_DECLARATIONS
+
 fn main() {
 	mut db := sqlite.connect(':memory:')!
 	sql db { create table Account }!
@@ -102,10 +104,10 @@ fn main() {
 
 fn sql_alias_visibility_result(name string, is_public bool, expression string, is_update bool, check_only bool, is_type_public bool, import_name string) os.Result {
 	return sql_alias_visibility_wrapped_result(name, is_public, expression, is_update,
-		check_only, is_type_public, import_name, '')
+		check_only, is_type_public, import_name, '', '')
 }
 
-fn sql_alias_visibility_wrapped_result(name string, is_public bool, expression string, is_update bool, check_only bool, is_type_public bool, import_name string, wrapper string) os.Result {
+fn sql_alias_visibility_wrapped_result(name string, is_public bool, expression string, is_update bool, check_only bool, is_type_public bool, import_name string, wrapper string, lock_receiver string) os.Result {
 	dir := os.join_path(os.vtmp_dir(), 'v3_sql_alias_visibility_${name}_${os.getpid()}')
 	os.rmdir_all(dir) or {}
 	os.mkdir_all(os.join_path(dir, 'aliases')) or { panic(err) }
@@ -128,12 +130,25 @@ fn sql_alias_visibility_wrapped_result(name string, is_public bool, expression s
 		'found := sql db { select from Account where name == ${expression} }!\n\tassert found.len == 1'
 	}
 	if wrapper.len > 0 {
-		statement = '${wrapper} shared_values {\n\t\t${statement}\n\t}'
+		statement = '${wrapper} ${lock_receiver} {\n\t\t${statement}\n\t}'
 	}
 	source := os.join_path(dir, 'main.v')
 	main_source := sql_alias_visibility_main.replace('STATEMENT', statement)
+		.replace('EXTRA_DECLARATIONS', if expression.contains('shared_collection') {
+			'struct SharedNamesItems {\nmut:\n\tvalues []shared aliases.WrappedNames\n}'
+		} else if expression.contains('holders[') || expression.contains('holders [') {
+			'struct SharedNamesHolder {\n\tvalues shared aliases.WrappedNames\n}'
+		} else {
+			''
+		})
 		.replace('EXTRA_BINDINGS', if expression.contains('shared_values') {
 			'shared shared_values := aliases.make()'
+		} else if expression.contains('shared_items') {
+			'mut shared_items := []shared aliases.WrappedNames{}\n\tshared_items << aliases.make()'
+		} else if expression.contains('shared_collection') {
+			'mut shared_collection := SharedNamesItems{}\n\tshared_collection.values << aliases.make()'
+		} else if expression.contains('holders[') || expression.contains('holders [') {
+			"holders := {'primary': SharedNamesHolder{values: aliases.make()}}"
 		} else {
 			''
 		})
@@ -147,6 +162,7 @@ fn sql_alias_visibility_wrapped_result(name string, is_public bool, expression s
 		.replace('aliases.make_ptr_ptr()', '${import_name}.make_ptr_ptr()')
 		.replace('aliases.make_refs()', '${import_name}.make_refs()')
 		.replace('aliases.load_names(', '${import_name}.load_names(')
+		.replace('aliases.WrappedNames', '${import_name}.WrappedNames')
 	os.write_file(source, main_source) or {
 		panic(err)
 	}
@@ -325,23 +341,55 @@ fn test_mut_alias_methods_keep_ordinary_storage_exceptions_in_sql_values() {
 	}
 }
 
-fn test_mut_alias_methods_require_shared_write_locks_in_sql_values() {
-	for method in ['mutate', 'inspect'] {
+fn test_alias_methods_require_ordinary_shared_locks_in_sql_values() {
+	for method in ['mutate', 'inspect', 'clone'] {
 		import_name := if method == 'inspect' { 'renamed' } else { 'aliases' }
 		for wrapper in ['', 'rlock', 'lock'] {
 			for is_update in [false, true] {
 				for check_only in [false, true] {
 					result := sql_alias_visibility_wrapped_result('shared_${method}_${wrapper}_${is_update}_${check_only}',
 						true, 'shared_values.${method}()[0].name', is_update, check_only,
-						true, import_name, wrapper)
-					if wrapper == 'lock' {
+						true, import_name, wrapper, 'shared_values')
+					if wrapper == 'lock' || (method == 'clone' && wrapper == 'rlock') {
 						assert result.exit_code == 0, result.output
 					} else {
 						assert result.exit_code != 0, result.output
-						if wrapper == 'rlock' {
+						if method == 'clone' {
+							assert result.output.contains('must be `rlock`ed or `lock`ed'), result.output
+						} else if wrapper == 'rlock' {
 							assert result.output.contains('has an `rlock` but needs a `lock`'), result.output
 						} else {
 							assert result.output.contains('is `shared` and must be `lock`ed'), result.output
+						}
+					}
+				}
+			}
+		}
+	}
+}
+
+fn test_alias_methods_keep_shared_element_and_quoted_field_lock_keys_in_sql_values() {
+	for i, receiver in ['shared_items[0]', '(shared_collection.values)[0]', "holders['primary'].values",
+		"(holders [ 'primary' ]).values"] {
+		for method in ['mutate', 'clone'] {
+			import_name := if method == 'clone' { 'renamed' } else { 'aliases' }
+			for wrapper in ['', 'rlock', 'lock'] {
+				for is_update in [false, true] {
+					for check_only in [false, true] {
+						result := sql_alias_visibility_wrapped_result('shared_element_${i}_${method}_${wrapper}_${is_update}_${check_only}',
+							true, '${receiver}.${method}()[0].name', is_update, check_only,
+							true, import_name, wrapper, receiver)
+						if wrapper == 'lock' || (method == 'clone' && wrapper == 'rlock') {
+							assert result.exit_code == 0, result.output
+						} else {
+							assert result.exit_code != 0, result.output
+							if method == 'clone' {
+								assert result.output.contains('must be `rlock`ed or `lock`ed'), result.output
+							} else if wrapper == 'rlock' {
+								assert result.output.contains('has an `rlock` but needs a `lock`'), result.output
+							} else {
+								assert result.output.contains('is `shared` and must be `lock`ed'), result.output
+							}
 						}
 					}
 				}
