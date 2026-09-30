@@ -12276,6 +12276,7 @@ fn (mut t Transformer) lift_fn_literal(_id flat.NodeId, node flat.Node) flat.Nod
 	saved_fn_name := t.cur_fn_name
 	saved_ret_type := t.cur_fn_ret_type
 	saved_vars := t.var_types.clone()
+	saved_heaped_state := t.save_heaped_local_state()
 	saved_fn_value_locals := t.fn_value_locals.clone()
 	saved_mut_param_values := t.mut_param_values.clone()
 	saved_fixed_array_param_values := t.fixed_array_param_values.clone()
@@ -12285,19 +12286,11 @@ fn (mut t Transformer) lift_fn_literal(_id flat.NodeId, node flat.Node) flat.Nod
 	t.cur_fn_name = name
 	t.cur_fn_ret_type = ret_type
 	t.reset_var_types()
-	mut saved_param_pointer_flags := map[string]bool{}
-	mut saved_param_pointer_rvalue_flags := map[string]bool{}
+	// Capture metadata above uses outer storage; the lifted body has its own bindings.
+	t.restore_heaped_local_state(HeapedLocalState{})
 	for param_id in param_ids {
 		param := t.a.nodes[int(param_id)]
 		if param.value.len > 0 && param.typ.len > 0 {
-			saved_param_pointer_flags[param.value] = t.pointer_value_lvalues[param.value] or {
-				false
-			}
-			saved_param_pointer_rvalue_flags[param.value] = t.pointer_value_rvalues[param.value] or {
-				false
-			}
-			t.pointer_value_lvalues.delete(param.value)
-			t.pointer_value_rvalues.delete(param.value)
 			resolved_param_type := t.comptime_normalize_type_alias_chain(param.typ)
 			t.set_var_type_with_raw(param.value, resolved_param_type, param.typ)
 			// An immutable `.amp` parameter was inferred for a pipe lambda and retains
@@ -12319,8 +12312,6 @@ fn (mut t Transformer) lift_fn_literal(_id flat.NodeId, node flat.Node) flat.Nod
 		}
 	}
 	mut lifted_body := []flat.NodeId{cap: capture_names.len + body_ids.len + 1}
-	mut saved_capture_pointer_flags := map[string]bool{}
-	mut saved_capture_pointer_rvalue_flags := map[string]bool{}
 	if capture_names.len > 0 {
 		current_data := t.make_call_typed('__v3_closure_current_data', []flat.NodeId{}, 'voidptr')
 		context_ptr := t.make_cast('&${context_type}', current_data, '&${context_type}')
@@ -12343,12 +12334,6 @@ fn (mut t Transformer) lift_fn_literal(_id flat.NodeId, node flat.Node) flat.Nod
 		// expect the pointer (e.g. `takes_ptr(p)`), and its assignments must not become
 		// `*p = ...`.
 		if is_ref_capture || is_context_capture {
-			saved_capture_pointer_flags[capture_name] = t.pointer_value_lvalues[capture_name] or {
-				false
-			}
-			saved_capture_pointer_rvalue_flags[capture_name] = t.pointer_value_rvalues[capture_name] or {
-				false
-			}
 			t.pointer_value_lvalues[capture_name] = true
 			t.pointer_value_rvalues[capture_name] = true
 		}
@@ -12386,34 +12371,7 @@ fn (mut t Transformer) lift_fn_literal(_id flat.NodeId, node flat.Node) flat.Nod
 		new_body << t.transform_stmts(lifted_body[synthetic_decl_count..])
 	}
 	t.pending_stmts = outer_pending
-	for param_name in param_names {
-		if saved_param_pointer_flags[param_name] or { false } {
-			t.pointer_value_lvalues[param_name] = true
-		} else {
-			t.pointer_value_lvalues.delete(param_name)
-		}
-		if saved_param_pointer_rvalue_flags[param_name] or { false } {
-			t.pointer_value_rvalues[param_name] = true
-		} else {
-			t.pointer_value_rvalues.delete(param_name)
-		}
-	}
-	for capture_name in capture_names {
-		if (capture_by_ref[capture_name] or { false }) || (capture_from_context[capture_name] or {
-			false
-		}) {
-			if saved_capture_pointer_flags[capture_name] or { false } {
-				t.pointer_value_lvalues[capture_name] = true
-			} else {
-				t.pointer_value_lvalues.delete(capture_name)
-			}
-			if saved_capture_pointer_rvalue_flags[capture_name] or { false } {
-				t.pointer_value_rvalues[capture_name] = true
-			} else {
-				t.pointer_value_rvalues.delete(capture_name)
-			}
-		}
-	}
+	t.restore_heaped_local_state(saved_heaped_state)
 	t.restore_var_types(saved_vars)
 	t.fn_value_locals = saved_fn_value_locals.clone()
 	t.mut_param_values = saved_mut_param_values.clone()

@@ -940,3 +940,26 @@ fn test_generated_fixed_guard_bindings_keep_retained_views_alive() {
 		assert read_retained_optional_fixed_reference(kept) == expected
 	}
 }
+
+@[noinline]
+fn retained_fixed_reference_after_lowering_literal_bindings() &[]int {
+	values := [281, 282]!
+	kept := retain_immutable_array_reference(values)
+	read_parameter := fn (values int) int {
+		p := &values
+		return *p
+	}
+	read_capture := fn [values] () int {
+		p := &values
+		return (*p)[0]
+	}
+	assert read_parameter(283) == 283
+	assert read_capture() == 281
+	return kept
+}
+
+fn test_lifted_parameter_and_capture_bindings_isolate_outer_storage_markers() {
+	kept := retained_fixed_reference_after_lowering_literal_bindings()
+	assert overwrite_stack() == 7
+	assert read_retained_optional_fixed_reference(kept) == [281, 282]
+}
