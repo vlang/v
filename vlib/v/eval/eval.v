@@ -2487,6 +2487,16 @@ fn (mut e Eval) eval_expr(id flat.NodeId) !Value {
 			return void_value()
 		}
 		.sizeof_expr {
+			if node.children_count > 0 {
+				return Value(e.sizeof_type_name(e.infer_sizeof_operand_type_name(e.child(node,
+					0), [], false)))
+			}
+			if typ := e.lookup_var_type(node.value) {
+				return Value(e.sizeof_type_name(typ))
+			}
+			if typ := e.sizeof_const_type_name(node.value, []) {
+				return Value(e.sizeof_type_name(typ))
+			}
 			return Value(e.sizeof_type_name(node.value))
 		}
 		.typeof_expr {
@@ -6021,8 +6031,66 @@ fn (e &Eval) normalize_type_name(type_name string) string {
 	return e.qualify_type_name(e.current_module_name(), name)
 }
 
+fn (e &Eval) infer_sizeof_operand_type_name(id flat.NodeId, seen []flat.NodeId, from_const bool) string {
+	node := e.node(id)
+	if from_const && node.kind == .ident && node.typ.len == 0 {
+		return e.sizeof_const_type_name(node.value, seen) or { '' }
+	}
+	typ := e.infer_expr_type_name(id)
+	if typ.len > 0 {
+		return typ
+	}
+	if node.kind == .ident {
+		return e.sizeof_const_type_name(node.value, seen) or { '' }
+	}
+	if node.kind == .call && node.children_count > 0 {
+		callee := e.node(e.child(node, 0))
+		if callee.kind == .ident {
+			if target := e.function_def(e.current_module_name(), callee.value) {
+				return e.qualify_nested_type_name(target.module_name, e.node(target.node).typ)
+			}
+		}
+	}
+	return ''
+}
+
+fn (e &Eval) sizeof_const_type_name(name string, seen []flat.NodeId) ?string {
+	module_name := e.current_module_name()
+	if module_name in e.consts && name in e.consts[module_name] {
+		entry := e.consts[module_name][name]
+		if entry.node in seen {
+			return none
+		}
+		node := e.node(entry.node)
+		if node.typ.len > 0 {
+			return e.qualify_nested_type_name(entry.module_name, node.typ)
+		}
+		if node.children_count > 0 {
+			mut visited := seen.clone()
+			visited << entry.node
+			return e.infer_sizeof_operand_type_name(e.child(node, 0), visited, true)
+		}
+	}
+	return none
+}
+
 fn (e &Eval) sizeof_type_name(name string) i64 {
-	return match name {
+	mut target := name
+	mut module_name := e.current_module_name()
+	mut seen := map[string]bool{}
+	for !target.starts_with('&') {
+		if target in seen {
+			break
+		}
+		seen[target] = true
+		if alias := e.type_alias_info_in_module(target, module_name) {
+			target = alias.target
+			module_name = alias.module_name
+		} else {
+			break
+		}
+	}
+	return match target {
 		'bool', 'i8', 'u8', 'char' { i64(1) }
 		'i16', 'u16' { i64(2) }
 		'int', 'i32', 'u32', 'rune', 'f32' { i64(4) }

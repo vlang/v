@@ -12,6 +12,8 @@ A call such as `byte(8)` invokes the declared function, including when it takes 
 FastC uses a separate C function symbol so this name can coexist with its internal `byte` typedef.
 `sizeof(byte)` measures the constant or variable's type; for `const byte = f64(8)`, the result
 is `8`, including with the native ARM64 backend.
+The evaluator also uses declared widths and resolves type aliases for `sizeof` value operands,
+without evaluating a constant initializer or function call.
 
 Generated documentation highlights `byte` as an ordinary identifier or function name,
 while `u8` retains builtin type highlighting. Byte method documentation belongs to `u8`.
