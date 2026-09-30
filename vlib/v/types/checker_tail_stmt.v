@@ -10108,6 +10108,23 @@ fn (tc &TypeChecker) fn_return_compatible(actual Type, expected Type) bool {
 fn fn_param_can_cast_userdata_param(actual Type, expected Type) bool {
 	return (fn_param_is_voidptr_type(expected) && fn_param_is_nonvoid_pointer_type(actual))
 		|| (fn_param_is_nonvoid_pointer_type(expected) && fn_param_is_voidptr_type(actual))
+		|| (fn_param_is_pointer_to_voidptr_type(expected)
+			&& fn_param_is_nonvoid_pointer_type(actual))
+		|| (fn_param_is_nonvoid_pointer_type(expected)
+			&& fn_param_is_pointer_to_voidptr_type(actual))
+}
+
+// fn_param_is_pointer_to_voidptr_type reports whether `typ` is `&voidptr`, `&&voidptr`...
+// Like `voidptr`, V1 accepts it for any pointer parameter: C translated by c2v declares
+// a `void (**pxFunc)(...)` parameter as `&voidptr` in a function definition and as
+// `&fn (...)` in a struct field.
+fn fn_param_is_pointer_to_voidptr_type(typ Type) bool {
+	clean := fn_param_unalias_type(typ)
+	if clean is Pointer {
+		base := fn_param_unalias_type(clean.base_type)
+		return fn_param_is_voidptr_type(base) || fn_param_is_pointer_to_voidptr_type(base)
+	}
+	return false
 }
 
 fn fn_param_is_voidptr_type(typ Type) bool {
