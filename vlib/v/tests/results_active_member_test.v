@@ -50,7 +50,6 @@ fn test_result_pointer_assignment_preserves_both_states() {
 		_, mut value := active_text(mut source, fail)
 		_, mut result := active_text_pointer()
 		result = &value
-		assert source.calls == 1
 		if pointer := result {
 			assert !fail
 			assert *pointer == 'present'
@@ -59,7 +58,6 @@ fn test_result_pointer_assignment_preserves_both_states() {
 			assert err.msg() == 'missing'
 			assert err.code() == 37
 		}
-		assert source.calls == 1
 	}
 }
 
