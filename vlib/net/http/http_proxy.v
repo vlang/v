@@ -153,12 +153,6 @@ fn (pr &HttpProxy) http_do(host urllib.URL, method Method, path string, req &Req
 	if port == 0 {
 		port = if host.scheme == 'https' { 443 } else { 80 }
 	}
-	port_part := if (host.scheme == 'http' && port == 80) || (host.scheme == 'https' && port == 443) {
-		''
-	} else {
-		':${port}'
-	}
-
 	s := req.build_request_headers_with(method, host_name, port, path, data, header)
 
 	if host.scheme == 'https' {
