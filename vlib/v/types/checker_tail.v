@@ -1501,9 +1501,12 @@ fn (mut tc TypeChecker) check_lvalue_mutability(id flat.NodeId) {
 	if tc.ident_is_mutable_lvalue(root.value) {
 		return
 	}
+	// A local shadows a function of the same name (C translated by c2v declares a
+	// local `exp` next to `fn C.exp(f64) f64`).
+	names_fn := !tc.ident_resolves_to_value(root.value) && tc.fn_value_type(root.value) != none
 	if (tc.unsafe_depth > 0 || tc.current_fn_declared_unsafe()
 		|| tc.translated_files[tc.cur_file] || tc.node_is_in_translated_file(id))
-		&& tc.const_key_for_name(root.value) == none && tc.fn_value_type(root.value) == none {
+		&& tc.const_key_for_name(root.value) == none && !names_fn {
 		return
 	}
 	if _ := tc.malformed_const_keyword_pos(root_id) {
@@ -1513,7 +1516,7 @@ fn (mut tc TypeChecker) check_lvalue_mutability(id flat.NodeId) {
 		tc.record_error_at(.assignment_mismatch, 'cannot modify constant `${root.value}`', root_id, tc.node_value_diagnostic_pos(root_id))
 		return
 	}
-	if tc.fn_value_type(root.value) != none {
+	if names_fn {
 		tc.record_error_at(.assignment_mismatch, 'cannot assign to function `${root.value}`', root_id, tc.node_value_diagnostic_pos(root_id))
 		return
 	}
