@@ -14725,7 +14725,8 @@ fn (mut g FlatGen) gen_c_alias_pointer_voidptr_arg(arg_node flat.Node, expected 
 	if inner.kind != .cast_expr || inner.value != 'voidptr' {
 		return false
 	}
-	g.write('(${expected_name[3..]}*)')
+	// A C struct without a typedef is spelled with its tag (`struct sockaddr *`).
+	g.write('(${g.cast_c_type(expected)})')
 	g.gen_expr(inner_id)
 	return true
 }
