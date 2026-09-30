@@ -19134,6 +19134,8 @@ fn (mut g FlatGen) target_libc_vinix_thread_runtime() {
 	g.writeln('static bool __v_thread_equal(__v_thread a, __v_thread b) { return pthread_equal(a.handle, b.handle) != 0; }')
 	g.writeln('typedef void* (*__v_thread_start_fn)(void*);')
 	g.writeln('static void* __v_thread_alloc(size_t size) { void* p = malloc(size); if (!p) exit(1); return p; }')
+	// Spawn wrappers free their argument block with this, as on other targets.
+	g.writeln('static void __v_thread_free(void* ptr) { free(ptr); }')
 	g.writeln('static __v_thread __v_thread_spawn(__v_thread_start_fn start, void* arg, void (*cleanup)(void*)) {')
 	g.writeln('\t__v_thread result;')
 	g.writeln('\tint rc = pthread_create(&result.handle, NULL, (void*)start, arg);')

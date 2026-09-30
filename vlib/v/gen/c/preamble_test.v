@@ -377,6 +377,8 @@ fn test_vinix_target_libc_thread_runtime_uses_freestanding_pthread_abi() {
 	assert c_code.contains('pthread_create(&result.handle, NULL, (void*)start, arg)')
 	assert c_code.contains('pthread_create(&handle, NULL, (void*)__v_detached_thread_start, context)')
 	assert c_code.contains('if (pthread_detach(handle) != 0) exit(1);')
+	// Detached spawn wrappers free their argument block with it.
+	assert c_code.contains('static void __v_thread_free(void* ptr) { free(ptr); }')
 	assert !c_code.contains('pthread_attr_init(&attr)')
 	assert !c_code.contains('fprintf(stderr, "V thread')
 	assert !c_code.contains('abort();')
