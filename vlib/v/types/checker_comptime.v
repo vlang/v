@@ -6441,9 +6441,16 @@ fn (mut tc TypeChecker) check_in_expr(id flat.NodeId, node flat.Node) {
 		tc.check_node(container_id)
 	}
 	container_type_raw := tc.resolve_type(container_id)
-	container_type := unalias_type(tc.mut_param_expr_base(container_id, container_type_raw) or {
+	mut container_type := unalias_type(tc.mut_param_expr_base(container_id, container_type_raw) or {
 		container_type_raw
 	})
+	// Like V1, `key in m` also works when `m` is a reference to a map or an array.
+	if container_type is Pointer {
+		pointed := unalias_type(container_type.base_type)
+		if pointed is Map || pointed is Array || pointed is ArrayFixed {
+			container_type = pointed
+		}
+	}
 	op := tc.in_operator_name(value_id, container_id)
 	if value_type is MultiReturn || container_type is MultiReturn {
 		tc.record_error_at(.condition_mismatch, 'invalid number of operand for `${op}`. Only one allowed on each side.', id, node.pos)
