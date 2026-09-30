@@ -109,6 +109,24 @@ fn pair[K, V mod.Named](k K, v V) string {
 	return v.name
 }
 
+struct Host {}
+
+fn (h Host) longest[T Named](a T, b T) T {
+	return a
+}
+
+fn (b Box[T]) map[U Named](f fn (T) U) U {
+	return f(b.item)
+}
+
+fn (h &Host) pair[K, V mod.Named](k K, v V) string {
+	return v.name
+}
+
+pub fn (mut h Host) double[T Number](x T) T {
+	return x
+}
+
 interface Shelf[T Named] {
 	items []T
 }
