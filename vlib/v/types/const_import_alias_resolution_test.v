@@ -46,3 +46,20 @@ fn test_const_length_resolves_unique_alias_and_unaliased_module() {
 	tc.file_imports_by_file.clear()
 	assert tc.const_int_value('fx.max_name_size', []string{}) or { -1 } == 16
 }
+
+fn test_const_length_ignores_alias_of_module_without_the_const() {
+	mut a := flat.FlatAst.new()
+	mut tc := TypeChecker.new(&a)
+	tc.const_exprs['fx.max_name_size'] = a.add_val(.int_literal, '16')
+	tc.file_imports_by_file['main.v'] = &FileImportInfo{
+		imports: {
+			'fx': 'fx'
+		}
+	}
+	tc.file_imports_by_file['other.v'] = &FileImportInfo{
+		imports: {
+			'fx': 'strings'
+		}
+	}
+	assert tc.const_int_value('fx.max_name_size', []string{}) or { -1 } == 16
+}
