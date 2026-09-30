@@ -13808,11 +13808,14 @@ fn (g &FlatGen) c_typedef_cast_call_name(node flat.Node) string {
 }
 
 // context_wants_pointer_to_fn reports whether the expression being generated is
-// consumed as a pointer to a function rather than as a callable value.
+// consumed as a pointer to a function rather than as a callable value. A pointer
+// to a pointer (`&voidptr`, C's `void **`, as in `__atomic_store_n(&s.f, f, 0)`)
+// is one too: a function itself cannot be one.
 fn (g &FlatGen) context_wants_pointer_to_fn() bool {
 	expected := cgen_unalias_type(g.expected_expr_type)
 	if expected is types.Pointer {
-		return cgen_unalias_type(expected.base_type) is types.FnType
+		base_type := cgen_unalias_type(expected.base_type)
+		return base_type is types.FnType || base_type is types.Pointer
 	}
 	return false
 }
@@ -16100,10 +16103,10 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 				// - `ref := &f`, read back through `*ref` - needs the address, and
 				// dropping it there leaves the dereference reading code as data.
 				if g.context_wants_pointer_to_fn() {
-					if child.kind == .index {
+					if child.kind in [.index, .selector] {
 						// Mutable for-in lowering takes the address of the current array
-						// element. Keep that address tied to the element so writes through
-						// the binding update the array rather than a heap-copied callback.
+						// element. Keep that address tied to the element (or field) so
+						// writes through it update it rather than a heap-copied callback.
 						g.write('&')
 						gen_expr_lvalue(mut g, child_id)
 						return

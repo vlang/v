@@ -11694,6 +11694,9 @@ fn (mut g FlatGen) gen_arg_for_expected_type(arg_id flat.NodeId, expected types.
 	if g.gen_mut_sum_lvalue_arg(arg_id, expected) {
 		return
 	}
+	if g.gen_local_fn_value_address_arg(arg_node, expected) {
+		return
+	}
 	// A `mut e &T` param is `T**` in C. Transformed method calls reach here
 	// instead of gen_call_args, so pass the caller's slot the same way.
 	if g.gen_mut_pointer_slot_arg(arg_id, arg_node, expected) {
@@ -14534,6 +14537,16 @@ fn (mut g FlatGen) gen_call_args(fn_name string, node flat.Node, start int) {
 				g.write('(${cabi})(')
 				g.gen_expr(arg_id)
 				g.write(')')
+			} else if arg_idx < typed_param_count
+				&& g.gen_local_fn_value_address_arg(arg_node, param_types[arg_idx]) {
+				// handled
+			} else if arg_idx < typed_param_count && g.arg_takes_address(arg_node) {
+				// `&f` of a function value keeps its `&` only where a pointer to a
+				// pointer is expected (`&voidptr`, C's `void **`).
+				old_expected := g.expected_expr_type
+				g.expected_expr_type = param_types[arg_idx]
+				g.gen_expr(arg_id)
+				g.expected_expr_type = old_expected
 			} else {
 				g.gen_expr(arg_id)
 			}
@@ -14714,6 +14727,45 @@ fn (mut g FlatGen) gen_call_args(fn_name string, node flat.Node, start int) {
 			emitted_defaults++
 		}
 	}
+}
+
+// gen_local_fn_value_address_arg emits `&f` for a local function value `f` passed
+// where a pointer to a function (or a `&voidptr`) is expected. The callee can store
+// a function through it (C's `void (**pxFunc)(...)` out-parameters): it must be the
+// variable's own address, not the address of a copy.
+fn (mut g FlatGen) gen_local_fn_value_address_arg(arg_node flat.Node, expected types.Type) bool {
+	mut node := arg_node
+	for node.kind == .paren && node.children_count > 0 {
+		node = g.a.nodes[int(g.a.child(&node, 0))]
+	}
+	if node.kind != .prefix || node.op != .amp || node.children_count == 0 {
+		return false
+	}
+	child_id := g.a.child(&node, 0)
+	child := g.a.nodes[int(child_id)]
+	if child.kind != .ident || !g.ident_is_local_binding(child.value)
+		|| cgen_unalias_type(g.fn_value_candidate_type(child_id, child)) !is types.FnType {
+		return false
+	}
+	old_expected := g.expected_expr_type
+	g.expected_expr_type = expected
+	wants_pointer := g.context_wants_pointer_to_fn()
+	g.expected_expr_type = old_expected
+	if !wants_pointer {
+		return false
+	}
+	g.write('&')
+	gen_expr_lvalue(mut g, child_id)
+	return true
+}
+
+// arg_takes_address reports whether a call argument is `&x`, possibly in parentheses.
+fn (g &FlatGen) arg_takes_address(arg_node flat.Node) bool {
+	mut node := arg_node
+	for node.kind == .paren && node.children_count > 0 {
+		node = g.a.nodes[int(g.a.child(&node, 0))]
+	}
+	return node.kind == .prefix && node.op == .amp
 }
 
 fn (mut g FlatGen) gen_c_alias_pointer_voidptr_arg(arg_node flat.Node, expected types.Type) bool {
