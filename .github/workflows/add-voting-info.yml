@@ -12,7 +12,7 @@ jobs:
       issues: write
     steps:
       - name: Append voting info to issue body
-        uses: julien-deramond/update-issue-body@v1
+        uses: julien-deramond/update-issue-body@a7fae45395cac5a23318d38f7b09a58650dfe84f # v1.1.0
         with:
           issue-number: ${{ github.event.issue.number }}
           body: |

@@ -50,6 +50,9 @@ concurrency:
   group: wasm-${{ github.workflow }}-${{ github.ref == 'refs/heads/master' && github.sha || github.ref }}
   cancel-in-progress: true
 
+permissions:
+  contents: read
+
 jobs:
   wasm-backend:
     runs-on: ${{ matrix.os }}
@@ -62,6 +65,8 @@ jobs:
       VTEST_ONLY: wasm
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
 
       - name: Build V
         if: runner.os != 'Windows'
@@ -75,7 +80,7 @@ jobs:
         run: ./v retry -- sudo apt install wabt
 
       - name: Setup Wasmer
-        uses: wasmerio/setup-wasmer@v3.1
+        uses: wasmerio/setup-wasmer@24b15c95293d23f89c68bd40dac76338f773e924 # v3.1
         with:
           version: v4.4.0
 
