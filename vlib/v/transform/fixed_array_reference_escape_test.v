@@ -2,6 +2,7 @@ module transform
 
 import v.flat
 import v.types
+import v.token
 
 fn add_fixed_array_reference_generic_struct(mut t Transformer, name string, field_text string) {
 	field := t.a.add_node(flat.Node{ kind: .field_decl, value: 'value', typ: field_text })
@@ -200,6 +201,43 @@ fn test_fixed_array_direct_address_dereference_marks_the_original_local() {
 		'heap': true
 	})
 	assert t.escaping_fixed_array_view_sources.len == 0
+}
+
+fn test_inner_pointer_declarations_shadow_and_restore_outer_storage_markers() {
+	for mode in ['statement', 'expression', 'typed'] {
+		mut a := flat.FlatAst.new()
+		mut tc := types.TypeChecker.new(&a)
+		pointer_type := types.Type(types.Pointer{ base_type: types.Type(types.ArrayFixed{ elem_type: types.Type(types.int_), len: 2 }) })
+		mut t := new_transformer(mut a, &tc, map[string]bool{})
+		t.set_var_type('pointer', '&[2]int')
+		t.set_var_type('values', '&[2]int')
+		t.heaped_amp_locals['values'] = true
+		t.pointer_value_lvalues['values'] = true
+		t.pointer_value_rvalues['values'] = true
+		pointer := t.make_ident('pointer')
+		tc.register_synth_type(pointer, pointer_type)
+		decl := t.make_decl_assign_typed('values', pointer, '&[2]int')
+		t.a.nodes[int(decl)].pos = token.new_span(1, 1, 10)
+		value := t.make_ident('values')
+		tc.register_synth_type(value, pointer_type)
+		block := t.make_block([decl, t.make_expr_stmt(value)])
+		lowered := if mode == 'statement' {
+			t.transform_block_stmt(block, t.a.nodes[int(block)])[0]
+		} else if mode == 'expression' {
+			t.transform_block_expr(block, t.a.nodes[int(block)])
+		} else {
+			t.transform_block_expr_for_type(block, t.a.nodes[int(block)], '&[2]int') or {
+				panic('expected a typed block')
+			}
+		}
+		lowered_node := t.a.nodes[int(lowered)]
+		tail := t.a.child_node(&lowered_node, lowered_node.children_count - 1)
+		assert tail.kind == .expr_stmt
+		assert t.a.child_node(tail, 0).kind == .ident
+		assert t.heaped_amp_locals['values']
+		assert t.pointer_value_lvalues['values']
+		assert t.pointer_value_rvalues['values']
+	}
 }
 
 fn test_fixed_array_reference_zero_argument_method_marks_receiver() {

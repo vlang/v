@@ -508,7 +508,7 @@ fn (mut t Transformer) expand_comptime_for(id flat.NodeId, node flat.Node) []fla
 		// One block per iteration so per-field temps get their own scope.
 		old_allow_enum_int := t.allow_comptime_enum_int_assign
 		t.allow_comptime_enum_int_assign = old_allow_enum_int || fm.is_enum
-		transformed := t.transform_stmts(cloned)
+		transformed := t.transform_scope_stmts(cloned)
 		t.allow_comptime_enum_int_assign = old_allow_enum_int
 		out << t.make_block(transformed)
 	}
@@ -522,7 +522,7 @@ fn (mut t Transformer) expand_comptime_for_attributes(var_name string, source st
 		for sid in body_stmts {
 			cloned << t.clone_attribute_subst(sid, var_name, attr)
 		}
-		out << t.make_block(t.transform_stmts(cloned))
+		out << t.make_block(t.transform_scope_stmts(cloned))
 	}
 	return out
 }
@@ -913,7 +913,7 @@ fn (mut t Transformer) expand_comptime_for_params(var_name string, fn_name strin
 				cloned << cid
 			}
 		}
-		out << t.make_block(t.transform_stmts(cloned))
+		out << t.make_block(t.transform_scope_stmts(cloned))
 	}
 	return out
 }
@@ -1184,7 +1184,7 @@ fn (mut t Transformer) expand_comptime_for_methods(var_name string, base_type st
 				cloned << cid
 			}
 		}
-		out << t.make_block(t.transform_stmts(cloned))
+		out << t.make_block(t.transform_scope_stmts(cloned))
 	}
 	return out
 }
@@ -2104,7 +2104,7 @@ fn (mut t Transformer) expand_comptime_for_values(var_name string, base_type str
 				cloned << cid
 			}
 		}
-		out << t.make_block(t.transform_stmts(cloned))
+		out << t.make_block(t.transform_scope_stmts(cloned))
 	}
 	return out
 }
@@ -2121,7 +2121,7 @@ fn (mut t Transformer) expand_comptime_for_variants(var_name string, base_type s
 				cloned << cid
 			}
 		}
-		out << t.make_block(t.transform_stmts(cloned))
+		out << t.make_block(t.transform_scope_stmts(cloned))
 	}
 	return out
 }

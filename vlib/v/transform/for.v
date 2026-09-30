@@ -16,6 +16,8 @@ struct UnsignedInclusiveForPost {
 
 // transform_for_body transforms transform for body data for transform.
 fn (mut t Transformer) transform_for_body(id flat.NodeId, node flat.Node) []flat.NodeId {
+	heaped_state := t.save_heaped_local_state()
+	defer { t.restore_heaped_local_state(heaped_state) }
 	if node.children_count < 3 {
 		return [id]
 	}
@@ -84,7 +86,7 @@ fn (mut t Transformer) transform_for_body(id flat.NodeId, node flat.Node) []flat
 	for info in cond_smartcasts {
 		t.push_smartcast(info.expr_name, info.variant_name, info.sum_type_name)
 	}
-	mut new_body := t.transform_stmts(body_ids)
+	mut new_body := t.transform_scope_stmts(body_ids)
 	mut synthetic_continue_label := ''
 	if post_body.len > 0 {
 		mut continue_label := t.existing_for_continue_label(body_ids)
@@ -334,6 +336,8 @@ fn (mut t Transformer) rewrite_continue_to_for_post_label_in_children(id flat.No
 
 // transform_for_in_body transforms transform for in body data for transform.
 fn (mut t Transformer) transform_for_in_body(id flat.NodeId, node flat.Node) []flat.NodeId {
+	heaped_state := t.save_heaped_local_state()
+	defer { t.restore_heaped_local_state(heaped_state) }
 	header_count := node.value.int()
 	if header_count < 3 || node.children_count < 3 {
 		return [id]
@@ -708,7 +712,7 @@ fn (mut t Transformer) rebuild_for_in_stmt(_id flat.NodeId, node flat.Node) []fl
 		had_pointer_value_rvalue := t.pointer_value_rvalues[pointer_value_name] or { false }
 		t.pointer_value_lvalues[pointer_value_name] = true
 		t.pointer_value_rvalues[pointer_value_name] = true
-		transformed_body = t.transform_stmts(body_ids)
+		transformed_body = t.transform_scope_stmts(body_ids)
 		if had_pointer_value_lvalue {
 			t.pointer_value_lvalues[pointer_value_name] = true
 		} else {
@@ -724,14 +728,14 @@ fn (mut t Transformer) rebuild_for_in_stmt(_id flat.NodeId, node flat.Node) []fl
 			false
 		}
 		t.fixed_array_value_rvalues[fixed_array_value_name] = true
-		transformed_body = t.transform_stmts(body_ids)
+		transformed_body = t.transform_scope_stmts(body_ids)
 		if had_fixed_array_value_rvalue {
 			t.fixed_array_value_rvalues[fixed_array_value_name] = true
 		} else {
 			t.fixed_array_value_rvalues.delete(fixed_array_value_name)
 		}
 	} else {
-		transformed_body = t.transform_stmts(body_ids)
+		transformed_body = t.transform_scope_stmts(body_ids)
 	}
 	mut new_body := binding_clones.clone()
 	new_body << transformed_body
@@ -974,7 +978,7 @@ fn (mut t Transformer) lower_range_for_in(id flat.NodeId, node flat.Node, key_id
 	init := t.make_decl_assign_typed(loop_name, low, range_type)
 	cond := t.make_infix(.lt, t.make_ident(loop_name), high)
 	post := t.make_expr_stmt(t.make_postfix(t.make_ident(loop_name), .inc))
-	new_body := t.transform_stmts(body_ids)
+	new_body := t.transform_scope_stmts(body_ids)
 	prefix << t.make_for_stmt(init, cond, post, new_body, node)
 	return prefix
 }
@@ -1045,7 +1049,7 @@ fn (mut t Transformer) lower_iterator_for_in(id flat.NodeId, node flat.Node, key
 	loop_body << next_decl
 	loop_body << break_if_done
 	loop_body << elem_decl
-	loop_body << t.transform_stmts(body_ids)
+	loop_body << t.transform_scope_stmts(body_ids)
 	post := if has_index {
 		t.make_expr_stmt(t.make_postfix(t.make_ident(idx_name), .inc))
 	} else {
@@ -1245,7 +1249,7 @@ fn (mut t Transformer) lower_indexed_for_in(id flat.NodeId, node flat.Node, key_
 		had_pointer_value_rvalue := t.pointer_value_rvalues[elem_name] or { false }
 		t.pointer_value_lvalues[elem_name] = true
 		t.pointer_value_rvalues[elem_name] = true
-		transformed_body = t.transform_stmts(body_ids)
+		transformed_body = t.transform_scope_stmts(body_ids)
 		if had_pointer_value_lvalue {
 			t.pointer_value_lvalues[elem_name] = true
 		} else {
@@ -1257,7 +1261,7 @@ fn (mut t Transformer) lower_indexed_for_in(id flat.NodeId, node flat.Node, key_
 			t.pointer_value_rvalues.delete(elem_name)
 		}
 	} else {
-		transformed_body = t.transform_stmts(body_ids)
+		transformed_body = t.transform_scope_stmts(body_ids)
 	}
 	mut new_body := []flat.NodeId{}
 	new_body << binding_clones

@@ -2687,6 +2687,7 @@ struct ImplicitErrScope {
 	var_types   []VarTypeBinding
 	smartcasts  []SmartcastContext
 	invalidated map[string]bool
+	heaped      HeapedLocalState
 }
 
 // enter_implicit_err_scope binds the implicit `err` of an `or`/`else` body. That `err`
@@ -2697,7 +2698,9 @@ fn (mut t Transformer) enter_implicit_err_scope() ImplicitErrScope {
 		var_types:   t.var_types.clone()
 		smartcasts:  t.smartcast_stack.clone()
 		invalidated: t.invalidated_smartcasts.clone()
+		heaped:      t.save_heaped_local_state()
 	}
+	t.clear_heaped_local_binding('err')
 	t.set_implicit_err_var_type()
 	if t.smartcast_stack.len > 0 {
 		t.smartcast_stack = smartcasts_without_binding(t.smartcast_stack, 'err')
@@ -2709,6 +2712,7 @@ fn (mut t Transformer) enter_implicit_err_scope() ImplicitErrScope {
 // enter_implicit_err_scope; narrowing done inside the body does not leak out.
 fn (mut t Transformer) leave_implicit_err_scope(scope ImplicitErrScope) {
 	t.restore_var_types(scope.var_types)
+	t.restore_heaped_local_state(scope.heaped)
 	t.restore_shadowed_smartcast_state('err', scope.smartcasts, scope.invalidated)
 }
 
@@ -7247,6 +7251,53 @@ fn (mut t Transformer) collect_mut_capture_sources(id flat.NodeId) {
 		}
 		t.collect_mut_capture_sources(child_id)
 	}
+}
+
+// HeapedLocalState preserves lexical storage markers through a complete scope.
+struct HeapedLocalState {
+	cloned                bool
+	heaped_amp_locals     map[string]bool
+	pointer_value_lvalues map[string]bool
+	pointer_value_rvalues map[string]bool
+}
+
+fn (t &Transformer) save_heaped_local_state() HeapedLocalState {
+	if t.heaped_amp_locals.len == 0 && t.pointer_value_lvalues.len == 0
+		&& t.pointer_value_rvalues.len == 0 {
+		return HeapedLocalState{}
+	}
+	return HeapedLocalState{
+		cloned:                true
+		heaped_amp_locals:     t.heaped_amp_locals.clone()
+		pointer_value_lvalues: t.pointer_value_lvalues.clone()
+		pointer_value_rvalues: t.pointer_value_rvalues.clone()
+	}
+}
+
+fn (mut t Transformer) restore_heaped_local_state(state HeapedLocalState) {
+	if !state.cloned {
+		t.heaped_amp_locals.clear()
+		t.pointer_value_lvalues.clear()
+		t.pointer_value_rvalues.clear()
+		return
+	}
+	t.heaped_amp_locals = state.heaped_amp_locals.clone()
+	t.pointer_value_lvalues = state.pointer_value_lvalues.clone()
+	t.pointer_value_rvalues = state.pointer_value_rvalues.clone()
+}
+
+fn (mut t Transformer) clear_heaped_local_binding(name string) {
+	t.heaped_amp_locals.delete(name)
+	t.pointer_value_lvalues.delete(name)
+	t.pointer_value_rvalues.delete(name)
+}
+
+// transform_scope_stmts keeps statement-only branch markers inside their lexical scope.
+fn (mut t Transformer) transform_scope_stmts(ids []flat.NodeId) []flat.NodeId {
+	state := t.save_heaped_local_state()
+	result := t.transform_stmts(ids)
+	t.restore_heaped_local_state(state)
+	return result
 }
 
 fn (mut t Transformer) reset_escaping_amp_state() {
@@ -14934,6 +14985,8 @@ fn (mut t Transformer) transform_block_expr_for_type(id flat.NodeId, node flat.N
 	if node.kind != .block || node.children_count == 0 || target_type == '' {
 		return none
 	}
+	heaped_state := t.save_heaped_local_state()
+	defer { t.restore_heaped_local_state(heaped_state) }
 	if !isnil(t.tc) {
 		if target_types := multi_return_types_from_type(t.tc.parse_type(target_type), 0) {
 			if parts := t.tuple_block_parts(id, target_types.len) {
@@ -15656,6 +15709,15 @@ fn (mut t Transformer) try_lower_string_compound_assign(_id flat.NodeId, node fl
 fn (mut t Transformer) transform_decl_assign_stmt(id flat.NodeId, node flat.Node) []flat.NodeId {
 	if node.children_count == 0 {
 		return [id]
+	}
+	if node.pos.is_valid() {
+		// Source declarations introduce a new binding. Generated heap declarations
+		// have no source span and must keep their already-lowered storage markers.
+		for i in 0 .. node.children_count {
+			if i == 1 { continue }
+			lhs := t.a.child_node(&node, i)
+			if lhs.kind == .ident { t.clear_heaped_local_binding(lhs.value) }
+		}
 	}
 	if discarded := t.try_lower_discarded_spawn_assign(node) {
 		return discarded
@@ -17207,6 +17269,8 @@ fn (t &Transformer) branch_has_tuple_tail_values(branch_id flat.NodeId, count in
 
 // lower_multi_if_assign builds lower multi if assign data for transform.
 fn (mut t Transformer) lower_multi_if_assign(node flat.Node, lhs_ids []flat.NodeId) []flat.NodeId {
+	heaped_state := t.save_heaped_local_state()
+	defer { t.restore_heaped_local_state(heaped_state) }
 	if node.children_count < 2 {
 		return []
 	}
@@ -17228,6 +17292,7 @@ fn (mut t Transformer) lower_multi_if_assign(node flat.Node, lhs_ids []flat.Node
 	t.smartcast_stack = base_smartcasts.clone()
 	t.invalidated_smartcasts = base_invalidated.clone()
 	t.restore_var_types(saved_var_types)
+	t.restore_heaped_local_state(heaped_state)
 	mut else_block := t.make_empty()
 	if node.children_count >= 3 {
 		for info in all_none_eq {
@@ -17937,6 +18002,8 @@ fn (mut t Transformer) transform_for_in_stmt(id flat.NodeId, node flat.Node) []f
 
 // transform_block_stmt transforms transform block stmt data for transform.
 fn (mut t Transformer) transform_block_stmt(id flat.NodeId, node flat.Node) []flat.NodeId {
+	heaped_state := t.save_heaped_local_state()
+	defer { t.restore_heaped_local_state(heaped_state) }
 	mut child_ids := []flat.NodeId{cap: int(node.children_count)}
 	for i in 0 .. node.children_count {
 		child_ids << t.a.children[node.children_start + i]
@@ -17951,6 +18018,8 @@ fn (mut t Transformer) transform_block_stmt(id flat.NodeId, node flat.Node) []fl
 }
 
 fn (mut t Transformer) transform_comptime_if_stmt(_id flat.NodeId, node flat.Node) []flat.NodeId {
+	heaped_state := t.save_heaped_local_state()
+	defer { t.restore_heaped_local_state(heaped_state) }
 	take_then := t.comptime_type_condition_value(node.value) or {
 		// Portable output (`-os cross`) keeps both branches so that the C
 		// preprocessor can pick one. They are ordinary statements and still need
@@ -17979,6 +18048,8 @@ fn (mut t Transformer) transform_comptime_if_stmt(_id flat.NodeId, node flat.Nod
 }
 
 fn (mut t Transformer) transform_comptime_if_expr(id flat.NodeId, node flat.Node) flat.NodeId {
+	heaped_state := t.save_heaped_local_state()
+	defer { t.restore_heaped_local_state(heaped_state) }
 	take_then := t.comptime_type_condition_value(node.value) or {
 		if comptime_cond_has_target_flag(node.value) {
 			return t.lower_retained_comptime_if_expr(node)
@@ -18006,9 +18077,9 @@ fn (mut t Transformer) lower_retained_comptime_if(node flat.Node) flat.NodeId {
 		branch_id := t.a.child(&node, i)
 		branch := t.a.nodes[int(branch_id)]
 		stmts := if branch.kind == .block {
-			t.transform_stmts(t.a.children_of(&branch))
+			t.transform_scope_stmts(t.a.children_of(&branch))
 		} else {
-			t.transform_stmt(branch_id)
+			t.transform_scope_stmts([branch_id])
 		}
 		branches << t.make_block(stmts)
 	}
@@ -18020,7 +18091,9 @@ fn (mut t Transformer) lower_retained_comptime_if(node flat.Node) flat.NodeId {
 fn (mut t Transformer) lower_retained_comptime_if_expr(node flat.Node) flat.NodeId {
 	mut branches := []flat.NodeId{cap: int(node.children_count)}
 	for i in 0 .. node.children_count {
+		heaped_state := t.save_heaped_local_state()
 		branches << t.transform_expr(t.a.child(&node, i))
+		t.restore_heaped_local_state(heaped_state)
 	}
 	return t.make_comptime_if(node.value, branches)
 }
@@ -18632,6 +18705,8 @@ fn transform_type_text_is_fixed_array(typ string) bool {
 
 // transform_block_expr transforms transform block expr data for transform.
 fn (mut t Transformer) transform_block_expr(id flat.NodeId, node flat.Node) flat.NodeId {
+	heaped_state := t.save_heaped_local_state()
+	defer { t.restore_heaped_local_state(heaped_state) }
 	mut child_ids := []flat.NodeId{cap: int(node.children_count)}
 	for i in 0 .. node.children_count {
 		child_ids << t.a.children[node.children_start + i]
@@ -18886,6 +18961,8 @@ fn (mut t Transformer) transform_select_expr(id flat.NodeId, node flat.Node) fla
 }
 
 fn (mut t Transformer) transform_select_branch(id flat.NodeId, order_cases bool) flat.NodeId {
+	heaped_state := t.save_heaped_local_state()
+	defer { t.restore_heaped_local_state(heaped_state) }
 	if int(id) < 0 || int(id) >= t.a.nodes.len {
 		return id
 	}
@@ -18969,6 +19046,7 @@ fn (mut t Transformer) transform_select_branch(id flat.NodeId, order_cases bool)
 				}
 			}
 			if recv_type.len > 0 {
+				t.clear_heaped_local_binding(bound_name)
 				t.set_var_type(bound_name, recv_type)
 			}
 		}
@@ -26661,7 +26739,7 @@ fn (mut t Transformer) build_match_chain(match_expr_id flat.NodeId, orig_expr_id
 	for i in body_start_idx .. branch.children_count {
 		body_ids << t.a.child(&branch, i)
 	}
-	new_body := t.transform_stmts(body_ids)
+	new_body := t.transform_scope_stmts(body_ids)
 	for _ in 0 .. sc_pushed {
 		t.pop_smartcast()
 	}
@@ -26938,7 +27016,7 @@ fn (mut t Transformer) build_match_type_branch_chain(match_expr_id flat.NodeId, 
 			body_id
 		}
 	}
-	body_block := t.make_block(t.transform_stmts(body_ids))
+	body_block := t.make_block(t.transform_scope_stmts(body_ids))
 	for _ in 0 .. sc_pushed {
 		t.pop_smartcast()
 	}

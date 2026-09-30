@@ -827,3 +827,31 @@ fn test_pointer_alias_cast_addresses_keep_original_fixed_roots_alive() {
 		assert read_retained_optional_fixed_reference(kept) == [182, 183]
 	}
 }
+
+fn read_immutable_fixed_pointer(values &[2]int) int {
+	return values[1]
+}
+
+@[noinline]
+fn reference_from_fixed_and_pointer_sibling_bindings(kind int) &[]int {
+	match kind {
+		0 {
+			values := [201, 202]!
+			return retain_immutable_array_reference(values)
+		}
+		else {
+			source := [211, 212]!
+			values := &source
+			assert read_immutable_fixed_pointer(values) == 212
+			return retain_immutable_array_reference(values)
+		}
+	}
+}
+
+fn test_sibling_pointer_bindings_preserve_their_checked_reference_type() {
+	for kind, expected in [[201, 202], [211, 212]] {
+		kept := reference_from_fixed_and_pointer_sibling_bindings(kind)
+		assert overwrite_stack() == 7
+		assert read_retained_optional_fixed_reference(kept) == expected
+	}
+}
