@@ -1,6 +1,7 @@
 module driver
 
 import os
+import time
 import v.cmdexec
 import v.pref
 
@@ -336,7 +337,24 @@ fn test_v3_bundled_tcc_probe_eligibility() {
 		c_compiler:          os.join_path(os.vtmp_dir(), 'bin', 'tcc')
 		c_compiler_explicit: true
 	})
+	// Windows keeps its bundled TCC as the default for debug builds.
 	assert v3_should_probe_bundled_tcc(V3BundledTccProbeOptions{
+		...base
+		is_c_debug:  true
+		host_os:     'windows'
+		host_target: windows_target
+		target:      windows_target
+	})
+	// -prod needs the optimizations TCC cannot do, so it never defaults to TCC, on
+	// Windows either. Selecting it would only generate for TCC and then regenerate.
+	assert !v3_should_probe_bundled_tcc(V3BundledTccProbeOptions{
+		...base
+		is_prod:     true
+		host_os:     'windows'
+		host_target: windows_target
+		target:      windows_target
+	})
+	assert !v3_should_probe_bundled_tcc(V3BundledTccProbeOptions{
 		...base
 		is_prod:     true
 		is_c_debug:  true
@@ -344,6 +362,435 @@ fn test_v3_bundled_tcc_probe_eligibility() {
 		host_target: windows_target
 		target:      windows_target
 	})
+	assert !v3_should_probe_bundled_tcc(V3BundledTccProbeOptions{
+		...base
+		is_prod:     true
+		parallel_cc: true
+		host_os:     'windows'
+		host_target: windows_target
+		target:      windows_target
+	})
+	assert !v3_should_probe_bundled_tcc(V3BundledTccProbeOptions{
+		...base
+		is_prod:     true
+		is_shared:   true
+		host_os:     'windows'
+		host_target: windows_target
+		target:      windows_target
+	})
+	assert !v3_should_probe_bundled_tcc(V3BundledTccProbeOptions{
+		...base
+		is_prod:       true
+		is_shared:     true
+		is_liveshared: true
+		host_os:       'windows'
+		host_target:   windows_target
+		target:        windows_target
+	})
+	// An explicit `-cc tcc` still wins with -prod on Windows.
+	assert v3_should_probe_bundled_tcc(V3BundledTccProbeOptions{
+		...base
+		is_prod:             true
+		c_compiler:          'tcc'
+		c_compiler_explicit: true
+		host_os:             'windows'
+		host_target:         windows_target
+		target:              windows_target
+	})
+}
+
+fn test_v3_windows_prod_msvc_ready_needs_a_matching_developer_environment() {
+	ready := V3WindowsProdToolchain{
+		cl:      'C:/VS/bin/cl.exe'
+		include: 'C:/VS/include'
+		lib:     'C:/VS/lib'
+	}
+	assert v3_windows_prod_msvc_ready(ready)
+	// A Developer Command Prompt that builds for x64 says so; older scripts say nothing.
+	assert v3_windows_prod_msvc_ready(V3WindowsProdToolchain{
+		...ready
+		target_arch: 'x64'
+	})
+	assert v3_windows_prod_msvc_ready(V3WindowsProdToolchain{
+		...ready
+		target_arch: 'X64'
+	})
+	// An x86 or ARM prompt puts a `cl` on PATH that cannot build V's amd64 C: it lacks
+	// the intrinsics V's MSVC code uses (`_umul128`).
+	for arch in ['x86', 'arm', 'arm64'] {
+		assert !v3_windows_prod_msvc_ready(V3WindowsProdToolchain{
+			...ready
+			target_arch: arch
+		}), arch
+	}
+	// `cl` on PATH alone cannot find its headers or libraries.
+	assert !v3_windows_prod_msvc_ready(V3WindowsProdToolchain{
+		...ready
+		cl: ''
+	})
+	assert !v3_windows_prod_msvc_ready(V3WindowsProdToolchain{
+		...ready
+		include: ''
+	})
+	assert !v3_windows_prod_msvc_ready(V3WindowsProdToolchain{
+		...ready
+		lib: ''
+	})
+	// `cl` cannot produce the object file of `-o x.o`; V builds that with gcc or clang.
+	assert !v3_windows_prod_msvc_ready(V3WindowsProdToolchain{
+		...ready
+		is_o: true
+	})
+}
+
+fn test_v3_windows_prod_clang_ready_needs_an_amd64_mingw_target() {
+	clang := 'C:/llvm-mingw/bin/clang.exe'
+	for triple in ['x86_64-w64-windows-gnu', 'x86_64-w64-mingw32', 'x86_64-pc-windows-gnu'] {
+		assert v3_windows_prod_clang_ready(V3WindowsProdToolchain{
+			clang:        clang
+			clang_triple: triple
+		}), triple
+	}
+	// The MSVC ABI cannot link V's MinGW flags, a 32-bit or ARM MinGW clang builds the
+	// wrong architecture, and a failed or noisy probe leaves no triple at all.
+	for triple in ['x86_64-pc-windows-msvc', 'i686-w64-windows-gnu', 'aarch64-w64-mingw32',
+		'x86_64-pc-linux-gnu', ''] {
+		assert !v3_windows_prod_clang_ready(V3WindowsProdToolchain{
+			clang:        clang
+			clang_triple: triple
+		}), triple
+	}
+	assert !v3_windows_prod_clang_ready(V3WindowsProdToolchain{
+		clang_triple: 'x86_64-w64-windows-gnu'
+	})
+}
+
+fn test_v3_windows_prod_c_compiler_order() {
+	clang := 'C:/llvm-mingw/bin/clang.exe'
+	gcc := 'C:/mingw64/bin/gcc.exe'
+	all := V3WindowsProdToolchain{
+		cl:           'C:/VS/bin/cl.exe'
+		include:      'C:/VS/include'
+		lib:          'C:/VS/lib'
+		clang:        clang
+		clang_triple: 'x86_64-w64-windows-gnu'
+		gcc:          gcc
+	}
+	assert v3_windows_prod_c_compiler(all) == 'cl'
+	// Without a usable MSVC it is Clang, whatever the reason MSVC cannot be used.
+	assert v3_windows_prod_c_compiler(V3WindowsProdToolchain{
+		...all
+		cl: ''
+	}) == clang
+	assert v3_windows_prod_c_compiler(V3WindowsProdToolchain{
+		...all
+		target_arch: 'x86'
+	}) == clang
+	assert v3_windows_prod_c_compiler(V3WindowsProdToolchain{
+		...all
+		is_o: true
+	}) == clang
+	// Without a usable Clang it is GCC, the last resort.
+	assert v3_windows_prod_c_compiler(V3WindowsProdToolchain{
+		...all
+		cl:    ''
+		clang: ''
+	}) == gcc
+	assert v3_windows_prod_c_compiler(V3WindowsProdToolchain{
+		...all
+		cl:           ''
+		clang_triple: 'x86_64-pc-windows-msvc'
+	}) == gcc
+	assert v3_windows_prod_c_compiler(V3WindowsProdToolchain{
+		...all
+		target_arch:  'x86'
+		clang_triple: ''
+	}) == gcc
+}
+
+// write_windows_prod_test_tool writes an executable shell script named `path`.
+fn write_windows_prod_test_tool(path string, body string) string {
+	os.mkdir_all(os.dir(path)) or { panic(err) }
+	os.write_file(path, '#!/bin/sh\n${body}\n') or { panic(err) }
+	os.chmod(path, 0o700) or { panic(err) }
+	return path
+}
+
+// with_windows_prod_test_environment runs callback with `values` set in the process
+// environment (an empty value unsets the variable) and puts the old values back after.
+fn with_windows_prod_test_environment(values map[string]string, callback fn ()) {
+	mut saved := map[string]string{}
+	for name, _ in values {
+		if old := os.getenv_opt(name) {
+			saved[name] = old
+		}
+	}
+	defer {
+		for name, _ in values {
+			if old := saved[name] {
+				os.setenv(name, old, true)
+			} else {
+				os.unsetenv(name)
+			}
+		}
+	}
+	for name, value in values {
+		if value == '' {
+			os.unsetenv(name)
+		} else {
+			os.setenv(name, value, true)
+		}
+	}
+	callback()
+}
+
+fn test_v3_windows_prod_toolchain_reads_the_environment_and_probes_clang_only_when_needed() {
+	$if windows {
+		// The tools are shell scripts. A Windows machine exercises the real ones in
+		// test_v3_windows_prod_build_uses_the_platform_compiler_in_one_build.
+		return
+	}
+	root := os.join_path(os.vtmp_dir(), 'v3_windows_prod_toolchain_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	bin := os.join_path(root, 'bin')
+	marker := os.join_path(root, 'clang_ran')
+	cl := write_windows_prod_test_tool(os.join_path(bin, 'cl'), 'exit 0')
+	gcc := write_windows_prod_test_tool(os.join_path(bin, 'gcc'), 'exit 0')
+	clang_path := os.join_path(bin, 'clang')
+	write_clang := fn [clang_path, marker] (body string) {
+		write_windows_prod_test_tool(clang_path, 'echo ran > ${os.quoted_path(marker)}\n${body}')
+	}
+	write_clang('echo x86_64-w64-windows-gnu')
+	// PATH holds only the fake tools, so no real compiler of this machine is involved.
+	developer_environment := {
+		'PATH':               os.dir(cl)
+		'INCLUDE':            '/vs/include'
+		'LIB':                '/vs/lib'
+		'VSCMD_ARG_TGT_ARCH': ''
+	}
+	with_windows_prod_test_environment(developer_environment, fn [marker, cl] () {
+		// A ready MSVC is chosen without running clang.
+		tc := v3_windows_prod_toolchain(false)
+		assert os.real_path(tc.cl) == os.real_path(cl)
+		assert v3_windows_prod_c_compiler(tc) == 'cl'
+		assert !os.exists(marker)
+	})
+	// An x86 Developer Command Prompt: no MSVC, so clang is probed and chosen.
+	x86_environment := {
+		'PATH':               os.dir(cl)
+		'INCLUDE':            '/vs/include'
+		'LIB':                '/vs/lib'
+		'VSCMD_ARG_TGT_ARCH': 'x86'
+	}
+	with_windows_prod_test_environment(x86_environment, fn [marker, clang_path] () {
+		tc := v3_windows_prod_toolchain(false)
+		assert os.exists(marker)
+		assert os.real_path(tc.clang) == os.real_path(clang_path)
+		assert tc.clang_triple == 'x86_64-w64-windows-gnu'
+		assert os.real_path(v3_windows_prod_c_compiler(tc)) == os.real_path(clang_path)
+	})
+	os.rm(marker) or {}
+	with_windows_prod_test_environment(developer_environment, fn [clang_path] () {
+		// Object output is built by clang, never by cl.
+		chosen := v3_windows_prod_c_compiler(v3_windows_prod_toolchain(true))
+		assert os.real_path(chosen) == os.real_path(clang_path)
+	})
+	no_msvc_environment := {
+		'PATH':               os.dir(cl)
+		'INCLUDE':            ''
+		'LIB':                ''
+		'VSCMD_ARG_TGT_ARCH': ''
+	}
+	// A clang that fails, prints noise around its triple, or targets the MSVC ABI is
+	// not used: the build falls through to gcc.
+	// The last body is an MSVC-ABI clang that mentions MinGW in a diagnostic: matching the
+	// merged output as a substring would take it for a MinGW one.
+	for body in ['echo x86_64-w64-windows-gnu\nexit 1', 'echo warning: odd\necho x86_64-w64-windows-gnu',
+		'echo x86_64-pc-windows-msvc', 'echo x86_64-pc-windows-msvc\necho note: not a mingw build'] {
+		write_clang(body)
+		with_windows_prod_test_environment(no_msvc_environment, fn [gcc, body] () {
+			chosen := v3_windows_prod_c_compiler(v3_windows_prod_toolchain(false))
+			assert os.real_path(chosen) == os.real_path(gcc), body
+		})
+	}
+	// A clang that never answers must not hang the build: the probe gives up and gcc is used.
+	// PATH holds only the fake tools, so the stub has to name sleep by its full path.
+	write_clang('exec /bin/sleep 60')
+	started := time.ticks()
+	with_windows_prod_test_environment(no_msvc_environment, fn [gcc] () {
+		chosen := v3_windows_prod_c_compiler(v3_windows_prod_toolchain(false))
+		assert os.real_path(chosen) == os.real_path(gcc)
+	})
+	assert time.ticks() - started < 30000
+}
+
+fn test_v3_windows_prod_needs_default_c_compiler_only_for_native_default_builds() {
+	windows_target := pref.Target{
+		os:   'windows'
+		arch: 'amd64'
+	}
+	linux_target := pref.Target{
+		os:   'linux'
+		arch: 'amd64'
+	}
+	base := V3BundledTccProbeOptions{
+		backend:     'c'
+		is_prod:     true
+		c_compiler:  'cc'
+		host_os:     'windows'
+		host_target: windows_target
+		target:      windows_target
+		bundled_tcc: os.join_path(os.vtmp_dir(), 'v3_windows_prod_default', 'thirdparty', 'tcc', 'tcc.exe')
+	}
+	assert v3_windows_prod_needs_default_c_compiler(base)
+	assert !v3_windows_prod_needs_default_c_compiler(V3BundledTccProbeOptions{
+		...base
+		is_prod: false
+	})
+	assert !v3_windows_prod_needs_default_c_compiler(V3BundledTccProbeOptions{
+		...base
+		c_compiler:          'gcc'
+		c_compiler_explicit: true
+	})
+	assert !v3_windows_prod_needs_default_c_compiler(V3BundledTccProbeOptions{
+		...base
+		backend: 'wasm'
+	})
+	assert !v3_windows_prod_needs_default_c_compiler(V3BundledTccProbeOptions{
+		...base
+		c_only: true
+	})
+	assert !v3_windows_prod_needs_default_c_compiler(V3BundledTccProbeOptions{
+		...base
+		dump_c_flags: true
+	})
+	assert !v3_windows_prod_needs_default_c_compiler(V3BundledTccProbeOptions{
+		...base
+		host_os:     'linux'
+		host_target: linux_target
+		target:      linux_target
+	})
+	assert !v3_windows_prod_needs_default_c_compiler(V3BundledTccProbeOptions{
+		...base
+		target: linux_target
+	})
+	// A cross-architecture build, and any native architecture but amd64, are left alone.
+	assert !v3_windows_prod_needs_default_c_compiler(V3BundledTccProbeOptions{
+		...base
+		target: pref.Target{
+			os:   'windows'
+			arch: 'arm64'
+		}
+	})
+	for arch in ['arm64', 'x86'] {
+		native := pref.Target{
+			os:   'windows'
+			arch: arch
+		}
+		assert !v3_windows_prod_needs_default_c_compiler(V3BundledTccProbeOptions{
+			...base
+			host_target: native
+			target:      native
+		}), arch
+	}
+	// Nor is an amd64 target built from another architecture's host.
+	assert !v3_windows_prod_needs_default_c_compiler(V3BundledTccProbeOptions{
+		...base
+		host_target: pref.Target{
+			os:   'windows'
+			arch: 'arm64'
+		}
+	})
+	// Every other mode of a native amd64 build gets a default too, so none of them can
+	// fall back to the bare `cc`.
+	assert v3_windows_prod_needs_default_c_compiler(V3BundledTccProbeOptions{
+		...base
+		is_c_debug: true
+	})
+	assert v3_windows_prod_needs_default_c_compiler(V3BundledTccProbeOptions{
+		...base
+		is_shared: true
+	})
+	assert v3_windows_prod_needs_default_c_compiler(V3BundledTccProbeOptions{
+		...base
+		is_shared:     true
+		is_liveshared: true
+	})
+	assert v3_windows_prod_needs_default_c_compiler(V3BundledTccProbeOptions{
+		...base
+		parallel_cc: true
+	})
+	assert v3_windows_prod_needs_default_c_compiler(V3BundledTccProbeOptions{
+		...base
+		is_o: true
+	})
+}
+
+fn test_v3_select_c_compiler_windows_prod_never_uses_tcc_or_the_bare_cc() {
+	windows_target := pref.Target{
+		os:   'windows'
+		arch: 'amd64'
+	}
+	root := os.join_path(os.vtmp_dir(), 'v3_windows_prod_select_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	// A usable bundled TCC and a usable system TCC are both on offer: what keeps -prod
+	// off them is the selection, not their absence.
+	mut vroot := root
+	mut path := os.getenv('PATH')
+	$if windows {
+		// This checkout's own bundled TCC.
+		vroot = @VEXEROOT
+	} $else {
+		os.mkdir_all(os.join_path(root, 'thirdparty', 'tcc', 'lib'))!
+		write_v3_test_tcc(os.join_path(root, 'thirdparty', 'tcc', 'tcc.exe'), 0)
+		os.write_file(os.join_path(root, 'thirdparty', 'tcc', 'lib', 'openlibm.o'), '')!
+		system_tcc := write_v3_test_tcc(os.join_path(root, 'bin', 'tcc'), 0)
+		path = os.dir(system_tcc) + os.path_delimiter + path
+	}
+	bundled_tcc := os.join_path(vroot, 'thirdparty', 'tcc', 'tcc.exe')
+	if !v3_usable_tcc_compiler(bundled_tcc) {
+		eprintln('> skipping: no usable bundled tcc at ${bundled_tcc}')
+		return
+	}
+	base := V3BundledTccProbeOptions{
+		backend:     'c'
+		c_compiler:  'cc'
+		host_os:     'windows'
+		host_target: windows_target
+		target:      windows_target
+		bundled_tcc: bundled_tcc
+	}
+	with_windows_prod_test_environment({
+		'PATH': path
+	}, fn [vroot, base, bundled_tcc] () {
+		// Positive control: without -prod the same options do select a TCC.
+		control := v3_select_c_compiler(vroot, base)
+		assert control.implicit_tcc != ''
+		assert control.use_implicit_tcc_semantics
+		assert control.effective_c_compiler == 'tinyc'
+		selection := v3_select_c_compiler(vroot, V3BundledTccProbeOptions{
+			...base
+			is_prod: true
+		})
+		assert selection.implicit_tcc == ''
+		assert !selection.use_implicit_tcc_semantics
+		assert selection.c_compiler != 'cc'
+		assert selection.c_compiler != bundled_tcc
+		assert selection.effective_c_compiler != 'tinyc'
+	})
+	// An explicit compiler is kept as given.
+	explicit := v3_select_c_compiler(vroot, V3BundledTccProbeOptions{
+		...base
+		c_compiler:          'gcc'
+		c_compiler_explicit: true
+	})
+	assert explicit.c_compiler == 'gcc'
 }
 
 fn test_v3_bundled_tcc_probe_does_not_run_when_ineligible() {
@@ -662,13 +1109,16 @@ fn test_v3_tcc_flag_plan_restores_native_local_prefix() {
 	}
 }
 
-fn test_v3_windows_default_tcc_prod_build() {
+fn test_v3_windows_prod_build_uses_the_platform_compiler_in_one_build() {
 	$if !windows {
 		return
 	}
-	bundled_tcc := os.join_path(@VEXEROOT, 'thirdparty', 'tcc', 'tcc.exe')
-	assert os.is_executable(bundled_tcc)
-	root := os.join_path(os.vtmp_dir(), 'v3_windows_default_tcc_prod_${os.getpid()}')
+	chosen := v3_windows_prod_c_compiler(v3_windows_prod_toolchain(false))
+	if (os.find_abs_path_of_executable(chosen) or { '' }) == '' {
+		eprintln('> skipping: no platform C compiler (MSVC, clang or gcc) is available')
+		return
+	}
+	root := os.join_path(os.vtmp_dir(), 'v3_windows_prod_platform_cc_${os.getpid()}')
 	os.rmdir_all(root) or {}
 	os.mkdir_all(root)!
 	defer {
@@ -677,22 +1127,58 @@ fn test_v3_windows_default_tcc_prod_build() {
 	source := os.join_path(root, 'main.v')
 	output := os.join_path(root, 'main.exe')
 	os.write_file(source, 'fn main() {\n\texit(42)\n}\n')!
-	old_vflags := os.getenv_opt('VFLAGS')
-	os.unsetenv('VFLAGS')
-	defer {
-		if value := old_vflags {
-			os.setenv('VFLAGS', value, true)
+	// A failing V3 build must fail this test. The launcher would otherwise rebuild
+	// with the legacy compiler, report success, and file a bug report.
+	mut saved := map[string]string{}
+	for name, value in {
+		'VFLAGS':                        ''
+		'V_MACOS_V3_NO_FALLBACK':        '1'
+		'V_C_ERROR_BUG_REPORT_DISABLED': '1'
+		'V3_TEST_ISOLATE_CACHE':         '1'
+	} {
+		if old := os.getenv_opt(name) {
+			saved[name] = old
+		}
+		if value == '' {
+			os.unsetenv(name)
+		} else {
+			os.setenv(name, value, true)
 		}
 	}
-	build := cmdexec.run(v3_driver_test_executable(), ['-new-compiler', '-nocache', '-prod', '-showcc',
-		'-o', output, source])
-	assert build.exit_code == 0, build.output
-	normalized_output := build.output.replace('\\', '/')
-	assert normalized_output.contains('thirdparty/tcc/tcc.exe'), build.output
-	assert normalized_output.contains('-B') && normalized_output.contains('thirdparty/tcc'), build.output
-	assert !normalized_output.contains('-flto'), build.output
-	run_result := cmdexec.run(output, [])
-	assert run_result.exit_code == 42, run_result.output
+	defer {
+		for name in ['VFLAGS', 'V_MACOS_V3_NO_FALLBACK', 'V_C_ERROR_BUG_REPORT_DISABLED',
+			'V3_TEST_ISOLATE_CACHE'] {
+			if old := saved[name] {
+				os.setenv(name, old, true)
+			} else {
+				os.unsetenv(name)
+			}
+		}
+	}
+	// With and without -nocache. The module cache is only used when the compiler is the
+	// executable of the bare `cc`, so the first build is monolithic unless it is.
+	for cache_args in [[]string{}, ['-nocache']] {
+		os.rm(output) or {}
+		mut args := ['-new-compiler']
+		args << cache_args
+		args << ['-prod', '-showcc', '-o', output, source]
+		build := cmdexec.run(v3_driver_test_executable(), args)
+		assert build.exit_code == 0, build.output
+		normalized_output := build.output.replace('\\', '/')
+		// -prod needs optimizations TCC cannot do: MSVC, Clang or GCC builds it ...
+		assert !normalized_output.contains('thirdparty/tcc/tcc.exe'), build.output
+		assert normalized_output.contains('-O3') || normalized_output.contains('-O2')
+			|| normalized_output.contains('/O2'), build.output
+		// ... not the bare `cc`, whichever compiler that happens to be ...
+		assert !normalized_output.contains('> cc '), build.output
+		// ... in one V3 build: not by generating for TCC first and re-running the whole
+		// compilation, and not through the legacy compiler after V3 failed.
+		assert !normalized_output.contains('regenerating'), build.output
+		assert !normalized_output.contains('retrying with'), build.output
+		assert !normalized_output.contains('V 0.5.2'), build.output
+		run_result := cmdexec.run(output, [])
+		assert run_result.exit_code == 42, run_result.output
+	}
 }
 
 fn test_v3_windows_auto_gui_build_uses_windows_subsystem() {
