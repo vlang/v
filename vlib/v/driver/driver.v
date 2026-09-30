@@ -12335,9 +12335,12 @@ pub fn run(args []string) {
 		unhandled_start := pre_tc.put_back_incremental_unhandled()
 		pre_tc.warn_unhandled_result_calls()
 		pre_tc.sort_incremental_unhandled(unhandled_start)
+		// For the next check of the program (see types.start_incremental_check),
+		// kept again with the errors of the instances once they are checked.
+		mut kept_incremental_record := ''
 		if shares_checks {
-			// For the next check of the program (see types.start_incremental_check).
-			served.keep_incremental_record(pre_tc.incremental_record(unhandled_start))
+			kept_incremental_record = pre_tc.incremental_record(unhandled_start)
+			served.keep_incremental_record(kept_incremental_record)
 		}
 		if verbose {
 			eprintln('  [ttime]   ck main req      ${f64(ckpre_sw.elapsed().microseconds()) / 1000.0:7.2f} ms')
@@ -12456,6 +12459,11 @@ pub fn run(args []string) {
 			report_unused_declarations_of_check(a, mut pre_tc, no_skip_unused, test_files,
 				input_file.ends_with('.vsh') || is_checker_fixture)
 			monomorphized := check_concrete_generic_bodies_of_check(mut a, mut pre_tc)
+			if monomorphized && kept_incremental_record != '' {
+				// For the next check to put back (see
+				// types.TypeChecker.put_back_incremental_instances).
+				served.keep_incremental_record(pre_tc.incremental_instances_record(kept_incremental_record))
+			}
 			if !monomorphized && pre_tc.global_names.len > 0
 				&& os.getenv('V_CHECK_SELECTED_FILES_ONLY') == '' {
 				check_used_fns, check_uses_generics := markused.mark_used_with_generic_usage(a, &pre_tc)
@@ -18297,6 +18305,12 @@ fn check_concrete_generic_bodies_of_check(mut a flat.FlatAst, mut tc types.TypeC
 	if tc.errors.len > 0 || tc.checker_fixture_mode || !tc.diagnosed_files_declare_generics() {
 		return false
 	}
+	// An incremental check whose bodies checked again touch nothing generic has
+	// the instances of the check before: their errors are put back.
+	if tc.put_back_incremental_instances() {
+		trace_incremental_check(mut tc)
+		return true
+	}
 	// The program's own functions are the roots, reachable or not, as V1 checked
 	// every instance a call asks for.
 	used_fns := tc.diagnosed_fn_keys()
@@ -18310,6 +18324,9 @@ fn check_concrete_generic_bodies_of_check(mut a flat.FlatAst, mut tc types.TypeC
 	tc.library_bodies_kept_for = ''
 	_, _ = transform.monomorphize_with_used_checked_config(mut a, tc, used_fns, false)
 	tc.check_concrete_generic_bodies = false
+	// With V_DIAGNOSTICS_INCREMENTAL_VERIFY, what was to be put back instead.
+	tc.verify_incremental_instances()
+	trace_incremental_check(mut tc)
 	if tc.library_instances > 0 {
 		trace_diagnostics_server('instances: ${tc.library_headers} of ${tc.library_instances} library instances cloned without their bodies')
 		if tc.library_bodies_kept_for != '' {

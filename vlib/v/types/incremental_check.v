@@ -25,9 +25,12 @@ import v.token
 // Results. The instances of generic functions need the types of the bodies that
 // ask for them: those that the record notes as touching something generic are
 // checked first (see complete_incremental_check_for_instances), and a question
-// of the editor checks every body left out first.
+// of the editor checks every body left out first. When no body checked again
+// touches anything generic, the instances are those of the check before, and
+// their errors are put back from the record instead (see
+// put_back_incremental_instances).
 
-const incremental_record_header = 'v-incremental-check 3'
+const incremental_record_header = 'v-incremental-check 4'
 const incremental_seed = u64(0x9e3779b97f4a7c15)
 
 // incremental_min_left_out is the fewest nodes that the bodies a check leaves
@@ -71,7 +74,13 @@ mut:
 	captured      map[int]IncrementalCaptured // what each checked body reported, by fn_idx
 	call_names    map[int]string              // the calls of the bodies left out, by node
 	fn_values     []int                       // the nodes of those bodies named as functions, put back
-	trace         []string
+	// Where the errors of the instances start in tc.errors, once their check
+	// begins (see put_back_incremental_instances), and with `verify`, what was
+	// to be put back for them.
+	instances_start    int = -1
+	instances_verified bool
+	instances_put_back []TypeError
+	trace              []string
 }
 
 // IncrementalFunction is a body of an incremental check, and its region.
@@ -106,14 +115,24 @@ struct IncrementalItemMark {
 
 // IncrementalRecord is what a check recorded for the next one, read back:
 // an entry for each body, whose details are read when they are needed (see
-// details).
+// details), and the errors of the instances of the program's generic functions
+// when the check noted them (see incremental_instances_record).
 struct IncrementalRecord {
 mut:
-	text         string
-	declarations u64
-	files        string
-	entries      []IncrementalStored
-	by_key       map[string]int
+	text            string
+	declarations    u64
+	files           string
+	entries         []IncrementalStored
+	by_key          map[string]int
+	instances       []IncrementalInstanceError
+	instances_known bool
+}
+
+// IncrementalInstanceError is an error of an instance of a generic function: an
+// error in the body `key`, placed from the start of its region (`back` is 0).
+struct IncrementalInstanceError {
+	key string
+	d   IncrementalDiagnostic
 }
 
 // IncrementalStored is the entry of a body in a record read back: its lines in
@@ -823,6 +842,136 @@ pub fn (mut tc TypeChecker) complete_incremental_check_for_instances() {
 	tc.complete_incremental_check()
 }
 
+// put_back_incremental_instances puts in tc.errors the errors that the check
+// before found in the instances of the program's generic functions, and reports
+// whether it did. The check of the instances begins here (see
+// incremental_instances_record). A check that leaves out bodies has the
+// instances of the check before when no body it checks is generic or touches
+// anything generic, now or in its last check (see incremental_touches_generics):
+// the declarations are the same, the generic bodies too, and so is every body
+// that asks for an instance. The errors of the instances, in the regions of the
+// generic bodies, move with them. With `verify`, the instances are checked all
+// the same, and verify_incremental_instances compares what their check finds
+// with what was put back.
+pub fn (mut tc TypeChecker) put_back_incremental_instances() bool {
+	if isnil(tc.incremental) || !tc.incremental.selected {
+		return false
+	}
+	mut state := tc.incremental
+	state.instances_start = tc.errors.len
+	if state.skipped.len == 0 {
+		return false
+	}
+	// The index in functions of each key, or -1 for a key more bodies go by.
+	mut by_key := map[string]int{}
+	for i, f in state.functions {
+		by_key[f.key] = if f.key in by_key { -1 } else { i }
+	}
+	reason := tc.incremental_instances_reason(by_key)
+	if reason != '' {
+		state.trace << 'incremental: the instances checked (${reason})'
+		return false
+	}
+	mut errors := []TypeError{cap: state.earlier.instances.len}
+	saved_file := tc.cur_file
+	for stored in state.earlier.instances {
+		f := state.functions[by_key[stored.key]]
+		tc.cur_file = f.item.file
+		errors << tc.incremental_diagnostic(f, stored.d)
+	}
+	tc.cur_file = saved_file
+	state.trace << 'incremental: ${errors.len} errors of the instances put back'
+	if state.verify {
+		state.instances_verified = true
+		state.instances_put_back = errors
+		return false
+	}
+	tc.errors << errors
+	return true
+}
+
+// incremental_instances_reason returns why the errors of the instances of the
+// check before cannot be put back, or '' when they can (see
+// put_back_incremental_instances). `by_key` holds the index in functions of
+// each key, or -1 for a key more bodies go by.
+fn (tc &TypeChecker) incremental_instances_reason(by_key map[string]int) string {
+	state := tc.incremental
+	if !state.earlier.instances_known {
+		return 'the check before noted none'
+	}
+	mut left_out := []bool{len: state.functions.len}
+	for i in state.skipped {
+		left_out[i] = true
+	}
+	generic_fns := tc.incremental_generic_fns()
+	for i, f in state.functions {
+		if left_out[i] {
+			continue
+		}
+		if tc.incremental_body_is_generic(f) {
+			return '`${f.key.all_after('\t')}` is generic'
+		}
+		if tc.incremental_touches_generics(f, generic_fns) {
+			return '`${f.key.all_after('\t')}` touches something generic'
+		}
+	}
+	// A body checked again that asked for an instance may ask for none now.
+	for entry in state.earlier.entries {
+		if entry.generic {
+			i := by_key[entry.key] or { -1 }
+			if i < 0 || !left_out[i] {
+				return '`${entry.key.all_after('\t')}` touched something generic'
+			}
+		}
+	}
+	// An error goes back to the region of its body, which is the same.
+	for stored in state.earlier.instances {
+		i := by_key[stored.key] or { -1 }
+		if i < 0 || !left_out[i] {
+			return '`${stored.key.all_after('\t')}` holds an error of the instances'
+		}
+	}
+	return ''
+}
+
+// incremental_body_is_generic reports whether `f` is the body of a generic
+// function, or holds an anonymous generic function: its text makes instances.
+fn (tc &TypeChecker) incremental_body_is_generic(f IncrementalFunction) bool {
+	if tc.infer_decl_generic_param_names(tc.a.nodes[f.item.fn_idx]).len > 0 {
+		return true
+	}
+	for idx in f.item.range_lo .. f.item.fn_idx {
+		node := tc.a.nodes[idx]
+		if node.payload != 0 && node.generic_params().len > 0 {
+			return true
+		}
+	}
+	return false
+}
+
+// verify_incremental_instances compares, with `verify`, the errors that the
+// check of the instances found with those that put_back_incremental_instances
+// was to put back, notes a difference in the trace, and leaves in tc.errors
+// those put back: the check reports what putting them back gives.
+pub fn (mut tc TypeChecker) verify_incremental_instances() {
+	if isnil(tc.incremental) || !tc.incremental.instances_verified {
+		return
+	}
+	mut state := tc.incremental
+	start := int_min(state.instances_start, tc.errors.len)
+	found := tc.errors[start..].map(incremental_instance_line(it))
+	put_back := state.instances_put_back.map(incremental_instance_line(it))
+	if found != put_back {
+		state.trace << 'incremental: the instances found ${found}, not what was put back: ${put_back}'
+	}
+	tc.errors.trim(start)
+	tc.errors << state.instances_put_back
+}
+
+fn incremental_instance_line(err TypeError) string {
+	return '${int(err.kind)} ${err.file} ${err.pos.id}:${err.pos.offset}-${err.pos.end}:${err.pos.meta} ${err.diagnostic_order} ${err.severity} ${err.msg} ${err.details}'
+}
+
 // incremental_touches_generics reports whether the check of the body `f` found
 // something generic in it: a call or a value of a generic function (one of
 // `generic_fns`, or a name with type arguments), or a node whose type is, or
@@ -992,12 +1141,7 @@ pub fn (tc &TypeChecker) incremental_record(unhandled_start int) string {
 		}
 	}
 	selective := tc.incremental_selective_import_files()
-	mut generic_fns := map[string]bool{}
-	for name, params in tc.fn_generic_params {
-		if params.len > 0 {
-			generic_fns[name] = true
-		}
-	}
+	generic_fns := tc.incremental_generic_fns()
 	mut b := strings.new_builder(4096 + state.functions.len * 64)
 	b.writeln(incremental_record_header)
 	b.writeln('declarations\t${state.declarations.hex()}')
@@ -1047,6 +1191,73 @@ pub fn (tc &TypeChecker) incremental_record(unhandled_start int) string {
 		write_incremental_entry(mut b, entry)
 	}
 	b.writeln('end\t${state.functions.len}')
+	return b.str()
+}
+
+// incremental_generic_fns returns the names of the generic functions, for
+// incremental_touches_generics.
+fn (tc &TypeChecker) incremental_generic_fns() map[string]bool {
+	mut generic_fns := map[string]bool{}
+	for name, params in tc.fn_generic_params {
+		if params.len > 0 {
+			generic_fns[name] = true
+		}
+	}
+	return generic_fns
+}
+
+// incremental_instances_record returns `record`, what incremental_record
+// returned, with the errors of the instances of the program's generic
+// functions, for the next check to put back (see
+// put_back_incremental_instances): those in tc.errors since their check began,
+// each in the region of the body it is in. It returns '' when their check did
+// not begin, and when an error is in no region of a body.
+pub fn (tc &TypeChecker) incremental_instances_record(record string) string {
+	if record == '' || isnil(tc.incremental) || tc.incremental.instances_start < 0 {
+		return ''
+	}
+	state := tc.incremental
+	errors := tc.errors[int_min(state.instances_start, tc.errors.len)..]
+	// The bodies of each file, to find the one whose region holds an error.
+	mut by_file := map[int][]int{}
+	for i, f in state.functions {
+		if f.end > f.start {
+			by_file[f.file_id] << i
+		}
+	}
+	mut b := strings.new_builder(record.len + 64 + errors.len * 128)
+	b.write_string(record)
+	b.writeln('instances\t${errors.len}')
+	for err in errors {
+		offset := int(err.pos.offset)
+		end := int(err.pos.end)
+		if !err.pos.is_valid() || end < offset || err.details.any(it.contains('.v:')) {
+			return ''
+		}
+		mut at := -1
+		for i in by_file[int(err.pos.id)] or { []int{} } {
+			f := state.functions[i]
+			if f.start <= offset && end <= f.end {
+				at = i
+				break
+			}
+		}
+		if at < 0 || err.file != state.functions[at].item.file {
+			return ''
+		}
+		f := state.functions[at]
+		write_incremental_instance_error(mut b, f.key, IncrementalDiagnostic{
+			list:     incremental_errors
+			kind:     int(err.kind)
+			offset:   offset - f.start
+			end:      end - f.start
+			meta:     err.pos.meta
+			order:    err.diagnostic_order
+			severity: err.severity
+			msg:      err.msg
+			details:  err.details
+		})
+	}
 	return b.str()
 }
 
@@ -1133,6 +1344,17 @@ fn write_incremental_entry(mut b strings.Builder, entry IncrementalEntry) {
 	}
 }
 
+// write_incremental_instance_error writes the error `d` of an instance, in the
+// region of the body `key`, on a line after the entries of a record.
+fn write_incremental_instance_error(mut b strings.Builder, key string, d IncrementalDiagnostic) {
+	b.write_string('i\t${key}\t${d.kind}\t${d.offset}\t${d.end}\t${d.meta}\t${d.order}\t${incremental_escape(d.severity)}\t${incremental_escape(d.msg)}\t${d.details.len}')
+	for detail in d.details {
+		b.write_u8(`\t`)
+		b.write_string(incremental_escape(detail))
+	}
+	b.write_u8(`\n`)
+}
+
 // decode_incremental_record reads what incremental_record wrote, or none when
 // `text` is not all of it. It reads the first line of each entry: the lines of
 // its details are read when they are needed (see details).
@@ -1211,6 +1433,9 @@ fn decode_incremental_record(text string) ?IncrementalRecord {
 						}
 					}
 					ended = line['end\t'.len..].int() == record.entries.len
+					if ended {
+						record.decode_instances(text, line_end + 1)
+					}
 					break
 				} else {
 					return none
@@ -1220,6 +1445,62 @@ fn decode_incremental_record(text string) ?IncrementalRecord {
 		at = line_end + 1
 	}
 	return if ended { record } else { none }
+}
+
+// decode_instances reads the errors of the instances that
+// incremental_instances_record wrote after the entries, from `at` on: they are
+// known when all their lines are there, and nothing after them.
+fn (mut record IncrementalRecord) decode_instances(text string, at int) {
+	if at >= text.len {
+		return
+	}
+	mut line_end := incremental_line_end(text, at)
+	head := text[at..line_end]
+	if line_end >= text.len || !head.starts_with('instances\t') {
+		return
+	}
+	count := incremental_int(head, 'instances\t'.len, head.len)
+	mut instances := []IncrementalInstanceError{}
+	mut next := line_end + 1
+	for _ in 0 .. count {
+		if next >= text.len {
+			return
+		}
+		line_end = incremental_line_end(text, next)
+		// A line without its newline was cut short.
+		if line_end >= text.len {
+			return
+		}
+		// i <file> <name> <kind> <offset> <end> <meta> <order> <severity> <msg> <details...>
+		fields := text[next..line_end].split('\t')
+		if fields.len < 11 || fields[0] != 'i' || fields.len != 11 + fields[10].int() {
+			return
+		}
+		mut details := []string{cap: fields.len - 11}
+		for detail in fields[11..] {
+			details << incremental_unescape(detail)
+		}
+		instances << IncrementalInstanceError{
+			key: '${fields[1]}\t${fields[2]}'
+			d:   IncrementalDiagnostic{
+				list:     incremental_errors
+				kind:     fields[3].int()
+				offset:   fields[4].int()
+				end:      fields[5].int()
+				meta:     u16(fields[6].int())
+				order:    fields[7].int()
+				severity: incremental_unescape(fields[8])
+				msg:      incremental_unescape(fields[9])
+				details:  details
+			}
+		}
+		next = line_end + 1
+	}
+	if count < 0 || next < text.len {
+		return
+	}
+	record.instances = instances
+	record.instances_known = true
 }
 
 // details returns the details of the entry `i`.

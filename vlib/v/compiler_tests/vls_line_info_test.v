@@ -2295,6 +2295,142 @@ fn test_a_shared_server_checks_every_body_of_a_small_program() {
 	assert p.code == 0
 }
 
+const incremental_instance_errors_program = "module main
+
+struct User {
+	name string
+}
+
+fn plain() int {
+	return 1
+}
+
+fn show[T](x T) string {
+	return x.nme
+}
+
+fn other() int {
+	return 2
+}
+
+fn caller() string {
+	return show(User{
+		name: 'a'
+	})
+}
+
+fn main() {
+	println(plain())
+	println(other())
+	println(caller())
+}
+"
+
+// IncrementalInstanceStep is an edit of the program of an incremental check,
+// and whether the check that follows it puts back the errors of the instances.
+struct IncrementalInstanceStep {
+	from     string
+	to       string
+	put_back bool
+}
+
+// The instances of the program's generic functions are those of the check
+// before when no body checked again is generic or touches anything generic, now
+// or before: a shared server puts their errors back instead of checking every
+// instance again. With V_DIAGNOSTICS_INCREMENTAL_VERIFY, it checks them all the
+// same, and finds what it put back.
+fn test_a_shared_server_puts_back_the_errors_of_the_instances_when_the_bodies_it_checks_touch_nothing_generic() {
+	$if !linux {
+		return
+	}
+	check_incremental_instance_steps(false)!
+	check_incremental_instance_steps(true)!
+}
+
+// check_incremental_instance_steps edits the program of
+// incremental_instance_errors_program step by step, and checks it with a shared
+// server after each step, which verifies what it puts back with `verify`.
+fn check_incremental_instance_steps(verify bool) ! {
+	steps := [
+		IncrementalInstanceStep{},
+		// A line more in a body that touches nothing generic moves the error of
+		// the instance a line down.
+		IncrementalInstanceStep{
+			from:     '\treturn 1\n'
+			to:       '\tone := 1\n\treturn one\n'
+			put_back: true
+		},
+		// A body that asks for an instance.
+		IncrementalInstanceStep{
+			from: "name: 'a'"
+			to:   "name: 'b'"
+		},
+		// The body of the generic function.
+		IncrementalInstanceStep{
+			from: 'x.nme'
+			to:   'x.nam'
+		},
+		IncrementalInstanceStep{
+			from:     '\treturn 2\n'
+			to:       '\treturn 20\n'
+			put_back: true
+		},
+		// A body that asked for an instance asks for none.
+		IncrementalInstanceStep{
+			from: "\treturn show(User{\n\t\tname: 'b'\n\t})\n"
+			to:   "\treturn 'c'\n"
+		},
+		IncrementalInstanceStep{
+			from:     '\treturn one\n'
+			to:       '\treturn one + 1\n'
+			put_back: true
+		},
+	]
+	dir := os.join_path(work_dir, 'incremental_instance_errors_${verify}')
+	os.mkdir_all(dir)!
+	path := os.join_path(dir, 'main.v')
+	os.write_file(path, incremental_instance_errors_program)!
+	trace := os.join_path(dir, 'trace.txt')
+	os.rm(trace) or {}
+	mut vars := {
+		'V_DIAGNOSTICS_SHARED':                '1'
+		'V_DIAGNOSTICS_PREPARE':               '1'
+		'V_DIAGNOSTICS_PARTIAL':               '1'
+		'V_DIAGNOSTICS_TRACE':                 trace
+		'V_DIAGNOSTICS_INCREMENTAL_MIN_NODES': '0'
+	}
+	if verify {
+		vars['V_DIAGNOSTICS_INCREMENTAL_VERIFY'] = '1'
+	}
+	mut p := start_server(dir, vars)
+	defer {
+		p.close()
+	}
+	mut source := incremental_instance_errors_program
+	for i, step in steps {
+		if step.from != '' {
+			assert source.contains(step.from), step.from
+			source = source.replace_once(step.from, step.to)
+			os.write_file(path, source)!
+		}
+		traced := (os.read_file(trace) or { '' }).len
+		_, checked := final_server_check(mut p, 'i${i}')
+		assert checked == one_shot_check(dir), 'verify ${verify}, step ${i}'
+		said := (os.read_file(trace) or { '' })[traced..]
+		if i > 0 {
+			assert said.contains('incremental: 1 of 5 bodies checked'), 'verify ${verify}, step ${i}: ${said}'
+		}
+		assert said.contains('errors of the instances put back') == step.put_back, 'verify ${verify}, step ${i}: ${said}'
+		assert !said.contains('incremental: the instances found'), 'verify ${verify}, step ${i}: ${said}'
+		// The instances have errors, then none.
+		assert checked.contains('`nme`') == (i < 3), 'verify ${verify}, step ${i}: ${checked}'
+		assert checked.contains('`nam`') == (i in [3, 4]), 'verify ${verify}, step ${i}: ${checked}'
+	}
+	p.stdin_write('quit\n')
+	p.wait()
+	assert p.code == 0
+}
+
 // incremental_many_program is incremental_program with 30 functions more: work
 // enough for a check that splits its bodies among threads.
 fn incremental_many_program() string {
@@ -2534,15 +2670,27 @@ fn test_an_incremental_check_checks_for_the_instances_only_the_bodies_that_can_a
 	// Each instance comes from one body: a call, a function value, a method, and
 	// the `str()` of an interpolation.
 	assert expected.count('`int` has no property `name`') == 4, expected
-	os.write_file(path, incremental_instances_program.replace('\tmut t := 0\n', '\tmut t := 1\n'))!
-	traced := (os.read_file(trace) or { '' }).len
-	_, rechecked := final_server_check(mut p, 'i1')
-	assert rechecked == one_shot_check(dir)
-	// The bodies left out that touch nothing generic are not checked again:
-	// `filler_b`, `filler_c` and `filler_d`.
-	said := (os.read_file(trace) or { '' })[traced..]
+	// A body that touches nothing generic changed: the errors of the instances
+	// are put back.
+	mut source := incremental_instances_program.replace('\tmut t := 0\n', '\tmut t := 1\n')
+	os.write_file(path, source)!
+	mut traced := (os.read_file(trace) or { '' }).len
+	_, put_back := final_server_check(mut p, 'i1')
+	assert put_back == one_shot_check(dir)
+	mut said := (os.read_file(trace) or { '' })[traced..]
 	assert said.contains('incremental: 1 of 16 bodies checked'), said
-	assert said.contains('incremental: 12 of 15 bodies left out checked for the instances'), said
+	assert said.contains('errors of the instances put back'), said
+	// A body that asks for an instance changed: the instances are checked, and
+	// for them, the bodies left out that touch nothing generic are not checked
+	// again: `filler_a`, `filler_b`, `filler_c` and `filler_d`.
+	source = source.replace('\treturn name_of_call(3)\n', '\treturn name_of_call(4)\n')
+	os.write_file(path, source)!
+	traced = (os.read_file(trace) or { '' }).len
+	_, rechecked := final_server_check(mut p, 'i2')
+	assert rechecked == one_shot_check(dir)
+	said = (os.read_file(trace) or { '' })[traced..]
+	assert said.contains('incremental: 1 of 16 bodies checked'), said
+	assert said.contains('incremental: 11 of 15 bodies left out checked for the instances'), said
 	p.stdin_write('quit\n')
 	p.wait()
 	assert p.code == 0
