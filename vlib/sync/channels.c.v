@@ -144,6 +144,16 @@ fn new_channel_st_noscan(n u32, st u32) &Channel {
 pub fn (mut ch Channel) close(errs ...IError) {
 	$if race ? {
 		racedisable()
+		is_open := C.atomic_load_u16(&ch.closed) == 0
+		raceenable()
+		if is_open {
+			// Like Go: close is a write of the channel that races with unsynchronized sends,
+			// and it happens before a receive that returns because the channel is closed.
+			// Release before the closed flag is set: a receiver can see the flag right away.
+			racewrite(ch.race_addr())
+			racerelease(ch.race_addr())
+		}
+		racedisable()
 	}
 	open_val := u16(0)
 	if !C.atomic_compare_exchange_strong_u16(&ch.closed, &open_val, 1) {
@@ -151,14 +161,6 @@ pub fn (mut ch Channel) close(errs ...IError) {
 			raceenable()
 		}
 		return
-	}
-	$if race ? {
-		// Like Go: close is a write of the channel that races with unsynchronized sends,
-		// and it happens before a receive that returns because the channel is closed.
-		raceenable()
-		racewrite(ch.race_addr())
-		racerelease(ch.race_addr())
-		racedisable()
 	}
 	if errs.len > 0 {
 		ch.close_err = errs[0]
@@ -307,6 +309,11 @@ fn (mut ch Channel) try_push_priv(src voidptr, no_block bool) ChanState {
 	$if race ? {
 		// Like Go: a send is a read of the channel, which races with an unsynchronized close.
 		raceread(ch.race_addr())
+		if src != unsafe { nil } {
+			// The implementation is hidden, but the sent value is the caller's memory. Like Go,
+			// read it before the send, which the receive happens after.
+			racereadrange(src, int(ch.objsize))
+		}
 		racedisable()
 		res := ch.try_push_impl(src, no_block)
 		raceenable()
@@ -545,6 +552,10 @@ fn (mut ch Channel) try_pop_priv(dest voidptr, no_block bool) ChanState {
 		racedisable()
 		res := ch.try_pop_impl(dest, no_block)
 		raceenable()
+		if res == .success && dest != unsafe { nil } {
+			// The implementation is hidden, but the destination is the caller's memory.
+			racewriterange(dest, int(ch.objsize))
+		}
 		if res == .closed {
 			// Like Go: a receive that returns because the channel is closed happens after
 			// the close.
@@ -812,6 +823,12 @@ fn channel_select_priv(mut channels []&Channel, dir []Direction, mut objrefs []v
 		assert dir.len == objrefs.len
 	}
 	$if race ? {
+		// Like Go's select, which evaluates the values to send before it selects a case.
+		for i, ch in channels {
+			if dir[i] == .push && objrefs[i] != unsafe { nil } {
+				racereadrange(objrefs[i], int(ch.objsize))
+			}
+		}
 		racedisable()
 	}
 	mut subscr := []Subscription{len: channels.len}
@@ -963,6 +980,11 @@ fn channel_select_priv(mut channels []&Channel, dir []Direction, mut objrefs []v
 	sem.destroy()
 	$if race ? {
 		raceenable()
+		if event_idx >= 0 && dir[event_idx] == .pop && objrefs[event_idx] != unsafe { nil } {
+			// Like Go's select: the selected receive writes its variable (also with the zero
+			// value of a closed channel).
+			racewriterange(objrefs[event_idx], int(channels[event_idx].objsize))
+		}
 	}
 	return event_idx
 }

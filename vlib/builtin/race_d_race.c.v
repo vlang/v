@@ -9,6 +9,8 @@ fn C.__tsan_acquire(addr voidptr)
 fn C.__tsan_release(addr voidptr)
 fn C.__tsan_read1(addr voidptr)
 fn C.__tsan_write1(addr voidptr)
+fn C.__tsan_read_range(addr voidptr, size usize)
+fn C.__tsan_write_range(addr voidptr, size usize)
 fn C.AnnotateIgnoreReadsBegin(file &char, line int)
 fn C.AnnotateIgnoreReadsEnd(file &char, line int)
 fn C.AnnotateIgnoreWritesBegin(file &char, line int)
@@ -44,6 +46,17 @@ pub fn raceread(addr voidptr) {
 // racewrite tells the race detector that the calling thread writes `addr`.
 pub fn racewrite(addr voidptr) {
 	C.__tsan_write1(addr)
+}
+
+// racereadrange tells the race detector that the calling thread reads `len` bytes at `addr`.
+pub fn racereadrange(addr voidptr, len int) {
+	C.__tsan_read_range(addr, usize(len))
+}
+
+// racewriterange tells the race detector that the calling thread writes `len` bytes at
+// `addr`.
+pub fn racewriterange(addr voidptr, len int) {
+	C.__tsan_write_range(addr, usize(len))
 }
 
 // race_io_sync stands for all file I/O, like `ioSync` in Go's syscall package.

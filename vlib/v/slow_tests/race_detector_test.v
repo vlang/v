@@ -407,6 +407,75 @@ fn main() {
 }
 '
 
+// The channel implementation is hidden from the race detector, but the values that `push`
+// reads and that `pop`, `try_pop` and `select` write are the caller's memory; a handoff
+// through the channel still orders the sender before the receiver.
+const channel_value_source = 'import sync
+
+struct Cell {
+mut:
+	v int
+}
+
+fn main() {
+	mode := \$d("mode", "pop")
+	mut ch := sync.new_channel[int](1000)
+	mut c := &Cell{}
+	if mode == "handoff" {
+		// No race: the receiver writes the sent variable only after the receive.
+		mut x := &Cell{
+			v: 1
+		}
+		mut ch2 := sync.new_channel[int](0)
+		t := spawn fn (mut x Cell, mut ch2 sync.Channel) {
+			ch2.push(&x.v)
+		}(mut x, mut ch2)
+		mut y := 0
+		ch2.pop(&y)
+		x.v = 2
+		t.wait()
+		println("handoff \${y} \${x.v}")
+		return
+	}
+	if mode != "push" {
+		for i in 0 .. 1000 {
+			ch.push(&i)
+		}
+	}
+	t := spawn fn (mut c Cell, ch &sync.Channel, mode string) {
+		mut ch_ := unsafe { ch }
+		for _ in 0 .. 1000 {
+			match mode {
+				"pop" {
+					ch_.pop(&c.v)
+				}
+				"try_pop" {
+					ch_.try_pop(&c.v)
+				}
+				"push" {
+					ch_.push(&c.v)
+				}
+				else {
+					mut chans := [ch_]
+					mut objs := [voidptr(&c.v)]
+					sync.channel_select(mut chans, [sync.Direction.pop], mut objs, max_i64)
+				}
+			}
+		}
+	}(mut c, ch, mode)
+	mut s := 0
+	for i in 0 .. 1000 {
+		if mode == "push" {
+			c.v = i
+		} else {
+			s += c.v
+		}
+	}
+	t.wait()
+	println("\${mode} done")
+}
+'
+
 fn testsuite_begin() {
 	os.mkdir_all(tdir) or {}
 }
@@ -624,4 +693,21 @@ fn test_race_stdout_write_happens_before_reading_the_output() {
 	assert res.exit_code == 0, stderr
 	assert !stderr.contains('ThreadSanitizer'), stderr
 	assert stderr.contains('read 6 x 42'), stderr
+}
+
+fn test_race_channel_values_are_the_caller_memory() {
+	if !thread_sanitizer_runs() {
+		return
+	}
+	for mode in ['pop', 'try_pop', 'push', 'select'] {
+		exe := build_race_program('channel_value_${mode}', channel_value_source, '-d', 'mode=${mode}')
+		res := os.execute('VRACE="exitcode=7" ${os.quoted_path(exe)}')
+		assert res.exit_code == 7, '${mode}: ${res.output}'
+		assert res.output.contains('WARNING: ThreadSanitizer: data race'), '${mode}: ${res.output}'
+	}
+	exe := build_race_program('channel_value_handoff', channel_value_source, '-d', 'mode=handoff')
+	res := os.execute(os.quoted_path(exe))
+	assert res.exit_code == 0, res.output
+	assert !res.output.contains('ThreadSanitizer'), res.output
+	assert res.output.contains('handoff 1 2'), res.output
 }
