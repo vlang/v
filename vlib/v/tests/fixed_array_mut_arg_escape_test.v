@@ -805,3 +805,25 @@ fn test_direct_address_dereferences_keep_original_fixed_roots_alive() {
 	assert read_retained_optional_fixed_reference(range) == [162, 163]
 	assert read_retained_optional_fixed_reference(field) == [172]
 }
+
+type FixedRootPtr = &[3]int
+type FixedRootPtrAlias = FixedRootPtr
+
+@[noinline]
+fn reference_from_cast_fixed_address(chained bool) &[]int {
+	values := [181, 182, 183]!
+	unsafe {
+		if chained {
+			return retain_immutable_array_reference((*FixedRootPtrAlias(&values))[1..])
+		}
+		return retain_immutable_array_reference((*FixedRootPtr(&values))[1..])
+	}
+}
+
+fn test_pointer_alias_cast_addresses_keep_original_fixed_roots_alive() {
+	for chained in [false, true] {
+		kept := reference_from_cast_fixed_address(chained)
+		assert overwrite_stack() == 7
+		assert read_retained_optional_fixed_reference(kept) == [182, 183]
+	}
+}

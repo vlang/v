@@ -8518,6 +8518,12 @@ fn (t &Transformer) escape_address_root_name(id flat.NodeId) ?string {
 				return t.escape_address_root_name(t.a.child(&node, 0))
 			}
 		}
+		.cast_expr {
+			if node.children_count == 1
+				&& t.comptime_normalize_type_alias_chain(node.value).starts_with('&') {
+				return t.escape_address_root_name(t.a.child(&node, 0))
+			}
+		}
 		.selector, .index, .prefix, .or_expr {
 			if node.children_count > 0 {
 				return t.escape_address_root_name(t.a.child(&node, 0))
@@ -9422,11 +9428,11 @@ fn (t &Transformer) pointer_alias_cast_address_is_stack_local(id flat.NodeId, lo
 		return false
 	}
 	node := t.a.nodes[int(id)]
-	if node.kind != .cast_expr || node.children_count == 0 || node.value.starts_with('&')
-		|| !t.normalize_type_alias(node.value).starts_with('&') {
+	if node.kind != .cast_expr || node.children_count == 0
+		|| !t.comptime_normalize_type_alias_chain(node.value).starts_with('&') {
 		return false
 	}
-	arg_id := t.a.child(&node, 0)
+	arg_id := t.unwrap_parens(t.a.child(&node, 0))
 	if int(arg_id) < 0 || int(arg_id) >= t.a.nodes.len {
 		return false
 	}
@@ -9517,6 +9523,9 @@ fn (t &Transformer) escape_address_indirect_base_is_stack_backed(id flat.NodeId,
 	}
 	if node.kind == .prefix && node.op == .amp && node.children_count == 1 {
 		return t.escape_address_expr_is_stack_local(t.a.child(&node, 0), local_stack_names, amp_ptrs, ptr_aliases)
+	}
+	if t.pointer_alias_cast_address_is_stack_local(id, local_stack_names, amp_ptrs, ptr_aliases) {
+		return true
 	}
 	return false
 }

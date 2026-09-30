@@ -153,6 +153,8 @@ fn test_fixed_array_direct_address_dereference_marks_the_original_local() {
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
 	t.set_var_type('fixed', '[3]int')
 	tc.cur_scope.insert('fixed', fixed)
+	tc.type_aliases['FixedPtr'] = '&[3]int'
+	tc.type_aliases['FixedPtrAlias'] = 'FixedPtr'
 	for parenthesized in [false, true] {
 		value := t.make_ident('fixed')
 		tc.register_synth_type(value, fixed)
@@ -169,6 +171,23 @@ fn test_fixed_array_direct_address_dereference_marks_the_original_local() {
 			'fixed': true
 		})
 		assert 'fixed' in t.escaping_fixed_array_view_sources
+	}
+	for cast_type in ['FixedPtr', 'FixedPtrAlias', '&[3]int'] {
+		value := t.make_ident('fixed')
+		tc.register_synth_type(value, fixed)
+		addr := t.make_prefix(.amp, value)
+		t.set_node_typ(int(addr), '&[3]int')
+		cast := t.make_cast(cast_type, t.make_paren(addr), cast_type)
+		deref := t.make_prefix(.mul, cast)
+		t.set_node_typ(int(deref), '[3]int')
+		tc.register_synth_type(deref, fixed)
+		range := t.make_range_index(deref, t.make_int_literal(1), flat.empty_node, '[]int')
+		tc.register_synth_type(range, types.Type(types.Array{ elem_type: types.Type(types.int_) }))
+		t.escaping_fixed_array_view_sources.clear()
+		t.mark_fixed_array_reference_argument_escape(range, array_ref, map[string]bool{}, map[string][]string{}, map[string]string{}, {
+			'fixed': true
+		})
+		assert 'fixed' in t.escaping_fixed_array_view_sources, cast_type
 	}
 	// A local variable holding a heap pointer is not the owner of its pointed-to storage.
 	t.escaping_fixed_array_view_sources.clear()
