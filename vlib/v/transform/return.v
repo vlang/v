@@ -1072,9 +1072,7 @@ fn (mut t Transformer) build_return_map_index_if_guard_chain(if_node flat.Node, 
 	mut then_children := []flat.NodeId{}
 	if lhs.value != '_' {
 		ptr_value := t.make_prefix(.mul, t.make_cast('&${info.value_type}', t.make_ident(ptr_name), '&${info.value_type}'))
-		t.clear_heaped_local_binding(lhs.value)
-		then_children << t.make_decl_assign_typed(lhs.value, ptr_value, info.value_type)
-		t.set_var_type(lhs.value, info.value_type)
+		then_children << t.make_guard_value_decls(lhs.value, ptr_value, info.value_type)
 	}
 	then_id := t.a.child(&if_node, 1)
 	then_block0 := t.return_block_from_branch(then_id, ret_typ, extra_return_vals, source_return_id)

@@ -7032,17 +7032,24 @@ fn (t &Transformer) closure_return_candidate_use_is_safe(id flat.NodeId, name st
 fn (mut t Transformer) heap_escaping_source_decl(node flat.Node, var_name string, elem_typ string) []flat.NodeId {
 	rhs_id := t.a.child(&node, 1)
 	rhs := t.a.nodes[int(rhs_id)]
-	ptr_typ := '&${elem_typ}'
 	mut stmts := []flat.NodeId{}
 	transformed_init := t.transform_expr(rhs_id)
 	// Statements lifted out while transforming the initializer must precede the heap decl.
 	t.drain_pending(mut stmts)
+	stmts << t.heap_escaping_value_decl(var_name, elem_typ, transformed_init, rhs.kind == .struct_init)
+	return stmts
+}
+
+// heap_escaping_value_decl moves an already-lowered value into a local's heap storage.
+fn (mut t Transformer) heap_escaping_value_decl(var_name string, elem_typ string, value flat.NodeId, is_struct_init bool) []flat.NodeId {
+	ptr_typ := '&${elem_typ}'
+	mut stmts := []flat.NodeId{}
 	mut heap_rhs := flat.NodeId(0)
-	if rhs.kind == .struct_init {
-		heap_rhs = t.make_prefix(.amp, transformed_init)
+	if is_struct_init {
+		heap_rhs = t.make_prefix(.amp, value)
 	} else {
 		tmp := t.new_temp('esc')
-		stmts << t.make_stack_value_decl_assign_typed(tmp, transformed_init, elem_typ)
+		stmts << t.make_stack_value_decl_assign_typed(tmp, value, elem_typ)
 		addr := t.make_prefix(.amp, t.make_ident(tmp))
 		dup := t.make_memdup_call_for_type(addr, elem_typ)
 		heap_rhs = t.make_cast(ptr_typ, dup, ptr_typ)
