@@ -9097,6 +9097,11 @@ fn (t &Transformer) escape_value_tails(id flat.NodeId) []flat.NodeId {
 				return t.escape_value_tails(t.a.child(&node, 0))
 			}
 		}
+		.postfix {
+			if node.op in [.not, .question] && node.children_count > 0 {
+				return t.escape_value_tails(t.a.child(&node, 0))
+			}
+		}
 		.block, .lock_expr {
 			if node.children_count == 0 {
 				return []flat.NodeId{}
@@ -9187,9 +9192,19 @@ fn (t &Transformer) escape_aggregate_address_sources(id flat.NodeId, amp_sources
 		.ident {
 			return escape_alias_sources(node.value, amp_sources, ptr_aliases)
 		}
+		.postfix {
+			if node.op in [.not, .question] && node.children_count > 0 {
+				return t.escape_aggregate_address_sources(t.a.child(&node, 0), amp_sources, ptr_aliases)
+			}
+			return []string{}
+		}
 		.selector {
 			if !t.method_value_has_pointer_receiver(id) {
-				return []string{}
+				if node.children_count == 0 || (!isnil(t.tc)
+					&& escape_type_is_scalar_value(t.tc.resolve_type(id))) {
+					return []string{}
+				}
+				return t.escape_aggregate_address_sources(t.a.child(&node, 0), amp_sources, ptr_aliases)
 			}
 			receiver := t.escape_method_value_receiver(id) or { return []string{} }
 			sources := escape_alias_sources(receiver, amp_sources, ptr_aliases)
@@ -9197,6 +9212,13 @@ fn (t &Transformer) escape_aggregate_address_sources(id flat.NodeId, amp_sources
 				return sources
 			}
 			return [receiver]
+		}
+		.index {
+			if node.children_count == 0 || (!isnil(t.tc)
+				&& escape_type_is_scalar_value(t.tc.resolve_type(id))) {
+				return []string{}
+			}
+			return t.escape_aggregate_address_sources(t.a.child(&node, 0), amp_sources, ptr_aliases)
 		}
 		.call {
 			if t.escape_call_is_allocation_helper(id, node) {
@@ -9481,8 +9503,8 @@ fn (t &Transformer) escape_ident_is_stack_local(name string, local_stack_names m
 // collect_return_escape_idents gathers the idents in a return-expression subtree that occupy an
 // actual escape position — the returned value itself, or a member of a returned aggregate
 // (struct/array/map literal, multi-return). It deliberately stops at operators that consume their
-// operands into a fresh value: infix (`==`, `&&`, arithmetic, …), postfix, `is`/`in`, and any
-// non-`&` prefix (deref `*p`, `!x`, `-x`). That way a pointer that is merely compared or
+// operands into a fresh value: infix (`==`, `&&`, arithmetic, …), postfix `++`/`--`, `is`/`in`,
+// and non-`&` prefix (deref `*p`, `!x`, `-x`). That way a pointer that is merely compared or
 // dereferenced in the return expression — e.g. `return p == p && v == 1` — is not mistaken for a
 // pointer that escapes, so its source local is not needlessly heap-moved (which would also make
 // later non-pointer uses of that local read through an `int*`).
@@ -9498,9 +9520,19 @@ fn (mut t Transformer) collect_return_escape_idents(id flat.NodeId, mut names ma
 			}
 			return
 		}
-		.infix, .postfix, .is_expr, .in_expr {
+		.infix, .is_expr, .in_expr {
 			// These yield a new scalar/bool; their operands do not escape through the return.
 			return
+		}
+		.postfix {
+			if node.op !in [.not, .question] {
+				return
+			}
+		}
+		.selector, .index {
+			if !isnil(t.tc) && escape_type_is_scalar_value(t.tc.resolve_type(id)) {
+				return
+			}
 		}
 		.prefix {
 			// `&x` propagates an address (which may escape); any other prefix (`*x`, `!x`, `-x`)
@@ -17856,6 +17888,10 @@ fn (mut t Transformer) transform_block_stmt(id flat.NodeId, node flat.Node) []fl
 }
 
 fn (mut t Transformer) transform_comptime_if_stmt(_id flat.NodeId, node flat.Node) []flat.NodeId {
+	heaped_state := t.save_heaped_local_state()
+	defer {
+		t.restore_heaped_local_state(heaped_state)
+	}
 	take_then := t.comptime_type_condition_value(node.value) or {
 		// Portable output (`-os cross`) keeps both branches so that the C
 		// preprocessor can pick one. They are ordinary statements and still need
@@ -17884,6 +17920,10 @@ fn (mut t Transformer) transform_comptime_if_stmt(_id flat.NodeId, node flat.Nod
 }
 
 fn (mut t Transformer) transform_comptime_if_expr(id flat.NodeId, node flat.Node) flat.NodeId {
+	heaped_state := t.save_heaped_local_state()
+	defer {
+		t.restore_heaped_local_state(heaped_state)
+	}
 	take_then := t.comptime_type_condition_value(node.value) or {
 		if comptime_cond_has_target_flag(node.value) {
 			return t.lower_retained_comptime_if_expr(node)
@@ -17908,6 +17948,7 @@ fn (mut t Transformer) transform_comptime_if_expr(id flat.NodeId, node flat.Node
 fn (mut t Transformer) lower_retained_comptime_if(node flat.Node) flat.NodeId {
 	mut branches := []flat.NodeId{cap: int(node.children_count)}
 	for i in 0 .. node.children_count {
+		heaped_state := t.save_heaped_local_state()
 		branch_id := t.a.child(&node, i)
 		branch := t.a.nodes[int(branch_id)]
 		stmts := if branch.kind == .block {
@@ -17915,6 +17956,7 @@ fn (mut t Transformer) lower_retained_comptime_if(node flat.Node) flat.NodeId {
 		} else {
 			t.transform_stmt(branch_id)
 		}
+		t.restore_heaped_local_state(heaped_state)
 		branches << t.make_block(stmts)
 	}
 	return t.make_comptime_if(node.value, branches)
@@ -17925,7 +17967,9 @@ fn (mut t Transformer) lower_retained_comptime_if(node flat.Node) flat.NodeId {
 fn (mut t Transformer) lower_retained_comptime_if_expr(node flat.Node) flat.NodeId {
 	mut branches := []flat.NodeId{cap: int(node.children_count)}
 	for i in 0 .. node.children_count {
+		heaped_state := t.save_heaped_local_state()
 		branches << t.transform_expr(t.a.child(&node, i))
+		t.restore_heaped_local_state(heaped_state)
 	}
 	return t.make_comptime_if(node.value, branches)
 }
