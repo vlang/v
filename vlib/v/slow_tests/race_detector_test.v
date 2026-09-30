@@ -476,6 +476,35 @@ fn main() {
 }
 '
 
+// `input_character` reads stdin after the write of that input in another thread, and so does
+// reaching the end of the input.
+const stdin_read_source = 'import os
+import time
+
+struct Data {
+mut:
+	x int
+}
+
+fn main() {
+	// With `-d eof`, stdin is empty and the writer writes another file.
+	path := os.getenv("RACE_WRITE_FILE")
+	mut d := &Data{}
+	t := spawn fn (mut d Data, path string) {
+		d.x = 42
+		mut w := os.open_append(path) or { panic(err) }
+		w.write_string("!") or { panic(err) }
+		w.close()
+	}(mut d, path)
+	for os.file_size(path) == 0 {
+		time.sleep(time.millisecond)
+	}
+	c := input_character()
+	println("char \${c} x \${d.x}")
+	t.wait()
+}
+'
+
 fn testsuite_begin() {
 	os.mkdir_all(tdir) or {}
 }
@@ -710,4 +739,23 @@ fn test_race_channel_values_are_the_caller_memory() {
 	assert res.exit_code == 0, res.output
 	assert !res.output.contains('ThreadSanitizer'), res.output
 	assert res.output.contains('handoff 1 2'), res.output
+}
+
+fn test_race_stdin_read_happens_after_the_write() {
+	if !thread_sanitizer_runs() {
+		return
+	}
+	exe := os.quoted_path(build_race_program('stdin_read', stdin_read_source))
+	input := os.join_path(tdir, 'stdin_read.in')
+	other := os.join_path(tdir, 'stdin_read.other')
+	os.write_file(input, '')!
+	res := os.execute('RACE_WRITE_FILE=${os.quoted_path(input)} ${exe} < ${os.quoted_path(input)}')
+	assert res.exit_code == 0, res.output
+	assert !res.output.contains('ThreadSanitizer'), res.output
+	assert res.output.contains('char 33 x 42'), res.output
+	os.write_file(other, '')!
+	eof := os.execute('RACE_WRITE_FILE=${os.quoted_path(other)} ${exe} < /dev/null')
+	assert eof.exit_code == 0, eof.output
+	assert !eof.output.contains('ThreadSanitizer'), eof.output
+	assert eof.output.contains('char -1 x 42'), eof.output
 }

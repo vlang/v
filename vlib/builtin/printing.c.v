@@ -19,6 +19,16 @@ fn race_stdio_write() {
 	}
 }
 
+// race_stdio_read marks a read from stdin in a race build, like `race_file_read` in `os`:
+// it happens after earlier writes to files or to stdout and stderr. Call it only when the
+// read did not fail.
+@[if race ?]
+fn race_stdio_read() {
+	$if race ? {
+		raceacquireio()
+	}
+}
+
 // eprintln prints a message with a line end, to stderr. Both stderr and stdout are flushed.
 @[if !noeprintln ?]
 pub fn eprintln(s string) {

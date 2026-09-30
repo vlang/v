@@ -13,8 +13,15 @@ pub fn input_character() int {
 	} $else {
 		ch = C.getchar()
 		if ch == C.EOF {
+			$if race ? {
+				// The end of the input is a read that did not fail too.
+				if C.feof(C.stdin) != 0 {
+					race_stdio_read()
+				}
+			}
 			return -1
 		}
+		race_stdio_read()
 	}
 	return ch
 }
