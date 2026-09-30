@@ -7234,7 +7234,7 @@ struct HeapedLocalState {
 }
 
 // save_heaped_local_state records the state before a lexical scope: a block, a loop, an
-// `if`/`match` branch or an `or` body. Locals moved to the heap are tracked by name, but
+// `if`/`match`/`select` branch or an `or` body. Locals moved to the heap are tracked by name, but
 // they are lexical bindings: restoring the state when the scope ends keeps a same-named
 // local of a later sibling scope (a pointer, a function) from being lowered as the moved
 // one. When the three maps are empty, restoring them is clearing them: they are not
@@ -18821,6 +18821,10 @@ fn (mut t Transformer) transform_select_expr(id flat.NodeId, node flat.Node) fla
 	if node.children_count == 1 {
 		branch := t.a.child_node(&node, 0)
 		if branch.kind == .select_branch && branch.value == 'else' {
+			heaped_state := t.save_heaped_local_state()
+			defer {
+				t.restore_heaped_local_state(heaped_state)
+			}
 			mut body := []flat.NodeId{}
 			for i in 0 .. branch.children_count {
 				child_id := t.a.child(branch, i)
@@ -18890,6 +18894,10 @@ fn (mut t Transformer) transform_select_branch(id flat.NodeId, order_cases bool)
 	branch := t.a.nodes[int(id)]
 	if branch.kind != .select_branch {
 		return t.transform_expr(id)
+	}
+	heaped_state := t.save_heaped_local_state()
+	defer {
+		t.restore_heaped_local_state(heaped_state)
 	}
 	mut body_start := if branch.value == 'else' { 0 } else { 1 }
 	if branch.children_count >= 2 {
