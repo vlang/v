@@ -1548,7 +1548,12 @@ fn (mut t Transformer) sql_expr_from_token(token string) flat.NodeId {
 
 fn (mut t Transformer) sql_expr_from_token_for_type(token string, typ string) flat.NodeId {
 	if token.contains(' ') {
-		if literal := sql_signed_literal_text(sql_clean_tokens(token.split(' '))) {
+		clean := sql_trim_outer_empty(sql_clean_tokens(token.split(' ')))
+		// `(names)[0]`, `(f()).g()`, `f((x))`: lower the parenthesised value itself.
+		if inner := sql_wrapped_tokens(clean) {
+			return t.sql_expr_from_token_for_type(sql_value_token_text(inner), typ)
+		}
+		if literal := sql_signed_literal_text(clean) {
 			return t.sql_expr_from_token_for_type(literal, typ)
 		}
 	}
@@ -1595,6 +1600,15 @@ fn (mut t Transformer) sql_expr_from_token_for_type(token string, typ string) fl
 			kind:  .enum_val
 			value: '${typ}${token}'
 			typ:   typ
+		})
+	}
+	// Without an expected type (a call argument such as `.hhmm24`), keep the parser's
+	// shorthand shape; call lowering resolves it against the parameter type.
+	if token.len > 1 && token.starts_with('.') && !token[1..].contains('.')
+		&& sql_token_is_plain_ident(token[1..]) {
+		return t.a.add_node(flat.Node{
+			kind:  .enum_val
+			value: token[1..]
 		})
 	}
 	if typ != '' && t.sql_transform_type_is_enum(typ) && token.contains('.')

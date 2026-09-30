@@ -10970,8 +10970,8 @@ fn (mut tc TypeChecker) check_sql_where_constraints(id flat.NodeId, node flat.No
 			continue
 		}
 		// Only the final value is bound, so a call that is merely the receiver of
-		// `f(x).method()` / `f(x)[0]`, or an argument of `g(f(x))`, can return any type.
-		if sql_call_next_token(tokens, i + 1) in ['.', '[']
+		// `f(x).method()` / `(f(x))[0]`, or an argument of `g(f(x))`, can return any type.
+		if sql_call_result_is_receiver(tokens, i + 1)
 			|| sql_call_is_call_arg(tokens, i + 1, where_idx) {
 			continue
 		}
@@ -11015,10 +11015,28 @@ fn sql_call_is_call_arg(tokens []string, open_idx int, start int) bool {
 	return false
 }
 
+// sql_call_result_is_receiver reports whether the result of the call whose `(` is at
+// `open_idx` is used by a member or index access, also through grouping parentheses:
+// `f(x).m()`, `f(x)[0]`, `(f(x)).m()`. A `)` after the call closes either such a group or
+// an enclosing call, and calls nested in call arguments are skipped anyway.
+fn sql_call_result_is_receiver(tokens []string, open_idx int) bool {
+	close_idx := sql_call_close_idx(tokens, open_idx) or { return false }
+	mut i := close_idx + 1
+	for i < tokens.len && tokens[i] == ')' {
+		i++
+	}
+	return i < tokens.len && tokens[i] in ['.', '[']
+}
+
 // sql_call_next_token returns the token after the `)` matching the `(` at `open_idx`.
 fn sql_call_next_token(tokens []string, open_idx int) string {
+	close_idx := sql_call_close_idx(tokens, open_idx) or { return '' }
+	return if close_idx + 1 < tokens.len { tokens[close_idx + 1] } else { '' }
+}
+
+fn sql_call_close_idx(tokens []string, open_idx int) ?int {
 	if open_idx < 0 || open_idx >= tokens.len || tokens[open_idx] != '(' {
-		return ''
+		return none
 	}
 	mut depth := 0
 	for i in open_idx .. tokens.len {
@@ -11027,11 +11045,11 @@ fn sql_call_next_token(tokens []string, open_idx int) string {
 		} else if tokens[i] == ')' {
 			depth--
 			if depth == 0 {
-				return if i + 1 < tokens.len { tokens[i + 1] } else { '' }
+				return i
 			}
 		}
 	}
-	return ''
+	return none
 }
 
 fn (mut tc TypeChecker) check_sql_order_by_constraint(id flat.NodeId, node flat.Node, tokens []string) {

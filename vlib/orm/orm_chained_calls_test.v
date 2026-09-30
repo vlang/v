@@ -39,6 +39,15 @@ fn make_years() []int {
 	return [1999, 2000]
 }
 
+enum Case {
+	lower
+	upper
+}
+
+fn cased(name string, c Case) string {
+	return if c == .upper { name.to_upper() } else { name }
+}
+
 fn test_update_set_values_with_chained_calls() {
 	mut db := sqlite.connect(':memory:')!
 	sql db {
@@ -104,6 +113,16 @@ fn test_update_set_values_with_chained_calls() {
 	}!
 	assert rows[0].name == 'SECOND'
 	assert rows[0].year == -1
+
+	sql db {
+		update Account set mod_at = time.unix(0).get_fmt_time_str(.hhmm24), name = cased((make_names())[0], .upper)
+		where id == 1
+	}!
+	rows = sql db {
+		select from Account where id == 1
+	}!
+	assert rows[0].mod_at == '00:00'
+	assert rows[0].name == 'FIRST'
 
 	sql db {
 		update Account set year = 1 + make_years()[1] - -1 where id == 1
@@ -173,4 +192,16 @@ fn test_where_values_with_chained_calls() {
 	}!
 	assert by_signed_arg.len == 1
 	assert by_signed_arg[0].name == 'FIRST'
+
+	by_wrapped_call_receiver := sql db {
+		select from Account where name == (make_holder('first')).upper()
+	}!
+	assert by_wrapped_call_receiver.len == 1
+	assert by_wrapped_call_receiver[0].mod_at == first.mod_at
+
+	by_wrapped_index_base := sql db {
+		select from Account where name == (make_names())[1] && mod_at > day_text(0).all_before(' ')
+	}!
+	assert by_wrapped_index_base.len == 1
+	assert by_wrapped_index_base[0].mod_at == second.mod_at
 }
