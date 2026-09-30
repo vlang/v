@@ -32,6 +32,15 @@ struct SqlTransformSet {
 	value string
 }
 
+// SqlValueMemberChain is a value ending in member accesses on a receiver that is not a
+// plain name, e.g. `time.now().format_ss()`, `f(x).field` or `items[0].name`.
+struct SqlValueMemberChain {
+	receiver string
+	members  []string
+	is_call  bool
+	args     []string
+}
+
 struct SqlTransformJoin {
 	kind        string
 	left_table  SqlTransformTableInfo
@@ -1591,7 +1600,84 @@ fn (mut t Transformer) sql_expr_from_token_for_type(token string, typ string) fl
 			typ:   typ
 		})
 	}
+	if chain := sql_value_member_chain_parts(token) {
+		return t.sql_value_member_chain_expr(chain, typ)
+	}
 	return t.sql_value_name_expr(token)
+}
+
+fn (mut t Transformer) sql_value_member_chain_expr(chain SqlValueMemberChain, typ string) flat.NodeId {
+	mut value := t.sql_expr_from_token_for_type(chain.receiver, '')
+	for i, member in chain.members {
+		if chain.is_call && i == chain.members.len - 1 {
+			mut arg_ids := []flat.NodeId{cap: chain.args.len}
+			for arg in chain.args {
+				arg_ids << t.sql_expr_from_token(arg)
+			}
+			call := t.make_call_expr_typed(t.make_selector(value, member, ''), arg_ids, typ)
+			return t.transform_expr(call)
+		}
+		value_type := t.node_type(value)
+		field_type := t.lookup_struct_field_type(value_type, member) or {
+			t.builtin_selector_type(value_type, member) or { '' }
+		}
+		value = t.make_selector(value, member, field_type)
+	}
+	return t.transform_expr(value)
+}
+
+// sql_value_member_chain_parts splits a value such as `time.now().add_days(1).format_ss()`
+// at its last top-level member access. The SQL token cleaner only merges selectors into
+// plain names, so a member access on a call, index or literal stays a separate `.name`
+// token, which would otherwise be lowered as a bogus identifier.
+fn sql_value_member_chain_parts(token string) ?SqlValueMemberChain {
+	clean := sql_trim_outer_empty(sql_clean_tokens(token.split(' ')))
+	mut depth := 0
+	mut member_idx := -1
+	for i := clean.len - 1; i > 0; i-- {
+		tok := clean[i]
+		if tok in [')', ']', '}'] {
+			depth++
+		} else if tok in ['(', '[', '{'] {
+			depth--
+		} else if depth == 0 && tok.len > 1 && tok[0] == `.` {
+			member_idx = i
+			break
+		}
+	}
+	if member_idx <= 0 {
+		return none
+	}
+	mut member_text := clean[member_idx][1..]
+	mut is_call := member_text.ends_with('()')
+	if is_call {
+		member_text = member_text[..member_text.len - 2]
+	}
+	members := member_text.split('.')
+	for member in members {
+		if member.len == 0 || !sql_token_is_plain_ident(member) {
+			return none
+		}
+	}
+	mut args := []string{}
+	rest := clean[member_idx + 1..]
+	if rest.len > 0 {
+		if is_call {
+			return none
+		}
+		close_idx := sql_matching_pair(rest, 0, '(', ')') or { return none }
+		if close_idx != rest.len - 1 {
+			return none
+		}
+		args = sql_value_call_args(rest[1..close_idx]) or { return none }
+		is_call = true
+	}
+	return SqlValueMemberChain{
+		receiver: sql_value_token_text(clean[..member_idx])
+		members:  members
+		is_call:  is_call
+		args:     args
+	}
 }
 
 fn (mut t Transformer) sql_value_call_expr(callee_name string, args []string, typ string) flat.NodeId {
@@ -1663,11 +1749,16 @@ fn sql_value_call_parts(token string) ?(string, []string) {
 	if close_idx != clean.len - 1 {
 		return none
 	}
+	args := sql_value_call_args(clean[open_idx + 1..close_idx]) or { return none }
+	return name_parts.join('.'), args
+}
+
+// sql_value_call_args splits the tokens between a call's parentheses into argument texts.
+fn sql_value_call_args(tokens []string) ?[]string {
 	mut args := []string{}
-	mut arg_start := open_idx + 1
+	mut arg_start := 0
 	mut depth := 0
-	for i in open_idx + 1 .. close_idx {
-		part := clean[i]
+	for i, part in tokens {
 		if part in ['(', '[', '{'] {
 			depth++
 		} else if part in [')', ']', '}'] {
@@ -1676,16 +1767,16 @@ fn sql_value_call_parts(token string) ?(string, []string) {
 			if i == arg_start {
 				return none
 			}
-			args << sql_value_token_text(clean[arg_start..i])
+			args << sql_value_token_text(tokens[arg_start..i])
 			arg_start = i + 1
 		}
 	}
-	if arg_start < close_idx {
-		args << sql_value_token_text(clean[arg_start..close_idx])
-	} else if arg_start > open_idx + 1 {
+	if arg_start < tokens.len {
+		args << sql_value_token_text(tokens[arg_start..])
+	} else if arg_start > 0 {
 		return none
 	}
-	return name_parts.join('.'), args
+	return args
 }
 
 fn (mut t Transformer) sql_index_expr_from_token_for_type(token string, typ string) ?flat.NodeId {
@@ -2953,9 +3044,27 @@ fn sql_static_where_value_is_supported(tokens []string) bool {
 	if sql_value_tokens_are_index_expr(clean) {
 		return true
 	}
-	lhs_text, _, rhs_text := sql_split_infix_value_tokens(clean) or { return false }
-	return sql_static_where_value_is_supported(sql_clean_tokens(sql_index_token_parts(lhs_text)))
-		&& sql_static_where_value_is_supported(sql_clean_tokens(sql_index_token_parts(rhs_text)))
+	if lhs_text, _, rhs_text := sql_split_infix_value_tokens(clean) {
+		return sql_static_where_value_is_supported(sql_clean_tokens(sql_index_token_parts(lhs_text)))
+			&& sql_static_where_value_is_supported(sql_clean_tokens(sql_index_token_parts(rhs_text)))
+	}
+	if _, args := sql_value_call_parts(text) {
+		return sql_static_where_values_are_supported(args)
+	}
+	if chain := sql_value_member_chain_parts(text) {
+		return sql_static_where_values_are_supported([chain.receiver])
+			&& sql_static_where_values_are_supported(chain.args)
+	}
+	return false
+}
+
+fn sql_static_where_values_are_supported(values []string) bool {
+	for value in values {
+		if !sql_static_where_value_is_supported(sql_clean_tokens(value.split(' '))) {
+			return false
+		}
+	}
+	return true
 }
 
 fn (t &Transformer) sql_dynamic_where_condition(_table SqlTransformTableInfo, tokens []string) ?SqlTransformWhere {

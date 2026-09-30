@@ -10969,6 +10969,11 @@ fn (mut tc TypeChecker) check_sql_where_constraints(id flat.NodeId, node flat.No
 		if tokens[i + 1] != '(' || !should_check_named_type(fn_name) {
 			continue
 		}
+		// Only the final value of a chain is bound, so a call that is merely the
+		// receiver of `f(x).method()` / `f(x)[0]` can return any type.
+		if sql_call_next_token(tokens, i + 1) in ['.', '['] {
+			continue
+		}
 		ret_type := tc.sql_orm_fn_return_type(fn_name) or { continue }
 		if sql_orm_fn_return_type_is_allowed(ret_type) {
 			continue
@@ -10986,8 +10991,13 @@ fn (mut tc TypeChecker) check_sql_where_constraints(id flat.NodeId, node flat.No
 }
 
 fn sql_call_has_or_fallback(tokens []string, open_idx int) bool {
+	return sql_call_next_token(tokens, open_idx) == 'or'
+}
+
+// sql_call_next_token returns the token after the `)` matching the `(` at `open_idx`.
+fn sql_call_next_token(tokens []string, open_idx int) string {
 	if open_idx < 0 || open_idx >= tokens.len || tokens[open_idx] != '(' {
-		return false
+		return ''
 	}
 	mut depth := 0
 	for i in open_idx .. tokens.len {
@@ -10996,11 +11006,11 @@ fn sql_call_has_or_fallback(tokens []string, open_idx int) bool {
 		} else if tokens[i] == ')' {
 			depth--
 			if depth == 0 {
-				return i + 1 < tokens.len && tokens[i + 1] == 'or'
+				return if i + 1 < tokens.len { tokens[i + 1] } else { '' }
 			}
 		}
 	}
-	return false
+	return ''
 }
 
 fn (mut tc TypeChecker) check_sql_order_by_constraint(id flat.NodeId, node flat.Node, tokens []string) {
