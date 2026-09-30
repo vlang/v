@@ -1,7 +1,5 @@
-// The array allocator places a header in front of the element storage, so the
-// header has to be wide enough for the alignment a 128-bit integer needs. With a
-// pointer-sized header the data of `[]u128` sat on an 8-byte boundary, and every
-// element address handed to a typed C load or store was under-aligned.
+// The managed array allocator must align storage independently of pointer width
+// and the C allocator's alignment, including the portable 32-bit representation.
 struct WideHolder {
 	flag int
 	wide u128
@@ -54,4 +52,39 @@ fn test_wide_elements_survive_their_storage() {
 	assert u[7] - u[6] == (u128(1) << 112) - (u128(1) << 96) + u128(1)
 	assert i[7] == i128(-8)
 	assert i[0] == i128(-1)
+}
+
+fn test_wide_array_slices_clones_growth_and_free_keep_alignment_and_values() {
+	mut owner := []WideHolder{len: 4, cap: 8, init: WideHolder{
+		flag: index
+		wide: (u128(1) << 100) + u128(index)
+	}}
+	mut slice := unsafe { owner[1..3] }
+	assert alignment16(slice.data) == 0
+	assert slice[0].wide == (u128(1) << 100) + u128(1)
+	mut copied := slice.clone()
+	assert alignment16(copied.data) == 0
+	assert copied.data != slice.data
+	unsafe { slice.free() }
+	assert owner[1].wide == copied[0].wide
+	slice << WideHolder{ flag: 9, wide: u128(9) }
+	assert slice.data != unsafe { &owner[1] }
+	assert alignment16(slice.data) == 0
+	assert owner[3].flag == 3
+	assert slice[2].wide == u128(9)
+	unsafe { copied.flags.set(.noslices) }
+	for n in 0 .. 100 {
+		copied << WideHolder{ flag: n, wide: u128(n) }
+		assert alignment16(copied.data) == 0
+	}
+	assert copied[0].wide == owner[1].wide
+	assert copied.last().wide == u128(99)
+	owner.drop(1)
+	assert alignment16(owner.data) == 0
+	assert owner[0].wide == copied[0].wide
+	unsafe {
+		slice.free()
+		copied.free()
+		owner.free()
+	}
 }

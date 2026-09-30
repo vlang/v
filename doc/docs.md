@@ -667,6 +667,9 @@ whole 128-bit magnitude is rounded once, rather than each limb on its own. Pass
 `-d v3_no_native_int128` to force the portable implementation on a compiler that
 has the native type.
 
+Managed arrays of wide integers and structs containing them retain 16-byte
+element alignment on both 32-bit and 64-bit targets, including after growth or cloning.
+
 Printing works through `str()`, so println and string interpolation show the
 decimal value, including the minimum `i128` that has no positive counterpart.
 
