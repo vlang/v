@@ -4,7 +4,8 @@ import os
 
 // Modules can mirror one C struct with different fields (`C.pthread_mutex_t` in `sync`
 // and in a module translated from C). A module's own code can use the fields it declares,
-// also when another module's public declaration is the canonical one.
+// with the types it declares them with, also when another module's public declaration is
+// the canonical one.
 fn test_module_uses_the_fields_of_its_own_c_struct_declaration() {
 	root := os.join_path(os.vtmp_dir(), 'c_struct_module_views_${os.getpid()}')
 	inner := os.join_path(root, 'outer', 'inner')
@@ -30,10 +31,14 @@ pub fn value() i32 {
 	_ = mirror.sum
 	return inner.z_of_new_point(6)
 }
+pub fn x_value() u32 {
+	return inner.x_of_new_point(5)
+}
 ')!
 	os.write_file(os.join_path(root, 'outer', 'outer_test.v'), 'module outer
 fn test_value() {
 	assert value() == 7
+	assert x_value() == 6
 }
 ')!
 	os.write_file(os.join_path(inner, 'point.c.v'), '@[translated]
@@ -41,7 +46,20 @@ module inner
 #include "${os.join_path(root, 'point.h')}"
 struct C.c_view_point {
 pub mut:
+	x u32
 	z i32
+}
+')!
+	os.write_file(os.join_path(inner, 'inner_x.v'), 'module inner
+pub fn x_of_new_point(x u32) u32 {
+	mut point := C.c_view_point{
+		x: x
+	}
+	point.x++
+	return read_u32(&point.x)
+}
+fn read_u32(value &u32) u32 {
+	return *value
 }
 ')!
 	os.write_file(os.join_path(inner, 'inner.v'), '@[translated]

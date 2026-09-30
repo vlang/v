@@ -12836,16 +12836,13 @@ fn (tc &TypeChecker) struct_field_type(struct_name string, field_name string) ?T
 	return none
 }
 
-// c_struct_module_field_type returns the type of a field that the current module's own
-// declaration of a C struct has and the canonical declaration lacks. Modules can mirror
-// one C struct with different fields (`C.sigaction` in `os` and in a translated C
-// library); each module's code can use the fields it declares.
+// c_struct_module_field_type returns the type of a field of the current module's own
+// declaration of a C struct. Modules can mirror one C struct with different fields, or
+// the same fields with different types (`C.sigaction` in `os` and in a translated C
+// library); each module's code uses the fields as it declares them, as its struct
+// literals already do.
 fn (tc &TypeChecker) c_struct_module_field_type(struct_name string, field_name string) ?Type {
 	fields := tc.c_struct_scoped_fields[c_struct_module_key(tc.cur_module, struct_name)] or {
-		return none
-	}
-	canonical := tc.structs[struct_name] or { []StructField{} }
-	if canonical.any(it.name == field_name) {
 		return none
 	}
 	for field in fields {
