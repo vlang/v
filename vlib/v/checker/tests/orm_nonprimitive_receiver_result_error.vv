@@ -47,8 +47,12 @@ fn main() {
 	optional := sql db {
 		select from Account where name == (load_holders() or { fallback })[0]
 	}!
+	generic_method := sql db {
+		select from Account where name == make_holders().last()
+	}!
 	dump(indexed)
 	dump(nested)
 	dump(field)
 	dump(optional)
+	dump(generic_method)
 }

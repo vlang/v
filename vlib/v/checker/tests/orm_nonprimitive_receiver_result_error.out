@@ -25,4 +25,11 @@ vlib/v/checker/tests/orm_nonprimitive_receiver_result_error.vv:48:38: error: ORM
    48 |         select from Account where name == (load_holders() or { fallback })[0]
       |                                            ~~~~~~~~~~~~~~
    49 |     }!
-   50 |     dump(indexed)
+   50 |     generic_method := sql db {
+vlib/v/checker/tests/orm_nonprimitive_receiver_result_error.vv:51:37: error: ORM: value expressions must produce only primitive types and time.Time, but this expression has type `Holder`
+   49 |     }!
+   50 |     generic_method := sql db {
+   51 |         select from Account where name == make_holders().last()
+      |                                           ~~~~~~~~~~~~~~
+   52 |     }!
+   53 |     dump(indexed)

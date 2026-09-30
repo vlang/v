@@ -11000,8 +11000,14 @@ fn (mut tc TypeChecker) check_sql_where_constraints(id flat.NodeId, node flat.No
 	}
 }
 
+// sql_call_has_or_fallback reports whether the call whose `(` is at `open_idx` has an
+// `or` fallback, also through grouping parentheses: `f() or { x }`, `(f()) or { x }`.
 fn sql_call_has_or_fallback(tokens []string, open_idx int) bool {
-	return sql_call_next_token(tokens, open_idx) == 'or'
+	mut i := (sql_call_close_idx(tokens, open_idx) or { return false }) + 1
+	for i < tokens.len && tokens[i] == ')' {
+		i++
+	}
+	return i < tokens.len && tokens[i] == 'or'
 }
 
 // sql_call_is_call_arg reports whether the call whose `(` is at `open_idx` is nested in
@@ -11058,12 +11064,6 @@ fn sql_call_result_is_receiver(tokens []string, open_idx int) bool {
 	return i < tokens.len && tokens[i] in ['.', '[']
 }
 
-// sql_call_next_token returns the token after the `)` matching the `(` at `open_idx`.
-fn sql_call_next_token(tokens []string, open_idx int) string {
-	close_idx := sql_call_close_idx(tokens, open_idx) or { return '' }
-	return if close_idx + 1 < tokens.len { tokens[close_idx + 1] } else { '' }
-}
-
 fn sql_call_close_idx(tokens []string, open_idx int) ?int {
 	return sql_value_close_idx(tokens, open_idx, '(', ')')
 }
@@ -11116,11 +11116,19 @@ fn (tc &TypeChecker) sql_orm_receiver_result_type(tokens []string, open_idx int,
 		} else if tokens[i] == '.' && i + 1 < tokens.len {
 			member := tokens[i + 1]
 			if i + 2 < tokens.len && tokens[i + 2] == '(' {
+				receiver_type := typ
 				typ = tc.sql_orm_method_return_type(typ, member) or { return none }
-				// Builtin generic methods such as `[]string.first()` resolve to `voidptr`
-				// here; leave them unchecked rather than reject a valid element value.
-				if typ.name() == 'voidptr' || tc.type_contains_open_generic_placeholder(typ) {
-					return none
+				// The builtin array element accessors are declared with `voidptr` results;
+				// their value is the receiver's element (`make_holders().last()` is `Holder`).
+				// Other `voidptr`/generic results stay as they are: rejected as the final value,
+				// unresolvable (and left unchecked) as a receiver.
+				if typ.name() == 'voidptr' && member in ['first', 'last', 'pop', 'pop_left'] {
+					receiver_clean := unalias_and_unwrap_pointer_type(receiver_type)
+					if receiver_clean is Array {
+						typ = receiver_clean.elem_type
+					} else if receiver_clean is ArrayFixed {
+						typ = receiver_clean.elem_type
+					}
 				}
 				i = (sql_call_close_idx(tokens, i + 2) or { return none }) + 1
 			} else {

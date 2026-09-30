@@ -41,6 +41,20 @@ fn find_holder(name string) !Holder {
 	return make_holder(name)
 }
 
+fn load_name(name string) ?string {
+	if name == '' {
+		return none
+	}
+	return name
+}
+
+fn find_name(name string) !string {
+	if name == '' {
+		return error('empty name')
+	}
+	return name
+}
+
 fn day_text(days int) string {
 	return time.unix(0).add_days(days).format_ss()
 }
@@ -246,6 +260,18 @@ fn test_where_values_with_chained_calls() {
 	}!
 	assert by_generic_method.len == 1
 	assert by_generic_method[0].mod_at == second.mod_at
+
+	by_grouped_option := sql db {
+		select from Account where name == (load_name('FIRST')) or { 'missing' }
+	}!
+	assert by_grouped_option.len == 1
+	assert by_grouped_option[0].mod_at == first.mod_at
+
+	by_grouped_result := sql db {
+		select from Account where name == (find_name('')) or { 'second' }
+	}!
+	assert by_grouped_result.len == 1
+	assert by_grouped_result[0].mod_at == second.mod_at
 
 	by_signed_arg := sql db {
 		select from Account where mod_at > day_text(-1) && mod_at < day_text(1)
