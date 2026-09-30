@@ -82,6 +82,8 @@ struct Account {
 
 EXTRA_DECLARATIONS
 
+PARAMETER_QUERY
+
 fn main() {
 	mut db := sqlite.connect(':memory:')!
 	sql db { create table Account }!
@@ -132,8 +134,26 @@ fn sql_alias_visibility_wrapped_result(name string, is_public bool, expression s
 	if wrapper.len > 0 {
 		statement = '${wrapper} ${lock_receiver} {\n\t\t${statement}\n\t}'
 	}
+	parameter_name := if expression.contains('parameter_shadow_items') {
+		'parameter_shadow_items'
+	} else if expression.contains('parameter_items') {
+		'parameter_items'
+	} else {
+		''
+	}
+	mut parameter_query := ''
+	if parameter_name.len > 0 {
+		body := if parameter_name == 'parameter_shadow_items' {
+			'unsafe {\n\t\tunsafe {\n\t\t\tmut parameter_shadow_items := [aliases.make()]\n\t\t\t${statement}\n\t\t}\n\t}'
+		} else {
+			statement
+		}
+		parameter_query = 'fn query(mut db sqlite.DB, ${parameter_name} []shared aliases.WrappedNames) ! {\n\t${body}\n}'
+		statement = 'query(mut db, ${parameter_name})!'
+	}
 	source := os.join_path(dir, 'main.v')
 	main_source := sql_alias_visibility_main.replace('STATEMENT', statement)
+		.replace('PARAMETER_QUERY', parameter_query)
 		.replace('EXTRA_DECLARATIONS', if expression.contains('shared_collection') {
 			'struct SharedNamesItems {\nmut:\n\tvalues []shared aliases.WrappedNames\n}'
 		} else if expression.contains('holders[') || expression.contains('holders [') {
@@ -143,6 +163,8 @@ fn sql_alias_visibility_wrapped_result(name string, is_public bool, expression s
 		})
 		.replace('EXTRA_BINDINGS', if expression.contains('shared_values') {
 			'shared shared_values := aliases.make()'
+		} else if parameter_name.len > 0 {
+			'mut ${parameter_name} := []shared aliases.WrappedNames{}\n\t${parameter_name} << aliases.make()'
 		} else if expression.contains('shared_items') {
 			'mut shared_items := []shared aliases.WrappedNames{}\n\tshared_items << aliases.make()'
 		} else if expression.contains('shared_collection') {
@@ -369,8 +391,8 @@ fn test_alias_methods_require_ordinary_shared_locks_in_sql_values() {
 }
 
 fn test_alias_methods_keep_shared_element_and_quoted_field_lock_keys_in_sql_values() {
-	for i, receiver in ['shared_items[0]', '(shared_collection.values)[0]', "holders['primary'].values",
-		"(holders [ 'primary' ]).values"] {
+	for i, receiver in ['shared_items[0]', '(shared_collection.values)[0]', 'parameter_items[0]',
+		"holders['primary'].values", "(holders [ 'primary' ]).values"] {
 		for method in ['mutate', 'clone'] {
 			import_name := if method == 'clone' { 'renamed' } else { 'aliases' }
 			for wrapper in ['', 'rlock', 'lock'] {
@@ -393,6 +415,19 @@ fn test_alias_methods_keep_shared_element_and_quoted_field_lock_keys_in_sql_valu
 						}
 					}
 				}
+			}
+		}
+	}
+}
+
+fn test_alias_methods_respect_shadowed_shared_array_parameters_in_sql_values() {
+	for method in ['mutate', 'clone'] {
+		for is_update in [false, true] {
+			for check_only in [false, true] {
+				result := sql_alias_visibility_result('shared_parameter_shadow_${method}_${is_update}_${check_only}',
+					true, 'parameter_shadow_items[0].${method}()[0].name', is_update,
+					check_only, true, 'aliases')
+				assert result.exit_code == 0, result.output
 			}
 		}
 	}

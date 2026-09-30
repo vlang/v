@@ -7291,6 +7291,8 @@ fn (mut tc TypeChecker) insert_fn_param_binding(id flat.NodeId, p flat.Node) {
 		if unalias_and_unwrap_pointer_type(parsed_type) is Array {
 			tc.mark_shared_array_binding_owner(p.value, owner)
 		}
+	} else if p.typ.trim_space().trim_left('&').trim_space().starts_with('[]shared ') {
+		tc.mark_shared_array_binding_owner(p.value, owner)
 	}
 }
 
