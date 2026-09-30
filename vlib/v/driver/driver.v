@@ -11940,6 +11940,7 @@ pub fn run(args []string) {
 	pre_tc.is_js_backend = backend == 'js'
 	pre_tc.warn_about_allocs = prefs.warn_about_allocs
 	pre_tc.warns_are_errors = effective_warns_are_errors
+	pre_tc.explicit_warns_are_errors = warns_are_errors
 	pre_tc.notes_are_errors = notes_are_errors
 	pre_tc.is_prod = prefs.is_prod
 	pre_tc.building_v_fast = building_v && os.getenv('V3_NO_BUILDING_V_FAST_CHECK') == ''
@@ -17330,7 +17331,11 @@ fn print_type_diagnostics(a &flat.FlatAst, notices []types.TypeError, type_error
 	} else {
 		20
 	}
-	max_errors := if message_limit >= 0 {
+	// An explicit -message-limit replaces the default cap of 20 errors, so a
+	// large project can ask to see every error in one build.
+	max_errors := if message_limit >= 0 && !fatal_errors {
+		int_min(ordered_errors.len, int_max(0, message_limit - printed_diagnostics))
+	} else if message_limit >= 0 {
 		int_min(default_max_errors, int_max(0, message_limit - printed_diagnostics))
 	} else {
 		default_max_errors

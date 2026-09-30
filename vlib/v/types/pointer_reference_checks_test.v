@@ -59,3 +59,22 @@ fn main() {
 		assert result.output.contains('cannot reference fixed array'), result.output
 	}
 }
+
+fn test_cast_fixed_array_borrow_can_be_passed_to_a_call() {
+	root := os.join_path(os.vtmp_dir(), 'cast_borrow_call_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+	os.write_file(os.join_path(root, 'main.v'), 'module main
+fn use_ptr(p voidptr) bool { return p != unsafe { nil } }
+fn use_addr(a u64) bool { return a != 0 }
+fn main() {
+	mut raw := [4]u8{}
+	_ = use_ptr(voidptr(&raw[0]))
+	_ = use_addr(u64(&raw[1]) + 2)
+}
+')!
+	for flags in ['', '-no-parallel -nocache'] {
+		result := os.execute('${os.quoted_path(@VEXE)} ${flags} -check ${os.quoted_path(root)}')
+		assert result.exit_code == 0, result.output
+	}
+}

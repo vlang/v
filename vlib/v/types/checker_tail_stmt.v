@@ -1132,12 +1132,42 @@ fn (mut tc TypeChecker) check_postfix_value_uses_preflight() {
 		if tc.file_has_global_receiver(file.name) {
 			continue
 		}
+		op := if node.op == .inc { '++' } else { '--' }
+		op_pos := tc.prefix_operator_pos(id, op)
+		// Like V1, only an operator that closes a call argument or an index, as in
+		// `f(x++)` or `a[x--]`, is reported; `n := count++` is a plain post-increment.
+		source := tc.source_texts_by_file[file.name] or { '' }
+		if !postfix_operator_closes_group(source, op_pos.end) {
+			continue
+		}
 		tc.cur_file = file.name
 		tc.cur_module = tc.file_modules[file.name] or { 'main' }
-		op := if node.op == .inc { '++' } else { '--' }
-		tc.record_warning_at(.assignment_mismatch, '`${op}` operator can only be used as a statement',
-			id, tc.prefix_operator_pos(id, op))
+		// V1 reports this from the parser, where only an explicit `-W` turns the
+		// warning into an error; `-prod` alone does not.
+		tc.record_warning_or_error_at(.assignment_mismatch, '`${op}` operator can only be used as a statement',
+			id, op_pos, tc.explicit_warns_are_errors)
 	}
+}
+
+// postfix_operator_closes_group reports whether the next token after a postfix
+// `++`/`--` ending at `end` is `)` or `]`, skipping whitespace and comments as V1's
+// parser does: `f(x++ )` and `f(x++ /* c */)` close the call like `f(x++)`.
+fn postfix_operator_closes_group(source string, end int) bool {
+	if end < 0 {
+		return false
+	}
+	mut i := end
+	for i < source.len {
+		c := source[i]
+		if c in [` `, `\t`, `\n`, `\r`] {
+			i++
+		} else if c == `/` && i + 1 < source.len && source[i + 1] in [`/`, `*`] {
+			i = skip_non_code_at(source, i)
+		} else {
+			return c in [`)`, `]`]
+		}
+	}
+	return false
 }
 
 // check_if_guard validates check if guard state for types.
@@ -6532,8 +6562,11 @@ fn (mut tc TypeChecker) check_selector(id flat.NodeId, node flat.Node) {
 	// receiver is a method value; record the concrete `Type.method` so it survives
 	// dead-code elimination (cgen emits a wrapper that calls it).
 	union_receiver := unalias_type(unwrap_pointer(base_type))
+	// Like the other `unsafe` checks, look at the enclosing blocks too: a selector
+	// can be checked again by a later pass, outside the block's `unsafe_depth`.
 	if union_receiver is Struct && union_receiver.name in tc.unions && tc.unsafe_depth == 0
-		&& !tc.translated_files[tc.cur_file] && !tc.selector_is_assignment_lhs(id) {
+		&& !tc.expr_is_inside_unsafe_block(id) && !tc.translated_files[tc.cur_file]
+		&& !tc.selector_is_assignment_lhs(id) {
 		tc.record_warning_at(.unknown_field, 'reading a union field (or its address) requires `unsafe`', id, tc.selector_field_diagnostic_pos(id, node.value))
 	}
 	clean_recv := unwrap_all_pointers(base_type)
@@ -17268,6 +17301,13 @@ fn (tc &TypeChecker) resolve_type_uncached(id flat.NodeId) Type {
 				}
 				base_id := tc.a.child(fn_node, 0)
 				base_type := tc.selector_fn_base_type(base_id) or { tc.resolve_type(base_id) }
+				// A method call on a value whose type is not known yet has no known
+				// return type either. Falling through would type it as a free function
+				// that shares the method's name (C `write` for `res.write()` with
+				// -target-libc-headers), and that wrong type would be memoized.
+				if base_type is Unknown {
+					return unknown_type('unknown receiver type for `.${fn_node.value}()`')
+				}
 				if fn_typ := tc.selector_field_fn_type(fn_node, base_type) {
 					return fn_typ.return_type
 				}

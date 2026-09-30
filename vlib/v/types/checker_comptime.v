@@ -3919,6 +3919,22 @@ fn (mut tc TypeChecker) check_prefix_expr(id flat.NodeId, node flat.Node) {
 	tc.record_error_at(.assignment_mismatch, 'cannot take the address of ${display}', id, tc.address_operator_pos(id))
 }
 
+// voidptr_cast_needs_unsafe reports whether a cast from voidptr outside `unsafe` is
+// warned about. Like V1, that is only a cast of a variable or of another cast to an
+// explicit `&T`, where `T` is not a struct or an interface: `&u8(buf)` warns, while
+// `&u8(obj.data)`, `&u64(alloc())`, `charptr(buf)` and `&Node(buf)` do not.
+fn (tc &TypeChecker) voidptr_cast_needs_unsafe(child_id flat.NodeId, target_name string, target_base Type) bool {
+	if !target_name.starts_with('&') {
+		return false
+	}
+	clean_base := unalias_type(target_base)
+	if clean_base is Struct || clean_base is Interface {
+		return false
+	}
+	// Parentheses do not change the operand: `&u32((ptr))` warns like `&u32(ptr)`.
+	return tc.a.node(tc.unwrap_paren_expr_id(child_id)).kind in [.ident, .cast_expr]
+}
+
 fn (tc &TypeChecker) fixed_array_reference_is_call_borrow(id flat.NodeId) bool {
 	mut current := id
 	for _ in 0 .. 64 {
@@ -3930,7 +3946,10 @@ fn (tc &TypeChecker) fixed_array_reference_is_call_borrow(id flat.NodeId) bool {
 			return false
 		}
 		parent := tc.a.node(parent_id)
-		if parent.kind != .paren && !(parent.kind == .infix && parent.op in [.plus, .minus]) {
+		// Like V1, a cast such as `voidptr(&buf[0])` or `u64(&buf[0]) + 8` that
+		// goes straight into a call is still only a borrow for that call.
+		if parent.kind != .paren && parent.kind != .cast_expr
+			&& !(parent.kind == .infix && parent.op in [.plus, .minus]) {
 			return false
 		}
 		current = parent_id
@@ -4479,8 +4498,14 @@ fn (mut tc TypeChecker) check_cast_expr(id flat.NodeId, node flat.Node) {
 				tc.record_error_at(.assignment_mismatch, 'cannot null cast ${kind}, use ${target_name}(unsafe { nil })', id, tc.cast_expression_diagnostic_pos(node, target_name))
 				return
 			}
-			if tc.unsafe_depth == 0 {
-				message := if struct_type_from_type(target_base) != none {
+			// Like V1, a computed address such as `&Entry(u64(buffer) + offset)` may be
+			// cast to a struct pointer; a literal or a plain number may not, with or
+			// without parentheses around it.
+			is_struct_target := struct_type_from_type(target_base) != none
+			operand_kind := tc.a.node(tc.unwrap_paren_expr_id(child_id)).kind
+			if tc.unsafe_depth == 0
+				&& (!is_struct_target || operand_kind in [.int_literal, .ident]) {
+				message := if is_struct_target {
 					'cannot cast int to a struct pointer outside `unsafe`'
 				} else {
 					'cannot cast a number to `${target_name}` outside `unsafe`'
@@ -4492,12 +4517,15 @@ fn (mut tc TypeChecker) check_cast_expr(id flat.NodeId, node flat.Node) {
 		// Match the established checker: only raw void pointers require an unsafe cast.
 		// Pointer aliases retain their declared type, and void-pointer aliases are valid
 		// cast targets without an unsafe block.
-		if tc.unsafe_depth == 0 && !tc.expr_is_explicit_unsafe_value(child_id)
-			&& actual.name() in ['voidptr', '&void']
+		if tc.unsafe_depth == 0 && !tc.expr_is_inside_unsafe_block(id)
+			&& !tc.expr_is_explicit_unsafe_value(child_id) && actual.name() in [
+			'voidptr',
+			'&void',
+		]
 			&& !fn_param_is_voidptr_type(target) {
 			if unalias_type(target_base) is SumType {
 				tc.record_error_at(.assignment_mismatch, 'cannot cast voidptr to `${target_name}` outside `unsafe`', id, node.pos)
-			} else {
+			} else if tc.voidptr_cast_needs_unsafe(child_id, target_name, target_base) {
 				tc.record_warning_at(.assignment_mismatch, 'casting voidptr to `${target_name}` is only allowed in `unsafe` code', id, node.pos)
 			}
 			return
@@ -4587,7 +4615,10 @@ fn (mut tc TypeChecker) check_cast_expr(id flat.NodeId, node flat.Node) {
 			tc.record_error_at(.assignment_mismatch, 'cannot cast function `${tc.source_text_for_node(child_id)}` to `${target.name()}`', id, node.pos)
 			return
 		}
-		if clean_actual is Struct {
+		// A `mut` struct parameter is a pointer, so it casts to an integer
+		// address, but a pointer cannot be cast to a float.
+		if clean_actual is Struct && !(clean_target.props.has(.integer)
+			&& tc.expr_is_mut_struct_param(child_id)) {
 			message := if clean_actual.name.starts_with('C.') {
 				'cannot cast type `${actual.name()}` to `${target.name()}`'
 			} else {
@@ -6438,9 +6469,16 @@ fn (mut tc TypeChecker) check_in_expr(id flat.NodeId, node flat.Node) {
 		tc.check_node(container_id)
 	}
 	container_type_raw := tc.resolve_type(container_id)
-	container_type := unalias_type(tc.mut_param_expr_base(container_id, container_type_raw) or {
+	mut container_type := unalias_type(tc.mut_param_expr_base(container_id, container_type_raw) or {
 		container_type_raw
 	})
+	// Like V1, `key in m` also works when `m` is a reference to a map or an array.
+	if container_type is Pointer {
+		pointed := unalias_type(container_type.base_type)
+		if pointed is Map || pointed is Array || pointed is ArrayFixed {
+			container_type = pointed
+		}
+	}
 	op := tc.in_operator_name(value_id, container_id)
 	if value_type is MultiReturn || container_type is MultiReturn {
 		tc.record_error_at(.condition_mismatch, 'invalid number of operand for `${op}`. Only one allowed on each side.', id, node.pos)
@@ -7679,8 +7717,9 @@ fn (mut tc TypeChecker) check_infix(id flat.NodeId, node flat.Node) {
 		other_type := if lhs_is_nil { rhs_type } else { lhs_type }
 		clean_other := unalias_type(other_type)
 		if node.op in [.eq, .ne] {
-			mut_receiver := other_node.kind == .ident
-				&& tc.current_fn_param_is_mut_receiver(other_node.value)
+			mut_receiver := (other_node.kind == .ident
+				&& tc.current_fn_param_is_mut_receiver(other_node.value))
+				|| tc.expr_is_mut_struct_param(other_id)
 			optional_pointer := clean_other is OptionType
 				&& unalias_type(clean_other.base_type) is Pointer
 			if clean_other !is Pointer && clean_other !is FnType && !mut_receiver
@@ -17791,7 +17830,8 @@ fn (mut tc TypeChecker) check_assign(id flat.NodeId, node flat.Node) {
 		}
 		if lhs_node.kind == .selector && lhs_node.children_count > 0 {
 			base_type := unalias_type(tc.resolve_type(tc.a.child(&lhs_node, 0)))
-			if tc.unsafe_depth == 0 && lhs_node.value == 'len'
+			// Like V1, the body of an `@[unsafe]` function counts as `unsafe` here.
+			if tc.unsafe_depth == 0 && !tc.current_fn_declared_unsafe() && lhs_node.value == 'len'
 				&& (base_type is String || base_type is Array) {
 				kind := if base_type is String { 'string' } else { 'array' }
 				tc.check_node(rhs_id)
@@ -17996,9 +18036,19 @@ fn (mut tc TypeChecker) check_assign(id flat.NodeId, node flat.Node) {
 			i += 2
 			continue
 		}
+		// A `mut` struct parameter is a reference, so like V1 it can be stored
+		// where a pointer to its struct is expected: `*d.tail = mag`.
+		rhs_value_type := if clean_expected_type is Pointer && tc.expr_is_mut_struct_param(rhs_id)
+			&& unalias_type(clean_expected_type.base_type).name() == unalias_type(rhs_type).name() {
+			Type(Pointer{
+				base_type: rhs_type
+			})
+		} else {
+			rhs_type
+		}
 		deref_pointer_mismatch := effective_lhs_node.kind == .prefix
 			&& effective_lhs_node.op == .mul
-			&& type_pointer_depth(expected_type) != type_pointer_depth(rhs_type)
+			&& type_pointer_depth(expected_type) != type_pointer_depth(rhs_value_type)
 			&& expected_type.name() != 'voidptr' && rhs_type.name() !in ['voidptr', 'nil']
 		sum_source_type := if source_rhs_type is Unknown { rhs_type } else { source_rhs_type }
 		sum_variant_mismatch := if clean_expected_type is SumType {
@@ -18024,7 +18074,7 @@ fn (mut tc TypeChecker) check_assign(id flat.NodeId, node flat.Node) {
 			string_char_append := node.op == .plus_assign && type_is_string_like(expected_type)
 				&& rhs_type.name() in ['char', 'rune']
 			if !defer_open_generic_mismatch && !string_char_append && (sum_variant_mismatch
-				|| !tc.assignment_types_compatible(rhs_id, rhs_type, expected_type, node.op)) {
+				|| !tc.assignment_types_compatible(rhs_id, rhs_value_type, expected_type, node.op)) {
 				if clean_expected_type is Pointer && unalias_type(rhs_type) is Struct {
 					tc.record_error_at(.assignment_mismatch, 'mismatched types `${expected_type.name()}` and `${rhs_type.name()}`', id, tc.assignment_operator_pos(node, lhs_id, rhs_id))
 				} else if unalias_type(rhs_type) is OptionType

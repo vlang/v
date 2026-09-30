@@ -1,0 +1,9 @@
+fn f(i int) {}
+
+fn test_postfix() {
+	mut x := 1
+	f(x++ )
+	f(x++ /* comment */)
+	a := [x]
+	_ = a[x-- ]
+}

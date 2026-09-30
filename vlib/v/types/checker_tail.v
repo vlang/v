@@ -2070,6 +2070,13 @@ fn (mut tc TypeChecker) check_return(id flat.NodeId, node flat.Node) {
 			tc.record_error_at(.return_mismatch, '`${tc.source_text_for_node(child_id)}` used as value', id, tc.noreturn_statement_diagnostic_pos(id))
 			return
 		}
+		// Like V1, `return f()` passes on the outcome of another `?` function.
+		if actual is OptionType && actual.base_type is Void {
+			$if ownership ? {
+				tc.ownership_after_return(id, node)
+			}
+			return
+		}
 		tc.record_error_at(.return_mismatch, 'cannot use `${tc.diagnostic_expr_type_name(child_id, actual)}` as Option type in return argument', child_id, child.pos)
 		return
 	}
@@ -9055,7 +9062,8 @@ fn (mut tc TypeChecker) resolve_call_info_uncached(id flat.NodeId, node flat.Nod
 				params_known: true
 			}
 		}
-		if fn_node.value == 'malloc' {
+		// A module's own `malloc` is called before builtin's, as in V1.
+		if fn_node.value == 'malloc' && tc.local_bare_fn_key('malloc') == none {
 			return CallInfo{
 				name:         'malloc'
 				params:       tarr1(Type(ISize{}))
@@ -14782,8 +14790,9 @@ fn (mut tc TypeChecker) check_call_arg_types(id flat.NodeId, node flat.Node, inf
 			continue
 		}
 		voidptr_arg_node := tc.a.node(arg_id)
-		arg_is_mut_receiver := voidptr_arg_node.kind == .ident
-			&& tc.current_fn_param_is_mut_receiver(voidptr_arg_node.value)
+		arg_is_mut_receiver := (voidptr_arg_node.kind == .ident
+			&& tc.current_fn_param_is_mut_receiver(voidptr_arg_node.value))
+			|| tc.expr_is_mut_struct_param(arg_id)
 		if fn_param_is_voidptr_type(expected) && unalias_type(actual) is Struct
 			&& !arg_is_mut_receiver {
 			tc.record_warning_at(.call_arg_mismatch, 'automatic ${unalias_type(actual).name()} referencing/dereferencing into voidptr is deprecated and will be removed soon; use `foo(&x)` instead of `foo(x)`', arg_id, tc.call_argument_diagnostic_pos(arg_id))

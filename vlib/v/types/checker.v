@@ -929,6 +929,7 @@ pub mut:
 	is_js_backend                 bool
 	warn_about_allocs             bool
 	warns_are_errors              bool
+	explicit_warns_are_errors     bool
 	notes_are_errors              bool
 	is_prod                       bool
 	suppress_dump_output          bool
@@ -1374,6 +1375,7 @@ fn (tc &TypeChecker) fork_program_view(ast &flat.FlatAst, direct_dependencies_by
 		nofloat:                               tc.nofloat
 		warn_about_allocs:                     tc.warn_about_allocs
 		warns_are_errors:                      tc.warns_are_errors
+		explicit_warns_are_errors:             tc.explicit_warns_are_errors
 		notes_are_errors:                      tc.notes_are_errors
 		is_prod:                               tc.is_prod
 		suppress_dump_output:                  tc.suppress_dump_output
@@ -2757,10 +2759,14 @@ fn (mut tc TypeChecker) record_notice_with_details_at(kind TypeErrorKind, msg st
 }
 
 fn (mut tc TypeChecker) record_warning_at(kind TypeErrorKind, msg string, node flat.NodeId, pos token.Pos) {
+	tc.record_warning_or_error_at(kind, msg, node, pos, tc.warns_are_errors)
+}
+
+fn (mut tc TypeChecker) record_warning_or_error_at(kind TypeErrorKind, msg string, node flat.NodeId, pos token.Pos, as_error bool) {
 	if !tc.should_diagnose(node) {
 		return
 	}
-	if tc.warns_are_errors {
+	if as_error {
 		if tc.errors.any(it.kind == kind && it.msg == msg && it.pos == pos) {
 			return
 		}
@@ -6199,7 +6205,9 @@ fn (mut tc TypeChecker) record_unused_import_warning(id flat.NodeId, node flat.N
 	} else {
 		'${node.typ} (${module_path})'
 	}
-	tc.record_warning_at(.unknown_ident, "module '${display_name}' is imported but never used. Use `import ${display_name} as _`, to silence this warning, or just remove the unused import line", id, tc.import_module_path_pos(node))
+	// V1 reports unused imports from the parser, where only an explicit `-W`
+	// turns a warning into an error; `-prod` alone does not.
+	tc.record_warning_or_error_at(.unknown_ident, "module '${display_name}' is imported but never used. Use `import ${display_name} as _`, to silence this warning, or just remove the unused import line", id, tc.import_module_path_pos(node), tc.explicit_warns_are_errors)
 }
 
 fn (tc &TypeChecker) node_has_unused_import_warning(id flat.NodeId) bool {
@@ -15959,6 +15967,27 @@ fn (tc &TypeChecker) current_fn_param_is_mut_receiver(name string) bool {
 	}
 	param := tc.a.child_node(fn_node, 0)
 	return param.kind == .param && param.op == .dot && param.is_mut && param.value == name
+}
+
+// expr_is_mut_struct_param reports whether `id` names a `mut` parameter of a struct
+// type. Like a `mut` receiver, it is a reference in the generated C, so it can be
+// compared with `nil` or cast to an integer address, as in V1.
+fn (tc &TypeChecker) expr_is_mut_struct_param(id flat.NodeId) bool {
+	if !tc.valid_node_id(id) {
+		return false
+	}
+	node := tc.a.node(id)
+	// Parentheses and blocks do not change what the parameter is: `u64((h))` and
+	// `unsafe { h }` are the reference too, as in mut_param_expr_base.
+	if node.kind in [.block, .expr_stmt, .paren] && node.children_count > 0 {
+		child_idx := if node.kind == .block { node.children_count - 1 } else { 0 }
+		return tc.expr_is_mut_struct_param(tc.a.child(node, child_idx))
+	}
+	if node.kind != .ident || node.value !in tc.fn_context.mut_param_owners {
+		return false
+	}
+	base := tc.fn_context.mut_param_base_types[node.value] or { return false }
+	return tc.mut_param_binding_matches_lvalue(node.value) && struct_type_from_type(base) != none
 }
 
 fn (mut tc TypeChecker) record_non_heap_pointer_param_escape(id flat.NodeId) bool {
