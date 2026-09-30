@@ -2733,11 +2733,11 @@ pub fn (mut tc TypeChecker) check_concrete_fn_semantics(fn_idx int, file string,
 }
 
 // check_concrete_instance_members checks a concrete clone of one of the
-// program's generic functions for what only its concrete types decide: a field
-// or a method that such a type lacks, as when `show(1)` reads `x.name`. Every
-// other error and warning of the clone is dropped: checked before the clone is
-// lowered, only these are reliable outside checker fixtures, where many valid
-// generic programs would fail.
+// program's generic functions for what only its concrete types decide: a field,
+// a method or an operator that such a type lacks, as when `show(1)` reads
+// `x.name` or `add(1)` adds a string to `a`. Every other error and warning of the
+// clone is dropped: checked before the clone is lowered, only these are reliable
+// outside checker fixtures, where many valid generic programs would fail.
 pub fn (mut tc TypeChecker) check_concrete_instance_members(fn_idx int, file string, module_name string) {
 	errors_start := tc.errors.len
 	notices_start := tc.notices.len
@@ -2752,7 +2752,8 @@ pub fn (mut tc TypeChecker) check_concrete_instance_members(fn_idx int, file str
 	tc.check_concrete_fn_semantics(fn_idx, file, module_name)
 	mut kept := []TypeError{}
 	for err in tc.errors[errors_start..] {
-		if is_concrete_member_error(err.msg) {
+		if is_concrete_member_error(err.msg)
+			|| (is_concrete_operator_error(err.msg) && tc.operator_operands_are_plain(err.node)) {
 			kept << err
 		}
 	}
@@ -2771,6 +2772,55 @@ fn is_concrete_member_error(msg string) bool {
 	return msg.contains(' has no property `') || msg.contains(' has no field named `')
 		|| msg.contains(' has no field or method `')
 		|| msg.starts_with('unknown method or field: `')
+}
+
+// is_concrete_operator_error reports whether `msg` says that a concrete type
+// lacks an operator, as `int + string` does. A `voidptr` in it is a type the
+// clone did not resolve.
+fn is_concrete_operator_error(msg string) bool {
+	if msg.contains('`voidptr`') {
+		return false
+	}
+	return msg.starts_with('operator `') || msg.starts_with('undefined operation `')
+		|| msg.starts_with('infix expr: cannot use `')
+}
+
+// operator_operands_are_plain reports whether the operator at `id` applies to
+// names, literals and fields of them: a clone types those with its concrete
+// types, where the result of a call can still have the type of the open body
+// (`1 + leaf.left.size()` in a method of a generic sum type).
+fn (tc &TypeChecker) operator_operands_are_plain(id flat.NodeId) bool {
+	if !tc.valid_node_id(id) {
+		return false
+	}
+	node := tc.a.node(id)
+	if node.kind !in [.infix, .prefix] || node.children_count == 0 {
+		return false
+	}
+	for i in 0 .. node.children_count {
+		if !tc.operand_is_plain(tc.a.child(node, i)) {
+			return false
+		}
+	}
+	return true
+}
+
+fn (tc &TypeChecker) operand_is_plain(id flat.NodeId) bool {
+	if !tc.valid_node_id(id) {
+		return false
+	}
+	node := tc.a.node(id)
+	return match node.kind {
+		.ident, .int_literal, .float_literal, .bool_literal, .char_literal, .string_literal {
+			true
+		}
+		.selector, .paren, .prefix {
+			node.children_count > 0 && tc.operand_is_plain(tc.a.child(node, 0))
+		}
+		else {
+			false
+		}
+	}
 }
 
 fn (mut tc TypeChecker) check_fn_decl_semantics(fn_idx int, node flat.Node, file string, module_name string) {

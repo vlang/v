@@ -12039,6 +12039,7 @@ pub fn run(args []string) {
 	mut checker_notice_count := 0
 	mut checker_warning_count := 0
 	mut cached_checker_diagnostics := []V3CachedTypeDiagnostic{}
+	mut program_instance_check := ProgramInstanceCheck{}
 	checker_config := TypeCheckerConfig{
 		user_files:                  user_files
 		input_file:                  input_file
@@ -12436,6 +12437,18 @@ pub fn run(args []string) {
 				eprintln(msg)
 			}
 			exit(1)
+		}
+		if !check_only && !is_checker_fixture && !prefs.building_v && pre_tc.errors.len == 0
+			&& os.getenv('V_CHECK_INSTANCES_IN_BUILD') != '0'
+			&& pre_tc.diagnosed_files_declare_generics() {
+			// A build checks each instance of the program's generics as a check
+			// does, and as V1 did: an instance that lacks a field, a method or an
+			// operator (`show(1)` reading `x.name`, `add(1)` adding a string to
+			// `a`) fails here, not in the C compiler. V_CHECK_INSTANCES_IN_BUILD=0
+			// leaves them to the C compiler.
+			// It runs beside the transform; C generation waits for it below.
+			program_instance_check = start_program_instance_check(mut a, mut pre_tc, is_checker_fixture,
+				fatal_errors, message_limit, skip_notices)
 		}
 		if check_only {
 			// Before the monomorphization below rewrites the tree, as in a build.
@@ -13440,6 +13453,13 @@ pub fn run(args []string) {
 				cleanup_c_build_dir(cc_dir)
 				exit(1)
 			}
+		}
+		// An instance of the program's generics that lacks a field, a method or an
+		// operator stops the build here, before C generation takes it to the C
+		// compiler (see start_program_instance_check).
+		if program_instance_check.finish() == 1 {
+			clear_macos_v3_compiler_error_fallback(macos_v3_fallback_file)
+			exit(1)
 		}
 		// Test harness declarations must remain ahead of their function bodies, so
 		// scoped test generation stays serial instead of streaming worker batches.

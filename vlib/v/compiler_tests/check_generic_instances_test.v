@@ -302,3 +302,51 @@ fn test_a_library_that_imports_a_module_of_the_program_keeps_every_body() {
 	assert check.trace.len == 2, check.trace.str()
 	assert check.trace[1].ends_with('imports the module `progmod` of the program'), check.trace.str()
 }
+
+// build_program builds `source` with the prelude, with no V1 to fall back on when
+// the C compiler fails.
+fn build_program(name string, source string) os.Result {
+	dir := os.join_path(os.vtmp_dir(), 'v3_build_generic_instances_${name}_${os.getpid()}')
+	os.mkdir_all(dir) or { panic(err) }
+	defer {
+		os.rmdir_all(dir) or {}
+	}
+	path := os.join_path(dir, 'main.v')
+	os.write_file(path, generic_prelude + source) or { panic(err) }
+	return os.execute('V_MACOS_V3_NO_FALLBACK=1 ${os.quoted_path(@VEXE)} -new-compiler -nocolor -o ${os.quoted_path(os.join_path(dir, 'main'))} ${os.quoted_path(path)}')
+}
+
+// A build reports the errors of an instance where a check does, as V1 did: the
+// body of a generic function without constraints is still not checked on its
+// own, but each of its instances is, instead of failing in the C compiler.
+fn test_a_build_reports_the_member_an_instance_lacks() {
+	source := "fn show[T](x T) string {\n\treturn x.nme\n}\n\nfn main() {\n\tprintln(show(User{ name: 'a' }))\n}\n"
+	res := build_program('build_struct_typo', source)
+	assert res.exit_code != 0, res.output
+	assert !res.output.contains('C compilation error'), res.output
+	errors := error_lines(res.output)
+	assert errors.len == 1, res.output
+	assert errors[0].starts_with('11:11: type `User` has no field named `nme`'), res.output
+}
+
+// An operator that the type of an instance does not have is reported for that
+// instance too, in a check and in a build: `int + string`.
+fn test_an_operator_an_instance_lacks_is_reported() {
+	source := "fn add[T](a T) int {\n\treturn a + 'x'\n}\n\nfn main() {\n\tprintln(add(1))\n}\n"
+	for res in [check_program('operator_check', source), build_program('operator_build', source)] {
+		assert res.exit_code != 0, res.output
+		assert !res.output.contains('C compilation error'), res.output
+		assert error_lines(res.output) == ['11:9: operator `+` cannot concatenate `int` and `string`'], res.output
+	}
+}
+
+// An operator that every instance has, and one in a `$if` branch that an
+// instance does not take, give no error.
+fn test_operators_that_each_instance_has_stay_valid() {
+	source := "fn join[T](a T, b T) T {\n\treturn a + b\n}\n\nfn inc[T](a T) T {\n\t\$if T is int {\n\t\treturn a + 1\n\t} \$else {\n\t\treturn a\n\t}\n}\n\nfn main() {\n\tprintln(join(1, 2))\n\tprintln(join('a', 'b'))\n\tprintln(inc(1))\n\tprintln(inc('s'))\n}\n"
+	for res in [check_program('operators_valid_check', source),
+		build_program('operators_valid_build', source)] {
+		assert res.exit_code == 0, res.output
+		assert error_lines(res.output) == [], res.output
+	}
+}
