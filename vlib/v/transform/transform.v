@@ -385,6 +385,10 @@ mut:
 	// each possible source whose address may leave the frame is moved to the heap at its
 	// declaration so mutations before the return remain visible to the caller.
 	escaping_amp_sources map[string]bool
+	// escaping_fixed_array_view_sources holds local storage exposed through a reference
+	// parameter that can retain an inline fixed array as a dynamic view. Promote the root
+	// before any aliases form, including when a containing struct is forwarded by reference.
+	escaping_fixed_array_view_sources map[string]bool
 	// heaped_amp_locals records which of those sources were actually moved to the heap, so
 	// the `p := &v` alias emits `p = v` (the heap pointer) instead of a fresh memdup copy.
 	heaped_amp_locals map[string]bool
@@ -4147,6 +4151,7 @@ fn (t &Transformer) fork_worker_config(ast &flat.FlatAst, wtc &types.TypeChecker
 	w.sql_query_data_aliases = map[string][]string{}
 	w.escaping_amp_ptrs = map[string]bool{}
 	w.escaping_amp_sources = map[string]bool{}
+	w.escaping_fixed_array_view_sources = map[string]bool{}
 	w.heaped_amp_locals = map[string]bool{}
 	w.escaping_interface_box_locals = map[string]bool{}
 	w.generic_fn_specs_in_progress = map[string]bool{}
@@ -4275,6 +4280,7 @@ fn (t &Transformer) fork_scan_worker(wtc &types.TypeChecker) &Transformer {
 	w.fixed_array_value_rvalues = map[string]bool{}
 	w.escaping_amp_ptrs = map[string]bool{}
 	w.escaping_amp_sources = map[string]bool{}
+	w.escaping_fixed_array_view_sources = map[string]bool{}
 	w.heaped_amp_locals = map[string]bool{}
 	w.escaping_interface_box_locals = map[string]bool{}
 	w.generic_fn_specs_in_progress = map[string]bool{}
@@ -4418,6 +4424,7 @@ fn (t &Transformer) fork_program_view(ast &flat.FlatAst, wtc &types.TypeChecker,
 		smartcast_reestablishment_event_ids: map[string]int{}
 		escaping_amp_ptrs:                   map[string]bool{}
 		escaping_amp_sources:                map[string]bool{}
+		escaping_fixed_array_view_sources:   map[string]bool{}
 		heaped_amp_locals:                   map[string]bool{}
 		local_closure_cleanup_decls:         map[int]string{}
 		local_closure_cleanup_values:        map[int]string{}
@@ -7043,7 +7050,7 @@ fn (mut t Transformer) mark_escaping_amp_ptrs(body_ids []flat.NodeId) {
 	t.reset_escaping_amp_state()
 	if t.fast_escape_precheck {
 		if t.item_escape_scan_known {
-			if !t.item_escape_scan_needed {
+			if !t.item_escape_scan_needed && !t.escape_scan_may_be_needed(body_ids) {
 				return
 			}
 		} else if !t.escape_scan_may_be_needed(body_ids) {
@@ -7147,17 +7154,17 @@ fn (t &Transformer) escape_subtree_may_need_scan(id flat.NodeId) bool {
 	if node.kind == .prefix && node.op == .amp {
 		return true
 	}
-	// Passing a value local to a void-pointer parameter implicitly takes its
-	// address. Checked direct calls expose their exact signature here; unresolved
-	// function-value calls stay conservative and use the full escape walk.
-	if node.kind == .call && node.children_count > 1 {
+	// Void pointers and references to inline fixed-array storage can outlive a local.
+	// Checked direct calls expose their exact signature here; unresolved function-value
+	// calls stay conservative and use the full escape walk.
+	if node.kind == .call && node.children_count > 0 {
 		if isnil(t.tc) {
 			return true
 		}
 		name := t.tc.resolved_call_name(id) or { return true }
 		params := t.tc.fn_param_types[name] or { return true }
 		for param in params {
-			if escape_type_is_void_pointer(param) {
+			if escape_type_is_void_pointer(param) || t.escape_reference_can_borrow_fixed_array(param) {
 				return true
 			}
 		}
@@ -7207,6 +7214,7 @@ fn (mut t Transformer) collect_mut_capture_sources(id flat.NodeId) {
 fn (mut t Transformer) reset_escaping_amp_state() {
 	t.escaping_amp_ptrs.clear()
 	t.escaping_amp_sources.clear()
+	t.escaping_fixed_array_view_sources.clear()
 	t.heaped_amp_locals.clear()
 	t.escaping_interface_box_locals.clear()
 	t.mut_fixed_array_capture_sources.clear()
@@ -8784,11 +8792,12 @@ fn (mut t Transformer) scan_escape_pass(id flat.NodeId, mut amp_ptrs map[string]
 	if node.kind == .spawn_expr {
 		t.mark_spawn_argument_address_escapes(node, amp_sources, ptr_aliases, local_stack_names)
 	}
-	if node.kind == .call && node.children_count > 1 {
+	if node.kind == .call && node.children_count > 0 {
 		for i in 1 .. node.children_count {
 			t.mark_callback_method_value_receiver_escape(t.a.child(&node, i), amp_sources, ptr_aliases, local_stack_names)
 		}
 		t.mark_implicit_voidptr_argument_escapes(id, node, local_stack_names)
+		t.mark_fixed_array_reference_argument_escapes(id, node, amp_ptrs, amp_sources, ptr_aliases, local_stack_names)
 	}
 	if node.kind in [.assign, .selector_assign, .index_assign] && node.op == .assign
 		&& node.children_count == 2 {
@@ -8931,6 +8940,115 @@ fn escape_type_is_struct_value(typ types.Type) bool {
 		return escape_type_is_struct_value(typ.base_type)
 	}
 	return false
+}
+
+// escape_value_contains_fixed_array follows inline storage only. A dynamic container or
+// pointer field already has separate backing storage, so moving its containing value does
+// not extend the lifetime of that backing.
+fn (t &Transformer) escape_value_contains_fixed_array(typ types.Type, mut seen map[string]bool) bool {
+	match typ {
+		types.ArrayFixed {
+			return true
+		}
+		types.Alias, types.OptionType, types.ResultType {
+			return t.escape_value_contains_fixed_array(typ.base_type, mut seen)
+		}
+		types.Struct {
+			if isnil(t.tc) || typ.name in seen {
+				return false
+			}
+			seen[typ.name] = true
+			for field in t.tc.struct_fields_for_type(typ.name) {
+				if t.escape_value_contains_fixed_array(field.typ, mut seen) {
+					return true
+				}
+			}
+		}
+		else {}
+	}
+	return false
+}
+
+fn (t &Transformer) escape_reference_can_borrow_fixed_array(typ types.Type) bool {
+	clean := types.unalias_type(typ)
+	if clean !is types.Pointer {
+		return false
+	}
+	base := types.unalias_type(clean.base_type)
+	if base is types.Array {
+		// A `mut []T` argument may be converted from a whole fixed array or range.
+		return true
+	}
+	mut seen := map[string]bool{}
+	return t.escape_value_contains_fixed_array(base, mut seen)
+}
+
+fn (mut t Transformer) mark_fixed_array_reference_argument_escapes(call_id flat.NodeId, call flat.Node, amp_ptrs map[string]bool, amp_sources map[string][]string, ptr_aliases map[string]string, local_stack_names map[string]bool) {
+	if isnil(t.tc) {
+		return
+	}
+	call_name := t.call_name_for_node(call_id, call)
+	mut params := t.call_param_types_for_node(call_name, call)
+	if concrete_params := t.concrete_generic_call_param_types(call_id, call) {
+		params = concrete_params.clone()
+	}
+	offset := if t.call_is_selector_form(call) && t.concrete_generic_call_is_method(call_id) {
+		1
+	} else {
+		t.call_param_offset_for_node(call_name, call, params)
+	}
+	if offset == 1 && params.len > 0 {
+		callee := t.a.child_node(&call, 0)
+		if callee.kind == .selector && callee.children_count > 0 {
+			t.mark_fixed_array_reference_argument_escape(t.a.child(callee, 0), params[0], amp_ptrs, amp_sources, ptr_aliases, local_stack_names)
+		}
+	}
+	for child_idx in 1 .. call.children_count {
+		param_idx := child_idx - 1 + offset
+		if param_idx < 0 || param_idx >= params.len {
+			continue
+		}
+		t.mark_fixed_array_reference_argument_escape(t.a.child(&call, child_idx), params[param_idx], amp_ptrs, amp_sources, ptr_aliases, local_stack_names)
+	}
+}
+
+fn (mut t Transformer) mark_fixed_array_reference_argument_escape(arg_id flat.NodeId, param_type types.Type, amp_ptrs map[string]bool, amp_sources map[string][]string, ptr_aliases map[string]string, local_stack_names map[string]bool) {
+	if !t.escape_reference_can_borrow_fixed_array(param_type) {
+		return
+	}
+	mut value_id := arg_id
+	for int(value_id) >= 0 && int(value_id) < t.a.nodes.len {
+		node := t.a.nodes[int(value_id)]
+		if (node.kind in [.paren, .expr_stmt] || (node.kind == .prefix && node.op == .amp))
+			&& node.children_count == 1 {
+			value_id = t.a.child(&node, 0)
+			continue
+		}
+		break
+	}
+	if int(value_id) < 0 || int(value_id) >= t.a.nodes.len {
+		return
+	}
+	value := t.a.nodes[int(value_id)]
+	if value.kind == .index && value.value == 'range' && value.children_count > 0 {
+		value_id = t.a.child(&value, 0)
+	}
+	mut value_type := types.unalias_type(t.tc.resolve_type(value_id))
+	for value_type is types.Pointer {
+		value_type = types.unalias_type(value_type.base_type)
+	}
+	mut seen := map[string]bool{}
+	if !t.escape_value_contains_fixed_array(value_type, mut seen)
+		|| !t.escape_address_expr_is_stack_local(value_id, local_stack_names, amp_ptrs, ptr_aliases) {
+		return
+	}
+	for source in t.escape_address_sources(value_id, amp_sources, ptr_aliases) {
+		if source in local_stack_names {
+			// The called function can forward a field or view beyond this frame. Move the
+			// original root at its declaration so pre-existing aliases still share its data.
+			t.escaping_fixed_array_view_sources[source] = true
+		}
+	}
 }
 
 fn (mut t Transformer) mark_spawn_argument_address_escapes(spawn_node flat.Node, amp_sources map[string][]string, ptr_aliases map[string]string, local_stack_names map[string]bool) {
@@ -15644,6 +15762,12 @@ fn (mut t Transformer) transform_decl_assign_stmt(id flat.NodeId, node flat.Node
 		src := t.a.child_node(&node, 0)
 		if src.kind == .ident && src.value in t.mut_fixed_array_capture_sources
 			&& src.value !in t.heaped_amp_locals && t.is_fixed_array_type(inferred_typ) {
+			return t.heap_escaping_source_decl(node, src.value, inferred_typ)
+		}
+		if src.kind == .ident && src.value in t.escaping_fixed_array_view_sources
+			&& src.value !in t.heaped_amp_locals
+			&& (t.is_fixed_array_type(inferred_typ) || t.heapable_value_type(inferred_typ)) {
+			t.warn_alloc(node, t.a.child(&node, 1), src.pos, 'local moved to the heap: a fixed array can escape through a reference argument')
 			return t.heap_escaping_source_decl(node, src.value, inferred_typ)
 		}
 		if src.kind == .ident && src.value in t.escaping_amp_sources
