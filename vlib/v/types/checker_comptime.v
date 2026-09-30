@@ -3931,7 +3931,8 @@ fn (tc &TypeChecker) voidptr_cast_needs_unsafe(child_id flat.NodeId, target_name
 	if clean_base is Struct || clean_base is Interface {
 		return false
 	}
-	return tc.a.node(child_id).kind in [.ident, .cast_expr]
+	// Parentheses do not change the operand: `&u32((ptr))` warns like `&u32(ptr)`.
+	return tc.a.node(tc.unwrap_paren_expr_id(child_id)).kind in [.ident, .cast_expr]
 }
 
 fn (tc &TypeChecker) fixed_array_reference_is_call_borrow(id flat.NodeId) bool {
