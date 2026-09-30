@@ -5362,6 +5362,10 @@ fn (tc &TypeChecker) global_type_for_selector(node flat.Node) ?Type {
 		return tc.file_scope.lookup(qname)
 	}
 	if resolved == 'main' || resolved == tc.cur_module {
+		// A current-module const owns this name over the cross-module global_names bare hit; return none defers to const_type_for_selector. No shadow check here — node.value is a selector name, not a scope ident.
+		if tc.qualify_name(node.value) in tc.const_types {
+			return none
+		}
 		if node.value in tc.global_names {
 			return tc.file_scope.lookup(node.value)
 		}
@@ -6988,7 +6992,8 @@ fn (tc &TypeChecker) vsh_os_const_key(name string) ?string {
 // AST-wide flag so non-script compilations never pay for it.
 @[inline]
 fn (tc &TypeChecker) vsh_script_file() bool {
-	return tc.a.has_vsh_source && tc.cur_file.ends_with('.vsh')
+	return tc.a.has_vsh_source
+		&& (tc.cur_file.ends_with('.vsh') || tc.cur_file == tc.a.raw_vsh_file)
 }
 
 fn (tc &TypeChecker) selective_import_candidates(name string) ?[]string {

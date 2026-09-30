@@ -397,3 +397,311 @@ fn test_module_display_name_is_relative_to_the_input_root() {
 	assert module_display_name('/tmp/app', '/tmp/app') == 'app'
 	assert module_display_name('/somewhere/else/foo', '/tmp/app') == 'foo'
 }
+
+fn write_subdirs_fixture(root string, vmod_extra string, files map[string]string) ! {
+	os.mkdir_all(root)!
+	os.write_file(os.join_path(root, 'v.mod'), "Module {\n\tname: 'mypkg'\n\tversion: '0.0.1'\n${vmod_extra}}\n")!
+	for rel, content in files {
+		path := os.join_path(root, rel)
+		os.mkdir_all(os.dir(path))!
+		os.write_file(path, content)!
+	}
+}
+
+fn test_vmod_subdirs_are_documented_as_part_of_the_module() {
+	root := 'subdirs_mod'
+	write_subdirs_fixture(root, "\tsubdirs: ['internal', 'internal/deep']\n", {
+		'root.v':                   'module mypkg\n\npub fn root_fn() {}\n'
+		'internal/sub.v':           'module mypkg\n\npub fn sub_fn() {}\n'
+		'internal/deep/deep.v':     'module mypkg\n\npub fn deep_fn() {}\n'
+		'internal/nested/v.mod':    "Module {\n\tname: 'nested'\n}\n"
+		'internal/nested/nested.v': 'module nested\n\npub fn nested_fn() {}\n'
+		'internal_other/other.v':   'module internal_other\n\npub fn other_fn() {}\n'
+	})!
+	d := doc.generate(root, true, true, .auto)!
+	assert d.head.name == 'mypkg'
+	assert d.contents.keys().sorted() == ['deep_fn', 'root_fn', 'sub_fn']
+	assert get_modules(root) == [root, os.join_path(root, 'internal', 'nested'),
+		os.join_path(root, 'internal_other')]
+	res := os.execute_opt('${vexe_} doc -no-timestamp -f text -o - ${root}')!
+	assert res.output.contains('fn root_fn()')
+	assert res.output.contains('fn sub_fn()')
+	assert res.output.contains('fn deep_fn()')
+}
+
+fn test_vmod_subdirs_without_root_files() {
+	root := 'subdirs_only'
+	write_subdirs_fixture(root, "\tsubdirs: ['internal']\n", {
+		'internal/sub.v': 'module mypkg\n\npub fn sub_fn() {}\n'
+	})!
+	d := doc.generate(root, true, true, .auto)!
+	assert d.contents.keys() == ['sub_fn']
+	assert get_modules(root) == [root]
+}
+
+fn test_vmod_external_subdirs_without_root_files() {
+	root := 'subdirs_external_only'
+	write_subdirs_fixture(root, "\tsubdirs: ['../subdirs_external_only_sources']\n", {
+		'../subdirs_external_only_sources/sub.v': 'module mypkg\n\npub fn external_fn() {}\n'
+	})!
+	assert get_modules(root) == [root]
+	os.execute_opt('${vexe_} doc -no-timestamp -m -f text ${os.quoted_path(root)}')!
+	output := os.read_file(os.join_path(root, '_docs', 'mypkg.txt'))!
+	assert output.contains('fn external_fn()')
+}
+
+fn test_vmod_external_subdirs_are_owned_by_base_url_source_root() {
+	root := 'subdirs_external_base_url'
+	write_subdirs_fixture(root, "\tbase_url: 'src'\n\tsubdirs: ['../shared']\n", {
+		'shared/sub.v': 'module mypkg\n\npub fn external_fn() {}\n'
+	})!
+	source_root := os.join_path(root, 'src')
+	os.mkdir_all(source_root)!
+	assert get_modules(root) == [source_root]
+	assert get_modules('./${root}') == [os.join_path('.', source_root)]
+}
+
+fn test_vmod_external_subdirs_are_not_discovered_as_separate_modules() {
+	root := 'subdirs_external_collection'
+	module_root := os.join_path(root, 'mypkg')
+	write_subdirs_fixture(module_root, "\tsubdirs: ['../shared']\n", {
+		'../shared/sub.v': 'module mypkg\n\npub fn external_fn() {}\n'
+	})!
+	assert get_modules(root) == [module_root]
+}
+
+fn test_vmod_external_subdirs_with_only_ignored_files_are_skipped() {
+	root := 'subdirs_external_ignored'
+	write_subdirs_fixture(root, "\tsubdirs: ['../subdirs_external_ignored_sources']\n", {
+		'../subdirs_external_ignored_sources/tests/sub.v': 'module mypkg\n\npub fn ignored_fn() {}\n'
+	})!
+	assert get_modules(root) == []string{}
+}
+
+fn test_vmod_subdirs_are_resolved_from_base_url() {
+	root := 'subdirs_base_url'
+	write_subdirs_fixture(root, "\tbase_url: 'src'\n\tsubdirs: ['internal']\n", {
+		'src/root.v':         'module mypkg\n\npub fn root_fn() {}\n'
+		'src/internal/sub.v': 'module mypkg\n\npub fn sub_fn() {}\n'
+	})!
+	src := os.join_path(root, 'src')
+	d := doc.generate(src, true, true, .auto)!
+	assert d.contents.keys().sorted() == ['root_fn', 'sub_fn']
+	assert get_modules(root) == [src]
+}
+
+fn test_vmod_subdirs_dot_walks_the_whole_module_tree() {
+	root := 'subdirs_dot'
+	write_subdirs_fixture(root, "\tsubdirs: ['.']\n", {
+		'root.v':                   'module mypkg\n\npub struct Thing {}\n\npub fn (t Thing) method_fn() {}\n'
+		'internal/deep/deep.v':     'module mypkg\n\npub fn deep_fn() {}\n'
+		'internal/nested/v.mod':    "Module {\n\tname: 'nested'\n}\n"
+		'internal/nested/nested.v': 'module nested\n\npub fn nested_fn() {}\n'
+	})!
+	// A symlink to an already documented file must not document its symbols twice.
+	os.symlink(os.real_path(os.join_path(root, 'root.v')), os.join_path(root, 'internal',
+		'root_link.v'))!
+	d := doc.generate(root, true, true, .auto)!
+	assert d.contents.keys().sorted() == ['Thing', 'deep_fn']
+	assert d.contents['Thing'].children.filter(it.name == 'method_fn').len == 1
+	assert get_modules(root) == [root, os.join_path(root, 'internal', 'nested')]
+}
+
+fn test_repo_file_path_for_links_keeps_subdirs() {
+	root := 'subdirs_links'
+	write_subdirs_fixture(root, "\tsubdirs: ['internal']\n", {
+		'root.v':         'module mypkg\n\npub fn root_fn() {}\n'
+		'internal/sub.v': 'module mypkg\n\npub fn sub_fn() {}\n'
+	})!
+	vd := VDoc{
+		cfg: Config{
+			input_path: root
+		}
+	}
+	real_root := os.real_path(root)
+	assert vd.get_repo_file_path_for_links(os.join_path(real_root, 'root.v')) == 'root.v'
+	assert vd.get_repo_file_path_for_links(os.join_path(real_root, 'internal', 'sub.v')) == 'internal/sub.v'
+}
+
+fn test_repo_file_path_for_links_keeps_external_subdirs() {
+	repo := 'subdirs_external_links'
+	root := os.join_path(repo, 'mypkg')
+	os.mkdir_all(os.join_path(repo, '.git'))!
+	write_subdirs_fixture(root, "\trepo_url: 'https://github.com/example/project'\n\trepo_branch: 'main'\n\tsubdirs: ['../shared', '../other']\n", {
+		'root.v':          'module mypkg\n\npub fn root_fn() {}\n'
+		'../shared/sub.v': 'module mypkg\n\n// external_fn links to [a guide](guide.md).\npub fn external_fn() {}\n'
+		'../other/sub.v':  'module mypkg\n\npub fn other_fn() {}\n'
+	})!
+	vd := VDoc{
+		cfg: Config{
+			input_path: root
+		}
+	}
+	real_repo := os.real_path(repo)
+	assert vd.get_repo_file_path_for_links(os.join_path(real_repo, 'mypkg', 'root.v')) == 'mypkg/root.v'
+	assert vd.get_repo_file_path_for_links(os.join_path(real_repo, 'shared', 'sub.v')) == 'shared/sub.v'
+	assert vd.get_repo_file_path_for_links(os.join_path(real_repo, 'other', 'sub.v')) == 'other/sub.v'
+	res := os.execute_opt('${vexe_} doc -no-timestamp -f html -o - -html-only-contents -comments ${os.quoted_path(root)}')!
+	assert res.output.contains('https://github.com/example/project/blob/main/shared/sub.v#L')
+	assert res.output.contains('https://github.com/example/project/blob/main/other/sub.v#L')
+	assert res.output.contains('https://github.com/example/project/blob/main/shared/guide.md')
+}
+
+fn test_repo_file_path_for_links_uses_base_url_manifest_root() {
+	root := 'subdirs_base_url_links'
+	write_subdirs_fixture(root, "\tbase_url: 'src'\n\tsubdirs: ['../shared', 'internal']\n", {
+		'src/root.v':         'module mypkg\n\npub fn root_fn() {}\n'
+		'src/internal/sub.v': 'module mypkg\n\npub fn internal_fn() {}\n'
+		'shared/sub.v':       'module mypkg\n\npub fn external_fn() {}\n'
+	})!
+	vd := VDoc{
+		cfg: Config{
+			input_path: os.join_path(root, 'src')
+		}
+	}
+	real_root := os.real_path(root)
+	assert vd.get_repo_file_path_for_links(os.join_path(real_root, 'src', 'root.v')) == 'src/root.v'
+	assert vd.get_repo_file_path_for_links(os.join_path(real_root, 'src', 'internal', 'sub.v')) == 'src/internal/sub.v'
+	assert vd.get_repo_file_path_for_links(os.join_path(real_root, 'shared', 'sub.v')) == 'shared/sub.v'
+}
+
+fn test_repo_file_path_for_links_handles_worktrees_and_file_inputs() {
+	repo := 'subdirs_worktree_links'
+	root := os.join_path(repo, 'mypkg')
+	os.mkdir_all(repo)!
+	os.write_file(os.join_path(repo, '.git'), 'gitdir: /unused/worktrees/mypkg\n')!
+	write_subdirs_fixture(root, "\tsubdirs: ['../shared']\n", {
+		'root.v':          'module mypkg\n\npub fn root_fn() {}\n'
+		'../shared/sub.v': 'module mypkg\n\npub fn external_fn() {}\n'
+	})!
+	real_repo := os.real_path(repo)
+	for is_multi in [false, true] {
+		vd := VDoc{
+			cfg: Config{
+				input_path: os.join_path(root, 'root.v')
+				is_multi:   is_multi
+			}
+		}
+		assert vd.get_repo_file_path_for_links('') == ''
+		assert vd.get_repo_file_path_for_links(os.join_path(real_repo, 'mypkg', 'root.v')) == 'mypkg/root.v'
+		assert vd.get_repo_file_path_for_links(os.join_path(real_repo, 'shared', 'sub.v')) == 'shared/sub.v'
+	}
+}
+
+fn test_repo_file_path_for_links_preserves_manifestless_input_roots() {
+	// Keep this fixture outside the suite's v.mod created by the README test.
+	fixture_root := tpath + '_links_no_manifest'
+	defer {
+		os.rmdir_all(fixture_root) or {}
+	}
+	root := os.join_path(fixture_root, 'nested')
+	os.mkdir_all(root)!
+	file := os.join_path(root, 'file.v')
+	os.write_file(file, 'module mypkg\n')!
+	for input_path in [root, file] {
+		for is_multi in [false, true] {
+			vd := VDoc{
+				cfg: Config{
+					input_path: input_path
+					is_multi:   is_multi
+				}
+			}
+			expected := if is_multi && input_path == root { 'nested/file.v' } else { 'file.v' }
+			assert vd.get_repo_file_path_for_links(os.real_path(file)) == expected
+		}
+	}
+}
+
+fn test_repo_file_path_for_links_ignores_unrelated_enclosing_checkout() {
+	repo := 'links_unrelated_checkout'
+	os.mkdir_all(os.join_path(repo, '.git'))!
+	os.write_file(os.join_path(repo, 'v.mod'), "Module {\n\tname: 'outer'\n\trepo_url: 'https://github.com/example/outer'\n}\n")!
+	for base_url in ['', 'src'] {
+		root := os.join_path(repo, 'examples', if base_url == '' { 'mypkg' } else { 'mypkg_src' })
+		write_subdirs_fixture(root, "\trepo_url: 'https://github.com/example/mypkg'\n\trepo_branch: 'main'\n\tbase_url: '${base_url}'\n\tsubdirs: ['internal']\n", {
+			os.join_path(base_url, 'root.v'):            'module mypkg\n\n// root_fn links to [a guide](guide.md).\npub fn root_fn() {}\n'
+			os.join_path(base_url, 'internal', 'sub.v'): 'module mypkg\n\npub fn sub_fn() {}\n'
+		})!
+		source_root := os.join_path(root, base_url)
+		file := os.real_path(os.join_path(source_root, 'root.v'))
+		expected := if base_url == '' { 'root.v' } else { 'src/root.v' }
+		for input_path in [source_root, file] {
+			for is_multi in [false, true] {
+				vd := VDoc{
+					cfg: Config{
+						input_path: input_path
+						is_multi:   is_multi
+					}
+				}
+				assert vd.get_repo_file_path_for_links(file) == expected
+			}
+		}
+	}
+	root := os.join_path(repo, 'examples', 'mypkg')
+	res := os.execute_opt('${vexe_} doc -no-timestamp -f html -o - -html-only-contents -comments ${os.quoted_path(root)}')!
+	assert res.output.contains('https://github.com/example/mypkg/blob/main/root.v#L')
+	assert res.output.contains('https://github.com/example/mypkg/blob/main/internal/sub.v#L')
+	assert res.output.contains('https://github.com/example/mypkg/blob/main/guide.md')
+	assert !res.output.contains('/blob/main/examples/')
+}
+
+fn test_repo_file_path_for_links_keeps_manifestless_git_root() {
+	repo := 'links_git_without_manifest'
+	root := os.join_path(repo, 'nested')
+	os.mkdir_all(root)!
+	os.write_file(os.join_path(repo, '.git'), 'gitdir: /unused/worktrees/mypkg\n')!
+	file := os.join_path(root, 'file.v')
+	os.write_file(file, 'module mypkg\n')!
+	for input_path in [root, file] {
+		for is_multi in [false, true] {
+			vd := VDoc{
+				cfg: Config{
+					input_path: input_path
+					is_multi:   is_multi
+				}
+			}
+			assert vd.get_repo_file_path_for_links(os.real_path(file)) == 'nested/file.v'
+		}
+	}
+}
+
+fn test_vdocignore_applies_to_vmod_subdirs() {
+	root := 'subdirs_ignored'
+	// A subdir outside of the module folder is documented, but the default rules
+	// (e.g. `testdata`) still apply to it.
+	os.mkdir_all('subdirs_shared')!
+	os.write_file(os.join_path('subdirs_shared', 'shared.v'), 'module mypkg\n\npub fn shared_fn() {}\n')!
+	os.mkdir_all(os.join_path('subdirs_shared', 'testdata'))!
+	os.write_file(os.join_path('subdirs_shared', 'testdata', 't.v'), 'module mypkg\n\npub fn shared_fixture_fn() {}\n')!
+	os.mkdir_all('subdirs_link_target')!
+	os.write_file(os.join_path('subdirs_link_target', 'linked.v'), 'module mypkg\n\npub fn linked_fn() {}\n')!
+	os.mkdir_all('subdirs_two_links_target')!
+	os.write_file(os.join_path('subdirs_two_links_target', 'two.v'), 'module mypkg\n\npub fn two_links_fn() {}\n')!
+	write_subdirs_fixture(root, "\tsubdirs: ['internal', 'linked', 'ignored_link', 'allowed_link', '../subdirs_shared']\n", {
+		'.vdocignore':           'private\nskip.v\n/linked\n/ignored_link/two.v\n'
+		'root.v':                'module mypkg\n\npub fn root_fn() {}\n'
+		'internal/sub.v':        'module mypkg\n\npub fn sub_fn() {}\n'
+		'internal/skip.v':       'module mypkg\n\npub fn skipped_fn() {}\n'
+		'internal/private/p.v':  'module mypkg\n\npub fn private_fn() {}\n'
+		'internal/testdata/t.v': 'module mypkg\n\npub fn fixture_fn() {}\n'
+	})!
+	// Rules match the subdir name used in the module, even when it is a symlink.
+	os.symlink(os.real_path('subdirs_link_target'), os.join_path(root, 'linked'))!
+	// A file ignored through one alias is still documented when reached through another one.
+	os.symlink(os.real_path('subdirs_two_links_target'), os.join_path(root, 'ignored_link'))!
+	os.symlink(os.real_path('subdirs_two_links_target'), os.join_path(root, 'allowed_link'))!
+	single := os.execute_opt('${vexe_} doc -no-timestamp -f text -o - ${root}')!
+	os.execute_opt('${vexe_} doc -no-timestamp -m -f text ${root}')!
+	multi := os.read_file(os.join_path(root, '_docs', 'mypkg.txt'))!
+	for output in [single.output, multi] {
+		assert output.contains('fn root_fn()')
+		assert output.contains('fn sub_fn()')
+		assert output.contains('fn shared_fn()')
+		assert !output.contains('skipped_fn')
+		assert !output.contains('private_fn')
+		assert !output.contains('fixture_fn')
+		assert !output.contains('shared_fixture_fn')
+		assert !output.contains('linked_fn')
+		assert output.contains('fn two_links_fn()')
+	}
+}

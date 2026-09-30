@@ -22237,10 +22237,7 @@ fn (mut t Transformer) transform_optional_value_to_pointer(source_id flat.NodeId
 	} else {
 		t.stable_transformed_expr_for_reuse(source, source_type, 'opt_ref')
 	}
-	result_name := t.new_temp('opt_ref_result')
-	err := t.result_error_expr(source_value)
-	initial := t.make_optional_none_with_err(target_type, err)
-	t.pending_stmts << t.make_decl_assign_typed(result_name, initial, target_type)
+	pending_start := t.pending_stmts.len
 	value := t.make_selector(source_value, 'value', payload_type)
 	value_addr := t.make_prefix(.amp, value)
 	t.set_node_typ(int(value_addr), target_payload)
@@ -22252,13 +22249,7 @@ fn (mut t Transformer) transform_optional_value_to_pointer(source_id flat.NodeId
 		dup := t.make_memdup_call_for_type(value_addr, payload_type)
 		t.make_cast(target_payload, dup, target_payload)
 	}
-	some := t.make_optional_some(addr, target_type)
-	assign := t.make_assign(t.make_ident(result_name), some)
-	ok := t.make_selector(source_value, 'ok', 'bool')
-	t.pending_stmts << t.make_if(ok, t.make_block([assign]), t.make_empty())
-	result := t.make_ident(result_name)
-	t.set_node_typ(int(result), target_type)
-	return result
+	return t.make_optional_conversion(source_value, addr, target_type, pending_start)
 }
 
 fn (mut t Transformer) transform_optional_value_to_sum(source_id flat.NodeId, source_type string, target_type string) ?flat.NodeId {
@@ -22273,18 +22264,26 @@ fn (mut t Transformer) transform_optional_value_to_sum(source_id flat.NodeId, so
 	source0 := t.transform_expr(source_id)
 	source := t.optional_source_value_expr(source_id, source0, source_optional)
 	source_value := t.stable_transformed_expr_for_reuse(source, source_optional, 'opt_sum')
-	result_name := t.new_temp('opt_sum_result')
-	err := t.result_error_expr(source_value)
-	initial := t.make_optional_none_with_err(target_optional, err)
-	t.pending_stmts << t.make_decl_assign_typed(result_name, initial, target_optional)
+	pending_start := t.pending_stmts.len
 	payload := t.make_selector(source_value, 'value', source_payload)
 	sum_value := t.wrap_sum_value(payload, target_payload)
-	some := t.make_optional_some(sum_value, target_optional)
-	assign := t.make_assign(t.make_ident(result_name), some)
-	ok := t.make_selector(source_value, 'ok', 'bool')
-	t.pending_stmts << t.make_if(ok, t.make_block([assign]), t.make_empty())
-	result := t.make_ident(result_name)
-	t.set_node_typ(int(result), target_optional)
+	return t.make_optional_conversion(source_value, sum_value, target_optional, pending_start)
+}
+
+fn (mut t Transformer) make_optional_conversion(source flat.NodeId, value flat.NodeId, target string, pending_start int) flat.NodeId {
+	mut success := []flat.NodeId{cap: t.pending_stmts.len - pending_start + 1}
+	for i in pending_start .. t.pending_stmts.len {
+		success << t.pending_stmts[i]
+	}
+	t.pending_stmts.trim(pending_start)
+	success << t.make_expr_stmt(t.make_optional_some(value, target))
+	err := t.result_error_expr(source)
+	failure := t.make_optional_none_with_err(target, err)
+	then_block := t.make_block(success)
+	else_block := t.make_block([t.make_expr_stmt(failure)])
+	ok := t.make_selector(source, 'ok', 'bool')
+	result := t.make_if(ok, then_block, else_block)
+	t.set_node_typ(int(result), target)
 	return result
 }
 
@@ -22470,6 +22469,9 @@ fn (t &Transformer) raw_expr_type_without_smartcast(id flat.NodeId) string {
 			typ := t.normalize_type_alias(t.raw_var_type(node.value))
 			if typ.len > 0 {
 				return typ
+			}
+			if t.current_module_declares_const(node.value) {
+				return t.const_owned_expr_type(node.value, node.typ)
 			}
 			if global_type := t.current_module_global_type(node.value) {
 				return t.normalize_type_alias(global_type)
@@ -23906,6 +23908,8 @@ fn (mut t Transformer) transform_ident_expr(id flat.NodeId, node flat.Node) flat
 				if global_type := t.current_module_global_type(node.value) {
 					typ = global_type
 					is_global = true
+				} else if t.current_module_declares_const(node.value) {
+					// const owns the name: leave typ empty so the const path below emits `mod.name`.
 				} else if global_name := t.imported_global_name(node.value) {
 					typ = t.globals[global_name]
 					is_global = true
@@ -25454,6 +25458,9 @@ fn (t &Transformer) resolve_expr_type(id flat.NodeId) string {
 			if local_type.len > 0 {
 				return local_type
 			}
+			if t.current_module_declares_const(node.value) {
+				return t.const_owned_expr_type(node.value, '')
+			}
 			if global_type := t.current_module_global_type(node.value) {
 				return t.normalize_type_alias(global_type)
 			}
@@ -26059,6 +26066,15 @@ fn (t &Transformer) const_type_name(name string) ?string {
 		return tname
 	}
 	return none
+}
+
+fn (t &Transformer) const_owned_expr_type(name string, node_typ string) string {
+	if key := t.const_type_key_in_context(name, t.cur_module, t.cur_file) {
+		if const_type := t.const_type_name(key) {
+			return t.normalize_type_alias(const_type)
+		}
+	}
+	return t.normalize_type_alias(node_typ)
 }
 
 // const_type_key supports const type key handling for Transformer.

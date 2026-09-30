@@ -1003,8 +1003,13 @@ fn (t &Transformer) raw_const_type_name_for_expr(id flat.NodeId) ?string {
 	if t.selector_const_base_is_value(node) {
 		return none
 	}
-	if node.kind == .ident && t.raw_var_type(node.value).len > 0 {
-		return none
+	if node.kind == .ident {
+		if t.raw_var_type(node.value).len > 0 {
+			return none
+		}
+		if t.ident_compiles_to_global_symbol(node.value) {
+			return none
+		}
 	}
 	name := t.expr_key(id)
 	if name.len == 0 {
@@ -3601,6 +3606,18 @@ fn (mut t Transformer) builtin_addr_expr(arg_id flat.NodeId, arg_type string) fl
 }
 
 fn (mut t Transformer) transform_implicit_ref_arg(arg_id flat.NodeId, param_type string) ?flat.NodeId {
+	arg_node := t.a.nodes[int(arg_id)]
+	mut data_node := arg_node
+	for data_node.kind == .paren && data_node.children_count == 1 {
+		data_node = t.a.child_node(&data_node, 0)
+	}
+	if data_node.kind == .selector && data_node.value == 'data' && data_node.children_count > 0 {
+		base_type := t.trim_all_pointer_type(t.normalize_type_alias(t.node_type(t.a.child(&data_node, 0))))
+		if base_type.starts_with('[]') {
+			// A dynamic array's data is already the address of its elements.
+			return t.transform_expr(arg_id)
+		}
+	}
 	mut arg_type := t.node_type(arg_id)
 	if arg_type.len == 0 {
 		arg_type = t.resolve_expr_type(arg_id)
@@ -3617,7 +3634,6 @@ fn (mut t Transformer) transform_implicit_ref_arg(arg_id flat.NodeId, param_type
 		&& type_text_without_main_locks(actual_type) != type_text_without_main_locks(expected_type) {
 		return none
 	}
-	arg_node := t.a.nodes[int(arg_id)]
 	if expected_depth == actual_depth + 1 && arg_node.kind == .ident
 		&& t.pointer_value_rvalues[arg_node.value] {
 		storage_type := t.var_type(arg_node.value)
@@ -4251,6 +4267,49 @@ fn (t &Transformer) imported_global_name(name string) ?string {
 		return candidates[0]
 	}
 	return none
+}
+
+// current_module_declares_const: accepts the bare name or the `mod.name`
+// spelling transform_ident_expr writes after the const path. Exact keys only —
+// const_suffixes sees every transitive module and must not decide ownership.
+fn (t &Transformer) current_module_declares_const(name string) bool {
+	if name == '' || isnil(t.tc) {
+		return false
+	}
+	if name.contains('.') {
+		base := name.all_before_last('.')
+		if base in ['main', 'builtin'] {
+			// main/builtin consts keep a bare key; `main.name` is only their
+			// C-symbol spelling.
+			field := short_name_view(name)
+			return field in t.tc.const_types
+				&& t.tc.const_owner_module(field) in ['', 'main', 'builtin']
+		}
+		return name in t.tc.const_types && t.tc.const_owner_module(name) == t.cur_module
+	}
+	if t.cur_module.len > 0 && t.cur_module != 'main' && t.cur_module != 'builtin' {
+		return '${t.cur_module}.${name}' in t.tc.const_types
+	}
+	return name in t.tc.const_types
+}
+
+// ident_compiles_to_global_symbol: cgen emits a global's C symbol. A const of
+// the declaring module owns the bare name and its C symbol (docs.md:3645-3653),
+// so this must stay in lockstep with transform_ident_expr (it keeps the const's
+// symbol iff this is false) or method and symbol come from different
+// declarations and read garbage. `t.globals` is keyed by bare name across
+// modules, so a main/builtin hit is not proof — a local const still owns it.
+fn (t &Transformer) ident_compiles_to_global_symbol(name string) bool {
+	if t.current_module_global_type(name) == none {
+		if t.current_module_declares_const(name) {
+			return false
+		}
+		return t.imported_global_name(name) != none
+	}
+	if t.cur_module.len > 0 && t.cur_module != 'main' && t.cur_module != 'builtin' {
+		return true
+	}
+	return name !in t.tc.const_types
 }
 
 fn (mut t Transformer) lift_lambda_expr_for_fn_param(_id flat.NodeId, node flat.Node, param_type string) ?flat.NodeId {
@@ -10275,6 +10334,11 @@ fn (mut t Transformer) make_compiler_default_clone_value(source flat.NodeId, typ
 	if clean.len == 0 || clean.starts_with('&') {
 		return source
 	}
+	// Enum values are scalars. A different module may also define a struct with
+	// the same short name, which the struct lookup fallback could select here.
+	if !isnil(t.tc) && types.unalias_type(t.tc.parse_type(clean)) is types.Enum {
+		return source
+	}
 	if clean == 'thread' || clean.starts_with('thread ') || clean == 'chan'
 		|| clean.starts_with('chan ') {
 		return source
@@ -10778,6 +10842,9 @@ fn (t &Transformer) compiler_default_clone_type_needs_work(typ string) bool {
 fn (t &Transformer) compiler_default_clone_type_needs_work_seen(typ string, seen []string) bool {
 	clean := t.normalize_type_alias(typ).trim_space()
 	if clean.len == 0 || clean.starts_with('&') || clean in seen {
+		return false
+	}
+	if !isnil(t.tc) && types.unalias_type(t.tc.parse_type(clean)) is types.Enum {
 		return false
 	}
 	if clean == 'thread' || clean.starts_with('thread ') || clean == 'chan'

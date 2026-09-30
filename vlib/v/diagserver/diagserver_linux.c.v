@@ -11,10 +11,15 @@ import v.workers
 #include <errno.h>
 #include <signal.h>
 #include <sys/file.h>
-#include <sys/prctl.h>
 #include <sys/syscall.h>
 #include <sys/wait.h>
 #include <unistd.h>
+
+// `-os cross` compiles this file into vc/v.c for every Unix, and only `$if`
+// guards reach the C preprocessor there: prctl exists on Linux alone.
+$if linux {
+	#include <sys/prctl.h>
+}
 
 fn C.waitpid(pid int, status &int, options int) int
 fn C.dup2(oldfd int, newfd int) int
@@ -237,9 +242,11 @@ pub fn serve() Request {
 			// ends the child with the server only if the server is still there when
 			// the child asks: one that ended since the fork left the child to another
 			// parent, and the child ends at once.
-			if C.prctl(C.PR_SET_PDEATHSIG, voidptr(usize(C.SIGKILL)), 0, 0, 0) != 0 {
-				eprintln('v-diagnostics-server: a child cannot follow the server')
-				exit(2)
+			$if linux {
+				if C.prctl(C.PR_SET_PDEATHSIG, voidptr(usize(C.SIGKILL)), 0, 0, 0) != 0 {
+					eprintln('v-diagnostics-server: a child cannot follow the server')
+					exit(2)
+				}
 			}
 			if os.getppid() != server_pid {
 				C._exit(2)

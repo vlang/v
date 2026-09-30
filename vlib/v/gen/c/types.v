@@ -110,6 +110,9 @@ fn (mut g FlatGen) optional_type_name(t types.Type) string {
 	} else if clean_type is types.ResultType {
 		base_type = clean_type.base_type
 	} else {
+		if clean_type is types.FnType {
+			return g.fn_ptr_type_key(clean_type)
+		}
 		if clean_type is types.MultiReturn {
 			// The checker-level name spells fn-type parts as `fn_ptr_void_void`;
 			// the emitted typedef uses the resolved `_fn_ptr_<hash>` form.
@@ -168,7 +171,7 @@ fn (mut g FlatGen) value_c_type(t types.Type) string {
 			// `fn_ptr:void|void*` is ambiguous: it can mean `&fn ()` or
 			// `fn (voidptr)`. Resolve the function itself first, then add the
 			// pointer declarator explicitly.
-			return g.resolve_fn_ptr_type(g.tc.c_type(fn_type)) + '*'
+			return g.resolve_fn_ptr_type(g.fn_ptr_type_key(fn_type)) + '*'
 		}
 	}
 	if clean_type is types.MultiReturn {
@@ -179,6 +182,9 @@ fn (mut g FlatGen) value_c_type(t types.Type) string {
 	}
 	if clean_type is types.ArrayFixed {
 		return g.fixed_array_c_type(clean_type)
+	}
+	if clean_type is types.FnType {
+		return g.resolve_fn_ptr_type(g.fn_ptr_type_key(clean_type))
 	}
 	if clean_type is types.Channel {
 		return 'chan'
@@ -2492,7 +2498,12 @@ fn (mut g FlatGen) type_alias_decls(emit_fn_ptr_aliases bool) {
 		if g.tc.autofree_mode && !main_aliases[name] {
 			continue
 		}
-		mut ct := g.tc.c_type(g.tc.parse_type(target))
+		parsed_target := g.tc.parse_type(target)
+		mut ct := if parsed_target is types.FnType {
+			g.fn_ptr_type_key(parsed_target)
+		} else {
+			g.tc.c_type(parsed_target)
+		}
 		is_fn_ptr_alias := ct.starts_with('fn_ptr:')
 		if is_fn_ptr_alias {
 			ct = g.resolve_fn_ptr_type(ct)

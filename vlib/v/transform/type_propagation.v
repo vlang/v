@@ -2070,6 +2070,11 @@ fn (t &Transformer) checker_type_over_struct_guess(id flat.NodeId, guessed strin
 			// local with the same expression shape.
 			return none
 		}
+		if t.current_module_declares_const(node.value) {
+			// The checker still binds this name to the foreign `__global`; its
+			// cached type must not override the current module's const.
+			return none
+		}
 	}
 	mut guessed_c_type := ''
 	if isnil(t.struct_guess_cache) {

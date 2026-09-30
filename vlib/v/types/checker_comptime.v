@@ -11283,7 +11283,22 @@ fn (mut tc TypeChecker) check_sql_where_constraints(id flat.NodeId, node flat.No
 		if tokens[i + 1] != '(' || !should_check_named_type(fn_name) {
 			continue
 		}
-		ret_type := tc.sql_orm_fn_return_type(fn_name) or { continue }
+		// Only the final value is bound, so a call that is merely the receiver of
+		// `f(x).method()` / `(f(x))[0]`, or an argument of `g(f(x))`, can return any type.
+		if sql_call_is_call_arg(tokens, i + 1, where_idx) {
+			continue
+		}
+		ret_type := tc.sql_orm_source_call_return_type(tokens, i) or { continue }
+		if sql_call_result_is_receiver(tokens, i + 1) {
+			final_type := tc.sql_orm_receiver_result_type(tokens, i + 1, ret_type) or {
+				continue
+			}
+			if !sql_orm_fn_return_type_is_allowed(final_type) {
+				call_length := tc.sql_source_call_length(node, fn_name)
+				tc.record_sql_error_at(.assignment_mismatch, 'ORM: value expressions must produce only primitive types and time.Time, but this expression has type `${final_type.name()}`', id, tc.sql_expr_text_pos(node, '${fn_name}(', 0, call_length))
+			}
+			continue
+		}
 		if sql_orm_fn_return_type_is_allowed(ret_type) {
 			continue
 		}
@@ -11297,24 +11312,390 @@ fn (mut tc TypeChecker) check_sql_where_constraints(id flat.NodeId, node flat.No
 		call_length := tc.sql_source_call_length(node, fn_name)
 		tc.record_sql_error_at(.assignment_mismatch, 'ORM: function calls must return only primitive types and time.Time, but `${fn_name}` returns `${ret_type.name()}`', id, tc.sql_expr_text_pos(node, '${fn_name}(', 0, call_length))
 	}
+	tc.check_sql_where_value_types(id, node, tokens, where_idx, table_name)
 }
 
-fn sql_call_has_or_fallback(tokens []string, open_idx int) bool {
-	if open_idx < 0 || open_idx >= tokens.len || tokens[open_idx] != '(' {
-		return false
+// check_sql_where_value_types reports call-free values such as `boxes[0].holder` or a
+// local struct that a comparison would bind as an ORM primitive. Values containing calls
+// are covered by the call checks above; a relation field is compared by its primary key.
+fn (mut tc TypeChecker) check_sql_where_value_types(id flat.NodeId, node flat.Node, tokens []string, where_idx int, table_name string) {
+	for i := where_idx + 1; i + 2 < tokens.len; i++ {
+		op := tokens[i + 1]
+		if op !in ['==', '!=', '<', '>', '<=', '>=', 'like', 'ilike']
+			|| !sql_like_identifier(tokens[i]) {
+			continue
+		}
+		if field_type := tc.sql_table_field_type(table_name, tokens[i]) {
+			if sql_orm_value_type_is_aggregate(field_type) {
+				continue
+			}
+		}
+		start := i + 2
+		end := sql_where_value_end(tokens, start)
+		typ := tc.sql_orm_value_type(tokens, start, end) or { continue }
+		if !sql_orm_value_type_is_aggregate(typ) {
+			continue
+		}
+		text := tokens[start..end].join('')
+		mut pos := tc.sql_expr_text_pos(node, '${op} ${text}', op.len + 1, text.len)
+		if pos == node.pos {
+			pos = tc.sql_expr_text_pos(node, text, 0, text.len)
+		}
+		tc.record_sql_error_at(.assignment_mismatch, 'ORM: value expressions must produce only primitive types and time.Time, but this expression has type `${typ.name()}`', id, pos)
 	}
+}
+
+// sql_where_value_end returns where the comparison value starting at `start` ends.
+fn sql_where_value_end(tokens []string, start int) int {
 	mut depth := 0
-	for i in open_idx .. tokens.len {
-		if tokens[i] == '(' {
+	for j in start .. tokens.len {
+		tok := tokens[j]
+		if tok in ['(', '[', '{'] {
 			depth++
-		} else if tokens[i] == ')' {
-			depth--
+		} else if tok in [')', ']', '}'] {
 			if depth == 0 {
-				return i + 1 < tokens.len && tokens[i + 1] == 'or'
+				return j
+			}
+			depth--
+		} else if depth == 0 && (tok in ['&&', '||', 'and', 'order', 'limit', 'offset']
+			|| (tok == 'or' && (j + 1 >= tokens.len || tokens[j + 1] != '{'))) {
+			return j
+		}
+	}
+	return tokens.len
+}
+
+// sql_orm_value_type_is_aggregate reports types that can never be bound as an ORM
+// primitive: structs other than `time.Time`, collections, sum types and interfaces.
+fn sql_orm_value_type_is_aggregate(typ Type) bool {
+	mut clean := unalias_type(typ)
+	if clean is OptionType {
+		clean = unalias_type(clean.base_type)
+	}
+	if clean is Struct {
+		return clean.name() != 'time.Time'
+	}
+	return clean is Array || clean is ArrayFixed || clean is Map || clean is SumType
+		|| clean is Interface
+}
+
+// sql_call_has_or_fallback reports whether the call whose `(` is at `open_idx` has an
+// `or` fallback, also through grouping parentheses: `f() or { x }`, `(f()) or { x }`.
+fn sql_call_has_or_fallback(tokens []string, open_idx int) bool {
+	mut i := (sql_call_close_idx(tokens, open_idx) or { return false }) + 1
+	for i < tokens.len && tokens[i] == ')' {
+		i++
+	}
+	return i < tokens.len && tokens[i] == 'or'
+}
+
+// sql_call_is_call_arg reports whether the call whose `(` is at `open_idx` is nested in
+// the arguments of another call, e.g. `make_holder('x')` in `holder_name(make_holder('x'))`.
+// Grouping parentheses such as `where (a == f(x))` are skipped over.
+fn sql_call_is_call_arg(tokens []string, open_idx int, start int) bool {
+	mut depth := 0
+	for j := open_idx - 2; j > start; j-- {
+		if tokens[j] == ')' {
+			depth++
+		} else if tokens[j] == '(' {
+			if depth > 0 {
+				depth--
+			} else if sql_token_is_call_name(tokens[j - 1]) {
+				return true
 			}
 		}
 	}
 	return false
+}
+
+// sql_token_is_call_name reports whether a `(` after `tok` starts a call, not a group.
+fn sql_token_is_call_name(tok string) bool {
+	return should_check_named_type(tok)
+		&& tok !in ['where', 'and', 'or', 'in', 'is', 'like', 'ilike', 'not']
+}
+
+// sql_call_result_is_receiver reports whether the result of the call whose `(` is at
+// `open_idx` is used by a member or index access, also through grouping parentheses and
+// `or` fallbacks: `f(x).m()`, `f(x)[0]`, `(f(x)).m()`, `(opt() or { f(x) }).m()`.
+// A `)` after the call closes either such a group or an enclosing call (whose arguments
+// are skipped anyway), and a `}` closes the fallback block that the call is the value of.
+fn sql_call_result_is_receiver(tokens []string, open_idx int) bool {
+	close_idx := sql_call_close_idx(tokens, open_idx) or { return false }
+	mut i := close_idx + 1
+	for i < tokens.len {
+		if tokens[i] in [')', '}'] {
+			i++
+		} else if tokens[i] == 'or' && i + 1 < tokens.len && tokens[i + 1] == '{' {
+			i = (sql_value_close_idx(tokens, i + 1, '{', '}') or { return false }) + 1
+		} else {
+			break
+		}
+	}
+	return i < tokens.len && tokens[i] in ['.', '[']
+}
+
+fn sql_call_close_idx(tokens []string, open_idx int) ?int {
+	return sql_value_close_idx(tokens, open_idx, '(', ')')
+}
+
+fn sql_value_close_idx(tokens []string, open_idx int, open string, close string) ?int {
+	if open_idx < 0 || open_idx >= tokens.len || tokens[open_idx] != open {
+		return none
+	}
+	mut depth := 0
+	for i in open_idx .. tokens.len {
+		if tokens[i] == open {
+			depth++
+		} else if tokens[i] == close {
+			depth--
+			if depth == 0 {
+				return i
+			}
+		}
+	}
+	return none
+}
+
+// sql_value_open_idx returns the index of the `open` token matching the `close` at `close_idx`.
+fn sql_value_open_idx(tokens []string, close_idx int, open string, close string) ?int {
+	if close_idx < 0 || close_idx >= tokens.len || tokens[close_idx] != close {
+		return none
+	}
+	mut depth := 0
+	for i := close_idx; i >= 0; i-- {
+		if tokens[i] == close {
+			depth++
+		} else if tokens[i] == open {
+			depth--
+			if depth == 0 {
+				return i
+			}
+		}
+	}
+	return none
+}
+
+// sql_orm_receiver_result_type follows the value bound to SQL, rather than rejecting
+// nonprimitive intermediate receivers in `make_holders()[0].name` or `f().method()`.
+fn (tc &TypeChecker) sql_orm_receiver_result_type(tokens []string, open_idx int, ret_type Type) ?Type {
+	mut typ := ret_type
+	mut i := (sql_call_close_idx(tokens, open_idx) or { return none }) + 1
+	for i < tokens.len {
+		if tokens[i] in [')', '}'] {
+			i++
+		} else if tokens[i] == 'or' && i + 1 < tokens.len && tokens[i + 1] == '{' {
+			i = (sql_value_close_idx(tokens, i + 1, '{', '}') or { return none }) + 1
+			clean := unalias_type(typ)
+			if clean is OptionType {
+				typ = clean.base_type
+			} else if clean is ResultType {
+				typ = clean.base_type
+			}
+		} else if tokens[i] == '[' {
+			close_idx := sql_value_close_idx(tokens, i, '[', ']') or { return none }
+			typ = tc.sql_orm_index_value_type(typ) or { return none }
+			i = close_idx + 1
+		} else if tokens[i] == '.' && i + 1 < tokens.len {
+			member := tokens[i + 1]
+			if i + 2 < tokens.len && tokens[i + 2] == '(' {
+				typ = tc.sql_orm_method_call_type(typ, member) or { return none }
+				i = (sql_call_close_idx(tokens, i + 2) or { return none }) + 1
+			} else {
+				typ = tc.sql_orm_member_value_type(typ, member) or { return none }
+				i += 2
+			}
+		} else {
+			break
+		}
+	}
+	return typ
+}
+
+fn (tc &TypeChecker) sql_orm_index_value_type(typ Type) ?Type {
+	clean := unalias_and_unwrap_pointer_type(typ)
+	return match clean {
+		Array { clean.elem_type }
+		ArrayFixed { clean.elem_type }
+		Map { clean.value_type }
+		String { Type(u8_) }
+		else { (tc.index_overload_call_info(typ, false) or { return none }).return_type }
+	}
+}
+
+fn (tc &TypeChecker) sql_orm_member_value_type(typ Type, member string) ?Type {
+	clean := unalias_and_unwrap_pointer_type(typ)
+	if member in ['len', 'cap'] && (clean is Array || clean is ArrayFixed || clean is Map
+		|| clean is String) {
+		return Type(int_)
+	}
+	return tc.struct_field_type(clean.name(), member)
+}
+
+// sql_orm_method_call_type returns the result type of calling `member` on `receiver`.
+// The builtin array element accessors are declared with `voidptr` results; their value
+// is the receiver's element (`make_holders().last()` is `Holder`). Other `voidptr`/generic
+// results stay as they are: rejected as the final value, unresolvable as a receiver.
+fn (tc &TypeChecker) sql_orm_method_call_type(receiver Type, member string) ?Type {
+	// A method declared on an alias (`type Names = []string`) wins over the builtin one.
+	if unwrap_pointer(receiver) is Alias {
+		if method := tc.method_value_type(unwrap_pointer(receiver).name(), member) {
+			if method is FnType {
+				return method.return_type
+			}
+		}
+	}
+	// Builtin collection methods are declared on the raw `array`/`map`; like the ordinary
+	// call checker, specialize their results for the concrete receiver.
+	clean := unalias_and_unwrap_pointer_type(receiver)
+	if clean is Array {
+		match member {
+			'first', 'last', 'pop', 'pop_left' { return clean.elem_type }
+			'clone', 'reverse', 'sorted', 'filter' { return Type(clean) }
+			else {}
+		}
+	} else if clean is ArrayFixed {
+		if member in ['first', 'last'] {
+			return clean.elem_type
+		}
+	} else if clean is Map {
+		match member {
+			'clone' {
+				return Type(clean)
+			}
+			'keys' {
+				return Type(Array{
+					elem_type: clean.key_type
+				})
+			}
+			'values' {
+				return Type(Array{
+					elem_type: clean.value_type
+				})
+			}
+			else {}
+		}
+	}
+	return tc.sql_orm_method_return_type(receiver, member)
+}
+
+fn (tc &TypeChecker) sql_orm_method_return_type(receiver Type, member string) ?Type {
+	receiver_name := unwrap_pointer(receiver).name()
+	if method := tc.method_value_type(receiver_name, member) {
+		if method is FnType {
+			return method.return_type
+		}
+	}
+	if method := tc.builtin_method_value_type(receiver, member) {
+		if method is FnType {
+			return method.return_type
+		}
+	}
+	clean := unalias_and_unwrap_pointer_type(receiver)
+	if key := tc.concrete_method_signature_key(receiver_name, member) {
+		if method := tc.method_value_type(key.all_before_last('.'), member) {
+			if method is FnType {
+				return method.return_type
+			}
+		}
+	}
+	if field := tc.struct_field_type(clean.name(), member) {
+		if field is FnType {
+			return field.return_type
+		}
+	}
+	return none
+}
+
+// sql_orm_source_call_return_type returns the result type of the call named at `name_idx`:
+// a function (`f(`, `time.now(`), or a method on a receiver that starts at a local
+// variable, string literal or parenthesised value (`h.get(`, `boxes[0].get(`, `(h).get(`).
+// A receiver containing another call returns none; that call's own receiver chain check
+// already covers the final value.
+fn (tc &TypeChecker) sql_orm_source_call_return_type(tokens []string, name_idx int) ?Type {
+	mut start := name_idx
+	for start >= 2 && tokens[start - 1] == '.' && sql_like_identifier(tokens[start - 2]) {
+		start -= 2
+	}
+	if start == 0 || tokens[start - 1] != '.' {
+		if typ := tc.sql_orm_fn_return_type(tokens[start..name_idx + 1].join('')) {
+			return typ
+		}
+	}
+	if name_idx < 2 || tokens[name_idx - 1] != '.' {
+		return none
+	}
+	receiver_start := sql_value_receiver_start(tokens, name_idx - 2) or { return none }
+	receiver := tc.sql_orm_value_type(tokens, receiver_start, name_idx - 1) or { return none }
+	return tc.sql_orm_method_call_type(receiver, tokens[name_idx])
+}
+
+// sql_value_receiver_start returns where the member/index/call chain that ends at `end_idx`
+// begins, e.g. the `boxes` of `boxes[0].inner` or the `(` of `(h)`.
+fn sql_value_receiver_start(tokens []string, end_idx int) ?int {
+	mut j := end_idx
+	for j >= 0 {
+		tok := tokens[j]
+		if tok == ']' {
+			j = (sql_value_open_idx(tokens, j, '[', ']') or { return none }) - 1
+			continue
+		}
+		if tok == ')' {
+			open_idx := sql_value_open_idx(tokens, j, '(', ')') or { return none }
+			if open_idx == 0 || !sql_token_is_call_name(tokens[open_idx - 1]) {
+				return open_idx
+			}
+			j = open_idx - 1
+		} else if !sql_like_identifier(tok) && !(tok.len >= 2 && tok[0] in [`'`, `"`]) {
+			return none
+		}
+		if j >= 2 && tokens[j - 1] == '.' {
+			j -= 2
+			continue
+		}
+		return j
+	}
+	return none
+}
+
+// sql_orm_value_type types a call-free value chain in `tokens[start..end]` that starts at a
+// local variable, string literal or parenthesised value, followed by field and index steps.
+fn (tc &TypeChecker) sql_orm_value_type(tokens []string, start int, end int) ?Type {
+	if start >= end {
+		return none
+	}
+	first := tokens[start]
+	mut i := start + 1
+	mut typ := Type(void_)
+	if first == '(' {
+		close_idx := sql_value_close_idx(tokens, start, '(', ')') or { return none }
+		if close_idx >= end {
+			return none
+		}
+		typ = tc.sql_orm_value_type(tokens, start + 1, close_idx) or { return none }
+		i = close_idx + 1
+	} else if first.len >= 2 && first[0] in [`'`, `"`] {
+		typ = Type(string_)
+	} else if sql_like_identifier(first) && (i >= end || tokens[i] != '(') {
+		typ = tc.cur_scope.lookup(first) or { return none }
+	} else {
+		return none
+	}
+	for i < end {
+		if tokens[i] == '[' {
+			close_idx := sql_value_close_idx(tokens, i, '[', ']') or { return none }
+			if close_idx >= end {
+				return none
+			}
+			typ = tc.sql_orm_index_value_type(typ) or { return none }
+			i = close_idx + 1
+		} else if tokens[i] == '.' && i + 1 < end && (i + 2 >= end || tokens[i + 2] != '(') {
+			typ = tc.sql_orm_member_value_type(typ, tokens[i + 1]) or { return none }
+			i += 2
+		} else {
+			return none
+		}
+	}
+	return typ
 }
 
 fn (mut tc TypeChecker) check_sql_order_by_constraint(id flat.NodeId, node flat.Node, tokens []string) {
@@ -11723,9 +12104,11 @@ fn (tc &TypeChecker) dynamic_sql_field_pos(query_id flat.NodeId, field_name stri
 }
 
 fn (tc &TypeChecker) sql_struct_field_type(owner Type, field_name string) ?Type {
-	clean := unalias_type(unwrap_pointer(owner))
-	name := clean.name()
-	for candidate in [name, tc.qualify_name(name)] {
+	return tc.sql_table_field_type(unalias_type(unwrap_pointer(owner)).name(), field_name)
+}
+
+fn (tc &TypeChecker) sql_table_field_type(struct_name string, field_name string) ?Type {
+	for candidate in [struct_name, tc.qualify_name(struct_name)] {
 		for field in tc.structs[candidate] or { continue } {
 			if field.name == field_name {
 				return field.typ

@@ -4153,6 +4153,12 @@ fn (mut g FlatGen) gen_translation_unit_prefix() {
 }
 
 fn (mut g FlatGen) emit_translation_unit_include_directives() {
+	if g.target.os == 'windows' {
+		// V's encoding-neutral WinAPI bindings pass UTF-16 strings. Select the wide APIs
+		// before any preinclude can load Windows or CRT headers and lock in ANSI aliases.
+		g.writeln('#ifndef UNICODE\n#define UNICODE\n#endif')
+		g.writeln('#ifndef _UNICODE\n#define _UNICODE\n#endif')
+	}
 	mut windows_header_emitted := g.emit_preinclude_directives()
 	windows_header_emitted = g.emit_preserved_c_directives_scoped(windows_header_emitted)
 	if g.target.os == 'windows' && !windows_header_emitted {
@@ -4579,7 +4585,6 @@ mut:
 	prepared           bool
 	ptypes             []types.Type
 	shared_params      []bool
-	fn_ptr_ctypes      []string
 	return_type        types.Type = types.Type(types.void_)
 	decl_is_variadic   bool
 	first_param_is_mut bool
@@ -4631,7 +4636,6 @@ fn (mut g FlatGen) compute_collect_gen_fn_prep(node flat.Node, module_name strin
 	param_cap := if node.children_count < 64 { int(node.children_count) } else { 64 }
 	mut ptypes := []types.Type{cap: param_cap}
 	mut shared_params := []bool{}
-	mut fn_ptr_ctypes := []string{}
 	mut decl_is_variadic := false
 	mut first_param_is_mut := false
 	mut seen_param := false
@@ -4693,9 +4697,6 @@ fn (mut g FlatGen) compute_collect_gen_fn_prep(node flat.Node, module_name strin
 			seen_param = true
 		}
 		ptypes << pt
-		if pt is types.FnType {
-			fn_ptr_ctypes << g.tc.c_type(pt)
-		}
 	}
 	ptypes = g.fn_param_types_with_implicit_veb_ctx(node, ptypes)
 	if shared_params.len > 0 {
@@ -4706,7 +4707,6 @@ fn (mut g FlatGen) compute_collect_gen_fn_prep(node flat.Node, module_name strin
 		prepared:           true
 		ptypes:             ptypes
 		shared_params:      shared_params
-		fn_ptr_ctypes:      fn_ptr_ctypes
 		return_type:        return_type
 		decl_is_variadic:   decl_is_variadic
 		first_param_is_mut: first_param_is_mut
@@ -4821,9 +4821,8 @@ fn (mut g FlatGen) collect_gen_info(no_parallel bool) {
 			first_param_is_mut := prep.first_param_is_mut
 			g.tc.cur_file = cur_file
 			g.tc.cur_module = cur_module
-			for ct in prep.fn_ptr_ctypes {
-				g.resolve_fn_ptr_type(ct)
-			}
+			// Register callback typedefs from the completed declaration tables in
+			// preseed_fn_signature_fn_ptr_types, after enum backing types are known.
 			if profile {
 				ci_ptypes_ns += time.sys_mono_now() - ci_p0
 			}
@@ -13847,6 +13846,9 @@ fn (mut g FlatGen) type_name_c_type(type_name string) string {
 		return g.resolve_fn_ptr_type(type_name)
 	}
 	t := g.tc.parse_type(type_name)
+	if _ := fn_type_from(t) {
+		return g.value_c_type(t)
+	}
 	ct := if t is types.OptionType || t is types.ResultType {
 		g.optional_type_name(t)
 	} else if t is types.Enum {
@@ -16506,6 +16508,17 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 				g.enum_selector_base_name(base.value) or { '' }
 			} else {
 				''
+			}
+			if base.kind == .ident && !base_is_local {
+				expected := cgen_unalias_type(g.expected_expr_type)
+				if expected is types.Enum
+					&& base.value in [expected.name.all_after_last('.'),
+						g.expected_expr_type.name().all_after_last('.')] {
+					enum_selector_qbase = expected.name
+				} else if g.expected_enum.len > 0
+					&& g.expected_enum.all_after_last('.') == base.value {
+					enum_selector_qbase = g.expected_enum
+				}
 			}
 			// Fully qualified enum value: `mod.Enum.field` — the base is itself a
 			// selector over a module ident, not a plain ident. Enum type names are
@@ -21951,6 +21964,16 @@ fn (mut g FlatGen) collect_fixed_array_typedefs_needed() map[string]FixedArrayTy
 			}
 		}
 	}
+	for name, target in g.tc.type_aliases {
+		if !target.contains('[') {
+			continue
+		}
+		g.tc.cur_module = module_from_qualified_name(name)
+		alias_type := g.tc.parse_type(target)
+		if fixed_array_type_first_seen(alias_type, g.tc.cur_module, mut type_seen) {
+			g.collect_fixed_array_typedef(alias_type, g.tc.cur_module, mut needed)
+		}
+	}
 	for name, fields in g.tc.structs {
 		g.tc.cur_module = g.fixed_array_typedef_type_module(name, old_module)
 		for field in fields {
@@ -22161,6 +22184,10 @@ fn (mut g FlatGen) populate_fixed_array_ret_wrappers() {
 		for param_type in param_types {
 			g.collect_fn_type_fixed_array_return_wrappers(param_type)
 		}
+	}
+	for name, target in g.tc.type_aliases {
+		g.tc.cur_module = module_from_qualified_name(name)
+		g.collect_fn_type_fixed_array_return_wrappers(g.tc.parse_type(target))
 	}
 	for name, fields in g.tc.structs {
 		g.tc.cur_module = g.fixed_array_typedef_type_module(name, old_module)
