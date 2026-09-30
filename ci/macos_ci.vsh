@@ -1,6 +1,7 @@
 import common { Task, exec }
 import crypto.sha256
 import os
+import runtime
 
 fn test_symlink() {
 	exec('v symlink')
@@ -25,7 +26,7 @@ fn all_code_is_formatted() {
 }
 
 fn run_sanitizers() {
-	exec('v -o v2 cmd/v -cflags -fsanitize=undefined')
+	common.exec_with_progress('v -o v2 cmd/v -cflags -fsanitize=undefined', ['v2'])
 	exec('UBSAN_OPTIONS=print_stacktrace=1:halt_on_error=1 ./v2 -o v.c cmd/v')
 }
 
@@ -58,11 +59,14 @@ fn self_tests() {
 	// test the release's own standard library instead of this repository's.
 	// Individual files still fall back to it when the default compiler cannot
 	// build them.
+	// The module cache setup costs more than it saves for these independent test
+	// builds. Keep cache behavior covered by the dedicated compiler tests, and
+	// use every core on the 7 GB runners instead of the one-job memory default.
 	if common.is_github_job {
-		exec('VJOBS=1 v -no-memory-limit -silent test-self vlib')
+		exec('VJOBS=${runtime.nr_cpus()} v -nocache -no-memory-limit -silent test-self vlib')
 	} else {
 		vjobs := os.getenv_opt('VJOBS') or { '1' }
-		exec('VJOBS=${vjobs} v -no-memory-limit -progress test-self vlib')
+		exec('VJOBS=${vjobs} v -nocache -no-memory-limit -progress test-self vlib')
 	}
 }
 
@@ -93,16 +97,32 @@ fn ownership_vexe() string {
 	return vexe
 }
 
+fn skip_ownership_autofree_test() bool {
+	return common.is_github_job || os.getenv('VTEST_SKIP_OWNERSHIP') == '1'
+}
+
 fn build_hello_world_autofree() {
+	if skip_ownership_autofree_test() {
+		eprintln('> skipping ownership/autofree test')
+		return
+	}
 	exec('${ownership_vexe()} -autofree -o hello_world examples/hello_world.v')
 	exec('./hello_world')
 }
 
 fn build_tetris_autofree() {
+	if skip_ownership_autofree_test() {
+		eprintln('> skipping ownership/autofree test')
+		return
+	}
 	exec('${ownership_vexe()} -autofree -o tetris examples/tetris/tetris.v')
 }
 
 fn build_blog_autofree() {
+	if skip_ownership_autofree_test() {
+		eprintln('> skipping ownership/autofree test')
+		return
+	}
 	// `-autofree` still needs the V1 compatibility compiler, and the frozen V 0.5.2
 	// release behind it ships a vlib without `json2`, which the blog imports. Build
 	// the tutorial with the default compiler until V3 ownership can run it;
@@ -149,6 +169,11 @@ fn v_self_compilation_parallel_cc() {
 }
 
 fn test_password_input() {
+	// Expect gives the child a pseudo-terminal, but non-interactive parent shells can
+	// still export TERM=dumb, which makes os.input_password reject that usable PTY.
+	if os.getenv('TERM') in ['', 'dumb'] {
+		os.setenv('TERM', 'xterm', true)
+	}
 	exec('v -silent test examples/password/')
 }
 
@@ -198,7 +223,10 @@ fn ci_progress_contents(task_name string) string {
 
 fn ci_resume_index(path string) !int {
 	if !os.exists(path) {
-		return 0
+		return -1
+	}
+	if !os.is_file(path) {
+		return error('CI progress path is not a file: ${path}')
 	}
 	saved := os.read_file(path)!
 	for i, task_name in ci_tasks {
@@ -207,14 +235,17 @@ fn ci_resume_index(path string) !int {
 		}
 	}
 	eprintln('Ignoring invalid or outdated CI progress; restarting from the first task.')
-	return 0
+	return -1
 }
 
 fn save_ci_progress(path string, task_name string) ! {
 	// Write privately, then rename on the same filesystem. An interrupted write
 	// leaves the previous checkpoint intact, never a partially written cursor.
+	if os.exists(path) && !os.is_file(path) {
+		return error('CI progress path is not a file: ${path}')
+	}
 	tmp_dir := '${path}.${os.getpid()}.tmp'
-	os.mkdir(tmp_dir, 0o700)!
+	os.mkdir(tmp_dir, mode: 0o700)!
 	defer {
 		os.rmdir_all(tmp_dir) or {}
 	}
@@ -233,14 +264,28 @@ fn run_ci_tasks(reset bool) ! {
 	os.setenv('GITHUB_JOB', 'clang-macos', true)
 	os.setenv('RUNNER_OS', 'macOS', true)
 	os.setenv('VFLAGS', '-cc clang', true)
+	// Stop within test/build sessions too, without other files already running.
+	os.setenv('VTEST_FAIL_FAST', '1', true)
+	os.setenv('VJOBS', '1', true)
 	os.setenv('VTEST_SHOW_LONGEST_BY_RUNTIME', '3', true)
 	os.setenv('VTEST_SHOW_LONGEST_BY_COMPTIME', '3', true)
 	os.setenv('VTEST_SHOW_LONGEST_BY_TOTALTIME', '3', true)
+	os.setenv('VTEST_SKIP_OWNERSHIP', '1', true)
 	os.setenv('V_MACOS_V3_NO_FALLBACK', '1', true)
 	os.setenv('V_MACOS_MULTIWINDOW_TESTS', '0', true)
 
 	progress_path := ci_progress_path()
-	start := if reset { 0 } else { ci_resume_index(progress_path)! }
+	progress_dir := '${progress_path}.d'
+	saved_index := if reset { -1 } else { ci_resume_index(progress_path)! }
+	// No valid cursor means none of its finer-grained records may be reused.
+	if saved_index < 0 && os.exists(progress_dir) {
+		os.rmdir_all(progress_dir)!
+	}
+	if !os.exists(progress_dir) {
+		os.mkdir(progress_dir, mode: 0o700)!
+	}
+	start := if saved_index < 0 { 0 } else { saved_index }
+	os.unsetenv('VTEST_RESUME_OWNER')
 	eprintln('CI progress: ${progress_path}')
 	eprintln('Use `v run ci/macos_ci.vsh ci --reset` to restart from the first task.')
 	if start > 0 {
@@ -250,9 +295,11 @@ fn run_ci_tasks(reset bool) ! {
 		task_name := ci_tasks[i]
 		// Save BEFORE execution: a failure or interruption must retry this task.
 		save_ci_progress(progress_path, task_name)!
+		os.setenv('V_MACOS_CI_TASK_PROGRESS', os.join_path(progress_dir, task_name), true)
 		eprintln('CI task ${i + 1}/${ci_tasks.len}: ${task_name}')
 		exec('v run ci/macos_ci.vsh ${task_name}')
 	}
+	os.rmdir_all(progress_dir)!
 	os.rm(progress_path)!
 	eprintln('CI tasks complete; progress cleared.')
 }

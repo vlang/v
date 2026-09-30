@@ -19,13 +19,13 @@ fn mmap_file(path string) MemoryMappedFile {
 	mut mf := MemoryMappedFile{
 		file: os.open_file(path, 'r', 0) or { panic('fail') }
 		size: usize(os.file_size(path))
-		data: C.NULL
+		data: unsafe { nil }
 	}
 
 	// `mmap` returns an untyped mapping pointer; reinterpret it as `&u8` to read the file
 	// bytes. The mapping is owned by this `MemoryMappedFile` and stays valid until `unmap`
 	// calls `munmap`, so the pointer is live for as long as the struct is used.
-	mf.data = unsafe { &u8(C.mmap(C.NULL, mf.size, C.PROT_READ, C.MAP_SHARED, mf.file.fd, 0)) }
+	mf.data = unsafe { &u8(C.mmap(nil, mf.size, C.PROT_READ, C.MAP_SHARED, mf.file.fd, 0)) }
 	return mf
 }
 

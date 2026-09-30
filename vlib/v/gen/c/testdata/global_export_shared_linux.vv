@@ -1,0 +1,7 @@
+// vtest vflags: -enable-globals -shared -os linux
+
+@[export]
+__global global_exported = 'barqux'
+
+@[export]
+__global counter = 7

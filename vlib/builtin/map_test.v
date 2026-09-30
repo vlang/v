@@ -394,6 +394,18 @@ fn test_map_assign() {
 		's': u16(5)
 		't': 3
 	}
+	assert a == {
+		'x': 12.4
+		'y': 3.0
+	}
+	assert b == {
+		'u': -13
+		'v': 12
+	}
+	assert c == {
+		's': u16(5)
+		't': u16(3)
+	}
 	_ := Mstruct1{{
 		'p': 12
 	}}

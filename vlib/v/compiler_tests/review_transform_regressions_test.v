@@ -2690,6 +2690,60 @@ fn main() {
 	assert out == '1250025000'
 }
 
+fn test_scope_owned_pointer_reassignment_keeps_field_closure_cleanup() {
+	v3_bin := build_v3_review_transform()
+	source := '@[heap]
+struct Holder {
+mut:
+	callback fn () int = unsafe { nil }
+}
+
+fn main() {
+	mut total := 0
+	for i in 0 .. 3 {
+		mut holder := &Holder{}
+		holder = holder
+		other := &Holder{}
+		holder = other
+		holder.callback = fn [i] () int { return i }
+		total += holder.callback()
+	}
+	println(total)
+}
+'
+	c_source := gen_c_from_source(v3_bin, 'fresh_pointer_reassignment_closure_c', source)
+	assert c_source.contains('closure__closure_try_destroy(__field_closure_'), c_source
+	assert run_good(v3_bin, 'fresh_pointer_reassignment_closure', source) == '3'
+}
+
+fn test_scope_owned_indexed_pointer_field_keeps_closure_cleanup() {
+	v3_bin := build_v3_review_transform()
+	source := '@[heap]
+struct Holder {
+mut:
+	callback fn () int = unsafe { nil }
+}
+
+struct Wrapper {
+mut:
+	holders []&Holder
+}
+
+fn main() {
+	mut total := 0
+	for i in 0 .. 3 {
+		mut wrapper := Wrapper{ holders: [&Holder{}] }
+		wrapper.holders[0].callback = fn [i] () int { return i }
+		total += wrapper.holders[0].callback()
+	}
+	println(total)
+}
+'
+	c_source := gen_c_from_source(v3_bin, 'indexed_pointer_field_closure_c', source)
+	assert c_source.contains('closure__closure_try_destroy(__field_closure_'), c_source
+	assert run_good(v3_bin, 'indexed_pointer_field_closure', source) == '3'
+}
+
 fn test_reassigned_non_escaping_bound_method_closures_are_reclaimed() {
 	v3_bin := build_v3_review_transform()
 	source := 'struct Value {
@@ -12158,6 +12212,69 @@ fn main() {
 '
 	}, 'main.v')
 	assert out == '7\n99'
+}
+
+fn test_params_struct_default_prefers_declaring_module_const_over_homonymous_global() {
+	v3_bin := build_v3_review_transform()
+	out := run_good_project(v3_bin, 'params_default_const_global_collision', {
+		'v.mod':               "Module { name: 'params_default_const_global_collision' }\n"
+		'api/api.v':           'module api
+
+pub interface Logger {
+	value() int
+}
+
+pub struct Impl {
+pub:
+	n int
+}
+
+pub fn (logger &Impl) value() int {
+	return logger.n
+}
+'
+		'other/other.v':       'module other
+
+import api
+
+__global default_logger &api.Logger
+
+fn init() {
+	default_logger = &api.Impl{n: 99}
+}
+
+pub fn current() int {
+	return default_logger.value()
+}
+'
+		'consumer/consumer.v': 'module consumer
+
+import api
+
+pub const default_logger = &api.Impl{n: 7}
+
+@[params]
+pub struct Opt {
+pub:
+	logger &api.Logger = default_logger
+}
+
+pub fn current(opt Opt) int {
+	return opt.logger.value()
+}
+'
+		'main.v':              'module main
+
+import consumer
+import other
+
+fn main() {
+	println(other.current())
+	println(consumer.current())
+}
+'
+	}, 'main.v')
+	assert out == '99\n7'
 }
 
 fn test_array_accessors_are_addressable_append_targets() {

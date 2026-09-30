@@ -21,7 +21,7 @@ fn run_vsh_script(name string, source string) os.Result {
 	script := os.join_path(root, '${name}.vsh')
 	os.write_file(script, source) or { panic(err) }
 	// `-silent` keeps the driver's benchmark report out of the script's output.
-	return os.execute('${v3_bin} -silent ${script}')
+	return os.execute('${v3_bin} -gc none -silent ${script}')
 }
 
 // A `.vsh` script gets `import os` implicitly, and every `os` function, generic
@@ -62,15 +62,37 @@ fn test_vsh_script_can_import_local_module_without_explicit_main() {
 pub fn message() string {
 	return 'from helper'
 }
+
+pub fn ls(path string) ![]string {
+	return [path]
+}
+
+pub fn free(values []int) ![]string {
+	return values.map(it.str())
+}
 ") or { panic(err) }
 	script := os.join_path(root, 'import_module.vsh')
-	os.write_file(script, 'import helper
+	os.write_file(script, 'import helper { ls, free }
 
 println(helper.message())
+println(ls("custom")!.filter(it.len > 0).join(","))
+println(free([2, 3])!.filter(it == "3"))
 ') or { panic(err) }
-	result := os.execute('${v3_bin} -silent ${script}')
+	result := os.execute('${v3_bin} -gc none -silent ${script}')
 	assert result.exit_code == 0, result.output
-	assert result.output.trim_space() == 'from helper', result.output
+	assert result.output.split_into_lines() == ['from helper', 'custom', "['3']"], result.output
+	shadow_script := os.join_path(root, 'shadow_import.vsh')
+	os.write_file(shadow_script, 'import helper { ls }
+
+fn ls(path string) ![]string {
+	return ["local " + path]
+}
+
+println(ls("custom")!.join(","))
+') or { panic(err) }
+	shadow_result := os.execute('${v3_bin} -gc none -silent ${shadow_script}')
+	assert shadow_result.exit_code == 0, shadow_result.output
+	assert shadow_result.output.trim_space() == 'local custom', shadow_result.output
 }
 
 // Script mode is a last resort: a declaration in the script itself keeps its
@@ -85,4 +107,15 @@ println(os.exists(temp_dir()))
 ")
 	assert result.exit_code == 0, result.output
 	assert result.output.split_into_lines() == ['local exists', 'true'], result.output
+}
+
+fn test_vsh_script_closure_captures_preceding_top_level_local() {
+	result := run_vsh_script('closure_capture', "message := 'captured'
+callback := fn [message] () {
+	println(message)
+}
+callback()
+")
+	assert result.exit_code == 0, result.output
+	assert result.output.trim_space() == 'captured', result.output
 }

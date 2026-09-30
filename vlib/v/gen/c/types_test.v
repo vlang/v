@@ -60,7 +60,7 @@ fn test_precompute_thread_type_usage_scans_pthread_backed_fields() {
 }
 
 fn test_optional_selection_handoff_preserves_signature_context_and_types() {
-	$if !windows && !v3_no_parallel ? {
+	$if !v3_no_parallel ? {
 		mut ast := flat.FlatAst.new()
 		fn_id := ast.add_node(flat.Node{ kind: .fn_decl, value: 'load', typ: '?Data' })
 		pair_id := ast.add_node(flat.Node{ kind: .fn_decl, value: 'pair', typ: '(int, string)' })
@@ -90,9 +90,9 @@ fn test_optional_selection_handoff_preserves_signature_context_and_types() {
 		mut worker := serial.new_parallel_worker(0)
 		serial.collect_declaration_signature_types()
 		args := OptionalSelectionArgs{ worker: voidptr(worker), items: chan []FlatFnGenItem{cap: 1} }
-		thread := spawn optional_support_selection_thread(voidptr(&args))
+		support_thread := spawn optional_support_selection_thread(voidptr(&args))
 		args.items <- items.clone()
-		thread.wait()
+		support_thread.wait()
 		assert worker.needed_optional_types == serial.needed_optional_types
 		assert 'Optional_payload__Data' in worker.needed_optional_types
 		assert worker.optional_types_ready
@@ -136,10 +136,15 @@ fn test_receiver_param_method_scan_preserves_suffix_and_tie_breaking() {
 fn test_field_type_cache_preserves_collisions_and_module_context() {
 	mut ast := flat.FlatAst.new()
 	mut tc := types.TypeChecker.new(&ast)
-	tc.structs['one.Box'] = [
+	mut fields := [
 		types.StructField{ name: 'abba', typ: types.Type(types.int_) },
 		types.StructField{ name: 'acca', typ: types.Type(types.string_) },
 	]
+	for i in 0 .. 64 {
+		fields << types.StructField{ name: 'field_${i}', typ: types.Type(types.int_) }
+	}
+	fields << types.StructField{ name: 'abba', typ: types.Type(types.string_) }
+	tc.structs['one.Box'] = fields
 	tc.structs['two.Box'] = [
 		types.StructField{ name: 'abba', typ: types.Type(types.bool_) },
 	]
@@ -153,39 +158,41 @@ fn test_field_type_cache_preserves_collisions_and_module_context() {
 		assert g.struct_field_type('Box'.clone(), 'abba'.clone())? == types.Type(types.int_)
 		assert g.struct_field_type('Box', 'acca')? == types.Type(types.string_)
 		assert g.struct_field_type('Box', 'adda') == none
+		assert g.direct_struct_field_exists('Box', 'acca')
+		assert !g.direct_struct_field_exists('Box', 'adda')
 		tc.cur_module = 'two'
 		assert g.struct_field_type('Box', 'abba')? == types.Type(types.bool_)
 		assert g.struct_field_type('Box', 'acca') == none
+		assert g.direct_struct_field_exists('Box', 'abba')
+		assert !g.direct_struct_field_exists('Box', 'acca')
 	}
 }
 
 fn test_optional_scan_lanes_preserve_declaration_and_unresolved_call_types() {
-	$if !windows {
-		mut ast := flat.FlatAst.new()
-		ast.add_node(flat.Node{ kind: .call, typ: '?string' })
-		ast.add_node(flat.Node{ kind: .call, typ: '?([]' })
-		mut tc := types.TypeChecker.new(&ast)
-		tc.fn_ret_types['resolved'] = types.Type(types.OptionType{ base_type: types.Type(types.int_) })
-		mut serial := FlatGen.new()
-		serial.a = &ast
-		serial.tc = &tc
-		serial.collect_optional_typedefs()
-		mut split := FlatGen.new()
-		split.a = &ast
-		split.tc = &tc
-		split.scope_parallel_workers = true
-		mut declarations := split.new_parallel_worker(0)
-		mut calls := split.new_parallel_worker(1)
-		optional_support_thread(voidptr(declarations))
-		unresolved_call_optional_thread(voidptr(calls))
-		split.publish_optional_support(mut declarations)
-		split.publish_unresolved_call_optional_types(mut calls)
-		assert split.needed_optional_types == serial.needed_optional_types
-		assert split.needed_optional_types.len == 2
-		assert split.optional_types_ready
-		assert split.decl_types_ready
-		assert split.multi_return_types_ready
-	}
+	mut ast := flat.FlatAst.new()
+	ast.add_node(flat.Node{ kind: .call, typ: '?string' })
+	ast.add_node(flat.Node{ kind: .call, typ: '?([]' })
+	mut tc := types.TypeChecker.new(&ast)
+	tc.fn_ret_types['resolved'] = types.Type(types.OptionType{ base_type: types.Type(types.int_) })
+	mut serial := FlatGen.new()
+	serial.a = &ast
+	serial.tc = &tc
+	serial.collect_optional_typedefs()
+	mut split := FlatGen.new()
+	split.a = &ast
+	split.tc = &tc
+	split.scope_parallel_workers = true
+	mut declarations := split.new_parallel_worker(0)
+	mut calls := split.new_parallel_worker(1)
+	optional_support_thread(voidptr(declarations))
+	unresolved_call_optional_thread(voidptr(calls))
+	split.publish_optional_support(mut declarations)
+	split.publish_unresolved_call_optional_types(mut calls)
+	assert split.needed_optional_types == serial.needed_optional_types
+	assert split.needed_optional_types.len == 2
+	assert split.optional_types_ready
+	assert split.decl_types_ready
+	assert split.multi_return_types_ready
 }
 
 fn test_void_pointer_predicate_preserves_alias_and_named_type_rules() {
@@ -244,29 +251,29 @@ fn main() {}
 	assert !c_source.contains('Unused__autostr'), c_source
 }
 
-fn test_json_helper_scan_requires_legacy_json_module() {
+// cgen names `<Enum>__autostr` helpers from checked `types.Enum` names, which already
+// identify the declaring module. Reading them through the current file's imports would
+// retarget them: with `import a as real_a` and `import b as a`, a value returned by
+// `real_a.make()` has type `a.Kind`, and it must not become `b.Kind`.
+fn test_enum_autostr_c_name_ignores_current_file_imports() {
 	mut ast := flat.FlatAst.new()
-	ast.nodes = [flat.Node{ kind: .call, children_count: 2 },
-		flat.Node{ kind: .ident, value: 'json.encode' },
-		flat.Node{ kind: .ident, value: 'pointer', typ: '&int' }]
-	ast.children = [flat.NodeId(1), flat.NodeId(2)]
 	mut tc := types.TypeChecker.new(&ast)
-	tc.resolved_call_names = [types.cached_name('json.encode'), unsafe { nil }, unsafe { nil }]
-	tc.resolved_call_set = [true, false, false]
-	tc.expr_type_values = [types.Type(types.void_), types.Type(types.void_),
-		types.Type(types.Pointer{ base_type: types.Type(types.int_) })]
-	tc.expr_type_set = [false, false, true]
-	tc.file_modules['json2.v'] = 'json2'
+	tc.enum_names['Kind'] = true
+	tc.enum_names['a.Kind'] = true
+	tc.enum_names['b.Kind'] = true
+	tc.cur_file = '/tmp/main.v'
+	tc.cur_module = 'main'
+	tc.file_imports['/tmp/main.v\nreal_a'] = 'a'
+	tc.file_imports['/tmp/main.v\na'] = 'b'
+	tc.file_selective_imports['/tmp/main.v\nKind'] = ['b.Kind']
 	mut g := FlatGen.new()
 	g.a = &ast
 	g.tc = &tc
-	assert !g.has_legacy_json_module()
-	g.preintern_json_encode_strings()
-	assert g.str_lits.len == 0
-	tc.file_modules['json_primitives.c.v'] = 'json'
-	assert g.has_legacy_json_module()
-	g.preintern_json_encode_strings()
-	assert 'null' in g.str_lits
+
+	assert g.enum_autostr_c_name('a.Kind') == 'a__Kind'
+	assert g.enum_autostr_c_name('b.Kind') == 'b__Kind'
+	assert g.enum_autostr_c_name('Kind') == 'Kind'
+	assert g.enum_autostr_c_name('main.Kind') == 'Kind'
 }
 
 fn test_optional_typedef_collection_ignores_incomplete_call_type_text() {
@@ -285,47 +292,6 @@ fn test_optional_typedef_collection_ignores_incomplete_call_type_text() {
 	g.collect_optional_typedefs()
 	assert 'Optional_string' in g.needed_optional_types
 	assert g.needed_optional_types.len == 1
-}
-
-fn test_json_pointer_sum_variants_use_direct_owned_payloads() {
-	mut ast := flat.FlatAst.new()
-	mut tc := types.TypeChecker.new(&ast)
-	tc.sum_types['main.Payload'] = ['&main.Node', 'string']
-	tc.structs['main.Node'] = [
-		types.StructField{
-			name: 'name'
-			typ:  types.Type(types.String{})
-		},
-	]
-	mut encode_gen := FlatGen.new()
-	encode_gen.a = &ast
-	encode_gen.tc = &tc
-	payload_type := types.Type(types.SumType{
-		name: 'main.Payload'
-	})
-	pointer_field := encode_gen.sum_field_name('&main.Node')
-	encoded := encode_gen.json_encode_value_c_expr_inner(payload_type, 'value', []string{}) or {
-		assert false, 'pointer sum encoder was not generated'
-		return
-	}
-	assert encoded.contains('(value).${pointer_field}'), encoded
-	assert !encoded.contains('(*(value).${pointer_field})'), encoded
-	equal := encode_gen.json_encode_equal_c_expr(payload_type, 'left', 'right', []string{}) or {
-		assert false, 'pointer sum equality was not generated'
-		return
-	}
-	assert equal.contains('(left).${pointer_field}'), equal
-	assert equal.contains('(right).${pointer_field}'), equal
-	assert !equal.contains('(*(left).${pointer_field})'), equal
-	assert !equal.contains('(*(right).${pointer_field})'), equal
-
-	mut decode_gen := FlatGen.new()
-	decode_gen.a = &ast
-	decode_gen.tc = &tc
-	decode_gen.gen_json_decode_sum_variant_expr('item', 'main.Payload', '&main.Node')
-	decoded := decode_gen.sb.str()
-	assert decoded.contains('v3_json_decode_ptr_'), decoded
-	assert decoded.contains('._pointer_variant_is_owned = true'), decoded
 }
 
 fn test_optional_payload_qualifies_concrete_generic_struct() {
@@ -364,6 +330,20 @@ fn test_optional_payload_qualifies_concrete_generic_struct() {
 	})
 	assert g.concrete_optional_type_name(result_type) == 'Optional_json2__StructKeyDecodeResult_TestEchoArgs'
 	assert g.needed_optional_types['Optional_json2__StructKeyDecodeResult_TestEchoArgs'] == 'json2__StructKeyDecodeResult_TestEchoArgs'
+}
+
+fn test_concrete_optional_enum_uses_common_int_abi() {
+	mut ast := &flat.FlatAst{}
+	mut tc := types.TypeChecker.new(ast)
+	mut g := FlatGen.new()
+	g.a = ast
+	g.tc = &tc
+	option_enum := types.Type(types.OptionType{
+		base_type: types.Type(types.Enum{ name: 'State' })
+	})
+	assert g.optional_type_name(option_enum) == 'Optional'
+	assert g.concrete_optional_type_name(option_enum) == 'Optional'
+	assert 'Optional_int' !in g.needed_optional_types
 }
 
 fn test_value_type_qualifies_concrete_generic_struct() {
@@ -657,6 +637,20 @@ fn test_optional_array_typedef_ignores_nominal_name_collisions() {
 	assert g.stale_ambiguous_qualified_struct_c_type('Array')
 	assert g.emit_optional_typedef('Optional_Array', 'Array')
 	assert g.sb.str().contains('Array value; } Optional_Array;')
+}
+
+fn test_optional_builtin_typedef_ignores_nominal_name_collisions() {
+	mut ast := &flat.FlatAst{}
+	mut tc := types.TypeChecker.new(ast)
+	tc.structs['first.u64'] = []types.StructField{}
+	tc.structs['second.u64'] = []types.StructField{}
+	mut g := FlatGen.new()
+	g.a = ast
+	g.tc = &tc
+
+	assert g.stale_ambiguous_qualified_struct_c_type('u64')
+	assert g.emit_optional_typedef('Optional_u64', 'u64')
+	assert g.sb.str().contains('u64 value; } Optional_u64;')
 }
 
 fn test_optional_sum_typedef_ignores_struct_name_collisions() {

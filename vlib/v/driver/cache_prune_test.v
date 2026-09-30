@@ -3,6 +3,48 @@ module driver
 import os
 import v.pref
 
+fn test_module_cache_compiler_identity_changes_when_executable_changes() {
+	root := os.join_path(os.vtmp_dir(), 'v3_cache_vexe_identity_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root)!
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	vexe := os.join_path(root, 'v')
+	os.write_file(vexe, 'old compiler')!
+	old_identity := v3_cache_compiler_executable_identity(vexe)
+	os.write_file(vexe, 'new compiler executable')!
+	new_identity := v3_cache_compiler_executable_identity(vexe)
+	assert old_identity != new_identity
+}
+
+// Without usable file metadata the compiler identity must fall back to the
+// executable contents.
+fn test_module_cache_compiler_identity_changes_without_file_metadata() {
+	root := os.join_path(os.vtmp_dir(), 'v3_cache_vexe_no_metadata_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root)!
+	name := 'V3_TEST_NO_FILE_METADATA'
+	was_set := name in os.environ()
+	old_value := os.getenv(name)
+	defer {
+		if was_set {
+			os.setenv(name, old_value, true)
+		} else {
+			os.unsetenv(name)
+		}
+		os.rmdir_all(root) or {}
+	}
+	vexe := os.join_path(root, 'v')
+	os.write_file(vexe, 'old compiler')!
+	os.setenv(name, vexe, true)
+	old_identity := v3_cache_compiler_executable_identity(vexe)
+	// Same size, different bytes.
+	os.write_file(vexe, 'new compiler')!
+	new_identity := v3_cache_compiler_executable_identity(vexe)
+	assert old_identity != new_identity
+}
+
 fn test_large_cold_cache_restarts_without_cache() {
 	limit := scoped_large_cold_cache_node_limit
 	assert should_restart_v3_large_cold_cache(true, true, limit, false, false, false)
@@ -88,6 +130,14 @@ fn test_cached_object_wrapper_signature_ignores_non_wrapper_prefix_changes() {
 	assert v3_cached_object_wrapper_compile_signature(base, prepared_source) != v3_cached_object_wrapper_compile_signature(base,
 		changed_source)
 	assert v3_cached_object_wrapper_compile_signature(base, 'int declaration;') == base
+}
+
+fn test_cached_object_signature_keeps_panic_frame_objects_apart() {
+	base := 'base signature'
+	plain := 'int declaration;\n/* V3CACHE_BODY_BEGIN */\n'
+	with_frames := 'typedef struct v_unwind_frame {\n\tstruct v_unwind_frame* prev;\n} v_unwind_frame;\n/* V3CACHE_BODY_BEGIN */\n'
+	assert v3_cached_object_wrapper_compile_signature(base, plain) == base
+	assert v3_cached_object_wrapper_compile_signature(base, with_frames) != base
 }
 
 fn test_cache_function_reference_counts_scans_source_once() {

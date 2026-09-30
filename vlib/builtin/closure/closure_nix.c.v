@@ -76,6 +76,12 @@ fn closure_mtx_lock_init_platform() {
 
 @[inline]
 fn closure_mtx_lock_platform() {
+	$if race ? {
+		// Like Go's runtime, the closure allocator is invisible to the race detector.
+		// Otherwise its mutex would order the threads that create and destroy closures,
+		// hiding races between them, and reused closure slots would look like races.
+		racedisable()
+	}
 	$if !freestanding || vinix {
 		C.pthread_mutex_lock(closure_mtx_ptr_platform())
 	}
@@ -85,6 +91,9 @@ fn closure_mtx_lock_platform() {
 fn closure_mtx_unlock_platform() {
 	$if !freestanding || vinix {
 		C.pthread_mutex_unlock(closure_mtx_ptr_platform())
+	}
+	$if race ? {
+		raceenable()
 	}
 }
 

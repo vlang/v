@@ -381,6 +381,15 @@ $if linux || bsd || windows {
 		return stopped.load()
 	}
 
+	// mark_starting marks the server live before its first worker starts. Workers
+	// serve requests as soon as they run, so a shutdown can arrive before run()
+	// reaches mark_running; it must not mistake that server for a stopped one and
+	// return without stopping it.
+	fn (mut s Server) mark_starting() {
+		mut stopped := s.stopped
+		stopped.store(false)
+	}
+
 	fn (mut s Server) mark_running() {
 		mut running := s.running
 		running.store(true)

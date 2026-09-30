@@ -68,3 +68,47 @@ fn test_prealloc_scope_recycling_is_thread_local() {
 		}
 	}
 }
+
+fn test_prealloc_refills_preserve_aligned_allocations() {
+	$if prealloc {
+		scope := unsafe { prealloc_scope_begin() }
+		mut allocations := []&u8{cap: 64}
+		mut sizes := []int{cap: 64}
+		for i in 0 .. 64 {
+			size := 16_385 + i * 19
+			alignment := isize(16 << (i % 5))
+			source := []u8{len: size, init: u8(i)}
+			ptr := unsafe { &u8(memdup_align(source.data, isize(size), alignment)) }
+			assert usize(ptr) % usize(alignment) == 0
+			assert unsafe { prealloc_scope_owns(scope, ptr) }
+			allocations << ptr
+			sizes << size
+		}
+		// Later refills must preserve every earlier block and its contents.
+		for i, ptr in allocations {
+			assert unsafe { ptr[0] } == u8(i)
+			assert unsafe { ptr[sizes[i] - 1] } == u8(i)
+		}
+		unsafe { prealloc_scope_end(scope) }
+	}
+}
+
+fn test_prealloc_refills_preserve_allocation_statistics() {
+	$if prealloc_stats ? {
+		$if prealloc {
+			scope := unsafe { prealloc_scope_begin() }
+			source := [33]u8{}
+			before := prealloc_stats_snapshot()
+			small := unsafe { malloc(1) }
+			large := unsafe { malloc(2 * 1024 * 1024) }
+			aligned := unsafe { memdup_align(&source[0], 33, 256) }
+			after := prealloc_stats_snapshot()
+			assert after.allocation_count - before.allocation_count == 3
+			assert after.allocated_bytes - before.allocated_bytes == 2 * 1024 * 1024 + 34
+			assert unsafe { prealloc_scope_owns(scope, small) }
+			assert unsafe { prealloc_scope_owns(scope, large) }
+			assert unsafe { prealloc_scope_owns(scope, aligned) }
+			unsafe { prealloc_scope_end(scope) }
+		}
+	}
+}

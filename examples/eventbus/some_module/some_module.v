@@ -20,8 +20,8 @@ pub fn do_work() {
 		println('working...')
 		if i == 5 {
 			event_metadata := &EventMetadata{'Iteration ' + i.str()}
-			eb.publish('event_foo', duration, event_metadata)
-			eb.publish('event_bar', duration, event_metadata)
+			eb.publish('event_foo', &duration, event_metadata)
+			eb.publish('event_bar', &duration, event_metadata)
 		}
 	}
 	eb.publish('event_baz', &Duration{42}, &EventMetadata{'Additional data at the end.'})

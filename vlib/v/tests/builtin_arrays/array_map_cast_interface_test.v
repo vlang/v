@@ -31,4 +31,7 @@ fn test_fixed_array() {
 		height: 5
 	}]!
 	rects := squares.map(Rect(it))
+	assert rects.len == 1
+	assert rects[0].width == 5
+	assert rects[0].height == 5
 }

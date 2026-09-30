@@ -31,13 +31,6 @@ fn test_encode_decode_boolean_in_der_rule() {
 fn test_parse_boolean_with_parser() ! {
 	data := [u8(0x01), 0x01, 0xff]
 	mut p := Parser.new(data)
-
-	// This is fails too lookup
-	// out := p.read_element[Boolean]()!
-	// assert out.str() == 'Boolean (TRUE)'
-
-	// THis is ok
-	mut p2 := Parser.new(data)
-	out_3th := Boolean.parse(mut p2)!
-	assert out_3th.str() == 'Boolean (TRUE)'
+	out := Boolean.parse(mut p)!
+	assert out.str() == 'Boolean (TRUE)'
 }

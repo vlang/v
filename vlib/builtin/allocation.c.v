@@ -543,6 +543,7 @@ pub fn memdup_uncollectable(src voidptr, sz isize) voidptr {
 // memdup_align dynamically allocates a memory block of `sz` bytes on the heap,
 // copies the contents from `src` into the allocated space, and returns a pointer
 // to the newly allocated memory. The returned pointer is aligned to the specified `align` boundary.
+// VGC allocations remain scanned, including when alignment produces an interior pointer.
 //   - `align` must be a power of two and at least 1
 //   - `sz` must be non-negative
 //   - The memory regions should not overlap
@@ -566,6 +567,13 @@ pub fn memdup_align(src voidptr, sz isize, align isize) voidptr {
 	mut res := &u8(unsafe { nil })
 	$if prealloc {
 		res = prealloc_malloc_align(n, align)
+	} $else $if vgc ? {
+		// VGC traces and frees interior pointers within the scanned allocation.
+		alignment := usize(align)
+		base := vgc_malloc(usize(n) + alignment - 1)
+		if base != unsafe { nil } {
+			res = unsafe { &u8((usize(base) + alignment - 1) & ~(alignment - 1)) }
+		}
 	} $else $if gcboehm ? {
 		unsafe {
 			res = C.GC_memalign(align, n)
@@ -594,7 +602,7 @@ pub fn memdup_align(src voidptr, sz isize, align isize) voidptr {
 		// when the calling code wrongly relies on it being zeroed.
 		unsafe { C.memset(res, 0x4D, n) }
 	}
-	// memdup_align allocates directly via aligned_alloc / _aligned_malloc, so
+	// The aligned allocation bypasses malloc, so
 	// report it like malloc does; otherwise the later free() of an aligned heap
 	// literal (HEAP_align) would emit vheap_free for an untracked pointer.
 	_ht_alloc(res, n)

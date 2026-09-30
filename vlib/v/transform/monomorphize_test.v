@@ -99,6 +99,16 @@ fn test_generic_unresolved_type_detects_multi_return_placeholders() {
 	assert !t.generic_arg_is_unresolved('(f64, f64)')
 }
 
+fn test_generic_field_type_substitutes_fixed_array_length_expr() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	tc.struct_generic_params['PaddedSlot'] = ['T']
+	t := new_transformer(mut a, &tc, map[string]bool{})
+
+	assert t.normalize_field_type('[32 - sizeof(T)]u8', 'PaddedSlot[int]') ==
+		'[32 - sizeof(int)]u8'
+}
+
 fn test_zero_value_normalizes_generic_alias_but_preserves_generic_struct() {
 	mut a := flat.FlatAst.new()
 	mut tc := types.TypeChecker.new(&a)
@@ -139,6 +149,30 @@ fn test_explicit_generic_fn_value_candidates_resolve_selective_import() {
 	candidates := t.explicit_generic_fn_value_decl_candidates(index_id, base_id, a.nodes[int(base_id)], 'main')
 	assert candidates[0] == 'lib.id'
 	assert 'id' in candidates
+}
+
+fn test_specialized_signature_qualifies_selective_import_in_wrappers() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	file_name := '/tmp/main.v'
+	tc.structs['payloads.Payload'] = []types.StructField{}
+	tc.file_selective_imports[file_import_key(file_name, 'Payload')] = ['payloads.Payload']
+	mut t := new_transformer(mut a, &tc, map[string]bool{})
+	decl := GenericFnDecl{ file: file_name }
+	for prefix in ['atomic ', 'chan ', 'thread ', '?[]'] {
+		assert t.qualify_specialized_signature_type_text('${prefix}Payload', decl) == '${prefix}payloads.Payload'
+	}
+}
+
+fn test_explicit_generic_arg_requires_a_known_type() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	mut t := new_transformer(mut a, &tc, map[string]bool{})
+
+	assert t.explicit_generic_arg_is_known_type('int', 'main')
+	assert t.explicit_generic_arg_is_known_type('[]string', 'main')
+	assert t.explicit_generic_arg_is_known_type('map[string]int', 'main')
+	assert !t.explicit_generic_arg_is_known_type('i', 'builtin')
 }
 
 fn test_materialized_generic_struct_fields_preserve_plain_alias_arguments() {
@@ -448,6 +482,55 @@ fn test_lock_colliding_main_generic_type_text_locks_args_behind_qualified_base()
 	}
 	t.active_specialization_main_types['AliasContext'] = true
 	assert t.lock_colliding_main_generic_type_text('AliasContext', 'callee') == 'main.AliasContext'
+}
+
+fn test_nested_generic_components_keep_caller_type_provenance() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	mut t := new_transformer(mut a, &tc, map[string]bool{})
+	t.cur_module = 'callee'
+	t.sum_types['Any'] = ['string', 'bool']
+	t.sum_types['callee.Any'] = ['string', 'int']
+	t.active_specialization_args = ['[][2]Any']
+	t.active_specialization_main_types = t.specialization_main_type_closure(t.active_specialization_args)
+	for typ in ['[][2]Any', '[][]Any', '[]map[string]Any'] {
+		id := a.add_node(flat.Node{ kind: .array_init, value: typ[2..], typ: typ })
+		assert t.generic_call_type_arg_name(id) == typ
+		assert t.canonical_generic_specialization_arg(typ) == typ
+	}
+	for typ in ['[2]Any', 'map[string]Any', 'map[Any]int', '(int, [2]Any)',
+		'other.Box[map[string][2]Any]', 'fn (map[string]Any) [2]Any', 'thread [2]Any'] {
+		assert t.current_specialization_has_generic_arg(typ), typ
+		assert t.specialization_main_type_closure([typ]) == {
+			'Any': true
+		}, typ
+	}
+	for typ in ['[2]Any', 'map[string]Any', 'map[Any]int', '(int, [2]Any)'] {
+		assert t.substituted_type_belongs_to_main_generic(typ), typ
+		assert t.generic_inference_alias_target(typ, 'callee') == typ
+		assert t.generic_arg_for_decl_module(typ, 'callee') == typ
+	}
+	assert t.generic_inference_alias_target('other.Box[map[string]Any]', 'callee') == 'other.Box[map[string]Any]'
+	assert t.generic_arg_for_decl_module('other.Box[[2]Any]', 'callee') == 'other.Box[[2]Any]'
+	tc.type_aliases['other.Items'] = 'other.Box[T]'
+	tc.type_alias_generic_params['other.Items'] = ['T']
+	assert t.generic_inference_alias_target('other.Items[Any]', 'callee') == 'other.Items[Any]'
+	t.structs['callee.Box'] = StructInfo{ module: 'callee' }
+	tc.struct_generic_params['callee.Box'] = ['T']
+	assert t.generic_inference_alias_target('Box[[2]Any]', 'callee') == 'callee.Box[[2]Any]'
+	assert t.generic_arg_for_decl_module('Box[map[string]Any]', 'callee') == 'callee.Box[map[string]Any]'
+	assert t.generic_arg_for_call_and_decl_module('Box[[2]Any]', 'callee', 'other') == 'callee.Box[[2]Any]'
+	for typ in ['[2]callee.Any', 'map[string]callee.Any', '(int, callee.Any)', 'other.Box[callee.Any]',
+		'map[string]int', '[2]int'] {
+		assert !t.current_specialization_has_generic_arg(typ), typ
+		assert !t.substituted_type_belongs_to_main_generic(typ), typ
+	}
+	for typ in ['?[]string', '?map[string]string', 'fn (?[]string) string'] {
+		t.active_specialization_args = [typ]
+		assert t.generic_inference_alias_target(typ, 'callee') == typ
+		assert t.generic_arg_for_decl_module(typ, 'callee') == typ
+		assert t.generic_arg_for_call_and_decl_module(typ, 'callee', 'other') == typ
+	}
 }
 
 fn test_lock_colliding_main_substitution_keeps_decl_module_generic_base() {

@@ -13,8 +13,15 @@ pub fn input_character() int {
 	} $else {
 		ch = C.getchar()
 		if ch == C.EOF {
+			$if race ? {
+				// The end of the input is a read that did not fail too.
+				if C.feof(C.stdin) != 0 {
+					race_stdio_read()
+				}
+			}
 			return -1
 		}
+		race_stdio_read()
 	}
 	return ch
 }
@@ -34,6 +41,7 @@ pub fn print_character(ch u8) int {
 		// TODO
 		return 0
 	} $else {
+		race_stdio_write()
 		x := C.putchar(ch)
 		if x == C.EOF {
 			return -1

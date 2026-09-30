@@ -132,6 +132,15 @@ fn collect_function_signatures(source string, path string, header FastcSourceHea
 	mut skip_index := 0
 	mut tok := scan.scan()
 	for tok != .eof {
+		if brace_depth == 0 && fastc_keyword_is_qualifier(tok, scan) {
+			tok = scan.scan()
+			continue
+		}
+		if brace_depth == 0 && tok in [.key_module, .key_import] {
+			tok = fastc_skip_module_or_import(mut scan, tok, path)!
+			previous_tok = .unknown
+			continue
+		}
 		if brace_depth == 0 && tok == .attribute {
 			attribute := fastc_scan_declaration_attribute(mut scan, path, prefs)!
 			tok = attribute.tok
@@ -556,14 +565,17 @@ fn fastc_collect_referenced_function_names(sources []FastcSourceFile, prefs &pre
 		'map_hash_int_2':         true
 		'map_hash_int_4':         true
 		'map_hash_int_8':         true
+		'map_hash_int_16':        true
 		'map_eq_int_1':           true
 		'map_eq_int_2':           true
 		'map_eq_int_4':           true
 		'map_eq_int_8':           true
+		'map_eq_int_16':          true
 		'map_clone_int_1':        true
 		'map_clone_int_2':        true
 		'map_clone_int_4':        true
 		'map_clone_int_8':        true
+		'map_clone_int_16':       true
 		'new_array_from_c_array': true
 		'string_plus_many':       true
 		'v_fixed_index':          true
@@ -640,6 +652,14 @@ fn collect_interface_method_signatures(source string, path string, header FastcS
 	mut skip_index := 0
 	mut next_declaration_is_enabled := true
 	for tok != .eof {
+		if depth == 0 && fastc_keyword_is_qualifier(tok, scan) {
+			tok = scan.scan()
+			continue
+		}
+		if depth == 0 && tok in [.key_module, .key_import] {
+			tok = fastc_skip_module_or_import(mut scan, tok, path)!
+			continue
+		}
 		if depth == 0 && tok == .dollar {
 			mut lookahead := scan
 			if lookahead.scan() == .key_if {

@@ -204,6 +204,10 @@ fn C.rename(old_filename &char, new_filename &char) i32
 
 fn C.fgets(str &char, n i32, stream &C.FILE) &char
 
+fn C.feof(stream &C.FILE) i32
+
+fn C.ferror(stream &C.FILE) i32
+
 fn C.fgetpos(&C.FILE, voidptr) i32
 
 @[trusted]

@@ -1,7 +1,10 @@
 module multiwindow
 
 import os
-import time
+
+$if linux && sokol_wayland ? {
+	import time
+}
 
 fn wayland_runtime_probe_available() bool {
 	if os.getenv('WAYLAND_DISPLAY') != '' {

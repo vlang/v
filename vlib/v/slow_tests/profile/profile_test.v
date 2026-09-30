@@ -27,7 +27,7 @@ fn test_v_profile_works_when_interrupted() {
 	os.rm(program_exe) or {}
 	os.rm(program_profile) or {}
 	os.chdir(vroot) or {}
-	compile_cmd := '${os.quoted_path(vexe)} -skip-unused -o ${os.quoted_path(program_exe)} -profile ${os.quoted_path(program_profile)} ${os.quoted_path(program_source)}'
+	compile_cmd := '${os.quoted_path(vexe)} -o ${os.quoted_path(program_exe)} -profile ${os.quoted_path(program_profile)} ${os.quoted_path(program_source)}'
 	eprintln('> compiling cmd: ${compile_cmd}')
 	compilation_result := os.execute(compile_cmd)
 	assert compilation_result.exit_code == 0, compilation_result.output

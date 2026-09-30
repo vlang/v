@@ -1,9 +1,9 @@
-import v.ast
+import v.flat
 
-type MyFnSumtype = fn () | fn (int) ast.Expr
+type MyFnSumtype = fn() | fn(int) flat.Node
 
-fn f(z int) ast.Expr {
-	return ast.empty_expr
+fn f(z int) flat.Node {
+	return flat.Node{}
 }
 
 fn main() {

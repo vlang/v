@@ -147,8 +147,8 @@ alias with_alpine='docker run -u 1000:1000 --rm -it -v .:/src -w /src vlang_alpi
 Compiling *static* executables, ready to be copied to a server, that is running
 another linux distro, without dependencies:
 ```bash
-with_alpine v -skip-unused -prod -cc gcc -cflags -static -compress examples/http_server.v
-with_alpine v -skip-unused -prod -cc gcc -cflags -static -compress -gc none examples/hello_world.v
+with_alpine v -prod -cc gcc -cflags -static -compress examples/http_server.v
+with_alpine v -prod -cc gcc -cflags -static -compress -gc none examples/hello_world.v
 ls -la examples/http_server examples/hello_world
 file   examples/http_server examples/hello_world
 examples/http_server: ELF 64-bit LSB executable, x86-64, version 1 (SYSV), statically linked, no section header

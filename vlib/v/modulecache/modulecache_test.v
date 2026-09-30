@@ -1,11 +1,42 @@
 module modulecache
 
 import os
+import time
 import crypto.sha256
 import v.flat
 import v.parser
 import v.pref
 import v.types as vtypes
+
+fn test_cached_vmod_roots_stop_at_project_boundaries() {
+	root := os.join_path(os.vtmp_dir(), 'v3_modulecache_vmod_boundary_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	parent := os.join_path(root, 'parent')
+	project := os.join_path(parent, 'project')
+	source_dir := os.join_path(project, 'src')
+	os.mkdir_all(source_dir)!
+	parent_vmod := os.join_path(parent, 'v.mod')
+	os.write_file(parent_vmod, "Module { name: 'parent' }\n")!
+	source_file := os.join_path(source_dir, 'main.v')
+	os.write_file(source_file, 'module main\n')!
+	root_before, file_before := signature_vmod_root(source_file)
+	assert root_before == os.real_path(parent)
+	assert file_before == os.real_path(parent_vmod)
+	assert cached_vmod_root(source_file) == os.real_path(parent)
+
+	for marker in [pref.module_search_stop_marker, '.git', '.hg', '.svn'] {
+		marker_path := os.join_path(project, marker)
+		os.write_file(marker_path, '')!
+		bounded_root, bounded_file := signature_vmod_root(source_file)
+		assert bounded_root == os.real_path(source_dir)
+		assert bounded_file == ''
+		assert cached_vmod_root(source_file) == os.real_path(source_dir)
+		os.rm(marker_path)!
+	}
+}
 
 fn test_cached_relative_flag_paths_preserve_path_selection_expressions() {
 	base_dir := os.join_path(os.vtmp_dir(), 'v3_modulecache_flags')
@@ -583,6 +614,149 @@ fn test_cached_source_signature_tracks_vml_symlink_target() {
 	assert second != first
 }
 
+// without_file_metadata makes file_metadata_signature report nothing for
+// `paths`, as it does for a file without a usable identity, and returns the
+// previous setting for restore_file_metadata.
+fn without_file_metadata(paths []string) (string, bool) {
+	was_set := 'V3_TEST_NO_FILE_METADATA' in os.environ()
+	old := os.getenv('V3_TEST_NO_FILE_METADATA')
+	os.setenv('V3_TEST_NO_FILE_METADATA', paths.join(os.path_delimiter), true)
+	return old, was_set
+}
+
+fn restore_file_metadata(old string, was_set bool) {
+	if was_set {
+		os.setenv('V3_TEST_NO_FILE_METADATA', old, true)
+	} else {
+		os.unsetenv('V3_TEST_NO_FILE_METADATA')
+	}
+}
+
+fn test_file_change_signature_falls_back_to_the_contents() {
+	root := os.join_path(os.vtmp_dir(), 'v3_modulecache_change_signature_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	with_metadata := os.join_path(root, 'with_metadata.vml')
+	without_metadata := os.join_path(root, 'without_metadata.vml')
+	absent := os.join_path(root, 'absent.vml')
+	os.write_file(with_metadata, 'first')!
+	os.write_file(without_metadata, 'first')!
+	old, was_set := without_file_metadata([without_metadata, absent])
+	defer {
+		restore_file_metadata(old, was_set)
+	}
+	assert file_change_signature(with_metadata) == file_metadata_signature(with_metadata)
+	assert file_metadata_signature(without_metadata) == ''
+	first := file_change_signature(without_metadata)
+	assert first.starts_with('content:')
+	assert file_change_signature_matches(without_metadata, first)
+	// Same size, different bytes: only the contents tell the edit apart.
+	os.write_file(without_metadata, 'other')!
+	assert !file_change_signature_matches(without_metadata, first)
+	assert file_change_signature(absent) == 'missing'
+	os.write_file(absent, 'appeared')!
+	assert !file_change_signature_matches(absent, 'missing')
+}
+
+// A source file on a file system with file identities can depend on inputs on one
+// without them. Edits to those inputs, and inputs that appear there, must still
+// invalidate the memoized source signature.
+fn test_cached_source_signature_tracks_vml_inputs_without_file_metadata() {
+	root := os.join_path(os.vtmp_dir(), 'v3_modulecache_vml_no_metadata_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(os.join_path(root, 'templates')) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	source := os.join_path(root, 'main.v')
+	template_vml := os.join_path(root, 'templates', 'form.vml')
+	direct_vml := os.join_path(root, 'form.vml')
+	os.write_file(source, "module main\n\nfn build() { _ = \$vml('form.vml') }\n")!
+	os.write_file(template_vml, 'Label { text: "First" }')!
+	old, was_set := without_file_metadata([template_vml, direct_vml])
+	defer {
+		restore_file_metadata(old, was_set)
+	}
+	assert file_metadata_signature(source) != ''
+	assert file_metadata_signature(template_vml) == ''
+	cache_dir := os.join_path(root, 'cache')
+
+	first := cached_source_signature(cache_dir, 'vml-no-metadata', [source])
+	assert first.len > 0
+	assert source_signature_details([source], '', '').cacheable
+	assert cached_source_signature(cache_dir, 'vml-no-metadata', [source]) == first
+
+	os.write_file(template_vml, 'Label { text: "Other" }')!
+	second := cached_source_signature(cache_dir, 'vml-no-metadata', [source])
+	assert second.len > 0
+	assert second != first
+
+	os.write_file(direct_vml, 'Label { text: "Direct" }')!
+	third := cached_source_signature(cache_dir, 'vml-no-metadata', [source])
+	assert third.len > 0
+	assert third != second
+}
+
+fn test_cached_source_signature_tracks_vmod_edits_without_file_metadata() {
+	root := os.join_path(os.vtmp_dir(), 'v3_modulecache_vmod_no_metadata_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	source := os.join_path(root, 'main.v')
+	vmod := os.join_path(root, 'v.mod')
+	os.write_file(source, 'module main\n\nconst manifest = @VMOD_FILE\n')!
+	os.write_file(vmod, "Module {\n\tname: 'first'\n}\n")!
+	old, was_set := without_file_metadata([vmod])
+	defer {
+		restore_file_metadata(old, was_set)
+	}
+	cache_dir := os.join_path(root, 'cache')
+
+	first := cached_source_signature(cache_dir, 'vmod-no-metadata', [source])
+	assert first.len > 0
+	assert cached_source_signature(cache_dir, 'vmod-no-metadata', [source]) == first
+
+	os.write_file(vmod, "Module {\n\tname: 'other'\n}\n")!
+	second := cached_source_signature(cache_dir, 'vmod-no-metadata', [source])
+	assert second.len > 0
+	assert second != first
+}
+
+// On FAT, exFAT and HFS+ a same-size edit within one timestamp step keeps the
+// file's metadata identical. os.utime sets whole-second times, which reproduces
+// that on any file system.
+fn test_cached_source_signature_tracks_edits_within_a_coarse_timestamp_step() {
+	root := os.join_path(os.vtmp_dir(), 'v3_modulecache_coarse_mtime_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	source := os.join_path(root, 'main.v')
+	template_vml := os.join_path(root, 'form.vml')
+	os.write_file(source, "module main\n\nfn build() { _ = \$vml('form.vml') }\n")!
+	old_time := time.utc().unix() - 600
+	os.utime(source, old_time, old_time)!
+	assert file_metadata_signature(source) != ''
+	step := time.utc().unix()
+	os.write_file(template_vml, 'Label { text: "First" }')!
+	os.utime(template_vml, step, step)!
+	cache_dir := os.join_path(root, 'cache')
+
+	first := cached_source_signature(cache_dir, 'coarse-mtime', [source])
+	assert first.len > 0
+	os.write_file(template_vml, 'Label { text: "Other" }')!
+	os.utime(template_vml, step, step)!
+	second := cached_source_signature(cache_dir, 'coarse-mtime', [source])
+	assert second.len > 0
+	assert second != first
+}
+
 fn test_version_pseudo_signature_ignores_build_clock() {
 	root := os.join_path(os.vtmp_dir(), 'v3_modulecache_version_pseudo_${os.getpid()}')
 	os.rmdir_all(root) or {}
@@ -748,4 +922,28 @@ fn test_cached_global_text_round_trips_qualifiers() {
 		}
 	}
 	assert seen == 3, 'the reparsed header did not describe all three globals (${seen})'
+}
+
+fn test_module_header_preserves_module_attributes() {
+	mut a := flat.FlatAst.new()
+	module_id := a.add_node(flat.Node{
+		kind:  .module_decl
+		value: 'guarded'
+	})
+	a.add_node(flat.Node{
+		kind:    .directive
+		value:   '@attributes:${int(module_id)}'
+		payload: flat.node_payload(['has_globals'])
+	})
+	file_children := a.begin_children()
+	a.add_child(module_id)
+	a.add_node(flat.Node{
+		kind:           .file
+		value:          'guarded.v'
+		children_start: file_children
+		children_count: 1
+	})
+	tc := vtypes.TypeChecker.new(&a)
+	header := module_header(&a, &tc, 'guarded', '', map[string]string{})
+	assert header.starts_with('@[has_globals]\nmodule guarded\n'), header
 }

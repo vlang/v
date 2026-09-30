@@ -87,11 +87,15 @@ fn check_good(name string, src string) {
 }
 
 fn gen_c(v3_bin string, name string, src string) string {
+	return gen_c_with_flags(v3_bin, name, '', src)
+}
+
+fn gen_c_with_flags(v3_bin string, name string, flags string, src string) string {
 	src_path := '${tmp_test_path(name)}.v'
 	os.write_file(src_path, src) or { panic(err) }
 	c_path := '${tmp_test_path(name)}.c'
 	os.rm(c_path) or {}
-	compile := os.execute('${v3_bin} ${src_path} -b c -o ${c_path}')
+	compile := os.execute('${v3_bin} ${flags} ${src_path} -b c -o ${c_path}')
 	assert compile.exit_code == 0, '${name}: ${compile.output}'
 	assert os.exists(c_path)
 	return os.read_file(c_path) or { panic(err) }
@@ -234,6 +238,18 @@ fn test_c_bool_parameter_accepts_integer_argument() {
 
 fn main() {
 	_ = C.bool_probe(0)
+}
+')
+}
+
+fn test_c_integer_parameters_accept_other_integer_variable_types() {
+	check_good('c_integer_variable_arguments', 'fn C.integer_probe(usize, isize, u64) int
+
+fn main() {
+	signed := isize(1)
+	unsigned := usize(2)
+	word := int(3)
+	_ = C.integer_probe(signed, unsigned, word)
 }
 ')
 }
@@ -2257,11 +2273,12 @@ fn test_context_dependent_if_branches_infer_wrapper_types() {
 	assert code_out == '6\n-1'
 	match_code_out := run_good(v3_bin, 'match_error_with_code_branch_infers_result', "fn maybe(n int) !int {\n\treturn match n {\n\t\t0 { error_with_code('bad', 2) }\n\t\telse { 7 }\n\t}\n}\n\nfn main() {\n\tprintln(int_str(maybe(1) or { -1 }))\n\tprintln(int_str(maybe(0) or { -1 }))\n}\n")
 	assert match_code_out == '7\n-1'
-	run_bad(v3_bin, 'if_none_branch_without_context_rejected', 'fn main() {\n\tx := if true { none } else { 1 }\n\tprintln(x)\n}\n', 'if-expression branch type mismatch')
+	inferred_decl_out := run_good(v3_bin, 'if_none_branch_infers_option_without_context', 'fn main() {\n\tx := if true { none } else { 1 }\n\ty := if false { none } else { 2 }\n\tprintln("\${x}")\n\tprintln("\${y}")\n}\n')
+	assert inferred_decl_out == 'Option(none)\nOption(2)'
 	run_bad(v3_bin, 'if_none_branch_rejected_for_result_without_context', 'fn fallible() !int {\n\treturn 2\n}\n\nfn main() {\n\tflag := true\n\tx := if flag { none } else { fallible() }\n\tprintln(int_str(x or { -1 }))\n}\n', 'if-expression branch type mismatch')
 	option_error_out := run_good(v3_bin, 'if_error_branch_infers_option', "fn f(ok bool) ?int {\n\treturn if ok { error('bad') } else { 1 }\n}\n\nfn main() {\n\tprintln(int_str(f(false) or { -1 }))\n\t_ := f(true) or {\n\t\tprintln(err.msg())\n\t\treturn\n\t}\n}\n")
 	assert option_error_out == '1\nbad'
-	run_bad(v3_bin, 'if_none_branch_rejected_for_result_payload', 'fn g(ok bool) !int {\n\treturn if ok { none } else { 1 }\n}\n\nfn main() {\n\t_ := g(false) or { 0 }\n}\n', 'if-expression branch type mismatch')
+	run_bad(v3_bin, 'if_none_branch_rejected_for_result_payload', 'fn g(ok bool) !int {\n\treturn if ok { none } else { 1 }\n}\n\nfn main() {\n\t_ := g(false) or { 0 }\n}\n', 'cannot return `?int` as `int`')
 	match_option_error_out := run_good(v3_bin, 'match_error_branch_infers_option', "fn f(n int) ?int {\n\treturn match n {\n\t\t0 { error('bad') }\n\t\telse { 1 }\n\t}\n}\n\nfn main() {\n\tprintln(int_str(f(1) or { -1 }))\n\t_ := f(0) or {\n\t\tprintln(err.msg())\n\t\treturn\n\t}\n}\n")
 	assert match_option_error_out == '1\nbad'
 	run_bad(v3_bin, 'match_none_branch_rejected_for_result_payload', 'fn g(n int) !int {\n\treturn match n {\n\t\t0 { none }\n\t\telse { 1 }\n\t}\n}\n\nfn main() {\n\t_ := g(1) or { 0 }\n}\n', 'cannot return')
@@ -2954,173 +2971,6 @@ fn main() {
 	assert out == '42'
 }
 
-fn test_json_decode_generic_struct_preserves_field_default() {
-	v3_bin := build_v3()
-	out := run_good(v3_bin, 'json_decode_generic_struct_default', 'import json
-
-struct Box[T] {
-	n int = 5
-}
-
-struct GenericChild {
-	n int
-}
-
-struct PointerBox[T] {
-	p     &GenericChild = &GenericChild{n: 7}
-	value T
-}
-
-fn main() {
-	box := json.decode(Box[int], "{}") or { Box[int]{n: 5} }
-	println(int_str(box.n))
-	pointer_box := json.decode(PointerBox[int], "{\\"value\\":3}") or {
-		PointerBox[int]{value: 3}
-	}
-	println(int_str(pointer_box.p.n))
-	println(int_str(pointer_box.value))
-}
-')
-	assert out == '5\n7\n3'
-}
-
-fn test_json_decode_fast_path_validates_arrays_and_preserves_defaults() {
-	v3_bin := build_v3()
-	out := run_good(v3_bin, 'json_decode_fast_path_nested_values', 'import json
-
-struct Inner {
-	value int
-}
-
-struct Outer {
-	inner Inner
-}
-
-struct BoolList {
-	values []bool
-}
-
-struct I64List {
-	values []i64
-}
-
-struct WideInts {
-	min             i64
-	max             u64
-	signed_values   []i64
-	unsigned_values []u64
-}
-
-struct StrictChild {
-	ok bool
-}
-
-struct ChildList {
-	values []StrictChild
-}
-
-struct PointerDefault {
-	value &Inner = &Inner{value: 7}
-}
-
-struct NestedPointerDefaults {
-	nested PointerDefault
-	values []PointerDefault
-}
-
-fn main() {
-	mut array_failed := false
-	_ := json.decode(BoolList, "{\\"values\\":[1]}") or {
-		array_failed = true
-		BoolList{}
-	}
-	println(array_failed)
-	i64_values := json.decode(I64List, "{\\"values\\":[9007199254740993]}")!
-	println(i64_values.values[0].str())
-	mut struct_array_failed := false
-	_ := json.decode(ChildList, "{\\"values\\":[{\\"ok\\":1}]}") or {
-		struct_array_failed = true
-		ChildList{}
-	}
-	println(struct_array_failed)
-
-	mut nested_failed := false
-	outer := json.decode(Outer, "{}") or {
-		nested_failed = true
-		Outer{}
-	}
-	println(!nested_failed)
-	println(int_str(outer.inner.value))
-
-	pointer_default := json.decode(PointerDefault, "{}")!
-	println(int_str(pointer_default.value.value))
-
-	nested_defaults := json.decode(NestedPointerDefaults, "{\\"values\\":[{}]}")!
-	println(int_str(nested_defaults.nested.value.value))
-	println(int_str(nested_defaults.values[0].value.value))
-
-	wide := json.decode(WideInts, "{\\"min\\":-9223372036854775808,\\"max\\":18446744073709551615,\\"signed_values\\":[9007199254740993],\\"unsigned_values\\":[9007199254740993]}")!
-	println(wide.min.str())
-	println(wide.max.str())
-	println(wide.signed_values[0].str())
-	println(wide.unsigned_values[0].str())
-}
-')
-	assert out == 'true\n9007199254740993\ntrue\ntrue\n0\n7\n7\n7\n-9223372036854775808\n18446744073709551615\n9007199254740993\n9007199254740993'
-}
-
-fn test_json_decode_fast_path_uses_renamed_fields_recursively() {
-	v3_bin := build_v3()
-	out := run_good(v3_bin, 'json_decode_renamed_fields', 'import json
-
-struct Item {
-	id int @[json: \'itemId\']
-}
-
-struct Payload {
-	group_name string @[json: \'groupName\']
-	items      []Item  @[json: \'testItems\']
-}
-
-fn main() {
-	payload := json.decode(Payload, "{\\"groupName\\":\\"A\\",\\"testItems\\":[{\\"itemId\\":7}]}")!
-	println(payload.group_name)
-	println(int_str(payload.items[0].id))
-}
-')
-	assert out == 'A\n7'
-}
-
-fn test_json_decode_aligned_pointer_fields_use_aligned_memdup() {
-	v3_bin := build_v3()
-	source := 'import json
-
-@[aligned: 64]
-struct Aligned {
-	x int
-}
-
-struct Box {
-	p &Aligned
-}
-
-fn main() {
-	box := json.decode(Box, "{\\"p\\":{\\"x\\":7}}")!
-	println(int_str(box.p.x))
-	unsafe {
-		free(box.p)
-	}
-}
-'
-	c_source := gen_c(v3_bin, 'json_decode_aligned_pointer_field', source)
-	main_body := c_fn_body(c_source, 'int main(int argc, char** argv)')
-	assert main_body.contains('v3_aligned_memdup('), main_body
-	assert !main_body.contains('(Aligned*)memdup('), main_body
-	assert main_body.contains('v3_aligned_free(box.p)'), main_body
-	out := run_good(v3_bin, 'json_decode_aligned_pointer_field_run', source)
-	assert out == '7'
-}
-
 fn test_aligned_alias_heap_cast_uses_aligned_memdup() {
 	v3_bin := build_v3()
 	source := '@[aligned: 64]
@@ -3159,279 +3009,6 @@ fn test_unimported_main_types_are_not_visible_in_modules() {
 		'main.v':      'module main\n\nimport moda\n\nstruct Box[T] {}\n\nfn main() {\n\t_ = moda.make()\n}\n'
 		'moda/moda.v': 'module moda\n\npub struct Holder {\n\tvalue Box[int]\n}\n\npub fn make() Holder {\n\treturn Holder{}\n}\n'
 	}, ['main.v'], 'unknown type `Box`')
-}
-
-fn test_json_fast_paths_handle_primitives_and_stringified_composites() {
-	v3_bin := build_v3()
-	bool_source := 'import json
-
-struct Flag {
-	ok bool
-}
-
-fn main() {
-	println(json.encode(Flag{ok: true}))
-	println(json.encode(Flag{ok: false}))
-}
-'
-	bool_encoded := run_good(v3_bin, 'json_encode_bool_without_str_helper', bool_source)
-	assert bool_encoded == '{"ok":true}\n{"ok":false}'
-	bool_c := gen_c(v3_bin, 'json_encode_bool_without_str_helper_c', bool_source)
-	main_body := c_fn_body(bool_c, 'int main(int argc, char** argv)')
-	assert !main_body.contains('bool__str(')
-
-	encoded := run_good(v3_bin, 'json_encode_primitive_struct_fields', 'import json
-
-struct User {
-	age int
-	ok bool
-	score f64
-}
-
-fn main() {
-	println(json.encode(User{
-		age: 1
-		ok: true
-		score: 1.5
-	}))
-}
-	')
-	assert encoded == '{"age":1,"ok":true,"score":1.5}'
-
-	omitempty_c := gen_c(v3_bin, 'json_encode_omitempty_field_falls_back', 'import json
-
-struct Payload {
-	keep int
-	omit int @[omitempty]
-}
-
-fn main() {
-	println(json.encode(Payload{
-		keep: 1
-	}))
-}
-')
-	omitempty_main := c_fn_body(omitempty_c, 'int main(int argc, char** argv)')
-	assert !omitempty_main.contains('json__encode(&(Payload)')
-	assert omitempty_main.contains('.omit')
-
-	decoded := run_good(v3_bin, 'json_decode_composites_to_strings', 'import json
-
-struct Payload {
-	object string
-	array string
-}
-
-fn main() {
-	payload := json.decode(Payload, "{\\"object\\":{},\\"array\\":[1,2]}")!
-	println(payload.object)
-	println(payload.array)
-}
-')
-	assert decoded == '{}\n[1,2]'
-}
-
-fn test_json_fast_paths_accept_null_strings_and_encode_non_finite_floats() {
-	v3_bin := build_v3()
-	out := run_good(v3_bin, 'json_null_string_and_non_finite_floats', 'import json
-import math
-
-struct Payload {
-	name string
-	nan  f64
-	pos  f64
-	neg  f32
-}
-
-fn main() {
-	decoded := json.decode(Payload, "{\\"name\\":null}")!
-	println(decoded.name.len)
-	println(json.encode(Payload{
-		nan: math.nan()
-		pos: math.inf(1)
-		neg: f32(math.inf(-1))
-	}))
-}
-')
-	assert out == '0\n{"name":"","nan":null,"pos":null,"neg":null}'
-}
-
-fn test_json_encode_embedded_structs_use_fast_path_flattening() {
-	v3_bin := build_v3()
-	out := run_good(v3_bin, 'json_encode_embedded_struct_flattening', 'import json
-
-struct Json3 {
-	embed f64
-}
-
-struct Json2 {
-	Json3
-	inner []f64
-}
-
-struct Json {
-	Json2
-	test f64
-}
-
-fn main() {
-	data := Json{
-		Json2: Json2{
-			Json3: Json3{
-				embed: 2.0
-			}
-			inner: [1.0, 2.0]
-		}
-		test: 1.0
-	}
-	println(json.encode(data))
-}
-')
-	assert out == '{"embed":2,"inner":[1,2],"test":1}'
-	qualified := run_good_project(v3_bin, 'json_qualified_embedded_struct_flattening', {
-		'other/other.v': 'module other\n\npub struct Inner {\npub:\n\tembed f64\n\tname string\n}\n'
-		'main.v':        'module main\n\nimport json\nimport other\n\nstruct Outer {\n\tother.Inner\n\tn int\n}\n\nfn main() {\n\tdata := Outer{\n\t\tother.Inner{\n\t\t\tembed: 2.0\n\t\t\tname:  "Ada"\n\t\t}\n\t\tn: 3\n\t}\n\tprintln(json.encode(data))\n\tdecoded := json.decode(Outer, "{\\"embed\\":4.0,\\"name\\":\\"Bea\\",\\"n\\":5}")!\n\tprintln(decoded.name)\n\tprintln(int_str(int(decoded.embed)) + ":" + int_str(decoded.n))\n}\n'
-	}, 'main.v')
-	assert qualified == '{"embed":2,"name":"Ada","n":3}\nBea\n4:5'
-}
-
-fn test_json_encode_omitempty_field_attr_preserves_omission() {
-	v3_bin := build_v3()
-	out := run_good(v3_bin, 'json_encode_omitempty_field_attr', 'import json
-
-struct User {
-	name string @[omitempty]
-	age int
-}
-
-fn main() {
-	println(json.encode(User{
-		age: 3
-	}))
-	println(json.encode(User{
-		name: "Ada"
-		age:  4
-	}))
-}
-')
-	assert out == '{"age":3}\n{"name":"Ada","age":4}'
-}
-
-fn test_json_encode_sum_types_and_composite_omitempty_fields_use_fast_path() {
-	v3_bin := build_v3()
-	out := run_good(v3_bin, 'json_encode_sum_types_and_composite_omitempty', 'import json
-
-type Value = Payload | string
-
-struct Style {
-	width f64 = 2.0 @[omitempty]
-	dash string = "solid" @[omitempty]
-}
-
-struct Payload {
-	values []f64            @[omitempty]
-	lookup map[string]string @[omitempty]
-	style  Style            @[omitempty]
-}
-
-struct Envelope {
-	items  []Value
-	lookup map[string]Value
-}
-
-struct Holder {
-	value Value @[omitempty]
-}
-
-fn main() {
-	empty := Payload{}
-	filled := Payload{
-		values: [1.0, 2.0]
-		lookup: {"kind": "line"}
-		style: Style{
-			width: 4.0
-		}
-	}
-	println(json.encode(empty))
-	println(json.encode(filled))
-	println(json.encode([Value(filled), Value("trace")]))
-	println(json.encode(Envelope{
-		items: [Value(filled), Value("trace")]
-		lookup: {"trace": Value(filled)}
-	}))
-	println(json.encode(Holder{}))
-	println(json.encode(Holder{
-		value: Value(filled)
-	}))
-}
-')
-	assert out == '{}\n{"values":[1,2],"lookup":{"kind":"line"},"style":{"width":4,"dash":"solid"}}\n[{"values":[1,2],"lookup":{"kind":"line"},"style":{"width":4,"dash":"solid"},"_type":"Payload"},"trace"]\n{"items":[{"values":[1,2],"lookup":{"kind":"line"},"style":{"width":4,"dash":"solid"},"_type":"Payload"},"trace"],"lookup":{"trace":{"values":[1,2],"lookup":{"kind":"line"},"style":{"width":4,"dash":"solid"},"_type":"Payload"}}}\n{}\n{"value":{"values":[1,2],"lookup":{"kind":"line"},"style":{"width":4,"dash":"solid"},"_type":"Payload"}}'
-}
-
-fn test_json_encode_json_dash_label_skips_fast_path_field() {
-	v3_bin := build_v3()
-	source := 'import json
-
-struct User {
-	name   string @[json: \'-\']
-	secret int    @[json: \'-\']
-	age    int
-}
-
-fn main() {
-	println(json.encode(User{
-		name:   "Ada"
-		secret: 9
-		age:    4
-	}))
-}
-'
-	out := run_good(v3_bin, 'json_encode_json_dash_label_skips_fast_path_field', source)
-	assert out == '{"age":4}'
-	c_source := gen_c(v3_bin, 'json_encode_json_dash_label_skips_fast_path_field_c', source)
-	main_body := c_fn_body(c_source, 'int main(int argc, char** argv)')
-	assert !main_body.contains('json__encode(&')
-	assert !main_body.contains('"-":')
-}
-
-fn test_json_encode_escapes_struct_field_labels_on_fast_path() {
-	v3_bin := build_v3()
-	out := run_good(v3_bin, 'json_encode_escaped_struct_field_labels', 'import json
-
-struct Packet {
-	text  string @[json: \'a"b\']
-	line  int    @[json: \'line\\nbreak\']
-	slash bool   @[json: \'c\\\\d\']
-}
-
-fn main() {
-	println(json.encode(Packet{
-		text:  "ok"
-		line:  2
-		slash: true
-	}))
-}
-')
-	assert out == '{"a\\"b":"ok","line\\nbreak":2,"c\\\\d":true}'
-}
-
-fn test_json_encode_accepts_required_field_attr() {
-	v3_bin := build_v3()
-	out := run_good(v3_bin, 'json_encode_required_field_attr', 'import json
-
-struct User {
-	name string @[required]
-	age int
-}
-
-fn main() {
-	println(json.encode(User{
-		name: "Ada"
-		age:  4
-	}))
-}
-')
-	assert out == '{"name":"Ada","age":4}'
 }
 
 fn test_enum_helper_prefers_exact_free_function_over_method_suffix() {
@@ -3614,67 +3191,6 @@ enum HelperKind {
 
 fn main() {}
 ', '[noreturn] functions cannot use return statements')
-}
-
-fn test_json_decode_enum_accepts_name_and_label() {
-	v3_bin := build_v3()
-	out := run_good(v3_bin, 'json_decode_enum_name_and_label', 'import json
-
-enum Kind {
-	unknown
-	field_name @[json: "wire"]
-}
-
-struct Packet {
-	kind Kind
-}
-
-fn main() {
-	by_name := json.decode(Packet, "{\\"kind\\":\\"field_name\\"}")!
-	by_label := json.decode(Packet, "{\\"kind\\":\\"wire\\"}")!
-	println(by_name.kind == .field_name)
-	println(by_label.kind == .field_name)
-}
-')
-	assert out == 'true\ntrue'
-}
-
-fn test_json_encode_escapes_enum_label() {
-	v3_bin := build_v3()
-	out := run_good(v3_bin, 'json_encode_escaped_enum_label', 'import json
-
-enum Kind {
-	quoted @[json: \'a"b\']
-}
-
-fn main() {
-	println(json.encode(Kind.quoted))
-}
-')
-	assert out == '"a\\"b"'
-}
-
-fn test_json_enum_label_preserves_edge_quote() {
-	v3_bin := build_v3()
-	out := run_good(v3_bin, 'json_enum_edge_quote_label', 'import json
-
-enum Kind {
-	fallback
-	trailing @[json: \'a"\']
-}
-
-struct Packet {
-	kind Kind
-}
-
-fn main() {
-	encoded := json.encode(Kind.trailing)
-	println(encoded)
-	packet := json.decode(Packet, "{\\"kind\\":" + encoded + "}")!
-	println(packet.kind == .trailing)
-}
-')
-	assert out == '"a\\""\ntrue'
 }
 
 fn test_flag_enum_autostr_deduplicates_member_references() {
@@ -10742,4 +10258,172 @@ fn main() {
 }
 ')
 	assert out == '2\n2'
+}
+
+// A `@[_naked]` function is its own prologue and epilogue: without
+// `__attribute__((naked))` the C compiler wraps the hand-written body in a frame
+// the body's own `ret` never unwinds, and calling it crashes. The attribute has
+// to precede the declarator -- gcc rejects it after the parameter list with
+// "attributes should be specified before the declarator in a function definition".
+fn test_naked_attribute_precedes_the_declarator() {
+	v3_bin := build_v3()
+	c_source := gen_c(v3_bin, 'naked_attribute', '
+@[_naked]
+fn naked_body() {
+}
+
+fn ordinary_body() {
+}
+
+fn main() {
+	naked_body()
+	ordinary_body()
+}
+')
+	assert c_source.contains('__attribute__((naked)) void naked_body(void) {'), c_source
+	assert !c_source.contains('__attribute__((naked)) void ordinary_body'), c_source
+}
+
+// `-profile` and `-trace-calls` both insert code at the very start of a function
+// body, before the user's own code runs: profiling declares a timer read and two
+// `double` locals, tracing emits a call. A `@[_naked]` body has no compiler-
+// generated frame for those to live in or for its own `ret` to unwind through,
+// so either one corrupts the caller's stack. Neither may be emitted for one.
+fn test_naked_attribute_skips_profiling_and_trace_instrumentation() {
+	v3_bin := build_v3()
+	profile_path := tmp_test_path('naked_attribute_profile_out')
+	c_source := gen_c_with_flags(v3_bin, 'naked_attribute_profile', '-profile ${profile_path} -trace-calls',
+		'
+@[_naked]
+fn naked_fn() {
+	asm amd64 {
+		push rbp
+		mov rbp, rsp
+		mov rsp, rbp
+		pop rbp
+		ret
+	}
+}
+
+fn ordinary_fn() {
+}
+
+fn main() {
+	naked_fn()
+	ordinary_fn()
+}
+')
+	naked_body := c_fn_body(c_source, 'void naked_fn(void) {')
+	ordinary_body := c_fn_body(c_source, 'void ordinary_fn(void) {')
+	assert naked_body != '', c_source
+	assert ordinary_body != '', c_source
+	assert !naked_body.contains('_PROF_FN_START'), naked_body
+	assert !naked_body.contains('on_call('), naked_body
+	// The ordinary function proves profiling and tracing were truly active, so
+	// the naked function's clean body above is the fix and not a flag typo.
+	assert ordinary_body.contains('_PROF_FN_START'), ordinary_body
+	assert ordinary_body.contains('on_call('), ordinary_body
+}
+
+// A generic function's specialized instantiation gets its OWN node id, distinct
+// from the generic declaration's; the checker only records attributes against
+// the declaration it walked, never the specialization gen/c synthesizes later.
+// `fn_decl_naked_prefix` already resolves this correctly (`fn_decl_attributes`
+// falls back to a source-position lookup for a specialized node); the guard
+// above must resolve it the same way, not by asking the checker directly.
+fn test_naked_attribute_skips_profiling_for_generic_specialization() {
+	v3_bin := build_v3()
+	profile_path := tmp_test_path('naked_attribute_generic_profile_out')
+	c_source := gen_c_with_flags(v3_bin, 'naked_attribute_generic_profile', '-profile ${profile_path}',
+		'
+@[_naked]
+fn naked_fn[T]() {
+	asm amd64 {
+		push rbp
+		mov rbp, rsp
+		mov rsp, rbp
+		pop rbp
+		ret
+	}
+}
+
+fn main() {
+	naked_fn[int]()
+}
+')
+	// `c_fn_body` starts matching AT the signature text, after any attribute
+	// prefix on the same line -- check the prefix against the full source.
+	assert c_source.contains('__attribute__((naked)) void naked_fn_T_v_int(void) {'), c_source
+	naked_body := c_fn_body(c_source, 'void naked_fn_T_v_int(void) {')
+	assert naked_body != '', c_source
+	assert !naked_body.contains('_PROF_FN_START'), naked_body
+}
+
+// `gen_profile_fn_begin` is the only place that resets `profile_fn_active` and
+// `profile_fn_restore_enabled`; skipping the whole call for a naked function (as
+// above) left both fields holding whatever the PRECEDING profiled function left
+// them at. A non-void naked function still needs an explicit V `return` to
+// satisfy the checker's tail-return analysis (its own `asm` `ret` is invisible to
+// it), and that `return` goes through `gen_return_cleanup` in stmt.v, which calls
+// `gen_profile_fn_exit()` unconditionally -- not gated on naked-ness at all. With
+// a stale `profile_fn_active == true`, that emits cleanup referencing
+// `_PROF_FN_START`/`_PROF_PREV_MEASURED_TIME`, undeclared in this body because
+// `gen_profile_fn_begin` never ran to declare them. Found by @medvednikov's
+// review of 141e8274fc.
+//
+// `-profile-fns builtin__memdup_noscan` targets the actual function V3 generates
+// immediately before `naked_fn` in this program (verified empirically -- codegen
+// order is not source order, and builtin runtime functions get interspersed).
+// Without a name in `-profile-fns` matching that PRECEDING function,
+// `profile_fn_restore_enabled` is false regardless of whether its own reset
+// works, and `_prev_v__profile_enabled` can never appear either way -- a plain
+// `-profile` run alone cannot exercise this half of the leak at all (an
+// adversarial review of this test caught that gap: an earlier version of this
+// test asserted its absence but could never have failed either version of the
+// fix). Confirmed both directions on the exact scenario below: the true pre-fix
+// binary (commit 141e8274fc, unmodified) emits
+// `profile__v__profile_enabled = _prev_v__profile_enabled;` in `naked_fn`'s body
+// with these flags; the fixed binary does not.
+fn test_naked_attribute_resets_profiling_state_for_a_later_explicit_return() {
+	v3_bin := build_v3()
+	profile_path := tmp_test_path('naked_attribute_explicit_return_profile_out')
+	c_source := gen_c_with_flags(v3_bin, 'naked_attribute_explicit_return_profile', '-profile ${profile_path} -profile-fns builtin__memdup_noscan',
+		'
+fn profiled_fn() {
+}
+
+@[_naked]
+fn naked_fn() int {
+	asm amd64 {
+		mov eax, 42
+		ret
+	}
+	return 0
+}
+
+fn main() {
+	profiled_fn()
+	println(naked_fn())
+}
+')
+	// This test's whole scenario depends on an assumption it never used to
+	// assert: that `memdup_noscan` is really generated (a) with
+	// profile_fn_restore_enabled active and (b) immediately before naked_fn,
+	// so profile_fn_active/profile_fn_restore_enabled are genuinely stale-true
+	// going into naked_fn's own generation. An adversarial review caught that,
+	// unasserted, a future change to used-function generation order could
+	// silently stop exercising the leak (e.g. naked_fn generated before any
+	// profiled function ever ran) while every assertion below kept passing
+	// vacuously. Assert the precondition directly instead of only its absence
+	// of symptoms, so a future break in the assumption fails loudly here
+	// rather than silently losing coverage.
+	preceding_body := c_fn_body(c_source, 'memdup_noscan(void* src, ptrdiff_t sz) {')
+	assert preceding_body != '', c_source
+	assert preceding_body.contains('bool _prev_v__profile_enabled ='), preceding_body
+	assert c_source.index(preceding_body) or { -1 } < c_source.index('naked_fn(void) {') or { -1 }, c_source
+	naked_body := c_fn_body(c_source, 'i64 naked_fn(void) {')
+	assert naked_body != '', c_source
+	assert !naked_body.contains('_PROF_FN_START'), naked_body
+	assert !naked_body.contains('_PROF_PREV_MEASURED_TIME'), naked_body
+	assert !naked_body.contains('_prev_v__profile_enabled'), naked_body
 }

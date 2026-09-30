@@ -3,7 +3,9 @@
 // that can be found in the LICENSE file.
 module http
 
-import net
+$if windows {
+	import net
+}
 
 const vschannel_connect_failed_msg = 'Failed to connect to host'
 
