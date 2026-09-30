@@ -257,8 +257,6 @@ const test_200_message_shake256 = [u8(0xCD), 0x8A, 0x92, 0x0E, 0xD1, 0x41, 0xAA,
 	0x76, 0x71, 0x97, 0xA0, 0xBE, 0xEB]
 
 fn test_200_length_xof() {
-	input := []u8{}
-
 	output_128 := shake128(input_200, 512)
 	assert output_128 == test_200_message_shake128
 

@@ -232,7 +232,7 @@ fn mod_fd_in_epoll(epoll_fd int, fd int, events u32) int {
 
 // remove_fd_from_epoll removes a file descriptor from the epoll instance
 fn remove_fd_from_epoll(epoll_fd int, fd int) bool {
-	ret := C.epoll_ctl(epoll_fd, C.EPOLL_CTL_DEL, fd, C.NULL)
+	ret := C.epoll_ctl(epoll_fd, C.EPOLL_CTL_DEL, fd, unsafe { nil })
 	if ret == -1 {
 		eprintln('ERROR: epoll_ctl(DEL, fd=${fd}) failed with errno=${C.errno}')
 		return false
@@ -924,7 +924,7 @@ fn handle_writable(mut w Worker, fd int) {
 // registers each with this worker's epoll for readability.
 fn handle_accept_loop(mut w Worker) {
 	for {
-		client_fd := C.accept4(w.listen_fd, C.NULL, C.NULL, C.SOCK_NONBLOCK)
+		client_fd := C.accept4(w.listen_fd, unsafe { nil }, unsafe { nil }, C.SOCK_NONBLOCK)
 		if client_fd < 0 {
 			if C.errno == C.EAGAIN {
 				break // no more incoming connections
@@ -1075,6 +1075,18 @@ fn (mut server Server) stop_accepting() {
 	}
 }
 
+// close_setup_fds releases the listeners and epoll instances of a run() that
+// failed before spawning its workers.
+fn (mut server Server) close_setup_fds() {
+	server.stop_accepting()
+	for i := 0; i < max_thread_pool_size; i++ {
+		if server.epoll_fds[i] >= 0 {
+			close_socket(server.epoll_fds[i])
+			server.epoll_fds[i] = -1
+		}
+	}
+}
+
 // run starts the server and begins listening for incoming connections.
 pub fn (mut server Server) run() ! {
 	$if windows {
@@ -1086,23 +1098,30 @@ pub fn (mut server Server) run() ! {
 	// onto different addresses. Doing it here also lets an invalid/unresolvable
 	// host fail run() instead of silently leaving the server with no listener.
 	addr := resolve_bind_addr(server.host, server.family, server.port)!
+	// Set up every listener before spawning any worker, so that a failure leaves no
+	// worker behind and the server can be marked live before the first one serves.
 	for i := 0; i < max_thread_pool_size; i++ {
-		server.listen_fds[i] = create_server_socket(addr)!
+		server.listen_fds[i] = create_server_socket(addr) or {
+			server.close_setup_fds()
+			return err
+		}
 
 		server.epoll_fds[i] = C.epoll_create1(0)
 		if server.epoll_fds[i] < 0 {
 			C.perror(c'epoll_create1 failed')
-			close_socket(server.listen_fds[i])
+			server.close_setup_fds()
 			return error('epoll_create1 failed')
 		}
 
 		// Register the listening socket with each worker epoll for distributed accepts (edge-triggered)
 		if add_fd_to_epoll(server.epoll_fds[i], server.listen_fds[i], u32(C.EPOLLIN | C.EPOLLET)) == -1 {
-			close_socket(server.listen_fds[i])
-			close_socket(server.epoll_fds[i])
+			server.close_setup_fds()
 			return error('failed to register listener with epoll')
 		}
+	}
 
+	server.mark_starting()
+	for i := 0; i < max_thread_pool_size; i++ {
 		server.threads[i] = spawn process_events(server, server.epoll_fds[i], server.listen_fds[i])
 	}
 

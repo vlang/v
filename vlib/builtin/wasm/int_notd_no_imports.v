@@ -1,7 +1,5 @@
 module builtin
 
-pub type byte = u8
-
 // type i32 = int
 
 // digit pairs in reverse order

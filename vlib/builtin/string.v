@@ -812,6 +812,51 @@ pub fn (s string) u64() u64 {
 	return strconv.common_parse_uint(s, 0, 64, false, false) or { 0 }
 }
 
+// u128 returns the value of the string as a `u128`, reading decimal digits.
+// A string that is not a decimal number gives `u128(0)`, the same as `string.u64()`.
+// Example: assert '12345'.u128() == u128(12345)
+pub fn (s string) u128() u128 {
+	mut i := 0
+	if i < s.len && s[i] == `+` {
+		i++
+	}
+	mut result := u128(0)
+	for i < s.len {
+		c := s[i]
+		if c < `0` || c > `9` {
+			return u128(0)
+		}
+		result = result * u128(10) + u128(c - `0`)
+		i++
+	}
+	return result
+}
+
+// i128 returns the value of the string as an `i128`, reading an optional sign and
+// decimal digits. A string that is not a decimal number gives `i128(0)`.
+// Example: assert '-12345'.i128() == i128(-12345)
+pub fn (s string) i128() i128 {
+	mut i := 0
+	mut negative := false
+	if i < s.len && (s[i] == `-` || s[i] == `+`) {
+		negative = s[i] == `-`
+		i++
+	}
+	mut result := i128(0)
+	for i < s.len {
+		c := s[i]
+		if c < `0` || c > `9` {
+			return i128(0)
+		}
+		result = result * i128(10) + i128(c - `0`)
+		i++
+	}
+	if negative {
+		return -result
+	}
+	return result
+}
+
 // parse_uint is like `parse_int` but for unsigned numbers
 //
 // This method directly exposes the `parse_uint` function from `strconv`
@@ -862,12 +907,11 @@ fn (s string) == (a string) bool {
 @[direct_array_access]
 pub fn (s string) compare(a string) int {
 	min_len := if s.len < a.len { s.len } else { a.len }
-	for i in 0 .. min_len {
-		if s[i] < a[i] {
-			return -1
-		}
-		if s[i] > a[i] {
-			return 1
+	if min_len > 0 {
+		// memcmp orders bytes as unsigned, exactly like comparing the u8 elements.
+		cmp := unsafe { vmemcmp(s.str, a.str, min_len) }
+		if cmp != 0 {
+			return if cmp < 0 { -1 } else { 1 }
 		}
 	}
 	if s.len < a.len {
@@ -881,17 +925,16 @@ pub fn (s string) compare(a string) int {
 
 @[direct_array_access]
 fn (s string) < (a string) bool {
-	for i in 0 .. s.len {
-		if i >= a.len || s[i] > a[i] {
-			return false
-		} else if s[i] < a[i] {
-			return true
+	min_len := if s.len < a.len { s.len } else { a.len }
+	if min_len > 0 {
+		// memcmp orders bytes as unsigned, exactly like comparing the u8 elements;
+		// sorted symbol names share long prefixes that a byte loop walks slowly.
+		cmp := unsafe { vmemcmp(s.str, a.str, min_len) }
+		if cmp != 0 {
+			return cmp < 0
 		}
 	}
-	if s.len < a.len {
-		return true
-	}
-	return false
+	return s.len < a.len
 }
 
 @[direct_array_access]
@@ -1385,22 +1428,31 @@ pub fn (s string) index_(p string) int {
 	if p.len > s.len || p.len == 0 || u64(s.str) <= 0xFFFF || u64(p.str) <= 0xFFFF {
 		return -1
 	}
-	if p.len > 2 {
+	if p.len > max_direct_index_needle_len {
 		return s.index_kmp(p)
 	}
-	mut i := 0
-	for i < s.len {
-		mut j := 0
+	// Short needles: scanning for the first byte and comparing the rest in place
+	// needs no prefix table, and costs at most p.len compares per position.
+	first := unsafe { p.str[0] }
+	last_start := s.len - p.len
+	for i := 0; i <= last_start; i++ {
+		if unsafe { s.str[i] } != first {
+			continue
+		}
+		mut j := 1
 		for j < p.len && unsafe { s.str[i + j] == p.str[j] } {
 			j++
 		}
 		if j == p.len {
 			return i
 		}
-		i++
 	}
 	return -1
 }
+
+// Needles up to this length are searched directly; longer ones use KMP, which
+// keeps the search linear in `s.len` whatever the needle.
+const max_direct_index_needle_len = 16
 
 // index returns the position of the first character of the first occurrence of the `needle` string in `s`.
 // It will return `none` if the `needle` string can't be found in `s`.
@@ -1791,7 +1843,7 @@ pub fn (s string) to_upper() string {
 // is_upper returns `true` if all ASCII letters in the string are uppercase,
 // and the string contains at least one uppercase ASCII letter.
 // It only works when the input is composed entirely from ASCII characters.
-// See also: [`byte.is_capital`](#byte.is_capital)
+// See also: [`u8.is_capital`](#u8.is_capital)
 // Example: assert 'HELLO V'.is_upper() == true
 @[direct_array_access]
 pub fn (s string) is_upper() bool {

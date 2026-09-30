@@ -107,6 +107,43 @@ fn (g &FlatGen) is_map_entry_lvalue(id flat.NodeId) bool {
 	return base_type is types.Map
 }
 
+// gen_lowered_map_get_postfix_lvalue restores the writable map slot after an index read was
+// lowered before its enclosing postfix expression. `map__get_or_set` also preserves `m[k]++`
+// semantics for a missing key, instead of incrementing the temporary zero value.
+fn (mut g FlatGen) gen_lowered_map_get_postfix_lvalue(id flat.NodeId) bool {
+	if int(id) < 0 || int(id) >= g.a.nodes.len {
+		return false
+	}
+	deref := g.a.nodes[int(id)]
+	if deref.kind != .prefix || deref.op != .mul || deref.children_count != 1 {
+		return false
+	}
+	cast_id := g.a.child(&deref, 0)
+	cast := g.a.nodes[int(cast_id)]
+	if cast.kind != .cast_expr || cast.children_count != 1 || cast.value.len == 0 {
+		return false
+	}
+	call_id := g.a.child(&cast, 0)
+	call := g.a.nodes[int(call_id)]
+	if call.kind != .call || call.children_count != 4 {
+		return false
+	}
+	callee := g.a.child_node(&call, 0)
+	if callee.kind != .ident || callee.value != 'map__get' {
+		return false
+	}
+	ct := g.cast_c_type(g.tc.parse_type(cast.value))
+	g.write('(*(${ct})map__get_or_set(')
+	for i in 1 .. call.children_count {
+		if i > 1 {
+			g.write(', ')
+		}
+		g.gen_expr(g.a.child(&call, i))
+	}
+	g.write('))')
+	return true
+}
+
 // gen_expr_lvalue emits expr lvalue output for c.
 fn gen_expr_lvalue(mut g FlatGen, id flat.NodeId) {
 	node := g.a.nodes[int(id)]
@@ -1018,8 +1055,24 @@ fn (g &FlatGen) ownership_destructor_method_name() string {
 	return if g.tc.autofree_mode { 'free' } else { 'drop' }
 }
 
+// ownership_free_call releases the storage of a dropped value. Ownership builds use
+// libc allocations, but the result of a discarded spawn is dropped in every build, and
+// with Boehm GC its storage comes from the GC heap: `__v_thread_free` uses `GC_FREE`
+// there and `free` otherwise.
+fn (g &FlatGen) ownership_free_call(ptr string) string {
+	if g.detached_spawn_drop {
+		return '__v_thread_free(${ptr});'
+	}
+	return 'free(${ptr});'
+}
+
 fn (g &FlatGen) ownership_recursive_drop_helper_name(type_name string) string {
-	return '__v3_ownership_drop_${g.cname(type_name)}'
+	prefix := if g.detached_spawn_drop {
+		'__v3_detached_ownership_drop_'
+	} else {
+		'__v3_ownership_drop_'
+	}
+	return '${prefix}${g.cname(type_name)}'
 }
 
 // ownership_recursive_drop_helper_types collapses the logical ownership type
@@ -1123,6 +1176,11 @@ fn (g &FlatGen) ownership_collect_drop_struct_names(typ types.Type, depth int, m
 		}
 		types.ResultType {
 			g.ownership_collect_drop_struct_names(typ.base_type, depth + 1, mut names, mut seen)
+		}
+		types.MultiReturn {
+			for part in typ.types {
+				g.ownership_collect_drop_struct_names(part, depth + 1, mut names, mut seen)
+			}
 		}
 		types.Array {
 			g.ownership_collect_drop_struct_names(typ.elem_type, depth + 1, mut names, mut seen)
@@ -1356,16 +1414,19 @@ fn (mut g FlatGen) gen_ownership_drop_value_inner(typ types.Type, expr string, d
 		types.Alias {
 			g.gen_ownership_drop_value_inner(typ.base_type, expr, depth + 1, mut expanding)
 		}
+		types.MultiReturn {
+			for i, part in typ.types {
+				if g.ownership_type_requires_destruction(part, depth + 1) {
+					g.gen_ownership_drop_value_inner(part, '(${expr}).arg${i}', depth + 1, mut expanding)
+				}
+			}
+		}
 		types.OptionType {
 			g.writeln('if ((${expr}).ok) {')
 			g.indent++
 			if g.ownership_type_requires_destruction(typ.base_type, depth + 1) {
 				g.gen_ownership_drop_value_inner(typ.base_type, '(${expr}).value', depth + 1, mut expanding)
 			}
-			g.indent--
-			g.writeln('} else {')
-			g.indent++
-			g.gen_ownership_drop_result_error('(${expr}).err', depth + 1, mut expanding)
 			g.indent--
 			g.writeln('}')
 		}
@@ -1384,6 +1445,11 @@ fn (mut g FlatGen) gen_ownership_drop_value_inner(typ types.Type, expr string, d
 		}
 		types.String {
 			g.writeln('string__free(&(${expr}));')
+		}
+		types.FnType {
+			if g.detached_spawn_drop {
+				g.writeln('${g.cname('closure.closure_try_destroy')}((void*)(${expr}));')
+			}
 		}
 		types.Array {
 			g.writeln('if (((${expr}).flags & ArrayFlags__is_slice) == 0) {')
@@ -1439,6 +1505,12 @@ fn (mut g FlatGen) gen_ownership_drop_value_inner(typ types.Type, expr string, d
 			g.writeln('map__free(&(${expr}));')
 		}
 		types.Struct {
+			thread_name := trimmed_space(typ.name)
+			if g.detached_spawn_drop && (thread_name == 'thread'
+				|| thread_name.ends_with('.thread') || thread_name.starts_with('thread ')) {
+				g.writeln(g.detached_spawn_result_cleanup(typ, expr, depth))
+				return
+			}
 			method_name := g.ownership_destructor_method_name()
 			method := g.resolve_method_name(typ.name, method_name)
 			if method.len > 0 {
@@ -1504,7 +1576,7 @@ fn (mut g FlatGen) gen_ownership_drop_value_inner(typ types.Type, expr string, d
 			}
 			g.writeln('default: break;')
 			g.writeln('}')
-			g.writeln('free(${object});')
+			g.writeln(g.ownership_free_call(object))
 			g.writeln('(${expr})._object = NULL;')
 			g.writeln('(${expr})._object_is_boxed = false;')
 			g.indent--
@@ -1527,7 +1599,7 @@ fn (mut g FlatGen) gen_ownership_drop_value_inner(typ types.Type, expr string, d
 					g.writeln('if ((${expr})._pointer_variant_is_owned && ${payload} != NULL) {')
 					g.indent++
 					g.gen_ownership_drop_value_inner(clean_variant_type.base_type, '*${payload}', depth + 1, mut expanding)
-					g.writeln('free(${payload});')
+					g.writeln(g.ownership_free_call(payload))
 					g.indent--
 					g.writeln('}')
 					g.writeln('break;')
@@ -1539,7 +1611,7 @@ fn (mut g FlatGen) gen_ownership_drop_value_inner(typ types.Type, expr string, d
 				g.writeln('if (${payload} != NULL) {')
 				g.indent++
 				g.gen_ownership_drop_value_inner(variant_type, '*${payload}', depth + 1, mut expanding)
-				g.writeln('free(${payload});')
+				g.writeln(g.ownership_free_call(payload))
 				g.indent--
 				g.writeln('}')
 				g.writeln('break;')
@@ -1553,7 +1625,7 @@ fn (mut g FlatGen) gen_ownership_drop_value_inner(typ types.Type, expr string, d
 }
 
 // gen_ownership_drop_result_error destroys the owned IError stored by a failed result.
-// Direct error messages and owned concrete objects are released. Borrowed pointer-backed
+// Owned concrete objects are released. Borrowed pointer-backed
 // interfaces and the process-wide none and error-sentinel objects remain untouched.
 fn (mut g FlatGen) gen_ownership_drop_result_error(expr string, depth int, mut expanding map[string]bool) {
 	object := '((${expr})._object)'
@@ -1561,7 +1633,6 @@ fn (mut g FlatGen) gen_ownership_drop_result_error(expr string, depth int, mut e
 	// declarations keep the two process-wide sentinel comparisons valid there.
 	g.writeln('extern IError builtin__none__;')
 	g.writeln('extern IError builtin__error_sentinel;')
-	g.writeln('string__free(&((${expr}).message));')
 	g.writeln('if ((${expr})._object_is_boxed && ${object} != NULL && ${object} != builtin__none__._object && ${object} != builtin__error_sentinel._object) {')
 	g.indent++
 	g.writeln('switch ((${expr})._typ) {')
@@ -1590,7 +1661,7 @@ fn (mut g FlatGen) gen_ownership_drop_result_error(expr string, depth int, mut e
 	}
 	g.writeln('default: break;')
 	g.writeln('}')
-	g.writeln('free(${object});')
+	g.writeln(g.ownership_free_call(object))
 	g.writeln('(${expr})._object = NULL;')
 	g.writeln('(${expr})._object_is_boxed = false;')
 	g.indent--
@@ -1610,7 +1681,6 @@ fn (mut g FlatGen) gen_ownership_clone_ierror(id flat.NodeId) {
 	g.gen_expr(id)
 	g.writeln(';')
 	g.writeln('IError ${result} = ${source};')
-	g.writeln('${result}.message = string__clone(${source}.message);')
 	g.writeln('if (${object} != NULL && ${object} != builtin__none__._object && ${object} != builtin__error_sentinel._object) {')
 	g.indent++
 	g.writeln('switch (${source}._typ) {')
@@ -1681,10 +1751,21 @@ fn (g &FlatGen) ownership_type_requires_destruction(typ types.Type, depth int) b
 		types.Alias {
 			return g.ownership_type_requires_destruction(typ.base_type, depth + 1)
 		}
+		types.MultiReturn {
+			return typ.types.any(g.ownership_type_requires_destruction(it, depth + 1))
+		}
 		types.ArrayFixed {
 			return g.ownership_type_requires_destruction(typ.elem_type, depth + 1)
 		}
+		types.FnType {
+			return g.detached_spawn_drop
+		}
 		types.Struct {
+			thread_name := trimmed_space(typ.name)
+			if g.detached_spawn_drop && (thread_name == 'thread'
+				|| thread_name.ends_with('.thread') || thread_name.starts_with('thread ')) {
+				return true
+			}
 			if g.resolve_method_name(typ.name, g.ownership_destructor_method_name()).len > 0 {
 				return true
 			}
@@ -2165,6 +2246,8 @@ fn (mut g FlatGen) gen_select(id flat.NodeId, node flat.Node, is_expr bool) {
 		if !select_case.is_push && int(select_case.lhs_id) >= 0 {
 			lhs := g.a.nodes[int(select_case.lhs_id)]
 			if lhs.kind != .ident || lhs.value != '_' {
+				// The select statement's own line directive is many C lines above.
+				g.write_line_directive(lhs)
 				if select_case.is_decl {
 					ct := g.value_c_type(elem_types[i])
 					g.write('${ct} ')
@@ -2260,7 +2343,7 @@ fn (mut g FlatGen) gen_select_receive_value(expr string, actual types.Type, expe
 				g.write(', .value = ')
 				g.gen_select_receive_value('(${expr}).value', actual_payload, expected_payload)
 			}
-			g.write('} : (${expected_ct}){.ok = false, .err = (${expr}).err})')
+			g.write('} : (${expected_ct}){.ok = false${g.optional_error_field(expected_ct, '(${expr})')}})')
 			return
 		}
 		base_type := if expected_base is types.OptionType {
@@ -2414,17 +2497,6 @@ fn (mut g FlatGen) gen_select_receive_interface_value(expr string, actual types.
 	type_id := g.iface_type_id_for_concrete(iface.name, actual_clean)
 	ct := g.tc.c_type(iface)
 	concrete_ct := g.tc.c_type(actual_base)
-	if g.is_ierror_type_name(iface.name) {
-		empty_sid := g.intern_string('')
-		object := if actual is types.Pointer {
-			expr
-		} else {
-			'memdup(&${expr}, sizeof(${concrete_ct}))'
-		}
-		boxed := actual !is types.Pointer
-		g.write('(${ct}){._typ = ${type_id}, ._object = ${object}, ._object_is_boxed = ${boxed}, .message = _str_${empty_sid}, .code = 0}')
-		return true
-	}
 	fields := g.interface_cached_fields(iface.name)
 	if fields.len > 0 {
 		tmp := g.tmp_count
@@ -2504,6 +2576,7 @@ fn (mut g FlatGen) gen_node(id flat.NodeId) {
 	}
 	g.in_return = false
 	g.write_coverage_point(node)
+	g.write_line_directive(node)
 	match node.kind {
 		.fn_decl, .c_fn_decl, .struct_decl, .type_decl, .enum_decl, .interface_decl {
 			return
@@ -2516,9 +2589,6 @@ fn (mut g FlatGen) gen_node(id flat.NodeId) {
 			child := g.a.nodes[int(child_id)]
 			if child.kind == .select_stmt {
 				g.gen_select(child_id, child, false)
-				return
-			}
-			if g.is_runtime_array_flags_stmt(child_id) {
 				return
 			}
 			if child.kind == .or_expr {
@@ -2675,9 +2745,10 @@ fn (mut g FlatGen) gen_node(id flat.NodeId) {
 					return
 				}
 				ret_node := g.a.nodes[int(ret_id)]
-				if g.expr_is_error_call(ret_id) {
+				if g.expr_is_error_call(ret_id)
+					&& cgen_unalias_type(g.cur_fn_ret) !is types.OptionType {
 					if g.cur_fn_ret_is_optional {
-						ct := g.current_fn_optional_type_name(g.cur_fn_ret)
+						ct := g.optional_type_name(g.cur_fn_ret)
 						g.write('return ')
 						g.gen_optional_error_from_call(ct, ret_node)
 						g.writeln(';')
@@ -2689,7 +2760,7 @@ fn (mut g FlatGen) gen_node(id flat.NodeId) {
 					return
 				}
 				if g.cur_fn_ret_is_optional {
-					ct := g.current_fn_optional_type_name(g.cur_fn_ret)
+					ct := g.optional_type_name(g.cur_fn_ret)
 					base := g.cur_fn_ret_base
 					if return_node_is_direct_optional_forward(node.value)
 						&& g.expr_really_returns_optional(ret_id) {
@@ -2946,12 +3017,19 @@ fn (mut g FlatGen) gen_node(id flat.NodeId) {
 		}
 		.defer_stmt {
 			if node.value == 'function' {
+				if g.cur_fn_panic_owner {
+					g.gen_fn_defer_panic_frame(id)
+				}
 				if count_name := g.fn_defer_counts[int(id)] {
 					g.writeln('${count_name}++;')
 				}
 				g.fn_defers << id
 			} else {
-				g.defers << g.a.child(&node, 0)
+				body_id := g.a.child(&node, 0)
+				if g.cur_fn_panic_owner {
+					g.gen_block_defer_panic_frame(body_id)
+				}
+				g.defers << body_id
 			}
 		}
 		.debugger_stmt {
@@ -3021,24 +3099,46 @@ fn (mut g FlatGen) gen_node(id flat.NodeId) {
 			if g.is_prod {
 				return
 			}
-			condition_id := g.a.child(&node, 0)
-			captured_ids := g.gen_assert_capture_numeric_operands(condition_id)
 			if g.show_test_stats && g.test_files.len > 0 {
 				g.writeln('__v_test_assertions++;')
 			}
-			g.write('if (!(')
-			g.gen_expr(condition_id)
-			g.writeln(')) {')
-			g.indent++
-			g.writeln('v3_eprint_lit("V panic: Assertion failed...\\n");')
-			if detail := g.assert_failure_detail(node, condition_id) {
-				g.writeln('v3_eprint_lit("${c_escape(detail)}\\n");')
+			mut captures := g.gen_assert_operand_captures(node)
+			mut condition := ''
+			if captures.len > 0 {
+				condition = g.expr_to_string(g.a.child(&node, 0)).trim_left(' \t')
+				if captures.len == 2 && !condition.contains(captures[0].name)
+					&& condition.contains(captures[1].name) {
+					// Evaluating the right operand ahead of the condition is only safe
+					// after the left one was captured; keep their order instead, and
+					// report no values.
+					for capture in captures {
+						g.assert_expr_overrides.delete(capture.id)
+					}
+					captures = []AssertOperandCapture{}
+					condition = g.expr_to_string(g.a.child(&node, 0)).trim_left(' \t')
+				}
 			}
-			g.gen_assert_infix_values(condition_id)
-			if node.children_count > 1 {
-				g.write('v3_eprintln_string(')
-				g.gen_expr(g.a.child(&node, 1))
-				g.writeln(');')
+			if condition.len == 0 {
+				g.write('if (!(')
+				g.gen_expr(g.a.child(&node, 0))
+				g.writeln(')) {')
+			} else {
+				for capture in captures {
+					if condition.contains(capture.name) {
+						g.writeln(capture.decl)
+					} else {
+						// The condition did not read the capture, so the operand can not
+						// be reported without evaluating it again.
+						g.assert_expr_overrides.delete(capture.id)
+					}
+				}
+				g.writeln('if (!(${condition})) {')
+			}
+			g.indent++
+			if g.test_files.len > 0 {
+				g.gen_test_assert_failure(node)
+			} else {
+				g.gen_assert_failure(node)
 			}
 			if g.test_files.len > 0 {
 				if g.cur_fn_assert_continues {
@@ -3053,8 +3153,8 @@ fn (mut g FlatGen) gen_node(id flat.NodeId) {
 			}
 			g.indent--
 			g.writeln('}')
-			for captured_id in captured_ids {
-				g.assert_expr_overrides.delete(captured_id)
+			for capture in captures {
+				g.assert_expr_overrides.delete(capture.id)
 			}
 		}
 		.goto_stmt {
@@ -3114,6 +3214,703 @@ fn (mut g FlatGen) gen_node(id flat.NodeId) {
 			g.gen_unsupported_node(node)
 		}
 	}
+}
+
+const assert_infix_values_marker = '__v3_assert_infix_values:'
+
+struct AssertSourceDetail {
+	file       string
+	line       int
+	expression string
+	lhs_label  string
+	rhs_label  string
+}
+
+struct AssertOperandCapture {
+	id   int
+	name string
+	decl string
+}
+
+// assert_value_ids returns the comparison operands that the transformer attaches
+// to an assert (see `transform_assert_stmt`), so a failure can report their values.
+fn (g &FlatGen) assert_value_ids(node flat.Node) ?(flat.NodeId, flat.NodeId) {
+	if !node.value.starts_with(assert_infix_values_marker) || node.children_count < 3 {
+		return none
+	}
+	return g.a.child(&node, node.children_count - 2), g.a.child(&node, node.children_count - 1)
+}
+
+// assert_message_id returns the message expression of `assert cond, message`.
+fn (g &FlatGen) assert_message_id(node flat.Node) ?flat.NodeId {
+	value_count := if node.value.starts_with(assert_infix_values_marker) { 2 } else { 0 }
+	if node.children_count - value_count < 2 {
+		return none
+	}
+	return g.a.child(&node, 1)
+}
+
+// assert_reported_value_ids returns the operands of a failed assert that can be read
+// again: operands captured before the condition, and operands that did not need that.
+fn (g &FlatGen) assert_reported_value_ids(node flat.Node) ?(flat.NodeId, flat.NodeId) {
+	lhs_id, rhs_id := g.assert_value_ids(node)?
+	calls_operator := g.assert_comparison_calls_operator_method(node, lhs_id, rhs_id)
+	if !g.assert_value_is_readable(lhs_id, calls_operator)
+		|| !g.assert_value_is_readable(rhs_id, calls_operator) {
+		return none
+	}
+	if calls_operator && (g.assert_operand_shares_storage(lhs_id)
+		|| g.assert_operand_shares_storage(rhs_id)) {
+		// The temp of such an operand shares storage with it, which the operator method
+		// can change in place, so it could report a value other than the compared one.
+		return none
+	}
+	return lhs_id, rhs_id
+}
+
+// assert_operand_shares_storage reports whether a C copy of an assert operand still
+// shares storage with the operand, like the elements of an array field.
+fn (g &FlatGen) assert_operand_shares_storage(id flat.NodeId) bool {
+	mut seen := map[string]bool{}
+	return g.assert_type_shares_storage(g.usable_expr_type(id), mut seen)
+}
+
+fn (g &FlatGen) assert_type_shares_storage(typ types.Type, mut seen map[string]bool) bool {
+	clean := types.unalias_type(typ)
+	match clean {
+		types.Array, types.Map, types.Pointer, types.Channel, types.SumType, types.Interface {
+			return true
+		}
+		types.ArrayFixed {
+			return g.assert_type_shares_storage(clean.elem_type, mut seen)
+		}
+		types.OptionType {
+			return g.assert_type_shares_storage(clean.base_type, mut seen)
+		}
+		types.ResultType {
+			return g.assert_type_shares_storage(clean.base_type, mut seen)
+		}
+		types.Struct {
+			if clean.name in seen {
+				return false
+			}
+			seen[clean.name] = true
+			for field in g.tc.struct_fields_for_type(clean.name) {
+				if g.assert_type_shares_storage(field.typ, mut seen) {
+					return true
+				}
+			}
+		}
+		else {}
+	}
+	return false
+}
+
+fn (g &FlatGen) assert_value_is_readable(id flat.NodeId, calls_operator bool) bool {
+	return int(id) in g.assert_expr_overrides
+		|| !g.assert_operand_needs_capture(id, calls_operator)
+}
+
+// assert_operand_needs_capture reports whether an assert operand must be copied before
+// the comparison, to report the value that was compared: when it has side effects, or
+// when the comparison calls an operator method, which could change what it reads, like
+// in `assert current == Item{}`, with an `Item.==` method that changes `current`.
+fn (g &FlatGen) assert_operand_needs_capture(id flat.NodeId, calls_operator bool) bool {
+	if !g.assert_operand_is_pure(id) {
+		return true
+	}
+	return calls_operator && !g.assert_operand_is_constant(id)
+}
+
+// assert_comparison_calls_operator_method reports whether the comparison of an assert
+// calls a user defined `==` or `<` method, for its operands, or for their fields or elements.
+fn (g &FlatGen) assert_comparison_calls_operator_method(node flat.Node, lhs_id flat.NodeId, rhs_id flat.NodeId) bool {
+	// The marker is followed by `op:lhs_offset:lhs_end:rhs_offset:rhs_end`.
+	op_name := node.value.all_after(assert_infix_values_marker).all_before(':')
+	if op_name !in ['eq', 'ne', 'lt', 'gt', 'le', 'ge'] {
+		return false
+	}
+	op := if op_name in ['eq', 'ne'] { flat.Op.eq } else { flat.Op.lt }
+	return g.tc.comparison_calls_operator_method(g.usable_expr_type(lhs_id), op)
+		|| g.tc.comparison_calls_operator_method(g.usable_expr_type(rhs_id), op)
+}
+
+// assert_operand_is_pure reports whether reading an assert operand again, after
+// the condition failed, gives the same value without any side effect.
+fn (g &FlatGen) assert_operand_is_pure(id flat.NodeId) bool {
+	if int(id) < 0 || int(id) >= g.a.nodes.len {
+		return false
+	}
+	node := g.a.nodes[int(id)]
+	return match node.kind {
+		.ident, .int_literal, .float_literal, .bool_literal, .char_literal, .string_literal,
+		.nil_literal, .none_expr, .enum_val, .sizeof_expr, .typeof_expr {
+			true
+		}
+		.selector, .paren, .cast_expr {
+			node.children_count > 0 && g.assert_operand_is_pure(g.a.child(&node, 0))
+		}
+		.array_literal {
+			g.assert_operand_children_are_pure(node)
+		}
+		.struct_init {
+			g.assert_struct_init_is_pure(id, node)
+		}
+		.prefix {
+			node.op in [.plus, .minus, .not, .bit_not, .mul, .amp] && node.children_count > 0
+				&& g.assert_operand_is_pure(g.a.child(&node, 0))
+		}
+		.index {
+			node.children_count >= 2 && g.assert_operand_is_pure(g.a.child(&node, 0))
+				&& g.assert_operand_is_pure(g.a.child(&node, 1))
+				&& !g.assert_index_is_overloaded(node)
+		}
+		else {
+			false
+		}
+	}
+}
+
+// assert_struct_init_is_pure reports whether a struct literal can be evaluated again.
+// Besides its field values, the literal also evaluates the defaults of the fields it
+// does not set, including those of nested and embedded structs, which cgen fills in.
+fn (g &FlatGen) assert_struct_init_is_pure(id flat.NodeId, node flat.Node) bool {
+	clean := default_init_unalias_type(g.usable_expr_type(id))
+	if clean !is types.Struct {
+		return false
+	}
+	type_name := (clean as types.Struct).name
+	fields := g.struct_fields_for_type(type_name) or { return false }
+	mut set_fields := map[string]bool{}
+	for i in 0 .. node.children_count {
+		field := g.a.child_node(&node, i)
+		if field.children_count == 0 || !g.assert_operand_is_pure(g.a.child(field, 0)) {
+			return false
+		}
+		if field.value.len > 0 {
+			set_fields[field.value] = true
+		} else if i < fields.len {
+			set_fields[fields[i].name] = true
+		}
+	}
+	mut seen := map[string]bool{}
+	return g.assert_struct_defaults_are_pure(type_name, set_fields, mut seen)
+}
+
+// assert_struct_defaults_are_pure reports whether the fields of a struct that are not
+// in `set_fields` get their default values without side effects.
+fn (g &FlatGen) assert_struct_defaults_are_pure(type_name string, set_fields map[string]bool, mut seen map[string]bool) bool {
+	if seen[type_name] {
+		return true
+	}
+	seen[type_name] = true
+	fields := g.struct_fields_for_type(type_name) or { return false }
+	for field in fields {
+		if field.name in set_fields {
+			continue
+		}
+		if field.has_default {
+			default_id := g.assert_struct_field_default(type_name, field.name) or { return false }
+			if !g.assert_operand_is_pure(default_id) {
+				return false
+			}
+			continue
+		}
+		mut clean := default_init_unalias_type(field.typ)
+		for clean is types.ArrayFixed {
+			clean = default_init_unalias_type(clean.elem_type)
+		}
+		if clean is types.Struct {
+			if !g.assert_struct_defaults_are_pure(clean.name, map[string]bool{}, mut seen) {
+				return false
+			}
+		}
+	}
+	return true
+}
+
+// assert_struct_field_default returns the default value expression of a struct field.
+fn (g &FlatGen) assert_struct_field_default(type_name string, field_name string) ?flat.NodeId {
+	info := g.find_struct_decl(type_name)?
+	for i in 0 .. info.node.children_count {
+		field := g.a.child_node(&info.node, i)
+		if field.kind == .field_decl && field.value == field_name && field.children_count > 0 {
+			return g.a.child(field, 0)
+		}
+	}
+	return none
+}
+
+// assert_index_is_overloaded reports whether an index expression calls the `[]`
+// method of its base.
+fn (g &FlatGen) assert_index_is_overloaded(node flat.Node) bool {
+	base_type := g.usable_expr_type(g.a.child(&node, 0))
+	if _ := g.tc.index_overload_call_info(base_type, false) {
+		return true
+	}
+	return false
+}
+
+fn (g &FlatGen) assert_operand_children_are_pure(node flat.Node) bool {
+	for i in 0 .. node.children_count {
+		if !g.assert_operand_is_pure(g.a.child(&node, i)) {
+			return false
+		}
+	}
+	return true
+}
+
+// gen_assert_operand_captures prepares temps for the assert operands that need them
+// (see `assert_operand_needs_capture`), and makes the condition read those temps, so
+// that a failed assert can report the compared values without evaluating the operands
+// again. The temps are evaluated ahead of the condition, so capturing the right operand
+// also needs a snapshot of the left one, even when reading it has no side effects: in
+// `assert c.n == bump(mut c)`, `c.n` must be read before `bump` runs.
+fn (mut g FlatGen) gen_assert_operand_captures(node flat.Node) []AssertOperandCapture {
+	lhs_id, rhs_id := g.assert_value_ids(node) or { return [] }
+	calls_operator := g.assert_comparison_calls_operator_method(node, lhs_id, rhs_id)
+	mut captures := []AssertOperandCapture{cap: 2}
+	lhs_needs_capture := g.assert_operand_needs_capture(lhs_id, calls_operator)
+	if lhs_needs_capture {
+		g.add_assert_operand_capture(mut captures, lhs_id)
+	}
+	if !g.assert_operand_needs_capture(rhs_id, calls_operator) {
+		return captures
+	}
+	if captures.len == 0 && !g.assert_operand_is_constant(lhs_id) {
+		// Without a snapshot of the left operand, the right one stays in the condition.
+		if lhs_needs_capture || !g.add_assert_operand_capture(mut captures, lhs_id) {
+			return captures
+		}
+	}
+	g.add_assert_operand_capture(mut captures, rhs_id)
+	return captures
+}
+
+// add_assert_operand_capture adds a temp for an assert operand, when its value can be
+// copied into one.
+fn (mut g FlatGen) add_assert_operand_capture(mut captures []AssertOperandCapture, id flat.NodeId) bool {
+	c_type, is_number := g.assert_capture_c_type(id) or { return false }
+	name := '${g.tmp_name()}_assert_value'
+	expr := g.expr_to_string(id).trim_left(' \t')
+	value := if is_number { '(${c_type})(${expr})' } else { expr }
+	captures << AssertOperandCapture{
+		id:   int(id)
+		name: name
+		decl: '${c_type} ${name} = ${value};'
+	}
+	g.assert_expr_overrides[int(id)] = name
+	return true
+}
+
+// assert_operand_is_constant reports whether an assert operand has the same value
+// wherever it is evaluated, so that the other operand may be evaluated before it.
+fn (g &FlatGen) assert_operand_is_constant(id flat.NodeId) bool {
+	if int(id) < 0 || int(id) >= g.a.nodes.len {
+		return false
+	}
+	node := g.a.nodes[int(id)]
+	return match node.kind {
+		.int_literal, .float_literal, .bool_literal, .char_literal, .string_literal,
+		.nil_literal, .none_expr, .enum_val, .sizeof_expr, .typeof_expr {
+			true
+		}
+		.paren, .cast_expr {
+			node.children_count > 0 && g.assert_operand_is_constant(g.a.child(&node, 0))
+		}
+		.prefix {
+			node.op in [.plus, .minus, .not, .bit_not] && node.children_count > 0
+				&& g.assert_operand_is_constant(g.a.child(&node, 0))
+		}
+		else {
+			false
+		}
+	}
+}
+
+// assert_capture_c_type returns the C type of a temp for an assert operand, when its
+// value can be copied with a plain C assignment.
+fn (mut g FlatGen) assert_capture_c_type(id flat.NodeId) ?(string, bool) {
+	typ := g.usable_expr_type(id)
+	clean := g.value_unalias_type(typ)
+	is_number := clean.is_integer() || clean.is_float()
+	match clean {
+		types.Primitive, types.String, types.Char, types.Rune, types.ISize, types.USize,
+		types.Enum, types.Struct, types.Array, types.Map, types.SumType, types.Interface,
+		types.OptionType, types.ResultType {
+		}
+		types.Pointer {
+			if fn_type_from(clean.base_type) != none {
+				return none
+			}
+		}
+		else {
+			return none
+		}
+	}
+	c_type := g.value_c_type(typ)
+	if c_type.len == 0 || c_type == 'void' {
+		return none
+	}
+	return c_type, is_number
+}
+
+// assert_source_detail reads the source of a failed assert once, for its location,
+// its expression and the source text of the compared operands.
+fn (g &FlatGen) assert_source_detail(node flat.Node) ?AssertSourceDetail {
+	pos := node.pos
+	if !pos.is_valid() {
+		return none
+	}
+	file := g.a.source_files[pos.id] or { return none }
+	source := os.read_file(file.name) or { return none }
+	start := int_max(0, int_min(source.len, pos.offset))
+	mut expression := assert_source_text(source, pos.offset, pos.end)
+	if expression.len == 0 {
+		return none
+	}
+	if expression.starts_with('assert ') {
+		expression = expression['assert '.len..]
+	}
+	expression = format_assert_source_expression(expression)
+	mut lhs_label := ''
+	mut rhs_label := ''
+	// The marker is followed by `op:lhs_offset:lhs_end:rhs_offset:rhs_end`.
+	spans := node.value.all_after(assert_infix_values_marker).split(':')
+	if node.value.starts_with(assert_infix_values_marker) && spans.len == 5 {
+		lhs_label = assert_operand_label(source, spans[1].int(), spans[2].int(), pos.offset,
+			pos.end)
+		rhs_label = assert_operand_label(source, spans[3].int(), spans[4].int(), pos.offset,
+			pos.end)
+		// The source span of a few expressions is not exact; print just the value then.
+		if !expression.starts_with(lhs_label) {
+			lhs_label = ''
+		}
+	}
+	return AssertSourceDetail{
+		file:       file.name
+		line:       source[..start].count('\n') + 1
+		expression: expression
+		lhs_label:  lhs_label
+		rhs_label:  rhs_label
+	}
+}
+
+fn assert_source_text(source string, offset int, end_offset int) string {
+	start := int_max(0, int_min(source.len, offset))
+	end := int_max(start, int_min(source.len, end_offset))
+	return source[start..end].trim_space()
+}
+
+// assert_operand_label returns the source text of an assert operand, or '' when its
+// span is not a complete expression inside of the assert.
+fn assert_operand_label(source string, offset int, end int, assert_offset int, assert_end int) string {
+	if offset >= end || offset < assert_offset || end > assert_end {
+		return ''
+	}
+	label := format_assert_source_expression(assert_source_text(source, offset, end))
+	mut depth := 0
+	mut quote := u8(0)
+	mut escaped := false
+	for ch in label {
+		if quote != 0 {
+			if escaped {
+				escaped = false
+			} else if ch == `\\` {
+				escaped = true
+			} else if ch == quote {
+				quote = 0
+			}
+			continue
+		}
+		match ch {
+			`'`, `"`, 96 { quote = ch }
+			`(`, `[`, `{` { depth++ }
+			`)`, `]`, `}` { depth-- }
+			else {}
+		}
+		if depth < 0 {
+			return ''
+		}
+	}
+	return if depth == 0 && quote == 0 { label } else { '' }
+}
+
+fn format_assert_source_expression(source string) string {
+	mut result := strings.new_builder(source.len + 8)
+	mut quote := u8(0)
+	mut escaped := false
+	mut i := 0
+	for i < source.len {
+		ch := source[i]
+		if quote != 0 {
+			result.write_u8(ch)
+			if escaped {
+				escaped = false
+			} else if ch == `\\` {
+				escaped = true
+			} else if ch == quote {
+				quote = 0
+			}
+			i++
+			continue
+		}
+		if ch in [`'`, `"`] || ch == 96 {
+			quote = ch
+			result.write_u8(ch)
+			i++
+			continue
+		}
+		if ch == `.` && i + 1 < source.len && source[i + 1] == `.` {
+			for result.len > 0 && result.last() in [` `, `\t`] {
+				result.go_back(1)
+			}
+			result.write_string(' .. ')
+			i += 2
+			for i < source.len && source[i] in [` `, `\t`] {
+				i++
+			}
+			continue
+		}
+		result.write_u8(ch)
+		i++
+	}
+	return result.str()
+}
+
+fn (mut g FlatGen) gen_assert_value_string(id flat.NodeId) {
+	node := g.a.node(id)
+	match node.kind {
+		.enum_val {
+			g.write(g.interface_str_lit(node.value.all_after_last('.')))
+			return
+		}
+		.none_expr {
+			g.write(g.interface_str_lit('none'))
+			return
+		}
+		.nil_literal {
+			g.write(g.interface_str_lit('nil'))
+			return
+		}
+		else {}
+	}
+	typ := g.usable_expr_type(id)
+	expr := g.assert_expr_overrides[int(id)] or { g.expr_to_string_with_expected_type(id, typ) }
+	if !g.assert_value_type_is_compact(typ) {
+		g.write(g.interface_str_lit('<value>'))
+		return
+	}
+	mut stack := []string{}
+	value := g.interface_implicit_str_expr(typ, expr, false, mut stack) or {
+		g.interface_str_lit('<value>')
+	}
+	g.write(value)
+}
+
+fn (g &FlatGen) assert_value_type_is_compact(typ types.Type) bool {
+	mut budget := AssertValueTypeBudget{
+		remaining: 64
+	}
+	return g.consume_assert_value_type_budget(typ, mut budget)
+}
+
+struct AssertValueTypeBudget {
+mut:
+	remaining int
+	stack     []string
+	nested    bool
+}
+
+fn (g &FlatGen) consume_assert_value_type_budget(typ types.Type, mut budget AssertValueTypeBudget) bool {
+	budget.remaining--
+	if budget.remaining < 0 {
+		return false
+	}
+	nested := budget.nested
+	budget.nested = true
+	clean := g.interface_unaliased_type(typ)
+	if fn_type_from(clean) != none {
+		return false
+	}
+	match clean {
+		types.OptionType, types.ResultType {
+			// An option inside of another value is printed through the generic option
+			// type, which only works for a scalar payload.
+			if nested && !assert_value_type_is_scalar(g.interface_unaliased_type(clean.base_type)) {
+				return false
+			}
+			return g.consume_assert_value_type_budget(clean.base_type, mut budget)
+		}
+		types.Pointer {
+			return g.consume_assert_value_type_budget(clean.base_type, mut budget)
+		}
+		types.Array {
+			return g.consume_assert_value_type_budget(clean.elem_type, mut budget)
+		}
+		types.ArrayFixed {
+			return g.consume_assert_value_type_budget(clean.elem_type, mut budget)
+		}
+		types.Map {
+			return g.consume_assert_value_type_budget(clean.key_type, mut budget)
+				&& g.consume_assert_value_type_budget(clean.value_type, mut budget)
+		}
+		types.Struct {
+			// The V declaration of a C struct need not match its C layout, like for
+			// anonymous struct members, so it can not be printed field by field.
+			if clean.name.starts_with('C.') {
+				return false
+			}
+			key := 'struct:${clean.name}'
+			if key in budget.stack {
+				return true
+			}
+			fields := g.struct_fields_for_type(clean.name) or { return true }
+			budget.remaining -= fields.len
+			if budget.remaining < 0 {
+				return false
+			}
+			budget.stack << key
+			defer {
+				budget.stack.delete_last()
+			}
+			for field in fields {
+				if !g.consume_assert_value_type_budget(field.typ, mut budget) {
+					return false
+				}
+			}
+		}
+		types.SumType {
+			name := g.resolve_sum_name(clean.name)
+			key := 'sum:${name}'
+			if key in budget.stack {
+				return true
+			}
+			variants := g.tc.sum_types[name] or { return true }
+			budget.remaining -= variants.len
+			if budget.remaining < 0 {
+				return false
+			}
+			budget.stack << key
+			defer {
+				budget.stack.delete_last()
+			}
+			for variant in variants {
+				variant_type := g.tc.parse_type(g.resolve_variant(name, variant))
+				if !g.consume_assert_value_type_budget(variant_type, mut budget) {
+					return false
+				}
+			}
+		}
+		else {}
+	}
+	return true
+}
+
+fn assert_value_type_is_scalar(typ types.Type) bool {
+	return typ is types.Primitive || typ is types.String || typ is types.Char || typ is types.Rune
+		|| typ is types.ISize || typ is types.USize || typ is types.Enum
+}
+
+// gen_test_assert_failure reports a failed assert in a test build, in the format of
+// the V test runner.
+fn (mut g FlatGen) gen_test_assert_failure(node flat.Node) {
+	detail := g.assert_source_detail(node) or {
+		g.writeln('v3_eprint_lit("Assertion failed\\n");')
+		return
+	}
+	expression := detail.expression
+	g.writeln('v3_eprint_lit("${c_escape('${detail.file}:${detail.line}: fn ${g.cur_fn_name}')}\\n");')
+	lhs_id, rhs_id := g.assert_reported_value_ids(node) or {
+		g.writeln('v3_eprint_lit("    assert ${c_escape(expression)}\\n");')
+		g.gen_test_assert_message(node)
+		return
+	}
+	lhs := g.tmp_name()
+	rhs := g.tmp_name()
+	g.write('string ${lhs} = ')
+	g.gen_assert_value_string(lhs_id)
+	g.writeln(';')
+	g.write('string ${rhs} = ')
+	g.gen_assert_value_string(rhs_id)
+	g.writeln(';')
+	g.writeln('v3_eprint_lit("   > assert ${c_escape(expression)}\\n");')
+	g.writeln('fprintf(stderr, "     Left value (len: %lld): `%.*s`\\n", (long long)${lhs}.len, (int)${lhs}.len, (char*)${lhs}.str);')
+	g.writeln('fprintf(stderr, "    Right value (len: %lld): `%.*s`\\n", (long long)${rhs}.len, (int)${rhs}.len, (char*)${rhs}.str);')
+	g.gen_test_assert_message(node)
+	g.writeln('v3_eprint_lit("\\n");')
+}
+
+fn (mut g FlatGen) gen_test_assert_message(node flat.Node) {
+	message_id := g.assert_message_id(node) or { return }
+	message := g.tmp_name()
+	g.write('string ${message} = ')
+	g.gen_expr(message_id)
+	g.writeln(';')
+	g.writeln('fprintf(stderr, "        Message: %.*s\\n", (int)${message}.len, (char*)${message}.str);')
+}
+
+// gen_assert_failure reports a failed assert outside of test builds, in the format of
+// `builtin.__print_assert_failure`:
+// ```
+// code.v:6: FAIL: fn main.main: assert foo() == 'www'
+//    left value: foo() = zzz
+//   right value: 'www' = www
+// V panic: Assertion failed...
+// ```
+fn (mut g FlatGen) gen_assert_failure(node flat.Node) {
+	if detail := g.assert_source_detail(node) {
+		header := '${detail.file}:${detail.line}: FAIL: fn ${g.assert_fn_name()}: assert ${detail.expression}'
+		g.writeln('v3_eprint_lit("${c_escape(header)}\\n");')
+		if lhs_id, rhs_id := g.assert_reported_value_ids(node) {
+			g.gen_assert_failure_value('   left value', lhs_id, detail.lhs_label)
+			g.gen_assert_failure_value('  right value', rhs_id, detail.rhs_label)
+		}
+	}
+	if message_id := g.assert_message_id(node) {
+		message := g.tmp_name()
+		g.write('string ${message} = ')
+		g.gen_expr(message_id)
+		g.writeln(';')
+		g.writeln('fprintf(stderr, "      message: %.*s\\n", (int)${message}.len, (char*)${message}.str);')
+	}
+	if !g.cur_fn_assert_continues {
+		g.writeln('v3_eprint_lit("V panic: Assertion failed...\\n");')
+	}
+}
+
+// assert_fn_name returns the module qualified name of the current function, like `main.main`.
+fn (g &FlatGen) assert_fn_name() string {
+	module_name := if g.tc.cur_module.len > 0 { g.tc.cur_module } else { 'main' }
+	if g.cur_fn_name.starts_with('${module_name}.') {
+		return g.cur_fn_name
+	}
+	return '${module_name}.${g.cur_fn_name}'
+}
+
+// gen_assert_failure_value prints one operand of a failed comparison as
+// `label = value`, or just `label` when that already is the value, like for literals.
+fn (mut g FlatGen) gen_assert_failure_value(prefix string, id flat.NodeId, label string) {
+	node := g.a.node(id)
+	if label.len > 0 && (g.is_numeric_literal_expr(id)
+		|| node.kind in [.bool_literal, .nil_literal, .none_expr]) {
+		g.writeln('v3_eprint_lit("${c_escape(prefix)}: ${c_escape(label)}\\n");')
+		return
+	}
+	value := g.tmp_name()
+	g.write('string ${value} = ')
+	g.gen_assert_value_string(id)
+	g.writeln(';')
+	if label.len == 0 {
+		g.writeln('fprintf(stderr, "%s: %.*s\\n", "${c_escape(prefix)}", (int)${value}.len, (char*)${value}.str);')
+		return
+	}
+	escaped_label := c_escape(label)
+	g.writeln('if (${value}.len == ${label.len} && memcmp(${value}.str, "${escaped_label}", ${label.len}) == 0) {')
+	g.writeln('\tv3_eprint_lit("${c_escape(prefix)}: ${escaped_label}\\n");')
+	g.writeln('} else {')
+	g.writeln('\tfprintf(stderr, "%s: %s = %.*s\\n", "${c_escape(prefix)}", "${escaped_label}", (int)${value}.len, (char*)${value}.str);')
+	g.writeln('}')
 }
 
 fn (mut g FlatGen) gen_unsupported_node(node flat.Node) {
@@ -3490,20 +4287,23 @@ fn (mut g FlatGen) lower_c_inline_asm_goto_raw_labels(template string, labels []
 	return lowered
 }
 
+// c_inline_asm_goto_branch_label_operand_index matches mnemonics case-insensitively,
+// since GNU as accepts `JNE`/`B.EQ` just like their lowercase forms.
 fn c_inline_asm_goto_branch_label_operand_index(instruction string, arch string, operand_count int) int {
 	if operand_count == 0 {
 		return -1
 	}
+	name := instruction.to_lower_ascii()
 	if is_c_inline_asm_x86_arch(arch) {
-		return if instruction.starts_with('call') || instruction.starts_with('j')
-			|| instruction in ['loop', 'loope', 'loopne', 'loopz', 'loopnz'] {
+		return if name.starts_with('call') || name.starts_with('j')
+			|| name in ['loop', 'loope', 'loopne', 'loopz', 'loopnz'] {
 			0
 		} else {
 			-1
 		}
 	}
-	if arch in ['arm64', 'aarch64'] && (instruction == 'b' || instruction == 'bl'
-		|| instruction.starts_with('b.') || instruction.starts_with('cb') || instruction.starts_with('tb')) {
+	if arch in ['arm64', 'aarch64'] && (name == 'b' || name == 'bl'
+		|| name.starts_with('b.') || name.starts_with('cb') || name.starts_with('tb')) {
 		return operand_count - 1
 	}
 	return -1
@@ -4197,104 +4997,6 @@ fn c_inline_asm_ident_char(c u8) bool {
 	return c_inline_asm_ident_start(c) || c.is_digit()
 }
 
-fn (g &FlatGen) assert_failure_detail(assert_node flat.Node, condition_id flat.NodeId) ?string {
-	condition := g.a.node(condition_id)
-	pos := if assert_node.pos.is_valid() { assert_node.pos } else { condition.pos }
-	if !pos.is_valid() {
-		return none
-	}
-	file := g.a.source_files[pos.id] or { return none }
-	source := os.read_file(file.name) or { return none }
-	start := int_max(0, int_min(source.len, pos.offset))
-	end := int_max(start, int_min(source.len, pos.end))
-	if start >= end {
-		return none
-	}
-	line := source[..start].count('\n') + 1
-	mut expression := source[start..end].trim_space()
-	if expression.starts_with('assert ') {
-		expression = expression['assert '.len..]
-	}
-	if g.is_current_test_fn_or_each_hook() {
-		module_name := if g.tc.cur_module.len > 0 { g.tc.cur_module } else { 'main' }
-		expression = qualify_assert_builtin_types(expression, module_name)
-		return '${file.name}:${line}: fn ${g.cur_fn_name}\n> assert ${expression}'
-	}
-	return '${file.name}:${line}: > assert ${expression}'
-}
-
-fn qualify_assert_builtin_types(expression string, module_name string) string {
-	mut result := expression
-	for call_name in ['__offsetof(', 'offsetof(', 'sizeof('] {
-		mut search_from := 0
-		for search_from < result.len {
-			relative := result[search_from..].index(call_name) or { break }
-			call_start := search_from + relative
-			type_start := call_start + call_name.len
-			mut type_end := type_start
-			for type_end < result.len && result[type_end] !in [`,`, `)`] {
-				type_end++
-			}
-			raw_type := result[type_start..type_end]
-			clean_type := raw_type.trim_space()
-			if clean_type.len > 0 && !clean_type.contains('.')
-				&& clean_type !in ['bool', 'byte', 'char', 'f32', 'f64', 'int', 'i8', 'i16', 'i32',
-					'i64', 'isize', 'rune', 'string', 'u8', 'u16', 'u32', 'u64', 'usize', 'voidptr'] {
-				leading := raw_type[..raw_type.len - raw_type.trim_left(' \t').len]
-				trailing := raw_type[raw_type.trim_right(' \t').len..]
-				replacement := '${leading}${module_name}.${clean_type}${trailing}'
-				result = result[..type_start] + replacement + result[type_end..]
-				search_from = type_start + replacement.len
-			} else {
-				search_from = type_end
-			}
-		}
-	}
-	return result
-}
-
-fn (mut g FlatGen) gen_assert_infix_values(condition_id flat.NodeId) {
-	condition := g.a.node(condition_id)
-	if condition.kind != .infix || condition.children_count < 2 {
-		return
-	}
-	lhs_id := g.a.child(condition, 0)
-	rhs_id := g.a.child(condition, 1)
-	g.gen_assert_numeric_value('   left value', lhs_id)
-	g.gen_assert_numeric_value('  right value', rhs_id)
-}
-
-fn (mut g FlatGen) gen_assert_capture_numeric_operands(condition_id flat.NodeId) []int {
-	condition := g.a.node(condition_id)
-	if condition.kind != .infix || condition.children_count < 2 {
-		return []
-	}
-	mut captured_ids := []int{cap: 2}
-	for operand_index in 0 .. 2 {
-		operand_id := g.a.child(condition, operand_index)
-		node := g.a.node(operand_id)
-		if g.is_numeric_literal_expr(operand_id) || g.arg_is_const_ident(node) {
-			continue
-		}
-		operand_type := g.usable_expr_type(operand_id)
-		typ := g.value_unalias_type(operand_type)
-		if !typ.is_integer() && !typ.is_float() {
-			continue
-		}
-		c_type := g.value_c_type(operand_type)
-		if c_type.len == 0 {
-			continue
-		}
-		tmp := g.tmp_name()
-		g.write('${c_type} ${tmp} = (${c_type})(')
-		g.gen_expr(operand_id)
-		g.writeln(');')
-		g.assert_expr_overrides[int(operand_id)] = tmp
-		captured_ids << int(operand_id)
-	}
-	return captured_ids
-}
-
 fn (g &FlatGen) is_numeric_literal_expr(id flat.NodeId) bool {
 	node := g.a.node(id)
 	if node.kind in [.int_literal, .float_literal, .char_literal] {
@@ -4314,34 +5016,6 @@ fn (g &FlatGen) is_numeric_literal_expr(id flat.NodeId) bool {
 			&& g.is_numeric_literal_expr(g.a.child(node, 1))
 	}
 	return false
-}
-
-fn (mut g FlatGen) gen_assert_numeric_value(prefix string, id flat.NodeId) {
-	label := g.assert_source_text(id)
-	if label.len == 0 {
-		return
-	}
-	if g.is_numeric_literal_expr(id) {
-		g.writeln('v3_eprint_lit("${c_escape(prefix)}: ${c_escape(label)}\\n");')
-		return
-	}
-	typ := g.value_unalias_type(g.usable_expr_type(id))
-	if typ.is_float() {
-		g.write('fprintf(stderr, "%s: %s = %.17g\\n", "${c_escape(prefix)}", "${c_escape(label)}", (double)(')
-		g.gen_expr(id)
-		g.writeln('));')
-	} else if typ.is_integer() {
-		is_unsigned := if typ is types.Primitive {
-			typ.props.has(.unsigned)
-		} else {
-			typ is types.USize
-		}
-		format := if is_unsigned { '%llu' } else { '%lld' }
-		cast := if is_unsigned { 'unsigned long long' } else { 'long long' }
-		g.write('fprintf(stderr, "%s: %s = ${format}\\n", "${c_escape(prefix)}", "${c_escape(label)}", (${cast})(')
-		g.gen_expr(id)
-		g.writeln('));')
-	}
 }
 
 struct DebuggerScopeVar {
@@ -4454,6 +5128,18 @@ fn (mut g FlatGen) gen_debugger_stmt(node flat.Node) {
 		mut value_type := v.typ
 		mut display_type := debugger_type_name(v.typ)
 		mut expr := g.debugger_var_expr(v.name)
+		if semantic_type := g.local_indirect_value_type(v.name) {
+			value_type = semantic_type
+			display_type = debugger_type_name(semantic_type)
+			expr = '*(${expr})'
+		} else if g.current_param_is_mut(v.name) {
+			expr = '*(${expr})'
+			if v.typ is types.Pointer && !(g.cur_explicit_mut_pointer_params[v.name] or {
+				false
+			}) {
+				value_type = v.typ.base_type
+			}
+		}
 		if smartcast := smartcast_vars[v.name] {
 			value_type = g.tc.parse_canonical_type(smartcast.value_type)
 			display_type = smartcast.display_type
@@ -4471,21 +5157,6 @@ fn (mut g FlatGen) gen_debugger_stmt(node flat.Node) {
 	g.writeln('${interact_fn}((${debugger_type}*)&${debugger_global}, (${info_type}){.is_anon = ${g.cur_fn_name.starts_with('__anon_fn_')}, .is_generic = ${g.cur_fn_name.contains('[')}, .is_method = ${is_method}, .receiver_typ_name = ${receiver_literal}, .line = ${position.line}, .file = ${file_literal}, .mod = ${module_literal}, .fn_name = ${fn_literal}, .scope = ${scope_name}});')
 	g.indent--
 	g.writeln('}')
-}
-
-fn (g &FlatGen) assert_source_text(id flat.NodeId) string {
-	node := g.a.node(id)
-	if !node.pos.is_valid() {
-		return ''
-	}
-	file := g.a.source_files[node.pos.id] or { return '' }
-	source := os.read_file(file.name) or { return '' }
-	start := int_max(0, node.pos.offset)
-	end := int_min(source.len, node.pos.end)
-	if start >= end {
-		return ''
-	}
-	return source[start..end].trim_space()
 }
 
 // has_pending_defers reports whether has pending defers applies in c.
@@ -4570,13 +5241,14 @@ fn (mut g FlatGen) write_pointer_value_return_expr(ret_id flat.NodeId, expected 
 	if g.source_mut_pointer_param_deref_type(source_id) != none {
 		return false
 	}
-	actual := g.usable_expr_type(source_id)
-	expected0 := if expected is types.Alias { expected.base_type } else { expected }
+	actual := cgen_unalias_type(g.usable_expr_type(source_id))
+	expected0 := cgen_unalias_type(expected)
 	if expected0 is types.Pointer {
 		return false
 	}
 	if actual is types.Pointer {
-		if g.type_names_match(actual.base_type, expected0) {
+		// Heap storage can point to an alias of the returned value type.
+		if g.type_names_match(cgen_unalias_type(actual.base_type), expected0) {
 			g.write('*(')
 			g.gen_expr(source_id)
 			g.write(')')
@@ -4731,7 +5403,7 @@ fn (mut g FlatGen) gen_noreturn_default_return_stmt() {
 		g.gen_default_return_stmt()
 		return
 	}
-	value_ct := g.current_fn_optional_type_name(g.cur_fn_ret)
+	value_ct := g.optional_type_name(g.cur_fn_ret)
 	abi_ct := g.fn_return_type_name(g.cur_fn_ret)
 	if abi_ct == value_ct {
 		g.gen_default_return_stmt()
@@ -4746,9 +5418,9 @@ fn (mut g FlatGen) gen_noreturn_default_return_stmt() {
 
 fn (mut g FlatGen) gen_default_return_stmt() {
 	if g.cur_fn_ret_is_optional {
-		ct := g.current_fn_optional_type_name(g.cur_fn_ret)
+		ct := g.optional_type_name(g.cur_fn_ret)
 		g.writeln('return (${ct}){.ok = true};')
-	} else if g.cur_fn_name == 'main' && g.test_files.len == 0 {
+	} else if g.cur_fn_name == 'main' && g.test_files.len == 0 && !g.suppress_main {
 		g.writeln('return 0;')
 	} else if g.cur_fn_ret is types.Void {
 		g.writeln('return;')
@@ -4762,7 +5434,7 @@ fn (mut g FlatGen) gen_default_return_stmt() {
 // return_c_type supports return c type handling for FlatGen.
 fn (mut g FlatGen) return_c_type() string {
 	if g.cur_fn_ret_is_optional {
-		return g.current_fn_optional_type_name(g.cur_fn_ret)
+		return g.optional_type_name(g.cur_fn_ret)
 	}
 	if g.cur_fn_ret is types.MultiReturn {
 		return g.value_c_type(g.cur_fn_ret)
@@ -5072,12 +5744,17 @@ fn (mut g FlatGen) gen_heap_local_address_expr(ret_id flat.NodeId, expected type
 // after a specialized generic callee and its caller resolve to different C wrapper names.
 fn (mut g FlatGen) optional_forward_return_abi_wrap_expr(source_ct string, expected_ct string, base types.Type, expr string) string {
 	tmp := g.tmp_name()
+	failure := '(${expected_ct}){.ok = false${g.optional_error_field(expected_ct, tmp)}}'
+	prefix := '({ ${source_ct} ${tmp} = ${expr}; '
 	if _ := array_fixed_type(base) {
 		out := g.tmp_name()
-		return '({ ${source_ct} ${tmp} = ${expr}; ${expected_ct} ${out} = { .ok = ${tmp}.ok, .err = ${tmp}.err }; if (${tmp}.ok) { memcpy(${out}.value, ${tmp}.value, sizeof(${out}.value)); } ${out}; })'
+		return prefix + '${expected_ct} ${out} = {.ok = ${tmp}.ok}; ' +
+			'if (${tmp}.ok) { ' +
+			'memcpy(${out}.value, ${tmp}.value, sizeof(${out}.value)); } ' +
+			'else { ${out} = ${failure}; } ${out}; })'
 	}
 	value := if base is types.Void { '' } else { ', .value = ${tmp}.value' }
-	return '({ ${source_ct} ${tmp} = ${expr}; (${expected_ct}){ .ok = ${tmp}.ok, .err = ${tmp}.err${value} }; })'
+	return prefix + '${tmp}.ok ? (${expected_ct}){.ok = true${value}} : ${failure}; })'
 }
 
 // optional_forward_return_abi_expr resolves the source and destination ABI wrappers
@@ -5123,7 +5800,8 @@ fn optional_error_payload_return_expr(value_expr string, base_ct string, opt_ct 
 
 // return_expr_string supports return expr string handling for FlatGen.
 fn (mut g FlatGen) return_expr_string(node flat.Node, ret_id flat.NodeId, ret_node flat.Node, ct string) string {
-	if g.expr_is_error_call(ret_id) {
+	if g.expr_is_error_call(ret_id)
+		&& cgen_unalias_type(g.cur_fn_ret) !is types.OptionType {
 		if g.cur_fn_ret_is_optional {
 			return g.optional_error_from_call_string(ct, ret_node)
 		}
@@ -5408,6 +6086,11 @@ fn (g &FlatGen) local_fn_call_return_type(call_id flat.NodeId, call_node flat.No
 		}
 	}
 	if name := g.tc.resolved_call_name(call_id) {
+		if !name.contains('.') {
+			if ret := g.fn_decl_return_type_in_current_module(name) {
+				return ret
+			}
+		}
 		if ret := g.tc.fn_ret_types[name] {
 			return ret
 		}
@@ -5603,6 +6286,11 @@ fn (g &FlatGen) fn_decl_return_type_for_call_name(name string) ?types.Type {
 	if name.len == 0 {
 		return none
 	}
+	if !name.contains('.') {
+		if rt := g.fn_decl_return_type_in_current_module(name) {
+			return rt
+		}
+	}
 	if !name.contains('.') && g.tc.cur_module.len > 0 && g.tc.cur_module !in ['main', 'builtin'] {
 		qname := '${g.tc.cur_module}.${name}'
 		if rt := g.fn_decl_ret_types[qname] {
@@ -5625,6 +6313,20 @@ fn (g &FlatGen) fn_decl_return_type_for_call_name(name string) ?types.Type {
 		if rt := g.fn_decl_ret_types[cname] {
 			return rt
 		}
+	}
+	return none
+}
+
+fn (g &FlatGen) fn_decl_return_type_in_current_module(name string) ?types.Type {
+	if rt := g.fn_decl_ret_types[fn_decl_module_key(g.tc.cur_module, name)] {
+		return rt
+	}
+	// Empty and `main` are equivalent source-module spellings.
+	if g.tc.cur_module == '' {
+		return g.fn_decl_ret_types[fn_decl_module_key('main', name)] or { none }
+	}
+	if g.tc.cur_module == 'main' {
+		return g.fn_decl_ret_types[fn_decl_module_key('', name)] or { none }
 	}
 	return none
 }
@@ -5775,13 +6477,13 @@ fn (g &FlatGen) clone_call_matches_base(call_node flat.Node, base types.Type) bo
 // value, mirroring optional_type_name without its side effects.
 fn (g &FlatGen) option_c_name_for_base(base types.Type) string {
 	if base is types.Void {
-		return 'Optional'
+		return '__v_option'
 	}
 	inner_ct := g.tc.c_type(base)
 	if inner_ct == 'int' {
-		return 'Optional'
+		return '__v_option'
 	}
-	return 'Optional_' + inner_ct.replace('*', 'ptr').replace(' ', '_')
+	return '__v_option_' + inner_ct.replace('*', 'ptr').replace(' ', '_')
 }
 
 fn (g &FlatGen) expr_is_nil_pointer_payload(id flat.NodeId, base types.Type) bool {
@@ -5800,7 +6502,7 @@ fn (mut g FlatGen) gen_autofree_discarded_owned_call(id flat.NodeId, node flat.N
 		return false
 	}
 	if g.call_is_optional_failure_constructor(node) && g.cur_fn_ret_is_optional {
-		// gen_expr wraps a bare `error(...)` in the function's `Optional_T`, so a temp
+		// gen_expr wraps a bare `error(...)` in the function's `__v_option_T`, so a temp
 		// declared as the call's own type would be initialised from the wrapper.
 		return false
 	}
@@ -6011,10 +6713,28 @@ fn (g &FlatGen) usable_expr_type_uncached(id flat.NodeId) types.Type {
 					return typ
 				}
 			}
-			// C generation is no longer walking the lexical checker scope. The
-			// checker's current scope can therefore contain a same-named local from a
+			// A global's C declaration follows its registered storage type. Its
+			// lowered annotation can name a different view (`&[3]int` for storage
+			// declared as `int*`), so indexing must not switch to that view.
+			if !g.ident_is_local_binding(node.value) {
+				if typ := g.global_type_for_ident(node.value) {
+					return typ
+				}
+			}
+			// Lowering can replace the checked type with a concrete annotation for
+			// a shadowed local. Use it before consulting a checker scope that no
+			// longer follows the lexical scope of this identifier. A `shared T`
+			// annotation parses as `T`, without the pointer the local is stored as,
+			// so `&local` would be taken once more.
+			if node.typ.len > 0 && !node.typ.trim_space().starts_with('shared ') {
+				annotated := g.parse_node_type(&node)
+				if !decl_annotation_is_unusable(annotated, node.typ)
+					&& !g.type_contains_generic_placeholder(annotated) {
+					return annotated
+				}
+			}
+			// The checker's current scope can contain a same-named local from a
 			// different function (`batch := []Request` versus `batch := []Response`).
-			// Prefer the semantic type recorded for this exact identifier node.
 			if typ := g.tc.cur_scope.lookup(node.value) {
 				if typ !is types.Void {
 					return typ
@@ -6031,6 +6751,16 @@ fn (g &FlatGen) usable_expr_type_uncached(id flat.NodeId) types.Type {
 			}
 		}
 		if node.kind == .selector && node.children_count > 0 {
+			base_node := g.a.child_node(&node, 0)
+			if base_node.kind == .ident {
+				if storage := g.current_module_selector_const_name(base_node.value, node.value) {
+					if typ := g.tc.const_types[storage] {
+						if typ !is types.Unknown && typ !is types.Void {
+							return typ
+						}
+					}
+				}
+			}
 			base_type0 := g.usable_expr_type(g.a.child(&node, 0))
 			base_type := types.unwrap_pointer(base_type0)
 			collection_base_type := cgen_unalias_type(base_type)
@@ -6396,28 +7126,6 @@ fn (g &FlatGen) call_constructs_type(id flat.NodeId, target types.Type) bool {
 	return fn_node.value == target_name || fn_node.value == short_target
 }
 
-// is_runtime_array_flags_stmt reports whether is runtime array flags stmt applies in c.
-fn (g &FlatGen) is_runtime_array_flags_stmt(id flat.NodeId) bool {
-	if int(id) < 0 {
-		return false
-	}
-	node := g.a.nodes[int(id)]
-	if node.kind != .call || node.children_count == 0 {
-		return false
-	}
-	fn_node := g.a.child_node(&node, 0)
-	if fn_node.kind != .selector || fn_node.value !in ['set', 'clear'] || fn_node.children_count == 0 {
-		return false
-	}
-	flags_node := g.a.child_node(fn_node, 0)
-	if flags_node.kind != .selector || flags_node.value != 'flags' || flags_node.children_count == 0 {
-		return false
-	}
-	owner_id := g.a.child(flags_node, 0)
-	owner_type := types.unwrap_pointer(g.tc.resolve_type(owner_id))
-	return owner_type is types.Array || owner_type.name() == 'strings.Builder'
-}
-
 fn (g &FlatGen) multi_return_expr_type(id flat.NodeId) ?types.MultiReturn {
 	rtype := g.tc.resolve_type(id)
 	if rtype is types.MultiReturn {
@@ -6496,6 +7204,117 @@ fn (mut g FlatGen) gen_static_local_lazy_init(lhs_id flat.NodeId, rhs_id flat.No
 	g.writeln(';')
 	g.writeln('\t${guard} = true;')
 	g.writeln('}')
+}
+
+fn (mut g FlatGen) gen_large_heap_struct_decl(lhs_id flat.NodeId, rhs_id flat.NodeId, v_type types.Type, decl_prefix string, lhs_is_defer_capture bool) bool {
+	if lhs_is_defer_capture || decl_prefix == 'static ' {
+		return false
+	}
+	pointer_type := match v_type {
+		types.Pointer { v_type }
+		else { return false }
+	}
+	lhs := g.a.node(lhs_id)
+	rhs_outer := g.a.node(rhs_id)
+	mut struct_init_id := rhs_id
+	if rhs_outer.kind == .prefix && rhs_outer.op == .amp && rhs_outer.children_count == 1 {
+		struct_init_id = g.a.child(rhs_outer, 0)
+	}
+	rhs := g.a.node(struct_init_id)
+	if lhs.kind != .ident || rhs.kind != .struct_init {
+		return false
+	}
+	base_type := default_init_unalias_type(pointer_type.base_type)
+	if base_type !is types.Struct {
+		return false
+	}
+	lookup_name := g.struct_init_fields_key(g.struct_init_lookup_type_name(rhs.value),
+		base_type.name)
+	if !g.struct_has_large_fixed_array(lookup_name) {
+		return false
+	}
+	// This direct heap path assigns fields through the allocated pointer. Keep
+	// promoted/embedded initialization on the general struct-literal path.
+	for i in 0 .. rhs.children_count {
+		field := g.a.child_node(rhs, i)
+		if field.kind != .field_init || field.children_count == 0 {
+			continue
+		}
+		if field.value.len == 0 {
+			if g.struct_field_at(lookup_name, i) == none {
+				return false
+			}
+		} else if g.struct_field_named(lookup_name, field.value) == none {
+			return false
+		}
+	}
+	ct := g.value_c_type(v_type)
+	base_ct := g.value_c_type(base_type)
+	lhs_str := g.decl_lhs_str(lhs_id)
+	g.writeln('${decl_prefix}${ct} ${lhs_str} = (${ct})vcalloc(sizeof(${base_ct}));')
+	mut set_fields := map[string]bool{}
+	for i in 0 .. rhs.children_count {
+		field := g.a.child_node(rhs, i)
+		if field.kind != .field_init || field.children_count == 0 {
+			continue
+		}
+		field_info := if field.value.len > 0 {
+			g.struct_field_named(lookup_name, field.value) or { continue }
+		} else {
+			g.struct_field_at(lookup_name, i) or { continue }
+		}
+		cfield := g.init_field_c_name(lookup_name, field_info.name)
+		value_id := g.a.child(field, 0)
+		if _ := array_fixed_type(field_info.typ) {
+			g.write('memcpy(${lhs_str}->${cfield}, ')
+			g.gen_fixed_array_copy_source(value_id, field_info.typ)
+			g.writeln(', sizeof(${lhs_str}->${cfield}));')
+		} else {
+			g.write('${lhs_str}->${cfield} = ')
+			g.gen_struct_field_expr_for_field(value_id, lookup_name, field_info.name,
+				field_info.typ)
+			g.writeln(';')
+		}
+		set_fields[field_info.name] = true
+	}
+	if info := g.find_struct_decl(lookup_name) {
+		old_module := g.tc.cur_module
+		old_file := g.tc.cur_file
+		old_default_module := g.struct_default_module
+		g.tc.cur_module = info.module
+		g.tc.cur_file = info.file
+		g.struct_default_module = info.module
+		for i in 0 .. info.node.children_count {
+			field := g.a.child_node(&info.node, i)
+			if field.kind != .field_decl || field.children_count == 0
+				|| field.value in set_fields {
+				continue
+			}
+			field_type := g.struct_default_field_type(info, field)
+			cfield := g.init_field_c_name(info.full_name, field.value)
+			value_id := g.a.child(field, 0)
+			if _ := array_fixed_type(field_type) {
+				g.write('memcpy(${lhs_str}->${cfield}, ')
+				g.gen_fixed_array_copy_source(value_id, field_type)
+				g.writeln(', sizeof(${lhs_str}->${cfield}));')
+			} else {
+				g.write('${lhs_str}->${cfield} = ')
+				g.gen_struct_field_expr_for_field(value_id, info.full_name, field.value,
+					field_type)
+				g.writeln(';')
+			}
+		}
+		g.tc.cur_module = old_module
+		g.tc.cur_file = old_file
+		g.struct_default_module = old_default_module
+	}
+	owner := g.tc.cur_scope.insert_with_owner(lhs.value, v_type)
+	g.track_local_pointer_storage_decl(lhs, owner, v_type, ct)
+	g.track_ierror_owned_pointer_decl(owner, rhs_id, v_type)
+	g.track_local_pointer_alias_source(lhs, owner, rhs_id, v_type)
+	g.track_local_fn_value_decl(lhs, owner, rhs)
+	g.declare_local_raw_type(owner, rhs.value)
+	return true
 }
 
 fn (mut g FlatGen) static_local_initializer_needs_runtime(id flat.NodeId) bool {
@@ -6903,7 +7722,15 @@ fn (mut g FlatGen) gen_decl_assign(node flat.Node) {
 			if rhs.kind in [.call, .ident] {
 				// Unwrapped results are copied from temporaries. Keep their concrete
 				// module identity just as for a direct call's return type.
-				rhs_type := g.usable_expr_type(rhs_id)
+				mut rhs_type := g.usable_expr_type(rhs_id)
+				if rhs.kind == .ident && g.local_storage_is_mutable(rhs.value)
+					&& default_init_unalias_type(v_type) !is types.Pointer {
+					if value_type := g.local_indirect_value_type(rhs.value) {
+						// Mutable value iteration borrows storage but copies the value.
+						// Explicit reference iteration keeps the declared pointer type.
+						rhs_type = value_type
+					}
+				}
 				current_value := default_init_unalias_type(types.unwrap_pointer(v_type))
 				rhs_value := default_init_unalias_type(types.unwrap_pointer(rhs_type))
 				if current_value is types.Struct && rhs_value is types.Struct
@@ -6939,7 +7766,10 @@ fn (mut g FlatGen) gen_decl_assign(node flat.Node) {
 					v_type = rhs_type
 				}
 			}
-			if rhs.kind == .struct_init && v_type is types.Struct && v_type.name == 'Optional' {
+			if rhs.kind == .struct_init && v_type is types.Struct && v_type.name in [
+				'__v_option',
+				'__v_result',
+			] {
 				rhs_type := g.usable_expr_type(rhs_id)
 				if rhs_type is types.OptionType || rhs_type is types.ResultType {
 					v_type = rhs_type
@@ -7056,6 +7886,11 @@ fn (mut g FlatGen) gen_decl_assign(node flat.Node) {
 				&& !g.struct_init_effective_type_name(rhs_id, rhs).starts_with('&') {
 				v_type = types.unwrap_all_pointers(v_type)
 			}
+			if g.gen_large_heap_struct_decl(lhs_id, rhs_id, v_type, decl_prefix,
+				lhs_is_defer_capture) {
+				i += 2
+				continue
+			}
 			if fixed := array_fixed_type(v_type) {
 				lhs_str := g.decl_lhs_str(lhs_id)
 				if !lhs_is_defer_capture {
@@ -7093,6 +7928,30 @@ fn (mut g FlatGen) gen_decl_assign(node flat.Node) {
 				g.optional_type_name_for_expr(rhs_id, semantic_v_type)
 			} else {
 				ct0
+			}
+			if align := g.tinyc_stack_value_alignment(v_type, ct) {
+				if lhs.kind == .ident && !lhs_is_defer_capture && decl_prefix != 'static ' {
+					lhs_str := g.decl_lhs_str(lhs_id)
+					align_tmp := g.tmp_name()
+					storage_tmp := g.tmp_name()
+					value_tmp := g.tmp_name()
+					g.write('${decl_prefix}${ct}* ${lhs_str} = ({ size_t ${align_tmp} = (size_t)(${align}); ')
+					g.write('void* ${storage_tmp} = __builtin_alloca(sizeof(${ct}) + ${align_tmp} - 1); ')
+					g.write('${ct}* ${value_tmp} = (${ct}*)((((uintptr_t)${storage_tmp} + ${align_tmp} - 1) / ${align_tmp}) * ${align_tmp}); ')
+					g.write('*${value_tmp} = ')
+					g.gen_decl_init_expr(rhs_id, rhs, v_type, ct, true)
+					g.writeln('; ${value_tmp}; });')
+					owner := g.tc.cur_scope.insert_with_owner(lhs.value, v_type)
+					g.track_local_pointer_storage_decl(lhs, owner, v_type, '${ct}*')
+					g.declare_local_indirect_value_type(owner, v_type)
+					g.declare_local_implicit_deref(owner, true)
+					g.track_ierror_owned_pointer_decl(owner, rhs_id, v_type)
+					g.track_local_pointer_alias_source(lhs, owner, rhs_id, v_type)
+					g.track_local_fn_value_decl(lhs, owner, rhs)
+					g.declare_local_raw_type(owner, g.decl_raw_type_text(node, lhs, rhs))
+					i += 2
+					continue
+				}
 			}
 			if ct.starts_with('fn_ptr:') {
 				fp_ct, fp_suffix := fn_ptr_decl_type_parts(v_type, ct)
@@ -7593,8 +8452,8 @@ fn (g &FlatGen) checker_struct_field_type(type_name string, field_name string) ?
 
 fn field_type_needs_checker_authority(raw string) bool {
 	clean_raw := raw.replace(' ', '')
-	return clean_raw in ['Option', 'Optional', 'Result'] || clean_raw.starts_with('Option_')
-		|| clean_raw.starts_with('Optional_') || clean_raw.starts_with('Result_')
+	return clean_raw in ['Option', '__v_option', '__v_result'] || clean_raw.starts_with('Option_')
+		|| clean_raw.starts_with('__v_option_') || clean_raw.starts_with('__v_result_')
 }
 
 fn (mut g FlatGen) fixed_array_decl_is_unusable(typ types.ArrayFixed) bool {
@@ -7890,19 +8749,10 @@ fn (mut g FlatGen) gen_multi_return_or_rhs(or_node flat.Node, rhs_multi types.Mu
 	g.indent--
 	g.writeln('} else {')
 	g.push_scope()
-	g.tc.cur_scope.insert('err', types.Type(types.Struct{
-		name: 'IError'
-	}))
 	g.indent++
-	g.writeln('IError err = ${opt_tmp}.err;')
-	if or_node.value == '!' || or_node.value == '?' {
-		if g.cur_fn_ret_is_optional {
-			fn_opt_ct := g.current_fn_optional_type_name(g.cur_fn_ret)
-			g.gen_propagation_return_cleanup()
-			g.writeln('return (${fn_opt_ct}){.ok = false, .err = err};')
-		} else {
-			g.writeln('v_panic(IError__str(err));')
-		}
+	g.gen_or_error_binding(expr_type, opt_tmp)
+	if or_node.value in ['!', '?'] {
+		g.gen_propagation_failure(or_node, expr_type)
 	} else {
 		g.gen_or_body_value(or_body, tmp, types.Type(rhs_multi))
 		g.gen_scope_ownership_drops()
@@ -7993,9 +8843,11 @@ fn (mut g FlatGen) gen_assign(node flat.Node) {
 			g.track_local_pointer_alias_assign(lhs, rhs_id)
 		}
 		if lhs.kind == .ident && lhs.value == '_' {
-			g.write('(void)(')
-			g.gen_expr(rhs_id)
-			g.writeln(');')
+			if !g.gen_race_blank_read(rhs_id) {
+				g.write('(void)(')
+				g.gen_expr(rhs_id)
+				g.writeln(');')
+			}
 		} else if node.op == .left_shift_assign && lhs.kind == .ident
 			&& node.value in ['push', 'push_many'] {
 			if node.value == 'push_many' {
@@ -8055,8 +8907,53 @@ fn (mut g FlatGen) gen_assign(node flat.Node) {
 				i += 2
 				continue
 			}
+			if node.op == .assign && lhs.kind == .ident && g.local_storage_is_mutable(lhs.value) {
+				if indirect := g.local_indirect_value_type(lhs.value) {
+					if _ := array_fixed_type(indirect) {
+						dst := '*${g.expr_to_string(lhs_id)}'
+						g.write('memmove(${dst}, ')
+						g.gen_fixed_array_copy_source(rhs_id, indirect)
+						g.writeln(', sizeof(${dst}));')
+						i += 2
+						continue
+					}
+				}
+			}
 			if rhs_node.kind == .array_literal {
-				lhs_type := types.unwrap_pointer(g.usable_expr_type(lhs_id))
+				lhs_raw_type := g.usable_expr_type(lhs_id)
+				lhs_type := types.unwrap_pointer(lhs_raw_type)
+				if node.op == .assign && cgen_unalias_type(lhs_raw_type) is types.Pointer {
+					if rhs_fixed := array_fixed_type(g.usable_expr_type(rhs_id)) {
+						lhs_ptr := cgen_unalias_type(lhs_raw_type) as types.Pointer
+						if elem_fixed := array_fixed_type(rhs_fixed.elem_type) {
+							if g.fixed_array_literal_needs_runtime_copy(rhs_node, elem_fixed) {
+								c_elem, dims := g.fixed_array_decl_parts(rhs_fixed)
+								tmp := g.tmp_name()
+								g.writeln('${c_elem} ${tmp}${dims};')
+								g.gen_fixed_array_copy_from_node(tmp, rhs_id, rhs_fixed)
+								g.gen_expr(lhs_id)
+								g.write(' = ')
+								if g.fixed_array_decay_byte_compatible(rhs_fixed.elem_type, lhs_ptr.base_type)
+									&& !cgen_types_equal_after_alias_erasure(rhs_fixed.elem_type, lhs_ptr.base_type) {
+									g.write('(${g.cast_c_type(lhs_raw_type)})')
+								}
+								g.writeln('${tmp};')
+								i += 2
+								continue
+							}
+						}
+						g.gen_expr(lhs_id)
+						g.write(' = ')
+						if g.fixed_array_decay_byte_compatible(rhs_fixed.elem_type, lhs_ptr.base_type)
+							&& !cgen_types_equal_after_alias_erasure(rhs_fixed.elem_type, lhs_ptr.base_type) {
+							g.write('(${g.cast_c_type(lhs_raw_type)})')
+						}
+						g.gen_fixed_array_data_arg(rhs_id, rhs_fixed)
+						g.writeln(';')
+						i += 2
+						continue
+					}
+				}
 				if lhs_type is types.ArrayFixed {
 					if g.gen_single_fixed_array_elem_assign_to_scalar_local(lhs, lhs_id, rhs_id, lhs_type) {
 						i += 2
@@ -8094,6 +8991,37 @@ fn (mut g FlatGen) gen_assign(node flat.Node) {
 					g.usable_expr_type(lhs_id)
 				}
 				rhs_type := g.usable_expr_type(rhs_id)
+				if node.op == .assign && cgen_unalias_type(lhs_type) is types.Pointer {
+					if rhs_fixed := array_fixed_type(cgen_unalias_type(rhs_type)) {
+						lhs_ptr := cgen_unalias_type(lhs_type) as types.Pointer
+						needs_byte_cast := g.fixed_array_decay_byte_compatible(rhs_fixed.elem_type,
+							lhs_ptr.base_type)
+							&& !cgen_types_equal_after_alias_erasure(rhs_fixed.elem_type,
+								lhs_ptr.base_type)
+						if !g.expr_is_addressable(rhs_id) {
+							c_elem, dims := g.fixed_array_decl_parts(rhs_fixed)
+							tmp := g.tmp_name()
+							g.writeln('${c_elem} ${tmp}${dims};')
+							g.gen_fixed_array_copy_from_node(tmp, rhs_id, rhs_fixed)
+							g.gen_expr(lhs_id)
+							g.write(' = ')
+							if needs_byte_cast {
+								g.write('(${g.cast_c_type(lhs_type)})')
+							}
+							g.writeln('${tmp};')
+							i += 2
+							continue
+						}
+						if needs_byte_cast {
+							g.gen_expr(lhs_id)
+							g.write(' = (${g.cast_c_type(lhs_type)})')
+							g.gen_fixed_array_data_arg(rhs_id, rhs_fixed)
+							g.writeln(';')
+							i += 2
+							continue
+						}
+					}
+				}
 				if node.op == .assign
 					&& g.gen_fixed_array_address_to_byte_pointer_assign(lhs_id, rhs_id, lhs_type, rhs_type) {
 					i += 2
@@ -8107,7 +9035,15 @@ fn (mut g FlatGen) gen_assign(node flat.Node) {
 						}
 						if _ := array_fixed_type(rhs_type) {
 							dst := g.expr_to_string(lhs_id)
-							g.writeln('memmove(${dst}, ${g.expr_to_string(rhs_id)}, sizeof(${dst}));')
+							if rhs_node.kind == .block && rhs_node.children_count == 1 {
+								// `unsafe { [1]map[string]int{} }`: gen_expr would emit its
+								// fixed-array literal as an untyped `{...}` list.
+								g.write('memmove(${dst}, ')
+								g.gen_fixed_array_copy_source(rhs_id, lhs_type)
+								g.writeln(', sizeof(${dst}));')
+							} else {
+								g.writeln('memmove(${dst}, ${g.expr_to_string(rhs_id)}, sizeof(${dst}));')
+							}
 							i += 2
 							continue
 						} else {
@@ -8127,6 +9063,17 @@ fn (mut g FlatGen) gen_assign(node flat.Node) {
 					g.write(', ')
 					g.gen_expr(rhs_id)
 					g.writeln(');')
+					i += 2
+					continue
+				}
+				if g.gen_translated_numeric_compound_assign(lhs_id, rhs_id, lhs_type, rhs_type,
+					node.op) {
+					g.expected_enum = ''
+					i += 2
+					continue
+				}
+				if g.gen_checked_integer_assign(lhs_id, rhs_id, lhs_type, rhs_type, node.op) {
+					g.expected_enum = ''
 					i += 2
 					continue
 				}
@@ -8153,6 +9100,11 @@ fn (mut g FlatGen) gen_assign(node flat.Node) {
 							continue
 						}
 					}
+				}
+				if g.gen_int128_compound_assign(node.op, g.a.child(&node, i), rhs_id, lhs_type, rhs_type) {
+					g.expected_enum = ''
+					i += 2
+					continue
 				}
 				if node.op == .power_assign {
 					lhs_assign_id := g.a.child(&node, i)
@@ -8192,7 +9144,7 @@ fn (mut g FlatGen) gen_assign(node flat.Node) {
 							lhs_text = '*${lhs_text}'
 						}
 						g.write('${lhs_text} = ')
-						g.gen_guarded_shift_from_text(lhs_text, rhs_id, lhs_type, shift_op)
+						g.gen_compound_shift_value(lhs_text, lhs_assign_id, rhs_id, lhs_type, shift_op)
 						g.writeln(';')
 					} else {
 						// Compound assignment evaluates its lvalue once; spill the
@@ -8202,7 +9154,7 @@ fn (mut g FlatGen) gen_assign(node flat.Node) {
 						g.write('{ ${lhs_ct}* ${addr_tmp} = &(')
 						g.gen_expr(lhs_assign_id)
 						g.write('); *${addr_tmp} = ')
-						g.gen_guarded_shift_from_text('*${addr_tmp}', rhs_id, lhs_type, shift_op)
+						g.gen_compound_shift_value('*${addr_tmp}', lhs_assign_id, rhs_id, lhs_type, shift_op)
 						g.writeln('; }')
 					}
 					g.expected_enum = ''
@@ -8247,6 +9199,97 @@ fn (mut g FlatGen) gen_assign(node flat.Node) {
 	}
 }
 
+fn (mut g FlatGen) gen_translated_numeric_compound_assign(lhs_id flat.NodeId, rhs_id flat.NodeId, lhs_type types.Type, rhs_type types.Type, op flat.Op) bool {
+	operator := g.translated_numeric_compound_operator(lhs_id, lhs_type, rhs_type, op) or {
+		return false
+	}
+	storage_ct := g.value_c_type(lhs_type)
+	address := g.tmp_name()
+	g.write('{ ${storage_ct}* ${address} = &(')
+	if g.assign_lhs_needs_deref(lhs_id, lhs_type, rhs_type, op) {
+		g.write('*')
+	}
+	gen_expr_lvalue(mut g, lhs_id)
+	g.write('); *${address} = ')
+	g.gen_translated_numeric_compound_value('*${address}', lhs_id, rhs_id, lhs_type, rhs_type,
+		operator)
+	g.writeln('; }')
+	return true
+}
+
+fn (g &FlatGen) translated_numeric_compound_operator(lhs_id flat.NodeId, lhs_type types.Type, rhs_type types.Type, op flat.Op) ?string {
+	if !g.expr_is_in_translated_file(lhs_id) || op !in [.plus_assign, .minus_assign, .mul_assign,
+		.div_assign, .mod_assign, .amp_assign, .pipe_assign, .xor_assign] {
+		return none
+	}
+	lhs_clean := cgen_unalias_type(lhs_type)
+	rhs_clean := cgen_unalias_type(rhs_type)
+	if !(translated_integer_scalar_type(lhs_clean) || lhs_clean.is_float())
+		|| !(translated_integer_scalar_type(rhs_clean) || rhs_clean.is_float()) {
+		return none
+	}
+	return match op {
+		.plus_assign { '+' }
+		.minus_assign { '-' }
+		.mul_assign { '*' }
+		.div_assign { '/' }
+		.mod_assign { '%' }
+		.amp_assign { '&' }
+		.pipe_assign { '|' }
+		else { '^' }
+	}
+}
+
+fn (mut g FlatGen) gen_translated_numeric_compound_value(lhs_text string, lhs_id flat.NodeId, rhs_id flat.NodeId, lhs_type types.Type, rhs_type types.Type, operator string) {
+	lhs_ct := g.translated_numeric_c_type(lhs_id, lhs_type)
+	rhs_ct := g.translated_numeric_c_type(rhs_id, rhs_type)
+	normalize_bool := g.translated_bool_destination(lhs_id, lhs_type)
+	if normalize_bool { g.write('((') } else { g.write('(${lhs_ct})(') }
+	if translated_integer_scalar_type(lhs_type) && translated_integer_scalar_type(rhs_type) {
+		mut common_type := g.tc.translated_common_numeric_type(lhs_type, rhs_type)
+		if common_type.name() == 'int' {
+			common_type = types.Type(types.i32_)
+		}
+		op := match operator {
+			'+' { flat.Op.plus }
+			'-' { flat.Op.minus }
+			'*' { flat.Op.mul }
+			else { flat.Op.assign }
+		}
+		if helper := g.integer_overflow_helper(common_type, op) {
+			common_ct := g.value_c_type(common_type)
+			g.write('${helper}((${common_ct})(${lhs_text}), (${common_ct})(')
+			g.gen_expr(rhs_id)
+			g.write('))')
+			if normalize_bool { g.write(') != 0)') } else { g.write(')') }
+			return
+		}
+	}
+	g.write('((${lhs_ct})(${lhs_text})) ${operator} ((${rhs_ct})(')
+	g.gen_expr(rhs_id)
+	g.write('))')
+	if normalize_bool { g.write(') != 0)') } else { g.write(')') }
+}
+
+fn (mut g FlatGen) gen_checked_integer_assign(lhs_id flat.NodeId, rhs_id flat.NodeId, lhs_type types.Type, rhs_type types.Type, op flat.Op) bool {
+	value_type := g.assign_rhs_expected_type(lhs_id, lhs_type)
+	helper := g.integer_overflow_helper(value_type, op) or { return false }
+	c_type := g.value_c_type(value_type)
+	if c_type.len == 0 {
+		return false
+	}
+	address := g.tmp_name()
+	g.write('{ ${c_type}* ${address} = &(')
+	if g.assign_lhs_needs_deref(lhs_id, lhs_type, rhs_type, op) {
+		g.write('*')
+	}
+	gen_expr_lvalue(mut g, lhs_id)
+	g.write('); *${address} = ${helper}(*${address}, ')
+	g.gen_expr_with_expected_type(rhs_id, value_type)
+	g.writeln('); }')
+	return true
+}
+
 fn (mut g FlatGen) gen_optional_abi_assignment(lhs_id flat.NodeId, rhs_id flat.NodeId, lhs flat.Node, lhs_type types.Type, rhs_type types.Type) bool {
 	if lhs.kind !in [.ident, .selector] {
 		return false
@@ -8260,20 +9303,18 @@ fn (mut g FlatGen) gen_optional_abi_assignment(lhs_id flat.NodeId, rhs_id flat.N
 	destination_ct := if lhs.kind == .ident {
 		g.local_storage_c_type(lhs.value) or { return false }
 	} else {
-		// Struct fields use the ordinary optional ABI (`?int` is `Optional`),
+		// Struct fields use the ordinary optional ABI (`?int` is `__v_option`),
 		// while a specialized generic callee deliberately returns the concrete
-		// ABI (`Optional_int`). Convert at the assignment boundary just as local
+		// ABI (`__v_option_int`). Convert at the assignment boundary just as local
 		// storage does above.
 		g.optional_type_name(lhs_optional)
 	}
-	if destination_ct != 'Optional' && !destination_ct.starts_with('Optional_') {
+	if !is_wrapped_c_type(destination_ct) {
 		return false
 	}
 	rhs := g.a.nodes[int(rhs_id)]
 	source_ct := if rhs.kind == .struct_init {
-		concrete_struct_init := g.cur_fn_is_specialized && g.cur_fn_ret_is_optional
-			&& g.type_names_match(rhs_optional, g.cur_fn_ret)
-		g.optional_type_name_for_context(rhs_optional, concrete_struct_init)
+		g.optional_type_name(rhs_optional)
 	} else {
 		g.optional_type_name_for_expr(rhs_id, rhs_optional)
 	}
@@ -8293,22 +9334,11 @@ fn (mut g FlatGen) gen_optional_abi_assignment(lhs_id flat.NodeId, rhs_id flat.N
 	if !g.type_names_match(lhs_base, rhs_base) {
 		return false
 	}
-	tmp := g.tmp_name()
-	out := g.tmp_name()
+	expr := g.expr_to_string_with_expected_type(rhs_id, rhs_type)
+	converted := g.optional_forward_return_abi_wrap_expr(source_ct,
+		destination_ct, lhs_base, expr)
 	g.gen_expr(lhs_id)
-	g.write(' = ({ ${source_ct} ${tmp} = ')
-	g.gen_expr_with_expected_type(rhs_id, rhs_type)
-	g.write('; ${destination_ct} ${out} = {.ok = ${tmp}.ok, .err = ${tmp}.err}; ')
-	if lhs_base !is types.Void {
-		g.write('if (${tmp}.ok) { ')
-		if _ := array_fixed_type(lhs_base) {
-			g.write('memcpy(${out}.value, ${tmp}.value, sizeof(${out}.value));')
-		} else {
-			g.write('${out}.value = ${tmp}.value;')
-		}
-		g.write(' } ')
-	}
-	g.writeln('${out}; });')
+	g.writeln(' = ${converted};')
 	return true
 }
 
@@ -8324,11 +9354,7 @@ fn (g &FlatGen) expr_c_abi_fn_ptr_type(id flat.NodeId) ?string {
 		return none
 	}
 	base_id := g.a.child(&expr, 0)
-	base_type := types.unwrap_pointer(g.usable_expr_type(base_id))
-	mut clean := base_type
-	if base_type is types.Alias {
-		clean = base_type.base_type
-	}
+	clean := cgen_unalias_unwrap_all_pointers(g.usable_expr_type(base_id))
 	if clean is types.Struct {
 		return g.struct_field_c_abi_fn_ptr_type(clean.name, expr.value)
 	}
@@ -8647,7 +9673,8 @@ fn (g &FlatGen) local_name_shadows_c_function(name string) bool {
 
 fn local_name_shadows_c_runtime(name string) bool {
 	return match name {
-		'array_get', 'array_slice', 'int_str', 'new_map', 'string__eq', 'string__lt', 'string__plus' {
+		'argc', 'argv', 'array_get', 'array_slice', 'int_str', 'new_map', 'string__eq', 'string__lt',
+		'string__plus' {
 			true
 		}
 		else {
@@ -8700,19 +9727,10 @@ fn (mut g FlatGen) gen_assign_or_expr(node flat.Node, lhs_idx int, or_node flat.
 	g.indent--
 	g.writeln('} else {')
 	g.push_scope()
-	g.tc.cur_scope.insert('err', types.Type(types.Struct{
-		name: 'IError'
-	}))
 	g.indent++
-	g.writeln('IError err = ${tmp}.err;')
-	if or_node.value == '!' || or_node.value == '?' {
-		if g.cur_fn_ret_is_optional {
-			fn_opt_ct := g.current_fn_optional_type_name(g.cur_fn_ret)
-			g.gen_propagation_return_cleanup()
-			g.writeln('return (${fn_opt_ct}){.ok = false, .err = err};')
-		} else {
-			g.writeln('v_panic(IError__str(err));')
-		}
+	g.gen_or_error_binding(expr_type, tmp)
+	if or_node.value in ['!', '?'] {
+		g.gen_propagation_failure(or_node, expr_type)
 	} else {
 		for j in 0 .. or_body.children_count {
 			child_id := g.a.child(&or_body, j)
@@ -8766,19 +9784,10 @@ fn (mut g FlatGen) gen_decl_or_expr(lhs flat.Node, or_node flat.Node) {
 	g.indent--
 	g.writeln('} else {')
 	g.push_scope()
-	g.tc.cur_scope.insert('err', types.Type(types.Struct{
-		name: 'IError'
-	}))
 	g.indent++
-	g.writeln('IError err = ${tmp}.err;')
-	if or_node.value == '!' || or_node.value == '?' {
-		if g.cur_fn_ret_is_optional {
-			fn_opt_ct := g.current_fn_optional_type_name(g.cur_fn_ret)
-			g.gen_propagation_return_cleanup()
-			g.writeln('return (${fn_opt_ct}){.ok = false, .err = err};')
-		} else {
-			g.writeln('v_panic(IError__str(err));')
-		}
+	g.gen_or_error_binding(expr_type, tmp)
+	if or_node.value in ['!', '?'] {
+		g.gen_propagation_failure(or_node, expr_type)
 	} else {
 		if or_body.children_count > 0 {
 			for i in 0 .. or_body.children_count {
@@ -8858,25 +9867,6 @@ fn (mut g FlatGen) gen_decl_or_map_index(lhs flat.Node, expr_node flat.Node, m t
 	g.gen_scope_ownership_drops()
 	g.indent--
 	g.writeln('}')
-}
-
-fn (g &FlatGen) is_json_decode_call_expr(id flat.NodeId) bool {
-	if int(id) < 0 || int(id) >= g.a.nodes.len {
-		return false
-	}
-	node := g.a.nodes[int(id)]
-	if node.kind == .call && node.children_count > 0 {
-		target := g.call_target_name(g.a.child(&node, 0))
-		if g.is_json_decode_call(id, target) {
-			return true
-		}
-	}
-	for i in 0 .. node.children_count {
-		if g.is_json_decode_call_expr(g.a.child(&node, i)) {
-			return true
-		}
-	}
-	return false
 }
 
 fn (g &FlatGen) noreturn_call_id(id flat.NodeId) ?flat.NodeId {
@@ -8988,59 +9978,32 @@ fn (mut g FlatGen) gen_or_expr(node flat.Node) {
 		false
 	}
 	val_ct, val_type := g.optional_value_info(expr_type, opt_ct)
-	if no_value {
-		g.write('({${opt_ct} ${tmp} = ')
-		g.gen_expr_with_expected_type(expr_id, expr_type)
-		g.write('; if (!${tmp}.ok) { IError err = ${tmp}.err; (void)err; ')
-		g.push_scope()
-		g.tc.cur_scope.insert('err', g.tc.parse_type('IError'))
-		if node.value == '!' || node.value == '?' {
-			if g.cur_fn_ret_is_optional {
-				fn_opt_ct := g.current_fn_optional_type_name(g.cur_fn_ret)
-				g.gen_propagation_return_cleanup()
-				g.write('return (${fn_opt_ct}){.ok = false, .err = err};')
-			} else if g.is_current_test_fn() {
-				g.gen_test_propagation_failure(node)
-			} else {
-				g.write('v_panic(IError__str(err));')
-			}
-		} else {
-			for i in 0 .. or_body.children_count {
-				g.gen_node(g.a.child(&or_body, i))
-			}
-			g.gen_scope_ownership_drops()
-		}
-		g.pop_scope()
-		g.write(' } 0;})')
-		return
-	}
 	val := g.tmp_name()
 	g.write('({${opt_ct} ${tmp} = ')
 	g.gen_expr_with_expected_type(expr_id, expr_type)
-	g.write('; ${val_ct} ${val}; if (${tmp}.ok) { ${val} = ${tmp}.value; } else { IError err = ${tmp}.err; (void)err; ')
-	// Bind `err` (IError) in a *temporary* cgen scope so the or-body's own string
-	// interpolations and selector accesses resolve `err`'s type correctly (without this
-	// an `${err}` inside the or-body falls back to `int__str(err)`). The scope is popped
-	// afterwards so an outer local named `err` keeps its real type — e.g.
-	// `err := 1; _ := maybe() or { 0 }; println('${err}')` must still see `err` as int.
+	g.write('; ')
+	if !no_value {
+		g.write('${val_ct} ${val}; ')
+	}
+	g.write('if (!${tmp}.ok) { ')
 	g.push_scope()
-	g.tc.cur_scope.insert('err', g.tc.parse_type('IError'))
-	if node.value == '!' || node.value == '?' {
-		if g.cur_fn_ret_is_optional {
-			fn_opt_ct := g.current_fn_optional_type_name(g.cur_fn_ret)
-			g.gen_propagation_return_cleanup()
-			g.write('return (${fn_opt_ct}){.ok = false, .err = err};')
-		} else if g.is_current_test_fn() {
-			g.gen_test_propagation_failure(node)
-		} else {
-			g.write('v_panic(IError__str(err));')
+	g.gen_or_error_binding(expr_type, tmp)
+	if node.value in ['!', '?'] {
+		g.gen_propagation_failure(node, expr_type)
+	} else if no_value {
+		for i in 0 .. or_body.children_count {
+			g.gen_node(g.a.child(&or_body, i))
 		}
 	} else {
 		g.gen_or_body_value(or_body, val, val_type)
 	}
 	g.gen_scope_ownership_drops()
 	g.pop_scope()
-	g.write(' } ${val};})')
+	if no_value {
+		g.write(' } 0;})')
+		return
+	}
+	g.write(' } else { ${val} = ${tmp}.value; } ${val};})')
 }
 
 fn (mut g FlatGen) gen_channel_send_or(channel_id flat.NodeId, channel_type types.Channel, or_node flat.Node) {
@@ -9077,9 +10040,14 @@ fn (mut g FlatGen) gen_channel_send_or(channel_id flat.NodeId, channel_type type
 	g.tc.cur_scope.insert('err', g.tc.parse_type('IError'))
 	if or_node.value in ['!', '?'] {
 		if g.cur_fn_ret_is_optional {
-			fn_opt_ct := g.current_fn_optional_type_name(g.cur_fn_ret)
+			fn_opt_ct := g.optional_type_name(g.cur_fn_ret)
 			g.gen_propagation_return_cleanup()
-			g.write('return (${fn_opt_ct}){.ok = false, .err = err};')
+			error_field := if cgen_unalias_type(g.cur_fn_ret) is types.ResultType {
+				', .err = err'
+			} else {
+				''
+			}
+			g.write('return (${fn_opt_ct}){.ok = false${error_field}};')
 		} else {
 			g.write('v_panic(IError__str(err));')
 		}
@@ -9095,32 +10063,21 @@ fn (mut g FlatGen) gen_channel_send_or(channel_id flat.NodeId, channel_type type
 
 fn (g &FlatGen) optional_payload_c_type_for_optional_ct(opt_ct string, fallback string) string {
 	if payload := g.needed_optional_types[opt_ct] {
-		safe_payload := payload.replace('*', 'ptr').replace(' ', '_')
-		if opt_ct == 'Optional_${safe_payload}' {
-			return payload
-		}
+		return payload
 	}
-	if opt_ct.starts_with('Optional_') && opt_ct.ends_with('ptr') {
-		inner := opt_ct['Optional_'.len..opt_ct.len - 3]
-		if inner.len > 0 {
-			return '${inner}*'
-		}
+	prefix_len := match true {
+		opt_ct.starts_with('__v_option_') { '__v_option_'.len }
+		opt_ct.starts_with('__v_result_') { '__v_result_'.len }
+		else { return fallback }
 	}
-	if opt_ct.starts_with('Optional_') {
-		// Parallel Cgen workers can encounter a concrete optional ABI before the
-		// worker that registered its payload type has merged its metadata. The
-		// typedef name is authoritative in that case: using the semantic fallback
-		// can unalias `sapp.Event` to `C.sapp_event` and produce a distinct generic
-		// struct C type from the callee's actual optional payload.
-		return opt_ct['Optional_'.len..]
+	payload := opt_ct[prefix_len..]
+	if payload.ends_with('ptr') {
+		return payload[..payload.len - 3] + '*'
 	}
-	return fallback
+	return payload
 }
 
 fn (g &FlatGen) or_expr_source_type(expr_id flat.NodeId, expr_node flat.Node) types.Type {
-	if ret_type := g.json_decode_call_expr_result_type(expr_id) {
-		return ret_type
-	}
 	if expr_node.kind in [.paren, .expr_stmt] && expr_node.children_count > 0 {
 		inner_id := g.a.child(&expr_node, 0)
 		return g.or_expr_source_type(inner_id, g.a.nodes[int(inner_id)])
@@ -9213,25 +10170,6 @@ fn (g &FlatGen) thread_wait_expr_return_type(call flat.Node) ?types.Type {
 	})
 }
 
-fn (g &FlatGen) json_decode_call_expr_result_type(id flat.NodeId) ?types.Type {
-	if int(id) < 0 || int(id) >= g.a.nodes.len {
-		return none
-	}
-	node := g.a.nodes[int(id)]
-	if node.kind == .paren && node.children_count == 1 {
-		return g.json_decode_call_expr_result_type(g.a.child(&node, 0))
-	}
-	if node.kind != .call || node.children_count == 0 {
-		return none
-	}
-	callee_id := g.a.child(&node, 0)
-	target := g.call_target_name(callee_id)
-	if !g.is_json_decode_call(id, target) {
-		return none
-	}
-	return g.json_decode_result_type_for_call(node)
-}
-
 // gen_or_body emits or body output for c.
 fn (mut g FlatGen) gen_or_body(or_body flat.Node) {
 	if or_body.children_count == 1 {
@@ -9270,8 +10208,8 @@ fn (mut g FlatGen) gen_or_body_value(or_body flat.Node, value_name string, value
 		is_last := i == or_body.children_count - 1
 		if is_last && child.kind == .expr_stmt {
 			expr_id := g.a.child(&child, 0)
-			if g.expr_is_error_call(expr_id) && g.cur_fn_ret_is_optional {
-				fn_opt_ct := g.current_fn_optional_type_name(g.cur_fn_ret)
+			if g.expr_is_error_call(expr_id) && cgen_unalias_type(g.cur_fn_ret) is types.ResultType {
+				fn_opt_ct := g.optional_type_name(g.cur_fn_ret)
 				g.gen_propagation_return_cleanup()
 				g.write('return ')
 				g.gen_optional_error_from_call(fn_opt_ct, g.a.nodes[int(expr_id)])
@@ -9375,21 +10313,10 @@ fn (mut g FlatGen) gen_or_expr_stmt(node flat.Node) {
 	g.writeln(';')
 	g.writeln('if (!${tmp}.ok) {')
 	g.push_scope()
-	g.tc.cur_scope.insert('err', types.Type(types.Struct{
-		name: 'IError'
-	}))
 	g.indent++
-	g.writeln('IError err = ${tmp}.err;')
-	if node.value == '!' || node.value == '?' {
-		if g.cur_fn_ret_is_optional {
-			fn_opt_ct := g.current_fn_optional_type_name(g.cur_fn_ret)
-			g.gen_propagation_return_cleanup()
-			g.writeln('return (${fn_opt_ct}){.ok = false, .err = err};')
-		} else if g.is_current_test_fn() {
-			g.gen_test_propagation_failure(node)
-		} else {
-			g.writeln('v_panic(IError__str(err));')
-		}
+	g.gen_or_error_binding(expr_type, tmp)
+	if node.value in ['!', '?'] {
+		g.gen_propagation_failure(node, expr_type)
 	} else {
 		for i in 0 .. or_body.children_count {
 			g.gen_node(g.a.child(&or_body, i))
@@ -9405,12 +10332,7 @@ fn (g &FlatGen) is_current_test_fn() bool {
 	return g.cur_fn_name.starts_with('test_') && g.test_files.len > 0
 }
 
-fn (g &FlatGen) is_current_test_fn_or_each_hook() bool {
-	return g.test_files.len > 0
-		&& (g.cur_fn_name.starts_with('test_') || g.cur_fn_name in ['before_each', 'after_each'])
-}
-
-fn (mut g FlatGen) gen_test_propagation_failure(node flat.Node) {
+fn (mut g FlatGen) gen_test_propagation_failure(node flat.Node, is_result bool) {
 	position := g.a.source_position(node.pos) or {
 		g.write('__test_failures++; return;')
 		return
@@ -9420,7 +10342,33 @@ fn (mut g FlatGen) gen_test_propagation_failure(node flat.Node) {
 		return
 	}
 	err_msg := g.tmp_name()
-	g.write('string ${err_msg} = IError__msg(&err); ')
+	message := if is_result { 'IError__msg(&err)' } else { g.interface_str_lit('none') }
+	g.write('string ${err_msg} = ${message}; ')
 	g.write('fprintf(stderr, "%s:%d: fn %s failed propagation with error: %.*s\\n", "${c_escape(file.name)}", ${position.line}, "${c_escape(g.cur_fn_name)}", ${err_msg}.len, ${err_msg}.str); ')
 	g.write('__test_failures++; return;')
+}
+
+fn (mut g FlatGen) gen_or_error_binding(typ types.Type, source string) {
+	if cgen_unalias_type(typ) !is types.ResultType {
+		return
+	}
+	g.tc.cur_scope.insert('err', g.tc.parse_type('IError'))
+	g.writeln('IError err = ${source}.err; (void)err;')
+}
+
+fn (mut g FlatGen) gen_propagation_failure(node flat.Node, typ types.Type) {
+	is_result := cgen_unalias_type(typ) is types.ResultType
+	if g.cur_fn_ret_is_optional {
+		ct := g.optional_type_name(g.cur_fn_ret)
+		error_field := if is_result { ', .err = err' } else { '' }
+		g.gen_propagation_return_cleanup()
+		g.writeln('return (${ct}){.ok = false${error_field}};')
+		return
+	}
+	if g.is_current_test_fn() {
+		g.gen_test_propagation_failure(node, is_result)
+		return
+	}
+	message := if is_result { 'IError__str(err)' } else { g.interface_str_lit('none') }
+	g.writeln('v_panic(${message});')
 }

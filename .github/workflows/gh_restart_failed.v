@@ -139,8 +139,8 @@ fn get_checks_for_commit(commit string) []Check {
 	mut checks := []Check{}
 	for cr in resp.check_runs {
 		checks << Check{
-			name: cr.name
-			bucket: if cr.conclusion == 'failure' {
+			name:     cr.name
+			bucket:   if cr.conclusion == 'failure' {
 				'fail'
 			} else if cr.conclusion == 'cancelled' {
 				'cancel'
@@ -149,12 +149,12 @@ fn get_checks_for_commit(commit string) []Check {
 			} else {
 				'pending'
 			}
-			state: if cr.conclusion != '' {
+			state:    if cr.conclusion != '' {
 				cr.conclusion.to_upper()
 			} else {
 				cr.status.to_upper()
 			}
-			link: cr.html_url
+			link:     cr.html_url
 			workflow: 'Actions'
 		}
 	}

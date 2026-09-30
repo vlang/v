@@ -13,9 +13,14 @@ fn (mut t Transformer) if_guard_optional_type_name(rhs_id flat.NodeId) string {
 
 fn (mut t Transformer) transform_if_guard_wrapper_source(rhs_id flat.NodeId, rhs_type string) (flat.NodeId, flat.NodeId) {
 	if !isnil(t.tc) && t.tc.ownership_guard_read_moves_value(rhs_id) {
-		if t.selector_chain_has_sum_shared_field(rhs_id) {
+		mut source_id := rhs_id
+		for t.a.nodes[int(source_id)].kind == .paren
+			&& t.a.nodes[int(source_id)].children_count == 1 {
+			source_id = t.a.child(&t.a.nodes[int(source_id)], 0)
+		}
+		if t.selector_chain_has_sum_shared_field(source_id) {
 			wrapper := t.transform_optional_wrapper_expr(rhs_id)
-			clear := t.make_assign_without_ownership_drop(rhs_id, t.make_optional_none(rhs_type))
+			clear := t.make_assign_without_ownership_drop(source_id, t.make_optional_none(rhs_type))
 			return wrapper, clear
 		}
 		if t.expr_can_take_address(rhs_id) {
@@ -262,14 +267,14 @@ fn (mut t Transformer) optional_result_expr_type_name(id flat.NodeId) string {
 fn (t &Transformer) optional_type_name_from_type(typ types.Type) ?string {
 	if typ is types.OptionType {
 		base_name := t.value_type_name(typ.base_type)
-		if typ.base_type is types.Void || base_name == 'Optional' {
+		if typ.base_type is types.Void || base_name == '__v_option' {
 			return '?void'
 		}
 		return '?${base_name}'
 	}
 	if typ is types.ResultType {
 		base_name := t.value_type_name(typ.base_type)
-		if typ.base_type is types.Void || base_name == 'Optional' {
+		if typ.base_type is types.Void || base_name == '__v_option' {
 			return '!void'
 		}
 		return '!${base_name}'
@@ -283,15 +288,14 @@ fn (t &Transformer) optional_type_name_from_type(typ types.Type) ?string {
 
 // transform_if_guard_else_block transforms transform if guard else block data for transform.
 fn (mut t Transformer) transform_if_guard_else_block(else_id flat.NodeId, else_node flat.Node, err_source string) flat.NodeId {
-	saved_var_types := t.var_types.clone()
-	t.set_implicit_err_var_type()
 	mut children := []flat.NodeId{}
-	err_value := if err_source != '' {
-		t.make_selector(t.make_ident(err_source), 'err', 'IError')
+	err_expr := if err_source != '' {
+		t.result_error_expr(t.make_ident(err_source))
 	} else {
-		t.make_struct_init('IError')
+		flat.empty_node
 	}
-	children << t.make_decl_assign_typed('err', err_value, 'IError')
+	err_scope := t.enter_implicit_err_scope(int(err_expr) >= 0)
+	t.append_implicit_err_decl(mut children, err_expr)
 	if else_node.kind == .block {
 		children << t.transform_stmts(t.a.children_of(&else_node))
 	} else if else_node.kind == .if_expr {
@@ -299,7 +303,7 @@ fn (mut t Transformer) transform_if_guard_else_block(else_id flat.NodeId, else_n
 	} else {
 		children << t.transform_stmt(else_id)
 	}
-	t.restore_var_types(saved_var_types)
+	t.leave_implicit_err_scope(err_scope)
 	return t.make_block(children)
 }
 
@@ -385,23 +389,22 @@ fn (mut t Transformer) expand_map_index_if_guard(node flat.Node, lhs_name string
 }
 
 fn (mut t Transformer) transform_map_index_if_guard_else_block(else_id flat.NodeId, else_node flat.Node, ptr_name string, value_type string) flat.NodeId {
-	saved_var_types := t.var_types.clone()
-	t.set_implicit_err_var_type()
+	is_result := t.normalize_type_alias(value_type).starts_with('!')
+	err_scope := t.enter_implicit_err_scope(is_result)
 	mut children := []flat.NodeId{}
-	missing_error := t.make_map_key_missing_error()
-	if t.is_optional_type_name(value_type) {
-		children << t.make_decl_assign_typed('err', t.make_struct_init('IError'), 'IError')
-		ptr_found := t.make_infix(.ne, t.make_ident(ptr_name), t.a.add(.nil_literal))
-		ptr_value := t.make_prefix(.mul, t.make_cast('&${value_type}', t.make_ident(ptr_name),
-			'&${value_type}'))
-		stored_error := t.make_selector(ptr_value, 'err', 'IError')
-		children << t.make_if(ptr_found, t.make_block([
-			t.make_assign(t.make_ident('err'), stored_error),
-		]), t.make_block([
-			t.make_assign(t.make_ident('err'), missing_error),
-		]))
-	} else {
-		children << t.make_decl_assign_typed('err', missing_error, 'IError')
+	if is_result && t.has_ierror_interface() {
+		zero := t.make_struct_init('IError')
+		children << t.make_decl_assign_typed('err', zero, 'IError')
+		pointer := t.make_ident(ptr_name)
+		found := t.make_infix(.ne, pointer, t.a.add(.nil_literal))
+		cast := t.make_cast('&${value_type}', pointer, '&${value_type}')
+		stored := t.make_selector(t.make_prefix(.mul, cast), 'err', 'IError')
+		missing := t.make_call_typed('error', [
+			t.make_string_literal('map key does not exist'),
+		], 'IError')
+		present_branch := t.make_block([t.make_assign(t.make_ident('err'), stored)])
+		missing_branch := t.make_block([t.make_assign(t.make_ident('err'), missing)])
+		children << t.make_if(found, present_branch, missing_branch)
 	}
 	if else_node.kind == .block {
 		children << t.transform_stmts(t.a.children_of(&else_node))
@@ -410,7 +413,7 @@ fn (mut t Transformer) transform_map_index_if_guard_else_block(else_id flat.Node
 	} else {
 		children << t.transform_stmt(else_id)
 	}
-	t.restore_var_types(saved_var_types)
+	t.leave_implicit_err_scope(err_scope)
 	return t.make_block(children)
 }
 
@@ -540,7 +543,7 @@ fn (mut t Transformer) if_expr_guard_result_type(node flat.Node) ?string {
 	then_type := t.stmt_value_type(t.a.child(&node, 1))
 	t.restore_var_types(saved_var_types)
 
-	t.set_implicit_err_var_type()
+	err_scope := t.enter_implicit_err_scope(rhs_type.starts_with('!'))
 	else_id := t.a.child(&node, 2)
 	else_node := t.a.nodes[int(else_id)]
 	else_type := if else_node.kind == .if_expr {
@@ -552,7 +555,7 @@ fn (mut t Transformer) if_expr_guard_result_type(node flat.Node) ?string {
 	} else {
 		t.stmt_value_type(else_id)
 	}
-	t.restore_var_types(saved_var_types)
+	t.leave_implicit_err_scope(err_scope)
 
 	mut result := ''
 	if then_type.len > 0 {
@@ -658,6 +661,17 @@ fn (t &Transformer) if_expr_result_type(id flat.NodeId, node flat.Node) string {
 		}
 	}
 	branch_typ := t.if_expr_branch_result_type(node)
+	if !isnil(t.tc) {
+		if file := t.a.source_files[node.pos.id] {
+			if t.tc.translated_files[file.name] {
+				resolved := t.normalize_type_alias(t.tc.resolve_type(id).name())
+				if t.translated_if_numeric_type(branch_typ)
+					&& t.translated_if_numeric_type(resolved) {
+					return resolved
+				}
+			}
+		}
+	}
 	if branch_typ in ['', 'unknown'] && checked_typ in ['', 'unknown']
 		&& node_typ in ['', 'unknown'] && t.if_expr_has_c_macro_values(node) {
 		return 'int'
@@ -760,7 +774,7 @@ fn (t &Transformer) if_expr_branch_result_type(node flat.Node) string {
 			t.smartcast_contexts_from_is_exprs(t.extract_all_is_exprs(t.a.child(&node, 0)))
 		then_type := t.stmt_value_type_with_smartcasts(t.a.child(&node, 1), then_smartcasts)
 		if then_type.len > 0 {
-			result = t.merge_if_expr_types(result, t.normalize_type_alias(then_type))
+			result = t.merge_translated_if_expr_types(node, result, t.normalize_type_alias(then_type))
 		}
 	}
 	if node.children_count >= 3 {
@@ -772,10 +786,30 @@ fn (t &Transformer) if_expr_branch_result_type(node flat.Node) string {
 			t.stmt_value_type(else_id)
 		}
 		if else_type.len > 0 {
-			result = t.merge_if_expr_types(result, t.normalize_type_alias(else_type))
+			result = t.merge_translated_if_expr_types(node, result, t.normalize_type_alias(else_type))
 		}
 	}
 	return result
+}
+
+fn (t &Transformer) translated_if_numeric_type(name string) bool {
+	return is_numeric_type_name(name) || name in ['i32', 'char'] || name in t.enum_types
+}
+
+fn (t &Transformer) merge_translated_if_expr_types(node flat.Node, current string, next string) string {
+	if !isnil(t.tc) {
+		if file := t.a.source_files[node.pos.id] {
+			if t.tc.translated_files[file.name] {
+				if current == 'bool' && t.translated_if_numeric_type(next) {
+					return next
+				}
+				if next == 'bool' && t.translated_if_numeric_type(current) {
+					return current
+				}
+			}
+		}
+	}
+	return t.merge_if_expr_types(current, next)
 }
 
 // smartcast_contexts_from_is_exprs converts smartcast contexts from is exprs data for transform.
@@ -1157,18 +1191,17 @@ fn (mut t Transformer) build_if_value_guard_chain(if_node flat.Node, target_name
 
 	else_id := t.a.child(&if_node, 2)
 	else_node := t.a.nodes[int(else_id)]
-	err_value := t.make_selector(t.make_ident(tmp_name), 'err', 'IError')
-	err_decl := t.make_decl_assign_typed('err', err_value, 'IError')
-	saved_else_var_types := t.var_types.clone()
-	t.set_implicit_err_var_type()
+	mut err_decls := []flat.NodeId{cap: 1}
+	t.append_implicit_err_decl(mut err_decls, t.result_error_expr(t.make_ident(tmp_name)))
+	err_scope := t.enter_implicit_err_scope(t.node_type(t.make_ident(tmp_name)).starts_with('!'))
 	else_block0 := if else_node.kind == .if_expr {
 		t.make_block(t.build_if_value_chain(else_id, target_name, target_type))
 	} else {
 		t.if_value_branch_block(else_id, target_name, target_type)
 	}
-	t.restore_var_types(saved_else_var_types)
+	t.leave_implicit_err_scope(err_scope)
 	mut else_children := []flat.NodeId{cap: int(t.a.nodes[int(else_block0)].children_count) + 1}
-	else_children << err_decl
+	else_children << err_decls
 	else_children << t.a.children_of(&t.a.nodes[int(else_block0)])
 	else_block := t.make_block(else_children)
 	result << t.make_if(ok_cond, then_block, else_block)

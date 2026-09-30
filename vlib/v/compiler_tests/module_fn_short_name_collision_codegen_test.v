@@ -177,7 +177,7 @@ fn test_imported_module_fn_short_name_does_not_pollute_builtin_return_type() {
 	assert generated.contains('collisionmod__new_dense_array_T_v_int'), generated
 	assert generated.contains('localmod__helper()'), generated
 	assert generated.contains('localmod__run(command, args)'), generated
-	assert generated.contains('Optional_localmod__Item localmod__load_item(void);'), generated
+	assert generated.contains('__v_result_localmod__Item localmod__load_item(void);'), generated
 	assert !generated.contains('localmod__run(&command, args)'), generated
 	assert !generated.contains('collisionmod__Node_int* new_dense_array(int key_bytes'), generated
 	assert !generated.contains('Array_fixed_collisionmod__Node_int* new_dense_array(int key_bytes'), generated

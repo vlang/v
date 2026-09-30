@@ -54,6 +54,34 @@ fn (g &FlatGen) enum_backing_info(enum_name string) ?EnumBackingInfo {
 	return none
 }
 
+// wide_enum_signature_c_type returns the C type that function parameters and return
+// values need for an enum with a backing type (`enum E as u64`). Those pass other
+// enums as `int`. A narrower value round-trips through `int`, but a 64 bit value
+// would be truncated, and a pointer (`mut e E`) must address the real storage: an
+// `int*` to a `u8` field would overwrite the bytes after it.
+fn (g &FlatGen) wide_enum_signature_c_type(t types.Type) ?string {
+	if t is types.Pointer {
+		if t.base_type is types.Enum {
+			if info := g.enum_backing_info(t.base_type.name) {
+				if info.storage_c_type !in ['int', 'i32'] {
+					return info.c_name + '*'
+				}
+			}
+			return none
+		}
+		base := g.wide_enum_signature_c_type(t.base_type)?
+		return base + '*'
+	}
+	if t is types.Enum {
+		if info := g.enum_backing_info(t.name) {
+			if info.storage_c_type in ['i64', 'u64'] {
+				return info.c_name
+			}
+		}
+	}
+	return none
+}
+
 fn (g &FlatGen) enum_value_c_type(enum_type types.Enum) string {
 	if info := g.enum_backing_info(enum_type.name) {
 		return info.c_name
@@ -90,21 +118,22 @@ fn (mut g FlatGen) optional_type_name(t types.Type) string {
 		return g.tc.c_type(clean_type)
 	}
 
+	prefix := if clean_type is types.ResultType { '__v_result' } else { '__v_option' }
 	if base_type is types.Void {
-		return 'Optional'
+		return prefix
 	}
 	if g.type_contains_generic_placeholder(base_type) {
-		return 'Optional'
+		return prefix
 	}
 	mut inner_ct := g.optional_payload_c_type(base_type)
 	if inner_ct.starts_with('fn_ptr:') {
 		inner_ct = g.resolve_fn_ptr_type(inner_ct)
 	}
 	if inner_ct == 'int' {
-		return 'Optional'
+		return prefix
 	}
 	safe_name := inner_ct.replace('*', 'ptr').replace(' ', '_')
-	opt_name := 'Optional_${safe_name}'
+	opt_name := '${prefix}_${safe_name}'
 	g.needed_optional_types[opt_name] = inner_ct
 	return opt_name
 }
@@ -117,17 +146,6 @@ fn optional_result_unalias_type(t types.Type) types.Type {
 		}
 	}
 	return t
-}
-
-fn (mut g FlatGen) optional_type_name_for_context(t types.Type, concrete_optional bool) string {
-	if concrete_optional && type_is_optional_result(t) {
-		return g.concrete_optional_type_name(t)
-	}
-	return g.optional_type_name(t)
-}
-
-fn (mut g FlatGen) current_fn_optional_type_name(t types.Type) string {
-	return g.optional_type_name_for_context(t, g.cur_fn_is_specialized)
 }
 
 fn (mut g FlatGen) value_c_type(t types.Type) string {
@@ -464,9 +482,6 @@ fn (mut g FlatGen) optional_value_info(t types.Type, opt_ct string) (string, typ
 		val_ct0
 	}
 	val_ct = g.optional_payload_c_type_for_optional_ct(opt_ct, val_ct)
-	if opt_ct.starts_with('Optional_') && opt_ct.ends_with('ptr') {
-		val_ct = '${opt_ct['Optional_'.len..opt_ct.len - 3]}*'
-	}
 	semantic_ct := g.optional_payload_c_type(val_type)
 	if val_ct.ends_with('*') && !semantic_ct.ends_with('*') {
 		val_type = types.Type(types.Pointer{
@@ -788,7 +803,7 @@ fn (g &FlatGen) canonical_import_alias_type_text_in_file_uncached(typ string, fi
 	}
 	if clean.contains('.') {
 		alias := clean.all_before('.')
-		if module_name := g.tc.file_imports['${file}\n${alias}'] {
+		if module_name := g.cached_file_import(file, alias) {
 			return module_name + clean[alias.len..]
 		}
 	}
@@ -832,7 +847,7 @@ fn (g &FlatGen) current_file_import_alias_module(alias string) ?string {
 	if g.tc.cur_file.len == 0 {
 		return none
 	}
-	return g.tc.file_imports['${g.tc.cur_file}\n${alias}'] or { none }
+	return g.cached_file_import(g.tc.cur_file, alias) or { none }
 }
 
 fn optional_payload_is_bare_struct(t types.Type) bool {
@@ -880,35 +895,42 @@ fn (mut g FlatGen) collect_unresolved_call_optional_types() {
 	mut seen_type_texts := map[string]bool{}
 	for idx in g.type_metadata_nodes() {
 		node := g.a.nodes[idx]
-		if node.kind != .call || (idx < g.tc.expr_type_set.len && g.tc.expr_type_set[idx]) {
+		if node.kind != .call {
+			continue
+		}
+		// Only a complete type spelling that was not collected yet can add a
+		// typedef. Rule the rest out before the checker metadata below, which
+		// costs a map lookup per resolved call.
+		if node.typ.len == 0 || node.typ in ['int', 'array', 'map', 'unknown']
+			|| !cgen_type_text_is_complete(node.typ) {
+			continue
+		}
+		type_id := node.type_text_id()
+		if type_id != 0 {
+			if seen_type_ids[int(type_id)] {
+				continue
+			}
+		} else if node.typ in seen_type_texts {
+			continue
+		}
+		if idx < g.tc.expr_type_set.len && g.tc.expr_type_set[idx] {
 			continue
 		}
 		if idx < g.tc.resolved_call_set.len && g.tc.resolved_call_set[idx] {
 			name := g.tc.resolved_call_names[idx].value
-			// The compiler-magic `json.decode(T, s)` is declared as a `!voidptr`
-			// stub; its real `!T` return type only exists in the node spelling.
-			if name in g.tc.fn_ret_types && name != 'json.decode' {
+			if name in g.tc.fn_ret_types {
 				// collect_declaration_signature_types() already processed this exact
 				// return entry; only calls without checker return metadata need their
 				// transformed node spelling inspected below.
 				continue
 			}
 		}
-		if node.typ.len > 0 && node.typ !in ['int', 'array', 'map', 'unknown'] && cgen_type_text_is_complete(node.typ) {
-			type_id := node.type_text_id()
-			if type_id != 0 {
-				if seen_type_ids[int(type_id)] {
-					continue
-				}
-				seen_type_ids[int(type_id)] = true
-			} else {
-				if node.typ in seen_type_texts {
-					continue
-				}
-				seen_type_texts[node.typ] = true
-			}
-			g.collect_optional_typedef_type(g.parse_node_type(&node))
+		if type_id != 0 {
+			seen_type_ids[int(type_id)] = true
+		} else {
+			seen_type_texts[node.typ] = true
 		}
+		g.collect_optional_typedef_type(g.parse_node_type(&node))
 	}
 }
 
@@ -969,9 +991,9 @@ fn (mut g FlatGen) collect_specialized_declaration_signature_types() {
 		for method in methods {
 			decl_key := g.interface_method_signature_key(iface_name, method) or { continue }
 			params, ret := g.tc.specialized_interface_method_signature(iface_name, decl_key)
-			g.collect_declaration_signature_type_for_context(ret, true)
+			g.collect_declaration_signature_type(ret)
 			for param in params {
-				g.collect_declaration_signature_type_for_context(param, true)
+				g.collect_declaration_signature_type(param)
 			}
 		}
 	}
@@ -1003,7 +1025,7 @@ fn (mut g FlatGen) collect_specialized_declaration_signature_types() {
 			continue
 		}
 		return_type := g.fn_node_return_type(node, g.tc.cur_module)
-		g.collect_declaration_signature_type_for_context(return_type, concrete_optional)
+		g.collect_declaration_signature_type(return_type)
 		typed_params := g.fn_node_param_types(node, g.tc.cur_module)
 		mut param_idx := 0
 		for i in 0 .. node.children_count {
@@ -1017,7 +1039,7 @@ fn (mut g FlatGen) collect_specialized_declaration_signature_types() {
 				g.tc.parse_resolution_type(param.typ)
 			}
 			param_idx++
-			g.collect_declaration_signature_type_for_context(g.fn_node_effective_param_type(param, raw_type), concrete_optional)
+			g.collect_declaration_signature_type(g.fn_node_effective_param_type(param, raw_type))
 		}
 	}
 }
@@ -1111,9 +1133,8 @@ fn (mut g FlatGen) collect_selected_declaration_signature_types() {
 		node := g.a.nodes[int(item.node_id)]
 		g.tc.cur_module = item.module
 		g.tc.cur_file = item.file
-		concrete_optional := g.is_program_specialization_fn_node(node, int(item.node_id), item.module)
 		return_type := g.fn_node_return_type(node, item.module)
-		g.collect_known_declaration_signature_type_for_context(return_type, concrete_optional)
+		g.collect_known_declaration_signature_type(return_type)
 		typed_params := g.fn_node_param_types(node, item.module)
 		mut param_idx := 0
 		for i in 0 .. node.children_count {
@@ -1127,7 +1148,7 @@ fn (mut g FlatGen) collect_selected_declaration_signature_types() {
 				g.tc.parse_resolution_type(param.typ)
 			}
 			param_idx++
-			g.collect_known_declaration_signature_type_for_context(g.fn_node_effective_param_type(param, raw_type), concrete_optional)
+			g.collect_known_declaration_signature_type(g.fn_node_effective_param_type(param, raw_type))
 		}
 	}
 }
@@ -1148,14 +1169,10 @@ fn cgen_type_first_seen(typ &types.Type, mut seen PreseedTypeSeen) bool {
 }
 
 fn (mut g FlatGen) collect_declaration_signature_type(t types.Type) {
-	g.collect_declaration_signature_type_for_context(t, false)
-}
-
-fn (mut g FlatGen) collect_declaration_signature_type_for_context(t types.Type, concrete_optional bool) {
 	// Erased-template signatures keep their placeholder spellings in the
 	// checker tables even when the program itself uses no generics
 	// (skip_generics); force the placeholder check so an unused template's
-	// `!&Tls[T]` return cannot leave an Optional_..._T typedef referencing a
+	// `!&Tls[T]` return cannot leave an __v_option_..._T typedef referencing a
 	// C type that is never emitted.
 	g.placeholder_check_forced = true
 	skip := g.type_contains_generic_placeholder(t)
@@ -1163,11 +1180,11 @@ fn (mut g FlatGen) collect_declaration_signature_type_for_context(t types.Type, 
 	if skip {
 		return
 	}
-	g.collect_known_declaration_signature_type_for_context(t, concrete_optional)
+	g.collect_known_declaration_signature_type(t)
 }
 
-fn (mut g FlatGen) collect_known_declaration_signature_type_for_context(t types.Type, concrete_optional bool) {
-	g.collect_concrete_optional_typedef_type_for_context(t, concrete_optional)
+fn (mut g FlatGen) collect_known_declaration_signature_type(t types.Type) {
+	g.collect_concrete_optional_typedef_type(t)
 	g.collect_known_concrete_multi_return_type(t)
 }
 
@@ -1179,55 +1196,43 @@ fn (mut g FlatGen) collect_optional_typedef_type(t types.Type) {
 }
 
 fn (mut g FlatGen) collect_concrete_optional_typedef_type(t types.Type) {
-	g.collect_concrete_optional_typedef_type_for_context(t, false)
-}
-
-fn (mut g FlatGen) collect_concrete_optional_typedef_type_for_context(t types.Type, concrete_optional bool) {
 	match t {
 		types.OptionType {
-			if concrete_optional {
-				g.concrete_optional_type_name(t)
-			} else {
-				g.optional_type_name(t)
-			}
-			g.collect_concrete_optional_typedef_type_for_context(t.base_type, concrete_optional)
+			g.optional_type_name(t)
+			g.collect_concrete_optional_typedef_type(t.base_type)
 		}
 		types.ResultType {
-			if concrete_optional {
-				g.concrete_optional_type_name(t)
-			} else {
-				g.optional_type_name(t)
-			}
-			g.collect_concrete_optional_typedef_type_for_context(t.base_type, concrete_optional)
+			g.optional_type_name(t)
+			g.collect_concrete_optional_typedef_type(t.base_type)
 		}
 		types.Array {
-			g.collect_concrete_optional_typedef_type_for_context(t.elem_type, concrete_optional)
+			g.collect_concrete_optional_typedef_type(t.elem_type)
 		}
 		types.ArrayFixed {
-			g.collect_concrete_optional_typedef_type_for_context(t.elem_type, concrete_optional)
+			g.collect_concrete_optional_typedef_type(t.elem_type)
 		}
 		types.Channel {
-			g.collect_concrete_optional_typedef_type_for_context(t.elem_type, concrete_optional)
+			g.collect_concrete_optional_typedef_type(t.elem_type)
 		}
 		types.Map {
-			g.collect_concrete_optional_typedef_type_for_context(t.key_type, concrete_optional)
-			g.collect_concrete_optional_typedef_type_for_context(t.value_type, concrete_optional)
+			g.collect_concrete_optional_typedef_type(t.key_type)
+			g.collect_concrete_optional_typedef_type(t.value_type)
 		}
 		types.Pointer {
-			g.collect_concrete_optional_typedef_type_for_context(t.base_type, concrete_optional)
+			g.collect_concrete_optional_typedef_type(t.base_type)
 		}
 		types.FnType {
 			for param in t.params {
-				g.collect_concrete_optional_typedef_type_for_context(param, concrete_optional)
+				g.collect_concrete_optional_typedef_type(param)
 			}
-			g.collect_concrete_optional_typedef_type_for_context(t.return_type, concrete_optional)
+			g.collect_concrete_optional_typedef_type(t.return_type)
 		}
 		types.Alias {
-			g.collect_concrete_optional_typedef_type_for_context(t.base_type, concrete_optional)
+			g.collect_concrete_optional_typedef_type(t.base_type)
 		}
 		types.MultiReturn {
 			for typ in t.types {
-				g.collect_concrete_optional_typedef_type_for_context(typ, concrete_optional)
+				g.collect_concrete_optional_typedef_type(typ)
 			}
 		}
 		else {}
@@ -1272,7 +1277,7 @@ fn (g &FlatGen) type_contains_generic_placeholder(t types.Type) bool {
 		types.Struct {
 			// A stale generic-call annotation can carry the concrete C function name
 			// as a nominal type. It is not a payload type and must not create an
-			// `Optional_<function>` typedef in the program prefix.
+			// `__v_option_<function>` typedef in the program prefix.
 			if t.name.contains('_T_') && !g.type_name_known(t.name) {
 				return true
 			}
@@ -1420,9 +1425,10 @@ fn (mut g FlatGen) emit_optional_typedef(opt_name string, val_type string) bool 
 	interface_matches := g.qualified_interface_c_types(bare_val_type.all_after_last('__'))
 	is_known_interface := bare_val_type in interface_matches
 	is_known_sum_type := g.is_known_sum_c_type(bare_val_type)
+	is_known_builtin := types.is_builtin_type_name(bare_val_type)
 	// Multi-return names can contain a module-qualified field component, but the
 	// payload is the generated tuple struct rather than a stale source struct.
-	if bare_val_type != 'Array' && !is_known_interface && !is_known_sum_type
+	if bare_val_type != 'Array' && !is_known_builtin && !is_known_interface && !is_known_sum_type
 		&& !bare_val_type.starts_with('multi_return_')
 		&& (g.stale_ambiguous_qualified_struct_c_type(bare_val_type)
 			|| g.stale_missing_qualified_struct_c_type(bare_val_type)) {
@@ -1449,10 +1455,19 @@ fn (mut g FlatGen) emit_optional_typedef(opt_name string, val_type string) bool 
 	if bare_val_type.starts_with('_fn_ptr_') {
 		g.ensure_fn_ptr_typedef_by_name(bare_val_type)
 	}
-	err_field := if g.has_ierror_interface() { 'IError err; ' } else { '' }
-	g.writeln('typedef struct ${opt_name} { bool ok; ${err_field}${val_type} value; } ${opt_name};')
+	g.write_optional_typedef(opt_name, val_type)
 	g.emitted_optional_types[opt_name] = true
 	return true
+}
+
+fn (mut g FlatGen) write_optional_typedef(name string, value_type string) {
+	is_result := name == '__v_result' || name.starts_with('__v_result_')
+	payload := if is_result && g.has_ierror_interface() {
+		'union { IError err; ${value_type} value; };'
+	} else {
+		'${value_type} value;'
+	}
+	g.writeln('typedef struct ${name} { bool ok; ${payload} } ${name};')
 }
 
 fn (g &FlatGen) is_known_sum_c_type(c_type string) bool {
@@ -1760,7 +1775,10 @@ fn (mut g FlatGen) enum_str_defs() {
 }
 
 fn (g &FlatGen) enum_autostr_is_used(cname string) bool {
-	return !g.has_used_fn_filter() || g.used_fn_contains('${cname}__autostr')
+	// Test assertion diagnostics stringify enum operands even when source code does
+	// not call `.str()`, so their synthesized helpers are outside markused's call graph.
+	return g.test_files.len > 0 || !g.has_used_fn_filter()
+		|| g.used_fn_contains('${cname}__autostr')
 }
 
 fn (g &FlatGen) enum_decl_type_name(node flat.Node, module_name string) string {
@@ -2492,4 +2510,19 @@ fn (mut g FlatGen) type_alias_decls(emit_fn_ptr_aliases bool) {
 	if emitted {
 		g.writeln('')
 	}
+}
+
+fn (g &FlatGen) optional_error_field(wrapper string, source string) string {
+	if !g.has_ierror_interface() {
+		return ''
+	}
+	if wrapper != '__v_result' && !wrapper.starts_with('__v_result_') {
+		return ''
+	}
+	return ', .err = ${source}.err'
+}
+
+fn is_wrapped_c_type(name string) bool {
+	return name in ['__v_option', '__v_result'] || name.starts_with('__v_option_')
+		|| name.starts_with('__v_result_')
 }

@@ -80,6 +80,7 @@ fn test_serialize_and_decode_bitstring() ! {
 			assert err == c.err
 			continue
 		}
+		assert idx == c.inp.len
 
 		assert bs.tag().tag_number() == int(TagType.bitstring)
 

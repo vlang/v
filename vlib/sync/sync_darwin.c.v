@@ -99,7 +99,7 @@ fn (mut m Mutex) lazy_init() {
 	}
 	mut expected := u32(0)
 	if C.atomic_compare_exchange_strong_u32(&m.inited, &expected, 1) {
-		should_be_zero(C.pthread_mutex_init(&m.mutex, C.NULL))
+		should_be_zero(C.pthread_mutex_init(&m.mutex, unsafe { nil }))
 		C.atomic_store_u32(&m.inited, 2)
 		return
 	}
@@ -255,7 +255,7 @@ pub fn new_semaphore_init(n u32) &Semaphore {
 // resources needed for the semaphore to work properly.
 pub fn (mut sem Semaphore) init(n u32) {
 	C.atomic_store_u32(&sem.count, n)
-	should_be_zero(C.pthread_mutex_init(&sem.mtx, C.NULL))
+	should_be_zero(C.pthread_mutex_init(&sem.mtx, unsafe { nil }))
 	attr := CondAttr{}
 	should_be_zero(C.pthread_condattr_init(&attr.attr))
 	C.pthread_condattr_setpshared(&attr.attr, C.PTHREAD_PROCESS_PRIVATE)

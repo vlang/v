@@ -103,6 +103,29 @@ fn test_include_preserves_header_without_scanning_declarations() {
 	assert linked.should_emit_c_extern_decl_from_file('header_api', source, 'main')
 }
 
+fn test_include_from_cflag_directory_keeps_portable_spelling() {
+	root := os.join_path(os.vtmp_dir(), 'v3_cflag_header_include_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root)!
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	include_dir := os.join_path(root, 'include')
+	os.mkdir_all(include_dir)!
+	header := os.join_path(include_dir, 'api.h')
+	source := os.join_path(root, 'main.v')
+	os.write_file(header, 'int api(void);\n')!
+	os.write_file(source, 'fn main() {}\n')!
+
+	mut g := FlatGen.new()
+	g.c_flags = ['-I', include_dir]
+	assert g.c_include_directive_text(0, '', '"api.h"', source) == '#include "api.h"'
+
+	local_header := os.join_path(root, 'local.h')
+	os.write_file(local_header, 'int local(void);\n')!
+	assert g.c_include_directive_text(0, '', '"local.h"', source) == c_native_source_context_include(local_header)
+}
+
 fn test_preinclude_does_not_scan_macro_state() {
 	root := os.join_path(os.vtmp_dir(), 'v3_preinclude_macro_state_${os.getpid()}')
 	os.rmdir_all(root) or {}
@@ -391,6 +414,123 @@ fn test_cache_split_uses_system_sigaction_declaration() {
 	assert g.skip_builtin_struct('C.sigaction')
 }
 
+fn test_cocoa_nsfont_binding_uses_the_framework_class() {
+	mut ast := &flat.FlatAst{}
+	mut tc := types.TypeChecker.new(ast)
+	mut g := FlatGen.new()
+	g.a = ast
+	g.tc = &tc
+	g.target = pref.target_from('macos', 'arm64') or { panic(err) }
+	g.register_struct_decl_info('C.NSFont', 'C.NSFont', 'ui', 'ui_darwin.c.v', flat.Node{})
+	// Without an AppKit include, `C.NSFont` is an ordinary header-owned C struct.
+	assert g.header_c_struct_needs_compat_typedef('C.NSFont')
+	for include in ['#include <Cocoa/Cocoa.h>', '#import <AppKit/AppKit.h>',
+		'# include <AppKit/NSFont.h>'] {
+		g.c_directives = [CDirective{
+			module: 'ui'
+			text:   include
+		}]
+		assert g.skip_builtin_struct('C.NSFont'), include
+		assert !g.header_c_struct_needs_compat_typedef('C.NSFont'), include
+	}
+	g.c_directives = [CDirective{
+		module: 'ui'
+		text:   '#include <MyCocoa/types.h>'
+	}]
+	assert g.header_c_struct_needs_compat_typedef('C.NSFont')
+	g.c_directives.clear()
+	g.preinclude_directives << '#include <Cocoa/Cocoa.h>'
+	assert !g.header_c_struct_needs_compat_typedef('C.NSFont')
+	g.target = pref.target_from('linux', 'arm64') or { panic(err) }
+	assert g.header_c_struct_needs_compat_typedef('C.NSFont')
+}
+
+fn test_cocoa_nsfont_binding_accepts_a_target_qualified_cocoa_include() {
+	mut ast := &flat.FlatAst{}
+	mut tc := types.TypeChecker.new(ast)
+	mut g := FlatGen.new()
+	g.a = ast
+	g.tc = &tc
+	g.set_target(pref.target_from('macos', 'arm64') or { panic(err) })
+	// Portable output keeps a target-qualified include under its preprocessor guard,
+	// as a build for macOS on another host does.
+	g.set_output_cross_c(true)
+	g.register_struct_decl_info('C.NSFont', 'C.NSFont', 'ui', 'ui_darwin.c.v', flat.Node{})
+	g.collect_c_directive('ui', flat.Node{
+		kind:  .directive
+		value: 'include'
+		typ:   'macos <Cocoa/Cocoa.h>'
+	}, '', false)
+	directives := g.ordered_c_directives(false)
+	assert directives.len == 1 && directives[0].starts_with('#if '), directives.str()
+	assert !g.header_c_struct_needs_compat_typedef('C.NSFont')
+	// The guard of another target does not make NSFont the Cocoa class.
+	g.c_directives.clear()
+	g.collect_c_directive('ui', flat.Node{
+		kind:  .directive
+		value: 'include'
+		typ:   'linux <Cocoa/Cocoa.h>'
+	}, '', false)
+	assert g.ordered_c_directives(false).len == 1
+	assert g.header_c_struct_needs_compat_typedef('C.NSFont')
+}
+
+fn test_cocoa_nsfont_binding_respects_ordered_conditional_directives() {
+	mut ast := &flat.FlatAst{}
+	mut tc := types.TypeChecker.new(ast)
+	mut g := FlatGen.new()
+	g.a = ast
+	g.tc = &tc
+	g.set_target(pref.target_from('macos', 'arm64') or { panic(err) })
+	g.register_struct_decl_info('C.NSFont', 'C.NSFont', 'main', 'main.c.v', flat.Node{})
+	for source in [
+		'#if 0\n#include <Cocoa/Cocoa.h>\n#endif',
+		'#if 1\n#else\n#import <AppKit/AppKit.h>\n#endif',
+		'#if 0\n#if 1\n#include <AppKit/NSFont.h>\n#endif\n#endif',
+		'#if 0\n#elif 0\n#include <Cocoa/Cocoa.h>\n#endif',
+		'#define USE_COCOA 0\n#if USE_COCOA\n#include <Cocoa/Cocoa.h>\n#endif',
+		'#define USE_COCOA 1\n#undef USE_COCOA\n#ifdef USE_COCOA\n#include <Cocoa/Cocoa.h>\n#endif',
+	] {
+		g.c_directives.clear()
+		for line in source.split_into_lines() {
+			g.add_c_directive('main', line, false)
+		}
+		assert g.header_c_struct_needs_compat_typedef('C.NSFont'), source
+	}
+	for source in [
+		'#if 0\n#else\n#include <Cocoa/Cocoa.h>\n#endif',
+		'#if 0\n#elif 1\n#import <AppKit/AppKit.h>\n#endif',
+		'#define USE_COCOA 1\n#if USE_COCOA\n#include <AppKit/NSFont.h>\n#endif',
+	] {
+		g.c_directives.clear()
+		for line in source.split_into_lines() {
+			g.add_c_directive('main', line, false)
+		}
+		assert !g.header_c_struct_needs_compat_typedef('C.NSFont'), source
+	}
+	g.c_directives.clear()
+	for line in ['#if USE_COCOA', '#include <Cocoa/Cocoa.h>', '#endif'] {
+		g.add_c_directive('main', line, false)
+	}
+	g.c_flags = ['-DUSE_COCOA=0']
+	assert g.header_c_struct_needs_compat_typedef('C.NSFont')
+	g.c_flags = ['-D', 'USE_COCOA=1']
+	assert !g.header_c_struct_needs_compat_typedef('C.NSFont')
+	g.c_flags = ['-DUSE_COCOA=1', '-UUSE_COCOA']
+	assert g.header_c_struct_needs_compat_typedef('C.NSFont')
+	g.c_flags.clear()
+	g.c_directives.clear()
+	g.preinclude_directives = ['#if 0\n#include <Cocoa/Cocoa.h>\n#endif']
+	assert g.header_c_struct_needs_compat_typedef('C.NSFont')
+	g.preinclude_directives.clear()
+	// An import is emitted between its importer's before- and after-import directives.
+	g.module_imports['main'] = ['child']
+	g.add_c_directive('main', '#if 0', true)
+	g.add_c_directive('main', '#endif', false)
+	g.add_c_directive('child', '#include <Cocoa/Cocoa.h>', false)
+	assert g.header_c_struct_needs_compat_typedef('C.NSFont')
+}
+
 fn test_c_struct_declared_in_platform_binding_stays_header_owned() {
 	dir := os.join_path(os.vtmp_dir(), 'v3_c_struct_source_owner_${os.getpid()}')
 	os.rmdir_all(dir) or {}
@@ -575,7 +715,7 @@ fn test_cross_os_target_include_is_guarded_for_the_c_compiler() {
 		value: 'include'
 		typ:   '${target_os} <target_only.h>'
 	}, '', false)
-	condition := pref.cross_target_c_condition(target_os) or { panic(err) }
+	condition := pref.cross_target_c_condition(target_os) or { panic('missing target condition') }
 	directives := g.ordered_c_directives(false)
 	assert directives == [
 		'#if ${condition}\n#include <target_only.h>\n#endif',

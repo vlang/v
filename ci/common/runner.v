@@ -9,7 +9,7 @@ import time
 // exec is a helper function, to execute commands and exit early, if they fail.
 pub fn exec(command string) {
 	cmd := resolve_v_command(command)
-	progress_dir := os.getenv('V_MACOS_CI_TASK_PROGRESS')
+	progress_dir := ci_task_progress_dir()
 	previous_resume_dir := os.getenv_opt('VTEST_RESUME_DIR')
 	if progress_dir != '' {
 		// Keep the same file's results separate across tasks and command variants.
@@ -31,14 +31,41 @@ pub fn exec(command string) {
 	}
 }
 
-// resolve_v_command ensures that commands starting with `v ` use the V from @VEXEROOT,
-// not a potentially different V found via PATH.
+fn ci_task_progress_dir() string {
+	return os.getenv_opt('V_CI_TASK_PROGRESS') or { os.getenv('V_MACOS_CI_TASK_PROGRESS') }
+}
+
+// resolve_v_command ensures that commands starting with `v `, optionally after leading
+// `NAME=value` environment assignments, use the V from @VEXEROOT, not a potentially
+// different V found via PATH.
 fn resolve_v_command(command string) string {
-	if command.starts_with('v ') {
-		vexe := os.getenv_opt('V_CI_VEXE') or { os.join_path_single(@VEXEROOT, 'v') }
-		return os.quoted_path(vexe) + command[1..]
+	mut prefix_len := 0
+	for {
+		rest := command[prefix_len..]
+		if rest.starts_with('v ') {
+			vexe := os.getenv_opt('V_CI_VEXE') or { os.join_path_single(@VEXEROOT, 'v') }
+			return command[..prefix_len] + os.quoted_path(vexe) + rest[1..]
+		}
+		word_end := rest.index(' ') or { return command }
+		if !is_env_assignment(rest[..word_end]) {
+			return command
+		}
+		prefix_len += word_end + 1
 	}
 	return command
+}
+
+fn is_env_assignment(word string) bool {
+	eq := word.index('=') or { return false }
+	if eq == 0 {
+		return false
+	}
+	for i, c in word[..eq] {
+		if !(c == `_` || c.is_letter() || (i > 0 && c.is_digit())) {
+			return false
+		}
+	}
+	return true
 }
 
 // unset is a helper function to unset a specific env variable.

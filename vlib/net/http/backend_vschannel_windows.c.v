@@ -21,7 +21,12 @@ fn C.vschannel_alpn_supported() int
 
 // vschannel_request_on_open mirrors C.request (declared in builtin/cfns.c.v) but
 // runs over an already-open connection. See thirdparty/vschannel/vschannel.c.
-fn C.vschannel_request_on_open(&C.TlsContext, &u8, u32, &&u8, fn (voidptr, isize) voidptr) i32
+fn C.vschannel_request_on_open(&C.TlsContext, &u8, u32, &&char, fn (voidptr, i64) voidptr) i32
+
+// Match the void-pointer allocator callback expected by SChannel.
+fn vschannel_realloc(buffer voidptr, new_size i64) voidptr {
+	return unsafe { v_realloc(&u8(buffer), isize(new_size)) }
+}
 
 fn vschannel_ssl_do(req &Request, port int, method Method, host_name string, path string, data string, header Header) !Response {
 	// When HTTP/2 is enabled (the default for https), advertise ALPN `h2` and,
@@ -43,31 +48,31 @@ fn vschannel_h1_do(req &Request, port int, method Method, host_name string, path
 	mut ctx := C.new_tls_context()
 	C.vschannel_use_tls12_client_protocol()
 	C.vschannel_init(&ctx, C.BOOL(if req.validate { 1 } else { 0 }))
-	mut buff := unsafe { malloc_noscan(C.vsc_init_resp_buff_size) }
+	mut buff := unsafe { &char(malloc_noscan(C.vsc_init_resp_buff_size)) }
 	addr := host_name
-	sdata := req.build_request_headers_with(method, host_name, port, path, data, header)
+	sdata := req.build_request_headers_with(method, host_name, port, 443, path, data, header)!
 	$if trace_http_request ? {
 		eprintln('> ${sdata}')
 	}
-	length := C.request(&ctx, port, addr.to_wide(), sdata.str, sdata.len, &buff, v_realloc)
+	length := C.request(&ctx, port, addr.to_wide(), sdata.str, sdata.len, &buff, vschannel_realloc)
 	err_code := C.vschannel_last_error(&ctx)
 	C.vschannel_cleanup(&ctx)
-	return req.vschannel_finish_response(buff, length, err_code)!
+	return req.vschannel_finish_response(unsafe { &u8(buff) }, length, err_code)!
 }
 
 // vschannel_h1_on_open runs the one-shot HTTP/1.1 request over a connection that
 // vschannel_h2_connect() already opened, used as the fallback when the server
 // did not negotiate `h2`. It consumes (and cleans up) `ctx`.
 fn (req &Request) vschannel_h1_on_open(ctx &C.TlsContext, method Method, host_name string, port int, path string, data string, header Header) !Response {
-	mut buff := unsafe { malloc_noscan(C.vsc_init_resp_buff_size) }
-	sdata := req.build_request_headers_with(method, host_name, port, path, data, header)
+	mut buff := unsafe { &char(malloc_noscan(C.vsc_init_resp_buff_size)) }
+	sdata := req.build_request_headers_with(method, host_name, port, 443, path, data, header)!
 	$if trace_http_request ? {
 		eprintln('> ${sdata}')
 	}
-	length := C.vschannel_request_on_open(ctx, sdata.str, sdata.len, &buff, v_realloc)
+	length := C.vschannel_request_on_open(ctx, sdata.str, sdata.len, &buff, vschannel_realloc)
 	err_code := C.vschannel_last_error(ctx)
 	C.vschannel_cleanup(ctx)
-	return req.vschannel_finish_response(buff, length, err_code)!
+	return req.vschannel_finish_response(unsafe { &u8(buff) }, length, err_code)!
 }
 
 // vschannel_finish_response turns the raw response buffer produced by the C

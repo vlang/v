@@ -217,3 +217,53 @@ fn test_chunks_reader_moves_pending_bytes_in_order() {
 	assert test_chunk_blocks[0] == all[0..512]
 	assert test_chunk_blocks[1] == all[512..]
 }
+
+struct DiscardingReader {
+mut:
+	buffer voidptr
+	blocks int
+}
+
+fn (mut r DiscardingReader) dir_block(mut _read Read, _size u64) {}
+
+fn (mut r DiscardingReader) file_block(mut _read Read, _size u64) {}
+
+fn (mut r DiscardingReader) other_block(mut _read Read, _details string) {}
+
+fn (mut r DiscardingReader) data_block(mut _read Read, data []u8, _pending int) {
+	assert data.data == r.buffer
+	assert data.len == 512
+	assert data[0] == 42
+	r.blocks++
+}
+
+fn test_payload_blocks_borrow_the_reusable_buffer() {
+	mut reader := &DiscardingReader{}
+	mut untar := new_untar(reader)
+	reader.buffer = unsafe { &untar.buffer[0] }
+	untar.state = .data
+	untar.size = 512 * 10000
+	block := []u8{len: 512, init: 42}
+	for _ in 0 .. 10000 {
+		assert untar.read_single_block(block)! == .continue
+	}
+	assert reader.blocks == 10000
+}
+
+fn test_chunk_dispatch_borrows_the_reusable_buffer() {
+	mut reader := &DiscardingReader{}
+	read_block := fn [mut reader] (block []u8) !ReadResult {
+		assert block.data == reader.buffer
+		assert block.len == 512
+		assert block[0] == 42
+		reader.blocks++
+		return .continue
+	}
+	mut chunks := ChunksReader{ read_block_fn: read_block }
+	reader.buffer = unsafe { &chunks.buffer[0] }
+	block := []u8{len: 512, init: 42}
+	for _ in 0 .. 10000 {
+		assert chunks.read_blocks(block) == .continue
+	}
+	assert reader.blocks == 10000
+}

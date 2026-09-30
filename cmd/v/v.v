@@ -9,6 +9,7 @@ import v.cmdexec
 import v.driver
 import v.help
 import v.pref
+import v.util
 
 const v_version = '0.5.2'
 const v1_fallback_binary = 'v1_fallback'
@@ -133,6 +134,11 @@ fn main() {
 	if '-new-compiler' in args {
 		os.setenv(v3_no_fallback_env, '1', true)
 	}
+	if race_build_requested(args) {
+		// The compatibility compiler has no race detector. A failed race build must
+		// report its own error instead of silently retrying without instrumentation.
+		os.setenv(v3_no_fallback_env, '1', true)
+	}
 	if '-new-compiler' !in args && v3_fixture_requires_compatibility_compiler(args) {
 		launch_v1(clean_compiler_selection_flags(args), 'legacy diagnostic fixture', RetryState{})
 	}
@@ -162,6 +168,47 @@ fn main() {
 		launch_ownership_compiler(args)
 	}
 	run_with_fallback(args, args)
+}
+
+// race_build_requested reports whether `-race` is one of the compiler options, and not an
+// argument of the program that `v run` starts. Like the driver, it reads compiler options
+// after the input too, except when the input is run: then they belong to the program.
+fn race_build_requested(args []string) bool {
+	mut option_value_follows := false
+	mut runs_input := false
+	mut input_seen := false
+	for i, arg in args {
+		if option_value_follows {
+			option_value_follows = false
+			continue
+		}
+		if arg == '-race' {
+			return true
+		}
+		if arg in ['-prof', '-profile'] {
+			option_value_follows = v1_fallback_profile_option_consumes_value(args, i)
+			continue
+		}
+		if arg == '-cf' || pref.option_may_consume_value(arg) {
+			option_value_follows = true
+			continue
+		}
+		if arg.starts_with('-') {
+			continue
+		}
+		if !input_seen && arg in ['run', 'crun'] {
+			runs_input = true
+			continue
+		}
+		if !input_seen && arg in ['build', 'test'] {
+			continue
+		}
+		if runs_input || arg.ends_with('.vsh') {
+			return false
+		}
+		input_seen = true
+	}
+	return false
 }
 
 fn ownership_checker_is_compiled() bool {
@@ -348,8 +395,12 @@ fn external_tool_runtime_args(command string, prefix_args []string, command_args
 	// options for the replacement compiler, not just for the launcher helper.
 	// `v test` needs them for each test compilation and its failure reproduction command.
 	// Keep those options visible after the launcher has built the cached executable.
-	if command in ['build-tools', 'self', 'test'] {
+	if command in ['build-examples', 'build-tools', 'self', 'test', 'test-self'] {
 		tool_args << prefix_args
+	}
+	if command == 'fmt' {
+		backend_args, _ := split_tool_backend_args(prefix_args)
+		tool_args << backend_args
 	}
 	tool_args << command_args
 	return tool_args
@@ -382,6 +433,9 @@ fn launch_external_tool(vroot string, tool_name string, tool_source string, pref
 				}
 				exec_cached_tool(entry.binary, tool_args)
 			}
+			// Install what the tool needs from outside vlib first: this can make a recorded
+			// `cannot import module` failure below stale, since it stamps the missing module.
+			install_external_tool_modules(tool_name, tool_source, compile_args)
 			if recorded := unbuildable_tool_failure(entry) {
 				// Rebuilding a tool that is already known to not compile would cost seconds on
 				// every single invocation, so report the recorded failure straight away instead.
@@ -398,6 +452,7 @@ fn launch_external_tool(vroot string, tool_name string, tool_source string, pref
 			exec_cached_tool(entry.binary, tool_args)
 		}
 	}
+	install_external_tool_modules(tool_name, tool_source, compile_args)
 	mut driver_args := []string{}
 	driver_args << compile_args
 	driver_args << ['run', tool_source]
@@ -405,11 +460,37 @@ fn launch_external_tool(vroot string, tool_name string, tool_source string, pref
 	driver.run(driver_args)
 }
 
+// install_external_tool_modules installs the modules from outside vlib that a tool imports,
+// like `markdown` for `vdoc`, right before the tool is compiled. A fresh V installation does
+// not have them yet, and compiling the tool without them fails with a confusing
+// `cannot import module` error. Sandboxed packaging has no network access, and must provide
+// such modules itself, just like it does for `v build-tools`.
+fn install_external_tool_modules(tool_name string, tool_source string, compile_args []string) {
+	if os.getenv('VTEST_SANDBOXED_PACKAGING') != '' {
+		return
+	}
+	// A `-path` replaces the default module roots, including VMODULES, where modules are
+	// installed. So a build with a `-path` is left to the compiler, which reports a module
+	// that is really missing.
+	if '-path' in compile_args {
+		return
+	}
+	util.ensure_modules_for_tool_are_installed(tool_name, tool_source, tool_cache_is_verbose()) or {
+		eprintln(err.msg())
+		exit(1)
+	}
+}
+
 // external_tool_compile_args applies launcher-only build policy to a `cmd/tools/` helper.
 // Diagnostic tools used to be built this way by `util.launch_tool`: keep them GC-free so
 // they can start even when libgc cannot allocate executable pages or cannot be loaded.
 fn external_tool_compile_args(tool_name string, prefix_args []string) []string {
 	mut compile_args := clean_compiler_selection_flags(prefix_args)
+	if tool_name == 'vfmt' {
+		// Backend options select formatting rules, not the formatter executable's target.
+		_, native_args := split_tool_backend_args(compile_args)
+		compile_args = external_tool_args_without_target(native_args)
+	}
 	if tool_name in ['vself', 'vup', 'vdoctor', 'vsymlink'] {
 		compile_args = external_tool_args_without_gc(compile_args)
 		if '-g' !in compile_args {
@@ -418,6 +499,46 @@ fn external_tool_compile_args(tool_name string, prefix_args []string) []string {
 		compile_args << ['-gc', 'none']
 	}
 	return compile_args
+}
+
+fn external_tool_args_without_target(args []string) []string {
+	mut result := []string{cap: args.len}
+	mut skip_target_value := false
+	for arg in args {
+		if skip_target_value {
+			skip_target_value = false
+			continue
+		}
+		if arg in ['-os', '-arch'] {
+			skip_target_value = true
+			continue
+		}
+		if arg == '-cross' || arg.starts_with('-os=') || arg.starts_with('-arch=') {
+			continue
+		}
+		result << arg
+	}
+	return result
+}
+
+fn split_tool_backend_args(args []string) ([]string, []string) {
+	mut backend_args := []string{}
+	mut other_args := []string{}
+	mut backend_value_follows := false
+	for arg in args {
+		if backend_value_follows {
+			backend_args << arg
+			backend_value_follows = false
+		} else if arg in ['-b', '-backend'] {
+			backend_args << arg
+			backend_value_follows = true
+		} else if arg.starts_with('-b=') || arg.starts_with('-backend=') {
+			backend_args << arg
+		} else {
+			other_args << arg
+		}
+	}
+	return backend_args, other_args
 }
 
 fn external_tool_args_without_gc(args []string) []string {
@@ -549,6 +670,12 @@ fn launch_v1(args []string, reason string, report_state RetryState) {
 	os.unsetenv(v3_fallback_file_env)
 	os.unsetenv(v3_c_error_dir_env)
 	mut launch_args := args.clone()
+	_, launched_command := find_command(args)
+	if launched_command == 'build-module' {
+		if current_root := find_vroot(os.real_path(os.executable())) {
+			launch_args = v1_build_module_args(launch_args, current_root, os.dir(fallback))
+		}
+	}
 	if transparent_fixture_fallback && '-nocache' !in launch_args {
 		launch_args.prepend('-nocache')
 	}
@@ -587,6 +714,31 @@ fn launch_v1(args []string, reason string, report_state RetryState) {
 	os.rm(report_state.fallback_file) or {}
 	os.rmdir_all(report_state.c_error_dir) or {}
 	exit(code)
+}
+
+// v1_build_module_args points `build-module` at the compatibility compiler's own
+// copy of a `vlib` module. That compiler resolves imports from its own V 0.5.2
+// tree and its `-usecache` builds use those modules, while the modules in this
+// checkout target the current compiler and need newer APIs.
+fn v1_build_module_args(args []string, current_root string, fallback_root string) []string {
+	current_vlib := os.join_path(os.real_path(current_root), 'vlib')
+	command_index, _ := find_command(args)
+	mut mapped := args.clone()
+	for i in command_index + 1 .. args.len {
+		arg := args[i]
+		if arg.starts_with('-') || !os.is_dir(arg) {
+			continue
+		}
+		module_dir := os.real_path(arg)
+		if module_dir != current_vlib && !module_dir.starts_with(current_vlib + os.path_separator) {
+			continue
+		}
+		fallback_module := os.join_path(fallback_root, 'vlib', module_dir[current_vlib.len..].trim_left(os.path_separator))
+		if os.is_dir(fallback_module) {
+			mapped[i] = fallback_module
+		}
+	}
+	return mapped
 }
 
 // v1_fallback_exit_identifies_compiler_failure reports whether a nonzero exit
@@ -642,7 +794,10 @@ fn v1_fallback_exit_identifies_compiler_failure(args []string) bool {
 			return skip_running
 		}
 		if !arg.starts_with('-') {
-			is_test := pref.is_test_file_for_backend(arg, backend) || arg.ends_with('_test.vv')
+			// The compatibility compiler runs JavaScript tests even though V3's
+			// test discovery disables them until its JavaScript backend is available.
+			is_test := pref.is_test_file_for_backend(arg, backend)
+				|| (backend == 'js' && arg.ends_with('_test.js.v')) || arg.ends_with('_test.vv')
 			if is_test {
 				direct_test = true
 				continue

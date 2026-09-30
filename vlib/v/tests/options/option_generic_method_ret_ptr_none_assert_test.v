@@ -82,13 +82,13 @@ fn test_generic_method_returning_option_reference_preserves_payload() {
 	list.push(first)
 	list.push(second)
 
-	mut popped := list.pop() or { panic(err) }
+	mut popped := list.pop() or { panic('expected a value') }
 	assert popped.value == 20
 	popped.inc()
 	assert second.value == 21
 	assert first.value == 10
 
-	popped = list.pop() or { panic(err) }
+	popped = list.pop() or { panic('expected a value') }
 	assert popped.value == 10
 	popped.inc()
 	assert first.value == 11
@@ -107,7 +107,7 @@ fn test_generic_method_returning_option_reference_preserves_many_values() {
 		assert item.value == i + 1
 	}
 	for i in 0 .. count {
-		item := list.pop() or { panic(err) }
+		item := list.pop() or { panic('expected a value') }
 		assert item.value == count - i
 	}
 	assert list.size == 0

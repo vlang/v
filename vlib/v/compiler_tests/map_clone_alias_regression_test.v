@@ -25,7 +25,7 @@ fn borrowed(values map[string]Row) map[string]Row {
 }
 '
 	cases := {
-		'nested': header + '
+		'nested':         header + '
 fn main() {
 	scope := {"old": Row{cells: [1]}}
 	mut copy := scope.clone()
@@ -33,7 +33,7 @@ fn main() {
 	copy["old"].cells[0] = 9
 }
 '
-		'rebound': header + '
+		'rebound':        header + '
 fn main() {
 	scope := {"old": Row{cells: [1]}}
 	mut copy := scope.clone()
@@ -41,7 +41,7 @@ fn main() {
 	copy["new"] = Row{cells: [2]}
 }
 '
-		'loop_rebound': header + '
+		'loop_rebound':   header + '
 fn main() {
 	scope := {"old": Row{cells: [1]}}
 	mut copy := scope.clone()
@@ -65,7 +65,7 @@ fn main() {
 	copy["new"] = Row{cells: [2]}
 }
 '
-		'user_clone': header + '
+		'user_clone':     header + '
 struct Holder {
 	values map[string]Row
 }

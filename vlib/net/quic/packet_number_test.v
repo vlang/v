@@ -165,14 +165,15 @@ fn test_packet_number_encode_accepts_boundary_first_packet_in_space() {
 	assert decoded == full_pn
 }
 
-fn test_packet_number_invalid_length_rejected() {
-	decode_packet_number(1, 5, none) or {
+fn assert_invalid_packet_number_length(pn_len int) {
+	decode_packet_number(1, pn_len, none) or {
 		assert err.msg().contains('invalid packet number length')
 		return
 	}
 	assert false, 'expected an error for pn_len outside 1-4'
-	decode_packet_number(1, 0, none) or {
-		assert err.msg().contains('invalid packet number length')
-		return
-	}
+}
+
+fn test_packet_number_invalid_length_rejected() {
+	assert_invalid_packet_number_length(5)
+	assert_invalid_packet_number_length(0)
 }

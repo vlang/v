@@ -1,0 +1,31 @@
+{
+   "title": "RFC 9421 §B.2.4 — Signing a Response Using ecdsa-p256-sha256",
+   "input": {
+      "status": 200,
+      "fields": {
+         "content-type": "application/json",
+         "content-digest": "sha-512=:mEWXIS7MaLRuGgxOBdODa3xqM1XdEvxoYhvlCFJ41QJgJc4GTsPp29l5oGX69wWdXymyU0rjJuahq4l5aGgfLQ==:",
+         "content-length": "23"
+      },
+      "components": ["@status", "content-type", "content-digest", "content-length"],
+      "params": {
+         "created": 1618884473,
+         "keyid": "test-key-ecc-p256"
+      },
+      "label": "sig-b24",
+      "key": {
+         "alg": "ecdsa-p256-sha256",
+         "x_b64u": "qIVYZVLCrPZHGHjP17CTW0_-D9Lfw0EkjqF7xB4FivA",
+         "y_b64u": "Mc4nN9LTDOBhfoUeg8Ye9WedFRhnZXZJA12Qp0zZ6F0",
+         "d_b64u": "UpuF81l-kOxbjf7T4mNSv0r5tN67Gim7rnf6EFpcYDs"
+      }
+   },
+   "intermediates": {
+      "signature_base": "\"@status\": 200\n\"content-type\": application/json\n\"content-digest\": sha-512=:mEWXIS7MaLRuGgxOBdODa3xqM1XdEvxoYhvlCFJ41QJgJc4GTsPp29l5oGX69wWdXymyU0rjJuahq4l5aGgfLQ==:\n\"content-length\": 23\n\"@signature-params\": (\"@status\" \"content-type\" \"content-digest\" \"content-length\");created=1618884473;keyid=\"test-key-ecc-p256\""
+   },
+   "output": {
+      "signature_input": "sig-b24=(\"@status\" \"content-type\" \"content-digest\" \"content-length\");created=1618884473;keyid=\"test-key-ecc-p256\"",
+      "signature": "sig-b24=:wNmSUAhwb5LxtOtOpNa6W5xj067m5hFrj0XQ4fvpaCLx0NKocgPquLgyahnzDnDAUy5eCdlYUEkLIj+32oiasw==:",
+      "note": "ECDSA is non-deterministic — the signature value above is verifiable but cannot be reproduced byte-for-byte."
+   }
+}

@@ -154,6 +154,7 @@ pub fn (mut s SSLConn) shutdown() ! {
 	}
 
 	if s.owns_socket {
+		s.owns_socket = false
 		net.shutdown(s.handle)
 		net.close(s.handle)!
 	}
@@ -602,13 +603,13 @@ fn select(handle int, test Select, timeout time.Duration) !bool {
 		mut res := -1
 		match test {
 			.read {
-				res = C.select(handle + 1, &set, C.NULL, C.NULL, timeval_timeout)
+				res = C.select(handle + 1, &set, unsafe { nil }, unsafe { nil }, timeval_timeout)
 			}
 			.write {
-				res = C.select(handle + 1, C.NULL, &set, C.NULL, timeval_timeout)
+				res = C.select(handle + 1, unsafe { nil }, &set, unsafe { nil }, timeval_timeout)
 			}
 			.except {
-				res = C.select(handle + 1, C.NULL, C.NULL, &set, timeval_timeout)
+				res = C.select(handle + 1, unsafe { nil }, unsafe { nil }, &set, timeval_timeout)
 			}
 		}
 

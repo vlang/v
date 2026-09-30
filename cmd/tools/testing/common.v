@@ -105,6 +105,7 @@ fn automatic_test_jobs(cpu_jobs int, total_memory u64, configured_jobs int) int 
 	return jobs
 }
 
+@[markused]
 fn cgroup_memory_limit_from_contents(cgroups string, mountinfo string) !u64 {
 	mut v2_path := ''
 	mut v1_memory_path := ''
@@ -219,6 +220,7 @@ fn cgroup_memory_limit_value(content string) !u64 {
 	return limit
 }
 
+@[markused]
 fn effective_test_memory(physical_memory u64, cgroup_memory_limit u64) u64 {
 	if cgroup_memory_limit > 0 && cgroup_memory_limit < physical_memory {
 		return cgroup_memory_limit
@@ -648,8 +650,10 @@ pub fn (mut ts TestSession) add(file string) {
 	ts.files << file
 }
 
+// test processes the selected files, matching exclusions by their resolved paths.
 pub fn (mut ts TestSession) test() {
 	unbuffer_stdout()
+	ts.skip_files = ts.skip_files.map(os.real_path)
 	// Ensure that .tmp.c files generated from compiling _test.v files,
 	// are easy to delete at the end, *without* affecting the existing ones.
 	current_wd := os.getwd()
@@ -698,7 +702,7 @@ pub fn (mut ts TestSession) test() {
 	ts.nmessages = chan LogMessage{cap: 10000}
 	ts.nmessage_idx = 0
 	printing_thread := spawn ts.print_messages()
-	pool_of_test_runners.set_shared_context(ts)
+	pool_of_test_runners.set_shared_context(&ts)
 	ts.reporter.worker_threads_start(remaining_files, mut ts)
 
 	ts.setup_build_environment()
@@ -719,6 +723,7 @@ pub fn (mut ts TestSession) test() {
 			os.rmdir_all(ts.vtmp_dir) or {}
 		}
 	}
+	os.rm(os.join_path(ts.vtmp_dir, '.v.mod.stop')) or {}
 	if os.ls(ts.vtmp_dir) or { [] }.len == 0 {
 		os.rmdir_all(ts.vtmp_dir) or {}
 	}
@@ -1193,6 +1198,10 @@ pub fn h_divider() {
 pub fn setup_new_vtmp_folder(hash string) string {
 	new_vtmp_dir := os.join_path(os.vtmp_dir(), 'tsession_${hash}')
 	os.mkdir_all(new_vtmp_dir) or { panic(err) }
+	// A test session must not inherit an unrelated `v.mod` from the shared temp
+	// directory, or from whatever contains it. The explicit project-boundary
+	// marker ends the upward search there.
+	os.write_file(os.join_path(new_vtmp_dir, '.v.mod.stop'), '') or { panic(err) }
 	os.setenv('VTMP', new_vtmp_dir, true)
 	return new_vtmp_dir
 }

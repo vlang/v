@@ -189,10 +189,10 @@ fn main() {
 	c_code := os.read_file(bin + '.c') or { panic(err) }
 	assert c_code.contains('m.value.name ='), c_code
 	assert c_code.contains('holder.opt.value.name ='), c_code
-	assert c_code.contains('.opt = (Optional_Inner){.ok = true, .value = inner}')
-		|| c_code.contains('.opt = (Optional_main__Inner){.ok = true, .value = inner}'), c_code
-	assert (c_code.contains('.opt = (Optional_Borrowed')
-		|| c_code.contains('.opt = (Optional_main__Borrowed'))
+	assert c_code.contains('.opt = (__v_option_Inner){.ok = true, .value = inner}')
+		|| c_code.contains('.opt = (__v_option_main__Inner){.ok = true, .value = inner}'), c_code
+	assert (c_code.contains('.opt = (__v_option_Borrowed')
+		|| c_code.contains('.opt = (__v_option_main__Borrowed'))
 		&& c_code.contains('.value = borrowed'), c_code
 	assert c_code.contains('if (!cache->link.ok)') || c_code.contains('if (!cache.link.ok)'), c_code
 	assert c_code.contains('&cache->link.value') || c_code.contains('&cache.link.value'), c_code

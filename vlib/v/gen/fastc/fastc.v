@@ -72,7 +72,8 @@ typedef struct VMapData {
 	int count;
 } VMapData;
 typedef struct { VMapData *data; } map;
-typedef struct { void *data; void *err; unsigned char state; } Option;
+typedef struct { void *data; unsigned char state; } Option;
+typedef struct { void *data; void *err; unsigned char state; } __v_result;
 /* One multi-return component. Values up to 32 bytes are stored inline; larger
    ones are boxed and referenced through `ptr`, so no component size can
    overflow the slot. */
@@ -926,6 +927,7 @@ struct FastcSourceHeader {
 	import_order            []string
 	blank_imports           []string
 	has_globals             bool
+	translated              bool
 	has_constants           bool
 	has_global_declarations bool
 	// Byte-level superset tests over the whole file (see fastc_source_scan_flags):
@@ -1254,6 +1256,7 @@ struct Parser {
 	// source-level functions. It is immutable and shared by file generators.
 	function_c_names map[string]string
 	selfhost         bool
+	translated       bool
 	header_free      bool
 	// source_has_select is false only when the file provably holds no `select`
 	// word (see fastc_source_scan_flags), so block pre-scans for channel
@@ -1669,6 +1672,7 @@ fn fastc_generate_single_file(ctx &FastcFileGenContext, source_file FastcSourceF
 		used_function_names:       ctx.used_function_names
 		function_c_names:          ctx.function_c_names
 		selfhost:                  prefs.building_v
+		translated:                source_file.header.translated
 		source_has_select:         source_file.header.has_select
 		has_startup_inits:         ctx.has_startup_inits
 		has_cleanup_hooks:         ctx.has_cleanup_hooks
@@ -2930,6 +2934,18 @@ pub struct FastcPreparedUnits {
 pub:
 	objects   []string
 	cache_key string
+}
+
+// cache_objects maps build-local objects to their persistent cache entries for
+// reporting linker failures, including units published during this build.
+pub fn (prepared &FastcPreparedUnits) cache_objects() map[string]string {
+	mut cached := map[string]string{}
+	for entry in prepared.entries {
+		if entry.cache_object != '' {
+			cached[entry.object] = entry.cache_object
+		}
+	}
+	return cached
 }
 
 // fastc_unit_compile_order returns the indexes of uncached C units largest

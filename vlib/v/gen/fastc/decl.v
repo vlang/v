@@ -27,6 +27,15 @@ fn collect_declared_types(source string, path string, module_name string, prefs 
 	mut declaration_has_block := false
 	mut tok := scan.scan()
 	for tok != .eof {
+		if brace_depth == 0 && fastc_keyword_is_qualifier(tok, scan) {
+			tok = scan.scan()
+			continue
+		}
+		if brace_depth == 0 && tok in [.key_module, .key_import] {
+			tok = fastc_skip_module_or_import(mut scan, tok, path)!
+			previous_tok = .unknown
+			continue
+		}
 		if brace_depth == 0 && tok == .dollar {
 			comptime_start := scan.pos
 			mut lookahead := scan
@@ -193,6 +202,15 @@ fn collect_constant_names(source string, path string, module_name string, prefs 
 	mut skip_index := 0
 	mut tok := scan.scan()
 	for tok != .eof {
+		if brace_depth == 0 && fastc_keyword_is_qualifier(tok, scan) {
+			tok = scan.scan()
+			continue
+		}
+		if brace_depth == 0 && tok in [.key_module, .key_import] {
+			tok = fastc_skip_module_or_import(mut scan, tok, path)!
+			previous_tok = .unknown
+			continue
+		}
 		if brace_depth == 0 && tok == .dollar {
 			comptime_start := scan.pos
 			mut lookahead := scan
@@ -364,6 +382,14 @@ fn collect_global_names(source string, path string, header FastcSourceHeader, pr
 	mut skip_index := 0
 	mut tok := scan.scan()
 	for tok != .eof {
+		if depth == 0 && fastc_keyword_is_qualifier(tok, scan) {
+			tok = scan.scan()
+			continue
+		}
+		if depth == 0 && tok in [.key_module, .key_import] {
+			tok = fastc_skip_module_or_import(mut scan, tok, path)!
+			continue
+		}
 		if depth == 0 && tok == .dollar {
 			comptime_start := scan.pos
 			mut lookahead := scan
@@ -1925,6 +1951,14 @@ fn fastc_emit_source_type_declarations(source_file FastcSourceFile, prefs &pref.
 	mut next_type_is_enabled := true
 	mut tok := scan.scan()
 	for tok != .eof {
+		if depth == 0 && fastc_keyword_is_qualifier(tok, scan) {
+			tok = scan.scan()
+			continue
+		}
+		if depth == 0 && tok in [.key_module, .key_import] {
+			tok = fastc_skip_module_or_import(mut scan, tok, source_file.path)!
+			continue
+		}
 		if depth == 0 && tok == .dollar {
 			mut lookahead := scan
 			if lookahead.scan() == .key_if {
@@ -2359,6 +2393,9 @@ fn fastc_emit_struct_declaration(mut scan scanner.Scanner, is_union bool, source
 	if !is_c_struct {
 		out.writeln('};')
 		out.writeln('')
+	}
+	if c_name == 'Option' {
+		out.writeln('typedef struct { u8 state; IError err; void *data; } __v_result;')
 	}
 	struct_fields[c_name] = fields_by_name.move()
 	struct_field_info[c_name] = field_info.clone()
@@ -2954,7 +2991,7 @@ fn fastc_emit_function_alias(mut scan scanner.Scanner, source_file FastcSourceFi
 	if tok in [.not, .question] {
 		// A result/option return (`fn (...) !`, `fn (...) ?Type`) lowers to FastC's
 		// fixed `Option` value; consume any concrete value type after it.
-		return_type = 'Option'
+		return_type = if tok == .not { '__v_result' } else { 'Option' }
 		tok = scan.scan()
 		if tok in [.name, .amp, .and, .mul, .lsbr, .key_fn, .question, .not] {
 			_, tok = fastc_scan_type(mut scan, tok, source_file.path, source_file.header.module_name, source_file.header.imports, declared_types, allow_short_placeholders)!

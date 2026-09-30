@@ -1,5 +1,3 @@
-// vtest vflags: -skip-unused
-
 type IntPointerAlias = &int
 
 fn main() {

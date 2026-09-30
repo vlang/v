@@ -13,8 +13,8 @@ fn test_array_new_selects_noscan_for_scalar_elements() {
 	})
 	len_expr := t.make_int_literal(3)
 	cap_expr := t.make_int_literal(7)
-	for elem_type in ['f64', 'f32', 'int', 'u8', 'bool', 'char', 'rune', 'isize', 'usize',
-		'ScalarAlias', 'ScalarAliasChain'] {
+	for elem_type in ['f64', 'f32', 'int', 'u8', 'bool', 'char', 'rune', 'isize', 'usize', 'ScalarAlias',
+		'ScalarAliasChain'] {
 		id := t.make_array_new_call(elem_type, len_expr, cap_expr)
 		call := a.nodes[int(id)]
 		assert call.kind == .call

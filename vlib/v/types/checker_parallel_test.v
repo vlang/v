@@ -6,6 +6,41 @@ import v.flat
 import v.parser
 import v.pref
 
+fn test_parallel_fn_prep_recognizes_source_embedded_veb_context() {
+	mut a := flat.FlatAst.new()
+	a.add_val(.file, 'context.v')
+	a.add_val(.module_decl, 'veb')
+	context_field := a.add_node(flat.Node{
+		kind:  .field_decl
+		value: 'Context'
+	})
+	context_children := a.begin_children()
+	a.add_child(context_field)
+	a.add_node(flat.Node{
+		kind:           .struct_decl
+		value:          'RegressionContext'
+		children_start: context_children
+		children_count: 1
+	})
+	mut tc := TypeChecker.new(&a)
+	for i in 0 .. a.nodes.len {
+		tc.top_level_idx << i
+	}
+	tc.build_type_declaration_index(&a)
+	tc.cur_file = 'context.v'
+	tc.cur_module = 'veb'
+	assert tc.source_type_embeds_veb_context('RegressionContext')
+
+	a.add_node(flat.Node{
+		kind:  .type_decl
+		value: 'AliasContext'
+		typ:   'RegressionContext'
+	})
+	tc.top_level_idx << a.nodes.len - 1
+	tc.build_type_declaration_index(&a)
+	assert tc.source_type_embeds_veb_context('AliasContext')
+}
+
 fn test_first_type_declaration_index_preserves_conflict_context_and_order() {
 	mut a := flat.FlatAst.new()
 	a.nodes = [

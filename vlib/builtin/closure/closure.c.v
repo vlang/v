@@ -548,6 +548,14 @@ fn closure_lifetime_reclaim_no_lock(mut state ClosureLifetimeState, retain int) 
 }
 
 fn closure_ensure_initialized() {
+	$if race ? {
+		// The once-initialization locks a global mutex on every call; like the closure
+		// allocator's mutex, it must not order the threads that create closures.
+		racedisable()
+		closure_init_once_platform()
+		raceenable()
+		return
+	}
 	closure_init_once_platform()
 }
 

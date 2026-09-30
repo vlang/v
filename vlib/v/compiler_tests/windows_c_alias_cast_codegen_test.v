@@ -25,6 +25,6 @@ fn test_windows_c_alias_cast_generates_a_c_cast() {
 	assert c_source.contains('int wmain(int argc, wchar_t** argv) {'), c_source
 	assert c_source.contains('u32 mode = (DWORD)(0);'), c_source
 	assert !c_source.contains('typedef struct __stat64 __stat64;'), c_source
-	assert c_source.contains('typedef struct Optional_Array {'), c_source
+	assert c_source.contains('typedef struct __v_result_Array {'), c_source
 	assert !c_source.contains('CreatePipe(&__ref_arg_'), c_source
 }
