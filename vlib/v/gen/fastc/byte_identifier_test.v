@@ -41,6 +41,35 @@ fn test_fastc_byte_without_a_declaration_is_unresolved() {
 	assert message.contains('unresolved name `byte`'), message
 }
 
+fn test_fastc_byte_function_does_not_collide_with_c_typedef() {
+	prefs := pref.new_preferences()
+	c_source := generate('module main
+
+fn main() {
+	println(byte(8))
+}
+
+fn byte(value int) int {
+	return value + 1
+}
+', 'byte_function.v', prefs) or { panic(err) }
+	assert c_source.contains('typedef unsigned char byte;')
+	test_dir := os.join_path(os.vtmp_dir(), 'fastc_byte_function_${os.getpid()}')
+	os.mkdir_all(test_dir) or { panic(err) }
+	defer {
+		os.rmdir_all(test_dir) or {}
+	}
+	c_file := os.join_path(test_dir, 'program.c')
+	bin_file := os.join_path(test_dir, 'program')
+	os.write_file(c_file, c_source) or { panic(err) }
+	tcc := os.join_path(prefs.vroot, 'thirdparty', 'tcc', 'tcc.exe')
+	compiled := cmdexec.run(tcc, ['-std=gnu11', '-o', bin_file, c_file])
+	assert compiled.exit_code == 0, compiled.output
+	executed := cmdexec.run(bin_file, [])
+	assert executed.exit_code == 0, executed.output
+	assert executed.output == '9\n'
+}
+
 fn test_fastc_arm64_byte_function_is_not_a_cast() {
 	$if arm64 ? {
 		test_dir := os.join_path(os.vtmp_dir(), 'fastc_arm64_byte_function_${os.getpid()}')

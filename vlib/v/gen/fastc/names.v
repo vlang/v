@@ -189,7 +189,7 @@ fn fastc_c_function_name_for_key(key string) string {
 	}
 	sanitized := naming.sanitize(key)
 	c_name := naming.c_name(key)
-	if c_name != sanitized || sanitized.starts_with('v_fastc_') {
+	if c_name != sanitized || sanitized.starts_with('v_fastc_') || sanitized == 'byte' {
 		return '__vf_function_${sanitized}'
 	}
 	return c_name
