@@ -7164,7 +7164,7 @@ fn (t &Transformer) escape_subtree_may_need_scan(id flat.NodeId) bool {
 		name := t.tc.resolved_call_name(id) or { return true }
 		params := t.tc.fn_param_types[name] or { return true }
 		for param in params {
-			if escape_type_is_void_pointer(param) || t.escape_reference_can_borrow_fixed_array(param) {
+			if escape_type_is_pointer(param) {
 				return true
 			}
 		}
@@ -8958,8 +8958,20 @@ fn (t &Transformer) escape_value_contains_fixed_array(typ types.Type, mut seen m
 				return false
 			}
 			seen[typ.name] = true
-			for field in t.tc.struct_fields_for_type(typ.name) {
-				if t.escape_value_contains_fixed_array(field.typ, mut seen) {
+			base, args, is_generic := generic_app_parts(typ.name)
+			fields := t.tc.structs[base] or { return false }
+			params := if is_generic {
+				t.generic_struct_param_names_for_base(base)
+			} else {
+				[]string{}
+			}
+			for field in fields {
+				field_type := if is_generic {
+					t.escape_concrete_inline_field_type(base, field.name, args, params) or { field.typ }
+				} else {
+					field.typ
+				}
+				if t.escape_value_contains_fixed_array(field_type, mut seen) {
 					return true
 				}
 			}
@@ -8969,18 +8981,63 @@ fn (t &Transformer) escape_value_contains_fixed_array(typ types.Type, mut seen m
 	return false
 }
 
-fn (t &Transformer) escape_reference_can_borrow_fixed_array(typ types.Type) bool {
-	clean := types.unalias_type(typ)
-	if clean !is types.Pointer {
-		return false
+// escape_concrete_inline_field_type qualifies declaration-owned names before substituting
+// semantic generic arguments. In particular, source `T` remains a placeholder even when
+// the declaration module also has a struct T, while an explicit `worker.T` remains local.
+fn (t &Transformer) escape_concrete_inline_field_type(base string, field_name string, args []string, params []string) ?types.Type {
+	if args.len != params.len {
+		return none
 	}
-	base := types.unalias_type(clean.base_type)
-	if base is types.Array {
-		// A `mut []T` argument may be converted from a whole fixed array or range.
-		return true
+	for decl_idx in t.tc.type_declaration_ids[base] {
+		if decl_idx < 0 || decl_idx >= t.a.nodes.len {
+			continue
+		}
+		decl := t.a.nodes[decl_idx]
+		module_name := t.node_module_or(decl_idx, '')
+		if decl.kind != .struct_decl || transform_qualified_fn_name(module_name, decl.value) != base {
+			continue
+		}
+		file := t.node_file_or(decl_idx, '')
+		for i in 0 .. decl.children_count {
+			field_id := t.a.child(&decl, i)
+			field := t.a.nodes[int(field_id)]
+			if field.kind != .field_decl || field.value != field_name {
+				continue
+			}
+			mut qualified := ''
+			mut index := 0
+			for index < field.typ.len {
+				if !field.typ[index].is_letter() && field.typ[index] != `_` {
+					qualified += field.typ[index..index + 1]
+					index++
+					continue
+				}
+				start := index
+				for index < field.typ.len && (field.typ[index].is_alnum() || field.typ[index] in [
+					`_`,
+					`.`,
+				]) {
+					index++
+				}
+				mut name := field.typ[start..index]
+				if name !in params {
+					if name.contains('.') {
+						alias := name.all_before('.')
+						if imported := t.tc.file_imports[file_import_key(file, alias)] {
+							name = imported + name[alias.len..]
+						}
+					}
+					name = t.tc.qualify_type_name_at(name, field_id, module_name)
+				}
+				qualified += name
+			}
+			substituted := substitute_generic_type_text_with_params(qualified, args, params)
+			// A semantic bare nominal belongs to main; do not apply the declaration's
+			// imports or module again after substitution.
+			return t.tc.parse_resolution_type_in_file(substituted, '')
+		}
 	}
-	mut seen := map[string]bool{}
-	return t.escape_value_contains_fixed_array(base, mut seen)
+	return none
 }
 
 fn (mut t Transformer) mark_fixed_array_reference_argument_escapes(call_id flat.NodeId, call flat.Node, amp_ptrs map[string]bool, amp_sources map[string][]string, ptr_aliases map[string]string, local_stack_names map[string]bool) {
@@ -9013,7 +9070,7 @@ fn (mut t Transformer) mark_fixed_array_reference_argument_escapes(call_id flat.
 }
 
 fn (mut t Transformer) mark_fixed_array_reference_argument_escape(arg_id flat.NodeId, param_type types.Type, amp_ptrs map[string]bool, amp_sources map[string][]string, ptr_aliases map[string]string, local_stack_names map[string]bool) {
-	if !t.escape_reference_can_borrow_fixed_array(param_type) {
+	if !escape_type_is_pointer(param_type) {
 		return
 	}
 	mut value_id := arg_id
