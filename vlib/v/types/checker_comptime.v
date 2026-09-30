@@ -10797,6 +10797,13 @@ fn (mut tc TypeChecker) check_sql_alias_method_privacy(id flat.NodeId, node flat
 		if tokens[i - 1] != '.' || tokens[i + 1] != '(' {
 			continue
 		}
+		if converted := tc.sql_orm_alias_conversion_type(tokens, i) {
+			if tc.private_declaration(converted.name()) != none {
+				tc.record_sql_error_at(.unknown_type, 'type `${converted.name()}` is private', id,
+					tc.sql_expr_text_pos(node, '${tokens[i]}(', 0, tokens[i].len))
+			}
+			continue
+		}
 		receiver := tc.sql_orm_call_receiver_type(tokens, i) or { continue }
 		method := tc.concrete_method_signature_key(unwrap_pointer(receiver).name(), tokens[i]) or {
 			continue
@@ -11496,7 +11503,7 @@ fn (tc &TypeChecker) sql_orm_method_return_type(receiver Type, member string) ?T
 }
 
 // sql_orm_source_call_return_type returns the result type of the call named at `name_idx`:
-// a function (`f(`, `time.now(`), or a method on a receiver that starts at a local
+// a function (`f(`, `time.now(`), an alias conversion, or a method on a receiver at a local
 // variable, string literal or parenthesised value (`h.get(`, `boxes[0].get(`, `(h).get(`).
 // A receiver containing another call returns none; that call's own receiver chain check
 // already covers the final value.
@@ -11506,8 +11513,12 @@ fn (tc &TypeChecker) sql_orm_source_call_return_type(tokens []string, name_idx i
 		start -= 2
 	}
 	if start == 0 || tokens[start - 1] != '.' {
-		if typ := tc.sql_orm_fn_return_type(tokens[start..name_idx + 1].join('')) {
+		callee := tokens[start..name_idx + 1].join('')
+		if typ := tc.sql_orm_fn_return_type(callee) {
 			return typ
+		}
+		if converted := tc.sql_orm_alias_conversion_type(tokens, name_idx) {
+			return converted
 		}
 	}
 	if name_idx < 2 || tokens[name_idx - 1] != '.' {
@@ -11516,6 +11527,24 @@ fn (tc &TypeChecker) sql_orm_source_call_return_type(tokens []string, name_idx i
 	receiver_start := sql_value_receiver_start(tokens, name_idx - 2) or { return none }
 	receiver := tc.sql_orm_value_type(tokens, receiver_start, name_idx - 1) or { return none }
 	return tc.sql_orm_method_call_type(receiver, tokens[name_idx])
+}
+
+// Alias conversions have no function declaration, but their named result can
+// still be the receiver of a declared or inherited alias method.
+fn (tc &TypeChecker) sql_orm_alias_conversion_type(tokens []string, name_idx int) ?Type {
+	mut start := name_idx
+	for start >= 2 && tokens[start - 1] == '.' && sql_like_identifier(tokens[start - 2]) {
+		start -= 2
+	}
+	if start > 0 && tokens[start - 1] == '.' {
+		return none
+	}
+	callee := tokens[start..name_idx + 1].join('')
+	converted := tc.parse_type(callee)
+	if converted is Alias {
+		return converted
+	}
+	return none
 }
 
 // sql_value_receiver_start returns where the member/index/call chain that ends at `end_idx`

@@ -1717,9 +1717,21 @@ fn (mut t Transformer) sql_value_call_expr(callee_name string, args []string, ty
 	for arg in args {
 		arg_ids << t.sql_expr_from_token(arg)
 	}
+	mut target_type := t.comptime_resolve_selective_import_type(callee_name)
+	if imported := t.resolve_imported_type_name(target_type) {
+		target_type = imported
+	}
 	if args.len == 1
-		&& (is_plain_builtin_alias_type(callee_name) || t.is_known_type_name(callee_name)) {
-		return t.transform_expr(t.make_cast(callee_name, arg_ids[0], callee_name))
+		&& (is_plain_builtin_alias_type(target_type) || t.is_known_type_name(target_type)) {
+		converted := t.transform_expr(t.make_cast(target_type, arg_ids[0], target_type))
+		if t.is_type_alias_name(target_type) {
+			// Cast lowering normalizes aliases to their representation. Retain the
+			// named type on a wrapper for a following alias method's resolution.
+			value := t.make_paren(converted)
+			t.set_node_typ(int(value), target_type)
+			return value
+		}
+		return converted
 	}
 	callee := t.sql_value_call_callee(callee_name)
 	call := t.make_call_expr_typed(callee, arg_ids, if typ != '' { typ } else { '' })

@@ -13,7 +13,7 @@ VISIBILITYfn (values Names) clone() []Holder {
 	return [Holder{name: values[0]}]
 }
 
-pub type WrappedNames = Names
+TYPE_VISIBILITYtype WrappedNames = Names
 
 pub fn make() WrappedNames {
 	return WrappedNames(Names(['first']))
@@ -42,14 +42,18 @@ fn main() {
 }
 "
 
-fn sql_alias_visibility_result(name string, is_public bool, expression string, is_update bool, check_only bool) os.Result {
+fn sql_alias_visibility_result(name string, is_public bool, expression string, is_update bool, check_only bool, is_type_public bool, import_name string) os.Result {
 	dir := os.join_path(os.vtmp_dir(), 'v3_sql_alias_visibility_${name}_${os.getpid()}')
 	os.rmdir_all(dir) or {}
 	os.mkdir_all(os.join_path(dir, 'aliases')) or { panic(err) }
 	defer {
 		os.rmdir_all(dir) or {}
 	}
-	module_source := sql_alias_visibility_module.replace('VISIBILITY', if is_public {
+	module_source := sql_alias_visibility_module.replace('TYPE_VISIBILITY', if is_type_public {
+		'pub '
+	} else {
+		''
+	}).replace('VISIBILITY', if is_public {
 		'pub '
 	} else {
 		''
@@ -61,7 +65,14 @@ fn sql_alias_visibility_result(name string, is_public bool, expression string, i
 		'found := sql db { select from Account where name == ${expression} }!\n\tassert found.len == 1'
 	}
 	source := os.join_path(dir, 'main.v')
-	os.write_file(source, sql_alias_visibility_main.replace('STATEMENT', statement)) or {
+	main_source := sql_alias_visibility_main.replace('STATEMENT', statement)
+		.replace('import aliases\n', if import_name == 'aliases' {
+			'import aliases\n'
+		} else {
+			'import aliases as ${import_name}\n'
+		})
+		.replace('aliases.make()', '${import_name}.make()')
+	os.write_file(source, main_source) or {
 		panic(err)
 	}
 	executable := os.join_path(dir, 'main.exe')
@@ -75,10 +86,10 @@ fn sql_alias_visibility_result(name string, is_public bool, expression string, i
 
 fn test_public_inherited_alias_methods_work_in_imported_sql_values() {
 	for i, expression in ['aliases.make().clone()[0].name', 'values.clone()[0].name',
-		'(values).clone()[0].name'] {
+		'(values).clone()[0].name', 'aliases.WrappedNames(values).clone()[0].name'] {
 		for is_update in [false, true] {
 			result := sql_alias_visibility_result('public_${i}_${is_update}', true, expression,
-				is_update, false)
+				is_update, false, true, 'aliases')
 			assert result.exit_code == 0, result.output
 		}
 	}
@@ -86,13 +97,39 @@ fn test_public_inherited_alias_methods_work_in_imported_sql_values() {
 
 fn test_private_inherited_alias_methods_are_rejected_in_sql_values() {
 	for i, expression in ['aliases.make().clone()[0].name', 'values.clone()[0].name',
-		'(values).clone()[0].name'] {
+		'(values).clone()[0].name', 'aliases.WrappedNames(values).clone()[0].name'] {
 		for is_update in [false, true] {
 			for check_only in [false, true] {
 				result := sql_alias_visibility_result('private_${i}_${is_update}_${check_only}',
-					false, expression, is_update, check_only)
+					false, expression, is_update, check_only, true, 'aliases')
 				assert result.exit_code != 0, result.output
 				assert result.output.contains('method `aliases.WrappedNames.clone` is private'), result.output
+			}
+		}
+	}
+}
+
+fn test_imported_alias_conversions_obey_type_and_method_visibility_in_sql_values() {
+	for import_name in ['aliases', 'renamed'] {
+		expression := '${import_name}.WrappedNames(values).clone()[0].name'
+		for is_update in [false, true] {
+			for check_only in [false, true] {
+				for is_method_public in [false, true] {
+					for is_type_public in [false, true] {
+						result := sql_alias_visibility_result('conversion_${import_name}_${is_update}_${check_only}_${is_method_public}_${is_type_public}',
+							is_method_public, expression, is_update, check_only, is_type_public,
+							import_name)
+						if !is_type_public {
+							assert result.exit_code != 0, result.output
+							assert result.output.contains('type `aliases.WrappedNames` is private'), result.output
+						} else if !is_method_public {
+							assert result.exit_code != 0, result.output
+							assert result.output.contains('method `aliases.WrappedNames.clone` is private'), result.output
+						} else {
+							assert result.exit_code == 0, result.output
+						}
+					}
+				}
 			}
 		}
 	}
