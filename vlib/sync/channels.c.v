@@ -72,6 +72,7 @@ mut:
 	write_sub_mtx    &SpinLock
 	read_sub_mtx     &SpinLock
 	closed           u16
+	close_claimed    u16 // set by the close() that closes the channel, before `closed`
 	close_err        IError = none
 pub:
 	cap u32 // queue length in #objects
@@ -144,27 +145,36 @@ fn new_channel_st_noscan(n u32, st u32) &Channel {
 pub fn (mut ch Channel) close(errs ...IError) {
 	$if race ? {
 		racedisable()
-		is_open := C.atomic_load_u16(&ch.closed) == 0
-		raceenable()
-		if is_open {
-			// Like Go: close is a write of the channel that races with unsynchronized sends,
-			// and it happens before a receive that returns because the channel is closed.
-			// Release before the closed flag is set: a receiver can see the flag right away.
-			racewrite(ch.race_addr())
-			racerelease(ch.race_addr())
-		}
-		racedisable()
 	}
-	open_val := u16(0)
-	if !C.atomic_compare_exchange_strong_u16(&ch.closed, &open_val, 1) {
+	// Claim the close, store its error, and only then set `closed`: a receiver or sender
+	// that finds the channel closed must also find the error.
+	unclaimed := u16(0)
+	if !C.atomic_compare_exchange_strong_u16(&ch.close_claimed, &unclaimed, 1) {
+		// Another close() closes the channel; it is closed when this one returns too.
+		for C.atomic_load_u16(&ch.closed) == 0 {
+			C.cpu_relax()
+		}
 		$if race ? {
 			raceenable()
 		}
 		return
 	}
+	$if race ? {
+		raceenable()
+	}
 	if errs.len > 0 {
 		ch.close_err = errs[0]
 	}
+	$if race ? {
+		// Like Go: close is a write of the channel that races with unsynchronized sends,
+		// and it happens before a receive that returns because the channel is closed. The
+		// release covers `close_err`, and comes before `closed` is set, which a receiver can
+		// see right away.
+		racewrite(ch.race_addr())
+		racerelease(ch.race_addr())
+		racedisable()
+	}
+	C.atomic_store_u16(&ch.closed, 1)
 	mut nulladr := unsafe { nil }
 	for !C.atomic_compare_exchange_weak_ptr(voidptr(&ch.adr_written), voidptr(&nulladr), isize(-1)) {
 		nulladr = unsafe { nil }
@@ -317,6 +327,11 @@ fn (mut ch Channel) try_push_priv(src voidptr, no_block bool) ChanState {
 		racedisable()
 		res := ch.try_push_impl(src, no_block)
 		raceenable()
+		if res == .closed {
+			// A send that finds the channel closed happens after the close, whose error it
+			// can read, like a receive does.
+			raceacquire(ch.race_addr())
+		}
 		return res
 	}
 	return ch.try_push_impl(src, no_block)

@@ -505,6 +505,23 @@ fn main() {
 }
 '
 
+// close() stores its error before the release that a receive of the closed channel acquires,
+// so the receive reads the error without a race.
+const close_error_source = 'fn main() {
+	ch := chan int{}
+	t := spawn fn (ch chan int) {
+		ch.close(error("custom close error"))
+	}(ch)
+	mut msg := ""
+	_ := <-ch or {
+		msg = err.msg()
+		0
+	}
+	t.wait()
+	println("received: \${msg}")
+}
+'
+
 fn testsuite_begin() {
 	os.mkdir_all(tdir) or {}
 }
@@ -758,4 +775,15 @@ fn test_race_stdin_read_happens_after_the_write() {
 	assert eof.exit_code == 0, eof.output
 	assert !eof.output.contains('ThreadSanitizer'), eof.output
 	assert eof.output.contains('char -1 x 42'), eof.output
+}
+
+fn test_race_close_error_is_published_with_the_close() {
+	if !thread_sanitizer_runs() {
+		return
+	}
+	exe := build_race_program('close_error', close_error_source)
+	res := os.execute(os.quoted_path(exe))
+	assert res.exit_code == 0, res.output
+	assert !res.output.contains('ThreadSanitizer'), res.output
+	assert res.output.contains('received: custom close error'), res.output
 }
