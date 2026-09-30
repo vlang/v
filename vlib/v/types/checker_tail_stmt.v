@@ -10732,6 +10732,10 @@ fn (tc &TypeChecker) const_sizeof_type_value(type_name string) ?int {
 
 // type_implements_interface returns type implements interface data for TypeChecker.
 fn (tc &TypeChecker) type_implements_interface(actual Type, expected Interface) bool {
+	return type_implements_interface_guarded(tc, actual, expected, []string{})
+}
+
+fn type_implements_interface_guarded(tc &TypeChecker, actual Type, expected Interface, visited []string) bool {
 	clean := unwrap_pointer(actual)
 	if clean is Unknown {
 		return true
@@ -10771,7 +10775,7 @@ fn (tc &TypeChecker) type_implements_interface(actual Type, expected Interface) 
 	if concrete_name.len == 0 {
 		return false
 	}
-	return tc.named_type_implements_interface(concrete_name, expected.name)
+	return named_type_implements_interface_guarded(tc, concrete_name, expected.name, visited)
 }
 
 fn (tc &TypeChecker) builtin_array_field_type(name string) ?Type {
@@ -10866,9 +10870,27 @@ fn (tc &TypeChecker) non_interface_type_known(name string) bool {
 // named_type_implements_interface
 // supports helper handling in types.
 pub fn (tc &TypeChecker) named_type_implements_interface(concrete_name string, iface_name string) bool {
+	return named_type_implements_interface_guarded(tc, concrete_name, iface_name, []string{})
+}
+
+// named_type_implements_interface_guarded carries the set of (concrete type, interface)
+// pairs whose proof is still in progress. A self-referential interface -- one with a
+// method whose return type is the interface itself, as in `clone() Cloner` -- makes the
+// satisfaction check re-enter with a pair it is already proving, which otherwise recurses
+// until the checker's stack is exhausted. Treating a pair that is already in progress as
+// satisfied is the standard coinductive reading of recursive structural subtyping: it
+// assumes only the obligation the enclosing frame is already proving, and any requirement
+// that genuinely fails is still reported by that frame.
+fn named_type_implements_interface_guarded(tc &TypeChecker, concrete_name string, iface_name string, visited []string) bool {
 	if tc.interface_has_no_requirements(iface_name) {
 		return true
 	}
+	guard_key := '${concrete_name}<:${iface_name}'
+	if guard_key in visited {
+		return true
+	}
+	mut in_progress := visited.clone()
+	in_progress << guard_key
 	// Only the abstract (declared) methods must be provided by the concrete type.
 	// Methods defined directly on the interface (default implementations) are
 	// inherited and need not be reimplemented.
@@ -10881,19 +10903,22 @@ pub fn (tc &TypeChecker) named_type_implements_interface(concrete_name string, i
 			return false
 		}
 		if info := tc.resolve_generic_struct_method(concrete_name, method) {
-			if !tc.method_call_info_signature_compatible_for_interface(info, expected_key, iface_name) {
+			if !method_call_info_signature_compatible_for_interface_guarded(tc, info, expected_key,
+				iface_name, in_progress) {
 				return false
 			}
 			continue
 		}
 		if concrete_key := tc.concrete_method_signature_key(concrete_name, method) {
-			if !tc.method_signature_compatible_for_interface(concrete_key, expected_key, iface_name) {
+			if !method_signature_compatible_for_interface_guarded(tc, concrete_key, expected_key,
+				iface_name, in_progress) {
 				return false
 			}
 			continue
 		}
 		if info := tc.resolve_generic_sum_method(concrete_name, method) {
-			if !tc.method_call_info_signature_compatible_for_interface(info, expected_key, iface_name) {
+			if !method_call_info_signature_compatible_for_interface_guarded(tc, info, expected_key,
+				iface_name, in_progress) {
 				return false
 			}
 			continue
@@ -13403,6 +13428,11 @@ pub fn (tc &TypeChecker) specialized_interface_method_signature(iface_name strin
 }
 
 fn (tc &TypeChecker) method_signature_compatible_for_interface(actual_key string, expected_key string, iface_name string) bool {
+	return method_signature_compatible_for_interface_guarded(tc, actual_key, expected_key,
+		iface_name, []string{})
+}
+
+fn method_signature_compatible_for_interface_guarded(tc &TypeChecker, actual_key string, expected_key string, iface_name string, visited []string) bool {
 	actual_params := tc.fn_param_types[actual_key] or { return false }
 	expected_params, expected_ret := tc.specialized_interface_method_signature(iface_name, expected_key)
 	if actual_params.len != expected_params.len {
@@ -13420,7 +13450,7 @@ fn (tc &TypeChecker) method_signature_compatible_for_interface(actual_key string
 		}
 	}
 	actual_ret := tc.fn_ret_types[actual_key] or { Type(void_) }
-	return tc.method_return_signature_compatible(actual_ret, expected_ret)
+	return method_return_signature_compatible_guarded(tc, actual_ret, expected_ret, visited)
 }
 
 fn (tc &TypeChecker) method_call_info_signature_compatible(actual CallInfo, expected_key string) bool {
@@ -13438,6 +13468,11 @@ fn (tc &TypeChecker) method_call_info_signature_compatible(actual CallInfo, expe
 }
 
 fn (tc &TypeChecker) method_call_info_signature_compatible_for_interface(actual CallInfo, expected_key string, iface_name string) bool {
+	return method_call_info_signature_compatible_for_interface_guarded(tc, actual, expected_key,
+		iface_name, []string{})
+}
+
+fn method_call_info_signature_compatible_for_interface_guarded(tc &TypeChecker, actual CallInfo, expected_key string, iface_name string, visited []string) bool {
 	expected_params, expected_ret := tc.specialized_interface_method_signature(iface_name, expected_key)
 	if actual.params.len != expected_params.len {
 		return false
@@ -13447,10 +13482,15 @@ fn (tc &TypeChecker) method_call_info_signature_compatible_for_interface(actual 
 			return false
 		}
 	}
-	return tc.method_return_signature_compatible(actual.return_type, expected_ret)
+	return method_return_signature_compatible_guarded(tc, actual.return_type, expected_ret,
+		visited)
 }
 
 fn (tc &TypeChecker) method_return_signature_compatible(actual Type, expected Type) bool {
+	return method_return_signature_compatible_guarded(tc, actual, expected, []string{})
+}
+
+fn method_return_signature_compatible_guarded(tc &TypeChecker, actual Type, expected Type, visited []string) bool {
 	if !tc.fn_type_callconv_compatible(actual, expected) {
 		return false
 	}
@@ -13471,17 +13511,20 @@ fn (tc &TypeChecker) method_return_signature_compatible(actual Type, expected Ty
 			return false
 		}
 		for i, typ in actual_unaliased.types {
-			if !tc.method_return_signature_compatible(typ, expected_unaliased.types[i]) {
+			if !method_return_signature_compatible_guarded(tc, typ, expected_unaliased.types[i],
+				visited) {
 				return false
 			}
 		}
 		return true
 	}
 	if actual_unaliased is OptionType && expected_unaliased is OptionType {
-		return tc.method_wrapped_return_signature_compatible(actual_unaliased.base_type, expected_unaliased.base_type)
+		return method_wrapped_return_signature_compatible_guarded(tc, actual_unaliased.base_type,
+			expected_unaliased.base_type, visited)
 	}
 	if actual_unaliased is ResultType && expected_unaliased is ResultType {
-		return tc.method_wrapped_return_signature_compatible(actual_unaliased.base_type, expected_unaliased.base_type)
+		return method_wrapped_return_signature_compatible_guarded(tc, actual_unaliased.base_type,
+			expected_unaliased.base_type, visited)
 	}
 	if actual_fn := fn_type_from_type(actual) {
 		expected_fn := fn_type_from_type(expected) or { return false }
@@ -13494,32 +13537,44 @@ fn (tc &TypeChecker) method_return_signature_compatible(actual Type, expected Ty
 				return false
 			}
 		}
-		return tc.method_return_signature_compatible(actual_fn.return_type, expected_fn.return_type)
+		return method_return_signature_compatible_guarded(tc, actual_fn.return_type, expected_fn.return_type,
+			visited)
 	}
-	return tc.method_interface_return_signature_compatible(actual_unaliased, expected_unaliased)
+	return method_interface_return_signature_compatible_guarded(tc, actual_unaliased,
+		expected_unaliased, visited)
 }
 
 fn (tc &TypeChecker) method_wrapped_return_signature_compatible(actual Type, expected Type) bool {
+	return method_wrapped_return_signature_compatible_guarded(tc, actual, expected, []string{})
+}
+
+fn method_wrapped_return_signature_compatible_guarded(tc &TypeChecker, actual Type, expected Type, visited []string) bool {
 	actual_unaliased := unalias_type(actual)
 	expected_unaliased := unalias_type(expected)
 	if actual_unaliased is MultiReturn && expected_unaliased is MultiReturn {
-		return tc.method_return_signature_compatible(actual_unaliased, expected_unaliased)
+		return method_return_signature_compatible_guarded(tc, actual_unaliased, expected_unaliased,
+			visited)
 	}
 	if actual_unaliased is FnType && expected_unaliased is FnType {
 		return Type(actual_unaliased).name() == Type(expected_unaliased).name()
 	}
-	return tc.method_interface_return_signature_compatible(actual_unaliased, expected_unaliased)
+	return method_interface_return_signature_compatible_guarded(tc, actual_unaliased,
+		expected_unaliased, visited)
 }
 
 fn (tc &TypeChecker) method_interface_return_signature_compatible(actual Type, expected Type) bool {
+	return method_interface_return_signature_compatible_guarded(tc, actual, expected, []string{})
+}
+
+fn method_interface_return_signature_compatible_guarded(tc &TypeChecker, actual Type, expected Type, visited []string) bool {
 	expected_name := expected.name()
 	if expected is Interface {
-		return tc.type_implements_interface(actual, expected)
+		return type_implements_interface_guarded(tc, actual, expected, visited)
 	}
 	if expected_name in tc.interface_names {
-		return tc.type_implements_interface(actual, Interface{
+		return type_implements_interface_guarded(tc, actual, Interface{
 			name: expected_name
-		})
+		}, visited)
 	}
 	return false
 }
