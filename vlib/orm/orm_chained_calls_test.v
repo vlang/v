@@ -31,6 +31,14 @@ fn day_text(days int) string {
 	return time.unix(0).add_days(days).format_ss()
 }
 
+fn make_names() []string {
+	return ['first', 'second']
+}
+
+fn make_years() []int {
+	return [1999, 2000]
+}
+
 fn test_update_set_values_with_chained_calls() {
 	mut db := sqlite.connect(':memory:')!
 	sql db {
@@ -87,6 +95,23 @@ fn test_update_set_values_with_chained_calls() {
 	}!
 	assert rows[0].mod_at == time.unix(0).format_ss()
 	assert rows[0].name == 'SECOND'
+
+	sql db {
+		update Account set name = make_names()[1].to_upper(), year = -1 where id == 1
+	}!
+	rows = sql db {
+		select from Account where id == 1
+	}!
+	assert rows[0].name == 'SECOND'
+	assert rows[0].year == -1
+
+	sql db {
+		update Account set year = 1 + make_years()[1] - -1 where id == 1
+	}!
+	rows = sql db {
+		select from Account where id == 1
+	}!
+	assert rows[0].year == 2002
 }
 
 fn test_where_values_with_chained_calls() {
@@ -136,4 +161,16 @@ fn test_where_values_with_chained_calls() {
 	}!
 	assert by_wrapped_receiver.len == 1
 	assert by_wrapped_receiver[0].name == 'second'
+
+	by_indexed_call := sql db {
+		select from Account where name == make_names()[1]
+	}!
+	assert by_indexed_call.len == 1
+	assert by_indexed_call[0].mod_at == second.mod_at
+
+	by_signed_arg := sql db {
+		select from Account where mod_at > day_text(-1) && mod_at < day_text(1)
+	}!
+	assert by_signed_arg.len == 1
+	assert by_signed_arg[0].name == 'FIRST'
 }

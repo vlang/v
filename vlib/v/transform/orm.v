@@ -1547,6 +1547,11 @@ fn (mut t Transformer) sql_expr_from_token(token string) flat.NodeId {
 }
 
 fn (mut t Transformer) sql_expr_from_token_for_type(token string, typ string) flat.NodeId {
+	if token.contains(' ') {
+		if literal := sql_signed_literal_text(sql_clean_tokens(token.split(' '))) {
+			return t.sql_expr_from_token_for_type(literal, typ)
+		}
+	}
 	if sql_token_is_quoted_string(token) {
 		value := sql_unquote_string_token(token)
 		if interp := t.simple_nested_string_interpolation(t.sql_bound_interpolation_text(value)) {
@@ -1672,8 +1677,12 @@ fn sql_value_member_chain_parts(token string) ?SqlValueMemberChain {
 		args = sql_value_call_args(rest[1..close_idx]) or { return none }
 		is_call = true
 	}
-	// `(time.now()).format_ss()`: value lowering has no parenthesised-expression case.
+	// In `a + f().b` the member binds to `f()`; the caller splits the operator first.
 	mut receiver := clean[..member_idx]
+	if sql_tokens_have_top_level_infix(receiver) {
+		return none
+	}
+	// `(time.now()).format_ss()`: value lowering has no parenthesised-expression case.
 	for {
 		inner := sql_wrapped_tokens(receiver) or { break }
 		receiver = sql_trim_outer_empty(inner)
@@ -1795,11 +1804,9 @@ fn (mut t Transformer) sql_index_expr_from_token_for_type(token string, typ stri
 
 fn (mut t Transformer) sql_index_expr_from_tokens_for_type(tokens []string, typ string) ?flat.NodeId {
 	clean := sql_trim_outer_empty(tokens)
-	if !sql_value_tokens_are_index_expr(clean) {
-		return none
-	}
-	mut value := t.sql_expr_from_token_for_type(clean[0], '')
-	mut i := 1
+	base_len := sql_value_index_base_len(clean) or { return none }
+	mut value := t.sql_expr_from_token_for_type(sql_value_token_text(clean[..base_len]), '')
+	mut i := base_len
 	for i < clean.len {
 		close_idx := sql_matching_pair(clean, i, '[', ']') or { return none }
 		index_expr := t.sql_expr_from_token_for_type(sql_value_token_text(clean[i + 1..close_idx]),
@@ -1900,6 +1907,10 @@ fn sql_split_infix_value_tokens(tokens []string) ?(string, string, string) {
 				depth--
 			}
 			if depth != 0 || tok !in op_group || idx == 0 || idx + 1 >= clean.len {
+				continue
+			}
+			// A sign after another operator is unary: `a - -1`, `a * -b`.
+			if clean[idx - 1] in ['==', '!=', '>=', '<=', '>', '<', '+', '-', '*', '/', '%'] {
 				continue
 			}
 			return sql_value_token_text(clean[..idx]), tok, sql_value_token_text(clean[idx + 1..])
@@ -2611,22 +2622,67 @@ fn sql_value_token_text(tokens []string) string {
 }
 
 fn sql_value_tokens_are_index_expr(tokens []string) bool {
-	clean := sql_trim_outer_empty(tokens)
-	if clean.len < 4 || !sql_token_is_plain_ident(clean[0]) || clean[1] != '[' {
+	if _ := sql_value_index_base_len(sql_trim_outer_empty(tokens)) {
+		return true
+	}
+	return false
+}
+
+// sql_value_index_base_len returns how many of the (trimmed) `tokens` form the value that
+// the trailing `[...]` groups index: a name (`names[0]`), a call (`make_names()[0]`,
+// `f(x)[0][1]`), a parenthesised value or a member chain (`f().items[0]`).
+fn sql_value_index_base_len(tokens []string) ?int {
+	mut base_len := tokens.len
+	for base_len > 0 && tokens[base_len - 1] == ']' {
+		mut depth := 0
+		mut open_idx := -1
+		for j := base_len - 1; j >= 0; j-- {
+			if tokens[j] == ']' {
+				depth++
+			} else if tokens[j] == '[' {
+				depth--
+				if depth == 0 {
+					open_idx = j
+					break
+				}
+			}
+		}
+		if open_idx < 0 || open_idx + 1 >= base_len - 1 {
+			return none
+		}
+		base_len = open_idx
+	}
+	if base_len == 0 || base_len == tokens.len {
+		return none
+	}
+	base := tokens[..base_len]
+	if base.len == 1 {
+		if sql_token_is_plain_ident(base[0]) || sql_token_is_no_arg_call(base[0]) {
+			return base_len
+		}
+		return none
+	}
+	if _ := sql_wrapped_tokens(base) {
+		return base_len
+	}
+	text := sql_value_token_text(base)
+	if _, _ := sql_value_call_parts(text) {
+		return base_len
+	}
+	if _ := sql_value_member_chain_parts(text) {
+		return base_len
+	}
+	return none
+}
+
+fn sql_tokens_have_top_level_infix(tokens []string) bool {
+	if tokens.len < 2 {
 		return false
 	}
-	mut i := 1
-	for i < clean.len {
-		if clean[i] != '[' {
-			return false
-		}
-		close_idx := sql_matching_pair(clean, i, '[', ']') or { return false }
-		if close_idx <= i + 1 {
-			return false
-		}
-		i = close_idx + 1
+	if _, _, _ := sql_split_infix_value_tokens(tokens) {
+		return true
 	}
-	return i == clean.len
+	return false
 }
 
 fn sql_index_token_parts(token string) []string {
@@ -3021,6 +3077,16 @@ fn sql_condition_value_text(tokens []string) string {
 	if wrapped := sql_wrapped_tokens(clean) {
 		return sql_condition_value_text(wrapped)
 	}
+	if literal := sql_signed_literal_text(clean) {
+		return literal
+	}
+	return sql_value_token_text(clean)
+}
+
+// sql_signed_literal_text joins a sign that the SQL tokens split from its numeric
+// literal, so `- 1` becomes `-1` (and `+ 1` becomes `1`).
+fn sql_signed_literal_text(tokens []string) ?string {
+	clean := sql_trim_outer_empty(tokens)
 	if clean.len == 2 && clean[0] in ['-', '+']
 		&& (sql_token_is_int_literal(clean[1]) || sql_token_is_float_literal(clean[1])) {
 		if clean[0] == '-' {
@@ -3028,7 +3094,7 @@ fn sql_condition_value_text(tokens []string) string {
 		}
 		return clean[1]
 	}
-	return sql_value_token_text(clean)
+	return none
 }
 
 fn sql_static_where_value_is_supported(tokens []string) bool {
@@ -3040,8 +3106,8 @@ fn sql_static_where_value_is_supported(tokens []string) bool {
 	if sql_token_is_value(text) {
 		return true
 	}
-	if sql_value_tokens_are_index_expr(sql_clean_tokens(sql_index_token_parts(text))) {
-		return true
+	if supported := sql_static_where_index_is_supported(sql_clean_tokens(sql_index_token_parts(text))) {
+		return supported
 	}
 	if wrapped := sql_wrapped_tokens(clean) {
 		return sql_static_where_value_is_supported(wrapped)
@@ -3050,8 +3116,8 @@ fn sql_static_where_value_is_supported(tokens []string) bool {
 		return sql_static_where_value_is_supported(source_tokens)
 			&& sql_static_where_value_is_supported(fallback_tokens)
 	}
-	if sql_value_tokens_are_index_expr(clean) {
-		return true
+	if supported := sql_static_where_index_is_supported(clean) {
+		return supported
 	}
 	if lhs_text, _, rhs_text := sql_split_infix_value_tokens(clean) {
 		return sql_static_where_value_is_supported(sql_clean_tokens(sql_index_token_parts(lhs_text)))
@@ -3065,6 +3131,12 @@ fn sql_static_where_value_is_supported(tokens []string) bool {
 			&& sql_static_where_values_are_supported(chain.args)
 	}
 	return false
+}
+
+fn sql_static_where_index_is_supported(tokens []string) ?bool {
+	clean := sql_trim_outer_empty(tokens)
+	base_len := sql_value_index_base_len(clean) or { return none }
+	return sql_static_where_value_is_supported(clean[..base_len])
 }
 
 fn sql_static_where_values_are_supported(values []string) bool {
