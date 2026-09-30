@@ -2070,6 +2070,13 @@ fn (mut tc TypeChecker) check_return(id flat.NodeId, node flat.Node) {
 			tc.record_error_at(.return_mismatch, '`${tc.source_text_for_node(child_id)}` used as value', id, tc.noreturn_statement_diagnostic_pos(id))
 			return
 		}
+		// Like V1, `return f()` passes on the outcome of another `?` function.
+		if actual is OptionType && actual.base_type is Void {
+			$if ownership ? {
+				tc.ownership_after_return(id, node)
+			}
+			return
+		}
 		tc.record_error_at(.return_mismatch, 'cannot use `${tc.diagnostic_expr_type_name(child_id, actual)}` as Option type in return argument', child_id, child.pos)
 		return
 	}
