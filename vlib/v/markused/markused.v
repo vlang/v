@@ -4034,7 +4034,8 @@ fn enqueue_function_value_selectors_in_node(a &flat.FlatAst, collector CallColle
 		return
 	}
 	node := a.node(id)
-	if node.kind == .fn_decl {
+	// Struct field defaults are collected when an initializer is reachable, like bodies.
+	if node.kind in [.fn_decl, .struct_decl] {
 		return
 	}
 	if node.kind == .ident && node.value.len > 0 {
@@ -8833,13 +8834,21 @@ fn (c &CallCollector) collect_value_struct_default_calls(type_text string, cur_m
 	c.collect_struct_default_calls_from_info_guarded(info, map[string]bool{}, mut active_defaults, mut calls)
 }
 
-// array_init_element_type_text returns the element type spelling of an array literal
-// type: `B` for `[]B{len: n}` and `[3]B{}`.
+// array_init_element_type_text returns the value type initialized by an array literal.
+// Fixed-array elements initialize their contents too, but nested dynamic arrays remain empty.
 fn array_init_element_type_text(node &flat.Node) string {
 	mut typ := if node.typ.len > 0 { node.typ } else { node.value }
-	for typ.starts_with('[') {
-		close := typ.index_u8(`]`)
-		if close < 0 {
+	// Strip the literal's outer dimension once; further dynamic dimensions are containers.
+	if node.typ.len > 0 && typ.starts_with('[') {
+		close := markused_matching_bracket(typ, 0)
+		if close == typ.len {
+			return ''
+		}
+		typ = typ[close + 1..]
+	}
+	for typ.starts_with('[') && !typ.starts_with('[]') {
+		close := markused_matching_bracket(typ, 0)
+		if close == typ.len {
 			return ''
 		}
 		typ = typ[close + 1..]

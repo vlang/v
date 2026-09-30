@@ -531,6 +531,95 @@ fn main() {
 	assert used['make']
 }
 
+fn test_array_defaults_stop_at_nested_dynamic_elements() {
+	cases := {
+		'[][]Box{len: 1}':       false
+		'[][][]Box{len: 1}':     false
+		'[2][]Box{}':            false
+		'[][2][]Box{len: 1}':    false
+		'[][2][2][]Box{len: 1}': false
+		'[]Box{len: 1}':         true
+		'[2]Box{}':              true
+		'[][2]Box{len: 1}':      true
+		'[2][2]Box{}':           true
+		'Box{}':                 true
+	}
+	for literal, needs_defaults in cases {
+		a, tc := parse_checked_source('nested_array_default_${os.getpid()}', '
+struct Box {
+	value int = default_value()
+}
+
+fn default_value() int { return 7 }
+
+fn main() {
+	values := ${literal}
+	_ := values
+}
+')
+		used := markused.mark_used(a, tc)
+		assert used['default_value'] == needs_defaults, literal
+		without_generics := markused.mark_used_without_generic_detection(a, tc)
+		assert without_generics['default_value'] == needs_defaults, literal
+	}
+}
+
+fn test_nested_dynamic_array_drops_unresolved_default_call() {
+	v3_bin := build_v3_bin('nested_dynamic_array_default_${os.getpid()}')
+	source := os.join_path(os.temp_dir(), 'v3_markused_nested_dynamic_default_${os.getpid()}.c.v')
+	bin := os.join_path(os.temp_dir(), 'v3_markused_nested_dynamic_default_${os.getpid()}')
+	defer {
+		os.rm(source) or {}
+		os.rm(bin) or {}
+		os.rm(v3_bin) or {}
+	}
+	os.write_file(source, '
+fn C.v3_markused_missing_default_symbol() int
+
+fn default_value() int {
+	return C.v3_markused_missing_default_symbol()
+}
+
+struct Box {
+	value int = default_value()
+}
+
+fn main() {
+	values := [][]Box{len: 1}
+	assert values.len == 1
+	assert values[0].len == 0
+	println("ok")
+}
+') or { panic(err) }
+	compiled := os.execute('${v3_bin} -o ${bin} ${source}')
+	assert compiled.exit_code == 0, compiled.output
+	ran := os.execute(bin)
+	assert ran.exit_code == 0, ran.output
+	assert ran.output.trim_space() == 'ok', ran.output
+	os.write_file(source, '
+fn default_value() int { return 7 }
+
+struct Box {
+	value int = default_value()
+}
+
+fn main() {
+	direct := []Box{len: 1}
+	fixed := [2]Box{}
+	nested := [][2][2]Box{len: 1}
+	assert direct[0].value == 7
+	assert fixed[1].value == 7
+	assert nested[0][1][1].value == 7
+	println("ok")
+}
+') or { panic(err) }
+	defaults_compiled := os.execute('${v3_bin} -o ${bin} ${source}')
+	assert defaults_compiled.exit_code == 0, defaults_compiled.output
+	defaults_ran := os.execute(bin)
+	assert defaults_ran.exit_code == 0, defaults_ran.output
+	assert defaults_ran.output.trim_space() == 'ok', defaults_ran.output
+}
+
 // test_string_membership_seeds_contains_runtime_helpers validates this v3 regression case.
 fn test_string_membership_seeds_contains_runtime_helpers() {
 	used := mark_used_source('string_membership_contains', '
