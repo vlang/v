@@ -1427,6 +1427,10 @@ fn (mut t Transformer) transform_call_args(id flat.NodeId, node flat.Node) flat.
 	}
 	mut new_children := []flat.NodeId{cap: int(node.children_count)}
 	mut mut_optional_value_writebacks := []flat.NodeId{}
+	// Heap-backed fixed-array views are refreshed after argument evaluation. Keep
+	// ordinary operands in source order too, before a later argument's prelude.
+	ordered_fixed_args := t.call_has_mut_fixed_array_args(node, param_type_names, param_offset)
+	mut snapshotted_args := 1
 	saved_in_call_callee := t.in_call_callee
 	t.in_call_callee = true
 	callee_id := t.a.children[node.children_start]
@@ -1487,6 +1491,10 @@ fn (mut t Transformer) transform_call_args(id flat.NodeId, node flat.Node) flat.
 	mut i := 1
 	mut variadic_tail_supplied := false
 	for i < node.children_count {
+		if ordered_fixed_args {
+			t.snapshot_fixed_array_call_args(mut new_children, snapshotted_args)
+			snapshotted_args = new_children.len
+		}
 		arg_idx := new_children.len - 1
 		param_idx := arg_idx + param_offset
 		arg_id := t.a.child(&node, i)
@@ -1604,6 +1612,10 @@ fn (mut t Transformer) transform_call_args(id flat.NodeId, node flat.Node) flat.
 		}
 	}
 	t.append_missing_params_struct_args(mut new_children, params, param_offset)
+	if ordered_fixed_args {
+		t.snapshot_fixed_array_call_args(mut new_children, snapshotted_args)
+	}
+	t.refresh_fixed_array_arg_backings()
 	mut typ := node.typ
 	concrete_ret := t.concrete_generic_call_return_type(id, node)
 	if concrete_ret.len > 0 {
@@ -3788,14 +3800,14 @@ fn (mut t Transformer) transform_call_arg_for_param_isolated(arg_id flat.NodeId,
 		arg_type := t.node_type(arg_id)
 		if arg_node.is_mut {
 			range_type := if arg_type.starts_with('[]') { arg_type } else { param_type[1..] }
-			if view := t.fixed_array_range_view(arg_id, range_type) {
+			if view := t.fixed_array_range_view_for_arg(arg_id, range_type, true) {
 				return t.fixed_array_mut_arg(view, range_type, param_type)
 			}
 		}
 		fixed_type := if arg_type.starts_with('&') { arg_type[1..] } else { arg_type }
 		if t.is_fixed_array_type(fixed_type) {
 			array_type := param_type[1..]
-			view := t.fixed_array_value_to_array_no_alloc(arg_id, fixed_type, array_type)
+			view := t.fixed_array_mut_arg_backing(arg_id, fixed_type, array_type)
 			return t.fixed_array_mut_arg(view, array_type, param_type)
 		}
 	}
@@ -13159,34 +13171,73 @@ fn (t &Transformer) unaliased_value_type(id flat.NodeId) string {
 	return t.alias_str_resolved_base_type(t.node_type(id).trim_left('&')).trim_left('&')
 }
 
-// fixed_array_mut_arg passes `view`, a view of a fixed array's storage, to a `mut []T`
-// parameter. The callee may keep its parameter, by returning or storing it, and a view
-// of a stack array must not outlive the call. So the callee gets a heap copy, and its
-// elements are copied back into the fixed array after the call. They are copied from
-// the buffer that was passed, not from the parameter, so appending to or reassigning
-// the parameter in the callee does not change the fixed array, just as with the view.
-// Without an enclosing call transform to run the copy-back, or in `spawn`, the view
-// itself is passed.
+struct FixedArrayArgBacking {
+	view_name  string
+	buf_name   string
+	array_type string
+}
+
+fn (t &Transformer) call_has_mut_fixed_array_args(node flat.Node, params []string, offset int) bool {
+	for i in 1 .. node.children_count {
+		param_idx := i - 1 + offset
+		if param_idx >= params.len || !params[param_idx].starts_with('&[]') {
+			continue
+		}
+		arg_id := t.unwrap_parens(t.a.child(&node, i))
+		if t.is_fixed_array_type(t.unaliased_value_type(arg_id)) {
+			return true
+		}
+		if t.is_range_index_expr(arg_id) {
+			base_id := t.a.child(&t.a.nodes[int(arg_id)], 0)
+			if t.is_fixed_array_type(t.unaliased_value_type(base_id)) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+fn (mut t Transformer) snapshot_fixed_array_call_args(mut args []flat.NodeId, start int) {
+	for i in start .. args.len {
+		args[i] = t.snapshot_transformed_expr_for_reuse(args[i], t.node_type(args[i]),
+			'fixed_array_call_arg')
+	}
+}
+
+fn (mut t Transformer) refresh_fixed_array_arg_backings() {
+	for backing in t.fixed_array_arg_backings {
+		// Nested argument calls may have written back to the source since it was cloned.
+		// Run after their preludes and before the outer call is materialized.
+		size := t.make_infix(.mul, t.make_selector(t.make_ident(backing.view_name), 'len',
+			'int'), t.make_sizeof_type(backing.array_type[2..]))
+		t.mark_fn_used('vmemcpy')
+		t.pending_stmts << t.make_expr_stmt(t.make_call_typed('vmemcpy', [
+			t.make_selector(t.make_ident(backing.buf_name), 'data', 'voidptr'),
+			t.make_selector(t.make_ident(backing.view_name), 'data', 'voidptr'),
+			size,
+		], 'voidptr'))
+	}
+}
+
+// fixed_array_mut_arg gives a `mut []T` parameter its own header over the shared backing.
+// Appending or reassigning that header leaves the backing used for copy-back unchanged.
 fn (mut t Transformer) fixed_array_mut_arg(view flat.NodeId, array_type string, param_type string) flat.NodeId {
-	view_name := t.new_temp('fixed_array_view')
+	view_name := t.new_temp('fixed_array_arg_view')
 	t.pending_stmts << t.make_decl_assign_typed(view_name, view, array_type)
-	mut arg_name := view_name
-	if t.call_expr_depth > 0 && !t.in_spawn_expr {
-		buf_name := t.new_temp('fixed_array_buf')
-		view_addr := t.make_prefix(.amp, t.make_ident(view_name))
-		t.set_node_typ(int(view_addr), '&${array_type}')
-		t.mark_fn_used('array__clone')
-		t.pending_stmts << t.make_decl_assign_typed(buf_name, t.make_call_typed('array__clone',
-			[view_addr], array_type), array_type)
-		arg_name = t.new_temp('fixed_array_arg')
-		t.pending_stmts << t.make_decl_assign_typed(arg_name, t.make_ident(buf_name),
-			array_type)
+	arg_name := t.new_temp('fixed_array_arg')
+	t.pending_stmts << t.make_decl_assign_typed(arg_name, t.make_ident(view_name), array_type)
+	if t.call_expr_depth > 0 && !t.in_spawn_expr && t.fixed_array_arg_backings.len > 0 {
+		backing := t.fixed_array_arg_backings.last()
+		data := t.make_cast('&u8', t.make_selector(t.make_ident(backing.view_name), 'data',
+			'voidptr'), '&u8')
+		// Copy only the passed range; other elements can change through unrelated aliases.
+		dst := t.make_infix(.plus, data, t.make_selector(t.make_ident(view_name), 'offset', 'int'))
 		size := t.make_infix(.mul, t.make_selector(t.make_ident(view_name), 'len', 'int'),
 			t.make_sizeof_type(array_type[2..]))
 		t.mark_fn_used('vmemcpy')
 		t.fixed_array_arg_writebacks << t.make_expr_stmt(t.make_call_typed('vmemcpy', [
+			dst,
 			t.make_selector(t.make_ident(view_name), 'data', 'voidptr'),
-			t.make_selector(t.make_ident(buf_name), 'data', 'voidptr'),
 			size,
 		], 'voidptr'))
 	}
@@ -13195,11 +13246,48 @@ fn (mut t Transformer) fixed_array_mut_arg(view flat.NodeId, array_type string, 
 	return addr
 }
 
+// fixed_array_mut_arg_backing copies a complete fixed array to durable storage for a call.
+// Whole-array and range arguments over the same source reuse that storage, so their
+// writes are visible to each other before copy-back and escaped views keep sharing it.
+fn (mut t Transformer) fixed_array_mut_arg_backing(value_id flat.NodeId, fixed_type string, array_type string) flat.NodeId {
+	view := t.fixed_array_value_to_array_no_alloc(value_id, fixed_type, array_type)
+	if t.call_expr_depth == 0 || t.in_spawn_expr {
+		return view
+	}
+	view_name := t.new_temp('fixed_array_view')
+	t.pending_stmts << t.make_decl_assign_typed(view_name, view, array_type)
+	buf_name := t.new_temp('fixed_array_buf')
+	view_addr := t.make_prefix(.amp, t.make_ident(view_name))
+	t.set_node_typ(int(view_addr), '&${array_type}')
+	t.mark_fn_used('array__clone')
+	mut backing := t.make_call_typed('array__clone', [view_addr], array_type)
+	for previous in t.fixed_array_arg_backings {
+		if previous.array_type != array_type {
+			continue
+		}
+		same_data := t.make_infix(.eq, t.make_selector(t.make_ident(view_name), 'data', 'voidptr'),
+			t.make_selector(t.make_ident(previous.view_name), 'data', 'voidptr'))
+		same_len := t.make_infix(.eq, t.make_selector(t.make_ident(view_name), 'len', 'int'),
+			t.make_selector(t.make_ident(previous.view_name), 'len', 'int'))
+		backing = t.make_if(t.make_infix(.logical_and, same_data, same_len), t.make_block([
+			t.make_expr_stmt(t.make_ident(previous.buf_name)),
+		]), t.make_block([t.make_expr_stmt(backing)]))
+		t.set_node_typ(int(backing), array_type)
+	}
+	t.pending_stmts << t.make_decl_assign_typed(buf_name, backing, array_type)
+	t.fixed_array_arg_backings << FixedArrayArgBacking{view_name, buf_name, array_type}
+	return t.make_ident(buf_name)
+}
+
 // fixed_array_range_view lowers `fixed[a..b]`, where the result is written to, to a slice of
 // a view of the fixed array's storage. Slicing a fixed size array would copy it, so the
 // writes would be lost. Parentheses around the range are ignored. It returns none for
 // other expressions.
 fn (mut t Transformer) fixed_array_range_view(id flat.NodeId, array_type string) ?flat.NodeId {
+	return t.fixed_array_range_view_for_arg(id, array_type, false)
+}
+
+fn (mut t Transformer) fixed_array_range_view_for_arg(id flat.NodeId, array_type string, mut_arg bool) ?flat.NodeId {
 	range_id := t.unwrap_parens(id)
 	if !t.is_range_index_expr(range_id) {
 		return none
@@ -13211,8 +13299,12 @@ fn (mut t Transformer) fixed_array_range_view(id flat.NodeId, array_type string)
 		return none
 	}
 	view_name := t.new_temp('fixed_array_view')
-	t.pending_stmts << t.make_decl_assign_typed(view_name, t.fixed_array_value_to_array_no_alloc(base_id,
-		base_type, array_type), array_type)
+	view := if mut_arg {
+		t.fixed_array_mut_arg_backing(base_id, base_type, array_type)
+	} else {
+		t.fixed_array_value_to_array_no_alloc(base_id, base_type, array_type)
+	}
+	t.pending_stmts << t.make_decl_assign_typed(view_name, view, array_type)
 	mut children := [t.make_ident(view_name)]
 	for i in 1 .. node.children_count {
 		children << t.a.child(&node, i)

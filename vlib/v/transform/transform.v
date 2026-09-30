@@ -253,6 +253,7 @@ mut:
 	monomorph_error_seen                map[string]bool
 	in_spawn_expr                       bool
 	fixed_array_arg_writebacks          []flat.NodeId
+	fixed_array_arg_backings            []FixedArrayArgBacking
 	call_expr_depth                     int
 	has_spawn_expr                      bool
 	discarded_aggregate_spawns          map[int]bool
@@ -19459,9 +19460,12 @@ fn (mut t Transformer) call_argument_borrows_fixed_array(id flat.NodeId, node fl
 // run right after the call.
 fn (mut t Transformer) transform_call_expr(id flat.NodeId, node flat.Node) flat.NodeId {
 	writebacks_start := t.fixed_array_arg_writebacks.len
+	outer_backings := t.fixed_array_arg_backings
+	t.fixed_array_arg_backings = []FixedArrayArgBacking{}
 	t.call_expr_depth++
 	call := t.transform_call_expr_inner(id, node)
 	t.call_expr_depth--
+	t.fixed_array_arg_backings = outer_backings
 	if t.fixed_array_arg_writebacks.len == writebacks_start {
 		return call
 	}

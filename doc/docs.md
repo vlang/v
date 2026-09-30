@@ -1569,6 +1569,11 @@ println(anums) // => [1, 10, 100]
 println(typeof(anums).name) // => []int
 ```
 
+Whole fixed size arrays and their ranges can be passed to mutable array parameters.
+During an ordinary function call, overlapping arguments share their elements, and element
+writes are copied back to the fixed array afterward. Returned or stored array values retain
+heap storage after the fixed array goes out of scope.
+
 Note that slicing will cause the data of the fixed size array to be copied to
 the newly created ordinary array. The exception is a slice that is written to:
 passing it as a `mut` argument, or calling `sort()`, `sort_with_compare()` or
