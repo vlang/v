@@ -1132,12 +1132,30 @@ fn (mut tc TypeChecker) check_postfix_value_uses_preflight() {
 		if tc.file_has_global_receiver(file.name) {
 			continue
 		}
+		op := if node.op == .inc { '++' } else { '--' }
+		op_pos := tc.prefix_operator_pos(id, op)
+		// Like V1, only an operator that closes a call argument or an index, as in
+		// `f(x++)` or `a[x--]`, is reported; `n := count++` is a plain post-increment.
+		source := tc.source_texts_by_file[file.name] or { '' }
+		if !postfix_operator_closes_group(source, op_pos.end) {
+			continue
+		}
 		tc.cur_file = file.name
 		tc.cur_module = tc.file_modules[file.name] or { 'main' }
-		op := if node.op == .inc { '++' } else { '--' }
-		tc.record_warning_at(.assignment_mismatch, '`${op}` operator can only be used as a statement',
-			id, tc.prefix_operator_pos(id, op))
+		// V1 reports this from the parser, where only an explicit `-W` turns the
+		// warning into an error; `-prod` alone does not.
+		tc.record_warning_or_error_at(.assignment_mismatch, '`${op}` operator can only be used as a statement',
+			id, op_pos, tc.explicit_warns_are_errors)
 	}
+}
+
+// postfix_operator_closes_group reports whether the source after a postfix `++`/`--`
+// ending at `end` continues with `)` or `]`.
+fn postfix_operator_closes_group(source string, end int) bool {
+	if end < 0 || end >= source.len {
+		return false
+	}
+	return source[end] in [`)`, `]`]
 }
 
 // check_if_guard validates check if guard state for types.
