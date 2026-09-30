@@ -11388,6 +11388,7 @@ pub fn run(args []string) {
 			prepared_imports.capturing = false
 			prepared_imports.ready = true
 			prepared_imports.user_start = prepared_ast.nodes.len
+			prepared_imports.marker_imports = marker_imports_of(prepared_ast)
 			prepared_imports.native_include = ast_has_native_source_include(prepared_ast)
 			implicit_field_scan_index_append(prepared_ast, 0, prepared_ast.user_code_start, mut
 				prepared_imports.builtin_field_index)
@@ -19994,13 +19995,20 @@ fn (prepared &PreparedImports) logical_file_order(a &flat.FlatAst, cache_state &
 	for current.len > 0 {
 		mut next := []int{}
 		for marker in current {
-			for idx in marker .. region_ends[marker] {
-				node := a.nodes[idx]
-				if node.kind != .import_decl || node.value in parsed {
+			// An import spliced into the prepared modules moved their nodes.
+			imports := if prepared.shifted {
+				region_imports(a, marker, region_ends[marker])
+			} else {
+				prepared.marker_imports[marker] or {
+					region_imports(a, marker, region_ends[marker])
+				}
+			}
+			for imported in imports {
+				if imported in parsed {
 					continue
 				}
-				files := module_markers[node.value] or { continue }
-				parsed[node.value] = true
+				files := module_markers[imported] or { continue }
+				parsed[imported] = true
 				next << files
 			}
 		}
@@ -20011,6 +20019,34 @@ fn (prepared &PreparedImports) logical_file_order(a &flat.FlatAst, cache_state &
 		return none
 	}
 	return order
+}
+
+// region_imports returns the modules that the nodes of `a` from `start` up to
+// `end`, the region of a file, import, in their order.
+fn region_imports(a &flat.FlatAst, start int, end int) []string {
+	mut imports := []string{}
+	for idx in start .. end {
+		node := a.nodes[idx]
+		if node.kind == .import_decl {
+			imports << node.value
+		}
+	}
+	return imports
+}
+
+// marker_imports_of returns the modules that each file of `a` imports, by its
+// `.file` marker (see PreparedImports.marker_imports).
+fn marker_imports_of(a &flat.FlatAst) map[int][]string {
+	mut markers := []int{cap: a.file_node_ids.len / 2}
+	for k := 0; k + 1 < a.file_node_ids.len; k += 2 {
+		markers << int(a.file_node_ids[k])
+	}
+	mut imports := map[int][]string{}
+	for i, marker in markers {
+		end := if i + 1 < markers.len { markers[i + 1] } else { a.nodes.len }
+		imports[marker] = region_imports(a, marker, end)
+	}
+	return imports
 }
 
 // server_user_files lists the input's files as a check lists them, for a
@@ -20174,7 +20210,11 @@ mut:
 	// The prepared modules, in the order they were parsed.
 	regions []PreparedModule
 	// The modules a one-shot check takes as parsed before its first wave.
-	initial_parsed                map[string]bool
+	initial_parsed map[string]bool
+	// The modules that each file parsed by the preparation imports, by its
+	// `.file` marker: the order of the files looks for them in every check
+	// (see logical_file_order), and their nodes do not change.
+	marker_imports                map[int][]string
 	parsed_modules                map[string]bool
 	parsed_module_identities      map[string]string
 	parsed_identity_dirs          map[string]string

@@ -94,7 +94,26 @@ pub fn (mut tc TypeChecker) prepare_collect(a &flat.FlatAst) bool {
 	prepared.import_aliases = after.aliases.clone()
 	prepared.modules = after.modules.clone()
 	tc.index_prepared_names(a)
+	tc.prepare_for_checks(a)
 	return true
+}
+
+// prepare_for_checks does, once in the server, what each check would do again
+// for the prepared code. Every check asks of each struct whether it implements
+// IError (see ierror_impl_names): a prepared struct answers the same in all of
+// them, and the answer stays in the cache that the checks read below their own.
+// And the node-indexed caches get room for the nodes of the user's code, which
+// a check would otherwise add by copying them whole (see extend_node_caches).
+fn (mut tc TypeChecker) prepare_for_checks(a &flat.FlatAst) {
+	for name, _ in tc.structs {
+		// These two depend on the file and the module that ask.
+		if name !in ['Error', 'MessageError'] {
+			tc.named_type_compatible_with_ierror(name)
+		}
+	}
+	room := a.nodes.len + int_max(a.nodes.len, 1 << 20)
+	tc.reserve_transform_node_caches(room)
+	reserve_bool_cache(mut tc.lexical_smartcast_misses, room)
 }
 
 // index_prepared_names records what the scans for unused declarations look for
