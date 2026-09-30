@@ -2255,7 +2255,8 @@ fn (mut tc TypeChecker) check_general_match_branch_tail_types(id flat.NodeId, no
 		}
 		if actual is Void || actual is Unknown
 			|| tc.if_branch_type_compatible_with_context(actual, tail_id, expected)
-			|| (tc.type_compatible(actual, expected) && tc.type_compatible(expected, actual)) {
+			|| (tc.type_compatible(actual, expected) && tc.type_compatible(expected, actual))
+			|| tc.translated_char_pointer_expr_compatible(tail_id, actual, expected) {
 			continue
 		}
 		tc.record_match_branch_return_type_mismatch(tail_id, expected, actual)

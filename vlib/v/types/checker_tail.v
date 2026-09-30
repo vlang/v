@@ -20122,7 +20122,8 @@ fn (mut tc TypeChecker) check_if_expr(id flat.NodeId, node flat.Node) {
 		if tc.branch_has_value_tail(then_id) && tc.branch_has_value_tail(else_id)
 			&& !tc.if_branch_types_compatible(then_type, else_type, tc.branch_tail_is_array_literal(then_id), tc.branch_tail_is_array_literal(else_id))
 			&& !tc.if_branch_multi_return_compatible(then_type, then_id, else_type, else_id)
-			&& !tc.translated_numeric_expr_compatible(id, then_type, else_type) {
+			&& !tc.translated_numeric_expr_compatible(id, then_type, else_type)
+			&& !tc.translated_char_pointer_expr_compatible(id, then_type, else_type) {
 			if tc.if_branch_empty_array_compatible(then_type, then_id, else_type, else_id) {
 				return
 			}
