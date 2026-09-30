@@ -8771,10 +8771,10 @@ fn (mut t Transformer) scan_escape_pass(id flat.NodeId, mut amp_ptrs map[string]
 	if node.kind in [.fn_literal, .lambda_expr, .fn_decl] {
 		return
 	}
-	// Pointers whose value is a block or a branch (`p := unsafe { q := &local; q }`) take
-	// their sources again once the walk below has seen the statements in that value.
-	mut wrapper_value_names := []string{}
-	mut wrapper_value_ids := []flat.NodeId{}
+	// Value wrappers can occur anywhere in an initializer, including a struct field or
+	// collection element. Collect sources again after their local declarations are scanned.
+	mut assigned_value_names := []string{}
+	mut assigned_value_ids := []flat.NodeId{}
 	if node.kind in [.decl_assign, .assign] && node.children_count >= 2 {
 		mut declared_names := []string{}
 		mut i := 0
@@ -8828,10 +8828,8 @@ fn (mut t Transformer) scan_escape_pass(id flat.NodeId, mut amp_ptrs map[string]
 					add_escape_amp_source(mut amp_sources, lhs.value, source_name)
 					amp_ptrs[lhs.value] = true
 				}
-				if rhs.kind in [.block, .if_expr, .match_stmt, .or_expr, .paren] {
-					wrapper_value_names << lhs.value
-					wrapper_value_ids << rhs_id
-				}
+				assigned_value_names << lhs.value
+				assigned_value_ids << rhs_id
 			}
 			i += 2
 		}
@@ -8903,8 +8901,8 @@ fn (mut t Transformer) scan_escape_pass(id flat.NodeId, mut amp_ptrs map[string]
 	for i in 0 .. node.children_count {
 		t.scan_escape_pass(t.a.child(&node, i), mut amp_ptrs, mut amp_sources, mut ptr_aliases, mut method_value_receivers, mut closure_capture_aliases, mut interface_boxes, mut returned, mut local_stack_names, mut local_stack_added, can_clear_interface_boxes)
 	}
-	for k, name in wrapper_value_names {
-		for source_name in t.escape_aggregate_address_sources(wrapper_value_ids[k], amp_sources, ptr_aliases) {
+	for k, name in assigned_value_names {
+		for source_name in t.escape_aggregate_address_sources(assigned_value_ids[k], amp_sources, ptr_aliases) {
 			add_escape_amp_source(mut amp_sources, name, source_name)
 			amp_ptrs[name] = true
 		}
