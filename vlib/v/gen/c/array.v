@@ -1146,7 +1146,7 @@ fn (mut g FlatGen) ensure_thread_optional_arr_wait_fn(ret_type types.Type) strin
 	def.writeln('${result_ct} result = {.ok = true};')
 	value_ct := g.optional_payload_c_type(base_type)
 	if base_type !is types.Void {
-		def.writeln('result.value = array_new(sizeof(${value_ct}), a.len, a.len);')
+		def.writeln('Array values = array_new(sizeof(${value_ct}), a.len, a.len);')
 	}
 	def.writeln('for (int i = 0; i < a.len; i++) {')
 	def.writeln('__v_thread thread = ((__v_thread*)a.data)[i];')
@@ -1162,19 +1162,22 @@ fn (mut g FlatGen) ensure_thread_optional_arr_wait_fn(ret_type types.Type) strin
 		def.writeln('if (result.ok) result.err = item.err;')
 	}
 	def.writeln('result.ok = false;')
-	def.writeln('continue;')
 	def.writeln('}')
+	if base_type !is types.Void {
+		def.writeln('if (!result.ok) continue;')
+	}
 	if _ := array_fixed_type(base_type) {
-		def.writeln('memmove(&(((${value_ct}*)result.value.data)[i]), item.value, sizeof(${value_ct}));')
+		def.writeln('memmove(&(((${value_ct}*)values.data)[i]), item.value, sizeof(${value_ct}));')
 	} else if base_type !is types.Void {
-		def.writeln('((${value_ct}*)result.value.data)[i] = item.value;')
+		def.writeln('((${value_ct}*)values.data)[i] = item.value;')
 	}
 	def.writeln('}')
 	if base_type !is types.Void {
 		def.writeln('if (!result.ok) {')
-		def.writeln('array__free(&result.value);')
-		def.writeln('result.value = (Array){0};')
+		def.writeln('array__free(&values);')
+		def.writeln('return result;')
 		def.writeln('}')
+		def.writeln('result.value = values;')
 	}
 	def.writeln('return result;')
 	def.writeln('}')

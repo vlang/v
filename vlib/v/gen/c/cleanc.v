@@ -25206,7 +25206,7 @@ fn (mut g FlatGen) emit_const(name string, val_id flat.NodeId) {
 		// casts: GCC rejects the latter as non-constant when cached modules are
 		// linked separately.
 		g.writeln('MessageError ${object_name} = {.msg = ${message}};')
-		g.writeln('IError ${qname} = {._typ = ${type_id}, ._object = &${object_name}, .message = ${message}, .code = 0};')
+		g.writeln('IError ${qname} = {._typ = ${type_id}, ._object = &${object_name}};')
 		g.tc.cur_module = old_module
 		return
 	}

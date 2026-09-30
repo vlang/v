@@ -6172,10 +6172,6 @@ fn (mut g FlatGen) emit_interface_struct(name string) {
 	g.writeln('\t\t\tu32 _object_is_boxed : 1;')
 	g.writeln('\t\t};')
 	g.writeln('\t};')
-	if g.is_ierror_type_name(name) {
-		g.writeln('\tstring message;')
-		g.writeln('\tint code;')
-	}
 	for field in iface_fields {
 		mut ct := if field.typ is types.OptionType || field.typ is types.ResultType {
 			g.optional_type_name(field.typ)
@@ -6306,7 +6302,6 @@ fn (mut g FlatGen) struct_decls() {
 		remaining.delete('string')
 		remaining_cnames.delete('string')
 	}
-	mut has_ierror := false
 	for name in interface_names {
 		if name !in iface_remaining {
 			continue
@@ -6316,14 +6311,12 @@ fn (mut g FlatGen) struct_decls() {
 			emitted['IError'] = true
 			iface_remaining.delete(name)
 			remaining_cnames.delete('IError')
-			has_ierror = true
 			break
 		}
 	}
 	if !incremental_support_only {
-		err_field := if has_ierror { 'IError err; ' } else { '' }
-		g.writeln('typedef struct __v_option { bool ok; int value; } __v_option;')
-		g.writeln('typedef struct __v_result { bool ok; ${err_field}int value; } __v_result;')
+		g.write_optional_typedef('__v_option', 'int')
+		g.write_optional_typedef('__v_result', 'int')
 		g.writeln('')
 	}
 	if g.has_builtins && 'array' in remaining {

@@ -4886,6 +4886,9 @@ An `IError` may still be an ordinary Option payload, for example `?IError`.
 
 With the C backend, Options store their payload inline. Wrapping a value or returning `none`
 does not allocate; the payload itself can require allocation, as with arrays or interface values.
+Results also store their payload inline, sharing storage between the value and error.
+The success flag determines which is valid. An `IError` references its concrete error object;
+`msg()` and `code()` dispatch to that object. Creating an error object may allocate.
 
 The amount of work required to "upgrade" a function to an option/result function is minimal;
 you have to add a `?` or `!` to the return type and return `none` or an error (respectively)

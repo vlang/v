@@ -38,33 +38,6 @@ pub interface IError {
 	code() int
 }
 
-struct _result {
-	is_error bool
-	err      IError = none__
-	// Data is trailing after err
-	// and is not included in here but in the
-	// derived Result_xxx types
-}
-
-fn _result_ok(data voidptr, mut res _result, size int) {
-	unsafe {
-		*res = _result{}
-		// use err to get the end of ResultBase and then memcpy into it
-		vmemcpy(&u8(&res.err) + sizeof(IError), data, size)
-	}
-}
-
-fn _result_clone(current &_result, mut res _result, size int) {
-	unsafe {
-		*res = _result{
-			is_error: current.is_error
-			err:      current.err
-		}
-		// use err to get the end of ResultBase and then memcpy into it
-		vmemcpy(&u8(&res.err) + sizeof(IError), &u8(&current.err) + sizeof(IError), size)
-	}
-}
-
 // str returns the message of IError.
 pub fn (err IError) str() string {
 	if err is None__ {
@@ -161,13 +134,6 @@ struct Option {
 
 struct _option {
 	state u8
-}
-
-@[markused]
-fn _result_ok_markused() {
-	mut res := _result{}
-	// Keep _result_ok emitted for code that constructs Result directly.
-	_result_ok(unsafe { nil }, mut res, 0)
 }
 
 //

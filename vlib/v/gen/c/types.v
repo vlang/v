@@ -1455,14 +1455,19 @@ fn (mut g FlatGen) emit_optional_typedef(opt_name string, val_type string) bool 
 	if bare_val_type.starts_with('_fn_ptr_') {
 		g.ensure_fn_ptr_typedef_by_name(bare_val_type)
 	}
-	err_field := if opt_name.starts_with('__v_result_') && g.has_ierror_interface() {
-		'IError err; '
-	} else {
-		''
-	}
-	g.writeln('typedef struct ${opt_name} { bool ok; ${err_field}${val_type} value; } ${opt_name};')
+	g.write_optional_typedef(opt_name, val_type)
 	g.emitted_optional_types[opt_name] = true
 	return true
+}
+
+fn (mut g FlatGen) write_optional_typedef(name string, value_type string) {
+	is_result := name == '__v_result' || name.starts_with('__v_result_')
+	payload := if is_result && g.has_ierror_interface() {
+		'union { IError err; ${value_type} value; };'
+	} else {
+		'${value_type} value;'
+	}
+	g.writeln('typedef struct ${name} { bool ok; ${payload} } ${name};')
 }
 
 fn (g &FlatGen) is_known_sum_c_type(c_type string) bool {

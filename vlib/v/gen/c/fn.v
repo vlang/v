@@ -6682,7 +6682,6 @@ fn (mut g FlatGen) trim_defers(start int) {
 fn (mut g FlatGen) gen_ierror_from_error_call(node flat.Node) {
 	fn_node := g.a.child_node(&node, 0)
 	type_id := g.ierror_type_id_for_pattern('MessageError')
-	empty_sid := g.intern_string('')
 	g.write('(IError){._typ = ${type_id}, ._object = (MessageError*)memdup(&(MessageError){.msg = ')
 	if node.children_count > 1 {
 		g.gen_expr(g.a.child(&node, 1))
@@ -6697,7 +6696,7 @@ fn (mut g FlatGen) gen_ierror_from_error_call(node flat.Node) {
 	}
 	// The boxed MessageError owns the payload; semantic consumers use dynamic dispatch.
 	g.write('}, sizeof(MessageError)), ._object_is_boxed = true')
-	g.write(', .message = _str_${empty_sid}, .code = 0}')
+	g.write('}')
 }
 
 // gen_optional_error_from_call converts gen optional error from call data for c.
@@ -15397,7 +15396,17 @@ fn (mut g FlatGen) gen_flag_enum_from_call(id flat.NodeId, fn_node flat.Node, no
 		}
 		valid_expr = '(${values.join(' || ')})'
 	}
-	g.write('({ u64 ${value_tmp} = (u64)(${arg}); bool ${ok_tmp} = ${valid_expr}; (${ct}){.ok = ${ok_tmp}, .value = (${value_ct})(${ok_tmp} ? (${storage_ct})${value_tmp} : (${storage_ct})0), .err = (IError){._typ = 0, ._object = NULL, .message = (string){.str = (u8*)"invalid value", .len = 13, .is_lit = 1}, .code = 0}}; })')
+	error_type_id := g.ierror_type_id_for_pattern('MessageError')
+	message := 'invalid value'
+	g.write('({ u64 ${value_tmp} = (u64)(${arg}); ')
+	g.write('static MessageError _enum_error = {.msg = {')
+	g.write('"${message}", ${message.len}, 1}}; ')
+	g.write('bool ${ok_tmp} = ${valid_expr}; ')
+	g.write('${ok_tmp} ? (${ct}){.ok = true, ')
+	g.write('.value = (${value_ct})(${storage_ct})${value_tmp}} : ')
+	g.write('(${ct}){.ok = false, .err = (IError){')
+	g.write('._typ = ${error_type_id}, ._object = &_enum_error}}; })')
+
 	return true
 }
 

@@ -1614,7 +1614,7 @@ fn (mut g FlatGen) gen_ownership_drop_value_inner(typ types.Type, expr string, d
 }
 
 // gen_ownership_drop_result_error destroys the owned IError stored by a failed result.
-// Direct error messages and owned concrete objects are released. Borrowed pointer-backed
+// Owned concrete objects are released. Borrowed pointer-backed
 // interfaces and the process-wide none and error-sentinel objects remain untouched.
 fn (mut g FlatGen) gen_ownership_drop_result_error(expr string, depth int, mut expanding map[string]bool) {
 	object := '((${expr})._object)'
@@ -1622,7 +1622,6 @@ fn (mut g FlatGen) gen_ownership_drop_result_error(expr string, depth int, mut e
 	// declarations keep the two process-wide sentinel comparisons valid there.
 	g.writeln('extern IError builtin__none__;')
 	g.writeln('extern IError builtin__error_sentinel;')
-	g.writeln('string__free(&((${expr}).message));')
 	g.writeln('if ((${expr})._object_is_boxed && ${object} != NULL && ${object} != builtin__none__._object && ${object} != builtin__error_sentinel._object) {')
 	g.indent++
 	g.writeln('switch ((${expr})._typ) {')
@@ -1671,7 +1670,6 @@ fn (mut g FlatGen) gen_ownership_clone_ierror(id flat.NodeId) {
 	g.gen_expr(id)
 	g.writeln(';')
 	g.writeln('IError ${result} = ${source};')
-	g.writeln('${result}.message = string__clone(${source}.message);')
 	g.writeln('if (${object} != NULL && ${object} != builtin__none__._object && ${object} != builtin__error_sentinel._object) {')
 	g.indent++
 	g.writeln('switch (${source}._typ) {')
@@ -2486,17 +2484,6 @@ fn (mut g FlatGen) gen_select_receive_interface_value(expr string, actual types.
 	type_id := g.iface_type_id_for_concrete(iface.name, actual_clean)
 	ct := g.tc.c_type(iface)
 	concrete_ct := g.tc.c_type(actual_base)
-	if g.is_ierror_type_name(iface.name) {
-		empty_sid := g.intern_string('')
-		object := if actual is types.Pointer {
-			expr
-		} else {
-			'memdup(&${expr}, sizeof(${concrete_ct}))'
-		}
-		boxed := actual !is types.Pointer
-		g.write('(${ct}){._typ = ${type_id}, ._object = ${object}, ._object_is_boxed = ${boxed}, .message = _str_${empty_sid}, .code = 0}')
-		return true
-	}
 	fields := g.interface_cached_fields(iface.name)
 	if fields.len > 0 {
 		tmp := g.tmp_count
@@ -5743,12 +5730,17 @@ fn (mut g FlatGen) gen_heap_local_address_expr(ret_id flat.NodeId, expected type
 // after a specialized generic callee and its caller resolve to different C wrapper names.
 fn (mut g FlatGen) optional_forward_return_abi_wrap_expr(source_ct string, expected_ct string, base types.Type, expr string) string {
 	tmp := g.tmp_name()
+	failure := '(${expected_ct}){.ok = false${g.optional_error_field(expected_ct, tmp)}}'
+	prefix := '({ ${source_ct} ${tmp} = ${expr}; '
 	if _ := array_fixed_type(base) {
 		out := g.tmp_name()
-		return '({ ${source_ct} ${tmp} = ${expr}; ${expected_ct} ${out} = { .ok = ${tmp}.ok${g.optional_error_field(expected_ct, tmp)} }; if (${tmp}.ok) { memcpy(${out}.value, ${tmp}.value, sizeof(${out}.value)); } ${out}; })'
+		return prefix + '${expected_ct} ${out} = {.ok = ${tmp}.ok}; ' +
+			'if (${tmp}.ok) { ' +
+			'memcpy(${out}.value, ${tmp}.value, sizeof(${out}.value)); } ' +
+			'else { ${out} = ${failure}; } ${out}; })'
 	}
 	value := if base is types.Void { '' } else { ', .value = ${tmp}.value' }
-	return '({ ${source_ct} ${tmp} = ${expr}; (${expected_ct}){ .ok = ${tmp}.ok${g.optional_error_field(expected_ct, tmp)}${value} }; })'
+	return prefix + '${tmp}.ok ? (${expected_ct}){.ok = true${value}} : ${failure}; })'
 }
 
 // optional_forward_return_abi_expr resolves the source and destination ABI wrappers
@@ -9319,22 +9311,11 @@ fn (mut g FlatGen) gen_optional_abi_assignment(lhs_id flat.NodeId, rhs_id flat.N
 	if !g.type_names_match(lhs_base, rhs_base) {
 		return false
 	}
-	tmp := g.tmp_name()
-	out := g.tmp_name()
+	expr := g.expr_to_string_with_expected_type(rhs_id, rhs_type)
+	converted := g.optional_forward_return_abi_wrap_expr(source_ct,
+		destination_ct, lhs_base, expr)
 	g.gen_expr(lhs_id)
-	g.write(' = ({ ${source_ct} ${tmp} = ')
-	g.gen_expr_with_expected_type(rhs_id, rhs_type)
-	g.write('; ${destination_ct} ${out} = {.ok = ${tmp}.ok${g.optional_error_field(destination_ct, tmp)}}; ')
-	if lhs_base !is types.Void {
-		g.write('if (${tmp}.ok) { ')
-		if _ := array_fixed_type(lhs_base) {
-			g.write('memcpy(${out}.value, ${tmp}.value, sizeof(${out}.value));')
-		} else {
-			g.write('${out}.value = ${tmp}.value;')
-		}
-		g.write(' } ')
-	}
-	g.writeln('${out}; });')
+	g.writeln(' = ${converted};')
 	return true
 }
 
