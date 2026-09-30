@@ -82,6 +82,9 @@ fn (mut g FlatGen) optional_type_name(t types.Type) string {
 	} else if clean_type is types.ResultType {
 		base_type = clean_type.base_type
 	} else {
+		if clean_type is types.FnType {
+			return g.fn_ptr_type_key(clean_type)
+		}
 		if clean_type is types.MultiReturn {
 			// The checker-level name spells fn-type parts as `fn_ptr_void_void`;
 			// the emitted typedef uses the resolved `_fn_ptr_<hash>` form.

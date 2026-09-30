@@ -4475,7 +4475,6 @@ mut:
 	prepared           bool
 	ptypes             []types.Type
 	shared_params      []bool
-	fn_ptr_ctypes      []string
 	return_type        types.Type = types.Type(types.void_)
 	decl_is_variadic   bool
 	first_param_is_mut bool
@@ -4527,7 +4526,6 @@ fn (mut g FlatGen) compute_collect_gen_fn_prep(node flat.Node, module_name strin
 	param_cap := if node.children_count < 64 { int(node.children_count) } else { 64 }
 	mut ptypes := []types.Type{cap: param_cap}
 	mut shared_params := []bool{}
-	mut fn_ptr_ctypes := []string{}
 	mut decl_is_variadic := false
 	mut first_param_is_mut := false
 	mut seen_param := false
@@ -4589,9 +4587,6 @@ fn (mut g FlatGen) compute_collect_gen_fn_prep(node flat.Node, module_name strin
 			seen_param = true
 		}
 		ptypes << pt
-		if pt is types.FnType {
-			fn_ptr_ctypes << g.tc.c_type(pt)
-		}
 	}
 	ptypes = g.fn_param_types_with_implicit_veb_ctx(node, ptypes)
 	if shared_params.len > 0 {
@@ -4602,7 +4597,6 @@ fn (mut g FlatGen) compute_collect_gen_fn_prep(node flat.Node, module_name strin
 		prepared:           true
 		ptypes:             ptypes
 		shared_params:      shared_params
-		fn_ptr_ctypes:      fn_ptr_ctypes
 		return_type:        return_type
 		decl_is_variadic:   decl_is_variadic
 		first_param_is_mut: first_param_is_mut
@@ -4717,9 +4711,8 @@ fn (mut g FlatGen) collect_gen_info(no_parallel bool) {
 			first_param_is_mut := prep.first_param_is_mut
 			g.tc.cur_file = cur_file
 			g.tc.cur_module = cur_module
-			for ct in prep.fn_ptr_ctypes {
-				g.resolve_fn_ptr_type(ct)
-			}
+			// Register callback typedefs from the completed declaration tables in
+			// preseed_fn_signature_fn_ptr_types, after enum backing types are known.
 			if profile {
 				ci_ptypes_ns += time.sys_mono_now() - ci_p0
 			}

@@ -4056,6 +4056,9 @@ example:
 type Filter = fn (string) string
 ```
 
+Function signatures can include fixed-size arrays, pointers to fixed-size arrays, and other
+function types. Arrays of explicitly backed enums retain their element type in these signatures.
+
 This works like any other type - for example, a function can accept an
 argument of a function type:
 

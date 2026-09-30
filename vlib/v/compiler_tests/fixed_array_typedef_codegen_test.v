@@ -405,3 +405,90 @@ fn main() {
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space().int() > 0, run.output
 }
+
+fn test_backed_enum_callbacks_are_passed_and_invoked() {
+	v3_bin := fixed_array_build_v3()
+	root := fixed_array_write_project('enum_callback_calls', 'module fixture
+pub enum Mode as i32 {
+	one = 7
+	two = 19
+}
+', '')
+	defer {
+		os.rm(v3_bin) or {}
+		os.rmdir_all(root) or {}
+	}
+	header := os.join_path(root, 'callbacks.h')
+	os.write_file(header, '#include <stdint.h>
+static int32_t foreign_invoke(int32_t (*cb)(int32_t*)) {
+	int32_t modes[2] = {7, 19};
+	return cb(modes);
+}
+static int32_t foreign_first(int32_t* modes) {
+	return modes[0] + modes[1];
+}
+static int32_t foreign_nested(int32_t (*cb)(int32_t (*)(int32_t*))) {
+	return cb(foreign_first);
+}
+') or { panic(err) }
+	os.write_file(os.join_path(root, 'main.v'), 'module main
+import fixture
+#insert "${header}"
+
+type Callback = fn (modes [2]fixture.Mode) int
+type NestedCallback = fn (inner Callback) int
+
+fn first(modes [2]fixture.Mode) int {
+	return int(modes[0]) + int(modes[1])
+}
+fn invoke(cb fn (modes [2]fixture.Mode) int) int {
+	return cb([fixture.Mode.one, fixture.Mode.two]!)
+}
+fn forward(cb Callback) int {
+	return invoke(cb) + 1
+}
+fn nested(cb fn (inner fn (modes [2]fixture.Mode) int) int) int {
+	return cb(first)
+}
+fn first_pointer(modes &[2]fixture.Mode) int {
+	return int(modes[0]) + int(modes[1])
+}
+fn invoke_pointer(cb fn (modes &[2]fixture.Mode) int) int {
+	mut modes := [fixture.Mode.one, fixture.Mode.two]!
+	return cb(&modes)
+}
+fn make_modes() [2]fixture.Mode {
+	return [fixture.Mode.one, fixture.Mode.two]!
+}
+fn invoke_factory(cb fn () [2]fixture.Mode) int {
+	modes := cb()
+	return int(modes[0]) + int(modes[1])
+}
+fn C.foreign_invoke(cb fn (modes [2]fixture.Mode) i32) i32
+fn C.foreign_nested(cb fn (inner fn (modes [2]fixture.Mode) i32) i32) i32
+fn c_first(modes [2]fixture.Mode) i32 {
+	return i32(modes[0]) + i32(modes[1])
+}
+fn c_forward(cb fn (modes [2]fixture.Mode) i32) i32 {
+	return cb([fixture.Mode.one, fixture.Mode.two]!) + 1
+}
+fn main() {
+	assert invoke(first) == 26
+	assert invoke(Callback(first)) == 26
+	assert nested(forward) == 27
+	assert nested(NestedCallback(forward)) == 27
+	assert invoke_pointer(first_pointer) == 26
+	assert invoke_factory(make_modes) == 26
+	assert C.foreign_invoke(c_first) == 26
+	assert C.foreign_nested(c_forward) == 27
+}
+') or { panic(err) }
+	exe_suffix := $if windows { '.exe' } $else { '' }
+	bin := os.join_path(root, 'out${exe_suffix}')
+	compile := os.execute('${os.quoted_path(v3_bin)} -b c -o ${os.quoted_path(bin)} ${os.quoted_path(root)}')
+	assert compile.exit_code == 0, compile.output
+	generated := os.read_file(bin + '.c') or { panic(err) }
+	assert !generated.contains('Array_fixed_int_2'), generated
+	run := os.execute(os.quoted_path(bin))
+	assert run.exit_code == 0, run.output
+}

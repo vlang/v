@@ -14324,7 +14324,7 @@ fn (mut g FlatGen) callback_c_type(typ types.Type) string {
 	mut ct := if typ is types.OptionType || typ is types.ResultType {
 		g.optional_type_name(typ)
 	} else {
-		g.tc.c_type(typ)
+		g.fn_ptr_signature_type(typ) or { g.tc.c_type(typ) }
 	}
 	if ct.starts_with('fn_ptr:') {
 		ct = g.resolve_fn_ptr_type(ct)
@@ -18895,6 +18895,9 @@ const c_static_helper_symbols = {
 // `fn (voidptr, int, int)` keeps its `int` arguments, since C invokes it with
 // 32-bit ints).
 fn (mut g FlatGen) c_extern_interop_type_name(t types.Type) ?string {
+	if t is types.ArrayFixed {
+		return g.fixed_array_c_type(t)
+	}
 	if t is types.Primitive {
 		if t.size == 0 && t.props.has(.integer) && !t.props.has(.unsigned) {
 			return 'int'
@@ -20026,7 +20029,7 @@ fn (mut g FlatGen) write_fn_node_params(node flat.Node) {
 		} else if type_is_optional_result(effective_pt) {
 			g.optional_type_name(effective_pt)
 		} else {
-			g.tc.c_type(effective_pt)
+			g.fn_ptr_signature_type(effective_pt) or { g.tc.c_type(effective_pt) }
 		}
 		if ct.starts_with('fn_ptr:') {
 			g.write(g.resolve_fn_ptr_type(ct))
@@ -20147,7 +20150,7 @@ fn (mut g FlatGen) write_c_fn_node_params(node flat.Node) {
 		ct := if pt is types.OptionType || pt is types.ResultType {
 			g.optional_type_name(pt)
 		} else {
-			g.tc.c_type(pt)
+			g.fn_ptr_signature_type(pt) or { g.tc.c_type(pt) }
 		}
 		if written > 0 {
 			g.write(', ')
@@ -20527,25 +20530,28 @@ fn (mut g FlatGen) register_fn_ptr_type(typ string) string {
 
 // fn_ptr_type_key returns the normalized key used for function-pointer typedefs.
 fn (mut g FlatGen) fn_ptr_type_key(typ types.FnType) string {
-	ret := g.fn_ptr_fixed_array_type(typ.return_type) or { g.tc.c_type(typ.return_type) }
+	ret := g.fn_ptr_signature_type(typ.return_type) or { g.tc.c_type(typ.return_type) }
 	mut params := []string{}
 	for i in 0 .. typ.params.len {
 		param := fn_type_effective_param(typ, i)
-		params << g.fn_ptr_fixed_array_type(param) or { g.tc.c_type(param) }
+		params << g.fn_ptr_signature_type(param) or { g.tc.c_type(param) }
 	}
 	return naming.fn_ptr_encoded(ret, params)
 }
 
-// Preserve pointer depth while using the emitted name for fixed-array signature types.
-fn (mut g FlatGen) fn_ptr_fixed_array_type(typ types.Type) ?string {
+// fn_ptr_signature_type normalizes fixed arrays and nested callbacks while preserving pointer depth.
+fn (mut g FlatGen) fn_ptr_signature_type(typ types.Type) ?string {
+	if typ is types.FnType {
+		return g.fn_ptr_type_key(typ)
+	}
 	if typ is types.ArrayFixed {
 		return g.fixed_array_c_type(typ)
 	}
 	if typ is types.Pointer {
-		return g.fn_ptr_fixed_array_type(typ.base_type)? + '*'
+		return g.fn_ptr_signature_type(typ.base_type)? + '*'
 	}
 	if typ is types.Alias {
-		return g.fn_ptr_fixed_array_type(typ.base_type)
+		return g.fn_ptr_signature_type(typ.base_type)
 	}
 	return none
 }
