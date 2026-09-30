@@ -9098,7 +9098,7 @@ fn (t &Transformer) escape_value_tails(id flat.NodeId) []flat.NodeId {
 			}
 		}
 		.postfix {
-			if node.op in [.not, .question] && node.children_count > 0 {
+			if node.op == .not && node.children_count > 0 {
 				return t.escape_value_tails(t.a.child(&node, 0))
 			}
 		}
@@ -9193,7 +9193,7 @@ fn (t &Transformer) escape_aggregate_address_sources(id flat.NodeId, amp_sources
 			return escape_alias_sources(node.value, amp_sources, ptr_aliases)
 		}
 		.postfix {
-			if node.op in [.not, .question] && node.children_count > 0 {
+			if node.op == .not && node.children_count > 0 {
 				return t.escape_aggregate_address_sources(t.a.child(&node, 0), amp_sources, ptr_aliases)
 			}
 			return []string{}
@@ -9525,7 +9525,7 @@ fn (mut t Transformer) collect_return_escape_idents(id flat.NodeId, mut names ma
 			return
 		}
 		.postfix {
-			if node.op !in [.not, .question] {
+			if node.op != .not {
 				return
 			}
 		}
@@ -10408,7 +10408,7 @@ fn (t &Transformer) promoted_sizeof_value_type(node flat.Node) ?string {
 		return none
 	}
 	storage_type := t.var_type(name)
-	if storage_type.starts_with('&') {
+	if storage_type.starts_with('&') && t.is_fixed_array_type(storage_type[1..]) {
 		return storage_type[1..]
 	}
 	return none
