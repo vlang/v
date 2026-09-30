@@ -4227,6 +4227,9 @@ one
 
 Enums can be created from string or integer value and converted into string
 
+`Enum.from(value)` returns a Result. It can be forwarded directly from a function returning
+`!Enum`, preserving the enum value on success and the conversion error on failure.
+
 ```v
 enum Cycle {
 	one

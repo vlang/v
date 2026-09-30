@@ -902,25 +902,29 @@ fn (mut t Transformer) try_lower_enum_from_string_call(call_id flat.NodeId, _nod
 	}
 	t.pending_stmts << else_block
 
+	if info.is_result {
+		result_name := t.new_temp('enum_result')
+		t.pending_stmts << t.make_decl_assign_typed(result_name, t.make_optional_none(optional_type),
+			optional_type)
+		success := t.make_optional_some(t.make_ident(val_name), optional_type)
+		err_expr := t.make_call_typed('error', [t.make_string_literal('invalid value')], 'IError')
+		failure := t.make_optional_none_with_err(optional_type, err_expr)
+		t.pending_stmts << t.make_if(t.make_ident(ok_name),
+			t.make_block([t.make_assign(t.make_ident(result_name), success)]),
+			t.make_block([t.make_assign(t.make_ident(result_name), failure)]))
+		result := t.make_ident(result_name)
+		t.set_node_typ(int(result), optional_type)
+		return result
+	}
 	ok_field := t.make_sum_literal_field('ok', t.make_ident(ok_name), 'bool')
 	value_field := t.make_sum_literal_field('value', t.make_ident(val_name), info.enum_type)
-	mut fields := [ok_field, value_field]
-	if info.is_result {
-		err_name := t.new_temp('enum_error')
-		empty := t.make_struct_init('IError')
-		t.pending_stmts << t.make_decl_assign_typed(err_name, empty, 'IError')
-		err_expr := t.make_call_typed('error', [t.make_string_literal('invalid value')], 'IError')
-		failed := t.make_prefix(.not, t.make_ident(ok_name))
-		assignment := t.make_assign(t.make_ident(err_name), err_expr)
-		t.pending_stmts << t.make_if(failed, t.make_block([assignment]), t.make_empty())
-		fields << t.make_sum_literal_field('err', t.make_ident(err_name), 'IError')
-	}
 	start := t.a.children.len
-	t.a.children << fields
+	t.a.children << ok_field
+	t.a.children << value_field
 	return t.a.add_node(flat.Node{
 		kind:           .struct_init
 		children_start: start
-		children_count: flat.child_count(fields.len)
+		children_count: 2
 		value:          optional_type
 		typ:            optional_type
 	})
