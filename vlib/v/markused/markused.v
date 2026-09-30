@@ -8605,6 +8605,10 @@ fn (c &CallCollector) value_name_candidates(name string, cur_module string, impo
 
 // Resolve qualified identifiers throughout a type without changing its container syntax.
 fn (c &CallCollector) generic_factory_qualified_type_text(text string, id flat.NodeId, cur_module string, imports map[string]string) string {
+	return c.qualified_type_text_preserving_params(text, id, cur_module, imports, []string{})
+}
+
+fn (c &CallCollector) qualified_type_text_preserving_params(text string, id flat.NodeId, cur_module string, imports map[string]string, generic_params []string) string {
 	mut out := strings.new_builder(text.len)
 	mut i := 0
 	for i < text.len {
@@ -8616,7 +8620,11 @@ fn (c &CallCollector) generic_factory_qualified_type_text(text string, id flat.N
 		start := i
 		for i < text.len && (text[i].is_alnum() || text[i] in [`_`, `.`]) { i++ }
 		name := markused_resolve_imported_type_name(text[start..i], imports)
-		out.write_string(c.tc.qualify_type_name_at(name, id, cur_module))
+		out.write_string(if name in generic_params {
+			name
+		} else {
+			c.tc.qualify_type_name_at(name, id, cur_module)
+		})
 	}
 	return out.str()
 }
@@ -8681,7 +8689,7 @@ fn (c &CallCollector) collect_struct_default_calls(init &flat.Node, cur_module s
 			set_fields[field.value] = true
 		}
 	}
-	c.collect_struct_default_calls_from_info(info, set_fields, mut calls)
+	c.collect_struct_default_calls_from_info(info, value_struct_default_type_name(init_type), set_fields, mut calls)
 }
 
 // collect_omitted_params_default_calls marks the field-initializer calls of a
@@ -8745,8 +8753,10 @@ fn (c &CallCollector) collect_omitted_params_default_calls(call &flat.Node, call
 
 // collect_struct_default_calls_for_type supports collect_struct_default_calls_for_type handling.
 fn (c &CallCollector) collect_struct_default_calls_for_type(type_name string, cur_module string, imports map[string]string, mut calls []string) {
-	info := c.struct_decl_info_with_imports(type_name, cur_module, imports) or { return }
-	c.collect_struct_default_calls_from_info(info, map[string]bool{}, mut calls)
+	info := c.struct_decl_info_with_imports(types.generic_base_name(type_name), cur_module, imports) or {
+		return
+	}
+	c.collect_struct_default_calls_from_info(info, type_name, map[string]bool{}, mut calls)
 }
 
 // struct_decl_info supports struct decl info handling for CallCollector.
@@ -8762,56 +8772,72 @@ fn (c &CallCollector) struct_decl_info(type_name string, cur_module string) ?Str
 }
 
 // collect_struct_default_calls_from_info supports collect_struct_default_calls_from_info handling.
-fn (c &CallCollector) collect_struct_default_calls_from_info(info StructDeclInfo, provided map[string]bool, mut calls []string) {
-	mut active_defaults := map[int]bool{}
-	c.collect_struct_default_calls_from_info_guarded(info, provided, mut active_defaults, mut calls)
+fn (c &CallCollector) collect_struct_default_calls_from_info(info StructDeclInfo, struct_name string, provided map[string]bool, mut calls []string) {
+	mut active_defaults := map[string]bool{}
+	c.collect_struct_default_calls_from_info_guarded(info, struct_name, provided, mut active_defaults, mut calls)
 }
 
-fn (c &CallCollector) collect_struct_default_calls_from_info_guarded(info StructDeclInfo, provided map[string]bool, mut active_defaults map[int]bool, mut calls []string) {
+fn (c &CallCollector) collect_struct_default_calls_from_info_guarded(info StructDeclInfo, struct_name string, provided map[string]bool, mut active_defaults map[string]bool, mut calls []string) {
 	node := c.a.node(info.node_id)
 	imports := c.imports(info.import_context)
+	_, generic_args, _ := markused_generic_app_parts(struct_name)
+	generic_params := node.generic_params()
 	for i in 0 .. node.children_count {
 		field_id := c.a.child(node, i)
 		field := c.a.node(field_id)
 		if field.kind != .field_decl || field.value in provided {
 			continue
 		}
-		if active_defaults[int(field_id)] {
+		active_key := '${int(field_id)}:${struct_name}'
+		if active_defaults[active_key] {
 			continue
 		}
 		if field.children_count == 0 {
 			// A struct field without a default of its own is initialized with that
 			// struct's defaults, which the transformer only expands after markused.
-			active_defaults[int(field_id)] = true
-			field_type := c.value_type_in_source(field.typ, field, imports)
+			active_defaults[active_key] = true
+			field_type := c.specialized_struct_default_type(field.typ, field_id, info.module, imports, generic_args, generic_params)
 			c.collect_value_struct_default_calls(field_type, info.module, imports, mut active_defaults, mut calls)
-			active_defaults.delete(int(field_id))
+			active_defaults.delete(active_key)
 			continue
 		}
-		active_defaults[int(field_id)] = true
+		active_defaults[active_key] = true
 		default := c.a.child_node(field, 0)
 		if default.kind == .struct_init {
-			default_type := c.value_type_in_source(default.value, default, imports)
-			default_info := c.value_struct_decl_info(default_type, info.module, imports) or {
-				StructDeclInfo{}
-			}
-			if default_type is types.Struct && default_info.node_id == info.node_id {
-				mut nested_provided := map[string]bool{}
-				for j in 0 .. default.children_count {
-					explicit_field := c.a.child_node(default, j)
-					if explicit_field.kind == .field_init {
-						nested_provided[explicit_field.value] = true
+			default_type := c.specialized_struct_default_type(default.value, c.a.child(field, 0), info.module, imports, generic_args, generic_params)
+			if default_type is types.Struct {
+				if default_info := c.value_struct_decl_info(default_type, info.module, imports) {
+					mut nested_provided := map[string]bool{}
+					for j in 0 .. default.children_count {
+						explicit_field := c.a.child_node(default, j)
+						if explicit_field.kind == .field_init {
+							nested_provided[explicit_field.value] = true
+						}
+						c.collect_calls(explicit_field, info.module, imports, '', '', mut calls)
 					}
-					c.collect_calls(explicit_field, info.module, imports, '', '', mut calls)
+					c.collect_struct_default_calls_from_info_guarded(default_info, value_struct_default_type_name(default_type), nested_provided, mut active_defaults, mut calls)
+					active_defaults.delete(active_key)
+					continue
 				}
-				c.collect_struct_default_calls_from_info_guarded(info, nested_provided, mut active_defaults, mut calls)
-				active_defaults.delete(int(field_id))
-				continue
 			}
 		}
 		c.collect_calls(field, info.module, imports, '', '', mut calls)
-		active_defaults.delete(int(field_id))
+		active_defaults.delete(active_key)
 	}
+}
+
+// specialized_struct_default_type substitutes arguments without rebasing their module ownership.
+fn (c &CallCollector) specialized_struct_default_type(type_text string, id flat.NodeId, cur_module string, imports map[string]string, generic_args []string, generic_params []string) types.Type {
+	if generic_args.len == 0 || generic_args.len != generic_params.len {
+		return c.value_type_in_source(type_text, c.a.node(id), imports)
+	}
+	// Qualify declaration-owned types before inserting semantic arguments from the caller.
+	declared_type := c.qualified_type_text_preserving_params(type_text, id, cur_module, imports, generic_params)
+	substituted_type := types.subst_generic_text(declared_type, generic_args, generic_params)
+	// Canonical bare argument names belong to main; protect them from an imported declaration's scope.
+	qualified_type := c.generic_factory_qualified_type_text(substituted_type, id, 'main', map[string]string{})
+	// All names are semantic now; no declaration-file import may capture them.
+	return types.unalias_type(c.tc.parse_resolution_type_in_file(qualified_type, ''))
 }
 
 // value_type_in_source resolves a value's semantic type in its source context.
@@ -8826,6 +8852,23 @@ fn (c &CallCollector) value_type_in_source(type_text string, node &flat.Node, im
 
 // value_struct_decl_info resolves structs initialized by a semantic value type.
 fn (c &CallCollector) value_struct_decl_info(typ types.Type, cur_module string, imports map[string]string) ?StructDeclInfo {
+	struct_name := value_struct_default_type_name(typ)
+	if struct_name.len == 0 {
+		return none
+	}
+	base_name := types.generic_base_name(struct_name)
+	// Semantic bare names belong to their registered module, even when substituted
+	// into an imported generic declaration with a same-named struct of its own.
+	owner := if !base_name.contains('.') {
+		c.tc.struct_modules[base_name] or { cur_module }
+	} else {
+		cur_module
+	}
+	return c.struct_decl_info_with_imports(base_name, owner, imports)
+}
+
+// value_struct_default_type_name preserves the specialization initialized by a value type.
+fn value_struct_default_type_name(typ types.Type) string {
 	mut value_type := types.unalias_type(typ)
 	// Fixed arrays initialize their elements; dynamic containers remain empty.
 	for value_type is types.ArrayFixed {
@@ -8833,23 +8876,24 @@ fn (c &CallCollector) value_struct_decl_info(typ types.Type, cur_module string, 
 	}
 	// Preserve reference, option and result wrappers while unwrapping aliases.
 	if value_type !is types.Struct {
-		return none
+		return ''
 	}
-	return c.struct_decl_info_with_imports(types.generic_base_name(value_type.name), cur_module, imports)
+	return value_type.name
 }
 
 // collect_value_struct_default_calls collects field defaults for struct values.
 // References, options, dynamic containers and function types have no implicit struct defaults.
-fn (c &CallCollector) collect_value_struct_default_calls(typ types.Type, cur_module string, imports map[string]string, mut active_defaults map[int]bool, mut calls []string) {
+fn (c &CallCollector) collect_value_struct_default_calls(typ types.Type, cur_module string, imports map[string]string, mut active_defaults map[string]bool, mut calls []string) {
 	info := c.value_struct_decl_info(typ, cur_module, imports) or { return }
+	struct_name := value_struct_default_type_name(typ)
 	// A default can create more values of its own struct (`next []Node = []Node{len: 1}`),
-	// so expand each struct once per collected body. `@` starts no symbol name.
-	expanded_marker := '@markused.struct_defaults:${int(info.node_id)}'
+	// so expand each specialization once per collected body. `@` starts no symbol name.
+	expanded_marker := '@markused.struct_defaults:${int(info.node_id)}:${struct_name}'
 	if expanded_marker in calls {
 		return
 	}
 	calls << expanded_marker
-	c.collect_struct_default_calls_from_info_guarded(info, map[string]bool{}, mut active_defaults, mut calls)
+	c.collect_struct_default_calls_from_info_guarded(info, struct_name, map[string]bool{}, mut active_defaults, mut calls)
 }
 
 fn (c &CallCollector) collect_array_default_calls(node &flat.Node, cur_module string, imports map[string]string, mut calls []string) {
@@ -8883,7 +8927,7 @@ fn (c &CallCollector) collect_array_default_calls(node &flat.Node, cur_module st
 		}
 		c.value_type_in_source(array_init_element_type_text(node), node, imports)
 	}
-	mut element_defaults := map[int]bool{}
+	mut element_defaults := map[string]bool{}
 	c.collect_value_struct_default_calls(element_type, cur_module, imports, mut element_defaults, mut calls)
 }
 

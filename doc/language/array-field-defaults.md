@@ -19,3 +19,10 @@ Aliases to fixed arrays initialize their elements, including when used as an omi
 For `type Rows = []Box`, `Rows{len: 1}` also initializes a `Box`, while `Rows{}` remains empty.
 Omitted fields or array elements whose aliases wrap references, options, or dynamic containers
 do not initialize the underlying struct.
+
+Omitted generic fields use their concrete type arguments.
+For `struct Outer[T] { inner T }`, `Outer[Box]{}` initializes `inner` with `Box`'s defaults.
+Nested generic values and fixed arrays also initialize their contained values.
+For `Outer[[]Box]{}`, the omitted field is an empty array and runs no `Box` defaults.
+A generic field initializer such as `outer Outer[T] = Outer[T]{}` also uses concrete arguments.
+Explicit fields in either constructor continue to replace those fields' defaults.
