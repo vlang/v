@@ -929,6 +929,7 @@ pub mut:
 	is_js_backend                 bool
 	warn_about_allocs             bool
 	warns_are_errors              bool
+	explicit_warns_are_errors     bool
 	notes_are_errors              bool
 	is_prod                       bool
 	suppress_dump_output          bool
@@ -1374,6 +1375,7 @@ fn (tc &TypeChecker) fork_program_view(ast &flat.FlatAst, direct_dependencies_by
 		nofloat:                               tc.nofloat
 		warn_about_allocs:                     tc.warn_about_allocs
 		warns_are_errors:                      tc.warns_are_errors
+		explicit_warns_are_errors:             tc.explicit_warns_are_errors
 		notes_are_errors:                      tc.notes_are_errors
 		is_prod:                               tc.is_prod
 		suppress_dump_output:                  tc.suppress_dump_output
@@ -2757,10 +2759,14 @@ fn (mut tc TypeChecker) record_notice_with_details_at(kind TypeErrorKind, msg st
 }
 
 fn (mut tc TypeChecker) record_warning_at(kind TypeErrorKind, msg string, node flat.NodeId, pos token.Pos) {
+	tc.record_warning_or_error_at(kind, msg, node, pos, tc.warns_are_errors)
+}
+
+fn (mut tc TypeChecker) record_warning_or_error_at(kind TypeErrorKind, msg string, node flat.NodeId, pos token.Pos, as_error bool) {
 	if !tc.should_diagnose(node) {
 		return
 	}
-	if tc.warns_are_errors {
+	if as_error {
 		if tc.errors.any(it.kind == kind && it.msg == msg && it.pos == pos) {
 			return
 		}
@@ -6199,7 +6205,9 @@ fn (mut tc TypeChecker) record_unused_import_warning(id flat.NodeId, node flat.N
 	} else {
 		'${node.typ} (${module_path})'
 	}
-	tc.record_warning_at(.unknown_ident, "module '${display_name}' is imported but never used. Use `import ${display_name} as _`, to silence this warning, or just remove the unused import line", id, tc.import_module_path_pos(node))
+	// V1 reports unused imports from the parser, where only an explicit `-W`
+	// turns a warning into an error; `-prod` alone does not.
+	tc.record_warning_or_error_at(.unknown_ident, "module '${display_name}' is imported but never used. Use `import ${display_name} as _`, to silence this warning, or just remove the unused import line", id, tc.import_module_path_pos(node), tc.explicit_warns_are_errors)
 }
 
 fn (tc &TypeChecker) node_has_unused_import_warning(id flat.NodeId) bool {

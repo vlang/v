@@ -11940,6 +11940,7 @@ pub fn run(args []string) {
 	pre_tc.is_js_backend = backend == 'js'
 	pre_tc.warn_about_allocs = prefs.warn_about_allocs
 	pre_tc.warns_are_errors = effective_warns_are_errors
+	pre_tc.explicit_warns_are_errors = warns_are_errors
 	pre_tc.notes_are_errors = notes_are_errors
 	pre_tc.is_prod = prefs.is_prod
 	pre_tc.building_v_fast = building_v && os.getenv('V3_NO_BUILDING_V_FAST_CHECK') == ''
