@@ -8748,7 +8748,7 @@ fn (mut t Transformer) scan_escape_pass(id flat.NodeId, mut amp_ptrs map[string]
 		return
 	}
 	node := t.a.nodes[int(id)]
-	if node.kind in [.if_expr, .match_stmt, .match_branch, .for_stmt] {
+	if node.kind in [.if_expr, .comptime_if, .match_stmt, .match_branch, .for_stmt] {
 		for i in 0 .. node.children_count {
 			t.scan_escape_pass(t.a.child(&node, i), mut amp_ptrs, mut amp_sources, mut ptr_aliases, mut method_value_receivers, mut closure_capture_aliases, mut interface_boxes, mut returned, mut local_stack_names, mut local_stack_added, false)
 		}
@@ -9085,7 +9085,7 @@ fn (t &Transformer) escape_selector_assign_retains_value(lhs_id flat.NodeId, amp
 }
 
 // escape_value_tails returns the expressions that give `id` its value: `id` itself, or
-// the tails of value blocks, lock bodies, and `if`, `match` and `or` branches.
+// the tails of value blocks, lock bodies, and runtime or compile-time branches.
 fn (t &Transformer) escape_value_tails(id flat.NodeId) []flat.NodeId {
 	if int(id) < 0 || int(id) >= t.a.nodes.len {
 		return []flat.NodeId{}
@@ -9110,7 +9110,7 @@ fn (t &Transformer) escape_value_tails(id flat.NodeId) []flat.NodeId {
 			}
 			return tails
 		}
-		.or_expr {
+		.or_expr, .comptime_if {
 			mut tails := []flat.NodeId{}
 			for i in 0 .. node.children_count {
 				tails << t.escape_value_tails(t.a.child(&node, i))
@@ -9167,7 +9167,7 @@ fn (t &Transformer) escape_aggregate_address_sources(id flat.NodeId, amp_sources
 	}
 	node := t.a.nodes[int(id)]
 	match node.kind {
-		.or_expr, .if_expr, .match_stmt, .block, .lock_expr {
+		.or_expr, .if_expr, .comptime_if, .match_stmt, .block, .lock_expr {
 			mut sources := []string{}
 			for tail_id in t.escape_value_tails(id) {
 				for source_name in t.escape_aggregate_address_sources(tail_id, amp_sources, ptr_aliases) {
