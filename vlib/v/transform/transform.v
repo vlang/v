@@ -9111,7 +9111,7 @@ fn (t &Transformer) escape_aggregate_address_sources(id flat.NodeId, amp_sources
 	}
 	node := t.a.nodes[int(id)]
 	match node.kind {
-		.or_expr {
+		.or_expr, .if_expr, .match_stmt, .block {
 			mut sources := []string{}
 			for tail_id in t.escape_value_tails(id) {
 				for source_name in t.escape_aggregate_address_sources(tail_id, amp_sources, ptr_aliases) {

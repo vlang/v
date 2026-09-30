@@ -109,3 +109,38 @@ fn test_option_and_result_appends_keep_operand_and_fallback_addresses() {
 	assert *values[3] == 84
 	assert *values[4] == 105
 }
+
+fn append_through_branch_aliases(mut values []&u64, data u64, choose_first bool) {
+	block_local := data
+	if_first := data * 2
+	if_second := data * 3
+	match_first := data * 4
+	match_second := data * 5
+	block_alias := unsafe { &block_local }
+	if_alias := if choose_first { &if_first } else { &if_second }
+	match_alias := match choose_first {
+		true { &match_first }
+		false { &match_second }
+	}
+	mut assigned_alias := &u64(unsafe { nil })
+	assigned_alias = if choose_first { &if_first } else { &if_second }
+	values << block_alias
+	values << if_alias
+	values << match_alias
+	values << assigned_alias
+}
+
+fn test_value_block_if_and_match_aliases_keep_appended_addresses() {
+	mut values := []&u64{}
+	append_through_branch_aliases(mut values, 21, true)
+	append_through_branch_aliases(mut values, 14, false)
+	_ = use_the_stack(10)
+	assert *values[0] == 21
+	assert *values[1] == 42
+	assert *values[2] == 84
+	assert *values[3] == 42
+	assert *values[4] == 14
+	assert *values[5] == 42
+	assert *values[6] == 70
+	assert *values[7] == 42
+}

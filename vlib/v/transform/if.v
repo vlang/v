@@ -952,7 +952,14 @@ fn (t &Transformer) node_type_with_smartcasts(id flat.NodeId, contexts []Smartca
 			if node.children_count == 0 {
 				return t.node_type(id)
 			}
-			child_type := t.node_type_with_smartcasts(t.a.child(&node, 0), contexts)
+			child_id := t.a.child(&node, 0)
+			child_type := t.node_type_with_smartcasts(child_id, contexts)
+			child := t.a.nodes[int(child_id)]
+			if node.op == .amp && child.kind == .ident && child.value in t.heaped_amp_locals
+				&& child_type.starts_with('&') {
+				// A promoted value already names its heap address, including in an if branch.
+				return child_type
+			}
 			if node.op == .amp && child_type.len > 0 {
 				return '&${child_type}'
 			}
