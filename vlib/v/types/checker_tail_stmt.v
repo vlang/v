@@ -17286,6 +17286,13 @@ fn (tc &TypeChecker) resolve_type_uncached(id flat.NodeId) Type {
 				}
 				base_id := tc.a.child(fn_node, 0)
 				base_type := tc.selector_fn_base_type(base_id) or { tc.resolve_type(base_id) }
+				// A method call on a value whose type is not known yet has no known
+				// return type either. Falling through would type it as a free function
+				// that shares the method's name (C `write` for `res.write()` with
+				// -target-libc-headers), and that wrong type would be memoized.
+				if base_type is Unknown {
+					return unknown_type('unknown receiver type for `.${fn_node.value}()`')
+				}
 				if fn_typ := tc.selector_field_fn_type(fn_node, base_type) {
 					return fn_typ.return_type
 				}
