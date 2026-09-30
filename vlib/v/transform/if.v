@@ -103,6 +103,12 @@ fn (mut t Transformer) try_expand_if_guard(_id flat.NodeId, node flat.Node) ?[]f
 	t.drain_pending(mut prelude)
 	tmp_decl := t.make_decl_assign_typed(tmp_name, rhs_expr, rhs_type)
 	ok_cond := t.make_selector(t.make_ident(tmp_name), 'ok', 'bool')
+	saved_var_types := t.var_types.clone()
+	heaped_state := t.save_heaped_local_state()
+	defer {
+		t.restore_var_types(saved_var_types)
+		t.restore_heaped_local_state(heaped_state)
+	}
 	mut value_decls := []flat.NodeId{}
 	if lhs_ids.len > 1 {
 		if rhs_types := t.multi_return_types_for_expr(rhs_id, lhs_ids.len) {
@@ -114,11 +120,13 @@ fn (mut t Transformer) try_expand_if_guard(_id flat.NodeId, node flat.Node) ?[]f
 				field_type := rhs_types[i].name()
 				payload := t.make_selector(t.make_ident(tmp_name), 'value', value_type)
 				field := t.make_selector(payload, 'arg${i}', field_type)
+				t.clear_heaped_local_binding(lhs_item.value)
 				value_decls << t.make_decl_assign_typed(lhs_item.value, field, field_type)
 			}
 		}
 	}
 	if value_decls.len == 0 && lhs.value != '_' && value_type != 'void' {
+		t.clear_heaped_local_binding(lhs.value)
 		value_decls << t.make_decl_assign_typed(lhs.value, t.make_selector(t.make_ident(tmp_name), 'value', value_type), value_type)
 	}
 
@@ -148,6 +156,8 @@ fn (mut t Transformer) try_expand_if_guard(_id flat.NodeId, node flat.Node) ?[]f
 		then_children << t.transform_stmt(then_id)
 	}
 	then_block := t.make_block_prefix_scope_drops(then_children)
+	t.restore_var_types(saved_var_types)
+	t.restore_heaped_local_state(heaped_state)
 
 	mut else_block := flat.empty_node
 	if node.children_count >= 3 {
@@ -189,8 +199,10 @@ fn (mut t Transformer) expand_channel_receive_if_guard(node flat.Node, lhs_name 
 	then_id := t.a.child(&node, 1)
 	then_node := t.a.nodes[int(then_id)]
 	saved_var_types := t.var_types.clone()
+	saved_heaped_state := t.save_heaped_local_state()
 	mut then_children := []flat.NodeId{}
 	if lhs_name != '_' {
+		t.clear_heaped_local_binding(lhs_name)
 		then_children << t.make_decl_assign_typed(lhs_name, t.make_ident(val_name), info.value_type)
 		t.set_var_type(lhs_name, info.value_type)
 	}
@@ -200,12 +212,14 @@ fn (mut t Transformer) expand_channel_receive_if_guard(node flat.Node, lhs_name 
 		then_children << t.transform_stmt(then_id)
 	}
 	t.restore_var_types(saved_var_types)
+	t.restore_heaped_local_state(saved_heaped_state)
 	then_block := t.make_block(then_children)
 
 	mut else_block := flat.empty_node
 	if node.children_count >= 3 {
 		else_id := t.a.child(&node, 2)
 		else_node := t.a.nodes[int(else_id)]
+		else_heaped_state := t.save_heaped_local_state()
 		else_block = if else_node.kind == .block {
 			t.make_block(t.transform_stmts(t.a.children_of(&else_node)))
 		} else if else_node.kind == .if_expr {
@@ -213,6 +227,7 @@ fn (mut t Transformer) expand_channel_receive_if_guard(node flat.Node, lhs_name 
 		} else {
 			t.make_block(t.transform_stmt(else_id))
 		}
+		t.restore_heaped_local_state(else_heaped_state)
 	}
 	t.pending_stmts = outer_pending
 	mut expanded := []flat.NodeId{cap: prelude.len + 1}
@@ -288,6 +303,10 @@ fn (t &Transformer) optional_type_name_from_type(typ types.Type) ?string {
 
 // transform_if_guard_else_block transforms transform if guard else block data for transform.
 fn (mut t Transformer) transform_if_guard_else_block(else_id flat.NodeId, else_node flat.Node, err_source string) flat.NodeId {
+	heaped_state := t.save_heaped_local_state()
+	defer {
+		t.restore_heaped_local_state(heaped_state)
+	}
 	mut children := []flat.NodeId{}
 	err_expr := if err_source != '' {
 		t.result_error_expr(t.make_ident(err_source))
@@ -355,12 +374,14 @@ fn (mut t Transformer) expand_map_index_if_guard(node flat.Node, lhs_name string
 	then_id := t.a.child(&node, 1)
 	then_node := t.a.nodes[int(then_id)]
 	saved_var_types := t.var_types.clone()
+	saved_heaped_state := t.save_heaped_local_state()
 	mut then_children := []flat.NodeId{}
 	// A discarded binding (`if _ := m[k]`) only tests key presence; the value is
 	// never read, so skip the value dereference. That deref would otherwise cast to
 	// `&${info.value_type}` and, when the value type is unresolved, emit an invalid
 	// `void __discard = *(void*)ptr`.
 	if lhs_name != '_' {
+		t.clear_heaped_local_binding(lhs_name)
 		t.set_var_type(lhs_name, guard_value_type)
 		then_children << t.make_decl_assign_typed(lhs_name, value_expr, guard_value_type)
 	}
@@ -371,6 +392,7 @@ fn (mut t Transformer) expand_map_index_if_guard(node flat.Node, lhs_name string
 	}
 	then_block := t.make_block_prefix_scope_drops(then_children)
 	t.restore_var_types(saved_var_types)
+	t.restore_heaped_local_state(saved_heaped_state)
 
 	mut else_block := flat.empty_node
 	if node.children_count >= 3 {
@@ -389,6 +411,10 @@ fn (mut t Transformer) expand_map_index_if_guard(node flat.Node, lhs_name string
 }
 
 fn (mut t Transformer) transform_map_index_if_guard_else_block(else_id flat.NodeId, else_node flat.Node, ptr_name string, value_type string) flat.NodeId {
+	heaped_state := t.save_heaped_local_state()
+	defer {
+		t.restore_heaped_local_state(heaped_state)
+	}
 	is_result := t.normalize_type_alias(value_type).starts_with('!')
 	err_scope := t.enter_implicit_err_scope(is_result)
 	mut children := []flat.NodeId{}
@@ -436,6 +462,7 @@ fn (mut t Transformer) expand_array_index_if_guard(node flat.Node, lhs_name stri
 	then_id := t.a.child(&node, 1)
 	then_node := t.a.nodes[int(then_id)]
 	saved_var_types := t.var_types.clone()
+	saved_heaped_state := t.save_heaped_local_state()
 	mut then_children := []flat.NodeId{}
 	mut guard_value_type := info.value_type
 	mut value_expr := t.make_index(array_expr, t.make_ident(index_name), info.value_type)
@@ -445,6 +472,7 @@ fn (mut t Transformer) expand_array_index_if_guard(node flat.Node, lhs_name stri
 		value_expr = t.make_selector(t.make_ident(opt_name), 'value', guard_value_type)
 		then_children << t.make_decl_assign_typed(opt_name, t.make_index(array_expr, t.make_ident(index_name), info.value_type), info.value_type)
 	}
+	t.clear_heaped_local_binding(lhs_name)
 	then_children << t.make_decl_assign_typed(lhs_name, value_expr, guard_value_type)
 	t.set_var_type(lhs_name, guard_value_type)
 	if then_node.kind == .block {
@@ -453,12 +481,14 @@ fn (mut t Transformer) expand_array_index_if_guard(node flat.Node, lhs_name stri
 		then_children << t.transform_stmt(then_id)
 	}
 	t.restore_var_types(saved_var_types)
+	t.restore_heaped_local_state(saved_heaped_state)
 	then_block := t.make_block_prefix_scope_drops(then_children)
 
 	mut else_block := flat.empty_node
 	if node.children_count >= 3 {
 		else_id := t.a.child(&node, 2)
 		else_node := t.a.nodes[int(else_id)]
+		else_heaped_state := t.save_heaped_local_state()
 		else_block = if else_node.kind == .block {
 			t.make_block(t.transform_stmts(t.a.children_of(&else_node)))
 		} else if else_node.kind == .if_expr {
@@ -466,6 +496,7 @@ fn (mut t Transformer) expand_array_index_if_guard(node flat.Node, lhs_name stri
 		} else {
 			t.make_block(t.transform_stmt(else_id))
 		}
+		t.restore_heaped_local_state(else_heaped_state)
 	}
 	mut selected_block := then_block
 	if t.is_optional_type_name(info.value_type) && then_children.len > 0 {
@@ -537,11 +568,14 @@ fn (mut t Transformer) if_expr_guard_result_type(node flat.Node) ?string {
 	rhs_type = t.qualify_optional_type(rhs_type)
 	value_type := t.optional_base_type(rhs_type)
 	saved_var_types := t.var_types.clone()
+	saved_heaped_state := t.save_heaped_local_state()
 	if lhs.value != '_' && value_type != 'void' {
+		t.clear_heaped_local_binding(lhs.value)
 		t.set_var_type(lhs.value, value_type)
 	}
 	then_type := t.stmt_value_type(t.a.child(&node, 1))
 	t.restore_var_types(saved_var_types)
+	t.restore_heaped_local_state(saved_heaped_state)
 
 	err_scope := t.enter_implicit_err_scope(rhs_type.starts_with('!'))
 	else_id := t.a.child(&node, 2)
@@ -1168,6 +1202,7 @@ fn (mut t Transformer) build_if_value_guard_chain(if_node flat.Node, target_name
 		lhs_ids << t.a.child(&cond, i)
 	}
 	saved_var_types := t.var_types.clone()
+	saved_heaped_state := t.save_heaped_local_state()
 	mut value_decls := []flat.NodeId{}
 	if lhs_ids.len > 1 {
 		if rhs_types := t.multi_return_types_for_expr(rhs_id, lhs_ids.len) {
@@ -1179,12 +1214,14 @@ fn (mut t Transformer) build_if_value_guard_chain(if_node flat.Node, target_name
 				field_type := rhs_types[i].name()
 				payload := t.make_selector(t.make_ident(tmp_name), 'value', value_type)
 				field := t.make_selector(payload, 'arg${i}', field_type)
+				t.clear_heaped_local_binding(lhs_item.value)
 				value_decls << t.make_decl_assign_typed(lhs_item.value, field, field_type)
 				t.set_var_type(lhs_item.value, field_type)
 			}
 		}
 	}
 	if value_decls.len == 0 {
+		t.clear_heaped_local_binding(lhs.value)
 		value_decls << t.make_decl_assign_typed(lhs.value, t.make_selector(t.make_ident(tmp_name), 'value', value_type), value_type)
 		t.set_var_type(lhs.value, value_type)
 	}
@@ -1195,6 +1232,7 @@ fn (mut t Transformer) build_if_value_guard_chain(if_node flat.Node, target_name
 	then_children << t.a.children_of(&t.a.nodes[int(then_block0)])
 	then_block := t.make_block_prefix_scope_drops(then_children)
 	t.restore_var_types(saved_var_types)
+	t.restore_heaped_local_state(saved_heaped_state)
 
 	else_id := t.a.child(&if_node, 2)
 	else_node := t.a.nodes[int(else_id)]
@@ -1231,9 +1269,11 @@ fn (mut t Transformer) build_map_index_if_value_guard_chain(if_node flat.Node, l
 	found_cond := t.make_infix(.ne, ptr_ident, t.a.add(.nil_literal))
 
 	saved_var_types := t.var_types.clone()
+	saved_heaped_state := t.save_heaped_local_state()
 	mut then_children := []flat.NodeId{}
 	if lhs_name != '_' {
 		ptr_value := t.make_prefix(.mul, t.make_cast('&${info.value_type}', t.make_ident(ptr_name), '&${info.value_type}'))
+		t.clear_heaped_local_binding(lhs_name)
 		then_children << t.make_decl_assign_typed(lhs_name, ptr_value, info.value_type)
 		t.set_var_type(lhs_name, info.value_type)
 	}
@@ -1242,6 +1282,7 @@ fn (mut t Transformer) build_map_index_if_value_guard_chain(if_node flat.Node, l
 	then_children << t.a.children_of(&t.a.nodes[int(then_block0)])
 	then_block := t.make_block_prefix_scope_drops(then_children)
 	t.restore_var_types(saved_var_types)
+	t.restore_heaped_local_state(saved_heaped_state)
 
 	else_id := t.a.child(&if_node, 2)
 	else_node := t.a.nodes[int(else_id)]
@@ -1271,6 +1312,7 @@ fn (mut t Transformer) build_array_index_if_value_guard_chain(if_node flat.Node,
 	found_cond := t.make_infix(.logical_and, lower_ok, upper_ok)
 
 	saved_var_types := t.var_types.clone()
+	saved_heaped_state := t.save_heaped_local_state()
 	mut then_children := []flat.NodeId{}
 	mut opt_decl := flat.empty_node
 	mut opt_name := ''
@@ -1283,6 +1325,7 @@ fn (mut t Transformer) build_array_index_if_value_guard_chain(if_node flat.Node,
 			opt_decl = t.make_decl_assign_typed(opt_name, t.make_index(array_expr, t.make_ident(index_name), info.value_type), info.value_type)
 			value = t.make_selector(t.make_ident(opt_name), 'value', value_type)
 		}
+		t.clear_heaped_local_binding(lhs_name)
 		then_children << t.make_decl_assign_typed(lhs_name, value, value_type)
 		t.set_var_type(lhs_name, value_type)
 	} else if t.is_optional_type_name(info.value_type) {
@@ -1294,6 +1337,7 @@ fn (mut t Transformer) build_array_index_if_value_guard_chain(if_node flat.Node,
 	then_children << t.a.children_of(&t.a.nodes[int(then_block0)])
 	then_block := t.make_block_prefix_scope_drops(then_children)
 	t.restore_var_types(saved_var_types)
+	t.restore_heaped_local_state(saved_heaped_state)
 
 	else_id := t.a.child(&if_node, 2)
 	else_node := t.a.nodes[int(else_id)]

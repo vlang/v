@@ -2689,6 +2689,7 @@ struct ImplicitErrScope {
 	var_types   []VarTypeBinding
 	smartcasts  []SmartcastContext
 	invalidated map[string]bool
+	heaped      HeapedLocalState
 }
 
 // enter_implicit_err_scope binds the implicit `err` of an `or`/`else` body. That `err`
@@ -2699,10 +2700,12 @@ fn (mut t Transformer) enter_implicit_err_scope(has_error bool) ImplicitErrScope
 		var_types:   t.var_types.clone()
 		smartcasts:  t.smartcast_stack.clone()
 		invalidated: t.invalidated_smartcasts.clone()
+		heaped:      t.save_heaped_local_state()
 	}
 	if !has_error {
 		return scope
 	}
+	t.clear_heaped_local_binding('err')
 	t.set_implicit_err_var_type()
 	if t.smartcast_stack.len > 0 {
 		t.smartcast_stack = smartcasts_without_binding(t.smartcast_stack, 'err')
@@ -2714,6 +2717,7 @@ fn (mut t Transformer) enter_implicit_err_scope(has_error bool) ImplicitErrScope
 // enter_implicit_err_scope; narrowing done inside the body does not leak out.
 fn (mut t Transformer) leave_implicit_err_scope(scope ImplicitErrScope) {
 	t.restore_var_types(scope.var_types)
+	t.restore_heaped_local_state(scope.heaped)
 	t.restore_shadowed_smartcast_state('err', scope.smartcasts, scope.invalidated)
 }
 
@@ -7262,6 +7266,12 @@ fn (mut t Transformer) restore_heaped_local_state(state HeapedLocalState) {
 	t.heaped_amp_locals = state.heaped_amp_locals.clone()
 	t.pointer_value_lvalues = state.pointer_value_lvalues.clone()
 	t.pointer_value_rvalues = state.pointer_value_rvalues.clone()
+}
+
+fn (mut t Transformer) clear_heaped_local_binding(name string) {
+	t.heaped_amp_locals.delete(name)
+	t.pointer_value_lvalues.delete(name)
+	t.pointer_value_rvalues.delete(name)
 }
 
 // transform_scope_stmts transforms the statements of a lexical scope; see
@@ -18976,6 +18986,7 @@ fn (mut t Transformer) transform_select_branch(id flat.NodeId, order_cases bool)
 				}
 			}
 			if recv_type.len > 0 {
+				t.clear_heaped_local_binding(bound_name)
 				t.set_var_type(bound_name, recv_type)
 			}
 		}
