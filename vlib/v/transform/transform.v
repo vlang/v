@@ -6626,6 +6626,11 @@ fn (t &Transformer) heapable_value_type(typ string) bool {
 		|| typ.starts_with('[') || typ == 'unknown' || typ == 'void' {
 		return false
 	}
+	// A `va_list` is initialized in place by `va_start` and is declared as the C object
+	// itself; a heap copy of it would not be the list the function iterates.
+	if typ == 'C.va_list' {
+		return false
+	}
 	// Function values are already pointers in C. `&callback` is accepted as the
 	// same callable value and must not move the function-pointer slot to the heap.
 	return isnil(t.tc) || types.unalias_type(t.tc.parse_type(typ)) !is types.FnType
@@ -14922,6 +14927,11 @@ fn (mut t Transformer) pointer_storage_expr_for_value_target(id flat.NodeId, tar
 		source = t.a.nodes[int(source_id)]
 	}
 	if source.kind != .ident || !t.pointer_value_rvalues[source.value] {
+		return none
+	}
+	if source.value in t.heaped_amp_locals {
+		// A local moved to the heap is read through its pointer wherever it is used; no
+		// typed context loads it, so its identifier lowering makes the load.
 		return none
 	}
 	storage_type := t.var_type(source.value)
