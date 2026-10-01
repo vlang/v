@@ -963,18 +963,26 @@ fn (mut t Transformer) lower_range_for_in(id flat.NodeId, node flat.Node, key_id
 	} else {
 		t.stable_expr_for_reuse(high_id)
 	}
-	loop_name := if key.value == '_' {
+	escaping_value := t.guard_value_needs_heap_storage(key.value, range_type)
+	loop_name := if escaping_value {
+		t.new_temp('range_index')
+	} else if key.value == '_' {
 		'__discard_${key.pos.id}_${key.pos.offset}_${key.pos.end}'
 	} else {
 		key.value
 	}
+	t.clear_heaped_local_binding(loop_name)
 	t.set_var_type(loop_name, range_type)
 	mut prefix := []flat.NodeId{}
 	t.drain_pending(mut prefix)
 	init := t.make_decl_assign_typed(loop_name, low, range_type)
 	cond := t.make_infix(.lt, t.make_ident(loop_name), high)
 	post := t.make_expr_stmt(t.make_postfix(t.make_ident(loop_name), .inc))
-	new_body := t.transform_stmts(body_ids)
+	mut new_body := []flat.NodeId{}
+	if escaping_value {
+		new_body << t.make_guard_value_decls(key.value, t.make_ident(loop_name), range_type)
+	}
+	new_body << t.transform_stmts(body_ids)
 	prefix << t.make_for_stmt(init, cond, post, new_body, node)
 	return prefix
 }
@@ -1018,15 +1026,20 @@ fn (mut t Transformer) lower_iterator_for_in(id flat.NodeId, node flat.Node, key
 	mut prefix := []flat.NodeId{}
 	t.drain_pending(mut prefix)
 	prefix << t.make_decl_assign_typed(iter_name, iter_expr, iter_type)
-	idx_name := if has_index && key.value == '_' { t.new_temp('for_idx') } else { key.value }
+	escaping_index := has_index && t.guard_value_needs_heap_storage(key.value, 'int')
+	idx_name := if has_index && (key.value == '_' || escaping_index) {
+		t.new_temp('for_idx')
+	} else {
+		key.value
+	}
 	init := if has_index {
+		t.clear_heaped_local_binding(idx_name)
 		t.set_var_type(idx_name, 'int')
 		t.make_decl_assign_typed(idx_name, t.make_int_literal(0), 'int')
 	} else {
 		t.make_empty()
 	}
 	elem_type := info.elem_type
-	t.set_var_type(elem_name, elem_type)
 	t.mark_fn_used_name(info.next_method)
 	next_receiver := if iter_type.trim_space().starts_with('&') {
 		t.make_ident(iter_name)
@@ -1039,12 +1052,15 @@ fn (mut t Transformer) lower_iterator_for_in(id flat.NodeId, node flat.Node, key
 	next_decl := t.make_decl_assign_typed(next_name, next_call, '?${elem_type}')
 	no_value := t.make_prefix(.not, t.make_selector(t.make_ident(next_name), 'ok', 'bool'))
 	break_if_done := t.make_if(no_value, t.make_block([t.a.add(.break_stmt)]), t.make_empty())
-	elem_decl := t.make_decl_assign_typed(elem_name, t.make_selector(t.make_ident(next_name),
+	elem_decls := t.make_guard_value_decls(elem_name, t.make_selector(t.make_ident(next_name),
 		'value', elem_type), elem_type)
 	mut loop_body := []flat.NodeId{}
 	loop_body << next_decl
 	loop_body << break_if_done
-	loop_body << elem_decl
+	if escaping_index {
+		loop_body << t.make_guard_value_decls(key.value, t.make_ident(idx_name), 'int')
+	}
+	loop_body << elem_decls
 	loop_body << t.transform_stmts(body_ids)
 	post := if has_index {
 		t.make_expr_stmt(t.make_postfix(t.make_ident(idx_name), .inc))
@@ -1195,7 +1211,8 @@ fn (mut t Transformer) lower_indexed_for_in(id flat.NodeId, node flat.Node, key_
 		}
 	}
 	mut idx_name := key.value
-	if !has_index || key.value == '_' {
+	escaping_index := has_index && t.guard_value_needs_heap_storage(key.value, 'int')
+	if !has_index || key.value == '_' || escaping_index {
 		idx_name = t.new_temp('for_idx')
 	}
 	mut elem_name := key.value
@@ -1209,6 +1226,7 @@ fn (mut t Transformer) lower_indexed_for_in(id flat.NodeId, node flat.Node, key_
 		}
 		elem_name = val.value
 	}
+	t.clear_heaped_local_binding(idx_name)
 	t.set_var_type(idx_name, 'int')
 	elem_is_mut := (node.op == .amp || container_is_explicit_reference)
 		&& actual_iter_type != 'string'
@@ -1223,7 +1241,6 @@ fn (mut t Transformer) lower_indexed_for_in(id flat.NodeId, node flat.Node, key_
 	elem_needs_ref := (elem_is_mut || interface_smartcast_ref)
 		&& !(container_is_explicit_reference && elem_keeps_value)
 	elem_var_type := if elem_needs_ref { '&${elem_type}' } else { elem_type }
-	t.set_var_type(elem_name, elem_var_type)
 	if elem_needs_ref && t.is_fixed_array_type(actual_iter_type) {
 		if direct_container := t.fixed_array_map_index_for_in_container(container_id, mut prefix) {
 			container = direct_container
@@ -1253,7 +1270,11 @@ fn (mut t Transformer) lower_indexed_for_in(id flat.NodeId, node flat.Node, key_
 		binding_clones = t.pending_stmts[pending_start..].clone()
 		t.pending_stmts = t.pending_stmts[..pending_start].clone()
 	}
-	elem_decl := t.make_decl_assign_typed(elem_name, elem_expr, elem_var_type)
+	mut index_decls := []flat.NodeId{}
+	if escaping_index {
+		index_decls << t.make_guard_value_decls(key.value, t.make_ident(idx_name), 'int')
+	}
+	elem_decls := t.make_guard_value_decls(elem_name, elem_expr, elem_var_type)
 	mut transformed_body := []flat.NodeId{}
 	if elem_is_mut && elem_needs_ref {
 		had_pointer_value_lvalue := t.pointer_value_lvalues[elem_name] or { false }
@@ -1275,11 +1296,12 @@ fn (mut t Transformer) lower_indexed_for_in(id flat.NodeId, node flat.Node, key_
 		transformed_body = t.transform_stmts(body_ids)
 	}
 	mut new_body := []flat.NodeId{}
+	new_body << index_decls
 	new_body << binding_clones
 	if elem_name != '_' {
 		// `for _ in a {}` only needs the length; loading every element would be a read
 		// of the elements that the race detector reports.
-		new_body << elem_decl
+		new_body << elem_decls
 	}
 	new_body << transformed_body
 	cleanup_target := if int(optional_container) >= 0 { optional_container } else { container }

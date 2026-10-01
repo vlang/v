@@ -187,3 +187,141 @@ fn test_appended_fixed_array_element_addresses_share_durable_storage_and_value_s
 	assert *values[0] == 55
 	assert *values[1] == 66
 }
+
+fn escape_decl_pair() (u64, u64) {
+	return 81, 82
+}
+
+@[noinline]
+fn append_multi_decl_addresses(mut out []&u64, first bool) {
+	a, b := escape_decl_pair()
+	out << &a
+	out << &b
+	c, d := u64(83), u64(84)
+	out << &c
+	out << &d
+	e, f := if first { u64(85), u64(86) } else { u64(87), u64(88) }
+	out << &e
+	out << &f
+	g, h := match first {
+		true { u64(89), u64(90) }
+		else { u64(91), u64(92) }
+	}
+	out << &g
+	out << &h
+}
+
+@[noinline]
+fn append_multi_shadow_addresses(mut out []&u64, target &u64) {
+	x := u64(93)
+	out << &x
+	{
+		x, old := target, &x
+		assert *x == 94
+		out << old
+	}
+}
+
+fn test_multi_declarations_keep_retained_binding_addresses() {
+	mut out := []&u64{}
+	append_multi_decl_addresses(mut out, true)
+	append_multi_decl_addresses(mut out, false)
+	target := u64(94)
+	append_multi_shadow_addresses(mut out, &target)
+	_ = use_the_stack(10)
+	assert out.map(*it) == [u64(81), 82, 83, 84, 85, 86, 89, 90, 81, 82, 83, 84, 87, 88, 91, 92,
+		93, 93]
+}
+
+struct EscapingValueIterator {
+	values []u64
+mut:
+	index int
+}
+
+fn (mut iter EscapingValueIterator) next() ?u64 {
+	if iter.index == iter.values.len {
+		return none
+	}
+	defer { iter.index++ }
+	return iter.values[iter.index]
+}
+
+@[noinline]
+fn append_for_in_binding_addresses(mut out []&u64, mut indices []&int) {
+	mut input := [u64(101), 102]
+	for i, value in input {
+		out << &value
+		indices << &i
+	}
+	for i, value in EscapingValueIterator{ values: [u64(103), 104] } {
+		out << &value
+		indices << &i
+	}
+	for value in 105 .. 107 {
+		indices << &value
+	}
+	for mut value in input {
+		out << &value
+		value += 10
+	}
+	assert input == [u64(111), 112]
+}
+
+fn test_for_in_values_and_indices_keep_retained_binding_addresses() {
+	mut out := []&u64{}
+	mut indices := []&int{}
+	append_for_in_binding_addresses(mut out, mut indices)
+	_ = use_the_stack(10)
+	assert out.map(*it) == [u64(101), 102, 103, 104, 111, 112]
+	assert indices.map(*it) == [0, 1, 0, 1, 105, 106]
+	assert out[0] != out[1]
+	assert indices[0] != indices[1]
+}
+
+@[noinline]
+fn append_select_binding_address(mut out []&u64, values chan u64) {
+	select {
+		value := <-values {
+			out << &value
+		}
+	}
+}
+
+fn test_select_receive_values_keep_retained_binding_addresses() {
+	mut out := []&u64{}
+	values := chan u64{cap: 2}
+	values <- 121
+	values <- 122
+	append_select_binding_address(mut out, values)
+	append_select_binding_address(mut out, values)
+	_ = use_the_stack(10)
+	assert out.map(*it) == [u64(121), 122]
+	assert out[0] != out[1]
+}
+
+struct HeapCaptureValue {
+mut:
+	value u64
+}
+
+fn test_heap_value_captures_snapshot_the_semantic_value() {
+	mut scalar := u64(131)
+	mut addresses := []&u64{}
+	addresses << &scalar
+	read_scalar := fn [scalar] () u64 {
+		return scalar
+	}
+	scalar = 132
+	assert read_scalar() == 131
+	assert *addresses[0] == 132
+	mut record := HeapCaptureValue{ value: 133 }
+	mut records := []&HeapCaptureValue{}
+	records << &record
+	read_record := fn [record] () u64 {
+		return record.value
+	}
+	record.value = 134
+	assert read_record() == 133
+	assert records[0].value == 134
+}
