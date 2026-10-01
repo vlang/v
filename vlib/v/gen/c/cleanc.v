@@ -16208,6 +16208,7 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 				types.Type(types.void_)
 			}
 			if node.op == .amp && fn_value_type is types.FnType {
+				operand_id, operand := g.unwrapped_fn_value_operand(child_id, child)
 				// A function value is already a C pointer, so `&` on one is a no-op
 				// wherever the context wants a callable: `Holder{ f: &local }` has to
 				// store the function, not the address of a stack slot that dies with
@@ -16217,16 +16218,16 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 				if g.context_wants_pointer_to_fn() {
 					// A bound method value (`obj.method`) is a selector without storage: it
 					// keeps the materialized copy below.
-					field_or_element := child.kind == .index
-						|| (child.kind == .selector && !g.tc.expr_is_method_value(child_id))
+					field_or_element := operand.kind == .index
+						|| (operand.kind == .selector && !g.tc.expr_is_method_value(operand_id))
 					if field_or_element || (g.expr_is_in_translated_file(id)
-						&& g.fn_value_operand_has_storage(child_id, child)) {
+						&& g.fn_value_operand_has_storage(operand_id, operand)) {
 						// Mutable for-in lowering takes the address of the current array
 						// element. Keep that address tied to the element (or field) so
 						// writes through it update it rather than a heap-copied callback.
 						// In translated C, `&` on a variable is its address, as in V1.
 						g.write('&')
-						gen_expr_lvalue(mut g, child_id)
+						gen_expr_lvalue(mut g, operand_id)
 						return
 					}
 					mut fn_ct := g.tc.c_type(fn_value_type)
@@ -16244,9 +16245,9 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 				// variable's address, as in V1: C translated by c2v stores a callback
 				// through it with `c2v_assign_voidptr(&voidptr(&x), f)`.
 				if g.expr_is_in_translated_file(id) && !g.context_wants_callable()
-					&& g.fn_value_operand_has_storage(child_id, child) {
+					&& g.fn_value_operand_has_storage(operand_id, operand) {
 					g.write('&')
-					gen_expr_lvalue(mut g, child_id)
+					gen_expr_lvalue(mut g, operand_id)
 					return
 				}
 				g.gen_expr(child_id)
