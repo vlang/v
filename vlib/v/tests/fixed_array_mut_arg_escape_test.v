@@ -1244,3 +1244,20 @@ fn test_overloaded_fixed_index_result_has_owning_backing() {
 	assert overwrite_stack() == 7
 	assert read_retained_optional_fixed_reference(kept) == [703, 704]
 }
+
+struct FixedRowReferenceProvider {
+	row &[2]int
+}
+
+fn (provider FixedRowReferenceProvider) [] (index int) &[2]int {
+	assert index == 0
+	return provider.row
+}
+
+fn test_overloaded_fixed_index_pointer_result_preserves_storage_identity() {
+	mut row := [711, 712]!
+	provider := FixedRowReferenceProvider{&row}
+	kept := retain_immutable_array_reference(provider[0])
+	row[0] = 713
+	assert read_retained_optional_fixed_reference(kept) == [713, 712]
+}

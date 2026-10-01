@@ -13799,13 +13799,23 @@ fn (mut t Transformer) fixed_array_mut_arg_backing(value_id flat.NodeId, fixed_t
 	// A temporary has no declaration to promote and no other alias. Move its
 	// element bytes to durable owning storage before exposing an array reference.
 	source_is_multi_return_value := multi_return_fixed_array_arg_marker in t.a.nodes[int(source_id)].generic_params()
-	borrowed := !source_is_multi_return_value && !t.expr_is_overloaded_index_result(source_id)
+	overloaded_result_type := t.comptime_normalize_type_alias_chain(t.overloaded_index_result_type(source_id) or { '' })
+	overloaded_fixed_reference := overloaded_result_type.starts_with('&')
+		&& t.is_fixed_array_type(overloaded_result_type[1..])
+	borrowed := !source_is_multi_return_value
+		&& (!t.expr_is_overloaded_index_result(source_id) || overloaded_fixed_reference)
 		&& (t.expr_can_take_address(source_id)
 			|| (t.node_type(source_id).starts_with('&')
 				&& t.is_fixed_array_type(t.unaliased_value_type(source_id))))
 	mut storage_id := source_id
 	if borrowed {
-		storage_id = t.retain_fixed_array_index_containers(t.transform_expr(source_id))
+		storage_id = t.transform_expr(source_id)
+		if overloaded_fixed_reference {
+			// The overload returns an existing pointer, even when expected array-reference
+			// context changed the index annotation. Keep that original storage identity.
+			t.set_node_typ(int(storage_id), overloaded_result_type)
+		}
+		storage_id = t.retain_fixed_array_index_containers(storage_id)
 	} else {
 		value_name := t.new_temp('fixed_array_source')
 		value := t.transform_expr(source_id)
