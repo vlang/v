@@ -7913,7 +7913,7 @@ fn v3_select_c_compiler(vroot string, requested V3BundledTccProbeOptions) V3CCom
 	mut c_compiler := v3_select_implicit_c_compiler(options.c_compiler, options.c_compiler_explicit,
 		implicit_tcc)
 	if v3_windows_prod_needs_default_c_compiler(options) {
-		c_compiler = v3_windows_prod_c_compiler(v3_windows_prod_toolchain(options.is_o))
+		c_compiler = v3_windows_prod_default_c_compiler(options.target.arch, options.is_o)
 	}
 	// Generate for the compiler that receives the first build attempt. If implicit
 	// TCC cannot be used, the caller regenerates before invoking the `cc` fallback.
@@ -7963,17 +7963,27 @@ fn v3_platform_c_compiler_command(host_os string) string {
 	return os.find_abs_path_of_executable(name) or { name }
 }
 
-// v3_windows_prod_needs_default_c_compiler reports whether a native Windows amd64
-// `-prod` build that named no `-cc` needs a default C compiler chosen for it. The
-// bundled TCC stands in for the platform compiler on Windows, but it cannot do the
-// optimizations `-prod` asks for, and the bare `cc` is whichever compiler comes first on
-// PATH, so neither is a sound default here. Other architectures are left as they were:
-// V's MSVC code, for one, is written for x64.
+// v3_windows_prod_needs_default_c_compiler reports whether a native Windows `-prod`
+// build that named no `-cc` needs a default C compiler chosen for it. The bundled TCC
+// stands in for the platform compiler on Windows, but it cannot do the optimizations
+// `-prod` asks for, and the bare `cc` is whichever compiler comes first on PATH, so
+// neither is a sound default here. A cross-architecture build is left as it was.
 fn v3_windows_prod_needs_default_c_compiler(options V3BundledTccProbeOptions) bool {
 	return options.is_prod && !options.c_compiler_explicit && options.backend == 'c'
 		&& !options.c_only && !options.dump_c_flags && options.host_os == 'windows'
-		&& options.target.os == 'windows' && options.target.arch == 'amd64'
-		&& options.host_target.arch == 'amd64'
+		&& options.target.os == 'windows' && options.target.arch == options.host_target.arch
+}
+
+// v3_windows_prod_default_c_compiler is the C compiler of a build that
+// v3_windows_prod_needs_default_c_compiler accepts. On amd64 it is MSVC, Clang or GCC,
+// in the order v3_windows_prod_c_compiler gives. V's MSVC code and the MinGW Clang check
+// are written for amd64, so the other architectures keep the platform GCC, which the
+// regeneration after the skipped implicit TCC used to give them.
+fn v3_windows_prod_default_c_compiler(arch string, is_o bool) string {
+	if arch == 'amd64' {
+		return v3_windows_prod_c_compiler(v3_windows_prod_toolchain(is_o))
+	}
+	return v3_platform_c_compiler_command('windows')
 }
 
 // V3WindowsProdToolchain is what the environment offers a Windows `-prod` build that

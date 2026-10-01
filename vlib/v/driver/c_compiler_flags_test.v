@@ -677,7 +677,7 @@ fn test_v3_windows_prod_needs_default_c_compiler_only_for_native_default_builds(
 		...base
 		target: linux_target
 	})
-	// A cross-architecture build, and any native architecture but amd64, are left alone.
+	// A cross-architecture build is left alone.
 	assert !v3_windows_prod_needs_default_c_compiler(V3BundledTccProbeOptions{
 		...base
 		target: pref.Target{
@@ -685,12 +685,14 @@ fn test_v3_windows_prod_needs_default_c_compiler_only_for_native_default_builds(
 			arch: 'arm64'
 		}
 	})
+	// A native build of another architecture needs one too: it no longer gets the
+	// platform GCC by regenerating after the skipped implicit TCC.
 	for arch in ['arm64', 'x86'] {
 		native := pref.Target{
 			os:   'windows'
 			arch: arch
 		}
-		assert !v3_windows_prod_needs_default_c_compiler(V3BundledTccProbeOptions{
+		assert v3_windows_prod_needs_default_c_compiler(V3BundledTccProbeOptions{
 			...base
 			host_target: native
 			target:      native
@@ -791,6 +793,64 @@ fn test_v3_select_c_compiler_windows_prod_never_uses_tcc_or_the_bare_cc() {
 		c_compiler_explicit: true
 	})
 	assert explicit.c_compiler == 'gcc'
+}
+
+fn test_v3_select_c_compiler_native_windows_prod_outside_amd64_uses_the_platform_gcc() {
+	$if windows {
+		// The tools are shell scripts.
+		return
+	}
+	root := os.join_path(os.vtmp_dir(), 'v3_windows_prod_select_gcc_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	// A usable bundled and system TCC, a gcc, and an amd64 MinGW clang, but no `cc`.
+	os.mkdir_all(os.join_path(root, 'thirdparty', 'tcc', 'lib'))!
+	bundled_tcc := write_v3_test_tcc(os.join_path(root, 'thirdparty', 'tcc', 'tcc.exe'), 0)
+	os.write_file(os.join_path(root, 'thirdparty', 'tcc', 'lib', 'openlibm.o'), '')!
+	bin := os.join_path(root, 'bin')
+	write_v3_test_tcc(os.join_path(bin, 'tcc'), 0)
+	gcc := write_windows_prod_test_tool(os.join_path(bin, 'gcc'), 'exit 0')
+	marker := os.join_path(root, 'clang_ran')
+	write_windows_prod_test_tool(os.join_path(bin, 'clang'),
+		'echo ran > ${os.quoted_path(marker)}\necho x86_64-w64-windows-gnu')
+	// PATH holds only the fake tools, so no real compiler of this machine is involved.
+	with_windows_prod_test_environment({
+		'PATH': bin
+	}, fn [root, bundled_tcc, gcc, marker] () {
+		assert (os.find_abs_path_of_executable('cc') or { '' }) == ''
+		for arch in ['x86', 'arm64'] {
+			native := pref.Target{
+				os:   'windows'
+				arch: arch
+			}
+			base := V3BundledTccProbeOptions{
+				backend:     'c'
+				c_compiler:  'cc'
+				host_os:     'windows'
+				host_target: native
+				target:      native
+				bundled_tcc: bundled_tcc
+			}
+			// Positive control: without -prod the same options do select the bundled TCC.
+			control := v3_select_c_compiler(root, base)
+			assert control.implicit_tcc == bundled_tcc, arch
+			assert control.effective_c_compiler == 'tinyc', arch
+			// With -prod it is the platform GCC up front, not the bare `cc`, and not the
+			// amd64 Clang.
+			selection := v3_select_c_compiler(root, V3BundledTccProbeOptions{
+				...base
+				is_prod: true
+			})
+			assert selection.implicit_tcc == '', arch
+			assert !selection.use_implicit_tcc_semantics, arch
+			assert os.real_path(selection.c_compiler) == os.real_path(gcc), arch
+			assert selection.effective_c_compiler == 'gcc', arch
+		}
+		// The amd64 toolchain probe never ran.
+		assert !os.exists(marker)
+	})
 }
 
 fn test_v3_bundled_tcc_probe_does_not_run_when_ineligible() {

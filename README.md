@@ -216,7 +216,8 @@ glibc and Windows Boehm builds.
 `-prod` builds never default to TCC, which cannot do their optimizations. On x64 Windows,
 without `-cc`, a `-prod` build uses MSVC when an x64 Visual Studio Developer environment is
 active (`cl` on `PATH`, with `INCLUDE` and `LIB` set; not for `-o file.o`), otherwise a `clang`
-that targets x86_64 MinGW, otherwise `gcc`. An explicit `-cc` always wins.
+that targets x86_64 MinGW, otherwise `gcc`. A native `-prod` build on another Windows
+architecture uses `gcc`. An explicit `-cc` always wins.
 
 On macOS, `-cc tcc -gc boehm` uses a persistent bundled `libgc.dylib` store when the physical V
 installation path contains a comma. The store is under `$XDG_DATA_HOME/v-tcc-libgc-v1`, or
