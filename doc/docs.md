@@ -1203,6 +1203,10 @@ The user can explicitly specify the type for the first element: `[u8(16), 32, 64
 V arrays are homogeneous (all elements must have the same type).
 This means that code like `[1, 'a']` will not compile.
 
+Array elements must be written inside square brackets. Braces accept named initializer
+parameters only; `[]int{1, 2, 3}` and `[3]int{1, 2, 3}` are syntax errors.
+Use `[1, 2, 3]` for a dynamic array or `[1, 2, 3]!` for a fixed array instead.
+
 The above syntax is fine for a small number of known elements but for very large or empty
 arrays there is a second initialization syntax:
 

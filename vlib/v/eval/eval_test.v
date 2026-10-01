@@ -631,7 +631,7 @@ fn test_eval_array_init_adapts_sum_elements() {
 type Any = int | string
 
 fn main() {
-	xs := []Any{1, "s"}
+	xs := [Any(1), "s"]
 	ys := []Any{len: 2, init: 1}
 	println(int_str(xs[0]._typ))
 	println(int_str(xs[1]._typ))
