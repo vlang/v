@@ -54,7 +54,9 @@ fn test_macos_vc_compat_make_selects_only_the_macos_build_copy() {
 		os.find_abs_path_of_executable('make') or { panic(err) }
 	}
 	for target in ['Darwin', 'Linux', 'FreeBSD'] {
-		result := os.execute('${os.quoted_path(make)} -n -C ${os.quoted_path(@VEXEROOT)} local=1 _SYS=${target} TCCARCH=amd64 all')
+		// Platform simulation must not derive the legacy macOS bootstrap from
+		// another host's kernel version (for example Linux 6.x).
+		result := os.execute('${os.quoted_path(make)} -n -C ${os.quoted_path(@VEXEROOT)} local=1 _SYS=${target} TCCARCH=amd64 LEGACY= VEXE=./v all')
 		assert result.exit_code == 0, result.output
 		assert result.output.contains('awk -f') == (target == 'Darwin')
 		assert result.output.contains('-o v1 ./vc/v_macos.c') == (target == 'Darwin')
