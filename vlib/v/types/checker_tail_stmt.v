@@ -2076,11 +2076,17 @@ fn (mut tc TypeChecker) check_match_condition_type(subject_type Type, cond_id fl
 	if cond.kind == .range || tc.match_type_pattern(*cond) != none {
 		return
 	}
-	condition_type := tc.resolve_type(cond_id)
 	clean_subject := unalias_type(subject_type)
 	if clean_subject is OptionType {
 		return
 	}
+	// Qualified enum values are names, so the expression-condition pass skips
+	// them. Validate their selector before accepting a compatible enum type.
+	if clean_subject is Enum && cond.kind == .selector
+		&& !tc.match_condition_is_expression(cond_id) {
+		tc.check_node(cond_id)
+	}
+	condition_type := tc.resolve_type(cond_id)
 	if cond.kind == .enum_val && clean_subject is Enum {
 		enum_name := tc.resolve_enum_name(clean_subject.name) or { clean_subject.name }
 		if !tc.enum_value_matches(cond.value, enum_name) {
