@@ -1133,7 +1133,7 @@ fn test_map_fixed_row_loop_bindings_keep_retained_views_alive() {
 }
 
 @[noinline]
-fn reference_after_mutable_fixed_capture_snapshot() &[]int {
+fn reference_after_shared_mutable_fixed_capture() &[]int {
 	mut values := [461, 462]!
 	kept := retain_immutable_array_reference(values)
 	mut change_capture := fn [mut values] () int {
@@ -1145,17 +1145,17 @@ fn reference_after_mutable_fixed_capture_snapshot() &[]int {
 		return (*ptr)[0]
 	}
 	values[0] = 471
-	assert change_capture() == 462
-	assert change_capture() == 463
-	assert values[0] == 471
-	assert read_pointer_capture() == 471
+	assert change_capture() == 472
+	assert change_capture() == 473
+	assert values[0] == 473
+	assert read_pointer_capture() == 473
 	return kept
 }
 
-fn test_mutable_fixed_value_captures_own_their_context_storage() {
-	kept := reference_after_mutable_fixed_capture_snapshot()
+fn test_mutable_fixed_value_captures_share_original_storage() {
+	kept := reference_after_shared_mutable_fixed_capture()
 	assert overwrite_stack() == 7
-	assert read_retained_optional_fixed_reference(kept) == [471, 462]
+	assert read_retained_optional_fixed_reference(kept) == [473, 462]
 }
 
 fn temporary_fixed_rows() [2][2]int {

@@ -1386,7 +1386,8 @@ fn (mut t Transformer) lower_indexed_for_in(id flat.NodeId, node flat.Node, key_
 	cleanup_type := if int(optional_container) >= 0 { raw_container_type } else { actual_iter_type }
 	container_needs_drop := !isnil(t.tc) && cleanup_type.len > 0
 		&& t.tc.ownership_type_requires_destruction(t.tc.parse_type(cleanup_type))
-	cleanup_temporary := source_is_owned_temporary && container_needs_drop && !retained_fixed_backing
+	cleanup_temporary := source_is_owned_temporary && container_needs_drop
+		&& !retained_fixed_backing
 	mut cleanup_guard_name := ''
 	if cleanup_temporary {
 		cleanup_guard_name = t.new_temp('for_container_live')
