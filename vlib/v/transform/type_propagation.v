@@ -1103,6 +1103,24 @@ fn (t &Transformer) lookup_struct_info_for_field(type_name string, field_name st
 	}
 }
 
+// checked_global_type_name returns the type that the checker inferred for a global
+// declared with an initializer.
+fn (t &Transformer) checked_global_type_name(name string, mod string) ?string {
+	if isnil(t.tc) || isnil(t.tc.file_scope) {
+		return none
+	}
+	qname := if mod.len > 0 && mod != 'main' && mod != 'builtin' { '${mod}.${name}' } else { name }
+	typ := t.tc.file_scope.lookup(qname) or { return none }
+	if typ is types.Unknown || typ is types.Void {
+		return none
+	}
+	text := typ.name()
+	if text.len == 0 || type_text_has_unresolved_generic_placeholder(text) {
+		return none
+	}
+	return text
+}
+
 // lookup_unique_field_type resolves lookup unique field type information for transform.
 fn (t &Transformer) lookup_unique_field_type(field_name string) ?string {
 	match field_name {
