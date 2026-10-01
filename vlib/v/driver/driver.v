@@ -7834,7 +7834,8 @@ fn v3_should_probe_bundled_tcc(options V3BundledTccProbeOptions) bool {
 	// -prod needs optimizations that TCC cannot do, so TCC is never its default, not
 	// even on Windows. Probing it there would generate C for TCC, skip TCC when
 	// compiling, and then re-run the whole compilation for the platform compiler.
-	if options.is_prod {
+	// Race builds need ThreadSanitizer, including when computing Windows vtest facts.
+	if options.is_prod || options.race {
 		return false
 	}
 	// Windows uses its bundled TCC as the platform default, including modes that
@@ -7842,7 +7843,7 @@ fn v3_should_probe_bundled_tcc(options V3BundledTccProbeOptions) bool {
 	if options.host_os == 'windows' && options.target.os == 'windows' {
 		return true
 	}
-	return !options.is_c_debug && !options.race
+	return !options.is_c_debug
 }
 
 fn v3_bundled_tcc_available(options V3BundledTccProbeOptions) bool {
