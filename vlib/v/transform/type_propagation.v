@@ -972,6 +972,11 @@ fn (t &Transformer) struct_field_type_cache_key(type_name string, field_name str
 
 fn (t &Transformer) lookup_struct_field_type_uncached(type_name string, field_name string) ?string {
 	lookup := t.lookup_struct_info_for_field(type_name, field_name) or { return none }
+	return t.struct_field_type_in_cur_module(lookup, t.lookup_struct_field_type_spelling(lookup,
+		field_name)?)
+}
+
+fn (t &Transformer) lookup_struct_field_type_spelling(lookup StructFieldLookup, field_name string) ?string {
 	f := lookup.info.field(field_name) or { return none }
 	if lookup.owner_type.contains('[') {
 		specialized := t.normalize_field_type(f.typ, lookup.owner_type)
@@ -986,6 +991,17 @@ fn (t &Transformer) lookup_struct_field_type_uncached(type_name string, field_na
 		return f.typ
 	}
 	return t.normalize_field_type(f.typ, lookup.owner_type)
+}
+
+// struct_field_type_in_cur_module spells a field type for use in the current module.
+// Main-module types are stored bare, so a `[]Cell` field of a main struct read inside
+// an imported generic specialization must stay `main.Cell` instead of rebinding to the
+// current module's own `Cell` when the text is parsed again.
+fn (t &Transformer) struct_field_type_in_cur_module(lookup StructFieldLookup, field_type string) string {
+	if t.cur_module in ['', 'main', 'builtin'] || lookup.info.module !in ['', 'main'] {
+		return field_type
+	}
+	return t.lock_colliding_main_generic_type_text(field_type, t.cur_module)
 }
 
 // lookup_struct_field_raw_type resolves lookup struct field raw type information for transform.
