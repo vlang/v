@@ -2104,6 +2104,7 @@ fn (mut t Transformer) clone_owned_array_storage_value(value flat.NodeId, typ st
 struct OwnedArraySumVariant {
 	sum_type string
 	variant  string
+	wrappers []string
 }
 
 // Acquire a fresh literal's payload before boxing it. Its boxes have not been
@@ -2128,7 +2129,10 @@ fn (mut t Transformer) clone_owned_sum_literal_for_storage(value flat.NodeId, ty
 		if qvariant.len == 0 || field.value != t.sum_field_name(qvariant) {
 			continue
 		}
-		variant_type := t.comptime_normalize_type_alias_chain(qvariant)
+		mut variant_type := t.comptime_normalize_type_alias_chain(qvariant)
+		for t.is_optional_type_name(variant_type) {
+			variant_type = t.comptime_normalize_type_alias_chain(t.optional_base_type(variant_type))
+		}
 		if variant_type.starts_with('&')
 			|| (!variant_type.starts_with('[]') && !t.is_sum_type_name(variant_type)) {
 			return value
@@ -2165,9 +2169,15 @@ fn (mut t Transformer) owned_sum_array_storage_branches(source flat.NodeId, sum_
 		qvariant := t.resolve_variant(resolved_sum, variant)
 		if qvariant.len == 0 { continue }
 		clean_variant := t.comptime_normalize_type_alias_chain(qvariant)
-		array_type := clean_variant.trim_left('&')
-		is_array := array_type.starts_with('[]') && !clean_variant.starts_with('&&')
-		is_nested_sum := !clean_variant.starts_with('&') && t.is_sum_type_name(clean_variant)
+		mut variant_payload_type := clean_variant
+		mut wrappers := []string{}
+		for t.is_optional_type_name(variant_payload_type) {
+			wrappers << variant_payload_type
+			variant_payload_type = t.comptime_normalize_type_alias_chain(t.optional_base_type(variant_payload_type))
+		}
+		array_type := variant_payload_type.trim_left('&')
+		is_array := array_type.starts_with('[]') && !variant_payload_type.starts_with('&&')
+		is_nested_sum := !variant_payload_type.starts_with('&') && t.is_sum_type_name(variant_payload_type)
 		if (!is_array && !is_nested_sum) || !t.tc.ownership_type_requires_destruction(t.tc.parse_type(array_type)) {
 			continue
 		}
@@ -2185,14 +2195,28 @@ fn (mut t Transformer) owned_sum_array_storage_branches(source flat.NodeId, sum_
 			t.set_node_typ(int(payload), qvariant)
 		}
 		mut branch_path := path.clone()
-		branch_path << OwnedArraySumVariant{ sum_type: sum_type, variant: qvariant }
-		if is_nested_sum {
-			branches << t.owned_sum_array_storage_branches(payload, qvariant, root, root_type, branch_guards, branch_path, next_seen, drop_old_root, clone_owned_value)
+		if is_nested_sum && (!clone_owned_value || wrappers.len == 0) {
+			branch_path << OwnedArraySumVariant{
+				sum_type: sum_type
+				variant:  qvariant
+				wrappers: wrappers
+			}
+			for wrapper in wrappers {
+				branch_guards << t.make_selector(payload, 'ok', 'bool')
+				payload = t.make_selector(payload, 'value', t.optional_base_type(wrapper))
+			}
+			branches << t.owned_sum_array_storage_branches(payload, variant_payload_type, root, root_type, branch_guards, branch_path, next_seen, drop_old_root, clone_owned_value)
 			continue
 		}
-		force_owned_array := clone_owned_value && !clean_variant.starts_with('&')
-		if !force_owned_array {
-			array_value := t.array_lvalue_value(payload, clean_variant)
+		branch_path << OwnedArraySumVariant{ sum_type: sum_type, variant: qvariant }
+		force_owned_array := clone_owned_value && !variant_payload_type.starts_with('&')
+		if !force_owned_array && !(clone_owned_value && wrappers.len > 0) {
+			mut array_payload := payload
+			for wrapper in wrappers {
+				branch_guards << t.make_selector(array_payload, 'ok', 'bool')
+				array_payload = t.make_selector(array_payload, 'value', t.optional_base_type(wrapper))
+			}
+			array_value := t.array_lvalue_value(array_payload, variant_payload_type)
 			is_slice := t.make_method_call(array_value, 'is_slice_view', []flat.NodeId{})
 			t.set_node_typ(int(is_slice), 'bool')
 			t.mark_fn_used('array.is_slice_view')
@@ -2203,6 +2227,9 @@ fn (mut t Transformer) owned_sum_array_storage_branches(source flat.NodeId, sum_
 		mut body := t.pending_stmts[pending_start..].clone()
 		t.pending_stmts = t.pending_stmts[..pending_start].clone()
 		for i := branch_path.len - 1; i >= 0; i-- {
+			for j := branch_path[i].wrappers.len - 1; j >= 0; j-- {
+				rebuilt = t.make_optional_some(rebuilt, branch_path[i].wrappers[j])
+			}
 			rebuilt = t.make_sum_literal(branch_path[i].sum_type, branch_path[i].variant, rebuilt)
 		}
 		new_name := t.new_temp('owned_sum_array_value')

@@ -542,21 +542,30 @@ fn main() {
 }
 
 fn test_mutable_wrapped_array_storage_acquires_managed_payloads() {
-	for wrapper in ['?[]Res', 'Storage', '?Storage'] {
-		payload := if wrapper == '?[]Res' { '[Res{1}]' } else { 'Storage([Res{1}])' }
-		initial := if wrapper == 'Storage' { payload } else { '${wrapper}(${payload})' }
-		unwrapped := if wrapper == 'Storage' {
-			'keep(mut source)'
+	for wrapper in ['?[]Res', 'Storage', '?Storage', 'WrappedStorage'] {
+		payload := if wrapper == '?[]Res' {
+			'[Res{1}]'
+		} else if wrapper == 'WrappedStorage' {
+			'WrappedStorage(?[]Res([Res{1}]))'
 		} else {
+			'Storage([Res{1}])'
+		}
+		initial := if wrapper.starts_with('?') { '${wrapper}(${payload})' } else { payload }
+		unwrapped := if wrapper.starts_with('?') {
 			'keep(mut source) or { panic("missing payload") }'
+		} else {
+			'keep(mut source)'
 		}
 		check := if wrapper == '?[]Res' {
 			'assert retained[0].id == 101'
+		} else if wrapper == 'WrappedStorage' {
+			'assert retained is ?[]Res'
 		} else {
 			'if retained is []Res { assert retained[0].id == 101 } else { assert false }'
 		}
 		output := borrow_storage_run('wrapped_mut_array_${wrapper.len}', borrow_storage_drop_decls + '
 type Storage = []Res | int
+type WrappedStorage = ?[]Res | int
 fn keep(mut source ${wrapper}) ${wrapper} { return source }
 fn main() {
 	mut source := ${initial}
@@ -573,9 +582,11 @@ fn main() {
 fn test_mutable_wrapped_array_storage_keeps_inactive_payloads() {
 	output := borrow_storage_run('wrapped_mut_array_inactive', borrow_storage_drop_decls + '
 type Storage = []Res | int
+type WrappedStorage = ?[]Res | int
 fn keep_option(mut source ?[]Res) ?[]Res { return source }
 fn keep_sum(mut source Storage) Storage { return source }
 fn keep_optional_sum(mut source ?Storage) ?Storage { return source }
+fn keep_wrapped_sum(mut source WrappedStorage) WrappedStorage { return source }
 fn main() {
 	mut absent := ?[]Res(none)
 	assert keep_option(mut absent) == none
@@ -587,6 +598,11 @@ fn main() {
 	mut scalar_sum := ?Storage(Storage(9))
 	kept := keep_optional_sum(mut scalar_sum) or { panic("missing scalar") }
 	assert kept == Storage(9)
+	mut absent_variant := WrappedStorage(?[]Res(none))
+	kept_variant := keep_wrapped_sum(mut absent_variant)
+	assert kept_variant is ?[]Res
+	drop_owned(absent_variant)
+	drop_owned(kept_variant)
 	println("ok")
 }
 ')
