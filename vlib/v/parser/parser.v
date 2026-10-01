@@ -9586,7 +9586,13 @@ fn (mut p Parser) assign_or_expr_stmt() flat.NodeId {
 		// block in the same file uses `x`. The formatter has no such luxury: the shape check
 		// alone already rules out map literals (a top level `:` disqualifies), and reading one
 		// as a map instead turns its conditions into keys with empty values.
-		rhs := if p.tok == .lcbr && (p.lhs_is_dynamic_sql_expr_alias(lhs) || p.prefs.is_fmt)
+		rhs := if p.prefs.is_fmt && p.tok == .name && p.lit == 'sql' && p.peek() == .lcbr {
+			// Keep standalone query-data assignments together without treating `sql`
+			// in a control header as the start of a database expression.
+			sql_start := p.tok_pos
+			p.next()
+			p.sql_expr(sql_start)
+		} else if p.tok == .lcbr && (p.lhs_is_dynamic_sql_expr_alias(lhs) || p.prefs.is_fmt)
 			&& p.current_lcbr_looks_query_data_literal() {
 			p.sql_query_data_literal_expr()
 		} else {
