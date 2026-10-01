@@ -100,7 +100,7 @@ fn noops(mut values []Resource) {
 	values.delete_many(values.len, 0)
 }
 
-fn change(mut values []Resource, operation int) []Resource {
+fn change(mut values []Resource, operation int) {
 	values[0].value = 7
 	if operation == 0 {
 		values << fresh()
@@ -129,7 +129,7 @@ fn change(mut values []Resource, operation int) []Resource {
 	} else {
 		values.insert(1, values)
 	}
-	return values
+	unsafe { values.free() }
 }
 
 fn main() {
@@ -139,12 +139,10 @@ fn main() {
 		before := clone_count
 		noops(mut fixed[..])
 		assert clone_count == before
-		changed := change(mut fixed[..], operation)
+		change(mut fixed[..], operation)
 		assert clone_count == before + if operation >= 9 { 4 } else { 2 }
 		assert fixed[0].id == original_id
 		assert fixed[0].value == 7
-		assert !dropped[original_id]
-		unsafe { changed.free() }
 		assert !dropped[original_id]
 		drop_owned(fixed)
 	}
@@ -177,26 +175,29 @@ fn delete_empty_range(mut values []Handle) {
 	values.delete_many(0, 0)
 	values.delete_many(values.len, 0)
 }
-fn grow(mut values []Handle, reserve bool) []Handle {
+fn keep_empty(mut values []Handle) []Handle { return values }
+fn grow(mut values []Handle, reserve bool) {
 	if reserve { values.ensure_cap(2) }
 	values << Handle{2}
-	return values
+	assert values.len == 1 && values[0].id == 2
+	unsafe { values.free() }
 }
 fn main() {
 	mut empty := []Handle{}
 	duplicate_empty(mut empty)
 	assert empty.len == 0
+	kept_empty := keep_empty(mut empty)
+	assert kept_empty.len == 0
+	drop_owned(kept_empty)
 	for reserve in [false, true] {
 		dropped = map[int]bool{}
 		mut fixed := [Handle{1}]
 		delete_empty_range(mut fixed[..])
 		assert fixed.len == 1 && fixed[0].id == 1
 		assert dropped.len == 0
-		result := grow(mut fixed[0..0], reserve)
-		assert result.len == 1
-		assert result[0].id == 2
+		grow(mut fixed[0..0], reserve)
+		assert dropped[2]
 		assert !dropped[1]
-		drop_owned(result)
 		drop_owned(fixed)
 		assert dropped.len == 2
 	}
@@ -225,16 +226,20 @@ fn main() {
 	assert result.len == 0
 }
 '
-		build := borrow_storage_compile(name, source)
-		assert build.exit_code == 0, build.output
-		run := os.execute(os.quoted_path(os.join_path(borrow_storage_tmp_dir, name)))
-		assert run.exit_code != 0, run.output
-		assert run.output.contains('requires ownership destruction but has no compatible `clone()` method'), run.output
+		for borrowed in [false, true] {
+			input := if borrowed { source } else { source.replace('mut fixed[..]', 'mut fixed') }
+			case_name := '${name}_${borrowed}'
+			build := borrow_storage_compile(case_name, input)
+			assert build.exit_code == 0, build.output
+			run := os.execute(os.quoted_path(os.join_path(borrow_storage_tmp_dir, case_name)))
+			assert run.exit_code != 0, run.output
+			assert run.output.contains('requires ownership destruction but has no compatible `clone()` method'), run.output
+		}
 	}
 }
 
 fn test_borrowed_owned_array_storage_scope_and_retained_headers() {
-	output := borrow_storage_run('borrowed_array_scope', '@[has_globals]
+	source := '@[has_globals]
 module main
 __global next_id = 0
 __global clones = 0
@@ -524,8 +529,16 @@ fn main() {
 	assert dropped.len == next_id
 	println("ok")
 }
-')
-	assert output == 'ok'
+'
+	for borrowed in [false, true] {
+		input := if borrowed {
+			source
+		} else {
+			source.replace('mut holder.values[..]', 'mut holder.values')
+		}
+		output := borrow_storage_run('borrowed_array_scope_${borrowed}', input)
+		assert output == 'ok'
+	}
 }
 
 fn test_mutable_array_value_captures_acquire_owned_snapshots() {

@@ -1965,7 +1965,28 @@ fn (mut t Transformer) clone_borrowed_storage_projection(source_id flat.NodeId, 
 	if cloned != value {
 		return cloned
 	}
-	return t.clone_owned_array_view_for_storage(value, typ)
+	return t.clone_owned_array_storage_value(value, typ, t.array_storage_source_is_mut_param(source_id))
+}
+
+// A mut []T parameter borrows its caller's owners even when the runtime array
+// has a managed, unsliced buffer. Explicit pointer parameters retain their identity.
+fn (t &Transformer) array_storage_source_is_mut_param(source_id flat.NodeId) bool {
+	mut id := t.unwrap_parens(source_id)
+	for int(id) >= 0 && int(id) < t.a.nodes.len {
+		node := t.a.nodes[int(id)]
+		if node.kind == .prefix && node.op in [.amp, .mul] && node.children_count == 1 {
+			id = t.unwrap_parens(t.a.child(&node, 0))
+			continue
+		}
+		if node.kind != .ident || !t.mut_param_values[node.value]
+			|| t.pointer_value_rvalues[node.value] {
+			return false
+		}
+		raw_type := t.raw_var_type(node.value)
+		return raw_type.starts_with('&')
+			&& t.comptime_normalize_type_alias_chain(raw_type).starts_with('&[]')
+	}
+	return false
 }
 
 // clone_owned_array_view_for_storage turns an owned-element borrow into an independent
@@ -2004,7 +2025,7 @@ fn (mut t Transformer) clone_owned_array_storage_value(value flat.NodeId, typ st
 		payload_type := t.optional_base_type(resolved_type)
 		payload := t.make_selector(bound, 'value', payload_type)
 		pending_start := t.pending_stmts.len
-		owned_payload := t.clone_owned_array_view_for_storage(payload, payload_type)
+		owned_payload := t.clone_owned_array_storage_value(payload, payload_type, clone_owned_value)
 		mut body := t.pending_stmts[pending_start..].clone()
 		t.pending_stmts = t.pending_stmts[..pending_start].clone()
 		body << t.make_assign_without_ownership_drop(payload, owned_payload)

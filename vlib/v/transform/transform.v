@@ -11657,7 +11657,7 @@ fn (mut t Transformer) transform_return_child(child_id flat.NodeId, child_index 
 		return converted
 	}
 	if copied := t.heap_copy_local_address_return(child_id) {
-		return t.clone_owned_array_view_for_storage(copied, t.cur_fn_ret_type)
+		return t.clone_owned_array_storage_value(copied, t.cur_fn_ret_type, t.array_storage_source_is_mut_param(child_id))
 	}
 	target_type := t.return_child_target_type(child_index, total_children)
 	mut return_child_id := child_id

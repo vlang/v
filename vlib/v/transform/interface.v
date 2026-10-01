@@ -851,7 +851,7 @@ fn (mut t Transformer) make_interface_literal_from_expr(id flat.NodeId, iface_na
 		source_type
 	}
 	if !is_ptr && !share_source {
-		source = t.clone_owned_array_view_for_storage(source, source_type)
+		source = t.clone_owned_array_storage_value(source, source_type, t.array_storage_source_is_mut_param(source_id))
 	}
 	t.mark_interface_boxed_type(iface_name, concrete_type)
 	if impl_name := t.interface_concrete_impl_name(concrete_type) {
