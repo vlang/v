@@ -12245,13 +12245,18 @@ fn (mut g FlatGen) ensure_callback_userdata_wrapper(actual_name string, actual t
 	expected_ret_ct := g.callback_expected_return_c_type(expected.return_type, expected_c_abi)
 	mut needs_wrapper := false
 	mut cast_return := false
+	expected_return := cgen_unalias_type(expected.return_type)
+	promote_void_result := actual.return_type is types.Void
+		&& expected_return is types.ResultType
+		&& cgen_unalias_type(expected_return.base_type) is types.Void
+		&& expected_c_abi.len == 0
 	if actual_ret_ct != expected_ret_ct {
-		if !callback_can_cast_scalar_int_param(actual_ret_ct, expected_ret_ct)
+		if !promote_void_result && !callback_can_cast_scalar_int_param(actual_ret_ct, expected_ret_ct)
 			&& !g.callback_can_cast_userdata_pointer(actual.return_type, expected.return_type) {
 			return none
 		}
 		needs_wrapper = true
-		cast_return = true
+		cast_return = !promote_void_result
 	}
 	mut param_decls := []string{}
 	mut call_args := []string{}
@@ -12312,7 +12317,9 @@ fn (mut g FlatGen) ensure_callback_userdata_wrapper(actual_name string, actual t
 	call := '${actual_c_name}(${call_args.join(', ')})'
 	return_expr := if cast_return { '(${expected_ret_ct})(${call})' } else { call }
 	setup := if setup_lines.len == 0 { '' } else { setup_lines.join(' ') + ' ' }
-	body := if expected_ret_ct == 'void' {
+	body := if promote_void_result {
+		'static ${expected_ret_ct} ${name}(${params}) { ${setup}${call}; return (${expected_ret_ct}){.ok = true}; }'
+	} else if expected_ret_ct == 'void' {
 		'static void ${name}(${params}) { ${setup}${call}; }'
 	} else {
 		'static ${expected_ret_ct} ${name}(${params}) { ${setup}return ${return_expr}; }'
@@ -15736,6 +15743,16 @@ fn (mut g FlatGen) gen_mut_pointer_slot_arg(arg_id flat.NodeId, arg_node flat.No
 
 	if !c_type_is_pointer_like(expected_base) {
 		return false
+	}
+	// A pointer cast is a value, not caller-owned pointer storage. Materialize
+	// a temporary slot for `mut unsafe { &T(ctx) }` before passing it as T**.
+	if (arg_node.kind == .cast_expr || (arg_node.kind == .block && arg_node.value == 'unsafe'))
+		&& g.tc.c_type(g.usable_expr_type(arg_id)) == g.tc.c_type(expected_base) {
+		ct := g.tc.c_type(expected_base)
+		g.write('&((${ct}[]){')
+		g.gen_expr_with_expected_type(arg_id, expected_base)
+		g.write('})[0]')
+		return true
 	}
 	if arg_node.is_mut && arg_node.kind == .ident {
 		arg_type := g.usable_expr_type(arg_id)
