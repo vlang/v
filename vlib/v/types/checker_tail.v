@@ -14867,6 +14867,16 @@ fn (mut tc TypeChecker) check_call_arg_types(id flat.NodeId, node flat.Node, inf
 			0
 		})
 		target_name := tc.call_argument_target_name(node, info)
+		// IError stringification is valid in interpolation/printing, but an error
+		// constructor takes a real string and cannot embed an IError in its message.
+		if info.name in ['error', 'error_with_code'] && param_idx == 0
+			&& unalias_type(expected) is String && is_ierror_type(actual) {
+			if info.name == 'error' {
+				tc.record_warning_at(.call_arg_mismatch, '`error(err)` can be shortened to just `err`', arg_id, tc.call_argument_diagnostic_pos(arg_id))
+			}
+			tc.record_error_at(.call_arg_mismatch, 'cannot use `${tc.diagnostic_expr_type_name(arg_id, actual)}` as `string` in argument 1 to `${target_name}`', arg_id, tc.call_argument_diagnostic_pos(arg_id))
+			continue
+		}
 		if expected_display := tc.bare_generic_fntype_call_param_display(info.name, param_idx) {
 			if unalias_type(actual) is FnType {
 				actual_display := call_argument_type_name(actual)
