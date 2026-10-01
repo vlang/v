@@ -58,8 +58,11 @@ fn (t &Transformer) guard_value_needs_heap_storage(name string, value_type strin
 	is_fixed_array := t.is_fixed_array_type(clean_type)
 	needs_escape_storage := name in t.escaping_amp_sources
 		&& (t.heapable_value_type(clean_type) || is_fixed_array)
+	needs_fixed_view_storage := name in t.escaping_fixed_array_view_sources
+		&& !clean_type.starts_with('&')
+		&& (t.heapable_value_type(clean_type) || is_fixed_array)
 	needs_capture_storage := name in t.mut_fixed_array_capture_sources && is_fixed_array
-	return name != '_' && (needs_escape_storage || needs_capture_storage
+	return name != '_' && (needs_escape_storage || needs_fixed_view_storage || needs_capture_storage
 		|| t.heap_attr_struct_type(value_type))
 }
 
@@ -1557,12 +1560,12 @@ fn (t &Transformer) if_value_branch_tail_has_no_value(id flat.NodeId) bool {
 // transform_if_branch_value transforms transform if branch value data for transform.
 fn (mut t Transformer) transform_if_branch_value(id flat.NodeId, target_type string) flat.NodeId {
 	if t.is_sum_type_name(target_type) {
-		return t.clone_borrowed_projection(id, t.wrap_sum_value(id, target_type), target_type)
+		return t.clone_borrowed_projection(id, t.wrap_sum_value_for_storage(id, target_type), target_type)
 	}
 	if converted := t.fixed_array_value_to_dynamic(id, target_type) {
 		return converted
 	}
-	return t.clone_borrowed_projection(id, t.transform_expr_for_type(id, target_type), target_type)
+	return t.clone_borrowed_storage_projection(id, t.transform_expr_for_type(id, target_type), target_type)
 }
 
 // transform_is_condition transforms an `x is Type` condition node into the

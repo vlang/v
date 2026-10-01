@@ -165,7 +165,7 @@ fn (mut t Transformer) transform_struct_fields(id flat.NodeId, node flat.Node) f
 				new_val = t.coerce_transformed_expr_to_type(new_val, val_id, field_type)
 			}
 			if !shared_interface_source && field_type.len > 0 && !fixed_to_dynamic {
-				new_val = t.clone_borrowed_projection(val_id, new_val, field_type)
+				new_val = t.clone_borrowed_storage_projection(val_id, new_val, field_type)
 			}
 			// Snapshot a preceding field value before a later field hoists its branch prelude,
 			// so this value is read in source order rather than after that prelude.
@@ -1445,7 +1445,7 @@ fn (mut t Transformer) transform_assoc_expr(id flat.NodeId, node flat.Node) flat
 			t.transform_expr(value_id)
 		}
 		if field_type.len > 0 && !fixed_to_dynamic {
-			value = t.clone_borrowed_projection(value_id, value, field_type)
+			value = t.clone_borrowed_storage_projection(value_id, value, field_type)
 		}
 		t.drain_pending(mut prelude)
 		prelude << t.make_assign(t.make_selector(t.make_ident(tmp_name), field.value, field_type),
@@ -1723,6 +1723,10 @@ fn (mut t Transformer) fixed_array_value_to_owned_array(value_id flat.NodeId, fi
 }
 
 fn (mut t Transformer) fixed_array_value_to_array_no_alloc(value_id flat.NodeId, fixed_type string, array_type string) flat.NodeId {
+	return t.fixed_array_data_to_array_no_alloc(t.transform_expr(value_id), fixed_type, array_type)
+}
+
+fn (mut t Transformer) fixed_array_data_to_array_no_alloc(data_id flat.NodeId, fixed_type string, array_type string) flat.NodeId {
 	elem_type := fixed_array_elem_type(fixed_type)
 	len_expr := t.make_fixed_array_len_expr(fixed_type)
 	t.mark_fn_used('new_array_from_c_array_no_alloc')
@@ -1730,7 +1734,7 @@ fn (mut t Transformer) fixed_array_value_to_array_no_alloc(value_id flat.NodeId,
 		len_expr,
 		len_expr,
 		t.make_sizeof_type(elem_type),
-		t.transform_expr(value_id),
+		data_id,
 	], array_type)
 }
 

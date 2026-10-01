@@ -1037,7 +1037,12 @@ fn (mut g FlatGen) gen_ownership_drops(entries []types.OwnershipDropEntry) {
 			g.gen_ownership_drop_value(typ, expr, 0)
 		}
 		if free_pointer_storage {
-			g.writeln('free(${cname});')
+			free_fn := if g.pointer_free_needs_aligned_free(g.tc.parse_type('&${entry.type_name}')) {
+				'v3_aligned_free'
+			} else {
+				'v_free'
+			}
+			g.writeln('${free_fn}(${cname});')
 		}
 	}
 }
@@ -1705,14 +1710,16 @@ fn (mut g FlatGen) gen_ownership_clone_ierror(id flat.NodeId) {
 			g.writeln('${result}._object_is_boxed = true;')
 		} else {
 			clone_method := g.resolve_method_name(concrete, 'clone')
-			if clone_method.len > 0 {
+			has_compatible_clone := g.tc.ownership_type_has_clone_method(concrete_type)
+				|| g.tc.ownership_type_has_clone_method(types.Pointer{ base_type: concrete_type })
+			if clone_method.len > 0 && has_compatible_clone {
 				params := g.tc.fn_param_types[clone_method] or { []types.Type{} }
 				receiver := if params.len > 0 && params[0] is types.Pointer {
 					'((${concrete_ct}*)${object})'
 				} else {
 					'*((${concrete_ct}*)${object})'
 				}
-				return_type := g.tc.fn_ret_types[clone_method] or { concrete_type }
+				return_type := types.unalias_type(g.tc.fn_ret_types[clone_method] or { concrete_type })
 				if return_type is types.Pointer {
 					g.writeln('${result}._object = ${g.cname(clone_method)}(${receiver});')
 					// A compatible pointer-returning clone creates independent owned storage.
@@ -1723,6 +1730,9 @@ fn (mut g FlatGen) gen_ownership_clone_ierror(id flat.NodeId) {
 					g.writeln('${result}._object = memdup(&${value}, sizeof(${concrete_ct}));')
 					g.writeln('${result}._object_is_boxed = true;')
 				}
+			} else if g.ownership_type_requires_destruction(concrete_type, 0) {
+				message := 'cannot retain borrowed Result error: `${concrete}` requires ownership destruction but has no compatible `clone()` method'
+				g.writeln('v_panic(${g.interface_str_lit(message)});')
 			} else {
 				g.writeln('${result}._object = memdup(${object}, sizeof(${concrete_ct}));')
 				g.writeln('${result}._object_is_boxed = true;')
@@ -5607,6 +5617,10 @@ fn (g &FlatGen) heap_local_memdup_expr(source_expr string, base_type types.Type,
 			align_arg := struct_decl_alignment_memdup_arg(align, align_ct)
 			return '(${base_ct}*)v3_aligned_memdup(${src}, sizeof(${base_ct}), ${align_arg})'
 		}
+	}
+	mut seen := map[string]bool{}
+	if g.global_fixed_array_type_has_aligned_struct(clean_base, mut seen) {
+		return '(${base_ct}*)v3_aligned_memdup(${src}, sizeof(${base_ct}), __alignof__(${base_ct}))'
 	}
 	return '(${base_ct}*)memdup(${src}, sizeof(${base_ct}))'
 }

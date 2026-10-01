@@ -4368,6 +4368,14 @@ fn (mut tc TypeChecker) check_call(id flat.NodeId, node flat.Node) {
 			return
 		}
 		info := tc.specialized_plain_generic_call_info(node, info0)
+		if info.is_variadic && !info.is_c_variadic {
+			tc.a.nodes[int(id)].flags |= flat.node_flag_variadic_call
+			callee_id := tc.a.child(&node, 0)
+			if fn_type := fn_type_from_type(tc.resolve_type(callee_id)) {
+				// Local function-value scope metadata is gone before the escape pass.
+				tc.remember_expr_type(callee_id, Type(fn_type))
+			}
+		}
 		tc.record_uninferred_generic_method_type(id, node, info0)
 		tc.record_chained_bare_generic_struct_method_inference_error(id, node, info)
 		if info.name.len > 0 && !is_array_dsl_call_name(info.name) {

@@ -1665,6 +1665,35 @@ println(anums) // => [1, 10, 100]
 println(typeof(anums).name) // => []int
 ```
 
+Whole fixed size arrays and their ranges can be passed to mutable array parameters.
+These arguments borrow the original elements, so writes through either the array parameter
+or another alias are immediately visible through both. Returned or stored views keep sharing
+those elements. Local storage is moved to the heap before references to it are formed, so
+retained views remain valid after the local goes out of scope. A callee can also retain a
+reference to the separately allocated array header. Growing or reassigning that header follows
+the usual array slice rules and leaves the original fixed array's size unchanged.
+Immutable array-reference parameters, including each variadic argument, also borrow the
+original elements. These rules also apply to array-reference parameters declared through aliases.
+Fixed array values introduced by guards, multi-declarations, loop bindings, or select receives
+also receive durable storage when passed to a retaining array-reference parameter.
+Indexed fixed elements of dynamic arrays retain their original backing buffer, including through
+managed slice aliases, so retained headers preserve writes and remain valid after owner cleanup.
+The same rule applies to fixed elements obtained through `first()` or `last()`.
+Fixed values read from maps, including inline fields, are copied into independent durable storage.
+Mutable iteration over those fixed elements preserves the same backing lifetime.
+Pointer fields and indexed pointers retain the original fixed-array roots recorded by their owners.
+Borrowing does not clone elements or require a `clone()` method.
+Explicitly destroying owned source elements invalidates views of those elements, as with other
+borrowed slices.
+With ownership checking enabled, returning or storing a view copies its buffer to independent
+storage. Owned elements are cloned so the retained value has independent owners. Retained array
+references, including those stored inside options, receive a separate header, so other aliases
+in the callee still share the original elements.
+An operation that detaches a borrowed buffer also clones its owned elements. Such elements
+need a compatible `clone()` method or `IClone` support. Retaining or detaching a nonempty
+uncloneable borrowed buffer panics; borrowing it or changing its elements in place is allowed.
+An empty view can grow without cloning any source elements.
+
 Note that slicing will cause the data of the fixed size array to be copied to
 the newly created ordinary array. The exception is a slice that is written to:
 passing it as a `mut` argument, changing its elements, iterating over it with

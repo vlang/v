@@ -1700,7 +1700,7 @@ fn (mut t Transformer) lower_or_expr_to_temp(id flat.NodeId, node flat.Node) fla
 	opt_ident := t.make_ident(opt_tmp)
 	ok_cond := t.make_selector(opt_ident, 'ok', 'bool')
 	value_expr := t.make_selector(t.make_ident(opt_tmp), 'value', storage_value_type)
-	then_value := t.clone_borrowed_projection(expr_id, value_expr, storage_value_type)
+	then_value := t.clone_borrowed_storage_projection(expr_id, value_expr, storage_value_type)
 	mut then_stmts := []flat.NodeId{}
 	t.drain_pending(mut then_stmts)
 	then_assign := t.make_assign(t.make_ident(val_tmp), then_value)
