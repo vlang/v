@@ -45,7 +45,7 @@ pub mut:
 	on_progress_body RequestProgressBodyFn = unsafe { nil }
 	on_finish        RequestFinishFn       = unsafe { nil }
 
-	stop_copying_limit   i64 = -1 // after this many bytes are received, stop copying to the response. Note that on_progress and on_progress_body callbacks, will continue to fire normally, until the full response is read, which allows you to implement streaming downloads, without keeping the whole big response in memory
+	stop_copying_limit   i64 = -1 // positive limits cap body bytes copied to the response. Progress callbacks continue until the full response is read
 	stop_receiving_limit i64 = -1 // after this many bytes are received, break out of the loop that reads the response, effectively stopping the request early. No more on_progress callbacks will be fired. The on_finish callback will fire.
 }
 
