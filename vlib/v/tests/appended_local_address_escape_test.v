@@ -336,3 +336,43 @@ fn test_heap_value_captures_snapshot_the_semantic_value() {
 	assert buffer[0] == 143
 	assert *addresses[1] == 143
 }
+
+@[noinline]
+fn append_map_binding_addresses(mut out []&u64, mut keys []&int) {
+	values := {
+		7: u64(151)
+		8: u64(152)
+	}
+	for key, value in values {
+		keys << &key
+		out << &value
+	}
+	rows := {
+		'one': [u64(153), 154]!
+	}
+	for _, row in rows {
+		out << &row[0]
+		out << &row[1]
+	}
+	mut borrowed := {
+		'one': u64(155)
+	}
+	for _, mut value in borrowed {
+		out << &value
+		value++
+	}
+	assert borrowed['one'] == 156
+}
+
+fn test_map_values_and_keys_keep_retained_binding_addresses() {
+	mut out := []&u64{}
+	mut keys := []&int{}
+	append_map_binding_addresses(mut out, mut keys)
+	_ = use_the_stack(10)
+	mut copied := out.map(*it)
+	copied.sort()
+	assert copied == [u64(151), 152, 153, 154, 156]
+	mut copied_keys := keys.map(*it)
+	copied_keys.sort()
+	assert copied_keys == [7, 8]
+}

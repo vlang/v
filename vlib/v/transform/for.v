@@ -578,6 +578,14 @@ fn (mut t Transformer) rebuild_for_in_stmt(_id flat.NodeId, node flat.Node) []fl
 	} else {
 		false
 	}
+	for binding_id in [key_id, val_id] {
+		if int(binding_id) >= 0 {
+			binding := t.a.nodes[int(binding_id)]
+			if binding.kind == .ident {
+				t.clear_heaped_local_binding(binding.value)
+			}
+		}
+	}
 	if header_count == 4 || container_is_range {
 		// range `for i in 0 .. n`: single loop var (child0) follows the lower bound
 		if int(key_id) >= 0 {
@@ -637,37 +645,72 @@ fn (mut t Transformer) rebuild_for_in_stmt(_id flat.NodeId, node flat.Node) []fl
 		}
 	}
 
+	mut header_key_id := key_id
+	mut header_val_id := val_id
+	mut binding_names := map[string]string{}
+	mut binding_types := map[string]string{}
+	for binding_id in [key_id, val_id] {
+		if int(binding_id) < 0 { continue }
+		binding := t.a.nodes[int(binding_id)]
+		if binding.kind != .ident { continue }
+		binding_type := t.var_type(binding.value)
+		if !t.guard_value_needs_heap_storage(binding.value, binding_type) { continue }
+		name := t.new_temp('for_value')
+		t.set_var_type(name, binding_type)
+		backend_binding := t.make_ident(name)
+		t.set_node_typ(int(backend_binding), binding_type)
+		binding_names[binding.value] = name
+		binding_types[binding.value] = binding_type
+		if binding_id == key_id {
+			header_key_id = backend_binding
+		} else {
+			header_val_id = backend_binding
+		}
+	}
+
 	mut binding_clones := []flat.NodeId{}
 	if map_iter_type.starts_with('map[') {
 		key_type, value_type := t.map_type_parts(map_iter_type)
 		if has_index {
-			key_name := if int(key_id) >= 0 { t.a.nodes[int(key_id)].value } else { '' }
+			key_source_name := if int(key_id) >= 0 { t.a.nodes[int(key_id)].value } else { '' }
+			key_name := binding_names[key_source_name] or { key_source_name }
 			if t.normalize_type_alias(key_type).trim_space() != 'string' {
 				binding_clones << t.make_for_in_binding_clone(key_name, key_type)
 			}
-			value_name := if int(val_id) >= 0 { t.a.nodes[int(val_id)].value } else { '' }
+			value_source_name := if int(val_id) >= 0 { t.a.nodes[int(val_id)].value } else { '' }
+			value_name := binding_names[value_source_name] or { value_source_name }
 			binding_type := t.for_in_binding_storage_type(val_id, value_type, node.op == .amp, container_yields_ref)
 			binding_clones << t.make_for_in_binding_clone(value_name, binding_type)
 		} else {
-			value_name := if int(key_id) >= 0 { t.a.nodes[int(key_id)].value } else { '' }
+			source_name := if int(key_id) >= 0 { t.a.nodes[int(key_id)].value } else { '' }
+			value_name := binding_names[source_name] or { source_name }
 			binding_type := t.for_in_binding_storage_type(key_id, value_type, node.op == .amp, container_yields_ref)
 			binding_clones << t.make_for_in_binding_clone(value_name, binding_type)
 		}
 	} else if iter_value_type.starts_with('[]') || t.is_fixed_array_type(iter_value_type) {
-		value_name := if has_index {
+		source_name := if has_index {
 			if int(val_id) >= 0 { t.a.nodes[int(val_id)].value } else { '' }
 		} else {
 			if int(key_id) >= 0 { t.a.nodes[int(key_id)].value } else { '' }
 		}
+		value_name := binding_names[source_name] or { source_name }
 		elem_type := t.infer_for_in_elem_type(iter_type, node)
 		bind_id := if has_index { val_id } else { key_id }
 		value_type := t.for_in_binding_storage_type(bind_id, elem_type, node.op == .amp, container_yields_ref)
 		binding_clones << t.make_for_in_binding_clone(value_name, value_type)
 	}
 
+	mut binding_decls := []flat.NodeId{}
+	for binding_id in [key_id, val_id] {
+		if int(binding_id) < 0 { continue }
+		binding := t.a.nodes[int(binding_id)]
+		if backend_name := binding_names[binding.value] {
+			binding_decls << t.make_guard_value_decls(binding.value, t.make_ident(backend_name), binding_types[binding.value])
+		}
+	}
 	mut ids := []flat.NodeId{}
-	ids << key_id
-	ids << val_id
+	ids << header_key_id
+	ids << header_val_id
 	ids << new_container
 	if header_count == 4 {
 		ids << new_range_end
@@ -734,6 +777,7 @@ fn (mut t Transformer) rebuild_for_in_stmt(_id flat.NodeId, node flat.Node) []fl
 		transformed_body = t.transform_stmts(body_ids)
 	}
 	mut new_body := binding_clones.clone()
+	new_body << binding_decls
 	new_body << transformed_body
 	for bid in new_body {
 		ids << bid
