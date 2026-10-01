@@ -1092,3 +1092,45 @@ fn test_generated_multi_declaration_fixed_bindings_keep_retained_views_alive() {
 	assert read_retained_optional_fixed_reference(matched) == [361, 362]
 	assert read_retained_optional_fixed_reference(conditional) == [371, 372]
 }
+
+struct RetainedFixedRowIterator {
+mut:
+	index int
+}
+
+fn (mut iter RetainedFixedRowIterator) next() ?[2]int {
+	if iter.index == 2 {
+		return none
+	}
+	iter.index++
+	return [381 + iter.index, 391 + iter.index]!
+}
+
+@[noinline]
+fn references_from_indexed_fixed_row_bindings() []&[]int {
+	rows := [[401, 402]!, [411, 412]!]
+	mut kept := []&[]int{}
+	for row in rows {
+		kept << retain_immutable_array_reference(row)
+	}
+	return kept
+}
+
+@[noinline]
+fn references_from_iterator_fixed_row_bindings() []&[]int {
+	mut kept := []&[]int{}
+	for row in RetainedFixedRowIterator{} {
+		kept << retain_immutable_array_reference(row)
+	}
+	return kept
+}
+
+fn test_by_value_fixed_row_loop_bindings_keep_retained_views_alive() {
+	indexed := references_from_indexed_fixed_row_bindings()
+	iterator := references_from_iterator_fixed_row_bindings()
+	assert overwrite_stack() == 7
+	assert read_retained_optional_fixed_reference(indexed[0]) == [401, 402]
+	assert read_retained_optional_fixed_reference(indexed[1]) == [411, 412]
+	assert read_retained_optional_fixed_reference(iterator[0]) == [382, 392]
+	assert read_retained_optional_fixed_reference(iterator[1]) == [383, 393]
+}
