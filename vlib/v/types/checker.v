@@ -4063,6 +4063,11 @@ fn (mut tc TypeChecker) collect_after_index(a &flat.FlatAst) {
 			}
 			.c_fn_decl {
 				c_name := if node.value.starts_with('C.') { node.value } else { 'C.${node.value}' }
+				// `C.va_arg(T, ap)` has the type `T` whatever a declaration of the
+				// macro says (translated C declares `fn C.va_arg(voidptr, voidptr) voidptr`).
+				if c_name == 'C.va_arg' {
+					continue
+				}
 				tc.register_visible_mutation_fn_decl(tl_idx, tc.cur_module, c_name, c_name)
 				ret_type := tc.parse_type(node.typ)
 				mut ptypes := []Type{}

@@ -1797,7 +1797,7 @@ fn (mut t Transformer) transform_or_body_for_codegen(body_id flat.NodeId) flat.N
 	}
 	body := t.a.nodes[int(body_id)]
 	if body.kind == .block {
-		return t.make_block(t.transform_stmts(t.a.children_of(&body)))
+		return t.make_block(t.transform_scope_stmts(t.a.children_of(&body)))
 	}
 	if t.is_stmt_kind_id(int(body.kind)) {
 		return t.make_block(t.transform_stmt(body_id))
@@ -2219,7 +2219,12 @@ fn (mut t Transformer) append_implicit_err_decl(mut stmts []flat.NodeId, err_exp
 	if int(err_expr) < 0 || !t.has_ierror_interface() {
 		return
 	}
-	stmts << t.make_decl_assign_typed('err', err_expr, 'IError')
+	stmts << t.make_guard_value_decls('err', err_expr, 'IError')
+	i := t.var_type_index('err')
+	t.var_types[i] = VarTypeBinding{
+		...t.var_types[i]
+		is_implicit_err: true
+	}
 }
 
 // lower_or_body_to_stmts converts lower or body to stmts data for transform.

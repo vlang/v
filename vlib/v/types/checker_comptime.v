@@ -3853,10 +3853,13 @@ fn (mut tc TypeChecker) check_prefix_expr(id flat.NodeId, node flat.Node) {
 			return
 		}
 		base := tc.a.node(base_id)
+		// Like V1, translated files take the address of a global array's elements
+		// outside `unsafe` (C translated by c2v: `&sqlite3_str_binary[0]`).
 		if raw_base_type !is Alias && base_type is Array
 			&& unalias_type(base_type.elem_type) !is Pointer
 			&& base.kind == .ident
 			&& (base_pointer_depth > 0 || tc.ident_is_mutable_lvalue(base.value))
+			&& !(tc.node_is_in_translated_file(id) && tc.ident_is_global_binding(base.value))
 			&& tc.unsafe_depth == 0 && !tc.expr_is_inside_unsafe_block(id) {
 			tc.record_error_at(.assignment_mismatch, 'cannot take the address of mutable array elements outside unsafe blocks', child_id, tc.index_brackets_pos(address_child))
 			return
