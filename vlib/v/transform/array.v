@@ -1935,7 +1935,7 @@ fn (mut t Transformer) clone_borrowed_array_append_many_value(source_id flat.Nod
 	if t.owned_array_slice_detach_needed(elem_type) {
 		source := t.a.nodes[int(t.unwrap_parens(source_id))]
 		if source.kind == .ident && t.mut_param_values[source.value] {
-			return t.request_default_clone_helper(value, array_type), true
+			return t.clone_owned_array_storage_value(value, array_type, true), true
 		}
 	}
 	return value, false

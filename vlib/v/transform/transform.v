@@ -7321,12 +7321,13 @@ fn (mut t Transformer) collect_mut_capture_sources(id flat.NodeId) {
 	}
 }
 
-// HeapedLocalState preserves lexical storage markers through a complete scope.
+// HeapedLocalState preserves lexical storage markers and their binding types through a scope.
 struct HeapedLocalState {
 	cloned                bool
 	heaped_amp_locals     map[string]bool
 	pointer_value_lvalues map[string]bool
 	pointer_value_rvalues map[string]bool
+	bindings              []VarTypeBinding
 }
 
 fn (t &Transformer) save_heaped_local_state() HeapedLocalState {
@@ -7334,11 +7335,19 @@ fn (t &Transformer) save_heaped_local_state() HeapedLocalState {
 		&& t.pointer_value_rvalues.len == 0 {
 		return HeapedLocalState{}
 	}
+	mut bindings := []VarTypeBinding{}
+	for binding in t.var_types {
+		if t.heaped_amp_locals[binding.name] || t.pointer_value_lvalues[binding.name]
+			|| t.pointer_value_rvalues[binding.name] {
+			bindings << binding
+		}
+	}
 	return HeapedLocalState{
 		cloned:                true
 		heaped_amp_locals:     t.heaped_amp_locals.clone()
 		pointer_value_lvalues: t.pointer_value_lvalues.clone()
 		pointer_value_rvalues: t.pointer_value_rvalues.clone()
+		bindings:              bindings
 	}
 }
 
@@ -7352,6 +7361,13 @@ fn (mut t Transformer) restore_heaped_local_state(state HeapedLocalState) {
 	t.heaped_amp_locals = state.heaped_amp_locals.clone()
 	t.pointer_value_lvalues = state.pointer_value_lvalues.clone()
 	t.pointer_value_rvalues = state.pointer_value_rvalues.clone()
+	for binding in state.bindings {
+		// Recreate a removed binding through the setter so indices and caches stay valid,
+		// then retain the complete incoming metadata, including its semantic heap type.
+		t.set_var_type_with_raw(binding.name, binding.typ, binding.raw_typ)
+		i := t.var_type_index(binding.name)
+		t.var_types[i] = binding
+	}
 }
 
 fn (mut t Transformer) clear_heaped_local_binding(name string) {

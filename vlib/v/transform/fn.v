@@ -11643,6 +11643,7 @@ fn (mut t Transformer) lower_owned_array_removal_call(node flat.Node, base_id fl
 	mut args := []flat.NodeId{}
 	mut drop_stmts := []flat.NodeId{}
 	mut valid_drop_range := flat.empty_node
+	mut removal_call_guard := flat.empty_node
 	match method {
 		'delete' {
 			if node.children_count < 2 {
@@ -11665,7 +11666,13 @@ fn (mut t Transformer) lower_owned_array_removal_call(node flat.Node, base_id fl
 			args << size
 			t.append_owned_array_drop_range(array_value, elem_type, index, t.make_infix(.plus, index, size), mut drop_stmts)
 			end := t.make_infix(.plus, t.make_cast('i64', index, 'i64'), t.make_cast('i64', size, 'i64'))
-			valid_drop_range = t.make_infix(.logical_and, t.make_infix(.ge, index, t.make_int_literal(0)), t.make_infix(.le, end, t.make_cast('i64', t.make_selector(array_value, 'len', 'int'), 'i64')))
+			valid_bounds := t.make_infix(.logical_and, t.make_infix(.ge, index, t.make_int_literal(0)), t.make_infix(.le, end, t.make_cast('i64', t.make_selector(array_value, 'len', 'int'), 'i64')))
+			valid_drop_range = t.make_infix(.logical_and, valid_bounds,
+				t.make_infix(.gt, size, t.make_int_literal(0)))
+			// A valid empty deletion keeps borrowing. Invalid bounds still reach the
+			// builtin diagnostic, and other counts retain their ordinary runtime path.
+			removal_call_guard = t.make_infix(.logical_or,
+				t.make_infix(.ne, size, t.make_int_literal(0)), t.make_prefix(.not, valid_bounds))
 		}
 		'clear', 'free' {
 			t.append_owned_array_drop_range(array_value, elem_type, t.make_int_literal(0), t.make_selector(array_value, 'len', 'int'), mut drop_stmts)
@@ -11739,6 +11746,11 @@ fn (mut t Transformer) lower_owned_array_removal_call(node flat.Node, base_id fl
 		// mutate the original header in place.
 		t.pending_stmts << t.make_expr_stmt(call)
 		t.pending_stmts << t.make_assign(array_value, t.zero_value_for_type(clean_base_type))
+		return t.make_empty()
+	}
+	if int(removal_call_guard) >= 0 {
+		t.pending_stmts << t.make_if_with_skip_ownership_drops(removal_call_guard,
+			t.make_block_skip_scope_drops([t.make_expr_stmt(call)]), t.make_empty())
 		return t.make_empty()
 	}
 	return call
