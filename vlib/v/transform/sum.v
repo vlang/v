@@ -1996,6 +1996,7 @@ fn (mut t Transformer) wrap_sum_value_with_storage(expr_id flat.NodeId, target_s
 		t.transform_expr(expr_id)
 	}
 	if detach_array_payload {
+		inner = t.sum_array_value_payload(inner, matched_variant)
 		inner = t.clone_owned_array_view_for_storage(inner, matched_variant)
 	}
 	if ref_variant {
@@ -2102,12 +2103,26 @@ fn (mut t Transformer) make_default_sum_value(typ string) ?flat.NodeId {
 	return t.make_sum_literal(resolved_sum, variant, value)
 }
 
+// A by-value array variant owns its header box. ABI pointers to a borrowed
+// header must be loaded before CGen decides whether the box already exists.
+fn (mut t Transformer) sum_array_value_payload(value flat.NodeId, variant string) flat.NodeId {
+	variant_type := t.comptime_normalize_type_alias_chain(variant)
+	value_type := t.comptime_normalize_type_alias_chain(t.node_type(value))
+	if variant_type.starts_with('[]') && value_type == '&${variant_type}' {
+		payload := t.array_lvalue_value(value, value_type)
+		t.set_node_typ(int(payload), variant)
+		return payload
+	}
+	return value
+}
+
 // make_sum_literal builds make sum literal data for transform.
 fn (mut t Transformer) make_sum_literal(sum_name string, variant string, value flat.NodeId) flat.NodeId {
 	qvariant := t.resolve_variant(sum_name, variant)
 	typ_field := t.make_sum_literal_field('typ', t.make_int_literal(t.sum_type_index(sum_name,
 		qvariant)), 'int')
-	raw_value_type := t.node_type(value)
+	payload := t.sum_array_value_payload(value, qvariant)
+	raw_value_type := t.node_type(payload)
 	mut value_type := if raw_value_type.starts_with('&') {
 		raw_value_type
 	} else {
@@ -2117,7 +2132,7 @@ fn (mut t Transformer) make_sum_literal(sum_name string, variant string, value f
 		&& !value_type.starts_with('&') {
 		value_type = '&${qvariant}'
 	}
-	value_field := t.make_sum_literal_field(t.sum_field_name(qvariant), value, value_type)
+	value_field := t.make_sum_literal_field(t.sum_field_name(qvariant), payload, value_type)
 	start := t.a.children.len
 	t.a.children << typ_field
 	t.a.children << value_field
