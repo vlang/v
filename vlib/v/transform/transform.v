@@ -9881,6 +9881,7 @@ fn (mut t Transformer) heap_fixed_array_view_params(fn_node flat.Node, param_typ
 			continue
 		}
 		typ := t.var_type(param.value)
+		param_raw_typ := t.raw_var_type(param.value)
 		if !t.is_fixed_array_type(typ) && !t.heapable_value_type(typ) {
 			continue
 		}
@@ -9888,7 +9889,7 @@ fn (mut t Transformer) heap_fixed_array_view_params(fn_node flat.Node, param_typ
 		mut abi_param := param
 		abi_param.value = abi_name
 		replacements[int(param_id)] = t.a.add_node(abi_param)
-		t.set_var_type_with_raw(abi_name, typ, t.raw_var_type(param.value))
+		t.set_var_type_with_raw(abi_name, typ, param_raw_typ)
 		if t.is_fixed_array_type(typ) {
 			t.fixed_array_param_values[abi_name] = true
 			t.fixed_array_param_values.delete(param.value)
@@ -9896,7 +9897,7 @@ fn (mut t Transformer) heap_fixed_array_view_params(fn_node flat.Node, param_typ
 		rhs := t.make_ident(abi_name)
 		t.set_node_typ(int(rhs), typ)
 		decl := t.make_decl_assign_typed(param.value, rhs, typ)
-		entry_stmts << t.heap_escaping_source_decl(t.a.nodes[int(decl)], param.value, typ)
+		entry_stmts << t.heap_escaping_source_decl(t.a.nodes[int(decl)], param.value, typ, param_raw_typ)
 	}
 	return replacements, entry_stmts
 }
@@ -16177,7 +16178,7 @@ fn (mut t Transformer) transform_decl_assign_stmt(id flat.NodeId, node flat.Node
 			&& (t.is_fixed_array_type(inferred_typ) || t.heapable_value_type(inferred_typ)) {
 			// Sibling scopes can declare the same name. Promote each value binding;
 			// an earlier binding's heap marker must not suppress this declaration.
-			return t.heap_escaping_source_decl(node, src.value, inferred_typ)
+			return t.heap_escaping_source_decl(node, src.value, inferred_typ, inferred_raw_typ)
 		}
 		if src.kind == .ident && src.value in t.escaping_amp_sources
 			&& (source_single_decl || src.value !in t.heaped_amp_locals)
