@@ -2007,7 +2007,7 @@ fn (mut t Transformer) wrap_sum_value_with_storage(expr_id flat.NodeId, target_s
 	}
 	if detach_array_payload {
 		inner = t.sum_owned_value_payload(inner, matched_variant)
-		inner = t.clone_owned_array_view_for_storage(inner, matched_variant)
+		inner = t.clone_owned_array_storage_value(inner, matched_variant, t.array_storage_source_is_mut_param(expr_id))
 	}
 	if ref_variant {
 		return t.make_sum_literal(storage_sum, matched_variant, inner)

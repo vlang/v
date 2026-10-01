@@ -5,6 +5,7 @@ elements. Growing the buffer or removing owned elements first acquires independe
 element owners. Operations that leave the buffer and elements unchanged keep borrowing.
 
 Storing or returning a borrowed view with owned elements acquires independent owners.
+Mutable array parameters also borrow their callers' owners when the buffer is managed and unsliced.
 This includes map values, interface values, active sum variants, successful option and
 result payloads, and closure value captures. A retained array reference receives a
 separate header, so acquisition does not replace the caller's header.
