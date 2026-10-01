@@ -9711,7 +9711,8 @@ fn (t &Transformer) escape_address_indirect_base_is_stack_backed(id flat.NodeId,
 	if node.kind == .ident && node.value.len > 0 {
 		return t.escape_pointer_ident_is_stack_backed(node.value, amp_ptrs, ptr_aliases)
 	}
-	if node.kind == .paren && node.children_count > 0 {
+	// Aggregate fields and indexed pointers carry their root's recorded address sources.
+	if node.kind in [.paren, .selector, .index] && node.children_count > 0 {
 		return t.escape_address_indirect_base_is_stack_backed(t.a.child(&node, 0), amp_ptrs, ptr_aliases, local_stack_names)
 	}
 	if node.kind == .prefix && node.op == .amp && node.children_count == 1 {

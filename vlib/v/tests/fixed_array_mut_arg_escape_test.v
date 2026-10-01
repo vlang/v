@@ -1261,3 +1261,44 @@ fn test_overloaded_fixed_index_pointer_result_preserves_storage_identity() {
 	row[0] = 713
 	assert read_retained_optional_fixed_reference(kept) == [713, 712]
 }
+
+struct FixedPointerFieldHolder {
+	p &[3]int
+}
+
+struct FixedPointerFieldStore {
+mut:
+	data &[]int = unsafe { nil }
+}
+
+fn (mut store FixedPointerFieldStore) retain(values &[]int) {
+	store.data = values
+}
+
+@[noinline]
+fn store_from_fixed_pointer_aggregate(mut store FixedPointerFieldStore, kind int) {
+	mut values := [721, 722, 723]!
+	holder := FixedPointerFieldHolder{ p: &values }
+	unsafe {
+		if kind == 0 {
+			store.retain((*holder.p)[1..])
+		} else if kind == 1 {
+			holders := [holder]
+			store.retain((*holders[0].p)[1..])
+		} else {
+			pointers := [&values]
+			store.retain((*pointers[0])[1..])
+		}
+	}
+	values[1] = 724
+	assert read_retained_optional_fixed_reference(store.data) == [724, 723]
+}
+
+fn test_stored_fixed_views_follow_aggregate_pointer_sources() {
+	for kind in 0 .. 3 {
+		mut store := FixedPointerFieldStore{}
+		store_from_fixed_pointer_aggregate(mut store, kind)
+		assert overwrite_stack() == 7
+		assert read_retained_optional_fixed_reference(store.data) == [724, 723]
+	}
+}
