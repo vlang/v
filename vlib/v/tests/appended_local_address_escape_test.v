@@ -211,14 +211,18 @@ fn append_multi_decl_addresses(mut out []&u64, first bool) {
 	out << &h
 }
 
+// V has no shadowing, so the name is declared again in a sibling scope: there it is a
+// pointer and must not inherit the heap storage of the earlier value.
 @[noinline]
-fn append_multi_shadow_addresses(mut out []&u64, target &u64) {
-	x := u64(93)
-	out << &x
+fn append_multi_reused_name_addresses(mut out []&u64, target &u64) {
 	{
-		x, old := target, &x
+		x := u64(93)
+		out << &x
+	}
+	{
+		x, other := target, u64(95)
 		assert *x == 94
-		out << old
+		out << &other
 	}
 }
 
@@ -227,10 +231,10 @@ fn test_multi_declarations_keep_retained_binding_addresses() {
 	append_multi_decl_addresses(mut out, true)
 	append_multi_decl_addresses(mut out, false)
 	target := u64(94)
-	append_multi_shadow_addresses(mut out, &target)
+	append_multi_reused_name_addresses(mut out, &target)
 	_ = use_the_stack(10)
 	assert out.map(*it) == [u64(81), 82, 83, 84, 85, 86, 89, 90, 81, 82, 83, 84, 87, 88, 91, 92,
-		93, 93]
+		93, 95]
 }
 
 struct EscapingValueIterator {
@@ -325,16 +329,17 @@ fn test_heap_value_captures_snapshot_the_semantic_value() {
 	assert read_record() == 133
 	assert records[0].value == 134
 	mut buffer := [u64(141), 142]!
-	addresses << &buffer[0]
+	addresses << unsafe { &buffer[0] }
 	bump_buffer := fn [mut buffer] () u64 {
 		buffer[0]++
 		return buffer[0]
 	}
+	// A mutable capture of a fixed array shares its storage.
 	buffer[0] = 143
-	assert bump_buffer() == 142
-	assert bump_buffer() == 143
-	assert buffer[0] == 143
-	assert *addresses[1] == 143
+	assert bump_buffer() == 144
+	assert bump_buffer() == 145
+	assert buffer[0] == 145
+	assert *addresses[1] == 145
 }
 
 @[noinline]
@@ -351,8 +356,8 @@ fn append_map_binding_addresses(mut out []&u64, mut keys []&int) {
 		'one': [u64(153), 154]!
 	}
 	for _, row in rows {
-		out << &row[0]
-		out << &row[1]
+		out << unsafe { &row[0] }
+		out << unsafe { &row[1] }
 	}
 	mut borrowed := {
 		'one': u64(155)
@@ -429,7 +434,7 @@ fn append_pointer_arithmetic_addresses(mut out []&u64) {
 	out << unsafe { &items[0] + 1 }
 	out << unsafe { 1 + &items[1] }
 	out << unsafe { &items[2] - 2 }
-	base := &items[0]
+	base := unsafe { &items[0] }
 	advanced := unsafe { (base + 1) + 1 }
 	out << advanced
 	items[1] = 194
