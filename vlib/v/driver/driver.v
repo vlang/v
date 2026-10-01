@@ -263,6 +263,10 @@ fn tcc_atomic_s_arg(prefs &pref.Preferences) string {
 	if !link_atomic_s {
 		return ''
 	}
+	if target_os == 'linux' && prefs.target.arch == 'amd64' {
+		// Keep V's fence distinct from the atomic helpers supplied by libtcc1.a.
+		return os.join_path(prefs.vroot, 'vlib', 'sync', 'stdatomic', 'atomic_fence_amd64.S')
+	}
 	atomic_s := os.join_path(prefs.vroot, 'thirdparty', 'stdatomic', 'nix', 'atomic.S')
 	return atomic_s
 }
@@ -3204,6 +3208,74 @@ fn v3_tcc_host_system_flags(target_os string, macos_sdk_root string) []string {
 		}
 	}
 	return flags
+}
+
+// v3_tcc_macos_framework_flags replaces the `-framework` link flags that TCC
+// does not support with the file ld would link for them: the SDK's `.tbd` stub,
+// or the framework binary found through `-F` or in /Library/Frameworks. It drops
+// the `-F` search paths, which TCC rejects. A framework that cannot be resolved,
+// and `-weak_framework`, are kept, so TCC still reports them and an implicit TCC
+// build falls back to the platform C compiler as before.
+fn v3_tcc_macos_framework_flags(flags []string, target_os string, macos_sdk_root string) []string {
+	if target_os != 'macos' || !flags.any(it.trim_space() == '-framework'
+		|| it.trim_space().starts_with('-F')) {
+		return flags
+	}
+	mut search_dirs := []string{}
+	for i, flag in flags {
+		clean := flag.trim_space()
+		if clean == '-F' && i + 1 < flags.len {
+			search_dirs << flags[i + 1].trim_space()
+		} else if clean.starts_with('-F') && clean.len > 2 {
+			search_dirs << clean[2..]
+		}
+	}
+	if macos_sdk_root != '' {
+		search_dirs << os.join_path(macos_sdk_root, 'System', 'Library', 'Frameworks')
+	}
+	search_dirs << '/Library/Frameworks'
+	mut result := []string{cap: flags.len}
+	mut i := 0
+	for i < flags.len {
+		clean := flags[i].trim_space()
+		if clean == '-F' {
+			i += 2
+			continue
+		}
+		if clean.starts_with('-F') && clean.len > 2 {
+			i++
+			continue
+		}
+		if clean == '-framework' && i + 1 < flags.len {
+			link_file := v3_macos_framework_link_file(flags[i + 1].trim_space(), search_dirs)
+			if link_file != '' {
+				result << link_file
+			} else {
+				result << [flags[i], flags[i + 1]]
+			}
+			i += 2
+			continue
+		}
+		result << flags[i]
+		i++
+	}
+	return result
+}
+
+fn v3_macos_framework_link_file(name string, search_dirs []string) string {
+	if name == '' {
+		return ''
+	}
+	for dir in search_dirs {
+		framework_dir := os.join_path(dir, '${name}.framework')
+		for candidate in [os.join_path(framework_dir, '${name}.tbd'),
+			os.join_path(framework_dir, name)] {
+			if os.is_file(candidate) {
+				return candidate
+			}
+		}
+	}
+	return ''
 }
 
 fn macos_sdk_root() string {
@@ -7788,6 +7860,7 @@ fn v3_usable_tcc_compiler(tcc_path string) bool {
 struct V3BundledTccProbeOptions {
 	backend             string
 	c_only              bool
+	is_o                bool
 	is_prod             bool
 	is_c_debug          bool
 	race                bool // TCC has no ThreadSanitizer, so `-race` never selects it implicitly
@@ -7823,12 +7896,19 @@ fn v3_should_probe_bundled_tcc(options V3BundledTccProbeOptions) bool {
 	if options.dump_c_flags || (options.parallel_cc && options.target.os != 'windows') {
 		return false
 	}
+	// -prod needs optimizations that TCC cannot do, so TCC is never its default, not
+	// even on Windows. Probing it there would generate C for TCC, skip TCC when
+	// compiling, and then re-run the whole compilation for the platform compiler.
+	// Race builds need ThreadSanitizer, including when computing Windows vtest facts.
+	if options.is_prod || options.race {
+		return false
+	}
 	// Windows uses its bundled TCC as the platform default, including modes that
-	// use an optimizing or debug compiler by default on other hosts.
+	// use a debug compiler by default on other hosts.
 	if options.host_os == 'windows' && options.target.os == 'windows' {
 		return true
 	}
-	return !options.is_prod && !options.is_c_debug && !options.race
+	return !options.is_c_debug
 }
 
 fn v3_bundled_tcc_available(options V3BundledTccProbeOptions) bool {
@@ -7964,8 +8044,11 @@ fn v3_select_c_compiler(vroot string, requested V3BundledTccProbeOptions) V3CCom
 		&& v3_system_tcc_runtime_available(vroot, options.target.os)
 	implicit_tcc := v3_default_tcc_compiler(options.bundled_tcc, bundled_tcc_available,
 		allow_system_tcc, options.dump_c_flags, options.host_os)
-	c_compiler := v3_select_implicit_c_compiler(options.c_compiler, options.c_compiler_explicit,
+	mut c_compiler := v3_select_implicit_c_compiler(options.c_compiler, options.c_compiler_explicit,
 		implicit_tcc)
+	if v3_windows_prod_needs_default_c_compiler(options) {
+		c_compiler = v3_windows_prod_default_c_compiler(options.target.arch, options.is_o)
+	}
 	// Generate for the compiler that receives the first build attempt. If implicit
 	// TCC cannot be used, the caller regenerates before invoking the `cc` fallback.
 	use_implicit_tcc_semantics := options.backend == 'c' && !options.c_compiler_explicit
@@ -8012,6 +8095,110 @@ fn v3_platform_c_compiler(host_os string) string {
 fn v3_platform_c_compiler_command(host_os string) string {
 	name := v3_platform_c_compiler(host_os)
 	return os.find_abs_path_of_executable(name) or { name }
+}
+
+// v3_windows_prod_needs_default_c_compiler reports whether a native Windows `-prod`
+// build that named no `-cc` needs a default C compiler chosen for it. The bundled TCC
+// stands in for the platform compiler on Windows, but it cannot do the optimizations
+// `-prod` asks for, and the bare `cc` is whichever compiler comes first on PATH, so
+// neither is a sound default here. A cross-architecture build is left as it was.
+fn v3_windows_prod_needs_default_c_compiler(options V3BundledTccProbeOptions) bool {
+	return options.is_prod && !options.c_compiler_explicit && options.backend == 'c'
+		&& !options.c_only && !options.dump_c_flags && options.host_os == 'windows'
+		&& options.target.os == 'windows' && options.target.arch == options.host_target.arch
+}
+
+// v3_windows_prod_default_c_compiler is the C compiler of a build that
+// v3_windows_prod_needs_default_c_compiler accepts. On amd64 it is MSVC, Clang or GCC,
+// in the order v3_windows_prod_c_compiler gives. V's MSVC code and the MinGW Clang check
+// are written for amd64, so the other architectures keep the platform GCC, which the
+// regeneration after the skipped implicit TCC used to give them.
+fn v3_windows_prod_default_c_compiler(arch string, is_o bool) string {
+	if arch == 'amd64' {
+		return v3_windows_prod_c_compiler(v3_windows_prod_toolchain(is_o))
+	}
+	return v3_platform_c_compiler_command('windows')
+}
+
+// V3WindowsProdToolchain is what the environment offers a Windows `-prod` build that
+// named no `-cc`. An empty field means that tool is absent, unusable or was not probed.
+struct V3WindowsProdToolchain {
+	cl           string // `cl` on PATH
+	include      string // INCLUDE, which a Developer Command Prompt sets
+	lib          string // LIB, which a Developer Command Prompt sets
+	target_arch  string // VSCMD_ARG_TGT_ARCH: the architecture `cl` builds for
+	is_o         bool   // the build writes an object file, not an executable
+	clang        string // `clang` on PATH
+	clang_triple string // what `clang -dumpmachine` printed
+	gcc          string
+}
+
+// v3_windows_prod_msvc_ready reports whether `cl` can build V's C for amd64. `cl` on PATH
+// is not enough. A Developer Command Prompt also sets INCLUDE and LIB, and without them
+// `cl` cannot find `assert.h`. Its target has to be x64: an x86 prompt puts an x86 `cl`
+// on PATH, which lacks the intrinsics V's MSVC code uses (`_umul128` in math.bits). And
+// `cl` cannot produce the object file of `-o x.o`, which V builds with gcc or clang. An
+// unset VSCMD_ARG_TGT_ARCH is trusted, since older scripts do not set it.
+fn v3_windows_prod_msvc_ready(tc V3WindowsProdToolchain) bool {
+	return tc.cl != '' && tc.include != '' && tc.lib != '' && !tc.is_o
+		&& (tc.target_arch == '' || tc.target_arch.to_lower_ascii() == 'x64')
+}
+
+// v3_windows_prod_clang_ready reports whether the probed `clang` builds amd64 code for
+// the MinGW ABI, which V's Windows link flags assume. A clang for the MSVC ABI
+// (`x86_64-pc-windows-msvc`) would fail to link them, and a 32-bit or ARM one builds the
+// wrong architecture.
+fn v3_windows_prod_clang_ready(tc V3WindowsProdToolchain) bool {
+	triple := tc.clang_triple
+	return tc.clang != '' && triple.starts_with('x86_64')
+		&& (triple.contains('mingw') || triple.contains('windows-gnu'))
+}
+
+// v3_windows_prod_c_compiler is the order in which a Windows `-prod` build tries C
+// compilers when none was named: MSVC, then Clang, then GCC.
+fn v3_windows_prod_c_compiler(tc V3WindowsProdToolchain) string {
+	if v3_windows_prod_msvc_ready(tc) {
+		return 'cl'
+	}
+	if v3_windows_prod_clang_ready(tc) {
+		return tc.clang
+	}
+	return tc.gcc
+}
+
+// v3_windows_prod_clang_triple is what `clang -dumpmachine` prints, or '' when it fails,
+// times out or prints anything but one word. The probe is bounded because it runs a PATH
+// program that has not been chosen, and it must never be able to hang a build.
+fn v3_windows_prod_clang_triple(clang string) string {
+	probe := cmdexec.run_with_timeout(clang, ['-dumpmachine'], 5000)
+	triple := probe.output.trim_space().to_lower_ascii()
+	if probe.exit_code != 0 || triple.contains(' ') || triple.split_into_lines().len != 1 {
+		return ''
+	}
+	return triple
+}
+
+// v3_windows_prod_toolchain looks for the compilers v3_windows_prod_c_compiler chooses
+// between. Once MSVC is ready nothing else is looked up: the later tools cannot be
+// chosen, and probing a PATH `clang` runs a program.
+fn v3_windows_prod_toolchain(is_o bool) V3WindowsProdToolchain {
+	tc := V3WindowsProdToolchain{
+		cl:          os.find_abs_path_of_executable('cl') or { '' }
+		include:     os.getenv('INCLUDE')
+		lib:         os.getenv('LIB')
+		target_arch: os.getenv('VSCMD_ARG_TGT_ARCH')
+		is_o:        is_o
+	}
+	if v3_windows_prod_msvc_ready(tc) {
+		return tc
+	}
+	clang := os.find_abs_path_of_executable('clang') or { '' }
+	return V3WindowsProdToolchain{
+		...tc
+		clang:        clang
+		clang_triple: if clang == '' { '' } else { v3_windows_prod_clang_triple(clang) }
+		gcc:          v3_platform_c_compiler_command('windows')
+	}
 }
 
 fn v3_should_regenerate_after_implicit_tcc(retry_compilation bool, use_implicit_tcc_semantics bool, tried_tcc bool, tcc_exit_code int) bool {
@@ -8544,7 +8731,10 @@ fn restore_transformed_fn_value_types(mut tc types.TypeChecker, a &flat.FlatAst,
 				if base_idx >= 0 && base_idx < a.nodes.len {
 					base := a.nodes[base_idx]
 					cname := 'C.${base.value}'
-					if base.kind == .ident && cname in tc.fn_param_types && cname in tc.fn_ret_types {
+					// A local receiver can share a name with a C function. Restore
+					// only identifiers the checker resolved as that function value.
+					if base.kind == .ident && cname in tc.fn_param_types && cname in tc.fn_ret_types
+						&& (tc.resolved_fn_value_name(base_id) or { '' }) == cname {
 						params := tc.fn_param_types[cname] or { []types.Type{} }
 						if ret := tc.fn_ret_types[cname] {
 							tc.expr_type_values[base_idx] = types.FnType{
@@ -10864,6 +11054,7 @@ pub fn run(args []string) {
 	selection := v3_select_c_compiler(prefs.vroot, V3BundledTccProbeOptions{
 		backend:             backend
 		c_only:              c_only
+		is_o:                is_o
 		is_prod:             is_prod
 		is_c_debug:          is_c_debug
 		race:                race
@@ -13568,6 +13759,7 @@ pub fn run(args []string) {
 			g.set_prod(prefs.is_prod)
 			g.set_debug(prefs.is_debug)
 			g.set_race(race)
+			g.set_vlines(is_debug && !is_c_debug)
 			g.set_check_overflow(check_overflow)
 			g.set_force_bounds_checking(prefs.force_bounds_checking)
 			g.set_prealloc('prealloc' in prefs.user_defines)
@@ -13639,6 +13831,7 @@ pub fn run(args []string) {
 			g.set_prod(prefs.is_prod)
 			g.set_debug(prefs.is_debug)
 			g.set_race(race)
+			g.set_vlines(is_debug && !is_c_debug)
 			g.set_check_overflow(check_overflow)
 			g.set_force_bounds_checking(prefs.force_bounds_checking)
 			g.set_prealloc('prealloc' in prefs.user_defines)
@@ -14401,6 +14594,8 @@ pub fn run(args []string) {
 				// executable is never reused across a change of the link flags.
 				tcc_args << link_ld_flags
 			}
+			tcc_args = v3_tcc_macos_framework_flags(tcc_args, prefs.normalized_target_os(),
+				tcc_sdk_root)
 			program_source_identity := '${prefix_source_identity}\n${modulecache.file_signature(tcc_main_file)}\n${if cached_program_body_source.len > 0 {
 				modulecache.file_signature(cached_program_body_source)
 			} else {
@@ -14494,6 +14689,8 @@ pub fn run(args []string) {
 			if !is_o {
 				tcc_args << link_ld_flags
 			}
+			tcc_args = v3_tcc_macos_framework_flags(tcc_args, prefs.normalized_target_os(),
+				tcc_sdk_root)
 			if verbose || show_cc {
 				println('  > ${cmdexec.display(tcc_path, tcc_args)}')
 			}
@@ -14693,22 +14890,26 @@ Please install the corresponding development package/libraries and make sure the
 			cleanup_c_build_dir(cc_dir)
 			exit(1)
 		}
-		if race && target.os == 'macos' {
-			v3_race_keep_macos_debug_symbols(staged_binary, bin_file)
+		if (is_debug || race) && target.os == 'macos' {
+			v3_keep_macos_debug_symbols(staged_binary, bin_file)
 		}
 		for temporary_object in c_object_cache_stats.temporary_objects {
 			os.rm(temporary_object) or {}
 		}
-		for source_flag in generated_c_flags {
-			clean := source_flag.trim_space()
-			if c_generated_native_source_context(clean, cc_dir) {
-				os.rm(clean) or {}
+		// C debug information names these exact sources, including the per-build src.c.
+		// Keep them available for the debugger instead of retaining only a renamed copy.
+		if !is_c_debug {
+			for source_flag in generated_c_flags {
+				clean := source_flag.trim_space()
+				if c_generated_native_source_context(clean, cc_dir) {
+					os.rm(clean) or {}
+				}
 			}
+			os.rm(tcc_main_file) or {}
+			os.rm(cache_full_tcc_source) or {}
+			os.rm(retained_full_c_source) or {}
+			cleanup_c_build_dir(cc_dir)
 		}
-		os.rm(tcc_main_file) or {}
-		os.rm(cache_full_tcc_source) or {}
-		os.rm(retained_full_c_source) or {}
-		cleanup_c_build_dir(cc_dir)
 		for scope_free_thread in scope_free_threads {
 			scope_free_thread.wait()
 		}
@@ -14727,8 +14928,8 @@ Please install the corresponding development package/libraries and make sure the
 			run_result := run_binary(bin_file, run_args)
 			if remove_binary_after_run {
 				os.rm(bin_file) or {}
-				if race && target.os == 'macos' {
-					v3_race_remove_macos_debug_symbols(bin_file)
+				if (is_debug || race) && target.os == 'macos' {
+					v3_remove_macos_debug_symbols(bin_file)
 				}
 			}
 			if run_result != 0 {

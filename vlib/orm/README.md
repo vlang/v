@@ -77,6 +77,13 @@ containers can be intermediate receivers, but the final value must be a primitiv
 an enum or `time.Time`. For example, `make_holders()[0].name` can bind a string field,
 while `make_holders()[0]` cannot bind the whole struct. Option and Result receivers must
 be unwrapped with an `or` fallback before accessing their members or elements.
+Methods declared on collection aliases, including inherited alias methods, use their
+declared return types when checking the final value. Private alias methods remain
+accessible only within their declaring module, following ordinary method visibility rules.
+Alias conversions also follow type visibility. These checks apply during `-check` and compilation.
+Alias methods follow the same visibility and return type rules through pointer receivers.
+Mutable alias methods also require a receiver eligible under ordinary V mutability rules.
+Shared alias receivers require the same read or write locks as ordinary method calls.
 
 ## Usage
 > [!NOTE]
@@ -208,6 +215,8 @@ sql db {
 ### Create & Drop Tables
 
 You can create and drop tables by passing the struct to `create table` and `drop table`.
+Table structs from imported modules can use the module name or its import alias as a qualifier.
+These references count as uses of the import, even when it is used only inside the SQL block.
 
 ```v ignore
 import models.Foo

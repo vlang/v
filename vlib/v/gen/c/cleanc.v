@@ -405,6 +405,7 @@ mut:
 	coverage_build_options         string
 	race                           bool
 	line_directives                bool
+	vlines                         bool
 	line_directive_paths           map[string]string
 	line_directive_fn_start        int
 	coverage_files                 map[string]&CoverageInfo
@@ -612,6 +613,8 @@ mut:
 	current_decl_is_mut             bool
 	direct_array_access             bool
 	struct_default_module           string
+	struct_default_generic_params   []string
+	struct_default_generic_args     []string
 	default_value_stack             map[string]bool
 	shallow_default_value_depth     int
 	shadowed_global_locals          map[string]bool
@@ -10440,6 +10443,17 @@ fn (mut g FlatGen) emit_preserved_c_directives(windows_header_emitted bool) bool
 	mut deferred_windows_header_indices := []int{}
 	directives := g.ordered_c_directives(false)
 	use_system_libc := g.c_directives_use_system_libc()
+	// Index of the last lifted include of winsock2.h that is certain to be active;
+	// -1 when there is none.
+	mut last_active_winsock2_index := -1
+	if g.target.os == 'windows' {
+		for i, directive in directives {
+			if c_preserved_directive_includes(directive, c_winsock2_headers)
+				&& c_lifted_include_is_unconditional(directives, i) {
+				last_active_winsock2_index = i
+			}
+		}
+	}
 	for i, directive in directives {
 		if !c_contains_preserved_system_include_directive(directive) {
 			continue
@@ -10452,8 +10466,14 @@ fn (mut g FlatGen) emit_preserved_c_directives(windows_header_emitted bool) bool
 			has_mach_headers = true
 		}
 		clean := trimmed_space(directive)
+		without_legacy_winsock := i < last_active_winsock2_index
+			&& c_preserved_directive_includes(directive, c_headers_including_windows_h)
 		if directive.contains('\n') {
-			g.emit_preserved_c_directive(directive)
+			if without_legacy_winsock {
+				g.emit_preserved_c_directive_without_legacy_winsock(directive)
+			} else {
+				g.emit_preserved_c_directive(directive)
+			}
 			emitted = true
 			continue
 		}
@@ -10469,7 +10489,7 @@ fn (mut g FlatGen) emit_preserved_c_directives(windows_header_emitted bool) bool
 				continue
 			}
 		}
-		if g.emit_preserved_c_directive_at(directives, i, mut emitted_includes) {
+		if g.emit_preserved_c_directive_at(directives, i, without_legacy_winsock, mut emitted_includes) {
 			emitted = true
 		}
 	}
@@ -10482,7 +10502,7 @@ fn (mut g FlatGen) emit_preserved_c_directives(windows_header_emitted bool) bool
 			emitted = true
 		}
 		for i in deferred_windows_header_indices {
-			if g.emit_preserved_c_directive_at(directives, i, mut emitted_includes) {
+			if g.emit_preserved_c_directive_at(directives, i, false, mut emitted_includes) {
 				emitted = true
 			}
 		}
@@ -10501,7 +10521,7 @@ fn (mut g FlatGen) emit_preserved_c_directives(windows_header_emitted bool) bool
 	return emitted_windows_header
 }
 
-fn (mut g FlatGen) emit_preserved_c_directive_at(directives []string, index int, mut emitted_includes map[string]bool) bool {
+fn (mut g FlatGen) emit_preserved_c_directive_at(directives []string, index int, without_legacy_winsock bool, mut emitted_includes map[string]bool) bool {
 	directive := directives[index]
 	clean := trimmed_space(directive)
 	prefix := if c_lifted_include_skips_context(directive) {
@@ -10524,7 +10544,11 @@ fn (mut g FlatGen) emit_preserved_c_directive_at(directives []string, index int,
 	for line in prefix {
 		g.writeln(line)
 	}
-	g.emit_preserved_c_directive(directive)
+	if without_legacy_winsock {
+		g.emit_preserved_c_directive_without_legacy_winsock(directive)
+	} else {
+		g.emit_preserved_c_directive(directive)
+	}
 	for _ in 0 .. c_lifted_include_context_depth(prefix) {
 		g.writeln('#endif')
 	}
@@ -10618,6 +10642,76 @@ fn c_contains_preserved_system_include_directive(directive string) bool {
 		return false
 	}
 	return has_include
+}
+
+// Lifted system headers that include winsock2.h, or are winsock2.h.
+const c_winsock2_headers = ['<winsock2.h>', '<ws2tcpip.h>']
+
+// Lifted system headers known to include windows.h on their own. builtin's gc.h does
+// so for the Win32 thread declarations of the Boehm GC.
+const c_headers_including_windows_h = ['<windows.h>', '<gc.h>', '<gc/gc.h>']
+
+// c_preserved_directive_includes reports whether a lifted system include directive
+// includes one of `headers`, either on its own or inside a guarded multi-line block.
+fn c_preserved_directive_includes(directive string, headers []string) bool {
+	if !c_contains_preserved_system_include_directive(directive) {
+		return false
+	}
+	for line in directive.split_into_lines() {
+		clean := trimmed_space(line)
+		if c_is_preserved_system_include_directive(clean) && c_directive_arg(clean) in headers {
+			return true
+		}
+	}
+	return false
+}
+
+// c_lifted_include_is_unconditional reports whether the lifted include at `index` is
+// certain to be active: neither its own lines nor its lifted context are conditional.
+fn c_lifted_include_is_unconditional(directives []string, index int) bool {
+	directive := directives[index]
+	mut lines := directive.split_into_lines()
+	if !directive.contains('\n') && !c_lifted_include_skips_context(directive) {
+		lines << c_lifted_include_context_prefix(directives, index)
+	}
+	for line in lines {
+		clean := trimmed_space(line)
+		if clean.len == 0 || c_is_preserved_system_include_directive(clean) {
+			continue
+		}
+		if c_directive_name(clean) !in ['define', 'undef'] {
+			return false
+		}
+	}
+	return true
+}
+
+// emit_preserved_c_directive_without_legacy_winsock emits a header that includes
+// windows.h on its own and is followed by an active winsock2.h. Without
+// WIN32_LEAN_AND_MEAN, windows.h loads the legacy winsock.h, and the Windows SDK
+// headers then reject winsock2.h with a redefinition error for each of its
+// declarations. builtin's gc.h is such a header, and builtin is ordered before the
+// modules that use sockets. winsock.h is guarded by _WINSOCKAPI_, so defining it
+// around the include keeps winsock.h out without moving any header: reordering would
+// cut a prerequisite header off from the winsock2.h that it configures. The macro is
+// released afterwards, so winsock2.h still comes first.
+// Only translation units that the SDK headers reject are touched. With MinGW and
+// TinyCC that order compiles, so there the headers between the two includes keep
+// the winsock.h declarations they may use. The same holds for a winsock2.h include
+// under a condition, which the C preprocessor may turn off.
+fn (mut g FlatGen) emit_preserved_c_directive_without_legacy_winsock(directive string) {
+	g.writeln('#if defined(_MSC_VER) && !defined(_WINSOCKAPI_)')
+	g.writeln('#define _WINSOCKAPI_')
+	g.writeln('#define V_LEGACY_WINSOCK_GUARD')
+	g.writeln('#endif')
+	g.emit_preserved_c_directive(directive)
+	g.writeln('#ifdef V_LEGACY_WINSOCK_GUARD')
+	g.writeln('#undef V_LEGACY_WINSOCK_GUARD')
+	// A guarded block that includes winsock2.h itself leaves the macro to that header.
+	g.writeln('#ifndef _WINSOCK2API_')
+	g.writeln('#undef _WINSOCKAPI_')
+	g.writeln('#endif')
+	g.writeln('#endif')
 }
 
 fn c_is_ptrace_system_include_directive(directive string) bool {
@@ -12540,16 +12634,17 @@ fn (mut g FlatGen) gen_expr_with_expected_type_inner(id flat.NodeId, expected_ty
 		return
 	}
 	if node.kind == .cast_expr && node.children_count > 0 {
-		if _ := g.shared_alias_pointer_type_from_text(node.value) {
+		target_text := g.generic_default_type_text(node.value)
+		if _ := g.shared_alias_pointer_type_from_text(target_text) {
 			g.gen_expr_with_expected_type(g.a.child(node, 0), expected)
 			g.expected_expr_type = old_expected
 			g.expected_enum = old_expected_enum
 			return
 		}
-		cast_target := g.canonical_import_alias_type_in_file(node.value, g.node_source_file(node))
+		cast_target := g.canonical_import_alias_type_in_file(target_text, g.node_source_file(node))
 		translated_int_cast := g.expr_is_in_translated_file(id)
 			&& cgen_unalias_type(cast_target).name() == 'int'
-		if !translated_int_cast && g.cast_alias_matches_expected_storage(node.value, expected) {
+		if !translated_int_cast && g.cast_alias_matches_expected_storage(target_text, expected) {
 			g.gen_expr_with_expected_type(g.a.child(node, 0), expected)
 			g.expected_expr_type = old_expected
 			g.expected_enum = old_expected_enum
@@ -12725,7 +12820,7 @@ fn (mut g FlatGen) gen_sum_pointer_default_expr(node flat.Node, expected types.T
 		return false
 	}
 	if node.value.len > 0 {
-		init_type := default_init_unalias_type(g.tc.parse_type(node.value))
+		init_type := default_init_unalias_type(g.tc.parse_type(g.generic_default_type_text(node.value)))
 		if init_type is types.Pointer {
 			init_base := default_init_unalias_type(init_type.base_type)
 			if !g.type_names_match(init_base, base_type) {
@@ -12765,7 +12860,8 @@ fn (mut g FlatGen) gen_pointer_alias_value_cast_addr(id flat.NodeId, expected ty
 	}
 	target_alias := target_type as types.Alias
 	base_type := target_alias.base_type
-	if base_type is types.Pointer {
+	// `&U8(-1)`, with an alias of an integer type, is a pointer cast like `&u8(-1)`.
+	if base_type is types.Pointer || cgen_unalias_type(base_type).is_integer() {
 		return false
 	}
 	target_ct := g.value_c_type(base_type)
@@ -12792,7 +12888,7 @@ fn (mut g FlatGen) gen_pointer_alias_value_cast_expr(id flat.NodeId, expected ty
 	if node.kind != .cast_expr || node.children_count == 0 {
 		return false
 	}
-	target_type := g.tc.parse_type(node.value)
+	target_type := g.tc.parse_type(g.generic_default_type_text(node.value))
 	if target_type !is types.Pointer {
 		return false
 	}
@@ -12803,7 +12899,7 @@ fn (mut g FlatGen) gen_pointer_alias_value_cast_expr(id flat.NodeId, expected ty
 	}
 	target_alias := target_base as types.Alias
 	base_type := target_alias.base_type
-	if base_type is types.Pointer {
+	if base_type is types.Pointer || cgen_unalias_type(base_type).is_integer() {
 		return false
 	}
 	child_id := g.a.child(node, 0)
@@ -13207,7 +13303,7 @@ fn (mut g FlatGen) sum_cast_actual_type(id flat.NodeId) types.Type {
 	if node.kind == .struct_init && node.value.len > 0 {
 		// A variant literal (`SNull{}`) may carry the checker's expected-type
 		// propagation (the sum type itself); the literal names its own type.
-		lit_type := g.tc.parse_type(node.value)
+		lit_type := g.tc.parse_type(g.generic_default_type_text(node.value))
 		if lit_type !is types.Unknown {
 			return lit_type
 		}
@@ -13813,13 +13909,22 @@ fn (g &FlatGen) c_typedef_cast_call_name(node flat.Node) string {
 }
 
 // context_wants_pointer_to_fn reports whether the expression being generated is
-// consumed as a pointer to a function rather than as a callable value.
+// consumed as a pointer to a function rather than as a callable value. A pointer
+// to a pointer (`&voidptr`, C's `void **`, as in `__atomic_store_n(&s.f, f, 0)`)
+// is one too: a function itself cannot be one.
 fn (g &FlatGen) context_wants_pointer_to_fn() bool {
 	expected := cgen_unalias_type(g.expected_expr_type)
 	if expected is types.Pointer {
-		return cgen_unalias_type(expected.base_type) is types.FnType
+		base_type := cgen_unalias_type(expected.base_type)
+		return base_type is types.FnType || base_type is types.Pointer
 	}
 	return false
+}
+
+// context_wants_callable reports whether the expression being generated is
+// consumed as a function value (a field, parameter or variable of a function type).
+fn (g &FlatGen) context_wants_callable() bool {
+	return cgen_unalias_type(g.expected_expr_type) is types.FnType
 }
 
 // gen_expr_with_possible_enum_type emits expr with possible enum type output for c.
@@ -13845,13 +13950,14 @@ fn (g &FlatGen) expected_expr_is_optional_struct() bool {
 }
 
 fn (mut g FlatGen) type_name_c_type(type_name string) string {
-	if _ := g.tc.cur_scope.lookup(type_name) {
-		return g.cname(type_name)
+	target_name := g.generic_default_type_text(type_name)
+	if _ := g.tc.cur_scope.lookup(target_name) {
+		return g.cname(target_name)
 	}
-	if type_name.starts_with('fn_ptr:') {
-		return g.resolve_fn_ptr_type(type_name)
+	if target_name.starts_with('fn_ptr:') {
+		return g.resolve_fn_ptr_type(target_name)
 	}
-	t := g.tc.parse_type(type_name)
+	t := g.tc.parse_type(target_name)
 	if _ := fn_type_from(t) {
 		return g.value_c_type(t)
 	}
@@ -13868,7 +13974,8 @@ fn (mut g FlatGen) type_name_c_type(type_name string) string {
 	return ct
 }
 
-fn (mut g FlatGen) sizeof_target(value string) string {
+fn (mut g FlatGen) sizeof_target(value0 string) string {
+	value := g.generic_default_type_text(value0)
 	if value.starts_with('fn_ptr:') {
 		return g.resolve_fn_ptr_type(value)
 	}
@@ -15075,13 +15182,14 @@ fn (mut g FlatGen) const_expr_to_string(id flat.NodeId, seen []string) string {
 			}
 		}
 		.cast_expr {
-			target_type := g.tc.parse_type(node.value)
+			target_text := g.generic_default_type_text(node.value)
+			target_type := g.tc.parse_type(target_text)
 			if g.translated_bool_destination(id, target_type) {
 				child := g.const_expr_to_string(g.a.child(&node, 0), seen)
 				return '((${child}) != 0)'
 			}
-			mut ct := if node.value.starts_with('fn_ptr:') {
-				g.resolve_fn_ptr_type(node.value)
+			mut ct := if target_text.starts_with('fn_ptr:') {
+				g.resolve_fn_ptr_type(target_text)
 			} else if g.expr_is_in_translated_file(id)
 				&& cgen_unalias_type(target_type).name() == 'int' {
 				'i32'
@@ -15091,7 +15199,7 @@ fn (mut g FlatGen) const_expr_to_string(id flat.NodeId, seen []string) string {
 			if ct.starts_with('fn_ptr:') {
 				ct = g.resolve_fn_ptr_type(ct)
 			}
-			if node.value in g.interfaces || g.tc.qualify_name(node.value) in g.interfaces {
+			if target_text in g.interfaces || g.tc.qualify_name(target_text) in g.interfaces {
 				return '(${ct}){0}'
 			}
 			if target_type is types.SumType {
@@ -16101,6 +16209,7 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 				types.Type(types.void_)
 			}
 			if node.op == .amp && fn_value_type is types.FnType {
+				operand_id, operand := g.unwrapped_fn_value_operand(child_id, child)
 				// A function value is already a C pointer, so `&` on one is a no-op
 				// wherever the context wants a callable: `Holder{ f: &local }` has to
 				// store the function, not the address of a stack slot that dies with
@@ -16108,12 +16217,18 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 				// - `ref := &f`, read back through `*ref` - needs the address, and
 				// dropping it there leaves the dereference reading code as data.
 				if g.context_wants_pointer_to_fn() {
-					if child.kind == .index {
+					// A bound method value (`obj.method`) is a selector without storage: it
+					// keeps the materialized copy below.
+					field_or_element := operand.kind == .index
+						|| (operand.kind == .selector && !g.tc.expr_is_method_value(operand_id))
+					if field_or_element || (g.expr_is_in_translated_file(id)
+						&& g.fn_value_operand_has_storage(operand_id, operand)) {
 						// Mutable for-in lowering takes the address of the current array
-						// element. Keep that address tied to the element so writes through
-						// the binding update the array rather than a heap-copied callback.
+						// element. Keep that address tied to the element (or field) so
+						// writes through it update it rather than a heap-copied callback.
+						// In translated C, `&` on a variable is its address, as in V1.
 						g.write('&')
-						gen_expr_lvalue(mut g, child_id)
+						gen_expr_lvalue(mut g, operand_id)
 						return
 					}
 					mut fn_ct := g.tc.c_type(fn_value_type)
@@ -16124,6 +16239,16 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 					g.write('({ ${fn_ct} ${tmp} = ')
 					g.gen_expr(child_id)
 					g.write('; (${fn_ct}*)memdup(&${tmp}, sizeof(${fn_ct})); })')
+					return
+				}
+				// In translated C, where no callable is expected, `&` on a function
+				// variable (a local, parameter, global, field or element) is the
+				// variable's address, as in V1: C translated by c2v stores a callback
+				// through it with `c2v_assign_voidptr(&voidptr(&x), f)`.
+				if g.expr_is_in_translated_file(id) && !g.context_wants_callable()
+					&& g.fn_value_operand_has_storage(operand_id, operand) {
+					g.write('&')
+					gen_expr_lvalue(mut g, operand_id)
 					return
 				}
 				g.gen_expr(child_id)
@@ -16261,7 +16386,10 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 					g.write(', sizeof(${ct}))')
 					return
 				}
-				if target_type is types.Alias && target_type.base_type !is types.Pointer {
+				// `&SS('hi')` (an alias of a value type) points to a copy of the value.
+				// `&U8(-1)` (an alias of an integer type) is a pointer cast, as `&u8(-1)` is.
+				if target_type is types.Alias && target_type.base_type !is types.Pointer
+					&& !cgen_unalias_type(target_type.base_type).is_integer() {
 					base_ct := g.value_c_type(target_type.base_type)
 					value_expr := g.expr_to_string(g.a.child(&child, 0))
 					source_expr := '(${base_ct}[]){${value_expr}}[0]'
@@ -16444,6 +16572,13 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 			base_id := g.a.child(node, 0)
 			base := g.a.nodes[int(base_id)]
 			if base.kind == .ident {
+				if node.value == 'name' {
+					if type_name := g.generic_default_param_type_name(base.value) {
+						sid := g.intern_string(type_name)
+						g.write('_str_${sid}')
+						return
+					}
+				}
 				if storage := g.current_module_selector_const_name(base.value, node.value) {
 					g.write(g.const_ident_c_name(storage))
 					return
@@ -16729,7 +16864,8 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 				} else {
 					raw_type := g.tc.cur_scope.lookup(base.value) or { base_type }
 					g.gen_expr(base_id)
-					if raw_type is types.Pointer {
+					// The declared type can be an alias of a pointer (`type P = &T`).
+					if cgen_unalias_type(raw_type) is types.Pointer {
 						g.write('->len')
 					} else {
 						g.write('.len')
@@ -17052,7 +17188,9 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 			}
 		}
 		.array_init {
-			raw_init_type := g.canonical_import_alias_type_in_file(node.value, g.node_source_file(node))
+			target_text := g.generic_default_type_text(node.value)
+			raw_init_type := g.canonical_import_alias_type_in_file(target_text,
+				g.node_source_file(node))
 			init_type := raw_init_type
 			if init_type is types.ArrayFixed {
 				c_elem, dims := g.fixed_array_decl_parts(init_type)
@@ -17069,12 +17207,13 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 			panic('internal error: SQL expression reached C backend after transform')
 		}
 		.cast_expr {
-			target_type := g.canonical_import_alias_type_in_file(node.value, g.node_source_file(node))
+			target_text := g.generic_default_type_text(node.value)
+			target_type := g.canonical_import_alias_type_in_file(target_text, g.node_source_file(node))
 			semantic_target := cgen_unalias_type(target_type)
 			cast_arg_id := g.a.child(node, 0)
 			cast_arg_type := cgen_unalias_type(g.usable_expr_type(cast_arg_id))
-			mut ct := if node.value.starts_with('fn_ptr:') {
-				g.resolve_fn_ptr_type(node.value)
+			mut ct := if target_text.starts_with('fn_ptr:') {
+				g.resolve_fn_ptr_type(target_text)
 			} else if g.expr_is_in_translated_file(id) && semantic_target.name() == 'int' {
 				'i32'
 			} else {
@@ -17087,7 +17226,7 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 			if g.gen_int128_cast(node, target_type, g.a.child(node, 0)) {
 				return
 			}
-			if shared_alias_ptr := g.shared_alias_pointer_type_from_text(node.value) {
+			if shared_alias_ptr := g.shared_alias_pointer_type_from_text(target_text) {
 				g.gen_expr_with_expected_type(g.a.child(node, 0), shared_alias_ptr)
 				return
 			}
@@ -17407,7 +17546,8 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 		}
 		.offsetof_expr {
 			ct := g.type_name_c_type(node.value)
-			g.write('offsetof(${ct}, ${g.init_field_c_name(node.value, node.typ)})')
+			field_owner := g.generic_default_type_text(node.value)
+			g.write('offsetof(${ct}, ${g.init_field_c_name(field_owner, node.typ)})')
 		}
 		.assoc {
 			g.gen_assoc_expr(node)
@@ -17615,7 +17755,7 @@ fn (mut g FlatGen) gen_typeof_name(node flat.Node) {
 
 fn (g &FlatGen) typeof_type_name(node flat.Node) string {
 	if node.value.len > 0 {
-		return typeof_display_type_name(node.value)
+		return typeof_display_type_name(g.generic_default_display_type_text(node.value))
 	}
 	if node.children_count == 0 {
 		return ''
@@ -21610,13 +21750,12 @@ fn (mut g FlatGen) atomic_thread_fence_compat_decls() {
 	g.writeln('#endif')
 	// tcc has no `__atomic_thread_fence` builtin. On the architectures where
 	// thirdparty/stdatomic/nix/atomic.S provides `_V_atomic_thread_fence`, route to
-	// that shim; on x86_64 Unix TCC's <stdatomic.h> already declares
-	// `atomic_thread_fence` and maps `__atomic_thread_fence` to it. Redeclaring the
-	// mapped name with `int` conflicts with TCC's `memory_order` enum parameter.
+	// that shim. x86_64 Linux uses V's separately named fence too, so linking the
+	// runtime's atomic helpers cannot introduce a duplicate fence definition.
 	// clang/gcc keep the builtin.
 	g.writeln('#if defined(_WIN32) && (defined(__TINYC__) || (defined(_MSC_VER) && !defined(__clang__)))')
 	g.writeln('/* V atomic.h supplies atomic_thread_fence on Windows TCC and MSVC. */')
-	g.writeln('#elif defined(__TINYC__) && (defined(__i386__) || defined(__arm__) || defined(__aarch64__) || defined(__riscv))')
+	g.writeln('#elif defined(__TINYC__) && (defined(__i386__) || defined(__arm__) || defined(__aarch64__) || defined(__riscv) || (defined(__x86_64__) && defined(__linux__)))')
 	g.writeln('extern void _V_atomic_thread_fence(int order);')
 	g.writeln('#define atomic_thread_fence(order) _V_atomic_thread_fence(order)')
 	g.writeln('#define __atomic_thread_fence(order) _V_atomic_thread_fence(order)')
@@ -23192,20 +23331,16 @@ fn (mut g FlatGen) queue_global_struct_field_defaults(target string, struct_name
 	if struct_name in visited {
 		return
 	}
+	source := g.struct_default_decl_source(struct_name) or { return }
 	visited[struct_name] = true
-	info := g.find_struct_decl(struct_name) or { return }
-	old_module := g.tc.cur_module
-	old_file := g.tc.cur_file
-	old_default_module := g.struct_default_module
-	g.tc.cur_module = info.module
-	g.tc.cur_file = info.file
-	g.struct_default_module = info.module
+	info := source.info
+	old_ctx := g.enter_struct_default_source(source)
 	for i in 0 .. info.node.children_count {
 		field := g.a.child_node(&info.node, i)
 		if field.kind != .field_decl {
 			continue
 		}
-		field_type := g.struct_default_field_type(info, field)
+		field_type := g.struct_default_field_type_for_source(source, field)
 		field_target := '${target}.${g.cname(field.value)}'
 		if field.children_count == 0 {
 			clean_field_type := default_init_unalias_type(field_type)
@@ -23218,7 +23353,8 @@ fn (mut g FlatGen) queue_global_struct_field_defaults(target string, struct_name
 		old_line_start := g.line_start
 		g.sb = strings.new_builder(128)
 		g.line_start = true
-		g.gen_struct_field_expr_for_field(g.a.child(field, 0), info.full_name, field.value, field_type)
+		g.gen_struct_field_expr_for_field(g.a.child(field, 0), source.owner_name, field.value,
+			field_type)
 		expr := g.sb.str()
 		g.sb = old_sb
 		g.line_start = old_line_start
@@ -23231,9 +23367,7 @@ fn (mut g FlatGen) queue_global_struct_field_defaults(target string, struct_name
 			g.queue_runtime_init_for_module('\t${field_target} = ${expr};', init_module)
 		}
 	}
-	g.tc.cur_module = old_module
-	g.tc.cur_file = old_file
-	g.struct_default_module = old_default_module
+	g.restore_struct_default_context(old_ctx)
 	visited.delete(struct_name)
 }
 
@@ -23726,6 +23860,19 @@ fn (mut g FlatGen) queue_global_array_init(target string, val_id flat.NodeId, ty
 		return false
 	}
 	node := g.a.nodes[int(val_id)]
+	if node.kind == .array_literal {
+		// `__global a = [x, y]` is a self-contained `new_array_from_c_array(...)`.
+		tmp_sb := g.sb
+		tmp_line_start := g.line_start
+		g.sb = strings.new_builder(64)
+		g.line_start = true
+		g.gen_array_literal_value(node, typ.elem_type)
+		expr_str := g.sb.str()
+		g.sb = tmp_sb
+		g.line_start = tmp_line_start
+		g.queue_runtime_init('\t${target} = ${expr_str};')
+		return true
+	}
 	if node.kind != .array_init {
 		if node.kind != .call || node.children_count == 0 {
 			return false
@@ -25696,8 +25843,33 @@ fn (g &FlatGen) translated_comparison_integer_sign(typ types.Type) int {
 	return if g.translated_comparison_integer_is_unsigned(typ) { 1 } else { -1 }
 }
 
-fn (mut g FlatGen) gen_mixed_sign_integer_comparison(lhs_id flat.NodeId, rhs_id flat.NodeId, lhs_type types.Type, rhs_type types.Type, op flat.Op) bool {
+// translated_comparison_operand_type is the type of a comparison operand in C
+// translated to V: a rune literal stands for a C character constant, an `int`
+// (`c > `,`` with `c` holding EOF, -1, is false).
+fn (g &FlatGen) translated_comparison_operand_type(id flat.NodeId, typ types.Type) types.Type {
+	mut node := g.a.nodes[int(id)]
+	for node.kind == .paren && node.children_count > 0 {
+		node = g.a.nodes[int(g.a.child(&node, 0))]
+	}
+	if node.kind == .char_literal && !node.value.starts_with('c:')
+		&& unsigned_shift_unalias_type(typ) is types.Rune {
+		return types.Type(types.i32_)
+	}
+	return typ
+}
+
+fn (mut g FlatGen) gen_mixed_sign_integer_comparison(lhs_id flat.NodeId, rhs_id flat.NodeId, lhs_operand_type types.Type, rhs_operand_type types.Type, op flat.Op) bool {
 	translated := g.expr_is_in_translated_file(lhs_id)
+	lhs_type := if translated {
+		g.translated_comparison_operand_type(lhs_id, lhs_operand_type)
+	} else {
+		lhs_operand_type
+	}
+	rhs_type := if translated {
+		g.translated_comparison_operand_type(rhs_id, rhs_operand_type)
+	} else {
+		rhs_operand_type
+	}
 	lhs_sign := if translated {
 		g.translated_comparison_integer_sign(lhs_type)
 	} else {

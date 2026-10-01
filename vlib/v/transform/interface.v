@@ -311,11 +311,19 @@ fn (mut t Transformer) transform_interface_value_for_type(id flat.NodeId, target
 			// storage, but transform_expr reads it as &Iface. Do not restore the
 			// storage type on that dereference and make cgen box it again.
 			source_type = storage_type[1..]
+		} else if node.value in t.heaped_amp_locals && storage_type.starts_with('&') {
+			// A local moved to the heap is stored as `&Iface` but read as its `Iface`
+			// value; keeping the storage type would dereference that value again.
+			source_type = storage_type[1..]
 		}
 	}
 	mut source_is_smartcast_interface := false
 	if t.expr_has_smartcast(id) {
-		raw_source_type := t.raw_expr_type_without_smartcast(id)
+		raw_source_type := if node.kind == .index {
+			t.resolve_index_elem_type(node)
+		} else {
+			t.raw_expr_type_without_smartcast(id)
+		}
 		if t.resolve_interface_type_name(raw_source_type).len > 0 {
 			source_type = raw_source_type
 			source_is_smartcast_interface = true
@@ -426,7 +434,13 @@ fn (mut t Transformer) transform_interface_value_for_type(id flat.NodeId, target
 		return t.transform_interface_value_for_type(cloned, target_type, false)
 	}
 	if source_iface == iface_name {
-		expr := t.transform_expr(id)
+		// The target needs the complete interface value, including its type tag,
+		// rather than the concrete payload selected by a smartcast.
+		expr := if source_is_smartcast_interface {
+			t.make_plain_expr_for_smartcast(id)
+		} else {
+			t.transform_expr(id)
+		}
 		if source_type.len > 0 && int(expr) >= 0 {
 			t.set_node_typ(int(expr), source_type)
 		}
@@ -849,6 +863,9 @@ fn (mut t Transformer) make_interface_literal_from_expr(id flat.NodeId, iface_na
 		source_type[1..]
 	} else {
 		source_type
+	}
+	if !is_ptr && !share_source {
+		source = t.clone_owned_array_storage_value(source, source_type, t.array_storage_source_is_mut_param(source_id))
 	}
 	t.mark_interface_boxed_type(iface_name, concrete_type)
 	if impl_name := t.interface_concrete_impl_name(concrete_type) {

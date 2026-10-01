@@ -1203,6 +1203,10 @@ The user can explicitly specify the type for the first element: `[u8(16), 32, 64
 V arrays are homogeneous (all elements must have the same type).
 This means that code like `[1, 'a']` will not compile.
 
+Array elements must be written inside square brackets. Braces accept named initializer
+parameters only; `[]int{1, 2, 3}` and `[3]int{1, 2, 3}` are syntax errors.
+Use `[1, 2, 3]` for a dynamic array or `[1, 2, 3]!` for a fixed array instead.
+
 The above syntax is fine for a small number of known elements but for very large or empty
 arrays there is a second initialization syntax:
 
@@ -1660,6 +1664,35 @@ anums := fnums[..] // same as `anums := fnums[0..fnums.len]`
 println(anums) // => [1, 10, 100]
 println(typeof(anums).name) // => []int
 ```
+
+Whole fixed size arrays and their ranges can be passed to mutable array parameters.
+These arguments borrow the original elements, so writes through either the array parameter
+or another alias are immediately visible through both. Returned or stored views keep sharing
+those elements. Local storage is moved to the heap before references to it are formed, so
+retained views remain valid after the local goes out of scope. A callee can also retain a
+reference to the separately allocated array header. Growing or reassigning that header follows
+the usual array slice rules and leaves the original fixed array's size unchanged.
+Immutable array-reference parameters, including each variadic argument, also borrow the
+original elements. These rules also apply to array-reference parameters declared through aliases.
+Fixed array values introduced by guards, multi-declarations, loop bindings, or select receives
+also receive durable storage when passed to a retaining array-reference parameter.
+Indexed fixed elements of dynamic arrays retain their original backing buffer, including through
+managed slice aliases, so retained headers preserve writes and remain valid after owner cleanup.
+The same rule applies to fixed elements obtained through `first()` or `last()`.
+Fixed values read from maps, including inline fields, are copied into independent durable storage.
+Mutable iteration over those fixed elements preserves the same backing lifetime.
+Pointer fields and indexed pointers retain the original fixed-array roots recorded by their owners.
+Borrowing does not clone elements or require a `clone()` method.
+Explicitly destroying owned source elements invalidates views of those elements, as with other
+borrowed slices.
+With ownership checking enabled, returning or storing a view copies its buffer to independent
+storage. Owned elements are cloned so the retained value has independent owners. Retained array
+references, including those stored inside options, receive a separate header, so other aliases
+in the callee still share the original elements.
+An operation that detaches a borrowed buffer also clones its owned elements. Such elements
+need a compatible `clone()` method or `IClone` support. Retaining or detaching a nonempty
+uncloneable borrowed buffer panics; borrowing it or changing its elements in place is allowed.
+An empty view can grow without cloning any source elements.
 
 Note that slicing will cause the data of the fixed size array to be copied to
 the newly created ordinary array. The exception is a slice that is written to:
@@ -3463,6 +3496,11 @@ intended for low-level applications like kernels and drivers.
 
 It is possible to modify function arguments by declaring them with the keyword `mut`:
 
+A method with a `mut` receiver requires a mutable value receiver even when it only
+changes private fields in another module. An immutable value parameter cannot call
+such a method: mutations would affect its copy and be lost when the function returns.
+Declare the parameter or receiver with `mut` when its changes must reach the caller.
+
 ```v
 struct User {
 	name string
@@ -4609,6 +4647,10 @@ fn get_component[T](entity Entity) !T {
 ```
 
 If you want to return the smart-casted pointer itself, use `!&T` as the return type instead.
+
+Appending a smart-casted value to an array of its original interface type preserves the
+complete interface value. Both `animals << animal` and `animals << Animal(animal)` retain
+the underlying type and allow interface method calls on the appended element.
 
 ```v
 // interface-example.4
@@ -6412,6 +6454,13 @@ Here `a` is stored on the stack since its address never leaves the function `f()
 However a reference to `b` is part of `e` which is returned. Also a reference to
 `c` is returned. For this reason `b` and `c` will be heap allocated.
 
+Heap allocation preserves value reads in declaration initializers. An initializer reads
+the bindings that are visible before the new declaration is installed.
+Leaving a nested scope restores the storage and type metadata of outer heap-backed bindings.
+
+Moving a local to the heap preserves its source-level type. For example, `typeof(c).name`
+still reports `MyStruct`; the pointer used to store the local does not change type reflection.
+
 Things become less obvious when a reference to an object is passed as a function argument:
 
 ```v
@@ -7903,6 +7952,10 @@ already compressed.
 [EmbedFileData](https://modules.vlang.io/v.embed_file.html#EmbedFileData)
 which could be used to obtain the file contents as `string` or `[]u8`.
 
+Use the returned value: discarding `$embed_file` as a statement is an error, including
+when it is the fallback value of an unused `or` expression with nested `or` blocks.
+Passing it as a call argument consumes the value, even when the call has an `or` block.
+
 #### `$tmpl` for embedding and parsing V template files
 
 V has a simple template language for text and html templates, and they can easily
@@ -9339,20 +9392,24 @@ library, e.g.:
 To debug issues in the generated binary (flag: `-b c`), you can pass these flags:
 
 - `-g` - produces a less optimized executable with more debug information in it.
-  V will enforce line numbers from the .v files in the stacktraces, that the
-  executable will produce on panic. It is usually better to pass -g, unless
+  Generated C uses `#line` directives so debuggers and panic stacktraces resolve
+  positions to the original .v files. It is usually better to pass -g, unless
   you are writing low-level code, in which case use the next option `-cg`.
 - `-cg` - produces a less optimized executable with more debug information in it.
   The executable will use C source line numbers in this case. It is frequently
   used in combination with `-keepc`, so that you can inspect the generated
   C program in case of panic, or so that your debugger (`gdb`, `lldb` etc.)
-  can show you the generated C source code.
+  can show you the generated C source code. The C backend retains its per-build
+  `.<executable>.v3cc.*` directory beside the executable so the source paths in
+  the debug information remain available. You can remove this directory after debugging.
 - `-showcc` - prints the C command that is used to build the program.
 - `-show-c-output` - prints the output, that your C compiler produced
   while compiling your program.
 - `-keepc` - do not delete the generated C source code file after a successful
   compilation. Also keep using the same file path, so it is more stable,
   and easier to keep opened in an editor/IDE.
+
+On macOS, debug builds keep their `.dSYM` bundle beside the final executable.
 
 For best debugging experience if you are writing a low-level wrapper for an existing
 C library, you can pass several of these flags at the same time:
@@ -9909,6 +9966,9 @@ is `DLL_PROCESS_DETACH`.
 Files marked `@[translated]` retain C storage rules: global declarations and writes through
 pointers do not require additional flags or `unsafe` blocks. These rules apply only to those files.
 Pointer-returning calls can also receive field assignments.
+Pointers to `char`, `i8`, and `u8` of the same pointer depth are interchangeable in translated
+assignments, returns, function arguments, and other typed values. Ordinary V files retain their
+pointer type checks; calls to C functions also accept these character pointers.
 
 Files marked `@[translated]` retain C scalar conversions between numbers, enums, and booleans.
 These scalars can be mixed in arithmetic expressions and compound assignments. Integral scalars

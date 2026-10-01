@@ -300,6 +300,9 @@ pub const node_flag_literal_interpolation_text = u8(32)
 // node_flag_detached_spawn marks a `spawn` whose thread handle is discarded, so the
 // backend starts its thread detached (see Node.is_detached_spawn()).
 pub const node_flag_detached_spawn = u8(64)
+// node_flag_variadic_call preserves the checker's V variadic call selection,
+// including function values whose packed array type does not carry that metadata.
+pub const node_flag_variadic_call = u8(128)
 
 // node_flags packs rare node bools into Node.flags.
 @[inline]
@@ -327,7 +330,7 @@ pub fn clone_node_flags(source &Node, skip_ownership_drops bool) u8 {
 	mut flags := node_flags(skip_ownership_drops, source.is_static_type_method())
 	flags |= source.flags & (node_flag_embed_payload | node_flag_freed_assignment |
 		node_flag_mut_builtin_pointer_param | node_flag_literal_interpolation_text |
-		node_flag_detached_spawn)
+		node_flag_detached_spawn | node_flag_variadic_call)
 	return flags
 }
 

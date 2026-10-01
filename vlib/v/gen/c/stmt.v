@@ -1037,7 +1037,12 @@ fn (mut g FlatGen) gen_ownership_drops(entries []types.OwnershipDropEntry) {
 			g.gen_ownership_drop_value(typ, expr, 0)
 		}
 		if free_pointer_storage {
-			g.writeln('free(${cname});')
+			free_fn := if g.pointer_free_needs_aligned_free(g.tc.parse_type('&${entry.type_name}')) {
+				'v3_aligned_free'
+			} else {
+				'v_free'
+			}
+			g.writeln('${free_fn}(${cname});')
 		}
 	}
 }
@@ -1705,14 +1710,16 @@ fn (mut g FlatGen) gen_ownership_clone_ierror(id flat.NodeId) {
 			g.writeln('${result}._object_is_boxed = true;')
 		} else {
 			clone_method := g.resolve_method_name(concrete, 'clone')
-			if clone_method.len > 0 {
+			has_compatible_clone := g.tc.ownership_type_has_clone_method(concrete_type)
+				|| g.tc.ownership_type_has_clone_method(types.Pointer{ base_type: concrete_type })
+			if clone_method.len > 0 && has_compatible_clone {
 				params := g.tc.fn_param_types[clone_method] or { []types.Type{} }
 				receiver := if params.len > 0 && params[0] is types.Pointer {
 					'((${concrete_ct}*)${object})'
 				} else {
 					'*((${concrete_ct}*)${object})'
 				}
-				return_type := g.tc.fn_ret_types[clone_method] or { concrete_type }
+				return_type := types.unalias_type(g.tc.fn_ret_types[clone_method] or { concrete_type })
 				if return_type is types.Pointer {
 					g.writeln('${result}._object = ${g.cname(clone_method)}(${receiver});')
 					// A compatible pointer-returning clone creates independent owned storage.
@@ -1723,6 +1730,9 @@ fn (mut g FlatGen) gen_ownership_clone_ierror(id flat.NodeId) {
 					g.writeln('${result}._object = memdup(&${value}, sizeof(${concrete_ct}));')
 					g.writeln('${result}._object_is_boxed = true;')
 				}
+			} else if g.ownership_type_requires_destruction(concrete_type, 0) {
+				message := 'cannot retain borrowed Result error: `${concrete}` requires ownership destruction but has no compatible `clone()` method'
+				g.writeln('v_panic(${g.interface_str_lit(message)});')
 			} else {
 				g.writeln('${result}._object = memdup(${object}, sizeof(${concrete_ct}));')
 				g.writeln('${result}._object_is_boxed = true;')
@@ -5608,6 +5618,10 @@ fn (g &FlatGen) heap_local_memdup_expr(source_expr string, base_type types.Type,
 			return '(${base_ct}*)v3_aligned_memdup(${src}, sizeof(${base_ct}), ${align_arg})'
 		}
 	}
+	mut seen := map[string]bool{}
+	if g.global_fixed_array_type_has_aligned_struct(clean_base, mut seen) {
+		return '(${base_ct}*)v3_aligned_memdup(${src}, sizeof(${base_ct}), __alignof__(${base_ct}))'
+	}
 	return '(${base_ct}*)memdup(${src}, sizeof(${base_ct}))'
 }
 
@@ -7277,21 +7291,17 @@ fn (mut g FlatGen) gen_large_heap_struct_decl(lhs_id flat.NodeId, rhs_id flat.No
 		}
 		set_fields[field_info.name] = true
 	}
-	if info := g.find_struct_decl(lookup_name) {
-		old_module := g.tc.cur_module
-		old_file := g.tc.cur_file
-		old_default_module := g.struct_default_module
-		g.tc.cur_module = info.module
-		g.tc.cur_file = info.file
-		g.struct_default_module = info.module
+	if source := g.struct_default_decl_source(lookup_name) {
+		info := source.info
+		old_ctx := g.enter_struct_default_source(source)
 		for i in 0 .. info.node.children_count {
 			field := g.a.child_node(&info.node, i)
 			if field.kind != .field_decl || field.children_count == 0
 				|| field.value in set_fields {
 				continue
 			}
-			field_type := g.struct_default_field_type(info, field)
-			cfield := g.init_field_c_name(info.full_name, field.value)
+			field_type := g.struct_default_field_type_for_source(source, field)
+			cfield := g.init_field_c_name(source.owner_name, field.value)
 			value_id := g.a.child(field, 0)
 			if _ := array_fixed_type(field_type) {
 				g.write('memcpy(${lhs_str}->${cfield}, ')
@@ -7299,14 +7309,12 @@ fn (mut g FlatGen) gen_large_heap_struct_decl(lhs_id flat.NodeId, rhs_id flat.No
 				g.writeln(', sizeof(${lhs_str}->${cfield}));')
 			} else {
 				g.write('${lhs_str}->${cfield} = ')
-				g.gen_struct_field_expr_for_field(value_id, info.full_name, field.value,
+				g.gen_struct_field_expr_for_field(value_id, source.owner_name, field.value,
 					field_type)
 				g.writeln(';')
 			}
 		}
-		g.tc.cur_module = old_module
-		g.tc.cur_file = old_file
-		g.struct_default_module = old_default_module
+		g.restore_struct_default_context(old_ctx)
 	}
 	owner := g.tc.cur_scope.insert_with_owner(lhs.value, v_type)
 	g.track_local_pointer_storage_decl(lhs, owner, v_type, ct)

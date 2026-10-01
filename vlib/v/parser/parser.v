@@ -1896,7 +1896,7 @@ fn (mut p Parser) fn_decl_body(name string, receiver_name string, receiver_type 
 		})
 		p.record_formatter_param_list_end(id, param_list_end)
 		p.pending_export = ''
-		p.register_pending_noreturn(name)
+		p.register_pending_noreturn(name, interop_prefix)
 		return id
 	}
 
@@ -1998,7 +1998,7 @@ fn (mut p Parser) fn_decl_body(name string, receiver_name string, receiver_type 
 	}
 	p.record_formatter_param_list_end(id, param_list_end)
 	p.register_pending_export(name)
-	p.register_pending_noreturn(name)
+	p.register_pending_noreturn(name, interop_prefix)
 	return id
 }
 
@@ -2086,16 +2086,20 @@ fn (mut p Parser) mark_disabled_fn(name string) {
 
 // register_pending_noreturn records a `@[noreturn]` function so the checker's
 // missing-return analysis treats calls to it as terminating.
-fn (mut p Parser) register_pending_noreturn(name string) {
+fn (mut p Parser) register_pending_noreturn(name string, interop_prefix string) {
 	if !p.pending_noreturn || name.len == 0 {
 		p.pending_noreturn = false
 		return
 	}
-	if p.cur_module.len > 0 && p.cur_module != 'main' && p.cur_module != 'builtin'
+	if interop_prefix.len > 0 {
+		// Foreign names are global: `C.name()` resolves to `C.name` in every module.
+		p.a.noreturn_fns['${interop_prefix}.${name}'] = true
+	} else if p.cur_module.len > 0 && p.cur_module != 'main' && p.cur_module != 'builtin'
 		&& !name.starts_with('${p.cur_module}.') {
 		p.a.noreturn_fns['${p.cur_module}.${name}'] = true
+	} else {
+		p.a.noreturn_fns[name] = true
 	}
-	p.a.noreturn_fns[name] = true
 	p.pending_noreturn = false
 }
 
@@ -13958,6 +13962,7 @@ fn (mut p Parser) array_literal() flat.NodeId {
 			if p.tok == .lcbr {
 				p.next()
 				mut init_ids := []flat.NodeId{}
+				mut has_positional_error := false
 				for p.tok != .rcbr && p.tok != .eof {
 					if p.tok == .semicolon {
 						p.next()
@@ -13982,7 +13987,13 @@ fn (mut p Parser) array_literal() flat.NodeId {
 							pos:            p.span_to(fname_start)
 						})
 					} else {
+						element_start := p.span_start()
 						init_ids << p.expr(.lowest)
+						if !has_positional_error {
+							p.record_diagnostic_span('array initializer elements must use square brackets',
+								element_start, p.prev_tok_end)
+							has_positional_error = true
+						}
 					}
 					if p.tok == .comma {
 						p.next()
@@ -14267,6 +14278,7 @@ fn (mut p Parser) array_init_after_element_type(elem_type string, start int) fla
 	mut has_len := false
 	mut init_start := -1
 	mut init_end := -1
+	mut has_positional_error := false
 	for p.tok != .rcbr && p.tok != .eof {
 		if p.tok == .semicolon {
 			p.next()
@@ -14292,7 +14304,13 @@ fn (mut p Parser) array_init_after_element_type(elem_type string, start int) fla
 				pos:            p.span_to(fname_start)
 			})
 		} else {
+			element_start := p.span_start()
 			ids << p.expr(.lowest)
+			if !has_positional_error {
+				p.record_diagnostic_span('array initializer elements must use square brackets',
+					element_start, p.prev_tok_end)
+				has_positional_error = true
+			}
 		}
 		if p.tok == .comma {
 			p.next()

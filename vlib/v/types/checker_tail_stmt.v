@@ -332,7 +332,7 @@ fn (mut tc TypeChecker) check_unused_expression_statement(id flat.NodeId) {
 	}
 	if semantic.kind == .or_expr {
 		if has_embed_file_value {
-			if embed_id := tc.nested_embed_file_value(semantic_id) {
+			if embed_id := tc.or_fallback_embed_file_value(semantic_id) {
 				tc.record_error_at(.unknown_ident, 'expression evaluated but not used', expr_id,
 					tc.a.node(embed_id).pos)
 			}
@@ -416,6 +416,36 @@ fn (tc &TypeChecker) nested_embed_file_value(id flat.NodeId) ?flat.NodeId {
 	return none
 }
 
+// or_fallback_embed_file_value returns the `$embed_file` value produced by the
+// `or { ... }` block of an `or_expr`, i.e. the value that is discarded when the
+// whole `expr or { ... }` is unused. `$embed_file` values inside the guarded
+// expression (for example call arguments in `f($embed_file('x')) or { ... }`) or
+// in earlier statements of the block are consumed, so they are not reported.
+fn (tc &TypeChecker) or_fallback_embed_file_value(id flat.NodeId) ?flat.NodeId {
+	node := tc.a.node(id)
+	if node.kind != .or_expr || node.children_count < 2 {
+		return none
+	}
+	mut value_id := tc.a.child(node, 1)
+	mut value := tc.a.node(value_id)
+	for _ in 0 .. 64 {
+		if value.kind == .block && value.children_count > 0 {
+			value_id = tc.a.child(value, value.children_count - 1)
+		} else if value.kind in [.expr_stmt, .paren] && value.children_count == 1 {
+			value_id = tc.a.child(value, 0)
+		} else if value.kind == .or_expr && value.children_count >= 2 {
+			value_id = tc.a.child(value, 1)
+		} else {
+			break
+		}
+		value = tc.a.node(value_id)
+	}
+	if value.kind == .struct_init && value.value == 'embed_file.EmbedFileData' {
+		return value_id
+	}
+	return none
+}
+
 fn (tc &TypeChecker) unused_expression_diagnostic_pos(expr_id flat.NodeId, semantic_id flat.NodeId, semantic flat.Node,
 	has_embed_file_value bool) token.Pos {
 	mut pos := if expr_id == semantic_id && semantic.kind == .selector {
@@ -442,12 +472,17 @@ fn (tc &TypeChecker) unused_expression_diagnostic_pos(expr_id flat.NodeId, seman
 		return token.new_span(pos.id, pos.offset + 1, pos.end)
 	}
 	if semantic.kind == .selector && semantic.children_count > 0 {
-		base_id := tc.a.child(&semantic, 0)
+		mut base_id := tc.a.child(&semantic, 0)
 		mut base := tc.a.node(base_id)
 		for base.kind == .paren && base.children_count == 1 {
-			base = tc.a.child_node(base, 0)
+			base_id = tc.a.child(base, 0)
+			base = tc.a.node(base_id)
 		}
-		if base.kind in [.or_expr, .lock_expr] {
+		if base.kind == .or_expr {
+			if embed_id := tc.or_fallback_embed_file_value(base_id) {
+				return tc.a.node(embed_id).pos
+			}
+		} else if base.kind == .lock_expr {
 			if embed_id := tc.nested_embed_file_value(base_id) {
 				return tc.a.node(embed_id).pos
 			}
@@ -468,7 +503,7 @@ fn (tc &TypeChecker) unused_expression_diagnostic_pos(expr_id flat.NodeId, seman
 		}
 	}
 	if lhs.kind == .or_expr {
-		if embed_id := tc.nested_embed_file_value(lhs_id) {
+		if embed_id := tc.or_fallback_embed_file_value(lhs_id) {
 			return tc.a.node(embed_id).pos
 		}
 	}
@@ -2275,7 +2310,8 @@ fn (mut tc TypeChecker) check_general_match_branch_tail_types(id flat.NodeId, no
 		}
 		if actual is Void || actual is Unknown
 			|| tc.if_branch_type_compatible_with_context(actual, tail_id, expected)
-			|| (tc.type_compatible(actual, expected) && tc.type_compatible(expected, actual)) {
+			|| (tc.type_compatible(actual, expected) && tc.type_compatible(expected, actual))
+			|| tc.translated_char_pointer_expr_compatible(tail_id, actual, expected) {
 			continue
 		}
 		tc.record_match_branch_return_type_mismatch(tail_id, expected, actual)
@@ -10200,6 +10236,34 @@ fn (tc &TypeChecker) fn_return_compatible(actual Type, expected Type) bool {
 fn fn_param_can_cast_userdata_param(actual Type, expected Type) bool {
 	return (fn_param_is_voidptr_type(expected) && fn_param_is_nonvoid_pointer_type(actual))
 		|| (fn_param_is_nonvoid_pointer_type(expected) && fn_param_is_voidptr_type(actual))
+		|| fn_param_pointer_slot_compatible(expected, actual)
+		|| fn_param_pointer_slot_compatible(actual, expected)
+}
+
+// fn_param_pointer_slot_compatible reports whether `slot` is `&voidptr` (`&&voidptr`...)
+// and `other` points, at the same depth, to a slot of the same kind: a pointer or a
+// function value. C translated by c2v declares a `void (**pxFunc)(...)` parameter as
+// `&voidptr` in a function definition and as `&fn (...)` in a struct field. A `&voidptr`
+// does not stand for `&i32`: the callee would store a pointer in an `i32`.
+fn fn_param_pointer_slot_compatible(slot Type, other Type) bool {
+	clean_slot := fn_param_unalias_type(slot)
+	clean_other := fn_param_unalias_type(other)
+	if clean_slot !is Pointer || clean_other !is Pointer {
+		return false
+	}
+	slot_base := fn_param_unalias_type((clean_slot as Pointer).base_type)
+	other_base := fn_param_unalias_type((clean_other as Pointer).base_type)
+	if fn_param_is_voidptr_type(slot_base) {
+		if other_base is FnType {
+			return true
+		}
+		if other_base is Pointer {
+			pointee := fn_param_unalias_type(other_base.base_type)
+			return pointee !is Pointer && pointee !is FnType
+		}
+		return false
+	}
+	return fn_param_pointer_slot_compatible(slot_base, other_base)
 }
 
 fn fn_param_is_voidptr_type(typ Type) bool {
@@ -10918,7 +10982,8 @@ pub fn (tc &TypeChecker) interface_implements_interface(actual_name string, expe
 // `clone() First` against `clone() Second` -- ask this question again while answering it,
 // and the name equality fast path above cannot stop that cycle because the names differ.
 // The pair is ordered: `First <: Second` and `Second <: First` are separate obligations
-// and both are asked, so each is recorded and discharged on its own.
+// and both are asked, so each is recorded and discharged on its own. As for concrete
+// types, a revisited pair is not proven, so `First` does not implement `Second`.
 fn interface_implements_interface_guarded(tc &TypeChecker, actual_name string, expected_name string, visited []string) bool {
 	actual := tc.interface_metadata_name(actual_name)
 	expected := tc.interface_metadata_name(expected_name)
@@ -10927,7 +10992,7 @@ fn interface_implements_interface_guarded(tc &TypeChecker, actual_name string, e
 	}
 	guard_key := '${actual}<:${expected}'
 	if guard_key in visited {
-		return true
+		return false
 	}
 	mut in_progress := visited.clone()
 	in_progress << guard_key
@@ -11054,17 +11119,17 @@ pub fn (tc &TypeChecker) named_type_implements_interface(concrete_name string, i
 // pairs whose proof is still in progress. A self-referential interface -- one with a
 // method whose return type is the interface itself, as in `clone() Cloner` -- makes the
 // satisfaction check re-enter with a pair it is already proving, which otherwise recurses
-// until the checker's stack is exhausted. Treating a pair that is already in progress as
-// satisfied is the standard coinductive reading of recursive structural subtyping: it
-// assumes only the obligation the enclosing frame is already proving, and any requirement
-// that genuinely fails is still reported by that frame.
+// until the checker's stack is exhausted. A pair that is already in progress is not
+// proven: a method that names the interface itself matches exactly and never gets here,
+// while assuming the pair would let any type with `clone() Self`, such as `string`,
+// implement `Cloner` through its covariant return, which cgen cannot dispatch.
 fn named_type_implements_interface_guarded(tc &TypeChecker, concrete_name string, iface_name string, visited []string) bool {
 	if tc.interface_has_no_requirements(iface_name) {
 		return true
 	}
 	guard_key := '${concrete_name}<:${iface_name}'
 	if guard_key in visited {
-		return true
+		return false
 	}
 	mut in_progress := visited.clone()
 	in_progress << guard_key
@@ -12939,6 +13004,11 @@ pub fn (tc &TypeChecker) struct_fields_for_type(struct_name string) []StructFiel
 
 @[direct_array_access]
 fn (tc &TypeChecker) struct_field_type(struct_name string, field_name string) ?Type {
+	if struct_name.starts_with('C.') {
+		if typ := tc.c_struct_module_field_type(struct_name, field_name) {
+			return typ
+		}
+	}
 	if field_name.starts_with('@') && field_name.len > 1
 		&& token.Token.from_string_tinyv(field_name[1..]).is_keyword() {
 		mut exact_seen := map[string]bool{}
@@ -13013,6 +13083,23 @@ fn (tc &TypeChecker) struct_field_type(struct_name string, field_name string) ?T
 		cache.struct_field_misses[cache_key] = true
 	}
 	tc.remember_struct_field_type(struct_name, field_name, Type(void_), false)
+	return none
+}
+
+// c_struct_module_field_type returns the type of a field of the current module's own
+// declaration of a C struct. Modules can mirror one C struct with different fields, or
+// the same fields with different types (`C.sigaction` in `os` and in a translated C
+// library); each module's code uses the fields as it declares them, as its struct
+// literals already do.
+fn (tc &TypeChecker) c_struct_module_field_type(struct_name string, field_name string) ?Type {
+	fields := tc.c_struct_scoped_fields[c_struct_module_key(tc.cur_module, struct_name)] or {
+		return none
+	}
+	for field in fields {
+		if field.name == field_name {
+			return field.typ
+		}
+	}
 	return none
 }
 
