@@ -592,7 +592,9 @@ fn main() {
 	assert keep_option(mut absent) == none
 	mut scalar := Storage(7)
 	retained := keep_sum(mut scalar)
+	drop_owned(scalar)
 	assert retained == Storage(7)
+	drop_owned(retained)
 	mut absent_sum := ?Storage(none)
 	assert keep_optional_sum(mut absent_sum) == none
 	mut scalar_sum := ?Storage(Storage(9))
@@ -634,6 +636,24 @@ fn main() {
 }
 ')
 	assert output == 'error 1\nerror 101\nerror 2\nerror 102'
+}
+
+fn test_mutable_array_sum_storage_acquires_nonarray_variant_owners() {
+	output := borrow_storage_run('sum_string_storage', borrow_storage_drop_decls + '
+type Storage = []Res | string
+fn keep(mut source Storage) Storage { return source }
+fn main() {
+	mut source := Storage("payload".repeat(4))
+	retained := keep(mut source)
+	drop_owned(source)
+	if retained is string {
+		assert retained == "payload".repeat(4)
+	} else { assert false }
+	drop_owned(retained)
+	println("ok")
+}
+')
+	assert output == 'ok'
 }
 
 fn test_mutable_array_value_captures_acquire_owned_snapshots() {
