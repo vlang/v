@@ -44,6 +44,11 @@ Use `v -new-compiler ...` to disable the C-error compatibility fallback as well.
 An explicit `v -old-compiler ...` request still selects V 0.5.2 directly and does not
 have a failed default compilation to display.
 
+On Linux amd64, V's TCC fence shim uses a private symbol so it can link alongside
+TCC's atomic runtime helpers. Boehm GC builds use the canonical GC header under
+TCC, avoiding a duplicate compatibility definition of `GC_noop1_ptr`. These builds
+can use TCC directly without a duplicate-symbol warning and a retry with `cc`.
+
 The compatibility compiler cache uses `V1_FALLBACK_CACHE_DIR` when set, followed by
 `XDG_CACHE_HOME/v/v1-fallback` and `HOME/.cache/v/v1-fallback`. On Windows, when those
 variables are unset, it uses `LOCALAPPDATA\v\v1-fallback`, reusing the same cache
